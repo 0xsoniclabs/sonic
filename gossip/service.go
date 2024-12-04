@@ -62,6 +62,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/filters"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/gossip/proclogger"
+	"github.com/0xsoniclabs/sonic/gossip/topology"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/logger"
 	scc_node "github.com/0xsoniclabs/sonic/scc/node"
@@ -666,4 +667,8 @@ func (s *Service) Stop() error {
 // AccountManager return node's account manager
 func (s *Service) AccountManager() *accounts.Manager {
 	return s.accountManager
+}
+
+func (s *Service) GetConnectionTracker() topology.ConnectionTracker {
+	return s.handler.GetConnectionTracker()
 }

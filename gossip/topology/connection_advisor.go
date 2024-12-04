@@ -17,17 +17,27 @@
 package topology
 
 import (
+	"slices"
 	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/p2p/enode"
 )
 
+// ConnectionTracker is a utility that provides information about the local node's
+// neighborhood.
+type ConnectionTracker interface {
+	GetLocalId() enode.ID
+	GetNeighborhood() map[enode.ID][]*enode.Node
+}
+
 // ConnectionAdvisor is a utility that provides suggestions on which peers to
 // connect to and which peers to disconnect from based on the local node's
 // neighborhood. The advisor is used to maintain a healthy peer set and to
 // optimize the local node's connectivity as well as the overall network topology.
 type ConnectionAdvisor interface {
+	ConnectionTracker
+
 	// GetNewPeerSuggestion returns a new peer that should be connected to.
 	GetNewPeerSuggestion() *enode.Node
 
@@ -159,4 +169,18 @@ func (c *connectionAdvisor[I, T]) UpdatePeers(peer I, peers []T) {
 		peers: peers,
 		time:  time.Now(),
 	}
+}
+
+func (c *connectionAdvisor[I, T]) GetLocalId() I {
+	return c.localId
+}
+
+func (c *connectionAdvisor[I, T]) GetNeighborhood() map[I][]T {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	res := make(map[I][]T, len(c.neighborhood))
+	for peer, entry := range c.neighborhood {
+		res[peer] = slices.Clone(entry.peers)
+	}
+	return res
 }

@@ -28,6 +28,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/cmd/sonicd/diskusage"
 	"github.com/0xsoniclabs/sonic/cmd/sonicd/metrics"
+	"github.com/0xsoniclabs/sonic/cmd/sonicd/netmon"
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/config/flags"
 	"github.com/0xsoniclabs/sonic/version"
@@ -60,6 +61,7 @@ var (
 	operaFlags       []cli.Flag
 	rpcFlags         []cli.Flag
 	metricsFlags     []cli.Flag
+	monitoringFlags  []cli.Flag
 )
 
 func initFlags() {
@@ -172,6 +174,11 @@ func initFlags() {
 		metrics.MetricsInfluxDBOrganizationFlag,
 	}
 
+	monitoringFlags = []cli.Flag{
+		netmon.NetworkMonitoringEnabledFlag,
+		netmon.NetworkMonitoringPortFlag,
+	}
+
 	nodeFlags = []cli.Flag{}
 	nodeFlags = append(nodeFlags, gpoFlags...)
 	nodeFlags = append(nodeFlags, accountFlags...)
@@ -179,6 +186,7 @@ func initFlags() {
 	nodeFlags = append(nodeFlags, networkingFlags...)
 	nodeFlags = append(nodeFlags, txpoolFlags...)
 	nodeFlags = append(nodeFlags, operaFlags...)
+	nodeFlags = append(nodeFlags, monitoringFlags...)
 }
 
 // initFilterAndFlags initializes the discovery filter and the application flags
@@ -286,7 +294,7 @@ func lachesisMainInternal(
 		cfg.OperaStore.EVM.StateDb.ArchiveCache = archiveCache
 	}
 
-	node, _, nodeClose, err := config.MakeNode(ctx, cfg)
+	node, service, nodeClose, err := config.MakeNode(ctx, cfg)
 	if err != nil {
 		return fmt.Errorf("failed to initialize the node: %w", err)
 	}
@@ -323,6 +331,18 @@ func lachesisMainInternal(
 				}
 			}()
 		}
+	}
+
+	// Start network monitoring if enabled.
+	monitor := netmon.NewNetworkMonitor(
+		service.GetConnectionTracker(),
+		ctx.GlobalInt(netmon.NetworkMonitoringPortFlag.Name),
+	)
+	if ctx.GlobalBool(netmon.NetworkMonitoringEnabledFlag.Name) {
+		if err := monitor.Start(); err != nil {
+			return fmt.Errorf("failed to start network monitor: %w", err)
+		}
+		defer monitor.Stop()
 	}
 
 	node.Wait()

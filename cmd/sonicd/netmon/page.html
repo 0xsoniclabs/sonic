@@ -1,0 +1,92 @@
+<head>
+</head>
+<body>
+    <h1>Network Summary</h1>
+    <div>
+        <label>
+            <input type="checkbox" id="auto-refresh-checkbox" autocomplete="off" checked/>Auto Refresh
+        </label>
+    </div>
+    <script type='text/javascript'>
+        function reloadPage(){
+            var refreshEnabled = document.getElementById('auto-refresh-checkbox');
+            if(refreshEnabled.checked) {
+                window.location.reload(1);
+            }
+        }
+        setInterval(reloadPage, 5000);
+    </script>
+
+    {{.Graph}}
+
+    <h2>Local Node</h2>
+    <ul>
+        <li>Time: {{now}}</li>
+        <li>IP: {{.Local.IP}}</li>
+        <li>Port: {{.Local.Port}}</li>
+        <li>Peer ID: {{.Local.ID}}</li>
+        <li>Number of Peers: {{len .Peers}}</li>
+    </ul>
+
+    <h2>Peers</h2>
+    <table>
+        <tr>
+            <th>Number</th>
+            <th>IP</th>
+            <th>Port</th>
+            <th>Peer ID</th>
+            <th>Number of Peers</th>
+        </tr>
+        {{range $index, $element := .Peers}}
+            <tr>
+                <td>{{inc $index}}</td>
+                <td>{{$element.IP}}</td>
+                <td>{{$element.Port}}</td>
+                <td>{{$element.ID}}</td>
+                <td>{{len .Peers}}</td>
+            </tr>
+        {{end}}
+    </table>
+
+
+    <h2>Network</h2>
+    <table>
+        <tr>
+            <th>Number</th>
+            <th>IP</th>
+            <th>Port</th>
+            <th>Peer ID</th>
+        </tr>
+        {{range $index, $element := .Nodes}}
+            <tr>
+                <td>{{inc $index}}</td>
+                <td>{{$element.IP}}</td>
+                <td>{{$element.Port}}</td>
+                <td>{{$element.ID}}</td>
+            </tr>
+        {{end}}
+    </table>
+
+    <h2>Neighborhood</h2>
+
+    {{range .Peers}}
+    <h3>Peer {{.ID}}</h3>
+    <table>
+        <tr>
+            <th>Number</th>
+            <th>IP</th>
+            <th>Port</th>
+            <th>Peer ID</th>
+        </tr>
+        {{range $index, $element := .Peers}}
+            <tr>
+                <td>{{$index}}</td>
+                <td>{{$element.IP}}</td>
+                <td>{{$element.Port}}</td>
+                <td>{{$element.ID}}</td>
+            </tr>
+        {{end}}
+    </table>
+    {{end}}
+</body>
+

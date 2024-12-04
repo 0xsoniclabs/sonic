@@ -1246,6 +1246,10 @@ func getSemaphoreWarningFn(name string) func(dag.Metric, dag.Metric, dag.Metric)
 	}
 }
 
+func (h *handler) GetConnectionTracker() topology.ConnectionTracker {
+	return h.connectionAdvisor
+}
+
 func (h *handler) GetSuggestedPeerIterator() enode.Iterator {
 	return &suggestedPeerIterator{
 		handler: h,
