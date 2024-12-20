@@ -13,8 +13,10 @@ func UpdateRules(src Rules, diff []byte) (Rules, error) {
 	changed.Name = src.Name
 
 	// check validity of the new rules
-	if err = changed.Validate(); err != nil {
-		return Rules{}, err
+	if changed.Upgrades.CheckRuleChanges {
+		if err = changed.Validate(); err != nil {
+			return Rules{}, err
+		}
 	}
 	return changed, nil
 }
