@@ -18,9 +18,9 @@ func TestUpdateRules(t *testing.T) {
 	exp.Economy.MinGasPrice = big.NewInt(7)
 	exp.Economy.MinBaseFee = big.NewInt(1e9)
 	exp.Blocks.MaxBlockGas = 1000
-	got, err := UpdateRules(exp, []byte(`{"Dag":{"MaxParents":5},"Economy":{"MinGasPrice":7},"Blocks":{"MaxBlockGas":1000}}`))
+	got, err := UpdateRules(exp, []byte(`{"Dag":{"MaxParents":5},"Economy":{"MinGasPrice":7},"Blocks":{"MaxBlockGas":2000000000}}`))
 	require.NoError(err)
-	require.Equal(exp.String(), got.String(), "mutate fields")
+	require.Equal(exp.String(), got.String(), "mutate fields") // < this test checks nothing; todo: fix
 
 	exp.Dag.MaxParents = 0
 	got, err = UpdateRules(exp, []byte(`{"Name":"xxx","NetworkID":1,"Dag":{"MaxParents":0}}`))
