@@ -8,10 +8,6 @@ import (
 	"github.com/Fantom-foundation/go-opera/inter"
 )
 
-var (
-	maxMinimumGasPrice = new(big.Int).SetUint64(1000 * 1e9) // 1000 Gwei
-)
-
 func validate(rules Rules) error {
 	return errors.Join(
 		validateDagRules(rules.Dag),
@@ -28,6 +24,10 @@ func validateDagRules(rules DagRules) error {
 
 	if rules.MaxParents < 2 {
 		issues = append(issues, errors.New("Dag.MaxParents is too low"))
+	}
+
+	if rules.MaxFreeParents < 2 {
+		issues = append(issues, errors.New("Dag.MaxFreeParents is too low"))
 	}
 
 	if rules.MaxExtraData > 1<<20 { // 1 MB
@@ -90,6 +90,13 @@ func validateBlockRules(rules BlocksRules) error {
 	return errors.Join(issues...)
 }
 
+var (
+	// maxMinimumGasPrice is the maximum allowed minimum gas price. An upper limit is
+	// added to avoid a situation where the gas-free pricing is accidentally set to such
+	// a high value that another rule-change can no longer be afforded.
+	maxMinimumGasPrice = new(big.Int).SetUint64(1000 * 1e9) // 1000 Gwei
+)
+
 func validateEconomyRules(rules EconomyRules) error {
 	var issues []error
 
@@ -115,7 +122,7 @@ func validateEconomyRules(rules EconomyRules) error {
 		}
 	}
 
-	// TODO: check BlockMissedSlack
+	// There are deliberately no checks for the BlockMissedSlack. This can be set to any value.
 
 	issues = append(issues, validateGasRules(rules.Gas))
 	issues = append(issues, validateGasPowerRules("Economy.ShortGasPower", rules.ShortGasPower))
@@ -124,18 +131,48 @@ func validateEconomyRules(rules EconomyRules) error {
 	return errors.Join(issues...)
 }
 
+const (
+	// upperBoundForRuleChangeGasCosts is a safe over-approximation of the gas costs of a rule change.
+	upperBoundForRuleChangeGasCosts = 1_000_000 // < TODO: verify this number
+)
+
 func validateGasRules(rules GasRules) error {
 	var issues []error
 
-	// TODO: implement
+	if rules.MaxEventGas < upperBoundForRuleChangeGasCosts {
+		issues = append(issues, errors.New("Gas.MaxEventGas is too low"))
+	}
+
+	if rules.MaxEventGas-rules.EventGas < upperBoundForRuleChangeGasCosts {
+		issues = append(issues, errors.New("Gas.EventGas is too high"))
+	}
+
+	// Right now, we do not have a rule that would limit the ParentGas, or ExtraDataGas.
 
 	return errors.Join(issues...)
 }
 
 func validateGasPowerRules(prefix string, rules GasPowerRules) error {
+	// The main aim of those rule-checks is to prevent a situation where
+	// accidentally the gas-power is reduced to a level where no new rule
+	// change can be processed anymore.
+
 	var issues []error
 
-	// TODO: implement
+	if rules.AllocPerSec < 10*upperBoundForRuleChangeGasCosts {
+		issues = append(issues, errors.New(prefix+".AllocPerSec is too low"))
+	}
+
+	if rules.MaxAllocPeriod < inter.Timestamp(1*time.Second) {
+		issues = append(issues, errors.New(prefix+".MaxAllocPeriod is too low"))
+	}
+	if rules.MaxAllocPeriod > inter.Timestamp(1*time.Minute) {
+		issues = append(issues, errors.New(prefix+".MaxAllocPeriod is too high"))
+	}
+
+	if rules.StartupAllocPeriod < inter.Timestamp(1*time.Second) {
+		issues = append(issues, errors.New(prefix+".StartupAllocPeriod is too low"))
+	}
 
 	return errors.Join(issues...)
 }
