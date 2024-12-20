@@ -313,6 +313,12 @@ func MainNetRules() Rules {
 			MaxBlockGas:             MinimumMaxBlockGas,
 			MaxEmptyBlockSkipPeriod: inter.Timestamp(1 * time.Minute),
 		},
+		Upgrades: Upgrades{
+			Berlin: true,
+			London: true,
+			Llr:    false,
+			Sonic:  true,
+		},
 	}
 }
 

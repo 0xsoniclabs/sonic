@@ -11,28 +11,29 @@ import (
 func TestUpdateRules(t *testing.T) {
 	require := require.New(t)
 
-	var exp Rules
-	exp.Epochs.MaxEpochGas = 99
+	base := MainNetRules()
 
+	got, err := UpdateRules(base, []byte(`{"Dag":{"MaxParents":5},"Economy":{"MinGasPrice":7},"Blocks":{"MaxBlockGas":2000000000}}`))
+	require.NoError(err)
+
+	exp := base.Copy()
 	exp.Dag.MaxParents = 5
 	exp.Economy.MinGasPrice = big.NewInt(7)
 	exp.Economy.MinBaseFee = big.NewInt(1e9)
 	exp.Blocks.MaxBlockGas = 1000
 	got, err := UpdateRules(exp, []byte(`{"Dag":{"MaxParents":5},"Economy":{"MinGasPrice":7},"Blocks":{"MaxBlockGas":2000000000}}`))
 	require.NoError(err)
-	require.Equal(exp.String(), got.String(), "mutate fields") // < this test checks nothing; todo: fix
-
-	exp.Dag.MaxParents = 0
-	got, err = UpdateRules(exp, []byte(`{"Name":"xxx","NetworkID":1,"Dag":{"MaxParents":0}}`))
-	require.NoError(err)
-	require.Equal(exp.String(), got.String(), "readonly fields")
+	require.Equal(exp.String(), got.String(), "should not be able to change readonly fields")
 
 	got, err = UpdateRules(exp, []byte(`{}`))
 	require.NoError(err)
-	require.Equal(exp.String(), got.String(), "empty diff")
+	require.Equal(exp.String(), got.String(), "empty diff changed the rules")
 
 	_, err = UpdateRules(exp, []byte(`}{`))
-	require.Error(err)
+	require.Error(err, "should fail on invalid json")
+
+	_, err = UpdateRules(exp, []byte(`{"Dag":{"MaxParents":1}}`))
+	require.Error(err, "should fail on invalid rules")
 }
 
 func TestUpdateRules_CanUpdateHardForks(t *testing.T) {
