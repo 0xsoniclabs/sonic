@@ -40,9 +40,6 @@ func validateDagRules(rules DagRules) error {
 func validateEmitterRules(rules EmitterRules) error {
 
 	var issues []error
-	if rules.Interval < inter.Timestamp(100*time.Millisecond) {
-		issues = append(issues, errors.New("Emitter.Interval is too low"))
-	}
 	if rules.Interval > inter.Timestamp(10*time.Second) {
 		issues = append(issues, errors.New("Emitter.Interval is too high"))
 	}
