@@ -13,7 +13,7 @@ func validate(rules Rules) error {
 		validateDagRules(rules.Dag),
 		validateEmitterRules(rules.Emitter),
 		validateEpochsRules(rules.Epochs),
-		validateBlockRules(rules.Blocks),
+		validateBlocksRules(rules.Blocks),
 		validateEconomyRules(rules.Economy),
 		validateUpgrades(rules.Upgrades),
 	)
@@ -72,14 +72,14 @@ func validateEpochsRules(rules EpochsRules) error {
 	return errors.Join(issues...)
 }
 
-func validateBlockRules(rules BlocksRules) error {
+func validateBlocksRules(rules BlocksRules) error {
 	var issues []error
 
 	if rules.MaxBlockGas < MinimumMaxBlockGas {
-		issues = append(issues, errors.New("MaxBlockGas is too low"))
+		issues = append(issues, errors.New("Blocks.MaxBlockGas is too low"))
 	}
 	if rules.MaxBlockGas > MaximumMaxBlockGas {
-		issues = append(issues, errors.New("MaxBlockGas is too high"))
+		issues = append(issues, errors.New("Blocks.MaxBlockGas is too high"))
 	}
 
 	// The empty-block skip period is not restricted. There are no too low or too high values.
@@ -140,7 +140,11 @@ func validateGasRules(rules GasRules) error {
 		issues = append(issues, errors.New("Gas.MaxEventGas is too low"))
 	}
 
-	if rules.MaxEventGas-rules.EventGas < upperBoundForRuleChangeGasCosts {
+	if rules.EventGas > rules.MaxEventGas {
+		issues = append(issues, errors.New("Gas.EventGas is too high"))
+	}
+
+	if rules.MaxEventGas < upperBoundForRuleChangeGasCosts+rules.EventGas {
 		issues = append(issues, errors.New("Gas.EventGas is too high"))
 	}
 
