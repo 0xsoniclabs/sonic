@@ -444,6 +444,15 @@ func (r Rules) Copy() Rules {
 	return cp
 }
 
+// Validate checks the rules for consistency and safety. Rules are considered safe if
+// they do not risk stalling the network or preventing future rule updates.
+//
+// Note: the validation is very liberal to allow a maximum flexibility in the rules.
+// The merely check for the most critical configuration errors that may lead to network
+// stalls or rule update issues. However, many valid configurations may still result
+// in undesirable network behavior. Rule-setters need to be aware of the implications
+// of their choices and should always test their rules in a controlled environment.
+// This validation is not a substitute for proper testing.
 func (r Rules) Validate() error {
 	return validate(r)
 }

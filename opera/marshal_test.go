@@ -1,6 +1,7 @@
 package opera
 
 import (
+	"fmt"
 	"math/big"
 	"testing"
 
@@ -34,6 +35,35 @@ func TestUpdateRules(t *testing.T) {
 
 	_, err = UpdateRules(exp, []byte(`{"Dag":{"MaxParents":1}}`))
 	require.Error(err, "should fail on invalid rules")
+}
+
+func TestUpdateRules_ValidityCheckIsConductedIfCheckIsEnabledInUpdatedRuleSet(t *testing.T) {
+	for _, enabledBefore := range []bool{true, false} {
+		for _, enabledAfter := range []bool{true, false} {
+			for _, validUpdate := range []bool{true, false} {
+				t.Run(fmt.Sprintf("before=%t,after=%t,valid=%t", enabledBefore, enabledAfter, validUpdate), func(t *testing.T) {
+					require := require.New(t)
+
+					base := MainNetRules()
+					base.Upgrades.CheckRuleChanges = enabledBefore
+
+					maxParents := 1
+					if validUpdate {
+						maxParents = 5
+					}
+
+					update := fmt.Sprintf(`{"Dag":{"MaxParents":%d}, "Upgrades":{"CheckRuleChanges":%t}}`, maxParents, enabledAfter)
+
+					_, err := UpdateRules(base, []byte(update))
+					if enabledAfter && !validUpdate {
+						require.Error(err)
+					} else {
+						require.NoError(err)
+					}
+				})
+			}
+		}
+	}
 }
 
 func TestUpdateRules_CanUpdateHardForks(t *testing.T) {
