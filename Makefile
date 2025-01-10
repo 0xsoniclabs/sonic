@@ -6,6 +6,7 @@ GOPROXY ?= "https://proxy.golang.org,direct"
 sonicd:
 	GIT_COMMIT=`git rev-list -1 HEAD 2>/dev/null || echo ""` && \
 	GIT_DATE=`git log -1 --date=short --pretty=format:%ct 2>/dev/null || echo ""` && \
+	GIT_TAG=`git tag --points-at HEAD` && \
 	GOPROXY=$(GOPROXY) \
 	go build \
 	    -ldflags "-s -w -X github.com/0xsoniclabs/sonic/config.GitCommit=$${GIT_COMMIT} -X github.com/0xsoniclabs/sonic/config.GitDate=$${GIT_DATE}" \
