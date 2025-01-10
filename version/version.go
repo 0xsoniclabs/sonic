@@ -2,7 +2,6 @@ package version
 
 import (
 	"fmt"
-	"log"
 	"strconv"
 	"strings"
 )
@@ -12,7 +11,7 @@ var (
 	versionMajor = 0  // Major version component of the current release
 	versionMinor = 0  // Minor version component of the current release
 	versionPatch = 0  // Patch version component of the current release
-	versionMeta  = "" // Version metadata to append to the version string
+	versionMeta  = "" // Meta information of the current release
 )
 
 // Version holds the textual version string.
@@ -23,7 +22,11 @@ var Version = func() string {
 	}
 	parseVersion()
 	// remove the leading "v" and possible leading white spaces
-	return strings.Split(GitTag, "v")[1]
+	tag := strings.Split(GitTag, "v")
+	if len(tag) > 1 {
+		return tag[1]
+	}
+	return GitTag
 }()
 
 // parseVersion parses the GitTag into major, minor, patch, and meta components.
@@ -34,10 +37,12 @@ func parseVersion() {
 	// Parse major, minor, and patch
 	versionMajor = parseVersionComponent(versionParts, 0, true)
 	versionMinor = parseVersionComponent(versionParts, 1, false)
-	versionPatch = parseVersionComponent(strings.Split(versionParts[2], "-"), 0, false)
-
+	if len(versionParts) > 2 {
+		dashSplits := strings.Split(versionParts[2], "-")
+		versionPatch = parseVersionComponent(dashSplits, 0, false)
+	}
 	// Parse meta if available
-	if len(parts) > 1 {
+	if (versionMajor != 0 || versionMinor != 0 || versionPatch != 0) && len(parts) > 1 {
 		versionMeta = parts[1]
 	}
 }
@@ -56,7 +61,6 @@ func parseVersionComponent(parts []string, index int, stripPrefix bool) int {
 
 	value, err := strconv.Atoi(component)
 	if err != nil {
-		log.Printf("Failed to parse version component %q: %v", component, err)
 		return 0
 	}
 

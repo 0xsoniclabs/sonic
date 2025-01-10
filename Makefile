@@ -6,7 +6,7 @@ GOPROXY ?= "https://proxy.golang.org,direct"
 sonicd:
 	GIT_COMMIT=`git rev-list -1 HEAD 2>/dev/null || echo ""` && \
 	GIT_DATE=`git log -1 --date=short --pretty=format:%ct 2>/dev/null || echo ""` && \
-	GIT_TAG=`git tag --points-at HEAD` && \
+	GIT_TAG=`git tag --points-at HEAD | head -n 1` && \
 	GOPROXY=$(GOPROXY) \
 	go build \
 	    -ldflags "-s -w -X github.com/Fantom-foundation/go-opera/config.GitCommit=$${GIT_COMMIT} \
@@ -18,6 +18,7 @@ sonicd:
 sonictool:
 	GIT_COMMIT=`git rev-list -1 HEAD 2>/dev/null || echo ""` && \
 	GIT_DATE=`git log -1 --date=short --pretty=format:%ct 2>/dev/null || echo ""` && \
+	GIT_TAG=`git tag --points-at HEAD | head -n 1` && \
 	GOPROXY=$(GOPROXY) \
 	go build \
 	    -ldflags "-s -w -X github.com/Fantom-foundation/go-opera/config.GitCommit=$${GIT_COMMIT} \
