@@ -49,29 +49,20 @@ func TestVersion_parseVersion(t *testing.T) {
 		patch int
 		meta  string
 	}{
-		"v1.2.3":                        {major: 1, minor: 2, patch: 3},
-		"v1.2.3-alpha":                  {major: 1, minor: 2, patch: 3, meta: "alpha"},
-		"v1.2.3-alpha-dirty":            {major: 1, minor: 2, patch: 3, meta: "alpha-dirty"},
-		"some-non.stan-dard.12tag":      {},
-		"!`@#$%^&*()_+{}|:<>?[]\\;',./": {},
-		"myTestTag":                     {},
+		"v1.2.3":                       {major: 1, minor: 2, patch: 3},
+		"v1.2.3-alpha":                 {major: 1, minor: 2, patch: 3, meta: "alpha"},
+		"v1.2.3-alpha-dirty":           {major: 1, minor: 2, patch: 3, meta: "alpha-dirty"},
+		"some-non.stan-dard.12tag":     {},
+		"!`@#$%^&*()_{}|:<>?[]\\;',./": {},
+		"myTestTag":                    {},
 	}
 
-	originalGitTag := GitTag
 	for tag, want := range tests {
-		versionMajor = 0
-		versionMinor = 0
-		versionPatch = 0
-		versionMeta = ""
+		testVMajor, testVMinor, testVPatch, testVMeta := parseVersion(tag)
 
-		GitTag = tag
-		parseVersion()
-
-		require.Equal(want.major, versionMajor, "major version mismatch")
-		require.Equal(want.minor, versionMinor, "minor version mismatch")
-		require.Equal(want.patch, versionPatch, "patch version mismatch")
-		require.Equal(want.meta, versionMeta, "meta version mismatch")
+		require.Equal(want.major, testVMajor, "major version mismatch")
+		require.Equal(want.minor, testVMinor, "minor version mismatch")
+		require.Equal(want.patch, testVPatch, "patch version mismatch")
+		require.Equal(want.meta, testVMeta, "meta version mismatch")
 	}
-
-	GitTag = originalGitTag
 }

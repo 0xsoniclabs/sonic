@@ -6,45 +6,39 @@ import (
 	"strings"
 )
 
+// Version holds the textual version string.
 var (
-	GitTag       = "" // Git tag of this release
-	versionMajor = 0  // Major version component of the current release
-	versionMinor = 0  // Minor version component of the current release
-	versionPatch = 0  // Patch version component of the current release
-	versionMeta  = "" // Meta information of the current release
+	Version      = ""
+	versionMajor = 0
+	versionMinor = 0
+	versionPatch = 0
+	// versionMeta  = "" // not used for now
 )
 
-// Version holds the textual version string.
-var Version = func() string {
+func init() {
 	// in case of no tag or small/irregular tag, return it as is
-	if len(GitTag) < 2 {
-		return GitTag
+	if len(Version) >= 2 {
+		versionMajor, versionMinor, versionPatch, _ = parseVersion(Version)
 	}
-	parseVersion()
-	// remove the leading "v" and possible leading white spaces
-	tag := strings.Split(GitTag, "v")
-	if len(tag) > 1 {
-		return tag[1]
-	}
-	return GitTag
-}()
+}
 
 // parseVersion parses the GitTag into major, minor, patch, and meta components.
-func parseVersion() {
-	parts := strings.SplitN(GitTag, "-", 2)
+func parseVersion(gitTag string) (vMajor, vMinor, vPatch int, vMeta string) {
+	parts := strings.SplitN(gitTag, "-", 2)
 	versionParts := strings.Split(parts[0], ".")
 
 	// Parse major, minor, and patch
-	versionMajor = parseVersionComponent(versionParts, 0, true)
-	versionMinor = parseVersionComponent(versionParts, 1, false)
+	vMajor = parseVersionComponent(versionParts, 0, true)
+	vMinor = parseVersionComponent(versionParts, 1, false)
 	if len(versionParts) > 2 {
 		dashSplits := strings.Split(versionParts[2], "-")
-		versionPatch = parseVersionComponent(dashSplits, 0, false)
+		vPatch = parseVersionComponent(dashSplits, 0, false)
 	}
 	// Parse meta if available
-	if (versionMajor != 0 || versionMinor != 0 || versionPatch != 0) && len(parts) > 1 {
-		versionMeta = parts[1]
+	if (vMajor != 0 || vMinor != 0 || vPatch != 0) && len(parts) > 1 {
+		vMeta = parts[1]
 	}
+	return
 }
 
 // parseVersionComponent parses and returns a specific version component.
@@ -68,11 +62,11 @@ func parseVersionComponent(parts []string, index int, stripPrefix bool) int {
 }
 
 func VersionWithCommit(gitCommit, gitDate string) string {
-	vsn := GitTag
+	vsn := Version
 	if len(gitCommit) >= 8 {
 		vsn += "-" + gitCommit[:8]
 	}
-	if (strings.Split(GitTag, "-")[0] != "") && (gitDate != "") {
+	if (strings.Split(Version, "-")[0] != "") && (gitDate != "") {
 		vsn += "-" + gitDate
 	}
 	return vsn
