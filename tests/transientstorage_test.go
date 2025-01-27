@@ -4,7 +4,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/Fantom-foundation/go-opera/tests/contracts/transientstorage"
+	"github.com/0xsoniclabs/sonic/tests/contracts/transientstorage"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 )
 

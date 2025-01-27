@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Fantom-foundation/go-opera/tests/contracts/basefee"
+	"github.com/0xsoniclabs/sonic/tests/contracts/basefee"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 )
 

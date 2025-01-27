@@ -10,7 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	notify "github.com/ethereum/go-ethereum/event"
 
-	"github.com/Fantom-foundation/go-opera/evmcore"
+	"github.com/0xsoniclabs/sonic/evmcore"
 )
 
 // dummyTxPool is a fake, helper transaction pool for testing purposes

@@ -2,7 +2,7 @@ package app
 
 import (
 	"fmt"
-	"github.com/Fantom-foundation/go-opera/config"
+	"github.com/0xsoniclabs/sonic/config"
 	"gopkg.in/urfave/cli.v1"
 	"os"
 )

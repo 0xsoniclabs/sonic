@@ -4,7 +4,7 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
-	"github.com/Fantom-foundation/go-opera/gossip/emitter/mock"
+	"github.com/0xsoniclabs/sonic/gossip/emitter/mock"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/golang/mock/gomock"
 	"math/big"

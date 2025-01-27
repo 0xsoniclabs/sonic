@@ -14,7 +14,7 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/kvdb/skiperrors"
 	"github.com/Fantom-foundation/lachesis-base/kvdb/table"
 
-	"github.com/Fantom-foundation/go-opera/logger"
+	"github.com/0xsoniclabs/sonic/logger"
 )
 
 var (

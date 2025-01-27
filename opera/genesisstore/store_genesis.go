@@ -6,10 +6,10 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 	"io"
 
-	"github.com/Fantom-foundation/go-opera/inter/ibr"
-	"github.com/Fantom-foundation/go-opera/inter/ier"
-	"github.com/Fantom-foundation/go-opera/opera/genesis"
-	"github.com/Fantom-foundation/go-opera/utils/iodb"
+	"github.com/0xsoniclabs/sonic/inter/ibr"
+	"github.com/0xsoniclabs/sonic/inter/ier"
+	"github.com/0xsoniclabs/sonic/opera/genesis"
+	"github.com/0xsoniclabs/sonic/utils/iodb"
 )
 
 type (

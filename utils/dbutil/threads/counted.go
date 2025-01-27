@@ -3,7 +3,7 @@ package threads
 import (
 	"github.com/Fantom-foundation/lachesis-base/kvdb"
 
-	"github.com/Fantom-foundation/go-opera/logger"
+	"github.com/0xsoniclabs/sonic/logger"
 )
 
 type (

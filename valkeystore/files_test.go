@@ -8,7 +8,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/stretchr/testify/require"
 
-	"github.com/Fantom-foundation/go-opera/valkeystore/encryption"
+	"github.com/0xsoniclabs/sonic/valkeystore/encryption"
 )
 
 func TestFileKeystoreAdd(t *testing.T) {

@@ -1,7 +1,7 @@
 package chain
 
 import (
-	"github.com/Fantom-foundation/go-opera/cmd/sonictool/db"
+	"github.com/0xsoniclabs/sonic/cmd/sonictool/db"
 	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
 	"io"
 	"path/filepath"

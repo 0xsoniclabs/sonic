@@ -31,7 +31,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rpc"
 
-	"github.com/Fantom-foundation/go-opera/gossip/gasprice"
+	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 )
 
 // TransactionArgs represents the arguments to construct a new transaction
