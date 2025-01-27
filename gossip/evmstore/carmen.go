@@ -215,7 +215,23 @@ func (c *CarmenStateDB) SetTransientState(addr common.Address, key, value common
 }
 
 func (c *CarmenStateDB) SetStorage(addr common.Address, storage map[common.Hash]common.Hash) {
-	panic("not supported")
+	origCode := c.db.GetCode(cc.Address(addr))
+	origNonce := c.db.GetNonce(cc.Address(addr))
+	origBalance := c.db.GetBalance(cc.Address(addr))
+
+	// Suicide the account to clear the storage
+	c.db.Suicide(cc.Address(addr))
+	c.db.CreateAccount(cc.Address(addr))
+
+	// insert new storage
+	for key, value := range storage {
+		c.db.SetState(cc.Address(addr), cc.Key(key), cc.Value(value))
+	}
+
+	// recover properties of the original account
+	c.db.SetCode(cc.Address(addr), origCode)
+	c.db.SetNonce(cc.Address(addr), origNonce)
+	c.db.AddBalance(cc.Address(addr), origBalance)
 }
 
 func (c *CarmenStateDB) SelfDestruct(addr common.Address) {
