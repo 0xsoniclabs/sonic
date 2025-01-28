@@ -3,10 +3,10 @@ package gossip
 import (
 	"fmt"
 
-	"github.com/Fantom-foundation/go-opera/opera"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 
-	"github.com/Fantom-foundation/go-opera/utils/migration"
+	"github.com/0xsoniclabs/sonic/utils/migration"
 	"github.com/Fantom-foundation/lachesis-base/kvdb"
 )
 

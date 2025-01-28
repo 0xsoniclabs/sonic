@@ -1,7 +1,7 @@
 package gossip
 
 import (
-	"github.com/Fantom-foundation/go-opera/opera"
+	"github.com/0xsoniclabs/sonic/opera"
 )
 
 func (s *Store) AddUpgradeHeight(h opera.UpgradeHeight) {

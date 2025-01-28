@@ -4,10 +4,10 @@ import (
 	"math/rand/v2"
 	"time"
 
-	"github.com/Fantom-foundation/go-opera/version"
+	"github.com/0xsoniclabs/sonic/version"
 
-	"github.com/Fantom-foundation/go-opera/inter/validatorpk"
-	"github.com/Fantom-foundation/go-opera/opera"
+	"github.com/0xsoniclabs/sonic/inter/validatorpk"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 )
 

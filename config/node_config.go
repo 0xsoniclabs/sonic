@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Fantom-foundation/go-opera/config/flags"
+	"github.com/0xsoniclabs/sonic/config/flags"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"

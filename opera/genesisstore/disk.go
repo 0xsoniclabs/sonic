@@ -15,11 +15,11 @@ import (
 	"github.com/status-im/keycard-go/hexutils"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 
-	"github.com/Fantom-foundation/go-opera/opera/genesis"
-	"github.com/Fantom-foundation/go-opera/opera/genesisstore/filelog"
-	"github.com/Fantom-foundation/go-opera/opera/genesisstore/fileshash"
-	"github.com/Fantom-foundation/go-opera/opera/genesisstore/readersmap"
-	"github.com/Fantom-foundation/go-opera/utils/ioread"
+	"github.com/0xsoniclabs/sonic/opera/genesis"
+	"github.com/0xsoniclabs/sonic/opera/genesisstore/filelog"
+	"github.com/0xsoniclabs/sonic/opera/genesisstore/fileshash"
+	"github.com/0xsoniclabs/sonic/opera/genesisstore/readersmap"
+	"github.com/0xsoniclabs/sonic/utils/ioread"
 )
 
 var (

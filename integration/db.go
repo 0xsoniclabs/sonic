@@ -5,9 +5,9 @@ import (
 	"io"
 	"os"
 
-	"github.com/Fantom-foundation/go-opera/gossip"
-	"github.com/Fantom-foundation/go-opera/utils/dbutil/dbcounter"
-	"github.com/Fantom-foundation/go-opera/utils/dbutil/threads"
+	"github.com/0xsoniclabs/sonic/gossip"
+	"github.com/0xsoniclabs/sonic/utils/dbutil/dbcounter"
+	"github.com/0xsoniclabs/sonic/utils/dbutil/threads"
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/dag"
 	"github.com/Fantom-foundation/lachesis-base/kvdb"

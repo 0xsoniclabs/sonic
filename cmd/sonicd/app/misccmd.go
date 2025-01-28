@@ -5,12 +5,12 @@ import (
 	"os"
 	"runtime"
 
-	"github.com/Fantom-foundation/go-opera/version"
+	"github.com/0xsoniclabs/sonic/version"
 
-	"github.com/Fantom-foundation/go-opera/config"
+	"github.com/0xsoniclabs/sonic/config"
 	"gopkg.in/urfave/cli.v1"
 
-	"github.com/Fantom-foundation/go-opera/gossip"
+	"github.com/0xsoniclabs/sonic/gossip"
 )
 
 var (

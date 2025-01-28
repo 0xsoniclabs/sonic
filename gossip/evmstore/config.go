@@ -1,7 +1,7 @@
 package evmstore
 
 import (
-	carmen "github.com/Fantom-foundation/Carmen/go/state"
+	carmen "github.com/0xsoniclabs/carmen/go/state"
 	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 )

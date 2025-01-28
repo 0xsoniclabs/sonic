@@ -1,16 +1,16 @@
 package app
 
 import (
-	"github.com/Fantom-foundation/go-opera/config"
-	"github.com/Fantom-foundation/go-opera/version"
+	"github.com/0xsoniclabs/sonic/config"
+	"github.com/0xsoniclabs/sonic/version"
 	"github.com/ethereum/go-ethereum/crypto"
 	"runtime"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/Fantom-foundation/go-opera/integration/makefakegenesis"
-	"github.com/Fantom-foundation/go-opera/inter/validatorpk"
+	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
+	"github.com/0xsoniclabs/sonic/inter/validatorpk"
 )
 
 const (

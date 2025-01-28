@@ -22,10 +22,10 @@ import (
 	"path"
 	"testing"
 
-	"github.com/Fantom-foundation/go-opera/utils/adapters/ethdb2kvdb"
+	"github.com/0xsoniclabs/sonic/utils/adapters/ethdb2kvdb"
 	"github.com/Fantom-foundation/lachesis-base/kvdb/table"
 
-	"github.com/Fantom-foundation/go-opera/topicsdb"
+	"github.com/0xsoniclabs/sonic/topicsdb"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core"

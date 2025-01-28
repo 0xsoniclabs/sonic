@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Fantom-foundation/go-opera/inter"
-	"github.com/Fantom-foundation/go-opera/opera"
+	"github.com/0xsoniclabs/sonic/inter"
+	"github.com/0xsoniclabs/sonic/opera"
 )
 
 func TestGetEmitterIntervalLimit_IsOffWhenIntervalIsZero(t *testing.T) {

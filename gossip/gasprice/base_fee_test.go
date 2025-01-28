@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Fantom-foundation/go-opera/evmcore"
-	"github.com/Fantom-foundation/go-opera/opera"
+	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/opera"
 )
 
 func TestBaseFee_ExamplePriceAdjustments(t *testing.T) {

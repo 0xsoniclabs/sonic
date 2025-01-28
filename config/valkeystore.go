@@ -3,7 +3,7 @@ package config
 import (
 	"crypto/ecdsa"
 	"fmt"
-	"github.com/Fantom-foundation/go-opera/config/flags"
+	"github.com/0xsoniclabs/sonic/config/flags"
 	"os"
 	"strings"
 
@@ -11,8 +11,8 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"gopkg.in/urfave/cli.v1"
 
-	"github.com/Fantom-foundation/go-opera/inter/validatorpk"
-	"github.com/Fantom-foundation/go-opera/valkeystore"
+	"github.com/0xsoniclabs/sonic/inter/validatorpk"
+	"github.com/0xsoniclabs/sonic/valkeystore"
 )
 
 func addFakeValidatorKey(ctx *cli.Context, key *ecdsa.PrivateKey, pubkey validatorpk.PubKey, valKeystore valkeystore.RawKeystoreI) error {

@@ -1,8 +1,8 @@
 package gossip
 
 import (
-	"github.com/Fantom-foundation/go-opera/inter/ibr"
-	"github.com/Fantom-foundation/go-opera/inter/ier"
+	"github.com/0xsoniclabs/sonic/inter/ibr"
+	"github.com/0xsoniclabs/sonic/inter/ier"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/core/types"
 )

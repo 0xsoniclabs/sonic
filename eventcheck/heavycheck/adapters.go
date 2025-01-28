@@ -3,7 +3,7 @@ package heavycheck
 import (
 	"github.com/Fantom-foundation/lachesis-base/inter/dag"
 
-	"github.com/Fantom-foundation/go-opera/inter"
+	"github.com/0xsoniclabs/sonic/inter"
 )
 
 type EventsOnly struct {

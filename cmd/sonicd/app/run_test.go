@@ -7,15 +7,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Fantom-foundation/go-opera/cmd/sonictool/genesis"
-	"github.com/Fantom-foundation/go-opera/config"
-	"github.com/Fantom-foundation/go-opera/integration/makefakegenesis"
-	futils "github.com/Fantom-foundation/go-opera/utils"
+	"github.com/0xsoniclabs/sonic/cmd/sonictool/genesis"
+	"github.com/0xsoniclabs/sonic/config"
+	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
+	futils "github.com/0xsoniclabs/sonic/utils"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/docker/docker/pkg/reexec"
 	"github.com/ethereum/go-ethereum/common"
 
-	"github.com/Fantom-foundation/go-opera/cmd/cmdtest"
+	"github.com/0xsoniclabs/sonic/cmd/cmdtest"
 )
 
 func tmpdir(t *testing.T) string {

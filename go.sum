@@ -1,11 +1,11 @@
+github.com/0xsoniclabs/carmen/go v0.0.0-20250113102336-97f8b8616eff h1:ItY2JgmM0lH/kLHRGOHh7sEAB6w/lT5qv/xkkS5zO6o=
+github.com/0xsoniclabs/carmen/go v0.0.0-20250113102336-97f8b8616eff/go.mod h1:/u6oDZBv6eyPs9K7Ug5D4aL9l1Q7N43BnWEUPsvKmYw=
+github.com/0xsoniclabs/go-ethereum v0.0.0-20241022121122-7063a6b506bd h1:rrj5Iv72cwtmC1AAsMhI5qw6wPs3cKGB935OjqZpqjU=
+github.com/0xsoniclabs/go-ethereum v0.0.0-20241022121122-7063a6b506bd/go.mod h1:p4knNH76zBuqbEfc6CbZTOnaQNU0WvhzW5f0qq6aMoU=
+github.com/0xsoniclabs/tosca v0.0.0-20250109073452-a7eb49bdbd45 h1:4PD4GwrMVkEdBCDRdinviL4AvD4mYSsbeX1uAJ70NY0=
+github.com/0xsoniclabs/tosca v0.0.0-20250109073452-a7eb49bdbd45/go.mod h1:ZjONKDZS84n/Ne0Rlt56X4O3Xz3r4jRUB440p7UrPZ0=
 github.com/DataDog/zstd v1.5.6 h1:LbEglqepa/ipmmQJUDnSsfvA8e8IStVcGaFWDuxvGOY=
 github.com/DataDog/zstd v1.5.6/go.mod h1:g4AWEaM3yOg3HYfnJ3YIawPnVdXJh9QME85blwSAmyw=
-github.com/Fantom-foundation/Carmen/go v0.0.0-20241129202153-690bc10fa624 h1:9bFojtY5KoLFUtLYZGc1GNf0oIdBIOarlLr4+a/DA7U=
-github.com/Fantom-foundation/Carmen/go v0.0.0-20241129202153-690bc10fa624/go.mod h1:vNRGm/b21hDlF8kYyKHkXq1s+jLMKpV4jGwXHylXIIg=
-github.com/Fantom-foundation/Tosca v0.0.0-20241028082205-7b33705a4675 h1:Meqtt0eM9UAw1ceQ1tGiD497V0IVfqj8c6UrFJhkFNE=
-github.com/Fantom-foundation/Tosca v0.0.0-20241028082205-7b33705a4675/go.mod h1:8i7r+dUOkXjEC61SaFoRet6JYjRaSoiM/PhviP6K4Y8=
-github.com/Fantom-foundation/go-ethereum-sonic v0.0.0-20241022121122-7063a6b506bd h1:WoAkgzLLlyh3Zpnd/3gW8Ym5sHtugLCA4rQdT5udVF8=
-github.com/Fantom-foundation/go-ethereum-sonic v0.0.0-20241022121122-7063a6b506bd/go.mod h1:p4knNH76zBuqbEfc6CbZTOnaQNU0WvhzW5f0qq6aMoU=
 github.com/Fantom-foundation/lachesis-base-sonic v0.0.0-20241018103023-632a59c242f5 h1:dv1iFhsUfIfixwoNJWWZItWqOfKLV1mLA8eJLA1wceU=
 github.com/Fantom-foundation/lachesis-base-sonic v0.0.0-20241018103023-632a59c242f5/go.mod h1:YaNcYnDsDooGLKqsrTt+tafplgorZ0l8C1IwmryrIWs=
 github.com/HdrHistogram/hdrhistogram-go v1.1.2 h1:5IcZpTvzydCQeHzK4Ef/D5rrSqwxob0t8PQPMybUNFM=

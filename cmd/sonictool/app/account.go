@@ -19,7 +19,7 @@ package app
 import (
 	"fmt"
 
-	"github.com/Fantom-foundation/go-opera/config"
+	"github.com/0xsoniclabs/sonic/config"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 
 	"github.com/ethereum/go-ethereum/crypto"

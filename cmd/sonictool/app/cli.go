@@ -2,7 +2,7 @@ package app
 
 import (
 	"fmt"
-	"github.com/Fantom-foundation/go-opera/config/flags"
+	"github.com/0xsoniclabs/sonic/config/flags"
 	"github.com/ethereum/go-ethereum/console"
 	"github.com/ethereum/go-ethereum/rpc"
 	"gopkg.in/urfave/cli.v1"

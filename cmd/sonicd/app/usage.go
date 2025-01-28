@@ -19,13 +19,13 @@
 package app
 
 import (
-	"github.com/Fantom-foundation/go-opera/cmd/sonicd/cmdhelper"
+	"github.com/0xsoniclabs/sonic/cmd/sonicd/cmdhelper"
 	"io"
 	"sort"
 
 	cli "gopkg.in/urfave/cli.v1"
 
-	"github.com/Fantom-foundation/go-opera/debug"
+	"github.com/0xsoniclabs/sonic/debug"
 )
 
 // AppHelpFlagGroups is the application flags, grouped by functionality.

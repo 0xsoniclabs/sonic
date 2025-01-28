@@ -11,7 +11,7 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/dag"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 
-	"github.com/Fantom-foundation/go-opera/gossip/protocols/dag/dagstream"
+	"github.com/0xsoniclabs/sonic/gossip/protocols/dag/dagstream"
 )
 
 // Leecher is responsible for requesting events based on lexicographic event streams

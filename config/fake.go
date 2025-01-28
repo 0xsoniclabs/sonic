@@ -9,7 +9,7 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	cli "gopkg.in/urfave/cli.v1"
 
-	"github.com/Fantom-foundation/go-opera/integration/makefakegenesis"
+	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 )
 
 // FakeNetFlag enables special testnet, where validators are automatically created

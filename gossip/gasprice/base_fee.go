@@ -4,8 +4,8 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/Fantom-foundation/go-opera/evmcore"
-	"github.com/Fantom-foundation/go-opera/opera"
+	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/opera"
 )
 
 // GetInitialBaseFee returns the initial base fee to be used in the genesis block.

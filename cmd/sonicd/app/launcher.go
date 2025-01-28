@@ -8,12 +8,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Fantom-foundation/go-opera/cmd/sonicd/diskusage"
-	"github.com/Fantom-foundation/go-opera/cmd/sonicd/metrics"
-	"github.com/Fantom-foundation/go-opera/cmd/sonicd/tracing"
-	"github.com/Fantom-foundation/go-opera/config"
-	"github.com/Fantom-foundation/go-opera/config/flags"
-	"github.com/Fantom-foundation/go-opera/version"
+	"github.com/0xsoniclabs/sonic/cmd/sonicd/diskusage"
+	"github.com/0xsoniclabs/sonic/cmd/sonicd/metrics"
+	"github.com/0xsoniclabs/sonic/cmd/sonicd/tracing"
+	"github.com/0xsoniclabs/sonic/config"
+	"github.com/0xsoniclabs/sonic/config/flags"
+	"github.com/0xsoniclabs/sonic/version"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/console/prompt"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -24,7 +24,7 @@ import (
 
 	ethmetrics "github.com/ethereum/go-ethereum/metrics"
 
-	"github.com/Fantom-foundation/go-opera/debug"
+	"github.com/0xsoniclabs/sonic/debug"
 
 	// Force-load the tracer engines to trigger registration
 	_ "github.com/ethereum/go-ethereum/eth/tracers/js"

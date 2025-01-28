@@ -2,7 +2,7 @@ package integration
 
 import (
 	"fmt"
-	"github.com/Fantom-foundation/go-opera/utils/dbutil"
+	"github.com/0xsoniclabs/sonic/utils/dbutil"
 	"regexp"
 	"strings"
 	"sync"

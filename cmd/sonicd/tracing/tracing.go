@@ -7,7 +7,7 @@ import (
 	"github.com/uber/jaeger-lib/metrics"
 	"gopkg.in/urfave/cli.v1"
 
-	"github.com/Fantom-foundation/go-opera/tracing"
+	"github.com/0xsoniclabs/sonic/tracing"
 )
 
 var EnableFlag = cli.BoolFlag{
