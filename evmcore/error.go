@@ -19,6 +19,7 @@ package evmcore
 import (
 	"errors"
 
+	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
@@ -60,7 +61,7 @@ var (
 
 	// ErrIntrinsicGas is returned if the transaction is specified to use less gas
 	// than required to start the invocation.
-	ErrIntrinsicGas = errors.New("intrinsic gas too low")
+	ErrIntrinsicGas = core.ErrIntrinsicGas
 
 	// ErrTxTypeNotSupported is returned if a transaction is not supported in the
 	// current network configuration.

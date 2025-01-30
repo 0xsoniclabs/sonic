@@ -2,20 +2,24 @@ package ethapi
 
 import (
 	"context"
+	"math/big"
+	"testing"
+
 	cc "github.com/0xsoniclabs/carmen/go/common"
 	"github.com/0xsoniclabs/carmen/go/common/amount"
 	"github.com/0xsoniclabs/carmen/go/common/immutable"
 	"github.com/0xsoniclabs/carmen/go/common/witness"
 	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
-	"math/big"
-	"testing"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -227,4 +231,58 @@ func getTestData() (*evmcore.EvmHeader, *types.Transaction, types.Receipts, erro
 		&receipt,
 	}
 	return header, transaction, receipts, nil
+}
+
+func TestEstimateGas(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	addr := common.Address{1}
+	headerRoot := common.Hash{123}
+
+	mockBackend := NewMockBackend(ctrl)
+	mockState := state.NewMockStateDB(ctrl)
+	mockHeader := &evmcore.EvmHeader{Root: headerRoot}
+
+	blkNr := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
+	getEvm := func(interface{}, interface{}, interface{}, interface{}, interface{}) (*vm.EVM, func() error, error) {
+		blockCtx := vm.BlockContext{
+			Transfer: vm.TransferFunc(func(sd vm.StateDB, a1, a2 common.Address, i *uint256.Int) {}),
+		}
+		txCtx := vm.TxContext{}
+		return vm.NewEVM(blockCtx, txCtx, mockState, &opera.BaseChainConfig, opera.DefaultVMConfig), func() error { return nil }, nil
+	}
+
+	any := gomock.Any()
+	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, blkNr).Return(mockState, mockHeader, nil).AnyTimes()
+	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000))
+	mockBackend.EXPECT().MaxGasLimit().Return(uint64(10000000))
+	mockBackend.EXPECT().GetEVM(any, any, any, any, any).DoAndReturn(getEvm).AnyTimes()
+	mockState.EXPECT().GetBalance(any).Return(uint256.NewInt(0)).AnyTimes()
+	mockState.EXPECT().SubBalance(any, any, any).AnyTimes()
+	mockState.EXPECT().AddBalance(any, any, any).AnyTimes()
+	mockState.EXPECT().Prepare(any, any, any, any, any, any).AnyTimes()
+	mockState.EXPECT().GetNonce(any).Return(uint64(0)).AnyTimes()
+	mockState.EXPECT().SetNonce(any, any).AnyTimes()
+	mockState.EXPECT().Snapshot().AnyTimes()
+	mockState.EXPECT().Exist(any).Return(true).AnyTimes()
+	mockState.EXPECT().Release().AnyTimes()
+	mockState.EXPECT().GetCode(any).Return(nil).AnyTimes()
+	mockState.EXPECT().Witness().AnyTimes()
+	mockState.EXPECT().GetRefund().AnyTimes()
+
+	api := NewPublicBlockChainAPI(mockBackend)
+	dataBytes, err := hexutil.Decode("0xe9ae5c53")
+	require.NoError(t, err)
+
+	data := hexutil.Bytes(dataBytes)
+	transactionArgs := TransactionArgs{
+		From: &addr,
+		To:   &addr,
+		Data: &data,
+	}
+
+	gas, err := api.EstimateGas(context.Background(), transactionArgs, &blkNr)
+	require.NoError(t, err, "failed to estimate gas")
+	require.Greater(t, gas, uint64(0))
 }
