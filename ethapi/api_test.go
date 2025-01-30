@@ -233,7 +233,7 @@ func getTestData() (*evmcore.EvmHeader, *types.Transaction, types.Receipts, erro
 	return header, transaction, receipts, nil
 }
 
-func TestEstimategas(t *testing.T) {
+func TestEstimateGas(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
