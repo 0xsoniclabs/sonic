@@ -4,7 +4,6 @@ import (
 	"os"
 	"sort"
 
-	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/config/flags"
 	"github.com/0xsoniclabs/sonic/version"
 	"gopkg.in/urfave/cli.v1"
@@ -14,7 +13,7 @@ func Run() error {
 	app := cli.NewApp()
 	app.Name = "sonictool"
 	app.Usage = "the Sonic management tool"
-	app.Version = version.VersionWithCommit(config.GitCommit, config.GitDate)
+	app.Version = version.StringWithCommit()
 	app.Flags = []cli.Flag{
 		flags.DataDirFlag,
 		flags.CacheFlag,

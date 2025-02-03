@@ -1,20 +1,21 @@
 package app
 
 import (
-	"github.com/0xsoniclabs/sonic/config"
-	"github.com/0xsoniclabs/sonic/version"
-	"github.com/ethereum/go-ethereum/crypto"
 	"runtime"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/0xsoniclabs/sonic/config"
+	"github.com/0xsoniclabs/sonic/version"
+	"github.com/ethereum/go-ethereum/crypto"
 
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/inter/validatorpk"
 )
 
 const (
-	ipcAPIs  = "abft:1.0 admin:1.0 dag:1.0 debug:1.0 ftm:1.0 net:1.0 personal:1.0 rpc:1.0 trace:1.0 txpool:1.0 web3:1.0"
+	ipcAPIs = "abft:1.0 admin:1.0 dag:1.0 debug:1.0 ftm:1.0 net:1.0 personal:1.0 rpc:1.0 trace:1.0 txpool:1.0 web3:1.0"
 )
 
 func TestFakeNetFlag_NonValidator(t *testing.T) {
@@ -30,7 +31,7 @@ func TestFakeNetFlag_NonValidator(t *testing.T) {
 	cli.SetTemplateFunc("goos", func() string { return runtime.GOOS })
 	cli.SetTemplateFunc("goarch", func() string { return runtime.GOARCH })
 	cli.SetTemplateFunc("gover", runtime.Version)
-	cli.SetTemplateFunc("version", func() string { return version.VersionWithCommit("", "") })
+	cli.SetTemplateFunc("version", func() string { return version.String() })
 	cli.SetTemplateFunc("niltime", genesisStart)
 	cli.SetTemplateFunc("apis", func() string { return ipcAPIs })
 	cli.ExpectExit()
@@ -60,7 +61,7 @@ func TestFakeNetFlag_Validator(t *testing.T) {
 	cli.SetTemplateFunc("goos", func() string { return runtime.GOOS })
 	cli.SetTemplateFunc("goarch", func() string { return runtime.GOARCH })
 	cli.SetTemplateFunc("gover", runtime.Version)
-	cli.SetTemplateFunc("version", func() string { return version.VersionWithCommit("", "") })
+	cli.SetTemplateFunc("version", func() string { return version.String() })
 	cli.SetTemplateFunc("niltime", genesisStart)
 	cli.SetTemplateFunc("apis", func() string { return ipcAPIs })
 	cli.ExpectExit()

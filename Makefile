@@ -87,10 +87,14 @@ define get_git_tag
         DIRTY_STATE=$$(git status --porcelain 2>/dev/null); \
         FINAL_TAG=$${GIT_TAG}; \
         if [ "$${COMMITS_SINCE}" -ne 0 ]; then \
-            FINAL_TAG=$${FINAL_TAG}-dev; \
+            FINAL_TAG="$${FINAL_TAG}:dev"; \
+        else \
+            FINAL_TAG="$${FINAL_TAG}:"; \
         fi; \
         if [ -n "$${DIRTY_STATE}" ]; then \
-            FINAL_TAG=$${FINAL_TAG}-dirty; \
+            FINAL_TAG="$${FINAL_TAG}:dirty"; \
+        else \
+            FINAL_TAG="$${FINAL_TAG}:"; \
         fi; \
         echo "$${FINAL_TAG}"
     )

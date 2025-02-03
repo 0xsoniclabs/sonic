@@ -2,92 +2,143 @@ package version
 
 import (
 	"fmt"
-	"strconv"
-	"strings"
+	"regexp"
 )
 
-// Version holds the textual version string.
 var (
-	Version      = ""
-	versionMajor = 0
-	versionMinor = 0
-	versionPatch = 0
-	// versionMeta  = "" // not used for now
+	// The version under development. It is used when the version is not
+	// set by the Makefile.
+	versionMajor = 2
+	versionMinor = 1
 )
 
-func init() {
-	// in case of no tag or small/irregular tag, return it as is
-	if len(Version) >= 2 {
-		versionMajor, versionMinor, versionPatch, _ = parseVersion(Version)
-	}
+// Get returns the complete version information.
+func Get() Version {
+	return _version
 }
 
-// parseVersion parses the GitTag into major, minor, patch, and meta components.
-func parseVersion(gitTag string) (vMajor, vMinor, vPatch int, vMeta string) {
-	parts := strings.SplitN(gitTag, "-", 2)
-	versionParts := strings.Split(parts[0], ".")
-
-	// Parse major, minor, and patch
-	vMajor = parseVersionComponent(versionParts, 0, true)
-	vMinor = parseVersionComponent(versionParts, 1, false)
-	if len(versionParts) > 2 {
-		dashSplits := strings.Split(versionParts[2], "-")
-		vPatch = parseVersionComponent(dashSplits, 0, false)
-	}
-	// Parse meta if available
-	if (vMajor != 0 || vMinor != 0 || vPatch != 0) && len(parts) > 1 {
-		vMeta = parts[1]
-	}
-	return
+// String returns the version string.
+func String() string {
+	return Get().String()
 }
 
-// parseVersionComponent parses and returns a specific version component.
-// If `stripPrefix` is true, it strips the leading "v" from the major version.
-func parseVersionComponent(parts []string, index int, stripPrefix bool) int {
-	if len(parts) <= index {
-		return 0
-	}
-
-	component := parts[index]
-	if stripPrefix {
-		component = strings.TrimPrefix(component, "v")
-	}
-
-	value, err := strconv.Atoi(component)
-	if err != nil {
-		return 0
-	}
-
-	return value
-}
-
-func VersionWithCommit(gitCommit, gitDate string) string {
-	vsn := Version
+// StringWithCommit returns the version string with the commit hash and date.
+func StringWithCommit() string {
+	vsn := Get().String()
 	if len(gitCommit) >= 8 {
 		vsn += "-" + gitCommit[:8]
 	}
-	if (strings.Split(Version, "-")[0] != "") && (gitDate != "") {
+	if gitDate != "" {
 		vsn += "-" + gitDate
 	}
 	return vsn
 }
 
-func AsString() string {
-	return ToString(uint16(versionMajor), uint16(versionMinor), uint16(versionPatch))
+// GitCommit returns the commit hash if available. If not, the empty string
+// is returned.
+func GitCommit() string {
+	return gitCommit
 }
 
-func AsU64() uint64 {
-	return ToU64(uint16(versionMajor), uint16(versionMinor), uint16(versionPatch))
+// GitDate returns the commit date if available. If not, the empty string
+// is returned.
+func GitDate() string {
+	return gitDate
 }
 
-func ToU64(vMajor, vMinor, vPatch uint16) uint64 {
-	return uint64(vMajor)*1e12 + uint64(vMinor)*1e6 + uint64(vPatch)
+// Version represents a version of the code.
+type Version struct {
+	Major int
+	Minor int
+	Patch int
+	Meta  string
+	Dirty bool
 }
 
-func ToString(major, minor, patch uint16) string {
-	return fmt.Sprintf("%d.%d.%d", major, minor, patch)
+// IsRelease returns true if the version is a release version. It returns false
+// if the version has a meta string or is dirty.
+func (v Version) IsRelease() bool {
+	return v.Meta == "" && !v.Dirty
 }
 
-func U64ToString(v uint64) string {
-	return ToString(uint16((v/1e12)%1e6), uint16((v/1e6)%1e6), uint16(v%1e6))
+func (v Version) String() string {
+	res := fmt.Sprintf("v%d.%d.%d", v.Major, v.Minor, v.Patch)
+	if v.Meta != "" {
+		res += "-" + v.Meta
+	}
+	if v.Dirty {
+		res += "-dirty"
+	}
+	return res
 }
+
+var _version Version
+
+func init() {
+	version, err := parseVersion(codeVersion)
+	if err != nil {
+		panic("failed to parse version: " + err.Error())
+	}
+	_version = version
+}
+
+// parseVersion parses the GitTag into a version struct. This function may panic and must
+// only be called during initialization or testing.
+func parseVersion(gitTag string) (Version, error) {
+	// If the tag is empty, the binary was not build using the Makefile or the
+	// Makefile could not find git information. In this case, we return the
+	// version under development.
+	if gitTag == "" || gitTag == "::" {
+		// Return the version under development.
+		return Version{
+			Major: versionMajor,
+			Minor: versionMinor,
+			Meta:  "dev",
+		}, nil
+	}
+
+	// Check the format and decompose the git tag.
+	// The accepted format is: v1.2.3(-meta):(dev):(dirty)
+	pattern := regexp.MustCompile(`^(v\d+\.\d+\.\d+)(?:-((?:[a-zA-Z0-9-]+)*))?:(dev)?:(dirty)?$`)
+	parts := pattern.FindStringSubmatch(gitTag)
+	if len(parts) != 5 { // part 0 is the full match
+		return Version{}, fmt.Errorf("failed to parse version string %q", gitTag)
+	}
+
+	// Parse the version string
+	version := Version{}
+	if _, err := fmt.Sscanf(parts[1], "v%d.%d.%d", &version.Major, &version.Minor, &version.Patch); err != nil {
+		return version, fmt.Errorf("failed to parse version: %w", err)
+	}
+
+	// Parse the meta string
+	version.Meta = parts[2]
+
+	// If it is a dev version, increment the minor version and
+	// set the meta string to include "dev".
+	if len(parts[3]) > 0 {
+		version.Minor++
+		version.Patch = 0
+		version.Meta = "dev"
+	} else {
+		// the dirty flag is only relevant for non-dev versions
+		version.Dirty = len(parts[4]) > 0
+	}
+
+	return version, nil
+}
+
+// -- set by linker flags --------------------------------------------
+
+var (
+
+	// codeVersion is the full version string, generated by the Makefile.
+	// This string is only set if the binary was built with the Makefile.
+	codeVersion = ""
+
+	// gitCommit is the commit hash, set by the Makefile.
+	gitCommit = ""
+
+	// gitDate is the commit date, set by the Makefile.
+	gitDate = ""
+)
