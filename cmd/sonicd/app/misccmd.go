@@ -28,7 +28,7 @@ The output of this command is supposed to be machine-readable.
 
 func versionAction(ctx *cli.Context) error {
 	fmt.Println(config.ClientIdentifier)
-	fmt.Println("Version:", version.VersionWithMeta)
+	fmt.Println("Version:", version.Version)
 	if config.GitCommit != "" {
 		fmt.Println("Git Commit:", config.GitCommit)
 	}

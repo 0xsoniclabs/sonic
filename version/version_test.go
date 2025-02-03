@@ -39,3 +39,30 @@ func TestAsBigInt(t *testing.T) {
 		prev = next
 	}
 }
+
+func TestVersion_parseVersion(t *testing.T) {
+	require := require.New(t)
+
+	tests := map[string]struct {
+		major int
+		minor int
+		patch int
+		meta  string
+	}{
+		"v1.2.3":                       {major: 1, minor: 2, patch: 3},
+		"v1.2.3-alpha":                 {major: 1, minor: 2, patch: 3, meta: "alpha"},
+		"v1.2.3-alpha-dirty":           {major: 1, minor: 2, patch: 3, meta: "alpha-dirty"},
+		"some-non.stan-dard.12tag":     {},
+		"!`@#$%^&*()_{}|:<>?[]\\;',./": {},
+		"myTestTag":                    {},
+	}
+
+	for tag, want := range tests {
+		testVMajor, testVMinor, testVPatch, testVMeta := parseVersion(tag)
+
+		require.Equal(want.major, testVMajor, "major version mismatch")
+		require.Equal(want.minor, testVMinor, "minor version mismatch")
+		require.Equal(want.patch, testVPatch, "patch version mismatch")
+		require.Equal(want.meta, testVMeta, "meta version mismatch")
+	}
+}
