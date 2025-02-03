@@ -9,9 +9,9 @@ sonicd:
 	GIT_TAG=`echo $(call get_git_tag)` && \
 	GOPROXY=$(GOPROXY) \
 	go build \
-	    -ldflags "-s -w -X github.com/0xsoniclabs/sonic/config.GitCommit=$${GIT_COMMIT} \
-				        -X github.com/0xsoniclabs/sonic/config.GitDate=$${GIT_DATE} \
-						-X github.com/0xsoniclabs/sonic/version.Version=$${GIT_TAG}" \
+	    -ldflags "-s -w -X github.com/0xsoniclabs/sonic/version.gitCommit=$${GIT_COMMIT} \
+				        -X github.com/0xsoniclabs/sonic/version.gitDate=$${GIT_DATE} \
+						-X github.com/0xsoniclabs/sonic/version.codeVersion=$${GIT_TAG}" \
 	    -o build/sonicd \
 	    ./cmd/sonicd && \
 	    ./build/sonicd version
@@ -22,9 +22,9 @@ sonictool:
 	GIT_TAG=`echo  $(call get_git_tag)` && \
 	GOPROXY=$(GOPROXY) \
 	go build \
-	    -ldflags "-s -w -X github.com/0xsoniclabs/sonic/config.GitCommit=$${GIT_COMMIT} \
-				        -X github.com/0xsoniclabs/sonic/config.GitDate=$${GIT_DATE} \
-						-X github.com/0xsoniclabs/sonic/version.Version=$${GIT_TAG}" \
+	    -ldflags "-s -w -X github.com/0xsoniclabs/sonic/version.gitCommit=$${GIT_COMMIT} \
+				        -X github.com/0xsoniclabs/sonic/version.gitDate=$${GIT_DATE} \
+						-X github.com/0xsoniclabs/sonic/version.codeVersion=$${GIT_TAG}" \
 	    -o build/sonictool \
 	    ./cmd/sonictool && \
 	    ./build/sonictool --version
@@ -91,10 +91,14 @@ define get_git_tag
         DIRTY_STATE=$$(git status --porcelain 2>/dev/null); \
         FINAL_TAG=$${GIT_TAG}; \
         if [ "$${COMMITS_SINCE}" -ne 0 ]; then \
-            FINAL_TAG=$${FINAL_TAG}-dev; \
+            FINAL_TAG="$${FINAL_TAG}:dev"; \
+        else \
+            FINAL_TAG="$${FINAL_TAG}:"; \
         fi; \
         if [ -n "$${DIRTY_STATE}" ]; then \
-            FINAL_TAG=$${FINAL_TAG}-dirty; \
+            FINAL_TAG="$${FINAL_TAG}:dirty"; \
+        else \
+            FINAL_TAG="$${FINAL_TAG}:"; \
         fi; \
         echo "$${FINAL_TAG}"
     )

@@ -120,7 +120,7 @@ type Service struct {
 	uniqueEventIDs      uniqueID
 
 	// version watcher
-	verWatcher *verwatcher.VerWarcher
+	verWatcher *verwatcher.VersionWatcher
 
 	blockProcWg        sync.WaitGroup
 	blockProcTasks     *workers.Workers
