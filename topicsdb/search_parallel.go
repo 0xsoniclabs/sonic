@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 type logHandler func(rec *logrec) (gonext bool, err error)
@@ -117,5 +118,7 @@ func (tt *index) scanPatternVariant(pos uint8, variant common.Hash, start uint64
 			break
 		}
 	}
-	onMatched(nil)
+	if _, err := onMatched(nil); err != nil {
+		log.Warn("searchParallel", "err", err)
+	}
 }

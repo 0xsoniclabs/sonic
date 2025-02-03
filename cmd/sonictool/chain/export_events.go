@@ -1,11 +1,13 @@
 package chain
 
 import (
-	"github.com/0xsoniclabs/sonic/cmd/sonictool/db"
-	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
 	"io"
 	"path/filepath"
 	"time"
+
+	"github.com/0xsoniclabs/sonic/cmd/sonictool/db"
+	"github.com/0xsoniclabs/sonic/utils/caution"
+	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
 
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
@@ -30,7 +32,7 @@ func ExportEvents(gdbParams db.GossipDbParameters, w io.Writer, from, to idx.Epo
 	if err != nil {
 		return err
 	}
-	defer dbs.Close()
+	defer caution.CloseAndReportError(&err, dbs, "failed to close db producer")
 
 	// Fill the rest of the params
 	gdbParams.Dbs = dbs
@@ -40,7 +42,7 @@ func ExportEvents(gdbParams db.GossipDbParameters, w io.Writer, from, to idx.Epo
 	if err != nil {
 		return err
 	}
-	defer gdb.Close()
+	defer caution.CloseAndReportError(&err, gdb, "failed to close gossip db")
 
 	// Write header and version
 	_, err = w.Write(append(eventsFileHeader, eventsFileVersion...))
