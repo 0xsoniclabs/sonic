@@ -3,7 +3,6 @@ all: sonicd sonictool
 
 GOPROXY ?= "https://proxy.golang.org,direct"
 .PHONY: sonicd sonictool
-
 sonicd:
 	GIT_COMMIT=`git rev-list -1 HEAD 2>/dev/null || echo ""` && \
 	GIT_DATE=`git log -1 --date=short --pretty=format:%ct 2>/dev/null || echo ""` && \
@@ -13,7 +12,7 @@ sonicd:
 	    -ldflags "-s -w -X github.com/0xsoniclabs/sonic/config.GitCommit=$${GIT_COMMIT} -X github.com/0xsoniclabs/sonic/config.GitDate=$${GIT_DATE}" \
 	    -o build/sonicd \
 	    ./cmd/sonicd && \
-		./build/sonicd version
+	    ./build/sonicd version
 
 sonictool:
 	GIT_COMMIT=`git rev-list -1 HEAD 2>/dev/null || echo ""` && \
@@ -24,7 +23,7 @@ sonictool:
 	    -ldflags "-s -w -X github.com/0xsoniclabs/sonic/config.GitCommit=$${GIT_COMMIT} -X github.com/0xsoniclabs/sonic/config.GitDate=$${GIT_DATE}" \
 	    -o build/sonictool \
 	    ./cmd/sonictool && \
-		./build/sonictool --version
+	    ./build/sonictool --version
 
 TAG ?= "latest"
 .PHONY: sonic-image
