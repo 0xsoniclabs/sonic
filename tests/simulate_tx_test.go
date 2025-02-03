@@ -1,12 +1,88 @@
 package tests
 
 import (
+	"github.com/Fantom-foundation/go-opera/tests/contracts/storage"
+	"github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"math/big"
+	"strings"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
+
+func TestSetStorage_PreExisting_Contract_Storage_Temporarily_Overridden(t *testing.T) {
+	net, err := StartIntegrationTestNet(t.TempDir())
+	require.NoError(t, err, "Failed to start the fake network: %v", err)
+
+	defer net.Stop()
+
+	// Deploy the contract.
+	contract, receipt, err := DeployContract(net, storage.DeployStorage)
+	require.NoError(t, err, "failed to deploy contract; %v", err)
+
+	checkStorage := func() {
+		valA, err := contract.GetA(nil)
+		require.NoError(t, err, "failed to get A value; %v", err)
+		require.Equal(t, big.NewInt(1), valA, "unexpected A value")
+
+		valB, err := contract.GetB(nil)
+		require.NoError(t, err, "failed to get B value; %v", err)
+		require.Equal(t, big.NewInt(2), valB, "unexpected B value")
+
+		valC, err := contract.GetC(nil)
+		require.NoError(t, err, "failed to get C value; %v", err)
+		require.Equal(t, big.NewInt(3), valC, "unexpected C value")
+	}
+
+	// check the initial storage values
+	checkStorage()
+
+	address := receipt.ContractAddress
+	addressStr := address.String()
+
+	// get the client to call RPC methods
+	client, err := net.GetClient()
+	require.NoError(t, err, "failed to get client")
+	defer client.Close()
+
+	rpcClient := client.Client()
+	defer rpcClient.Close()
+
+	// Parse the ABI
+	parsedABI, err := abi.JSON(strings.NewReader(storage.StorageMetaData.ABI))
+	require.NoError(t, err, "failed to parse ABI; %v", err)
+
+	data, err := parsedABI.Pack("sumABC")
+	require.NoError(t, err, "failed to pack function call; %v", err)
+
+	// call eth_call of the contract to override the storage
+	var result string
+	err = rpcClient.Call(&result, "eth_call",
+		map[string]interface{}{
+			"to":   addressStr,
+			"data": hexutil.Encode(data),
+		},
+		"latest",
+		map[string]interface{}{
+			addressStr: map[string]interface{}{
+				"state": map[string]interface{}{
+					"0x0000000000000000000000000000000000000000000000000000000000000000": "0x000000000000000000000000000000000000000000000000000000000000000a", // 10
+					"0x0000000000000000000000000000000000000000000000000000000000000001": "0x000000000000000000000000000000000000000000000000000000000000000b", // 11
+					"0x0000000000000000000000000000000000000000000000000000000000000002": "0x000000000000000000000000000000000000000000000000000000000000000c", // 12
+				},
+			},
+		},
+	)
+	require.NoError(t, err)
+	num, ok := big.NewInt(0).SetString(result, 0)
+	require.True(t, ok)
+	require.Equal(t, uint64(33), num.Uint64(), "storage was not overridden")
+
+	// check the storage values after the call stays as it was before
+	checkStorage()
+}
 
 func TestSetStorage(t *testing.T) {
 	require := require.New(t)
