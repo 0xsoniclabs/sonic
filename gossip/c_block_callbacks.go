@@ -82,7 +82,7 @@ func consensusCallbackBeginBlockFn(
 	txIndex bool,
 	feed *ServiceFeed,
 	emitters *[]*emitter.Emitter,
-	verWatcher *verwatcher.VerWarcher,
+	verWatcher *verwatcher.VersionWatcher,
 	bootstrapping *bool,
 ) lachesis.BeginBlockFn {
 	return func(cBlock *lachesis.Block) lachesis.BlockCallbacks {

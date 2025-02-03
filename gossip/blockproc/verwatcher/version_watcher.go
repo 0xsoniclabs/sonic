@@ -11,10 +11,9 @@ import (
 	"github.com/0xsoniclabs/sonic/logger"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driver"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driver/driverpos"
-	"github.com/0xsoniclabs/sonic/version"
 )
 
-type VerWarcher struct {
+type VersionWatcher struct {
 	store *Store
 
 	done chan struct{}
@@ -22,26 +21,28 @@ type VerWarcher struct {
 	logger.Instance
 }
 
-func New(store *Store) *VerWarcher {
-	return &VerWarcher{
+func New(store *Store) *VersionWatcher {
+	return &VersionWatcher{
 		store:    store,
 		done:     make(chan struct{}),
 		Instance: logger.New(),
 	}
 }
 
-func (w *VerWarcher) Pause() error {
-	if w.store.GetNetworkVersion() > version.AsU64() {
-		return fmt.Errorf("Network upgrade %s was activated. Current node version is %s. "+
-			"Please upgrade your node to continue syncing.", version.U64ToString(w.store.GetNetworkVersion()), version.AsString())
+func (w *VersionWatcher) Pause() error {
+	have := getVersionNumber()
+	needed := versionNumber(w.store.GetNetworkVersion())
+	if needed > have {
+		return fmt.Errorf("Network upgrade %v was activated. Current node version is %v. "+
+			"Please upgrade your node to continue syncing.", needed, have)
 	} else if w.store.GetMissedVersion() > 0 {
-		return fmt.Errorf("Node's state is dirty because node was upgraded after the network upgrade %s was activated. "+
-			"Please re-sync the chain data to continue.", version.U64ToString(w.store.GetMissedVersion()))
+		return fmt.Errorf("Node's state is dirty because node was upgraded after the network upgrade %v was activated. "+
+			"Please re-sync the chain data to continue.", versionNumber(w.store.GetMissedVersion()))
 	}
 	return nil
 }
 
-func (w *VerWarcher) OnNewLog(l *types.Log) {
+func (w *VersionWatcher) OnNewLog(l *types.Log) {
 	if l.Address != driver.ContractAddress {
 		return
 	}
@@ -52,13 +53,13 @@ func (w *VerWarcher) OnNewLog(l *types.Log) {
 	}
 }
 
-func (w *VerWarcher) log() {
+func (w *VersionWatcher) log() {
 	if err := w.Pause(); err != nil {
 		w.Log.Warn(err.Error())
 	}
 }
 
-func (w *VerWarcher) Start() {
+func (w *VersionWatcher) Start() {
 	w.log()
 	w.wg.Add(1)
 	go func() {
@@ -76,7 +77,7 @@ func (w *VerWarcher) Start() {
 	}()
 }
 
-func (w *VerWarcher) Stop() {
+func (w *VersionWatcher) Stop() {
 	close(w.done)
 	w.wg.Wait()
 }

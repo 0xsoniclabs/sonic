@@ -39,12 +39,6 @@ const (
 	ClientIdentifier = "Sonic"
 )
 
-var (
-	// Git SHA1 commit hash of the release (set via linker flags).
-	GitCommit = ""
-	GitDate   = ""
-)
-
 // These settings ensure that TOML keys use the same names as Go struct fields.
 var TomlSettings = toml.Config{
 	NormFieldName: func(rt reflect.Type, key string) string {
@@ -359,7 +353,7 @@ func MakeAllConfigs(ctx *cli.Context) (*Config, error) {
 func DefaultNodeConfig() node.Config {
 	cfg := NodeDefaultConfig
 	cfg.Name = ClientIdentifier
-	cfg.Version = version.VersionWithCommit(GitCommit, GitDate)
+	cfg.Version = version.StringWithCommit()
 	cfg.HTTPModules = append(cfg.HTTPModules, "eth", "ftm", "dag", "abft", "web3")
 	cfg.WSModules = append(cfg.WSModules, "eth", "ftm", "dag", "abft", "web3")
 	cfg.IPCPath = "sonic.ipc"
