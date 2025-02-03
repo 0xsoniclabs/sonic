@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/opera/genesisstore"
 	futils "github.com/0xsoniclabs/sonic/utils"
+	"github.com/0xsoniclabs/sonic/utils/caution"
 	"github.com/0xsoniclabs/sonic/utils/memory"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
@@ -31,7 +33,7 @@ var (
 	}
 )
 
-func gfileGenesisImport(ctx *cli.Context) error {
+func gfileGenesisImport(ctx *cli.Context) (err error) {
 	if len(ctx.Args()) < 1 {
 		return fmt.Errorf("this command requires an argument - the genesis file to import")
 	}
@@ -52,13 +54,13 @@ func gfileGenesisImport(ctx *cli.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to open the genesis file: %w", err)
 	}
-	defer genesisReader.Close()
+	// note, genesisStore closes the reader, no need to defer close it here
 
 	genesisStore, genesisHashes, err := genesisstore.OpenGenesisStore(genesisReader)
 	if err != nil {
-		return fmt.Errorf("failed to read genesis file: %w", err)
+		return errors.Join(fmt.Errorf("failed to read genesis file: %w", err), genesisReader.Close())
 	}
-	defer genesisStore.Close()
+	defer caution.CloseAndReportError(&err, genesisStore, "failed to close the genesis store")
 	if err := genesis.IsGenesisTrusted(genesisStore, genesisHashes); err != nil {
 		if ctx.IsSet(ExperimentalFlag.Name) {
 			log.Warn("Experimental genesis file is used", "err", err)
@@ -76,7 +78,7 @@ func gfileGenesisImport(ctx *cli.Context) error {
 	})
 }
 
-func jsonGenesisImport(ctx *cli.Context) error {
+func jsonGenesisImport(ctx *cli.Context) (err error) {
 	if len(ctx.Args()) < 1 {
 		return fmt.Errorf("this command requires an argument - the genesis file to import")
 	}
@@ -105,7 +107,7 @@ func jsonGenesisImport(ctx *cli.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to prepare JSON genesis: %w", err)
 	}
-	defer genesisStore.Close()
+	defer caution.CloseAndReportError(&err, genesisStore, "failed to close the genesis store")
 	return genesis.ImportGenesisStore(genesis.ImportParams{
 		GenesisStore:  genesisStore,
 		DataDir:       dataDir,
@@ -116,7 +118,7 @@ func jsonGenesisImport(ctx *cli.Context) error {
 	})
 }
 
-func fakeGenesisImport(ctx *cli.Context) error {
+func fakeGenesisImport(ctx *cli.Context) (err error) {
 	if len(ctx.Args()) < 1 {
 		return fmt.Errorf("this command requires an argument - the number of validators in the fake network")
 	}
@@ -145,7 +147,7 @@ func fakeGenesisImport(ctx *cli.Context) error {
 		futils.ToFtm(1000000000),
 		futils.ToFtm(5000000),
 	)
-	defer genesisStore.Close()
+	defer caution.CloseAndReportError(&err, genesisStore, "failed to close the genesis store")
 	return genesis.ImportGenesisStore(genesis.ImportParams{
 		GenesisStore:  genesisStore,
 		DataDir:       dataDir,

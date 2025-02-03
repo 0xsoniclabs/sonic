@@ -6,6 +6,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/config/flags"
 	"github.com/0xsoniclabs/sonic/integration"
+	"github.com/0xsoniclabs/sonic/utils/caution"
 	"github.com/0xsoniclabs/sonic/utils/dbutil"
 	"github.com/0xsoniclabs/sonic/utils/dbutil/compactdb"
 	"github.com/Fantom-foundation/lachesis-base/kvdb"
@@ -38,13 +39,13 @@ func compactDbs(ctx *cli.Context) error {
 	return nil
 }
 
-func compactDB(name string, producer kvdb.DBProducer) error {
+func compactDB(name string, producer kvdb.DBProducer) (err error) {
 	db, err := producer.OpenDB(name)
 	if err != nil {
 		log.Error("Cannot open db or db does not exists", "db", name)
 		return err
 	}
-	defer db.Close()
+	defer caution.CloseAndReportError(&err, db, "failed to close db")
 
 	log.Info("Stats before compaction", "db", name)
 	showDbStats(db)

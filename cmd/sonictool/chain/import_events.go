@@ -17,6 +17,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
 	"github.com/0xsoniclabs/sonic/inter"
+	"github.com/0xsoniclabs/sonic/utils/caution"
 	"github.com/0xsoniclabs/sonic/utils/ioread"
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
@@ -85,7 +86,7 @@ func checkEventsFileHeader(reader io.Reader) error {
 	return nil
 }
 
-func importEventsFile(srv *gossip.Service, fn string) error {
+func importEventsFile(srv *gossip.Service, filename string) (err error) {
 	// Watch for Ctrl-C while the import is running.
 	// If a signal is received, the import will stop.
 	interrupt := make(chan os.Signal, 1)
@@ -93,18 +94,18 @@ func importEventsFile(srv *gossip.Service, fn string) error {
 	defer signal.Stop(interrupt)
 
 	// Open the file handle and potentially unwrap the gzip stream
-	fh, err := os.Open(fn)
+	fileHandle, err := os.Open(filename)
 	if err != nil {
 		return err
 	}
-	defer fh.Close()
+	defer caution.CloseAndReportError(&err, fileHandle, "failed to close file")
 
-	var reader io.Reader = fh
-	if strings.HasSuffix(fn, ".gz") {
+	var reader io.Reader = fileHandle
+	if strings.HasSuffix(filename, ".gz") {
 		if reader, err = gzip.NewReader(reader); err != nil {
 			return err
 		}
-		defer reader.(*gzip.Reader).Close()
+		defer caution.CloseAndReportError(&err, reader.(*gzip.Reader), "failed to close gzip reader")
 	}
 
 	// Check file version and header
@@ -173,7 +174,7 @@ func importEventsFile(srv *gossip.Service, fn string) error {
 		events++
 	}
 	srv.WaitBlockEnd()
-	log.Info("Events import is finished", "file", fn, "last", last.String(), "imported", events, "txs", txs, "elapsed", common.PrettyDuration(time.Since(start)))
+	log.Info("Events import is finished", "file", filename, "last", last.String(), "imported", events, "txs", txs, "elapsed", common.PrettyDuration(time.Since(start)))
 
 	return nil
 }

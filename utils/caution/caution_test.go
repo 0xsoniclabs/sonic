@@ -43,7 +43,7 @@ func (c *closeMe) Close() error {
 	return c.err
 }
 
-func TestCloseAndReportError_(t *testing.T) {
+func TestCloseAndReportError_AddsMessageToError(t *testing.T) {
 	file := &closeMe{}
 	var err error
 	CloseAndReportError(&err, file, "message")

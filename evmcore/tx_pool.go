@@ -429,7 +429,9 @@ func (pool *TxPool) Stop() {
 	pool.wg.Wait()
 
 	if pool.journal != nil {
-		pool.journal.close()
+		if err := pool.journal.close(); err != nil {
+			log.Warn("Failed to close transaction journal:", err)
+		}
 	}
 	log.Info("Transaction pool stopped")
 }

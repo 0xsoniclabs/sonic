@@ -3,17 +3,19 @@ package app
 import (
 	"context"
 	"fmt"
-	"github.com/0xsoniclabs/sonic/cmd/sonictool/db"
-	"github.com/0xsoniclabs/sonic/cmd/sonictool/genesis"
-	"github.com/0xsoniclabs/sonic/config/flags"
-	"github.com/0xsoniclabs/sonic/integration"
-	"github.com/syndtr/goleveldb/leveldb/opt"
-	"gopkg.in/urfave/cli.v1"
 	"os"
 	"os/signal"
 	"path"
 	"path/filepath"
 	"syscall"
+
+	"github.com/0xsoniclabs/sonic/cmd/sonictool/db"
+	"github.com/0xsoniclabs/sonic/cmd/sonictool/genesis"
+	"github.com/0xsoniclabs/sonic/config/flags"
+	"github.com/0xsoniclabs/sonic/integration"
+	"github.com/0xsoniclabs/sonic/utils/caution"
+	"github.com/syndtr/goleveldb/leveldb/opt"
+	"gopkg.in/urfave/cli.v1"
 )
 
 func exportGenesis(ctx *cli.Context) error {
@@ -45,7 +47,7 @@ func exportGenesis(ctx *cli.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to make DB producer: %v", err)
 	}
-	defer dbs.Close()
+	defer caution.CloseAndReportError(&err, dbs, "failed to close DB producer")
 
 	gdb, err := db.MakeGossipDb(db.GossipDbParameters{
 		Dbs:           dbs,
@@ -58,17 +60,18 @@ func exportGenesis(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	defer gdb.Close()
+	defer caution.CloseAndReportError(&err, gdb, "failed to close Gossip DB")
 
-	fh, err := os.OpenFile(fileName, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.ModePerm)
+	fileHandler, err := os.OpenFile(fileName, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.ModePerm)
 	if err != nil {
 		return err
 	}
-	defer fh.Close()
+	defer caution.CloseAndReportError(&err, fileHandler, fmt.Sprintf("failed to close file %v", fileName))
 
 	tmpPath := path.Join(dataDir, "tmp-genesis-export")
 	_ = os.RemoveAll(tmpPath)
-	defer os.RemoveAll(tmpPath)
+	defer caution.ExecuteAndReportError(&err, func() error { return os.RemoveAll(tmpPath) },
+		"failed to remove tmp genesis export dir")
 
-	return genesis.ExportGenesis(cancelCtx, gdb, !forValidatorMode, fh, tmpPath)
+	return genesis.ExportGenesis(cancelCtx, gdb, !forValidatorMode, fileHandler, tmpPath)
 }

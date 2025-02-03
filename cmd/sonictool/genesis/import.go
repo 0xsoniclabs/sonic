@@ -2,15 +2,17 @@ package genesis
 
 import (
 	"fmt"
+	"path/filepath"
+
 	"github.com/0xsoniclabs/sonic/cmd/sonictool/db"
 	"github.com/0xsoniclabs/sonic/opera/genesis"
 	"github.com/0xsoniclabs/sonic/opera/genesisstore"
+	"github.com/0xsoniclabs/sonic/utils/caution"
 	"github.com/Fantom-foundation/lachesis-base/abft"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/kvdb"
 	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
 	"github.com/ethereum/go-ethereum/log"
-	"path/filepath"
 )
 
 // ImportParams are parameters for ImportGenesisStore func.
@@ -22,7 +24,7 @@ type ImportParams struct {
 	LiveDbCache, ArchiveCache int64 // in bytes
 }
 
-func ImportGenesisStore(params ImportParams) error {
+func ImportGenesisStore(params ImportParams) (err error) {
 	if err := db.AssertDatabaseNotInitialized(params.DataDir); err != nil {
 		return fmt.Errorf("database in datadir is already initialized: %w", err)
 	}
@@ -33,9 +35,9 @@ func ImportGenesisStore(params ImportParams) error {
 	chaindataDir := filepath.Join(params.DataDir, "chaindata")
 	dbs, err := db.MakeDbProducer(chaindataDir, params.CacheRatio)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create db producer: %w", err)
 	}
-	defer dbs.Close()
+	defer caution.CloseAndReportError(&err, dbs, "failed to close db producer")
 	setGenesisProcessing(chaindataDir)
 
 	gdb, err := db.MakeGossipDb(db.GossipDbParameters{
@@ -47,18 +49,18 @@ func ImportGenesisStore(params ImportParams) error {
 		ArchiveCache:  params.ArchiveCache,
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create gossip db: %w", err)
 	}
-	defer gdb.Close()
+	defer caution.CloseAndReportError(&err, gdb, "failed to close gossip db")
 
 	err = gdb.ApplyGenesis(params.GenesisStore.Genesis())
 	if err != nil {
-		return fmt.Errorf("failed to write Gossip genesis state: %v", err)
+		return fmt.Errorf("failed to write Gossip genesis state: %w", err)
 	}
 
 	cMainDb, err := dbs.OpenDB("lachesis")
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to open lachesis db: %w", err)
 	}
 	cGetEpochDB := func(epoch idx.Epoch) kvdb.Store {
 		db, err := dbs.OpenDB(fmt.Sprintf("lachesis-%d", epoch))
@@ -71,7 +73,7 @@ func ImportGenesisStore(params ImportParams) error {
 		panic(fmt.Errorf("lachesis store error: %w", err))
 	}
 	cdb := abft.NewStore(cMainDb, cGetEpochDB, abftCrit, abft.DefaultStoreConfig(params.CacheRatio))
-	defer cdb.Close()
+	defer caution.CloseAndReportError(&err, cdb, "failed to close consensus db")
 
 	err = cdb.ApplyGenesis(&abft.Genesis{
 		Epoch:      gdb.GetEpoch(),
@@ -83,7 +85,7 @@ func ImportGenesisStore(params ImportParams) error {
 
 	err = gdb.Commit()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to commit gossip db: %w", err)
 	}
 	setGenesisComplete(chaindataDir)
 	log.Info("Successfully imported genesis file")

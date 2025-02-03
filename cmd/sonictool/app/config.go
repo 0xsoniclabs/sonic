@@ -2,9 +2,11 @@ package app
 
 import (
 	"fmt"
-	"github.com/0xsoniclabs/sonic/config"
-	"gopkg.in/urfave/cli.v1"
 	"os"
+
+	"github.com/0xsoniclabs/sonic/config"
+	"github.com/0xsoniclabs/sonic/utils/caution"
+	"gopkg.in/urfave/cli.v1"
 )
 
 func checkConfig(ctx *cli.Context) error {
@@ -17,7 +19,7 @@ func checkConfig(ctx *cli.Context) error {
 }
 
 // dumpConfig is the dumpconfig command.
-func dumpConfig(ctx *cli.Context) error {
+func dumpConfig(ctx *cli.Context) (err error) {
 	cfg, err := config.MakeAllConfigs(ctx)
 	if err != nil {
 		return err
@@ -35,10 +37,12 @@ func dumpConfig(ctx *cli.Context) error {
 		if err != nil {
 			return err
 		}
-		defer dump.Close()
+		defer caution.CloseAndReportError(&err, dump, "failed to close config file")
 	}
-	dump.WriteString(comment)
-	dump.Write(out)
-
-	return nil
+	_, err = dump.WriteString(comment)
+	if err != nil {
+		return err
+	}
+	_, err = dump.Write(out)
+	return err
 }
