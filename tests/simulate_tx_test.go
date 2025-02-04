@@ -22,7 +22,9 @@ func TestSetStorage_PreExisting_Contract_Storage_Temporarily_Overridden(t *testi
 	contract, receipt, err := DeployContract(net, storage.DeployStorage)
 	require.NoError(t, err, "failed to deploy contract; %v", err)
 
-	checkStorage := func() {
+	checkStorage := func(t *testing.T) {
+		t.Helper()
+
 		valA, err := contract.GetA(nil)
 		require.NoError(t, err, "failed to get A value; %v", err)
 		require.Equal(t, big.NewInt(1), valA, "unexpected A value")
@@ -37,7 +39,7 @@ func TestSetStorage_PreExisting_Contract_Storage_Temporarily_Overridden(t *testi
 	}
 
 	// check the initial storage values
-	checkStorage()
+	checkStorage(t)
 
 	address := receipt.ContractAddress
 	addressStr := address.String()
@@ -81,10 +83,10 @@ func TestSetStorage_PreExisting_Contract_Storage_Temporarily_Overridden(t *testi
 	require.Equal(t, uint64(33), num.Uint64(), "storage was not overridden")
 
 	// check the storage values after the call stays as it was before
-	checkStorage()
+	checkStorage(t)
 }
 
-func TestSetStorage(t *testing.T) {
+func TestSetStorage_Contract_Not_On_Blockchain_Executed_With_Extra_Storage(t *testing.T) {
 	require := require.New(t)
 
 	// start network
