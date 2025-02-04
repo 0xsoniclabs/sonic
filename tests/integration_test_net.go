@@ -256,6 +256,11 @@ func (n *IntegrationTestNet) start() error {
 		if err != nil {
 			panic(fmt.Sprintf("Failed to create temporary directory: %v", err))
 		}
+		defer func() {
+			if err := os.RemoveAll(tmp); err != nil {
+				fmt.Printf("Failed to remove temporary directory: %v\n", err)
+			}
+		}()
 
 		// start the fakenet sonic node
 		// equivalent to running `sonicd ...` but in this local process
