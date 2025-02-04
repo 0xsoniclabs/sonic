@@ -1,7 +1,7 @@
 package tests
 
 import (
-	"github.com/Fantom-foundation/go-opera/tests/contracts/storage"
+	"github.com/0xsoniclabs/sonic/tests/contracts/storage"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"math/big"
