@@ -22,6 +22,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/sonic/utils/caution"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -148,10 +149,9 @@ func (journal *txJournal) rotate(all map[common.Address]types.Transactions) erro
 	for _, txs := range all {
 		for _, tx := range txs {
 			if err = rlp.Encode(replacement, tx); err != nil {
-				if closeErr := replacement.Close(); closeErr != nil {
-					return errors.Join(closeErr, fmt.Errorf("failed to close journal file: %w", closeErr))
-				}
-				return err
+				return errors.Join(
+					fmt.Errorf("failed to encode transaction: %w", err),
+					utils.AnnotateIfError(replacement.Close(), "failed to close journal file:"))
 			}
 		}
 		journaled += len(txs)

@@ -65,14 +65,14 @@ func remoteConsole(ctx *cli.Context) (err error) {
 
 	if script := ctx.String(ExecFlag.Name); script != "" {
 		console.Evaluate(script)
-		return
+		return nil
 	}
 
 	// Otherwise print the welcome screen and enter interactive mode
 	console.Welcome()
 	console.Interactive()
 
-	return
+	return nil
 }
 
 // makeConsolePreloads retrieves the absolute paths for the console JavaScript

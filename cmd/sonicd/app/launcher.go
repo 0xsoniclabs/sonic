@@ -12,7 +12,6 @@ import (
 	"github.com/0xsoniclabs/sonic/cmd/sonicd/metrics"
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/config/flags"
-	"github.com/0xsoniclabs/sonic/utils/caution"
 	"github.com/0xsoniclabs/sonic/version"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/console/prompt"
@@ -203,11 +202,13 @@ func initApp() {
 		return nil
 	}
 
-	app.After = func(ctx *cli.Context) (err error) {
+	app.After = func(ctx *cli.Context) error {
 		debug.Exit()
 		// Close will resets terminal mode.
-		caution.CloseAndReportError(&err, prompt.Stdin, "failed to reset terminal input")
-		return err
+		if err := prompt.Stdin.Close(); err != nil {
+			return fmt.Errorf("failed to reset terminal input")
+		}
+		return nil
 	}
 }
 

@@ -110,8 +110,7 @@ func WriteSignatureIntoGenesisFile(header genesis.Header, signature []byte, file
 		return fmt.Errorf("failed to write signature to genesis file: %w", err)
 	}
 	_, err = writer.Flush()
-	utils.AnnotateIfError(err, "failed to flush genesis file:")
-	return err
+	return utils.AnnotateIfError(err, "failed to flush genesis file:")
 }
 
 // TypedDataAndHash is a helper function that calculates a hash for typed data conforming to EIP-712.
