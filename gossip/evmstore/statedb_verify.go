@@ -9,6 +9,7 @@ import (
 	"github.com/0xsoniclabs/carmen/go/database/mpt"
 	"github.com/0xsoniclabs/carmen/go/database/mpt/io"
 	carmen "github.com/0xsoniclabs/carmen/go/state"
+	"github.com/0xsoniclabs/sonic/utils/caution"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
 )
@@ -53,12 +54,12 @@ func (s *Store) VerifyWorldState(expectedBlockNum uint64, expectedHash common.Ha
 	return nil
 }
 
-func verifyLastState(params carmen.Parameters, expectedBlockNum uint64, expectedHash common.Hash) error {
+func verifyLastState(params carmen.Parameters, expectedBlockNum uint64, expectedHash common.Hash) (err error) {
 	liveState, err := carmen.NewState(params)
 	if err != nil {
 		return fmt.Errorf("failed to open carmen live state in %s: %w", params.Directory, err)
 	}
-	defer liveState.Close()
+	defer caution.CloseAndReportError(&err, liveState, "failed to close carmen live state")
 	if err := checkStateHash(liveState, expectedHash); err != nil {
 		return fmt.Errorf("live state check failed; %w", err)
 	}
@@ -78,7 +79,7 @@ func verifyLastState(params carmen.Parameters, expectedBlockNum uint64, expected
 	if err != nil {
 		return fmt.Errorf("failed to get carmen archive state; %w", err)
 	}
-	defer archiveState.Close()
+	defer caution.CloseAndReportError(&err, archiveState, "failed to close carmen archive state")
 	if err := checkStateHash(archiveState, expectedHash); err != nil {
 		return fmt.Errorf("archive state check failed; %w", err)
 	}
