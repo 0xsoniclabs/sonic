@@ -61,7 +61,7 @@ staticcheck:
 	@go install honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION)
 	staticcheck ./...
 
-ERRCHECK_VERSION = v1.7.0
+ERRCHECK_VERSION = v1.8.0
 .PHONY: errcheck
 errorcheck:
 	@go install github.com/kisielk/errcheck@$(ERRCHECK_VERSION)
@@ -73,4 +73,4 @@ deadcode:
 	deadcode -test ./...
 
 .PHONY: lint
-lint: vet staticcheck deadcode # errorcheck
+lint: vet staticcheck deadcode errorcheck
