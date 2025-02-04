@@ -6,6 +6,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/gossip"
 	"github.com/0xsoniclabs/sonic/utils/adapters/vecmt2dagidx"
+	"github.com/0xsoniclabs/sonic/utils/caution"
 	"github.com/0xsoniclabs/sonic/vecmt"
 	"github.com/Fantom-foundation/lachesis-base/abft"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
@@ -68,38 +69,48 @@ func rawMakeEngine(gdb *gossip.Store, cdb *abft.Store, cfg Configs) (*abft.Lache
 	return engine, vecClock, blockProc, nil
 }
 
-func makeEngine(chaindataDir string, cfg Configs) (*abft.Lachesis, *vecmt.Index, *gossip.Store, *abft.Store, gossip.BlockProc, func() error, error) {
+func makeEngine(chaindataDir string, cfg Configs) (engine *abft.Lachesis, vecClock *vecmt.Index,
+	gdb *gossip.Store, cdb *abft.Store, blockProc gossip.BlockProc, dbsClose func() error, err error) {
 	dbs, err := GetDbProducer(chaindataDir, cfg.DBs.RuntimeCache)
 	if err != nil {
 		return nil, nil, nil, nil, gossip.BlockProc{}, nil, err
 	}
 
-	gdb, cdb, err := getStores(dbs, cfg)
+	gdb, cdb, err = getStores(dbs, cfg)
 	if err != nil {
 		err = fmt.Errorf("failed to get stores: %w", err)
 		return nil, nil, nil, nil, gossip.BlockProc{}, nil, err
 	}
 	defer func() {
 		if err != nil {
-			gdb.Close()
-			cdb.Close()
-			dbs.Close()
+			caution.CloseAndReportError(&err, cdb, "failed to close lachesis store")
+		}
+	}()
+	defer func() {
+		if err != nil {
+			caution.CloseAndReportError(&err, gdb, "failed to close gossip store")
+		}
+	}()
+	defer func() {
+		if err != nil {
+			caution.CloseAndReportError(&err, dbs, "failed to close db producer")
 		}
 	}()
 
 	err = gdb.EvmStore().Open()
+	dbsClose = dbs.Close
 	if err != nil {
 		err = fmt.Errorf("failed to open EvmStore: %v", err)
-		return nil, nil, nil, nil, gossip.BlockProc{}, dbs.Close, err
+		return nil, nil, nil, nil, gossip.BlockProc{}, dbsClose, err
 	}
 
-	engine, vecClock, blockProc, err := rawMakeEngine(gdb, cdb, cfg)
+	engine, vecClock, blockProc, err = rawMakeEngine(gdb, cdb, cfg)
 	if err != nil {
 		err = fmt.Errorf("failed to make engine: %v", err)
-		return nil, nil, nil, nil, gossip.BlockProc{}, dbs.Close, err
+		return nil, nil, nil, nil, gossip.BlockProc{}, dbsClose, err
 	}
 
-	return engine, vecClock, gdb, cdb, blockProc, dbs.Close, nil
+	return engine, vecClock, gdb, cdb, blockProc, dbsClose, nil
 }
 
 // MakeEngine makes consensus engine from config.

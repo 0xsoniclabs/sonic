@@ -8,6 +8,7 @@ import (
 	"github.com/0xsoniclabs/carmen/go/database/mpt"
 	"github.com/0xsoniclabs/carmen/go/database/mpt/io"
 	carmen "github.com/0xsoniclabs/carmen/go/state"
+	"github.com/0xsoniclabs/sonic/utils/caution"
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
 	"github.com/ethereum/go-ethereum/log"
@@ -32,13 +33,13 @@ func CheckLiveStateDb(ctx context.Context, dataDir string, cacheRatio cachescale
 	return nil
 }
 
-func checkLiveBlockRoot(dataDir string, cacheRatio cachescale.Func) error {
+func checkLiveBlockRoot(dataDir string, cacheRatio cachescale.Func) (err error) {
 	gdb, dbs, err := createGdb(dataDir, cacheRatio, carmen.NoArchive, true)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create gdb and db producer: %w", err)
 	}
-	defer gdb.Close()
-	defer dbs.Close()
+	defer caution.CloseAndReportError(&err, gdb, "failed to close gossip db")
+	defer caution.CloseAndReportError(&err, dbs, "failed to close db producer")
 
 	lastBlockIdx := gdb.GetLatestBlockIndex()
 	lastBlock := gdb.GetBlock(lastBlockIdx)

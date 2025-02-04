@@ -117,5 +117,5 @@ func (tt *index) scanPatternVariant(pos uint8, variant common.Hash, start uint64
 			break
 		}
 	}
-	onMatched(nil)
+	_, _ = onMatched(nil)
 }

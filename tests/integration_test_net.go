@@ -72,12 +72,10 @@ func isPortFree(host string, port int) bool {
 	if err != nil {
 		return false
 	}
-	err = listener.Close()
-	if err != nil {
-		fmt.Printf("failed to close port %d: %v\n", port, err)
+	if err = listener.Close(); err != nil {
+		panic(fmt.Errorf("failed to close listener:%w", err))
 	}
-	// if the port reports errors while closing, do not consider it free
-	return err == nil
+	return true
 }
 
 func getFreePort() (int, error) {

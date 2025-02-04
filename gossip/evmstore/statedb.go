@@ -2,14 +2,16 @@ package evmstore
 
 import (
 	"fmt"
+	"math/big"
+
 	cc "github.com/0xsoniclabs/carmen/go/common"
 	carmen "github.com/0xsoniclabs/carmen/go/state"
 	_ "github.com/0xsoniclabs/carmen/go/state/gostate"
 	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/utils/caution"
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
-	"math/big"
 )
 
 // GetLiveStateDb obtains StateDB for block processing - the live writable state
@@ -71,7 +73,7 @@ func (s *Store) CheckLiveStateHash(blockNum idx.Block, root hash.Hash) error {
 }
 
 // CheckArchiveStateHash returns if the hash of the given archive StateDB hash matches
-func (s *Store) CheckArchiveStateHash(blockNum idx.Block, root hash.Hash) error {
+func (s *Store) CheckArchiveStateHash(blockNum idx.Block, root hash.Hash) (err error) {
 	if s.carmenState == nil {
 		return fmt.Errorf("unable to get live state - EvmStore is not open")
 	}
@@ -79,7 +81,7 @@ func (s *Store) CheckArchiveStateHash(blockNum idx.Block, root hash.Hash) error 
 	if err != nil {
 		return fmt.Errorf("unable to get archive state: %w", err)
 	}
-	defer archiveState.Close()
+	defer caution.CloseAndReportError(&err, archiveState, "failed to close archive state")
 
 	stateHash, err := archiveState.GetHash()
 	if err != nil {

@@ -2,11 +2,13 @@ package app
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/0xsoniclabs/sonic/config/flags"
+	"github.com/0xsoniclabs/sonic/utils/caution"
 	"github.com/ethereum/go-ethereum/console"
 	"github.com/ethereum/go-ethereum/rpc"
 	"gopkg.in/urfave/cli.v1"
-	"strings"
 )
 
 var (
@@ -27,7 +29,7 @@ var (
 
 // remoteConsole will connect to a remote opera instance, attaching a JavaScript
 // console to it.
-func remoteConsole(ctx *cli.Context) error {
+func remoteConsole(ctx *cli.Context) (err error) {
 	// Attach to a remotely running opera instance and start the JavaScript console
 	endpoint := ctx.Args().First()
 	if endpoint == "" {
@@ -57,7 +59,9 @@ func remoteConsole(ctx *cli.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to start the JavaScript console: %v", err)
 	}
-	defer console.Stop(false)
+	defer caution.ExecuteAndReportError(&err,
+		func() error { return console.Stop(false) },
+		"failed to stop the JavaScript console")
 
 	if script := ctx.String(ExecFlag.Name); script != "" {
 		console.Evaluate(script)
