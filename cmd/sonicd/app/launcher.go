@@ -329,7 +329,9 @@ func startNode(ctx *cli.Context, stack *node.Node) error {
 
 			case accounts.WalletDropped:
 				log.Info("Old wallet dropped", "url", event.Wallet.URL())
-				event.Wallet.Close()
+				if err := event.Wallet.Close(); err != nil {
+					log.Warn("Failed to close wallet", "url", event.Wallet.URL(), "err", err)
+				}
 			}
 		}
 	}()

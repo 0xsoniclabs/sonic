@@ -217,11 +217,15 @@ func (tt *TestCmd) StderrText() string {
 }
 
 func (tt *TestCmd) CloseStdin() {
-	tt.stdin.Close()
+	if err := tt.stdin.Close(); err != nil {
+		tt.Logf("Failed to close stdin: %v", err)
+	}
 }
 
 func (tt *TestCmd) Kill() {
-	tt.cmd.Process.Kill()
+	if err := tt.cmd.Process.Kill(); err != nil {
+		tt.Logf("Failed to kill process: %v", err)
+	}
 	if tt.Cleanup != nil {
 		tt.Cleanup()
 	}

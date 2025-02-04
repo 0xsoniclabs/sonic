@@ -135,9 +135,10 @@ func TestSonicTool_genesis_ExecutesWithoutErrors(t *testing.T) {
 	require.NoError(t, generatePasswordFile(passwordFileName, "this is the passphrase"))
 
 	exportFile := fmt.Sprintf("%s/genesis", tmp)
-	executeSonicTool(t,
+	_, err = executeSonicTool(t,
 		"--datadir", net.GetDirectory()+"/state",
 		"genesis", "export", exportFile)
+	require.NoError(t, err)
 	require.FileExists(t, exportFile)
 
 	header, sections, err := getGenesisHeaderHashes(exportFile)

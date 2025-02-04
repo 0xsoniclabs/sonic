@@ -1654,7 +1654,9 @@ func (pool *TxPool) demoteUnexecutables() {
 			log.Trace("Demoting pending transaction", "hash", hash)
 
 			// Internal shuffle shouldn't touch the lookup set.
-			pool.enqueueTx(hash, tx, false, false)
+			if _, err := pool.enqueueTx(hash, tx, false, false); err != nil {
+				log.Warn("Failed to re-enqueue invalidated transaction", "hash", hash, "err", err)
+			}
 		}
 		pool.priced.Removed(len(olds) + len(drops)) // invalid are only moved into queue
 		pendingGauge.Dec(int64(len(olds) + len(drops) + len(invalids)))
@@ -1669,7 +1671,9 @@ func (pool *TxPool) demoteUnexecutables() {
 				log.Error("Demoting invalidated transaction", "hash", hash)
 
 				// Internal shuffle shouldn't touch the lookup set.
-				pool.enqueueTx(hash, tx, false, false)
+				if _, err := pool.enqueueTx(hash, tx, false, false); err != nil {
+					log.Warn("Failed to re-enqueue invalidated transaction", "hash", hash, "err", err)
+				}
 			}
 			pendingGauge.Dec(int64(len(gapped)))
 		}

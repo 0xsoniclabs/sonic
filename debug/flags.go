@@ -17,6 +17,7 @@
 package debug
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -218,6 +219,11 @@ func StartPProf(address string, withMetrics bool) {
 // Exit stops all running profiles, flushing their output to the
 // respective file.
 func Exit() {
-	Handler.StopCPUProfile()
-	Handler.StopGoTrace()
+	err := errors.Join(
+		Handler.StopCPUProfile(),
+		Handler.StopGoTrace(),
+	)
+	if err != nil {
+		log.Error("Failed to stop profiles", "err", err)
+	}
 }
