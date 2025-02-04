@@ -2,7 +2,7 @@ package ibr_test
 
 import (
 	"bytes"
-	"github.com/Fantom-foundation/go-opera/inter/ibr"
+	"github.com/0xsoniclabs/sonic/inter/ibr"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"

@@ -2,10 +2,10 @@ package evmstore
 
 import (
 	"fmt"
-	cc "github.com/Fantom-foundation/Carmen/go/common"
-	carmen "github.com/Fantom-foundation/Carmen/go/state"
-	_ "github.com/Fantom-foundation/Carmen/go/state/gostate"
-	"github.com/Fantom-foundation/go-opera/inter/state"
+	cc "github.com/0xsoniclabs/carmen/go/common"
+	carmen "github.com/0xsoniclabs/carmen/go/state"
+	_ "github.com/0xsoniclabs/carmen/go/state/gostate"
+	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"

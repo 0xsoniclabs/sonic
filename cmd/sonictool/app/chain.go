@@ -3,14 +3,14 @@ package app
 import (
 	"compress/gzip"
 	"fmt"
-	"github.com/Fantom-foundation/go-opera/cmd/sonictool/db"
+	"github.com/0xsoniclabs/sonic/cmd/sonictool/db"
 	"io"
 	"os"
 	"strconv"
 	"strings"
 
-	"github.com/Fantom-foundation/go-opera/cmd/sonictool/chain"
-	"github.com/Fantom-foundation/go-opera/config/flags"
+	"github.com/0xsoniclabs/sonic/cmd/sonictool/chain"
+	"github.com/0xsoniclabs/sonic/config/flags"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/log"
 	"gopkg.in/urfave/cli.v1"

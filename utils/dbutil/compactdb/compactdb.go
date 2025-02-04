@@ -6,12 +6,12 @@ import (
 	"math/big"
 	"strconv"
 
-	"github.com/Fantom-foundation/go-opera/utils/dbutil"
+	"github.com/0xsoniclabs/sonic/utils/dbutil"
 
 	"github.com/Fantom-foundation/lachesis-base/kvdb"
 	"github.com/Fantom-foundation/lachesis-base/kvdb/table"
 
-	"github.com/Fantom-foundation/go-opera/utils"
+	"github.com/0xsoniclabs/sonic/utils"
 )
 
 type contCompacter struct {

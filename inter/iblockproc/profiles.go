@@ -8,7 +8,7 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 	"github.com/ethereum/go-ethereum/rlp"
 
-	"github.com/Fantom-foundation/go-opera/inter/drivertype"
+	"github.com/0xsoniclabs/sonic/inter/drivertype"
 )
 
 type ValidatorProfiles map[idx.ValidatorID]drivertype.Validator

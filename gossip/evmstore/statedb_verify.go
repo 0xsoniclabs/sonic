@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"path/filepath"
 
-	cc "github.com/Fantom-foundation/Carmen/go/common"
-	"github.com/Fantom-foundation/Carmen/go/database/mpt"
-	"github.com/Fantom-foundation/Carmen/go/database/mpt/io"
-	carmen "github.com/Fantom-foundation/Carmen/go/state"
+	cc "github.com/0xsoniclabs/carmen/go/common"
+	"github.com/0xsoniclabs/carmen/go/database/mpt"
+	"github.com/0xsoniclabs/carmen/go/database/mpt/io"
+	carmen "github.com/0xsoniclabs/carmen/go/state"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
 )

@@ -3,8 +3,8 @@ package emitter
 import (
 	"testing"
 
-	"github.com/Fantom-foundation/go-opera/gossip/emitter/mock"
-	"github.com/Fantom-foundation/go-opera/vecmt"
+	"github.com/0xsoniclabs/sonic/gossip/emitter/mock"
+	"github.com/0xsoniclabs/sonic/vecmt"
 	"github.com/Fantom-foundation/lachesis-base/emitter/ancestor"
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
