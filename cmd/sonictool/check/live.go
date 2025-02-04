@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/Fantom-foundation/Carmen/go/database/mpt"
-	"github.com/Fantom-foundation/Carmen/go/database/mpt/io"
-	carmen "github.com/Fantom-foundation/Carmen/go/state"
+	"github.com/0xsoniclabs/carmen/go/database/mpt"
+	"github.com/0xsoniclabs/carmen/go/database/mpt/io"
+	carmen "github.com/0xsoniclabs/carmen/go/state"
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
 	"github.com/ethereum/go-ethereum/log"

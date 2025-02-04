@@ -3,8 +3,8 @@ package valkeystore
 import (
 	"sync"
 
-	"github.com/Fantom-foundation/go-opera/inter/validatorpk"
-	"github.com/Fantom-foundation/go-opera/valkeystore/encryption"
+	"github.com/0xsoniclabs/sonic/inter/validatorpk"
+	"github.com/0xsoniclabs/sonic/valkeystore/encryption"
 )
 
 type SyncedKeystore struct {

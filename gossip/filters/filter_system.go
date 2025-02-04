@@ -25,7 +25,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Fantom-foundation/go-opera/evmcore"
+	"github.com/0xsoniclabs/sonic/evmcore"
 	ethereum "github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"

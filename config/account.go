@@ -3,7 +3,7 @@ package config
 import (
 	"fmt"
 
-	"github.com/Fantom-foundation/go-opera/utils/prompt"
+	"github.com/0xsoniclabs/sonic/utils/prompt"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/common"

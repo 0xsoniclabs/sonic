@@ -35,10 +35,10 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 
-	"github.com/Fantom-foundation/go-opera/gossip/gasprice/gaspricelimits"
-	"github.com/Fantom-foundation/go-opera/utils"
-	"github.com/Fantom-foundation/go-opera/utils/signers/gsignercache"
-	"github.com/Fantom-foundation/go-opera/utils/txtime"
+	"github.com/0xsoniclabs/sonic/gossip/gasprice/gaspricelimits"
+	"github.com/0xsoniclabs/sonic/utils"
+	"github.com/0xsoniclabs/sonic/utils/signers/gsignercache"
+	"github.com/0xsoniclabs/sonic/utils/txtime"
 )
 
 const (

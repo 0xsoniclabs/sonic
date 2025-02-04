@@ -7,7 +7,7 @@ import (
 	"math/rand/v2"
 	"testing"
 
-	"github.com/Fantom-foundation/go-opera/tests/contracts/counter_event_emitter"
+	"github.com/0xsoniclabs/sonic/tests/contracts/counter_event_emitter"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"

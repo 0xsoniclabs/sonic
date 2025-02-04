@@ -2,7 +2,7 @@ package config
 
 import (
 	"fmt"
-	"github.com/Fantom-foundation/go-opera/config/flags"
+	"github.com/0xsoniclabs/sonic/config/flags"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/nat"

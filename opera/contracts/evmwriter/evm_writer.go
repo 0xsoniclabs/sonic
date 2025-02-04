@@ -13,7 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 
-	"github.com/Fantom-foundation/go-opera/opera/contracts/driver"
+	"github.com/0xsoniclabs/sonic/opera/contracts/driver"
 )
 
 var (

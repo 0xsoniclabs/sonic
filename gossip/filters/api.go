@@ -21,7 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/Fantom-foundation/go-opera/evmcore"
+	"github.com/0xsoniclabs/sonic/evmcore"
 	"math/big"
 	"sync"
 	"time"
