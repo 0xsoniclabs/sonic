@@ -32,7 +32,7 @@ func (v versionNumber) String() string {
 		Patch: int(v>>16) & 0xffff,
 	}
 	if v&0xffff < 256 {
-		version.Meta = "pre"
+		version.PreRelease = "pre"
 	}
 	return version.String()
 }
