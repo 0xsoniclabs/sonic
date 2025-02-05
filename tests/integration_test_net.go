@@ -5,12 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"math/big"
-	"math/rand/v2"
-	"net"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -62,32 +61,7 @@ type IntegrationTestNet struct {
 	done                 <-chan struct{}
 	validator            Account
 	httpPort             int
-	wsPort               int
 	extraClientArguments []string
-}
-
-func isPortFree(host string, port int) bool {
-	address := fmt.Sprintf("%s:%d", host, port)
-	listener, err := net.Listen("tcp", address)
-	if err != nil {
-		return false
-	}
-	if err = listener.Close(); err != nil {
-		panic(fmt.Errorf("failed to close listener:%w", err))
-	}
-	return true
-}
-
-func getFreePort() (int, error) {
-	var port int
-	retries := 10
-	for i := 0; i < retries; i++ {
-		port = 1023 + (rand.Int()%math.MaxUint16 - 1023)
-		if isPortFree("127.0.0.1", port) {
-			return port, nil
-		}
-	}
-	return 0, fmt.Errorf("failed to find a free port after %d retries (last %d)", retries, port)
 }
 
 // StartIntegrationTestNet starts a single-node test network for integration tests.
@@ -227,26 +201,10 @@ func (n *IntegrationTestNet) start() error {
 		return errors.New("network already started")
 	}
 
-	// find free ports for the http-client, ws-client, and network interfaces
-	var err error
-	n.httpPort, err = getFreePort()
-	if err != nil {
-		return err
-	}
-	n.wsPort, err = getFreePort()
-	if err != nil {
-		return err
-	}
-	netPort, err := getFreePort()
-	if err != nil {
-		return err
-	}
-
+	httpEndpointAnnouncement := make(chan string)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		originalArgs := os.Args
-		defer func() { os.Args = originalArgs }()
 
 		// MacOS uses other temporary directories than Linux, which is a too long name for the Unix domain socket.
 		// Since /tmp is also available on MacOS, we can use it as a short temporary directory.
@@ -262,7 +220,7 @@ func (n *IntegrationTestNet) start() error {
 
 		// start the fakenet sonic node
 		// equivalent to running `sonicd ...` but in this local process
-		os.Args = append([]string{
+		args := append([]string{
 			"sonicd",
 
 			// data storage options
@@ -273,15 +231,15 @@ func (n *IntegrationTestNet) start() error {
 			"--fakenet", "1/1",
 
 			// http-client option
-			"--http", "--http.addr", "127.0.0.1", "--http.port", fmt.Sprint(n.httpPort),
+			"--http", "--http.addr", "127.0.0.1", "--http.port", "0",
 			"--http.api", "admin,eth,web3,net,txpool,ftm,trace,debug",
 
 			// websocket-client options
-			"--ws", "--ws.addr", "127.0.0.1", "--ws.port", fmt.Sprint(n.wsPort),
+			"--ws", "--ws.addr", "127.0.0.1", "--ws.port", "0",
 			"--ws.api", "admin,eth,ftm",
 
 			//  net options
-			"--port", fmt.Sprint(netPort),
+			"--port", "0",
 			"--nat", "none",
 			"--nodiscover",
 
@@ -297,12 +255,30 @@ func (n *IntegrationTestNet) start() error {
 			n.extraClientArguments...,
 		)
 
-		if err := sonicd.Run(); err != nil {
+		if err := sonicd.RunWithArgs(args, httpEndpointAnnouncement); err != nil {
 			panic(fmt.Sprint("Failed to start the fake network:", err))
 		}
 	}()
 
 	n.done = done
+
+	// wait for the HTTP endpoint announcement
+	endpoint, ok := <-httpEndpointAnnouncement
+	if !ok {
+		return errors.New("failed to start the network, no HTTP endpoint announced")
+	}
+
+	// Extract the HTTP port form the endpoint string.
+	pattern := regexp.MustCompile(`^http://.*:(\d+)$`)
+	match := pattern.FindStringSubmatch(endpoint)
+	if len(match) != 2 {
+		return fmt.Errorf("failed to parse the HTTP endpoint: %s", endpoint)
+	}
+	httpPort, err := strconv.Atoi(match[1])
+	if err != nil {
+		return fmt.Errorf("failed to parse the HTTP port %s: %w", endpoint, err)
+	}
+	n.httpPort = httpPort
 
 	// connect to blockchain network
 	client, err := n.GetClient()
@@ -498,7 +474,7 @@ func (n *IntegrationTestNet) GetClient() (*ethclient.Client, error) {
 // GetWebSocketClient provides raw access to a fresh connection to the network
 // using the WebSocket protocol. The resulting client must be closed after use.
 func (n *IntegrationTestNet) GetWebSocketClient() (*ethclient.Client, error) {
-	return ethclient.Dial(fmt.Sprintf("ws://localhost:%d", n.wsPort))
+	return ethclient.Dial(fmt.Sprintf("ws://localhost:%d", n.httpPort))
 }
 func (n *IntegrationTestNet) GetDirectory() string {
 	return n.directory

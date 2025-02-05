@@ -64,7 +64,7 @@ func (tt *testcli) readConfig() {
 func init() {
 	// Run the app if we've been exec'd as "opera-test" in exec().
 	reexec.Register("opera-test", func() {
-		initApp()
+		app := initApp()
 		initAppHelp()
 		if err := app.Run(os.Args); err != nil {
 			fmt.Fprintln(os.Stderr, err)

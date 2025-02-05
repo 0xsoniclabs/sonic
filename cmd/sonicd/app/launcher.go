@@ -32,9 +32,6 @@ import (
 )
 
 var (
-	// The app that holds all commands and flags.
-	app *cli.App
-
 	nodeFlags        []cli.Flag
 	testFlags        []cli.Flag
 	gpoFlags         []cli.Flag
@@ -165,12 +162,12 @@ func initFlags() {
 }
 
 // init the CLI app.
-func initApp() {
+func initApp() *cli.App {
 	discfilter.Enable()
 
 	initFlags()
 
-	app = cli.NewApp()
+	app := cli.NewApp()
 	app.Name = "sonicd"
 	app.Usage = "the Sonic network client"
 	app.Version = version.VersionWithCommit(config.GitCommit, config.GitDate)
@@ -210,12 +207,20 @@ func initApp() {
 		}
 		return nil
 	}
+	return app
 }
 
 // opera is the main entry point into the system if no special subcommand is ran.
 // It creates a default node based on the command line arguments and runs it in
 // blocking mode, waiting for it to be shut down.
 func lachesisMain(ctx *cli.Context) error {
+	return lachesisMainInternal(ctx, nil)
+}
+
+// lachesisMainInternal is an internal version of lachesisMain that allows for
+// an extra optional parameter to be used for announcing the HTTP port used by
+// the RPC server of the node.
+func lachesisMainInternal(ctx *cli.Context, httpPortAnnouncement chan<- string) error {
 	if args := ctx.Args(); len(args) > 0 {
 		return fmt.Errorf("invalid command: %q", args[0])
 	}
@@ -245,6 +250,11 @@ func lachesisMain(ctx *cli.Context) error {
 	if err := startNode(ctx, node); err != nil {
 		return fmt.Errorf("failed to start the node: %w", err)
 	}
+
+	if httpPortAnnouncement != nil {
+		httpPortAnnouncement <- node.HTTPEndpoint()
+	}
+
 	node.Wait()
 	return nil
 }
