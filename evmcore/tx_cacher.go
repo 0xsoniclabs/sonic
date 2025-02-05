@@ -20,7 +20,6 @@ import (
 	"runtime"
 
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/log"
 )
 
 // senderCacher is a concurrent transaction sender recoverer and cacher.
@@ -63,9 +62,9 @@ func newTxSenderCacher(threads int) *txSenderCacher {
 func (cacher *txSenderCacher) cache() {
 	for task := range cacher.tasks {
 		for i := 0; i < len(task.txs); i += task.inc {
-			if _, err := types.Sender(task.signer, task.txs[i]); err != nil {
-				log.Warn("Failed to recover sender", "err", err)
-			}
+			// we ignore this error because it's severity is not high enough to panic
+			// and reporting it would make the logs too noisy
+			_, _ = types.Sender(task.signer, task.txs[i])
 		}
 	}
 }
