@@ -62,8 +62,8 @@ func newTxSenderCacher(threads int) *txSenderCacher {
 func (cacher *txSenderCacher) cache() {
 	for task := range cacher.tasks {
 		for i := 0; i < len(task.txs); i += task.inc {
-			// we ignore this error because it's severity is not high enough to panic
-			// and reporting it would make the logs too noisy
+			// this error is ignored because we want to cache the sender if valid,
+			// and if not, it simply not cached
 			_, _ = types.Sender(task.signer, task.txs[i])
 		}
 	}
