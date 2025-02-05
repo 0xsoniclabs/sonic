@@ -248,6 +248,18 @@ func (n *IntegrationTestNet) start() error {
 		originalArgs := os.Args
 		defer func() { os.Args = originalArgs }()
 
+		// MacOS uses other temporary directories than Linux, which is a too long name for the Unix domain socket.
+		// Since /tmp is also available on MacOS, we can use it as a short temporary directory.
+		tmp, err := os.MkdirTemp("/tmp", "sonic_integration_test_*")
+		if err != nil {
+			panic(fmt.Sprintf("Failed to create temporary directory: %v", err))
+		}
+		defer func() {
+			if err := os.RemoveAll(tmp); err != nil {
+				fmt.Printf("Failed to remove temporary directory: %v\n", err)
+			}
+		}()
+
 		// start the fakenet sonic node
 		// equivalent to running `sonicd ...` but in this local process
 		os.Args = append([]string{
@@ -277,14 +289,15 @@ func (n *IntegrationTestNet) start() error {
 			"--statedb.livecache", "1",
 			"--statedb.archivecache", "1",
 			"--statedb.cache", "1024",
+
+			"--ipcpath", fmt.Sprintf("%s/sonic.ipc", tmp),
 		},
 
 			// append extra arguments
 			n.extraClientArguments...,
 		)
 
-		err := sonicd.Run()
-		if err != nil {
+		if err := sonicd.Run(); err != nil {
 			panic(fmt.Sprint("Failed to start the fake network:", err))
 		}
 	}()
