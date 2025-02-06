@@ -57,7 +57,7 @@ func (h *HandlerT) StopGoTrace() error {
 	defer h.mu.Unlock()
 	trace.Stop()
 	if h.traceW == nil {
-		return errors.New("trace not in progress")
+		return nil
 	}
 	log.Info("Done writing Go trace", "dump", h.traceFile)
 	if err := h.traceW.Close(); err != nil {
