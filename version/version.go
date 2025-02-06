@@ -7,6 +7,7 @@ package version
 
 import (
 	"fmt"
+	"regexp"
 )
 
 // Version information, to be manually updated for each named version.
@@ -22,15 +23,11 @@ const (
 	// version of 0.
 	Patch = 0
 
-	// The release-candidate version. This is set to 0 for official releases
-	// and on development branches.
-	ReleaseCandidate = 0
-
-	// Marks this version as a release version. This must only be set to true
-	// for official releases on a release branch. Unreleased versions are either
-	// release candidates with the meta `rcX` or development versions with the
-	// meta `dev`.
-	IsRelease = false
+	// The pre-release version. This is set to "dev" for development versions
+	// on the main branch and should be updated to "rcX" for release candidates
+	// on release branches only. For a final release, this must be set to an
+	// empty string. All other values are invalid.
+	PreRelease = "dev"
 )
 
 // Get returns the complete version information.
@@ -89,32 +86,30 @@ func (v Version) String() string {
 	return res
 }
 
+var preReleaseRE = regexp.MustCompile(`^(|dev|rc(\d+))$`)
+
 // makeVersion checks the version components for validity and returns a new
 // Version instance if valid.
-func makeVersion(major, minor, patch, rc int, released bool) (Version, error) {
-	if released && rc > 0 {
-		return Version{}, fmt.Errorf("invalid version: can not be both a release and a release candidate")
+func makeVersion(major, minor, patch int, preRelease string) (Version, error) {
+	if !preReleaseRE.MatchString(preRelease) {
+		return Version{}, fmt.Errorf("invalid version: invalid pre-release tag %q", preRelease)
 	}
-	if !released && rc == 0 && patch != 0 {
-		return Version{}, fmt.Errorf("invalid version: patch version must be 0 for development versions")
+	if preRelease == "dev" && patch != 0 {
+		return Version{}, fmt.Errorf("invalid version: development versions must have a patch version of 0")
 	}
-	_version := Version{
-		Major: major,
-		Minor: minor,
-		Patch: patch,
-	}
-	if rc > 0 {
-		_version.PreRelease = fmt.Sprintf("rc%d", rc)
-	} else if !released {
-		_version.PreRelease = "dev"
-	}
-	return _version, nil
+	return Version{
+		Major:      major,
+		Minor:      minor,
+		Patch:      patch,
+		PreRelease: preRelease,
+	}, nil
 }
 
 var _version Version
 
 func init() {
-	version, err := makeVersion(Major, Minor, Patch, ReleaseCandidate, IsRelease)
+	// Check that the version is valid at startup.
+	version, err := makeVersion(Major, Minor, Patch, PreRelease)
 	if err != nil {
 		panic(err)
 	}
