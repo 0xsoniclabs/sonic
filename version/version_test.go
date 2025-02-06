@@ -5,21 +5,20 @@ import "testing"
 func TestMakeVersion_AcceptValidVersionNumber(t *testing.T) {
 	tests := map[string]struct {
 		major, minor, patch int
-		rc                  int
-		released            bool
+		preRelease          string
 	}{
-		"1.2.3":     {major: 1, minor: 2, patch: 3, released: true},
-		"1.2.0-dev": {major: 1, minor: 2, released: false},
-		"1.2.3-rc4": {major: 1, minor: 2, patch: 3, rc: 4},
+		"1.2.3":     {major: 1, minor: 2, patch: 3},
+		"1.2.0-dev": {major: 1, minor: 2, preRelease: "dev"},
+		"1.2.3-rc4": {major: 1, minor: 2, patch: 3, preRelease: "rc4"},
 	}
 
 	for want, test := range tests {
-		version, err := makeVersion(test.major, test.minor, test.patch, test.rc, test.released)
+		version, err := makeVersion(test.major, test.minor, test.patch, test.preRelease)
 		if err != nil {
-			t.Errorf("makeVersion(%d, %d, %d, %d, %v) returned an error: %v", test.major, test.minor, test.patch, test.rc, test.released, err)
+			t.Errorf("version %s returned an error: %v", want, err)
 		}
 		if got := version.String(); got != want {
-			t.Errorf("makeVersion(%d, %d, %d, %d, %v) = %q, want %q", test.major, test.minor, test.patch, test.rc, test.released, got, want)
+			t.Errorf("version %s produces wrong result, got %q", want, got)
 		}
 	}
 }
@@ -27,16 +26,18 @@ func TestMakeVersion_AcceptValidVersionNumber(t *testing.T) {
 func TestMakeVersion_DetectsInvalidVersionNumber(t *testing.T) {
 	tests := map[string]struct {
 		major, minor, patch int
-		rc                  int
-		released            bool
+		preRelease          string
 	}{
-		"release of candidate":         {major: 1, minor: 2, patch: 3, rc: 1, released: true},
-		"patch version in development": {major: 1, minor: 2, patch: 3, released: false},
+		"invalid pre-release format":    {major: 1, minor: 2, patch: 3, preRelease: "xy"},
+		"invalid release candidate":     {major: 1, minor: 2, patch: 3, preRelease: "rc"},
+		"non-numeric release candidate": {major: 1, minor: 2, patch: 3, preRelease: "rcX"},
+		"negative release candidate":    {major: 1, minor: 2, patch: 3, preRelease: "rc-1"},
+		"patch version in development":  {major: 1, minor: 2, patch: 3, preRelease: "dev"},
 	}
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			_, err := makeVersion(test.major, test.minor, test.patch, test.rc, test.released)
+			_, err := makeVersion(test.major, test.minor, test.patch, test.preRelease)
 			if err == nil {
 				t.Errorf("expected an error, got nil")
 			}
