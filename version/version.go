@@ -1,57 +1,127 @@
+// This package tracks Sonic's version number. The version number follows
+// the Semantic Versioning 2.0.0 specification (https://semver.org/) with
+// the following possible pre-release tags:
+//   - `dev` for development versions
+//   - `rcX` for release candidates
 package version
 
 import (
 	"fmt"
+	"regexp"
 )
 
+// Version information, to be manually updated for each named version.
 const (
-	VersionMajor = 2     // Major version component of the current release
-	VersionMinor = 0     // Minor version component of the current release
-	VersionPatch = 2     // Patch version component of the current release
-	VersionMeta  = "dev" // Version metadata to append to the version string
+	// The major and minor version of this project. These are manually updated
+	// for each release. The main branch is always the next minor version
+	// compared to the latest release branch.
+	Major = 2
+	Minor = 1
+
+	// The patch version, which must only be non-zero for release candidates
+	// and official releases. All development versions must have a patch
+	// version of 0.
+	Patch = 0
+
+	// The pre-release version. This is set to "dev" for development versions
+	// on the main branch and should be updated to "rcX" for release candidates
+	// on release branches only. For a final release, this must be set to an
+	// empty string. All other values are invalid.
+	PreRelease = "dev"
 )
 
-// Version holds the textual version string.
-var Version = func() string {
-	return fmt.Sprintf("%d.%d.%d", VersionMajor, VersionMinor, VersionPatch)
-}()
+// Get returns the complete version information.
+func Get() Version {
+	return _version
+}
 
-// VersionWithMeta holds the textual version string including the metadata.
-var VersionWithMeta = func() string {
-	v := Version
-	if VersionMeta != "" {
-		v += "-" + VersionMeta
-	}
-	return v
-}()
+// String returns the version string.
+func String() string {
+	return Get().String()
+}
 
-func VersionWithCommit(gitCommit, gitDate string) string {
-	vsn := VersionWithMeta
+// StringWithCommit returns the version string with the commit hash and date.
+func StringWithCommit() string {
+	vsn := Get().String()
 	if len(gitCommit) >= 8 {
 		vsn += "-" + gitCommit[:8]
 	}
-	if (VersionMeta != "stable") && (gitDate != "") {
+	if gitDate != "" {
 		vsn += "-" + gitDate
 	}
 	return vsn
 }
 
-func AsString() string {
-	return ToString(uint16(VersionMajor), uint16(VersionMinor), uint16(VersionPatch))
+// GitCommit returns the commit hash if available. If not, the empty string
+// is returned.
+func GitCommit() string {
+	return gitCommit
 }
 
-func AsU64() uint64 {
-	return ToU64(uint16(VersionMajor), uint16(VersionMinor), uint16(VersionPatch))
+// GitDate returns the commit date if available. If not, the empty string
+// is returned.
+func GitDate() string {
+	return gitDate
 }
 
-func ToU64(vMajor, vMinor, vPatch uint16) uint64 {
-	return uint64(vMajor)*1e12 + uint64(vMinor)*1e6 + uint64(vPatch)
+// Version represents a version of the code.
+type Version struct {
+	Major      int
+	Minor      int
+	Patch      int
+	PreRelease string
 }
 
-func ToString(major, minor, patch uint16) string {
-	return fmt.Sprintf("%d.%d.%d", major, minor, patch)
+// IsRelease returns true if the version is a release version. It returns false
+// if the version has a meta string or is dirty.
+func (v Version) IsRelease() bool {
+	return v.PreRelease == ""
 }
 
-func U64ToString(v uint64) string {
-	return ToString(uint16((v/1e12)%1e6), uint16((v/1e6)%1e6), uint16(v%1e6))
+func (v Version) String() string {
+	res := fmt.Sprintf("%d.%d.%d", v.Major, v.Minor, v.Patch)
+	if v.PreRelease != "" {
+		res += "-" + v.PreRelease
+	}
+	return res
 }
+
+var preReleaseRE = regexp.MustCompile(`^(|dev|rc(\d+))$`)
+
+// makeVersion checks the version components for validity and returns a new
+// Version instance if valid.
+func makeVersion(major, minor, patch int, preRelease string) (Version, error) {
+	if !preReleaseRE.MatchString(preRelease) {
+		return Version{}, fmt.Errorf("invalid version: invalid pre-release tag %q", preRelease)
+	}
+	if preRelease == "dev" && patch != 0 {
+		return Version{}, fmt.Errorf("invalid version: development versions must have a patch version of 0")
+	}
+	return Version{
+		Major:      major,
+		Minor:      minor,
+		Patch:      patch,
+		PreRelease: preRelease,
+	}, nil
+}
+
+var _version Version
+
+func init() {
+	// Check that the version is valid at startup.
+	version, err := makeVersion(Major, Minor, Patch, PreRelease)
+	if err != nil {
+		panic(err)
+	}
+	_version = version
+}
+
+// -- set by linker flags --------------------------------------------
+
+var (
+	// gitCommit is the commit hash, set by the Makefile.
+	gitCommit = ""
+
+	// gitDate is the commit date, set by the Makefile.
+	gitDate = ""
+)

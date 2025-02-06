@@ -28,12 +28,12 @@ The output of this command is supposed to be machine-readable.
 
 func versionAction(ctx *cli.Context) error {
 	fmt.Println(config.ClientIdentifier)
-	fmt.Println("Version:", version.VersionWithMeta)
-	if config.GitCommit != "" {
-		fmt.Println("Git Commit:", config.GitCommit)
+	fmt.Println("Version:", version.String())
+	if commit := version.GitCommit(); commit != "" {
+		fmt.Println("Git Commit:", commit)
 	}
-	if config.GitDate != "" {
-		fmt.Println("Git Commit Date:", config.GitDate)
+	if date := version.GitDate(); date != "" {
+		fmt.Println("Git Commit Date:", date)
 	}
 	fmt.Println("Architecture:", runtime.GOARCH)
 	fmt.Println("Protocol Versions:", gossip.ProtocolVersions)

@@ -8,18 +8,22 @@ sonicd:
 	GIT_DATE=`git log -1 --date=short --pretty=format:%ct 2>/dev/null || echo ""` && \
 	GOPROXY=$(GOPROXY) \
 	go build \
-	    -ldflags "-s -w -X github.com/Fantom-foundation/go-opera/config.GitCommit=$${GIT_COMMIT} -X github.com/Fantom-foundation/go-opera/config.GitDate=$${GIT_DATE}" \
+	    -ldflags "-s -w -X github.com/0xsoniclabs/sonic/version.gitCommit=$${GIT_COMMIT} \
+				        -X github.com/0xsoniclabs/sonic/version.gitDate=$${GIT_DATE}" \
 	    -o build/sonicd \
-	    ./cmd/sonicd
+	    ./cmd/sonicd && \
+	    ./build/sonicd version
 
 sonictool:
 	GIT_COMMIT=`git rev-list -1 HEAD 2>/dev/null || echo ""` && \
 	GIT_DATE=`git log -1 --date=short --pretty=format:%ct 2>/dev/null || echo ""` && \
 	GOPROXY=$(GOPROXY) \
 	go build \
-	    -ldflags "-s -w -X github.com/Fantom-foundation/go-opera/config.GitCommit=$${GIT_COMMIT} -X github.com/Fantom-foundation/go-opera/config.GitDate=$${GIT_DATE}" \
+	    -ldflags "-s -w -X github.com/0xsoniclabs/sonic/version.gitCommit=$${GIT_COMMIT} \
+				        -X github.com/0xsoniclabs/sonic/version.gitDate=$${GIT_DATE}" \
 	    -o build/sonictool \
-	    ./cmd/sonictool
+	    ./cmd/sonictool && \
+	    ./build/sonictool --version
 
 TAG ?= "latest"
 .PHONY: sonic-image
