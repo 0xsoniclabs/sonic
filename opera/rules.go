@@ -10,10 +10,10 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	ethparams "github.com/ethereum/go-ethereum/params"
 
-	"github.com/0xsoniclabs/tosca/go/geth_adapter"
-	"github.com/0xsoniclabs/tosca/go/interpreter/lfvm"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera/contracts/evmwriter"
+	"github.com/0xsoniclabs/tosca/go/geth_adapter"
+	"github.com/0xsoniclabs/tosca/go/interpreter/lfvm"
 )
 
 const (
@@ -25,6 +25,7 @@ const (
 	londonBit              = 1 << 1
 	llrBit                 = 1 << 2
 	sonicBit               = 1 << 3
+	allegroBit             = 1 << 4
 
 	defaultMaxBlockGas          = 1_000_000_000
 	defaultTargetGasRate        = 15_000_000 // 15 MGas/s
@@ -208,10 +209,14 @@ type BlocksRules struct {
 }
 
 type Upgrades struct {
+	// -- Fantom Chain --
 	Berlin bool
 	London bool
 	Llr    bool
-	Sonic  bool
+
+	// -- Sonic Chain --
+	Sonic   bool // < launch version of the Sonic chain
+	Allegro bool // < first hard fork of the Sonic chain
 }
 
 type UpgradeHeight struct {

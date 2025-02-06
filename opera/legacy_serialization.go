@@ -96,6 +96,9 @@ func (u Upgrades) EncodeRLP(w io.Writer) error {
 	if u.Sonic {
 		bitmap.V |= sonicBit
 	}
+	if u.Allegro {
+		bitmap.V |= allegroBit
+	}
 	return rlp.Encode(w, &bitmap)
 }
 
@@ -112,6 +115,7 @@ func (u *Upgrades) DecodeRLP(s *rlp.Stream) error {
 	u.London = (bitmap.V & londonBit) != 0
 	u.Llr = (bitmap.V & llrBit) != 0
 	u.Sonic = (bitmap.V & sonicBit) != 0
+	u.Allegro = (bitmap.V & allegroBit) != 0
 	return nil
 }
 

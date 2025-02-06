@@ -34,6 +34,31 @@ func TestUpdateRules(t *testing.T) {
 	require.Error(err)
 }
 
+func TestUpdateRules_CanUpdateHardForks(t *testing.T) {
+	require := require.New(t)
+
+	rules := Rules{
+		Economy: EconomyRules{
+			MinGasPrice: big.NewInt(1),
+		},
+		Upgrades: Upgrades{
+			Berlin:  true,
+			London:  false,
+			Sonic:   true,
+			Allegro: false,
+		},
+	}
+
+	got, err := UpdateRules(rules, []byte(`{"Upgrades":{"Berlin":false,"London":true,"Sonic":false,"Allegro":true}}`))
+	require.NoError(err)
+	require.Equal(Upgrades{
+		Berlin:  false,
+		London:  true,
+		Sonic:   false,
+		Allegro: true,
+	}, got.Upgrades)
+}
+
 func TestMainNetRulesRLP(t *testing.T) {
 	rules := MainNetRules()
 	require := require.New(t)
@@ -47,36 +72,32 @@ func TestMainNetRulesRLP(t *testing.T) {
 	require.Equal(rules.String(), decodedRules.String())
 }
 
-func TestRulesBerlinRLP(t *testing.T) {
-	rules := MainNetRules()
-	rules.Upgrades.Berlin = true
+func TestUpgradesRLP_CanBeEncodedAndDecoded(t *testing.T) {
 	require := require.New(t)
+	setUpgrade := []func(*Upgrades){
+		func(u *Upgrades) { u.Berlin = true },
+		func(u *Upgrades) { u.London = true },
+		func(u *Upgrades) { u.Llr = true },
+		func(u *Upgrades) { u.Sonic = true },
+		func(u *Upgrades) { u.Allegro = true },
+	}
 
-	b, err := rlp.EncodeToBytes(rules)
-	require.NoError(err)
+	for mask := range 1 << len(setUpgrade) {
+		upgrades := Upgrades{}
+		for i, set := range setUpgrade {
+			if mask&(1<<i) != 0 {
+				set(&upgrades)
+			}
+		}
 
-	decodedRules := Rules{}
-	require.NoError(rlp.DecodeBytes(b, &decodedRules))
+		b, err := rlp.EncodeToBytes(upgrades)
+		require.NoError(err)
 
-	require.Equal(rules.String(), decodedRules.String())
-	require.True(decodedRules.Upgrades.Berlin)
-}
+		decodedUpgrades := Upgrades{}
+		require.NoError(rlp.DecodeBytes(b, &decodedUpgrades))
 
-func TestRulesLondonRLP(t *testing.T) {
-	rules := MainNetRules()
-	rules.Upgrades.London = true
-	rules.Upgrades.Berlin = true
-	require := require.New(t)
-
-	b, err := rlp.EncodeToBytes(rules)
-	require.NoError(err)
-
-	decodedRules := Rules{}
-	require.NoError(rlp.DecodeBytes(b, &decodedRules))
-
-	require.Equal(rules.String(), decodedRules.String())
-	require.True(decodedRules.Upgrades.Berlin)
-	require.True(decodedRules.Upgrades.London)
+		require.Equal(upgrades, decodedUpgrades)
+	}
 }
 
 func TestRulesBerlinCompatibilityRLP(t *testing.T) {
