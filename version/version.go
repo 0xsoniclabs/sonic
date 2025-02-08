@@ -86,12 +86,12 @@ func (v Version) String() string {
 	return res
 }
 
-var preReleaseRE = regexp.MustCompile(`^(|dev|rc(\d+))$`)
+var _preReleaseRE = regexp.MustCompile(`^(|dev|rc(\d+))$`)
 
 // makeVersion checks the version components for validity and returns a new
 // Version instance if valid.
 func makeVersion(major, minor, patch int, preRelease string) (Version, error) {
-	if !preReleaseRE.MatchString(preRelease) {
+	if !_preReleaseRE.MatchString(preRelease) {
 		return Version{}, fmt.Errorf("invalid version: invalid pre-release tag %q", preRelease)
 	}
 	if preRelease == "dev" && patch != 0 {
