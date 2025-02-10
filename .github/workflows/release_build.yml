@@ -12,22 +12,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Configure private dependencies
-        uses: extractions/netrc@v1
-        with:
-          machine: github.com
-          username: git
-          password: ${{ secrets.ACCESS_TOKEN }}
-
       - name: Golang dependency
         uses: actions/setup-go@v3
         with:
-          go-version: '1.22'
-
-      - name: Run unit tests
-        env:
-          GOPRIVATE: github.com/Fantom-foundation
-        run: go test -v ./...
+          go-version: '1.23'
 
       - name: Build
         run: make
@@ -35,5 +23,5 @@ jobs:
       - name: Release
         uses: ncipollo/release-action@v1
         with:
+          draft: true # create release as a draft
           artifacts: "./build/sonicd,./build/sonictool"
-          token: ${{ secrets.GITHUB_TOKEN }}

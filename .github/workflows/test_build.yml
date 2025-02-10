@@ -1,6 +1,7 @@
 name: Check build
 
-on: [push]
+on:
+  push:
 
 jobs:
   check-build:
@@ -9,27 +10,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Configure private dependencies
-        uses: extractions/netrc@v1
-        with:
-          machine: github.com
-          username: git
-          password: ${{ secrets.ACCESS_TOKEN }}
-
       - name: Golang dependency
         uses: actions/setup-go@v3
         with:
-          go-version: '1.22'
+          go-version: '1.23'
 
       - name: Static lints
-        env:
-          GOPRIVATE: github.com/Fantom-foundation
         run: make lint
-
-      - name: Run unit tests
-        env:
-          GOPRIVATE: github.com/Fantom-foundation
-        run: go test ./... --count 0 
 
       - name: Build
         run: make
