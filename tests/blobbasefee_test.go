@@ -3,6 +3,7 @@ package tests
 import (
 	"bytes"
 	"context"
+	"math/big"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/tests/contracts/blobbasefee"
@@ -61,7 +62,14 @@ func TestBlobBaseFee_CanReadBlobBaseFeeFromHeadAndBlockAndHistory(t *testing.T) 
 
 // helper functions to calculate blob base fee based on https://eips.ethereum.org/EIPS/eip-4844#gas-accounting
 func getBlobBaseFeeFrom(header *types.Header) uint64 {
-	return eip4844.CalcBlobFee(&params.ChainConfig{}, header).Uint64()
+	cancunTime := uint64(0)
+	config := &params.ChainConfig{}
+	config.LondonBlock = big.NewInt(0)
+	config.CancunTime = &cancunTime
+	config.BlobScheduleConfig = &params.BlobScheduleConfig{
+		Cancun: params.DefaultCancunBlobConfig,
+	}
+	return eip4844.CalcBlobFee(config, header).Uint64()
 }
 
 func TestBlobBaseFee_CanReadBlobGasUsed(t *testing.T) {
