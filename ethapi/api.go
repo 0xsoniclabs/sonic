@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"time"
 
@@ -45,8 +46,9 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/scwallet"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/common/math"
+	geth_math "github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -106,7 +108,7 @@ type feeHistoryResult struct {
 
 var errInvalidPercentile = errors.New("invalid reward percentile")
 
-func (s *PublicEthereumAPI) FeeHistory(ctx context.Context, blockCount math.HexOrDecimal64, lastBlock rpc.BlockNumber, rewardPercentiles []float64) (*feeHistoryResult, error) {
+func (s *PublicEthereumAPI) FeeHistory(ctx context.Context, blockCount geth_math.HexOrDecimal64, lastBlock rpc.BlockNumber, rewardPercentiles []float64) (*feeHistoryResult, error) {
 	res := &feeHistoryResult{}
 	res.Reward = make([][]*hexutil.Big, 0, blockCount)
 	res.BaseFee = make([]*hexutil.Big, 0, blockCount)
@@ -434,7 +436,7 @@ func (s *PrivateAccountAPI) UnlockAccount(ctx context.Context, addr common.Addre
 	// When the API is exposed by external RPC(http, ws etc), unless the user
 	// explicitly specifies to allow the insecure account unlocking, otherwise
 	// it is disabled.
-	if s.b.ExtRPCEnabled() && !s.b.AccountManager().Config().InsecureUnlockAllowed {
+	if s.b.ExtRPCEnabled() {
 		return false, errors.New("account unlock with HTTP access is forbidden")
 	}
 
@@ -985,7 +987,7 @@ func (diff *StateOverride) Apply(state state.StateDB) error {
 	for addr, account := range *diff {
 		// Override account nonce.
 		if account.Nonce != nil {
-			state.SetNonce(addr, uint64(*account.Nonce))
+			state.SetNonce(addr, uint64(*account.Nonce), tracing.NonceChangeUnspecified)
 		}
 		// Override account(contract) code.
 		if account.Code != nil {
@@ -2142,7 +2144,7 @@ func (api *PublicDebugAPI) traceTx(ctx context.Context, tx *types.Transaction, m
 			Stop:      logger.Stop,
 		}
 	} else {
-		tracer, err = tracers.DefaultDirectory.New(*config.Tracer, txctx, config.TracerConfig)
+		tracer, err = tracers.DefaultDirectory.New(*config.Tracer, txctx, config.TracerConfig, api.b.ChainConfig())
 		if err != nil {
 			return nil, err
 		}
@@ -2269,7 +2271,7 @@ func (api *PublicDebugAPI) traceBlock(ctx context.Context, block *evmcore.EvmBlo
 		}
 
 		results[i] = &txTraceResult{TxHash: tx.Hash(), Result: res}
-		statedb.Finalise()
+		statedb.EndTransaction()
 	}
 	return results, nil
 }
@@ -2316,7 +2318,7 @@ func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex in
 			return nil, nil, fmt.Errorf("transaction %#x failed: %v", tx.Hash(), err)
 		}
 		// Ensure any modifications are committed to the state
-		statedb.Finalise()
+		statedb.EndTransaction()
 	}
 	statedb.Release()
 	return nil, nil, fmt.Errorf("transaction index %d out of range for block %#x", txIndex, block.Hash)

@@ -333,10 +333,9 @@ func (b *EthAPIBackend) GetEVM(ctx context.Context, msg *core.Message, state vm.
 	if vmConfig == nil {
 		vmConfig = &opera.DefaultVMConfig
 	}
-	txContext := evmcore.NewEVMTxContext(msg)
 	context := evmcore.NewEVMBlockContext(header, b.state, nil)
 	config := b.ChainConfig()
-	return vm.NewEVM(context, txContext, state, config, *vmConfig), vmError, nil
+	return vm.NewEVM(context, state, config, *vmConfig), vmError, nil
 }
 
 func (b *EthAPIBackend) SendTx(ctx context.Context, signedTx *types.Transaction) error {

@@ -2,11 +2,12 @@ package integration
 
 import (
 	"fmt"
-	"github.com/0xsoniclabs/sonic/utils/dbutil"
 	"regexp"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/0xsoniclabs/sonic/utils/dbutil"
 
 	"github.com/Fantom-foundation/lachesis-base/kvdb"
 	"github.com/ethereum/go-ethereum/log"
@@ -26,9 +27,9 @@ type DBProducerWithMetrics struct {
 type StoreWithMetrics struct {
 	kvdb.Store
 
-	diskSizeGauge  metrics.Gauge // Gauge for tracking the size of all the levels in the database
-	diskReadMeter  metrics.Meter // Meter for measuring the effective amount of data read
-	diskWriteMeter metrics.Meter // Meter for measuring the effective amount of data written
+	diskSizeGauge  *metrics.Gauge // Gauge for tracking the size of all the levels in the database
+	diskReadMeter  *metrics.Meter // Meter for measuring the effective amount of data read
+	diskWriteMeter *metrics.Meter // Meter for measuring the effective amount of data written
 
 	quitLock sync.Mutex      // Mutex protecting the quit channel access
 	quitChan chan chan error // Quit channel to stop the metrics collection before closing the database

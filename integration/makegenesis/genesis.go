@@ -90,7 +90,7 @@ func (b *GenesisBuilder) SetNonce(acc common.Address, nonce uint64) {
 	if len(b.blocks) > 0 {
 		panic("cannot add nonce after block zero is finalized")
 	}
-	b.tmpStateDB.SetNonce(acc, nonce)
+	b.tmpStateDB.SetNonce(acc, nonce, tracing.NonceChangeGenesis)
 }
 
 func (b *GenesisBuilder) SetStorage(acc common.Address, key, val common.Hash) {
