@@ -453,11 +453,10 @@ func (env *testEnv) callContract(
 
 	// Create a new environment which holds all relevant information
 	// about the transaction and calling mechanisms.
-	txContext := evmcore.NewEVMTxContext(msg)
 	context := evmcore.NewEVMBlockContext(block.Header(), env.GetEvmStateReader(), nil)
-	vmenv := vm.NewEVM(context, txContext, state, env.store.GetEvmChainConfig(), opera.DefaultVMConfig)
+	vmenv := vm.NewEVM(context, state, env.store.GetEvmChainConfig(), opera.DefaultVMConfig)
 	gaspool := new(core.GasPool).AddGas(math.MaxUint64)
-	res, err := core.NewStateTransition(vmenv, msg, gaspool).TransitionDb()
+	res, err := core.ApplyMessage(vmenv, msg, gaspool)
 	if err != nil {
 		return nil, 0, false, err
 	}
@@ -533,16 +532,17 @@ func (env *testEnv) SubscribeFilterLogs(ctx context.Context, query ethereum.Filt
 // CallMsgToMessage converts the given CallMsg to an evmcore.Message to allow passing it as a transaction simulator.
 func CallMsgToMessage(msg ethereum.CallMsg) *core.Message {
 	return &core.Message{
-		From:              msg.From,
-		To:                msg.To,
-		GasPrice:          msg.GasPrice,
-		GasTipCap:         msg.GasTipCap,
-		GasFeeCap:         msg.GasFeeCap,
-		GasLimit:          msg.Gas,
-		Value:             msg.Value,
-		Nonce:             0,
-		SkipAccountChecks: true,
-		Data:              msg.Data,
-		AccessList:        msg.AccessList,
+		From:             msg.From,
+		To:               msg.To,
+		GasPrice:         msg.GasPrice,
+		GasTipCap:        msg.GasTipCap,
+		GasFeeCap:        msg.GasFeeCap,
+		GasLimit:         msg.Gas,
+		Value:            msg.Value,
+		Nonce:            0,
+		SkipNonceChecks:  true,
+		SkipFromEOACheck: true,
+		Data:             msg.Data,
+		AccessList:       msg.AccessList,
 	}
 }
