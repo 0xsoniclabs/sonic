@@ -5,54 +5,65 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/version"
-	"github.com/stretchr/testify/require"
 )
 
 func TestVersionNumber_AreOrderedFollowingSemanticVersioningRules(t *testing.T) {
+	cur := version.Version{}
 	versions := []version.Version{}
-	for major := range []int{0, 1, 2, 3} {
-		for minor := range []int{0, 1, 2, 3} {
-			for patch := range []int{0, 1, 2, 3} {
-				version := version.Version{Major: major, Minor: minor, Patch: patch, PreRelease: "pre"}
-				versions = append(versions, version)
-				version.PreRelease = ""
-				versions = append(versions, version)
+	for major := range 4 {
+		cur.Major = major
+		for minor := range 4 {
+			cur.Minor = minor
+			for patch := range 4 {
+				cur.Patch = patch
+
+				// The develop version is the lowest in the version order.
+				cur.ReleaseCandidate = 0
+				cur.IsDevelopment = true
+				versions = append(versions, cur)
+
+				// Release candidates are the next higher in the version order.
+				for rc := range 4 {
+					cur.ReleaseCandidate = uint8(rc + 1)
+					cur.IsDevelopment = false
+					versions = append(versions, cur)
+				}
+
+				// Release versions are the highest in the version order.
+				cur.ReleaseCandidate = 0
+				versions = append(versions, cur)
 			}
 		}
 	}
 
 	for i := range len(versions) - 1 {
-		if toVersionNumber(versions[i]) > toVersionNumber(versions[i+1]) {
-			t.Errorf("%s > %s", versions[i], versions[i+1])
+		a := toVersionNumber(versions[i])
+		b := toVersionNumber(versions[i+1])
+		if !(a < b) {
+			t.Errorf("unexpected result, %s < %s (%d.%d.%d.%d < %d.%d.%d.%d) does not hold",
+				versions[i], versions[i+1],
+				(a>>48)&0xffff, (a>>32)&0xffff, (a>>16)&0xffff, (a>>0)&0xffff,
+				(b>>48)&0xffff, (b>>32)&0xffff, (b>>16)&0xffff, (b>>0)&0xffff,
+			)
 		}
 	}
 }
 
-func TestVersionNumber_toVersionNumber_AnyMetaTagIsTreatedEquivalent(t *testing.T) {
-	version1 := version.Version{PreRelease: "alpha"}
-	version2 := version.Version{PreRelease: "beta"}
-	require.Equal(t, toVersionNumber(version1), toVersionNumber(version2))
-}
-
-func TestVersionNumber_ReleasesAreHigherThanVersionsWithMetaData(t *testing.T) {
-	release := version.Version{}
-	prerelease := version.Version{PreRelease: "some-meta"}
-	require.Less(t, toVersionNumber(prerelease), toVersionNumber(release))
-}
-
 func TestVersionNumber_PrintedInHumanReadableFormat(t *testing.T) {
 	tests := map[versionNumber]string{
-		0:                "0.0.0-pre",
-		0x0001 << 48:     "1.0.0-pre",
-		0x0001 << 32:     "0.1.0-pre",
-		0x0001 << 16:     "0.0.1-pre",
-		1:                "0.0.0-pre",
-		255:              "0.0.0-pre",
-		256:              "0.0.0",
-		257:              "0.0.0",
-		0x0001<<48 | 256: "1.0.0",
-		0x0001<<32 | 256: "0.1.0",
-		0x0001<<16 | 256: "0.0.1",
+		0:                           "0.0.0-dev",
+		1:                           "0.0.0-rc1",
+		2:                           "0.0.0-rc2",
+		255:                         "0.0.0-rc255",
+		256:                         "0.0.0",
+		257:                         "0.0.0",
+		0xffff:                      "0.0.0",
+		1 << 48:                     "1.0.0-dev",
+		1<<48 | 5:                   "1.0.0-rc5",
+		1<<48 | 256:                 "1.0.0",
+		1<<48 | 2<<32 | 3<<16:       "1.2.3-dev",
+		1<<48 | 2<<32 | 3<<16 | 17:  "1.2.3-rc17",
+		1<<48 | 2<<32 | 3<<16 | 256: "1.2.3",
 	}
 
 	for v, want := range tests {

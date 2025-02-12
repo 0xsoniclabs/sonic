@@ -1,15 +1,18 @@
 package version
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestMakeVersion_AcceptValidVersionNumber(t *testing.T) {
 	tests := map[string]struct {
 		major, minor, patch int
 		preRelease          string
 	}{
-		"1.2.3":     {major: 1, minor: 2, patch: 3},
-		"1.2.0-dev": {major: 1, minor: 2, preRelease: "dev"},
-		"1.2.3-rc4": {major: 1, minor: 2, patch: 3, preRelease: "rc4"},
+		"1.2.3":       {major: 1, minor: 2, patch: 3},
+		"1.2.0-dev":   {major: 1, minor: 2, preRelease: "dev"},
+		"1.2.3-rc4":   {major: 1, minor: 2, patch: 3, preRelease: "rc4"},
+		"1.2.3-rc255": {major: 1, minor: 2, patch: 3, preRelease: "rc255"},
 	}
 
 	for want, test := range tests {
@@ -28,11 +31,13 @@ func TestMakeVersion_DetectsInvalidVersionNumber(t *testing.T) {
 		major, minor, patch int
 		preRelease          string
 	}{
-		"invalid pre-release format":    {major: 1, minor: 2, patch: 3, preRelease: "xy"},
-		"invalid release candidate":     {major: 1, minor: 2, patch: 3, preRelease: "rc"},
-		"non-numeric release candidate": {major: 1, minor: 2, patch: 3, preRelease: "rcX"},
-		"negative release candidate":    {major: 1, minor: 2, patch: 3, preRelease: "rc-1"},
-		"patch version in development":  {major: 1, minor: 2, patch: 3, preRelease: "dev"},
+		"invalid pre-release format":        {major: 1, minor: 2, patch: 3, preRelease: "xy"},
+		"invalid release candidate":         {major: 1, minor: 2, patch: 3, preRelease: "rc"},
+		"non-numeric release candidate":     {major: 1, minor: 2, patch: 3, preRelease: "rcX"},
+		"negative release candidate":        {major: 1, minor: 2, patch: 3, preRelease: "rc-1"},
+		"release candidate 0":               {major: 1, minor: 2, patch: 3, preRelease: "rc0"},
+		"release candidate exceeding 8-bit": {major: 1, minor: 2, patch: 3, preRelease: "rc256"},
+		"patch version in development":      {major: 1, minor: 2, patch: 3, preRelease: "dev"},
 	}
 
 	for name, test := range tests {

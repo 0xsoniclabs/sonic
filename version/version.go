@@ -8,6 +8,7 @@ package version
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 )
 
 // Version information, to be manually updated for each named version.
@@ -66,22 +67,26 @@ func GitDate() string {
 
 // Version represents a version of the code.
 type Version struct {
-	Major      int
-	Minor      int
-	Patch      int
-	PreRelease string
+	Major            int
+	Minor            int
+	Patch            int
+	ReleaseCandidate uint8 // 0 for release versions, >0 for release candidates
+	IsDevelopment    bool  // true for development versions
 }
 
 // IsRelease returns true if the version is a release version. It returns false
 // if the version has a meta string or is dirty.
 func (v Version) IsRelease() bool {
-	return v.PreRelease == ""
+	return !v.IsDevelopment && v.ReleaseCandidate == 0
 }
 
 func (v Version) String() string {
 	res := fmt.Sprintf("%d.%d.%d", v.Major, v.Minor, v.Patch)
-	if v.PreRelease != "" {
-		res += "-" + v.PreRelease
+	if v.ReleaseCandidate > 0 {
+		res += fmt.Sprintf("-rc%d", v.ReleaseCandidate)
+	}
+	if v.IsDevelopment {
+		res += "-dev"
 	}
 	return res
 }
@@ -94,14 +99,27 @@ func makeVersion(major, minor, patch int, preRelease string) (Version, error) {
 	if !_preReleaseRE.MatchString(preRelease) {
 		return Version{}, fmt.Errorf("invalid version: invalid pre-release tag %q", preRelease)
 	}
-	if preRelease == "dev" && patch != 0 {
+	isDevelopment := preRelease == "dev"
+	if isDevelopment && patch != 0 {
 		return Version{}, fmt.Errorf("invalid version: development versions must have a patch version of 0")
 	}
+	rcNumber := uint8(0)
+	if !isDevelopment && len(preRelease) > 0 {
+		number, err := strconv.ParseUint(preRelease[2:], 10, 8)
+		if err != nil {
+			return Version{}, fmt.Errorf("invalid version: invalid release candidate tag %q", preRelease)
+		}
+		if number <= 0 {
+			return Version{}, fmt.Errorf("invalid version: release candidate number must be >0")
+		}
+		rcNumber = uint8(number)
+	}
 	return Version{
-		Major:      major,
-		Minor:      minor,
-		Patch:      patch,
-		PreRelease: preRelease,
+		Major:            major,
+		Minor:            minor,
+		Patch:            patch,
+		ReleaseCandidate: rcNumber,
+		IsDevelopment:    isDevelopment,
 	}, nil
 }
 
