@@ -2,7 +2,7 @@ package utils
 
 import "math/big"
 
-// BigMin returns the smaller of the provided big.Ints.
+// BigMin returns the smallest of the provided big.Ints.
 // None of the arguments must be nil. If no arguments
 // are provided, nil is returned.
 func BigMin(values ...*big.Int) *big.Int {
