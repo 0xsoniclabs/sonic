@@ -30,6 +30,7 @@ import (
 	lru "github.com/hashicorp/golang-lru"
 
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/utils"
 
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
@@ -132,18 +133,15 @@ func (gpo *Oracle) Stop() {
 func (gpo *Oracle) suggestTip(certainty uint64) *big.Int {
 	minPrice := gpo.backend.GetRules().Economy.MinGasPrice
 	pendingMinPrice := gpo.backend.GetPendingRules().Economy.MinGasPrice
-	adjustedMinGasPrice := math.BigMax(minPrice, pendingMinPrice)
+	adjustedMinGasPrice := utils.BigMax(minPrice, pendingMinPrice)
 
 	reactive := gpo.reactiveGasPrice(certainty)
 	constructive := gpo.constructiveGasPrice(gpo.c.totalGas(), 0.005*DecimalUnit+certainty/25, adjustedMinGasPrice)
 
-	combined := math.BigMax(reactive, constructive)
-	if combined.Cmp(gpo.cfg.MinGasPrice) < 0 {
-		combined = gpo.cfg.MinGasPrice
-	}
-	if combined.Cmp(gpo.cfg.MaxGasPrice) > 0 {
-		combined = gpo.cfg.MaxGasPrice
-	}
+	combined := utils.BigMin(
+		utils.BigMax(gpo.cfg.MinGasPrice, reactive, constructive),
+		gpo.cfg.MaxGasPrice,
+	)
 
 	tip := new(big.Int).Sub(combined, minPrice)
 	minGasTip := gpo.backend.MinGasTip()
