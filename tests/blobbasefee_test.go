@@ -3,6 +3,7 @@ package tests
 import (
 	"bytes"
 	"context"
+	"math/big"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/tests/contracts/blobbasefee"
@@ -10,6 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/stretchr/testify/require"
 )
@@ -60,11 +62,14 @@ func TestBlobBaseFee_CanReadBlobBaseFeeFromHeadAndBlockAndHistory(t *testing.T) 
 
 // helper functions to calculate blob base fee based on https://eips.ethereum.org/EIPS/eip-4844#gas-accounting
 func getBlobBaseFeeFrom(header *types.Header) uint64 {
-	excessBlobGas := uint64(0)
-	if header.ExcessBlobGas != nil {
-		excessBlobGas = uint64(*header.ExcessBlobGas)
+	cancunTime := uint64(0)
+	config := &params.ChainConfig{}
+	config.LondonBlock = big.NewInt(0)
+	config.CancunTime = &cancunTime
+	config.BlobScheduleConfig = &params.BlobScheduleConfig{
+		Cancun: params.DefaultCancunBlobConfig,
 	}
-	return eip4844.CalcBlobFee(excessBlobGas).Uint64()
+	return eip4844.CalcBlobFee(config, header).Uint64()
 }
 
 func TestBlobBaseFee_CanReadBlobGasUsed(t *testing.T) {

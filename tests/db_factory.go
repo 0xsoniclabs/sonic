@@ -22,14 +22,14 @@ func (f carmenFactory) NewTestStateDB(accounts types.GenesisAlloc) tests.StateTe
 	statedb := evmstore.CreateCarmenStateDb(carmenstatedb)
 	for addr, a := range accounts {
 		statedb.SetCode(addr, a.Code)
-		statedb.SetNonce(addr, a.Nonce)
+		statedb.SetNonce(addr, a.Nonce, tracing.NonceChangeUnspecified)
 		statedb.SetBalance(addr, uint256.MustFromBig(a.Balance))
 		for k, v := range a.Storage {
 			statedb.SetState(addr, k, v)
 		}
 	}
 	// Commit and re-open to start with a clean state.
-	statedb.Finalise()
+	statedb.EndTransaction()
 	statedb.EndBlock(0)
 	statedb.GetStateHash()
 
@@ -68,9 +68,9 @@ func (c *carmenStateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 }
 
 // Commit ends transaction, ends block, and returns the state hash.
-func (c *carmenStateDB) Commit(block uint64, deleteEmptyObjects bool) (common.Hash, error) {
+func (c *carmenStateDB) Commit(block uint64, deleteEmptyObjects bool, noStorageWiping bool) (common.Hash, error) {
 	c.logs = c.CarmenStateDB.Logs() // backup logs, they are deleted on committing a tx/block
-	c.CarmenStateDB.Finalise()
+	c.CarmenStateDB.EndTransaction()
 	c.CarmenStateDB.EndBlock(block)
 	return c.CarmenStateDB.GetStateHash(), nil
 }

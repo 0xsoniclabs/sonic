@@ -8,8 +8,8 @@ import (
 
 // Gauge represents an exponentially-weighted moving average of given values
 type Gauge struct {
-	input metrics.Meter
-	count metrics.Meter
+	input *metrics.Meter
+	count *metrics.Meter
 	max   int64
 }
 
@@ -17,8 +17,8 @@ type Gauge struct {
 // Be sure to call Stop() once the meter is of no use to allow for garbage collection.
 func NewGauge() *Gauge {
 	return &Gauge{
-		input: metrics.NewMeterForced(),
-		count: metrics.NewMeterForced(),
+		input: metrics.NewMeter(),
+		count: metrics.NewMeter(),
 	}
 }
 

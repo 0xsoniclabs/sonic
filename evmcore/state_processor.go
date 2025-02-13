@@ -69,7 +69,7 @@ func (p *StateProcessor) Process(
 		header       = block.Header()
 		time         = uint64(block.Time.Unix())
 		blockContext = NewEVMBlockContext(header, p.bc, nil)
-		vmenv        = vm.NewEVM(blockContext, vm.TxContext{}, statedb, p.config, cfg)
+		vmenv        = vm.NewEVM(blockContext, statedb, p.config, cfg)
 		blockNumber  = block.Number
 		signer       = gsignercache.Wrap(types.MakeSigner(p.config, header.Number, time))
 	)
@@ -111,7 +111,7 @@ func ApplyTransactionWithEVM(msg *core.Message, config *params.ChainConfig, gp *
 	}
 	// Create a new context to be used in the EVM environment.
 	txContext := NewEVMTxContext(msg)
-	evm.Reset(txContext, statedb)
+	evm.SetTxContext(txContext)
 
 	// Apply the transaction to the current state (included in the env).
 	result, err := core.ApplyMessage(evm, msg, gp)
@@ -120,7 +120,7 @@ func ApplyTransactionWithEVM(msg *core.Message, config *params.ChainConfig, gp *
 	}
 
 	// Update the state with pending changes.
-	statedb.Finalise()
+	statedb.EndTransaction()
 	*usedGas += result.UsedGas
 
 	// Create a new receipt for the transaction, storing the intermediate root and gas used
@@ -173,10 +173,10 @@ func applyTransaction(
 ) {
 	// Create a new context to be used in the EVM environment.
 	txContext := NewEVMTxContext(msg)
-	evm.Reset(txContext, statedb)
+	evm.SetTxContext(txContext)
 
 	// Skip checking of base fee limits for internal transactions.
-	evm.Config.NoBaseFee = msg.SkipAccountChecks
+	evm.Config.NoBaseFee = msg.SkipNonceChecks
 
 	// For now, Sonic only supports Blob transactions without blob data.
 	if msg.BlobHashes != nil {
@@ -203,7 +203,7 @@ func applyTransaction(
 	}
 
 	// Update the state with pending changes.
-	statedb.Finalise()
+	statedb.EndTransaction()
 	*usedGas += result.UsedGas
 
 	// Create a new receipt for the transaction, storing the intermediate root and gas used
@@ -235,19 +235,20 @@ func TxAsMessage(tx *types.Transaction, signer types.Signer, baseFee *big.Int) (
 		return core.TransactionToMessage(tx, signer, baseFee)
 	} else {
 		return &core.Message{ // internal tx - no signature checking
-			From:              internaltx.InternalSender(tx),
-			To:                tx.To(),
-			Nonce:             tx.Nonce(),
-			Value:             tx.Value(),
-			GasLimit:          tx.Gas(),
-			GasPrice:          tx.GasPrice(),
-			GasFeeCap:         tx.GasFeeCap(),
-			GasTipCap:         tx.GasTipCap(),
-			Data:              tx.Data(),
-			AccessList:        tx.AccessList(),
-			BlobGasFeeCap:     tx.BlobGasFeeCap(),
-			BlobHashes:        tx.BlobHashes(),
-			SkipAccountChecks: true, // don't check sender nonce and being EOA
+			From:             internaltx.InternalSender(tx),
+			To:               tx.To(),
+			Nonce:            tx.Nonce(),
+			Value:            tx.Value(),
+			GasLimit:         tx.Gas(),
+			GasPrice:         tx.GasPrice(),
+			GasFeeCap:        tx.GasFeeCap(),
+			GasTipCap:        tx.GasTipCap(),
+			Data:             tx.Data(),
+			AccessList:       tx.AccessList(),
+			BlobGasFeeCap:    tx.BlobGasFeeCap(),
+			BlobHashes:       tx.BlobHashes(),
+			SkipNonceChecks:  true, // don't check sender nonce and being EOA
+			SkipFromEOACheck: true,
 		}, nil
 	}
 }

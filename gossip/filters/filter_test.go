@@ -33,6 +33,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/ethereum/go-ethereum/ethdb/leveldb"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/triedb"
 )
@@ -56,7 +57,13 @@ func BenchmarkFilters(b *testing.B) {
 	dir := b.TempDir()
 
 	backend := newTestBackend()
-	ldb, err := rawdb.NewLevelDBDatabase(path.Join(dir, "backend-db"), 100, 1000, "", false)
+
+	db, err := leveldb.New(path.Join(dir, "backend-db"), 100, 1000, "", false)
+	if err != nil {
+		b.Fatal(err)
+	}
+	ldb := rawdb.NewDatabase(db)
+
 	if err != nil {
 		b.Fatal(err)
 	}

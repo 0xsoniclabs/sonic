@@ -1,12 +1,13 @@
 package evmstore
 
 import (
+	"math/big"
+
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/holiman/uint256"
-	"math/big"
 )
 
 func WrapStateDbWithLogger(stateDb state.StateDB, logger *tracing.Hooks) state.StateDB {
@@ -19,49 +20,49 @@ func WrapStateDbWithLogger(stateDb state.StateDB, logger *tracing.Hooks) state.S
 
 type LoggingStateDB struct {
 	state.StateDB
-	logger *tracing.Hooks
+	logger         *tracing.Hooks
 	selfDestructed map[common.Address]struct{}
 }
 
-func (l *LoggingStateDB) AddBalance(addr common.Address, amount *uint256.Int, reason tracing.BalanceChangeReason) {
-	prev := l.StateDB.GetBalance(addr)
-	l.StateDB.AddBalance(addr, amount, reason)
+func (l *LoggingStateDB) AddBalance(addr common.Address, amount *uint256.Int, reason tracing.BalanceChangeReason) uint256.Int {
+	prev := l.StateDB.AddBalance(addr, amount, reason)
 	if l.logger.OnBalanceChange != nil && !amount.IsZero() {
 		l.logger.OnBalanceChange(addr, prev.ToBig(), l.StateDB.GetBalance(addr).ToBig(), reason)
 	}
+	return prev
 }
 
-func (l *LoggingStateDB) SubBalance(addr common.Address, amount *uint256.Int, reason tracing.BalanceChangeReason) {
-	prev := l.StateDB.GetBalance(addr)
-	l.StateDB.SubBalance(addr, amount, reason)
+func (l *LoggingStateDB) SubBalance(addr common.Address, amount *uint256.Int, reason tracing.BalanceChangeReason) uint256.Int {
+	prev := l.StateDB.SubBalance(addr, amount, reason)
 	if l.logger.OnBalanceChange != nil && !amount.IsZero() {
 		l.logger.OnBalanceChange(addr, prev.ToBig(), l.StateDB.GetBalance(addr).ToBig(), reason)
 	}
+	return prev
 }
 
-func (l *LoggingStateDB) SetCode(addr common.Address, code []byte) {
-	prevCode := l.StateDB.GetCode(addr)
+func (l *LoggingStateDB) SetCode(addr common.Address, code []byte) []byte {
 	prevCodeHash := l.StateDB.GetCodeHash(addr)
-	l.StateDB.SetCode(addr, code)
+	prevCode := l.StateDB.SetCode(addr, code)
 	if l.logger.OnCodeChange != nil {
 		l.logger.OnCodeChange(addr, prevCodeHash, prevCode, l.StateDB.GetCodeHash(addr), code)
 	}
+	return prevCode
 }
 
-func (l *LoggingStateDB) SetNonce(addr common.Address, nonce uint64) {
+func (l *LoggingStateDB) SetNonce(addr common.Address, nonce uint64, reason tracing.NonceChangeReason) {
 	if l.logger.OnNonceChange != nil {
 		prev := l.StateDB.GetNonce(addr)
 		l.logger.OnNonceChange(addr, prev, nonce)
 	}
-	l.StateDB.SetNonce(addr, nonce)
+	l.StateDB.SetNonce(addr, nonce, reason)
 }
 
-func (l *LoggingStateDB) SetState(addr common.Address, slot common.Hash, value common.Hash) {
+func (l *LoggingStateDB) SetState(addr common.Address, slot common.Hash, value common.Hash) common.Hash {
+	prev := l.StateDB.SetState(addr, slot, value)
 	if l.logger.OnStorageChange != nil {
-		prev := l.StateDB.GetState(addr, slot)
 		l.logger.OnStorageChange(addr, slot, prev, value)
 	}
-	l.StateDB.SetState(addr, slot, value)
+	return prev
 }
 
 func (l *LoggingStateDB) AddLog(log *types.Log) {
@@ -71,7 +72,7 @@ func (l *LoggingStateDB) AddLog(log *types.Log) {
 	l.StateDB.AddLog(log)
 }
 
-func (l *LoggingStateDB) SelfDestruct(addr common.Address) {
+func (l *LoggingStateDB) SelfDestruct(addr common.Address) uint256.Int {
 	if l.logger.OnBalanceChange != nil {
 		prev := l.StateDB.GetBalance(addr)
 		if prev.Sign() > 0 {
@@ -79,10 +80,10 @@ func (l *LoggingStateDB) SelfDestruct(addr common.Address) {
 		}
 		l.selfDestructed[addr] = struct{}{}
 	}
-	l.StateDB.SelfDestruct(addr)
+	return l.StateDB.SelfDestruct(addr)
 }
 
-func (l *LoggingStateDB) Finalise() {
+func (l *LoggingStateDB) EndTransaction() {
 	// If tokens were sent to account post-selfdestruct it is burnt.
 	if l.logger.OnBalanceChange != nil {
 		for addr := range l.selfDestructed {
@@ -93,5 +94,5 @@ func (l *LoggingStateDB) Finalise() {
 		}
 		l.selfDestructed = make(map[common.Address]struct{})
 	}
-	l.StateDB.Finalise()
+	l.StateDB.EndTransaction()
 }

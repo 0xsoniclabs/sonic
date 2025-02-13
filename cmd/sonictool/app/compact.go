@@ -62,7 +62,7 @@ func compactDB(name string, producer kvdb.DBProducer) (err error) {
 	return nil
 }
 
-func showDbStats(db ethdb.Stater) {
+func showDbStats(db ethdb.KeyValueStater) {
 	if stats, err := db.Stat(); err != nil {
 		log.Warn("Failed to read database stats", "error", err)
 	} else {

@@ -38,7 +38,7 @@ func GetRawDbProducer(chaindataDir string, cfg DBCacheConfig) kvdb.IterableDBPro
 
 	rawProducer := dbcounter.Wrap(pebble.NewProducer(chaindataDir, cacher), true)
 
-	if metrics.Enabled {
+	if metrics.Enabled() {
 		rawProducer = WrapDatabaseWithMetrics(rawProducer)
 	}
 	return rawProducer

@@ -197,7 +197,7 @@ func (PreCompiledContract) Run(stateDB vm.StateDB, _ vm.BlockContext, txCtx vm.T
 			return nil, 0, vm.ErrExecutionReverted
 		}
 
-		stateDB.SetNonce(acc, stateDB.GetNonce(acc)+value.Uint64())
+		stateDB.SetNonce(acc, stateDB.GetNonce(acc)+value.Uint64(), tracing.NonceChangeUnspecified)
 	} else {
 		return nil, 0, vm.ErrExecutionReverted
 	}

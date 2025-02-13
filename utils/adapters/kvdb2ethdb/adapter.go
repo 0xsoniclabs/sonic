@@ -1,6 +1,8 @@
 package kvdb2ethdb
 
 import (
+	"bytes"
+
 	"github.com/Fantom-foundation/lachesis-base/kvdb"
 	"github.com/ethereum/go-ethereum/ethdb"
 )
@@ -41,4 +43,20 @@ func (db *Adapter) NewBatchWithSize(int) ethdb.Batch {
 // initial key (or after, if it does not exist).
 func (db *Adapter) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
 	return db.Store.NewIterator(prefix, start)
+}
+
+// DeleteRange deletes all of the keys (and values) in the range [start,end).
+func (db *Adapter) DeleteRange(start, end []byte) error {
+	iter := db.Store.NewIterator(nil, start)
+	defer iter.Release()
+	for iter.Next() {
+		key := iter.Key()
+		if bytes.Compare(key, end) >= 0 {
+			break
+		}
+		if err := db.Store.Delete(key); err != nil {
+			return err
+		}
+	}
+	return nil
 }

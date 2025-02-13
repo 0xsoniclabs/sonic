@@ -249,8 +249,7 @@ func TestEstimateGas(t *testing.T) {
 		blockCtx := vm.BlockContext{
 			Transfer: vm.TransferFunc(func(sd vm.StateDB, a1, a2 common.Address, i *uint256.Int) {}),
 		}
-		txCtx := vm.TxContext{}
-		return vm.NewEVM(blockCtx, txCtx, mockState, &opera.BaseChainConfig, opera.DefaultVMConfig), func() error { return nil }, nil
+		return vm.NewEVM(blockCtx, mockState, &opera.BaseChainConfig, opera.DefaultVMConfig), func() error { return nil }, nil
 	}
 
 	any := gomock.Any()
@@ -263,7 +262,7 @@ func TestEstimateGas(t *testing.T) {
 	mockState.EXPECT().AddBalance(any, any, any).AnyTimes()
 	mockState.EXPECT().Prepare(any, any, any, any, any, any).AnyTimes()
 	mockState.EXPECT().GetNonce(any).Return(uint64(0)).AnyTimes()
-	mockState.EXPECT().SetNonce(any, any).AnyTimes()
+	mockState.EXPECT().SetNonce(any, any, any).AnyTimes()
 	mockState.EXPECT().Snapshot().AnyTimes()
 	mockState.EXPECT().Exist(any).Return(true).AnyTimes()
 	mockState.EXPECT().Release().AnyTimes()
