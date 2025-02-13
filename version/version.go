@@ -2,7 +2,7 @@
 // the Semantic Versioning 2.0.0 specification (https://semver.org/) with
 // the following possible pre-release tags:
 //   - `dev` for development versions
-//   - `rcX` for release candidates
+//   - `rc.X` for release candidates, where X is a numeric value
 package version
 
 import (
@@ -25,7 +25,7 @@ const (
 	Patch = 0
 
 	// The pre-release version. This is set to "dev" for development versions
-	// on the main branch and should be updated to "rcX" for release candidates
+	// on the main branch and should be updated to "rc.X" for release candidates
 	// on release branches only. For a final release, this must be set to an
 	// empty string. All other values are invalid.
 	PreRelease = "dev"
@@ -83,7 +83,7 @@ func (v Version) IsRelease() bool {
 func (v Version) String() string {
 	res := fmt.Sprintf("%d.%d.%d", v.Major, v.Minor, v.Patch)
 	if v.ReleaseCandidate > 0 {
-		res += fmt.Sprintf("-rc%d", v.ReleaseCandidate)
+		res += fmt.Sprintf("-rc.%d", v.ReleaseCandidate)
 	}
 	if v.IsDevelopment {
 		res += "-dev"
@@ -91,7 +91,7 @@ func (v Version) String() string {
 	return res
 }
 
-var _preReleaseRE = regexp.MustCompile(`^(|dev|rc(\d+))$`)
+var _preReleaseRE = regexp.MustCompile(`^(|dev|rc\.(\d+))$`)
 
 // makeVersion checks the version components for validity and returns a new
 // Version instance if valid.
@@ -105,7 +105,7 @@ func makeVersion(major, minor, patch int, preRelease string) (Version, error) {
 	}
 	rcNumber := uint8(0)
 	if !isDevelopment && len(preRelease) > 0 {
-		number, err := strconv.ParseUint(preRelease[2:], 10, 8)
+		number, err := strconv.ParseUint(preRelease[3:], 10, 8)
 		if err != nil {
 			return Version{}, fmt.Errorf("invalid version: invalid release candidate tag %q", preRelease)
 		}

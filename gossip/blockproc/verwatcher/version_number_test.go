@@ -52,17 +52,17 @@ func TestVersionNumber_AreOrderedFollowingSemanticVersioningRules(t *testing.T) 
 func TestVersionNumber_PrintedInHumanReadableFormat(t *testing.T) {
 	tests := map[versionNumber]string{
 		0:                           "0.0.0-dev",
-		1:                           "0.0.0-rc1",
-		2:                           "0.0.0-rc2",
-		255:                         "0.0.0-rc255",
+		1:                           "0.0.0-rc.1",
+		2:                           "0.0.0-rc.2",
+		255:                         "0.0.0-rc.255",
 		256:                         "0.0.0",
 		257:                         "0.0.0",
 		0xffff:                      "0.0.0",
 		1 << 48:                     "1.0.0-dev",
-		1<<48 | 5:                   "1.0.0-rc5",
+		1<<48 | 5:                   "1.0.0-rc.5",
 		1<<48 | 256:                 "1.0.0",
 		1<<48 | 2<<32 | 3<<16:       "1.2.3-dev",
-		1<<48 | 2<<32 | 3<<16 | 17:  "1.2.3-rc17",
+		1<<48 | 2<<32 | 3<<16 | 17:  "1.2.3-rc.17",
 		1<<48 | 2<<32 | 3<<16 | 256: "1.2.3",
 	}
 
