@@ -2284,7 +2284,7 @@ func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex in
 	}
 
 	// Check correct txIndex
-	if txIndex >= len(block.Transactions) {
+	if txIndex > len(block.Transactions) {
 		return nil, nil, fmt.Errorf("transaction index %d out of range for block %#x", txIndex, block.Hash)
 	}
 
@@ -2293,6 +2293,10 @@ func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex in
 	statedb, _, err := b.StateAndHeaderByNumberOrHash(ctx, rpc.BlockNumberOrHashWithHash(block.ParentHash, false))
 	if err != nil {
 		return nil, nil, err
+	}
+
+	if txIndex == 0 && len(block.Transactions) == 0 {
+		return nil, statedb, nil
 	}
 
 	// Recompute transactions up to the target index.
