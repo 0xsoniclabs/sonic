@@ -272,7 +272,7 @@ func TestReplayTransactionOnEmptyBlock(t *testing.T) {
 	mockBackend.EXPECT().BlockByNumber(any, any).Return(block, nil)
 	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, any).Return(mockState, nil, nil).AnyTimes()
 	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000)).AnyTimes()
-	mockBackend.EXPECT().GetEVM(any, any, any, any, any).DoAndReturn(getEvmFunc(mockState)).AnyTimes()
+	mockBackend.EXPECT().GetEVM(any, any, any, any, any, any).DoAndReturn(getEvmFunc(mockState)).AnyTimes()
 	mockBackend.EXPECT().ChainConfig().Return(&params.ChainConfig{}).AnyTimes()
 	setExpectedStateCalls(mockState)
 
