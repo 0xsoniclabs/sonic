@@ -16,7 +16,7 @@ import (
 // Among those statements is the confirmation of the succeeding period's
 // committee.
 //
-// Committees are composed of a ordered list of Members, each weighted with a
+// Committees are composed of an ordered list of Members, each weighted with a
 // non-zero voting power. Members are identified by their public keys, for which
 // they are required to provide a proof of possession.
 type Committee struct {
