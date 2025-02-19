@@ -29,6 +29,7 @@ import (
 	reflect "reflect"
 
 	witness "github.com/0xsoniclabs/carmen/go/common/witness"
+	substate "github.com/0xsoniclabs/substate/substate"
 	common "github.com/ethereum/go-ethereum/common"
 	state "github.com/ethereum/go-ethereum/core/state"
 	stateless "github.com/ethereum/go-ethereum/core/stateless"
@@ -461,6 +462,48 @@ func (m *MockStateDB) GetStorageRoot(addr common.Address) common.Hash {
 func (mr *MockStateDBMockRecorder) GetStorageRoot(addr any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetStorageRoot", reflect.TypeOf((*MockStateDB)(nil).GetStorageRoot), addr)
+}
+
+// GetSubstateBlockHashes mocks base method.
+func (m *MockStateDB) GetSubstateBlockHashes() map[uint64]common.Hash {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetSubstateBlockHashes")
+	ret0, _ := ret[0].(map[uint64]common.Hash)
+	return ret0
+}
+
+// GetSubstateBlockHashes indicates an expected call of GetSubstateBlockHashes.
+func (mr *MockStateDBMockRecorder) GetSubstateBlockHashes() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSubstateBlockHashes", reflect.TypeOf((*MockStateDB)(nil).GetSubstateBlockHashes))
+}
+
+// GetSubstatePostAlloc mocks base method.
+func (m *MockStateDB) GetSubstatePostAlloc() substate.WorldState {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetSubstatePostAlloc")
+	ret0, _ := ret[0].(substate.WorldState)
+	return ret0
+}
+
+// GetSubstatePostAlloc indicates an expected call of GetSubstatePostAlloc.
+func (mr *MockStateDBMockRecorder) GetSubstatePostAlloc() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSubstatePostAlloc", reflect.TypeOf((*MockStateDB)(nil).GetSubstatePostAlloc))
+}
+
+// GetSubstatePreAlloc mocks base method.
+func (m *MockStateDB) GetSubstatePreAlloc() substate.WorldState {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetSubstatePreAlloc")
+	ret0, _ := ret[0].(substate.WorldState)
+	return ret0
+}
+
+// GetSubstatePreAlloc indicates an expected call of GetSubstatePreAlloc.
+func (mr *MockStateDBMockRecorder) GetSubstatePreAlloc() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSubstatePreAlloc", reflect.TypeOf((*MockStateDB)(nil).GetSubstatePreAlloc))
 }
 
 // GetTransientState mocks base method.

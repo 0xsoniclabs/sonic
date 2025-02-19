@@ -18,8 +18,12 @@ package evmcore
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 
+	innerSubstate "github.com/0xsoniclabs/sonic/substate"
+	recordSubstate "github.com/0xsoniclabs/substate"
+	"github.com/0xsoniclabs/substate/substate"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -31,6 +35,12 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/utils/signers/gsignercache"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
+)
+
+// record-replay - global variable tracking number of transactions in a block
+var (
+	txCounter      int
+	oldBlockNumber uint64 = math.MaxUint64
 )
 
 // StateProcessor is a basic Processor, which takes care of transitioning
@@ -94,6 +104,12 @@ func (p *StateProcessor) Process(
 		ProcessParentBlockHash(block.ParentHash, vmenv, statedb)
 	}
 
+	// record-replay
+	if oldBlockNumber != block.NumberU64() {
+		txCounter = 0
+		oldBlockNumber = block.NumberU64()
+	}
+
 	// Iterate over and process the individual transactions
 	for i, tx := range block.Transactions {
 		msg, err := TxAsMessage(tx, signer, header.BaseFee)
@@ -112,6 +128,26 @@ func (p *StateProcessor) Process(
 			receipts = append(receipts, nil)
 			continue // skip this transaction, but continue processing the rest of the block
 		}
+		if recordSubstate.RecordReplay {
+			// save tx substate into db, merge block hashes to env
+			etherBlock := block.RecordingEthBlock()
+			env := innerSubstate.NewEnv(etherBlock, innerSubstate.HashGethToSubstate(block.SubstateBlockHashes), blockContext)
+			recording := substate.NewSubstate(
+				statedb.GetSubstatePreAlloc(),
+				statedb.GetSubstatePostAlloc(),
+				env,
+				innerSubstate.NewMessage(msg, tx.Type()),
+				innerSubstate.NewResult(receipt),
+				blockNumber.Uint64(),
+				txCounter,
+			)
+			err := innerSubstate.PutSubstate(recording)
+			if err != nil {
+				return nil, nil, nil, fmt.Errorf("could not put substate %d [%v]: %w", i, tx.Hash().Hex(), err)
+			}
+		}
+
+		txCounter++
 		receipts = append(receipts, receipt)
 		allLogs = append(allLogs, receipt.Logs...)
 	}

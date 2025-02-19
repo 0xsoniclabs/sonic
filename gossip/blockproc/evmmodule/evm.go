@@ -121,18 +121,19 @@ func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlo
 
 	blobBaseFee := evmcore.GetBlobBaseFee()
 	h := &evmcore.EvmHeader{
-		Number:          new(big.Int).SetUint64(p.blockIdx),
-		ParentHash:      p.prevBlockHash,
-		Root:            common.Hash{}, // state root is added later
-		Time:            p.block.Time,
-		Coinbase:        evmcore.GetCoinbase(),
-		GasLimit:        p.net.Blocks.MaxBlockGas,
-		GasUsed:         p.gasUsed,
-		BaseFee:         baseFee,
-		BlobBaseFee:     blobBaseFee.ToBig(),
-		PrevRandao:      prevRandao,
-		WithdrawalsHash: withdrawalsHash,
-		Epoch:           p.block.Atropos.Epoch(),
+		Number:              new(big.Int).SetUint64(p.blockIdx),
+		ParentHash:          p.prevBlockHash,
+		Root:                common.Hash{}, // state root is added later
+		Time:                p.block.Time,
+		Coinbase:            evmcore.GetCoinbase(),
+		GasLimit:            p.net.Blocks.MaxBlockGas,
+		GasUsed:             p.gasUsed,
+		BaseFee:             baseFee,
+		BlobBaseFee:         blobBaseFee.ToBig(),
+		PrevRandao:          prevRandao,
+		WithdrawalsHash:     withdrawalsHash,
+		Epoch:               p.block.Atropos.Epoch(),
+		SubstateBlockHashes: make(map[uint64]common.Hash),
 	}
 
 	return evmcore.NewEvmBlock(h, txs)
@@ -188,6 +189,8 @@ func (p *OperaEVMProcessor) Finalize() (evmBlock *evmcore.EvmBlock, skippedTxs [
 	// Get state root
 	evmBlock.Root = p.statedb.GetStateHash()
 
+	// record-replay
+	// TODO stateHash could be recorded here - we wouldn't need to scrape for stateRoots later.
 	return
 }
 

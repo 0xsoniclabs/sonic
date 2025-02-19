@@ -21,6 +21,7 @@ package evmcore
 import (
 	"math/big"
 
+	recordSubstate "github.com/0xsoniclabs/substate"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/tracing"
 
@@ -96,6 +97,10 @@ func GetHashFn(ref *EvmHeader, chain DummyChain) func(n uint64) common.Hash {
 			cache = append(cache, ref.ParentHash)
 		}
 		if idx := ref.Number.Uint64() - n - 1; idx < uint64(len(cache)) {
+			if recordSubstate.RecordReplay {
+				ref.SubstateBlockHashes[n] = cache[idx]
+			}
+
 			return cache[idx]
 		}
 		// No luck in the cache, but we can start iterating from the last element we already know
@@ -111,6 +116,10 @@ func GetHashFn(ref *EvmHeader, chain DummyChain) func(n uint64) common.Hash {
 			lastKnownHash = header.ParentHash
 			lastKnownNumber = header.Number.Uint64() - 1
 			if n == lastKnownNumber {
+				if recordSubstate.RecordReplay {
+					ref.SubstateBlockHashes[n] = lastKnownHash
+				}
+
 				return lastKnownHash
 			}
 		}
