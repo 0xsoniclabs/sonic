@@ -93,9 +93,8 @@ func (k PrivateKey) PublicKey() PublicKey {
 // Sign signs the provided message using the private key and returns the
 // resulting signature.
 func (k PrivateKey) Sign(message []byte) Signature {
-	buffer := [96]byte{}
 	res := Signature{}
-	res.sign.Sign(&k.secretKey, message, buffer[:])
+	res.sign.Sign(&k.secretKey, message, nil)
 	return res
 }
 
@@ -197,8 +196,7 @@ func (s Signature) Validate() bool {
 // produced by the corresponding private key and the message has not been
 // tampered with.
 func (s Signature) Verify(publicKey PublicKey, message []byte) bool {
-	buffer := [96]byte{}
-	return s.sign.Verify(true, &publicKey.publicKey, true, message, buffer[:])
+	return s.sign.Verify(true, &publicKey.publicKey, true, message, nil)
 }
 
 // VerifyAll returns true if the signature is the aggregation of all signature
@@ -207,14 +205,13 @@ func (s Signature) Verify(publicKey PublicKey, message []byte) bool {
 // aggregating the public keys first and then verifying the signature against
 // the aggregated public key.
 func (s Signature) VerifyAll(publicKeys []PublicKey, message []byte) bool {
-	buffer := [96]byte{}
 	keys := make([]*blst.P1Affine, len(publicKeys))
 	msgs := make([][]byte, len(publicKeys))
 	for i, key := range publicKeys {
 		keys[i] = &key.publicKey
 		msgs[i] = message
 	}
-	return s.sign.AggregateVerify(false, keys, false, msgs, buffer[:])
+	return s.sign.AggregateVerify(false, keys, false, msgs, nil)
 }
 
 // AggregateSignatures aggregates the provided signatures into a single
