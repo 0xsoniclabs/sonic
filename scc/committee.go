@@ -35,11 +35,18 @@ type MemberId uint16
 // NewCommittee creates a new committee with the provided members. There must be
 // at least one member, all members must be valid, and no duplicates are allowed.
 func NewCommittee(members ...Member) (Committee, error) {
-	res := Committee{members: slices.Clone(members)}
+	res := NewCommitteeForTests(members...)
 	if err := res.Validate(); err != nil {
 		return Committee{}, err
 	}
 	return res, nil
+}
+
+// NewCommitteeForTests creates a new committee with the provided members. This
+// function is intended for testing purposes only and does not validate the
+// committee.
+func NewCommitteeForTests(members ...Member) Committee {
+	return Committee{members: slices.Clone(members)}
 }
 
 // Members returns a copy of the members in the committee.
@@ -65,6 +72,21 @@ func (c Committee) GetMemberId(publicKey bls.PublicKey) (MemberId, bool) {
 		}
 	}
 	return 0, false
+}
+
+// GetTotalVotingPower returns the sum of the voting power of all members in the
+// committee. Valid committees have a total voting power that does not exceed
+// 2^64 - 1, but invalid committees may have a total voting power that exceeds
+// this limit. In the latter case, the second return value is true.
+func (c Committee) GetTotalVotingPower() (total uint64, overflow bool) {
+	for _, m := range c.members {
+		next := total + m.VotingPower
+		if next < total {
+			return 0, true
+		}
+		total = next
+	}
+	return total, false
 }
 
 // Validate checks that the committee is well-formed. For a committee to be well

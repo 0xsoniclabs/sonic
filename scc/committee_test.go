@@ -79,6 +79,29 @@ func TestCommittee_GetMemberId_ReturnsNotFoundIfNotPresent(t *testing.T) {
 	require.False(t, found)
 }
 
+func TestCommittee_GetTotalVotingPower_ReturnsCorrectTotal(t *testing.T) {
+	total, overflow := Committee{}.GetTotalVotingPower()
+	require.False(t, overflow)
+	require.Equal(t, uint64(0), total)
+
+	total, overflow = Committee{[]Member{
+		newTestMember(1, 10),
+		newTestMember(2, 20),
+		newTestMember(3, 15),
+	}}.GetTotalVotingPower()
+	require.False(t, overflow)
+	require.Equal(t, uint64(45), total)
+}
+
+func TestCommittee_GetTotalVotingPower_DetectsOverflow(t *testing.T) {
+	_, overflow := Committee{[]Member{
+		newTestMember(1, 10),
+		newTestMember(2, 20),
+		newTestMember(3, math.MaxUint64-15),
+	}}.GetTotalVotingPower()
+	require.True(t, overflow)
+}
+
 func TestCommittee_Validate_AcceptsMaximumVotingPower(t *testing.T) {
 	members := []Member{
 		newTestMember(1, math.MaxUint64),
