@@ -40,6 +40,13 @@ func NewCommittee(members ...Member) Committee {
 	return Committee{members: slices.Clone(members)}
 }
 
+// NewCommitteeForTests creates a new committee with the provided members. This
+// function is intended for testing purposes only and does not validate the
+// committee.
+func NewCommitteeForTests(members ...Member) Committee {
+	return Committee{members: slices.Clone(members)}
+}
+
 // Members returns a copy of the members in the committee.
 func (c Committee) Members() []Member {
 	return slices.Clone(c.members)
