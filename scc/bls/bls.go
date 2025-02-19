@@ -109,9 +109,7 @@ func (k PrivateKey) GetProofOfPossession() Signature {
 // Serialize exports the private key into a 32-byte array. This format can be
 // used to serialize the key to disk or to transmit it over the network.
 func (k PrivateKey) Serialize() [32]byte {
-	res := [32]byte{}
-	copy(res[:], k.secretKey.Serialize())
-	return res
+	return [32]byte(k.secretKey.Serialize())
 }
 
 // DeserializePrivateKey deserializes a private key from the provided serialized
@@ -173,9 +171,7 @@ func DeserializePublicKey(serialized [48]byte) (PublicKey, error) {
 // Serialize exports the public key into a 48-byte array. This format can be
 // used to serialize the key to disk or to transmit it over the network.
 func (k PublicKey) Serialize() [48]byte {
-	res := [48]byte{}
-	copy(res[:], k.publicKey.Compress())
-	return res
+	return [48]byte(k.publicKey.Compress())
 }
 
 // String returns the public key as a hexadecimal string prefixed with "0x".
@@ -239,9 +235,7 @@ func DeserializeSignature(serialized [96]byte) (Signature, error) {
 // Serialize exports the signature into a 96-byte array. This format can be used
 // to serialize the signature to disk or to transmit it over the network.
 func (k Signature) Serialize() [96]byte {
-	res := [96]byte{}
-	copy(res[:], k.sign.Compress())
-	return res
+	return [96]byte(k.sign.Compress())
 }
 
 // String returns the signature as a hexadecimal string prefixed with "0x".
