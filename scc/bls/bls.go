@@ -149,7 +149,8 @@ func (k PublicKey) CheckProofOfPossession(signature Signature) bool {
 }
 
 // AggregatePublicKeys aggregates the provided keys into a single key. The
-// provided keys must be valid.
+// provided keys must be valid. Caller must ensure that the provided keys are
+// valid, otherwise the resulting key may be invalid.
 func AggregatePublicKeys(keys ...PublicKey) PublicKey {
 	agg := blst.P1Aggregate{}
 	for _, key := range keys {
