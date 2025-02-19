@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-    - 'v+([0-9]).+([0-9]).+([0-9])' # example: v2.0.12 (rc intentionally excluded)
+      - "v[0-9]+.[0-9]+.[0-9]+" # example: v2.0.12 (rc intentionally excluded)
 
 jobs:
   release:
@@ -15,7 +15,7 @@ jobs:
       - name: Golang dependency
         uses: actions/setup-go@v3
         with:
-          go-version: '1.23'
+          go-version: "1.23"
 
       - name: Build
         run: make
