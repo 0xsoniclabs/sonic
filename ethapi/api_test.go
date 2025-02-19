@@ -237,7 +237,6 @@ func TestEstimateGas(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	addr := common.Address{1}
 	headerRoot := common.Hash{123}
 
 	mockBackend := NewMockBackend(ctrl)
@@ -245,19 +244,69 @@ func TestEstimateGas(t *testing.T) {
 	mockHeader := &evmcore.EvmHeader{Root: headerRoot}
 
 	blkNr := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
-	getEvm := func(interface{}, interface{}, interface{}, interface{}, interface{}) (*vm.EVM, func() error, error) {
-		blockCtx := vm.BlockContext{
-			Transfer: vm.TransferFunc(func(sd vm.StateDB, a1, a2 common.Address, i *uint256.Int) {}),
-		}
-		txCtx := vm.TxContext{}
-		return vm.NewEVM(blockCtx, txCtx, mockState, &opera.BaseChainConfig, opera.DefaultVMConfig), func() error { return nil }, nil
-	}
 
 	any := gomock.Any()
 	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, blkNr).Return(mockState, mockHeader, nil).AnyTimes()
 	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000))
 	mockBackend.EXPECT().MaxGasLimit().Return(uint64(10000000))
-	mockBackend.EXPECT().GetEVM(any, any, any, any, any).DoAndReturn(getEvm).AnyTimes()
+	mockBackend.EXPECT().GetEVM(any, any, any, any, any).DoAndReturn(getEvmFunc(mockState)).AnyTimes()
+	setExpectedStateCalls(mockState)
+
+	api := NewPublicBlockChainAPI(mockBackend)
+
+	gas, err := api.EstimateGas(context.Background(), getTxArgs(t), &blkNr)
+	require.NoError(t, err, "failed to estimate gas")
+	require.Greater(t, gas, uint64(0))
+}
+
+func TestReplayTransactionOnEmptyBlock(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockBackend := NewMockBackend(ctrl)
+	mockState := state.NewMockStateDB(ctrl)
+
+	block := &evmcore.EvmBlock{}
+	block.Number = big.NewInt(5)
+	any := gomock.Any()
+	mockBackend.EXPECT().BlockByNumber(any, any).Return(block, nil)
+	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, any).Return(mockState, nil, nil).AnyTimes()
+	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000)).AnyTimes()
+	mockBackend.EXPECT().GetEVM(any, any, any, any, any).DoAndReturn(getEvmFunc(mockState)).AnyTimes()
+	mockBackend.EXPECT().ChainConfig().Return(&params.ChainConfig{}).AnyTimes()
+	setExpectedStateCalls(mockState)
+
+	api := NewPublicDebugAPI(mockBackend, 10000, 10000)
+
+	_, err := api.TraceCall(context.Background(), getTxArgs(t), rpc.BlockNumberOrHashWithNumber(5), &TraceCallConfig{})
+	require.NoError(t, err, "must be possible to replay tx on empty block")
+}
+
+func getTxArgs(t *testing.T) TransactionArgs {
+	dataBytes, err := hexutil.Decode("0xe9ae5c53")
+	require.NoError(t, err)
+
+	addr := common.Address{1}
+
+	data := hexutil.Bytes(dataBytes)
+	return TransactionArgs{
+		From: &addr,
+		To:   &addr,
+		Data: &data,
+	}
+}
+
+func getEvmFunc(mockState *state.MockStateDB) func(interface{}, interface{}, interface{}, interface{}, interface{}) (*vm.EVM, func() error, error) {
+	return func(interface{}, interface{}, interface{}, interface{}, interface{}) (*vm.EVM, func() error, error) {
+		blockCtx := vm.BlockContext{
+			Transfer: vm.TransferFunc(func(sd vm.StateDB, a1, a2 common.Address, i *uint256.Int) {}),
+		}
+		return vm.NewEVM(blockCtx, vm.TxContext{}, mockState, &opera.BaseChainConfig, opera.DefaultVMConfig), func() error { return nil }, nil
+	}
+}
+
+func setExpectedStateCalls(mockState *state.MockStateDB) {
+	any := gomock.Any()
 	mockState.EXPECT().GetBalance(any).Return(uint256.NewInt(0)).AnyTimes()
 	mockState.EXPECT().SubBalance(any, any, any).AnyTimes()
 	mockState.EXPECT().AddBalance(any, any, any).AnyTimes()
@@ -266,23 +315,11 @@ func TestEstimateGas(t *testing.T) {
 	mockState.EXPECT().SetNonce(any, any).AnyTimes()
 	mockState.EXPECT().Snapshot().AnyTimes()
 	mockState.EXPECT().Exist(any).Return(true).AnyTimes()
+	mockState.EXPECT().SetTxContext(any, any).AnyTimes()
 	mockState.EXPECT().Release().AnyTimes()
 	mockState.EXPECT().GetCode(any).Return(nil).AnyTimes()
 	mockState.EXPECT().Witness().AnyTimes()
 	mockState.EXPECT().GetRefund().AnyTimes()
-
-	api := NewPublicBlockChainAPI(mockBackend)
-	dataBytes, err := hexutil.Decode("0xe9ae5c53")
-	require.NoError(t, err)
-
-	data := hexutil.Bytes(dataBytes)
-	transactionArgs := TransactionArgs{
-		From: &addr,
-		To:   &addr,
-		Data: &data,
-	}
-
-	gas, err := api.EstimateGas(context.Background(), transactionArgs, &blkNr)
-	require.NoError(t, err, "failed to estimate gas")
-	require.Greater(t, gas, uint64(0))
+	mockState.EXPECT().GetLogs(any, any).AnyTimes()
+	mockState.EXPECT().TxIndex().AnyTimes()
 }
