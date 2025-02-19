@@ -1043,11 +1043,13 @@ func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash 
 		return nil, err
 	}
 	vmConfig := opera.DefaultVMConfig
-	blockCtx := getBlockContext(ctx, b, header)
+	var blockCtx *vm.BlockContext
 	if blockOverrides != nil {
-		blockOverrides.Apply(&blockCtx)
+		bctx := getBlockContext(ctx, b, header)
+		blockOverrides.Apply(&bctx)
+		blockCtx = &bctx
 	}
-	evm, vmError, err := b.GetEVM(ctx, msg, state, header, &vmConfig, &blockCtx)
+	evm, vmError, err := b.GetEVM(ctx, msg, state, header, &vmConfig, blockCtx)
 	if err != nil {
 		return nil, err
 	}
