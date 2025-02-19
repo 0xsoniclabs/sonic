@@ -5,8 +5,8 @@ contract AccessCost {
     uint256 value;
     event LogCost(uint256 cost);
 
-    // This method measures the gas cost of accessing an addresss by
-    // queriying its balance.
+    // This method measures the gas cost of accessing an address by
+    // querying its balance.
     // The cost of the access can be found in the LogCost event.
     function touchAddress(address addr) public {
         uint256 before = gasleft();
