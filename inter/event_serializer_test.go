@@ -10,6 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Fantom-foundation/lachesis-base/hash"
@@ -30,97 +31,193 @@ func emptyEvent(ver uint8) EventPayload {
 }
 
 func TestEventPayloadSerialization(t *testing.T) {
-	max := MutableEventPayload{}
-	max.SetVersion(2)
-	max.SetEpoch(math.MaxUint32)
-	max.SetSeq(idx.Event(math.MaxUint32))
-	max.SetLamport(idx.Lamport(math.MaxUint32))
+	event := MutableEventPayload{}
+	event.SetVersion(2)
+	event.SetEpoch(math.MaxUint32)
+	event.SetSeq(idx.Event(math.MaxUint32))
+	event.SetLamport(idx.Lamport(math.MaxUint32))
 	h := hash.BytesToEvent(bytes.Repeat([]byte{math.MaxUint8}, 32))
-	max.SetParents(hash.Events{hash.Event(h), hash.Event(h), hash.Event(h)})
-	max.SetPayloadHash(hash.Hash(h))
-	max.SetSig(BytesToSignature(bytes.Repeat([]byte{math.MaxUint8}, SigSize)))
-	max.SetExtra(bytes.Repeat([]byte{math.MaxUint8}, 100))
-	max.SetCreationTime(math.MaxUint64)
-	max.SetMedianTime(math.MaxUint64)
-	tx1 := types.NewTx(&types.LegacyTx{
-		Nonce:    math.MaxUint64,
-		GasPrice: h.Big(),
-		Gas:      math.MaxUint64,
-		To:       nil,
-		Value:    h.Big(),
-		Data:     []byte{},
-		V:        big.NewInt(0xff),
-		R:        h.Big(),
-		S:        h.Big(),
-	})
-	tx2 := types.NewTx(&types.LegacyTx{
-		Nonce:    math.MaxUint64,
-		GasPrice: h.Big(),
-		Gas:      math.MaxUint64,
-		To:       &common.Address{},
-		Value:    h.Big(),
-		Data:     max.extra,
-		V:        big.NewInt(0xff),
-		R:        h.Big(),
-		S:        h.Big(),
-	})
-	txs := types.Transactions{}
-	for i := 0; i < 200; i++ {
-		txs = append(txs, tx1)
-		txs = append(txs, tx2)
-	}
-	max.SetTxs(txs)
+	event.SetParents(hash.Events{hash.Event(h), hash.Event(h), hash.Event(h)})
+	event.SetPayloadHash(hash.Hash(h))
+	event.SetSig(BytesToSignature(bytes.Repeat([]byte{math.MaxUint8}, SigSize)))
+	event.SetExtra(bytes.Repeat([]byte{math.MaxUint8}, 100))
+	event.SetCreationTime(math.MaxUint64)
+	event.SetMedianTime(math.MaxUint64)
 
-	ee := map[string]EventPayload{
+	allTransactionTypes := makeAllTransactionTypes()
+	txs := types.Transactions{}
+	for i := 0; i < 50; i++ {
+		txs = append(txs, allTransactionTypes...)
+	}
+	event.SetTxs(txs)
+	require.Len(t, event.txs, len(allTransactionTypes)*50)
+
+	tests := map[string]EventPayload{
 		"empty0":  emptyEvent(0),
 		"empty1":  emptyEvent(1),
 		"empty2":  emptyEvent(2),
-		"max":     *max.Build(),
+		"event":   *event.Build(),
 		"random1": *FakeEvent(1, 12, 1, 1, true),
 		"random2": *FakeEvent(2, 12, 0, 0, false),
 	}
 
 	t.Run("ok", func(t *testing.T) {
-		require := require.New(t)
+		for name, toEncode := range tests {
+			t.Run(name, func(t *testing.T) {
+				_ = name
 
-		for name, header0 := range ee {
-			buf, err := rlp.EncodeToBytes(&header0)
-			require.NoError(err)
+				buf, err := rlp.EncodeToBytes(&toEncode)
+				require.NoError(t, err)
 
-			var header1 EventPayload
-			err = rlp.DecodeBytes(buf, &header1)
-			require.NoError(err, name)
+				var decoded EventPayload
+				err = rlp.DecodeBytes(buf, &decoded)
+				require.NoError(t, err)
 
-			require.EqualValues(header0.extEventData, header1.extEventData, name)
-			require.EqualValues(header0.sigData, header1.sigData, name)
-			for i := range header0.payloadData.txs {
-				require.EqualValues(header0.payloadData.txs[i].Hash(), header1.payloadData.txs[i].Hash(), name)
-			}
-			require.EqualValues(header0.baseEvent, header1.baseEvent, name)
-			require.EqualValues(header0.ID(), header1.ID(), name)
-			require.EqualValues(header0.HashToSign(), header1.HashToSign(), name)
-			require.EqualValues(header0.Size(), header1.Size(), name)
+				require.EqualValues(t, toEncode.extEventData, decoded.extEventData)
+				require.EqualValues(t, toEncode.sigData, decoded.sigData)
+				require.Equal(t, len(toEncode.txs), len(decoded.txs))
+				for i := range toEncode.payloadData.txs {
+					require.EqualValues(t, toEncode.payloadData.txs[i].Hash(), decoded.payloadData.txs[i].Hash())
+				}
+				require.EqualValues(t, toEncode.baseEvent, decoded.baseEvent)
+				require.EqualValues(t, toEncode.ID(), decoded.ID())
+				require.EqualValues(t, toEncode.HashToSign(), decoded.HashToSign())
+				require.EqualValues(t, toEncode.Size(), decoded.Size())
+			})
 		}
 	})
 
 	t.Run("err", func(t *testing.T) {
-		require := require.New(t)
+		for name, toEncode := range tests {
+			t.Run(name, func(t *testing.T) {
+				bin, err := toEncode.MarshalBinary()
+				require.NoError(t, err)
 
-		for name, header0 := range ee {
-			bin, err := header0.MarshalBinary()
-			require.NoError(err, name)
+				n := rand.IntN(len(bin) - len(toEncode.Extra()) - 1)
+				bin = bin[0:n]
 
-			n := rand.IntN(len(bin) - len(header0.Extra()) - 1)
-			bin = bin[0:n]
+				buf, err := rlp.EncodeToBytes(bin)
+				require.NoError(t, err)
 
-			buf, err := rlp.EncodeToBytes(bin)
-			require.NoError(err, name)
-
-			var header1 Event
-			err = rlp.DecodeBytes(buf, &header1)
-			require.Error(err, name)
+				var decoded Event
+				err = rlp.DecodeBytes(buf, &decoded)
+				require.Error(t, err)
+			})
 		}
 	})
+}
+
+func makeAllTransactionTypes() []*types.Transaction {
+	chainId := big.NewInt(1)
+
+	return []*types.Transaction{
+		types.NewTx(&types.LegacyTx{
+			Nonce:    1,
+			GasPrice: big.NewInt(1),
+			Gas:      1,
+			To:       nil,
+			Value:    big.NewInt(1),
+			Data:     []byte{1},
+			V:        big.NewInt(1),
+			R:        big.NewInt(123),
+			S:        big.NewInt(123),
+		}),
+		types.NewTx(&types.AccessListTx{
+			ChainID:  chainId,
+			Nonce:    1,
+			GasPrice: big.NewInt(1),
+			Gas:      1,
+			To:       nil,
+			Value:    big.NewInt(1),
+			Data:     []byte{1},
+			AccessList: types.AccessList{
+				types.AccessTuple{
+					Address: common.HexToAddress("0x1"),
+					StorageKeys: []common.Hash{
+						common.HexToHash("0x1"),
+					},
+				},
+			},
+			V: big.NewInt(1),
+			R: big.NewInt(123),
+			S: big.NewInt(123),
+		}),
+		types.NewTx(&types.DynamicFeeTx{
+			ChainID:   chainId,
+			Nonce:     1,
+			Gas:       1,
+			GasFeeCap: big.NewInt(1),
+			GasTipCap: big.NewInt(1),
+			To:        nil,
+			Value:     big.NewInt(1),
+			Data:      []byte{1},
+			AccessList: types.AccessList{
+				types.AccessTuple{
+					Address: common.HexToAddress("0x1"),
+					StorageKeys: []common.Hash{
+						common.HexToHash("0x1"),
+					},
+				},
+			},
+
+			V: big.NewInt(1),
+			R: big.NewInt(123),
+			S: big.NewInt(123),
+		}),
+		types.NewTx(&types.BlobTx{
+			ChainID:   uint256.MustFromBig(chainId),
+			Nonce:     1,
+			Gas:       1,
+			GasFeeCap: uint256.NewInt(1),
+			GasTipCap: uint256.NewInt(1),
+			To:        common.HexToAddress("0x1"),
+			Value:     uint256.NewInt(1),
+			Data:      []byte{1},
+			AccessList: types.AccessList{
+				types.AccessTuple{
+					Address: common.HexToAddress("0x1"),
+					StorageKeys: []common.Hash{
+						common.HexToHash("0x1"),
+					},
+				},
+			},
+			BlobFeeCap: uint256.NewInt(1),
+			BlobHashes: []common.Hash{
+				common.HexToHash("0x1"),
+			},
+			V: uint256.NewInt(1),
+			R: uint256.NewInt(123),
+			S: uint256.NewInt(123),
+		}),
+		types.NewTx(&types.SetCodeTx{
+			ChainID:   uint256.MustFromBig(chainId),
+			Nonce:     1,
+			Gas:       1,
+			GasFeeCap: uint256.NewInt(1),
+			GasTipCap: uint256.NewInt(1),
+			To:        common.HexToAddress("0x1"),
+			Value:     uint256.NewInt(1),
+			Data:      []byte{1},
+			AccessList: types.AccessList{
+				types.AccessTuple{
+					Address: common.HexToAddress("0x1"),
+					StorageKeys: []common.Hash{
+						common.HexToHash("0x1"),
+					},
+				},
+			},
+			AuthList: []types.SetCodeAuthorization{
+				{
+					ChainID: *uint256.MustFromBig(chainId),
+					Address: common.HexToAddress("0x1"),
+					Nonce:   1,
+					V:       1,
+					R:       *uint256.NewInt(123),
+					S:       *uint256.NewInt(123),
+				},
+			},
+		}),
+	}
 }
 
 func BenchmarkEventPayload_EncodeRLP_empty(b *testing.B) {
