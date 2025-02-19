@@ -249,7 +249,7 @@ func TestEstimateGas(t *testing.T) {
 	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, blkNr).Return(mockState, mockHeader, nil).AnyTimes()
 	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000))
 	mockBackend.EXPECT().MaxGasLimit().Return(uint64(10000000))
-	mockBackend.EXPECT().GetEVM(any, any, any, any, any).DoAndReturn(getEvmFunc(mockState)).AnyTimes()
+	mockBackend.EXPECT().GetEVM(any, any, any, any, any, any).DoAndReturn(getEvmFunc(mockState)).AnyTimes()
 	setExpectedStateCalls(mockState)
 
 	api := NewPublicBlockChainAPI(mockBackend)
@@ -296,8 +296,8 @@ func getTxArgs(t *testing.T) TransactionArgs {
 	}
 }
 
-func getEvmFunc(mockState *state.MockStateDB) func(interface{}, interface{}, interface{}, interface{}, interface{}) (*vm.EVM, func() error, error) {
-	return func(interface{}, interface{}, interface{}, interface{}, interface{}) (*vm.EVM, func() error, error) {
+func getEvmFunc(mockState *state.MockStateDB) func(interface{}, interface{}, interface{}, interface{}, interface{}, interface{}) (*vm.EVM, func() error, error) {
+	return func(interface{}, interface{}, interface{}, interface{}, interface{}, interface{}) (*vm.EVM, func() error, error) {
 		blockCtx := vm.BlockContext{
 			Transfer: vm.TransferFunc(func(sd vm.StateDB, a1, a2 common.Address, i *uint256.Int) {}),
 		}
