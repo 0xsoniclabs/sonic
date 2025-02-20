@@ -116,6 +116,6 @@ func TestBitSet_InvalidUnmarshalJSON(t *testing.T) {
 	require := require.New(t)
 
 	var b BitSet[uint8]
-	err := b.UnmarshalJSON([]byte(`"010c7"`))
+	err := b.UnmarshalJSON([]byte(`"g"`))
 	require.Error(err)
 }
