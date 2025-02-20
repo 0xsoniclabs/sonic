@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package sonic.scc.cert.proto;
+
+import "signature.proto";
+
+option go_package = ".;pb";
+
+// A certificate proofing the validity of block meta information.
+message BlockCertificate {
+
+    // The aggregated signature of the certification committee active during the
+    // block's creation, certifying the block's meta information.
+    AggregatedSignature signature = 1;
+
+    // The chain ID of the chain the block is part of.
+    uint64 chainId = 2;
+
+    // The block number.
+    uint64 number = 3;
+
+    // The 32-byte hash of the block.
+    bytes hash = 4;
+
+    // The 32-byte hash of the state root of the block.
+    bytes stateRoot = 5;
+}

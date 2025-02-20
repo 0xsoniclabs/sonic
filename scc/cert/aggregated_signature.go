@@ -10,8 +10,8 @@ import (
 
 // AggregatedSignature represents an aggregated BLS signature from a committee.
 type AggregatedSignature[S Statement] struct {
-	signers   BitSet[scc.MemberId]
-	signature bls.Signature
+	Signers   BitSet[scc.MemberId]
+	Signature bls.Signature
 }
 
 // Add adds a signature from a member to the aggregated signature. The id
@@ -20,11 +20,11 @@ type AggregatedSignature[S Statement] struct {
 // fails if a signature from the same member is already present. There is no
 // check whether the signature is valid.
 func (s *AggregatedSignature[S]) Add(id scc.MemberId, signature Signature[S]) error {
-	if s.signers.Contains(id) {
+	if s.Signers.Contains(id) {
 		return fmt.Errorf("signature already added for signer %d", id)
 	}
-	s.signers.Add(id)
-	s.signature = bls.AggregateSignatures(s.signature, signature.Signature)
+	s.Signers.Add(id)
+	s.Signature = bls.AggregateSignatures(s.Signature, signature.Signature)
 	return nil
 }
 
@@ -55,7 +55,7 @@ func (s *AggregatedSignature[S]) Verify(
 	// Collect the signers and their voting power according to the authority.
 	signers := []bls.PublicKey{}
 	signersPower := uint256.NewInt(0)
-	for _, i := range s.signers.Entries() {
+	for _, i := range s.Signers.Entries() {
 		member, found := producers.GetMember(i)
 		if !found {
 			return fmt.Errorf("signer %d not found in producer committee", i)
@@ -75,7 +75,7 @@ func (s *AggregatedSignature[S]) Verify(
 	}
 
 	// The aggregated signature must be valid.
-	if !s.signature.VerifyAll(signers, statement.GetDataToSign()) {
+	if !s.Signature.VerifyAll(signers, statement.GetDataToSign()) {
 		return fmt.Errorf("invalid aggregated signature")
 	}
 	return nil
@@ -83,9 +83,9 @@ func (s *AggregatedSignature[S]) Verify(
 
 // String returns a human-readable representation of the aggregated signature.
 func (s *AggregatedSignature[S]) String() string {
-	signature := s.signature.Serialize()
+	signature := s.Signature.Serialize()
 	return fmt.Sprintf(
 		"AggregatedSignature(signers=%v, signature=0x%x..%x)",
-		s.signers, signature[:2], signature[len(signature)-2:],
+		s.Signers, signature[:2], signature[len(signature)-2:],
 	)
 }

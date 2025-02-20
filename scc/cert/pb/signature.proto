@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package sonic.scc.cert.proto;
+
+option go_package = ".;pb";
+
+// The aggregated signature of multiple signers.
+message AggregatedSignature {
+    // The 96-byte BLS signature aggregating the signatures of all signers.
+    bytes signature = 1;
+
+    // A bit-mask indicating which signers have signed the block.
+    // The i-th bit of the mask corresponds to the i-th signer.
+    // If the i-th bit is set, the i-th signer has signed the block.
+    bytes signerMask = 2;
+}

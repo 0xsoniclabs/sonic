@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package sonic.scc.cert.proto;
+
+import "signature.proto";
+
+option go_package = ".;pb";
+
+// A certificate proofing the validity of a committee for a specific period.
+message CommitteeCertificate {
+
+    // The aggregated signature of the preceding period's committee, certifying
+    // the current committee.
+    AggregatedSignature signature = 1;
+
+    // The chain ID of the chain the committee is active on.
+    uint64 chainId = 2;
+
+    // The period in which the committee is active.
+    uint64 period = 3;
+
+    // The members of the committee.
+    repeated Member members = 4;
+}
+
+// A member of the committee.
+message Member {
+    
+    // The 48-byte BLS public key of the member.
+    bytes publicKey = 1;
+
+    // The 96-byte proof of possession of the private key, proofing that at some
+    // point in time the member had access to the private key corresponding to
+    // the public key.
+    bytes proofOfPossession = 2;
+
+    // The voting power of the member. This value defines the weight of the
+    // member's vote in the committee.
+    uint64 votingPower = 3;
+}
