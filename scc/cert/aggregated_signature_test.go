@@ -233,7 +233,7 @@ func TestAggregatedSignature_String_ListsKeyProperties(t *testing.T) {
 	require.Contains(print, "signers={1}")
 	require.Contains(print, "signature=0xa9b5..ba22")
 
-	agg.Add(7, Sign(stmt, bls.NewPrivateKeyForTests(2)))
+	require.NoError(agg.Add(7, Sign(stmt, bls.NewPrivateKeyForTests(2))))
 
 	print = agg.String()
 	require.Contains(print, "signers={1, 7}")

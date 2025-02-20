@@ -54,12 +54,12 @@ func TestCertificate_VerifyAuthority_AcceptsDifferentAuthority(t *testing.T) {
 	require.Error(cert.VerifyAuthority(authority, producer))
 
 	// A signature of key 0 makes it valid for the authority.
-	cert.Add(0, Sign(stmt, key0))
+	require.NoError(cert.Add(0, Sign(stmt, key0)))
 	require.Error(cert.VerifyAuthority(producer, producer))
 	require.NoError(cert.VerifyAuthority(authority, producer))
 
 	// A signature of key 1 makes it valid for the producer as well.
-	cert.Add(1, Sign(stmt, key1))
+	require.NoError(cert.Add(1, Sign(stmt, key1)))
 	require.NoError(cert.VerifyAuthority(producer, producer))
 	require.NoError(cert.VerifyAuthority(authority, producer))
 }
