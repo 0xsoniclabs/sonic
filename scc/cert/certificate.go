@@ -3,27 +3,27 @@ package cert
 import "github.com/0xsoniclabs/sonic/scc"
 
 // Certificate is a message signed by a committee to certify the validity of a
-// statement. A certificate is a claim produced by a authorized committee that a
-// statement is true. In the certification chain, this is used to establish
+// statement. A certificate is a claim produced by an authorized committee that
+// a statement is true. In the certification chain, this is used to establish
 // facts like the hash of a block at a certain height, the certificate chain's
 // state at the begin of an epoch, or the composition of a committee for a
 // certain period.
 type Certificate[S Statement] struct {
-	Subject   S
-	Signature AggregatedSignature[S]
+	subject   S
+	signature AggregatedSignature[S]
 }
 
 // NewCertificate creates a new certificate for the given statement. Initially,
 // the certificate does not contain any signatures. Signatures can be added
 // using the Add method.
 func NewCertificate[S Statement](subject S) Certificate[S] {
-	return Certificate[S]{Subject: subject}
+	return Certificate[S]{subject: subject}
 }
 
 // Add adds a signature to the certificate for the given signer ID. The ID is
 // used to identify signers in a certificate creation committee.
 func (c *Certificate[S]) Add(id scc.MemberId, signature Signature[S]) error {
-	return c.Signature.Add(id, signature)
+	return c.signature.Add(id, signature)
 }
 
 // Verify checks if the certificate is valid for the given committee. The
@@ -41,5 +41,5 @@ func (c *Certificate[S]) Verify(committee scc.Committee) error {
 // updates where committee updates of multiple periods can be skipped due to
 // insignificant changes in the committee composition.
 func (c *Certificate[S]) VerifyAuthority(authority, producers scc.Committee) error {
-	return c.Signature.Verify(authority, producers, c.Subject)
+	return c.signature.Verify(authority, producers, c.subject)
 }
