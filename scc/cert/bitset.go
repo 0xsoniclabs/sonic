@@ -62,3 +62,30 @@ func (b BitSet[T]) String() string {
 type unsigned interface {
 	~uint8 | ~uint16 | ~uint32 | ~uint64
 }
+
+func (b *BitSet[T]) Serialize() []byte {
+	result := []byte{}
+	for _, entry := range b.Entries() {
+		result = append(result, byte(entry))
+	}
+	return result
+}
+
+func (b *BitSet[T]) Deserialize(data []byte) {
+	for _, entry := range data {
+		b.Add(T(entry))
+	}
+}
+
+func (b *BitSet[T]) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf("\"0x%x\"", b.Serialize())), nil
+}
+
+func (b *BitSet[T]) UnmarshalJSON(data []byte) error {
+	var mask []byte
+	if _, err := fmt.Sscanf(string(data), "\"0x%x\"", &mask); err != nil {
+		return err
+	}
+	b.Deserialize(mask)
+	return nil
+}
