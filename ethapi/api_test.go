@@ -2,7 +2,9 @@ package ethapi
 
 import (
 	"context"
+	"fmt"
 	"math/big"
+	reflect "reflect"
 	"testing"
 
 	cc "github.com/0xsoniclabs/carmen/go/common"
@@ -280,6 +282,68 @@ func TestReplayTransactionOnEmptyBlock(t *testing.T) {
 
 	_, err := api.TraceCall(context.Background(), getTxArgs(t), rpc.BlockNumberOrHashWithNumber(5), &TraceCallConfig{})
 	require.NoError(t, err, "must be possible to replay tx on empty block")
+}
+
+func TestBlockOverrides(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockBackend := NewMockBackend(ctrl)
+	mockState := state.NewMockStateDB(ctrl)
+
+	blockNr := 10
+	block := &evmcore.EvmBlock{}
+	block.Number = big.NewInt(int64(blockNr))
+
+	any := gomock.Any()
+	mockBackend.EXPECT().BlockByNumber(any, any).Return(block, nil)
+	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, any).Return(mockState, nil, nil).AnyTimes()
+	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000)).AnyTimes()
+	mockBackend.EXPECT().ChainConfig().Return(&params.ChainConfig{}).AnyTimes()
+	setExpectedStateCalls(mockState)
+
+	expectedBlockCtx := &vm.BlockContext{
+		BlockNumber: big.NewInt(5),
+		Time:        0,
+		Difficulty:  big.NewInt(1),
+		BaseFee:     big.NewInt(1234),
+		BlobBaseFee: big.NewInt(1),
+	}
+
+	// Check that the correct block context is used when creating EVM instance
+	mockBackend.EXPECT().GetEVM(any, any, any, any, any, BlockContextMatcher{expectedBlockCtx}).DoAndReturn(getEvmFunc(mockState)).AnyTimes()
+
+	api := NewPublicDebugAPI(mockBackend, 10000, 10000)
+
+	traceConfig := &TraceCallConfig{
+
+		BlockOverrides: &BlockOverrides{
+			Number:  (*hexutil.Big)(big.NewInt(5)),
+			BaseFee: (*hexutil.Big)(big.NewInt(1234)),
+		},
+	}
+
+	_, err := api.TraceCall(context.Background(), getTxArgs(t), rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(blockNr)), traceConfig)
+	require.NoError(t, err, "debug api must be able to override block number and base fee")
+}
+
+// Custom matcher to compare vm.BlockContext values
+type BlockContextMatcher struct {
+	expected *vm.BlockContext
+}
+
+func (m BlockContextMatcher) Matches(x interface{}) bool {
+	if bc, ok := x.(*vm.BlockContext); ok {
+		bc.Transfer = nil
+		bc.CanTransfer = nil
+		bc.GetHash = nil
+		return reflect.DeepEqual(*bc, *m.expected)
+	}
+	return false
+}
+
+func (m BlockContextMatcher) String() string {
+	return fmt.Sprintf("%v", m.expected)
 }
 
 func getTxArgs(t *testing.T) TransactionArgs {
