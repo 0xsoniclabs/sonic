@@ -59,13 +59,13 @@ clean:
 vet: 
 	go vet ./...
 
-STATICCHECK_VERSION = 2024.1.1
+STATICCHECK_VERSION = 2025.1
 .PHONY: staticcheck
 staticcheck: 
 	@go install honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION)
 	staticcheck ./...
 
-ERRCHECK_VERSION = v1.8.0
+ERRCHECK_VERSION = v1.9.0
 .PHONY: errcheck
 errorcheck:
 	@go install github.com/kisielk/errcheck@$(ERRCHECK_VERSION)
