@@ -3,6 +3,8 @@ package cert
 import (
 	"fmt"
 	"strings"
+
+	"github.com/0xsoniclabs/sonic/scc/cert/serialization"
 )
 
 // BitSet is a variable-size bit-mask based unsigned integer set representation.
@@ -82,10 +84,12 @@ func (b *BitSet[T]) MarshalJSON() ([]byte, error) {
 }
 
 func (b *BitSet[T]) UnmarshalJSON(data []byte) error {
-	var mask []byte
-	if _, err := fmt.Sscanf(string(data), "\"0x%x\"", &mask); err != nil {
+	hexBytes := serialization.HexBytes{}
+	err := hexBytes.UnmarshalJSON(data)
+	if err != nil {
 		return err
 	}
-	b.Deserialize(mask)
+
+	b.Deserialize(hexBytes)
 	return nil
 }
