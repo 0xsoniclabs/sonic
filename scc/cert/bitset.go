@@ -3,6 +3,8 @@ package cert
 import (
 	"fmt"
 	"strings"
+
+	"github.com/0xsoniclabs/sonic/scc/cert/serialization"
 )
 
 // BitSet is a variable-size bit-mask based unsigned integer set representation.
@@ -61,4 +63,32 @@ func (b BitSet[T]) String() string {
 // unsigned is used as a class of types accepted as elements for the BitSet.
 type unsigned interface {
 	~uint8 | ~uint16 | ~uint32 | ~uint64
+}
+
+// Serialize returns the byte representation of the BitSet.
+func (b *BitSet[T]) Serialize() []byte {
+	return b.mask
+}
+
+// Deserialize restores the BitSet from the given byte representation.
+func (b *BitSet[T]) Deserialize(data []byte) {
+	b.mask = make([]byte, len(data))
+	copy(b.mask, data)
+}
+
+// MarshalJSON converts the BitSet into a JSON-compatible hex string.
+func (b *BitSet[T]) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf("\"0x%x\"", b.Serialize())), nil
+}
+
+// UnmarshalJSON parses a JSON hex string into a BitSet.
+func (b *BitSet[T]) UnmarshalJSON(data []byte) error {
+	hexBytes := serialization.HexBytes{}
+	err := hexBytes.UnmarshalJSON(data)
+	if err != nil {
+		return err
+	}
+
+	b.Deserialize(hexBytes)
+	return nil
 }
