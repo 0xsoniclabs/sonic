@@ -217,6 +217,26 @@ type Upgrades struct {
 	Allegro bool // < first hard fork of the Sonic chain
 }
 
+// The feature set to be enabled in the Allegro upgrade.
+var allegroFeatures = NewFeatures(
+	SonicCertificateChain,
+	NetworkRuleChecks,
+	EIP7702_SetEoaCode,
+)
+
+// Features returns the feature set enabled in the upgrade.
+func (u Upgrades) Features() Features {
+	if u.Allegro {
+		return allegroFeatures
+	}
+	return NewFeatures()
+}
+
+// IsEnabled returns true if the feature is enabled in the upgrade.
+func (u Upgrades) IsEnabled(feature Feature) bool {
+	return u.Features().Has(feature)
+}
+
 type UpgradeHeight struct {
 	Upgrades Upgrades
 	Height   idx.Block
