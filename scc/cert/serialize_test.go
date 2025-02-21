@@ -11,8 +11,20 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+func TestCertificate_Serializable_UnserializableStatementReportsError(t *testing.T) {
+	cert := Certificate[testStatement]{}
+	_, err := cert.Serialize()
+	require.ErrorContains(t, err, "unsupported subject type")
+}
+
+func TestCertificate_Deserialize_UnserializableStatementReportsError(t *testing.T) {
+	cert := Certificate[testStatement]{}
+	err := cert.Deserialize([]byte{1, 2, 3})
+	require.ErrorContains(t, err, "unsupported subject type")
+}
+
 func TestCommitteeCertificate_Serialize_ResultCanBeUnMarshaled(t *testing.T) {
-	tests := map[string]CommitteeCertificate{
+	tests := map[string]Certificate[CommitteeStatement]{
 		"default": {},
 		"example": getExampleCommitteeCertificate(),
 	}
@@ -23,7 +35,7 @@ func TestCommitteeCertificate_Serialize_ResultCanBeUnMarshaled(t *testing.T) {
 			data, err := certificate.Serialize()
 			require.NoError(err)
 
-			var restored CommitteeCertificate
+			var restored Certificate[CommitteeStatement]
 			require.NoError(restored.Deserialize(data))
 
 			require.Equal(certificate, restored)
@@ -32,7 +44,7 @@ func TestCommitteeCertificate_Serialize_ResultCanBeUnMarshaled(t *testing.T) {
 }
 
 func TestCommitteeCertificate_Deserialize_CorruptedDataCanNotBeUnmarshaled(t *testing.T) {
-	require.Error(t, new(CommitteeCertificate).Deserialize([]byte{1, 2, 3}))
+	require.Error(t, new(Certificate[CommitteeStatement]).Deserialize([]byte{1, 2, 3}))
 }
 
 func TestCommitteeCertificate_Deserialize_DetectsIssues(t *testing.T) {
@@ -114,7 +126,7 @@ func TestCommitteeCertificate_Deserialize_DetectsIssues(t *testing.T) {
 			data, err = proto.Marshal(&pb)
 			require.NoError(err)
 
-			var restored CommitteeCertificate
+			var restored Certificate[CommitteeStatement]
 			err = restored.Deserialize(data)
 			require.ErrorContains(err, test.expect)
 		})
@@ -122,7 +134,7 @@ func TestCommitteeCertificate_Deserialize_DetectsIssues(t *testing.T) {
 }
 
 func TestBlockCertificate_Serialize_ResultCanBeUnMarshaled(t *testing.T) {
-	tests := map[string]BlockCertificate{
+	tests := map[string]Certificate[BlockStatement]{
 		"default": {},
 		"example": getExampleBlockCertificate(),
 	}
@@ -133,7 +145,7 @@ func TestBlockCertificate_Serialize_ResultCanBeUnMarshaled(t *testing.T) {
 			data, err := certificate.Serialize()
 			require.NoError(err)
 
-			var restored BlockCertificate
+			var restored Certificate[BlockStatement]
 			require.NoError(restored.Deserialize(data))
 
 			require.Equal(certificate, restored)
@@ -142,7 +154,7 @@ func TestBlockCertificate_Serialize_ResultCanBeUnMarshaled(t *testing.T) {
 }
 
 func TestBlockCertificate_Deserialize_CorruptedDataCanNotBeUnmarshaled(t *testing.T) {
-	require.Error(t, new(BlockCertificate).Deserialize([]byte{1, 2, 3}))
+	require.Error(t, new(Certificate[BlockStatement]).Deserialize([]byte{1, 2, 3}))
 }
 
 func TestBlockCertificate_Deserialize_DetectsIssues(t *testing.T) {
@@ -209,7 +221,7 @@ func TestBlockCertificate_Deserialize_DetectsIssues(t *testing.T) {
 			data, err = proto.Marshal(&pb)
 			require.NoError(err)
 
-			var restored BlockCertificate
+			var restored Certificate[BlockStatement]
 			err = restored.Deserialize(data)
 			require.ErrorContains(err, test.expect)
 		})
@@ -287,14 +299,14 @@ func BenchmarkBlockCertificate_Unmarshaling(b *testing.B) {
 	}
 	b.ResetTimer()
 	for range b.N {
-		var cert BlockCertificate
+		var cert Certificate[BlockStatement]
 		if err := cert.Deserialize(data); err != nil {
 			b.Fatal(err)
 		}
 	}
 }
 
-func getExampleCommitteeCertificate() CommitteeCertificate {
+func getExampleCommitteeCertificate() Certificate[CommitteeStatement] {
 
 	members := make([]scc.Member, 50)
 	for i := range members {
@@ -315,10 +327,10 @@ func getExampleCommitteeCertificate() CommitteeCertificate {
 			panic("failed to add signature")
 		}
 	}
-	return CommitteeCertificate(certificate)
+	return certificate
 }
 
-func getExampleBlockCertificate() BlockCertificate {
+func getExampleBlockCertificate() Certificate[BlockStatement] {
 	certificate := NewCertificate(BlockStatement{
 		statement: statement{
 			ChainId: 123,
@@ -333,5 +345,5 @@ func getExampleBlockCertificate() BlockCertificate {
 			panic("failed to add signature")
 		}
 	}
-	return BlockCertificate(certificate)
+	return certificate
 }
