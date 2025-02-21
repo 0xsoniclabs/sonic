@@ -108,6 +108,8 @@ func concat(elements ...any) []byte {
 			res = binary.BigEndian.AppendUint64(res, v)
 		case idx.Block:
 			res = binary.BigEndian.AppendUint64(res, uint64(v))
+		case scc.Period:
+			res = binary.BigEndian.AppendUint64(res, uint64(v))
 		case string:
 			res = append(res, []byte(v)...)
 		case common.Hash:

@@ -73,7 +73,7 @@ func (s BlockStatement) GetDataToSign() []byte {
 // period.
 type CommitteeStatement struct {
 	statement
-	Period    uint64
+	Period    scc.Period
 	Committee scc.Committee
 }
 
@@ -86,7 +86,7 @@ type CommitteeStatement struct {
 //   - variable length committee serialization
 func (s CommitteeStatement) GetDataToSign() []byte {
 	res := s.statement.getDataToSign("cs")
-	res = binary.BigEndian.AppendUint64(res, s.Period)
+	res = binary.BigEndian.AppendUint64(res, uint64(s.Period))
 	res = append(res, s.Committee.Serialize()...)
 	return res
 }

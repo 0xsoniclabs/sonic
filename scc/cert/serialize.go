@@ -69,7 +69,7 @@ func marshalCommitteeCertificate(cert *CommitteeCertificate) ([]byte, error) {
 
 	return proto.Marshal(&pb.CommitteeCertificate{
 		ChainId:   cert.subject.ChainId,
-		Period:    cert.subject.Period,
+		Period:    uint64(cert.subject.Period),
 		Members:   members,
 		Signature: toProtoSignature(&cert.signature),
 	})
@@ -119,7 +119,7 @@ func unmarshalCommitteeCertificate(data []byte) (CommitteeCertificate, error) {
 			statement: statement{
 				ChainId: pb.ChainId,
 			},
-			Period:    pb.Period,
+			Period:    scc.Period(pb.Period),
 			Committee: scc.NewCommittee(members...),
 		},
 		signature: signature,
