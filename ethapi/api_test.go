@@ -6,6 +6,7 @@ import (
 	"math/big"
 	reflect "reflect"
 	"testing"
+	"time"
 
 	cc "github.com/0xsoniclabs/carmen/go/common"
 	"github.com/0xsoniclabs/carmen/go/common/amount"
@@ -296,10 +297,11 @@ func TestBlockOverrides(t *testing.T) {
 	block.Number = big.NewInt(int64(blockNr))
 
 	any := gomock.Any()
-	mockBackend.EXPECT().BlockByNumber(any, any).Return(block, nil)
-	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, any).Return(mockState, nil, nil).AnyTimes()
+	mockBackend.EXPECT().BlockByNumber(any, any).Return(block, nil).AnyTimes()
+	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, any).Return(mockState, &evmcore.EvmHeader{Number: big.NewInt(int64(blockNr))}, nil).AnyTimes()
 	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000)).AnyTimes()
 	mockBackend.EXPECT().ChainConfig().Return(&params.ChainConfig{}).AnyTimes()
+	mockBackend.EXPECT().RPCEVMTimeout().Return(time.Duration(0)).AnyTimes()
 	setExpectedStateCalls(mockState)
 
 	expectedBlockCtx := &vm.BlockContext{
@@ -313,18 +315,26 @@ func TestBlockOverrides(t *testing.T) {
 	// Check that the correct block context is used when creating EVM instance
 	mockBackend.EXPECT().GetEVM(any, any, any, any, any, BlockContextMatcher{expectedBlockCtx}).DoAndReturn(getEvmFunc(mockState)).AnyTimes()
 
-	api := NewPublicDebugAPI(mockBackend, 10000, 10000)
-
-	traceConfig := &TraceCallConfig{
-
-		BlockOverrides: &BlockOverrides{
-			Number:  (*hexutil.Big)(big.NewInt(5)),
-			BaseFee: (*hexutil.Big)(big.NewInt(1234)),
-		},
+	blockOverrides := &BlockOverrides{
+		Number:  (*hexutil.Big)(big.NewInt(5)),
+		BaseFee: (*hexutil.Big)(big.NewInt(1234)),
 	}
 
-	_, err := api.TraceCall(context.Background(), getTxArgs(t), rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(blockNr)), traceConfig)
+	// Check block overrides on debug api with debug_traceCall rpc function
+	apiDebug := NewPublicDebugAPI(mockBackend, 10000, 10000)
+	traceConfig := &TraceCallConfig{
+		BlockOverrides: blockOverrides,
+	}
+
+	_, err := apiDebug.TraceCall(context.Background(), getTxArgs(t), rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(blockNr)), traceConfig)
 	require.NoError(t, err, "debug api must be able to override block number and base fee")
+
+	// Check block overrides on eth api with eth_call rpc function
+	apiEth := NewPublicBlockChainAPI(mockBackend)
+
+	_, err = apiEth.Call(context.Background(), getTxArgs(t), rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(blockNr)), nil, blockOverrides)
+	require.NoError(t, err, "debug api must be able to override block number and base fee")
+
 }
 
 // Custom matcher to compare vm.BlockContext values
