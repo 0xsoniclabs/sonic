@@ -4,10 +4,12 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 
 	carmen "github.com/0xsoniclabs/carmen/go/state"
@@ -100,15 +102,54 @@ func setBootnodes(ctx *cli.Context, urls []string, cfg *node.Config) {
 	cfg.P2P.BootstrapNodesV5 = []*enode.Node{}
 	for _, url := range urls {
 		if url != "" {
-			node, err := enode.Parse(enode.ValidSchemes, url)
+			hostname, modified, err := resolveHostNameInEnodeURL(url)
 			if err != nil {
-				log.Error("Bootstrap URL invalid", "enode", url, "err", err)
+				log.Error("Failed to resolve hostname Bootnode", "url", url, "err", err)
 				continue
 			}
+
+			node, err := enode.Parse(enode.ValidSchemes, modified)
+			if err != nil {
+				log.Error("Bootstrap URL invalid", "enode", modified, "err", err)
+				continue
+			}
+			node = node.WithHostname(hostname)
 			cfg.P2P.BootstrapNodesV5 = append(cfg.P2P.BootstrapNodesV5, node)
 		}
 	}
 	cfg.P2P.BootstrapNodes = cfg.P2P.BootstrapNodesV5
+}
+
+func resolveHostNameInEnodeURL(url string) (hostname string, modified string, err error) {
+	return resolveHostNameInEnodeURLInternal(url, func(hostname string) (string, error) {
+		ips, err := net.LookupIP(hostname)
+		if err != nil {
+			return "", err
+		}
+		return ips[0].String(), nil
+	})
+}
+
+var _enodeHostnameRE = regexp.MustCompile(`enode:\/\/[0-9a-f]+@([^:]+):[0-9]+`)
+
+func resolveHostNameInEnodeURLInternal(
+	url string,
+	resolve func(string) (string, error),
+) (
+	hostname string,
+	modified string,
+	err error,
+) {
+	match := _enodeHostnameRE.FindStringSubmatch(url)
+	if len(match) != 2 {
+		return "", "", fmt.Errorf("failed to match enode URL")
+	}
+	hostname = match[1]
+	ip, err := resolve(hostname)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to resolve hostname %v: %v", hostname, err)
+	}
+	return hostname, strings.Replace(url, hostname, ip, 1), nil
 }
 
 func setTxPool(ctx *cli.Context, cfg *evmcore.TxPoolConfig) error {
