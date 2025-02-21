@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 
 	"github.com/0xsoniclabs/sonic/scc"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -47,7 +48,7 @@ func (s statement) getDataToSign(documentId string) []byte {
 // number has a certain hash and state root.
 type BlockStatement struct {
 	statement
-	Number    uint64
+	Number    idx.Block
 	Hash      common.Hash
 	StateRoot common.Hash
 }
@@ -62,7 +63,7 @@ type BlockStatement struct {
 //   - 32 bytes state root
 func (s BlockStatement) GetDataToSign() []byte {
 	res := s.statement.getDataToSign("bs")
-	res = binary.BigEndian.AppendUint64(res, s.Number)
+	res = binary.BigEndian.AppendUint64(res, uint64(s.Number))
 	res = append(res, s.Hash.Bytes()...)
 	res = append(res, s.StateRoot.Bytes()...)
 	return res

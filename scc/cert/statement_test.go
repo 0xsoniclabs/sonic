@@ -8,6 +8,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/bls"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
@@ -105,6 +106,8 @@ func concat(elements ...any) []byte {
 			res = append(res, v)
 		case uint64:
 			res = binary.BigEndian.AppendUint64(res, v)
+		case idx.Block:
+			res = binary.BigEndian.AppendUint64(res, uint64(v))
 		case string:
 			res = append(res, []byte(v)...)
 		case common.Hash:

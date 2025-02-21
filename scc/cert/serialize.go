@@ -6,6 +6,7 @@ import (
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/bls"
 	"github.com/0xsoniclabs/sonic/scc/cert/pb"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"google.golang.org/protobuf/proto"
 )
@@ -128,7 +129,7 @@ func unmarshalCommitteeCertificate(data []byte) (CommitteeCertificate, error) {
 func marshalBlockCertificate(cert *BlockCertificate) ([]byte, error) {
 	return proto.Marshal(&pb.BlockCertificate{
 		ChainId:   cert.subject.ChainId,
-		Number:    cert.subject.Number,
+		Number:    uint64(cert.subject.Number),
 		Hash:      cert.subject.Hash[:],
 		StateRoot: cert.subject.StateRoot[:],
 		Signature: toProtoSignature(&cert.signature),
@@ -159,7 +160,7 @@ func unmarshalBlockCertificate(data []byte) (BlockCertificate, error) {
 			statement: statement{
 				ChainId: pb.ChainId,
 			},
-			Number:    pb.Number,
+			Number:    idx.Block(pb.Number),
 			Hash:      common.Hash(pb.Hash),
 			StateRoot: common.Hash(pb.StateRoot),
 		},
