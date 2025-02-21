@@ -55,7 +55,7 @@ func (c *BlockCertificate) Deserialize(data []byte) error {
 // --- internal ---
 
 func marshalCommitteeCertificate(cert *CommitteeCertificate) ([]byte, error) {
-	members := []*pb.Member{}
+	var members []*pb.Member
 	for _, member := range cert.subject.Committee.Members() {
 		key := member.PublicKey.Serialize()
 		proof := member.ProofOfPossession.Serialize()
@@ -85,7 +85,10 @@ func unmarshalCommitteeCertificate(data []byte) (CommitteeCertificate, error) {
 		return none, fmt.Errorf("failed to decode signature, %w", err)
 	}
 
-	members := make([]scc.Member, 0, len(pb.Members))
+	var members []scc.Member
+	if len(pb.Members) > 0 {
+		members = make([]scc.Member, 0, len(pb.Members))
+	}
 	for _, cur := range pb.Members {
 		if len := len(cur.PublicKey); len != 48 {
 			return none, fmt.Errorf("invalid public key length: %d", len)
