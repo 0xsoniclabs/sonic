@@ -5,9 +5,9 @@ import (
 	"math"
 
 	base "github.com/Fantom-foundation/lachesis-base/eventcheck/basiccheck"
+	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/inter"
 )
 
@@ -40,8 +40,31 @@ func validateTx(tx *types.Transaction) error {
 	if tx.Value().Sign() < 0 || tx.GasPrice().Sign() < 0 {
 		return ErrNegativeValue
 	}
+
 	// Ensure the transaction has more gas than the basic tx fee.
-	intrGas, err := evmcore.IntrinsicGas(tx.Data(), tx.AccessList(), tx.To() == nil)
+
+	// NOTE: the call to intrinsicGas was migrated to use Geth's core package
+	// Unfortunately, we do not have the information at this point to determine
+	// the enabled revisions a this block height.
+	// Transactions are correctly validated in the pool and in the processor,
+	// therefore this check is called as the less strict version.
+	// This check will be removed in future versions:
+	// https://github.com/Fantom-foundation/lachesis-base-sonic/blob/main/eventcheck/basiccheck/basic_check.go
+	intrGas, err := core.IntrinsicGas(
+		tx.Data(),
+		tx.AccessList(),
+		tx.SetCodeAuthorizations(),
+		tx.To() == nil, // is contract creation
+		true,           // is homestead
+
+		// is eip-2028 (transactional data gas cost reduction)
+		// enabled to get the lower intrinsic gas cost of both options
+		true,
+
+		// is eip-3860 (limit and meter init-code )
+		// Disable to get the lower intrinsic gas cost of both options
+		false,
+	)
 	if err != nil {
 		return err
 	}
@@ -55,7 +78,7 @@ func validateTx(tx *types.Transaction) error {
 	return nil
 }
 
-func (v *Checker) checkTxs(e inter.EventPayloadI) error {
+func (v *Checker) validateTxs(e inter.EventPayloadI) error {
 	for _, tx := range e.Txs() {
 		if err := validateTx(tx); err != nil {
 			return err
@@ -78,7 +101,7 @@ func (v *Checker) Validate(e inter.EventPayloadI) error {
 	if e.CreationTime() <= 0 || e.MedianTime() <= 0 {
 		return ErrZeroTime
 	}
-	if err := v.checkTxs(e); err != nil {
+	if err := v.validateTxs(e); err != nil {
 		return err
 	}
 

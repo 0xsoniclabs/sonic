@@ -84,13 +84,16 @@ func (v *Checker) checkGas(e inter.EventPayloadI, rules opera.Rules) error {
 func CheckTxs(txs types.Transactions, rules opera.Rules) error {
 	maxType := uint8(0)
 	if rules.Upgrades.Berlin {
-		maxType = 1
+		maxType = types.LegacyTxType
 	}
 	if rules.Upgrades.London {
-		maxType = 2
+		maxType = types.AccessListTxType
 	}
 	if rules.Upgrades.Sonic {
-		maxType = 3
+		maxType = types.BlobTxType
+	}
+	if rules.Upgrades.Allegro {
+		maxType = types.SetCodeTxType
 	}
 	for _, tx := range txs {
 		if tx.Type() > maxType {
