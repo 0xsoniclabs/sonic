@@ -327,10 +327,11 @@ func FakeNetRules() Rules {
 			MaxEmptyBlockSkipPeriod: inter.Timestamp(3 * time.Second),
 		},
 		Upgrades: Upgrades{
-			Berlin: true,
-			London: true,
-			Llr:    false,
-			Sonic:  true,
+			Berlin:  true,
+			London:  true,
+			Llr:     false,
+			Sonic:   true,
+			Allegro: true,
 		},
 	}
 }
