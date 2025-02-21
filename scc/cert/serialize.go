@@ -167,9 +167,9 @@ func unmarshalBlockCertificate(data []byte) (BlockCertificate, error) {
 func toProtoSignature[S Statement](
 	signature *AggregatedSignature[S],
 ) *pb.AggregatedSignature {
-	sig := signature.Signature.Serialize()
+	sig := signature.signature.Serialize()
 	return &pb.AggregatedSignature{
-		SignerMask: signature.Signers.mask,
+		SignerMask: signature.signers.mask,
 		Signature:  sig[:],
 	}
 }
@@ -191,7 +191,7 @@ func fromProtoSignature[S Statement](
 	}
 
 	return AggregatedSignature[S]{
-		Signers:   BitSet[scc.MemberId]{mask: pb.SignerMask},
-		Signature: signature,
+		signers:   BitSet[scc.MemberId]{mask: pb.SignerMask},
+		signature: signature,
 	}, nil
 }
