@@ -8,6 +8,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestCertificate_NewCertificate_ContainsStatement(t *testing.T) {
+	require := require.New(t)
+	stmt := testStatement(1)
+	cert := NewCertificate(stmt)
+	require.Equal(stmt, cert.Subject())
+}
+
 func TestCertificate_CanBeGraduallyAccumulatedAndVerified(t *testing.T) {
 	requires := require.New(t)
 	keys := make([]bls.PrivateKey, 6)

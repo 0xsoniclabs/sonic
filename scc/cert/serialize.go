@@ -11,53 +11,40 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// CommitteeCertificate is a certificate for a committee. It is a specialization
-// of the generic Certificate type offering additional methods for serialization.
-type CommitteeCertificate Certificate[CommitteeStatement]
-
 // Serialize serializes the certificate into a byte slice. The internal encoding
 // uses the protobuf format, enabling future backward compatibility.
-func (c *CommitteeCertificate) Serialize() ([]byte, error) {
-	return marshalCommitteeCertificate(c)
+func (c *Certificate[S]) Serialize() ([]byte, error) {
+	if subject, ok := any(&c.subject).(serializableSubject); ok {
+		return subject.serialize(toProtoSignature(&c.signature))
+	}
+	return nil, fmt.Errorf("unsupported subject type: %T", c.subject)
 }
 
 // Deserialize restores the certificate from a byte slice. The accepted input
 // data must follow the protobuf format used by the Serialize method.
-func (c *CommitteeCertificate) Deserialize(data []byte) error {
-	restored, err := unmarshalCommitteeCertificate(data)
+func (c *Certificate[S]) Deserialize(data []byte) error {
+	subject, ok := any(&c.subject).(serializableSubject)
+	if !ok {
+		return fmt.Errorf("unsupported subject type: %T", c.subject)
+	}
+	sig, err := subject.deserialize(data)
 	if err != nil {
 		return err
 	}
-	*c = restored
-	return nil
-}
-
-// BlockCertificate is a certificate for a block. It is a specialization of the
-// generic Certificate type offering additional methods for serialization.
-type BlockCertificate Certificate[BlockStatement]
-
-// Serialize serializes the certificate into a byte slice. The internal encoding
-// uses the protobuf format, enabling future backward compatibility.
-func (c *BlockCertificate) Serialize() ([]byte, error) {
-	return marshalBlockCertificate(c)
-}
-
-// Deserialize restores the certificate from a byte slice. The accepted input
-// data must follow the protobuf format used by the Serialize method.
-func (c *BlockCertificate) Deserialize(data []byte) error {
-	restored, err := unmarshalBlockCertificate(data)
-	if err != nil {
-		return err
-	}
-	*c = restored
-	return nil
+	c.signature, err = fromProtoSignature[S](sig)
+	return err
 }
 
 // --- internal ---
 
-func marshalCommitteeCertificate(cert *CommitteeCertificate) ([]byte, error) {
+type serializableSubject interface {
+	serialize(*pb.AggregatedSignature) ([]byte, error)
+	deserialize([]byte) (*pb.AggregatedSignature, error)
+}
+
+func (s CommitteeStatement) serialize(signature *pb.AggregatedSignature) ([]byte, error) {
 	var members []*pb.Member
-	for _, member := range cert.subject.Committee.Members() {
+	for _, member := range s.Committee.Members() {
 		key := member.PublicKey.Serialize()
 		proof := member.ProofOfPossession.Serialize()
 		members = append(members, &pb.Member{
@@ -68,22 +55,17 @@ func marshalCommitteeCertificate(cert *CommitteeCertificate) ([]byte, error) {
 	}
 
 	return proto.Marshal(&pb.CommitteeCertificate{
-		ChainId:   cert.subject.ChainId,
-		Period:    uint64(cert.subject.Period),
+		ChainId:   s.ChainId,
+		Period:    uint64(s.Period),
 		Members:   members,
-		Signature: toProtoSignature(&cert.signature),
+		Signature: signature,
 	})
 }
 
-func unmarshalCommitteeCertificate(data []byte) (CommitteeCertificate, error) {
-	var none CommitteeCertificate
+func (s *CommitteeStatement) deserialize(data []byte) (*pb.AggregatedSignature, error) {
 	var pb pb.CommitteeCertificate
 	if err := proto.Unmarshal(data, &pb); err != nil {
-		return none, err
-	}
-	signature, err := fromProtoSignature[CommitteeStatement](pb.Signature)
-	if err != nil {
-		return none, fmt.Errorf("failed to decode signature, %w", err)
+		return nil, err
 	}
 
 	var members []scc.Member
@@ -92,19 +74,19 @@ func unmarshalCommitteeCertificate(data []byte) (CommitteeCertificate, error) {
 	}
 	for _, cur := range pb.Members {
 		if len := len(cur.PublicKey); len != 48 {
-			return none, fmt.Errorf("invalid public key length: %d", len)
+			return nil, fmt.Errorf("invalid public key length: %d", len)
 		}
 		key, err := bls.DeserializePublicKey([48]byte(cur.PublicKey))
 		if err != nil {
-			return none, fmt.Errorf("failed to decode public key, %w", err)
+			return nil, fmt.Errorf("failed to decode public key, %w", err)
 		}
 
 		if len := len(cur.ProofOfPossession); len != 96 {
-			return none, fmt.Errorf("invalid proof of possession length: %d", len)
+			return nil, fmt.Errorf("invalid proof of possession length: %d", len)
 		}
 		proof, err := bls.DeserializeSignature([96]byte(cur.ProofOfPossession))
 		if err != nil {
-			return none, fmt.Errorf("failed to decode proof of possession, %w", err)
+			return nil, fmt.Errorf("failed to decode proof of possession, %w", err)
 		}
 
 		members = append(members, scc.Member{
@@ -114,58 +96,50 @@ func unmarshalCommitteeCertificate(data []byte) (CommitteeCertificate, error) {
 		})
 	}
 
-	return CommitteeCertificate{
-		subject: CommitteeStatement{
-			statement: statement{
-				ChainId: pb.ChainId,
-			},
-			Period:    scc.Period(pb.Period),
-			Committee: scc.NewCommittee(members...),
+	*s = CommitteeStatement{
+		statement: statement{
+			ChainId: pb.ChainId,
 		},
-		signature: signature,
-	}, nil
+		Period:    scc.Period(pb.Period),
+		Committee: scc.NewCommittee(members...),
+	}
+
+	return pb.Signature, nil
 }
 
-func marshalBlockCertificate(cert *BlockCertificate) ([]byte, error) {
+func (s BlockStatement) serialize(signature *pb.AggregatedSignature) ([]byte, error) {
 	return proto.Marshal(&pb.BlockCertificate{
-		ChainId:   cert.subject.ChainId,
-		Number:    uint64(cert.subject.Number),
-		Hash:      cert.subject.Hash[:],
-		StateRoot: cert.subject.StateRoot[:],
-		Signature: toProtoSignature(&cert.signature),
+		ChainId:   s.ChainId,
+		Number:    uint64(s.Number),
+		Hash:      s.Hash[:],
+		StateRoot: s.StateRoot[:],
+		Signature: signature,
 	})
 }
 
-func unmarshalBlockCertificate(data []byte) (BlockCertificate, error) {
-	var none BlockCertificate
+func (s *BlockStatement) deserialize(data []byte) (*pb.AggregatedSignature, error) {
 	var pb pb.BlockCertificate
 	if err := proto.Unmarshal(data, &pb); err != nil {
-		return none, err
+		return nil, err
 	}
 
 	if len := len(pb.Hash); len != 32 {
-		return none, fmt.Errorf("invalid hash length: %d", len)
+		return nil, fmt.Errorf("invalid hash length: %d", len)
 	}
 	if len := len(pb.StateRoot); len != 32 {
-		return none, fmt.Errorf("invalid state root length: %d", len)
+		return nil, fmt.Errorf("invalid state root length: %d", len)
 	}
 
-	signature, err := fromProtoSignature[BlockStatement](pb.Signature)
-	if err != nil {
-		return none, fmt.Errorf("failed to decode signature, %w", err)
-	}
-
-	return BlockCertificate{
-		subject: BlockStatement{
-			statement: statement{
-				ChainId: pb.ChainId,
-			},
-			Number:    idx.Block(pb.Number),
-			Hash:      common.Hash(pb.Hash),
-			StateRoot: common.Hash(pb.StateRoot),
+	*s = BlockStatement{
+		statement: statement{
+			ChainId: pb.ChainId,
 		},
-		signature: signature,
-	}, nil
+		Number:    idx.Block(pb.Number),
+		Hash:      common.Hash(pb.Hash),
+		StateRoot: common.Hash(pb.StateRoot),
+	}
+
+	return pb.Signature, nil
 }
 
 func toProtoSignature[S Statement](

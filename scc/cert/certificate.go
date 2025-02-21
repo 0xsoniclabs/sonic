@@ -20,6 +20,11 @@ func NewCertificate[S Statement](subject S) Certificate[S] {
 	return Certificate[S]{subject: subject}
 }
 
+// Subject returns the statement that is certified by this certificate.
+func (c *Certificate[S]) Subject() S {
+	return c.subject
+}
+
 // Add adds a signature to the certificate for the given signer ID. The ID is
 // used to identify signers in a certificate creation committee.
 func (c *Certificate[S]) Add(id scc.MemberId, signature Signature[S]) error {
