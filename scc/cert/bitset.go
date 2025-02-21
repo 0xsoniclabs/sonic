@@ -65,24 +65,23 @@ type unsigned interface {
 	~uint8 | ~uint16 | ~uint32 | ~uint64
 }
 
+// Serialize returns the byte representation of the BitSet.
 func (b *BitSet[T]) Serialize() []byte {
-	result := []byte{}
-	for _, entry := range b.Entries() {
-		result = append(result, byte(entry))
-	}
-	return result
+	return b.mask
 }
 
+// Deserialize restores the BitSet from the given byte representation.
 func (b *BitSet[T]) Deserialize(data []byte) {
-	for _, entry := range data {
-		b.Add(T(entry))
-	}
+	b.mask = make([]byte, len(data))
+	copy(b.mask, data)
 }
 
+// MarshalJSON converts the BitSet into a JSON-compatible hex string.
 func (b *BitSet[T]) MarshalJSON() ([]byte, error) {
 	return []byte(fmt.Sprintf("\"0x%x\"", b.Serialize())), nil
 }
 
+// UnmarshalJSON parses a JSON hex string into a BitSet.
 func (b *BitSet[T]) UnmarshalJSON(data []byte) error {
 	hexBytes := serialization.HexBytes{}
 	err := hexBytes.UnmarshalJSON(data)
