@@ -281,10 +281,19 @@ func (r Rules) EvmChainConfig(hh []UpgradeHeight) *ethparams.ChainConfig {
 			cfg.ShanghaiTime = timestamp
 			cfg.CancunTime = timestamp
 		}
+
+		if cfg.PragueTime == nil && h.Upgrades.Allegro {
+			cfg.PragueTime = timestamp
+		}
+
 		if !h.Upgrades.Sonic {
 			// disabling upgrade breaks the history replay - should be never used
 			cfg.ShanghaiTime = nil
 			cfg.CancunTime = nil
+		}
+
+		if !h.Upgrades.Allegro {
+			cfg.PragueTime = nil
 		}
 	}
 	return &cfg
