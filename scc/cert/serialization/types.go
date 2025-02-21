@@ -19,6 +19,9 @@ func (h *HexBytes) UnmarshalJSON(data []byte) error {
 		*h = nil
 		return nil
 	}
+	if !strings.HasPrefix(s, "0x") {
+		return fmt.Errorf("invalid hex string %s", s)
+	}
 	s = strings.TrimPrefix(s, "0x")
 	if len(s)%2 == 1 {
 		s = "0" + s
@@ -31,11 +34,22 @@ func (h *HexBytes) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+func UnmarshallFixLenghtHexBytes(data []byte, length int) (HexBytes, error) {
+	var h HexBytes
+	err := h.UnmarshalJSON(data)
+	if err != nil {
+		return nil, err
+	}
+	if len(h) != length {
+		return nil, fmt.Errorf("invalid length %d, expected %d", len(h), length)
+	}
+	return h, nil
+}
+
 type PublicKey [48]byte
 
 func (p *PublicKey) UnmarshalJSON(data []byte) error {
-	hexBytes := HexBytes{}
-	err := hexBytes.UnmarshalJSON(data)
+	hexBytes, err := UnmarshallFixLenghtHexBytes(data, 48)
 	if err != nil {
 		return err
 	}
@@ -50,8 +64,7 @@ func (p PublicKey) String() string {
 type Signature [96]byte
 
 func (s *Signature) UnmarshalJSON(data []byte) error {
-	hexBytes := HexBytes{}
-	err := hexBytes.UnmarshalJSON(data)
+	hexBytes, err := UnmarshallFixLenghtHexBytes(data, 96)
 	if err != nil {
 		return err
 	}
