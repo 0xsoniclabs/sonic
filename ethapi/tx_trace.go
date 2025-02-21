@@ -242,7 +242,7 @@ func (s *PublicTxTraceAPI) replayBlock(ctx context.Context, block *evmcore.EvmBl
 			vmConfig.NoBaseFee = true
 			vmConfig.Tracer = nil
 
-			vmenv, _, err := s.b.GetEVM(ctx, msg, state, block.Header(), &vmConfig)
+			vmenv, _, err := s.b.GetEVM(ctx, msg, state, block.Header(), &vmConfig, nil)
 			if err != nil {
 				return nil, fmt.Errorf("cannot initialize vm for transaction %s, error: %s", tx.Hash().String(), err.Error())
 			}
@@ -305,7 +305,7 @@ func (s *PublicTxTraceAPI) traceTx(
 	// this makes sure resources are cleaned up.
 	defer cancel()
 
-	vmenv, _, err := b.GetEVM(ctx, msg, state, header, &cfg)
+	vmenv, _, err := b.GetEVM(ctx, msg, state, header, &cfg, nil)
 	if err != nil {
 		return nil, fmt.Errorf("cannot initialize vm for transaction %s, error: %s", tx.Hash().String(), err.Error())
 	}
