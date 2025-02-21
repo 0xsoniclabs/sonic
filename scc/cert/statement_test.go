@@ -77,12 +77,12 @@ func TestCommitteeStatement_GetSignData_HasStatementPrefix(t *testing.T) {
 
 func TestCommitteeStatement_GetSignData_EncodesCommitteeInformation(t *testing.T) {
 	key := bls.NewPrivateKey()
-	committee, err := scc.NewCommittee(scc.Member{
+	committee := scc.NewCommittee(scc.Member{
 		PublicKey:         key.PublicKey(),
 		ProofOfPossession: key.GetProofOfPossession(),
 		VotingPower:       12,
 	})
-	require.NoError(t, err)
+	require.NoError(t, committee.Validate())
 
 	statement := CommitteeStatement{
 		Period:    123,

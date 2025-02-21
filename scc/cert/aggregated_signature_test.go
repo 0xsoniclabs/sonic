@@ -54,12 +54,12 @@ func TestAggregatedSignature_Verify_CanVerifyValidSignature(t *testing.T) {
 	require.NoError(agg.Add(1, sig1))
 	require.NoError(agg.Add(2, sig2))
 
-	committee, err := scc.NewCommittee(
+	committee := scc.NewCommittee(
 		newMember(key0, 1),
 		newMember(key1, 2),
 		newMember(key2, 3),
 	)
-	require.NoError(err)
+	require.NoError(committee.Validate())
 	require.NoError(agg.Verify(committee, committee, stmt))
 }
 
@@ -69,18 +69,18 @@ func TestAggregatedSignature_Verify_CanVerifyAuthorityOfDifferentProducerCommitt
 	key1 := bls.NewPrivateKey()
 	key2 := bls.NewPrivateKey()
 
-	authority, err := scc.NewCommittee(
+	authority := scc.NewCommittee(
 		newMember(key0, 1),
 		newMember(key1, 2),
 	)
-	require.NoError(err)
+	require.NoError(authority.Validate())
 
-	producer, err := scc.NewCommittee(
+	producer := scc.NewCommittee(
 		newMember(key0, 1),
 		newMember(key1, 2),
 		newMember(key2, 3),
 	)
-	require.NoError(err)
+	require.NoError(producer.Validate())
 
 	stmt := testStatement(1)
 
@@ -123,15 +123,15 @@ func TestAggregatedSignature_Verify_DetectsInvalidSigner(t *testing.T) {
 	key0 := bls.NewPrivateKey()
 	key1 := bls.NewPrivateKey()
 
-	committee, err := scc.NewCommittee(newMember(key0, 1))
-	require.NoError(err)
+	committee := scc.NewCommittee(newMember(key0, 1))
+	require.NoError(committee.Validate())
 
 	stmt := testStatement(1)
 	agg := AggregatedSignature[testStatement]{}
 	require.NoError(agg.Add(0, Sign(stmt, key0)))
 	require.NoError(agg.Add(1, Sign(stmt, key1))) // < signer not in committee
 
-	err = agg.Verify(committee, committee, stmt)
+	err := agg.Verify(committee, committee, stmt)
 	require.Error(err)
 	require.ErrorContains(err, "signer 1 not found in producer committee")
 }
@@ -145,15 +145,15 @@ func TestAggregatedSignature_Verify_DetectsOverflowInAuthorityCommitteeVotingPow
 	member0 := newMember(key0, 1)
 	member1 := newMember(key1, 2)
 
-	validCommittee, err := scc.NewCommittee(member0, member1)
-	require.NoError(err)
+	validCommittee := scc.NewCommittee(member0, member1)
+	require.NoError(validCommittee.Validate())
 
 	member0.VotingPower = math.MaxUint64
-	invalidCommittee := scc.NewCommitteeForTests(member0, member1)
+	invalidCommittee := scc.NewCommittee(member0, member1)
 	require.Error(invalidCommittee.Validate())
 
 	agg := AggregatedSignature[testStatement]{}
-	err = agg.Verify(invalidCommittee, validCommittee, testStatement(1))
+	err := agg.Verify(invalidCommittee, validCommittee, testStatement(1))
 	require.Error(err)
 	require.ErrorContains(err, "total voting power exceeds maximum")
 }
@@ -167,8 +167,8 @@ func TestAggregatedSignature_Verify_DetectsInsufficientVotingPower(t *testing.T)
 		keys[i] = bls.NewPrivateKey()
 		members[i] = newMember(keys[i], 1)
 	}
-	committee, err := scc.NewCommittee(members...)
-	require.NoError(err)
+	committee := scc.NewCommittee(members...)
+	require.NoError(committee.Validate())
 
 	stmt := testStatement(1)
 	agg := AggregatedSignature[testStatement]{}
@@ -190,8 +190,8 @@ func TestAggregatedSignature_Verify_DetectsWrongStatement(t *testing.T) {
 	key := bls.NewPrivateKey()
 	stmt := testStatement(1)
 
-	committee, err := scc.NewCommittee(newMember(key, 1))
-	require.NoError(err)
+	committee := scc.NewCommittee(newMember(key, 1))
+	require.NoError(committee.Validate())
 
 	tests := map[string]struct {
 		sig  Signature[testStatement]

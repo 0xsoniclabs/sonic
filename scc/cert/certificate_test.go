@@ -16,8 +16,8 @@ func TestCertificate_CanBeGraduallyAccumulatedAndVerified(t *testing.T) {
 		keys[i] = bls.NewPrivateKey()
 		members[i] = newMember(keys[i], 1)
 	}
-	committee, err := scc.NewCommittee(members...)
-	requires.NoError(err)
+	committee := scc.NewCommittee(members...)
+	requires.NoError(committee.Validate())
 
 	stmt := testStatement(1)
 
@@ -42,11 +42,11 @@ func TestCertificate_VerifyAuthority_AcceptsDifferentAuthority(t *testing.T) {
 
 	stmt := testStatement(1)
 
-	producer, err := scc.NewCommittee(newMember(key0, 1), newMember(key1, 2))
-	require.NoError(err)
+	producer := scc.NewCommittee(newMember(key0, 1), newMember(key1, 2))
+	require.NoError(producer.Validate())
 
-	authority, err := scc.NewCommittee(newMember(key0, 1))
-	require.NoError(err)
+	authority := scc.NewCommittee(newMember(key0, 1))
+	require.NoError(producer.Validate())
 
 	// Initially the certificate is for nobody valid.
 	cert := NewCertificate(stmt)

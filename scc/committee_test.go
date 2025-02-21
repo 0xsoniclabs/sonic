@@ -8,18 +8,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestCommittee_NewCommittee_CanCreateValidCommittee(t *testing.T) {
-	_, err := NewCommittee(
-		newTestMember(1, 10),
-		newTestMember(2, 20),
-		newTestMember(3, 15),
-	)
-	require.NoError(t, err)
-}
-
-func TestCommittee_NewCommittee_DetectsInvalidCommittee(t *testing.T) {
-	_, err := NewCommittee()
-	require.Error(t, err)
+func TestCommittee_NewCommittee_EmptyCommitteeUsesNilMembers(t *testing.T) {
+	committee := NewCommittee()
+	require.Nil(t, committee.members)
 }
 
 func TestCommittee_Members_EnumeratesMembers(t *testing.T) {

@@ -32,20 +32,11 @@ const MaxCommitteeSize = 512
 // ordered list of members.
 type MemberId uint16
 
-// NewCommittee creates a new committee with the provided members. There must be
-// at least one member, all members must be valid, and no duplicates are allowed.
-func NewCommittee(members ...Member) (Committee, error) {
-	res := NewCommitteeForTests(members...)
-	if err := res.Validate(); err != nil {
-		return Committee{}, err
-	}
-	return res, nil
-}
-
-// NewCommitteeForTests creates a new committee with the provided members. This
-// function is intended for testing purposes only and does not validate the
-// committee.
-func NewCommitteeForTests(members ...Member) Committee {
+// NewCommittee creates a new committee with the provided members. The list of
+// members is not implicitly validated, thus it is possible to create invalid
+// committees. To ensure that the committee is well-formed, call the Validate
+// method.
+func NewCommittee(members ...Member) Committee {
 	return Committee{members: slices.Clone(members)}
 }
 
