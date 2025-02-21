@@ -40,6 +40,10 @@ type Store struct {
 		Genesis                kvdb.Store `table:"g"`
 		UpgradeHeights         kvdb.Store `table:"U"`
 
+		// Sonic Certification Chain tables
+		CommitteeCertificates kvdb.Store `table:"C"`
+		BlockCertificates     kvdb.Store `table:"c"`
+
 		// P2P-only
 		HighestLamport kvdb.Store `table:"l"`
 
