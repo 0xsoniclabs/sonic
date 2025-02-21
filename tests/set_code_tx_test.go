@@ -90,13 +90,13 @@ func testBatching(t *testing.T, net *IntegrationTestNet) {
 	// sender account batches multiple transfers of founds in a single transaction
 	sender := makeAccountWithBalance(t, net, 1e18)
 
-	receiver1 := makeAccountWithBalance(t, net, 1)
-	receiver2 := makeAccountWithBalance(t, net, 1)
+	receiver1 := makeAccountWithBalance(t, net, 0)
+	receiver2 := makeAccountWithBalance(t, net, 0)
 
-	batchContract, receipt, err := DeployContract(net, batch.DeployBatch)
+	batchContract, deployReceipt, err := DeployContract(net, batch.DeployBatch)
 	require.NoError(t, err)
-	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
-	batchContractAddress := receipt.ContractAddress
+	require.Equal(t, types.ReceiptStatusSuccessful, deployReceipt.Status)
+	batchContractAddress := deployReceipt.ContractAddress
 
 	// Extract the call data of a normal call to the delegate contract
 	// to know the ABI encoding of the callData
@@ -106,23 +106,30 @@ func testBatching(t *testing.T, net *IntegrationTestNet) {
 	batchTx, err := batchContract.Execute(txOpts, []batch.BatchCallDelegationCall{
 		{
 			To:    receiver1.Address(),
-			Value: big.NewInt(1234),
+			Value: big.NewInt(100),
 		},
 		{
 			To:    receiver2.Address(),
-			Value: big.NewInt(4321),
+			Value: big.NewInt(100),
 		},
 	})
 	require.NoError(t, err)
 
+	t.Log("sender ", sender.Address())
+	t.Log("Batch ", receiver1.Address())
+	t.Log("Batch", receiver2.Address())
+
 	// Send a SetCode transaction to the batch contract
 	tx := makeEip7702Transaction(t, client, sender, sender, batchContractAddress,
-		250_000,
-		1234+4321,
+		450_000,
+		200,
 		batchTx.Data())
-	receipt, err = net.Run(tx)
+	batchReceipt, err := net.Run(tx)
 	require.NoError(t, err)
-	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+	require.Equal(t, types.ReceiptStatusSuccessful, batchReceipt.Status)
+
+	there is something fishy, debug the call instruction (transfer) to see
+	that the calling part of the contract does not have founds and the call returns
 
 	// Check that the receivers have received the funds
 	balance1, err := client.BalanceAt(context.Background(), receiver1.Address(), nil)

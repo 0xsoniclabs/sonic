@@ -15,7 +15,8 @@ contract BatchCallDelegation {
 
     function execute(Call[] calldata calls) external payable {
         for (uint256 i = 0; i < calls.length; i++) {
-            (bool success, ) = calls[i].to.call{value: msg.value}("");
+            Call memory call = calls[i];
+            (bool success, ) = call.to.call{value: call.value}("");
             require(success, "call reverted");
         }
     }
