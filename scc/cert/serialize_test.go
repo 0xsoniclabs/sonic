@@ -288,7 +288,7 @@ func BenchmarkBlockCertificate_Unmarshaling(b *testing.B) {
 	b.ResetTimer()
 	for range b.N {
 		var cert BlockCertificate
-		if cert.Deserialize(data); err != nil {
+		if err := cert.Deserialize(data); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -311,7 +311,9 @@ func getExampleCommitteeCertificate() CommitteeCertificate {
 
 	sig := Sign(certificate.subject, bls.NewPrivateKey())
 	for i := scc.MemberId(1); i <= 256; i *= 2 {
-		certificate.Add(i, sig)
+		if err := certificate.Add(i, sig); err != nil {
+			panic("failed to add signature")
+		}
 	}
 	return CommitteeCertificate(certificate)
 }
@@ -327,7 +329,9 @@ func getExampleBlockCertificate() BlockCertificate {
 	})
 	sig := Sign(certificate.subject, bls.NewPrivateKey())
 	for i := scc.MemberId(1); i <= 256; i *= 2 {
-		certificate.Add(i, sig)
+		if err := certificate.Add(i, sig); err != nil {
+			panic("failed to add signature")
+		}
 	}
 	return BlockCertificate(certificate)
 }
