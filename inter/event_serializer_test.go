@@ -64,8 +64,6 @@ func TestEventPayloadSerialization(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		for name, toEncode := range tests {
 			t.Run(name, func(t *testing.T) {
-				_ = name
-
 				buf, err := rlp.EncodeToBytes(&toEncode)
 				require.NoError(t, err)
 
