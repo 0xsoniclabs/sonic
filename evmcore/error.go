@@ -85,4 +85,7 @@ var (
 
 	// ErrSenderNoEOA is returned if the sender of a transaction is a contract.
 	ErrSenderNoEOA = errors.New("sender not an eoa")
+
+	// ErrEmptyAuthorizations is returned if a SetCode transaction has no authorizations.
+	ErrEmptyAuthorizations = errors.New("empty authorizations")
 )
