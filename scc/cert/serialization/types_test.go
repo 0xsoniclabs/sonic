@@ -9,8 +9,9 @@ import (
 func TestHexBytes_UnmarshalJSON_ValidHexString(t *testing.T) {
 	var h HexBytes
 	data := []byte(`"0x012abc"`)
-	err := h.UnmarshalJSON(data)
-	require.NoError(t, err)
+	require.NoError(t, h.UnmarshalJSON(data))
+	data = []byte(`"null"`)
+	require.NoError(t, h.UnmarshalJSON(data))
 }
 
 func TestHexBytes_UnmarshallJSON_Invalid(t *testing.T) {
@@ -38,6 +39,12 @@ func TestPublicKey_UnmarshalJSON_ValidHexString(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestPublicKey_String(t *testing.T) {
+	byteString := "0x000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001"
+	p := PublicKey([]byte{47: 0x01})
+	require.Equal(t, byteString, p.String())
+}
+
 func TestSignature_UnmarshallJSON_ShortHexString(t *testing.T) {
 	var s Signature
 	data := []byte(`"0x1234567"`)
@@ -50,4 +57,10 @@ func TestSignature_UnmarshallJSON_ValidHexString(t *testing.T) {
 	var s Signature
 	data := []byte(`"0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"`)
 	require.NoError(t, s.UnmarshalJSON(data))
+}
+
+func TestSignature_UnmarshalJSON_String(t *testing.T) {
+	byteString := "0x000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001"
+	S := Signature([]byte{95: 0x01})
+	require.Equal(t, byteString, S.String())
 }
