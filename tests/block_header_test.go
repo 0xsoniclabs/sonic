@@ -169,6 +169,14 @@ func testBlockHeadersOnNetwork(t *testing.T, net *IntegrationTestNet) {
 		t.Run("CounterStateIsVerifiable", func(t *testing.T) {
 			testHeaders_CounterStateIsVerifiable(t, headers, client, counterAddress)
 		})
+
+		t.Run("HasCommitteeCertificates", func(t *testing.T) {
+			testScc_HasCommitteeCertificates(t, client)
+		})
+
+		t.Run("HasBlockCertificatesForBlocks", func(t *testing.T) {
+			testScc_HasBlockCertificatesForBlocks(t, headers, client)
+		})
 	}
 
 	t.Run("BeforeRestart", runTests)
@@ -762,4 +770,62 @@ func getVerifiedCounterState(
 	require.Equal(int(fromResult), fromProof, "proof value mismatch")
 
 	return fromProof
+}
+
+func testScc_HasCommitteeCertificates(
+	t *testing.T,
+	client *ethclient.Client,
+) {
+	require := require.New(t)
+	results := []struct {
+		ChainId uint64
+	}{}
+	err := client.Client().Call(&results, "sonic_getCommitteeCertificates", "0x0", "max")
+	require.NoError(err)
+	require.NotEmpty(results, "no committee certificates found")
+
+	chainId, err := client.ChainID(context.Background())
+	require.NoError(err)
+	for _, result := range results {
+		require.Equal(chainId.Uint64(), result.ChainId)
+	}
+}
+
+func testScc_HasBlockCertificatesForBlocks(
+	t *testing.T,
+	headers []*types.Header,
+	client *ethclient.Client,
+) {
+	require := require.New(t)
+
+	results := []struct {
+		ChainId   uint64
+		Number    uint64
+		Hash      common.Hash
+		StateRoot common.Hash
+	}{}
+	err := client.Client().Call(&results, "sonic_getBlockCertificates", "0x0", "max")
+	require.NoError(err)
+
+	// TODO: enable this check once the genesis block is also certified
+	//require.Less(len(headers), len(results), "too few block certificates")
+	//require.Equal(0, results[0].Number)
+
+	// Check that certificates are listed in order.
+	for i := range len(results) - 1 {
+		require.Equal(results[i].Number+1, results[i+1].Number, "block certificate order mismatch")
+	}
+
+	// Check the certificate content.
+	chainId, err := client.ChainID(context.Background())
+	require.NoError(err)
+	for _, cert := range results {
+		if cert.Number >= uint64(len(headers)) {
+			continue
+		}
+		header := headers[cert.Number]
+		require.Equal(chainId.Uint64(), cert.ChainId, "chain ID mismatch")
+		require.Equal(header.Hash(), cert.Hash, "block hash mismatch")
+		require.Equal(header.Root, cert.StateRoot, "state root mismatch")
+	}
 }

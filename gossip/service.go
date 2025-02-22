@@ -439,6 +439,11 @@ func (s *Service) APIs() []rpc.API {
 			Version:   "1.0",
 			Service:   ethapi.NewPublicTxTraceAPI(s.EthAPI, s.config.MaxResponseSize),
 			Public:    true,
+		}, {
+			Namespace: "sonic",
+			Version:   "1.0",
+			Service:   ethapi.NewPublicSccApi(s.EthAPI),
+			Public:    true,
 		},
 	}...)
 

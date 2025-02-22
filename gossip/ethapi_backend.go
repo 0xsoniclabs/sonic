@@ -3,6 +3,7 @@ package gossip
 import (
 	"context"
 	"fmt"
+	"iter"
 	"math/big"
 	"strconv"
 	"strings"
@@ -30,7 +31,10 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/scc"
+	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/0xsoniclabs/sonic/topicsdb"
+	"github.com/0xsoniclabs/sonic/utils/result"
 )
 
 // EthAPIBackend implements ethapi.Backend.
@@ -543,4 +547,20 @@ func (b *EthAPIBackend) CalcBlockExtApi() bool {
 func (b *EthAPIBackend) SealedEpochTiming(ctx context.Context) (start inter.Timestamp, end inter.Timestamp) {
 	es := b.svc.store.GetEpochState()
 	return es.PrevEpochStart, es.EpochStart
+}
+
+func (b *EthAPIBackend) GetLatestCommitteeCertificate() (cert.CommitteeCertificate, error) {
+	return b.svc.store.GetLatestCommitteeCertificate()
+}
+
+func (b *EthAPIBackend) EnumerateCommitteeCertificates(first scc.Period) iter.Seq[result.T[cert.CommitteeCertificate]] {
+	return b.svc.store.EnumerateCommitteeCertificates(first)
+}
+
+func (b *EthAPIBackend) GetLatestBlockCertificate() (cert.BlockCertificate, error) {
+	return b.svc.store.GetLatestBlockCertificate()
+}
+
+func (b *EthAPIBackend) EnumerateBlockCertificates(first idx.Block) iter.Seq[result.T[cert.BlockCertificate]] {
+	return b.svc.store.EnumerateBlockCertificates(first)
 }
