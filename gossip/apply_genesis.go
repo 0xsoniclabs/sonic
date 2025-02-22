@@ -8,6 +8,7 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/ibr"
 	"github.com/0xsoniclabs/sonic/inter/ier"
 	"github.com/0xsoniclabs/sonic/opera/genesis"
+	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/0xsoniclabs/sonic/utils/dbutil/autocompact"
 	"github.com/Fantom-foundation/lachesis-base/kvdb/batched"
 	"github.com/ethereum/go-ethereum/common"
@@ -114,6 +115,22 @@ func (s *Store) ApplyGenesis(g genesis.Genesis) (err error) {
 	} else {
 		s.Log.Info("StateDB imported successfully, stateRoot matches", "index", lastBlock.Idx, "root", lastBlock.StateRoot)
 	}
+
+	g.CommitteeCertificates.ForEach(func(c cert.Certificate[cert.CommitteeStatement]) bool {
+		if err := s.UpdateCommitteeCertificate(c); err != nil {
+			s.Log.Crit("Failed to write committee certificate", "err", err)
+			return false
+		}
+		return true
+	})
+
+	g.BlockCertificates.ForEach(func(c cert.Certificate[cert.BlockStatement]) bool {
+		if err := s.UpdateBlockCertificate(c); err != nil {
+			s.Log.Crit("Failed to write block certificate", "err", err)
+			return false
+		}
+		return true
+	})
 
 	return nil
 }

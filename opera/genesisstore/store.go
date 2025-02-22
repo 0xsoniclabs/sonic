@@ -27,6 +27,14 @@ func FwsArchiveSection(i int) string {
 	return getSectionName("fwa", i)
 }
 
+func SccCommitteeSection(i int) string {
+	return getSectionName("scc_cc", i)
+}
+
+func SccBlockSection(i int) string {
+	return getSectionName("scc_bc", i)
+}
+
 type FilesMap func(string) (io.Reader, error)
 
 // Store is a node persistent storage working over a physical zip archive.

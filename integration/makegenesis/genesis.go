@@ -11,6 +11,9 @@ import (
 	"path/filepath"
 
 	"github.com/0xsoniclabs/sonic/inter"
+	"github.com/0xsoniclabs/sonic/scc"
+	"github.com/0xsoniclabs/sonic/scc/cert"
+	"github.com/0xsoniclabs/sonic/utils/objstream"
 	"github.com/ethereum/go-ethereum/core/tracing"
 
 	"github.com/Fantom-foundation/lachesis-base/hash"
@@ -49,6 +52,8 @@ type GenesisBuilder struct {
 	blocks       []ibr.LlrIdxFullBlockRecord
 	epochs       []ier.LlrIdxFullEpochRecord
 	currentEpoch ier.LlrIdxFullEpochRecord
+
+	genesisCommittee scc.Committee
 }
 
 type BlockProc struct {
@@ -297,6 +302,10 @@ func (b *GenesisBuilder) ExecuteGenesisTxs(blockProc BlockProc, genesisTxs types
 	return nil
 }
 
+func (b *GenesisBuilder) SetCertificationChainGenesisCommittee(committee scc.Committee) {
+	b.genesisCommittee = committee
+}
+
 type memFile struct {
 	*bytes.Buffer
 }
@@ -336,6 +345,18 @@ func (b *GenesisBuilder) Build(head genesis.Header) *genesisstore.Store {
 			if err != nil {
 				return nil, err
 			}
+		}
+		if name == genesisstore.SccCommitteeSection(0) {
+			out := objstream.NewWriter[cert.Certificate[cert.CommitteeStatement]](buf)
+			err := out.Write(cert.NewCertificate(cert.CommitteeStatement{
+				Committee: b.genesisCommittee,
+			}))
+			if err != nil {
+				return nil, err
+			}
+		}
+		if name == genesisstore.SccBlockSection(0) {
+			return buf, nil // No block certificates in this genesis
 		}
 		if buf.Len() == 0 {
 			return nil, errors.New("not found")

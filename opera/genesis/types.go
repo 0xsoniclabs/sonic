@@ -1,11 +1,13 @@
 package genesis
 
 import (
-	"github.com/Fantom-foundation/lachesis-base/hash"
 	"io"
+
+	"github.com/Fantom-foundation/lachesis-base/hash"
 
 	"github.com/0xsoniclabs/sonic/inter/ibr"
 	"github.com/0xsoniclabs/sonic/inter/ier"
+	"github.com/0xsoniclabs/sonic/scc/cert"
 )
 
 type (
@@ -24,6 +26,12 @@ type (
 	EvmItems interface {
 		ForEach(fn func(key, value []byte) bool)
 	}
+	SccCommitteeCertificates interface {
+		ForEach(fn func(cert.Certificate[cert.CommitteeStatement]) bool)
+	}
+	SccBlockCertificates interface {
+		ForEach(fn func(cert.Certificate[cert.BlockStatement]) bool)
+	}
 	FwsLiveSection interface {
 		GetReader() (io.Reader, error)
 	}
@@ -35,14 +43,16 @@ type (
 	}
 	SignedMetadata struct {
 		Signature []byte
-		Hashes []byte
+		Hashes    []byte
 	}
 	Genesis struct {
 		Header
 
-		Blocks      Blocks
-		Epochs      Epochs
-		RawEvmItems EvmItems
+		Blocks                Blocks
+		Epochs                Epochs
+		RawEvmItems           EvmItems
+		CommitteeCertificates SccCommitteeCertificates
+		BlockCertificates     SccBlockCertificates
 		FwsLiveSection
 		FwsArchiveSection
 		SignatureSection

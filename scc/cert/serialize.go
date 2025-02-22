@@ -13,7 +13,7 @@ import (
 
 // Serialize serializes the certificate into a byte slice. The internal encoding
 // uses the protobuf format, enabling future backward compatibility.
-func (c *Certificate[S]) Serialize() ([]byte, error) {
+func (c Certificate[S]) Serialize() ([]byte, error) {
 	if subject, ok := any(&c.subject).(serializableSubject); ok {
 		return subject.serialize(toProtoSignature(&c.signature))
 	}
