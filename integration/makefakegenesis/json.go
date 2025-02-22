@@ -47,6 +47,15 @@ type Transaction struct {
 	Data VariableLenCode `json:",omitempty"`
 }
 
+type CertificationCommittee struct {
+	Members []Member
+}
+
+type Member struct {
+	PublicKey         hexBytes48
+	ProofOfPossession hexBytes96
+}
+
 func LoadGenesisJson(filename string) (*GenesisJson, error) {
 	data, err := os.ReadFile(filename)
 	if err != nil {
@@ -166,4 +175,45 @@ func (c *VariableLenCode) UnmarshalJSON(data []byte) error {
 	}
 	*c = decoded
 	return nil
+}
+
+type hexBytes48 [48]byte
+
+// UnmarshalJSON implements the json.Unmarshaler interface for HexBytes48 accepting
+// strings encoding hexadecimal values.
+func (h *hexBytes48) UnmarshalJSON(input []byte) error {
+	return unmarshalHexBytes(input, h[:])
+}
+
+// MarshalJSON implements the json.Marshaler interface for HexBytes48 encoding
+// the bytes as a hexadecimal string.
+func (h hexBytes48) MarshalJSON() ([]byte, error) {
+	return marshalHexBytes(h[:])
+}
+
+type hexBytes96 [96]byte
+
+func (h *hexBytes96) UnmarshalJSON(input []byte) error {
+	return unmarshalHexBytes(input, h[:])
+}
+
+func (h hexBytes96) MarshalJSON() ([]byte, error) {
+	return marshalHexBytes(h[:])
+}
+
+func marshalHexBytes(source []byte) ([]byte, error) {
+	out := make([]byte, len(source)*2+4)
+	out[0], out[1], out[2] = '"', '0', 'x'
+	hex.Encode(out[3:], source[:])
+	out[len(out)-1] = '"'
+	return out, nil
+}
+
+func unmarshalHexBytes(input []byte, target []byte) error {
+	size := len(target)
+	if len(input) != size*2+4 || input[0] != '"' || input[1] != '0' || input[2] != 'x' || input[len(input)-1] != '"' {
+		return fmt.Errorf("invalid hex string")
+	}
+	_, err := hex.Decode(target[:], input[3:len(input)-1])
+	return err
 }
