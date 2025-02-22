@@ -1,8 +1,9 @@
-package gossip
+package gossip_test
 
 import (
 	"testing"
 
+	. "github.com/0xsoniclabs/sonic/gossip"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	scc_node "github.com/0xsoniclabs/sonic/scc/node"
