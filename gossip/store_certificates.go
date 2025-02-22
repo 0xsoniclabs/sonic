@@ -2,6 +2,7 @@ package gossip
 
 import (
 	"encoding/binary"
+	"fmt"
 
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/cert"
@@ -36,6 +37,9 @@ func (s *Store) GetCommitteeCertificate(period scc.Period) (CommitteeCertificate
 	if err != nil {
 		return res, err
 	}
+	if data == nil {
+		return res, fmt.Errorf("no certificate found for period %d", period)
+	}
 	return res, res.Deserialize(data)
 }
 
@@ -58,6 +62,9 @@ func (s *Store) GetBlockCertificate(block idx.Block) (BlockCertificate, error) {
 	data, err := table.Get(getBlockCertificateKey(block))
 	if err != nil {
 		return res, err
+	}
+	if data == nil {
+		return res, fmt.Errorf("no certificate found for block %d", block)
 	}
 	return res, res.Deserialize(data)
 }

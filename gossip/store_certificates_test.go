@@ -1,8 +1,9 @@
-package gossip
+package gossip_test
 
 import (
 	"testing"
 
+	. "github.com/0xsoniclabs/sonic/gossip"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/stretchr/testify/require"
@@ -13,7 +14,7 @@ func TestStore_GetCommitteeCertificate_FailsIfNotPresent(t *testing.T) {
 	store, err := NewMemStore(t)
 	require.NoError(err)
 	_, err = store.GetCommitteeCertificate(1)
-	require.Error(err)
+	require.ErrorContains(err, "no certificate found for period 1")
 }
 
 func TestStore_GetCommitteeCertificate_RetrievesPresentEntries(t *testing.T) {
@@ -86,7 +87,7 @@ func TestStore_GetBlockCertificate_FailsIfNotPresent(t *testing.T) {
 	store, err := NewMemStore(t)
 	require.NoError(err)
 	_, err = store.GetBlockCertificate(1)
-	require.Error(err)
+	require.ErrorContains(err, "no certificate found for block 1")
 }
 
 func TestStore_GetBlockCertificate_RetrievesPresentEntries(t *testing.T) {
