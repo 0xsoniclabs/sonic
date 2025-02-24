@@ -17,6 +17,7 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/genesis"
 	"github.com/0xsoniclabs/sonic/opera/genesisstore"
+	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
@@ -26,10 +27,11 @@ import (
 )
 
 type GenesisJson struct {
-	Rules         opera.Rules
-	BlockZeroTime time.Time
-	Accounts      []Account     `json:",omitempty"`
-	Txs           []Transaction `json:",omitempty"`
+	Rules            opera.Rules
+	BlockZeroTime    time.Time
+	Accounts         []Account      `json:",omitempty"`
+	Txs              []Transaction  `json:",omitempty"`
+	GenesisCommittee *scc.Committee `json:",omitempty"`
 }
 
 type Account struct {
@@ -45,15 +47,6 @@ type Transaction struct {
 	Name string
 	To   common.Address
 	Data VariableLenCode `json:",omitempty"`
-}
-
-type CertificationCommittee struct {
-	Members []Member
-}
-
-type Member struct {
-	PublicKey         hexBytes48
-	ProofOfPossession hexBytes96
 }
 
 func LoadGenesisJson(filename string) (*GenesisJson, error) {
@@ -145,6 +138,11 @@ func ApplyGenesisJson(json *GenesisJson) (*genesisstore.Store, error) {
 		return nil, fmt.Errorf("failed to execute json genesis txs; %v", err)
 	}
 
+	if json.GenesisCommittee == nil {
+		return nil, fmt.Errorf("genesis committee must be set")
+	}
+	builder.SetCertificationChainGenesisCommittee(*json.GenesisCommittee)
+
 	return builder.Build(genesis.Header{
 		GenesisID:   builder.CurrentHash(),
 		NetworkID:   json.Rules.NetworkID,
@@ -175,45 +173,4 @@ func (c *VariableLenCode) UnmarshalJSON(data []byte) error {
 	}
 	*c = decoded
 	return nil
-}
-
-type hexBytes48 [48]byte
-
-// UnmarshalJSON implements the json.Unmarshaler interface for HexBytes48 accepting
-// strings encoding hexadecimal values.
-func (h *hexBytes48) UnmarshalJSON(input []byte) error {
-	return unmarshalHexBytes(input, h[:])
-}
-
-// MarshalJSON implements the json.Marshaler interface for HexBytes48 encoding
-// the bytes as a hexadecimal string.
-func (h hexBytes48) MarshalJSON() ([]byte, error) {
-	return marshalHexBytes(h[:])
-}
-
-type hexBytes96 [96]byte
-
-func (h *hexBytes96) UnmarshalJSON(input []byte) error {
-	return unmarshalHexBytes(input, h[:])
-}
-
-func (h hexBytes96) MarshalJSON() ([]byte, error) {
-	return marshalHexBytes(h[:])
-}
-
-func marshalHexBytes(source []byte) ([]byte, error) {
-	out := make([]byte, len(source)*2+4)
-	out[0], out[1], out[2] = '"', '0', 'x'
-	hex.Encode(out[3:], source[:])
-	out[len(out)-1] = '"'
-	return out, nil
-}
-
-func unmarshalHexBytes(input []byte, target []byte) error {
-	size := len(target)
-	if len(input) != size*2+4 || input[0] != '"' || input[1] != '0' || input[2] != 'x' || input[len(input)-1] != '"' {
-		return fmt.Errorf("invalid hex string")
-	}
-	_, err := hex.Decode(target[:], input[3:len(input)-1])
-	return err
 }

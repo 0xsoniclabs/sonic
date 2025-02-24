@@ -45,6 +45,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/proclogger"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/logger"
+	scc_node "github.com/0xsoniclabs/sonic/scc/node"
 	"github.com/0xsoniclabs/sonic/utils/signers/gsignercache"
 	"github.com/0xsoniclabs/sonic/utils/txtime"
 	"github.com/0xsoniclabs/sonic/utils/wgmutex"
@@ -121,6 +122,9 @@ type Service struct {
 
 	// version watcher
 	verWatcher *verwatcher.VersionWatcher
+
+	// SCC node
+	sccNode *scc_node.Node
 
 	blockProcWg        sync.WaitGroup
 	blockProcTasks     *workers.Workers
@@ -268,6 +272,15 @@ func newService(config Config, store *Store, blockProc BlockProc, engine lachesi
 
 	svc.verWatcher = verwatcher.New(netVerStore)
 	svc.tflusher = svc.makePeriodicFlusher()
+
+	// create Sonic Certification Chain node
+	// TODO: track the current committee inside the scc Node instance
+	// (see https://github.com/0xsoniclabs/sonic-admin/issues/22)
+	genesisCommitteeCertificate, err := store.GetCommitteeCertificate(0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get committee certificate: %w", err)
+	}
+	svc.sccNode = scc_node.NewNode(store, genesisCommitteeCertificate.Subject().Committee)
 
 	return svc, nil
 }
