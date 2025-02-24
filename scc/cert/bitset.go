@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/0xsoniclabs/sonic/scc/cert/jsonhex"
+	"github.com/0xsoniclabs/sonic/utils/jsonhex"
 )
 
 // BitSet is a variable-size bit-mask based unsigned integer set representation.

@@ -57,7 +57,7 @@ func TestBytes48_MarshalJSON_StringIsCorrectlyProduced(t *testing.T) {
 	require.Equal(t, []byte(expected), data)
 }
 
-func TestBytes48_MarshalJSON_NilValue(t *testing.T) {
+func TestBytes48_MarshalJSON_ZeroValue(t *testing.T) {
 	var p Bytes48
 	data, err := p.MarshalJSON()
 	require.NoError(t, err)
