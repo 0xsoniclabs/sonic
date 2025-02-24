@@ -6,13 +6,16 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/ethapi"
-	"github.com/0xsoniclabs/sonic/tests/contracts/block_hash"
 	block_override "github.com/0xsoniclabs/sonic/tests/contracts/blockoverride"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rpc"
 	req "github.com/stretchr/testify/require"
+)
+
+const (
+	contractFunction = "0xa3289b77"
 )
 
 func TestBlockOverride(t *testing.T) {
@@ -23,31 +26,33 @@ func TestBlockOverride(t *testing.T) {
 	}
 	defer net.Stop()
 
-	// Deploy the block hash observer contract.
+	// Deploy the block override observer contract.
 	_, receipt, err := DeployContract(net, block_override.DeployBlockOverride)
 	require.NoError(err, "failed to deploy contract; %v", err)
 	contractAddress := receipt.ContractAddress
-	//contractCreationBlock := receipt.BlockNumber.Uint64()
 
 	netClient, err := net.GetClient()
 	require.NoError(err, "failed to get client; %v", err)
 
-	contract, err := block_hash.NewBlockHash(contractAddress, netClient)
+	contract, err := block_override.NewBlockOverride(contractAddress, netClient)
 	require.NoError(err, "failed to instantiate contract")
 
+	// Call contract method to be sure it is deployed.
 	receiptObserve, err := net.Apply(contract.Observe)
 	require.NoError(err, "failed to observe block hash; %v", err)
 	require.Equal(types.ReceiptStatusSuccessful, receiptObserve.Status,
 		"failed to observe block hash; %v", err,
 	)
 
+	// Need block number for eth_call and debug_traceCall
 	blockNumber := receiptObserve.BlockNumber.Uint64()
 
 	rpcClient := netClient.Client()
+	defer rpcClient.Close()
 
+	// Set parameters to be overriden
 	time := uint64(1234)
 	gasLimit := uint64(567890)
-
 	blockOverrides := &ethapi.BlockOverrides{
 		Number:      (*hexutil.Big)(big.NewInt(42)),
 		Difficulty:  (*hexutil.Big)(big.NewInt(1)),
@@ -59,10 +64,24 @@ func TestBlockOverride(t *testing.T) {
 		BlobBaseFee: (*hexutil.Big)(big.NewInt(100)),
 	}
 
-	params, err := makeEthCall(t, rpcClient, contractAddress, blockNumber, nil)
+	t.Run("eth_call block override", func(t *testing.T) {
+		compareCalls(t, rpcClient, contractAddress, blockNumber, blockOverrides, makeEthCall)
+	})
+
+	t.Run("debug_traceCall block override", func(t *testing.T) {
+		compareCalls(t, rpcClient, contractAddress, blockNumber, blockOverrides, makeDebugTraceCall)
+	})
+
+}
+
+func compareCalls(t *testing.T, rpcClient *rpc.Client, contractAddress common.Address, blockNumber uint64, blockOverrides *ethapi.BlockOverrides,
+	callFunc func(t *testing.T, rpcClient *rpc.Client, contractAddress common.Address, blockNumber uint64, blockOverrides *ethapi.BlockOverrides) (BlockParameters, error)) {
+
+	require := req.New(t)
+	params, err := callFunc(t, rpcClient, contractAddress, blockNumber, nil)
 	require.NoError(err, "failed to make eth_call; %v", err)
 
-	paramsOverride, err := makeEthCall(t, rpcClient, contractAddress, blockNumber, blockOverrides)
+	paramsOverride, err := makeDebugTraceCall(t, rpcClient, contractAddress, blockNumber, blockOverrides)
 	require.NoError(err, "failed to make eth_call; %v", err)
 
 	t.Logf("params: %v", params)
@@ -70,9 +89,9 @@ func TestBlockOverride(t *testing.T) {
 
 	err = CompareBlockParameters(params, paramsOverride)
 	require.NoError(err, "failed to compare block parameters; %v", err)
-
 }
 
+// BlockParameters is a struct created from a response from a call
 type BlockParameters struct {
 	Number      *big.Int
 	Difficulty  *big.Int
@@ -109,17 +128,18 @@ func (bp *BlockParameters) String() string {
 	)
 }
 
+func getFunctionCallParameters(contractAddress *common.Address) map[string]interface{} {
+	return map[string]interface{}{
+		"to":   contractAddress.String(),
+		"data": contractFunction,
+	}
+}
+
 func makeEthCall(t *testing.T, rpcClient *rpc.Client, contractAddress common.Address, blockNumber uint64, blockOverrides *ethapi.BlockOverrides) (BlockParameters, error) {
 	require := req.New(t)
 
-	// function getBlockParameters on deployed contract
-	params := map[string]interface{}{
-		"to":   contractAddress.String(),
-		"data": "0xa3289b77",
-	}
-
 	var res interface{}
-	err := rpcClient.Call(&res, "eth_call", params, hexutil.EncodeUint64(blockNumber), nil, blockOverrides)
+	err := rpcClient.Call(&res, "eth_call", getFunctionCallParameters(&contractAddress), hexutil.EncodeUint64(blockNumber), nil, blockOverrides)
 	require.NoError(err, "failed to call eth_call; %v", err)
 
 	if s, ok := res.(string); ok {
@@ -130,6 +150,34 @@ func makeEthCall(t *testing.T, rpcClient *rpc.Client, contractAddress common.Add
 		require.NoError(err, "failed to decode block parameters; %v", err)
 
 		return params, nil
+	} else {
+		return BlockParameters{}, fmt.Errorf("invalid result type: %T", res)
+	}
+}
+
+func makeDebugTraceCall(t *testing.T, rpcClient *rpc.Client, contractAddress common.Address, blockNumber uint64, blockOverrides *ethapi.BlockOverrides) (BlockParameters, error) {
+	require := req.New(t)
+
+	traceConfig := &ethapi.TraceCallConfig{
+		BlockOverrides: blockOverrides,
+	}
+
+	var res interface{}
+	err := rpcClient.Call(&res, "debug_traceCall", getFunctionCallParameters(&contractAddress), hexutil.EncodeUint64(blockNumber), traceConfig)
+	require.NoError(err, "failed to call eth_call; %v", err)
+
+	if data, ok := res.(map[string]interface{}); ok {
+		if s, ok := data["returnValue"].(string); ok {
+			b, err := hexutil.Decode("0x" + s)
+			require.NoError(err, "failed to decode result hex; %v", err)
+
+			params, err := getBlockParameters(b)
+			require.NoError(err, "failed to decode block parameters; %v", err)
+
+			return params, nil
+		} else {
+			return BlockParameters{}, fmt.Errorf("invalid result type: %T", res)
+		}
 	} else {
 		return BlockParameters{}, fmt.Errorf("invalid result type: %T", res)
 	}
