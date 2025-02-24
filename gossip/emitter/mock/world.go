@@ -9,6 +9,7 @@ import (
 	reflect "reflect"
 
 	inter "github.com/0xsoniclabs/sonic/inter"
+	"github.com/0xsoniclabs/sonic/inter/state"
 	validatorpk "github.com/0xsoniclabs/sonic/inter/validatorpk"
 	opera "github.com/0xsoniclabs/sonic/opera"
 	vecmt "github.com/0xsoniclabs/sonic/vecmt"
@@ -18,7 +19,6 @@ import (
 	common "github.com/ethereum/go-ethereum/common"
 	types "github.com/ethereum/go-ethereum/core/types"
 	gomock "github.com/golang/mock/gomock"
-	"github.com/0xsoniclabs/sonic/inter/state"
 )
 
 // MockExternal is a mock of External interface.

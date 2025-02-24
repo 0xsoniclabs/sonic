@@ -19,8 +19,6 @@ import (
 	inter "github.com/0xsoniclabs/sonic/inter"
 	iblockproc "github.com/0xsoniclabs/sonic/inter/iblockproc"
 	state "github.com/0xsoniclabs/sonic/inter/state"
-	hash "github.com/0xsoniclabs/consensus/hash"
-	idx "github.com/0xsoniclabs/consensus/inter/idx"
 	accounts "github.com/ethereum/go-ethereum/accounts"
 	common "github.com/ethereum/go-ethereum/common"
 	core "github.com/ethereum/go-ethereum/core"

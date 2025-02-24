@@ -10,7 +10,6 @@ import (
 	"github.com/0xsoniclabs/consensus/utils/cachescale"
 	"github.com/0xsoniclabs/consensus/utils/wlru"
 	"github.com/0xsoniclabs/consensus/vecengine"
-	"github.com/0xsoniclabs/consensus/vecfc"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 )
 
@@ -22,14 +21,13 @@ type IndexCacheConfig struct {
 
 // IndexConfig - Engine config (cache sizes)
 type IndexConfig struct {
-	Fc     vecfc.IndexConfig
+	Fc     vecengine.IndexConfig
 	Caches IndexCacheConfig
 }
 
 // Index is a data to detect forkless-cause condition, calculate median timestamp, detect forks.
 type Index struct {
-	*vecfc.Index
-	Base          *vecfc.Index
+	*vecengine.Engine
 	baseCallbacks vecengine.Callbacks
 
 	crit          func(error)
@@ -53,7 +51,7 @@ type Index struct {
 // DefaultConfig returns default index config
 func DefaultConfig(scale cachescale.Func) IndexConfig {
 	return IndexConfig{
-		Fc: vecfc.DefaultConfig(scale),
+		Fc: vecengine.DefaultConfig(scale),
 		Caches: IndexCacheConfig{
 			HighestBeforeTimeSize: scale.U(160 * 1024),
 			DBCache:               scale.I(10 * opt.MiB),
@@ -64,7 +62,7 @@ func DefaultConfig(scale cachescale.Func) IndexConfig {
 // LiteConfig returns default index config for tests
 func LiteConfig() IndexConfig {
 	return IndexConfig{
-		Fc: vecfc.LiteConfig(),
+		Fc: vecengine.LiteConfig(),
 		Caches: IndexCacheConfig{
 			HighestBeforeTimeSize: 4 * 1024,
 		},
@@ -77,11 +75,10 @@ func NewIndex(crit func(error), config IndexConfig) *Index {
 		cfg:  config,
 		crit: crit,
 	}
-	engine := vecengine.NewIndex(crit, vi.GetEngineCallbacks())
+	engine := vecengine.NewIndex(crit, config.Fc, func(e *vecengine.Engine) vecengine.Callbacks { return vi.GetEngineCallbacks() })
 
-	vi.Base = vecfc.NewIndexWithEngine(crit, config.Fc, engine)
-	vi.Index = vi.Base
-	vi.baseCallbacks = vi.Base.GetEngineCallbacks()
+	vi.Engine = engine
+	vi.baseCallbacks = vecengine.GetEngineCallbacks(vi.Engine)
 	vi.initCaches()
 
 	return vi
@@ -95,7 +92,7 @@ func (vi *Index) initCaches() {
 func (vi *Index) Reset(validators *pos.Validators, db kvdb.Store, getEvent func(hash.Event) dag.Event) {
 	fdb := WrapByVecFlushable(db, vi.cfg.Caches.DBCache)
 	vi.vecDb = fdb
-	vi.Base.Reset(validators, fdb, getEvent)
+	vi.Engine.Reset(validators, fdb, getEvent)
 	vi.getEvent = getEvent
 	vi.validators = validators
 	vi.validatorIdxs = validators.Idxs()
@@ -106,6 +103,10 @@ func (vi *Index) Reset(validators *pos.Validators, db kvdb.Store, getEvent func(
 
 func (vi *Index) Close() error {
 	return vi.vecDb.Close()
+}
+
+func (vi *Index) onDropNotFlushed() {
+	vi.cache.HighestBeforeTime.Purge()
 }
 
 func (vi *Index) GetEngineCallbacks() vecengine.Callbacks {
@@ -133,10 +134,6 @@ func (vi *Index) GetEngineCallbacks() vecengine.Callbacks {
 			vi.onDropNotFlushed()
 		},
 	}
-}
-
-func (vi *Index) onDropNotFlushed() {
-	vi.cache.HighestBeforeTime.Purge()
 }
 
 // GetMergedHighestBefore returns HighestBefore vector clock without branches, where branches are merged into one

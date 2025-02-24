@@ -5,7 +5,7 @@ import (
 	"github.com/0xsoniclabs/consensus/abft/dagidx"
 	"github.com/0xsoniclabs/consensus/hash"
 	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/vecfc"
+	"github.com/0xsoniclabs/consensus/vecengine"
 
 	"github.com/0xsoniclabs/sonic/vecmt"
 )
@@ -21,7 +21,7 @@ type AdapterSeq struct {
 }
 
 type BranchSeq struct {
-	vecfc.BranchSeq
+	vecengine.BranchSeq
 }
 
 // Seq is a maximum observed e.Seq in the branch

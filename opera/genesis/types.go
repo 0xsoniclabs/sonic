@@ -1,9 +1,8 @@
 package genesis
 
 import (
-	"io"
-
 	"github.com/0xsoniclabs/consensus/hash"
+	"io"
 
 	"github.com/0xsoniclabs/sonic/inter/ibr"
 	"github.com/0xsoniclabs/sonic/inter/ier"

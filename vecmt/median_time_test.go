@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/vecfc"
+	"github.com/0xsoniclabs/consensus/vecengine"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/0xsoniclabs/consensus/hash"
@@ -30,19 +30,19 @@ func TestMedianTimeOnIndex(t *testing.T) {
 		// validator indexes are sorted by weight amount
 		before := NewHighestBefore(idx.Validator(validators.Len()))
 
-		before.VSeq.Set(0, vecfc.BranchSeq{Seq: 0})
+		before.VSeq.Set(0, vecengine.BranchSeq{Seq: 0})
 		before.VTime.Set(0, 100)
 
-		before.VSeq.Set(1, vecfc.BranchSeq{Seq: 0})
+		before.VSeq.Set(1, vecengine.BranchSeq{Seq: 0})
 		before.VTime.Set(1, 100)
 
-		before.VSeq.Set(2, vecfc.BranchSeq{Seq: 1})
+		before.VSeq.Set(2, vecengine.BranchSeq{Seq: 1})
 		before.VTime.Set(2, 10)
 
-		before.VSeq.Set(3, vecfc.BranchSeq{Seq: 1})
+		before.VSeq.Set(3, vecengine.BranchSeq{Seq: 1})
 		before.VTime.Set(3, 10)
 
-		before.VSeq.Set(4, vecfc.BranchSeq{Seq: 1})
+		before.VSeq.Set(4, vecengine.BranchSeq{Seq: 1})
 		before.VTime.Set(4, 10)
 
 		vi.SetHighestBefore(e, before)
@@ -60,13 +60,13 @@ func TestMedianTimeOnIndex(t *testing.T) {
 		before.SetForkDetected(1)
 		before.VTime.Set(1, 100)
 
-		before.VSeq.Set(2, vecfc.BranchSeq{Seq: 1})
+		before.VSeq.Set(2, vecengine.BranchSeq{Seq: 1})
 		before.VTime.Set(2, 10)
 
-		before.VSeq.Set(3, vecfc.BranchSeq{Seq: 1})
+		before.VSeq.Set(3, vecengine.BranchSeq{Seq: 1})
 		before.VTime.Set(3, 10)
 
-		before.VSeq.Set(4, vecfc.BranchSeq{Seq: 1})
+		before.VSeq.Set(4, vecengine.BranchSeq{Seq: 1})
 		before.VTime.Set(4, 10)
 
 		vi.SetHighestBefore(e, before)
@@ -78,19 +78,19 @@ func TestMedianTimeOnIndex(t *testing.T) {
 		// validator indexes are sorted by weight amount
 		before := NewHighestBefore(idx.Validator(validators.Len()))
 
-		before.VSeq.Set(0, vecfc.BranchSeq{Seq: 1})
+		before.VSeq.Set(0, vecengine.BranchSeq{Seq: 1})
 		before.VTime.Set(0, 11)
 
-		before.VSeq.Set(1, vecfc.BranchSeq{Seq: 2})
+		before.VSeq.Set(1, vecengine.BranchSeq{Seq: 2})
 		before.VTime.Set(1, 12)
 
-		before.VSeq.Set(2, vecfc.BranchSeq{Seq: 2})
+		before.VSeq.Set(2, vecengine.BranchSeq{Seq: 2})
 		before.VTime.Set(2, 13)
 
-		before.VSeq.Set(3, vecfc.BranchSeq{Seq: 3})
+		before.VSeq.Set(3, vecengine.BranchSeq{Seq: 3})
 		before.VTime.Set(3, 14)
 
-		before.VSeq.Set(4, vecfc.BranchSeq{Seq: 4})
+		before.VSeq.Set(4, vecengine.BranchSeq{Seq: 4})
 		before.VTime.Set(4, 15)
 
 		vi.SetHighestBefore(e, before)

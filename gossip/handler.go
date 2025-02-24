@@ -14,9 +14,12 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 
+	"github.com/0xsoniclabs/consensus/gossip/dagprocessor"
+	"github.com/0xsoniclabs/consensus/gossip/itemsfetcher"
 	"github.com/0xsoniclabs/consensus/hash"
 	"github.com/0xsoniclabs/consensus/inter/dag"
 	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/utils/datasemaphore"
 	"github.com/0xsoniclabs/sonic/eventcheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/epochcheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/heavycheck"

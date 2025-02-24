@@ -21,11 +21,10 @@ type medianTimeIndex struct {
 func (vi *Index) MedianTime(id hash.Event, defaultTime inter.Timestamp) inter.Timestamp {
 	vi.Engine.InitBranchesInfo()
 	// Get event by hash
-	_before := vi.Engine.GetMergedHighestBefore(id)
-	if _before == nil {
+	before := vi.GetMergedHighestBefore(id)
+	if before == nil {
 		vi.crit(fmt.Errorf("event=%s not found", id.String()))
 	}
-	before := _before.(*HighestBefore)
 
 	honestTotalWeight := pos.Weight(0) // isn't equal to validators.TotalWeight(), because doesn't count cheaters
 	highests := make([]medianTimeIndex, 0, len(vi.validatorIdxs))
