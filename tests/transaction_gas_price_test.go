@@ -44,7 +44,7 @@ func TestTransactionGasPrice(t *testing.T) {
 		var specifiedPrice int64 = enoughGasPrice
 
 		// 2: make & execute transaction
-		tx := makeLegacyTx(t, client, specifiedPrice, account)
+		tx := makeLegacyTx(t, client, specifiedPrice, account, &common.Address{}, nil)
 
 		receipt, err := net.Run(tx)
 		require.NoError(t, err)
@@ -97,7 +97,7 @@ func TestTransactionGasPrice(t *testing.T) {
 		const maxGasPrice int64 = enoughGasPrice
 
 		// 2: make & execute transaction
-		tx := makeEip1559Transaction(t, client, maxGasPrice, 0, account)
+		tx := makeEip1559Transaction(t, client, maxGasPrice, 0, account, &common.Address{}, nil)
 
 		receipt, err := net.Run(tx)
 		require.NoError(t, err)
@@ -160,7 +160,7 @@ func TestTransactionGasPrice(t *testing.T) {
 		const tip = 17
 
 		// 2: make & execute transaction
-		tx := makeEip1559Transaction(t, client, maxGasPrice, tip, account)
+		tx := makeEip1559Transaction(t, client, maxGasPrice, tip, account, &common.Address{}, nil)
 
 		receipt, err := net.Run(tx)
 		require.NoError(t, err)
@@ -220,7 +220,7 @@ func TestTransactionGasPrice(t *testing.T) {
 		const tip = maxGasPrice // tip cannot be larger than max gas price
 
 		// 2: make & execute transaction
-		tx := makeEip1559Transaction(t, client, maxGasPrice, tip, account)
+		tx := makeEip1559Transaction(t, client, maxGasPrice, tip, account, &common.Address{}, nil)
 
 		receipt, err := net.Run(tx)
 		require.NoError(t, err)
@@ -297,6 +297,8 @@ func makeLegacyTx(t *testing.T,
 	client *ethclient.Client,
 	gasPrice int64,
 	sender *Account,
+	to *common.Address,
+	data []byte,
 ) *types.Transaction {
 	t.Helper()
 
@@ -305,10 +307,11 @@ func makeLegacyTx(t *testing.T,
 
 	tx := types.NewTx(&types.LegacyTx{
 		Nonce:    nonce,
-		To:       &common.Address{},
+		To:       to,
 		Value:    big.NewInt(1),
 		Gas:      1e6,
 		GasPrice: big.NewInt(gasPrice),
+		Data:     data,
 	})
 
 	chainId, err := client.ChainID(context.Background())
@@ -327,6 +330,8 @@ func makeEip1559Transaction(t *testing.T,
 	maxFeeCap int64,
 	maxGasTip int64,
 	sender *Account,
+	to *common.Address,
+	data []byte,
 ) *types.Transaction {
 	t.Helper()
 
@@ -335,11 +340,12 @@ func makeEip1559Transaction(t *testing.T,
 
 	tx := types.NewTx(&types.DynamicFeeTx{
 		Nonce:     nonce,
-		To:        &common.Address{},
+		To:        to,
 		Value:     big.NewInt(1),
 		Gas:       1e6,
 		GasFeeCap: big.NewInt(maxFeeCap),
 		GasTipCap: big.NewInt(maxGasTip),
+		Data:      data,
 	})
 
 	chainId, err := client.ChainID(context.Background())
