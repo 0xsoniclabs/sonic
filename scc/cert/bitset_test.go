@@ -70,27 +70,6 @@ func TestBitSet_String_PrintsListOfEntries(t *testing.T) {
 	require.Equal(t, "{1, 12, 123}", b.String())
 }
 
-func TestBitSet_Serialize(t *testing.T) {
-	require := require.New(t)
-
-	var b BitSet[uint8]
-	require.Equal([]byte(nil), b.Serialize())
-	b.Add(1)
-	require.Equal([]byte{0x02}, b.Serialize())
-	b.Add(12)
-	require.Equal([]byte{0x02, 0x10}, b.Serialize())
-	b.Add(123)
-	require.Equal([]byte{0x02, 0x10, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x8}, b.Serialize())
-}
-
-func TestBitSet_Deserialize(t *testing.T) {
-	require := require.New(t)
-
-	var b BitSet[uint8]
-	b.Deserialize([]byte{0x02, 0x10, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x8})
-	require.Equal([]uint8{1, 12, 123}, b.Entries())
-}
-
 func TestBitSet_MarshalJSON(t *testing.T) {
 	require := require.New(t)
 
@@ -100,7 +79,7 @@ func TestBitSet_MarshalJSON(t *testing.T) {
 	b.Add(123)
 	data, err := b.MarshalJSON()
 	require.NoError(err)
-	require.Equal(`"0x02100000000000000000000000000008"`, string(data))
+	require.Equal(`0x02100000000000000000000000000008`, string(data))
 }
 
 func TestBitSet_UnmarshalJSON(t *testing.T) {

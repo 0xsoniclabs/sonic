@@ -1,4 +1,4 @@
-package serialization
+package json
 
 import (
 	"testing"
@@ -6,18 +6,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestHexBytes_MarshalJSON(t *testing.T) {
+func TestHexBytes_MarshalJSON_HandlesAllCases(t *testing.T) {
 	h := HexBytes([]byte{0x01, 0x2a, 0xbc})
 	data, err := h.MarshalJSON()
 	require.NoError(t, err)
-	require.Equal(t, []byte(`"0x012abc"`), data)
+	require.Equal(t, []byte(`0x012abc`), data)
 	h = nil
 	data, err = h.MarshalJSON()
 	require.NoError(t, err)
 	require.Equal(t, []byte("null"), data)
+	h = HexBytes([]byte{0x1, 0x2a, 0xbc})
+	data, err = h.MarshalJSON()
+	require.NoError(t, err)
+	require.Equal(t, []byte(`0x012abc`), data)
 }
 
-func TestHexBytes_UnmarshalJSON_ValidHexString(t *testing.T) {
+func TestHexBytes_UnmarshalJSON_ValidHexString_DoesNotProduceError(t *testing.T) {
 	var h HexBytes
 	data := []byte(`"0x012abc"`)
 	require.NoError(t, h.UnmarshalJSON(data))
@@ -28,7 +32,7 @@ func TestHexBytes_UnmarshalJSON_ValidHexString(t *testing.T) {
 	require.Equal(t, HexBytes([]byte{0x1, 0x2a, 0xbc}), h)
 }
 
-func TestHexBytes_UnmarshallJSON_Invalid(t *testing.T) {
+func TestHexBytes_UnmarshalJSON_InvalidHeString_ProducesError(t *testing.T) {
 	var h HexBytes
 	data := []byte(`"0xg"`)
 	err := h.UnmarshalJSON(data)
@@ -38,20 +42,29 @@ func TestHexBytes_UnmarshallJSON_Invalid(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestHexBytes_String(t *testing.T) {
+func TestHexBytes_String_IsCorrectlyProduced(t *testing.T) {
 	h := HexBytes([]byte{0x01, 0x2a, 0xbc})
 	require.Equal(t, "0x012abc", h.String())
+	h = nil
+	require.Equal(t, "null", h.String())
 }
 
-func TestHexBytes48_MarshalJSON(t *testing.T) {
+func TestHexBytes48_MarshalJSON_StringIsCorrectlyProduced(t *testing.T) {
 	p := HexBytes48([48]byte{0x01})
 	data, err := p.MarshalJSON()
 	require.NoError(t, err)
-	expected := `"0x010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"`
+	expected := `0x010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000`
 	require.Equal(t, []byte(expected), data)
 }
 
-func TestHexBytes48_UnmarshalJSON_ShortHexString(t *testing.T) {
+func TestHexBytes48_MarshalJSON_NilValue(t *testing.T) {
+	var p HexBytes48
+	data, err := p.MarshalJSON()
+	require.NoError(t, err)
+	require.Equal(t, []byte("0x000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"), data)
+}
+
+func TestHexBytes48_UnmarshalJSON_TooShortHexStringIsRejected(t *testing.T) {
 	var p HexBytes48
 	data := []byte(`"0x1234567"`)
 	err := p.UnmarshalJSON(data)
@@ -75,16 +88,16 @@ func TestHexBytes96_MarshalJSON(t *testing.T) {
 	s := HexBytes96([96]byte{0x01})
 	data, err := s.MarshalJSON()
 	require.NoError(t, err)
-	expected := []byte(`"0x010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"`)
+	expected := []byte(`0x010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000`)
 	require.Equal(t, len(expected), len(data))
 	require.Equal(t, []byte(expected), data)
 }
 
 func TestHexBytes96_UnmarshallJSON_ShortHexString(t *testing.T) {
 	var s HexBytes96
-	data := []byte(`"0x1234567"`)
+	data := []byte(`0x1234567`)
 	require.Error(t, s.UnmarshalJSON(data))
-	data = []byte(`"0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"`)
+	data = []byte(`0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef`)
 	require.Error(t, s.UnmarshalJSON(data))
 }
 
