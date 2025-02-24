@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/0xsoniclabs/sonic/scc/cert/json"
+	"github.com/0xsoniclabs/sonic/scc/cert/jsonhex"
 )
 
 // BitSet is a variable-size bit-mask based unsigned integer set representation.
@@ -67,12 +67,12 @@ type unsigned interface {
 
 // MarshalJSON converts the BitSet into a JSON-compatible hex string.
 func (b *BitSet[T]) MarshalJSON() ([]byte, error) {
-	return json.HexBytes(b.mask).MarshalJSON()
+	return jsonhex.Bytes(b.mask).MarshalJSON()
 }
 
 // UnmarshalJSON parses a JSON hex string into a BitSet.
 func (b *BitSet[T]) UnmarshalJSON(data []byte) error {
-	hexBytes := json.HexBytes{}
+	hexBytes := jsonhex.Bytes{}
 	err := hexBytes.UnmarshalJSON(data)
 	if err != nil {
 		return err
