@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// HexBytes represents a byte slice that is marshaled as a hexadecimal string with a "0x" prefix.
+// HexBytes represents a byte slice that is serialized as a hexadecimal string with a "0x" prefix.
 type HexBytes []byte
 
 // MarshalJSON converts the HexBytes into a JSON-compatible hex string with a "0x" prefix.
@@ -45,9 +45,9 @@ func (h *HexBytes) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// UnmarshallFixLenghtHexBytes decodes a JSON hex string into a fixed-length HexBytes slice.
+// UnmarshalFixLengthHexBytes decodes a JSON hex string into a fixed-length HexBytes slice.
 // Returns an error if the decoded length does not match the expected length.
-func UnmarshallFixLenghtHexBytes(data []byte, length int) (HexBytes, error) {
+func UnmarshalFixLengthHexBytes(data []byte, length int) (HexBytes, error) {
 	var h HexBytes
 	err := h.UnmarshalJSON(data)
 	if err != nil {
@@ -69,7 +69,7 @@ func (p *HexBytes48) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON parses a JSON hex string into a HexBytes48.
 func (p *HexBytes48) UnmarshalJSON(data []byte) error {
-	hexBytes, err := UnmarshallFixLenghtHexBytes(data, 48)
+	hexBytes, err := UnmarshalFixLengthHexBytes(data, 48)
 	if err != nil {
 		return err
 	}
@@ -92,7 +92,7 @@ func (s *HexBytes96) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON parses a JSON hex string into a HexBytes96.
 func (s *HexBytes96) UnmarshalJSON(data []byte) error {
-	hexBytes, err := UnmarshallFixLenghtHexBytes(data, 96)
+	hexBytes, err := UnmarshalFixLengthHexBytes(data, 96)
 	if err != nil {
 		return err
 	}
