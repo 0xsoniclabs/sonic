@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/Fantom-foundation/lachesis-base/hash"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/Fantom-foundation/lachesis-base/inter/pos"
+	"github.com/0xsoniclabs/consensus/hash"
+	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/inter/pos"
 
 	"github.com/0xsoniclabs/sonic/inter"
 )
@@ -21,11 +21,10 @@ type medianTimeIndex struct {
 func (vi *Index) MedianTime(id hash.Event, defaultTime inter.Timestamp) inter.Timestamp {
 	vi.Engine.InitBranchesInfo()
 	// Get event by hash
-	_before := vi.Engine.GetMergedHighestBefore(id)
-	if _before == nil {
+	before := vi.GetMergedHighestBefore(id)
+	if before == nil {
 		vi.crit(fmt.Errorf("event=%s not found", id.String()))
 	}
-	before := _before.(*HighestBefore)
 
 	honestTotalWeight := pos.Weight(0) // isn't equal to validators.TotalWeight(), because doesn't count cheaters
 	highests := make([]medianTimeIndex, 0, len(vi.validatorIdxs))

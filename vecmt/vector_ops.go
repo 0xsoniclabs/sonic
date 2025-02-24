@@ -1,10 +1,9 @@
 package vecmt
 
 import (
-	"github.com/Fantom-foundation/lachesis-base/inter/dag"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/Fantom-foundation/lachesis-base/vecengine"
-	"github.com/Fantom-foundation/lachesis-base/vecfc"
+	"github.com/0xsoniclabs/consensus/inter/dag"
+	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/vecengine"
 
 	"github.com/0xsoniclabs/sonic/inter"
 )
@@ -38,8 +37,7 @@ func (b *HighestBefore) SetForkDetected(i idx.Validator) {
 	b.VSeq.SetForkDetected(i)
 }
 
-func (hb *HighestBefore) CollectFrom(_other vecengine.HighestBeforeI, num idx.Validator) {
-	other := _other.(*HighestBefore)
+func (hb *HighestBefore) CollectFrom(other HighestBefore, num idx.Validator) {
 	for branchID := idx.Validator(0); branchID < num; branchID++ {
 		hisSeq := other.VSeq.Get(branchID)
 		if hisSeq.Seq == 0 && !hisSeq.IsForkDetected() {
@@ -71,10 +69,9 @@ func (hb *HighestBefore) CollectFrom(_other vecengine.HighestBeforeI, num idx.Va
 	}
 }
 
-func (hb *HighestBefore) GatherFrom(to idx.Validator, _other vecengine.HighestBeforeI, from []idx.Validator) {
-	other := _other.(*HighestBefore)
+func (hb *HighestBefore) GatherFrom(to idx.Validator, other HighestBefore, from []idx.Validator) {
 	// read all branches to find highest event
-	highestBranchSeq := vecfc.BranchSeq{}
+	highestBranchSeq := vecengine.BranchSeq{}
 	highestBranchTime := inter.Timestamp(0)
 	for _, branchID := range from {
 		vseq := other.VSeq.Get(branchID)

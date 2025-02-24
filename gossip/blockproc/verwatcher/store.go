@@ -3,7 +3,7 @@ package verwatcher
 import (
 	"sync/atomic"
 
-	"github.com/Fantom-foundation/lachesis-base/kvdb"
+	"github.com/0xsoniclabs/consensus/kvdb"
 
 	"github.com/0xsoniclabs/sonic/logger"
 )

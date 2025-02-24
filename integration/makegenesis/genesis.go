@@ -13,7 +13,7 @@ import (
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/ethereum/go-ethereum/core/tracing"
 
-	"github.com/Fantom-foundation/lachesis-base/hash"
+	"github.com/0xsoniclabs/consensus/hash"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"

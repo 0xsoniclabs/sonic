@@ -1,7 +1,7 @@
 package heavycheck
 
 import (
-	"github.com/Fantom-foundation/lachesis-base/inter/dag"
+	"github.com/0xsoniclabs/consensus/inter/dag"
 
 	"github.com/0xsoniclabs/sonic/inter"
 )

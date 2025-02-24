@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/0xsoniclabs/consensus/inter/idx"
 	cli "gopkg.in/urfave/cli.v1"
 
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"

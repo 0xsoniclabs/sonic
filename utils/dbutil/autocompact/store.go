@@ -3,7 +3,7 @@ package autocompact
 import (
 	"sync"
 
-	"github.com/Fantom-foundation/lachesis-base/kvdb"
+	"github.com/0xsoniclabs/consensus/kvdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/status-im/keycard-go/hexutils"
 )
@@ -30,7 +30,7 @@ func Wrap(s kvdb.Store, limit uint64, strategy func() ContainerI, name string) *
 		limit:   limit,
 		newCont: strategy,
 		cont:    strategy(),
-		name: name,
+		name:    name,
 	}
 }
 

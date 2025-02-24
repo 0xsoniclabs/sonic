@@ -1,16 +1,15 @@
 package vecmt
 
 import (
-	"github.com/Fantom-foundation/lachesis-base/hash"
-	"github.com/Fantom-foundation/lachesis-base/inter/dag"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/Fantom-foundation/lachesis-base/inter/pos"
-	"github.com/Fantom-foundation/lachesis-base/kvdb"
-	"github.com/Fantom-foundation/lachesis-base/kvdb/table"
-	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
-	"github.com/Fantom-foundation/lachesis-base/utils/wlru"
-	"github.com/Fantom-foundation/lachesis-base/vecengine"
-	"github.com/Fantom-foundation/lachesis-base/vecfc"
+	"github.com/0xsoniclabs/consensus/hash"
+	"github.com/0xsoniclabs/consensus/inter/dag"
+	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/inter/pos"
+	"github.com/0xsoniclabs/consensus/kvdb"
+	"github.com/0xsoniclabs/consensus/kvdb/table"
+	"github.com/0xsoniclabs/consensus/utils/cachescale"
+	"github.com/0xsoniclabs/consensus/utils/wlru"
+	"github.com/0xsoniclabs/consensus/vecengine"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 )
 
@@ -22,14 +21,14 @@ type IndexCacheConfig struct {
 
 // IndexConfig - Engine config (cache sizes)
 type IndexConfig struct {
-	Fc     vecfc.IndexConfig
+	Fc     vecengine.IndexConfig
 	Caches IndexCacheConfig
 }
 
 // Index is a data to detect forkless-cause condition, calculate median timestamp, detect forks.
 type Index struct {
-	*vecfc.Index
-	Base          *vecfc.Index
+	*vecengine.Engine
+	Base          *vecengine.Engine
 	baseCallbacks vecengine.Callbacks
 
 	crit          func(error)
@@ -53,7 +52,7 @@ type Index struct {
 // DefaultConfig returns default index config
 func DefaultConfig(scale cachescale.Func) IndexConfig {
 	return IndexConfig{
-		Fc: vecfc.DefaultConfig(scale),
+		Fc: vecengine.DefaultConfig(scale),
 		Caches: IndexCacheConfig{
 			HighestBeforeTimeSize: scale.U(160 * 1024),
 			DBCache:               scale.I(10 * opt.MiB),
@@ -64,7 +63,7 @@ func DefaultConfig(scale cachescale.Func) IndexConfig {
 // LiteConfig returns default index config for tests
 func LiteConfig() IndexConfig {
 	return IndexConfig{
-		Fc: vecfc.LiteConfig(),
+		Fc: vecengine.LiteConfig(),
 		Caches: IndexCacheConfig{
 			HighestBeforeTimeSize: 4 * 1024,
 		},
@@ -77,10 +76,10 @@ func NewIndex(crit func(error), config IndexConfig) *Index {
 		cfg:  config,
 		crit: crit,
 	}
-	engine := vecengine.NewIndex(crit, vi.GetEngineCallbacks())
+	engine := vecengine.NewIndex(crit, config.Fc)
 
-	vi.Base = vecfc.NewIndexWithEngine(crit, config.Fc, engine)
-	vi.Index = vi.Base
+	vi.Base = engine
+	vi.Engine = vi.Base
 	vi.baseCallbacks = vi.Base.GetEngineCallbacks()
 	vi.initCaches()
 
@@ -108,38 +107,11 @@ func (vi *Index) Close() error {
 	return vi.vecDb.Close()
 }
 
-func (vi *Index) GetEngineCallbacks() vecengine.Callbacks {
-	return vecengine.Callbacks{
-		GetHighestBefore: func(event hash.Event) vecengine.HighestBeforeI {
-			return vi.GetHighestBefore(event)
-		},
-		GetLowestAfter: func(event hash.Event) vecengine.LowestAfterI {
-			return vi.baseCallbacks.GetLowestAfter(event)
-		},
-		SetHighestBefore: func(event hash.Event, b vecengine.HighestBeforeI) {
-			vi.SetHighestBefore(event, b.(*HighestBefore))
-		},
-		SetLowestAfter: func(event hash.Event, i vecengine.LowestAfterI) {
-			vi.baseCallbacks.SetLowestAfter(event, i)
-		},
-		NewHighestBefore: func(size idx.Validator) vecengine.HighestBeforeI {
-			return NewHighestBefore(size)
-		},
-		NewLowestAfter: func(size idx.Validator) vecengine.LowestAfterI {
-			return vi.baseCallbacks.NewLowestAfter(size)
-		},
-		OnDropNotFlushed: func() {
-			vi.baseCallbacks.OnDropNotFlushed()
-			vi.onDropNotFlushed()
-		},
-	}
-}
-
 func (vi *Index) onDropNotFlushed() {
 	vi.cache.HighestBeforeTime.Purge()
 }
 
 // GetMergedHighestBefore returns HighestBefore vector clock without branches, where branches are merged into one
 func (vi *Index) GetMergedHighestBefore(id hash.Event) *HighestBefore {
-	return vi.Engine.GetMergedHighestBefore(id).(*HighestBefore)
+	return vi.GetMergedHighestBefore(id)
 }

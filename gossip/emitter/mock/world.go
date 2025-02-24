@@ -8,17 +8,17 @@ import (
 	big "math/big"
 	reflect "reflect"
 
+	hash "github.com/0xsoniclabs/consensus/hash"
+	idx "github.com/0xsoniclabs/consensus/inter/idx"
+	pos "github.com/0xsoniclabs/consensus/inter/pos"
 	inter "github.com/0xsoniclabs/sonic/inter"
+	"github.com/0xsoniclabs/sonic/inter/state"
 	validatorpk "github.com/0xsoniclabs/sonic/inter/validatorpk"
 	opera "github.com/0xsoniclabs/sonic/opera"
 	vecmt "github.com/0xsoniclabs/sonic/vecmt"
-	hash "github.com/Fantom-foundation/lachesis-base/hash"
-	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
-	pos "github.com/Fantom-foundation/lachesis-base/inter/pos"
 	common "github.com/ethereum/go-ethereum/common"
 	types "github.com/ethereum/go-ethereum/core/types"
 	gomock "github.com/golang/mock/gomock"
-	"github.com/0xsoniclabs/sonic/inter/state"
 )
 
 // MockExternal is a mock of External interface.

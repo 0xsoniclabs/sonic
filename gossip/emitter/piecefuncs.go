@@ -1,7 +1,7 @@
 package emitter
 
 import (
-	"github.com/Fantom-foundation/lachesis-base/utils/piecefunc"
+	"github.com/0xsoniclabs/consensus/utils/piecefunc"
 )
 
 var (

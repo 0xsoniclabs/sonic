@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Fantom-foundation/lachesis-base/hash"
+	"github.com/0xsoniclabs/consensus/hash"
 )
 
 func TestComputePrevRandao_ComputationIsDeterministic(t *testing.T) {

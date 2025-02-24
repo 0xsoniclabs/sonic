@@ -3,7 +3,7 @@ package parentscheck
 import (
 	"errors"
 
-	base "github.com/Fantom-foundation/lachesis-base/eventcheck/parentscheck"
+	base "github.com/0xsoniclabs/consensus/eventcheck/parentscheck"
 
 	"github.com/0xsoniclabs/sonic/inter"
 )
