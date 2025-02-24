@@ -77,7 +77,6 @@ func (b *BitSet[T]) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	b.mask = make([]byte, len(hexBytes))
-	copy(b.mask, hexBytes)
+	b.mask = hexBytes[:]
 	return nil
 }
