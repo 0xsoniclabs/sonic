@@ -14,7 +14,7 @@ func TestStore_GetCommitteeCertificate_FailsIfNotPresent(t *testing.T) {
 	store, err := NewMemStore(t)
 	require.NoError(err)
 	_, err = store.GetCommitteeCertificate(1)
-	require.ErrorContains(err, "no certificate found for period 1")
+	require.ErrorContains(err, "no such certificate")
 }
 
 func TestStore_GetCommitteeCertificate_RetrievesPresentEntries(t *testing.T) {
@@ -89,7 +89,7 @@ func TestStore_GetBlockCertificate_FailsIfNotPresent(t *testing.T) {
 	store, err := NewMemStore(t)
 	require.NoError(err)
 	_, err = store.GetBlockCertificate(1)
-	require.ErrorContains(err, "no certificate found for block 1")
+	require.ErrorContains(err, "no such certificate")
 }
 
 func TestStore_GetBlockCertificate_RetrievesPresentEntries(t *testing.T) {
