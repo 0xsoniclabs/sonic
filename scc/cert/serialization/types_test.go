@@ -36,7 +36,11 @@ func TestHexBytes_UnmarshallJSON_Invalid(t *testing.T) {
 	data = []byte(`"01"`)
 	err = h.UnmarshalJSON(data)
 	require.Error(t, err)
+}
 
+func TestHexBytes_String(t *testing.T) {
+	h := HexBytes([]byte{0x01, 0x2a, 0xbc})
+	require.Equal(t, "0x012abc", h.String())
 }
 
 func TestHexBytes48_MarshalJSON(t *testing.T) {

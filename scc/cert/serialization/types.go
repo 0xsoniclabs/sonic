@@ -45,6 +45,11 @@ func (h *HexBytes) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// String returns the hex string representation of HexBytes.
+func (h HexBytes) String() string {
+	return fmt.Sprintf("0x%x", []byte(h))
+}
+
 // UnmarshalFixLengthHexBytes decodes a JSON hex string into a fixed-length HexBytes slice.
 // Returns an error if the decoded length does not match the expected length.
 func UnmarshalFixLengthHexBytes(data []byte, length int) (HexBytes, error) {
