@@ -12,14 +12,11 @@ type Bytes []byte
 
 // MarshalJSON converts the HexBytes into a JSON-compatible hex string with a "0x" prefix.
 func (h Bytes) MarshalJSON() ([]byte, error) {
-	if h == nil {
-		return []byte("null"), nil
-	}
 	return []byte(h.String()), nil
 }
 
 // UnmarshalJSON parses a JSON hex string into a HexBytes slice.
-// The input string must have a "0x" prefix.
+// The input string must have a "0x" prefix or be "null".
 func (h *Bytes) UnmarshalJSON(data []byte) error {
 	var s string
 	err := json.Unmarshal(data, &s)
