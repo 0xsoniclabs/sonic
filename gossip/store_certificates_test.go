@@ -1,9 +1,8 @@
-package gossip_test
+package gossip
 
 import (
 	"testing"
 
-	. "github.com/0xsoniclabs/sonic/gossip"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/stretchr/testify/require"
