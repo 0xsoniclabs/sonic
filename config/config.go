@@ -126,6 +126,9 @@ func resolveHostNameInEnodeURL(url string) (hostname string, modified string, er
 		if err != nil {
 			return "", err
 		}
+		if len(ips) == 0 {
+			return "", fmt.Errorf("no IPs found for hostname %v", hostname)
+		}
 		return ips[0].String(), nil
 	})
 }
