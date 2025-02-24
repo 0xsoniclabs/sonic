@@ -7,6 +7,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/tests/contracts/batch"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
+	"github.com/0xsoniclabs/sonic/tests/contracts/privilege_deescalation"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -30,6 +31,10 @@ func TestSetCodeTransaction(t *testing.T) {
 
 	t.Run("Transaction Batching", func(t *testing.T) {
 		testBatching(t, net)
+	})
+
+	t.Run("Privilege Deescalation", func(t *testing.T) {
+		testPrivilegeDeescalation(t, net)
 	})
 }
 
@@ -135,6 +140,87 @@ func testBatching(t *testing.T, net *IntegrationTestNet) {
 	balance2, err := client.BalanceAt(context.Background(), receiver2.Address(), nil)
 	require.NoError(t, err)
 	assert.Equal(t, big.NewInt(4321), balance2)
+}
+
+func testPrivilegeDeescalation(t *testing.T, net *IntegrationTestNet) {
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	// this tests the privilege deescalation pattern
+	// where an account can allow a second account to execute certain operations
+	// on its behalf.
+	// In this test the account will allow a second account to transfer funds to
+	// the receiver account.
+	account := makeAccountWithBalance(t, net, 1e18)
+	userAccount := makeAccountWithBalance(t, net, 1e18)
+	receiver := makeAccountWithBalance(t, net, 0)
+
+	// Deploy the a contract to use as delegate
+	contract, receipt, err := DeployContract(net, privilege_deescalation.DeployPrivilegeDeescalation)
+	require.NoError(t, err)
+	delegate := receipt.ContractAddress
+
+	// Install delegation in account and allow access by userAccount
+	callData := getCallData(t, net, func(opts *bind.TransactOpts) (*types.Transaction, error) {
+		return contract.AllowPayment(opts, userAccount.Address())
+	})
+	setCodeTx := makeEip7702Transaction(t, client, account, account, delegate, callData)
+	receipt, err = net.Run(setCodeTx)
+	require.NoError(t, err)
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+
+	// Check that authorization has been set
+	data, err := client.StorageAt(context.Background(), account.Address(), common.Hash{}, nil)
+	require.NoError(t, err)
+	addr := userAccount.Address()
+	require.Equal(t, addr[:], data[12:32], "contract has not been initialized correctly")
+
+	// "mount" the contract in the address of the delegating account
+	delegatedContract, err := privilege_deescalation.NewPrivilegeDeescalation(account.Address(), client)
+	require.NoError(t, err)
+
+	accountBalanceBefore, err := client.BalanceAt(context.Background(), account.Address(), nil)
+	require.NoError(t, err)
+
+	// issue a normal transaction from userAccount to transfer funds to receiver
+	txOpts, err := net.GetTransactOptions(userAccount)
+	require.NoError(t, err)
+	txOpts.NoSend = true
+	tx, err := delegatedContract.DoPayment(txOpts, receiver.Address(), big.NewInt(42))
+	require.NoError(t, err)
+	receipt, err = net.Run(tx)
+	require.NoError(t, err)
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+
+	// check balances
+	accountBalanceAfter, err := client.BalanceAt(context.Background(), account.Address(), nil)
+	require.NoError(t, err)
+	assert.Equal(t, new(big.Int).Sub(accountBalanceBefore, big.NewInt(42)), accountBalanceAfter)
+
+	receivedBalance, err := client.BalanceAt(context.Background(), receiver.Address(), nil)
+	require.NoError(t, err)
+	assert.Equal(t, big.NewInt(42), receivedBalance)
+
+	// issue a transaction from and unauthorized account
+	unauthorizedAccount := makeAccountWithBalance(t, net, 1e18)
+	txOpts, err = net.GetTransactOptions(unauthorizedAccount)
+	require.NoError(t, err)
+	txOpts.NoSend = true
+	tx, err = delegatedContract.AllowPayment(txOpts, receiver.Address())
+	require.NoError(t, err)
+	receipt, err = net.Run(tx)
+	require.NoError(t, err)
+	require.Equal(t, types.ReceiptStatusFailed, receipt.Status, "tx shall be executed and rejected")
+
+	txOpts, err = net.GetTransactOptions(unauthorizedAccount)
+	require.NoError(t, err)
+	txOpts.NoSend = true
+	tx, err = delegatedContract.DoPayment(txOpts, receiver.Address(), big.NewInt(42))
+	require.NoError(t, err)
+	receipt, err = net.Run(tx)
+	require.NoError(t, err)
+	require.Equal(t, types.ReceiptStatusFailed, receipt.Status, "tx shall be executed and rejected")
 }
 
 // makeLegacyTx creates a legacy transaction from a CallMsg, filling in the nonce
