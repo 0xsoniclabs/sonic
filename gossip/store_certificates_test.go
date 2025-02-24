@@ -47,6 +47,7 @@ func TestStore_GetCommitteeCertificate_DistinguishesBetweenPeriods(t *testing.T)
 		Period:    2,
 		Committee: scc.NewCommittee(scc.Member{}),
 	})
+	require.NotEqual(original1, original2)
 
 	require.NoError(store.UpdateCommitteeCertificate(original1))
 	require.NoError(store.UpdateCommitteeCertificate(original2))
@@ -75,6 +76,7 @@ func TestStore_UpdateCommitteeCertificate_CanOverrideExisting(t *testing.T) {
 		Period:    1,
 		Committee: scc.NewCommittee(scc.Member{}, scc.Member{}),
 	})
+	require.NotEqual(original1, original2)
 	require.NoError(store.UpdateCommitteeCertificate(original2))
 
 	restored, err := store.GetCommitteeCertificate(1)
@@ -120,6 +122,7 @@ func TestStore_GetBlockCertificate_DistinguishesBetweenPeriods(t *testing.T) {
 		Number: 2,
 		Hash:   [32]byte{4, 5, 6},
 	})
+	require.NotEqual(original1, original2)
 
 	require.NoError(store.UpdateBlockCertificate(original1))
 	require.NoError(store.UpdateBlockCertificate(original2))
@@ -148,6 +151,7 @@ func TestStore_UpdateBlockCertificate_CanOverrideExisting(t *testing.T) {
 		Number: 1,
 		Hash:   [32]byte{4, 5, 6},
 	})
+	require.NotEqual(original1, original2)
 	require.NoError(store.UpdateBlockCertificate(original2))
 
 	restored, err := store.GetBlockCertificate(1)
