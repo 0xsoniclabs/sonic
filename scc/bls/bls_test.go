@@ -1,6 +1,7 @@
 package bls
 
 import (
+	"encoding/json"
 	"regexp"
 	"testing"
 
@@ -162,6 +163,37 @@ func TestPublicKey_String_IsHexEncoded(t *testing.T) {
 	require.Regexp(t, regexp, key.String())
 }
 
+func TestPublicKey_JsonEncodingUsesHexFormat(t *testing.T) {
+	regexp := regexp.MustCompile(`^"0x[0-9a-f]{96}"$`)
+	key := NewPrivateKey().PublicKey()
+	data, err := json.Marshal(key)
+	require.NoError(t, err)
+	require.Regexp(t, regexp, string(data))
+}
+
+func TestPublicKey_CanBeMarshalAndUnmarshal(t *testing.T) {
+	require := require.New(t)
+	key := PublicKey{}
+	data, err := json.Marshal(key)
+	require.NoError(err)
+
+	var key2 PublicKey
+	err = json.Unmarshal(data, &key2)
+	require.NoError(err)
+	require.Equal(key, key2)
+}
+
+func TestPublicKey_UnmarshalFailsForInvalidData(t *testing.T) {
+	data := []byte(`"0xg"`)
+	var key PublicKey
+	err := json.Unmarshal(data, &key)
+	require.Error(t, err)
+	invalid := [96]byte{}
+	data = []byte(invalid[:])
+	err = json.Unmarshal(data, &key)
+	require.Error(t, err)
+}
+
 // --- Signatures -------------------------------------------------------------
 
 func TestSignature_DefaultIsInvalid(t *testing.T) {
@@ -267,6 +299,37 @@ func TestSignature_DeserializationDetectsInvalidEncoding(t *testing.T) {
 func TestSignature_String_IsHexEncoded(t *testing.T) {
 	regexp := regexp.MustCompile(`^0x[0-9a-f]{192}$`)
 	require.Regexp(t, regexp, Signature{}.String())
+}
+
+func TestSignature_JsonEncodingUsesHexFormat(t *testing.T) {
+	regexp := regexp.MustCompile(`^"0x[0-9a-f]{192}"$`)
+	signature := NewPrivateKey().Sign([]byte("Hello, world!"))
+	data, err := json.Marshal(signature)
+	require.NoError(t, err)
+	require.Regexp(t, regexp, string(data))
+}
+
+func TestSignature_CanBeMarshalAndUnmarshal(t *testing.T) {
+	require := require.New(t)
+	signature := Signature{}
+	data, err := json.Marshal(signature)
+	require.NoError(err)
+
+	var signature2 Signature
+	err = json.Unmarshal(data, &signature2)
+	require.NoError(err)
+	require.Equal(signature, signature2)
+}
+
+func TestSignature_UnmarshalFailsForInvalidData(t *testing.T) {
+	data := []byte(`"0xg"`)
+	var signature Signature
+	err := json.Unmarshal(data, &signature)
+	require.Error(t, err)
+	invalid := [192]byte{}
+	data = []byte(invalid[:])
+	err = json.Unmarshal(data, &signature)
+	require.Error(t, err)
 }
 
 // --- Signature Protocol -----------------------------------------------------
