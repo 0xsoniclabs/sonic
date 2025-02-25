@@ -20,7 +20,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Fantom-foundation/lachesis-base/utils/wlru"
+	"github.com/0xsoniclabs/consensus/utils/wlru"
 	"github.com/ethereum/go-ethereum/common"
 )
 
