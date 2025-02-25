@@ -255,6 +255,7 @@ type TxPool struct {
 	mu          sync.RWMutex
 
 	istanbul bool // Fork indicator whether we are in the istanbul stage.
+	shanghai bool // Fork indicator whether we are in the shanghai stage.
 	eip2718  bool // Fork indicator whether we are using EIP-2718 type transactions.
 	eip1559  bool // Fork indicator whether we are using EIP-1559 type transactions.
 	eip4844  bool // Fork indicator whether we are using EIP-4844 type transactions.
@@ -726,7 +727,13 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 		return ErrInsufficientFunds
 	}
 	// Ensure the transaction has more gas than the basic tx fee.
-	intrGas, err := IntrinsicGas(tx.Data(), tx.AccessList(), tx.To() == nil)
+	intrGas, err := IntrinsicGas(
+		tx.Data(),
+		tx.AccessList(),
+		tx.SetCodeAuthorizations(),
+		tx.To() == nil, // is contract creation
+		pool.shanghai,  // is eip-3860 (limit and meter init-code)
+	)
 	if err != nil {
 		return err
 	}
@@ -1419,6 +1426,7 @@ func (pool *TxPool) reset(oldHead, newHead *EvmHeader) {
 	pool.istanbul = pool.chainconfig.IsIstanbul(next)
 	pool.eip2718 = pool.chainconfig.IsBerlin(next)
 	pool.eip1559 = pool.chainconfig.IsLondon(next)
+	pool.shanghai = pool.chainconfig.IsShanghai(next, uint64(newHead.Time.Unix()))
 	pool.eip4844 = pool.chainconfig.IsCancun(next, uint64(newHead.Time.Unix()))
 }
 
