@@ -57,7 +57,7 @@ func testSponsoring(t *testing.T, net *IntegrationTestNet) {
 	sponsor := makeAccountWithBalance(t, net, 1e18)
 	// sponsored is used as context for the call, its state will be modified
 	// without paying for the transaction
-	sponsored := makeAccountWithBalance(t, net, 0)
+	sponsored := makeAccountWithBalance(t, net, 0) // < no funds
 
 	// Deploy the a contract to use as delegate
 	counter, receipt, err := DeployContract(net, counter.DeployCounter)
@@ -77,6 +77,18 @@ func testSponsoring(t *testing.T, net *IntegrationTestNet) {
 	receipt, err = net.Run(setCodeTx)
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+
+	// Check that the sender has paid for the transaction
+	effectiveCost := new(big.Int)
+	effectiveCost = effectiveCost.Mul(
+		receipt.EffectiveGasPrice,
+		big.NewInt(int64(receipt.GasUsed)))
+
+	balance, err := client.BalanceAt(context.Background(), sponsor.Address(), nil)
+	require.NoError(t, err)
+	assert.Equal(t,
+		new(big.Int).Sub(
+			big.NewInt(1e18), effectiveCost), balance)
 
 	// Read code at sponsored address, must contain the delegate address
 	code, err := client.CodeAt(context.Background(), sponsored.Address(), nil)
@@ -170,8 +182,8 @@ func testPrivilegeDeescalation(t *testing.T, net *IntegrationTestNet) {
 	// - Account B (userAccount) pays for the gas for the transaction
 	// - Account A (account) is the context of the transaction, and its state is modified
 	// - Some part of the contract interface (DoPayment) is executable from account B
-	account := makeAccountWithBalance(t, net, 1e18)
-	userAccount := makeAccountWithBalance(t, net, 1e18)
+	account := makeAccountWithBalance(t, net, 1e18)     // < will transfer funds
+	userAccount := makeAccountWithBalance(t, net, 1e18) // < will pay for gas
 	receiver := makeAccountWithBalance(t, net, 0)
 
 	// Deploy the a contract to use as delegate
