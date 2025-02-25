@@ -79,7 +79,7 @@ func TestBitSet_MarshalJSON(t *testing.T) {
 	b.Add(123)
 	data, err := b.MarshalJSON()
 	require.NoError(err)
-	require.Equal(`0x02100000000000000000000000000008`, string(data))
+	require.Equal(`"0x02100000000000000000000000000008"`, string(data))
 }
 
 func TestBitSet_UnmarshalJSON(t *testing.T) {
