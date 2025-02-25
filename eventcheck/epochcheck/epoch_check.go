@@ -82,12 +82,12 @@ func (v *Checker) checkGas(e inter.EventPayloadI, rules opera.Rules) error {
 }
 
 func CheckTxs(txs types.Transactions, rules opera.Rules) error {
-	maxType := uint8(0)
+	maxType := uint8(types.LegacyTxType)
 	if rules.Upgrades.Berlin {
-		maxType = types.LegacyTxType
+		maxType = types.AccessListTxType
 	}
 	if rules.Upgrades.London {
-		maxType = types.AccessListTxType
+		maxType = types.DynamicFeeTxType
 	}
 	if rules.Upgrades.Sonic {
 		maxType = types.BlobTxType

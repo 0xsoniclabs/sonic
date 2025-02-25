@@ -45,7 +45,7 @@ func validateTx(tx *types.Transaction) error {
 
 	// NOTE: the call to intrinsicGas was migrated to use Geth's core package
 	// Unfortunately, we do not have the information at this point to determine
-	// the enabled revisions a this block height.
+	// the enabled revisions at this block height.
 	// Transactions are correctly validated in the pool and in the processor,
 	// therefore this check is called as the less strict version.
 	// This check will be removed in future versions:
