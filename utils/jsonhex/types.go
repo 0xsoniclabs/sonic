@@ -45,9 +45,9 @@ func (h *Bytes) UnmarshalJSON(data []byte) error {
 // String returns the hex string representation of Bytes.
 func (h Bytes) String() string {
 	if h == nil {
-		return "null"
+		return `"null"`
 	}
-	return fmt.Sprintf("0x%x", []byte(h))
+	return fmt.Sprintf(`"0x%x"`, []byte(h))
 }
 
 // UnmarshalFixLengthBytes decodes a JSON hex string into a fixed-length Bytes slice.
@@ -68,8 +68,8 @@ func UnmarshalFixLengthBytes(data []byte, length int) (Bytes, error) {
 type Bytes48 [48]byte
 
 // MarshalJSON converts the Bytes48 into a JSON-compatible hex string.
-func (h *Bytes48) MarshalJSON() ([]byte, error) {
-	return Bytes((*h)[:]).MarshalJSON()
+func (h Bytes48) MarshalJSON() ([]byte, error) {
+	return Bytes(h[:]).MarshalJSON()
 }
 
 // UnmarshalJSON parses a JSON hex string into a Bytes48.
@@ -91,8 +91,8 @@ func (h Bytes48) String() string {
 type Bytes96 [96]byte
 
 // MarshalJSON converts the Bytes96 into a JSON-compatible hex string.
-func (h *Bytes96) MarshalJSON() ([]byte, error) {
-	return Bytes((*h)[:]).MarshalJSON()
+func (h Bytes96) MarshalJSON() ([]byte, error) {
+	return Bytes(h[:]).MarshalJSON()
 }
 
 // UnmarshalJSON parses a JSON hex string into a Bytes96.

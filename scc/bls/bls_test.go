@@ -162,6 +162,18 @@ func TestPublicKey_String_IsHexEncoded(t *testing.T) {
 	require.Regexp(t, regexp, key.String())
 }
 
+func TestPublicKey_CanBeMarshalAndUnmarshal(t *testing.T) {
+	require := require.New(t)
+	key := PublicKey{}
+	data, err := key.MarshalJSON()
+	require.NoError(err)
+
+	var key2 PublicKey
+	err = key2.UnmarshalJSON(data)
+	require.NoError(err)
+	require.Equal(key, key2)
+}
+
 // --- Signatures -------------------------------------------------------------
 
 func TestSignature_DefaultIsInvalid(t *testing.T) {
@@ -267,6 +279,18 @@ func TestSignature_DeserializationDetectsInvalidEncoding(t *testing.T) {
 func TestSignature_String_IsHexEncoded(t *testing.T) {
 	regexp := regexp.MustCompile(`^0x[0-9a-f]{192}$`)
 	require.Regexp(t, regexp, Signature{}.String())
+}
+
+func TestSignature_CanBeMarshalAndUnmarshal(t *testing.T) {
+	require := require.New(t)
+	signature := Signature{}
+	data, err := signature.MarshalJSON()
+	require.NoError(err)
+
+	var signature2 Signature
+	err = signature2.UnmarshalJSON(data)
+	require.NoError(err)
+	require.Equal(signature, signature2)
 }
 
 // --- Signature Protocol -----------------------------------------------------
