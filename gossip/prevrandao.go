@@ -19,7 +19,7 @@ package gossip
 import (
 	"crypto/sha256"
 
-	"github.com/Fantom-foundation/lachesis-base/hash"
+	"github.com/0xsoniclabs/consensus/hash"
 	"github.com/ethereum/go-ethereum/common"
 )
 

@@ -17,8 +17,8 @@
 package utils
 
 import (
-	"github.com/Fantom-foundation/lachesis-base/kvdb"
-	"github.com/Fantom-foundation/lachesis-base/kvdb/table"
+	"github.com/0xsoniclabs/consensus/kvdb"
+	"github.com/0xsoniclabs/consensus/kvdb/table"
 )
 
 func NewTableOrSelf(db kvdb.Store, prefix []byte) kvdb.Store {

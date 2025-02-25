@@ -20,9 +20,9 @@ import (
 	"fmt"
 
 	"github.com/0xsoniclabs/carmen/go/common"
+	"github.com/0xsoniclabs/consensus/hash"
+	"github.com/0xsoniclabs/consensus/inter/pos"
 	"github.com/0xsoniclabs/sonic/inter"
-	"github.com/Fantom-foundation/lachesis-base/hash"
-	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 )
 
 //go:generate mockgen -source=proposal_check.go -destination=proposal_check_mock.go -package=proposalcheck

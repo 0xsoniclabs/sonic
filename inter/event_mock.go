@@ -28,8 +28,8 @@ package inter
 import (
 	reflect "reflect"
 
-	hash "github.com/Fantom-foundation/lachesis-base/hash"
-	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
+	hash "github.com/0xsoniclabs/consensus/hash"
+	idx "github.com/0xsoniclabs/consensus/inter/idx"
 	types "github.com/ethereum/go-ethereum/core/types"
 	gomock "go.uber.org/mock/gomock"
 )

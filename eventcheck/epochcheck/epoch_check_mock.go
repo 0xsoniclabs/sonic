@@ -29,8 +29,8 @@ import (
 	reflect "reflect"
 
 	opera "github.com/0xsoniclabs/sonic/opera"
-	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
-	pos "github.com/Fantom-foundation/lachesis-base/inter/pos"
+	idx "github.com/0xsoniclabs/consensus/inter/idx"
+	pos "github.com/0xsoniclabs/consensus/inter/pos"
 	gomock "go.uber.org/mock/gomock"
 )
 

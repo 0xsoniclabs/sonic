@@ -20,10 +20,10 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/stretchr/testify/require"
 )
 

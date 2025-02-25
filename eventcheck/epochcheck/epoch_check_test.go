@@ -20,11 +20,11 @@ import (
 	"fmt"
 	"testing"
 
+	base "github.com/0xsoniclabs/consensus/eventcheck/epochcheck"
+	"github.com/0xsoniclabs/consensus/inter/idx"
+	pos "github.com/0xsoniclabs/consensus/inter/pos"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
-	base "github.com/Fantom-foundation/lachesis-base/eventcheck/epochcheck"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	pos "github.com/Fantom-foundation/lachesis-base/inter/pos"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )

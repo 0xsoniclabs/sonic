@@ -17,7 +17,7 @@
 package inter
 
 import (
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/0xsoniclabs/consensus/inter/idx"
 )
 
 // Turn is the turn number of a proposal. Turns are used to orchestrate the

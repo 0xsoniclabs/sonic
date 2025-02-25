@@ -19,9 +19,9 @@ package gossip
 import (
 	"sync/atomic"
 
-	"github.com/Fantom-foundation/lachesis-base/hash"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/Fantom-foundation/lachesis-base/inter/pos"
+	"github.com/0xsoniclabs/consensus/hash"
+	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/inter/pos"
 
 	"github.com/0xsoniclabs/sonic/eventcheck/gaspowercheck"
 	"github.com/0xsoniclabs/sonic/inter"

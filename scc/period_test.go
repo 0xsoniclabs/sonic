@@ -19,7 +19,7 @@ package scc
 import (
 	"testing"
 
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/stretchr/testify/require"
 )
 

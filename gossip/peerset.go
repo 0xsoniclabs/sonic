@@ -20,7 +20,7 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/Fantom-foundation/lachesis-base/hash"
+	"github.com/0xsoniclabs/consensus/hash"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/p2p"
 )

@@ -29,8 +29,8 @@ import (
 	reflect "reflect"
 
 	inter "github.com/0xsoniclabs/sonic/inter"
-	hash "github.com/Fantom-foundation/lachesis-base/hash"
-	pos "github.com/Fantom-foundation/lachesis-base/inter/pos"
+	hash "github.com/0xsoniclabs/consensus/hash"
+	pos "github.com/0xsoniclabs/consensus/inter/pos"
 	gomock "go.uber.org/mock/gomock"
 )
 

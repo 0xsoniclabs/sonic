@@ -23,6 +23,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/0xsoniclabs/consensus/abft"
+	"github.com/0xsoniclabs/consensus/utils/cachescale"
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip"
@@ -31,8 +33,6 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/sonic/vecmt"
-	"github.com/Fantom-foundation/lachesis-base/abft"
-	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rpc"

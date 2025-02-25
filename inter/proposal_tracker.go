@@ -20,7 +20,7 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/0xsoniclabs/consensus/inter/idx"
 )
 
 // ProposalTracker is a thread-safe structure that tracks proposals seen in the

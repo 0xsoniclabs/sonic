@@ -29,7 +29,7 @@ import (
 	reflect "reflect"
 
 	validatorpk "github.com/0xsoniclabs/sonic/inter/validatorpk"
-	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
+	idx "github.com/0xsoniclabs/consensus/inter/idx"
 	gomock "go.uber.org/mock/gomock"
 )
 

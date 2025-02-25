@@ -20,7 +20,7 @@ import (
 	"encoding/hex"
 	"testing"
 
-	"github.com/Fantom-foundation/lachesis-base/hash"
+	"github.com/0xsoniclabs/consensus/hash"
 	"github.com/stretchr/testify/require"
 )
 

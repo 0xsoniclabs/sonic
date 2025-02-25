@@ -28,7 +28,7 @@ package inter
 import (
 	reflect "reflect"
 
-	hash "github.com/Fantom-foundation/lachesis-base/hash"
+	hash "github.com/0xsoniclabs/consensus/hash"
 	gomock "go.uber.org/mock/gomock"
 )
 

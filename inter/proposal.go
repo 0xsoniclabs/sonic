@@ -21,10 +21,10 @@ import (
 	"encoding/binary"
 	"fmt"
 
+	"github.com/0xsoniclabs/consensus/hash"
+	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/0xsoniclabs/sonic/gossip/randao"
 	"github.com/0xsoniclabs/sonic/inter/pb"
-	"github.com/Fantom-foundation/lachesis-base/hash"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"google.golang.org/protobuf/proto"
