@@ -2,8 +2,11 @@ package ethapi
 
 import (
 	"context"
+	"fmt"
 	"math/big"
+	reflect "reflect"
 	"testing"
+	"time"
 
 	cc "github.com/0xsoniclabs/carmen/go/common"
 	"github.com/0xsoniclabs/carmen/go/common/amount"
@@ -249,7 +252,7 @@ func TestEstimateGas(t *testing.T) {
 	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, blkNr).Return(mockState, mockHeader, nil).AnyTimes()
 	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000))
 	mockBackend.EXPECT().MaxGasLimit().Return(uint64(10000000))
-	mockBackend.EXPECT().GetEVM(any, any, any, any, any).DoAndReturn(getEvmFunc(mockState)).AnyTimes()
+	mockBackend.EXPECT().GetEVM(any, any, any, any, any, any).DoAndReturn(getEvmFunc(mockState)).AnyTimes()
 	setExpectedStateCalls(mockState)
 
 	api := NewPublicBlockChainAPI(mockBackend)
@@ -272,7 +275,7 @@ func TestReplayTransactionOnEmptyBlock(t *testing.T) {
 	mockBackend.EXPECT().BlockByNumber(any, any).Return(block, nil)
 	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, any).Return(mockState, nil, nil).AnyTimes()
 	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000)).AnyTimes()
-	mockBackend.EXPECT().GetEVM(any, any, any, any, any).DoAndReturn(getEvmFunc(mockState)).AnyTimes()
+	mockBackend.EXPECT().GetEVM(any, any, any, any, any, any).DoAndReturn(getEvmFunc(mockState)).AnyTimes()
 	mockBackend.EXPECT().ChainConfig().Return(&params.ChainConfig{}).AnyTimes()
 	setExpectedStateCalls(mockState)
 
@@ -280,6 +283,78 @@ func TestReplayTransactionOnEmptyBlock(t *testing.T) {
 
 	_, err := api.TraceCall(context.Background(), getTxArgs(t), rpc.BlockNumberOrHashWithNumber(5), &TraceCallConfig{})
 	require.NoError(t, err, "must be possible to replay tx on empty block")
+}
+
+func TestBlockOverrides(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockBackend := NewMockBackend(ctrl)
+	mockState := state.NewMockStateDB(ctrl)
+
+	blockNr := 10
+	block := &evmcore.EvmBlock{}
+	block.Number = big.NewInt(int64(blockNr))
+
+	any := gomock.Any()
+	mockBackend.EXPECT().BlockByNumber(any, any).Return(block, nil).AnyTimes()
+	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, any).Return(mockState, &evmcore.EvmHeader{Number: big.NewInt(int64(blockNr))}, nil).AnyTimes()
+	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000)).AnyTimes()
+	mockBackend.EXPECT().ChainConfig().Return(&params.ChainConfig{}).AnyTimes()
+	mockBackend.EXPECT().RPCEVMTimeout().Return(time.Duration(0)).AnyTimes()
+	setExpectedStateCalls(mockState)
+
+	expectedBlockCtx := &vm.BlockContext{
+		BlockNumber: big.NewInt(5),
+		Time:        0,
+		Difficulty:  big.NewInt(1),
+		BaseFee:     big.NewInt(1234),
+		BlobBaseFee: big.NewInt(1),
+	}
+
+	// Check that the correct block context is used when creating EVM instance
+	mockBackend.EXPECT().GetEVM(any, any, any, any, any, BlockContextMatcher{expectedBlockCtx}).DoAndReturn(getEvmFunc(mockState)).AnyTimes()
+
+	blockOverrides := &BlockOverrides{
+		Number:  (*hexutil.Big)(big.NewInt(5)),
+		BaseFee: (*hexutil.Big)(big.NewInt(1234)),
+	}
+
+	// Check block overrides on debug api with debug_traceCall rpc function
+	apiDebug := NewPublicDebugAPI(mockBackend, 10000, 10000)
+	traceConfig := &TraceCallConfig{
+		BlockOverrides: blockOverrides,
+	}
+
+	_, err := apiDebug.TraceCall(context.Background(), getTxArgs(t), rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(blockNr)), traceConfig)
+	require.NoError(t, err, "debug api must be able to override block number and base fee")
+
+	// Check block overrides on eth api with eth_call rpc function
+	apiEth := NewPublicBlockChainAPI(mockBackend)
+
+	_, err = apiEth.Call(context.Background(), getTxArgs(t), rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(blockNr)), nil, blockOverrides)
+	require.NoError(t, err, "debug api must be able to override block number and base fee")
+
+}
+
+// Custom matcher to compare vm.BlockContext values
+type BlockContextMatcher struct {
+	expected *vm.BlockContext
+}
+
+func (m BlockContextMatcher) Matches(x interface{}) bool {
+	if bc, ok := x.(*vm.BlockContext); ok {
+		bcCopy := *bc
+		bcCopy.Transfer = nil
+		bcCopy.CanTransfer = nil
+		bcCopy.GetHash = nil
+		return reflect.DeepEqual(bcCopy, *m.expected)
+	}
+	return false
+}
+
+func (m BlockContextMatcher) String() string {
+	return fmt.Sprintf("%v", m.expected)
 }
 
 func getTxArgs(t *testing.T) TransactionArgs {
@@ -296,8 +371,8 @@ func getTxArgs(t *testing.T) TransactionArgs {
 	}
 }
 
-func getEvmFunc(mockState *state.MockStateDB) func(interface{}, interface{}, interface{}, interface{}, interface{}) (*vm.EVM, func() error, error) {
-	return func(interface{}, interface{}, interface{}, interface{}, interface{}) (*vm.EVM, func() error, error) {
+func getEvmFunc(mockState *state.MockStateDB) func(interface{}, interface{}, interface{}, interface{}, interface{}, interface{}) (*vm.EVM, func() error, error) {
+	return func(interface{}, interface{}, interface{}, interface{}, interface{}, interface{}) (*vm.EVM, func() error, error) {
 		blockCtx := vm.BlockContext{
 			Transfer: vm.TransferFunc(func(sd vm.StateDB, a1, a2 common.Address, i *uint256.Int) {}),
 		}

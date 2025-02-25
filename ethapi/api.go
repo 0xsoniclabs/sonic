@@ -1012,7 +1012,7 @@ func (diff *StateOverride) Apply(state state.StateDB) error {
 	return nil
 }
 
-func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, overrides *StateOverride, timeout time.Duration, globalGasCap uint64) (*core.ExecutionResult, error) {
+func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, overrides *StateOverride, blockOverrides *BlockOverrides, timeout time.Duration, globalGasCap uint64) (*core.ExecutionResult, error) {
 	defer func(start time.Time) { log.Debug("Executing EVM call finished", "runtime", time.Since(start)) }(time.Now())
 
 	state, header, err := b.StateAndHeaderByNumberOrHash(ctx, blockNrOrHash)
@@ -1041,7 +1041,13 @@ func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash 
 		return nil, err
 	}
 	vmConfig := opera.DefaultVMConfig
-	evm, vmError, err := b.GetEVM(ctx, msg, state, header, &vmConfig)
+	var blockCtx *vm.BlockContext
+	if blockOverrides != nil {
+		bctx := getBlockContext(ctx, b, header)
+		blockOverrides.apply(&bctx)
+		blockCtx = &bctx
+	}
+	evm, vmError, err := b.GetEVM(ctx, msg, state, header, &vmConfig, blockCtx)
 	if err != nil {
 		return nil, err
 	}
@@ -1107,8 +1113,8 @@ func (e *revertError) ErrorData() interface{} {
 //
 // Note, this function doesn't make and changes in the state/blockchain and is
 // useful to execute and retrieve values.
-func (s *PublicBlockChainAPI) Call(ctx context.Context, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, overrides *StateOverride) (hexutil.Bytes, error) {
-	result, err := DoCall(ctx, s.b, args, blockNrOrHash, overrides, s.b.RPCEVMTimeout(), s.b.RPCGasCap())
+func (s *PublicBlockChainAPI) Call(ctx context.Context, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, stateOverrides *StateOverride, blockOverrides *BlockOverrides) (hexutil.Bytes, error) {
+	result, err := DoCall(ctx, s.b, args, blockNrOrHash, stateOverrides, blockOverrides, s.b.RPCEVMTimeout(), s.b.RPCGasCap())
 	if err != nil {
 		return nil, err
 	}
@@ -1187,7 +1193,7 @@ func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNr
 	executable := func(gas uint64) (bool, *core.ExecutionResult, error) {
 		args.Gas = (*hexutil.Uint64)(&gas)
 
-		result, err := DoCall(ctx, b, args, blockNrOrHash, nil, 0, gasCap)
+		result, err := DoCall(ctx, b, args, blockNrOrHash, nil, nil, 0, gasCap)
 		if err != nil {
 			if errors.Is(err, core.ErrIntrinsicGas) {
 				return true, nil, nil // Special case, raise gas limit
@@ -1502,7 +1508,7 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 		config := opera.DefaultVMConfig
 		config.Tracer = tracer.Hooks()
 		config.NoBaseFee = true
-		vmenv, _, err := b.GetEVM(ctx, msg, statedb, header, &config)
+		vmenv, _, err := b.GetEVM(ctx, msg, statedb, header, &config, nil)
 		if err != nil {
 			statedb.Release()
 			return nil, 0, nil, err
@@ -2108,13 +2114,13 @@ func (api *PublicDebugAPI) TraceTransaction(ctx context.Context, hash common.Has
 		TxHash:      hash,
 	}
 
-	return api.traceTx(ctx, tx, msg, txctx, block.Header(), statedb, config)
+	return api.traceTx(ctx, tx, msg, txctx, block.Header(), statedb, config, nil)
 }
 
 // traceTx configures a new tracer according to the provided configuration, and
 // executes the given message in the provided environment. The return value will
 // be tracer dependent.
-func (api *PublicDebugAPI) traceTx(ctx context.Context, tx *types.Transaction, message *core.Message, txctx *tracers.Context, blockHeader *evmcore.EvmHeader, statedb state.StateDB, config *tracers.TraceConfig) (json.RawMessage, error) {
+func (api *PublicDebugAPI) traceTx(ctx context.Context, tx *types.Transaction, message *core.Message, txctx *tracers.Context, blockHeader *evmcore.EvmHeader, statedb state.StateDB, config *tracers.TraceConfig, blockCtx *vm.BlockContext) (json.RawMessage, error) {
 	var (
 		tracer  *tracers.Tracer
 		err     error
@@ -2154,7 +2160,7 @@ func (api *PublicDebugAPI) traceTx(ctx context.Context, tx *types.Transaction, m
 
 	loggingStateDB := evmstore.WrapStateDbWithLogger(statedb, tracer.Hooks)
 
-	vmenv, _, err := api.b.GetEVM(ctx, message, loggingStateDB, blockHeader, &evmconfig)
+	vmenv, _, err := api.b.GetEVM(ctx, message, loggingStateDB, blockHeader, &evmconfig, blockCtx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get EVM for tracing: %w", err)
 	}
@@ -2257,7 +2263,7 @@ func (api *PublicDebugAPI) traceBlock(ctx context.Context, block *evmcore.EvmBlo
 			TxIndex:     i,
 			TxHash:      tx.Hash(),
 		}
-		res, err := api.traceTx(ctx, tx, msg, txctx, block.Header(), statedb, config)
+		res, err := api.traceTx(ctx, tx, msg, txctx, block.Header(), statedb, config, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -2309,7 +2315,7 @@ func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex in
 			return msg, statedb, nil
 		}
 		// Not yet the searched for transaction, execute on top of the current state
-		vmenv, _, err := b.GetEVM(ctx, msg, statedb, block.Header(), &opera.DefaultVMConfig)
+		vmenv, _, err := b.GetEVM(ctx, msg, statedb, block.Header(), &opera.DefaultVMConfig, nil)
 		if err != nil {
 			statedb.Release()
 			return nil, nil, err
@@ -2331,6 +2337,7 @@ func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex in
 type TraceCallConfig struct {
 	tracers.TraceConfig
 	StateOverrides *StateOverride
+	BlockOverrides *BlockOverrides
 	TxIndex        *hexutil.Uint
 }
 
@@ -2361,6 +2368,11 @@ func (api *PublicDebugAPI) TraceCall(ctx context.Context, args TransactionArgs, 
 	}
 	defer statedb.Release()
 
+	blockCtx := getBlockContext(ctx, api.b, &block.EvmHeader)
+	if config.BlockOverrides != nil {
+		config.BlockOverrides.apply(&blockCtx)
+	}
+
 	// Apply state overrides
 	if config != nil {
 		if err := config.StateOverrides.Apply(statedb); err != nil {
@@ -2378,7 +2390,7 @@ func (api *PublicDebugAPI) TraceCall(ctx context.Context, args TransactionArgs, 
 		traceConfig = &config.TraceConfig
 	}
 
-	return api.traceTx(ctx, tx, msg, new(tracers.Context), &block.EvmHeader, statedb, traceConfig)
+	return api.traceTx(ctx, tx, msg, new(tracers.Context), &block.EvmHeader, statedb, traceConfig, &blockCtx)
 }
 
 // getEvmBlockFromNumberOrHash returns EvmBlock from block number or block hash

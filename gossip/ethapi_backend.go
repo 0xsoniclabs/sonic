@@ -328,14 +328,19 @@ func (b *EthAPIBackend) GetLogs(ctx context.Context, block common.Hash) ([][]*ty
 	return logs, nil
 }
 
-func (b *EthAPIBackend) GetEVM(ctx context.Context, msg *core.Message, state vm.StateDB, header *evmcore.EvmHeader, vmConfig *vm.Config) (*vm.EVM, func() error, error) {
+func (b *EthAPIBackend) GetEVM(ctx context.Context, msg *core.Message, state vm.StateDB, header *evmcore.EvmHeader, vmConfig *vm.Config, blockContext *vm.BlockContext) (*vm.EVM, func() error, error) {
 	vmError := func() error { return nil }
 
 	if vmConfig == nil {
 		vmConfig = &opera.DefaultVMConfig
 	}
 	txContext := evmcore.NewEVMTxContext(msg)
-	context := evmcore.NewEVMBlockContext(header, b.state, nil)
+	var context vm.BlockContext
+	if blockContext == nil {
+		context = evmcore.NewEVMBlockContext(header, b.state, nil)
+	} else {
+		context = *blockContext
+	}
 	config := b.ChainConfig()
 	return vm.NewEVM(context, txContext, state, config, *vmConfig), vmError, nil
 }
