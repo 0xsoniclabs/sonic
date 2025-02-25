@@ -449,7 +449,7 @@ func createTestBlobTransaction(chainId *big.Int, data []byte) (*types.Transactio
 	}), nil
 }
 
-func TestEIP7702Transactions(t *testing.T) {
+func TestEIP7702Transactions_InvalidTransactionsReturnAnError(t *testing.T) {
 
 	configCopy := *params.TestChainConfig
 	testConfig := &configCopy
