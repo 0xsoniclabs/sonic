@@ -28,8 +28,7 @@ type IndexConfig struct {
 // Index is a data to detect forkless-cause condition, calculate median timestamp, detect forks.
 type Index struct {
 	*vecengine.Engine
-	Base          *vecengine.Engine
-	baseCallbacks vecengine.Callbacks
+	Base *vecengine.Engine
 
 	crit          func(error)
 	validators    *pos.Validators
@@ -80,7 +79,6 @@ func NewIndex(crit func(error), config IndexConfig) *Index {
 
 	vi.Base = engine
 	vi.Engine = vi.Base
-	vi.baseCallbacks = vi.Base.GetEngineCallbacks()
 	vi.initCaches()
 
 	return vi
