@@ -42,14 +42,11 @@ func validateTx(tx *types.Transaction) error {
 	}
 
 	// Ensure the transaction has more gas than the basic tx fee.
-
-	// NOTE: the call to intrinsicGas was migrated to use Geth's core package
-	// Unfortunately, we do not have the information at this point to determine
-	// the enabled revisions at this block height.
-	// Transactions are correctly validated in the pool and in the processor,
-	// therefore this check is called as the less strict version.
-	// This check will be removed in future versions:
-	// https://github.com/Fantom-foundation/lachesis-base-sonic/blob/main/eventcheck/basiccheck/basic_check.go
+	// This call has been migrated to use geth's intrinsic gas calculation;
+	// To ensure that the intrinsic gas calculation at this point in execution
+	// remains compatible with older implementations, parameters of function
+	// are hardcoded. This provides an optimistic intrinsic gas cost, equivalent
+	// to the previously existing intrinsic gas calculation.
 	intrGas, err := core.IntrinsicGas(
 		tx.Data(),
 		tx.AccessList(),
