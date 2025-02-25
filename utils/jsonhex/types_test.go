@@ -15,7 +15,11 @@ func TestBytes_MarshalJSON_HandlesAllCases(t *testing.T) {
 	h = nil
 	data, err = h.MarshalJSON()
 	require.NoError(t, err)
-	require.Equal(t, []byte(`"null"`), data)
+	require.Equal(t, []byte("null"), data)
+	h = Bytes([]byte{})
+	data, err = h.MarshalJSON()
+	require.NoError(t, err)
+	require.Equal(t, []byte("null"), data)
 	h = Bytes([]byte{0x1, 0x2a, 0xbc})
 	data, err = h.MarshalJSON()
 	require.NoError(t, err)
@@ -47,7 +51,7 @@ func TestBytes_String_IsCorrectlyProduced(t *testing.T) {
 	h := Bytes([]byte{0x01, 0x2a, 0xbc})
 	require.Equal(t, `"0x012abc"`, h.String())
 	h = nil
-	require.Equal(t, `"null"`, h.String())
+	require.Equal(t, `null`, h.String())
 }
 
 func TestBytes_CanBeJSONEncodedAndDecoded(t *testing.T) {
