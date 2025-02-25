@@ -24,6 +24,8 @@ import (
 	"github.com/0xsoniclabs/sonic/opera/contracts/evmwriter"
 	"github.com/0xsoniclabs/sonic/opera/contracts/netinit"
 	"github.com/0xsoniclabs/sonic/opera/contracts/sfc"
+	"github.com/0xsoniclabs/sonic/scc"
+	"github.com/0xsoniclabs/sonic/scc/bls"
 	futils "github.com/0xsoniclabs/sonic/utils"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -145,6 +147,18 @@ func StartIntegrationTestNetFromJsonGenesis(directory string, extraArguments ...
 			Data: tx.Data(),
 		})
 	}
+
+	// Create the genesis SCC committee.
+	key := bls.NewPrivateKeyForTests(0)
+	committee := scc.NewCommittee(scc.Member{
+		PublicKey:         key.PublicKey(),
+		ProofOfPossession: key.GetProofOfPossession(),
+		VotingPower:       1,
+	})
+	if err := committee.Validate(); err != nil {
+		return nil, fmt.Errorf("failed to create valid committee: %w", err)
+	}
+	jsonGenesis.GenesisCommittee = &committee
 
 	encoded, err := json.MarshalIndent(jsonGenesis, "", "  ")
 	if err != nil {

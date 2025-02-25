@@ -17,6 +17,7 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/genesis"
 	"github.com/0xsoniclabs/sonic/opera/genesisstore"
+	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
@@ -26,10 +27,11 @@ import (
 )
 
 type GenesisJson struct {
-	Rules         opera.Rules
-	BlockZeroTime time.Time
-	Accounts      []Account     `json:",omitempty"`
-	Txs           []Transaction `json:",omitempty"`
+	Rules            opera.Rules
+	BlockZeroTime    time.Time
+	Accounts         []Account      `json:",omitempty"`
+	Txs              []Transaction  `json:",omitempty"`
+	GenesisCommittee *scc.Committee `json:",omitempty"`
 }
 
 type Account struct {
@@ -135,6 +137,11 @@ func ApplyGenesisJson(json *GenesisJson) (*genesisstore.Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute json genesis txs; %v", err)
 	}
+
+	if json.GenesisCommittee == nil {
+		return nil, fmt.Errorf("genesis committee must be set")
+	}
+	builder.SetCertificationChainGenesisCommittee(*json.GenesisCommittee)
 
 	return builder.Build(genesis.Header{
 		GenesisID:   builder.CurrentHash(),
