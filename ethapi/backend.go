@@ -103,6 +103,8 @@ type Backend interface {
 	GetDowntime(ctx context.Context, vid idx.ValidatorID) (idx.Block, inter.Timestamp, error)
 	GetUptime(ctx context.Context, vid idx.ValidatorID) (*big.Int, error)
 	GetOriginatedFee(ctx context.Context, vid idx.ValidatorID) (*big.Int, error)
+
+	SccApiBackend
 }
 
 func GetAPIs(apiBackend Backend) []rpc.API {
@@ -151,6 +153,11 @@ func GetAPIs(apiBackend Backend) []rpc.API {
 			Namespace: "abft",
 			Version:   "1.0",
 			Service:   NewPublicAbftAPI(apiBackend),
+			Public:    true,
+		}, {
+			Namespace: "sonic",
+			Version:   "1.0",
+			Service:   NewPublicSccApi(apiBackend),
 			Public:    true,
 		},
 	}

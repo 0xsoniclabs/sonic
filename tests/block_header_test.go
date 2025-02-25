@@ -169,6 +169,10 @@ func testBlockHeadersOnNetwork(t *testing.T, net *IntegrationTestNet) {
 		t.Run("CounterStateIsVerifiable", func(t *testing.T) {
 			testHeaders_CounterStateIsVerifiable(t, headers, client, counterAddress)
 		})
+
+		t.Run("HasBlockCertificatesForBlocks", func(t *testing.T) {
+			testScc_HasBlockCertificatesForBlocks(t, headers, client)
+		})
 	}
 
 	t.Run("BeforeRestart", runTests)
@@ -762,4 +766,18 @@ func getVerifiedCounterState(
 	require.Equal(int(fromResult), fromProof, "proof value mismatch")
 
 	return fromProof
+}
+
+func testScc_HasBlockCertificatesForBlocks(
+	t *testing.T,
+	headers []*types.Header,
+	client *ethclient.Client,
+) {
+	require := require.New(t)
+
+	res := []map[string]interface{}{}
+	err := client.Client().Call(&res, "sonic_getBlockCertificates", "0x0", "0x9")
+	require.NoError(err)
+
+	fmt.Printf("Block certificates: %v\n", res)
 }
