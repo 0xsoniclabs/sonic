@@ -11,6 +11,7 @@ package ethapi
 
 import (
 	context "context"
+	iter "iter"
 	big "math/big"
 	reflect "reflect"
 	time "time"
@@ -19,6 +20,9 @@ import (
 	inter "github.com/0xsoniclabs/sonic/inter"
 	iblockproc "github.com/0xsoniclabs/sonic/inter/iblockproc"
 	state "github.com/0xsoniclabs/sonic/inter/state"
+	scc "github.com/0xsoniclabs/sonic/scc"
+	cert "github.com/0xsoniclabs/sonic/scc/cert"
+	result "github.com/0xsoniclabs/sonic/utils/result"
 	hash "github.com/Fantom-foundation/lachesis-base/hash"
 	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
 	accounts "github.com/ethereum/go-ethereum/accounts"
@@ -153,6 +157,34 @@ func (m *MockBackend) CurrentEpoch(ctx context.Context) idx.Epoch {
 func (mr *MockBackendMockRecorder) CurrentEpoch(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CurrentEpoch", reflect.TypeOf((*MockBackend)(nil).CurrentEpoch), ctx)
+}
+
+// EnumerateBlockCertificates mocks base method.
+func (m *MockBackend) EnumerateBlockCertificates(first idx.Block) iter.Seq[result.T[cert.BlockCertificate]] {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "EnumerateBlockCertificates", first)
+	ret0, _ := ret[0].(iter.Seq[result.T[cert.BlockCertificate]])
+	return ret0
+}
+
+// EnumerateBlockCertificates indicates an expected call of EnumerateBlockCertificates.
+func (mr *MockBackendMockRecorder) EnumerateBlockCertificates(first any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnumerateBlockCertificates", reflect.TypeOf((*MockBackend)(nil).EnumerateBlockCertificates), first)
+}
+
+// EnumerateCommitteeCertificates mocks base method.
+func (m *MockBackend) EnumerateCommitteeCertificates(first scc.Period) iter.Seq[result.T[cert.CommitteeCertificate]] {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "EnumerateCommitteeCertificates", first)
+	ret0, _ := ret[0].(iter.Seq[result.T[cert.CommitteeCertificate]])
+	return ret0
+}
+
+// EnumerateCommitteeCertificates indicates an expected call of EnumerateCommitteeCertificates.
+func (mr *MockBackendMockRecorder) EnumerateCommitteeCertificates(first any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnumerateCommitteeCertificates", reflect.TypeOf((*MockBackend)(nil).EnumerateCommitteeCertificates), first)
 }
 
 // ExtRPCEnabled mocks base method.
