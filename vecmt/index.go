@@ -113,5 +113,5 @@ func (vi *Index) onDropNotFlushed() {
 
 // GetMergedHighestBefore returns HighestBefore vector clock without branches, where branches are merged into one
 func (vi *Index) GetMergedHighestBefore(id hash.Event) *HighestBefore {
-	return vi.GetMergedHighestBefore(id)
+	return vi.Engine.GetMergedHighestBefore(id)
 }
