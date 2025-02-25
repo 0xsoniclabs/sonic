@@ -19,11 +19,11 @@ package emitter
 import (
 	"testing"
 
-	"github.com/0xsoniclabs/consensus/emitter/ancestor"
 	"github.com/0xsoniclabs/consensus/hash"
 	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/0xsoniclabs/consensus/inter/pos"
 	"github.com/0xsoniclabs/consensus/kvdb/memorydb"
+	"github.com/0xsoniclabs/sonic/emitter/ancestor"
 	"github.com/0xsoniclabs/sonic/vecmt"
 	"go.uber.org/mock/gomock"
 )
