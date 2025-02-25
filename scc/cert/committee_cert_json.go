@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/0xsoniclabs/sonic/scc"
+	"github.com/0xsoniclabs/sonic/scc/bls"
 	"github.com/0xsoniclabs/sonic/utils/jsonhex"
 )
 
@@ -20,31 +21,32 @@ func (c committeeCertificateJson) String() string {
 		c.ChainId, c.Period, c.Members, c.Signers, c.Signature)
 }
 
-// func (c CommitteeCertificateJson) ToCommitteeCertificate() (Certificate[CommitteeStatement], error) {
-// 	members := make([]scc.Member, len(c.Members))
-// 	for i, member := range c.Members {
-// 		m, err := member.ToMember()
-// 		if err != nil {
-// 			return Certificate[CommitteeStatement]{}, err
-// 		}
-// 		members[i] = m
-// 	}
-// 	aggregatedSignature, err := c.AggregatedSignature.ToAggregatedSignature()
-// 	if err != nil {
-// 		return Certificate[CommitteeStatement]{}, err
-// 	}
-// 	certificate := NewCertificate(CommitteeStatement{
-// 		statement: statement{
-// 			ChainId: 123,
-// 		},
-// 		Period:    456,
-// 		Committee: scc.NewCommittee(members...),
-// 	})
-// 	return NewCertificate(CommitteeStatement{
-// 		statement: statement{
-// 			ChainId: c.ChainId,
-// 		},
-// 		Period:    c.Period,
-// 		Committee: scc.NewCommittee(members...),
-// 	}), nil
-// }
+func (c committeeCertificateJson) ToCommitteeCertificate() (Certificate[CommitteeStatement], error) {
+	aggregatedSignature := AggregatedSignature[CommitteeStatement]{}
+	aggregatedSignature.signers.mask = c.Signers
+	var err error
+	aggregatedSignature.signature, err = bls.DeserializeSignature(c.Signature)
+	if err != nil {
+		return Certificate[CommitteeStatement]{}, fmt.Errorf("failed to deserialize signature: %w", err)
+	}
+
+	newCert := NewCertificate(CommitteeStatement{
+		statement: statement{
+			ChainId: c.ChainId,
+		},
+		Period:    scc.Period(c.Period),
+		Committee: scc.NewCommittee(c.Members...),
+	})
+	newCert.signature = aggregatedSignature
+	return newCert, nil
+}
+
+func CommitteeCertificateToJson(c Certificate[CommitteeStatement]) committeeCertificateJson {
+	return committeeCertificateJson{
+		ChainId:   c.subject.ChainId,
+		Period:    uint64(c.subject.Period),
+		Members:   c.subject.Committee.Members(),
+		Signers:   c.signature.signers.mask,
+		Signature: jsonhex.Bytes96(c.signature.signature.Serialize()),
+	}
+}
