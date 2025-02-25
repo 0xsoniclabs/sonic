@@ -13,7 +13,9 @@ import (
 	"github.com/0xsoniclabs/sonic/opera/genesis"
 	"github.com/0xsoniclabs/sonic/opera/genesisstore"
 	"github.com/0xsoniclabs/sonic/opera/genesisstore/fileshash"
+	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/utils/devnullfile"
+	"github.com/0xsoniclabs/sonic/utils/objstream"
 	"github.com/Fantom-foundation/lachesis-base/common/bigendian"
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
@@ -79,6 +81,25 @@ func ExportGenesis(ctx context.Context, gdb *gossip.Store, includeArchive bool, 
 			return err
 		}
 	}
+
+	// committee certificates
+	writer = newUnitWriter(out)
+	if err := writer.Start(header, "scc_cc", tmpPath); err != nil {
+		return err
+	}
+	if err := exportCommitteeCertificates(ctx, gdb, writer, lastBlock); err != nil {
+		return err
+	}
+
+	// block certificates
+	writer = newUnitWriter(out)
+	if err := writer.Start(header, "scc_bc", tmpPath); err != nil {
+		return err
+	}
+	if err := exportBlockCertificates(ctx, gdb, writer, lastBlock); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -145,6 +166,66 @@ func exportBlocksSection(ctx context.Context, gdb *gossip.Store, writer *unitWri
 	}
 	log.Info("Exported blocks")
 	fmt.Printf("- Blocks hash: %v \n", blocksHash.String())
+	return nil
+}
+
+func exportCommitteeCertificates(ctx context.Context, gdb *gossip.Store, writer *unitWriter, to idx.Block) error {
+	toPeriod := scc.GetPeriod(to)
+
+	log.Info("Exporting committee certificates", "to", toPeriod)
+
+	count := 0
+	out := objstream.NewWriter[gossip.CommitteeCertificate](writer)
+	for entry := range gdb.EnumerateCommitteeCertificates(0) {
+		count++
+		cert, err := entry.Unwrap()
+		if err != nil {
+			return err
+		}
+		if cert.Subject().Period > toPeriod {
+			break
+		}
+		if err := out.Write(cert); err != nil {
+			return err
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+	}
+	hash, err := writer.Flush()
+	if err != nil {
+		return err
+	}
+	log.Info("Exported committee certificates", "count", count, "hash", hash)
+	return nil
+}
+
+func exportBlockCertificates(ctx context.Context, gdb *gossip.Store, writer *unitWriter, to idx.Block) error {
+	log.Info("Exporting block certificates", "to", to)
+
+	count := 0
+	out := objstream.NewWriter[gossip.BlockCertificate](writer)
+	for entry := range gdb.EnumerateBlockCertificates(0) {
+		count++
+		cert, err := entry.Unwrap()
+		if err != nil {
+			return err
+		}
+		if cert.Subject().Number > to {
+			break
+		}
+		if err := out.Write(cert); err != nil {
+			return err
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+	}
+	hash, err := writer.Flush()
+	if err != nil {
+		return err
+	}
+	log.Info("Exported block certificates", "count", count, "hash", hash)
 	return nil
 }
 
