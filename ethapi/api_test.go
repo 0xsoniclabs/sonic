@@ -344,10 +344,11 @@ type BlockContextMatcher struct {
 
 func (m BlockContextMatcher) Matches(x interface{}) bool {
 	if bc, ok := x.(*vm.BlockContext); ok {
-		bc.Transfer = nil
-		bc.CanTransfer = nil
-		bc.GetHash = nil
-		return reflect.DeepEqual(*bc, *m.expected)
+		bcCopy := *bc
+		bcCopy.Transfer = nil
+		bcCopy.CanTransfer = nil
+		bcCopy.GetHash = nil
+		return reflect.DeepEqual(bcCopy, *m.expected)
 	}
 	return false
 }

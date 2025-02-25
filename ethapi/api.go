@@ -1046,7 +1046,7 @@ func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash 
 	var blockCtx *vm.BlockContext
 	if blockOverrides != nil {
 		bctx := getBlockContext(ctx, b, header)
-		blockOverrides.Apply(&bctx)
+		blockOverrides.apply(&bctx)
 		blockCtx = &bctx
 	}
 	evm, vmError, err := b.GetEVM(ctx, msg, state, header, &vmConfig, blockCtx)
@@ -2372,7 +2372,7 @@ func (api *PublicDebugAPI) TraceCall(ctx context.Context, args TransactionArgs, 
 
 	blockCtx := getBlockContext(ctx, api.b, &block.EvmHeader)
 	if config.BlockOverrides != nil {
-		config.BlockOverrides.Apply(&blockCtx)
+		config.BlockOverrides.apply(&blockCtx)
 	}
 
 	// Apply state overrides

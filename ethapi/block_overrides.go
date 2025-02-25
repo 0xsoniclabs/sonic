@@ -22,8 +22,8 @@ type BlockOverrides struct {
 	BlobBaseFee *hexutil.Big
 }
 
-// Apply overrides the given header fields into the given block context.
-func (diff *BlockOverrides) Apply(blockCtx *vm.BlockContext) {
+// apply overrides the given header fields into the given block context.
+func (diff *BlockOverrides) apply(blockCtx *vm.BlockContext) {
 	if diff == nil {
 		return
 	}
@@ -53,24 +53,28 @@ func (diff *BlockOverrides) Apply(blockCtx *vm.BlockContext) {
 	}
 }
 
-// ChainContextBackend provides methods required to implement ChainContext.
-type ChainContextBackend interface {
+// getBlockContext returns a new vm.BlockContext based on the given header and backend
+func getBlockContext(ctx context.Context, backend Backend, header *evmcore.EvmHeader) vm.BlockContext {
+	chain := chainContext{
+		ctx: ctx,
+		b:   backend,
+	}
+	return evmcore.NewEVMBlockContext(header, &chain, nil)
+}
+
+// chainContextBackend provides methods required to implement ChainContext.
+type chainContextBackend interface {
 	HeaderByNumber(context.Context, rpc.BlockNumber) (*evmcore.EvmHeader, error)
 }
 
-// ChainContext is an implementation of core.ChainContext. It's main use-case
+// chainContext is an implementation of core.chainContext. It's main use-case
 // is instantiating a vm.BlockContext without having access to the BlockChain object.
-type ChainContext struct {
-	b   ChainContextBackend
+type chainContext struct {
+	b   chainContextBackend
 	ctx context.Context
 }
 
-// NewChainContext creates a new ChainContext object.
-func NewChainContext(ctx context.Context, backend ChainContextBackend) *ChainContext {
-	return &ChainContext{ctx: ctx, b: backend}
-}
-
-func (context *ChainContext) GetHeader(hash common.Hash, number uint64) *evmcore.EvmHeader {
+func (context *chainContext) GetHeader(hash common.Hash, number uint64) *evmcore.EvmHeader {
 	// This method is called to get the hash for a block number when executing the BLOCKHASH
 	// opcode. Hence no need to search for non-canonical blocks.
 	header, err := context.b.HeaderByNumber(context.ctx, rpc.BlockNumber(number))
@@ -78,12 +82,4 @@ func (context *ChainContext) GetHeader(hash common.Hash, number uint64) *evmcore
 		return nil
 	}
 	return header
-}
-
-func getBlockContext(ctx context.Context, backend Backend, header *evmcore.EvmHeader) vm.BlockContext {
-	chain := ChainContext{
-		ctx: ctx,
-		b:   backend,
-	}
-	return evmcore.NewEVMBlockContext(header, &chain, nil)
 }

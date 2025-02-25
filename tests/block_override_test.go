@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	contractFunction = "0xa3289b77"
+	contractFunction_getBlockParameters = "0xa3289b77"
 )
 
 func TestBlockOverride(t *testing.T) {
@@ -81,13 +81,16 @@ func compareCalls(t *testing.T, rpcClient *rpc.Client, contractAddress common.Ad
 	params, err := callFunc(t, rpcClient, contractAddress, blockNumber, nil)
 	require.NoError(err, "failed to make eth_call; %v", err)
 
-	paramsOverride, err := makeDebugTraceCall(t, rpcClient, contractAddress, blockNumber, blockOverrides)
+	paramsOverride, err := callFunc(t, rpcClient, contractAddress, blockNumber, blockOverrides)
 	require.NoError(err, "failed to make eth_call; %v", err)
 
 	t.Logf("params: %v", params)
 	t.Logf("params: %v", paramsOverride)
 
-	err = CompareBlockParameters(params, paramsOverride)
+	err = checkAllFieldsAreDifferent(params, paramsOverride)
+	require.NoError(err, "failed to compare block parameters; %v", err)
+
+	err = checkOverrides(paramsOverride, *blockOverrides)
 	require.NoError(err, "failed to compare block parameters; %v", err)
 }
 
@@ -131,7 +134,7 @@ func (bp *BlockParameters) String() string {
 func getFunctionCallParameters(contractAddress *common.Address) map[string]interface{} {
 	return map[string]interface{}{
 		"to":   contractAddress.String(),
-		"data": contractFunction,
+		"data": contractFunction_getBlockParameters,
 	}
 }
 
@@ -183,8 +186,8 @@ func makeDebugTraceCall(t *testing.T, rpcClient *rpc.Client, contractAddress com
 	}
 }
 
-// CompareBlockParameters compares two BlockParameters objects and returns an error if any fields were not overridden
-func CompareBlockParameters(params1, params2 BlockParameters) error {
+// checkAllFieldsAreDifferent compares two BlockParameters objects and returns an error if any fields were not overridden
+func checkAllFieldsAreDifferent(params1, params2 BlockParameters) error {
 	if params1.Number.Cmp(params2.Number) == 0 {
 		return fmt.Errorf("Number field was not overridden: %v", params1.Number)
 	}
@@ -208,6 +211,32 @@ func CompareBlockParameters(params1, params2 BlockParameters) error {
 	}
 	if params1.BlobBaseFee.Cmp(params2.BlobBaseFee) == 0 {
 		return fmt.Errorf("BlobBaseFee field was not overridden: %v", params1.BlobBaseFee)
+	}
+	return nil
+}
+
+// checkOverrides checks that the given BlockParameters are the same as the overrides
+func checkOverrides(params BlockParameters, overrides ethapi.BlockOverrides) error {
+	if want, got := overrides.Number, params.Number; got.Cmp((*big.Int)(want)) != 0 {
+		return fmt.Errorf("Number override incorrect, wanted %v, got %v", want, got)
+	}
+	if want, got := overrides.Time, params.Time; got.Uint64() != (uint64(*want)) {
+		return fmt.Errorf("Time override incorrect, wanted %v, got %v", want, got)
+	}
+	if want, got := overrides.GasLimit, params.GasLimit; got.Uint64() != (uint64(*want)) {
+		return fmt.Errorf("GasLimit override incorrect, wanted %v, got %v", want, got)
+	}
+	if want, got := overrides.Coinbase, params.Coinbase; *want != got {
+		return fmt.Errorf("Coinbase override incorrect, wanted %v, got %v", want, got)
+	}
+	if want, got := overrides.Random, params.Random; *want != got {
+		return fmt.Errorf("Random override incorrect, wanted %v, got %v", want, got)
+	}
+	if want, got := overrides.BaseFee, params.BaseFee; got.Cmp((*big.Int)(want)) != 0 {
+		return fmt.Errorf("BaseFee override incorrect, wanted %v, got %v", want, got)
+	}
+	if want, got := overrides.BlobBaseFee, params.BlobBaseFee; got.Cmp((*big.Int)(want)) != 0 {
+		return fmt.Errorf("BlobBaseFee override incorrect, wanted %v, got %v", want, got)
 	}
 	return nil
 }
