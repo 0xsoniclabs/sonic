@@ -17,6 +17,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestSetCodeTransaction tests the SetCode transaction type use cases
+// described in the EIP-7702 specification: https://eips.ethereum.org/EIPS/eip-7702
+// Notice that the test contracts used in this test model the expected behavior
+// and do not implement ERC-20 as described in the EIP use case examples.
 func TestSetCodeTransaction(t *testing.T) {
 
 	net, err := StartIntegrationTestNet(t.TempDir())
@@ -39,6 +43,12 @@ func TestSetCodeTransaction(t *testing.T) {
 }
 
 func testSponsoring(t *testing.T, net *IntegrationTestNet) {
+
+	// This test executes a transaction in behalf of another account:
+	// - The sponsor account pays for the gas for the transaction
+	// - The sponsored account is the context of the transaction, and its state is modified
+	// - The delegate account is the contract that will be executed
+
 	client, err := net.GetClient()
 	require.NoError(t, err)
 	defer client.Close()
@@ -82,6 +92,12 @@ func testSponsoring(t *testing.T, net *IntegrationTestNet) {
 }
 
 func testBatching(t *testing.T, net *IntegrationTestNet) {
+
+	// This test executes multiple funds transfers within a single transaction:
+	// - The sponsor and sponsored accounts are the same, this is a self-sponsored transaction.
+	// - The delegate account is the contract that will be executed, which implements the batch of calls
+	// - Multiple receiver accounts will receive the funds
+
 	client, err := net.GetClient()
 	require.NoError(t, err)
 	defer client.Close()
@@ -143,15 +159,17 @@ func testBatching(t *testing.T, net *IntegrationTestNet) {
 }
 
 func testPrivilegeDeescalation(t *testing.T, net *IntegrationTestNet) {
+
 	client, err := net.GetClient()
 	require.NoError(t, err)
 	defer client.Close()
 
-	// this tests the privilege deescalation pattern
-	// where an account can allow a second account to execute certain operations
-	// on its behalf.
-	// In this test the account will allow a second account to transfer funds to
-	// the receiver account.
+	// This test executes a transaction in behalf of another account, using
+	// the privilege deescalation pattern:
+	// - Account A allows account B to execute certain operations on its behalf
+	// - Account B (userAccount) pays for the gas for the transaction
+	// - Account A (account) is the context of the transaction, and its state is modified
+	// - Some part of the contract interface (DoPayment) is executable from account B
 	account := makeAccountWithBalance(t, net, 1e18)
 	userAccount := makeAccountWithBalance(t, net, 1e18)
 	receiver := makeAccountWithBalance(t, net, 0)
