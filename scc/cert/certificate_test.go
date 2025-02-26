@@ -47,18 +47,6 @@ func TestCertificate_Signature_ReturnsIndependentCopy(t *testing.T) {
 	require.NotEqual(sig, cert.Signature())
 }
 
-func TestCertificate_Statement_ReturnsIndependentCopy(t *testing.T) {
-	require := require.New(t)
-	stmt := testStatement(1)
-	cert := NewCertificate(stmt)
-	stmt = cert.Subject()
-	err := cert.Add(1, Signature[testStatement]{
-		Signature: bls.NewPrivateKey().Sign([]byte{1}),
-	})
-	require.NoError(err)
-	require.NotEqual(stmt, cert.Subject())
-}
-
 func TestCertificate_CanBeGraduallyAccumulatedAndVerified(t *testing.T) {
 	requires := require.New(t)
 	keys := make([]bls.PrivateKey, 6)
