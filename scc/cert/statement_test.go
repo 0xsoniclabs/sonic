@@ -69,6 +69,16 @@ func TestBlockStatement_GetSignData_EncodesBlockInformation(t *testing.T) {
 	require.Equal(t, want, got)
 }
 
+func TestCommitteeStatement_NewCommitteeStatement_CreatesStatement(t *testing.T) {
+	chainID := uint64(123)
+	period := scc.Period(456)
+	committee := scc.NewCommittee()
+	statement := NewCommitteeStatement(chainID, period, committee)
+	require.Equal(t, chainID, statement.ChainId)
+	require.Equal(t, period, statement.Period)
+	require.Equal(t, committee, statement.Committee)
+}
+
 func TestCommitteeStatement_GetSignData_HasStatementPrefix(t *testing.T) {
 	statement := CommitteeStatement{}
 	got := statement.GetDataToSign()
