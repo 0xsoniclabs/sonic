@@ -100,13 +100,13 @@ func makeEngine(chaindataDir string, cfg Configs) (
 	dbsClose := dbs.Close
 	if err != nil {
 		err = fmt.Errorf("failed to open EvmStore: %v", err)
-		return nil, nil, gdb, cdb, gossip.BlockProc{}, dbsClose, err
+		return nil, nil, nil, nil, gossip.BlockProc{}, dbsClose, err
 	}
 
 	engine, vecClock, blockProc, err := rawMakeEngine(gdb, cdb, cfg)
 	if err != nil {
 		err = fmt.Errorf("failed to make engine: %v", err)
-		return nil, nil, gdb, cdb, gossip.BlockProc{}, dbsClose, err
+		return nil, nil, nil, nil, gossip.BlockProc{}, dbsClose, err
 	}
 
 	return engine, vecClock, gdb, cdb, blockProc, dbsClose, nil
