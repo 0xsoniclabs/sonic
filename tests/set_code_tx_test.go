@@ -29,16 +29,41 @@ func TestSetCodeTransaction(t *testing.T) {
 	}
 	defer net.Stop()
 
-	t.Run("Transaction Sponsoring", func(t *testing.T) {
-		testSponsoring(t, net)
+	t.Run("Operation", func(t *testing.T) {
+		// operation tests check basic operation of the SetCode transaction
+
+		t.Run("Delegate can be set and unset", func(t *testing.T) {
+			testDelegateCanBeSetAndUnset(t, net)
+		})
+
+		t.Run("Invalid authorizations are ignored", func(t *testing.T) {
+			testInvalidAuthorizationsAreIgnored(t, net)
+		})
+
+		t.Run("Authorizations are executed in order", func(t *testing.T) {
+			testAuthorizationsAreExecutedInOrder(t, net)
+		})
+
+		t.Run("Multiple accounts can submit authorizations", func(t *testing.T) {
+			testMultipleAccountsCanSubmitAuthorizations(t, net)
+		})
 	})
 
-	t.Run("Transaction Batching", func(t *testing.T) {
-		testBatching(t, net)
-	})
+	t.Run("UseCase", func(t *testing.T) {
+		// UseCase tests check the use cases described in the EIP-7702 specification
 
-	t.Run("Privilege Deescalation", func(t *testing.T) {
-		testPrivilegeDeescalation(t, net)
+		t.Run("Transaction Sponsoring", func(t *testing.T) {
+			testSponsoring(t, net)
+		})
+
+		t.Run("Transaction Batching", func(t *testing.T) {
+			testBatching(t, net)
+		})
+
+		t.Run("Privilege Deescalation", func(t *testing.T) {
+			testPrivilegeDeescalation(t, net)
+		})
+
 	})
 }
 
@@ -73,7 +98,6 @@ func testSponsoring(t *testing.T, net *IntegrationTestNet) {
 	// Create a setCode transaction calling the incrementCounter function
 	// in the context of the sponsored account.
 	setCodeTx := makeEip7702Transaction(t, client, sponsor, sponsored, delegate, callData)
-	client.Close()
 	receipt, err = net.Run(setCodeTx)
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
@@ -253,7 +277,320 @@ func testPrivilegeDeescalation(t *testing.T, net *IntegrationTestNet) {
 	require.Equal(t, types.ReceiptStatusFailed, receipt.Status, "tx shall be executed and rejected")
 }
 
-// makeLegacyTx creates a legacy transaction from a CallMsg, filling in the nonce
+func testDelegateCanBeSetAndUnset(t *testing.T, net *IntegrationTestNet) {
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	account := makeAccountWithBalance(t, net, 1e18)
+
+	// Deploy the a contract to use as delegate
+	counter, receipt, err := DeployContract(net, counter.DeployCounter)
+	require.NoError(t, err)
+	delegateAddress := receipt.ContractAddress
+
+	// set delegation
+	callData := getCallData(t, net, func(opts *bind.TransactOpts) (*types.Transaction, error) {
+		return counter.IncrementCounter(opts)
+	})
+	setCodeTx := makeEip7702Transaction(t, client, account, account, delegateAddress, callData)
+	receipt, err = net.Run(setCodeTx)
+	require.NoError(t, err)
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+
+	// check that the code has been set
+	codeSet, err := client.CodeAt(context.Background(), account.Address(), nil)
+	require.NoError(t, err)
+	expectedCode := append([]byte{0xef, 0x01, 0x00}, delegateAddress[:]...)
+	require.Equal(t, expectedCode, codeSet, "code in account is expected to be delegation designation")
+
+	// unset by delegating to an empty address
+	unsetCodeTx := makeEip7702Transaction(t, client, account, account, common.Address{}, []byte{})
+	receipt, err = net.Run(unsetCodeTx)
+	require.NoError(t, err)
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+
+	// check that the code has been unset
+	codeUnset, err := client.CodeAt(context.Background(), account.Address(), nil)
+	require.NoError(t, err)
+	require.Equal(t, []byte{}, codeUnset, "code in account is expected to be empty")
+}
+
+func testInvalidAuthorizationsAreIgnored(t *testing.T, net *IntegrationTestNet) {
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	chainId, err := client.ChainID(context.Background())
+	require.NoError(t, err, "failed to get chain ID")
+
+	tests := map[string]struct {
+		makeAuthorization func(nonce uint64) types.SetCodeAuthorization
+	}{
+		"authorization nonce too low": {
+			makeAuthorization: func(nonce uint64) types.SetCodeAuthorization {
+				return types.SetCodeAuthorization{
+					ChainID: *uint256.MustFromBig(chainId),
+					Address: common.Address{42},
+					// for self-sponsored transactions,
+					// the correct nonce would be current nonce + 1
+					Nonce: nonce,
+				}
+			},
+		},
+		"authorization nonce too high": {
+			makeAuthorization: func(nonce uint64) types.SetCodeAuthorization {
+				return types.SetCodeAuthorization{
+					ChainID: *uint256.MustFromBig(chainId),
+					Address: common.Address{42},
+					// for self-sponsored transactions,
+					// the correct nonce would be current nonce + 1
+					Nonce: nonce + 2,
+				}
+			},
+		},
+		"wrong chain id": {
+			makeAuthorization: func(nonce uint64) types.SetCodeAuthorization {
+				return types.SetCodeAuthorization{
+					ChainID: *uint256.NewInt(0xDeffec8),
+					Address: common.Address{42},
+					Nonce:   nonce + 1,
+				}
+			},
+		},
+	}
+
+	// for each of the invalid authorizations, we test the following scenarios:
+	scenarios := map[string]struct {
+		makeAuthorizations func(wrong types.SetCodeAuthorization, nonce uint64) []types.SetCodeAuthorization
+		check              func(t *testing.T, codes []byte)
+	}{
+		"single wrong authorization": {
+			makeAuthorizations: func(wrong types.SetCodeAuthorization, _ uint64) []types.SetCodeAuthorization {
+				return []types.SetCodeAuthorization{wrong}
+			},
+			check: func(t *testing.T, code []byte) {
+				require.Equal(t, []byte{}, code, "code in account is expected to be empty")
+			},
+		},
+		"before correct authorization": {
+			makeAuthorizations: func(wrong types.SetCodeAuthorization, nonce uint64) []types.SetCodeAuthorization {
+				return []types.SetCodeAuthorization{
+					wrong,
+					types.SetCodeAuthorization{
+						ChainID: *uint256.MustFromBig(chainId),
+						Address: common.Address{42},
+						Nonce:   nonce + 1,
+					},
+				}
+			},
+			check: func(t *testing.T, code []byte) {
+				expectedCode := append([]byte{0xef, 0x01, 0x00}, common.Address{42}.Bytes()...)
+				require.Equal(t, expectedCode, code, "code in account is expected to be delegation designation")
+			},
+		},
+		"after correct authorization": {
+			makeAuthorizations: func(wrong types.SetCodeAuthorization, nonce uint64) []types.SetCodeAuthorization {
+				return []types.SetCodeAuthorization{
+					types.SetCodeAuthorization{
+						ChainID: *uint256.MustFromBig(chainId),
+						Address: common.Address{42},
+						Nonce:   nonce + 1,
+					},
+					wrong,
+				}
+			},
+			check: func(t *testing.T, code []byte) {
+				expectedCode := append([]byte{0xef, 0x01, 0x00}, common.Address{42}.Bytes()...)
+				require.Equal(t, expectedCode, code, "code in account is expected to be delegation designation")
+			},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			for name, scenario := range scenarios {
+				t.Run(name, func(t *testing.T) {
+
+					account := makeAccountWithBalance(t, net, 1e18) // < will transfer funds
+
+					nonce, err := client.NonceAt(context.Background(), account.Address(), nil)
+					require.NoError(t, err, "failed to get nonce for account", account.Address())
+
+					wrongAuthorization := test.makeAuthorization(nonce)
+					require.NoError(t, err, "failed to sign SetCode authorization")
+					authorizations := scenario.makeAuthorizations(wrongAuthorization, nonce)
+
+					signedAuthorizations := make([]types.SetCodeAuthorization, 0, len(authorizations))
+					for _, auth := range authorizations {
+						signed, err := types.SignSetCode(account.PrivateKey, auth)
+						require.NoError(t, err, "failed to sign SetCode authorization")
+						signedAuthorizations = append(signedAuthorizations, signed)
+					}
+
+					tx, err := types.SignTx(
+						types.NewTx(&types.SetCodeTx{
+							ChainID:   uint256.MustFromBig(chainId),
+							Nonce:     nonce,
+							To:        account.Address(),
+							Gas:       150_000,
+							GasFeeCap: uint256.NewInt(10e10),
+							AuthList:  signedAuthorizations,
+						}),
+						types.NewPragueSigner(chainId),
+						account.PrivateKey,
+					)
+					require.NoError(t, err, "failed to create transaction")
+
+					// execute transaction
+					receipt, err := net.Run(tx)
+					require.NoError(t, err)
+					// because no delegation is set, transaction call to self will succeed
+					require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+
+					// delegation is not set
+					code, err := client.CodeAt(context.Background(), account.Address(), nil)
+					require.NoError(t, err)
+					scenario.check(t, code)
+				})
+			}
+		})
+	}
+}
+
+func testAuthorizationsAreExecutedInOrder(t *testing.T, net *IntegrationTestNet) {
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	chainId, err := client.ChainID(context.Background())
+	require.NoError(t, err, "failed to get chain ID")
+
+	account := makeAccountWithBalance(t, net, 1e18) // < will transfer funds
+
+	nonce, err := client.NonceAt(context.Background(), account.Address(), nil)
+	require.NoError(t, err, "failed to get nonce for account", account.Address())
+
+	authorizationA, err := types.SignSetCode(account.PrivateKey,
+		types.SetCodeAuthorization{
+			ChainID: *uint256.MustFromBig(chainId),
+			Address: common.Address{42},
+			Nonce:   nonce + 1,
+		})
+	require.NoError(t, err, "failed to sign SetCode authorization")
+	authorizationB, err := types.SignSetCode(account.PrivateKey,
+		types.SetCodeAuthorization{
+			ChainID: *uint256.MustFromBig(chainId),
+			Address: common.Address{24},
+			Nonce:   nonce + 2,
+		})
+	require.NoError(t, err, "failed to sign SetCode authorization")
+
+	tx, err := types.SignTx(
+		types.NewTx(&types.SetCodeTx{
+			ChainID:   uint256.MustFromBig(chainId),
+			Nonce:     nonce,
+			To:        account.Address(),
+			Gas:       150_000,
+			GasFeeCap: uint256.NewInt(10e10),
+			AuthList: []types.SetCodeAuthorization{
+				authorizationA,
+				authorizationB,
+			},
+		}),
+		types.NewPragueSigner(chainId),
+		account.PrivateKey,
+	)
+	require.NoError(t, err, "failed to create transaction")
+
+	// execute transaction
+	receipt, err := net.Run(tx)
+	require.NoError(t, err)
+	// because no delegation is set, transaction call to self will succeed
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+
+	// last delegation is set
+	code, err := client.CodeAt(context.Background(), account.Address(), nil)
+	require.NoError(t, err)
+	expectedCode := append([]byte{0xef, 0x01, 0x00}, common.Address{24}.Bytes()...)
+	require.Equal(t, expectedCode, code, "code in account is expected to be delegation designation")
+}
+
+func testMultipleAccountsCanSubmitAuthorizations(t *testing.T, net *IntegrationTestNet) {
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	chainId, err := client.ChainID(context.Background())
+	require.NoError(t, err, "failed to get chain ID")
+
+	account := makeAccountWithBalance(t, net, 1e18)
+	nonce, err := client.NonceAt(context.Background(), account.Address(), nil)
+	require.NoError(t, err, "failed to get nonce for account", account.Address())
+
+	authorizerA := makeAccountWithBalance(t, net, 1e18)
+	authorizerANonce, err := client.NonceAt(context.Background(), authorizerA.Address(), nil)
+	require.NoError(t, err, "failed to get nonce for account", authorizerA.Address())
+
+	authorizerB := makeAccountWithBalance(t, net, 1e18)
+	authorizerBNonce, err := client.NonceAt(context.Background(), authorizerB.Address(), nil)
+	require.NoError(t, err, "failed to get nonce for account", authorizerB.Address())
+
+	authorizationA, err := types.SignSetCode(authorizerA.PrivateKey, types.SetCodeAuthorization{
+		ChainID: *uint256.MustFromBig(chainId),
+		Address: common.Address{42},
+		// because authorizerA is not the receiver of the transaction, the nonce is the current nonce
+		Nonce: authorizerANonce,
+	})
+	require.NoError(t, err, "failed to sign SetCode authorization")
+
+	authorizationB, err := types.SignSetCode(authorizerB.PrivateKey, types.SetCodeAuthorization{
+		ChainID: *uint256.MustFromBig(chainId),
+		Address: common.Address{42},
+		// because authorizerB is not the receiver of the transaction, the nonce is the current nonce
+		Nonce: authorizerBNonce,
+	})
+	require.NoError(t, err, "failed to sign SetCode authorization")
+
+	tx, err := types.SignTx(
+		types.NewTx(&types.SetCodeTx{
+			ChainID:   uint256.MustFromBig(chainId),
+			Nonce:     nonce,
+			To:        account.Address(),
+			Gas:       150_000,
+			GasFeeCap: uint256.NewInt(10e10),
+			AuthList: []types.SetCodeAuthorization{
+				authorizationA,
+				authorizationB,
+			},
+		}),
+		types.NewPragueSigner(chainId),
+		account.PrivateKey,
+	)
+	require.NoError(t, err, "failed to create transaction")
+
+	// execute transaction
+	receipt, err := net.Run(tx)
+	require.NoError(t, err)
+	// transaction call to self will succeed
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+
+	// check that delegations are set to the correct address
+	expectedCode := append([]byte{0xef, 0x01, 0x00}, common.Address{42}.Bytes()...)
+
+	codeA, err := client.CodeAt(context.Background(), authorizerA.Address(), nil)
+	require.NoError(t, err)
+	assert.Equal(t, expectedCode, codeA, "code in account is expected to be delegation designation")
+
+	codeB, err := client.CodeAt(context.Background(), authorizerB.Address(), nil)
+	require.NoError(t, err)
+	assert.Equal(t, expectedCode, codeB, "code in account is expected to be delegation designation")
+}
+
+// makeEip7702Transaction creates a legacy transaction from a CallMsg, filling in the nonce
 // and gas limit.
 func makeEip7702Transaction(t *testing.T,
 	client *ethclient.Client,
