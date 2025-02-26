@@ -449,6 +449,91 @@ func createTestBlobTransaction(chainId *big.Int, data []byte) (*types.Transactio
 	}), nil
 }
 
+func TestEIP7702Transactions_InvalidTransactionsReturnAnError(t *testing.T) {
+
+	configCopy := *params.TestChainConfig
+	testConfig := &configCopy
+
+	// initialize the pool
+	pool, key := setupTxPoolWithConfig(testConfig)
+	defer pool.Stop()
+
+	// get the chain id
+	chainId := params.TestChainConfig.ChainID
+
+	// get sender address and put balance on it
+	from := crypto.PubkeyToAddress(key.PublicKey)
+	balance := new(big.Int)
+	balance.SetString("10000000000000000000000000000", 10)
+	testAddBalance(pool, from, balance)
+
+	tests := map[string]struct {
+		authorizations []types.SetCodeAuthorization
+		pragueTime     *uint64
+		expectedErr    error
+	}{
+		"set code tx before prague": {
+			expectedErr: ErrTxTypeNotSupported,
+		},
+		"set code tx with nil authorizations": {
+			pragueTime:  new(uint64),
+			expectedErr: ErrEmptyAuthorizations,
+		},
+		"set code tx with empty authorizations": {
+			pragueTime:     new(uint64),
+			authorizations: []types.SetCodeAuthorization{},
+			expectedErr:    ErrEmptyAuthorizations,
+		},
+		"set code tx": {
+			pragueTime: new(uint64),
+			authorizations: []types.SetCodeAuthorization{
+				{
+					ChainID: *uint256.MustFromBig(chainId),
+					Address: common.Address{},
+					Nonce:   1,
+					V:       1,
+					R:       *uint256.NewInt(1),
+					S:       *uint256.NewInt(1),
+				},
+			},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+
+			testConfig.PragueTime = test.pragueTime
+			pool.reset(nil, nil)
+
+			tx := createTestSetCodeTransaction(chainId, test.authorizations)
+			signedTx, err := types.SignTx(tx, types.NewPragueSigner(chainId), key)
+			if err != nil {
+				t.Fatalf("could not sign tx: %v", err)
+			}
+
+			_, err = pool.add(signedTx, false)
+			if err != test.expectedErr {
+				t.Fatalf("expected error %v, got %v", test.expectedErr, err)
+			}
+		})
+	}
+}
+
+func createTestSetCodeTransaction(chainId *big.Int, authorizations []types.SetCodeAuthorization) *types.Transaction {
+
+	return types.NewTx(&types.SetCodeTx{
+		ChainID:   uint256.MustFromBig(chainId),
+		Nonce:     0,
+		GasTipCap: uint256.NewInt(1e10),  // max priority fee per gas
+		GasFeeCap: uint256.NewInt(50e10), // max fee per gas
+		Gas:       250000,                // gas limit for the transaction
+		To:        common.Address{},      // sponsored address
+		Value:     uint256.NewInt(0),     // value transferred in the transaction
+		Data:      nil,                   // No additional data is sent in this transaction
+		AuthList:  authorizations,        // authorizations in the transaction
+	})
+}
+
 func TestInvalidTransactions(t *testing.T) {
 	t.Parallel()
 

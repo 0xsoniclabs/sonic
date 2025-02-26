@@ -28,6 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/prque"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
+	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	notify "github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
@@ -255,9 +256,11 @@ type TxPool struct {
 	mu          sync.RWMutex
 
 	istanbul bool // Fork indicator whether we are in the istanbul stage.
+	shanghai bool // Fork indicator whether we are in the shanghai stage.
 	eip2718  bool // Fork indicator whether we are using EIP-2718 type transactions.
 	eip1559  bool // Fork indicator whether we are using EIP-1559 type transactions.
 	eip4844  bool // Fork indicator whether we are using EIP-4844 type transactions.
+	eip7702  bool // Fork indicator whether we are using EIP-7702 type transactions.
 
 	currentState  TxPoolStateDB // Current state in the blockchain head
 	pendingNonces *txNoncer     // Pending state tracking virtual nonces
@@ -671,6 +674,19 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 		}
 	}
 
+	// validate EIP-7702 transactions
+	if tx.Type() == types.SetCodeTxType {
+		// Check minimum revision
+		if !pool.eip7702 {
+			return ErrTxTypeNotSupported
+		}
+
+		// Check non-empty authorization list
+		if len(tx.SetCodeAuthorizations()) == 0 {
+			return ErrEmptyAuthorizations
+		}
+	}
+
 	// Reject transactions over defined size to prevent DOS attacks
 	if uint64(tx.Size()) > txMaxSize {
 		return ErrOversizedData
@@ -726,7 +742,15 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 		return ErrInsufficientFunds
 	}
 	// Ensure the transaction has more gas than the basic tx fee.
-	intrGas, err := IntrinsicGas(tx.Data(), tx.AccessList(), tx.To() == nil)
+	intrGas, err := core.IntrinsicGas(
+		tx.Data(),
+		tx.AccessList(),
+		tx.SetCodeAuthorizations(),
+		tx.To() == nil, // is contract creation
+		true,           // is homestead
+		pool.istanbul,  // is eip-2028 (transactional data gas cost reduction)
+		pool.shanghai,  // is eip-3860 (limit and meter init-code )
+	)
 	if err != nil {
 		return err
 	}
@@ -1419,7 +1443,9 @@ func (pool *TxPool) reset(oldHead, newHead *EvmHeader) {
 	pool.istanbul = pool.chainconfig.IsIstanbul(next)
 	pool.eip2718 = pool.chainconfig.IsBerlin(next)
 	pool.eip1559 = pool.chainconfig.IsLondon(next)
+	pool.shanghai = pool.chainconfig.IsShanghai(next, uint64(newHead.Time.Unix()))
 	pool.eip4844 = pool.chainconfig.IsCancun(next, uint64(newHead.Time.Unix()))
+	pool.eip7702 = pool.chainconfig.IsPrague(next, uint64(newHead.Time.Unix()))
 }
 
 // promoteExecutables moves transactions that have become processable from the
