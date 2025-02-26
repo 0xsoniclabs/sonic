@@ -377,11 +377,12 @@ func consensusCallbackBeginBlockFn(
 
 					// Inform the SCC about the new block
 					if sccNode != nil {
-						err := sccNode.NewBlock(cert.BlockStatement{
-							Number:    blockCtx.Idx,
-							Hash:      block.Hash(),
-							StateRoot: block.StateRoot,
-						})
+						err := sccNode.NewBlock(cert.NewBlockStatement(
+							chainCfg.ChainID.Uint64(),
+							blockCtx.Idx,
+							block.Hash(),
+							block.StateRoot,
+						))
 						if err != nil {
 							log.Warn("Failed to inform SCC about new block", "err", err)
 						}

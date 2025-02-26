@@ -33,6 +33,7 @@ import (
 	"github.com/0xsoniclabs/sonic/opera/genesisstore"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/bls"
+	"github.com/0xsoniclabs/sonic/scc/cert"
 )
 
 var (
@@ -156,7 +157,13 @@ func FakeGenesisStoreWithRulesAndStart(
 			VotingPower:       1,
 		})
 	}
-	builder.SetCertificationChainGenesisCommittee(scc.NewCommittee(members...))
+	builder.SetGenesisCommitteeCertificate(
+		cert.NewCertificate(cert.NewCommitteeStatement(
+			rules.NetworkID,
+			scc.Period(0),
+			scc.NewCommittee(members...),
+		)),
+	)
 
 	return builder.Build(genesis.Header{
 		GenesisID:   builder.CurrentHash(),

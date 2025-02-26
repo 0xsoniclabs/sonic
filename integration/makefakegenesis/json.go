@@ -18,6 +18,7 @@ import (
 	"github.com/0xsoniclabs/sonic/opera/genesis"
 	"github.com/0xsoniclabs/sonic/opera/genesisstore"
 	"github.com/0xsoniclabs/sonic/scc"
+	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
@@ -141,7 +142,13 @@ func ApplyGenesisJson(json *GenesisJson) (*genesisstore.Store, error) {
 	if json.GenesisCommittee == nil {
 		return nil, fmt.Errorf("genesis committee must be set")
 	}
-	builder.SetCertificationChainGenesisCommittee(*json.GenesisCommittee)
+	builder.SetGenesisCommitteeCertificate(cert.NewCertificate(
+		cert.NewCommitteeStatement(
+			json.Rules.NetworkID,
+			scc.Period(0),
+			*json.GenesisCommittee,
+		),
+	))
 
 	return builder.Build(genesis.Header{
 		GenesisID:   builder.CurrentHash(),

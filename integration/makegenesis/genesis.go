@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 
 	"github.com/0xsoniclabs/sonic/inter"
-	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/0xsoniclabs/sonic/utils/objstream"
 	"github.com/ethereum/go-ethereum/core/tracing"
@@ -53,7 +52,7 @@ type GenesisBuilder struct {
 	epochs       []ier.LlrIdxFullEpochRecord
 	currentEpoch ier.LlrIdxFullEpochRecord
 
-	genesisCommittee scc.Committee
+	genesisCommitteeCertificate cert.CommitteeCertificate
 }
 
 type BlockProc struct {
@@ -302,8 +301,10 @@ func (b *GenesisBuilder) ExecuteGenesisTxs(blockProc BlockProc, genesisTxs types
 	return nil
 }
 
-func (b *GenesisBuilder) SetCertificationChainGenesisCommittee(committee scc.Committee) {
-	b.genesisCommittee = committee
+func (b *GenesisBuilder) SetGenesisCommitteeCertificate(
+	committeeCertificate cert.CommitteeCertificate,
+) {
+	b.genesisCommitteeCertificate = committeeCertificate
 }
 
 type memFile struct {
@@ -348,9 +349,7 @@ func (b *GenesisBuilder) Build(head genesis.Header) *genesisstore.Store {
 		}
 		if name == genesisstore.SccCommitteeSection(0) {
 			out := objstream.NewWriter[cert.Certificate[cert.CommitteeStatement]](buf)
-			err := out.Write(cert.NewCertificate(cert.CommitteeStatement{
-				Committee: b.genesisCommittee,
-			}))
+			err := out.Write(b.genesisCommitteeCertificate)
 			if err != nil {
 				return nil, err
 			}
