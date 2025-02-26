@@ -10,7 +10,7 @@ import (
 
 // IntrinsicGas computes the minimum amount of gas required to process a transaction
 // before executing any smart contract logic.
-// This cost ensures th data transmission and transaction validation, are covered.
+// This cost ensures that data transmission and transaction validation, are covered.
 //
 // This implementation is based in:
 // go-ethereum@v0.0.0-20241022121122-7063a6b506bd/core/state_transition.go
