@@ -1,6 +1,7 @@
 package ethapi
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/scc"
@@ -40,4 +41,52 @@ func TestBlockCertificateJson_ToBlockCertificate_ConvertsToHealthyCertificate(t 
 		aggregatedSignature)
 
 	require.Equal(want, got)
+}
+
+func TestBlockCertificateJson_CanBeJsonEncodedAndDecoded(t *testing.T) {
+	require := require.New(t)
+
+	// setup
+	private := bls.NewPrivateKey()
+	agg := cert.AggregatedSignature[cert.BlockStatement]{}
+	err := agg.Add(1, cert.Signature[cert.BlockStatement]{Signature: private.Sign([]byte{1})})
+	require.NoError(err)
+	c := cert.NewCertificateWithSignature(
+		cert.NewBlockStatement(123, 456, common.Hash{0x1}, common.Hash{0x2}),
+		agg,
+	)
+
+	// encode
+	certJson := blockCertificateToJson(c)
+	data, err := json.Marshal(certJson)
+	require.NoError(err)
+
+	// decode
+	var decoded blockCertificateJson
+	err = json.Unmarshal(data, &decoded)
+	require.NoError(err)
+
+	// check
+	require.Equal(certJson, decoded)
+	cert := decoded.ToBlockCertificate()
+	require.Equal(c, cert)
+}
+
+func TestBlockCertificateToJson(t *testing.T) {
+	require := require.New(t)
+	bitset := cert.BitSet[scc.MemberId]{}
+	bitset.Add(1)
+	sig := bls.NewPrivateKey().GetProofOfPossession()
+	cert := cert.NewCertificateWithSignature(
+		cert.NewBlockStatement(123, 456, common.Hash{0x1}, common.Hash{0x2}),
+		cert.NewAggregatedSignature[cert.BlockStatement](bitset, sig),
+	)
+
+	json := blockCertificateToJson(cert)
+	require.Equal(uint64(123), json.ChainId)
+	require.Equal(uint64(456), json.Number)
+	require.Equal(common.Hash{0x1}, json.Hash)
+	require.Equal(common.Hash{0x2}, json.StateRoot)
+	require.Equal(bitset, json.Signers)
+	require.Equal(sig, json.Signature)
 }

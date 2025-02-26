@@ -31,3 +31,16 @@ func (b blockCertificateJson) ToBlockCertificate() cert.BlockCertificate {
 
 	return newCert
 }
+
+func blockCertificateToJson(b cert.BlockCertificate) blockCertificateJson {
+	sub := b.Subject()
+	agg := b.Signature()
+	return blockCertificateJson{
+		ChainId:   sub.ChainId,
+		Number:    uint64(sub.Number),
+		Hash:      sub.Hash,
+		StateRoot: sub.StateRoot,
+		Signers:   agg.Signers(),
+		Signature: agg.Signature(),
+	}
+}
