@@ -21,7 +21,7 @@ func NewCertificate[S Statement](subject S) Certificate[S] {
 }
 
 // NewCertificateWithSignature creates a new certificate for the given statement
-// with the given aggregated signature. The aggregated signature shallow
+// with the given aggregated signature. The parameters are shallow
 // copied into the new certificate.
 func NewCertificateWithSignature[S Statement](subject S,
 	signature AggregatedSignature[S]) Certificate[S] {
@@ -34,7 +34,7 @@ func (c *Certificate[S]) Subject() S {
 }
 
 // Signature returns the aggregated signature of the certificate.
-// The aggregated signature returned shallowed copied of the internal.
+// The returned signature is a shallow copy of the certificate's signature.
 func (c *Certificate[S]) Signature() AggregatedSignature[S] {
 	return c.signature
 }
