@@ -49,6 +49,9 @@ func validateTx(tx *types.Transaction) error {
 
 		// is eip-3860 (limit and meter init-code )
 		// Disable to get the lower intrinsic gas cost of both options
+		// FIXME: from allegro on, this flag should be enabled.
+		// It should have been enabled since shanghai, but it was not and changing
+		// it now would be a hard fork.
 		false,
 	)
 	if err != nil {
