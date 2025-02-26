@@ -49,7 +49,8 @@ func TestCommitteeCertificateJson_CanBeJsonEncodedAndDecoded(t *testing.T) {
 		VotingPower:       1,
 	}
 	agg := cert.AggregatedSignature[cert.CommitteeStatement]{}
-	agg.Add(1, cert.Signature[cert.CommitteeStatement]{Signature: private.Sign([]byte{1})})
+	err := agg.Add(1, cert.Signature[cert.CommitteeStatement]{Signature: private.Sign([]byte{1})})
+	require.NoError(err)
 	c := cert.NewCertificateWithSignature(
 		cert.NewCommitteeStatement(123, 456, scc.NewCommittee(member)),
 		agg,

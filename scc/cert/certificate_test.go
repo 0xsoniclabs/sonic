@@ -32,7 +32,8 @@ func TestCertificate_NewCertificateWithSignature_DeepCopiesInput(t *testing.T) {
 	sig := bls.Signature{}
 	AggregatedSignature := NewAggregatedSignature[testStatement](BitSet[scc.MemberId]{}, sig)
 	cert := NewCertificateWithSignature(stmt, AggregatedSignature)
-	AggregatedSignature.Add(0, Signature[testStatement]{Signature: bls.Signature{}})
+	err := AggregatedSignature.Add(0, Signature[testStatement]{Signature: bls.Signature{}})
+	require.NoError(err)
 	require.NotEqual(AggregatedSignature, cert.Signature())
 }
 
@@ -41,7 +42,8 @@ func TestCertificate_Signature_ReturnsIndependentCopy(t *testing.T) {
 	stmt := testStatement(1)
 	cert := NewCertificate(stmt)
 	sig := cert.Signature()
-	sig.Add(0, Signature[testStatement]{Signature: bls.Signature{}})
+	err := sig.Add(0, Signature[testStatement]{Signature: bls.Signature{}})
+	require.NoError(err)
 	require.NotEqual(sig, cert.Signature())
 }
 
@@ -50,9 +52,10 @@ func TestCertificate_Statement_ReturnsIndependentCopy(t *testing.T) {
 	stmt := testStatement(1)
 	cert := NewCertificate(stmt)
 	stmt = cert.Subject()
-	cert.Add(1, Signature[testStatement]{
+	err := cert.Add(1, Signature[testStatement]{
 		Signature: bls.NewPrivateKey().Sign([]byte{1}),
 	})
+	require.NoError(err)
 	require.NotEqual(stmt, cert.Subject())
 }
 

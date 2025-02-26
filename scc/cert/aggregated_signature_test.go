@@ -256,8 +256,8 @@ func TestAggregatedSignature_NewAggregatedSignature_DeepCopiesInput(t *testing.T
 	signature := bls.Signature{}
 
 	agg := NewAggregatedSignature[testStatement](signers, signature)
-	agg.Add(0, Signature[testStatement]{Signature: bls.NewPrivateKey().Sign([]byte{1})})
-
+	err := agg.Add(0, Signature[testStatement]{Signature: bls.NewPrivateKey().Sign([]byte{1})})
+	require.NoError(err)
 	require.NotEqual(signers, agg.Signers())
 	require.NotEqual(signature, agg.Signature())
 }
@@ -281,8 +281,8 @@ func TestAggregatedSignature_Signature_ReturnsIndependentCopy(t *testing.T) {
 
 	agg := NewAggregatedSignature[testStatement](signers, signature)
 	sig := agg.Signature()
-	agg.Add(0, Signature[testStatement]{Signature: bls.NewPrivateKey().Sign([]byte{1})})
-
+	err := agg.Add(0, Signature[testStatement]{Signature: bls.NewPrivateKey().Sign([]byte{1})})
+	require.NoError(err)
 	require.NotEqual(sig, agg.Signature())
 }
 
