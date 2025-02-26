@@ -1,6 +1,8 @@
 package gossip
 
 import (
+	"math"
+	"math/rand"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/scc"
@@ -62,6 +64,33 @@ func TestStore_GetCommitteeCertificate_DistinguishesBetweenPeriods(t *testing.T)
 	restored2, err := store.GetCommitteeCertificate(2)
 	require.NoError(err)
 	require.Equal(original2, restored2)
+}
+
+func TestStore_GetLatestCommitteeCertificate_FailsIfNotPresent(t *testing.T) {
+	require := require.New(t)
+	store, err := NewMemStore(t)
+	require.NoError(err)
+	_, err = store.GetLatestCommitteeCertificate()
+	require.ErrorContains(err, "no such element")
+}
+
+func TestStore_GetLatestCommitteeCertificate_LocatesLatest(t *testing.T) {
+	periods := []scc.Period{0, 1, math.MaxUint64}
+
+	require := require.New(t)
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	for _, period := range periods {
+		cur := cert.NewCertificate(cert.CommitteeStatement{
+			Period: period,
+		})
+		require.NoError(store.UpdateCommitteeCertificate(cur))
+
+		restored, err := store.GetLatestCommitteeCertificate()
+		require.NoError(err)
+		require.Equal(cur, restored)
+	}
 }
 
 func TestStore_EnumerateCommitteeCertificates_ReturnsAllCertificates(t *testing.T) {
@@ -176,6 +205,33 @@ func TestStore_GetBlockCertificate_DistinguishesBetweenPeriods(t *testing.T) {
 	require.Equal(original2, restored2)
 }
 
+func TestStore_GetLatestBlockCertificate_FailsIfNotPresent(t *testing.T) {
+	require := require.New(t)
+	store, err := NewMemStore(t)
+	require.NoError(err)
+	_, err = store.GetLatestBlockCertificate()
+	require.ErrorContains(err, "no such element")
+}
+
+func TestStore_GetLatestBlockCertificate_LocatesLatest(t *testing.T) {
+	blocks := []idx.Block{0, 1, math.MaxUint64}
+
+	require := require.New(t)
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	for _, block := range blocks {
+		cur := cert.NewCertificate(cert.BlockStatement{
+			Number: block,
+		})
+		require.NoError(store.UpdateBlockCertificate(cur))
+
+		restored, err := store.GetLatestBlockCertificate()
+		require.NoError(err)
+		require.Equal(cur, restored)
+	}
+}
+
 func TestStore_EnumerateBlockCertificates_ReturnsAllCertificates(t *testing.T) {
 	const N = 5
 	require := require.New(t)
@@ -232,4 +288,32 @@ func TestStore_UpdateBlockCertificate_CanOverrideExisting(t *testing.T) {
 	restored, err := store.GetBlockCertificate(1)
 	require.NoError(err)
 	require.Equal(original2, restored)
+}
+
+func TestBinarySearch_CanFindTarget(t *testing.T) {
+	tests := []uint64{
+		0, 1, 2, 100, 256, 1024,
+		math.MaxInt64 - 1, math.MaxInt64, math.MaxInt64 + 1,
+		math.MaxUint64 - 1, math.MaxUint64,
+	}
+	for range 50 {
+		tests = append(tests, rand.Uint64())
+	}
+
+	require := require.New(t)
+	for _, target := range tests {
+		res, err := binarySearch(func(x uint64) (bool, error) {
+			return x <= target, nil
+		})
+		require.NoError(err)
+		require.Equal(target, res)
+	}
+}
+
+func TestBinarySearch_DetectsEmptyRange(t *testing.T) {
+	require := require.New(t)
+	_, err := binarySearch(func(uint64) (bool, error) {
+		return false, nil
+	})
+	require.ErrorContains(err, "no such element")
 }
