@@ -277,10 +277,9 @@ func newService(config Config, store *Store, blockProc BlockProc, engine lachesi
 	// TODO: track the current committee inside the scc Node instance
 	// (see https://github.com/0xsoniclabs/sonic-admin/issues/22)
 	genesisCommitteeCertificate, err := store.GetCommitteeCertificate(0)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get committee certificate: %w", err)
+	if err == nil {
+		svc.sccNode = scc_node.NewNode(store, genesisCommitteeCertificate.Subject().Committee)
 	}
-	svc.sccNode = scc_node.NewNode(store, genesisCommitteeCertificate.Subject().Committee)
 
 	return svc, nil
 }
