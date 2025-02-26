@@ -29,6 +29,8 @@ func NewCertificateWithSignature[S Statement](subject S,
 }
 
 // Subject returns the statement that is certified by this certificate.
+// The returned statement is a reference since interfaces are always passed by
+// reference.
 func (c *Certificate[S]) Subject() S {
 	return c.subject
 }
