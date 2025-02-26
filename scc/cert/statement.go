@@ -77,6 +77,14 @@ type CommitteeStatement struct {
 	Committee scc.Committee
 }
 
+func NewCommitteeStatement(chainID uint64, period scc.Period, committee scc.Committee) CommitteeStatement {
+	return CommitteeStatement{
+		statement: statement{ChainId: chainID},
+		Period:    period,
+		Committee: committee,
+	}
+}
+
 // GetDataToSign returns the data that should be signed by the issuer of the
 // statement. It follows the following format:
 //   - 1 byte encoding version

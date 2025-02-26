@@ -14,6 +14,20 @@ type AggregatedSignature[S Statement] struct {
 	signature bls.Signature
 }
 
+func NewAggregatedSignature[S Statement](
+	signers BitSet[scc.MemberId],
+	signature bls.Signature) AggregatedSignature[S] {
+	return AggregatedSignature[S]{signers: signers, signature: signature}
+}
+
+func (s *AggregatedSignature[S]) Signers() BitSet[scc.MemberId] {
+	return s.signers
+}
+
+func (s *AggregatedSignature[S]) Signature() bls.Signature {
+	return s.signature
+}
+
 // Add adds a signature from a member to the aggregated signature. The id
 // identifies the member within the signing committee. The signature is the BLS
 // signature of the statement produced by the respective member. The operation

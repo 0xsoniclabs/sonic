@@ -66,7 +66,7 @@ type unsigned interface {
 }
 
 // MarshalJSON converts the BitSet into a JSON-compatible hex string.
-func (b *BitSet[T]) MarshalJSON() ([]byte, error) {
+func (b BitSet[T]) MarshalJSON() ([]byte, error) {
 	return jsonhex.Bytes(b.mask).MarshalJSON()
 }
 

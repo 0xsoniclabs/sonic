@@ -20,9 +20,17 @@ func NewCertificate[S Statement](subject S) Certificate[S] {
 	return Certificate[S]{subject: subject}
 }
 
+func NewCertificateWithSignature[S Statement](subject S, signature AggregatedSignature[S]) Certificate[S] {
+	return Certificate[S]{subject: subject, signature: signature}
+}
+
 // Subject returns the statement that is certified by this certificate.
 func (c *Certificate[S]) Subject() S {
 	return c.subject
+}
+
+func (c *Certificate[S]) Signature() AggregatedSignature[S] {
+	return c.signature
 }
 
 // Add adds a signature to the certificate for the given signer ID. The ID is

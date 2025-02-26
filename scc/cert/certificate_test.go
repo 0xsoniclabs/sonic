@@ -13,6 +13,17 @@ func TestCertificate_NewCertificate_ContainsStatement(t *testing.T) {
 	stmt := testStatement(1)
 	cert := NewCertificate(stmt)
 	require.Equal(stmt, cert.Subject())
+	require.NotNil(cert.Signature())
+}
+
+func TestCertificate_NewCertificateWithSignature_ContainsStatementAndSignature(t *testing.T) {
+	require := require.New(t)
+	stmt := testStatement(1)
+	sig := bls.Signature{}
+	AggregatedSignature := NewAggregatedSignature[testStatement](BitSet[scc.MemberId]{}, sig)
+	cert := NewCertificateWithSignature(stmt, AggregatedSignature)
+	require.Equal(stmt, cert.Subject())
+	require.Equal(AggregatedSignature, cert.Signature())
 }
 
 func TestCertificate_CanBeGraduallyAccumulatedAndVerified(t *testing.T) {

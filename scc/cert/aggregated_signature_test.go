@@ -240,6 +240,16 @@ func TestAggregatedSignature_String_ListsKeyProperties(t *testing.T) {
 	require.Contains(print, "signature=0xb96b..b00c")
 }
 
+func TestAggregatedSignature_NewAggregatedSignature_ContainsSignersAndSignature(t *testing.T) {
+	require := require.New(t)
+	signers := BitSet[scc.MemberId]{}
+	signature := bls.Signature{}
+
+	agg := NewAggregatedSignature[testStatement](signers, signature)
+	require.Equal(signers, agg.Signers())
+	require.Equal(signature, agg.Signature())
+}
+
 func newMember(key bls.PrivateKey, power uint64) scc.Member {
 	return scc.Member{
 		PublicKey:         key.PublicKey(),
