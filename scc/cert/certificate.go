@@ -20,15 +20,23 @@ func NewCertificate[S Statement](subject S) Certificate[S] {
 	return Certificate[S]{subject: subject}
 }
 
-func NewCertificateWithSignature[S Statement](subject S, signature AggregatedSignature[S]) Certificate[S] {
+// NewCertificateWithSignature creates a new certificate for the given statement
+// with the given aggregated signature. Uses copies of both parameters.
+func NewCertificateWithSignature[S Statement](subject S,
+	signature AggregatedSignature[S]) Certificate[S] {
 	return Certificate[S]{subject: subject, signature: signature}
 }
 
 // Subject returns the statement that is certified by this certificate.
+// The returned statement is a reference since interfaces are always passed by
+// reference.
 func (c *Certificate[S]) Subject() S {
 	return c.subject
 }
 
+// Signature returns a copy of the aggregated signature of the certificate.
+// The signature is the aggregated signature of the committee that signed the
+// certificate.
 func (c *Certificate[S]) Signature() AggregatedSignature[S] {
 	return c.signature
 }

@@ -14,7 +14,7 @@ type committeeCertificateJson struct {
 	Signature bls.Signature             `json:"signature"`
 }
 
-func (c committeeCertificateJson) ToCommitteeCertificate() cert.Certificate[cert.CommitteeStatement] {
+func (c committeeCertificateJson) ToCommitteeCertificate() cert.CommitteeCertificate {
 	aggregatedSignature := cert.NewAggregatedSignature[cert.CommitteeStatement](c.Signers, c.Signature)
 
 	newCert := cert.NewCertificateWithSignature(
@@ -27,7 +27,7 @@ func (c committeeCertificateJson) ToCommitteeCertificate() cert.Certificate[cert
 	return newCert
 }
 
-func CommitteeCertificateToJson(c cert.Certificate[cert.CommitteeStatement]) committeeCertificateJson {
+func committeeCertificateToJson(c cert.CommitteeCertificate) committeeCertificateJson {
 	sub := c.Subject()
 	agg := c.Signature()
 	return committeeCertificateJson{

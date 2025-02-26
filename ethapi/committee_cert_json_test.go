@@ -56,7 +56,7 @@ func TestCommitteeCertificateJson_CanBeJsonEncodedAndDecoded(t *testing.T) {
 	)
 
 	// encode
-	certJson := CommitteeCertificateToJson(c)
+	certJson := committeeCertificateToJson(c)
 	data, err := json.Marshal(certJson)
 	require.NoError(err)
 
@@ -92,6 +92,6 @@ func TestCommitteeCertificateToJson(t *testing.T) {
 		Signers:   bitSet,
 		Signature: sig,
 	}
-	got := CommitteeCertificateToJson(c)
+	got := committeeCertificateToJson(c)
 	require.Equal(want, got)
 }
