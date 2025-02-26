@@ -69,14 +69,21 @@ func rawMakeEngine(gdb *gossip.Store, cdb *abft.Store, cfg Configs) (*abft.Lache
 	return engine, vecClock, blockProc, nil
 }
 
-func makeEngine(chaindataDir string, cfg Configs) (engine *abft.Lachesis, vecClock *vecmt.Index,
-	gdb *gossip.Store, cdb *abft.Store, blockProc gossip.BlockProc, dbsClose func() error, err error) {
+func makeEngine(chaindataDir string, cfg Configs) (
+	_ *abft.Lachesis,
+	_ *vecmt.Index,
+	_ *gossip.Store,
+	_ *abft.Store,
+	_ gossip.BlockProc,
+	_ func() error,
+	err error,
+) {
 	dbs, err := GetDbProducer(chaindataDir, cfg.DBs.RuntimeCache)
 	if err != nil {
 		return nil, nil, nil, nil, gossip.BlockProc{}, nil, err
 	}
 
-	gdb, cdb, err = getStores(dbs, cfg)
+	gdb, cdb, err := getStores(dbs, cfg)
 	if err != nil {
 		err = fmt.Errorf("failed to get stores: %w", err)
 		return nil, nil, nil, nil, gossip.BlockProc{}, nil, err
@@ -84,30 +91,22 @@ func makeEngine(chaindataDir string, cfg Configs) (engine *abft.Lachesis, vecClo
 	defer func() {
 		if err != nil {
 			caution.CloseAndReportError(&err, cdb, "failed to close lachesis store")
-		}
-	}()
-	defer func() {
-		if err != nil {
 			caution.CloseAndReportError(&err, gdb, "failed to close gossip store")
-		}
-	}()
-	defer func() {
-		if err != nil {
 			caution.CloseAndReportError(&err, dbs, "failed to close db producer")
 		}
 	}()
 
 	err = gdb.EvmStore().Open()
-	dbsClose = dbs.Close
+	dbsClose := dbs.Close
 	if err != nil {
 		err = fmt.Errorf("failed to open EvmStore: %v", err)
-		return nil, nil, nil, nil, gossip.BlockProc{}, dbsClose, err
+		return nil, nil, gdb, cdb, gossip.BlockProc{}, dbsClose, err
 	}
 
-	engine, vecClock, blockProc, err = rawMakeEngine(gdb, cdb, cfg)
+	engine, vecClock, blockProc, err := rawMakeEngine(gdb, cdb, cfg)
 	if err != nil {
 		err = fmt.Errorf("failed to make engine: %v", err)
-		return nil, nil, nil, nil, gossip.BlockProc{}, dbsClose, err
+		return nil, nil, gdb, cdb, gossip.BlockProc{}, dbsClose, err
 	}
 
 	return engine, vecClock, gdb, cdb, blockProc, dbsClose, nil
