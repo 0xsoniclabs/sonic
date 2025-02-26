@@ -14,6 +14,7 @@ import (
 	"github.com/0xsoniclabs/sonic/opera/genesisstore"
 	"github.com/0xsoniclabs/sonic/opera/genesisstore/fileshash"
 	"github.com/0xsoniclabs/sonic/scc"
+	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/0xsoniclabs/sonic/utils/devnullfile"
 	"github.com/0xsoniclabs/sonic/utils/objstream"
 	"github.com/Fantom-foundation/lachesis-base/common/bigendian"
@@ -175,7 +176,7 @@ func exportCommitteeCertificates(ctx context.Context, gdb *gossip.Store, writer 
 	log.Info("Exporting committee certificates", "to", toPeriod)
 
 	count := 0
-	out := objstream.NewWriter[gossip.CommitteeCertificate](writer)
+	out := objstream.NewWriter[cert.CommitteeCertificate](writer)
 	for entry := range gdb.EnumerateCommitteeCertificates(0) {
 		count++
 		cert, err := entry.Unwrap()
@@ -204,7 +205,7 @@ func exportBlockCertificates(ctx context.Context, gdb *gossip.Store, writer *uni
 	log.Info("Exporting block certificates", "to", to)
 
 	count := 0
-	out := objstream.NewWriter[gossip.BlockCertificate](writer)
+	out := objstream.NewWriter[cert.BlockCertificate](writer)
 	for entry := range gdb.EnumerateBlockCertificates(0) {
 		count++
 		cert, err := entry.Unwrap()

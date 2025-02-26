@@ -13,17 +13,9 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 )
 
-// CommitteeCertificate is a certificate for a committee. This is an alias
-// for cert.Certificate[cert.CommitteeStatement] to improve readability.
-type CommitteeCertificate = cert.Certificate[cert.CommitteeStatement]
-
-// CommitteeCertificate is a certificate for a block. This is an alias
-// for cert.Certificate[cert.BlockStatement] to improve readability.
-type BlockCertificate = cert.Certificate[cert.BlockStatement]
-
 // UpdateCommitteeCertificate adds or updates the certificate in the store.
 // If a certificate for the same period is already present, it is overwritten.
-func (s *Store) UpdateCommitteeCertificate(certificate CommitteeCertificate) error {
+func (s *Store) UpdateCommitteeCertificate(certificate cert.CommitteeCertificate) error {
 	return updateCertificate(
 		getCommitteeCertificateKey(certificate.Subject().Period),
 		s.table.CommitteeCertificates,
@@ -33,7 +25,7 @@ func (s *Store) UpdateCommitteeCertificate(certificate CommitteeCertificate) err
 
 // GetCommitteeCertificate retrieves the certificate for the given period.
 // If no certificate is found, an error is returned.
-func (s *Store) GetCommitteeCertificate(period scc.Period) (CommitteeCertificate, error) {
+func (s *Store) GetCommitteeCertificate(period scc.Period) (cert.CommitteeCertificate, error) {
 	return getCertificate[cert.CommitteeStatement](
 		getCommitteeCertificateKey(period),
 		s.table.CommitteeCertificates,
@@ -44,7 +36,7 @@ func (s *Store) GetCommitteeCertificate(period scc.Period) (CommitteeCertificate
 // starting from the given period. The certificates are yielded in ascending
 // order of period. If an error occurs during iteration, it is yielded as the
 // last result.
-func (s *Store) EnumerateCommitteeCertificates(first scc.Period) iter.Seq[result.T[CommitteeCertificate]] {
+func (s *Store) EnumerateCommitteeCertificates(first scc.Period) iter.Seq[result.T[cert.CommitteeCertificate]] {
 	return enumerateCertificates[cert.CommitteeStatement](
 		getCommitteeCertificateKey(first),
 		s.table.CommitteeCertificates,
@@ -54,7 +46,7 @@ func (s *Store) EnumerateCommitteeCertificates(first scc.Period) iter.Seq[result
 
 // UpdateBlockCertificate adds or updates the certificate in the store.
 // If a certificate for the same block is already present, it is overwritten.
-func (s *Store) UpdateBlockCertificate(certificate BlockCertificate) error {
+func (s *Store) UpdateBlockCertificate(certificate cert.BlockCertificate) error {
 	return updateCertificate(
 		getBlockCertificateKey(certificate.Subject().Number),
 		s.table.BlockCertificates,
@@ -64,7 +56,7 @@ func (s *Store) UpdateBlockCertificate(certificate BlockCertificate) error {
 
 // GetBlockCertificate retrieves the certificate for the given block.
 // If no certificate is found, an error is returned.
-func (s *Store) GetBlockCertificate(block idx.Block) (BlockCertificate, error) {
+func (s *Store) GetBlockCertificate(block idx.Block) (cert.BlockCertificate, error) {
 	return getCertificate[cert.BlockStatement](
 		getBlockCertificateKey(block),
 		s.table.BlockCertificates,
@@ -75,7 +67,7 @@ func (s *Store) GetBlockCertificate(block idx.Block) (BlockCertificate, error) {
 // the given block number. The certificates are yielded in ascending order of
 // block number. If an error occurs during iteration, it is yielded as the
 // last result.
-func (s *Store) EnumerateBlockCertificates(first idx.Block) iter.Seq[result.T[BlockCertificate]] {
+func (s *Store) EnumerateBlockCertificates(first idx.Block) iter.Seq[result.T[cert.BlockCertificate]] {
 	return enumerateCertificates[cert.BlockStatement](
 		getBlockCertificateKey(first),
 		s.table.BlockCertificates,

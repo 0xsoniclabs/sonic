@@ -71,7 +71,7 @@ func TestStore_EnumerateCommitteeCertificates_ReturnsAllCertificates(t *testing.
 	require.NoError(err)
 
 	var members []scc.Member
-	var originals []CommitteeCertificate
+	var originals []cert.CommitteeCertificate
 	for period := range scc.Period(N) {
 		cur := cert.NewCertificate(cert.CommitteeStatement{
 			Period:    period,
@@ -88,7 +88,7 @@ func TestStore_EnumerateCommitteeCertificates_ReturnsAllCertificates(t *testing.
 		if last > N {
 			last = N
 		}
-		restored := []CommitteeCertificate{}
+		restored := []cert.CommitteeCertificate{}
 		for c := range store.EnumerateCommitteeCertificates(first) {
 			cur, err := c.Unwrap()
 			require.NoError(err)
@@ -182,7 +182,7 @@ func TestStore_EnumerateBlockCertificates_ReturnsAllCertificates(t *testing.T) {
 	store, err := NewMemStore(t)
 	require.NoError(err)
 
-	var originals []BlockCertificate
+	var originals []cert.BlockCertificate
 	for number := range idx.Block(N) {
 		cur := cert.NewCertificate(cert.BlockStatement{
 			Number: number,
@@ -198,7 +198,7 @@ func TestStore_EnumerateBlockCertificates_ReturnsAllCertificates(t *testing.T) {
 		if last > N {
 			last = N
 		}
-		restored := []BlockCertificate{}
+		restored := []cert.BlockCertificate{}
 		for c := range store.EnumerateBlockCertificates(first) {
 			cur, err := c.Unwrap()
 			require.NoError(err)

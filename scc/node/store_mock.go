@@ -13,6 +13,7 @@ import (
 	reflect "reflect"
 
 	scc "github.com/0xsoniclabs/sonic/scc"
+	cert "github.com/0xsoniclabs/sonic/scc/cert"
 	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -41,10 +42,10 @@ func (m *MockStore) EXPECT() *MockStoreMockRecorder {
 }
 
 // GetBlockCertificate mocks base method.
-func (m *MockStore) GetBlockCertificate(arg0 idx.Block) (BlockCertificate, error) {
+func (m *MockStore) GetBlockCertificate(arg0 idx.Block) (cert.BlockCertificate, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetBlockCertificate", arg0)
-	ret0, _ := ret[0].(BlockCertificate)
+	ret0, _ := ret[0].(cert.BlockCertificate)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -56,10 +57,10 @@ func (mr *MockStoreMockRecorder) GetBlockCertificate(arg0 any) *gomock.Call {
 }
 
 // GetCommitteeCertificate mocks base method.
-func (m *MockStore) GetCommitteeCertificate(arg0 scc.Period) (CommitteeCertificate, error) {
+func (m *MockStore) GetCommitteeCertificate(arg0 scc.Period) (cert.CommitteeCertificate, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetCommitteeCertificate", arg0)
-	ret0, _ := ret[0].(CommitteeCertificate)
+	ret0, _ := ret[0].(cert.CommitteeCertificate)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -71,7 +72,7 @@ func (mr *MockStoreMockRecorder) GetCommitteeCertificate(arg0 any) *gomock.Call 
 }
 
 // UpdateBlockCertificate mocks base method.
-func (m *MockStore) UpdateBlockCertificate(arg0 BlockCertificate) error {
+func (m *MockStore) UpdateBlockCertificate(arg0 cert.BlockCertificate) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpdateBlockCertificate", arg0)
 	ret0, _ := ret[0].(error)
@@ -85,7 +86,7 @@ func (mr *MockStoreMockRecorder) UpdateBlockCertificate(arg0 any) *gomock.Call {
 }
 
 // UpdateCommitteeCertificate mocks base method.
-func (m *MockStore) UpdateCommitteeCertificate(arg0 CommitteeCertificate) error {
+func (m *MockStore) UpdateCommitteeCertificate(arg0 cert.CommitteeCertificate) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpdateCommitteeCertificate", arg0)
 	ret0, _ := ret[0].(error)
