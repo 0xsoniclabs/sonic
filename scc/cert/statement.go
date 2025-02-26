@@ -53,6 +53,17 @@ type BlockStatement struct {
 	StateRoot common.Hash
 }
 
+// NewBlockStatement creates a new block statement with the given chain ID,
+// block number, hash, and state root.
+func NewBlockStatement(chainID uint64, number idx.Block, hash, stateRoot common.Hash) BlockStatement {
+	return BlockStatement{
+		statement: statement{ChainId: chainID},
+		Number:    number,
+		Hash:      hash,
+		StateRoot: stateRoot,
+	}
+}
+
 // GetDataToSign returns the data that should be signed by the issuer of the
 // statement. It follows the following format:
 //   - 1 byte encoding version
