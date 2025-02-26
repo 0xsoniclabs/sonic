@@ -26,27 +26,6 @@ func TestCertificate_NewCertificateWithSignature_ContainsStatementAndSignature(t
 	require.Equal(AggregatedSignature, cert.Signature())
 }
 
-func TestCertificate_NewCertificateWithSignature_DeepCopiesInput(t *testing.T) {
-	require := require.New(t)
-	stmt := testStatement(1)
-	sig := bls.Signature{}
-	AggregatedSignature := NewAggregatedSignature[testStatement](BitSet[scc.MemberId]{}, sig)
-	cert := NewCertificateWithSignature(stmt, AggregatedSignature)
-	err := AggregatedSignature.Add(0, Signature[testStatement]{Signature: bls.Signature{}})
-	require.NoError(err)
-	require.NotEqual(AggregatedSignature, cert.Signature())
-}
-
-func TestCertificate_Signature_ReturnsIndependentCopy(t *testing.T) {
-	require := require.New(t)
-	stmt := testStatement(1)
-	cert := NewCertificate(stmt)
-	sig := cert.Signature()
-	err := sig.Add(0, Signature[testStatement]{Signature: bls.Signature{}})
-	require.NoError(err)
-	require.NotEqual(sig, cert.Signature())
-}
-
 func TestCertificate_CanBeGraduallyAccumulatedAndVerified(t *testing.T) {
 	requires := require.New(t)
 	keys := make([]bls.PrivateKey, 6)

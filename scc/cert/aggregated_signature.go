@@ -14,24 +14,21 @@ type AggregatedSignature[S Statement] struct {
 	signature bls.Signature
 }
 
-// NewAggregatedSignature creates a new aggregated signature with copies of the
-// given signers and signature. The signers are the members of the committee
-// that signed the statement. The signature is the aggregated BLS signature of
-// the statement.
+// NewAggregatedSignature creates a new aggregated signature the given signers
+// and signature. The signers parameter is shallow copied.
 func NewAggregatedSignature[S Statement](
 	signers BitSet[scc.MemberId],
 	signature bls.Signature) AggregatedSignature[S] {
 	return AggregatedSignature[S]{signers: signers, signature: signature}
 }
 
-// Signers returns a copy of the signers of the aggregated signature.
-// The signers are the members of the committee that signed the statement.
+// Signers returns the signers of the aggregated signature.
+// The returned list of signers is a shallow copy of the internal list.
 func (s *AggregatedSignature[S]) Signers() BitSet[scc.MemberId] {
 	return s.signers
 }
 
-// Signature returns the aggregated BLS signature of the statement. The signature
-// returned is a copy of the current signature.
+// Signature returns the aggregated BLS signature of the statement.
 func (s *AggregatedSignature[S]) Signature() bls.Signature {
 	return s.signature
 }

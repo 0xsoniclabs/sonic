@@ -250,42 +250,6 @@ func TestAggregatedSignature_NewAggregatedSignature_ContainsSignersAndSignature(
 	require.Equal(signature, agg.Signature())
 }
 
-func TestAggregatedSignature_NewAggregatedSignature_DeepCopiesInput(t *testing.T) {
-	require := require.New(t)
-	signers := BitSet[scc.MemberId]{}
-	signature := bls.Signature{}
-
-	agg := NewAggregatedSignature[testStatement](signers, signature)
-	err := agg.Add(0, Signature[testStatement]{Signature: bls.NewPrivateKey().Sign([]byte{1})})
-	require.NoError(err)
-	require.NotEqual(signers, agg.Signers())
-	require.NotEqual(signature, agg.Signature())
-}
-
-func TestAggregatedSignature_Signers_ReturnsIndependentCopy(t *testing.T) {
-	require := require.New(t)
-	signers := BitSet[scc.MemberId]{}
-	signature := bls.Signature{}
-
-	agg := NewAggregatedSignature[testStatement](signers, signature)
-	signers = agg.Signers()
-	signers.Add(1)
-
-	require.NotEqual(signers, agg.Signers())
-}
-
-func TestAggregatedSignature_Signature_ReturnsIndependentCopy(t *testing.T) {
-	require := require.New(t)
-	signers := BitSet[scc.MemberId]{}
-	signature := bls.Signature{}
-
-	agg := NewAggregatedSignature[testStatement](signers, signature)
-	sig := agg.Signature()
-	err := agg.Add(0, Signature[testStatement]{Signature: bls.NewPrivateKey().Sign([]byte{1})})
-	require.NoError(err)
-	require.NotEqual(sig, agg.Signature())
-}
-
 func newMember(key bls.PrivateKey, power uint64) scc.Member {
 	return scc.Member{
 		PublicKey:         key.PublicKey(),
