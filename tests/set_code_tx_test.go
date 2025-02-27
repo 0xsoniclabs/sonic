@@ -11,6 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/assert"
@@ -55,6 +56,15 @@ func TestSetCodeTransaction(t *testing.T) {
 		t.Run("Multiple accounts can submit authorizations", func(t *testing.T) {
 			testMultipleAccountsCanSubmitAuthorizations(t, net)
 		})
+
+		t.Run("Authorization succeeds with failing tx", func(t *testing.T) {
+			testAuthorizationSucceedsWithFailingTx(t, net)
+		})
+
+		t.Run("Authorization can be issued from a non existing account", func(t *testing.T) {
+			testAuthorizationFromNonExistingAccount(t, net)
+		})
+
 	})
 
 	t.Run("UseCase", func(t *testing.T) {
@@ -606,6 +616,61 @@ func testMultipleAccountsCanSubmitAuthorizations(t *testing.T, net *IntegrationT
 	codeB, err := client.CodeAt(context.Background(), authorizerB.Address(), nil)
 	require.NoError(t, err)
 	assert.Equal(t, expectedCode, codeB, "code in account is expected to be delegation designation")
+}
+
+// testAuthorizationSucceedsWithFailingTx checks that an authorization is executed
+// even if the transaction fails
+func testAuthorizationSucceedsWithFailingTx(t *testing.T, net *IntegrationTestNet) {
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	account := makeAccountWithBalance(t, net, 1e18) // < Pays for the transaction
+
+	_, receipt, err := DeployContract(net, counter.DeployCounter)
+	require.NoError(t, err)
+	delegateAddress := receipt.ContractAddress
+
+	tx := makeEip7702Transaction(t, client, account, account, delegateAddress, nil)
+	receipt, err = net.Run(tx)
+	require.NoError(t, err)
+	// Submitting a call to the counter contract without callData must fail
+	require.Equal(t, types.ReceiptStatusFailed, receipt.Status)
+
+	// delegation is set nevertheless
+	code, err := client.CodeAt(context.Background(), account.Address(), nil)
+	require.NoError(t, err)
+	expectedCode := append([]byte{0xef, 0x01, 0x00}, delegateAddress.Bytes()...)
+	require.Equal(t, expectedCode, code, "code in account is expected to be delegation designation")
+}
+
+// testAuthorizationFromNonExistingAccount checks that an authorization can signed by
+// a non exiting account, creating the account on the fly.
+func testAuthorizationFromNonExistingAccount(t *testing.T, net *IntegrationTestNet) {
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	sponsor := makeAccountWithBalance(t, net, 1e18) // < Pays for the transaction
+
+	// create an account from a key without endowing it
+	key, _ := crypto.GenerateKey()
+	nonExistingAccount := Account{
+		PrivateKey: key,
+	}
+
+	tx := makeEip7702Transaction(t, client, sponsor, &nonExistingAccount, common.Address{42}, nil)
+	_, err = net.Run(tx)
+	require.NoError(t, err)
+	// whenever the transaction succeeds, is not relevant for this test
+
+	// check that account exists and has a delegation designation
+	code, err := client.CodeAt(context.Background(), nonExistingAccount.Address(), nil)
+	require.NoError(t, err)
+	expectedCode := append([]byte{0xef, 0x01, 0x00}, common.Address{42}.Bytes()...)
+	require.Equal(t, expectedCode, code, "code in account is expected to be delegation designation")
 }
 
 // makeEip7702Transaction creates a SetCode transaction
