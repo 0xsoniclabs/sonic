@@ -232,19 +232,41 @@ func blobTransaction(chainId *big.Int, data []byte, key *ecdsa.PrivateKey) (*typ
 		types.NewCancunSigner(chainId), key)
 }
 
-func setCodeTx(chainId *big.Int, authorizations []types.SetCodeAuthorization, key *ecdsa.PrivateKey) (*types.Transaction, error) {
-	return types.SignTx(types.NewTx(&types.SetCodeTx{
-		ChainID:   uint256.MustFromBig(chainId),
-		Nonce:     0,
-		GasTipCap: uint256.NewInt(1e10),  // max priority fee per gas
-		GasFeeCap: uint256.NewInt(50e10), // max fee per gas
-		Gas:       250000,                // gas limit for the transaction
-		To:        common.Address{},      // sponsored address
-		Value:     uint256.NewInt(0),     // value transferred in the transaction
-		Data:      nil,                   // No additional data is sent in this transaction
-		AuthList:  authorizations,        // authorizations in the transaction
-	}),
-		types.NewPragueSigner(chainId), key)
+type unsignedAuth struct {
+	nonce uint64
+	key   *ecdsa.PrivateKey
+}
+
+func setCodeTx(nonce uint64, key *ecdsa.PrivateKey, unsigned []unsignedAuth) *types.Transaction {
+	return pricedSetCodeTx(nonce, 250000, uint256.NewInt(1000), uint256.NewInt(1), key, unsigned)
+}
+
+func pricedSetCodeTx(nonce uint64, gaslimit uint64, gasFee, tip *uint256.Int, key *ecdsa.PrivateKey, unsigned []unsignedAuth) *types.Transaction {
+	var authList []types.SetCodeAuthorization
+	for _, u := range unsigned {
+		auth, _ := types.SignSetCode(u.key, types.SetCodeAuthorization{
+			ChainID: *uint256.MustFromBig(params.TestChainConfig.ChainID),
+			Address: common.Address{0x42},
+			Nonce:   u.nonce,
+		})
+		authList = append(authList, auth)
+	}
+	return pricedSetCodeTxWithAuth(nonce, gaslimit, gasFee, tip, key, authList)
+}
+
+func pricedSetCodeTxWithAuth(nonce uint64, gaslimit uint64, gasFee, tip *uint256.Int, key *ecdsa.PrivateKey, authList []types.SetCodeAuthorization) *types.Transaction {
+	return types.MustSignNewTx(key, types.LatestSignerForChainID(params.TestChainConfig.ChainID), &types.SetCodeTx{
+		ChainID:    uint256.MustFromBig(params.TestChainConfig.ChainID),
+		Nonce:      nonce,
+		GasTipCap:  tip,
+		GasFeeCap:  gasFee,
+		Gas:        gaslimit,
+		To:         common.Address{},
+		Value:      uint256.NewInt(100),
+		Data:       nil,
+		AccessList: nil,
+		AuthList:   authList,
+	})
 }
 
 func setupTxPool() (*TxPool, *ecdsa.PrivateKey) {
@@ -516,12 +538,9 @@ func TestEIP7702Transactions_InvalidTransactionsReturnAnError(t *testing.T) {
 			testConfig.PragueTime = test.pragueTime
 			pool.reset(nil, nil)
 
-			tx, err := setCodeTx(chainId, test.authorizations, key)
-			if err != nil {
-				t.Fatalf("could not sign tx: %v", err)
-			}
+			tx := pricedSetCodeTxWithAuth(0, 250000, uint256.NewInt(1000), uint256.NewInt(1), key, test.authorizations)
 
-			_, err = pool.add(tx, false)
+			_, err := pool.add(tx, false)
 			if err != test.expectedErr {
 				t.Fatalf("expected error %v, got %v", test.expectedErr, err)
 			}
