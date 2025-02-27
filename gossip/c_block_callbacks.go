@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/0xsoniclabs/sonic/scc/bls"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	scc_node "github.com/0xsoniclabs/sonic/scc/node"
 	"github.com/0xsoniclabs/sonic/utils/signers/gsignercache"
@@ -142,6 +143,18 @@ func consensusCallbackBeginBlockFn(
 				for _, em := range *emitters {
 					em.OnEventConfirmed(e)
 				}
+
+				if sccNode != nil {
+					payload := store.GetEventPayload(e.ID())
+					for _, signature := range payload.BlockSignatures() {
+						sccNode.NewBlockSignature(
+							e.Creator(),
+							signature.Number,
+							signature.Signature,
+						)
+					}
+				}
+
 				confirmedEventsMeter.Mark(1)
 			},
 			EndBlock: func() (newValidators *pos.Validators) {
@@ -375,16 +388,35 @@ func consensusCallbackBeginBlockFn(
 					store.SetBlockEpochState(bs, es)
 					store.EvmStore().SetCachedEvmBlock(blockCtx.Idx, evmBlock)
 
-					// Inform the SCC about the new block
+					// If the certification chain is enabled, inform the chain
+					// node about the new block and instruct the emitter to
+					// distribute the block signature.
 					if sccNode != nil {
-						err := sccNode.NewBlock(cert.NewBlockStatement(
+						// Inform the SCC about the new block
+						stmt := cert.NewBlockStatement(
 							chainCfg.ChainID.Uint64(),
 							blockCtx.Idx,
 							block.Hash(),
 							block.StateRoot,
-						))
+						)
+						err := sccNode.NewBlock(stmt)
 						if err != nil {
 							log.Warn("Failed to inform SCC about new block", "err", err)
+						}
+
+						// TODO: improve interaction between the node and the
+						// emitter; in particular:
+						//  - have the node own the key
+						//  - have the node sign the block
+						//  - also handle committee certificates
+
+						// Instruct emitter to distribute block signature.
+						blockSignature := inter.BlockSignature{
+							Number:    blockCtx.Idx,
+							Signature: cert.Sign(stmt, bls.NewPrivateKeyForTests(0)),
+						}
+						for _, emitter := range *emitters {
+							emitter.AddBlockSignatureToEmit(blockSignature)
 						}
 					}
 

@@ -106,6 +106,10 @@ type Emitter struct {
 	baseFeeSource BaseFeeSource
 
 	lastTimeAnEventWasConfirmed atomic.Pointer[time.Time]
+
+	signatureMutex             sync.Mutex
+	pendingCommitteeSignatures []inter.CommitteeSignature
+	pendingBlockSignatures     []inter.BlockSignature
 }
 
 type BaseFeeSource interface {
@@ -383,6 +387,9 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 	version := uint8(0)
 	if em.world.GetRules().Upgrades.Sonic {
 		version = 2
+		if em.world.GetRules().Upgrades.Allegro {
+			version = 3
+		}
 	} else if em.world.GetRules().Upgrades.Llr {
 		version = 1
 	}
@@ -419,6 +426,9 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 
 	// Add txs
 	em.addTxs(mutEvent, sortedTxs)
+
+	// Add signatures
+	em.addSignatures(mutEvent)
 
 	// calc Payload hash
 	mutEvent.SetPayloadHash(inter.CalcPayloadHash(mutEvent))
@@ -473,4 +483,25 @@ func (em *Emitter) nameEventForDebug(e *inter.EventPayload) {
 	hash.SetEventName(e.ID(), fmt.Sprintf("%s%03d",
 		strings.ToLower(string(name)),
 		e.Seq()))
+}
+
+func (em *Emitter) AddCommitteeSignatureToEmit(sig inter.CommitteeSignature) {
+	em.signatureMutex.Lock()
+	defer em.signatureMutex.Unlock()
+	em.pendingCommitteeSignatures = append(em.pendingCommitteeSignatures, sig)
+}
+
+func (em *Emitter) AddBlockSignatureToEmit(sig inter.BlockSignature) {
+	em.signatureMutex.Lock()
+	defer em.signatureMutex.Unlock()
+	em.pendingBlockSignatures = append(em.pendingBlockSignatures, sig)
+}
+
+func (em *Emitter) addSignatures(e *inter.MutableEventPayload) {
+	em.signatureMutex.Lock()
+	defer em.signatureMutex.Unlock()
+	e.SetCommitteeSignatures(em.pendingCommitteeSignatures)
+	em.pendingCommitteeSignatures = nil
+	e.SetBlockSignatures(em.pendingBlockSignatures)
+	em.pendingBlockSignatures = nil
 }

@@ -129,6 +129,9 @@ func (v *Checker) Validate(e inter.EventPayloadI) error {
 	version := uint8(0)
 	if rules.Upgrades.Sonic {
 		version = 2
+		if rules.Upgrades.Allegro {
+			version = 3
+		}
 	} else if rules.Upgrades.Llr {
 		version = 1
 	}
