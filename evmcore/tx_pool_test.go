@@ -179,6 +179,74 @@ func dynamicFeeTx(nonce uint64, gaslimit uint64, gasFee *big.Int, tip *big.Int, 
 	return tx
 }
 
+func blobTransaction(chainId *big.Int, data []byte, key *ecdsa.PrivateKey) (*types.Transaction, error) {
+
+	var (
+		sidecar    *types.BlobTxSidecar // The sidecar contains the blob data
+		blobHashes []common.Hash
+	)
+
+	if data != nil {
+
+		var Blob kzg4844.Blob // Define a blob array to hold the large data payload, blobs are 128kb in length
+		copy(Blob[:], data)
+
+		// Compute the commitment for the blob data using KZG4844 cryptographic algorithm
+		BlobCommitment, err := kzg4844.BlobToCommitment(&Blob)
+		if err != nil {
+			return nil, fmt.Errorf("failed to compute blob commitment: %s", err)
+		}
+
+		// Compute the proof for the blob data, which will be used to verify the transaction
+		BlobProof, err := kzg4844.ComputeBlobProof(&Blob, BlobCommitment)
+		if err != nil {
+			return nil, fmt.Errorf("failed to compute blob proof: %s", err)
+		}
+
+		//Prepare the sidecar data for the transaction, which includes the blob and its cryptographic proof
+		sidecar = &types.BlobTxSidecar{
+			Blobs:       []kzg4844.Blob{Blob},
+			Commitments: []kzg4844.Commitment{BlobCommitment},
+			Proofs:      []kzg4844.Proof{BlobProof},
+		}
+
+		// Get blob hashes from the sidecar
+		blobHashes = sidecar.BlobHashes()
+	}
+
+	// Create and return transaction with the blob data and cryptographic proofs
+	return types.SignTx(
+		types.NewTx(&types.BlobTx{
+			ChainID:    uint256.MustFromBig(chainId),
+			Nonce:      0,
+			GasTipCap:  uint256.NewInt(1e10),  // max priority fee per gas
+			GasFeeCap:  uint256.NewInt(50e10), // max fee per gas
+			Gas:        250000,                // gas limit for the transaction
+			To:         common.Address{},      // recipient's address
+			Value:      uint256.NewInt(0),     // value transferred in the transaction
+			Data:       nil,                   // No additional data is sent in this transaction
+			BlobFeeCap: uint256.NewInt(3e10),  // fee cap for the blob data
+			BlobHashes: blobHashes,            // blob hashes in the transaction
+			Sidecar:    sidecar,               // sidecar data in the transaction
+		}),
+		types.NewCancunSigner(chainId), key)
+}
+
+func setCodeTx(chainId *big.Int, authorizations []types.SetCodeAuthorization, key *ecdsa.PrivateKey) (*types.Transaction, error) {
+	return types.SignTx(types.NewTx(&types.SetCodeTx{
+		ChainID:   uint256.MustFromBig(chainId),
+		Nonce:     0,
+		GasTipCap: uint256.NewInt(1e10),  // max priority fee per gas
+		GasFeeCap: uint256.NewInt(50e10), // max fee per gas
+		Gas:       250000,                // gas limit for the transaction
+		To:        common.Address{},      // sponsored address
+		Value:     uint256.NewInt(0),     // value transferred in the transaction
+		Data:      nil,                   // No additional data is sent in this transaction
+		AuthList:  authorizations,        // authorizations in the transaction
+	}),
+		types.NewPragueSigner(chainId), key)
+}
+
 func setupTxPool() (*TxPool, *ecdsa.PrivateKey) {
 	return setupTxPoolWithConfig(params.TestChainConfig)
 }
@@ -379,74 +447,17 @@ func TestEIP4844Transactions(t *testing.T) {
 			}
 			pool.reset(nil, nil)
 
-			tx, err := createTestBlobTransaction(chainId, test.txData)
+			tx, err := blobTransaction(chainId, test.txData, key)
 			if err != nil {
 				t.Fatalf("could not create blob tx: %v", err)
 			}
 
-			signedTx, err := types.SignTx(tx, types.NewCancunSigner(chainId), key)
-			if err != nil {
-				t.Fatalf("could not sign tx: %v", err)
-			}
-
-			_, err = pool.add(signedTx, false)
-
+			_, err = pool.add(tx, false)
 			if err != test.err {
 				t.Fatalf("expected error %v, got %v", test.err, err)
 			}
 		})
 	}
-}
-
-func createTestBlobTransaction(chainId *big.Int, data []byte) (*types.Transaction, error) {
-
-	var (
-		sidecar    *types.BlobTxSidecar // The sidecar contains the blob data
-		blobHashes []common.Hash
-	)
-
-	if data != nil {
-
-		var Blob kzg4844.Blob // Define a blob array to hold the large data payload, blobs are 128kb in length
-		copy(Blob[:], data)
-
-		// Compute the commitment for the blob data using KZG4844 cryptographic algorithm
-		BlobCommitment, err := kzg4844.BlobToCommitment(&Blob)
-		if err != nil {
-			return nil, fmt.Errorf("failed to compute blob commitment: %s", err)
-		}
-
-		// Compute the proof for the blob data, which will be used to verify the transaction
-		BlobProof, err := kzg4844.ComputeBlobProof(&Blob, BlobCommitment)
-		if err != nil {
-			return nil, fmt.Errorf("failed to compute blob proof: %s", err)
-		}
-
-		//Prepare the sidecar data for the transaction, which includes the blob and its cryptographic proof
-		sidecar = &types.BlobTxSidecar{
-			Blobs:       []kzg4844.Blob{Blob},
-			Commitments: []kzg4844.Commitment{BlobCommitment},
-			Proofs:      []kzg4844.Proof{BlobProof},
-		}
-
-		// Get blob hashes from the sidecar
-		blobHashes = sidecar.BlobHashes()
-	}
-
-	// Create and return transaction with the blob data and cryptographic proofs
-	return types.NewTx(&types.BlobTx{
-		ChainID:    uint256.MustFromBig(chainId),
-		Nonce:      0,
-		GasTipCap:  uint256.NewInt(1e10),  // max priority fee per gas
-		GasFeeCap:  uint256.NewInt(50e10), // max fee per gas
-		Gas:        250000,                // gas limit for the transaction
-		To:         common.Address{},      // recipient's address
-		Value:      uint256.NewInt(0),     // value transferred in the transaction
-		Data:       nil,                   // No additional data is sent in this transaction
-		BlobFeeCap: uint256.NewInt(3e10),  // fee cap for the blob data
-		BlobHashes: blobHashes,            // blob hashes in the transaction
-		Sidecar:    sidecar,               // sidecar data in the transaction
-	}), nil
 }
 
 func TestEIP7702Transactions_InvalidTransactionsReturnAnError(t *testing.T) {
@@ -505,33 +516,17 @@ func TestEIP7702Transactions_InvalidTransactionsReturnAnError(t *testing.T) {
 			testConfig.PragueTime = test.pragueTime
 			pool.reset(nil, nil)
 
-			tx := createTestSetCodeTransaction(chainId, test.authorizations)
-			signedTx, err := types.SignTx(tx, types.NewPragueSigner(chainId), key)
+			tx, err := setCodeTx(chainId, test.authorizations, key)
 			if err != nil {
 				t.Fatalf("could not sign tx: %v", err)
 			}
 
-			_, err = pool.add(signedTx, false)
+			_, err = pool.add(tx, false)
 			if err != test.expectedErr {
 				t.Fatalf("expected error %v, got %v", test.expectedErr, err)
 			}
 		})
 	}
-}
-
-func createTestSetCodeTransaction(chainId *big.Int, authorizations []types.SetCodeAuthorization) *types.Transaction {
-
-	return types.NewTx(&types.SetCodeTx{
-		ChainID:   uint256.MustFromBig(chainId),
-		Nonce:     0,
-		GasTipCap: uint256.NewInt(1e10),  // max priority fee per gas
-		GasFeeCap: uint256.NewInt(50e10), // max fee per gas
-		Gas:       250000,                // gas limit for the transaction
-		To:        common.Address{},      // sponsored address
-		Value:     uint256.NewInt(0),     // value transferred in the transaction
-		Data:      nil,                   // No additional data is sent in this transaction
-		AuthList:  authorizations,        // authorizations in the transaction
-	})
 }
 
 func TestInvalidTransactions(t *testing.T) {
