@@ -96,4 +96,13 @@ var (
 	// ErrMaxInitCodeSizeExceeded is returned if creation transaction provides the init code bigger
 	// than init code size limit.
 	ErrMaxInitCodeSizeExceeded = errors.New("max initcode size exceeded")
+
+	// ErrInflightTxLimitReached is returned when the maximum number of in-flight
+	// transactions is reached for specific accounts.
+	ErrInflightTxLimitReached = errors.New("in-flight transaction limit reached for delegated accounts")
+
+	// ErrAuthorityReserved is returned if a transaction has an authorization
+	// signed by an address which already has in-flight transactions known to the
+	// pool.
+	ErrAuthorityReserved = errors.New("authority already reserved")
 )

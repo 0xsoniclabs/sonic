@@ -22,6 +22,7 @@ import (
 	"math"
 	"math/big"
 	"math/rand/v2"
+	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -150,6 +151,7 @@ const (
 type TxPoolStateDB interface {
 	GetNonce(addr common.Address) uint64
 	GetBalance(addr common.Address) *uint256.Int
+	GetCodeHash(addr common.Address) common.Hash
 	Release()
 }
 
@@ -246,6 +248,20 @@ func (config *TxPoolConfig) sanitize() TxPoolConfig {
 // The pool separates processable transactions (which can be applied to the
 // current state) and future transactions. Transactions move between those
 // two states over time as they are received and processed.
+//
+// In addition to tracking transactions, the pool also tracks a set of pending SetCode
+// authorizations (EIP7702). This helps minimize number of transactions that can be
+// trivially churned in the pool. As a standard rule, any account with a deployed
+// delegation or an in-flight authorization to deploy a delegation will only be allowed a
+// single transaction slot instead of the standard number. This is due to the possibility
+// of the account being sweeped by an unrelated account.
+//
+// Because SetCode transactions can have many authorizations included, we avoid explicitly
+// checking their validity to save the state lookup. So long as the encompassing
+// transaction is valid, the authorization will be accepted and tracked by the pool. In
+// case the pool is tracking a pending / queued transaction from a specific account, it
+// will reject new transactions with delegations from that account with standard in-flight
+// transactions.
 type TxPool struct {
 	config      TxPoolConfig
 	chainconfig *params.ChainConfig
@@ -778,6 +794,45 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 		}
 	}
 
+	return pool.validateAuth(tx)
+}
+
+// validateAuth verifies that the transaction complies with code authorization
+// restrictions brought by SetCode transaction type.
+func (pool *TxPool) validateAuth(tx *types.Transaction) error {
+	from, _ := types.Sender(pool.signer, tx) // validated
+	// Allow at most one in-flight tx for delegated accounts or those with a
+	// pending authorization.
+	if pool.currentState.GetCodeHash(from) != types.EmptyCodeHash || len(pool.all.auths[from]) != 0 {
+		var (
+			count  int
+			exists bool
+		)
+		pending := pool.pending[from]
+		if pending != nil {
+			count += pending.Len()
+			exists = pending.Contains(tx.Nonce())
+		}
+		queue := pool.queue[from]
+		if queue != nil {
+			count += queue.Len()
+			exists = exists || queue.Contains(tx.Nonce())
+		}
+		// Replace the existing in-flight transaction for delegated accounts
+		// are still supported
+		if count >= 1 && !exists {
+			return ErrInflightTxLimitReached
+		}
+	}
+	// Authorities cannot conflict with any pending or queued transactions.
+	if auths := tx.SetCodeAuthorizations(); len(auths) > 0 {
+		for _, auth := range auths {
+			addr, _ := auth.Authority()
+			if pool.pending[addr] != nil || pool.queue[addr] != nil {
+				return ErrAuthorityReserved
+			}
+		}
+	}
 	return nil
 }
 
@@ -1833,6 +1888,7 @@ type txLookup struct {
 	lock    sync.RWMutex
 	locals  map[common.Hash]*types.Transaction
 	remotes map[common.Hash]*types.Transaction
+	auths   map[common.Address][]common.Hash // All accounts with a pooled authorization
 }
 
 // newTxLookup returns a new txLookup structure.
@@ -1840,6 +1896,7 @@ func newTxLookup() *txLookup {
 	return &txLookup{
 		locals:  make(map[common.Hash]*types.Transaction),
 		remotes: make(map[common.Hash]*types.Transaction),
+		auths:   make(map[common.Address][]common.Hash),
 	}
 }
 
@@ -1951,6 +2008,27 @@ func (t *txLookup) Add(tx *types.Transaction, local bool) {
 	} else {
 		t.remotes[tx.Hash()] = tx
 	}
+
+	t.addAuthorities(tx)
+}
+
+// addAuthorities tracks the supplied tx in relation to each authority it
+// specifies.
+func (t *txLookup) addAuthorities(tx *types.Transaction) {
+	// FIXME: later geth uses new signature: SetCodeAuthorizers returning addresses
+	for _, auth := range tx.SetCodeAuthorizations() {
+		addr, _ := auth.Authority()
+		list, ok := t.auths[addr]
+		if !ok {
+			list = []common.Hash{}
+		}
+		if slices.Contains(list, tx.Hash()) {
+			// Don't add duplicates.
+			continue
+		}
+		list = append(list, tx.Hash())
+		t.auths[addr] = list
+	}
 }
 
 // Remove removes a transaction from the lookup.
@@ -1958,6 +2036,7 @@ func (t *txLookup) Remove(hash common.Hash) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 
+	t.removeAuthorities(hash)
 	tx, ok := t.locals[hash]
 	if !ok {
 		tx, ok = t.remotes[hash]
@@ -1971,6 +2050,29 @@ func (t *txLookup) Remove(hash common.Hash) {
 
 	delete(t.locals, hash)
 	delete(t.remotes, hash)
+}
+
+// removeAuthorities stops tracking the supplied tx in relation to its
+// authorities.
+func (t *txLookup) removeAuthorities(hash common.Hash) {
+	for addr := range t.auths {
+		list := t.auths[addr]
+
+		// Remove tx from tracker.
+		if i := slices.Index(list, hash); i >= 0 {
+			list = append(list[:i], list[i+1:]...)
+
+		} else {
+			log.Error("Authority with untracked tx", "addr", addr, "hash", hash)
+		}
+
+		if len(list) == 0 {
+			// If list is newly empty, delete it entirely.
+			delete(t.auths, addr)
+			continue
+		}
+		t.auths[addr] = list
+	}
 }
 
 // RemoteToLocals migrates the transactions belongs to the given locals to locals

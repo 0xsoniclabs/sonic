@@ -437,6 +437,12 @@ func (l *txList) GetElement(index int) *types.Transaction {
 	return l.txs.GetElement(index)
 }
 
+// Contains returns whether the  list contains a transaction
+// with the provided nonce.
+func (l *txList) Contains(nonce uint64) bool {
+	return l.txs.Get(nonce) != nil
+}
+
 // priceHeap is a heap.Interface implementation over transactions for retrieving
 // price-sorted transactions to discard when the pool fills up. If baseFee is set
 // then the heap is sorted based on the effective tip based on the given base fee.
