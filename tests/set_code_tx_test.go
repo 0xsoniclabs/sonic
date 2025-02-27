@@ -17,8 +17,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestSetCodeTransaction tests the SetCode transaction type use cases
-// described in the EIP-7702 specification: https://eips.ethereum.org/EIPS/eip-7702
+// TestSetCodeTransaction tests the SetCode transaction introduced with Prague
+// see: https://eips.ethereum.org/EIPS/eip-7702
+//
+// the test has the following structure:
+// - Operation tests check basic operation of the SetCode transaction
+// - UseCase tests check the use cases described in the EIP-7702 specification
+//   - Transaction Sponsoring
+//   - Transaction Batching
+//   - Privilege Deescalation
+//
 // Notice that the test contracts used in this test model the expected behavior
 // and do not implement ERC-20 as described in the EIP use case examples.
 func TestSetCodeTransaction(t *testing.T) {
@@ -67,12 +75,11 @@ func TestSetCodeTransaction(t *testing.T) {
 	})
 }
 
+// testSponsoring executes a transaction in behalf of another account:
+// - The sponsor account pays for the gas for the transaction
+// - The sponsored account is the context of the transaction, and its state is modified
+// - The delegate account is the contract that will be executed
 func testSponsoring(t *testing.T, net *IntegrationTestNet) {
-
-	// This test executes a transaction in behalf of another account:
-	// - The sponsor account pays for the gas for the transaction
-	// - The sponsored account is the context of the transaction, and its state is modified
-	// - The delegate account is the contract that will be executed
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
@@ -127,12 +134,11 @@ func testSponsoring(t *testing.T, net *IntegrationTestNet) {
 	require.Equal(t, big.NewInt(1), new(big.Int).SetBytes(data), "unexpected storage value")
 }
 
+// testBatching executes multiple funds transfers within a single transaction:
+// - The sponsor and sponsored accounts are the same, this is a self-sponsored transaction.
+// - The delegate account is the contract that will be executed, which implements the batch of calls
+// - Multiple receiver accounts will receive the funds
 func testBatching(t *testing.T, net *IntegrationTestNet) {
-
-	// This test executes multiple funds transfers within a single transaction:
-	// - The sponsor and sponsored accounts are the same, this is a self-sponsored transaction.
-	// - The delegate account is the contract that will be executed, which implements the batch of calls
-	// - Multiple receiver accounts will receive the funds
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
@@ -140,7 +146,7 @@ func testBatching(t *testing.T, net *IntegrationTestNet) {
 
 	// sender account batches multiple transfers of funds in a single transaction
 	// receivers will receive the funds
-	sender := makeAccountWithBalance(t, net, 1e18)
+	sender := makeAccountWithBalance(t, net, 1e18) // < pays transaction and transfers funds
 	receiver1 := makeAccountWithBalance(t, net, 0)
 	receiver2 := makeAccountWithBalance(t, net, 0)
 
@@ -171,7 +177,7 @@ func testBatching(t *testing.T, net *IntegrationTestNet) {
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusSuccessful, batchReceipt.Status)
 
-	// Check that the sender has paid for the transaction
+	// Check that the sender has paid for the transaction and transfers
 	effectiveCost := new(big.Int)
 	effectiveCost = effectiveCost.Mul(
 		batchReceipt.EffectiveGasPrice,
@@ -194,21 +200,21 @@ func testBatching(t *testing.T, net *IntegrationTestNet) {
 	assert.Equal(t, big.NewInt(4321), balance2)
 }
 
+// testPrivilegeDeescalation executes a transaction where an account allows restricted access
+// to its internal state to a second account.
 func testPrivilegeDeescalation(t *testing.T, net *IntegrationTestNet) {
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
 	defer client.Close()
 
-	// This test executes a transaction in behalf of another account, using
-	// the privilege deescalation pattern:
 	// - Account A allows account B to execute certain operations on its behalf
-	// - Account B (userAccount) pays for the gas for the transaction
 	// - Account A (account) is the context of the transaction, and its state is modified
+	// - Account B (userAccount) pays for the gas for the transaction
 	// - Some part of the contract interface (DoPayment) is executable from account B
 	account := makeAccountWithBalance(t, net, 1e18)     // < will transfer funds
 	userAccount := makeAccountWithBalance(t, net, 1e18) // < will pay for gas
-	receiver := makeAccountWithBalance(t, net, 0)
+	receiver := makeAccountWithBalance(t, net, 0)       // < will receive funds
 
 	// Deploy the a contract to use as delegate
 	contract, receipt, err := DeployContract(net, privilege_deescalation.DeployPrivilegeDeescalation)
@@ -217,6 +223,8 @@ func testPrivilegeDeescalation(t *testing.T, net *IntegrationTestNet) {
 
 	// Install delegation in account and allow access by userAccount
 	callData := getCallData(t, net, func(opts *bind.TransactOpts) (*types.Transaction, error) {
+		// The contract will whitelist the userAccount to execute the DoPayment function
+		// within the same transaction that sets the delegation.
 		return contract.AllowPayment(opts, userAccount.Address())
 	})
 	setCodeTx := makeEip7702Transaction(t, client, account, account, delegate, callData)
@@ -241,7 +249,7 @@ func testPrivilegeDeescalation(t *testing.T, net *IntegrationTestNet) {
 	txOpts, err := net.GetTransactOptions(userAccount)
 	require.NoError(t, err)
 	txOpts.NoSend = true
-	tx, err := delegatedContract.DoPayment(txOpts, receiver.Address(), big.NewInt(42))
+	tx, err := delegatedContract.DoPayment(txOpts, receiver.Address(), big.NewInt(1234))
 	require.NoError(t, err)
 	receipt, err = net.Run(tx)
 	require.NoError(t, err)
@@ -250,11 +258,11 @@ func testPrivilegeDeescalation(t *testing.T, net *IntegrationTestNet) {
 	// check balances
 	accountBalanceAfter, err := client.BalanceAt(context.Background(), account.Address(), nil)
 	require.NoError(t, err)
-	assert.Equal(t, new(big.Int).Sub(accountBalanceBefore, big.NewInt(42)), accountBalanceAfter)
+	assert.Equal(t, new(big.Int).Sub(accountBalanceBefore, big.NewInt(1234)), accountBalanceAfter)
 
 	receivedBalance, err := client.BalanceAt(context.Background(), receiver.Address(), nil)
 	require.NoError(t, err)
-	assert.Equal(t, big.NewInt(42), receivedBalance)
+	assert.Equal(t, big.NewInt(1234), receivedBalance)
 
 	// issue a transaction from and unauthorized account
 	unauthorizedAccount := makeAccountWithBalance(t, net, 1e18)
@@ -277,7 +285,11 @@ func testPrivilegeDeescalation(t *testing.T, net *IntegrationTestNet) {
 	require.Equal(t, types.ReceiptStatusFailed, receipt.Status, "tx shall be executed and rejected")
 }
 
+// testDelegateCanBeSetAndUnset checks that a delegate can be set and unset
+// The EIP-7702 specification describes the method to restore an EOA code to
+// its original state by setting the delegate to the zero address.
 func testDelegateCanBeSetAndUnset(t *testing.T, net *IntegrationTestNet) {
+
 	client, err := net.GetClient()
 	require.NoError(t, err)
 	defer client.Close()
@@ -298,7 +310,7 @@ func testDelegateCanBeSetAndUnset(t *testing.T, net *IntegrationTestNet) {
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
-	// check that the code has been set
+	// check that code has been set
 	codeSet, err := client.CodeAt(context.Background(), account.Address(), nil)
 	require.NoError(t, err)
 	expectedCode := append([]byte{0xef, 0x01, 0x00}, delegateAddress[:]...)
@@ -310,12 +322,14 @@ func testDelegateCanBeSetAndUnset(t *testing.T, net *IntegrationTestNet) {
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
-	// check that the code has been unset
+	// check that code has been unset
 	codeUnset, err := client.CodeAt(context.Background(), account.Address(), nil)
 	require.NoError(t, err)
 	require.Equal(t, []byte{}, codeUnset, "code in account is expected to be empty")
 }
 
+// testInvalidAuthorizationsAreIgnored checks that invalid authorizations are ignored
+// whilst the transaction is still executed.
 func testInvalidAuthorizationsAreIgnored(t *testing.T, net *IntegrationTestNet) {
 
 	client, err := net.GetClient()
@@ -325,7 +339,8 @@ func testInvalidAuthorizationsAreIgnored(t *testing.T, net *IntegrationTestNet) 
 	chainId, err := client.ChainID(context.Background())
 	require.NoError(t, err, "failed to get chain ID")
 
-	tests := map[string]struct {
+	// list invalid authorizations
+	wrongAuthorizations := map[string]struct {
 		makeAuthorization func(nonce uint64) types.SetCodeAuthorization
 	}{
 		"authorization nonce too low": {
@@ -361,7 +376,7 @@ func testInvalidAuthorizationsAreIgnored(t *testing.T, net *IntegrationTestNet) 
 		},
 	}
 
-	// for each of the invalid authorizations, we test the following scenarios:
+	// for each of the invalid authorization, the following scenarios are tested:
 	scenarios := map[string]struct {
 		makeAuthorizations func(wrong types.SetCodeAuthorization, nonce uint64) []types.SetCodeAuthorization
 		check              func(t *testing.T, codes []byte)
@@ -408,7 +423,7 @@ func testInvalidAuthorizationsAreIgnored(t *testing.T, net *IntegrationTestNet) 
 		},
 	}
 
-	for name, test := range tests {
+	for name, test := range wrongAuthorizations {
 		t.Run(name, func(t *testing.T) {
 			for name, scenario := range scenarios {
 				t.Run(name, func(t *testing.T) {
@@ -446,7 +461,7 @@ func testInvalidAuthorizationsAreIgnored(t *testing.T, net *IntegrationTestNet) 
 					// execute transaction
 					receipt, err := net.Run(tx)
 					require.NoError(t, err)
-					// because no delegation is set, transaction call to self will succeed
+					// because no delegation is set, transaction call to self (no code) will succeed
 					require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
 					// delegation is not set
@@ -459,6 +474,7 @@ func testInvalidAuthorizationsAreIgnored(t *testing.T, net *IntegrationTestNet) 
 	}
 }
 
+// testAuthorizationsAreExecutedInOrder checks that authorizations are executed in order
 func testAuthorizationsAreExecutedInOrder(t *testing.T, net *IntegrationTestNet) {
 
 	client, err := net.GetClient()
@@ -518,6 +534,8 @@ func testAuthorizationsAreExecutedInOrder(t *testing.T, net *IntegrationTestNet)
 	require.Equal(t, expectedCode, code, "code in account is expected to be delegation designation")
 }
 
+// testMultipleAccountsCanSubmitAuthorizations checks that multiple accounts can submit authorizations
+// and those accounts may be unrelated to the account receiver of the transaction.
 func testMultipleAccountsCanSubmitAuthorizations(t *testing.T, net *IntegrationTestNet) {
 
 	client, err := net.GetClient()
@@ -527,15 +545,15 @@ func testMultipleAccountsCanSubmitAuthorizations(t *testing.T, net *IntegrationT
 	chainId, err := client.ChainID(context.Background())
 	require.NoError(t, err, "failed to get chain ID")
 
-	account := makeAccountWithBalance(t, net, 1e18)
+	account := makeAccountWithBalance(t, net, 1e18) // < Pays for the transaction
 	nonce, err := client.NonceAt(context.Background(), account.Address(), nil)
 	require.NoError(t, err, "failed to get nonce for account", account.Address())
 
-	authorizerA := makeAccountWithBalance(t, net, 1e18)
+	authorizerA := makeAccountWithBalance(t, net, 0) // < no cost
 	authorizerANonce, err := client.NonceAt(context.Background(), authorizerA.Address(), nil)
 	require.NoError(t, err, "failed to get nonce for account", authorizerA.Address())
 
-	authorizerB := makeAccountWithBalance(t, net, 1e18)
+	authorizerB := makeAccountWithBalance(t, net, 0) // < no cost
 	authorizerBNonce, err := client.NonceAt(context.Background(), authorizerB.Address(), nil)
 	require.NoError(t, err, "failed to get nonce for account", authorizerB.Address())
 
@@ -590,13 +608,17 @@ func testMultipleAccountsCanSubmitAuthorizations(t *testing.T, net *IntegrationT
 	assert.Equal(t, expectedCode, codeB, "code in account is expected to be delegation designation")
 }
 
-// makeEip7702Transaction creates a legacy transaction from a CallMsg, filling in the nonce
-// and gas limit.
+// makeEip7702Transaction creates a SetCode transaction
+// - client is used to talk to the node
+// - sponsor account pays for the gas for the transaction
+// - sponsored account is the context of the transaction, and its state is modified
+// - delegate account is the contract address installed in the delegator code
+// - callData is used to pass the encoded use of the delegate's called method ABI
 func makeEip7702Transaction(t *testing.T,
 	client *ethclient.Client,
-	sponsor *Account, // signs and pays for the tx
-	sponsored *Account, // the account where the delegator will be written in
-	delegate common.Address, // the address of the delegate contract
+	sponsor *Account,
+	sponsored *Account,
+	delegate common.Address,
 	callData []byte,
 ) *types.Transaction {
 	t.Helper()
