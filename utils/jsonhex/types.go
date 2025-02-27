@@ -23,7 +23,7 @@ func (h *Bytes) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	if s == "null"{
+	if s == "null" {
 		*h = nil
 		return nil
 	}
@@ -44,7 +44,7 @@ func (h *Bytes) UnmarshalJSON(data []byte) error {
 
 // String returns the hex string representation of Bytes.
 func (h Bytes) String() string {
-	if len(h) == 0 {
+	if h == nil {
 		return `"null"`
 	}
 	return fmt.Sprintf(`"0x%x"`, []byte(h))
