@@ -88,4 +88,13 @@ var (
 
 	// ErrEmptyAuthorizations is returned if a SetCode transaction has no authorizations.
 	ErrEmptyAuthorizations = errors.New("empty authorizations")
+
+	// ErrInflightTxLimitReached is returned when the maximum number of in-flight
+	// transactions is reached for specific accounts.
+	ErrInflightTxLimitReached = errors.New("in-flight transaction limit reached for delegated accounts")
+
+	// ErrAuthorityReserved is returned if a transaction has an authorization
+	// signed by an address which already has in-flight transactions known to the
+	// pool.
+	ErrAuthorityReserved = errors.New("authority already reserved")
 )
