@@ -7,20 +7,29 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestBytes_MarshalJSON_HandlesAllCases(t *testing.T) {
+func TestBytes_JsonEncoding_MapsToProperEncodingAndCanBeDecoded(t *testing.T) {
 	tests := []struct {
-		input  Bytes
-		output string
+		bytes Bytes
+		json  string
 	}{
 		{nil, `"null"`},
-		{[]byte{}, `"null"`},
+		{[]byte{}, `"0x"`},
+		{[]byte{0x1a}, `"0x1a"`},
 		{[]byte{0x01, 0x2a, 0xbc}, `"0x012abc"`},
 	}
 
+	// bytes -> json
 	for _, test := range tests {
-		data, err := test.input.MarshalJSON()
+		data, err := json.Marshal(test.bytes)
 		require.NoError(t, err)
-		require.Equal(t, test.output, string(data))
+		require.Equal(t, test.json, string(data))
+	}
+
+	// json -> bytes
+	for _, test := range tests {
+		restored := Bytes{0x12, 0x34, 0x56}
+		require.NoError(t, json.Unmarshal([]byte(test.json), &restored))
+		require.Equal(t, test.bytes, restored)
 	}
 }
 
