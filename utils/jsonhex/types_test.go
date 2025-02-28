@@ -12,7 +12,7 @@ func TestBytes_JsonEncoding_MapsToProperEncodingAndCanBeDecoded(t *testing.T) {
 		bytes Bytes
 		json  string
 	}{
-		{nil, `"null"`},
+		{nil, `null`},
 		{[]byte{}, `"0x"`},
 		{[]byte{0x1a}, `"0x1a"`},
 		{[]byte{0x01, 0x2a, 0xbc}, `"0x012abc"`},
@@ -37,7 +37,7 @@ func TestBytes_UnmarshalJSON_ValidHexString_DoesNotProduceError(t *testing.T) {
 	var h Bytes
 	data := []byte(`"0x012abc"`)
 	require.NoError(t, h.UnmarshalJSON(data))
-	data = []byte(`"null"`)
+	data = []byte(`null`)
 	require.NoError(t, h.UnmarshalJSON(data))
 	data = []byte(`"0x12abc"`)
 	require.NoError(t, h.UnmarshalJSON(data))
@@ -58,7 +58,7 @@ func TestBytes_String_IsCorrectlyProduced(t *testing.T) {
 	h := Bytes([]byte{0x01, 0x2a, 0xbc})
 	require.Equal(t, `"0x012abc"`, h.String())
 	h = nil
-	require.Equal(t, `"null"`, h.String())
+	require.Equal(t, `null`, h.String())
 }
 
 func TestBytes_CanBeJSONEncodedAndDecoded(t *testing.T) {

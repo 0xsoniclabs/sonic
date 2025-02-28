@@ -100,7 +100,7 @@ func TestBitSet_InvalidUnmarshalJSON(t *testing.T) {
 	require.Error(err)
 }
 
-func TestBitSet_EmptySet_CanBeMarshalledAndUnmarshalled(t *testing.T) {
+func TestBitSet_EmptySet_CanBeMarshalledAndUnmarshaled(t *testing.T) {
 	require := require.New(t)
 
 	var b BitSet[uint8]
