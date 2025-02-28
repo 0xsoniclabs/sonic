@@ -66,8 +66,12 @@ func TestSetCodeTransaction(t *testing.T) {
 			testAuthorizationFromNonExistingAccount(t, net)
 		})
 
-		t.Run("Delegations can be transitive", func(t *testing.T) {
-			testTransitiveDelegations(t, net)
+		t.Run("Delegations cannot be transitive", func(t *testing.T) {
+			testNoDelegateToDelegated(t, net)
+		})
+
+		t.Run("Delegations can trigger chains of calls", func(t *testing.T) {
+			testChainOfCalls(t, net)
 		})
 
 	})
@@ -700,8 +704,91 @@ func testAuthorizationFromNonExistingAccount(t *testing.T, net *IntegrationTestN
 	require.Equal(t, expectedCode, code, "code in account is expected to be delegation designation")
 }
 
-// testTransitiveDelegations checks that delegations can used over transitive calls between contracts.
-func testTransitiveDelegations(t *testing.T, net *IntegrationTestNet) {
+// testNoDelegateToDelegated checks that delegations cannot be transitive
+// The EIP-7702 specification does not allow for transitive delegations:
+// > In case a delegation designator points to another designator, creating a
+// > potential  chain or loop of designators, clients must retrieve only the
+// > first code and then stop following the designator chain.
+func testNoDelegateToDelegated(t *testing.T, net *IntegrationTestNet) {
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	chainId, err := client.ChainID(context.Background())
+	require.NoError(t, err, "failed to get chain ID")
+
+	sponsor := makeAccountWithBalance(t, net, 1e18)
+	account1 := makeAccountWithBalance(t, net, 0)
+	account2 := makeAccountWithBalance(t, net, 0)
+
+	// deploy the batch counterContract
+	_, deployReceipt, err := DeployContract(net, counter.DeployCounter)
+	require.NoError(t, err)
+	require.Equal(t, types.ReceiptStatusSuccessful, deployReceipt.Status)
+	counterContractAddress := deployReceipt.ContractAddress
+
+	sponsorNonce, err := client.NonceAt(context.Background(), sponsor.Address(), nil)
+	require.NoError(t, err, "failed to get nonce for account", sponsor.Address())
+	account1Nonce, err := client.NonceAt(context.Background(), account1.Address(), nil)
+	require.NoError(t, err, "failed to get nonce for account", account1.Address())
+	account2Nonce, err := client.NonceAt(context.Background(), account2.Address(), nil)
+	require.NoError(t, err, "failed to get nonce for account", account2.Address())
+
+	// auth1 delegates to account2
+	auth1, err := types.SignSetCode(account1.PrivateKey, types.SetCodeAuthorization{
+		ChainID: *uint256.MustFromBig(chainId),
+		Address: account2.Address(),
+		Nonce:   account1Nonce,
+	})
+	require.NoError(t, err, "failed to sign SetCode authorization")
+
+	// auth2 delegates to the counterContract
+	auth2, err := types.SignSetCode(account2.PrivateKey, types.SetCodeAuthorization{
+		ChainID: *uint256.MustFromBig(chainId),
+		Address: counterContractAddress,
+		Nonce:   account2Nonce,
+	})
+	require.NoError(t, err, "failed to sign SetCode authorization")
+	authorizations := []types.SetCodeAuthorization{auth1, auth2}
+
+	// Set delegator designator to both accounts
+	tx, err := types.SignTx(
+		types.NewTx(&types.SetCodeTx{
+			ChainID:   uint256.MustFromBig(chainId),
+			Nonce:     sponsorNonce,
+			To:        sponsor.Address(),
+			Gas:       500_000,
+			GasFeeCap: uint256.NewInt(10e10),
+			AuthList:  authorizations,
+		}),
+		types.NewPragueSigner(chainId),
+		sponsor.PrivateKey,
+	)
+	require.NoError(t, err, "failed to sign transaction")
+	receipt, err := net.Run(tx)
+	require.NoError(t, err)
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+
+	// use "mounted" contract in account1 to call the method.
+	// this reduces confusion about correctness of the test, when it
+	// fails because of ABI issues
+	counterInAccount1, err := counter.NewCounter(account1.Address(), client)
+	require.NoError(t, err)
+	receipt, err = net.Apply(counterInAccount1.IncrementCounter)
+	require.NoError(t, err)
+	assert.Equal(t, types.ReceiptStatusFailed, receipt.Status)
+
+	// account2 has direct delegation, must succeed
+	counterInAccount2, err := counter.NewCounter(account2.Address(), client)
+	require.NoError(t, err)
+	receipt, err = net.Apply(counterInAccount2.IncrementCounter)
+	require.NoError(t, err)
+	assert.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+}
+
+// testChainOfCalls checks that delegations can used over transitive calls between contracts.
+func testChainOfCalls(t *testing.T, net *IntegrationTestNet) {
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
