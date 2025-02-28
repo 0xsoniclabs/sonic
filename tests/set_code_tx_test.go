@@ -8,6 +8,7 @@ import (
 	"github.com/0xsoniclabs/sonic/tests/contracts/batch"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
 	"github.com/0xsoniclabs/sonic/tests/contracts/privilege_deescalation"
+	"github.com/0xsoniclabs/sonic/tests/contracts/transitive_call"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -63,6 +64,10 @@ func TestSetCodeTransaction(t *testing.T) {
 
 		t.Run("Authorization can be issued from a non existing account", func(t *testing.T) {
 			testAuthorizationFromNonExistingAccount(t, net)
+		})
+
+		t.Run("Delegations can be transitive", func(t *testing.T) {
+			testTransitiveDelegations(t, net)
 		})
 
 	})
@@ -693,6 +698,104 @@ func testAuthorizationFromNonExistingAccount(t *testing.T, net *IntegrationTestN
 	require.NoError(t, err)
 	expectedCode := append([]byte{0xef, 0x01, 0x00}, common.Address{42}.Bytes()...)
 	require.Equal(t, expectedCode, code, "code in account is expected to be delegation designation")
+}
+
+// testTransitiveDelegations checks that delegations can used over transitive calls between contracts.
+func testTransitiveDelegations(t *testing.T, net *IntegrationTestNet) {
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	chainId, err := client.ChainID(context.Background())
+	require.NoError(t, err, "failed to get chain ID")
+
+	sponsor := makeAccountWithBalance(t, net, 1e18) // < Pays for the transaction gas, originates the call-chain
+	account1 := makeAccountWithBalance(t, net, 0)
+	account2 := makeAccountWithBalance(t, net, 0)
+
+	// deploy the batch contract
+	contract, deployReceipt, err := DeployContract(net, transitive_call.DeployTransitiveCall)
+	require.NoError(t, err)
+	require.Equal(t, types.ReceiptStatusSuccessful, deployReceipt.Status)
+	transitiveContractAddress := deployReceipt.ContractAddress
+
+	sponsorNonce, err := client.NonceAt(context.Background(), sponsor.Address(), nil)
+	require.NoError(t, err, "failed to get nonce for account", sponsor.Address())
+	account1Nonce, err := client.NonceAt(context.Background(), account1.Address(), nil)
+	require.NoError(t, err, "failed to get nonce for account", account1.Address())
+	account2Nonce, err := client.NonceAt(context.Background(), account2.Address(), nil)
+	require.NoError(t, err, "failed to get nonce for account", account2.Address())
+
+	// both accounts delegate to the transitive contract
+	auth1, err := types.SignSetCode(account1.PrivateKey, types.SetCodeAuthorization{
+		ChainID: *uint256.MustFromBig(chainId),
+		Address: transitiveContractAddress,
+		Nonce:   account1Nonce,
+	})
+	require.NoError(t, err, "failed to sign SetCode authorization")
+
+	auth2, err := types.SignSetCode(account2.PrivateKey, types.SetCodeAuthorization{
+		ChainID: *uint256.MustFromBig(chainId),
+		Address: transitiveContractAddress,
+		Nonce:   account2Nonce,
+	})
+	require.NoError(t, err, "failed to sign SetCode authorization")
+	authorizations := []types.SetCodeAuthorization{auth1, auth2}
+
+	// calldata is used to fill the arguments passed to the contract call.
+	// id defines a list of addresses to call, one after the other
+	// value from the original transaction is carried with the call
+	callData := getCallData(t, net, func(opts *bind.TransactOpts) (*types.Transaction, error) {
+		return contract.TransitiveCall(opts, []common.Address{
+			account1.Address(), // does one call to itself
+			account2.Address(), // calls account2
+		})
+	})
+
+	// The following transaction initiates a call Chain: account1 -> account1 -> account2
+	// all paid by sponsor
+	tx, err := types.SignTx(
+		types.NewTx(&types.SetCodeTx{
+			ChainID:   uint256.MustFromBig(chainId),
+			Nonce:     sponsorNonce,
+			To:        account1.Address(),
+			Gas:       500_000,
+			GasFeeCap: uint256.NewInt(10e10),
+			AuthList:  authorizations,
+			Data:      callData,
+			Value:     uint256.NewInt(1234), // < will be sent through the call chain
+		}),
+		types.NewPragueSigner(chainId),
+		sponsor.PrivateKey,
+	)
+	require.NoError(t, err, "failed to sign transaction")
+
+	receipt, err := net.Run(tx)
+	require.NoError(t, err)
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+
+	// Check balance has flown correctly
+	balance, err := client.BalanceAt(context.Background(), account1.Address(), nil)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(0), balance.Uint64())
+
+	balance, err = client.BalanceAt(context.Background(), account2.Address(), nil)
+	require.NoError(t, err)
+	assert.Equal(t, big.NewInt(1234), balance)
+
+	// Check the number of contract invocations on each account (via local storage)
+	contractInAccount1, err := transitive_call.NewTransitiveCall(account1.Address(), client)
+	require.NoError(t, err)
+	count, err := contractInAccount1.GetCount(nil)
+	require.NoError(t, err)
+	assert.Equal(t, big.NewInt(2), count)
+
+	contractInAccount2, err := transitive_call.NewTransitiveCall(account2.Address(), client)
+	require.NoError(t, err)
+	count, err = contractInAccount2.GetCount(nil)
+	require.NoError(t, err)
+	assert.Equal(t, big.NewInt(1), count)
 }
 
 // makeEip7702Transaction creates a SetCode transaction
