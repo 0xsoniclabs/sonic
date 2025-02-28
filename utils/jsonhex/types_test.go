@@ -59,6 +59,8 @@ func TestBytes_String_IsCorrectlyProduced(t *testing.T) {
 	require.Equal(t, `"0x012abc"`, h.String())
 	h = nil
 	require.Equal(t, `null`, h.String())
+	h = []byte{}
+	require.Equal(t, `""`, h.String())
 }
 
 func TestBytes_CanBeJSONEncodedAndDecoded(t *testing.T) {

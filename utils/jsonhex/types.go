@@ -27,6 +27,10 @@ func (h *Bytes) UnmarshalJSON(data []byte) error {
 		*h = nil
 		return nil
 	}
+	if s == `""` {
+		h = &Bytes{}
+		return nil
+	}
 	if !strings.HasPrefix(s, "0x") {
 		return fmt.Errorf("invalid hex string %s", s)
 	}
@@ -46,6 +50,9 @@ func (h *Bytes) UnmarshalJSON(data []byte) error {
 func (h Bytes) String() string {
 	if h == nil {
 		return `null`
+	}
+	if len(h) == 0 {
+		return `""`
 	}
 	return fmt.Sprintf(`"0x%x"`, []byte(h))
 }
