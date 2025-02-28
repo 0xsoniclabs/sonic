@@ -351,48 +351,58 @@ func testInvalidAuthorizationsAreIgnored(t *testing.T, net *IntegrationTestNet) 
 
 	// list invalid authorizations
 	wrongAuthorizations := map[string]struct {
-		makeAuthorization func(nonce uint64) types.SetCodeAuthorization
+		makeAuthorization func(authority *Account, nonce uint64) (types.SetCodeAuthorization, error)
 	}{
 		"authorization nonce too low": {
-			makeAuthorization: func(nonce uint64) types.SetCodeAuthorization {
-				return types.SetCodeAuthorization{
+			makeAuthorization: func(authority *Account, nonce uint64) (types.SetCodeAuthorization, error) {
+				return types.SignSetCode(NewAccount().PrivateKey, types.SetCodeAuthorization{
 					ChainID: *uint256.MustFromBig(chainId),
 					Address: common.Address{42},
 					// for self-sponsored transactions,
 					// the correct nonce would be current nonce + 1
 					Nonce: nonce,
-				}
+				})
 			},
 		},
 		"authorization nonce too high": {
-			makeAuthorization: func(nonce uint64) types.SetCodeAuthorization {
-				return types.SetCodeAuthorization{
+			makeAuthorization: func(authority *Account, nonce uint64) (types.SetCodeAuthorization, error) {
+				return types.SignSetCode(NewAccount().PrivateKey, types.SetCodeAuthorization{
 					ChainID: *uint256.MustFromBig(chainId),
 					Address: common.Address{42},
 					// for self-sponsored transactions,
 					// the correct nonce would be current nonce + 1
 					Nonce: nonce + 2,
-				}
+				})
 			},
 		},
 		"wrong chain id": {
-			makeAuthorization: func(nonce uint64) types.SetCodeAuthorization {
-				return types.SetCodeAuthorization{
+			makeAuthorization: func(authority *Account, nonce uint64) (types.SetCodeAuthorization, error) {
+				return types.SignSetCode(NewAccount().PrivateKey, types.SetCodeAuthorization{
 					ChainID: *uint256.NewInt(0xDeffec8),
 					Address: common.Address{42},
 					Nonce:   nonce + 1,
-				}
+				})
+			},
+		},
+		"invalid signature": {
+			makeAuthorization: func(authority *Account, nonce uint64) (types.SetCodeAuthorization, error) {
+				return types.SetCodeAuthorization{
+					ChainID: *uint256.MustFromBig(chainId),
+					Address: common.Address{42},
+					Nonce:   nonce + 1,
+					// signature defaulted
+				}, nil
 			},
 		},
 	}
 
 	// for each of the invalid authorization, the following scenarios are tested:
 	scenarios := map[string]struct {
-		makeAuthorizations func(wrong types.SetCodeAuthorization, nonce uint64) []types.SetCodeAuthorization
+		makeAuthorizations func(wrong types.SetCodeAuthorization, _ types.SetCodeAuthorization) []types.SetCodeAuthorization
 		check              func(t *testing.T, codes []byte)
 	}{
 		"single wrong authorization": {
-			makeAuthorizations: func(wrong types.SetCodeAuthorization, _ uint64) []types.SetCodeAuthorization {
+			makeAuthorizations: func(wrong types.SetCodeAuthorization, _ types.SetCodeAuthorization) []types.SetCodeAuthorization {
 				return []types.SetCodeAuthorization{wrong}
 			},
 			check: func(t *testing.T, code []byte) {
@@ -400,15 +410,8 @@ func testInvalidAuthorizationsAreIgnored(t *testing.T, net *IntegrationTestNet) 
 			},
 		},
 		"before correct authorization": {
-			makeAuthorizations: func(wrong types.SetCodeAuthorization, nonce uint64) []types.SetCodeAuthorization {
-				return []types.SetCodeAuthorization{
-					wrong,
-					types.SetCodeAuthorization{
-						ChainID: *uint256.MustFromBig(chainId),
-						Address: common.Address{42},
-						Nonce:   nonce + 1,
-					},
-				}
+			makeAuthorizations: func(wrong types.SetCodeAuthorization, valid types.SetCodeAuthorization) []types.SetCodeAuthorization {
+				return []types.SetCodeAuthorization{wrong, valid}
 			},
 			check: func(t *testing.T, code []byte) {
 				expectedCode := append([]byte{0xef, 0x01, 0x00}, common.Address{42}.Bytes()...)
@@ -416,15 +419,8 @@ func testInvalidAuthorizationsAreIgnored(t *testing.T, net *IntegrationTestNet) 
 			},
 		},
 		"after correct authorization": {
-			makeAuthorizations: func(wrong types.SetCodeAuthorization, nonce uint64) []types.SetCodeAuthorization {
-				return []types.SetCodeAuthorization{
-					types.SetCodeAuthorization{
-						ChainID: *uint256.MustFromBig(chainId),
-						Address: common.Address{42},
-						Nonce:   nonce + 1,
-					},
-					wrong,
-				}
+			makeAuthorizations: func(wrong types.SetCodeAuthorization, valid types.SetCodeAuthorization) []types.SetCodeAuthorization {
+				return []types.SetCodeAuthorization{valid, wrong}
 			},
 			check: func(t *testing.T, code []byte) {
 				expectedCode := append([]byte{0xef, 0x01, 0x00}, common.Address{42}.Bytes()...)
@@ -443,16 +439,19 @@ func testInvalidAuthorizationsAreIgnored(t *testing.T, net *IntegrationTestNet) 
 					nonce, err := client.NonceAt(context.Background(), account.Address(), nil)
 					require.NoError(t, err, "failed to get nonce for account", account.Address())
 
-					wrongAuthorization := test.makeAuthorization(nonce)
+					wrongAuthorization, err := test.makeAuthorization(account, nonce)
 					require.NoError(t, err, "failed to sign SetCode authorization")
-					authorizations := scenario.makeAuthorizations(wrongAuthorization, nonce)
 
-					signedAuthorizations := make([]types.SetCodeAuthorization, 0, len(authorizations))
-					for _, auth := range authorizations {
-						signed, err := types.SignSetCode(account.PrivateKey, auth)
-						require.NoError(t, err, "failed to sign SetCode authorization")
-						signedAuthorizations = append(signedAuthorizations, signed)
-					}
+					// correct authorization
+					validAuthorization, err := types.SignSetCode(account.PrivateKey,
+						types.SetCodeAuthorization{
+							ChainID: *uint256.MustFromBig(chainId),
+							Address: common.Address{42},
+							Nonce:   nonce + 1,
+						})
+					require.NoError(t, err, "failed to sign SetCode authorization")
+
+					authorizations := scenario.makeAuthorizations(wrongAuthorization, validAuthorization)
 
 					tx, err := types.SignTx(
 						types.NewTx(&types.SetCodeTx{
@@ -461,7 +460,7 @@ func testInvalidAuthorizationsAreIgnored(t *testing.T, net *IntegrationTestNet) 
 							To:        account.Address(),
 							Gas:       150_000,
 							GasFeeCap: uint256.NewInt(10e10),
-							AuthList:  signedAuthorizations,
+							AuthList:  authorizations,
 						}),
 						types.NewPragueSigner(chainId),
 						account.PrivateKey,
