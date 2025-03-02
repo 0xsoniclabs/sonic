@@ -13,7 +13,7 @@ import (
 	"github.com/0xsoniclabs/consensus/inter/dag/tdag"
 	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/0xsoniclabs/consensus/utils/cachescale"
-	"github.com/0xsoniclabs/consensus/utils/datasemaphore"
+	"github.com/0xsoniclabs/sonic/utils/datasemaphore"
 )
 
 func TestProcessor(t *testing.T) {

@@ -8,8 +8,8 @@ import (
 	"github.com/0xsoniclabs/consensus/hash"
 	"github.com/0xsoniclabs/consensus/inter/dag"
 	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/utils/datasemaphore"
 	"github.com/0xsoniclabs/sonic/gossip/dagordering"
+	"github.com/0xsoniclabs/sonic/utils/datasemaphore"
 	"github.com/0xsoniclabs/sonic/utils/workers"
 )
 
