@@ -9,7 +9,7 @@ import (
 	"github.com/0xsoniclabs/consensus/inter/dag"
 	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/0xsoniclabs/consensus/inter/pos"
-	"github.com/0xsoniclabs/consensus/utils/wmedian"
+	"github.com/0xsoniclabs/sonic/utils/wmedian"
 )
 
 type DagIndexQ interface {
