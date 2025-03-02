@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/consensus/utils/wlru"
-	"github.com/0xsoniclabs/consensus/utils/workers"
+	"github.com/0xsoniclabs/sonic/utils/workers"
 )
 
 /*
