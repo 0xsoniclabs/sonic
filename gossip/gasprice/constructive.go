@@ -19,7 +19,7 @@ package gasprice
 import (
 	"math/big"
 
-	"github.com/0xsoniclabs/consensus/utils/piecefunc"
+	"github.com/0xsoniclabs/sonic/utils/piecefunc"
 )
 
 func (gpo *Oracle) maxTotalGasPower() *big.Int {

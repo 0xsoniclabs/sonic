@@ -17,7 +17,7 @@
 package emitter
 
 import (
-	"github.com/0xsoniclabs/consensus/utils/piecefunc"
+	"github.com/0xsoniclabs/sonic/utils/piecefunc"
 )
 
 var (
