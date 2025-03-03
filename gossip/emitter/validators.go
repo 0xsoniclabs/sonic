@@ -21,7 +21,7 @@ import (
 
 	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/0xsoniclabs/consensus/inter/pos"
-	"github.com/0xsoniclabs/consensus/utils/piecefunc"
+	"github.com/0xsoniclabs/sonic/utils/piecefunc"
 )
 
 const (
