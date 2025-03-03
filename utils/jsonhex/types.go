@@ -23,12 +23,8 @@ func (h *Bytes) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	if s == "null" {
+	if s == `` {
 		*h = nil
-		return nil
-	}
-	if s == `""` {
-		h = &Bytes{}
 		return nil
 	}
 	if !strings.HasPrefix(s, "0x") {
@@ -52,7 +48,7 @@ func (h Bytes) String() string {
 		return `null`
 	}
 	if len(h) == 0 {
-		return `""`
+		return `"0x"`
 	}
 	return fmt.Sprintf(`"0x%x"`, []byte(h))
 }

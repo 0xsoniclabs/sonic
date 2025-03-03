@@ -78,7 +78,7 @@ func TestBitSet_MarshalJSON(t *testing.T) {
 	b.Add(1)
 	b.Add(12)
 	b.Add(123)
-	data, err := b.MarshalJSON()
+	data, err := json.Marshal(b)
 	require.NoError(err)
 	require.Equal(`"0x02100000000000000000000000000008"`, string(data))
 }
@@ -87,7 +87,7 @@ func TestBitSet_UnmarshalJSON(t *testing.T) {
 	require := require.New(t)
 
 	var b BitSet[uint8]
-	err := b.UnmarshalJSON([]byte(`"0x02100000000000000000000000000008"`))
+	err := json.Unmarshal([]byte(`"0x02100000000000000000000000000008"`), &b)
 	require.NoError(err)
 	require.Equal([]uint8{1, 12, 123}, b.Entries())
 }
@@ -96,7 +96,7 @@ func TestBitSet_InvalidUnmarshalJSON(t *testing.T) {
 	require := require.New(t)
 
 	var b BitSet[uint8]
-	err := b.UnmarshalJSON([]byte(`"g"`))
+	err := json.Unmarshal([]byte(`"g"`), &b)
 	require.Error(err)
 }
 
