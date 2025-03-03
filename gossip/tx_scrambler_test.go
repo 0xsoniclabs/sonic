@@ -4,13 +4,14 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
-	"github.com/0xsoniclabs/sonic/gossip/emitter/mock"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/golang/mock/gomock"
 	"math/big"
 	"math/rand/v2"
 	"slices"
 	"testing"
+
+	"github.com/0xsoniclabs/sonic/gossip/emitter/mock"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/golang/mock/gomock"
 
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -662,7 +663,340 @@ func TestGetExecutionOrder_ScramblerIsUsedOnlyForSonic(t *testing.T) {
 			}
 		})
 	}
+}
 
+func TestTxScrambler_AuthorizationsAreRespectedInOrdering(t *testing.T) {
+	entries := []ScramblerEntry{
+		&dummyScramblerEntry{
+			hash:   common.Hash{1},
+			sender: common.Address{1},
+			nonce:  1,
+			authorizations: []Authorization{
+				{
+					address: common.Address{5},
+					nonce:   11,
+				},
+			},
+		},
+		&dummyScramblerEntry{
+			hash:   common.Hash{2},
+			sender: common.Address{2},
+			nonce:  2,
+			authorizations: []Authorization{
+				{
+					address: common.Address{5},
+					nonce:   10,
+				},
+			},
+		},
+	}
+
+	original := slices.Clone(entries)
+	sortTransactionsWithSameSender(entries)
+	if entries[0] != original[1] || entries[1] != original[0] {
+		t.Error("unexpected order")
+	}
+}
+
+func TestTxScrambler_SetCodeAuthorizationTransaction(t *testing.T) {
+	address := common.Address{10}
+	tests := map[string]struct {
+		first  ScramblerEntry
+		second ScramblerEntry
+		third  ScramblerEntry
+	}{
+		"authorization before transactions": {
+			first: &dummyScramblerEntry{
+				hash:   common.Hash{7},
+				sender: common.Address{100},
+				nonce:  10,
+				authorizations: []Authorization{
+					{
+						address: address,
+						nonce:   1,
+					},
+				},
+			},
+			second: &dummyScramblerEntry{
+				hash:   common.Hash{6},
+				sender: address,
+				nonce:  10,
+			},
+			third: &dummyScramblerEntry{
+				hash:   common.Hash{5},
+				sender: address,
+				nonce:  20,
+			},
+		},
+		"authorization between transactions": {
+			first: &dummyScramblerEntry{
+				hash:   common.Hash{5},
+				sender: address,
+				nonce:  10,
+			},
+			third: &dummyScramblerEntry{
+				hash:   common.Hash{6},
+				sender: address,
+				nonce:  30,
+			},
+			second: &dummyScramblerEntry{
+				hash:   common.Hash{7},
+				sender: common.Address{100},
+				nonce:  100,
+				authorizations: []Authorization{
+					{
+						address: address,
+						nonce:   20,
+					},
+				},
+			},
+		},
+		"authorization after transactions": {
+			first: &dummyScramblerEntry{
+				hash:   common.Hash{7},
+				sender: address,
+				nonce:  5,
+			},
+			second: &dummyScramblerEntry{
+				hash:   common.Hash{6},
+				sender: address,
+				nonce:  6,
+			},
+			third: &dummyScramblerEntry{
+				hash:   common.Hash{5},
+				sender: common.Address{1},
+				nonce:  1,
+				authorizations: []Authorization{
+					{
+						address: address,
+						nonce:   7,
+					},
+				},
+			},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			// add entries in reverse order
+			entries := []ScramblerEntry{test.third, test.second, test.first}
+
+			sortTransactionsWithSameSender(entries)
+			if got, want := len(entries), 3; got != want {
+				t.Fatalf("unexpected number of transactions, got: %d, want: %d", got, want)
+			}
+			if entries[0] != test.first || entries[1] != test.second || entries[2] != test.third {
+				t.Errorf("unexpected order")
+			}
+		})
+	}
+}
+
+func TestTxScrambler_TransitiveDependenciesAreRespected(t *testing.T) {
+	address1 := common.Address{10}
+	address2 := common.Address{20}
+	address3 := common.Address{30}
+	transactions := []ScramblerEntry{
+		&dummyScramblerEntry{
+			hash:   common.Hash{7},
+			sender: address1,
+			nonce:  30,
+		},
+		&dummyScramblerEntry{
+			hash:   common.Hash{6},
+			sender: address2,
+			nonce:  20,
+			authorizations: []Authorization{
+				{
+					address: address1,
+					nonce:   20,
+				},
+			},
+		},
+		&dummyScramblerEntry{
+			hash:   common.Hash{5},
+			sender: address3,
+			nonce:  110,
+			authorizations: []Authorization{
+				{
+					address: address2,
+					nonce:   10,
+				},
+			},
+		},
+		&dummyScramblerEntry{
+			hash:   common.Hash{4},
+			sender: address3,
+			nonce:  100,
+		},
+	}
+
+	entries := slices.Clone(transactions)
+	sortTransactionsWithSameSender(entries)
+	if got, want := len(entries), 4; got != want {
+		t.Fatalf("unexpected number of transactions, got: %d, want: %d", got, want)
+	}
+	if entries[0] != transactions[3] || entries[1] != transactions[2] ||
+		entries[2] != transactions[1] || entries[3] != transactions[0] {
+		t.Errorf("unexpected order %v, %v, %v, %v", entries[0].Hash(), entries[1].Hash(), entries[2].Hash(), entries[3].Hash())
+	}
+}
+
+func TestTxScrambler_SortTransactionsWithSameSenderDoesNotReorderOtherTransactions(t *testing.T) {
+	address1 := common.Address{10}
+	address2 := common.Address{20}
+	transactions := []ScramblerEntry{
+		&dummyScramblerEntry{
+			hash:   common.Hash{7},
+			sender: address1,
+			nonce:  20,
+		},
+		&dummyScramblerEntry{
+			hash:   common.Hash{6},
+			sender: address2,
+			nonce:  20,
+		},
+		&dummyScramblerEntry{
+			hash:   common.Hash{5},
+			sender: address1,
+			nonce:  10,
+		},
+		&dummyScramblerEntry{
+			hash:   common.Hash{4},
+			sender: address2,
+			nonce:  10,
+		},
+	}
+
+	entries := slices.Clone(transactions)
+	sortTransactionsWithSameSender(entries)
+	if got, want := len(entries), 4; got != want {
+		t.Fatalf("unexpected number of transactions, got: %d, want: %d", got, want)
+	}
+	if entries[0] != transactions[2] || entries[1] != transactions[3] || entries[2] != transactions[0] || entries[3] != transactions[1] {
+		t.Errorf("unexpected order")
+	}
+}
+
+func TestTopSort_CycleBetweenTransactionAndAuthorization(t *testing.T) {
+	entries := []ScramblerEntry{
+		&dummyScramblerEntry{
+			hash:   common.Hash{1},
+			sender: common.Address{1},
+			nonce:  11,
+			authorizations: []Authorization{
+				{
+					address: common.Address{5},
+					nonce:   10,
+				},
+			},
+		},
+		&dummyScramblerEntry{
+			hash:   common.Hash{2},
+			sender: common.Address{1},
+			nonce:  10,
+			authorizations: []Authorization{
+				{
+					address: common.Address{5},
+					nonce:   11,
+				},
+			},
+		},
+	}
+
+	original := slices.Clone(entries)
+	sortTransactionsWithSameSender(entries)
+	if len(entries) != 2 {
+		t.Fatalf("unexpected number of transactions, got: %d, want: %d", len(entries), 2)
+	}
+	if entries[0] != original[0] || entries[1] != original[1] {
+		t.Error("unexpected order")
+	}
+}
+
+func TestTopSort_CyclicDependencyWithSortableSubset(t *testing.T) {
+	// T1 -> T2 -> T3 -> T4
+	// T4 -> T3
+	// ensure T1 and T2 are still sorted correctly
+	entries := []ScramblerEntry{
+		&dummyScramblerEntry{
+			hash:   common.Hash{1},
+			sender: common.Address{1},
+			nonce:  10,
+			authorizations: []Authorization{
+				{
+					address: common.Address{100},
+					nonce:   10,
+				},
+			},
+		},
+		&dummyScramblerEntry{
+			hash:   common.Hash{2},
+			sender: common.Address{2},
+			nonce:  10,
+			authorizations: []Authorization{
+				{
+					address: common.Address{100},
+					nonce:   11,
+				},
+				{
+					address: common.Address{101},
+					nonce:   10,
+				},
+			},
+		},
+		&dummyScramblerEntry{
+			hash:   common.Hash{3},
+			sender: common.Address{3},
+			nonce:  10,
+			authorizations: []Authorization{
+				{
+					address: common.Address{101},
+					nonce:   11,
+				},
+				{
+					address: common.Address{102},
+					nonce:   10,
+				},
+				{
+					address: common.Address{103},
+					nonce:   11,
+				},
+			},
+		},
+		&dummyScramblerEntry{
+			hash:   common.Hash{4},
+			sender: common.Address{4},
+			nonce:  10,
+			authorizations: []Authorization{
+				{
+					address: common.Address{102},
+					nonce:   11,
+				},
+				{
+					address: common.Address{103},
+					nonce:   10,
+				},
+			},
+		},
+	}
+
+	original := slices.Clone(entries)
+	shuffleEntries(entries)
+	sortTransactionsWithSameSender(entries)
+	if len(entries) != 4 {
+		t.Fatalf("unexpected number of transactions, got: %d, want: %d", len(entries), 4)
+	}
+	first := true
+	for _, entry := range entries {
+		if entry == original[0] {
+			first = false
+			continue
+		}
+		if first && entry == original[1] {
+			t.Error("unexpected order")
+		}
+	}
 }
 
 func compareFunc(a ScramblerEntry, b ScramblerEntry) int {
@@ -738,10 +1072,11 @@ func createRandomSalt() [32]byte {
 
 // dummyScramblerEntry represents scramblery entry data used for testing
 type dummyScramblerEntry struct {
-	hash     common.Hash    // transaction hash
-	sender   common.Address // sender of the transaction
-	nonce    uint64         // transaction nonce
-	gasPrice *big.Int       // transaction gasPrice
+	hash           common.Hash    // transaction hash
+	sender         common.Address // sender of the transaction
+	nonce          uint64         // transaction nonce
+	gasPrice       *big.Int       // transaction gasPrice
+	authorizations []Authorization
 }
 
 func (s *dummyScramblerEntry) Hash() common.Hash {
@@ -758,4 +1093,8 @@ func (s *dummyScramblerEntry) Nonce() uint64 {
 
 func (s *dummyScramblerEntry) GasPrice() *big.Int {
 	return s.gasPrice
+}
+
+func (s *dummyScramblerEntry) Authorizations() []Authorization {
+	return s.authorizations
 }
