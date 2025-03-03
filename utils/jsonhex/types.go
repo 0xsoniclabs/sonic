@@ -18,15 +18,17 @@ func (h Bytes) MarshalJSON() ([]byte, error) {
 // UnmarshalJSON parses a JSON hex string into a Bytes.
 // The input string must have a "0x" prefix or be "null".
 func (h *Bytes) UnmarshalJSON(data []byte) error {
-	var s string
-	err := json.Unmarshal(data, &s)
+	var rawData json.RawMessage
+	err := json.Unmarshal(data, &rawData)
+	s := string(rawData)
 	if err != nil {
 		return err
 	}
-	if s == `` {
+	if s == `null` {
 		*h = nil
 		return nil
 	}
+	s = strings.Trim(s, `\"`)
 	if !strings.HasPrefix(s, "0x") {
 		return fmt.Errorf("invalid hex string %s", s)
 	}

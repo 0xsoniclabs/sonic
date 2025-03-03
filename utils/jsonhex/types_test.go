@@ -45,13 +45,16 @@ func TestBytes_UnmarshalJSON_ValidHexString_DoesNotProduceError(t *testing.T) {
 }
 
 func TestBytes_UnmarshalJSON_InvalidHexString_ProducesError(t *testing.T) {
-	var h Bytes
-	data := []byte(`"0xg"`)
-	err := json.Unmarshal(data, &h)
-	require.Error(t, err)
-	data = []byte(`"01"`)
-	err = json.Unmarshal(data, &h)
-	require.Error(t, err)
+	tests := []string{
+		`"0xg"`,
+		`"01"`,
+		`""`,
+	}
+	for _, data := range tests {
+		var h Bytes
+		err := json.Unmarshal([]byte(data), &h)
+		require.Error(t, err)
+	}
 }
 
 func TestBytes_String_IsCorrectlyProduced(t *testing.T) {
