@@ -25,7 +25,7 @@ func TestGasPrice_SuggestedGasPricesApproximateActualBaseFees(t *testing.T) {
 		require.NoError(err)
 
 		// new block
-		receipt, err := net.EndowAccount(common.Address{42}, 100)
+		receipt, err := net.EndowAccount(common.Address{42}, big.NewInt(100))
 		require.NoError(err)
 
 		lastBlock, err := client.BlockByNumber(ctxt, receipt.BlockNumber)
@@ -55,11 +55,11 @@ func TestGasPrice_UnderpricedTransactionsAreRejected(t *testing.T) {
 	chainId, err := client.ChainID(context.Background())
 	require.NoError(err, "failed to get chain ID::")
 
-	nonce, err := client.NonceAt(context.Background(), net.validator.Address(), nil)
+	nonce, err := client.NonceAt(context.Background(), net.GetAccount().Address(), nil)
 	require.NoError(err, "failed to get nonce:")
 
 	factory := &txFactory{
-		senderKey: net.validator.PrivateKey,
+		senderKey: net.GetAccount().PrivateKey,
 		chainId:   chainId,
 	}
 

@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"crypto/rand"
 	"math/big"
 	"testing"
 
@@ -79,7 +80,7 @@ func TestIntegrationTestNet_CanEndowAccountsWithTokens(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		increment := int64(1000)
 
-		receipt, err := net.EndowAccount(address, increment)
+		receipt, err := net.EndowAccount(address, big.NewInt(increment))
 		if err != nil {
 			t.Fatalf("Failed to endow account 1: %v", err)
 		}
@@ -136,4 +137,27 @@ func TestIntegrationTestNet_CanInteractWithContract(t *testing.T) {
 	if receipt.Status != types.ReceiptStatusSuccessful {
 		t.Errorf("Contract deployment failed: %v", receipt)
 	}
+}
+
+func TestIntegrationTestNet_CanSpawnParallelSessions(t *testing.T) {
+	net, err := StartIntegrationTestNet(t.TempDir())
+	if err != nil {
+		t.Fatalf("Failed to start the fake network: %v", err)
+	}
+	defer net.Stop()
+
+	t.Run("SpawnSession", func(t *testing.T) {
+		t.Parallel()
+		session := net.SpawnSession(t)
+
+		var address common.Address
+		_, _ = rand.Read(address[:])
+		receipt, err := session.EndowAccount(address, big.NewInt(1e18))
+		if err != nil {
+			t.Fatalf("Failed to endow account: %v", err)
+		}
+		if receipt.Status != types.ReceiptStatusSuccessful {
+			t.Errorf("Endowing account failed: %v", receipt)
+		}
+	})
 }

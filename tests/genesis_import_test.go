@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"math/big"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -18,7 +19,7 @@ func TestGenesis_NetworkCanCreateNewBlocksAfterExportImport(t *testing.T) {
 
 	// Produce a few blocks on the network.
 	for range numBlocks {
-		_, err := net.EndowAccount(common.Address{42}, 100)
+		_, err := net.EndowAccount(common.Address{42}, big.NewInt(100))
 		require.NoError(err, "failed to endow account")
 	}
 
@@ -53,7 +54,7 @@ func TestGenesis_NetworkCanCreateNewBlocksAfterExportImport(t *testing.T) {
 
 	// Produce a few blocks on the network
 	for range numBlocks {
-		_, err := net.EndowAccount(common.Address{42}, 100)
+		_, err := net.EndowAccount(common.Address{42}, big.NewInt(100))
 		require.NoError(err, "failed to endow account")
 	}
 

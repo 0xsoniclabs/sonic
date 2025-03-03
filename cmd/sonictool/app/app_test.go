@@ -15,6 +15,7 @@ import (
 	ogenesis "github.com/0xsoniclabs/sonic/opera/genesis"
 	"github.com/0xsoniclabs/sonic/opera/genesisstore"
 	"github.com/0xsoniclabs/sonic/tests"
+	futils "github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/sonic/utils/caution"
 	"github.com/0xsoniclabs/sonic/utils/prompt"
 	"github.com/ethereum/go-ethereum/common"
@@ -360,7 +361,7 @@ func createAccount(t *testing.T, net *tests.IntegrationTestNet) {
 	_, err := rand.Read(addr[:])
 	require.NoError(t, err)
 
-	receipt, err := net.EndowAccount(common.Address{42}, 100)
+	receipt, err := net.EndowAccount(common.Address{42}, futils.ToFtm(100))
 	require.NoError(t, err)
 	require.Equal(
 		t,
