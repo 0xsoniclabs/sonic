@@ -1889,7 +1889,10 @@ type txLookup struct {
 	lock    sync.RWMutex
 	locals  map[common.Hash]*types.Transaction
 	remotes map[common.Hash]*types.Transaction
-	auths   map[common.Address][]common.Hash // All accounts with a pooled authorization
+
+	// All accounts with a pooled authorization mapped to list of hashes of
+	// transactions including those authorizations
+	auths map[common.Address][]common.Hash
 }
 
 // newTxLookup returns a new txLookup structure.
