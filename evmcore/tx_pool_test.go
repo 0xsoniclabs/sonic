@@ -635,11 +635,20 @@ func TestSetCodeTransactions(t *testing.T) {
 				if err := pool.addRemoteSync(pricedTransaction(0, 100000, big.NewInt(10), keyA)); err != nil {
 					t.Fatalf("failed to replace with remote transaction: %v", err)
 				}
+
+				// Sonic note: this has been introduced to avoid leaking the delegation of A
+				// into the other tests.
+				delete(db.codeHashes, addrA)
 			},
 			pending: 1,
 		},
 		"allow setcode tx with pending authority tx": {
 			test: func(t *testing.T, pool *TxPool) {
+				// Sonic note: both transactions are accepted:
+				// - first one is trivial.
+				// - second one has a conflicting authorization, but the authority account
+				//   does not have any transaction in-flight. Restrictions only apply
+				//   to the transaction sender, when it has a delegation installed or pending.
 
 				// Send two transactions where the first has no conflicting delegations and
 				// the second should be allowed despite conflicting with the authorities in 1.
@@ -654,14 +663,16 @@ func TestSetCodeTransactions(t *testing.T) {
 		},
 		"allow one tx from pooled delegation": {
 			test: func(t *testing.T, pool *TxPool) {
-				// Verify C cannot originate another transaction when it has a pooled delegation.
+				// Sonic note: comments in this test have been rewritten for clarity
+
+				// Account C has a delegation pending and one in-flight transaction.
 				if err := pool.addRemoteSync(setCodeTx(0, keyA, []unsignedAuth{{0, keyC}})); err != nil {
 					t.Fatalf("failed to add with remote setcode transaction: %v", err)
 				}
 				if err := pool.addRemoteSync(pricedTransaction(0, 100000, big.NewInt(1), keyC)); err != nil {
 					t.Fatalf("failed to add with pending delegation: %v", err)
 				}
-				// Also check gapped transaction is rejected.
+				// no more transactions from C are allowed
 				if err := pool.addRemoteSync(pricedTransaction(1, 100000, big.NewInt(1), keyC)); !errors.Is(err, ErrInflightTxLimitReached) {
 					t.Fatalf("error mismatch: want %v, have %v", ErrInflightTxLimitReached, err)
 				}
@@ -698,6 +709,13 @@ func TestSetCodeTransactions(t *testing.T) {
 		},
 		"allow tx from replaced self sponsor authority": {
 			test: func(t *testing.T, pool *TxPool) {
+
+				// Sonic note:  This test has been modified respect to the geth original.
+				// The intention is to prove that a transaction containing a self-sponsored authorization
+				// can be replaced, restoring the expected behavior of the pool.
+				// The changes tune the nonces to avoid further replacements and
+				// test the one in-flight restriction not being in place after replacement.
+
 				if err := pool.addRemoteSync(pricedSetCodeTx(0, 250000, uint256.NewInt(10), uint256.NewInt(3), keyA, []unsignedAuth{{0, keyA}})); err != nil {
 					t.Fatalf("failed to add with remote setcode transaction: %v", err)
 				}
@@ -705,7 +723,7 @@ func TestSetCodeTransactions(t *testing.T) {
 					t.Fatalf("failed to add with remote setcode transaction: %v", err)
 				}
 				// Now send a regular tx from keyA.
-				if err := pool.addRemoteSync(pricedTransaction(0, 100000, big.NewInt(1000), keyA)); err != nil {
+				if err := pool.addRemoteSync(pricedTransaction(1, 100000, big.NewInt(1000), keyA)); err != nil {
 					t.Fatalf("failed to replace with remote transaction: %v", err)
 				}
 				// Make sure we can still send from keyB.
@@ -713,7 +731,7 @@ func TestSetCodeTransactions(t *testing.T) {
 					t.Fatalf("failed to replace with remote transaction: %v", err)
 				}
 			},
-			pending: 2,
+			pending: 3,
 		},
 		"track multiple conflicting delegations": {
 			test: func(t *testing.T, pool *TxPool) {
