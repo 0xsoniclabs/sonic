@@ -19,6 +19,7 @@ package evmcore
 import (
 	"errors"
 	"fmt"
+	"iter"
 	"math"
 	"math/big"
 	"math/rand/v2"
@@ -1898,6 +1899,37 @@ func newTxLookup() *txLookup {
 		remotes: make(map[common.Hash]*types.Transaction),
 		auths:   make(map[common.Address][]common.Hash),
 	}
+}
+
+// txs returns an interator over all transactions in the lookup.
+// this method is named after geth's txs member, which contains
+// all transactions in the pool. Sonic implementation makes a difference
+// between local and remote transactions.
+func (t *txLookup) txs() iter.Seq2[common.Hash, *types.Transaction] {
+	return func(yield func(common.Hash, *types.Transaction) bool) {
+		for h, tx := range t.locals {
+			if !yield(h, tx) {
+				return
+			}
+		}
+		for h, tx := range t.remotes {
+			if !yield(h, tx) {
+				return
+			}
+		}
+	}
+}
+
+// getTx returns a transaction if it exists in the lookup, or nil if not found.
+// This method is added to mimic geth's behavior, where all transactions are
+// stored in a single map. Sonic implementation makes a difference
+// between local and remote transactions.
+func (t *txLookup) getTx(hash common.Hash) (*types.Transaction, bool) {
+	tx, ok := t.locals[hash]
+	if !ok {
+		tx, ok = t.remotes[hash]
+	}
+	return tx, ok
 }
 
 // Range calls f on each key and value present in the map. The callback passed
