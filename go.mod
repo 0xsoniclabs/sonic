@@ -5,7 +5,7 @@ go 1.24.0
 require (
 	github.com/0xsoniclabs/carmen/go v0.0.0-20250113102336-97f8b8616eff
 	github.com/0xsoniclabs/consensus v0.0.0-20250225125107-df2b1fd116dd
-    github.com/0xsoniclabs/tosca v0.0.0-20250221124739-3aac4e7427dc
+	github.com/0xsoniclabs/tosca v0.0.0-20250221124739-3aac4e7427dc
 	github.com/cespare/cp v1.1.1
 	github.com/davecgh/go-spew v1.1.1
 	github.com/deckarep/golang-set v1.8.0
@@ -132,3 +132,5 @@ require (
 replace github.com/ethereum/go-ethereum => github.com/0xsoniclabs/go-ethereum v0.0.0-20250210213022-86eca3554809
 
 replace github.com/dvyukov/go-fuzz => github.com/guzenok/go-fuzz v0.0.0-20210201043429-a8e90a2a4f88
+
+replace github.com/0xsoniclabs/consensus v0.0.0-20250225125107-df2b1fd116dd => ../sonic-consensus
