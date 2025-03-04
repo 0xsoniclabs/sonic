@@ -15,6 +15,8 @@ import (
 	reflect "reflect"
 	time "time"
 
+	hash "github.com/0xsoniclabs/consensus/hash"
+	idx "github.com/0xsoniclabs/consensus/inter/idx"
 	evmcore "github.com/0xsoniclabs/sonic/evmcore"
 	inter "github.com/0xsoniclabs/sonic/inter"
 	iblockproc "github.com/0xsoniclabs/sonic/inter/iblockproc"
