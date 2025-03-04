@@ -2,6 +2,8 @@ package ethapi
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"encoding/json"
 	"fmt"
 	"math/big"
 	reflect "reflect"
@@ -398,4 +400,236 @@ func setExpectedStateCalls(mockState *state.MockStateDB) {
 	mockState.EXPECT().EndTransaction().AnyTimes()
 	mockState.EXPECT().GetLogs(any, any).AnyTimes()
 	mockState.EXPECT().TxIndex().AnyTimes()
+}
+
+func TestTransactionJSONSerialization(t *testing.T) {
+
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	authorization := types.SetCodeAuthorization{
+		ChainID: *uint256.NewInt(17),
+		Address: common.Address{42},
+		Nonce:   5,
+		V:       1,
+		R:       *uint256.NewInt(2),
+		S:       *uint256.NewInt(3),
+	}
+
+	tests := map[string]any{
+		"legacy": &types.LegacyTx{
+			Nonce:    0,
+			To:       &common.Address{1},
+			Gas:      1e6,
+			GasPrice: big.NewInt(500e9),
+		},
+		"accessList empty list": &types.AccessListTx{
+			Nonce:    1,
+			To:       &common.Address{1},
+			Gas:      1e6,
+			GasPrice: big.NewInt(500e9),
+		},
+		"accessList": &types.AccessListTx{
+			Nonce:    1,
+			To:       &common.Address{1},
+			Gas:      1e6,
+			GasPrice: big.NewInt(500e9),
+			AccessList: types.AccessList{
+				{Address: common.Address{1}, StorageKeys: []common.Hash{{0x01}}},
+			},
+		},
+		"dynamicFee": &types.DynamicFeeTx{
+			Nonce:     2,
+			To:        &common.Address{1},
+			Gas:       1e6,
+			GasFeeCap: big.NewInt(500e9),
+			GasTipCap: big.NewInt(500e9),
+		},
+		"blob empty list": &types.BlobTx{
+			Nonce:      3,
+			Gas:        1e6,
+			GasFeeCap:  uint256.NewInt(500e9),
+			BlobFeeCap: uint256.NewInt(500e9),
+		},
+		"blob": &types.BlobTx{
+			Nonce:      3,
+			Gas:        1e6,
+			GasFeeCap:  uint256.NewInt(500e9),
+			BlobFeeCap: uint256.NewInt(500e9),
+			BlobHashes: []common.Hash{{0x01}},
+		},
+		"setCode empty list": &types.SetCodeTx{
+			Nonce: 4,
+			To:    common.Address{42},
+			Gas:   1e6,
+		},
+		"setCode": &types.SetCodeTx{
+			Nonce: 4,
+			To:    common.Address{42},
+			Gas:   1e6,
+			AuthList: []types.SetCodeAuthorization{
+				authorization,
+			},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			signed := signTransaction(t, big.NewInt(1), test, key)
+
+			blockHash := common.Hash{1, 2, 3, 4}
+			blockNumber := uint64(4321)
+			index := uint64(0)
+			baseFee := big.NewInt(1234)
+
+			rpcTx := newRPCTransaction(signed, blockHash, blockNumber, index, baseFee)
+			require.Equal(t, signed.Hash(), rpcTransactionToTransaction(t, rpcTx).Hash())
+
+			encoded, err := json.Marshal(rpcTx)
+			require.NoError(t, err)
+
+			decoded := new(RPCTransaction)
+			err = json.Unmarshal(encoded, decoded)
+			require.NoError(t, err)
+			require.Equal(t, blockHash, *decoded.BlockHash)
+			require.Equal(t, int64(blockNumber), decoded.BlockNumber.ToInt().Int64())
+			require.Equal(t, index, uint64(*decoded.TransactionIndex))
+			require.Equal(t, signed.Hash(), rpcTransactionToTransaction(t, decoded).Hash())
+		})
+	}
+}
+
+func signTransaction(
+	t *testing.T,
+	chainId *big.Int,
+	payload any,
+	from *ecdsa.PrivateKey,
+) *types.Transaction {
+	t.Helper()
+
+	switch tx := payload.(type) {
+	case *types.LegacyTx:
+		res, err := types.SignTx(
+			types.NewTx(tx),
+			types.NewEIP155Signer(chainId),
+			from)
+		require.NoError(t, err)
+		return res
+	case *types.AccessListTx:
+		res, err := types.SignTx(
+			types.NewTx(tx),
+			types.NewEIP2930Signer(chainId),
+			from)
+		require.NoError(t, err)
+		return res
+	case *types.DynamicFeeTx:
+		res, err := types.SignTx(
+			types.NewTx(tx),
+			types.NewLondonSigner(chainId),
+			from)
+		require.NoError(t, err)
+		return res
+	case *types.BlobTx:
+		res, err := types.SignTx(
+			types.NewTx(tx),
+			types.NewCancunSigner(chainId),
+			from)
+		require.NoError(t, err)
+		return res
+	case *types.SetCodeTx:
+		res, err := types.SignTx(
+			types.NewTx(tx),
+			types.NewPragueSigner(chainId),
+			from)
+		require.NoError(t, err)
+		return res
+	default:
+		t.Error("unsupported transaction type ", reflect.TypeOf(payload))
+		return nil
+	}
+}
+
+func rpcTransactionToTransaction(t *testing.T, tx *RPCTransaction) *types.Transaction {
+	t.Helper()
+
+	switch tx.Type {
+	case types.LegacyTxType:
+		return types.NewTx(&types.LegacyTx{
+			Nonce:    uint64(tx.Nonce),
+			Gas:      uint64(tx.Gas),
+			GasPrice: tx.GasPrice.ToInt(),
+			To:       tx.To,
+			Value:    tx.Value.ToInt(),
+			Data:     tx.Input,
+			V:        tx.V.ToInt(),
+			R:        tx.R.ToInt(),
+			S:        tx.S.ToInt(),
+		})
+	case types.AccessListTxType:
+		return types.NewTx(&types.AccessListTx{
+			ChainID:    tx.ChainID.ToInt(),
+			Nonce:      uint64(tx.Nonce),
+			Gas:        uint64(tx.Gas),
+			GasPrice:   tx.GasPrice.ToInt(),
+			To:         tx.To,
+			Value:      tx.Value.ToInt(),
+			Data:       tx.Input,
+			AccessList: *tx.Accesses,
+			V:          tx.V.ToInt(),
+			R:          tx.R.ToInt(),
+			S:          tx.S.ToInt(),
+		})
+	case types.DynamicFeeTxType:
+		return types.NewTx(&types.DynamicFeeTx{
+			ChainID:    tx.ChainID.ToInt(),
+			Nonce:      uint64(tx.Nonce),
+			Gas:        uint64(tx.Gas),
+			GasFeeCap:  tx.GasFeeCap.ToInt(),
+			GasTipCap:  tx.GasTipCap.ToInt(),
+			To:         tx.To,
+			Value:      tx.Value.ToInt(),
+			Data:       tx.Input,
+			AccessList: *tx.Accesses,
+			V:          tx.V.ToInt(),
+			R:          tx.R.ToInt(),
+			S:          tx.S.ToInt(),
+		})
+	case types.BlobTxType:
+		return types.NewTx(&types.BlobTx{
+			ChainID:    uint256.MustFromBig(tx.ChainID.ToInt()),
+			Nonce:      uint64(tx.Nonce),
+			Gas:        uint64(tx.Gas),
+			GasFeeCap:  uint256.MustFromBig(tx.GasFeeCap.ToInt()),
+			GasTipCap:  uint256.MustFromBig(tx.GasTipCap.ToInt()),
+			To:         *tx.To,
+			Value:      uint256.MustFromBig(tx.Value.ToInt()),
+			Data:       tx.Input,
+			AccessList: *tx.Accesses,
+			BlobFeeCap: uint256.MustFromBig(tx.MaxFeePerBlobGas.ToInt()),
+			BlobHashes: tx.BlobVersionedHashes,
+			V:          uint256.MustFromBig(tx.V.ToInt()),
+			R:          uint256.MustFromBig(tx.R.ToInt()),
+			S:          uint256.MustFromBig(tx.S.ToInt()),
+		})
+
+	case types.SetCodeTxType:
+		return types.NewTx(&types.SetCodeTx{
+			ChainID:    uint256.MustFromBig(tx.ChainID.ToInt()),
+			Nonce:      uint64(tx.Nonce),
+			Gas:        uint64(tx.Gas),
+			GasFeeCap:  uint256.MustFromBig(tx.GasFeeCap.ToInt()),
+			GasTipCap:  uint256.MustFromBig(tx.GasTipCap.ToInt()),
+			To:         *tx.To,
+			Value:      uint256.MustFromBig(tx.Value.ToInt()),
+			Data:       tx.Input,
+			AccessList: *tx.Accesses,
+			AuthList:   tx.AuthorizationList,
+			V:          uint256.MustFromBig(tx.V.ToInt()),
+			R:          uint256.MustFromBig(tx.R.ToInt()),
+			S:          uint256.MustFromBig(tx.S.ToInt()),
+		})
+	default:
+		t.Error("unsupported transaction type ", tx.Type)
+		return nil
+	}
 }
