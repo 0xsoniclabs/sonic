@@ -134,9 +134,9 @@ func TestBytes96_MarshalJSON(t *testing.T) {
 
 func TestBytes96_UnmarshalJSON_ShortHexString(t *testing.T) {
 	var s Bytes96
-	data := []byte(`0x1234567`)
+	data := []byte(`"0x1234567"`)
 	require.Error(t, json.Unmarshal(data, &s))
-	data = []byte(`0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef`)
+	data = []byte(`"0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"`)
 	require.Error(t, json.Unmarshal(data, &s))
 }
 
@@ -162,4 +162,10 @@ func TestBytes96_CanBeJsonEncodedAndDecoded(t *testing.T) {
 	err = json.Unmarshal(data, &s2)
 	require.NoError(t, err)
 	require.Equal(t, s, s2)
+}
+
+func TestBytes96_UnmarshalJSON_ReportsErrorForInvalidString(t *testing.T) {
+	var s Bytes96
+	data := []byte(`"0xg"`)
+	require.Error(t, json.Unmarshal(data, &s))
 }

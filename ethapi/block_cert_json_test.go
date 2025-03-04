@@ -2,6 +2,8 @@ package ethapi
 
 import (
 	"encoding/json"
+	"fmt"
+	"regexp"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/scc"
@@ -89,4 +91,82 @@ func TestBlockCertificateToJson(t *testing.T) {
 	require.Equal(common.Hash{0x2}, json.StateRoot)
 	require.Equal(bitset, json.Signers)
 	require.Equal(sig, json.Signature)
+}
+
+func TestBlockCertificate_JsonEncodingMatchesExpectedFormat(t *testing.T) {
+	certs := map[string]cert.BlockCertificate{
+		"empty":     cert.BlockCertificate{},
+		"non-empty": makeTestBlockCert(t),
+	}
+
+	hashRegex := `"0x[0-9a-f]{64}"`
+	regexes := map[string]string{
+		"chainId":   `"chainId":\d+`,
+		"number":    `"number":\d+`,
+		"hash":      `"hash":` + hashRegex,
+		"stateRoot": `"stateRoot":` + hashRegex,
+		"signers":   `"signers":("0x[0-9a-f]+"|null)`,
+		"signature": `"signature":"0x[0-9a-f]{192}"`,
+	}
+
+	for name, cert := range certs {
+		t.Run(name, func(t *testing.T) {
+			for name, regex := range regexes {
+				t.Run(name, func(t *testing.T) {
+					require := require.New(t)
+					data, err := json.Marshal(toJsonBlockCertificate(cert))
+					require.NoError(err)
+					require.Regexp(regexp.MustCompile(regex), string(data))
+				})
+			}
+		})
+	}
+}
+
+func TestBlockCertificate_EmptyCertificate_ContainsExpectedValues(t *testing.T) {
+	require := require.New(t)
+	emptyCert := cert.BlockCertificate{}
+	data, err := json.Marshal(toJsonBlockCertificate(emptyCert))
+	require.NoError(err)
+	require.Contains(string(data), `"chainId":0`)
+	require.Contains(string(data), `"number":0`)
+	require.Contains(string(data), fmt.Sprintf(`"hash":"%v"`, common.Hash{}))
+	require.Contains(string(data), fmt.Sprintf(`"stateRoot":"%v"`, common.Hash{}))
+	require.Contains(string(data), `"signers":null`)
+	require.Contains(string(data), fmt.Sprintf(`"signature":"%v"`, bls.Signature{}))
+}
+
+func TestBlockCertificate_NonEmptyCertificate_ContainsExpectedValues(t *testing.T) {
+	require := require.New(t)
+	testCert := makeTestBlockCert(t)
+	agg := testCert.Signature()
+	signers, err := json.Marshal(agg.Signers())
+	require.NoError(err)
+
+	data, err := json.Marshal(toJsonBlockCertificate(testCert))
+	require.NoError(err)
+
+	require.Contains(string(data), `"chainId":123`)
+	require.Contains(string(data), `"number":456`)
+	require.Contains(string(data), fmt.Sprintf(`"hash":"%v"`, common.Hash{0x1}))
+	require.Contains(string(data), fmt.Sprintf(`"stateRoot":"%v"`, common.Hash{0x2}))
+	require.Contains(string(data), fmt.Sprintf(`"signers":%v`, string(signers)))
+	require.Contains(string(data), fmt.Sprintf(`"signature":"%v"`, agg.Signature()))
+}
+
+func makeTestBlockCert(t *testing.T) cert.BlockCertificate {
+	key := bls.NewPrivateKey()
+	sig := key.GetProofOfPossession()
+	bitset := cert.BitSet[scc.MemberId]{}
+	agg := cert.NewAggregatedSignature[cert.BlockStatement](
+		bitset,
+		sig,
+	)
+	err := agg.Add(1, cert.Signature[cert.BlockStatement]{Signature: key.Sign([]byte{1})})
+	require.NoError(t, err)
+
+	return cert.NewCertificateWithSignature(
+		cert.NewBlockStatement(123, 456, common.Hash{0x1}, common.Hash{0x2}),
+		agg,
+	)
 }
