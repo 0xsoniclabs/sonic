@@ -132,5 +132,3 @@ require (
 replace github.com/ethereum/go-ethereum => github.com/0xsoniclabs/go-ethereum v0.0.0-20250210213022-86eca3554809
 
 replace github.com/dvyukov/go-fuzz => github.com/guzenok/go-fuzz v0.0.0-20210201043429-a8e90a2a4f88
-
-replace github.com/0xsoniclabs/consensus v0.0.0-20250225125107-df2b1fd116dd => ../sonic-consensus
