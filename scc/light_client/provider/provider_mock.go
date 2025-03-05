@@ -9,6 +9,7 @@ import (
 
 	scc "github.com/0xsoniclabs/sonic/scc"
 	cert "github.com/0xsoniclabs/sonic/scc/cert"
+	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
 	gomock "github.com/golang/mock/gomock"
 )
 
@@ -36,7 +37,7 @@ func (m *MockProvider) EXPECT() *MockProviderMockRecorder {
 }
 
 // GetBlockCertificate mocks base method.
-func (m *MockProvider) GetBlockCertificate(first scc.Period, maxResults uint64) (cert.BlockCertificate, error) {
+func (m *MockProvider) GetBlockCertificate(first idx.Block, maxResults uint64) (cert.BlockCertificate, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetBlockCertificate", first, maxResults)
 	ret0, _ := ret[0].(cert.BlockCertificate)
@@ -50,17 +51,17 @@ func (mr *MockProviderMockRecorder) GetBlockCertificate(first, maxResults interf
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBlockCertificate", reflect.TypeOf((*MockProvider)(nil).GetBlockCertificate), first, maxResults)
 }
 
-// GetCommitteeCertificate mocks base method.
-func (m *MockProvider) GetCommitteeCertificate(first scc.Period, maxResults uint64) (cert.CommitteeCertificate, error) {
+// GetCommitteeCertificates mocks base method.
+func (m *MockProvider) GetCommitteeCertificates(first scc.Period, maxResults uint64) ([]cert.CommitteeCertificate, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetCommitteeCertificate", first, maxResults)
-	ret0, _ := ret[0].(cert.CommitteeCertificate)
+	ret := m.ctrl.Call(m, "GetCommitteeCertificates", first, maxResults)
+	ret0, _ := ret[0].([]cert.CommitteeCertificate)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetCommitteeCertificate indicates an expected call of GetCommitteeCertificate.
-func (mr *MockProviderMockRecorder) GetCommitteeCertificate(first, maxResults interface{}) *gomock.Call {
+// GetCommitteeCertificates indicates an expected call of GetCommitteeCertificates.
+func (mr *MockProviderMockRecorder) GetCommitteeCertificates(first, maxResults interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCommitteeCertificate", reflect.TypeOf((*MockProvider)(nil).GetCommitteeCertificate), first, maxResults)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCommitteeCertificates", reflect.TypeOf((*MockProvider)(nil).GetCommitteeCertificates), first, maxResults)
 }
