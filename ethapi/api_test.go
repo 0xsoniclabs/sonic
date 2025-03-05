@@ -416,7 +416,7 @@ func TestTransactionJSONSerialization(t *testing.T) {
 		S:       *uint256.NewInt(3),
 	}
 
-	tests := map[string]any{
+	tests := map[string]types.TxData{
 		"legacy": &types.LegacyTx{
 			Nonce:    0,
 			To:       &common.Address{1},
@@ -502,51 +502,16 @@ func TestTransactionJSONSerialization(t *testing.T) {
 func signTransaction(
 	t *testing.T,
 	chainId *big.Int,
-	payload any,
-	from *ecdsa.PrivateKey,
+	payload types.TxData,
+	key *ecdsa.PrivateKey,
 ) *types.Transaction {
 	t.Helper()
-
-	switch tx := payload.(type) {
-	case *types.LegacyTx:
-		res, err := types.SignTx(
-			types.NewTx(tx),
-			types.NewEIP155Signer(chainId),
-			from)
-		require.NoError(t, err)
-		return res
-	case *types.AccessListTx:
-		res, err := types.SignTx(
-			types.NewTx(tx),
-			types.NewEIP2930Signer(chainId),
-			from)
-		require.NoError(t, err)
-		return res
-	case *types.DynamicFeeTx:
-		res, err := types.SignTx(
-			types.NewTx(tx),
-			types.NewLondonSigner(chainId),
-			from)
-		require.NoError(t, err)
-		return res
-	case *types.BlobTx:
-		res, err := types.SignTx(
-			types.NewTx(tx),
-			types.NewCancunSigner(chainId),
-			from)
-		require.NoError(t, err)
-		return res
-	case *types.SetCodeTx:
-		res, err := types.SignTx(
-			types.NewTx(tx),
-			types.NewPragueSigner(chainId),
-			from)
-		require.NoError(t, err)
-		return res
-	default:
-		t.Error("unsupported transaction type ", reflect.TypeOf(payload))
-		return nil
-	}
+	res, err := types.SignTx(
+		types.NewTx(payload),
+		types.NewPragueSigner(chainId),
+		key)
+	require.NoError(t, err)
+	return res
 }
 
 func rpcTransactionToTransaction(t *testing.T, tx *RPCTransaction) *types.Transaction {

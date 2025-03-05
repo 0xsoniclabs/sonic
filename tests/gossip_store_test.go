@@ -3,7 +3,6 @@ package tests
 import (
 	"context"
 	"math/big"
-	"reflect"
 	"slices"
 	"testing"
 
@@ -28,6 +27,7 @@ func TestGossipStore_CanTransactionsBeRetrievedFromBlocksAfterRestart(t *testing
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
+	defer client.Close()
 
 	chainId, err := client.ChainID(context.Background())
 	require.NoError(t, err)
@@ -135,49 +135,14 @@ func TestGossipStore_CanTransactionsBeRetrievedFromBlocksAfterRestart(t *testing
 func signTransaction(
 	t *testing.T,
 	chainId *big.Int,
-	payload any,
+	payload types.TxData,
 	from *Account,
 ) *types.Transaction {
 	t.Helper()
-
-	switch tx := payload.(type) {
-	case *types.LegacyTx:
-		res, err := types.SignTx(
-			types.NewTx(tx),
-			types.NewEIP155Signer(chainId),
-			from.PrivateKey)
-		require.NoError(t, err)
-		return res
-	case *types.AccessListTx:
-		res, err := types.SignTx(
-			types.NewTx(tx),
-			types.NewEIP2930Signer(chainId),
-			from.PrivateKey)
-		require.NoError(t, err)
-		return res
-	case *types.DynamicFeeTx:
-		res, err := types.SignTx(
-			types.NewTx(tx),
-			types.NewLondonSigner(chainId),
-			from.PrivateKey)
-		require.NoError(t, err)
-		return res
-	case *types.BlobTx:
-		res, err := types.SignTx(
-			types.NewTx(tx),
-			types.NewCancunSigner(chainId),
-			from.PrivateKey)
-		require.NoError(t, err)
-		return res
-	case *types.SetCodeTx:
-		res, err := types.SignTx(
-			types.NewTx(tx),
-			types.NewPragueSigner(chainId),
-			from.PrivateKey)
-		require.NoError(t, err)
-		return res
-	default:
-		t.Error("unsupported transaction type ", reflect.TypeOf(payload))
-		return nil
-	}
+	res, err := types.SignTx(
+		types.NewTx(payload),
+		types.NewPragueSigner(chainId),
+		from.PrivateKey)
+	require.NoError(t, err)
+	return res
 }
