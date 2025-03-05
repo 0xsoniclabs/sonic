@@ -140,7 +140,7 @@ func TestTransactionOrder(t *testing.T) {
 
 // makeAccountWithMaxBalance creates a new account and endows it with math.MaxInt64 balance.
 // Creating the account this way allows to get access to the private key to sign transactions.
-func makeAccountWithMaxBalance(t *testing.T, net *IntegrationTestNet) *Account {
+func makeAccountWithMaxBalance(t *testing.T, net IntegrationTestNetSession) *Account {
 	t.Helper()
 	account := NewAccount()
 

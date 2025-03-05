@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"fmt"
 	"math/big"
 	"testing"
 
@@ -107,5 +108,23 @@ func TestIntegrationTestNet_CanInteractWithContract(t *testing.T) {
 	}
 	if receipt.Status != types.ReceiptStatusSuccessful {
 		t.Errorf("Contract deployment failed: %v", receipt)
+	}
+}
+
+func TestIntegrationTestNet_CanSpawnParallelSessions(t *testing.T) {
+	net, err := StartIntegrationTestNet(t.TempDir())
+	if err != nil {
+		t.Fatalf("Failed to start the fake network: %v", err)
+	}
+	t.Cleanup(func() { net.Stop() })
+
+	for i := range 15 {
+		t.Run(fmt.Sprint("SpawnSession", i), func(t *testing.T) {
+			t.Parallel()
+			session := net.SpawnSession(t)
+
+			receipt, err := session.EndowAccount(common.Address{0x42}, big.NewInt(1000))
+			checkTxExecution(t, receipt, err)
+		})
 	}
 }

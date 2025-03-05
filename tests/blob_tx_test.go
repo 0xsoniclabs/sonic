@@ -106,7 +106,7 @@ func createTestBlobTransaction(t *testing.T, ctxt *testContext, data ...[]byte) 
 	chainId, err := ctxt.client.ChainID(context.Background())
 	require.NoError(err, "failed to get chain ID::")
 
-	nonce, err := ctxt.client.NonceAt(context.Background(), ctxt.net.validator.Address(), nil)
+	nonce, err := ctxt.client.NonceAt(context.Background(), ctxt.net.GetAccount().Address(), nil)
 	require.NoError(err, "failed to get nonce:")
 
 	var sidecar *types.BlobTxSidecar
@@ -150,7 +150,7 @@ func createTestBlobTransaction(t *testing.T, ctxt *testContext, data ...[]byte) 
 		Sidecar:    sidecar,               // sidecar data in the transaction
 	})
 
-	return types.SignTx(tx, types.NewCancunSigner(chainId), ctxt.net.validator.PrivateKey)
+	return types.SignTx(tx, types.NewCancunSigner(chainId), ctxt.net.GetAccount().PrivateKey)
 }
 
 func createTestBlobTransactionWithNilSidecar(t *testing.T, ctxt *testContext) (*types.Transaction, error) {
@@ -159,7 +159,7 @@ func createTestBlobTransactionWithNilSidecar(t *testing.T, ctxt *testContext) (*
 	chainId, err := ctxt.client.ChainID(context.Background())
 	require.NoError(err, "failed to get chain ID::")
 
-	nonce, err := ctxt.client.NonceAt(context.Background(), ctxt.net.validator.Address(), nil)
+	nonce, err := ctxt.client.NonceAt(context.Background(), ctxt.net.GetAccount().Address(), nil)
 	require.NoError(err, "failed to get nonce:")
 
 	// Create and return transaction with the blob data and cryptographic proofs
@@ -176,7 +176,7 @@ func createTestBlobTransactionWithNilSidecar(t *testing.T, ctxt *testContext) (*
 		Sidecar:    nil,                   // sidecar data in the transaction
 	})
 
-	return types.SignTx(tx, types.NewCancunSigner(chainId), ctxt.net.validator.PrivateKey)
+	return types.SignTx(tx, types.NewCancunSigner(chainId), ctxt.net.GetAccount().PrivateKey)
 }
 
 func checkBlocksSanity(t *testing.T, client *ethclient.Client) {

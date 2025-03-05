@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -32,8 +34,40 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	geth_crypto "github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
+
+// IntegrationTestNetSession a collection of methods to run tests against the
+// integration test network.
+// It provides the methods to launch transactions and queries against the network.
+// Additionally, it provides the methods to endow accounts with funds.
+type IntegrationTestNetSession interface {
+
+	// EndowAccount sends a requested amount of tokens to the given account. This is
+	// mainly intended to provide funds to accounts for testing purposes.
+	EndowAccount(address common.Address, value *big.Int) (*types.Receipt, error)
+
+	// Run sends the given transaction to the network and waits for it to be processed.
+	// The resulting receipt is returned.
+	Run(tx *types.Transaction) (*types.Receipt, error)
+	// GetReceipt waits for the receipt of the given transaction hash to be available.
+	GetReceipt(txHash common.Hash) (*types.Receipt, error)
+
+	// GetTransactOptions provides transaction options to be used to send a transaction
+	// from the given account.
+	GetTransactOptions(account *Account) (*bind.TransactOpts, error)
+	// Apply sends a transaction to the network using the session account.
+	// and waits for the transaction to be processed. The resulting receipt is returned.
+	Apply(issue func(*bind.TransactOpts) (*types.Transaction, error)) (*types.Receipt, error)
+
+	// GetAccount returns the default account of the session. This account is used
+	// to sign transactions and pay for gas when using the apply method.
+	GetAccount() *Account
+	// GetClient provides raw access to a fresh connection to the network.
+	// The resulting client must be closed after use.
+	GetClient() (*ethclient.Client, error)
+}
 
 // IntegrationTestNet is a in-process test network for integration tests. When
 // started, it runs a full Sonic node maintaining a chain within the process
@@ -58,9 +92,10 @@ import (
 type IntegrationTestNet struct {
 	directory            string
 	done                 <-chan struct{}
-	validator            Account
-	httpPort             int
 	extraClientArguments []string
+
+	sessionsMutex sync.Mutex
+	Session
 }
 
 // StartIntegrationTestNet starts a single-node test network for integration tests.
@@ -204,8 +239,10 @@ func startIntegrationTestNet(directory string, sonicToolArguments []string, extr
 	// start the fakenet sonic node
 	result := &IntegrationTestNet{
 		directory:            directory,
-		validator:            Account{evmcore.FakeKey(1)},
 		extraClientArguments: extraClientArguments,
+		Session: Session{
+			account: Account{evmcore.FakeKey(1)},
+		},
 	}
 
 	// initialize the data directory for the single node on the test network
@@ -364,154 +401,6 @@ func (n *IntegrationTestNet) Restart() error {
 	return n.start()
 }
 
-// EndowAccount sends a requested amount of tokens to the given account. This is
-// mainly intended to provide funds to accounts for testing purposes.
-func (n *IntegrationTestNet) EndowAccount(
-	address common.Address,
-	value *big.Int,
-) (*types.Receipt, error) {
-	client, err := n.GetClient()
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to the network: %w", err)
-	}
-	defer client.Close()
-
-	chainId, err := client.ChainID(context.Background())
-	if err != nil {
-		return nil, fmt.Errorf("failed to get chain ID: %w", err)
-	}
-
-	// The requested funds are moved from the validator account to the target account.
-	nonce, err := client.NonceAt(context.Background(), n.validator.Address(), nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get nonce: %w", err)
-	}
-
-	price, err := client.SuggestGasPrice(context.Background())
-	if err != nil {
-		return nil, fmt.Errorf("failed to get gas price: %w", err)
-	}
-
-	transaction, err := types.SignTx(types.NewTx(&types.AccessListTx{
-		ChainID:  chainId,
-		Gas:      21000,
-		GasPrice: price,
-		To:       &address,
-		Value:    value,
-		Nonce:    nonce,
-	}), types.NewLondonSigner(chainId), n.validator.PrivateKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign transaction: %w", err)
-	}
-	return n.Run(transaction)
-}
-
-// Run sends the given transaction to the network and waits for it to be processed.
-// The resulting receipt is returned. This function times out after 10 seconds.
-func (n *IntegrationTestNet) Run(tx *types.Transaction) (*types.Receipt, error) {
-	client, err := n.GetClient()
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to the Ethereum client: %w", err)
-	}
-	defer client.Close()
-	err = client.SendTransaction(context.Background(), tx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send transaction: %w", err)
-	}
-	return n.GetReceipt(tx.Hash())
-}
-
-// GetReceipt waits for the receipt of the given transaction hash to be available.
-// The function times out after 10 seconds.
-func (n *IntegrationTestNet) GetReceipt(txHash common.Hash) (*types.Receipt, error) {
-	client, err := n.GetClient()
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to the Ethereum client: %w", err)
-	}
-	defer client.Close()
-
-	// Wait for the response with some exponential backoff.
-	const maxDelay = 100 * time.Millisecond
-	now := time.Now()
-	delay := time.Millisecond
-	for time.Since(now) < 100*time.Second {
-		receipt, err := client.TransactionReceipt(context.Background(), txHash)
-		if errors.Is(err, ethereum.NotFound) {
-			time.Sleep(delay)
-			delay = 2 * delay
-			if delay > maxDelay {
-				delay = maxDelay
-			}
-			continue
-		}
-		if err != nil {
-			return nil, fmt.Errorf("failed to get transaction receipt: %w", err)
-		}
-		return receipt, nil
-	}
-	return nil, fmt.Errorf("failed to get transaction receipt: timeout")
-}
-
-// Apply sends a transaction to the network using the network's validator account
-// and waits for the transaction to be processed. The resulting receipt is returned.
-func (n *IntegrationTestNet) Apply(
-	issue func(*bind.TransactOpts) (*types.Transaction, error),
-) (*types.Receipt, error) {
-	txOpts, err := n.GetTransactOptions(&n.validator)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get transaction options: %w", err)
-	}
-	transaction, err := issue(txOpts)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create transaction: %w", err)
-	}
-	return n.GetReceipt(transaction.Hash())
-}
-
-// GetTransactOptions provides transaction options to be used to send a transaction
-// with the given account. The options include the chain ID, a suggested gas price,
-// the next free nonce of the given account, and a hard-coded gas limit of 1e6.
-// The main purpose of this function is to provide a convenient way to collect all
-// the necessary information required to create a transaction in one place.
-func (n *IntegrationTestNet) GetTransactOptions(account *Account) (*bind.TransactOpts, error) {
-	client, err := n.GetClient()
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to the Ethereum client: %w", err)
-	}
-	defer client.Close()
-
-	ctxt := context.Background()
-	chainId, err := client.ChainID(ctxt)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get chain ID: %w", err)
-	}
-
-	gasPrice, err := client.SuggestGasPrice(ctxt)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get gas price suggestion: %w", err)
-	}
-
-	nonce, err := client.NonceAt(ctxt, account.Address(), nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get nonce: %w", err)
-	}
-
-	txOpts, err := bind.NewKeyedTransactorWithChainID(account.PrivateKey, chainId)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create transaction options: %w", err)
-	}
-	txOpts.GasPrice = new(big.Int).Mul(gasPrice, big.NewInt(2))
-	txOpts.Nonce = big.NewInt(int64(nonce))
-	txOpts.GasLimit = 1e6
-	return txOpts, nil
-}
-
-// GetClient provides raw access to a fresh connection to the network.
-// The resulting client must be closed after use.
-func (n *IntegrationTestNet) GetClient() (*ethclient.Client, error) {
-	return ethclient.Dial(fmt.Sprintf("http://localhost:%d", n.httpPort))
-}
-
 // GetWebSocketClient provides raw access to a fresh connection to the network
 // using the WebSocket protocol. The resulting client must be closed after use.
 func (n *IntegrationTestNet) GetWebSocketClient() (*ethclient.Client, error) {
@@ -595,17 +484,58 @@ func (n *IntegrationTestNet) GetHeaders() ([]*types.Header, error) {
 	return headers, nil
 }
 
+// SpawnSession(t) creates a new test session on the network.
+// The session is backed by an account which will be used to sign and pay for
+// transactions. By using this function, multiple test sessions can be run in
+// parallel on the same network, without conflicting nonce issues, since the
+// accounts are isolated.
+//
+// A typical use case would look as follows:
+//
+//	net, err := StartIntegrationTestNet(t.TempDir())
+//	if err != nil {
+//	    ...
+//	}
+//	t.Cleanup(func(){net.Stop()})
+//	t.Run("test_case",, func(t *testing.T) {
+//			t.Parallel()
+//			session := net.SpawnSession(t)
+//	        < use session instead of net of the rest of the test >
+//	})
+func (n *IntegrationTestNet) SpawnSession(t *testing.T) IntegrationTestNetSession {
+	t.Helper()
+	n.sessionsMutex.Lock()
+	defer n.sessionsMutex.Unlock()
+
+	key, _ := geth_crypto.GenerateKey()
+	nextSessionAccount := Account{
+		PrivateKey: key,
+	}
+	receipt, err := n.EndowAccount(nextSessionAccount.Address(), new(big.Int).SetUint64(math.MaxUint64))
+	if err != nil {
+		t.Fatalf("Failed to endow account: %v", err)
+	}
+	if receipt.Status != types.ReceiptStatusSuccessful {
+		t.Fatalf("Failed to endow account: %v", receipt.Status)
+	}
+
+	return &Session{
+		account:  nextSessionAccount,
+		httpPort: n.httpPort,
+	}
+}
+
 // DeployContract is a utility function handling the deployment of a contract on the network.
 // The contract is deployed with by the network's validator account. The function returns the
 // deployed contract instance and the transaction receipt.
-func DeployContract[T any](n *IntegrationTestNet, deploy contractDeployer[T]) (*T, *types.Receipt, error) {
+func DeployContract[T any](n IntegrationTestNetSession, deploy contractDeployer[T]) (*T, *types.Receipt, error) {
 	client, err := n.GetClient()
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to connect to the Ethereum client: %w", err)
 	}
 	defer client.Close()
 
-	transactOptions, err := n.GetTransactOptions(&n.validator)
+	transactOptions, err := n.GetTransactOptions(n.GetAccount())
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get transaction options: %w", err)
 	}
@@ -624,3 +554,164 @@ func DeployContract[T any](n *IntegrationTestNet, deploy contractDeployer[T]) (*
 
 // contractDeployer is the type of the deployment functions generated by abigen.
 type contractDeployer[T any] func(*bind.TransactOpts, bind.ContractBackend) (common.Address, *types.Transaction, *T, error)
+
+// Session is a test session on the network. It is backed by an account which
+// will be used to sign and pay for transactions.
+// Its purpose is to isolate transaction issuing accounts, so that multiple test
+// sessions can be run in parallel on the same network without conflicting nonce issues.
+type Session struct {
+	account  Account
+	httpPort int
+}
+
+// EndowAccount sends a requested amount of tokens to the given account. This is
+// mainly intended to provide funds to accounts for testing purposes.
+func (s *Session) EndowAccount(
+	address common.Address,
+	value *big.Int,
+) (*types.Receipt, error) {
+	client, err := s.GetClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to the network: %w", err)
+	}
+	defer client.Close()
+
+	chainId, err := client.ChainID(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("failed to get chain ID: %w", err)
+	}
+
+	// The requested funds are moved from the validator account to the target account.
+	nonce, err := client.NonceAt(context.Background(), s.account.Address(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get nonce: %w", err)
+	}
+
+	price, err := client.SuggestGasPrice(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("failed to get gas price: %w", err)
+	}
+
+	transaction, err := types.SignTx(types.NewTx(&types.AccessListTx{
+		ChainID:  chainId,
+		Gas:      21000,
+		GasPrice: price,
+		To:       &address,
+		Value:    value,
+		Nonce:    nonce,
+	}), types.NewLondonSigner(chainId), s.account.PrivateKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign transaction: %w", err)
+	}
+	return s.Run(transaction)
+}
+
+// Run sends the given transaction to the network and waits for it to be processed.
+// The resulting receipt is returned. This function times out after 10 seconds.
+func (s *Session) Run(tx *types.Transaction) (*types.Receipt, error) {
+	client, err := s.GetClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to the Ethereum client: %w", err)
+	}
+	defer client.Close()
+	err = client.SendTransaction(context.Background(), tx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send transaction: %w", err)
+	}
+	return s.GetReceipt(tx.Hash())
+}
+
+// GetReceipt waits for the receipt of the given transaction hash to be available.
+// The function times out after 10 seconds.
+func (s *Session) GetReceipt(txHash common.Hash) (*types.Receipt, error) {
+	client, err := s.GetClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to the Ethereum client: %w", err)
+	}
+	defer client.Close()
+
+	// Wait for the response with some exponential backoff.
+	const maxDelay = 100 * time.Millisecond
+	now := time.Now()
+	delay := time.Millisecond
+	for time.Since(now) < 100*time.Second {
+		receipt, err := client.TransactionReceipt(context.Background(), txHash)
+		if errors.Is(err, ethereum.NotFound) {
+			time.Sleep(delay)
+			delay = 2 * delay
+			if delay > maxDelay {
+				delay = maxDelay
+			}
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to get transaction receipt: %w", err)
+		}
+		return receipt, nil
+	}
+	return nil, fmt.Errorf("failed to get transaction receipt: timeout")
+}
+
+// Apply sends a transaction to the network using the session account
+// and waits for the transaction to be processed. The resulting receipt is returned.
+func (s *Session) Apply(
+	issue func(*bind.TransactOpts) (*types.Transaction, error),
+) (*types.Receipt, error) {
+	txOpts, err := s.GetTransactOptions(&s.account)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get transaction options: %w", err)
+	}
+	transaction, err := issue(txOpts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create transaction: %w", err)
+	}
+	return s.GetReceipt(transaction.Hash())
+}
+
+// GetTransactOptions provides transaction options to be used to send a transaction
+// with the given account. The options include the chain ID, a suggested gas price,
+// the next free nonce of the given account, and a hard-coded gas limit of 1e6.
+// The main purpose of this function is to provide a convenient way to collect all
+// the necessary information required to create a transaction in one place.
+func (s *Session) GetTransactOptions(account *Account) (*bind.TransactOpts, error) {
+	client, err := s.GetClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to the Ethereum client: %w", err)
+	}
+	defer client.Close()
+
+	ctxt := context.Background()
+	chainId, err := client.ChainID(ctxt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get chain ID: %w", err)
+	}
+
+	gasPrice, err := client.SuggestGasPrice(ctxt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get gas price suggestion: %w", err)
+	}
+
+	nonce, err := client.NonceAt(ctxt, account.Address(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get nonce: %w", err)
+	}
+
+	txOpts, err := bind.NewKeyedTransactorWithChainID(account.PrivateKey, chainId)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create transaction options: %w", err)
+	}
+	txOpts.GasPrice = new(big.Int).Mul(gasPrice, big.NewInt(2))
+	txOpts.Nonce = big.NewInt(int64(nonce))
+	txOpts.GasLimit = 1e6
+	return txOpts, nil
+}
+
+func (s *Session) GetAccount() *Account {
+	return &s.account
+}
+
+// GetClient provides raw access to a fresh connection to the network.
+// The resulting client must be closed after use.
+func (s *Session) GetClient() (*ethclient.Client, error) {
+	return ethclient.Dial(fmt.Sprintf("http://localhost:%d", s.httpPort))
+}

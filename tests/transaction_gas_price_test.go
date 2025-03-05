@@ -263,7 +263,7 @@ func TestTransactionGasPrice(t *testing.T) {
 
 // makeAccountWithBalance creates a new account and endows it with the given balance.
 // Creating the account this way allows to get access to the private key to sign transactions.
-func makeAccountWithBalance(t *testing.T, net *IntegrationTestNet, balance *big.Int) *Account {
+func makeAccountWithBalance(t *testing.T, net IntegrationTestNetSession, balance *big.Int) *Account {
 	t.Helper()
 	account := NewAccount()
 	receipt, err := net.EndowAccount(account.Address(), balance)
