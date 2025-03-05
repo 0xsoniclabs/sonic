@@ -8,7 +8,6 @@ import (
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/bls"
 	"github.com/0xsoniclabs/sonic/scc/cert"
-	"github.com/kaptinlin/jsonschema"
 	"github.com/stretchr/testify/require"
 )
 
@@ -99,54 +98,37 @@ func TestCommitteeCertificateToJson(t *testing.T) {
 	require.Equal(want, got)
 }
 
-func TestCommitteeCertificate_ValidateJsonSchema(t *testing.T) {
-	require := require.New(t)
+func TestCommitteeCertificate_JsonEncodingMatchesExpectedFormat(t *testing.T) {
+	certs := map[string]cert.CommitteeCertificate{
+		"empty cert":     cert.CommitteeCertificate{},
+		"non-empty cert": makeTestCommitteeCert(t),
+	}
 
-	schemaJSON := `{
-		"type": "array",
-		"properties": {
-			"chainId": {"type": "integer"},
-			"period": {"type": "integer"},
-			"members": {
-				"type": "array",
-				"items": {
-					"type": "object",
-					"properties": {
-						"PublicKey": {"type": "string","pattern": "^0x[0-9a-f]{96}$"},
-						"ProofOfPossession": {"type": "string","pattern": "^0x[0-9a-f]{192}$"},
-						"VotingPower": {"type": "integer"}
-					},
-					"required": ["PublicKey", "ProofOfPossession", "VotingPower"]
-				}
-			},
-			"signers": {"type": "string","pattern": "^0x[0-9a-f]*$"},
-			"signature": {"type": "string","pattern": "^0x[0-9a-f]{192}$"}
-		},
-		"required": ["chainId", "period", "members", "signers", "signature"]
-	}`
+	keyRegex := `("0x[0-9a-f]{96}")`
+	signatureRegex := `("0x[0-9a-f]{192}")`
+	member := fmt.Sprintf(`"members":(\[{"PublicKey":%v,"ProofOfPossession":%v,"VotingPower":\d+}+\]|null)`,
+		keyRegex, signatureRegex)
 
-	// compile schema
-	compiler := jsonschema.NewCompiler()
-	schema, err := compiler.Compile([]byte(schemaJSON))
-	require.NoError(err)
+	regexes := map[string]string{
+		"chainId":   `"chainId":\d+`,
+		"period":    `"period":\d+`,
+		"member":    member,
+		"signers":   `"signers":("0x[0-9a-f]+"|null)`,
+		"signature": `"signature":` + signatureRegex,
+	}
 
-	// validate certificate with values
-	testCert := makeTestCommitteeCert(t)
-	data, err := json.Marshal(toJsonCommitteeCertificate(testCert))
-	require.NoError(err)
-
-	result := schema.Validate(data)
-	res := result.IsValid()
-	require.True(res)
-
-	// validate empty certificate
-	testCert = cert.CommitteeCertificate{}
-	data, err = json.Marshal(toJsonCommitteeCertificate(testCert))
-	require.NoError(err)
-
-	result = schema.Validate(data)
-	res = result.IsValid()
-	require.True(res)
+	for name, cert := range certs {
+		t.Run(name, func(t *testing.T) {
+			for name, regex := range regexes {
+				t.Run(name, func(t *testing.T) {
+					require := require.New(t)
+					data, err := json.Marshal(toJsonCommitteeCertificate(cert))
+					require.NoError(err)
+					require.Regexp(regex, string(data))
+				})
+			}
+		})
+	}
 }
 
 func TestCommitteeCertificate_EmptyCertificate_ContainsExpectedValues(t *testing.T) {

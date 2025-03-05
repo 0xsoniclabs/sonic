@@ -3,6 +3,7 @@ package ethapi
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/scc"
@@ -10,7 +11,6 @@ import (
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/kaptinlin/jsonschema"
 	"github.com/stretchr/testify/require"
 )
 
@@ -92,45 +92,34 @@ func TestBlockCertificateToJson(t *testing.T) {
 	require.Equal(bitset, json.Signers)
 	require.Equal(sig, json.Signature)
 }
+func TestBlockCertificate_JsonEncodingMatchesExpectedFormat(t *testing.T) {
+	certs := map[string]cert.BlockCertificate{
+		"empty":     cert.BlockCertificate{},
+		"non-empty": makeTestBlockCert(t),
+	}
 
-func TestBlockCertificate_ValidateJsonSchema(t *testing.T) {
-	require := require.New(t)
+	hashRegex := `"0x[0-9a-f]{64}"`
+	regexes := map[string]string{
+		"chainId":   `"chainId":\d+`,
+		"number":    `"number":\d+`,
+		"hash":      `"hash":` + hashRegex,
+		"stateRoot": `"stateRoot":` + hashRegex,
+		"signers":   `"signers":("0x[0-9a-f]+"|null)`,
+		"signature": `"signature":"0x[0-9a-f]{192}"`,
+	}
 
-	schemaJSON := `{
-		"type": "array",
-		"properties": {
-			"chainId":{"type": "integer"},
-			"number":{"type": "integer"},
-			"hash":{"type": "string", "pattern": "^0x[0-9a-f]{64}"},
-			"stateRoot":{"type": "string", "pattern": "^0x[0-9a-f]{64}"},
-			"signers":{"type": "string","pattern": "^0x[0-9a-f]*$"},
-			"signature":{"type": "string", "pattern": "^0x[0-9a-f]{192}$"}
-		},
-		"required":["chainId","number","hash","stateRoot","signers","signature"]
-	}`
-
-	// compile schema
-	compiler := jsonschema.NewCompiler()
-	schema, err := compiler.Compile([]byte(schemaJSON))
-	require.NoError(err)
-
-	// validate certificate with values
-	testCert := makeTestBlockCert(t)
-	data, err := json.Marshal(toJsonBlockCertificate(testCert))
-	require.NoError(err)
-
-	result := schema.Validate(data)
-	res := result.IsValid()
-	require.True(res)
-
-	// validate empty certificate
-	testCert = cert.BlockCertificate{}
-	data, err = json.Marshal(toJsonBlockCertificate(testCert))
-	require.NoError(err)
-
-	result = schema.Validate(data)
-	res = result.IsValid()
-	require.True(res)
+	for name, cert := range certs {
+		t.Run(name, func(t *testing.T) {
+			for name, regex := range regexes {
+				t.Run(name, func(t *testing.T) {
+					require := require.New(t)
+					data, err := json.Marshal(toJsonBlockCertificate(cert))
+					require.NoError(err)
+					require.Regexp(regexp.MustCompile(regex), string(data))
+				})
+			}
+		})
+	}
 }
 
 func TestBlockCertificate_EmptyCertificate_ContainsExpectedValues(t *testing.T) {
