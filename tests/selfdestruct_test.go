@@ -19,10 +19,12 @@ func TestSelfDestruct(t *testing.T) {
 	net := StartIntegrationTestNet(t)
 
 	t.Run("constructor", func(t *testing.T) {
+		t.Parallel()
 		testSelfDestruct_Constructor(t, net)
 	})
 
 	t.Run("nested call", func(t *testing.T) {
+		t.Parallel()
 		testSelfDestruct_NestedCall(t, net)
 	})
 }
@@ -125,6 +127,8 @@ func testSelfDestruct_Constructor(t *testing.T, net *IntegrationTestNet) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
+			t.Parallel()
+			session := net.SpawnSession(t)
 
 			// New beneficiary address for each test
 			beneficiaryAddress := common.Address{}
@@ -132,7 +136,7 @@ func testSelfDestruct_Constructor(t *testing.T, net *IntegrationTestNet) {
 			require.NoError(err)
 
 			// First transaction deploys contract
-			contract, deployReceipt, err := DeployContract(net,
+			contract, deployReceipt, err := DeployContract(session,
 				func(to *bind.TransactOpts, cb bind.ContractBackend) (common.Address, *types.Transaction, *selfdestruct.SelfDestruct, error) {
 					return test.deployTx(to, cb, beneficiaryAddress)
 				})
@@ -147,7 +151,7 @@ func testSelfDestruct_Constructor(t *testing.T, net *IntegrationTestNet) {
 			var executionReceipt *types.Receipt
 			// Second transaction executes some contract function (if any)
 			if test.executeTx != nil {
-				executionReceipt, err = net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
+				executionReceipt, err = session.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
 					return test.executeTx(contract, opts, beneficiaryAddress)
 				})
 				require.NoError(err)
@@ -160,7 +164,7 @@ func testSelfDestruct_Constructor(t *testing.T, net *IntegrationTestNet) {
 			}
 
 			// create client to query the network about address properties
-			client, err := net.GetClient()
+			client, err := session.GetClient()
 			require.NoError(err)
 			defer client.Close()
 
@@ -175,6 +179,7 @@ func testSelfDestruct_Constructor(t *testing.T, net *IntegrationTestNet) {
 			}
 			for name, effect := range test.effects {
 				t.Run(name, func(t *testing.T) {
+					t.Parallel()
 					effect(require, &effectContext)
 				})
 			}
@@ -275,6 +280,8 @@ func testSelfDestruct_NestedCall(t *testing.T, net *IntegrationTestNet) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
+			t.Parallel()
+			session := net.SpawnSession(t)
 
 			// generate a new beneficiary address for each test
 			beneficiaryAddress := common.Address{}
@@ -282,7 +289,7 @@ func testSelfDestruct_NestedCall(t *testing.T, net *IntegrationTestNet) {
 			require.NoError(err)
 
 			// deploy factory contract
-			factory, receipt, err := DeployContract(net, selfdestruct.DeploySelfDestructFactory)
+			factory, receipt, err := DeployContract(session, selfdestruct.DeploySelfDestructFactory)
 			require.NoError(err)
 			require.Equal(
 				types.ReceiptStatusSuccessful,
@@ -294,7 +301,7 @@ func testSelfDestruct_NestedCall(t *testing.T, net *IntegrationTestNet) {
 
 			// execute all described transactions
 			for _, tx := range test.transactions {
-				receipt, err := net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
+				receipt, err := session.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
 					return tx(factory, opts, beneficiaryAddress)
 				})
 				require.NoError(err)
@@ -314,7 +321,7 @@ func testSelfDestruct_NestedCall(t *testing.T, net *IntegrationTestNet) {
 			)
 
 			// create client to query the network about address properties
-			client, err := net.GetClient()
+			client, err := session.GetClient()
 			require.NoError(err)
 			defer client.Close()
 			newContract, err := selfdestruct.NewSelfDestruct(contractAddress, client)
@@ -331,6 +338,7 @@ func testSelfDestruct_NestedCall(t *testing.T, net *IntegrationTestNet) {
 			}
 			for name, effect := range test.effects {
 				t.Run(name, func(t *testing.T) {
+					t.Parallel()
 					effect(require, &effectContext)
 				})
 			}
