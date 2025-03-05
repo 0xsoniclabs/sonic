@@ -24,7 +24,7 @@ func TestTransactionGasPrice(t *testing.T) {
 	defer client.Close()
 
 	// use a fresh account to send transactions from
-	account := makeAccountWithBalance(t, net, int64(1e18))
+	account := makeAccountWithBalance(t, net, big.NewInt(1e18))
 
 	t.Run("Legacy transaction, effectivePrice is equal to requested price", func(t *testing.T) {
 
@@ -263,7 +263,7 @@ func TestTransactionGasPrice(t *testing.T) {
 
 // makeAccountWithBalance creates a new account and endows it with the given balance.
 // Creating the account this way allows to get access to the private key to sign transactions.
-func makeAccountWithBalance(t *testing.T, net *IntegrationTestNet, balance int64) *Account {
+func makeAccountWithBalance(t *testing.T, net *IntegrationTestNet, balance *big.Int) *Account {
 	t.Helper()
 	account := NewAccount()
 	receipt, err := net.EndowAccount(account.Address(), balance)

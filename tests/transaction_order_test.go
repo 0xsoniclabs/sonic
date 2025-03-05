@@ -143,7 +143,14 @@ func TestTransactionOrder(t *testing.T) {
 func makeAccountWithMaxBalance(t *testing.T, net *IntegrationTestNet) *Account {
 	t.Helper()
 	account := NewAccount()
-	receipt, err := net.EndowAccount(account.Address(), math.MaxInt64)
+
+	// endowments are backed up by the test net account, and therefore are
+	// bound by the (very large but not infinite) balance of the test net account.
+	receipt, err := net.EndowAccount(account.Address(),
+		new(big.Int).Mul(
+			big.NewInt(math.MaxInt64),
+			big.NewInt(1e6),
+		))
 	require.NoError(t, err)
 	require.Equal(t,
 		receipt.Status, types.ReceiptStatusSuccessful,

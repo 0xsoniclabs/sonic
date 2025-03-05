@@ -19,7 +19,7 @@ func TestWithdrawalFieldsInBlocks(t *testing.T) {
 	net := StartIntegrationTestNet(t)
 
 	// run endowment to ensure at least one block exists
-	receipt, err := net.EndowAccount(common.Address{42}, 1)
+	receipt, err := net.EndowAccount(common.Address{42}, big.NewInt(1))
 	requireBase.NoError(err)
 	requireBase.Equal(receipt.Status, types.ReceiptStatusSuccessful, "failed to endow account")
 

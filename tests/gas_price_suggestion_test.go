@@ -25,7 +25,7 @@ func TestGasPrice_SuggestedGasPricesApproximateActualBaseFees(t *testing.T) {
 		require.NoError(err)
 
 		// new block
-		receipt, err := net.EndowAccount(common.Address{42}, 100)
+		receipt, err := net.EndowAccount(common.Address{42}, big.NewInt(100))
 		require.NoError(err)
 
 		lastBlock, err := client.BlockByNumber(ctxt, receipt.BlockNumber)

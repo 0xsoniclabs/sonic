@@ -87,7 +87,7 @@ func testRejectedTx(t *testing.T, net *IntegrationTestNet, account common.Addres
 	require.Equal(tx.Cost().Uint64(), estimatedCost, "transaction estimation is not equal to test estimation")
 
 	// provide just enough balance to NOT cover the cost
-	_, err := net.EndowAccount(account, int64(estimatedCost-1))
+	_, err := net.EndowAccount(account, new(big.Int).SetUint64(estimatedCost-1))
 	require.NoError(err, "failed to endow account")
 
 	// run transaction to be rejected
@@ -96,7 +96,7 @@ func testRejectedTx(t *testing.T, net *IntegrationTestNet, account common.Addres
 	require.Nil(receipt)
 
 	// provide enough balance to cover the cost
-	_, err = net.EndowAccount(account, int64(1))
+	_, err = net.EndowAccount(account, big.NewInt(1))
 	require.NoError(err, "failed to endow account")
 
 	// run transaction to be successful

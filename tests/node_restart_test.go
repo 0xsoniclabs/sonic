@@ -23,7 +23,7 @@ func TestNodeRestart_CanRestartAndRestoreItsState(t *testing.T) {
 	// Run through multiple restarts.
 	for i := 0; i < numRestarts; i++ {
 		for range numBlocks {
-			receipt, err := net.EndowAccount(common.Address{42}, 100)
+			receipt, err := net.EndowAccount(common.Address{42}, big.NewInt(100))
 			if err != nil {
 				t.Fatalf("failed to endow account; %v", err)
 			}

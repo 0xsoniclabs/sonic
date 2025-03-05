@@ -368,7 +368,7 @@ func (n *IntegrationTestNet) Restart() error {
 // mainly intended to provide funds to accounts for testing purposes.
 func (n *IntegrationTestNet) EndowAccount(
 	address common.Address,
-	value int64,
+	value *big.Int,
 ) (*types.Receipt, error) {
 	client, err := n.GetClient()
 	if err != nil {
@@ -397,7 +397,7 @@ func (n *IntegrationTestNet) EndowAccount(
 		Gas:      21000,
 		GasPrice: price,
 		To:       &address,
-		Value:    big.NewInt(value),
+		Value:    value,
 		Nonce:    nonce,
 	}), types.NewLondonSigner(chainId), n.validator.PrivateKey)
 	if err != nil {
