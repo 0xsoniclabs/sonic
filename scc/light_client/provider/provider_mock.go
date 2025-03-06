@@ -36,19 +36,19 @@ func (m *MockProvider) EXPECT() *MockProviderMockRecorder {
 	return m.recorder
 }
 
-// GetBlockCertificate mocks base method.
-func (m *MockProvider) GetBlockCertificate(first idx.Block, maxResults uint64) ([]cert.BlockCertificate, error) {
+// GetBlockCertificates mocks base method.
+func (m *MockProvider) GetBlockCertificates(first idx.Block, maxResults uint64) ([]cert.BlockCertificate, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetBlockCertificate", first, maxResults)
+	ret := m.ctrl.Call(m, "GetBlockCertificates", first, maxResults)
 	ret0, _ := ret[0].([]cert.BlockCertificate)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetBlockCertificate indicates an expected call of GetBlockCertificate.
-func (mr *MockProviderMockRecorder) GetBlockCertificate(first, maxResults interface{}) *gomock.Call {
+// GetBlockCertificates indicates an expected call of GetBlockCertificates.
+func (mr *MockProviderMockRecorder) GetBlockCertificates(first, maxResults interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBlockCertificate", reflect.TypeOf((*MockProvider)(nil).GetBlockCertificate), first, maxResults)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBlockCertificates", reflect.TypeOf((*MockProvider)(nil).GetBlockCertificates), first, maxResults)
 }
 
 // GetCommitteeCertificates mocks base method.
