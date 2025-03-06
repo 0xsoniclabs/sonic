@@ -801,9 +801,9 @@ func testScc_HasBlockCertificatesForBlocks(
 	err := client.Client().Call(&results, "sonic_getBlockCertificates", "0x0", "max")
 	require.NoError(err)
 
-	// TODO: enable this check once the genesis block is also certified
-	//require.Less(len(headers), len(results), "too few block certificates")
-	//require.Equal(0, results[0].Number)
+	// Check that all certificates starting with block 0 are present.
+	require.Equal(uint64(0), results[0].Number)
+	require.LessOrEqual(len(headers), len(results), "too few block certificates")
 
 	// Check that certificates are listed in order.
 	for i := range len(results) - 1 {

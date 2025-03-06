@@ -16,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/tracing"
 
 	"github.com/Fantom-foundation/lachesis-base/hash"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -53,6 +54,7 @@ type GenesisBuilder struct {
 	currentEpoch ier.LlrIdxFullEpochRecord
 
 	genesisCommitteeCertificate cert.CommitteeCertificate
+	genesisBlockCertificates    []cert.BlockCertificate
 }
 
 type BlockProc struct {
@@ -190,11 +192,20 @@ func (b *GenesisBuilder) FinalizeBlockZero(
 		WithBaseFee(gasprice.GetInitialBaseFee(rules.Economy)).
 		WithPrevRandao(common.Hash{31: 1})
 
-	llrBlock := ibr.FullBlockRecordFor(blockBuilder.Build(), nil, nil)
+	block := blockBuilder.Build()
+	llrBlock := ibr.FullBlockRecordFor(block, nil, nil)
 	b.blocks = append(b.blocks, ibr.LlrIdxFullBlockRecord{
 		LlrFullBlockRecord: *llrBlock,
 		Idx:                0,
 	})
+
+	// register an empty certificate for block zero
+	b.AddBlockCertificate(cert.NewCertificate(cert.NewBlockStatement(
+		rules.NetworkID,
+		idx.Block(0),
+		block.Hash(),
+		block.StateRoot,
+	)))
 
 	return common.Hash(b.blocks[0].BlockHash), genesisStateRoot, nil
 }
@@ -282,7 +293,8 @@ func (b *GenesisBuilder) ExecuteGenesisTxs(blockProc BlockProc, genesisTxs types
 		blockBuilder.AddTransaction(transaction, receipts[txIndex])
 	}
 
-	llrBlock := ibr.FullBlockRecordFor(blockBuilder.Build(), evmBlock.Transactions, receiptsStorage)
+	block := blockBuilder.Build()
+	llrBlock := ibr.FullBlockRecordFor(block, evmBlock.Transactions, receiptsStorage)
 	b.blocks = append(b.blocks, ibr.LlrIdxFullBlockRecord{
 		LlrFullBlockRecord: *llrBlock,
 		Idx:                blockCtx.Idx,
@@ -298,6 +310,15 @@ func (b *GenesisBuilder) ExecuteGenesisTxs(blockProc BlockProc, genesisTxs types
 		Idx: es.Epoch,
 	}
 	b.epochs = append(b.epochs, b.currentEpoch)
+
+	// add a block certificate for the created block
+	b.AddBlockCertificate(cert.NewCertificate(cert.NewBlockStatement(
+		es.Rules.NetworkID,
+		idx.Block(block.Number),
+		block.Hash(),
+		block.StateRoot,
+	)))
+
 	return nil
 }
 
@@ -305,6 +326,15 @@ func (b *GenesisBuilder) SetGenesisCommitteeCertificate(
 	committeeCertificate cert.CommitteeCertificate,
 ) {
 	b.genesisCommitteeCertificate = committeeCertificate
+}
+
+func (b *GenesisBuilder) AddBlockCertificate(
+	blockCertificate cert.BlockCertificate,
+) {
+	b.genesisBlockCertificates = append(
+		b.genesisBlockCertificates,
+		blockCertificate,
+	)
 }
 
 type memFile struct {
@@ -355,7 +385,13 @@ func (b *GenesisBuilder) Build(head genesis.Header) *genesisstore.Store {
 			}
 		}
 		if name == genesisstore.SccBlockSection(0) {
-			return buf, nil // No block certificates in this genesis
+			out := objstream.NewWriter[cert.Certificate[cert.BlockStatement]](buf)
+			for _, bc := range b.genesisBlockCertificates {
+				if err := out.Write(bc); err != nil {
+					return nil, err
+				}
+			}
+			return buf, nil
 		}
 		if buf.Len() == 0 {
 			return nil, errors.New("not found")
