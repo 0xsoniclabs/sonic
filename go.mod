@@ -20,7 +20,7 @@ go 1.24.0
 
 require (
 	github.com/0xsoniclabs/carmen/go v0.0.0-20250530111616-fabde4233b62
-	github.com/0xsoniclabs/consensus v0.0.0-20250225114506-00613699a22b
+	github.com/0xsoniclabs/consensus v0.0.0-20250305150018-46890c1558a3
 	github.com/0xsoniclabs/tosca v0.0.0-20250624065842-ec138d34756c
 	github.com/cespare/cp v1.1.1
 	github.com/consensys/gnark-crypto v0.16.0
