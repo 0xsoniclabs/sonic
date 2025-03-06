@@ -6,7 +6,6 @@ require (
 	github.com/0xsoniclabs/carmen/go v0.0.0-20250113102336-97f8b8616eff
 	github.com/0xsoniclabs/tosca v0.0.0-20250221124739-3aac4e7427dc
 	github.com/Fantom-foundation/lachesis-base v0.0.0-20240116072301-a75735c4ef00
-	github.com/PuerkitoBio/goquery v1.10.2
 	github.com/cespare/cp v1.1.1
 	github.com/davecgh/go-spew v1.1.1
 	github.com/deckarep/golang-set v1.8.0
@@ -39,7 +38,6 @@ require (
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/VictoriaMetrics/fastcache v1.12.2 // indirect
 	github.com/allegro/bigcache v1.2.1 // indirect
-	github.com/andybalholm/cascadia v1.3.3 // indirect
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bits-and-blooms/bitset v1.17.0 // indirect
