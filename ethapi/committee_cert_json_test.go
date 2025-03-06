@@ -17,7 +17,7 @@ func TestCommitteeCertificateJson_ToCommitteeCertificate_ConvertsToHealthyCertif
 	bitSet.Add(1)
 	sig := bls.Signature{}
 
-	c := committeeCertificateJson{
+	c := CommitteeCertificateJson{
 		ChainId:   123,
 		Period:    456,
 		Members:   []scc.Member{},
@@ -25,7 +25,7 @@ func TestCommitteeCertificateJson_ToCommitteeCertificate_ConvertsToHealthyCertif
 		Signature: sig,
 	}
 
-	got := c.toCertificate()
+	got := c.ToCertificate()
 	aggregatedSignature := cert.NewAggregatedSignature[cert.CommitteeStatement](
 		c.Signers,
 		c.Signature,
@@ -63,12 +63,12 @@ func TestCommitteeCertificateJson_CanBeJsonEncodedAndDecoded(t *testing.T) {
 	require.NoError(err)
 
 	// decode
-	var certJson2 committeeCertificateJson
+	var certJson2 CommitteeCertificateJson
 	err = json.Unmarshal(data, &certJson2)
 	require.NoError(err)
 
 	// check
-	cert := certJson2.toCertificate()
+	cert := certJson2.ToCertificate()
 	require.Equal(c, cert)
 }
 
@@ -87,7 +87,7 @@ func TestCommitteeCertificateToJson(t *testing.T) {
 		aggregatedSignature,
 	)
 
-	want := committeeCertificateJson{
+	want := CommitteeCertificateJson{
 		ChainId:   123,
 		Period:    456,
 		Members:   []scc.Member(nil),
