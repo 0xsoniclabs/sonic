@@ -164,7 +164,7 @@ func runTransactionWithCodeSizeAndGas(t *testing.T, net *IntegrationTestNet, cod
 	chainId, err := client.ChainID(context.Background())
 	require.NoError(err, "failed to get chain ID::")
 
-	nonce, err := client.NonceAt(context.Background(), net.GetAccount().Address(), nil)
+	nonce, err := client.NonceAt(context.Background(), net.GetSessionSponsor().Address(), nil)
 	require.NoError(err, "failed to get nonce:")
 
 	price, err := client.SuggestGasPrice(context.Background())
@@ -178,7 +178,7 @@ func runTransactionWithCodeSizeAndGas(t *testing.T, net *IntegrationTestNet, cod
 		To:       nil,
 		Nonce:    nonce,
 		Data:     make([]byte, codeSize),
-	}), types.NewLondonSigner(chainId), net.GetAccount().PrivateKey)
+	}), types.NewLondonSigner(chainId), net.GetSessionSponsor().PrivateKey)
 	require.NoError(err, "failed to sign transaction:")
 	return net.Run(transaction)
 }

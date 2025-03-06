@@ -55,11 +55,11 @@ func TestGasPrice_UnderpricedTransactionsAreRejected(t *testing.T) {
 	chainId, err := client.ChainID(context.Background())
 	require.NoError(err, "failed to get chain ID::")
 
-	nonce, err := client.NonceAt(context.Background(), net.GetAccount().Address(), nil)
+	nonce, err := client.NonceAt(context.Background(), net.GetSessionSponsor().Address(), nil)
 	require.NoError(err, "failed to get nonce:")
 
 	factory := &txFactory{
-		senderKey: net.GetAccount().PrivateKey,
+		senderKey: net.GetSessionSponsor().PrivateKey,
 		chainId:   chainId,
 	}
 

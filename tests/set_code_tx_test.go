@@ -967,7 +967,7 @@ func makeEip7702Transaction(t *testing.T,
 // use such encoding to create a SetCode transaction.
 func getCallData(t *testing.T, session IntegrationTestNetSession,
 	transactionConstructor func(*bind.TransactOpts) (*types.Transaction, error)) []byte {
-	txOpts, err := session.GetTransactOptions(session.GetAccount())
+	txOpts, err := session.GetTransactOptions(session.GetSessionSponsor())
 	require.NoError(t, err)
 	txOpts.NoSend = true // <- create the transaction to read callData, but do not send it.
 	tx, err := transactionConstructor(txOpts)

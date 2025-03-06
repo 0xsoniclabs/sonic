@@ -69,7 +69,7 @@ func getTransactionWithCodeAndNoReceiver(r *require.Assertions, code []byte, net
 	chainId, err := client.ChainID(context.Background())
 	r.NoError(err, "failed to get chain ID::")
 
-	nonce, err := client.NonceAt(context.Background(), net.GetAccount().Address(), nil)
+	nonce, err := client.NonceAt(context.Background(), net.GetSessionSponsor().Address(), nil)
 	r.NoError(err, "failed to get nonce:")
 
 	price, err := client.SuggestGasPrice(context.Background())
@@ -83,7 +83,7 @@ func getTransactionWithCodeAndNoReceiver(r *require.Assertions, code []byte, net
 		To:       nil,
 		Nonce:    nonce,
 		Data:     code,
-	}), types.NewLondonSigner(chainId), net.GetAccount().PrivateKey)
+	}), types.NewLondonSigner(chainId), net.GetSessionSponsor().PrivateKey)
 	r.NoError(err, "failed to sign transaction:")
 
 	return transaction, nil

@@ -61,9 +61,9 @@ type IntegrationTestNetSession interface {
 	// and waits for the transaction to be processed. The resulting receipt is returned.
 	Apply(issue func(*bind.TransactOpts) (*types.Transaction, error)) (*types.Receipt, error)
 
-	// GetAccount returns the default account of the session. This account is used
-	// to sign transactions and pay for gas when using the apply method.
-	GetAccount() *Account
+	// GetSessionSponsor returns the default account of the session. This account is used
+	// to sign transactions and pay for gas when using the Apply and EndowAccount methods.
+	GetSessionSponsor() *Account
 	// GetClient provides raw access to a fresh connection to the network.
 	// The resulting client must be closed after use.
 	GetClient() (*ethclient.Client, error)
@@ -535,7 +535,7 @@ func DeployContract[T any](n IntegrationTestNetSession, deploy contractDeployer[
 	}
 	defer client.Close()
 
-	transactOptions, err := n.GetTransactOptions(n.GetAccount())
+	transactOptions, err := n.GetTransactOptions(n.GetSessionSponsor())
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get transaction options: %w", err)
 	}
@@ -706,7 +706,7 @@ func (s *Session) GetTransactOptions(account *Account) (*bind.TransactOpts, erro
 	return txOpts, nil
 }
 
-func (s *Session) GetAccount() *Account {
+func (s *Session) GetSessionSponsor() *Account {
 	return &s.account
 }
 
