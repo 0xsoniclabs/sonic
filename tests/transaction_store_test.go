@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestGossipStore_CanTransactionsBeRetrievedFromBlocksAfterRestart(t *testing.T) {
+func TestTransactionStore_CanTransactionsBeRetrievedFromBlocksAfterRestart(t *testing.T) {
 
 	// This test will execute a series of transactions.
 	// After restarting the network, it will query the block where each transaction
