@@ -4,7 +4,7 @@ go 1.24.0
 
 require (
 	github.com/0xsoniclabs/carmen/go v0.0.0-20250113102336-97f8b8616eff
-	github.com/0xsoniclabs/consensus v0.0.0-20250225125107-df2b1fd116dd
+	github.com/0xsoniclabs/consensus v0.0.0-20250305150018-46890c1558a3
 	github.com/0xsoniclabs/tosca v0.0.0-20250221124739-3aac4e7427dc
 	github.com/cespare/cp v1.1.1
 	github.com/davecgh/go-spew v1.1.1
