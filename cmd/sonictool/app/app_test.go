@@ -27,12 +27,11 @@ import (
 
 func TestSonicTool_check_ExecutesWithoutErrors(t *testing.T) {
 
-	net, err := tests.StartIntegrationTestNet(t.TempDir())
-	require.NoError(t, err)
+	net := tests.StartIntegrationTestNet(t)
 	generateNBlocks(t, net, 2)
 	net.Stop()
 
-	_, err = executeSonicTool(t,
+	_, err := executeSonicTool(t,
 		"--datadir", net.GetDirectory()+"/state",
 		"check", "live")
 	require.NoError(t, err)
@@ -45,12 +44,11 @@ func TestSonicTool_check_ExecutesWithoutErrors(t *testing.T) {
 
 func TestSonicTool_compact_ExecutesWithoutErrors(t *testing.T) {
 
-	net, err := tests.StartIntegrationTestNet(t.TempDir())
-	require.NoError(t, err)
+	net := tests.StartIntegrationTestNet(t)
 	generateNBlocks(t, net, 2)
 	net.Stop()
 
-	_, err = executeSonicTool(t,
+	_, err := executeSonicTool(t,
 		"--datadir", net.GetDirectory()+"/state",
 		"compact")
 	require.NoError(t, err)
@@ -121,21 +119,17 @@ func TestSonicTool_account_ExecutesWithoutErrors(t *testing.T) {
 }
 
 func TestSonicTool_genesis_ExecutesWithoutErrors(t *testing.T) {
-	tmp := t.TempDir()
-	dataDirA := fmt.Sprintf("%s/A", tmp)
-	dataDirB := fmt.Sprintf("%s/B", tmp)
 
 	// Create a history by running some transactions
-	net, err := tests.StartIntegrationTestNet(dataDirA)
-	require.NoError(t, err)
+	net := tests.StartIntegrationTestNet(t)
 	generateNBlocks(t, net, 2)
 	net.Stop()
 
 	passwordFileName := fmt.Sprintf("%s/password_file", t.TempDir())
 	require.NoError(t, generatePasswordFile(passwordFileName, "this is the passphrase"))
 
-	exportFile := fmt.Sprintf("%s/genesis", tmp)
-	_, err = executeSonicTool(t,
+	exportFile := fmt.Sprintf("%s/genesis", t.TempDir())
+	_, err := executeSonicTool(t,
 		"--datadir", net.GetDirectory()+"/state",
 		"genesis", "export", exportFile)
 	require.NoError(t, err)
@@ -159,7 +153,7 @@ func TestSonicTool_genesis_ExecutesWithoutErrors(t *testing.T) {
 	promptMock.EXPECT().PromptInput("Signature (hex): ").Return(hexutil.Encode(signature), nil)
 
 	_, err = executeSonicTool(t,
-		"--datadir", fmt.Sprintf("%s/state", dataDirB),
+		"--datadir", fmt.Sprintf("%s/state", t.TempDir()),
 		"genesis", "sign", exportFile)
 	// Note, this how far we can get without the actual key
 	require.ErrorContains(t, err, "genesis signature does not match any trusted signer")
@@ -167,25 +161,22 @@ func TestSonicTool_genesis_ExecutesWithoutErrors(t *testing.T) {
 }
 
 func TestSonicTool_heal_ExecutesWithoutErrors(t *testing.T) {
-	net, err := tests.StartIntegrationTestNet(t.TempDir(),
-		"--statedb.checkpointinterval", "1")
-	require.NoError(t, err)
+	net := tests.StartIntegrationTestNet(t, "--statedb.checkpointinterval", "1")
 	generateNBlocks(t, net, 3)
 	net.Stop()
 
-	_, err = executeSonicTool(t, "--datadir", net.GetDirectory()+"/state", "heal")
+	_, err := executeSonicTool(t, "--datadir", net.GetDirectory()+"/state", "heal")
 	require.NoError(t, err)
 }
 
 func TestSonicTool_config_ExecutesWithoutErrors(t *testing.T) {
 
-	net, err := tests.StartIntegrationTestNet(t.TempDir())
-	require.NoError(t, err)
+	net := tests.StartIntegrationTestNet(t)
 	generateNBlocks(t, net, 2)
 	net.Stop()
 
 	configFileName := t.TempDir() + "config.toml"
-	_, err = executeSonicTool(t,
+	_, err := executeSonicTool(t,
 		"--datadir", net.GetDirectory()+"/state",
 		"dumpconfig", configFileName)
 	require.NoError(t, err)
@@ -212,14 +203,13 @@ func TestSonicTool_config_ExecutesWithoutErrors(t *testing.T) {
 }
 
 func TestSonicTool_events_ExecutesWithoutErrors(t *testing.T) {
-	net, err := tests.StartIntegrationTestNet(t.TempDir())
-	require.NoError(t, err)
+	net := tests.StartIntegrationTestNet(t)
 	generateNBlocks(t, net, 2)
 	net.Stop()
 
 	eventsExportFile := t.TempDir() + "/events.json"
 
-	_, err = executeSonicTool(t,
+	_, err := executeSonicTool(t,
 		"--datadir", net.GetDirectory()+"/state",
 		"events", "export", eventsExportFile)
 	require.NoError(t, err)

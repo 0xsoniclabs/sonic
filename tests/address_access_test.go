@@ -13,11 +13,7 @@ import (
 func TestAddressAccess(t *testing.T) {
 	someAccountAddress := common.Address{1}
 
-	net, err := StartIntegrationTestNet(t.TempDir())
-	if err != nil {
-		t.Fatalf("Failed to start the fake network: %v", err)
-	}
-	defer net.Stop()
+	net := StartIntegrationTestNet(t)
 
 	contract, receipt, err := DeployContract(net, accessCost.DeployAccessCost)
 	checkTxExecution(t, receipt, err)

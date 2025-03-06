@@ -33,11 +33,7 @@ import (
 // and do not implement ERC-20 as described in the EIP use case examples.
 func TestSetCodeTransaction(t *testing.T) {
 
-	net, err := StartIntegrationTestNet(t.TempDir())
-	if err != nil {
-		t.Fatalf("Failed to start the fake network: %v", err)
-	}
-	defer net.Stop()
+	net := StartIntegrationTestNet(t)
 
 	t.Run("Operation", func(t *testing.T) {
 		// operation tests check basic operation of the SetCode transaction

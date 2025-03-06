@@ -93,9 +93,7 @@ func TestGasPrice_UnderpricedTransactionsAreRejected(t *testing.T) {
 }
 
 func makeNetAndClient(t *testing.T) (*IntegrationTestNet, *ethclient.Client) {
-	net, err := StartIntegrationTestNet(t.TempDir())
-	require.NoError(t, err)
-	t.Cleanup(func() { net.Stop() })
+	net := StartIntegrationTestNet(t)
 
 	client, err := net.GetClient()
 	require.NoError(t, err)

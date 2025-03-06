@@ -18,9 +18,7 @@ import (
 
 func TestBlobBaseFee_CanReadBlobBaseFeeFromHeadAndBlockAndHistory(t *testing.T) {
 	require := require.New(t)
-	net, err := StartIntegrationTestNet(t.TempDir())
-	require.NoError(err, "Failed to start the fake network: ", err)
-	defer net.Stop()
+	net := StartIntegrationTestNet(t)
 
 	// Deploy the blob base fee contract.
 	contract, _, err := DeployContract(net, blobbasefee.DeployBlobbasefee)
@@ -74,9 +72,7 @@ func getBlobBaseFeeFrom(header *types.Header) uint64 {
 
 func TestBlobBaseFee_CanReadBlobGasUsed(t *testing.T) {
 	require := require.New(t)
-	net, err := StartIntegrationTestNet(t.TempDir())
-	require.NoError(err, "Failed to start the fake network: ", err)
-	defer net.Stop()
+	net := StartIntegrationTestNet(t)
 
 	client, err := net.GetClient()
 	require.NoError(err, "failed to get client; ", err)

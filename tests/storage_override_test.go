@@ -1,20 +1,20 @@
 package tests
 
 import (
-	"github.com/0xsoniclabs/sonic/tests/contracts/storage"
-	"github.com/ethereum/go-ethereum/accounts/abi"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"math/big"
 	"strings"
 	"testing"
+
+	"github.com/0xsoniclabs/sonic/tests/contracts/storage"
+	"github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
 
 func TestSetStorage_PreExisting_Contract_Storage_Temporarily_Overridden(t *testing.T) {
-	net, err := StartIntegrationTestNet(t.TempDir())
-	require.NoError(t, err, "Failed to start the fake network: %v", err)
+	net := StartIntegrationTestNet(t)
 
 	defer net.Stop()
 
@@ -90,9 +90,7 @@ func TestSetStorage_Contract_Not_On_Blockchain_Executed_With_Extra_Storage(t *te
 	require := require.New(t)
 
 	// start network
-	net, err := StartIntegrationTestNet(t.TempDir())
-	require.NoError(err)
-	defer net.Stop()
+	net := StartIntegrationTestNet(t)
 
 	// create a client
 	client, err := net.GetClient()

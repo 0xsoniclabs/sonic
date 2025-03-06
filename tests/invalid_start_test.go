@@ -15,9 +15,7 @@ func TestInvalidStart_IdentifiesInvalidStartContract(t *testing.T) {
 	invalidCode := []byte{0x60, 0xef, 0x60, 0x00, 0x53, 0x60, 0x01, 0x60, 0x00, 0xf3}
 	validCode := []byte{0x60, 0xfe, 0x60, 0x00, 0x53, 0x60, 0x01, 0x60, 0x00, 0xf3}
 
-	net, err := StartIntegrationTestNet(t.TempDir())
-	r.NoError(err)
-	defer net.Stop()
+	net := StartIntegrationTestNet(t)
 
 	// Deploy the invalid start contract.
 	contract, _, err := DeployContract(net, invalidstart.DeployInvalidstart)

@@ -16,9 +16,7 @@ func TestWithdrawalFieldsInBlocks(t *testing.T) {
 	requireBase := require.New(t)
 
 	// start network.
-	net, err := StartIntegrationTestNet(t.TempDir())
-	requireBase.NoErrorf(err, "Failed to start the fake network: ", err)
-	defer net.Stop()
+	net := StartIntegrationTestNet(t)
 
 	// run endowment to ensure at least one block exists
 	receipt, err := net.EndowAccount(common.Address{42}, 1)

@@ -14,9 +14,7 @@ import (
 func TestLogSubscription_CanGetCallBacksForLogEvents(t *testing.T) {
 	const NumEvents = 3
 	require := require.New(t)
-	net, err := StartIntegrationTestNet(t.TempDir())
-	require.NoError(err, "Failed to start the fake network: ", err)
-	defer net.Stop()
+	net := StartIntegrationTestNet(t)
 
 	contract, _, err := DeployContract(net, counter_event_emitter.DeployCounterEventEmitter)
 	require.NoError(err)

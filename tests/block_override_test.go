@@ -20,11 +20,7 @@ const (
 
 func TestBlockOverride(t *testing.T) {
 	require := req.New(t)
-	net, err := StartIntegrationTestNet(t.TempDir())
-	if err != nil {
-		t.Fatalf("Failed to start the fake network: %v", err)
-	}
-	defer net.Stop()
+	net := StartIntegrationTestNet(t)
 
 	// Deploy the block override observer contract.
 	_, receipt, err := DeployContract(net, block_override.DeployBlockOverride)

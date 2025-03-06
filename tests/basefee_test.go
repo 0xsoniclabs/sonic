@@ -9,11 +9,7 @@ import (
 )
 
 func TestBaseFee_CanReadBaseFeeFromHeadAndBlockAndHistory(t *testing.T) {
-	net, err := StartIntegrationTestNet(t.TempDir())
-	if err != nil {
-		t.Fatalf("Failed to start the fake network: %v", err)
-	}
-	defer net.Stop()
+	net := StartIntegrationTestNet(t)
 
 	// Deploy the base fee contract.
 	contract, _, err := DeployContract(net, basefee.DeployBasefee)

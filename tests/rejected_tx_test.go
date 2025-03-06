@@ -16,9 +16,7 @@ func TestRejectedTx(t *testing.T) {
 	require := require.New(t)
 
 	// start network
-	net, err := StartIntegrationTestNet(t.TempDir())
-	require.NoError(err)
-	defer net.Stop()
+	net := StartIntegrationTestNet(t)
 
 	// create a client
 	client, err := net.GetClient()

@@ -2,18 +2,16 @@ package tests
 
 import (
 	"context"
-	"github.com/0xsoniclabs/sonic/tests/contracts/prevrandao"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"math/big"
 	"testing"
+
+	"github.com/0xsoniclabs/sonic/tests/contracts/prevrandao"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 )
 
 func TestPrevRandao(t *testing.T) {
-	net, err := StartIntegrationTestNet(t.TempDir())
-	if err != nil {
-		t.Fatalf("Failed to start the fake network: %v", err)
-	}
-	defer net.Stop()
+	net := StartIntegrationTestNet(t)
+
 	// Deploy the contract.
 	contract, _, err := DeployContract(net, prevrandao.DeployPrevrandao)
 	if err != nil {

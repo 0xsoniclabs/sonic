@@ -10,11 +10,7 @@ import (
 )
 
 func TestCounter_CanIncrementAndReadCounterFromHead(t *testing.T) {
-	net, err := StartIntegrationTestNet(t.TempDir())
-	if err != nil {
-		t.Fatalf("Failed to start the fake network: %v", err)
-	}
-	defer net.Stop()
+	net := StartIntegrationTestNet(t)
 
 	// Deploy the counter contract.
 	contract, _, err := DeployContract(net, counter.DeployCounter)
@@ -41,11 +37,7 @@ func TestCounter_CanIncrementAndReadCounterFromHead(t *testing.T) {
 }
 
 func TestCounter_CanReadHistoricCounterValues(t *testing.T) {
-	net, err := StartIntegrationTestNet(t.TempDir())
-	if err != nil {
-		t.Fatalf("Failed to start the fake network: %v", err)
-	}
-	defer net.Stop()
+	net := StartIntegrationTestNet(t)
 
 	// Deploy the counter contract.
 	contract, receipt, err := DeployContract(net, counter.DeployCounter)

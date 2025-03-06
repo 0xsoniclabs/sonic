@@ -20,9 +20,7 @@ const sufficientGas = uint64(100_000)
 func TestInitCodeSizeLimitAndMetered(t *testing.T) {
 	requireBase := require.New(t)
 
-	net, err := StartIntegrationTestNet(t.TempDir())
-	requireBase.NoError(err)
-	defer net.Stop()
+	net := StartIntegrationTestNet(t)
 
 	contract, receipt, err := DeployContract(net, contractcreator.DeployContractcreator)
 	requireBase.NoError(err)

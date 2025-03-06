@@ -34,18 +34,12 @@ import (
 )
 
 func TestBlockHeader_FakeGenesis_SatisfiesInvariants(t *testing.T) {
-	require := require.New(t)
-	net, err := StartIntegrationTestNet(t.TempDir())
-	require.NoError(err)
-	defer net.Stop()
+	net := StartIntegrationTestNet(t)
 	testBlockHeadersOnNetwork(t, net)
 }
 
 func TestBlockHeader_JsonGenesis_SatisfiesInvariants(t *testing.T) {
-	require := require.New(t)
-	net, err := StartIntegrationTestNetFromJsonGenesis(t.TempDir())
-	require.NoError(err)
-	defer net.Stop()
+	net := StartIntegrationTestNetFromJsonGenesis(t)
 	testBlockHeadersOnNetwork(t, net)
 }
 

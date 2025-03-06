@@ -15,9 +15,7 @@ func TestNodeRestart_CanRestartAndRestoreItsState(t *testing.T) {
 	const numRestarts = 2
 	require := require.New(t)
 
-	net, err := StartIntegrationTestNet(t.TempDir())
-	require.NoError(err)
-	defer net.Stop()
+	net := StartIntegrationTestNet(t)
 
 	// All transaction hashes indexed by their blocks.
 	receipts := map[int]types.Receipts{}

@@ -11,11 +11,7 @@ import (
 )
 
 func TestIntegrationTestNet_CanStartRestartAndStopIntegrationTestNet(t *testing.T) {
-	dataDir := t.TempDir()
-	net, err := StartIntegrationTestNet(dataDir)
-	if err != nil {
-		t.Fatalf("Failed to start the test network: %v", err)
-	}
+	net := StartIntegrationTestNet(t)
 	if err := net.Restart(); err != nil {
 		t.Fatalf("Failed to restart the test network: %v", err)
 	}
@@ -23,23 +19,14 @@ func TestIntegrationTestNet_CanStartRestartAndStopIntegrationTestNet(t *testing.
 }
 
 func TestIntegrationTestNet_CanStartMultipleConsecutiveInstances(t *testing.T) {
-	for i := 0; i < 2; i++ {
-		dataDir := t.TempDir()
-		net, err := StartIntegrationTestNet(dataDir)
-		if err != nil {
-			t.Fatalf("Failed to start the fake network: %v", err)
-		}
+	for range 2 {
+		net := StartIntegrationTestNet(t)
 		net.Stop()
 	}
 }
 
 func TestIntegrationTestNet_CanFetchInformationFromTheNetwork(t *testing.T) {
-	dataDir := t.TempDir()
-	net, err := StartIntegrationTestNet(dataDir)
-	if err != nil {
-		t.Fatalf("Failed to start the fake network: %v", err)
-	}
-	defer net.Stop()
+	net := StartIntegrationTestNet(t)
 
 	client, err := net.GetClient()
 	if err != nil {
@@ -58,12 +45,7 @@ func TestIntegrationTestNet_CanFetchInformationFromTheNetwork(t *testing.T) {
 }
 
 func TestIntegrationTestNet_CanEndowAccountsWithTokens(t *testing.T) {
-	dataDir := t.TempDir()
-	net, err := StartIntegrationTestNet(dataDir)
-	if err != nil {
-		t.Fatalf("Failed to start the fake network: %v", err)
-	}
-	defer net.Stop()
+	net := StartIntegrationTestNet(t)
 
 	client, err := net.GetClient()
 	if err != nil {
@@ -100,12 +82,7 @@ func TestIntegrationTestNet_CanEndowAccountsWithTokens(t *testing.T) {
 }
 
 func TestIntegrationTestNet_CanDeployContracts(t *testing.T) {
-	dataDir := t.TempDir()
-	net, err := StartIntegrationTestNet(dataDir)
-	if err != nil {
-		t.Fatalf("Failed to start the fake network: %v", err)
-	}
-	defer net.Stop()
+	net := StartIntegrationTestNet(t)
 
 	_, receipt, err := DeployContract(net, counter.DeployCounter)
 	if err != nil {
@@ -117,12 +94,7 @@ func TestIntegrationTestNet_CanDeployContracts(t *testing.T) {
 }
 
 func TestIntegrationTestNet_CanInteractWithContract(t *testing.T) {
-	dataDir := t.TempDir()
-	net, err := StartIntegrationTestNet(dataDir)
-	if err != nil {
-		t.Fatalf("Failed to start the fake network: %v", err)
-	}
-	defer net.Stop()
+	net := StartIntegrationTestNet(t)
 
 	contract, _, err := DeployContract(net, counter.DeployCounter)
 	if err != nil {

@@ -199,8 +199,7 @@ type testContext struct {
 }
 
 func MakeTestContext(t *testing.T) *testContext {
-	net, err := StartIntegrationTestNet(t.TempDir())
-	require.NoError(t, err)
+	net := StartIntegrationTestNet(t)
 
 	client, err := net.GetClient()
 	require.NoError(t, err)

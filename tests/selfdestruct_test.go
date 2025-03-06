@@ -15,11 +15,8 @@ import (
 )
 
 func TestSelfDestruct(t *testing.T) {
-	require := require.New(t)
 
-	net, err := StartIntegrationTestNet(t.TempDir())
-	require.NoError(err, "failed to start test network")
-	defer net.Stop()
+	net := StartIntegrationTestNet(t)
 
 	t.Run("constructor", func(t *testing.T) {
 		testSelfDestruct_Constructor(t, net)

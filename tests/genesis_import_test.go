@@ -12,9 +12,7 @@ func TestGenesis_NetworkCanCreateNewBlocksAfterExportImport(t *testing.T) {
 	const numBlocks = 3
 	require := require.New(t)
 
-	tempDir := t.TempDir()
-	net, err := StartIntegrationTestNet(tempDir)
-	require.NoError(err)
+	net := StartIntegrationTestNet(t)
 
 	// Produce a few blocks on the network.
 	for range numBlocks {

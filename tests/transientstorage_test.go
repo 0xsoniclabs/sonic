@@ -9,11 +9,7 @@ import (
 )
 
 func TestTransientStorage_TransientStorageIsValidInTransaction(t *testing.T) {
-	net, err := StartIntegrationTestNet(t.TempDir())
-	if err != nil {
-		t.Fatalf("Failed to start the fake network: %v", err)
-	}
-	defer net.Stop()
+	net := StartIntegrationTestNet(t)
 
 	// Deploy the transient storage contract
 	contract, _, err := DeployContract(net, transientstorage.DeployTransientstorage)

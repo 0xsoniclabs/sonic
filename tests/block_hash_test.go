@@ -14,11 +14,7 @@ import (
 
 func TestBlockHash_CorrectBlockHashesAreAccessibleInContracts(t *testing.T) {
 	require := req.New(t)
-	net, err := StartIntegrationTestNet(t.TempDir())
-	if err != nil {
-		t.Fatalf("Failed to start the fake network: %v", err)
-	}
-	defer net.Stop()
+	net := StartIntegrationTestNet(t)
 
 	// Deploy the block hash observer contract.
 	_, receipt, err := DeployContract(net, block_hash.DeployBlockHash)

@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"syscall"
+	"testing"
 	"time"
 
 	sonicd "github.com/0xsoniclabs/sonic/cmd/sonicd/app"
@@ -47,11 +48,7 @@ import (
 // A typical use case would look as follows:
 //
 //	func TestMyClientCode(t *testing.T) {
-//	  net, err := StartIntegrationTestNet(t.TempDir())
-//	  if err != nil {
-//	    t.Fatalf("Failed to start the fake network: %v", err)
-//	  }
-//	  defer net.Stop()
+//	  net := StartIntegrationTestNet(t)
 //	  <run tests against the network>
 //	}
 //
@@ -70,11 +67,30 @@ type IntegrationTestNet struct {
 // The node serving the network is started in the same process as the caller. This
 // is intended to facilitate debugging of client code in the context of a running
 // node.
-func StartIntegrationTestNet(directory string, extraClientArguments ...string) (*IntegrationTestNet, error) {
-	return startIntegrationTestNet(directory, []string{"genesis", "fake", "1"}, extraClientArguments)
+//
+// The network start procedure will create a temporary directory and populate with
+// a fake network genesis block. To retrieve the directory path, use the GetDirectory
+func StartIntegrationTestNet(
+	t *testing.T,
+	extraClientArguments ...string,
+) *IntegrationTestNet {
+	t.Helper()
+	net, err := startIntegrationTestNet(t.TempDir(), []string{"genesis", "fake", "1"}, extraClientArguments)
+	if err != nil {
+		t.Fatal("failed to start integration test network: ", err)
+	}
+	t.Cleanup(func() {
+		net.Stop()
+	})
+	return net
 }
 
-func StartIntegrationTestNetFromJsonGenesis(directory string, extraArguments ...string) (*IntegrationTestNet, error) {
+func StartIntegrationTestNetFromJsonGenesis(
+	t *testing.T,
+	extraArguments ...string,
+) *IntegrationTestNet {
+	t.Helper()
+
 	jsonGenesis := makefakegenesis.GenesisJson{
 		Rules:         opera.FakeNetRules(),
 		BlockZeroTime: time.Now(),
@@ -156,24 +172,32 @@ func StartIntegrationTestNetFromJsonGenesis(directory string, extraArguments ...
 		VotingPower:       1,
 	})
 	if err := committee.Validate(); err != nil {
-		return nil, fmt.Errorf("failed to create valid committee: %w", err)
+		t.Fatal("failed to validate the committee:", err)
 	}
 	jsonGenesis.GenesisCommittee = &committee
 
 	encoded, err := json.MarshalIndent(jsonGenesis, "", "  ")
 	if err != nil {
-		return nil, fmt.Errorf("failed to encode genesis json: %w", err)
+		t.Fatal("failed to marshal genesis json:", err)
 	}
 
+	directory := t.TempDir()
 	jsonFile := filepath.Join(directory, "genesis.json")
 	err = os.WriteFile(jsonFile, encoded, 0644)
 	if err != nil {
-		return nil, fmt.Errorf("failed to write genesis.json file: %w", err)
+		t.Fatal("failed to write genesis json file: ", err)
 	}
-	return startIntegrationTestNet(directory,
+	net, err := startIntegrationTestNet(directory,
 		[]string{"genesis", "json", "--experimental", jsonFile},
 		extraArguments,
 	)
+	if err != nil {
+		t.Fatal("failed to start integration test network: ", err)
+	}
+	t.Cleanup(func() {
+		net.Stop()
+	})
+	return net
 }
 
 func startIntegrationTestNet(directory string, sonicToolArguments []string, extraClientArguments []string) (*IntegrationTestNet, error) {
@@ -325,6 +349,9 @@ func (n *IntegrationTestNet) start() error {
 
 // Stop shuts the underlying network down.
 func (n *IntegrationTestNet) Stop() {
+	if n.done == nil {
+		return
+	}
 	// best effort to stop the test environment, ignore error
 	_ = syscall.Kill(syscall.Getpid(), syscall.SIGINT)
 	<-n.done

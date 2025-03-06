@@ -17,9 +17,7 @@ const enoughGasPrice = 150_000_000_000
 
 func TestTransactionGasPrice(t *testing.T) {
 
-	net, err := StartIntegrationTestNet(t.TempDir())
-	require.NoError(t, err)
-	defer net.Stop()
+	net := StartIntegrationTestNet(t)
 
 	client, err := net.GetClient()
 	require.NoError(t, err)

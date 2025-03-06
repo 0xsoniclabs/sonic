@@ -1,19 +1,18 @@
 package tests
 
 import (
+	"testing"
+
 	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestGetAccount(t *testing.T) {
-	net, err := StartIntegrationTestNet(t.TempDir())
-	require.NoError(t, err, "failed to start the fake network")
-	defer net.Stop()
+	net := StartIntegrationTestNet(t)
 
 	// Deploy the transient storage contract
 	_, deployReceipt, err := DeployContract(net, counter.DeployCounter)
