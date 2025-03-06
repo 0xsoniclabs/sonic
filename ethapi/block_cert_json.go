@@ -22,7 +22,7 @@ type BlockCertificateJson struct {
 	Signature bls.Signature             `json:"signature"`
 }
 
-func (b BlockCertificateJson) toCertificate() cert.BlockCertificate {
+func (b BlockCertificateJson) ToCertificate() cert.BlockCertificate {
 	aggregatedSignature := cert.NewAggregatedSignature[cert.BlockStatement](
 		b.Signers, b.Signature)
 
