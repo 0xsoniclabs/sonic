@@ -2,7 +2,6 @@ package tests
 
 import (
 	"context"
-	"math"
 	"math/big"
 	"math/rand/v2"
 	"testing"
@@ -34,7 +33,7 @@ func TestTransactionOrder(t *testing.T) {
 
 	// Only transactions from different accounts can change order.
 	for range numAccounts {
-		accounts = append(accounts, makeAccountWithMaxBalance(t, net))
+		accounts = append(accounts, makeAccountWithBalance(t, net, big.NewInt(1e18)))
 	}
 
 	// Repeat the test for X number of blocks
@@ -136,24 +135,4 @@ func TestTransactionOrder(t *testing.T) {
 		}
 	}
 	require.Equal(t, globalCounter, numTxs*numBlocks)
-}
-
-// makeAccountWithMaxBalance creates a new account and endows it with math.MaxInt64 balance.
-// Creating the account this way allows to get access to the private key to sign transactions.
-func makeAccountWithMaxBalance(t *testing.T, net IntegrationTestNetSession) *Account {
-	t.Helper()
-	account := NewAccount()
-
-	// endowments are backed up by the test net account, and therefore are
-	// bound by the (very large but not infinite) balance of the test net account.
-	receipt, err := net.EndowAccount(account.Address(),
-		new(big.Int).Mul(
-			big.NewInt(math.MaxInt64),
-			big.NewInt(1e6),
-		))
-	require.NoError(t, err)
-	require.Equal(t,
-		receipt.Status, types.ReceiptStatusSuccessful,
-		"endowing account failed")
-	return account
 }
