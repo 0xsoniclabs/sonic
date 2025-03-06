@@ -767,6 +767,7 @@ func (s *Session) GetClient() (*ethclient.Client, error) {
 	return ethclient.Dial(fmt.Sprintf("http://localhost:%d", s.httpPort))
 }
 
+// FeatureSet describes the enabled features of the integration test network.
 type FeatureSet int
 
 const (
