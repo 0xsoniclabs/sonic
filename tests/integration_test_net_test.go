@@ -112,11 +112,7 @@ func TestIntegrationTestNet_CanInteractWithContract(t *testing.T) {
 }
 
 func TestIntegrationTestNet_CanSpawnParallelSessions(t *testing.T) {
-	net, err := StartIntegrationTestNet(t.TempDir())
-	if err != nil {
-		t.Fatalf("Failed to start the fake network: %v", err)
-	}
-	t.Cleanup(func() { net.Stop() })
+	net := StartIntegrationTestNet(t)
 
 	for i := range 15 {
 		t.Run(fmt.Sprint("SpawnSession", i), func(t *testing.T) {
