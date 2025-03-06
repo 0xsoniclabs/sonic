@@ -36,10 +36,10 @@ func (s *PublicSccApi) GetCommitteeCertificates(
 	ctx context.Context,
 	first PeriodNumber,
 	maxResults Number,
-) ([]committeeCertificateJson, error) {
+) ([]CommitteeCertificateJson, error) {
 	if first.IsLatest() {
 		cert, err := s.backend.GetLatestCommitteeCertificate()
-		return []committeeCertificateJson{
+		return []CommitteeCertificateJson{
 			toJsonCommitteeCertificate(cert),
 		}, err
 	}
