@@ -120,13 +120,15 @@ func TestRPCProvider_CanRequestMaxNumberOfResults(t *testing.T) {
 	require.NoError(err)
 
 	for _, provider := range []*RPCProvider{providerFromClient, providerFromURL} {
-
-		// get certificates
-		certs, err := provider.GetCommitteeCertificates(0, math.MaxUint64)
+		comCerts, err := provider.GetCommitteeCertificates(0, math.MaxUint64)
 		require.NoError(err)
 		provider.Close()
+		require.NotZero(comCerts)
 
-		require.Len(certs, 1)
+		blockCerts, err := provider.GetBlockCertificates(0, math.MaxUint64)
+		require.NoError(err)
+		provider.Close()
+		require.NotZero(blockCerts)
 	}
 }
 
