@@ -440,6 +440,10 @@ func (n *IntegrationTestNet) GetDirectory() string {
 	return n.nodes[0].directory
 }
 
+func (n *IntegrationTestNet) GetPort() int {
+	return n.httpPort
+}
+
 // RestartWithExportImport stops the network, exports the genesis file, cleans the
 // temporary directory, imports the genesis file, and starts the network again.
 func (n *IntegrationTestNet) RestartWithExportImport() error {
