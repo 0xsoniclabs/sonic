@@ -10,6 +10,10 @@ import (
 )
 
 func Run() error {
+	return RunWithArgs(os.Args)
+}
+
+func RunWithArgs(args []string) error {
 	app := cli.NewApp()
 	app.Name = "sonictool"
 	app.Usage = "the Sonic management tool"
@@ -401,5 +405,5 @@ Converts an account private key to a validator private key and saves in the vali
 	}
 	sort.Sort(cli.CommandsByName(app.Commands))
 
-	return app.Run(os.Args)
+	return app.Run(args)
 }
