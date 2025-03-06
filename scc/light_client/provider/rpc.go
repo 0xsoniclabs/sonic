@@ -18,7 +18,7 @@ type RPCProvider struct {
 	client *ethclient.Client
 }
 
-// NewRPCProvider creates a new instance of RPCProvider with the given
+// NewRPCProviderFromClient creates a new instance of RPCProvider with the given
 // Ethereum client.
 // The resulting Provider must be closed after use.
 //
@@ -27,11 +27,28 @@ type RPCProvider struct {
 //
 // Returns:
 // - *RPCProvider: A new instance of RPCProvider.
-func NewRPCProvider(client *ethclient.Client) *RPCProvider {
-	// TODO: get real URL and make my own client?
+func NewRPCProviderFromClient(client *ethclient.Client) *RPCProvider {
 	return &RPCProvider{
 		client: client,
 	}
+}
+
+// NewRPCProviderFromURL creates a new instance of RPCProvider with a new Ethereum client
+// connected to the given URL.
+// The resulting Provider must be closed after use.
+//
+// Parameters:
+// - url: The URL of the RPC node to connect to.
+//
+// Returns:
+// - *RPCProvider: A new instance of RPCProvider.
+// - error: An error if the connection fails.
+func NewRPCProviderFromURL(url string) (*RPCProvider, error) {
+	client, err := ethclient.Dial(url)
+	if err != nil {
+		return nil, err
+	}
+	return NewRPCProviderFromClient(client), nil
 }
 
 // Close closes the RPCProvider and its underlying Ethereum client.
@@ -39,8 +56,8 @@ func (rpcp *RPCProvider) Close() {
 	rpcp.client.Close()
 }
 
-// GetCommitteeCertificate retrieves committee certificates for a given period
-// and a maximum number of results.
+// GetCommitteeCertificates returns up to `maxResults` consecutive committee
+// certificates starting from the given period.
 //
 // Parameters:
 // - first: The starting period for which to retrieve committee certificates.
@@ -48,8 +65,8 @@ func (rpcp *RPCProvider) Close() {
 //
 // Returns:
 // - []cert.CommitteeCertificate: A slice of committee certificates.
-// - error: An error if the retrieval fails.
-func (rpcp *RPCProvider) GetCommitteeCertificate(first scc.Period, maxResults uint64) ([]cert.CommitteeCertificate, error) {
+// - error: An error if the client is nil or the retrieval fails.
+func (rpcp RPCProvider) GetCommitteeCertificates(first scc.Period, maxResults uint64) ([]cert.CommitteeCertificate, error) {
 	if rpcp.client == nil {
 		return nil, fmt.Errorf("No client available")
 	}
@@ -70,15 +87,17 @@ func (rpcp *RPCProvider) GetCommitteeCertificate(first scc.Period, maxResults ui
 	return certs, nil
 }
 
-// GetBlockCertificate returns the block certificate for the given block number.
+// GetBlockCertificates returns up to `maxResults` consecutive block
+// certificates starting from the given block number.
 //
 // Parameters:
-// - number: The block number for which to retrieve the block certificate.
+// - number: The starting block number for which to retrieve the block certificate.
+// - maxResults: The maximum number of block certificates to retrieve.
 //
 // Returns:
-// - cert.BlockCertificate: The block certificate for the given block number.
-// - error: An error if the retrieval fails.
-func (rpcp *RPCProvider) GetBlockCertificates(first idx.Block, maxResults uint64) ([]cert.BlockCertificate, error) {
+// - cert.BlockCertificate: The block certificates for the given block number and the following blocks.
+// - error: An error if the client is nil or the retrieval fails.
+func (rpcp RPCProvider) GetBlockCertificates(first idx.Block, maxResults uint64) ([]cert.BlockCertificate, error) {
 	if rpcp.client == nil {
 		return nil, fmt.Errorf("No client available")
 	}
@@ -86,7 +105,7 @@ func (rpcp *RPCProvider) GetBlockCertificates(first idx.Block, maxResults uint64
 	results := []ethapi.BlockCertificateJson{}
 	err := rpcp.client.Client().Call(
 		&results, "sonic_getBlockCertificates",
-		fmt.Sprintf("%x", first),
+		fmt.Sprintf("%d", first),
 		getMaxString(maxResults),
 	)
 	if err != nil {
@@ -99,11 +118,13 @@ func (rpcp *RPCProvider) GetBlockCertificates(first idx.Block, maxResults uint64
 	return certs, nil
 }
 
+////////////////////////////////////////
 // helper functions
+////////////////////////////////////////
 
 func getMaxString(maxResults uint64) string {
 	if maxResults == math.MaxUint64 {
 		return "max"
 	}
-	return fmt.Sprintf("%x", maxResults)
+	return fmt.Sprintf("%d", maxResults)
 }
