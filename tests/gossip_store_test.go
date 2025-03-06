@@ -19,11 +19,7 @@ func TestGossipStore_CanTransactionsBeRetrievedFromBlocksAfterRestart(t *testing
 	// was executed and check if the transaction is present in the block and the
 	// values match, by comparing the hashes.
 
-	net, err := StartIntegrationTestNet(t.TempDir())
-	if err != nil {
-		t.Fatalf("Failed to start the fake network: %v", err)
-	}
-	defer net.Stop()
+	net := StartIntegrationTestNet(t)
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
@@ -32,7 +28,7 @@ func TestGossipStore_CanTransactionsBeRetrievedFromBlocksAfterRestart(t *testing
 	chainId, err := client.ChainID(context.Background())
 	require.NoError(t, err)
 
-	sender := makeAccountWithBalance(t, net, 1e18)
+	sender := makeAccountWithBalance(t, net, big.NewInt(1e18))
 	senderAddress := sender.Address()
 
 	// launch one transaction from each type
