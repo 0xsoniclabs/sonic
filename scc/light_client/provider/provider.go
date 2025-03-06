@@ -10,11 +10,11 @@ import (
 
 // Provider is an interface to access certificates of the Sonic Certification Chain.
 type Provider interface {
-	// GetCommitteeCertificates returns the committee certificates for the
-	// period speciefied starting from first and returning up to 'maxResults' entries.
+	// GetCommitteeCertificates returns up to `maxResults` consecutive committee
+	// certificates starting from the given period.
 	GetCommitteeCertificates(first scc.Period, maxResults uint64) ([]cert.CommitteeCertificate, error)
 
-	// GetBlockCertificate returns the block certificates starting from first
-	// and returning up to maxResults entries.
-	GetBlockCertificate(first idx.Block, maxResults uint64) ([]cert.BlockCertificate, error)
+	// GetBlockCertificates returns up to `maxResults` consecutive block
+	// certificates starting from the given block number.
+	GetBlockCertificates(first idx.Block, maxResults uint64) ([]cert.BlockCertificate, error)
 }
