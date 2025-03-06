@@ -21,7 +21,7 @@ func TestBlockCertificateJson_ToBlockCertificate_ConvertsToHealthyCertificate(t 
 	newPrivateKey := bls.NewPrivateKey()
 	sig := newPrivateKey.GetProofOfPossession()
 
-	b := blockCertificateJson{
+	b := BlockCertificateJson{
 		ChainId:   123,
 		Number:    456,
 		Hash:      common.Hash{0x1},
@@ -64,7 +64,7 @@ func TestBlockCertificateJson_CanBeJsonEncodedAndDecoded(t *testing.T) {
 	require.NoError(err)
 
 	// decode
-	var decoded blockCertificateJson
+	var decoded BlockCertificateJson
 	err = json.Unmarshal(data, &decoded)
 	require.NoError(err)
 
