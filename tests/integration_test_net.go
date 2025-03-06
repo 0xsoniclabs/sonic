@@ -20,6 +20,7 @@ import (
 	sonictool "github.com/0xsoniclabs/sonic/cmd/sonictool/app"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
+	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driver"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driver/drivercall"
@@ -104,32 +105,46 @@ type IntegrationTestNet struct {
 // node.
 //
 // The network start procedure will create a temporary directory and populate with
-// a fake network genesis block. To retrieve the directory path, use the GetDirectory
+// a network genesis block. To retrieve the directory path, use the GetDirectory.
 func StartIntegrationTestNet(
 	t *testing.T,
 	extraClientArguments ...string,
 ) *IntegrationTestNet {
-	t.Helper()
-	net, err := startIntegrationTestNet(t.TempDir(), []string{"genesis", "fake", "1"}, extraClientArguments)
-	if err != nil {
-		t.Fatal("failed to start integration test network: ", err)
-	}
-	t.Cleanup(func() {
-		net.Stop()
-	})
-	return net
+	return StartIntegrationTestNetWithJsonGenesis(t, extraClientArguments...)
 }
 
-func StartIntegrationTestNetFromJsonGenesis(
+// StartIntegrationTestNetWithFakeGenesis starts a single-node test network for
+// integration tests using the Fake-Genesis procedure. The fake genesis procedure
+// is mainly intended for demo and small scale test networks used for development
+// and integration testing in Norma.
+func StartIntegrationTestNetWithFakeGenesis(
 	t *testing.T,
 	extraArguments ...string,
 ) *IntegrationTestNet {
 	t.Helper()
+	net, err := startIntegrationTestNet(t, t.TempDir(), []string{"genesis", "fake", "1"}, extraArguments)
+	if err != nil {
+		t.Fatal("failed to start integration test network: ", err)
+	}
+	return net
+}
 
+// StartIntegrationTestNetWithFakeGenesis starts a single-node test network for
+// integration tests using the JSON-Genesis procedure. The JSON genesis procedure
+// is the genesis procedure used in long-running production networks like the
+// Sonic mainnet and the testnet.
+func StartIntegrationTestNetWithJsonGenesis(
+	t *testing.T,
+	extraArguments ...string,
+) *IntegrationTestNet {
+	t.Helper()
 	jsonGenesis := makefakegenesis.GenesisJson{
 		Rules:         opera.FakeNetRules(),
 		BlockZeroTime: time.Now(),
 	}
+
+	// Speed up the block generation time to reduce test time.
+	jsonGenesis.Rules.Emitter.Interval = inter.Timestamp(time.Millisecond)
 
 	// Create infrastructure contracts.
 	jsonGenesis.Accounts = []makefakegenesis.Account{
@@ -222,20 +237,22 @@ func StartIntegrationTestNetFromJsonGenesis(
 	if err != nil {
 		t.Fatal("failed to write genesis json file: ", err)
 	}
-	net, err := startIntegrationTestNet(directory,
+	net, err := startIntegrationTestNet(t, directory,
 		[]string{"genesis", "json", "--experimental", jsonFile},
 		extraArguments,
 	)
 	if err != nil {
 		t.Fatal("failed to start integration test network: ", err)
 	}
-	t.Cleanup(func() {
-		net.Stop()
-	})
 	return net
 }
 
-func startIntegrationTestNet(directory string, sonicToolArguments []string, extraClientArguments []string) (*IntegrationTestNet, error) {
+func startIntegrationTestNet(
+	t *testing.T,
+	directory string,
+	sonicToolArguments []string,
+	extraClientArguments []string,
+) (*IntegrationTestNet, error) {
 	// start the fakenet sonic node
 	result := &IntegrationTestNet{
 		directory:            directory,
@@ -264,6 +281,9 @@ func startIntegrationTestNet(directory string, sonicToolArguments []string, extr
 	if err := result.start(); err != nil {
 		return nil, fmt.Errorf("failed to start the test network: %w", err)
 	}
+	t.Cleanup(func() {
+		result.Stop()
+	})
 	return result, nil
 }
 

@@ -122,7 +122,7 @@ func TestSonicTool_account_ExecutesWithoutErrors(t *testing.T) {
 func TestSonicTool_genesis_ExecutesWithoutErrors(t *testing.T) {
 
 	// Create a history by running some transactions
-	net := tests.StartIntegrationTestNet(t)
+	net := tests.StartIntegrationTestNetWithFakeGenesis(t)
 	generateNBlocks(t, net, 2)
 	net.Stop()
 

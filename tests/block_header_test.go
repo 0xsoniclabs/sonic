@@ -34,12 +34,12 @@ import (
 )
 
 func TestBlockHeader_FakeGenesis_SatisfiesInvariants(t *testing.T) {
-	net := StartIntegrationTestNet(t)
+	net := StartIntegrationTestNetWithFakeGenesis(t)
 	testBlockHeadersOnNetwork(t, net)
 }
 
 func TestBlockHeader_JsonGenesis_SatisfiesInvariants(t *testing.T) {
-	net := StartIntegrationTestNetFromJsonGenesis(t)
+	net := StartIntegrationTestNetWithJsonGenesis(t)
 	testBlockHeadersOnNetwork(t, net)
 }
 

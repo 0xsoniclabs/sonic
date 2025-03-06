@@ -70,9 +70,6 @@ func ApplyGenesisJson(json *GenesisJson) (*genesisstore.Store, error) {
 	}
 
 	builder := makegenesis.NewGenesisBuilder()
-
-	fmt.Printf("Building genesis file - rules: %+v\n", json.Rules)
-
 	for _, acc := range json.Accounts {
 		if acc.Balance != nil {
 			builder.AddBalance(acc.Address, acc.Balance)
