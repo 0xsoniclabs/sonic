@@ -1,4 +1,3 @@
-// Package provider contains the implementation of the Provider interface
 package provider
 
 import (
@@ -12,7 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
-// RPCProvider implements the Provider interface and provides methods for
+// RPCProvider implements the Provider interface and provides methods
 // making RPC calls through an Ethereum client.
 type RPCProvider struct {
 	// client is the Ethereum client used for making RPC calls.
@@ -20,7 +19,7 @@ type RPCProvider struct {
 }
 
 // NewRPCProvider creates a new instance of RPCProvider with the given
-// Ethereum client. Returns nil if the client could not be created.
+// Ethereum client.
 // The resulting Provider must be closed after use.
 //
 // Parameters:
@@ -55,15 +54,11 @@ func (rpcp *RPCProvider) GetCommitteeCertificate(first scc.Period, maxResults ui
 		return nil, fmt.Errorf("No client available")
 	}
 
-	maxString := fmt.Sprintf("%x", maxResults)
-	if maxResults == math.MaxUint64 {
-		maxString = "max"
-	}
 	results := []ethapi.CommitteeCertificateJson{}
 	err := rpcp.client.Client().Call(
 		&results, "sonic_getCommitteeCertificates",
 		fmt.Sprintf("%x", first),
-		maxString,
+		getMaxString(maxResults),
 	)
 	if err != nil {
 		return nil, err
@@ -83,6 +78,32 @@ func (rpcp *RPCProvider) GetCommitteeCertificate(first scc.Period, maxResults ui
 // Returns:
 // - cert.BlockCertificate: The block certificate for the given block number.
 // - error: An error if the retrieval fails.
-func GetBlockCertificate(number idx.Block) (cert.BlockCertificate, error) {
-	return cert.BlockCertificate{}, nil
+func (rpcp *RPCProvider) GetBlockCertificates(first idx.Block, maxResults uint64) ([]cert.BlockCertificate, error) {
+	if rpcp.client == nil {
+		return nil, fmt.Errorf("No client available")
+	}
+
+	results := []ethapi.BlockCertificateJson{}
+	err := rpcp.client.Client().Call(
+		&results, "sonic_getBlockCertificates",
+		fmt.Sprintf("%x", first),
+		getMaxString(maxResults),
+	)
+	if err != nil {
+		return nil, err
+	}
+	certs := []cert.BlockCertificate{}
+	for _, res := range results {
+		certs = append(certs, res.ToCertificate())
+	}
+	return certs, nil
+}
+
+// helper functions
+
+func getMaxString(maxResults uint64) string {
+	if maxResults == math.MaxUint64 {
+		return "max"
+	}
+	return fmt.Sprintf("%x", maxResults)
 }

@@ -171,7 +171,7 @@ func TestSonicApi_GetBlockCertificate_CanProduceBlockCertificates(t *testing.T) 
 	require.Equal(t, len(certificates), len(res))
 
 	for i, c := range certificates {
-		require.Equal(t, c, res[i].toCertificate())
+		require.Equal(t, c, res[i].ToCertificate())
 	}
 }
 
@@ -187,7 +187,7 @@ func TestSonicApi_GetBlockCertificates_CanReturnLatestCertificate(t *testing.T) 
 	res, err := api.GetBlockCertificates(context.Background(), latest, 1)
 	require.NoError(t, err)
 	require.Len(t, res, 1)
-	require.Equal(t, certificate, res[0].toCertificate())
+	require.Equal(t, certificate, res[0].ToCertificate())
 }
 
 func TestSonicApi_GetBlockCertificates_ReportsErrorIfLatestCouldNotBeFound(t *testing.T) {

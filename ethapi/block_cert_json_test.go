@@ -30,7 +30,7 @@ func TestBlockCertificateJson_ToBlockCertificate_ConvertsToHealthyCertificate(t 
 		Signature: sig,
 	}
 
-	got := b.toCertificate()
+	got := b.ToCertificate()
 	aggregatedSignature := cert.NewAggregatedSignature[cert.BlockStatement](
 		b.Signers,
 		b.Signature,
@@ -70,7 +70,7 @@ func TestBlockCertificateJson_CanBeJsonEncodedAndDecoded(t *testing.T) {
 
 	// check
 	require.Equal(certJson, decoded)
-	cert := decoded.toCertificate()
+	cert := decoded.ToCertificate()
 	require.Equal(c, cert)
 }
 
