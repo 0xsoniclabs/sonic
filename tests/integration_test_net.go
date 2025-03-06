@@ -12,7 +12,6 @@ import (
 	"regexp"
 	"strconv"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
 
@@ -75,12 +74,15 @@ type IntegrationTestNetOptions struct {
 	// FeatureSet specifies the feature set to be used for the integration test network.
 	// The default value is SonicFeatures.
 	FeatureSet opera.FeatureSet
+	// NumNodes specifies the number of nodes to be started on the integration
+	// test network. A value of 0 is interpreted as 1.
+	NumNodes int
 	// ClientExtraArguments specifies additional arguments to be passed to the client.
 	ClientExtraArguments []string
 }
 
 // IntegrationTestNet is a in-process test network for integration tests. When
-// started, it runs a full Sonic node maintaining a chain within the process
+// started, it runs full Sonic nodes maintaining a chain within the process
 // containing this object. The network can be used to run transactions on and
 // to perform queries against.
 //
@@ -100,12 +102,19 @@ type IntegrationTestNetOptions struct {
 // integration test networks can also be used for automated integration and
 // regression tests for client code.
 type IntegrationTestNet struct {
-	directory            string
-	done                 <-chan struct{}
 	extraClientArguments []string
+	nodes                []integrationTestNode
 
 	sessionsMutex sync.Mutex
 	Session
+}
+
+// per-node state for the integration test network
+type integrationTestNode struct {
+	directory string
+	httpPort  int
+	shutdown  chan<- struct{}
+	done      <-chan struct{}
 }
 
 // StartIntegrationTestNet starts a single-node test network for integration tests.
@@ -141,7 +150,7 @@ func StartIntegrationTestNetWithFakeGenesis(
 		t,
 		t.TempDir(),
 		[]string{"genesis", "fake", "1", "--upgrades", effectiveOptions.FeatureSet.String()},
-		effectiveOptions.ClientExtraArguments,
+		effectiveOptions,
 	)
 	if err != nil {
 		t.Fatal("failed to start integration test network: ", err)
@@ -268,7 +277,7 @@ func StartIntegrationTestNetWithJsonGenesis(
 		t,
 		directory,
 		[]string{"genesis", "json", "--experimental", jsonFile},
-		effectiveOptions.ClientExtraArguments,
+		effectiveOptions,
 	)
 	if err != nil {
 		t.Fatal("failed to start integration test network: ", err)
@@ -280,31 +289,38 @@ func startIntegrationTestNet(
 	t *testing.T,
 	directory string,
 	sonicToolArguments []string,
-	extraClientArguments []string,
+	options IntegrationTestNetOptions,
 ) (*IntegrationTestNet, error) {
-	// start the fakenet sonic node
+	numNodes := options.NumNodes
+	if numNodes < 1 {
+		numNodes = 1
+	}
 	net := &IntegrationTestNet{
-		directory:            directory,
-		extraClientArguments: extraClientArguments,
+		extraClientArguments: options.ClientExtraArguments,
 		Session: Session{
 			account: Account{evmcore.FakeKey(1)},
 		},
+		nodes: make([]integrationTestNode, numNodes),
 	}
+	net.Session.net = net
 
-	// initialize the data directory for the single node on the test network
-	originalArgs := os.Args
-	os.Args = append([]string{
-		"sonictool",
-		"--datadir", net.stateDir(),
-		"--statedb.livecache", "1",
-		"--statedb.archivecache", "1",
-		"--statedb.cache", "1024",
-	}, sonicToolArguments...)
-	if err := sonictool.Run(); err != nil {
-		os.Args = originalArgs
-		return nil, fmt.Errorf("failed to initialize the test network: %w", err)
+	// start the integration test nodes
+	for i := range net.nodes {
+		net.nodes[i].directory = filepath.Join(directory, fmt.Sprintf("node%d", i))
+
+		// initialize the data directory for the single node on the test network
+		// equivalent to running `sonictool --datadir <dataDir> genesis fake 1`
+		args := append([]string{
+			"sonictool",
+			"--datadir", net.nodes[i].getStateDir(),
+			"--statedb.livecache", "1",
+			"--statedb.archivecache", "1",
+			"--statedb.cache", "1024",
+		}, sonicToolArguments...)
+		if err := sonictool.RunWithArgs(args); err != nil {
+			return nil, fmt.Errorf("failed to initialize the test network: %w", err)
+		}
 	}
-	os.Args = originalArgs
 
 	if err := net.start(); err != nil {
 		return nil, fmt.Errorf("failed to start the test network: %w", err)
@@ -313,93 +329,115 @@ func startIntegrationTestNet(
 	return net, nil
 }
 
-func (n *IntegrationTestNet) stateDir() string {
+func (n *integrationTestNode) getStateDir() string {
 	return filepath.Join(n.directory, "state")
 }
 
 func (n *IntegrationTestNet) start() error {
-	if n.done != nil {
+	if n.nodes[0].done != nil {
 		return errors.New("network already started")
 	}
 
-	httpEndpointAnnouncement := make(chan string)
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
+	nodeIds := make([]chan string, len(n.nodes))
+	httpPorts := make([]chan string, len(n.nodes))
+	for i := range nodeIds {
+		nodeIds[i] = make(chan string, 1)
+		httpPorts[i] = make(chan string, 1)
+	}
 
-		// MacOS uses other temporary directories than Linux, which is a too long name for the Unix domain socket.
-		// Since /tmp is also available on MacOS, we can use it as a short temporary directory.
-		tmp, err := os.MkdirTemp("/tmp", "sonic_integration_test_*")
-		if err != nil {
-			panic(fmt.Sprintf("Failed to create temporary directory: %v", err))
-		}
-		defer func() {
-			if err := os.RemoveAll(tmp); err != nil {
-				fmt.Printf("Failed to remove temporary directory: %v\n", err)
+	for i := range n.nodes {
+		stop := make(chan struct{})
+		done := make(chan struct{})
+		n.nodes[i].shutdown = stop
+		n.nodes[i].done = done
+		go func() {
+			defer close(done)
+
+			// MacOS uses other temporary directories than Linux, which is a too long name for the Unix domain socket.
+			// Since /tmp is also available on MacOS, we can use it as a short temporary directory.
+			tmp, err := os.MkdirTemp("/tmp", "sonic_integration_test_*")
+			if err != nil {
+				panic(fmt.Sprintf("Failed to create temporary directory: %v", err))
+			}
+			defer func() {
+				if err := os.RemoveAll(tmp); err != nil {
+					fmt.Printf("Failed to remove temporary directory: %v\n", err)
+				}
+			}()
+
+			// start the fakenet sonic node
+			// equivalent to running `sonicd ...` but in this local process
+			args := append([]string{
+				"sonicd",
+
+				// data storage options
+				"--datadir", n.nodes[i].getStateDir(),
+				"--datadir.minfreedisk", "0",
+
+				// fake network options
+				"--fakenet", fmt.Sprintf("%d/%d", i+1, len(n.nodes)),
+
+				// http-client option
+				"--http", "--http.addr", "127.0.0.1", "--http.port", "0",
+				"--http.api", "admin,eth,web3,net,txpool,ftm,trace,debug,sonic",
+
+				// websocket-client options
+				"--ws", "--ws.addr", "127.0.0.1", "--ws.port", "0",
+				"--ws.api", "admin,eth,ftm",
+
+				//  net options
+				"--port", "0",
+				"--nat", "none",
+				"--nodiscover",
+
+				// database memory usage options
+				"--statedb.livecache", "1",
+				"--statedb.archivecache", "1",
+				"--statedb.cache", "1024",
+
+				"--ipcpath", fmt.Sprintf("%s/sonic.ipc", tmp),
+			},
+				// append extra arguments
+				n.extraClientArguments...,
+			)
+
+			control := &sonicd.AppControl{
+				NodeIdAnnouncement:   nodeIds[i],
+				HttpPortAnnouncement: httpPorts[i],
+				Shutdown:             stop,
+			}
+
+			if err := sonicd.RunWithArgs(args, control); err != nil {
+				panic(fmt.Sprint("Failed to start the fake network:", err))
 			}
 		}()
+	}
 
-		// start the fakenet sonic node
-		// equivalent to running `sonicd ...` but in this local process
-		args := append([]string{
-			"sonicd",
-
-			// data storage options
-			"--datadir", n.stateDir(),
-			"--datadir.minfreedisk", "0",
-
-			// fake network options
-			"--fakenet", "1/1",
-
-			// http-client option
-			"--http", "--http.addr", "127.0.0.1", "--http.port", "0",
-			"--http.api", "admin,eth,web3,net,txpool,ftm,trace,debug,sonic",
-
-			// websocket-client options
-			"--ws", "--ws.addr", "127.0.0.1", "--ws.port", "0",
-			"--ws.api", "admin,eth,ftm",
-
-			//  net options
-			"--port", "0",
-			"--nat", "none",
-			"--nodiscover",
-
-			// database memory usage options
-			"--statedb.livecache", "1",
-			"--statedb.archivecache", "1",
-			"--statedb.cache", "1024",
-
-			"--ipcpath", fmt.Sprintf("%s/sonic.ipc", tmp),
-		},
-
-			// append extra arguments
-			n.extraClientArguments...,
-		)
-
-		if err := sonicd.RunWithArgs(args, httpEndpointAnnouncement); err != nil {
-			panic(fmt.Sprint("Failed to start the fake network:", err))
+	// Collect all enode IDs and HTTP ports.
+	endPointPattern := regexp.MustCompile(`^http://.*:(\d+)$`)
+	nodeEnodes := make([]string, len(n.nodes))
+	for i := range n.nodes {
+		id, ok := <-nodeIds[i]
+		if !ok {
+			return fmt.Errorf("failed to start the network, no ID announced for node %d", i)
 		}
-	}()
+		nodeEnodes[i] = id
+		endpoint, ok := <-httpPorts[i]
+		if !ok {
+			return fmt.Errorf("failed to start the network, no HTTP port announced for node %d", i)
+		}
 
-	n.done = done
-
-	// wait for the HTTP endpoint announcement
-	endpoint, ok := <-httpEndpointAnnouncement
-	if !ok {
-		return errors.New("failed to start the network, no HTTP endpoint announced")
+		// Extract the HTTP port form the endpoint string.
+		match := endPointPattern.FindStringSubmatch(endpoint)
+		if len(match) != 2 {
+			return fmt.Errorf("failed to parse the HTTP endpoint: %s", endpoint)
+		}
+		httpPort, err := strconv.Atoi(match[1])
+		if err != nil {
+			return fmt.Errorf("failed to parse the HTTP port %s: %w", endpoint, err)
+		}
+		n.nodes[i].httpPort = httpPort
 	}
-
-	// Extract the HTTP port form the endpoint string.
-	pattern := regexp.MustCompile(`^http://.*:(\d+)$`)
-	match := pattern.FindStringSubmatch(endpoint)
-	if len(match) != 2 {
-		return fmt.Errorf("failed to parse the HTTP endpoint: %s", endpoint)
-	}
-	httpPort, err := strconv.Atoi(match[1])
-	if err != nil {
-		return fmt.Errorf("failed to parse the HTTP port %s: %w", endpoint, err)
-	}
-	n.httpPort = httpPort
 
 	// connect to blockchain network
 	client, err := n.GetClient()
@@ -414,7 +452,10 @@ func (n *IntegrationTestNet) start() error {
 	// wait for the node to be ready to serve requests
 	const maxDelay = 100 * time.Millisecond
 	delay := time.Millisecond
-	for time.Since(start) < timeout {
+	for {
+		if time.Since(start) > timeout {
+			return fmt.Errorf("failed to successfully start up a test network within %v", timeout)
+		}
 		_, err := client.ChainID(context.Background())
 		if err != nil {
 			time.Sleep(delay)
@@ -424,21 +465,36 @@ func (n *IntegrationTestNet) start() error {
 			}
 			continue
 		}
-		return nil
+		break
 	}
 
-	return fmt.Errorf("failed to successfully start up a test network within %v", timeout)
+	// Connect the nodes with each other.
+	for i, enode := range nodeEnodes {
+		if err := client.Client().Call(nil, "admin_addPeer", enode); err != nil {
+			return fmt.Errorf("failed to connect to node %d: %v", i, err)
+		}
+	}
+
+	return nil
 }
 
 // Stop shuts the underlying network down.
 func (n *IntegrationTestNet) Stop() {
-	if n.done == nil {
+	if n.nodes[0].done == nil {
 		return
 	}
-	// best effort to stop the test environment, ignore error
-	_ = syscall.Kill(syscall.Getpid(), syscall.SIGINT)
-	<-n.done
-	n.done = nil
+
+	// send the stop signal to all nodes
+	for i := range n.nodes {
+		close(n.nodes[i].shutdown)
+		n.nodes[i].shutdown = nil
+	}
+
+	// wait for all nodes to be stopped
+	for i := range n.nodes {
+		<-n.nodes[i].done
+		n.nodes[i].done = nil
+	}
 }
 
 // Stops and restarts the single node on the test network.
@@ -447,13 +503,34 @@ func (n *IntegrationTestNet) Restart() error {
 	return n.start()
 }
 
+// NumNodes returns the number of nodes on the network.
+func (n *IntegrationTestNet) NumNodes() int {
+	return len(n.nodes)
+}
+
+// GetClient provides raw access to a fresh connection to the network.
+// The resulting client must be closed after use.
+func (n *IntegrationTestNet) GetClient() (*ethclient.Client, error) {
+	return n.GetClientConnectedToNode(0)
+}
+
+// GetClient provides raw access to a fresh connection to a selected node on
+// the network. The resulting client must be closed after use.
+func (n *IntegrationTestNet) GetClientConnectedToNode(i int) (*ethclient.Client, error) {
+	if i < 0 || i >= len(n.nodes) {
+		return nil, fmt.Errorf("node index out of bounds: %d", i)
+	}
+	return ethclient.Dial(fmt.Sprintf("http://localhost:%d", n.nodes[i].httpPort))
+}
+
 // GetWebSocketClient provides raw access to a fresh connection to the network
 // using the WebSocket protocol. The resulting client must be closed after use.
 func (n *IntegrationTestNet) GetWebSocketClient() (*ethclient.Client, error) {
-	return ethclient.Dial(fmt.Sprintf("ws://localhost:%d", n.httpPort))
+	return ethclient.Dial(fmt.Sprintf("ws://localhost:%d", n.nodes[0].httpPort))
 }
+
 func (n *IntegrationTestNet) GetDirectory() string {
-	return n.directory
+	return n.nodes[0].directory
 }
 
 // RestartWithExportImport stops the network, exports the genesis file, cleans the
@@ -462,42 +539,36 @@ func (n *IntegrationTestNet) RestartWithExportImport() error {
 	n.Stop()
 	fmt.Println("Network stopped. Exporting genesis file...")
 
-	// save original args
-	originalArgs := os.Args
+	for _, node := range n.nodes {
+		// export
+		genesisFile := filepath.Join(node.directory, "testGenesis.g")
+		err := sonictool.RunWithArgs([]string{
+			"sonictool",
+			"--datadir", node.getStateDir(),
+			"genesis", "export", genesisFile,
+		})
+		if err != nil {
+			return err
+		}
 
-	// export
-	genesisFile := filepath.Join(n.directory, "testGenesis.g")
-	os.Args = []string{
-		"sonictool",
-		"--datadir", n.stateDir(),
-		"genesis", "export", genesisFile,
-	}
-	err := sonictool.Run()
-	if err != nil {
-		return err
-	}
+		// clean client state
+		err = os.RemoveAll(node.getStateDir())
+		if err != nil {
+			return err
+		}
 
-	// clean client state
-	err = os.RemoveAll(n.stateDir())
-	if err != nil {
-		return err
-	}
+		fmt.Println("State directory cleaned. Importing genesis file...")
 
-	fmt.Println("State directory cleaned. Importing genesis file...")
-
-	// import genesis file
-	os.Args = []string{
-		"sonictool",
-		"--datadir", n.stateDir(),
-		"genesis", "--experimental", genesisFile,
+		// import genesis file
+		err = sonictool.RunWithArgs([]string{
+			"sonictool",
+			"--datadir", node.getStateDir(),
+			"genesis", "--experimental", genesisFile,
+		})
+		if err != nil {
+			return err
+		}
 	}
-	err = sonictool.Run()
-	if err != nil {
-		return err
-	}
-
-	// restore original args
-	os.Args = originalArgs
 
 	fmt.Println("Genesis file imported. Restarting network...")
 
@@ -566,8 +637,8 @@ func (n *IntegrationTestNet) SpawnSession(t *testing.T) IntegrationTestNetSessio
 	}
 
 	return &Session{
-		account:  nextSessionAccount,
-		httpPort: n.httpPort,
+		net:     n,
+		account: nextSessionAccount,
 	}
 }
 
@@ -606,8 +677,8 @@ type contractDeployer[T any] func(*bind.TransactOpts, bind.ContractBackend) (com
 // Its purpose is to isolate transaction issuing accounts, so that multiple test
 // sessions can be run in parallel on the same network without conflicting nonce issues.
 type Session struct {
-	account  Account
-	httpPort int
+	net     *IntegrationTestNet
+	account Account
 }
 
 // EndowAccount sends a requested amount of tokens to the given account. This is
@@ -759,7 +830,13 @@ func (s *Session) GetSessionSponsor() *Account {
 // GetClient provides raw access to a fresh connection to the network.
 // The resulting client must be closed after use.
 func (s *Session) GetClient() (*ethclient.Client, error) {
-	return ethclient.Dial(fmt.Sprintf("http://localhost:%d", s.httpPort))
+	return s.GetClientConnectedToNode(0)
+}
+
+// GetClient provides raw access to a fresh connection to a selected node on
+// the network. The resulting client must be closed after use.
+func (s *Session) GetClientConnectedToNode(i int) (*ethclient.Client, error) {
+	return s.net.GetClientConnectedToNode(i)
 }
 
 // validateAndSanitizeOptions ensures that the options are valid and sets the default values.
