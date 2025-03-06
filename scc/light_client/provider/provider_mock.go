@@ -37,10 +37,10 @@ func (m *MockProvider) EXPECT() *MockProviderMockRecorder {
 }
 
 // GetBlockCertificate mocks base method.
-func (m *MockProvider) GetBlockCertificate(first idx.Block, maxResults uint64) (cert.BlockCertificate, error) {
+func (m *MockProvider) GetBlockCertificate(first idx.Block, maxResults uint64) ([]cert.BlockCertificate, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetBlockCertificate", first, maxResults)
-	ret0, _ := ret[0].(cert.BlockCertificate)
+	ret0, _ := ret[0].([]cert.BlockCertificate)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

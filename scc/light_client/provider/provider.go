@@ -16,5 +16,5 @@ type Provider interface {
 
 	// GetBlockCertificate returns the block certificates starting from first
 	// and returning up to maxResults entries.
-	GetBlockCertificate(first idx.Block, maxResults uint64) (cert.BlockCertificate, error)
+	GetBlockCertificate(first idx.Block, maxResults uint64) ([]cert.BlockCertificate, error)
 }
