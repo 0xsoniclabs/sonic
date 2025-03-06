@@ -20,7 +20,6 @@ import (
 	"github.com/0xsoniclabs/consensus/inter/dag"
 	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/0xsoniclabs/consensus/vecengine"
-	"github.com/0xsoniclabs/consensus/vecfc"
 
 	"github.com/0xsoniclabs/sonic/inter"
 )
@@ -90,7 +89,7 @@ func (hb *HighestBefore) CollectFrom(_other vecengine.HighestBeforeI, num idx.Va
 func (hb *HighestBefore) GatherFrom(to idx.Validator, _other vecengine.HighestBeforeI, from []idx.Validator) {
 	other := _other.(*HighestBefore)
 	// read all branches to find highest event
-	highestBranchSeq := vecfc.BranchSeq{}
+	highestBranchSeq := vecengine.BranchSeq{}
 	highestBranchTime := inter.Timestamp(0)
 	for _, branchID := range from {
 		vseq := other.VSeq.Get(branchID)

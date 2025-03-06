@@ -20,7 +20,7 @@ import (
 	"encoding/binary"
 
 	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/vecfc"
+	"github.com/0xsoniclabs/consensus/vecengine"
 
 	"github.com/0xsoniclabs/sonic/inter"
 )
@@ -34,7 +34,7 @@ type (
 	HighestBeforeTime []byte
 
 	HighestBefore struct {
-		VSeq  *vecfc.HighestBeforeSeq
+		VSeq  *vecengine.HighestBeforeSeq
 		VTime *HighestBeforeTime
 	}
 )
@@ -42,7 +42,7 @@ type (
 // NewHighestBefore creates new HighestBefore vector.
 func NewHighestBefore(size idx.Validator) *HighestBefore {
 	return &HighestBefore{
-		VSeq:  vecfc.NewHighestBeforeSeq(size),
+		VSeq:  vecengine.NewHighestBeforeSeq(size),
 		VTime: NewHighestBeforeTime(size),
 	}
 }

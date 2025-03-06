@@ -32,6 +32,8 @@ import (
 	reflect "reflect"
 	time "time"
 
+	hash "github.com/0xsoniclabs/consensus/hash"
+	idx "github.com/0xsoniclabs/consensus/inter/idx"
 	evmcore "github.com/0xsoniclabs/sonic/evmcore"
 	inter "github.com/0xsoniclabs/sonic/inter"
 	iblockproc "github.com/0xsoniclabs/sonic/inter/iblockproc"
@@ -40,8 +42,6 @@ import (
 	scc "github.com/0xsoniclabs/sonic/scc"
 	cert "github.com/0xsoniclabs/sonic/scc/cert"
 	result "github.com/0xsoniclabs/sonic/utils/result"
-	hash "github.com/0xsoniclabs/consensus/hash"
-	idx "github.com/0xsoniclabs/consensus/inter/idx"
 	accounts "github.com/ethereum/go-ethereum/accounts"
 	common "github.com/ethereum/go-ethereum/common"
 	types "github.com/ethereum/go-ethereum/core/types"

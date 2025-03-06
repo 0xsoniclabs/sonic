@@ -1,7 +1,7 @@
 github.com/0xsoniclabs/carmen/go v0.0.0-20250530111616-fabde4233b62 h1:NF+A6zk8FYDuDk9aTVtzn7/e8kj+LERtyt+cfcHz+vM=
 github.com/0xsoniclabs/carmen/go v0.0.0-20250530111616-fabde4233b62/go.mod h1:s161Ju9dIK9gZ982wBx2WaCNN5Hv4OjC6YyoftKKF48=
-github.com/0xsoniclabs/consensus v0.0.0-20250225114506-00613699a22b h1:DIv9/DmpC/aCmYrrdD+x5U0gP7Zo6zVBj0pK67glwok=
-github.com/0xsoniclabs/consensus v0.0.0-20250225114506-00613699a22b/go.mod h1:iqY4OlMSIpNvXZ0e7FiPsMJFcjPfem2VYmsYyluLr14=
+github.com/0xsoniclabs/consensus v0.0.0-20250305150018-46890c1558a3 h1:8RMTZUUdJZuaiJR7W/sQL/esqyiQDjPXxB9XZeUj3DM=
+github.com/0xsoniclabs/consensus v0.0.0-20250305150018-46890c1558a3/go.mod h1:iqY4OlMSIpNvXZ0e7FiPsMJFcjPfem2VYmsYyluLr14=
 github.com/0xsoniclabs/go-ethereum v0.0.0-20250623123926-e563918a84b4 h1:CXx1PvzOP9kXGKSdPE+S+va2ovhFWnfb3nE7mStpNA4=
 github.com/0xsoniclabs/go-ethereum v0.0.0-20250623123926-e563918a84b4/go.mod h1:1VtASSKSjBQIF9mFv5/B5sllR7KFR05tVsiouSGI2dQ=
 github.com/0xsoniclabs/tosca v0.0.0-20250624065842-ec138d34756c h1:O2u0V3HlVl1wKfsxZZ94yyORL0AocoVnaarthM/x5s0=
