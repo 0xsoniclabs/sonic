@@ -220,7 +220,10 @@ func lachesisMain(ctx *cli.Context) error {
 // lachesisMainInternal is an internal version of lachesisMain that allows for
 // an extra optional parameter to be used for announcing the HTTP port used by
 // the RPC server of the node.
-func lachesisMainInternal(ctx *cli.Context, httpPortAnnouncement chan<- string) error {
+func lachesisMainInternal(
+	ctx *cli.Context,
+	control *AppControl,
+) error {
 	if args := ctx.Args(); len(args) > 0 {
 		return fmt.Errorf("invalid command: %q", args[0])
 	}
@@ -251,8 +254,24 @@ func lachesisMainInternal(ctx *cli.Context, httpPortAnnouncement chan<- string) 
 		return fmt.Errorf("failed to start the node: %w", err)
 	}
 
-	if httpPortAnnouncement != nil {
-		httpPortAnnouncement <- node.HTTPEndpoint()
+	if control != nil {
+		if control.NodeIdAnnouncement != nil {
+			control.NodeIdAnnouncement <- node.Server().NodeInfo().Enode
+		}
+
+		if control.HttpPortAnnouncement != nil {
+			control.HttpPortAnnouncement <- node.HTTPEndpoint()
+		}
+
+		if control.Shutdown != nil {
+			go func() {
+				<-control.Shutdown
+				log.Info("Got shutdown signal, shutting down...")
+				if err := node.Close(); err != nil {
+					log.Warn("Error during shutdown", "err", err)
+				}
+			}()
+		}
 	}
 
 	node.Wait()
