@@ -314,14 +314,7 @@ func MainNetRules() Rules {
 	}
 }
 
-type FakeProfile int
-
-const (
-	SonicProfile FakeProfile = iota
-	AllegroProfile
-)
-
-func FakeNetRules(profile FakeProfile) Rules {
+func FakeNetRules(upgrades Upgrades) Rules {
 	return Rules{
 		Name:      "fake",
 		NetworkID: FakeNetworkID,
@@ -333,13 +326,7 @@ func FakeNetRules(profile FakeProfile) Rules {
 			MaxBlockGas:             defaultMaxBlockGas,
 			MaxEmptyBlockSkipPeriod: inter.Timestamp(3 * time.Second),
 		},
-		Upgrades: Upgrades{
-			Berlin:  true,
-			London:  true,
-			Llr:     false,
-			Sonic:   profile >= SonicProfile,
-			Allegro: profile >= AllegroProfile,
-		},
+		Upgrades: upgrades,
 	}
 }
 
@@ -439,4 +426,24 @@ func (r Rules) Copy() Rules {
 func (r Rules) String() string {
 	b, _ := json.Marshal(&r)
 	return string(b)
+}
+
+func GetSonicUpgrades() Upgrades {
+	return Upgrades{
+		Berlin:  true,
+		London:  true,
+		Llr:     false,
+		Sonic:   true,
+		Allegro: false,
+	}
+}
+
+func GetAllegroUpgrades() Upgrades {
+	return Upgrades{
+		Berlin:  true,
+		London:  true,
+		Llr:     false,
+		Sonic:   true,
+		Allegro: false,
+	}
 }

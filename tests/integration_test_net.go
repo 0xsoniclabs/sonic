@@ -165,13 +165,13 @@ func StartIntegrationTestNetWithJsonGenesis(
 	}
 	effectiveOptions := sanitizeOptions(options...)
 
-	fakeRulesProfile, err := featureSetToFakeRulesProfile(effectiveOptions.FeatureSet)
+	upgrades, err := featureSetToUpgrades(effectiveOptions.FeatureSet)
 	if err != nil {
 		t.Error("failed to get fake rules profile: ", err)
 	}
 
 	jsonGenesis := makefakegenesis.GenesisJson{
-		Rules:         opera.FakeNetRules(fakeRulesProfile),
+		Rules:         opera.FakeNetRules(upgrades),
 		BlockZeroTime: time.Now(),
 	}
 
@@ -774,17 +774,17 @@ const (
 	AllegroFeatures                   // < enables the allegro release features
 )
 
-func featureSetToFakeRulesProfile(option FeatureSet) (opera.FakeProfile, error) {
-	var fakeRulesProfile opera.FakeProfile
+func featureSetToUpgrades(option FeatureSet) (opera.Upgrades, error) {
+	var res opera.Upgrades
 	switch option {
 	case SonicFeatures:
-		fakeRulesProfile = opera.SonicProfile
+		res = opera.GetSonicUpgrades()
 	case AllegroFeatures:
-		fakeRulesProfile = opera.AllegroProfile
+		res = opera.GetAllegroUpgrades()
 	default:
-		return fakeRulesProfile, fmt.Errorf("unknown feature set: %d", option)
+		return res, fmt.Errorf("unknown feature set: %d", option)
 	}
-	return fakeRulesProfile, nil
+	return res, nil
 }
 
 func (fs FeatureSet) String() string {
