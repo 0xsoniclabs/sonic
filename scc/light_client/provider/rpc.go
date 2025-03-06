@@ -2,7 +2,6 @@ package provider
 
 import (
 	"fmt"
-	"math"
 
 	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/scc"
@@ -74,8 +73,8 @@ func (rpcp RPCProvider) GetCommitteeCertificates(first scc.Period, maxResults ui
 	results := []ethapi.CommitteeCertificateJson{}
 	err := rpcp.client.Client().Call(
 		&results, "sonic_getCommitteeCertificates",
-		fmt.Sprintf("%x", first),
-		getMaxString(maxResults),
+		fmt.Sprintf("0x%x", first),
+		fmt.Sprintf("0x%x", maxResults),
 	)
 	if err != nil {
 		return nil, err
@@ -105,8 +104,8 @@ func (rpcp RPCProvider) GetBlockCertificates(first idx.Block, maxResults uint64)
 	results := []ethapi.BlockCertificateJson{}
 	err := rpcp.client.Client().Call(
 		&results, "sonic_getBlockCertificates",
-		fmt.Sprintf("%d", first),
-		getMaxString(maxResults),
+		fmt.Sprintf("0x%x", first),
+		fmt.Sprintf("0x%x", maxResults),
 	)
 	if err != nil {
 		return nil, err
@@ -116,15 +115,4 @@ func (rpcp RPCProvider) GetBlockCertificates(first idx.Block, maxResults uint64)
 		certs = append(certs, res.ToCertificate())
 	}
 	return certs, nil
-}
-
-////////////////////////////////////////
-// helper functions
-////////////////////////////////////////
-
-func getMaxString(maxResults uint64) string {
-	if maxResults == math.MaxUint64 {
-		return "max"
-	}
-	return fmt.Sprintf("%d", maxResults)
 }

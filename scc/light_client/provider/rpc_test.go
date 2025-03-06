@@ -86,7 +86,7 @@ func TestRPCProvider_GetBlockCertificates_CanRetrieveCertificates(t *testing.T) 
 	for _, provider := range []*RPCProvider{providerFromClient, providerFromURL} {
 
 		// get certificates
-		certs, err := provider.GetBlockCertificates(1, 10)
+		certs, err := provider.GetBlockCertificates(1, numBlocks-1)
 		require.NoError(err)
 		provider.Close()
 
