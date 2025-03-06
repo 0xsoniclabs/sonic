@@ -59,10 +59,10 @@ func (s *PublicSccApi) GetBlockCertificates(
 	ctx context.Context,
 	first BlockNumber,
 	maxResults Number,
-) ([]blockCertificateJson, error) {
+) ([]BlockCertificateJson, error) {
 	if first.IsLatest() {
 		cert, err := s.backend.GetLatestBlockCertificate()
-		return []blockCertificateJson{
+		return []BlockCertificateJson{
 			toJsonBlockCertificate(cert),
 		}, err
 	}
