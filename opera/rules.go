@@ -314,7 +314,14 @@ func MainNetRules() Rules {
 	}
 }
 
-func FakeNetRules() Rules {
+type FakeProfile int
+
+const (
+	SonicProfile FakeProfile = iota
+	AllegroProfile
+)
+
+func FakeNetRules(profile FakeProfile) Rules {
 	return Rules{
 		Name:      "fake",
 		NetworkID: FakeNetworkID,
@@ -330,8 +337,8 @@ func FakeNetRules() Rules {
 			Berlin:  true,
 			London:  true,
 			Llr:     false,
-			Sonic:   true,
-			Allegro: true,
+			Sonic:   profile >= SonicProfile,
+			Allegro: profile >= AllegroProfile,
 		},
 	}
 }
