@@ -34,7 +34,9 @@ import (
 // and do not implement ERC-20 as described in the EIP use case examples.
 func TestSetCodeTransaction(t *testing.T) {
 
-	net := StartIntegrationTestNet(t)
+	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
+		FeatureSet: AllegroFeatures,
+	})
 
 	t.Run("Operation", func(t *testing.T) {
 		t.Parallel()

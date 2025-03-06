@@ -162,7 +162,13 @@ func TestSonicTool_genesis_ExecutesWithoutErrors(t *testing.T) {
 }
 
 func TestSonicTool_heal_ExecutesWithoutErrors(t *testing.T) {
-	net := tests.StartIntegrationTestNet(t, "--statedb.checkpointinterval", "1")
+	net := tests.StartIntegrationTestNet(
+		t,
+		tests.IntegrationTestNetOptions{
+			FeatureSet:           tests.SonicFeatures,
+			ClientExtraArguments: []string{"--statedb.checkpointinterval", "1"},
+		},
+	)
 	generateNBlocks(t, net, 3)
 	net.Stop()
 
