@@ -42,23 +42,17 @@ func TestRPCProvider_GetCommitteeCertificates_CanRetrieveCertificates(t *testing
 	}
 }
 
-func TestRPCProvider_GetCommitteeCertificates_ReportsErrorForNilClient(t *testing.T) {
+func TestRPCProvider_ReportsErrorForNilClient(t *testing.T) {
 	require := require.New(t)
 
 	provider := NewRPCProviderFromClient(nil)
 
-	// get certificates
+	// get committee certificates
 	_, err := provider.GetCommitteeCertificates(0, 1)
 	require.Error(err)
-}
 
-func TestRPCProvider_GetBlockCertificate_ReportsErrorForNilClient(t *testing.T) {
-	require := require.New(t)
-
-	provider := NewRPCProviderFromClient(nil)
-
-	// get certificates
-	_, err := provider.GetBlockCertificates(0, 1)
+	// get block certificates
+	_, err = provider.GetBlockCertificates(0, 1)
 	require.Error(err)
 }
 
