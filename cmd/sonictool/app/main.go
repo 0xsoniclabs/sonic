@@ -63,14 +63,14 @@ Initialize the database using data from the experimental genesis file.
 					Action:    fakeGenesisImport,
 					Flags: []cli.Flag{
 						ModeFlag,
-						FakeProfile,
+						FakeUpgrades,
 					},
 					Description: `
-    sonictool --datadir=<datadir> genesis fake <N> [--mode=validator] [--profile=profile]
+    sonictool --datadir=<datadir> genesis fake <N> [--mode=validator] [--upgrades=upgrades]
 
 Requires the number of validators in the fake network as the first argument.
 Initialize the database for a testing fakenet.
-Profile can be used to define the network features.
+--upgrades can be used to define the network features, default is sonic hardfork feature set.
 `,
 				},
 				{

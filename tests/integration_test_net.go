@@ -141,7 +141,7 @@ func StartIntegrationTestNetWithFakeGenesis(
 	net, err := startIntegrationTestNet(
 		t,
 		t.TempDir(),
-		[]string{"genesis", "fake", "1", "--profile", effectiveOptions.FeatureSet.String()},
+		[]string{"genesis", "fake", "1", "--upgrades", effectiveOptions.FeatureSet.String()},
 		effectiveOptions.ClientExtraArguments,
 	)
 	if err != nil {

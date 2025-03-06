@@ -32,9 +32,9 @@ var (
 		Name:  "experimental",
 		Usage: "Allow experimental features",
 	}
-	FakeProfile = cli.StringFlag{
-		Name:  "profile",
-		Usage: "Profile of features enabled for the fake network, sonic|allegro.",
+	FakeUpgrades = cli.StringFlag{
+		Name:  "upgrades",
+		Usage: "Feature set enabled in the fake network, sonic|allegro.",
 		Value: "sonic",
 	}
 )
@@ -147,21 +147,21 @@ func fakeGenesisImport(ctx *cli.Context) (err error) {
 	if err != nil {
 		return err
 	}
-	var profile opera.FakeProfile
-	switch ctx.String(FakeProfile.Name) {
+	var upgrades opera.Upgrades
+	switch ctx.String(FakeUpgrades.Name) {
 	case "sonic":
-		profile = opera.SonicProfile
+		upgrades = opera.GetSonicUpgrades()
 	case "allegro":
-		profile = opera.AllegroProfile
+		upgrades = opera.GetAllegroUpgrades()
 	default:
-		return fmt.Errorf("invalid profile %v - must be 'sonic' or 'allegro'", profile)
+		return fmt.Errorf("invalid profile %v - must be 'sonic' or 'allegro'", upgrades)
 	}
 
 	genesisStore := makefakegenesis.FakeGenesisStore(
 		idx.Validator(validatorsNumber),
 		futils.ToFtm(1_000_000_000),
 		futils.ToFtm(5_000_000),
-		profile,
+		upgrades,
 	)
 	defer caution.CloseAndReportError(&err, genesisStore, "failed to close the genesis store")
 	return genesis.ImportGenesisStore(genesis.ImportParams{
