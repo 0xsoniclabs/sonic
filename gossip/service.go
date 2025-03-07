@@ -45,6 +45,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/proclogger"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/logger"
+	"github.com/0xsoniclabs/sonic/scc/bls"
 	scc_node "github.com/0xsoniclabs/sonic/scc/node"
 	"github.com/0xsoniclabs/sonic/utils/signers/gsignercache"
 	"github.com/0xsoniclabs/sonic/utils/txtime"
@@ -279,6 +280,10 @@ func newService(config Config, store *Store, blockProc BlockProc, engine lachesi
 	genesisCommitteeCertificate, err := store.GetCommitteeCertificate(0)
 	if err == nil {
 		svc.sccNode = scc_node.NewNode(store, genesisCommitteeCertificate.Subject().Committee)
+
+		// TODO: implement proper key management
+		key := bls.NewPrivateKeyForTests(0)
+		svc.sccNode.SetKey(&key)
 	}
 
 	return svc, nil
