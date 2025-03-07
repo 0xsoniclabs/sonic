@@ -11,19 +11,19 @@ import (
 )
 
 // RpcProvider implements the Provider interface and provides methods
-// making RPC calls through an Ethereum client.
+// making RPC calls through an RPC client.
 type RpcProvider struct {
-	// client is the Ethereum client used for making RPC calls.
+	// client is the RPC client used for making RPC calls.
 	client RpcClient
 }
 
 // NewRpcProviderFromClient creates a new instance of RpcProvider with the given
-// Ethereum client. The resulting Provider takes ownership of the client and
+// RPC client. The resulting Provider takes ownership of the client and
 // will close it when the Provider is closed.
 // The resulting Provider must be closed after use.
 //
 // Parameters:
-// - client: The Ethereum client to use for RPC calls.
+// - client: The RPC client to use for RPC calls.
 //
 // Returns:
 // - *RpcProvider: A new instance of RpcProvider.
@@ -33,7 +33,7 @@ func NewRpcProviderFromClient(client RpcClient) *RpcProvider {
 	}
 }
 
-// NewRpcProviderFromURL creates a new instance of RpcProvider with a new Ethereum client
+// NewRpcProviderFromURL creates a new instance of RpcProvider with a new RPC client
 // connected to the given URL.
 // The resulting Provider must be closed after use.
 //
@@ -52,7 +52,7 @@ func NewRpcProviderFromURL(url string) (*RpcProvider, error) {
 }
 
 // Close closes the RpcProvider and its underlying RPC client.
-// Reiterative calls to Close are safe.
+// Reiterative calls to Close will not panic.
 func (rpcp *RpcProvider) Close() {
 	if rpcp.IsClosed() {
 		return
@@ -75,7 +75,7 @@ func (rpcp RpcProvider) IsClosed() bool {
 //
 // Returns:
 //   - []cert.CommitteeCertificate: A slice of committee certificates.
-//   - error: An error if the client is nil, the retrieval fails or the
+//   - error: An error if the client is nil, the call fails, the
 //     certificates are out of order or more than requested.
 func (rpcp RpcProvider) GetCommitteeCertificates(first scc.Period, maxResults uint64) ([]cert.CommitteeCertificate, error) {
 	if rpcp.IsClosed() {
@@ -117,7 +117,7 @@ func (rpcp RpcProvider) GetCommitteeCertificates(first scc.Period, maxResults ui
 // Returns:
 //   - cert.BlockCertificate: The block certificates for the given block number
 //     and the following blocks.
-//   - error: An error if the client is nil, the retrieval fails, the
+//   - error: An error if the client is nil, the call fails, the
 //     certificates are out of order or more than requested.
 func (rpcp RpcProvider) GetBlockCertificates(first idx.Block, maxResults uint64) ([]cert.BlockCertificate, error) {
 	if rpcp.IsClosed() {
