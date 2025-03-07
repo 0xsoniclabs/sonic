@@ -451,9 +451,21 @@ func (fs FeatureSet) ToUpgrades() (Upgrades, error) {
 	var res Upgrades
 	switch fs {
 	case SonicFeatures:
-		res = GetSonicUpgrades()
+		res = Upgrades{
+			Berlin:  true,
+			London:  true,
+			Llr:     false,
+			Sonic:   true,
+			Allegro: false,
+		}
 	case AllegroFeatures:
-		res = GetAllegroUpgrades()
+		res = Upgrades{
+			Berlin:  true,
+			London:  true,
+			Llr:     false,
+			Sonic:   true,
+			Allegro: true,
+		}
 	default:
 		return res, fmt.Errorf("unknown feature set: %v", fs)
 	}
@@ -468,25 +480,5 @@ func (fs FeatureSet) String() string {
 		return "allegro"
 	default:
 		return "unknown"
-	}
-}
-
-func GetSonicUpgrades() Upgrades {
-	return Upgrades{
-		Berlin:  true,
-		London:  true,
-		Llr:     false,
-		Sonic:   true,
-		Allegro: false,
-	}
-}
-
-func GetAllegroUpgrades() Upgrades {
-	return Upgrades{
-		Berlin:  true,
-		London:  true,
-		Llr:     false,
-		Sonic:   true,
-		Allegro: true,
 	}
 }

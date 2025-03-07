@@ -16,9 +16,7 @@ func TestFeatureSet_CanBeConvertedToString(t *testing.T) {
 	}
 
 	for expected, fs := range tests {
-		if fs.String() != expected {
-			t.Errorf("Expected %s, got %s", expected, fs.String())
-		}
+		require.Equal(t, expected, fs.String())
 	}
 }
 
@@ -26,7 +24,6 @@ func TestFeatureSet_CanBeConvertedToUpgrades(t *testing.T) {
 
 	tests := map[FeatureSet]struct {
 		expectedUpgrades Upgrades
-		expectedErr      string
 	}{
 		SonicFeatures: {
 			expectedUpgrades: Upgrades{
@@ -46,22 +43,18 @@ func TestFeatureSet_CanBeConvertedToUpgrades(t *testing.T) {
 				Allegro: true,
 			},
 		},
-		FeatureSet(math.MaxInt): {
-			expectedErr: "unknown feature set",
-		},
 	}
 
 	for featureSet, test := range tests {
 		t.Run(featureSet.String(), func(t *testing.T) {
 			got, err := featureSet.ToUpgrades()
-
-			if test.expectedErr != "" {
-				require.ErrorContains(t, err, test.expectedErr)
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, test.expectedUpgrades, got)
-			}
+			require.NoError(t, err)
+			require.Equal(t, test.expectedUpgrades, got)
 		})
-
 	}
+}
+
+func TestFeatureSet_ToUpgradeMayFail(t *testing.T) {
+	_, err := FeatureSet(math.MaxInt).ToUpgrades()
+	require.Error(t, err)
 }
