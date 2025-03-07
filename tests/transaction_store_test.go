@@ -6,6 +6,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/holiman/uint256"
@@ -19,7 +20,10 @@ func TestTransactionStore_CanTransactionsBeRetrievedFromBlocksAfterRestart(t *te
 	// was executed and check if the transaction is present in the block and the
 	// values match, by comparing the hashes.
 
-	net := StartIntegrationTestNet(t)
+	net := StartIntegrationTestNet(t,
+		IntegrationTestNetOptions{
+			FeatureSet: opera.AllegroFeatures,
+		})
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
