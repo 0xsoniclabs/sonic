@@ -18,6 +18,7 @@ package evmcore
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"math/big"
 	"math/rand/v2"
@@ -260,6 +261,7 @@ type TxPool struct {
 	eip2718  bool // Fork indicator whether we are using EIP-2718 type transactions.
 	eip1559  bool // Fork indicator whether we are using EIP-1559 type transactions.
 	eip4844  bool // Fork indicator whether we are using EIP-4844 type transactions.
+	eip7623  bool // Fork indicator whether we are using EIP-7623 floor gas validation.
 	eip7702  bool // Fork indicator whether we are using EIP-7702 type transactions.
 
 	currentState  TxPoolStateDB // Current state in the blockchain head
@@ -757,6 +759,19 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 	if tx.Gas() < intrGas {
 		return ErrIntrinsicGas
 	}
+
+	// EIP-7623: Floor data gas
+	// see: https://eips.ethereum.org/EIPS/eip-7623
+	if pool.eip7623 {
+		floorDataGas, err := core.FloorDataGas(tx.Data())
+		if err != nil {
+			return err
+		}
+		if tx.Gas() < floorDataGas {
+			return fmt.Errorf("%w: have %d, want %d", ErrFloorDataGas, tx.Gas(), floorDataGas)
+		}
+	}
+
 	return nil
 }
 
@@ -1445,7 +1460,8 @@ func (pool *TxPool) reset(oldHead, newHead *EvmHeader) {
 	pool.eip1559 = pool.chainconfig.IsLondon(next)
 	pool.shanghai = pool.chainconfig.IsShanghai(next, uint64(newHead.Time.Unix()))
 	pool.eip4844 = pool.chainconfig.IsCancun(next, uint64(newHead.Time.Unix()))
-	pool.eip7702 = pool.chainconfig.IsPrague(next, uint64(newHead.Time.Unix()))
+	pool.eip7623 = pool.chainconfig.IsPrague(next, uint64(newHead.Time.Unix()))
+	pool.eip7702 = pool.eip7623
 }
 
 // promoteExecutables moves transactions that have become processable from the
