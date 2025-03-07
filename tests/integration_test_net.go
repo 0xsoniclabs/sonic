@@ -70,6 +70,15 @@ type IntegrationTestNetSession interface {
 	GetClient() (*ethclient.Client, error)
 }
 
+// IntegrationTestNetOptions are configuration options for the integration test network.
+type IntegrationTestNetOptions struct {
+	// FeatureSet specifies the feature set to be used for the integration test network.
+	// The default value is SonicFeatures.
+	FeatureSet opera.FeatureSet
+	// ClientExtraArguments specifies additional arguments to be passed to the client.
+	ClientExtraArguments []string
+}
+
 // IntegrationTestNet is a in-process test network for integration tests. When
 // started, it runs a full Sonic node maintaining a chain within the process
 // containing this object. The network can be used to run transactions on and
@@ -108,9 +117,9 @@ type IntegrationTestNet struct {
 // a network genesis block. To retrieve the directory path, use the GetDirectory.
 func StartIntegrationTestNet(
 	t *testing.T,
-	extraClientArguments ...string,
+	options ...IntegrationTestNetOptions,
 ) *IntegrationTestNet {
-	return StartIntegrationTestNetWithJsonGenesis(t, extraClientArguments...)
+	return StartIntegrationTestNetWithJsonGenesis(t, options...)
 }
 
 // StartIntegrationTestNetWithFakeGenesis starts a single-node test network for
@@ -119,10 +128,22 @@ func StartIntegrationTestNet(
 // and integration testing in Norma.
 func StartIntegrationTestNetWithFakeGenesis(
 	t *testing.T,
-	extraArguments ...string,
+	options ...IntegrationTestNetOptions,
 ) *IntegrationTestNet {
 	t.Helper()
-	net, err := startIntegrationTestNet(t, t.TempDir(), []string{"genesis", "fake", "1"}, extraArguments)
+
+	if len(options) > 1 {
+		t.Fatalf("expected at most one option, got %d", len(options))
+		return nil
+	}
+	effectiveOptions := sanitizeOptions(options...)
+
+	net, err := startIntegrationTestNet(
+		t,
+		t.TempDir(),
+		[]string{"genesis", "fake", "1", "--upgrades", effectiveOptions.FeatureSet.String()},
+		effectiveOptions.ClientExtraArguments,
+	)
 	if err != nil {
 		t.Fatal("failed to start integration test network: ", err)
 	}
@@ -135,9 +156,15 @@ func StartIntegrationTestNetWithFakeGenesis(
 // Sonic mainnet and the testnet.
 func StartIntegrationTestNetWithJsonGenesis(
 	t *testing.T,
-	extraArguments ...string,
+	options ...IntegrationTestNetOptions,
 ) *IntegrationTestNet {
 	t.Helper()
+	if len(options) > 1 {
+		t.Fatalf("expected at most one option, got %d", len(options))
+		return nil
+	}
+	effectiveOptions := sanitizeOptions(options...)
+	upgrades := effectiveOptions.FeatureSet.ToUpgrades()
 	jsonGenesis := makefakegenesis.GenesisJson{
 		Rules:         opera.FakeNetRules(upgrades),
 		BlockZeroTime: time.Now(),
@@ -237,9 +264,12 @@ func StartIntegrationTestNetWithJsonGenesis(
 	if err != nil {
 		t.Fatal("failed to write genesis json file: ", err)
 	}
-	net, err := startIntegrationTestNet(t, directory,
+
+	net, err := startIntegrationTestNet(
+		t,
+		directory,
 		[]string{"genesis", "json", "--experimental", jsonFile},
-		extraArguments,
+		effectiveOptions.ClientExtraArguments,
 	)
 	if err != nil {
 		t.Fatal("failed to start integration test network: ", err)
@@ -254,7 +284,7 @@ func startIntegrationTestNet(
 	extraClientArguments []string,
 ) (*IntegrationTestNet, error) {
 	// start the fakenet sonic node
-	result := &IntegrationTestNet{
+	net := &IntegrationTestNet{
 		directory:            directory,
 		extraClientArguments: extraClientArguments,
 		Session: Session{
@@ -263,11 +293,10 @@ func startIntegrationTestNet(
 	}
 
 	// initialize the data directory for the single node on the test network
-	// equivalent to running `sonictool --datadir <dataDir> genesis fake 1`
 	originalArgs := os.Args
 	os.Args = append([]string{
 		"sonictool",
-		"--datadir", result.stateDir(),
+		"--datadir", net.stateDir(),
 		"--statedb.livecache", "1",
 		"--statedb.archivecache", "1",
 		"--statedb.cache", "1024",
@@ -278,13 +307,10 @@ func startIntegrationTestNet(
 	}
 	os.Args = originalArgs
 
-	if err := result.start(); err != nil {
+	if err := net.start(); err != nil {
 		return nil, fmt.Errorf("failed to start the test network: %w", err)
 	}
-	t.Cleanup(func() {
-		result.Stop()
-	})
-	return result, nil
+	return net, nil
 }
 
 func (n *IntegrationTestNet) stateDir() string {
@@ -734,4 +760,14 @@ func (s *Session) GetSessionSponsor() *Account {
 // The resulting client must be closed after use.
 func (s *Session) GetClient() (*ethclient.Client, error) {
 	return ethclient.Dial(fmt.Sprintf("http://localhost:%d", s.httpPort))
+}
+
+// sanitizeOptions ensures that the options are valid and sets the default values.
+func sanitizeOptions(options ...IntegrationTestNetOptions) IntegrationTestNetOptions {
+	if len(options) == 0 {
+		return IntegrationTestNetOptions{
+			FeatureSet: opera.SonicFeatures,
+		}
+	}
+	return options[0]
 }
