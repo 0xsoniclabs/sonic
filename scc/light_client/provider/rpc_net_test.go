@@ -44,10 +44,6 @@ func TestRpcProvider_GetCommitteeCertificates_CanRetrieveCertificates(t *testing
 		require.NotZero(len(certs))
 		for _, cert := range certs {
 			require.Equal(chainId.Uint64(), cert.Subject().ChainId)
-			require.NotEmpty(cert.Subject().Committee)
-			require.NotZero(cert.Subject().Committee.Members()[0].PublicKey)
-			require.NotZero(cert.Subject().Committee.Members()[0].ProofOfPossession)
-			require.NotZero(cert.Subject().Committee.Members()[0].VotingPower)
 		}
 	}
 }

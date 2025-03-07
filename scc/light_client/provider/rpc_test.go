@@ -252,6 +252,8 @@ func TestRpcProvider_GetCertificates_ReturnsCertificates(t *testing.T) {
 	comCerts, err := provider.GetCommitteeCertificates(0, 2)
 	require.NoError(err)
 	require.Len(comCerts, 2)
+	require.Equal(scc.Period(0), comCerts[0].Subject().Period)
+	require.Equal(scc.Period(1), comCerts[1].Subject().Period)
 
 	// block certificates
 	client.EXPECT().Call(gomock.Any(), "sonic_getBlockCertificates",
