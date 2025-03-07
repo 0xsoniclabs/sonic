@@ -11,13 +11,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestCommitteeCertificateJson_ToCommitteeCertificate_ConvertsToHealthyCertificate(t *testing.T) {
+func TestCommitteeCertificate_ToCommitteeCertificate_ConvertsToHealthyCertificate(t *testing.T) {
 	require := require.New(t)
 	bitSet := cert.BitSet[scc.MemberId]{}
 	bitSet.Add(1)
 	sig := bls.Signature{}
 
-	c := CommitteeCertificateJson{
+	c := CommitteeCertificate{
 		ChainId:   123,
 		Period:    456,
 		Members:   []scc.Member{},
@@ -39,7 +39,7 @@ func TestCommitteeCertificateJson_ToCommitteeCertificate_ConvertsToHealthyCertif
 	require.Equal(want, got)
 }
 
-func TestCommitteeCertificateJson_CanBeJsonEncodedAndDecoded(t *testing.T) {
+func TestCommitteeCertificate_CanBeJsonEncodedAndDecoded(t *testing.T) {
 	require := require.New(t)
 
 	// setup
@@ -63,7 +63,7 @@ func TestCommitteeCertificateJson_CanBeJsonEncodedAndDecoded(t *testing.T) {
 	require.NoError(err)
 
 	// decode
-	var certJson2 CommitteeCertificateJson
+	var certJson2 CommitteeCertificate
 	err = json.Unmarshal(data, &certJson2)
 	require.NoError(err)
 
@@ -87,7 +87,7 @@ func TestCommitteeCertificateToJson(t *testing.T) {
 		aggregatedSignature,
 	)
 
-	want := CommitteeCertificateJson{
+	want := CommitteeCertificate{
 		ChainId:   123,
 		Period:    456,
 		Members:   []scc.Member(nil),
