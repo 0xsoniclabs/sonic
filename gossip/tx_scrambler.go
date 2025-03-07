@@ -3,10 +3,12 @@ package gossip
 import (
 	"bytes"
 	"cmp"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 	"math/big"
 	"slices"
+
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/stevenle/topsort/v2"
 )
 
 // ScramblerEntry stores meta information about transaction for sorting and filtering them.
@@ -19,6 +21,8 @@ type ScramblerEntry interface {
 	Nonce() uint64
 	// GasPrice returns the transaction gas price
 	GasPrice() *big.Int
+	// Authorizations returns the list of authorizations of the transaction
+	Authorizations() []Authorization
 }
 
 // newScramblerTransaction creates a wrapper around *types.Transaction which implements ScramblerEntry.
@@ -41,6 +45,23 @@ type scramblerTransaction struct {
 
 func (tx *scramblerTransaction) Sender() common.Address {
 	return tx.sender
+}
+
+func (tx *scramblerTransaction) Authorizations() []Authorization {
+	authorizations := make([]Authorization, 0, len(tx.SetCodeAuthorizations()))
+	for _, auth := range tx.SetCodeAuthorizations() {
+		address, _ := auth.Authority()
+		authorizations = append(authorizations, Authorization{
+			address: address,
+			nonce:   auth.Nonce,
+		})
+	}
+	return authorizations
+}
+
+type Authorization struct {
+	address common.Address
+	nonce   uint64
 }
 
 // getExecutionOrder returns correct order of the transactions.
@@ -87,55 +108,6 @@ func filterAndOrderTransactions(entries []ScramblerEntry) []ScramblerEntry {
 	return uniqueList
 }
 
-// sortTransactionsWithSameSender finds any duplicate senders and sorts their transactions by nonce ascending.
-func sortTransactionsWithSameSender(entries []ScramblerEntry) {
-	senderNonceOrder := slices.Clone(entries)
-	// sort copied slice so that it has all txs from same address together + sorted by nonce ascending
-	slices.SortFunc(senderNonceOrder, func(a, b ScramblerEntry) int {
-		res := a.Sender().Cmp(b.Sender())
-		if res != 0 {
-			return res
-		}
-		// if addresses are same, sort by nonce
-		res = cmp.Compare(a.Nonce(), b.Nonce())
-		if res != 0 {
-			return res
-		}
-		// if nonce is same, sort by gas price
-		res = b.GasPrice().Cmp(a.GasPrice())
-		if res != 0 {
-			return res
-		}
-		// if both nonce and gas prices are equal, sort by hash
-		// note: at this point, hashes can never be same - duplicates are removed
-		return a.Hash().Cmp(b.Hash())
-	})
-	// find the first entry for each sender in the senderNonceOrder
-	senderIndex := make(map[common.Address]int)
-	for idx, entry := range senderNonceOrder {
-		sender := entry.Sender()
-		if _, found := senderIndex[sender]; !found {
-			senderIndex[sender] = idx
-		}
-	}
-	// replace already scrambled entries so that they are sorted by nonce
-	for idx := range entries {
-		sender := entries[idx].Sender()
-		entries[idx] = senderNonceOrder[senderIndex[sender]]
-		senderIndex[sender]++
-	}
-}
-
-// scrambleTransactions scrambles transactions by comparing its XORed hashes with salt
-func scrambleTransactions(list []ScramblerEntry, salt [32]byte) {
-	var aX, bX [32]byte
-	slices.SortFunc(list, func(a, b ScramblerEntry) int {
-		aX = xorBytes32(a.Hash(), salt)
-		bX = xorBytes32(b.Hash(), salt)
-		return bytes.Compare(aX[:], bX[:])
-	})
-}
-
 // analyseEntryList removes any transactions with duplicate hashes and creates the XOR salt from the unique tx list.
 // Furthermore, it returns whether given list of entries contains duplicate addresses.
 func analyseEntryList(entries []ScramblerEntry) ([]ScramblerEntry, [32]byte, bool) {
@@ -157,6 +129,15 @@ func analyseEntryList(entries []ScramblerEntry) ([]ScramblerEntry, [32]byte, boo
 			hasDuplicateAddresses = true
 		}
 		seenAddresses[sender] = struct{}{}
+
+		// mark whether we have duplicate addresses in authorizations
+		for _, auth := range entry.Authorizations() {
+			if _, ok := seenAddresses[auth.address]; ok {
+				hasDuplicateAddresses = true
+			}
+			seenAddresses[auth.address] = struct{}{}
+		}
+
 		salt = xorBytes32(salt, entry.Hash())
 		uniqueList = append(uniqueList, entry)
 		seenHashes[entry.Hash()] = struct{}{}
@@ -164,6 +145,124 @@ func analyseEntryList(entries []ScramblerEntry) ([]ScramblerEntry, [32]byte, boo
 	}
 
 	return uniqueList, salt, hasDuplicateAddresses
+}
+
+// sortTransactionsWithSameSender finds any duplicate senders and sorts their transactions by nonce ascending.
+func sortTransactionsWithSameSender(entries []ScramblerEntry) {
+	closures := findAndSortedClosures(entries)
+
+	// update entries with order from closures
+	originals := slices.Clone(entries)
+	for idx, entry := range originals {
+		// in case there is a cycle, we keep the original scrambled order
+		if closures[entry] == nil {
+			continue
+		}
+		update := closures[entry][0]
+		entries[idx] = update
+
+		// remove entry from all closures
+		// it has to be first one since they are all ordered
+		for i, closure := range closures {
+			if len(closure) > 0 && closure[0] == update {
+				closures[i] = closures[i][1:]
+			}
+		}
+	}
+}
+
+func findAndSortedClosures(entries []ScramblerEntry) map[ScramblerEntry][]ScramblerEntry {
+	// build dependency graph
+	graph := topsort.NewGraph[ScramblerEntry]()
+	var err error // AddEdge never returns an error
+	for _, e := range entries {
+		for _, f := range entries {
+			if e == f {
+				continue
+			}
+			// if sender are the same, add an edge
+			if e.Sender() == f.Sender() {
+				if cmpEntriesWithSameSender(e, f) < 0 {
+					err = graph.AddEdge(f, e)
+				} else {
+					err = graph.AddEdge(e, f)
+				}
+			}
+			// if sender is in authorizations, add an edge
+			for _, eAuth := range e.Authorizations() {
+				if eAuth.address == f.Sender() {
+					if eAuth.nonce < f.Nonce() {
+						err = graph.AddEdge(f, e)
+					} else {
+						err = graph.AddEdge(e, f)
+					}
+				}
+				// if any of the authorizations are the same, add an edge
+				for _, fAuth := range f.Authorizations() {
+					if eAuth.address == fAuth.address {
+						if eAuth.nonce < fAuth.nonce {
+							err = graph.AddEdge(f, e)
+						} else {
+							err = graph.AddEdge(e, f)
+						}
+					}
+				}
+			}
+		}
+		_ = err
+	}
+
+	// find closures and sort them
+	closures := make(map[ScramblerEntry][]ScramblerEntry)
+	for _, entry := range entries {
+		sortedClosure, err := graph.TopSort(entry)
+		if err != nil {
+			// if there is a cycle, we can't sort the impacted transactions
+			closures[entry] = nil
+		}
+		closures[entry] = sortedClosure
+	}
+
+	// topological sort only returns the entries that have a dependency on the given one,
+	// not the ones that it depends on
+	// the longest closure including the element contains all its dependencies
+	for _, entry := range entries {
+		longestClosure := closures[entry]
+		for _, closure := range closures {
+			if slices.Contains(closure, entry) && len(closure) > len(longestClosure) {
+				longestClosure = closure
+			}
+		}
+		closures[entry] = longestClosure
+	}
+
+	return closures
+}
+
+func cmpEntriesWithSameSender(a, b ScramblerEntry) int {
+	// if addresses are same, sort by nonce
+	res := cmp.Compare(a.Nonce(), b.Nonce())
+	if res != 0 {
+		return res
+	}
+	// if nonce is same, sort by gas price
+	res = b.GasPrice().Cmp(a.GasPrice())
+	if res != 0 {
+		return res
+	}
+	// if both nonce and gas prices are equal, sort by hash
+	// note: at this point, hashes can never be same - duplicates are removed
+	return a.Hash().Cmp(b.Hash())
+}
+
+// scrambleTransactions scrambles transactions by comparing its XORed hashes with salt
+func scrambleTransactions(list []ScramblerEntry, salt [32]byte) {
+	var aX, bX [32]byte
+	slices.SortFunc(list, func(a, b ScramblerEntry) int {
+		aX = xorBytes32(a.Hash(), salt)
+		bX = xorBytes32(b.Hash(), salt)
+		return bytes.Compare(aX[:], bX[:])
+	})
 }
 
 func xorBytes32(a, b [32]byte) (dst [32]byte) {
