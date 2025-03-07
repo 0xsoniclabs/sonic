@@ -139,7 +139,7 @@ func StartIntegrationTestNetWithJsonGenesis(
 ) *IntegrationTestNet {
 	t.Helper()
 	jsonGenesis := makefakegenesis.GenesisJson{
-		Rules:         opera.FakeNetRules(),
+		Rules:         opera.FakeNetRules(upgrades),
 		BlockZeroTime: time.Now(),
 	}
 

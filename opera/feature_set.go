@@ -1,7 +1,5 @@
 package opera
 
-import "fmt"
-
 // FeatureSet is an enumeration of different releases, each one enabling a
 // different set of features. These are an abstraction that allows to reason
 // about the different releases instead of isolated upgrades.
@@ -14,29 +12,20 @@ const (
 	AllegroFeatures                   // < enables the allegro release features
 )
 
-func (fs FeatureSet) ToUpgrades() (Upgrades, error) {
-	var res Upgrades
-	switch fs {
-	case SonicFeatures:
-		res = Upgrades{
-			Berlin:  true,
-			London:  true,
-			Llr:     false,
-			Sonic:   true,
-			Allegro: false,
-		}
-	case AllegroFeatures:
-		res = Upgrades{
-			Berlin:  true,
-			London:  true,
-			Llr:     false,
-			Sonic:   true,
-			Allegro: true,
-		}
-	default:
-		return res, fmt.Errorf("unknown feature set: %v", fs)
+// ToUpgrades returns the Upgrades that are enabled by the feature set.
+// If called from an unknown feature set, it will return the pre-sonic
+// upgrades.
+func (fs FeatureSet) ToUpgrades() Upgrades {
+	sonic := fs == SonicFeatures
+	allegro := fs == AllegroFeatures
+	res := Upgrades{
+		Berlin:  true,
+		London:  true,
+		Llr:     false,
+		Sonic:   sonic || allegro,
+		Allegro: allegro,
 	}
-	return res, nil
+	return res
 }
 
 func (fs FeatureSet) String() string {

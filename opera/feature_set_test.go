@@ -47,14 +47,22 @@ func TestFeatureSet_CanBeConvertedToUpgrades(t *testing.T) {
 
 	for featureSet, test := range tests {
 		t.Run(featureSet.String(), func(t *testing.T) {
-			got, err := featureSet.ToUpgrades()
-			require.NoError(t, err)
+			got := featureSet.ToUpgrades()
 			require.Equal(t, test.expectedUpgrades, got)
 		})
 	}
 }
 
-func TestFeatureSet_ToUpgradeMayFail(t *testing.T) {
-	_, err := FeatureSet(math.MaxInt).ToUpgrades()
-	require.Error(t, err)
+func TestFeatureSet_ToUpgradesReturnsDefaultIfUnknown(t *testing.T) {
+	fs := FeatureSet(math.MaxInt)
+	expected := Upgrades{
+		Berlin:  true,
+		London:  true,
+		Llr:     false,
+		Sonic:   false,
+		Allegro: false,
+	}
+
+	got := fs.ToUpgrades()
+	require.Equal(t, expected, got)
 }
