@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/batch"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
 	"github.com/0xsoniclabs/sonic/tests/contracts/privilege_deescalation"
@@ -35,7 +36,7 @@ import (
 func TestSetCodeTransaction(t *testing.T) {
 
 	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
-		FeatureSet: AllegroFeatures,
+		FeatureSet: opera.AllegroFeatures,
 	})
 
 	t.Run("Operation", func(t *testing.T) {

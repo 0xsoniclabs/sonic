@@ -74,7 +74,7 @@ type IntegrationTestNetSession interface {
 type IntegrationTestNetOptions struct {
 	// FeatureSet specifies the feature set to be used for the integration test network.
 	// The default value is SonicFeatures.
-	FeatureSet FeatureSet
+	FeatureSet opera.FeatureSet
 	// ClientExtraArguments specifies additional arguments to be passed to the client.
 	ClientExtraArguments []string
 }
@@ -165,7 +165,7 @@ func StartIntegrationTestNetWithJsonGenesis(
 	}
 	effectiveOptions := sanitizeOptions(options...)
 
-	upgrades, err := featureSetToUpgrades(effectiveOptions.FeatureSet)
+	upgrades, err := effectiveOptions.FeatureSet.ToUpgrades()
 	if err != nil {
 		t.Error("failed to get fake rules profile: ", err)
 	}
@@ -767,43 +767,11 @@ func (s *Session) GetClient() (*ethclient.Client, error) {
 	return ethclient.Dial(fmt.Sprintf("http://localhost:%d", s.httpPort))
 }
 
-// FeatureSet describes the enabled features of the integration test network.
-type FeatureSet int
-
-const (
-	SonicFeatures   FeatureSet = iota // < enables the initial sonic release features
-	AllegroFeatures                   // < enables the allegro release features
-)
-
-func featureSetToUpgrades(option FeatureSet) (opera.Upgrades, error) {
-	var res opera.Upgrades
-	switch option {
-	case SonicFeatures:
-		res = opera.GetSonicUpgrades()
-	case AllegroFeatures:
-		res = opera.GetAllegroUpgrades()
-	default:
-		return res, fmt.Errorf("unknown feature set: %d", option)
-	}
-	return res, nil
-}
-
-func (fs FeatureSet) String() string {
-	switch fs {
-	case SonicFeatures:
-		return "sonic"
-	case AllegroFeatures:
-		return "allegro"
-	default:
-		return "unknown"
-	}
-}
-
 // sanitizeOptions ensures that the options are valid and sets the default values.
 func sanitizeOptions(options ...IntegrationTestNetOptions) IntegrationTestNetOptions {
 	if len(options) == 0 {
 		return IntegrationTestNetOptions{
-			FeatureSet: SonicFeatures,
+			FeatureSet: opera.SonicFeatures,
 		}
 	}
 	return options[0]
