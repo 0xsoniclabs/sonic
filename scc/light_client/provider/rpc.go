@@ -18,8 +18,8 @@ type RpcProvider struct {
 	client RpcClient
 }
 
-// latestBlock is a constant used to indicate the latest block.
-const latestBlock = idx.Block(math.MaxUint64)
+// LatestBlock is a constant used to indicate the latest block.
+const LatestBlock = idx.Block(math.MaxUint64)
 
 // NewRpcProviderFromClient creates a new instance of RpcProvider with the given
 // RPC client. The resulting Provider takes ownership of the client and
@@ -129,7 +129,7 @@ func (rpcp RpcProvider) GetBlockCertificates(first idx.Block, maxResults uint64)
 	}
 
 	var firstString string
-	if first == latestBlock {
+	if first == LatestBlock {
 		firstString = "latest"
 	} else {
 		firstString = fmt.Sprintf("0x%x", first)
@@ -149,7 +149,7 @@ func (rpcp RpcProvider) GetBlockCertificates(first idx.Block, maxResults uint64)
 	}
 	certs := []cert.BlockCertificate{}
 	var currentBlock idx.Block
-	if first == latestBlock {
+	if first == LatestBlock {
 		currentBlock = idx.Block(results[0].Number)
 	} else {
 		currentBlock = first

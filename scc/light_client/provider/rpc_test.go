@@ -249,7 +249,7 @@ func TestRpcProvider_GetBlockCertificates_CanFetchLatestBlock(t *testing.T) {
 		})
 
 	// get block certificates
-	blockCerts, err := provider.GetBlockCertificates(latestBlock, 1)
+	blockCerts, err := provider.GetBlockCertificates(LatestBlock, 1)
 	require.NoError(err)
 	require.Len(blockCerts, 1)
 	require.Equal(latestBlockNumber, blockCerts[0].Subject().Number)

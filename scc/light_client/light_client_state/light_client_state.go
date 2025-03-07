@@ -1,7 +1,10 @@
 package lc_state
 
 import (
+	"fmt"
+
 	"github.com/0xsoniclabs/sonic/scc"
+	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/0xsoniclabs/sonic/scc/light_client/provider"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
@@ -32,16 +35,90 @@ func (s *State) Head() idx.Block {
 // with the network.
 // If success, the local client will reflect the most recent block and
 // its corresponding certification committee.
-func (s *State) Sync(provider provider.Provider) (idx.Block, error) {
+func (s *State) Sync(p provider.Provider) (idx.Block, error) {
 
 	// Get the latest block number from the provider.
+	blockCerts, err := p.GetBlockCertificates(provider.LatestBlock, 1)
+	if err != nil {
+		return 0, err
+	}
+	if len(blockCerts) == 0 {
+		return 0, nil
+	}
 
 	// get period for the latest block
+	headCert := blockCerts[0]
+	headPeriod := scc.GetPeriod(headCert.Subject().Number)
 
 	// sync from current to latest
+	if err := s.syncToPeriod(p, headPeriod); err != nil {
+		return 0, err
+	}
 
 	// verify latest block certificate with latest committee
+	if err := headCert.Verify(s.committee); err != nil {
+		return 0, err
+	}
+
+	// update the state with the latest block
+	s.headNumber = headCert.Subject().Number
+	s.headHash = headCert.Subject().Hash
 
 	// return the latest block number
 	return idx.Block(0), nil
+}
+
+// syncToPeriod is a helper function to updates the light client state
+// to the given period using the given provider
+func (s *State) syncToPeriod(p provider.Provider, first scc.Period) error {
+	if s.period == first {
+		return nil
+	}
+	if s.period > first {
+		return fmt.Errorf("cannot sync to a previous period. current: %d, target: %d",
+			s.period, first)
+	}
+
+	// get all committee certificates from the provider
+	committeeCerts, err := p.GetCommitteeCertificates(first, uint64(first-s.period))
+	if err != nil {
+		return err
+	}
+
+	// update the state with the committee certificates
+	for _, c := range committeeCerts {
+		// update the state with the committee certificate
+		if err = s.updateOnePeriod(c); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *State) updateOnePeriod(c cert.CommitteeCertificate) error {
+	// verify the period
+	target := s.period + 1
+	if c.Subject().Period != target {
+		return fmt.Errorf("unexpected committee certificate period: %d. expected: %d",
+			c.Subject().Period, target)
+	}
+
+	// verify the committee certificate
+	if err := c.Subject().Committee.Validate(); err != nil {
+		return fmt.Errorf("committee certificate verification for period %d failed, %w",
+			target, err)
+	}
+
+	// verify the committee certificate with the current committee
+	if err := c.Verify(s.committee); err != nil {
+		return fmt.Errorf("committee certificate verification for period %d failed, %w",
+			target, err)
+	}
+
+	// update the state with the committee certificate
+	s.committee = c.Subject().Committee
+	s.period = target
+
+	return nil
 }

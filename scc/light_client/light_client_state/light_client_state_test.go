@@ -2,7 +2,6 @@ package lc_state
 
 import (
 	"crypto/sha256"
-	"math"
 	"slices"
 	"testing"
 
@@ -46,31 +45,10 @@ func generateCommitteeAndProvider(ctrl *gomock.Controller, blockHeight idx.Block
 		return scc.Committee{}, nil, err
 	}
 
-	provider := provider.NewMockProvider(ctrl)
-	provider.
-		EXPECT().
-		GetBlockCertificates(gomock.Any(), gomock.Any()).
-		DoAndReturn(func(number idx.Block, max int) (cert.BlockCertificate, error) {
-			if number == idx.Block(math.MaxUint64) {
-				number = idx.Block(len(blocks) - 1)
-			}
-			return blocks[number], nil
-		}).
-		AnyTimes()
+	// prepare mock prov
+	prov := prepareProvider(ctrl, blockHeight, blocks, committees)
 
-	provider.
-		EXPECT().
-		GetCommitteeCertificates(gomock.Any(), gomock.Any()).
-		DoAndReturn(func(from scc.Period, max int) []cert.CommitteeCertificate {
-			start := int(from)
-			end := start + max
-			end = min(end, len(committees))
-			start = min(start, end)
-			return committees[start:end]
-		}).
-		AnyTimes()
-
-	return firstCommittee, provider, nil
+	return firstCommittee, prov, nil
 }
 
 // generateHistory generates a history of blocks and committees.
@@ -102,7 +80,6 @@ func generateHistory(blockHeight idx.Block) (
 	}))
 
 	// generate blocks and certificates
-
 	committee := genesis
 	head := idx.Block(0)
 	headHash := common.Hash{}
@@ -143,6 +120,39 @@ func generateHistory(blockHeight idx.Block) (
 	}
 
 	return genesis, blocks, committees, nil
+}
+
+func prepareProvider(
+	ctrl *gomock.Controller,
+	blockHeight idx.Block,
+	blocks []cert.BlockCertificate,
+	committees []cert.CommitteeCertificate,
+) provider.Provider {
+
+	prov := provider.NewMockProvider(ctrl)
+	prov.
+		EXPECT().
+		GetBlockCertificates(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(number idx.Block, max uint64) (cert.BlockCertificate, error) {
+			if number == idx.Block(provider.LatestBlock) {
+				number = idx.Block(len(blocks) - 1)
+			}
+			return blocks[number], nil
+		}).
+		AnyTimes()
+
+	prov.EXPECT().
+		GetCommitteeCertificates(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(from scc.Period, max uint64) []cert.CommitteeCertificate {
+			start := uint64(from)
+			end := start + max
+			end = min(end, uint64(len(committees)))
+			start = min(start, end)
+			return committees[start:end]
+		}).
+		AnyTimes()
+
+	return prov
 }
 
 func makeMember(key bls.PrivateKey) scc.Member {
