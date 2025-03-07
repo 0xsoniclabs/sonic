@@ -2,11 +2,12 @@ package provider
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/cert"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
@@ -16,6 +17,9 @@ type RpcProvider struct {
 	// client is the RPC client used for making RPC calls.
 	client RpcClient
 }
+
+// latestBlock is a constant used to indicate the latest block.
+const latestBlock = idx.Block(math.MaxUint64)
 
 // NewRpcProviderFromClient creates a new instance of RpcProvider with the given
 // RPC client. The resulting Provider takes ownership of the client and
@@ -124,11 +128,17 @@ func (rpcp RpcProvider) GetBlockCertificates(first idx.Block, maxResults uint64)
 		return nil, fmt.Errorf("No client available")
 	}
 
+	var firstString string
+	if first == latestBlock {
+		firstString = "latest"
+	} else {
+		firstString = fmt.Sprintf("0x%x", first)
+	}
 	results := []ethapi.BlockCertificate{}
 	err := rpcp.client.Call(
 		&results,
 		"sonic_getBlockCertificates",
-		fmt.Sprintf("0x%x", first),
+		firstString,
 		fmt.Sprintf("0x%x", maxResults),
 	)
 	if err != nil {
@@ -138,7 +148,12 @@ func (rpcp RpcProvider) GetBlockCertificates(first idx.Block, maxResults uint64)
 		return nil, fmt.Errorf("Too many certificates returned")
 	}
 	certs := []cert.BlockCertificate{}
-	currentBlock := first
+	var currentBlock idx.Block
+	if first == latestBlock {
+		currentBlock = idx.Block(results[0].Number)
+	} else {
+		currentBlock = first
+	}
 	for _, res := range results {
 		if res.Number != uint64(currentBlock) {
 			return nil, fmt.Errorf("Block certificates out of order")
