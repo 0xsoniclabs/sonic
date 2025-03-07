@@ -51,12 +51,17 @@ func NewRpcProviderFromURL(url string) (*RpcProvider, error) {
 	return NewRpcProviderFromClient(client), nil
 }
 
-// Close closes the RpcProvider and its underlying Ethereum client.
+// Close closes the RpcProvider and its underlying RPC client.
+// Reiterative calls to Close are safe.
 func (rpcp *RpcProvider) Close() {
+	if rpcp.IsClosed() {
+		return
+	}
 	rpcp.client.Close()
 	rpcp.client = nil
 }
 
+// IsClosed returns true if the internal RpcClient is nill.
 func (rpcp RpcProvider) IsClosed() bool {
 	return rpcp.client == nil
 }
