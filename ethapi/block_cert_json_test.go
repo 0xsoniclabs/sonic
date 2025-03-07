@@ -14,14 +14,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestBlockCertificateJson_ToBlockCertificate_ConvertsToHealthyCertificate(t *testing.T) {
+func TestBlockCertificate_ToBlockCertificate_ConvertsToHealthyCertificate(t *testing.T) {
 	require := require.New(t)
 	bitSet := cert.BitSet[scc.MemberId]{}
 	bitSet.Add(1)
 	newPrivateKey := bls.NewPrivateKey()
 	sig := newPrivateKey.GetProofOfPossession()
 
-	b := blockCertificateJson{
+	b := BlockCertificate{
 		ChainId:   123,
 		Number:    456,
 		Hash:      common.Hash{0x1},
@@ -30,7 +30,7 @@ func TestBlockCertificateJson_ToBlockCertificate_ConvertsToHealthyCertificate(t 
 		Signature: sig,
 	}
 
-	got := b.toCertificate()
+	got := b.ToCertificate()
 	aggregatedSignature := cert.NewAggregatedSignature[cert.BlockStatement](
 		b.Signers,
 		b.Signature,
@@ -45,7 +45,7 @@ func TestBlockCertificateJson_ToBlockCertificate_ConvertsToHealthyCertificate(t 
 	require.Equal(want, got)
 }
 
-func TestBlockCertificateJson_CanBeJsonEncodedAndDecoded(t *testing.T) {
+func TestBlockCertificate_CanBeJsonEncodedAndDecoded(t *testing.T) {
 	require := require.New(t)
 
 	// setup
@@ -64,13 +64,13 @@ func TestBlockCertificateJson_CanBeJsonEncodedAndDecoded(t *testing.T) {
 	require.NoError(err)
 
 	// decode
-	var decoded blockCertificateJson
+	var decoded BlockCertificate
 	err = json.Unmarshal(data, &decoded)
 	require.NoError(err)
 
 	// check
 	require.Equal(certJson, decoded)
-	cert := decoded.toCertificate()
+	cert := decoded.ToCertificate()
 	require.Equal(c, cert)
 }
 
