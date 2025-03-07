@@ -231,6 +231,30 @@ func TestRpcProvider_GetBlockCertificates_FailsIfMoreCertificatesThanRequestedAr
 	require.ErrorContains(err, "Too many certificates")
 }
 
+func TestRpcProvider_GetBlockCertificates_CanFetchLatestBlock(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	client := NewMockRpcClient(ctrl)
+	provider := NewRpcProviderFromClient(client)
+
+	latestBlockNumber := idx.Block(1024)
+	// block certificates
+	client.EXPECT().Call(gomock.Any(), "sonic_getBlockCertificates",
+		"latest", "0x1").DoAndReturn(
+		func(result *[]ethapi.BlockCertificate, method string, args ...interface{}) error {
+			*result = []ethapi.BlockCertificate{
+				makeBlockCertForNumber(latestBlockNumber),
+			}
+			return nil
+		})
+
+	// get block certificates
+	blockCerts, err := provider.GetBlockCertificates(latestBlock, 1)
+	require.NoError(err)
+	require.Len(blockCerts, 1)
+	require.Equal(latestBlockNumber, blockCerts[0].Subject().Number)
+}
+
 func TestRpcProvider_GetCertificates_ReturnsCertificates(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
