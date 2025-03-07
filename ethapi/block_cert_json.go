@@ -8,12 +8,12 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-// BlockCertificateJson is a JSON representation of a block certificate
+// BlockCertificate is a JSON representation of a block certificate
 // as returned by the Sonic API. This type provides a conversion between the
 // internal certificate representation and the JSON representation provided to
 // the API clients. The external API is expected to be stable over time and
 // should only be updated in a backward compatible way.
-type BlockCertificateJson struct {
+type BlockCertificate struct {
 	ChainId   uint64                    `json:"chainId"`
 	Number    uint64                    `json:"number"`
 	Hash      common.Hash               `json:"hash"`
@@ -22,7 +22,7 @@ type BlockCertificateJson struct {
 	Signature bls.Signature             `json:"signature"`
 }
 
-func (b BlockCertificateJson) ToCertificate() cert.BlockCertificate {
+func (b BlockCertificate) ToCertificate() cert.BlockCertificate {
 	aggregatedSignature := cert.NewAggregatedSignature[cert.BlockStatement](
 		b.Signers, b.Signature)
 
@@ -37,10 +37,10 @@ func (b BlockCertificateJson) ToCertificate() cert.BlockCertificate {
 	return newCert
 }
 
-func toJsonBlockCertificate(b cert.BlockCertificate) BlockCertificateJson {
+func toJsonBlockCertificate(b cert.BlockCertificate) BlockCertificate {
 	sub := b.Subject()
 	agg := b.Signature()
-	return BlockCertificateJson{
+	return BlockCertificate{
 		ChainId:   sub.ChainId,
 		Number:    uint64(sub.Number),
 		Hash:      sub.Hash,
