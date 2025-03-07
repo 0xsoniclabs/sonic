@@ -25,10 +25,10 @@ func TestRpcProvider_GetCommitteeCertificates_CanRetrieveCertificates(t *testing
 	// start network
 	net, client := startNetAndGetClient(t)
 
-	url := fmt.Sprintf("http://localhost:%d", net.GetPort())
-
+	// make providers
 	providerFromClient := NewRpcProviderFromClient(client.Client())
 	t.Cleanup(providerFromClient.Close)
+	url := fmt.Sprintf("http://localhost:%d", net.GetPort())
 	providerFromURL, err := NewRpcProviderFromURL(url)
 	require.NoError(err)
 	t.Cleanup(providerFromURL.Close)
@@ -68,10 +68,10 @@ func TestRpcProvider_GetBlockCertificates_CanRetrieveCertificates(t *testing.T) 
 		require.NoError(err, "failed to increment counter")
 	}
 
-	url := fmt.Sprintf("http://localhost:%d", net.GetPort())
-
+	// make providers
 	providerFromClient := NewRpcProviderFromClient(client.Client())
 	t.Cleanup(providerFromClient.Close)
+	url := fmt.Sprintf("http://localhost:%d", net.GetPort())
 	providerFromURL, err := NewRpcProviderFromURL(url)
 	require.NoError(err)
 	t.Cleanup(providerFromURL.Close)
@@ -108,10 +108,10 @@ func TestRpcProvider_CanRequestMaxNumberOfResults(t *testing.T) {
 	// start network
 	net, client := startNetAndGetClient(t)
 
-	url := fmt.Sprintf("http://localhost:%d", net.GetPort())
-
+	// make providers
 	providerFromClient := NewRpcProviderFromClient(client.Client())
 	t.Cleanup(providerFromClient.Close)
+	url := fmt.Sprintf("http://localhost:%d", net.GetPort())
 	providerFromURL, err := NewRpcProviderFromURL(url)
 	require.NoError(err)
 	t.Cleanup(providerFromURL.Close)
