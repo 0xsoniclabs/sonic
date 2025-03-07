@@ -14,14 +14,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestBlockCertificateJson_ToBlockCertificate_ConvertsToHealthyCertificate(t *testing.T) {
+func TestBlockCertificate_ToBlockCertificate_ConvertsToHealthyCertificate(t *testing.T) {
 	require := require.New(t)
 	bitSet := cert.BitSet[scc.MemberId]{}
 	bitSet.Add(1)
 	newPrivateKey := bls.NewPrivateKey()
 	sig := newPrivateKey.GetProofOfPossession()
 
-	b := BlockCertificateJson{
+	b := BlockCertificate{
 		ChainId:   123,
 		Number:    456,
 		Hash:      common.Hash{0x1},
@@ -45,7 +45,7 @@ func TestBlockCertificateJson_ToBlockCertificate_ConvertsToHealthyCertificate(t 
 	require.Equal(want, got)
 }
 
-func TestBlockCertificateJson_CanBeJsonEncodedAndDecoded(t *testing.T) {
+func TestBlockCertificate_CanBeJsonEncodedAndDecoded(t *testing.T) {
 	require := require.New(t)
 
 	// setup
@@ -64,7 +64,7 @@ func TestBlockCertificateJson_CanBeJsonEncodedAndDecoded(t *testing.T) {
 	require.NoError(err)
 
 	// decode
-	var decoded BlockCertificateJson
+	var decoded BlockCertificate
 	err = json.Unmarshal(data, &decoded)
 	require.NoError(err)
 

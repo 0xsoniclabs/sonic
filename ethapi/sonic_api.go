@@ -36,10 +36,10 @@ func (s *PublicSccApi) GetCommitteeCertificates(
 	ctx context.Context,
 	first PeriodNumber,
 	maxResults Number,
-) ([]CommitteeCertificateJson, error) {
+) ([]CommitteeCertificate, error) {
 	if first.IsLatest() {
 		cert, err := s.backend.GetLatestCommitteeCertificate()
-		return []CommitteeCertificateJson{
+		return []CommitteeCertificate{
 			toJsonCommitteeCertificate(cert),
 		}, err
 	}
@@ -59,10 +59,10 @@ func (s *PublicSccApi) GetBlockCertificates(
 	ctx context.Context,
 	first BlockNumber,
 	maxResults Number,
-) ([]BlockCertificateJson, error) {
+) ([]BlockCertificate, error) {
 	if first.IsLatest() {
 		cert, err := s.backend.GetLatestBlockCertificate()
-		return []BlockCertificateJson{
+		return []BlockCertificate{
 			toJsonBlockCertificate(cert),
 		}, err
 	}
