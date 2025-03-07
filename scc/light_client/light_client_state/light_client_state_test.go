@@ -1,7 +1,9 @@
 package lc_state
 
 import (
+	"crypto/sha256"
 	"math"
+	"slices"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/scc"
@@ -103,11 +105,12 @@ func generateHistory(blockHeight idx.Block) (
 
 	committee := genesis
 	head := idx.Block(0)
+	headHash := common.Hash{}
 	for i := head; i < blockHeight; i++ {
 
 		// Compute next block.
 		head += 1
-		// Hash:   util.Sha256(head.Hash[:]), // < dummy step
+		headHash = common.Hash(sha256.Sum256(headHash[:]))
 
 		// Add period boundaries, update the committee.
 		if scc.IsFirstBlockOfPeriod(head) {
@@ -120,7 +123,7 @@ func generateHistory(blockHeight idx.Block) (
 				certificate.Add(scc.MemberId(i), cert.Sign(certificate.Subject(), key))
 			}
 			committees = append(committees, certificate)
-			committee = scc.NewCommittee(rotate(committee.Members())...)
+			keys = rotate(keys)
 		}
 
 		// Sign the new block using the current committee.
@@ -128,8 +131,8 @@ func generateHistory(blockHeight idx.Block) (
 			cert.NewBlockStatement(
 				1234,
 				head,
-				common.Hash([]byte{byte(head)}),
-				common.Hash([]byte{byte(head)}),
+				headHash,
+				headHash,
 			))
 
 		for i, key := range keys {
@@ -150,6 +153,8 @@ func makeMember(key bls.PrivateKey) scc.Member {
 	}
 }
 
-func rotate(arr []scc.Member) []scc.Member {
-	return append(arr[1:], arr[0])
+func rotate[T any](list []T) []T {
+	res := slices.Clone(list)
+	res = append(res[1:], res[0])
+	return res
 }
