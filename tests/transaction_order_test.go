@@ -20,7 +20,6 @@ func TestTransactionOrder(t *testing.T) {
 		numTxs      = numAccounts * numPerAcc
 	)
 	net := StartIntegrationTestNet(t)
-	defer net.Stop()
 
 	contract, _, err := DeployContract(net, counter_event_emitter.DeployCounterEventEmitter)
 	require.NoError(t, err)

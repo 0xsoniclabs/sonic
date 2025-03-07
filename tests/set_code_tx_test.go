@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/batch"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
 	"github.com/0xsoniclabs/sonic/tests/contracts/privilege_deescalation"
@@ -34,7 +35,9 @@ import (
 // and do not implement ERC-20 as described in the EIP use case examples.
 func TestSetCodeTransaction(t *testing.T) {
 
-	net := StartIntegrationTestNet(t)
+	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
+		FeatureSet: opera.AllegroFeatures,
+	})
 
 	t.Run("Operation", func(t *testing.T) {
 		t.Parallel()
