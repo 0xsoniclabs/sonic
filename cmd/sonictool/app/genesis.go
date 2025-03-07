@@ -10,6 +10,7 @@ import (
 	"github.com/0xsoniclabs/sonic/cmd/sonictool/genesis"
 	"github.com/0xsoniclabs/sonic/config/flags"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/genesisstore"
 	futils "github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/sonic/utils/caution"
@@ -30,6 +31,11 @@ var (
 	ExperimentalFlag = cli.BoolFlag{
 		Name:  "experimental",
 		Usage: "Allow experimental features",
+	}
+	FakeUpgrades = cli.StringFlag{
+		Name:  "upgrades",
+		Usage: "Feature set enabled in the fake network, sonic|allegro.",
+		Value: "sonic",
 	}
 )
 
@@ -142,10 +148,22 @@ func fakeGenesisImport(ctx *cli.Context) (err error) {
 		return err
 	}
 
+	var featureSet opera.FeatureSet
+	upgradesString := ctx.String(FakeUpgrades.Name)
+	switch upgradesString {
+	case "sonic":
+		featureSet = opera.SonicFeatures
+	case "allegro":
+		featureSet = opera.AllegroFeatures
+	default:
+		return fmt.Errorf("invalid profile %v - must be 'sonic' or 'allegro'", upgradesString)
+	}
+
 	genesisStore := makefakegenesis.FakeGenesisStore(
 		idx.Validator(validatorsNumber),
-		futils.ToFtm(1000000000),
-		futils.ToFtm(5000000),
+		futils.ToFtm(1_000_000_000),
+		futils.ToFtm(5_000_000),
+		featureSet.ToUpgrades(),
 	)
 	defer caution.CloseAndReportError(&err, genesisStore, "failed to close the genesis store")
 	return genesis.ImportGenesisStore(genesis.ImportParams{
