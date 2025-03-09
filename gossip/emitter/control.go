@@ -15,15 +15,15 @@ func scalarUpdMetric(diff idx.Event, weight pos.Weight, totalWeight pos.Weight) 
 	return ancestor.Metric(scalarUpdMetricF(uint64(diff)*piecefunc.DecimalUnit)) * ancestor.Metric(weight) / ancestor.Metric(totalWeight)
 }
 
-func updMetric(median, cur, upd idx.Event, validatorIdx idx.Validator, validators *pos.Validators) ancestor.Metric {
-	if upd <= median || upd <= cur {
+func updMetric(thresholdValue, cur, upd idx.Event, validatorIdx idx.Validator, validators *pos.Validators) ancestor.Metric {
+	if upd <= thresholdValue || upd <= cur {
 		return 0
 	}
 	weight := validators.GetWeightByIdx(validatorIdx)
-	if median < cur {
-		return scalarUpdMetric(upd-median, weight, validators.TotalWeight()) - scalarUpdMetric(cur-median, weight, validators.TotalWeight())
+	if thresholdValue < cur {
+		return scalarUpdMetric(upd-thresholdValue, weight, validators.TotalWeight()) - scalarUpdMetric(cur-thresholdValue, weight, validators.TotalWeight())
 	}
-	return scalarUpdMetric(upd-median, weight, validators.TotalWeight())
+	return scalarUpdMetric(upd-thresholdValue, weight, validators.TotalWeight())
 }
 
 func (em *Emitter) isAllowedToEmit() bool {
