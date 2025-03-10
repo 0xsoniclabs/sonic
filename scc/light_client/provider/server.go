@@ -18,9 +18,9 @@ type Server struct {
 }
 
 // NewServerFromClient creates a new Server with the given
-// RPC client. The resulting Provider takes ownership of the client and
-// will close it when the Provider is closed.
-// The resulting Provider must be closed after use.
+// RPC client. The resulting Server takes ownership of the client and
+// will close it when the Server is closed.
+// The resulting Server must be closed after use.
 //
 // Parameters:
 // - client: The RPC client to use for RPC calls.
@@ -30,7 +30,7 @@ type Server struct {
 // - error: An error if the client is nil.
 func NewServerFromClient(client RpcClient) (*Server, error) {
 	if client == nil {
-		return nil, fmt.Errorf("cannot start a provider with a nil client")
+		return nil, fmt.Errorf("cannot start a Server with a nil client")
 	}
 	return &Server{
 		client: client,
@@ -39,7 +39,7 @@ func NewServerFromClient(client RpcClient) (*Server, error) {
 
 // NewServerFromURL creates a new instance of Server with a new RPC client
 // connected to the given URL.
-// The resulting Provider must be closed after use.
+// The resulting Server must be closed after use.
 //
 // Parameters:
 // - url: The URL of the RPC node to connect to.
@@ -56,18 +56,18 @@ func NewServerFromURL(url string) (*Server, error) {
 }
 
 // Close closes the Server.
-// Closing an already closed provider has no effect
-func (rpcp *Server) Close() {
-	if rpcp.IsClosed() {
+// Closing an already closed Server has no effect
+func (s *Server) Close() {
+	if s.IsClosed() {
 		return
 	}
-	rpcp.client.Close()
-	rpcp.client = nil
+	s.client.Close()
+	s.client = nil
 }
 
 // IsClosed returns true if the Server is closed.
-func (rpcp Server) IsClosed() bool {
-	return rpcp.client == nil
+func (s Server) IsClosed() bool {
+	return s.client == nil
 }
 
 // GetCommitteeCertificates returns up to `maxResults` consecutive committee
@@ -80,13 +80,13 @@ func (rpcp Server) IsClosed() bool {
 // Returns:
 //   - []cert.CommitteeCertificate: A slice of committee certificates.
 //   - error: An error if the call fails or the certificates are out of order.
-func (rpcp Server) GetCommitteeCertificates(first scc.Period, maxResults uint64) ([]cert.CommitteeCertificate, error) {
-	if rpcp.IsClosed() {
+func (s Server) GetCommitteeCertificates(first scc.Period, maxResults uint64) ([]cert.CommitteeCertificate, error) {
+	if s.IsClosed() {
 		return nil, fmt.Errorf("no client available")
 	}
 
 	results := []ethapi.CommitteeCertificate{}
-	err := rpcp.client.Call(
+	err := s.client.Call(
 		&results,
 		"sonic_getCommitteeCertificates",
 		fmt.Sprintf("0x%x", first),
@@ -124,8 +124,8 @@ func (rpcp Server) GetCommitteeCertificates(first scc.Period, maxResults uint64)
 //     and the following blocks.
 //   - error: An error if the client is nil, the call fails, the
 //     certificates are out of order or more than requested.
-func (rpcp Server) GetBlockCertificates(first idx.Block, maxResults uint64) ([]cert.BlockCertificate, error) {
-	if rpcp.IsClosed() {
+func (s Server) GetBlockCertificates(first idx.Block, maxResults uint64) ([]cert.BlockCertificate, error) {
+	if s.IsClosed() {
 		return nil, fmt.Errorf("no client available")
 	}
 
@@ -136,7 +136,7 @@ func (rpcp Server) GetBlockCertificates(first idx.Block, maxResults uint64) ([]c
 		firstString = fmt.Sprintf("0x%x", first)
 	}
 	results := []ethapi.BlockCertificate{}
-	err := rpcp.client.Call(
+	err := s.client.Call(
 		&results,
 		"sonic_getBlockCertificates",
 		firstString,
