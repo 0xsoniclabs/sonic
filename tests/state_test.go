@@ -38,11 +38,14 @@ var (
 		"Byzantium":         {},
 		"Frontier":          {},
 		"Homestead":         {},
-		"Prague":            {}, // < TODO: enable once supported (issue #65)
 	}
 )
 
 func initMatcher(st *tests.TestMatcher) {
+	// The EIP-2537 test cases are out of date and have not been updated by ethereum.
+	st.SkipLoad(`^stEIP2537/`)
+
+	// EOF is not yet supported by sonic.
 	st.SkipLoad(`^stEOF/`)
 }
 
