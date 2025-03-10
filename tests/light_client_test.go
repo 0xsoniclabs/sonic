@@ -1,4 +1,4 @@
-package provider
+package tests
 
 import (
 	"fmt"
@@ -6,8 +6,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/tests"
-	"github.com/0xsoniclabs/sonic/tests/contracts/counter_event_emitter"
+	"github.com/0xsoniclabs/sonic/scc/light_client/provider"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -19,24 +18,24 @@ import (
 // integration net tests
 ////////////////////////////////////////
 
-func TestRpcProvider_GetCommitteeCertificates_CanRetrieveCertificates(t *testing.T) {
+func TestServer_GetCommitteeCertificates_CanRetrieveCertificates(t *testing.T) {
 	require := require.New(t)
 
 	// start network
 	net, client := startNetAndGetClient(t)
 
 	// make providers
-	providerFromClient, err := NewRpcProviderFromClient(client.Client())
+	providerFromClient, err := provider.NewServerFromClient(client.Client())
 	require.NoError(err)
 	t.Cleanup(providerFromClient.Close)
 	url := fmt.Sprintf("http://localhost:%d", net.GetPort())
-	providerFromURL, err := NewRpcProviderFromURL(url)
+	providerFromURL, err := provider.NewServerFromURL(url)
 	require.NoError(err)
 	t.Cleanup(providerFromURL.Close)
 
-	chainId := getChainId(t, client.Client())
+	chainId := getChainIdFromClient(t, client.Client())
 
-	for _, provider := range []*RpcProvider{providerFromClient, providerFromURL} {
+	for _, provider := range []*provider.Server{providerFromClient, providerFromURL} {
 
 		// get certificates
 		certs, err := provider.GetCommitteeCertificates(0, math.MaxUint64)
@@ -49,37 +48,27 @@ func TestRpcProvider_GetCommitteeCertificates_CanRetrieveCertificates(t *testing
 	}
 }
 
-func TestRpcProvider_GetBlockCertificates_CanRetrieveCertificates(t *testing.T) {
+func TestServer_GetBlockCertificates_CanRetrieveCertificates(t *testing.T) {
 	require := require.New(t)
 
 	// start network
 	net, client := startNetAndGetClient(t)
 
-	// Produce a few blocks on the network. We use the counter contract since
-	// it is also producing events.
-	const numBlocks = 10
-	counter, _, err := tests.DeployContract(net, counter_event_emitter.DeployCounterEventEmitter)
-	require.NoError(err)
-	for range numBlocks {
-		_, err := net.Apply(counter.Increment)
-		require.NoError(err, "failed to increment counter")
-	}
-
 	// make providers
-	providerFromClient, err := NewRpcProviderFromClient(client.Client())
+	providerFromClient, err := provider.NewServerFromClient(client.Client())
 	require.NoError(err)
 	t.Cleanup(providerFromClient.Close)
 	url := fmt.Sprintf("http://localhost:%d", net.GetPort())
-	providerFromURL, err := NewRpcProviderFromURL(url)
+	providerFromURL, err := provider.NewServerFromURL(url)
 	require.NoError(err)
 	t.Cleanup(providerFromURL.Close)
 
-	chainId := getChainId(t, client.Client())
+	chainId := getChainIdFromClient(t, client.Client())
 
-	for _, provider := range []*RpcProvider{providerFromClient, providerFromURL} {
+	for _, provider := range []*provider.Server{providerFromClient, providerFromURL} {
 
 		// get certificates
-		certs, err := provider.GetBlockCertificates(1, numBlocks-1)
+		certs, err := provider.GetBlockCertificates(1, 100)
 		require.NoError(err)
 
 		// get headers
@@ -100,22 +89,22 @@ func TestRpcProvider_GetBlockCertificates_CanRetrieveCertificates(t *testing.T) 
 	}
 }
 
-func TestRpcProvider_CanRequestMaxNumberOfResults(t *testing.T) {
+func TestServer_CanRequestMaxNumberOfResults(t *testing.T) {
 	require := require.New(t)
 
 	// start network
 	net, client := startNetAndGetClient(t)
 
 	// make providers
-	providerFromClient, err := NewRpcProviderFromClient(client.Client())
+	providerFromClient, err := provider.NewServerFromClient(client.Client())
 	require.NoError(err)
 	t.Cleanup(providerFromClient.Close)
 	url := fmt.Sprintf("http://localhost:%d", net.GetPort())
-	providerFromURL, err := NewRpcProviderFromURL(url)
+	providerFromURL, err := provider.NewServerFromURL(url)
 	require.NoError(err)
 	t.Cleanup(providerFromURL.Close)
 
-	for _, provider := range []*RpcProvider{providerFromClient, providerFromURL} {
+	for _, provider := range []*provider.Server{providerFromClient, providerFromURL} {
 		comCerts, err := provider.GetCommitteeCertificates(0, math.MaxUint64)
 		require.NoError(err)
 		require.NotZero(len(comCerts))
@@ -130,18 +119,18 @@ func TestRpcProvider_CanRequestMaxNumberOfResults(t *testing.T) {
 // helper functions
 ////////////////////////////////////////
 
-func startNetAndGetClient(t *testing.T) (*tests.IntegrationTestNet, *ethclient.Client) {
+func startNetAndGetClient(t *testing.T) (*IntegrationTestNet, *ethclient.Client) {
 	t.Helper()
 	require := require.New(t)
 	// start network
-	net := tests.StartIntegrationTestNet(t)
+	net := StartIntegrationTestNet(t)
 
 	client, err := net.GetClient()
 	require.NoError(err)
 	return net, client
 }
 
-func getChainId(t *testing.T, client *rpc.Client) *big.Int {
+func getChainIdFromClient(t *testing.T, client *rpc.Client) *big.Int {
 	t.Helper()
 	var result hexutil.Big
 	err := client.Call(&result, "eth_chainId")

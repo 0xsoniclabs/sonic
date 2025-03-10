@@ -10,14 +10,14 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
-// RpcProvider implements the Provider interface and provides methods
+// Server implements the Provider interface and provides methods
 // making RPC calls through an RPC client.
-type RpcProvider struct {
+type Server struct {
 	// client is the RPC client used for making RPC calls.
 	client RpcClient
 }
 
-// NewRpcProviderFromClient creates a new RpcProvider with the given
+// NewServerFromClient creates a new Server with the given
 // RPC client. The resulting Provider takes ownership of the client and
 // will close it when the Provider is closed.
 // The resulting Provider must be closed after use.
@@ -26,18 +26,18 @@ type RpcProvider struct {
 // - client: The RPC client to use for RPC calls.
 //
 // Returns:
-// - *RpcProvider: A new instance of RpcProvider.
+// - *Server: A new instance of Server.
 // - error: An error if the client is nil.
-func NewRpcProviderFromClient(client RpcClient) (*RpcProvider, error) {
+func NewServerFromClient(client RpcClient) (*Server, error) {
 	if client == nil {
 		return nil, fmt.Errorf("cannot start a provider with a nil client")
 	}
-	return &RpcProvider{
+	return &Server{
 		client: client,
 	}, nil
 }
 
-// NewRpcProviderFromURL creates a new instance of RpcProvider with a new RPC client
+// NewServerFromURL creates a new instance of Server with a new RPC client
 // connected to the given URL.
 // The resulting Provider must be closed after use.
 //
@@ -45,19 +45,19 @@ func NewRpcProviderFromClient(client RpcClient) (*RpcProvider, error) {
 // - url: The URL of the RPC node to connect to.
 //
 // Returns:
-// - *RpcProvider: A new instance of RpcProvider.
+// - *Server: A new instance of Server.
 // - error: An error if the connection fails.
-func NewRpcProviderFromURL(url string) (*RpcProvider, error) {
+func NewServerFromURL(url string) (*Server, error) {
 	client, err := rpc.Dial(url)
 	if err != nil {
 		return nil, err
 	}
-	return NewRpcProviderFromClient(client)
+	return NewServerFromClient(client)
 }
 
-// Close closes the RpcProvider.
+// Close closes the Server.
 // Closing an already closed provider has no effect
-func (rpcp *RpcProvider) Close() {
+func (rpcp *Server) Close() {
 	if rpcp.IsClosed() {
 		return
 	}
@@ -65,8 +65,8 @@ func (rpcp *RpcProvider) Close() {
 	rpcp.client = nil
 }
 
-// IsClosed returns true if the RpcProvider is closed.
-func (rpcp RpcProvider) IsClosed() bool {
+// IsClosed returns true if the Server is closed.
+func (rpcp Server) IsClosed() bool {
 	return rpcp.client == nil
 }
 
@@ -80,7 +80,7 @@ func (rpcp RpcProvider) IsClosed() bool {
 // Returns:
 //   - []cert.CommitteeCertificate: A slice of committee certificates.
 //   - error: An error if the call fails or the certificates are out of order.
-func (rpcp RpcProvider) GetCommitteeCertificates(first scc.Period, maxResults uint64) ([]cert.CommitteeCertificate, error) {
+func (rpcp Server) GetCommitteeCertificates(first scc.Period, maxResults uint64) ([]cert.CommitteeCertificate, error) {
 	if rpcp.IsClosed() {
 		return nil, fmt.Errorf("no client available")
 	}
@@ -124,7 +124,7 @@ func (rpcp RpcProvider) GetCommitteeCertificates(first scc.Period, maxResults ui
 //     and the following blocks.
 //   - error: An error if the client is nil, the call fails, the
 //     certificates are out of order or more than requested.
-func (rpcp RpcProvider) GetBlockCertificates(first idx.Block, maxResults uint64) ([]cert.BlockCertificate, error) {
+func (rpcp Server) GetBlockCertificates(first idx.Block, maxResults uint64) ([]cert.BlockCertificate, error) {
 	if rpcp.IsClosed() {
 		return nil, fmt.Errorf("no client available")
 	}
