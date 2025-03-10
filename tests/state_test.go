@@ -29,8 +29,9 @@ import (
 )
 
 var (
-	baseDir      = filepath.Join(".", "testdata")
-	stateTestDir = filepath.Join(baseDir, "GeneralStateTests")
+	eipTests          = filepath.Join(".", "testdata", "EIPTests", "StateTests")
+	generalStateTests = filepath.Join(".", "testdata", "GeneralStateTests")
+	execSpecTests     = filepath.Join(".", "execution-spec-tests", "fixtures", "state_tests")
 
 	unsupportedForks = map[string]struct{}{
 		"ConstantinopleFix": {},
@@ -52,9 +53,18 @@ func TestState(t *testing.T) {
 	st := new(tests.TestMatcher)
 	initMatcher(st)
 	for _, dir := range []string{
-		filepath.Join(baseDir, "EIPTests", "StateTests"),
-		stateTestDir,
+		eipTests,
+		generalStateTests,
+		execSpecTests,
 	} {
+		// If the directory does not exist,
+		// skip it but do not exit test without checking the other directories.
+		dirinfo, err := os.Stat(dir)
+		if os.IsNotExist(err) || !dirinfo.IsDir() {
+			t.Logf("Skipping %s as it does not exist, did you clone/fill the tests?\n", dir)
+			continue
+		}
+
 		st.Walk(t, dir, func(t *testing.T, name string, test *tests.StateTest) {
 			execStateTest(t, st, test)
 		})
