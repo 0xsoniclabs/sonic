@@ -6,8 +6,8 @@ import (
 
 	"github.com/0xsoniclabs/consensus/abft"
 	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/kvdb"
 	"github.com/0xsoniclabs/consensus/utils/cachescale"
+	"github.com/0xsoniclabs/kvdb"
 	"github.com/0xsoniclabs/sonic/cmd/sonictool/db"
 	"github.com/0xsoniclabs/sonic/opera/genesis"
 	"github.com/0xsoniclabs/sonic/opera/genesisstore"

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/0xsoniclabs/consensus/kvdb/batched"
+	"github.com/0xsoniclabs/kvdb/batched"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/ibr"
 	"github.com/0xsoniclabs/sonic/inter/ier"

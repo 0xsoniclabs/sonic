@@ -11,7 +11,7 @@ import (
 	"github.com/0xsoniclabs/consensus/inter/dag"
 	"github.com/0xsoniclabs/consensus/inter/dag/tdag"
 	"github.com/0xsoniclabs/consensus/inter/pos"
-	"github.com/0xsoniclabs/consensus/kvdb/memorydb"
+	"github.com/0xsoniclabs/kvdb/memorydb"
 
 	"github.com/0xsoniclabs/sonic/inter"
 )
