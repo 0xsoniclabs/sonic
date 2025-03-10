@@ -5,6 +5,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/0xsoniclabs/kvdb"
+	"github.com/0xsoniclabs/kvdb/flushable"
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/gossip"
 	"github.com/0xsoniclabs/sonic/integration"
@@ -14,8 +16,6 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/common/bigendian"
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/Fantom-foundation/lachesis-base/kvdb"
-	"github.com/Fantom-foundation/lachesis-base/kvdb/flushable"
 	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"

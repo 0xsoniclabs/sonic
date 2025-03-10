@@ -7,6 +7,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/0xsoniclabs/kvdb"
+	"github.com/0xsoniclabs/kvdb/flushable"
+	"github.com/0xsoniclabs/kvdb/memorydb"
+	"github.com/0xsoniclabs/kvdb/table"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/logger"
@@ -14,10 +18,6 @@ import (
 	"github.com/0xsoniclabs/sonic/utils/randat"
 	"github.com/0xsoniclabs/sonic/utils/rlpstore"
 	"github.com/Fantom-foundation/lachesis-base/common/bigendian"
-	"github.com/Fantom-foundation/lachesis-base/kvdb"
-	"github.com/Fantom-foundation/lachesis-base/kvdb/flushable"
-	"github.com/Fantom-foundation/lachesis-base/kvdb/memorydb"
-	"github.com/Fantom-foundation/lachesis-base/kvdb/table"
 	"github.com/Fantom-foundation/lachesis-base/utils/wlru"
 )
 

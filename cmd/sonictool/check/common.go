@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 
 	carmen "github.com/0xsoniclabs/carmen/go/state"
+	"github.com/0xsoniclabs/kvdb"
 	"github.com/0xsoniclabs/sonic/gossip"
 	"github.com/0xsoniclabs/sonic/integration"
-	"github.com/Fantom-foundation/lachesis-base/kvdb"
 	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/syndtr/goleveldb/leveldb/opt"
