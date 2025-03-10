@@ -11,40 +11,40 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestRpcProvider_NewRpcProvider_CanInitializeFromUrl(t *testing.T) {
+func TestServer_NewServer_CanInitializeFromUrl(t *testing.T) {
 	require := require.New(t)
 
-	provider, err := NewRpcProviderFromURL("http://localhost:8545")
+	provider, err := NewServerFromURL("http://localhost:8545")
 	t.Cleanup(provider.Close)
 	require.NoError(err)
 	require.NotNil(provider)
 	require.False(provider.IsClosed())
 }
 
-func TestRpcProvider_NewRpcProvider_ReportsErrorForNilClient(t *testing.T) {
+func TestServer_NewServer_ReportsErrorForNilClient(t *testing.T) {
 	require := require.New(t)
 
-	provider, err := NewRpcProviderFromClient(nil)
+	provider, err := NewServerFromClient(nil)
 	require.Error(err)
 	require.Nil(provider)
 }
 
-func TestRpcProvider_NewRpcProvider_ReportsErrorForInvalidURL(t *testing.T) {
+func TestServer_NewServer_ReportsErrorForInvalidURL(t *testing.T) {
 	require := require.New(t)
 
-	provider, err := NewRpcProviderFromURL("not-a-url")
+	provider, err := NewServerFromURL("not-a-url")
 	require.Error(err)
 	require.Nil(provider)
 }
 
-func TestRpcProvider_IsClosed_Reports(t *testing.T) {
+func TestServer_IsClosed_Reports(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 
 	t.Run("provider with client is not closed", func(t *testing.T) {
 		client := NewMockRpcClient(ctrl)
 		client.EXPECT().Close().AnyTimes()
-		provider, err := NewRpcProviderFromClient(client)
+		provider, err := NewServerFromClient(client)
 		require.NoError(err)
 		require.False(provider.IsClosed())
 		provider.Close()
@@ -53,7 +53,7 @@ func TestRpcProvider_IsClosed_Reports(t *testing.T) {
 	t.Run("provider with client can be closed", func(t *testing.T) {
 		client := NewMockRpcClient(ctrl)
 		client.EXPECT().Close()
-		provider, err := NewRpcProviderFromClient(client)
+		provider, err := NewServerFromClient(client)
 		require.NoError(err)
 		require.False(provider.IsClosed())
 		provider.Close()
@@ -63,7 +63,7 @@ func TestRpcProvider_IsClosed_Reports(t *testing.T) {
 	t.Run("closed provider can be re-closed", func(t *testing.T) {
 		client := NewMockRpcClient(ctrl)
 		client.EXPECT().Close().AnyTimes()
-		provider, err := NewRpcProviderFromClient(client)
+		provider, err := NewServerFromClient(client)
 		require.NoError(err)
 		provider.Close()
 		require.True(provider.IsClosed())
@@ -72,12 +72,12 @@ func TestRpcProvider_IsClosed_Reports(t *testing.T) {
 	})
 }
 
-func TestRpcProvider_FailsToRequestAfterClose(t *testing.T) {
+func TestServer_FailsToRequestAfterClose(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	client := NewMockRpcClient(ctrl)
 
-	provider, err := NewRpcProviderFromClient(client)
+	provider, err := NewServerFromClient(client)
 	require.NoError(err)
 
 	// close provider
@@ -93,7 +93,7 @@ func TestRpcProvider_FailsToRequestAfterClose(t *testing.T) {
 	require.Error(err)
 }
 
-func TestRpcProvider_GetCertificates_PropagatesErrorFromClientCall(t *testing.T) {
+func TestServer_GetCertificates_PropagatesErrorFromClientCall(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	client := NewMockRpcClient(ctrl)
@@ -106,7 +106,7 @@ func TestRpcProvider_GetCertificates_PropagatesErrorFromClientCall(t *testing.T)
 	client.EXPECT().Call(gomock.Any(), "sonic_getBlockCertificates",
 		gomock.Any(), gomock.Any()).Return(blockError)
 
-	provider, err := NewRpcProviderFromClient(client)
+	provider, err := NewServerFromClient(client)
 	require.NoError(err)
 
 	// get committee certificates
@@ -118,7 +118,7 @@ func TestRpcProvider_GetCertificates_PropagatesErrorFromClientCall(t *testing.T)
 	require.ErrorIs(err, blockError)
 }
 
-func TestRpcProvider_GetCommitteeCertificates_ReportsCorruptedCertificatesOutOfOrder(t *testing.T) {
+func TestServer_GetCommitteeCertificates_ReportsCorruptedCertificatesOutOfOrder(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 
@@ -134,7 +134,7 @@ func TestRpcProvider_GetCommitteeCertificates_ReportsCorruptedCertificatesOutOfO
 
 	for _, committees := range tests {
 		client := NewMockRpcClient(ctrl)
-		provider, err := NewRpcProviderFromClient(client)
+		provider, err := NewServerFromClient(client)
 		require.NoError(err)
 
 		// client setup
@@ -152,11 +152,11 @@ func TestRpcProvider_GetCommitteeCertificates_ReportsCorruptedCertificatesOutOfO
 	}
 }
 
-func TestRpcProvider_GetCommitteeCertificates_DropsExcessCertificates(t *testing.T) {
+func TestServer_GetCommitteeCertificates_DropsExcessCertificates(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	client := NewMockRpcClient(ctrl)
-	provider, err := NewRpcProviderFromClient(client)
+	provider, err := NewServerFromClient(client)
 	require.NoError(err)
 
 	client.EXPECT().Call(gomock.Any(), "sonic_getCommitteeCertificates",
@@ -175,11 +175,11 @@ func TestRpcProvider_GetCommitteeCertificates_DropsExcessCertificates(t *testing
 	require.Len(certs, 1)
 }
 
-func TestRpcProvider_GetBlockCertificates_ReportsCorruptedCertificatesOutOfOrder(t *testing.T) {
+func TestServer_GetBlockCertificates_ReportsCorruptedCertificatesOutOfOrder(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	client := NewMockRpcClient(ctrl)
-	provider, err := NewRpcProviderFromClient(client)
+	provider, err := NewServerFromClient(client)
 	require.NoError(err)
 
 	tests := [][]ethapi.BlockCertificate{
@@ -206,11 +206,11 @@ func TestRpcProvider_GetBlockCertificates_ReportsCorruptedCertificatesOutOfOrder
 	}
 }
 
-func TestRpcProvider_GetBlockCertificates_DropsExcessCertificates(t *testing.T) {
+func TestServer_GetBlockCertificates_DropsExcessCertificates(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	client := NewMockRpcClient(ctrl)
-	provider, err := NewRpcProviderFromClient(client)
+	provider, err := NewServerFromClient(client)
 	require.NoError(err)
 
 	client.EXPECT().Call(gomock.Any(), "sonic_getBlockCertificates",
@@ -229,11 +229,11 @@ func TestRpcProvider_GetBlockCertificates_DropsExcessCertificates(t *testing.T) 
 	require.Len(certs, 1)
 }
 
-func TestRpcProvider_GetBlockCertificates_CanFetchLatestBlock(t *testing.T) {
+func TestServer_GetBlockCertificates_CanFetchLatestBlock(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	client := NewMockRpcClient(ctrl)
-	provider, err := NewRpcProviderFromClient(client)
+	provider, err := NewServerFromClient(client)
 	require.NoError(err)
 
 	latestBlockNumber := idx.Block(1024)
@@ -254,11 +254,11 @@ func TestRpcProvider_GetBlockCertificates_CanFetchLatestBlock(t *testing.T) {
 	require.Equal(latestBlockNumber, blockCerts[0].Subject().Number)
 }
 
-func TestRpcProvider_GetCertificates_ReturnsCertificates(t *testing.T) {
+func TestServer_GetCertificates_ReturnsCertificates(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	client := NewMockRpcClient(ctrl)
-	provider, err := NewRpcProviderFromClient(client)
+	provider, err := NewServerFromClient(client)
 	require.NoError(err)
 
 	// committee certificates
