@@ -64,14 +64,12 @@ func generateHistory(blockHeight idx.Block) (
 		bls.NewPrivateKey(),
 		bls.NewPrivateKey(),
 		bls.NewPrivateKey(),
-		bls.NewPrivateKey(),
 	}
 
 	genesis = scc.NewCommittee(
 		makeMember(keys[0]),
 		makeMember(keys[1]),
-		makeMember(keys[2]),
-		makeMember(keys[3]))
+		makeMember(keys[2]))
 
 	// generate blocks and certificates for block and period 0.
 	blocks = append(blocks, cert.NewCertificate(cert.BlockStatement{}))
@@ -97,7 +95,10 @@ func generateHistory(blockHeight idx.Block) (
 				scc.GetPeriod(head),
 				committee))
 			for i, key := range keys {
-				certificate.Add(scc.MemberId(i), cert.Sign(certificate.Subject(), key))
+				err := certificate.Add(scc.MemberId(i), cert.Sign(certificate.Subject(), key))
+				if err != nil {
+					return scc.Committee{}, nil, nil, err
+				}
 			}
 			committees = append(committees, certificate)
 			keys = rotate(keys)
@@ -113,7 +114,10 @@ func generateHistory(blockHeight idx.Block) (
 			))
 
 		for i, key := range keys {
-			block.Add(scc.MemberId(i), cert.Sign(block.Subject(), key))
+			err := block.Add(scc.MemberId(i), cert.Sign(block.Subject(), key))
+			if err != nil {
+				return scc.Committee{}, nil, nil, err
+			}
 		}
 		blocks = append(blocks, block)
 
