@@ -65,22 +65,22 @@ func (s *State) Sync(p provider.Provider) (idx.Block, error) {
 	s.headHash = headCert.Subject().Hash
 
 	// return the latest block number
-	return idx.Block(0), nil
+	return s.headNumber, nil
 }
 
 // syncToPeriod is a helper function to updates the light client state
 // to the given period using the given provider
-func (s *State) syncToPeriod(p provider.Provider, first scc.Period) error {
-	if s.period == first {
+func (s *State) syncToPeriod(p provider.Provider, target scc.Period) error {
+	if s.period == target {
 		return nil
 	}
-	if s.period > first {
+	if s.period > target {
 		return fmt.Errorf("cannot sync to a previous period. current: %d, target: %d",
-			s.period, first)
+			s.period, target)
 	}
 
 	// get all committee certificates from the provider
-	committeeCerts, err := p.GetCommitteeCertificates(first, uint64(first-s.period))
+	committeeCerts, err := p.GetCommitteeCertificates(s.period+1, uint64(target-s.period))
 	if err != nil {
 		return err
 	}

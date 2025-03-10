@@ -133,22 +133,26 @@ func prepareProvider(
 	prov.
 		EXPECT().
 		GetBlockCertificates(gomock.Any(), gomock.Any()).
-		DoAndReturn(func(number idx.Block, max uint64) (cert.BlockCertificate, error) {
-			if number == idx.Block(provider.LatestBlock) {
-				number = idx.Block(len(blocks) - 1)
+		DoAndReturn(func(number idx.Block, max uint64) ([]cert.BlockCertificate, error) {
+			if number == provider.LatestBlock {
+				return blocks[len(blocks)-1:], nil
 			}
-			return blocks[number], nil
+			start := uint64(number)
+			end := start + max
+			end = min(end, uint64(len(committees)))
+			start = min(start, end)
+			return blocks[start:end], nil
 		}).
 		AnyTimes()
 
 	prov.EXPECT().
 		GetCommitteeCertificates(gomock.Any(), gomock.Any()).
-		DoAndReturn(func(from scc.Period, max uint64) []cert.CommitteeCertificate {
+		DoAndReturn(func(from scc.Period, max uint64) ([]cert.CommitteeCertificate, error) {
 			start := uint64(from)
 			end := start + max
 			end = min(end, uint64(len(committees)))
 			start = min(start, end)
-			return committees[start:end]
+			return committees[start:end], nil
 		}).
 		AnyTimes()
 
