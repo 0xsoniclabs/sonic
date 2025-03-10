@@ -19,9 +19,11 @@
 package app
 
 import (
-	"github.com/0xsoniclabs/sonic/cmd/sonicd/cmdhelper"
 	"io"
 	"sort"
+	"sync"
+
+	"github.com/0xsoniclabs/sonic/cmd/sonicd/cmdhelper"
 
 	cli "gopkg.in/urfave/cli.v1"
 
@@ -83,7 +85,10 @@ func calcAppHelpFlagGroups() []cmdhelper.FlagGroup {
 	}
 }
 
-func initAppHelp() {
+// initAppHelp is a thread-safe run-once function initializing the app help template.
+var initAppHelp = sync.OnceFunc(initAppHelpInternal)
+
+func initAppHelpInternal() {
 	// Override the default app help template
 	cli.AppHelpTemplate = cmdhelper.AppHelpTemplate
 
