@@ -30,7 +30,7 @@ type Provider interface {
 	//
 	// Parameters:
 	//   - number: The starting block number for which to retrieve the block certificate.
-	//     Can be LatestPeriod to retrieve the latest certificates.
+	//     Can be LatestBlock to retrieve the latest certificates.
 	//   - maxResults: The maximum number of block certificates to retrieve.
 	//
 	// Returns:
