@@ -26,7 +26,8 @@ func TestRpcProvider_GetCommitteeCertificates_CanRetrieveCertificates(t *testing
 	net, client := startNetAndGetClient(t)
 
 	// make providers
-	providerFromClient := NewRpcProviderFromClient(client.Client())
+	providerFromClient, err := NewRpcProviderFromClient(client.Client())
+	require.NoError(err)
 	t.Cleanup(providerFromClient.Close)
 	url := fmt.Sprintf("http://localhost:%d", net.GetPort())
 	providerFromURL, err := NewRpcProviderFromURL(url)
@@ -65,7 +66,8 @@ func TestRpcProvider_GetBlockCertificates_CanRetrieveCertificates(t *testing.T) 
 	}
 
 	// make providers
-	providerFromClient := NewRpcProviderFromClient(client.Client())
+	providerFromClient, err := NewRpcProviderFromClient(client.Client())
+	require.NoError(err)
 	t.Cleanup(providerFromClient.Close)
 	url := fmt.Sprintf("http://localhost:%d", net.GetPort())
 	providerFromURL, err := NewRpcProviderFromURL(url)
@@ -105,7 +107,8 @@ func TestRpcProvider_CanRequestMaxNumberOfResults(t *testing.T) {
 	net, client := startNetAndGetClient(t)
 
 	// make providers
-	providerFromClient := NewRpcProviderFromClient(client.Client())
+	providerFromClient, err := NewRpcProviderFromClient(client.Client())
+	require.NoError(err)
 	t.Cleanup(providerFromClient.Close)
 	url := fmt.Sprintf("http://localhost:%d", net.GetPort())
 	providerFromURL, err := NewRpcProviderFromURL(url)
