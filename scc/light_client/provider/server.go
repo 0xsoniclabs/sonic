@@ -99,14 +99,14 @@ func (s Server) GetCommitteeCertificates(first scc.Period, maxResults uint64) ([
 	if uint64(len(results)) > maxResults {
 		results = results[:maxResults]
 	}
-	certs := []cert.CommitteeCertificate{}
+	certs := make([]cert.CommitteeCertificate, len(results))
 	currentPeriod := first
-	for _, res := range results {
+	for i, res := range results {
 		if res.Period != uint64(currentPeriod) {
 			return nil, fmt.Errorf("committee certificates out of order")
 		}
 		currentPeriod++
-		certs = append(certs, res.ToCertificate())
+		certs[i] = res.ToCertificate()
 	}
 	return certs, nil
 }
@@ -116,7 +116,7 @@ func (s Server) GetCommitteeCertificates(first scc.Period, maxResults uint64) ([
 //
 // Parameters:
 //   - number: The starting block number for which to retrieve the block certificate.
-//     Can be LatestPeriod to retrieve the latest certificates.
+//     Can be LatestBlock to retrieve the latest certificates.
 //   - maxResults: The maximum number of block certificates to retrieve.
 //
 // Returns:
@@ -149,19 +149,19 @@ func (s Server) GetBlockCertificates(first idx.Block, maxResults uint64) ([]cert
 	if uint64(len(results)) > maxResults {
 		results = results[:maxResults]
 	}
-	certs := []cert.BlockCertificate{}
+	certs := make([]cert.BlockCertificate, len(results))
 	var currentBlock idx.Block
 	if first == LatestBlock {
 		currentBlock = idx.Block(results[0].Number)
 	} else {
 		currentBlock = first
 	}
-	for _, res := range results {
+	for i, res := range results {
 		if res.Number != uint64(currentBlock) {
 			return nil, fmt.Errorf("block certificates out of order")
 		}
 		currentBlock++
-		certs = append(certs, res.ToCertificate())
+		certs[i] = res.ToCertificate()
 	}
 	return certs, nil
 }
