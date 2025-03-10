@@ -15,7 +15,9 @@ import (
 )
 
 ////////////////////////////////////////
-// integration net tests
+// TODO: expand tests to cover not only provider.Server but also light client
+//       instance to sync up to the network, as well as new functionionalities
+//       added to the Server through decorators.
 ////////////////////////////////////////
 
 func TestServer_GetCommitteeCertificates_CanRetrieveCertificates(t *testing.T) {
