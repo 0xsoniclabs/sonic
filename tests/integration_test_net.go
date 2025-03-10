@@ -132,11 +132,10 @@ func StartIntegrationTestNetWithFakeGenesis(
 ) *IntegrationTestNet {
 	t.Helper()
 
-	if len(options) > 1 {
-		t.Fatalf("expected at most one option, got %d", len(options))
-		return nil
+	effectiveOptions, err := validateAndSanitizeOptions(options...)
+	if err != nil {
+		t.Fatal("failed to validate and sanitize options: ", err)
 	}
-	effectiveOptions := sanitizeOptions(options...)
 
 	net, err := startIntegrationTestNet(
 		t,
@@ -159,14 +158,14 @@ func StartIntegrationTestNetWithJsonGenesis(
 	options ...IntegrationTestNetOptions,
 ) *IntegrationTestNet {
 	t.Helper()
-	if len(options) > 1 {
-		t.Fatalf("expected at most one option, got %d", len(options))
-		return nil
+
+	effectiveOptions, err := validateAndSanitizeOptions(options...)
+	if err != nil {
+		t.Fatal("failed to validate and sanitize options: ", err)
 	}
-	effectiveOptions := sanitizeOptions(options...)
-	upgrades := effectiveOptions.FeatureSet.ToUpgrades()
+
 	jsonGenesis := makefakegenesis.GenesisJson{
-		Rules:         opera.FakeNetRules(upgrades),
+		Rules:         opera.FakeNetRules(effectiveOptions.FeatureSet),
 		BlockZeroTime: time.Now(),
 	}
 
@@ -763,12 +762,17 @@ func (s *Session) GetClient() (*ethclient.Client, error) {
 	return ethclient.Dial(fmt.Sprintf("http://localhost:%d", s.httpPort))
 }
 
-// sanitizeOptions ensures that the options are valid and sets the default values.
-func sanitizeOptions(options ...IntegrationTestNetOptions) IntegrationTestNetOptions {
+// validateAndSanitizeOptions ensures that the options are valid and sets the default values.
+func validateAndSanitizeOptions(options ...IntegrationTestNetOptions) (IntegrationTestNetOptions, error) {
+
+	if len(options) > 1 {
+		return IntegrationTestNetOptions{}, fmt.Errorf("expected at most one option, got %d", len(options))
+	}
+
 	if len(options) == 0 {
 		return IntegrationTestNetOptions{
 			FeatureSet: opera.SonicFeatures,
-		}
+		}, nil
 	}
-	return options[0]
+	return options[0], nil
 }
