@@ -452,8 +452,13 @@ func (n *IntegrationTestNet) Restart() error {
 func (n *IntegrationTestNet) GetWebSocketClient() (*ethclient.Client, error) {
 	return ethclient.Dial(fmt.Sprintf("ws://localhost:%d", n.httpPort))
 }
+
 func (n *IntegrationTestNet) GetDirectory() string {
 	return n.directory
+}
+
+func (n *IntegrationTestNet) GetPort() int {
+	return n.httpPort
 }
 
 // RestartWithExportImport stops the network, exports the genesis file, cleans the
