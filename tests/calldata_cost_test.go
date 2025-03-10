@@ -211,8 +211,8 @@ func testUsedGas(t *testing.T,
 func makeCallData(size int, zeroesPercentage float32) []byte {
 	zeroes := int(float32(size) * zeroesPercentage)
 	data := make([]byte, size)
-	for i := 0; i < zeroes; i++ {
-		data[i] = 0
+	for i := zeroes; i < size; i++ {
+		data[i] = 1
 	}
 	return data
 }
