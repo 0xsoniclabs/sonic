@@ -29,8 +29,9 @@ type Provider interface {
 	// certificates starting from the given block number.
 	//
 	// Parameters:
-	// - number: The starting block number for which to retrieve the block certificate.
-	// - maxResults: The maximum number of block certificates to retrieve.
+	//   - number: The starting block number for which to retrieve the block certificate.
+	//     Can be LatestPeriod to retrieve the latest certificates.
+	//   - maxResults: The maximum number of block certificates to retrieve.
 	//
 	// Returns:
 	//   - cert.BlockCertificate: The block certificates for the given block number
@@ -38,7 +39,7 @@ type Provider interface {
 	//   - error: An error if the call fails or the certificates are out of order.
 	GetBlockCertificates(first idx.Block, maxResults uint64) ([]cert.BlockCertificate, error)
 
-	// Close closes the RpcProvider.
+	// Close closes the Provider.
 	// Closing an already closed provider has no effect
 	Close()
 }

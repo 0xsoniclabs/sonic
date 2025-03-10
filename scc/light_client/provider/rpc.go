@@ -17,7 +17,7 @@ type RpcProvider struct {
 	client RpcClient
 }
 
-// NewRpcProviderFromClient creates a new instance of RpcProvider with the given
+// NewRpcProviderFromClient creates a new RpcProvider with the given
 // RPC client. The resulting Provider takes ownership of the client and
 // will close it when the Provider is closed.
 // The resulting Provider must be closed after use.
@@ -27,10 +27,14 @@ type RpcProvider struct {
 //
 // Returns:
 // - *RpcProvider: A new instance of RpcProvider.
-func NewRpcProviderFromClient(client RpcClient) *RpcProvider {
+// - error: An error if the client is nil.
+func NewRpcProviderFromClient(client RpcClient) (*RpcProvider, error) {
+	if client == nil {
+		return nil, fmt.Errorf("cannot start a provider with a nil client")
+	}
 	return &RpcProvider{
 		client: client,
-	}
+	}, nil
 }
 
 // NewRpcProviderFromURL creates a new instance of RpcProvider with a new RPC client
@@ -48,7 +52,7 @@ func NewRpcProviderFromURL(url string) (*RpcProvider, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewRpcProviderFromClient(client), nil
+	return NewRpcProviderFromClient(client)
 }
 
 // Close closes the RpcProvider.
@@ -75,8 +79,7 @@ func (rpcp RpcProvider) IsClosed() bool {
 //
 // Returns:
 //   - []cert.CommitteeCertificate: A slice of committee certificates.
-//   - error: An error if the client is nil, the call fails, the
-//     certificates are out of order or more than requested.
+//   - error: An error if the call fails or the certificates are out of order.
 func (rpcp RpcProvider) GetCommitteeCertificates(first scc.Period, maxResults uint64) ([]cert.CommitteeCertificate, error) {
 	if rpcp.IsClosed() {
 		return nil, fmt.Errorf("no client available")
@@ -112,8 +115,9 @@ func (rpcp RpcProvider) GetCommitteeCertificates(first scc.Period, maxResults ui
 // certificates starting from the given block number.
 //
 // Parameters:
-// - number: The starting block number for which to retrieve the block certificate.
-// - maxResults: The maximum number of block certificates to retrieve.
+//   - number: The starting block number for which to retrieve the block certificate.
+//     Can be LatestPeriod to retrieve the latest certificates.
+//   - maxResults: The maximum number of block certificates to retrieve.
 //
 // Returns:
 //   - cert.BlockCertificate: The block certificates for the given block number
