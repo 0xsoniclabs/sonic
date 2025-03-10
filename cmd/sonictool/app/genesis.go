@@ -163,7 +163,7 @@ func fakeGenesisImport(ctx *cli.Context) (err error) {
 		idx.Validator(validatorsNumber),
 		futils.ToFtm(1_000_000_000),
 		futils.ToFtm(5_000_000),
-		featureSet.ToUpgrades(),
+		featureSet,
 	)
 	defer caution.CloseAndReportError(&err, genesisStore, "failed to close the genesis store")
 	return genesis.ImportGenesisStore(genesis.ImportParams{

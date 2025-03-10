@@ -56,7 +56,7 @@ func LoadGenesisJson(filename string) (*GenesisJson, error) {
 		return nil, fmt.Errorf("failed to read genesis json file; %v", err)
 	}
 	var decoded GenesisJson
-	upgrades := opera.SonicFeatures.ToUpgrades()
+	upgrades := opera.SonicFeatures
 	decoded.Rules = opera.FakeNetRules(upgrades) // use fakenet rules as defaults
 	err = json.Unmarshal(data, &decoded)
 	if err != nil {

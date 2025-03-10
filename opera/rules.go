@@ -314,7 +314,7 @@ func MainNetRules() Rules {
 	}
 }
 
-func FakeNetRules(upgrades Upgrades) Rules {
+func FakeNetRules(features FeatureSet) Rules {
 	return Rules{
 		Name:      "fake",
 		NetworkID: FakeNetworkID,
@@ -326,7 +326,7 @@ func FakeNetRules(upgrades Upgrades) Rules {
 			MaxBlockGas:             defaultMaxBlockGas,
 			MaxEmptyBlockSkipPeriod: inter.Timestamp(3 * time.Second),
 		},
-		Upgrades: upgrades,
+		Upgrades: features.ToUpgrades(),
 	}
 }
 
