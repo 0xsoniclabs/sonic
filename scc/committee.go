@@ -1,6 +1,7 @@
 package scc
 
 import (
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
@@ -141,6 +142,30 @@ func (c Committee) String() string {
 	}
 	result.WriteString(fmt.Sprintf("Valid: %t}", c.Validate() == nil))
 	return result.String()
+}
+
+// MarshalJSON implements the json.Marshaler interface. The committee is
+// serialized as a JSON object with a single field "Member" that contains the
+// list of members.
+func (c Committee) MarshalJSON() ([]byte, error) {
+	return json.Marshal(jsonCommittee{
+		Member: c.Members(),
+	})
+}
+
+// UnmarshalJSON implements the json.Unmarshaler interface. For details see
+// MarshalJSON.
+func (c *Committee) UnmarshalJSON(data []byte) error {
+	var jsonCommittee jsonCommittee
+	if err := json.Unmarshal(data, &jsonCommittee); err != nil {
+		return err
+	}
+	c.members = jsonCommittee.Member
+	return nil
+}
+
+type jsonCommittee struct {
+	Member []Member
 }
 
 // Serialize serializes the committee into a byte slice. The serialization format

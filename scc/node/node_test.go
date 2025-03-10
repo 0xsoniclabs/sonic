@@ -11,7 +11,7 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func TestNode_NewBlock_CreatesBlockCertificate(t *testing.T) {
+func TestNode_ProcessNewBlock_CreatesBlockCertificate(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	store := NewMockStore(ctrl)
 
@@ -23,7 +23,8 @@ func TestNode_NewBlock_CreatesBlockCertificate(t *testing.T) {
 	store.EXPECT().UpdateBlockCertificate(cert.NewCertificate(stmt)).Return(nil)
 
 	node := NewNode(store, scc.Committee{})
-	require.NoError(t, node.NewBlock(stmt))
+	_, _, err := node.ProcessNewBlock(stmt)
+	require.NoError(t, err)
 }
 
 func TestNode_NewBlock_CreatesCommitteeCertificateAtEndOfPeriod(t *testing.T) {
@@ -51,7 +52,8 @@ func TestNode_NewBlock_CreatesCommitteeCertificateAtEndOfPeriod(t *testing.T) {
 	node := NewNode(store, committeeA)
 	node.state = state
 
-	require.NoError(t, node.NewBlock(blockStmt))
+	_, _, err := node.ProcessNewBlock(blockStmt)
+	require.NoError(t, err)
 }
 
 func TestNode_NewBlock_ReportsCertificateCreationError(t *testing.T) {
@@ -63,5 +65,6 @@ func TestNode_NewBlock_ReportsCertificateCreationError(t *testing.T) {
 	store.EXPECT().UpdateBlockCertificate(cert.NewCertificate(stmt)).Return(issue)
 
 	node := NewNode(store, scc.Committee{})
-	require.ErrorIs(t, node.NewBlock(stmt), issue)
+	_, _, err := node.ProcessNewBlock(stmt)
+	require.ErrorIs(t, err, issue)
 }
