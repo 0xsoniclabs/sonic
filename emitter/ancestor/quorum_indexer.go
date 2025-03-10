@@ -9,36 +9,36 @@ import (
 	"github.com/0xsoniclabs/consensus/inter/dag"
 	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/0xsoniclabs/consensus/inter/pos"
-	"github.com/0xsoniclabs/sonic/utils/wmedian"
+	"github.com/0xsoniclabs/sonic/utils/wthreshold"
 )
 
 type DagIndexQ interface {
 	dagidx.VectorClock
 }
-type DiffMetricFn func(median, current, update idx.Event, validatorIdx idx.Validator) Metric
+type DiffMetricFn func(thresholdValue, current, update idx.Event, validatorIdx idx.Validator) Metric
 
 type QuorumIndexer struct {
 	dagi       DagIndexQ
 	validators *pos.Validators
 
-	globalMatrix     Matrix
-	selfParentSeqs   []idx.Event
-	globalMedianSeqs []idx.Event
-	dirty            bool
-	searchStrategy   SearchStrategy
+	globalMatrix             Matrix
+	selfParentSeqs           []idx.Event
+	globalThresholdValueSeqs []idx.Event
+	dirty                    bool
+	searchStrategy           SearchStrategy
 
 	diffMetricFn DiffMetricFn
 }
 
 func NewQuorumIndexer(validators *pos.Validators, dagi DagIndexQ, diffMetricFn DiffMetricFn) *QuorumIndexer {
 	return &QuorumIndexer{
-		globalMatrix:     NewMatrix(validators.Len(), validators.Len()),
-		globalMedianSeqs: make([]idx.Event, validators.Len()),
-		selfParentSeqs:   make([]idx.Event, validators.Len()),
-		dagi:             dagi,
-		validators:       validators,
-		diffMetricFn:     diffMetricFn,
-		dirty:            true,
+		globalMatrix:             NewMatrix(validators.Len(), validators.Len()),
+		globalThresholdValueSeqs: make([]idx.Event, validators.Len()),
+		selfParentSeqs:           make([]idx.Event, validators.Len()),
+		dagi:                     dagi,
+		validators:               validators,
+		diffMetricFn:             diffMetricFn,
+		dirty:                    true,
 	}
 }
 
@@ -98,9 +98,9 @@ func (h *QuorumIndexer) ProcessEvent(event dag.Event, selfEvent bool) {
 }
 
 func (h *QuorumIndexer) recacheState() {
-	// update median seqs
+	// update thresholdValue seqs
 	for validatorIdx := idx.Validator(0); validatorIdx < h.validators.Len(); validatorIdx++ {
-		pairs := make([]wmedian.WeightedValue, h.validators.Len())
+		pairs := make([]wthreshold.WeightedValue, h.validators.Len())
 		for i := range pairs {
 			pairs[i] = weightedSeq{
 				seq:    h.globalMatrix.Row(validatorIdx)[i],
@@ -111,8 +111,8 @@ func (h *QuorumIndexer) recacheState() {
 			a, b := pairs[i].(weightedSeq), pairs[j].(weightedSeq)
 			return a.seq > b.seq
 		})
-		median := wmedian.Of(pairs, h.validators.Quorum())
-		h.globalMedianSeqs[validatorIdx] = median.(weightedSeq).seq
+		thresholdValue := wthreshold.FindThresholdValue(pairs, h.validators.Quorum())
+		h.globalThresholdValueSeqs[validatorIdx] = thresholdValue.(weightedSeq).seq
 	}
 	h.searchStrategy = NewMetricStrategy(h.GetMetricOf)
 	h.dirty = false
@@ -137,8 +137,8 @@ func (h *QuorumIndexer) GetMetricOf(parents hash.Events) Metric {
 			}
 		}
 		current := h.selfParentSeqs[validatorIdx]
-		median := h.globalMedianSeqs[validatorIdx]
-		metric += h.diffMetricFn(median, current, update, validatorIdx)
+		thresholdValue := h.globalThresholdValueSeqs[validatorIdx]
+		metric += h.diffMetricFn(thresholdValue, current, update, validatorIdx)
 	}
 	return metric
 }
@@ -150,11 +150,11 @@ func (h *QuorumIndexer) SearchStrategy() SearchStrategy {
 	return h.searchStrategy
 }
 
-func (h *QuorumIndexer) GetGlobalMedianSeqs() []idx.Event {
+func (h *QuorumIndexer) GetGlobalThresholdValueSeqs() []idx.Event {
 	if h.dirty {
 		h.recacheState()
 	}
-	return h.globalMedianSeqs
+	return h.globalThresholdValueSeqs
 }
 
 func (h *QuorumIndexer) GetGlobalMatrix() Matrix {
