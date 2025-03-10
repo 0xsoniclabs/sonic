@@ -38,12 +38,12 @@ func (s *State) Head() idx.Block {
 func (s *State) Sync(p provider.Provider) (idx.Block, error) {
 
 	// Get the latest block number from the provider.
-	blockCerts, err := p.GetBlockCertificates(provider.LatestBlock, 1)
+	blockCerts, err := p.GetBlockCertificates(provider.LatestBlock, uint64(1))
 	if err != nil {
 		return 0, err
 	}
 	if len(blockCerts) == 0 {
-		return 0, nil
+		return s.headNumber, nil
 	}
 
 	// get period for the latest block
