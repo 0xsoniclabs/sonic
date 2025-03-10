@@ -310,6 +310,7 @@ func startIntegrationTestNet(
 	if err := net.start(); err != nil {
 		return nil, fmt.Errorf("failed to start the test network: %w", err)
 	}
+	t.Cleanup(net.Stop)
 	return net, nil
 }
 
