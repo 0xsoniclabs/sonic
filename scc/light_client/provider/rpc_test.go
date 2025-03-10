@@ -6,14 +6,12 @@ import (
 
 	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/scc"
-	"github.com/0xsoniclabs/sonic/scc/bls"
-	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 )
 
-func TestRpcProvider_CanInitializeFromUrl(t *testing.T) {
+func TestRpcProvider_NewRpcProvider_CanInitializeFromUrl(t *testing.T) {
 	require := require.New(t)
 
 	provider, err := NewRpcProviderFromURL("http://localhost:8545")
@@ -23,10 +21,18 @@ func TestRpcProvider_CanInitializeFromUrl(t *testing.T) {
 	require.False(provider.IsClosed())
 }
 
-func TestRpcProvider_ReportsErrorForNilClient(t *testing.T) {
+func TestRpcProvider_NewRpcProvider_ReportsErrorForNilClient(t *testing.T) {
 	require := require.New(t)
 
 	provider, err := NewRpcProviderFromClient(nil)
+	require.Error(err)
+	require.Nil(provider)
+}
+
+func TestRpcProvider_NewRpcProvider_ReportsErrorForInvalidURL(t *testing.T) {
+	require := require.New(t)
+
+	provider, err := NewRpcProviderFromURL("not-a-url")
 	require.Error(err)
 	require.Nil(provider)
 }
@@ -87,14 +93,6 @@ func TestRpcProvider_FailsToRequestAfterClose(t *testing.T) {
 	require.Error(err)
 }
 
-func TestRpcProvider_NewRpcProvider_ReportsErrorForInvalidURL(t *testing.T) {
-	require := require.New(t)
-
-	provider, err := NewRpcProviderFromURL("not-a-url")
-	require.Error(err)
-	require.Nil(provider)
-}
-
 func TestRpcProvider_GetCertificates_PropagatesErrorFromClientCall(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
@@ -126,11 +124,11 @@ func TestRpcProvider_GetCommitteeCertificates_ReportsCorruptedCertificatesOutOfO
 
 	tests := [][]ethapi.CommitteeCertificate{
 		{
-			makeCommitteeCertForPeriod(1),
+			ethapi.CommitteeCertificate{Period: uint64(1)},
 		},
 		{
-			makeCommitteeCertForPeriod(0),
-			makeCommitteeCertForPeriod(2),
+			ethapi.CommitteeCertificate{Period: uint64(0)},
+			ethapi.CommitteeCertificate{Period: uint64(2)},
 		},
 	}
 
@@ -165,8 +163,8 @@ func TestRpcProvider_GetCommitteeCertificates_DropsExcessCertificates(t *testing
 		gomock.Any(), gomock.Any()).DoAndReturn(
 		func(result *[]ethapi.CommitteeCertificate, method string, args ...interface{}) error {
 			*result = []ethapi.CommitteeCertificate{
-				makeCommitteeCertForPeriod(0),
-				makeCommitteeCertForPeriod(1),
+				ethapi.CommitteeCertificate{Period: uint64(0)},
+				ethapi.CommitteeCertificate{Period: uint64(1)},
 			}
 			return nil
 		})
@@ -186,11 +184,11 @@ func TestRpcProvider_GetBlockCertificates_ReportsCorruptedCertificatesOutOfOrder
 
 	tests := [][]ethapi.BlockCertificate{
 		{
-			makeBlockCertForNumber(1),
+			ethapi.BlockCertificate{Number: uint64(1)},
 		},
 		{
-			makeBlockCertForNumber(0),
-			makeBlockCertForNumber(2),
+			ethapi.BlockCertificate{Number: uint64(0)},
+			ethapi.BlockCertificate{Number: uint64(2)},
 		},
 	}
 
@@ -219,8 +217,8 @@ func TestRpcProvider_GetBlockCertificates_DropsExcessCertificates(t *testing.T) 
 		gomock.Any(), gomock.Any()).DoAndReturn(
 		func(result *[]ethapi.BlockCertificate, method string, args ...interface{}) error {
 			*result = []ethapi.BlockCertificate{
-				makeBlockCertForNumber(0),
-				makeBlockCertForNumber(1),
+				ethapi.BlockCertificate{Number: uint64(0)},
+				ethapi.BlockCertificate{Number: uint64(1)},
 			}
 			return nil
 		})
@@ -244,7 +242,7 @@ func TestRpcProvider_GetBlockCertificates_CanFetchLatestBlock(t *testing.T) {
 		"latest", "0x1").DoAndReturn(
 		func(result *[]ethapi.BlockCertificate, method string, args ...interface{}) error {
 			*result = []ethapi.BlockCertificate{
-				makeBlockCertForNumber(latestBlockNumber),
+				ethapi.BlockCertificate{Number: uint64(latestBlockNumber)},
 			}
 			return nil
 		})
@@ -268,8 +266,8 @@ func TestRpcProvider_GetCertificates_ReturnsCertificates(t *testing.T) {
 		gomock.Any(), gomock.Any()).DoAndReturn(
 		func(result *[]ethapi.CommitteeCertificate, method string, args ...interface{}) error {
 			*result = []ethapi.CommitteeCertificate{
-				makeCommitteeCertForPeriod(0),
-				makeCommitteeCertForPeriod(1),
+				ethapi.CommitteeCertificate{Period: uint64(0)},
+				ethapi.CommitteeCertificate{Period: uint64(1)},
 			}
 			return nil
 		})
@@ -286,8 +284,8 @@ func TestRpcProvider_GetCertificates_ReturnsCertificates(t *testing.T) {
 		gomock.Any(), gomock.Any()).DoAndReturn(
 		func(result *[]ethapi.BlockCertificate, method string, args ...interface{}) error {
 			*result = []ethapi.BlockCertificate{
-				makeBlockCertForNumber(0),
-				makeBlockCertForNumber(1),
+				ethapi.BlockCertificate{Number: uint64(0)},
+				ethapi.BlockCertificate{Number: uint64(1)},
 			}
 			return nil
 		})
@@ -296,25 +294,4 @@ func TestRpcProvider_GetCertificates_ReturnsCertificates(t *testing.T) {
 	blockCerts, err := provider.GetBlockCertificates(0, 2)
 	require.NoError(err)
 	require.Len(blockCerts, 2)
-}
-
-/// helper functions
-
-func makeCommitteeCertForPeriod(period scc.Period) ethapi.CommitteeCertificate {
-	return ethapi.CommitteeCertificate{
-		ChainId:   1,
-		Period:    uint64(period),
-		Members:   []scc.Member{},
-		Signers:   cert.BitSet[scc.MemberId]{},
-		Signature: bls.Signature{},
-	}
-}
-
-func makeBlockCertForNumber(number idx.Block) ethapi.BlockCertificate {
-	return ethapi.BlockCertificate{
-		ChainId:   1,
-		Number:    uint64(number),
-		Hash:      [32]byte{},
-		StateRoot: [32]byte{},
-	}
 }
