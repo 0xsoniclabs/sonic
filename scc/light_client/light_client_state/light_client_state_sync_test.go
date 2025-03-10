@@ -20,7 +20,8 @@ func TestLightClientState_CanSyncWithProvider(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
 	blockHeight := scc.BLOCKS_PER_PERIOD * 50 / 3
-	firstCommittee, provider, err := generateCommitteeAndProvider(ctrl, idx.Block(blockHeight))
+	firstCommittee, provider, err := generateCommitteeAndProvider(
+		ctrl, idx.Block(blockHeight))
 	require.NoError(err)
 
 	// In this test case the light client sync to the network period-by-period.
@@ -35,9 +36,14 @@ func TestLightClientState_CanSyncWithProvider(t *testing.T) {
 // /////////////////////////
 
 // generateCommitteeAndProvider generates a committee and a provider for testing.
-// The committee is generated based on the given block height.
-// The provider is a mock provider that returns the generated committee and blocks.
-func generateCommitteeAndProvider(ctrl *gomock.Controller, blockHeight idx.Block) (scc.Committee, provider.Provider, error) {
+// The amount of committee certificates is generated based on the given
+// block height.
+// The provider is a mock provider that returns the generated committee and
+// blocks certificates.
+func generateCommitteeAndProvider(
+	ctrl *gomock.Controller,
+	blockHeight idx.Block,
+) (scc.Committee, provider.Provider, error) {
 
 	// generate committee, blocks and certificates
 	firstCommittee, blocks, committees, err := generateHistory(blockHeight)
@@ -45,14 +51,15 @@ func generateCommitteeAndProvider(ctrl *gomock.Controller, blockHeight idx.Block
 		return scc.Committee{}, nil, err
 	}
 
-	// prepare mock prov
+	// prepare mock provider
 	prov := prepareProvider(ctrl, blockHeight, blocks, committees)
 
 	return firstCommittee, prov, nil
 }
 
-// generateHistory generates a history of blocks and committees.
-// certificate is signed by 3 committee members out of 4, and the committee rotates every period.
+// generateHistory generates a history of blocks and committees certificates.
+// Certificates are signed by 3 committee members and the committee rotates
+// every period.
 func generateHistory(blockHeight idx.Block) (
 	genesis scc.Committee,
 	blocks []cert.BlockCertificate,
@@ -71,13 +78,13 @@ func generateHistory(blockHeight idx.Block) (
 		makeMember(keys[1]),
 		makeMember(keys[2]))
 
-	// generate blocks and certificates for block and period 0.
+	// generate first block and committee certificates.
 	blocks = append(blocks, cert.NewCertificate(cert.BlockStatement{}))
 	committees = append(committees, cert.NewCertificate(cert.CommitteeStatement{
 		Committee: genesis,
 	}))
 
-	// generate blocks and certificates
+	// generate history up to blockHeight.
 	committee := genesis
 	head := idx.Block(0)
 	headHash := common.Hash{}
@@ -85,17 +92,23 @@ func generateHistory(blockHeight idx.Block) (
 
 		// Compute next block.
 		head += 1
+		// the next line is a dummy hash, only for testing purposes.
 		headHash = common.Hash(sha256.Sum256(headHash[:]))
 
 		// Add period boundaries, update the committee.
 		if scc.IsFirstBlockOfPeriod(head) {
 			committee := scc.NewCommittee(rotate(committee.Members())...)
 
-			certificate := cert.NewCertificate(cert.NewCommitteeStatement(1234,
-				scc.GetPeriod(head),
-				committee))
+			certificate := cert.NewCertificate(
+				cert.NewCommitteeStatement(
+					1234,
+					scc.GetPeriod(head),
+					committee))
+
 			for i, key := range keys {
-				err := certificate.Add(scc.MemberId(i), cert.Sign(certificate.Subject(), key))
+				err := certificate.Add(
+					scc.MemberId(i),
+					cert.Sign(certificate.Subject(), key))
 				if err != nil {
 					return scc.Committee{}, nil, nil, err
 				}

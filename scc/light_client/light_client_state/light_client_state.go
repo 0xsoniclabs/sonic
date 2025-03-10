@@ -10,7 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-// State  holds the current state of the light client.
+// State holds the current state of the light client.
 type State struct {
 	committee  scc.Committee
 	period     scc.Period
@@ -30,12 +30,15 @@ func (s *State) Head() idx.Block {
 	return s.headNumber
 }
 
-// Sync updates the light client state using data from the provider.
-// This serves as the primary process for synchronizing the light client state
+// Sync updates the light client state using certificates from the provider.
+// This serves as the primary method for synchronizing the light client state
 // with the network.
-// If success, the local client will reflect the most recent block and
-// its corresponding certification committee.
+// If successful, the most recent block number is returned.
+// If an error occurs, the returned block number is 0 with the corresponding error.
 func (s *State) Sync(p provider.Provider) (idx.Block, error) {
+	if p == nil {
+		return 0, fmt.Errorf("cannot update with nil provider")
+	}
 
 	// Get the latest block number from the provider.
 	blockCerts, err := p.GetBlockCertificates(provider.LatestBlock, uint64(1))
@@ -43,14 +46,15 @@ func (s *State) Sync(p provider.Provider) (idx.Block, error) {
 		return 0, err
 	}
 	if len(blockCerts) == 0 {
-		return s.headNumber, nil
+		return 0, fmt.Errorf("provider returned zero block certificates")
 	}
 
 	// get period for the latest block
 	headCert := blockCerts[0]
 	headPeriod := scc.GetPeriod(headCert.Subject().Number)
 
-	// sync from current to latest
+	// sync from current period to latest.
+	// this process will update the committee and period of the state.
 	if err := s.syncToPeriod(p, headPeriod); err != nil {
 		return 0, err
 	}
@@ -88,7 +92,7 @@ func (s *State) syncToPeriod(p provider.Provider, target scc.Period) error {
 	// update the state with the committee certificates
 	for _, c := range committeeCerts {
 		// update the state with the committee certificate
-		if err = s.updateOnePeriod(c); err != nil {
+		if err = s.updateCommittee(c); err != nil {
 			return err
 		}
 	}
@@ -96,7 +100,9 @@ func (s *State) syncToPeriod(p provider.Provider, target scc.Period) error {
 	return nil
 }
 
-func (s *State) updateOnePeriod(c cert.CommitteeCertificate) error {
+// updateCommittee is a helper function to update the light client state
+// to the next period with the given certificate.
+func (s *State) updateCommittee(c cert.CommitteeCertificate) error {
 	// verify the period
 	target := s.period + 1
 	if c.Subject().Period != target {
