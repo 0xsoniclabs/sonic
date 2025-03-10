@@ -38,16 +38,9 @@ func TestLightClientState_PropagatesErrorsFrom(t *testing.T) {
 			state := NewState(scc.Committee{})
 			expectedCalls(prov)
 			_, err := state.Sync(prov)
-			require.Error(err)
+			require.ErrorContains(err, "failed to get")
 		})
 	}
-}
-
-func TestLightClientState_Sync_FailsWithNilProvider(t *testing.T) {
-	require := require.New(t)
-	state := NewState(scc.Committee{})
-	_, err := state.Sync(nil)
-	require.ErrorContains(err, "cannot update with nil provider")
 }
 
 func TestLightClientState_Sync_ChangesNothingWhen_LatestBlockIsEmpty(t *testing.T) {
@@ -63,10 +56,10 @@ func TestLightClientState_Sync_ChangesNothingWhen_LatestBlockIsEmpty(t *testing.
 	_, err := state.Sync(prov)
 	want := State{}
 	compareStates(t, &want, state)
-	require.Error(err)
+	require.ErrorContains(err, "zero block certificates")
 }
 
-func TestLightClientState_Sync_OnlyUpdatesHeadWhen_SyncToCurrentPeriod(t *testing.T) {
+func TestLightClientState_Sync_UpdatesOnlyHeadWhen_SyncToCurrentPeriod(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	prov := provider.NewMockProvider(ctrl)
@@ -133,6 +126,32 @@ func TestLightClientState_Sync_ReportsFailedVerificationOfLatestBlock(t *testing
 	require.ErrorContains(err, "insufficient voting power")
 }
 
+func TestLightClientState_Sync_FailsWithNilProvider(t *testing.T) {
+	require := require.New(t)
+	state := NewState(scc.Committee{})
+	_, err := state.Sync(nil)
+	require.ErrorContains(err, "cannot update with nil provider")
+}
+
+func TestLightClientState_Sync_FailsWhenHeadProvidedIsSmallerThanCurrent(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	prov := provider.NewMockProvider(ctrl)
+
+	expectBlockForPeriod(prov, 0)
+
+	state := NewState(scc.NewCommittee())
+	lastBlockOfPeriod := idx.Block(3)
+	state.headNumber = lastBlockOfPeriod
+
+	_, err := state.Sync(prov)
+	require.ErrorContains(err, "invalid block number")
+	want := State{
+		headNumber: lastBlockOfPeriod,
+	}
+	compareStates(t, &want, state)
+}
+
 func TestLightClientState_Sync_FailsWithUnorderedCommitteeCertificates(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
@@ -176,7 +195,7 @@ func TestLightClientState_Sync_FailsWithInvalidCommitteeCertificate(t *testing.T
 
 	state := NewState(scc.Committee{})
 	_, err := state.Sync(prov)
-	require.ErrorContains(err, "committee certificate verification")
+	require.ErrorContains(err, "invalid committee")
 }
 
 func TestLightClientState_Sync_ReportsCurrentCommitteeFailsToVerifyNextCommittee(t *testing.T) {

@@ -19,12 +19,13 @@ func TestLightClientState_CanSyncWithProvider(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 
+	// generate history of blocks and committees certificates
 	blockHeight := scc.BLOCKS_PER_PERIOD * 50 / 3
-	firstCommittee, provider, err := generateCommitteeAndProvider(
+	firstCommittee, provider, err := generateCertificatesAndProvider(
 		ctrl, idx.Block(blockHeight))
 	require.NoError(err)
 
-	// In this test case the light client sync to the network period-by-period.
+	// create a new state with the first committee
 	state := NewState(firstCommittee)
 	headNumber, err := state.Sync(provider)
 	require.NoError(err)
@@ -35,17 +36,17 @@ func TestLightClientState_CanSyncWithProvider(t *testing.T) {
 // Helper functions
 // /////////////////////////
 
-// generateCommitteeAndProvider generates a committee and a provider for testing.
+// generateCertificatesAndProvider generates a committee and a provider for testing.
 // The amount of committee certificates is generated based on the given
 // block height.
 // The provider is a mock provider that returns the generated committee and
 // blocks certificates.
-func generateCommitteeAndProvider(
+func generateCertificatesAndProvider(
 	ctrl *gomock.Controller,
 	blockHeight idx.Block,
 ) (scc.Committee, provider.Provider, error) {
 
-	// generate committee, blocks and certificates
+	// generate first committee with committees and blocks certificates
 	firstCommittee, blocks, committees, err := generateHistory(blockHeight)
 	if err != nil {
 		return scc.Committee{}, nil, err
@@ -84,7 +85,7 @@ func generateHistory(blockHeight idx.Block) (
 		Committee: genesis,
 	}))
 
-	// generate history up to blockHeight.
+	// generate certificates up to blockHeight.
 	committee := genesis
 	head := idx.Block(0)
 	headHash := common.Hash{}
@@ -139,6 +140,9 @@ func generateHistory(blockHeight idx.Block) (
 	return genesis, blocks, committees, nil
 }
 
+// prepareProvider prepares a mock provider that returns the given blocks and
+// committees certificates.
+// if the block number is LatestBlock, it returns the latest block.
 func prepareProvider(
 	ctrl *gomock.Controller,
 	blockHeight idx.Block,

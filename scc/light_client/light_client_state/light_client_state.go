@@ -53,6 +53,11 @@ func (s *State) Sync(p provider.Provider) (idx.Block, error) {
 	headCert := blockCerts[0]
 	headPeriod := scc.GetPeriod(headCert.Subject().Number)
 
+	if headCert.Subject().Number <= s.headNumber {
+		return 0, fmt.Errorf("invalid block number: %d, expected > %d",
+			headCert.Subject().Number, s.headNumber)
+	}
+
 	// sync from current period to latest.
 	// this process will update the committee and period of the state.
 	if err := s.syncToPeriod(p, headPeriod); err != nil {
@@ -83,13 +88,12 @@ func (s *State) syncToPeriod(p provider.Provider, target scc.Period) error {
 			s.period, target)
 	}
 
-	// get all committee certificates from the provider
+	// get all the committee certificates from the current period to the target.
 	committeeCerts, err := p.GetCommitteeCertificates(s.period+1, uint64(target-s.period))
 	if err != nil {
 		return err
 	}
 
-	// update the state with the committee certificates
 	for _, c := range committeeCerts {
 		// update the state with the committee certificate
 		if err = s.updateCommittee(c); err != nil {
@@ -112,7 +116,7 @@ func (s *State) updateCommittee(c cert.CommitteeCertificate) error {
 
 	// verify the committee certificate
 	if err := c.Subject().Committee.Validate(); err != nil {
-		return fmt.Errorf("committee certificate verification for period %d failed, %w",
+		return fmt.Errorf("invalid committee for period %d failed, %w",
 			target, err)
 	}
 
