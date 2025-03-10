@@ -159,7 +159,7 @@ func TestRpcProvider_GetCommitteeCertificates_ReportsCorruptedCertificatesOutOfO
 	}
 }
 
-func TestRpcProvider_GetCommitteeCertificates_FailsIfMoreCertificatesThanRequestedAreReturned(t *testing.T) {
+func TestRpcProvider_GetCommitteeCertificates_DropsExcessCertificates(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	client := NewMockRpcClient(ctrl)
@@ -176,8 +176,9 @@ func TestRpcProvider_GetCommitteeCertificates_FailsIfMoreCertificatesThanRequest
 		})
 
 	// get committee certificates
-	_, err := provider.GetCommitteeCertificates(0, 1)
-	require.ErrorContains(err, "Too many certificates")
+	certs, err := provider.GetCommitteeCertificates(0, 1)
+	require.NoError(err)
+	require.Len(certs, 1)
 }
 
 func TestRpcProvider_GetBlockCertificates_ReportsCorruptedCertificatesOutOfOrder(t *testing.T) {
@@ -210,7 +211,7 @@ func TestRpcProvider_GetBlockCertificates_ReportsCorruptedCertificatesOutOfOrder
 	}
 }
 
-func TestRpcProvider_GetBlockCertificates_FailsIfMoreCertificatesThanRequestedAreReturned(t *testing.T) {
+func TestRpcProvider_GetBlockCertificates_DropsExcessCertificates(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	client := NewMockRpcClient(ctrl)
@@ -227,8 +228,9 @@ func TestRpcProvider_GetBlockCertificates_FailsIfMoreCertificatesThanRequestedAr
 		})
 
 	// get block certificates
-	_, err := provider.GetBlockCertificates(0, 1)
-	require.ErrorContains(err, "Too many certificates")
+	certs, err := provider.GetBlockCertificates(0, 1)
+	require.NoError(err)
+	require.Len(certs, 1)
 }
 
 func TestRpcProvider_GetBlockCertificates_CanFetchLatestBlock(t *testing.T) {
@@ -249,7 +251,7 @@ func TestRpcProvider_GetBlockCertificates_CanFetchLatestBlock(t *testing.T) {
 		})
 
 	// get block certificates
-	blockCerts, err := provider.GetBlockCertificates(latestBlock, 1)
+	blockCerts, err := provider.GetBlockCertificates(LatestBlock, 1)
 	require.NoError(err)
 	require.Len(blockCerts, 1)
 	require.Equal(latestBlockNumber, blockCerts[0].Subject().Number)

@@ -2,7 +2,6 @@ package provider
 
 import (
 	"fmt"
-	"math"
 
 	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/scc"
@@ -17,9 +16,6 @@ type RpcProvider struct {
 	// client is the RPC client used for making RPC calls.
 	client RpcClient
 }
-
-// latestBlock is a constant used to indicate the latest block.
-const latestBlock = idx.Block(math.MaxUint64)
 
 // NewRpcProviderFromClient creates a new instance of RpcProvider with the given
 // RPC client. The resulting Provider takes ownership of the client and
@@ -55,8 +51,8 @@ func NewRpcProviderFromURL(url string) (*RpcProvider, error) {
 	return NewRpcProviderFromClient(client), nil
 }
 
-// Close closes the RpcProvider and its underlying RPC client.
-// Reiterative calls to Close will not panic.
+// Close closes the RpcProvider.
+// Closing an already closed provider has no effect
 func (rpcp *RpcProvider) Close() {
 	if rpcp.IsClosed() {
 		return
@@ -65,7 +61,7 @@ func (rpcp *RpcProvider) Close() {
 	rpcp.client = nil
 }
 
-// IsClosed returns true if the internal RpcClient is nill.
+// IsClosed returns true if the RpcProvider is closed.
 func (rpcp RpcProvider) IsClosed() bool {
 	return rpcp.client == nil
 }
@@ -83,7 +79,7 @@ func (rpcp RpcProvider) IsClosed() bool {
 //     certificates are out of order or more than requested.
 func (rpcp RpcProvider) GetCommitteeCertificates(first scc.Period, maxResults uint64) ([]cert.CommitteeCertificate, error) {
 	if rpcp.IsClosed() {
-		return nil, fmt.Errorf("No client available")
+		return nil, fmt.Errorf("no client available")
 	}
 
 	results := []ethapi.CommitteeCertificate{}
@@ -96,14 +92,15 @@ func (rpcp RpcProvider) GetCommitteeCertificates(first scc.Period, maxResults ui
 	if err != nil {
 		return nil, err
 	}
+	// if too many certificates are returned, drop the excess
 	if uint64(len(results)) > maxResults {
-		return nil, fmt.Errorf("Too many certificates returned")
+		results = results[:maxResults]
 	}
 	certs := []cert.CommitteeCertificate{}
 	currentPeriod := first
 	for _, res := range results {
 		if res.Period != uint64(currentPeriod) {
-			return nil, fmt.Errorf("Committee certificates out of order")
+			return nil, fmt.Errorf("committee certificates out of order")
 		}
 		currentPeriod++
 		certs = append(certs, res.ToCertificate())
@@ -125,11 +122,11 @@ func (rpcp RpcProvider) GetCommitteeCertificates(first scc.Period, maxResults ui
 //     certificates are out of order or more than requested.
 func (rpcp RpcProvider) GetBlockCertificates(first idx.Block, maxResults uint64) ([]cert.BlockCertificate, error) {
 	if rpcp.IsClosed() {
-		return nil, fmt.Errorf("No client available")
+		return nil, fmt.Errorf("no client available")
 	}
 
 	var firstString string
-	if first == latestBlock {
+	if first == LatestBlock {
 		firstString = "latest"
 	} else {
 		firstString = fmt.Sprintf("0x%x", first)
@@ -144,19 +141,20 @@ func (rpcp RpcProvider) GetBlockCertificates(first idx.Block, maxResults uint64)
 	if err != nil {
 		return nil, err
 	}
+	// if too many certificates are returned, drop the excess
 	if uint64(len(results)) > maxResults {
-		return nil, fmt.Errorf("Too many certificates returned")
+		results = results[:maxResults]
 	}
 	certs := []cert.BlockCertificate{}
 	var currentBlock idx.Block
-	if first == latestBlock {
+	if first == LatestBlock {
 		currentBlock = idx.Block(results[0].Number)
 	} else {
 		currentBlock = first
 	}
 	for _, res := range results {
 		if res.Number != uint64(currentBlock) {
-			return nil, fmt.Errorf("Block certificates out of order")
+			return nil, fmt.Errorf("block certificates out of order")
 		}
 		currentBlock++
 		certs = append(certs, res.ToCertificate())
