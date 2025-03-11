@@ -211,12 +211,18 @@ func startIntegrationTestNet(
 	}
 	net.Session.net = net
 
+	if verbosityVariable := os.Getenv("SONIC_VERBOSITY"); verbosityVariable == "" {
+		if err := os.Setenv("SONIC_VERBOSITY", "0"); err != nil {
+			t.Fatal("failed to set verbosity: ", err)
+		}
+	}
+
 	// start the integration test nodes
 	for i := range net.nodes {
 		net.nodes[i].directory = filepath.Join(directory, fmt.Sprintf("node%d", i))
 
 		// initialize the data directory for the single node on the test network
-		// equivalent to running `sonictool --datadir <dataDir> genesis fake 1`
+		// using the configuration arguments provided by the caller
 		args := append([]string{
 			"sonictool",
 			"--datadir", net.nodes[i].getStateDir(),
