@@ -1461,7 +1461,7 @@ func (pool *TxPool) reset(oldHead, newHead *EvmHeader) {
 	pool.shanghai = pool.chainconfig.IsShanghai(next, uint64(newHead.Time.Unix()))
 	pool.eip4844 = pool.chainconfig.IsCancun(next, uint64(newHead.Time.Unix()))
 	pool.eip7623 = pool.chainconfig.IsPrague(next, uint64(newHead.Time.Unix()))
-	pool.eip7702 = pool.eip7623
+	pool.eip7702 = pool.chainconfig.IsPrague(next, uint64(newHead.Time.Unix()))
 }
 
 // promoteExecutables moves transactions that have become processable from the
