@@ -440,7 +440,8 @@ func (n *IntegrationTestNet) GetDirectory() string {
 	return n.nodes[0].directory
 }
 
-func (n *IntegrationTestNet) GetPort() int {
+// GetJsonRpcPort returns the JSON-RPC port of the first node in the network.
+func (n *IntegrationTestNet) GetJsonRpcPort() int {
 	return n.nodes[0].httpPort
 }
 

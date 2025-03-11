@@ -62,7 +62,7 @@ func TestServer_IsClosed_Reports(t *testing.T) {
 
 	t.Run("closed server can be re-closed", func(t *testing.T) {
 		client := NewMockRpcClient(ctrl)
-		client.EXPECT().Close().AnyTimes()
+		client.EXPECT().Close()
 		server, err := NewServerFromClient(client)
 		require.NoError(err)
 		server.Close()
@@ -227,6 +227,25 @@ func TestServer_GetBlockCertificates_DropsExcessCertificates(t *testing.T) {
 	certs, err := server.GetBlockCertificates(0, 1)
 	require.NoError(err)
 	require.Len(certs, 1)
+}
+
+func TestServer_GetBlockCertificates_FailsWhenNoCertificatesReturned(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	client := NewMockRpcClient(ctrl)
+	server, err := NewServerFromClient(client)
+	require.NoError(err)
+
+	client.EXPECT().Call(gomock.Any(), "sonic_getBlockCertificates",
+		gomock.Any(), gomock.Any()).DoAndReturn(
+		func(result *[]ethapi.BlockCertificate, method string, args ...interface{}) error {
+			*result = []ethapi.BlockCertificate{}
+			return nil
+		})
+
+	// get block certificates
+	_, err = server.GetBlockCertificates(0, 1)
+	require.ErrorContains(err, "no block certificates found")
 }
 
 func TestServer_GetBlockCertificates_CanFetchLatestBlock(t *testing.T) {

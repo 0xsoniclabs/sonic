@@ -22,7 +22,7 @@ type Provider interface {
 	//
 	// Returns:
 	//   - []cert.CommitteeCertificate: A slice of committee certificates.
-	//   - error: An error if the call fails or the certificates are out of order.
+	//   - error: Not nil if the provider failed to obtain the requested certificates.
 	GetCommitteeCertificates(first scc.Period, maxResults uint64) ([]cert.CommitteeCertificate, error)
 
 	// GetBlockCertificates returns up to `maxResults` consecutive block
@@ -36,7 +36,7 @@ type Provider interface {
 	// Returns:
 	//   - cert.BlockCertificate: The block certificates for the given block number
 	//     and the following blocks.
-	//   - error: An error if the call fails or the certificates are out of order.
+	//   - error: Not nil if the provider failed to obtain the requested certificates.
 	GetBlockCertificates(first idx.Block, maxResults uint64) ([]cert.BlockCertificate, error)
 
 	// Close closes the Provider.
