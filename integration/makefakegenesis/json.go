@@ -140,6 +140,12 @@ func ApplyGenesisJson(json *GenesisJson) (*genesisstore.Store, error) {
 	if json.GenesisCommittee == nil {
 		return nil, fmt.Errorf("genesis committee must be set")
 	}
+	if len(json.GenesisCommittee.Members()) == 0 {
+		return nil, fmt.Errorf("genesis committee must have at least one member")
+	}
+	if err := json.GenesisCommittee.Validate(); err != nil {
+		return nil, fmt.Errorf("genesis committee is invalid")
+	}
 	builder.SetGenesisCommitteeCertificate(cert.NewCertificate(
 		cert.NewCommitteeStatement(
 			json.Rules.NetworkID,

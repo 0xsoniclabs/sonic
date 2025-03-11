@@ -1,6 +1,7 @@
 package scc
 
 import (
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
@@ -182,4 +183,21 @@ func DeserializeCommittee(data []byte) (Committee, error) {
 	}
 
 	return Committee{members}, nil
+}
+
+// MarshalJSON implements the json.Marshaler interface. The committee is
+// serialized into a JSON array of members.
+func (c Committee) MarshalJSON() ([]byte, error) {
+	return json.Marshal(c.members)
+}
+
+// UnmarshalJSON implements the json.Unmarshaler interface. The committee is
+// deserialized from a JSON array of members.
+func (c *Committee) UnmarshalJSON(data []byte) error {
+	var members []Member
+	if err := json.Unmarshal(data, &members); err != nil {
+		return err
+	}
+	*c = NewCommittee(members...)
+	return nil
 }
