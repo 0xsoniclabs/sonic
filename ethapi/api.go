@@ -2325,8 +2325,13 @@ func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex in
 		if idx == txIndex {
 			return msg, statedb, nil
 		}
+
+		// Use default config for replaying transactions with possible no base fee
+		cfg := opera.DefaultVMConfig
+		cfg.NoBaseFee = true
+
 		// Not yet the searched for transaction, execute on top of the current state
-		vmenv, _, err := b.GetEVM(ctx, msg, statedb, block.Header(), &opera.DefaultVMConfig, nil)
+		vmenv, _, err := b.GetEVM(ctx, msg, statedb, block.Header(), &cfg, nil)
 		if err != nil {
 			statedb.Release()
 			return nil, nil, err
