@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	"github.com/0xsoniclabs/sonic/config/flags"
+	"github.com/0xsoniclabs/sonic/debug"
 	"github.com/0xsoniclabs/sonic/version"
 	"gopkg.in/urfave/cli.v1"
 )
@@ -25,6 +26,8 @@ func RunWithArgs(args []string) error {
 		flags.ArchiveCacheFlag,
 		flags.StateDbCacheCapacityFlag,
 	}
+	app.Flags = append(app.Flags, debug.Flags...)
+
 	app.Commands = []cli.Command{
 		{
 			Name:  "genesis",
@@ -403,6 +406,11 @@ Converts an account private key to a validator private key and saves in the vali
 			},
 		},
 	}
+
+	app.Before = func(ctx *cli.Context) error {
+		return debug.Setup(ctx)
+	}
+
 	sort.Sort(cli.CommandsByName(app.Commands))
 
 	return app.Run(args)
