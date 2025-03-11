@@ -1,6 +1,7 @@
 package scc
 
 import (
+	"encoding/json"
 	"math"
 	"testing"
 
@@ -217,4 +218,23 @@ func newTestMember(i byte, power uint64) Member {
 		ProofOfPossession: key.GetProofOfPossession(),
 		VotingPower:       power,
 	}
+}
+
+func TestCommittee_CanEncodeDecodeJson(t *testing.T) {
+	members := []Member{
+		newTestMember(1, 10),
+		newTestMember(2, 20),
+		newTestMember(3, 15),
+	}
+	committee := Committee{members: members}
+
+	data, err := json.Marshal(committee)
+	require.NoError(t, err)
+	require.NotEqual(t, "{}", string(data))
+
+	var committee2 Committee
+	err = json.Unmarshal(data, &committee2)
+	require.NoError(t, err)
+
+	require.Equal(t, committee, committee2)
 }
