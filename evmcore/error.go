@@ -92,4 +92,8 @@ var (
 
 	// ErrEmptyAuthorizations is returned if a SetCode transaction has no authorizations.
 	ErrEmptyAuthorizations = errors.New("empty authorizations")
+
+	// ErrMaxInitCodeSizeExceeded is returned if creation transaction provides the init code bigger
+	// than init code size limit.
+	ErrMaxInitCodeSizeExceeded = errors.New("max initcode size exceeded")
 )
