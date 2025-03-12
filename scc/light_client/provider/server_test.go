@@ -273,6 +273,22 @@ func TestServer_GetBlockCertificates_CanFetchLatestBlock(t *testing.T) {
 	require.Equal(latestBlockNumber, blockCerts[0].Subject().Number)
 }
 
+func TestServer_GetCertificates_IgnoresRequestForZeroCertificates(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	client := NewMockRpcClient(ctrl)
+	server, err := NewServerFromClient(client)
+	require.NoError(err)
+
+	// get committee certificates
+	_, err = server.GetCommitteeCertificates(0, 0)
+	require.NoError(err)
+
+	// get block certificates
+	_, err = server.GetBlockCertificates(0, 0)
+	require.NoError(err)
+}
+
 func TestServer_GetCertificates_ReturnsCertificates(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)

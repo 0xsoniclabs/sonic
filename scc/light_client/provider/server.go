@@ -81,6 +81,9 @@ func (s Server) IsClosed() bool {
 //   - []cert.CommitteeCertificate: A slice of committee certificates.
 //   - error: Not nil if the provider failed to obtain the requested certificates.
 func (s Server) GetCommitteeCertificates(first scc.Period, maxResults uint64) ([]cert.CommitteeCertificate, error) {
+	if maxResults == 0 {
+		return nil, nil
+	}
 	if s.IsClosed() {
 		return nil, fmt.Errorf("no client available")
 	}
@@ -124,6 +127,9 @@ func (s Server) GetCommitteeCertificates(first scc.Period, maxResults uint64) ([
 //     and the following blocks.
 //   - error: Not nil if the provider failed to obtain the requested certificates.
 func (s Server) GetBlockCertificates(first idx.Block, maxResults uint64) ([]cert.BlockCertificate, error) {
+	if maxResults == 0 {
+		return nil, nil
+	}
 	if s.IsClosed() {
 		return nil, fmt.Errorf("no client available")
 	}
