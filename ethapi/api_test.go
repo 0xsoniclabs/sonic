@@ -319,6 +319,7 @@ func setExpectedStateCalls(mockState *state.MockStateDB) {
 	mockState.EXPECT().Release().AnyTimes()
 	mockState.EXPECT().GetCode(any).Return(nil).AnyTimes()
 	mockState.EXPECT().Witness().AnyTimes()
+	mockState.EXPECT().Finalise().AnyTimes()
 	mockState.EXPECT().GetRefund().AnyTimes()
 	mockState.EXPECT().GetLogs(any, any).AnyTimes()
 	mockState.EXPECT().TxIndex().AnyTimes()
