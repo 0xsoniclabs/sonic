@@ -1,11 +1,15 @@
 package tests
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/scc"
+	"github.com/0xsoniclabs/sonic/scc/bls"
+	"github.com/0xsoniclabs/sonic/scc/light_client"
 	"github.com/0xsoniclabs/sonic/scc/light_client/provider"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -117,6 +121,54 @@ func TestServer_CanRequestMaxNumberOfResults(t *testing.T) {
 	}
 }
 
+func TestLightClient_CanSyncToIntegrationNetwork(t *testing.T) {
+	require := require.New(t)
+
+	// setup genesis committee
+	key1 := bls.NewPrivateKey()
+	key2 := bls.NewPrivateKey()
+	key3 := bls.NewPrivateKey()
+	genesis := scc.NewCommittee(
+		makeMember(key1),
+		makeMember(key2),
+		makeMember(key3),
+	)
+
+	// start network
+	netConfig := IntegrationTestNetOptions{
+		GenesisCommittee: genesis,
+	}
+	net := StartIntegrationTestNet(t, netConfig)
+	url := fmt.Sprintf("http://localhost:%d", net.GetJsonRpcPort())
+
+	// get head block
+	ctxt := context.Background()
+	netClient, err := net.GetClient()
+	require.NoError(err)
+	defer netClient.Close()
+	netHead, err := netClient.BlockNumber(ctxt)
+	require.NoError(err, "failed to get block number; %v", err)
+	require.NotZero(netHead)
+
+	// create light client
+	config := light_client.Config{
+		Provider: url,
+		Genesis:  genesis,
+	}
+	lightClient, err := light_client.NewLightClient(config)
+	require.NoError(err)
+	t.Cleanup(lightClient.Close)
+
+	// sync
+	// TODO: Enable this verification once the client uses the genesis committee
+	// to sign block certificates.
+	// WIP: https://github.com/0xsoniclabs/sonic/pull/90
+	_, err = lightClient.Sync()
+	// TODO: change this check to NoError once the client signs initial blocks.
+	require.ErrorContains(err, "insufficient voting power")
+	// require.Equal(netHead, head)
+}
+
 ////////////////////////////////////////
 // helper functions
 ////////////////////////////////////////
@@ -138,4 +190,12 @@ func getChainIdFromClient(t *testing.T, client *rpc.Client) *big.Int {
 	err := client.Call(&result, "eth_chainId")
 	require.NoError(t, err)
 	return result.ToInt()
+}
+
+func makeMember(key bls.PrivateKey) scc.Member {
+	return scc.Member{
+		PublicKey:         key.PublicKey(),
+		ProofOfPossession: key.GetProofOfPossession(),
+		VotingPower:       1,
+	}
 }
