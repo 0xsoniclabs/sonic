@@ -1904,10 +1904,12 @@ func newTxLookup() *txLookup {
 	}
 }
 
-// txs returns an interator over all transactions in the lookup.
-// this method is named after geth's txs member, which contains
-// all transactions in the pool. Sonic implementation makes a difference
-// between local and remote transactions.
+// txs returns an iterator over all transactions in the lookup.
+// Geth access directly the lookup txs member during testing and validation because
+// there is no difference between local/remote. This function exposes a symbol with same semantics.
+//
+// This is private method, although it may be accessed by tests, please consider that
+// this method is not thread-safe and should not be when not holding the pool lock.
 func (t *txLookup) txs() iter.Seq2[common.Hash, *types.Transaction] {
 	return func(yield func(common.Hash, *types.Transaction) bool) {
 		for h, tx := range t.locals {
@@ -1924,9 +1926,11 @@ func (t *txLookup) txs() iter.Seq2[common.Hash, *types.Transaction] {
 }
 
 // getTx returns a transaction if it exists in the lookup, or nil if not found.
-// This method is added to mimic geth's behavior, where all transactions are
-// stored in a single map. Sonic implementation makes a difference
-// between local and remote transactions.
+// Geth access directly the lookup txs member during testing and validation because
+// there is no difference between local/remote. This function exposes a symbol with same semantics.
+//
+// This is private method, although it may be accessed by tests, please consider that
+// this method is not thread-safe and should not be when not holding the pool lock.
 func (t *txLookup) getTx(hash common.Hash) (*types.Transaction, bool) {
 	tx, ok := t.locals[hash]
 	if !ok {
