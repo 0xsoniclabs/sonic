@@ -21,6 +21,7 @@ import (
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -70,6 +71,9 @@ type IntegrationTestNetOptions struct {
 	NumNodes int
 	// ClientExtraArguments specifies additional arguments to be passed to the client.
 	ClientExtraArguments []string
+	// GenesisCommittee specifies the genesis committee to be used for the integration
+	// test network. If not set, a default committee is used.
+	GenesisCommittee scc.Committee
 }
 
 // IntegrationTestNet is a in-process test network for integration tests. When
@@ -167,6 +171,7 @@ func StartIntegrationTestNetWithJsonGenesis(
 	jsonGenesis := makefakegenesis.GenerateFakeJsonGenesis(
 		effectiveOptions.NumNodes,
 		effectiveOptions.FeatureSet,
+		&effectiveOptions.GenesisCommittee,
 	)
 
 	// Speed up the block generation time to reduce test time.
