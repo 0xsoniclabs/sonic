@@ -15,10 +15,18 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/ier"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/opera/contracts/driver"
+	"github.com/0xsoniclabs/sonic/opera/contracts/driver/drivercall"
+	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
+	"github.com/0xsoniclabs/sonic/opera/contracts/evmwriter"
+	"github.com/0xsoniclabs/sonic/opera/contracts/netinit"
+	"github.com/0xsoniclabs/sonic/opera/contracts/sfc"
 	"github.com/0xsoniclabs/sonic/opera/genesis"
 	"github.com/0xsoniclabs/sonic/opera/genesisstore"
 	"github.com/0xsoniclabs/sonic/scc"
+	"github.com/0xsoniclabs/sonic/scc/bls"
 	"github.com/0xsoniclabs/sonic/scc/cert"
+	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
@@ -63,6 +71,99 @@ func LoadGenesisJson(filename string) (*GenesisJson, error) {
 		return nil, fmt.Errorf("failed to unmarshal genesis json file; %v", err)
 	}
 	return &decoded, nil
+}
+
+// GenerateFakeJsonGenesis creates a JSON genesis file with fake-net rules for
+// the given feature set. It includes the infrastructure contracts and a given
+// number of validators with some initial tokens.
+func GenerateFakeJsonGenesis(
+	numValidators int,
+	features opera.FeatureSet,
+) *GenesisJson {
+	jsonGenesis := &GenesisJson{
+		Rules:         opera.FakeNetRules(features),
+		BlockZeroTime: time.Now(),
+	}
+
+	// Create infrastructure contracts.
+	jsonGenesis.Accounts = []Account{
+		{
+			Name:    "NetworkInitializer",
+			Address: netinit.ContractAddress,
+			Code:    netinit.GetContractBin(),
+			Nonce:   1,
+		},
+		{
+			Name:    "NodeDriver",
+			Address: driver.ContractAddress,
+			Code:    driver.GetContractBin(),
+			Nonce:   1,
+		},
+		{
+			Name:    "NodeDriverAuth",
+			Address: driverauth.ContractAddress,
+			Code:    driverauth.GetContractBin(),
+			Nonce:   1,
+		},
+		{
+			Name:    "SFC",
+			Address: sfc.ContractAddress,
+			Code:    sfc.GetContractBin(),
+			Nonce:   1,
+		},
+		{
+			Name:    "ContractAddress",
+			Address: evmwriter.ContractAddress,
+			Code:    []byte{0},
+			Nonce:   1,
+		},
+	}
+
+	// Create the validator accounts and provide some tokens.
+	tokensPerValidator := utils.ToFtm(1000000000)
+	validators := GetFakeValidators(idx.Validator(numValidators))
+	for _, validator := range validators {
+		jsonGenesis.Accounts = append(jsonGenesis.Accounts, Account{
+			Address: validator.Address,
+			Balance: tokensPerValidator,
+		})
+	}
+	totalSupply := new(big.Int).Mul(tokensPerValidator, big.NewInt(int64(numValidators)))
+
+	var delegations []drivercall.Delegation
+	for _, val := range validators {
+		delegations = append(delegations, drivercall.Delegation{
+			Address:            val.Address,
+			ValidatorID:        val.ID,
+			Stake:              utils.ToFtm(5000000),
+			LockedStake:        new(big.Int),
+			LockupFromEpoch:    0,
+			LockupEndTime:      0,
+			LockupDuration:     0,
+			EarlyUnlockPenalty: new(big.Int),
+			Rewards:            new(big.Int),
+		})
+	}
+
+	// Create the genesis transactions.
+	genesisTxs := GetGenesisTxs(0, validators, totalSupply, delegations, validators[0].Address)
+	for _, tx := range genesisTxs {
+		jsonGenesis.Txs = append(jsonGenesis.Txs, Transaction{
+			To:   *tx.To(),
+			Data: tx.Data(),
+		})
+	}
+
+	// Create the genesis SCC committee.
+	key := bls.NewPrivateKeyForTests(0)
+	committee := scc.NewCommittee(scc.Member{
+		PublicKey:         key.PublicKey(),
+		ProofOfPossession: key.GetProofOfPossession(),
+		VotingPower:       1,
+	})
+
+	jsonGenesis.GenesisCommittee = &committee
+	return jsonGenesis
 }
 
 func ApplyGenesisJson(json *GenesisJson) (*genesisstore.Store, error) {
@@ -137,22 +238,21 @@ func ApplyGenesisJson(json *GenesisJson) (*genesisstore.Store, error) {
 		return nil, fmt.Errorf("failed to execute json genesis txs; %v", err)
 	}
 
-	if json.GenesisCommittee == nil {
-		return nil, fmt.Errorf("genesis committee must be set")
+	if json.GenesisCommittee != nil {
+		if len(json.GenesisCommittee.Members()) == 0 {
+			return nil, fmt.Errorf("genesis committee must have at least one member")
+		}
+		if err := json.GenesisCommittee.Validate(); err != nil {
+			return nil, fmt.Errorf("genesis committee is invalid")
+		}
+		builder.SetGenesisCommitteeCertificate(cert.NewCertificate(
+			cert.NewCommitteeStatement(
+				json.Rules.NetworkID,
+				scc.Period(0),
+				*json.GenesisCommittee,
+			),
+		))
 	}
-	if len(json.GenesisCommittee.Members()) == 0 {
-		return nil, fmt.Errorf("genesis committee must have at least one member")
-	}
-	if err := json.GenesisCommittee.Validate(); err != nil {
-		return nil, fmt.Errorf("genesis committee is invalid")
-	}
-	builder.SetGenesisCommitteeCertificate(cert.NewCertificate(
-		cert.NewCommitteeStatement(
-			json.Rules.NetworkID,
-			scc.Period(0),
-			*json.GenesisCommittee,
-		),
-	))
 
 	return builder.Build(genesis.Header{
 		GenesisID:   builder.CurrentHash(),

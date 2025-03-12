@@ -21,15 +21,6 @@ import (
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/0xsoniclabs/sonic/opera/contracts/driver"
-	"github.com/0xsoniclabs/sonic/opera/contracts/driver/drivercall"
-	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
-	"github.com/0xsoniclabs/sonic/opera/contracts/evmwriter"
-	"github.com/0xsoniclabs/sonic/opera/contracts/netinit"
-	"github.com/0xsoniclabs/sonic/opera/contracts/sfc"
-	"github.com/0xsoniclabs/sonic/scc"
-	"github.com/0xsoniclabs/sonic/scc/bls"
-	futils "github.com/0xsoniclabs/sonic/utils"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -173,93 +164,13 @@ func StartIntegrationTestNetWithJsonGenesis(
 		t.Fatal("failed to validate and sanitize options: ", err)
 	}
 
-	jsonGenesis := makefakegenesis.GenesisJson{
-		Rules:         opera.FakeNetRules(effectiveOptions.FeatureSet),
-		BlockZeroTime: time.Now(),
-	}
+	jsonGenesis := makefakegenesis.GenerateFakeJsonGenesis(
+		effectiveOptions.NumNodes,
+		effectiveOptions.FeatureSet,
+	)
 
 	// Speed up the block generation time to reduce test time.
 	jsonGenesis.Rules.Emitter.Interval = inter.Timestamp(time.Millisecond)
-
-	// Create infrastructure contracts.
-	jsonGenesis.Accounts = []makefakegenesis.Account{
-		{
-			Name:    "NetworkInitializer",
-			Address: netinit.ContractAddress,
-			Code:    netinit.GetContractBin(),
-			Nonce:   1,
-		},
-		{
-			Name:    "NodeDriver",
-			Address: driver.ContractAddress,
-			Code:    driver.GetContractBin(),
-			Nonce:   1,
-		},
-		{
-			Name:    "NodeDriverAuth",
-			Address: driverauth.ContractAddress,
-			Code:    driverauth.GetContractBin(),
-			Nonce:   1,
-		},
-		{
-			Name:    "SFC",
-			Address: sfc.ContractAddress,
-			Code:    sfc.GetContractBin(),
-			Nonce:   1,
-		},
-		{
-			Name:    "ContractAddress",
-			Address: evmwriter.ContractAddress,
-			Code:    []byte{0},
-			Nonce:   1,
-		},
-	}
-
-	// Create the validator account and provide some tokens.
-	totalSupply := futils.ToFtm(1000000000)
-	validators := makefakegenesis.GetFakeValidators(1)
-	for _, validator := range validators {
-		jsonGenesis.Accounts = append(jsonGenesis.Accounts, makefakegenesis.Account{
-			Address: validator.Address,
-			Balance: totalSupply,
-		})
-	}
-
-	var delegations []drivercall.Delegation
-	for _, val := range validators {
-		delegations = append(delegations, drivercall.Delegation{
-			Address:            val.Address,
-			ValidatorID:        val.ID,
-			Stake:              futils.ToFtm(5000000),
-			LockedStake:        new(big.Int),
-			LockupFromEpoch:    0,
-			LockupEndTime:      0,
-			LockupDuration:     0,
-			EarlyUnlockPenalty: new(big.Int),
-			Rewards:            new(big.Int),
-		})
-	}
-
-	// Create the genesis transactions.
-	genesisTxs := makefakegenesis.GetGenesisTxs(0, validators, totalSupply, delegations, validators[0].Address)
-	for _, tx := range genesisTxs {
-		jsonGenesis.Txs = append(jsonGenesis.Txs, makefakegenesis.Transaction{
-			To:   *tx.To(),
-			Data: tx.Data(),
-		})
-	}
-
-	// Create the genesis SCC committee.
-	key := bls.NewPrivateKeyForTests(0)
-	committee := scc.NewCommittee(scc.Member{
-		PublicKey:         key.PublicKey(),
-		ProofOfPossession: key.GetProofOfPossession(),
-		VotingPower:       1,
-	})
-	if err := committee.Validate(); err != nil {
-		t.Fatal("failed to validate the committee:", err)
-	}
-	jsonGenesis.GenesisCommittee = &committee
 
 	encoded, err := json.MarshalIndent(jsonGenesis, "", "  ")
 	if err != nil {
@@ -291,16 +202,12 @@ func startIntegrationTestNet(
 	sonicToolArguments []string,
 	options IntegrationTestNetOptions,
 ) (*IntegrationTestNet, error) {
-	numNodes := options.NumNodes
-	if numNodes < 1 {
-		numNodes = 1
-	}
 	net := &IntegrationTestNet{
 		extraClientArguments: options.ClientExtraArguments,
 		Session: Session{
 			account: Account{evmcore.FakeKey(1)},
 		},
-		nodes: make([]integrationTestNode, numNodes),
+		nodes: make([]integrationTestNode, options.NumNodes),
 	}
 	net.Session.net = net
 
@@ -849,7 +756,11 @@ func validateAndSanitizeOptions(options ...IntegrationTestNetOptions) (Integrati
 	if len(options) == 0 {
 		return IntegrationTestNetOptions{
 			FeatureSet: opera.SonicFeatures,
+			NumNodes:   1,
 		}, nil
+	}
+	if options[0].NumNodes <= 0 {
+		options[0].NumNodes = 1
 	}
 	return options[0], nil
 }
