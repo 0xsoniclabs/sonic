@@ -454,7 +454,7 @@ func getEvmFunc(mockState *state.MockStateDB) func(interface{}, interface{}, int
 
 func getEvmFuncWithParameters(mockState *state.MockStateDB, chainConfig *params.ChainConfig, blockContext *vm.BlockContext, vmConfig vm.Config) func(interface{}, interface{}, interface{}, interface{}, interface{}, interface{}) (*vm.EVM, func() error, error) {
 	return func(interface{}, interface{}, interface{}, interface{}, interface{}, interface{}) (*vm.EVM, func() error, error) {
-		return vm.NewEVM(*blockContext, mockState, chainConfig, vmConfig), func() error { return nil }, nil
+		return vm.NewEVM(*blockContext, vm.TxContext{GasPrice: big.NewInt(0)}, mockState, chainConfig, vmConfig), func() error { return nil }, nil
 	}
 }
 
