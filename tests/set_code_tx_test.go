@@ -977,3 +977,18 @@ func getCallData(t *testing.T, session IntegrationTestNetSession,
 	require.NoError(t, err)
 	return tx.Data()
 }
+
+func TestSetCodeTransaction_IsRejectBeforeAllegro(t *testing.T) {
+	net := StartIntegrationTestNet(t)
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	chainId, err := client.ChainID(context.Background())
+	require.NoError(t, err, "failed to get chain ID")
+
+	tx := signTransaction(t, chainId, &types.SetCodeTx{}, net.GetSessionSponsor())
+
+	err = client.SendTransaction(context.Background(), tx)
+	require.ErrorContains(t, err, "transaction type not supported")
+}
