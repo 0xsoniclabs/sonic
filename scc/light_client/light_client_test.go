@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/bls"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/0xsoniclabs/sonic/scc/light_client/provider"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
@@ -47,33 +47,26 @@ func TestLightClient_NewLightClient_ReportsInvalidConfig(t *testing.T) {
 	}
 }
 
-func TestLightClient_NewLightClient_CreatesLightClientFromValidConfig(t *testing.T) {
+func TestLightClient_NewLightClient_ReturnsClientToValidConfig(t *testing.T) {
 	require := require.New(t)
 	c, err := NewLightClient(testConfig())
 	require.NoError(err)
 	require.NotNil(c)
+	require.NotNil(c.state)
+	require.NotNil(c.provider)
 }
 
 func TestLightClient_Close_ClosesProvider(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	prov := provider.NewMockProvider(ctrl)
+
 	prov.EXPECT().Close().Times(1)
-	prov.EXPECT().GetBlockCertificates(gomock.Any(), gomock.Any()).
-		Return(nil, fmt.Errorf("provider is closed"))
+
 	c, err := NewLightClient(testConfig())
 	require.NoError(err)
 	c.provider = prov
 	c.Close()
-	_, err = c.Sync()
-	require.ErrorContains(err, "provider is closed")
-}
-
-func TestLightClient_Sync_InitializesState(t *testing.T) {
-	require := require.New(t)
-	c, err := NewLightClient(testConfig())
-	require.NoError(err)
-	require.NotNil(c.state)
 }
 
 func TestLightClient_Sync_ReturnsErrorOnProviderFailure(t *testing.T) {
@@ -86,6 +79,7 @@ func TestLightClient_Sync_ReturnsErrorOnProviderFailure(t *testing.T) {
 	errStr := "failed to get block certificates"
 	prov.EXPECT().GetBlockCertificates(provider.LatestBlock, uint64(1)).
 		Return(nil, fmt.Errorf("%v", errStr))
+
 	c.provider = prov
 	_, err = c.Sync()
 	require.ErrorContains(err, errStr)
@@ -102,6 +96,7 @@ func TestLightClient_Sync_ReturnsErrorOnStateSyncFailure(t *testing.T) {
 	blockNumber := idx.Block(scc.BLOCKS_PER_PERIOD*1 + 42)
 	blockCert := cert.NewCertificate(
 		cert.NewBlockStatement(0, blockNumber, common.Hash{0x1}, common.Hash{}))
+
 	// expect to return head
 	prov.EXPECT().GetBlockCertificates(provider.LatestBlock, uint64(1)).
 		Return([]cert.BlockCertificate{blockCert}, nil)

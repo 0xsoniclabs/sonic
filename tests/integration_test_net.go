@@ -171,7 +171,7 @@ func StartIntegrationTestNetWithJsonGenesis(
 	jsonGenesis := makefakegenesis.GenerateFakeJsonGenesis(
 		effectiveOptions.NumNodes,
 		effectiveOptions.FeatureSet,
-		&effectiveOptions.GenesisCommittee,
+		effectiveOptions.GenesisCommittee,
 	)
 
 	// Speed up the block generation time to reduce test time.

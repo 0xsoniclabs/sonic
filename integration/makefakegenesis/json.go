@@ -79,7 +79,7 @@ func LoadGenesisJson(filename string) (*GenesisJson, error) {
 func GenerateFakeJsonGenesis(
 	numValidators int,
 	features opera.FeatureSet,
-	genesisCommittee *scc.Committee,
+	genesisCommittee scc.Committee,
 ) *GenesisJson {
 	jsonGenesis := &GenesisJson{
 		Rules:         opera.FakeNetRules(features),
@@ -155,8 +155,8 @@ func GenerateFakeJsonGenesis(
 		})
 	}
 
-	if genesisCommittee != nil && len(genesisCommittee.Members()) != 0 {
-		jsonGenesis.GenesisCommittee = genesisCommittee
+	if len(genesisCommittee.Members()) != 0 {
+		jsonGenesis.GenesisCommittee = &genesisCommittee
 	} else {
 		// Create the genesis SCC committee.
 		key := bls.NewPrivateKeyForTests(0)

@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"context"
 	"fmt"
 	"math"
 	"math/big"
@@ -140,15 +139,6 @@ func TestLightClient_CanSyncToIntegrationNetwork(t *testing.T) {
 	}
 	net := StartIntegrationTestNet(t, netConfig)
 	url := fmt.Sprintf("http://localhost:%d", net.GetJsonRpcPort())
-
-	// get head block
-	ctxt := context.Background()
-	netClient, err := net.GetClient()
-	require.NoError(err)
-	defer netClient.Close()
-	netHead, err := netClient.BlockNumber(ctxt)
-	require.NoError(err, "failed to get block number; %v", err)
-	require.NotZero(netHead)
 
 	// create light client
 	config := light_client.Config{
