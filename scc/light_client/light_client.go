@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/0xsoniclabs/sonic/scc"
 	lc_state "github.com/0xsoniclabs/sonic/scc/light_client/light_client_state"
 	"github.com/0xsoniclabs/sonic/scc/light_client/provider"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 )
 
 // LightClient is the main entry point for the light client.
