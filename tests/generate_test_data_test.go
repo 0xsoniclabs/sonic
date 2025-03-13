@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // generateTestDataBasedOnModificationCombinations generates all possible versions of a
@@ -56,13 +57,33 @@ func TestCartesianProduct_CountInstantiations(t *testing.T) {
 		return count
 	}
 
-	assert.Equal(t, 0, countInstances(nil, count))
+	assert.Equal(t, 1, countInstances(nil, count))
 	assert.Equal(t, 1, countInstances([][]int{{1}}, count))
 	assert.Equal(t, 2, countInstances([][]int{{1}, {1, 2}}, count))
 	assert.Equal(t, 4, countInstances([][]int{{1, 2}, {1, 2}}, count))
 	assert.Equal(t, 4, countInstances([][]int{{1}, {1, 2}, {1, 2}}, count))
 	assert.Equal(t, 6, countInstances([][]int{{1}, {1, 2, 3}, {1, 2}}, count))
 	assert.Equal(t, 6, countInstances([][]int{{1}, {1, 2}, {1, 2, 3}}, count))
+}
+
+func TestCartesianProduct_noPiecesReturnOriginalObject(t *testing.T) {
+	makeOriginal := func() int { return 36 }
+	it := generateTestDataBasedOnModificationCombinations(
+		makeOriginal,
+		nil,
+		func(v int, pieces []int) int {
+			require.Len(t, pieces, 0)
+			return v
+		},
+	)
+
+	versions := make([]int, 0)
+	for i := range it {
+		versions = append(versions, i)
+	}
+
+	require.Equal(t, 1, len(versions))
+	require.Equal(t, makeOriginal(), versions[0])
 }
 
 func TestCartesianProduct_AcceptsFunctionsAsPieces(t *testing.T) {
@@ -109,9 +130,6 @@ func TestCartesianProduct_AcceptsFunctionsAsPieces(t *testing.T) {
 
 func _cartesianProductRecursion[T any](current []T, elements [][]T, callback func(data []T) bool) bool {
 	if len(elements) == 0 {
-		if len(current) == 0 {
-			return false
-		}
 		return callback(current)
 	}
 
