@@ -4,7 +4,7 @@ import (
 	"errors"
 	"math"
 
-	base "github.com/Fantom-foundation/lachesis-base/eventcheck/basiccheck"
+	base "github.com/0xsoniclabs/consensus/eventcheck/basiccheck"
 	"github.com/ethereum/go-ethereum/core/types"
 
 	"github.com/0xsoniclabs/sonic/evmcore"

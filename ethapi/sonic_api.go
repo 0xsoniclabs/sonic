@@ -7,10 +7,10 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/0xsoniclabs/sonic/utils/result"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 )
 
 //go:generate mockgen -source=sonic_api.go -package=ethapi -destination=sonic_api_mock.go

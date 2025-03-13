@@ -4,8 +4,8 @@ import (
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/ethereum/go-ethereum/common"
 
+	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/0xsoniclabs/sonic/inter/validatorpk"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 )
 
 type (

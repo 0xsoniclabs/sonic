@@ -7,10 +7,10 @@ import (
 	cc "github.com/0xsoniclabs/carmen/go/common"
 	carmen "github.com/0xsoniclabs/carmen/go/state"
 	_ "github.com/0xsoniclabs/carmen/go/state/gostate"
+	"github.com/0xsoniclabs/consensus/hash"
+	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/utils/caution"
-	"github.com/Fantom-foundation/lachesis-base/hash"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 )
 

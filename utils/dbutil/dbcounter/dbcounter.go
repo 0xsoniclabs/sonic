@@ -2,10 +2,11 @@ package dbcounter
 
 import (
 	"fmt"
-	"github.com/0xsoniclabs/sonic/utils/dbutil"
 	"sync/atomic"
 
-	"github.com/Fantom-foundation/lachesis-base/kvdb"
+	"github.com/0xsoniclabs/sonic/utils/dbutil"
+
+	"github.com/0xsoniclabs/consensus/kvdb"
 	"github.com/ethereum/go-ethereum/log"
 )
 

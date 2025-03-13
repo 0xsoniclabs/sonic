@@ -4,8 +4,8 @@ import (
 	"io"
 	"math/big"
 
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/Fantom-foundation/lachesis-base/inter/pos"
+	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/inter/pos"
 	"github.com/ethereum/go-ethereum/rlp"
 
 	"github.com/0xsoniclabs/sonic/inter/drivertype"

@@ -4,9 +4,9 @@ import (
 	"errors"
 	"io"
 
-	"github.com/Fantom-foundation/lachesis-base/hash"
-	"github.com/Fantom-foundation/lachesis-base/inter/dag"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/0xsoniclabs/consensus/hash"
+	"github.com/0xsoniclabs/consensus/inter/dag"
+	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -440,8 +440,8 @@ func RPCMarshalEvent(e EventI) map[string]interface{} {
 			"shortTerm": hexutil.Uint64(e.GasPowerLeft().Gas[ShortTermGas]),
 			"longTerm":  hexutil.Uint64(e.GasPowerLeft().Gas[LongTermGas]),
 		},
-		"gasPowerUsed":          hexutil.Uint64(e.GasPowerUsed()),
-		"anyTxs":                e.AnyTxs(),
+		"gasPowerUsed": hexutil.Uint64(e.GasPowerUsed()),
+		"anyTxs":       e.AnyTxs(),
 	}
 }
 

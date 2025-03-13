@@ -1,10 +1,10 @@
 package vecmt
 
 import (
-	"github.com/Fantom-foundation/lachesis-base/inter/dag"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/Fantom-foundation/lachesis-base/vecengine"
-	"github.com/Fantom-foundation/lachesis-base/vecfc"
+	"github.com/0xsoniclabs/consensus/inter/dag"
+	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/vecengine"
+	"github.com/0xsoniclabs/consensus/vecfc"
 
 	"github.com/0xsoniclabs/sonic/inter"
 )

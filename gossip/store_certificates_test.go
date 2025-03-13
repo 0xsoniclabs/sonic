@@ -5,10 +5,10 @@ import (
 	"math/rand"
 	"testing"
 
+	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	scc_node "github.com/0xsoniclabs/sonic/scc/node"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/stretchr/testify/require"
 )
 

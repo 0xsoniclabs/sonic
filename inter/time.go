@@ -3,7 +3,7 @@ package inter
 import (
 	"time"
 
-	"github.com/Fantom-foundation/lachesis-base/common/bigendian"
+	"github.com/0xsoniclabs/consensus/common/bigendian"
 )
 
 type (

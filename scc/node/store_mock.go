@@ -14,7 +14,7 @@ import (
 
 	scc "github.com/0xsoniclabs/sonic/scc"
 	cert "github.com/0xsoniclabs/sonic/scc/cert"
-	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
+	idx "github.com/0xsoniclabs/consensus/inter/idx"
 	gomock "go.uber.org/mock/gomock"
 )
 

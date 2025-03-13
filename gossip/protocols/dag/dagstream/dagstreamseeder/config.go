@@ -1,8 +1,8 @@
 package dagstreamseeder
 
 import (
-	"github.com/Fantom-foundation/lachesis-base/gossip/basestream/basestreamseeder"
-	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
+	"github.com/0xsoniclabs/consensus/gossip/basestream/basestreamseeder"
+	"github.com/0xsoniclabs/consensus/utils/cachescale"
 )
 
 type Config basestreamseeder.Config

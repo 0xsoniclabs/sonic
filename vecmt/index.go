@@ -1,16 +1,16 @@
 package vecmt
 
 import (
-	"github.com/Fantom-foundation/lachesis-base/hash"
-	"github.com/Fantom-foundation/lachesis-base/inter/dag"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/Fantom-foundation/lachesis-base/inter/pos"
-	"github.com/Fantom-foundation/lachesis-base/kvdb"
-	"github.com/Fantom-foundation/lachesis-base/kvdb/table"
-	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
-	"github.com/Fantom-foundation/lachesis-base/utils/wlru"
-	"github.com/Fantom-foundation/lachesis-base/vecengine"
-	"github.com/Fantom-foundation/lachesis-base/vecfc"
+	"github.com/0xsoniclabs/consensus/hash"
+	"github.com/0xsoniclabs/consensus/inter/dag"
+	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/inter/pos"
+	"github.com/0xsoniclabs/consensus/kvdb"
+	"github.com/0xsoniclabs/consensus/kvdb/table"
+	"github.com/0xsoniclabs/consensus/utils/cachescale"
+	"github.com/0xsoniclabs/consensus/utils/wlru"
+	"github.com/0xsoniclabs/consensus/vecengine"
+	"github.com/0xsoniclabs/consensus/vecfc"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 )
 

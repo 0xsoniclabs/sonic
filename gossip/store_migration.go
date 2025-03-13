@@ -3,11 +3,11 @@ package gossip
 import (
 	"fmt"
 
+	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 
+	"github.com/0xsoniclabs/consensus/kvdb"
 	"github.com/0xsoniclabs/sonic/utils/migration"
-	"github.com/Fantom-foundation/lachesis-base/kvdb"
 )
 
 func isEmptyDB(db kvdb.Iteratee) bool {

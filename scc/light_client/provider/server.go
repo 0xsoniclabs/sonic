@@ -3,10 +3,10 @@ package provider
 import (
 	"fmt"
 
+	idx "github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/cert"
-	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 

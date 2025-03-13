@@ -1,11 +1,12 @@
 package gossip
 
 import (
-	"github.com/Fantom-foundation/lachesis-base/hash"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"math/big"
+
+	"github.com/0xsoniclabs/consensus/hash"
+	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"math/big"
 
 	"github.com/0xsoniclabs/sonic/eventcheck/gaspowercheck"
 	"github.com/0xsoniclabs/sonic/inter"

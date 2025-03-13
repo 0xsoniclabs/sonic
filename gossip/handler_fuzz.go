@@ -9,7 +9,7 @@ import (
 	"math/rand/v2"
 	"sync"
 
-	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
+	"github.com/0xsoniclabs/consensus/utils/cachescale"
 	_ "github.com/dvyukov/go-fuzz/go-fuzz-defs"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/p2p"

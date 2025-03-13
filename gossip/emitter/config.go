@@ -6,9 +6,9 @@ import (
 
 	"github.com/0xsoniclabs/sonic/version"
 
+	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/0xsoniclabs/sonic/inter/validatorpk"
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 )
 
 // EmitIntervals is the configuration of emit intervals.

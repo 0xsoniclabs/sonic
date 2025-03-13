@@ -3,8 +3,8 @@ package vecmt
 import (
 	"encoding/binary"
 
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/Fantom-foundation/lachesis-base/vecfc"
+	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/vecfc"
 
 	"github.com/0xsoniclabs/sonic/inter"
 )

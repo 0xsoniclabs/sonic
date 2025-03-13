@@ -4,8 +4,8 @@ go 1.24.0
 
 require (
 	github.com/0xsoniclabs/carmen/go v0.0.0-20250113102336-97f8b8616eff
+	github.com/0xsoniclabs/consensus v0.0.0-20250313114845-76cd055ada61
 	github.com/0xsoniclabs/tosca v0.0.0-20250221124739-3aac4e7427dc
-	github.com/Fantom-foundation/lachesis-base v0.0.0-20240116072301-a75735c4ef00
 	github.com/cespare/cp v1.1.1
 	github.com/davecgh/go-spew v1.1.1
 	github.com/deckarep/golang-set v1.8.0
@@ -27,8 +27,8 @@ require (
 	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7
 	github.com/tyler-smith/go-bip39 v1.1.0
 	go.uber.org/mock v0.4.0
-	golang.org/x/exp v0.0.0-20240909161429-701f63a606c0
-	golang.org/x/sys v0.29.0
+	golang.org/x/exp v0.0.0-20241204233417-43b7b7cde48d
+	golang.org/x/sys v0.30.0
 	google.golang.org/protobuf v1.34.2
 	gopkg.in/urfave/cli.v1 v1.20.0
 )
@@ -128,7 +128,5 @@ require (
 )
 
 replace github.com/ethereum/go-ethereum => github.com/0xsoniclabs/go-ethereum v0.0.0-20250210213022-86eca3554809
-
-replace github.com/Fantom-foundation/lachesis-base => github.com/Fantom-foundation/lachesis-base-sonic v0.0.0-20250212122819-abaef8bb9abb
 
 replace github.com/dvyukov/go-fuzz => github.com/guzenok/go-fuzz v0.0.0-20210201043429-a8e90a2a4f88

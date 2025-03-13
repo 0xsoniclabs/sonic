@@ -3,15 +3,16 @@ package db
 import (
 	"errors"
 	"fmt"
-	carmen "github.com/0xsoniclabs/carmen/go/state"
-	"github.com/0xsoniclabs/sonic/gossip"
-	"github.com/0xsoniclabs/sonic/integration"
-	"github.com/Fantom-foundation/lachesis-base/kvdb"
-	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
-	"github.com/ethereum/go-ethereum/common/fdlimit"
-	"github.com/syndtr/goleveldb/leveldb/opt"
 	"os"
 	"path/filepath"
+
+	carmen "github.com/0xsoniclabs/carmen/go/state"
+	"github.com/0xsoniclabs/consensus/kvdb"
+	"github.com/0xsoniclabs/consensus/utils/cachescale"
+	"github.com/0xsoniclabs/sonic/gossip"
+	"github.com/0xsoniclabs/sonic/integration"
+	"github.com/ethereum/go-ethereum/common/fdlimit"
+	"github.com/syndtr/goleveldb/leveldb/opt"
 )
 
 const (
