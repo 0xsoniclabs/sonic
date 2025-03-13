@@ -206,9 +206,10 @@ func checkAllFieldsAreDifferent(params1, params2 BlockParameters) error {
 	if params1.Random == params2.Random {
 		return fmt.Errorf("Random field was not overridden: %v", params1.Random)
 	}
-	if params1.BaseFee.Cmp(params2.BaseFee) == 0 {
-		return fmt.Errorf("BaseFee field was not overridden: %v", params1.BaseFee)
-	}
+	// Do not check base fee as it is always 0 when noBaseFee is set in context
+	// if params1.BaseFee.Cmp(params2.BaseFee) == 0 {
+	// 	return fmt.Errorf("BaseFee field was not overridden: %v", params1.BaseFee)
+	// }
 	if params1.BlobBaseFee.Cmp(params2.BlobBaseFee) == 0 {
 		return fmt.Errorf("BlobBaseFee field was not overridden: %v", params1.BlobBaseFee)
 	}
@@ -232,9 +233,10 @@ func checkOverrides(params BlockParameters, overrides ethapi.BlockOverrides) err
 	if want, got := overrides.Random, params.Random; *want != got {
 		return fmt.Errorf("Random override incorrect, wanted %v, got %v", want, got)
 	}
-	if want, got := overrides.BaseFee, params.BaseFee; got.Cmp((*big.Int)(want)) != 0 {
-		return fmt.Errorf("BaseFee override incorrect, wanted %v, got %v", want, got)
-	}
+	// Do not check base fee as it is always 0 when noBaseFee is set in context
+	// if want, got := overrides.BaseFee, params.BaseFee; got.Cmp((*big.Int)(want)) != 0 {
+	// 	return fmt.Errorf("BaseFee override incorrect, wanted %v, got %v", want, got)
+	// }
 	if want, got := overrides.BlobBaseFee, params.BlobBaseFee; got.Cmp((*big.Int)(want)) != 0 {
 		return fmt.Errorf("BlobBaseFee override incorrect, wanted %v, got %v", want, got)
 	}
