@@ -1,8 +1,8 @@
 package dagstreamseeder
 
 import (
-	"github.com/0xsoniclabs/consensus/gossip/basestream/basestreamseeder"
 	"github.com/0xsoniclabs/consensus/utils/cachescale"
+	"github.com/0xsoniclabs/sonic/gossip/basestream/basestreamseeder"
 )
 
 type Config basestreamseeder.Config

@@ -3,7 +3,7 @@ package dagstreamleecher
 import (
 	"time"
 
-	"github.com/0xsoniclabs/consensus/gossip/basestream/basestreamleecher/basepeerleecher"
+	"github.com/0xsoniclabs/sonic/gossip/basestream/basestreamleecher/basepeerleecher"
 )
 
 type Config struct {

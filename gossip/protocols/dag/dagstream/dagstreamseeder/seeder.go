@@ -5,9 +5,9 @@ import (
 
 	"github.com/ethereum/go-ethereum/rlp"
 
-	"github.com/0xsoniclabs/consensus/gossip/basestream"
-	"github.com/0xsoniclabs/consensus/gossip/basestream/basestreamseeder"
 	"github.com/0xsoniclabs/consensus/hash"
+	"github.com/0xsoniclabs/sonic/gossip/basestream"
+	"github.com/0xsoniclabs/sonic/gossip/basestream/basestreamseeder"
 
 	"github.com/0xsoniclabs/sonic/gossip/protocols/dag/dagstream"
 )

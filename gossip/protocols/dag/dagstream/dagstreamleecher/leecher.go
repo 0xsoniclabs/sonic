@@ -5,11 +5,11 @@ import (
 	"slices"
 	"time"
 
-	"github.com/0xsoniclabs/consensus/gossip/basestream/basestreamleecher"
-	"github.com/0xsoniclabs/consensus/gossip/basestream/basestreamleecher/basepeerleecher"
 	"github.com/0xsoniclabs/consensus/hash"
 	"github.com/0xsoniclabs/consensus/inter/dag"
 	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/sonic/gossip/basestream/basestreamleecher"
+	"github.com/0xsoniclabs/sonic/gossip/basestream/basestreamleecher/basepeerleecher"
 
 	"github.com/0xsoniclabs/sonic/gossip/protocols/dag/dagstream"
 )

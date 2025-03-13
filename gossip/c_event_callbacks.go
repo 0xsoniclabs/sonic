@@ -7,10 +7,10 @@ import (
 
 	"github.com/ethereum/go-ethereum/metrics"
 
-	"github.com/0xsoniclabs/consensus/gossip/dagprocessor"
 	"github.com/0xsoniclabs/consensus/hash"
 	"github.com/0xsoniclabs/consensus/inter/dag"
 	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/sonic/gossip/dagprocessor"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
 

@@ -5,9 +5,9 @@ import (
 
 	"github.com/0xsoniclabs/sonic/utils/txtime"
 
-	"github.com/0xsoniclabs/consensus/emitter/ancestor"
 	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/0xsoniclabs/consensus/inter/pos"
+	"github.com/0xsoniclabs/sonic/emitter/ancestor"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 

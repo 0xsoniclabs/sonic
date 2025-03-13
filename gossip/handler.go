@@ -14,8 +14,6 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 
-	"github.com/0xsoniclabs/consensus/gossip/dagprocessor"
-	"github.com/0xsoniclabs/consensus/gossip/itemsfetcher"
 	"github.com/0xsoniclabs/consensus/hash"
 	"github.com/0xsoniclabs/consensus/inter/dag"
 	"github.com/0xsoniclabs/consensus/inter/idx"
@@ -25,6 +23,8 @@ import (
 	"github.com/0xsoniclabs/sonic/eventcheck/heavycheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/parentlesscheck"
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/gossip/dagprocessor"
+	"github.com/0xsoniclabs/sonic/gossip/itemsfetcher"
 	"github.com/0xsoniclabs/sonic/gossip/protocols/dag/dagstream"
 	"github.com/0xsoniclabs/sonic/gossip/protocols/dag/dagstream/dagstreamleecher"
 	"github.com/0xsoniclabs/sonic/gossip/protocols/dag/dagstream/dagstreamseeder"
