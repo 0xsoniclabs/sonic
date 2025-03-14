@@ -7,7 +7,10 @@ import (
 	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/cert"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/holiman/uint256"
 )
 
 // Server implements the Provider interface and provides methods
@@ -172,4 +175,45 @@ func (s Server) GetBlockCertificates(first idx.Block, maxResults uint64) ([]cert
 		certs[i] = res.ToCertificate()
 	}
 	return certs, nil
+}
+
+// GetAccountInfo returns the account info corresponding to the
+// given address at the given height.
+//
+// Parameters:
+// - address: The address of the account.
+// - height: The block height of the state.
+//
+// Returns:
+// - AccountInfo: The AccountInfo of the account at the given height.
+// - error: Not nil if the provider failed to obtain the requested account info.
+func (s Server) GetAddressInfo(address common.Address, height idx.Block) (AccountInfo, error) {
+	heightString := fmt.Sprintf("0x%x", height)
+	if height == LatestBlock {
+		heightString = "latest"
+	}
+	result := jsonBlockInfo{}
+	err := s.client.Call(
+		&result,
+		"eth_getProof",
+		fmt.Sprintf("%v", address),
+		[]string{fmt.Sprintf("%v", common.Hash{})},
+		heightString,
+	)
+	if err != nil {
+		return AccountInfo{}, err
+	}
+	accountInfo := AccountInfo{
+		AccountProof: result.AccountProof,
+		Balance:      result.Balance,
+		Nonce:        uint64(result.Nonce),
+	}
+	return accountInfo, nil
+}
+
+// jsonBlockInfo is a json friendly representation of the AccountInfo struct.
+type jsonBlockInfo struct {
+	AccountProof []string
+	Balance      uint256.Int
+	Nonce        hexutil.Uint64
 }

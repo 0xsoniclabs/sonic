@@ -2,12 +2,15 @@ package provider
 
 import (
 	"fmt"
+	"math"
 	"testing"
 
 	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/scc"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/golang/mock/gomock"
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
 
@@ -329,4 +332,55 @@ func TestServer_GetCertificates_ReturnsCertificates(t *testing.T) {
 	blockCerts, err := server.GetBlockCertificates(0, 2)
 	require.NoError(err)
 	require.Len(blockCerts, 2)
+}
+
+func TestBlockQuery_GetAddressInfo_PropagatesClientError(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	client := NewMockRpcClient(ctrl)
+	server, err := NewServerFromClient(client)
+	require.NoError(err)
+
+	someError := fmt.Errorf("some error")
+	addr := common.Address{0x1}
+	client.EXPECT().Call(
+		gomock.Any(), // any result variable
+		"eth_getProof",
+		fmt.Sprintf("%v", addr),
+		gomock.Any(), // any storage key
+		"latest").
+		Return(someError)
+
+	_, err = server.GetAddressInfo(addr, math.MaxUint64)
+	require.ErrorIs(err, someError)
+}
+
+func TestBlockQuery_GetAddressInfo_ReturnsProofQuery(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	client := NewMockRpcClient(ctrl)
+	server, err := NewServerFromClient(client)
+	require.NoError(err)
+	want := jsonBlockInfo{
+		AccountProof: []string{"0x42"},
+		Balance:      *uint256.NewInt(1),
+		Nonce:        2,
+	}
+	addr := common.Address{0x1}
+	client.EXPECT().Call(
+		gomock.Any(),
+		"eth_getProof",
+		fmt.Sprintf("%v", addr),
+		gomock.Any(), // any storage key
+		"latest").
+		DoAndReturn(
+			func(result *jsonBlockInfo, method string, args ...interface{}) error {
+				*result = want
+				return nil
+			})
+
+	got, err := server.GetAddressInfo(addr, math.MaxUint64)
+	require.NoError(err)
+	require.NotNil(got)
+	require.Equal(want, got)
 }

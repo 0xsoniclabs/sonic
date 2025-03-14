@@ -8,9 +8,11 @@ import (
 
 	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/0xsoniclabs/sonic/scc/light_client/provider"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
 
@@ -115,6 +117,28 @@ func TestServer_CanRequestMaxNumberOfResults(t *testing.T) {
 		require.NoError(err)
 		require.NotZero(len(blockCerts))
 	}
+}
+
+func TestServer_GetAccountInfo_CanRetrieveInfo(t *testing.T) {
+	require := require.New(t)
+
+	// start network
+	net := StartIntegrationTestNet(t)
+	url := fmt.Sprintf("http://localhost:%d", net.GetJsonRpcPort())
+	account := common.Address{0x42}
+	want := uint256.NewInt(1000)
+	_, err := net.EndowAccount(account, want.ToBig())
+	require.NoError(err)
+
+	// make block query
+	server, err := provider.NewServerFromURL(url)
+	require.NoError(err)
+	t.Cleanup(server.Close)
+
+	// get block info
+	blockInfo, err := server.GetAddressInfo(account, provider.LatestBlock)
+	require.NoError(err)
+	require.Equal(blockInfo.Balance, want)
 }
 
 ////////////////////////////////////////

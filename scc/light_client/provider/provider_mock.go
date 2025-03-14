@@ -7,9 +7,10 @@ package provider
 import (
 	reflect "reflect"
 
+	idx "github.com/0xsoniclabs/consensus/inter/idx"
 	scc "github.com/0xsoniclabs/sonic/scc"
 	cert "github.com/0xsoniclabs/sonic/scc/cert"
-	idx "github.com/0xsoniclabs/consensus/inter/idx"
+	common "github.com/ethereum/go-ethereum/common"
 	gomock "github.com/golang/mock/gomock"
 )
 
@@ -46,6 +47,21 @@ func (m *MockProvider) Close() {
 func (mr *MockProviderMockRecorder) Close() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockProvider)(nil).Close))
+}
+
+// GetAccountInfo mocks base method.
+func (m *MockProvider) GetAccountInfo(address common.Address, height idx.Block) (AccountInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetAccountInfo", address, height)
+	ret0, _ := ret[0].(AccountInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetAccountInfo indicates an expected call of GetAccountInfo.
+func (mr *MockProviderMockRecorder) GetAccountInfo(address, height interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAccountInfo", reflect.TypeOf((*MockProvider)(nil).GetAccountInfo), address, height)
 }
 
 // GetBlockCertificates mocks base method.
