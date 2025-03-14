@@ -667,22 +667,33 @@ func (s *Session) GetReceipt(txHash common.Hash) (*types.Receipt, error) {
 
 	// Wait for the response with some exponential backoff.
 	const maxDelay = 100 * time.Millisecond
+	aggregatedErrors := make([]error, 0)
+	const maxErrRetry = 5
 	now := time.Now()
 	delay := time.Millisecond
 	for time.Since(now) < 100*time.Second {
 		receipt, err := client.TransactionReceipt(context.Background(), txHash)
-		if errors.Is(err, ethereum.NotFound) {
-			time.Sleep(delay)
-			delay = 2 * delay
-			if delay > maxDelay {
-				delay = maxDelay
+		if err == nil {
+			return receipt, nil
+		}
+
+		// for any other error than NotFound, retry a number of times
+		if !errors.Is(err, ethereum.NotFound) {
+			aggregatedErrors = append(aggregatedErrors, err)
+
+			if len(aggregatedErrors) >= maxErrRetry {
+				return nil, fmt.Errorf("failed to get transaction receipt: %w",
+					errors.Join(aggregatedErrors...))
 			}
-			continue
 		}
-		if err != nil {
-			return nil, fmt.Errorf("failed to get transaction receipt: %w", err)
+
+		// If the receipt returned an error, retry after a delay.
+		// Block is not available immediately after the transaction is submitted.
+		time.Sleep(delay)
+		delay = 2 * delay
+		if delay > maxDelay {
+			delay = maxDelay
 		}
-		return receipt, nil
 	}
 	return nil, fmt.Errorf("failed to get transaction receipt: timeout")
 }
