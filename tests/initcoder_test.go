@@ -15,7 +15,7 @@ import (
 const MAX_CODE_SIZE uint64 = 24576
 const MAX_INIT_CODE_SIZE uint64 = 2 * MAX_CODE_SIZE
 
-const sufficientGas = uint64(100_000)
+const sufficientGas = uint64(150_000)
 
 func TestInitCodeSizeLimitAndMetered(t *testing.T) {
 	requireBase := require.New(t)
@@ -131,7 +131,7 @@ func testForTransaction(t *testing.T, net *IntegrationTestNet) {
 		_, err := runTransactionWithCodeSizeAndGas(t, net, MAX_INIT_CODE_SIZE+1, sufficientGas)
 		require.ErrorContains(
 			err,
-			"intrinsic gas too low",
+			"max initcode size exceeded",
 			"unexpectedly succeeded to create contract with init code larger than MAX_INITCODE_SIZE",
 		)
 	})
