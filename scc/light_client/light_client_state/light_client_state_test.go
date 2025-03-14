@@ -153,13 +153,13 @@ func TestLightClientState_Sync_IgnoresSameBlockOrPeriod(t *testing.T) {
 	expectQueryForBlockOfPeriod(prov, 0)
 
 	state := NewState(scc.NewCommittee())
-	lastBlockOfPeriod := idx.Block(1)
-	state.headNumber = lastBlockOfPeriod
+	lastBlockSyncedTo := idx.Block(1)
+	state.headNumber = lastBlockSyncedTo
 
 	_, err := state.Sync(prov)
 	require.NoError(err)
 	want := State{
-		headNumber: lastBlockOfPeriod,
+		headNumber: lastBlockSyncedTo,
 	}
 	require.Equal(&want, state)
 }
@@ -172,13 +172,13 @@ func TestLightClientState_Sync_FailsWithOlderHead(t *testing.T) {
 	expectQueryForBlockOfPeriod(prov, 0)
 
 	state := NewState(scc.NewCommittee())
-	lastBlockOfPeriod := idx.Block(3)
-	state.headNumber = lastBlockOfPeriod
+	lastBlockSyncedTo := idx.Block(3)
+	state.headNumber = lastBlockSyncedTo
 
 	_, err := state.Sync(prov)
 	require.ErrorContains(err, "provider returned old block head")
 	want := State{
-		headNumber: lastBlockOfPeriod,
+		headNumber: lastBlockSyncedTo,
 	}
 	require.Equal(&want, state)
 }
