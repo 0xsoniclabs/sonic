@@ -29,14 +29,14 @@ func NewState(committee scc.Committee) *State {
 	}
 }
 
-// Head returns the block number of the latest known block.
-// The second value is true only if the state has been successfully synced.
+// Head returns the block number of the latest known block and a bool which
+// is only true if the state has already been successfully synced.
 func (s *State) Head() (idx.Block, bool) {
 	return s.headNumber, s.hasSynced
 }
 
-// StateRoot returns the state root of the latest known block.
-// The second value is true only if the state has been successfully synced.
+// StateRoot returns the state root of the latest known block and a bool which
+// is only true if the state has already been successfully synced.
 func (s *State) StateRoot() (common.Hash, bool) {
 	return s.headRoot, s.hasSynced
 }
