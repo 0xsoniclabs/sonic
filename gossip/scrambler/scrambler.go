@@ -347,6 +347,7 @@ func pickOptimal(
 ) transaction {
 	var best transaction
 	bestNumberOfTransactions := 0
+	var numPassingAuths int
 	for _, tx := range ready {
 		// Copy the state to avoid modifying the original state.
 		noncesCopy := nonces.copy()
@@ -354,9 +355,27 @@ func pickOptimal(
 		numTransactions := 1 + len(getTransactionOrder(
 			transactions, noncesCopy, pickOptimal,
 		))
-		if numTransactions > bestNumberOfTransactions {
+
+		// Find the number of passing authorizations.
+		// Multiple authorizations with the same sender are not taken into account,
+		// there is no real world use case for it.
+		authPassingCount := 0
+		for _, a := range tx.auth {
+			if nonces[a.sender] == a.nonce {
+				authPassingCount++
+			}
+		}
+
+		if numTransactions == bestNumberOfTransactions {
+			// Pick the one with the most passing authorizations.
+			if authPassingCount > numPassingAuths {
+				best = tx
+				numPassingAuths = authPassingCount
+			}
+		} else if numTransactions > bestNumberOfTransactions {
 			best = tx
 			bestNumberOfTransactions = numTransactions
+			numPassingAuths = authPassingCount
 		}
 	}
 	return best
