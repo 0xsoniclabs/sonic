@@ -83,7 +83,8 @@ func TestTransactionStore_CanTransactionsBeRetrievedFromBlocksAfterRestart(t *te
 		sender))
 
 	// Type 4: SetCode transaction
-	authorization, err := types.SignSetCode(sender.PrivateKey, types.SetCodeAuthorization{
+	authority := NewAccount()
+	authorization, err := types.SignSetCode(authority.PrivateKey, types.SetCodeAuthorization{
 		ChainID: *uint256.MustFromBig(chainId),
 		Address: common.Address{42},
 		Nonce:   5,
