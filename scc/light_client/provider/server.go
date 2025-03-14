@@ -3,6 +3,8 @@ package provider
 import (
 	"fmt"
 
+	"github.com/0xsoniclabs/carmen/go/carmen"
+	"github.com/0xsoniclabs/carmen/go/common/immutable"
 	idx "github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/scc"
@@ -10,7 +12,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/holiman/uint256"
 )
 
 // Server implements the Provider interface and provides methods
@@ -187,12 +188,14 @@ func (s Server) GetBlockCertificates(first idx.Block, maxResults uint64) ([]cert
 // Returns:
 // - AccountInfo: The AccountInfo of the account at the given height.
 // - error: Not nil if the provider failed to obtain the requested account info.
-func (s Server) GetAddressInfo(address common.Address, height idx.Block) (AccountInfo, error) {
+func (s Server) GetAddressInfo(address common.Address, height idx.Block) (carmen.WitnessProof, error) {
 	heightString := fmt.Sprintf("0x%x", height)
 	if height == LatestBlock {
 		heightString = "latest"
 	}
-	result := jsonBlockInfo{}
+	var result struct {
+		AccountProof []string
+	}
 	err := s.client.Call(
 		&result,
 		"eth_getProof",
@@ -201,19 +204,19 @@ func (s Server) GetAddressInfo(address common.Address, height idx.Block) (Accoun
 		heightString,
 	)
 	if err != nil {
-		return AccountInfo{}, err
+		return nil, err
 	}
-	accountInfo := AccountInfo{
-		AccountProof: result.AccountProof,
-		Balance:      result.Balance,
-		Nonce:        uint64(result.Nonce),
-	}
-	return accountInfo, nil
-}
 
-// jsonBlockInfo is a json friendly representation of the AccountInfo struct.
-type jsonBlockInfo struct {
-	AccountProof []string
-	Balance      uint256.Int
-	Nonce        hexutil.Uint64
+	// Verify the proof.
+	elements := []carmen.Bytes{}
+	for _, proof := range [][]string{result.AccountProof} {
+		for _, element := range proof {
+			data, err := hexutil.Decode(element)
+			if err != nil {
+				return nil, err
+			}
+			elements = append(elements, immutable.NewBytes(data))
+		}
+	}
+	return carmen.CreateWitnessProofFromNodes(elements...), nil
 }

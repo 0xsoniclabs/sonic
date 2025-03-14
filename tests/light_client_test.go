@@ -136,9 +136,9 @@ func TestServer_GetAccountInfo_CanRetrieveInfo(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	// get block info
-	blockInfo, err := server.GetAddressInfo(account, provider.LatestBlock)
+	proof, err := server.GetAddressInfo(account, provider.LatestBlock)
 	require.NoError(err)
-	require.Equal(blockInfo.Balance, want)
+	require.True(proof.IsValid())
 }
 
 ////////////////////////////////////////

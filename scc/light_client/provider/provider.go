@@ -3,11 +3,11 @@ package provider
 import (
 	"math"
 
+	"github.com/0xsoniclabs/carmen/go/carmen"
 	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/holiman/uint256"
 )
 
 //go:generate mockgen -source=provider.go -package=provider -destination=provider_mock.go
@@ -49,9 +49,9 @@ type Provider interface {
 	// - height: The block height of the state.
 	//
 	// Returns:
-	// - AccountInfo: The AccountInfo of the account at the given height.
+	// - WitnessProof: witness proof for the account info.
 	// - error: Not nil if the provider failed to obtain the requested account info.
-	GetAccountInfo(address common.Address, height idx.Block) (AccountInfo, error)
+	GetAccountInfo(address common.Address, height idx.Block) (carmen.WitnessProof, error)
 
 	// Close closes the Provider.
 	// Closing an already closed provider has no effect
@@ -60,16 +60,3 @@ type Provider interface {
 
 // LatestBlock is a constant used to indicate the latest block.
 const LatestBlock = idx.Block(math.MaxUint64)
-
-// AccountInfo represents proof data for an account's state.
-// It includes the account's proof, balance, and nonce.
-//
-// Fields:
-// - AccountProof: array of serialized nodes that prove the account's existence.
-// - Balance: The account's balance in Wei.
-// - Nonce: The nonce of the related account.
-type AccountInfo struct {
-	AccountProof []string
-	Balance      uint256.Int
-	Nonce        uint64
-}

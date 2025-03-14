@@ -7,6 +7,7 @@ package provider
 import (
 	reflect "reflect"
 
+	carmen "github.com/0xsoniclabs/carmen/go/carmen"
 	idx "github.com/0xsoniclabs/consensus/inter/idx"
 	scc "github.com/0xsoniclabs/sonic/scc"
 	cert "github.com/0xsoniclabs/sonic/scc/cert"
@@ -50,10 +51,10 @@ func (mr *MockProviderMockRecorder) Close() *gomock.Call {
 }
 
 // GetAccountInfo mocks base method.
-func (m *MockProvider) GetAccountInfo(address common.Address, height idx.Block) (AccountInfo, error) {
+func (m *MockProvider) GetAccountInfo(address common.Address, height idx.Block) (carmen.WitnessProof, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAccountInfo", address, height)
-	ret0, _ := ret[0].(AccountInfo)
+	ret0, _ := ret[0].(carmen.WitnessProof)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
