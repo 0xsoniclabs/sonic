@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/0xsoniclabs/consensus/emitter/doublesign"
 	"github.com/0xsoniclabs/consensus/hash"
+	"github.com/0xsoniclabs/sonic/emitter/doublesign"
 
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/utils/errlock"

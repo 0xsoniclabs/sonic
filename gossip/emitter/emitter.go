@@ -11,10 +11,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/0xsoniclabs/consensus/emitter/ancestor"
 	"github.com/0xsoniclabs/consensus/hash"
 	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/0xsoniclabs/consensus/inter/pos"
+	"github.com/0xsoniclabs/sonic/emitter/ancestor"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/sonic/utils/txtime"
 	"github.com/ethereum/go-ethereum/common"

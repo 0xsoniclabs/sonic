@@ -6,11 +6,11 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/0xsoniclabs/consensus/gossip/dagprocessor"
-	"github.com/0xsoniclabs/consensus/gossip/itemsfetcher"
 	"github.com/0xsoniclabs/consensus/inter/dag"
 	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/0xsoniclabs/consensus/utils/cachescale"
+	"github.com/0xsoniclabs/sonic/gossip/dagprocessor"
+	"github.com/0xsoniclabs/sonic/gossip/itemsfetcher"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 
 	"github.com/0xsoniclabs/sonic/eventcheck/heavycheck"

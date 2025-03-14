@@ -3,9 +3,9 @@ package emitter
 import (
 	"time"
 
-	"github.com/0xsoniclabs/consensus/emitter/ancestor"
 	"github.com/0xsoniclabs/consensus/hash"
 	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/sonic/emitter/ancestor"
 )
 
 // buildSearchStrategies returns a strategy for each parent search
