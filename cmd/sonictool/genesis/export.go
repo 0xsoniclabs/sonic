@@ -18,6 +18,7 @@ import (
 	"github.com/0xsoniclabs/sonic/opera/genesisstore/fileshash"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/cert"
+	"github.com/0xsoniclabs/sonic/scc/node"
 	"github.com/0xsoniclabs/sonic/utils/devnullfile"
 	"github.com/0xsoniclabs/sonic/utils/objstream"
 	"github.com/ethereum/go-ethereum/log"
@@ -81,6 +82,15 @@ func ExportGenesis(ctx context.Context, gdb *gossip.Store, includeArchive bool, 
 		if err := exportFwaSection(ctx, gdb, writer); err != nil {
 			return err
 		}
+	}
+
+	// certification chain state
+	writer = newUnitWriter(out)
+	if err := writer.Start(header, "scc_st", tmpPath); err != nil {
+		return err
+	}
+	if err := exportCertificationChainState(ctx, gdb, writer, lastBlock); err != nil {
+		return err
 	}
 
 	// committee certificates
@@ -167,6 +177,35 @@ func exportBlocksSection(ctx context.Context, gdb *gossip.Store, writer *unitWri
 	}
 	log.Info("Exported blocks")
 	fmt.Printf("- Blocks hash: %v \n", blocksHash.String())
+	return nil
+}
+
+func exportCertificationChainState(ctx context.Context, gdb *gossip.Store, writer *unitWriter, to idx.Block) error {
+	log.Info("Exporting certification chain state")
+
+	count := 0
+	out := objstream.NewWriter[node.State](writer)
+	for entry := range gdb.EnumerateCertificationChainStates() {
+		count++
+		state, err := entry.Unwrap()
+		if err != nil {
+			return err
+		}
+		if state.GetBlockHeight() > to {
+			break
+		}
+		if err := out.Write(state); err != nil {
+			return err
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+	}
+	hash, err := writer.Flush()
+	if err != nil {
+		return err
+	}
+	log.Info("Exported certification chain states", "count", count, "hash", hash)
 	return nil
 }
 

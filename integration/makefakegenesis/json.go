@@ -30,6 +30,7 @@ import (
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/bls"
 	"github.com/0xsoniclabs/sonic/scc/cert"
+	"github.com/0xsoniclabs/sonic/scc/node"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -38,9 +39,9 @@ import (
 type GenesisJson struct {
 	Rules            opera.Rules
 	BlockZeroTime    time.Time
-	Accounts         []Account      `json:",omitempty"`
-	Txs              []Transaction  `json:",omitempty"`
-	GenesisCommittee *scc.Committee `json:",omitempty"`
+	Accounts         []Account     `json:",omitempty"`
+	Txs              []Transaction `json:",omitempty"`
+	GenesisCommittee []Member      `json:",omitempty"`
 }
 
 type Account struct {
@@ -56,6 +57,12 @@ type Transaction struct {
 	Name string
 	To   common.Address
 	Data VariableLenCode `json:",omitempty"`
+}
+
+type Member struct {
+	ValidatorId       idx.ValidatorID
+	PublicKey         bls.PublicKey
+	ProofOfPossession bls.Signature
 }
 
 func LoadGenesisJson(filename string) (*GenesisJson, error) {
@@ -155,14 +162,17 @@ func GenerateFakeJsonGenesis(
 	}
 
 	// Create the genesis SCC committee.
-	key := bls.NewPrivateKeyForTests(0)
-	committee := scc.NewCommittee(scc.Member{
-		PublicKey:         key.PublicKey(),
-		ProofOfPossession: key.GetProofOfPossession(),
-		VotingPower:       1,
-	})
+	committee := []Member{}
+	for id := range idx.ValidatorID(numValidators) {
+		key := bls.NewPrivateKeyForTests(byte(id))
+		committee = append(committee, Member{
+			ValidatorId:       id + 1,
+			PublicKey:         key.PublicKey(),
+			ProofOfPossession: key.GetProofOfPossession(),
+		})
+	}
+	jsonGenesis.GenesisCommittee = committee
 
-	jsonGenesis.GenesisCommittee = &committee
 	return jsonGenesis
 }
 
@@ -239,19 +249,40 @@ func ApplyGenesisJson(json *GenesisJson) (*genesisstore.Store, error) {
 	}
 
 	if json.GenesisCommittee != nil {
-		if len(json.GenesisCommittee.Members()) == 0 {
+		if len(json.GenesisCommittee) == 0 {
 			return nil, fmt.Errorf("genesis committee must have at least one member")
 		}
-		if err := json.GenesisCommittee.Validate(); err != nil {
-			return nil, fmt.Errorf("genesis committee is invalid")
+
+		members := make([]scc.Member, 0, len(json.GenesisCommittee))
+		for _, m := range json.GenesisCommittee {
+			members = append(members, scc.Member{
+				PublicKey:         m.PublicKey,
+				ProofOfPossession: m.ProofOfPossession,
+				VotingPower:       1,
+			})
 		}
+
 		builder.SetGenesisCommitteeCertificate(cert.NewCertificate(
 			cert.NewCommitteeStatement(
 				json.Rules.NetworkID,
 				scc.Period(0),
-				*json.GenesisCommittee,
+				scc.NewCommittee(members...),
 			),
 		))
+
+		// Initialize the certification chain state based on the genesis committee.
+		genesisValidators := make(map[idx.ValidatorID]node.GenesisValidator, len(json.GenesisCommittee))
+		for _, m := range json.GenesisCommittee {
+			genesisValidators[m.ValidatorId] = node.GenesisValidator{
+				Key:               m.PublicKey,
+				ProofOfPossession: m.ProofOfPossession,
+			}
+		}
+		state, err := node.NewGenesisState(genesisValidators)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create certification chain genesis state; %v", err)
+		}
+		builder.SetGenesisCertificationChainState(state)
 	}
 
 	return builder.Build(genesis.Header{

@@ -165,6 +165,40 @@ func TestCommittee_String_ReturnsHumanReadableSummary(t *testing.T) {
 	require.Contains(t, print, "Valid: true")
 }
 
+func TestCommittee_JSON_MarshalRoundTrip(t *testing.T) {
+	tests := []Committee{
+		{},
+		{[]Member{newTestMember(1, 10)}},
+		{[]Member{newTestMember(1, 10), newTestMember(2, 20)}},
+	}
+
+	for _, committee := range tests {
+		data, err := committee.MarshalJSON()
+		require.NoError(t, err)
+		require.Regexp(t, `^null|\[(\{.*\})*\]$`, string(data))
+
+		var got Committee
+		err = got.UnmarshalJSON(data)
+		require.NoError(t, err)
+		require.Equal(t, committee, got)
+	}
+}
+
+func TestCommittee_UnmarshalJSON_HandlesInvalidInput(t *testing.T) {
+	tests := map[string]string{
+		"invalid JSON":   "invalid",
+		"invalid member": `{"Member":[{something invalid}]}`,
+	}
+
+	for name, input := range tests {
+		t.Run(name, func(t *testing.T) {
+			var committee Committee
+			err := committee.UnmarshalJSON([]byte(input))
+			require.Error(t, err)
+		})
+	}
+}
+
 func TestCommittee_Serialize_DeserializeRoundTrip(t *testing.T) {
 	members := []Member{
 		newTestMember(1, 10),

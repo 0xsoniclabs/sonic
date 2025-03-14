@@ -6,6 +6,7 @@ package gossip
 
 import (
 	"bytes"
+	"fmt"
 
 	"github.com/0xsoniclabs/consensus/hash"
 	"github.com/0xsoniclabs/consensus/inter/idx"
@@ -33,6 +34,30 @@ func (s *Store) DelEvent(id hash.Event) {
 // SetEvent stores event.
 func (s *Store) SetEvent(e *inter.EventPayload) {
 	key := e.ID().Bytes()
+
+	// -- <Debugging> --
+
+	buf, err := rlp.EncodeToBytes(e)
+	if err != nil {
+		panic(err)
+	}
+	restored := &inter.EventPayload{}
+	if err := rlp.DecodeBytes(buf, &restored); err != nil {
+		fmt.Printf("Failed to restore event: %v\n", err)
+		rlp.EncodeToBytes(e)
+		fresh := &inter.EventPayload{}
+		rlp.DecodeBytes(buf, &fresh)
+		panic(err)
+	}
+	if e.PayloadHash() != restored.PayloadHash() {
+		fmt.Printf("Restored event has different payload hash\n")
+		fmt.Printf("Original: %x\n", e.PayloadHash())
+		fmt.Printf("Restored: %x\n", restored.PayloadHash())
+		rlp.DecodeBytes(buf, &restored)
+		panic("Restored event has different payload hash")
+	}
+
+	// -- </Debugging> --
 
 	s.rlp.Set(s.table.Events, key, e)
 

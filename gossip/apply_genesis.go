@@ -10,6 +10,7 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/ier"
 	"github.com/0xsoniclabs/sonic/opera/genesis"
 	"github.com/0xsoniclabs/sonic/scc/cert"
+	"github.com/0xsoniclabs/sonic/scc/node"
 	"github.com/0xsoniclabs/sonic/utils/dbutil/autocompact"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/syndtr/goleveldb/leveldb/opt"
@@ -115,6 +116,14 @@ func (s *Store) ApplyGenesis(g genesis.Genesis) (err error) {
 	} else {
 		s.Log.Info("StateDB imported successfully, stateRoot matches", "index", lastBlock.Idx, "root", lastBlock.StateRoot)
 	}
+
+	g.CertificationChainStates.ForEach(func(state node.State) bool {
+		if err := s.AddCertificationChainState(state); err != nil {
+			s.Log.Crit("Failed to write certification chain state", "err", err)
+			return false
+		}
+		return true
+	})
 
 	g.CommitteeCertificates.ForEach(func(c cert.Certificate[cert.CommitteeStatement]) bool {
 		if err := s.UpdateCommitteeCertificate(c); err != nil {

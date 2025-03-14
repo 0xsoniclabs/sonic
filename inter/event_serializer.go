@@ -20,7 +20,7 @@ var (
 	ErrUnknownVersion    = errors.New("unknown serialization version")
 )
 
-const MaxSerializationVersion = 2
+const MaxSerializationVersion = 3
 
 const ProtocolMaxMsgSize = 10 * 1024 * 1024
 
@@ -73,9 +73,27 @@ func (e *Event) MarshalCSER(w *cser.Writer) error {
 		w.Bool(e.AnyEpochVote())
 		w.Bool(e.AnyBlockVotes())
 	}
-	if e.AnyTxs() || e.AnyMisbehaviourProofs() || e.AnyBlockVotes() || e.AnyEpochVote() {
+	if e.Version() == 3 {
+		w.Bool(e.AnyCommitteeSignatures())
+		w.Bool(e.AnyBlockSignatures())
+	}
+
+	// add the payload hash unless the payload is empty
+	payloadIsEmpty := true
+	payloadIsEmpty = payloadIsEmpty && !e.AnyTxs()
+	if e.Version() == 1 {
+		payloadIsEmpty = payloadIsEmpty && !e.AnyMisbehaviourProofs()
+		payloadIsEmpty = payloadIsEmpty && !e.AnyBlockVotes()
+		payloadIsEmpty = payloadIsEmpty && !e.AnyEpochVote()
+	}
+	if e.Version() == 3 {
+		payloadIsEmpty = payloadIsEmpty && !e.AnyCommitteeSignatures()
+		payloadIsEmpty = payloadIsEmpty && !e.AnyBlockSignatures()
+	}
+	if !payloadIsEmpty {
 		w.FixedBytes(e.PayloadHash().Bytes())
 	}
+
 	// extra
 	w.SliceBytes(e.Extra())
 	return nil
@@ -147,8 +165,10 @@ func eventUnmarshalCSER(r *cser.Reader, e *MutableEventPayload) (err error) {
 	anyMisbehaviourProofs := version == 1 && r.Bool()
 	anyEpochVote := version == 1 && r.Bool()
 	anyBlockVotes := version == 1 && r.Bool()
+	anyCommitteeSignatures := version == 3 && r.Bool()
+	anyBlockSignatures := version == 3 && r.Bool()
 	payloadHash := EmptyPayloadHash(version)
-	if anyTxs || anyMisbehaviourProofs || anyEpochVote || anyBlockVotes {
+	if anyTxs || anyMisbehaviourProofs || anyEpochVote || anyBlockVotes || anyCommitteeSignatures || anyBlockSignatures {
 		r.FixedBytes(payloadHash[:])
 		if payloadHash == EmptyPayloadHash(version) {
 			return cser.ErrNonCanonicalEncoding
@@ -178,6 +198,8 @@ func eventUnmarshalCSER(r *cser.Reader, e *MutableEventPayload) (err error) {
 	e.anyBlockVotes = anyBlockVotes
 	e.anyEpochVote = anyEpochVote
 	e.anyMisbehaviourProofs = anyMisbehaviourProofs
+	e.anyCommitteeSignatures = anyCommitteeSignatures
+	e.anyBlockSignatures = anyBlockSignatures
 	e.SetPayloadHash(payloadHash)
 	e.SetExtra(extra)
 	return nil
@@ -251,6 +273,20 @@ func (e *EventPayload) MarshalCSER(w *cser.Writer) error {
 	if e.AnyBlockVotes() != (len(e.blockVotes.Votes) != 0) {
 		return ErrSerMalformedEvent
 	}
+	if e.AnyCommitteeSignatures() != (len(e.committeeSignatures) != 0) {
+		return ErrSerMalformedEvent
+	}
+	if e.AnyBlockSignatures() != (len(e.blockSignatures) != 0) {
+		return ErrSerMalformedEvent
+	}
+	if e.Version() != 3 {
+		if e.AnyCommitteeSignatures() {
+			return ErrSerMalformedEvent
+		}
+		if e.AnyBlockSignatures() {
+			return ErrSerMalformedEvent
+		}
+	}
 	err := e.Event.MarshalCSER(w)
 	if err != nil {
 		return err
@@ -288,6 +324,22 @@ func (e *EventPayload) MarshalCSER(w *cser.Writer) error {
 		err = e.BlockVotes().MarshalCSER(w)
 		if err != nil {
 			return err
+		}
+	}
+	if e.AnyCommitteeSignatures() {
+		w.U32(uint32(len(e.committeeSignatures)))
+		for _, s := range e.committeeSignatures {
+			if err := s.MarshalCSER(w); err != nil {
+				return err
+			}
+		}
+	}
+	if e.AnyBlockSignatures() {
+		w.U32(uint32(len(e.blockSignatures)))
+		for _, s := range e.blockSignatures {
+			if err := s.MarshalCSER(w); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -361,6 +413,37 @@ func (e *MutableEventPayload) UnmarshalCSER(r *cser.Reader) error {
 		}
 	}
 	e.blockVotes = bvs
+
+	// committee signatures
+	committeeSignatures := []CommitteeSignature{}
+	if e.AnyCommitteeSignatures() {
+		num := r.U32()
+		for range num {
+			var signature CommitteeSignature
+			err := signature.UnmarshalCSER(r)
+			if err != nil {
+				return err
+			}
+			committeeSignatures = append(committeeSignatures, signature)
+		}
+	}
+	e.committeeSignatures = committeeSignatures
+
+	// block signatures
+	blockSignatures := []BlockSignature{}
+	if e.AnyBlockSignatures() {
+		num := r.U32()
+		for range num {
+			var signature BlockSignature
+			err := signature.UnmarshalCSER(r)
+			if err != nil {
+				return err
+			}
+			blockSignatures = append(blockSignatures, signature)
+		}
+	}
+	e.blockSignatures = blockSignatures
+
 	return nil
 }
 

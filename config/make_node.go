@@ -150,11 +150,24 @@ func MakeNode(ctx *cli.Context, cfg *Config) (*node.Node, *gossip.Service, func(
 	}
 
 	if cfg.Emitter.Validator.ID != 0 {
+		// enable the event emitter
 		svc.RegisterEmitter(emitter.NewEmitter(
 			cfg.Emitter,
 			svc.EmitterWorld(signer),
 			gdb.AsBaseFeeSource(),
 		))
+
+		// enable the certification signing
+		// TODO: implement proper key management
+		key, err := getFakeCertificationKey(ctx)
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("failed to get fake certification key: %w", err)
+		}
+		if key != nil {
+			if err := svc.SetCertificationChainSigningKey(*key); err != nil {
+				return nil, nil, nil, fmt.Errorf("failed to enable certification signing: %w", err)
+			}
+		}
 	}
 
 	stack.RegisterAPIs(svc.APIs())

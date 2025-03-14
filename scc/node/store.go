@@ -27,4 +27,14 @@ type Store interface {
 	// UpdateBlockCertificate adds or updates the certificate in the store.
 	// If a certificate for the same block is already present, it is overwritten.
 	UpdateBlockCertificate(cert.BlockCertificate) error
+
+	// GetLatestCertificationChainState retrieves the most recent certification
+	// chain state available in the store. States are ordered by their block
+	// height. If there is none, an error is returned.
+	GetLatestCertificationChainState() (State, error)
+
+	// AddCertificationChainState adds a new certification chain state to the
+	// store. States are indexed by their block height. If there is a state for
+	// the same block hight already in the store, it is overwritten.
+	AddCertificationChainState(State) error
 }

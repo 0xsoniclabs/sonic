@@ -2,6 +2,7 @@ package inter
 
 import (
 	"crypto/sha256"
+	"encoding/binary"
 
 	"github.com/0xsoniclabs/consensus/common/bigendian"
 	"github.com/0xsoniclabs/consensus/hash"
@@ -55,19 +56,27 @@ type EventPayloadI interface {
 	Sig() Signature
 
 	Txs() types.Transactions
+
 	EpochVote() LlrEpochVote
 	BlockVotes() LlrBlockVotes
 	MisbehaviourProofs() []MisbehaviourProof
+
+	// Fields for the Certification Chain
+	BlockSignatures() []BlockSignature
+	CommitteeSignatures() []CommitteeSignature
 }
 
 var emptyPayloadHash1 = CalcPayloadHash(&MutableEventPayload{extEventData: extEventData{version: 1}})
+var emptyPayloadHash3 = CalcPayloadHash(&MutableEventPayload{extEventData: extEventData{version: 3}})
 
 func EmptyPayloadHash(version uint8) hash.Hash {
 	if version == 1 {
 		return emptyPayloadHash1
-	} else {
-		return hash.Hash(types.EmptyRootHash)
 	}
+	if version == 3 {
+		return emptyPayloadHash3
+	}
+	return hash.Hash(types.EmptyRootHash)
 }
 
 type baseEvent struct {
@@ -88,11 +97,13 @@ type extEventData struct {
 	gasPowerUsed  uint64
 	extra         []byte
 
-	anyTxs                bool
-	anyBlockVotes         bool
-	anyEpochVote          bool
-	anyMisbehaviourProofs bool
-	payloadHash           hash.Hash
+	anyTxs                 bool
+	anyBlockVotes          bool
+	anyEpochVote           bool
+	anyMisbehaviourProofs  bool
+	anyCommitteeSignatures bool
+	anyBlockSignatures     bool
+	payloadHash            hash.Hash
 }
 
 type sigData struct {
@@ -105,6 +116,9 @@ type payloadData struct {
 
 	epochVote  LlrEpochVote
 	blockVotes LlrBlockVotes
+
+	committeeSignatures []CommitteeSignature
+	blockSignatures     []BlockSignature
 }
 
 type Event struct {
@@ -182,6 +196,10 @@ func (e *extEventData) AnyEpochVote() bool { return e.anyEpochVote }
 
 func (e *extEventData) AnyBlockVotes() bool { return e.anyBlockVotes }
 
+func (e *extEventData) AnyCommitteeSignatures() bool { return e.anyCommitteeSignatures }
+
+func (e *extEventData) AnyBlockSignatures() bool { return e.anyBlockSignatures }
+
 func (e *extEventData) GasPowerLeft() GasPowerLeft { return e.gasPowerLeft }
 
 func (e *extEventData) GasPowerUsed() uint64 { return e.gasPowerUsed }
@@ -189,6 +207,10 @@ func (e *extEventData) GasPowerUsed() uint64 { return e.gasPowerUsed }
 func (e *sigData) Sig() Signature { return e.sig }
 
 func (e *payloadData) Txs() types.Transactions { return e.txs }
+
+func (e *payloadData) CommitteeSignatures() []CommitteeSignature { return e.committeeSignatures }
+
+func (e *payloadData) BlockSignatures() []BlockSignature { return e.blockSignatures }
 
 func (e *payloadData) MisbehaviourProofs() []MisbehaviourProof { return e.misbehaviourProofs }
 
@@ -200,6 +222,29 @@ func CalcTxHash(txs types.Transactions) hash.Hash {
 	return hash.Hash(types.DeriveSha(txs, trie.NewStackTrie(nil)))
 }
 
+func calcPayloadHashV3(e EventPayloadI) hash.Hash {
+	hasher := sha256.New()
+	for _, tx := range e.Txs() {
+		hasher.Write(tx.Hash().Bytes())
+	}
+	// TODO: move this to some different code location
+	for _, s := range e.CommitteeSignatures() {
+		var bytes [8]byte
+		binary.BigEndian.PutUint64(bytes[:], uint64(s.Period))
+		hasher.Write(bytes[:])
+		sig := s.Signature.Signature.Serialize()
+		hasher.Write(sig[:])
+	}
+	for _, s := range e.BlockSignatures() {
+		var bytes [8]byte
+		binary.BigEndian.PutUint64(bytes[:], uint64(s.Number))
+		hasher.Write(bytes[:])
+		sig := s.Signature.Signature.Serialize()
+		hasher.Write(sig[:])
+	}
+	return hash.BytesToHash(hasher.Sum(nil))
+}
+
 func CalcMisbehaviourProofsHash(mps []MisbehaviourProof) hash.Hash {
 	hasher := sha256.New()
 	_ = rlp.Encode(hasher, mps)
@@ -208,10 +253,21 @@ func CalcMisbehaviourProofsHash(mps []MisbehaviourProof) hash.Hash {
 
 func CalcPayloadHash(e EventPayloadI) hash.Hash {
 	if e.Version() == 1 {
-		return hash.Of(hash.Of(CalcTxHash(e.Txs()).Bytes(), CalcMisbehaviourProofsHash(e.MisbehaviourProofs()).Bytes()).Bytes(), hash.Of(e.EpochVote().Hash().Bytes(), e.BlockVotes().Hash().Bytes()).Bytes())
-	} else {
-		return CalcTxHash(e.Txs())
+		return hash.Of(
+			hash.Of(
+				CalcTxHash(e.Txs()).Bytes(),
+				CalcMisbehaviourProofsHash(e.MisbehaviourProofs()).Bytes(),
+			).Bytes(),
+			hash.Of(
+				e.EpochVote().Hash().Bytes(),
+				e.BlockVotes().Hash().Bytes(),
+			).Bytes(),
+		)
 	}
+	if e.Version() == 3 {
+		return calcPayloadHashV3(e)
+	}
+	return CalcTxHash(e.Txs())
 }
 
 func (e *MutableEventPayload) SetVersion(v uint8) { e.version = v }
@@ -252,6 +308,16 @@ func (e *MutableEventPayload) SetBlockVotes(v LlrBlockVotes) {
 func (e *MutableEventPayload) SetEpochVote(v LlrEpochVote) {
 	e.epochVote = v
 	e.anyEpochVote = v.Epoch != 0 && v.Vote != hash.Zero
+}
+
+func (e *MutableEventPayload) SetCommitteeSignatures(v []CommitteeSignature) {
+	e.committeeSignatures = v
+	e.anyCommitteeSignatures = len(v) != 0
+}
+
+func (e *MutableEventPayload) SetBlockSignatures(v []BlockSignature) {
+	e.blockSignatures = v
+	e.anyBlockSignatures = len(v) != 0
 }
 
 func calcEventID(h hash.Hash) (id [24]byte) {

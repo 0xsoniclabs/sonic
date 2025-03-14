@@ -140,7 +140,11 @@ func StartIntegrationTestNetWithFakeGenesis(
 	net, err := startIntegrationTestNet(
 		t,
 		t.TempDir(),
-		[]string{"genesis", "fake", "1", "--upgrades", effectiveOptions.FeatureSet.String()},
+		[]string{
+			"genesis",
+			"fake", fmt.Sprintf("%d", effectiveOptions.NumNodes),
+			"--upgrades", effectiveOptions.FeatureSet.String(),
+		},
 		effectiveOptions,
 	)
 	if err != nil {

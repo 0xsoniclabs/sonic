@@ -34,6 +34,7 @@ import (
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/bls"
 	"github.com/0xsoniclabs/sonic/scc/cert"
+	"github.com/0xsoniclabs/sonic/scc/node"
 )
 
 var (
@@ -149,8 +150,8 @@ func FakeGenesisStoreWithRulesAndStart(
 	// Create the genesis committee for the first period using test keys for the
 	// fake network. All validators have the same voting power.
 	members := make([]scc.Member, 0, len(validators))
-	for i := range validators {
-		key := bls.NewPrivateKeyForTests(byte(i))
+	for _, validator := range validators {
+		key := bls.NewPrivateKeyForTests(byte(validator.ID - 1)) // validator IDs are 1-based
 		members = append(members, scc.Member{
 			PublicKey:         key.PublicKey(),
 			ProofOfPossession: key.GetProofOfPossession(),
@@ -164,6 +165,13 @@ func FakeGenesisStoreWithRulesAndStart(
 			scc.NewCommittee(members...),
 		)),
 	)
+
+	// Initialize certification chain state
+	state, err := node.NewFakeGenesisState(len(validators))
+	if err != nil {
+		panic(err)
+	}
+	builder.SetGenesisCertificationChainState(state)
 
 	return builder.Build(genesis.Header{
 		GenesisID:   builder.CurrentHash(),
