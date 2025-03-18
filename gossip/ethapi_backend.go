@@ -82,11 +82,8 @@ func (b *EthAPIBackend) ResolveRpcBlockNumberOrHash(ctx context.Context, blockNr
 // HeaderByNumber returns evm block header by its number, or nil if not exists.
 func (b *EthAPIBackend) HeaderByNumber(ctx context.Context, number rpc.BlockNumber) (*evmcore.EvmHeader, error) {
 	blk, err := b.BlockByNumber(ctx, number)
-	if err != nil {
+	if blk == nil || err != nil {
 		return nil, err
-	}
-	if blk == nil {
-		return nil, fmt.Errorf("block %v not found", number)
 	}
 	return blk.Header(), err
 }

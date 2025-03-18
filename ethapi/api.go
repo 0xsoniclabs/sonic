@@ -1747,19 +1747,15 @@ func (s *PublicTransactionPoolAPI) GetBlockReceipts(ctx context.Context, blockNr
 	if blockNr, ok := blockNrOrHash.Number(); ok {
 		number = blockNr
 		header, err = s.b.HeaderByNumber(ctx, number)
-		if err != nil {
+		if header == nil || err != nil {
 			return nil, err
 		}
 	} else if blockHash, ok := blockNrOrHash.Hash(); ok {
 		header, err = s.b.HeaderByHash(ctx, blockHash)
-		if err != nil {
+		if header == nil || err != nil {
 			return nil, err
 		}
 		number = rpc.BlockNumber(header.Number.Uint64())
-	}
-
-	if header == nil {
-		return nil, fmt.Errorf("block not found")
 	}
 
 	receipts, err := s.b.GetReceiptsByNumber(ctx, number)
