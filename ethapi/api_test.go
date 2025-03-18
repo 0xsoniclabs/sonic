@@ -411,6 +411,26 @@ func TestBlockOverrides(t *testing.T) {
 
 }
 
+func TestReturnNil(t *testing.T) {
+
+	txHash := common.Hash{1}
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockBackend := NewMockBackend(ctrl)
+	mockBackend.EXPECT().GetTransaction(gomock.Any(), txHash).Return(&types.Transaction{}, uint64(0), uint64(0), nil)
+	mockBackend.EXPECT().HeaderByNumber(gomock.Any(), gomock.Any()).Return(nil, nil)
+	mockBackend.EXPECT().ChainConfig().Return(&params.ChainConfig{}).AnyTimes()
+
+	api := NewPublicTransactionPoolAPI(
+		mockBackend,
+		&AddrLocker{},
+	)
+	receiptsRes, err := api.GetTransactionReceipt(context.Background(), txHash)
+	require.NoError(t, err)
+	require.Nil(t, receiptsRes)
+}
+
 // Custom matcher to compare vm.BlockContext values
 type BlockContextMatcher struct {
 	expected *vm.BlockContext
