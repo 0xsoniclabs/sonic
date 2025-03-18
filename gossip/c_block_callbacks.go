@@ -336,7 +336,7 @@ func consensusCallbackBeginBlockFn(
 						if creator != 0 && es.Validators.Get(creator) == 0 {
 							creator = 0
 						}
-						txListener.OnNewReceipt(evmBlock.Transactions[i], r, creator)
+						txListener.OnNewReceipt(evmBlock.Transactions[i], r, creator, evmBlock.BaseFee)
 					}
 					bs = txListener.Finalize() // TODO: refactor to not mutate the bs
 					bs.FinalizedStateRoot = hash.Hash(evmBlock.Root)
