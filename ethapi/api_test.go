@@ -411,7 +411,7 @@ func TestBlockOverrides(t *testing.T) {
 
 }
 
-func TestReturnNil(t *testing.T) {
+func TestGetTransactionReceiptReturnsNilNotError(t *testing.T) {
 
 	txHash := common.Hash{1}
 
