@@ -78,7 +78,10 @@ func (context *chainContext) GetHeader(hash common.Hash, number uint64) *evmcore
 	// This method is called to get the hash for a block number when executing the BLOCKHASH
 	// opcode. Hence no need to search for non-canonical blocks.
 	header, err := context.b.HeaderByNumber(context.ctx, rpc.BlockNumber(number))
-	if header == nil || err != nil || header.Hash != hash {
+	if header == nil || err != nil {
+		return nil
+	}
+	if header.Hash != hash {
 		return nil
 	}
 	return header

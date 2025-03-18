@@ -837,27 +837,27 @@ func (s *PublicBlockChainAPI) GetProof(ctx context.Context, address common.Addre
 // * When blockNr is -2 the pending chain head is returned.
 func (s *PublicBlockChainAPI) GetHeaderByNumber(ctx context.Context, number rpc.BlockNumber) (*evmcore.EvmHeaderJson, error) {
 	header, err := s.b.HeaderByNumber(ctx, number)
-	if header != nil && err == nil {
-		receipts, err := s.getBlockReceipts(ctx, rpc.BlockNumber(header.Number.Uint64()))
-		if err != nil {
-			return nil, err
-		}
-		return header.ToJson(receipts), nil
+	if header == nil || err != nil {
+		return nil, err
 	}
-	return nil, err
+	return s.getHeaderWithReceipts(ctx, header, rpc.BlockNumber(header.Number.Uint64()))
 }
 
 // GetHeaderByHash returns the requested header by hash.
 func (s *PublicBlockChainAPI) GetHeaderByHash(ctx context.Context, hash common.Hash) (*evmcore.EvmHeaderJson, error) {
 	header, err := s.b.HeaderByHash(ctx, hash)
-	if header != nil && err == nil {
-		receipts, err := s.getBlockReceipts(ctx, rpc.BlockNumber(header.Number.Uint64()))
-		if err != nil {
-			return nil, err
-		}
-		return header.ToJson(receipts), nil
+	if header == nil || err != nil {
+		return nil, err
 	}
-	return nil, err
+	return s.getHeaderWithReceipts(ctx, header, rpc.BlockNumber(header.Number.Uint64()))
+}
+
+func (s *PublicBlockChainAPI) getHeaderWithReceipts(ctx context.Context, header *evmcore.EvmHeader, blkNumber rpc.BlockNumber) (*evmcore.EvmHeaderJson, error) {
+	receipts, err := s.getBlockReceipts(ctx, blkNumber)
+	if receipts == nil || err != nil {
+		return nil, err
+	}
+	return header.ToJson(receipts), nil
 }
 
 func (s *PublicBlockChainAPI) getBlockReceipts(ctx context.Context, blkNumber rpc.BlockNumber) (types.Receipts, error) {
