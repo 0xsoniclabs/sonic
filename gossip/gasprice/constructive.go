@@ -3,7 +3,7 @@ package gasprice
 import (
 	"math/big"
 
-	"github.com/0xsoniclabs/consensus/utils/piecefunc"
+	"github.com/Fantom-foundation/lachesis-base/utils/piecefunc"
 )
 
 func (gpo *Oracle) maxTotalGasPower() *big.Int {

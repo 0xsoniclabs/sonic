@@ -3,7 +3,7 @@ package emitter
 import (
 	"io"
 
-	"github.com/0xsoniclabs/consensus/hash"
+	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/ethereum/go-ethereum/log"
 
 	"github.com/0xsoniclabs/sonic/utils"

@@ -9,7 +9,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/utils/dbutil"
 
-	"github.com/0xsoniclabs/consensus/kvdb"
+	"github.com/Fantom-foundation/lachesis-base/kvdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 )

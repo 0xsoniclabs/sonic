@@ -7,10 +7,10 @@ import (
 
 	"github.com/ethereum/go-ethereum/metrics"
 
-	"github.com/0xsoniclabs/consensus/gossip/dagprocessor"
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/dag"
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/Fantom-foundation/lachesis-base/gossip/dagprocessor"
+	"github.com/Fantom-foundation/lachesis-base/hash"
+	"github.com/Fantom-foundation/lachesis-base/inter/dag"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
 

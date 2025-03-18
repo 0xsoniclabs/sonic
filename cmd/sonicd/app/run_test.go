@@ -6,14 +6,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/0xsoniclabs/consensus/utils/cachescale"
+	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/0xsoniclabs/sonic/cmd/sonictool/genesis"
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/opera"
 	futils "github.com/0xsoniclabs/sonic/utils"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/docker/docker/pkg/reexec"
 	"github.com/ethereum/go-ethereum/common"
 

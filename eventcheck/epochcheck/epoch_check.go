@@ -3,8 +3,8 @@ package epochcheck
 import (
 	"errors"
 
-	base "github.com/0xsoniclabs/consensus/eventcheck/epochcheck"
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	base "github.com/Fantom-foundation/lachesis-base/eventcheck/epochcheck"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/core/types"
 
 	"github.com/0xsoniclabs/sonic/inter"

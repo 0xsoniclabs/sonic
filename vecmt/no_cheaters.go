@@ -3,7 +3,7 @@ package vecmt
 import (
 	"errors"
 
-	"github.com/0xsoniclabs/consensus/hash"
+	"github.com/Fantom-foundation/lachesis-base/hash"
 )
 
 // NoCheaters excludes events which are observed by selfParents as cheaters.

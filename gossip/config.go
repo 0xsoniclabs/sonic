@@ -6,11 +6,11 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/0xsoniclabs/consensus/gossip/dagprocessor"
-	"github.com/0xsoniclabs/consensus/gossip/itemsfetcher"
-	"github.com/0xsoniclabs/consensus/inter/dag"
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/utils/cachescale"
+	"github.com/Fantom-foundation/lachesis-base/gossip/dagprocessor"
+	"github.com/Fantom-foundation/lachesis-base/gossip/itemsfetcher"
+	"github.com/Fantom-foundation/lachesis-base/inter/dag"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 
 	"github.com/0xsoniclabs/sonic/eventcheck/heavycheck"

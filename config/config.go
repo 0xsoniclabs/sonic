@@ -18,8 +18,8 @@ import (
 	"github.com/0xsoniclabs/sonic/version"
 	"github.com/ethereum/go-ethereum/common/fdlimit"
 
-	"github.com/0xsoniclabs/consensus/abft"
-	"github.com/0xsoniclabs/consensus/utils/cachescale"
+	"github.com/Fantom-foundation/lachesis-base/abft"
+	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"

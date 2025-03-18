@@ -3,8 +3,8 @@ package iodb
 import (
 	"io"
 
-	"github.com/0xsoniclabs/consensus/common/bigendian"
-	"github.com/0xsoniclabs/consensus/kvdb"
+	"github.com/Fantom-foundation/lachesis-base/common/bigendian"
+	"github.com/Fantom-foundation/lachesis-base/kvdb"
 
 	"github.com/0xsoniclabs/sonic/utils/ioread"
 )

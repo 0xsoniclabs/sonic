@@ -1,9 +1,9 @@
 package node
 
 import (
-	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/cert"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 )
 
 //go:generate mockgen -source=store.go -destination=store_mock.go -package=node

@@ -9,10 +9,10 @@ import (
 	"fmt"
 	"sync/atomic"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/kvdb"
-	"github.com/0xsoniclabs/consensus/kvdb/skiperrors"
-	"github.com/0xsoniclabs/consensus/kvdb/table"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/Fantom-foundation/lachesis-base/kvdb"
+	"github.com/Fantom-foundation/lachesis-base/kvdb/skiperrors"
+	"github.com/Fantom-foundation/lachesis-base/kvdb/table"
 
 	"github.com/0xsoniclabs/sonic/logger"
 )
