@@ -43,7 +43,7 @@ func TestGasCostTest_Sonic(t *testing.T) {
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
-	t.Cleanup(net.Stop)
+	defer client.Close()
 
 	chainId, err := client.ChainID(context.Background())
 	require.NoError(t, err)
@@ -85,7 +85,6 @@ func TestGasCostTest_Sonic(t *testing.T) {
 				require.NoError(t, err)
 
 				expectedCost, err := core.IntrinsicGas(tx.Data(), tx.AccessList(), tx.SetCodeAuthorizations(), tx.To() == nil, true, true, true)
-				// t.Log("gas:", expectedCost, tx.Gas(), tx.Gas()-expectedCost)
 				require.NoError(t, err)
 				require.Equal(t, expectedCost, tx.Gas())
 
@@ -132,7 +131,7 @@ func TestGasCostTest_Allegro(t *testing.T) {
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
-	t.Cleanup(net.Stop)
+	defer client.Close()
 
 	chainId, err := client.ChainID(context.Background())
 	require.NoError(t, err)
@@ -268,7 +267,7 @@ func makeGasCostTestInputs(
 
 	client, err := session.GetClient()
 	require.NoError(t, err)
-	t.Cleanup(client.Close)
+	defer client.Close()
 
 	gasPrice, err := client.SuggestGasPrice(context.Background())
 	require.NoError(t, err)
