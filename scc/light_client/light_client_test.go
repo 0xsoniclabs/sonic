@@ -2,6 +2,7 @@ package light_client
 
 import (
 	"fmt"
+	"net/url"
 	"testing"
 
 	"github.com/0xsoniclabs/consensus/inter/idx"
@@ -25,16 +26,16 @@ func TestLightClient_NewLightClient_ReportsInvalidConfig(t *testing.T) {
 
 	tests := map[string]Config{
 		"emptyStringProvider": {
-			Provider: "",
-			Genesis:  scc.NewCommittee(member),
+			Url:     &url.URL{},
+			Genesis: scc.NewCommittee(member),
 		},
-		"invalidProviderURL": {
-			Provider: "not-a-url",
-			Genesis:  scc.NewCommittee(member),
+		"invalidUrl": {
+			Url:     &url.URL{Host: "not-a-url"},
+			Genesis: scc.NewCommittee(member),
 		},
 		"emptyGenesisCommittee": {
-			Provider: "http://localhost:4242",
-			Genesis:  scc.NewCommittee(),
+			Url:     &url.URL{Host: "http://localhost:4242"},
+			Genesis: scc.NewCommittee(),
 		},
 	}
 
@@ -153,9 +154,10 @@ func TestLightClientState_Sync_UpdatesStateToHead(t *testing.T) {
 		Return([]cert.CommitteeCertificate{committeeCert1}, nil)
 
 	// sync
+	url, _ := url.Parse("http://localhost:4242")
 	config := Config{
-		Provider: "http://localhost:4242",
-		Genesis:  scc.NewCommittee(member),
+		Url:     url,
+		Genesis: scc.NewCommittee(member),
 	}
 	c, err := NewLightClient(config)
 	require.NoError(err)
@@ -181,8 +183,10 @@ func makeMember(key bls.PrivateKey) scc.Member {
 
 func testConfig() Config {
 	key := bls.NewPrivateKey()
+	// error is ignored because constant string is a url
+	url, _ := url.Parse("http://localhost:4242")
 	return Config{
-		Provider: "http://localhost:4242",
-		Genesis:  scc.NewCommittee(makeMember(key)),
+		Url:     url,
+		Genesis: scc.NewCommittee(makeMember(key)),
 	}
 }

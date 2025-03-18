@@ -2,11 +2,11 @@ package light_client
 
 import (
 	"fmt"
-	"slices"
+	"net/url"
 
 	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/0xsoniclabs/sonic/scc"
-	lc_state "github.com/0xsoniclabs/sonic/scc/light_client/light_client_state"
+	lcs "github.com/0xsoniclabs/sonic/scc/light_client/light_client_state"
 	"github.com/0xsoniclabs/sonic/scc/light_client/provider"
 )
 
@@ -15,35 +15,34 @@ import (
 // interacting with the provider.
 type LightClient struct {
 	provider provider.Provider
-	state    *lc_state.State
+	state    *lcs.State
 }
 
 // Config is used to configure the LightClient.
-// It requires an url for the certificate providers and an initial committee.
+// It requires an url for the certificate provider and an initial committee.
 type Config struct {
-	Provider string
-	Genesis  scc.Committee
+	Url     *url.URL
+	Genesis scc.Committee
 }
 
 // NewLightClient creates a new LightClient with the given config.
-// returns an error if the config does not contain a valid provider or committee.
+// Returns an error if the config does not contain a valid provider url or committee.
 func NewLightClient(config Config) (*LightClient, error) {
 	if err := config.Genesis.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid committee provided: %w", err)
 	}
-	p, err := provider.NewServerFromURL(config.Provider)
+	p, err := provider.NewServerFromURL(config.Url.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create provider: %w\n", err)
 	}
 	return &LightClient{
-		state: lc_state.NewState(
-			scc.NewCommittee(
-				slices.Clone(config.Genesis.Members())...)),
+		state:    lcs.NewState(config.Genesis),
 		provider: p,
 	}, nil
 }
 
 // Close closes the light client provider.
+// Closing an already closed client has no effect
 func (c *LightClient) Close() {
 	c.provider.Close()
 }
