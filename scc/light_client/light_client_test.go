@@ -5,11 +5,11 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/bls"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/0xsoniclabs/sonic/scc/light_client/provider"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
@@ -34,7 +34,7 @@ func TestLightClient_NewLightClient_ReportsInvalidConfig(t *testing.T) {
 			Genesis: scc.NewCommittee(member),
 		},
 		"emptyGenesisCommittee": {
-			Url:     &url.URL{Host: "http://localhost:4242"},
+			Url:     &url.URL{Scheme: "http", Host: "localhost:4242"},
 			Genesis: scc.NewCommittee(),
 		},
 	}

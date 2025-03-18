@@ -161,8 +161,8 @@ func GenerateFakeJsonGenesis(
 		ProofOfPossession: key.GetProofOfPossession(),
 		VotingPower:       1,
 	})
-	jsonGenesis.GenesisCommittee = &committee
 
+	jsonGenesis.GenesisCommittee = &committee
 	return jsonGenesis
 }
 
