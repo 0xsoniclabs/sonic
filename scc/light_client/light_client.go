@@ -3,6 +3,7 @@ package light_client
 import (
 	"fmt"
 	"net/url"
+	"time"
 
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
@@ -21,6 +22,9 @@ type LightClient struct {
 type Config struct {
 	Url     *url.URL
 	Genesis scc.Committee
+	// unless specified only try once without delays
+	Attempts uint
+	Delay    time.Duration
 }
 
 // NewLightClient creates a new LightClient with the given config.
@@ -29,9 +33,14 @@ func NewLightClient(config Config) (*LightClient, error) {
 	if err := config.Genesis.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid committee provided: %w", err)
 	}
+	var p provider
 	p, err := newServerFromURL(config.Url.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create provider: %w\n", err)
+	}
+	p = newRetry(p, config.Attempts, config.Delay)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create retry provider: %w\n", err)
 	}
 	return &LightClient{
 		state:    *newState(config.Genesis),
