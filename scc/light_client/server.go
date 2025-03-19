@@ -1,4 +1,4 @@
-package provider
+package light_client
 
 import (
 	"fmt"
@@ -10,14 +10,14 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
-// Server implements the Provider interface and provides methods
+// server implements the Provider interface and provides methods
 // making RPC calls through an RPC client.
-type Server struct {
+type server struct {
 	// client is the RPC client used for making RPC calls.
-	client RpcClient
+	client rpcClient
 }
 
-// NewServerFromClient creates a new Server with the given
+// newServerFromClient creates a new Server with the given
 // RPC client. The resulting Server takes ownership of the client and
 // will close it when the Server is closed.
 // The resulting Server must be closed after use.
@@ -28,16 +28,16 @@ type Server struct {
 // Returns:
 // - *Server: A new instance of Server.
 // - error: An error if the client is nil.
-func NewServerFromClient(client RpcClient) (*Server, error) {
+func newServerFromClient(client rpcClient) (*server, error) {
 	if client == nil {
 		return nil, fmt.Errorf("cannot start a Server with a nil client")
 	}
-	return &Server{
+	return &server{
 		client: client,
 	}, nil
 }
 
-// NewServerFromURL creates a new instance of Server with a new RPC client
+// newServerFromURL creates a new instance of Server with a new RPC client
 // connected to the given URL.
 // The resulting Server must be closed after use.
 //
@@ -47,17 +47,17 @@ func NewServerFromClient(client RpcClient) (*Server, error) {
 // Returns:
 // - *Server: A new instance of Server.
 // - error: An error if the connection fails.
-func NewServerFromURL(url string) (*Server, error) {
+func newServerFromURL(url string) (*server, error) {
 	client, err := rpc.Dial(url)
 	if err != nil {
 		return nil, err
 	}
-	return NewServerFromClient(client)
+	return newServerFromClient(client)
 }
 
-// Close closes the Server.
+// close closes the Server.
 // Closing an already closed Server has no effect
-func (s *Server) Close() {
+func (s *server) close() {
 	if s.IsClosed() {
 		return
 	}
@@ -66,11 +66,11 @@ func (s *Server) Close() {
 }
 
 // IsClosed returns true if the Server is closed.
-func (s Server) IsClosed() bool {
+func (s server) IsClosed() bool {
 	return s.client == nil
 }
 
-// GetCommitteeCertificates returns up to `maxResults` consecutive committee
+// getCommitteeCertificates returns up to `maxResults` consecutive committee
 // certificates starting from the given period.
 //
 // Parameters:
@@ -80,7 +80,7 @@ func (s Server) IsClosed() bool {
 // Returns:
 //   - []cert.CommitteeCertificate: A slice of committee certificates.
 //   - error: Not nil if the provider failed to obtain the requested certificates.
-func (s Server) GetCommitteeCertificates(first scc.Period, maxResults uint64) ([]cert.CommitteeCertificate, error) {
+func (s server) getCommitteeCertificates(first scc.Period, maxResults uint64) ([]cert.CommitteeCertificate, error) {
 	if maxResults == 0 {
 		return nil, nil
 	}
@@ -114,7 +114,7 @@ func (s Server) GetCommitteeCertificates(first scc.Period, maxResults uint64) ([
 	return certs, nil
 }
 
-// GetBlockCertificates returns up to `maxResults` consecutive block
+// getBlockCertificates returns up to `maxResults` consecutive block
 // certificates starting from the given block number.
 //
 // Parameters:
@@ -126,7 +126,7 @@ func (s Server) GetCommitteeCertificates(first scc.Period, maxResults uint64) ([
 //   - cert.BlockCertificate: The block certificates for the given block number
 //     and the following blocks.
 //   - error: Not nil if the provider failed to obtain the requested certificates.
-func (s Server) GetBlockCertificates(first idx.Block, maxResults uint64) ([]cert.BlockCertificate, error) {
+func (s server) getBlockCertificates(first idx.Block, maxResults uint64) ([]cert.BlockCertificate, error) {
 	if maxResults == 0 {
 		return nil, nil
 	}

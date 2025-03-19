@@ -1,4 +1,4 @@
-package provider
+package light_client
 
 import (
 	"fmt"
@@ -7,15 +7,15 @@ import (
 	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 func TestServer_NewServer_CanInitializeFromUrl(t *testing.T) {
 	require := require.New(t)
 
-	server, err := NewServerFromURL("http://localhost:8545")
-	t.Cleanup(server.Close)
+	server, err := newServerFromURL("http://localhost:8545")
+	t.Cleanup(server.close)
 	require.NoError(err)
 	require.NotNil(server)
 	require.False(server.IsClosed())
@@ -24,7 +24,7 @@ func TestServer_NewServer_CanInitializeFromUrl(t *testing.T) {
 func TestServer_NewServer_ReportsErrorForNilClient(t *testing.T) {
 	require := require.New(t)
 
-	server, err := NewServerFromClient(nil)
+	server, err := newServerFromClient(nil)
 	require.Error(err)
 	require.Nil(server)
 }
@@ -32,7 +32,7 @@ func TestServer_NewServer_ReportsErrorForNilClient(t *testing.T) {
 func TestServer_NewServer_ReportsErrorForInvalidURL(t *testing.T) {
 	require := require.New(t)
 
-	server, err := NewServerFromURL("not-a-url")
+	server, err := newServerFromURL("not-a-url")
 	require.Error(err)
 	require.Nil(server)
 }
@@ -42,32 +42,32 @@ func TestServer_IsClosed_Reports(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
 	t.Run("server with client is not closed", func(t *testing.T) {
-		client := NewMockRpcClient(ctrl)
+		client := NewMockrpcClient(ctrl)
 		client.EXPECT().Close().AnyTimes()
-		server, err := NewServerFromClient(client)
+		server, err := newServerFromClient(client)
 		require.NoError(err)
 		require.False(server.IsClosed())
-		server.Close()
+		server.close()
 	})
 
 	t.Run("server with client can be closed", func(t *testing.T) {
-		client := NewMockRpcClient(ctrl)
+		client := NewMockrpcClient(ctrl)
 		client.EXPECT().Close()
-		server, err := NewServerFromClient(client)
+		server, err := newServerFromClient(client)
 		require.NoError(err)
 		require.False(server.IsClosed())
-		server.Close()
+		server.close()
 		require.True(server.IsClosed())
 	})
 
 	t.Run("closed server can be re-closed", func(t *testing.T) {
-		client := NewMockRpcClient(ctrl)
+		client := NewMockrpcClient(ctrl)
 		client.EXPECT().Close()
-		server, err := NewServerFromClient(client)
+		server, err := newServerFromClient(client)
 		require.NoError(err)
-		server.Close()
+		server.close()
 		require.True(server.IsClosed())
-		server.Close()
+		server.close()
 		require.True(server.IsClosed())
 	})
 }
@@ -75,28 +75,28 @@ func TestServer_IsClosed_Reports(t *testing.T) {
 func TestServer_FailsToRequestAfterClose(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
-	client := NewMockRpcClient(ctrl)
+	client := NewMockrpcClient(ctrl)
 
-	server, err := NewServerFromClient(client)
+	server, err := newServerFromClient(client)
 	require.NoError(err)
 
 	// close server
 	client.EXPECT().Close()
-	server.Close()
+	server.close()
 
 	// get committee certificates
-	_, err = server.GetCommitteeCertificates(0, 1)
+	_, err = server.getCommitteeCertificates(0, 1)
 	require.Error(err)
 
 	// get block certificates
-	_, err = server.GetBlockCertificates(0, 1)
+	_, err = server.getBlockCertificates(0, 1)
 	require.Error(err)
 }
 
 func TestServer_GetCertificates_PropagatesErrorFromClientCall(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
-	client := NewMockRpcClient(ctrl)
+	client := NewMockrpcClient(ctrl)
 
 	committeeError := fmt.Errorf("committee error")
 	client.EXPECT().Call(gomock.Any(), "sonic_getCommitteeCertificates",
@@ -106,15 +106,15 @@ func TestServer_GetCertificates_PropagatesErrorFromClientCall(t *testing.T) {
 	client.EXPECT().Call(gomock.Any(), "sonic_getBlockCertificates",
 		gomock.Any(), gomock.Any()).Return(blockError)
 
-	server, err := NewServerFromClient(client)
+	server, err := newServerFromClient(client)
 	require.NoError(err)
 
 	// get committee certificates
-	_, err = server.GetCommitteeCertificates(0, 1)
+	_, err = server.getCommitteeCertificates(0, 1)
 	require.ErrorIs(err, committeeError)
 
 	// get block certificates
-	_, err = server.GetBlockCertificates(0, 1)
+	_, err = server.getBlockCertificates(0, 1)
 	require.ErrorIs(err, blockError)
 }
 
@@ -133,8 +133,8 @@ func TestServer_GetCommitteeCertificates_ReportsCorruptedCertificatesOutOfOrder(
 	}
 
 	for _, committees := range tests {
-		client := NewMockRpcClient(ctrl)
-		server, err := NewServerFromClient(client)
+		client := NewMockrpcClient(ctrl)
+		server, err := newServerFromClient(client)
 		require.NoError(err)
 
 		// client setup
@@ -147,7 +147,7 @@ func TestServer_GetCommitteeCertificates_ReportsCorruptedCertificatesOutOfOrder(
 				})
 
 		// get committee certificates
-		_, err = server.GetCommitteeCertificates(0, 3)
+		_, err = server.getCommitteeCertificates(0, 3)
 		require.ErrorContains(err, "out of order")
 	}
 }
@@ -155,8 +155,8 @@ func TestServer_GetCommitteeCertificates_ReportsCorruptedCertificatesOutOfOrder(
 func TestServer_GetCommitteeCertificates_DropsExcessCertificates(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
-	client := NewMockRpcClient(ctrl)
-	server, err := NewServerFromClient(client)
+	client := NewMockrpcClient(ctrl)
+	server, err := newServerFromClient(client)
 	require.NoError(err)
 
 	client.EXPECT().Call(gomock.Any(), "sonic_getCommitteeCertificates",
@@ -170,7 +170,7 @@ func TestServer_GetCommitteeCertificates_DropsExcessCertificates(t *testing.T) {
 		})
 
 	// get committee certificates
-	certs, err := server.GetCommitteeCertificates(0, 1)
+	certs, err := server.getCommitteeCertificates(0, 1)
 	require.NoError(err)
 	require.Len(certs, 1)
 }
@@ -178,8 +178,8 @@ func TestServer_GetCommitteeCertificates_DropsExcessCertificates(t *testing.T) {
 func TestServer_GetBlockCertificates_ReportsCorruptedCertificatesOutOfOrder(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
-	client := NewMockRpcClient(ctrl)
-	server, err := NewServerFromClient(client)
+	client := NewMockrpcClient(ctrl)
+	server, err := newServerFromClient(client)
 	require.NoError(err)
 
 	tests := [][]ethapi.BlockCertificate{
@@ -201,7 +201,7 @@ func TestServer_GetBlockCertificates_ReportsCorruptedCertificatesOutOfOrder(t *t
 			})
 
 		// get block certificates
-		_, err := server.GetBlockCertificates(0, 3)
+		_, err := server.getBlockCertificates(0, 3)
 		require.ErrorContains(err, "out of order")
 	}
 }
@@ -209,8 +209,8 @@ func TestServer_GetBlockCertificates_ReportsCorruptedCertificatesOutOfOrder(t *t
 func TestServer_GetBlockCertificates_DropsExcessCertificates(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
-	client := NewMockRpcClient(ctrl)
-	server, err := NewServerFromClient(client)
+	client := NewMockrpcClient(ctrl)
+	server, err := newServerFromClient(client)
 	require.NoError(err)
 
 	client.EXPECT().Call(gomock.Any(), "sonic_getBlockCertificates",
@@ -224,7 +224,7 @@ func TestServer_GetBlockCertificates_DropsExcessCertificates(t *testing.T) {
 		})
 
 	// get block certificates
-	certs, err := server.GetBlockCertificates(0, 1)
+	certs, err := server.getBlockCertificates(0, 1)
 	require.NoError(err)
 	require.Len(certs, 1)
 }
@@ -232,8 +232,8 @@ func TestServer_GetBlockCertificates_DropsExcessCertificates(t *testing.T) {
 func TestServer_GetBlockCertificates_FailsWhenNoCertificatesReturned(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
-	client := NewMockRpcClient(ctrl)
-	server, err := NewServerFromClient(client)
+	client := NewMockrpcClient(ctrl)
+	server, err := newServerFromClient(client)
 	require.NoError(err)
 
 	client.EXPECT().Call(gomock.Any(), "sonic_getBlockCertificates",
@@ -244,15 +244,15 @@ func TestServer_GetBlockCertificates_FailsWhenNoCertificatesReturned(t *testing.
 		})
 
 	// get block certificates
-	_, err = server.GetBlockCertificates(0, 1)
+	_, err = server.getBlockCertificates(0, 1)
 	require.ErrorContains(err, "no block certificates found")
 }
 
 func TestServer_GetBlockCertificates_CanFetchLatestBlock(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
-	client := NewMockRpcClient(ctrl)
-	server, err := NewServerFromClient(client)
+	client := NewMockrpcClient(ctrl)
+	server, err := newServerFromClient(client)
 	require.NoError(err)
 
 	latestBlockNumber := idx.Block(1024)
@@ -267,7 +267,7 @@ func TestServer_GetBlockCertificates_CanFetchLatestBlock(t *testing.T) {
 		})
 
 	// get block certificates
-	blockCerts, err := server.GetBlockCertificates(LatestBlock, 1)
+	blockCerts, err := server.getBlockCertificates(LatestBlock, 1)
 	require.NoError(err)
 	require.Len(blockCerts, 1)
 	require.Equal(latestBlockNumber, blockCerts[0].Subject().Number)
@@ -276,24 +276,24 @@ func TestServer_GetBlockCertificates_CanFetchLatestBlock(t *testing.T) {
 func TestServer_GetCertificates_IgnoresRequestForZeroCertificates(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
-	client := NewMockRpcClient(ctrl)
-	server, err := NewServerFromClient(client)
+	client := NewMockrpcClient(ctrl)
+	server, err := newServerFromClient(client)
 	require.NoError(err)
 
 	// get committee certificates
-	_, err = server.GetCommitteeCertificates(0, 0)
+	_, err = server.getCommitteeCertificates(0, 0)
 	require.NoError(err)
 
 	// get block certificates
-	_, err = server.GetBlockCertificates(0, 0)
+	_, err = server.getBlockCertificates(0, 0)
 	require.NoError(err)
 }
 
 func TestServer_GetCertificates_ReturnsCertificates(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
-	client := NewMockRpcClient(ctrl)
-	server, err := NewServerFromClient(client)
+	client := NewMockrpcClient(ctrl)
+	server, err := newServerFromClient(client)
 	require.NoError(err)
 
 	// committee certificates
@@ -308,7 +308,7 @@ func TestServer_GetCertificates_ReturnsCertificates(t *testing.T) {
 		})
 
 	// get committee certificates
-	comCerts, err := server.GetCommitteeCertificates(0, 2)
+	comCerts, err := server.getCommitteeCertificates(0, 2)
 	require.NoError(err)
 	require.Len(comCerts, 2)
 	require.Equal(scc.Period(0), comCerts[0].Subject().Period)
@@ -326,7 +326,7 @@ func TestServer_GetCertificates_ReturnsCertificates(t *testing.T) {
 		})
 
 	// get block certificates
-	blockCerts, err := server.GetBlockCertificates(0, 2)
+	blockCerts, err := server.getBlockCertificates(0, 2)
 	require.NoError(err)
 	require.Len(blockCerts, 2)
 }

@@ -1,4 +1,4 @@
-package provider
+package light_client
 
 import (
 	"math"
@@ -8,12 +8,12 @@ import (
 	"github.com/0xsoniclabs/sonic/scc/cert"
 )
 
-//go:generate mockgen -source=provider.go -package=provider -destination=provider_mock.go
+//go:generate mockgen -source=provider.go -package=light_client -destination=provider_mock.go
 
-// Provider is an interface to access certificates of the Sonic Certification Chain.
-type Provider interface {
+// provider is an interface to access certificates of the Sonic Certification Chain.
+type provider interface {
 
-	// GetCommitteeCertificates returns up to `maxResults` consecutive committee
+	// getCommitteeCertificates returns up to `maxResults` consecutive committee
 	// certificates starting from the given period.
 	//
 	// Parameters:
@@ -23,9 +23,9 @@ type Provider interface {
 	// Returns:
 	//   - []cert.CommitteeCertificate: A slice of committee certificates.
 	//   - error: Not nil if the provider failed to obtain the requested certificates.
-	GetCommitteeCertificates(first scc.Period, maxResults uint64) ([]cert.CommitteeCertificate, error)
+	getCommitteeCertificates(first scc.Period, maxResults uint64) ([]cert.CommitteeCertificate, error)
 
-	// GetBlockCertificates returns up to `maxResults` consecutive block
+	// getBlockCertificates returns up to `maxResults` consecutive block
 	// certificates starting from the given block number.
 	//
 	// Parameters:
@@ -37,11 +37,11 @@ type Provider interface {
 	//   - cert.BlockCertificate: The block certificates for the given block number
 	//     and the following blocks.
 	//   - error: Not nil if the provider failed to obtain the requested certificates.
-	GetBlockCertificates(first idx.Block, maxResults uint64) ([]cert.BlockCertificate, error)
+	getBlockCertificates(first idx.Block, maxResults uint64) ([]cert.BlockCertificate, error)
 
-	// Close closes the Provider.
+	// close closes the Provider.
 	// Closing an already closed provider has no effect
-	Close()
+	close()
 }
 
 // LatestBlock is a constant used to indicate the latest block.
