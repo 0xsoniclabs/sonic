@@ -1,4 +1,4 @@
-package lc_state
+package light_client
 
 import (
 	"fmt"
@@ -6,12 +6,11 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/cert"
-	"github.com/0xsoniclabs/sonic/scc/light_client/provider"
 	"github.com/ethereum/go-ethereum/common"
 )
 
-// State holds the current state of the light client.
-type State struct {
+// state holds the current state of the light client.
+type state struct {
 	committee  scc.Committee
 	period     scc.Period
 	headNumber idx.Block
@@ -20,39 +19,39 @@ type State struct {
 	hasSynced  bool
 }
 
-// NewState creates a new State with the given committee.
+// newState creates a new State with the given committee.
 // The given committee must be a valid committee and it is expected to be the
 // committee for the genesis period.
-func NewState(committee scc.Committee) *State {
-	return &State{
+func newState(committee scc.Committee) *state {
+	return &state{
 		committee: committee,
 	}
 }
 
-// Head returns the block number of the latest known block and a bool which
+// head returns the block number of the latest known block and a bool which
 // is only true if the state has already been successfully synced.
-func (s *State) Head() (idx.Block, bool) {
+func (s *state) head() (idx.Block, bool) {
 	return s.headNumber, s.hasSynced
 }
 
-// StateRoot returns the state root of the latest known block and a bool which
+// stateRoot returns the state root of the latest known block and a bool which
 // is only true if the state has already been successfully synced.
-func (s *State) StateRoot() (common.Hash, bool) {
+func (s *state) stateRoot() (common.Hash, bool) {
 	return s.headRoot, s.hasSynced
 }
 
-// Sync updates the light client state using certificates from the provider.
+// sync updates the light client state using certificates from the provider.
 // This serves as the primary method for synchronizing the light client state
 // with the network.
 // If successful, the most recent block number is returned.
 // If an error occurs, the returned block number is 0 with the corresponding error.
-func (s *State) Sync(p provider.Provider) (idx.Block, error) {
+func (s *state) sync(p provider) (idx.Block, error) {
 	if p == nil {
 		return 0, fmt.Errorf("cannot update with nil provider")
 	}
 
 	// Get the latest block number from the provider.
-	blockCerts, err := p.GetBlockCertificates(provider.LatestBlock, uint64(1))
+	blockCerts, err := p.getBlockCertificates(LatestBlock, uint64(1))
 	if err != nil {
 		return 0, fmt.Errorf("failed to get block certificates: %w", err)
 	}
@@ -98,7 +97,7 @@ func (s *State) Sync(p provider.Provider) (idx.Block, error) {
 
 // syncToPeriod is a helper function to updates the light client state
 // to the given period using the given provider
-func (s *State) syncToPeriod(p provider.Provider, target scc.Period) error {
+func (s *state) syncToPeriod(p provider, target scc.Period) error {
 	if s.period == target {
 		return nil
 	}
@@ -108,7 +107,7 @@ func (s *State) syncToPeriod(p provider.Provider, target scc.Period) error {
 	}
 
 	// get all the committee certificates from the current period to the target.
-	committeeCerts, err := p.GetCommitteeCertificates(s.period+1, uint64(target-s.period))
+	committeeCerts, err := p.getCommitteeCertificates(s.period+1, uint64(target-s.period))
 	if err != nil {
 		return err
 	}
@@ -125,7 +124,7 @@ func (s *State) syncToPeriod(p provider.Provider, target scc.Period) error {
 
 // updateCommittee is a helper function to update the light client state
 // to the next period with the given certificate.
-func (s *State) updateCommittee(c cert.CommitteeCertificate) error {
+func (s *state) updateCommittee(c cert.CommitteeCertificate) error {
 	// verify the period
 	target := s.period + 1
 	if c.Subject().Period != target {

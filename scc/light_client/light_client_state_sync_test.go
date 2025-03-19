@@ -1,18 +1,17 @@
-package lc_state
+package light_client
 
 import (
 	"crypto/sha256"
 	"slices"
 	"testing"
 
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/bls"
 	"github.com/0xsoniclabs/sonic/scc/cert"
-	"github.com/0xsoniclabs/sonic/scc/light_client/provider"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 func TestLightClientState_CanSyncWithProvider(t *testing.T) {
@@ -26,8 +25,8 @@ func TestLightClientState_CanSyncWithProvider(t *testing.T) {
 	require.NoError(err)
 
 	// create a new state with the first committee
-	state := NewState(firstCommittee)
-	headNumber, err := state.Sync(provider)
+	state := newState(firstCommittee)
+	headNumber, err := state.sync(provider)
 	require.NoError(err)
 	require.Equal(idx.Block(blockHeight), headNumber)
 }
@@ -44,7 +43,7 @@ func TestLightClientState_CanSyncWithProvider(t *testing.T) {
 func generateCertificatesAndProvider(
 	ctrl *gomock.Controller,
 	blockHeight idx.Block,
-) (scc.Committee, provider.Provider, error) {
+) (scc.Committee, provider, error) {
 
 	// generate first committee with committees and blocks certificates
 	firstCommittee, blocks, committees, err := generateHistory(blockHeight)
@@ -148,14 +147,14 @@ func prepareProvider(
 	blockHeight idx.Block,
 	blocks []cert.BlockCertificate,
 	committees []cert.CommitteeCertificate,
-) provider.Provider {
+) provider {
 
-	prov := provider.NewMockProvider(ctrl)
+	prov := NewMockprovider(ctrl)
 	prov.
 		EXPECT().
-		GetBlockCertificates(gomock.Any(), gomock.Any()).
+		getBlockCertificates(gomock.Any(), gomock.Any()).
 		DoAndReturn(func(number idx.Block, max uint64) ([]cert.BlockCertificate, error) {
-			if number == provider.LatestBlock {
+			if number == LatestBlock {
 				return blocks[len(blocks)-1:], nil
 			}
 			start := uint64(number)
@@ -167,7 +166,7 @@ func prepareProvider(
 		AnyTimes()
 
 	prov.EXPECT().
-		GetCommitteeCertificates(gomock.Any(), gomock.Any()).
+		getCommitteeCertificates(gomock.Any(), gomock.Any()).
 		DoAndReturn(func(from scc.Period, max uint64) ([]cert.CommitteeCertificate, error) {
 			start := uint64(from)
 			end := start + max
@@ -178,14 +177,6 @@ func prepareProvider(
 		AnyTimes()
 
 	return prov
-}
-
-func makeMember(key bls.PrivateKey) scc.Member {
-	return scc.Member{
-		PublicKey:         key.PublicKey(),
-		ProofOfPossession: key.GetProofOfPossession(),
-		VotingPower:       1,
-	}
 }
 
 func rotate[T any](list []T) []T {
