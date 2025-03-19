@@ -5,8 +5,6 @@ import (
 	"net/url"
 
 	"github.com/0xsoniclabs/sonic/scc"
-	lcs "github.com/0xsoniclabs/sonic/scc/light_client/light_client_state"
-	"github.com/0xsoniclabs/sonic/scc/light_client/provider"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 )
 
@@ -14,8 +12,8 @@ import (
 // It is responsible for managing the light client state and
 // interacting with the provider.
 type LightClient struct {
-	provider provider.Provider
-	state    *lcs.State
+	provider provider
+	state    state
 }
 
 // Config is used to configure the LightClient.
@@ -31,12 +29,12 @@ func NewLightClient(config Config) (*LightClient, error) {
 	if err := config.Genesis.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid committee provided: %w", err)
 	}
-	p, err := provider.NewServerFromURL(config.Url.String())
+	p, err := newServerFromURL(config.Url.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create provider: %w\n", err)
 	}
 	return &LightClient{
-		state:    lcs.NewState(config.Genesis),
+		state:    *newState(config.Genesis),
 		provider: p,
 	}, nil
 }
@@ -44,12 +42,12 @@ func NewLightClient(config Config) (*LightClient, error) {
 // Close closes the light client provider.
 // Closing an already closed client has no effect
 func (c *LightClient) Close() {
-	c.provider.Close()
+	c.provider.close()
 }
 
 // Sync updates the light client state using certificates from the provider.
 // This serves as the primary method for synchronizing the light client state
 // with the network.
 func (c *LightClient) Sync() (idx.Block, error) {
-	return c.state.Sync(c.provider)
+	return c.state.sync(c.provider)
 }

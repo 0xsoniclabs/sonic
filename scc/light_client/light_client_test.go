@@ -8,11 +8,10 @@ import (
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/bls"
 	"github.com/0xsoniclabs/sonic/scc/cert"
-	"github.com/0xsoniclabs/sonic/scc/light_client/provider"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 func TestLightClient_NewLightClient_ReportsInvalidConfig(t *testing.T) {
@@ -57,12 +56,19 @@ func TestLightClient_NewLightClient_ReturnsClientToValidConfig(t *testing.T) {
 	require.NotNil(c.provider)
 }
 
+func TestLightClient_NewLightClient_CreatesLightClientFromValidConfig(t *testing.T) {
+	require := require.New(t)
+	c, err := NewLightClient(testConfig())
+	require.NoError(err)
+	require.NotNil(c)
+}
+
 func TestLightClient_Close_ClosesProvider(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
-	prov := provider.NewMockProvider(ctrl)
+	prov := NewMockprovider(ctrl)
 
-	prov.EXPECT().Close().Times(1)
+	prov.EXPECT().close().Times(1)
 
 	c, err := NewLightClient(testConfig())
 	require.NoError(err)
@@ -73,14 +79,13 @@ func TestLightClient_Close_ClosesProvider(t *testing.T) {
 func TestLightClient_Sync_ReturnsErrorOnProviderFailure(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
-	prov := provider.NewMockProvider(ctrl)
+	prov := NewMockprovider(ctrl)
 
 	c, err := NewLightClient(testConfig())
 	require.NoError(err)
 	errStr := "failed to get block certificates"
-	prov.EXPECT().GetBlockCertificates(provider.LatestBlock, uint64(1)).
+	prov.EXPECT().getBlockCertificates(LatestBlock, uint64(1)).
 		Return(nil, fmt.Errorf("%v", errStr))
-
 	c.provider = prov
 	_, err = c.Sync()
 	require.ErrorContains(err, errStr)
@@ -91,22 +96,21 @@ func TestLightClient_Sync_ReturnsErrorOnStateSyncFailure(t *testing.T) {
 
 	// setup mock provider
 	ctrl := gomock.NewController(t)
-	prov := provider.NewMockProvider(ctrl)
+	prov := NewMockprovider(ctrl)
 
 	// setup block certificate
 	blockNumber := idx.Block(scc.BLOCKS_PER_PERIOD*1 + 42)
 	blockCert := cert.NewCertificate(
 		cert.NewBlockStatement(0, blockNumber, common.Hash{0x1}, common.Hash{}))
-
 	// expect to return head
-	prov.EXPECT().GetBlockCertificates(provider.LatestBlock, uint64(1)).
+	prov.EXPECT().getBlockCertificates(LatestBlock, uint64(1)).
 		Return([]cert.BlockCertificate{blockCert}, nil)
 
 	// setup committee certificate
 	committeeCert := cert.NewCertificate(cert.CommitteeStatement{Period: 1})
 	// expect to return committee certificates that is not signed by genesis
 	prov.EXPECT().
-		GetCommitteeCertificates(scc.Period(1), gomock.Any()).
+		getCommitteeCertificates(scc.Period(1), gomock.Any()).
 		Return([]cert.CommitteeCertificate{committeeCert}, nil)
 
 	// create LightClient
@@ -124,7 +128,7 @@ func TestLightClient_Sync_ReturnsErrorOnStateSyncFailure(t *testing.T) {
 func TestLightClientState_Sync_UpdatesStateToHead(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
-	prov := provider.NewMockProvider(ctrl)
+	prov := NewMockprovider(ctrl)
 
 	// setup block for period 1.
 	blockNumber := idx.Block(scc.BLOCKS_PER_PERIOD*1 + 1)
@@ -147,10 +151,10 @@ func TestLightClientState_Sync_UpdatesStateToHead(t *testing.T) {
 
 	// provider calls
 	prov.EXPECT().
-		GetBlockCertificates(provider.LatestBlock, uint64(1)).
+		getBlockCertificates(LatestBlock, uint64(1)).
 		Return([]cert.BlockCertificate{blockCert}, nil)
 	prov.EXPECT().
-		GetCommitteeCertificates(scc.Period(1), uint64(1)).
+		getCommitteeCertificates(scc.Period(1), uint64(1)).
 		Return([]cert.CommitteeCertificate{committeeCert1}, nil)
 
 	// sync
