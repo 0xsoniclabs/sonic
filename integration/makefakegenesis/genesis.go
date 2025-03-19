@@ -12,6 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/params"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/integration/makegenesis"
@@ -97,6 +98,14 @@ func FakeGenesisStoreWithRulesAndStart(
 	// set non-zero code for pre-compiled contracts
 	builder.SetCode(evmwriter.ContractAddress, []byte{0})
 	builder.SetNonce(evmwriter.ContractAddress, 1)
+
+	// Configure pre-deployed contracts, according to the hardfork of the fake-net
+	if rules.Upgrades.Allegro {
+		// Deploy the history storage contract
+		// see: https://eips.ethereum.org/EIPS/eip-2935
+		builder.SetCode(params.HistoryStorageAddress, params.HistoryStorageCode)
+		builder.SetNonce(params.HistoryStorageAddress, 1)
+	}
 
 	_, genesisStateRoot, err := builder.FinalizeBlockZero(rules, FakeGenesisTime)
 	if err != nil {
