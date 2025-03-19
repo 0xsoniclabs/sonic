@@ -47,20 +47,13 @@ func TestLightClient_NewLightClient_ReportsInvalidConfig(t *testing.T) {
 	}
 }
 
-func TestLightClient_NewLightClient_ReturnsClientToValidConfig(t *testing.T) {
+func TestLightClient_NewLightClient_CreatesLightClientFromValidConfig(t *testing.T) {
 	require := require.New(t)
 	c, err := NewLightClient(testConfig())
 	require.NoError(err)
 	require.NotNil(c)
 	require.NotNil(c.state)
 	require.NotNil(c.provider)
-}
-
-func TestLightClient_NewLightClient_CreatesLightClientFromValidConfig(t *testing.T) {
-	require := require.New(t)
-	c, err := NewLightClient(testConfig())
-	require.NoError(err)
-	require.NotNil(c)
 }
 
 func TestLightClient_Close_ClosesProvider(t *testing.T) {

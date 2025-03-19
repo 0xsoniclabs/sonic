@@ -1,4 +1,4 @@
-package tests
+package light_client
 
 import (
 	"fmt"
@@ -6,7 +6,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/scc/light_client/provider"
+	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -15,7 +15,7 @@ import (
 )
 
 ////////////////////////////////////////
-// TODO: expand tests to cover not only provider.Server but also light client
+// TODO: expand tests to cover not only Server but also light client
 //       instance to sync up to the network, as well as new functionionalities
 //       added to the Server through decorators.
 ////////////////////////////////////////
@@ -27,20 +27,20 @@ func TestServer_GetCommitteeCertificates_CanRetrieveCertificates(t *testing.T) {
 	net, client := startNetAndGetClient(t)
 
 	// make providers
-	providerFromClient, err := provider.NewServerFromClient(client.Client())
+	providerFromClient, err := newServerFromClient(client.Client())
 	require.NoError(err)
-	t.Cleanup(providerFromClient.Close)
+	t.Cleanup(providerFromClient.close)
 	url := fmt.Sprintf("http://localhost:%d", net.GetJsonRpcPort())
-	providerFromURL, err := provider.NewServerFromURL(url)
+	providerFromURL, err := newServerFromURL(url)
 	require.NoError(err)
-	t.Cleanup(providerFromURL.Close)
+	t.Cleanup(providerFromURL.close)
 
 	chainId := getChainIdFromClient(t, client.Client())
 
-	for _, provider := range []*provider.Server{providerFromClient, providerFromURL} {
+	for _, provider := range []*server{providerFromClient, providerFromURL} {
 
 		// get certificates
-		certs, err := provider.GetCommitteeCertificates(0, math.MaxUint64)
+		certs, err := provider.getCommitteeCertificates(0, math.MaxUint64)
 		require.NoError(err)
 
 		require.NotZero(len(certs))
@@ -57,20 +57,20 @@ func TestServer_GetBlockCertificates_CanRetrieveCertificates(t *testing.T) {
 	net, client := startNetAndGetClient(t)
 
 	// make providers
-	providerFromClient, err := provider.NewServerFromClient(client.Client())
+	providerFromClient, err := newServerFromClient(client.Client())
 	require.NoError(err)
-	t.Cleanup(providerFromClient.Close)
+	t.Cleanup(providerFromClient.close)
 	url := fmt.Sprintf("http://localhost:%d", net.GetJsonRpcPort())
-	providerFromURL, err := provider.NewServerFromURL(url)
+	providerFromURL, err := newServerFromURL(url)
 	require.NoError(err)
-	t.Cleanup(providerFromURL.Close)
+	t.Cleanup(providerFromURL.close)
 
 	chainId := getChainIdFromClient(t, client.Client())
 
-	for _, provider := range []*provider.Server{providerFromClient, providerFromURL} {
+	for _, provider := range []*server{providerFromClient, providerFromURL} {
 
 		// get certificates
-		certs, err := provider.GetBlockCertificates(1, 100)
+		certs, err := provider.getBlockCertificates(1, 100)
 		require.NoError(err)
 
 		// get headers
@@ -98,20 +98,20 @@ func TestServer_CanRequestMaxNumberOfResults(t *testing.T) {
 	net, client := startNetAndGetClient(t)
 
 	// make providers
-	providerFromClient, err := provider.NewServerFromClient(client.Client())
+	providerFromClient, err := newServerFromClient(client.Client())
 	require.NoError(err)
-	t.Cleanup(providerFromClient.Close)
+	t.Cleanup(providerFromClient.close)
 	url := fmt.Sprintf("http://localhost:%d", net.GetJsonRpcPort())
-	providerFromURL, err := provider.NewServerFromURL(url)
+	providerFromURL, err := newServerFromURL(url)
 	require.NoError(err)
-	t.Cleanup(providerFromURL.Close)
+	t.Cleanup(providerFromURL.close)
 
-	for _, provider := range []*provider.Server{providerFromClient, providerFromURL} {
-		comCerts, err := provider.GetCommitteeCertificates(0, math.MaxUint64)
+	for _, provider := range []*server{providerFromClient, providerFromURL} {
+		comCerts, err := provider.getCommitteeCertificates(0, math.MaxUint64)
 		require.NoError(err)
 		require.NotZero(len(comCerts))
 
-		blockCerts, err := provider.GetBlockCertificates(0, math.MaxUint64)
+		blockCerts, err := provider.getBlockCertificates(0, math.MaxUint64)
 		require.NoError(err)
 		require.NotZero(len(blockCerts))
 	}
@@ -121,11 +121,11 @@ func TestServer_CanRequestMaxNumberOfResults(t *testing.T) {
 // helper functions
 ////////////////////////////////////////
 
-func startNetAndGetClient(t *testing.T) (*IntegrationTestNet, *ethclient.Client) {
+func startNetAndGetClient(t *testing.T) (*tests.IntegrationTestNet, *ethclient.Client) {
 	t.Helper()
 	require := require.New(t)
 	// start network
-	net := StartIntegrationTestNet(t)
+	net := tests.StartIntegrationTestNet(t)
 
 	client, err := net.GetClient()
 	require.NoError(err)
