@@ -33,6 +33,7 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/lachesis"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/params"
 )
 
 type GenesisJson struct {
@@ -117,6 +118,18 @@ func GenerateFakeJsonGenesis(
 			Code:    []byte{0},
 			Nonce:   1,
 		},
+	}
+
+	// Configure pre-deployed contracts, according to the hardfork of the fake-net
+	if features == opera.AllegroFeatures {
+		// Deploy the history storage contract
+		// see: https://eips.ethereum.org/EIPS/eip-2935
+		jsonGenesis.Accounts = append(jsonGenesis.Accounts, Account{
+			Name:    "HistoryStorage",
+			Address: params.HistoryStorageAddress,
+			Code:    params.HistoryStorageCode,
+			Nonce:   1,
+		})
 	}
 
 	// Create the validator accounts and provide some tokens.
