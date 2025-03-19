@@ -18,9 +18,9 @@ type LightClient struct {
 }
 
 // Config is used to configure the LightClient.
-// It requires an url for the certificate provider and an initial committee.
+// It requires a list of urls for the certificate providers and an initial committee.
 type Config struct {
-	Url     *url.URL
+	Url     []*url.URL
 	Genesis scc.Committee
 	// By default, requests are retried up to 1024 times to reach a 10-second timeout.
 	Retries uint
@@ -33,12 +33,19 @@ func NewLightClient(config Config) (*LightClient, error) {
 	if err := config.Genesis.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid committee provided: %w", err)
 	}
-	var p provider
-	p, err := newServerFromURL(config.Url.String())
-	if err != nil {
-		return nil, fmt.Errorf("failed to create provider: %w\n", err)
+	providers := make([]provider, len(config.Url))
+	for _, u := range config.Url {
+		var p provider
+		p, err := newServerFromURL(u.String())
+		if err != nil {
+			return nil, fmt.Errorf("failed to create provider: %w", err)
+		}
+		providers = append(providers, newRetry(p, config.Retries, config.Timeout))
 	}
-	p = newRetry(p, config.Retries, config.Timeout)
+	p, err := newMultiplexer(providers...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create multiplexer: %w", err)
+	}
 	return &LightClient{
 		state:    *newState(config.Genesis),
 		provider: p,

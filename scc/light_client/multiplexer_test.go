@@ -11,6 +11,11 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
+func TestMultiplexer_newMultiplexer_ReturnsErrorIfNoProviders(t *testing.T) {
+	_, err := newMultiplexer()
+	require.Error(t, err)
+}
+
 func TestMultiplexer_Close_closesAllProviders(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
@@ -68,16 +73,20 @@ func TestMultiplexer_GetCertificates_PropagatesError(t *testing.T) {
 	require.NoError(err)
 
 	// fail to get block certificates
-	p1.EXPECT().getBlockCertificates(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("error")).Times(1)
-	p2.EXPECT().getBlockCertificates(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("error")).Times(1)
+	p1.EXPECT().getBlockCertificates(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("error1")).Times(1)
+	p2.EXPECT().getBlockCertificates(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("error2")).Times(1)
 
 	_, err = m.getBlockCertificates(idx.Block(0), uint64(1))
 	require.ErrorContains(err, "all providers failed")
+	require.ErrorContains(err, "error1")
+	require.ErrorContains(err, "error2")
 
 	// fail to get committee certificates
-	p1.EXPECT().getCommitteeCertificates(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("error")).Times(1)
-	p2.EXPECT().getCommitteeCertificates(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("error")).Times(1)
+	p1.EXPECT().getCommitteeCertificates(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("error3")).Times(1)
+	p2.EXPECT().getCommitteeCertificates(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("error4")).Times(1)
 
 	_, err = m.getCommitteeCertificates(scc.Period(0), uint64(1))
 	require.ErrorContains(err, "all providers failed")
+	require.ErrorContains(err, "error3")
+	require.ErrorContains(err, "error4")
 }

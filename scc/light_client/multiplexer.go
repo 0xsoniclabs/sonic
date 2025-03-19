@@ -11,7 +11,7 @@ import (
 
 // multiplexer is a provider that distributes requests across multiple providers.
 // It attempts to retrieve data by calling each provider in sequence until one
-// successfully fulfills the request.
+// returns a nil error.
 type multiplexer struct {
 	providers []provider
 }
@@ -73,7 +73,7 @@ func (m *multiplexer) getBlockCertificates(first idx.Block, maxResults uint64) (
 	})
 }
 
-// tryAll executes a function on each provider in sequence until one succeeds.
+// tryAll executes a function on each provider in sequence until one returns nil error.
 //
 // This function is a generic helper that iterates over a list of providers,
 // calling the given function on each. If any function call succeeds, it immediately
