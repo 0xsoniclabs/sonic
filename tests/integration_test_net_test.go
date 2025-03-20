@@ -7,7 +7,9 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/config"
+	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
+	"github.com/0xsoniclabs/tosca/go/tosca/vm"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -234,4 +236,56 @@ func TestIntegrationTestNet_CanStartWithCustomConfig(t *testing.T) {
 	}, sender)
 	err = client.SendTransaction(context.Background(), tx)
 	require.NoError(t, err)
+}
+
+func TestIntegrationTestNet_AccountsToBeDeployedWithGenesisCanBeCalled(t *testing.T) {
+	address := common.HexToAddress("0x42")
+	topic := common.Hash{0x24}
+	code := []byte{byte(vm.PUSH32)}
+	code = append(code, topic.Bytes()...) // topic
+	code = append(code, []byte{
+		byte(vm.PUSH1), 0x00, // size
+		byte(vm.PUSH1), 0x00, // offset
+		byte(vm.LOG1), // log
+		byte(vm.STOP), // stop
+	}...)
+	accounts := []makefakegenesis.Account{
+		{
+			Name:    "account",
+			Address: address,
+			Code:    code,
+			Nonce:   1,
+		},
+	}
+	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
+		Accounts: accounts,
+	})
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	sender := makeAccountWithBalance(t, net, big.NewInt(1e18))
+
+	gasPrice, err := client.SuggestGasPrice(context.Background())
+	require.NoError(t, err)
+
+	chainId, err := client.ChainID(context.Background())
+	require.NoError(t, err)
+
+	txData := &types.LegacyTx{
+		Nonce:    0,
+		GasPrice: gasPrice,
+		Gas:      50000,
+		To:       &address,
+		Value:    big.NewInt(0),
+		Data:     []byte{},
+	}
+	tx := signTransaction(t, chainId, txData, sender)
+
+	receipt, err := net.Run(tx)
+	require.NoError(t, err)
+
+	require.Equal(t, topic, receipt.Logs[0].Topics[0])
+
 }
