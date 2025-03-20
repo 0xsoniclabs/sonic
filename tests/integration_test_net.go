@@ -527,16 +527,12 @@ func (n *IntegrationTestNet) GetHeaders() ([]*types.Header, error) {
 //
 // A typical use case would look as follows:
 //
-//	net, err := StartIntegrationTestNet(t.TempDir())
-//	if err != nil {
-//	    ...
-//	}
-//	t.Cleanup(func(){net.Stop()})
-//	t.Run("test_case",, func(t *testing.T) {
-//			t.Parallel()
-//			session := net.SpawnSession(t)
-//	        < use session instead of net of the rest of the test >
-//	})
+//	 net := StartIntegrationTestNet(t)
+//		t.Run("test_case",, func(t *testing.T) {
+//				t.Parallel()
+//				session := net.SpawnSession(t)
+//		        < use session instead of net of the rest of the test >
+//		})
 func (n *IntegrationTestNet) SpawnSession(t *testing.T) IntegrationTestNetSession {
 	t.Helper()
 	n.sessionsMutex.Lock()
