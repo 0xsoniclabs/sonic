@@ -48,7 +48,8 @@ type (
 
 		WithdrawalsHash *common.Hash
 
-		BaseFee *big.Int
+		BaseFee     *big.Int
+		BlobBaseFee *big.Int // TODO issue #147
 
 		PrevRandao common.Hash // == mixHash/mixDigest
 

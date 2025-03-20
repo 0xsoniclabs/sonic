@@ -128,7 +128,7 @@ func (p *DriverTxTransactor) PopInternalTxs(_ iblockproc.BlockCtx, _ iblockproc.
 	return internalTxs
 }
 
-func (p *DriverTxListener) OnNewReceipt(tx *types.Transaction, r *types.Receipt, originator idx.ValidatorID, baseFee *big.Int) {
+func (p *DriverTxListener) OnNewReceipt(tx *types.Transaction, r *types.Receipt, originator idx.ValidatorID, baseFee *big.Int, blobBaseFee *big.Int) {
 	if originator == 0 {
 		return
 	}
@@ -142,6 +142,13 @@ func (p *DriverTxListener) OnNewReceipt(tx *types.Transaction, r *types.Receipt,
 		gasPrice = tx.GasPrice()
 	}
 	txFee := new(big.Int).Mul(new(big.Int).SetUint64(r.GasUsed), gasPrice)
+
+	if r.BlobGasUsed != 0 && blobBaseFee != nil {
+		blobFee := new(big.Int).SetUint64(r.BlobGasUsed)
+		blobFee.Mul(blobFee, blobBaseFee)
+		txFee.Add(txFee, blobFee)
+	}
+
 	originated := p.bs.ValidatorStates[originatorIdx].Originated
 	originated.Add(originated, txFee)
 

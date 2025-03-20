@@ -7,7 +7,10 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/params"
+	"github.com/holiman/uint256"
 	"go.uber.org/mock/gomock"
 	"math/big"
 	"testing"
@@ -18,6 +21,9 @@ const GasUsed = 40
 const GasFeeCap = 100
 const GasTip = 3
 const BaseFee = 50
+const BlobGasUsed = 2 * params.BlobTxBlobGasPerBlob
+const BlobFeeCap = 6
+const BlobBaseFee = 4
 const EffectiveGasPrice = 53
 
 func TestReceiptRewardWithoutFixEnabled(t *testing.T) {
@@ -52,7 +58,7 @@ func TestReceiptRewardWithoutFixEnabled(t *testing.T) {
 		TxHash:  tx.Hash(),
 		GasUsed: GasUsed,
 	}
-	listener.OnNewReceipt(tx, receipt, idx.ValidatorID(1), big.NewInt(BaseFee))
+	listener.OnNewReceipt(tx, receipt, idx.ValidatorID(1), big.NewInt(BaseFee), big.NewInt(BlobBaseFee))
 
 	originated := bs.ValidatorStates[es.Validators.GetIdx(1)].Originated.Uint64()
 	if originated != OrigOriginated+GasUsed*GasFeeCap {
@@ -93,11 +99,55 @@ func TestReceiptRewardWithFixEnabled(t *testing.T) {
 		TxHash:  tx.Hash(),
 		GasUsed: GasUsed,
 	}
-	listener.OnNewReceipt(tx, receipt, idx.ValidatorID(1), big.NewInt(BaseFee))
+	listener.OnNewReceipt(tx, receipt, idx.ValidatorID(1), big.NewInt(BaseFee), big.NewInt(BlobBaseFee))
 
 	originated := bs.ValidatorStates[es.Validators.GetIdx(1)].Originated.Uint64()
 	if originated != OrigOriginated+GasUsed*EffectiveGasPrice {
 		t.Errorf("Originated increment not GasUsed*EffectiveGasPrice: expected %d, actual %d",
 			OrigOriginated+GasUsed*EffectiveGasPrice, originated)
+	}
+}
+
+func TestReceiptRewardWithBlobsAndFixEnabled(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	module := drivermodule.NewDriverTxListenerModule()
+
+	blockCtx := iblockproc.BlockCtx{}
+	bs := iblockproc.BlockState{
+		ValidatorStates: []iblockproc.ValidatorBlockState{{
+			Originated: big.NewInt(OrigOriginated),
+		}},
+	}
+	valsBuilder := pos.NewBuilder()
+	valsBuilder.Set(1, 100)
+
+	rules := opera.MainNetRules()
+	rules.Upgrades.Allegro = true // enable fix
+
+	es := iblockproc.EpochState{
+		Validators: valsBuilder.Build(),
+		Rules:      rules,
+	}
+	stateDb := state.NewMockStateDB(ctrl)
+	listener := module.Start(blockCtx, bs, es, stateDb)
+
+	tx := types.NewTx(&types.BlobTx{
+		GasTipCap:  uint256.NewInt(GasTip),
+		GasFeeCap:  uint256.NewInt(GasFeeCap),
+		BlobFeeCap: uint256.NewInt(BlobFeeCap),
+		BlobHashes: make([]common.Hash, 2),
+	})
+	receipt := &types.Receipt{
+		TxHash:      tx.Hash(),
+		GasUsed:     GasUsed,
+		BlobGasUsed: BlobGasUsed,
+	}
+	listener.OnNewReceipt(tx, receipt, idx.ValidatorID(1), big.NewInt(BaseFee), big.NewInt(BlobBaseFee))
+
+	originated := bs.ValidatorStates[es.Validators.GetIdx(1)].Originated.Uint64()
+	if originated != OrigOriginated+GasUsed*EffectiveGasPrice+BlobGasUsed*BlobBaseFee {
+		t.Errorf("Originated increment not GasUsed*EffectiveGasPrice+BlobGasUsed*BlobBaseFee: expected %d, actual %d",
+			OrigOriginated+GasUsed*EffectiveGasPrice+BlobGasUsed*BlobBaseFee, originated)
 	}
 }
