@@ -49,9 +49,8 @@ func TestReceiptRewardWithoutFixEnabled(t *testing.T) {
 		GasFeeCap: big.NewInt(GasFeeCap),
 	})
 	receipt := &types.Receipt{
-		TxHash:            tx.Hash(),
-		GasUsed:           GasUsed,
-		EffectiveGasPrice: big.NewInt(EffectiveGasPrice),
+		TxHash:  tx.Hash(),
+		GasUsed: GasUsed,
 	}
 	listener.OnNewReceipt(tx, receipt, idx.ValidatorID(1), big.NewInt(BaseFee))
 
@@ -91,9 +90,8 @@ func TestReceiptRewardWithFixEnabled(t *testing.T) {
 		GasFeeCap: big.NewInt(GasFeeCap),
 	})
 	receipt := &types.Receipt{
-		TxHash:            tx.Hash(),
-		GasUsed:           GasUsed,
-		EffectiveGasPrice: big.NewInt(EffectiveGasPrice),
+		TxHash:  tx.Hash(),
+		GasUsed: GasUsed,
 	}
 	listener.OnNewReceipt(tx, receipt, idx.ValidatorID(1), big.NewInt(BaseFee))
 

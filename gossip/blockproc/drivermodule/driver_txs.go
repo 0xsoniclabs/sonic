@@ -156,11 +156,7 @@ func effectiveGasPrice(tx *types.Transaction, baseFee *big.Int) *big.Int {
 	if baseFee == nil {
 		return tx.GasPrice()
 	}
-	gasFeeCap, effectivePrice := tx.GasFeeCap(), new(big.Int).Add(tx.GasTipCap(), baseFee)
-	if effectivePrice.Cmp(gasFeeCap) < 0 {
-		return effectivePrice
-	}
-	return gasFeeCap
+	return new(big.Int).Add(baseFee, tx.EffectiveGasTipValue(baseFee))
 }
 
 func decodeDataBytes(l *types.Log) ([]byte, error) {
