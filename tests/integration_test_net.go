@@ -17,6 +17,7 @@ import (
 
 	sonicd "github.com/0xsoniclabs/sonic/cmd/sonicd/app"
 	sonictool "github.com/0xsoniclabs/sonic/cmd/sonictool/app"
+	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/inter"
@@ -70,6 +71,13 @@ type IntegrationTestNetOptions struct {
 	NumNodes int
 	// ClientExtraArguments specifies additional arguments to be passed to the client.
 	ClientExtraArguments []string
+	// ModifyConfig allows the caller to modify the configuration of the nodes
+	// on the integration test network. This modified configuration will be saved
+	// as a toml file and loaded by the nodes when they are started.
+	// Please read carefully the config type declaration, config fields with tag `-`
+	// will not be saved into the toml file, modifications will be ignored.
+	// Zero value means no modification.
+	ModifyConfig func(*config.Config)
 }
 
 // IntegrationTestNet is a in-process test network for integration tests. When
@@ -93,8 +101,8 @@ type IntegrationTestNetOptions struct {
 // integration test networks can also be used for automated integration and
 // regression tests for client code.
 type IntegrationTestNet struct {
-	extraClientArguments []string
-	nodes                []integrationTestNode
+	options IntegrationTestNetOptions
+	nodes   []integrationTestNode
 
 	sessionsMutex sync.Mutex
 	Session
@@ -203,7 +211,7 @@ func startIntegrationTestNet(
 	options IntegrationTestNetOptions,
 ) (*IntegrationTestNet, error) {
 	net := &IntegrationTestNet{
-		extraClientArguments: options.ClientExtraArguments,
+		options: options,
 		Session: Session{
 			account: Account{evmcore.FakeKey(1)},
 		},
@@ -311,8 +319,24 @@ func (n *IntegrationTestNet) start() error {
 				"--ipcpath", fmt.Sprintf("%s/sonic.ipc", tmp),
 			},
 				// append extra arguments
-				n.extraClientArguments...,
+				n.options.ClientExtraArguments...,
 			)
+
+			if n.options.ModifyConfig != nil {
+				configFile := filepath.Join(tmp, "config.toml")
+				if err := sonicd.RunWithArgs(append(args, "--dump-config", configFile), nil); err != nil {
+					panic(fmt.Sprint("Failed to dump config file:", err))
+				}
+				var loadedConfig config.Config
+				if err := config.LoadAllConfigs(configFile, &loadedConfig); err != nil {
+					panic(fmt.Sprint("Failed to load default config file:", err))
+				}
+				n.options.ModifyConfig(&loadedConfig)
+				if err := config.SaveAllConfigs(configFile, &loadedConfig); err != nil {
+					panic(fmt.Sprint("Failed to save modified config file:", err))
+				}
+				args = append(args, "--config", configFile)
+			}
 
 			control := &sonicd.AppControl{
 				NodeIdAnnouncement:   nodeIds[i],

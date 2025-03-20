@@ -6,8 +6,10 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 )
@@ -184,4 +186,52 @@ func TestIntegrationTestNet_CanRunMultipleNodes(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestIntegrationTestNet_CanStartWithCustomConfig(t *testing.T) {
+
+	// This test checks that configuration changes are applied to the network
+	// by modifying the tx_pool configuration and checking that the transaction
+	// validation behaves as expected.
+	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
+		ModifyConfig: func(config *config.Config) {
+			// enable minimum tip check for local tx submission
+			config.TxPool.NoLocals = true
+			// increase minimum tip, default is 1
+			config.TxPool.PriceLimit = 10
+		},
+	})
+	client, err := net.GetClient()
+	require.NoError(t, err)
+
+	sender := makeAccountWithBalance(t, net, big.NewInt(1e18))
+
+	chainId, err := client.ChainID(context.Background())
+	require.NoError(t, err)
+
+	gp, err := client.SuggestGasPrice(context.Background())
+	require.NoError(t, err)
+
+	gas, err := core.IntrinsicGas(nil, nil, nil, true, true, true, true)
+	require.NoError(t, err)
+
+	tx := signTransaction(t, chainId, &types.DynamicFeeTx{
+		Nonce:     0,
+		Value:     big.NewInt(100),
+		Gas:       gas,
+		GasFeeCap: gp,
+		GasTipCap: big.NewInt(9),
+	}, sender)
+	err = client.SendTransaction(context.Background(), tx)
+	require.ErrorContains(t, err, "transaction underpriced")
+
+	tx = signTransaction(t, chainId, &types.DynamicFeeTx{
+		Nonce:     1,
+		Value:     big.NewInt(100),
+		Gas:       gas,
+		GasFeeCap: gp,
+		GasTipCap: big.NewInt(10),
+	}, sender)
+	err = client.SendTransaction(context.Background(), tx)
+	require.NoError(t, err)
 }
