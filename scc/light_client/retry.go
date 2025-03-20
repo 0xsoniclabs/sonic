@@ -10,35 +10,39 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 )
 
-// retryProvider is used to wrap other providers to add a retry mechanism.
-// It is a provider that retries provider methods, which return an error, a
-// specified number of times with some delay between retries.
+// retryProvider is used to wrap another provider and add a retry mechanism.
+// It is a provider that retries provider methods, that returned an error, a
+// specified number of times with some delay between retries up to a maximum timeout.
 //
 // Fields:
 // - provider: The underlying provider to retry requests on.
 // - retries: The maximum number of attempt to ask for certificates.
-// - delay: The time to wait between retries.
+// - timeout: The time max time willing to wait for a request without error.
 type retryProvider struct {
 	provider provider
 	retries  uint
-	delay    time.Duration
+	timeout  time.Duration
 }
 
 // newRetry creates a new retryProvider provider with the given provider and maximum
-// number of retries and delay between retries.
+// number of retries and total timeout.
 //
 // Parameters:
-// - provider: The underlying provider to wrap with retry logic.
-// - retries: The maximum number of attempt to ask for certificates.
-// - delay: The time to wait between retries.
+//   - provider: The underlying provider to wrap with retry logic.
+//   - retries: The maximum number of attempt to ask for certificates.
+//   - timeout: The time max time willing to wait. if it is zero value,
+//     then timeout is 10 seconds.
 //
 // Returns:
 // - *retryProvider: A new retryProvider provider instance.
-func newRetry(provider provider, retries uint, delay time.Duration) *retryProvider {
+func newRetry(provider provider, retries uint, timeout time.Duration) *retryProvider {
+	if timeout == 0 {
+		timeout = 10 * time.Second
+	}
 	return &retryProvider{
 		provider: provider,
 		retries:  retries,
-		delay:    delay,
+		timeout:  timeout,
 	}
 }
 
@@ -59,7 +63,7 @@ func (r *retryProvider) close() {
 // - []cert.CommitteeCertificate: A slice of committee certificates.
 // - error: An error if the provider failed to obtain the requested certificates.
 func (r retryProvider) getCommitteeCertificates(first scc.Period, maxResults uint64) ([]cert.CommitteeCertificate, error) {
-	return retry(r.retries, r.delay, func() ([]cert.CommitteeCertificate, error) {
+	return retry(r.retries, r.timeout, func() ([]cert.CommitteeCertificate, error) {
 		return r.provider.getCommitteeCertificates(first, maxResults)
 	})
 }
@@ -76,13 +80,13 @@ func (r retryProvider) getCommitteeCertificates(first scc.Period, maxResults uin
 //     and the following blocks.
 //   - error: An error if the provider failed to obtain the requested certificates.
 func (r retryProvider) getBlockCertificates(first idx.Block, maxResults uint64) ([]cert.BlockCertificate, error) {
-	return retry(r.retries, r.delay, func() ([]cert.BlockCertificate, error) {
+	return retry(r.retries, r.timeout, func() ([]cert.BlockCertificate, error) {
 		return r.provider.getBlockCertificates(first, maxResults)
 	})
 }
 
 // retry executes the given function a number of times equal to retries+1, unless
-// one it returns a nil error, waiting the specified delay between retries.
+// one it returns a nil error, with incremental delays, waiting up to a max of timeout.
 //
 // Parameters:
 // - fn: The function to execute and retry if failed.
@@ -91,15 +95,25 @@ func (r retryProvider) getBlockCertificates(first idx.Block, maxResults uint64) 
 //   - C: The result of the function if it succeeded.
 //   - error: Nil if at least one execution of fn returned without error.
 //     The joined error of all failed retries if all calls to fn failed.
-func retry[C any](retries uint, delay time.Duration, fn func() (C, error)) (C, error) {
+func retry[C any](retries uint, timeout time.Duration, fn func() (C, error)) (C, error) {
 	var errs []error
+	now := time.Now()
+	delay := time.Millisecond
+	maxDelay := 128 * time.Millisecond
 	for i := uint(0); i < retries+1; i++ {
 		result, err := fn()
 		if err == nil {
 			return result, nil
 		}
 		errs = append(errs, err)
+		if delay < maxDelay {
+			delay *= 2
+		}
 		time.Sleep(delay)
+		if time.Since(now) >= timeout {
+			errs = append(errs, fmt.Errorf("exceeded timeout of %v", timeout))
+			break
+		}
 	}
 
 	var c C

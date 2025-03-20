@@ -22,9 +22,9 @@ type LightClient struct {
 type Config struct {
 	Url     *url.URL
 	Genesis scc.Committee
-	// default values try only once without delays
+	// default values try only once per request with 10 seconds timeout
 	Retries uint
-	Delay   time.Duration
+	Timeout time.Duration
 }
 
 // NewLightClient creates a new LightClient with the given config.
@@ -38,10 +38,7 @@ func NewLightClient(config Config) (*LightClient, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create provider: %w\n", err)
 	}
-	p = newRetry(p, config.Retries, config.Delay)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create retry provider: %w\n", err)
-	}
+	p = newRetry(p, config.Retries, config.Timeout)
 	return &LightClient{
 		state:    *newState(config.Genesis),
 		provider: p,

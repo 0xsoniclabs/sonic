@@ -22,6 +22,17 @@ func TestRetry_NewRetry_CanInitializeFromProvider(t *testing.T) {
 	require.NotNil(retry)
 }
 
+func TestRetry_NewRetry_CorrectlyHandlesZeroTimeout(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	provider := NewMockprovider(ctrl)
+
+	retry := newRetry(provider, 3, time.Duration(0))
+	require.Equal(time.Second*10, retry.timeout)
+	retry = newRetry(provider, 3, 1*time.Second)
+	require.Equal(time.Second*1, retry.timeout)
+}
+
 func TestRetry_Close_ClosesProvider(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	provider := NewMockprovider(ctrl)
@@ -41,7 +52,7 @@ func TestRetry_retry_RetriesWhenProviderFails(t *testing.T) {
 	provider.EXPECT().getCommitteeCertificates(gomock.Any(), gomock.Any()).
 		Return(nil, fmt.Errorf("provider failed")).Times(int(retries + 1))
 
-	certs, err := retry(retries, time.Duration(0), func() (any, error) {
+	certs, err := retry(retries, time.Second*10, func() (any, error) {
 		return provider.getCommitteeCertificates(scc.Period(1), uint64(1))
 	})
 	require.Error(err)
@@ -54,19 +65,35 @@ func TestRetry_retry_WaitsBetweenRetries(t *testing.T) {
 	provider := NewMockprovider(ctrl)
 
 	retries := uint(3)
-	delay := 200 * time.Millisecond
+	timeout := time.Second * 10
 
 	provider.EXPECT().getCommitteeCertificates(gomock.Any(), gomock.Any()).
 		Return(nil, fmt.Errorf("provider failed")).Times(int(retries + 1))
 
 	start := time.Now()
-	_, _ = retry(retries, delay, func() (any, error) {
+	_, _ = retry(retries, timeout, func() (any, error) {
 		return provider.getCommitteeCertificates(scc.Period(1), uint64(1))
 	})
 	duration := time.Since(start)
 
-	expected := time.Duration(retries) * delay
-	require.GreaterOrEqual(duration.Milliseconds(), expected.Milliseconds())
+	require.LessOrEqual(duration.Seconds(), timeout.Seconds())
+}
+
+func TestRetry_retry_ReportsTimeoutError(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	provider := NewMockprovider(ctrl)
+
+	retries := uint(3)
+	timeout := time.Millisecond * 1
+
+	provider.EXPECT().getCommitteeCertificates(gomock.Any(), gomock.Any()).
+		Return(nil, fmt.Errorf("provider failed")).AnyTimes()
+
+	_, err := retry(retries, timeout, func() (any, error) {
+		return provider.getCommitteeCertificates(scc.Period(1), uint64(1))
+	})
+	require.ErrorContains(err, "exceeded timeout")
 }
 
 func TestRetry_retry_ReturnsResultWhenProviderSucceeds(t *testing.T) {
@@ -81,7 +108,7 @@ func TestRetry_retry_ReturnsResultWhenProviderSucceeds(t *testing.T) {
 	provider.EXPECT().getCommitteeCertificates(gomock.Any(), gomock.Any()).
 		Return([]cert.CommitteeCertificate{{}}, nil).Times(1)
 
-	certs, err := retry(3, 0, func() (any, error) {
+	certs, err := retry(3, 10*time.Second, func() (any, error) {
 		return provider.getCommitteeCertificates(scc.Period(1), uint64(1))
 	})
 
