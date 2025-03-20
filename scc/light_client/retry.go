@@ -10,41 +10,41 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 )
 
-// retryP is a provider that retries requests a certain number of times on failed
-// requests for certificates with a determined wait between retries. It is used
-// to wrap other providers to add a retry mechanism.
+// retryProvider is used to wrap other providers to add a retry mechanism.
+// It is a provider that retries provider methods, which return an error, a
+// specified number of times with some delay between retries.
 //
 // Fields:
 // - provider: The underlying provider to retry requests on.
-// - attempts: The maximum number of attempt to ask for certificates.
+// - retries: The maximum number of attempt to ask for certificates.
 // - delay: The time to wait between retries.
-type retryP struct {
+type retryProvider struct {
 	provider provider
-	attempts uint
+	retries  uint
 	delay    time.Duration
 }
 
-// newRetry creates a new retryP provider with the given provider and maximum
+// newRetry creates a new retryProvider provider with the given provider and maximum
 // number of retries and delay between retries.
 //
 // Parameters:
 // - provider: The underlying provider to wrap with retry logic.
-// - attempts: The maximum number of attempt to ask for certificates.
+// - retries: The maximum number of attempt to ask for certificates.
 // - delay: The time to wait between retries.
 //
 // Returns:
-// - *retryP: A new retryP provider instance.
-func newRetry(provider provider, attempts uint, delay time.Duration) *retryP {
-	return &retryP{
+// - *retryProvider: A new retryProvider provider instance.
+func newRetry(provider provider, retries uint, delay time.Duration) *retryProvider {
+	return &retryProvider{
 		provider: provider,
-		attempts: attempts,
+		retries:  retries,
 		delay:    delay,
 	}
 }
 
-// Close closes the retryP provider.
+// Close closes the retryProvider.
 // Closing an already closed provider has no effect.
-func (r *retryP) close() {
+func (r *retryProvider) close() {
 	r.provider.close()
 }
 
@@ -58,14 +58,10 @@ func (r *retryP) close() {
 // Returns:
 // - []cert.CommitteeCertificate: A slice of committee certificates.
 // - error: An error if the provider failed to obtain the requested certificates.
-func (r retryP) getCommitteeCertificates(first scc.Period, maxResults uint64) ([]cert.CommitteeCertificate, error) {
-	result, err := retry(r.attempts, r.delay, func() (any, error) {
+func (r retryProvider) getCommitteeCertificates(first scc.Period, maxResults uint64) ([]cert.CommitteeCertificate, error) {
+	return retry(r.retries, r.delay, func() ([]cert.CommitteeCertificate, error) {
 		return r.provider.getCommitteeCertificates(first, maxResults)
 	})
-	if err != nil {
-		return nil, err
-	}
-	return result.([]cert.CommitteeCertificate), nil
 }
 
 // getBlockCertificates returns up to `maxResults` consecutive block
@@ -79,18 +75,14 @@ func (r retryP) getCommitteeCertificates(first scc.Period, maxResults uint64) ([
 //   - []cert.BlockCertificate: The block certificates for the given block number
 //     and the following blocks.
 //   - error: An error if the provider failed to obtain the requested certificates.
-func (r retryP) getBlockCertificates(first idx.Block, maxResults uint64) ([]cert.BlockCertificate, error) {
-	result, err := retry(r.attempts, r.delay, func() (any, error) {
+func (r retryProvider) getBlockCertificates(first idx.Block, maxResults uint64) ([]cert.BlockCertificate, error) {
+	return retry(r.retries, r.delay, func() ([]cert.BlockCertificate, error) {
 		return r.provider.getBlockCertificates(first, maxResults)
 	})
-	if err != nil {
-		return nil, err
-	}
-	return result.([]cert.BlockCertificate), nil
 }
 
-// retry executes the given function for the given number of attempts, waiting
-// the specified delay between attempts.
+// retry executes the given function a number of times equal to retries+1, unless
+// one it returns a nil error, waiting the specified delay between retries.
 //
 // Parameters:
 // - fn: The function to execute and retry if failed.
@@ -98,10 +90,10 @@ func (r retryP) getBlockCertificates(first idx.Block, maxResults uint64) ([]cert
 // Returns:
 //   - C: The result of the function if it succeeded.
 //   - error: Nil if at least one execution of fn returned without error.
-//     The joined error of all failed attempts if all attempts failed.
-func retry[C any](attempts uint, delay time.Duration, fn func() (C, error)) (C, error) {
+//     The joined error of all failed retries if all calls to fn failed.
+func retry[C any](retries uint, delay time.Duration, fn func() (C, error)) (C, error) {
 	var errs []error
-	for i := uint(0); i < attempts; i++ {
+	for i := uint(0); i < retries+1; i++ {
 		result, err := fn()
 		if err == nil {
 			return result, nil
