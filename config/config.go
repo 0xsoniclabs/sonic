@@ -78,7 +78,7 @@ func (c *Config) AppConfigs() integration.Configs {
 	}
 }
 
-func loadAllConfigs(file string, cfg *Config) (err error) {
+func LoadAllConfigs(file string, cfg *Config) (err error) {
 	f, err := os.Open(file)
 	if err != nil {
 		return fmt.Errorf("failed to open config file %s: %w", file, err)
@@ -94,6 +94,17 @@ func loadAllConfigs(file string, cfg *Config) (err error) {
 		return fmt.Errorf("TOML config file error: %v.\n"+
 			"Use 'dumpconfig' command to get an example config file.\n"+
 			"If node was recently upgraded and a previous network config file is used, then check updates for the config file.", err)
+	}
+	return nil
+}
+
+func SaveAllConfigs(file string, cfg *Config) error {
+	encoded, err := TomlSettings.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to encode config to TOML: %w", err)
+	}
+	if err := os.WriteFile(file, encoded, 0644); err != nil {
+		return fmt.Errorf("failed to write config file %s: %w", file, err)
 	}
 	return nil
 }
@@ -337,7 +348,7 @@ func MakeAllConfigsFromFile(ctx *cli.Context, configFile string) (*Config, error
 
 	// Load config file (medium priority)
 	if configFile != "" {
-		if err := loadAllConfigs(configFile, &cfg); err != nil {
+		if err := LoadAllConfigs(configFile, &cfg); err != nil {
 			return &cfg, err
 		}
 	}

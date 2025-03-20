@@ -269,6 +269,10 @@ var (
 		Name:  "config",
 		Usage: "TOML configuration file",
 	}
+	DumpConfigFileFlag = cli.StringFlag{
+		Name:  "dump-config",
+		Usage: "wite configuration in TOML file and exit",
+	}
 	CacheFlag = cli.IntFlag{
 		Name:  "cache",
 		Usage: "Megabytes of memory allocated to internal caching",

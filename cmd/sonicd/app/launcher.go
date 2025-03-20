@@ -104,6 +104,7 @@ func initFlags() {
 		flags.ExitWhenEpochFlag,
 		flags.LightKDFFlag,
 		flags.ConfigFileFlag,
+		flags.DumpConfigFileFlag,
 		flags.ValidatorIDFlag,
 		flags.ValidatorPubkeyFlag,
 		flags.ValidatorPasswordFlag,
@@ -257,6 +258,13 @@ func lachesisMainInternal(
 		return fmt.Errorf("failed to initialize the node: %w", err)
 	}
 	defer nodeClose()
+
+	if ctx.GlobalIsSet(flags.DumpConfigFileFlag.Name) {
+		// At this point the node is fully configured,
+		// if the dump-config flag is set, dump the config into the file and exit
+		outputConfigFile := ctx.GlobalString(flags.DumpConfigFileFlag.Name)
+		return config.SaveAllConfigs(outputConfigFile, cfg)
+	}
 
 	if err := startNode(ctx, node); err != nil {
 		return fmt.Errorf("failed to start the node: %w", err)
