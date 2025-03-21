@@ -25,15 +25,15 @@ func TestLightClient_NewLightClient_ReportsInvalidConfig(t *testing.T) {
 
 	tests := map[string]Config{
 		"emptyStringProvider": {
-			Url:     &url.URL{},
+			Url:     []*url.URL{},
 			Genesis: scc.NewCommittee(member),
 		},
 		"invalidUrl": {
-			Url:     &url.URL{Host: "not-a-url"},
+			Url:     []*url.URL{{Host: "not-a-url"}},
 			Genesis: scc.NewCommittee(member),
 		},
 		"emptyGenesisCommittee": {
-			Url:     &url.URL{Scheme: "http", Host: "localhost:4242"},
+			Url:     []*url.URL{{Scheme: "http", Host: "localhost:4242"}},
 			Genesis: scc.NewCommittee(),
 		},
 	}
@@ -151,9 +151,9 @@ func TestLightClientState_Sync_UpdatesStateToHead(t *testing.T) {
 		Return([]cert.CommitteeCertificate{committeeCert1}, nil)
 
 	// sync
-	url, _ := url.Parse("http://localhost:4242")
+	u, _ := url.Parse("http://localhost:4242")
 	config := Config{
-		Url:     url,
+		Url:     []*url.URL{u},
 		Genesis: scc.NewCommittee(member),
 	}
 	c, err := NewLightClient(config)
@@ -181,9 +181,9 @@ func makeMember(key bls.PrivateKey) scc.Member {
 func testConfig() Config {
 	key := bls.NewPrivateKey()
 	// error is ignored because constant string is a url
-	url, _ := url.Parse("http://localhost:4242")
+	u, _ := url.Parse("http://localhost:4242")
 	return Config{
-		Url:     url,
+		Url:     []*url.URL{u},
 		Genesis: scc.NewCommittee(makeMember(key)),
 	}
 }
