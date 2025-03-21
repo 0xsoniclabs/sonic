@@ -7,6 +7,8 @@ import (
 
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/tests/contracts/read_history_storage"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
@@ -161,4 +163,66 @@ func TestEIP2935_DeployContract(t *testing.T) {
 	nonce, err := client.NonceAt(context.Background(), historyStorageAddress, nil)
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), nonce)
+}
+
+func TestEIP2935_HistoryContractAccumulatesBlockHashes(t *testing.T) {
+
+	net := StartIntegrationTestNetWithFakeGenesis(t,
+		IntegrationTestNetOptions{
+			FeatureSet: opera.AllegroFeatures,
+		})
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	readHistoryStorageContract, receipt, err := DeployContract(net, read_history_storage.DeployReadHistoryStorage)
+	require.NoError(t, err)
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+
+	startBlock, err := client.BlockNumber(t.Context())
+	require.NoError(t, err)
+
+	// eip-2935 describes a buffer-ring of 8191 block hashes.
+	// testing this is impractical, this test checks a smaller range to ensure that contract
+	// accumulates multiple block hashes.
+	const testIterations = 10
+
+	// Fist loop just issues transactions to create blocks
+	hashes := make([]common.Hash, 0, testIterations)
+	for range testIterations {
+		receipt, err = net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
+			return readHistoryStorageContract.ReadHistoryStorage(opts, new(big.Int))
+		})
+		require.NoError(t, err)
+		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+		hashes = append(hashes, receipt.BlockHash)
+	}
+
+	// second loop queries block hashes of the blocks generated in the first loop
+	for i := range testIterations {
+		blockNumber := startBlock + uint64(i) + 1
+
+		// synchronous transactions read previous block hash and create a new block
+		receipt, err = net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
+			return readHistoryStorageContract.ReadHistoryStorage(opts, new(big.Int).SetUint64(blockNumber))
+		})
+		require.NoError(t, err)
+		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+		require.Len(t, receipt.Logs, 1)
+
+		count, err := readHistoryStorageContract.ParseBlockHash(*receipt.Logs[0])
+		require.NoError(t, err)
+		require.Equal(t, 0, count.QueriedBlock.Cmp(big.NewInt(int64(blockNumber))))
+
+		// hash must be equal to the block hash retrieved from the client
+		block, err := client.BlockByNumber(t.Context(), big.NewInt(int64(blockNumber)))
+		require.NoError(t, err)
+		require.Equal(t, common.BytesToHash(count.BlockHash[:]), block.Hash(),
+			"read hash does not match the block hash")
+
+		// hash must be equal to the hash from the first loop receipt
+		require.Equal(t, hashes[i], block.Hash(),
+			"block hash does not match the hash from the receipt")
+	}
 }
