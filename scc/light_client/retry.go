@@ -102,16 +102,17 @@ func (r retryProvider) getBlockCertificates(first idx.Block, maxResults uint64) 
 func retry[C any](maxRetries uint, timeout time.Duration, fn func() (C, error)) (C, error) {
 	var errs []error
 	now := time.Now()
-	delay := time.Millisecond
-	maxDelay := 128 * time.Millisecond
+	delay := 200 * time.Millisecond
+	maxDelay := time.Second
 	for i := uint(0); i < maxRetries; i++ {
 		result, err := fn()
 		if err == nil {
 			return result, nil
 		}
 		errs = append(errs, err)
-		if delay < maxDelay {
-			delay *= 2
+		delay = 2 * delay
+		if delay > maxDelay {
+			delay = maxDelay
 		}
 		time.Sleep(delay)
 		if time.Since(now) >= timeout {
