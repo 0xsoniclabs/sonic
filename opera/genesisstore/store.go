@@ -27,6 +27,10 @@ func FwsArchiveSection(i int) string {
 	return getSectionName("fwa", i)
 }
 
+func SccStateSection(i int) string {
+	return getSectionName("scc_st", i)
+}
+
 func SccCommitteeSection(i int) string {
 	return getSectionName("scc_cc", i)
 }
