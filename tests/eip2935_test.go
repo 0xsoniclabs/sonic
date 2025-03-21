@@ -7,6 +7,8 @@ import (
 
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/tests/contracts/read_history_storage"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
@@ -161,4 +163,89 @@ func TestEIP2935_DeployContract(t *testing.T) {
 	nonce, err := client.NonceAt(context.Background(), historyStorageAddress, nil)
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), nonce)
+
+	readHistoryStorageContract, receipt, err := DeployContract(net, read_history_storage.DeployReadHistoryStorage)
+	require.NoError(t, err)
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+
+	// Create one block and use the contract to read the block hash. because this
+	// network is running in Sonic, no block hashes are stored in the history storage contract.
+	receipt, err = net.EndowAccount(NewAccount().Address(), big.NewInt(1e18))
+	require.NoError(t, err)
+	blockNumber := receipt.BlockNumber
+
+	receipt, err = net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
+		return readHistoryStorageContract.ReadHistoryStorage(opts, blockNumber)
+	})
+	require.NoError(t, err)
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+
+	require.Len(t, receipt.Logs, 1)
+	blockHash, err := readHistoryStorageContract.ParseBlockHash(*receipt.Logs[0])
+	require.NoError(t, err)
+
+	// read hash is null because the processor is not calling the history storage contract
+	require.Equal(t, common.Hash{31: 0x00},
+		common.BytesToHash(blockHash.BlockHash[:]))
+
+}
+
+func TestEIP2935_HistoryContractAccumulatesBlockHashes(t *testing.T) {
+
+	net := StartIntegrationTestNetWithFakeGenesis(t,
+		IntegrationTestNetOptions{
+			FeatureSet: opera.AllegroFeatures,
+		})
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	readHistoryStorageContract, receipt, err := DeployContract(net, read_history_storage.DeployReadHistoryStorage)
+	require.NoError(t, err)
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+
+	// eip-2935 describes a buffer-ring of 8191 block hashes.
+	// testing this is impractical, this test checks a smaller range to ensure that contract
+	// accumulates multiple block hashes.
+	const testIterations = 10
+
+	// Fist loop just issues synchronous transactions to create blocks
+	hashes := make(map[uint64]common.Hash)
+	for range testIterations {
+		receipt, err := net.EndowAccount(NewAccount().Address(), big.NewInt(1e18))
+		require.NoError(t, err)
+		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+		hashes[receipt.BlockNumber.Uint64()] = receipt.BlockHash
+	}
+
+	// second loop queries block hashes of the blocks generated in the first loop
+	for blockNumber, recordedHash := range hashes {
+		receipt, err = net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
+			return readHistoryStorageContract.ReadHistoryStorage(opts, new(big.Int).SetUint64(blockNumber))
+		})
+		require.NoError(t, err)
+		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+		require.Len(t, receipt.Logs, 1)
+
+		blockHash, err := readHistoryStorageContract.ParseBlockHash(*receipt.Logs[0])
+		require.NoError(t, err)
+		require.Equal(t, 0, blockHash.QueriedBlock.Cmp(big.NewInt(int64(blockNumber))))
+
+		require.Equal(t,
+			common.BytesToHash(blockHash.BlockHash[:]),
+			common.BytesToHash(blockHash.BuiltinBlockHash[:]),
+			"builtin blockhash does not match the block hash stored in the contract",
+		)
+
+		// read hash must be equal to the block hash retrieved from the client
+		block, err := client.BlockByNumber(t.Context(), big.NewInt(int64(blockNumber)))
+		require.NoError(t, err)
+		require.Equal(t, common.BytesToHash(blockHash.BlockHash[:]), block.Hash(),
+			"read hash does not match the block hash")
+
+		// hash must be equal to the hash from the first loop receipt
+		require.Equal(t, recordedHash, block.Hash(),
+			"block hash does not match the hash from the receipt")
+	}
 }
