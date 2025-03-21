@@ -592,15 +592,23 @@ func (n *IntegrationTestNet) SpawnSession(t *testing.T) IntegrationTestNetSessio
 // The contract is deployed with by the network's validator account. The function returns the
 // deployed contract instance and the transaction receipt.
 func DeployContract[T any](n IntegrationTestNetSession, deploy contractDeployer[T]) (*T, *types.Receipt, error) {
+	return DeployContractWithOpts[T](n, deploy, nil)
+}
+
+// DeployContractWithOpts is a utility function handling the deployment of a contract on the network.
+// The contract is deployed with the given transaction options.
+func DeployContractWithOpts[T any](n IntegrationTestNetSession, deploy contractDeployer[T], transactOptions *bind.TransactOpts) (*T, *types.Receipt, error) {
 	client, err := n.GetClient()
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to connect to the Ethereum client: %w", err)
 	}
 	defer client.Close()
 
-	transactOptions, err := n.GetTransactOptions(n.GetSessionSponsor())
+	if transactOptions == nil {
+		transactOptions, err = n.GetTransactOptions(n.GetSessionSponsor())
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get transaction options: %w", err)
+		}
 	}
 
 	_, transaction, contract, err := deploy(transactOptions, client)
