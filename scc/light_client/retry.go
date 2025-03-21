@@ -11,38 +11,42 @@ import (
 )
 
 // retryProvider is used to wrap another provider and add a retry mechanism.
-// It is a provider that retries provider methods, that returned an error, a
-// specified number of times with some delay between retries up to a maximum timeout.
+// It is a provider that maxRetries provider methods, that returned an error, a
+// specified number of times with some delay between maxRetries up to a maximum timeout.
 //
 // Fields:
 // - provider: The underlying provider to retry requests on.
-// - retries: The maximum number of attempt to ask for certificates.
+// - maxRetries: The maximum number of attempt to ask for certificates.
 // - timeout: The time max time willing to wait for a request without error.
 type retryProvider struct {
-	provider provider
-	retries  uint
-	timeout  time.Duration
+	provider   provider
+	maxRetries uint
+	timeout    time.Duration
 }
 
 // newRetry creates a new retryProvider provider with the given provider and maximum
-// number of retries and total timeout.
+// number of maxRetries and total timeout.
 //
 // Parameters:
 //   - provider: The underlying provider to wrap with retry logic.
-//   - retries: The maximum number of attempt to ask for certificates.
+//   - maxRetries: The maximum number of attempt to ask for certificates. If it
+//     is zero value, then maxRetries is 1024.
 //   - timeout: The time max time willing to wait. if it is zero value,
 //     then timeout is 10 seconds.
 //
 // Returns:
 // - *retryProvider: A new retryProvider provider instance.
-func newRetry(provider provider, retries uint, timeout time.Duration) *retryProvider {
+func newRetry(provider provider, maxRetries uint, timeout time.Duration) *retryProvider {
 	if timeout == 0 {
 		timeout = 10 * time.Second
 	}
+	if maxRetries == 0 {
+		maxRetries = 1024
+	}
 	return &retryProvider{
-		provider: provider,
-		retries:  retries,
-		timeout:  timeout,
+		provider:   provider,
+		maxRetries: maxRetries,
+		timeout:    timeout,
 	}
 }
 
@@ -63,7 +67,7 @@ func (r *retryProvider) close() {
 // - []cert.CommitteeCertificate: A slice of committee certificates.
 // - error: An error if the provider failed to obtain the requested certificates.
 func (r retryProvider) getCommitteeCertificates(first scc.Period, maxResults uint64) ([]cert.CommitteeCertificate, error) {
-	return retry(r.retries, r.timeout, func() ([]cert.CommitteeCertificate, error) {
+	return retry(r.maxRetries, r.timeout, func() ([]cert.CommitteeCertificate, error) {
 		return r.provider.getCommitteeCertificates(first, maxResults)
 	})
 }
@@ -80,12 +84,12 @@ func (r retryProvider) getCommitteeCertificates(first scc.Period, maxResults uin
 //     and the following blocks.
 //   - error: An error if the provider failed to obtain the requested certificates.
 func (r retryProvider) getBlockCertificates(first idx.Block, maxResults uint64) ([]cert.BlockCertificate, error) {
-	return retry(r.retries, r.timeout, func() ([]cert.BlockCertificate, error) {
+	return retry(r.maxRetries, r.timeout, func() ([]cert.BlockCertificate, error) {
 		return r.provider.getBlockCertificates(first, maxResults)
 	})
 }
 
-// retry executes the given function a number of times equal to retries+1, unless
+// retry executes the given function a number of times equal to maxRetries, unless
 // one it returns a nil error, with incremental delays, waiting up to a max of timeout.
 //
 // Parameters:
@@ -94,13 +98,13 @@ func (r retryProvider) getBlockCertificates(first idx.Block, maxResults uint64) 
 // Returns:
 //   - C: The result of the function if it succeeded.
 //   - error: Nil if at least one execution of fn returned without error.
-//     The joined error of all failed retries if all calls to fn failed.
-func retry[C any](retries uint, timeout time.Duration, fn func() (C, error)) (C, error) {
+//     The joined error of all failed maxRetries if all calls to fn failed.
+func retry[C any](maxRetries uint, timeout time.Duration, fn func() (C, error)) (C, error) {
 	var errs []error
 	now := time.Now()
 	delay := time.Millisecond
 	maxDelay := 128 * time.Millisecond
-	for i := uint(0); i < retries+1; i++ {
+	for i := uint(0); i < maxRetries; i++ {
 		result, err := fn()
 		if err == nil {
 			return result, nil
@@ -117,5 +121,5 @@ func retry[C any](retries uint, timeout time.Duration, fn func() (C, error)) (C,
 	}
 
 	var c C
-	return c, errors.Join(fmt.Errorf("all retries failed: "), errors.Join(errs...))
+	return c, errors.Join(fmt.Errorf("all maxRetries failed: "), errors.Join(errs...))
 }

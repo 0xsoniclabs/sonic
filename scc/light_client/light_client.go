@@ -22,7 +22,7 @@ type LightClient struct {
 type Config struct {
 	Url     *url.URL
 	Genesis scc.Committee
-	// default values try only once per request with 10 seconds timeout
+	// By default, requests are retried up to 1024 times to reach a 10-second timeout.
 	Retries uint
 	Timeout time.Duration
 }
