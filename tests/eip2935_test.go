@@ -180,30 +180,22 @@ func TestEIP2935_HistoryContractAccumulatesBlockHashes(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
-	startBlock, err := client.BlockNumber(t.Context())
-	require.NoError(t, err)
-
 	// eip-2935 describes a buffer-ring of 8191 block hashes.
 	// testing this is impractical, this test checks a smaller range to ensure that contract
 	// accumulates multiple block hashes.
 	const testIterations = 10
 
-	// Fist loop just issues transactions to create blocks
-	hashes := make([]common.Hash, 0, testIterations)
+	// Fist loop just issues synchronous transactions to create blocks
+	hashes := make(map[uint64]common.Hash)
 	for range testIterations {
-		receipt, err = net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
-			return readHistoryStorageContract.ReadHistoryStorage(opts, new(big.Int))
-		})
+		receipt, err := net.EndowAccount(NewAccount().Address(), big.NewInt(1e18))
 		require.NoError(t, err)
 		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
-		hashes = append(hashes, receipt.BlockHash)
+		hashes[receipt.BlockNumber.Uint64()] = receipt.BlockHash
 	}
 
 	// second loop queries block hashes of the blocks generated in the first loop
-	for i := range testIterations {
-		blockNumber := startBlock + uint64(i) + 1
-
-		// synchronous transactions read previous block hash and create a new block
+	for blockNumber, recordedHash := range hashes {
 		receipt, err = net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
 			return readHistoryStorageContract.ReadHistoryStorage(opts, new(big.Int).SetUint64(blockNumber))
 		})
@@ -211,18 +203,18 @@ func TestEIP2935_HistoryContractAccumulatesBlockHashes(t *testing.T) {
 		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 		require.Len(t, receipt.Logs, 1)
 
-		count, err := readHistoryStorageContract.ParseBlockHash(*receipt.Logs[0])
+		blockHash, err := readHistoryStorageContract.ParseBlockHash(*receipt.Logs[0])
 		require.NoError(t, err)
-		require.Equal(t, 0, count.QueriedBlock.Cmp(big.NewInt(int64(blockNumber))))
+		require.Equal(t, 0, blockHash.QueriedBlock.Cmp(big.NewInt(int64(blockNumber))))
 
-		// hash must be equal to the block hash retrieved from the client
+		// read hash must be equal to the block hash retrieved from the client
 		block, err := client.BlockByNumber(t.Context(), big.NewInt(int64(blockNumber)))
 		require.NoError(t, err)
-		require.Equal(t, common.BytesToHash(count.BlockHash[:]), block.Hash(),
+		require.Equal(t, common.BytesToHash(blockHash.BlockHash[:]), block.Hash(),
 			"read hash does not match the block hash")
 
 		// hash must be equal to the hash from the first loop receipt
-		require.Equal(t, hashes[i], block.Hash(),
+		require.Equal(t, recordedHash, block.Hash(),
 			"block hash does not match the hash from the receipt")
 	}
 }
