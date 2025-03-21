@@ -163,6 +163,31 @@ func TestEIP2935_DeployContract(t *testing.T) {
 	nonce, err := client.NonceAt(context.Background(), historyStorageAddress, nil)
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), nonce)
+
+	readHistoryStorageContract, receipt, err := DeployContract(net, read_history_storage.DeployReadHistoryStorage)
+	require.NoError(t, err)
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+
+	// Create one block and use the contract to read the block hash. because this
+	// network is running in Sonic, no block hashes are stored in the history storage contract.
+	receipt, err = net.EndowAccount(NewAccount().Address(), big.NewInt(1e18))
+	require.NoError(t, err)
+	blockNumber := receipt.BlockNumber
+
+	receipt, err = net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
+		return readHistoryStorageContract.ReadHistoryStorage(opts, blockNumber)
+	})
+	require.NoError(t, err)
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+
+	require.Len(t, receipt.Logs, 1)
+	blockHash, err := readHistoryStorageContract.ParseBlockHash(*receipt.Logs[0])
+	require.NoError(t, err)
+
+	// read hash is null because the processor is not calling the history storage contract
+	require.Equal(t, common.Hash{31: 0x00},
+		common.BytesToHash(blockHash.BlockHash[:]))
+
 }
 
 func TestEIP2935_HistoryContractAccumulatesBlockHashes(t *testing.T) {
