@@ -232,6 +232,12 @@ func TestEIP2935_HistoryContractAccumulatesBlockHashes(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, 0, blockHash.QueriedBlock.Cmp(big.NewInt(int64(blockNumber))))
 
+		require.Equal(t,
+			common.BytesToHash(blockHash.BlockHash[:]),
+			common.BytesToHash(blockHash.BuiltinBlockHash[:]),
+			"builtin blockhash does not match the block hash stored in the contract",
+		)
+
 		// read hash must be equal to the block hash retrieved from the client
 		block, err := client.BlockByNumber(t.Context(), big.NewInt(int64(blockNumber)))
 		require.NoError(t, err)
