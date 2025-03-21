@@ -606,8 +606,8 @@ func DeployContractWithOpts[T any](n IntegrationTestNetSession, deploy contractD
 
 	if transactOptions == nil {
 		transactOptions, err = n.GetTransactOptions(n.GetSessionSponsor())
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get transaction options: %w", err)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to get transaction options: %w", err)
 		}
 	}
 
