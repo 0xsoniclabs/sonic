@@ -25,11 +25,11 @@ func TestTransaction_DelegationDesignationAddressAccessIsConsideredInAllegro(t *
 	}{
 		"Sonic": {
 			featureSet: opera.SonicFeatures,
-			gas:        gas,
+			gas:        gas, // delegate designator ignored, no address access.
 		},
 		"Allegro": {
 			featureSet: opera.AllegroFeatures,
-			gas:        gas + 2_600, // cold access to recipient billed in interpreter
+			gas:        gas + 2_600, // cold access to delegate billed in interpreter.
 		},
 	}
 
