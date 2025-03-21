@@ -147,6 +147,10 @@ func StartIntegrationTestNetWithFakeGenesis(
 		t.Fatal("failed to validate and sanitize options: ", err)
 	}
 
+	if len(effectiveOptions.Accounts) != 0 {
+		t.Fatal("fake genesis does not support custom accounts")
+	}
+
 	net, err := startIntegrationTestNet(
 		t,
 		t.TempDir(),
