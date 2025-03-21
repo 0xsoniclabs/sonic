@@ -73,6 +73,11 @@ func (p *StateProcessor) Process(
 		blockNumber  = block.Number
 		signer       = gsignercache.Wrap(types.MakeSigner(p.config, header.Number, time))
 	)
+
+	if p.config.IsPrague(blockNumber, time) {
+		ProcessParentBlockHash(block.ParentHash, vmenv, statedb)
+	}
+
 	// Iterate over and process the individual transactions
 	for i, tx := range block.Transactions {
 		msg, err := TxAsMessage(tx, signer, header.BaseFee)
@@ -154,6 +159,27 @@ func ApplyTransactionWithEVM(msg *core.Message, config *params.ChainConfig, gp *
 	receipt.BlockNumber = blockNumber
 	receipt.TransactionIndex = uint(statedb.TxIndex())
 	return receipt, err
+}
+
+// ProcessParentBlockHash stores the parent block hash in the history storage contract
+// as per EIP-2935.
+func ProcessParentBlockHash(prevHash common.Hash, evm *vm.EVM, statedb state.StateDB) {
+	msg := &core.Message{
+		From:      params.SystemAddress,
+		GasLimit:  30_000_000,
+		GasPrice:  common.Big0,
+		GasFeeCap: common.Big0,
+		GasTipCap: common.Big0,
+		To:        &params.HistoryStorageAddress,
+		Data:      prevHash.Bytes(),
+	}
+
+	txContext := NewEVMTxContext(msg)
+	evm.SetTxContext(txContext)
+
+	statedb.AddAddressToAccessList(params.HistoryStorageAddress)
+	_, _, _ = evm.Call(vm.AccountRef(msg.From), *msg.To, msg.Data, 30_000_000, common.U2560)
+	statedb.Finalise(true)
 }
 
 func applyTransaction(
