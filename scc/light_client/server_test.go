@@ -5,10 +5,13 @@ import (
 	"math"
 	"testing"
 
+	"github.com/0xsoniclabs/carmen/go/carmen"
+	"github.com/0xsoniclabs/carmen/go/common/immutable"
 	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -333,7 +336,7 @@ func TestServer_GetCertificates_ReturnsCertificates(t *testing.T) {
 	require.Len(blockCerts, 2)
 }
 
-func TestBlockQuery_GetAccountProof_PropagatesClientError(t *testing.T) {
+func TestServer_GetAccountProof_PropagatesClientError(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	client := NewMockrpcClient(ctrl)
@@ -354,7 +357,7 @@ func TestBlockQuery_GetAccountProof_PropagatesClientError(t *testing.T) {
 	require.ErrorIs(err, someError)
 }
 
-func TestBlockQuery_GetAccountProof_FailsToDecodeAddressProof(t *testing.T) {
+func TestServer_GetAccountProof_FailsToDecodeAddressProof(t *testing.T) {
 	// setup
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
@@ -382,7 +385,7 @@ func TestBlockQuery_GetAccountProof_FailsToDecodeAddressProof(t *testing.T) {
 	require.Nil(got)
 }
 
-func TestBlockQuery_GetAccountProof_ReturnsAccountProof(t *testing.T) {
+func TestServer_GetAccountProof_ReturnsAccountProof(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	client := NewMockrpcClient(ctrl)
@@ -404,5 +407,13 @@ func TestBlockQuery_GetAccountProof_ReturnsAccountProof(t *testing.T) {
 
 	got, err := server.getAccountProof(addr, math.MaxUint64)
 	require.NoError(err)
-	require.NotNil(got)
+	// decode elements for the proof.
+	elements := []carmen.Bytes{}
+	for _, element := range []string{"0x01", "0x02"} {
+		data, err := hexutil.Decode(element)
+		require.NoError(err, fmt.Errorf("failed to decode proof element: %v", err))
+		elements = append(elements, immutable.NewBytes(data))
+	}
+	want := carmen.CreateWitnessProofFromNodes(elements...)
+	require.Equal(want, got)
 }

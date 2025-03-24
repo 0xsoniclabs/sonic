@@ -4,9 +4,11 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/0xsoniclabs/carmen/go/carmen"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 // multiplexer is a provider that distributes requests across multiple providers.
@@ -70,6 +72,22 @@ func (m *multiplexer) getCommitteeCertificates(first scc.Period, maxResults uint
 func (m *multiplexer) getBlockCertificates(first idx.Block, maxResults uint64) ([]cert.BlockCertificate, error) {
 	return tryAll(m.providers, func(p provider) ([]cert.BlockCertificate, error) {
 		return p.getBlockCertificates(first, maxResults)
+	})
+}
+
+// getAccountProof returns the account proof corresponding to the
+// given address at the given height.
+//
+// Parameters:
+//   - address: The address of the account.
+//   - height: The block height of the state.
+//
+// Returns:
+//   - WitnessProof: witness proof for the given account.
+//   - error: Not nil if the provider failed to obtain the requested account proof.
+func (m *multiplexer) getAccountProof(address common.Address, height idx.Block) (carmen.WitnessProof, error) {
+	return tryAll(m.providers, func(p provider) (carmen.WitnessProof, error) {
+		return p.getAccountProof(address, height)
 	})
 }
 

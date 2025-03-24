@@ -41,7 +41,7 @@ type provider interface {
 	//   - error: Not nil if the provider failed to obtain the requested certificates.
 	getBlockCertificates(first idx.Block, maxResults uint64) ([]cert.BlockCertificate, error)
 
-	// GetAccountProof returns the account info corresponding to the
+	// GetAccountProof returns the account proof corresponding to the
 	// given address at the given height.
 	//
 	// Parameters:
@@ -49,8 +49,8 @@ type provider interface {
 	// - height: The block height of the state.
 	//
 	// Returns:
-	// - WitnessProof: witness proof for the account info.
-	// - error: Not nil if the provider failed to obtain the requested account info.
+	// - WitnessProof: witness proof for the account proof.
+	// - error: Not nil if the provider failed to obtain the requested account proof.
 	getAccountProof(address common.Address, height idx.Block) (carmen.WitnessProof, error)
 
 	// close closes the Provider.

@@ -178,7 +178,7 @@ func (s server) getBlockCertificates(first idx.Block, maxResults uint64) ([]cert
 	return certs, nil
 }
 
-// GetAccountProof returns the account info corresponding to the
+// GetAccountProof returns the account proof corresponding to the
 // given address at the given height.
 //
 // Parameters:
@@ -187,7 +187,7 @@ func (s server) getBlockCertificates(first idx.Block, maxResults uint64) ([]cert
 //
 // Returns:
 // - AccountInfo: The AccountInfo of the account at the given height.
-// - error: Not nil if the provider failed to obtain the requested account info.
+// - error: Not nil if the provider failed to obtain the requested account proof.
 func (s server) getAccountProof(address common.Address, height idx.Block) (carmen.WitnessProof, error) {
 	heightString := fmt.Sprintf("0x%x", height)
 	if height == LatestBlock {
