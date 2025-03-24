@@ -12,9 +12,11 @@ package light_client
 import (
 	reflect "reflect"
 
+	carmen "github.com/0xsoniclabs/carmen/go/carmen"
 	scc "github.com/0xsoniclabs/sonic/scc"
 	cert "github.com/0xsoniclabs/sonic/scc/cert"
 	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
+	common "github.com/ethereum/go-ethereum/common"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -52,6 +54,21 @@ func (m *Mockprovider) close() {
 func (mr *MockproviderMockRecorder) close() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "close", reflect.TypeOf((*Mockprovider)(nil).close))
+}
+
+// getAccountProof mocks base method.
+func (m *Mockprovider) getAccountProof(address common.Address, height idx.Block) (carmen.WitnessProof, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "getAccountProof", address, height)
+	ret0, _ := ret[0].(carmen.WitnessProof)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// getAccountProof indicates an expected call of getAccountProof.
+func (mr *MockproviderMockRecorder) getAccountProof(address, height any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "getAccountProof", reflect.TypeOf((*Mockprovider)(nil).getAccountProof), address, height)
 }
 
 // getBlockCertificates mocks base method.
