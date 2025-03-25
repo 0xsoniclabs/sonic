@@ -4,7 +4,7 @@ go 1.24.0
 
 require (
 	github.com/0xsoniclabs/carmen/go v0.0.0-20250318153505-712d1a76e929
-	github.com/0xsoniclabs/tosca v0.0.0-20250221124739-3aac4e7427dc
+	github.com/0xsoniclabs/tosca v0.0.0-20250325122805-8bffb8c49eb9
 	github.com/Fantom-foundation/lachesis-base v0.0.0-20240116072301-a75735c4ef00
 	github.com/cespare/cp v1.1.1
 	github.com/davecgh/go-spew v1.1.1
@@ -21,7 +21,7 @@ require (
 	github.com/naoina/toml v0.1.2-0.20170918210437-9fafd6967416
 	github.com/pkg/errors v0.9.1
 	github.com/status-im/keycard-go v0.3.2
-	github.com/stretchr/testify v1.9.0
+	github.com/stretchr/testify v1.10.0
 	github.com/supranational/blst v0.3.14
 	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7
 	github.com/tyler-smith/go-bip39 v1.1.0
@@ -119,14 +119,14 @@ require (
 	golang.org/x/net v0.36.0 // indirect
 	golang.org/x/sync v0.11.0 // indirect
 	golang.org/x/text v0.22.0 // indirect
-	golang.org/x/time v0.6.0 // indirect
+	golang.org/x/time v0.9.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	pgregory.net/rand v1.0.2 // indirect
 	rsc.io/tmplfunc v0.0.3 // indirect
 )
 
-replace github.com/ethereum/go-ethereum => github.com/0xsoniclabs/go-ethereum v0.0.0-20250210213022-86eca3554809
+replace github.com/ethereum/go-ethereum => github.com/0xsoniclabs/go-ethereum v0.0.0-20250324153703-a2c758c03bd2
 
 replace github.com/Fantom-foundation/lachesis-base => github.com/Fantom-foundation/lachesis-base-sonic v0.0.0-20250212122819-abaef8bb9abb
 

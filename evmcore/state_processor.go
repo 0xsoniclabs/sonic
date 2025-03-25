@@ -154,7 +154,7 @@ func ApplyTransactionWithEVM(msg *core.Message, config *params.ChainConfig, gp *
 	if evm.Config.Tracer == nil {
 		// Set the receipt logs and create the bloom filter.
 		receipt.Logs = statedb.GetLogs(tx.Hash(), blockHash) // don't store logs when tracing
-		receipt.Bloom = types.CreateBloom(types.Receipts{receipt})
+		receipt.Bloom = types.CreateBloom(receipt)
 	}
 	receipt.BlockHash = blockHash
 	receipt.BlockNumber = blockNumber
@@ -179,7 +179,7 @@ func ProcessParentBlockHash(prevHash common.Hash, evm *vm.EVM) {
 	evm.SetTxContext(txContext)
 
 	evm.StateDB.AddAddressToAccessList(params.HistoryStorageAddress)
-	_, _, _ = evm.Call(vm.AccountRef(msg.From), *msg.To, msg.Data, 30_000_000, common.U2560)
+	_, _, _ = evm.Call(msg.From, *msg.To, msg.Data, 30_000_000, common.U2560)
 	evm.StateDB.Finalise(true)
 }
 
@@ -251,7 +251,7 @@ func applyTransaction(
 
 	// Set the receipt logs.
 	receipt.Logs = logs
-	receipt.Bloom = types.CreateBloom(types.Receipts{receipt})
+	receipt.Bloom = types.CreateBloom(receipt)
 	receipt.BlockNumber = blockNumber
 	receipt.TransactionIndex = uint(statedb.TxIndex())
 	return receipt, result.UsedGas, false, err
