@@ -2,10 +2,9 @@ package opera
 
 import (
 	"errors"
+	"github.com/0xsoniclabs/sonic/inter"
 	"math/big"
 	"time"
-
-	"github.com/Fantom-foundation/go-opera/inter"
 )
 
 func validate(rules Rules) error {

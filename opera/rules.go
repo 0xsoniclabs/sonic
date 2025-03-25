@@ -313,7 +313,6 @@ func MainNetRules() Rules {
 			MaxBlockGas:             MinimumMaxBlockGas,
 			MaxEmptyBlockSkipPeriod: inter.Timestamp(1 * time.Minute),
 		},
-		Upgrades: DefaultUpgrades(),
 	}
 }
 
@@ -344,16 +343,6 @@ func DefaultEconomyRules() EconomyRules {
 		LongGasPower:     DefaultGasPowerRules(),
 	}
 	return rules
-}
-
-func DefaultUpgrades() Upgrades {
-	return Upgrades{
-		Berlin:           true,
-		London:           true,
-		Llr:              false,
-		Sonic:            true,
-		CheckRuleChanges: true,
-	}
 }
 
 // FakeEconomyRules returns fakenet economy

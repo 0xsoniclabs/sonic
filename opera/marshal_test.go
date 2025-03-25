@@ -45,7 +45,7 @@ func TestUpdateRules_ValidityCheckIsConductedIfCheckIsEnabledInUpdatedRuleSet(t 
 					require := require.New(t)
 
 					base := MainNetRules()
-					base.Upgrades.CheckRuleChanges = enabledBefore
+					base.Upgrades.Allegro = enabledBefore
 
 					maxParents := 1
 					if validUpdate {

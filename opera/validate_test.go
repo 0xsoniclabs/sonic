@@ -1,19 +1,19 @@
 package opera
 
 import (
+	"github.com/0xsoniclabs/sonic/inter"
 	"math"
 	"math/big"
 	"testing"
 	"time"
 
-	"github.com/Fantom-foundation/go-opera/inter"
 	"github.com/stretchr/testify/require"
 )
 
 func TestDefaultRulesAreValid(t *testing.T) {
 	rules := map[string]Rules{
 		"mainnet": MainNetRules(),
-		"fakenet": FakeNetRules(),
+		"fakenet": FakeNetRules(AllegroFeatures),
 	}
 	for name, r := range rules {
 		t.Run(name, func(t *testing.T) {
@@ -459,7 +459,7 @@ func TestUpgradesValidation_DetectsIssues(t *testing.T) {
 func TestUpgradesValidation_AcceptsValidRules(t *testing.T) {
 	upgrades := []Upgrades{
 		{Berlin: true, London: true, Sonic: true},
-		{Berlin: true, London: true, Sonic: true, CheckRuleChanges: true},
+		{Berlin: true, London: true, Sonic: true, Allegro: true},
 	}
 
 	for _, test := range upgrades {
