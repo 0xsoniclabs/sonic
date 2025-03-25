@@ -6,12 +6,10 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/carmen/go/carmen"
-	"github.com/0xsoniclabs/carmen/go/common/immutable"
 	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -385,7 +383,7 @@ func TestServer_GetAccountProof_FailsToDecodeAddressProof(t *testing.T) {
 	require.Nil(got)
 }
 
-func TestServer_GetAccountProof_ReturnsAccountProof(t *testing.T) {
+func TestServer_GetAccountProof_ReportsInvalidProof(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	client := NewMockrpcClient(ctrl)
@@ -401,7 +399,35 @@ func TestServer_GetAccountProof_ReturnsAccountProof(t *testing.T) {
 		func(result *struct {
 			AccountProof []string
 		}, method string, args ...interface{}) error {
+			// invalid proof
 			result.AccountProof = []string{"0x01", "0x02"}
+			return nil
+		})
+
+	got, err := server.getAccountProof(addr, math.MaxUint64)
+	require.ErrorContains(err, "invalid proof")
+	require.Nil(got)
+}
+
+func TestServer_GetAccountProof_ReturnsAccountProof(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	client := NewMockrpcClient(ctrl)
+	server, err := newServerFromClient(client)
+	require.NoError(err)
+	addr := common.Address{0x1}
+	elementsString := []string{}
+
+	client.EXPECT().Call(
+		gomock.Any(),
+		"eth_getProof",
+		fmt.Sprintf("%v", addr),
+		gomock.Any(),
+		"latest").DoAndReturn(
+		func(result *struct {
+			AccountProof []string
+		}, method string, args ...interface{}) error {
+			result.AccountProof = elementsString
 			return nil
 		})
 
@@ -409,11 +435,7 @@ func TestServer_GetAccountProof_ReturnsAccountProof(t *testing.T) {
 	require.NoError(err)
 	// decode elements for the proof.
 	elements := []carmen.Bytes{}
-	for _, element := range []string{"0x01", "0x02"} {
-		data, err := hexutil.Decode(element)
-		require.NoError(err, fmt.Errorf("failed to decode proof element: %v", err))
-		elements = append(elements, immutable.NewBytes(data))
-	}
+
 	want := carmen.CreateWitnessProofFromNodes(elements...)
 	require.Equal(want, got)
 }

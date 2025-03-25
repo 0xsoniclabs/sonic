@@ -186,7 +186,7 @@ func (s server) getBlockCertificates(first idx.Block, maxResults uint64) ([]cert
 // - height: The block height of the state.
 //
 // Returns:
-// - AccountInfo: The AccountInfo of the account at the given height.
+// - AccountProof: The proof of the account at the given height.
 // - error: Not nil if the provider failed to obtain the requested account proof.
 func (s server) getAccountProof(address common.Address, height idx.Block) (carmen.WitnessProof, error) {
 	heightString := fmt.Sprintf("0x%x", height)
@@ -200,7 +200,7 @@ func (s server) getAccountProof(address common.Address, height idx.Block) (carme
 		&result,
 		"eth_getProof",
 		fmt.Sprintf("%v", address),
-		[]string{fmt.Sprintf("%v", common.Hash{})},
+		[]string{},
 		heightString,
 	)
 	if err != nil {
@@ -216,5 +216,9 @@ func (s server) getAccountProof(address common.Address, height idx.Block) (carme
 		}
 		elements = append(elements, immutable.NewBytes(data))
 	}
-	return carmen.CreateWitnessProofFromNodes(elements...), nil
+	proof := carmen.CreateWitnessProofFromNodes(elements...)
+	if !proof.IsValid() {
+		return nil, fmt.Errorf("invalid proof")
+	}
+	return proof, nil
 }

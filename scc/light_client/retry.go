@@ -99,7 +99,7 @@ func (r retryProvider) getBlockCertificates(first idx.Block, maxResults uint64) 
 // - height: The block height of the state.
 //
 // Returns:
-// - AccountInfo: The AccountInfo of the account at the given height.
+// - AccountProof: The proof of the account at the given height.
 // - error: Not nil if the provider failed to obtain the requested account proof.
 func (r retryProvider) getAccountProof(address common.Address, height idx.Block) (carmen.WitnessProof, error) {
 	return retry(r.maxRetries, r.timeout, func() (carmen.WitnessProof, error) {
