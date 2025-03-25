@@ -13,7 +13,6 @@ require (
 	github.com/dvyukov/go-fuzz v0.0.0-20240924070022-e577bee5275c
 	github.com/ethereum/go-ethereum v1.15.0
 	github.com/gballet/go-libpcsclite v0.0.0-20191108122812-4678299bea08
-	github.com/golang/mock v1.6.0
 	github.com/hashicorp/golang-lru v1.0.2
 	github.com/holiman/uint256 v1.3.2
 	github.com/klauspost/pgzip v1.2.6

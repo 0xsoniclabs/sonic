@@ -10,8 +10,8 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/0xsoniclabs/sonic/gossip/emitter/mock"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
@@ -21,7 +21,7 @@ import (
 	"github.com/0xsoniclabs/sonic/vecmt"
 )
 
-//go:generate go run github.com/golang/mock/mockgen -package=mock -destination=mock/world.go github.com/0xsoniclabs/sonic/gossip/emitter External,TxPool,TxSigner,Signer
+//go:generate mockgen -package=mock -destination=mock/world.go github.com/0xsoniclabs/sonic/gossip/emitter External,TxPool,TxSigner,Signer
 
 func TestEmitter(t *testing.T) {
 	cfg := DefaultConfig()
