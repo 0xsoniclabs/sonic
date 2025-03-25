@@ -12,21 +12,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestBlsOnChain(t *testing.T) {
+func TestBlsVerificationOnChain(t *testing.T) {
 	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
 		FeatureSet: opera.AllegroFeatures,
 	})
 	defer net.Stop()
 
-	// Deploy contract
+	// Deploy contract with transaction options
 	txOptions, err := net.GetTransactOptions(&net.account)
 	require.NoError(t, err, "failed to get transact options; %v", err)
 	txOptions.Nonce = nil
 	txOptions.GasLimit = 10000000
-
-	contract, _, err := DeployContractWithOpts(net, blsContracts.DeployBLS, txOptions)
+	blsContract, _, err := DeployContractWithOpts(net, blsContracts.DeployBLS, txOptions)
 	require.NoError(t, err, "failed to deploy contract; %v", err)
 
+	// Test different bls libraries verification
 	tests := []struct {
 		name     string
 		detaFunc func(pk bls.PrivateKey, message []byte) ([]byte, []byte, error)
@@ -36,9 +36,55 @@ func TestBlsOnChain(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			runTest(t, net, contract, test.detaFunc)
+			runTest(t, net, blsContract, test.detaFunc)
 		})
 	}
+
+	t.Run("agregate", func(t *testing.T) {
+		// Get test data
+		pubKeys, signature, msg, err := getBLSAgregateData()
+		require.NoError(t, err, "failed to get test data; %v", err)
+
+		tests := []struct {
+			name      string
+			pubkeys   []bls.PublicKey
+			signature bls.Signature
+			message   []byte
+			ok        bool
+		}{
+			{"ok", pubKeys, signature, msg, true},
+			{"message not ok", pubKeys, signature, []byte("message not ok"), false},
+			{"public key not ok", []bls.PublicKey{bls.NewPrivateKey().PublicKey()}, signature, msg, false},
+			{"signature not ok", pubKeys, bls.NewPrivateKey().Sign([]byte("some message")), msg, false},
+		}
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+
+				pubKeys, signature, msg, err := parseInputData(test.pubkeys, test.signature, test.message)
+				require.NoError(t, err, "failed to parse test data; %v", err)
+
+				ok, err := blsContract.CheckAgregatedSignature(nil, pubKeys, signature, msg)
+				require.NoError(t, err, "failed to call CheckSignature; %v", err)
+				require.Equal(t, test.ok, ok, "result has to be has to be %v", test.ok)
+			})
+		}
+
+		t.Run("update signature", func(t *testing.T) {
+			pubKeysData, sig, message, err := parseInputData(pubKeys, signature, msg)
+			require.NoError(t, err, "failed to parse test data; %v", err)
+
+			updateTransaction, err := blsContract.CheckAndUpdateAgregatedSignature(txOptions, pubKeysData, sig, message)
+			require.NoError(t, err, "failed to update contract signature; %v", err)
+
+			receipt, err := net.GetReceipt(updateTransaction.Hash())
+			require.NoError(t, err, "failed to get receipt; %v", err)
+			t.Logf("gas used for updating signature: %v", receipt.GasUsed)
+
+			updatedSignature, err := blsContract.Signature(nil)
+			require.NoError(t, err, "failed to get updated signature; %v", err)
+			require.Equal(t, sig, updatedSignature, "signature has to be updated")
+		})
+	})
 }
 
 func runTest(
@@ -48,20 +94,16 @@ func runTest(
 	f func(pk bls.PrivateKey, message []byte) ([]byte, []byte, error),
 ) {
 
-	notok := make([]byte, 32)
-	ok := make([]byte, 32)
-	ok[31] = 1
-
 	pubKey, signature, message, err := getDataForVerification(f)
 	require.NoError(t, err, "failed to get test data; %v", err)
 
 	checkOk, err := blsContract.CheckSignature(nil, pubKey, signature, message)
 	require.NoError(t, err, "failed to call CheckSignature; %v", err)
-	require.Equal(t, ok[:], checkOk, "unexpected identity value")
+	require.True(t, checkOk, "signiture has to be valid")
 
 	checkNotOk, err := blsContract.CheckSignature(nil, pubKey, signature, []byte("hello world"))
 	require.NoError(t, err, "failed to call CheckSignature; %v", err)
-	require.Equal(t, notok[:], checkNotOk, "unexpected identity value")
+	require.False(t, checkNotOk, "signiture has to be invalid")
 
 	txOpts, err := net.GetTransactOptions(&net.account)
 	require.NoError(t, err, "failed to get transaction options; %v", err)
@@ -171,4 +213,36 @@ func encodePointG2(p *gnark.G2Affine) []byte {
 	fp.BigEndian.PutElement((*[fp.Bytes]byte)(out[144:144+48]), p.Y.A0)
 	fp.BigEndian.PutElement((*[fp.Bytes]byte)(out[208:208+48]), p.Y.A1)
 	return out
+}
+
+func getBLSAgregateData() ([]bls.PublicKey, bls.Signature, []byte, error) {
+	msg := []byte("Test message")
+	pk1 := bls.NewPrivateKey()
+	pk2 := bls.NewPrivateKey()
+	pk3 := bls.NewPrivateKey()
+	sig1 := pk1.Sign(msg)
+	sig2 := pk2.Sign(msg)
+	sig3 := pk3.Sign(msg)
+
+	pubKeys := []bls.PublicKey{pk1.PublicKey(), pk2.PublicKey(), pk3.PublicKey()}
+	sigAggregate := bls.AggregateSignatures(sig1, sig2, sig3)
+
+	return pubKeys, sigAggregate, msg, nil
+}
+
+func parseInputData(pubKeys []bls.PublicKey, signature bls.Signature, msg []byte) ([]byte, []byte, []byte, error) {
+	pubKeysData := make([]byte, 0, len(pubKeys)*128)
+	for _, pk := range pubKeys {
+		pubG1, err := publicKeyToGnarkG1Affine(pk)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		pubKeysData = append(pubKeysData, encodePointG1(&pubG1)...)
+	}
+	signatureG2, err := signatureToGnarkG2Affine(signature)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	signatureData := encodePointG2(&signatureG2)
+	return pubKeysData, signatureData, msg, nil
 }
