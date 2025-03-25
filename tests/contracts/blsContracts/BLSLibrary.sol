@@ -21,7 +21,8 @@ library BLSLibrary {
 
     uint16 private constant L = 64;
 
-    // Domain separation tag TODO: need to be specified according to spec recommendation
+    // Domain separation tag 
+    // TODO: need to be specified according to spec recommendation
     bytes constant dst = "";
 
     // Main function to hash message into G2 point
@@ -54,11 +55,45 @@ library BLSLibrary {
         bytes memory pubKey,
         bytes memory signature,
         bytes memory messageHash
-    ) public view returns (bytes memory) {
-        return
-            precompilePair(
+    ) public view returns (bool) {
+        bytes memory res = precompilePair(
                 abi.encodePacked(negG1, signature, pubKey, messageHash)
             );
+        require(res.length == 32, "Invalid result length");
+        return res[31] != 0;
+    }
+
+    // All input parameters are points on G1 or G2 as bytes
+    function PairAgregateSignature(
+        bytes memory pubKeys,
+        bytes memory signature,
+        bytes memory messageHash
+    ) public view returns (bool) {
+        
+        require(pubKeys.length%128 == 0, "Invalid public keys length");
+        require(signature.length == 256, "Invalid signature length");
+
+        bytes memory input = abi.encodePacked(negG1, signature);
+
+        // Split public keys and add them into the input data
+        for (uint256 i = 0; i < pubKeys.length/128; i++) {
+            bytes memory pk = new bytes(128);
+            uint256 chunkStart = i * 128;
+            assembly {
+                let chunkPtr := add(pk, 0x20) // Points to the start of the `chunk` data
+                let srcPtr := add(add(pubKeys, 0x20), chunkStart) // Points to the correct position in `pseudoRandomBytes`
+                mstore(chunkPtr, mload(srcPtr)) // Copy 32 bytes
+                mstore(add(chunkPtr, 0x20), mload(add(srcPtr, 0x20))) // Copy the next 32 bytes
+                mstore(add(chunkPtr, 0x40), mload(add(srcPtr, 0x40))) // Copy the next 32 bytes
+                mstore(add(chunkPtr, 0x60), mload(add(srcPtr, 0x60))) // Copy the next 32 bytes
+            }
+            input = abi.encodePacked(input, pk, messageHash);
+        }
+
+        // Call precompile contract to pair signatures
+        bytes memory res = precompilePair(input);
+        require(res.length == 32, "Invalid result length");
+        return res[31] != 0;
     }
 
     // Use precompile contract to map hashed message as a field points into G2 point
