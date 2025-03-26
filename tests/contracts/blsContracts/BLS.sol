@@ -35,7 +35,7 @@ contract BLS {
 
         // hash message and check pairing
         bytes memory msgHashG2 = BLSLibrary.EncodeToG2(message);
-        return BLSLibrary.CheckAggregateSignature(pubKeys,signature,msgHashG2);
+        return BLSLibrary.CheckAggregatedSignature(pubKeys,signature,msgHashG2);
     }
 
     function CheckAndUpdateAggregatedSignature(bytes memory pubKeys, bytes memory signature, bytes memory message) public{

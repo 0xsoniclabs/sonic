@@ -62,7 +62,7 @@ library BLSLibrary {
     }
 
     // All input parameters are points on G1 or G2 as bytes
-    function CheckAggregateSignature(
+    function CheckAggregatedSignature(
         bytes memory pubKeys,
         bytes memory signature,
         bytes memory messageHash
