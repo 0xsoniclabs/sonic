@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"math/big"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/opera"
@@ -24,151 +23,60 @@ func TestBlsVerificationOnChain(t *testing.T) {
 	blsContract, _, err := DeployContract(net, blsContracts.DeployBLS)
 	require.NoError(t, err, "failed to deploy contract; %v", err)
 
-	// Test different bls libraries verification
-	tests := []struct {
-		name     string
-		dataFunc func(pk bls.PrivateKey, message []byte) ([]byte, []byte, error)
+	testVariants := []struct {
+		name         string
+		signersCount int
+		checkFunc    func(opts *bind.CallOpts, pubKey []byte, signature []byte, message []byte) (bool, error)
+		updateFunc   func(opts *bind.TransactOpts, pubKeys []byte, signature []byte, message []byte) (*types.Transaction, error)
 	}{
-		{"gnark", getGnarkData},
-		{"bls", getBlsData},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			runTest(t, net, blsContract, test.dataFunc)
-		})
+		{"verify single", 1, blsContract.CheckSignature, blsContract.CheckAndUpdate},
+		{"verify aggregate", 25, blsContract.CheckAggregatedSignature, blsContract.CheckAndUpdateAggregatedSignature},
 	}
 
-	t.Run("aggregate", func(t *testing.T) {
-		// Get test data
-		pubKeys, signature, msg := getBlsAggregateData()
+	for _, testVariant := range testVariants {
+		t.Run(testVariant.name, func(t *testing.T) {
 
-		tests := []struct {
-			name      string
-			pubkeys   []bls.PublicKey
-			signature bls.Signature
-			message   []byte
-			ok        bool
-		}{
-			{"ok", pubKeys, signature, msg, true},
-			{"message not ok", pubKeys, signature, []byte("message not ok"), false},
-			{"public key not ok", []bls.PublicKey{bls.NewPrivateKey().PublicKey()}, signature, msg, false},
-			{"signature not ok", pubKeys, bls.NewPrivateKey().Sign([]byte("some message")), msg, false},
-		}
-		for _, test := range tests {
-			t.Run(test.name, func(t *testing.T) {
+			pubKeys, signature, msg := getBlsData(testVariant.signersCount)
+			tests := []struct {
+				name      string
+				pubkeys   []bls.PublicKey
+				signature bls.Signature
+				message   []byte
+				ok        bool
+			}{
+				{"ok", pubKeys, signature, msg, true},
+				{"message not ok", pubKeys, signature, []byte("message not ok"), false},
+				{"public key not ok", []bls.PublicKey{bls.NewPrivateKey().PublicKey()}, signature, msg, false},
+				{"signature not ok", pubKeys, bls.NewPrivateKey().Sign([]byte("some message")), msg, false},
+			}
+			for _, test := range tests {
+				t.Run(test.name, func(t *testing.T) {
+					pubKeysBytes, signatureBytes, msgBytes, err := parseInputData(test.pubkeys, test.signature, test.message)
+					require.NoError(t, err, "failed to parse test data; %v", err)
 
-				pubKeys, signature, msg, err := parseInputData(test.pubkeys, test.signature, test.message)
+					ok, err := testVariant.checkFunc(nil, pubKeysBytes, signatureBytes, msgBytes)
+					require.NoError(t, err, "failed to check signature; %v", err)
+					require.Equal(t, test.ok, ok, "signature has to be %v", test.ok)
+				})
+			}
+
+			t.Run("update signature", func(t *testing.T) {
+				pubKeysBytes, signatureBytes, msgBytes, err := parseInputData(pubKeys, signature, msg)
 				require.NoError(t, err, "failed to parse test data; %v", err)
 
-				ok, err := blsContract.CheckAggregatedSignature(nil, pubKeys, signature, msg)
-				require.NoError(t, err, "failed to call CheckSignature; %v", err)
-				require.Equal(t, test.ok, ok, "result has to be has to be %v", test.ok)
+				receipt, err := net.Apply(func(ops *bind.TransactOpts) (*types.Transaction, error) {
+					ops.GasLimit = 10000000
+					return testVariant.updateFunc(ops, pubKeysBytes, signatureBytes, msgBytes)
+				})
+				require.NoError(t, err, "failed to get receipt; %v", err)
+				t.Logf("gas used for updating signature: %v", receipt.GasUsed)
+
+				updatedSignature, err := blsContract.Signature(nil)
+				require.NoError(t, err, "failed to get updated signature; %v", err)
+				require.Equal(t, signatureBytes, updatedSignature, "signature has to be updated")
 			})
-		}
-
-		t.Run("update signature", func(t *testing.T) {
-			pubKeysData, sig, message, err := parseInputData(pubKeys, signature, msg)
-			require.NoError(t, err, "failed to parse test data; %v", err)
-
-			receipt, err := net.Apply(func(ops *bind.TransactOpts) (*types.Transaction, error) {
-				return blsContract.CheckAndUpdateAggregatedSignature(ops, pubKeysData, sig, message)
-			})
-			require.NoError(t, err, "failed to get receipt; %v", err)
-			t.Logf("gas used for updating signature: %v", receipt.GasUsed)
-
-			updatedSignature, err := blsContract.Signature(nil)
-			require.NoError(t, err, "failed to get updated signature; %v", err)
-			require.Equal(t, sig, updatedSignature, "signature has to be updated")
 		})
-	})
-}
-
-func runTest(
-	t *testing.T,
-	net *IntegrationTestNet,
-	blsContract *blsContracts.BLS,
-	f func(pk bls.PrivateKey, message []byte) ([]byte, []byte, error),
-) {
-
-	pubKey, signature, message, err := getDataForVerification(f)
-	require.NoError(t, err, "failed to get test data; %v", err)
-
-	checkOk, err := blsContract.CheckSignature(nil, pubKey, signature, message)
-	require.NoError(t, err, "failed to call CheckSignature; %v", err)
-	require.True(t, checkOk, "signature has to be valid")
-
-	checkNotOk, err := blsContract.CheckSignature(nil, pubKey, signature, []byte("hello world"))
-	require.NoError(t, err, "failed to call CheckSignature; %v", err)
-	require.False(t, checkNotOk, "signature has to be invalid")
-
-	txOpts, err := net.GetTransactOptions(&net.account)
-	require.NoError(t, err, "failed to get transaction options; %v", err)
-
-	updateTransaction, err := blsContract.CheckAndUpdate(txOpts, pubKey, signature, message)
-	require.NoError(t, err, "failed to update contract signature; %v", err)
-
-	receipt, err := net.GetReceipt(updateTransaction.Hash())
-	require.NoError(t, err, "failed to get receipt; %v", err)
-	t.Logf("gas used for updating signature: %v", receipt.GasUsed)
-}
-
-// getDataForVerification returns data for verification
-// pubKey, signature, message, error
-func getDataForVerification(
-	f func(pk bls.PrivateKey, message []byte) ([]byte, []byte, error),
-) ([]byte, []byte, []byte, error) {
-
-	message := []byte("hello")
-	pk := bls.NewPrivateKeyForTests(1)
-
-	pubKey, signature, err := f(pk, message)
-	if err != nil {
-		return nil, nil, nil, err
 	}
-	return pubKey, signature, message, err
-}
-
-func getGnarkData(pk bls.PrivateKey, message []byte) ([]byte, []byte, error) {
-	// hash message and get G2 point
-	msg, err := gnark.EncodeToG2(message, nil)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// private key as scalar
-	pkBytes := pk.Serialize()
-	pkScalar := big.NewInt(0).SetBytes(pkBytes[:])
-
-	// calculate signature as pk * msg, G2 points
-	sig := new(gnark.G2Affine).ScalarMultiplication(&msg, pkScalar)
-	signature := encodePointG2(sig)
-
-	// calculate public key as pk * G1, G1 points
-	_, _, g1, _ := gnark.Generators()
-	pubKeyG1 := new(gnark.G1Affine).ScalarMultiplication(&g1, pkScalar)
-	pubKey := encodePointG1(pubKeyG1)
-
-	return pubKey, signature, nil
-}
-
-func getBlsData(pk bls.PrivateKey, message []byte) ([]byte, []byte, error) {
-
-	// convert bls public key to G2 point bytes
-	pubKeyBls := pk.PublicKey()
-	pubKeyG1, err := publicKeyToGnarkG1Affine(pubKeyBls)
-	if err != nil {
-		return nil, nil, err
-	}
-	pubKey := encodePointG1(&pubKeyG1)
-
-	// convert bls signature to G2 point bytes
-	sigBlsLib := pk.Sign(message)
-	p, err := signatureToGnarkG2Affine(sigBlsLib)
-	if err != nil {
-		return nil, nil, err
-	}
-	signature := encodePointG2(&p)
-	return pubKey, signature, nil
 }
 
 func publicKeyToGnarkG1Affine(key bls.PublicKey) (gnark.G1Affine, error) {
@@ -211,19 +119,25 @@ func encodePointG2(p *gnark.G2Affine) []byte {
 	return out
 }
 
-func getBlsAggregateData() ([]bls.PublicKey, bls.Signature, []byte) {
+func getBlsData(signersCount int) ([]bls.PublicKey, bls.Signature, []byte) {
 	msg := []byte("Test message")
-	pk1 := bls.NewPrivateKey()
-	pk2 := bls.NewPrivateKey()
-	pk3 := bls.NewPrivateKey()
-	sig1 := pk1.Sign(msg)
-	sig2 := pk2.Sign(msg)
-	sig3 := pk3.Sign(msg)
+	pubKeys := make([]bls.PublicKey, signersCount)
+	signatures := make([]bls.Signature, signersCount)
 
-	pubKeys := []bls.PublicKey{pk1.PublicKey(), pk2.PublicKey(), pk3.PublicKey()}
-	sigAggregate := bls.AggregateSignatures(sig1, sig2, sig3)
+	for i := 0; i < signersCount; i++ {
+		pk := bls.NewPrivateKey()
+		pubKeys[i] = pk.PublicKey()
+		signatures[i] = pk.Sign(msg)
+	}
 
-	return pubKeys, sigAggregate, msg
+	var signature bls.Signature
+	if signersCount == 1 {
+		signature = signatures[0]
+	} else {
+		signature = bls.AggregateSignatures(signatures...)
+	}
+
+	return pubKeys, signature, msg
 }
 
 func parseInputData(pubKeys []bls.PublicKey, signature bls.Signature, msg []byte) ([]byte, []byte, []byte, error) {
