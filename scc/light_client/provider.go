@@ -3,9 +3,11 @@ package light_client
 import (
 	"math"
 
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/0xsoniclabs/carmen/go/carmen"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/cert"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 //go:generate mockgen -source=provider.go -package=light_client -destination=provider_mock.go
@@ -38,6 +40,18 @@ type provider interface {
 	//     and the following blocks.
 	//   - error: Not nil if the provider failed to obtain the requested certificates.
 	getBlockCertificates(first idx.Block, maxResults uint64) ([]cert.BlockCertificate, error)
+
+	// GetAccountProof returns the account proof corresponding to the
+	// given address at the given height.
+	//
+	// Parameters:
+	// - address: The address of the account.
+	// - height: The block height of the state.
+	//
+	// Returns:
+	// - WitnessProof: witness proof for the account proof.
+	// - error: Not nil if the provider failed to obtain the requested account proof.
+	getAccountProof(address common.Address, height idx.Block) (carmen.WitnessProof, error)
 
 	// close closes the Provider.
 	// Closing an already closed provider has no effect

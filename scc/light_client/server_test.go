@@ -2,11 +2,14 @@ package light_client
 
 import (
 	"fmt"
+	"math"
 	"testing"
 
+	"github.com/0xsoniclabs/carmen/go/carmen"
 	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -329,4 +332,110 @@ func TestServer_GetCertificates_ReturnsCertificates(t *testing.T) {
 	blockCerts, err := server.getBlockCertificates(0, 2)
 	require.NoError(err)
 	require.Len(blockCerts, 2)
+}
+
+func TestServer_GetAccountProof_PropagatesClientError(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	client := NewMockrpcClient(ctrl)
+	server, err := newServerFromClient(client)
+	require.NoError(err)
+
+	someError := fmt.Errorf("some error")
+	addr := common.Address{0x1}
+	client.EXPECT().Call(
+		gomock.Any(), // any result variable
+		"eth_getProof",
+		fmt.Sprintf("%v", addr),
+		gomock.Any(), // any storage key
+		"latest").
+		Return(someError)
+
+	_, err = server.getAccountProof(addr, math.MaxUint64)
+	require.ErrorIs(err, someError)
+}
+
+func TestServer_GetAccountProof_FailsToDecodeAddressProof(t *testing.T) {
+	// setup
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	client := NewMockrpcClient(ctrl)
+	server, err := newServerFromClient(client)
+	require.NoError(err)
+	// expexted error
+	addr := common.Address{0x1}
+	client.EXPECT().Call(
+		gomock.Any(),
+		"eth_getProof",
+		fmt.Sprintf("%v", addr),
+		gomock.Any(),
+		"latest").DoAndReturn(
+		func(result *struct {
+			AccountProof []string
+		}, method string, args ...interface{}) error {
+			// invalid proof
+			result.AccountProof = []string{"invalid"}
+			return nil
+		})
+
+	got, err := server.getAccountProof(addr, math.MaxUint64)
+	require.ErrorContains(err, "failed to decode proof element")
+	require.Nil(got)
+}
+
+func TestServer_GetAccountProof_ReportsInvalidProof(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	client := NewMockrpcClient(ctrl)
+	server, err := newServerFromClient(client)
+	require.NoError(err)
+	addr := common.Address{0x1}
+	client.EXPECT().Call(
+		gomock.Any(),
+		"eth_getProof",
+		fmt.Sprintf("%v", addr),
+		gomock.Any(),
+		"latest").DoAndReturn(
+		func(result *struct {
+			AccountProof []string
+		}, method string, args ...interface{}) error {
+			// invalid proof
+			result.AccountProof = []string{"0x01", "0x02"}
+			return nil
+		})
+
+	got, err := server.getAccountProof(addr, math.MaxUint64)
+	require.ErrorContains(err, "invalid proof")
+	require.Nil(got)
+}
+
+func TestServer_GetAccountProof_ReturnsAccountProof(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	client := NewMockrpcClient(ctrl)
+	server, err := newServerFromClient(client)
+	require.NoError(err)
+	addr := common.Address{0x1}
+	elementsString := []string{}
+
+	client.EXPECT().Call(
+		gomock.Any(),
+		"eth_getProof",
+		fmt.Sprintf("%v", addr),
+		gomock.Any(),
+		"latest").DoAndReturn(
+		func(result *struct {
+			AccountProof []string
+		}, method string, args ...interface{}) error {
+			result.AccountProof = elementsString
+			return nil
+		})
+
+	got, err := server.getAccountProof(addr, math.MaxUint64)
+	require.NoError(err)
+	// decode elements for the proof.
+	elements := []carmen.Bytes{}
+
+	want := carmen.CreateWitnessProofFromNodes(elements...)
+	require.Equal(want, got)
 }

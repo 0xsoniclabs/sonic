@@ -3,10 +3,14 @@ package light_client
 import (
 	"fmt"
 
+	"github.com/0xsoniclabs/carmen/go/carmen"
+	"github.com/0xsoniclabs/carmen/go/common/immutable"
 	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
@@ -172,4 +176,49 @@ func (s server) getBlockCertificates(first idx.Block, maxResults uint64) ([]cert
 		certs[i] = res.ToCertificate()
 	}
 	return certs, nil
+}
+
+// GetAccountProof returns the account proof corresponding to the
+// given address at the given height.
+//
+// Parameters:
+// - address: The address of the account.
+// - height: The block height of the state.
+//
+// Returns:
+// - AccountProof: The proof of the account at the given height.
+// - error: Not nil if the provider failed to obtain the requested account proof.
+func (s server) getAccountProof(address common.Address, height idx.Block) (carmen.WitnessProof, error) {
+	heightString := fmt.Sprintf("0x%x", height)
+	if height == LatestBlock {
+		heightString = "latest"
+	}
+	var result struct {
+		AccountProof []string
+	}
+	err := s.client.Call(
+		&result,
+		"eth_getProof",
+		fmt.Sprintf("%v", address),
+		[]string{},
+		heightString,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// decode elements for the proof.
+	elements := []carmen.Bytes{}
+	for _, element := range result.AccountProof {
+		data, err := hexutil.Decode(element)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode proof element: %v", err)
+		}
+		elements = append(elements, immutable.NewBytes(data))
+	}
+	proof := carmen.CreateWitnessProofFromNodes(elements...)
+	if !proof.IsValid() {
+		return nil, fmt.Errorf("invalid proof")
+	}
+	return proof, nil
 }

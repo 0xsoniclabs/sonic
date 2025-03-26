@@ -7,6 +7,7 @@ import (
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -89,4 +90,12 @@ func TestMultiplexer_GetCertificates_PropagatesError(t *testing.T) {
 	require.ErrorContains(err, "all providers failed")
 	require.ErrorContains(err, "error3")
 	require.ErrorContains(err, "error4")
+
+	p1.EXPECT().getAccountProof(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("error5")).Times(1)
+	p2.EXPECT().getAccountProof(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("error6")).Times(1)
+
+	_, err = m.getAccountProof(common.Address{0x01}, idx.Block(0))
+	require.ErrorContains(err, "all providers failed")
+	require.ErrorContains(err, "error5")
+	require.ErrorContains(err, "error6")
 }
