@@ -119,6 +119,8 @@ library BLSLibrary {
         return out;
     }
 
+    // https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-hash-to-curve-09#name-expand_message_xmd
+    //
     // Z_pad = I2OSP(0, r_in_bytes)   64
     // l_i_b_str = I2OSP(len_in_bytes, 2)
     // DST_prime = DST ∥ I2OSP(len(DST), 1)
@@ -175,11 +177,14 @@ library BLSLibrary {
         return res;
     }
 
+    // https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-hash-to-curve-09#name-hash_to_field-implementatio
+    // hashToFieldPoints is a function that takes a message and returns an array of field points
     function hashToFieldPoints(bytes memory message)
         private
         view
         returns (Elements.Element[] memory)
     {
+        // expand message
         bytes memory pseudoRandomBytes = hash(
             abi.encodePacked(message),
             abi.encodePacked(dst),
