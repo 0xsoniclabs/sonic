@@ -313,6 +313,7 @@ func MainNetRules() Rules {
 			MaxBlockGas:             MinimumMaxBlockGas,
 			MaxEmptyBlockSkipPeriod: inter.Timestamp(1 * time.Minute),
 		},
+		Upgrades: AllegroFeatures.ToUpgrades(),
 	}
 }
 
