@@ -592,24 +592,25 @@ func (n *IntegrationTestNet) SpawnSession(t *testing.T) IntegrationTestNetSessio
 // The contract is deployed with by the network's validator account. The function returns the
 // deployed contract instance and the transaction receipt.
 func DeployContract[T any](n IntegrationTestNetSession, deploy contractDeployer[T]) (*T, *types.Receipt, error) {
-	return DeployContractWithOpts[T](n, deploy, nil)
-}
 
-// DeployContractWithOpts is a utility function handling the deployment of a contract on the network.
-// The contract is deployed with the given transaction options.
-func DeployContractWithOpts[T any](n IntegrationTestNetSession, deploy contractDeployer[T], transactOptions *bind.TransactOpts) (*T, *types.Receipt, error) {
 	client, err := n.GetClient()
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to connect to the Ethereum client: %w", err)
 	}
 	defer client.Close()
 
-	if transactOptions == nil {
-		transactOptions, err = n.GetTransactOptions(n.GetSessionSponsor())
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to get transaction options: %w", err)
-		}
+	transactOptions, err := n.GetTransactOptions(n.GetSessionSponsor())
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get transaction options: %w", err)
 	}
+
+	// Deployments may comprise more than one transaction, so nonces must be
+	// set to nil to allow the client to determine the correct nonce for each
+	// transaction.
+	transactOptions.Nonce = nil
+
+	// Deployments may also be more expensive than the default transaction.
+	transactOptions.GasLimit = 10_000_000
 
 	_, transaction, contract, err := deploy(transactOptions, client)
 	if err != nil {

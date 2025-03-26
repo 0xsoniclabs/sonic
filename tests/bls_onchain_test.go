@@ -9,6 +9,8 @@ import (
 	"github.com/0xsoniclabs/sonic/tests/contracts/blsContracts"
 	gnark "github.com/consensys/gnark-crypto/ecc/bls12-381"
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/fp"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 )
 
@@ -19,31 +21,26 @@ func TestBlsVerificationOnChain(t *testing.T) {
 	defer net.Stop()
 
 	// Deploy contract with transaction options
-	txOptions, err := net.GetTransactOptions(&net.account)
-	require.NoError(t, err, "failed to get transact options; %v", err)
-	txOptions.Nonce = nil
-	txOptions.GasLimit = 10000000
-	blsContract, _, err := DeployContractWithOpts(net, blsContracts.DeployBLS, txOptions)
+	blsContract, _, err := DeployContract(net, blsContracts.DeployBLS)
 	require.NoError(t, err, "failed to deploy contract; %v", err)
 
 	// Test different bls libraries verification
 	tests := []struct {
 		name     string
-		detaFunc func(pk bls.PrivateKey, message []byte) ([]byte, []byte, error)
+		dataFunc func(pk bls.PrivateKey, message []byte) ([]byte, []byte, error)
 	}{
 		{"gnark", getGnarkData},
 		{"bls", getBlsData},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			runTest(t, net, blsContract, test.detaFunc)
+			runTest(t, net, blsContract, test.dataFunc)
 		})
 	}
 
-	t.Run("agregate", func(t *testing.T) {
+	t.Run("aggregate", func(t *testing.T) {
 		// Get test data
-		pubKeys, signature, msg, err := getBLSAgregateData()
-		require.NoError(t, err, "failed to get test data; %v", err)
+		pubKeys, signature, msg := getBlsAggregateData()
 
 		tests := []struct {
 			name      string
@@ -73,10 +70,9 @@ func TestBlsVerificationOnChain(t *testing.T) {
 			pubKeysData, sig, message, err := parseInputData(pubKeys, signature, msg)
 			require.NoError(t, err, "failed to parse test data; %v", err)
 
-			updateTransaction, err := blsContract.CheckAndUpdateAgregatedSignature(txOptions, pubKeysData, sig, message)
-			require.NoError(t, err, "failed to update contract signature; %v", err)
-
-			receipt, err := net.GetReceipt(updateTransaction.Hash())
+			receipt, err := net.Apply(func(ops *bind.TransactOpts) (*types.Transaction, error) {
+				return blsContract.CheckAndUpdateAgregatedSignature(ops, pubKeysData, sig, message)
+			})
 			require.NoError(t, err, "failed to get receipt; %v", err)
 			t.Logf("gas used for updating signature: %v", receipt.GasUsed)
 
@@ -99,11 +95,11 @@ func runTest(
 
 	checkOk, err := blsContract.CheckSignature(nil, pubKey, signature, message)
 	require.NoError(t, err, "failed to call CheckSignature; %v", err)
-	require.True(t, checkOk, "signiture has to be valid")
+	require.True(t, checkOk, "signature has to be valid")
 
 	checkNotOk, err := blsContract.CheckSignature(nil, pubKey, signature, []byte("hello world"))
 	require.NoError(t, err, "failed to call CheckSignature; %v", err)
-	require.False(t, checkNotOk, "signiture has to be invalid")
+	require.False(t, checkNotOk, "signature has to be invalid")
 
 	txOpts, err := net.GetTransactOptions(&net.account)
 	require.NoError(t, err, "failed to get transaction options; %v", err)
@@ -215,7 +211,7 @@ func encodePointG2(p *gnark.G2Affine) []byte {
 	return out
 }
 
-func getBLSAgregateData() ([]bls.PublicKey, bls.Signature, []byte, error) {
+func getBlsAggregateData() ([]bls.PublicKey, bls.Signature, []byte) {
 	msg := []byte("Test message")
 	pk1 := bls.NewPrivateKey()
 	pk2 := bls.NewPrivateKey()
@@ -227,7 +223,7 @@ func getBLSAgregateData() ([]bls.PublicKey, bls.Signature, []byte, error) {
 	pubKeys := []bls.PublicKey{pk1.PublicKey(), pk2.PublicKey(), pk3.PublicKey()}
 	sigAggregate := bls.AggregateSignatures(sig1, sig2, sig3)
 
-	return pubKeys, sigAggregate, msg, nil
+	return pubKeys, sigAggregate, msg
 }
 
 func parseInputData(pubKeys []bls.PublicKey, signature bls.Signature, msg []byte) ([]byte, []byte, []byte, error) {
