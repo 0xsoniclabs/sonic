@@ -16,7 +16,7 @@ contract BLS {
         require(pubKey.length == 128, "Invalid public key length");
         require(signature.length == 256, "Invalid signature length");
 
-        // hash message and do pairing
+        // hash message and check pairing
         bytes memory msgHashG2 = BLSLibrary.EncodeToG2(message);
         return BLSLibrary.Pair(pubKey,signature,msgHashG2);
     }
@@ -33,7 +33,7 @@ contract BLS {
         require(pubKeys.length%128 == 0, "Invalid public keys length");
         require(signature.length == 256, "Invalid signature length");
 
-        // hash message and do pairing
+        // hash message and check pairing
         bytes memory msgHashG2 = BLSLibrary.EncodeToG2(message);
         return BLSLibrary.CheckAggregateSignature(pubKeys,signature,msgHashG2);
     }
