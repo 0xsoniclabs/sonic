@@ -28,18 +28,18 @@ contract BLS {
         }
     }
 
-    function CheckAgregatedSignature(bytes memory pubKeys, bytes memory signature, bytes memory message) public view returns (bool){
+    function CheckAggregatedSignature(bytes memory pubKeys, bytes memory signature, bytes memory message) public view returns (bool){
         // check length of input parameters
         require(pubKeys.length%128 == 0, "Invalid public keys length");
         require(signature.length == 256, "Invalid signature length");
 
         // hash message and do pairing
         bytes memory msgHashG2 = BLSLibrary.EncodeToG2(message);
-        return BLSLibrary.PairAgregateSignature(pubKeys,signature,msgHashG2);
+        return BLSLibrary.CheckAggregateSignature(pubKeys,signature,msgHashG2);
     }
 
-    function CheckAndUpdateAgregatedSignature(bytes memory pubKeys, bytes memory signature, bytes memory message) public{
-        bool res  = CheckAgregatedSignature(pubKeys, signature, message);
+    function CheckAndUpdateAggregatedSignature(bytes memory pubKeys, bytes memory signature, bytes memory message) public{
+        bool res  = CheckAggregatedSignature(pubKeys, signature, message);
         if (res == true) {
             Signature = signature;
         }

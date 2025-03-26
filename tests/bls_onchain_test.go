@@ -60,7 +60,7 @@ func TestBlsVerificationOnChain(t *testing.T) {
 				pubKeys, signature, msg, err := parseInputData(test.pubkeys, test.signature, test.message)
 				require.NoError(t, err, "failed to parse test data; %v", err)
 
-				ok, err := blsContract.CheckAgregatedSignature(nil, pubKeys, signature, msg)
+				ok, err := blsContract.CheckAggregatedSignature(nil, pubKeys, signature, msg)
 				require.NoError(t, err, "failed to call CheckSignature; %v", err)
 				require.Equal(t, test.ok, ok, "result has to be has to be %v", test.ok)
 			})
@@ -71,7 +71,7 @@ func TestBlsVerificationOnChain(t *testing.T) {
 			require.NoError(t, err, "failed to parse test data; %v", err)
 
 			receipt, err := net.Apply(func(ops *bind.TransactOpts) (*types.Transaction, error) {
-				return blsContract.CheckAndUpdateAgregatedSignature(ops, pubKeysData, sig, message)
+				return blsContract.CheckAndUpdateAggregatedSignature(ops, pubKeysData, sig, message)
 			})
 			require.NoError(t, err, "failed to get receipt; %v", err)
 			t.Logf("gas used for updating signature: %v", receipt.GasUsed)
