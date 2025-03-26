@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.26;
 
+// Library for operations with BLS12-381 field elements.
+// These elements are product of hash to field function and can be mapped to G2.
+// https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-hash-to-curve-09#name-hash_to_field-implementatio
 library Elements {
 
-    // Define a struct for the Element
+    // Element represents a field element stored on 6 words (uint64)
     struct Element {
         uint64[6] val; // Fixed-size array of 6 uint64 values
     }
@@ -40,7 +43,6 @@ library Elements {
 
         return chunks;
     }
-
 
     // rSquare where r is the Montgommery constant
     // see section 2.3.2 of Tolga Acar's thesis
@@ -393,6 +395,8 @@ library Elements {
         }
     }
 
+    // Helper struct is needed to avoid stack to deep compilation error
+    // as there is a limit of defined variables in single function
     struct MulHelper {
         uint64 t0;
         uint64 t1;
