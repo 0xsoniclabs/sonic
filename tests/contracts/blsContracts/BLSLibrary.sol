@@ -49,7 +49,7 @@ library BLSLibrary {
     }
 
     // All input parameters are points on G1 or G2 as bytes
-    function Pair(
+    function CheckSignature(
         bytes memory pubKey,
         bytes memory signature,
         bytes memory messageHash

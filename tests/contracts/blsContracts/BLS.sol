@@ -18,7 +18,7 @@ contract BLS {
 
         // hash message and check pairing
         bytes memory msgHashG2 = BLSLibrary.EncodeToG2(message);
-        return BLSLibrary.Pair(pubKey,signature,msgHashG2);
+        return BLSLibrary.CheckSignature(pubKey,signature,msgHashG2);
     }
 
     function CheckAndUpdate(bytes memory pubKey, bytes memory signature, bytes memory message) public {
