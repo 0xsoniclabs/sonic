@@ -216,9 +216,6 @@ library BLSLibrary {
     }
 
     function setBigIntToElement(BigNumber memory v, BigNumber memory modulo) private view returns (Elements.Element memory) {
-        
-        // returning Elements.toMont(Elements.ElementFromBytes(vv.val));  //this is working to get correct field point but with Montgomery reduction
-        // returning Elements.ElementFromBytes(v.val); // correct field point without Montgomery reduction, but working for MapToG2
 
         BigNumber memory zero = BigNumbers.zero();
         int c = v.cmp(modulo, false);
@@ -232,6 +229,11 @@ library BLSLibrary {
         }
 
         v = v.mod(modulo);
+
+        // Other BLS libraries like gnark are returning field points with Montgomery reduction.
+        // This step is not needed for mapping field points to G2 as in the gnark library
+        // field elements are recovered from their Montgomery representation before mapping.
+        // Motngommery reduction can be achieved by calling Elements.toMont(Elements.ElementFromBytes(vv.val));
 
         return Elements.ElementFromBytes(v.val);
     }  
