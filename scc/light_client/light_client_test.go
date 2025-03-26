@@ -125,44 +125,47 @@ func TestLightClientState_Sync_UpdatesStateToHead(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	prov := NewMockprovider(ctrl)
 
-	// Setup test data
+	// setup block for period 1.
+	blockNumber := idx.Block(scc.BLOCKS_PER_PERIOD*1 + 1)
+	blockCert := cert.NewCertificate(
+		cert.NewBlockStatement(0, blockNumber, common.Hash{0x1}, common.Hash{0x2}))
+
+	// setup committee certificate for period 1.
 	key := bls.NewPrivateKey()
-	blockCert, blockNumber := setupBlockCertificate(t, key)
-	committeeCert := setupCommitteeCertificate(t, key)
+	member := makeMember(key)
+	committeeCert1 := cert.NewCertificate(cert.CommitteeStatement{
+		Period:    1,
+		Committee: scc.NewCommittee(member),
+	})
 
-	// Mock provider calls
-	mockProviderResponses(prov, blockCert, committeeCert)
-
-	// Create and configure LightClient
-	client, err := setupLightClient(prov, key)
+	// member signs the certificates
+	err := committeeCert1.Add(scc.MemberId(0), cert.Sign(committeeCert1.Subject(), key))
+	require.NoError(err)
+	err = blockCert.Add(scc.MemberId(0), cert.Sign(blockCert.Subject(), key))
 	require.NoError(err)
 
-	// Perform sync
-	head, err := client.Sync()
+	// provider calls
+	prov.EXPECT().
+		getBlockCertificates(LatestBlock, uint64(1)).
+		Return([]cert.BlockCertificate{blockCert}, nil)
+	prov.EXPECT().
+		getCommitteeCertificates(scc.Period(1), uint64(1)).
+		Return([]cert.CommitteeCertificate{committeeCert1}, nil)
+
+	// sync
+	u, _ := url.Parse("http://localhost:4242")
+	config := Config{
+		Url:     []*url.URL{u},
+		Genesis: scc.NewCommittee(member),
+	}
+	c, err := NewLightClient(config)
+	require.NoError(err)
+	c.provider = prov
+	head, err := c.Sync()
 	require.NoError(err)
 
 	// check state
 	require.Equal(blockNumber, head)
-}
-
-func TestLightClient_getAccountProof_ReportsErrorOnSyncFailure(t *testing.T) {
-	// setup
-	require := require.New(t)
-	ctrl := gomock.NewController(t)
-	prov := NewMockprovider(ctrl)
-
-	// expect
-	prov.EXPECT().getBlockCertificates(LatestBlock, uint64(1)).
-		Return(nil, fmt.Errorf("failed to sync"))
-
-	// build client
-	c, err := NewLightClient(testConfig())
-	require.NoError(err)
-	c.provider = prov
-
-	// check
-	_, err = c.getAccountProof(common.Address{0x01})
-	require.ErrorContains(err, "failed to sync")
 }
 
 func TestLightClient_getAccountProof_ReportsErrorsFrom(t *testing.T) {
@@ -191,9 +194,15 @@ func TestLightClient_getAccountProof_ReportsErrorsFrom(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			client, prov := setupForTestSync(t)
+			// setup
+			ctrl := gomock.NewController(t)
+			prov := NewMockprovider(ctrl)
 			tt.mockProvider(prov)
-			_, err := client.getAccountProof(address)
+			c, err := NewLightClient(testConfig())
+			require.NoError(err)
+			c.provider = prov
+
+			_, err = c.getAccountProof(address)
 			require.ErrorContains(err, tt.expectedErr)
 		})
 	}
@@ -201,13 +210,18 @@ func TestLightClient_getAccountProof_ReportsErrorsFrom(t *testing.T) {
 
 func TestLightClient_getAccountProof_ReturnsProof(t *testing.T) {
 	require := require.New(t)
-	client, prov := setupForTestSync(t)
+	// setup
+	ctrl := gomock.NewController(t)
+	prov := NewMockprovider(ctrl)
+	c, err := NewLightClient(testConfig())
+	require.NoError(err)
+	c.provider = prov
 
 	want := carmen.CreateWitnessProofFromNodes()
 	prov.EXPECT().getAccountProof(common.Address{0x01}, idx.Block(LatestBlock)).
 		Return(want, nil)
 
-	got, err := client.getAccountProof(common.Address{0x01})
+	got, err := c.getAccountProof(common.Address{0x01})
 	require.NoError(err)
 	require.Equal(want, got)
 }
@@ -247,13 +261,19 @@ func TestLightClient_GetBalance_PropagatesErrorFrom(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
+
+			// setup
 			ctrl := gomock.NewController(t)
-			client, prov := setupForTestSync(t)
+			prov := NewMockprovider(ctrl)
+			c, err := NewLightClient(testConfig())
+			require.NoError(err)
+			c.provider = prov
+
 			proof := carmen.NewMockWitnessProof(ctrl)
 
 			tt.mockExpect(prov, proof)
 
-			_, err := client.GetBalance(common.Address{0x01})
+			_, err = c.GetBalance(common.Address{0x01})
 			require.ErrorContains(err, tt.expectedErr)
 		})
 	}
@@ -261,8 +281,12 @@ func TestLightClient_GetBalance_PropagatesErrorFrom(t *testing.T) {
 
 func TestLightClient_GetBalance_ReturnsBalance(t *testing.T) {
 	require := require.New(t)
-	client, prov := setupForTestSync(t)
+	// setup
 	ctrl := gomock.NewController(t)
+	prov := NewMockprovider(ctrl)
+	c, err := NewLightClient(testConfig())
+	require.NoError(err)
+	c.provider = prov
 	wantBalance := uint256.NewInt(42)
 
 	proof := carmen.NewMockWitnessProof(ctrl)
@@ -274,7 +298,7 @@ func TestLightClient_GetBalance_ReturnsBalance(t *testing.T) {
 		Return(proof, nil)
 
 	// get balance function receives the proof and uses the state root to verify
-	balance, err := client.GetBalance(common.Address{0x01})
+	balance, err := c.GetBalance(common.Address{0x01})
 	require.NoError(err)
 	require.Equal(wantBalance, balance)
 }
@@ -299,83 +323,4 @@ func testConfig() Config {
 		Url:     []*url.URL{u},
 		Genesis: scc.NewCommittee(makeMember(key)),
 	}
-}
-
-// setupBlockCertificate creates a block certificate for the second block of
-// period 1 and signs it with the given key.
-// Returns the block certificate and the block number.
-func setupBlockCertificate(t *testing.T, key bls.PrivateKey) (cert.BlockCertificate, idx.Block) {
-	blockNumber := idx.Block(scc.BLOCKS_PER_PERIOD*1 + 1)
-	blockCert := cert.NewCertificate(
-		cert.NewBlockStatement(0, blockNumber, common.Hash{0x1}, common.Hash{0x2}),
-	)
-
-	// Sign certificate
-	err := blockCert.Add(scc.MemberId(0), cert.Sign(blockCert.Subject(), key))
-	require.NoError(t, err)
-
-	return blockCert, blockNumber
-}
-
-// setupCommitteeCertificate creates a committee certificate for period 1 and
-// signs it with the given key.
-// Returns the committee certificate.
-func setupCommitteeCertificate(t *testing.T, key bls.PrivateKey) cert.CommitteeCertificate {
-	member := makeMember(key)
-	committeeCert := cert.NewCertificate(cert.CommitteeStatement{
-		Period:    1,
-		Committee: scc.NewCommittee(member),
-	})
-
-	// Sign certificate
-	err := committeeCert.Add(scc.MemberId(0), cert.Sign(committeeCert.Subject(), key))
-	require.NoError(t, err)
-
-	return committeeCert
-}
-
-// mockProviderResponses mocks the provider responses for block and committee certificates
-func mockProviderResponses(prov *Mockprovider, blockCert cert.BlockCertificate, committeeCert cert.CommitteeCertificate) {
-	prov.EXPECT().
-		getBlockCertificates(LatestBlock, uint64(1)).
-		Return([]cert.BlockCertificate{blockCert}, nil)
-
-	prov.EXPECT().
-		getCommitteeCertificates(scc.Period(1), uint64(1)).
-		Return([]cert.CommitteeCertificate{committeeCert}, nil)
-}
-
-// setupLightClient creates a LightClient with a committee member based on
-// the given key and a used the given provider for the client.
-func setupLightClient(prov *Mockprovider, key bls.PrivateKey) (*LightClient, error) {
-	u, _ := url.Parse("http://localhost:4242")
-	config := Config{
-		Url:     []*url.URL{u},
-		Genesis: scc.NewCommittee(makeMember(key)),
-	}
-	client, err := NewLightClient(config)
-	if err != nil {
-		return nil, err
-	}
-
-	client.provider = prov
-	return client, nil
-}
-
-// setupForTestSync sets up a light client and the necessary mocks for a
-// successful sync test.
-// - sets up a mock provider that will return valid block/committee certificates
-// Returns the client
-func setupForTestSync(t *testing.T) (*LightClient, *Mockprovider) {
-	ctrl := gomock.NewController(t)
-	prov := NewMockprovider(ctrl)
-
-	key := bls.NewPrivateKey()
-	blockCert, _ := setupBlockCertificate(t, key)
-	committeeCert := setupCommitteeCertificate(t, key)
-	client, err := setupLightClient(prov, key)
-	require.NoError(t, err)
-
-	mockProviderResponses(prov, blockCert, committeeCert)
-	return client, prov
 }

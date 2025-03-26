@@ -69,14 +69,8 @@ func (c *LightClient) Sync() (idx.Block, error) {
 }
 
 // getAccountProof retrieves and verifies the proof for the given address.
-// It first ensures the client is synchronized before querying for the proof.
 // Returns an error if synchronization fails, if the proof cannot be obtained.
 func (c *LightClient) getAccountProof(address common.Address) (carmen.WitnessProof, error) {
-	// always sync before querying
-	_, err := c.Sync()
-	if err != nil {
-		return nil, fmt.Errorf("failed to sync: %w", err)
-	}
 	proof, err := c.provider.getAccountProof(address, LatestBlock)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get account proof: %w", err)
@@ -91,54 +85,22 @@ func (c *LightClient) getAccountProof(address common.Address) (carmen.WitnessPro
 // It returns an error if the balance could not be proven or there was any error
 // in getting or verifying the proof.
 func (c *LightClient) GetBalance(address common.Address) (*uint256.Int, error) {
-	balance, err := getInfoFromProof(address, c, "balance",
-		func(
-			proof carmen.WitnessProof,
-			address common.Address,
-			rootHash common.Hash,
-		) (carmen.Amount, bool, error) {
-			return proof.GetBalance(carmen.Hash(rootHash), carmen.Address(address))
-		},
-	)
-	if err != nil {
-		return nil, err
-	}
-	balanceInt := balance.Uint256()
-	return &balanceInt, nil
-}
-
-// getInfoFromProof runs a function `f` that takes a proof, the provided address
-// and the provided state root hash, to retrieve a value of type T.
-//
-// If the proof is missing, invalid, or does not confirm the requested information,
-// an error is returned.
-//
-// Parameters:
-// - address: The address whose data is being queried.
-// - c: The LightClient instance handling the request.
-// - valueName: A string representing the type of value being retrieved (e.g., "balance").
-// - f: A function that takes (proof, address, rootHash) and returns (T, proven, error).
-//
-// Returns:
-// - The requested value of type T if proven successfully, otherwise an error.
-func getInfoFromProof[T any](address common.Address, c *LightClient, valueName string,
-	f func(carmen.WitnessProof, common.Address, common.Hash) (T, bool, error)) (T, error) {
-	var zeroValue T
 	proof, err := c.getAccountProof(address)
 	if err != nil {
-		return zeroValue, fmt.Errorf("failed to get account proof: %w", err)
+		return nil, fmt.Errorf("failed to get account proof: %w", err)
 	}
 	// it is safe to ignore the hasSynced flag here because if there was an error
 	// during sync, it would have triggered an early return.
 	rootHash, _ := c.state.stateRoot()
-	value, proven, err := f(proof, address, rootHash)
+	value, proven, err := proof.GetBalance(carmen.Hash(rootHash), carmen.Address(address))
 	if err != nil {
-		return zeroValue, fmt.Errorf("failed to get %v from proof: %w", valueName, err)
+		return nil, fmt.Errorf("failed to get balance from proof: %w", err)
 	}
 	if !proven {
-		return zeroValue,
-			fmt.Errorf("%v could not be proven from the proof and state root hash",
-				valueName)
+		return nil,
+			fmt.Errorf("balance could not be proven for account %v", address)
 	}
-	return value, err
+	balance := value.Uint256()
+	return &balance, err
+
 }
