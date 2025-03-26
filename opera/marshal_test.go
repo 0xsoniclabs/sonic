@@ -54,7 +54,7 @@ func TestUpdateRules_ValidityCheckIsConductedIfCheckIsEnabledInUpdatedRuleSet(t 
 						maxParents = 5
 					}
 
-					update := fmt.Sprintf(`{"Dag":{"MaxParents":%d}, "Upgrades":{"CheckRuleChanges":%t}}`, maxParents, enabledAfter)
+					update := fmt.Sprintf(`{"Dag":{"MaxParents":%d}, "Upgrades":{"Allegro":%t}}`, maxParents, enabledAfter)
 
 					_, err := UpdateRules(base, []byte(update))
 					if enabledAfter && !validUpdate {
@@ -71,24 +71,20 @@ func TestUpdateRules_ValidityCheckIsConductedIfCheckIsEnabledInUpdatedRuleSet(t 
 func TestUpdateRules_CanUpdateHardForks(t *testing.T) {
 	require := require.New(t)
 
-	rules := Rules{
-		Economy: EconomyRules{
-			MinGasPrice: big.NewInt(1),
-		},
-		Upgrades: Upgrades{
-			Berlin:  true,
-			London:  false,
-			Sonic:   true,
-			Allegro: false,
-		},
+	rules := MainNetRules()
+	rules.Upgrades = Upgrades{
+		Berlin:  true,
+		London:  false,
+		Sonic:   true,
+		Allegro: false,
 	}
 
-	got, err := UpdateRules(rules, []byte(`{"Upgrades":{"Berlin":false,"London":true,"Sonic":false,"Allegro":true}}`))
+	got, err := UpdateRules(rules, []byte(`{"Upgrades":{"Berlin":true,"London":true,"Sonic":true,"Allegro":true}}`))
 	require.NoError(err)
 	require.Equal(Upgrades{
-		Berlin:  false,
+		Berlin:  true,
 		London:  true,
-		Sonic:   false,
+		Sonic:   true,
 		Allegro: true,
 	}, got.Upgrades)
 }
