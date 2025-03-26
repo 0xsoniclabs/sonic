@@ -123,43 +123,20 @@ func TestLightClientState_Sync_UpdatesStateToHead(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	prov := NewMockprovider(ctrl)
 
-	// setup block for period 1.
-	blockNumber := idx.Block(scc.BLOCKS_PER_PERIOD*1 + 1)
-	blockCert := cert.NewCertificate(
-		cert.NewBlockStatement(0, blockNumber, common.Hash{0x1}, common.Hash{0x2}))
-
-	// setup committee certificate for period 1.
+	// Setup test data
 	key := bls.NewPrivateKey()
-	member := makeMember(key)
-	committeeCert1 := cert.NewCertificate(cert.CommitteeStatement{
-		Period:    1,
-		Committee: scc.NewCommittee(member),
-	})
+	blockCert, blockNumber := setupBlockCertificate(t, key)
+	committeeCert := setupCommitteeCertificate(t, key)
 
-	// member signs the certificates
-	err := committeeCert1.Add(scc.MemberId(0), cert.Sign(committeeCert1.Subject(), key))
-	require.NoError(err)
-	err = blockCert.Add(scc.MemberId(0), cert.Sign(blockCert.Subject(), key))
+	// Mock provider calls
+	mockProviderResponses(prov, blockCert, committeeCert)
+
+	// Create and configure LightClient
+	client, err := setupLightClient(prov, key)
 	require.NoError(err)
 
-	// provider calls
-	prov.EXPECT().
-		getBlockCertificates(LatestBlock, uint64(1)).
-		Return([]cert.BlockCertificate{blockCert}, nil)
-	prov.EXPECT().
-		getCommitteeCertificates(scc.Period(1), uint64(1)).
-		Return([]cert.CommitteeCertificate{committeeCert1}, nil)
-
-	// sync
-	u, _ := url.Parse("http://localhost:4242")
-	config := Config{
-		Url:     []*url.URL{u},
-		Genesis: scc.NewCommittee(member),
-	}
-	c, err := NewLightClient(config)
-	require.NoError(err)
-	c.provider = prov
-	head, err := c.Sync()
+	// Perform sync
+	head, err := client.Sync()
 	require.NoError(err)
 
 	// check state
@@ -186,4 +163,65 @@ func testConfig() Config {
 		Url:     []*url.URL{u},
 		Genesis: scc.NewCommittee(makeMember(key)),
 	}
+}
+
+// setupBlockCertificate creates a block certificate for the second block of
+// period 1 and signs it with the given key.
+// Returns the block certificate and the block number.
+func setupBlockCertificate(t *testing.T, key bls.PrivateKey) (cert.BlockCertificate, idx.Block) {
+	blockNumber := idx.Block(scc.BLOCKS_PER_PERIOD*1 + 1)
+	blockCert := cert.NewCertificate(
+		cert.NewBlockStatement(0, blockNumber, common.Hash{0x1}, common.Hash{0x2}),
+	)
+
+	// Sign certificate
+	err := blockCert.Add(scc.MemberId(0), cert.Sign(blockCert.Subject(), key))
+	require.NoError(t, err)
+
+	return blockCert, blockNumber
+}
+
+// setupCommitteeCertificate creates a committee certificate for period 1 and
+// signs it with the given key.
+// Returns the committee certificate.
+func setupCommitteeCertificate(t *testing.T, key bls.PrivateKey) cert.CommitteeCertificate {
+	member := makeMember(key)
+	committeeCert := cert.NewCertificate(cert.CommitteeStatement{
+		Period:    1,
+		Committee: scc.NewCommittee(member),
+	})
+
+	// Sign certificate
+	err := committeeCert.Add(scc.MemberId(0), cert.Sign(committeeCert.Subject(), key))
+	require.NoError(t, err)
+
+	return committeeCert
+}
+
+// mockProviderResponses mocks the provider responses for block and committee certificates
+func mockProviderResponses(prov *Mockprovider, blockCert cert.BlockCertificate, committeeCert cert.CommitteeCertificate) {
+	prov.EXPECT().
+		getBlockCertificates(LatestBlock, uint64(1)).
+		Return([]cert.BlockCertificate{blockCert}, nil)
+
+	prov.EXPECT().
+		getCommitteeCertificates(scc.Period(1), uint64(1)).
+		Return([]cert.CommitteeCertificate{committeeCert}, nil)
+}
+
+// setupLightClient creates a LightClient with a committee member based on
+// the given key and a used the given provider for the client.
+func setupLightClient(prov *Mockprovider, key bls.PrivateKey) (*LightClient, error) {
+	u, _ := url.Parse("http://localhost:4242")
+	config := Config{
+		Url:     []*url.URL{u},
+		Genesis: scc.NewCommittee(makeMember(key)),
+	}
+	client, err := NewLightClient(config)
+	if err != nil {
+		return nil, err
+	}
+
+	client.provider = prov
+	return client, nil
 }
