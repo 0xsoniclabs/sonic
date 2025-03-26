@@ -178,14 +178,14 @@ func TestLightClient_getAccountProof_ReportsErrorsFrom(t *testing.T) {
 	}{
 		"ProviderError": {
 			mockProvider: func(prov *Mockprovider) {
-				prov.EXPECT().getAccountProof(address, idx.Block(LatestBlock)).
+				prov.EXPECT().getAccountProof(address, gomock.Any()).
 					Return(nil, fmt.Errorf("some error"))
 			},
 			expectedErr: "failed to get account proof",
 		},
 		"NilProof": {
 			mockProvider: func(prov *Mockprovider) {
-				prov.EXPECT().getAccountProof(address, idx.Block(LatestBlock)).
+				prov.EXPECT().getAccountProof(address, gomock.Any()).
 					Return(nil, nil)
 			},
 			expectedErr: "nil account proof",
@@ -201,6 +201,7 @@ func TestLightClient_getAccountProof_ReportsErrorsFrom(t *testing.T) {
 			c, err := NewLightClient(testConfig())
 			require.NoError(err)
 			c.provider = prov
+			c.state.hasSynced = true
 
 			_, err = c.getAccountProof(address)
 			require.ErrorContains(err, tt.expectedErr)
@@ -216,14 +217,25 @@ func TestLightClient_getAccountProof_ReturnsProof(t *testing.T) {
 	c, err := NewLightClient(testConfig())
 	require.NoError(err)
 	c.provider = prov
+	c.state.hasSynced = true
 
 	want := carmen.CreateWitnessProofFromNodes()
-	prov.EXPECT().getAccountProof(common.Address{0x01}, idx.Block(LatestBlock)).
+	prov.EXPECT().getAccountProof(common.Address{0x01}, c.state.headNumber).
 		Return(want, nil)
 
 	got, err := c.getAccountProof(common.Address{0x01})
 	require.NoError(err)
 	require.Equal(want, got)
+}
+
+func TestLightClient_GetBalance_getAccountProof_ReturnsErrorIfNotSynced(t *testing.T) {
+	require := require.New(t)
+	c, err := NewLightClient(testConfig())
+	require.NoError(err)
+	_, err = c.GetBalance(common.Address{0x01})
+	require.ErrorContains(err, "light client has not yet synced")
+	_, err = c.getAccountProof(common.Address{0x01})
+	require.ErrorContains(err, "light client has not yet synced")
 }
 
 func TestLightClient_GetBalance_PropagatesErrorFrom(t *testing.T) {
@@ -240,7 +252,7 @@ func TestLightClient_GetBalance_PropagatesErrorFrom(t *testing.T) {
 		},
 		"proofGetBalance": {
 			mockExpect: func(prov *Mockprovider, proof *carmen.MockWitnessProof) {
-				prov.EXPECT().getAccountProof(gomock.Any(), idx.Block(LatestBlock)).
+				prov.EXPECT().getAccountProof(gomock.Any(), gomock.Any()).
 					Return(proof, nil)
 				proof.EXPECT().GetBalance(gomock.Any(), gomock.Any()).
 					Return(carmen.NewAmountFromUint256(uint256.NewInt(0)), false, fmt.Errorf("some error"))
@@ -249,7 +261,7 @@ func TestLightClient_GetBalance_PropagatesErrorFrom(t *testing.T) {
 		},
 		"balanceNotProven": {
 			mockExpect: func(prov *Mockprovider, proof *carmen.MockWitnessProof) {
-				prov.EXPECT().getAccountProof(gomock.Any(), idx.Block(LatestBlock)).
+				prov.EXPECT().getAccountProof(gomock.Any(), gomock.Any()).
 					Return(proof, nil)
 				proof.EXPECT().GetBalance(gomock.Any(), gomock.Any()).
 					Return(carmen.NewAmountFromUint256(uint256.NewInt(0)), false, nil)
@@ -268,6 +280,7 @@ func TestLightClient_GetBalance_PropagatesErrorFrom(t *testing.T) {
 			c, err := NewLightClient(testConfig())
 			require.NoError(err)
 			c.provider = prov
+			c.state.hasSynced = true
 
 			proof := carmen.NewMockWitnessProof(ctrl)
 
@@ -287,6 +300,8 @@ func TestLightClient_GetBalance_ReturnsBalance(t *testing.T) {
 	c, err := NewLightClient(testConfig())
 	require.NoError(err)
 	c.provider = prov
+	c.state.hasSynced = true
+	c.state.headNumber = idx.Block(42)
 	wantBalance := uint256.NewInt(42)
 
 	proof := carmen.NewMockWitnessProof(ctrl)
@@ -294,7 +309,7 @@ func TestLightClient_GetBalance_ReturnsBalance(t *testing.T) {
 		Return(carmen.NewAmountFromUint256(wantBalance), true, nil)
 
 	// setup rpc provider to return proof
-	prov.EXPECT().getAccountProof(common.Address{0x01}, idx.Block(LatestBlock)).
+	prov.EXPECT().getAccountProof(common.Address{0x01}, idx.Block(42)).
 		Return(proof, nil)
 
 	// get balance function receives the proof and uses the state root to verify

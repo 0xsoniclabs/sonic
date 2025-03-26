@@ -69,9 +69,12 @@ func (c *LightClient) Sync() (idx.Block, error) {
 }
 
 // getAccountProof retrieves and verifies the proof for the given address.
-// Returns an error if synchronization fails, if the proof cannot be obtained.
+// Returns an error if the light client has not been synced or if the proof cannot be obtained.
 func (c *LightClient) getAccountProof(address common.Address) (carmen.WitnessProof, error) {
-	proof, err := c.provider.getAccountProof(address, LatestBlock)
+	if !c.state.hasSynced {
+		return nil, fmt.Errorf("light client has not yet synced")
+	}
+	proof, err := c.provider.getAccountProof(address, c.state.headNumber)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get account proof: %w", err)
 	}
@@ -82,17 +85,19 @@ func (c *LightClient) getAccountProof(address common.Address) (carmen.WitnessPro
 }
 
 // GetBalance returns the balance of the given address.
-// It returns an error if the balance could not be proven or there was any error
+// It returns an error if the light client has not been synced,
+// the balance could not be proven or there was any error
 // in getting or verifying the proof.
 func (c *LightClient) GetBalance(address common.Address) (*uint256.Int, error) {
+	if !c.state.hasSynced {
+		return nil, fmt.Errorf("light client has not yet synced")
+	}
 	proof, err := c.getAccountProof(address)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get account proof: %w", err)
 	}
-	// it is safe to ignore the hasSynced flag here because if there was an error
-	// during sync, it would have triggered an early return.
-	rootHash, _ := c.state.stateRoot()
-	value, proven, err := proof.GetBalance(carmen.Hash(rootHash), carmen.Address(address))
+	value, proven, err := proof.GetBalance(carmen.Hash(c.state.headRoot),
+		carmen.Address(address))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get balance from proof: %w", err)
 	}
