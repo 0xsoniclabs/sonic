@@ -1062,6 +1062,11 @@ func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash 
 		evm.Cancel()
 	}()
 
+	// execute EIP-2935 HistoryStorage contract.
+	if evm.ChainConfig().IsPrague(header.Number, uint64(header.Time.Unix())) {
+		evmcore.ProcessParentBlockHash(header.ParentHash, evm)
+	}
+
 	// Execute the message.
 	gp := new(core.GasPool).AddGas(math.MaxUint64)
 	result, err := core.ApplyMessage(evm, msg, gp)
@@ -2317,6 +2322,11 @@ func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex in
 	if err != nil {
 		statedb.Release()
 		return nil, nil, err
+	}
+
+	// execute EIP-2935 HistoryStorage contract.
+	if vmenv.ChainConfig().IsPrague(block.Number, uint64(block.Time.Unix())) {
+		evmcore.ProcessParentBlockHash(block.ParentHash, vmenv)
 	}
 
 	// Recompute transactions up to the target index.

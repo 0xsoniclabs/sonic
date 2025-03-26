@@ -247,6 +247,10 @@ func (s *PublicTxTraceAPI) replayBlock(ctx context.Context, block *evmcore.EvmBl
 				return nil, fmt.Errorf("cannot initialize vm for transaction %s, error: %s", tx.Hash().String(), err.Error())
 			}
 
+			if vmenv.ChainConfig().IsPrague(block.Number, uint64(block.Time.Unix())) {
+				evmcore.ProcessParentBlockHash(block.ParentHash, vmenv)
+			}
+
 			res, err := core.ApplyMessage(vmenv, msg, new(core.GasPool).AddGas(msg.GasLimit))
 			failed := false
 			if err != nil {
