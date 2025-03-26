@@ -19,8 +19,6 @@ library BLSLibrary {
     // For HashToG2 this is 2*2
     uint16 constant elCount = 2;
 
-    uint16 private constant L = 64;
-
     // Domain separation tag 
     // TODO: need to be specified according to spec recommendation
     bytes constant dst = "";
@@ -147,7 +145,7 @@ library BLSLibrary {
         require(_dst.length == 0, "DST not implemented yet");
 
         //require(l <= type(uint16).max, "length exceeds uint16 range");
-        uint16 length = L * count;
+        uint16 length = 64 * count; // L = 64 as explained above
         uint64 ell = (length + 31) / 32;
         bytes32 zero;
         uint8 zbyte;
