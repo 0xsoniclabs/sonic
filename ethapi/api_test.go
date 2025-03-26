@@ -255,7 +255,7 @@ func TestEstimateGas(t *testing.T) {
 	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, blkNr).Return(mockState, mockHeader, nil).AnyTimes()
 	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000))
 	mockBackend.EXPECT().MaxGasLimit().Return(uint64(10000000))
-	mockBackend.EXPECT().GetEVM(any, any, any, any, any, any).DoAndReturn(getEvmFunc(mockState)).AnyTimes()
+	mockBackend.EXPECT().GetEVM(any, any, any, any, any).DoAndReturn(getEvmFunc(mockState)).AnyTimes()
 	setExpectedStateCalls(mockState)
 
 	api := NewPublicBlockChainAPI(mockBackend)
@@ -278,7 +278,7 @@ func TestReplayTransactionOnEmptyBlock(t *testing.T) {
 	mockBackend.EXPECT().BlockByNumber(any, any).Return(block, nil)
 	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, any).Return(mockState, nil, nil).AnyTimes()
 	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000)).AnyTimes()
-	mockBackend.EXPECT().GetEVM(any, any, any, any, any, any).DoAndReturn(getEvmFunc(mockState)).AnyTimes()
+	mockBackend.EXPECT().GetEVM(any, any, any, any, any).DoAndReturn(getEvmFunc(mockState)).AnyTimes()
 	mockBackend.EXPECT().ChainConfig().Return(&params.ChainConfig{}).AnyTimes()
 	setExpectedStateCalls(mockState)
 
@@ -349,7 +349,7 @@ func TestReplayInternalTransaction(t *testing.T) {
 	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, any).Return(mockState, nil, nil).AnyTimes()
 	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000)).AnyTimes()
 	mockBackend.EXPECT().GetTransaction(any, any).Return(types.NewTx(internalTx), block.NumberU64(), txIndex, nil).AnyTimes()
-	mockBackend.EXPECT().GetEVM(any, any, any, any, noBaseFeeMatcher{expected: true}, any).DoAndReturn(getEvmFuncWithParameters(mockState, chainConfig, &blockCtx, vmConfig)).AnyTimes()
+	mockBackend.EXPECT().GetEVM(any, any, any, noBaseFeeMatcher{expected: true}, any).DoAndReturn(getEvmFuncWithParameters(mockState, chainConfig, &blockCtx, vmConfig)).AnyTimes()
 	mockBackend.EXPECT().ChainConfig().Return(chainConfig).AnyTimes()
 	setExpectedStateCalls(mockState)
 
@@ -387,7 +387,7 @@ func TestBlockOverrides(t *testing.T) {
 	}
 
 	// Check that the correct block context is used when creating EVM instance
-	mockBackend.EXPECT().GetEVM(any, any, any, any, any, BlockContextMatcher{expectedBlockCtx}).DoAndReturn(getEvmFunc(mockState)).AnyTimes()
+	mockBackend.EXPECT().GetEVM(any, any, any, any, BlockContextMatcher{expectedBlockCtx}).DoAndReturn(getEvmFunc(mockState)).AnyTimes()
 
 	blockOverrides := &BlockOverrides{
 		Number:  (*hexutil.Big)(big.NewInt(5)),
@@ -464,8 +464,8 @@ func getTxArgs(t *testing.T) TransactionArgs {
 	}
 }
 
-func getEvmFunc(mockState *state.MockStateDB) func(interface{}, interface{}, interface{}, interface{}, interface{}, interface{}) (*vm.EVM, func() error, error) {
-	return func(interface{}, interface{}, interface{}, interface{}, interface{}, interface{}) (*vm.EVM, func() error, error) {
+func getEvmFunc(mockState *state.MockStateDB) func(any, any, any, any, any) (*vm.EVM, func() error, error) {
+	return func(any, any, any, any, any) (*vm.EVM, func() error, error) {
 		blockCtx := vm.BlockContext{
 			Transfer: vm.TransferFunc(func(sd vm.StateDB, a1, a2 common.Address, i *uint256.Int) {}),
 		}
@@ -473,8 +473,8 @@ func getEvmFunc(mockState *state.MockStateDB) func(interface{}, interface{}, int
 	}
 }
 
-func getEvmFuncWithParameters(mockState *state.MockStateDB, chainConfig *params.ChainConfig, blockContext *vm.BlockContext, vmConfig vm.Config) func(interface{}, interface{}, interface{}, interface{}, interface{}, interface{}) (*vm.EVM, func() error, error) {
-	return func(interface{}, interface{}, interface{}, interface{}, interface{}, interface{}) (*vm.EVM, func() error, error) {
+func getEvmFuncWithParameters(mockState *state.MockStateDB, chainConfig *params.ChainConfig, blockContext *vm.BlockContext, vmConfig vm.Config) func(any, any, any, any, any) (*vm.EVM, func() error, error) {
+	return func(any, any, any, any, any) (*vm.EVM, func() error, error) {
 		return vm.NewEVM(*blockContext, mockState, chainConfig, vmConfig), func() error { return nil }, nil
 	}
 }
