@@ -275,6 +275,42 @@ func makeGasCostTestInputs(
 	existingAccountAddress := session.GetSessionSponsor().Address()
 	nonExistingAccountAddress := NewAccount().Address()
 
+	withCallData := func(size, zeroes int) txModification {
+		return func(tx *types.AccessListTx) {
+			if zeroes > size {
+				panic("zeroes cannot be greater than size")
+			}
+
+			if size != 0 && zeroes == 0 {
+				panic("please use at least one zero to start calldata, otherwise create contract code does not start with STOP")
+			}
+
+			tx.Data = make([]byte, size)
+			for i := zeroes; i < size; i++ {
+				tx.Data[i] = 1
+			}
+		}
+	}
+
+	withTo := func(addr *common.Address) txModification {
+		return func(tx *types.AccessListTx) {
+			tx.To = addr
+		}
+	}
+
+	withAccessList := func(accounts, storageKeysPerAccount int) txModification {
+		return func(tx *types.AccessListTx) {
+			tx.AccessList = make([]types.AccessTuple, accounts)
+			for i := 0; i < accounts; i++ {
+				tx.AccessList[i].Address = NewAccount().Address()
+				tx.AccessList[i].StorageKeys = make([]common.Hash, storageKeysPerAccount)
+				for j := 0; j < storageKeysPerAccount; j++ {
+					tx.AccessList[i].StorageKeys[j] = common.Hash{0x42}
+				}
+			}
+		}
+	}
+
 	return generateTestDataBasedOnModificationCombinations(
 		func() TestCase {
 			t.Helper()
@@ -383,40 +419,4 @@ func makeGasCostTestInputs(
 		},
 	)
 
-}
-
-func withCallData(size, zeroes int) txModification {
-	return func(tx *types.AccessListTx) {
-		if zeroes > size {
-			panic("zeroes cannot be greater than size")
-		}
-
-		if size != 0 && zeroes == 0 {
-			panic("please use at least one zero to start calldata, otherwise create contract code does not start with STOP")
-		}
-
-		tx.Data = make([]byte, size)
-		for i := zeroes; i < size; i++ {
-			tx.Data[i] = 1
-		}
-	}
-}
-
-func withTo(addr *common.Address) txModification {
-	return func(tx *types.AccessListTx) {
-		tx.To = addr
-	}
-}
-
-func withAccessList(accounts, storageKeysPerAccount int) txModification {
-	return func(tx *types.AccessListTx) {
-		tx.AccessList = make([]types.AccessTuple, accounts)
-		for i := 0; i < accounts; i++ {
-			tx.AccessList[i].Address = NewAccount().Address()
-			tx.AccessList[i].StorageKeys = make([]common.Hash, storageKeysPerAccount)
-			for j := 0; j < storageKeysPerAccount; j++ {
-				tx.AccessList[i].StorageKeys[j] = common.Hash{0x42}
-			}
-		}
-	}
 }
