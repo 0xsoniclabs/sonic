@@ -870,22 +870,21 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 
 // makeChainConfig allows to create a chain config with a given set of features
 func makeChainConfig(features opera.FeatureSet) *params.ChainConfig {
-	chainConfig := opera.MainNetRules().EvmChainConfig(
-		[]opera.UpgradeHeight{})
-
-	if features == opera.SonicFeatures {
-		chainConfig = opera.MainNetRules().EvmChainConfig(
+	switch features {
+	case opera.SonicFeatures:
+		return opera.MainNetRules().EvmChainConfig(
 			[]opera.UpgradeHeight{
 				{Upgrades: opera.SonicFeatures.ToUpgrades(), Height: 0},
 			})
-	} else if features == opera.AllegroFeatures {
-		chainConfig = opera.MainNetRules().EvmChainConfig(
+	case opera.AllegroFeatures:
+		return opera.MainNetRules().EvmChainConfig(
 			[]opera.UpgradeHeight{
 				{Upgrades: opera.SonicFeatures.ToUpgrades(), Height: 0},
 				{Upgrades: opera.AllegroFeatures.ToUpgrades(), Height: 1},
 			})
+	default:
+		panic(fmt.Errorf("unsupported featureSet %v", features))
 	}
-	return chainConfig
 }
 
 // makeTestEVM allows to create an evm instance to use in tests with a given set of features
