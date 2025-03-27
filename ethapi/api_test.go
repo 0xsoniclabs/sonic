@@ -703,6 +703,28 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 		mockState.EXPECT().Finalise(true)
 	}
 
+	expectedTraceReplayBlock := func(mockState *state.MockStateDB) {
+		mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any())
+		mockState.EXPECT().GetCode(sender).Return([]byte{})
+		mockState.EXPECT().GetNonce(sender).Return(uint64(0))
+		mockState.EXPECT().EndTransaction()
+
+		mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any())
+		mockState.EXPECT().GetNonce(sender).Return(uint64(1)).Times(2)
+		mockState.EXPECT().GetCode(sender).Return([]byte{})
+		mockState.EXPECT().GetBalance(sender).Return(uint256.NewInt(1e18))
+		mockState.EXPECT().SubBalance(sender, gomock.Any(), gomock.Any())
+
+		mockState.EXPECT().Prepare(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any())
+		mockState.EXPECT().SetNonce(sender, uint64(2), gomock.Any())
+		mockState.EXPECT().GetCode(recipient).Return([]byte{})
+		mockState.EXPECT().Snapshot()
+		mockState.EXPECT().Exist(recipient)
+		mockState.EXPECT().GetRefund().Times(2)
+		mockState.EXPECT().EndTransaction().Times(2)
+		mockState.EXPECT().TxIndex()
+	}
+
 	tests := map[string]struct {
 		features          opera.FeatureSet
 		extraSetupBackend func(*MockBackend)
@@ -758,26 +780,9 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 				mockBackend.EXPECT().RPCEVMTimeout()
 			},
 			setupStateDb: func(mockState *state.MockStateDB) {
-				mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any())
-				mockState.EXPECT().GetCode(sender).Return([]byte{})
-				mockState.EXPECT().GetNonce(sender).Return(uint64(0))
 				expectedCallsFromTxCall(mockState)
-				mockState.EXPECT().EndTransaction()
 
-				mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any())
-				mockState.EXPECT().GetNonce(sender).Return(uint64(1)).Times(2)
-				mockState.EXPECT().GetCode(sender).Return([]byte{})
-				mockState.EXPECT().GetBalance(sender).Return(uint256.NewInt(1e18))
-				mockState.EXPECT().SubBalance(sender, gomock.Any(), gomock.Any())
-
-				mockState.EXPECT().Prepare(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any())
-				mockState.EXPECT().SetNonce(sender, uint64(2), gomock.Any())
-				mockState.EXPECT().GetCode(recipient).Return([]byte{})
-				mockState.EXPECT().Snapshot()
-				mockState.EXPECT().Exist(recipient)
-				mockState.EXPECT().GetRefund().Times(2)
-				mockState.EXPECT().EndTransaction().Times(2)
-				mockState.EXPECT().TxIndex()
+				expectedTraceReplayBlock(mockState)
 			},
 			call: executeTraceReplayBlock,
 		},
@@ -792,27 +797,9 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 				mockBackend.EXPECT().RPCEVMTimeout()
 			},
 			setupStateDb: func(mockState *state.MockStateDB) {
-				mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any())
-				mockState.EXPECT().GetCode(sender).Return([]byte{})
-				mockState.EXPECT().GetNonce(sender).Return(uint64(0))
 				expectedCallsFromHistoryStorageContract(mockState)
 				expectedCallsFromTxCall(mockState)
-				mockState.EXPECT().EndTransaction()
-
-				mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any())
-				mockState.EXPECT().GetNonce(sender).Return(uint64(1)).Times(2)
-				mockState.EXPECT().GetCode(sender).Return([]byte{})
-				mockState.EXPECT().GetBalance(sender).Return(uint256.NewInt(1e18))
-				mockState.EXPECT().SubBalance(sender, gomock.Any(), gomock.Any())
-
-				mockState.EXPECT().Prepare(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any())
-				mockState.EXPECT().SetNonce(sender, uint64(2), gomock.Any())
-				mockState.EXPECT().GetCode(recipient).Return([]byte{})
-				mockState.EXPECT().Snapshot()
-				mockState.EXPECT().Exist(recipient)
-				mockState.EXPECT().GetRefund().Times(2)
-				mockState.EXPECT().EndTransaction().Times(2)
-				mockState.EXPECT().TxIndex()
+				expectedTraceReplayBlock(mockState)
 			},
 			call: executeTraceReplayBlock,
 		},
