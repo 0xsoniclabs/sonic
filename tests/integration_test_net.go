@@ -35,6 +35,8 @@ import (
 // It provides the methods to launch transactions and queries against the network.
 // Additionally, it provides the methods to endow accounts with funds.
 type IntegrationTestNetSession interface {
+	// GetFeatureSet returns the feature set the network has been started with.
+	GetFeatureSet() opera.FeatureSet
 
 	// EndowAccount sends a requested amount of tokens to the given account. This is
 	// mainly intended to provide funds to accounts for testing purposes.
@@ -634,6 +636,10 @@ type contractDeployer[T any] func(*bind.TransactOpts, bind.ContractBackend) (com
 type Session struct {
 	net     *IntegrationTestNet
 	account Account
+}
+
+func (s *Session) GetFeatureSet() opera.FeatureSet {
+	return s.net.options.FeatureSet
 }
 
 // EndowAccount sends a requested amount of tokens to the given account. This is
