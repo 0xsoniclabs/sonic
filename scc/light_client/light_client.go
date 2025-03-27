@@ -89,13 +89,12 @@ func (c *LightClient) getAccountProof(address common.Address) (carmen.WitnessPro
 // the balance could not be proven or there was any error
 // in getting or verifying the proof.
 func (c *LightClient) GetBalance(address common.Address) (*uint256.Int, error) {
-	if !c.state.hasSynced {
-		return nil, fmt.Errorf("light client has not yet synced")
-	}
 	proof, err := c.getAccountProof(address)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get account proof: %w", err)
 	}
+	// it is safe to use the state.headRoot here because if the state had not been synced,
+	// getAccountProof would have returned an error earlier.
 	value, proven, err := proof.GetBalance(carmen.Hash(c.state.headRoot),
 		carmen.Address(address))
 	if err != nil {
