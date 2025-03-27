@@ -105,4 +105,10 @@ var (
 	// signed by an address which already has in-flight transactions known to the
 	// pool.
 	ErrAuthorityReserved = errors.New("authority already reserved")
+
+	// ErrNilTransaction is returned if a transaction is nil.
+	ErrNilTransaction = errors.New("nil transaction")
+
+	// ErrEmptyBlobTx is returned if a blob transaction is empty.
+	ErrEmptyBlobTx = errors.New("empty blob transaction")
 )
