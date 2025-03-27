@@ -619,6 +619,11 @@ func TestSetCodeTransactions(t *testing.T) {
 			test: func(t *testing.T, pool *TxPool) {
 				db.codeHashes[addrA] = common.BytesToHash([]byte{0xaa})
 
+				// Send gapped transaction, it should be rejected.
+				if err := pool.addRemoteSync(pricedTransaction(2, 100000, big.NewInt(1), keyA)); !errors.Is(err, ErrOutOfOrderTxFromDelegated) {
+					t.Fatalf("error mismatch: want %v, have %v", ErrOutOfOrderTxFromDelegated, err)
+				}
+
 				// first transaction is accepted
 				if err := pool.addRemoteSync(pricedTransaction(0, 100000, big.NewInt(1), keyA)); err != nil {
 					t.Fatalf("failed to add remote transaction: %v", err)
