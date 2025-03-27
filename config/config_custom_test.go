@@ -2,11 +2,11 @@ package config
 
 import (
 	"bytes"
+	"github.com/0xsoniclabs/consensus/dagindexer"
 	"testing"
 
 	"github.com/0xsoniclabs/consensus/consensus/consensusengine"
 	"github.com/0xsoniclabs/consensus/consensus/consensusstore"
-
 	"github.com/0xsoniclabs/cacheutils/cachescale"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/stretchr/testify/require"
@@ -14,7 +14,6 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
-	"github.com/0xsoniclabs/sonic/vecmt"
 )
 
 func TestConfigFile(t *testing.T) {
@@ -31,7 +30,7 @@ func TestConfigFile(t *testing.T) {
 		OperaStore:    gossip.DefaultStoreConfig(cacheRatio),
 		Lachesis:      consensusengine.DefaultConfig(),
 		LachesisStore: consensusstore.DefaultStoreConfig(cacheRatio),
-		VectorClock:   vecmt.DefaultConfig(cacheRatio),
+		VectorClock:   dagindexer.DefaultConfig(cacheRatio),
 	}
 
 	canonical := func(nn []*enode.Node) []*enode.Node {

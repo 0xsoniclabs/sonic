@@ -2,6 +2,7 @@ package emitter
 
 import (
 	"errors"
+	"github.com/0xsoniclabs/consensus/dagindexer"
 	"sync"
 
 	"github.com/0xsoniclabs/consensus/consensus"
@@ -13,7 +14,6 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/valkeystore"
-	"github.com/0xsoniclabs/sonic/vecmt"
 )
 
 var (
@@ -30,7 +30,7 @@ type (
 		Process(*inter.EventPayload) error
 		Broadcast(*inter.EventPayload)
 		Build(*inter.MutableEventPayload, func()) error
-		DagIndex() *vecmt.Index
+		DagIndex() *dagindexer.Index
 
 		IsBusy() bool
 		IsSynced() bool

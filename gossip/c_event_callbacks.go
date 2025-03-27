@@ -2,6 +2,7 @@ package gossip
 
 import (
 	"errors"
+	"github.com/0xsoniclabs/consensus/dagindexer"
 	"math/big"
 	"sync/atomic"
 
@@ -53,7 +54,7 @@ func (s *Service) buildEvent(e *inter.MutableEventPayload, onIndexed func()) err
 		onIndexed()
 	}
 
-	e.SetMedianTime(s.dagIndexer.MedianTime(e.ID(), s.store.GetEpochState().EpochStart))
+	e.SetMedianTime(inter.Timestamp(s.dagIndexer.MedianTime(e.ID(), dagindexer.Timestamp(s.store.GetEpochState().EpochStart))))
 
 	// calc initial GasPower
 	e.SetGasPowerUsed(epochcheck.CalcGasPowerUsed(e, s.store.GetRules()))
@@ -80,7 +81,7 @@ func (s *Service) processSavedEvent(e *inter.EventPayload, es *iblockproc.EpochS
 	}
 
 	// check median time
-	if e.MedianTime() != s.dagIndexer.MedianTime(e.ID(), es.EpochStart) {
+	if dagindexer.Timestamp(e.MedianTime()) != s.dagIndexer.MedianTime(e.ID(), dagindexer.Timestamp(es.EpochStart)) {
 		return errWrongMedianTime
 	}
 

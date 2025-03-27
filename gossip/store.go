@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/consensus/utils/byteutils"
-
 	"github.com/0xsoniclabs/cacheutils/wlru"
 	"github.com/0xsoniclabs/kvdb"
 	"github.com/0xsoniclabs/kvdb/flushable"

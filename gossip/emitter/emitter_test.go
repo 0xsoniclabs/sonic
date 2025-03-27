@@ -1,6 +1,7 @@
 package emitter
 
 import (
+	"github.com/0xsoniclabs/consensus/dagindexer"
 	"math/big"
 	"testing"
 	"time"
@@ -17,7 +18,6 @@ import (
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils/txtime"
-	"github.com/0xsoniclabs/sonic/vecmt"
 )
 
 //go:generate go run github.com/golang/mock/mockgen -package=mock -destination=mock/world.go github.com/0xsoniclabs/sonic/gossip/emitter External,TxPool,TxSigner,Signer
@@ -43,7 +43,7 @@ func TestEmitter(t *testing.T) {
 	external.EXPECT().Unlock().
 		AnyTimes()
 	external.EXPECT().DagIndex().
-		Return((*vecmt.Index)(nil)).
+		Return((*dagindexer.Index)(nil)).
 		AnyTimes()
 	external.EXPECT().IsSynced().
 		Return(true).

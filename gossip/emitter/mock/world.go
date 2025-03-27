@@ -9,11 +9,11 @@ import (
 	big "math/big"
 	reflect "reflect"
 
+	dagindexer "github.com/0xsoniclabs/consensus/dagindexer"
 	inter "github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	validatorpk "github.com/0xsoniclabs/sonic/inter/validatorpk"
 	opera "github.com/0xsoniclabs/sonic/opera"
-	vecmt "github.com/0xsoniclabs/sonic/vecmt"
 	common "github.com/ethereum/go-ethereum/common"
 	types "github.com/ethereum/go-ethereum/core/types"
 	gomock "github.com/golang/mock/gomock"
@@ -83,10 +83,10 @@ func (mr *MockExternalMockRecorder) Check(arg0, arg1 interface{}) *gomock.Call {
 }
 
 // DagIndex mocks base method.
-func (m *MockExternal) DagIndex() *vecmt.Index {
+func (m *MockExternal) DagIndex() *dagindexer.Index {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DagIndex")
-	ret0, _ := ret[0].(*vecmt.Index)
+	ret0, _ := ret[0].(*dagindexer.Index)
 	return ret0
 }
 

@@ -3,6 +3,7 @@ package gossip
 import (
 	"errors"
 	"fmt"
+	"github.com/0xsoniclabs/consensus/dagindexer"
 	"math/big"
 	"math/rand/v2"
 	"sync"
@@ -46,7 +47,6 @@ import (
 	"github.com/0xsoniclabs/sonic/utils/txtime"
 	"github.com/0xsoniclabs/sonic/utils/wgmutex"
 	"github.com/0xsoniclabs/sonic/valkeystore"
-	"github.com/0xsoniclabs/sonic/vecmt"
 )
 
 type ServiceFeed struct {
@@ -107,7 +107,7 @@ type Service struct {
 	// application
 	store               *Store
 	engine              consensus.Consensus
-	dagIndexer          *vecmt.Index
+	dagIndexer          *dagindexer.Index
 	engineMu            *sync.RWMutex
 	emitters            []*emitter.Emitter
 	txpool              TxPool
@@ -152,7 +152,7 @@ type Service struct {
 }
 
 func NewService(stack *node.Node, config Config, store *Store, blockProc BlockProc,
-	engine consensus.Consensus, dagIndexer *vecmt.Index, newTxPool func(evmcore.StateReader) TxPool,
+	engine consensus.Consensus, dagIndexer *dagindexer.Index, newTxPool func(evmcore.StateReader) TxPool,
 	haltCheck func(oldEpoch, newEpoch consensus.Epoch, age time.Time) bool) (*Service, error) {
 	if err := config.Validate(); err != nil {
 		return nil, err
@@ -174,7 +174,7 @@ func NewService(stack *node.Node, config Config, store *Store, blockProc BlockPr
 	return svc, nil
 }
 
-func newService(config Config, store *Store, blockProc BlockProc, engine consensus.Consensus, dagIndexer *vecmt.Index, newTxPool func(evmcore.StateReader) TxPool, localId enode.ID) (*Service, error) {
+func newService(config Config, store *Store, blockProc BlockProc, engine consensus.Consensus, dagIndexer *dagindexer.Index, newTxPool func(evmcore.StateReader) TxPool, localId enode.ID) (*Service, error) {
 	svc := &Service{
 		config:             config,
 		blockProcTasksDone: make(chan struct{}),

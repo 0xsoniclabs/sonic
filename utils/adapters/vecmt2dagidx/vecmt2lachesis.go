@@ -5,22 +5,21 @@ import (
 	"github.com/0xsoniclabs/consensus/consensus/consensusengine"
 	"github.com/0xsoniclabs/consensus/dagidx"
 	"github.com/0xsoniclabs/consensus/vecengine"
-
-	"github.com/0xsoniclabs/sonic/vecmt"
+	"github.com/0xsoniclabs/consensus/dagindexer"
 )
 
 type Adapter struct {
-	*vecmt.Index
+	*dagindexer.Index
 }
 
 var _ consensusengine.DagIndex = (*Adapter)(nil)
 
 type AdapterSeq struct {
-	*vecmt.HighestBefore
+	*dagindexer.HighestBefore
 }
 
 type BranchSeq struct {
-	vecengine.BranchSeq
+	dagindexer.BranchSeq
 }
 
 // Seq is a maximum observed e.Seq in the branch
@@ -48,6 +47,6 @@ func (v *Adapter) GetMergedHighestBefore(id consensus.EventHash) dagidx.HighestB
 	return AdapterSeq{v.Index.GetMergedHighestBefore(id)}
 }
 
-func Wrap(v *vecmt.Index) *Adapter {
+func Wrap(v *dagindexer.Index) *Adapter {
 	return &Adapter{v}
 }
