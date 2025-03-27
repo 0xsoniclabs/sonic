@@ -1909,7 +1909,8 @@ func newTxLookup() *txLookup {
 // there is no difference between local/remote. This function exposes a symbol with same semantics.
 //
 // This is private method, although it may be accessed by tests, please consider that
-// this method is not thread-safe and should not be when not holding the pool lock.
+// neither this method nor the resulting iterator are thread-safe and neither
+// should be used without holding the pool lock.
 func (t *txLookup) txs() iter.Seq2[common.Hash, *types.Transaction] {
 	return func(yield func(common.Hash, *types.Transaction) bool) {
 		for h, tx := range t.locals {
@@ -1930,7 +1931,8 @@ func (t *txLookup) txs() iter.Seq2[common.Hash, *types.Transaction] {
 // there is no difference between local/remote. This function exposes a symbol with same semantics.
 //
 // This is private method, although it may be accessed by tests, please consider that
-// this method is not thread-safe and should not be when not holding the pool lock.
+// neither this method nor the resulting iterator are thread-safe and neither should
+// be used without holding the pool lock.
 func (t *txLookup) getTx(hash common.Hash) (*types.Transaction, bool) {
 	tx, ok := t.locals[hash]
 	if !ok {
