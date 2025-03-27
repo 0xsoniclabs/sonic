@@ -9,7 +9,6 @@ import (
 	"github.com/0xsoniclabs/consensus/kvdb/memorydb"
 	"github.com/0xsoniclabs/sonic/emitter/ancestor"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/mock"
-	"github.com/0xsoniclabs/sonic/vecmt"
 	"github.com/golang/mock/gomock"
 )
 
@@ -53,7 +52,7 @@ func TestChooseParents_NonGenesisEventMustHaveOneSelfParent(t *testing.T) {
 	epoch := idx.Epoch(1)
 	validatorId := idx.ValidatorID(1)
 
-	validatorIndex := vecmt.NewIndex(nil, vecmt.LiteConfig())
+	validatorIndex := dagindexer.NewIndex(nil, dagindexer.LiteConfig())
 	validatorIndex.Reset(pos.ArrayToValidators(
 		[]idx.ValidatorID{1, 2},
 		[]pos.Weight{1, 1},

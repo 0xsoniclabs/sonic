@@ -43,7 +43,6 @@ import (
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/sonic/utils/adapters/vecmt2dagidx"
 	"github.com/0xsoniclabs/sonic/valkeystore"
-	"github.com/0xsoniclabs/sonic/vecmt"
 )
 
 const (
@@ -89,13 +88,13 @@ func (g *testGossipStoreAdapter) GetEvent(id hash.Event) dag.Event {
 	return e
 }
 
-func makeTestEngine(gdb *Store) (*abft.Lachesis, *vecmt.Index) {
+func makeTestEngine(gdb *Store) (*abft.Lachesis, *dagindexer.Index) {
 	cdb := abft.NewMemStore()
 	_ = cdb.ApplyGenesis(&abft.Genesis{
 		Epoch:      gdb.GetEpoch(),
 		Validators: gdb.GetValidators(),
 	})
-	vecClock := vecmt.NewIndex(panics("Vector clock"), vecmt.LiteConfig())
+	vecClock := dagindexer.NewIndex(panics("Vector clock"), dagindexer.LiteConfig())
 	engine := abft.NewLachesis(cdb, &testGossipStoreAdapter{gdb}, vecmt2dagidx.Wrap(vecClock), panics("Lachesis"), abft.LiteConfig())
 	return engine, vecClock
 }

@@ -12,7 +12,6 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
-	"github.com/0xsoniclabs/sonic/vecmt"
 )
 
 func TestConfigFile(t *testing.T) {
@@ -29,7 +28,7 @@ func TestConfigFile(t *testing.T) {
 		OperaStore:    gossip.DefaultStoreConfig(cacheRatio),
 		Lachesis:      abft.DefaultConfig(),
 		LachesisStore: abft.DefaultStoreConfig(cacheRatio),
-		VectorClock:   vecmt.DefaultConfig(cacheRatio),
+		VectorClock:   dagindexer.DefaultConfig(cacheRatio),
 	}
 
 	canonical := func(nn []*enode.Node) []*enode.Node {

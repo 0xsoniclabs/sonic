@@ -12,7 +12,6 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/utils/wgmutex"
 	"github.com/0xsoniclabs/sonic/valkeystore"
-	"github.com/0xsoniclabs/sonic/vecmt"
 )
 
 type emitterWorldProc struct {
@@ -53,7 +52,7 @@ func (ew *emitterWorldProc) Build(e *inter.MutableEventPayload, onIndexed func()
 	return ew.s.buildEvent(e, onIndexed)
 }
 
-func (ew *emitterWorldProc) DagIndex() *vecmt.Index {
+func (ew *emitterWorldProc) DagIndex() *dagindexer.Index {
 	return ew.s.dagIndexer
 }
 

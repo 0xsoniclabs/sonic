@@ -10,7 +10,6 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip"
 	"github.com/0xsoniclabs/sonic/utils/adapters/vecmt2dagidx"
 	"github.com/0xsoniclabs/sonic/utils/caution"
-	"github.com/0xsoniclabs/sonic/vecmt"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/common"
@@ -30,7 +29,7 @@ type Configs struct {
 	OperaStore    gossip.StoreConfig
 	Lachesis      abft.Config
 	LachesisStore abft.StoreConfig
-	VectorClock   vecmt.IndexConfig
+	VectorClock   dagindexer.IndexConfig
 	DBs           DBsConfig
 }
 
@@ -61,15 +60,15 @@ func getStores(producer kvdb.FlushableDBProducer, cfg Configs) (*gossip.Store, *
 	return gdb, cdb, nil
 }
 
-func rawMakeEngine(gdb *gossip.Store, cdb *abft.Store, cfg Configs) (*abft.Lachesis, *vecmt.Index, gossip.BlockProc, error) {
+func rawMakeEngine(gdb *gossip.Store, cdb *abft.Store, cfg Configs) (*abft.Lachesis, *dagindexer.Index, gossip.BlockProc, error) {
 	blockProc := gossip.DefaultBlockProc()
 	// create consensus
-	vecClock := vecmt.NewIndex(panics("Vector clock"), cfg.VectorClock)
+	vecClock := dagindexer.NewIndex(panics("Vector clock"), cfg.VectorClock)
 	engine := abft.NewLachesis(cdb, &GossipStoreAdapter{gdb}, vecmt2dagidx.Wrap(vecClock), panics("Lachesis"), cfg.Lachesis)
 	return engine, vecClock, blockProc, nil
 }
 
-func makeEngine(chaindataDir string, cfg Configs) (engine *abft.Lachesis, vecClock *vecmt.Index,
+func makeEngine(chaindataDir string, cfg Configs) (engine *abft.Lachesis, vecClock *dagindexer.Index,
 	gdb *gossip.Store, cdb *abft.Store, blockProc gossip.BlockProc, dbsClose func() error, err error) {
 	dbs, err := GetDbProducer(chaindataDir, cfg.DBs.RuntimeCache)
 	if err != nil {
@@ -114,7 +113,7 @@ func makeEngine(chaindataDir string, cfg Configs) (engine *abft.Lachesis, vecClo
 }
 
 // MakeEngine makes consensus engine from config.
-func MakeEngine(chaindataDir string, cfg Configs) (*abft.Lachesis, *vecmt.Index, *gossip.Store, *abft.Store, gossip.BlockProc, func() error, error) {
+func MakeEngine(chaindataDir string, cfg Configs) (*abft.Lachesis, *dagindexer.Index, *gossip.Store, *abft.Store, gossip.BlockProc, func() error, error) {
 	if isEmpty(chaindataDir) || isInterrupted(chaindataDir) {
 		return nil, nil, nil, nil, gossip.BlockProc{}, nil, fmt.Errorf("database is empty or the genesis import interrupted")
 	}

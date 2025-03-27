@@ -3,25 +3,23 @@ package vecmt2dagidx
 import (
 	"github.com/0xsoniclabs/consensus/abft"
 	"github.com/0xsoniclabs/consensus/abft/dagidx"
+	"github.com/0xsoniclabs/consensus/dagindexer"
 	"github.com/0xsoniclabs/consensus/hash"
 	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/vecengine"
-
-	"github.com/0xsoniclabs/sonic/vecmt"
 )
 
 type Adapter struct {
-	*vecmt.Index
+	*dagindexer.Index
 }
 
 var _ abft.DagIndex = (*Adapter)(nil)
 
 type AdapterSeq struct {
-	*vecmt.HighestBefore
+	*dagindexer.HighestBefore
 }
 
 type BranchSeq struct {
-	vecengine.BranchSeq
+	dagindexer.BranchSeq
 }
 
 // Seq is a maximum observed e.Seq in the branch
@@ -49,6 +47,6 @@ func (v *Adapter) GetMergedHighestBefore(id hash.Event) dagidx.HighestBeforeSeq 
 	return AdapterSeq{v.Index.GetMergedHighestBefore(id)}
 }
 
-func Wrap(v *vecmt.Index) *Adapter {
+func Wrap(v *dagindexer.Index) *Adapter {
 	return &Adapter{v}
 }
