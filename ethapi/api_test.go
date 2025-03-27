@@ -642,6 +642,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 		_, _, err := stateAtTransaction(t.Context(), block, 1, backend)
 		require.NoError(t, err)
 	}
+
 	executeTraceReplayBlock := func(t *testing.T, backend Backend, txArgs TransactionArgs, blockOrHash rpc.BlockNumberOrHash) {
 		api := PublicTxTraceAPI{b: backend}
 		block := backend.CurrentBlock()
@@ -822,7 +823,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 
 			ctrl := gomock.NewController(t)
 
-			blockOrHash := rpc.BlockNumberOrHashWithNumber(0)
+			blockOrHash := rpc.BlockNumberOrHashWithNumber(1)
 
 			header := evmcore.EvmHeader{
 				// return any block but 0, 0 is genesis and has special semantics
