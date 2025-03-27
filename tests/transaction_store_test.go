@@ -132,18 +132,3 @@ func TestTransactionStore_CanTransactionsBeRetrievedFromBlocksAfterRestart(t *te
 			}))
 	}
 }
-
-func signTransaction(
-	t *testing.T,
-	chainId *big.Int,
-	payload types.TxData,
-	from *Account,
-) *types.Transaction {
-	t.Helper()
-	res, err := types.SignTx(
-		types.NewTx(payload),
-		types.NewPragueSigner(chainId),
-		from.PrivateKey)
-	require.NoError(t, err)
-	return res
-}
