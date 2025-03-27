@@ -195,5 +195,9 @@ func validateUpgrades(upgrade Upgrades) error {
 		issues = append(issues, errors.New("Sonic upgrade is required"))
 	}
 
+	if !upgrade.Allegro {
+		issues = append(issues, errors.New("Allegro upgrade is required"))
+	}
+
 	return errors.Join(issues...)
 }

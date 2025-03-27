@@ -445,6 +445,10 @@ func TestUpgradesValidation_DetectsIssues(t *testing.T) {
 			upgrade: Upgrades{},
 			issue:   "Sonic upgrade is required",
 		},
+		"Allegro upgrade is required": {
+			upgrade: Upgrades{},
+			issue:   "Allegro upgrade is required",
+		},
 	}
 
 	for name, test := range issues {
