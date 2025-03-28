@@ -26,7 +26,6 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	notify "github.com/ethereum/go-ethereum/event"
@@ -73,7 +72,7 @@ type Backend interface {
 	ResolveRpcBlockNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (idx.Block, error)
 	BlockByHash(ctx context.Context, hash common.Hash) (*evmcore.EvmBlock, error)
 	GetReceiptsByNumber(ctx context.Context, number rpc.BlockNumber) (types.Receipts, error)
-	GetEVM(ctx context.Context, msg *core.Message, state vm.StateDB, header *evmcore.EvmHeader, vmConfig *vm.Config, blockContext *vm.BlockContext) (*vm.EVM, func() error, error)
+	GetEVM(ctx context.Context, state vm.StateDB, header *evmcore.EvmHeader, vmConfig *vm.Config, blockContext *vm.BlockContext) (*vm.EVM, func() error, error)
 	MinGasPrice() *big.Int
 	MaxGasLimit() uint64
 
