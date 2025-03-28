@@ -55,14 +55,12 @@ func setTransactionDefaults[T types.TxData](
 	tmpTx := types.NewTx(txPayload)
 	nonce := tmpTx.Nonce()
 	if tmpTx.Nonce() == 0 {
-		var err error
 		nonce, err = client.NonceAt(context.Background(), sender.Address(), nil)
 		require.NoError(t, err)
 	}
 
 	gasPrice := tmpTx.GasPrice()
 	if gasPrice == nil || gasPrice.Sign() == 0 {
-		var err error
 		gasPrice, err = client.SuggestGasPrice(context.Background())
 		require.NoError(t, err)
 	}
