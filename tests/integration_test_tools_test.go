@@ -32,10 +32,14 @@ func signTransaction(
 
 // setTransactionDefaults defaults the transaction common fields to meaningful values
 //
-// If left zeroed: It configures the nonce of the transaction to be the current nonce of the sender account
-// If left zeroed: It configures the gas price of the transaction to be the suggested gas price
-// If left zeroed: It configures the gas of the transaction to be the minimum gas required to execute the transaction
-// Filled gas is a static minimum value, it does not account for the gas costs of the contract opcodes.
+//   - If nonce is zeroed: It configures the nonce of the transaction to be the
+//     current nonce of the sender account
+//   - If gas price or gas fee cap is zeroed: It configures the gas price of the
+//     transaction to be the suggested gas price
+//   - If gas is zeroed: It configures the gas of the transaction to be the
+//     minimum gas required to execute the transaction
+//     Filled gas is a static minimum value, it does not account for the gas
+//     costs of the contract opcodes.
 //
 // Notice that this function is generic, returning the same type as the input, this
 // allows further manual configuration of the transaction fields after the defaults are set.
