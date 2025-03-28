@@ -1,6 +1,6 @@
 package scc
 
-import "github.com/0xsoniclabs/consensus/inter/idx"
+import "github.com/0xsoniclabs/consensus/consensus"
 
 // BLOCKS_PER_PERIOD is the number of blocks in a period.
 const BLOCKS_PER_PERIOD = 1024
@@ -10,18 +10,18 @@ const BLOCKS_PER_PERIOD = 1024
 type Period uint64
 
 // GetPeriod returns the period of the given block number.
-func GetPeriod(number idx.Block) Period {
+func GetPeriod(number consensus.BlockID) Period {
 	return Period(number / BLOCKS_PER_PERIOD)
 }
 
 // IsFirstBlockOfPeriod returns true if the given block number is the first
 // block of its period.
-func IsFirstBlockOfPeriod(number idx.Block) bool {
+func IsFirstBlockOfPeriod(number consensus.BlockID) bool {
 	return number%BLOCKS_PER_PERIOD == 0
 }
 
 // IsLastBlockOfPeriod returns true if the given block number is the last block
 // of its period.
-func IsLastBlockOfPeriod(number idx.Block) bool {
+func IsLastBlockOfPeriod(number consensus.BlockID) bool {
 	return number%BLOCKS_PER_PERIOD == BLOCKS_PER_PERIOD-1
 }

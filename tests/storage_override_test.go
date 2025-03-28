@@ -1,12 +1,13 @@
 package tests
 
 import (
-	"github.com/0xsoniclabs/sonic/tests/contracts/storage"
-	"github.com/ethereum/go-ethereum/accounts/abi"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"math/big"
 	"strings"
 	"testing"
+
+	"github.com/0xsoniclabs/sonic/tests/contracts/storage"
+	"github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"

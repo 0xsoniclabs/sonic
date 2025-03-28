@@ -3,10 +3,11 @@ package gossip
 import (
 	"bytes"
 	"cmp"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 	"math/big"
 	"slices"
+
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 )
 
 // ScramblerEntry stores meta information about transaction for sorting and filtering them.

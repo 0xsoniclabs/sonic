@@ -1,11 +1,12 @@
 package diskusage
 
 import (
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/log"
 	"os"
 	"syscall"
 	"time"
+
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 func MonitorFreeDiskSpace(stopNodeSig chan os.Signal, path string, freeDiskSpaceCritical uint64) {

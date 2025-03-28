@@ -6,8 +6,9 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/utils/cachescale"
+	"github.com/0xsoniclabs/consensus/consensus"
+
+	"github.com/0xsoniclabs/cacheutils/cachescale"
 	"github.com/0xsoniclabs/sonic/cmd/sonictool/db"
 	"github.com/0xsoniclabs/sonic/cmd/sonictool/genesis"
 	"github.com/0xsoniclabs/sonic/config/flags"
@@ -143,7 +144,7 @@ func fakeGenesisImport(ctx *cli.Context) (err error) {
 	}
 
 	genesisStore := makefakegenesis.FakeGenesisStore(
-		idx.Validator(validatorsNumber),
+		consensus.ValidatorIndex(validatorsNumber),
 		futils.ToFtm(1000000000),
 		futils.ToFtm(5000000),
 	)

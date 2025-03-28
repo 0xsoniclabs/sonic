@@ -2,10 +2,11 @@ package tests
 
 import (
 	"context"
-	"github.com/0xsoniclabs/sonic/tests/contracts/prevrandao"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"math/big"
 	"testing"
+
+	"github.com/0xsoniclabs/sonic/tests/contracts/prevrandao"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 )
 
 func TestPrevRandao(t *testing.T) {

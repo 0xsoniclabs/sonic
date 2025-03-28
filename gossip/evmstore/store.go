@@ -5,10 +5,10 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/0xsoniclabs/cacheutils/wlru"
 	carmen "github.com/0xsoniclabs/carmen/go/state"
-	"github.com/0xsoniclabs/consensus/kvdb"
-	"github.com/0xsoniclabs/consensus/kvdb/table"
-	"github.com/0xsoniclabs/consensus/utils/wlru"
+	"github.com/0xsoniclabs/kvdb"
+	"github.com/0xsoniclabs/kvdb/table"
 	"github.com/0xsoniclabs/sonic/logger"
 	"github.com/0xsoniclabs/sonic/topicsdb"
 	"github.com/0xsoniclabs/sonic/utils/rlpstore"

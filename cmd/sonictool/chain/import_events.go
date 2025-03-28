@@ -13,8 +13,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
+
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/gossip"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
@@ -116,12 +116,12 @@ func importEventsFile(srv *gossip.Service, filename string) (err error) {
 	stream := rlp.NewStream(reader, 0)
 
 	start := time.Now()
-	last := hash.Event{}
+	last := consensus.EventHash{}
 
 	batch := make(inter.EventPayloads, 0, 8*1024)
 	batchSize := 0
 	maxBatchSize := 8 * 1024 * 1024
-	epoch := idx.Epoch(0)
+	epoch := consensus.Epoch(0)
 	txs := 0
 	events := 0
 

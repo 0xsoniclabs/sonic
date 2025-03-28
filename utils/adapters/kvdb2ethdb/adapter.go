@@ -3,7 +3,7 @@ package kvdb2ethdb
 import (
 	"bytes"
 
-	"github.com/0xsoniclabs/consensus/kvdb"
+	"github.com/0xsoniclabs/kvdb"
 	"github.com/ethereum/go-ethereum/ethdb"
 )
 

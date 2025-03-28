@@ -7,8 +7,8 @@ import (
 	"io"
 	"math"
 
-	"github.com/0xsoniclabs/consensus/common/bigendian"
-	"github.com/0xsoniclabs/consensus/hash"
+	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/consensus/utils/byteutils"
 
 	"github.com/0xsoniclabs/sonic/utils/ioread"
 )
@@ -33,15 +33,15 @@ type Reader struct {
 	currentPiecePos uint64
 	currentPiece    []byte
 
-	root   hash.Hash
-	hashes hash.Hashes
+	root   consensus.Hash
+	hashes consensus.Hashes
 
 	maxMemUsage uint64
 
 	err error
 }
 
-func WrapReader(backend io.Reader, maxMemUsage uint64, root hash.Hash) *Reader {
+func WrapReader(backend io.Reader, maxMemUsage uint64, root consensus.Hash) *Reader {
 	return &Reader{
 		backend:         backend,
 		pos:             0,
@@ -51,8 +51,8 @@ func WrapReader(backend io.Reader, maxMemUsage uint64, root hash.Hash) *Reader {
 	}
 }
 
-func (r *Reader) readHashes(n uint64) (hash.Hashes, error) {
-	hashes := make(hash.Hashes, n)
+func (r *Reader) readHashes(n uint64) (consensus.Hashes, error) {
+	hashes := make(consensus.Hashes, n)
 	for i := uint64(0); i < n; i++ {
 		err := ioread.ReadAll(r.backend, hashes[i][:])
 		if err != nil {
@@ -62,20 +62,20 @@ func (r *Reader) readHashes(n uint64) (hash.Hashes, error) {
 	return hashes, nil
 }
 
-func calcHash(piece []byte) hash.Hash {
+func calcHash(piece []byte) consensus.Hash {
 	hasher := sha256.New()
 	hasher.Write(piece)
-	return hash.BytesToHash(hasher.Sum(nil))
+	return consensus.BytesToHash(hasher.Sum(nil))
 }
 
-func calcHashesRoot(hashes hash.Hashes, pieceSize, size uint64) hash.Hash {
+func calcHashesRoot(hashes consensus.Hashes, pieceSize, size uint64) consensus.Hash {
 	hasher := sha256.New()
-	hasher.Write(bigendian.Uint32ToBytes(uint32(pieceSize)))
-	hasher.Write(bigendian.Uint64ToBytes(size))
+	hasher.Write(byteutils.Uint32ToBigEndian(uint32(pieceSize)))
+	hasher.Write(byteutils.Uint64ToBigEndian(size))
 	for _, h := range hashes {
 		hasher.Write(h.Bytes())
 	}
-	return hash.BytesToHash(hasher.Sum(nil))
+	return consensus.BytesToHash(hasher.Sum(nil))
 }
 
 func getPiecesNum(size, pieceSize uint64) uint64 {
@@ -152,13 +152,13 @@ func (r *Reader) init() error {
 	if err != nil {
 		return err
 	}
-	r.pieceSize = uint64(bigendian.BytesToUint32(buf[:4]))
+	r.pieceSize = uint64(byteutils.BigEndianToUint32(buf[:4]))
 	// read content size
 	err = ioread.ReadAll(r.backend, buf)
 	if err != nil {
 		return err
 	}
-	r.size = bigendian.BytesToUint64(buf)
+	r.size = byteutils.BigEndianToUint64(buf)
 
 	hashesNum := r.getPiecesNum(r.size)
 	if memUsageOf(r.pieceSize, hashesNum) > uint64(r.maxMemUsage) {

@@ -9,8 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/0xsoniclabs/consensus/common/bigendian"
-	"github.com/0xsoniclabs/consensus/hash"
+	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/consensus/utils/byteutils"
+
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/status-im/keycard-go/hexutils"
 	"github.com/syndtr/goleveldb/leveldb/opt"
@@ -98,7 +99,7 @@ func OpenGenesisStore(rawReader ReadAtSeekerCloser) (*Store, genesis.Hashes, err
 			}
 		}
 
-		var h hash.Hash
+		var h consensus.Hash
 		err = ioread.ReadAll(headerReader, h[:])
 		if err != nil {
 			return nil, hashes, err
@@ -110,13 +111,13 @@ func OpenGenesisStore(rawReader ReadAtSeekerCloser) (*Store, genesis.Hashes, err
 		if err != nil {
 			return nil, hashes, err
 		}
-		dataCompressedSize := bigendian.BytesToUint64(numB[:])
+		dataCompressedSize := byteutils.BigEndianToUint64(numB[:])
 
 		err = ioread.ReadAll(headerReader, numB[:])
 		if err != nil {
 			return nil, hashes, err
 		}
-		uncompressedSize := bigendian.BytesToUint64(numB[:])
+		uncompressedSize := byteutils.BigEndianToUint64(numB[:])
 
 		headerSize, err := headerReader.Seek(0, io.SeekCurrent)
 		if err != nil {

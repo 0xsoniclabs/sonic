@@ -23,7 +23,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
+
 	"github.com/0xsoniclabs/sonic/utils/piecefunc"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -54,7 +55,7 @@ type Config struct {
 }
 
 type Reader interface {
-	GetLatestBlockIndex() idx.Block
+	GetLatestBlockIndex() consensus.BlockID
 	TotalGasPowerLeft() uint64
 	GetRules() opera.Rules
 	GetPendingRules() opera.Rules

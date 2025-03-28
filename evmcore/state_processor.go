@@ -194,7 +194,7 @@ func applyTransaction(
 	}
 	// Notify about logs with potential state changes.
 	// At this point the final block hash is not yet known, so we pass an empty
-	// hash. For the consumers of the log messages, as for instance the driver
+	// consensus. For the consumers of the log messages, as for instance the driver
 	// contract listener, only the sender, topics, and the data are relevant.
 	// The block hash is not used.
 	logs := statedb.GetLogs(tx.Hash(), common.Hash{})

@@ -4,9 +4,8 @@ import (
 	"errors"
 	"io"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/dag"
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
+
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -121,24 +120,24 @@ func eventUnmarshalCSER(r *cser.Reader, e *MutableEventPayload) (err error) {
 	if parentsNum > ProtocolMaxMsgSize/24 {
 		return cser.ErrTooLargeAlloc
 	}
-	parents := make(hash.Events, 0, parentsNum)
+	parents := make(consensus.EventHashes, 0, parentsNum)
 	for i := uint32(0); i < parentsNum; i++ {
 		// lamport difference
 		lamportDiff := r.U32()
 		// hash
 		h := [24]byte{}
 		r.FixedBytes(h[:])
-		eID := dag.MutableBaseEvent{}
-		eID.SetEpoch(idx.Epoch(epoch))
-		eID.SetLamport(idx.Lamport(lamport - lamportDiff))
+		eID := consensus.MutableBaseEvent{}
+		eID.SetEpoch(consensus.Epoch(epoch))
+		eID.SetLamport(consensus.Lamport(lamport - lamportDiff))
 		eID.SetID(h)
 		parents.Add(eID.ID())
 	}
 	// prev epoch hash
-	var prevEpochHash *hash.Hash
+	var prevEpochHash *consensus.Hash
 	prevEpochHashExists := r.Bool()
 	if prevEpochHashExists {
-		prevEpochHash_ := hash.Hash{}
+		prevEpochHash_ := consensus.Hash{}
 		r.FixedBytes(prevEpochHash_[:])
 		prevEpochHash = &prevEpochHash_
 	}
@@ -163,11 +162,11 @@ func eventUnmarshalCSER(r *cser.Reader, e *MutableEventPayload) (err error) {
 
 	e.SetVersion(version)
 	e.SetNetForkID(netForkID)
-	e.SetEpoch(idx.Epoch(epoch))
-	e.SetLamport(idx.Lamport(lamport))
-	e.SetCreator(idx.ValidatorID(creator))
-	e.SetSeq(idx.Event(seq))
-	e.SetFrame(idx.Frame(frame))
+	e.SetEpoch(consensus.Epoch(epoch))
+	e.SetLamport(consensus.Lamport(lamport))
+	e.SetCreator(consensus.ValidatorID(creator))
+	e.SetSeq(consensus.Seq(seq))
+	e.SetFrame(consensus.Frame(frame))
 	e.SetCreationTime(Timestamp(creationTime))
 	e.SetMedianTime(Timestamp(int64(creationTime) - medianTimeDiff))
 	e.SetGasPowerUsed(gasPowerUsed)
@@ -213,12 +212,12 @@ func (bvs *LlrBlockVotes) UnmarshalCSER(r *cser.Reader) error {
 	if num > ProtocolMaxMsgSize/32 {
 		return cser.ErrTooLargeAlloc
 	}
-	records := make([]hash.Hash, num)
+	records := make([]consensus.Hash, num)
 	for i := range records {
 		r.FixedBytes(records[i][:])
 	}
-	bvs.Start = idx.Block(start)
-	bvs.Epoch = idx.Epoch(epoch)
+	bvs.Start = consensus.BlockID(start)
+	bvs.Epoch = consensus.Epoch(epoch)
 	bvs.Votes = records
 	return nil
 }
@@ -231,9 +230,9 @@ func (ers LlrEpochVote) MarshalCSER(w *cser.Writer) error {
 
 func (ers *LlrEpochVote) UnmarshalCSER(r *cser.Reader) error {
 	epoch := r.U32()
-	record := hash.Hash{}
+	record := consensus.Hash{}
 	r.FixedBytes(record[:])
-	ers.Epoch = idx.Epoch(epoch)
+	ers.Epoch = consensus.Epoch(epoch)
 	ers.Vote = record
 	return nil
 }
@@ -350,7 +349,7 @@ func (e *MutableEventPayload) UnmarshalCSER(r *cser.Reader) error {
 	}
 	e.epochVote = ev
 	// bvs
-	bvs := LlrBlockVotes{Votes: make([]hash.Hash, 0, 2)}
+	bvs := LlrBlockVotes{Votes: make([]consensus.Hash, 0, 2)}
 	if e.AnyBlockVotes() {
 		err := bvs.UnmarshalCSER(r)
 		if err != nil {
@@ -471,7 +470,7 @@ func RPCMarshalEventPayload(event EventPayloadI, inclTx bool) (map[string]interf
 	return fields, nil
 }
 
-func EventIDsToHex(ids hash.Events) []hexutil.Bytes {
+func EventIDsToHex(ids consensus.EventHashes) []hexutil.Bytes {
 	res := make([]hexutil.Bytes, len(ids))
 	for i, id := range ids {
 		res[i] = id.Bytes()

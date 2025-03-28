@@ -4,9 +4,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/ethereum/go-ethereum/log"
 	"log/slog"
 	"testing"
+
+	"github.com/ethereum/go-ethereum/log"
 )
 
 // SetTestMode sets default logger to log into the test output.

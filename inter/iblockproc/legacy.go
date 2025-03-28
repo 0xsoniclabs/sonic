@@ -1,27 +1,24 @@
 package iblockproc
 
 import (
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/inter/pos"
-
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
 )
 
 type ValidatorEpochStateV0 struct {
 	GasRefund      uint64
-	PrevEpochEvent hash.Event
+	PrevEpochEvent consensus.EventHash
 }
 
 type EpochStateV0 struct {
-	Epoch          idx.Epoch
+	Epoch          consensus.Epoch
 	EpochStart     inter.Timestamp
 	PrevEpochStart inter.Timestamp
 
-	EpochStateRoot hash.Hash
+	EpochStateRoot consensus.Hash
 
-	Validators        *pos.Validators
+	Validators        *consensus.Validators
 	ValidatorStates   []ValidatorEpochStateV0
 	ValidatorProfiles ValidatorProfiles
 

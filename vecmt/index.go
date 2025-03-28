@@ -1,15 +1,12 @@
 package vecmt
 
 import (
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/dag"
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/inter/pos"
-	"github.com/0xsoniclabs/consensus/kvdb"
-	"github.com/0xsoniclabs/consensus/kvdb/table"
-	"github.com/0xsoniclabs/consensus/utils/cachescale"
-	"github.com/0xsoniclabs/consensus/utils/wlru"
+	"github.com/0xsoniclabs/cacheutils/cachescale"
+	"github.com/0xsoniclabs/cacheutils/wlru"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/consensus/vecengine"
+	"github.com/0xsoniclabs/kvdb"
+	"github.com/0xsoniclabs/kvdb/table"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 )
 
@@ -31,10 +28,10 @@ type Index struct {
 	baseCallbacks vecengine.Callbacks
 
 	crit          func(error)
-	validators    *pos.Validators
-	validatorIdxs map[idx.ValidatorID]idx.Validator
+	validators    *consensus.Validators
+	validatorIdxs map[consensus.ValidatorID]consensus.ValidatorIndex
 
-	getEvent func(hash.Event) dag.Event
+	getEvent func(consensus.EventHash) consensus.Event
 
 	vecDb kvdb.Store
 	table struct {
@@ -89,7 +86,7 @@ func (vi *Index) initCaches() {
 }
 
 // Reset resets buffers.
-func (vi *Index) Reset(validators *pos.Validators, db kvdb.Store, getEvent func(hash.Event) dag.Event) {
+func (vi *Index) Reset(validators *consensus.Validators, db kvdb.Store, getEvent func(consensus.EventHash) consensus.Event) {
 	fdb := WrapByVecFlushable(db, vi.cfg.Caches.DBCache)
 	vi.vecDb = fdb
 	vi.Engine.Reset(validators, fdb, getEvent)
@@ -111,22 +108,22 @@ func (vi *Index) onDropNotFlushed() {
 
 func (vi *Index) GetEngineCallbacks() vecengine.Callbacks {
 	return vecengine.Callbacks{
-		GetHighestBefore: func(event hash.Event) vecengine.HighestBeforeI {
+		GetHighestBefore: func(event consensus.EventHash) vecengine.HighestBeforeI {
 			return vi.GetHighestBefore(event)
 		},
-		GetLowestAfter: func(event hash.Event) vecengine.LowestAfterI {
+		GetLowestAfter: func(event consensus.EventHash) vecengine.LowestAfterI {
 			return vi.baseCallbacks.GetLowestAfter(event)
 		},
-		SetHighestBefore: func(event hash.Event, b vecengine.HighestBeforeI) {
+		SetHighestBefore: func(event consensus.EventHash, b vecengine.HighestBeforeI) {
 			vi.SetHighestBefore(event, b.(*HighestBefore))
 		},
-		SetLowestAfter: func(event hash.Event, i vecengine.LowestAfterI) {
+		SetLowestAfter: func(event consensus.EventHash, i vecengine.LowestAfterI) {
 			vi.baseCallbacks.SetLowestAfter(event, i)
 		},
-		NewHighestBefore: func(size idx.Validator) vecengine.HighestBeforeI {
+		NewHighestBefore: func(size consensus.ValidatorIndex) vecengine.HighestBeforeI {
 			return NewHighestBefore(size)
 		},
-		NewLowestAfter: func(size idx.Validator) vecengine.LowestAfterI {
+		NewLowestAfter: func(size consensus.ValidatorIndex) vecengine.LowestAfterI {
 			return vi.baseCallbacks.NewLowestAfter(size)
 		},
 		OnDropNotFlushed: func() {
@@ -137,6 +134,6 @@ func (vi *Index) GetEngineCallbacks() vecengine.Callbacks {
 }
 
 // GetMergedHighestBefore returns HighestBefore vector clock without branches, where branches are merged into one
-func (vi *Index) GetMergedHighestBefore(id hash.Event) *HighestBefore {
+func (vi *Index) GetMergedHighestBefore(id consensus.EventHash) *HighestBefore {
 	return vi.Engine.GetMergedHighestBefore(id).(*HighestBefore)
 }

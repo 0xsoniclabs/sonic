@@ -6,7 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
+
 	cli "gopkg.in/urfave/cli.v1"
 
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
@@ -26,7 +27,7 @@ func getFakeValidatorKey(ctx *cli.Context) *ecdsa.PrivateKey {
 	return makefakegenesis.FakeKey(id)
 }
 
-func ParseFakeGen(s string) (id idx.ValidatorID, num idx.Validator, err error) {
+func ParseFakeGen(s string) (id consensus.ValidatorID, num consensus.ValidatorIndex, err error) {
 	parts := strings.SplitN(s, "/", 2)
 	if len(parts) != 2 {
 		err = fmt.Errorf("use %%d/%%d format")
@@ -38,11 +39,11 @@ func ParseFakeGen(s string) (id idx.ValidatorID, num idx.Validator, err error) {
 	if err != nil {
 		return
 	}
-	id = idx.ValidatorID(u32)
+	id = consensus.ValidatorID(u32)
 
 	u32, err = strconv.ParseUint(parts[1], 10, 32)
-	num = idx.Validator(u32)
-	if idx.Validator(id) > num {
+	num = consensus.ValidatorIndex(u32)
+	if consensus.ValidatorIndex(id) > num {
 		err = fmt.Errorf("key-num should be in range from 1 to validators (<key-num>/<validators>), or should be zero for non-validator node")
 		return
 	}

@@ -3,11 +3,12 @@ package app
 import (
 	"context"
 	"fmt"
+	"os/signal"
+	"syscall"
+
 	"github.com/0xsoniclabs/sonic/cmd/sonictool/check"
 	"github.com/0xsoniclabs/sonic/config/flags"
 	"gopkg.in/urfave/cli.v1"
-	"os/signal"
-	"syscall"
 )
 
 func checkLive(ctx *cli.Context) error {

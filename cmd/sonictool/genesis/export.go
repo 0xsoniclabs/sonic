@@ -7,9 +7,9 @@ import (
 	"os"
 	"path"
 
-	"github.com/0xsoniclabs/consensus/common/bigendian"
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/consensus/utils/byteutils"
+
 	"github.com/0xsoniclabs/sonic/gossip"
 	"github.com/0xsoniclabs/sonic/inter/ibr"
 	"github.com/0xsoniclabs/sonic/inter/ier"
@@ -82,7 +82,7 @@ func ExportGenesis(ctx context.Context, gdb *gossip.Store, includeArchive bool, 
 	return nil
 }
 
-func exportEpochsSection(ctx context.Context, gdb *gossip.Store, writer *unitWriter, from, to idx.Epoch) error {
+func exportEpochsSection(ctx context.Context, gdb *gossip.Store, writer *unitWriter, from, to consensus.Epoch) error {
 	log.Info("Exporting epochs", "from", from, "to", to)
 	for i := to; i >= from; i-- {
 		er := gdb.GetFullEpochRecord(i)
@@ -111,7 +111,7 @@ func exportEpochsSection(ctx context.Context, gdb *gossip.Store, writer *unitWri
 	return nil
 }
 
-func exportBlocksSection(ctx context.Context, gdb *gossip.Store, writer *unitWriter, to idx.Block, maxBlocks int64) error {
+func exportBlocksSection(ctx context.Context, gdb *gossip.Store, writer *unitWriter, to consensus.BlockID, maxBlocks int64) error {
 	toBlock := int64(to)
 	fromBlock := int64(0)
 	if maxBlocks != 0 && toBlock > 1+maxBlocks {
@@ -119,7 +119,7 @@ func exportBlocksSection(ctx context.Context, gdb *gossip.Store, writer *unitWri
 	}
 	log.Info("Exporting blocks", "from", fromBlock, "to", toBlock)
 	for i := toBlock; i >= fromBlock; i-- {
-		i := idx.Block(i)
+		i := consensus.BlockID(i)
 		br := gdb.GetFullBlockRecord(i)
 		if br == nil {
 			return fmt.Errorf("the block record for block %d is missing in gdb", i)
@@ -177,7 +177,7 @@ func exportFwaSection(ctx context.Context, gdb *gossip.Store, writer *unitWriter
 	return nil
 }
 
-func getEpochBlock(epoch idx.Epoch, store *gossip.Store) idx.Block {
+func getEpochBlock(epoch consensus.Epoch, store *gossip.Store) consensus.BlockID {
 	bs, _ := store.GetHistoryBlockEpochState(epoch)
 	if bs == nil {
 		return 0
@@ -246,46 +246,46 @@ func (w *unitWriter) Start(header genesis.Header, name, tmpDirPath string) error
 	return nil
 }
 
-func (w *unitWriter) Flush() (hash.Hash, error) {
+func (w *unitWriter) Flush() (consensus.Hash, error) {
 	if w.plain == nil {
 		return w.fileshasher.Root(), nil
 	}
 	h, err := w.fileshasher.Flush()
 	if err != nil {
-		return hash.Hash{}, err
+		return consensus.Hash{}, err
 	}
 
 	err = w.gziper.Close()
 	if err != nil {
-		return hash.Hash{}, err
+		return consensus.Hash{}, err
 	}
 
 	endPos, err := w.plain.Seek(0, io.SeekCurrent)
 	if err != nil {
-		return hash.Hash{}, err
+		return consensus.Hash{}, err
 	}
 
 	_, err = w.plain.Seek(w.dataStartPos-(8+8+32), io.SeekStart)
 	if err != nil {
-		return hash.Hash{}, err
+		return consensus.Hash{}, err
 	}
 
 	_, err = w.plain.Write(h.Bytes())
 	if err != nil {
-		return hash.Hash{}, err
+		return consensus.Hash{}, err
 	}
-	_, err = w.plain.Write(bigendian.Uint64ToBytes(uint64(endPos - w.dataStartPos)))
+	_, err = w.plain.Write(byteutils.Uint64ToBigEndian(uint64(endPos - w.dataStartPos)))
 	if err != nil {
-		return hash.Hash{}, err
+		return consensus.Hash{}, err
 	}
-	_, err = w.plain.Write(bigendian.Uint64ToBytes(w.uncompressedSize))
+	_, err = w.plain.Write(byteutils.Uint64ToBigEndian(w.uncompressedSize))
 	if err != nil {
-		return hash.Hash{}, err
+		return consensus.Hash{}, err
 	}
 
 	_, err = w.plain.Seek(0, io.SeekEnd)
 	if err != nil {
-		return hash.Hash{}, err
+		return consensus.Hash{}, err
 	}
 	return h, nil
 }

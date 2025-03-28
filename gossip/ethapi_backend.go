@@ -8,11 +8,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/0xsoniclabs/consensus/consensus"
+
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -56,17 +56,17 @@ func (b *EthAPIBackend) CurrentBlock() *evmcore.EvmBlock {
 	return b.state.CurrentBlock()
 }
 
-func (b *EthAPIBackend) ResolveRpcBlockNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (idx.Block, error) {
+func (b *EthAPIBackend) ResolveRpcBlockNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (consensus.BlockID, error) {
 	latest := b.svc.store.GetLatestBlockIndex()
 	if number, ok := blockNrOrHash.Number(); ok && isLatestBlockNumber(number) {
 		return latest, nil
 	} else if number, ok := blockNrOrHash.Number(); ok {
-		if idx.Block(number) > latest {
+		if consensus.BlockID(number) > latest {
 			return 0, errors.New("block not found")
 		}
-		return idx.Block(number), nil
+		return consensus.BlockID(number), nil
 	} else if h, ok := blockNrOrHash.Hash(); ok {
-		index := b.svc.store.GetBlockIndex(hash.Event(h))
+		index := b.svc.store.GetBlockIndex(consensus.EventHash(h))
 		if index == nil {
 			return 0, errors.New("block not found")
 		}
@@ -89,7 +89,7 @@ func (b *EthAPIBackend) HeaderByNumber(ctx context.Context, number rpc.BlockNumb
 
 // HeaderByHash returns evm block header by its (atropos) hash, or nil if not exists.
 func (b *EthAPIBackend) HeaderByHash(ctx context.Context, h common.Hash) (*evmcore.EvmHeader, error) {
-	index := b.svc.store.GetBlockIndex(hash.Event(h))
+	index := b.svc.store.GetBlockIndex(consensus.EventHash(h))
 	if index == nil {
 		return nil, fmt.Errorf("block with hash %s not found", h.String())
 	}
@@ -130,7 +130,7 @@ func (b *EthAPIBackend) StateAndHeaderByNumberOrHash(ctx context.Context, blockN
 	} else if number, ok := blockNrOrHash.Number(); ok {
 		header = b.state.GetHeader(common.Hash{}, uint64(number))
 	} else if h, ok := blockNrOrHash.Hash(); ok {
-		index := b.svc.store.GetBlockIndex(hash.Event(h))
+		index := b.svc.store.GetBlockIndex(consensus.EventHash(h))
 		if index == nil {
 			return nil, nil, errors.New("header not found")
 		}
@@ -151,7 +151,7 @@ func (b *EthAPIBackend) StateAndHeaderByNumberOrHash(ctx context.Context, blockN
 // decodeShortEventID decodes ShortID
 // example of a ShortID: "5:26:a2395846", where 5 is epoch, 26 is lamport, a2395846 are first bytes of the hash
 // s is a string splitted by ":" separator
-func decodeShortEventID(s []string) (idx.Epoch, idx.Lamport, []byte, error) {
+func decodeShortEventID(s []string) (consensus.Epoch, consensus.Lamport, []byte, error) {
 	if len(s) != 3 {
 		return 0, 0, nil, errors.New("incorrect format of short event ID (need Epoch:Lamport:Hash")
 	}
@@ -163,32 +163,32 @@ func decodeShortEventID(s []string) (idx.Epoch, idx.Lamport, []byte, error) {
 	if err != nil {
 		return 0, 0, nil, errors.Wrap(err, "short hash parsing error (lamport)")
 	}
-	return idx.Epoch(epoch), idx.Lamport(lamport), common.FromHex(s[2]), nil
+	return consensus.Epoch(epoch), consensus.Lamport(lamport), common.FromHex(s[2]), nil
 }
 
 // GetFullEventID "converts" ShortID to full event's hash, by searching in events DB.
-func (b *EthAPIBackend) GetFullEventID(shortEventID string) (hash.Event, error) {
+func (b *EthAPIBackend) GetFullEventID(shortEventID string) (consensus.EventHash, error) {
 	s := strings.Split(shortEventID, ":")
 	if len(s) == 1 {
 		// it's a full hash
 		eventHash, err := hexutil.Decode(shortEventID)
 		if err != nil {
-			return hash.Event{}, errors.Wrap(err, "full hash parsing error")
+			return consensus.EventHash{}, errors.Wrap(err, "full hash parsing error")
 		}
-		return hash.Event(hash.BytesToHash(eventHash)), nil
+		return consensus.EventHash(consensus.BytesToHash(eventHash)), nil
 	}
 	// short hash
 	epoch, lamport, prefix, err := decodeShortEventID(s)
 	if err != nil {
-		return hash.Event{}, err
+		return consensus.EventHash{}, err
 	}
 
 	options := b.svc.store.FindEventHashes(epoch, lamport, prefix)
 	if len(options) == 0 {
-		return hash.Event{}, errors.New("event not found by short ID")
+		return consensus.EventHash{}, errors.New("event not found by short ID")
 	}
 	if len(options) > 1 {
-		return hash.Event{}, errors.New("there're multiple events with the same short ID, please use full ID")
+		return consensus.EventHash{}, errors.New("there're multiple events with the same short ID, please use full ID")
 	}
 	return options[0], nil
 }
@@ -214,7 +214,7 @@ func (b *EthAPIBackend) GetEvent(ctx context.Context, shortEventID string) (*int
 // GetHeads returns IDs of all the epoch events with no descendants.
 // * When epoch is -2 the heads for latest epoch are returned.
 // * When epoch is -1 the heads for latest sealed epoch are returned.
-func (b *EthAPIBackend) GetHeads(ctx context.Context, epoch rpc.BlockNumber) (heads hash.Events, err error) {
+func (b *EthAPIBackend) GetHeads(ctx context.Context, epoch rpc.BlockNumber) (heads consensus.EventHashes, err error) {
 	current := b.svc.store.GetEpoch()
 
 	requested, err := b.epochWithDefault(ctx, epoch)
@@ -230,13 +230,13 @@ func (b *EthAPIBackend) GetHeads(ctx context.Context, epoch rpc.BlockNumber) (he
 	}
 
 	if heads == nil {
-		heads = hash.Events{}
+		heads = consensus.EventHashes{}
 	}
 
 	return
 }
 
-func (b *EthAPIBackend) epochWithDefault(ctx context.Context, epoch rpc.BlockNumber) (requested idx.Epoch, err error) {
+func (b *EthAPIBackend) epochWithDefault(ctx context.Context, epoch rpc.BlockNumber) (requested consensus.Epoch, err error) {
 	current := b.svc.store.GetEpoch()
 
 	switch {
@@ -244,8 +244,8 @@ func (b *EthAPIBackend) epochWithDefault(ctx context.Context, epoch rpc.BlockNum
 		requested = current
 	case epoch == rpc.LatestBlockNumber:
 		requested = current - 1
-	case epoch >= 0 && idx.Epoch(epoch) <= current:
-		requested = idx.Epoch(epoch)
+	case epoch >= 0 && consensus.Epoch(epoch) <= current:
+		requested = consensus.Epoch(epoch)
 	default:
 		err = errors.New("epoch is not in range")
 		return
@@ -266,7 +266,7 @@ func (b *EthAPIBackend) ForEachEpochEvent(ctx context.Context, epoch rpc.BlockNu
 }
 
 func (b *EthAPIBackend) BlockByHash(ctx context.Context, h common.Hash) (*evmcore.EvmBlock, error) {
-	index := b.svc.store.GetBlockIndex(hash.Event(h))
+	index := b.svc.store.GetBlockIndex(consensus.EventHash(h))
 	if index == nil {
 		return nil, nil
 	}
@@ -301,13 +301,13 @@ func (b *EthAPIBackend) GetReceiptsByNumber(ctx context.Context, number rpc.Bloc
 	time := uint64(block.Time.Unix())
 	baseFee := block.BaseFee
 	blobGasPrice := new(big.Int) // TODO issue #147
-	receipts := b.svc.store.evm.GetReceipts(idx.Block(number), b.ChainConfig(), block.Hash, time, baseFee, blobGasPrice, block.Transactions)
+	receipts := b.svc.store.evm.GetReceipts(consensus.BlockID(number), b.ChainConfig(), block.Hash, time, baseFee, blobGasPrice, block.Transactions)
 	return receipts, nil
 }
 
 // GetReceipts retrieves the receipts for all transactions in a given block.
 func (b *EthAPIBackend) GetReceipts(ctx context.Context, block common.Hash) (types.Receipts, error) {
-	number := b.svc.store.GetBlockIndex(hash.Event(block))
+	number := b.svc.store.GetBlockIndex(consensus.EventHash(block))
 	if number == nil {
 		return nil, nil
 	}
@@ -468,7 +468,7 @@ func (b *EthAPIBackend) EvmLogIndex() topicsdb.Index {
 }
 
 // CurrentEpoch returns current epoch number.
-func (b *EthAPIBackend) CurrentEpoch(ctx context.Context) idx.Epoch {
+func (b *EthAPIBackend) CurrentEpoch(ctx context.Context) consensus.Epoch {
 	return b.svc.store.GetEpoch()
 }
 
@@ -480,7 +480,7 @@ func (b *EthAPIBackend) MaxGasLimit() uint64 {
 	return b.state.MaxGasLimit()
 }
 
-func (b *EthAPIBackend) GetUptime(ctx context.Context, vid idx.ValidatorID) (*big.Int, error) {
+func (b *EthAPIBackend) GetUptime(ctx context.Context, vid consensus.ValidatorID) (*big.Int, error) {
 	// Note: loads bs and es atomically to avoid a race condition
 	bs, es := b.svc.store.GetBlockEpochState()
 	if !es.Validators.Exists(vid) {
@@ -489,7 +489,7 @@ func (b *EthAPIBackend) GetUptime(ctx context.Context, vid idx.ValidatorID) (*bi
 	return new(big.Int).SetUint64(uint64(bs.GetValidatorState(vid, es.Validators).Uptime)), nil
 }
 
-func (b *EthAPIBackend) GetOriginatedFee(ctx context.Context, vid idx.ValidatorID) (*big.Int, error) {
+func (b *EthAPIBackend) GetOriginatedFee(ctx context.Context, vid consensus.ValidatorID) (*big.Int, error) {
 	// Note: loads bs and es atomically to avoid a race condition
 	bs, es := b.svc.store.GetBlockEpochState()
 	if !es.Validators.Exists(vid) {
@@ -498,14 +498,14 @@ func (b *EthAPIBackend) GetOriginatedFee(ctx context.Context, vid idx.ValidatorI
 	return bs.GetValidatorState(vid, es.Validators).Originated, nil
 }
 
-func (b *EthAPIBackend) GetDowntime(ctx context.Context, vid idx.ValidatorID) (idx.Block, inter.Timestamp, error) {
+func (b *EthAPIBackend) GetDowntime(ctx context.Context, vid consensus.ValidatorID) (consensus.BlockID, inter.Timestamp, error) {
 	// Note: loads bs and es atomically to avoid a race condition
 	bs, es := b.svc.store.GetBlockEpochState()
 	if !es.Validators.Exists(vid) {
 		return 0, 0, nil
 	}
 	vs := bs.GetValidatorState(vid, es.Validators)
-	missedBlocks := idx.Block(0)
+	missedBlocks := consensus.BlockID(0)
 	if bs.LastBlock.Idx > vs.LastBlock {
 		missedBlocks = bs.LastBlock.Idx - vs.LastBlock
 	}
@@ -527,7 +527,7 @@ func (b *EthAPIBackend) GetEpochBlockState(ctx context.Context, epoch rpc.BlockN
 	if epoch == rpc.LatestBlockNumber {
 		epoch = rpc.BlockNumber(b.svc.store.GetEpoch())
 	}
-	bs, es := b.svc.store.GetHistoryBlockEpochState(idx.Epoch(epoch))
+	bs, es := b.svc.store.GetHistoryBlockEpochState(consensus.Epoch(epoch))
 	return bs, es, nil
 }
 

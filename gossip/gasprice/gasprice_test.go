@@ -4,7 +4,8 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -20,14 +21,14 @@ type fakeTx struct {
 }
 
 type TestBackend struct {
-	block             idx.Block
+	block             consensus.BlockID
 	totalGasPowerLeft uint64
 	rules             opera.Rules
 	pendingRules      opera.Rules
 	pendingTxs        []fakeTx
 }
 
-func (t TestBackend) GetLatestBlockIndex() idx.Block {
+func (t TestBackend) GetLatestBlockIndex() consensus.BlockID {
 	return t.block
 }
 

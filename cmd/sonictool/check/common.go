@@ -5,9 +5,9 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/0xsoniclabs/cacheutils/cachescale"
 	carmen "github.com/0xsoniclabs/carmen/go/state"
-	"github.com/0xsoniclabs/consensus/kvdb"
-	"github.com/0xsoniclabs/consensus/utils/cachescale"
+	"github.com/0xsoniclabs/kvdb"
 	"github.com/0xsoniclabs/sonic/gossip"
 	"github.com/0xsoniclabs/sonic/integration"
 	"github.com/ethereum/go-ethereum/log"

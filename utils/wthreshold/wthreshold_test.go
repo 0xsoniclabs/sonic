@@ -3,15 +3,15 @@ package wthreshold
 import (
 	"testing"
 
-	"github.com/0xsoniclabs/consensus/inter/pos"
+	"github.com/0xsoniclabs/consensus/consensus"
 )
 
 type testWeightedValue struct {
-	weight pos.Weight
+	weight consensus.Weight
 	value  string
 }
 
-func (twv testWeightedValue) Weight() pos.Weight {
+func (twv testWeightedValue) Weight() consensus.Weight {
 	return twv.weight
 }
 
@@ -19,7 +19,7 @@ func TestFindWeightedThresholdValue(t *testing.T) {
 	tests := []struct {
 		name      string
 		values    []WeightedValue
-		threshold pos.Weight
+		threshold consensus.Weight
 		want      string
 		panic     bool
 	}{

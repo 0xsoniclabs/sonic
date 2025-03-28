@@ -5,8 +5,8 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
+
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 
@@ -26,9 +26,9 @@ var (
 
 // Reader is accessed by the validator to get the current state.
 type Reader interface {
-	GetEpochPubKeys() (map[idx.ValidatorID]validatorpk.PubKey, idx.Epoch)
-	GetEpochPubKeysOf(idx.Epoch) map[idx.ValidatorID]validatorpk.PubKey
-	GetEpochBlockStart(idx.Epoch) idx.Block
+	GetEpochPubKeys() (map[consensus.ValidatorID]validatorpk.PubKey, consensus.Epoch)
+	GetEpochPubKeysOf(consensus.Epoch) map[consensus.ValidatorID]validatorpk.PubKey
+	GetEpochBlockStart(consensus.Epoch) consensus.BlockID
 }
 
 // Checker which requires only parents list + current epoch info
@@ -98,14 +98,14 @@ func (v *Checker) EnqueueEvent(e inter.EventPayloadI, onValidated func(error)) e
 }
 
 // verifySignature checks the signature against e.Creator.
-func verifySignature(signedHash hash.Hash, sig inter.Signature, pubkey validatorpk.PubKey) bool {
+func verifySignature(signedHash consensus.Hash, sig inter.Signature, pubkey validatorpk.PubKey) bool {
 	if pubkey.Type != validatorpk.Types.Secp256k1 {
 		return false
 	}
 	return crypto.VerifySignature(pubkey.Raw, signedHash.Bytes(), sig.Bytes())
 }
 
-func (v *Checker) ValidateEventLocator(e inter.SignedEventLocator, authEpoch idx.Epoch, authErr error, checkPayload func() bool) error {
+func (v *Checker) ValidateEventLocator(e inter.SignedEventLocator, authEpoch consensus.Epoch, authErr error, checkPayload func() bool) error {
 	pubkeys := v.reader.GetEpochPubKeysOf(authEpoch)
 	if len(pubkeys) == 0 {
 		return authErr

@@ -2,7 +2,9 @@ package topicsdb
 
 import (
 	"context"
-	"github.com/0xsoniclabs/consensus/inter/idx"
+
+	"github.com/0xsoniclabs/consensus/consensus"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 )
@@ -10,7 +12,7 @@ import (
 // dummyIndex is empty implementation of Index
 type dummyIndex struct{}
 
-func (n dummyIndex) FindInBlocks(ctx context.Context, from, to idx.Block, pattern [][]common.Hash) (logs []*types.Log, err error) {
+func (n dummyIndex) FindInBlocks(ctx context.Context, from, to consensus.BlockID, pattern [][]common.Hash) (logs []*types.Log, err error) {
 	return nil, ErrLogsNotRecorded
 }
 

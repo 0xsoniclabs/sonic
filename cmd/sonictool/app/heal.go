@@ -12,9 +12,10 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/0xsoniclabs/consensus/consensus"
+
 	"github.com/0xsoniclabs/carmen/go/database/mpt"
 	mptio "github.com/0xsoniclabs/carmen/go/database/mpt/io"
-	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/0xsoniclabs/sonic/cmd/sonictool/db"
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/config/flags"
@@ -75,7 +76,7 @@ func heal(ctx *cli.Context) error {
 	cancelCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	recoveredBlock, err := db.HealChaindata(chaindataDir, cacheRatio, cfg, idx.Block(archiveCheckpointBlock))
+	recoveredBlock, err := db.HealChaindata(chaindataDir, cacheRatio, cfg, consensus.BlockID(archiveCheckpointBlock))
 	if err != nil {
 		return err
 	}
@@ -94,7 +95,7 @@ func heal(ctx *cli.Context) error {
 	return nil
 }
 
-func healLiveFromArchive(ctx context.Context, carmenLiveDir, carmenArchiveDir string, recoveredBlock idx.Block) (err error) {
+func healLiveFromArchive(ctx context.Context, carmenLiveDir, carmenArchiveDir string, recoveredBlock consensus.BlockID) (err error) {
 	if err := os.RemoveAll(carmenLiveDir); err != nil {
 		return fmt.Errorf("failed to remove broken live state: %w", err)
 	}

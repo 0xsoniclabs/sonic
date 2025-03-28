@@ -5,12 +5,12 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/0xsoniclabs/consensus/utils/cachescale"
+	"github.com/0xsoniclabs/consensus/consensus"
+
+	"github.com/0xsoniclabs/cacheutils/cachescale"
 	"github.com/0xsoniclabs/sonic/cmd/sonictool/db"
 	"github.com/0xsoniclabs/sonic/utils/caution"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -26,7 +26,7 @@ var (
 // always print out progress. This avoids the user wondering what's going on.
 const statsReportLimit = 8 * time.Second
 
-func ExportEvents(gdbParams db.GossipDbParameters, w io.Writer, from, to idx.Epoch) (err error) {
+func ExportEvents(gdbParams db.GossipDbParameters, w io.Writer, from, to consensus.Epoch) (err error) {
 	chaindataDir := filepath.Join(gdbParams.DataDir, "chaindata")
 	dbs, err := db.MakeDbProducer(chaindataDir, cachescale.Identity)
 	if err != nil {
@@ -54,9 +54,9 @@ func ExportEvents(gdbParams db.GossipDbParameters, w io.Writer, from, to idx.Epo
 
 	var (
 		counter int
-		last    hash.Event
+		last    consensus.EventHash
 	)
-	gdb.ForEachEventRLP(from.Bytes(), func(id hash.Event, event rlp.RawValue) bool {
+	gdb.ForEachEventRLP(from.Bytes(), func(id consensus.EventHash, event rlp.RawValue) bool {
 		if to >= from && id.Epoch() > to {
 			return false
 		}

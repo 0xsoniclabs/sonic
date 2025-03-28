@@ -3,7 +3,7 @@ package drivertype
 import (
 	"math/big"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 
 	"github.com/0xsoniclabs/sonic/inter/validatorpk"
 )
@@ -22,6 +22,6 @@ type Validator struct {
 
 // ValidatorAndID is pair Validator + ValidatorID
 type ValidatorAndID struct {
-	ValidatorID idx.ValidatorID
+	ValidatorID consensus.ValidatorID
 	Validator   Validator
 }

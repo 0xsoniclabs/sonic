@@ -8,10 +8,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/0xsoniclabs/consensus/consensus"
+
 	"github.com/0xsoniclabs/sonic/cmd/sonictool/db"
 	"github.com/0xsoniclabs/sonic/utils/caution"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/0xsoniclabs/sonic/cmd/sonictool/chain"
 	"github.com/0xsoniclabs/sonic/config/flags"
 	"github.com/ethereum/go-ethereum/log"
@@ -45,21 +46,21 @@ func exportEvents(ctx *cli.Context) (err error) {
 			fmt.Sprintf("failed to close gzip writer for file %v", filename))
 	}
 
-	from := idx.Epoch(1)
+	from := consensus.Epoch(1)
 	if len(ctx.Args()) > 1 {
 		n, err := strconv.ParseUint(ctx.Args().Get(1), 10, 32)
 		if err != nil {
 			return err
 		}
-		from = idx.Epoch(n)
+		from = consensus.Epoch(n)
 	}
-	to := idx.Epoch(0)
+	to := consensus.Epoch(0)
 	if len(ctx.Args()) > 2 {
 		n, err := strconv.ParseUint(ctx.Args().Get(2), 10, 32)
 		if err != nil {
 			return err
 		}
-		to = idx.Epoch(n)
+		to = consensus.Epoch(n)
 	}
 
 	gdbParams := db.GossipDbParameters{

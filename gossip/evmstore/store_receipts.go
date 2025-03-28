@@ -7,7 +7,8 @@ package evmstore
 import (
 	"math/big"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
@@ -15,7 +16,7 @@ import (
 )
 
 // SetReceipts stores transaction receipts.
-func (s *Store) SetReceipts(n idx.Block, receipts types.Receipts) {
+func (s *Store) SetReceipts(n consensus.BlockID, receipts types.Receipts) {
 	receiptsStorage := make([]*types.ReceiptForStorage, receipts.Len())
 	for i, r := range receipts {
 		receiptsStorage[i] = (*types.ReceiptForStorage)(r)
@@ -28,7 +29,7 @@ func (s *Store) SetReceipts(n idx.Block, receipts types.Receipts) {
 }
 
 // SetRawReceipts stores raw transaction receipts.
-func (s *Store) SetRawReceipts(n idx.Block, receipts []*types.ReceiptForStorage) (size int) {
+func (s *Store) SetRawReceipts(n consensus.BlockID, receipts []*types.ReceiptForStorage) (size int) {
 	buf, err := rlp.EncodeToBytes(receipts)
 	if err != nil {
 		s.Log.Crit("Failed to encode rlp", "err", err)
@@ -44,7 +45,7 @@ func (s *Store) SetRawReceipts(n idx.Block, receipts []*types.ReceiptForStorage)
 	return len(buf)
 }
 
-func (s *Store) GetRawReceiptsRLP(n idx.Block) rlp.RawValue {
+func (s *Store) GetRawReceiptsRLP(n consensus.BlockID) rlp.RawValue {
 	buf, err := s.table.Receipts.Get(n.Bytes())
 	if err != nil {
 		s.Log.Crit("Failed to get key-value", "err", err)
@@ -52,7 +53,7 @@ func (s *Store) GetRawReceiptsRLP(n idx.Block) rlp.RawValue {
 	return buf
 }
 
-func (s *Store) GetRawReceipts(n idx.Block) ([]*types.ReceiptForStorage, int) {
+func (s *Store) GetRawReceipts(n consensus.BlockID) ([]*types.ReceiptForStorage, int) {
 	buf := s.GetRawReceiptsRLP(n)
 	if buf == nil {
 		return nil, 0
@@ -66,7 +67,7 @@ func (s *Store) GetRawReceipts(n idx.Block) ([]*types.ReceiptForStorage, int) {
 	return receiptsStorage, len(buf)
 }
 
-func UnwrapStorageReceipts(receiptsStorage []*types.ReceiptForStorage, n idx.Block, config *params.ChainConfig, hash common.Hash, time uint64, baseFee *big.Int, blobGasPrice *big.Int, txs types.Transactions) (types.Receipts, error) {
+func UnwrapStorageReceipts(receiptsStorage []*types.ReceiptForStorage, n consensus.BlockID, config *params.ChainConfig, hash common.Hash, time uint64, baseFee *big.Int, blobGasPrice *big.Int, txs types.Transactions) (types.Receipts, error) {
 	receipts := make(types.Receipts, len(receiptsStorage))
 	for i, r := range receiptsStorage {
 		receipts[i] = (*types.Receipt)(r)
@@ -76,7 +77,7 @@ func UnwrapStorageReceipts(receiptsStorage []*types.ReceiptForStorage, n idx.Blo
 }
 
 // GetReceipts returns stored transaction receipts.
-func (s *Store) GetReceipts(n idx.Block, config *params.ChainConfig, hash common.Hash, time uint64, baseFee *big.Int, blobGasPrice *big.Int, txs types.Transactions) types.Receipts {
+func (s *Store) GetReceipts(n consensus.BlockID, config *params.ChainConfig, hash common.Hash, time uint64, baseFee *big.Int, blobGasPrice *big.Int, txs types.Transactions) types.Receipts {
 	// Get data from LRU cache first.
 	if s.cache.Receipts != nil {
 		if c, ok := s.cache.Receipts.Get(n); ok {

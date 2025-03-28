@@ -4,17 +4,17 @@ import (
 	"bytes"
 	"math/big"
 
+	"github.com/0xsoniclabs/consensus/consensus"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/rlp"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/dag"
 	"github.com/0xsoniclabs/sonic/gossip/basestream"
 )
 
 type Request struct {
 	Session   Session
-	Limit     dag.Metric
+	Limit     consensus.Metric
 	Type      basestream.RequestType
 	MaxChunks uint32
 }
@@ -22,7 +22,7 @@ type Request struct {
 type Response struct {
 	SessionID uint32
 	Done      bool
-	IDs       hash.Events
+	IDs       consensus.EventHashes
 	Events    []rlp.RawValue
 }
 
@@ -45,18 +45,18 @@ func (l Locator) Inc() basestream.Locator {
 }
 
 type Payload struct {
-	IDs    hash.Events
+	IDs    consensus.EventHashes
 	Events []rlp.RawValue
 	Size   uint64
 }
 
-func (p *Payload) AddEvent(id hash.Event, eventB rlp.RawValue) {
+func (p *Payload) AddEvent(id consensus.EventHash, eventB rlp.RawValue) {
 	p.IDs = append(p.IDs, id)
 	p.Events = append(p.Events, eventB)
 	p.Size += uint64(len(eventB))
 }
 
-func (p *Payload) AddID(id hash.Event, size int) {
+func (p *Payload) AddID(id consensus.EventHash, size int) {
 	p.IDs = append(p.IDs, id)
 	p.Size += uint64(size)
 }

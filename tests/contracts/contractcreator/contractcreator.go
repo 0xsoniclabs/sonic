@@ -5,6 +5,7 @@ package contractcreator
 
 import (
 	"errors"
+
 	"math/big"
 	"strings"
 

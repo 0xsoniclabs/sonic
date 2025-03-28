@@ -3,8 +3,7 @@ package inter
 import (
 	"bytes"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/dag"
+	"github.com/0xsoniclabs/consensus/consensus"
 )
 
 // Events is a ordered slice of events.
@@ -20,16 +19,16 @@ func (ee *Events) Add(e ...*Event) {
 	*ee = append(*ee, e...)
 }
 
-func (ee Events) IDs() hash.Events {
-	res := make(hash.Events, 0, len(ee))
+func (ee Events) IDs() consensus.EventHashes {
+	res := make(consensus.EventHashes, 0, len(ee))
 	for _, e := range ee {
 		res.Add(e.ID())
 	}
 	return res
 }
 
-func (ee Events) Bases() dag.Events {
-	res := make(dag.Events, 0, ee.Len())
+func (ee Events) Bases() consensus.Events {
+	res := make(consensus.Events, 0, ee.Len())
 	for _, e := range ee {
 		res = append(res, e)
 	}
@@ -63,16 +62,16 @@ func (ee *EventPayloads) Add(e ...*EventPayload) {
 	*ee = append(*ee, e...)
 }
 
-func (ee EventPayloads) IDs() hash.Events {
-	res := make(hash.Events, 0, len(ee))
+func (ee EventPayloads) IDs() consensus.EventHashes {
+	res := make(consensus.EventHashes, 0, len(ee))
 	for _, e := range ee {
 		res.Add(e.ID())
 	}
 	return res
 }
 
-func (ee EventPayloads) Bases() dag.Events {
-	res := make(dag.Events, 0, ee.Len())
+func (ee EventPayloads) Bases() consensus.Events {
+	res := make(consensus.Events, 0, ee.Len())
 	for _, e := range ee {
 		res = append(res, e)
 	}
@@ -98,16 +97,16 @@ func (ee *EventIs) Add(e ...EventI) {
 	*ee = append(*ee, e...)
 }
 
-func (ee EventIs) IDs() hash.Events {
-	res := make(hash.Events, 0, len(ee))
+func (ee EventIs) IDs() consensus.EventHashes {
+	res := make(consensus.EventHashes, 0, len(ee))
 	for _, e := range ee {
 		res.Add(e.ID())
 	}
 	return res
 }
 
-func (ee EventIs) Bases() dag.Events {
-	res := make(dag.Events, 0, ee.Len())
+func (ee EventIs) Bases() consensus.Events {
+	res := make(consensus.Events, 0, ee.Len())
 	for _, e := range ee {
 		res = append(res, e)
 	}

@@ -1,8 +1,7 @@
 package vecmt
 
 import (
-	"github.com/0xsoniclabs/consensus/inter/dag"
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/consensus/vecengine"
 
 	"github.com/0xsoniclabs/sonic/inter"
@@ -12,34 +11,34 @@ type CreationTimer interface {
 	CreationTime() inter.Timestamp
 }
 
-func (b *HighestBefore) InitWithEvent(i idx.Validator, e dag.Event) {
+func (b *HighestBefore) InitWithEvent(i consensus.ValidatorIndex, e consensus.Event) {
 	b.VSeq.InitWithEvent(i, e)
 	b.VTime.Set(i, e.(CreationTimer).CreationTime())
 }
 
-func (b *HighestBefore) IsEmpty(i idx.Validator) bool {
+func (b *HighestBefore) IsEmpty(i consensus.ValidatorIndex) bool {
 	return b.VSeq.IsEmpty(i)
 }
 
-func (b *HighestBefore) IsForkDetected(i idx.Validator) bool {
+func (b *HighestBefore) IsForkDetected(i consensus.ValidatorIndex) bool {
 	return b.VSeq.IsForkDetected(i)
 }
 
-func (b *HighestBefore) Seq(i idx.Validator) idx.Event {
+func (b *HighestBefore) Seq(i consensus.ValidatorIndex) consensus.Seq {
 	return b.VSeq.Seq(i)
 }
 
-func (b *HighestBefore) MinSeq(i idx.Validator) idx.Event {
+func (b *HighestBefore) MinSeq(i consensus.ValidatorIndex) consensus.Seq {
 	return b.VSeq.MinSeq(i)
 }
 
-func (b *HighestBefore) SetForkDetected(i idx.Validator) {
+func (b *HighestBefore) SetForkDetected(i consensus.ValidatorIndex) {
 	b.VSeq.SetForkDetected(i)
 }
 
-func (hb *HighestBefore) CollectFrom(_other vecengine.HighestBeforeI, num idx.Validator) {
+func (hb *HighestBefore) CollectFrom(_other vecengine.HighestBeforeI, num consensus.ValidatorIndex) {
 	other := _other.(*HighestBefore)
-	for branchID := idx.Validator(0); branchID < num; branchID++ {
+	for branchID := consensus.ValidatorIndex(0); branchID < num; branchID++ {
 		hisSeq := other.VSeq.Get(branchID)
 		if hisSeq.Seq == 0 && !hisSeq.IsForkDetected() {
 			// hisSeq doesn't observe anything about this branchID
@@ -70,7 +69,7 @@ func (hb *HighestBefore) CollectFrom(_other vecengine.HighestBeforeI, num idx.Va
 	}
 }
 
-func (hb *HighestBefore) GatherFrom(to idx.Validator, _other vecengine.HighestBeforeI, from []idx.Validator) {
+func (hb *HighestBefore) GatherFrom(to consensus.ValidatorIndex, _other vecengine.HighestBeforeI, from []consensus.ValidatorIndex) {
 	other := _other.(*HighestBefore)
 	// read all branches to find highest event
 	highestBranchSeq := vecengine.BranchSeq{}

@@ -5,13 +5,12 @@ import (
 	"io"
 	"os"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/dag"
-	"github.com/0xsoniclabs/consensus/kvdb"
-	"github.com/0xsoniclabs/consensus/kvdb/cachedproducer"
-	"github.com/0xsoniclabs/consensus/kvdb/flaggedproducer"
-	"github.com/0xsoniclabs/consensus/kvdb/pebble"
-	"github.com/0xsoniclabs/consensus/kvdb/skipkeys"
+	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/kvdb"
+	"github.com/0xsoniclabs/kvdb/cachedproducer"
+	"github.com/0xsoniclabs/kvdb/flaggedproducer"
+	"github.com/0xsoniclabs/kvdb/pebble"
+	"github.com/0xsoniclabs/kvdb/skipkeys"
 	"github.com/0xsoniclabs/sonic/gossip"
 	"github.com/0xsoniclabs/sonic/utils/caution"
 	"github.com/0xsoniclabs/sonic/utils/dbutil/dbcounter"
@@ -70,7 +69,7 @@ type GossipStoreAdapter struct {
 	*gossip.Store
 }
 
-func (g *GossipStoreAdapter) GetEvent(id hash.Event) dag.Event {
+func (g *GossipStoreAdapter) GetEvent(id consensus.EventHash) consensus.Event {
 	e := g.Store.GetEvent(id)
 	if e == nil {
 		return nil

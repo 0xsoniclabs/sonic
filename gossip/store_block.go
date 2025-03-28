@@ -3,8 +3,8 @@ package gossip
 import (
 	"math"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
@@ -13,9 +13,9 @@ import (
 	"github.com/0xsoniclabs/sonic/inter"
 )
 
-func (s *Store) GetGenesisID() *hash.Hash {
+func (s *Store) GetGenesisID() *consensus.Hash {
 	if v := s.cache.Genesis.Load(); v != nil {
-		val := v.(hash.Hash)
+		val := v.(consensus.Hash)
 		return &val
 	}
 	valBytes, err := s.table.Genesis.Get([]byte("g"))
@@ -25,20 +25,20 @@ func (s *Store) GetGenesisID() *hash.Hash {
 	if len(valBytes) == 0 {
 		return nil
 	}
-	val := hash.BytesToHash(valBytes)
+	val := consensus.BytesToHash(valBytes)
 	s.cache.Genesis.Store(val)
 	return &val
 }
 
-func (s *Store) fakeGenesisHash() hash.Event {
-	fakeGenesisHash := hash.Event(*s.GetGenesisID())
+func (s *Store) fakeGenesisHash() consensus.EventHash {
+	fakeGenesisHash := consensus.EventHash(*s.GetGenesisID())
 	for i := range fakeGenesisHash[:8] {
 		fakeGenesisHash[i] = 0
 	}
 	return fakeGenesisHash
 }
 
-func (s *Store) SetGenesisID(val hash.Hash) {
+func (s *Store) SetGenesisID(val consensus.Hash) {
 	err := s.table.Genesis.Put([]byte("g"), val.Bytes())
 	if err != nil {
 		s.Log.Crit("Failed to put key-value", "err", err)
@@ -47,7 +47,7 @@ func (s *Store) SetGenesisID(val hash.Hash) {
 }
 
 // SetBlock stores chain block.
-func (s *Store) SetBlock(n idx.Block, b *inter.Block) {
+func (s *Store) SetBlock(n consensus.BlockID, b *inter.Block) {
 	s.rlp.Set(s.table.Blocks, n.Bytes(), b)
 
 	// Add to LRU cache.
@@ -55,7 +55,7 @@ func (s *Store) SetBlock(n idx.Block, b *inter.Block) {
 }
 
 // GetBlock returns stored block.
-func (s *Store) GetBlock(n idx.Block) *inter.Block {
+func (s *Store) GetBlock(n consensus.BlockID) *inter.Block {
 	// Get block from LRU cache first.
 	if c, ok := s.cache.Blocks.Get(n); ok {
 		return c.(*inter.Block)
@@ -71,12 +71,12 @@ func (s *Store) GetBlock(n idx.Block) *inter.Block {
 	return block
 }
 
-func (s *Store) HasBlock(n idx.Block) bool {
+func (s *Store) HasBlock(n consensus.BlockID) bool {
 	has, _ := s.table.Blocks.Has(n.Bytes())
 	return has
 }
 
-func (s *Store) ForEachBlock(fn func(index idx.Block, block *inter.Block)) {
+func (s *Store) ForEachBlock(fn func(index consensus.BlockID, block *inter.Block)) {
 	it := s.table.Blocks.NewIterator(nil, nil)
 	defer it.Release()
 	for it.Next() {
@@ -85,12 +85,12 @@ func (s *Store) ForEachBlock(fn func(index idx.Block, block *inter.Block)) {
 		if err != nil {
 			s.Log.Crit("Failed to decode block", "err", err)
 		}
-		fn(idx.BytesToBlock(it.Key()), &block)
+		fn(consensus.BytesToBlock(it.Key()), &block)
 	}
 }
 
 // SetBlockIndex stores chain block index.
-func (s *Store) SetBlockIndex(id common.Hash, n idx.Block) {
+func (s *Store) SetBlockIndex(id common.Hash, n consensus.BlockID) {
 	if err := s.table.BlockHashes.Put(id.Bytes(), n.Bytes()); err != nil {
 		s.Log.Crit("Failed to put key-value", "err", err)
 	}
@@ -99,10 +99,10 @@ func (s *Store) SetBlockIndex(id common.Hash, n idx.Block) {
 }
 
 // GetBlockIndex returns stored block index.
-func (s *Store) GetBlockIndex(id hash.Event) *idx.Block {
+func (s *Store) GetBlockIndex(id consensus.EventHash) *consensus.BlockID {
 	nVal, ok := s.cache.BlockHashes.Get(id)
 	if ok {
-		n, ok := nVal.(idx.Block)
+		n, ok := nVal.(consensus.BlockID)
 		if ok {
 			return &n
 		}
@@ -114,12 +114,12 @@ func (s *Store) GetBlockIndex(id hash.Event) *idx.Block {
 	}
 	if buf == nil {
 		if id == s.fakeGenesisHash() {
-			zero := idx.Block(0)
+			zero := consensus.BlockID(0)
 			return &zero
 		}
 		return nil
 	}
-	n := idx.BytesToBlock(buf)
+	n := consensus.BytesToBlock(buf)
 
 	s.cache.BlockHashes.Add(id, n, nominalSize)
 
@@ -127,14 +127,14 @@ func (s *Store) GetBlockIndex(id hash.Event) *idx.Block {
 }
 
 // SetGenesisBlockIndex stores genesis block index.
-func (s *Store) SetGenesisBlockIndex(n idx.Block) {
+func (s *Store) SetGenesisBlockIndex(n consensus.BlockID) {
 	if err := s.table.Genesis.Put([]byte("i"), n.Bytes()); err != nil {
 		s.Log.Crit("Failed to put key-value", "err", err)
 	}
 }
 
 // GetGenesisBlockIndex returns stored genesis block index.
-func (s *Store) GetGenesisBlockIndex() *idx.Block {
+func (s *Store) GetGenesisBlockIndex() *consensus.BlockID {
 	buf, err := s.table.Genesis.Get([]byte("i"))
 	if err != nil {
 		s.Log.Crit("Failed to get key-value", "err", err)
@@ -142,7 +142,7 @@ func (s *Store) GetGenesisBlockIndex() *idx.Block {
 	if buf == nil {
 		return nil
 	}
-	n := idx.BytesToBlock(buf)
+	n := consensus.BytesToBlock(buf)
 
 	return &n
 }
@@ -159,14 +159,14 @@ func (s *Store) GetGenesisTime() inter.Timestamp {
 	return block.Time
 }
 
-func (s *Store) SetEpochBlock(b idx.Block, e idx.Epoch) {
+func (s *Store) SetEpochBlock(b consensus.BlockID, e consensus.Epoch) {
 	err := s.table.EpochBlocks.Put((math.MaxUint64 - b).Bytes(), e.Bytes())
 	if err != nil {
 		s.Log.Crit("Failed to set key-value", "err", err)
 	}
 }
 
-func (s *Store) FindBlockEpoch(b idx.Block) idx.Epoch {
+func (s *Store) FindBlockEpoch(b consensus.BlockID) consensus.Epoch {
 	if c, ok := s.cache.Blocks.Get(b); ok {
 		return c.(*inter.Block).Epoch
 	}
@@ -176,10 +176,10 @@ func (s *Store) FindBlockEpoch(b idx.Block) idx.Epoch {
 	if !it.Next() {
 		return 0
 	}
-	return idx.BytesToEpoch(it.Value())
+	return consensus.BytesToEpoch(it.Value())
 }
 
-func (s *Store) GetBlockTxs(n idx.Block, block *inter.Block) types.Transactions {
+func (s *Store) GetBlockTxs(n consensus.BlockID, block *inter.Block) types.Transactions {
 	if cached := s.evm.GetCachedEvmBlock(n); cached != nil {
 		return cached.Transactions
 	}

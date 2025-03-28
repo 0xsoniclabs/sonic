@@ -9,10 +9,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/inter/pos"
-	"github.com/0xsoniclabs/consensus/lachesis"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/integration/makegenesis"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/drivertype"
@@ -100,14 +97,14 @@ func ApplyGenesisJson(json *GenesisJson) (*genesisstore.Store, error) {
 				LastBlock: iblockproc.BlockCtx{
 					Idx:     0,
 					Time:    genesisTime,
-					Atropos: hash.Event{},
+					Atropos: consensus.EventHash{},
 				},
-				FinalizedStateRoot:    hash.Hash(genesisStateRoot),
+				FinalizedStateRoot:    consensus.Hash(genesisStateRoot),
 				EpochGas:              0,
-				EpochCheaters:         lachesis.Cheaters{},
+				EpochCheaters:         consensus.Cheaters{},
 				CheatersWritten:       0,
 				ValidatorStates:       make([]iblockproc.ValidatorBlockState, 0),
-				NextValidatorProfiles: make(map[idx.ValidatorID]drivertype.Validator),
+				NextValidatorProfiles: make(map[consensus.ValidatorID]drivertype.Validator),
 				DirtyRules:            nil,
 				AdvanceEpochs:         0,
 			},
@@ -115,10 +112,10 @@ func ApplyGenesisJson(json *GenesisJson) (*genesisstore.Store, error) {
 				Epoch:             1,
 				EpochStart:        genesisTime + 1,
 				PrevEpochStart:    genesisTime,
-				EpochStateRoot:    hash.Hash(genesisStateRoot),
-				Validators:        pos.NewBuilder().Build(),
+				EpochStateRoot:    consensus.Hash(genesisStateRoot),
+				Validators:        consensus.NewBuilder().Build(),
 				ValidatorStates:   make([]iblockproc.ValidatorEpochState, 0),
-				ValidatorProfiles: make(map[idx.ValidatorID]drivertype.Validator),
+				ValidatorProfiles: make(map[consensus.ValidatorID]drivertype.Validator),
 				Rules:             json.Rules,
 			},
 		},

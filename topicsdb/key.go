@@ -1,7 +1,7 @@
 package topicsdb
 
 import (
-	"github.com/0xsoniclabs/consensus/common/bigendian"
+	"github.com/0xsoniclabs/consensus/utils/byteutils"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -64,11 +64,11 @@ func bytesToPos(b []byte) uint8 {
 }
 
 func uintToBytes(n uint64) []byte {
-	return bigendian.Uint64ToBytes(n)
+	return byteutils.Uint64ToBigEndian(n)
 }
 
 func bytesToUint(b []byte) uint64 {
-	return bigendian.BytesToUint64(b)
+	return byteutils.BigEndianToUint64(b)
 }
 
 func extractLogrecID(key []byte) (id ID) {

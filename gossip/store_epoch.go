@@ -9,10 +9,10 @@ import (
 	"fmt"
 	"sync/atomic"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/kvdb"
-	"github.com/0xsoniclabs/consensus/kvdb/skiperrors"
-	"github.com/0xsoniclabs/consensus/kvdb/table"
+	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/kvdb"
+	"github.com/0xsoniclabs/kvdb/skiperrors"
+	"github.com/0xsoniclabs/kvdb/table"
 
 	"github.com/0xsoniclabs/sonic/logger"
 )
@@ -23,7 +23,7 @@ var (
 
 type (
 	epochStore struct {
-		epoch idx.Epoch
+		epoch consensus.Epoch
 		db    kvdb.Store
 		table struct {
 			LastEvents kvdb.Store `table:"t"`
@@ -39,7 +39,7 @@ type (
 	}
 )
 
-func newEpochStore(epoch idx.Epoch, db kvdb.Store) *epochStore {
+func newEpochStore(epoch consensus.Epoch, db kvdb.Store) *epochStore {
 	es := &epochStore{
 		epoch:    epoch,
 		db:       db,
@@ -67,7 +67,7 @@ func (s *Store) getAnyEpochStore() *epochStore {
 }
 
 // getEpochStore is safe for concurrent use.
-func (s *Store) getEpochStore(epoch idx.Epoch) *epochStore {
+func (s *Store) getEpochStore(epoch consensus.Epoch) *epochStore {
 	es := s.getAnyEpochStore()
 	if es.epoch != epoch {
 		return nil
@@ -75,7 +75,7 @@ func (s *Store) getEpochStore(epoch idx.Epoch) *epochStore {
 	return es
 }
 
-func (s *Store) resetEpochStore(newEpoch idx.Epoch) {
+func (s *Store) resetEpochStore(newEpoch consensus.Epoch) {
 	oldEs := s.epochStore.Load()
 	// create new DB
 	s.createEpochStore(newEpoch)
@@ -91,7 +91,7 @@ func (s *Store) resetEpochStore(newEpoch idx.Epoch) {
 	}
 }
 
-func (s *Store) loadEpochStore(epoch idx.Epoch) {
+func (s *Store) loadEpochStore(epoch consensus.Epoch) {
 	if s.epochStore.Load() != nil {
 		return
 	}
@@ -106,7 +106,7 @@ func (s *Store) closeEpochStore() error {
 	return es.db.Close()
 }
 
-func (s *Store) createEpochStore(epoch idx.Epoch) {
+func (s *Store) createEpochStore(epoch consensus.Epoch) {
 	// create new DB
 	name := fmt.Sprintf("gossip-%d", epoch)
 	db, err := s.dbs.OpenDB(name)

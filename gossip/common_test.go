@@ -11,14 +11,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/consensus/consensus/consensusengine"
+	"github.com/0xsoniclabs/consensus/consensus/consensusstore"
+
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 
-	"github.com/0xsoniclabs/consensus/abft"
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/dag"
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/utils/cachescale"
+	"github.com/0xsoniclabs/cacheutils/cachescale"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -81,7 +81,7 @@ type testGossipStoreAdapter struct {
 	*Store
 }
 
-func (g *testGossipStoreAdapter) GetEvent(id hash.Event) dag.Event {
+func (g *testGossipStoreAdapter) GetEvent(id consensus.EventHash) consensus.Event {
 	e := g.Store.GetEvent(id)
 	if e == nil {
 		return nil
@@ -89,14 +89,14 @@ func (g *testGossipStoreAdapter) GetEvent(id hash.Event) dag.Event {
 	return e
 }
 
-func makeTestEngine(gdb *Store) (*abft.Lachesis, *vecmt.Index) {
-	cdb := abft.NewMemStore()
-	_ = cdb.ApplyGenesis(&abft.Genesis{
+func makeTestEngine(gdb *Store) (*consensusengine.Lachesis, *vecmt.Index) {
+	cdb := consensusstore.NewMemStore()
+	_ = cdb.ApplyGenesis(&consensusstore.Genesis{
 		Epoch:      gdb.GetEpoch(),
 		Validators: gdb.GetValidators(),
 	})
 	vecClock := vecmt.NewIndex(panics("Vector clock"), vecmt.LiteConfig())
-	engine := abft.NewLachesis(cdb, &testGossipStoreAdapter{gdb}, vecmt2dagidx.Wrap(vecClock), panics("Lachesis"), abft.LiteConfig())
+	engine := consensusengine.NewLachesis(cdb, &testGossipStoreAdapter{gdb}, vecmt2dagidx.Wrap(vecClock), panics("Lachesis"), consensusengine.LiteConfig())
 	return engine, vecClock
 }
 
@@ -137,7 +137,7 @@ func (m testConfirmedEventsModule) Start(bs iblockproc.BlockState, es iblockproc
 	return testConfirmedEventsProcessor{p, m.env}
 }
 
-func newTestEnv(firstEpoch idx.Epoch, validatorsNum idx.Validator, tb testing.TB) *testEnv {
+func newTestEnv(firstEpoch consensus.Epoch, validatorsNum consensus.ValidatorIndex, tb testing.TB) *testEnv {
 	rules := opera.FakeNetRules()
 	rules.Epochs.MaxEpochDuration = inter.Timestamp(maxEpochDuration)
 	rules.Blocks.MaxEmptyBlockSkipPeriod = 0
@@ -190,7 +190,7 @@ func newTestEnv(firstEpoch idx.Epoch, validatorsNum idx.Validator, tb testing.TB
 	env.signer = valkeystore.NewSigner(valKeystore)
 
 	// register emitters
-	for i := idx.Validator(0); i < validatorsNum; i++ {
+	for i := consensus.ValidatorIndex(0); i < validatorsNum; i++ {
 		cfg := emitter.DefaultConfig()
 		vid := store.GetValidators().GetID(i)
 		pubkey := store.GetEpochState().ValidatorProfiles[vid].PubKey
@@ -199,7 +199,7 @@ func newTestEnv(firstEpoch idx.Epoch, validatorsNum idx.Validator, tb testing.TB
 			PubKey: pubkey,
 		}
 		cfg.EmitIntervals = emitter.EmitIntervals{}
-		cfg.MaxParents = idx.Event(validatorsNum/2 + 1)
+		cfg.MaxParents = consensus.Seq(validatorsNum/2 + 1)
 		cfg.MaxTxsPerAddress = 10000000
 		_ = valKeystore.Add(pubkey, crypto.FromECDSA(makefakegenesis.FakeKey(vid)), validatorpk.FakePassword)
 		_ = valKeystore.Unlock(pubkey, validatorpk.FakePassword)
@@ -253,7 +253,7 @@ func (env *testEnv) ApplyTxs(spent time.Duration, txs ...*types.Transaction) (ty
 			baseFee := big.NewInt(0)
 			blobGasPrice := big.NewInt(1)
 
-			receipts := env.store.evm.GetReceipts(idx.Block(b.Block.Number.Uint64()), config, b.Block.Hash, time, baseFee, blobGasPrice, b.Block.Transactions)
+			receipts := env.store.evm.GetReceipts(consensus.BlockID(b.Block.Number.Uint64()), config, b.Block.Hash, time, baseFee, blobGasPrice, b.Block.Transactions)
 			for i, tx := range b.Block.Transactions {
 				if r, _, _ := tx.RawSignatureValues(); r.Sign() != 0 {
 					mu.Lock()
@@ -297,7 +297,7 @@ func (env *testEnv) EmitUntil(stop func() bool) error {
 	return nil
 }
 
-func (env *testEnv) Transfer(from, to idx.ValidatorID, amount *big.Int) *types.Transaction {
+func (env *testEnv) Transfer(from, to consensus.ValidatorID, amount *big.Int) *types.Transaction {
 	sender := env.Address(from)
 	nonce, _ := env.PendingNonceAt(context.TODO(), sender)
 	env.incNonce(sender)
@@ -313,7 +313,7 @@ func (env *testEnv) Transfer(from, to idx.ValidatorID, amount *big.Int) *types.T
 	return tx
 }
 
-func (env *testEnv) Contract(from idx.ValidatorID, amount *big.Int, hex string) *types.Transaction {
+func (env *testEnv) Contract(from consensus.ValidatorID, amount *big.Int, hex string) *types.Transaction {
 	sender := env.Address(from)
 	nonce, _ := env.PendingNonceAt(context.TODO(), sender)
 	env.incNonce(sender)
@@ -329,18 +329,18 @@ func (env *testEnv) Contract(from idx.ValidatorID, amount *big.Int, hex string) 
 	return tx
 }
 
-func (env *testEnv) privateKey(n idx.ValidatorID) *ecdsa.PrivateKey {
+func (env *testEnv) privateKey(n consensus.ValidatorID) *ecdsa.PrivateKey {
 	key := makefakegenesis.FakeKey(n)
 	return key
 }
 
-func (env *testEnv) Address(n idx.ValidatorID) common.Address {
+func (env *testEnv) Address(n consensus.ValidatorID) common.Address {
 	key := makefakegenesis.FakeKey(n)
 	addr := crypto.PubkeyToAddress(key.PublicKey)
 	return addr
 }
 
-func (env *testEnv) Payer(n idx.ValidatorID, amounts ...*big.Int) *bind.TransactOpts {
+func (env *testEnv) Payer(n consensus.ValidatorID, amounts ...*big.Int) *bind.TransactOpts {
 	key := env.privateKey(n)
 	t, _ := bind.NewKeyedTransactorWithChainID(key, new(big.Int).SetUint64(env.store.GetRules().NetworkID))
 	nonce, _ := env.PendingNonceAt(context.TODO(), env.Address(n))
@@ -355,7 +355,7 @@ func (env *testEnv) Payer(n idx.ValidatorID, amounts ...*big.Int) *bind.Transact
 	return t
 }
 
-func (env *testEnv) Pay(n idx.ValidatorID, amounts ...*big.Int) *bind.TransactOpts {
+func (env *testEnv) Pay(n consensus.ValidatorID, amounts ...*big.Int) *bind.TransactOpts {
 	t := env.Payer(n, amounts...)
 	env.incNonce(t.From)
 
@@ -389,7 +389,7 @@ var (
 // CodeAt returns the code of the given account. This is needed to differentiate
 // between contract internal errors and the local chain being out of sync.
 func (env *testEnv) CodeAt(ctx context.Context, contract common.Address, blockNumber *big.Int) ([]byte, error) {
-	if blockNumber != nil && idx.Block(blockNumber.Uint64()) != env.store.GetLatestBlockIndex() {
+	if blockNumber != nil && consensus.BlockID(blockNumber.Uint64()) != env.store.GetLatestBlockIndex() {
 		return nil, errBlockNumberUnsupported
 	}
 
@@ -400,7 +400,7 @@ func (env *testEnv) CodeAt(ctx context.Context, contract common.Address, blockNu
 // ContractCall executes an Ethereum contract call with the specified data as the
 // input.
 func (env *testEnv) CallContract(ctx context.Context, call ethereum.CallMsg, blockNumber *big.Int) ([]byte, error) {
-	if blockNumber != nil && idx.Block(blockNumber.Uint64()) != env.store.GetLatestBlockIndex() {
+	if blockNumber != nil && consensus.BlockID(blockNumber.Uint64()) != env.store.GetLatestBlockIndex() {
 		return nil, errBlockNumberUnsupported
 	}
 

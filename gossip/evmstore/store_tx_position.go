@@ -5,14 +5,13 @@ package evmstore
 */
 
 import (
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/ethereum/go-ethereum/common"
 )
 
 type TxPosition struct {
-	Block       idx.Block
-	Event       hash.Event
+	Block       consensus.BlockID
+	Event       consensus.EventHash
 	EventOffset uint32
 	BlockOffset uint32
 }

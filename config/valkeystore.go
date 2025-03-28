@@ -3,9 +3,10 @@ package config
 import (
 	"crypto/ecdsa"
 	"fmt"
-	"github.com/0xsoniclabs/sonic/config/flags"
 	"os"
 	"strings"
+
+	"github.com/0xsoniclabs/sonic/config/flags"
 
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"

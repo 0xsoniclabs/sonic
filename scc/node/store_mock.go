@@ -10,10 +10,10 @@
 package node
 
 import (
+	"github.com/0xsoniclabs/consensus/consensus"
 	reflect "reflect"
 
 	scc "github.com/0xsoniclabs/sonic/scc"
-	idx "github.com/0xsoniclabs/consensus/inter/idx"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -41,7 +41,7 @@ func (m *MockStore) EXPECT() *MockStoreMockRecorder {
 }
 
 // GetBlockCertificate mocks base method.
-func (m *MockStore) GetBlockCertificate(arg0 idx.Block) (BlockCertificate, error) {
+func (m *MockStore) GetBlockCertificate(arg0 consensus.BlockID) (BlockCertificate, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetBlockCertificate", arg0)
 	ret0, _ := ret[0].(BlockCertificate)

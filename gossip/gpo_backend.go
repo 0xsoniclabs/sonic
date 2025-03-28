@@ -3,8 +3,7 @@ package gossip
 import (
 	"math/big"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 
@@ -19,7 +18,7 @@ type GPOBackend struct {
 	txpool TxPool
 }
 
-func (b *GPOBackend) GetLatestBlockIndex() idx.Block {
+func (b *GPOBackend) GetLatestBlockIndex() consensus.BlockID {
 	return b.store.GetLatestBlockIndex()
 }
 
@@ -52,11 +51,11 @@ func (b *GPOBackend) TotalGasPowerLeft() uint64 {
 	bs, es := b.store.GetBlockEpochState()
 	set := b.store.GetLastEvents(es.Epoch)
 	if set == nil {
-		set = concurrent.WrapValidatorEventsSet(map[idx.ValidatorID]hash.Event{})
+		set = concurrent.WrapValidatorEventsSet(map[consensus.ValidatorID]consensus.EventHash{})
 	}
 	set.RLock()
 	defer set.RUnlock()
-	metValidators := map[idx.ValidatorID]bool{}
+	metValidators := map[consensus.ValidatorID]bool{}
 	total := uint64(0)
 	gasPowerCheckCfg := gaspowercheck.Config{
 		Idx:                inter.LongTermGas,
@@ -81,7 +80,7 @@ func (b *GPOBackend) TotalGasPowerLeft() uint64 {
 		metValidators[e.Creator()] = true
 	}
 	// count GasPowerLeft from last events of prev epoch if no event in current epoch is present
-	for i := idx.Validator(0); i < es.Validators.Len(); i++ {
+	for i := consensus.ValidatorIndex(0); i < es.Validators.Len(); i++ {
 		vid := es.Validators.GetID(i)
 		if !metValidators[vid] {
 			left := es.ValidatorStates[i].PrevEpochEvent.GasPowerLeft.Gas[inter.LongTermGas]

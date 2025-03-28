@@ -3,10 +3,10 @@ package gossip
 import (
 	"fmt"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/opera"
 
-	"github.com/0xsoniclabs/consensus/kvdb"
+	"github.com/0xsoniclabs/kvdb"
 	"github.com/0xsoniclabs/sonic/utils/migration"
 )
 
@@ -50,7 +50,7 @@ func unsupportedMigration() error {
 
 type legacyUpgradeHeight struct {
 	Upgrades opera.Upgrades
-	Height   idx.Block
+	Height   consensus.BlockID
 }
 
 func (s *Store) addTimeIntoUpgradeHeights() error {

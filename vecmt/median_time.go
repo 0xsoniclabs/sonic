@@ -4,21 +4,19 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/inter/pos"
+	"github.com/0xsoniclabs/consensus/consensus"
 
 	"github.com/0xsoniclabs/sonic/inter"
 )
 
 // medianTimeIndex is a handy index for the MedianTime() func
 type medianTimeIndex struct {
-	weight       pos.Weight
+	weight       consensus.Weight
 	creationTime inter.Timestamp
 }
 
 // MedianTime calculates weighted median of claimed time within highest observed events.
-func (vi *Index) MedianTime(id hash.Event, defaultTime inter.Timestamp) inter.Timestamp {
+func (vi *Index) MedianTime(id consensus.EventHash, defaultTime inter.Timestamp) inter.Timestamp {
 	vi.Engine.InitBranchesInfo()
 	// Get event by hash
 	before := vi.GetMergedHighestBefore(id)
@@ -26,11 +24,11 @@ func (vi *Index) MedianTime(id hash.Event, defaultTime inter.Timestamp) inter.Ti
 		vi.crit(fmt.Errorf("event=%s not found", id.String()))
 	}
 
-	honestTotalWeight := pos.Weight(0) // isn't equal to validators.TotalWeight(), because doesn't count cheaters
+	honestTotalWeight := consensus.Weight(0) // isn't equal to validators.TotalWeight(), because doesn't count cheaters
 	highests := make([]medianTimeIndex, 0, len(vi.validatorIdxs))
 	// convert []HighestBefore -> []medianTimeIndex
 	for creatorIdxI := range vi.validators.IDs() {
-		creatorIdx := idx.Validator(creatorIdxI)
+		creatorIdx := consensus.ValidatorIndex(creatorIdxI)
 		highest := medianTimeIndex{}
 		highest.weight = vi.validators.GetWeightByIdx(creatorIdx)
 		highest.creationTime = before.VTime.Get(creatorIdx)
@@ -58,7 +56,7 @@ func (vi *Index) MedianTime(id hash.Event, defaultTime inter.Timestamp) inter.Ti
 
 	// Calculate weighted median
 	halfWeight := honestTotalWeight / 2
-	var currWeight pos.Weight
+	var currWeight consensus.Weight
 	var median inter.Timestamp
 	for _, highest := range highests {
 		currWeight += highest.weight

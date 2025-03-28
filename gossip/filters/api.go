@@ -25,9 +25,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/0xsoniclabs/consensus/consensus"
+
 	"github.com/0xsoniclabs/sonic/evmcore"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
 	ethereum "github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -53,9 +54,9 @@ type filter struct {
 // Config is a provided API params.
 type Config struct {
 	// Block range limit for logs search (indexed).
-	IndexedLogsBlockRangeLimit idx.Block
+	IndexedLogsBlockRangeLimit consensus.BlockID
 	// Block range limit for logs search (unindexed).
-	UnindexedLogsBlockRangeLimit idx.Block
+	UnindexedLogsBlockRangeLimit consensus.BlockID
 }
 
 func DefaultConfig() Config {

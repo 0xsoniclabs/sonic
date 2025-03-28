@@ -4,8 +4,7 @@ import (
 	"bytes"
 	"sort"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 
 	"github.com/0xsoniclabs/sonic/utils/concurrent"
 )
@@ -21,7 +20,7 @@ func (es *epochStore) getCachedHeads() (*concurrent.EventsSet, bool) {
 }
 
 func (es *epochStore) loadHeads() *concurrent.EventsSet {
-	res := make(hash.EventsSet, 100)
+	res := make(consensus.EventHashSet, 100)
 
 	b, err := es.table.Heads.Get([]byte{})
 	if err != nil {
@@ -31,7 +30,7 @@ func (es *epochStore) loadHeads() *concurrent.EventsSet {
 		return concurrent.WrapEventsSet(res)
 	}
 	for i := 0; i < len(b); i += 32 {
-		res.Add(hash.BytesToEvent(b[i : i+32]))
+		res.Add(consensus.BytesToEvent(b[i : i+32]))
 	}
 
 	return concurrent.WrapEventsSet(res)
@@ -81,7 +80,7 @@ func (es *epochStore) FlushHeads() {
 }
 
 // GetHeadsSlice returns IDs of all the epoch events with no descendants
-func (s *Store) GetHeadsSlice(epoch idx.Epoch) hash.Events {
+func (s *Store) GetHeadsSlice(epoch consensus.Epoch) consensus.EventHashes {
 	heads := s.GetHeads(epoch)
 	heads.RLock()
 	defer heads.RUnlock()
@@ -89,7 +88,7 @@ func (s *Store) GetHeadsSlice(epoch idx.Epoch) hash.Events {
 }
 
 // GetHeads returns set of all the epoch event IDs with no descendants
-func (s *Store) GetHeads(epoch idx.Epoch) *concurrent.EventsSet {
+func (s *Store) GetHeads(epoch consensus.Epoch) *concurrent.EventsSet {
 	es := s.getEpochStore(epoch)
 	if es == nil {
 		return nil
@@ -98,7 +97,7 @@ func (s *Store) GetHeads(epoch idx.Epoch) *concurrent.EventsSet {
 	return es.GetHeads()
 }
 
-func (s *Store) SetHeads(epoch idx.Epoch, ids *concurrent.EventsSet) {
+func (s *Store) SetHeads(epoch consensus.Epoch, ids *concurrent.EventsSet) {
 	es := s.getEpochStore(epoch)
 	if es == nil {
 		return

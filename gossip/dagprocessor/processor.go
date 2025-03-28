@@ -4,10 +4,9 @@ import (
 	"errors"
 	"sync"
 
+	"github.com/0xsoniclabs/consensus/consensus"
+
 	"github.com/0xsoniclabs/consensus/eventcheck"
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/dag"
-	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/0xsoniclabs/sonic/gossip/dagordering"
 	"github.com/0xsoniclabs/sonic/utils/datasemaphore"
 	"github.com/0xsoniclabs/sonic/utils/workers"
@@ -35,17 +34,17 @@ type Processor struct {
 }
 
 type EventCallback struct {
-	Process         func(e dag.Event) error
-	Released        func(e dag.Event, peer string, err error)
-	Get             func(hash.Event) dag.Event
-	Exists          func(hash.Event) bool
-	CheckParents    func(e dag.Event, parents dag.Events) error
-	CheckParentless func(e dag.Event, checked func(error))
+	Process         func(e consensus.Event) error
+	Released        func(e consensus.Event, peer string, err error)
+	Get             func(consensus.EventHash) consensus.Event
+	Exists          func(consensus.EventHash) bool
+	CheckParents    func(e consensus.Event, parents consensus.Events) error
+	CheckParentless func(e consensus.Event, checked func(error))
 }
 
 type Callback struct {
 	Event          EventCallback
-	HighestLamport func() idx.Lamport
+	HighestLamport func() consensus.Lamport
 }
 
 // New creates an event processor
@@ -56,8 +55,8 @@ func New(eventsSemaphore *datasemaphore.DataSemaphore, cfg Config, callback Call
 		eventsSemaphore: eventsSemaphore,
 	}
 	released := callback.Event.Released
-	callback.Event.Released = func(e dag.Event, peer string, err error) {
-		f.eventsSemaphore.Release(dag.Metric{Num: 1, Size: uint64(e.Size())})
+	callback.Event.Released = func(e consensus.Event, peer string, err error) {
+		f.eventsSemaphore.Release(consensus.Metric{Num: 1, Size: uint64(e.Size())})
 		if released != nil {
 			released(e, peer, err)
 		}
@@ -97,12 +96,12 @@ func (f *Processor) Overloaded() bool {
 }
 
 type checkRes struct {
-	e   dag.Event
+	e   consensus.Event
 	err error
-	pos idx.Event
+	pos consensus.Seq
 }
 
-func (f *Processor) Enqueue(peer string, events dag.Events, ordered bool, notifyAnnounces func(hash.Events), done func()) error {
+func (f *Processor) Enqueue(peer string, events consensus.Events, ordered bool, notifyAnnounces func(consensus.EventHashes), done func()) error {
 	if !f.eventsSemaphore.Acquire(events.Metric(), f.cfg.EventsSemaphoreTimeout) {
 		return ErrBusy
 	}
@@ -110,7 +109,7 @@ func (f *Processor) Enqueue(peer string, events dag.Events, ordered bool, notify
 	checkedC := make(chan *checkRes, len(events))
 	err := f.checker.Enqueue(func() {
 		for i, e := range events {
-			pos := idx.Event(i)
+			pos := consensus.Seq(i)
 			event := e
 			f.callback.Event.CheckParentless(event, func(err error) {
 				checkedC <- &checkRes{
@@ -135,7 +134,7 @@ func (f *Processor) Enqueue(peer string, events dag.Events, ordered bool, notify
 			orderedResults = make([]*checkRes, eventsLen)
 		}
 		var processed int
-		var toRequest hash.Events
+		var toRequest consensus.EventHashes
 		for processed < eventsLen {
 			select {
 			case res := <-checkedC:
@@ -164,28 +163,28 @@ func (f *Processor) Enqueue(peer string, events dag.Events, ordered bool, notify
 	})
 }
 
-func (f *Processor) process(peer string, event dag.Event, resErr error) (toRequest hash.Events) {
+func (f *Processor) process(peer string, event consensus.Event, resErr error) (toRequest consensus.EventHashes) {
 	// release event if failed validation
 	if resErr != nil {
 		f.callback.Event.Released(event, peer, resErr)
-		return hash.Events{}
+		return consensus.EventHashes{}
 	}
 	// release event if it's too far in future
 	highestLamport := f.callback.HighestLamport()
-	maxLamportDiff := 1 + idx.Lamport(f.cfg.EventsBufferLimit.Num)
+	maxLamportDiff := 1 + consensus.Lamport(f.cfg.EventsBufferLimit.Num)
 	if event.Lamport() > highestLamport+maxLamportDiff {
 		f.callback.Event.Released(event, peer, eventcheck.ErrSpilledEvent)
-		return hash.Events{}
+		return consensus.EventHashes{}
 	}
 	// push event to the ordering buffer
 	complete := f.buffer.PushEvent(event, peer)
 	if !complete && event.Lamport() <= highestLamport+maxLamportDiff/10 {
 		return event.Parents()
 	}
-	return hash.Events{}
+	return consensus.EventHashes{}
 }
 
-func (f *Processor) IsBuffered(id hash.Event) bool {
+func (f *Processor) IsBuffered(id consensus.EventHash) bool {
 	return f.buffer.IsBuffered(id)
 }
 
@@ -193,7 +192,7 @@ func (f *Processor) Clear() {
 	f.buffer.Clear()
 }
 
-func (f *Processor) TotalBuffered() dag.Metric {
+func (f *Processor) TotalBuffered() consensus.Metric {
 	return f.buffer.Total()
 }
 

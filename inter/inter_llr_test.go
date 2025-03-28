@@ -4,32 +4,33 @@ import (
 	"encoding/hex"
 	"testing"
 
-	"github.com/0xsoniclabs/consensus/hash"
+	"github.com/0xsoniclabs/consensus/consensus"
+
 	"github.com/stretchr/testify/require"
 )
 
 var test_block_votes = LlrBlockVotes{
 	Start: 9000,
 	Epoch: 342,
-	Votes: []hash.Hash{
-		hash.Of(nil),
+	Votes: []consensus.Hash{
+		consensus.Of(nil),
 	},
 }
 var test_signed_event_locator = SignedEventLocator{
 	Locator: EventLocator{
-		BaseHash:    hash.Of(nil),
+		BaseHash:    consensus.Of(nil),
 		NetForkID:   1,
 		Epoch:       42,
 		Seq:         9_000_000,
 		Lamport:     142,
 		Creator:     242,
-		PayloadHash: hash.Of(nil),
+		PayloadHash: consensus.Of(nil),
 	},
 	Sig: [64]byte{},
 }
-var test_txs_and_misbehaviour_proofs_hash = hash.Of(nil)
-var test_epoch_vote_hash = hash.Of(nil)
-var test_block_votes_hash = hash.Of(nil)
+var test_txs_and_misbehaviour_proofs_hash = consensus.Of(nil)
+var test_epoch_vote_hash = consensus.Of(nil)
+var test_block_votes_hash = consensus.Of(nil)
 
 var test_llr_signed_block_votes = LlrSignedBlockVotes{
 	Signed:                       test_signed_event_locator,

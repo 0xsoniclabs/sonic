@@ -2,9 +2,10 @@ package genesisstore
 
 import (
 	"fmt"
+	"io"
+
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
-	"io"
 
 	"github.com/0xsoniclabs/sonic/inter/ibr"
 	"github.com/0xsoniclabs/sonic/inter/ier"
@@ -35,13 +36,13 @@ type (
 
 func (s *Store) Genesis() genesis.Genesis {
 	return genesis.Genesis{
-		Header:      s.head,
-		Blocks:      s.Blocks(),
-		Epochs:      s.Epochs(),
-		RawEvmItems: s.RawEvmItems(),
-		FwsLiveSection:  s.FwsLiveSection(),
+		Header:            s.head,
+		Blocks:            s.Blocks(),
+		Epochs:            s.Epochs(),
+		RawEvmItems:       s.RawEvmItems(),
+		FwsLiveSection:    s.FwsLiveSection(),
 		FwsArchiveSection: s.FwsArchiveSection(),
-		SignatureSection: s.SignatureSection(),
+		SignatureSection:  s.SignatureSection(),
 	}
 }
 

@@ -3,8 +3,8 @@ package emitter
 import (
 	"time"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/inter/pos"
+	"github.com/0xsoniclabs/consensus/consensus"
+
 	"github.com/0xsoniclabs/sonic/utils/piecefunc"
 )
 
@@ -12,13 +12,13 @@ const (
 	validatorChallenge = 4 * time.Second
 )
 
-func (em *Emitter) recountConfirmingIntervals(validators *pos.Validators) {
+func (em *Emitter) recountConfirmingIntervals(validators *consensus.Validators) {
 	// validators with lower stake should emit fewer events to reduce network load
 	// confirmingEmitInterval = piecefunc(totalStakeBeforeMe / totalStake) * MinEmitInterval
-	totalStakeBefore := pos.Weight(0)
+	totalStakeBefore := consensus.Weight(0)
 	for i, stake := range validators.SortedWeights() {
-		vid := validators.GetID(idx.Validator(i))
-		// pos.Weight is uint32, so cast to uint64 to avoid an overflow
+		vid := validators.GetID(consensus.ValidatorIndex(i))
+		// consensus.Weight is uint32, so cast to uint64 to avoid an overflow
 		stakeRatio := uint64(totalStakeBefore) * uint64(piecefunc.DecimalUnit) / uint64(validators.TotalWeight())
 		if !em.offlineValidators[vid] {
 			totalStakeBefore += stake
@@ -49,7 +49,7 @@ func (em *Emitter) recheckChallenges() {
 		}
 	} else {
 		// erase all the challenges if network is idle
-		em.challenges = make(map[idx.ValidatorID]time.Time)
+		em.challenges = make(map[consensus.ValidatorID]time.Time)
 	}
 	// check challenges
 	recount := false

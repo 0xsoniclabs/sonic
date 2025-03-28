@@ -1,9 +1,10 @@
 package gossip
 
 import (
+	"testing"
+
 	"github.com/ethereum/go-ethereum/p2p/discover/discfilter"
 	"github.com/ethereum/go-ethereum/p2p/enode"
-	"testing"
 )
 
 func TestIsUseless(t *testing.T) {

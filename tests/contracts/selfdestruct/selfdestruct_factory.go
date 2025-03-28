@@ -5,6 +5,7 @@ package selfdestruct
 
 import (
 	"errors"
+
 	"math/big"
 	"strings"
 

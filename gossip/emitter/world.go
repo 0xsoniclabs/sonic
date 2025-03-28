@@ -4,9 +4,8 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/inter/pos"
+	"github.com/0xsoniclabs/consensus/consensus"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 
@@ -55,19 +54,19 @@ type (
 
 // Reader is a callback for getting events from an external storage.
 type Reader interface {
-	GetLatestBlockIndex() idx.Block
-	GetEpochValidators() (*pos.Validators, idx.Epoch)
-	GetEvent(hash.Event) *inter.Event
-	GetEventPayload(hash.Event) *inter.EventPayload
-	GetLastEvent(epoch idx.Epoch, from idx.ValidatorID) *hash.Event
-	GetHeads(idx.Epoch) hash.Events
+	GetLatestBlockIndex() consensus.BlockID
+	GetEpochValidators() (*consensus.Validators, consensus.Epoch)
+	GetEvent(consensus.EventHash) *inter.Event
+	GetEventPayload(consensus.EventHash) *inter.EventPayload
+	GetLastEvent(epoch consensus.Epoch, from consensus.ValidatorID) *consensus.EventHash
+	GetHeads(consensus.Epoch) consensus.EventHashes
 	GetGenesisTime() inter.Timestamp
 	GetRules() opera.Rules
 }
 
 type TxPool interface {
 	// Has returns an indicator whether txpool has a transaction cached with the
-	// given hash.
+	// given consensus.
 	Has(hash common.Hash) bool
 	// Pending should return pending transactions.
 	// The slice should be modifiable by the caller.

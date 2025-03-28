@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/0xsoniclabs/consensus/consensus"
+
+	"github.com/0xsoniclabs/cacheutils/cachescale"
 	"github.com/0xsoniclabs/carmen/go/database/mpt"
 	"github.com/0xsoniclabs/carmen/go/database/mpt/io"
 	carmen "github.com/0xsoniclabs/carmen/go/state"
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/utils/cachescale"
 	"github.com/0xsoniclabs/sonic/utils/caution"
 	"github.com/ethereum/go-ethereum/log"
 )
@@ -44,12 +44,12 @@ func checkArchiveBlockRoots(dataDir string, cacheRatio cachescale.Func) (err err
 
 	invalidBlocks := 0
 	lastBlockIdx := gdb.GetLatestBlockIndex()
-	for i := idx.Block(1); i <= lastBlockIdx; i++ {
+	for i := consensus.BlockID(1); i <= lastBlockIdx; i++ {
 		block := gdb.GetBlock(i)
 		if block == nil {
 			return fmt.Errorf("verification failed - unable to get block %d from gdb", i)
 		}
-		err = gdb.EvmStore().CheckArchiveStateHash(i, hash.Hash(block.StateRoot))
+		err = gdb.EvmStore().CheckArchiveStateHash(i, consensus.Hash(block.StateRoot))
 		if err != nil {
 			log.Error("Block root verification failed", "block", i, "err", err)
 			invalidBlocks++

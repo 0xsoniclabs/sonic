@@ -3,8 +3,10 @@ module github.com/0xsoniclabs/sonic
 go 1.24.0
 
 require (
+	github.com/0xsoniclabs/cacheutils v0.0.0-20250320134355-5a9aa4df3861
 	github.com/0xsoniclabs/carmen/go v0.0.0-20250113102336-97f8b8616eff
-	github.com/0xsoniclabs/consensus v0.0.0-20250305150018-46890c1558a3
+	github.com/0xsoniclabs/consensus v0.0.0-20250325140549-abcb2a8137a0
+	github.com/0xsoniclabs/kvdb v0.0.0-20250224113306-fe6d2ca29563
 	github.com/0xsoniclabs/tosca v0.0.0-20250221124739-3aac4e7427dc
 	github.com/cespare/cp v1.1.1
 	github.com/davecgh/go-spew v1.1.1
@@ -21,8 +23,8 @@ require (
 	github.com/mattn/go-isatty v0.0.20
 	github.com/naoina/toml v0.1.2-0.20170918210437-9fafd6967416
 	github.com/pkg/errors v0.9.1
-	github.com/status-im/keycard-go v0.3.2
-	github.com/stretchr/testify v1.9.0
+	github.com/status-im/keycard-go v0.3.3
+	github.com/stretchr/testify v1.10.0
 	github.com/supranational/blst v0.3.14
 	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7
 	github.com/tyler-smith/go-bip39 v1.1.0
@@ -45,7 +47,7 @@ require (
 	github.com/cockroachdb/errors v1.11.3 // indirect
 	github.com/cockroachdb/fifo v0.0.0-20240816210425-c5d0cb0b6fc0 // indirect
 	github.com/cockroachdb/logtags v0.0.0-20230118201751-21c54148d20b // indirect
-	github.com/cockroachdb/pebble v1.1.2 // indirect
+	github.com/cockroachdb/pebble v1.1.4 // indirect
 	github.com/cockroachdb/redact v1.1.5 // indirect
 	github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06 // indirect
 	github.com/consensys/bavard v0.1.22 // indirect

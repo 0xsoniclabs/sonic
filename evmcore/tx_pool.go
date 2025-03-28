@@ -1082,7 +1082,7 @@ func (pool *TxPool) Get(hash common.Hash) *types.Transaction {
 }
 
 // Has returns an indicator whether txpool has a transaction cached with the
-// given hash.
+// given consensus.
 func (pool *TxPool) Has(hash common.Hash) bool {
 	return pool.all.Get(hash) != nil
 }

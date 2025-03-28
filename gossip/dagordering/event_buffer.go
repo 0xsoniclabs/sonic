@@ -4,17 +4,16 @@ import (
 	"math"
 	"sync"
 
+	"github.com/0xsoniclabs/consensus/consensus"
+
+	"github.com/0xsoniclabs/cacheutils/wlru"
 	"github.com/0xsoniclabs/consensus/eventcheck"
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/dag"
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/utils/wlru"
 )
 
 type (
 	// event is a inter.Event and data for ordering purpose.
 	event struct {
-		event dag.Event
+		event consensus.Event
 
 		peer     string
 		err      error
@@ -23,11 +22,11 @@ type (
 
 	// Callback is a set of EventsBuffer()'s args.
 	Callback struct {
-		Process  func(e dag.Event) error
-		Released func(e dag.Event, peer string, err error)
-		Get      func(hash.Event) dag.Event
-		Exists   func(hash.Event) bool
-		Check    func(e dag.Event, parents dag.Events) error
+		Process  func(e consensus.Event) error
+		Released func(e consensus.Event, peer string, err error)
+		Get      func(consensus.EventHash) consensus.Event
+		Exists   func(consensus.EventHash) bool
+		Check    func(e consensus.Event, parents consensus.Events) error
 	}
 )
 
@@ -36,10 +35,10 @@ type EventsBuffer struct {
 	callback    Callback
 	mu          sync.Mutex
 
-	limit dag.Metric
+	limit consensus.Metric
 }
 
-func New(limit dag.Metric, callback Callback) *EventsBuffer {
+func New(limit consensus.Metric, callback Callback) *EventsBuffer {
 	buf := &EventsBuffer{
 		callback: callback,
 		limit:    limit,
@@ -48,7 +47,7 @@ func New(limit dag.Metric, callback Callback) *EventsBuffer {
 	return buf
 }
 
-func (buf *EventsBuffer) PushEvent(de dag.Event, peer string) (complete bool) {
+func (buf *EventsBuffer) PushEvent(de consensus.Event, peer string) (complete bool) {
 	e := &event{
 		event: de,
 		peer:  peer,
@@ -119,8 +118,8 @@ func (buf *EventsBuffer) getIncompleteEventsList() []*event {
 	return res
 }
 
-func (buf *EventsBuffer) completeEventParents(e *event) dag.Events {
-	parents := make(dag.Events, len(e.event.Parents()))
+func (buf *EventsBuffer) completeEventParents(e *event) consensus.Events {
+	parents := make(consensus.Events, len(e.event.Parents()))
 	for i, p := range e.event.Parents() {
 		parent := buf.callback.Get(p)
 		if parent == nil {
@@ -131,7 +130,7 @@ func (buf *EventsBuffer) completeEventParents(e *event) dag.Events {
 	return parents
 }
 
-func (buf *EventsBuffer) processCompleteEvent(e *event, parents dag.Events) bool {
+func (buf *EventsBuffer) processCompleteEvent(e *event, parents consensus.Events) bool {
 	// validate
 	if buf.callback.Check != nil {
 		err := buf.callback.Check(e.event, parents)
@@ -151,8 +150,8 @@ func (buf *EventsBuffer) processCompleteEvent(e *event, parents dag.Events) bool
 	return true
 }
 
-func (buf *EventsBuffer) spillIncompletes(limit dag.Metric) {
-	for idx.Event(buf.incompletes.Len()) > limit.Num || uint64(buf.incompletes.Weight()) > limit.Size {
+func (buf *EventsBuffer) spillIncompletes(limit consensus.Metric) {
+	for consensus.Seq(buf.incompletes.Len()) > limit.Num || uint64(buf.incompletes.Weight()) > limit.Size {
 		_, val, ok := buf.incompletes.RemoveOldest()
 		if !ok {
 			break
@@ -176,7 +175,7 @@ func (buf *EventsBuffer) releaseEvent(e *event) {
 	e.released = true
 }
 
-func (buf *EventsBuffer) IsBuffered(id hash.Event) bool {
+func (buf *EventsBuffer) IsBuffered(id consensus.EventHash) bool {
 	// wlru is thread-safe, no need for a mutex here
 	return buf.incompletes.Contains(id)
 }
@@ -184,15 +183,15 @@ func (buf *EventsBuffer) IsBuffered(id hash.Event) bool {
 func (buf *EventsBuffer) Clear() {
 	buf.mu.Lock()
 	defer buf.mu.Unlock()
-	buf.spillIncompletes(dag.Metric{})
+	buf.spillIncompletes(consensus.Metric{})
 }
 
 // Total returns the total weight and number of items in the cache.
-func (buf *EventsBuffer) Total() dag.Metric {
+func (buf *EventsBuffer) Total() consensus.Metric {
 	// wlru is thread-safe, no need for a mutex here
 	weight, num := buf.incompletes.Total()
-	return dag.Metric{
-		Num:  idx.Event(num),
+	return consensus.Metric{
+		Num:  consensus.Seq(num),
 		Size: uint64(weight),
 	}
 }

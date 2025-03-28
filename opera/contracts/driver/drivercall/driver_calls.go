@@ -5,7 +5,8 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
+
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 
@@ -24,11 +25,11 @@ var (
 
 type Delegation struct {
 	Address            common.Address
-	ValidatorID        idx.ValidatorID
+	ValidatorID        consensus.ValidatorID
 	Stake              *big.Int
 	LockedStake        *big.Int
-	LockupFromEpoch    idx.Epoch
-	LockupEndTime      idx.Epoch
+	LockupFromEpoch    consensus.Epoch
+	LockupEndTime      consensus.Epoch
 	LockupDuration     uint64
 	EarlyUnlockPenalty *big.Int
 	Rewards            *big.Int
@@ -36,7 +37,7 @@ type Delegation struct {
 
 // Methods
 
-func SealEpochValidators(_validators []idx.ValidatorID) []byte {
+func SealEpochValidators(_validators []consensus.ValidatorID) []byte {
 	newValidatorsIDs := make([]*big.Int, len(_validators))
 	for i, v := range _validators {
 		newValidatorsIDs[i] = utils.U64toBig(uint64(v))
@@ -77,7 +78,7 @@ func SetGenesisDelegation(d Delegation) []byte {
 	return data
 }
 
-func DeactivateValidator(validatorID idx.ValidatorID, status uint64) []byte {
+func DeactivateValidator(validatorID consensus.ValidatorID, status uint64) []byte {
 	data, _ := sAbi.Pack("deactivateValidator", utils.U64toBig(uint64(validatorID)), utils.U64toBig(status))
 	return data
 }

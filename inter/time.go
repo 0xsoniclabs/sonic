@@ -3,7 +3,7 @@ package inter
 import (
 	"time"
 
-	"github.com/0xsoniclabs/consensus/common/bigendian"
+	"github.com/0xsoniclabs/consensus/utils/byteutils"
 )
 
 type (
@@ -13,7 +13,7 @@ type (
 
 // Bytes gets the byte representation of the index.
 func (t Timestamp) Bytes() []byte {
-	return bigendian.Uint64ToBytes(uint64(t))
+	return byteutils.Uint64ToBigEndian(uint64(t))
 }
 
 func FromUnix(t int64) Timestamp {

@@ -7,9 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/dag"
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/utils/datasemaphore"
 	mapset "github.com/deckarep/golang-set"
 	"github.com/ethereum/go-ethereum/common"
@@ -41,9 +39,9 @@ const (
 // PeerInfo represents a short summary of the sub-protocol metadata known
 // about a connected peer.
 type PeerInfo struct {
-	Version     uint      `json:"version"` // protocol version negotiated
-	Epoch       idx.Epoch `json:"epoch"`
-	NumOfBlocks idx.Block `json:"blocks"`
+	Version     uint              `json:"version"` // protocol version negotiated
+	Epoch       consensus.Epoch   `json:"epoch"`
+	NumOfBlocks consensus.BlockID `json:"blocks"`
 }
 
 type broadcastItem struct {
@@ -103,7 +101,7 @@ func (p *peer) GetProgress() PeerProgress {
 	return p.progress
 }
 
-func (p *peer) InterestedIn(h hash.Event) bool {
+func (p *peer) InterestedIn(h consensus.EventHash) bool {
 	e := h.Epoch()
 
 	p.RLock()
@@ -132,7 +130,7 @@ func newPeer(version uint, p *p2p.Peer, rw p2p.MsgReadWriter, cfg PeerCacheConfi
 		knownTxs:            mapset.NewSet(),
 		knownEvents:         mapset.NewSet(),
 		queue:               make(chan broadcastItem, cfg.MaxQueuedItems),
-		queuedDataSemaphore: datasemaphore.New(dag.Metric{Num: cfg.MaxQueuedItems, Size: cfg.MaxQueuedSize}, getSemaphoreWarningFn("Peers queue")),
+		queuedDataSemaphore: datasemaphore.New(consensus.Metric{Num: cfg.MaxQueuedItems, Size: cfg.MaxQueuedSize}, getSemaphoreWarningFn("Peers queue")),
 		term:                make(chan struct{}),
 	}
 
@@ -177,7 +175,7 @@ func (p *peer) Info() *PeerInfo {
 
 // MarkEvent marks a event as known for the peer, ensuring that the event will
 // never be propagated to this particular peer.
-func (p *peer) MarkEvent(hash hash.Event) {
+func (p *peer) MarkEvent(hash consensus.EventHash) {
 	// If we reached the memory allowance, drop a previously known event hash
 	for p.knownEvents.Cardinality() >= p.cfg.MaxKnownEvents {
 		p.knownEvents.Pop()
@@ -209,8 +207,8 @@ func (p *peer) SendTransactionHashes(txids []common.Hash) error {
 	return p2p.Send(p.rw, NewEvmTxHashesMsg, txids)
 }
 
-func memSize(v rlp.RawValue) dag.Metric {
-	return dag.Metric{Num: 1, Size: uint64(len(v) + 1024)}
+func memSize(v rlp.RawValue) consensus.Metric {
+	return consensus.Metric{Num: 1, Size: uint64(len(v) + 1024)}
 }
 
 func (p *peer) asyncSendEncodedItem(raw rlp.RawValue, code uint64, queue chan broadcastItem) bool {
@@ -332,7 +330,7 @@ func (p *peer) EnqueueSendTransactions(txs types.Transactions, queue chan broadc
 
 // SendEventIDs announces the availability of a number of events through
 // a hash notification.
-func (p *peer) SendEventIDs(hashes []hash.Event) error {
+func (p *peer) SendEventIDs(hashes []consensus.EventHash) error {
 	// Mark all the event hashes as known, but ensure we don't overflow our limits
 	for _, hash := range hashes {
 		p.knownEvents.Add(hash)
@@ -346,7 +344,7 @@ func (p *peer) SendEventIDs(hashes []hash.Event) error {
 // AsyncSendEventIDs queues the availability of a event for propagation to a
 // remote peer. If the peer's broadcast queue is full, the event is silently
 // dropped.
-func (p *peer) AsyncSendEventIDs(ids hash.Events, queue chan broadcastItem) {
+func (p *peer) AsyncSendEventIDs(ids consensus.EventHashes, queue chan broadcastItem) {
 	if p.asyncSendNonEncodedItem(ids, NewEventIDsMsg, queue) {
 		// Mark all the event hash as known, but ensure we don't overflow our limits
 		for _, id := range ids {
@@ -373,7 +371,7 @@ func (p *peer) SendEvents(events inter.EventPayloads) error {
 }
 
 // SendEventsRLP propagates a batch of RLP events to a remote peer.
-func (p *peer) SendEventsRLP(events []rlp.RawValue, ids []hash.Event) error {
+func (p *peer) SendEventsRLP(events []rlp.RawValue, ids []consensus.EventHash) error {
 	// Mark all the event hash as known, but ensure we don't overflow our limits
 	for _, id := range ids {
 		p.knownEvents.Add(id)
@@ -403,7 +401,7 @@ func (p *peer) AsyncSendEvents(events inter.EventPayloads, queue chan broadcastI
 
 // EnqueueSendEventsRLP queues an entire RLP event for propagation to a remote peer.
 // The method is blocking in a case if the peer's broadcast queue is full.
-func (p *peer) EnqueueSendEventsRLP(events []rlp.RawValue, ids []hash.Event, queue chan broadcastItem) {
+func (p *peer) EnqueueSendEventsRLP(events []rlp.RawValue, ids []consensus.EventHash, queue chan broadcastItem) {
 	p.enqueueSendNonEncodedItem(events, EventsMsg, queue)
 	// Mark all the event hash as known, but ensure we don't overflow our limits
 	for _, id := range ids {
@@ -422,7 +420,7 @@ func (p *peer) AsyncSendProgress(progress PeerProgress, queue chan broadcastItem
 	}
 }
 
-func (p *peer) RequestEvents(ids hash.Events) error {
+func (p *peer) RequestEvents(ids consensus.EventHashes) error {
 	// divide big batch into smaller ones
 	for start := 0; start < len(ids); start += softLimitItems {
 		end := len(ids)
@@ -454,7 +452,7 @@ func (p *peer) RequestTransactions(txids []common.Hash) error {
 	return nil
 }
 
-func (p *peer) SendEventsStream(r dagstream.Response, ids hash.Events) error {
+func (p *peer) SendEventsStream(r dagstream.Response, ids consensus.EventHashes) error {
 	// Mark all the event hash as known, but ensure we don't overflow our limits
 	for _, id := range ids {
 		p.knownEvents.Add(id)

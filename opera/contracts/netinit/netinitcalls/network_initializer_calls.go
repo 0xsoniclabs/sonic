@@ -5,7 +5,8 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
+
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 
@@ -21,7 +22,7 @@ var (
 
 // Methods
 
-func InitializeAll(sealedEpoch idx.Epoch, totalSupply *big.Int, sfcAddr common.Address, driverAuthAddr common.Address, driverAddr common.Address, evmWriterAddr common.Address, owner common.Address) []byte {
+func InitializeAll(sealedEpoch consensus.Epoch, totalSupply *big.Int, sfcAddr common.Address, driverAuthAddr common.Address, driverAddr common.Address, evmWriterAddr common.Address, owner common.Address) []byte {
 	data, _ := sAbi.Pack("initializeAll", utils.U64toBig(uint64(sealedEpoch)), totalSupply, sfcAddr, driverAuthAddr, driverAddr, evmWriterAddr, owner)
 	return data
 }

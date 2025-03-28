@@ -3,22 +3,21 @@ package utils
 import (
 	"crypto/sha256"
 
-	"github.com/0xsoniclabs/consensus/common/littleendian"
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/pos"
+	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/consensus/utils/byteutils"
 )
 
 type weightedShuffleNode struct {
-	thisWeight  pos.Weight
-	leftWeight  pos.Weight
-	rightWeight pos.Weight
+	thisWeight  consensus.Weight
+	leftWeight  consensus.Weight
+	rightWeight consensus.Weight
 }
 
 type weightedShuffleTree struct {
-	seed      hash.Hash
+	seed      consensus.Hash
 	seedIndex int
 
-	weights []pos.Weight
+	weights []consensus.Weight
 	nodes   []weightedShuffleNode
 }
 
@@ -30,7 +29,7 @@ func (t *weightedShuffleTree) rightIndex(i int) int {
 	return i*2 + 2
 }
 
-func (t *weightedShuffleTree) build(i int) pos.Weight {
+func (t *weightedShuffleTree) build(i int) consensus.Weight {
 	if i >= len(t.weights) {
 		return 0
 	}
@@ -54,11 +53,11 @@ func (t *weightedShuffleTree) rand32() uint32 {
 	if t.seedIndex == 32 {
 		hasher := sha256.New() // use sha2 instead of sha3 for speed
 		hasher.Write(t.seed.Bytes())
-		t.seed = hash.BytesToHash(hasher.Sum(nil))
+		t.seed = consensus.BytesToHash(hasher.Sum(nil))
 		t.seedIndex = 0
 	}
 	// use not used parts of old seed, instead of calculating new one
-	res := littleendian.BytesToUint32(t.seed[t.seedIndex : t.seedIndex+4])
+	res := byteutils.LittleEndianToUint32(t.seed[t.seedIndex : t.seedIndex+4])
 	t.seedIndex += 4
 	return res
 }
@@ -67,7 +66,7 @@ func (t *weightedShuffleTree) retrieve(i int) int {
 	node := t.nodes[i]
 	total := node.rightWeight + node.leftWeight + node.thisWeight
 
-	r := pos.Weight(t.rand32()) % total
+	r := consensus.Weight(t.rand32()) % total
 
 	if r < node.thisWeight {
 		t.nodes[i].thisWeight = 0
@@ -86,7 +85,7 @@ func (t *weightedShuffleTree) retrieve(i int) int {
 // WeightedPermutation builds weighted random permutation
 // Returns first {size} entries of {weights} permutation.
 // Call with {size} == len(weights) to get the whole permutation.
-func WeightedPermutation(size int, weights []pos.Weight, seed hash.Hash) []int {
+func WeightedPermutation(size int, weights []consensus.Weight, seed consensus.Hash) []int {
 	if len(weights) < size {
 		panic("the permutation size must be less or equal to weights size")
 	}

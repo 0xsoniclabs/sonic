@@ -19,9 +19,10 @@
 package app
 
 import (
-	"github.com/0xsoniclabs/sonic/cmd/sonicd/cmdhelper"
 	"io"
 	"sort"
+
+	"github.com/0xsoniclabs/sonic/cmd/sonicd/cmdhelper"
 
 	cli "gopkg.in/urfave/cli.v1"
 

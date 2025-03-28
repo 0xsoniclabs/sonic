@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/0xsoniclabs/consensus/inter/dag"
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/utils/cachescale"
+	"github.com/0xsoniclabs/consensus/consensus"
+
+	"github.com/0xsoniclabs/cacheutils/cachescale"
 	"github.com/0xsoniclabs/sonic/gossip/dagprocessor"
 	"github.com/0xsoniclabs/sonic/gossip/itemsfetcher"
 	"github.com/syndtr/goleveldb/leveldb/opt"
@@ -31,9 +31,9 @@ type (
 		LatencyImportance    int
 		ThroughputImportance int
 
-		EventsSemaphoreLimit dag.Metric
-		BVsSemaphoreLimit    dag.Metric
-		MsgsSemaphoreLimit   dag.Metric
+		EventsSemaphoreLimit consensus.Metric
+		BVsSemaphoreLimit    consensus.Metric
+		MsgsSemaphoreLimit   consensus.Metric
 		MsgsSemaphoreTimeout time.Duration
 
 		ProgressBroadcastPeriod time.Duration
@@ -129,7 +129,7 @@ type PeerCacheConfig struct {
 	// MaxQueuedItems is the maximum number of items to queue up before
 	// dropping broadcasts. This is a sensitive number as a transaction list might
 	// contain a single transaction, or thousands.
-	MaxQueuedItems idx.Event
+	MaxQueuedItems consensus.Seq
 	MaxQueuedSize  uint64
 }
 
@@ -145,16 +145,16 @@ func DefaultConfig(scale cachescale.Func) Config {
 		Protocol: ProtocolConfig{
 			LatencyImportance:    60,
 			ThroughputImportance: 40,
-			MsgsSemaphoreLimit: dag.Metric{
-				Num:  scale.Events(1000),
+			MsgsSemaphoreLimit: consensus.Metric{
+				Num:  consensus.Seq(scale.U32(1000)),
 				Size: scale.U64(30 * opt.MiB),
 			},
-			EventsSemaphoreLimit: dag.Metric{
-				Num:  scale.Events(10000),
+			EventsSemaphoreLimit: consensus.Metric{
+				Num:  consensus.Seq(scale.U32(10000)),
 				Size: scale.U64(30 * opt.MiB),
 			},
-			BVsSemaphoreLimit: dag.Metric{
-				Num:  scale.Events(5000),
+			BVsSemaphoreLimit: consensus.Metric{
+				Num:  consensus.Seq(scale.U32(5000)),
 				Size: scale.U64(15 * opt.MiB),
 			},
 			MsgsSemaphoreTimeout:    10 * time.Second,
@@ -207,8 +207,8 @@ func DefaultConfig(scale cachescale.Func) Config {
 		StructLogLimit:  2000,
 	}
 	sessionCfg := cfg.Protocol.DagStreamLeecher.Session
-	cfg.Protocol.DagProcessor.EventsBufferLimit.Num = idx.Event(sessionCfg.ParallelChunksDownload)*
-		idx.Event(sessionCfg.DefaultChunkItemsNum) + softLimitItems
+	cfg.Protocol.DagProcessor.EventsBufferLimit.Num = consensus.Seq(sessionCfg.ParallelChunksDownload)*
+		consensus.Seq(sessionCfg.DefaultChunkItemsNum) + softLimitItems
 	cfg.Protocol.DagProcessor.EventsBufferLimit.Size = uint64(sessionCfg.ParallelChunksDownload)*sessionCfg.DefaultChunkItemsSize + 8*opt.MiB
 	cfg.Protocol.DagStreamLeecher.MaxSessionRestart = 4 * time.Minute
 	cfg.Protocol.DagFetcher.ArriveTimeout = 4 * time.Second
@@ -220,8 +220,8 @@ func DefaultConfig(scale cachescale.Func) Config {
 
 func (c *Config) Validate() error {
 	p := c.Protocol
-	defaultChunkSize := dag.Metric{
-		Num:  idx.Event(p.DagStreamLeecher.Session.DefaultChunkItemsNum),
+	defaultChunkSize := consensus.Metric{
+		Num:  consensus.Seq(p.DagStreamLeecher.Session.DefaultChunkItemsNum),
 		Size: p.DagStreamLeecher.Session.DefaultChunkItemsSize,
 	}
 	if defaultChunkSize.Num > hardLimitItems-1 {
@@ -283,7 +283,7 @@ func DefaultPeerCacheConfig(scale cachescale.Func) PeerCacheConfig {
 	return PeerCacheConfig{
 		MaxKnownTxs:    24576*3/4 + scale.I(24576/4),
 		MaxKnownEvents: 24576*3/4 + scale.I(24576/4),
-		MaxQueuedItems: 4096*3/4 + scale.Events(4096/4),
+		MaxQueuedItems: 4096*3/4 + consensus.Seq(scale.U32(4096/4)),
 		MaxQueuedSize:  protocolMaxMsgSize*3/4 + 1024 + scale.U64(protocolMaxMsgSize/4),
 	}
 }

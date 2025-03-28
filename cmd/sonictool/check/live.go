@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/0xsoniclabs/consensus/consensus"
+
+	"github.com/0xsoniclabs/cacheutils/cachescale"
 	"github.com/0xsoniclabs/carmen/go/database/mpt"
 	"github.com/0xsoniclabs/carmen/go/database/mpt/io"
 	carmen "github.com/0xsoniclabs/carmen/go/state"
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/utils/cachescale"
 	"github.com/0xsoniclabs/sonic/utils/caution"
 	"github.com/ethereum/go-ethereum/log"
 )
@@ -46,7 +47,7 @@ func checkLiveBlockRoot(dataDir string, cacheRatio cachescale.Func) (err error) 
 	if lastBlock == nil {
 		return fmt.Errorf("verification failed - unable to get the last block (%d) from gdb", lastBlockIdx)
 	}
-	err = gdb.EvmStore().CheckLiveStateHash(lastBlockIdx, hash.Hash(lastBlock.StateRoot))
+	err = gdb.EvmStore().CheckLiveStateHash(lastBlockIdx, consensus.Hash(lastBlock.StateRoot))
 	if err != nil {
 		return fmt.Errorf("checking live state failed: %w", err)
 	}

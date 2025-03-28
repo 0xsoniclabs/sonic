@@ -3,11 +3,8 @@ package vecmt
 import (
 	"testing"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/dag"
-	"github.com/0xsoniclabs/consensus/inter/dag/tdag"
-	"github.com/0xsoniclabs/consensus/inter/pos"
-	"github.com/0xsoniclabs/consensus/kvdb/memorydb"
+	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/kvdb/memorydb"
 
 	"github.com/0xsoniclabs/sonic/inter"
 )
@@ -33,7 +30,7 @@ a2.1 ──╣      ║      ║      ║
 )
 
 type eventWithCreationTime struct {
-	dag.Event
+	consensus.Event
 	creationTime inter.Timestamp
 }
 
@@ -43,19 +40,19 @@ func (e *eventWithCreationTime) CreationTime() inter.Timestamp {
 
 func BenchmarkIndex_Add(b *testing.B) {
 	b.StopTimer()
-	ordered := make(dag.Events, 0)
-	nodes, _, _ := tdag.ASCIIschemeForEach(testASCIIScheme, tdag.ForEachEvent{
-		Process: func(e dag.Event, name string) {
+	ordered := make(consensus.Events, 0)
+	nodes, _, _ := consensus.ASCIIschemeForEach(testASCIIScheme, consensus.ForEachEvent{
+		Process: func(e consensus.Event, name string) {
 			ordered = append(ordered, e)
 		},
 	})
-	validatorsBuilder := pos.NewBuilder()
+	validatorsBuilder := consensus.NewBuilder()
 	for _, peer := range nodes {
 		validatorsBuilder.Set(peer, 1)
 	}
 	validators := validatorsBuilder.Build()
-	events := make(map[hash.Event]dag.Event)
-	getEvent := func(id hash.Event) dag.Event {
+	events := make(map[consensus.EventHash]consensus.Event)
+	getEvent := func(id consensus.EventHash) consensus.Event {
 		return events[id]
 	}
 	for _, e := range ordered {

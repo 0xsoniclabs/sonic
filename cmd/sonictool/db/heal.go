@@ -5,13 +5,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/0xsoniclabs/consensus/abft"
-	"github.com/0xsoniclabs/consensus/common/bigendian"
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/kvdb"
-	"github.com/0xsoniclabs/consensus/kvdb/flushable"
-	"github.com/0xsoniclabs/consensus/utils/cachescale"
+	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/consensus/consensus/consensusstore"
+	"github.com/0xsoniclabs/consensus/utils/byteutils"
+
+	"github.com/0xsoniclabs/cacheutils/cachescale"
+	"github.com/0xsoniclabs/kvdb"
+	"github.com/0xsoniclabs/kvdb/flushable"
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/gossip"
 	"github.com/0xsoniclabs/sonic/integration"
@@ -22,7 +22,7 @@ import (
 	"github.com/syndtr/goleveldb/leveldb/opt"
 )
 
-func HealChaindata(chaindataDir string, cacheRatio cachescale.Func, cfg *config.Config, lastCarmenBlock idx.Block) (lastBlockId idx.Block, err error) {
+func HealChaindata(chaindataDir string, cacheRatio cachescale.Func, cfg *config.Config, lastCarmenBlock consensus.BlockID) (lastBlockId consensus.BlockID, err error) {
 	producer := &DummyScopedProducer{integration.GetRawDbProducer(chaindataDir, integration.DBCacheConfig{
 		Cache:   cacheRatio.U64(480 * opt.MiB),
 		Fdlimit: makeDatabaseHandles(),
@@ -45,7 +45,7 @@ func HealChaindata(chaindataDir string, cacheRatio cachescale.Func, cfg *config.
 	if err != nil {
 		return 0, fmt.Errorf("failed to open 'lachesis' database: %w", err)
 	}
-	cGetEpochDB := func(epoch idx.Epoch) kvdb.Store {
+	cGetEpochDB := func(epoch consensus.Epoch) kvdb.Store {
 		name := fmt.Sprintf("lachesis-%d", epoch)
 		cEpochDB, err := producer.OpenDB(name)
 		if err != nil {
@@ -53,8 +53,8 @@ func HealChaindata(chaindataDir string, cacheRatio cachescale.Func, cfg *config.
 		}
 		return cEpochDB
 	}
-	cdb := abft.NewStore(cMainDb, cGetEpochDB, panics("Lachesis store"), cfg.LachesisStore)
-	if err = cdb.ApplyGenesis(&abft.Genesis{
+	cdb := consensusstore.NewStore(cMainDb, cGetEpochDB, panics("Lachesis store"), cfg.LachesisStore)
+	if err = cdb.ApplyGenesis(&consensusstore.Genesis{
 		Epoch:      epochState.Epoch,
 		Validators: epochState.Validators,
 	}); err != nil {
@@ -73,8 +73,8 @@ func HealChaindata(chaindataDir string, cacheRatio cachescale.Func, cfg *config.
 }
 
 // healGossipDb reverts the gossip database into state, into which can be reverted carmen
-func healGossipDb(producer kvdb.FlushableDBProducer, cfg gossip.StoreConfig, lastCarmenBlock idx.Block) (
-	epochState *iblockproc.EpochState, lastBlock idx.Block, err error) {
+func healGossipDb(producer kvdb.FlushableDBProducer, cfg gossip.StoreConfig, lastCarmenBlock consensus.BlockID) (
+	epochState *iblockproc.EpochState, lastBlock consensus.BlockID, err error) {
 
 	gdb, err := gossip.NewStore(producer, cfg) // requires FlushIDKey present (not clean) in all dbs
 	if err != nil {
@@ -99,7 +99,7 @@ func healGossipDb(producer kvdb.FlushableDBProducer, cfg gossip.StoreConfig, las
 
 	// removing excessive events (event epoch >= closed epoch)
 	log.Info("Removing excessive events")
-	gdb.ForEachEventRLP(epochIdx.Bytes(), func(id hash.Event, _ rlp.RawValue) bool {
+	gdb.ForEachEventRLP(epochIdx.Bytes(), func(id consensus.EventHash, _ rlp.RawValue) bool {
 		gdb.DelEvent(id)
 		return true
 	})
@@ -108,10 +108,10 @@ func healGossipDb(producer kvdb.FlushableDBProducer, cfg gossip.StoreConfig, las
 }
 
 // getLastEpochWithState finds the last closed epoch with the state available
-func getLastEpochWithState(gdb *gossip.Store, lastCarmenBlock idx.Block) (epochIdx idx.Epoch, blockState *iblockproc.BlockState, epochState *iblockproc.EpochState) {
+func getLastEpochWithState(gdb *gossip.Store, lastCarmenBlock consensus.BlockID) (epochIdx consensus.Epoch, blockState *iblockproc.BlockState, epochState *iblockproc.EpochState) {
 	currentEpoch := gdb.GetEpoch()
-	epochsToTry := idx.Epoch(10000)
-	endEpoch := idx.Epoch(1)
+	epochsToTry := consensus.Epoch(10000)
+	endEpoch := consensus.Epoch(1)
 	if currentEpoch > epochsToTry {
 		endEpoch = currentEpoch - epochsToTry
 	}
@@ -151,7 +151,7 @@ func dropAllEpochDbs(producer kvdb.IterableDBProducer) error {
 
 // clearDirtyFlags - writes the CleanPrefix into all databases
 func clearDirtyFlags(rawProducer kvdb.IterableDBProducer) error {
-	id := bigendian.Uint64ToBytes(uint64(time.Now().UnixNano()))
+	id := byteutils.Uint64ToBigEndian(uint64(time.Now().UnixNano()))
 	names := rawProducer.Names()
 	for _, name := range names {
 		db, err := rawProducer.OpenDB(name)

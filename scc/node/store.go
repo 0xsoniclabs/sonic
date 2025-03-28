@@ -1,7 +1,7 @@
 package node
 
 import (
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/scc"
 )
 
@@ -17,7 +17,7 @@ type Store interface {
 
 	// GetBlockCertificate retrieves the certificate for the given block.
 	// If no certificate is found, an error is returned.
-	GetBlockCertificate(idx.Block) (BlockCertificate, error)
+	GetBlockCertificate(consensus.BlockID) (BlockCertificate, error)
 
 	// UpdateCommitteeCertificate adds or updates the certificate in the store.
 	// If a certificate for the same period is already present, it is overwritten.

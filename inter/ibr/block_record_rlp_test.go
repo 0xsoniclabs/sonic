@@ -2,11 +2,12 @@ package ibr_test
 
 import (
 	"bytes"
+	"testing"
+
 	"github.com/0xsoniclabs/sonic/inter/ibr"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
-	"testing"
 )
 
 // Verify that [] is equivalent to nil for log's Topics in the genesis file

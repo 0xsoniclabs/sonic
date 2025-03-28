@@ -7,8 +7,7 @@ package gossip
 import (
 	"bytes"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/rlp"
 
@@ -16,7 +15,7 @@ import (
 )
 
 // DelEvent deletes event.
-func (s *Store) DelEvent(id hash.Event) {
+func (s *Store) DelEvent(id consensus.EventHash) {
 	key := id.Bytes()
 
 	err := s.table.Events.Delete(key)
@@ -44,7 +43,7 @@ func (s *Store) SetEvent(e *inter.EventPayload) {
 }
 
 // GetEventPayload returns stored event.
-func (s *Store) GetEventPayload(id hash.Event) *inter.EventPayload {
+func (s *Store) GetEventPayload(id consensus.EventHash) *inter.EventPayload {
 	// Get event from LRU cache first.
 	if ev, ok := s.cache.Events.Get(id); ok {
 		return ev.(*inter.EventPayload)
@@ -64,7 +63,7 @@ func (s *Store) GetEventPayload(id hash.Event) *inter.EventPayload {
 }
 
 // GetEvent returns stored event.
-func (s *Store) GetEvent(id hash.Event) *inter.Event {
+func (s *Store) GetEvent(id consensus.EventHash) *inter.Event {
 	// Get event from LRU cache first.
 	if ev, ok := s.cache.EventsHeaders.Get(id); ok {
 		return ev.(*inter.Event)
@@ -99,45 +98,45 @@ func (s *Store) forEachEvent(it ethdb.Iterator, onEvent func(event *inter.EventP
 	}
 }
 
-func (s *Store) ForEachEpochEvent(epoch idx.Epoch, onEvent func(event *inter.EventPayload) bool) {
+func (s *Store) ForEachEpochEvent(epoch consensus.Epoch, onEvent func(event *inter.EventPayload) bool) {
 	it := s.table.Events.NewIterator(epoch.Bytes(), nil)
 	defer it.Release()
 	s.forEachEvent(it, onEvent)
 }
 
-func (s *Store) ForEachEvent(start idx.Epoch, onEvent func(event *inter.EventPayload) bool) {
+func (s *Store) ForEachEvent(start consensus.Epoch, onEvent func(event *inter.EventPayload) bool) {
 	it := s.table.Events.NewIterator(nil, start.Bytes())
 	defer it.Release()
 	s.forEachEvent(it, onEvent)
 }
 
-func (s *Store) ForEachEventRLP(start []byte, onEvent func(key hash.Event, event rlp.RawValue) bool) {
+func (s *Store) ForEachEventRLP(start []byte, onEvent func(key consensus.EventHash, event rlp.RawValue) bool) {
 	it := s.table.Events.NewIterator(nil, start)
 	defer it.Release()
 	for it.Next() {
-		if !onEvent(hash.BytesToEvent(it.Key()), it.Value()) {
+		if !onEvent(consensus.BytesToEvent(it.Key()), it.Value()) {
 			return
 		}
 	}
 }
 
-func (s *Store) FindEventHashes(epoch idx.Epoch, lamport idx.Lamport, hashPrefix []byte) hash.Events {
+func (s *Store) FindEventHashes(epoch consensus.Epoch, lamport consensus.Lamport, hashPrefix []byte) consensus.EventHashes {
 	prefix := bytes.NewBuffer(epoch.Bytes())
 	prefix.Write(lamport.Bytes())
 	prefix.Write(hashPrefix)
-	res := make(hash.Events, 0, 10)
+	res := make(consensus.EventHashes, 0, 10)
 
 	it := s.table.Events.NewIterator(prefix.Bytes(), nil)
 	defer it.Release()
 	for it.Next() {
-		res = append(res, hash.BytesToEvent(it.Key()))
+		res = append(res, consensus.BytesToEvent(it.Key()))
 	}
 
 	return res
 }
 
 // GetEventPayloadRLP returns stored event. Serialized.
-func (s *Store) GetEventPayloadRLP(id hash.Event) rlp.RawValue {
+func (s *Store) GetEventPayloadRLP(id consensus.EventHash) rlp.RawValue {
 	key := id.Bytes()
 
 	data, err := s.table.Events.Get(key)
@@ -148,7 +147,7 @@ func (s *Store) GetEventPayloadRLP(id hash.Event) rlp.RawValue {
 }
 
 // HasEvent returns true if event exists.
-func (s *Store) HasEvent(h hash.Event) bool {
+func (s *Store) HasEvent(h consensus.EventHash) bool {
 	if has, ok := s.cache.EventIDs.Has(h); ok {
 		return has
 	}
@@ -156,7 +155,7 @@ func (s *Store) HasEvent(h hash.Event) bool {
 	return has
 }
 
-func (s *Store) loadHighestLamport() idx.Lamport {
+func (s *Store) loadHighestLamport() consensus.Lamport {
 	lamportBytes, err := s.table.HighestLamport.Get([]byte("k"))
 	if err != nil {
 		s.Log.Crit("Failed to get key-value", "err", err)
@@ -164,18 +163,18 @@ func (s *Store) loadHighestLamport() idx.Lamport {
 	if lamportBytes == nil {
 		return 0
 	}
-	return idx.BytesToLamport(lamportBytes)
+	return consensus.BytesToLamport(lamportBytes)
 }
 
-func (s *Store) getCachedHighestLamport() (idx.Lamport, bool) {
+func (s *Store) getCachedHighestLamport() (consensus.Lamport, bool) {
 	cache := s.cache.HighestLamport.Load()
 	if cache != nil {
-		return cache.(idx.Lamport), true
+		return cache.(consensus.Lamport), true
 	}
 	return 0, false
 }
 
-func (s *Store) GetHighestLamport() idx.Lamport {
+func (s *Store) GetHighestLamport() consensus.Lamport {
 	cached, ok := s.getCachedHighestLamport()
 	if ok {
 		return cached
@@ -185,7 +184,7 @@ func (s *Store) GetHighestLamport() idx.Lamport {
 	return lamport
 }
 
-func (s *Store) SetHighestLamport(lamport idx.Lamport) {
+func (s *Store) SetHighestLamport(lamport consensus.Lamport) {
 	s.cache.HighestLamport.Store(lamport)
 }
 

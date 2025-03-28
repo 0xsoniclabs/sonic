@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/0xsoniclabs/consensus/abft"
-	"github.com/0xsoniclabs/consensus/utils/cachescale"
+	"github.com/0xsoniclabs/consensus/consensus/consensusengine"
+	"github.com/0xsoniclabs/consensus/consensus/consensusstore"
+
+	"github.com/0xsoniclabs/cacheutils/cachescale"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/stretchr/testify/require"
 
@@ -27,8 +29,8 @@ func TestConfigFile(t *testing.T) {
 		Emitter:       emitter.DefaultConfig(),
 		TxPool:        evmcore.DefaultTxPoolConfig,
 		OperaStore:    gossip.DefaultStoreConfig(cacheRatio),
-		Lachesis:      abft.DefaultConfig(),
-		LachesisStore: abft.DefaultStoreConfig(cacheRatio),
+		Lachesis:      consensusengine.DefaultConfig(),
+		LachesisStore: consensusstore.DefaultStoreConfig(cacheRatio),
 		VectorClock:   vecmt.DefaultConfig(cacheRatio),
 	}
 

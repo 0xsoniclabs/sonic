@@ -3,14 +3,15 @@ package dagprocessor
 import (
 	"time"
 
+	"github.com/0xsoniclabs/consensus/consensus"
+
 	"github.com/syndtr/goleveldb/leveldb/opt"
 
-	"github.com/0xsoniclabs/consensus/inter/dag"
-	"github.com/0xsoniclabs/consensus/utils/cachescale"
+	"github.com/0xsoniclabs/cacheutils/cachescale"
 )
 
 type Config struct {
-	EventsBufferLimit dag.Metric
+	EventsBufferLimit consensus.Metric
 
 	EventsSemaphoreTimeout time.Duration
 
@@ -19,7 +20,7 @@ type Config struct {
 
 func DefaultConfig(scale cachescale.Func) Config {
 	return Config{
-		EventsBufferLimit: dag.Metric{
+		EventsBufferLimit: consensus.Metric{
 			// Shouldn't be too big because complexity is O(n) for each insertion in the EventsBuffer
 			Num:  3000,
 			Size: scale.U64(10 * opt.MiB),

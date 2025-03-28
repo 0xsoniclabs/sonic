@@ -5,9 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/inter/pos"
+	"github.com/0xsoniclabs/consensus/consensus"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/golang/mock/gomock"
@@ -26,9 +25,9 @@ import (
 func TestEmitter(t *testing.T) {
 	cfg := DefaultConfig()
 	gValidators := makefakegenesis.GetFakeValidators(3)
-	vv := pos.NewBuilder()
+	vv := consensus.NewBuilder()
 	for _, v := range gValidators {
-		vv.Set(v.ID, pos.Weight(1))
+		vv.Set(v.ID, consensus.Weight(1))
 	}
 	validators := vv.Build()
 	cfg.Validator.ID = gValidators[0].ID
@@ -69,11 +68,11 @@ func TestEmitter(t *testing.T) {
 			AnyTimes()
 
 		external.EXPECT().GetEpochValidators().
-			Return(validators, idx.Epoch(1)).
+			Return(validators, consensus.Epoch(1)).
 			AnyTimes()
 
-		external.EXPECT().GetLastEvent(idx.Epoch(1), cfg.Validator.ID).
-			Return((*hash.Event)(nil)).
+		external.EXPECT().GetLastEvent(consensus.Epoch(1), cfg.Validator.ID).
+			Return((*consensus.EventHash)(nil)).
 			AnyTimes()
 
 		external.EXPECT().GetGenesisTime().

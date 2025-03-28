@@ -5,6 +5,7 @@ package counter_event_emitter
 
 import (
 	"errors"
+
 	"math/big"
 	"strings"
 

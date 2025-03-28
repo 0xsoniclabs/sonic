@@ -3,7 +3,7 @@ package verwatcher
 import (
 	"sync/atomic"
 
-	"github.com/0xsoniclabs/consensus/kvdb"
+	"github.com/0xsoniclabs/kvdb"
 
 	"github.com/0xsoniclabs/sonic/logger"
 )

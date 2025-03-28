@@ -4,10 +4,7 @@ import (
 	"crypto/sha256"
 	"math/big"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/inter/pos"
-	"github.com/0xsoniclabs/consensus/lachesis"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/ethereum/go-ethereum/rlp"
 
 	"github.com/0xsoniclabs/sonic/inter"
@@ -19,13 +16,13 @@ type ValidatorBlockState struct {
 	Uptime           inter.Timestamp
 	LastOnlineTime   inter.Timestamp
 	LastGasPowerLeft inter.GasPowerLeft
-	LastBlock        idx.Block
+	LastBlock        consensus.BlockID
 	DirtyGasRefund   uint64
 	Originated       *big.Int
 }
 
 type EventInfo struct {
-	ID           hash.Event
+	ID           consensus.EventHash
 	GasPowerLeft inter.GasPowerLeft
 	Time         inter.Timestamp
 }
@@ -36,17 +33,17 @@ type ValidatorEpochState struct {
 }
 
 type BlockCtx struct {
-	Idx     idx.Block
+	Idx     consensus.BlockID
 	Time    inter.Timestamp
-	Atropos hash.Event
+	Atropos consensus.EventHash
 }
 
 type BlockState struct {
 	LastBlock          BlockCtx
-	FinalizedStateRoot hash.Hash
+	FinalizedStateRoot consensus.Hash
 
 	EpochGas        uint64
-	EpochCheaters   lachesis.Cheaters
+	EpochCheaters   consensus.Cheaters
 	CheatersWritten uint32
 
 	ValidatorStates       []ValidatorBlockState
@@ -54,12 +51,12 @@ type BlockState struct {
 
 	DirtyRules *opera.Rules `rlp:"nil"` // nil means that there's no changes compared to epoch rules
 
-	AdvanceEpochs idx.Epoch
+	AdvanceEpochs consensus.Epoch
 }
 
 func (bs BlockState) Copy() BlockState {
 	cp := bs
-	cp.EpochCheaters = make(lachesis.Cheaters, len(bs.EpochCheaters))
+	cp.EpochCheaters = make(consensus.Cheaters, len(bs.EpochCheaters))
 	copy(cp.EpochCheaters, bs.EpochCheaters)
 	cp.ValidatorStates = make([]ValidatorBlockState, len(bs.ValidatorStates))
 	copy(cp.ValidatorStates, bs.ValidatorStates)
@@ -74,28 +71,28 @@ func (bs BlockState) Copy() BlockState {
 	return cp
 }
 
-func (bs *BlockState) GetValidatorState(id idx.ValidatorID, validators *pos.Validators) *ValidatorBlockState {
+func (bs *BlockState) GetValidatorState(id consensus.ValidatorID, validators *consensus.Validators) *ValidatorBlockState {
 	validatorIdx := validators.GetIdx(id)
 	return &bs.ValidatorStates[validatorIdx]
 }
 
-func (bs BlockState) Hash() hash.Hash {
+func (bs BlockState) Hash() consensus.Hash {
 	hasher := sha256.New()
 	err := rlp.Encode(hasher, &bs)
 	if err != nil {
 		panic("can't hash: " + err.Error())
 	}
-	return hash.BytesToHash(hasher.Sum(nil))
+	return consensus.BytesToHash(hasher.Sum(nil))
 }
 
 type EpochStateV1 struct {
-	Epoch          idx.Epoch
+	Epoch          consensus.Epoch
 	EpochStart     inter.Timestamp
 	PrevEpochStart inter.Timestamp
 
-	EpochStateRoot hash.Hash
+	EpochStateRoot consensus.Hash
 
-	Validators        *pos.Validators
+	Validators        *consensus.Validators
 	ValidatorStates   []ValidatorEpochState
 	ValidatorProfiles ValidatorProfiles
 
@@ -104,7 +101,7 @@ type EpochStateV1 struct {
 
 type EpochState EpochStateV1
 
-func (es *EpochState) GetValidatorState(id idx.ValidatorID, validators *pos.Validators) *ValidatorEpochState {
+func (es *EpochState) GetValidatorState(id consensus.ValidatorID, validators *consensus.Validators) *ValidatorEpochState {
 	validatorIdx := validators.GetIdx(id)
 	return &es.ValidatorStates[validatorIdx]
 }
@@ -113,7 +110,7 @@ func (es EpochState) Duration() inter.Timestamp {
 	return es.EpochStart - es.PrevEpochStart
 }
 
-func (es EpochState) Hash() hash.Hash {
+func (es EpochState) Hash() consensus.Hash {
 	var hashed interface{}
 	if es.Rules.Upgrades.London {
 		hashed = &es
@@ -139,7 +136,7 @@ func (es EpochState) Hash() hash.Hash {
 	if err != nil {
 		panic("can't hash: " + err.Error())
 	}
-	return hash.BytesToHash(hasher.Sum(nil))
+	return consensus.BytesToHash(hasher.Sum(nil))
 }
 
 func (es EpochState) Copy() EpochState {

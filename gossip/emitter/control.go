@@ -3,19 +3,19 @@ package emitter
 import (
 	"time"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/inter/pos"
+	"github.com/0xsoniclabs/consensus/consensus"
+
 	"github.com/0xsoniclabs/sonic/emitter/ancestor"
 	"github.com/0xsoniclabs/sonic/utils/piecefunc"
 
 	"github.com/0xsoniclabs/sonic/opera"
 )
 
-func scalarUpdMetric(diff idx.Event, weight pos.Weight, totalWeight pos.Weight) ancestor.Metric {
+func scalarUpdMetric(diff consensus.Seq, weight consensus.Weight, totalWeight consensus.Weight) ancestor.Metric {
 	return ancestor.Metric(scalarUpdMetricF(uint64(diff)*piecefunc.DecimalUnit)) * ancestor.Metric(weight) / ancestor.Metric(totalWeight)
 }
 
-func updMetric(thresholdValue, cur, upd idx.Event, validatorIdx idx.Validator, validators *pos.Validators) ancestor.Metric {
+func updMetric(thresholdValue, cur, upd consensus.Seq, validatorIdx consensus.ValidatorIndex, validators *consensus.Validators) ancestor.Metric {
 	if upd <= thresholdValue || upd <= cur {
 		return 0
 	}

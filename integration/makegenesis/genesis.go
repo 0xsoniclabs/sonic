@@ -10,10 +10,11 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/0xsoniclabs/consensus/consensus"
+
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/ethereum/go-ethereum/core/tracing"
 
-	"github.com/0xsoniclabs/consensus/hash"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -108,7 +109,7 @@ func (b *GenesisBuilder) TotalSupply() *big.Int {
 	return b.totalSupply
 }
 
-func (b *GenesisBuilder) CurrentHash() hash.Hash {
+func (b *GenesisBuilder) CurrentHash() consensus.Hash {
 	er := b.epochs[len(b.epochs)-1]
 	return er.Hash()
 }
@@ -206,7 +207,7 @@ func (b *GenesisBuilder) ExecuteGenesisTxs(blockProc BlockProc, genesisTxs types
 	blockCtx := iblockproc.BlockCtx{
 		Idx:     bs.LastBlock.Idx + 1,
 		Time:    bs.LastBlock.Time + 1,
-		Atropos: hash.Event{},
+		Atropos: consensus.EventHash{},
 	}
 
 	sealer := blockProc.SealerModule.Start(blockCtx, bs, es)
@@ -248,7 +249,7 @@ func (b *GenesisBuilder) ExecuteGenesisTxs(blockProc BlockProc, genesisTxs types
 		return fmt.Errorf("genesis transaction is skipped (%v)", skippedTxs)
 	}
 	bs = txListener.Finalize()
-	bs.FinalizedStateRoot = hash.Hash(evmBlock.Root)
+	bs.FinalizedStateRoot = consensus.Hash(evmBlock.Root)
 
 	bs.LastBlock = blockCtx
 

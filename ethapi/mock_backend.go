@@ -11,12 +11,12 @@ package ethapi
 
 import (
 	context "context"
+	"github.com/0xsoniclabs/consensus/consensus"
+
 	big "math/big"
 	reflect "reflect"
 	time "time"
 
-	hash "github.com/0xsoniclabs/consensus/hash"
-	idx "github.com/0xsoniclabs/consensus/inter/idx"
 	evmcore "github.com/0xsoniclabs/sonic/evmcore"
 	inter "github.com/0xsoniclabs/sonic/inter"
 	iblockproc "github.com/0xsoniclabs/sonic/inter/iblockproc"
@@ -142,10 +142,10 @@ func (mr *MockBackendMockRecorder) CurrentBlock() *gomock.Call {
 }
 
 // CurrentEpoch mocks base method.
-func (m *MockBackend) CurrentEpoch(ctx context.Context) idx.Epoch {
+func (m *MockBackend) CurrentEpoch(ctx context.Context) consensus.Epoch {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CurrentEpoch", ctx)
-	ret0, _ := ret[0].(idx.Epoch)
+	ret0, _ := ret[0].(consensus.Epoch)
 	return ret0
 }
 
@@ -170,10 +170,10 @@ func (mr *MockBackendMockRecorder) ExtRPCEnabled() *gomock.Call {
 }
 
 // GetDowntime mocks base method.
-func (m *MockBackend) GetDowntime(ctx context.Context, vid idx.ValidatorID) (idx.Block, inter.Timestamp, error) {
+func (m *MockBackend) GetDowntime(ctx context.Context, vid consensus.ValidatorID) (consensus.BlockID, inter.Timestamp, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetDowntime", ctx, vid)
-	ret0, _ := ret[0].(idx.Block)
+	ret0, _ := ret[0].(consensus.BlockID)
 	ret1, _ := ret[1].(inter.Timestamp)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
@@ -248,10 +248,10 @@ func (mr *MockBackendMockRecorder) GetEventPayload(ctx, shortEventID any) *gomoc
 }
 
 // GetHeads mocks base method.
-func (m *MockBackend) GetHeads(ctx context.Context, epoch rpc.BlockNumber) (hash.Events, error) {
+func (m *MockBackend) GetHeads(ctx context.Context, epoch rpc.BlockNumber) (consensus.EventHashes, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetHeads", ctx, epoch)
-	ret0, _ := ret[0].(hash.Events)
+	ret0, _ := ret[0].(consensus.EventHashes)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -263,7 +263,7 @@ func (mr *MockBackendMockRecorder) GetHeads(ctx, epoch any) *gomock.Call {
 }
 
 // GetOriginatedFee mocks base method.
-func (m *MockBackend) GetOriginatedFee(ctx context.Context, vid idx.ValidatorID) (*big.Int, error) {
+func (m *MockBackend) GetOriginatedFee(ctx context.Context, vid consensus.ValidatorID) (*big.Int, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetOriginatedFee", ctx, vid)
 	ret0, _ := ret[0].(*big.Int)
@@ -354,7 +354,7 @@ func (mr *MockBackendMockRecorder) GetTransaction(ctx, txHash any) *gomock.Call 
 }
 
 // GetUptime mocks base method.
-func (m *MockBackend) GetUptime(ctx context.Context, vid idx.ValidatorID) (*big.Int, error) {
+func (m *MockBackend) GetUptime(ctx context.Context, vid consensus.ValidatorID) (*big.Int, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetUptime", ctx, vid)
 	ret0, _ := ret[0].(*big.Int)
@@ -483,10 +483,10 @@ func (mr *MockBackendMockRecorder) RPCTxFeeCap() *gomock.Call {
 }
 
 // ResolveRpcBlockNumberOrHash mocks base method.
-func (m *MockBackend) ResolveRpcBlockNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (idx.Block, error) {
+func (m *MockBackend) ResolveRpcBlockNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (consensus.BlockID, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ResolveRpcBlockNumberOrHash", ctx, blockNrOrHash)
-	ret0, _ := ret[0].(idx.Block)
+	ret0, _ := ret[0].(consensus.BlockID)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

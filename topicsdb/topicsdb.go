@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/kvdb"
+	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/kvdb"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 )
@@ -19,7 +19,7 @@ var (
 )
 
 type Index interface {
-	FindInBlocks(ctx context.Context, from, to idx.Block, pattern [][]common.Hash) (logs []*types.Log, err error)
+	FindInBlocks(ctx context.Context, from, to consensus.BlockID, pattern [][]common.Hash) (logs []*types.Log, err error)
 	Push(recs ...*types.Log) error
 	Close()
 

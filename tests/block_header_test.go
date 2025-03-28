@@ -205,7 +205,7 @@ func testHeaders_ParentHashCoversParentContent(t *testing.T, headers []*types.He
 		"invalid parent hash for block 0",
 	)
 
-	// All other blocks have a parent hash that matches the previous block's hash.
+	// All other blocks have a parent hash that matches the previous block's consensus.
 	for i := 1; i < len(headers); i++ {
 		require.Equal(
 			headers[i].ParentHash,

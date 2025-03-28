@@ -3,7 +3,8 @@ package cert
 import (
 	"fmt"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
+
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/bls"
 	"github.com/0xsoniclabs/sonic/scc/cert/pb"
@@ -134,7 +135,7 @@ func (s *BlockStatement) deserialize(data []byte) (*pb.AggregatedSignature, erro
 		statement: statement{
 			ChainId: pb.ChainId,
 		},
-		Number:    idx.Block(pb.Number),
+		Number:    consensus.BlockID(pb.Number),
 		Hash:      common.Hash(pb.Hash),
 		StateRoot: common.Hash(pb.StateRoot),
 	}

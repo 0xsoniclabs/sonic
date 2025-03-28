@@ -3,12 +3,12 @@ package gossip
 import (
 	"crypto/sha256"
 
-	"github.com/0xsoniclabs/consensus/hash"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/ethereum/go-ethereum/common"
 )
 
 // computePrevRandao computes the prevRandao from event hashes.
-func computePrevRandao(events []hash.Event) common.Hash {
+func computePrevRandao(events []consensus.EventHash) common.Hash {
 	bts := [24]byte{}
 	for _, event := range events {
 		for i := 0; i < 24; i++ {

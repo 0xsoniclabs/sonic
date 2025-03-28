@@ -3,13 +3,14 @@ package scc
 import (
 	"testing"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
+
 	"github.com/stretchr/testify/require"
 )
 
 func TestPeriod_GetPeriod_MapsBlocksToCorrectPeriod(t *testing.T) {
 	tests := []struct {
-		block  idx.Block
+		block  consensus.BlockID
 		period Period
 	}{
 		{0, 0},
@@ -28,7 +29,7 @@ func TestPeriod_GetPeriod_MapsBlocksToCorrectPeriod(t *testing.T) {
 }
 
 func TestPeriod_IsFirstBlockInPeriod_IdentifiesFirstBlock(t *testing.T) {
-	for i := idx.Block(0); i < BLOCKS_PER_PERIOD*10; i++ {
+	for i := consensus.BlockID(0); i < BLOCKS_PER_PERIOD*10; i++ {
 		cur := GetPeriod(i)
 		next := GetPeriod(i + 1)
 		if cur != next {
@@ -38,7 +39,7 @@ func TestPeriod_IsFirstBlockInPeriod_IdentifiesFirstBlock(t *testing.T) {
 }
 
 func TestPeriod_IsLastBlockInPeriod_IdentifiesLastBlock(t *testing.T) {
-	for i := idx.Block(0); i < BLOCKS_PER_PERIOD*10; i++ {
+	for i := consensus.BlockID(0); i < BLOCKS_PER_PERIOD*10; i++ {
 		cur := GetPeriod(i)
 		next := GetPeriod(i + 1)
 		if cur != next {

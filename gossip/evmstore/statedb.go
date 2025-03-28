@@ -4,18 +4,18 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/0xsoniclabs/consensus/consensus"
+
 	cc "github.com/0xsoniclabs/carmen/go/common"
 	carmen "github.com/0xsoniclabs/carmen/go/state"
 	_ "github.com/0xsoniclabs/carmen/go/state/gostate"
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/utils/caution"
 	"github.com/ethereum/go-ethereum/common"
 )
 
 // GetLiveStateDb obtains StateDB for block processing - the live writable state
-func (s *Store) GetLiveStateDb(stateRoot hash.Hash) (state.StateDB, error) {
+func (s *Store) GetLiveStateDb(stateRoot consensus.Hash) (state.StateDB, error) {
 	if s.liveStateDb == nil {
 		return nil, fmt.Errorf("unable to get live StateDb - EvmStore is not open")
 	}
@@ -61,7 +61,7 @@ func (s *Store) GetRpcStateDb(blockNum *big.Int, stateRoot common.Hash) (state.S
 }
 
 // CheckLiveStateHash returns if the hash of the current live StateDB hash matches (and fullsync is possible)
-func (s *Store) CheckLiveStateHash(blockNum idx.Block, root hash.Hash) error {
+func (s *Store) CheckLiveStateHash(blockNum consensus.BlockID, root consensus.Hash) error {
 	if s.liveStateDb == nil {
 		return fmt.Errorf("unable to get live state - EvmStore is not open")
 	}
@@ -73,7 +73,7 @@ func (s *Store) CheckLiveStateHash(blockNum idx.Block, root hash.Hash) error {
 }
 
 // CheckArchiveStateHash returns if the hash of the given archive StateDB hash matches
-func (s *Store) CheckArchiveStateHash(blockNum idx.Block, root hash.Hash) (err error) {
+func (s *Store) CheckArchiveStateHash(blockNum consensus.BlockID, root consensus.Hash) (err error) {
 	if s.carmenState == nil {
 		return fmt.Errorf("unable to get live state - EvmStore is not open")
 	}

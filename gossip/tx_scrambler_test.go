@@ -4,13 +4,14 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
-	"github.com/0xsoniclabs/sonic/gossip/emitter/mock"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/golang/mock/gomock"
 	"math/big"
 	"math/rand/v2"
 	"slices"
 	"testing"
+
+	"github.com/0xsoniclabs/sonic/gossip/emitter/mock"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/golang/mock/gomock"
 
 	"github.com/ethereum/go-ethereum/common"
 )

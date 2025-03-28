@@ -3,37 +3,36 @@ package inter
 import (
 	"crypto/sha256"
 
-	"github.com/0xsoniclabs/consensus/common/bigendian"
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/consensus/utils/byteutils"
 )
 
 type LlrBlockVotes struct {
-	Start idx.Block
-	Epoch idx.Epoch
-	Votes []hash.Hash
+	Start consensus.BlockID
+	Epoch consensus.Epoch
+	Votes []consensus.Hash
 }
 
-func (bvs LlrBlockVotes) LastBlock() idx.Block {
-	return bvs.Start + idx.Block(len(bvs.Votes)) - 1
+func (bvs LlrBlockVotes) LastBlock() consensus.BlockID {
+	return bvs.Start + consensus.BlockID(len(bvs.Votes)) - 1
 }
 
 type LlrEpochVote struct {
-	Epoch idx.Epoch
-	Vote  hash.Hash
+	Epoch consensus.Epoch
+	Vote  consensus.Hash
 }
 
 type LlrSignedBlockVotes struct {
 	Signed                       SignedEventLocator
-	TxsAndMisbehaviourProofsHash hash.Hash
-	EpochVoteHash                hash.Hash
+	TxsAndMisbehaviourProofsHash consensus.Hash
+	EpochVoteHash                consensus.Hash
 	Val                          LlrBlockVotes
 }
 
 type LlrSignedEpochVote struct {
 	Signed                       SignedEventLocator
-	TxsAndMisbehaviourProofsHash hash.Hash
-	BlockVotesHash               hash.Hash
+	TxsAndMisbehaviourProofsHash consensus.Hash
+	BlockVotesHash               consensus.Hash
 	Val                          LlrEpochVote
 }
 
@@ -45,30 +44,30 @@ func (bvs LlrSignedBlockVotes) Size() uint64 {
 	return bvs.Signed.Size() + uint64(len(bvs.Val.Votes))*32 + 32*2 + 8 + 4
 }
 
-func (ers LlrEpochVote) Hash() hash.Hash {
+func (ers LlrEpochVote) Hash() consensus.Hash {
 	hasher := sha256.New()
 	hasher.Write(ers.Epoch.Bytes())
 	hasher.Write(ers.Vote.Bytes())
-	return hash.BytesToHash(hasher.Sum(nil))
+	return consensus.BytesToHash(hasher.Sum(nil))
 }
 
-func (bvs LlrBlockVotes) Hash() hash.Hash {
+func (bvs LlrBlockVotes) Hash() consensus.Hash {
 	hasher := sha256.New()
 	hasher.Write(bvs.Start.Bytes())
 	hasher.Write(bvs.Epoch.Bytes())
-	hasher.Write(bigendian.Uint32ToBytes(uint32(len(bvs.Votes))))
+	hasher.Write(byteutils.Uint32ToBigEndian(uint32(len(bvs.Votes))))
 	for _, bv := range bvs.Votes {
 		hasher.Write(bv.Bytes())
 	}
-	return hash.BytesToHash(hasher.Sum(nil))
+	return consensus.BytesToHash(hasher.Sum(nil))
 }
 
-func (bvs LlrSignedBlockVotes) CalcPayloadHash() hash.Hash {
-	return hash.Of(bvs.TxsAndMisbehaviourProofsHash.Bytes(), hash.Of(bvs.EpochVoteHash.Bytes(), bvs.Val.Hash().Bytes()).Bytes())
+func (bvs LlrSignedBlockVotes) CalcPayloadHash() consensus.Hash {
+	return consensus.Of(bvs.TxsAndMisbehaviourProofsHash.Bytes(), consensus.Of(bvs.EpochVoteHash.Bytes(), bvs.Val.Hash().Bytes()).Bytes())
 }
 
-func (ev LlrSignedEpochVote) CalcPayloadHash() hash.Hash {
-	return hash.Of(ev.TxsAndMisbehaviourProofsHash.Bytes(), hash.Of(ev.Val.Hash().Bytes(), ev.BlockVotesHash.Bytes()).Bytes())
+func (ev LlrSignedEpochVote) CalcPayloadHash() consensus.Hash {
+	return consensus.Of(ev.TxsAndMisbehaviourProofsHash.Bytes(), consensus.Of(ev.Val.Hash().Bytes(), ev.BlockVotesHash.Bytes()).Bytes())
 }
 
 func (ev LlrSignedEpochVote) Size() uint64 {

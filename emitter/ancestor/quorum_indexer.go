@@ -4,37 +4,35 @@ import (
 	"math"
 	"sort"
 
-	"github.com/0xsoniclabs/consensus/abft/dagidx"
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/dag"
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/inter/pos"
+	"github.com/0xsoniclabs/consensus/consensus"
+
+	"github.com/0xsoniclabs/consensus/dagidx"
 	"github.com/0xsoniclabs/sonic/utils/wthreshold"
 )
 
 type DagIndexQ interface {
 	dagidx.VectorClock
 }
-type DiffMetricFn func(thresholdValue, current, update idx.Event, validatorIdx idx.Validator) Metric
+type DiffMetricFn func(thresholdValue, current, update consensus.Seq, validatorIdx consensus.ValidatorIndex) Metric
 
 type QuorumIndexer struct {
 	dagi       DagIndexQ
-	validators *pos.Validators
+	validators *consensus.Validators
 
 	globalMatrix             Matrix
-	selfParentSeqs           []idx.Event
-	globalThresholdValueSeqs []idx.Event
+	selfParentSeqs           []consensus.Seq
+	globalThresholdValueSeqs []consensus.Seq
 	dirty                    bool
 	searchStrategy           SearchStrategy
 
 	diffMetricFn DiffMetricFn
 }
 
-func NewQuorumIndexer(validators *pos.Validators, dagi DagIndexQ, diffMetricFn DiffMetricFn) *QuorumIndexer {
+func NewQuorumIndexer(validators *consensus.Validators, dagi DagIndexQ, diffMetricFn DiffMetricFn) *QuorumIndexer {
 	return &QuorumIndexer{
 		globalMatrix:             NewMatrix(validators.Len(), validators.Len()),
-		globalThresholdValueSeqs: make([]idx.Event, validators.Len()),
-		selfParentSeqs:           make([]idx.Event, validators.Len()),
+		globalThresholdValueSeqs: make([]consensus.Seq, validators.Len()),
+		selfParentSeqs:           make([]consensus.Seq, validators.Len()),
 		dagi:                     dagi,
 		validators:               validators,
 		diffMetricFn:             diffMetricFn,
@@ -43,23 +41,23 @@ func NewQuorumIndexer(validators *pos.Validators, dagi DagIndexQ, diffMetricFn D
 }
 
 type Matrix struct {
-	buffer  []idx.Event
-	columns idx.Validator
+	buffer  []consensus.Seq
+	columns consensus.ValidatorIndex
 }
 
-func NewMatrix(rows, cols idx.Validator) Matrix {
+func NewMatrix(rows, cols consensus.ValidatorIndex) Matrix {
 	return Matrix{
-		buffer:  make([]idx.Event, rows*cols),
+		buffer:  make([]consensus.Seq, rows*cols),
 		columns: cols,
 	}
 }
 
-func (m Matrix) Row(i idx.Validator) []idx.Event {
+func (m Matrix) Row(i consensus.ValidatorIndex) []consensus.Seq {
 	return m.buffer[i*m.columns : (i+1)*m.columns]
 }
 
 func (m Matrix) Clone() Matrix {
-	buffer := make([]idx.Event, len(m.buffer))
+	buffer := make([]consensus.Seq, len(m.buffer))
 	copy(buffer, m.buffer)
 	return Matrix{
 		buffer,
@@ -67,7 +65,7 @@ func (m Matrix) Clone() Matrix {
 	}
 }
 
-func seqOf(seq dagidx.Seq) idx.Event {
+func seqOf(seq dagidx.Seq) consensus.Seq {
 	if seq.IsForkDetected() {
 		return math.MaxUint32/2 - 1
 	}
@@ -75,19 +73,19 @@ func seqOf(seq dagidx.Seq) idx.Event {
 }
 
 type weightedSeq struct {
-	seq    idx.Event
-	weight pos.Weight
+	seq    consensus.Seq
+	weight consensus.Weight
 }
 
-func (ws weightedSeq) Weight() pos.Weight {
+func (ws weightedSeq) Weight() consensus.Weight {
 	return ws.weight
 }
 
-func (h *QuorumIndexer) ProcessEvent(event dag.Event, selfEvent bool) {
+func (h *QuorumIndexer) ProcessEvent(event consensus.Event, selfEvent bool) {
 	vecClock := h.dagi.GetMergedHighestBefore(event.ID())
 	creatorIdx := h.validators.GetIdx(event.Creator())
 	// update global matrix
-	for validatorIdx := idx.Validator(0); validatorIdx < h.validators.Len(); validatorIdx++ {
+	for validatorIdx := consensus.ValidatorIndex(0); validatorIdx < h.validators.Len(); validatorIdx++ {
 		seq := seqOf(vecClock.Get(validatorIdx))
 		h.globalMatrix.Row(validatorIdx)[creatorIdx] = seq
 		if selfEvent {
@@ -99,12 +97,12 @@ func (h *QuorumIndexer) ProcessEvent(event dag.Event, selfEvent bool) {
 
 func (h *QuorumIndexer) recacheState() {
 	// update thresholdValue seqs
-	for validatorIdx := idx.Validator(0); validatorIdx < h.validators.Len(); validatorIdx++ {
+	for validatorIdx := consensus.ValidatorIndex(0); validatorIdx < h.validators.Len(); validatorIdx++ {
 		pairs := make([]wthreshold.WeightedValue, h.validators.Len())
 		for i := range pairs {
 			pairs[i] = weightedSeq{
 				seq:    h.globalMatrix.Row(validatorIdx)[i],
-				weight: h.validators.GetWeightByIdx(idx.Validator(i)),
+				weight: h.validators.GetWeightByIdx(consensus.ValidatorIndex(i)),
 			}
 		}
 		sort.Slice(pairs, func(i, j int) bool {
@@ -118,7 +116,7 @@ func (h *QuorumIndexer) recacheState() {
 	h.dirty = false
 }
 
-func (h *QuorumIndexer) GetMetricOf(parents hash.Events) Metric {
+func (h *QuorumIndexer) GetMetricOf(parents consensus.EventHashes) Metric {
 	if h.dirty {
 		h.recacheState()
 	}
@@ -127,10 +125,10 @@ func (h *QuorumIndexer) GetMetricOf(parents hash.Events) Metric {
 		vecClock[i] = h.dagi.GetMergedHighestBefore(parent)
 	}
 	var metric Metric
-	for validatorIdx := idx.Validator(0); validatorIdx < h.validators.Len(); validatorIdx++ {
+	for validatorIdx := consensus.ValidatorIndex(0); validatorIdx < h.validators.Len(); validatorIdx++ {
 
 		//find the Highest of all the parents
-		var update idx.Event
+		var update consensus.Seq
 		for i, _ := range parents {
 			if seqOf(vecClock[i].Get(validatorIdx)) > update {
 				update = seqOf(vecClock[i].Get(validatorIdx))
@@ -150,7 +148,7 @@ func (h *QuorumIndexer) SearchStrategy() SearchStrategy {
 	return h.searchStrategy
 }
 
-func (h *QuorumIndexer) GetGlobalThresholdValueSeqs() []idx.Event {
+func (h *QuorumIndexer) GetGlobalThresholdValueSeqs() []consensus.Seq {
 	if h.dirty {
 		h.recacheState()
 	}
@@ -161,6 +159,6 @@ func (h *QuorumIndexer) GetGlobalMatrix() Matrix {
 	return h.globalMatrix
 }
 
-func (h *QuorumIndexer) GetSelfParentSeqs() []idx.Event {
+func (h *QuorumIndexer) GetSelfParentSeqs() []consensus.Seq {
 	return h.selfParentSeqs
 }

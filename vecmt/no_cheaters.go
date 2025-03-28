@@ -3,12 +3,12 @@ package vecmt
 import (
 	"errors"
 
-	"github.com/0xsoniclabs/consensus/hash"
+	"github.com/0xsoniclabs/consensus/consensus"
 )
 
 // NoCheaters excludes events which are observed by selfParents as cheaters.
 // Called by emitter to exclude cheater's events from potential parents list.
-func (vi *Index) NoCheaters(selfParent *hash.Event, options hash.Events) hash.Events {
+func (vi *Index) NoCheaters(selfParent *consensus.EventHash, options consensus.EventHashes) consensus.EventHashes {
 	if selfParent == nil {
 		return options
 	}
@@ -20,7 +20,7 @@ func (vi *Index) NoCheaters(selfParent *hash.Event, options hash.Events) hash.Ev
 
 	// no need to merge, because every branch is marked by IsForkDetected if fork is observed
 	highest := vi.Engine.GetHighestBefore(*selfParent)
-	filtered := make(hash.Events, 0, len(options))
+	filtered := make(consensus.EventHashes, 0, len(options))
 	for _, id := range options {
 		e := vi.getEvent(id)
 		if e == nil {

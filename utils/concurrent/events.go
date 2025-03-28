@@ -3,15 +3,15 @@ package concurrent
 import (
 	"sync"
 
-	"github.com/0xsoniclabs/consensus/hash"
+	"github.com/0xsoniclabs/consensus/consensus"
 )
 
 type EventsSet struct {
 	sync.RWMutex
-	Val hash.EventsSet
+	Val consensus.EventHashSet
 }
 
-func WrapEventsSet(v hash.EventsSet) *EventsSet {
+func WrapEventsSet(v consensus.EventHashSet) *EventsSet {
 	return &EventsSet{
 		RWMutex: sync.RWMutex{},
 		Val:     v,

@@ -6,7 +6,8 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
@@ -22,7 +23,7 @@ import (
 // defaultBlobGasPrice Sonic does not support blobs, so this price is constant
 var defaultBlobGasPrice = big.NewInt(1) // TODO issue #147
 
-func indexRawReceipts(s *Store, receiptsForStorage []*types.ReceiptForStorage, txs types.Transactions, blockIdx idx.Block, blockHash common.Hash, config *params.ChainConfig, time uint64, baseFee *big.Int, blobGasPrice *big.Int) (types.Receipts, error) {
+func indexRawReceipts(s *Store, receiptsForStorage []*types.ReceiptForStorage, txs types.Transactions, blockIdx consensus.BlockID, blockHash common.Hash, config *params.ChainConfig, time uint64, baseFee *big.Int, blobGasPrice *big.Int) (types.Receipts, error) {
 	s.evm.SetRawReceipts(blockIdx, receiptsForStorage)
 
 	receipts, err := evmstore.UnwrapStorageReceipts(receiptsForStorage, blockIdx, config, blockHash, time, baseFee, blobGasPrice, txs)

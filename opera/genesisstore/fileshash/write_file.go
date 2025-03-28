@@ -6,8 +6,8 @@ import (
 	hasher "hash"
 	"io"
 
-	"github.com/0xsoniclabs/consensus/common/bigendian"
-	"github.com/0xsoniclabs/consensus/hash"
+	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/consensus/utils/byteutils"
 
 	"github.com/0xsoniclabs/sonic/utils/ioread"
 )
@@ -150,34 +150,34 @@ func (w *Writer) readFromTmpPieceByPiece(destructive bool, fn func([]byte) error
 	return nil
 }
 
-func (w *Writer) Root() hash.Hash {
-	hashes := hash.Hashes{}
+func (w *Writer) Root() consensus.Hash {
+	hashes := consensus.Hashes{}
 	for _, tmp := range w.tmps {
-		h := hash.BytesToHash(tmp.h.Sum(nil))
+		h := consensus.BytesToHash(tmp.h.Sum(nil))
 		hashes = append(hashes, h)
 	}
 	return calcHashesRoot(hashes, w.pieceSize, w.size)
 }
 
-func (w *Writer) Flush() (hash.Hash, error) {
+func (w *Writer) Flush() (consensus.Hash, error) {
 	// write piece
-	_, err := w.backend.Write(bigendian.Uint32ToBytes(uint32(w.pieceSize)))
+	_, err := w.backend.Write(byteutils.Uint32ToBigEndian(uint32(w.pieceSize)))
 	if err != nil {
-		return hash.Hash{}, err
+		return consensus.Hash{}, err
 	}
 	// write size
-	_, err = w.backend.Write(bigendian.Uint64ToBytes(w.size))
+	_, err = w.backend.Write(byteutils.Uint64ToBigEndian(w.size))
 	if err != nil {
-		return hash.Hash{}, err
+		return consensus.Hash{}, err
 	}
 	// write piece hashes
-	hashes := hash.Hashes{}
+	hashes := consensus.Hashes{}
 	for _, tmp := range w.tmps {
-		h := hash.BytesToHash(tmp.h.Sum(nil))
+		h := consensus.BytesToHash(tmp.h.Sum(nil))
 		hashes = append(hashes, h)
 		_, err = w.backend.Write(h[:])
 		if err != nil {
-			return hash.Hash{}, err
+			return consensus.Hash{}, err
 		}
 	}
 	root := calcHashesRoot(hashes, w.pieceSize, w.size)

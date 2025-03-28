@@ -5,6 +5,7 @@ package blobbasefee
 
 import (
 	"errors"
+
 	"math/big"
 	"strings"
 

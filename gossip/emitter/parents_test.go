@@ -3,10 +3,8 @@ package emitter
 import (
 	"testing"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/inter/pos"
-	"github.com/0xsoniclabs/consensus/kvdb/memorydb"
+	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/kvdb/memorydb"
 	"github.com/0xsoniclabs/sonic/emitter/ancestor"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/mock"
 	"github.com/0xsoniclabs/sonic/vecmt"
@@ -22,8 +20,8 @@ func TestChooseParents_NoParentsForGenesisEvent(t *testing.T) {
 		fixedPriceBaseFeeSource{},
 	)
 
-	epoch := idx.Epoch(1)
-	validatorId := idx.ValidatorID(1)
+	epoch := consensus.Epoch(1)
+	validatorId := consensus.ValidatorID(1)
 
 	external.EXPECT().GetLastEvent(epoch, validatorId)
 
@@ -50,19 +48,19 @@ func TestChooseParents_NonGenesisEventMustHaveOneSelfParent(t *testing.T) {
 	em.maxParents = 3
 	em.payloadIndexer = ancestor.NewPayloadIndexer(3)
 
-	epoch := idx.Epoch(1)
-	validatorId := idx.ValidatorID(1)
+	epoch := consensus.Epoch(1)
+	validatorId := consensus.ValidatorID(1)
 
 	validatorIndex := vecmt.NewIndex(nil, vecmt.LiteConfig())
-	validatorIndex.Reset(pos.ArrayToValidators(
-		[]idx.ValidatorID{1, 2},
-		[]pos.Weight{1, 1},
+	validatorIndex.Reset(consensus.ArrayToValidators(
+		[]consensus.ValidatorID{1, 2},
+		[]consensus.Weight{1, 1},
 	), memorydb.New(), nil)
 
-	selfParentHash := hash.Event{1}
+	selfParentHash := consensus.EventHash{1}
 
 	external.EXPECT().GetLastEvent(epoch, validatorId).Return(&selfParentHash)
-	external.EXPECT().GetHeads(epoch).Return(hash.Events{{2}, {3}})
+	external.EXPECT().GetHeads(epoch).Return(consensus.EventHashes{{2}, {3}})
 	external.EXPECT().DagIndex().Return(validatorIndex)
 
 	selfParent, parents, ok := em.chooseParents(epoch, validatorId)

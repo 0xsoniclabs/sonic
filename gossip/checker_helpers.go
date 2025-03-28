@@ -3,8 +3,7 @@ package gossip
 import (
 	"sync/atomic"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/inter/pos"
+	"github.com/0xsoniclabs/consensus/consensus"
 
 	"github.com/0xsoniclabs/sonic/eventcheck/gaspowercheck"
 	"github.com/0xsoniclabs/sonic/inter"
@@ -23,7 +22,7 @@ func (r *GasPowerCheckReader) GetValidationContext() *gaspowercheck.ValidationCo
 }
 
 // NewGasPowerContext reads current validation context for gaspowercheck
-func NewGasPowerContext(s *Store, validators *pos.Validators, epoch idx.Epoch, cfg opera.EconomyRules) *gaspowercheck.ValidationContext {
+func NewGasPowerContext(s *Store, validators *consensus.Validators, epoch consensus.Epoch, cfg opera.EconomyRules) *gaspowercheck.ValidationContext {
 	// engineMu is locked here
 
 	short := cfg.ShortGasPower
@@ -67,8 +66,8 @@ func NewGasPowerContext(s *Store, validators *pos.Validators, epoch idx.Epoch, c
 
 // ValidatorsPubKeys stores info to authenticate validators
 type ValidatorsPubKeys struct {
-	Epoch   idx.Epoch
-	PubKeys map[idx.ValidatorID]validatorpk.PubKey
+	Epoch   consensus.Epoch
+	PubKeys map[consensus.ValidatorID]validatorpk.PubKey
 }
 
 // HeavyCheckReader is a helper to run heavy power checks
@@ -78,14 +77,14 @@ type HeavyCheckReader struct {
 }
 
 // GetEpochPubKeys is safe for concurrent use
-func (r *HeavyCheckReader) GetEpochPubKeys() (map[idx.ValidatorID]validatorpk.PubKey, idx.Epoch) {
+func (r *HeavyCheckReader) GetEpochPubKeys() (map[consensus.ValidatorID]validatorpk.PubKey, consensus.Epoch) {
 	auth := r.Pubkeys.Load().(*ValidatorsPubKeys)
 
 	return auth.PubKeys, auth.Epoch
 }
 
 // GetEpochPubKeysOf is safe for concurrent use
-func (r *HeavyCheckReader) GetEpochPubKeysOf(epoch idx.Epoch) map[idx.ValidatorID]validatorpk.PubKey {
+func (r *HeavyCheckReader) GetEpochPubKeysOf(epoch consensus.Epoch) map[consensus.ValidatorID]validatorpk.PubKey {
 	auth := readEpochPubKeys(r.Store, epoch)
 	if auth == nil {
 		return nil
@@ -94,7 +93,7 @@ func (r *HeavyCheckReader) GetEpochPubKeysOf(epoch idx.Epoch) map[idx.ValidatorI
 }
 
 // GetEpochBlockStart is safe for concurrent use
-func (r *HeavyCheckReader) GetEpochBlockStart(epoch idx.Epoch) idx.Block {
+func (r *HeavyCheckReader) GetEpochBlockStart(epoch consensus.Epoch) consensus.BlockID {
 	bs, _ := r.Store.GetHistoryBlockEpochState(epoch)
 	if bs == nil {
 		return 0
@@ -103,12 +102,12 @@ func (r *HeavyCheckReader) GetEpochBlockStart(epoch idx.Epoch) idx.Block {
 }
 
 // readEpochPubKeys reads epoch pubkeys
-func readEpochPubKeys(s *Store, epoch idx.Epoch) *ValidatorsPubKeys {
+func readEpochPubKeys(s *Store, epoch consensus.Epoch) *ValidatorsPubKeys {
 	es := s.GetHistoryEpochState(epoch)
 	if es == nil {
 		return nil
 	}
-	var pubkeys = make(map[idx.ValidatorID]validatorpk.PubKey, len(es.ValidatorProfiles))
+	var pubkeys = make(map[consensus.ValidatorID]validatorpk.PubKey, len(es.ValidatorProfiles))
 	for id, profile := range es.ValidatorProfiles {
 		pubkeys[id] = profile.PubKey
 	}

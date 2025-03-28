@@ -7,14 +7,13 @@ import (
 	"math/rand/v2"
 	"testing"
 
+	"github.com/0xsoniclabs/consensus/consensus"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
-
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
 )
 
 func emptyEvent(ver uint8) EventPayload {
@@ -23,7 +22,7 @@ func emptyEvent(ver uint8) EventPayload {
 	if ver == 0 {
 		empty.SetEpoch(256)
 	}
-	empty.SetParents(hash.Events{})
+	empty.SetParents(consensus.EventHashes{})
 	empty.SetExtra([]byte{})
 	empty.SetTxs(types.Transactions{})
 	empty.SetPayloadHash(EmptyPayloadHash(ver))
@@ -34,11 +33,11 @@ func TestEventPayloadSerialization(t *testing.T) {
 	event := MutableEventPayload{}
 	event.SetVersion(2)
 	event.SetEpoch(math.MaxUint32)
-	event.SetSeq(idx.Event(math.MaxUint32))
-	event.SetLamport(idx.Lamport(math.MaxUint32))
-	h := hash.BytesToEvent(bytes.Repeat([]byte{math.MaxUint8}, 32))
-	event.SetParents(hash.Events{hash.Event(h), hash.Event(h), hash.Event(h)})
-	event.SetPayloadHash(hash.Hash(h))
+	event.SetSeq(consensus.Seq(math.MaxUint32))
+	event.SetLamport(consensus.Lamport(math.MaxUint32))
+	h := consensus.BytesToEvent(bytes.Repeat([]byte{math.MaxUint8}, 32))
+	event.SetParents(consensus.EventHashes{consensus.EventHash(h), consensus.EventHash(h), consensus.EventHash(h)})
+	event.SetPayloadHash(consensus.Hash(h))
 	event.SetSig(BytesToSignature(bytes.Repeat([]byte{math.MaxUint8}, SigSize)))
 	event.SetExtra(bytes.Repeat([]byte{math.MaxUint8}, 100))
 	event.SetCreationTime(math.MaxUint64)
@@ -344,8 +343,8 @@ func randBytes(rand *rand.Rand, size int) []byte {
 	return b
 }
 
-func randHash(rand *rand.Rand) hash.Hash {
-	return hash.BytesToHash(randBytes(rand, 32))
+func randHash(rand *rand.Rand) consensus.Hash {
+	return consensus.BytesToHash(randBytes(rand, 32))
 }
 
 func randAddrPtr(rand *rand.Rand) *common.Address {
@@ -375,17 +374,17 @@ func FakeEvent(version uint8, txsNum, mpsNum, bvsNum int, ersNum bool) *EventPay
 	random.SetNetForkID(uint16(r.Uint32() >> 16))
 	random.SetLamport(1000)
 	random.SetExtra([]byte{byte(r.Uint32())})
-	random.SetSeq(idx.Event(r.Uint32() >> 8))
-	random.SetEpoch(idx.Epoch(1234))
-	random.SetCreator(idx.ValidatorID(r.Uint32()))
-	random.SetFrame(idx.Frame(r.Uint32() >> 16))
+	random.SetSeq(consensus.Seq(r.Uint32() >> 8))
+	random.SetEpoch(consensus.Epoch(1234))
+	random.SetCreator(consensus.ValidatorID(r.Uint32()))
+	random.SetFrame(consensus.Frame(r.Uint32() >> 16))
 	random.SetCreationTime(Timestamp(r.Uint64()))
 	random.SetMedianTime(Timestamp(r.Uint64()))
 	random.SetGasPowerUsed(r.Uint64())
 	random.SetGasPowerLeft(GasPowerLeft{[2]uint64{r.Uint64(), r.Uint64()}})
 	txs := types.Transactions{}
 	for i := 0; i < txsNum; i++ {
-		h := hash.Hash{}
+		h := consensus.Hash{}
 		for i := 0; i < len(h); i++ {
 			h[i] = byte(r.Uint32())
 		}
@@ -455,8 +454,8 @@ func FakeEvent(version uint8, txsNum, mpsNum, bvsNum int, ersNum bool) *EventPay
 
 		bvs := LlrBlockVotes{}
 		if bvsNum > 0 {
-			bvs.Start = 1 + idx.Block(rand.IntN(1000))
-			bvs.Epoch = 1 + idx.Epoch(rand.IntN(1000))
+			bvs.Start = 1 + consensus.BlockID(rand.IntN(1000))
+			bvs.Epoch = 1 + consensus.Epoch(rand.IntN(1000))
 		}
 		for i := 0; i < bvsNum; i++ {
 			bvs.Votes = append(bvs.Votes, randHash(r))
@@ -465,7 +464,7 @@ func FakeEvent(version uint8, txsNum, mpsNum, bvsNum int, ersNum bool) *EventPay
 
 		ers := LlrEpochVote{}
 		if ersNum {
-			ers.Epoch = 1 + idx.Epoch(rand.IntN(1000))
+			ers.Epoch = 1 + consensus.Epoch(rand.IntN(1000))
 			ers.Vote = randHash(r)
 		}
 		random.SetEpochVote(ers)
@@ -477,7 +476,7 @@ func FakeEvent(version uint8, txsNum, mpsNum, bvsNum int, ersNum bool) *EventPay
 	parent.SetVersion(1)
 	parent.SetLamport(random.Lamport() - 500)
 	parent.SetEpoch(random.Epoch())
-	random.SetParents(hash.Events{parent.Build().ID()})
+	random.SetParents(consensus.EventHashes{parent.Build().ID()})
 
 	return random.Build()
 }

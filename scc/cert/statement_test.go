@@ -6,7 +6,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
+
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/bls"
 	"github.com/ethereum/go-ethereum/common"
@@ -106,7 +107,7 @@ func concat(elements ...any) []byte {
 			res = append(res, v)
 		case uint64:
 			res = binary.BigEndian.AppendUint64(res, v)
-		case idx.Block:
+		case consensus.BlockID:
 			res = binary.BigEndian.AppendUint64(res, uint64(v))
 		case scc.Period:
 			res = binary.BigEndian.AppendUint64(res, uint64(v))
