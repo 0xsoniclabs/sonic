@@ -400,12 +400,35 @@ func consensusCallbackBeginBlockFn(
 
 					// Notify about new block
 					if feed != nil {
-						feed.newBlock.Send(evmcore.ChainHeadNotify{Block: evmBlock})
-						var logs []*types.Log
-						for _, r := range allReceipts {
-							logs = append(logs, r.Logs...)
-						}
-						feed.newLogs.Send(logs)
+						go func() {
+							archiveBlockHeight, empty, err := store.evm.GetArchiveBlockHeight()
+							if err != nil {
+								log.Warn("Failed to get archive block height", "err", err)
+							} else {
+
+								lastBlockHeight := archiveBlockHeight
+								if !empty {
+									delay := time.Duration(1 * time.Millisecond)
+									for archiveBlockHeight < uint64(blockCtx.Idx) {
+										time.Sleep(delay)
+										//delay *= 2
+										archiveBlockHeight, _, err = store.evm.GetArchiveBlockHeight()
+										if err != nil {
+											log.Warn("Failed to get archive block height", "err", err)
+											break
+										}
+									}
+									log.Info("Was waiting for archive block", "from block", lastBlockHeight, "to current", blockCtx.Idx)
+								}
+							}
+
+							feed.newBlock.Send(evmcore.ChainHeadNotify{Block: evmBlock})
+							var logs []*types.Log
+							for _, r := range allReceipts {
+								logs = append(logs, r.Logs...)
+							}
+							feed.newLogs.Send(logs)
+						}()
 					}
 
 					now := time.Now()
