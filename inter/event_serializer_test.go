@@ -481,3 +481,51 @@ func FakeEvent(version uint8, txsNum, mpsNum, bvsNum int, ersNum bool) *EventPay
 
 	return random.Build()
 }
+
+func FuzzEventEncodingAndDecoding(f *testing.F) {
+	f.Fuzz(func(
+		t *testing.T,
+		version uint8,
+		forkId uint16,
+		lamport uint32,
+		extra []byte,
+		seq uint32,
+		epoch uint32,
+		creator uint32,
+		frame uint32,
+		creationTime uint64,
+		medianTime uint64,
+		gasPowerUsed uint64,
+		gasPowerLeftShort uint64,
+		gasPowerLeftLong uint64,
+	) {
+		if version > MaxSerializationVersion {
+			t.Skip()
+		}
+		if epoch < 256 && version == 0 {
+			t.Skip()
+		}
+
+		e := &MutableEventPayload{}
+		e.SetVersion(version)
+		e.SetNetForkID(forkId)
+		e.SetLamport(idx.Lamport(lamport))
+		e.SetExtra(extra)
+		e.SetSeq(idx.Event(seq))
+		e.SetEpoch(idx.Epoch(epoch))
+		e.SetCreator(idx.ValidatorID(creator))
+		e.SetFrame(idx.Frame(frame))
+		e.SetCreationTime(Timestamp(creationTime))
+		e.SetMedianTime(Timestamp(medianTime))
+		e.SetGasPowerUsed(gasPowerUsed)
+		e.SetGasPowerLeft(GasPowerLeft{[2]uint64{gasPowerLeftLong, gasPowerLeftShort}})
+
+		// TODO: add transactions and signatures
+		event := e.Build()
+		data, err := event.MarshalBinary()
+		require.NoError(t, err)
+
+		var restored MutableEventPayload
+		require.NoError(t, restored.UnmarshalBinary(data))
+	})
+}

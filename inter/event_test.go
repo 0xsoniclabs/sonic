@@ -2,6 +2,7 @@ package inter
 
 import (
 	"encoding/hex"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -55,4 +56,16 @@ func TestCalcMisbehaviourProofsHash(t *testing.T) {
 	}
 
 	require.Equal(t, "85834ef7fc1d75d65832b1f9b45b43c4f5677811bb2d384208553d32ab49def1", hex.EncodeToString(CalcMisbehaviourProofsHash(v).Bytes()))
+}
+
+func TestEmptyPayloadHash_MatchesComputedHash(t *testing.T) {
+	payload := &MutableEventPayload{}
+	for version := range uint8(4) {
+		t.Run(fmt.Sprintf("v%d", version), func(t *testing.T) {
+			payload.SetVersion(version)
+			want := CalcPayloadHash(payload)
+			got := EmptyPayloadHash(version)
+			require.Equal(t, want, got)
+		})
+	}
 }
