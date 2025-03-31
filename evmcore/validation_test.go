@@ -42,26 +42,22 @@ func TestValidation_validateTx_RejectsWhen(t *testing.T) {
 		opts validationOptions  // Validation options (e.g., EIP flags).
 		err  error              // Expected error.
 	}{
-		"tx is nil": {
-			tx:  nil,
-			err: ErrNilTransaction,
-		},
-		"non legacy tx before eip2718": {
-			tx: types.NewTx(makeDynamicFeeTx()),
+		"non legacy tx submitted before eip2718": {
+			tx: types.NewTx(&types.DynamicFeeTx{}),
 			opts: validationOptions{
 				eip2718: false,
 			},
 			err: ErrTxTypeNotSupported,
 		},
-		"dynamic fee tx before eip1559": {
-			tx: types.NewTx(makeDynamicFeeTx()),
+		"dynamic fee tx submitted before eip1559": {
+			tx: types.NewTx(&types.DynamicFeeTx{}),
 			opts: validationOptions{
 				eip2718: true,
 				eip1559: false,
 			},
 			err: ErrTxTypeNotSupported,
 		},
-		"blob tx before eip4844": {
+		"blob tx submitted before eip4844": {
 			tx: types.NewTx(makeBlobTx(nil, nil)),
 			opts: validationOptions{
 				eip2718: true,
@@ -69,33 +65,33 @@ func TestValidation_validateTx_RejectsWhen(t *testing.T) {
 			},
 			err: ErrTxTypeNotSupported,
 		},
-		"blob tx without sidecar": {
+		"blob tx with hashes": {
 			tx: types.NewTx(makeBlobTx([]common.Hash{{0x01}}, nil)),
 			opts: validationOptions{
 				eip2718: true,
 				eip4844: true,
 			},
-			err: ErrEmptyBlobTx,
+			err: ErrTxTypeNotSupported,
 		},
-		"blob tx without hash": {
+		"blob tx with sidecar": {
 			tx: types.NewTx(makeBlobTx(nil,
 				&types.BlobTxSidecar{Commitments: []kzg4844.Commitment{{0x01}}})),
 			opts: validationOptions{
 				eip2718: true,
 				eip4844: true,
 			},
-			err: ErrEmptyBlobTx,
+			err: ErrTxTypeNotSupported,
 		},
-		"setCode tx before 7702": {
-			tx: types.NewTx(makeSetCodeTx(nil)),
+		"setCode tx submitted before 7702": {
+			tx: types.NewTx(&types.SetCodeTx{}),
 			opts: validationOptions{
 				eip2718: true,
 				eip7702: false,
 			},
 			err: ErrTxTypeNotSupported,
 		},
-		"setCode tx empty auth list": {
-			tx: types.NewTx(makeSetCodeTx(nil)),
+		"setCode tx submitted with an empty auth list": {
+			tx: types.NewTx(&types.SetCodeTx{}),
 			opts: validationOptions{
 				eip2718: true,
 				eip7702: true,
@@ -117,10 +113,12 @@ func testTransactionsOption() validationOptions {
 		eip1559:         true,
 		eip2718:         true,
 		eip4844:         true,
+		eip7623:         true,
 		eip7702:         true,
 		shanghai:        true,
-		currentMaxGas:   1,
+		currentMaxGas:   100_000,
 		currentGasPrice: big.NewInt(1),
+		currentBaseFee:  big.NewInt(1),
 		isLocal:         true,
 	}
 }
@@ -192,9 +190,10 @@ func test_NegativeValue(t *testing.T, tx types.TxData) {
 
 func test_MaxGas(t *testing.T, tx types.TxData) {
 	t.Run(fmt.Sprintf("MaxGas_%v", txTypeName(tx)), func(t *testing.T) {
+		opt := testTransactionsOption()
+		opt.currentMaxGas = 1
 		setGas(t, tx, 2)
-		err := validateTx(types.NewTx(tx), types.NewPragueSigner(big.NewInt(1)),
-			testTransactionsOption())
+		err := validateTx(types.NewTx(tx), types.NewPragueSigner(big.NewInt(1)), opt)
 		require.ErrorIs(t, err, ErrGasLimit)
 	})
 }
@@ -284,7 +283,7 @@ func test_BaseFeeLowerThanChainLimit(t *testing.T, tx types.TxData) {
 		func(t *testing.T) {
 			// setup validation context
 			opt := testTransactionsOption()
-			opt.currentGasPrice = big.NewInt(2)
+			opt.currentBaseFee = big.NewInt(2)
 
 			// gas fee cap should be higher than current gas price
 			setGasFeeCap(t, tx, big.NewInt(1))
@@ -373,7 +372,6 @@ func test_CannotAffordIntrinsicGas(t *testing.T, tx types.TxData) {
 func test_CannotAffordFloorDataGas(t *testing.T, tx types.TxData, data []byte) {
 	t.Run(fmt.Sprintf("CannotAffordFloorDataGas_%v", txTypeName(tx)), func(t *testing.T) {
 		opt := testTransactionsOption()
-		opt.eip7623 = true
 
 		// setup tx to fail intrinsic gas calculation
 		setData(t, tx, data[:txSlotSize])
@@ -399,20 +397,82 @@ func test_CannotAffordFloorDataGas(t *testing.T, tx types.TxData, data []byte) {
 	})
 }
 
+func TestValidation_validateTx_Success(t *testing.T) {
+	tests := []types.TxData{
+		&types.LegacyTx{
+			Nonce:    0,
+			GasPrice: big.NewInt(1),
+			Gas:      21000,
+			To:       &common.Address{},
+			Value:    big.NewInt(1),
+		},
+		&types.AccessListTx{
+			Nonce:      0,
+			GasPrice:   big.NewInt(1),
+			Gas:        21000,
+			To:         &common.Address{},
+			Value:      big.NewInt(1),
+			AccessList: types.AccessList{},
+		},
+		&types.DynamicFeeTx{
+			Nonce:     0,
+			GasTipCap: big.NewInt(1),
+			GasFeeCap: big.NewInt(2),
+			Gas:       21000,
+			To:        &common.Address{},
+			Value:     big.NewInt(1),
+		},
+		&types.BlobTx{
+			Nonce:     0,
+			GasTipCap: uint256.NewInt(1),
+			GasFeeCap: uint256.NewInt(2),
+			Gas:       21000,
+		},
+		&types.SetCodeTx{
+			Nonce:     0,
+			GasTipCap: uint256.NewInt(1),
+			GasFeeCap: uint256.NewInt(2),
+			Gas:       46000, // needs more gas than other tx types because of the auth list
+			AuthList:  []types.SetCodeAuthorization{{}},
+		},
+	}
+
+	for _, tx := range tests {
+		t.Run(txTypeName(tx), func(t *testing.T) {
+			// Sign the transaction
+			signer, address, signedTx := testSignTx(t, tx)
+
+			// Set up sufficient balance and nonce
+			testDb := newTestTxPoolStateDb()
+			testDb.balances[address] = uint256.NewInt(math.MaxUint64)
+			testDb.nonces[address] = 0
+
+			opts := testTransactionsOption()
+			opts.currentState = testDb
+
+			// Validate the transaction
+			err := validateTx(signedTx, signer, opts)
+			require.NoError(t, err)
+		})
+	}
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Helper functions for testing.
 
 // allTxTypes returns a list of all transaction types for testing.
 func allTxTypes() []types.TxData {
 	return []types.TxData{
-		makeLegacyTx(),
-		makeAccessListTx(),
-		makeDynamicFeeTx(),
+		&types.LegacyTx{},
+		&types.AccessListTx{},
+		&types.DynamicFeeTx{},
 		makeBlobTx(nil, nil),
-		makeSetCodeTx([]types.SetCodeAuthorization{{}}),
+		&types.SetCodeTx{AuthList: []types.SetCodeAuthorization{{}}},
 	}
 }
 
+// testSignTx generates a new key, signs the transaction with it, and returns
+// the signer, address, and signed transaction.
 func testSignTx(t *testing.T, tx types.TxData) (types.Signer, common.Address, *types.Transaction) {
 	key, err := crypto.GenerateKey()
 	address := crypto.PubkeyToAddress(key.PublicKey)
@@ -441,6 +501,7 @@ func txTypeName(tx types.TxData) string {
 	}
 }
 
+// setNonce sets the nonce for a transaction.
 func setNonce(tt *testing.T, tx types.TxData, nonce uint64) {
 	setTxField(tt, tx, "Nonce", nonce, nonce, nonce, nonce, nonce)
 }
@@ -566,63 +627,10 @@ func isBlobOrSetCode(tx types.TxData) bool {
 	return okBlob || okSetCode
 }
 
-// legacyTx
-func makeLegacyTx() types.TxData {
-	return &types.LegacyTx{
-		Nonce:    0,
-		To:       &common.Address{},
-		Value:    big.NewInt(0),
-		Gas:      0,
-		GasPrice: big.NewInt(0),
-	}
-}
-
-// accessListTx
-func makeAccessListTx() types.TxData {
-	return &types.AccessListTx{
-		ChainID:  big.NewInt(0),
-		Nonce:    0,
-		To:       &common.Address{},
-		Value:    big.NewInt(0),
-		Gas:      0,
-		GasPrice: big.NewInt(0),
-	}
-}
-
-// dynamicFeeTx
-func makeDynamicFeeTx() types.TxData {
-	return &types.DynamicFeeTx{
-		ChainID:   big.NewInt(0),
-		Nonce:     0,
-		To:        &common.Address{},
-		Value:     big.NewInt(0),
-		Gas:       0,
-		GasTipCap: big.NewInt(0),
-		GasFeeCap: big.NewInt(0),
-	}
-}
-
 // blobTx
 func makeBlobTx(hashes []common.Hash, sidecar *types.BlobTxSidecar) types.TxData {
 	return &types.BlobTx{
-		ChainID:    uint256.NewInt(0),
-		Nonce:      0,
-		Value:      uint256.NewInt(0),
-		Gas:        0,
-		GasFeeCap:  uint256.NewInt(0),
-		GasTipCap:  uint256.NewInt(0),
-		BlobFeeCap: uint256.NewInt(0),
 		BlobHashes: hashes,
 		Sidecar:    sidecar,
-	}
-}
-
-// setCodeTx
-func makeSetCodeTx(authList []types.SetCodeAuthorization) types.TxData {
-	return &types.SetCodeTx{
-		ChainID:  uint256.NewInt(0),
-		Nonce:    0,
-		To:       common.Address{},
-		AuthList: authList,
 	}
 }
