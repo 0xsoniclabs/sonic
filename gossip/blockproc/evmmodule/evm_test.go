@@ -60,6 +60,7 @@ func TestEvm_IgnoresGasPriceOfInternalTransactions(t *testing.T) {
 			},
 		},
 		&params.ChainConfig{
+			ChainID:     big.NewInt(1),
 			LondonBlock: big.NewInt(0),
 		},
 		common.Hash{},

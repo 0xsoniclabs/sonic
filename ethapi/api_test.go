@@ -333,6 +333,7 @@ func TestReplayInternalTransaction(t *testing.T) {
 	txIndex := uint64(1)
 
 	chainConfig := &params.ChainConfig{
+		ChainID:     big.NewInt(1),
 		LondonBlock: big.NewInt(0),
 	}
 
