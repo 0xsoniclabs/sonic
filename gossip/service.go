@@ -60,6 +60,8 @@ type ServiceFeed struct {
 	newEmittedEvent notify.Feed
 	newBlock        notify.Feed
 	newLogs         notify.Feed
+
+	currentBlockNotification atomic.Uint64
 }
 
 func (f *ServiceFeed) SubscribeNewEpoch(ch chan<- idx.Epoch) notify.Subscription {
