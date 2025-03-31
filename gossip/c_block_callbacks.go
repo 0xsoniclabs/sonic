@@ -23,7 +23,6 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/verwatcher"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
@@ -400,9 +399,11 @@ func consensusCallbackBeginBlockFn(
 
 					// Notify about new block
 					if feed != nil {
-						go func() {
-							sendNotificationWhenBlockInArchive(store, feed, evmBlock, allReceipts)
-						}()
+						var logs []*types.Log
+						for _, r := range allReceipts {
+							logs = append(logs, r.Logs...)
+						}
+						feed.notifyAboutNewBlock(evmBlock, logs)
 					}
 
 					now := time.Now()
@@ -442,54 +443,6 @@ func consensusCallbackBeginBlockFn(
 			},
 		}
 	}
-}
-
-func sendNotificationWhenBlockInArchive(store *Store, feed *ServiceFeed, evmBlock *evmcore.EvmBlock, allReceipts types.Receipts) {
-
-	// Set feeder block if not set after node start
-	if feed.currentBlockNotification.Load() == 0 {
-		feed.currentBlockNotification.Store(evmBlock.Number.Uint64())
-	}
-
-	archiveBlockHeight, empty, err := store.evm.GetArchiveBlockHeight()
-	if err != nil || empty {
-		log.Warn("Failed to get archive db block height", "err", err)
-	} else {
-		start := time.Now()
-		delay := time.Duration(1 * time.Millisecond)
-
-		// Wait for block to be written to archive
-		for archiveBlockHeight < evmBlock.Number.Uint64() {
-			time.Sleep(delay)
-			delay *= 2
-			archiveBlockHeight, _, err = store.evm.GetArchiveBlockHeight()
-			if err != nil {
-				log.Warn("Failed to get archive block height", "err", err)
-				break
-			}
-		}
-
-		log.Debug("Waited for archive block write", "time", utils.PrettyDuration(time.Since(start)))
-		delay = time.Duration(1 * time.Millisecond)
-
-		// Wait for correct block number to keep block notification order
-		for feed.currentBlockNotification.Load() < evmBlock.Number.Uint64() {
-			time.Sleep(delay)
-			delay *= 2
-		}
-	}
-
-	// send notifications
-	feed.newBlock.Send(evmcore.ChainHeadNotify{Block: evmBlock})
-	var logs []*types.Log
-	for _, r := range allReceipts {
-		logs = append(logs, r.Logs...)
-	}
-	feed.newLogs.Send(logs)
-
-	// Always advance counter to next block as this notification is done
-	// and there is always one notification per block
-	feed.currentBlockNotification.Add(1)
 }
 
 // spillBlockEvents excludes first events which exceed MaxBlockGas

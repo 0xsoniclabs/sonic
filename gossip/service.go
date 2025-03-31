@@ -40,6 +40,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/sealmodule"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/verwatcher"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
+	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/gossip/filters"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/gossip/proclogger"
@@ -61,7 +62,14 @@ type ServiceFeed struct {
 	newBlock        notify.Feed
 	newLogs         notify.Feed
 
-	currentBlockNotification atomic.Uint64
+	incomingUpdates chan<- feedUpdate // < channel to send updates to the background feed loop
+	stopFeeder      chan<- struct{}   // < if closed, the background feed loop will stop
+	feederDone      <-chan struct{}   // < if closed, the background feed loop has stopped
+}
+
+type feedUpdate struct {
+	block *evmcore.EvmBlock
+	logs  []*types.Log
 }
 
 func (f *ServiceFeed) SubscribeNewEpoch(ch chan<- idx.Epoch) notify.Subscription {
@@ -78,6 +86,64 @@ func (f *ServiceFeed) SubscribeNewBlock(ch chan<- evmcore.ChainHeadNotify) notif
 
 func (f *ServiceFeed) SubscribeNewLogs(ch chan<- []*types.Log) notify.Subscription {
 	return f.scope.Track(f.newLogs.Subscribe(ch))
+}
+
+func (f *ServiceFeed) Start(store *evmstore.Store) {
+	incoming := make(chan feedUpdate, 1024)
+	f.incomingUpdates = incoming
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	f.stopFeeder = stop
+	f.feederDone = done
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(10 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case update := <-incoming:
+				for {
+					height, empty, err := store.GetArchiveBlockHeight()
+					if err != nil {
+						log.Error("failed to get archive block height", "err", err)
+					} else if !empty && height >= update.block.Number.Uint64() {
+						f.newBlock.Send(evmcore.ChainHeadNotify{Block: update.block})
+						f.newLogs.Send(update.logs)
+						break
+					}
+
+					// Wait for next timer tick or stop signal.
+					select {
+					case <-stop:
+						return
+					case <-ticker.C:
+					}
+				}
+			}
+		}
+	}()
+}
+
+func (f *ServiceFeed) notifyAboutNewBlock(
+	block *evmcore.EvmBlock,
+	logs []*types.Log,
+) {
+	f.incomingUpdates <- feedUpdate{
+		block: block,
+		logs:  logs,
+	}
+}
+
+func (f *ServiceFeed) Stop() {
+	if f.stopFeeder == nil {
+		return
+	}
+	close(f.stopFeeder)
+	f.stopFeeder = nil
+	<-f.feederDone
+	f.scope.Close()
 }
 
 type BlockProc struct {
@@ -474,6 +540,9 @@ func (s *Service) Start() error {
 		return errors.New("fullsync isn't possible because state root is missing")
 	}
 
+	// start notification feeder
+	s.feed.Start(s.store.evm)
+
 	// start blocks processor
 	s.blockProcTasks.Start(1)
 
@@ -513,7 +582,7 @@ func (s *Service) Stop() error {
 	s.operaDialCandidates.Close()
 
 	s.handler.Stop()
-	s.feed.scope.Close()
+	s.feed.Stop()
 	s.gpo.Stop()
 	// it's safe to stop tflusher only before locking engineMu
 	s.tflusher.Stop()
