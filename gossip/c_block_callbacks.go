@@ -446,24 +446,20 @@ func consensusCallbackBeginBlockFn(
 
 func sendNotificationWhenBlockInArchive(store *Store, feed *ServiceFeed, evmBlock *evmcore.EvmBlock, allReceipts types.Receipts) {
 
-	blockNumber := evmBlock.Number.Uint64()
-	currentBlockNotification := feed.currentBlockNotification.Load()
-
-	// First block notification
-	if currentBlockNotification == 0 {
-		feed.currentBlockNotification.Store(blockNumber)
-		currentBlockNotification = blockNumber
+	// Set feeder block if not set after node start
+	if feed.currentBlockNotification.Load() == 0 {
+		feed.currentBlockNotification.Store(evmBlock.Number.Uint64())
 	}
 
 	archiveBlockHeight, empty, err := store.evm.GetArchiveBlockHeight()
 	if err != nil || empty {
 		log.Warn("Failed to get archive db block height", "err", err)
 	} else {
+		start := time.Now()
 		delay := time.Duration(1 * time.Millisecond)
-		startBlockHeight := time.Now()
 
-		// Wait for block written to archive block
-		for archiveBlockHeight < blockNumber {
+		// Wait for block to be written to archive
+		for archiveBlockHeight < evmBlock.Number.Uint64() {
 			time.Sleep(delay)
 			delay *= 2
 			archiveBlockHeight, _, err = store.evm.GetArchiveBlockHeight()
@@ -473,16 +469,17 @@ func sendNotificationWhenBlockInArchive(store *Store, feed *ServiceFeed, evmBloc
 			}
 		}
 
-		log.Debug("Waited for archive block write", "time", utils.PrettyDuration(time.Since(startBlockHeight)))
+		log.Debug("Waited for archive block write", "time", utils.PrettyDuration(time.Since(start)))
 		delay = time.Duration(1 * time.Millisecond)
 
-		// Wait for correct block nr to keep block notification order
-		for feed.currentBlockNotification.Load() < blockNumber {
+		// Wait for correct block number to keep block notification order
+		for feed.currentBlockNotification.Load() < evmBlock.Number.Uint64() {
 			time.Sleep(delay)
 			delay *= 2
 		}
 	}
 
+	// send notifications
 	feed.newBlock.Send(evmcore.ChainHeadNotify{Block: evmBlock})
 	var logs []*types.Log
 	for _, r := range allReceipts {
