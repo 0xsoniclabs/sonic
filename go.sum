@@ -2,8 +2,8 @@ github.com/0xsoniclabs/carmen/go v0.0.0-20250318153505-712d1a76e929 h1:byQDSYyUE
 github.com/0xsoniclabs/carmen/go v0.0.0-20250318153505-712d1a76e929/go.mod h1:/u6oDZBv6eyPs9K7Ug5D4aL9l1Q7N43BnWEUPsvKmYw=
 github.com/0xsoniclabs/go-ethereum v0.0.0-20250324153703-a2c758c03bd2 h1:MP7uIjF4FyfvKKaoHIo23lfbDIz2rlI2Yn0IJU/SOMo=
 github.com/0xsoniclabs/go-ethereum v0.0.0-20250324153703-a2c758c03bd2/go.mod h1:7wIbLpkwnG94Lm1/PMGE9is43b8yWNPL5El/FxFtN/U=
-github.com/0xsoniclabs/tosca v0.0.0-20250325122805-8bffb8c49eb9 h1:wuknA/wN9XRI7/kwz3IcDwrQnvlVZGk1VyVEcMPPhkg=
-github.com/0xsoniclabs/tosca v0.0.0-20250325122805-8bffb8c49eb9/go.mod h1:PhcVq8QVVf0crCSjfFiECxcr880XpC3tgWxVzFcJORg=
+github.com/0xsoniclabs/tosca v0.0.0-20250331101302-141d80cceadc h1:Ajm/A9JO5V4+fB/vwsrl7Mk85haV0Ra2JlZWwlWmr+I=
+github.com/0xsoniclabs/tosca v0.0.0-20250331101302-141d80cceadc/go.mod h1:PhcVq8QVVf0crCSjfFiECxcr880XpC3tgWxVzFcJORg=
 github.com/DataDog/zstd v1.5.6 h1:LbEglqepa/ipmmQJUDnSsfvA8e8IStVcGaFWDuxvGOY=
 github.com/DataDog/zstd v1.5.6/go.mod h1:g4AWEaM3yOg3HYfnJ3YIawPnVdXJh9QME85blwSAmyw=
 github.com/Fantom-foundation/lachesis-base-sonic v0.0.0-20250212122819-abaef8bb9abb h1:jgn7IKRei67LjLaNQll8U3PgZdEYLz5Mxa0JsHzPjyw=
