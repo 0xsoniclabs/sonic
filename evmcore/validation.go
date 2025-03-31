@@ -29,33 +29,31 @@ import (
 )
 
 // validationOptions is a set of options to adjust the validation of transactions
-// according to the current state of the blockchain.
+// according to the current state of the transaction pool.
 type validationOptions struct {
 	istanbul bool // Fork indicator whether we are in the istanbul stage.
 	shanghai bool // Fork indicator whether we are in the shanghai stage.
 
-	eip2718 bool // Fork indicator whether we are using EIP-2718 type transactions.
 	eip1559 bool // Fork indicator whether we are using EIP-1559 type transactions.
+	eip2718 bool // Fork indicator whether we are using EIP-2718 type transactions.
 	eip4844 bool // Fork indicator whether we are using EIP-4844 type transactions.
-	eip7702 bool // Fork indicator whether we are using EIP-7702 type transactions.
 	eip7623 bool // Fork indicator whether we are using EIP-7623 floor gas validation.
+	eip7702 bool // Fork indicator whether we are using EIP-7702 type transactions.
 
 	currentState TxPoolStateDB // Current state in the blockchain head
 	// pendingNonces *txNoncer // Pending state tracking virtual nonces
 	currentMaxGas   uint64   // Current gas limit for transaction caps
 	currentGasPrice *big.Int // Current gas price for transaction caps
+	currentBaseFee  *big.Int // Current base fee for transaction caps
 
 	locals  *accountSet // Set of local transaction to exempt from eviction rules
 	isLocal bool        // Whether the transaction came from a local source
 
 }
 
-// validateTx checks whether a transaction is valid according to the consensus
-// rules and adheres to some heuristic limits of the local node (price and size).
+// validateTx checks whether a transaction is valid according to the current
+// options and adheres to some heuristic limits of the local node (price and size).
 func validateTx(tx *types.Transaction, signer types.Signer, opt validationOptions) error {
-	if tx == nil {
-		return ErrNilTransaction
-	}
 
 	// Accept only legacy transactions until EIP-2718/2930 activates.
 	if !opt.eip2718 && tx.Type() != types.LegacyTxType {
@@ -73,7 +71,7 @@ func validateTx(tx *types.Transaction, signer types.Signer, opt validationOption
 		// For now, Sonic only supports Blob transactions without blob data.
 		if len(tx.BlobHashes()) > 0 ||
 			(tx.BlobTxSidecar() != nil && len(tx.BlobTxSidecar().BlobHashes()) > 0) {
-			return ErrEmptyBlobTx
+			return ErrTxTypeNotSupported
 		}
 	}
 	if tx.Type() == types.SetCodeTxType {
@@ -137,7 +135,7 @@ func validateTx(tx *types.Transaction, signer types.Signer, opt validationOption
 		return ErrUnderpriced
 	}
 	// Ensure Opera-specific hard bounds
-	if baseFee := opt.currentGasPrice; baseFee != nil {
+	if baseFee := opt.currentBaseFee; baseFee != nil {
 		limit := gaspricelimits.GetMinimumFeeCapForTransactionPool(baseFee)
 		if tx.GasFeeCapIntCmp(limit) < 0 {
 			log.Trace("Rejecting underpriced tx: minimumBaseFee", "minimumBaseFee", baseFee, "limit", limit, "tx.GasFeeCap", tx.GasFeeCap())
