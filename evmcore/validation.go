@@ -42,9 +42,9 @@ type validationOptions struct {
 
 	currentState TxPoolStateDB // Current state in the blockchain head
 	// pendingNonces *txNoncer // Pending state tracking virtual nonces
-	currentMaxGas   uint64   // Current gas limit for transaction caps
-	currentGasPrice *big.Int // Current gas price for transaction caps
-	currentBaseFee  *big.Int // Current base fee for transaction caps
+	currentMaxGas  uint64   // Current gas limit for transaction caps
+	currentBaseFee *big.Int // Current base fee for transaction caps
+	minTip         *big.Int // Minimum gas tip to enforce for acceptance into the pool
 
 	locals  *accountSet // Set of local transaction to exempt from eviction rules
 	isLocal bool        // Whether the transaction came from a local source
@@ -74,6 +74,7 @@ func validateTx(tx *types.Transaction, signer types.Signer, opt validationOption
 			return ErrTxTypeNotSupported
 		}
 	}
+	// validate EIP-7702 transactions
 	if tx.Type() == types.SetCodeTxType {
 		// Check minimum revision
 		if !opt.eip7702 {
@@ -129,9 +130,9 @@ func validateTx(tx *types.Transaction, signer types.Signer, opt validationOption
 
 	// Drop non-local transactions under our own minimal accepted gas price or tip
 	local := opt.isLocal || opt.locals.contains(from) // account may be local even if the transaction arrived from the network
-	if !local && tx.GasTipCapIntCmp(opt.currentGasPrice) < 0 {
+	if !local && tx.GasTipCapIntCmp(opt.minTip) < 0 {
 		log.Trace("Rejecting underpriced tx: pool.gasPrice", "pool.gasPrice",
-			opt.currentGasPrice, "tx.GasTipCap", tx.GasTipCap())
+			opt.minTip, "tx.GasTipCap", tx.GasTipCap())
 		return ErrUnderpriced
 	}
 	// Ensure Opera-specific hard bounds
