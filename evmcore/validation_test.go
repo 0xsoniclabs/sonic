@@ -3,7 +3,6 @@ package evmcore
 import (
 	"math"
 	"math/big"
-	"reflect"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -243,7 +242,7 @@ func TestValidation_validateTx_RejectsUnderpricedLocal(t *testing.T) {
 			setGasFeeCap(t, tx, lowTipCap)
 
 			// sign txs with sender
-			signer, _, signedTx := testSignTx(t, tx)
+			signer, _, signedTx := signTxForTest(t, tx)
 			opt.locals = newAccountSet(signer)
 			opt.minTip = big.NewInt(2)
 
@@ -265,7 +264,7 @@ func TestValidation_validateTx_RejectsBaseFeeLowerThanChainLimit(t *testing.T) {
 			setGasFeeCap(t, tx, big.NewInt(1))
 
 			// sign txs with sender
-			signer, _, signedTx := testSignTx(t, tx)
+			signer, _, signedTx := signTxForTest(t, tx)
 
 			// validate transaction
 			err := validateTx(signedTx, signer, opt)
@@ -287,7 +286,7 @@ func TestValidation_validateTx_RejectsNonceOutOfOrder(t *testing.T) {
 			setGasFeeCap(t, tx, opt.minTip)
 
 			// sign txs with sender
-			_, address, signedTx := testSignTx(t, tx)
+			_, address, signedTx := signTxForTest(t, tx)
 
 			// setup low nonce
 			testDb := newTestTxPoolStateDb()
@@ -312,7 +311,7 @@ func TestValidation_validateTx_RejectsInsufficientFunds(t *testing.T) {
 			setGas(t, tx, 1)
 
 			// sign txs with sender
-			signer, address, signedTx := testSignTx(t, tx)
+			signer, address, signedTx := signTxForTest(t, tx)
 
 			// setup low balance
 			testDb := newTestTxPoolStateDb()
@@ -338,7 +337,7 @@ func TestValidation_validateTx_RejectsCannotAffordIntrinsicGas(t *testing.T) {
 			// set tx for execution
 			setGasFeeCap(t, tx, opt.minTip)
 			// sign txs with sender
-			signer, address, signedTx := testSignTx(t, tx)
+			signer, address, signedTx := signTxForTest(t, tx)
 			// ---
 
 			// setup enough balance
@@ -370,7 +369,7 @@ func TestValidation_validateTx_RejectsCannotAffordFloorDataGas(t *testing.T) {
 			// set tx for execution
 			setGasFeeCap(t, tx, opt.minTip)
 			// sign txs with sender
-			signer, address, signedTx := testSignTx(t, tx)
+			signer, address, signedTx := signTxForTest(t, tx)
 			// setup enough balance
 			testDb := newTestTxPoolStateDb()
 			testDb.balances[address] = uint256.NewInt(math.MaxUint64)
@@ -385,15 +384,15 @@ func TestValidation_validateTx_RejectsCannotAffordFloorDataGas(t *testing.T) {
 }
 
 func TestValidation_validateTx_Success(t *testing.T) {
-	tests := []types.TxData{
-		&types.LegacyTx{
+	tests := map[string]types.TxData{
+		"Legacy": &types.LegacyTx{
 			Nonce:    0,
 			GasPrice: big.NewInt(1),
 			Gas:      21000,
 			To:       &common.Address{},
 			Value:    big.NewInt(1),
 		},
-		&types.AccessListTx{
+		"AccessList": &types.AccessListTx{
 			Nonce:      0,
 			GasPrice:   big.NewInt(1),
 			Gas:        21000,
@@ -401,7 +400,7 @@ func TestValidation_validateTx_Success(t *testing.T) {
 			Value:      big.NewInt(1),
 			AccessList: types.AccessList{},
 		},
-		&types.DynamicFeeTx{
+		"DynamicFee": &types.DynamicFeeTx{
 			Nonce:     0,
 			GasTipCap: big.NewInt(1),
 			GasFeeCap: big.NewInt(2),
@@ -409,13 +408,13 @@ func TestValidation_validateTx_Success(t *testing.T) {
 			To:        &common.Address{},
 			Value:     big.NewInt(1),
 		},
-		&types.BlobTx{
+		"Blob": &types.BlobTx{
 			Nonce:     0,
 			GasTipCap: uint256.NewInt(1),
 			GasFeeCap: uint256.NewInt(2),
 			Gas:       21000,
 		},
-		&types.SetCodeTx{
+		"SetCode": &types.SetCodeTx{
 			Nonce:     0,
 			GasTipCap: uint256.NewInt(1),
 			GasFeeCap: uint256.NewInt(2),
@@ -424,10 +423,10 @@ func TestValidation_validateTx_Success(t *testing.T) {
 		},
 	}
 
-	for _, tx := range tests {
-		t.Run(getTxTypeName(tx), func(t *testing.T) {
+	for name, tx := range tests {
+		t.Run(name, func(t *testing.T) {
 			// Sign the transaction
-			signer, address, signedTx := testSignTx(t, tx)
+			signer, address, signedTx := signTxForTest(t, tx)
 
 			// Set up sufficient balance and nonce
 			testDb := newTestTxPoolStateDb()
@@ -458,9 +457,9 @@ func getTxsFromAllTypes() map[string]types.TxData {
 	}
 }
 
-// testSignTx generates a new key, signs the transaction with it, and returns
+// signTxForTest generates a new key, signs the transaction with it, and returns
 // the signer, address, and signed transaction.
-func testSignTx(t *testing.T, tx types.TxData) (types.Signer, common.Address, *types.Transaction) {
+func signTxForTest(t *testing.T, tx types.TxData) (types.Signer, common.Address, *types.Transaction) {
 	key, err := crypto.GenerateKey()
 	address := crypto.PubkeyToAddress(key.PublicKey)
 	require.NoError(t, err)
@@ -470,34 +469,30 @@ func testSignTx(t *testing.T, tx types.TxData) (types.Signer, common.Address, *t
 	return signer, address, signedTx
 }
 
-// getTxTypeName returns the name of the transaction type for logging purposes.
-func getTxTypeName(tx types.TxData) string {
-	switch tx.(type) {
-	case *types.LegacyTx:
-		return "LegacyTx"
-	case *types.AccessListTx:
-		return "AccessListTx"
-	case *types.DynamicFeeTx:
-		return "DynamicFeeTx"
-	case *types.BlobTx:
-		return "BlobTx"
-	case *types.SetCodeTx:
-		return "SetCodeTx"
-	default:
-		panic("unexpected transaction type")
-	}
-}
-
 // setNonce sets the nonce for a transaction.
 func setNonce(t *testing.T, tx types.TxData, nonce uint64) {
-	setTxField(t, tx, "Nonce", nonce, nonce, nonce, nonce, nonce)
+	// setTxField(t, tx, "Nonce", nonce, nonce, nonce, nonce, nonce)
+	switch tx := tx.(type) {
+	case *types.LegacyTx:
+		tx.Nonce = nonce
+	case *types.AccessListTx:
+		tx.Nonce = nonce
+	case *types.DynamicFeeTx:
+		tx.Nonce = nonce
+	case *types.BlobTx:
+		tx.Nonce = nonce
+	case *types.SetCodeTx:
+		tx.Nonce = nonce
+	default:
+		t.Fatalf("unexpected transaction type: %T", tx)
+	}
 }
 
 // setGasFeeCap sets the gas fee cap for a transaction. For legacy and access list
 // transactions, it sets the gas price.
 func setGasTipCap(t *testing.T, tx types.TxData, gasTipCap *big.Int) {
 	bigIntToU256 := func(bigInt *big.Int) *uint256.Int {
-		u256, overflow := uint256.FromBig(gasTipCap)
+		u256, overflow := uint256.FromBig(bigInt)
 		if overflow {
 			t.Fatalf("overflowed converting gasFeeCap to uint256")
 		}
@@ -523,7 +518,7 @@ func setGasTipCap(t *testing.T, tx types.TxData, gasTipCap *big.Int) {
 // transactions, it sets the gas price.
 func setGasFeeCap(t *testing.T, tx types.TxData, gasFeeCap *big.Int) {
 	bigIntToU256 := func(bigInt *big.Int) *uint256.Int {
-		u256, overflow := uint256.FromBig(gasFeeCap)
+		u256, overflow := uint256.FromBig(bigInt)
 		if overflow {
 			t.Fatalf("overflowed converting gasFeeCap to uint256")
 		}
@@ -547,12 +542,38 @@ func setGasFeeCap(t *testing.T, tx types.TxData, gasFeeCap *big.Int) {
 
 // setGas sets the gas limit for a transaction.
 func setGas(t *testing.T, tx types.TxData, gas uint64) {
-	setTxField(t, tx, "Gas", gas, gas, gas, gas, gas)
+	switch tx := tx.(type) {
+	case *types.LegacyTx:
+		tx.Gas = gas
+	case *types.AccessListTx:
+		tx.Gas = gas
+	case *types.DynamicFeeTx:
+		tx.Gas = gas
+	case *types.BlobTx:
+		tx.Gas = gas
+	case *types.SetCodeTx:
+		tx.Gas = gas
+	default:
+		t.Fatalf("unexpected transaction type: %T", tx)
+	}
 }
 
 // Helper function to add oversized data to a transaction.
 func setData(t *testing.T, tx types.TxData, data []byte) {
-	setTxField(t, tx, "Data", data, data, data, data, data)
+	switch tx := tx.(type) {
+	case *types.LegacyTx:
+		tx.Data = data
+	case *types.AccessListTx:
+		tx.Data = data
+	case *types.DynamicFeeTx:
+		tx.Data = data
+	case *types.BlobTx:
+		tx.Data = data
+	case *types.SetCodeTx:
+		tx.Data = data
+	default:
+		t.Fatalf("unexpected transaction type: %T", tx)
+	}
 }
 
 // Helper function to set the "To" field of a transaction to nil.
@@ -576,42 +597,20 @@ func setToNil(t *testing.T, tx types.TxData) {
 // Helper function to set the "Value" field of a transaction to a negative value.
 // for blob and setCode transactions, it sets the value to zero since they use uint256.
 func negativeValue(t *testing.T, tx types.TxData) {
-	setTxField(t, tx, "Value", big.NewInt(-1), big.NewInt(-1), big.NewInt(-1),
-		uint256.NewInt(0), uint256.NewInt(0))
-}
-
-// setTxField sets a field of a transaction to a specific value.
-func setTxField(t *testing.T, tx types.TxData, field string, value ...any) {
 	switch tx := tx.(type) {
 	case *types.LegacyTx:
-		assignField(t, tx, field, value[0])
+		tx.Value = big.NewInt(-1)
 	case *types.AccessListTx:
-		assignField(t, tx, field, value[1])
+		tx.Value = big.NewInt(-1)
 	case *types.DynamicFeeTx:
-		assignField(t, tx, field, value[2])
+		tx.Value = big.NewInt(-1)
 	case *types.BlobTx:
-		if len(value) > 3 {
-			assignField(t, tx, field, value[3])
-		}
+		tx.Value = uint256.NewInt(0)
 	case *types.SetCodeTx:
-		if len(value) > 4 {
-			assignField(t, tx, field, value[4])
-		}
+		tx.Value = uint256.NewInt(0)
 	default:
 		t.Fatalf("unexpected transaction type: %T", tx)
 	}
-}
-
-// assignField assigns a value to a field of a transaction using reflection.
-// It checks if the field is valid and can be set before assigning the value.
-// If the field is not valid or cannot be set, it fails the test.
-func assignField(t *testing.T, tx any, field string, value any) {
-	v := reflect.ValueOf(tx).Elem()
-	f := v.FieldByName(field)
-	if !f.IsValid() || !f.CanSet() {
-		t.Fatalf("invalid field %s for type %T", field, tx)
-	}
-	f.Set(reflect.ValueOf(value))
 }
 
 func isLegacyOrAccessList(tx types.TxData) bool {
