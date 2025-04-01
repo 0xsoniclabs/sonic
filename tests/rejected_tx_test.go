@@ -55,7 +55,7 @@ func TestRejectedTx_TransactionsAreRejectedBecauseOfAccountState(t *testing.T) {
 	for name, tx := range testTransactions {
 		t.Run(name, func(t *testing.T) {
 
-			t.Run("is rejected with insufficient gas", func(t *testing.T) {
+			t.Run("is rejected with insufficient balance", func(t *testing.T) {
 				account := NewAccount()
 
 				txData := setTransactionDefaults(t, net, tx, account)
