@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/0xsoniclabs/carmen/go/carmen"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
@@ -138,6 +139,12 @@ func TestRetry_GetCertificates_PropagatesError(t *testing.T) {
 	bcerts, err := retryProvider.getBlockCertificates(idx.Block(1), uint64(1))
 	require.Error(err)
 	require.Nil(bcerts)
+
+	provider.EXPECT().getAccountProof(gomock.Any(), gomock.Any()).
+		Return(nil, fmt.Errorf("provider failed")).Times(int(maxRetries))
+	proof, err := retryProvider.getAccountProof(common.Address{}, idx.Block(1))
+	require.Error(err)
+	require.Nil(proof)
 }
 
 func TestRetry_GetCertificates_ReceivesCertificates(t *testing.T) {
@@ -165,4 +172,12 @@ func TestRetry_GetCertificates_ReceivesCertificates(t *testing.T) {
 	bcerts, err := retryProvider.getBlockCertificates(idx.Block(1), uint64(1))
 	require.NoError(err)
 	require.Equal(blockCert, bcerts)
+
+	wantProof := carmen.NewMockWitnessProof(ctrl)
+	provider.EXPECT().getAccountProof(gomock.Any(), gomock.Any()).
+		Return(wantProof, nil).Times(1)
+
+	gotProof, err := retryProvider.getAccountProof(common.Address{}, idx.Block(1))
+	require.NoError(err)
+	require.Equal(wantProof, gotProof)
 }

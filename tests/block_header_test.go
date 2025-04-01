@@ -341,7 +341,7 @@ func testHeaders_LogsBloomMatchesLogsInReceipts(t *testing.T, headers []*types.H
 			rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(header.Number.Uint64())))
 		require.NoError(err, "failed to get block receipts")
 
-		logsBloom := types.CreateBloom(receipts)
+		logsBloom := types.MergeBloom(receipts)
 		require.Equal(header.Bloom, logsBloom, "logs bloom mismatch")
 	}
 }

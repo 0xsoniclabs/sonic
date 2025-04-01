@@ -220,7 +220,7 @@ func (h *EvmHeader) ToJson(receipts types.Receipts) *EvmHeaderJson {
 	if receipts != nil { // if receipts resolution fails, don't set ReceiptsHash at all
 		if receipts.Len() != 0 {
 			enc.ReceiptHash = types.DeriveSha(receipts, trie.NewStackTrie(nil))
-			enc.Bloom = types.CreateBloom(receipts)
+			enc.Bloom = types.MergeBloom(receipts)
 		} else {
 			enc.ReceiptHash = types.EmptyRootHash
 		}

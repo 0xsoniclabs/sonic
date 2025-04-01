@@ -27,7 +27,6 @@ import (
 	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
 	accounts "github.com/ethereum/go-ethereum/accounts"
 	common "github.com/ethereum/go-ethereum/common"
-	core "github.com/ethereum/go-ethereum/core"
 	types "github.com/ethereum/go-ethereum/core/types"
 	vm "github.com/ethereum/go-ethereum/core/vm"
 	event "github.com/ethereum/go-ethereum/event"
@@ -218,9 +217,9 @@ func (mr *MockBackendMockRecorder) GetDowntime(ctx, vid any) *gomock.Call {
 }
 
 // GetEVM mocks base method.
-func (m *MockBackend) GetEVM(ctx context.Context, msg *core.Message, state vm.StateDB, header *evmcore.EvmHeader, vmConfig *vm.Config, blockContext *vm.BlockContext) (*vm.EVM, func() error, error) {
+func (m *MockBackend) GetEVM(ctx context.Context, state vm.StateDB, header *evmcore.EvmHeader, vmConfig *vm.Config, blockContext *vm.BlockContext) (*vm.EVM, func() error, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetEVM", ctx, msg, state, header, vmConfig, blockContext)
+	ret := m.ctrl.Call(m, "GetEVM", ctx, state, header, vmConfig, blockContext)
 	ret0, _ := ret[0].(*vm.EVM)
 	ret1, _ := ret[1].(func() error)
 	ret2, _ := ret[2].(error)
@@ -228,9 +227,9 @@ func (m *MockBackend) GetEVM(ctx context.Context, msg *core.Message, state vm.St
 }
 
 // GetEVM indicates an expected call of GetEVM.
-func (mr *MockBackendMockRecorder) GetEVM(ctx, msg, state, header, vmConfig, blockContext any) *gomock.Call {
+func (mr *MockBackendMockRecorder) GetEVM(ctx, state, header, vmConfig, blockContext any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEVM", reflect.TypeOf((*MockBackend)(nil).GetEVM), ctx, msg, state, header, vmConfig, blockContext)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEVM", reflect.TypeOf((*MockBackend)(nil).GetEVM), ctx, state, header, vmConfig, blockContext)
 }
 
 // GetEpochBlockState mocks base method.

@@ -35,6 +35,8 @@ import (
 // It provides the methods to launch transactions and queries against the network.
 // Additionally, it provides the methods to endow accounts with funds.
 type IntegrationTestNetSession interface {
+	// GetFeatureSet returns the feature set the network has been started with.
+	GetFeatureSet() opera.FeatureSet
 
 	// EndowAccount sends a requested amount of tokens to the given account. This is
 	// mainly intended to provide funds to accounts for testing purposes.
@@ -592,6 +594,7 @@ func (n *IntegrationTestNet) SpawnSession(t *testing.T) IntegrationTestNetSessio
 // The contract is deployed with by the network's validator account. The function returns the
 // deployed contract instance and the transaction receipt.
 func DeployContract[T any](n IntegrationTestNetSession, deploy contractDeployer[T]) (*T, *types.Receipt, error) {
+
 	client, err := n.GetClient()
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to connect to the Ethereum client: %w", err)
@@ -602,6 +605,14 @@ func DeployContract[T any](n IntegrationTestNetSession, deploy contractDeployer[
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get transaction options: %w", err)
 	}
+
+	// Deployments may comprise more than one transaction, so nonces must be
+	// set to nil to allow the client to determine the correct nonce for each
+	// transaction.
+	transactOptions.Nonce = nil
+
+	// Deployments may also be more expensive than the default transaction.
+	transactOptions.GasLimit = 10_000_000
 
 	_, transaction, contract, err := deploy(transactOptions, client)
 	if err != nil {
@@ -625,6 +636,10 @@ type contractDeployer[T any] func(*bind.TransactOpts, bind.ContractBackend) (com
 type Session struct {
 	net     *IntegrationTestNet
 	account Account
+}
+
+func (s *Session) GetFeatureSet() opera.FeatureSet {
+	return s.net.options.FeatureSet
 }
 
 // EndowAccount sends a requested amount of tokens to the given account. This is
