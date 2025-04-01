@@ -128,11 +128,8 @@ func (f *ServiceFeed) Start(store *evmstore.Store) {
 			if empty {
 				continue
 			}
-			for i, update := range pending {
+			for _, update := range pending {
 				if update.block.Number.Uint64() > height {
-					if i > 0 {
-						pending = pending[i:]
-					}
 					break
 				}
 				f.newBlock.Send(evmcore.ChainHeadNotify{Block: update.block})
