@@ -231,13 +231,13 @@ func TestAggregatedSignature_String_ListsKeyProperties(t *testing.T) {
 
 	print = agg.String()
 	require.Contains(print, "signers={1}")
-	require.Contains(print, "signature=0xa9b5..ba22")
+	require.Contains(print, "signature=0x87f0..8372")
 
 	require.NoError(agg.Add(7, Sign(stmt, bls.NewPrivateKeyForTests(2))))
 
 	print = agg.String()
 	require.Contains(print, "signers={1, 7}")
-	require.Contains(print, "signature=0xb96b..b00c")
+	require.Contains(print, "signature=0x95e1..5978")
 }
 
 func TestAggregatedSignature_NewAggregatedSignature_ContainsSignersAndSignature(t *testing.T) {

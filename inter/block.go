@@ -225,7 +225,7 @@ func (b *BlockBuilder) Build() *Block {
 		trie.NewStackTrie(nil),
 	)
 	res.ReceiptsHashRoot = types.DeriveSha(b.receipts, trie.NewStackTrie(nil))
-	res.LogBloom = types.CreateBloom(b.receipts)
+	res.LogBloom = types.MergeBloom(b.receipts)
 
 	for _, tx := range b.transactions {
 		res.TransactionHashes = append(res.TransactionHashes, tx.Hash())

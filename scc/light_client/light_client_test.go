@@ -5,11 +5,13 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/0xsoniclabs/carmen/go/carmen"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/bls"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -164,6 +166,156 @@ func TestLightClientState_Sync_UpdatesStateToHead(t *testing.T) {
 
 	// check state
 	require.Equal(blockNumber, head)
+}
+
+func TestLightClient_getAccountProof_ReportsErrorsFrom(t *testing.T) {
+	require := require.New(t)
+	address := common.Address{0x01}
+
+	tests := map[string]struct {
+		mockProvider func(*Mockprovider)
+		expectedErr  string
+	}{
+		"ProviderError": {
+			mockProvider: func(prov *Mockprovider) {
+				prov.EXPECT().getAccountProof(address, gomock.Any()).
+					Return(nil, fmt.Errorf("some error"))
+			},
+			expectedErr: "failed to get account proof",
+		},
+		"NilProof": {
+			mockProvider: func(prov *Mockprovider) {
+				prov.EXPECT().getAccountProof(address, gomock.Any()).
+					Return(nil, nil)
+			},
+			expectedErr: "nil account proof",
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			// setup
+			ctrl := gomock.NewController(t)
+			prov := NewMockprovider(ctrl)
+			tt.mockProvider(prov)
+			c, err := NewLightClient(testConfig())
+			require.NoError(err)
+			c.provider = prov
+			c.state.hasSynced = true
+
+			_, err = c.getAccountProof(address)
+			require.ErrorContains(err, tt.expectedErr)
+		})
+	}
+}
+
+func TestLightClient_getAccountProof_ReturnsProof(t *testing.T) {
+	require := require.New(t)
+	// setup
+	ctrl := gomock.NewController(t)
+	prov := NewMockprovider(ctrl)
+	c, err := NewLightClient(testConfig())
+	require.NoError(err)
+	c.provider = prov
+	c.state.hasSynced = true
+
+	want := carmen.CreateWitnessProofFromNodes()
+	prov.EXPECT().getAccountProof(common.Address{0x01}, c.state.headNumber).
+		Return(want, nil)
+
+	got, err := c.getAccountProof(common.Address{0x01})
+	require.NoError(err)
+	require.Equal(want, got)
+}
+
+func TestLightClient_GetBalance_getAccountProof_ReturnsErrorIfNotSynced(t *testing.T) {
+	require := require.New(t)
+	c, err := NewLightClient(testConfig())
+	require.NoError(err)
+	_, err = c.GetBalance(common.Address{0x01})
+	require.ErrorContains(err, "light client has not yet synced")
+	_, err = c.getAccountProof(common.Address{0x01})
+	require.ErrorContains(err, "light client has not yet synced")
+}
+
+func TestLightClient_GetBalance_PropagatesErrorFrom(t *testing.T) {
+	tests := map[string]struct {
+		mockExpect  func(*Mockprovider, *carmen.MockWitnessProof)
+		expectedErr string
+	}{
+		"getAccountProof": {
+			mockExpect: func(prov *Mockprovider, _ *carmen.MockWitnessProof) {
+				prov.EXPECT().getAccountProof(gomock.Any(), gomock.Any()).
+					Return(nil, fmt.Errorf("some error"))
+			},
+			expectedErr: "failed to get account proof",
+		},
+		"proofGetBalance": {
+			mockExpect: func(prov *Mockprovider, proof *carmen.MockWitnessProof) {
+				prov.EXPECT().getAccountProof(gomock.Any(), gomock.Any()).
+					Return(proof, nil)
+				proof.EXPECT().GetBalance(gomock.Any(), gomock.Any()).
+					Return(carmen.NewAmountFromUint256(uint256.NewInt(0)), false, fmt.Errorf("some error"))
+			},
+			expectedErr: "failed to get balance from proof",
+		},
+		"balanceNotProven": {
+			mockExpect: func(prov *Mockprovider, proof *carmen.MockWitnessProof) {
+				prov.EXPECT().getAccountProof(gomock.Any(), gomock.Any()).
+					Return(proof, nil)
+				proof.EXPECT().GetBalance(gomock.Any(), gomock.Any()).
+					Return(carmen.NewAmountFromUint256(uint256.NewInt(0)), false, nil)
+			},
+			expectedErr: "balance could not be proven",
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+
+			// setup
+			ctrl := gomock.NewController(t)
+			prov := NewMockprovider(ctrl)
+			c, err := NewLightClient(testConfig())
+			require.NoError(err)
+			c.provider = prov
+			c.state.hasSynced = true
+
+			proof := carmen.NewMockWitnessProof(ctrl)
+
+			tt.mockExpect(prov, proof)
+
+			_, err = c.GetBalance(common.Address{0x01})
+			require.ErrorContains(err, tt.expectedErr)
+		})
+	}
+}
+
+func TestLightClient_GetBalance_ReturnsBalance(t *testing.T) {
+	require := require.New(t)
+	// setup
+	ctrl := gomock.NewController(t)
+	prov := NewMockprovider(ctrl)
+	c, err := NewLightClient(testConfig())
+	require.NoError(err)
+	c.provider = prov
+	c.state.hasSynced = true
+	c.state.headNumber = idx.Block(42)
+	wantBalance := uint256.NewInt(42)
+
+	proof := carmen.NewMockWitnessProof(ctrl)
+	proof.EXPECT().GetBalance(gomock.Any(), carmen.Address{0x01}).
+		Return(carmen.NewAmountFromUint256(wantBalance), true, nil)
+
+	// setup rpc provider to return proof
+	prov.EXPECT().getAccountProof(common.Address{0x01}, idx.Block(42)).
+		Return(proof, nil)
+
+	// get balance function receives the proof and uses the state root to verify
+	balance, err := c.GetBalance(common.Address{0x01})
+	require.NoError(err)
+	require.Equal(wantBalance, balance)
 }
 
 /////////////////////////////////////////////////////

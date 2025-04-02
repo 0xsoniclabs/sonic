@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/0xsoniclabs/carmen/go/carmen"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 // retryProvider is used to wrap another provider and add a retry mechanism.
@@ -86,6 +88,22 @@ func (r retryProvider) getCommitteeCertificates(first scc.Period, maxResults uin
 func (r retryProvider) getBlockCertificates(first idx.Block, maxResults uint64) ([]cert.BlockCertificate, error) {
 	return retry(r.maxRetries, r.timeout, func() ([]cert.BlockCertificate, error) {
 		return r.provider.getBlockCertificates(first, maxResults)
+	})
+}
+
+// GetAccountProof returns the account proof corresponding to the
+// given address at the given height.
+//
+// Parameters:
+// - address: The address of the account.
+// - height: The block height of the state.
+//
+// Returns:
+// - AccountProof: The proof of the account at the given height.
+// - error: Not nil if the provider failed to obtain the requested account proof.
+func (r retryProvider) getAccountProof(address common.Address, height idx.Block) (carmen.WitnessProof, error) {
+	return retry(r.maxRetries, r.timeout, func() (carmen.WitnessProof, error) {
+		return r.provider.getAccountProof(address, height)
 	})
 }
 

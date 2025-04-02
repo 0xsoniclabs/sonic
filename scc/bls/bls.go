@@ -95,7 +95,7 @@ func (k PrivateKey) PublicKey() PublicKey {
 // resulting signature.
 func (k PrivateKey) Sign(message []byte) Signature {
 	res := Signature{}
-	res.sign.Sign(&k.secretKey, message, nil)
+	res.sign.Sign(&k.secretKey, message, nil, false)
 	return res
 }
 
@@ -212,7 +212,7 @@ func (s Signature) Validate() bool {
 // produced by the corresponding private key and the message has not been
 // tampered with.
 func (s Signature) Verify(publicKey PublicKey, message []byte) bool {
-	return s.sign.Verify(true, &publicKey.publicKey, true, message, nil)
+	return s.sign.Verify(true, &publicKey.publicKey, true, message, nil, false)
 }
 
 // VerifyAll returns true if the signature is the aggregation of all signature
@@ -227,7 +227,7 @@ func (s Signature) VerifyAll(publicKeys []PublicKey, message []byte) bool {
 		keys[i] = &key.publicKey
 		msgs[i] = message
 	}
-	return s.sign.AggregateVerify(false, keys, false, msgs, nil)
+	return s.sign.AggregateVerify(false, keys, false, msgs, nil, false)
 }
 
 // AggregateSignatures aggregates the provided signatures into a single

@@ -1049,7 +1049,7 @@ func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash 
 		blockOverrides.apply(&bctx)
 		blockCtx = &bctx
 	}
-	evm, vmError, err := b.GetEVM(ctx, msg, state, header, &vmConfig, blockCtx)
+	evm, vmError, err := b.GetEVM(ctx, state, header, &vmConfig, blockCtx)
 	if err != nil {
 		return nil, err
 	}
@@ -1061,6 +1061,11 @@ func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash 
 		<-ctx.Done()
 		evm.Cancel()
 	}()
+
+	// execute EIP-2935 HistoryStorage contract.
+	if evm.ChainConfig().IsPrague(header.Number, uint64(header.Time.Unix())) {
+		evmcore.ProcessParentBlockHash(header.ParentHash, evm)
+	}
 
 	// Execute the message.
 	gp := new(core.GasPool).AddGas(math.MaxUint64)
@@ -1519,7 +1524,7 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 		config := opera.DefaultVMConfig
 		config.Tracer = tracer.Hooks()
 		config.NoBaseFee = true
-		vmenv, _, err := b.GetEVM(ctx, msg, statedb, header, &config, nil)
+		vmenv, _, err := b.GetEVM(ctx, statedb, header, &config, nil)
 		if err != nil {
 			statedb.Release()
 			return nil, 0, nil, err
@@ -2167,7 +2172,7 @@ func (api *PublicDebugAPI) traceTx(ctx context.Context, tx *types.Transaction, m
 
 	loggingStateDB := evmstore.WrapStateDbWithLogger(statedb, tracer.Hooks)
 
-	vmenv, _, err := api.b.GetEVM(ctx, message, loggingStateDB, blockHeader, &evmconfig, blockCtx)
+	vmenv, _, err := api.b.GetEVM(ctx, loggingStateDB, blockHeader, &evmconfig, blockCtx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get EVM for tracing: %w", err)
 	}
@@ -2310,6 +2315,20 @@ func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex in
 		return nil, statedb, nil
 	}
 
+	// Use default config for replaying transactions with possible no base fee
+	cfg := opera.DefaultVMConfig
+	cfg.NoBaseFee = true
+	vmenv, _, err := b.GetEVM(ctx, statedb, block.Header(), &cfg, nil)
+	if err != nil {
+		statedb.Release()
+		return nil, nil, err
+	}
+
+	// execute EIP-2935 HistoryStorage contract.
+	if vmenv.ChainConfig().IsPrague(block.Number, uint64(block.Time.Unix())) {
+		evmcore.ProcessParentBlockHash(block.ParentHash, vmenv)
+	}
+
 	// Recompute transactions up to the target index.
 	signer := gsignercache.Wrap(types.MakeSigner(b.ChainConfig(), block.Number, uint64(block.Time.Unix())))
 	for idx, tx := range block.Transactions {
@@ -2322,16 +2341,6 @@ func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex in
 			return msg, statedb, nil
 		}
 
-		// Use default config for replaying transactions with possible no base fee
-		cfg := opera.DefaultVMConfig
-		cfg.NoBaseFee = true
-
-		// Not yet the searched for transaction, execute on top of the current state
-		vmenv, _, err := b.GetEVM(ctx, msg, statedb, block.Header(), &cfg, nil)
-		if err != nil {
-			statedb.Release()
-			return nil, nil, err
-		}
 		statedb.SetTxContext(tx.Hash(), idx)
 		if _, err := core.ApplyMessage(vmenv, msg, new(core.GasPool).AddGas(tx.Gas())); err != nil {
 			statedb.Release()

@@ -17,6 +17,8 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/consensus"
+	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/eth/tracers"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
@@ -255,7 +257,7 @@ func TestEstimateGas(t *testing.T) {
 	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, blkNr).Return(mockState, mockHeader, nil).AnyTimes()
 	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000))
 	mockBackend.EXPECT().MaxGasLimit().Return(uint64(10000000))
-	mockBackend.EXPECT().GetEVM(any, any, any, any, any, any).DoAndReturn(getEvmFunc(mockState)).AnyTimes()
+	mockBackend.EXPECT().GetEVM(any, any, any, any, any).DoAndReturn(getEvmFunc(mockState)).AnyTimes()
 	setExpectedStateCalls(mockState)
 
 	api := NewPublicBlockChainAPI(mockBackend)
@@ -278,7 +280,7 @@ func TestReplayTransactionOnEmptyBlock(t *testing.T) {
 	mockBackend.EXPECT().BlockByNumber(any, any).Return(block, nil)
 	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, any).Return(mockState, nil, nil).AnyTimes()
 	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000)).AnyTimes()
-	mockBackend.EXPECT().GetEVM(any, any, any, any, any, any).DoAndReturn(getEvmFunc(mockState)).AnyTimes()
+	mockBackend.EXPECT().GetEVM(any, any, any, any, any).DoAndReturn(getEvmFunc(mockState)).AnyTimes()
 	mockBackend.EXPECT().ChainConfig().Return(&params.ChainConfig{}).AnyTimes()
 	setExpectedStateCalls(mockState)
 
@@ -349,7 +351,7 @@ func TestReplayInternalTransaction(t *testing.T) {
 	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, any).Return(mockState, nil, nil).AnyTimes()
 	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000)).AnyTimes()
 	mockBackend.EXPECT().GetTransaction(any, any).Return(types.NewTx(internalTx), block.NumberU64(), txIndex, nil).AnyTimes()
-	mockBackend.EXPECT().GetEVM(any, any, any, any, noBaseFeeMatcher{expected: true}, any).DoAndReturn(getEvmFuncWithParameters(mockState, chainConfig, &blockCtx, vmConfig)).AnyTimes()
+	mockBackend.EXPECT().GetEVM(any, any, any, noBaseFeeMatcher{expected: true}, any).DoAndReturn(getEvmFuncWithParameters(mockState, chainConfig, &blockCtx, vmConfig)).AnyTimes()
 	mockBackend.EXPECT().ChainConfig().Return(chainConfig).AnyTimes()
 	setExpectedStateCalls(mockState)
 
@@ -387,7 +389,7 @@ func TestBlockOverrides(t *testing.T) {
 	}
 
 	// Check that the correct block context is used when creating EVM instance
-	mockBackend.EXPECT().GetEVM(any, any, any, any, any, BlockContextMatcher{expectedBlockCtx}).DoAndReturn(getEvmFunc(mockState)).AnyTimes()
+	mockBackend.EXPECT().GetEVM(any, any, any, any, BlockContextMatcher{expectedBlockCtx}).DoAndReturn(getEvmFunc(mockState)).AnyTimes()
 
 	blockOverrides := &BlockOverrides{
 		Number:  (*hexutil.Big)(big.NewInt(5)),
@@ -464,8 +466,8 @@ func getTxArgs(t *testing.T) TransactionArgs {
 	}
 }
 
-func getEvmFunc(mockState *state.MockStateDB) func(interface{}, interface{}, interface{}, interface{}, interface{}, interface{}) (*vm.EVM, func() error, error) {
-	return func(interface{}, interface{}, interface{}, interface{}, interface{}, interface{}) (*vm.EVM, func() error, error) {
+func getEvmFunc(mockState *state.MockStateDB) func(any, any, any, any, any) (*vm.EVM, func() error, error) {
+	return func(any, any, any, any, any) (*vm.EVM, func() error, error) {
 		blockCtx := vm.BlockContext{
 			Transfer: vm.TransferFunc(func(sd vm.StateDB, a1, a2 common.Address, i *uint256.Int) {}),
 		}
@@ -473,8 +475,8 @@ func getEvmFunc(mockState *state.MockStateDB) func(interface{}, interface{}, int
 	}
 }
 
-func getEvmFuncWithParameters(mockState *state.MockStateDB, chainConfig *params.ChainConfig, blockContext *vm.BlockContext, vmConfig vm.Config) func(interface{}, interface{}, interface{}, interface{}, interface{}, interface{}) (*vm.EVM, func() error, error) {
-	return func(interface{}, interface{}, interface{}, interface{}, interface{}, interface{}) (*vm.EVM, func() error, error) {
+func getEvmFuncWithParameters(mockState *state.MockStateDB, chainConfig *params.ChainConfig, blockContext *vm.BlockContext, vmConfig vm.Config) func(any, any, any, any, any) (*vm.EVM, func() error, error) {
+	return func(any, any, any, any, any) (*vm.EVM, func() error, error) {
 		return vm.NewEVM(*blockContext, mockState, chainConfig, vmConfig), func() error { return nil }, nil
 	}
 }
@@ -596,6 +598,312 @@ func TestTransactionJSONSerialization(t *testing.T) {
 	}
 }
 
+func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
+
+	senderKey, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	sender := crypto.PubkeyToAddress(senderKey.PublicKey)
+	recipient := common.Address{0x2}
+
+	executeDoCall := func(t *testing.T, backend Backend, txArgs TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash) {
+		var stateOverrides *StateOverride
+		var blockOverrides *BlockOverrides
+		timeout := time.Duration(time.Second)
+		gasCap := uint64(10000000)
+
+		result, err := DoCall(t.Context(), backend, txArgs, blockNrOrHash, stateOverrides, blockOverrides, timeout, gasCap)
+		require.NoError(t, err)
+		require.False(t, result.Failed())
+	}
+
+	executeStateAtTransaction := func(t *testing.T, backend Backend, txArgs TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash) {
+		block := backend.CurrentBlock()
+
+		// modify block for test: add historical transactions
+		block.Transactions = []*types.Transaction{
+
+			// first transaction will be replayed
+			signTransaction(t,
+				big.NewInt(250),
+				&types.LegacyTx{
+					To:       &recipient,
+					Gas:      150_000,
+					GasPrice: big.NewInt(10000000),
+				},
+				senderKey),
+
+			// second transaction does not matter, we are querying state before
+			// it being executed
+			types.NewTx(&types.LegacyTx{}),
+		}
+
+		// querying state at tx 1 requires executing tx 0
+		_, _, err := stateAtTransaction(t.Context(), block, 1, backend)
+		require.NoError(t, err)
+	}
+
+	executeTraceReplayBlock := func(t *testing.T, backend Backend, txArgs TransactionArgs, blockOrHash rpc.BlockNumberOrHash) {
+		api := PublicTxTraceAPI{b: backend}
+		block := backend.CurrentBlock()
+
+		tx1 := signTransaction(t,
+			big.NewInt(250),
+			&types.LegacyTx{
+				To:       &recipient,
+				Gas:      150_000,
+				GasPrice: big.NewInt(10000000),
+				Nonce:    0,
+			},
+			senderKey)
+
+		tx2 := signTransaction(t,
+			big.NewInt(250),
+			&types.LegacyTx{
+				To:       &recipient,
+				Gas:      150_000,
+				GasPrice: big.NewInt(10000000),
+				Nonce:    1,
+			},
+			senderKey)
+
+		block.Transactions = []*types.Transaction{tx1, tx2}
+		txHash := tx2.Hash()
+		_, err := api.replayBlock(t.Context(), block, &txHash, &[]hexutil.Uint{hexutil.Uint(0)})
+		require.NoError(t, err)
+	}
+
+	expectedCallsFromTxCall := func(mockState *state.MockStateDB) {
+		mockState.EXPECT().Prepare(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any())
+		mockState.EXPECT().Release().AnyTimes()
+		mockState.EXPECT().Snapshot()
+		mockState.EXPECT().GetBalance(sender).Return(uint256.NewInt(1e18))
+		mockState.EXPECT().GetNonce(sender).Return(uint64(0))
+		mockState.EXPECT().SetNonce(sender, uint64(1), gomock.Any())
+		mockState.EXPECT().Exist(recipient).Return(true)
+		mockState.EXPECT().GetCode(recipient).Return([]byte{}).Times(2)
+		mockState.EXPECT().AddBalance(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+		mockState.EXPECT().SubBalance(sender, gomock.Any(), gomock.Any()).Times(2)
+		mockState.EXPECT().GetRefund().Return(uint64(0)).Times(2)
+	}
+
+	expectedCallsFromHistoryStorageContract := func(mockState *state.MockStateDB) {
+		mockState.EXPECT().Snapshot()
+		mockState.EXPECT().AddAddressToAccessList(params.HistoryStorageAddress)
+		mockState.EXPECT().GetCode(params.HistoryStorageAddress).Return(params.HistoryStorageCode).Times(2)
+		mockState.EXPECT().GetCodeHash(params.HistoryStorageAddress).Return(common.Hash{})
+		mockState.EXPECT().AddRefund(gomock.Any()).Times(2)
+		mockState.EXPECT().SlotInAccessList(params.HistoryStorageAddress, gomock.Any())
+		mockState.EXPECT().AddSlotToAccessList(params.HistoryStorageAddress, gomock.Any())
+		mockState.EXPECT().GetState(params.HistoryStorageAddress, gomock.Any())
+		mockState.EXPECT().SubRefund(gomock.Any())
+		mockState.EXPECT().Exist(params.HistoryStorageAddress).Return(true)
+		mockState.EXPECT().SubBalance(params.SystemAddress, uint256.NewInt(0), gomock.Any())
+		mockState.EXPECT().GetRefund().Return(uint64(0))
+		mockState.EXPECT().Finalise(true)
+	}
+
+	expectedTraceReplayBlock := func(mockState *state.MockStateDB) {
+		mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any())
+		mockState.EXPECT().GetCode(sender).Return([]byte{})
+		mockState.EXPECT().GetNonce(sender).Return(uint64(0))
+		mockState.EXPECT().EndTransaction()
+
+		mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any())
+		mockState.EXPECT().GetNonce(sender).Return(uint64(1)).Times(2)
+		mockState.EXPECT().GetCode(sender).Return([]byte{})
+		mockState.EXPECT().GetBalance(sender).Return(uint256.NewInt(1e18))
+		mockState.EXPECT().SubBalance(sender, gomock.Any(), gomock.Any())
+
+		mockState.EXPECT().Prepare(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any())
+		mockState.EXPECT().SetNonce(sender, uint64(2), gomock.Any())
+		mockState.EXPECT().GetCode(recipient).Return([]byte{})
+		mockState.EXPECT().Snapshot()
+		mockState.EXPECT().Exist(recipient)
+		mockState.EXPECT().GetRefund().Times(2)
+		mockState.EXPECT().EndTransaction().Times(2)
+		mockState.EXPECT().TxIndex()
+	}
+
+	tests := map[string]struct {
+		features          opera.FeatureSet
+		extraSetupBackend func(*MockBackend)
+		setupStateDb      func(*state.MockStateDB)
+		call              func(*testing.T, Backend, TransactionArgs, rpc.BlockNumberOrHash)
+	}{
+		"DoCall sonic": {
+			features:     opera.SonicFeatures,
+			setupStateDb: expectedCallsFromTxCall,
+			call:         executeDoCall,
+		},
+		"DoCall allegro": {
+			features: opera.AllegroFeatures,
+			setupStateDb: func(mockState *state.MockStateDB) {
+				expectedCallsFromHistoryStorageContract(mockState)
+				expectedCallsFromTxCall(mockState)
+			},
+			call: executeDoCall,
+		},
+		"StateAtTransaction sonic": {
+			features: opera.SonicFeatures,
+			setupStateDb: func(mockState *state.MockStateDB) {
+				mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any())
+				mockState.EXPECT().GetCode(sender).Return([]byte{})
+				mockState.EXPECT().GetNonce(sender).Return(uint64(0))
+				mockState.EXPECT().EndTransaction()
+
+				expectedCallsFromTxCall(mockState)
+			},
+			call: executeStateAtTransaction,
+		},
+		"StateAtTransaction allegro": {
+			features: opera.AllegroFeatures,
+			setupStateDb: func(mockState *state.MockStateDB) {
+				mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any())
+				mockState.EXPECT().GetCode(sender).Return([]byte{})
+				mockState.EXPECT().GetNonce(sender).Return(uint64(0))
+				mockState.EXPECT().EndTransaction()
+
+				expectedCallsFromHistoryStorageContract(mockState)
+				expectedCallsFromTxCall(mockState)
+			},
+			call: executeStateAtTransaction,
+		},
+		"trace_replayBlock sonic": {
+			features: opera.SonicFeatures,
+			extraSetupBackend: func(mockBackend *MockBackend) {
+				mockBackend.EXPECT().GetReceiptsByNumber(gomock.Any(), gomock.Any()).
+					Return(types.Receipts{
+						{Status: types.ReceiptStatusSuccessful},
+						{Status: types.ReceiptStatusSuccessful},
+					}, nil)
+				mockBackend.EXPECT().RPCEVMTimeout()
+			},
+			setupStateDb: func(mockState *state.MockStateDB) {
+				expectedCallsFromTxCall(mockState)
+
+				expectedTraceReplayBlock(mockState)
+			},
+			call: executeTraceReplayBlock,
+		},
+		"trace_replayBlock allegro": {
+			features: opera.AllegroFeatures,
+			extraSetupBackend: func(mockBackend *MockBackend) {
+				mockBackend.EXPECT().GetReceiptsByNumber(gomock.Any(), gomock.Any()).
+					Return(types.Receipts{
+						{Status: types.ReceiptStatusSuccessful},
+						{Status: types.ReceiptStatusSuccessful},
+					}, nil)
+				mockBackend.EXPECT().RPCEVMTimeout()
+			},
+			setupStateDb: func(mockState *state.MockStateDB) {
+				expectedCallsFromHistoryStorageContract(mockState)
+				expectedCallsFromTxCall(mockState)
+				expectedTraceReplayBlock(mockState)
+			},
+			call: executeTraceReplayBlock,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+
+			ctrl := gomock.NewController(t)
+
+			blockOrHash := rpc.BlockNumberOrHashWithNumber(1)
+
+			header := evmcore.EvmHeader{
+				// return any block but 0, 0 is genesis and has special semantics
+				Number:  big.NewInt(1),
+				BaseFee: big.NewInt(10000000),
+			}
+
+			mockState := state.NewMockStateDB(ctrl)
+			require.NotNil(t, test.setupStateDb, "setupStateDb must be defined")
+			test.setupStateDb(mockState)
+
+			backend := NewMockBackend(ctrl)
+			backend.EXPECT().StateAndHeaderByNumberOrHash(gomock.Any(), blockOrHash).
+				Return(mockState, &header, nil).AnyTimes()
+			backend.EXPECT().GetEVM(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				DoAndReturn(makeTestEVM(test.features)).AnyTimes()
+			backend.EXPECT().CurrentBlock().AnyTimes().Return(&evmcore.EvmBlock{EvmHeader: header})
+			backend.EXPECT().ChainConfig().AnyTimes().Return(makeChainConfig(test.features))
+			backend.EXPECT().SuggestGasTipCap(gomock.Any(), gomock.Any()).AnyTimes().Return(big.NewInt(1))
+			backend.EXPECT().MinGasPrice().AnyTimes().Return(big.NewInt(1))
+			backend.EXPECT().RPCGasCap().AnyTimes().Return(uint64(10000000))
+			backend.EXPECT().MaxGasLimit().AnyTimes().Return(uint64(10000000))
+			backend.EXPECT().StateAndHeaderByNumberOrHash(gomock.Any(), gomock.Any()).
+				Return(mockState, &header, nil).AnyTimes()
+			if test.extraSetupBackend != nil {
+				test.extraSetupBackend(backend)
+			}
+
+			// every test uses the same transaction
+			nonce := hexutil.Uint64(0)
+			gas := hexutil.Uint64(150_000)
+			gasFeeCap := hexutil.Big(*big.NewInt(10000000))
+			txArgs := TransactionArgs{
+				From:         &sender,
+				To:           &recipient,
+				Nonce:        &nonce,
+				Gas:          &gas,
+				MaxFeePerGas: &gasFeeCap,
+			}
+
+			test.call(t, backend, txArgs, blockOrHash)
+		})
+	}
+}
+
+// makeChainConfig allows to create a chain config with a given set of features
+func makeChainConfig(features opera.FeatureSet) *params.ChainConfig {
+	switch features {
+	case opera.SonicFeatures:
+		return opera.MainNetRules().EvmChainConfig(
+			[]opera.UpgradeHeight{
+				{Upgrades: opera.SonicFeatures.ToUpgrades(), Height: 0},
+			})
+	case opera.AllegroFeatures:
+		return opera.MainNetRules().EvmChainConfig(
+			[]opera.UpgradeHeight{
+				{Upgrades: opera.SonicFeatures.ToUpgrades(), Height: 0},
+				{Upgrades: opera.AllegroFeatures.ToUpgrades(), Height: 1},
+			})
+	default:
+		panic(fmt.Errorf("unsupported featureSet %v", features))
+	}
+}
+
+// makeTestEVM allows to create an evm instance to use in tests with a given set of features
+func makeTestEVM(features opera.FeatureSet) func(
+	ctx context.Context,
+	statedb vm.StateDB,
+	header *evmcore.EvmHeader,
+	vmConfig *vm.Config,
+	blockContext *vm.BlockContext,
+) (*vm.EVM, func() error, error) {
+
+	return func(ctx context.Context, statedb vm.StateDB, header *evmcore.EvmHeader, vmConfig *vm.Config, blockContext *vm.BlockContext) (*vm.EVM, func() error, error) {
+
+		chainConfig := makeChainConfig(features)
+
+		if blockContext == nil {
+			ethHeader := header.EthHeader()
+			chainContext := &FakeChainContext{
+				header:      ethHeader,
+				chainConfig: chainConfig,
+			}
+			author := common.Address{}
+			tmp := core.NewEVMBlockContext(ethHeader, chainContext, &author)
+			blockContext = &tmp
+		}
+
+		evm := vm.NewEVM(*blockContext, statedb, chainConfig, *vmConfig)
+		return evm, func() error { return nil }, nil
+	}
+}
+
 func signTransaction(
 	t *testing.T,
 	chainId *big.Int,
@@ -694,4 +1002,24 @@ func rpcTransactionToTransaction(t *testing.T, tx *RPCTransaction) *types.Transa
 		t.Error("unsupported transaction type ", tx.Type)
 		return nil
 	}
+}
+
+// fakeChainContext is a fake implementation of evm.ChainContext
+// to use in tests
+type FakeChainContext struct {
+	header      *types.Header
+	chainConfig *params.ChainConfig
+}
+
+func (fcc *FakeChainContext) Engine() consensus.Engine {
+	// currently not used in tests, if needed: engine will have to be faked
+	return nil
+}
+
+func (fcc *FakeChainContext) GetHeader(common.Hash, uint64) *types.Header {
+	return fcc.header
+}
+
+func (fcc *FakeChainContext) Config() *params.ChainConfig {
+	return fcc.chainConfig
 }
