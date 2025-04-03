@@ -23,7 +23,6 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/verwatcher"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
@@ -400,12 +399,11 @@ func consensusCallbackBeginBlockFn(
 
 					// Notify about new block
 					if feed != nil {
-						feed.newBlock.Send(evmcore.ChainHeadNotify{Block: evmBlock})
 						var logs []*types.Log
 						for _, r := range allReceipts {
 							logs = append(logs, r.Logs...)
 						}
-						feed.newLogs.Send(logs)
+						feed.notifyAboutNewBlock(evmBlock, logs)
 					}
 
 					now := time.Now()
