@@ -29,9 +29,11 @@ import (
 )
 
 var (
-	eipTests          = filepath.Join(".", "testdata", "EIPTests", "StateTests")
-	generalStateTests = filepath.Join(".", "testdata", "GeneralStateTests")
-	execSpecTests     = filepath.Join(".", "execution-spec-tests", "fixtures", "state_tests")
+	testPaths = []string{
+		filepath.Join(".", "testdata", "EIPTests", "StateTests"),
+		filepath.Join(".", "testdata", "GeneralStateTests"),
+		filepath.Join(".", "execution-spec-tests", "fixtures", "state_tests"),
+	}
 
 	unsupportedForks = map[string]struct{}{
 		"ConstantinopleFix": {},
@@ -47,16 +49,22 @@ func initMatcher(st *tests.TestMatcher) {
 	st.SkipLoad(`^stEOF/`)
 }
 
+// TestState runs the state tests from the Ethereum tests and Ethereum execution spec tests.
+// In order to run the Ethereum tests, clone the `ethereum/tests` repository inside this tests directory as `testdata`.
+// As the tests are pre-filled no further steps are needed.
+// For the execution spec tests, clone the `ethereum/execution-spec-tests` repository inside this tests directory.
+// Install the python dependencies (using uv is recommended):
+// `uv sync --all-extras && uv run solc-select use 0.8.24 --always-install`
+// Collect all desired test cases:
+// `uv run fill --collect-only --from Istanbul --to Prague`
+// Fill all state tests (these are the only ones we currently support):
+// `uv run fill --from Istanbul --until Prague -m state_test`
 func TestState(t *testing.T) {
 	t.Parallel()
 
 	st := new(tests.TestMatcher)
 	initMatcher(st)
-	for _, dir := range []string{
-		eipTests,
-		generalStateTests,
-		execSpecTests,
-	} {
+	for _, dir := range testPaths {
 		// If the directory does not exist,
 		// skip it but do not exit test without checking the other directories.
 		dirinfo, err := os.Stat(dir)
