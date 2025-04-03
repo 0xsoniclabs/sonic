@@ -10,9 +10,9 @@ import (
 	"sync/atomic"
 
 	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/kvdb"
-	"github.com/0xsoniclabs/consensus/kvdb/skiperrors"
-	"github.com/0xsoniclabs/consensus/kvdb/table"
+	"github.com/0xsoniclabs/kvdb"
+	"github.com/0xsoniclabs/kvdb/skiperrors"
+	"github.com/0xsoniclabs/kvdb/table"
 
 	"github.com/0xsoniclabs/sonic/logger"
 )

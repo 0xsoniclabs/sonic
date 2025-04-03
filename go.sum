@@ -2,6 +2,10 @@ github.com/0xsoniclabs/carmen/go v0.0.0-20250113102336-97f8b8616eff h1:ItY2JgmM0
 github.com/0xsoniclabs/carmen/go v0.0.0-20250113102336-97f8b8616eff/go.mod h1:/u6oDZBv6eyPs9K7Ug5D4aL9l1Q7N43BnWEUPsvKmYw=
 github.com/0xsoniclabs/consensus v0.0.0-20250305150018-46890c1558a3 h1:8RMTZUUdJZuaiJR7W/sQL/esqyiQDjPXxB9XZeUj3DM=
 github.com/0xsoniclabs/consensus v0.0.0-20250305150018-46890c1558a3/go.mod h1:iqY4OlMSIpNvXZ0e7FiPsMJFcjPfem2VYmsYyluLr14=
+github.com/0xsoniclabs/consensus v0.0.0-20250327142745-f04d0d476357 h1:ISoNh5YyicCDVx6+vcwg5LLYBNhOcmblizuf/zADwac=
+github.com/0xsoniclabs/consensus v0.0.0-20250327142745-f04d0d476357/go.mod h1:dllU0myr+jO6GJGmmOAJDycyjhf5jU9bG1nFi+4HgcM=
+github.com/0xsoniclabs/consensus v0.0.0-20250402102031-cbd390dcb623 h1:Cufi0K/SGctwz5dsYc8swJAckCKUuxeQ/WN8zTcl/PA=
+github.com/0xsoniclabs/consensus v0.0.0-20250402102031-cbd390dcb623/go.mod h1:yGWxvaPp4jRoAPFWntTe6QKzG9m9XwbCIRk6oreTCBg=
 github.com/0xsoniclabs/go-ethereum v0.0.0-20250210213022-86eca3554809 h1:MtKV0hC7b58vimXYzmNRBNZJw1ovewt5GbanzPgl68k=
 github.com/0xsoniclabs/go-ethereum v0.0.0-20250210213022-86eca3554809/go.mod h1:9SAhGia6ukqZnvwJ3npNEmQDFjusZ/vXgbU1Z7J1vhw=
 github.com/0xsoniclabs/tosca v0.0.0-20250221124739-3aac4e7427dc h1:3JvCgp/G+0VQCz74vXKjH475/JvCM7r1Kny0wzUN7TI=
@@ -258,6 +262,7 @@ github.com/shirou/gopsutil v3.21.11+incompatible/go.mod h1:5b4v6he4MtMOwMlS0TUMT
 github.com/spkg/bom v0.0.0-20160624110644-59b7046e48ad/go.mod h1:qLr4V1qq6nMqFKkMo8ZTx3f+BZEkzsRUY10Xsm2mwU0=
 github.com/status-im/keycard-go v0.3.2 h1:YusIF/bHx6YZis8UTOJrpZFnTs4IkRBdmJXqdiXkpFE=
 github.com/status-im/keycard-go v0.3.2/go.mod h1:wlp8ZLbsmrF6g6WjugPAx+IzoLrkdf9+mHxBEeo3Hbg=
+github.com/status-im/keycard-go v0.3.3/go.mod h1:wlp8ZLbsmrF6g6WjugPAx+IzoLrkdf9+mHxBEeo3Hbg=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/objx v0.4.0/go.mod h1:YvHI0jy2hoMjB+UWwv71VJQ9isScKT/TqJzVSSt89Yw=
 github.com/stretchr/objx v0.5.0/go.mod h1:Yh+to48EsGEfYuaHDzXPcE3xhTkx73EhmCGUpEOglKo=
@@ -268,6 +273,7 @@ github.com/stretchr/testify v1.8.3/go.mod h1:sz/lmYIOXD/1dqDmKjjqLyZ2RngseejIcXl
 github.com/stretchr/testify v1.8.4/go.mod h1:sz/lmYIOXD/1dqDmKjjqLyZ2RngseejIcXlSw2iwfAo=
 github.com/stretchr/testify v1.9.0 h1:HtqpIVDClZ4nwg75+f6Lvsy/wHu+3BoSGCbBAcpTsTg=
 github.com/stretchr/testify v1.9.0/go.mod h1:r2ic/lqez/lEtzL7wO/rwa5dbSLXVDPFyf8C91i36aY=
+github.com/stretchr/testify v1.10.0/go.mod h1:r2ic/lqez/lEtzL7wO/rwa5dbSLXVDPFyf8C91i36aY=
 github.com/supranational/blst v0.3.14 h1:xNMoHRJOTwMn63ip6qoWJ2Ymgvj7E2b9jY2FAwY+qRo=
 github.com/supranational/blst v0.3.14/go.mod h1:jZJtfjgudtNl4en1tzwPIV3KjUnQUvG3/j+w+fVonLw=
 github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7 h1:epCh84lMvA70Z7CTTCmYQn2CKbY8j86K7/FAIr141uY=

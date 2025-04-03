@@ -6,7 +6,7 @@ import (
 	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/0xsoniclabs/sonic/opera"
 
-	"github.com/0xsoniclabs/consensus/kvdb"
+	"github.com/0xsoniclabs/kvdb"
 	"github.com/0xsoniclabs/sonic/utils/migration"
 )
 
