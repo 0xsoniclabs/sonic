@@ -11,6 +11,7 @@ import (
 
 	"github.com/0xsoniclabs/carmen/go/carmen"
 	"github.com/0xsoniclabs/carmen/go/common/immutable"
+	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/inter"
@@ -20,6 +21,9 @@ import (
 	"github.com/0xsoniclabs/sonic/opera/contracts/evmwriter"
 	"github.com/0xsoniclabs/sonic/opera/contracts/netinit"
 	"github.com/0xsoniclabs/sonic/opera/contracts/sfc"
+	"github.com/0xsoniclabs/sonic/scc"
+	"github.com/0xsoniclabs/sonic/scc/bls"
+	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter_event_emitter"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -34,12 +38,16 @@ import (
 )
 
 func TestBlockHeader_FakeGenesis_SatisfiesInvariants(t *testing.T) {
-	net := StartIntegrationTestNetWithFakeGenesis(t)
+	net := StartIntegrationTestNetWithFakeGenesis(t, IntegrationTestNetOptions{
+		FeatureSet: opera.AllegroFeatures,
+	})
 	testBlockHeadersOnNetwork(t, net)
 }
 
 func TestBlockHeader_JsonGenesis_SatisfiesInvariants(t *testing.T) {
-	net := StartIntegrationTestNetWithJsonGenesis(t)
+	net := StartIntegrationTestNetWithJsonGenesis(t, IntegrationTestNetOptions{
+		FeatureSet: opera.AllegroFeatures,
+	})
 	testBlockHeadersOnNetwork(t, net)
 }
 
@@ -170,6 +178,10 @@ func testBlockHeadersOnNetwork(t *testing.T, net *IntegrationTestNet) {
 
 		t.Run("HasBlockCertificatesForBlocks", func(t *testing.T) {
 			testScc_HasBlockCertificatesForBlocks(t, headers, client)
+		})
+
+		t.Run("HasSignedBlockCertificatesForBlocks", func(t *testing.T) {
+			testScc_HasSignedBlockCertificatesForBlocks(t, headers, client)
 		})
 	}
 
@@ -773,6 +785,8 @@ func testScc_HasCommitteeCertificates(
 	require := require.New(t)
 	results := []struct {
 		ChainId uint64
+		Period  scc.Period
+		Members []scc.Member
 	}{}
 	err := client.Client().Call(&results, "sonic_getCommitteeCertificates", "0x0", "max")
 	require.NoError(err)
@@ -780,8 +794,10 @@ func testScc_HasCommitteeCertificates(
 
 	chainId, err := client.ChainID(context.Background())
 	require.NoError(err)
-	for _, result := range results {
+	for i, result := range results {
 		require.Equal(chainId.Uint64(), result.ChainId)
+		require.Equal(scc.Period(i), result.Period)
+		require.NotEmpty(result.Members, "period %d", i)
 	}
 }
 
@@ -822,4 +838,94 @@ func testScc_HasBlockCertificatesForBlocks(
 		require.Equal(header.Hash(), cert.Hash, "block hash mismatch")
 		require.Equal(header.Root, cert.StateRoot, "state root mismatch")
 	}
+}
+
+// testScc_HasSignedBlockCertificatesForBlocks checks that the block certificates
+// produced on by the chain are valid. To be valid, sufficient signatures must
+// be present. Since in this context there is only ever a single validator,
+// this test only provides a sanity check. It can not demonstrate that signatures
+// are successfully distributed among network nodes.
+func testScc_HasSignedBlockCertificatesForBlocks(
+	t *testing.T,
+	headers []*types.Header,
+	client *ethclient.Client,
+) {
+	require := require.New(t)
+
+	// fetch all block certificates available on the server
+	results := []struct {
+		ChainId   uint64
+		Number    idx.Block
+		Hash      common.Hash
+		StateRoot common.Hash
+		Signers   cert.BitSet[scc.MemberId]
+		Signature bls.Signature
+	}{}
+	err := client.Client().Call(&results, "sonic_getBlockCertificates", "0x0", "max")
+	require.NoError(err)
+	require.NotEmpty(results, "no block certificates found")
+
+	// The test harness only gives enough time to settle the first few blocks
+	// so we only check the first 10 blocks, which is enough to verify that
+	// valid certificates are generated.
+	if len(results) > 10 {
+		results = results[:10]
+	}
+
+	for _, result := range results {
+		// Convert the raw data into a certificate.
+		certificate := cert.NewCertificateWithSignature(
+			cert.NewBlockStatement(
+				result.ChainId,
+				result.Number,
+				result.Hash,
+				result.StateRoot,
+			),
+			cert.NewAggregatedSignature[cert.BlockStatement](
+				result.Signers,
+				result.Signature,
+			),
+		)
+
+		// Fetch the committee for the block.
+		committee, err := getCommitteeForBlock(result.Number, client)
+		require.NoError(err, "failed to get committee for block", "block", result.Number)
+
+		// Check that the signature on the certificate is valid.
+		require.NoError(
+			certificate.Verify(committee),
+			"failed to verify certificate of block %d",
+			result.Number,
+		)
+	}
+}
+
+// getCommitteeForBlock fetches the committee for the given block without
+// checking its validity. The service connected through the client is implicitly
+// trusted.
+func getCommitteeForBlock(
+	block idx.Block,
+	client *ethclient.Client,
+) (scc.Committee, error) {
+	period := scc.GetPeriod(block)
+	var result []struct {
+		Members []scc.Member
+	}
+	err := client.Client().Call(
+		&result,
+		"sonic_getCommitteeCertificates",
+		period,
+		1,
+	)
+	if err != nil {
+		return scc.Committee{}, err
+	}
+	if len(result) != 1 {
+		return scc.Committee{}, fmt.Errorf("unexpected number of results: %d", len(result))
+	}
+	members := result[0].Members
+	if len(members) == 0 {
+		return scc.Committee{}, fmt.Errorf("no members in the committee")
+	}
+	return scc.NewCommittee(members...), nil
 }
