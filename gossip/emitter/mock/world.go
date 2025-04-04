@@ -8,10 +8,10 @@ import (
 	big "math/big"
 	reflect "reflect"
 
+	dagindexer "github.com/0xsoniclabs/consensus/dagindexer"
 	hash "github.com/0xsoniclabs/consensus/hash"
 	idx "github.com/0xsoniclabs/consensus/inter/idx"
 	pos "github.com/0xsoniclabs/consensus/inter/pos"
-	dagindexer "github.com/0xsoniclabs/sonic/dagindexer"
 	inter "github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	validatorpk "github.com/0xsoniclabs/sonic/inter/validatorpk"

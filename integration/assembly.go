@@ -3,6 +3,7 @@ package integration
 import (
 	"crypto/ecdsa"
 	"fmt"
+	"github.com/0xsoniclabs/consensus/dagindexer"
 
 	"github.com/0xsoniclabs/consensus/abft"
 	"github.com/0xsoniclabs/consensus/inter/idx"

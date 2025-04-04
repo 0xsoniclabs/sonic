@@ -1,6 +1,7 @@
 package gossip
 
 import (
+	"github.com/0xsoniclabs/consensus/dagindexer"
 	"sync/atomic"
 
 	"github.com/0xsoniclabs/consensus/hash"

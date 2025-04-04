@@ -3,6 +3,7 @@ package gossip
 import (
 	"errors"
 	"fmt"
+	"github.com/0xsoniclabs/consensus/dagindexer"
 	"math/big"
 	"math/rand/v2"
 	"sync"
