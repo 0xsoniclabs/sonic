@@ -2,6 +2,7 @@ package config
 
 import (
 	"bytes"
+	"github.com/0xsoniclabs/consensus/dagindexer"
 	"testing"
 
 	"github.com/0xsoniclabs/consensus/abft"

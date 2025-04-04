@@ -5,6 +5,7 @@ import (
 	"crypto/ecdsa"
 	"errors"
 	"fmt"
+	"github.com/0xsoniclabs/consensus/dagindexer"
 	"math"
 	"math/big"
 	"sync"

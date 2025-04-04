@@ -1,6 +1,7 @@
 package emitter
 
 import (
+	"github.com/0xsoniclabs/consensus/dagindexer"
 	"math/big"
 	"testing"
 	"time"
