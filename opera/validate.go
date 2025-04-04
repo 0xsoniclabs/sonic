@@ -122,6 +122,19 @@ func validateEconomyRules(rules EconomyRules) error {
 		}
 	}
 
+	if rules.ShortGasPower.StartupAllocPeriod != rules.LongGasPower.StartupAllocPeriod {
+		issues = append(issues, errors.New("ShortGasPower.StartupAllocPeriod and LongGasPower.StartupAllocPeriod differ"))
+	}
+	if rules.ShortGasPower.MaxAllocPeriod != rules.LongGasPower.MaxAllocPeriod {
+		issues = append(issues, errors.New("ShortGasPower.MaxAllocPeriod and LongGasPower.MaxAllocPeriod differ"))
+	}
+	if rules.ShortGasPower.AllocPerSec != rules.LongGasPower.AllocPerSec {
+		issues = append(issues, errors.New("ShortGasPower.AllocPerSec and LongGasPower.AllocPerSec differ"))
+	}
+	if rules.ShortGasPower.MinStartupGas != rules.LongGasPower.MinStartupGas {
+		issues = append(issues, errors.New("ShortGasPower.MinStartupGas and LongGasPower.MinStartupGas differ"))
+	}
+
 	// There are deliberately no checks for the BlockMissedSlack. This can be set to any value.
 
 	issues = append(issues, validateGasRules(rules.Gas))
@@ -191,7 +204,7 @@ func validateUpgrades(upgrade Upgrades) error {
 	if !upgrade.London {
 		issues = append(issues, errors.New("London upgrade is required"))
 	}
-	
+
 	if !upgrade.Berlin {
 		issues = append(issues, errors.New("Berlin upgrade is required"))
 	}
