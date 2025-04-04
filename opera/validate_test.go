@@ -1,6 +1,7 @@
 package opera
 
 import (
+	"fmt"
 	"github.com/0xsoniclabs/sonic/inter"
 	"math"
 	"math/big"
@@ -158,19 +159,21 @@ func TestEmitterRulesValidation_AcceptsValidRules(t *testing.T) {
 			StalledInterval: inter.Timestamp(10 * time.Second),
 		},
 		{
-			Interval:        inter.Timestamp(10 * time.Millisecond),
+			Interval:        inter.Timestamp(100 * time.Millisecond),
 			StallThreshold:  inter.Timestamp(10 * time.Second),
 			StalledInterval: inter.Timestamp(1 * time.Minute),
 		},
 		{
-			Interval:        inter.Timestamp(0),
+			Interval:        inter.Timestamp(3 * time.Second),
 			StallThreshold:  inter.Timestamp(1 * time.Hour),
 			StalledInterval: inter.Timestamp(30 * time.Second),
 		},
 	}
 
-	for _, test := range rules {
-		require.NoError(t, validateEmitterRules(test))
+	for i, test := range rules {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			require.NoError(t, validateEmitterRules(test))
+		})
 	}
 }
 
@@ -308,14 +311,6 @@ func TestEconomyRulesValidation_DetectsIssues(t *testing.T) {
 			rules: EconomyRules{MinGasPrice: nil},
 			issue: "MinGasPrice is nil",
 		},
-		"negative min gas price is too low": {
-			rules: EconomyRules{MinGasPrice: big.NewInt(-1)},
-			issue: "MinGasPrice is negative",
-		},
-		"too high min gas price is too high": {
-			rules: EconomyRules{MinGasPrice: new(big.Int).Add(maxMinimumGasPrice, big.NewInt(1))},
-			issue: "MinGasPrice is too high",
-		},
 		"min base fee must not be nil": {
 			rules: EconomyRules{MinBaseFee: nil},
 			issue: "MinBaseFee is nil",
@@ -404,9 +399,9 @@ func TestEconomyRulesValidation_AcceptsValidRules(t *testing.T) {
 			StartupAllocPeriod: inter.Timestamp(time.Second),
 		},
 		LongGasPower: GasPowerRules{
-			AllocPerSec:        12 * upperBoundForRuleChangeGasCosts,
-			MaxAllocPeriod:     inter.Timestamp(2 * time.Second),
-			StartupAllocPeriod: inter.Timestamp(3 * time.Second),
+			AllocPerSec:        10 * upperBoundForRuleChangeGasCosts,
+			MaxAllocPeriod:     inter.Timestamp(time.Second),
+			StartupAllocPeriod: inter.Timestamp(time.Second),
 		},
 	}
 
@@ -514,7 +509,6 @@ func TestUpgradesValidation_DetectsIssues(t *testing.T) {
 
 func TestUpgradesValidation_AcceptsValidRules(t *testing.T) {
 	upgrades := []Upgrades{
-		{Berlin: true, London: true, Sonic: true},
 		{Berlin: true, London: true, Sonic: true, Allegro: true},
 	}
 

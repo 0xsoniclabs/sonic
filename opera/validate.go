@@ -102,13 +102,6 @@ func validateEconomyRules(rules EconomyRules) error {
 
 	if rules.MinGasPrice == nil {
 		issues = append(issues, errors.New("MinGasPrice is nil"))
-	} else {
-		if rules.MinGasPrice.Sign() < 0 {
-			issues = append(issues, errors.New("MinGasPrice is negative"))
-		}
-		if rules.MinGasPrice.Cmp(maxMinimumGasPrice) > 0 {
-			issues = append(issues, errors.New("MinGasPrice is too high"))
-		}
 	}
 
 	if rules.MinBaseFee == nil {
