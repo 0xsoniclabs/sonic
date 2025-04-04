@@ -119,6 +119,10 @@ func TestEmitterRulesValidation_DetectsIssues(t *testing.T) {
 			rules: EmitterRules{Interval: inter.Timestamp(10*time.Second) + 1},
 			issue: "Interval is too high",
 		},
+		"less than 100 milliseconds emitter times is too low": {
+			rules: EmitterRules{Interval: inter.Timestamp(100*time.Millisecond) - 1},
+			issue: "Interval is too high",
+		},
 		"hour long emitter times is too high": {
 			rules: EmitterRules{Interval: inter.Timestamp(10 * time.Hour)},
 			issue: "Interval is too high",
@@ -429,6 +433,14 @@ func TestUpgradesValidation_DetectsIssues(t *testing.T) {
 		upgrade Upgrades
 		issue   string
 	}{
+		"Berlin upgrade is required": {
+			upgrade: Upgrades{},
+			issue:   "Berlin upgrade is required",
+		},
+		"London upgrade is required": {
+			upgrade: Upgrades{},
+			issue:   "London upgrade is required",
+		},
 		"LLR upgrade is not supported": {
 			upgrade: Upgrades{Llr: true},
 			issue:   "LLR upgrade is not supported",
