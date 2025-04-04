@@ -370,7 +370,7 @@ func DefaultEmitterRules() EmitterRules {
 func DefaultEpochsRules() EpochsRules {
 	return EpochsRules{
 		MaxEpochGas:      defaultTargetGasRate * 300, // ~5 minute epoch
-		MaxEpochDuration: inter.Timestamp(4 * time.Hour),
+		MaxEpochDuration: inter.Timestamp(1 * time.Hour),
 	}
 }
 

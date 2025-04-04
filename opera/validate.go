@@ -68,7 +68,7 @@ func validateEpochsRules(rules EpochsRules) error {
 	// not great performance-wise, but it is not invalid. If it is too high, the time limit will
 	// eventually end a long epoch.
 
-	if rules.MaxEpochDuration > inter.Timestamp(24*time.Hour) {
+	if rules.MaxEpochDuration > inter.Timestamp(1*time.Hour) {
 		issues = append(issues, errors.New("Epochs.MaxEpochDuration is too high"))
 	}
 

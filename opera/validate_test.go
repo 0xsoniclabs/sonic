@@ -199,7 +199,6 @@ func TestEpochsRulesValidation_DetectsIssues(t *testing.T) {
 
 func TestEpochsRulesValidation_AcceptsValidRules(t *testing.T) {
 	rules := []EpochsRules{
-		{MaxEpochDuration: inter.Timestamp(24 * time.Hour)},
 		{MaxEpochDuration: inter.Timestamp(1 * time.Hour)},
 		{MaxEpochDuration: inter.Timestamp(0)},
 	}
