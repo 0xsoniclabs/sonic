@@ -43,6 +43,10 @@ func validateEmitterRules(rules EmitterRules) error {
 		issues = append(issues, errors.New("Emitter.Interval is too high"))
 	}
 
+	if rules.Interval < inter.Timestamp(100*time.Millisecond) {
+		issues = append(issues, errors.New("Emitter.Interval is too high"))
+	}
+
 	if rules.StallThreshold < inter.Timestamp(10*time.Second) {
 		issues = append(issues, errors.New("Emitter.StallThreshold is too low"))
 	}
@@ -182,6 +186,14 @@ func validateUpgrades(upgrade Upgrades) error {
 
 	if upgrade.Llr {
 		issues = append(issues, errors.New("LLR upgrade is not supported"))
+	}
+
+	if !upgrade.London {
+		issues = append(issues, errors.New("London upgrade is required"))
+	}
+	
+	if !upgrade.Berlin {
+		issues = append(issues, errors.New("Berlin upgrade is required"))
 	}
 
 	if upgrade.Sonic && !upgrade.London {
