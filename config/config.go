@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"github.com/0xsoniclabs/consensus/dagindexer"
 	"net"
 	"os"
 	"path"
