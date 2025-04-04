@@ -3,6 +3,7 @@ package tests
 import (
 	"fmt"
 	"math/big"
+	"strings"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/ethapi"
@@ -167,7 +168,10 @@ func makeDebugTraceCall(t *testing.T, rpcClient *rpc.Client, contractAddress com
 
 	if data, ok := res.(map[string]interface{}); ok {
 		if s, ok := data["returnValue"].(string); ok {
-			b, err := hexutil.Decode("0x" + s)
+			if !strings.HasPrefix(s, "0x") {
+				s = "0x" + s
+			}
+			b, err := hexutil.Decode(s)
 			require.NoError(err, "failed to decode result hex; %v", err)
 
 			params, err := getBlockParameters(b)

@@ -29,8 +29,11 @@ import (
 )
 
 var (
-	baseDir      = filepath.Join(".", "testdata")
-	stateTestDir = filepath.Join(baseDir, "GeneralStateTests")
+	testPaths = []string{
+		filepath.Join(".", "testdata", "EIPTests", "StateTests"),
+		filepath.Join(".", "testdata", "GeneralStateTests"),
+		filepath.Join(".", "execution-spec-tests", "fixtures", "state_tests"),
+	}
 
 	unsupportedForks = map[string]struct{}{
 		"ConstantinopleFix": {},
@@ -42,22 +45,34 @@ var (
 )
 
 func initMatcher(st *tests.TestMatcher) {
-	// The EIP-2537 test cases are out of date and have not been updated by ethereum.
-	st.SkipLoad(`^stEIP2537/`)
-
 	// EOF is not yet supported by sonic.
 	st.SkipLoad(`^stEOF/`)
 }
 
+// TestState runs the state tests from the Ethereum tests and Ethereum execution spec tests.
+// In order to run the Ethereum tests, clone the `ethereum/tests` repository inside this tests directory as `testdata`.
+// As the tests are pre-filled no further steps are needed.
+// For the execution spec tests, clone the `ethereum/execution-spec-tests` repository inside this tests directory.
+// Install the python dependencies (using uv is recommended):
+// `uv sync --all-extras && uv run solc-select use 0.8.24 --always-install`
+// Collect all desired test cases:
+// `uv run fill --collect-only --from Istanbul --to Prague`
+// Fill all state tests (these are the only ones we currently support):
+// `uv run fill --from Istanbul --until Prague -m state_test`
 func TestState(t *testing.T) {
 	t.Parallel()
 
 	st := new(tests.TestMatcher)
 	initMatcher(st)
-	for _, dir := range []string{
-		filepath.Join(baseDir, "EIPTests", "StateTests"),
-		stateTestDir,
-	} {
+	for _, dir := range testPaths {
+		// If the directory does not exist,
+		// skip it but do not exit test without checking the other directories.
+		dirinfo, err := os.Stat(dir)
+		if os.IsNotExist(err) || !dirinfo.IsDir() {
+			t.Logf("Skipping %s as it does not exist, did you clone/fill the tests?\n", dir)
+			continue
+		}
+
 		st.Walk(t, dir, func(t *testing.T, name string, test *tests.StateTest) {
 			execStateTest(t, st, test)
 		})
