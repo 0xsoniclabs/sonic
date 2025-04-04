@@ -351,6 +351,46 @@ func TestEconomyRulesValidation_DetectsIssues(t *testing.T) {
 	}
 }
 
+func TestEconomyRulesValidation_Long_Short_Power_Differs(t *testing.T) {
+	tests := map[string]struct {
+		long  GasPowerRules
+		short GasPowerRules
+		issue string
+	}{
+		"alloc": {
+			long:  GasPowerRules{AllocPerSec: 20 * upperBoundForRuleChangeGasCosts},
+			short: GasPowerRules{AllocPerSec: 30 * upperBoundForRuleChangeGasCosts},
+			issue: "ShortGasPower.AllocPerSec and LongGasPower.AllocPerSec differ",
+		},
+		"max alloc": {
+			long:  GasPowerRules{MaxAllocPeriod: inter.Timestamp(10 * time.Second)},
+			short: GasPowerRules{MaxAllocPeriod: inter.Timestamp(20 * time.Second)},
+			issue: "ShortGasPower.MaxAllocPeriod and LongGasPower.MaxAllocPeriod differ",
+		},
+		"startup alloc": {
+			long:  GasPowerRules{StartupAllocPeriod: inter.Timestamp(10 * time.Second)},
+			short: GasPowerRules{StartupAllocPeriod: inter.Timestamp(20 * time.Second)},
+			issue: "ShortGasPower.StartupAllocPeriod and LongGasPower.StartupAllocPeriod differ",
+		},
+		"min startup gas": {
+			long:  GasPowerRules{MinStartupGas: 10 * upperBoundForRuleChangeGasCosts},
+			short: GasPowerRules{MinStartupGas: 20 * upperBoundForRuleChangeGasCosts},
+			issue: "ShortGasPower.MinStartupGas and LongGasPower.MinStartupGas differ",
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			err := validateEconomyRules(EconomyRules{
+				ShortGasPower: test.short,
+				LongGasPower:  test.long,
+			})
+			require.Error(t, err)
+			require.Contains(t, err.Error(), test.issue)
+		})
+	}
+}
+
 func TestEconomyRulesValidation_AcceptsValidRules(t *testing.T) {
 	valid := EconomyRules{
 		Gas: GasRules{
