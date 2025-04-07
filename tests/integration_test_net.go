@@ -188,7 +188,7 @@ func StartIntegrationTestNetWithJsonGenesis(
 	jsonGenesis.Accounts = append(jsonGenesis.Accounts, effectiveOptions.Accounts...)
 
 	// Speed up the block generation time to reduce test time.
-	jsonGenesis.Rules.Emitter.Interval = inter.Timestamp(time.Millisecond)
+	jsonGenesis.Rules.Emitter.Interval = inter.Timestamp(100 * time.Millisecond)
 
 	encoded, err := json.MarshalIndent(jsonGenesis, "", "  ")
 	if err != nil {

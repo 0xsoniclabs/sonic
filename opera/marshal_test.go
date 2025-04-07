@@ -14,7 +14,7 @@ func TestUpdateRules(t *testing.T) {
 
 	base := MainNetRules()
 
-	got, err := UpdateRules(base, []byte(`{"Dag":{"MaxParents":5},"Economy":{"MinGasPrice":7},"Blocks":{"MaxBlockGas":2000000000}}`))
+	got, err := UpdateRules(base, []byte(`{"Dag":{"MaxParents":5},"Economy":{"MinGasPrice":7},"Blocks":{"MaxBlockGas":5000000000}}`))
 	require.NoError(err)
 
 	exp := base.Copy()
