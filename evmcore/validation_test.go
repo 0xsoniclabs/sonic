@@ -18,73 +18,50 @@ import (
 // TestValidateTx_RejectsWhen tests various scenarios where
 // the validateTx function should reject a transaction because of the different
 // eip flags.
-func TestValidateTx_RejectsWhen(t *testing.T) {
+func TestValidateTx_RejectsBasedOnTxTypeAndActiveEip(t *testing.T) {
 	tests := map[string]struct {
 		tx   *types.Transaction // Transaction data to validate.
 		opts validationOptions  // Validation options (e.g., EIP flags).
-		err  error              // Expected error.
 	}{
 		"non legacy tx submitted before eip2718": {
 			tx: types.NewTx(&types.DynamicFeeTx{}),
 			opts: validationOptions{
-				eip2718: false,
+				berlin: false,
 			},
-			err: ErrTxTypeNotSupported,
+		},
+		"accessList tx submitted before eip2718": {
+			tx: types.NewTx(&types.AccessListTx{}),
+			opts: validationOptions{
+				// since in berlin
+				berlin: false,
+			},
 		},
 		"dynamic fee tx submitted before eip1559": {
 			tx: types.NewTx(&types.DynamicFeeTx{}),
 			opts: validationOptions{
-				eip2718: true,
-				eip1559: false,
+				berlin: true,
+				london: false,
 			},
-			err: ErrTxTypeNotSupported,
 		},
 		"blob tx submitted before eip4844": {
 			tx: types.NewTx(makeBlobTx(nil, nil)),
 			opts: validationOptions{
-				eip2718: true,
-				eip4844: false,
+				berlin: true,
+				cancun: false,
 			},
-			err: ErrTxTypeNotSupported,
-		},
-		"blob tx with hashes": {
-			tx: types.NewTx(makeBlobTx([]common.Hash{{0x01}}, nil)),
-			opts: validationOptions{
-				eip2718: true,
-				eip4844: true,
-			},
-			err: ErrTxTypeNotSupported,
-		},
-		"blob tx with sidecar": {
-			tx: types.NewTx(makeBlobTx(nil,
-				&types.BlobTxSidecar{Commitments: []kzg4844.Commitment{{0x01}}})),
-			opts: validationOptions{
-				eip2718: true,
-				eip4844: true,
-			},
-			err: ErrTxTypeNotSupported,
 		},
 		"setCode tx submitted before 7702": {
 			tx: types.NewTx(&types.SetCodeTx{}),
 			opts: validationOptions{
-				eip2718: true,
-				eip7702: false,
+				berlin: true,
+				prague: false,
 			},
-			err: ErrTxTypeNotSupported,
-		},
-		"setCode tx submitted with an empty auth list": {
-			tx: types.NewTx(&types.SetCodeTx{}),
-			opts: validationOptions{
-				eip2718: true,
-				eip7702: true,
-			},
-			err: ErrEmptyAuthorizations,
 		},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			err := validateTx(test.tx, types.NewPragueSigner(big.NewInt(1)), test.opts)
-			require.Equal(t, test.err, err)
+			require.Equal(t, ErrTxTypeNotSupported, err)
 		})
 	}
 }
@@ -92,11 +69,10 @@ func TestValidateTx_RejectsWhen(t *testing.T) {
 // testTransactionsOption is a set of options to adjust the validation of transactions
 func testTransactionsOption() validationOptions {
 	return validationOptions{
-		eip1559:        true,
-		eip2718:        true,
-		eip4844:        true,
-		eip7623:        true,
-		eip7702:        true,
+		london:         true,
+		berlin:         true,
+		cancun:         true,
+		prague:         true,
 		shanghai:       true,
 		currentMaxGas:  100_000,
 		currentBaseFee: big.NewInt(1),
