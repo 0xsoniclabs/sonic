@@ -41,7 +41,6 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/sealmodule"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/verwatcher"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
-	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/gossip/filters"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/gossip/proclogger"
@@ -54,6 +53,8 @@ import (
 	"github.com/0xsoniclabs/sonic/valkeystore"
 	"github.com/0xsoniclabs/sonic/vecmt"
 )
+
+//go:generate mockgen -source=service.go -package=gossip -destination=service_mock.go
 
 type ServiceFeed struct {
 	scope notify.SubscriptionScope
@@ -73,6 +74,10 @@ type feedUpdate struct {
 	logs  []*types.Log
 }
 
+type ArchiveBlockHeightSource interface {
+	GetArchiveBlockHeight() (uint64, bool, error)
+}
+
 func (f *ServiceFeed) SubscribeNewEpoch(ch chan<- idx.Epoch) notify.Subscription {
 	return f.scope.Track(f.newEpoch.Subscribe(ch))
 }
@@ -89,7 +94,7 @@ func (f *ServiceFeed) SubscribeNewLogs(ch chan<- []*types.Log) notify.Subscripti
 	return f.scope.Track(f.newLogs.Subscribe(ch))
 }
 
-func (f *ServiceFeed) Start(store *evmstore.Store) {
+func (f *ServiceFeed) Start(store ArchiveBlockHeightSource) {
 	incoming := make(chan feedUpdate, 1024)
 	f.incomingUpdates = incoming
 	stop := make(chan struct{})
