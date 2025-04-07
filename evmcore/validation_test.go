@@ -1,6 +1,7 @@
 package evmcore
 
 import (
+	"fmt"
 	"math"
 	"math/big"
 	"testing"
@@ -15,42 +16,45 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestValidateTx_RejectsWhen tests various scenarios where
-// the validateTx function should reject a transaction because of the different
-// eip flags.
-func TestValidateTx_RejectsBasedOnTxTypeAndActiveEip(t *testing.T) {
+func TestValidateTx_RejectsNonLegacyTransactionsBeforeBerlin(t *testing.T) {
+	for name, tx := range getTxsFromAllTypes() {
+		if _, ok := tx.(*types.LegacyTx); ok {
+			continue // Skip legacy transactions
+		}
+		t.Run(name, func(t *testing.T) {
+			err := validateTx(types.NewTx(tx), types.NewPragueSigner(big.NewInt(1)),
+				validationOptions{})
+			require.ErrorIs(t, ErrTxTypeNotSupported, err)
+		})
+	}
+}
+
+func TestValidateTx_RejectsBasedOnTxTypeAndActiveRevision(t *testing.T) {
 	tests := map[string]struct {
 		tx   *types.Transaction // Transaction data to validate.
-		opts validationOptions  // Validation options (e.g., EIP flags).
+		opts validationOptions  // Validation options (e.g., revision flags).
 	}{
-		"non legacy tx submitted before eip2718": {
-			tx: types.NewTx(&types.DynamicFeeTx{}),
-			opts: validationOptions{
-				berlin: false,
-			},
-		},
-		"accessList tx submitted before eip2718": {
+		"accessList tx submitted before berlin": {
 			tx: types.NewTx(&types.AccessListTx{}),
 			opts: validationOptions{
-				// since in berlin
 				berlin: false,
 			},
 		},
-		"dynamic fee tx submitted before eip1559": {
+		"dynamic fee tx submitted before london": {
 			tx: types.NewTx(&types.DynamicFeeTx{}),
 			opts: validationOptions{
 				berlin: true,
 				london: false,
 			},
 		},
-		"blob tx submitted before eip4844": {
+		"blob tx submitted before cancun": {
 			tx: types.NewTx(makeBlobTx(nil, nil)),
 			opts: validationOptions{
 				berlin: true,
 				cancun: false,
 			},
 		},
-		"setCode tx submitted before 7702": {
+		"setCode tx submitted before prague": {
 			tx: types.NewTx(&types.SetCodeTx{}),
 			opts: validationOptions{
 				berlin: true,
@@ -67,6 +71,8 @@ func TestValidateTx_RejectsBasedOnTxTypeAndActiveEip(t *testing.T) {
 }
 
 // testTransactionsOption is a set of options to adjust the validation of transactions
+// so that it would accept all types of transactions, considering them as local transactions
+// with a min tip of 1, current base fee of 1, and a current max gas of 100_000.
 func testTransactionsOption() validationOptions {
 	return validationOptions{
 		london:         true,
@@ -81,8 +87,151 @@ func testTransactionsOption() validationOptions {
 	}
 }
 
-// TestValidation_validateTx_RejectsOversizedData tests that validateTx
-// rejects transactions with oversized data fields.
+func TestValidateTx_Nonce_RejectsOlder(t *testing.T) {
+	for name, tx := range getTxsFromAllTypes() {
+		t.Run(name, func(t *testing.T) {
+			// setup validation context
+			opt := testTransactionsOption()
+			signer := types.NewPragueSigner(big.NewInt(1))
+
+			// set up to reach nonce check
+			setGasPriceAndFeeCap(t, tx, opt.minTip)
+
+			// set nonce lower than the current account nonce
+			currentNonce := uint64(2)
+			setNonce(t, tx, currentNonce-1)
+
+			// sign txs with sender and set current balance for account
+			_, address, signedTx := signTxForTest(t, tx)
+			testDb := newTestTxPoolStateDb()
+			testDb.nonces[address] = currentNonce
+			opt.currentState = testDb
+
+			// validate transaction
+			err := validateTx(signedTx, signer, opt)
+			require.ErrorIs(t, err, ErrNonceTooLow)
+		})
+	}
+}
+
+func TestValidateTx_Value_RejectsNegative(t *testing.T) {
+	for name, tx := range getTxsFromAllTypes() {
+		t.Run(name, func(t *testing.T) {
+			if isBlobOrSetCode(tx) {
+				t.Skip("blob and setCode transactions cannot have negative value because they use uint256 Value")
+			}
+			setValueToNegative(t, tx)
+			err := validateTx(types.NewTx(tx), types.NewPragueSigner(big.NewInt(1)),
+				testTransactionsOption())
+			require.ErrorIs(t, err, ErrNegativeValue)
+		})
+	}
+}
+
+func TestValidateTx_GasAndTip(t *testing.T) {
+
+	extremelyLargeN := new(big.Int).Lsh(big.NewInt(1), 256)
+
+	// GasPrice/GasFeeCap tests
+	for name, tx := range getTxsFromAllTypes() {
+		t.Run(fmt.Sprintf("gas is longer than 256 bits/%s", name), func(t *testing.T) {
+			if isBlobOrSetCode(tx) {
+				t.Skip("blob and setCode transactions cannot have gas price larger than u256")
+			}
+			setGasPriceAndFeeCap(t, tx, extremelyLargeN)
+			err := validateTx(types.NewTx(tx), types.NewPragueSigner(big.NewInt(1)),
+				testTransactionsOption())
+			require.ErrorIs(t, err, ErrFeeCapVeryHigh)
+		})
+	}
+
+	for name, tx := range getTxsFromAllTypes() {
+		t.Run(fmt.Sprintf("base fee lower than gas fee/%v", name), func(t *testing.T) {
+			// setup validation context
+			opt := testTransactionsOption()
+			opt.currentBaseFee = big.NewInt(2)
+
+			// gas fee cap should be higher than current gas price
+			setGasPriceAndFeeCap(t, tx, big.NewInt(1))
+
+			// sign txs with sender
+			signer, _, signedTx := signTxForTest(t, tx)
+
+			// validate transaction
+			err := validateTx(signedTx, signer, opt)
+			require.ErrorIs(t, err, ErrUnderpriced)
+		})
+	}
+
+	// GasTipCap test
+	for name, tx := range getTxsFromAllTypes() {
+		t.Run(fmt.Sprintf("tip is longer than 256 bits/%s", name), func(t *testing.T) {
+			// For legacy and access list transactions, the gas price is used as the gas tip cap,
+			// it would be rejected as well in the gas fee cap check.
+			if isLegacyOrAccessList(tx) {
+				t.Skip("legacy and access list transactions do not have gas tip")
+			}
+			// For blob and setCode transactions, the gas tip cap is of type uint256
+			// so it can never have a bit length larger than 256.
+			if isBlobOrSetCode(tx) {
+				t.Skip("blob and setCode transactions cannot have gas tip larger than u256")
+			}
+			// set gas tip cap too large
+			setGasTipCap(t, tx, extremelyLargeN)
+
+			err := validateTx(types.NewTx(tx), types.NewPragueSigner(big.NewInt(1)),
+				testTransactionsOption())
+
+			if _, ok := tx.(*types.DynamicFeeTx); ok {
+				require.ErrorIs(t, err, ErrTipVeryHigh)
+			} else {
+				t.Fatal("unknown transaction type")
+			}
+		})
+	}
+
+	for name, tx := range getTxsFromAllTypes() {
+		t.Run(fmt.Sprintf("gas tip less than pool min tip/%v", name), func(t *testing.T) {
+			// setup validation context
+			opt := testTransactionsOption()
+			opt.isLocal = false
+
+			// setup low tip cap
+			lowTipCap := new(big.Int).Sub(opt.minTip, big.NewInt(1))
+			// legacy and access list transactions do not have tip cap
+			if !isLegacyOrAccessList(tx) {
+				setGasTipCap(t, tx, lowTipCap)
+			}
+			// fee cap needs to be greater than or equal to tip cap
+			setGasPriceAndFeeCap(t, tx, lowTipCap)
+
+			// sign txs with sender
+			signer, _, signedTx := signTxForTest(t, tx)
+			opt.locals = newAccountSet(signer)
+			opt.minTip = big.NewInt(2)
+
+			// validate transaction
+			err := validateTx(signedTx, signer, opt)
+			require.ErrorIs(t, err, ErrUnderpriced)
+		})
+	}
+
+	// GasFeeCap and GasTipCap test
+	for name, tx := range getTxsFromAllTypes() {
+		t.Run(fmt.Sprintf("gas fee smaller than tip/%v", name), func(t *testing.T) {
+			if isLegacyOrAccessList(tx) {
+				t.Skip("legacy and access list transactions use the same field for gas fee and tip")
+			}
+			setGasPriceAndFeeCap(t, tx, big.NewInt(1))
+			setGasTipCap(t, tx, big.NewInt(2))
+			err := validateTx(types.NewTx(tx), types.NewPragueSigner(big.NewInt(1)),
+				testTransactionsOption())
+			require.ErrorIs(t, err, ErrTipAboveFeeCap)
+		})
+	}
+
+}
+
 func TestValidateTx_RejectsOversizedData(t *testing.T) {
 	oversizedData := make([]byte, txMaxSize+1) // Create oversized data.
 	for name, tx := range getTxsFromAllTypes() {
@@ -95,7 +244,7 @@ func TestValidateTx_RejectsOversizedData(t *testing.T) {
 	}
 }
 
-func TestValidation_validateTx_RejectsMaxInitCodeSize(t *testing.T) {
+func TestValidateTx_RejectsMaxInitCodeSize(t *testing.T) {
 	maxInitCode := make([]byte, params.MaxInitCodeSize+1)
 	for name, tx := range getTxsFromAllTypes() {
 		t.Run(name, func(t *testing.T) {
@@ -111,21 +260,7 @@ func TestValidation_validateTx_RejectsMaxInitCodeSize(t *testing.T) {
 	}
 }
 
-func TestValidation_validateTx_RejectsNegativeValue(t *testing.T) {
-	for name, tx := range getTxsFromAllTypes() {
-		t.Run(name, func(t *testing.T) {
-			if isBlobOrSetCode(tx) {
-				t.Skip("blob and setCode transactions cannot have negative value because they use uint256 Value")
-			}
-			setValueToNegative(t, tx)
-			err := validateTx(types.NewTx(tx), types.NewPragueSigner(big.NewInt(1)),
-				testTransactionsOption())
-			require.ErrorIs(t, err, ErrNegativeValue)
-		})
-	}
-}
-
-func TestValidation_validateTx_RejectsMaxGas(t *testing.T) {
+func TestValidateTx_RejectsMaxGas(t *testing.T) {
 	for name, tx := range getTxsFromAllTypes() {
 		t.Run(name, func(t *testing.T) {
 			opt := testTransactionsOption()
@@ -137,63 +272,7 @@ func TestValidation_validateTx_RejectsMaxGas(t *testing.T) {
 	}
 }
 
-func TestValidation_validateTx_RejectsTooLargeGas(t *testing.T) {
-	extremelyLargeN := new(big.Int).Lsh(big.NewInt(1), 256)
-	for name, tx := range getTxsFromAllTypes() {
-		t.Run(name, func(t *testing.T) {
-			if isBlobOrSetCode(tx) {
-				t.Skip("blob and setCode transactions cannot have gas larger than u256")
-			}
-			setGasFeeCap(t, tx, extremelyLargeN)
-			err := validateTx(types.NewTx(tx), types.NewPragueSigner(big.NewInt(1)),
-				testTransactionsOption())
-			require.ErrorIs(t, err, ErrFeeCapVeryHigh)
-		})
-	}
-}
-
-func TestValidation_validateTx_RejectsTooLargeGasTip(t *testing.T) {
-	extremelyLargeN := new(big.Int).Lsh(big.NewInt(1), 256)
-	for name, tx := range getTxsFromAllTypes() {
-		t.Run(name, func(t *testing.T) {
-			// For legacy and access list transactions, the gas price is used as the gas tip cap,
-			// it would be rejected as well in the gas fee cap check.
-			// For blob and setCode transactions, the gas tip cap is of type uint256
-			// so it can never have a bit length larger than 256.
-			if isBlobOrSetCode(tx) || isLegacyOrAccessList(tx) {
-				t.Skip("legacy, access list, blob and setCode transactions cannot have gas tip larger than u256")
-			}
-			// set gas fee cap too large
-			setGasTipCap(t, tx, extremelyLargeN)
-
-			err := validateTx(types.NewTx(tx), types.NewPragueSigner(big.NewInt(1)),
-				testTransactionsOption())
-
-			if _, ok := tx.(*types.DynamicFeeTx); ok {
-				require.ErrorIs(t, err, ErrTipVeryHigh)
-			} else {
-				t.Fatal("unknown transaction type")
-			}
-		})
-	}
-}
-
-func TestValidation_validateTx_RejectsGasFeeLessThanTip(t *testing.T) {
-	for name, tx := range getTxsFromAllTypes() {
-		t.Run(name, func(t *testing.T) {
-			if isLegacyOrAccessList(tx) {
-				t.Skip("legacy and access list transactions use the same field for gas fee and tip")
-			}
-			setGasFeeCap(t, tx, big.NewInt(1))
-			setGasTipCap(t, tx, big.NewInt(2))
-			err := validateTx(types.NewTx(tx), types.NewPragueSigner(big.NewInt(1)),
-				testTransactionsOption())
-			require.ErrorIs(t, err, ErrTipAboveFeeCap)
-		})
-	}
-}
-
-func TestValidation_validateTx_RejectsTxWithInvalidSender(t *testing.T) {
+func TestValidateTx_RejectsTxWithInvalidSender(t *testing.T) {
 	for name, tx := range getTxsFromAllTypes() {
 		t.Run(name, func(t *testing.T) {
 			signer := types.HomesteadSigner{}
@@ -203,90 +282,15 @@ func TestValidation_validateTx_RejectsTxWithInvalidSender(t *testing.T) {
 	}
 }
 
-func TestValidation_validateTx_RejectsUnderpricedLocal(t *testing.T) {
-	for name, tx := range getTxsFromAllTypes() {
-		t.Run(name, func(t *testing.T) {
-			// setup validation context
-			opt := testTransactionsOption()
-			opt.isLocal = false
-
-			// setup low tip cap
-			lowTipCap := new(big.Int).Sub(opt.minTip, big.NewInt(1))
-			// legacy and access list transactions do not have tip cap
-			if !isLegacyOrAccessList(tx) {
-				setGasTipCap(t, tx, lowTipCap)
-			}
-			// fee cap needs to be greater than or equal to tip cap
-			setGasFeeCap(t, tx, lowTipCap)
-
-			// sign txs with sender
-			signer, _, signedTx := signTxForTest(t, tx)
-			opt.locals = newAccountSet(signer)
-			opt.minTip = big.NewInt(2)
-
-			// validate transaction
-			err := validateTx(signedTx, signer, opt)
-			require.ErrorIs(t, err, ErrUnderpriced)
-		})
-	}
-}
-
-func TestValidation_validateTx_RejectsBaseFeeLowerThanChainLimit(t *testing.T) {
-	for name, tx := range getTxsFromAllTypes() {
-		t.Run(name, func(t *testing.T) {
-			// setup validation context
-			opt := testTransactionsOption()
-			opt.currentBaseFee = big.NewInt(2)
-
-			// gas fee cap should be higher than current gas price
-			setGasFeeCap(t, tx, big.NewInt(1))
-
-			// sign txs with sender
-			signer, _, signedTx := signTxForTest(t, tx)
-
-			// validate transaction
-			err := validateTx(signedTx, signer, opt)
-			require.ErrorIs(t, err, ErrUnderpriced)
-		})
-
-	}
-}
-
-func TestValidation_validateTx_RejectsNonceOutOfOrder(t *testing.T) {
-	for name, tx := range getTxsFromAllTypes() {
-		t.Run(name, func(t *testing.T) {
-			// setup validation context
-			opt := testTransactionsOption()
-			signer := types.NewPragueSigner(big.NewInt(1))
-
-			// set nonce lower than the current account nonce
-			setNonce(t, tx, 1)
-			setGasFeeCap(t, tx, opt.minTip)
-
-			// sign txs with sender
-			_, address, signedTx := signTxForTest(t, tx)
-
-			// setup low nonce
-			testDb := newTestTxPoolStateDb()
-			testDb.nonces[address] = 2
-			opt.currentState = testDb
-
-			// validate transaction
-			err := validateTx(signedTx, signer, opt)
-			require.ErrorIs(t, err, ErrNonceTooLow)
-		})
-	}
-}
-
-func TestValidation_validateTx_RejectsInsufficientFunds(t *testing.T) {
+func TestValidateTx_RejectsInsufficientFunds(t *testing.T) {
 	for name, tx := range getTxsFromAllTypes() {
 		t.Run(name, func(t *testing.T) {
 			// setup validation context
 			opt := testTransactionsOption()
 
-			// setup transaction
-			setGasFeeCap(t, tx, opt.minTip)
-			setGas(t, tx, 1)
+			// setup transaction enough gas and fee cap to reach balance check
+			setGasPriceAndFeeCap(t, tx, opt.currentBaseFee)
+			setGas(t, tx, opt.currentMaxGas)
 
 			// sign txs with sender
 			signer, address, signedTx := signTxForTest(t, tx)
@@ -303,7 +307,7 @@ func TestValidation_validateTx_RejectsInsufficientFunds(t *testing.T) {
 	}
 }
 
-func TestValidation_validateTx_RejectsTransactionWithGasLowerThanIntrinsicGasCost(t *testing.T) {
+func TestValidateTx_RejectsTransactionWithGasLowerThanIntrinsicGasCost(t *testing.T) {
 	for name, tx := range getTxsFromAllTypes() {
 		t.Run(name, func(t *testing.T) {
 			opt := testTransactionsOption()
@@ -313,7 +317,7 @@ func TestValidation_validateTx_RejectsTransactionWithGasLowerThanIntrinsicGasCos
 
 			// --- needed for execution up to relevant check ---
 			// set tx for execution
-			setGasFeeCap(t, tx, opt.minTip)
+			setGasPriceAndFeeCap(t, tx, opt.minTip)
 			// sign txs with sender
 			signer, address, signedTx := signTxForTest(t, tx)
 
@@ -330,7 +334,7 @@ func TestValidation_validateTx_RejectsTransactionWithGasLowerThanIntrinsicGasCos
 	}
 }
 
-func TestValidation_validateTx_GasPriceIsLowerThanFloorDataGas(t *testing.T) {
+func TestValidateTx_GasIsLowerThanFloorDataGas(t *testing.T) {
 	oversizedData := make([]byte, txMaxSize+1) // Create oversized data.
 	for name, tx := range getTxsFromAllTypes() {
 		t.Run(name, func(t *testing.T) {
@@ -345,7 +349,7 @@ func TestValidation_validateTx_GasPriceIsLowerThanFloorDataGas(t *testing.T) {
 
 			// --- needed for execution up to relevant check ---
 			// set tx for execution
-			setGasFeeCap(t, tx, opt.minTip)
+			setGasPriceAndFeeCap(t, tx, opt.minTip)
 			// sign txs with sender
 			signer, address, signedTx := signTxForTest(t, tx)
 			// setup enough balance
@@ -361,7 +365,28 @@ func TestValidation_validateTx_GasPriceIsLowerThanFloorDataGas(t *testing.T) {
 	}
 }
 
-func TestValidation_validateTx_Success(t *testing.T) {
+func TestValidateTx_RejectsBlobTx_WithSidecarOrBlobHashes(t *testing.T) {
+	// blob txs are not supported, so they must have empty hash list and sidecar
+	tx := types.NewTx(makeBlobTx([]common.Hash{{0x01}}, nil))
+	err := validateTx(tx, types.NewPragueSigner(big.NewInt(1)),
+		testTransactionsOption())
+	require.ErrorIs(t, err, ErrTxTypeNotSupported)
+
+	tx = types.NewTx(makeBlobTx(nil,
+		&types.BlobTxSidecar{Commitments: []kzg4844.Commitment{{0x01}}}))
+	err = validateTx(tx, types.NewPragueSigner(big.NewInt(1)),
+		testTransactionsOption())
+	require.ErrorIs(t, err, ErrTxTypeNotSupported)
+}
+
+func TestValidateTx_RejectsSetCodeTx_EmptyAuthorizationList(t *testing.T) {
+	tx := types.NewTx(&types.SetCodeTx{})
+	err := validateTx(tx, types.NewPragueSigner(big.NewInt(1)),
+		testTransactionsOption())
+	require.ErrorIs(t, err, ErrEmptyAuthorizations)
+}
+
+func TestValidateTx_Success(t *testing.T) {
 	tests := map[string]types.TxData{
 		"Legacy": &types.LegacyTx{
 			Nonce:    0,
@@ -466,7 +491,7 @@ func setNonce(t *testing.T, tx types.TxData, nonce uint64) {
 	}
 }
 
-// setGasFeeCap sets the gas fee cap for a transaction. For legacy and access list
+// setGasTipCap sets the gas fee cap for a transaction. For legacy and access list
 // transactions, it sets the gas price.
 func setGasTipCap(t *testing.T, tx types.TxData, gasTipCap *big.Int) {
 	switch tx := tx.(type) {
@@ -487,7 +512,10 @@ func setGasTipCap(t *testing.T, tx types.TxData, gasTipCap *big.Int) {
 
 // setGasFeeCap sets the gas fee cap for a transaction. For legacy and access list
 // transactions, it sets the gas price.
-func setGasFeeCap(t *testing.T, tx types.TxData, gasFeeCap *big.Int) {
+func setGasPriceAndFeeCap(t *testing.T, tx types.TxData, gasFeeCap *big.Int) {
+	// for all transaction types, the methods GasPrice and GasFeeCap return
+	// always the same field. Either gasPrice or gasFeeCap, depending on the
+	// transaction type.
 	switch tx := tx.(type) {
 	case *types.LegacyTx:
 		tx.GasPrice = gasFeeCap
