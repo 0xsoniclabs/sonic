@@ -175,8 +175,10 @@ func (b *GenesisBuilder) FinalizeBlockZero(
 		return common.Hash{}, common.Hash{}, errors.New("block zero already finalized")
 	}
 
-	if err := rules.Validate(); err != nil {
-		return common.Hash{}, common.Hash{}, fmt.Errorf("invalid rules: %w", err)
+	if rules.Upgrades.Allegro {
+		if err := rules.Validate(); err != nil {
+			return common.Hash{}, common.Hash{}, fmt.Errorf("invalid rules: %w", err)
+		}
 	}
 
 	// construct state root of initial state
