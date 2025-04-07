@@ -79,7 +79,7 @@ func TestBlockInArchive(t *testing.T) {
 			txOptions.GasLimit = 0
 
 			_, err = contract.StoreValue(txOptions)
-			require.NoError(err, "failed to update contract signature %v", err)
+			require.NoError(err, "failed to send transaction %v", err)
 		}
 	}
 }
