@@ -28,7 +28,7 @@ const (
 	sonicBit               = 1 << 3
 	allegroBit             = 1 << 4
 
-	MinimumMaxBlockGas          = 1_000_000_000 // < must be large enough to allow internal transactions to seal blocks
+	MinimumMaxBlockGas          = 5_000_000_000 // < must be large enough to allow internal transactions to seal blocks
 	MaximumMaxBlockGas          = math.MaxInt64 // < should fit into 64-bit signed integers to avoid parsing errors in third-party libraries
 	defaultTargetGasRate        = 15_000_000    // 15 MGas/s
 	defaultEventEmitterInterval = 600 * time.Millisecond
