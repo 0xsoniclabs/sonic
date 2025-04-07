@@ -512,13 +512,6 @@ func setGasTipCap(t *testing.T, tx types.TxData, gasTipCap *big.Int) {
 // setGasFeeCap sets the gas fee cap for a transaction. For legacy and access list
 // transactions, it sets the gas price.
 func setGasFeeCap(t *testing.T, tx types.TxData, gasFeeCap *big.Int) {
-	bigIntToU256 := func(bigInt *big.Int) *uint256.Int {
-		u256, overflow := uint256.FromBig(bigInt)
-		if overflow {
-			t.Fatalf("overflowed converting gasFeeCap to uint256")
-		}
-		return u256
-	}
 	switch tx := tx.(type) {
 	case *types.LegacyTx:
 		tx.GasPrice = gasFeeCap
@@ -527,9 +520,9 @@ func setGasFeeCap(t *testing.T, tx types.TxData, gasFeeCap *big.Int) {
 	case *types.DynamicFeeTx:
 		tx.GasFeeCap = gasFeeCap
 	case *types.BlobTx:
-		tx.GasFeeCap = bigIntToU256(gasFeeCap)
+		tx.GasFeeCap = uint256.MustFromBig(gasFeeCap)
 	case *types.SetCodeTx:
-		tx.GasFeeCap = bigIntToU256(gasFeeCap)
+		tx.GasFeeCap = uint256.MustFromBig(gasFeeCap)
 	default:
 		t.Fatalf("unexpected transaction type: %T", tx)
 	}
