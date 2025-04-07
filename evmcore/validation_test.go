@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestValidateTx_RejectsNonLegacyTransactionsBeforeBerlin(t *testing.T) {
+func TestValidateTx_RejectsNonLegacyTransactions_BeforeBerlin(t *testing.T) {
 	for name, tx := range getTxsFromAllTypes() {
 		if _, ok := tx.(*types.LegacyTx); ok {
 			continue // Skip legacy transactions
@@ -29,7 +29,7 @@ func TestValidateTx_RejectsNonLegacyTransactionsBeforeBerlin(t *testing.T) {
 	}
 }
 
-func TestValidateTx_RejectsBasedOnTxTypeAndActiveRevision(t *testing.T) {
+func TestValidateTx_RejectsTxBasedOnTypeAndActiveRevision(t *testing.T) {
 	tests := map[string]struct {
 		tx   *types.Transaction // Transaction data to validate.
 		opts validationOptions  // Validation options (e.g., revision flags).
@@ -87,7 +87,7 @@ func testTransactionsOption() validationOptions {
 	}
 }
 
-func TestValidateTx_Nonce_RejectsOlder(t *testing.T) {
+func TestValidateTx_Nonce_RejectsTxWith_Older(t *testing.T) {
 	for name, tx := range getTxsFromAllTypes() {
 		t.Run(name, func(t *testing.T) {
 			// setup validation context
@@ -114,7 +114,7 @@ func TestValidateTx_Nonce_RejectsOlder(t *testing.T) {
 	}
 }
 
-func TestValidateTx_Value_RejectsNegative(t *testing.T) {
+func TestValidateTx_Value_RejectsTxWith_Negative(t *testing.T) {
 	for name, tx := range getTxsFromAllTypes() {
 		t.Run(name, func(t *testing.T) {
 			if isBlobOrSetCode(tx) {
@@ -128,7 +128,7 @@ func TestValidateTx_Value_RejectsNegative(t *testing.T) {
 	}
 }
 
-func TestValidateTx_GasAndTip(t *testing.T) {
+func TestValidateTx_GasAndTip_RejectsTxWith(t *testing.T) {
 	extremelyLargeN := new(big.Int).Lsh(big.NewInt(1), 256)
 
 	// GasPrice/GasFeeCap tests
@@ -236,7 +236,7 @@ func TestValidateTx_GasAndTip(t *testing.T) {
 	}
 }
 
-func TestValidateTx_Gas(t *testing.T) {
+func TestValidateTx_Gas_RejectsTxWith(t *testing.T) {
 	for name, tx := range getTxsFromAllTypes() {
 		t.Run(fmt.Sprintf("current max gas less than tx gas/%v", name), func(t *testing.T) {
 			opt := testTransactionsOption()
@@ -303,35 +303,38 @@ func TestValidateTx_Gas(t *testing.T) {
 	}
 }
 
-func TestValidateTx_RejectsOversizedData(t *testing.T) {
-	oversizedData := make([]byte, txMaxSize+1) // Create oversized data.
+func TestValidateTx_Data_RejectsTxWith(t *testing.T) {
+	oversizedData := make([]byte, txMaxSize+1)
 	for name, tx := range getTxsFromAllTypes() {
-		t.Run(name, func(t *testing.T) {
+		t.Run(fmt.Sprintf("oversized data/%v", name), func(t *testing.T) {
+
 			setData(t, types.TxData(tx), oversizedData)
+
 			err := validateTx(types.NewTx(tx), types.NewPragueSigner(big.NewInt(1)),
 				testTransactionsOption())
 			require.Equal(t, ErrOversizedData, err)
 		})
 	}
-}
 
-func TestValidateTx_RejectsMaxInitCodeSize(t *testing.T) {
 	maxInitCode := make([]byte, params.MaxInitCodeSize+1)
 	for name, tx := range getTxsFromAllTypes() {
-		t.Run(name, func(t *testing.T) {
+		t.Run(fmt.Sprintf("init code too large/%v", name), func(t *testing.T) {
 			if isBlobOrSetCode(tx) {
 				t.Skip("blob and setCode transactions cannot be used as create")
 			}
+
 			setData(t, types.TxData(tx), maxInitCode)
 			setToNil(t, tx)
+
 			err := validateTx(types.NewTx(tx), types.NewPragueSigner(big.NewInt(1)),
 				testTransactionsOption())
 			require.ErrorIs(t, err, ErrMaxInitCodeSizeExceeded)
 		})
 	}
+
 }
 
-func TestValidateTx_RejectsTxWithInvalidSender(t *testing.T) {
+func TestValidateTx_Sender_RejectsTxWith_Invalid(t *testing.T) {
 	for name, tx := range getTxsFromAllTypes() {
 		t.Run(name, func(t *testing.T) {
 			signer := types.HomesteadSigner{}
@@ -341,18 +344,20 @@ func TestValidateTx_RejectsTxWithInvalidSender(t *testing.T) {
 	}
 }
 
-func TestValidateTx_RejectsInsufficientFunds(t *testing.T) {
+func TestValidateTx_Balance_RejectsTxWhen_NotEnough(t *testing.T) {
 	for name, tx := range getTxsFromAllTypes() {
 		t.Run(name, func(t *testing.T) {
 			// setup validation context
 			opt := testTransactionsOption()
 
+			// --- needed for execution up to relevant check ---
 			// setup transaction enough gas and fee cap to reach balance check
 			setGasPriceAndFeeCap(t, tx, opt.currentBaseFee)
 			setGas(t, tx, opt.currentMaxGas)
 
 			// sign txs with sender
 			signer, address, signedTx := signTxForTest(t, tx)
+			// ---
 
 			// setup low balance
 			testDb := newTestTxPoolStateDb()
@@ -366,7 +371,7 @@ func TestValidateTx_RejectsInsufficientFunds(t *testing.T) {
 	}
 }
 
-func TestValidateTx_RejectsBlobTx_WithSidecarOrBlobHashes(t *testing.T) {
+func TestValidateTx_BlobHashes_RejectsTxWith_SidecarOrBlobHashes(t *testing.T) {
 	// blob txs are not supported, so they must have empty hash list and sidecar
 	tx := types.NewTx(makeBlobTx([]common.Hash{{0x01}}, nil))
 	err := validateTx(tx, types.NewPragueSigner(big.NewInt(1)),
@@ -380,7 +385,7 @@ func TestValidateTx_RejectsBlobTx_WithSidecarOrBlobHashes(t *testing.T) {
 	require.ErrorIs(t, err, ErrTxTypeNotSupported)
 }
 
-func TestValidateTx_RejectsSetCodeTx_EmptyAuthorizationList(t *testing.T) {
+func TestValidateTx_AuthorizationList_RejectsTxWith_EmptyList(t *testing.T) {
 	tx := types.NewTx(&types.SetCodeTx{})
 	err := validateTx(tx, types.NewPragueSigner(big.NewInt(1)),
 		testTransactionsOption())
