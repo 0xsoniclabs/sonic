@@ -14,13 +14,13 @@ func TestUpdateRules(t *testing.T) {
 
 	base := MainNetRules()
 
-	got, err := UpdateRules(base, []byte(`{"Dag":{"MaxParents":5},"Economy":{"MinGasPrice":7},"Blocks":{"MaxBlockGas":2000000000}}`))
+	got, err := UpdateRules(base, []byte(`{"Dag":{"MaxParents":5},"Economy":{"MinGasPrice":7},"Blocks":{"MaxBlockGas":5000000000}}`))
 	require.NoError(err)
 
 	exp := base.Copy()
 	exp.Dag.MaxParents = 5
 	exp.Economy.MinGasPrice = big.NewInt(7)
-	exp.Blocks.MaxBlockGas = 2000000000
+	exp.Blocks.MaxBlockGas = 5_000_000_000
 
 	require.Equal(exp.String(), got.String(), "failed to update mutable fields")
 

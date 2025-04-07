@@ -122,7 +122,7 @@ func TestEmitterRulesValidation_DetectsIssues(t *testing.T) {
 		},
 		"less than 100 milliseconds emitter times is too low": {
 			rules: EmitterRules{Interval: inter.Timestamp(100*time.Millisecond) - 1},
-			issue: "Interval is too high",
+			issue: "Interval is too low",
 		},
 		"hour long emitter times is too high": {
 			rules: EmitterRules{Interval: inter.Timestamp(10 * time.Hour)},
