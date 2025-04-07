@@ -130,7 +130,7 @@ func TestValidation_validateTx_RejectsMaxInitCodeSize(t *testing.T) {
 			setToNil(t, tx)
 			err := validateTx(types.NewTx(tx), types.NewPragueSigner(big.NewInt(1)),
 				testTransactionsOption())
-			require.ErrorContains(t, err, ErrMaxInitCodeSizeExceeded.Error())
+			require.ErrorIs(t, err, ErrMaxInitCodeSizeExceeded)
 		})
 	}
 }
@@ -141,7 +141,7 @@ func TestValidation_validateTx_RejectsNegativeValue(t *testing.T) {
 			if isBlobOrSetCode(tx) {
 				t.Skip("blob and setCode transactions cannot have negative value because they use uint256 Value")
 			}
-			negativeValue(t, tx)
+			setValueToNegative(t, tx)
 			err := validateTx(types.NewTx(tx), types.NewPragueSigner(big.NewInt(1)),
 				testTransactionsOption())
 			require.ErrorIs(t, err, ErrNegativeValue)
@@ -180,8 +180,12 @@ func TestValidation_validateTx_RejectsTooLargeGasTip(t *testing.T) {
 	extremelyLargeN := new(big.Int).Lsh(big.NewInt(1), 256)
 	for name, tx := range getTxsFromAllTypes() {
 		t.Run(name, func(t *testing.T) {
-			if isBlobOrSetCode(tx) {
-				t.Skip("blob and setCode transactions cannot have gas larger than u256")
+			// For legacy and access list transactions, the gas price is used as the gas tip cap,
+			// it would be rejected as well in the gas fee cap check.
+			// For blob and setCode transactions, the gas tip cap is of type uint256
+			// so it can never have a bit length larger than 256.
+			if isBlobOrSetCode(tx) || isLegacyOrAccessList(tx) {
+				t.Skip("legacy, access list, blob and setCode transactions cannot have gas tip larger than u256")
 			}
 			// set gas fee cap too large
 			setGasTipCap(t, tx, extremelyLargeN)
@@ -189,15 +193,10 @@ func TestValidation_validateTx_RejectsTooLargeGasTip(t *testing.T) {
 			err := validateTx(types.NewTx(tx), types.NewPragueSigner(big.NewInt(1)),
 				testTransactionsOption())
 
-			// Since for legacy and access list transactions, the gas price is used as the gas tip cap,
-			// it would be rejected as well in the gas fee cap check.
-			// For blob and setCode transactions, the gas tip cap is of type uint256
-			// so it can never have a bit length larger than 256.
-			if isLegacyOrAccessList(tx) {
-				require.ErrorIs(t, err, ErrFeeCapVeryHigh)
-			}
 			if _, ok := tx.(*types.DynamicFeeTx); ok {
 				require.ErrorIs(t, err, ErrTipVeryHigh)
+			} else {
+				t.Fatal("unknown transaction type")
 			}
 		})
 	}
@@ -237,7 +236,10 @@ func TestValidation_validateTx_RejectsUnderpricedLocal(t *testing.T) {
 
 			// setup low tip cap
 			lowTipCap := new(big.Int).Sub(opt.minTip, big.NewInt(1))
-			setGasTipCap(t, tx, lowTipCap)
+			// legacy and access list transactions do not have tip cap
+			if !isLegacyOrAccessList(tx) {
+				setGasTipCap(t, tx, lowTipCap)
+			}
 			// fee cap needs to be greater than or equal to tip cap
 			setGasFeeCap(t, tx, lowTipCap)
 
@@ -325,7 +327,7 @@ func TestValidation_validateTx_RejectsInsufficientFunds(t *testing.T) {
 	}
 }
 
-func TestValidation_validateTx_RejectsCannotAffordIntrinsicGas(t *testing.T) {
+func TestValidation_validateTx_RejectsTransactionWithGasLowerThanIntrinsicGasCost(t *testing.T) {
 	for name, tx := range getTxsFromAllTypes() {
 		t.Run(name, func(t *testing.T) {
 			opt := testTransactionsOption()
@@ -338,12 +340,12 @@ func TestValidation_validateTx_RejectsCannotAffordIntrinsicGas(t *testing.T) {
 			setGasFeeCap(t, tx, opt.minTip)
 			// sign txs with sender
 			signer, address, signedTx := signTxForTest(t, tx)
-			// ---
 
 			// setup enough balance
 			testDb := newTestTxPoolStateDb()
 			testDb.balances[address] = uint256.NewInt(math.MaxUint64)
 			opt.currentState = testDb
+			// ---
 
 			// validate transaction
 			err := validateTx(signedTx, signer, opt)
@@ -352,7 +354,7 @@ func TestValidation_validateTx_RejectsCannotAffordIntrinsicGas(t *testing.T) {
 	}
 }
 
-func TestValidation_validateTx_RejectsCannotAffordFloorDataGas(t *testing.T) {
+func TestValidation_validateTx_GasPriceIsLowerThanFloorDataGas(t *testing.T) {
 	oversizedData := make([]byte, txMaxSize+1) // Create oversized data.
 	for name, tx := range getTxsFromAllTypes() {
 		t.Run(name, func(t *testing.T) {
@@ -491,24 +493,17 @@ func setNonce(t *testing.T, tx types.TxData, nonce uint64) {
 // setGasFeeCap sets the gas fee cap for a transaction. For legacy and access list
 // transactions, it sets the gas price.
 func setGasTipCap(t *testing.T, tx types.TxData, gasTipCap *big.Int) {
-	bigIntToU256 := func(bigInt *big.Int) *uint256.Int {
-		u256, overflow := uint256.FromBig(bigInt)
-		if overflow {
-			t.Fatalf("overflowed converting gasFeeCap to uint256")
-		}
-		return u256
-	}
 	switch tx := tx.(type) {
 	case *types.LegacyTx:
-		tx.GasPrice = gasTipCap
+		t.Fatal("legacy transactions cannot have gas tip cap")
 	case *types.AccessListTx:
-		tx.GasPrice = gasTipCap
+		t.Fatal("access list transactions cannot have gas tip cap")
 	case *types.DynamicFeeTx:
 		tx.GasTipCap = gasTipCap
 	case *types.BlobTx:
-		tx.GasTipCap = bigIntToU256(gasTipCap)
+		tx.GasTipCap = uint256.MustFromBig(gasTipCap)
 	case *types.SetCodeTx:
-		tx.GasTipCap = bigIntToU256(gasTipCap)
+		tx.GasTipCap = uint256.MustFromBig(gasTipCap)
 	default:
 		t.Fatalf("unexpected transaction type: %T", tx)
 	}
@@ -558,7 +553,7 @@ func setGas(t *testing.T, tx types.TxData, gas uint64) {
 	}
 }
 
-// Helper function to add oversized data to a transaction.
+// setData is a helper function to add oversized data to a transaction.
 func setData(t *testing.T, tx types.TxData, data []byte) {
 	switch tx := tx.(type) {
 	case *types.LegacyTx:
@@ -576,7 +571,7 @@ func setData(t *testing.T, tx types.TxData, data []byte) {
 	}
 }
 
-// Helper function to set the "To" field of a transaction to nil.
+// setToNil is a helper function to set the "To" field of a transaction to nil.
 func setToNil(t *testing.T, tx types.TxData) {
 	switch tx := tx.(type) {
 	case *types.LegacyTx:
@@ -586,17 +581,17 @@ func setToNil(t *testing.T, tx types.TxData) {
 	case *types.DynamicFeeTx:
 		tx.To = nil
 	case *types.BlobTx:
-		tx.To = common.Address{}
+		t.Fatal("blob transaction cannot have nil To field")
 	case *types.SetCodeTx:
-		tx.To = common.Address{}
+		t.Fatal("setCode transaction cannot have nil To field")
 	default:
 		t.Fatalf("unexpected transaction type: %T", tx)
 	}
 }
 
-// Helper function to set the "Value" field of a transaction to a negative value.
+// setValueToNegative is a helper function to set the "Value" field of a transaction to a negative value.
 // for blob and setCode transactions, it sets the value to zero since they use uint256.
-func negativeValue(t *testing.T, tx types.TxData) {
+func setValueToNegative(t *testing.T, tx types.TxData) {
 	switch tx := tx.(type) {
 	case *types.LegacyTx:
 		tx.Value = big.NewInt(-1)
@@ -605,9 +600,9 @@ func negativeValue(t *testing.T, tx types.TxData) {
 	case *types.DynamicFeeTx:
 		tx.Value = big.NewInt(-1)
 	case *types.BlobTx:
-		tx.Value = uint256.NewInt(0)
+		t.Fatal("blob transactions cannot have negative value")
 	case *types.SetCodeTx:
-		tx.Value = uint256.NewInt(0)
+		t.Fatal("setCode transactions cannot have negative value")
 	default:
 		t.Fatalf("unexpected transaction type: %T", tx)
 	}
