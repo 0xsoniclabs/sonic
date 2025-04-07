@@ -144,7 +144,7 @@ type PeerCacheConfig struct {
 	// MaxQueuedItems is the maximum number of items to queue up before
 	// dropping broadcasts. This is a sensitive number as a transaction list might
 	// contain a single transaction, or thousands.
-	MaxQueuedItems consensus.Seq
+	MaxQueuedItems uint32
 	MaxQueuedSize  uint64
 }
 
@@ -161,15 +161,15 @@ func DefaultConfig(scale cachescale.Func) Config {
 			LatencyImportance:    60,
 			ThroughputImportance: 40,
 			MsgsSemaphoreLimit: consensus.Metric{
-				Num:  consensus.Seq(scale.U32(1000)),
+				Num:  scale.U32(1000),
 				Size: scale.U64(30 * opt.MiB),
 			},
 			EventsSemaphoreLimit: consensus.Metric{
-				Num:  consensus.Seq(scale.U32(10000)),
+				Num:  scale.U32(10000),
 				Size: scale.U64(30 * opt.MiB),
 			},
 			BVsSemaphoreLimit: consensus.Metric{
-				Num:  consensus.Seq(scale.U32(5000)),
+				Num:  scale.U32(5000),
 				Size: scale.U64(15 * opt.MiB),
 			},
 			MsgsSemaphoreTimeout:    10 * time.Second,
@@ -222,8 +222,8 @@ func DefaultConfig(scale cachescale.Func) Config {
 		StructLogLimit:  2000,
 	}
 	sessionCfg := cfg.Protocol.DagStreamLeecher.Session
-	cfg.Protocol.DagProcessor.EventsBufferLimit.Num = consensus.Seq(sessionCfg.ParallelChunksDownload)*
-		consensus.Seq(sessionCfg.DefaultChunkItemsNum) + softLimitItems
+	cfg.Protocol.DagProcessor.EventsBufferLimit.Num = uint32(sessionCfg.ParallelChunksDownload)*
+		sessionCfg.DefaultChunkItemsNum + softLimitItems
 	cfg.Protocol.DagProcessor.EventsBufferLimit.Size = uint64(sessionCfg.ParallelChunksDownload)*sessionCfg.DefaultChunkItemsSize + 8*opt.MiB
 	cfg.Protocol.DagStreamLeecher.MaxSessionRestart = 4 * time.Minute
 	cfg.Protocol.DagFetcher.ArriveTimeout = 4 * time.Second
@@ -236,7 +236,7 @@ func DefaultConfig(scale cachescale.Func) Config {
 func (c *Config) Validate() error {
 	p := c.Protocol
 	defaultChunkSize := consensus.Metric{
-		Num:  consensus.Seq(p.DagStreamLeecher.Session.DefaultChunkItemsNum),
+		Num:  p.DagStreamLeecher.Session.DefaultChunkItemsNum,
 		Size: p.DagStreamLeecher.Session.DefaultChunkItemsSize,
 	}
 	if defaultChunkSize.Num > hardLimitItems-1 {
@@ -298,7 +298,7 @@ func DefaultPeerCacheConfig(scale cachescale.Func) PeerCacheConfig {
 	return PeerCacheConfig{
 		MaxKnownTxs:    24576*3/4 + scale.I(24576/4),
 		MaxKnownEvents: 24576*3/4 + scale.I(24576/4),
-		MaxQueuedItems: 4096*3/4 + consensus.Seq(scale.U32(4096/4)),
+		MaxQueuedItems: 4096*3/4 + scale.U32(4096/4),
 		MaxQueuedSize:  protocolMaxMsgSize*3/4 + 1024 + scale.U64(protocolMaxMsgSize/4),
 	}
 }

@@ -151,7 +151,7 @@ func (buf *EventsBuffer) processCompleteEvent(e *event, parents consensus.Events
 }
 
 func (buf *EventsBuffer) spillIncompletes(limit consensus.Metric) {
-	for consensus.Seq(buf.incompletes.Len()) > limit.Num || uint64(buf.incompletes.Weight()) > limit.Size {
+	for uint32(buf.incompletes.Len()) > limit.Num || uint64(buf.incompletes.Weight()) > limit.Size {
 		_, val, ok := buf.incompletes.RemoveOldest()
 		if !ok {
 			break
@@ -191,7 +191,7 @@ func (buf *EventsBuffer) Total() consensus.Metric {
 	// wlru is thread-safe, no need for a mutex here
 	weight, num := buf.incompletes.Total()
 	return consensus.Metric{
-		Num:  consensus.Seq(num),
+		Num:  uint32(num),
 		Size: uint64(weight),
 	}
 }

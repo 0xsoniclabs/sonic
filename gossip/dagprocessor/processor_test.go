@@ -64,7 +64,7 @@ func testProcessor(t *testing.T) {
 	})
 
 	limit := consensus.Metric{
-		Num:  consensus.Seq(len(ordered)),
+		Num:  uint32(len(ordered)),
 		Size: ordered.Metric().Size,
 	}
 	semaphore := datasemaphore.New(limit, func(received consensus.Metric, processing consensus.Metric, releasing consensus.Metric) {
@@ -187,8 +187,8 @@ func testProcessorReleasing(t *testing.T, maxEvents int, try int64) {
 	})
 
 	limit := consensus.Metric{
-		Num:  consensus.Seq(rand.Intn(maxEvents)), // nolint:gosec
-		Size: uint64(rand.Intn(maxEvents * 100)),  // nolint:gosec
+		Num:  uint32(rand.Intn(maxEvents)),       // nolint:gosec
+		Size: uint64(rand.Intn(maxEvents * 100)), // nolint:gosec
 	}
 	limitPlus1group := consensus.Metric{
 		Num:  limit.Num + maxGroupSize.Num,

@@ -182,7 +182,7 @@ func (d *Leecher) startSession(candidates []string) {
 			return d.callback.RequestChunk(peer,
 				dagstream.Request{
 					Session:   session,
-					Limit:     consensus.Metric{Num: consensus.Seq(maxNum), Size: maxSize},
+					Limit:     consensus.Metric{Num: maxNum, Size: maxSize},
 					Type:      typ,
 					MaxChunks: chunks,
 				})
