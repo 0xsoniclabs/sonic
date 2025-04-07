@@ -4,7 +4,7 @@ import "encoding/json"
 
 func UpdateRules(src Rules, diff []byte) (Rules, error) {
 	changed := src.Copy()
-	err := json.Unmarshal(diff, &changed)
+	if err := json.Unmarshal(diff, &changed); err != nil {
 	if err != nil {
 		return Rules{}, err
 	}
