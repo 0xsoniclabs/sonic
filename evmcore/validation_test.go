@@ -95,7 +95,7 @@ func TestValidateTx_Nonce_RejectsTxWith(t *testing.T) {
 			signer := types.NewPragueSigner(big.NewInt(1))
 
 			// set up to reach nonce check
-			setGasPriceAndFeeCap(t, tx, opt.minTip)
+			setGasPriceOrFeeCap(t, tx, opt.minTip)
 
 			// set nonce lower than the current account nonce
 			currentNonce := uint64(2)
@@ -133,11 +133,11 @@ func TestValidateTx_GasPriceAndTip_RejectsTxWith(t *testing.T) {
 
 	// GasPrice/GasFeeCap tests
 	for name, tx := range getTxsFromAllTypes() {
-		t.Run(fmt.Sprintf("gas fee is longer than 256 bits/%s", name), func(t *testing.T) {
+		t.Run(fmt.Sprintf("gas fee longer than 256 bits/%s", name), func(t *testing.T) {
 			if isBlobOrSetCode(tx) {
 				t.Skip("blob and setCode transactions cannot have gas price larger than uint256")
 			}
-			setGasPriceAndFeeCap(t, tx, extremelyLargeN)
+			setGasPriceOrFeeCap(t, tx, extremelyLargeN)
 			err := validateTx(types.NewTx(tx), types.NewPragueSigner(big.NewInt(1)),
 				testTransactionsOption())
 			require.ErrorIs(t, err, ErrFeeCapVeryHigh)
@@ -151,7 +151,7 @@ func TestValidateTx_GasPriceAndTip_RejectsTxWith(t *testing.T) {
 			opt.currentBaseFee = big.NewInt(2)
 
 			// gas fee cap should be higher than current gas price
-			setGasPriceAndFeeCap(t, tx, big.NewInt(1))
+			setGasPriceOrFeeCap(t, tx, big.NewInt(1))
 
 			// sign txs with sender
 			signer, _, signedTx := signTxForTest(t, tx)
@@ -207,7 +207,7 @@ func TestValidateTx_GasPriceAndTip_RejectsTxWith(t *testing.T) {
 			setGasTipCap(t, tx, lowTipCap)
 
 			// --- needed for execution up to relevant check ---
-			setGasPriceAndFeeCap(t, tx, lowTipCap)
+			setGasPriceOrFeeCap(t, tx, lowTipCap)
 			// sign txs with sender
 			signer, _, signedTx := signTxForTest(t, tx)
 			opt.locals = newAccountSet(signer)
@@ -226,7 +226,7 @@ func TestValidateTx_GasPriceAndTip_RejectsTxWith(t *testing.T) {
 				t.Skip("legacy and access list transactions use the same field for gas fee and tip")
 			}
 
-			setGasPriceAndFeeCap(t, tx, big.NewInt(1))
+			setGasPriceOrFeeCap(t, tx, big.NewInt(1))
 			setGasTipCap(t, tx, big.NewInt(2))
 
 			err := validateTx(types.NewTx(tx), types.NewPragueSigner(big.NewInt(1)),
@@ -254,11 +254,11 @@ func TestValidateTx_Gas_RejectsTxWith(t *testing.T) {
 			opt := testTransactionsOption()
 
 			// setup tx to fail intrinsic gas calculation
-			setGas(t, tx, 1)
+			setGas(t, tx, getIntrinsicGasForTest(t, tx, &opt)-1)
 
 			// --- needed for execution up to relevant check ---
 			// set tx for execution
-			setGasPriceAndFeeCap(t, tx, opt.minTip)
+			setGasPriceOrFeeCap(t, tx, opt.minTip)
 			// sign txs with sender
 			signer, address, signedTx := signTxForTest(t, tx)
 			// setup enough balance
@@ -273,6 +273,7 @@ func TestValidateTx_Gas_RejectsTxWith(t *testing.T) {
 		})
 	}
 
+	// EIP-7623
 	for name, tx := range getTxsFromAllTypes() {
 		t.Run(fmt.Sprintf("gas lower than floor data gas/%v", name), func(t *testing.T) {
 			opt := testTransactionsOption()
@@ -287,7 +288,7 @@ func TestValidateTx_Gas_RejectsTxWith(t *testing.T) {
 
 			// --- needed for execution up to relevant check ---
 			// set tx for execution
-			setGasPriceAndFeeCap(t, tx, opt.minTip)
+			setGasPriceOrFeeCap(t, tx, opt.minTip)
 			// sign txs with sender
 			signer, address, signedTx := signTxForTest(t, tx)
 			// setup enough balance
@@ -299,6 +300,40 @@ func TestValidateTx_Gas_RejectsTxWith(t *testing.T) {
 			// validate transaction
 			err = validateTx(signedTx, signer, opt)
 			require.ErrorIs(t, err, ErrFloorDataGas)
+		})
+	}
+
+	for name, tx := range getTxsFromAllTypes() {
+		t.Run(fmt.Sprintf("floor data gas not checked before prague/%v", name), func(t *testing.T) {
+			if _, ok := tx.(*types.SetCodeTx); ok {
+				t.Skip("setCode transactions cannot be used before prague")
+			}
+			opt := testTransactionsOption()
+			opt.prague = false
+
+			// setup tx to fail intrinsic gas calculation
+			someData := make([]byte, txSlotSize)
+			setData(t, tx, someData)
+			floorDataGas, err := core.FloorDataGas(someData)
+			require.NoError(t, err)
+			setGas(t, tx, floorDataGas-1)
+			opt.currentMaxGas = floorDataGas
+
+			// --- needed for execution up to relevant check ---
+			// set tx for execution
+			setGasPriceOrFeeCap(t, tx, opt.minTip)
+			// sign txs with sender
+			signer, address, signedTx := signTxForTest(t, tx)
+			// setup enough balance
+			testDb := newTestTxPoolStateDb()
+			testDb.balances[address] = uint256.NewInt(math.MaxUint64)
+			opt.currentState = testDb
+			// ---
+
+			// validate transaction
+			err = validateTx(signedTx, signer, opt)
+			require.NoError(t, err)
+
 		})
 	}
 }
@@ -316,6 +351,7 @@ func TestValidateTx_Data_RejectsTxWith(t *testing.T) {
 		})
 	}
 
+	// EIP-3860
 	maxInitCode := make([]byte, params.MaxInitCodeSize+1)
 	for name, tx := range getTxsFromAllTypes() {
 		t.Run(fmt.Sprintf("init code too large/%v", name), func(t *testing.T) {
@@ -332,13 +368,59 @@ func TestValidateTx_Data_RejectsTxWith(t *testing.T) {
 		})
 	}
 
+	for name, tx := range getTxsFromAllTypes() {
+		t.Run(fmt.Sprintf("init code size not checked before shanghai/%v", name), func(t *testing.T) {
+			if isBlobOrSetCode(tx) {
+				t.Skip("blob and setCode transactions cannot be used before cancun and prague")
+			}
+			opt := testTransactionsOption()
+			opt.shanghai = false
+			opt.cancun = false
+			opt.prague = false
+			// needs extra gas to allow big data to be afforded.
+			opt.currentMaxGas = 249_612
+
+			setData(t, types.TxData(tx), maxInitCode)
+			setToNil(t, tx)
+
+			setGasPriceOrFeeCap(t, tx, opt.currentBaseFee)
+			setGas(t, tx, opt.currentMaxGas) // enough gas
+			signer, address, signedTx := signTxForTest(t, tx)
+			testDb := newTestTxPoolStateDb()
+			testDb.balances[address] = uint256.NewInt(opt.currentMaxGas*opt.currentBaseFee.Uint64() + 1)
+			opt.currentState = testDb
+
+			err := validateTx(signedTx, signer,
+				opt)
+			require.NoError(t, err)
+		})
+	}
+
 }
 
 func TestValidateTx_Signer_RejectsTxWith(t *testing.T) {
 	for name, tx := range getTxsFromAllTypes() {
-		t.Run(fmt.Sprintf("invalid signer/%v", name), func(t *testing.T) {
+		t.Run(fmt.Sprintf("unsigned tx/%v", name), func(t *testing.T) {
 			signer := types.HomesteadSigner{}
+			setSignatureValues(t, tx, big.NewInt(1), big.NewInt(2), big.NewInt(3))
 			err := validateTx(types.NewTx(tx), signer, testTransactionsOption())
+			require.ErrorIs(t, err, ErrInvalidSender)
+		})
+	}
+
+	for name, tx := range getTxsFromAllTypes() {
+		t.Run(fmt.Sprintf("invalid signer/%v", name), func(t *testing.T) {
+			signer := types.NewPragueSigner(big.NewInt(1))
+			setSignatureValues(t, tx, big.NewInt(1), big.NewInt(2), big.NewInt(3))
+			// sign txs with sender
+			key, err := crypto.GenerateKey()
+			require.NoError(t, err)
+			signedTx, err := types.SignTx(types.NewTx(tx), signer, key)
+			require.NoError(t, err)
+
+			// validate transaction
+			anotherSigner := types.NewPragueSigner(big.NewInt(2))
+			err = validateTx(signedTx, anotherSigner, testTransactionsOption())
 			require.ErrorIs(t, err, ErrInvalidSender)
 		})
 	}
@@ -352,7 +434,7 @@ func TestValidateTx_Balance_RejectsTxWhen(t *testing.T) {
 
 			// --- needed for execution up to relevant check ---
 			// setup transaction enough gas and fee cap to reach balance check
-			setGasPriceAndFeeCap(t, tx, opt.currentBaseFee)
+			setGasPriceOrFeeCap(t, tx, opt.currentBaseFee)
 			setGas(t, tx, opt.currentMaxGas)
 
 			// sign txs with sender
@@ -361,7 +443,13 @@ func TestValidateTx_Balance_RejectsTxWhen(t *testing.T) {
 
 			// setup low balance
 			testDb := newTestTxPoolStateDb()
-			testDb.balances[address] = uint256.NewInt(0)
+			// balance = gas * fee cap + value
+			zero := uint256.NewInt(0)
+			gasCost := zero.Mul(
+				uint256.NewInt(opt.currentMaxGas),
+				uint256.MustFromBig(opt.currentBaseFee),
+			)
+			testDb.balances[address] = zero.Sub(gasCost, uint256.NewInt(1))
 			opt.currentState = testDb
 
 			// validate transaction
@@ -372,7 +460,7 @@ func TestValidateTx_Balance_RejectsTxWhen(t *testing.T) {
 }
 
 func TestValidateTx_Blobs_RejectsTxWith(t *testing.T) {
-	// blob txs are not supported, so they must have empty hash list and sidecar
+	// blob txs are not supported in sonic, so they must have empty hash list and sidecar
 
 	t.Run("blob tx with non-empty blob hashes", func(t *testing.T) {
 		tx := types.NewTx(makeBlobTx([]common.Hash{{0x01}}, nil))
@@ -525,7 +613,7 @@ func setGasTipCap(t *testing.T, tx types.TxData, gasTipCap *big.Int) {
 
 // setGasFeeCap sets the gas fee cap for a transaction. For legacy and access list
 // transactions, it sets the gas price.
-func setGasPriceAndFeeCap(t *testing.T, tx types.TxData, gasFeeCap *big.Int) {
+func setGasPriceOrFeeCap(t *testing.T, tx types.TxData, gasFeeCap *big.Int) {
 	// for all transaction types, the methods GasPrice and GasFeeCap return
 	// always the same field. Either gasPrice or gasFeeCap, depending on the
 	// transaction type.
@@ -616,6 +704,48 @@ func setValueToNegative(t *testing.T, tx types.TxData) {
 	default:
 		t.Fatalf("unexpected transaction type: %T", tx)
 	}
+}
+
+func setSignatureValues(t *testing.T, tx types.TxData, v, r, s *big.Int) {
+	switch tx := tx.(type) {
+	case *types.LegacyTx:
+		tx.V = v
+		tx.R = r
+		tx.S = s
+	case *types.AccessListTx:
+		tx.V = v
+		tx.R = r
+		tx.S = s
+	case *types.DynamicFeeTx:
+		tx.V = v
+		tx.R = r
+		tx.S = s
+	case *types.BlobTx:
+		tx.V = uint256.MustFromBig(v)
+		tx.R = uint256.MustFromBig(r)
+		tx.S = uint256.MustFromBig(s)
+	case *types.SetCodeTx:
+		tx.V = uint256.MustFromBig(v)
+		tx.R = uint256.MustFromBig(r)
+		tx.S = uint256.MustFromBig(s)
+	default:
+		t.Fatalf("unexpected transaction type: %T", tx)
+	}
+}
+
+func getIntrinsicGasForTest(t *testing.T, tx types.TxData, opt *validationOptions) uint64 {
+	transaction := types.NewTx(tx)
+	intrGas, err := core.IntrinsicGas(
+		transaction.Data(),
+		transaction.AccessList(),
+		transaction.SetCodeAuthorizations(),
+		transaction.To() == nil, // is contract creation
+		true,                    // is homestead
+		opt.istanbul,            // is eip-2028 (transactional data gas cost reduction)
+		opt.shanghai,            // is eip-3860 (limit and meter init-code )
+	)
+	require.NoError(t, err)
+	return intrGas
 }
 
 func isLegacyOrAccessList(tx types.TxData) bool {
