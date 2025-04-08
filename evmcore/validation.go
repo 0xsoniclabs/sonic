@@ -41,11 +41,10 @@ type validationOptions struct {
 	cancun bool // Fork indicator whether we are using Cancun revision.
 	prague bool // Fork indicator whether we are using Prague revision.
 
-	currentState TxPoolStateDB // Current state in the blockchain head
-	// pendingNonces *txNoncer // Pending state tracking virtual nonces
-	currentMaxGas  uint64   // Current gas limit for transaction caps
-	currentBaseFee *big.Int // Current base fee for transaction caps
-	minTip         *big.Int // Minimum gas tip to enforce for acceptance into the pool
+	currentState   TxPoolStateDB // Current state in the blockchain head
+	currentMaxGas  uint64        // Current gas limit for transaction caps
+	currentBaseFee *big.Int      // Current base fee for transaction caps
+	minTip         *big.Int      // Minimum gas tip to enforce for acceptance into the pool
 
 	locals  *accountSet // Set of local transaction to exempt from eviction rules
 	isLocal bool        // Whether the transaction came from a local source

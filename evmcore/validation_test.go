@@ -75,11 +75,11 @@ func TestValidateTx_RejectsTxBasedOnTypeAndActiveRevision(t *testing.T) {
 // with a min tip of 1, current base fee of 1, and a current max gas of 100_000.
 func testTransactionsOption() validationOptions {
 	return validationOptions{
-		london:         true,
 		berlin:         true,
+		london:         true,
+		shanghai:       true,
 		cancun:         true,
 		prague:         true,
-		shanghai:       true,
 		currentMaxGas:  100_000,
 		currentBaseFee: big.NewInt(1),
 		minTip:         big.NewInt(1),
@@ -145,7 +145,7 @@ func TestValidateTx_GasPriceAndTip_RejectsTxWith(t *testing.T) {
 	}
 
 	for name, tx := range getTxsFromAllTypes() {
-		t.Run(fmt.Sprintf("base fee lower than gas fee/%v", name), func(t *testing.T) {
+		t.Run(fmt.Sprintf("gas price lower than base fee/%v", name), func(t *testing.T) {
 			// setup validation context
 			opt := testTransactionsOption()
 			opt.currentBaseFee = big.NewInt(2)
@@ -190,7 +190,7 @@ func TestValidateTx_GasPriceAndTip_RejectsTxWith(t *testing.T) {
 	}
 
 	for name, tx := range getTxsFromAllTypes() {
-		t.Run(fmt.Sprintf("gas tip less than pool min tip/%v", name), func(t *testing.T) {
+		t.Run(fmt.Sprintf("gas tip lower than pool min tip/%v", name), func(t *testing.T) {
 			// legacy and access list transactions do not have tip cap
 			if isLegacyOrAccessList(tx) {
 				t.Skip("legacy and access list transactions do not have tip cap")
@@ -221,7 +221,7 @@ func TestValidateTx_GasPriceAndTip_RejectsTxWith(t *testing.T) {
 
 	// GasFeeCap and GasTipCap test
 	for name, tx := range getTxsFromAllTypes() {
-		t.Run(fmt.Sprintf("gas fee smaller than gas tip/%v", name), func(t *testing.T) {
+		t.Run(fmt.Sprintf("gas fee lower than gas tip/%v", name), func(t *testing.T) {
 			if isLegacyOrAccessList(tx) {
 				t.Skip("legacy and access list transactions use the same field for gas fee and tip")
 			}
@@ -238,7 +238,7 @@ func TestValidateTx_GasPriceAndTip_RejectsTxWith(t *testing.T) {
 
 func TestValidateTx_Gas_RejectsTxWith(t *testing.T) {
 	for name, tx := range getTxsFromAllTypes() {
-		t.Run(fmt.Sprintf("current max gas less than tx gas/%v", name), func(t *testing.T) {
+		t.Run(fmt.Sprintf("current max gas lower than tx gas/%v", name), func(t *testing.T) {
 			opt := testTransactionsOption()
 			opt.currentMaxGas = 1
 
@@ -375,27 +375,27 @@ func TestValidateTx_Blobs_RejectsTxWith(t *testing.T) {
 	// blob txs are not supported, so they must have empty hash list and sidecar
 
 	t.Run("blob tx with non-empty blob hashes", func(t *testing.T) {
-	tx := types.NewTx(makeBlobTx([]common.Hash{{0x01}}, nil))
-	err := validateTx(tx, types.NewPragueSigner(big.NewInt(1)),
-		testTransactionsOption())
-	require.ErrorIs(t, err, ErrTxTypeNotSupported)
+		tx := types.NewTx(makeBlobTx([]common.Hash{{0x01}}, nil))
+		err := validateTx(tx, types.NewPragueSigner(big.NewInt(1)),
+			testTransactionsOption())
+		require.ErrorIs(t, err, ErrTxTypeNotSupported)
 	})
 
 	t.Run("blob tx with non-empty sidecar", func(t *testing.T) {
 		tx := types.NewTx(makeBlobTx(nil,
-		&types.BlobTxSidecar{Commitments: []kzg4844.Commitment{{0x01}}}))
+			&types.BlobTxSidecar{Commitments: []kzg4844.Commitment{{0x01}}}))
 		err := validateTx(tx, types.NewPragueSigner(big.NewInt(1)),
-		testTransactionsOption())
-	require.ErrorIs(t, err, ErrTxTypeNotSupported)
+			testTransactionsOption())
+		require.ErrorIs(t, err, ErrTxTypeNotSupported)
 	})
 }
 
 func TestValidateTx_AuthorizationList_RejectsTxWith(t *testing.T) {
 	t.Run("setCode tx with empty authorization list", func(t *testing.T) {
-	tx := types.NewTx(&types.SetCodeTx{})
-	err := validateTx(tx, types.NewPragueSigner(big.NewInt(1)),
-		testTransactionsOption())
-	require.ErrorIs(t, err, ErrEmptyAuthorizations)
+		tx := types.NewTx(&types.SetCodeTx{})
+		err := validateTx(tx, types.NewPragueSigner(big.NewInt(1)),
+			testTransactionsOption())
+		require.ErrorIs(t, err, ErrEmptyAuthorizations)
 	})
 }
 
