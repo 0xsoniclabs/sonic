@@ -438,7 +438,7 @@ func (r Rules) Copy() Rules {
 // they do not risk stalling the network or preventing future rule updates.
 //
 // Note: the validation is very liberal to allow a maximum flexibility in the rules.
-// The merely check for the most critical configuration errors that may lead to network
+// It merely checks for the most critical configuration errors that may lead to network
 // stalls or rule update issues. However, many valid configurations may still result
 // in undesirable network behavior. Rule-setters need to be aware of the implications
 // of their choices and should always test their rules in a controlled environment.
