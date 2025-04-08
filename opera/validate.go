@@ -3,9 +3,25 @@ package opera
 import (
 	"errors"
 	"github.com/0xsoniclabs/sonic/inter"
+	"math"
 	"math/big"
 	"time"
 )
+
+// This file handles the validation of network rules.
+// Validation is performed either during the generation of a new genesis file
+// or when a network rule change is initiated via a special transaction.
+// This validation was introduced with the Allegro upgrade.
+//
+// Caution:
+// The validation rules in this file MUST NOT be modified after the Allegro upgrade is activated.
+// Altering these rules would result in inconsistent behavior across the network,
+// with some nodes accepting the rule change while others reject it. This could cause
+// a network split, where certain nodes process the rule change, and others do not.
+//
+// Network rules can only be modified as part of a subsequent network upgrade.
+// In such cases, the validation logic must be updated to accommodate the new rules
+// and activated simultaneously with the upgrade.
 
 func validate(rules Rules) error {
 	return errors.Join(
@@ -74,10 +90,10 @@ func validateEpochsRules(rules EpochsRules) error {
 func validateBlocksRules(rules BlocksRules) error {
 	var issues []error
 
-	if rules.MaxBlockGas < MinimumMaxBlockGas {
+	if rules.MaxBlockGas < minimumMaxBlockGas {
 		issues = append(issues, errors.New("Blocks.MaxBlockGas is too low"))
 	}
-	if rules.MaxBlockGas > MaximumMaxBlockGas {
+	if rules.MaxBlockGas > maximumMaxBlockGas {
 		issues = append(issues, errors.New("Blocks.MaxBlockGas is too high"))
 	}
 
@@ -136,6 +152,14 @@ func validateEconomyRules(rules EconomyRules) error {
 const (
 	// upperBoundForRuleChangeGasCosts is a safe over-approximation of the gas costs of a rule change.
 	upperBoundForRuleChangeGasCosts = 1_000_000 // < TODO: verify this number
+
+	// minimumMaxBlockGas is the minimum allowed max block gas.
+	//It must be large enough to allow internal transactions to seal blocks
+	minimumMaxBlockGas = 5_000_000_000
+
+	// maximumMaxBlockGas is the maximum allowed max block gas.
+	// It should fit into 64-bit signed integers to avoid parsing errors in third-party libraries
+	maximumMaxBlockGas = math.MaxInt64
 )
 
 func validateGasRules(rules GasRules) error {
