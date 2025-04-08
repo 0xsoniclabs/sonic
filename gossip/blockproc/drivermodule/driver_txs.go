@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	internalTransactionsGasLimit = opera.MinimumMaxBlockGas / 10
+	internalTransactionsGasLimit = 500_000_000
 	maxAdvanceEpochs             = 1 << 16
 )
 
