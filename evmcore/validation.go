@@ -32,14 +32,11 @@ import (
 // according to the current state of the transaction pool.
 type validationOptions struct {
 	istanbul bool // Fork indicator whether we are in the istanbul revision.
+	berlin   bool // Fork indicator whether we are in the Berlin revision.
+	london   bool // Fork indicator whether we are using London revision.
 	shanghai bool // Fork indicator whether we are in the shanghai revision.
-	// Since both eip-2718 and eip-2930 are activated in the berlin fork
-	// (https://blog.ethereum.org/2021/03/08/ethereum-berlin-upgrade-announcement),
-	// they can be grouped in a single flag.
-	berlin bool // Fork indicator whether we are in the Berlin revision.
-	london bool // Fork indicator whether we are using London revision.
-	cancun bool // Fork indicator whether we are using Cancun revision.
-	prague bool // Fork indicator whether we are using Prague revision.
+	cancun   bool // Fork indicator whether we are using Cancun revision.
+	prague   bool // Fork indicator whether we are using Prague revision.
 
 	currentState   TxPoolStateDB // Current state in the blockchain head
 	currentMaxGas  uint64        // Current gas limit for transaction caps
@@ -56,6 +53,9 @@ type validationOptions struct {
 func validateTx(tx *types.Transaction, signer types.Signer, opt validationOptions) error {
 
 	// Accept only legacy transactions until EIP-2718/2930 activates.
+	// Since both eip-2718 and eip-2930 are activated in the berlin fork
+	// (https://blog.ethereum.org/2021/03/08/ethereum-berlin-upgrade-announcement),
+	// they can be grouped in a single flag.
 	if !opt.berlin && tx.Type() != types.LegacyTxType {
 		return ErrTxTypeNotSupported
 	}
@@ -92,7 +92,7 @@ func validateTx(tx *types.Transaction, signer types.Signer, opt validationOption
 		return ErrOversizedData
 	}
 
-	// Check whether the init code size has been exceeded
+	// Check whether the init code size has been exceeded, introduced in EIP-3860
 	if opt.shanghai && tx.To() == nil &&
 		len(tx.Data()) > params.MaxInitCodeSize {
 		return fmt.Errorf("%w: code size %v, limit %v", ErrMaxInitCodeSizeExceeded, len(tx.Data()), params.MaxInitCodeSize)
