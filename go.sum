@@ -2,8 +2,12 @@ github.com/0xsoniclabs/cacheutils v0.0.0-20250320134355-5a9aa4df3861 h1:bPq81jZ4
 github.com/0xsoniclabs/cacheutils v0.0.0-20250320134355-5a9aa4df3861/go.mod h1:h8zoP6oh9hqWigMrCY+4WAZBBJBLgphzf4SRYDdFB4A=
 github.com/0xsoniclabs/carmen/go v0.0.0-20250113102336-97f8b8616eff h1:ItY2JgmM0lH/kLHRGOHh7sEAB6w/lT5qv/xkkS5zO6o=
 github.com/0xsoniclabs/carmen/go v0.0.0-20250113102336-97f8b8616eff/go.mod h1:/u6oDZBv6eyPs9K7Ug5D4aL9l1Q7N43BnWEUPsvKmYw=
-github.com/0xsoniclabs/consensus v0.0.0-20250408111643-ca5d77dd1169 h1:8WMa3CWb86LigppgfymGZw/BmP/NB9TieT6JRFPbeDg=
-github.com/0xsoniclabs/consensus v0.0.0-20250408111643-ca5d77dd1169/go.mod h1:pMaQZ4qKfFOpFidA6pKW/53+TAUwy0mHH1FeVthLn1w=
+github.com/0xsoniclabs/consensus v0.0.0-20250409113642-28d6c2ec3b96 h1:PAVq0jbdxl8fM9wTivjBqk/Onkh0g39ehEty/vckuLE=
+github.com/0xsoniclabs/consensus v0.0.0-20250409113642-28d6c2ec3b96/go.mod h1:pMaQZ4qKfFOpFidA6pKW/53+TAUwy0mHH1FeVthLn1w=
+github.com/0xsoniclabs/consensus v0.0.0-20250409170033-818d2ff18416 h1:GKxlG998rqo2boHgH9NZFEQkXvtNza2wcAbtJKAFkbE=
+github.com/0xsoniclabs/consensus v0.0.0-20250409170033-818d2ff18416/go.mod h1:pMaQZ4qKfFOpFidA6pKW/53+TAUwy0mHH1FeVthLn1w=
+github.com/0xsoniclabs/consensus v0.0.0-20250409195025-468bcfa68bea h1:q/tsgEVFX3vBnZLHLrHWxuLxBCBoCzZL8KXyNTV9CYQ=
+github.com/0xsoniclabs/consensus v0.0.0-20250409195025-468bcfa68bea/go.mod h1:pMaQZ4qKfFOpFidA6pKW/53+TAUwy0mHH1FeVthLn1w=
 github.com/0xsoniclabs/go-ethereum v0.0.0-20250210213022-86eca3554809 h1:MtKV0hC7b58vimXYzmNRBNZJw1ovewt5GbanzPgl68k=
 github.com/0xsoniclabs/go-ethereum v0.0.0-20250210213022-86eca3554809/go.mod h1:9SAhGia6ukqZnvwJ3npNEmQDFjusZ/vXgbU1Z7J1vhw=
 github.com/0xsoniclabs/kvdb v0.0.0-20250224113306-fe6d2ca29563 h1:jx+6rC5/buNABHcuxfL2gdd7zbqvHMMN2u+RdEJO/FY=
