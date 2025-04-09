@@ -23,7 +23,7 @@ func testEventsBuffer(t *testing.T, try int64) {
 	nodes := consensustest.GenNodes(5)
 
 	var ordered consensus.Events
-	r := rand.New(rand.NewSource(try)) // nolint:gosec
+	r := consensustest.NewIntSeededRandGenerator(uint64(try))
 	_ = consensustest.ForEachRandEvent(nodes, 10, 3, r, consensustest.ForEachEvent{
 		Process: func(e consensus.Event, name string) {
 			ordered = append(ordered, e)
@@ -111,7 +111,7 @@ func testEventsBufferReleasing(t *testing.T, maxEvents int, try int64) {
 	eventsPerNode := 1 + rand.Intn(maxEvents)/5 // nolint:gosec
 
 	var ordered consensus.Events
-	_ = consensustest.ForEachRandEvent(nodes, eventsPerNode, 3, rand.New(rand.NewSource(try)), consensustest.ForEachEvent{ // nolint:gosec
+	_ = consensustest.ForEachRandEvent(nodes, eventsPerNode, 3, consensustest.NewIntSeededRandGenerator(uint64(try)), consensustest.ForEachEvent{ // nolint:gosec
 		Process: func(e consensus.Event, name string) {
 			ordered = append(ordered, e)
 		},

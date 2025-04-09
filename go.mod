@@ -21,7 +21,7 @@ go 1.24.0
 require (
 	github.com/0xsoniclabs/cacheutils v0.0.0-20250320134355-5a9aa4df3861
 	github.com/0xsoniclabs/carmen/go v0.0.0-20250530111616-fabde4233b62
-	github.com/0xsoniclabs/consensus v0.0.0-20250407100918-d8ae24657578
+	github.com/0xsoniclabs/consensus v0.0.0-20250408111643-ca5d77dd1169
 	github.com/0xsoniclabs/kvdb v0.0.0-20250224113306-fe6d2ca29563
 	github.com/0xsoniclabs/tosca v0.0.0-20250624065842-ec138d34756c
 	github.com/cespare/cp v1.1.1
