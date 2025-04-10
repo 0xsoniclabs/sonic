@@ -1,13 +1,27 @@
 package tests
 
 import (
-	"encoding/json"
+	"fmt"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/stretchr/testify/require"
 )
 
-func TestEthCall(t *testing.T) {
+func TestEthCall_CodeLargerThanMaxInitCodeSizeIsNotAccepted(t *testing.T) {
+	tests := map[string]struct {
+		codeSize int
+		err      error
+	}{
+		"max code size": {
+			2 * 24576, // corresponds to the max init code size
+			nil,
+		},
+		"max code size + 1": {
+			2*24576 + 1,
+			fmt.Errorf("max code size exceeded"),
+		},
+	}
 	net := StartIntegrationTestNet(t)
 
 	client, err := net.GetClient()
@@ -16,42 +30,31 @@ func TestEthCall(t *testing.T) {
 	}
 	defer client.Close()
 
-	var dataFile jsonrpcMessage
-	json.Unmarshal([]byte(data), &dataFile)
+	rpcClient := client.Client()
 
-	c := client.Client()
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			hugeCode := make([]byte, test.codeSize)
 
-	var res interface{}
-	err = c.Call(&res, "eth_call", dataFile.Params[0], dataFile.Params[1], dataFile.Params[2])
-	require.NoError(t, err)
+			params0 := map[string]string{
+				"to":   "0x5555555555555555555555555555555555555555",
+				"gas":  "0xffffffffffffffff",
+				"data": "0x00",
+			}
+			params1 := "latest"
+			params2 := map[string]map[string]hexutil.Bytes{
+				"0x5555555555555555555555555555555555555555": {
+					"code": hugeCode,
+				},
+			}
 
-	t.Logf("result: %v", res)
-
-	t.Logf("end")
-}
-
-func TestParseJsonEthCall(t *testing.T) {
-	//t.Logf("data", strings.Split(data, "\"")[1])
-
-	var res jsonrpcMessage
-	json.Unmarshal([]byte(data), &res)
-
-	t.Logf("method: %v", res.Method)
-
-	t.Logf("end")
-}
-
-type jsonrpcMessage struct {
-	Version string          `json:"jsonrpc,omitempty"`
-	ID      json.RawMessage `json:"id,omitempty"`
-	Method  string          `json:"method,omitempty"`
-	Params  []interface{}   `json:"params,omitempty"`
-	Error   *jsonError      `json:"error,omitempty"`
-	Result  json.RawMessage `json:"result,omitempty"`
-}
-
-type jsonError struct {
-	Code    int         `json:"code"`
-	Message string      `json:"message"`
-	Data    interface{} `json:"data,omitempty"`
+			var res interface{}
+			err = rpcClient.Call(&res, "eth_call", params0, params1, params2)
+			if test.err == nil {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, test.err.Error())
+			}
+		})
+	}
 }
