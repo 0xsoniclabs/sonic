@@ -3,6 +3,7 @@ package gossip
 import (
 	"sync/atomic"
 
+	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 
@@ -119,17 +120,22 @@ func readEpochPubKeys(s *Store, epoch idx.Epoch) *ValidatorsPubKeys {
 }
 
 type ProposalCheckReader struct {
-	validators atomic.Value
-}
-
-func NewProposalCheckReader(
-	validators *pos.Validators,
-) *ProposalCheckReader {
-	res := &ProposalCheckReader{}
-	res.validators.Store(validators)
-	return res
+	heavyCheckerReader *HeavyCheckReader
+	validators         atomic.Value
 }
 
 func (r *ProposalCheckReader) GetEpochValidators() *pos.Validators {
 	return r.validators.Load().(*pos.Validators)
+}
+
+func (r *ProposalCheckReader) GetEpochBlockStart(epoch idx.Epoch) idx.Block {
+	return r.heavyCheckerReader.GetEpochBlockStart(epoch)
+}
+
+func (r *ProposalCheckReader) GetEpochPubKeysOf(epoch idx.Epoch) map[idx.ValidatorID]validatorpk.PubKey {
+	return r.heavyCheckerReader.GetEpochPubKeysOf(epoch)
+}
+
+func (r *ProposalCheckReader) GetEventPayload(eventID hash.Event) inter.EventPayloadI {
+	return r.heavyCheckerReader.Store.GetEventPayload(eventID)
 }

@@ -64,9 +64,6 @@ type Emitter struct {
 	originatedTxs      *originatedtxs.Buffer
 	pendingGas         uint64
 
-	lastBlockProposedByThisEmitter idx.Block
-	frameOfLastConfirmedProposal   atomic.Uint32
-
 	// note: track validators and epoch internally to avoid referring to
 	// validators of a future epoch inside OnEventConnected of last epoch event
 	validators *pos.Validators
@@ -506,12 +503,4 @@ func (em *Emitter) nameEventForDebug(e *inter.EventPayload) {
 	hash.SetEventName(e.ID(), fmt.Sprintf("%s%03d",
 		strings.ToLower(string(name)),
 		e.Seq()))
-}
-
-func (em *Emitter) UpdateFrameOfLastProposal(frame idx.Frame) {
-	em.frameOfLastConfirmedProposal.Store(uint32(frame))
-}
-
-func (em *Emitter) GetFrameOfLastProposal() idx.Frame {
-	return idx.Frame(em.frameOfLastConfirmedProposal.Load())
 }

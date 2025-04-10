@@ -173,12 +173,6 @@ func consensusCallbackBeginBlockFn(
 						event := store.GetEventPayload(eventId)
 						proposal := event.ProposalEnvelope().Proposal
 						if proposal != nil && proposal.Number == blockCtx.Idx {
-							if emitters != nil {
-								for _, emitter := range *emitters {
-									emitter.UpdateFrameOfLastProposal(event.Frame())
-								}
-							}
-
 							hasBlock = true
 							break
 						}

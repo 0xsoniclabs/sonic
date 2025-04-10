@@ -28,21 +28,25 @@ func (em *Emitter) addProposal(
 	lastSeenProposalAttempt := uint32(0)
 	lastSeenProposalFrame := idx.Frame(0)
 	//fmt.Printf("Adding proposals to event %v in frame %d\n", event.ID(), event.Frame())
-	for _, parent := range event.Parents() {
-		//fmt.Printf("\tParent %v\n", parent)
-		payload := em.world.GetEventPayload(parent)
-		envelope := payload.ProposalEnvelope()
-		number := envelope.LastSeenProposalNumber
-		attempt := envelope.LastSeenProposalAttempt
-		frame := envelope.LastSeenProposalFrame
-		//fmt.Printf("\t\tLast Proposal %d/%d @ frame=%d\n", number, attempt, frame)
+	parents := event.Parents()
+	if len(parents) == 0 {
+		lastSeenProposalNumber = em.world.GetEpochStartBlock(event.Epoch())
+	} else {
+		for _, parent := range parents {
+			//fmt.Printf("\tParent %v\n", parent)
+			payload := em.world.GetEventPayload(parent)
+			envelope := payload.ProposalEnvelope()
+			number := envelope.LastSeenProposalNumber
+			attempt := envelope.LastSeenProposalAttempt
+			frame := envelope.LastSeenProposalFrame
+			//fmt.Printf("\t\tLast Proposal %d/%d @ frame=%d\n", number, attempt, frame)
 
-		if number > lastSeenProposalNumber || number == envelope.LastSeenProposalNumber && attempt > lastSeenProposalAttempt {
-			lastSeenProposalNumber = number
-			lastSeenProposalAttempt = attempt
-			lastSeenProposalFrame = frame
+			if number > lastSeenProposalNumber || number == envelope.LastSeenProposalNumber && attempt > lastSeenProposalAttempt {
+				lastSeenProposalNumber = number
+				lastSeenProposalAttempt = attempt
+				lastSeenProposalFrame = frame
+			}
 		}
-
 	}
 
 	// By default, we fill the envelope with the latest seen proposal information.
@@ -66,24 +70,14 @@ func (em *Emitter) addProposal(
 	// Get next expected block number.
 	nextBlock := idx.Block(latest.Number + 1)
 
-	// Get expected attempt for the next block.
-	lastProposerFrame := em.GetFrameOfLastProposal()
-	attempt := uint32(event.Frame()-lastProposerFrame) / ProposalRetryInterval
-
-	// TODO: remove
-	/*
-		fmt.Printf(
-			"validator=%d, frame=%d, nextBlock=%d, attempt=%d, lastEmittedBlock=%d, lastProposerFrame=%d\n",
-			em.config.Validator.ID, event.Frame(), nextBlock, attempt, em.lastBlockProposedByThisEmitter, lastProposerFrame,
-		)
-	*/
-
 	// If the next expected block was already proposed, skip the proposal.
-	// TODO: this could be checked against the "last seen proposal" in the event
-	// envelope instead of a member field.
-	if nextBlock <= em.lastBlockProposedByThisEmitter {
+	if nextBlock <= lastSeenProposalNumber {
 		return nil
 	}
+
+	// Get expected attempt for the next block.
+	lastProposerFrame := lastSeenProposalFrame
+	attempt := uint32(event.Frame()-lastProposerFrame) / ProposalRetryInterval
 
 	// Check whether this emitter is the proposer for the next block.
 	proposer, err := inter.GetProposer(
@@ -160,8 +154,6 @@ func (em *Emitter) addProposal(
 		Proposal:                proposal,
 	})
 
-	// Remember the new block as proposed.
-	em.lastBlockProposedByThisEmitter = nextBlock
 	return nil
 }
 

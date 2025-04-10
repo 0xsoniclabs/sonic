@@ -108,3 +108,11 @@ func (ew *emitterWorldRead) GetLastEvent(epoch idx.Epoch, from idx.ValidatorID) 
 func (ew *emitterWorldRead) GetBlockEpoch(block idx.Block) idx.Epoch {
 	return ew.Store.FindBlockEpoch(block)
 }
+
+func (ew *emitterWorldRead) GetEpochStartBlock(epoch idx.Epoch) idx.Block {
+	bs, _ := ew.Store.GetHistoryBlockEpochState(epoch)
+	if bs == nil {
+		return 0
+	}
+	return bs.LastBlock.Idx
+}

@@ -104,6 +104,20 @@ func (mr *MockExternalMockRecorder) DagIndex() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DagIndex", reflect.TypeOf((*MockExternal)(nil).DagIndex))
 }
 
+// GetEpochStartBlock mocks base method.
+func (m *MockExternal) GetEpochStartBlock(arg0 idx.Epoch) idx.Block {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetEpochStartBlock", arg0)
+	ret0, _ := ret[0].(idx.Block)
+	return ret0
+}
+
+// GetEpochStartBlock indicates an expected call of GetEpochStartBlock.
+func (mr *MockExternalMockRecorder) GetEpochStartBlock(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEpochStartBlock", reflect.TypeOf((*MockExternal)(nil).GetEpochStartBlock), arg0)
+}
+
 // GetEpochValidators mocks base method.
 func (m *MockExternal) GetEpochValidators() (*pos.Validators, idx.Epoch) {
 	m.ctrl.T.Helper()
@@ -509,6 +523,20 @@ func NewMockReader(ctrl *gomock.Controller) *MockReader {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockReader) EXPECT() *MockReaderMockRecorder {
 	return m.recorder
+}
+
+// GetEpochStartBlock mocks base method.
+func (m *MockReader) GetEpochStartBlock(arg0 idx.Epoch) idx.Block {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetEpochStartBlock", arg0)
+	ret0, _ := ret[0].(idx.Block)
+	return ret0
+}
+
+// GetEpochStartBlock indicates an expected call of GetEpochStartBlock.
+func (mr *MockReaderMockRecorder) GetEpochStartBlock(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEpochStartBlock", reflect.TypeOf((*MockReader)(nil).GetEpochStartBlock), arg0)
 }
 
 // GetEpochValidators mocks base method.

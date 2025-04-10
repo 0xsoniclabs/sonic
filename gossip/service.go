@@ -222,6 +222,7 @@ func newService(config Config, store *Store, blockProc BlockProc, engine lachesi
 	svc.heavyCheckReader.Store = store
 	svc.heavyCheckReader.Pubkeys.Store(readEpochPubKeys(svc.store, svc.store.GetEpoch()))                                          // read pub keys of current epoch from DB
 	svc.gasPowerCheckReader.Ctx.Store(NewGasPowerContext(svc.store, svc.store.GetValidators(), svc.store.GetEpoch(), net.Economy)) // read gaspower check data from DB
+	svc.proposalCheckReader.heavyCheckerReader = &svc.heavyCheckReader
 	svc.proposalCheckReader.validators.Store(svc.store.GetValidators())
 	svc.checkers = makeCheckers(config.HeavyCheck, txSigner, &svc.heavyCheckReader, &svc.gasPowerCheckReader, &svc.proposalCheckReader, svc.store)
 
