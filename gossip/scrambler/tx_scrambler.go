@@ -1,12 +1,13 @@
-package gossip
+package scrambler
 
 import (
 	"bytes"
 	"cmp"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 	"math/big"
 	"slices"
+
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 )
 
 // ScramblerEntry stores meta information about transaction for sorting and filtering them.
@@ -43,11 +44,11 @@ func (tx *scramblerTransaction) Sender() common.Address {
 	return tx.sender
 }
 
-// getExecutionOrder returns correct order of the transactions.
+// GetExecutionOrder returns correct order of the transactions.
 // If Sonic is enabled, the tx scrambler is used, otherwise the
 // order stays unchanged. If signer is unable to derive sender for
 // a transaction, this transaction is not excluded from the final list.
-func getExecutionOrder(unorderedTxs types.Transactions, signer types.Signer, isSonic bool) types.Transactions {
+func GetExecutionOrder(unorderedTxs types.Transactions, signer types.Signer, isSonic bool) types.Transactions {
 	// Don't use scrambler if Sonic is not enabled
 	if !isSonic {
 		return unorderedTxs
@@ -130,8 +131,8 @@ func sortTransactionsWithSameSender(entries []ScramblerEntry) {
 func scrambleTransactions(list []ScramblerEntry, salt [32]byte) {
 	var aX, bX [32]byte
 	slices.SortFunc(list, func(a, b ScramblerEntry) int {
-		aX = xorBytes32(a.Hash(), salt)
-		bX = xorBytes32(b.Hash(), salt)
+		aX = XorBytes32(a.Hash(), salt)
+		bX = XorBytes32(b.Hash(), salt)
 		return bytes.Compare(aX[:], bX[:])
 	})
 }
@@ -157,7 +158,7 @@ func analyseEntryList(entries []ScramblerEntry) ([]ScramblerEntry, [32]byte, boo
 			hasDuplicateAddresses = true
 		}
 		seenAddresses[sender] = struct{}{}
-		salt = xorBytes32(salt, entry.Hash())
+		salt = XorBytes32(salt, entry.Hash())
 		uniqueList = append(uniqueList, entry)
 		seenHashes[entry.Hash()] = struct{}{}
 
@@ -166,7 +167,7 @@ func analyseEntryList(entries []ScramblerEntry) ([]ScramblerEntry, [32]byte, boo
 	return uniqueList, salt, hasDuplicateAddresses
 }
 
-func xorBytes32(a, b [32]byte) (dst [32]byte) {
+func XorBytes32(a, b [32]byte) (dst [32]byte) {
 	for i := 0; i < 32; i++ {
 		dst[i] = a[i] ^ b[i]
 	}
