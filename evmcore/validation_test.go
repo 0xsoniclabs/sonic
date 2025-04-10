@@ -16,56 +16,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestValidateTx_RejectsNonLegacyTransactions_BeforeBerlin(t *testing.T) {
+func TestValidateTx_RejectsNonLegacyTransactions_BeforeEip2718(t *testing.T) {
 	for name, tx := range getTxsFromAllTypes() {
 		if _, ok := tx.(*types.LegacyTx); ok {
 			continue // Skip legacy transactions
 		}
 		t.Run(name, func(t *testing.T) {
 			err := validateTx(types.NewTx(tx), types.NewPragueSigner(big.NewInt(1)),
-				validationOptions{})
+				validationOptions{eip2718: false})
 			require.ErrorIs(t, ErrTxTypeNotSupported, err)
-		})
-	}
-}
-
-func TestValidateTx_RejectsTxBasedOnTypeAndActiveRevision(t *testing.T) {
-	tests := map[string]struct {
-		tx   *types.Transaction
-		opts validationOptions
-	}{
-		"accessList tx before berlin": {
-			tx: types.NewTx(&types.AccessListTx{}),
-			opts: validationOptions{
-				berlin: false,
-			},
-		},
-		"dynamic fee tx before london": {
-			tx: types.NewTx(&types.DynamicFeeTx{}),
-			opts: validationOptions{
-				berlin: true,
-				london: false,
-			},
-		},
-		"blob tx before cancun": {
-			tx: types.NewTx(makeBlobTx(nil, nil)),
-			opts: validationOptions{
-				berlin: true,
-				cancun: false,
-			},
-		},
-		"setCode tx before prague": {
-			tx: types.NewTx(&types.SetCodeTx{}),
-			opts: validationOptions{
-				berlin: true,
-				prague: false,
-			},
-		},
-	}
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			err := validateTx(test.tx, types.NewPragueSigner(big.NewInt(1)), test.opts)
-			require.Equal(t, ErrTxTypeNotSupported, err)
 		})
 	}
 }
@@ -75,15 +34,62 @@ func TestValidateTx_RejectsTxBasedOnTypeAndActiveRevision(t *testing.T) {
 // with a min tip of 1, current base fee of 1, and a current max gas of 100_000.
 func testTransactionsOption() validationOptions {
 	return validationOptions{
-		berlin:         true,
-		london:         true,
+		eip2718:        true,
+		eip1559:        true,
 		shanghai:       true,
-		cancun:         true,
-		prague:         true,
+		eip4844:        true,
+		eip7623:        true,
+		eip7702:        true,
 		currentMaxGas:  100_000,
 		currentBaseFee: big.NewInt(1),
 		minTip:         big.NewInt(1),
 		isLocal:        true,
+	}
+}
+
+func TestValidateTx_RejectsTxBasedOnTypeAndActiveRevision(t *testing.T) {
+	tests := map[string]struct {
+		tx   *types.Transaction
+		opts func(validationOptions) validationOptions
+	}{
+		"accessList tx before eip2718": {
+			tx: types.NewTx(&types.AccessListTx{}),
+			opts: func(opts validationOptions) validationOptions {
+				opts.eip2718 = false
+				return opts
+			},
+		},
+		"dynamic fee tx before eip1559": {
+			tx: types.NewTx(&types.DynamicFeeTx{}),
+			opts: func(opts validationOptions) validationOptions {
+				opts.eip2718 = true
+				opts.eip1559 = false
+				return opts
+			},
+		},
+		"blob tx before eip4844": {
+			tx: types.NewTx(makeBlobTx(nil, nil)),
+			opts: func(opts validationOptions) validationOptions {
+				opts.eip2718 = true
+				opts.eip4844 = false
+				return opts
+			},
+		},
+		"setCode tx before eip7702": {
+			tx: types.NewTx(&types.SetCodeTx{}),
+			opts: func(opts validationOptions) validationOptions {
+				opts.eip2718 = true
+				opts.eip7702 = false
+				return opts
+			},
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			err := validateTx(test.tx, types.NewPragueSigner(big.NewInt(1)),
+				test.opts(testTransactionsOption()))
+			require.Equal(t, ErrTxTypeNotSupported, err)
+		})
 	}
 }
 
@@ -304,12 +310,12 @@ func TestValidateTx_Gas_RejectsTxWith(t *testing.T) {
 	}
 
 	for name, tx := range getTxsFromAllTypes() {
-		t.Run(fmt.Sprintf("floor data gas not checked before prague/%v", name), func(t *testing.T) {
+		t.Run(fmt.Sprintf("floor data gas not checked before eip7623/%v", name), func(t *testing.T) {
 			if _, ok := tx.(*types.SetCodeTx); ok {
-				t.Skip("setCode transactions cannot be used before prague")
+				t.Skip("setCode transactions cannot be used before eip7702")
 			}
 			opt := testTransactionsOption()
-			opt.prague = false
+			opt.eip7623 = false
 
 			// setup tx to fail intrinsic gas calculation
 			someData := make([]byte, txSlotSize)
@@ -371,12 +377,12 @@ func TestValidateTx_Data_RejectsTxWith(t *testing.T) {
 	for name, tx := range getTxsFromAllTypes() {
 		t.Run(fmt.Sprintf("init code size not checked before shanghai/%v", name), func(t *testing.T) {
 			if isBlobOrSetCode(tx) {
-				t.Skip("blob and setCode transactions cannot be used before cancun and prague")
+				t.Skip("blob and setCode transactions cannot be used before eip4844 and eip7702")
 			}
 			opt := testTransactionsOption()
 			opt.shanghai = false
-			opt.cancun = false
-			opt.prague = false
+			opt.eip4844 = false
+			opt.eip7623 = false
 			// needs extra gas to allow big data to be afforded.
 			opt.currentMaxGas = 249_612
 
