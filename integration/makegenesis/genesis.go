@@ -12,6 +12,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/scc/cert"
+	"github.com/0xsoniclabs/sonic/scc/node"
 	"github.com/0xsoniclabs/sonic/utils/objstream"
 	"github.com/ethereum/go-ethereum/core/tracing"
 
@@ -53,8 +54,9 @@ type GenesisBuilder struct {
 	epochs       []ier.LlrIdxFullEpochRecord
 	currentEpoch ier.LlrIdxFullEpochRecord
 
-	genesisCommitteeCertificate cert.CommitteeCertificate
-	genesisBlockCertificates    []cert.BlockCertificate
+	genesisCertificationStateState node.State
+	genesisCommitteeCertificate    cert.CommitteeCertificate
+	genesisBlockCertificates       []cert.BlockCertificate
 }
 
 type BlockProc struct {
@@ -322,6 +324,10 @@ func (b *GenesisBuilder) ExecuteGenesisTxs(blockProc BlockProc, genesisTxs types
 	return nil
 }
 
+func (b *GenesisBuilder) SetGenesisCertificationChainState(state node.State) {
+	b.genesisCertificationStateState = state
+}
+
 func (b *GenesisBuilder) SetGenesisCommitteeCertificate(
 	committeeCertificate cert.CommitteeCertificate,
 ) {
@@ -373,6 +379,13 @@ func (b *GenesisBuilder) Build(head genesis.Header) *genesisstore.Store {
 		}
 		if name == genesisstore.FwsArchiveSection(0) {
 			err := mptIo.ExportArchive(context.Background(), mptIo.NewLog(), filepath.Join(b.carmenDir, "archive"), buf)
+			if err != nil {
+				return nil, err
+			}
+		}
+		if name == genesisstore.SccStateSection(0) {
+			out := objstream.NewWriter[node.State](buf)
+			err := out.Write(b.genesisCertificationStateState)
 			if err != nil {
 				return nil, err
 			}

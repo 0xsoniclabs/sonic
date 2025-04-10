@@ -11,6 +11,7 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/ier"
 	"github.com/0xsoniclabs/sonic/opera/genesis"
 	"github.com/0xsoniclabs/sonic/scc/cert"
+	"github.com/0xsoniclabs/sonic/scc/node"
 	"github.com/0xsoniclabs/sonic/utils/iodb"
 	"github.com/0xsoniclabs/sonic/utils/objstream"
 )
@@ -23,6 +24,9 @@ type (
 		fMap FilesMap
 	}
 	RawEvmItems struct {
+		fMap FilesMap
+	}
+	RawSccStates struct {
 		fMap FilesMap
 	}
 	RawCommitteeCertificates struct {
@@ -44,15 +48,16 @@ type (
 
 func (s *Store) Genesis() genesis.Genesis {
 	return genesis.Genesis{
-		Header:                s.head,
-		Blocks:                s.Blocks(),
-		Epochs:                s.Epochs(),
-		RawEvmItems:           s.RawEvmItems(),
-		CommitteeCertificates: s.CommitteeCertificates(),
-		BlockCertificates:     s.BlockCertificates(),
-		FwsLiveSection:        s.FwsLiveSection(),
-		FwsArchiveSection:     s.FwsArchiveSection(),
-		SignatureSection:      s.SignatureSection(),
+		Header:                   s.head,
+		Blocks:                   s.Blocks(),
+		Epochs:                   s.Epochs(),
+		RawEvmItems:              s.RawEvmItems(),
+		CertificationChainStates: s.CertificationChainStates(),
+		CommitteeCertificates:    s.CommitteeCertificates(),
+		BlockCertificates:        s.BlockCertificates(),
+		FwsLiveSection:           s.FwsLiveSection(),
+		FwsArchiveSection:        s.FwsArchiveSection(),
+		SignatureSection:         s.SignatureSection(),
 	}
 }
 
@@ -144,6 +149,33 @@ func (s RawEvmItems) ForEach(fn func(key, value []byte) bool) {
 	}
 }
 
+func (s *Store) CertificationChainStates() genesis.SccStates {
+	return RawSccStates{s.fMap}
+}
+
+func (s RawSccStates) ForEach(fn func(node.State) bool) {
+	for i := range 1000 {
+		f, err := s.fMap(SccStateSection(i))
+		if err != nil {
+			continue
+		}
+
+		reader := objstream.NewReader[*node.State](f)
+		var cur node.State
+		for {
+			err = reader.Read(&cur)
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				log.Crit("Failed to decode SCC state genesis section", "err", err)
+			}
+			if !fn(cur) {
+				break
+			}
+		}
+	}
+}
 func (s *Store) CommitteeCertificates() genesis.SccCommitteeCertificates {
 	return RawCommitteeCertificates{s.fMap}
 }
