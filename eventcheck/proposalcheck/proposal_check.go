@@ -11,6 +11,12 @@ import (
 var (
 	ErrMissingProposalEnvelope = errors.New("event has no proposal envelope")
 	ErrInvalidProposer         = errors.New("event contains proposal of invalid proposer")
+	ErrInvalidProposalTime     = errors.New("event contains proposal with invalid time")
+
+	ErrVersion3MustNotContainTransactions      = errors.New("event with version 3 must not contain transactions")
+	ErrVersion3MustNotContainBlockVotes        = errors.New("event with version 3 must not contain block votes")
+	ErrVersion3MustNotContainEpochVotes        = errors.New("event with version 3 must not contain epoch votes")
+	ErrVersion3MustNotContainMisbehaviorProofs = errors.New("event with version 3 must not contain misbehavior proofs")
 )
 
 // Checker that block proposal and envelope information in events is valid.
@@ -50,6 +56,20 @@ func (v *Checker) Validate(e inter.EventPayloadI) error {
 		return nil // all fine with other events
 	}
 
+	// None of the version 1 or 2 payload fields must be present.
+	if e.AnyTxs() {
+		return ErrVersion3MustNotContainTransactions
+	}
+	if e.AnyBlockVotes() {
+		return ErrVersion3MustNotContainBlockVotes
+	}
+	if e.AnyEpochVote() {
+		return ErrVersion3MustNotContainEpochVotes
+	}
+	if e.AnyMisbehaviourProofs() {
+		return ErrVersion3MustNotContainMisbehaviorProofs
+	}
+
 	// -- Envelope Checks --
 
 	// Check that there is an envelope.
@@ -77,6 +97,20 @@ func (v *Checker) Validate(e inter.EventPayloadI) error {
 	if proposer != e.Creator() {
 		return ErrInvalidProposer
 	}
+
+	// Check that the proposed block time is equal to the median time.
+	if proposal.Time != e.MedianTime() {
+		return ErrInvalidProposalTime
+	}
+
+	// For these checks access to the preceding block is required:
+	// - the right hash of the preceding block
+	// - the use of the correct base-fee price
+	// - the use of the correct randao value
+
+	// For these checks access to the preceding block's state is required:
+	// - all transactions are processable
+	// - the total gas used is within the limit of the accepted network throughput
 
 	// all fine
 	return nil

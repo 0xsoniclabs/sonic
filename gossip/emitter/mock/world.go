@@ -203,6 +203,20 @@ func (mr *MockExternalMockRecorder) GetLastEvent(epoch, from any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLastEvent", reflect.TypeOf((*MockExternal)(nil).GetLastEvent), epoch, from)
 }
 
+// GetLatestBlock mocks base method.
+func (m *MockExternal) GetLatestBlock() *inter.Block {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetLatestBlock")
+	ret0, _ := ret[0].(*inter.Block)
+	return ret0
+}
+
+// GetLatestBlock indicates an expected call of GetLatestBlock.
+func (mr *MockExternalMockRecorder) GetLatestBlock() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLatestBlock", reflect.TypeOf((*MockExternal)(nil).GetLatestBlock))
+}
+
 // GetLatestBlockIndex mocks base method.
 func (m *MockExternal) GetLatestBlockIndex() idx.Block {
 	m.ctrl.T.Helper()
@@ -580,6 +594,20 @@ func (m *MockReader) GetLastEvent(epoch idx.Epoch, from idx.ValidatorID) *hash.E
 func (mr *MockReaderMockRecorder) GetLastEvent(epoch, from any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLastEvent", reflect.TypeOf((*MockReader)(nil).GetLastEvent), epoch, from)
+}
+
+// GetLatestBlock mocks base method.
+func (m *MockReader) GetLatestBlock() *inter.Block {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetLatestBlock")
+	ret0, _ := ret[0].(*inter.Block)
+	return ret0
+}
+
+// GetLatestBlock indicates an expected call of GetLatestBlock.
+func (mr *MockReaderMockRecorder) GetLatestBlock() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLatestBlock", reflect.TypeOf((*MockReader)(nil).GetLatestBlock))
 }
 
 // GetLatestBlockIndex mocks base method.

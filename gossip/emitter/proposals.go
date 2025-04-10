@@ -60,8 +60,11 @@ func (em *Emitter) addProposal(
 	// 2. Derive meta-information for proposal
 	// 3. Create list of transactions for proposal
 
+	// Get the latest block known by this node.
+	latest := em.world.GetLatestBlock()
+
 	// Get next expected block number.
-	nextBlock := em.world.GetLatestBlockIndex() + 1
+	nextBlock := idx.Block(latest.Number + 1)
 
 	// Get expected attempt for the next block.
 	lastProposerFrame := em.GetFrameOfLastProposal()
@@ -94,32 +97,46 @@ func (em *Emitter) addProposal(
 
 	if enableProposalDebugPrints {
 		fmt.Printf(
-			"validator=%d, starting proposal for block %d/%d as part of frame %d (last proposal at frame %d)\n",
-			em.config.Validator.ID, nextBlock, attempt, event.Frame(), lastProposerFrame,
+			"validator=%d, starting proposal for block %d/%d as part of frame %d @ t=%v (last proposal at frame %d)\n",
+			em.config.Validator.ID, nextBlock, attempt, event.Frame(), event.CreationTime().Time(), lastProposerFrame,
 		)
 	}
 
+	rules := em.world.GetRules()
+
+	// For the time of the block we use the median time, which is the median
+	// of all creation times of last-seen validator times.
+	nextBlockTime := event.MedianTime()
+
+	// Compute the gas limit for the next block. This is the time since the
+	// previous block times the targeted network throughput.
+	lastBlockTime := latest.Time
+	if lastBlockTime >= nextBlockTime {
+		return nil // no time has passed, no proposal to be made
+	}
+	effectiveGasLimit := getEffectiveGasLimit(
+		nextBlockTime.Time().Sub(lastBlockTime.Time()),
+		rules.Economy.ShortGasPower.AllocPerSec, // TODO: consider using a new rule set parameter
+	)
+
 	// Create the proposal for the next block.
 	proposal := &inter.Proposal{
-		Number:  nextBlock,
-		Attempt: attempt,
-		//ParentHash: em.world.GetBlockHash(nextBlock - 1),
-		Time: event.CreationTime(),
-		// PrevRandao: -- figure out what to use --
+		Number:     nextBlock,
+		Attempt:    attempt,
+		ParentHash: latest.Hash(),
+		Time:       nextBlockTime,
+		// PrevRandao: -- compute next randao mix based on predecessor --
 	}
-
-	// TODO: compute based on time between blocks and targeted network throughput
-	gasLimit := uint64(7*21_000 + 21_000/2) // enough for 7.5 transactions
 
 	// This step covers the actual transaction selection and sorting.
 	proposal.Transactions = em.getTransactionsForProposal(
 		&blockContext{
 			Number:   proposal.Number,
 			Time:     proposal.Time,
-			GasLimit: 100_000_000_000, // TODO: get from network rules
+			GasLimit: rules.Blocks.MaxBlockGas,
 		},
 		sorted,
-		gasLimit,
+		effectiveGasLimit,
 	)
 
 	// TODO: remove
@@ -418,4 +435,29 @@ func scramble(transactions []*types.Transaction) []*types.Transaction {
 		res[i], res[j] = res[j], res[i]
 	})
 	return res
+}
+
+func getEffectiveGasLimit(
+	delta time.Duration,
+	targetedThroughput uint64,
+) uint64 {
+	// We put a strict cap of 2 second on the accumulated gas. Thus, if the delay
+	// between two blocks is less than 2 seconds, gas is accumulated linearly.
+	// If the delay is longer than 2 seconds, we cap the gas to the maximum
+	// accumulation time. This is to limit the maximum block size to at most
+	// 2 seconds worth of gas.
+	const maxAccumulationTime = 2 * time.Second
+	if delta > maxAccumulationTime {
+		delta = maxAccumulationTime
+	}
+	if delta <= 0 {
+		return 0
+	}
+	return new(big.Int).Div(
+		new(big.Int).Mul(
+			big.NewInt(int64(targetedThroughput)),
+			big.NewInt(int64(delta.Nanoseconds())),
+		),
+		big.NewInt(int64(time.Second.Nanoseconds())),
+	).Uint64()
 }

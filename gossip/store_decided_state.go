@@ -7,6 +7,7 @@ import (
 	ethparams "github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 
+	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/opera"
 )
@@ -148,6 +149,10 @@ func (s *Store) GetEpochValidators() (*pos.Validators, idx.Epoch) {
 // GetLatestBlockIndex retrieves the current block number
 func (s *Store) GetLatestBlockIndex() idx.Block {
 	return s.GetBlockState().LastBlock.Idx
+}
+
+func (s *Store) GetLatestBlock() *inter.Block {
+	return s.GetBlock(s.GetLatestBlockIndex())
 }
 
 // GetRules retrieves current network rules
