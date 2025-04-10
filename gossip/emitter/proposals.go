@@ -3,6 +3,9 @@ package emitter
 import (
 	"fmt"
 	"math/big"
+	"math/rand/v2"
+	"slices"
+	"time"
 
 	"github.com/0xsoniclabs/sonic/eventcheck/epochcheck"
 	"github.com/0xsoniclabs/sonic/evmcore"
@@ -19,7 +22,7 @@ func (em *Emitter) addProposal(
 	sorted *transactionsByPriceAndNonce,
 ) error {
 
-	const enableProposalDebugPrints = false
+	const enableProposalDebugPrints = true
 
 	lastSeenProposalNumber := idx.Block(0)
 	lastSeenProposalAttempt := uint32(0)
@@ -105,10 +108,19 @@ func (em *Emitter) addProposal(
 		// PrevRandao: -- figure out what to use --
 	}
 
-	// TODO: add transactions to the proposal
-	if err := em.addTransactionsToProposal(proposal, sorted); err != nil {
-		return err
-	}
+	// TODO: compute based on time between blocks and targeted network throughput
+	gasLimit := uint64(7*21_000 + 21_000/2) // enough for 7.5 transactions
+
+	// This step covers the actual transaction selection and sorting.
+	proposal.Transactions = em.getTransactionsForProposal(
+		&blockContext{
+			Number:   proposal.Number,
+			Time:     proposal.Time,
+			GasLimit: 100_000_000_000, // TODO: get from network rules
+		},
+		sorted,
+		gasLimit,
+	)
 
 	// TODO: remove
 	if enableProposalDebugPrints {
@@ -117,7 +129,9 @@ func (em *Emitter) addProposal(
 			em.config.Validator.ID, nextBlock, attempt, len(proposal.Transactions),
 		)
 		for _, tx := range proposal.Transactions {
-			fmt.Printf("\tTransaction with nonce %d\n", tx.Nonce())
+			sender, _ := types.Sender(em.world.TxSigner, tx)
+			tip := tx.EffectiveGasTipValue(new(big.Int))
+			fmt.Printf("\tTransaction with sender %v, nonce %d, effective tip %v\n", sender, tx.Nonce(), tip)
 		}
 	}
 
@@ -134,41 +148,57 @@ func (em *Emitter) addProposal(
 	return nil
 }
 
-func (em *Emitter) addTransactionsToProposal(
-	proposal *inter.Proposal,
+type blockContext struct {
+	Number   idx.Block
+	Time     inter.Timestamp
+	GasLimit uint64
+}
+
+func (em *Emitter) getTransactionsForProposal(
+	context *blockContext,
 	sorted *transactionsByPriceAndNonce,
-) error {
+	gasLimit uint64,
+) []*types.Transaction {
+	if false {
+		// This is the algorithm we think is the default in go-ethereum
+		return em.scheduleByGasTipOnly(context, sorted, gasLimit)
+	}
+	return em.scheduleAndScramble(context, sorted, gasLimit)
+}
 
-	// TODO:
-	// - enforce gas limit
-	// - enforce scrambled order of transactions
-
+// scheduleByGasTipOnly prioritizes transactions by their gas tip. The highest
+// tips are selected first.
+func (em *Emitter) scheduleByGasTipOnly(
+	context *blockContext,
+	sorted *transactionsByPriceAndNonce,
+	gasLimit uint64,
+) []*types.Transaction {
 	// Create a block-processor instance to check that selected transactions
 	// are indeed executable in the given order on the current state.
-
 	block := &evmcore.EvmBlock{
 		EvmHeader: evmcore.EvmHeader{
-			Number:   new(big.Int).SetUint64(uint64(proposal.Number)),
-			Time:     proposal.Time,
-			GasLimit: 10_000_000_000, // TODO: get from network rules
+			Number:   new(big.Int).SetUint64(uint64(context.Number)),
+			Time:     context.Time,
+			GasLimit: context.GasLimit,
 			// TODO: add missing fields like base-fee, randao, ...
 		},
 	}
 
 	// TODO: align this with c_block_callbacks.go
-
 	rules := em.world.GetRules()
 	chainCfg := rules.EvmChainConfig(em.world.GetUpgradeHeights())
 
 	stateDb := em.world.StateDB()
 	defer stateDb.Release()
 
-	var usedGas uint64
+	var usedGas uint64 // - everything, including ignored transactions
 	runTx := evmcore.NewStateProcessor(chainCfg, em.world).BeginBlock(
 		block, stateDb, opera.DefaultVMConfig, &usedGas,
 	)
 
 	// sort transactions by price and nonce
+	remainingGas := gasLimit
+	transactions := []*types.Transaction{}
 	for tx, _ := sorted.Peek(); tx != nil; tx, _ = sorted.Peek() {
 		resolvedTx := tx.Resolve()
 
@@ -186,7 +216,7 @@ func (em *Emitter) addTransactionsToProposal(
 		}
 
 		// make sure the transaction can be processed
-		_, skipped, err := runTx(len(proposal.Transactions), resolvedTx)
+		receipt, skipped, err := runTx(len(transactions), resolvedTx)
 		if skipped || err != nil {
 			if skipped {
 				fmt.Printf("\tTransaction skipped\n")
@@ -198,11 +228,194 @@ func (em *Emitter) addTransactionsToProposal(
 			continue
 		}
 
-		// add transaction to the proposal
-		proposal.Transactions = append(proposal.Transactions, resolvedTx)
-		sorted.Shift()
+		if remainingGas < receipt.GasUsed {
+			sorted.Pop()
+			continue
+		}
 
-		// TODO: check gas limit
+		// add transaction to the proposed list of transactions
+		transactions = append(transactions, resolvedTx)
+		remainingGas -= receipt.GasUsed
+		sorted.Shift()
 	}
-	return nil
+	return transactions
+}
+
+// ---- New Scheduling Algorithm Prototype ----
+
+// This algorithm aims to satisfy the following properties:
+//  - prioritize high-tip transactions to be included in blocks
+//  - use a verifiable random order of selected transactions in blocks
+
+func (em *Emitter) scheduleAndScramble(
+	context *blockContext,
+	sorted *transactionsByPriceAndNonce,
+	gasLimit uint64,
+) []*types.Transaction {
+
+	rules := em.world.GetRules()
+	candidates := []*types.Transaction{}
+
+	growCandidates := func(size int) bool {
+		hasGrown := false
+		for len(candidates) < size {
+			tx, _ := sorted.Peek()
+			if tx == nil {
+				break
+			}
+			resolvedTx := tx.Resolve()
+
+			// check transaction epoch rules (tx type, gas price)
+			if epochcheck.CheckTxs(types.Transactions{resolvedTx}, rules) != nil {
+				txsSkippedEpochRules.Inc(1)
+				sorted.Pop()
+				continue
+			}
+			candidates = append(candidates, resolvedTx)
+			hasGrown = true
+			sorted.Shift()
+		}
+
+		/*
+			fmt.Printf("New candidates:\n")
+			for _, tx := range candidates {
+				fmt.Printf("\tTransaction with tip %d\n", tx.EffectiveGasTipValue(new(big.Int)))
+			}
+		*/
+
+		return hasGrown
+	}
+
+	start := time.Now()
+
+	var bestOrder []*types.Transaction
+	var bestGasUsed uint64
+	var bestCandidateSize int
+
+	// Phase one: find an upper bound for the number of transactions to consider.
+	reachedGasLimit := false
+	numEvals := 0
+	for i := 1; ; i *= 2 {
+		if !growCandidates(i) {
+			break
+		}
+		//fmt.Printf("Testing %d transactions\n", len(candidates))
+		numEvals++
+		order, gasUsed, reachedLimit := em.evaluateTransactions(context, candidates, gasLimit)
+		if gasUsed > bestGasUsed {
+			bestGasUsed = gasUsed
+			bestOrder = order
+			bestCandidateSize = len(candidates)
+		}
+		if reachedLimit {
+			reachedGasLimit = true
+			break
+		}
+	}
+
+	//fmt.Printf("Tested up to %d candidates, best contains %d transactions, exceeded gas limit %t\n", len(candidates), len(bestOrder), reachedGasLimit)
+
+	// Phase two: fine-tune if not all transactions were used.
+	if reachedGasLimit {
+		// binary search the interval between the best solution and the candidate list
+		low := len(bestOrder)
+		high := len(candidates)
+		for low < high {
+			mid := (low + high) / 2
+			//fmt.Printf("Testing %d transactions (low: %d, high: %d)\n", mid, low, high)
+			numEvals++
+			order, gasUsed, reachedLimit := em.evaluateTransactions(context, candidates[:mid], gasLimit)
+			// We replace our current best if we can get more gas used with a smaller candidate list size.
+			// This is a trade-off between us honoring the priority expressed by tips and the maximum
+			// gas we can pack into a block.
+			if gasUsed > bestGasUsed || (gasUsed == bestGasUsed && mid < bestCandidateSize) {
+				bestGasUsed = gasUsed
+				bestOrder = order
+				bestCandidateSize = mid
+			}
+			if reachedLimit {
+				high = mid
+			} else {
+				low = mid + 1
+			}
+		}
+	}
+
+	fmt.Printf("Scheduling took %v, %d runs\n", time.Since(start), numEvals)
+
+	return bestOrder
+}
+
+func (em *Emitter) evaluateTransactions(
+	context *blockContext,
+	transactions []*types.Transaction,
+	gasLimit uint64,
+) (
+	[]*types.Transaction, // list of selected transactions
+	uint64, // gas used by resulting transaction list
+	bool, // true if the gas limit was reached and candidates were ignored
+) {
+
+	// TODO: add a context supporting a time-out
+
+	// Create a block-processor instance to check that selected transactions
+	// are indeed executable in the given order on the current state.
+	block := &evmcore.EvmBlock{
+		EvmHeader: evmcore.EvmHeader{
+			Number:   new(big.Int).SetUint64(uint64(context.Number)),
+			Time:     context.Time,
+			GasLimit: context.GasLimit,
+			// TODO: add missing fields like base-fee, randao, ...
+		},
+	}
+
+	// TODO: align this with c_block_callbacks.go
+	rules := em.world.GetRules()
+	chainCfg := rules.EvmChainConfig(em.world.GetUpgradeHeights())
+
+	stateDb := em.world.StateDB()
+	defer stateDb.Release()
+
+	var _usedGas uint64 // - everything, including ignored transactions
+	runTx := evmcore.NewStateProcessor(chainCfg, em.world).BeginBlock(
+		block, stateDb, opera.DefaultVMConfig, &_usedGas,
+	)
+
+	// sort transactions by price and nonce
+	reachedLimit := false
+	remainingGas := gasLimit
+	scrambled := scramble(transactions)
+	selected := make([]*types.Transaction, 0, len(scrambled))
+	for _, tx := range scrambled {
+
+		// test whether this transaction can be processed
+		receipt, skipped, err := runTx(len(selected), tx)
+		if skipped || err != nil {
+			// TODO: add some monitoring
+			//txsSkippedExecutionError.Inc(1)
+			continue
+		}
+
+		if remainingGas < receipt.GasUsed {
+			// TODO: add some monitoring
+			reachedLimit = true
+			continue
+		}
+
+		// add transaction to the proposed list of transactions
+		selected = append(selected, tx)
+		remainingGas -= receipt.GasUsed
+	}
+	return selected, gasLimit - remainingGas, reachedLimit
+}
+
+// scramble returns a random permutation of the given transactions. The result
+// is a copy of the input slice, so the input is not modified.
+func scramble(transactions []*types.Transaction) []*types.Transaction {
+	// TODO: enforce the ordering of transactions from the same sender
+	res := slices.Clone(transactions)
+	rand.Shuffle(len(res), func(i, j int) {
+		res[i], res[j] = res[j], res[i]
+	})
+	return res
 }

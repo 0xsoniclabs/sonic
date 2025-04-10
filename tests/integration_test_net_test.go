@@ -298,7 +298,7 @@ func TestIntegrationTestNet_CanProcessTransactionsWithAllegroRules(t *testing.T)
 	require := require.New(t)
 	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
 		FeatureSet: opera.AllegroFeatures,
-		NumNodes:   3,
+		//NumNodes:   3,
 	})
 
 	client, err := net.GetClient()
@@ -369,7 +369,7 @@ func TestIntegrationTestNet_CanProcessTransactionsWithAllegroRules(t *testing.T)
 					Value:     big.NewInt(1),
 					Gas:       21000,
 					GasFeeCap: big.NewInt(1e11),
-					GasTipCap: big.NewInt(1e10),
+					GasTipCap: big.NewInt(int64(sender) + 1),
 				},
 			)
 			transactionHashes = append(transactionHashes, transaction.Hash())
