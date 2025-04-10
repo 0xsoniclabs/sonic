@@ -350,7 +350,7 @@ func (em *Emitter) scheduleAndScramble(
 		}
 	}
 
-	fmt.Printf("Scheduling took %v, %d runs\n", time.Since(start), numEvals)
+	fmt.Printf("Scheduling took %v, %d runs, %.1f%% full\n", time.Since(start), numEvals, 100*float64(bestGasUsed)/float64(gasLimit))
 
 	return bestOrder
 }
