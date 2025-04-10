@@ -32,11 +32,13 @@ import (
 // according to the current state of the transaction pool.
 type validationOptions struct {
 	istanbul bool // Fork indicator whether we are in the istanbul revision.
-	berlin   bool // Fork indicator whether we are in the Berlin revision.
-	london   bool // Fork indicator whether we are using London revision.
 	shanghai bool // Fork indicator whether we are in the shanghai revision.
-	cancun   bool // Fork indicator whether we are using Cancun revision.
-	prague   bool // Fork indicator whether we are using Prague revision.
+
+	eip2718 bool // Fork indicator whether we are using EIP-2718 type transactions.
+	eip1559 bool // Fork indicator whether we are using EIP-1559 type transactions.
+	eip4844 bool // Fork indicator whether we are using EIP-4844 type transactions.
+	eip7623 bool // Fork indicator whether we are using EIP-7623 floor gas validation.
+	eip7702 bool // Fork indicator whether we are using EIP-7702 set code transactions.
 
 	currentState   TxPoolStateDB // Current state in the blockchain head
 	currentMaxGas  uint64        // Current gas limit for transaction caps
@@ -56,16 +58,16 @@ func validateTx(tx *types.Transaction, signer types.Signer, opt validationOption
 	// Since both eip-2718 and eip-2930 are activated in the berlin fork
 	// (https://blog.ethereum.org/2021/03/08/ethereum-berlin-upgrade-announcement),
 	// they can be grouped in a single flag.
-	if !opt.berlin && tx.Type() != types.LegacyTxType {
+	if !opt.eip2718 && tx.Type() != types.LegacyTxType {
 		return ErrTxTypeNotSupported
 	}
 	// Reject dynamic fee transactions until EIP-1559 activates.
-	if !opt.london && tx.Type() == types.DynamicFeeTxType {
+	if !opt.eip1559 && tx.Type() == types.DynamicFeeTxType {
 		return ErrTxTypeNotSupported
 	}
 	// Reject blob transactions until EIP-4844 activates or if is already EIP-4844 and they are not empty
 	if tx.Type() == types.BlobTxType {
-		if !opt.cancun {
+		if !opt.eip4844 {
 			return ErrTxTypeNotSupported
 		}
 		// For now, Sonic only supports Blob transactions without blob data.
@@ -77,7 +79,7 @@ func validateTx(tx *types.Transaction, signer types.Signer, opt validationOption
 	// validate EIP-7702 transactions, part of prague revision
 	if tx.Type() == types.SetCodeTxType {
 		// Check minimum revision
-		if !opt.prague {
+		if !opt.eip7702 {
 			return ErrTxTypeNotSupported
 		}
 
@@ -174,7 +176,7 @@ func validateTx(tx *types.Transaction, signer types.Signer, opt validationOption
 
 	// EIP-7623 part of Prague revision: Floor data gas
 	// see: https://eips.ethereum.org/EIPS/eip-7623
-	if opt.prague {
+	if opt.eip7623 {
 		floorDataGas, err := core.FloorDataGas(tx.Data())
 		if err != nil {
 			return err
