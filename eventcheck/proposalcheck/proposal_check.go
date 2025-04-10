@@ -91,28 +91,15 @@ func (v *Checker) Validate(e inter.EventPayloadI) error {
 		return ErrMissingProposalEnvelope
 	}
 
-	parents := e.Parents()
-	if len(parents) == 0 {
+	// Check that meta information was successfully propagated.
+	wantProposalNumber := idx.Block(0)
+	wantAttempt := uint32(0)
+	wantFrame := idx.Frame(0)
+	if parents := e.Parents(); len(parents) == 0 {
 		// Check genesis event state.
-		firstBlock := v.reader.GetEpochBlockStart(e.Epoch())
-
-		if envelope.LastSeenProposalNumber != firstBlock {
-			return ErrInvalidLastSeenProposalNumber
-		}
-
-		if envelope.LastSeenProposalAttempt != 0 {
-			return ErrInvalidLastSeenAttemptNumber
-		}
-
-		if envelope.LastSeenProposalFrame != 0 {
-			return ErrInvalidLastSeenProposalFrame
-		}
-
+		wantProposalNumber = v.reader.GetEpochBlockStart(e.Epoch())
 	} else {
-		// Check that meta information was successfully propagated.
-		wantProposalNumber := idx.Block(0)
-		wantAttempt := uint32(0)
-		wantFrame := idx.Frame(0)
+
 		for _, parent := range parents {
 			// TODO: make sure the parent event is always present before running this test!!
 			payload := v.reader.GetEventPayload(parent)
@@ -133,41 +120,40 @@ func (v *Checker) Validate(e inter.EventPayloadI) error {
 				wantFrame = envelope.LastSeenProposalFrame
 			}
 		}
+	}
 
-		// If a proposal is present, check that it is the next expected proposal.
-		proposal := envelope.Proposal
-		if proposal != nil {
-			if !isValidNextProposal(
-				wantProposalNumber,
-				wantFrame,
-				proposal.Number,
-				proposal.Attempt,
-				e.Frame(),
-			) {
-				return ErrInvalidProposalNumber
-			}
-
-			// If there is a proposal, it is the last seen proposal.
-			wantProposalNumber = proposal.Number
-			wantAttempt = proposal.Attempt
-			wantFrame = e.Frame()
+	// If a proposal is present, check that it is the next expected proposal.
+	proposal := envelope.Proposal
+	if proposal != nil {
+		if !isValidNextProposal(
+			wantProposalNumber,
+			wantFrame,
+			proposal.Number,
+			proposal.Attempt,
+			e.Frame(),
+		) {
+			return ErrInvalidProposalNumber
 		}
 
-		// Check that the last seen proposal information is correct.
-		if envelope.LastSeenProposalNumber != wantProposalNumber {
-			return ErrInvalidLastSeenProposalNumber
-		}
-		if envelope.LastSeenProposalAttempt != wantAttempt {
-			return ErrInvalidLastSeenAttemptNumber
-		}
-		if envelope.LastSeenProposalFrame != wantFrame {
-			return ErrInvalidLastSeenProposalFrame
-		}
+		// If there is a proposal, it is the last seen proposal.
+		wantProposalNumber = proposal.Number
+		wantAttempt = proposal.Attempt
+		wantFrame = e.Frame()
+	}
+
+	// Check that the last seen proposal information is correct.
+	if envelope.LastSeenProposalNumber != wantProposalNumber {
+		return ErrInvalidLastSeenProposalNumber
+	}
+	if envelope.LastSeenProposalAttempt != wantAttempt {
+		return ErrInvalidLastSeenAttemptNumber
+	}
+	if envelope.LastSeenProposalFrame != wantFrame {
+		return ErrInvalidLastSeenProposalFrame
 	}
 
 	// -- Proposal Checks --
 
-	proposal := envelope.Proposal
 	if proposal == nil {
 		return nil
 	}

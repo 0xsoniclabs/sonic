@@ -298,7 +298,7 @@ func TestIntegrationTestNet_CanProcessTransactionsWithAllegroRules(t *testing.T)
 	require := require.New(t)
 	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
 		FeatureSet: opera.AllegroFeatures,
-		NumNodes:   3,
+		NumNodes:   3, // TODO: build a test with 1 and 3 nodes
 	})
 
 	client, err := net.GetClient()
