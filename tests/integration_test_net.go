@@ -189,6 +189,7 @@ func StartIntegrationTestNetWithJsonGenesis(
 
 	// Speed up the block generation time to reduce test time.
 	jsonGenesis.Rules.Emitter.Interval = inter.Timestamp(time.Millisecond)
+	jsonGenesis.Rules.Epochs.MaxEpochDuration = inter.Timestamp(30 * time.Second)
 
 	encoded, err := json.MarshalIndent(jsonGenesis, "", "  ")
 	if err != nil {

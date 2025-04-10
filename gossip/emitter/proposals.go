@@ -91,8 +91,8 @@ func (em *Emitter) addProposal(
 
 	if enableProposalDebugPrints {
 		fmt.Printf(
-			"validator=%d, starting proposal for block %d/%d as part of frame %d @ t=%v (last proposal at frame %d)\n",
-			em.config.Validator.ID, nextBlock, attempt, event.Frame(), event.CreationTime().Time(), lastProposerFrame,
+			"validator=%d, starting proposal for block %d/%d as part of frame %d/%d @ t=%v (last proposal at frame %d)\n",
+			em.config.Validator.ID, nextBlock, attempt, event.Epoch(), event.Frame(), event.CreationTime().Time(), lastProposerFrame,
 		)
 	}
 

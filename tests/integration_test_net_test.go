@@ -292,7 +292,7 @@ func TestIntegrationTestNet_AccountsToBeDeployedWithGenesisCanBeCalled(t *testin
 }
 
 func TestIntegrationTestNet_CanProcessTransactionsWithAllegroRules(t *testing.T) {
-	const NumRounds = 10
+	const NumRounds = 100
 	const NumTxsPerRound = 10
 
 	require := require.New(t)
