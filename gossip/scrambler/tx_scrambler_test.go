@@ -1,6 +1,7 @@
-package gossip
+package scrambler
 
 import (
+	"bytes"
 	"cmp"
 	"errors"
 	"fmt"
@@ -137,6 +138,48 @@ func TestTxScrambler_ScrambleTransactions_ScrambleIsDeterministic(t *testing.T) 
 			if slices.CompareFunc(res1, res2, compareFunc) != 0 {
 				t.Error("scramble is not deterministic")
 			}
+		}
+	}
+}
+
+func TestTxScrambler_ScrambleTransactions_OrderCanBeVerified(t *testing.T) {
+
+	const txCount = 100
+	const iterations = 100
+
+	testInput := make([]ScramblerEntry, 0, txCount)
+	for i := range txCount {
+		testInput = append(testInput, &dummyScramblerEntry{
+			hash:   common.Hash{byte(i)},
+			sender: common.Address{byte(i)},
+			nonce:  uint64(i),
+		})
+	}
+
+	for range iterations {
+		salt := createRandomSalt()
+		scrambleTransactions(testInput, salt)
+
+		orderFunc := func(a, b ScramblerEntry) int {
+			if a.Sender() == b.Sender() {
+				// ordered by nonce, gas price, hash
+				if res := cmp.Compare(a.Nonce(), b.Nonce()); res != 0 {
+					return res
+				}
+				if res := a.GasPrice().Cmp(b.GasPrice()); res != 0 {
+					return res
+				}
+				return a.Hash().Cmp(b.Hash())
+			}
+
+			aX := XorBytes32(a.Hash(), salt)
+			bX := XorBytes32(b.Hash(), salt)
+			return bytes.Compare(aX[:], bX[:])
+		}
+
+		// check that the order is correct
+		if !slices.IsSortedFunc(testInput, orderFunc) {
+			t.Errorf("scrambled transactions are not sorted, salt: %x %v", salt, testInput)
 		}
 	}
 }
@@ -655,7 +698,7 @@ func TestGetExecutionOrder_ScramblerIsUsedOnlyForSonic(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			txs := getExecutionOrder(input, signer, test.isSonic)
+			txs := GetExecutionOrder(input, signer, test.isSonic)
 			// one transaction is removed from the list
 			if got, want := len(txs), test.expectedLen; got != want {
 				t.Errorf("unexpected number of transasctions, got: %d, want: %d", got, want)
