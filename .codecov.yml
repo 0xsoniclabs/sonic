@@ -6,5 +6,13 @@ coverage:
   status:
     patch:
       default:
-        target: 80% # target coverage of the changes
+        target: 80% # coverage of the changes
         threshold: 1% # allow the coverage to drop by <threshold>%
+    project:
+      default:
+        target: 80% # coverage of the project
+ignore:
+  - "tests/"
+  - "**/*_mock.go"
+  - "**/*_test.go"
+  - "**/*_mock_test.go"
