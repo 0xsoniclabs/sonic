@@ -124,7 +124,7 @@ type DagRules struct {
 // EmitterRules contains options for the emitter of Lachesis events.
 type EmitterRules struct {
 	// Interval defines the length of the period
-	// between events produced by the emitter in milliseconds.
+	// between events produced by the emitter in nanoseconds.
 	//
 	// The Interval is used to control the rate of event
 	// production by the emitter. It thus indirectly controls
@@ -138,7 +138,7 @@ type EmitterRules struct {
 
 	// StallThreshold defines a maximum time the confirmation of
 	// new events may be delayed before the emitter considers the
-	// network stalled.
+	// network stalled in nanoseconds.
 	//
 	// The emitter has two modes: normal and stalled. In normal
 	// mode, the emitter produces events at a regular interval, as
@@ -152,7 +152,7 @@ type EmitterRules struct {
 	StallThreshold inter.Timestamp
 
 	// StallInterval defines the length of the period between
-	// events produced by the emitter in milliseconds when the
+	// events produced by the emitter in nanoseconds when the
 	// network is stalled.
 	StalledInterval inter.Timestamp
 }
