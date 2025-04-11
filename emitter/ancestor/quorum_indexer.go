@@ -5,18 +5,15 @@ import (
 	"sort"
 
 	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/consensus/dagindexer"
 
-	"github.com/0xsoniclabs/consensus/dagidx"
 	"github.com/0xsoniclabs/sonic/utils/wthreshold"
 )
 
-type DagIndexQ interface {
-	dagidx.VectorClock
-}
 type DiffMetricFn func(thresholdValue, current, update consensus.Seq, validatorIdx consensus.ValidatorIndex) Metric
 
 type QuorumIndexer struct {
-	dagi       DagIndexQ
+	dagi       *dagindexer.Index
 	validators *consensus.Validators
 
 	globalMatrix             Matrix
@@ -28,7 +25,7 @@ type QuorumIndexer struct {
 	diffMetricFn DiffMetricFn
 }
 
-func NewQuorumIndexer(validators *consensus.Validators, dagi DagIndexQ, diffMetricFn DiffMetricFn) *QuorumIndexer {
+func NewQuorumIndexer(validators *consensus.Validators, dagi *dagindexer.Index, diffMetricFn DiffMetricFn) *QuorumIndexer {
 	return &QuorumIndexer{
 		globalMatrix:             NewMatrix(validators.Len(), validators.Len()),
 		globalThresholdValueSeqs: make([]consensus.Seq, validators.Len()),
@@ -65,11 +62,11 @@ func (m Matrix) Clone() Matrix {
 	}
 }
 
-func seqOf(seq dagidx.Seq) consensus.Seq {
+func seqOf(seq dagindexer.BranchSeq) consensus.Seq {
 	if seq.IsForkDetected() {
 		return math.MaxUint32/2 - 1
 	}
-	return seq.Seq()
+	return seq.Seq
 }
 
 type weightedSeq struct {
@@ -82,7 +79,7 @@ func (ws weightedSeq) Weight() consensus.Weight {
 }
 
 func (h *QuorumIndexer) ProcessEvent(event consensus.Event, selfEvent bool) {
-	vecClock := h.dagi.GetMergedHighestBefore(event.ID())
+	vecClock := h.dagi.GetMergedHighestBefore(event.ID()).VSeq
 	creatorIdx := h.validators.GetIdx(event.Creator())
 	// update global matrix
 	for validatorIdx := consensus.ValidatorIndex(0); validatorIdx < h.validators.Len(); validatorIdx++ {
@@ -120,9 +117,9 @@ func (h *QuorumIndexer) GetMetricOf(parents consensus.EventHashes) Metric {
 	if h.dirty {
 		h.recacheState()
 	}
-	vecClock := make([]dagidx.HighestBeforeSeq, len(parents))
+	vecClock := make([]dagindexer.HighestBeforeSeq, len(parents))
 	for i, parent := range parents {
-		vecClock[i] = h.dagi.GetMergedHighestBefore(parent)
+		vecClock[i] = *h.dagi.GetMergedHighestBefore(parent).VSeq
 	}
 	var metric Metric
 	for validatorIdx := consensus.ValidatorIndex(0); validatorIdx < h.validators.Len(); validatorIdx++ {
