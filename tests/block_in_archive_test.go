@@ -18,10 +18,11 @@ import (
 func TestBlockInArchive(t *testing.T) {
 
 	require := require.New(t)
-	net := StartIntegrationTestNetWithJsonGenesis(t)
+	net, err := StartIntegrationTestNet(t.TempDir())
+	require.NoError(err, "Failed to start the fake network: ", err)
 	defer net.Stop()
 
-	client, err := net.GetWebSocketClient()
+	client, err := net.GetWebsocketClient()
 	require.NoError(err, "failed to get client ", err)
 	defer client.Close()
 	done := make(chan struct{})
@@ -41,7 +42,7 @@ func TestBlockInArchive(t *testing.T) {
 
 				// Check if block is in archive
 				var res interface{}
-				err := rpcClient.Call(&res, "eth_getBalance", net.account.Address().String(), hexutil.EncodeUint64(blockHeader.Number.Uint64()))
+				err := rpcClient.Call(&res, "eth_getBalance", net.validator.Address().String(), hexutil.EncodeUint64(blockHeader.Number.Uint64()))
 				if err != nil {
 					require.NoError(err, "failed to call eth_getBalance %v", err)
 				}
@@ -73,7 +74,7 @@ func TestBlockInArchive(t *testing.T) {
 		case <-done:
 			return
 		default:
-			txOptions, err := net.GetTransactOptions(net.GetSessionSponsor())
+			txOptions, err := net.GetTransactOptions(&net.validator)
 			require.NoError(err, "failed to get transaction options %v", err)
 			txOptions.Nonce = nil
 			txOptions.GasLimit = 0
