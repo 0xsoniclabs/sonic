@@ -1,8 +1,9 @@
 package emitter
 
 import (
-	"github.com/0xsoniclabs/consensus/dagindexer"
 	"testing"
+
+	"github.com/0xsoniclabs/consensus/dagindexer"
 
 	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/kvdb/memorydb"
@@ -52,10 +53,11 @@ func TestChooseParents_NonGenesisEventMustHaveOneSelfParent(t *testing.T) {
 	validatorId := consensus.ValidatorID(1)
 
 	validatorIndex := dagindexer.NewIndex(nil, dagindexer.LiteConfig())
+	flushable := validatorIndex.WrapWithFlushable(memorydb.New())
 	validatorIndex.Reset(consensus.ArrayToValidators(
 		[]consensus.ValidatorID{1, 2},
 		[]consensus.Weight{1, 1},
-	), memorydb.New(), nil)
+	), flushable, nil)
 
 	selfParentHash := consensus.EventHash{1}
 
