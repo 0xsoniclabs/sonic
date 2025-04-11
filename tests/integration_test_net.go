@@ -62,6 +62,7 @@ type IntegrationTestNet struct {
 	done           <-chan struct{}
 	validator      Account
 	httpClientPort int
+	wsClientPort   int
 }
 
 func isPortFree(host string, port int) bool {
@@ -230,7 +231,7 @@ func (n *IntegrationTestNet) start() error {
 	if err != nil {
 		return err
 	}
-	wsPort, err := getFreePort()
+	n.wsClientPort, err = getFreePort()
 	if err != nil {
 		return err
 	}
@@ -262,7 +263,7 @@ func (n *IntegrationTestNet) start() error {
 			"--http.api", "admin,eth,web3,net,txpool,ftm,trace,debug",
 
 			// websocket-client options
-			"--ws", "--ws.addr", "127.0.0.1", "--ws.port", fmt.Sprint(wsPort),
+			"--ws", "--ws.addr", "127.0.0.1", "--ws.port", fmt.Sprint(n.wsClientPort),
 			"--ws.api", "admin,eth,ftm",
 
 			//  net options
@@ -471,6 +472,10 @@ func (n *IntegrationTestNet) GetTransactOptions(account *Account) (*bind.Transac
 // The resulting client must be closed after use.
 func (n *IntegrationTestNet) GetClient() (*ethclient.Client, error) {
 	return ethclient.Dial(fmt.Sprintf("http://localhost:%d", n.httpClientPort))
+}
+
+func (n *IntegrationTestNet) GetWebsocketClient() (*ethclient.Client, error) {
+	return ethclient.Dial(fmt.Sprintf("ws://localhost:%d", n.wsClientPort))
 }
 
 // RestartWithExportImport stops the network, exports the genesis file, cleans the
