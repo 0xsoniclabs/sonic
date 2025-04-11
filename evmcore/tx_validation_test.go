@@ -28,10 +28,10 @@ func TestValidateTx_BeforeEip2718_RejectsNonLegacyTransactions(t *testing.T) {
 	}
 }
 
-// testTransactionsOption is a set of options to adjust the validation of transactions
+// getTestTransactionsOption returns a set of options to adjust the validation of transactions
 // so that it would accept all types of transactions, considering them as local transactions
 // with a min tip of 1, current base fee of 1, and a current max gas of 100_000.
-func testTransactionsOption() validationOptions {
+func getTestTransactionsOption() validationOptions {
 	return validationOptions{
 		eip2718:        true,
 		eip1559:        true,
@@ -49,19 +49,19 @@ func testTransactionsOption() validationOptions {
 
 func TestValidateTx_RejectsTxBasedOnTypeAndActiveRevision(t *testing.T) {
 	tests := map[string]struct {
-		tx   *types.Transaction
-		opts func(validationOptions) validationOptions
+		tx        *types.Transaction
+		configure func(validationOptions) validationOptions
 	}{
 		"accessList tx before eip2718": {
 			tx: types.NewTx(&types.AccessListTx{}),
-			opts: func(opts validationOptions) validationOptions {
+			configure: func(opts validationOptions) validationOptions {
 				opts.eip2718 = false
 				return opts
 			},
 		},
 		"dynamic fee tx before eip1559": {
 			tx: types.NewTx(&types.DynamicFeeTx{}),
-			opts: func(opts validationOptions) validationOptions {
+			configure: func(opts validationOptions) validationOptions {
 				opts.eip2718 = true
 				opts.eip1559 = false
 				return opts
@@ -69,7 +69,7 @@ func TestValidateTx_RejectsTxBasedOnTypeAndActiveRevision(t *testing.T) {
 		},
 		"blob tx before eip4844": {
 			tx: types.NewTx(makeBlobTx(nil, nil)),
-			opts: func(opts validationOptions) validationOptions {
+			configure: func(opts validationOptions) validationOptions {
 				opts.eip2718 = true
 				opts.eip4844 = false
 				return opts
@@ -77,7 +77,7 @@ func TestValidateTx_RejectsTxBasedOnTypeAndActiveRevision(t *testing.T) {
 		},
 		"setCode tx before eip7702": {
 			tx: types.NewTx(&types.SetCodeTx{}),
-			opts: func(opts validationOptions) validationOptions {
+			configure: func(opts validationOptions) validationOptions {
 				opts.eip2718 = true
 				opts.eip7702 = false
 				return opts
@@ -86,7 +86,7 @@ func TestValidateTx_RejectsTxBasedOnTypeAndActiveRevision(t *testing.T) {
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			err := validateTx(test.tx, test.opts(testTransactionsOption()))
+			err := validateTx(test.tx, test.configure(getTestTransactionsOption()))
 			require.Equal(t, ErrTxTypeNotSupported, err)
 		})
 	}
@@ -96,7 +96,7 @@ func TestValidateTx_Nonce_RejectsTxWith(t *testing.T) {
 	for name, tx := range getTxsOfAllTypes() {
 		t.Run(fmt.Sprintf("older nonce/%v", name), func(t *testing.T) {
 			// setup validation context
-			opt := testTransactionsOption()
+			opt := getTestTransactionsOption()
 
 			// set up to reach nonce check
 			setGasPriceOrFeeCap(t, tx, opt.minTip)
@@ -125,7 +125,7 @@ func TestValidateTx_Value_RejectsTxWith(t *testing.T) {
 				t.Skip("blob and setCode transactions cannot have negative value because they use uint256 Value")
 			}
 			setValueToNegative(t, tx)
-			err := validateTx(types.NewTx(tx), testTransactionsOption())
+			err := validateTx(types.NewTx(tx), getTestTransactionsOption())
 			require.ErrorIs(t, err, ErrNegativeValue)
 		})
 	}
@@ -141,7 +141,7 @@ func TestValidateTx_GasPriceAndTip_RejectsTxWith(t *testing.T) {
 				t.Skip("blob and setCode transactions cannot have gas price larger than uint256")
 			}
 			setGasPriceOrFeeCap(t, tx, extremelyLargeN)
-			err := validateTx(types.NewTx(tx), testTransactionsOption())
+			err := validateTx(types.NewTx(tx), getTestTransactionsOption())
 			require.ErrorIs(t, err, ErrFeeCapVeryHigh)
 		})
 	}
@@ -149,7 +149,7 @@ func TestValidateTx_GasPriceAndTip_RejectsTxWith(t *testing.T) {
 	for name, tx := range getTxsOfAllTypes() {
 		t.Run(fmt.Sprintf("gas price lower than base fee/%v", name), func(t *testing.T) {
 			// setup validation context
-			opt := testTransactionsOption()
+			opt := getTestTransactionsOption()
 			opt.currentBaseFee = big.NewInt(2)
 
 			// gas fee cap should be higher than current gas price
@@ -180,7 +180,7 @@ func TestValidateTx_GasPriceAndTip_RejectsTxWith(t *testing.T) {
 			// set gas tip cap too large
 			setGasTipCap(t, tx, extremelyLargeN)
 
-			err := validateTx(types.NewTx(tx), testTransactionsOption())
+			err := validateTx(types.NewTx(tx), getTestTransactionsOption())
 
 			if _, ok := tx.(*types.DynamicFeeTx); ok {
 				require.ErrorIs(t, err, ErrTipVeryHigh)
@@ -198,7 +198,7 @@ func TestValidateTx_GasPriceAndTip_RejectsTxWith(t *testing.T) {
 			}
 
 			// setup validation context
-			opt := testTransactionsOption()
+			opt := getTestTransactionsOption()
 			opt.isLocal = false
 			opt.minTip = big.NewInt(2)
 
@@ -230,7 +230,7 @@ func TestValidateTx_GasPriceAndTip_RejectsTxWith(t *testing.T) {
 			setGasPriceOrFeeCap(t, tx, big.NewInt(1))
 			setGasTipCap(t, tx, big.NewInt(2))
 
-			err := validateTx(types.NewTx(tx), testTransactionsOption())
+			err := validateTx(types.NewTx(tx), getTestTransactionsOption())
 			require.ErrorIs(t, err, ErrTipAboveFeeCap)
 		})
 	}
@@ -239,7 +239,7 @@ func TestValidateTx_GasPriceAndTip_RejectsTxWith(t *testing.T) {
 func TestValidateTx_Gas_RejectsTxWith(t *testing.T) {
 	for name, tx := range getTxsOfAllTypes() {
 		t.Run(fmt.Sprintf("current max gas lower than tx gas/%v", name), func(t *testing.T) {
-			opt := testTransactionsOption()
+			opt := getTestTransactionsOption()
 			opt.currentMaxGas = 1
 
 			setGas(t, tx, 2)
@@ -251,7 +251,7 @@ func TestValidateTx_Gas_RejectsTxWith(t *testing.T) {
 
 	for name, tx := range getTxsOfAllTypes() {
 		t.Run(fmt.Sprintf("tx gas lower than intrinsic gas/%v", name), func(t *testing.T) {
-			opt := testTransactionsOption()
+			opt := getTestTransactionsOption()
 
 			// setup tx to fail intrinsic gas calculation
 			setGas(t, tx, getIntrinsicGasForTest(t, tx, &opt)-1)
@@ -276,7 +276,7 @@ func TestValidateTx_Gas_RejectsTxWith(t *testing.T) {
 	// EIP-7623
 	for name, tx := range getTxsOfAllTypes() {
 		t.Run(fmt.Sprintf("gas lower than floor data gas/%v", name), func(t *testing.T) {
-			opt := testTransactionsOption()
+			opt := getTestTransactionsOption()
 
 			// setup tx to fail intrinsic gas calculation
 			someData := make([]byte, txSlotSize)
@@ -308,7 +308,7 @@ func TestValidateTx_Gas_RejectsTxWith(t *testing.T) {
 			if _, ok := tx.(*types.SetCodeTx); ok {
 				t.Skip("setCode transactions cannot be used before eip7702")
 			}
-			opt := testTransactionsOption()
+			opt := getTestTransactionsOption()
 			opt.eip7623 = false
 
 			// setup tx to fail intrinsic gas calculation
@@ -345,7 +345,7 @@ func TestValidateTx_Data_RejectsTxWith(t *testing.T) {
 
 			setData(t, types.TxData(tx), oversizedData)
 
-			err := validateTx(types.NewTx(tx), testTransactionsOption())
+			err := validateTx(types.NewTx(tx), getTestTransactionsOption())
 			require.Equal(t, ErrOversizedData, err)
 		})
 	}
@@ -359,9 +359,9 @@ func TestValidateTx_Data_RejectsTxWith(t *testing.T) {
 			}
 
 			setData(t, types.TxData(tx), maxInitCode)
-			setToNil(t, tx)
+			setReceiverToNil(t, tx)
 
-			err := validateTx(types.NewTx(tx), testTransactionsOption())
+			err := validateTx(types.NewTx(tx), getTestTransactionsOption())
 			require.ErrorIs(t, err, ErrMaxInitCodeSizeExceeded)
 		})
 	}
@@ -371,7 +371,7 @@ func TestValidateTx_Data_RejectsTxWith(t *testing.T) {
 			if isBlobOrSetCode(tx) {
 				t.Skip("blob and setCode transactions cannot be used before eip4844 and eip7702")
 			}
-			opt := testTransactionsOption()
+			opt := getTestTransactionsOption()
 			opt.shanghai = false
 			opt.eip4844 = false
 			opt.eip7623 = false
@@ -379,7 +379,7 @@ func TestValidateTx_Data_RejectsTxWith(t *testing.T) {
 			opt.currentMaxGas = 249_612
 
 			setData(t, types.TxData(tx), maxInitCode)
-			setToNil(t, tx)
+			setReceiverToNil(t, tx)
 
 			setGasPriceOrFeeCap(t, tx, opt.currentBaseFee)
 			setGas(t, tx, opt.currentMaxGas) // enough gas
@@ -397,11 +397,11 @@ func TestValidateTx_Data_RejectsTxWith(t *testing.T) {
 
 func TestValidateTx_Signer_RejectsTxWith(t *testing.T) {
 	for name, tx := range getTxsOfAllTypes() {
-		t.Run(fmt.Sprintf("unsigned tx/%v", name), func(t *testing.T) {
-			opt := testTransactionsOption()
+		t.Run(fmt.Sprintf("invalid signature/%v", name), func(t *testing.T) {
+			opt := getTestTransactionsOption()
 			opt.signer = types.HomesteadSigner{}
 			setSignatureValues(t, tx, big.NewInt(1), big.NewInt(2), big.NewInt(3))
-			err := validateTx(types.NewTx(tx), testTransactionsOption())
+			err := validateTx(types.NewTx(tx), getTestTransactionsOption())
 			require.ErrorIs(t, err, ErrInvalidSender)
 		})
 	}
@@ -417,7 +417,7 @@ func TestValidateTx_Signer_RejectsTxWith(t *testing.T) {
 			require.NoError(t, err)
 
 			// validate transaction
-			err = validateTx(signedTx, testTransactionsOption())
+			err = validateTx(signedTx, getTestTransactionsOption())
 			require.ErrorIs(t, err, ErrInvalidSender)
 		})
 	}
@@ -427,7 +427,7 @@ func TestValidateTx_Balance_RejectsTxWhen(t *testing.T) {
 	for name, tx := range getTxsOfAllTypes() {
 		t.Run(fmt.Sprintf("insufficient balance/%v", name), func(t *testing.T) {
 			// setup validation context
-			opt := testTransactionsOption()
+			opt := getTestTransactionsOption()
 
 			// --- needed for execution up to relevant check ---
 			// setup transaction enough gas and fee cap to reach balance check
@@ -446,6 +446,7 @@ func TestValidateTx_Balance_RejectsTxWhen(t *testing.T) {
 				uint256.NewInt(opt.currentMaxGas),
 				uint256.MustFromBig(opt.currentBaseFee),
 			)
+			gasCost = zero.Add(gasCost, uint256.MustFromBig(signedTx.Value()))
 			testDb.balances[address] = zero.Sub(gasCost, uint256.NewInt(1))
 			opt.currentState = testDb
 
@@ -461,14 +462,14 @@ func TestValidateTx_Blobs_RejectsTxWith(t *testing.T) {
 
 	t.Run("blob tx with non-empty blob hashes", func(t *testing.T) {
 		tx := types.NewTx(makeBlobTx([]common.Hash{{0x01}}, nil))
-		err := validateTx(tx, testTransactionsOption())
+		err := validateTx(tx, getTestTransactionsOption())
 		require.ErrorIs(t, err, ErrTxTypeNotSupported)
 	})
 
 	t.Run("blob tx with non-empty sidecar", func(t *testing.T) {
 		tx := types.NewTx(makeBlobTx(nil,
 			&types.BlobTxSidecar{Commitments: []kzg4844.Commitment{{0x01}}}))
-		err := validateTx(tx, testTransactionsOption())
+		err := validateTx(tx, getTestTransactionsOption())
 		require.ErrorIs(t, err, ErrTxTypeNotSupported)
 	})
 }
@@ -476,7 +477,7 @@ func TestValidateTx_Blobs_RejectsTxWith(t *testing.T) {
 func TestValidateTx_AuthorizationList_RejectsTxWith(t *testing.T) {
 	t.Run("setCode tx with empty authorization list", func(t *testing.T) {
 		tx := types.NewTx(&types.SetCodeTx{})
-		err := validateTx(tx, testTransactionsOption())
+		err := validateTx(tx, getTestTransactionsOption())
 		require.ErrorIs(t, err, ErrEmptyAuthorizations)
 	})
 }
@@ -531,7 +532,7 @@ func TestValidateTx_Success(t *testing.T) {
 			testDb.balances[address] = uint256.NewInt(math.MaxUint64)
 			testDb.nonces[address] = 0
 
-			opts := testTransactionsOption()
+			opts := getTestTransactionsOption()
 			opts.currentState = testDb
 
 			// Validate the transaction
@@ -662,8 +663,8 @@ func setData(t *testing.T, tx types.TxData, data []byte) {
 	}
 }
 
-// setToNil is a helper function to set the "To" field of a transaction to nil.
-func setToNil(t *testing.T, tx types.TxData) {
+// setReceiverToNil is a helper function to set the "To" field of a transaction to nil.
+func setReceiverToNil(t *testing.T, tx types.TxData) {
 	switch tx := tx.(type) {
 	case *types.LegacyTx:
 		tx.To = nil
