@@ -1,19 +1,3 @@
-// Copyright 2014 The go-ethereum Authors
-// This file is part of the go-ethereum library.
-//
-// The go-ethereum library is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Lesser General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// The go-ethereum library is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU Lesser General Public License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
-
 package evmcore
 
 import (
@@ -48,11 +32,12 @@ type validationOptions struct {
 	locals  *accountSet // Set of local transaction to exempt from eviction rules
 	isLocal bool        // Whether the transaction came from a local source
 
+	signer types.Signer
 }
 
 // validateTx checks whether a transaction is valid according to the current
 // options and adheres to some heuristic limits of the local node (price and size).
-func validateTx(tx *types.Transaction, signer types.Signer, opt validationOptions) error {
+func validateTx(tx *types.Transaction, opt validationOptions) error {
 
 	// Accept only legacy transactions until EIP-2718/2930 activates.
 	// Since both eip-2718 and eip-2930 are activated in the berlin fork
@@ -125,7 +110,7 @@ func validateTx(tx *types.Transaction, signer types.Signer, opt validationOption
 	}
 
 	// Make sure the transaction is signed properly.
-	from, err := types.Sender(signer, tx)
+	from, err := types.Sender(opt.signer, tx)
 	if err != nil {
 		return ErrInvalidSender
 	}

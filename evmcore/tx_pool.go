@@ -687,8 +687,9 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 		minTip:         pool.gasPrice,
 		locals:         pool.locals,
 		isLocal:        local,
+		signer:         pool.signer,
 	}
-	err := validateTx(tx, pool.signer, opts)
+	err := validateTx(tx, opts)
 	if err != nil {
 		return err
 	}
