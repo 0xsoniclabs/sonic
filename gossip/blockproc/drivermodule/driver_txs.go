@@ -23,7 +23,9 @@ import (
 )
 
 const (
-	maxAdvanceEpochs = 1 << 16
+    // internalTransactionsGasLimit is the gas limit for internal transactions like epoch sealing. This constant MUST NOT be changed, as doing so will cause a network fork.
+	internalTransactionsGasLimit = 500_000_000
+	maxAdvanceEpochs             = 1 << 16
 )
 
 type DriverTxListenerModule struct{}
@@ -66,7 +68,7 @@ func InternalTxBuilder(statedb state.StateDB) func(calldata []byte, addr common.
 		if nonce == math.MaxUint64 {
 			nonce = statedb.GetNonce(common.Address{})
 		}
-		tx := types.NewTransaction(nonce, addr, common.Big0, 500_000_000, common.Big0, calldata)
+		tx := types.NewTransaction(nonce, addr, common.Big0, internalTransactionsGasLimit, common.Big0, calldata)
 		nonce++
 		return tx
 	}
