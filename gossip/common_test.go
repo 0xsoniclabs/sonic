@@ -5,12 +5,13 @@ import (
 	"crypto/ecdsa"
 	"errors"
 	"fmt"
-	"github.com/0xsoniclabs/consensus/dagindexer"
 	"math"
 	"math/big"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/0xsoniclabs/consensus/dagindexer"
 
 	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/consensus/consensus/consensusengine"
@@ -42,7 +43,6 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/validatorpk"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
-	"github.com/0xsoniclabs/sonic/utils/adapters/vecmt2dagidx"
 	"github.com/0xsoniclabs/sonic/valkeystore"
 )
 
@@ -96,7 +96,7 @@ func makeTestEngine(gdb *Store) (*consensusengine.Lachesis, *dagindexer.Index) {
 		Validators: gdb.GetValidators(),
 	})
 	vecClock := dagindexer.NewIndex(panics("Vector clock"), dagindexer.LiteConfig())
-	engine := consensusengine.NewLachesis(cdb, &testGossipStoreAdapter{gdb}, vecmt2dagidx.Wrap(vecClock), panics("Lachesis"), consensusengine.LiteConfig())
+	engine := consensusengine.NewLachesis(cdb, &testGossipStoreAdapter{gdb}, vecClock, panics("Lachesis"), consensusengine.LiteConfig())
 	return engine, vecClock
 }
 
