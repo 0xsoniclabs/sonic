@@ -581,7 +581,6 @@ func signTxForTest(t *testing.T, tx types.TxData) (types.Signer, common.Address,
 
 // setNonce sets the nonce for a transaction.
 func setNonce(t *testing.T, tx types.TxData, nonce uint64) {
-	// setTxField(t, tx, "Nonce", nonce, nonce, nonce, nonce, nonce)
 	switch tx := tx.(type) {
 	case *types.LegacyTx:
 		tx.Nonce = nonce
