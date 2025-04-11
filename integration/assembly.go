@@ -3,6 +3,7 @@ package integration
 import (
 	"crypto/ecdsa"
 	"fmt"
+
 	"github.com/0xsoniclabs/consensus/dagindexer"
 
 	"github.com/0xsoniclabs/consensus/consensus"
@@ -11,7 +12,6 @@ import (
 
 	"github.com/0xsoniclabs/kvdb"
 	"github.com/0xsoniclabs/sonic/gossip"
-	"github.com/0xsoniclabs/sonic/utils/adapters/vecmt2dagidx"
 	"github.com/0xsoniclabs/sonic/utils/caution"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
@@ -67,7 +67,7 @@ func rawMakeEngine(gdb *gossip.Store, cdb *consensusstore.Store, cfg Configs) (*
 	blockProc := gossip.DefaultBlockProc()
 	// create consensus
 	vecClock := dagindexer.NewIndex(panics("Vector clock"), cfg.VectorClock)
-	engine := consensusengine.NewLachesis(cdb, &GossipStoreAdapter{gdb}, vecmt2dagidx.Wrap(vecClock), panics("Lachesis"), cfg.Lachesis)
+	engine := consensusengine.NewLachesis(cdb, &GossipStoreAdapter{gdb}, vecClock, panics("Lachesis"), cfg.Lachesis)
 	return engine, vecClock, blockProc, nil
 }
 
