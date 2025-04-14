@@ -177,3 +177,5 @@ func (p *dummyTxPool) Delete(needle common.Hash) {
 	}
 	p.pool = notErased
 }
+
+func (p *dummyTxPool) Stop() {}

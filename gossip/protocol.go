@@ -131,6 +131,8 @@ type TxPool interface {
 	Content() (map[common.Address]types.Transactions, map[common.Address]types.Transactions)
 	ContentFrom(addr common.Address) (types.Transactions, types.Transactions)
 	GasPrice() *big.Int
+
+	Stop()
 }
 
 // handshakeData is the network packet for the initial handshake message
