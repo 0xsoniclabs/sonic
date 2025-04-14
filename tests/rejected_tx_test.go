@@ -84,11 +84,23 @@ func TestRejectedTx_TransactionsAreRejectedBecauseOfAccountState(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
-				// execute once to increment nonce
-				receipt, err = net.Run(tx)
-				require.NoError(t, err)
-				require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status,
-					"first execution should be successful")
+				for {
+					// execute once to increment nonce
+					receipt, err = net.Run(tx)
+					if err != nil {
+						// The transaction pool may still contain the transaction
+						// of the preceding test. In this case, no second transaction
+						// for the same authority can be added. However, the next
+						// re-org fixes this issue. We need to wait for that.
+						if strings.Contains(err.Error(), "authority already reserved") {
+							continue
+						}
+					}
+					require.NoError(t, err)
+					require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status,
+						"first execution should be successful")
+					break
+				}
 
 				for {
 					// transaction has been executed, this is not a replacement
