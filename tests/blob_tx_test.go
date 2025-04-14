@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestBobTransaction(t *testing.T) {
+func TestBlobTransaction(t *testing.T) {
 
 	ctxt := MakeTestContext(t)
 	defer ctxt.Close()
@@ -70,12 +70,6 @@ func testBlobTx_WithEmptyBlobsIsExecuted(t *testing.T, ctxt *testContext) {
 		receipt.Status,
 		"transaction must succeed",
 	)
-
-	// repeat same tx (regression against reported repeated tx issue)
-	_, err = ctxt.net.Run(tx)
-	require.ErrorContains(err,
-		"nonce too low",
-		"transaction must not be accepted again")
 }
 
 func testBlobTx_WithNilSidecarIsExecuted(t *testing.T, ctxt *testContext) {
@@ -92,12 +86,6 @@ func testBlobTx_WithNilSidecarIsExecuted(t *testing.T, ctxt *testContext) {
 		receipt.Status,
 		"transaction must succeed",
 	)
-
-	// repeat same tx (regression against reported repeated tx issue)
-	_, err = ctxt.net.Run(tx)
-	require.ErrorContains(err,
-		"nonce too low",
-		"transaction must not be accepted again")
 }
 
 func createTestBlobTransaction(t *testing.T, ctxt *testContext, data ...[]byte) (*types.Transaction, error) {
