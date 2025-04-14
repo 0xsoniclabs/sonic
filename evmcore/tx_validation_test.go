@@ -167,10 +167,6 @@ func TestValidateTx_GasPriceAndTip_RejectsTxWith(t *testing.T) {
 	// GasTipCap test
 	for name, tx := range getTxsOfAllTypes() {
 		t.Run(fmt.Sprintf("gas tip longer than 256 bits/%s", name), func(t *testing.T) {
-			// Legacy and access list transactions do not conceptually have a tip.
-			if isLegacyOrAccessList(tx) {
-				t.Skip("legacy and access list transactions do not have gas tip")
-			}
 			// Blob and setCode transactions can never have a Tip with bit length
 			// larger than 256 because of the type they use for this field.
 			if isBlobOrSetCode(tx) {
@@ -178,12 +174,17 @@ func TestValidateTx_GasPriceAndTip_RejectsTxWith(t *testing.T) {
 			}
 
 			// set gas tip cap too large
-			setGasTipCap(t, tx, extremelyLargeN)
+			setEffectiveTip(t, tx, extremelyLargeN)
 
 			err := validateTx(types.NewTx(tx), getTestTransactionsOption())
 
 			if _, ok := tx.(*types.DynamicFeeTx); ok {
 				require.ErrorIs(t, err, ErrTipVeryHigh)
+			} else if isLegacyOrAccessList(tx) {
+				// because tip is the same as gas fee cap for legacy and access list
+				// transactions, we need to check if the error is the same as for
+				// gas fee cap instead
+				require.ErrorIs(t, err, ErrFeeCapVeryHigh)
 			} else {
 				t.Fatal("unknown transaction type")
 			}
@@ -192,10 +193,6 @@ func TestValidateTx_GasPriceAndTip_RejectsTxWith(t *testing.T) {
 
 	for name, tx := range getTxsOfAllTypes() {
 		t.Run(fmt.Sprintf("gas tip lower than pool min tip/%v", name), func(t *testing.T) {
-			// legacy and access list transactions do not have tip cap
-			if isLegacyOrAccessList(tx) {
-				t.Skip("legacy and access list transactions do not have tip cap")
-			}
 
 			// setup validation context
 			opt := getTestTransactionsOption()
@@ -205,7 +202,7 @@ func TestValidateTx_GasPriceAndTip_RejectsTxWith(t *testing.T) {
 			// setup low tip cap
 			lowTipCap := new(big.Int).Sub(opt.minTip, big.NewInt(1))
 			// fee cap needs to be greater than or equal to tip cap
-			setGasTipCap(t, tx, lowTipCap)
+			setEffectiveTip(t, tx, lowTipCap)
 
 			// --- needed for execution up to relevant check ---
 			setGasPriceOrFeeCap(t, tx, lowTipCap)
@@ -223,15 +220,25 @@ func TestValidateTx_GasPriceAndTip_RejectsTxWith(t *testing.T) {
 	// GasFeeCap and GasTipCap test
 	for name, tx := range getTxsOfAllTypes() {
 		t.Run(fmt.Sprintf("gas fee lower than gas tip/%v", name), func(t *testing.T) {
-			if isLegacyOrAccessList(tx) {
-				t.Skip("legacy and access list transactions use the same field for gas fee and tip")
-			}
 
 			setGasPriceOrFeeCap(t, tx, big.NewInt(1))
-			setGasTipCap(t, tx, big.NewInt(2))
+			setEffectiveTip(t, tx, big.NewInt(2))
 
-			err := validateTx(types.NewTx(tx), getTestTransactionsOption())
-			require.ErrorIs(t, err, ErrTipAboveFeeCap)
+			setGas(t, tx, 53000)
+			address, signedTx := signTxForTest(t, tx)
+			opt := getTestTransactionsOption()
+			opt.locals = newAccountSet(opt.signer)
+
+			testDb := newTestTxPoolStateDb()
+			testDb.balances[address] = uint256.NewInt(math.MaxUint64)
+			opt.currentState = testDb
+
+			err := validateTx(signedTx, opt)
+			if isLegacyOrAccessList(tx) {
+				require.NoError(t, err)
+			} else {
+				require.ErrorIs(t, err, ErrTipAboveFeeCap)
+			}
 		})
 	}
 }
@@ -428,6 +435,7 @@ func TestValidateTx_Balance_RejectsTxWhen(t *testing.T) {
 		t.Run(fmt.Sprintf("insufficient balance/%v", name), func(t *testing.T) {
 			// setup validation context
 			opt := getTestTransactionsOption()
+			setValue(t, tx, big.NewInt(42))
 
 			// --- needed for execution up to relevant check ---
 			// setup transaction enough gas and fee cap to reach balance check
@@ -586,14 +594,14 @@ func setNonce(t *testing.T, tx types.TxData, nonce uint64) {
 	}
 }
 
-// setGasTipCap sets the gas fee cap for a transaction. For legacy and access list
-// transactions, it sets the gas price.
-func setGasTipCap(t *testing.T, tx types.TxData, gasTipCap *big.Int) {
+// setEffectiveTip sets the gas fee cap for a transaction. For legacy and access list
+// transactions, it sets the gas price instead since those types do not have a tip.
+func setEffectiveTip(t *testing.T, tx types.TxData, gasTipCap *big.Int) {
 	switch tx := tx.(type) {
 	case *types.LegacyTx:
-		t.Fatal("legacy transactions do not have gas tip cap")
+		tx.GasPrice = gasTipCap
 	case *types.AccessListTx:
-		t.Fatal("access list transactions do not  have gas tip cap")
+		tx.GasPrice = gasTipCap
 	case *types.DynamicFeeTx:
 		tx.GasTipCap = gasTipCap
 	case *types.BlobTx:
@@ -676,6 +684,23 @@ func setReceiverToNil(t *testing.T, tx types.TxData) {
 		t.Fatal("blob transaction cannot have nil To field")
 	case *types.SetCodeTx:
 		t.Fatal("setCode transaction cannot have nil To field")
+	default:
+		t.Fatalf("unexpected transaction type: %T", tx)
+	}
+}
+
+func setValue(t *testing.T, tx types.TxData, value *big.Int) {
+	switch tx := tx.(type) {
+	case *types.LegacyTx:
+		tx.Value = value
+	case *types.AccessListTx:
+		tx.Value = value
+	case *types.DynamicFeeTx:
+		tx.Value = value
+	case *types.BlobTx:
+		tx.Value = uint256.MustFromBig(value)
+	case *types.SetCodeTx:
+		tx.Value = uint256.MustFromBig(value)
 	default:
 		t.Fatalf("unexpected transaction type: %T", tx)
 	}
