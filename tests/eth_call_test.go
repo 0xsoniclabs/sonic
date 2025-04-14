@@ -2,6 +2,7 @@ package tests
 
 import (
 	"fmt"
+	"math"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -14,11 +15,11 @@ func TestEthCall_CodeLargerThanMaxInitCodeSizeIsNotAccepted(t *testing.T) {
 		err      error
 	}{
 		"max code size": {
-			2 * 24576, // corresponds to the max init code size
+			math.MaxUint16, // max code size supported by the LFVM
 			nil,
 		},
 		"max code size + 1": {
-			2*24576 + 1,
+			math.MaxUint16 + 1,
 			fmt.Errorf("max code size exceeded"),
 		},
 	}
@@ -34,22 +35,22 @@ func TestEthCall_CodeLargerThanMaxInitCodeSizeIsNotAccepted(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			hugeCode := make([]byte, test.codeSize)
+			accountWithHugeCode := "0x5555555555555555555555555555555555555555"
 
-			params0 := map[string]string{
-				"to":   "0x5555555555555555555555555555555555555555",
+			txArguments := map[string]string{
+				"to":   accountWithHugeCode,
 				"gas":  "0xffffffffffffffff",
 				"data": "0x00",
 			}
-			params1 := "latest"
-			params2 := map[string]map[string]hexutil.Bytes{
-				"0x5555555555555555555555555555555555555555": {
-					"code": hugeCode,
+			requestedBlock := "latest"
+			stateOverrides := map[string]map[string]hexutil.Bytes{
+				accountWithHugeCode: {
+					"code": make([]byte, test.codeSize),
 				},
 			}
 
 			var res interface{}
-			err = rpcClient.Call(&res, "eth_call", params0, params1, params2)
+			err = rpcClient.Call(&res, "eth_call", txArguments, requestedBlock, stateOverrides)
 			if test.err == nil {
 				require.NoError(t, err)
 			} else {

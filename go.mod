@@ -4,7 +4,7 @@ go 1.24.0
 
 require (
 	github.com/0xsoniclabs/carmen/go v0.0.0-20250318153505-712d1a76e929
-	github.com/0xsoniclabs/tosca v0.0.0-20250410130058-45d96d9b941e
+	github.com/0xsoniclabs/tosca v0.0.0-20250414080614-c56b63a6aa4c
 	github.com/Fantom-foundation/lachesis-base v0.0.0-20240116072301-a75735c4ef00
 	github.com/cespare/cp v1.1.1
 	github.com/consensys/gnark-crypto v0.14.0
