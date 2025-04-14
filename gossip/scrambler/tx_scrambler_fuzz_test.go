@@ -70,36 +70,31 @@ func FuzzScrambler(f *testing.F) {
 
 		ordered := scrambler.GetExecutionOrder(txs, signer, true)
 
-		scrambledOrderIsReproducible(t, ordered, signer)
-	})
-}
+		// clone result to re-shuffle, reorder, and compare the results
+		testList := slices.Clone(ordered)
 
-// scrambledOrderIsReproducible is a naive implementation that checks if the scrambler order is
-// reproducible.
-// It is meant to be used by tests only.
-func scrambledOrderIsReproducible(t testing.TB, ordered types.Transactions, signer types.Signer) {
-	t.Helper()
+		// shuffle the list, but in a deterministic way
+		slices.SortFunc(testList, func(a, b *types.Transaction) int {
+			return bytes.Compare(a.Hash().Bytes(), b.Hash().Bytes())
+		})
 
-	testList := slices.Clone(ordered)
+		// re-order the list
+		reOrdered := scrambler.GetExecutionOrder(testList, signer, true)
 
-	// shuffle the list, but in a deterministic way
-	slices.SortFunc(testList, func(a, b *types.Transaction) int {
-		return bytes.Compare(a.Hash().Bytes(), b.Hash().Bytes())
-	})
-
-	reOrdered := scrambler.GetExecutionOrder(testList, signer, true)
-	if expected, got := len(reOrdered), len(ordered); expected != got {
-		t.Fatalf("scrambler did not produce same number of transactions; expected %d, got %d", expected, got)
-	}
-	for i := range reOrdered {
-		if reOrdered[i].Hash() != ordered[i].Hash() {
-			t.Errorf("transactions are not sorted")
-			for i, tx := range ordered {
-				sender, _ := types.Sender(signer, tx)
-				t.Logf("tx[%d]: hash %s sender %s nonce: %d gasprice, %d", i, tx.Hash().Hex(), sender.Hex(), tx.Nonce(), tx.GasPrice())
+		// compare the results
+		if expected, got := len(reOrdered), len(ordered); expected != got {
+			t.Fatalf("scrambler did not produce same number of transactions; expected %d, got %d", expected, got)
+		}
+		for i := range reOrdered {
+			if reOrdered[i].Hash() != ordered[i].Hash() {
+				t.Errorf("transactions are not sorted")
+				for i, tx := range ordered {
+					sender, _ := types.Sender(signer, tx)
+					t.Logf("tx[%d]: hash %s sender %s nonce: %d gasprice, %d", i, tx.Hash().Hex(), sender.Hex(), tx.Nonce(), tx.GasPrice())
+				}
 			}
 		}
-	}
+	})
 }
 
 func containsDuplicates(txs []metaTransaction) bool {
