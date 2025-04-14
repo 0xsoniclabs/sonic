@@ -131,8 +131,8 @@ func sortTransactionsWithSameSender(entries []ScramblerEntry) {
 func scrambleTransactions(list []ScramblerEntry, salt [32]byte) {
 	var aX, bX [32]byte
 	slices.SortFunc(list, func(a, b ScramblerEntry) int {
-		aX = XorBytes32(a.Hash(), salt)
-		bX = XorBytes32(b.Hash(), salt)
+		aX = xorBytes32(a.Hash(), salt)
+		bX = xorBytes32(b.Hash(), salt)
 		return bytes.Compare(aX[:], bX[:])
 	})
 }
@@ -158,7 +158,7 @@ func analyseEntryList(entries []ScramblerEntry) ([]ScramblerEntry, [32]byte, boo
 			hasDuplicateAddresses = true
 		}
 		seenAddresses[sender] = struct{}{}
-		salt = XorBytes32(salt, entry.Hash())
+		salt = xorBytes32(salt, entry.Hash())
 		uniqueList = append(uniqueList, entry)
 		seenHashes[entry.Hash()] = struct{}{}
 
@@ -167,7 +167,7 @@ func analyseEntryList(entries []ScramblerEntry) ([]ScramblerEntry, [32]byte, boo
 	return uniqueList, salt, hasDuplicateAddresses
 }
 
-func XorBytes32(a, b [32]byte) (dst [32]byte) {
+func xorBytes32(a, b [32]byte) (dst [32]byte) {
 	for i := 0; i < 32; i++ {
 		dst[i] = a[i] ^ b[i]
 	}

@@ -78,6 +78,9 @@ func FuzzScrambler(f *testing.F) {
 	})
 }
 
+// sizeOfEncodedMetaTransaction returns the size of the encoded metaTransaction,
+// this is used to avoid hardcoding the maximum size of one input, to be able
+// to create an upper bound for the generated fuzz data.
 func sizeOfEncodedMetaTransaction(t testing.TB) int {
 	bytes, err := rlp.EncodeToBytes(metaTransaction{
 		SenderAccount: 0xff,
@@ -185,7 +188,7 @@ func TestContainsDuplicates_DetectsCollisionsOfSenderAndNonce(t *testing.T) {
 }
 
 // metaTransaction is a simplified representation of a transaction with the
-// fields relevant for hte scrambler.
+// fields relevant for the scrambler.
 // It can be encoded and decoded using RLP, and this is used for the fuzzing
 // to easily generate lists of transactions.
 type metaTransaction struct {
