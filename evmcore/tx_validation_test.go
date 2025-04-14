@@ -235,6 +235,8 @@ func TestValidateTx_GasPriceAndTip_RejectsTxWith(t *testing.T) {
 
 			err := validateTx(signedTx, opt)
 			if isLegacyOrAccessList(tx) {
+				// legacy and access list transactions use the same field for
+				// gas fee and gas tip, so no error will be produced.
 				require.NoError(t, err)
 			} else {
 				require.ErrorIs(t, err, ErrTipAboveFeeCap)
