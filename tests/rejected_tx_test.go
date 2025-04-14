@@ -3,6 +3,7 @@ package tests
 import (
 	"context"
 	"math/big"
+	"strings"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/opera"
@@ -89,10 +90,29 @@ func TestRejectedTx_TransactionsAreRejectedBecauseOfAccountState(t *testing.T) {
 				require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status,
 					"first execution should be successful")
 
-				// transaction has been executed, this is not a replacement
-				// but a new submission with nonce too low
-				_, err = net.Run(tx)
-				require.ErrorContains(t, err, "nonce too low")
+				for {
+					// transaction has been executed, this is not a replacement
+					// but a new submission with nonce too low
+					_, err = net.Run(tx)
+					require.Error(t, err)
+
+					// Eventually, the nonce should be too low and the transaction
+					// should be rejected.
+					if strings.Contains(err.Error(), "nonce too low") {
+						break
+					}
+
+					// The transaction pool may still be processing the recently
+					// created block. Before this is completed, the transaction
+					// may still be present in the transaction pool. In this case,
+					// we get a "already known" error and we try again.
+					if strings.Contains(err.Error(), "already known") {
+						continue
+					}
+
+					// Everything else would be unexpected.
+					t.Fatalf("unexpected error: %v", err)
+				}
 			})
 		})
 	}
