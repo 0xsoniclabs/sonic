@@ -3,7 +3,7 @@ package scrambler_test
 import (
 	"bytes"
 	"crypto/ecdsa"
-	"math"
+	"encoding/binary"
 	"math/big"
 	"slices"
 	"testing"
@@ -26,7 +26,7 @@ func FuzzScrambler(f *testing.F) {
 		require.NoError(f, err)
 		accountKeys[i] = key
 	}
-	maxMetaTransactionEncodedSize := sizeOfEncodedMetaTransaction(f)
+	maxMetaTransactionEncodedSize := metaTransactionSizeSerializeSize
 
 	f.Add(encodeTxList(f, []metaTransaction{}))
 	f.Add(encodeTxList(f, []metaTransaction{
@@ -48,12 +48,8 @@ func FuzzScrambler(f *testing.F) {
 			t.Skip("input too large")
 		}
 
-		stream := rlp.NewStream(bytes.NewReader(encoded), 0)
+		metaTxs := parseFuzzedInput(encoded)
 
-		metaTxs := make([]metaTransaction, 0)
-		if err := stream.Decode(&metaTxs); err != nil {
-			t.Skip("invalid input", err)
-		}
 		if containsDuplicates(metaTxs) {
 			// the scrambler takes as a precondition that transactions cannot be duplicated
 			t.Skip("contains duplicates")
@@ -76,19 +72,6 @@ func FuzzScrambler(f *testing.F) {
 
 		scrambledOrderIsReproducible(t, ordered, signer)
 	})
-}
-
-// sizeOfEncodedMetaTransaction returns the size of the encoded metaTransaction,
-// this is used to avoid hardcoding the maximum size of one input, to be able
-// to create an upper bound for the generated fuzz data.
-func sizeOfEncodedMetaTransaction(t testing.TB) int {
-	bytes, err := rlp.EncodeToBytes(metaTransaction{
-		SenderAccount: 0xff,
-		Nonce:         math.MaxUint64,
-		GasPrice:      math.MaxUint64,
-	})
-	require.NoError(t, err)
-	return len(bytes)
 }
 
 // scrambledOrderIsReproducible is a naive implementation that checks if the scrambler order is
@@ -133,7 +116,7 @@ func containsDuplicates(txs []metaTransaction) bool {
 	return false
 }
 
-func TestContainsDuplicates_DetectsCollisionsOfSenderAndNonce(t *testing.T) {
+func TestFuzzScrambler_ContainsDuplicates_DetectsCollisionsOfSenderAndNonce(t *testing.T) {
 	tests := map[string]struct {
 		txs                []metaTransaction
 		expectedDuplicates bool
@@ -189,8 +172,6 @@ func TestContainsDuplicates_DetectsCollisionsOfSenderAndNonce(t *testing.T) {
 
 // metaTransaction is a simplified representation of a transaction with the
 // fields relevant for the scrambler.
-// It can be encoded and decoded using RLP, and this is used for the fuzzing
-// to easily generate lists of transactions.
 type metaTransaction struct {
 	SenderAccount uint8
 	Nonce         uint64
@@ -201,4 +182,111 @@ func encodeTxList(t testing.TB, txs []metaTransaction) []byte {
 	buf := new(bytes.Buffer)
 	require.NoError(t, rlp.Encode(buf, txs))
 	return buf.Bytes()
+}
+
+const metaTransactionSizeSerializeSize = 17
+
+func parseFuzzedInput(encoded []byte) []metaTransaction {
+	txs := make([]metaTransaction, 0, len(encoded)/metaTransactionSizeSerializeSize)
+
+	for i := 0; i < len(encoded); i = i + metaTransactionSizeSerializeSize {
+		if i+metaTransactionSizeSerializeSize > len(encoded) {
+			// incomplete transaction, ignore
+			break
+		}
+
+		next := encoded[i : i+metaTransactionSizeSerializeSize]
+
+		senderAccount := uint8(next[0])
+		nonce := binary.BigEndian.Uint64(next[1:9])
+		gasPrice := binary.BigEndian.Uint64(next[9:17])
+
+		tx := metaTransaction{
+			SenderAccount: senderAccount,
+			Nonce:         nonce,
+			GasPrice:      gasPrice,
+		}
+		txs = append(txs, tx)
+	}
+
+	return txs
+}
+
+func TestFuzzScrambler_MetaTransactions_CanBeParsedFromBinaryBuffer(t *testing.T) {
+
+	tests := map[string]struct {
+		binary   []byte
+		expected []metaTransaction
+	}{
+
+		"empty": {
+			binary:   []byte{},
+			expected: []metaTransaction{},
+		},
+		"single": {
+			binary: []byte{
+				7,
+				1, 0, 0, 0, 0, 0, 0, 0,
+				0, 0, 0, 0, 0, 0, 0, 1,
+			},
+			expected: []metaTransaction{
+				{
+					SenderAccount: 7,
+					Nonce:         1 << (7 * 8),
+					GasPrice:      1,
+				},
+			},
+		},
+		"multiple": {
+			binary: []byte{
+				7,
+				1, 0, 0, 0, 0, 0, 0, 0,
+				0, 0, 0, 0, 0, 0, 0, 1,
+				8,
+				2, 0, 0, 0, 0, 0, 0, 0,
+				0, 0, 0, 0, 0, 0, 0, 2,
+			},
+			expected: []metaTransaction{
+				{
+					SenderAccount: 7,
+					Nonce:         1 << (7 * 8),
+					GasPrice:      1,
+				},
+				{
+					SenderAccount: 8,
+					Nonce:         2 << (7 * 8),
+					GasPrice:      2,
+				},
+			},
+		},
+		"incomplete is ignored": {
+			binary: []byte{
+				7,
+				1, 0, 0, 0, 0, 0, 0, 0,
+			},
+			expected: []metaTransaction{},
+		},
+		"last incomplete is ignored": {
+			binary: []byte{
+				7,
+				1, 0, 0, 0, 0, 0, 0, 0,
+				0, 0, 0, 0, 0, 0, 0, 1,
+				8,
+			},
+			expected: []metaTransaction{
+				{
+					SenderAccount: 7,
+					Nonce:         1 << (7 * 8),
+					GasPrice:      1,
+				},
+			},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			parsed := parseFuzzedInput(test.binary)
+			require.Equal(t, test.expected, parsed)
+		})
+	}
 }
