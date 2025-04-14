@@ -5,12 +5,13 @@ import (
 	"crypto/ecdsa"
 	"errors"
 	"fmt"
-	"github.com/0xsoniclabs/consensus/dagindexer"
 	"math"
 	"math/big"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/0xsoniclabs/consensus/dagindexer"
 
 	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/consensus/consensus/consensusengine"
@@ -96,7 +97,7 @@ func makeTestEngine(gdb *Store) (*consensusengine.Lachesis, *dagindexer.Index) {
 		Validators: gdb.GetValidators(),
 	})
 	vecClock := dagindexer.NewIndex(panics("Vector clock"), dagindexer.LiteConfig())
-	engine := consensusengine.NewLachesis(cdb, &testGossipStoreAdapter{gdb}, vecmt2dagidx.Wrap(vecClock), panics("Lachesis"), consensusengine.LiteConfig())
+	engine := consensusengine.NewLachesis(cdb, &testGossipStoreAdapter{gdb}, vecmt2dagidx.Wrap(vecClock), panics("Lachesis"), consensusengine.DefaultConfig())
 	return engine, vecClock
 }
 

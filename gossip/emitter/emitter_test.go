@@ -1,10 +1,11 @@
 package emitter
 
 import (
-	"github.com/0xsoniclabs/consensus/dagindexer"
 	"math/big"
 	"testing"
 	"time"
+
+	"github.com/0xsoniclabs/consensus/dagindexer"
 
 	"github.com/0xsoniclabs/consensus/consensus"
 
@@ -25,7 +26,7 @@ import (
 func TestEmitter(t *testing.T) {
 	cfg := DefaultConfig()
 	gValidators := makefakegenesis.GetFakeValidators(3)
-	vv := consensus.NewBuilder()
+	vv := consensus.NewValidatorsBuilder()
 	for _, v := range gValidators {
 		vv.Set(v.ID, consensus.Weight(1))
 	}

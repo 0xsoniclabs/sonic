@@ -8,6 +8,12 @@ github.com/0xsoniclabs/consensus v0.0.0-20250409170033-818d2ff18416 h1:GKxlG998r
 github.com/0xsoniclabs/consensus v0.0.0-20250409170033-818d2ff18416/go.mod h1:pMaQZ4qKfFOpFidA6pKW/53+TAUwy0mHH1FeVthLn1w=
 github.com/0xsoniclabs/consensus v0.0.0-20250409195025-468bcfa68bea h1:q/tsgEVFX3vBnZLHLrHWxuLxBCBoCzZL8KXyNTV9CYQ=
 github.com/0xsoniclabs/consensus v0.0.0-20250409195025-468bcfa68bea/go.mod h1:pMaQZ4qKfFOpFidA6pKW/53+TAUwy0mHH1FeVthLn1w=
+github.com/0xsoniclabs/consensus v0.0.0-20250412095929-72fd964de0de h1:wO6F5mbpTKxcwOcbQ8+asReE9ZDFoohYF0WH2bBlFzk=
+github.com/0xsoniclabs/consensus v0.0.0-20250412095929-72fd964de0de/go.mod h1:pMaQZ4qKfFOpFidA6pKW/53+TAUwy0mHH1FeVthLn1w=
+github.com/0xsoniclabs/consensus v0.0.0-20250414115640-f6fd9ff2903e h1:qsy20rGfXFy3J9PDKbFPL/BF4xvfoVSo2cKdzgptpO4=
+github.com/0xsoniclabs/consensus v0.0.0-20250414115640-f6fd9ff2903e/go.mod h1:pMaQZ4qKfFOpFidA6pKW/53+TAUwy0mHH1FeVthLn1w=
+github.com/0xsoniclabs/consensus v0.0.0-20250414123110-d35ee0f7b752 h1:I2icCPjINh09MsGJQITR52QuYaMKNBcbJ0aga0ZOgS8=
+github.com/0xsoniclabs/consensus v0.0.0-20250414123110-d35ee0f7b752/go.mod h1:pMaQZ4qKfFOpFidA6pKW/53+TAUwy0mHH1FeVthLn1w=
 github.com/0xsoniclabs/go-ethereum v0.0.0-20250210213022-86eca3554809 h1:MtKV0hC7b58vimXYzmNRBNZJw1ovewt5GbanzPgl68k=
 github.com/0xsoniclabs/go-ethereum v0.0.0-20250210213022-86eca3554809/go.mod h1:9SAhGia6ukqZnvwJ3npNEmQDFjusZ/vXgbU1Z7J1vhw=
 github.com/0xsoniclabs/kvdb v0.0.0-20250224113306-fe6d2ca29563 h1:jx+6rC5/buNABHcuxfL2gdd7zbqvHMMN2u+RdEJO/FY=

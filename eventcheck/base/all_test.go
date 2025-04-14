@@ -26,7 +26,7 @@ import (
 type testReader struct{}
 
 func (tr *testReader) GetEpochValidators() (*consensus.Validators, consensus.Epoch) {
-	vb := consensus.NewBuilder()
+	vb := consensus.NewValidatorsBuilder()
 	vb.Set(1, 1)
 	return vb.Build(), 1
 }

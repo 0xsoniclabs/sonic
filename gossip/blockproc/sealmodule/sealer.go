@@ -33,7 +33,7 @@ func (s *OperaEpochsSealer) EpochSealing() bool {
 	sealEpoch := s.bs.EpochGas >= s.es.Rules.Epochs.MaxEpochGas
 	sealEpoch = sealEpoch || (s.block.Time-s.es.EpochStart) >= s.es.Rules.Epochs.MaxEpochDuration
 	sealEpoch = sealEpoch || s.bs.AdvanceEpochs > 0
-	return sealEpoch || s.bs.EpochCheaters.Len() != 0
+	return sealEpoch || len(s.bs.EpochCheaters) != 0
 }
 
 func (p *OperaEpochsSealer) Update(bs iblockproc.BlockState, es iblockproc.EpochState) {

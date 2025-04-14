@@ -119,7 +119,7 @@ func FakeGenesisStoreWithRulesAndStart(
 				EpochStart:        FakeGenesisTime,
 				PrevEpochStart:    FakeGenesisTime - 1,
 				EpochStateRoot:    consensus.Hash(genesisStateRoot),
-				Validators:        consensus.NewBuilder().Build(),
+				Validators:        consensus.NewValidatorsBuilder().Build(),
 				ValidatorStates:   make([]iblockproc.ValidatorEpochState, 0),
 				ValidatorProfiles: make(map[consensus.ValidatorID]drivertype.Validator),
 				Rules:             rules,

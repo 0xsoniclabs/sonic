@@ -157,7 +157,7 @@ func consensusCallbackBeginBlockFn(
 				// If Atropos ID wasn't used as a block ID, it wouldn't be required.
 				skipBlock := atroposDegenerate
 				// Check if empty block should be pruned
-				emptyBlock := len(confirmedEvents) == 0 && cBlock.Cheaters.Len() == 0
+				emptyBlock := len(confirmedEvents) == 0 && len(cBlock.Cheaters) == 0
 				skipBlock = skipBlock || (emptyBlock && blockCtx.Time < bs.LastBlock.Time+es.Rules.Blocks.MaxEmptyBlockSkipPeriod)
 				// Finalize the progress of eventProcessor
 				bs = eventProcessor.Finalize(blockCtx, skipBlock) // TODO: refactor to not mutate the bs, it is unclear
@@ -354,7 +354,7 @@ func consensusCallbackBeginBlockFn(
 					}
 
 					bs.LastBlock = blockCtx
-					bs.CheatersWritten = uint32(bs.EpochCheaters.Len())
+					bs.CheatersWritten = uint32(len(bs.EpochCheaters))
 					if sealing {
 						store.SetHistoryBlockEpochState(es.Epoch, bs, es)
 						store.SetEpochBlock(blockCtx.Idx+1, es.Epoch)
