@@ -165,6 +165,8 @@ func (e *extEventData) NetForkID() uint16 { return e.netForkID }
 
 func (e *extEventData) CreationTime() Timestamp { return e.creationTime }
 
+func (e *extEventData) CreationTimePortable() uint64 { return uint64(e.creationTime) }
+
 func (e *extEventData) MedianTime() Timestamp { return e.medianTime }
 
 func (e *extEventData) PrevEpochHash() *consensus.Hash { return e.prevEpochHash }
