@@ -3,6 +3,7 @@ package randao_test
 import (
 	"crypto/ecdsa"
 	"crypto/rand"
+	"math"
 	"math/big"
 	"testing"
 
@@ -123,4 +124,55 @@ func generateKeyPair(t testing.TB) (*encryption.PrivateKey, validatorpk.PubKey) 
 	}
 
 	return privateKey, publicKey
+}
+
+func TestRandAo_EntropyTest(t *testing.T) {
+
+	ctrl := gomock.NewController(t)
+	mockBackend := valkeystore.NewMockKeystoreI(ctrl)
+	signer := valkeystore.NewSigner(mockBackend)
+	privateKey, publicKey := generateKeyPair(t)
+	mockBackend.EXPECT().GetUnlocked(publicKey).Return(privateKey, nil).AnyTimes()
+
+	byteStream := make([]byte, 0)
+
+	for range 10 {
+
+		lastRandao := common.Hash{}
+		_, err := rand.Read(lastRandao[:])
+		require.NoError(t, err)
+		for i := range 10_000 {
+			replayProtection := big.NewInt(int64(i))
+			source, err := randao.NewRandaoSource(lastRandao, replayProtection, publicKey, signer)
+			require.NoError(t, err)
+			randao, ok := source.GetRandAo(lastRandao, replayProtection, publicKey)
+			require.True(t, ok)
+			byteStream = append(byteStream, randao[:]...)
+			lastRandao = randao
+		}
+
+		entropy := calculate_normalized_shannon_entropy(byteStream)
+		require.Greater(t, entropy, 0.99, "Entropy should be greater than 0.99")
+	}
+}
+
+func calculate_normalized_shannon_entropy(data []byte) float64 {
+	// Create a map to store the frequency of each byte value
+	frequency := make(map[byte]int)
+	for _, b := range data {
+		frequency[b]++
+	}
+
+	// Calculate the total number of bytes
+	total := len(data)
+
+	// Calculate the Shannon entropy
+	entropy := 0.0
+	for _, count := range frequency {
+		probability := float64(count) / float64(total)
+		entropy -= probability * math.Log2(probability)
+	}
+
+	// normalize the result
+	return entropy / 8 // log2(256) = 8
 }
