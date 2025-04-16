@@ -5,33 +5,53 @@ import (
 	"math"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/config"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/require"
 )
 
 func TestEthCall_CodeLargerThanMaxInitCodeSizeIsNotAccepted(t *testing.T) {
-	tests := map[string]struct {
-		codeSize int
-		err      error
-	}{
-		"max code size": {
-			math.MaxUint16, // max code size supported by the LFVM
-			nil,
-		},
-		"max code size + 1": {
-			math.MaxUint16 + 1,
-			fmt.Errorf("max code size exceeded"),
-		},
-	}
-	net := StartIntegrationTestNet(t)
 
+	net := StartIntegrationTestNet(t)
 	client, err := net.GetClient()
 	if err != nil {
 		t.Fatalf("Failed to connect to the integration test network: %v", err)
 	}
 	defer client.Close()
 
-	rpcClient := client.Client()
+	netWithFlag := StartIntegrationTestNet(t, IntegrationTestNetOptions{
+		ModifyConfig: func(config *config.Config) {
+			config.Opera.RPCEVMSimulation = true
+		},
+	})
+	clientWithEVM, err := netWithFlag.GetClient()
+	if err != nil {
+		t.Fatalf("Failed to connect to the integration test network: %v", err)
+	}
+	defer clientWithEVM.Close()
+
+	tests := map[string]struct {
+		rpcClient *rpc.Client
+		codeSize  int
+		err       error
+	}{
+		"max code size": {
+			client.Client(),
+			math.MaxUint16, // max code size supported by the LFVM
+			nil,
+		},
+		"max code size + 1": {
+			client.Client(),
+			math.MaxUint16 + 1,
+			fmt.Errorf("max code size exceeded"),
+		},
+		"max code size + 1 with EVM": {
+			clientWithEVM.Client(),
+			math.MaxUint16 + 1,
+			nil,
+		},
+	}
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -50,7 +70,7 @@ func TestEthCall_CodeLargerThanMaxInitCodeSizeIsNotAccepted(t *testing.T) {
 			}
 
 			var res interface{}
-			err = rpcClient.Call(&res, "eth_call", txArguments, requestedBlock, stateOverrides)
+			err = test.rpcClient.Call(&res, "eth_call", txArguments, requestedBlock, stateOverrides)
 			if test.err == nil {
 				require.NoError(t, err)
 			} else {
