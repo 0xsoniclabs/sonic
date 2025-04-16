@@ -17,7 +17,7 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func TestPrevRandAO_CanBeProduceAPrevRandAOFromVerifiableSource(t *testing.T) {
+func TestRandao_RandaoReveal_CanBeConstructedAndVerified(t *testing.T) {
 	previous := common.Hash{}
 	replayProtection := big.NewInt(0)
 
@@ -27,14 +27,14 @@ func TestPrevRandAO_CanBeProduceAPrevRandAOFromVerifiableSource(t *testing.T) {
 	privateKey, publicKey := generateKeyPair(t)
 	mockBackend.EXPECT().GetUnlocked(publicKey).Return(privateKey, nil)
 
-	source, err := randao.NewRandaoSource(previous, replayProtection, publicKey, signer)
+	source, err := randao.NewRandaoReveal(previous, replayProtection, publicKey, signer)
 	require.NoError(t, err)
 
 	_, ok := source.GetRandAo(previous, replayProtection, publicKey)
 	require.True(t, ok)
 }
 
-func TestRandAO_NewPrevRandAo_FailsWithInvalidKey(t *testing.T) {
+func TestRandAO_NewPrevRandAo_ConstructionFailsWithInvalidKey(t *testing.T) {
 
 	previous := common.Hash{}
 	replayProtection := big.NewInt(0)
@@ -43,11 +43,11 @@ func TestRandAO_NewPrevRandAo_FailsWithInvalidKey(t *testing.T) {
 	mockBackend := valkeystore.NewMockKeystoreI(ctrl)
 	signer := valkeystore.NewSigner(mockBackend)
 
-	_, err := randao.NewRandaoSource(previous, replayProtection, validatorpk.PubKey{}, signer)
+	_, err := randao.NewRandaoReveal(previous, replayProtection, validatorpk.PubKey{}, signer)
 	require.ErrorContains(t, err, "not supported key type")
 }
 
-func TestPrevRandAO_VerificationDependsOnKnownPublicValues(t *testing.T) {
+func TestRandao_RandaoReveal_VerificationDependsOnKnownPublicValues(t *testing.T) {
 	previous := common.Hash{}
 	replayProtection := big.NewInt(0)
 
@@ -59,7 +59,7 @@ func TestPrevRandAO_VerificationDependsOnKnownPublicValues(t *testing.T) {
 
 	_, differentPublicKey := generateKeyPair(t)
 
-	source, err := randao.NewRandaoSource(previous, replayProtection, publicKey, signer)
+	source, err := randao.NewRandaoReveal(previous, replayProtection, publicKey, signer)
 	require.NoError(t, err)
 
 	tests := map[string]struct {
@@ -84,7 +84,7 @@ func TestPrevRandAO_VerificationDependsOnKnownPublicValues(t *testing.T) {
 	}
 }
 
-func TestPrevRandAO_GetRandAo_InvalidSourceShallFailVerification(t *testing.T) {
+func TestRandao_RandaoReveal_InvalidRandaoRevealShallFailVerification(t *testing.T) {
 	previous := common.Hash{}
 	replayProtection := big.NewInt(0)
 
@@ -94,12 +94,12 @@ func TestPrevRandAO_GetRandAo_InvalidSourceShallFailVerification(t *testing.T) {
 	privateKey, publicKey := generateKeyPair(t)
 	mockBackend.EXPECT().GetUnlocked(publicKey).Return(privateKey, nil)
 
-	source, err := randao.NewRandaoSource(previous, replayProtection, publicKey, signer)
+	source, err := randao.NewRandaoReveal(previous, replayProtection, publicKey, signer)
 	require.NoError(t, err)
 
 	for i := range len(source) {
 		// modify the signature somehow
-		modifiedSignature := randao.RandaoSource(make([]byte, len(source)))
+		modifiedSignature := randao.RandaoReveal(make([]byte, len(source)))
 		copy(modifiedSignature[:], source[:])
 		modifiedSignature[i] = modifiedSignature[i] + 1
 
@@ -126,7 +126,7 @@ func generateKeyPair(t testing.TB) (*encryption.PrivateKey, validatorpk.PubKey) 
 	return privateKey, publicKey
 }
 
-func TestRandAo_EntropyTest(t *testing.T) {
+func TestRandaoReveal_EntropyTest(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	mockBackend := valkeystore.NewMockKeystoreI(ctrl)
