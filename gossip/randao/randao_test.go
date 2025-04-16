@@ -3,8 +3,11 @@ package randao_test
 import (
 	"crypto/ecdsa"
 	"crypto/rand"
+	"fmt"
 	"math"
 	"math/big"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/randao"
@@ -127,23 +130,58 @@ func generateKeyPair(t testing.TB) (*encryption.PrivateKey, validatorpk.PubKey) 
 }
 
 func TestRandaoReveal_EntropyTest(t *testing.T) {
+	// The following test measures the generation entropy by creating
+	// a large number of randao generations and 10 different keys.
 
 	ctrl := gomock.NewController(t)
 	mockBackend := valkeystore.NewMockKeystoreI(ctrl)
 	signer := valkeystore.NewSigner(mockBackend)
-	privateKey, publicKey := generateKeyPair(t)
-	mockBackend.EXPECT().GetUnlocked(publicKey).Return(privateKey, nil).AnyTimes()
+
+	type keyPair struct {
+		privateKey *encryption.PrivateKey
+		publicKey  validatorpk.PubKey
+	}
+	keys := make([]keyPair, 10)
+
+	for i := range len(keys) {
+		privateKey, publicKey := generateKeyPair(t)
+
+		keys[i] = keyPair{
+			privateKey: privateKey,
+			publicKey:  publicKey,
+		}
+	}
+	// The storage of keys would be easier using a map from public to private keys,
+	// but because the gossip interfaces use pubKey by value indexing turns a little more
+	// complicated.
+	// This test uses a slice of keypairs sorted by public key, and binary search to
+	// preserve arguments by value.
+	slices.SortFunc(keys, func(a, b keyPair) int {
+		return strings.Compare(a.publicKey.String(), b.publicKey.String())
+	})
+	mockBackend.EXPECT().GetUnlocked(gomock.Any()).DoAndReturn(func(key validatorpk.PubKey) (*encryption.PrivateKey, error) {
+		idx, ok := slices.BinarySearchFunc(keys, key, func(element keyPair, key validatorpk.PubKey) int {
+			return strings.Compare(element.publicKey.String(), key.String())
+		})
+		if ok {
+			return keys[idx].privateKey, nil
+		}
+		return nil, fmt.Errorf("key not found, malformed test")
+	}).AnyTimes()
 
 	byteStream := make([]byte, 0)
-
 	for range 10 {
 
 		lastRandao := common.Hash{}
 		_, err := rand.Read(lastRandao[:])
 		require.NoError(t, err)
 		for i := range 10_000 {
+
+			keyIdx := i % 10
+			publicKey := keys[keyIdx].publicKey
+
 			replayProtection := big.NewInt(int64(i))
-			source, err := randao.NewRandaoSource(lastRandao, replayProtection, publicKey, signer)
+			source, err := randao.NewRandaoReveal(lastRandao, replayProtection, publicKey, signer)
 			require.NoError(t, err)
 			randao, ok := source.GetRandAo(lastRandao, replayProtection, publicKey)
 			require.True(t, ok)
