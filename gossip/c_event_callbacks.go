@@ -18,23 +18,21 @@ package gossip
 
 import (
 	"errors"
-	"github.com/0xsoniclabs/consensus/dagindexer"
 	"math/big"
 	"sync/atomic"
 
-	"github.com/ethereum/go-ethereum/metrics"
-
 	"github.com/0xsoniclabs/consensus/consensus"
-	"github.com/0xsoniclabs/sonic/gossip/dagprocessor"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/log"
-
+	"github.com/0xsoniclabs/consensus/dagindexer"
 	"github.com/0xsoniclabs/sonic/eventcheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/epochcheck"
+	"github.com/0xsoniclabs/sonic/gossip/dagprocessor"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/utils/concurrent"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/metrics"
 )
 
 var (
@@ -144,7 +142,8 @@ func (s *Service) switchEpochTo(newEpoch consensus.Epoch) {
 	// reset dag indexer
 	s.store.resetEpochStore(newEpoch)
 	es := s.store.getEpochStore(newEpoch)
-	s.dagIndexer.Reset(s.store.GetValidators(), es.table.DagIndex, func(id consensus.EventHash) consensus.Event {
+	flushable := s.dagIndexer.WrapWithFlushable(es.table.DagIndex)
+	s.dagIndexer.Reset(s.store.GetValidators(), flushable, func(id consensus.EventHash) consensus.Event {
 		return s.store.GetEvent(id)
 	})
 	// notify event checkers about new validation data

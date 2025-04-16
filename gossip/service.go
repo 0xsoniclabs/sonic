@@ -19,13 +19,14 @@ package gossip
 import (
 	"errors"
 	"fmt"
-	"github.com/0xsoniclabs/consensus/dagindexer"
 	"math/big"
 	"math/rand/v2"
 	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/0xsoniclabs/consensus/dagindexer"
 
 	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/utils/workers"
@@ -312,7 +313,8 @@ func newService(config Config, store *Store, blockProc BlockProc, engine consens
 	// load epoch DB
 	svc.store.loadEpochStore(svc.store.GetEpoch())
 	es := svc.store.getEpochStore(svc.store.GetEpoch())
-	svc.dagIndexer.Reset(svc.store.GetValidators(), es.table.DagIndex, func(id consensus.EventHash) consensus.Event {
+	flushable := svc.dagIndexer.WrapWithFlushable(es.table.DagIndex)
+	svc.dagIndexer.Reset(svc.store.GetValidators(), flushable, func(id consensus.EventHash) consensus.Event {
 		return svc.store.GetEvent(id)
 	})
 
