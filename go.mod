@@ -5,7 +5,7 @@ go 1.24.0
 require (
 	github.com/0xsoniclabs/cacheutils v0.0.0-20250320134355-5a9aa4df3861
 	github.com/0xsoniclabs/carmen/go v0.0.0-20250113102336-97f8b8616eff
-	github.com/0xsoniclabs/consensus v0.0.0-20250416080539-01979b1f00a7
+	github.com/0xsoniclabs/consensus v0.0.0-20250416083102-8e2daa122f46
 	github.com/0xsoniclabs/kvdb v0.0.0-20250224113306-fe6d2ca29563
 	github.com/0xsoniclabs/tosca v0.0.0-20250221124739-3aac4e7427dc
 	github.com/cespare/cp v1.1.1
@@ -120,7 +120,7 @@ require (
 	github.com/urfave/cli/v2 v2.27.5 // indirect
 	github.com/xrash/smetrics v0.0.0-20240521201337-686a1a2994c1 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
-	golang.org/x/crypto v0.35.0 // indirect
+	golang.org/x/crypto v0.32.0 // indirect
 	golang.org/x/net v0.34.0 // indirect
 	golang.org/x/sync v0.11.0 // indirect
 	golang.org/x/text v0.22.0 // indirect
