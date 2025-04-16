@@ -5,7 +5,7 @@ go 1.24.0
 require (
 	github.com/0xsoniclabs/cacheutils v0.0.0-20250320134355-5a9aa4df3861
 	github.com/0xsoniclabs/carmen/go v0.0.0-20250113102336-97f8b8616eff
-	github.com/0xsoniclabs/consensus v0.0.0-20250415110543-60430dd40236
+	github.com/0xsoniclabs/consensus v0.0.0-20250416080539-01979b1f00a7
 	github.com/0xsoniclabs/kvdb v0.0.0-20250224113306-fe6d2ca29563
 	github.com/0xsoniclabs/tosca v0.0.0-20250221124739-3aac4e7427dc
 	github.com/cespare/cp v1.1.1
@@ -13,7 +13,7 @@ require (
 	github.com/deckarep/golang-set v1.8.0
 	github.com/docker/docker v27.3.1+incompatible
 	github.com/dvyukov/go-fuzz v0.0.0-20240924070022-e577bee5275c
-	github.com/ethereum/go-ethereum v1.15.8
+	github.com/ethereum/go-ethereum v1.15.0
 	github.com/gballet/go-libpcsclite v0.0.0-20191108122812-4678299bea08
 	github.com/golang/mock v1.6.0
 	github.com/hashicorp/golang-lru v1.0.2
