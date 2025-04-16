@@ -3,12 +3,11 @@ package emitter
 import (
 	"fmt"
 	"math/big"
-	"math/rand/v2"
-	"slices"
 	"time"
 
 	"github.com/0xsoniclabs/sonic/eventcheck/epochcheck"
 	"github.com/0xsoniclabs/sonic/evmcore"
+	scrambler "github.com/0xsoniclabs/sonic/gossip/scrambler_new"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
@@ -308,7 +307,7 @@ func (em *Emitter) scheduleAndScramble(
 		}
 		//fmt.Printf("Testing %d transactions\n", len(candidates))
 		numEvals++
-		order, gasUsed, reachedLimit := em.evaluateTransactions(context, candidates, gasLimit)
+		order, gasUsed, reachedLimit := em.evaluateTransactions(&sorted.signer, context, candidates, gasLimit)
 		if gasUsed > bestGasUsed {
 			bestGasUsed = gasUsed
 			bestOrder = order
@@ -331,7 +330,7 @@ func (em *Emitter) scheduleAndScramble(
 			mid := (low + high) / 2
 			//fmt.Printf("Testing %d transactions (low: %d, high: %d)\n", mid, low, high)
 			numEvals++
-			order, gasUsed, reachedLimit := em.evaluateTransactions(context, candidates[:mid], gasLimit)
+			order, gasUsed, reachedLimit := em.evaluateTransactions(&sorted.signer, context, candidates[:mid], gasLimit)
 			// We replace our current best if we can get more gas used with a smaller candidate list size.
 			// This is a trade-off between us honoring the priority expressed by tips and the maximum
 			// gas we can pack into a block.
@@ -354,6 +353,7 @@ func (em *Emitter) scheduleAndScramble(
 }
 
 func (em *Emitter) evaluateTransactions(
+	signer *types.Signer,
 	context *blockContext,
 	transactions []*types.Transaction,
 	gasLimit uint64,
@@ -391,7 +391,9 @@ func (em *Emitter) evaluateTransactions(
 	// sort transactions by price and nonce
 	reachedLimit := false
 	remainingGas := gasLimit
-	scrambled := scramble(transactions)
+
+	// TODO: pass randao as seed
+	scrambled := scramble(signer, 42, transactions)
 	selected := make([]*types.Transaction, 0, len(scrambled))
 	for _, tx := range scrambled {
 
@@ -418,13 +420,8 @@ func (em *Emitter) evaluateTransactions(
 
 // scramble returns a random permutation of the given transactions. The result
 // is a copy of the input slice, so the input is not modified.
-func scramble(transactions []*types.Transaction) []*types.Transaction {
-	// TODO: enforce the ordering of transactions from the same sender
-	res := slices.Clone(transactions)
-	rand.Shuffle(len(res), func(i, j int) {
-		res[i], res[j] = res[j], res[i]
-	})
-	return res
+func scramble(signer *types.Signer, seed uint64, transactions []*types.Transaction) []*types.Transaction {
+	return scrambler.Scramble(*signer, seed, transactions)
 }
 
 func getEffectiveGasLimit(
