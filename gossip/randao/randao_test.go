@@ -152,7 +152,7 @@ func TestRandAo_EntropyTest(t *testing.T) {
 		}
 
 		entropy := calculate_normalized_shannon_entropy(byteStream)
-		require.Greater(t, entropy, 0.99, "Entropy should be greater than 0.99")
+		require.Greater(t, entropy, 0.9999, "Entropy should be greater than 0.9999")
 	}
 }
 

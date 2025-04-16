@@ -64,7 +64,14 @@ func (s RandaoSource) GetRandAo(
 		return common.Hash{}, false
 	}
 
-	hasher = sha256.New()
-	hasher.Write(s[:])
-	return common.BytesToHash(hasher.Sum(nil)), true
+	tmp := [32]byte{}
+	copy(tmp[:], s)
+	return xorBytes32(previousRandAo, tmp), true
+}
+
+func xorBytes32(a, b [32]byte) (dst [32]byte) {
+	for i := 0; i < 32; i++ {
+		dst[i] = a[i] ^ b[i]
+	}
+	return
 }
