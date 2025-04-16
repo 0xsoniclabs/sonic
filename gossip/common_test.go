@@ -43,7 +43,6 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/validatorpk"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
-	"github.com/0xsoniclabs/sonic/utils/adapters/vecmt2dagidx"
 	"github.com/0xsoniclabs/sonic/valkeystore"
 )
 
@@ -97,7 +96,7 @@ func makeTestEngine(gdb *Store) (*consensusengine.Lachesis, *dagindexer.Index) {
 		Validators: gdb.GetValidators(),
 	})
 	vecClock := dagindexer.NewIndex(panics("Vector clock"), dagindexer.LiteConfig())
-	engine := consensusengine.NewLachesis(cdb, &testGossipStoreAdapter{gdb}, vecmt2dagidx.Wrap(vecClock), panics("Lachesis"), consensusengine.DefaultConfig())
+	engine := consensusengine.NewLachesis(cdb, &testGossipStoreAdapter{gdb}, vecClock, panics("Lachesis"), consensusengine.DefaultConfig())
 	return engine, vecClock
 }
 

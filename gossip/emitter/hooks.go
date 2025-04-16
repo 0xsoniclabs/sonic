@@ -14,7 +14,6 @@ import (
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera/contracts/emitterdriver"
 	"github.com/0xsoniclabs/sonic/utils"
-	"github.com/0xsoniclabs/sonic/utils/adapters/vecmt2dagidx"
 )
 
 // OnNewEpoch should be called after each epoch change, and on startup
@@ -75,13 +74,13 @@ func (em *Emitter) OnNewEpoch(newValidators *consensus.Validators, newEpoch cons
 		em.quorumIndexer = nil
 		em.fcIndexer = ancestor.NewFCIndexer(newValidators, em.world.DagIndex(), em.config.Validator.ID)
 	} else {
-		em.quorumIndexer = ancestor.NewQuorumIndexer(newValidators, vecmt2dagidx.Wrap(em.world.DagIndex()),
+		em.quorumIndexer = ancestor.NewQuorumIndexer(newValidators, em.world.DagIndex(),
 			func(thresholdValue, current, update consensus.Seq, validatorIdx consensus.ValidatorIndex) ancestor.Metric {
 				return updMetric(thresholdValue, current, update, validatorIdx, newValidators)
 			})
 		em.fcIndexer = nil
 	}
-	em.quorumIndexer = ancestor.NewQuorumIndexer(newValidators, vecmt2dagidx.Wrap(em.world.DagIndex()),
+	em.quorumIndexer = ancestor.NewQuorumIndexer(newValidators, em.world.DagIndex(),
 		func(thresholdValue, current, update consensus.Seq, validatorIdx consensus.ValidatorIndex) ancestor.Metric {
 			return updMetric(thresholdValue, current, update, validatorIdx, newValidators)
 		})

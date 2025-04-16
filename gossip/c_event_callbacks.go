@@ -2,9 +2,10 @@ package gossip
 
 import (
 	"errors"
-	"github.com/0xsoniclabs/consensus/dagindexer"
 	"math/big"
 	"sync/atomic"
+
+	"github.com/0xsoniclabs/consensus/dagindexer"
 
 	"github.com/0xsoniclabs/consensus/consensus"
 
@@ -129,7 +130,8 @@ func (s *Service) switchEpochTo(newEpoch consensus.Epoch) {
 	// reset dag indexer
 	s.store.resetEpochStore(newEpoch)
 	es := s.store.getEpochStore(newEpoch)
-	s.dagIndexer.Reset(s.store.GetValidators(), es.table.DagIndex, func(id consensus.EventHash) consensus.Event {
+	flushable := s.dagIndexer.WrapWithFlushable(es.table.DagIndex)
+	s.dagIndexer.Reset(s.store.GetValidators(), flushable, func(id consensus.EventHash) consensus.Event {
 		return s.store.GetEvent(id)
 	})
 	// notify event checkers about new validation data
