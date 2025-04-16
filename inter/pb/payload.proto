@@ -10,30 +10,37 @@ import "proposal.proto";
 // It constitutes the entry point for any information to be stored in events,
 // and can be expanded in a backward-compatible way in the future.
 message Payload {
-    
+
     // The version of the proto-payload. The initial version is 1.
     // If the payload container is expanded with new significant fields that
     // require a hard-fork, this version number is to be increased.
-    uint8 version = 1; 
+    uint32 version = 1;
 
     // -- Block Proposal Tracking --
 
-    // The number of the last proposal seen by the event containing this payload.
-    // A proposal is "seen" if there is an event in the ancestry of this event
-    // that contains the given proposal number. If there are multiple, the 
-    // highest number is to be reported. If this event contains a proposal, this
-    // number is to be the same as the one in the proposal. 
-    //
-    // If the event containing this payload is a genesis event, this number is to
-    // be set to the block height at the begin of the respective epoch.
-    uint64 lastSeenProposalNumber = 2;
+    // The turn number of the last seen proposal. Validators take turns in
+    // proposing blocks. In each turn, one validator is allowed to propose a
+    // block. If done so, another validator is selected for the next turn. If
+    // a validator responsible for proposing a block fails to du so in a given
+    // number of Lachesis frames / rounds, it is identified as failed and the
+    // next turn is starts.
+    uint32 lastSeenProposalTurn = 2;
 
     // The attempt number of the last proposal seen in the event containing this
     // payload. The seen rules are the same as for the last seen proposal number.
     // For genesis events, this value is 0.
-    uint32 lastSeenProposalAttempt = 3;
 
-    // The frame number of the last seen proposal. For genesis events, this 
+    // The number of the last proposal block seen by the event containing this
+    // payload. A proposal is "seen" if there is an event in the ancestry of
+    // this event that contains the given block number. If there are multiple,
+    // the highest number is to be reported. If this event contains a proposal,
+    // the number of the proposed block is to be reported.
+    //
+    // If the event containing this payload is a genesis event, this number is
+    // to be set to the block height at the begin of the respective epoch.
+    uint64 lastSeenProposedBlock = 3;
+
+    // The frame number of the last seen proposal. For genesis events, this
     // value is 0.
     uint32 lastSeenProposalFrame = 4;
 

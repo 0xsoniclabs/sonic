@@ -25,18 +25,18 @@ func TestPayload_Hash_IsShaOfFieldConcatenation(t *testing.T) {
 	for i := range 5 {
 
 		payload := &Payload{
-			Version:                 uint8(i),
-			LastSeenProposalNumber:  idx.Block(1 + i),
-			LastSeenProposalAttempt: uint32(2 + i),
-			LastSeenProposalFrame:   idx.Frame(3 + i),
+			Version:               uint8(i),
+			LastSeenProposalTurn:  Turn(1 + i),
+			LastSeenProposedBlock: idx.Block(2 + i),
+			LastSeenProposalFrame: idx.Frame(3 + i),
 			Proposal: &Proposal{
 				Number: idx.Block(4 + i),
 			},
 		}
 
 		data := []byte{payload.Version}
-		data = binary.BigEndian.AppendUint64(data, uint64(payload.LastSeenProposalNumber))
-		data = binary.BigEndian.AppendUint32(data, payload.LastSeenProposalAttempt)
+		data = binary.BigEndian.AppendUint32(data, uint32(payload.LastSeenProposalTurn))
+		data = binary.BigEndian.AppendUint64(data, uint64(payload.LastSeenProposedBlock))
 		data = binary.BigEndian.AppendUint32(data, uint32(payload.LastSeenProposalFrame))
 		proposalHash := payload.Proposal.Hash()
 		data = append(data, proposalHash[:]...)
@@ -46,16 +46,16 @@ func TestPayload_Hash_IsShaOfFieldConcatenation(t *testing.T) {
 
 func TestPayload_Hash_MissingPayloadIsOmittedInHashInput(t *testing.T) {
 	payload := &Payload{
-		Version:                 0,
-		LastSeenProposalNumber:  1,
-		LastSeenProposalAttempt: 2,
-		LastSeenProposalFrame:   3,
-		Proposal:                nil,
+		Version:               0,
+		LastSeenProposalTurn:  1,
+		LastSeenProposedBlock: 2,
+		LastSeenProposalFrame: 3,
+		Proposal:              nil,
 	}
 
 	data := []byte{payload.Version}
-	data = binary.BigEndian.AppendUint64(data, uint64(payload.LastSeenProposalNumber))
-	data = binary.BigEndian.AppendUint32(data, payload.LastSeenProposalAttempt)
+	data = binary.BigEndian.AppendUint32(data, uint32(payload.LastSeenProposalTurn))
+	data = binary.BigEndian.AppendUint64(data, uint64(payload.LastSeenProposedBlock))
 	data = binary.BigEndian.AppendUint32(data, uint32(payload.LastSeenProposalFrame))
 	require.Equal(t, hash.Hash(sha256.Sum256(data)), payload.Hash())
 }
@@ -65,11 +65,11 @@ func TestPayload_Hash_ModifyingContent_ChangesHash(t *testing.T) {
 		"change version": func(p *Payload) {
 			p.Version = p.Version + 1
 		},
-		"change last seen proposal number": func(p *Payload) {
-			p.LastSeenProposalNumber = p.LastSeenProposalNumber + 1
+		"change last seen proposal turn": func(p *Payload) {
+			p.LastSeenProposalTurn = p.LastSeenProposalTurn + 1
 		},
-		"change last seen proposal attempt": func(p *Payload) {
-			p.LastSeenProposalAttempt = p.LastSeenProposalAttempt + 1
+		"change last seen proposed block": func(p *Payload) {
+			p.LastSeenProposedBlock = p.LastSeenProposedBlock + 1
 		},
 		"change last seen proposal frame": func(p *Payload) {
 			p.LastSeenProposalFrame = p.LastSeenProposalFrame + 1
@@ -88,10 +88,10 @@ func TestPayload_Hash_ModifyingContent_ChangesHash(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
 			payload := &Payload{
-				Version:                 0,
-				LastSeenProposalNumber:  1,
-				LastSeenProposalAttempt: 2,
-				LastSeenProposalFrame:   3,
+				Version:               0,
+				LastSeenProposalTurn:  1,
+				LastSeenProposedBlock: 2,
+				LastSeenProposalFrame: 3,
 				Proposal: &Proposal{
 					Number: 4,
 				},
@@ -110,10 +110,10 @@ func TestPayload_CanBeSerializedAndRestored(t *testing.T) {
 	for _, proposal := range []*Proposal{nil, {}} {
 		require := require.New(t)
 		original := &Payload{
-			LastSeenProposalNumber:  1,
-			LastSeenProposalAttempt: 2,
-			LastSeenProposalFrame:   3,
-			Proposal:                proposal,
+			LastSeenProposalTurn:  1,
+			LastSeenProposedBlock: 2,
+			LastSeenProposalFrame: 3,
+			Proposal:              proposal,
 		}
 
 		data, err := original.Serialize()
@@ -126,8 +126,8 @@ func TestPayload_CanBeSerializedAndRestored(t *testing.T) {
 		// Check individual fields. Note: a full Deep-Equal comparison is not
 		// possible because transactions have insignificant meta-information that
 		// is not serialized and restored.
-		require.Equal(original.LastSeenProposalNumber, restored.LastSeenProposalNumber)
-		require.Equal(original.LastSeenProposalAttempt, restored.LastSeenProposalAttempt)
+		require.Equal(original.LastSeenProposalTurn, restored.LastSeenProposalTurn)
+		require.Equal(original.LastSeenProposedBlock, restored.LastSeenProposedBlock)
 		require.Equal(original.LastSeenProposalFrame, restored.LastSeenProposalFrame)
 
 		if original.Proposal == nil {
