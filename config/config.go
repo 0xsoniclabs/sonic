@@ -231,6 +231,9 @@ func gossipConfigWithFlags(ctx *cli.Context, src gossip.Config) gossip.Config {
 	if ctx.IsSet(flags.StructLogLimitFlag.Name) {
 		cfg.StructLogLimit = ctx.GlobalInt(flags.StructLogLimitFlag.Name)
 	}
+	if ctx.GlobalIsSet(flags.RPCEVMSimulationFlag.Name) {
+		cfg.RPCEVMSimulation = true
+	}
 	return cfg
 }
 

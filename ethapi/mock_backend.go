@@ -501,6 +501,20 @@ func (mr *MockBackendMockRecorder) Progress() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Progress", reflect.TypeOf((*MockBackend)(nil).Progress))
 }
 
+// RPCEVMSimulation mocks base method.
+func (m *MockBackend) RPCEVMSimulation() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RPCEVMSimulation")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// RPCEVMSimulation indicates an expected call of RPCEVMSimulation.
+func (mr *MockBackendMockRecorder) RPCEVMSimulation() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RPCEVMSimulation", reflect.TypeOf((*MockBackend)(nil).RPCEVMSimulation))
+}
+
 // RPCEVMTimeout mocks base method.
 func (m *MockBackend) RPCEVMTimeout() time.Duration {
 	m.ctrl.T.Helper()

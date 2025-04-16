@@ -467,6 +467,9 @@ func (b *EthAPIBackend) RPCEVMTimeout() time.Duration {
 func (b *EthAPIBackend) RPCTxFeeCap() float64 {
 	return b.svc.config.RPCTxFeeCap
 }
+func (b *EthAPIBackend) RPCEVMSimulation() bool {
+	return b.svc.config.RPCEVMSimulation
+}
 
 func (b *EthAPIBackend) EvmLogIndex() topicsdb.Index {
 	return b.svc.store.evm.EvmLogs

@@ -379,6 +379,7 @@ func TestBlockOverrides(t *testing.T) {
 	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000)).AnyTimes()
 	mockBackend.EXPECT().ChainConfig().Return(&params.ChainConfig{}).AnyTimes()
 	mockBackend.EXPECT().RPCEVMTimeout().Return(time.Duration(0)).AnyTimes()
+	mockBackend.EXPECT().RPCEVMSimulation().Return(false).AnyTimes()
 	setExpectedStateCalls(mockState)
 
 	expectedBlockCtx := &vm.BlockContext{
@@ -613,7 +614,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 		timeout := time.Duration(time.Second)
 		gasCap := uint64(10000000)
 
-		result, err := DoCall(t.Context(), backend, txArgs, blockNrOrHash, stateOverrides, blockOverrides, timeout, gasCap)
+		result, err := DoCall(t.Context(), backend, txArgs, blockNrOrHash, stateOverrides, blockOverrides, timeout, gasCap, false)
 		require.NoError(t, err)
 		require.False(t, result.Failed())
 	}

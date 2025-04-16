@@ -330,6 +330,10 @@ var (
 		Name:  "exitwhensynced.epoch",
 		Usage: "Exits after synchronisation reaches the required epoch",
 	}
+	RPCEVMSimulationFlag = cli.BoolFlag{
+		Name:  "rpc.evmsimulation",
+		Usage: "EVM is used for RPC transaction simulation",
+	}
 
 	// Validator
 	ValidatorIDFlag = cli.UintFlag{

@@ -95,6 +95,9 @@ type (
 		StructLogLimit int
 
 		RPCBlockExt bool
+
+		// RPCEVMSimulation when set, EVM is used for simulation in eth_call function
+		RPCEVMSimulation bool
 	}
 
 	StoreCacheConfig struct {
@@ -205,6 +208,8 @@ func DefaultConfig(scale cachescale.Func) Config {
 
 		MaxResponseSize: 25 * 1024 * 1024,
 		StructLogLimit:  2000,
+
+		RPCEVMSimulation: false,
 	}
 	sessionCfg := cfg.Protocol.DagStreamLeecher.Session
 	cfg.Protocol.DagProcessor.EventsBufferLimit.Num = idx.Event(sessionCfg.ParallelChunksDownload)*
