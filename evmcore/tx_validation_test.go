@@ -314,9 +314,6 @@ func TestValidateTx_Gas_RejectsTxWith(t *testing.T) {
 
 	for name, tx := range getTxsOfAllTypes() {
 		t.Run(fmt.Sprintf("floor data gas not checked before eip7623/%v", name), func(t *testing.T) {
-			if _, ok := tx.(*types.SetCodeTx); ok {
-				t.Skip("setCode transactions cannot be used before eip7702")
-			}
 			opt := getTestTransactionsOption()
 			opt.eip7623 = false
 
@@ -378,7 +375,7 @@ func TestValidateTx_Data_RejectsTxWith(t *testing.T) {
 	for name, tx := range getTxsOfAllTypes() {
 		t.Run(fmt.Sprintf("init code size not checked before shanghai/%v", name), func(t *testing.T) {
 			if isBlobOrSetCode(tx) {
-				t.Skip("blob and setCode transactions cannot be used before eip4844 and eip7702")
+				t.Skip("blob and setCode transactions cannot be used to initialize a contract")
 			}
 			opt := getTestTransactionsOption()
 			opt.shanghai = false
@@ -417,7 +414,6 @@ func TestValidateTx_Signer_RejectsTxWith(t *testing.T) {
 
 	for name, tx := range getTxsOfAllTypes() {
 		t.Run(fmt.Sprintf("invalid signer/%v", name), func(t *testing.T) {
-			setSignatureValues(t, tx, big.NewInt(1), big.NewInt(2), big.NewInt(3))
 			// sign txs with sender
 			key, err := crypto.GenerateKey()
 			require.NoError(t, err)
@@ -452,12 +448,12 @@ func TestValidateTx_Balance_RejectsTxWhen(t *testing.T) {
 			testDb := newTestTxPoolStateDb()
 			// balance = gas * fee cap + value
 			zero := uint256.NewInt(0)
-			gasCost := zero.Mul(
+			txCost := zero.Mul(
 				uint256.NewInt(opt.currentMaxGas),
 				uint256.MustFromBig(opt.currentBaseFee),
 			)
-			gasCost = zero.Add(gasCost, uint256.MustFromBig(signedTx.Value()))
-			testDb.balances[address] = zero.Sub(gasCost, uint256.NewInt(1))
+			txCost = zero.Add(txCost, uint256.MustFromBig(signedTx.Value()))
+			testDb.balances[address] = zero.Sub(txCost, uint256.NewInt(1))
 			opt.currentState = testDb
 
 			// validate transaction
