@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/stretchr/testify/require"
 )
 
@@ -12,11 +13,17 @@ func TestEthCall_CodeLargerThanMaxInitCodeSizeIsAccepted(t *testing.T) {
 	tests := map[string]struct {
 		codeSize int
 	}{
+		"max code size": {
+			params.MaxCodeSize,
+		},
+		"max code size + 1": {
+			params.MaxCodeSize + 1,
+		},
 		"max code size lfvm": {
 			math.MaxUint16, // max code size supported by the LFVM
 		},
 		"max code size lfvm + 1": {
-			math.MaxUint16 + 1, // will be processed by GETH
+			math.MaxUint16 + 1,
 		},
 	}
 	net := StartIntegrationTestNet(t)
