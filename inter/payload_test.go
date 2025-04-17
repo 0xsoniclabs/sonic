@@ -25,7 +25,6 @@ func TestPayload_Hash_IsShaOfFieldConcatenation(t *testing.T) {
 	for i := range 5 {
 
 		payload := &Payload{
-			Version:               uint8(i),
 			LastSeenProposalTurn:  Turn(1 + i),
 			LastSeenProposedBlock: idx.Block(2 + i),
 			LastSeenProposalFrame: idx.Frame(3 + i),
@@ -34,7 +33,7 @@ func TestPayload_Hash_IsShaOfFieldConcatenation(t *testing.T) {
 			},
 		}
 
-		data := []byte{payload.Version}
+		data := []byte{currentPayloadVersion}
 		data = binary.BigEndian.AppendUint32(data, uint32(payload.LastSeenProposalTurn))
 		data = binary.BigEndian.AppendUint64(data, uint64(payload.LastSeenProposedBlock))
 		data = binary.BigEndian.AppendUint32(data, uint32(payload.LastSeenProposalFrame))
@@ -46,14 +45,13 @@ func TestPayload_Hash_IsShaOfFieldConcatenation(t *testing.T) {
 
 func TestPayload_Hash_MissingPayloadIsOmittedInHashInput(t *testing.T) {
 	payload := &Payload{
-		Version:               0,
 		LastSeenProposalTurn:  1,
 		LastSeenProposedBlock: 2,
 		LastSeenProposalFrame: 3,
 		Proposal:              nil,
 	}
 
-	data := []byte{payload.Version}
+	data := []byte{currentPayloadVersion}
 	data = binary.BigEndian.AppendUint32(data, uint32(payload.LastSeenProposalTurn))
 	data = binary.BigEndian.AppendUint64(data, uint64(payload.LastSeenProposedBlock))
 	data = binary.BigEndian.AppendUint32(data, uint32(payload.LastSeenProposalFrame))
@@ -62,9 +60,6 @@ func TestPayload_Hash_MissingPayloadIsOmittedInHashInput(t *testing.T) {
 
 func TestPayload_Hash_ModifyingContent_ChangesHash(t *testing.T) {
 	tests := map[string]func(*Payload){
-		"change version": func(p *Payload) {
-			p.Version = p.Version + 1
-		},
 		"change last seen proposal turn": func(p *Payload) {
 			p.LastSeenProposalTurn = p.LastSeenProposalTurn + 1
 		},
@@ -88,7 +83,6 @@ func TestPayload_Hash_ModifyingContent_ChangesHash(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
 			payload := &Payload{
-				Version:               0,
 				LastSeenProposalTurn:  1,
 				LastSeenProposedBlock: 2,
 				LastSeenProposalFrame: 3,

@@ -25,7 +25,6 @@ type Turn uint32
 // defining new RLP encoded content, this payload uses protobuf encoding to
 // standardize the serialization of the content and simplify portability.
 type Payload struct {
-	Version               uint8
 	LastSeenProposalTurn  Turn
 	LastSeenProposedBlock idx.Block
 	LastSeenProposalFrame idx.Frame
@@ -35,8 +34,7 @@ type Payload struct {
 // Hash computes a secure hash of the payload that can be used for signing and
 // verifying the payload.
 func (e *Payload) Hash() hash.Hash {
-	data := []byte{}
-	data = append(data, byte(e.Version))
+	data := []byte{currentPayloadVersion}
 	data = binary.BigEndian.AppendUint32(data, uint32(e.LastSeenProposalTurn))
 	data = binary.BigEndian.AppendUint64(data, uint64(e.LastSeenProposedBlock))
 	data = binary.BigEndian.AppendUint32(data, uint32(e.LastSeenProposalFrame))
