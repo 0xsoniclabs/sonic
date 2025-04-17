@@ -20,7 +20,7 @@ var (
 	ErrUnknownVersion    = errors.New("unknown serialization version")
 )
 
-const MaxSerializationVersion = 2
+const MaxSerializationVersion = 3
 
 const ProtocolMaxMsgSize = 10 * 1024 * 1024
 
@@ -73,7 +73,7 @@ func (e *Event) MarshalCSER(w *cser.Writer) error {
 		w.Bool(e.AnyEpochVote())
 		w.Bool(e.AnyBlockVotes())
 	}
-	if e.AnyTxs() || e.AnyMisbehaviourProofs() || e.AnyBlockVotes() || e.AnyEpochVote() {
+	if e.AnyTxs() || e.AnyMisbehaviourProofs() || e.AnyBlockVotes() || e.AnyEpochVote() || e.Version() == 3 {
 		w.FixedBytes(e.PayloadHash().Bytes())
 	}
 	// extra
@@ -148,9 +148,9 @@ func eventUnmarshalCSER(r *cser.Reader, e *MutableEventPayload) (err error) {
 	anyEpochVote := version == 1 && r.Bool()
 	anyBlockVotes := version == 1 && r.Bool()
 	payloadHash := EmptyPayloadHash(version)
-	if anyTxs || anyMisbehaviourProofs || anyEpochVote || anyBlockVotes {
+	if anyTxs || anyMisbehaviourProofs || anyEpochVote || anyBlockVotes || version == 3 {
 		r.FixedBytes(payloadHash[:])
-		if payloadHash == EmptyPayloadHash(version) {
+		if version != 3 && payloadHash == EmptyPayloadHash(version) {
 			return cser.ErrNonCanonicalEncoding
 		}
 	}
@@ -290,6 +290,13 @@ func (e *EventPayload) MarshalCSER(w *cser.Writer) error {
 			return err
 		}
 	}
+	if e.Version() == 3 {
+		b, err := e.Payload().Serialize()
+		if err != nil {
+			return err
+		}
+		w.SliceBytes(b)
+	}
 	return nil
 }
 
@@ -361,6 +368,13 @@ func (e *MutableEventPayload) UnmarshalCSER(r *cser.Reader) error {
 		}
 	}
 	e.blockVotes = bvs
+	// generic payload
+	if e.Version() == 3 {
+		b := r.SliceBytes(ProtocolMaxMsgSize)
+		if err := e.payload.Deserialize(b); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

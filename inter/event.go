@@ -58,6 +58,7 @@ type EventPayloadI interface {
 	EpochVote() LlrEpochVote
 	BlockVotes() LlrBlockVotes
 	MisbehaviourProofs() []MisbehaviourProof
+	Payload() *Payload
 }
 
 var emptyPayloadHash1 = CalcPayloadHash(&MutableEventPayload{extEventData: extEventData{version: 1}})
@@ -65,6 +66,8 @@ var emptyPayloadHash1 = CalcPayloadHash(&MutableEventPayload{extEventData: extEv
 func EmptyPayloadHash(version uint8) hash.Hash {
 	if version == 1 {
 		return emptyPayloadHash1
+	} else if version == 3 {
+		return (&Payload{}).Hash()
 	} else {
 		return hash.Hash(types.EmptyRootHash)
 	}
@@ -105,6 +108,8 @@ type payloadData struct {
 
 	epochVote  LlrEpochVote
 	blockVotes LlrBlockVotes
+
+	payload Payload
 }
 
 type Event struct {
@@ -196,6 +201,10 @@ func (e *payloadData) BlockVotes() LlrBlockVotes { return e.blockVotes }
 
 func (e *payloadData) EpochVote() LlrEpochVote { return e.epochVote }
 
+func (e *payloadData) Payload() *Payload {
+	return &e.payload
+}
+
 func CalcTxHash(txs types.Transactions) hash.Hash {
 	return hash.Hash(types.DeriveSha(txs, trie.NewStackTrie(nil)))
 }
@@ -209,9 +218,11 @@ func CalcMisbehaviourProofsHash(mps []MisbehaviourProof) hash.Hash {
 func CalcPayloadHash(e EventPayloadI) hash.Hash {
 	if e.Version() == 1 {
 		return hash.Of(hash.Of(CalcTxHash(e.Txs()).Bytes(), CalcMisbehaviourProofsHash(e.MisbehaviourProofs()).Bytes()).Bytes(), hash.Of(e.EpochVote().Hash().Bytes(), e.BlockVotes().Hash().Bytes()).Bytes())
-	} else {
-		return CalcTxHash(e.Txs())
 	}
+	if e.Version() == 3 {
+		return e.Payload().Hash()
+	}
+	return CalcTxHash(e.Txs())
 }
 
 func (e *MutableEventPayload) SetVersion(v uint8) { e.version = v }
@@ -252,6 +263,10 @@ func (e *MutableEventPayload) SetBlockVotes(v LlrBlockVotes) {
 func (e *MutableEventPayload) SetEpochVote(v LlrEpochVote) {
 	e.epochVote = v
 	e.anyEpochVote = v.Epoch != 0 && v.Vote != hash.Zero
+}
+
+func (e *MutableEventPayload) SetPayload(payload Payload) {
+	e.payload = payload
 }
 
 func calcEventID(h hash.Hash) (id [24]byte) {
