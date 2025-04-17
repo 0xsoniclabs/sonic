@@ -1020,7 +1020,7 @@ func (diff *StateOverride) CodeTooBig() bool {
 	}
 	for _, account := range *diff {
 		// Check account(contract) code length.
-		if account.Code != nil && len(*account.Code) > math.MaxUint16 {
+		if account.Code != nil && len(*account.Code) > params.MaxCodeSize {
 			return true
 		}
 	}
