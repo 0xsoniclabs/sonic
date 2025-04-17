@@ -420,6 +420,7 @@ func DefaultGasPowerRules() GasPowerRules {
 func (r Rules) Copy() Rules {
 	cp := r
 	cp.Economy.MinGasPrice = new(big.Int).Set(r.Economy.MinGasPrice)
+	cp.Economy.MinBaseFee = new(big.Int).Set(r.Economy.MinBaseFee)
 	return cp
 }
 
