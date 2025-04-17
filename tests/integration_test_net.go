@@ -660,7 +660,7 @@ func (s *Session) EndowAccount(
 	}
 
 	// The requested funds are moved from the validator account to the target account.
-	nonce, err := client.NonceAt(context.Background(), s.account.Address(), nil)
+	nonce, err := client.PendingNonceAt(context.Background(), s.account.Address())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get nonce: %w", err)
 	}
@@ -769,7 +769,7 @@ func (s *Session) GetTransactOptions(account *Account) (*bind.TransactOpts, erro
 		return nil, fmt.Errorf("failed to get gas price suggestion: %w", err)
 	}
 
-	nonce, err := client.NonceAt(ctxt, account.Address(), nil)
+	nonce, err := client.PendingNonceAt(ctxt, account.Address())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get nonce: %w", err)
 	}
