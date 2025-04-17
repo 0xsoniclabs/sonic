@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-func TestNetworkRule_Update_Epoch_Boundaries(t *testing.T) {
+func TestNetworkRule_Update_RulesChangeDuringEpochHasNoEffect(t *testing.T) {
 	require := require.New(t)
 	net := StartIntegrationTestNetWithFakeGenesis(t)
 	defer net.Stop()
