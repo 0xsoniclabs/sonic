@@ -1,109 +1,221 @@
 package inter
 
 import (
-	"math"
 	"testing"
 
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/stretchr/testify/require"
 )
 
-func TestIsValidTurnProgression_ValidCases(t *testing.T) {
+func TestIsValidTurnProgression_ExampleCasesAndResults(t *testing.T) {
 	type S = ProposalSummary
 	const C = TurnTimeoutInFrames
 	tests := map[string]struct {
 		last ProposalSummary
 		next ProposalSummary
+		want bool
 	}{
-		"next turn in next frame": {
+		// -- past turn proposals --
+		"past turn in same frame": {
 			last: S{Turn: 1, Frame: 1},
-			next: S{Turn: 2, Frame: 2},
+			next: S{Turn: 0, Frame: 1},
+			want: false,
 		},
-		"delayed next turn": {
+		"past turn in next frame": {
 			last: S{Turn: 1, Frame: 1},
-			next: S{Turn: 2, Frame: 3},
+			next: S{Turn: 0, Frame: 2},
+			want: false,
 		},
-		"skipped turn": { // Turn 2 fails
+		"past turn in previous frame": {
 			last: S{Turn: 1, Frame: 1},
-			next: S{Turn: 3, Frame: 1 + C},
+			next: S{Turn: 0, Frame: 0},
+			want: false,
 		},
-		"delayed skipped turn": { // Turn 2 fails
+		"past turn in long future frame": {
 			last: S{Turn: 1, Frame: 1},
-			next: S{Turn: 3, Frame: 1 + C + 2},
+			next: S{Turn: 0, Frame: 300},
+			want: false,
 		},
-		"double skipped turns": { // Turns 2 and 3 fail
-			last: S{Turn: 1, Frame: 1},
-			next: S{Turn: 4, Frame: 1 + 2*C},
-		},
-	}
 
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			if !IsValidTurnProgression(test.last, test.next) {
-				t.Errorf("expected valid turn progression")
-			}
-		})
-	}
-}
-
-func TestIsValidTurnProgression_InvalidCases(t *testing.T) {
-	type S = ProposalSummary
-	const C = TurnTimeoutInFrames
-
-	tests := map[string]struct {
-		last ProposalSummary
-		next ProposalSummary
-	}{
+		// -- same turn proposals --
 		"same turn in same frame": {
 			last: S{Turn: 1, Frame: 1},
 			next: S{Turn: 1, Frame: 1},
-		},
-		"past turn in same frame": {
-			last: S{Turn: 1, Frame: 1},
-			next: S{Turn: 0, Frame: 2},
+			want: false,
 		},
 		"same turn in next frame": {
 			last: S{Turn: 1, Frame: 1},
 			next: S{Turn: 1, Frame: 2},
+			want: false,
 		},
-		"skipped turn too early": { // Turn 2 fails
+		"same turn in previous frame": {
 			last: S{Turn: 1, Frame: 1},
-			next: S{Turn: 3, Frame: 1 + C - 1},
+			next: S{Turn: 1, Frame: 0},
+			want: false,
 		},
-		"double-skipped turn too early": { // Turns 2 and 3 fail
+		"same turn in long future frame": {
 			last: S{Turn: 1, Frame: 1},
-			next: S{Turn: 4, Frame: 1 + 2*C - 1},
+			next: S{Turn: 1, Frame: 1 + 2*C},
+			want: false,
 		},
-		"inverted turn leading to zero delay if using 32-bit arithmetic": {
+
+		// -- next turn proposals --
+		"next turn in next frame": {
 			last: S{Turn: 1, Frame: 1},
-			next: S{Turn: invertTurn(1), Frame: 2},
+			next: S{Turn: 2, Frame: 2},
+			want: true,
 		},
-		"no overflow in maximum distance": {
-			last: S{Turn: 0, Frame: 1},
-			next: S{Turn: math.MaxUint32, Frame: 2},
+		"next turn in same frame": {
+			last: S{Turn: 1, Frame: 1},
+			next: S{Turn: 2, Frame: 1},
+			want: false,
+		},
+		"next turn in previous frame": {
+			last: S{Turn: 1, Frame: 1},
+			next: S{Turn: 2, Frame: 0},
+			want: false,
+		},
+		"next turn in delayed frame": {
+			last: S{Turn: 1, Frame: 1},
+			next: S{Turn: 2, Frame: 3},
+			want: true,
+		},
+		"next turn in frame just before timeout": {
+			last: S{Turn: 1, Frame: 1},
+			next: S{Turn: 2, Frame: 1 + C},
+			want: true,
+		},
+		"next turn in frame after timeout": {
+			last: S{Turn: 1, Frame: 1},
+			next: S{Turn: 2, Frame: 1 + C + 1},
+			want: false, // after the timeout, the attempt should be blocked
+		},
+		"next turn in long future frame": {
+			last: S{Turn: 1, Frame: 1},
+			next: S{Turn: 2, Frame: 1 + 2*C},
+			want: false,
+		},
+
+		// -- skipped turn proposals --
+		// In these scenarios, turn 2 has not been consumed, enabling turn 3 to
+		// be used between (C, 2*C] frames after the last proposal.
+		"skipped turn just before being enabled": {
+			last: S{Turn: 1, Frame: 1},
+			next: S{Turn: 3, Frame: 1 + C},
+			want: false,
+		},
+		"skipped turn just when enabled": {
+			last: S{Turn: 1, Frame: 1},
+			next: S{Turn: 3, Frame: 1 + C + 1},
+			want: true,
+		},
+		"skipped turn delayed in time window": {
+			last: S{Turn: 1, Frame: 1},
+			next: S{Turn: 3, Frame: 1 + C + 3},
+			want: true,
+		},
+		"skipped turn just before end of time window": {
+			last: S{Turn: 1, Frame: 1},
+			next: S{Turn: 3, Frame: 1 + 2*C},
+			want: true,
+		},
+		"skipped turn just after end of time window": {
+			last: S{Turn: 1, Frame: 1},
+			next: S{Turn: 3, Frame: 1 + 2*C + 1},
+			want: false,
+		},
+		"skipped turn long after its own window": {
+			last: S{Turn: 1, Frame: 1},
+			next: S{Turn: 3, Frame: 1 + 2*C + 100},
+			want: false,
+		},
+
+		// -- double-skipped turn proposals --
+		// In these scenarios, turns 2 and 3 have not been consumed, enabling
+		// turn 4 to be used between (2*C, 3*C] frames after the last proposal.
+		"double skipped turn just before being enabled": {
+			last: S{Turn: 1, Frame: 1},
+			next: S{Turn: 4, Frame: 1 + 2*C},
+			want: false,
+		},
+		"double skipped turn just when enabled": {
+			last: S{Turn: 1, Frame: 1},
+			next: S{Turn: 4, Frame: 1 + 2*C + 1},
+			want: true,
+		},
+		"double skipped turn delayed in time window": {
+			last: S{Turn: 1, Frame: 1},
+			next: S{Turn: 4, Frame: 1 + 2*C + 3},
+			want: true,
+		},
+		"double skipped turn just before end of time window": {
+			last: S{Turn: 1, Frame: 1},
+			next: S{Turn: 4, Frame: 1 + 3*C},
+			want: true,
+		},
+		"double skipped turn just after end of time window": {
+			last: S{Turn: 1, Frame: 1},
+			next: S{Turn: 4, Frame: 1 + 3*C + 1},
+			want: false,
+		},
+		"double skipped turn long after its own window": {
+			last: S{Turn: 1, Frame: 1},
+			next: S{Turn: 4, Frame: 1 + 3*C + 100},
+			want: false,
 		},
 	}
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			if IsValidTurnProgression(test.last, test.next) {
-				t.Errorf("expected invalid turn progression")
+			got := IsValidTurnProgression(test.last, test.next)
+			if got != test.want {
+				t.Errorf("expected %v, got %v", test.want, got)
 			}
 		})
 	}
 }
 
-func invertTurn(t Turn) Turn {
+func TestIsValidTurnProgression_ExhaustiveTests(t *testing.T) {
+	type S = ProposalSummary
 	const C = TurnTimeoutInFrames
-	return Turn(uint64(1<<32)/C + uint64(t) + 1)
+	for lastTurn := range Turn(10) {
+		for lastFrame := range idx.Frame(10) {
+			for nextTurn := range Turn(C * 10) {
+				for nextFrame := range idx.Frame(C * 10) {
+					last := S{
+						Turn:  lastTurn,
+						Frame: lastFrame,
+					}
+					next := S{
+						Turn:  nextTurn,
+						Frame: nextFrame,
+					}
+					want := isValidTurnProgressionForTests(last, next)
+					got := IsValidTurnProgression(last, next)
+					if want != got {
+						t.Errorf("expected %v, got %v", want, got)
+					}
+				}
+			}
+		}
+	}
 }
 
-func TestInvertTurn_ProducesTurnThatCausesAZeroGap(t *testing.T) {
-	for turn := range Turn(10) {
-		inverted := invertTurn(turn)
-		gap := TurnTimeoutInFrames * idx.Frame(inverted-turn-1)
-		require.Equal(t, idx.Frame(0), gap, "expected gap to be zero")
+// isValidTurnProgressionForTests is an alternative implementation of the function to
+// compare the results with the production version. It is intended to be a
+// reference implementations in tests.
+func isValidTurnProgressionForTests(
+	last ProposalSummary,
+	next ProposalSummary,
+) bool {
+	// A straightforward implementation of the logic in IsValidTurnProgression
+	// explicitly computing the (dC,(d+1)C] intervals.
+	if last.Turn >= next.Turn {
+		return false
 	}
+	delta := uint64(next.Turn - last.Turn - 1)
+	min := uint64(last.Frame) + delta*TurnTimeoutInFrames
+	max := min + TurnTimeoutInFrames
+	return min < uint64(next.Frame) && uint64(next.Frame) <= max
 }
 
 func FuzzIsValidTurnProgression(f *testing.F) {
@@ -118,21 +230,35 @@ func FuzzIsValidTurnProgression(f *testing.F) {
 			Frame: idx.Frame(nextFrame),
 		}
 
-		// A second implementation of the function to compare results with.
-		want := false
-		if last.Turn+1 == next.Turn {
-			want = last.Frame < next.Frame
-		} else if last.Turn < next.Turn {
-			gap := TurnTimeoutInFrames * uint64(next.Turn-last.Turn-1)
-			if gap < TurnTimeoutInFrames {
-				t.Errorf("frame gap computation underflow")
-			}
-			want = uint64(last.Frame)+gap <= uint64(next.Frame)
-		}
-
+		want := isValidTurnProgressionForTests(last, next)
 		got := IsValidTurnProgression(last, next)
 		if want != got {
 			t.Errorf("expected %v, got %v", want, got)
 		}
 	})
+}
+
+var validTurnBenchInput Turn = 12
+var validTurnBenchResult bool
+
+func BenchmarkIsValidTurnProgression_Productive(b *testing.B) {
+	last := false
+	for range b.N {
+		last = IsValidTurnProgression(
+			ProposalSummary{Turn: 1, Frame: 1},
+			ProposalSummary{Turn: validTurnBenchInput, Frame: 2},
+		)
+	}
+	validTurnBenchResult = last // needed to avoid compiler optimization
+}
+
+func BenchmarkIsValidTurnProgression_Tests(b *testing.B) {
+	last := false
+	for range b.N {
+		last = isValidTurnProgressionForTests(
+			ProposalSummary{Turn: 1, Frame: 1},
+			ProposalSummary{Turn: validTurnBenchInput, Frame: 2},
+		)
+	}
+	validTurnBenchResult = last // needed to avoid compiler optimization
 }
