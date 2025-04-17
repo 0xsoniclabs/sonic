@@ -85,17 +85,38 @@ func TestGetProposer_EmptyValidatorSet_Fails(t *testing.T) {
 }
 
 func TestGetProposer_ProposersAreSelectedProportionalToStake(t *testing.T) {
+	t.Parallel()
 
-	builder := pos.ValidatorsBuilder{}
-	builder.Set(1, 10)
-	builder.Set(2, 20)
-	builder.Set(3, 30)
-	builder.Set(4, 40)
-	validators := builder.Build()
+	validators := map[string][]struct {
+		id     idx.ValidatorID
+		weight pos.Weight
+	}{
+		"single": {
+			{id: 1, weight: 10},
+		},
+		"two-uniform": {
+			{id: 1, weight: 10},
+			{id: 2, weight: 10},
+		},
+		"two-biased": {
+			{id: 1, weight: 10},
+			{id: 2, weight: 20},
+		},
+		"four-biased": {
+			{id: 1, weight: 10},
+			{id: 2, weight: 20},
+			{id: 3, weight: 30},
+			{id: 4, weight: 40},
+		},
+		"id-gaps": {
+			{id: 17, weight: 123},
+			{id: 23, weight: 321},
+		},
+	}
 
-	tests := []struct {
+	sizes := []struct {
 		samples   int
-		tolerance float32 // in percent
+		tolerance float64 // in percent
 	}{
 		{samples: 1, tolerance: 100},
 		{samples: 10, tolerance: 20},
@@ -106,24 +127,39 @@ func TestGetProposer_ProposersAreSelectedProportionalToStake(t *testing.T) {
 		{samples: 100_000, tolerance: 0.25},
 	}
 
-	for _, test := range tests {
-		t.Run(fmt.Sprintf("samples=%v", test.samples), func(t *testing.T) {
-			require := require.New(t)
+	for name, vals := range validators {
+		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			counters := map[idx.ValidatorID]int{}
-			for turn := range Turn(test.samples) {
-				proposer, err := GetProposer(validators, turn)
-				require.NoError(err)
-				counters[proposer]++
+			builder := pos.ValidatorsBuilder{}
+			for _, v := range vals {
+				builder.Set(v.id, v.weight)
 			}
+			validators := builder.Build()
 
-			tolerance := float64(test.samples) * float64(test.tolerance) / 100
-			for id, idx := range validators.Idxs() {
-				expected := int(pos.Weight(test.samples) * validators.GetWeightByIdx(idx) / validators.TotalWeight())
-				require.InDelta(
-					counters[id], expected, tolerance,
-					"validator %d is not selected proportional to stake", id,
-				)
+			for _, size := range sizes {
+				t.Run(fmt.Sprintf("samples=%v", size.samples), func(t *testing.T) {
+					require := require.New(t)
+					t.Parallel()
+					counters := map[idx.ValidatorID]int{}
+					for turn := range Turn(size.samples) {
+						proposer, err := GetProposer(validators, turn)
+						require.NoError(err)
+						require.True(validators.Exists(proposer))
+						counters[proposer]++
+					}
+
+					tolerance := float64(size.samples) * size.tolerance / 100
+					total := int(validators.TotalWeight())
+					for id, idx := range validators.Idxs() {
+						weight := int(validators.GetWeightByIdx(idx))
+						expected := size.samples * weight / total
+						require.InDelta(
+							counters[id], expected, tolerance,
+							"validator %d is not selected proportional to stake", id,
+						)
+					}
+
+				})
 			}
 		})
 	}
