@@ -2,6 +2,7 @@ package inter
 
 import (
 	"bytes"
+	"fmt"
 	"math"
 	"math/big"
 	"math/rand/v2"
@@ -56,9 +57,11 @@ func TestEventPayloadSerialization(t *testing.T) {
 		"empty0":  emptyEvent(0),
 		"empty1":  emptyEvent(1),
 		"empty2":  emptyEvent(2),
+		"empty3":  emptyEvent(3),
 		"event":   *event.Build(),
 		"random1": *FakeEvent(1, 12, 1, 1, true),
 		"random2": *FakeEvent(2, 12, 0, 0, false),
+		"random3": *FakeEvent(3, 12, 0, 0, false),
 	}
 
 	t.Run("ok", func(t *testing.T) {
@@ -74,6 +77,7 @@ func TestEventPayloadSerialization(t *testing.T) {
 				require.EqualValues(t, toEncode.extEventData, decoded.extEventData)
 				require.EqualValues(t, toEncode.sigData, decoded.sigData)
 				require.Equal(t, len(toEncode.txs), len(decoded.txs))
+				require.Equal(t, toEncode.payload.Hash(), decoded.payload.Hash())
 				for i := range toEncode.payloadData.txs {
 					require.EqualValues(t, toEncode.payloadData.txs[i].Hash(), decoded.payloadData.txs[i].Hash())
 				}
@@ -81,6 +85,7 @@ func TestEventPayloadSerialization(t *testing.T) {
 				require.EqualValues(t, toEncode.ID(), decoded.ID())
 				require.EqualValues(t, toEncode.HashToSign(), decoded.HashToSign())
 				require.EqualValues(t, toEncode.Size(), decoded.Size())
+				require.EqualValues(t, toEncode.PayloadHash(), decoded.PayloadHash())
 			})
 		}
 	})
@@ -219,16 +224,19 @@ func makeAllTransactionTypes() []*types.Transaction {
 }
 
 func BenchmarkEventPayload_EncodeRLP_empty(b *testing.B) {
-	e := emptyEvent(0)
+	for version := range MaxSerializationVersion + 1 {
+		b.Run(fmt.Sprintf("version%d", version), func(b *testing.B) {
+			e := emptyEvent(0)
+			b.ResetTimer()
 
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		buf, err := rlp.EncodeToBytes(&e)
-		if err != nil {
-			b.Fatal(err)
-		}
-		b.ReportMetric(float64(len(buf)), "size")
+			for range b.N {
+				buf, err := rlp.EncodeToBytes(&e)
+				if err != nil {
+					b.Fatal(err)
+				}
+				b.ReportMetric(float64(len(buf)), "size")
+			}
+		})
 	}
 }
 
@@ -469,6 +477,24 @@ func FakeEvent(version uint8, txsNum, mpsNum, bvsNum int, ersNum bool) *EventPay
 			ers.Vote = randHash(r)
 		}
 		random.SetEpochVote(ers)
+	}
+
+	if version == 3 {
+		random.SetPayload(Payload{
+			LastSeenProposalTurn:  Turn(rand.IntN(100)),
+			LastSeenProposedBlock: idx.Block(rand.IntN(10_000_000)),
+			LastSeenProposalFrame: idx.Frame(rand.IntN(100)),
+			Proposal: &Proposal{
+				Number:     idx.Block(rand.IntN(10_000_000)),
+				ParentHash: common.Hash(randHash(r)),
+				Time:       Timestamp(rand.Uint64()),
+				Randao:     common.Hash(randHash(r)),
+				Transactions: []*types.Transaction{
+					types.NewTx(&types.LegacyTx{Nonce: rand.Uint64()}),
+					types.NewTx(&types.LegacyTx{Nonce: rand.Uint64()}),
+				},
+			},
+		})
 	}
 
 	random.SetPayloadHash(CalcPayloadHash(random))
