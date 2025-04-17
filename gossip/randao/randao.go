@@ -64,6 +64,8 @@ func (s RandaoReveal) GetRandAo(
 		return common.Hash{}, false
 	}
 
+	// xor previous randao with the hash of the signature
+
 	tmp := [32]byte{}
 	copy(tmp[:], s)
 	return xorBytes32(previousRandAo, tmp), true
