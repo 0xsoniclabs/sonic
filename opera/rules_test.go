@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestRules_Copy_DeepCopied(t *testing.T) {
+func TestRules_Copy_CopiesAreDisjoint(t *testing.T) {
 	tests := map[string]struct {
 		update func(rule *Rules)
 	}{
