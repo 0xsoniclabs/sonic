@@ -1014,7 +1014,7 @@ func (diff *StateOverride) Apply(state state.StateDB) error {
 	return nil
 }
 
-func (diff *StateOverride) CodeTooBig() bool {
+func (diff *StateOverride) HasCodesExceedingOnChainLimit() bool {
 	if diff == nil {
 		return false
 	}
@@ -1056,7 +1056,7 @@ func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash 
 		return nil, err
 	}
 	vmConfig := opera.DefaultVMConfig
-	if overrides.CodeTooBig() {
+	if overrides.HasCodesExceedingOnChainLimit() {
 		// Use geth as VM for computation
 		vmConfig.Tracer = &tracing.Hooks{}
 	}
