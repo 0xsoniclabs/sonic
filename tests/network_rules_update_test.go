@@ -35,7 +35,7 @@ func TestNetworkRule_Update_RulesChangeDuringEpochHasNoEffect(t *testing.T) {
 	updateRequest.Economy.MinBaseFee = new(big.Int).SetInt64(2 * originalRules.Economy.MinBaseFee.Int64())
 
 	// Update network rules
-	updateNetworkRules(t, require, net, updateRequest)
+	updateNetworkRules(t, net, updateRequest)
 
 	// Network rule should not change - it must be an epoch bound
 	var updatedRules rulesType
@@ -70,7 +70,7 @@ func TestNetworkRule_Update_Restart_Recovers_Original_Value(t *testing.T) {
 	updateRequest.Economy.MinBaseFee = new(big.Int).SetInt64(2 * originalRules.Economy.MinBaseFee.Int64())
 
 	// Update network rules
-	updateNetworkRules(t, require, net, updateRequest)
+	updateNetworkRules(t, net, updateRequest)
 
 	// Restart the network, since the rules happened withing a current epoch
 	// it should not be applied and persisted.
@@ -91,8 +91,9 @@ func TestNetworkRule_Update_Restart_Recovers_Original_Value(t *testing.T) {
 }
 
 // updateNetworkRules sends a transaction to update the network rules.
-func updateNetworkRules(t *testing.T, require *require.Assertions, net IntegrationTestNetSession, rulesChange any) {
+func updateNetworkRules(t *testing.T, net IntegrationTestNetSession, rulesChange any) {
 	t.Helper()
+	require := require.New(t)
 
 	client, err := net.GetClient()
 	require.NoError(err)
@@ -102,6 +103,8 @@ func updateNetworkRules(t *testing.T, require *require.Assertions, net Integrati
 	require.NoError(err)
 
 	contract, err := driverauth100.NewContract(driverauth.ContractAddress, client)
+	require.NoError(err)
+
 	receipt, err := net.Apply(func(ops *bind.TransactOpts) (*types.Transaction, error) {
 		return contract.UpdateNetworkRules(ops, b)
 	})
