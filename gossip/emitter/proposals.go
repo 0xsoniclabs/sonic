@@ -7,7 +7,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/eventcheck/epochcheck"
 	"github.com/0xsoniclabs/sonic/evmcore"
-	scrambler "github.com/0xsoniclabs/sonic/gossip/scrambler_new"
+	"github.com/0xsoniclabs/sonic/gossip/scrambler"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
@@ -421,7 +421,8 @@ func (em *Emitter) evaluateTransactions(
 // scramble returns a random permutation of the given transactions. The result
 // is a copy of the input slice, so the input is not modified.
 func scramble(signer *types.Signer, seed uint64, transactions []*types.Transaction) []*types.Transaction {
-	return scrambler.Scramble(*signer, seed, transactions)
+	scrambler.Scramble(transactions, seed, *signer)
+	return transactions
 }
 
 func getEffectiveGasLimit(
