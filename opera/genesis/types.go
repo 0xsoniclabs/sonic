@@ -8,6 +8,7 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/ibr"
 	"github.com/0xsoniclabs/sonic/inter/ier"
 	"github.com/0xsoniclabs/sonic/scc/cert"
+	"github.com/0xsoniclabs/sonic/scc/node"
 )
 
 type (
@@ -25,6 +26,9 @@ type (
 	}
 	EvmItems interface {
 		ForEach(fn func(key, value []byte) bool)
+	}
+	SccStates interface {
+		ForEach(fn func(node.State) bool)
 	}
 	SccCommitteeCertificates interface {
 		ForEach(fn func(cert.Certificate[cert.CommitteeStatement]) bool)
@@ -48,11 +52,12 @@ type (
 	Genesis struct {
 		Header
 
-		Blocks                Blocks
-		Epochs                Epochs
-		RawEvmItems           EvmItems
-		CommitteeCertificates SccCommitteeCertificates
-		BlockCertificates     SccBlockCertificates
+		Blocks                   Blocks
+		Epochs                   Epochs
+		RawEvmItems              EvmItems
+		CertificationChainStates SccStates
+		CommitteeCertificates    SccCommitteeCertificates
+		BlockCertificates        SccBlockCertificates
 		FwsLiveSection
 		FwsArchiveSection
 		SignatureSection
