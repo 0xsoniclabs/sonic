@@ -7,11 +7,54 @@ import (
 
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
+
+func TestProcessForSonic_NAME_ME(t *testing.T) {
+
+	type ProcessFunction = func(
+		block *EvmBlock, statedb state.StateDB, cfg vm.Config, usedGas *uint64, onNewLog func(*types.Log),
+	) (
+		receipts types.Receipts, allLogs []*types.Log, skipped []uint32, err error,
+	)
+
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+
+	chainConfig := params.ChainConfig{}
+	chain := NewMockDummyChain(ctrl)
+	state := state.NewMockStateDB(ctrl)
+
+	processor := NewStateProcessor(&chainConfig, chain)
+
+	tests := map[string]ProcessFunction{
+		"Sonic":   processor.ProcessForSonic,
+		"Allegro": processor.ProcessForAllegro,
+	}
+
+	for name, process := range tests {
+		t.Run(name, func(t *testing.T) {
+			block := &EvmBlock{
+				EvmHeader: EvmHeader{
+					Number: big.NewInt(1),
+				},
+			}
+
+			vmConfig := vm.Config{}
+			usedGas := new(uint64)
+			receipts, skipped, logs, err := process(block, state, vmConfig, usedGas, nil)
+			require.NoError(err)
+			require.Empty(receipts)
+			require.Empty(skipped)
+			require.Empty(logs)
+		})
+	}
+}
 
 func TestApplyTransaction_InternalTransactionsSkipBaseFeeCharges(t *testing.T) {
 	for _, internal := range []bool{true, false} {

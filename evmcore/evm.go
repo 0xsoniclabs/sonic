@@ -16,6 +16,8 @@
 
 package evmcore
 
+//go:generate mockgen -source=evm.go -destination=evm_mock.go -package=evmcore
+
 import (
 	"math/big"
 

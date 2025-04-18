@@ -304,8 +304,10 @@ func applyTransaction(
 	// contract listener, only the sender, topics, and the data are relevant.
 	// The block hash is not used.
 	logs := statedb.GetLogs(tx.Hash(), common.Hash{})
-	for _, l := range logs {
-		onNewLog(l)
+	if onNewLog != nil {
+		for _, l := range logs {
+			onNewLog(l)
+		}
 	}
 
 	// Update the state with pending changes.
