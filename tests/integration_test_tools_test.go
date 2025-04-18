@@ -59,7 +59,7 @@ func setTransactionDefaults[T types.TxData](
 	tmpTx := types.NewTx(txPayload)
 	nonce := tmpTx.Nonce()
 	if tmpTx.Nonce() == 0 {
-		nonce, err = client.NonceAt(context.Background(), sender.Address(), nil)
+		nonce, err = client.PendingNonceAt(context.Background(), sender.Address())
 		require.NoError(t, err)
 	}
 
