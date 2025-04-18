@@ -49,14 +49,17 @@ func NewStateProcessor(config *params.ChainConfig, bc DummyChain) *StateProcesso
 	}
 }
 
-// Process processes the state changes according to the Ethereum rules by running
-// the transaction messages using the statedb and applying any rewards to both
-// the processor (coinbase) and any included uncles.
+// ProcessForSonic processes the state changes according to the Ethereum rules
+// by running the transaction messages using the statedb and applying any
+// rewards to both the processor (coinbase) and any included uncles.
 //
 // Process returns the receipts and logs accumulated during the process and
 // returns the amount of gas that was used in the process. If any of the
 // transactions failed to execute due to insufficient gas it will return an error.
-func (p *StateProcessor) Process(
+//
+// With the Allegro hard-fork, this function is replaced by the
+// ProcessForAllegro function below.
+func (p *StateProcessor) ProcessForSonic(
 	block *EvmBlock, statedb state.StateDB, cfg vm.Config, usedGas *uint64, onNewLog func(*types.Log),
 ) (
 	receipts types.Receipts, allLogs []*types.Log, skipped []uint32, err error,
@@ -101,6 +104,82 @@ func (p *StateProcessor) Process(
 		allLogs = append(allLogs, receipt.Logs...)
 	}
 	return
+}
+
+// ProcessForAllegro processes the state changes according to the Ethereum rules
+// by running the transaction messages using the statedb and applying any
+// rewards to both the processor (coinbase) and any included uncles.
+//
+// Process returns the receipts and logs accumulated during the process and
+// returns the amount of gas that was used in the process. If any of the
+// transactions failed to execute due to insufficient gas it will return an error.
+//
+// This function must not be used before the Allegro hard-fork. Use
+// ProcessForSonic instead.
+func (p *StateProcessor) ProcessForAllegro(
+	block *EvmBlock, statedb state.StateDB, cfg vm.Config, usedGas *uint64, onNewLog func(*types.Log),
+) (
+	types.Receipts, []*types.Log, []uint32, error,
+) {
+	// This implementation is a wrapper around the BeginBlock function, which
+	// handles the actual transaction processing.
+	run := p.BeginBlock(block, statedb, cfg, onNewLog)
+	receipts := make(types.Receipts, len(block.Transactions))
+	skipped := make([]uint32, 0, len(block.Transactions))
+	allLogs := make([]*types.Log, 0, len(block.Transactions))
+	for i, tx := range block.Transactions {
+		receipt, skip, err := run(i, tx)
+		if skip {
+			skipped = append(skipped, uint32(i))
+			receipts[i] = nil
+			err = nil
+			continue
+		}
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
+		}
+		receipts[i] = receipt
+		allLogs = append(allLogs, receipt.Logs...)
+		*usedGas = receipt.CumulativeGasUsed
+	}
+
+	return receipts, allLogs, skipped, nil
+}
+
+// BeginBlock starts the processing of a new block and returns a function to
+// process individual transactions in the block. It follows the same rules as
+// the Process method, yet enables the incremental processing of transactions.
+// This is required by the transaction scheduler in the emitter, which needs to
+// probe individual transactions to determine their applicability and gas usage.
+func (p *StateProcessor) BeginBlock(
+	block *EvmBlock, statedb state.StateDB, cfg vm.Config, onNewLog func(*types.Log),
+) func(i int, tx *types.Transaction) (receipt *types.Receipt, skipped bool, err error) {
+	var (
+		gp           = new(core.GasPool).AddGas(block.GasLimit)
+		skip         bool
+		header       = block.Header()
+		time         = uint64(block.Time.Unix())
+		blockContext = NewEVMBlockContext(header, p.bc, nil)
+		vmenv        = vm.NewEVM(blockContext, statedb, p.config, cfg)
+		blockNumber  = block.Number
+		signer       = gsignercache.Wrap(types.MakeSigner(p.config, header.Number, time))
+	)
+
+	// execute EIP-2935 HistoryStorage contract.
+	if p.config.IsPrague(blockNumber, time) {
+		ProcessParentBlockHash(block.ParentHash, vmenv)
+	}
+
+	var usedGas uint64
+	return func(i int, tx *types.Transaction) (receipt *types.Receipt, skipped bool, err error) {
+		msg, err := TxAsMessage(tx, signer, header.BaseFee)
+		if err != nil {
+			return nil, false, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
+		}
+		statedb.SetTxContext(tx.Hash(), i)
+		receipt, _, skip, err = applyTransaction(msg, gp, statedb, blockNumber, tx, &usedGas, vmenv, onNewLog)
+		return receipt, skip, err
+	}
 }
 
 // ApplyTransactionWithEVM attempts to apply a transaction to the given state database
