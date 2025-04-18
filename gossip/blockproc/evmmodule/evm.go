@@ -121,13 +121,7 @@ func (p *OperaEVMProcessor) Execute(txs types.Transactions) types.Receipts {
 
 	// Process txs
 	evmBlock := p.evmBlockWith(txs)
-
-	process := evmProcessor.ProcessForSonic
-	if p.net.Upgrades.Allegro {
-		process = evmProcessor.ProcessForAllegro
-	}
-
-	receipts, _, skipped, err := process(evmBlock, p.statedb, opera.DefaultVMConfig, &p.gasUsed, func(l *types.Log) {
+	receipts, _, skipped, err := evmProcessor.Process(evmBlock, p.statedb, opera.DefaultVMConfig, &p.gasUsed, func(l *types.Log) {
 		// Note: l.Index is properly set before
 		l.TxIndex += txsOffset
 		p.onNewLog(l)

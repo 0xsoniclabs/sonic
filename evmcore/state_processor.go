@@ -49,17 +49,10 @@ func NewStateProcessor(config *params.ChainConfig, bc DummyChain) *StateProcesso
 	}
 }
 
-// ProcessForSonic processes the state changes according to the Ethereum rules
-// by running the transaction messages using the statedb and applying any
-// rewards to both the processor (coinbase) and any included uncles.
-//
-// Process returns the receipts and logs accumulated during the process and
-// returns the amount of gas that was used in the process. If any of the
-// transactions failed to execute due to insufficient gas it will return an error.
-//
-// With the Allegro hard-fork, this function is replaced by the
-// ProcessForAllegro function below.
-func (p *StateProcessor) ProcessForSonic(
+// process_sonicLegacy is a legacy version of the Process function handling the
+// processing of a list of transactions in a single step. It is used for
+// checking compatibility with the Process function replacing it.
+func (p *StateProcessor) process_sonicLegacy(
 	block *EvmBlock, statedb state.StateDB, cfg vm.Config, usedGas *uint64, onNewLog func(*types.Log),
 ) (
 	receipts types.Receipts, allLogs []*types.Log, skipped []uint32, err error,
@@ -106,24 +99,21 @@ func (p *StateProcessor) ProcessForSonic(
 	return
 }
 
-// ProcessForAllegro processes the state changes according to the Ethereum rules
-// by running the transaction messages using the statedb and applying any
-// rewards to both the processor (coinbase) and any included uncles.
+// Process processes the state changes according to the Ethereum rules by running
+// the transaction messages using the StateDB and applying any rewards to both
+// the processor (coinbase) and any included uncles.
 //
 // Process returns the receipts and logs accumulated during the process and
 // returns the amount of gas that was used in the process. If any of the
 // transactions failed to execute due to insufficient gas it will return an error.
-//
-// This function must not be used before the Allegro hard-fork. Use
-// ProcessForSonic instead.
-func (p *StateProcessor) ProcessForAllegro(
-	block *EvmBlock, statedb state.StateDB, cfg vm.Config, usedGas *uint64, onNewLog func(*types.Log),
+func (p *StateProcessor) Process(
+	block *EvmBlock, stateDb state.StateDB, cfg vm.Config, usedGas *uint64, onNewLog func(*types.Log),
 ) (
 	types.Receipts, []*types.Log, []uint32, error,
 ) {
 	// This implementation is a wrapper around the BeginBlock function, which
 	// handles the actual transaction processing.
-	run := p.BeginBlock(block, statedb, cfg, onNewLog)
+	run := p.BeginBlock(block, stateDb, cfg, onNewLog)
 	receipts := make(types.Receipts, len(block.Transactions))
 	skipped := make([]uint32, 0, len(block.Transactions))
 	allLogs := make([]*types.Log, 0, len(block.Transactions))
@@ -152,22 +142,22 @@ func (p *StateProcessor) ProcessForAllegro(
 // This is required by the transaction scheduler in the emitter, which needs to
 // probe individual transactions to determine their applicability and gas usage.
 func (p *StateProcessor) BeginBlock(
-	block *EvmBlock, statedb state.StateDB, cfg vm.Config, onNewLog func(*types.Log),
+	block *EvmBlock, stateDb state.StateDB, cfg vm.Config, onNewLog func(*types.Log),
 ) func(i int, tx *types.Transaction) (receipt *types.Receipt, skipped bool, err error) {
 	var (
-		gp           = new(core.GasPool).AddGas(block.GasLimit)
-		skip         bool
-		header       = block.Header()
-		time         = uint64(block.Time.Unix())
-		blockContext = NewEVMBlockContext(header, p.bc, nil)
-		vmenv        = vm.NewEVM(blockContext, statedb, p.config, cfg)
-		blockNumber  = block.Number
-		signer       = gsignercache.Wrap(types.MakeSigner(p.config, header.Number, time))
+		gp            = new(core.GasPool).AddGas(block.GasLimit)
+		skip          bool
+		header        = block.Header()
+		time          = uint64(block.Time.Unix())
+		blockContext  = NewEVMBlockContext(header, p.bc, nil)
+		vmEnvironment = vm.NewEVM(blockContext, stateDb, p.config, cfg)
+		blockNumber   = block.Number
+		signer        = gsignercache.Wrap(types.MakeSigner(p.config, header.Number, time))
 	)
 
 	// execute EIP-2935 HistoryStorage contract.
 	if p.config.IsPrague(blockNumber, time) {
-		ProcessParentBlockHash(block.ParentHash, vmenv)
+		ProcessParentBlockHash(block.ParentHash, vmEnvironment)
 	}
 
 	var usedGas uint64
@@ -176,8 +166,8 @@ func (p *StateProcessor) BeginBlock(
 		if err != nil {
 			return nil, false, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
 		}
-		statedb.SetTxContext(tx.Hash(), i)
-		receipt, _, skip, err = applyTransaction(msg, gp, statedb, blockNumber, tx, &usedGas, vmenv, onNewLog)
+		stateDb.SetTxContext(tx.Hash(), i)
+		receipt, _, skip, err = applyTransaction(msg, gp, stateDb, blockNumber, tx, &usedGas, vmEnvironment, onNewLog)
 		return receipt, skip, err
 	}
 }
@@ -304,8 +294,10 @@ func applyTransaction(
 	// contract listener, only the sender, topics, and the data are relevant.
 	// The block hash is not used.
 	logs := statedb.GetLogs(tx.Hash(), common.Hash{})
-	for _, l := range logs {
-		onNewLog(l)
+	if onNewLog != nil {
+		for _, l := range logs {
+			onNewLog(l)
+		}
 	}
 
 	// Update the state with pending changes.
