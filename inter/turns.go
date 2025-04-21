@@ -10,8 +10,8 @@ import (
 type Turn uint32
 
 // TurnTimeoutInFrames is the number of frames after which a turn is considered
-// failed. Hence, if for the given number of frames no proposal is made, the a
-// turn times out and the next turn is started.
+// failed. Hence, if for the given number of frames no proposal is made, the
+// current turn times out and the next turn is started.
 //
 // The value is set to 8 frames after empirical testing of the network has shown
 // an average latency of 3 frames. The timeout is set to 8 frames to account for
@@ -36,11 +36,26 @@ func IsValidTurnProgression(
 		return false
 	}
 
-	// Every attempt has a window of frames (d*C,(d+1)*C] where d is the number
-	// of turns between the last and the next turn. Thus, the immediate
-	// successor of a turn can be processed in the frames (0,C] = [1,C] after
-	// the last turn. If the successor turn is not materializing, the next turn
-	// can be processed in the frames (C,2*C] = [C+1,2*C] after the last turn.
+	// Every turn has a window of frames after the last successful turn during
+	// which it is valid to make a proposal. Let l be the frame number of the
+	// last successful turn t and q the attempted turn to be made. Then q is
+	// valid for the frames f if
+	//
+	//                       d * C < f - l <= (d + 1) * C
+	// where
+	//   - d = q - t - 1 ... number of failed turns between t and q
+	//   - C = TurnTimeoutInFrames ... number of frames after which a turn is
+	//     considered to have timed out
+	//
+	// Thus, the immediate successor turn q = t+1 is valid for the frames f iff
+	//                              0 < f - l <= C
+	// which is equivalent to
+	//                              l < f <= l + C
+	// If the turn t+1 is not materializing, the next turn q = t+2 is valid for
+	// the frames f iff
+	//                              C < f - l <= 2 * C
+	// which is equivalent to
+	//                           l + C < f <= l + 2 * C
 	//
 	// This rules partition future frames into intervals of size C, each
 	// associated to a specific turn. Thus, for no future frame the last seen
