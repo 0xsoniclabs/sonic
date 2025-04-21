@@ -21,20 +21,16 @@ message Payload {
     // The turn number of the last seen proposal. Validators take turns in
     // proposing blocks. In each turn, one validator is allowed to propose a
     // block. If done so, another validator is selected for the next turn. If
-    // a validator responsible for proposing a block fails to du so in a given
+    // a validator responsible for proposing a block fails to do so in a given
     // number of Lachesis frames / rounds, it is identified as failed and the
     // next turn is starts.
     uint32 lastSeenProposalTurn = 2;
 
-    // The attempt number of the last proposal seen in the event containing this
-    // payload. The seen rules are the same as for the last seen proposal number.
-    // For genesis events, this value is 0.
-
-    // The number of the last proposal block seen by the event containing this
-    // payload. A proposal is "seen" if there is an event in the ancestry of
-    // this event that contains the given block number. If there are multiple,
-    // the highest number is to be reported. If this event contains a proposal,
-    // the number of the proposed block is to be reported.
+    // The number of the last proposed block seen by the event containing this
+    // payload. A proposal is "seen" if it is contained in an event in the
+    // ancestry of this event. If there are multiple seen proposals, the one with
+    // the highest number is to be used. If this event contains a proposal,
+    // the number of the proposed block is to be used.
     //
     // If the event containing this payload is a genesis event, this number is
     // to be set to the block height at the begin of the respective epoch.
@@ -47,5 +43,5 @@ message Payload {
     // An optional proposal made by this event. If present, it is the latest
     // seen proposal for this event. Proposals made must be valid successors
     // of the last seen proposal in the strict ancestry of this event.
-    Proposal proposal = 5;
+    optional Proposal proposal = 5;
 }
