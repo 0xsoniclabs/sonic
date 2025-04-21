@@ -50,8 +50,8 @@ func GetProposer(
 		new(big.Rat).SetInt(new(big.Int).Lsh(big.NewInt(1), 256)),
 	)
 
-	// Find the first validator whose cumulative weight is greater than or equal
-	// to the limit.
+	// Walk through the validators sorted by their stake (and ID as a tiebreaker)
+	// and accumulate their weights until we reach the limit calculated above.
 	res := ids[0]
 	cumulated := big.NewRat(0, 1)
 	for i, weight := range validators.SortedWeights() {
