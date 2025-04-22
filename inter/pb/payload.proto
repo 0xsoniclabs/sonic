@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package sonic.inter.proto;
+
+option go_package = ".;pb";
+
+import "proposal.proto";
+
+// Payload is the top-level payload data of the version 3 of the lachesis event.
+// It constitutes the entry point for any information to be stored in events,
+// and can be expanded in a backward-compatible way in the future.
+message Payload {
+
+    // The version of the proto-payload. The initial version is 1.
+    // If the payload container is expanded with new significant fields that
+    // require a hard-fork, this version number is to be increased.
+    uint32 version = 1;
+
+    // -- Block Proposal Tracking --
+
+    // The turn number of the last seen proposal. Validators take turns in
+    // proposing blocks. In each turn, one validator is allowed to propose a
+    // block. If done so, another validator is selected for the next turn. If
+    // a validator responsible for proposing a block fails to do so in a given
+    // number of Lachesis frames / rounds, it is identified as failed and the
+    // next turn is starts.
+    uint32 lastSeenProposalTurn = 2;
+
+    // The number of the last proposed block seen by the event containing this
+    // payload. A proposal is "seen" if it is contained in an event in the
+    // ancestry of this event. If there are multiple seen proposals, the one with
+    // the highest number is to be used. If this event contains a proposal,
+    // the number of the proposed block is to be used.
+    //
+    // If the event containing this payload is a genesis event, this number is
+    // to be set to the block height at the begin of the respective epoch.
+    uint64 lastSeenProposedBlock = 3;
+
+    // The frame number of the last seen proposal. For genesis events, this
+    // value is 0.
+    uint32 lastSeenProposalFrame = 4;
+
+    // An optional proposal made by this event. If present, it is the latest
+    // seen proposal for this event. Proposals made must be valid successors
+    // of the last seen proposal in the strict ancestry of this event.
+    optional Proposal proposal = 5;
+}
