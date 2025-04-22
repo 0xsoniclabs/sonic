@@ -1,26 +1,29 @@
 package tests
 
 import (
-	"fmt"
 	"math"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/stretchr/testify/require"
 )
 
-func TestEthCall_CodeLargerThanMaxInitCodeSizeIsNotAccepted(t *testing.T) {
+func TestEthCall_CodeLargerThanMaxInitCodeSizeIsAccepted(t *testing.T) {
 	tests := map[string]struct {
 		codeSize int
-		err      error
 	}{
 		"max code size": {
-			math.MaxUint16, // max code size supported by the LFVM
-			nil,
+			params.MaxCodeSize,
 		},
 		"max code size + 1": {
+			params.MaxCodeSize + 1,
+		},
+		"max code size lfvm": {
+			math.MaxUint16, // max code size supported by the LFVM
+		},
+		"max code size lfvm + 1": {
 			math.MaxUint16 + 1,
-			fmt.Errorf("max code size exceeded"),
 		},
 	}
 	net := StartIntegrationTestNet(t)
@@ -51,11 +54,7 @@ func TestEthCall_CodeLargerThanMaxInitCodeSizeIsNotAccepted(t *testing.T) {
 
 			var res interface{}
 			err = rpcClient.Call(&res, "eth_call", txArguments, requestedBlock, stateOverrides)
-			if test.err == nil {
-				require.NoError(t, err)
-			} else {
-				require.ErrorContains(t, err, test.err.Error())
-			}
+			require.NoError(t, err)
 		})
 	}
 }

@@ -27,7 +27,7 @@ type CostDefinition struct {
 
 type TestCase struct {
 	names     []string
-	txPayload types.AccessListTx
+	txPayload *types.AccessListTx
 }
 
 func (tc *TestCase) String() string {
@@ -63,8 +63,9 @@ func TestGasCostTest_Sonic(t *testing.T) {
 		for test := range makeGasCostTestInputs(t, session) {
 			t.Run(test.String(), func(t *testing.T) {
 				test.txPayload.Gas = test.txPayload.Gas - 1
+				test.txPayload = setTransactionDefaults(t, session, test.txPayload, session.GetSessionSponsor())
 
-				tx := signTransaction(t, chainId, &test.txPayload, session.GetSessionSponsor())
+				tx := signTransaction(t, chainId, test.txPayload, session.GetSessionSponsor())
 				require.NoError(t, err)
 
 				err := client.SendTransaction(context.Background(), tx)
@@ -81,7 +82,8 @@ func TestGasCostTest_Sonic(t *testing.T) {
 		session := net.SpawnSession(t)
 		for test := range makeGasCostTestInputs(t, session) {
 			t.Run(test.String(), func(t *testing.T) {
-				tx := signTransaction(t, chainId, &test.txPayload, session.GetSessionSponsor())
+				test.txPayload = setTransactionDefaults(t, session, test.txPayload, session.GetSessionSponsor())
+				tx := signTransaction(t, chainId, test.txPayload, session.GetSessionSponsor())
 				require.NoError(t, err)
 
 				expectedCost, err := core.IntrinsicGas(tx.Data(), tx.AccessList(), tx.SetCodeAuthorizations(), tx.To() == nil, true, true, true)
@@ -104,8 +106,9 @@ func TestGasCostTest_Sonic(t *testing.T) {
 
 				// Increase gas by 20% to make sure we have some unused gas
 				test.txPayload.Gas = uint64(float32(test.txPayload.Gas) * 1.2)
+				test.txPayload = setTransactionDefaults(t, session, test.txPayload, session.GetSessionSponsor())
 
-				tx := signTransaction(t, chainId, &test.txPayload, session.GetSessionSponsor())
+				tx := signTransaction(t, chainId, test.txPayload, session.GetSessionSponsor())
 				require.NoError(t, err)
 
 				expectedCost, err := core.IntrinsicGas(tx.Data(), tx.AccessList(), tx.SetCodeAuthorizations(), tx.To() == nil, true, true, true)
@@ -166,9 +169,10 @@ func TestGasCostTest_Allegro(t *testing.T) {
 		for test := range makeGasCostTestInputs(t, session) {
 			t.Run(test.String(), func(t *testing.T) {
 
-				test.txPayload.Gas = computeEIP7623GasCost(t, &test.txPayload) - 1
+				test.txPayload.Gas = computeEIP7623GasCost(t, test.txPayload) - 1
+				test.txPayload = setTransactionDefaults(t, session, test.txPayload, session.GetSessionSponsor())
 
-				tx := signTransaction(t, chainId, &test.txPayload, session.GetSessionSponsor())
+				tx := signTransaction(t, chainId, test.txPayload, session.GetSessionSponsor())
 				require.NoError(t, err)
 
 				err := client.SendTransaction(context.Background(), tx)
@@ -189,13 +193,14 @@ func TestGasCostTest_Allegro(t *testing.T) {
 		for test := range makeGasCostTestInputs(t, session) {
 			t.Run(test.String(), func(t *testing.T) {
 
-				correctedGasCost := computeEIP7623GasCost(t, &test.txPayload)
+				correctedGasCost := computeEIP7623GasCost(t, test.txPayload)
 				if correctedGasCost != test.txPayload.Gas {
 					corrections++
 				}
 				test.txPayload.Gas = correctedGasCost
+				test.txPayload = setTransactionDefaults(t, session, test.txPayload, session.GetSessionSponsor())
 
-				tx := signTransaction(t, chainId, &test.txPayload, session.GetSessionSponsor())
+				tx := signTransaction(t, chainId, test.txPayload, session.GetSessionSponsor())
 				require.NoError(t, err)
 
 				receipt, err := session.Run(tx)
@@ -231,8 +236,9 @@ func TestGasCostTest_Allegro(t *testing.T) {
 				}
 
 				test.txPayload.Gas = incremented
+				test.txPayload = setTransactionDefaults(t, session, test.txPayload, session.GetSessionSponsor())
 
-				tx := signTransaction(t, chainId, &test.txPayload, session.GetSessionSponsor())
+				tx := signTransaction(t, chainId, test.txPayload, session.GetSessionSponsor())
 				require.NoError(t, err)
 
 				expectedCost, err := core.IntrinsicGas(tx.Data(), tx.AccessList(), tx.SetCodeAuthorizations(), tx.To() == nil, true, true, true)
@@ -315,12 +321,8 @@ func makeGasCostTestInputs(
 		func() TestCase {
 			t.Helper()
 
-			nonce, err := client.NonceAt(context.Background(), session.GetSessionSponsor().Address(), nil)
-			require.NoError(t, err)
-
 			tc := TestCase{
-				txPayload: types.AccessListTx{
-					Nonce:    nonce,
+				txPayload: &types.AccessListTx{
 					GasPrice: gasPrice,
 					Gas:      21000,
 				}}
@@ -407,11 +409,11 @@ func makeGasCostTestInputs(
 		func(tc TestCase, pieces []CostDefinition) TestCase {
 			for _, piece := range pieces {
 				if piece.modification != nil {
-					piece.modification(&tc.txPayload)
+					piece.modification(tc.txPayload)
 				}
 				tc.txPayload.Gas += piece.cost
 				if piece.variableCost != nil {
-					tc.txPayload.Gas += piece.variableCost(&tc.txPayload)
+					tc.txPayload.Gas += piece.variableCost(tc.txPayload)
 				}
 				tc.names = append(tc.names, piece.name)
 			}

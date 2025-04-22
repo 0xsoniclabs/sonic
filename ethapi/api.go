@@ -1014,6 +1014,19 @@ func (diff *StateOverride) Apply(state state.StateDB) error {
 	return nil
 }
 
+func (diff *StateOverride) HasCodesExceedingOnChainLimit() bool {
+	if diff == nil {
+		return false
+	}
+	for _, account := range *diff {
+		// Check account(contract) code length.
+		if account.Code != nil && len(*account.Code) > params.MaxCodeSize {
+			return true
+		}
+	}
+	return false
+}
+
 func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, overrides *StateOverride, blockOverrides *BlockOverrides, timeout time.Duration, globalGasCap uint64) (*core.ExecutionResult, error) {
 	defer func(start time.Time) { log.Debug("Executing EVM call finished", "runtime", time.Since(start)) }(time.Now())
 
@@ -1043,6 +1056,11 @@ func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash 
 		return nil, err
 	}
 	vmConfig := opera.DefaultVMConfig
+	if overrides.HasCodesExceedingOnChainLimit() {
+		// Use geth as VM for computation
+		vmConfig.Tracer = &tracing.Hooks{}
+	}
+
 	var blockCtx *vm.BlockContext
 	if blockOverrides != nil {
 		bctx := getBlockContext(ctx, b, header)
