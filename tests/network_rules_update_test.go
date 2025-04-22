@@ -48,8 +48,7 @@ func TestNetworkRule_Update_RulesChangeDuringEpochHasNoEffect(t *testing.T) {
 	require.Equal(originalRules.Economy.MinBaseFee, updatedRules.Economy.MinBaseFee,
 		"Network rules should not change - it must be an epoch bound")
 
-	var blockBefore evmcore.EvmBlockJson
-	err = client.Client().Call(&blockBefore, "eth_getBlockByNumber", "latest", false)
+	blockBefore, err := client.BlockByNumber(t.Context(), nil)
 	require.NoError(err)
 
 	require.Less(blockBefore.BaseFee.ToInt().Int64(), newMinBaseFee, "BaseFee should not reflect new MinBaseFee")
