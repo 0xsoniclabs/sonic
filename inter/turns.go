@@ -38,7 +38,7 @@ func IsValidTurnProgression(
 
 	// Every turn has a window of frames after the last successful turn during
 	// which it is valid to make a proposal. Let l be the frame number of the
-	// last successful turn t and q the attempted turn to be made. Then q is
+	// last successful turn t, and q the attempted turn to be made. Then q is
 	// valid for the frames f if
 	//
 	//                       d * C < f - l <= (d + 1) * C
