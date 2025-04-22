@@ -10,11 +10,6 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 )
 
-// Turn is the turn number of a proposal. Turns are used to orchestrate the
-// sequence of block proposals in the consensus protocol. Turns are processed
-// in order. A turn ends with a proposer making a proposal or a timeout.
-type Turn uint32
-
 // GetProposer returns the designated proposer for a given turn.
 // The proposer is determined through deterministic sampling of validators
 // proportional to the validator's stake.
