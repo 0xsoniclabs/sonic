@@ -15,7 +15,6 @@
 */*.test
 */*.out
 fuzzing/
-coverage/
 
 # Build output
 build

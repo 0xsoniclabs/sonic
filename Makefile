@@ -50,12 +50,12 @@ fuzz:
 
 .PHONY: integration-coverage
 integration-coverage: DATE=$(shell date +"%Y-%m-%d-%T")
-integration-coverage: export GOCOVERDIR=./coverage/${DATE}
+integration-coverage: export GOCOVERDIR=./build/coverage/${DATE}
 integration-coverage: 
 	@mkdir -p ${GOCOVERDIR} ;\
-	go test ./tests/ -coverpkg=${PACKAGES} -coverprofile=${GOCOVERDIR}/cover.out ;\
-	go tool cover -html ${GOCOVERDIR}/cover.out -o ${GOCOVERDIR}/coverage.html ;\
-	echo "Coverage report generated in ${GOCOVERDIR}/coverage.html"
+	go test ./tests/ -coverpkg=${PACKAGES} -coverprofile=${GOCOVERDIR}/integration-cover.out ;\
+	go tool cover -html ${GOCOVERDIR}/integration-cover.out -o ${GOCOVERDIR}/integration-coverage.html ;\
+	echo "Coverage report generated in ${GOCOVERDIR}/integration-coverage.html"
 
 .PHONY: integration-cover-all
 integration-cover-all: PACKAGES=./...
