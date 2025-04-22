@@ -116,7 +116,7 @@ func TestNetworkRule_Update_Restart_Recovers_Original_Value(t *testing.T) {
 	// apply epoch change
 	advanceEpoch(t, net)
 
-	// rule should be effective
+	// rule change should be effective
 	err = client2.Client().Call(&updatedRules, "eth_getRules", "latest")
 	require.NoError(err)
 
