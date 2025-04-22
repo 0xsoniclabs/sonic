@@ -142,6 +142,11 @@ func consensusCallbackBeginBlockFn(
 				for _, em := range *emitters {
 					em.OnEventConfirmed(e)
 				}
+
+				// Inform the certification chain node about signatures
+				// delivered by this confirmed block.
+				processSignaturesInEvent(sccNode, store, e)
+
 				confirmedEventsMeter.Mark(1)
 			},
 			EndBlock: func() (newValidators *pos.Validators) {
@@ -375,18 +380,14 @@ func consensusCallbackBeginBlockFn(
 					store.SetBlockEpochState(bs, es)
 					store.EvmStore().SetCachedEvmBlock(blockCtx.Idx, evmBlock)
 
-					// Inform the SCC about the new block
-					if sccNode != nil {
-						err := sccNode.NewBlock(cert.NewBlockStatement(
-							chainCfg.ChainID.Uint64(),
-							blockCtx.Idx,
-							block.Hash(),
-							block.StateRoot,
-						))
-						if err != nil {
-							log.Warn("Failed to inform SCC about new block", "err", err)
-						}
-					}
+					// Inform the chain node about the new block and instruct
+					// the emitter to distribute potential signatures.
+					updateCertificationChain(sccNode, *emitters, cert.NewBlockStatement(
+						chainCfg.ChainID.Uint64(),
+						blockCtx.Idx,
+						block.Hash(),
+						block.StateRoot,
+					))
 
 					// Update the metrics touched during block processing
 					executionTime := time.Since(executionStart)
@@ -493,4 +494,81 @@ func mergeCheaters(a, b lachesis.Cheaters) lachesis.Cheaters {
 		}
 	}
 	return merged
+}
+
+// processSignaturesInEvent forwards potential signatures delivered by the
+// confirmed event to the certification chain node.
+func processSignaturesInEvent(
+	sccNode *scc_node.Node,
+	store *Store,
+	e inter.EventI,
+) {
+	if sccNode == nil {
+		return
+	}
+	payload := store.GetEventPayload(e.ID())
+	for _, signature := range payload.CommitteeSignatures() {
+		err := sccNode.ProcessIncomingCommitteeSignature(
+			e.Creator(),
+			signature.Period,
+			signature.Signature,
+		)
+		if err != nil {
+			log.Warn("Failed to inform certification chain about committee signature", "err", err)
+		}
+	}
+	for _, signature := range payload.BlockSignatures() {
+		err := sccNode.ProcessIncomingBlockSignature(
+			e.Creator(),
+			signature.Number,
+			signature.Signature,
+		)
+		if err != nil {
+			log.Warn("Failed to inform certification chain about block signature", "err", err)
+		}
+	}
+}
+
+// updateCertificationChain informs the SCC about the new block and instructs
+// the provided emitters to distribute potential signatures. The operation is a
+// no-op if the SCC node is nil.
+func updateCertificationChain(
+	sccNode *scc_node.Node,
+	emitters []*emitter.Emitter,
+	stmt cert.BlockStatement,
+) {
+	if sccNode == nil {
+		return
+	}
+
+	// Inform the SCC about the new block
+	committeeAttestations, blockAttestations, err := sccNode.ProcessNewBlock(stmt)
+	if err != nil {
+		log.Warn("Failed to inform certification chain about new block", "err", err)
+		return
+	}
+
+	// Instruct emitter to distribute committee signature.
+	for _, attestation := range committeeAttestations {
+		for _, emitter := range emitters {
+			emitter.EnqueueCommitteeSignatureForBroadcast(
+				inter.CommitteeSignature{
+					Period:    attestation.Subject.Period,
+					Signature: attestation.Signature,
+				},
+			)
+		}
+	}
+
+	// Instruct emitter to distribute block signature.
+	for _, attestation := range blockAttestations {
+		for _, emitter := range emitters {
+			emitter.EnqueueBlockSignatureForBroadcast(
+				inter.BlockSignature{
+					Number:    attestation.Subject.Number,
+					Signature: attestation.Signature,
+				},
+			)
+		}
+	}
 }
