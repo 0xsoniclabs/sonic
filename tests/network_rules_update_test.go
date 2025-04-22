@@ -107,6 +107,10 @@ func TestNetworkRule_Update_Restart_Recovers_Original_Value(t *testing.T) {
 	require.NoError(err)
 	defer client2.Close()
 
+	// produce a block to make sure the rule is not applied
+	_, err = net.EndowAccount(common.Address{}, big.NewInt(1))
+	require.NoError(err)
+
 	// Network rule should not change - it must be an epoch bound
 	var updatedRules rulesType
 	err = client2.Client().Call(&updatedRules, "eth_getRules", "latest")
