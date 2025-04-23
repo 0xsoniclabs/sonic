@@ -115,6 +115,13 @@ func TestTransactionStore_CanTransactionsBeRetrievedFromBlocksAfterRestart(t *te
 		executedIn[tx] = receipt.BlockNumber
 	}
 
+	for _, tx := range txs {
+		got, pending, err := client.TransactionByHash(t.Context(), tx.Hash())
+		require.NoError(t, err, "failed to get tx")
+		require.False(t, pending)
+		require.Equal(t, tx.Hash(), got.Hash(), "tx hash mismatch")
+	}
+
 	err = net.Restart()
 	require.NoError(t, err, "failed to restart network; %v", err)
 
@@ -130,5 +137,12 @@ func TestTransactionStore_CanTransactionsBeRetrievedFromBlocksAfterRestart(t *te
 			slices.ContainsFunc(block.Transactions(), func(received *types.Transaction) bool {
 				return received.Hash() == tx.Hash()
 			}))
+	}
+
+	for _, tx := range txs {
+		got, pending, err := client.TransactionByHash(t.Context(), tx.Hash())
+		require.NoError(t, err, "failed to get tx")
+		require.False(t, pending)
+		require.Equal(t, tx.Hash(), got.Hash(), "tx hash mismatch")
 	}
 }
