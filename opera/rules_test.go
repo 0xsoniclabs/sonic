@@ -169,7 +169,7 @@ func TestRules_Copy_CopiesAreDisjoint(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			// Create a deep copy of the original rules
-			original := MainNetRules()
+			original := FakeNetRules(AllegroFeatures)
 			copied := original.Copy()
 
 			// Apply the update to the copied rules
@@ -180,5 +180,16 @@ func TestRules_Copy_CopiesAreDisjoint(t *testing.T) {
 				t.Errorf("original and copied rules are the same: got %v, want %v", got, want)
 			}
 		})
+	}
+}
+
+func TestRules_MinBaseFee_NoCopy_PreAllegro(t *testing.T) {
+	original := FakeNetRules(SonicFeatures)
+	copied := original.Copy()
+
+	copied.Economy.MinBaseFee.SetInt64(2 * copied.Economy.MinBaseFee.Int64())
+
+	if got, want := original.Economy.MinBaseFee.Int64(), copied.Economy.MinBaseFee.Int64(); got != want {
+		t.Errorf("original and copied rules must be the same - shallow copy for preAllegro: got %d, want %d", got, want)
 	}
 }

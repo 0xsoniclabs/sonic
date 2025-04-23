@@ -3,6 +3,7 @@ package tests
 import (
 	"encoding/json"
 	"github.com/0xsoniclabs/sonic/gossip/contract/driverauth100"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -15,7 +16,7 @@ import (
 
 func TestNetworkRule_Update_RulesChangeIsDelayedUntilNextEpochStart(t *testing.T) {
 	require := require.New(t)
-	net := StartIntegrationTestNetWithFakeGenesis(t)
+	net := StartIntegrationTestNetWithFakeGenesis(t, IntegrationTestNetOptions{FeatureSet: opera.AllegroFeatures})
 
 	client, err := net.GetClient()
 	require.NoError(err)
@@ -72,9 +73,53 @@ func TestNetworkRule_Update_RulesChangeIsDelayedUntilNextEpochStart(t *testing.T
 	require.GreaterOrEqual(blockAfter.BaseFee().Int64(), newMinBaseFee, "BaseFee should reflect new MinBaseFee")
 }
 
+func TestNetworkRule_Update_RulesChangeDuringEpoch_PreAllegro(t *testing.T) {
+	require := require.New(t)
+	net := StartIntegrationTestNetWithFakeGenesis(t, IntegrationTestNetOptions{FeatureSet: opera.SonicFeatures})
+
+	client, err := net.GetClient()
+	require.NoError(err)
+	defer client.Close()
+
+	type rulesType struct {
+		Economy struct {
+			MinBaseFee *big.Int
+		}
+	}
+
+	var originalRules rulesType
+	err = client.Client().Call(&originalRules, "eth_getRules", "latest")
+	require.NoError(err)
+	require.NotEqual(0, originalRules.Economy.MinBaseFee.Int64(), "MinBaseFee should be filled")
+
+	newMinBaseFee := 10 * originalRules.Economy.MinBaseFee.Int64()
+	updateRequest := rulesType{}
+	updateRequest.Economy.MinBaseFee = new(big.Int).SetInt64(newMinBaseFee)
+
+	// Update network rules
+	updateNetworkRules(t, net, updateRequest)
+
+	// Network rule applied immediately - only for pre-Allegro versions
+	var updatedRules rulesType
+	err = client.Client().Call(&updatedRules, "eth_getRules", "latest")
+	require.NoError(err)
+
+	require.Equal(updatedRules.Economy.MinBaseFee.Int64(), newMinBaseFee,
+		"Network rules not changed")
+
+	// produce a block to make sure the rule is applied
+	_, err = net.EndowAccount(common.Address{}, big.NewInt(1))
+	require.NoError(err)
+
+	blockAfter, err := client.BlockByNumber(t.Context(), nil)
+	require.NoError(err)
+
+	require.GreaterOrEqual(blockAfter.BaseFee().Int64(), newMinBaseFee, "BaseFee should reflect new MinBaseFee")
+}
+
 func TestNetworkRule_Update_Restart_Recovers_Original_Value(t *testing.T) {
 	require := require.New(t)
-	net := StartIntegrationTestNetWithFakeGenesis(t)
+	net := StartIntegrationTestNetWithFakeGenesis(t, IntegrationTestNetOptions{FeatureSet: opera.AllegroFeatures})
 
 	client, err := net.GetClient()
 	require.NoError(err)
