@@ -16,11 +16,6 @@ const (
 	currentPayloadVersion = 1
 )
 
-// Turn is the turn number of a proposal. Turns are used to orchestrate the
-// sequence of block proposals in the consensus protocol. Turns are processed
-// in order. A turn ends with a proposer making a proposal or a timeout.
-type Turn uint32
-
 // Payload is the content of an event of version 3. Unlike previous formats,
 // defining new RLP encoded content, this payload uses protobuf encoding to
 // standardize the serialization of the content and simplify portability.

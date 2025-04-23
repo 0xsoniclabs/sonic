@@ -18,7 +18,6 @@ package evmcore
 
 import (
 	"errors"
-	"fmt"
 	"iter"
 	"math"
 	"math/big"
@@ -31,7 +30,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/prque"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
-	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	notify "github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
@@ -39,7 +37,6 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 
-	"github.com/0xsoniclabs/sonic/gossip/gasprice/gaspricelimits"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/sonic/utils/signers/gsignercache"
 	"github.com/0xsoniclabs/sonic/utils/txtime"
@@ -676,129 +673,26 @@ func (pool *TxPool) local() map[common.Address]types.Transactions {
 // validateTx checks whether a transaction is valid according to the consensus
 // rules and adheres to some heuristic limits of the local node (price and size).
 func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
-	// Accept only legacy transactions until EIP-2718/2930 activates.
-	if !pool.eip2718 && tx.Type() != types.LegacyTxType {
-		return ErrTxTypeNotSupported
+	opts := validationOptions{
+		istanbul:       pool.istanbul,
+		shanghai:       pool.shanghai,
+		eip1559:        pool.eip1559,
+		eip2718:        pool.eip2718,
+		eip4844:        pool.eip4844,
+		eip7623:        pool.eip7623,
+		eip7702:        pool.eip7702,
+		currentState:   pool.currentState,
+		currentMaxGas:  pool.currentMaxGas,
+		currentBaseFee: pool.chain.GetCurrentBaseFee(),
+		minTip:         pool.gasPrice,
+		locals:         pool.locals,
+		isLocal:        local,
+		signer:         pool.signer,
 	}
-	// Reject dynamic fee transactions until EIP-1559 activates.
-	if !pool.eip1559 && tx.Type() == types.DynamicFeeTxType {
-		return ErrTxTypeNotSupported
-	}
-
-	// Reject blob transactions until EIP-4844 activates or if is already EIP-4844 and they are not empty
-	if tx.Type() == types.BlobTxType {
-		if !pool.eip4844 {
-			return ErrTxTypeNotSupported
-		}
-		// For now, Sonic only supports Blob transactions without blob data.
-		if len(tx.BlobHashes()) > 0 ||
-			(tx.BlobTxSidecar() != nil && len(tx.BlobTxSidecar().BlobHashes()) > 0) {
-			return ErrTxTypeNotSupported
-		}
-	}
-
-	// validate EIP-7702 transactions
-	if tx.Type() == types.SetCodeTxType {
-		// Check minimum revision
-		if !pool.eip7702 {
-			return ErrTxTypeNotSupported
-		}
-
-		// Check non-empty authorization list
-		if len(tx.SetCodeAuthorizations()) == 0 {
-			return ErrEmptyAuthorizations
-		}
-	}
-
-	// Reject transactions over defined size to prevent DOS attacks
-	if uint64(tx.Size()) > txMaxSize {
-		return ErrOversizedData
-	}
-
-	// Check whether the init code size has been exceeded
-	if pool.shanghai && tx.To() == nil && len(tx.Data()) > params.MaxInitCodeSize {
-		return fmt.Errorf("%w: code size %v, limit %v", ErrMaxInitCodeSizeExceeded, len(tx.Data()), params.MaxInitCodeSize)
-	}
-
-	// Transactions can't be negative. This may never happen using RLP decoded
-	// transactions but may occur if you create a transaction using the RPC.
-	if tx.Value().Sign() < 0 {
-		return ErrNegativeValue
-	}
-	// Ensure the transaction doesn't exceed the current block limit gas.
-	if pool.currentMaxGas < tx.Gas() {
-		return ErrGasLimit
-	}
-	// Sanity check for extremely large numbers
-	if tx.GasFeeCap().BitLen() > 256 {
-		return ErrFeeCapVeryHigh
-	}
-	if tx.GasTipCap().BitLen() > 256 {
-		return ErrTipVeryHigh
-	}
-	// Ensure gasFeeCap is greater than or equal to gasTipCap.
-	if tx.GasFeeCapIntCmp(tx.GasTipCap()) < 0 {
-		return ErrTipAboveFeeCap
-	}
-	// Make sure the transaction is signed properly.
-	from, err := types.Sender(pool.signer, tx)
-	if err != nil {
-		return ErrInvalidSender
-	}
-
-	// Drop non-local transactions under our own minimal accepted gas price or tip
-	local = local || pool.locals.contains(from) // account may be local even if the transaction arrived from the network
-	if !local && tx.GasTipCapIntCmp(pool.gasPrice) < 0 {
-		log.Trace("Rejecting underpriced tx: pool.gasPrice", "pool.gasPrice", pool.gasPrice, "tx.GasTipCap", tx.GasTipCap())
-		return ErrUnderpriced
-	}
-	// Ensure Opera-specific hard bounds
-	if baseFee := pool.chain.GetCurrentBaseFee(); baseFee != nil {
-		limit := gaspricelimits.GetMinimumFeeCapForTransactionPool(baseFee)
-		if tx.GasFeeCapIntCmp(limit) < 0 {
-			log.Trace("Rejecting underpriced tx: minimumBaseFee", "minimumBaseFee", baseFee, "limit", limit, "tx.GasFeeCap", tx.GasFeeCap())
-			return ErrUnderpriced
-		}
-	}
-
-	// Ensure the transaction adheres to nonce ordering
-	if pool.currentState.GetNonce(from) > tx.Nonce() {
-		return ErrNonceTooLow
-	}
-	// Transactor should have enough funds to cover the costs
-	// cost == V + GP * GL
-	if utils.Uint256ToBigInt(pool.currentState.GetBalance(from)).Cmp(tx.Cost()) < 0 {
-		return ErrInsufficientFunds
-	}
-	// Ensure the transaction has more gas than the basic tx fee.
-	intrGas, err := core.IntrinsicGas(
-		tx.Data(),
-		tx.AccessList(),
-		tx.SetCodeAuthorizations(),
-		tx.To() == nil, // is contract creation
-		true,           // is homestead
-		pool.istanbul,  // is eip-2028 (transactional data gas cost reduction)
-		pool.shanghai,  // is eip-3860 (limit and meter init-code )
-	)
+	err := validateTx(tx, opts)
 	if err != nil {
 		return err
 	}
-	if tx.Gas() < intrGas {
-		return ErrIntrinsicGas
-	}
-
-	// EIP-7623: Floor data gas
-	// see: https://eips.ethereum.org/EIPS/eip-7623
-	if pool.eip7623 {
-		floorDataGas, err := core.FloorDataGas(tx.Data())
-		if err != nil {
-			return err
-		}
-		if tx.Gas() < floorDataGas {
-			return fmt.Errorf("%w: have %d, want %d", ErrFloorDataGas, tx.Gas(), floorDataGas)
-		}
-	}
-
 	return pool.validateAuth(tx)
 }
 

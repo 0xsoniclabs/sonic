@@ -48,6 +48,18 @@ fuzz:
 	go run github.com/dvyukov/go-fuzz/go-fuzz-build -o=./fuzzing/gossip-fuzz.zip ./gossip && \
 	go run github.com/dvyukov/go-fuzz/go-fuzz -workdir=./fuzzing -bin=./fuzzing/gossip-fuzz.zip
 
+.PHONY: integration-coverage
+integration-coverage: DATE=$(shell date +"%Y-%m-%d-%T")
+integration-coverage: export GOCOVERDIR=./build/coverage/${DATE}
+integration-coverage: 
+	@mkdir -p ${GOCOVERDIR} ;\
+	go test ./tests/ -coverpkg=${PACKAGES} -coverprofile=${GOCOVERDIR}/integration-cover.out ;\
+	go tool cover -html ${GOCOVERDIR}/integration-cover.out -o ${GOCOVERDIR}/integration-coverage.html ;\
+	echo "Coverage report generated in ${GOCOVERDIR}/integration-coverage.html"
+
+.PHONY: integration-cover-all
+integration-cover-all: PACKAGES=./...
+integration-cover-all: integration-coverage
 
 .PHONY: clean
 clean:
