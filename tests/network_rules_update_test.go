@@ -13,7 +13,7 @@ import (
 	"testing"
 )
 
-func TestNetworkRule_Update_RulesChangeDuringEpochHasNoEffect(t *testing.T) {
+func TestNetworkRule_Update_RulesChangeIsDelayedUntilNextEpochStart(t *testing.T) {
 	require := require.New(t)
 	net := StartIntegrationTestNetWithFakeGenesis(t)
 
