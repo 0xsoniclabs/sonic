@@ -16,6 +16,7 @@ func TestUpdateRules(t *testing.T) {
 
 	exp.Dag.MaxParents = 5
 	exp.Economy.MinGasPrice = big.NewInt(7)
+	exp.Economy.MinBaseFee = big.NewInt(1e9)
 	exp.Blocks.MaxBlockGas = 1000
 	got, err := UpdateRules(exp, []byte(`{"Dag":{"MaxParents":5},"Economy":{"MinGasPrice":7},"Blocks":{"MaxBlockGas":1000}}`))
 	require.NoError(err)
@@ -40,6 +41,7 @@ func TestUpdateRules_CanUpdateHardForks(t *testing.T) {
 	rules := Rules{
 		Economy: EconomyRules{
 			MinGasPrice: big.NewInt(1),
+			MinBaseFee:  big.NewInt(2),
 		},
 		Upgrades: Upgrades{
 			Berlin:  true,
