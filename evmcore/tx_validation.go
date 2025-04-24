@@ -22,6 +22,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/gossip/gasprice/gaspricelimits"
 	"github.com/0xsoniclabs/sonic/utils"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
@@ -31,6 +32,15 @@ import (
 // validationOptions is a set of options to adjust the validation of transactions
 // according to the current state of the transaction pool.
 type validationOptions struct {
+	currentState TxPoolStateDB // Current state in the blockchain head
+	minTip       *big.Int      // Minimum gas tip to enforce for acceptance into the pool
+	locals       *accountSet   // Set of local transaction to exempt from eviction rules
+	isLocal      bool          // Whether the transaction came from a local source
+}
+
+// NetworkRulesForValidateTx is a set of network rules to validate transactions
+// according to the current state of the blockchain.
+type NetworkRulesForValidateTx struct {
 	istanbul bool // Fork indicator whether we are in the istanbul revision.
 	shanghai bool // Fork indicator whether we are in the shanghai revision.
 
@@ -40,20 +50,91 @@ type validationOptions struct {
 	eip7623 bool // Fork indicator whether we are using EIP-7623 floor gas validation.
 	eip7702 bool // Fork indicator whether we are using EIP-7702 set code transactions.
 
-	currentState   TxPoolStateDB // Current state in the blockchain head
-	currentMaxGas  uint64        // Current gas limit for transaction caps
-	currentBaseFee *big.Int      // Current base fee for transaction caps
-	minTip         *big.Int      // Minimum gas tip to enforce for acceptance into the pool
+	currentMaxGas  uint64   // Current gas limit for transaction caps
+	currentBaseFee *big.Int // Current base fee for transaction caps
 
-	locals  *accountSet // Set of local transaction to exempt from eviction rules
-	isLocal bool        // Whether the transaction came from a local source
-
-	signer types.Signer
+	signer types.Signer // sender is included as part of network rules because it depends on the chainId.
 }
 
 // validateTx checks whether a transaction is valid according to the current
 // options and adheres to some heuristic limits of the local node (price and size).
-func validateTx(tx *types.Transaction, opt validationOptions) error {
+func validateTx(
+	tx *types.Transaction,
+	opt validationOptions,
+	netRules NetworkRulesForValidateTx) error {
+
+	if err := ValidateTxStatic(tx); err != nil {
+		return err
+	}
+
+	if err := ValidateTxForNetworkRules(tx, netRules); err != nil {
+		return err
+	}
+
+	// sender is checked as part of validateTxForNetworkRules, if it were to
+	// produce an error, it would have been caught there.
+	from, _ := types.Sender(netRules.signer, tx)
+
+	if err := validateTxForPool(tx, opt, from); err != nil {
+		return err
+	}
+
+	// leave state accesses for last check
+	if err := ValidateTxForState(tx, opt.currentState, from); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// ValidateTxStatic runs a set of verification independent from any context with
+// the aim to identify malformed transactions. It checks the transaction's:
+// - size
+// - value (must be positive)
+// - gas fee cap and tip cap must be within the 256 bit range
+// - gas fee cap must be greater than or equal to the tip cap
+//
+// It returns an error if any of the checks fail.
+func ValidateTxStatic(tx *types.Transaction) error {
+
+	// Reject transactions over defined size to prevent DOS attacks
+	if uint64(tx.Size()) > txMaxSize {
+		return ErrOversizedData
+	}
+
+	// Transactions can't be negative. This may never happen using RLP decoded
+	// transactions but may occur if you create a transaction using the RPC.
+	if tx.Value().Sign() < 0 {
+		return ErrNegativeValue
+	}
+
+	// Sanity check for extremely large numbers
+	if tx.GasFeeCap().BitLen() > 256 {
+		return ErrFeeCapVeryHigh
+	}
+	if tx.GasTipCap().BitLen() > 256 {
+		return ErrTipVeryHigh
+	}
+
+	// Ensure gasFeeCap is greater than or equal to gasTipCap.
+	if tx.GasFeeCapIntCmp(tx.GasTipCap()) < 0 {
+		return ErrTipAboveFeeCap
+	}
+
+	return nil
+}
+
+// ValidateTxForNetworkRules runs a set of verifications against the given
+// network rules. It checks the transaction's:
+// - type (legacy, access list, dynamic fee, blob, set code) is supported in the current network
+// - gas is within the max accepted gas per transaction
+// - sender is valid
+// - gas fee cap is greater than the minimum base fee
+// - gas is greater than the intrinsic gas
+// - gas is greater than the floor data cost (EIP-7623)
+//
+// It returns an error if any of the checks fail.
+func ValidateTxForNetworkRules(tx *types.Transaction, opt NetworkRulesForValidateTx) error {
 
 	// Accept only legacy transactions until EIP-2718/2930 activates.
 	// Since both eip-2718 and eip-2930 are activated in the berlin fork
@@ -90,21 +171,10 @@ func validateTx(tx *types.Transaction, opt validationOptions) error {
 		}
 	}
 
-	// Reject transactions over defined size to prevent DOS attacks
-	if uint64(tx.Size()) > txMaxSize {
-		return ErrOversizedData
-	}
-
 	// Check whether the init code size has been exceeded, introduced in EIP-3860
 	if opt.shanghai && tx.To() == nil &&
 		len(tx.Data()) > params.MaxInitCodeSize {
 		return fmt.Errorf("%w: code size %v, limit %v", ErrMaxInitCodeSizeExceeded, len(tx.Data()), params.MaxInitCodeSize)
-	}
-
-	// Transactions can't be negative. This may never happen using RLP decoded
-	// transactions but may occur if you create a transaction using the RPC.
-	if tx.Value().Sign() < 0 {
-		return ErrNegativeValue
 	}
 
 	// Ensure the transaction doesn't exceed the current block limit gas.
@@ -112,32 +182,12 @@ func validateTx(tx *types.Transaction, opt validationOptions) error {
 		return ErrGasLimit
 	}
 
-	// Sanity check for extremely large numbers
-	if tx.GasFeeCap().BitLen() > 256 {
-		return ErrFeeCapVeryHigh
-	}
-	if tx.GasTipCap().BitLen() > 256 {
-		return ErrTipVeryHigh
-	}
-
-	// Ensure gasFeeCap is greater than or equal to gasTipCap.
-	if tx.GasFeeCapIntCmp(tx.GasTipCap()) < 0 {
-		return ErrTipAboveFeeCap
-	}
-
 	// Make sure the transaction is signed properly.
-	from, err := types.Sender(opt.signer, tx)
+	_, err := types.Sender(opt.signer, tx)
 	if err != nil {
 		return ErrInvalidSender
 	}
 
-	// Drop non-local transactions under our own minimal accepted gas price or tip
-	local := opt.isLocal || opt.locals.contains(from) // account may be local even if the transaction arrived from the network
-	if !local && tx.GasTipCapIntCmp(opt.minTip) < 0 {
-		log.Trace("Rejecting underpriced tx: pool.gasPrice", "pool.gasPrice",
-			opt.minTip, "tx.GasTipCap", tx.GasTipCap())
-		return ErrUnderpriced
-	}
 	// Ensure Opera-specific hard bounds
 	if baseFee := opt.currentBaseFee; baseFee != nil {
 		limit := gaspricelimits.GetMinimumFeeCapForTransactionPool(baseFee)
@@ -145,17 +195,6 @@ func validateTx(tx *types.Transaction, opt validationOptions) error {
 			log.Trace("Rejecting underpriced tx: minimumBaseFee", "minimumBaseFee", baseFee, "limit", limit, "tx.GasFeeCap", tx.GasFeeCap())
 			return ErrUnderpriced
 		}
-	}
-
-	// Ensure the transaction adheres to nonce ordering
-	if opt.currentState.GetNonce(from) > tx.Nonce() {
-		return ErrNonceTooLow
-	}
-
-	// Transactor should have enough funds to cover the costs
-	// cost == V + GP * GL
-	if utils.Uint256ToBigInt(opt.currentState.GetBalance(from)).Cmp(tx.Cost()) < 0 {
-		return ErrInsufficientFunds
 	}
 
 	// Ensure the transaction has more gas than the basic tx fee.
@@ -187,5 +226,43 @@ func validateTx(tx *types.Transaction, opt validationOptions) error {
 		}
 	}
 
+	return nil
+}
+
+// ValidateTxForState checks if a transaction is valid based on the sender's current state.
+// Specifically, it ensures the sender has sufficient balance to cover the transaction cost,
+// and that the transaction's nonce is not lower than the sender's nonce in the state.
+// Returns an error if any of these conditions are not met.
+func ValidateTxForState(tx *types.Transaction, state TxPoolStateDB, from common.Address) error {
+	// Ensure the transaction adheres to nonce ordering
+	if state.GetNonce(from) > tx.Nonce() {
+		return ErrNonceTooLow
+	}
+
+	// Transactor should have enough funds to cover the costs
+	// cost == V + GP * GL
+	if utils.Uint256ToBigInt(state.GetBalance(from)).Cmp(tx.Cost()) < 0 {
+		return ErrInsufficientFunds
+	}
+	return nil
+}
+
+// validateTxForPool checks whether a transaction is valid according to the
+// current minimum tip for the pool. It returns an error if the transaction's
+// tip is lower than the minimum tip.
+func validateTxForPool(tx *types.Transaction, opt validationOptions,
+	from common.Address) error {
+
+	// Drop non-local transactions under our own minimal accepted gas price or tip
+	local := opt.isLocal || opt.locals.contains(from) // account may be local even if the transaction arrived from the network
+	if local {
+		return nil
+	}
+
+	if tx.GasTipCapIntCmp(opt.minTip) < 0 {
+		log.Trace("Rejecting underpriced tx: pool.gasPrice", "pool.gasPrice",
+			opt.minTip, "tx.GasTipCap", tx.GasTipCap())
+		return ErrUnderpriced
+	}
 	return nil
 }
