@@ -100,12 +100,24 @@ func (p *StateProcessor) process_sonicLegacy(
 }
 
 // Process processes the state changes according to the Ethereum rules by running
-// the transaction messages using the StateDB and applying any rewards to both
-// the processor (coinbase) and any included uncles.
+// the transaction messages using the StateDB, collecting all receipts, logs and
+// the indexes of skipped transactions.
 //
-// Process returns the receipts and logs accumulated during the process and
-// returns the amount of gas that was used in the process. If any of the
-// transactions failed to execute due to insufficient gas it will return an error.
+// A transaction is skipped if for some reason its execution in the given order
+// is not possible. Skipped transactions do not consume any gas and do not affect
+// the usedGas counter. The receipts for skipped transactions are nil. Processing
+// continues with the next transaction in the block.
+//
+// Some reasons leading to issues during the execution of a transaction can lead
+// to a general fail of the Process step. Among those are, for instance, the
+// inability of restoring the sender from a transactions signature. In such a
+// case, the full processing is aborted and an error is returned.
+//
+// Note that these rules are part of the replicated state machine and must be
+// consistent among all nodes on the network. The encoded rules have been
+// inherited from the Fantom network and are active in the Sonic network.
+// Future hard-forks may be used to clean up the rules and make them more
+// consistent.
 func (p *StateProcessor) Process(
 	block *EvmBlock, stateDb state.StateDB, cfg vm.Config, usedGas *uint64, onNewLog func(*types.Log),
 ) (
