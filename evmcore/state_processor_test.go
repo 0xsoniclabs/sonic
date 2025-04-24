@@ -18,6 +18,41 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
+// process_iteratively is an internal implementation of the StateProcessor's
+// Process method using BeginBlock and an iterative transaction processing
+// based on the TransactionProcessor. It is used to make sure that BeginBlock
+// and the TransactionProcessor implementation behave the same way as the
+// Process method.
+func (p *StateProcessor) process_iteratively(
+	block *EvmBlock, stateDb state.StateDB, cfg vm.Config, usedGas *uint64, onNewLog func(*types.Log),
+) (
+	types.Receipts, []*types.Log, []uint32, error,
+) {
+	// This implementation is a wrapper around the BeginBlock function, which
+	// handles the actual transaction processing.
+	txProcessor := p.BeginBlock(block, stateDb, cfg, onNewLog)
+	receipts := make(types.Receipts, len(block.Transactions))
+	skipped := make([]uint32, 0, len(block.Transactions))
+	allLogs := make([]*types.Log, 0, len(block.Transactions))
+	for i, tx := range block.Transactions {
+		receipt, skip, err := txProcessor.Run(i, tx)
+		if skip {
+			skipped = append(skipped, uint32(i))
+			receipts[i] = nil
+			err = nil
+			continue
+		}
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("failed to process transaction %d [%v]: %w", i, tx.Hash().Hex(), err)
+		}
+		receipts[i] = receipt
+		allLogs = append(allLogs, receipt.Logs...)
+		*usedGas = receipt.CumulativeGasUsed
+	}
+
+	return receipts, allLogs, skipped, nil
+}
+
 func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
@@ -44,8 +79,8 @@ func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
 	processor := NewStateProcessor(&chainConfig, chain)
 
 	tests := map[string]processFunction{
-		"legacy":      processor.process_sonicLegacy,
-		"incremental": processor.Process,
+		"bulk":        processor.Process,
+		"incremental": processor.process_iteratively,
 	}
 
 	for name, process := range tests {
@@ -136,8 +171,8 @@ func TestProcess_DetectsTransactionThatCanNotBeConvertedIntoAMessage(t *testing.
 	state := getStateDbMockForTransactions(ctrl, transactions)
 	processor := NewStateProcessor(&chainConfig, chain)
 	tests := map[string]processFunction{
-		"legacy":      processor.process_sonicLegacy,
-		"incremental": processor.Process,
+		"bulk":        processor.Process,
+		"incremental": processor.process_iteratively,
 	}
 
 	for name, process := range tests {
@@ -194,8 +229,8 @@ func TestProcess_TracksParentBlockHashIfPragueIsEnabled(t *testing.T) {
 		processor := NewStateProcessor(&chainConfig, chain)
 
 		tests := map[string]processFunction{
-			"legacy":      processor.process_sonicLegacy,
-			"incremental": processor.Process,
+			"bulk":        processor.Process,
+			"incremental": processor.process_iteratively,
 		}
 
 		for name, process := range tests {

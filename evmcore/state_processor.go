@@ -49,10 +49,26 @@ func NewStateProcessor(config *params.ChainConfig, bc DummyChain) *StateProcesso
 	}
 }
 
-// process_sonicLegacy is a legacy version of the Process function handling the
-// processing of a list of transactions in a single step. It is used for
-// checking compatibility with the Process function replacing it.
-func (p *StateProcessor) process_sonicLegacy(
+// Process processes the state changes according to the Ethereum rules by running
+// the transaction messages using the StateDB, collecting all receipts, logs,
+// the indexes of skipped transactions, and the used gas via an output parameter.
+//
+// A transaction is skipped if for some reason its execution in the given order
+// is not possible. Skipped transactions do not consume any gas and do not affect
+// the usedGas counter. The receipts for skipped transactions are nil. Processing
+// continues with the next transaction in the block.
+//
+// Some reasons leading to issues during the execution of a transaction can lead
+// to a general fail of the Process step. Among those are, for instance, the
+// inability of restoring the sender from a transactions signature. In such a
+// case, the full processing is aborted and an error is returned.
+//
+// Note that these rules are part of the replicated state machine and must be
+// consistent among all nodes on the network. The encoded rules have been
+// inherited from the Fantom network and are active in the Sonic network.
+// Future hard-forks may be used to clean up the rules and make them more
+// consistent.
+func (p *StateProcessor) Process(
 	block *EvmBlock, statedb state.StateDB, cfg vm.Config, usedGas *uint64, onNewLog func(*types.Log),
 ) (
 	receipts types.Receipts, allLogs []*types.Log, skipped []uint32, err error,
@@ -97,55 +113,6 @@ func (p *StateProcessor) process_sonicLegacy(
 		allLogs = append(allLogs, receipt.Logs...)
 	}
 	return
-}
-
-// Process processes the state changes according to the Ethereum rules by running
-// the transaction messages using the StateDB, collecting all receipts, logs and
-// the indexes of skipped transactions.
-//
-// A transaction is skipped if for some reason its execution in the given order
-// is not possible. Skipped transactions do not consume any gas and do not affect
-// the usedGas counter. The receipts for skipped transactions are nil. Processing
-// continues with the next transaction in the block.
-//
-// Some reasons leading to issues during the execution of a transaction can lead
-// to a general fail of the Process step. Among those are, for instance, the
-// inability of restoring the sender from a transactions signature. In such a
-// case, the full processing is aborted and an error is returned.
-//
-// Note that these rules are part of the replicated state machine and must be
-// consistent among all nodes on the network. The encoded rules have been
-// inherited from the Fantom network and are active in the Sonic network.
-// Future hard-forks may be used to clean up the rules and make them more
-// consistent.
-func (p *StateProcessor) Process(
-	block *EvmBlock, stateDb state.StateDB, cfg vm.Config, usedGas *uint64, onNewLog func(*types.Log),
-) (
-	types.Receipts, []*types.Log, []uint32, error,
-) {
-	// This implementation is a wrapper around the BeginBlock function, which
-	// handles the actual transaction processing.
-	txProcessor := p.BeginBlock(block, stateDb, cfg, onNewLog)
-	receipts := make(types.Receipts, len(block.Transactions))
-	skipped := make([]uint32, 0, len(block.Transactions))
-	allLogs := make([]*types.Log, 0, len(block.Transactions))
-	for i, tx := range block.Transactions {
-		receipt, skip, err := txProcessor.Run(i, tx)
-		if skip {
-			skipped = append(skipped, uint32(i))
-			receipts[i] = nil
-			err = nil
-			continue
-		}
-		if err != nil {
-			return nil, nil, nil, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
-		}
-		receipts[i] = receipt
-		allLogs = append(allLogs, receipt.Logs...)
-		*usedGas = receipt.CumulativeGasUsed
-	}
-
-	return receipts, allLogs, skipped, nil
 }
 
 // BeginBlock starts the processing of a new block and returns a function to
@@ -207,7 +174,7 @@ func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) (
 	msg, err := TxAsMessage(tx, tp.signer, tp.header.BaseFee)
 	if err != nil {
 		return nil, false, fmt.Errorf(
-			"could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err,
+			"failed to convert transaction: %w", err,
 		)
 	}
 	tp.stateDb.SetTxContext(tx.Hash(), i)
