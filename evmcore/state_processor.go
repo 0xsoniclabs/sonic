@@ -113,12 +113,12 @@ func (p *StateProcessor) Process(
 ) {
 	// This implementation is a wrapper around the BeginBlock function, which
 	// handles the actual transaction processing.
-	run := p.BeginBlock(block, stateDb, cfg, onNewLog)
+	txProcessor := p.BeginBlock(block, stateDb, cfg, onNewLog)
 	receipts := make(types.Receipts, len(block.Transactions))
 	skipped := make([]uint32, 0, len(block.Transactions))
 	allLogs := make([]*types.Log, 0, len(block.Transactions))
 	for i, tx := range block.Transactions {
-		receipt, skip, err := run(i, tx)
+		receipt, skip, err := txProcessor.Run(i, tx)
 		if skip {
 			skipped = append(skipped, uint32(i))
 			receipts[i] = nil
@@ -143,10 +143,9 @@ func (p *StateProcessor) Process(
 // probe individual transactions to determine their applicability and gas usage.
 func (p *StateProcessor) BeginBlock(
 	block *EvmBlock, stateDb state.StateDB, cfg vm.Config, onNewLog func(*types.Log),
-) func(i int, tx *types.Transaction) (receipt *types.Receipt, skipped bool, err error) {
+) *TransactionProcessor {
 	var (
 		gp            = new(core.GasPool).AddGas(block.GasLimit)
-		skip          bool
 		header        = block.Header()
 		time          = uint64(block.Time.Unix())
 		blockContext  = NewEVMBlockContext(header, p.bc, nil)
@@ -160,16 +159,51 @@ func (p *StateProcessor) BeginBlock(
 		ProcessParentBlockHash(block.ParentHash, vmEnvironment)
 	}
 
-	var usedGas uint64
-	return func(i int, tx *types.Transaction) (receipt *types.Receipt, skipped bool, err error) {
-		msg, err := TxAsMessage(tx, signer, header.BaseFee)
-		if err != nil {
-			return nil, false, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
-		}
-		stateDb.SetTxContext(tx.Hash(), i)
-		receipt, _, skip, err = applyTransaction(msg, gp, stateDb, blockNumber, tx, &usedGas, vmEnvironment, onNewLog)
-		return receipt, skip, err
+	return &TransactionProcessor{
+		blockNumber:   blockNumber,
+		gp:            gp,
+		header:        header,
+		onNewLog:      onNewLog,
+		signer:        signer,
+		stateDb:       stateDb,
+		vmEnvironment: vmEnvironment,
 	}
+}
+
+// TransactionProcessor is produced by the BeginBlock function and is used to
+// process individual transactions in the block.
+type TransactionProcessor struct {
+	blockNumber   *big.Int
+	gp            *core.GasPool
+	header        *EvmHeader
+	onNewLog      func(*types.Log)
+	signer        types.Signer
+	stateDb       state.StateDB
+	usedGas       uint64
+	vmEnvironment *vm.EVM
+}
+
+// Run processes a single transaction in the block, where i is the index of
+// the transaction in the block. It returns the receipt of the transaction,
+// whether the transaction was skipped, and any error that occurred during
+// processing.
+func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) (
+	receipt *types.Receipt,
+	skipped bool,
+	err error,
+) {
+	msg, err := TxAsMessage(tx, tp.signer, tp.header.BaseFee)
+	if err != nil {
+		return nil, false, fmt.Errorf(
+			"could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err,
+		)
+	}
+	tp.stateDb.SetTxContext(tx.Hash(), i)
+	receipt, _, skip, err := applyTransaction(
+		msg, tp.gp, tp.stateDb, tp.blockNumber, tx,
+		&tp.usedGas, tp.vmEnvironment, tp.onNewLog,
+	)
+	return receipt, skip, err
 }
 
 // ApplyTransactionWithEVM attempts to apply a transaction to the given state database
