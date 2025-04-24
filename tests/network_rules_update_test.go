@@ -111,6 +111,11 @@ func TestNetworkRule_Update_Restart_Recovers_Original_Value(t *testing.T) {
 	_, err = net.EndowAccount(common.Address{}, big.NewInt(1))
 	require.NoError(err)
 
+	blockAfterRestart, err := client2.BlockByNumber(t.Context(), nil)
+	require.NoError(err)
+
+	require.Less(blockAfterRestart.BaseFee().Int64(), newMinBaseFee, "BaseFee should not reflect new MinBaseFee")
+
 	// Network rule should not change - it must be an epoch bound
 	var updatedRules rulesType
 	err = client2.Client().Call(&updatedRules, "eth_getRules", "latest")
