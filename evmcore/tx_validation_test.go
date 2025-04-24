@@ -17,8 +17,7 @@ import (
 )
 
 // getTestValidationOptions returns a set of options to adjust the validation of transactions
-// so that it would accept all types of transactions, considering them as local transactions
-// with a min tip of 1, current base fee of 1, and a current max gas of 100_000.
+// considering them as local transactions with a min tip of 1.
 func getTestValidationOptions() validationOptions {
 	return validationOptions{
 		minTip:  big.NewInt(1),
@@ -26,6 +25,9 @@ func getTestValidationOptions() validationOptions {
 	}
 }
 
+// getTestNetworkRules returns a set of network rules to adjust the validation of transactions
+// so that it accepts all types of transactions, with a base fee of 1 and a max gas
+// of 100_000. It also sets the signer to a new Prague signer with chain ID 1.
 func getTestNetworkRules() NetworkRulesForValidateTx {
 	return NetworkRulesForValidateTx{
 		eip2718:        true,
@@ -48,7 +50,7 @@ func TestValidateTxStatic_Data_RejectsTxWith(t *testing.T) {
 	for name, tx := range getTxsOfAllTypes() {
 		t.Run(fmt.Sprintf("oversized data/%v", name), func(t *testing.T) {
 
-			setData(t, types.TxData(tx), oversizedData)
+			setData(t, tx, oversizedData)
 
 			err := ValidateTxStatic(types.NewTx(tx))
 			require.ErrorIs(t, err, ErrOversizedData)
@@ -307,7 +309,7 @@ func TestValidateTxForNetworkRules_Data_RejectsTxWith(t *testing.T) {
 				t.Skip("blob and setCode transactions cannot be used as create")
 			}
 
-			setData(t, types.TxData(tx), maxInitCode)
+			setData(t, tx, maxInitCode)
 			setReceiverToNil(t, tx)
 
 			err := ValidateTxForNetworkRules(types.NewTx(tx), getTestNetworkRules())
@@ -327,7 +329,7 @@ func TestValidateTxForNetworkRules_Data_RejectsTxWith(t *testing.T) {
 			// needs extra gas to allow big data to be afforded.
 			opt.currentMaxGas = 249_612
 
-			setData(t, types.TxData(tx), maxInitCode)
+			setData(t, tx, maxInitCode)
 			setReceiverToNil(t, tx)
 
 			// --- needed for execution up to relevant check ---
