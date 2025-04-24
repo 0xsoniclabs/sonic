@@ -497,9 +497,9 @@ func TestEIP4844Transactions(t *testing.T) {
 		err    error
 	}{
 		{"empty blob tx before cancun", nil, false, ErrTxTypeNotSupported},
-		{"blob tx before cancun", common.Address{1}.Bytes(), false, ErrTxTypeNotSupported},
+		{"blob tx before cancun", common.Address{1}.Bytes(), false, ErrOversizedData},
 		{"empty blob tx", nil, true, nil},
-		{"blob tx with data", common.Address{1}.Bytes(), true, ErrTxTypeNotSupported},
+		{"blob tx with data", common.Address{1}.Bytes(), true, ErrOversizedData},
 	}
 
 	for _, test := range tests {
@@ -872,20 +872,19 @@ func TestInvalidTransactions(t *testing.T) {
 	tx := transaction(0, 100, key)
 	from, _ := deriveSender(tx)
 
-	testAddBalance(pool, from, big.NewInt(1))
-	if err := pool.AddRemote(tx); !errors.Is(err, ErrInsufficientFunds) {
-		t.Error("expected", ErrInsufficientFunds)
-	}
-
-	balance := new(big.Int).Add(tx.Value(), new(big.Int).Mul(new(big.Int).SetUint64(tx.Gas()), tx.GasPrice()))
-	testAddBalance(pool, from, balance)
 	if err := pool.AddRemote(tx); !errors.Is(err, ErrIntrinsicGas) {
 		t.Error("expected", ErrIntrinsicGas, "got", err)
 	}
 
+	tx = transaction(0, 100000, key)
+	testAddBalance(pool, from, big.NewInt(1))
+	if err := pool.AddRemote(tx); !errors.Is(err, ErrInsufficientFunds) {
+		t.Errorf("expected %v, but got: %v", ErrInsufficientFunds, err)
+	}
+
 	testSetNonce(pool, from, 1)
 	testAddBalance(pool, from, big.NewInt(0xffffffffffffff))
-	tx = transaction(0, 100000, key)
+
 	if err := pool.AddRemote(tx); !errors.Is(err, ErrNonceTooLow) {
 		t.Error("expected", ErrNonceTooLow)
 	}

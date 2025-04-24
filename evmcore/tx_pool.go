@@ -673,10 +673,11 @@ func (pool *TxPool) local() map[common.Address]types.Transactions {
 // validateTx checks whether a transaction is valid according to the consensus
 // rules and adheres to some heuristic limits of the local node (price and size).
 func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
-	opts := validationOptions{currentState: pool.currentState,
-		minTip:  pool.gasPrice,
-		locals:  pool.locals,
-		isLocal: local,
+	opts := validationOptions{
+		currentState: pool.currentState,
+		minTip:       pool.gasPrice,
+		locals:       pool.locals,
+		isLocal:      local,
 	}
 	netRules := NetworkRulesForValidateTx{
 		istanbul:       pool.istanbul,
