@@ -62,12 +62,13 @@ type EventPayloadI interface {
 }
 
 var emptyPayloadHash1 = CalcPayloadHash(&MutableEventPayload{extEventData: extEventData{version: 1}})
+var emptyPayloadHash3 = CalcPayloadHash(&MutableEventPayload{extEventData: extEventData{version: 3}})
 
 func EmptyPayloadHash(version uint8) hash.Hash {
 	if version == 1 {
 		return emptyPayloadHash1
 	} else if version == 3 {
-		return (&Payload{}).Hash()
+		return emptyPayloadHash3
 	} else {
 		return hash.Hash(types.EmptyRootHash)
 	}

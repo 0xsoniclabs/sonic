@@ -251,6 +251,11 @@ func (e *EventPayload) MarshalCSER(w *cser.Writer) error {
 	if e.AnyBlockVotes() != (len(e.blockVotes.Votes) != 0) {
 		return ErrSerMalformedEvent
 	}
+	if e.Version() == 3 {
+		if e.AnyBlockVotes() || e.AnyEpochVote() || e.AnyMisbehaviourProofs() || e.AnyTxs() {
+			return ErrSerMalformedEvent
+		}
+	}
 	err := e.Event.MarshalCSER(w)
 	if err != nil {
 		return err

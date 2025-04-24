@@ -157,6 +157,57 @@ func TestEventUnmarshalCSER_Version3AcceptsIfHashOfAnEmptyPayloadIsIncluded(t *t
 	require.NoError(err)
 }
 
+func TestEventUnmarshalCSER_Version3DetectsUnsupportedPayload(t *testing.T) {
+	require := require.New(t)
+
+	tests := map[string]*EventPayload{
+		"with transactions": func() *EventPayload {
+			builder := MutableEventPayload{}
+			builder.SetVersion(3)
+			builder.SetTxs([]*types.Transaction{
+				types.NewTx(&types.LegacyTx{Nonce: 12}),
+			})
+			return builder.Build()
+		}(),
+		"with epoch vote": func() *EventPayload {
+			builder := MutableEventPayload{}
+			builder.SetVersion(3)
+			builder.SetEpochVote(LlrEpochVote{
+				Epoch: 1,
+			})
+			return builder.Build()
+		}(),
+		"with block votes": func() *EventPayload {
+			builder := MutableEventPayload{}
+			builder.SetVersion(3)
+			builder.SetBlockVotes(LlrBlockVotes{
+				Start: 1,
+				Votes: []hash.Hash{{}, {}},
+			})
+			return builder.Build()
+		}(),
+		"with misbehavior proofs": func() *EventPayload {
+			builder := MutableEventPayload{}
+			builder.SetVersion(3)
+			builder.SetMisbehaviourProofs([]MisbehaviourProof{
+				{
+					EventsDoublesign: &EventsDoublesign{
+						Pair: [2]SignedEventLocator{{}, {}},
+					},
+				},
+			})
+			return builder.Build()
+		}(),
+	}
+
+	for name, event := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, err := rlp.EncodeToBytes(event)
+			require.ErrorIs(err, ErrSerMalformedEvent)
+		})
+	}
+}
+
 func TestEventPayloadMarshalCSER_DetectsInvalidTransactionEncoding(t *testing.T) {
 	require := require.New(t)
 
@@ -577,19 +628,17 @@ func FakeEvent(version uint8, txsNum, mpsNum, bvsNum int, ersNum bool) *EventPay
 	}
 
 	if version == 3 {
+		random.SetTxs(nil)
 		random.SetPayload(Payload{
 			LastSeenProposalTurn:  Turn(rand.IntN(100)),
 			LastSeenProposedBlock: idx.Block(rand.IntN(10_000_000)),
 			LastSeenProposalFrame: idx.Frame(rand.IntN(100)),
 			Proposal: &Proposal{
-				Number:     idx.Block(rand.IntN(10_000_000)),
-				ParentHash: common.Hash(randHash(r)),
-				Time:       Timestamp(rand.Uint64()),
-				Randao:     common.Hash(randHash(r)),
-				Transactions: []*types.Transaction{
-					types.NewTx(&types.LegacyTx{Nonce: rand.Uint64()}),
-					types.NewTx(&types.LegacyTx{Nonce: rand.Uint64()}),
-				},
+				Number:       idx.Block(rand.IntN(10_000_000)),
+				ParentHash:   common.Hash(randHash(r)),
+				Time:         Timestamp(rand.Uint64()),
+				Randao:       common.Hash(randHash(r)),
+				Transactions: txs,
 			},
 		})
 	}
