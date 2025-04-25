@@ -14,15 +14,13 @@ func TestUpdateRules(t *testing.T) {
 
 	base := MainNetRules()
 
-	got, err := UpdateRules(base, []byte(`{"Dag":{"MaxParents":5},"Economy":{"MinGasPrice":7},"Blocks":{"MaxBlockGas":5000000000}}`))
-	require.NoError(err)
-
 	exp := base.Copy()
 	exp.Dag.MaxParents = 5
 	exp.Economy.MinGasPrice = big.NewInt(7)
 	exp.Economy.MinBaseFee = big.NewInt(1e9)
-	exp.Blocks.MaxBlockGas = 1000
-	got, err := UpdateRules(exp, []byte(`{"Dag":{"MaxParents":5},"Economy":{"MinGasPrice":7},"Blocks":{"MaxBlockGas":2000000000}}`))
+	exp.Blocks.MaxBlockGas = 5000000000
+
+	got, err := UpdateRules(exp, []byte(`{"Dag":{"MaxParents":5},"Economy":{"MinGasPrice":7},"Blocks":{"MaxBlockGas":5000000000}}`))
 	require.NoError(err)
 	require.Equal(exp.String(), got.String(), "should not be able to change readonly fields")
 
@@ -69,20 +67,9 @@ func TestUpdateRules_ValidityCheckIsConductedIfCheckIsEnabledInUpdatedRuleSet(t 
 func TestUpdateRules_CanUpdateHardForks(t *testing.T) {
 	require := require.New(t)
 
-	rules := Rules{
-		Economy: EconomyRules{
-			MinGasPrice: big.NewInt(1),
-			MinBaseFee:  big.NewInt(2),
-		},
-		Upgrades: Upgrades{
-			Berlin:  true,
-			London:  false,
-			Sonic:   true,
-			Allegro: false,
-		},
-	}
+	rules := FakeNetRules(SonicFeatures)
 
-	got, err := UpdateRules(rules, []byte(`{"Upgrades":{"Berlin":true,"London":true,"Sonic":true,"Allegro":true}}`))
+	got, err := UpdateRules(rules, []byte(`{"Upgrades":{"Allegro":true}}`))
 	require.NoError(err)
 	require.Equal(Upgrades{
 		Berlin:  true,
