@@ -151,7 +151,7 @@ func validateEconomyRules(rules EconomyRules) error {
 
 const (
 	// upperBoundForRuleChangeGasCosts is a safe over-approximation of the gas costs of a rule change.
-	upperBoundForRuleChangeGasCosts = 1_000_000 // < TODO: verify this number
+	upperBoundForRuleChangeGasCosts = 1_000_000
 
 	// minimumMaxBlockGas is the minimum allowed max block gas.
 	//It must be large enough to allow internal transactions to seal blocks
@@ -161,6 +161,11 @@ const (
 	// It should fit into 64-bit signed integers to avoid parsing errors in third-party libraries
 	maximumMaxBlockGas = math.MaxInt64
 )
+
+// UpperBoundForRuleChangeGasCosts returns the estimated upper bound for the gas costs of a rule change.
+func UpperBoundForRuleChangeGasCosts() uint64 {
+	return upperBoundForRuleChangeGasCosts
+}
 
 func validateGasRules(rules GasRules) error {
 	var issues []error
