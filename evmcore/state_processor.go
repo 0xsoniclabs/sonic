@@ -50,12 +50,24 @@ func NewStateProcessor(config *params.ChainConfig, bc DummyChain) *StateProcesso
 }
 
 // Process processes the state changes according to the Ethereum rules by running
-// the transaction messages using the statedb and applying any rewards to both
-// the processor (coinbase) and any included uncles.
+// the transaction messages using the StateDB, collecting all receipts, logs,
+// the indexes of skipped transactions, and the used gas via an output parameter.
 //
-// Process returns the receipts and logs accumulated during the process and
-// returns the amount of gas that was used in the process. If any of the
-// transactions failed to execute due to insufficient gas it will return an error.
+// A transaction is skipped if for some reason its execution in the given order
+// is not possible. Skipped transactions do not consume any gas and do not affect
+// the usedGas counter. The receipts for skipped transactions are nil. Processing
+// continues with the next transaction in the block.
+//
+// Some reasons leading to issues during the execution of a transaction can lead
+// to a general fail of the Process step. Among those are, for instance, the
+// inability of restoring the sender from a transactions signature. In such a
+// case, the full processing is aborted and an error is returned.
+//
+// Note that these rules are part of the replicated state machine and must be
+// consistent among all nodes on the network. The encoded rules have been
+// inherited from the Fantom network and are active in the Sonic network.
+// Future hard-forks may be used to clean up the rules and make them more
+// consistent.
 func (p *StateProcessor) Process(
 	block *EvmBlock, statedb state.StateDB, cfg vm.Config, usedGas *uint64, onNewLog func(*types.Log),
 ) (
@@ -101,6 +113,76 @@ func (p *StateProcessor) Process(
 		allLogs = append(allLogs, receipt.Logs...)
 	}
 	return
+}
+
+// BeginBlock starts the processing of a new block and returns a function to
+// process individual transactions in the block. It follows the same rules as
+// the Process method, yet enables the incremental processing of transactions.
+// This is required by the transaction scheduler in the emitter, which needs to
+// probe individual transactions to determine their applicability and gas usage.
+func (p *StateProcessor) BeginBlock(
+	block *EvmBlock, stateDb state.StateDB, cfg vm.Config, onNewLog func(*types.Log),
+) *TransactionProcessor {
+	var (
+		gp            = new(core.GasPool).AddGas(block.GasLimit)
+		header        = block.Header()
+		time          = uint64(block.Time.Unix())
+		blockContext  = NewEVMBlockContext(header, p.bc, nil)
+		vmEnvironment = vm.NewEVM(blockContext, stateDb, p.config, cfg)
+		blockNumber   = block.Number
+		signer        = gsignercache.Wrap(types.MakeSigner(p.config, header.Number, time))
+	)
+
+	// execute EIP-2935 HistoryStorage contract.
+	if p.config.IsPrague(blockNumber, time) {
+		ProcessParentBlockHash(block.ParentHash, vmEnvironment)
+	}
+
+	return &TransactionProcessor{
+		blockNumber:   blockNumber,
+		gp:            gp,
+		header:        header,
+		onNewLog:      onNewLog,
+		signer:        signer,
+		stateDb:       stateDb,
+		vmEnvironment: vmEnvironment,
+	}
+}
+
+// TransactionProcessor is produced by the BeginBlock function and is used to
+// process individual transactions in the block.
+type TransactionProcessor struct {
+	blockNumber   *big.Int
+	gp            *core.GasPool
+	header        *EvmHeader
+	onNewLog      func(*types.Log)
+	signer        types.Signer
+	stateDb       state.StateDB
+	usedGas       uint64
+	vmEnvironment *vm.EVM
+}
+
+// Run processes a single transaction in the block, where i is the index of
+// the transaction in the block. It returns the receipt of the transaction,
+// whether the transaction was skipped, and any error that occurred during
+// processing.
+func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) (
+	receipt *types.Receipt,
+	skipped bool,
+	err error,
+) {
+	msg, err := TxAsMessage(tx, tp.signer, tp.header.BaseFee)
+	if err != nil {
+		return nil, false, fmt.Errorf(
+			"failed to convert transaction: %w", err,
+		)
+	}
+	tp.stateDb.SetTxContext(tx.Hash(), i)
+	receipt, _, skip, err := applyTransaction(
+		msg, tp.gp, tp.stateDb, tp.blockNumber, tx,
+		&tp.usedGas, tp.vmEnvironment, tp.onNewLog,
+	)
+	return receipt, skip, err
 }
 
 // ApplyTransactionWithEVM attempts to apply a transaction to the given state database
@@ -225,8 +307,10 @@ func applyTransaction(
 	// contract listener, only the sender, topics, and the data are relevant.
 	// The block hash is not used.
 	logs := statedb.GetLogs(tx.Hash(), common.Hash{})
-	for _, l := range logs {
-		onNewLog(l)
+	if onNewLog != nil {
+		for _, l := range logs {
+			onNewLog(l)
+		}
 	}
 
 	// Update the state with pending changes.

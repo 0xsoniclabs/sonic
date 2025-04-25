@@ -2,11 +2,13 @@ package inter
 
 import (
 	"bytes"
+	"fmt"
 	"math"
 	"math/big"
 	"math/rand/v2"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/utils/cser"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -56,9 +58,11 @@ func TestEventPayloadSerialization(t *testing.T) {
 		"empty0":  emptyEvent(0),
 		"empty1":  emptyEvent(1),
 		"empty2":  emptyEvent(2),
+		"empty3":  emptyEvent(3),
 		"event":   *event.Build(),
 		"random1": *FakeEvent(1, 12, 1, 1, true),
 		"random2": *FakeEvent(2, 12, 0, 0, false),
+		"random3": *FakeEvent(3, 12, 0, 0, false),
 	}
 
 	t.Run("ok", func(t *testing.T) {
@@ -74,6 +78,7 @@ func TestEventPayloadSerialization(t *testing.T) {
 				require.EqualValues(t, toEncode.extEventData, decoded.extEventData)
 				require.EqualValues(t, toEncode.sigData, decoded.sigData)
 				require.Equal(t, len(toEncode.txs), len(decoded.txs))
+				require.Equal(t, toEncode.payload.Hash(), decoded.payload.Hash())
 				for i := range toEncode.payloadData.txs {
 					require.EqualValues(t, toEncode.payloadData.txs[i].Hash(), decoded.payloadData.txs[i].Hash())
 				}
@@ -81,6 +86,7 @@ func TestEventPayloadSerialization(t *testing.T) {
 				require.EqualValues(t, toEncode.ID(), decoded.ID())
 				require.EqualValues(t, toEncode.HashToSign(), decoded.HashToSign())
 				require.EqualValues(t, toEncode.Size(), decoded.Size())
+				require.EqualValues(t, toEncode.PayloadHash(), decoded.PayloadHash())
 			})
 		}
 	})
@@ -103,6 +109,153 @@ func TestEventPayloadSerialization(t *testing.T) {
 			})
 		}
 	})
+}
+
+func TestEventUnmarshalCSER_Version2FailsIfHashOfEmptyPayloadIsIncluded(t *testing.T) {
+	require := require.New(t)
+
+	builder := MutableEventPayload{}
+	builder.SetVersion(2)
+	builder.SetTxs([]*types.Transaction{
+		types.NewTx(&types.LegacyTx{Nonce: 12}),
+	})
+	event := builder.Build()
+
+	// Deliberately set the hash to the value it should have if the payload was
+	// empty. This should be detected by the decoder and identified as an error.
+	event.payloadHash = EmptyPayloadHash(2)
+
+	data, err := rlp.EncodeToBytes(&event)
+	require.NoError(err)
+	require.True(bytes.Contains(data, event.payloadHash[:]))
+
+	var recovered EventPayload
+	err = rlp.DecodeBytes(data, &recovered)
+	require.ErrorIs(err, cser.ErrNonCanonicalEncoding)
+}
+
+func TestEventUnmarshalCSER_Version3AcceptsIfHashOfAnEmptyPayloadIsIncluded(t *testing.T) {
+	require := require.New(t)
+
+	builder := MutableEventPayload{}
+	builder.SetVersion(3)
+	builder.SetPayload(Payload{})
+	event := builder.Build()
+
+	require.Equal(event.payloadHash, (&Payload{}).Hash())
+	require.Equal(event.payloadHash, EmptyPayloadHash(3))
+
+	data, err := rlp.EncodeToBytes(&event)
+	require.NoError(err)
+
+	// The payload hash is always included in version3 events.
+	require.True(bytes.Contains(data, event.payloadHash[:]))
+
+	// During decoding, its presence is not considered an error.
+	var recovered EventPayload
+	err = rlp.DecodeBytes(data, &recovered)
+	require.NoError(err)
+}
+
+func TestEventUnmarshalCSER_Version3DetectsUnsupportedPayload(t *testing.T) {
+	require := require.New(t)
+
+	tests := map[string]*EventPayload{
+		"with transactions": func() *EventPayload {
+			builder := MutableEventPayload{}
+			builder.SetVersion(3)
+			builder.SetTxs([]*types.Transaction{
+				types.NewTx(&types.LegacyTx{Nonce: 12}),
+			})
+			return builder.Build()
+		}(),
+		"with epoch vote": func() *EventPayload {
+			builder := MutableEventPayload{}
+			builder.SetVersion(3)
+			builder.SetEpochVote(LlrEpochVote{
+				Epoch: 1,
+			})
+			return builder.Build()
+		}(),
+		"with block votes": func() *EventPayload {
+			builder := MutableEventPayload{}
+			builder.SetVersion(3)
+			builder.SetBlockVotes(LlrBlockVotes{
+				Start: 1,
+				Votes: []hash.Hash{{}, {}},
+			})
+			return builder.Build()
+		}(),
+		"with misbehavior proofs": func() *EventPayload {
+			builder := MutableEventPayload{}
+			builder.SetVersion(3)
+			builder.SetMisbehaviourProofs([]MisbehaviourProof{
+				{
+					EventsDoublesign: &EventsDoublesign{
+						Pair: [2]SignedEventLocator{{}, {}},
+					},
+				},
+			})
+			return builder.Build()
+		}(),
+	}
+
+	for name, event := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, err := rlp.EncodeToBytes(event)
+			require.ErrorIs(err, ErrSerMalformedEvent)
+		})
+	}
+}
+
+func TestEventPayloadMarshalCSER_DetectsInvalidTransactionEncoding(t *testing.T) {
+	require := require.New(t)
+
+	invalidTx := types.NewTx(&types.AccessListTx{
+		ChainID: big.NewInt(-1),
+	})
+	_, want := invalidTx.MarshalBinary()
+	require.Error(want)
+
+	builder := MutableEventPayload{}
+	builder.SetVersion(3)
+	builder.SetPayload(Payload{
+		Proposal: &Proposal{
+			Transactions: []*types.Transaction{invalidTx},
+		},
+	})
+	event := builder.Build()
+
+	_, err := rlp.EncodeToBytes(&event)
+	require.ErrorIs(err, want)
+}
+
+func TestEventPayloadUnmarshalCSER_DetectsInvalidPayloadEncoding(t *testing.T) {
+	require := require.New(t)
+
+	payload := Payload{
+		LastSeenProposalTurn:  123,
+		LastSeenProposedBlock: 456,
+	}
+	payloadData, err := payload.Serialize()
+	require.NoError(err)
+
+	builder := MutableEventPayload{}
+	builder.SetVersion(3)
+	builder.SetPayload(payload)
+	event := builder.Build()
+
+	data, err := rlp.EncodeToBytes(&event)
+	require.NoError(err)
+
+	var restored EventPayload
+	err = rlp.DecodeBytes(data, &restored)
+	require.NoError(err)
+
+	// Corrupt the payload data in the serialized event.
+	data = bytes.Replace(data, payloadData, make([]byte, len(payloadData)), 1)
+	err = rlp.DecodeBytes(data, &restored)
+	require.ErrorContains(err, "invalid wire-format")
 }
 
 func makeAllTransactionTypes() []*types.Transaction {
@@ -219,16 +372,19 @@ func makeAllTransactionTypes() []*types.Transaction {
 }
 
 func BenchmarkEventPayload_EncodeRLP_empty(b *testing.B) {
-	e := emptyEvent(0)
+	for version := range MaxSerializationVersion + 1 {
+		b.Run(fmt.Sprintf("version%d", version), func(b *testing.B) {
+			e := emptyEvent(0)
+			b.ResetTimer()
 
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		buf, err := rlp.EncodeToBytes(&e)
-		if err != nil {
-			b.Fatal(err)
-		}
-		b.ReportMetric(float64(len(buf)), "size")
+			for range b.N {
+				buf, err := rlp.EncodeToBytes(&e)
+				if err != nil {
+					b.Fatal(err)
+				}
+				b.ReportMetric(float64(len(buf)), "size")
+			}
+		})
 	}
 }
 
@@ -469,6 +625,22 @@ func FakeEvent(version uint8, txsNum, mpsNum, bvsNum int, ersNum bool) *EventPay
 			ers.Vote = randHash(r)
 		}
 		random.SetEpochVote(ers)
+	}
+
+	if version == 3 {
+		random.SetTxs(nil)
+		random.SetPayload(Payload{
+			LastSeenProposalTurn:  Turn(rand.IntN(100)),
+			LastSeenProposedBlock: idx.Block(rand.IntN(10_000_000)),
+			LastSeenProposalFrame: idx.Frame(rand.IntN(100)),
+			Proposal: &Proposal{
+				Number:       idx.Block(rand.IntN(10_000_000)),
+				ParentHash:   common.Hash(randHash(r)),
+				Time:         Timestamp(rand.Uint64()),
+				Randao:       common.Hash(randHash(r)),
+				Transactions: txs,
+			},
+		})
 	}
 
 	random.SetPayloadHash(CalcPayloadHash(random))
