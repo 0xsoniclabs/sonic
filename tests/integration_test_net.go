@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/0xsoniclabs/sonic/gossip/contract/driverauth100"
+	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"math"
 	"math/big"
 	"os"
@@ -61,6 +64,10 @@ type IntegrationTestNetSession interface {
 	// GetClient provides raw access to a fresh connection to the network.
 	// The resulting client must be closed after use.
 	GetClient() (*ethclient.Client, error)
+
+	// AdvanceEpoch sends a transaction to advance to the next epoch.
+	// It also waits until the new epoch is really reached.
+	AdvanceEpoch(epochs int) error
 }
 
 // IntegrationTestNetOptions are configuration options for the integration test network.
@@ -798,6 +805,51 @@ func (s *Session) GetClient() (*ethclient.Client, error) {
 // the network. The resulting client must be closed after use.
 func (s *Session) GetClientConnectedToNode(i int) (*ethclient.Client, error) {
 	return s.net.GetClientConnectedToNode(i)
+}
+
+// AdvanceEpoch sends a transaction to advance to the next epoch.
+// It also waits until the new epoch is really reached.
+func (s *Session) AdvanceEpoch(epochs int) error {
+	client, err := s.GetClient()
+	if err != nil {
+		return fmt.Errorf("failed to connect to the client: %w", err)
+	}
+	defer client.Close()
+
+	var currentEpoch hexutil.Uint64
+	if err := client.Client().Call(&currentEpoch, "eth_currentEpoch"); err != nil {
+		return fmt.Errorf("failed to get current epoch: %w", err)
+	}
+
+	contract, err := driverauth100.NewContract(driverauth.ContractAddress, client)
+	if err != nil {
+		return fmt.Errorf("failed to create contract: %w", err)
+	}
+
+	receipt, err := s.Apply(func(ops *bind.TransactOpts) (*types.Transaction, error) {
+		return contract.AdvanceEpochs(ops, big.NewInt(int64(epochs)))
+	})
+	if err != nil {
+		return fmt.Errorf("failed to send transaction: %w", err)
+	}
+
+	if got, want := receipt.Status, types.ReceiptStatusSuccessful; got != want {
+		return fmt.Errorf("expected status %d, got %d", want, got)
+	}
+
+	// wait until the epoch is advanced
+	for {
+		var newEpoch hexutil.Uint64
+		if err := client.Client().Call(&newEpoch, "eth_currentEpoch"); err != nil {
+			return fmt.Errorf("failed to get current epoch: %w", err)
+		}
+
+		if newEpoch >= currentEpoch+hexutil.Uint64(epochs) {
+			break
+		}
+	}
+
+	return nil
 }
 
 // validateAndSanitizeOptions ensures that the options are valid and sets the default values.

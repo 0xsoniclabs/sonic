@@ -7,7 +7,6 @@ import (
 	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 	"math/big"
@@ -208,51 +207,17 @@ func updateNetworkRules(t *testing.T, net IntegrationTestNetSession, rulesChange
 	require.Equal(receipt.Status, types.ReceiptStatusSuccessful)
 }
 
-// advanceEpoch sends a transaction to advance to the next epoch.
-// It also waits until the new epoch is really reached.
-func advanceEpoch(t *testing.T, net IntegrationTestNetSession) {
-	t.Helper()
-	require := require.New(t)
-
-	client, err := net.GetClient()
-	require.NoError(err)
-	defer client.Close()
-
-	var currentEpoch hexutil.Uint64
-	err = client.Client().Call(&currentEpoch, "eth_currentEpoch")
-	require.NoError(err)
-
-	contract, err := driverauth100.NewContract(driverauth.ContractAddress, client)
-	require.NoError(err)
-
-	receipt, err := net.Apply(func(ops *bind.TransactOpts) (*types.Transaction, error) {
-		return contract.AdvanceEpochs(ops, big.NewInt(1))
-	})
-
-	require.NoError(err)
-	require.Equal(receipt.Status, types.ReceiptStatusSuccessful)
-
-	// wait until the epoch is advanced
-	for {
-		var newEpoch hexutil.Uint64
-		err = client.Client().Call(&newEpoch, "eth_currentEpoch")
-		require.NoError(err)
-		if newEpoch > currentEpoch {
-			break
-		}
-	}
-
-}
-
 // advanceEpochAndWaitForBlocks sends a transaction to advance to the next epoch.
 // It also waits until the new epoch is really reached and the next two blocks are produced.
 // It is useful to test a situation when the rule change is applied to the next block after the epoch change.
 func advanceEpochAndWaitForBlocks(t *testing.T, net IntegrationTestNetSession) {
 	t.Helper()
 
-	advanceEpoch(t, net)
-
 	require := require.New(t)
+
+	err := net.AdvanceEpoch(1)
+	require.NoError(err)
+
 	client, err := net.GetClient()
 	require.NoError(err)
 	defer client.Close()

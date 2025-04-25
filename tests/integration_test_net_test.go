@@ -3,6 +3,7 @@ package tests
 import (
 	"context"
 	"fmt"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"math/big"
 	"testing"
 
@@ -288,4 +289,25 @@ func TestIntegrationTestNet_AccountsToBeDeployedWithGenesisCanBeCalled(t *testin
 
 	require.Equal(t, topic, receipt.Logs[0].Topics[0])
 
+}
+
+func TestIntegrationTestNet_AdvanceEpoch(t *testing.T) {
+	net := StartIntegrationTestNet(t)
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	var epochBefore hexutil.Uint64
+	err = client.Client().Call(&epochBefore, "eth_currentEpoch")
+	require.NoError(t, err)
+
+	err = net.AdvanceEpoch(13)
+	require.NoError(t, err)
+
+	var epochAfter hexutil.Uint64
+	err = client.Client().Call(&epochAfter, "eth_currentEpoch")
+	require.NoError(t, err)
+
+	require.Equal(t, epochBefore+13, epochAfter)
 }
