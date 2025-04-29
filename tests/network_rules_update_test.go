@@ -186,7 +186,7 @@ func TestNetworkRule_Update_Restart_Recovers_Original_Value(t *testing.T) {
 	require.GreaterOrEqual(blockAfter.BaseFee().Int64(), newMinBaseFee, "BaseFee should reflect new MinBaseFee")
 }
 
-func TestNetworkRule_MinGas_Allows_Changing_Rules(t *testing.T) {
+func TestNetworkRule_MinEventGas_AllowsChangingRules(t *testing.T) {
 	require := require.New(t)
 	net := StartIntegrationTestNetWithFakeGenesis(t, IntegrationTestNetOptions{FeatureSet: opera.SonicFeatures})
 
