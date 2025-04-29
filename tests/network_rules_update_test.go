@@ -222,7 +222,7 @@ func TestNetworkRule_MinGas_Allows_Changing_Rules(t *testing.T) {
 	require.Less(gas, defaultGasRules.MaxEventGas, "Gas should be less than MaxEventGas")
 	require.Less(gas, opera.UpperBoundForRuleChangeGasCosts(), "Gas should be less than upper bound for rule change gas costs")
 
-	require.Less(gas, opera.UpperBoundForRuleChangeGasCosts()/10, "There should ne 10times head room for gas costs")
+	require.Less(gas, opera.UpperBoundForRuleChangeGasCosts()/10, "There should be a factor of 10 head room for gas costs")
 
 	// Check that these two properties do not contradict each other
 	require.Less(opera.UpperBoundForRuleChangeGasCosts(), defaultGasRules.MaxEventGas, "Upper bound for rule change gas costs should be less than MaxEventGas")
