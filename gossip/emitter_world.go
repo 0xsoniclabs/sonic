@@ -1,8 +1,9 @@
 package gossip
 
 import (
-	"github.com/0xsoniclabs/consensus/dagindexer"
 	"sync/atomic"
+
+	"github.com/0xsoniclabs/consensus/consensus/dagindexer"
 
 	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/ethereum/go-ethereum/core/types"

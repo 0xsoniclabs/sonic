@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/0xsoniclabs/consensus/dagindexer"
+	"github.com/0xsoniclabs/consensus/consensus/dagindexer"
 
 	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/utils/workers"

@@ -5,7 +5,7 @@ import (
 	"math/big"
 	"sync/atomic"
 
-	"github.com/0xsoniclabs/consensus/dagindexer"
+	"github.com/0xsoniclabs/consensus/consensus/dagindexer"
 
 	"github.com/0xsoniclabs/consensus/consensus"
 

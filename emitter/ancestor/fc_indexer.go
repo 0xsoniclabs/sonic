@@ -23,7 +23,7 @@ type FCIndexer struct {
 
 	TopFrame consensus.Frame
 
-	FrameRoots map[consensus.Frame]consensus.EventHashes
+	FrameBases map[consensus.Frame]consensus.EventHashes
 
 	highestEvents map[consensus.ValidatorID]highestEvent
 
@@ -39,7 +39,7 @@ func NewFCIndexer(validators *consensus.Validators, dagi DagIndex, me consensus.
 		dagi:          dagi,
 		validators:    validators,
 		me:            me,
-		FrameRoots:    make(map[consensus.Frame]consensus.EventHashes),
+		FrameBases:    make(map[consensus.Frame]consensus.EventHashes),
 		highestEvents: make(map[consensus.ValidatorID]highestEvent),
 	}
 	fc.searchStrategy = NewMetricStrategy(fc.GetMetricOf)
@@ -59,7 +59,7 @@ func (fc *FCIndexer) ProcessEvent(e consensus.Event) {
 	if fc.TopFrame < e.Frame() {
 		fc.TopFrame = e.Frame()
 		// frames should get incremented by one, so gaps shouldn't be possible
-		delete(fc.FrameRoots, fc.TopFrame-MaxFramesToIndex)
+		delete(fc.FrameBases, fc.TopFrame-MaxFramesToIndex)
 	}
 	if selfParent.frame != 0 || e.SelfParent() == nil {
 		// indexing only MaxFramesToIndex last frames
@@ -67,32 +67,32 @@ func (fc *FCIndexer) ProcessEvent(e consensus.Event) {
 			if f+MaxFramesToIndex <= fc.TopFrame {
 				continue
 			}
-			frameRoots := fc.FrameRoots[f]
-			if frameRoots == nil {
-				frameRoots = make(consensus.EventHashes, fc.validators.Len())
+			frameBases := fc.FrameBases[f]
+			if frameBases == nil {
+				frameBases = make(consensus.EventHashes, fc.validators.Len())
 			}
-			frameRoots[fc.validators.GetIdx(e.Creator())] = e.ID()
-			fc.FrameRoots[f] = frameRoots
+			frameBases[fc.validators.GetIdx(e.Creator())] = e.ID()
+			fc.FrameBases[f] = frameBases
 		}
 	}
 }
 
-func (fc *FCIndexer) rootProgress(frame consensus.Frame, event consensus.EventHash, chosenHeads consensus.EventHashes) int {
-	// This function computes the knowledge of roots amongst validators by counting which validators known which roots.
-	// Root knowledge is a binary matrix indexed by roots and validators.
-	// The ijth entry of the matrix is 1 if root i is known by validator j in the subgraph of event, and zero otherwise.
-	// The function returns a metric counting the number of non-zero entries of the root knowledge matrix.
-	roots, ok := fc.FrameRoots[frame]
+func (fc *FCIndexer) baseProgress(frame consensus.Frame, event consensus.EventHash, chosenHeads consensus.EventHashes) int {
+	// This function computes the knowledge of bases amongst validators by counting which validators known which bases.
+	// Base knowledge is a binary matrix indexed by bases and validators.
+	// The ijth entry of the matrix is 1 if base i is known by validator j in the subgraph of event, and zero otherwise.
+	// The function returns a metric counting the number of non-zero entries of the base knowledge matrix.
+	bases, ok := fc.FrameBases[frame]
 	if !ok {
 		return 0
 	}
-	numNonZero := 0 // number of non-zero entries in the root knowledge matrix
-	for _, root := range roots {
-		if root == consensus.ZeroEventHash {
+	numNonZero := 0 // number of non-zero entries in the base knowledge matrix
+	for _, base := range bases {
+		if base == consensus.ZeroEventHash {
 			continue
 		}
-		FCProgress, _ := fc.dagi.ForklessCauseProgress(event, root, nil, chosenHeads)
-		numNonZero += FCProgress.NumCounted() // add the number of validators that have observed root
+		FCProgress, _ := fc.dagi.ForklessCauseProgress(event, base, nil, chosenHeads)
+		numNonZero += FCProgress.NumCounted() // add the number of validators that have observed base
 	}
 	return numNonZero
 }
@@ -101,7 +101,7 @@ func (fc *FCIndexer) greater(aID consensus.EventHash, aFrame consensus.Frame, bK
 	if aFrame != bFrame {
 		return aFrame > bFrame
 	}
-	return fc.rootProgress(bFrame, aID, nil) >= bK
+	return fc.baseProgress(bFrame, aID, nil) >= bK
 }
 
 // ValidatorsPastMe returns total weight of validators which exceeded knowledge of "my" previous event
@@ -110,7 +110,7 @@ func (fc *FCIndexer) ValidatorsPastMe() consensus.Weight {
 	selfFrame := fc.prevSelfFrame
 
 	kGreaterWeight := fc.validators.NewCounter()
-	kPrev := fc.rootProgress(selfFrame, fc.prevSelfEvent, nil) // calculate metric of root knowledge for previous self event
+	kPrev := fc.baseProgress(selfFrame, fc.prevSelfEvent, nil) // calculate metric of base knowledge for previous self event
 
 	for creator, e := range fc.highestEvents {
 		if fc.greater(e.id, e.frame, kPrev, selfFrame) {
@@ -124,7 +124,7 @@ func (fc *FCIndexer) GetMetricOf(ids consensus.EventHashes) Metric {
 	if fc.TopFrame == 0 {
 		return 0
 	}
-	return Metric(fc.rootProgress(fc.TopFrame, ids[0], ids[1:]))
+	return Metric(fc.baseProgress(fc.TopFrame, ids[0], ids[1:]))
 }
 
 func (fc *FCIndexer) SearchStrategy() SearchStrategy {

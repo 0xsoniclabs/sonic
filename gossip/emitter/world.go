@@ -2,8 +2,9 @@ package emitter
 
 import (
 	"errors"
-	"github.com/0xsoniclabs/consensus/dagindexer"
 	"sync"
+
+	"github.com/0xsoniclabs/consensus/consensus/dagindexer"
 
 	"github.com/0xsoniclabs/consensus/consensus"
 

@@ -9,7 +9,7 @@ import (
 	big "math/big"
 	reflect "reflect"
 
-	dagindexer "github.com/0xsoniclabs/consensus/dagindexer"
+	dagindexer "github.com/0xsoniclabs/consensus/consensus/dagindexer"
 	inter "github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	validatorpk "github.com/0xsoniclabs/sonic/inter/validatorpk"

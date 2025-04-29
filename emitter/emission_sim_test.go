@@ -186,7 +186,7 @@ func simulate(weights []consensus.Weight, QIParentCount int, randParentCount int
 	lchs := make([]consensusengine.CoreLachesis, numValidators)
 	fcIndexers := make([]*ancestor.FCIndexer, numValidators)
 	for i := 0; i < numValidators; i++ {
-		lch, _, input, dagIndexer = consensusengine.NewCoreLachesis(nodes, weights)
+		lch, _, input, dagIndexer = consensusengine.NewBootstrappedCoreConsensus(nodes, weights)
 		lchs[i] = *lch
 		inputs[i] = *input
 		fcIndexers[i] = ancestor.NewFCIndexer(validators, dagIndexer, nodes[i])

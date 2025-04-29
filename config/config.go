@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"github.com/0xsoniclabs/consensus/dagindexer"
 	"net"
 	"os"
 	"path"
@@ -12,6 +11,8 @@ import (
 	"reflect"
 	"regexp"
 	"strings"
+
+	"github.com/0xsoniclabs/consensus/consensus/dagindexer"
 
 	"github.com/0xsoniclabs/consensus/consensus/consensusengine"
 	"github.com/0xsoniclabs/consensus/consensus/consensusstore"
