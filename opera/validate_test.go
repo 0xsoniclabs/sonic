@@ -511,3 +511,7 @@ func TestUpgradesValidation_AcceptsValidRules(t *testing.T) {
 		require.NoError(t, validateUpgrades(test))
 	}
 }
+
+func Test_UpperBoundForRuleChangeGasCosts_CorrectValue(t *testing.T) {
+	require.Equal(t, upperBoundForRuleChangeGasCosts, int(UpperBoundForRuleChangeGasCosts()))
+}
