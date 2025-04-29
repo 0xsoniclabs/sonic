@@ -807,8 +807,8 @@ func (s *Session) GetClientConnectedToNode(i int) (*ethclient.Client, error) {
 	return s.net.GetClientConnectedToNode(i)
 }
 
-// AdvanceEpoch sends a transaction to advance to the next epoch.
-// It also waits until the new epoch is really reached.
+// AdvanceEpoch trigger the sealing of an epoch and the epoch number to progress by the given number.
+// The function blocks until the final epoch has been reached.
 func (s *Session) AdvanceEpoch(epochs int) error {
 	client, err := s.GetClient()
 	if err != nil {
