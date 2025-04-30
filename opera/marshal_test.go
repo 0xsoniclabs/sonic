@@ -1,6 +1,7 @@
 package opera
 
 import (
+	"fmt"
 	"math/big"
 	"testing"
 
@@ -11,52 +12,69 @@ import (
 func TestUpdateRules(t *testing.T) {
 	require := require.New(t)
 
-	var exp Rules
-	exp.Epochs.MaxEpochGas = 99
+	base := MainNetRules()
 
+	exp := base.Copy()
 	exp.Dag.MaxParents = 5
 	exp.Economy.MinGasPrice = big.NewInt(7)
 	exp.Economy.MinBaseFee = big.NewInt(1e9)
-	exp.Blocks.MaxBlockGas = 1000
-	got, err := UpdateRules(exp, []byte(`{"Dag":{"MaxParents":5},"Economy":{"MinGasPrice":7},"Blocks":{"MaxBlockGas":1000}}`))
-	require.NoError(err)
-	require.Equal(exp.String(), got.String(), "mutate fields")
+	exp.Blocks.MaxBlockGas = 5000000000
 
-	exp.Dag.MaxParents = 0
-	got, err = UpdateRules(exp, []byte(`{"Name":"xxx","NetworkID":1,"Dag":{"MaxParents":0}}`))
+	got, err := UpdateRules(exp, []byte(`{"Dag":{"MaxParents":5},"Economy":{"MinGasPrice":7},"Blocks":{"MaxBlockGas":5000000000}}`))
 	require.NoError(err)
-	require.Equal(exp.String(), got.String(), "readonly fields")
+	require.Equal(exp.String(), got.String(), "should not be able to change readonly fields")
 
 	got, err = UpdateRules(exp, []byte(`{}`))
 	require.NoError(err)
-	require.Equal(exp.String(), got.String(), "empty diff")
+	require.Equal(exp.String(), got.String(), "empty diff changed the rules")
 
 	_, err = UpdateRules(exp, []byte(`}{`))
-	require.Error(err)
+	require.Error(err, "should fail on invalid json")
+
+	_, err = UpdateRules(exp, []byte(`{"Dag":{"MaxParents":1}}`))
+	require.Error(err, "should fail on invalid rules")
+}
+
+func TestUpdateRules_ValidityCheckIsConductedIfCheckIsEnabledInUpdatedRuleSet(t *testing.T) {
+	for _, enabledBefore := range []bool{true, false} {
+		for _, enabledAfter := range []bool{true, false} {
+			for _, validUpdate := range []bool{true, false} {
+				t.Run(fmt.Sprintf("before=%t,after=%t,valid=%t", enabledBefore, enabledAfter, validUpdate), func(t *testing.T) {
+					require := require.New(t)
+
+					base := MainNetRules()
+					base.Upgrades.Allegro = enabledBefore
+
+					maxParents := 1
+					if validUpdate {
+						maxParents = 5
+					}
+
+					update := fmt.Sprintf(`{"Dag":{"MaxParents":%d}, "Upgrades":{"Allegro":%t}}`, maxParents, enabledAfter)
+
+					_, err := UpdateRules(base, []byte(update))
+					if enabledAfter && !validUpdate {
+						require.Error(err)
+					} else {
+						require.NoError(err)
+					}
+				})
+			}
+		}
+	}
 }
 
 func TestUpdateRules_CanUpdateHardForks(t *testing.T) {
 	require := require.New(t)
 
-	rules := Rules{
-		Economy: EconomyRules{
-			MinGasPrice: big.NewInt(1),
-			MinBaseFee:  big.NewInt(2),
-		},
-		Upgrades: Upgrades{
-			Berlin:  true,
-			London:  false,
-			Sonic:   true,
-			Allegro: false,
-		},
-	}
+	rules := FakeNetRules(SonicFeatures)
 
-	got, err := UpdateRules(rules, []byte(`{"Upgrades":{"Berlin":false,"London":true,"Sonic":false,"Allegro":true}}`))
+	got, err := UpdateRules(rules, []byte(`{"Upgrades":{"Allegro":true}}`))
 	require.NoError(err)
 	require.Equal(Upgrades{
-		Berlin:  false,
+		Berlin:  true,
 		London:  true,
-		Sonic:   false,
+		Sonic:   true,
 		Allegro: true,
 	}, got.Upgrades)
 }

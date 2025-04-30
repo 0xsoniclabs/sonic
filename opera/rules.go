@@ -2,6 +2,7 @@ package opera
 
 import (
 	"encoding/json"
+	"math"
 	"math/big"
 	"time"
 
@@ -27,8 +28,9 @@ const (
 	sonicBit               = 1 << 3
 	allegroBit             = 1 << 4
 
-	defaultMaxBlockGas          = 1_000_000_000
-	defaultTargetGasRate        = 15_000_000 // 15 MGas/s
+	MinimumMaxBlockGas          = 5_000_000_000 // < must be large enough to allow internal transactions to seal blocks
+	MaximumMaxBlockGas          = math.MaxInt64 // < should fit into 64-bit signed integers to avoid parsing errors in third-party libraries
+	defaultTargetGasRate        = 15_000_000    // 15 MGas/s
 	defaultEventEmitterInterval = 600 * time.Millisecond
 )
 
@@ -308,9 +310,10 @@ func MainNetRules() Rules {
 		Epochs:    DefaultEpochsRules(),
 		Economy:   DefaultEconomyRules(),
 		Blocks: BlocksRules{
-			MaxBlockGas:             defaultMaxBlockGas,
+			MaxBlockGas:             MinimumMaxBlockGas,
 			MaxEmptyBlockSkipPeriod: inter.Timestamp(1 * time.Minute),
 		},
+		Upgrades: AllegroFeatures.ToUpgrades(),
 	}
 }
 
@@ -323,7 +326,7 @@ func FakeNetRules(features FeatureSet) Rules {
 		Epochs:    FakeNetEpochsRules(),
 		Economy:   FakeEconomyRules(),
 		Blocks: BlocksRules{
-			MaxBlockGas:             defaultMaxBlockGas,
+			MaxBlockGas:             MinimumMaxBlockGas,
 			MaxEmptyBlockSkipPeriod: inter.Timestamp(3 * time.Second),
 		},
 		Upgrades: features.ToUpgrades(),
@@ -367,7 +370,7 @@ func DefaultEmitterRules() EmitterRules {
 func DefaultEpochsRules() EpochsRules {
 	return EpochsRules{
 		MaxEpochGas:      defaultTargetGasRate * 300, // ~5 minute epoch
-		MaxEpochDuration: inter.Timestamp(4 * time.Hour),
+		MaxEpochDuration: inter.Timestamp(1 * time.Hour),
 	}
 }
 
@@ -429,6 +432,19 @@ func (r Rules) Copy() Rules {
 	}
 
 	return cp
+}
+
+// Validate checks the rules for consistency and safety. Rules are considered safe if
+// they do not risk stalling the network or preventing future rule updates.
+//
+// Note: the validation is very liberal to allow a maximum flexibility in the rules.
+// It merely checks for the most critical configuration errors that may lead to network
+// stalls or rule update issues. However, many valid configurations may still result
+// in undesirable network behavior. Rule-setters need to be aware of the implications
+// of their choices and should always test their rules in a controlled environment.
+// This validation is not a substitute for proper testing.
+func (r Rules) Validate() error {
+	return validate(r)
 }
 
 func (r Rules) String() string {

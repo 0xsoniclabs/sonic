@@ -5,6 +5,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/contract/driverauth100"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -182,6 +183,48 @@ func TestNetworkRule_Update_Restart_Recovers_Original_Value(t *testing.T) {
 	require.NoError(err)
 
 	require.GreaterOrEqual(blockAfter.BaseFee().Int64(), newMinBaseFee, "BaseFee should reflect new MinBaseFee")
+}
+
+func TestNetworkRule_MinEventGas_AllowsChangingRules(t *testing.T) {
+	require := require.New(t)
+	net := StartIntegrationTestNetWithFakeGenesis(t, IntegrationTestNetOptions{FeatureSet: opera.SonicFeatures})
+
+	client, err := net.GetClient()
+	require.NoError(err)
+	defer client.Close()
+
+	var rules opera.Rules
+	data, err := json.Marshal(rules)
+	require.NoError(err)
+
+	abi, err := driverauth100.ContractMetaData.GetAbi()
+	require.NoError(err)
+
+	input, err := abi.Pack("updateNetworkRules", data)
+	require.NoError(err)
+
+	gasPrice, err := client.SuggestGasPrice(t.Context())
+	require.NoError(err)
+
+	msg := ethereum.CallMsg{
+		From:     net.account.Address(),
+		To:       &driverauth.ContractAddress,
+		GasPrice: gasPrice.Mul(gasPrice, big.NewInt(10)),
+		Data:     input,
+	}
+
+	gas, err := client.EstimateGas(t.Context(), msg)
+	require.NoError(err)
+
+	defaultGasRules := opera.DefaultGasRules()
+
+	require.Less(gas, defaultGasRules.MaxEventGas, "Gas should be less than MaxEventGas")
+	require.Less(gas, opera.UpperBoundForRuleChangeGasCosts(), "Gas should be less than upper bound for rule change gas costs")
+
+	require.Less(gas, opera.UpperBoundForRuleChangeGasCosts()/10, "There should be a factor of 10 head room for gas costs")
+
+	// Check that these two properties do not contradict each other
+	require.Less(opera.UpperBoundForRuleChangeGasCosts(), defaultGasRules.MaxEventGas, "Upper bound for rule change gas costs should be less than MaxEventGas")
 }
 
 // updateNetworkRules sends a transaction to update the network rules.

@@ -2,15 +2,21 @@ package opera
 
 import "encoding/json"
 
-func UpdateRules(src Rules, diff []byte) (res Rules, err error) {
+func UpdateRules(src Rules, diff []byte) (Rules, error) {
 	changed := src.Copy()
-	err = json.Unmarshal(diff, &changed)
-	if err != nil {
-		return src, err
+	if err := json.Unmarshal(diff, &changed); err != nil {
+		return Rules{}, err
 	}
+
 	// protect readonly fields
-	res = changed
-	res.NetworkID = src.NetworkID
-	res.Name = src.Name
-	return
+	changed.NetworkID = src.NetworkID
+	changed.Name = src.Name
+
+	// check validity of the new rules
+	if changed.Upgrades.Allegro {
+		if err := changed.Validate(); err != nil {
+			return Rules{}, err
+		}
+	}
+	return changed, nil
 }
