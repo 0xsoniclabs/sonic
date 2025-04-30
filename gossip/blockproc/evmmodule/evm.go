@@ -109,7 +109,7 @@ func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlo
 		BaseFee:         baseFee,
 		PrevRandao:      prevRandao,
 		WithdrawalsHash: withdrawalsHash,
-		Epoch:           p.block.Atropos.Epoch(),
+		Epoch:           p.block.Leader.Epoch(),
 	}
 
 	return evmcore.NewEvmBlock(h, txs)

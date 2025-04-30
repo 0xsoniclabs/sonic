@@ -33,9 +33,9 @@ type ValidatorEpochState struct {
 }
 
 type BlockCtx struct {
-	Idx     consensus.BlockID
-	Time    inter.Timestamp
-	Atropos consensus.EventHash
+	Idx    consensus.BlockID
+	Time   inter.Timestamp
+	Leader consensus.EventHash
 }
 
 type BlockState struct {

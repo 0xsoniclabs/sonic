@@ -95,9 +95,9 @@ func ApplyGenesisJson(json *GenesisJson) (*genesisstore.Store, error) {
 		LlrFullEpochRecord: ier.LlrFullEpochRecord{
 			BlockState: iblockproc.BlockState{
 				LastBlock: iblockproc.BlockCtx{
-					Idx:     0,
-					Time:    genesisTime,
-					Atropos: consensus.EventHash{},
+					Idx:    0,
+					Time:   genesisTime,
+					Leader: consensus.EventHash{},
 				},
 				FinalizedStateRoot:    consensus.Hash(genesisStateRoot),
 				EpochGas:              0,

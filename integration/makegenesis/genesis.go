@@ -205,9 +205,9 @@ func (b *GenesisBuilder) ExecuteGenesisTxs(blockProc BlockProc, genesisTxs types
 	es.Rules.Economy.MinGasPrice = big.NewInt(0) // < needed since genesis transactions have gas price 0
 
 	blockCtx := iblockproc.BlockCtx{
-		Idx:     bs.LastBlock.Idx + 1,
-		Time:    bs.LastBlock.Time + 1,
-		Atropos: consensus.EventHash{},
+		Idx:    bs.LastBlock.Idx + 1,
+		Time:   bs.LastBlock.Time + 1,
+		Leader: consensus.EventHash{},
 	}
 
 	sealer := blockProc.SealerModule.Start(blockCtx, bs, es)

@@ -142,9 +142,9 @@ type handshakeData struct {
 
 // PeerProgress is synchronization status of a peer
 type PeerProgress struct {
-	Epoch            consensus.Epoch
-	LastBlockIdx     consensus.BlockID
-	LastBlockAtropos consensus.EventHash
+	Epoch           consensus.Epoch
+	LastBlockIdx    consensus.BlockID
+	LastBlockLeader consensus.EventHash
 	// Currently unused
 	HighestLamport consensus.Lamport
 }

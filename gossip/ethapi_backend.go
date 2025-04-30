@@ -87,7 +87,7 @@ func (b *EthAPIBackend) HeaderByNumber(ctx context.Context, number rpc.BlockNumb
 	return blk.Header(), err
 }
 
-// HeaderByHash returns evm block header by its (atropos) hash, or nil if not exists.
+// HeaderByHash returns evm block header by its (leader) hash, or nil if not exists.
 func (b *EthAPIBackend) HeaderByHash(ctx context.Context, h common.Hash) (*evmcore.EvmHeader, error) {
 	index := b.svc.store.GetBlockIndex(consensus.EventHash(h))
 	if index == nil {
@@ -424,7 +424,7 @@ func (b *EthAPIBackend) Progress() ethapi.PeerProgress {
 	return ethapi.PeerProgress{
 		CurrentEpoch:     p2pProgress.Epoch,
 		CurrentBlock:     p2pProgress.LastBlockIdx,
-		CurrentBlockHash: p2pProgress.LastBlockAtropos,
+		CurrentBlockHash: p2pProgress.LastBlockLeader,
 		CurrentBlockTime: lastBlock.Time,
 		HighestBlock:     highestP2pProgress.LastBlockIdx,
 		HighestEpoch:     highestP2pProgress.Epoch,

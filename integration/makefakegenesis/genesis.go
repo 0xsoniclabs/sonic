@@ -101,9 +101,9 @@ func FakeGenesisStoreWithRulesAndStart(
 		LlrFullEpochRecord: ier.LlrFullEpochRecord{
 			BlockState: iblockproc.BlockState{
 				LastBlock: iblockproc.BlockCtx{
-					Idx:     block - 1,
-					Time:    FakeGenesisTime,
-					Atropos: consensus.EventHash{},
+					Idx:    block - 1,
+					Time:   FakeGenesisTime,
+					Leader: consensus.EventHash{},
 				},
 				FinalizedStateRoot:    consensus.Hash(genesisStateRoot),
 				EpochGas:              0,
