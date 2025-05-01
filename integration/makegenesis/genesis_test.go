@@ -64,9 +64,9 @@ func finalizeBlockZero(t *testing.T, builder *GenesisBuilder, rules opera.Rules)
 		LlrFullEpochRecord: ier.LlrFullEpochRecord{
 			BlockState: iblockproc.BlockState{
 				LastBlock: iblockproc.BlockCtx{
-					Idx:     0,
-					Time:    genesisTime,
-					Atropos: consensus.EventHash{},
+					Idx:    0,
+					Time:   genesisTime,
+					Leader: consensus.EventHash{},
 				},
 				FinalizedStateRoot:    consensus.Hash{0x42},
 				EpochGas:              0,

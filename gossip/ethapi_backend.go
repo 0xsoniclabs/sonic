@@ -285,7 +285,7 @@ func (b *EthAPIBackend) epochWithDefault(ctx context.Context, epoch rpc.BlockNum
 	return requested, nil
 }
 
-// ForEachEpochEvent iterates all the events which are observed by head, and accepted by a filter.
+// ForEachEpochEvent iterates all the events which are reachable by head, and accepted by a filter.
 // filter CANNOT called twice for the same event.
 func (b *EthAPIBackend) ForEachEpochEvent(ctx context.Context, epoch rpc.BlockNumber, onEvent func(event *inter.EventPayload) bool) error {
 	requested, err := b.epochWithDefault(ctx, epoch)

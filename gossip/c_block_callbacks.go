@@ -262,7 +262,7 @@ func consensusCallbackBeginBlockFn(
 				}
 
 				// Note:
-				// it's possible that a previous Leader observes current Leader (1)
+				// it's possible that a previous Leader has current Leader (1) as reachable
 				// (even stronger statement is true - it's possible that current Leader is equal to a previous Leader).
 				// (1) is true when and only when ApplyEvent wasn't called.
 				// In other words, we should assume that every non-cheater root may be elected as an Leader in any order,

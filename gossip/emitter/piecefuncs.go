@@ -44,7 +44,7 @@ var (
 			Y: 60.0 * piecefunc.DecimalUnit,
 		},
 	})
-	// scalarUpdMetricF is a piecewise function for validator's event metric diff depending on a number of newly observed events
+	// scalarUpdMetricF is a piecewise function for validator's event metric diff depending on a number of newly reachable events
 	scalarUpdMetricF = piecefunc.NewFunc([]piecefunc.Dot{
 		{
 			X: 0,

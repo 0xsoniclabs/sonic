@@ -92,7 +92,7 @@ func (fc *FCIndexer) baseProgress(frame consensus.Frame, event consensus.EventHa
 			continue
 		}
 		FCProgress, _ := fc.dagi.ForklessCauseProgress(event, base, nil, chosenHeads)
-		numNonZero += FCProgress.NumCounted() // add the number of validators that have observed base
+		numNonZero += FCProgress.NumCounted() // add the number of validators that have base as reachable
 	}
 	return numNonZero
 }
