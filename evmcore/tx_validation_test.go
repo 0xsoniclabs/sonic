@@ -156,7 +156,7 @@ func TestValidateTxForNetworkRules_BeforeEip2718_RejectsNonLegacyTransactions(t 
 			continue // Skip legacy transactions
 		}
 		t.Run(name, func(t *testing.T) {
-			err := ValidateTxForNetworkRules(types.NewTx(tx),
+			_, err := ValidateTxForNetworkRules(types.NewTx(tx),
 				NetworkRulesForValidateTx{eip2718: false})
 			require.ErrorIs(t, ErrTxTypeNotSupported, err)
 		})
@@ -202,7 +202,7 @@ func TestValidateTxForNetworkRules_RejectsTxBasedOnTypeAndActiveRevision(t *test
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			err := ValidateTxForNetworkRules(test.tx, test.configure(getTestNetworkRules()))
+			_, err := ValidateTxForNetworkRules(test.tx, test.configure(getTestNetworkRules()))
 			require.Equal(t, ErrTxTypeNotSupported, err)
 		})
 	}
@@ -216,7 +216,7 @@ func TestValidateTxForNetworkRules_Gas_RejectsTxWith(t *testing.T) {
 
 			setGas(t, tx, 2)
 
-			err := ValidateTxForNetworkRules(types.NewTx(tx), opt)
+			_, err := ValidateTxForNetworkRules(types.NewTx(tx), opt)
 			require.ErrorIs(t, err, ErrGasLimit)
 		})
 	}
@@ -231,7 +231,7 @@ func TestValidateTxForNetworkRules_Gas_RejectsTxWith(t *testing.T) {
 			// sign txs with sender
 			_, signedTx := signTxForTest(t, tx)
 
-			err := ValidateTxForNetworkRules(signedTx, opt)
+			_, err := ValidateTxForNetworkRules(signedTx, opt)
 			require.ErrorIs(t, err, ErrUnderpriced)
 		})
 	}
@@ -248,7 +248,7 @@ func TestValidateTxForNetworkRules_Gas_RejectsTxWith(t *testing.T) {
 			_, signedTx := signTxForTest(t, tx)
 			// ---
 
-			err := ValidateTxForNetworkRules(signedTx, opt)
+			_, err := ValidateTxForNetworkRules(signedTx, opt)
 			require.ErrorIs(t, err, ErrIntrinsicGas)
 		})
 	}
@@ -271,7 +271,7 @@ func TestValidateTxForNetworkRules_Gas_RejectsTxWith(t *testing.T) {
 			_, signedTx := signTxForTest(t, tx)
 			// ---
 
-			err = ValidateTxForNetworkRules(signedTx, opt)
+			_, err = ValidateTxForNetworkRules(signedTx, opt)
 			require.ErrorIs(t, err, ErrFloorDataGas)
 		})
 	}
@@ -293,7 +293,7 @@ func TestValidateTxForNetworkRules_Gas_RejectsTxWith(t *testing.T) {
 			_, signedTx := signTxForTest(t, tx)
 			// ---
 
-			err = ValidateTxForNetworkRules(signedTx, opt)
+			_, err = ValidateTxForNetworkRules(signedTx, opt)
 			require.NoError(t, err)
 
 		})
@@ -312,7 +312,7 @@ func TestValidateTxForNetworkRules_Data_RejectsTxWith(t *testing.T) {
 			setData(t, tx, maxInitCode)
 			setReceiverToNil(t, tx)
 
-			err := ValidateTxForNetworkRules(types.NewTx(tx), getTestNetworkRules())
+			_, err := ValidateTxForNetworkRules(types.NewTx(tx), getTestNetworkRules())
 			require.ErrorIs(t, err, ErrMaxInitCodeSizeExceeded)
 		})
 	}
@@ -338,7 +338,7 @@ func TestValidateTxForNetworkRules_Data_RejectsTxWith(t *testing.T) {
 			_, signedTx := signTxForTest(t, tx)
 			// ---
 
-			err := ValidateTxForNetworkRules(signedTx, opt)
+			_, err := ValidateTxForNetworkRules(signedTx, opt)
 			require.NoError(t, err)
 		})
 	}
@@ -350,7 +350,7 @@ func TestValidateTxForNetworkRules_Signer_RejectsTxWith(t *testing.T) {
 			opt := getTestNetworkRules()
 			opt.signer = types.HomesteadSigner{}
 			setSignatureValues(t, tx, big.NewInt(1), big.NewInt(2), big.NewInt(3))
-			err := ValidateTxForNetworkRules(types.NewTx(tx), getTestNetworkRules())
+			_, err := ValidateTxForNetworkRules(types.NewTx(tx), getTestNetworkRules())
 			require.ErrorIs(t, err, ErrInvalidSender)
 		})
 	}
@@ -364,7 +364,7 @@ func TestValidateTxForNetworkRules_Signer_RejectsTxWith(t *testing.T) {
 				types.NewPragueSigner(big.NewInt(2)), key)
 			require.NoError(t, err)
 
-			err = ValidateTxForNetworkRules(signedTx, getTestNetworkRules())
+			_, err = ValidateTxForNetworkRules(signedTx, getTestNetworkRules())
 			require.ErrorIs(t, err, ErrInvalidSender)
 		})
 	}
@@ -375,14 +375,14 @@ func TestValidateTxForNetworkRules_Blobs_RejectsTxWith(t *testing.T) {
 
 	t.Run("blob tx with non-empty blob hashes", func(t *testing.T) {
 		tx := types.NewTx(makeBlobTx([]common.Hash{{0x01}}, nil))
-		err := ValidateTxForNetworkRules(tx, getTestNetworkRules())
+		_, err := ValidateTxForNetworkRules(tx, getTestNetworkRules())
 		require.ErrorIs(t, err, ErrTxTypeNotSupported)
 	})
 
 	t.Run("blob tx with non-empty sidecar", func(t *testing.T) {
 		tx := types.NewTx(makeBlobTx(nil,
 			&types.BlobTxSidecar{Commitments: []kzg4844.Commitment{{0x01}}}))
-		err := ValidateTxForNetworkRules(tx, getTestNetworkRules())
+		_, err := ValidateTxForNetworkRules(tx, getTestNetworkRules())
 		require.ErrorIs(t, err, ErrTxTypeNotSupported)
 	})
 }
@@ -390,7 +390,7 @@ func TestValidateTxForNetworkRules_Blobs_RejectsTxWith(t *testing.T) {
 func TestValidateTxForNetworkRules_AuthorizationList_RejectsTxWith(t *testing.T) {
 	t.Run("setCode tx with empty authorization list", func(t *testing.T) {
 		tx := types.NewTx(&types.SetCodeTx{})
-		err := ValidateTxForNetworkRules(tx, getTestNetworkRules())
+		_, err := ValidateTxForNetworkRules(tx, getTestNetworkRules())
 		require.ErrorIs(t, err, ErrEmptyAuthorizations)
 	})
 }
@@ -406,7 +406,7 @@ func TestValidateTxForNetworkRules_AcceptsTxWith(t *testing.T) {
 			setGas(t, tx, underMaxGas)
 
 			_, signedTx := signTxForTest(t, tx)
-			err := ValidateTxForNetworkRules(signedTx, opt)
+			_, err := ValidateTxForNetworkRules(signedTx, opt)
 			require.NoError(t, err)
 		})
 	}
