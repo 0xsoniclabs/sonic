@@ -118,6 +118,17 @@ func ValidateTxStatic(tx *types.Transaction) error {
 		return ErrTipAboveFeeCap
 	}
 
+	// For now, Sonic only supports Blob transactions without blob data.
+	if tx.BlobHashes() != nil && (len(tx.BlobHashes()) > 0 ||
+		(tx.BlobTxSidecar() != nil && len(tx.BlobTxSidecar().BlobHashes()) > 0)) {
+		return ErrTxTypeNotSupported
+	}
+
+	// Check non-empty authorization list
+	if tx.SetCodeAuthorizations() != nil && len(tx.SetCodeAuthorizations()) == 0 {
+		return ErrEmptyAuthorizations
+	}
+
 	return nil
 }
 
@@ -145,32 +156,15 @@ func ValidateTxForNetworkRules(tx *types.Transaction, opt NetworkRulesForValidat
 		return common.Address{}, ErrTxTypeNotSupported
 	}
 	// Reject blob transactions until EIP-4844 activates or if is already EIP-4844 and they are not empty
-	if tx.Type() == types.BlobTxType {
-		if !opt.eip4844 {
-			return common.Address{}, ErrTxTypeNotSupported
-		}
-		// For now, Sonic only supports Blob transactions without blob data.
-		if len(tx.BlobHashes()) > 0 ||
-			(tx.BlobTxSidecar() != nil && len(tx.BlobTxSidecar().BlobHashes()) > 0) {
-			return common.Address{}, ErrTxTypeNotSupported
-		}
+	if tx.Type() == types.BlobTxType && !opt.eip4844 {
+		return common.Address{}, ErrTxTypeNotSupported
 	}
 	// validate EIP-7702 transactions, part of prague revision
-	if tx.Type() == types.SetCodeTxType {
-		// Check minimum revision
-		if !opt.eip7702 {
-			return common.Address{}, ErrTxTypeNotSupported
-		}
-
-		// Check non-empty authorization list
-		if len(tx.SetCodeAuthorizations()) == 0 {
-			return common.Address{}, ErrEmptyAuthorizations
-		}
+	if tx.Type() == types.SetCodeTxType && !opt.eip7702 {
+		return common.Address{}, ErrTxTypeNotSupported
 	}
-
 	// Check whether the init code size has been exceeded, introduced in EIP-3860
-	if opt.shanghai && tx.To() == nil &&
-		len(tx.Data()) > params.MaxInitCodeSize {
+	if opt.shanghai && tx.To() == nil && len(tx.Data()) > params.MaxInitCodeSize {
 		return common.Address{}, fmt.Errorf("%w: code size %v, limit %v", ErrMaxInitCodeSizeExceeded, len(tx.Data()), params.MaxInitCodeSize)
 	}
 
@@ -237,7 +231,7 @@ func ValidateTxForState(tx *types.Transaction, state TxPoolStateDB, from common.
 	}
 
 	// Transactor should have enough funds to cover the costs
-	// cost == V + GP * GL
+	// cost == V + GP * G
 	if utils.Uint256ToBigInt(state.GetBalance(from)).Cmp(tx.Cost()) < 0 {
 		return ErrInsufficientFunds
 	}
@@ -250,12 +244,13 @@ func ValidateTxForState(tx *types.Transaction, state TxPoolStateDB, from common.
 func validateTxForPool(tx *types.Transaction, opt validationOptions,
 	from common.Address) error {
 
-	// Drop non-local transactions under our own minimal accepted gas price or tip
-	local := opt.isLocal || opt.locals.contains(from) // account may be local even if the transaction arrived from the network
+	// tx is local if received from the local RPC or if the sender belongs to the local accounts set
+	local := opt.isLocal || opt.locals.contains(from)
 	if local {
 		return nil
 	}
 
+	// Drop non-local transactions under our own minimal accepted gas price or tip.
 	if tx.GasTipCapIntCmp(opt.minTip) < 0 {
 		log.Trace("Rejecting underpriced tx: pool.gasPrice", "pool.gasPrice",
 			opt.minTip, "tx.GasTipCap", tx.GasTipCap())
