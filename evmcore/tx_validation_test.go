@@ -132,6 +132,31 @@ func TestValidateTxStatic_GasPriceAndTip_RejectsTxWith(t *testing.T) {
 	}
 }
 
+func TestValidateTxStatic_Blobs_RejectsTxWith(t *testing.T) {
+	// blob txs are not supported in sonic, so they must have empty hash list and sidecar
+
+	t.Run("blob tx with non-empty blob hashes", func(t *testing.T) {
+		tx := types.NewTx(makeBlobTx([]common.Hash{{0x01}}, nil))
+		err := ValidateTxStatic(tx)
+		require.ErrorIs(t, err, ErrTxTypeNotSupported)
+	})
+
+	t.Run("blob tx with non-empty sidecar", func(t *testing.T) {
+		tx := types.NewTx(makeBlobTx(nil,
+			&types.BlobTxSidecar{Commitments: []kzg4844.Commitment{{0x01}}}))
+		err := ValidateTxStatic(tx)
+		require.ErrorIs(t, err, ErrTxTypeNotSupported)
+	})
+}
+
+func TestValidateTxStatic_AuthorizationList_RejectsTxWith(t *testing.T) {
+	t.Run("setCode tx with empty authorization list", func(t *testing.T) {
+		tx := types.NewTx(&types.SetCodeTx{})
+		err := ValidateTxStatic(tx)
+		require.ErrorIs(t, err, ErrEmptyAuthorizations)
+	})
+}
+
 func TestValidateTxStatic_ReturnsNilToAcceptableTx(t *testing.T) {
 	for name, tx := range getTxsOfAllTypes() {
 		t.Run(name, func(t *testing.T) {
@@ -368,31 +393,6 @@ func TestValidateTxForNetworkRules_Signer_RejectsTxWith(t *testing.T) {
 			require.ErrorIs(t, err, ErrInvalidSender)
 		})
 	}
-}
-
-func TestValidateTxForNetworkRules_Blobs_RejectsTxWith(t *testing.T) {
-	// blob txs are not supported in sonic, so they must have empty hash list and sidecar
-
-	t.Run("blob tx with non-empty blob hashes", func(t *testing.T) {
-		tx := types.NewTx(makeBlobTx([]common.Hash{{0x01}}, nil))
-		_, err := ValidateTxForNetworkRules(tx, getTestNetworkRules())
-		require.ErrorIs(t, err, ErrTxTypeNotSupported)
-	})
-
-	t.Run("blob tx with non-empty sidecar", func(t *testing.T) {
-		tx := types.NewTx(makeBlobTx(nil,
-			&types.BlobTxSidecar{Commitments: []kzg4844.Commitment{{0x01}}}))
-		_, err := ValidateTxForNetworkRules(tx, getTestNetworkRules())
-		require.ErrorIs(t, err, ErrTxTypeNotSupported)
-	})
-}
-
-func TestValidateTxForNetworkRules_AuthorizationList_RejectsTxWith(t *testing.T) {
-	t.Run("setCode tx with empty authorization list", func(t *testing.T) {
-		tx := types.NewTx(&types.SetCodeTx{})
-		_, err := ValidateTxForNetworkRules(tx, getTestNetworkRules())
-		require.ErrorIs(t, err, ErrEmptyAuthorizations)
-	})
 }
 
 func TestValidateTxForNetworkRules_AcceptsTxWith(t *testing.T) {
