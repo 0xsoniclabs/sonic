@@ -67,13 +67,10 @@ func validateTx(
 		return err
 	}
 
-	if err := ValidateTxForNetworkRules(tx, netRules); err != nil {
+	from, err := ValidateTxForNetworkRules(tx, netRules)
+	if err != nil {
 		return err
 	}
-
-	// sender is checked as part of validateTxForNetworkRules, if it were to
-	// produce an error, it would have been caught there.
-	from, _ := types.Sender(netRules.signer, tx)
 
 	if err := validateTxForPool(tx, opt, from); err != nil {
 		return err
@@ -134,58 +131,58 @@ func ValidateTxStatic(tx *types.Transaction) error {
 // - gas is greater than the floor data cost (EIP-7623)
 //
 // It returns an error if any of the checks fail.
-func ValidateTxForNetworkRules(tx *types.Transaction, opt NetworkRulesForValidateTx) error {
+func ValidateTxForNetworkRules(tx *types.Transaction, opt NetworkRulesForValidateTx) (common.Address, error) {
 
 	// Accept only legacy transactions until EIP-2718/2930 activates.
 	// Since both eip-2718 and eip-2930 are activated in the berlin fork
 	// (https://blog.ethereum.org/2021/03/08/ethereum-berlin-upgrade-announcement),
 	// they can be grouped in a single flag.
 	if !opt.eip2718 && tx.Type() != types.LegacyTxType {
-		return ErrTxTypeNotSupported
+		return common.Address{}, ErrTxTypeNotSupported
 	}
 	// Reject dynamic fee transactions until EIP-1559 activates.
 	if !opt.eip1559 && tx.Type() == types.DynamicFeeTxType {
-		return ErrTxTypeNotSupported
+		return common.Address{}, ErrTxTypeNotSupported
 	}
 	// Reject blob transactions until EIP-4844 activates or if is already EIP-4844 and they are not empty
 	if tx.Type() == types.BlobTxType {
 		if !opt.eip4844 {
-			return ErrTxTypeNotSupported
+			return common.Address{}, ErrTxTypeNotSupported
 		}
 		// For now, Sonic only supports Blob transactions without blob data.
 		if len(tx.BlobHashes()) > 0 ||
 			(tx.BlobTxSidecar() != nil && len(tx.BlobTxSidecar().BlobHashes()) > 0) {
-			return ErrTxTypeNotSupported
+			return common.Address{}, ErrTxTypeNotSupported
 		}
 	}
 	// validate EIP-7702 transactions, part of prague revision
 	if tx.Type() == types.SetCodeTxType {
 		// Check minimum revision
 		if !opt.eip7702 {
-			return ErrTxTypeNotSupported
+			return common.Address{}, ErrTxTypeNotSupported
 		}
 
 		// Check non-empty authorization list
 		if len(tx.SetCodeAuthorizations()) == 0 {
-			return ErrEmptyAuthorizations
+			return common.Address{}, ErrEmptyAuthorizations
 		}
 	}
 
 	// Check whether the init code size has been exceeded, introduced in EIP-3860
 	if opt.shanghai && tx.To() == nil &&
 		len(tx.Data()) > params.MaxInitCodeSize {
-		return fmt.Errorf("%w: code size %v, limit %v", ErrMaxInitCodeSizeExceeded, len(tx.Data()), params.MaxInitCodeSize)
+		return common.Address{}, fmt.Errorf("%w: code size %v, limit %v", ErrMaxInitCodeSizeExceeded, len(tx.Data()), params.MaxInitCodeSize)
 	}
 
 	// Ensure the transaction doesn't exceed the current block limit gas.
 	if opt.currentMaxGas < tx.Gas() {
-		return ErrGasLimit
+		return common.Address{}, ErrGasLimit
 	}
 
 	// Make sure the transaction is signed properly.
-	_, err := types.Sender(opt.signer, tx)
+	from, err := types.Sender(opt.signer, tx)
 	if err != nil {
-		return ErrInvalidSender
+		return common.Address{}, ErrInvalidSender
 	}
 
 	// Ensure Opera-specific hard bounds
@@ -193,7 +190,7 @@ func ValidateTxForNetworkRules(tx *types.Transaction, opt NetworkRulesForValidat
 		limit := gaspricelimits.GetMinimumFeeCapForTransactionPool(baseFee)
 		if tx.GasFeeCapIntCmp(limit) < 0 {
 			log.Trace("Rejecting underpriced tx: minimumBaseFee", "minimumBaseFee", baseFee, "limit", limit, "tx.GasFeeCap", tx.GasFeeCap())
-			return ErrUnderpriced
+			return common.Address{}, ErrUnderpriced
 		}
 	}
 
@@ -208,10 +205,10 @@ func ValidateTxForNetworkRules(tx *types.Transaction, opt NetworkRulesForValidat
 		opt.shanghai,   // is eip-3860 (limit and meter init-code )
 	)
 	if err != nil {
-		return err
+		return common.Address{}, err
 	}
 	if tx.Gas() < intrGas {
-		return ErrIntrinsicGas
+		return common.Address{}, ErrIntrinsicGas
 	}
 
 	// EIP-7623 part of Prague revision: Floor data gas
@@ -219,14 +216,14 @@ func ValidateTxForNetworkRules(tx *types.Transaction, opt NetworkRulesForValidat
 	if opt.eip7623 {
 		floorDataGas, err := core.FloorDataGas(tx.Data())
 		if err != nil {
-			return err
+			return common.Address{}, err
 		}
 		if tx.Gas() < floorDataGas {
-			return fmt.Errorf("%w: have %d, want %d", ErrFloorDataGas, tx.Gas(), floorDataGas)
+			return common.Address{}, fmt.Errorf("%w: have %d, want %d", ErrFloorDataGas, tx.Gas(), floorDataGas)
 		}
 	}
 
-	return nil
+	return from, nil
 }
 
 // ValidateTxForState checks if a transaction is valid based on the sender's current state.
