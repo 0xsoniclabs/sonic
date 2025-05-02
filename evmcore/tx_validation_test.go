@@ -879,3 +879,82 @@ func makeBlobTx(hashes []common.Hash, sidecar *types.BlobTxSidecar) types.TxData
 		Sidecar:    sidecar,
 	}
 }
+
+///////////////////////////////////////////////////////////////////////
+// Benchmarks
+
+func BenchmarkValidateTxStatic(b *testing.B) {
+	key, err := crypto.GenerateKey()
+	require.NoError(b, err)
+
+	// make a good transaction
+	tx, err := types.SignTx(types.NewTx(&types.SetCodeTx{
+		Nonce:     1,
+		Gas:       50_000,
+		GasFeeCap: uint256.NewInt(1),
+		Value:     uint256.NewInt(1),
+		Data:      []byte("some data"),
+		AuthList:  []types.SetCodeAuthorization{{}},
+	}), types.NewPragueSigner(big.NewInt(1)), key)
+	require.NoError(b, err)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		err = ValidateTxStatic(tx)
+		require.NoError(b, err)
+	}
+}
+
+func BenchmarkValidateTxForNetworkRules(b *testing.B) {
+	key, err := crypto.GenerateKey()
+	require.NoError(b, err)
+
+	netRules := getTestNetworkRules()
+
+	// make a good transaction
+	tx, err := types.SignTx(types.NewTx(&types.SetCodeTx{
+		Nonce:     1,
+		Gas:       50_000,
+		GasFeeCap: uint256.MustFromBig(netRules.currentBaseFee),
+		Value:     uint256.NewInt(1),
+		Data:      []byte("some data"),
+		AuthList:  []types.SetCodeAuthorization{{}},
+	}), types.NewPragueSigner(big.NewInt(1)), key)
+	require.NoError(b, err)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err = ValidateTxForNetworkRules(tx, netRules)
+		require.NoError(b, err)
+	}
+}
+
+func BenchmarkValidateTx(b *testing.B) {
+	key, err := crypto.GenerateKey()
+	require.NoError(b, err)
+	address := crypto.PubkeyToAddress(key.PublicKey)
+
+	netRules := getTestNetworkRules()
+	opts := getTestValidationOptions()
+	testDB := newTestTxPoolStateDb()
+	testDB.balances[address] = uint256.NewInt(math.MaxUint64)
+	testDB.nonces[address] = 1
+	opts.currentState = testDB
+
+	// make a good transaction
+	tx, err := types.SignTx(types.NewTx(&types.SetCodeTx{
+		Nonce:     1,
+		Gas:       50_000,
+		GasFeeCap: uint256.MustFromBig(netRules.currentBaseFee),
+		Value:     uint256.NewInt(1),
+		Data:      []byte("some data"),
+		AuthList:  []types.SetCodeAuthorization{{}},
+	}), types.NewPragueSigner(big.NewInt(1)), key)
+	require.NoError(b, err)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		err = validateTx(tx, opts, netRules)
+		require.NoError(b, err)
+	}
+}
