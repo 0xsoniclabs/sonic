@@ -168,7 +168,7 @@ func TestServiceFeed_ArchiveState(t *testing.T) {
 			// no notification should be received
 			case <-time.After(100 * time.Millisecond):
 				if test.expectedNotification != nil {
-					t.Fatal("expected notification to be sent")
+					t.Fatal("expected no notification to be sent")
 				}
 			}
 

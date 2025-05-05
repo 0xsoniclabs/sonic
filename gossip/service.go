@@ -130,7 +130,7 @@ func (f *ServiceFeed) Start(store ArchiveBlockHeightSource) {
 			if err != nil {
 				// If there is no archive, set height to the last block
 				// and send all notifications
-				if err == evmstore.NoArchiveError {
+				if errors.Is(err, evmstore.NoArchiveError) {
 					height = pending[len(pending)-1].block.Number.Uint64()
 				} else {
 					log.Error("failed to get archive block height", "err", err)
