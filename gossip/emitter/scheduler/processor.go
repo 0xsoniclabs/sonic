@@ -102,5 +102,7 @@ func (p *evmProcessor) release() {
 // TransactionProcessor. The interface is defined instead of a direct dependency
 // to avoid unnecessary dependencies and to facilitate mocking of the evmcore.
 type evmProcessorRunner interface {
-	Run(int, *types.Transaction) (*types.Receipt, bool, error)
+	// Run runs the given transaction in the context of the current block
+	// where the index is the position of the transaction in the block.
+	Run(index int, tx *types.Transaction) (*types.Receipt, bool, error)
 }
