@@ -73,14 +73,13 @@ func (s *Scheduler) Schedule(
 		}
 
 		success, gasUsed := processor.run(candidate, remainingGas)
-		if success {
-			candidates.Accept()
-			res = append(res, candidate)
-			remainingGas -= gasUsed
-		} else {
+		if !success || gasUsed > remainingGas {
 			candidates.Skip()
+			continue
 		}
-
+		candidates.Accept()
+		res = append(res, candidate)
+		remainingGas -= gasUsed
 		if remainingGas < params.TxGas {
 			break
 		}

@@ -242,6 +242,69 @@ func TestScheduler_Schedule_IgnoresFailedTransactions(t *testing.T) {
 	}
 }
 
+func TestScheduler_Schedule_OrderOfInputTransactionsIsPreserved(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	factory := NewMockprocessorFactory(ctrl)
+	processor := NewMockprocessor(ctrl)
+	factory.EXPECT().beginBlock(gomock.Any()).Return(processor).AnyTimes()
+	processor.EXPECT().release().AnyTimes()
+
+	txResults := []struct {
+		costs   int
+		success bool
+	}{
+		{costs: 1, success: true},
+		{costs: 2, success: true},
+		{costs: 1, success: false},
+		{costs: 4, success: true},
+		{costs: 2, success: false},
+		{costs: 1, success: true},
+	}
+
+	processor.EXPECT().run(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(tx *types.Transaction, remainingGas uint64) (bool, uint64) {
+			res := txResults[tx.Nonce()]
+			return res.success, uint64(res.costs) * params.TxGas
+		},
+	).AnyTimes()
+
+	txs := []*types.Transaction{}
+	for i := range uint64(len(txResults)) {
+		txs = append(txs, types.NewTx(&types.LegacyTx{Nonce: i}))
+	}
+
+	for limit := range uint64(15) {
+
+		scheduler := newScheduler(factory)
+		result := scheduler.Schedule(
+			t.Context(),
+			&BlockInfo{},
+			&fakeTxCollection{txs},
+			limit*params.TxGas,
+		)
+
+		got := []int{}
+		for _, tx := range result {
+			got = append(got, int(tx.Nonce()))
+		}
+
+		want := []int{}
+		sum := uint64(0)
+		for i, res := range txResults {
+			if !res.success {
+				continue
+			}
+			cost := uint64(res.costs)
+			if sum+cost <= limit {
+				want = append(want, i)
+				sum += cost
+			}
+		}
+
+		require.Equal(t, want, got, "for limit %d", limit)
+	}
+}
+
 func TestScheduler_Schedule_GetsOptimalPrefixIfAllTransactionsArePassing(t *testing.T) {
 
 	tests := map[string]struct {
@@ -392,7 +455,7 @@ func FuzzScheduler_Schedule_PicksLongestPrefixOfAcceptedTransactions(f *testing.
 		for _, tx := range result {
 			got = append(got, int(tx.Nonce()))
 		}
-		require.ElementsMatch(t, want, got)
+		require.Equal(t, want, got)
 	})
 }
 
