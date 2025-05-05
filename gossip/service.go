@@ -41,6 +41,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/sealmodule"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/verwatcher"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
+	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/gossip/filters"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/gossip/proclogger"
@@ -127,12 +128,20 @@ func (f *ServiceFeed) Start(store ArchiveBlockHeightSource) {
 
 			height, empty, err := store.GetArchiveBlockHeight()
 			if err != nil {
-				log.Error("failed to get archive block height", "err", err)
-				continue
+				// If there is no archive, set height to the last block
+				// and send all notifications
+				if err == evmstore.NoArchiveError {
+					height = pending[len(pending)-1].block.Number.Uint64()
+				} else {
+					log.Error("failed to get archive block height", "err", err)
+					continue
+				}
+			} else {
+				if empty {
+					continue
+				}
 			}
-			if empty {
-				continue
-			}
+
 			for _, update := range pending {
 				if update.block.Number.Uint64() > height {
 					break

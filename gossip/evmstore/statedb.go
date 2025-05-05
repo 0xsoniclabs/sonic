@@ -14,6 +14,10 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
+// NoArchiveError is an error returned by implementation of the State interface
+// for archive operations if no archive is maintained by this implementation.
+const NoArchiveError = carmen.NoArchiveError
+
 // GetLiveStateDb obtains StateDB for block processing - the live writable state
 func (s *Store) GetLiveStateDb(stateRoot hash.Hash) (state.StateDB, error) {
 	if s.liveStateDb == nil {
