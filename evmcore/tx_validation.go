@@ -76,7 +76,6 @@ func validateTx(
 		return err
 	}
 
-	// leave state accesses for last check
 	if err := ValidateTxForState(tx, opt.currentState, from); err != nil {
 		return err
 	}
@@ -231,7 +230,7 @@ func ValidateTxForState(tx *types.Transaction, state TxPoolStateDB, from common.
 	}
 
 	// Transactor should have enough funds to cover the costs
-	// cost == V + GP * G
+	// cost == Value + GasPrice * Gas
 	if utils.Uint256ToBigInt(state.GetBalance(from)).Cmp(tx.Cost()) < 0 {
 		return ErrInsufficientFunds
 	}
