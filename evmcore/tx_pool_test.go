@@ -497,9 +497,9 @@ func TestEIP4844Transactions(t *testing.T) {
 		err    error
 	}{
 		{"empty blob tx before cancun", nil, false, ErrTxTypeNotSupported},
-		{"blob tx before cancun", common.Address{1}.Bytes(), false, ErrOversizedData},
+		{"blob tx before cancun", common.Address{1}.Bytes(), false, ErrNonEmptyBlobTx},
 		{"empty blob tx", nil, true, nil},
-		{"blob tx with data", common.Address{1}.Bytes(), true, ErrOversizedData},
+		{"blob tx with data", common.Address{1}.Bytes(), true, ErrNonEmptyBlobTx},
 	}
 
 	for _, test := range tests {

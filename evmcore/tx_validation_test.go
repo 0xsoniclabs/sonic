@@ -138,14 +138,14 @@ func TestValidateTxStatic_Blobs_RejectsTxWith(t *testing.T) {
 	t.Run("blob tx with non-empty blob hashes", func(t *testing.T) {
 		tx := types.NewTx(makeBlobTx([]common.Hash{{0x01}}, nil))
 		err := ValidateTxStatic(tx)
-		require.ErrorIs(t, err, ErrTxTypeNotSupported)
+		require.ErrorIs(t, err, ErrNonEmptyBlobTx)
 	})
 
 	t.Run("blob tx with non-empty sidecar", func(t *testing.T) {
 		tx := types.NewTx(makeBlobTx(nil,
 			&types.BlobTxSidecar{Commitments: []kzg4844.Commitment{{0x01}}}))
 		err := ValidateTxStatic(tx)
-		require.ErrorIs(t, err, ErrTxTypeNotSupported)
+		require.ErrorIs(t, err, ErrNonEmptyBlobTx)
 	})
 }
 
