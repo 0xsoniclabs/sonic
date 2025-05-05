@@ -419,14 +419,10 @@ func TestValidateTxForState_Nonce_RejectsTxWith(t *testing.T) {
 	for name, tx := range getTxsOfAllTypes() {
 		t.Run(fmt.Sprintf("older nonce/%v", name), func(t *testing.T) {
 
-			// set nonce lower than the current account nonce
-			currentNonce := uint64(2)
-			setNonce(t, tx, currentNonce-1)
-
 			// sign txs with sender and set current balance for account
 			address, signedTx := signTxForTest(t, tx)
 			testDb := newTestTxPoolStateDb()
-			testDb.nonces[address] = currentNonce
+			testDb.nonces[address] = signedTx.Nonce() + 1
 
 			err := ValidateTxForState(signedTx, testDb, address)
 			require.ErrorIs(t, err, ErrNonceTooLow)
