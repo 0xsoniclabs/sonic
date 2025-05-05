@@ -1,11 +1,13 @@
 package gossip
 
 import (
+	"fmt"
 	"math/big"
 	"testing"
 	"time"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"go.uber.org/mock/gomock"
 )
 
@@ -93,4 +95,84 @@ func TestServiceFeed_BlocksInOrder(t *testing.T) {
 	}
 
 	feed.Stop()
+}
+
+type expectedBlockNotification struct {
+	blockNumber uint64
+}
+
+func TestServiceFeed_ArchiveState(t *testing.T) {
+
+	tests := map[string]struct {
+		blockHeight          uint64
+		emptyArchive         bool
+		err                  error
+		expectedNotification *expectedBlockNotification
+	}{
+		"empty archive": {
+			blockHeight:          0,
+			emptyArchive:         true,
+			err:                  nil,
+			expectedNotification: nil,
+		},
+		"non-empty archive": {
+			blockHeight:          12,
+			emptyArchive:         false,
+			err:                  nil,
+			expectedNotification: &expectedBlockNotification{blockNumber: 12},
+		},
+		"non-existing archive": {
+			blockHeight:          12,
+			emptyArchive:         true,
+			err:                  evmstore.NoArchiveError,
+			expectedNotification: &expectedBlockNotification{blockNumber: 12},
+		},
+		"different archive error": {
+			blockHeight:          12,
+			emptyArchive:         false,
+			err:                  fmt.Errorf("some other error"),
+			expectedNotification: nil,
+		},
+	}
+
+	for testName, test := range tests {
+		t.Run(testName, func(t *testing.T) {
+
+			ctrl := gomock.NewController(t)
+			store := NewMockArchiveBlockHeightSource(ctrl)
+
+			store.EXPECT().GetArchiveBlockHeight().Return(test.blockHeight, test.emptyArchive, test.err).AnyTimes()
+
+			feed := ServiceFeed{}
+			feed.Start(store)
+
+			consumer := make(chan evmcore.ChainHeadNotify, 1)
+			feed.SubscribeNewBlock(consumer)
+
+			feed.notifyAboutNewBlock(&evmcore.EvmBlock{
+				EvmHeader: evmcore.EvmHeader{
+					Number: big.NewInt(int64(test.blockHeight)),
+				},
+			}, nil)
+
+			// The notification should be delivered.
+			select {
+			case notification := <-consumer:
+				if test.expectedNotification == nil {
+					t.Fatal("expected notification to be sent")
+				} else {
+					if notification.Block.Number.Cmp(big.NewInt(int64(test.expectedNotification.blockNumber))) != 0 {
+						t.Fatalf("expected block number %d, got %d", test.expectedNotification.blockNumber, notification.Block.Number)
+					}
+				}
+			// no notification should be received
+			case <-time.After(100 * time.Millisecond):
+				if test.expectedNotification != nil {
+					t.Fatal("expected notification to be sent")
+				}
+			}
+
+			feed.Stop()
+		})
+	}
 }
