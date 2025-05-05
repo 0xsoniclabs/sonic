@@ -157,7 +157,7 @@ func TestValidateTxStatic_AuthorizationList_RejectsTxWith(t *testing.T) {
 	})
 }
 
-func TestValidateTxStatic_ReturnsNilToAcceptableTx(t *testing.T) {
+func TestValidateTxStatic_AcceptsValidTransactions(t *testing.T) {
 	for name, tx := range getTxsOfAllTypes() {
 		t.Run(name, func(t *testing.T) {
 			// set acceptable values
