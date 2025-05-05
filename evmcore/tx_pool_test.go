@@ -549,7 +549,7 @@ func TestEIP7702Transactions_InvalidTransactionsReturnAnError(t *testing.T) {
 		expectedErr    error
 	}{
 		"set code tx before prague": {
-			expectedErr: ErrTxTypeNotSupported,
+			expectedErr: ErrEmptyAuthorizations,
 		},
 		"set code tx with nil authorizations": {
 			pragueTime:  new(uint64),

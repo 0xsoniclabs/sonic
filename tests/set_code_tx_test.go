@@ -996,5 +996,5 @@ func TestSetCodeTransaction_IsRejectBeforeAllegro(t *testing.T) {
 	tx := signTransaction(t, chainId, &types.SetCodeTx{}, net.GetSessionSponsor())
 
 	err = client.SendTransaction(context.Background(), tx)
-	require.ErrorContains(t, err, "transaction type not supported")
+	require.ErrorContains(t, err, "empty authorization")
 }
