@@ -94,11 +94,6 @@ func validateTx(
 // It returns an error if any of the checks fail.
 func ValidateTxStatic(tx *types.Transaction) error {
 
-	// Reject transactions over defined size to prevent DOS attacks
-	if uint64(tx.Size()) > txMaxSize {
-		return ErrOversizedData
-	}
-
 	// Transactions can't be negative. This may never happen using RLP decoded
 	// transactions but may occur if you create a transaction using the RPC.
 	if tx.Value().Sign() < 0 {
@@ -121,12 +116,17 @@ func ValidateTxStatic(tx *types.Transaction) error {
 	// For now, Sonic only supports Blob transactions without blob data.
 	if tx.BlobHashes() != nil && (len(tx.BlobHashes()) > 0 ||
 		(tx.BlobTxSidecar() != nil && len(tx.BlobTxSidecar().BlobHashes()) > 0)) {
-		return ErrTxTypeNotSupported
+		return ErrNonEmptyBlobTx
 	}
 
 	// Check non-empty authorization list
 	if tx.SetCodeAuthorizations() != nil && len(tx.SetCodeAuthorizations()) == 0 {
 		return ErrEmptyAuthorizations
+	}
+
+	// Reject transactions over defined size to prevent DOS attacks
+	if uint64(tx.Size()) > txMaxSize {
+		return ErrOversizedData
 	}
 
 	return nil
