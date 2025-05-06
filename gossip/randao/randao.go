@@ -19,11 +19,11 @@ import (
 type RandaoReveal []byte
 
 // NewRandaoReveal Constructs a new RandaoReveal
-//   - previousRandAo is the previous randao value
+//   - previousRandao is the previous randao value
 //   - proposerKey is the public key of the proposer originating this randao value
 //   - Signer is the signer used to sign messages within the gossip package
 func NewRandaoReveal(
-	previousRandAo common.Hash,
+	previousRandao common.Hash,
 	proposerKey validatorpk.PubKey,
 	Signer valkeystore.SignerI,
 ) (RandaoReveal, error) {
@@ -31,12 +31,12 @@ func NewRandaoReveal(
 	return Signer.Sign(proposerKey, hash[:])
 }
 
-// GetRandAo verifies randaoSource payload and generates a new randao value.
+// GetRandao verifies randaoSource payload and generates a new randao value.
 // If the verification can be proven, this value is equal on all peers.
-//   - previousRandAo is the previous randao value
+//   - previousRandao is the previous randao value
 //   - proposerKey is the public key of the proposer originating this randao value
-func (s RandaoReveal) GetRandAo(
-	previousRandAo common.Hash,
+func (s RandaoReveal) GetRandao(
+	previousRandao common.Hash,
 	proposerPublicKey validatorpk.PubKey,
 ) (common.Hash, bool) {
 

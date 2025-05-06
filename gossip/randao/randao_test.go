@@ -31,11 +31,11 @@ func TestRandao_RandaoReveal_CanBeConstructedAndVerified(t *testing.T) {
 	source, err := randao.NewRandaoReveal(previous, publicKey, signer)
 	require.NoError(t, err)
 
-	_, ok := source.GetRandAo(previous, publicKey)
+	_, ok := source.GetRandao(previous, publicKey)
 	require.True(t, ok)
 }
 
-func TestRandAO_NewPrevRandAo_ConstructionFailsWithInvalidKey(t *testing.T) {
+func TestRandAO_NewPrevRandao_ConstructionFailsWithInvalidKey(t *testing.T) {
 
 	previous := common.Hash{}
 
@@ -65,7 +65,7 @@ func TestRandao_RandaoReveal_VerificationDependsOnKnownPublicValues(t *testing.T
 		previous          common.Hash
 		proposerPublicKey validatorpk.PubKey
 	}{
-		"different previous prevRandAo": {
+		"different previous prevRandao": {
 			previous:          common.Hash{0x01},
 			proposerPublicKey: publicKey,
 		},
@@ -77,7 +77,7 @@ func TestRandao_RandaoReveal_VerificationDependsOnKnownPublicValues(t *testing.T
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			_, ok := source.GetRandAo(test.previous, test.proposerPublicKey)
+			_, ok := source.GetRandao(test.previous, test.proposerPublicKey)
 			require.False(t, ok)
 		})
 	}
@@ -101,7 +101,7 @@ func TestRandao_RandaoReveal_InvalidRandaoRevealShallFailVerification(t *testing
 		copy(modifiedSignature[:], source[:])
 		modifiedSignature[i] = modifiedSignature[i] + 1
 
-		_, ok := modifiedSignature.GetRandAo(previous, publicKey)
+		_, ok := modifiedSignature.GetRandao(previous, publicKey)
 		require.False(t, ok, "modified signature shall not be valid")
 	}
 }
@@ -177,7 +177,7 @@ func TestRandaoReveal_EntropyTest(t *testing.T) {
 
 			source, err := randao.NewRandaoReveal(lastRandao, publicKey, signer)
 			require.NoError(t, err)
-			randao, ok := source.GetRandAo(lastRandao, publicKey)
+			randao, ok := source.GetRandao(lastRandao, publicKey)
 			require.True(t, ok)
 			byteStream = append(byteStream, randao[:]...)
 			lastRandao = randao
