@@ -115,7 +115,7 @@ func FakeConfig(num consensus.ValidatorIndex) Config {
 	cfg.EmitIntervals.Max = 10 * time.Second // don't wait long in fakenet
 	cfg.EmitIntervals.DoublesignProtection = cfg.EmitIntervals.Max / 2
 	if num <= 1 {
-		// disable self-fork protection if fakenet 1/1
+		// disable self-equivocation protection if fakenet 1/1
 		cfg.EmitIntervals.DoublesignProtection = 0
 	}
 	return cfg

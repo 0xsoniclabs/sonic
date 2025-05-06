@@ -63,7 +63,7 @@ func (m Matrix) Clone() Matrix {
 }
 
 func seqOf(seq dagindexer.BranchSeq) consensus.Seq {
-	if seq.IsForkDetected() {
+	if seq.IsEquivocationDetected() {
 		return math.MaxUint32/2 - 1
 	}
 	return seq.Seq

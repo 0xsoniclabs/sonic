@@ -63,7 +63,7 @@ func Benchmark_Emission(b *testing.B) {
 		weights[i] = consensus.Weight(sampleDist(stakeRNG, stakeDist)) // for non-equal stake sample from Sonic main net validator stake distribution
 	}
 	sort.Slice(weights, func(i, j int) bool { return weights[i] > weights[j] }) // sort weights in order
-	QIParentCount := 12                                                         // maximum number of parents selected by FC indexer
+	QIParentCount := 12                                                         // maximum number of parents selected by SR indexer
 	randParentCount := 0                                                        // maximum number of parents selected randomly
 	offlineNodes := false                                                       // set to true to make smallest non-quourm validators offline
 
@@ -184,12 +184,12 @@ func simulate(weights []consensus.Weight, QIParentCount int, randParentCount int
 	var dagIndexer ancestor.DagIndex
 	inputs := make([]consensustest.TestEventSource, numValidators)
 	lchs := make([]consensusengine.CoreLachesis, numValidators)
-	fcIndexers := make([]*ancestor.FCIndexer, numValidators)
+	srIndexers := make([]*ancestor.SRIndexer, numValidators)
 	for i := 0; i < numValidators; i++ {
 		lch, _, input, dagIndexer = consensusengine.NewBootstrappedCoreConsensus(nodes, weights)
 		lchs[i] = *lch
 		inputs[i] = *input
-		fcIndexers[i] = ancestor.NewFCIndexer(validators, dagIndexer, nodes[i])
+		srIndexers[i] = ancestor.NewSRIndexer(validators, dagIndexer, nodes[i])
 	}
 
 	// If requried set smallest non-quorum validators as offline for testing
@@ -279,7 +279,7 @@ func simulate(weights []consensus.Weight, QIParentCount int, randParentCount int
 					}
 					if process[i] {
 						// buffered event has all parents in the DAG and can now be processed
-						processEvent(inputs[receiveNode], &lchs[receiveNode], buffEvent, fcIndexers[receiveNode], &headsAll[receiveNode], nodes[receiveNode], simTime)
+						processEvent(inputs[receiveNode], &lchs[receiveNode], buffEvent, srIndexers[receiveNode], &headsAll[receiveNode], nodes[receiveNode], simTime)
 					}
 				}
 				//remove processed events from buffer
@@ -342,7 +342,7 @@ func simulate(weights []consensus.Weight, QIParentCount int, randParentCount int
 							}
 						}
 
-						//fcIndexers[self].SelfParentEvent = selfParent[self].ID() // fcIndexer needs to know the self's previous event
+						//srIndexers[self].SelfParentEvent = selfParent[self].ID() // srIndexer needs to know the self's previous event
 						if !isLeaf[self] { // only non leaf events have parents
 							// iteratively select the best parent from the list of heads using quorum indexer parent selection
 							for j := 0; j < QIParentCount-1; j++ {
@@ -351,7 +351,7 @@ func simulate(weights []consensus.Weight, QIParentCount int, randParentCount int
 									break
 								}
 
-								best := fcIndexers[self].SearchStrategy().Choose(parents.IDs(), heads.IDs()) //new fcIndexer
+								best := srIndexers[self].SearchStrategy().Choose(parents.IDs(), heads.IDs()) //new srIndexer
 
 								parents = append(parents, heads[best])
 								// remove chosen parent from head options
@@ -396,7 +396,7 @@ func simulate(weights []consensus.Weight, QIParentCount int, randParentCount int
 							// self is online
 							passedTime := simTime - selfParent[self].creationTime
 							if passedTime > minEventCreationInterval[self] {
-								metric := fcIndexers[self].ValidatorsPastMe()
+								metric := srIndexers[self].ValidatorsPastMe()
 								if metric < validators.Quorum() {
 									metric /= 20
 								}
@@ -496,7 +496,7 @@ func updateHeads(newEvent consensus.Event, heads *consensus.Events) {
 	*heads = append(*heads, newEvent) //add newEvent to heads
 }
 
-func processEvent(input consensustest.TestEventSource, lchs *consensusengine.CoreLachesis, e *QITestEvent, fcIndexer *ancestor.FCIndexer, heads *consensus.Events, self consensus.ValidatorID, time int) (frame consensus.Frame) {
+func processEvent(input consensustest.TestEventSource, lchs *consensusengine.CoreLachesis, e *QITestEvent, srIndexer *ancestor.SRIndexer, heads *consensus.Events, self consensus.ValidatorID, time int) (frame consensus.Frame) {
 	input.SetEvent(e)
 
 	lchs.DagIndexer.Add(e)
@@ -504,8 +504,8 @@ func processEvent(input consensustest.TestEventSource, lchs *consensusengine.Cor
 	lchs.Lachesis.Process(e)
 
 	lchs.DagIndexer.Flush()
-	// HighestBefore based fc indexer needs to process the event
-	fcIndexer.ProcessEvent(&e.BaseEvent)
+	// HighestBefore based sr indexer needs to process the event
+	srIndexer.ProcessEvent(&e.BaseEvent)
 
 	updateHeads(e, heads)
 	return e.Frame()

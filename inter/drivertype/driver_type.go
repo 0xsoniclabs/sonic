@@ -25,7 +25,7 @@ import (
 )
 
 var (
-	// DoublesignBit is set if validator has a confirmed pair of fork events
+	// DoublesignBit is set if validator has a confirmed pair of equivocating events
 	DoublesignBit = uint64(1 << 7)
 	OkStatus      = uint64(0)
 )

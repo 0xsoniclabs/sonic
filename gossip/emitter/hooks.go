@@ -68,10 +68,10 @@ func (em *Emitter) OnNewEpoch(newValidators *consensus.Validators, newEpoch cons
 	var (
 		extMinInterval        time.Duration
 		extConfirmingInterval time.Duration
-		switchToFCIndexer     bool
+		switchToSRIndexer     bool
 	)
 	if statedb != nil {
-		switchToFCIndexer = statedb.GetState(emitterdriver.ContractAddress, utils.U64to256(0)) != (common.Hash{0})
+		switchToSRIndexer = statedb.GetState(emitterdriver.ContractAddress, utils.U64to256(0)) != (common.Hash{0})
 		extMinInterval = time.Duration(statedb.GetState(emitterdriver.ContractAddress, utils.U64to256(1)).Big().Uint64())
 		extConfirmingInterval = time.Duration(statedb.GetState(emitterdriver.ContractAddress, utils.U64to256(2)).Big().Uint64())
 		statedb.Release()
@@ -93,15 +93,15 @@ func (em *Emitter) OnNewEpoch(newValidators *consensus.Validators, newEpoch cons
 			em.config.EmitIntervals.Confirming/4)))
 	em.recountConfirmingIntervals(newValidators)
 
-	if switchToFCIndexer {
+	if switchToSRIndexer {
 		em.quorumIndexer = nil
-		em.fcIndexer = ancestor.NewFCIndexer(newValidators, em.world.DagIndex(), em.config.Validator.ID)
+		em.srIndexer = ancestor.NewSRIndexer(newValidators, em.world.DagIndex(), em.config.Validator.ID)
 	} else {
 		em.quorumIndexer = ancestor.NewQuorumIndexer(newValidators, em.world.DagIndex(),
 			func(thresholdValue, current, update consensus.Seq, validatorIdx consensus.ValidatorIndex) ancestor.Metric {
 				return updMetric(thresholdValue, current, update, validatorIdx, newValidators)
 			})
-		em.fcIndexer = nil
+		em.srIndexer = nil
 	}
 	em.quorumIndexer = ancestor.NewQuorumIndexer(newValidators, em.world.DagIndex(),
 		func(thresholdValue, current, update consensus.Seq, validatorIdx consensus.ValidatorIndex) ancestor.Metric {
@@ -118,8 +118,8 @@ func (em *Emitter) OnEventConnected(e inter.EventPayloadI) {
 	if !em.isValidator() {
 		return
 	}
-	if em.fcIndexer != nil {
-		em.fcIndexer.ProcessEvent(e)
+	if em.srIndexer != nil {
+		em.srIndexer.ProcessEvent(e)
 	} else if em.quorumIndexer != nil {
 		em.quorumIndexer.ProcessEvent(e, e.Creator() == em.config.Validator.ID)
 	}

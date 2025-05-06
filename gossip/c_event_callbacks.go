@@ -129,7 +129,7 @@ func processEventHeads(heads *concurrent.EventsSet, e *inter.EventPayload) *conc
 }
 
 func processLastEvent(lasts *concurrent.ValidatorEventsSet, e *inter.EventPayload) *concurrent.ValidatorEventsSet {
-	// set validator's last event. we don't care about forks, because this index is used only for emitter
+	// set validator's last event. we don't care about equivocations, because this index is used only for emitter
 	lasts.Lock()
 	defer lasts.Unlock()
 	lasts.Val[e.Creator()] = e.ID()

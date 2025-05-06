@@ -107,7 +107,7 @@ type Emitter struct {
 	prevRecheckedChallenges time.Time
 
 	quorumIndexer  *ancestor.QuorumIndexer
-	fcIndexer      *ancestor.FCIndexer
+	srIndexer      *ancestor.SRIndexer
 	payloadIndexer *ancestor.PayloadIndexer
 
 	intervals                EmitIntervals
@@ -409,8 +409,8 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 		}
 		parentHeaders[i] = parent
 		if parentHeaders[i].Creator() == em.config.Validator.ID && i != 0 {
-			// there are 2 heads from me, i.e. due to a fork, chooseParents could have found multiple self-parents
-			em.Error(5*time.Second, "I've created a fork, events emitting isn't allowed", "creator", em.config.Validator.ID)
+			// there are 2 heads from me, i.e. due to a equivocation, chooseParents could have found multiple self-parents
+			em.Periodic.Error(5*time.Second, "I've created a equivocation, events emitting isn't allowed", "creator", em.config.Validator.ID)
 			return nil, nil
 		}
 		maxLamport = consensus.MaxLamport(maxLamport, parent.Lamport())
