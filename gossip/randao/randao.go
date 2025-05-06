@@ -44,11 +44,11 @@ func NewRandaoReveal(
 	return Signer.Sign(proposerKey, hash[:])
 }
 
-// GetRandao verifies randaoSource payload and generates a new randao value.
+// VerifyAndGetRandao verifies randaoReveal and extracts a the corresponding randao value.
 // If the verification can be proven, this value is equal on all peers.
 //   - previousRandao is the previous randao value
-//   - proposerKey is the public key of the proposer originating this randao value
-func (s RandaoReveal) GetRandao(
+//   - proposerKey is the public key of the proposer originating this randao reveal
+func (s RandaoReveal) VerifyAndGetRandao(
 	previousRandao common.Hash,
 	proposerPublicKey validatorpk.PubKey,
 ) (common.Hash, bool) {
