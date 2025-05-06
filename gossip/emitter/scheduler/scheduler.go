@@ -49,9 +49,10 @@ func newScheduler(factory processorFactory) *Scheduler {
 // The transactions in the resulting list of transactions are ordered according
 // to the priority defined by the candidates collection.
 //
-// Scheduling stops as soon as the provided context is cancelled or running into
-// a timeout. In this case the transactions that have been accepted so far are
-// returned.
+// Scheduling stops as soon as a schedule reaching the gas limit is found, all
+// candidates have been consider, or the scheduling process is interrupted due
+// to a cancellation of the provided context. In case of a cancellation, the
+// transactions that have been accepted so far are returned.
 func (s *Scheduler) Schedule(
 	context context.Context,
 	blockInfo *BlockInfo,
