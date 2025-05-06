@@ -28,7 +28,7 @@ func TestRandao_RandaoReveal_CanBeConstructedAndVerified(t *testing.T) {
 	privateKey, publicKey := generateKeyPair(t)
 	mockBackend.EXPECT().GetUnlocked(publicKey).Return(privateKey, nil)
 
-	source, err := randao.NewRandaoReveal(previous, publicKey, signer)
+	source, err := randao.GenerateNextRandaoReveal(previous, publicKey, signer)
 	require.NoError(t, err)
 
 	_, ok := source.VerifyAndGetRandao(previous, publicKey)
@@ -43,7 +43,7 @@ func TestRandao_NewRandaoReveal_ConstructionFailsWithInvalidKey(t *testing.T) {
 	mockBackend := valkeystore.NewMockKeystoreI(ctrl)
 	signer := valkeystore.NewSigner(mockBackend)
 
-	_, err := randao.NewRandaoReveal(previous, validatorpk.PubKey{}, signer)
+	_, err := randao.GenerateNextRandaoReveal(previous, validatorpk.PubKey{}, signer)
 	require.ErrorContains(t, err, "not supported key type")
 }
 
@@ -58,7 +58,7 @@ func TestRandao_RandaoReveal_VerificationDependsOnKnownPublicValues(t *testing.T
 
 	_, differentPublicKey := generateKeyPair(t)
 
-	source, err := randao.NewRandaoReveal(previous, publicKey, signer)
+	source, err := randao.GenerateNextRandaoReveal(previous, publicKey, signer)
 	require.NoError(t, err)
 
 	tests := map[string]struct {
@@ -92,7 +92,7 @@ func TestRandao_RandaoReveal_InvalidRandaoRevealShallFailVerification(t *testing
 	privateKey, publicKey := generateKeyPair(t)
 	mockBackend.EXPECT().GetUnlocked(publicKey).Return(privateKey, nil)
 
-	source, err := randao.NewRandaoReveal(previous, publicKey, signer)
+	source, err := randao.GenerateNextRandaoReveal(previous, publicKey, signer)
 	require.NoError(t, err)
 
 	for i := range len(source) {
@@ -136,7 +136,7 @@ func TestRandao_NewRandaoReveal_IsDeterministic(t *testing.T) {
 
 	reveals := make([]randao.RandaoReveal, 10)
 	for i := range 10 {
-		source, err := randao.NewRandaoReveal(previous, publicKey, signer)
+		source, err := randao.GenerateNextRandaoReveal(previous, publicKey, signer)
 		require.NoError(t, err)
 		reveals[i] = source
 	}
@@ -160,7 +160,7 @@ func TestRandao_GetRandao_IsDeterministic(t *testing.T) {
 
 	reveals := make([]randao.RandaoReveal, 10)
 	for i := range 10 {
-		source, err := randao.NewRandaoReveal(previous, publicKey, signer)
+		source, err := randao.GenerateNextRandaoReveal(previous, publicKey, signer)
 		require.NoError(t, err)
 		reveals[i] = source
 	}
@@ -231,7 +231,7 @@ func TestRandaoReveal_EntropyTest(t *testing.T) {
 			keyIdx := i % 10
 			publicKey := keys[keyIdx].publicKey
 
-			source, err := randao.NewRandaoReveal(lastRandao, publicKey, signer)
+			source, err := randao.GenerateNextRandaoReveal(lastRandao, publicKey, signer)
 			require.NoError(t, err)
 			randao, ok := source.VerifyAndGetRandao(lastRandao, publicKey)
 			require.True(t, ok)

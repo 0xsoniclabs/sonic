@@ -31,11 +31,11 @@ import (
 //   - + is the concatenation operator
 type RandaoReveal []byte
 
-// NewRandaoReveal Constructs a new RandaoReveal
+// GenerateNextRandaoReveal Constructs a new RandaoReveal
 //   - previousRandao is the previous randao value
 //   - proposerKey is the public key of the proposer originating this randao value
 //   - Signer is the signer used to sign messages within the gossip package
-func NewRandaoReveal(
+func GenerateNextRandaoReveal(
 	previousRandao common.Hash,
 	proposerKey validatorpk.PubKey,
 	Signer valkeystore.SignerI,
