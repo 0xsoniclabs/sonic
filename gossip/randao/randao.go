@@ -27,7 +27,7 @@ func NewRandaoReveal(
 	proposerKey validatorpk.PubKey,
 	Signer valkeystore.SignerI,
 ) (RandaoReveal, error) {
-	hash := sha256.Sum256(previousRandAo[:])
+	hash := sha256.Sum256(append(domainSeparator[:], previousRandao[:]...))
 	return Signer.Sign(proposerKey, hash[:])
 }
 
@@ -40,9 +40,9 @@ func (s RandaoReveal) GetRandao(
 	proposerPublicKey validatorpk.PubKey,
 ) (common.Hash, bool) {
 
-	hash := sha256.Sum256(previousRandAo[:])
+	hash := sha256.Sum256(append(domainSeparator[:], previousRandao[:]...))
 
-	// if the signature does not correspond to the input data (hash, replayProtection)
+	// if the signature does not correspond to the input data
 	// for the given proposerPublicKey, then randao cannot be generated.
 	if ok := crypto.VerifySignature(proposerPublicKey.Raw, hash[:], s); !ok {
 		return common.Hash{}, false
@@ -51,3 +51,8 @@ func (s RandaoReveal) GetRandao(
 	// next randao is the hash of the reveal
 	return sha256.Sum256(s), true
 }
+
+// domainSeparator is the domain separator used to generate the randao value
+// and is used to verify the randao reveal signature.
+// https://en.wikipedia.org/wiki/Domain_separation
+var domainSeparator = []byte("Sonic-Randao")
