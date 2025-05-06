@@ -17,6 +17,7 @@
 package state
 
 import (
+	cc "github.com/0xsoniclabs/carmen/go/common"
 	"github.com/0xsoniclabs/carmen/go/common/witness"
 	"github.com/0xsoniclabs/substate/substate"
 	"github.com/ethereum/go-ethereum/common"
@@ -49,4 +50,6 @@ type StateDB interface {
 	GetSubstatePreAlloc() substate.WorldState
 	GetSubstatePostAlloc() substate.WorldState
 	GetSubstateBlockHashes() map[uint64]common.Hash
+	RecordPreFinalise() map[cc.Address]struct{}
+	RecordPostFinalise(map[cc.Address]struct{})
 }

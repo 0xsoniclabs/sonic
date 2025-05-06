@@ -169,72 +169,11 @@ func (c *RecordCarmenStateDB) Copy() state.StateDB {
 }
 
 func (c *RecordCarmenStateDB) Finalise() {
-	dirtyAddresses := make(map[cc.Address]struct{})
-
-	// copy original storage values to Prestate and Poststate
-	for addr, sa := range c.SubstatePreAlloc {
-		if sa == nil {
-			dirtyAddresses[cc.Address(addr)] = struct{}{}
-			delete(c.SubstatePreAlloc, addr)
-			continue
-		}
-
-		comAddr := common.BytesToAddress(addr.Bytes())
-		ac, found := c.AccessedStorage[comAddr]
-		if found {
-			for key := range ac {
-				valueM, f := c.AccessedStorage[comAddr][key]
-				if !f {
-					panic("key not found in AccessedStorage")
-				}
-				value := c.GetCommittedState(comAddr, key)
-
-				if value != valueM {
-					panic("value mismatch")
-				}
-
-				sa.Storage[stypes.Hash(key)] = stypes.Hash(value)
-
-			}
-		}
-		c.SubstatePostAlloc[addr] = sa.Copy()
-	}
+	dirtyAddresses := c.RecordPreFinalise()
 
 	c.CarmenStateDB.Finalise()
 
-	for address := range dirtyAddresses {
-		if c.db.Exist(address) {
-			s := make(map[stypes.Hash]stypes.Hash)
-			for key := range c.AccessedStorage[common.Address(address)] {
-				s[stypes.Hash(key)] = stypes.Hash{}
-			}
-			c.SubstatePostAlloc[stypes.Address(address)] = &substate.Account{Storage: s}
-		}
-	}
-
-	c.AccessedStorage = nil
-
-	toDelete := make([]stypes.Address, 0)
-	for address, acc := range c.SubstatePostAlloc {
-		if c.db.HasSuicided(cc.Address(address)) {
-			toDelete = append(toDelete, address)
-			continue
-		}
-
-		// update the account in StateDB.SubstatePostAlloc
-		acc.Balance = c.db.GetBalance(cc.Address(address)).ToBig()
-		acc.Nonce = c.db.GetNonce(cc.Address(address))
-		acc.Code = c.db.GetCode(cc.Address(address))
-		storageToUpdate := make(map[stypes.Hash]stypes.Hash)
-		for key := range acc.Storage {
-			storageToUpdate[key] = stypes.Hash(c.db.GetState(cc.Address(address), cc.Key(key)))
-		}
-		acc.Storage = storageToUpdate
-	}
-
-	for _, address := range toDelete {
-		delete(c.SubstatePostAlloc, address)
-	}
+	c.RecordPostFinalise(dirtyAddresses)
 }
 
 func (c *RecordCarmenStateDB) SetTxContext(txHash common.Hash, txIndex int) {
@@ -281,5 +220,75 @@ func (c *RecordCarmenStateDB) substateStorageAccess(addr common.Address, key com
 	} else {
 		c.AccessedStorage[addr] = make(map[common.Hash]common.Hash)
 		c.AccessedStorage[addr][key] = value
+	}
+}
+
+func (c *RecordCarmenStateDB) RecordPreFinalise() map[cc.Address]struct{} {
+	dirtyAddresses := make(map[cc.Address]struct{})
+
+	// copy original storage values to Prestate and Poststate
+	for addr, sa := range c.SubstatePreAlloc {
+		if sa == nil {
+			dirtyAddresses[cc.Address(addr)] = struct{}{}
+			delete(c.SubstatePreAlloc, addr)
+			continue
+		}
+
+		comAddr := common.BytesToAddress(addr.Bytes())
+		ac, found := c.AccessedStorage[comAddr]
+		if found {
+			for key := range ac {
+				valueM, f := c.AccessedStorage[comAddr][key]
+				if !f {
+					panic("key not found in AccessedStorage")
+				}
+				value := c.GetCommittedState(comAddr, key)
+
+				if value != valueM {
+					panic("value mismatch")
+				}
+
+				sa.Storage[stypes.Hash(key)] = stypes.Hash(value)
+
+			}
+		}
+		c.SubstatePostAlloc[addr] = sa.Copy()
+	}
+	return dirtyAddresses
+}
+
+func (c *RecordCarmenStateDB) RecordPostFinalise(dirtyAddresses map[cc.Address]struct{}) {
+	for address := range dirtyAddresses {
+		if c.db.Exist(address) {
+			s := make(map[stypes.Hash]stypes.Hash)
+			for key := range c.AccessedStorage[common.Address(address)] {
+				s[stypes.Hash(key)] = stypes.Hash{}
+			}
+			c.SubstatePostAlloc[stypes.Address(address)] = &substate.Account{Storage: s}
+		}
+	}
+
+	c.AccessedStorage = nil
+
+	toDelete := make([]stypes.Address, 0)
+	for address, acc := range c.SubstatePostAlloc {
+		if c.db.HasSuicided(cc.Address(address)) {
+			toDelete = append(toDelete, address)
+			continue
+		}
+
+		// update the account in StateDB.SubstatePostAlloc
+		acc.Balance = c.db.GetBalance(cc.Address(address)).ToBig()
+		acc.Nonce = c.db.GetNonce(cc.Address(address))
+		acc.Code = c.db.GetCode(cc.Address(address))
+		storageToUpdate := make(map[stypes.Hash]stypes.Hash)
+		for key := range acc.Storage {
+			storageToUpdate[key] = stypes.Hash(c.db.GetState(cc.Address(address), cc.Key(key)))
+		}
+		acc.Storage = storageToUpdate
+	}
+
+	for _, address := range toDelete {
+		delete(c.SubstatePostAlloc, address)
 	}
 }

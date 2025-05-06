@@ -18,10 +18,15 @@ func NewSubstateDB(path, encoding string) error {
 		return err
 	}
 	staticSubstateDB, err = staticSubstateDB.SetSubstateEncoding(encoding)
+	skippedTxStatesFile = path + "/skipped_tx_states.txt"
 	return err
 }
 
 func CloseSubstateDB() error {
+	err := WriteUnprocessedSkippedTxToFile()
+	if err != nil {
+		return err
+	}
 	return staticSubstateDB.Close()
 }
 

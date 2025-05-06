@@ -1,7 +1,11 @@
 package substate
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
 	"math/big"
+	"os"
 
 	"github.com/0xsoniclabs/substate/substate"
 	stypes "github.com/0xsoniclabs/substate/types"
@@ -11,6 +15,14 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 )
+
+var skippedTxStatesFile = ""
+var unprocessedSkippedTxs *skippedTxData
+
+type skippedTxData struct {
+	blockNumber uint64 // block number
+	data        map[int]map[string]interface{}
+}
 
 // Utils to convert Geth types to Substate types
 
@@ -187,3 +199,48 @@ func NewResult(receipt *types.Receipt) *substate.Result {
 //
 //	substate.PutSubstate(block.NumberU64(), txCounter, recording)
 //}
+
+// WriteUnprocessedSkippedTxToFile writes the skipped transaction states to a file
+func WriteUnprocessedSkippedTxToFile() error {
+	if unprocessedSkippedTxs == nil {
+		return nil
+	}
+	defer func() {
+		unprocessedSkippedTxs = nil
+	}()
+
+	//	open skippedTxStatesFile for writing append only
+	file, err := os.OpenFile(skippedTxStatesFile, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
+	if err != nil {
+		return err
+	}
+	var buffer bytes.Buffer
+	encoder := json.NewEncoder(&buffer)
+	encoder.SetIndent("", "")
+	err = encoder.Encode(unprocessedSkippedTxs.data)
+	if err != nil {
+		return err
+	}
+
+	_, err = file.WriteString(fmt.Sprintf("%d: %s", unprocessedSkippedTxs.blockNumber, buffer.String()))
+	if err != nil {
+		return err
+	}
+
+	return file.Close()
+}
+
+func RegisterSkippedTx(block uint64, txCounter int, pre substate.WorldState, post substate.WorldState) error {
+	if unprocessedSkippedTxs == nil {
+		unprocessedSkippedTxs = &skippedTxData{
+			blockNumber: block,
+			data:        make(map[int]map[string]interface{}),
+		}
+	}
+
+	unprocessedSkippedTxs.data[txCounter] = map[string]interface{}{
+		"pre":  pre,
+		"post": post,
+	}
+	return nil
+}

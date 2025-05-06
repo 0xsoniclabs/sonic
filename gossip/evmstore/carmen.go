@@ -428,3 +428,12 @@ func (c *CarmenStateDB) GetSubstatePostAlloc() substate.WorldState {
 func (c *CarmenStateDB) GetSubstateBlockHashes() map[uint64]common.Hash {
 	return nil
 }
+
+// record-replay
+func (c *CarmenStateDB) RecordPreFinalise() map[cc.Address]struct{} {
+	return nil
+}
+
+// record-replay
+func (c *CarmenStateDB) RecordPostFinalise(map[cc.Address]struct{}) {
+}
