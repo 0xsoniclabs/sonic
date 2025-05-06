@@ -35,7 +35,7 @@ func TestRandao_RandaoReveal_CanBeConstructedAndVerified(t *testing.T) {
 	require.True(t, ok)
 }
 
-func TestRandAO_NewPrevRandao_ConstructionFailsWithInvalidKey(t *testing.T) {
+func TestRandao_NewRandaoReveal_ConstructionFailsWithInvalidKey(t *testing.T) {
 
 	previous := common.Hash{}
 
@@ -122,6 +122,62 @@ func generateKeyPair(t testing.TB) (*encryption.PrivateKey, validatorpk.PubKey) 
 	}
 
 	return privateKey, publicKey
+}
+
+func TestRandao_NewRandaoReveal_IsDeterministic(t *testing.T) {
+
+	previous := common.Hash{}
+
+	ctrl := gomock.NewController(t)
+	mockBackend := valkeystore.NewMockKeystoreI(ctrl)
+	signer := valkeystore.NewSigner(mockBackend)
+	privateKey, publicKey := generateKeyPair(t)
+	mockBackend.EXPECT().GetUnlocked(publicKey).Return(privateKey, nil).AnyTimes()
+
+	reveals := make([]randao.RandaoReveal, 10)
+	for i := range 10 {
+		source, err := randao.NewRandaoReveal(previous, publicKey, signer)
+		require.NoError(t, err)
+		reveals[i] = source
+	}
+
+	// check that all randao reveals are equal
+	for _, a := range reveals {
+		for _, b := range reveals {
+			require.Equal(t, a, b)
+		}
+	}
+}
+func TestRandao_GetRandao_IsDeterministic(t *testing.T) {
+
+	previous := common.Hash{}
+
+	ctrl := gomock.NewController(t)
+	mockBackend := valkeystore.NewMockKeystoreI(ctrl)
+	signer := valkeystore.NewSigner(mockBackend)
+	privateKey, publicKey := generateKeyPair(t)
+	mockBackend.EXPECT().GetUnlocked(publicKey).Return(privateKey, nil).AnyTimes()
+
+	reveals := make([]randao.RandaoReveal, 10)
+	for i := range 10 {
+		source, err := randao.NewRandaoReveal(previous, publicKey, signer)
+		require.NoError(t, err)
+		reveals[i] = source
+	}
+
+	randaoValues := make([]common.Hash, 10)
+	for i := range 10 {
+		randaoValue, ok := reveals[i].GetRandao(previous, publicKey)
+		require.True(t, ok)
+		randaoValues[i] = randaoValue
+	}
+
+	// check that all randao values are equal
+	for _, a := range randaoValues {
+		for _, b := range randaoValues {
+			require.Equal(t, a, b)
+		}
+	}
 }
 
 func TestRandaoReveal_EntropyTest(t *testing.T) {
