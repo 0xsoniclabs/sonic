@@ -574,11 +574,21 @@ func TestValidateTx_RejectsTxWhen(t *testing.T) {
 	oversizedData := make([]byte, txMaxSize+1)
 	for name, tx := range getTxsOfAllTypes() {
 		t.Run(fmt.Sprintf("fails static validation/%v", name), func(t *testing.T) {
+
 			setData(t, tx, oversizedData)
 
+			// --- needed for execution up to relevant check ---
+			netRules := getTestNetworkRules()
+			netRules.currentMaxGas = math.MaxUint64
+			setGas(t, tx, netRules.currentMaxGas-1)
+			setGasPriceOrFeeCap(t, tx, netRules.currentBaseFee)
+			setReceiverToNotNil(t, tx)
+			_, signedTx := signTxForTest(t, tx, netRules.signer)
+			// ---
+
 			// validate transaction
-			err := validateTx(types.NewTx(tx),
-				getTestValidationOptions(), getTestNetworkRules())
+			err := validateTx(signedTx,
+				getTestValidationOptions(), netRules)
 			require.ErrorIs(t, err, ErrOversizedData)
 		})
 	}
@@ -811,6 +821,23 @@ func setReceiverToNil(t *testing.T, tx types.TxData) {
 		t.Fatal("blob transaction cannot have nil To field")
 	case *types.SetCodeTx:
 		t.Fatal("setCode transaction cannot have nil To field")
+	default:
+		t.Fatalf("unexpected transaction type: %T", tx)
+	}
+}
+
+func setReceiverToNotNil(t *testing.T, tx types.TxData) {
+	switch tx := tx.(type) {
+	case *types.LegacyTx:
+		tx.To = &common.Address{}
+	case *types.AccessListTx:
+		tx.To = &common.Address{}
+	case *types.DynamicFeeTx:
+		tx.To = &common.Address{}
+	case *types.BlobTx:
+		tx.To = common.Address{}
+	case *types.SetCodeTx:
+		tx.To = common.Address{}
 	default:
 		t.Fatalf("unexpected transaction type: %T", tx)
 	}

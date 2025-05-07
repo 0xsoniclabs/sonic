@@ -62,12 +62,12 @@ func validateTx(
 	opt validationOptions,
 	netRules NetworkRulesForValidateTx) error {
 
-	if err := ValidateTxStatic(tx); err != nil {
+	err := ValidateTxForNetworkRules(tx, netRules)
+	if err != nil {
 		return err
 	}
 
-	err := ValidateTxForNetworkRules(tx, netRules)
-	if err != nil {
+	if err := ValidateTxStatic(tx); err != nil {
 		return err
 	}
 
