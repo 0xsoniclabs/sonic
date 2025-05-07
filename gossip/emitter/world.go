@@ -17,6 +17,8 @@ import (
 	"github.com/0xsoniclabs/sonic/vecmt"
 )
 
+//go:generate mockgen -source=world.go -destination=world_mock.go -package=emitter External,TxPool,TxSigner,Signer
+
 var (
 	ErrNotEnoughGasPower = errors.New("not enough gas power")
 )
@@ -41,8 +43,13 @@ type (
 	}
 
 	// aliases for mock generator
-	Signer   valkeystore.SignerI
-	TxSigner types.Signer
+	Signer interface {
+		valkeystore.SignerI
+	}
+
+	TxSigner interface {
+		types.Signer
+	}
 
 	// World is an emitter's environment
 	World struct {

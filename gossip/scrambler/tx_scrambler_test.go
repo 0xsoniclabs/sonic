@@ -9,7 +9,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/gossip/emitter/mock"
+	"github.com/0xsoniclabs/sonic/gossip/emitter"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"go.uber.org/mock/gomock"
@@ -643,7 +643,7 @@ func TestGetExecutionOrder_ScramblerIsUsedOnlyForSonic(t *testing.T) {
 	}
 
 	ctrl := gomock.NewController(t)
-	signer := mock.NewMockTxSigner(ctrl)
+	signer := emitter.NewMockTxSigner(ctrl)
 
 	// Only one loop is expected because the scrambler is disabled if Sonic is not enabled.
 	gomock.InOrder(

@@ -3,7 +3,6 @@ package emitter
 import (
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/gossip/emitter/mock"
 	"github.com/0xsoniclabs/sonic/vecmt"
 	"github.com/Fantom-foundation/lachesis-base/emitter/ancestor"
 	"github.com/Fantom-foundation/lachesis-base/hash"
@@ -15,7 +14,7 @@ import (
 
 func TestChooseParents_NoParentsForGenesisEvent(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	external := mock.NewMockExternal(ctrl)
+	external := NewMockExternal(ctrl)
 	em := NewEmitter(
 		DefaultConfig(),
 		World{External: external},
@@ -41,7 +40,7 @@ func TestChooseParents_NoParentsForGenesisEvent(t *testing.T) {
 
 func TestChooseParents_NonGenesisEventMustHaveOneSelfParent(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	external := mock.NewMockExternal(ctrl)
+	external := NewMockExternal(ctrl)
 	em := NewEmitter(
 		DefaultConfig(),
 		World{External: external},

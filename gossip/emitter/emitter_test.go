@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/0xsoniclabs/sonic/gossip/emitter/mock"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -34,10 +33,10 @@ func TestEmitter(t *testing.T) {
 	cfg.Validator.ID = gValidators[0].ID
 
 	ctrl := gomock.NewController(t)
-	external := mock.NewMockExternal(ctrl)
-	txPool := mock.NewMockTxPool(ctrl)
-	signer := mock.NewMockSigner(ctrl)
-	txSigner := mock.NewMockTxSigner(ctrl)
+	external := NewMockExternal(ctrl)
+	txPool := NewMockTxPool(ctrl)
+	signer := NewMockSigner(ctrl)
+	txSigner := NewMockTxSigner(ctrl)
 
 	external.EXPECT().Lock().
 		AnyTimes()
