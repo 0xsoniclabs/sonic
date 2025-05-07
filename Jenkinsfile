@@ -23,7 +23,7 @@ pipeline {
 
         stage('Static analysis') {
             steps {
-                sh 'make lint'
+                sh 'golangci-lint run ./...'
             }
         }
 

@@ -1,0 +1,27 @@
+version: "2"
+linters:
+  settings:
+    staticcheck:
+      initialisms: []
+      dot-import-whitelist: []
+      http-status-code-whitelist: []
+      checks:
+        - all
+        # default ignored checks
+        - "-SA9003" # Empty body in an if or else branch.
+        - "-ST1000" # Invalid regular expression.
+        - "-ST1003" # Unsupported argument to functions in 'encoding/binary'.
+        - "-ST1016" # Trapping a signal that cannot be trapped.
+        - "-ST1020" # Using an invalid host:port pair with a 'net.Listen'-related function.
+        - "-ST1021" # Using 'bytes.Equal' to compare two 'net.IP'.
+        - "-ST1022" #
+        - "-ST1023" # Modifying the buffer in an 'io.Writer' implementation.
+        # additional ignored checks for Sonic
+        - "-ST1005" # error string formatting. No capital letter in the first word & no punctuation
+        - "-SA1019" # deprecated imports (CARMEN)
+
+formatters:
+  # Enable specific formatter.
+  # Default: [] (uses standard Go formatting)
+  enable:
+    - gofmt
