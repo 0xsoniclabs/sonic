@@ -19,16 +19,19 @@ import (
 // The randao reveal is computed by a proposing validator
 // using the following formula:
 //   - hash = sha256(domainSeparator + previousRandao)
-//   - randaoReveal = Sign(proposerPrivateKey, hash)
-//   - + is the concatenation operator
+//   - randaoReveal = signature(proposerPrivateKey, hash)
+//
+// Where + is the concatenation operator, and signature is the concatenation of
+// the R&S values of the ECDSA signature using Secp256k1 (64 bytes long).
 //
 // The next randao value is computed by the following formula:
 //   - nextRandao = sha256(randaoReveal)
 //
-// Peers receiving a randao reveal can verify it by
+// Peers receiving a randao reveal can verify that the proposer followed the
+// protocol by checking that the signature is valid for:
 //   - hash = sha256(domainSeparator + previousRandao)
-//   - ok = crypto.VerifySignature(proposerPublicKey, hash, randaoReveal)
-//   - + is the concatenation operator
+//
+// Where both domainSeparator and previousRandao are known to every peer.
 type RandaoReveal []byte
 
 // GenerateNextRandaoReveal Constructs a new RandaoReveal
