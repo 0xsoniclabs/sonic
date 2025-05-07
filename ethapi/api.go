@@ -1401,6 +1401,8 @@ func newRPCTransaction(tx *types.Transaction, blockHash common.Hash, blockNumber
 	}
 
 	switch tx.Type() {
+	case types.LegacyTxType:
+		result.ChainID = (*hexutil.Big)(tx.ChainId())
 	case types.AccessListTxType:
 		copyAccessList(tx, result)
 	case types.DynamicFeeTxType:
