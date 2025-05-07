@@ -34,8 +34,14 @@ pipeline {
         }
 
         stage('Run tests') {
+            environment {
+                CODECOV_TOKEN = credentials('codecov-uploader-0xsoniclabs-global')
+            }
             steps {
-                sh 'go test ./... --timeout 30m'
+                sh 'go test -coverprofile=coverage.txt --timeout 30m $(go list ./... | grep -v /tests)'
+                sh 'make integration-coverage'
+                sh ('codecov upload-process -r 0xsoniclabs/sonic -f ./coverage.tx -t ${CODECOV_TOKEN}')
+                sh ('codecov upload-process -r 0xsoniclabs/sonic -f ./build/coverage/*/integration-cover.out -t ${CODECOV_TOKEN}')
             }
         }
 
