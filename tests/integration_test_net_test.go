@@ -3,7 +3,6 @@ package tests
 import (
 	"context"
 	"fmt"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"math/big"
 	"testing"
 
@@ -12,6 +11,7 @@ import (
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
 	"github.com/0xsoniclabs/tosca/go/tosca/vm"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
@@ -201,7 +201,7 @@ func TestIntegrationTestNet_CanStartWithCustomConfig(t *testing.T) {
 			// enable minimum tip check for local tx submission
 			config.TxPool.NoLocals = true
 			// increase minimum tip, default is 1
-			config.TxPool.PriceLimit = 10
+			config.TxPool.MinimumTip = 10
 		},
 	})
 	client, err := net.GetClient()

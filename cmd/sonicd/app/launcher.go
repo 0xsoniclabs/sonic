@@ -85,7 +85,7 @@ func initFlags() {
 		flags.TxPoolNoLocalsFlag,
 		flags.TxPoolJournalFlag,
 		flags.TxPoolRejournalFlag,
-		flags.TxPoolPriceLimitFlag,
+		flags.TxPoolMinTipFlag,
 		flags.TxPoolPriceBumpFlag,
 		flags.TxPoolAccountSlotsFlag,
 		flags.TxPoolGlobalSlotsFlag,
