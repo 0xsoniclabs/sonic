@@ -176,7 +176,7 @@ type TxPoolConfig struct {
 	Journal   string           // Journal of local transactions to survive node restarts
 	Rejournal time.Duration    // Time interval to regenerate the local transaction journal
 
-	PriceLimit uint64 // Minimum gas price to enforce for acceptance into the pool
+	MinimumTip uint64 // Minimum tip to enforce for acceptance into the pool
 	PriceBump  uint64 // Minimum price bump percentage to replace an already existing transaction (nonce)
 
 	AccountSlots uint64 // Number of executable transaction slots guaranteed per account
@@ -193,7 +193,7 @@ var DefaultTxPoolConfig = TxPoolConfig{
 	Journal:   "transactions.rlp",
 	Rejournal: time.Hour,
 
-	PriceLimit: 1,
+	MinimumTip: 1,
 	PriceBump:  10,
 
 	AccountSlots: 16,
@@ -212,9 +212,9 @@ func (config *TxPoolConfig) sanitize() TxPoolConfig {
 		log.Warn("Sanitizing invalid txpool journal time", "provided", conf.Rejournal, "updated", time.Second)
 		conf.Rejournal = time.Second
 	}
-	if conf.PriceLimit < 1 {
-		log.Warn("Sanitizing invalid txpool price limit", "provided", conf.PriceLimit, "updated", DefaultTxPoolConfig.PriceLimit)
-		conf.PriceLimit = DefaultTxPoolConfig.PriceLimit
+	if conf.MinimumTip < 1 {
+		log.Warn("Sanitizing invalid txpool minimum tip", "provided", conf.MinimumTip, "updated", DefaultTxPoolConfig.MinimumTip)
+		conf.MinimumTip = DefaultTxPoolConfig.MinimumTip
 	}
 	if conf.PriceBump < 1 {
 		log.Warn("Sanitizing invalid txpool price bump", "provided", conf.PriceBump, "updated", DefaultTxPoolConfig.PriceBump)
@@ -268,7 +268,7 @@ type TxPool struct {
 	config      TxPoolConfig
 	chainconfig *params.ChainConfig
 	chain       StateReader
-	gasPrice    *big.Int
+	minTip      *big.Int
 	txFeed      notify.Feed
 	scope       notify.SubscriptionScope
 	signer      types.Signer
@@ -331,7 +331,7 @@ func NewTxPool(config TxPoolConfig, chainconfig *params.ChainConfig, chain State
 		queueTxEventCh:  make(chan *types.Transaction),
 		reorgDoneCh:     make(chan chan struct{}),
 		reorgShutdownCh: make(chan struct{}),
-		gasPrice:        new(big.Int).SetUint64(config.PriceLimit),
+		minTip:          new(big.Int).SetUint64(config.MinimumTip),
 	}
 	pool.locals = newAccountSet(pool.signer)
 	for _, addr := range config.Locals {
@@ -465,22 +465,23 @@ func (pool *TxPool) SubscribeNewTxsNotify(ch chan<- NewTxsNotify) notify.Subscri
 	return pool.scope.Track(pool.txFeed.Subscribe(ch))
 }
 
-// GasPrice returns the current gas price enforced by the transaction pool.
-func (pool *TxPool) GasPrice() *big.Int {
+// MinTip returns the current gas price enforced by the transaction pool.
+func (pool *TxPool) MinTip() *big.Int {
 	pool.mu.RLock()
 	defer pool.mu.RUnlock()
 
-	return new(big.Int).Set(pool.gasPrice)
+	return new(big.Int).Set(pool.minTip)
 }
 
-// SetGasPrice updates the minimum price required by the transaction pool for a
-// new transaction, and drops all transactions below this threshold.
-func (pool *TxPool) SetGasPrice(price *big.Int) {
+// setMinTip is a test function that updates the minimum tip required by the
+// transaction pool for a new transaction, and drops all transactions below
+// this threshold.
+func (pool *TxPool) setMinTip(price *big.Int) {
 	pool.mu.Lock()
 	defer pool.mu.Unlock()
 
-	old := pool.gasPrice
-	pool.gasPrice = price
+	old := pool.minTip
+	pool.minTip = price
 	// if the min miner fee increased, remove transactions below the new threshold
 	if price.Cmp(old) > 0 {
 		// pool.priced is sorted by GasFeeCap, so we have to iterate through pool.all instead
@@ -586,7 +587,7 @@ func (pool *TxPool) Pending(enforceTips bool) (map[common.Address]types.Transact
 		// If the miner requests tip enforcement, cap the lists now
 		if enforceTips && !pool.locals.contains(addr) {
 			for i, tx := range txs {
-				if tx.EffectiveGasTipIntCmp(pool.gasPrice, pool.priced.urgent.baseFee) < 0 {
+				if tx.EffectiveGasTipIntCmp(pool.minTip, pool.priced.urgent.baseFee) < 0 {
 					txs = txs[:i]
 					break
 				}
@@ -675,7 +676,7 @@ func (pool *TxPool) local() map[common.Address]types.Transactions {
 func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 	opts := validationOptions{
 		currentState: pool.currentState,
-		minTip:       pool.gasPrice,
+		minTip:       pool.minTip,
 		locals:       pool.locals,
 		isLocal:      local,
 	}
