@@ -507,8 +507,10 @@ func TestTransactionJSONSerialization(t *testing.T) {
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
 
+	ChainId := big.NewInt(17)
+
 	authorization := types.SetCodeAuthorization{
-		ChainID: *uint256.NewInt(17),
+		ChainID: *uint256.MustFromBig(ChainId),
 		Address: common.Address{42},
 		Nonce:   5,
 		V:       1,
@@ -524,12 +526,14 @@ func TestTransactionJSONSerialization(t *testing.T) {
 			GasPrice: big.NewInt(500e9),
 		},
 		"accessList empty list": &types.AccessListTx{
+			ChainID:  ChainId,
 			Nonce:    1,
 			To:       &common.Address{1},
 			Gas:      1e6,
 			GasPrice: big.NewInt(500e9),
 		},
 		"accessList": &types.AccessListTx{
+			ChainID:  ChainId,
 			Nonce:    1,
 			To:       &common.Address{1},
 			Gas:      1e6,
@@ -539,6 +543,7 @@ func TestTransactionJSONSerialization(t *testing.T) {
 			},
 		},
 		"dynamicFee": &types.DynamicFeeTx{
+			ChainID:   ChainId,
 			Nonce:     2,
 			To:        &common.Address{1},
 			Gas:       1e6,
@@ -546,12 +551,14 @@ func TestTransactionJSONSerialization(t *testing.T) {
 			GasTipCap: big.NewInt(500e9),
 		},
 		"blob empty list": &types.BlobTx{
+			ChainID:    uint256.MustFromBig(ChainId),
 			Nonce:      3,
 			Gas:        1e6,
 			GasFeeCap:  uint256.NewInt(500e9),
 			BlobFeeCap: uint256.NewInt(500e9),
 		},
 		"blob": &types.BlobTx{
+			ChainID:    uint256.MustFromBig(ChainId),
 			Nonce:      3,
 			Gas:        1e6,
 			GasFeeCap:  uint256.NewInt(500e9),
@@ -559,14 +566,16 @@ func TestTransactionJSONSerialization(t *testing.T) {
 			BlobHashes: []common.Hash{{0x01}},
 		},
 		"setCode empty list": &types.SetCodeTx{
-			Nonce: 4,
-			To:    common.Address{42},
-			Gas:   1e6,
+			ChainID: uint256.MustFromBig(ChainId),
+			Nonce:   4,
+			To:      common.Address{42},
+			Gas:     1e6,
 		},
 		"setCode": &types.SetCodeTx{
-			Nonce: 4,
-			To:    common.Address{42},
-			Gas:   1e6,
+			ChainID: uint256.MustFromBig(ChainId),
+			Nonce:   4,
+			To:      common.Address{42},
+			Gas:     1e6,
 			AuthList: []types.SetCodeAuthorization{
 				authorization,
 			},
@@ -575,7 +584,7 @@ func TestTransactionJSONSerialization(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			signed := signTransaction(t, big.NewInt(1), test, key)
+			signed := signTransaction(t, ChainId, test, key)
 
 			blockHash := common.Hash{1, 2, 3, 4}
 			blockNumber := uint64(4321)
@@ -595,6 +604,8 @@ func TestTransactionJSONSerialization(t *testing.T) {
 			require.Equal(t, int64(blockNumber), decoded.BlockNumber.ToInt().Int64())
 			require.Equal(t, index, uint64(*decoded.TransactionIndex))
 			require.Equal(t, signed.Hash(), rpcTransactionToTransaction(t, decoded).Hash())
+			hexBigChainId := hexutil.Big(*ChainId)
+			require.Equal(t, &hexBigChainId, decoded.ChainID)
 		})
 	}
 }
