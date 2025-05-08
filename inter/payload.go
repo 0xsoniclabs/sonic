@@ -20,10 +20,8 @@ const (
 // defining new RLP encoded content, this payload uses protobuf encoding to
 // standardize the serialization of the content and simplify portability.
 type Payload struct {
-	LastSeenProposalTurn  Turn
-	LastSeenProposedBlock idx.Block
-	LastSeenProposalFrame idx.Frame
-	Proposal              *Proposal
+	ProposalSyncState
+	Proposal *Proposal
 }
 
 // Hash computes a secure hash of the payload that can be used for signing and
