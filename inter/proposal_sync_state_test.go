@@ -11,7 +11,7 @@ import (
 	gomock "go.uber.org/mock/gomock"
 )
 
-func TestProposalState_Join(t *testing.T) {
+func TestProposalSyncState_Join(t *testing.T) {
 	for turnA := range Turn(5) {
 		for turnB := range Turn(5) {
 			for frameA := range idx.Frame(5) {
@@ -28,7 +28,7 @@ func TestProposalState_Join(t *testing.T) {
 								LastSeenProposalFrame: frameB,
 								LastSeenProposedBlock: blockB,
 							}
-							joined := JoinProposalState(a, b)
+							joined := JoinProposalSyncStates(a, b)
 							require.Equal(t, max(turnA, turnB), joined.LastSeenProposalTurn)
 							require.Equal(t, max(frameA, frameB), joined.LastSeenProposalFrame)
 							require.Equal(t, max(blockA, blockB), joined.LastSeenProposedBlock)
@@ -40,7 +40,7 @@ func TestProposalState_Join(t *testing.T) {
 	}
 }
 
-func TestGetIncomingProposalState_ProducesEpochStartStateForGenesisEvent(t *testing.T) {
+func TestGetIncomingProposalSyncState_ProducesEpochStartStateForGenesisEvent(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	world := NewMockEventReader(ctrl)
@@ -52,13 +52,13 @@ func TestGetIncomingProposalState_ProducesEpochStartStateForGenesisEvent(t *test
 	epochStartBlock := idx.Block(123)
 	world.EXPECT().GetEpochStartBlock(event.Epoch()).Return(epochStartBlock)
 
-	state := GetIncomingProposalState(world, event)
+	state := GetIncomingProposalSyncState(world, event)
 	require.Equal(Turn(0), state.LastSeenProposalTurn)
 	require.Equal(idx.Frame(0), state.LastSeenProposalFrame)
 	require.Equal(epochStartBlock, state.LastSeenProposedBlock)
 }
 
-func TestGetIncomingProposalState_AggregatesParentStates(t *testing.T) {
+func TestGetIncomingProposalSyncState_AggregatesParentStates(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	world := NewMockEventReader(ctrl)
@@ -67,17 +67,17 @@ func TestGetIncomingProposalState_AggregatesParentStates(t *testing.T) {
 	p2 := hash.Event{2}
 	p3 := hash.Event{3}
 	parents := map[hash.Event]Payload{
-		p1: Payload{ProposalSyncState: ProposalSyncState{
+		p1: {ProposalSyncState: ProposalSyncState{
 			LastSeenProposalTurn:  Turn(0x01),
 			LastSeenProposalFrame: idx.Frame(0x12),
 			LastSeenProposedBlock: idx.Block(0x23),
 		}},
-		p2: Payload{ProposalSyncState: ProposalSyncState{
+		p2: {ProposalSyncState: ProposalSyncState{
 			LastSeenProposalTurn:  Turn(0x03),
 			LastSeenProposalFrame: idx.Frame(0x11),
 			LastSeenProposedBlock: idx.Block(0x22),
 		}},
-		p3: Payload{ProposalSyncState: ProposalSyncState{
+		p3: {ProposalSyncState: ProposalSyncState{
 			LastSeenProposalTurn:  Turn(0x02),
 			LastSeenProposalFrame: idx.Frame(0x13),
 			LastSeenProposedBlock: idx.Block(0x21),
@@ -90,7 +90,7 @@ func TestGetIncomingProposalState_AggregatesParentStates(t *testing.T) {
 
 	event := &dag.MutableBaseEvent{}
 	event.SetParents(hash.Events{p1, p2, p3})
-	state := GetIncomingProposalState(world, event)
+	state := GetIncomingProposalSyncState(world, event)
 
 	require.Equal(Turn(0x03), state.LastSeenProposalTurn)
 	require.Equal(idx.Frame(0x13), state.LastSeenProposalFrame)

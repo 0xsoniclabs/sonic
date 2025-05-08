@@ -64,9 +64,9 @@ func (e *Payload) Deserialize(data []byte) error {
 	if pb.Version != currentPayloadVersion {
 		return fmt.Errorf("unsupported payload version: %d", pb.Version)
 	}
-	e.ProposalSyncState.LastSeenProposalTurn = Turn(pb.LastSeenProposalTurn)
-	e.ProposalSyncState.LastSeenProposedBlock = idx.Block(pb.LastSeenProposedBlock)
-	e.ProposalSyncState.LastSeenProposalFrame = idx.Frame(pb.LastSeenProposalFrame)
+	e.LastSeenProposalTurn = Turn(pb.LastSeenProposalTurn)
+	e.LastSeenProposedBlock = idx.Block(pb.LastSeenProposedBlock)
+	e.LastSeenProposalFrame = idx.Frame(pb.LastSeenProposalFrame)
 	if pb.Proposal != nil {
 		p := &Proposal{}
 		if err := p.fromProto(pb.Proposal); err != nil {

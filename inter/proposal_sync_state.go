@@ -17,9 +17,10 @@ type ProposalSyncState struct {
 	LastSeenProposedBlock idx.Block
 }
 
-// JoinProposalState merges two proposal states by taking the maximum of each
-// field. This is used to aggregate the proposal state from an event's parents.
-func JoinProposalState(a, b ProposalSyncState) ProposalSyncState {
+// JoinProposalSyncStates merges two proposal sync states by taking the maximum
+// of each individual field. This is used to aggregate the proposal state from
+// an event's parents.
+func JoinProposalSyncStates(a, b ProposalSyncState) ProposalSyncState {
 	return ProposalSyncState{
 		LastSeenProposalTurn:  max(a.LastSeenProposalTurn, b.LastSeenProposalTurn),
 		LastSeenProposedBlock: max(a.LastSeenProposedBlock, b.LastSeenProposedBlock),
@@ -27,9 +28,9 @@ func JoinProposalState(a, b ProposalSyncState) ProposalSyncState {
 	}
 }
 
-// GetIncomingProposalState aggregates the last seen proposal information
+// GetIncomingProposalSyncState aggregates the last seen proposal information
 // from the event's parents.
-func GetIncomingProposalState(
+func GetIncomingProposalSyncState(
 	reader EventReader,
 	event dag.Event,
 ) ProposalSyncState {
@@ -48,7 +49,7 @@ func GetIncomingProposalState(
 	// needs to be aggregated.
 	for _, parent := range parents {
 		current := reader.GetEventPayload(parent).ProposalSyncState
-		res = JoinProposalState(res, current)
+		res = JoinProposalSyncStates(res, current)
 	}
 	return res
 }
