@@ -10,14 +10,14 @@ them using your favourite package manager. Once the dependencies are installed, 
 ```shell
 make all
 ```
-The build output are ```build/sonicd``` and ```build/sonictool``` executables.
+The build outputs are ```build/sonicd``` and ```build/sonictool``` executables.
 
 ## Initialization of the Sonic Database
 
 You will need a genesis file to join a network. Please check the following
 site for details how to get one: https://github.com/Fantom-foundation/lachesis_launch
 Once you obtain the most recent genesis file available, you need to use the `sonictool`
-create a starting DB.
+to create a starting DB.
 
 ```shell
 sonictool --datadir=<target DB path> genesis <path to the genesis file>
@@ -31,7 +31,7 @@ on how you can run your own `sonicd` instance.
 
 ### Launching a network
 
-Launching `sonicd` readonly (non-validator) node for network specified by the genesis file:
+Launching `sonicd` read-only (non-validator) node for network specified by the genesis file:
 
 ```shell
 sonicd --datadir=<DB path>
@@ -46,7 +46,7 @@ configuration file via:
 sonicd --datadir=<DB path> --config /path/to/your/config.toml
 ```
 
-To get an idea how the file should look like you can use the `dumpconfig` subcommand to
+To get an idea of what the file should look like you can use the `dumpconfig` subcommand to
 export the default configuration:
 
 ```shell
@@ -66,11 +66,11 @@ sonicd --datadir=<DB path> --validator.id=YOUR_ID --validator.pubkey=0xYOUR_PUBK
 ```
 
 `sonicd` will prompt you for a password to decrypt your validator private key. Optionally, you can
-specify password with a file using `--validator.password` flag.
+sspecify the password via a file using `--validator.password` flag.
 
 #### Participation in discovery
 
-Optionally you can specify your public IP to straighten connectivity of the network.
+Optionally you can specify your public IP to improve network connectivity.
 Ensure your TCP/UDP p2p port (5050 by default) isn't blocked by your firewall.
 
 ```shell
