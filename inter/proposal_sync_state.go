@@ -17,20 +17,6 @@ type ProposalSyncState struct {
 	LastSeenProposedBlock idx.Block
 }
 
-func (s *ProposalSyncState) FromPayload(payload Payload) {
-	s.LastSeenProposalTurn = payload.LastSeenProposalTurn
-	s.LastSeenProposedBlock = payload.LastSeenProposedBlock
-	s.LastSeenProposalFrame = payload.LastSeenProposalFrame
-}
-
-func (s ProposalSyncState) ToPayload() Payload {
-	return Payload{
-		LastSeenProposalTurn:  s.LastSeenProposalTurn,
-		LastSeenProposedBlock: s.LastSeenProposedBlock,
-		LastSeenProposalFrame: s.LastSeenProposalFrame,
-	}
-}
-
 // JoinProposalState merges two proposal states by taking the maximum of each
 // field. This is used to aggregate the proposal state from an event's parents.
 func JoinProposalState(a, b ProposalSyncState) ProposalSyncState {
@@ -61,8 +47,7 @@ func GetIncomingProposalState(
 	// For all other events, the last seen proposal information of the parents
 	// needs to be aggregated.
 	for _, parent := range parents {
-		current := ProposalSyncState{}
-		current.FromPayload(reader.GetEventPayload(parent))
+		current := reader.GetEventPayload(parent).ProposalSyncState
 		res = JoinProposalState(res, current)
 	}
 	return res

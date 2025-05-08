@@ -61,9 +61,9 @@ func TestEvent_Version3_PayloadHashMatchesHashOfPayload(t *testing.T) {
 	require := require.New(t)
 
 	for turn := range Turn(2) {
-		payload := Payload{
+		payload := Payload{ProposalSyncState: ProposalSyncState{
 			LastSeenProposalTurn: turn,
-		}
+		}}
 
 		builder := MutableEventPayload{}
 		builder.SetVersion(3)

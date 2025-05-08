@@ -25,9 +25,11 @@ func TestPayload_Hash_IsShaOfFieldConcatenation(t *testing.T) {
 	for i := range 5 {
 
 		payload := &Payload{
-			LastSeenProposalTurn:  Turn(1 + i),
-			LastSeenProposedBlock: idx.Block(2 + i),
-			LastSeenProposalFrame: idx.Frame(3 + i),
+			ProposalSyncState: ProposalSyncState{
+				LastSeenProposalTurn:  Turn(1 + i),
+				LastSeenProposedBlock: idx.Block(2 + i),
+				LastSeenProposalFrame: idx.Frame(3 + i),
+			},
 			Proposal: &Proposal{
 				Number: idx.Block(4 + i),
 			},
@@ -45,10 +47,12 @@ func TestPayload_Hash_IsShaOfFieldConcatenation(t *testing.T) {
 
 func TestPayload_Hash_MissingPayloadIsOmittedInHashInput(t *testing.T) {
 	payload := &Payload{
-		LastSeenProposalTurn:  1,
-		LastSeenProposedBlock: 2,
-		LastSeenProposalFrame: 3,
-		Proposal:              nil,
+		ProposalSyncState: ProposalSyncState{
+			LastSeenProposalTurn:  1,
+			LastSeenProposedBlock: 2,
+			LastSeenProposalFrame: 3,
+		},
+		Proposal: nil,
 	}
 
 	data := []byte{currentPayloadVersion}
@@ -83,9 +87,11 @@ func TestPayload_Hash_ModifyingContent_ChangesHash(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
 			payload := &Payload{
-				LastSeenProposalTurn:  1,
-				LastSeenProposedBlock: 2,
-				LastSeenProposalFrame: 3,
+				ProposalSyncState: ProposalSyncState{
+					LastSeenProposalTurn:  1,
+					LastSeenProposedBlock: 2,
+					LastSeenProposalFrame: 3,
+				},
 				Proposal: &Proposal{
 					Number: 4,
 				},
@@ -104,10 +110,12 @@ func TestPayload_CanBeSerializedAndRestored(t *testing.T) {
 	for _, proposal := range []*Proposal{nil, {}} {
 		require := require.New(t)
 		original := &Payload{
-			LastSeenProposalTurn:  1,
-			LastSeenProposedBlock: 2,
-			LastSeenProposalFrame: 3,
-			Proposal:              proposal,
+			ProposalSyncState: ProposalSyncState{
+				LastSeenProposalTurn:  1,
+				LastSeenProposedBlock: 2,
+				LastSeenProposalFrame: 3,
+			},
+			Proposal: proposal,
 		}
 
 		data, err := original.Serialize()

@@ -233,10 +233,10 @@ func TestEventPayloadMarshalCSER_DetectsInvalidTransactionEncoding(t *testing.T)
 func TestEventPayloadUnmarshalCSER_DetectsInvalidPayloadEncoding(t *testing.T) {
 	require := require.New(t)
 
-	payload := Payload{
+	payload := Payload{ProposalSyncState: ProposalSyncState{
 		LastSeenProposalTurn:  123,
 		LastSeenProposedBlock: 456,
-	}
+	}}
 	payloadData, err := payload.Serialize()
 	require.NoError(err)
 
@@ -630,9 +630,11 @@ func FakeEvent(version uint8, txsNum, mpsNum, bvsNum int, ersNum bool) *EventPay
 	if version == 3 {
 		random.SetTxs(nil)
 		random.SetPayload(Payload{
-			LastSeenProposalTurn:  Turn(rand.IntN(100)),
-			LastSeenProposedBlock: idx.Block(rand.IntN(10_000_000)),
-			LastSeenProposalFrame: idx.Frame(rand.IntN(100)),
+			ProposalSyncState: ProposalSyncState{
+				LastSeenProposalTurn:  Turn(rand.IntN(100)),
+				LastSeenProposedBlock: idx.Block(rand.IntN(10_000_000)),
+				LastSeenProposalFrame: idx.Frame(rand.IntN(100)),
+			},
 			Proposal: &Proposal{
 				Number:       idx.Block(rand.IntN(10_000_000)),
 				ParentHash:   common.Hash(randHash(r)),
