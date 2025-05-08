@@ -10,6 +10,7 @@ import (
 	"github.com/0xsoniclabs/sonic/tests/contracts/batch"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
 	"github.com/0xsoniclabs/sonic/tests/contracts/privilege_deescalation"
+	"github.com/0xsoniclabs/sonic/tests/contracts/sponsoring"
 	"github.com/0xsoniclabs/sonic/tests/contracts/transitive_call"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -130,49 +131,54 @@ func testSponsoring(t *testing.T, net IntegrationTestNetSession) {
 	sponsor := makeAccountWithBalance(t, net, big.NewInt(1e18))
 	// sponsored is used as context for the call, its state will be modified
 	// without paying for the transaction
-	sponsored := makeAccountWithBalance(t, net, new(big.Int)) // < no funds
+	sponsored := makeAccountWithBalance(t, net, big.NewInt(10))
+	receiver := makeAccountWithBalance(t, net, new(big.Int))
 
-	// Deploy the a contract to use as delegate
-	counter, receipt, err := DeployContract(net, counter.DeployCounter)
+	// Deploy the contract to forward the call
+	sponsoringDelegate, receipt, err := DeployContract(net, sponsoring.DeploySponsoring)
 	require.NoError(t, err)
-	delegate := receipt.ContractAddress
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+	delegateAddress := receipt.ContractAddress
 
-	// Extract the call data of a normal call to the delegate contract
-	// to know the ABI encoding of the callData
+	// Prepare calldata for the sponsoring transaction
+	// - sponsor pays the gas fees
+	// - sponsored pays the value transfer
+	// - receiver receives the funds (called contract/address)
 	callData := getCallData(t, net, func(opts *bind.TransactOpts) (*types.Transaction, error) {
-		return counter.IncrementCounter(opts)
+		// Transfer 10 wei to receiver account
+		return sponsoringDelegate.Execute(opts, receiver.Address(), big.NewInt(10), nil)
 	})
 
 	// Create a setCode transaction calling the incrementCounter function
 	// in the context of the sponsored account.
-	setCodeTx := makeEip7702Transaction(t, client, sponsor, sponsored, delegate, callData)
+	setCodeTx := makeEip7702Transaction(t, client, sponsor, sponsored, delegateAddress, callData)
 	receipt, err = net.Run(setCodeTx)
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
-	// Check that the sender has paid for the transaction
+	// Check that the three account states are correctly modified:
 	effectiveCost := new(big.Int)
 	effectiveCost = effectiveCost.Mul(
 		receipt.EffectiveGasPrice,
 		big.NewInt(int64(receipt.GasUsed)))
-
 	balance, err := client.BalanceAt(context.Background(), sponsor.Address(), nil)
 	require.NoError(t, err)
 	assert.Equal(t,
 		new(big.Int).Sub(
-			big.NewInt(1e18), effectiveCost), balance)
+			big.NewInt(1e18), effectiveCost),
+		balance, "sponsor balance must be reduced by the transaction cost")
 
-	// Read code at sponsored address, must contain the delegate address
-	code, err := client.CodeAt(context.Background(), sponsored.Address(), nil)
+	balance, err = client.BalanceAt(context.Background(), sponsored.Address(), nil)
 	require.NoError(t, err)
-	expectedCode := append([]byte{0xef, 0x01, 0x00}, delegate[:]...)
-	require.Equal(t, expectedCode, code, "code in account is expected to be delegation designation")
+	assert.Equal(t,
+		int64(0),
+		balance.Int64(), "sponsored balance must be reduced by the value transferred")
 
-	// Read storage at sponsored address (instead of contract address as in a normal tx)
-	// counter must exist and be 1
-	data, err := client.StorageAt(context.Background(), sponsored.Address(), common.Hash{}, nil)
+	balance, err = client.BalanceAt(context.Background(), receiver.Address(), nil)
 	require.NoError(t, err)
-	require.Equal(t, big.NewInt(1), new(big.Int).SetBytes(data), "unexpected storage value")
+	assert.Equal(t,
+		big.NewInt(10),
+		balance, "receiver balance must increase by the value transferred")
 }
 
 // testBatching executes multiple funds transfers within a single transaction:
