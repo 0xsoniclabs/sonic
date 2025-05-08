@@ -11,41 +11,6 @@ import (
 	gomock "go.uber.org/mock/gomock"
 )
 
-func TestProposalState_FromPayload(t *testing.T) {
-	for turn := range Turn(10) {
-		for frame := range idx.Frame(10) {
-			for block := range idx.Block(10) {
-				state := ProposalSyncState{}
-				state.FromPayload(Payload{
-					LastSeenProposalTurn:  turn,
-					LastSeenProposalFrame: frame,
-					LastSeenProposedBlock: block,
-				})
-				require.Equal(t, turn, state.LastSeenProposalTurn)
-				require.Equal(t, frame, state.LastSeenProposalFrame)
-				require.Equal(t, block, state.LastSeenProposedBlock)
-			}
-		}
-	}
-}
-
-func TestProposalState_ToPayload(t *testing.T) {
-	for turn := range Turn(10) {
-		for frame := range idx.Frame(10) {
-			for block := range idx.Block(10) {
-				payload := ProposalSyncState{
-					LastSeenProposalTurn:  turn,
-					LastSeenProposalFrame: frame,
-					LastSeenProposedBlock: block,
-				}.ToPayload()
-				require.Equal(t, turn, payload.LastSeenProposalTurn)
-				require.Equal(t, frame, payload.LastSeenProposalFrame)
-				require.Equal(t, block, payload.LastSeenProposedBlock)
-			}
-		}
-	}
-}
-
 func TestProposalState_Join(t *testing.T) {
 	for turnA := range Turn(5) {
 		for turnB := range Turn(5) {
@@ -102,21 +67,21 @@ func TestGetIncomingProposalState_AggregatesParentStates(t *testing.T) {
 	p2 := hash.Event{2}
 	p3 := hash.Event{3}
 	parents := map[hash.Event]Payload{
-		p1: Payload{
+		p1: Payload{ProposalSyncState: ProposalSyncState{
 			LastSeenProposalTurn:  Turn(0x01),
 			LastSeenProposalFrame: idx.Frame(0x12),
 			LastSeenProposedBlock: idx.Block(0x23),
-		},
-		p2: Payload{
+		}},
+		p2: Payload{ProposalSyncState: ProposalSyncState{
 			LastSeenProposalTurn:  Turn(0x03),
 			LastSeenProposalFrame: idx.Frame(0x11),
 			LastSeenProposedBlock: idx.Block(0x22),
-		},
-		p3: Payload{
+		}},
+		p3: Payload{ProposalSyncState: ProposalSyncState{
 			LastSeenProposalTurn:  Turn(0x02),
 			LastSeenProposalFrame: idx.Frame(0x13),
 			LastSeenProposedBlock: idx.Block(0x21),
-		},
+		}},
 	}
 
 	world.EXPECT().GetEventPayload(p1).Return(parents[p1])
