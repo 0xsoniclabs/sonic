@@ -28,9 +28,9 @@ func JoinProposalSyncStates(a, b ProposalSyncState) ProposalSyncState {
 	}
 }
 
-// GetIncomingProposalSyncState aggregates the last seen proposal information
+// CalculateIncomingProposalSyncState aggregates the last seen proposal information
 // from the event's parents.
-func GetIncomingProposalSyncState(
+func CalculateIncomingProposalSyncState(
 	reader EventReader,
 	event dag.Event,
 ) ProposalSyncState {
@@ -54,8 +54,15 @@ func GetIncomingProposalSyncState(
 	return res
 }
 
+// EventReader is an interface of an event-information data source required by
+// CalculateIncomingProposalSyncState to obtain context information. In
+// particular, the payload of the parent events and the block hight at the start
+// of the current epoch is required.
 type EventReader interface {
+	// GetEpochStartBlock must be able to return the block of the current epoch.
 	GetEpochStartBlock(idx.Epoch) idx.Block
+	// GetEventPayload must be able to return the payload of parent events of an
+	// event for which the incoming proposal sync state is being calculated.
 	GetEventPayload(hash.Event) Payload
 }
 
@@ -64,10 +71,10 @@ type EventReader interface {
 // IsAllowedToPropose checks whether the current validator is allowed to
 // propose a new block.
 func IsAllowedToPropose(
+	validator idx.ValidatorID,
+	validators *pos.Validators,
 	proposalState ProposalSyncState,
 	currentFrame idx.Frame,
-	validators *pos.Validators,
-	thisValidator idx.ValidatorID,
 	blockToPropose idx.Block,
 ) (bool, error) {
 	// Check that the block about to be proposed is the next expected block.
@@ -80,12 +87,12 @@ func IsAllowedToPropose(
 	// Check whether it is this emitter's turn to propose a new block.
 	nextTurn := proposalState.LastSeenProposalTurn + 1
 	proposer, err := GetProposer(validators, nextTurn)
-	if err != nil || proposer != thisValidator {
+	if err != nil || proposer != validator {
 		return false, err
 	}
 
 	// Check that enough time has passed for the next proposal.
-	valid := IsValidTurnProgression(
+	return IsValidTurnProgression(
 		ProposalSummary{
 			Turn:  proposalState.LastSeenProposalTurn,
 			Frame: proposalState.LastSeenProposalFrame,
@@ -94,11 +101,5 @@ func IsAllowedToPropose(
 			Turn:  nextTurn,
 			Frame: currentFrame,
 		},
-	)
-	if !valid {
-		return false, nil
-	}
-
-	// It is indeed this validator's turn to propose a new block.
-	return true, nil
+	), nil
 }

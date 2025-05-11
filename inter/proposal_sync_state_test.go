@@ -11,7 +11,7 @@ import (
 	gomock "go.uber.org/mock/gomock"
 )
 
-func TestProposalSyncState_Join(t *testing.T) {
+func TestProposalSyncState_Join_ComputesTheMaximumForIndividualStateProperties(t *testing.T) {
 	for turnA := range Turn(5) {
 		for turnB := range Turn(5) {
 			for frameA := range idx.Frame(5) {
@@ -40,7 +40,7 @@ func TestProposalSyncState_Join(t *testing.T) {
 	}
 }
 
-func TestGetIncomingProposalSyncState_ProducesEpochStartStateForGenesisEvent(t *testing.T) {
+func TestCalculateIncomingProposalSyncState_ProducesEpochStartStateForGenesisEvent(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	world := NewMockEventReader(ctrl)
@@ -52,13 +52,13 @@ func TestGetIncomingProposalSyncState_ProducesEpochStartStateForGenesisEvent(t *
 	epochStartBlock := idx.Block(123)
 	world.EXPECT().GetEpochStartBlock(event.Epoch()).Return(epochStartBlock)
 
-	state := GetIncomingProposalSyncState(world, event)
+	state := CalculateIncomingProposalSyncState(world, event)
 	require.Equal(Turn(0), state.LastSeenProposalTurn)
 	require.Equal(idx.Frame(0), state.LastSeenProposalFrame)
 	require.Equal(epochStartBlock, state.LastSeenProposedBlock)
 }
 
-func TestGetIncomingProposalSyncState_AggregatesParentStates(t *testing.T) {
+func TestCalculateIncomingProposalSyncState_AggregatesParentStates(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	world := NewMockEventReader(ctrl)
@@ -90,7 +90,7 @@ func TestGetIncomingProposalSyncState_AggregatesParentStates(t *testing.T) {
 
 	event := &dag.MutableBaseEvent{}
 	event.SetParents(hash.Events{p1, p2, p3})
-	state := GetIncomingProposalSyncState(world, event)
+	state := CalculateIncomingProposalSyncState(world, event)
 
 	require.Equal(Turn(0x03), state.LastSeenProposalTurn)
 	require.Equal(idx.Frame(0x13), state.LastSeenProposalFrame)
@@ -100,9 +100,9 @@ func TestGetIncomingProposalSyncState_AggregatesParentStates(t *testing.T) {
 func TestIsAllowedToPropose_AcceptsValidProposerTurn(t *testing.T) {
 	require := require.New(t)
 
-	thisValidator := idx.ValidatorID(1)
+	validator := idx.ValidatorID(1)
 	builder := pos.ValidatorsBuilder{}
-	builder.Set(thisValidator, 10)
+	builder.Set(validator, 10)
 	validators := builder.Build()
 
 	last := ProposalSummary{
@@ -116,14 +116,14 @@ func TestIsAllowedToPropose_AcceptsValidProposerTurn(t *testing.T) {
 	require.True(IsValidTurnProgression(last, next))
 
 	ok, err := IsAllowedToPropose(
+		validator,
+		validators,
 		ProposalSyncState{
 			LastSeenProposalTurn:  last.Turn,
 			LastSeenProposalFrame: last.Frame,
 			LastSeenProposedBlock: idx.Block(4),
 		},
 		next.Frame,
-		validators,
-		thisValidator,
 		5, // block to be proposed
 	)
 	require.NoError(err)
@@ -147,14 +147,14 @@ func TestIsAllowedToPropose_RejectsInvalidProposerTurn(t *testing.T) {
 	}
 
 	type input struct {
-		thisValidator     idx.ValidatorID
+		validator         idx.ValidatorID
 		blockToBeProposed idx.Block
 		currentFrame      idx.Frame
 	}
 
 	tests := map[string]func(*input){
 		"wrong proposer": func(input *input) {
-			input.thisValidator = invalidProposer
+			input.validator = invalidProposer
 		},
 		"proposed block is too old": func(input *input) {
 			input.blockToBeProposed = input.blockToBeProposed - 1
@@ -180,15 +180,15 @@ func TestIsAllowedToPropose_RejectsInvalidProposerTurn(t *testing.T) {
 
 			input := input{
 				currentFrame:      67,
-				thisValidator:     validProposer,
+				validator:         validProposer,
 				blockToBeProposed: 6,
 			}
 
 			ok, err := IsAllowedToPropose(
+				input.validator,
+				validators,
 				ProposalState,
 				input.currentFrame,
-				validators,
-				input.thisValidator,
 				input.blockToBeProposed,
 			)
 			require.NoError(err)
@@ -196,10 +196,10 @@ func TestIsAllowedToPropose_RejectsInvalidProposerTurn(t *testing.T) {
 
 			corrupt(&input)
 			ok, err = IsAllowedToPropose(
+				input.validator,
+				validators,
 				ProposalState,
 				input.currentFrame,
-				validators,
-				input.thisValidator,
 				input.blockToBeProposed,
 			)
 			require.NoError(err)
@@ -215,10 +215,10 @@ func TestIsAllowedToPropose_ForwardsTurnSelectionError(t *testing.T) {
 	require.Error(t, want)
 
 	_, got := IsAllowedToPropose(
+		idx.ValidatorID(0),
+		validators,
 		ProposalSyncState{},
 		idx.Frame(0),
-		validators,
-		idx.ValidatorID(0),
 		idx.Block(1),
 	)
 	require.Error(t, got)
