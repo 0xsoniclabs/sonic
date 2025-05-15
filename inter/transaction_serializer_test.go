@@ -71,14 +71,14 @@ func TestSerializeAccessListTx(t *testing.T) {
 		Value:    value,
 		Data:     data,
 		AccessList: []types.AccessTuple{
-			types.AccessTuple{
+			{
 				Address: common.HexToAddress("de0b295669a9fd93d5f28d9ec85e40f4cb697bae"),
 				StorageKeys: []common.Hash{
 					common.HexToHash("0000000000000000000000000000000000000000000000000000000000000003"),
 					common.HexToHash("0000000000000000000000000000000000000000000000000000000000000007"),
 				},
 			},
-			types.AccessTuple{
+			{
 				Address: common.HexToAddress("bb9bc244d798123fde783fcc1c72d3bb8c189413"),
 			},
 		},
@@ -120,14 +120,14 @@ func TestSerializeDynamicFeeTx(t *testing.T) {
 		Value:     value,
 		Data:      data,
 		AccessList: []types.AccessTuple{
-			types.AccessTuple{
+			{
 				Address: common.HexToAddress("de0b295669a9fd93d5f28d9ec85e40f4cb697bae"),
 				StorageKeys: []common.Hash{
 					common.HexToHash("0000000000000000000000000000000000000000000000000000000000000003"),
 					common.HexToHash("0000000000000000000000000000000000000000000000000000000000000007"),
 				},
 			},
-			types.AccessTuple{
+			{
 				Address: common.HexToAddress("bb9bc244d798123fde783fcc1c72d3bb8c189413"),
 			},
 		},

@@ -100,7 +100,7 @@ func TestCommitteeCertificateToJson(t *testing.T) {
 
 func TestCommitteeCertificate_JsonEncodingMatchesExpectedFormat(t *testing.T) {
 	certs := map[string]cert.CommitteeCertificate{
-		"empty cert":     cert.CommitteeCertificate{},
+		"empty cert":     {},
 		"non-empty cert": makeTestCommitteeCert(t),
 	}
 

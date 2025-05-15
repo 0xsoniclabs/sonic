@@ -5,7 +5,7 @@ import (
 	"io"
 )
 
-type ReaderProvider func () (io.Reader, error)
+type ReaderProvider func() (io.Reader, error)
 
 type Map map[string]ReaderProvider
 

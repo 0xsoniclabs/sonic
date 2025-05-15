@@ -94,7 +94,7 @@ func TestBlockCertificateToJson(t *testing.T) {
 }
 func TestBlockCertificate_JsonEncodingMatchesExpectedFormat(t *testing.T) {
 	certs := map[string]cert.BlockCertificate{
-		"empty":     cert.BlockCertificate{},
+		"empty":     {},
 		"non-empty": makeTestBlockCert(t),
 	}
 

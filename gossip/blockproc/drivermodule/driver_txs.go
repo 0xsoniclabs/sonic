@@ -23,7 +23,7 @@ import (
 )
 
 const (
-    // internalTransactionsGasLimit is the gas limit for internal transactions like epoch sealing. This constant MUST NOT be changed, as doing so will cause a network fork.
+	// internalTransactionsGasLimit is the gas limit for internal transactions like epoch sealing. This constant MUST NOT be changed, as doing so will cause a network fork.
 	internalTransactionsGasLimit = 500_000_000
 	maxAdvanceEpochs             = 1 << 16
 )

@@ -40,7 +40,7 @@ func TestRejectedTx_TransactionsAreRejectedBecauseOfAccountState(t *testing.T) {
 		"access list tx with one entry": func(testing.TB, *Account) types.TxData {
 			return &types.AccessListTx{
 				AccessList: []types.AccessTuple{
-					{Address: common.Address{0x42}, StorageKeys: []common.Hash{common.Hash{0x42}}},
+					{Address: common.Address{0x42}, StorageKeys: []common.Hash{{0x42}}},
 				},
 			}
 		},

@@ -51,7 +51,7 @@ func TestCartesianProduct_CountInstantiations(t *testing.T) {
 	countInstances := func(pieces [][]int, modifier func(int, []int) int) int {
 		var count int
 		makeZero := func() int { return 0 }
-		for _ = range generateTestDataBasedOnModificationCombinations(makeZero, pieces, modifier) {
+		for range generateTestDataBasedOnModificationCombinations(makeZero, pieces, modifier) {
 			count++
 		}
 		return count

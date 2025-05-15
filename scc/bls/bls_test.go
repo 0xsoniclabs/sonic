@@ -92,7 +92,7 @@ func TestPublicKey_CheckProofOfPossession_DetectsInvalidProof(t *testing.T) {
 	public := private.PublicKey()
 
 	test := map[string]Signature{
-		"invalid proof": Signature{},
+		"invalid proof": {},
 		"wrong key":     NewPrivateKey().GetProofOfPossession(),
 		"wrong message": private.Sign([]byte("wrong message")),
 	}

@@ -155,8 +155,8 @@ func TestVals(t *testing.T) {
 	var (
 		expBigInt     = []*big.Int{big.NewInt(0), big.NewInt(0xFFFFF)}
 		expBool       = []bool{true, false}
-		expFixedBytes = [][]byte{[]byte{}, randBytes(0xFF)}
-		expSliceBytes = [][]byte{[]byte{}, randBytes(0xFF)}
+		expFixedBytes = [][]byte{{}, randBytes(0xFF)}
+		expSliceBytes = [][]byte{{}, randBytes(0xFF)}
 		expU8         = []uint8{0, 1, 0xFF}
 		expU16        = []uint16{0, 1, 0xFFFF}
 		expU32        = []uint32{0, 1, 0xFFFFFFFF}

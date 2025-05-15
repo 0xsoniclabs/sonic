@@ -36,7 +36,7 @@ func TestIsValidTurnProgression_ExampleCasesAndResults(t *testing.T) {
 			valid: false,
 		},
 		"past turn in long past frame": {
-			last:  S{Turn: 1, Frame: 5*C},
+			last:  S{Turn: 1, Frame: 5 * C},
 			next:  S{Turn: 0, Frame: 1},
 			valid: false,
 		},

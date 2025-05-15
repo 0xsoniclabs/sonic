@@ -9,7 +9,7 @@ import (
 
 func TestCalcMisbehaviourProofsHash(t *testing.T) {
 	v := []MisbehaviourProof{
-		MisbehaviourProof{
+		{
 			EventsDoublesign: &EventsDoublesign{
 				Pair: [2]SignedEventLocator{
 					test_signed_event_locator,
@@ -17,7 +17,7 @@ func TestCalcMisbehaviourProofsHash(t *testing.T) {
 				},
 			},
 		},
-		MisbehaviourProof{
+		{
 			BlockVoteDoublesign: &BlockVoteDoublesign{
 				Block: test_block_votes.Start,
 				Pair: [2]LlrSignedBlockVotes{
@@ -26,7 +26,7 @@ func TestCalcMisbehaviourProofsHash(t *testing.T) {
 				},
 			},
 		},
-		MisbehaviourProof{
+		{
 			WrongBlockVote: &WrongBlockVote{
 				Block: test_block_votes.Start,
 				Pals: [2]LlrSignedBlockVotes{
@@ -36,7 +36,7 @@ func TestCalcMisbehaviourProofsHash(t *testing.T) {
 				WrongEpoch: true,
 			},
 		},
-		MisbehaviourProof{
+		{
 			EpochVoteDoublesign: &EpochVoteDoublesign{
 				Pair: [2]LlrSignedEpochVote{
 					test_llr_signed_epoch_vote,
@@ -44,7 +44,7 @@ func TestCalcMisbehaviourProofsHash(t *testing.T) {
 				},
 			},
 		},
-		MisbehaviourProof{
+		{
 			WrongEpochVote: &WrongEpochVote{
 				Pals: [2]LlrSignedEpochVote{
 					test_llr_signed_epoch_vote,

@@ -3,9 +3,9 @@ package light_client
 import (
 	"fmt"
 
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/cert"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 )
 

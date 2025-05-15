@@ -166,8 +166,8 @@ func TestServer_GetCommitteeCertificates_DropsExcessCertificates(t *testing.T) {
 		gomock.Any(), gomock.Any()).DoAndReturn(
 		func(result *[]ethapi.CommitteeCertificate, method string, args ...interface{}) error {
 			*result = []ethapi.CommitteeCertificate{
-				ethapi.CommitteeCertificate{Period: uint64(0)},
-				ethapi.CommitteeCertificate{Period: uint64(1)},
+				{Period: uint64(0)},
+				{Period: uint64(1)},
 			}
 			return nil
 		})
@@ -220,8 +220,8 @@ func TestServer_GetBlockCertificates_DropsExcessCertificates(t *testing.T) {
 		gomock.Any(), gomock.Any()).DoAndReturn(
 		func(result *[]ethapi.BlockCertificate, method string, args ...interface{}) error {
 			*result = []ethapi.BlockCertificate{
-				ethapi.BlockCertificate{Number: uint64(0)},
-				ethapi.BlockCertificate{Number: uint64(1)},
+				{Number: uint64(0)},
+				{Number: uint64(1)},
 			}
 			return nil
 		})
@@ -264,7 +264,7 @@ func TestServer_GetBlockCertificates_CanFetchLatestBlock(t *testing.T) {
 		"latest", "0x1").DoAndReturn(
 		func(result *[]ethapi.BlockCertificate, method string, args ...interface{}) error {
 			*result = []ethapi.BlockCertificate{
-				ethapi.BlockCertificate{Number: uint64(latestBlockNumber)},
+				{Number: uint64(latestBlockNumber)},
 			}
 			return nil
 		})
@@ -304,8 +304,8 @@ func TestServer_GetCertificates_ReturnsCertificates(t *testing.T) {
 		gomock.Any(), gomock.Any()).DoAndReturn(
 		func(result *[]ethapi.CommitteeCertificate, method string, args ...interface{}) error {
 			*result = []ethapi.CommitteeCertificate{
-				ethapi.CommitteeCertificate{Period: uint64(0)},
-				ethapi.CommitteeCertificate{Period: uint64(1)},
+				{Period: uint64(0)},
+				{Period: uint64(1)},
 			}
 			return nil
 		})
@@ -322,8 +322,8 @@ func TestServer_GetCertificates_ReturnsCertificates(t *testing.T) {
 		gomock.Any(), gomock.Any()).DoAndReturn(
 		func(result *[]ethapi.BlockCertificate, method string, args ...interface{}) error {
 			*result = []ethapi.BlockCertificate{
-				ethapi.BlockCertificate{Number: uint64(0)},
-				ethapi.BlockCertificate{Number: uint64(1)},
+				{Number: uint64(0)},
+				{Number: uint64(1)},
 			}
 			return nil
 		})
