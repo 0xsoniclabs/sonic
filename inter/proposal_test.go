@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/gossip/randao"
 	"github.com/0xsoniclabs/sonic/inter/pb"
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
@@ -24,10 +25,10 @@ func TestProposal_Hash_IsShaOfFieldConcatenation(t *testing.T) {
 	for i := range 5 {
 
 		proposal := &Proposal{
-			Number:     idx.Block(1 + i),
-			ParentHash: [32]byte{0: 1, 1: byte(i), 31: 2},
-			Time:       Timestamp(3 + i),
-			Randao:     [32]byte{0: 3, 1: byte(i), 21: 4},
+			Number:       idx.Block(1 + i),
+			ParentHash:   [32]byte{0: 1, 1: byte(i), 31: 2},
+			Time:         Timestamp(3 + i),
+			RandaoReveal: []byte{0: 3, 1: byte(i), 21: 4},
 			Transactions: []*types.Transaction{
 				types.NewTx(&types.LegacyTx{Nonce: 1}),
 				types.NewTx(&types.LegacyTx{Nonce: 2}),
@@ -40,7 +41,7 @@ func TestProposal_Hash_IsShaOfFieldConcatenation(t *testing.T) {
 			data = binary.BigEndian.AppendUint64(data, uint64(proposal.Number))
 			data = append(data, proposal.ParentHash[:]...)
 			data = binary.BigEndian.AppendUint64(data, uint64(proposal.Time))
-			data = append(data, proposal.Randao[:]...)
+			data = append(data, proposal.RandaoReveal[:]...)
 			for _, tx := range proposal.Transactions {
 				txHash := tx.Hash()
 				data = append(data, txHash[:]...)
@@ -63,8 +64,8 @@ func TestProposal_Hash_ModifyingContent_ChangesHash(t *testing.T) {
 		"change timestamp": func(p *Proposal) {
 			p.Time = p.Time + 1
 		},
-		"change randao": func(p *Proposal) {
-			p.Randao[0] = p.Randao[0] + 1
+		"change randao reveal": func(p *Proposal) {
+			p.RandaoReveal[0] = p.RandaoReveal[0] + 1
 		},
 		"change transaction": func(p *Proposal) {
 			p.Transactions[0] = types.NewTx(&types.LegacyTx{Nonce: 3})
@@ -83,10 +84,10 @@ func TestProposal_Hash_ModifyingContent_ChangesHash(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
 			proposal := &Proposal{
-				Number:     1,
-				ParentHash: [32]byte{1},
-				Time:       2,
-				Randao:     [32]byte{3},
+				Number:       1,
+				ParentHash:   [32]byte{1},
+				Time:         2,
+				RandaoReveal: randao.RandaoReveal([]byte{3}),
 				Transactions: []*types.Transaction{
 					types.NewTx(&types.LegacyTx{Nonce: 1}),
 					types.NewTx(&types.LegacyTx{Nonce: 2}),
@@ -105,10 +106,10 @@ func TestProposal_Hash_ModifyingContent_ChangesHash(t *testing.T) {
 func TestProposal_CanBeSerializedAndRestored(t *testing.T) {
 	require := require.New(t)
 	original := &Proposal{
-		Number:     1,
-		ParentHash: [32]byte{2},
-		Time:       3,
-		Randao:     [32]byte{4},
+		Number:       1,
+		ParentHash:   [32]byte{2},
+		Time:         3,
+		RandaoReveal: []byte{4},
 		Transactions: []*types.Transaction{
 			types.NewTx(&types.LegacyTx{Nonce: 1}),
 			types.NewTx(&types.LegacyTx{Nonce: 2}),
@@ -128,7 +129,7 @@ func TestProposal_CanBeSerializedAndRestored(t *testing.T) {
 	require.Equal(original.Number, restored.Number)
 	require.Equal(original.ParentHash, restored.ParentHash)
 	require.Equal(original.Time, restored.Time)
-	require.Equal(original.Randao, restored.Randao)
+	require.Equal(original.RandaoReveal, restored.RandaoReveal)
 
 	require.Equal(len(original.Transactions), len(restored.Transactions))
 	for i := range original.Transactions {

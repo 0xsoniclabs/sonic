@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 
+	"github.com/0xsoniclabs/sonic/gossip/randao"
 	"github.com/0xsoniclabs/sonic/inter/pb"
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
@@ -23,7 +24,7 @@ type Proposal struct {
 	Number       idx.Block
 	ParentHash   common.Hash
 	Time         Timestamp
-	Randao       common.Hash
+	RandaoReveal randao.RandaoReveal
 	Transactions []*types.Transaction
 }
 
@@ -34,7 +35,7 @@ func (p *Proposal) Hash() hash.Hash {
 	data = binary.BigEndian.AppendUint64(data, uint64(p.Number))
 	data = append(data, p.ParentHash[:]...)
 	data = binary.BigEndian.AppendUint64(data, uint64(p.Time))
-	data = append(data, p.Randao[:]...)
+	data = append(data, p.RandaoReveal[:]...)
 	for _, tx := range p.Transactions {
 		txHash := tx.Hash()
 		data = append(data, txHash[:]...)
@@ -74,7 +75,7 @@ func (p *Proposal) toProto() (*pb.Proposal, error) {
 		Number:       uint64(p.Number),
 		ParentHash:   p.ParentHash[:],
 		Timestamp:    uint64(p.Time),
-		Randao:       p.Randao[:],
+		RandaoReveal: p.RandaoReveal[:],
 		Transactions: transactions,
 	}, nil
 }
@@ -84,7 +85,7 @@ func (p *Proposal) fromProto(pb *pb.Proposal) error {
 	p.Number = idx.Block(pb.Number)
 	copy(p.ParentHash[:], pb.ParentHash)
 	p.Time = Timestamp(pb.Timestamp)
-	copy(p.Randao[:], pb.Randao)
+	copy(p.RandaoReveal[:], pb.RandaoReveal)
 	for _, tx := range pb.Transactions {
 		var transaction types.Transaction
 		if err := transaction.UnmarshalBinary(tx.Encoded); err != nil {
