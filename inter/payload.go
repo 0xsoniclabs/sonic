@@ -25,8 +25,8 @@ type Payload struct {
 	// present in all events.
 	ProposalSyncState
 	// Proposal is an optional proposal for a new block that can be included in
-	// the payload of an event by a producer who is allowed to do so based on
-	// the tracked sync state.
+	// the payload of an event only by a producer who is allowed to do so based
+	// on the tracked sync state.
 	Proposal *Proposal
 }
 
