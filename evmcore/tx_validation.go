@@ -116,7 +116,7 @@ func ValidateTxStatic(tx *types.Transaction) error {
 		return ErrTipAboveFeeCap
 	}
 
-	// For now, Sonic only supports Blob transactions without blob data.
+	// Sonic only supports Blob transactions without blob data.
 	if tx.Type() == types.BlobTxType &&
 		(len(tx.BlobHashes()) > 0 || (tx.BlobTxSidecar() != nil && len(tx.BlobTxSidecar().BlobHashes()) > 0)) {
 		return ErrNonEmptyBlobTx
@@ -127,7 +127,7 @@ func ValidateTxStatic(tx *types.Transaction) error {
 		return ErrEmptyAuthorizations
 	}
 
-	// Reject transactions over defined size to prevent DOS attacks
+	// Reject transactions over defined size to prevent DoS attacks
 	if uint64(tx.Size()) > txMaxSize {
 		return ErrOversizedData
 	}

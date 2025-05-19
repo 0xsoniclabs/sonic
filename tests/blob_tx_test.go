@@ -49,8 +49,6 @@ func testBlobTx_WithBlobsIsRejected(t *testing.T, ctxt *testContext) {
 
 	// attempt to run tx
 	_, err = ctxt.net.Run(tx)
-	// because blobs are arrays of 128KB, transactions with blobs are
-	// considered oversized and rejected
 	require.ErrorContains(err, "non-empty blob transaction are not supported")
 
 	// repeat same tx (regression against reported repeated tx issue)
