@@ -89,12 +89,12 @@ var (
 	// txpool.pricelimit is deprecated, use txpool.mintip instead
 	TxPoolPriceLimitFlag = cli.Uint64Flag{
 		Name:  "txpool.pricelimit",
-		Usage: "This flag will be DEPRECATED, please use txpool.mintip instead. Minimum gas price limit to enforce for acceptance into the pool",
+		Usage: "This flag will be DEPRECATED, please use txpool.mintip instead. Minimum gas tip required to be accepted into the pool",
 		Value: evmcore.DefaultTxPoolConfig.MinimumTip,
 	}
 	TxPoolMinTipFlag = cli.Uint64Flag{
 		Name:  "txpool.mintip",
-		Usage: "Minimum gas price limit to enforce for acceptance into the pool",
+		Usage: "Minimum gas tip to required to be accepted into the pool",
 		Value: evmcore.DefaultTxPoolConfig.MinimumTip,
 	}
 	TxPoolPriceBumpFlag = cli.Uint64Flag{

@@ -34,6 +34,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/event"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
@@ -389,6 +390,28 @@ func validateEvents(events chan NewTxsNotify, count int) error {
 
 func deriveSender(tx *types.Transaction) (common.Address, error) {
 	return types.Sender(types.HomesteadSigner{}, tx)
+}
+
+// setMinTip is a test function that updates the minimum tip required by the
+// transaction pool for a new transaction, and drops all transactions below
+// this threshold.
+func setMinTip(pool *TxPool, price *big.Int) {
+	pool.mu.Lock()
+	defer pool.mu.Unlock()
+
+	old := pool.minTip
+	pool.minTip = price
+	// if the min miner fee increased, remove transactions below the new threshold
+	if price.Cmp(old) > 0 {
+		// pool.priced is sorted by GasFeeCap, so we have to iterate through pool.all instead
+		drop := pool.all.RemotesBelowTip(price)
+		for _, tx := range drop {
+			pool.removeTx(tx.Hash(), true)
+		}
+		pool.priced.Removed(len(drop))
+	}
+
+	log.Info("Transaction pool price threshold updated", "price", price)
 }
 
 type testChain struct {
@@ -2042,7 +2065,7 @@ func TestTransactionPoolRepricing(t *testing.T) {
 		t.Fatalf("pool internal state corrupted: %v", err)
 	}
 	// Reprice the pool and check that underpriced transactions get dropped
-	pool.setMinTip(big.NewInt(2))
+	setMinTip(pool, big.NewInt(2))
 
 	pending, queued = pool.Stats()
 	if pending != 2 {
@@ -2167,7 +2190,7 @@ func TestTransactionPoolRepricingDynamicFee(t *testing.T) {
 		t.Fatalf("pool internal state corrupted: %v", err)
 	}
 	// Reprice the pool and check that underpriced transactions get dropped
-	pool.setMinTip(big.NewInt(2))
+	setMinTip(pool, big.NewInt(2))
 
 	pending, queued = pool.Stats()
 	if pending != 2 {
@@ -2296,13 +2319,13 @@ func TestTransactionPoolRepricingKeepsLocals(t *testing.T) {
 	validate()
 
 	// Reprice the pool and check that nothing is dropped
-	pool.setMinTip(big.NewInt(2))
+	setMinTip(pool, big.NewInt(2))
 	validate()
 
-	pool.setMinTip(big.NewInt(2))
-	pool.setMinTip(big.NewInt(4))
-	pool.setMinTip(big.NewInt(8))
-	pool.setMinTip(big.NewInt(100))
+	setMinTip(pool, big.NewInt(2))
+	setMinTip(pool, big.NewInt(4))
+	setMinTip(pool, big.NewInt(8))
+	setMinTip(pool, big.NewInt(100))
 	validate()
 }
 

@@ -189,6 +189,7 @@ func setTxPool(ctx *cli.Context, cfg *evmcore.TxPoolConfig) error {
 	// TxPoolPriceLimitFlag will be deprecated in the future.
 	// hence TxPoolMinTipFlag is favored.
 	if ctx.GlobalIsSet(flags.TxPoolPriceLimitFlag.Name) {
+		log.Warn("The flag --txpool.price-limit is deprecated. Use --txpool.min-tip instead.")
 		cfg.MinimumTip = ctx.GlobalUint64(flags.TxPoolPriceLimitFlag.Name)
 	}
 	if ctx.GlobalIsSet(flags.TxPoolMinTipFlag.Name) {
