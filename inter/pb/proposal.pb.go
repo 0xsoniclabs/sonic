@@ -30,7 +30,7 @@ type Proposal struct {
 	Number uint64 `protobuf:"varint,1,opt,name=number,proto3" json:"number,omitempty"`
 	// The time stamp to be used in the block, expressed in Unix nano-seconds.
 	Timestamp uint64 `protobuf:"varint,2,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
-	// The hash of the parent block, to synchronize on the correct processing of the preceding block
+	// The hash of the parent block, to establish the basis this proposal is build on.
 	ParentHash []byte `protobuf:"bytes,3,opt,name=parent_hash,json=parentHash,proto3" json:"parent_hash,omitempty"`
 	// The verifiable source of randomness to be used during block execution.
 	// https://eth2book.info/capella/part2/building_blocks/randomness/#the-randao

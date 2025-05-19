@@ -15,7 +15,7 @@ message Proposal {
     // The time stamp to be used in the block, expressed in Unix nano-seconds.
     uint64 timestamp = 2;
     
-    // The hash of the parent block, to synchronize on the correct processing of the preceding block
+    // The hash of the parent block, to establish the basis this proposal is build on.
     bytes parent_hash = 3;
 
     // The verifiable source of randomness to be used during block execution. 
