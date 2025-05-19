@@ -869,33 +869,6 @@ func setValueToNegative(t *testing.T, tx types.TxData) {
 	}
 }
 
-func setSignatureValues(t *testing.T, tx types.TxData, v, r, s *big.Int) {
-	switch tx := tx.(type) {
-	case *types.LegacyTx:
-		tx.V = v
-		tx.R = r
-		tx.S = s
-	case *types.AccessListTx:
-		tx.V = v
-		tx.R = r
-		tx.S = s
-	case *types.DynamicFeeTx:
-		tx.V = v
-		tx.R = r
-		tx.S = s
-	case *types.BlobTx:
-		tx.V = uint256.MustFromBig(v)
-		tx.R = uint256.MustFromBig(r)
-		tx.S = uint256.MustFromBig(s)
-	case *types.SetCodeTx:
-		tx.V = uint256.MustFromBig(v)
-		tx.R = uint256.MustFromBig(r)
-		tx.S = uint256.MustFromBig(s)
-	default:
-		t.Fatalf("unexpected transaction type: %T", tx)
-	}
-}
-
 func getIntrinsicGasForTest(t *testing.T, tx types.TxData, opt NetworkRulesForValidateTx) uint64 {
 	transaction := types.NewTx(tx)
 	intrGas, err := core.IntrinsicGas(
