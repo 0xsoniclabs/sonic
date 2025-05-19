@@ -32,7 +32,7 @@ import (
 //   - hash = sha256(domainSeparator + previousRandao)
 //
 // Where both domainSeparator and previousRandao are known to every peer.
-type RandaoReveal []byte
+type RandaoReveal [64]byte
 
 // GenerateNextRandaoReveal Constructs a new RandaoReveal
 //   - previousRandao is the previous randao value
@@ -44,7 +44,13 @@ func GenerateNextRandaoReveal(
 	Signer valkeystore.SignerI,
 ) (RandaoReveal, error) {
 	hash := sha256.Sum256(append(domainSeparator[:], previousRandao[:]...))
-	return Signer.Sign(proposerKey, hash[:])
+	buff, err := Signer.Sign(proposerKey, hash[:])
+	if err != nil {
+		return RandaoReveal{}, err
+	}
+	var result RandaoReveal
+	copy(result[:], buff[:])
+	return result, nil
 }
 
 // VerifyAndGetRandao verifies randaoReveal and extracts a the corresponding randao value.
@@ -60,12 +66,12 @@ func (s RandaoReveal) VerifyAndGetRandao(
 
 	// if the signature does not correspond to the input data
 	// for the given proposerPublicKey, then randao cannot be generated.
-	if ok := crypto.VerifySignature(proposerPublicKey.Raw, hash[:], s); !ok {
+	if ok := crypto.VerifySignature(proposerPublicKey.Raw, hash[:], s[:]); !ok {
 		return common.Hash{}, false
 	}
 
 	// next randao is the hash of the reveal
-	return sha256.Sum256(s), true
+	return sha256.Sum256(s[:]), true
 }
 
 // domainSeparator is the domain separator used to generate the randao value

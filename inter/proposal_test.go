@@ -28,7 +28,7 @@ func TestProposal_Hash_IsShaOfFieldConcatenation(t *testing.T) {
 			Number:       idx.Block(1 + i),
 			ParentHash:   [32]byte{0: 1, 1: byte(i), 31: 2},
 			Time:         Timestamp(3 + i),
-			RandaoReveal: []byte{0: 3, 1: byte(i), 21: 4},
+			RandaoReveal: randao.RandaoReveal([]byte{4: 4, 5: byte(i), 63: 5}),
 			Transactions: []*types.Transaction{
 				types.NewTx(&types.LegacyTx{Nonce: 1}),
 				types.NewTx(&types.LegacyTx{Nonce: 2}),
@@ -87,7 +87,7 @@ func TestProposal_Hash_ModifyingContent_ChangesHash(t *testing.T) {
 				Number:       1,
 				ParentHash:   [32]byte{1},
 				Time:         2,
-				RandaoReveal: randao.RandaoReveal([]byte{3}),
+				RandaoReveal: randao.RandaoReveal([]byte{3, 63: 0}),
 				Transactions: []*types.Transaction{
 					types.NewTx(&types.LegacyTx{Nonce: 1}),
 					types.NewTx(&types.LegacyTx{Nonce: 2}),
@@ -109,7 +109,7 @@ func TestProposal_CanBeSerializedAndRestored(t *testing.T) {
 		Number:       1,
 		ParentHash:   [32]byte{2},
 		Time:         3,
-		RandaoReveal: []byte{4},
+		RandaoReveal: randao.RandaoReveal([]byte{4, 64: 0}),
 		Transactions: []*types.Transaction{
 			types.NewTx(&types.LegacyTx{Nonce: 1}),
 			types.NewTx(&types.LegacyTx{Nonce: 2}),

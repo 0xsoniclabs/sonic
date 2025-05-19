@@ -8,6 +8,7 @@ import (
 	"math/rand/v2"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/gossip/randao"
 	"github.com/0xsoniclabs/sonic/utils/cser"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -639,7 +640,7 @@ func FakeEvent(version uint8, txsNum, mpsNum, bvsNum int, ersNum bool) *EventPay
 				Number:       idx.Block(rand.IntN(10_000_000)),
 				ParentHash:   common.Hash(randHash(r)),
 				Time:         Timestamp(rand.Uint64()),
-				RandaoReveal: []byte{13},
+				RandaoReveal: randao.RandaoReveal(randBytes(r, 64)),
 				Transactions: txs,
 			},
 		})
