@@ -21,7 +21,7 @@ const (
 // standardize the serialization of the content and simplify portability.
 type Payload struct {
 	// ProposalSyncState keeps track of the turn-taking of proposers and enables
-	// the decision of who's turn it is to propose a block. This information is
+	// the decision of whose turn it is to propose a block. This information is
 	// present in all events.
 	ProposalSyncState
 	// Proposal is an optional proposal for a new block that can be included in
