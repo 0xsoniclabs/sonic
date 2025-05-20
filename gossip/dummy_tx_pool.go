@@ -77,7 +77,7 @@ func (p *dummyTxPool) Pending(enforceTips bool) (map[common.Address]types.Transa
 	return batches, nil
 }
 
-func (p *dummyTxPool) GasPrice() *big.Int {
+func (p *dummyTxPool) MinTip() *big.Int {
 	return big.NewInt(0)
 }
 
