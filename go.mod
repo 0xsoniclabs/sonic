@@ -6,7 +6,7 @@ toolchain go1.24.2
 
 require (
 	github.com/0xsoniclabs/carmen/go v0.0.0-20250113102336-97f8b8616eff
-	github.com/0xsoniclabs/tosca v0.0.0-20250109073452-a7eb49bdbd45
+	github.com/0xsoniclabs/tosca v0.0.0-20250521075040-6cbce207b3aa
 	github.com/Fantom-foundation/lachesis-base v0.0.0-20240116072301-a75735c4ef00
 	github.com/cespare/cp v1.1.1
 	github.com/davecgh/go-spew v1.1.1
