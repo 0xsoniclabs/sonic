@@ -8,15 +8,49 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/emitter/scheduler"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
 
 //go:generate mockgen -source=proposals.go -destination=proposals_mock.go -package=emitter
+
+// createPayload creates payload to be attached to the given event. The result
+// may include a new block proposal if the current validator is allowed to make
+// a proposal. Otherwise, the payload contains meta-data required to track the
+// progress of the proposal process.
+//
+// This function is supposed to be called during the event creation process. The
+// provided sorted and indexed list of transactions is the set of candidate
+// transactions that should be included in a new block. These transactions are
+// executed during the scheduling step of the block-proposal process. If their
+// preconditions (nonce, balance, gas-price-limit, etc.) are met, making them
+// eligible for an inclusion in the proposed block, they are included.
+// Non-eligible transactions are ignored.
+//
+// The process may fail if the current set of validators is empty and no
+// proposer for the current turn can be determined.
+func (em *Emitter) createPayload(
+	event inter.EventI,
+	sorted *transactionsByPriceAndNonce,
+) (inter.Payload, error) {
+	adapter := worldAdapter{External: em.world}
+	return createPayload(
+		adapter,
+		em.config.Validator.ID,
+		em.validators,
+		event,
+		sorted,
+		scheduler.NewScheduler(adapter),
+		proposalSchedulingTimer,
+		proposalSchedulingTimeoutCounter,
+	)
+}
 
 // createPayload is a helper function which constructs the payload for every
 // event if the single-proposer mode is enabled. It performs the following
@@ -101,6 +135,20 @@ type worldReader interface {
 	inter.EventReader
 	GetLatestBlock() *inter.Block
 	GetRules() opera.Rules
+}
+
+// worldAdapter is an adapter of the External interface to the worldReader
+// and the scheduler.Chain interface.
+type worldAdapter struct {
+	External
+}
+
+func (w worldAdapter) GetEventPayload(event hash.Event) inter.Payload {
+	return *w.External.GetEventPayload(event).Payload()
+}
+
+func (w worldAdapter) GetEvmChainConfig() *params.ChainConfig {
+	return w.GetRules().EvmChainConfig(w.GetUpgradeHeights())
 }
 
 // --- proposal creation ---
