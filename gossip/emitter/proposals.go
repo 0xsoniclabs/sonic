@@ -106,7 +106,9 @@ type worldReader interface {
 // --- proposal creation ---
 
 // createProposal creates a new block proposal based on the given context
-// information. The resulting payload contains the new block proposal.
+// information. The resulting proposal may be nil if the preconditions for
+// making a new proposal are not met (e.g., if no time has passed since the
+// last block).
 func createProposal(
 	rules opera.Rules,
 	incomingSyncState inter.ProposalSyncState,
