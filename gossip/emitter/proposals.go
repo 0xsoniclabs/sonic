@@ -200,7 +200,7 @@ func getEffectiveGasLimit(
 	).Uint64()
 }
 
-// transactionPriorityAdapter is an adapter between the *transactionsByPriceAndNonce
+// transactionPriorityAdapter is an adapter between the transactionsByPriceAndNonce
 // and the scheduler's PrioritizedTransactions interface.
 type transactionPriorityAdapter struct {
 	sorted transactionIndex
