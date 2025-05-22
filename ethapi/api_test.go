@@ -610,6 +610,32 @@ func TestTransactionJSONSerialization(t *testing.T) {
 	}
 }
 
+func TestNewRPCTransaction_LegacyTxSignatureCanBeVerified(t *testing.T) {
+	ChainId := big.NewInt(17)
+
+	tx := &types.LegacyTx{
+		Nonce:    0,
+		To:       &common.Address{1},
+		Gas:      1e6,
+		GasPrice: big.NewInt(500e9),
+	}
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	signed := signTransaction(t, ChainId, tx, key)
+
+	// some block data for the test
+	blockHash := common.Hash{1, 2, 3, 4}
+	blockNumber := uint64(4321)
+	index := uint64(42)
+	baseFee := big.NewInt(1234)
+
+	rpcTx := newRPCTransaction(signed, blockHash, blockNumber, index, baseFee)
+	require.Equal(t, signed.Hash(), rpcTx.Hash)
+
+	_, err = types.Sender(types.LatestSignerForChainID(rpcTx.ChainID.ToInt()), signed)
+	require.NoError(t, err, "failed to retrieve transaction sender")
+}
+
 func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 
 	senderKey, err := crypto.GenerateKey()
