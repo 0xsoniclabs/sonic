@@ -187,11 +187,11 @@ type counterMetric interface {
 	Inc(int64)
 }
 
-// We put a strict cap of 2 second on the accumulated gas. Thus, if the delay
-// between two blocks is less than 2 seconds, gas is accumulated linearly.
-// If the delay is longer than 2 seconds, we cap the gas to the maximum
-// accumulation time. This is to limit the maximum block size to at most
-// 2 seconds worth of gas.
+// We put a strict cap of 2 second on the maximum time gas can be accumulated
+// for a single block. Thus, if the delay between two blocks is less than 2
+// seconds, gas is accumulated linearly. If the delay is longer than 2 seconds,
+// we cap the gas to the maximum accumulation time. This is to limit the maximum
+// block size to at most 2 seconds worth of gas.
 const maxAccumulationTime = 2 * time.Second
 
 // getEffectiveGasLimit computes the effective gas limit for the next block.
