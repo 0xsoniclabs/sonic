@@ -18,8 +18,15 @@ import (
 
 //go:generate mockgen -source=proposals.go -destination=proposals_mock.go -package=emitter
 
-// createPayload is a helper function handling the actual creation of the
-// payload. It is detached from the Emitter to facilitate testing.
+// createPayload is a helper function which constructs the payload for every
+// event if the single-proposer mode is enabled. It performs the following
+// operations:
+//   - it determines the current ProposalSyncState based on the event's parents
+//   - it checks if the current validator is allowed to propose a new block
+//   - if allowed, it creates a new block proposal and returns it in the payload
+//
+// The resulting payload contains valid ProposalSyncState information and
+// optionally a new block proposal, if all preconditions are met.
 func createPayload(
 	world worldReader,
 	validator idx.ValidatorID,
@@ -57,7 +64,7 @@ func createPayload(
 	// Make a new proposal. For the time of the block we use the median time,
 	// which is the median of all creation times of the events seen from all
 	// validators.
-	return createProposal(
+	proposal := createProposal(
 		world.GetRules(),
 		incomingState,
 		latest,
@@ -68,6 +75,24 @@ func createPayload(
 		durationMetric,
 		timeoutMetric,
 	)
+
+	// If no new proposal was created, the payload remains empty.
+	if proposal == nil {
+		return inter.Payload{
+			ProposalSyncState: incomingState,
+		}, nil
+	}
+
+	// If a proposal was made, the sync state is updated to reflect the
+	// new proposal.
+	return inter.Payload{
+		ProposalSyncState: inter.ProposalSyncState{
+			LastSeenProposalTurn:  incomingState.LastSeenProposalTurn + 1,
+			LastSeenProposedBlock: proposal.Number,
+			LastSeenProposalFrame: currentFrame,
+		},
+		Proposal: proposal,
+	}, nil
 }
 
 // worldReader is an interface for a data source providing all the information
@@ -92,15 +117,13 @@ func createProposal(
 	candidates scheduler.PrioritizedTransactions,
 	durationMetric timerMetric,
 	timeoutMetric counterMetric,
-) (inter.Payload, error) {
+) *inter.Proposal {
 	// Compute the gas limit for the next block. This is the time since the
 	// previous block times the targeted network throughput.
 	lastBlockTime := latestBlock.Time
 	if lastBlockTime >= newBlockTime {
 		// no time has passed, so no new proposal can be made
-		return inter.Payload{
-			ProposalSyncState: incomingSyncState,
-		}, nil
+		return nil
 	}
 	effectiveGasLimit := getEffectiveGasLimit(
 		newBlockTime.Time().Sub(lastBlockTime.Time()),
@@ -143,15 +166,7 @@ func createProposal(
 		timeoutMetric.Inc(1)
 	}
 
-	// Produce updated payload with the new proposal.
-	return inter.Payload{
-		ProposalSyncState: inter.ProposalSyncState{
-			LastSeenProposalTurn:  incomingSyncState.LastSeenProposalTurn + 1,
-			LastSeenProposedBlock: proposal.Number,
-			LastSeenProposalFrame: currentFrame,
-		},
-		Proposal: proposal,
-	}, nil
+	return proposal
 }
 
 // txScheduler is an interface for scheduling transactions in a block

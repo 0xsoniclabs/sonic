@@ -44,15 +44,14 @@ func TestCreatePayload_InvalidTurn_CreatesEmptyPayload(t *testing.T) {
 	world.EXPECT().GetEventPayload(p2).Return(payloads[p2])
 
 	world.EXPECT().GetLatestBlock().Return(
-		inter.NewBlockBuilder().
-			WithNumber(5).Build(),
+		inter.NewBlockBuilder().WithNumber(5).Build(),
 	)
 
 	event.EXPECT().Parents().Return(hash.Events{p1, p2})
 	event.EXPECT().Frame().Return(idx.Frame(0x13))
 
 	// This call fails since it tries to propose block 6 while according to the
-	// parent events, proposals for 0x23 have already been made.
+	// parent events, a proposal for block 0x23 has already been made.
 	payload, err := createPayload(
 		world, 0, nil, event, nil, nil, nil, nil,
 	)
@@ -62,6 +61,66 @@ func TestCreatePayload_InvalidTurn_CreatesEmptyPayload(t *testing.T) {
 			payloads[p1].ProposalSyncState,
 			payloads[p2].ProposalSyncState,
 		),
+	}
+
+	require.NoError(err)
+	require.Equal(want, payload)
+}
+
+func TestCreatePayload_UnableToCreateProposalDueToLackOfTimeProgress_CreatesEmptyPayload(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	world := NewMockworldReader(ctrl)
+	event := inter.NewMockEventI(ctrl)
+
+	p1 := hash.Event{1}
+	p2 := hash.Event{2}
+	payloads := map[hash.Event]inter.Payload{
+		p1: {ProposalSyncState: inter.ProposalSyncState{
+			LastSeenProposalTurn:  inter.Turn(0x01),
+			LastSeenProposalFrame: idx.Frame(0x12),
+			LastSeenProposedBlock: idx.Block(0x23),
+		}},
+		p2: {ProposalSyncState: inter.ProposalSyncState{
+			LastSeenProposalTurn:  inter.Turn(0x03),
+			LastSeenProposalFrame: idx.Frame(0x11),
+			LastSeenProposedBlock: idx.Block(0x22),
+		}},
+	}
+
+	world.EXPECT().GetEventPayload(p1).Return(payloads[p1])
+	world.EXPECT().GetEventPayload(p2).Return(payloads[p2])
+
+	lastBlockTime := inter.Timestamp(1234)
+	world.EXPECT().GetLatestBlock().Return(
+		inter.NewBlockBuilder().
+			WithNumber(0x23).
+			WithTime(lastBlockTime).
+			Build(),
+	)
+	world.EXPECT().GetRules().Return(opera.Rules{})
+
+	event.EXPECT().Parents().Return(hash.Events{p1, p2})
+	event.EXPECT().Frame().Return(idx.Frame(0x14))
+	event.EXPECT().MedianTime().Return(lastBlockTime)
+
+	validator := idx.ValidatorID(1)
+	builder := pos.ValidatorsBuilder{}
+	builder.Set(validator, 10)
+	validators := builder.Build()
+
+	// This attempt to create a proposal should result in an empty payload since
+	// no time has passed since the last proposal.
+	payload, err := createPayload(
+		world, validator, validators, event, nil, nil, nil, nil,
+	)
+
+	want := inter.Payload{
+		ProposalSyncState: inter.ProposalSyncState{
+			LastSeenProposalTurn:  inter.Turn(0x03),
+			LastSeenProposalFrame: idx.Frame(0x12),
+			LastSeenProposedBlock: idx.Block(0x23),
+		},
 	}
 
 	require.NoError(err)
@@ -207,8 +266,8 @@ func TestCreateProposal_ValidArguments_CreatesValidProposal(t *testing.T) {
 		require.True(duration > 0)
 	})
 
-	// Run the payload creation.
-	payload, err := createProposal(
+	// Run the proposal creation.
+	proposal := createProposal(
 		rules,
 		state,
 		latestBlock,
@@ -220,12 +279,6 @@ func TestCreateProposal_ValidArguments_CreatesValidProposal(t *testing.T) {
 		timeoutMetric,
 	)
 
-	require.NoError(err)
-	require.Equal(state.LastSeenProposalTurn+1, payload.LastSeenProposalTurn)
-	require.Equal(idx.Block(latestBlock.Number)+1, payload.LastSeenProposedBlock)
-	require.Equal(currentFrame, payload.LastSeenProposalFrame)
-
-	proposal := payload.Proposal
 	require.Equal(idx.Block(latestBlock.Number)+1, proposal.Number)
 	require.Equal(latestBlock.Hash(), proposal.ParentHash)
 	require.Equal(newBlockTime, proposal.Time)
@@ -234,7 +287,7 @@ func TestCreateProposal_ValidArguments_CreatesValidProposal(t *testing.T) {
 	// TODO: check randao mix hash in proposal
 }
 
-func TestCreateProposal_InvalidBlockTime_ReturnsAnEmptyProposal(t *testing.T) {
+func TestCreateProposal_InvalidBlockTime_ReturnsNil(t *testing.T) {
 	state := inter.ProposalSyncState{
 		LastSeenProposalTurn:  inter.Turn(5),
 		LastSeenProposalFrame: idx.Frame(12),
@@ -243,11 +296,10 @@ func TestCreateProposal_InvalidBlockTime_ReturnsAnEmptyProposal(t *testing.T) {
 	latestBlock := inter.NewBlockBuilder().WithTime(1234).Build()
 	for _, delta := range []time.Duration{-1 * time.Nanosecond, 0} {
 		newTime := inter.Timestamp(1234) + inter.Timestamp(delta)
-		payload, err := createProposal(
+		payload := createProposal(
 			opera.Rules{}, state, latestBlock, newTime, 0, nil, nil, nil, nil,
 		)
-		require.NoError(t, err)
-		require.Equal(t, inter.Payload{ProposalSyncState: state}, payload)
+		require.Nil(t, payload)
 	}
 }
 
@@ -280,7 +332,7 @@ func TestCreateProposal_IfSchedulerTimesOut_SignalTimeoutToMonitor(t *testing.T)
 	durationMetric.EXPECT().Update(any)
 	timeoutMetric.EXPECT().Inc(int64(1))
 
-	_, err := createProposal(
+	createProposal(
 		opera.Rules{},
 		inter.ProposalSyncState{},
 		inter.NewBlockBuilder().Build(),
@@ -291,7 +343,6 @@ func TestCreateProposal_IfSchedulerTimesOut_SignalTimeoutToMonitor(t *testing.T)
 		durationMetric,
 		timeoutMetric,
 	)
-	require.NoError(t, err)
 }
 
 func TestGetEffectiveGasLimit_IsProportionalToDelay(t *testing.T) {
