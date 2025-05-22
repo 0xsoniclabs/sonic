@@ -153,7 +153,7 @@ func makeProposal(
 			Number:      proposal.Number,
 			Time:        proposal.Time,
 			GasLimit:    rules.Blocks.MaxBlockGas,
-			MixHash:     proposal.Randao,
+			MixHash:     common.Hash{},    // TODO: integrate randao reveal
 			Coinbase:    common.Address{}, // TODO: integrate coinbase address
 			BaseFee:     uint256.Int{},    // TODO: integrate base fee
 			BlobBaseFee: uint256.Int{},    // TODO: integrate blob base fee
