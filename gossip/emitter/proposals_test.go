@@ -218,7 +218,7 @@ func TestCreatePayload_ValidTurn_ProducesExpectedPayload(t *testing.T) {
 	require.Equal(txs, payload.Proposal.Transactions)
 }
 
-func TestCreateProposal_ValidArguments_CreatesValidProposal(t *testing.T) {
+func TestMakeProposal_ValidArguments_CreatesValidProposal(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	mockScheduler := NewMocktxScheduler(ctrl)
@@ -267,7 +267,7 @@ func TestCreateProposal_ValidArguments_CreatesValidProposal(t *testing.T) {
 	})
 
 	// Run the proposal creation.
-	proposal := createProposal(
+	proposal := makeProposal(
 		rules,
 		state,
 		latestBlock,
@@ -287,7 +287,7 @@ func TestCreateProposal_ValidArguments_CreatesValidProposal(t *testing.T) {
 	// TODO: check randao mix hash in proposal
 }
 
-func TestCreateProposal_InvalidBlockTime_ReturnsNil(t *testing.T) {
+func TestMakeProposal_InvalidBlockTime_ReturnsNil(t *testing.T) {
 	state := inter.ProposalSyncState{
 		LastSeenProposalTurn:  inter.Turn(5),
 		LastSeenProposalFrame: idx.Frame(12),
@@ -296,14 +296,14 @@ func TestCreateProposal_InvalidBlockTime_ReturnsNil(t *testing.T) {
 	latestBlock := inter.NewBlockBuilder().WithTime(1234).Build()
 	for _, delta := range []time.Duration{-1 * time.Nanosecond, 0} {
 		newTime := inter.Timestamp(1234) + inter.Timestamp(delta)
-		payload := createProposal(
+		payload := makeProposal(
 			opera.Rules{}, state, latestBlock, newTime, 0, nil, nil, nil, nil,
 		)
 		require.Nil(t, payload)
 	}
 }
 
-func TestCreateProposal_IfSchedulerTimesOut_SignalTimeoutToMonitor(t *testing.T) {
+func TestMakeProposal_IfSchedulerTimesOut_SignalTimeoutToMonitor(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockScheduler := NewMocktxScheduler(ctrl)
 	durationMetric := NewMocktimerMetric(ctrl)
@@ -332,7 +332,7 @@ func TestCreateProposal_IfSchedulerTimesOut_SignalTimeoutToMonitor(t *testing.T)
 	durationMetric.EXPECT().Update(any)
 	timeoutMetric.EXPECT().Inc(int64(1))
 
-	createProposal(
+	makeProposal(
 		opera.Rules{},
 		inter.ProposalSyncState{},
 		inter.NewBlockBuilder().Build(),

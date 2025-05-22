@@ -64,7 +64,7 @@ func createPayload(
 	// Make a new proposal. For the time of the block we use the median time,
 	// which is the median of all creation times of the events seen from all
 	// validators.
-	proposal := createProposal(
+	proposal := makeProposal(
 		world.GetRules(),
 		incomingState,
 		latest,
@@ -105,11 +105,11 @@ type worldReader interface {
 
 // --- proposal creation ---
 
-// createProposal creates a new block proposal based on the given context
+// makeProposal creates a new block proposal based on the given context
 // information. The resulting proposal may be nil if the preconditions for
 // making a new proposal are not met (e.g., if no time has passed since the
 // last block).
-func createProposal(
+func makeProposal(
 	rules opera.Rules,
 	incomingSyncState inter.ProposalSyncState,
 	latestBlock *inter.Block,
