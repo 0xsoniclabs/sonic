@@ -230,8 +230,6 @@ func consensusCallbackBeginBlockFn(
 
 				// At this point, newValidators may be returned and the rest of the code may be executed in a parallel thread
 				blockFn := func() {
-					const enableDebugPrints = true
-
 					// sort events by Lamport time
 					sort.Sort(confirmedEvents)
 					maxBlockGas := es.Rules.Blocks.MaxBlockGas
@@ -300,10 +298,6 @@ func consensusCallbackBeginBlockFn(
 					for i, receipt := range evmProcessor.Execute(orderedTxs) {
 						if receipt != nil { // < nil if skipped
 							blockBuilder.AddTransaction(orderedTxs[i], receipt)
-						} else {
-							if enableDebugPrints {
-								fmt.Printf("\tSkipped transaction with nonce %d\n", orderedTxs[i].Nonce())
-							}
 						}
 					}
 
@@ -365,9 +359,6 @@ func consensusCallbackBeginBlockFn(
 					bs = txListener.Finalize() // TODO: refactor to not mutate the bs
 					bs.FinalizedStateRoot = hash.Hash(evmBlock.Root)
 					// At this point, block state is finalized
-					if enableDebugPrints {
-						fmt.Printf("PROCESS: Completed block %d\n", blockCtx.Idx)
-					}
 
 					// Build index for not skipped txs
 					if txIndex {
