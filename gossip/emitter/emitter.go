@@ -384,7 +384,9 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 	}
 
 	version := uint8(0)
-	if em.world.GetRules().Upgrades.Sonic {
+	if em.world.GetRules().Upgrades.Allegro { // TODO: introduce dedicated flag
+		version = 3
+	} else if em.world.GetRules().Upgrades.Sonic {
 		version = 2
 	} else if em.world.GetRules().Upgrades.Llr {
 		version = 1
@@ -420,11 +422,30 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 		return nil, nil
 	}
 
-	// Add txs
-	em.addTxs(mutEvent, sortedTxs)
-
-	// calc Payload hash
-	mutEvent.SetPayloadHash(inter.CalcPayloadHash(mutEvent))
+	if version == 3 {
+		// add proposal sync state and an optional proposal
+		payload, err := em.createPayload(mutEvent, sortedTxs)
+		if err != nil {
+			em.Log.Error("Failed to create payload", "err", err)
+			return nil, err
+		}
+		mutEvent.SetPayload(payload)
+		if payload.Proposal != nil {
+			fmt.Printf("EMITTER: created proposal: validator %d, epoch %d, turn %d, frame %d, block %d/%d\n",
+				em.config.Validator.ID,
+				mutEvent.Epoch(),
+				payload.ProposalSyncState.LastSeenProposalTurn,
+				payload.ProposalSyncState.LastSeenProposalFrame,
+				payload.ProposalSyncState.LastSeenProposedBlock,
+				payload.Proposal.Number,
+			)
+		}
+	} else {
+		// Add txs
+		em.addTxs(mutEvent, sortedTxs)
+		// calc Payload hash
+		mutEvent.SetPayloadHash(inter.CalcPayloadHash(mutEvent))
+	}
 
 	// sign
 	bSig, err := em.world.Signer.Sign(em.config.Validator.PubKey, mutEvent.HashToSign().Bytes())
