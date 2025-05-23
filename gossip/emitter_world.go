@@ -5,11 +5,14 @@ import (
 
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 
+	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils/wgmutex"
 	"github.com/0xsoniclabs/sonic/valkeystore"
 	"github.com/0xsoniclabs/sonic/vecmt"
@@ -67,6 +70,17 @@ func (ew *emitterWorldProc) StateDB() state.StateDB {
 		return nil
 	}
 	return statedb
+}
+
+func (ew *emitterWorldProc) GetUpgradeHeights() []opera.UpgradeHeight {
+	return ew.s.store.GetUpgradeHeights()
+}
+
+func (ew *emitterWorldProc) GetHeader(h common.Hash, number uint64) *evmcore.EvmHeader {
+	reader := &EvmStateReader{
+		store: ew.s.store,
+	}
+	return reader.GetHeader(h, number)
 }
 
 func (ew *emitterWorldProc) IsSynced() bool {

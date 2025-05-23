@@ -19,6 +19,110 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
+func TestEmitter_CreatePayload_ProducesValidPayload(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	world := NewMockExternal(ctrl)
+	event := inter.NewMockEventI(ctrl)
+
+	event.EXPECT().Parents().Return(hash.Events{})
+	event.EXPECT().Epoch().Return(idx.Epoch(12)).AnyTimes()
+	event.EXPECT().Frame().Return(idx.Frame(0))
+
+	world.EXPECT().GetLatestBlock().Return(
+		inter.NewBlockBuilder().WithNumber(61).Build(),
+	)
+
+	builder := pos.ValidatorsBuilder{}
+	builder.Set(idx.ValidatorID(123), 10) // => different validator
+	validators := builder.Build()
+
+	emitter := &Emitter{
+		world:      World{External: world},
+		validators: validators,
+	}
+
+	// It is not this emitter's turn to propose a block, so the payload just
+	// contains the proposal sync state but no proposal.
+	payload, err := emitter.createPayload(event, nil)
+	require.NoError(err)
+	want := inter.Payload{
+		ProposalSyncState: inter.ProposalSyncState{
+			LastSeenProposalTurn:  inter.Turn(0),
+			LastSeenProposalFrame: idx.Frame(0),
+			LastSeenProposedBlock: idx.Block(0),
+		},
+	}
+	require.Equal(want, payload)
+}
+
+func TestEmitter_CreatePayload_FailsOnInvalidValidators(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	world := NewMockExternal(ctrl)
+	event := inter.NewMockEventI(ctrl)
+
+	event.EXPECT().Parents().Return(hash.Events{})
+	event.EXPECT().Epoch().Return(idx.Epoch(12)).AnyTimes()
+	event.EXPECT().Frame().Return(idx.Frame(0))
+
+	world.EXPECT().GetLatestBlock().Return(
+		inter.NewBlockBuilder().WithNumber(62).Build(),
+	)
+
+	validators := pos.ValidatorsBuilder{}.Build() // no validators
+
+	emitter := &Emitter{
+		world:      World{External: world},
+		validators: validators,
+	}
+
+	_, err := emitter.createPayload(event, nil)
+	require.ErrorContains(err, "no validators")
+}
+
+func TestWorldAdapter_GetEventPayload_ForwardsCallToGetExternalEventPayload(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	world := NewMockExternal(ctrl)
+
+	payload := inter.Payload{
+		ProposalSyncState: inter.ProposalSyncState{
+			LastSeenProposalTurn:  inter.Turn(1),
+			LastSeenProposalFrame: idx.Frame(2),
+			LastSeenProposedBlock: idx.Block(3),
+		},
+	}
+
+	builder := &inter.MutableEventPayload{}
+	builder.SetPayload(payload)
+	eventPayload := builder.Build()
+
+	event := hash.Event{1}
+	world.EXPECT().GetEventPayload(event).Return(eventPayload)
+
+	adapter := worldAdapter{world}
+	got := adapter.GetEventPayload(event)
+	require.Equal(payload, got)
+}
+
+func TestWorldAdapter_GetEvmChainConfig_ForwardsCallToGetRulesAndGetUpgradeHeights(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	world := NewMockExternal(ctrl)
+
+	rules := opera.Rules{}
+	updateHeights := []opera.UpgradeHeight{}
+
+	world.EXPECT().GetRules().Return(rules)
+	world.EXPECT().GetUpgradeHeights().Return(updateHeights)
+
+	adapter := worldAdapter{world}
+	got := adapter.GetEvmChainConfig()
+	want := rules.EvmChainConfig(updateHeights)
+	require.Equal(want, got)
+}
+
 func TestCreatePayload_InvalidTurn_CreatesPayloadWithoutProposal(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)

@@ -48,6 +48,9 @@ var (
 	eventTimeToConfirmTimer = metrics.GetOrRegisterTimer("emitter/timetoconfirm", nil)
 	txTimeToEmitTimer       = metrics.GetOrRegisterTimer("emitter/timetoemit", nil)
 	txEndToEndTimer         = metrics.GetOrRegisterTimer("emitter/endtoendtime", nil)
+
+	proposalSchedulingTimer          = metrics.GetOrRegisterTimer("emitter/proposal/scheduling", nil)
+	proposalSchedulingTimeoutCounter = metrics.GetOrRegisterCounter("emitter/proposal/scheduling_timeout", nil)
 )
 
 type Emitter struct {

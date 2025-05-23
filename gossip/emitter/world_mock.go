@@ -13,6 +13,7 @@ import (
 	big "math/big"
 	reflect "reflect"
 
+	evmcore "github.com/0xsoniclabs/sonic/evmcore"
 	inter "github.com/0xsoniclabs/sonic/inter"
 	state "github.com/0xsoniclabs/sonic/inter/state"
 	validatorpk "github.com/0xsoniclabs/sonic/inter/validatorpk"
@@ -160,6 +161,20 @@ func (mr *MockExternalMockRecorder) GetGenesisTime() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGenesisTime", reflect.TypeOf((*MockExternal)(nil).GetGenesisTime))
 }
 
+// GetHeader mocks base method.
+func (m *MockExternal) GetHeader(arg0 common.Hash, arg1 uint64) *evmcore.EvmHeader {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetHeader", arg0, arg1)
+	ret0, _ := ret[0].(*evmcore.EvmHeader)
+	return ret0
+}
+
+// GetHeader indicates an expected call of GetHeader.
+func (mr *MockExternalMockRecorder) GetHeader(arg0, arg1 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHeader", reflect.TypeOf((*MockExternal)(nil).GetHeader), arg0, arg1)
+}
+
 // GetHeads mocks base method.
 func (m *MockExternal) GetHeads(arg0 idx.Epoch) hash.Events {
 	m.ctrl.T.Helper()
@@ -188,6 +203,20 @@ func (mr *MockExternalMockRecorder) GetLastEvent(epoch, from any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLastEvent", reflect.TypeOf((*MockExternal)(nil).GetLastEvent), epoch, from)
 }
 
+// GetLatestBlock mocks base method.
+func (m *MockExternal) GetLatestBlock() *inter.Block {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetLatestBlock")
+	ret0, _ := ret[0].(*inter.Block)
+	return ret0
+}
+
+// GetLatestBlock indicates an expected call of GetLatestBlock.
+func (mr *MockExternalMockRecorder) GetLatestBlock() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLatestBlock", reflect.TypeOf((*MockExternal)(nil).GetLatestBlock))
+}
+
 // GetLatestBlockIndex mocks base method.
 func (m *MockExternal) GetLatestBlockIndex() idx.Block {
 	m.ctrl.T.Helper()
@@ -214,6 +243,20 @@ func (m *MockExternal) GetRules() opera.Rules {
 func (mr *MockExternalMockRecorder) GetRules() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRules", reflect.TypeOf((*MockExternal)(nil).GetRules))
+}
+
+// GetUpgradeHeights mocks base method.
+func (m *MockExternal) GetUpgradeHeights() []opera.UpgradeHeight {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetUpgradeHeights")
+	ret0, _ := ret[0].([]opera.UpgradeHeight)
+	return ret0
+}
+
+// GetUpgradeHeights indicates an expected call of GetUpgradeHeights.
+func (mr *MockExternalMockRecorder) GetUpgradeHeights() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUpgradeHeights", reflect.TypeOf((*MockExternal)(nil).GetUpgradeHeights))
 }
 
 // IsBusy mocks base method.
@@ -551,6 +594,20 @@ func (m *MockReader) GetLastEvent(epoch idx.Epoch, from idx.ValidatorID) *hash.E
 func (mr *MockReaderMockRecorder) GetLastEvent(epoch, from any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLastEvent", reflect.TypeOf((*MockReader)(nil).GetLastEvent), epoch, from)
+}
+
+// GetLatestBlock mocks base method.
+func (m *MockReader) GetLatestBlock() *inter.Block {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetLatestBlock")
+	ret0, _ := ret[0].(*inter.Block)
+	return ret0
+}
+
+// GetLatestBlock indicates an expected call of GetLatestBlock.
+func (mr *MockReaderMockRecorder) GetLatestBlock() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLatestBlock", reflect.TypeOf((*MockReader)(nil).GetLatestBlock))
 }
 
 // GetLatestBlockIndex mocks base method.

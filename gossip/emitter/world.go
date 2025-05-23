@@ -10,6 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 
+	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -40,6 +41,8 @@ type (
 		PeersNum() int
 
 		StateDB() state.StateDB
+		GetUpgradeHeights() []opera.UpgradeHeight
+		GetHeader(common.Hash, uint64) *evmcore.EvmHeader
 	}
 
 	// aliases for mock generator
@@ -63,6 +66,7 @@ type (
 // Reader is a callback for getting events from an external storage.
 type Reader interface {
 	GetLatestBlockIndex() idx.Block
+	GetLatestBlock() *inter.Block
 	GetEpochValidators() (*pos.Validators, idx.Epoch)
 	GetEvent(hash.Event) *inter.Event
 	GetEventPayload(hash.Event) *inter.EventPayload
