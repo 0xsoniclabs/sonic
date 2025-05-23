@@ -13,7 +13,6 @@ import (
 	reflect "reflect"
 
 	hash "github.com/Fantom-foundation/lachesis-base/hash"
-	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -38,20 +37,6 @@ func NewMockEventReader(ctrl *gomock.Controller) *MockEventReader {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockEventReader) EXPECT() *MockEventReaderMockRecorder {
 	return m.recorder
-}
-
-// GetEpochStartBlock mocks base method.
-func (m *MockEventReader) GetEpochStartBlock(arg0 idx.Epoch) idx.Block {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetEpochStartBlock", arg0)
-	ret0, _ := ret[0].(idx.Block)
-	return ret0
-}
-
-// GetEpochStartBlock indicates an expected call of GetEpochStartBlock.
-func (mr *MockEventReaderMockRecorder) GetEpochStartBlock(arg0 any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEpochStartBlock", reflect.TypeOf((*MockEventReader)(nil).GetEpochStartBlock), arg0)
 }
 
 // GetEventPayload mocks base method.
