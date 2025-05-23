@@ -195,6 +195,20 @@ func (mr *MockEventIMockRecorder) GasPowerUsed() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GasPowerUsed", reflect.TypeOf((*MockEventI)(nil).GasPowerUsed))
 }
 
+// HasProposal mocks base method.
+func (m *MockEventI) HasProposal() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HasProposal")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// HasProposal indicates an expected call of HasProposal.
+func (mr *MockEventIMockRecorder) HasProposal() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasProposal", reflect.TypeOf((*MockEventI)(nil).HasProposal))
+}
+
 // HashToSign mocks base method.
 func (m *MockEventI) HashToSign() hash.Hash {
 	m.ctrl.T.Helper()
@@ -608,6 +622,20 @@ func (m *MockEventPayloadI) GasPowerUsed() uint64 {
 func (mr *MockEventPayloadIMockRecorder) GasPowerUsed() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GasPowerUsed", reflect.TypeOf((*MockEventPayloadI)(nil).GasPowerUsed))
+}
+
+// HasProposal mocks base method.
+func (m *MockEventPayloadI) HasProposal() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HasProposal")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// HasProposal indicates an expected call of HasProposal.
+func (mr *MockEventPayloadIMockRecorder) HasProposal() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasProposal", reflect.TypeOf((*MockEventPayloadI)(nil).HasProposal))
 }
 
 // HashToSign mocks base method.

@@ -73,6 +73,9 @@ func (e *Event) MarshalCSER(w *cser.Writer) error {
 		w.Bool(e.AnyEpochVote())
 		w.Bool(e.AnyBlockVotes())
 	}
+	if e.Version() == 3 {
+		w.Bool(e.HasProposal())
+	}
 	if e.AnyTxs() || e.AnyMisbehaviourProofs() || e.AnyBlockVotes() || e.AnyEpochVote() || e.Version() == 3 {
 		w.FixedBytes(e.PayloadHash().Bytes())
 	}
@@ -147,6 +150,7 @@ func eventUnmarshalCSER(r *cser.Reader, e *MutableEventPayload) (err error) {
 	anyMisbehaviourProofs := version == 1 && r.Bool()
 	anyEpochVote := version == 1 && r.Bool()
 	anyBlockVotes := version == 1 && r.Bool()
+	hasProposal := version == 3 && r.Bool()
 	payloadHash := EmptyPayloadHash(version)
 	if anyTxs || anyMisbehaviourProofs || anyEpochVote || anyBlockVotes || version == 3 {
 		r.FixedBytes(payloadHash[:])
@@ -178,6 +182,7 @@ func eventUnmarshalCSER(r *cser.Reader, e *MutableEventPayload) (err error) {
 	e.anyBlockVotes = anyBlockVotes
 	e.anyEpochVote = anyEpochVote
 	e.anyMisbehaviourProofs = anyMisbehaviourProofs
+	e.hasProposal = hasProposal
 	e.SetPayloadHash(payloadHash)
 	e.SetExtra(extra)
 	return nil
@@ -253,6 +258,9 @@ func (e *EventPayload) MarshalCSER(w *cser.Writer) error {
 	}
 	if e.Version() == 3 {
 		if e.AnyBlockVotes() || e.AnyEpochVote() || e.AnyMisbehaviourProofs() || e.AnyTxs() {
+			return ErrSerMalformedEvent
+		}
+		if e.HasProposal() != (e.payload.Proposal != nil) {
 			return ErrSerMalformedEvent
 		}
 	}

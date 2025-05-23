@@ -34,6 +34,7 @@ type EventI interface {
 	AnyBlockVotes() bool
 	AnyEpochVote() bool
 	AnyMisbehaviourProofs() bool
+	HasProposal() bool
 	PayloadHash() hash.Hash
 }
 
@@ -98,6 +99,7 @@ type extEventData struct {
 	anyBlockVotes         bool
 	anyEpochVote          bool
 	anyMisbehaviourProofs bool
+	hasProposal           bool
 	payloadHash           hash.Hash
 }
 
@@ -190,6 +192,8 @@ func (e *extEventData) AnyEpochVote() bool { return e.anyEpochVote }
 
 func (e *extEventData) AnyBlockVotes() bool { return e.anyBlockVotes }
 
+func (e *extEventData) HasProposal() bool { return e.hasProposal }
+
 func (e *extEventData) GasPowerLeft() GasPowerLeft { return e.gasPowerLeft }
 
 func (e *extEventData) GasPowerUsed() uint64 { return e.gasPowerUsed }
@@ -270,6 +274,7 @@ func (e *MutableEventPayload) SetEpochVote(v LlrEpochVote) {
 
 func (e *MutableEventPayload) SetPayload(payload Payload) {
 	e.payload = payload
+	e.hasProposal = payload.Proposal != nil
 	e.payloadHash = payload.Hash()
 }
 

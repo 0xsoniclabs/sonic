@@ -199,6 +199,23 @@ func TestEventUnmarshalCSER_Version3DetectsUnsupportedPayload(t *testing.T) {
 			})
 			return builder.Build()
 		}(),
+		"with proposal but missing has-proposal flag": func() *EventPayload {
+			builder := MutableEventPayload{}
+			builder.SetVersion(3)
+			builder.SetPayload(Payload{
+				Proposal: &Proposal{
+					Number: 1,
+				},
+			})
+			builder.hasProposal = false
+			return builder.Build()
+		}(),
+		"without proposal but with has-proposal flag": func() *EventPayload {
+			builder := MutableEventPayload{}
+			builder.SetVersion(3)
+			builder.hasProposal = true
+			return builder.Build()
+		}(),
 	}
 
 	for name, event := range tests {
