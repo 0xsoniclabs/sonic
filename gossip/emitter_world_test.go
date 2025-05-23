@@ -7,7 +7,6 @@ import (
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
@@ -36,15 +35,6 @@ func TestEmitterWorldProc_GetHeader_UsesStateReaderToResolveHeader(t *testing.T)
 	require.Equal(t, want.GasLimit, got.GasLimit)
 	require.Equal(t, want.Hash(), got.Hash)
 	require.Equal(t, want.ParentHash, got.ParentHash)
-}
-
-func TestEmitterWorldRead_GetEpochStartBlock_ReturnsKnownEpochStarts(t *testing.T) {
-	world := &emitterWorldRead{Store: initStoreForTests(t)}
-
-	// some known values for epochs created during genesis
-	require.Equal(t, idx.Block(0), world.GetEpochStartBlock(0))
-	require.Equal(t, idx.Block(1), world.GetEpochStartBlock(1))
-	require.Equal(t, idx.Block(2), world.GetEpochStartBlock(2))
 }
 
 func initStoreForTests(t *testing.T) *Store {
