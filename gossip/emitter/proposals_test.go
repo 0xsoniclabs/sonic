@@ -29,22 +29,28 @@ func TestEmitter_CreatePayload_ProducesValidPayload(t *testing.T) {
 	event.EXPECT().Epoch().Return(idx.Epoch(12)).AnyTimes()
 	event.EXPECT().Frame().Return(idx.Frame(0))
 
-	world.EXPECT().GetEpochStartBlock(idx.Epoch(12)).Return(idx.Block(62))
 	world.EXPECT().GetLatestBlock().Return(
 		inter.NewBlockBuilder().WithNumber(61).Build(),
 	)
 
+	builder := pos.ValidatorsBuilder{}
+	builder.Set(idx.ValidatorID(123), 10) // => different validator
+	validators := builder.Build()
+
 	emitter := &Emitter{
-		world: World{External: world},
+		world:      World{External: world},
+		validators: validators,
 	}
 
+	// It is not this emitter's turn to propose a block, so the payload just
+	// contains the proposal sync state but no proposal.
 	payload, err := emitter.createPayload(event, nil)
 	require.NoError(err)
 	want := inter.Payload{
 		ProposalSyncState: inter.ProposalSyncState{
 			LastSeenProposalTurn:  inter.Turn(0),
 			LastSeenProposalFrame: idx.Frame(0),
-			LastSeenProposedBlock: idx.Block(62),
+			LastSeenProposedBlock: idx.Block(0),
 		},
 	}
 	require.Equal(want, payload)
@@ -60,7 +66,6 @@ func TestEmitter_CreatePayload_FailsOnInvalidValidators(t *testing.T) {
 	event.EXPECT().Epoch().Return(idx.Epoch(12)).AnyTimes()
 	event.EXPECT().Frame().Return(idx.Frame(0))
 
-	world.EXPECT().GetEpochStartBlock(idx.Epoch(12)).Return(idx.Block(62))
 	world.EXPECT().GetLatestBlock().Return(
 		inter.NewBlockBuilder().WithNumber(62).Build(),
 	)

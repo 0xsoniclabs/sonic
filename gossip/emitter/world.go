@@ -67,7 +67,6 @@ type (
 type Reader interface {
 	GetLatestBlockIndex() idx.Block
 	GetLatestBlock() *inter.Block
-	GetEpochStartBlock(idx.Epoch) idx.Block
 	GetEpochValidators() (*pos.Validators, idx.Epoch)
 	GetEvent(hash.Event) *inter.Event
 	GetEventPayload(hash.Event) *inter.EventPayload
