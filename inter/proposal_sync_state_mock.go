@@ -40,18 +40,18 @@ func (m *MockEventReader) EXPECT() *MockEventReaderMockRecorder {
 	return m.recorder
 }
 
-// GetEpochStartBlock mocks base method.
-func (m *MockEventReader) GetEpochStartBlock(arg0 idx.Epoch) idx.Block {
+// GetBlockNumberAtStartOfCurrentEpoch mocks base method.
+func (m *MockEventReader) GetBlockNumberAtStartOfCurrentEpoch() idx.Block {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetEpochStartBlock", arg0)
+	ret := m.ctrl.Call(m, "GetBlockNumberAtStartOfCurrentEpoch")
 	ret0, _ := ret[0].(idx.Block)
 	return ret0
 }
 
-// GetEpochStartBlock indicates an expected call of GetEpochStartBlock.
-func (mr *MockEventReaderMockRecorder) GetEpochStartBlock(arg0 any) *gomock.Call {
+// GetBlockNumberAtStartOfCurrentEpoch indicates an expected call of GetBlockNumberAtStartOfCurrentEpoch.
+func (mr *MockEventReaderMockRecorder) GetBlockNumberAtStartOfCurrentEpoch() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEpochStartBlock", reflect.TypeOf((*MockEventReader)(nil).GetEpochStartBlock), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBlockNumberAtStartOfCurrentEpoch", reflect.TypeOf((*MockEventReader)(nil).GetBlockNumberAtStartOfCurrentEpoch))
 }
 
 // GetEventPayload mocks base method.

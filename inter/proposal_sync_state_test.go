@@ -50,7 +50,7 @@ func TestCalculateIncomingProposalSyncState_ProducesEpochStartStateForGenesisEve
 	require.Empty(event.Parents())
 
 	epochStartBlock := idx.Block(123)
-	world.EXPECT().GetEpochStartBlock(event.Epoch()).Return(epochStartBlock)
+	world.EXPECT().GetBlockNumberAtStartOfCurrentEpoch().Return(epochStartBlock)
 
 	state := CalculateIncomingProposalSyncState(world, event)
 	require.Equal(Turn(0), state.LastSeenProposalTurn)

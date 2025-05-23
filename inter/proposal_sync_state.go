@@ -41,7 +41,7 @@ func CalculateIncomingProposalSyncState(
 	// However, we need to set the last seen proposed block to the start block
 	// of the epoch to retain progress.
 	if len(parents) == 0 {
-		res.LastSeenProposedBlock = reader.GetEpochStartBlock(event.Epoch())
+		res.LastSeenProposedBlock = reader.GetBlockNumberAtStartOfCurrentEpoch()
 		return res
 	}
 
@@ -59,8 +59,9 @@ func CalculateIncomingProposalSyncState(
 // particular, the payload of the parent events and the block hight at the start
 // of the current epoch is required.
 type EventReader interface {
-	// GetEpochStartBlock must be able to return the block of the current epoch.
-	GetEpochStartBlock(idx.Epoch) idx.Block
+	// GetBlockNumberAtStartOfCurrentEpoch must be able to return the last block
+	// confirmed before the start of the current epoch.
+	GetBlockNumberAtStartOfCurrentEpoch() idx.Block
 	// GetEventPayload must be able to return the payload of parent events of an
 	// event for which the incoming proposal sync state is being calculated.
 	GetEventPayload(hash.Event) Payload
