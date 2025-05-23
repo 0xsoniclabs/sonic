@@ -19,7 +19,7 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func TestCreatePayload_InvalidTurn_CreatesEmptyPayload(t *testing.T) {
+func TestCreatePayload_InvalidTurn_CreatesPayloadWithoutProposal(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	world := NewMockworldReader(ctrl)
@@ -63,7 +63,7 @@ func TestCreatePayload_InvalidTurn_CreatesEmptyPayload(t *testing.T) {
 	require.Equal(want, payload)
 }
 
-func TestCreatePayload_UnableToCreateProposalDueToLackOfTimeProgress_CreatesEmptyPayload(t *testing.T) {
+func TestCreatePayload_UnableToCreateProposalDueToLackOfTimeProgress_CreatesPayloadWithoutProposal(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	world := NewMockworldReader(ctrl)
