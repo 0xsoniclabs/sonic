@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"sync"
@@ -14,17 +15,20 @@ var once sync.Once
 
 func SetDataDir(datadir string) {
 	once.Do(func() {
-		go measureDbDir("db_size", datadir)
-		go measureDbDir("statedb/disksize", filepath.Join(datadir, "carmen"))
+		go measureDbDir(context.Background(), "db_size", datadir)
+		go measureDbDir(context.Background(), "statedb/disksize", filepath.Join(datadir, "carmen"))
 	})
 }
 
-func measureDbDir(name, datadir string) {
+func measureDbDir(ctx context.Context, name, datadir string) {
 	var (
-		gauge = metrics.GetOrRegisterGauge(name, nil)
+		gauge  = metrics.GetOrRegisterGauge(name, nil)
 		rescan = len(datadir) > 0 && datadir != "inmemory"
 	)
 	for rescan {
+		if ctx.Err() != nil {
+			return
+		}
 		time.Sleep(time.Minute)
 		size := sizeOfDir(datadir)
 		gauge.Update(size)
