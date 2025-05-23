@@ -9,10 +9,10 @@ import (
 
 func TestFeatureSet_CanBeConvertedToString(t *testing.T) {
 
-	tests := map[string]FeatureSet{
-		"sonic":   SonicFeatures,
-		"allegro": AllegroFeatures,
-		"unknown": FeatureSet(math.MaxInt),
+	tests := map[string]HardFork{
+		"sonic":   Sonic,
+		"allegro": Allegro,
+		"unknown": HardFork(math.MaxInt),
 	}
 
 	for expected, fs := range tests {
@@ -22,10 +22,10 @@ func TestFeatureSet_CanBeConvertedToString(t *testing.T) {
 
 func TestFeatureSet_CanBeConvertedToUpgrades(t *testing.T) {
 
-	tests := map[FeatureSet]struct {
+	tests := map[HardFork]struct {
 		expectedUpgrades Upgrades
 	}{
-		SonicFeatures: {
+		Sonic: {
 			expectedUpgrades: Upgrades{
 				Berlin:  true,
 				London:  true,
@@ -34,7 +34,7 @@ func TestFeatureSet_CanBeConvertedToUpgrades(t *testing.T) {
 				Allegro: false,
 			},
 		},
-		AllegroFeatures: {
+		Allegro: {
 			expectedUpgrades: Upgrades{
 				Berlin:  true,
 				London:  true,
@@ -54,7 +54,7 @@ func TestFeatureSet_CanBeConvertedToUpgrades(t *testing.T) {
 }
 
 func TestFeatureSet_ToUpgradesReturnsDefaultIfUnknown(t *testing.T) {
-	fs := FeatureSet(math.MaxInt)
+	fs := HardFork(math.MaxInt)
 	expected := Upgrades{
 		Berlin:  true,
 		London:  true,

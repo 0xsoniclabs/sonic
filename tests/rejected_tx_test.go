@@ -19,7 +19,7 @@ func TestRejectedTx_TransactionsAreRejectedBecauseOfAccountState(t *testing.T) {
 	// start network
 	net := StartIntegrationTestNet(t,
 		IntegrationTestNetOptions{
-			FeatureSet: opera.AllegroFeatures,
+			HardFork: opera.Allegro,
 		})
 
 	// create a client

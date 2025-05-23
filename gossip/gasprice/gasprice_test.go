@@ -65,8 +65,8 @@ func (t TestBackend) MinGasTip() *big.Int {
 func TestOracle_constructiveGasPrice(t *testing.T) {
 	backend := &TestBackend{
 		totalGasPowerLeft: 0,
-		rules:             opera.FakeNetRules(opera.SonicFeatures),
-		pendingRules:      opera.FakeNetRules(opera.SonicFeatures),
+		rules:             opera.FakeNetRules(opera.Sonic),
+		pendingRules:      opera.FakeNetRules(opera.Sonic),
 	}
 
 	gpo := NewOracle(Config{}, backend)
@@ -106,8 +106,8 @@ func TestOracle_constructiveGasPrice(t *testing.T) {
 func TestOracle_reactiveGasPrice(t *testing.T) {
 	backend := &TestBackend{
 		totalGasPowerLeft: 0,
-		rules:             opera.FakeNetRules(opera.SonicFeatures),
-		pendingRules:      opera.FakeNetRules(opera.SonicFeatures),
+		rules:             opera.FakeNetRules(opera.Sonic),
+		pendingRules:      opera.FakeNetRules(opera.Sonic),
 	}
 
 	gpo := NewOracle(Config{}, backend)

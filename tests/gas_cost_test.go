@@ -38,7 +38,7 @@ func TestGasCostTest_Sonic(t *testing.T) {
 
 	net := StartIntegrationTestNet(t,
 		IntegrationTestNetOptions{
-			FeatureSet: opera.SonicFeatures,
+			HardFork: opera.Sonic,
 		})
 
 	client, err := net.GetClient()
@@ -129,7 +129,7 @@ func TestGasCostTest_Allegro(t *testing.T) {
 
 	net := StartIntegrationTestNet(t,
 		IntegrationTestNetOptions{
-			FeatureSet: opera.AllegroFeatures,
+			HardFork: opera.Allegro,
 		})
 
 	client, err := net.GetClient()

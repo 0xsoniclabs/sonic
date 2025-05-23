@@ -2,11 +2,12 @@ package opera
 
 import (
 	"fmt"
-	"github.com/0xsoniclabs/sonic/inter"
 	"math"
 	"math/big"
 	"testing"
 	"time"
+
+	"github.com/0xsoniclabs/sonic/inter"
 
 	"github.com/stretchr/testify/require"
 )
@@ -14,7 +15,7 @@ import (
 func TestDefaultRulesAreValid(t *testing.T) {
 	rules := map[string]Rules{
 		"mainnet": MainNetRules(),
-		"fakenet": FakeNetRules(AllegroFeatures),
+		"fakenet": FakeNetRules(Allegro),
 	}
 	for name, r := range rules {
 		t.Run(name, func(t *testing.T) {

@@ -5,9 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/0xsoniclabs/sonic/gossip/contract/driverauth100"
-	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"math"
 	"math/big"
 	"os"
@@ -17,6 +14,10 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/0xsoniclabs/sonic/gossip/contract/driverauth100"
+	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 
 	sonicd "github.com/0xsoniclabs/sonic/cmd/sonicd/app"
 	sonictool "github.com/0xsoniclabs/sonic/cmd/sonictool/app"
@@ -38,8 +39,8 @@ import (
 // It provides the methods to launch transactions and queries against the network.
 // Additionally, it provides the methods to endow accounts with funds.
 type IntegrationTestNetSession interface {
-	// GetFeatureSet returns the feature set the network has been started with.
-	GetFeatureSet() opera.FeatureSet
+	// GetStartupHardFork returns the hard fork the network has been started with.
+	GetStartupHardFork() opera.HardFork
 
 	// EndowAccount sends a requested amount of tokens to the given account. This is
 	// mainly intended to provide funds to accounts for testing purposes.
@@ -72,9 +73,9 @@ type IntegrationTestNetSession interface {
 
 // IntegrationTestNetOptions are configuration options for the integration test network.
 type IntegrationTestNetOptions struct {
-	// FeatureSet specifies the feature set to be used for the integration test network.
-	// The default value is SonicFeatures.
-	FeatureSet opera.FeatureSet
+	// HardFork specifies the initial hard fork to be used for the integration
+	// test network. The default value is SonicHardFork.
+	HardFork opera.HardFork
 	// NumNodes specifies the number of nodes to be started on the integration
 	// test network. A value of 0 is interpreted as 1.
 	NumNodes int
@@ -163,7 +164,7 @@ func StartIntegrationTestNetWithFakeGenesis(
 	net, err := startIntegrationTestNet(
 		t,
 		t.TempDir(),
-		[]string{"genesis", "fake", "1", "--upgrades", effectiveOptions.FeatureSet.String()},
+		[]string{"genesis", "fake", "1", "--upgrades", effectiveOptions.HardFork.String()},
 		effectiveOptions,
 	)
 	if err != nil {
@@ -189,7 +190,7 @@ func StartIntegrationTestNetWithJsonGenesis(
 
 	jsonGenesis := makefakegenesis.GenerateFakeJsonGenesis(
 		effectiveOptions.NumNodes,
-		effectiveOptions.FeatureSet,
+		effectiveOptions.HardFork,
 	)
 
 	jsonGenesis.Accounts = append(jsonGenesis.Accounts, effectiveOptions.Accounts...)
@@ -645,8 +646,8 @@ type Session struct {
 	account Account
 }
 
-func (s *Session) GetFeatureSet() opera.FeatureSet {
-	return s.net.options.FeatureSet
+func (s *Session) GetStartupHardFork() opera.HardFork {
+	return s.net.options.HardFork
 }
 
 // EndowAccount sends a requested amount of tokens to the given account. This is
@@ -861,8 +862,8 @@ func validateAndSanitizeOptions(options ...IntegrationTestNetOptions) (Integrati
 
 	if len(options) == 0 {
 		return IntegrationTestNetOptions{
-			FeatureSet: opera.SonicFeatures,
-			NumNodes:   1,
+			HardFork: opera.Sonic,
+			NumNodes: 1,
 		}, nil
 	}
 	if options[0].NumNodes <= 0 {

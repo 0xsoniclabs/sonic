@@ -65,7 +65,7 @@ func LoadGenesisJson(filename string) (*GenesisJson, error) {
 		return nil, fmt.Errorf("failed to read genesis json file; %v", err)
 	}
 	var decoded GenesisJson
-	upgrades := opera.SonicFeatures
+	upgrades := opera.Sonic
 	decoded.Rules = opera.FakeNetRules(upgrades) // use fakenet rules as defaults
 	err = json.Unmarshal(data, &decoded)
 	if err != nil {
@@ -79,10 +79,10 @@ func LoadGenesisJson(filename string) (*GenesisJson, error) {
 // number of validators with some initial tokens.
 func GenerateFakeJsonGenesis(
 	numValidators int,
-	features opera.FeatureSet,
+	hardFork opera.HardFork,
 ) *GenesisJson {
 	jsonGenesis := &GenesisJson{
-		Rules:         opera.FakeNetRules(features),
+		Rules:         opera.FakeNetRules(hardFork),
 		BlockZeroTime: time.Now(),
 	}
 
@@ -121,7 +121,7 @@ func GenerateFakeJsonGenesis(
 	}
 
 	// Configure pre-deployed contracts, according to the hardfork of the fake-net
-	if features == opera.AllegroFeatures {
+	if hardFork == opera.Allegro {
 		// Deploy the history storage contract
 		// see: https://eips.ethereum.org/EIPS/eip-2935
 		jsonGenesis.Accounts = append(jsonGenesis.Accounts, Account{

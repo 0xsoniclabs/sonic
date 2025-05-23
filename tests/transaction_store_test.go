@@ -22,7 +22,7 @@ func TestTransactionStore_CanTransactionsBeRetrievedFromBlocksAfterRestart(t *te
 
 	net := StartIntegrationTestNet(t,
 		IntegrationTestNetOptions{
-			FeatureSet: opera.AllegroFeatures,
+			HardFork: opera.Allegro,
 		})
 
 	client, err := net.GetClient()

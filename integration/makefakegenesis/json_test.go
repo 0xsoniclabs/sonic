@@ -8,13 +8,13 @@ import (
 )
 
 func TestJsonGenesis_CanApplyGeneratedFakeJsonGensis(t *testing.T) {
-	genesis := GenerateFakeJsonGenesis(1, opera.SonicFeatures)
+	genesis := GenerateFakeJsonGenesis(1, opera.Sonic)
 	_, err := ApplyGenesisJson(genesis)
 	require.NoError(t, err)
 }
 
 func TestJsonGenesis_AcceptsGenesisWithoutCommittee(t *testing.T) {
-	genesis := GenerateFakeJsonGenesis(1, opera.SonicFeatures)
+	genesis := GenerateFakeJsonGenesis(1, opera.Sonic)
 	genesis.GenesisCommittee = nil
 	_, err := ApplyGenesisJson(genesis)
 	require.NoError(t, err)
@@ -22,17 +22,17 @@ func TestJsonGenesis_AcceptsGenesisWithoutCommittee(t *testing.T) {
 
 func TestJsonGenesis_Network_Rules_Validated_Allegro_Only(t *testing.T) {
 	tests := map[string]struct {
-		featureSet opera.FeatureSet
-		assert     func(t *testing.T, err error)
+		hardFork opera.HardFork
+		assert   func(t *testing.T, err error)
 	}{
 		"sonic": {
-			featureSet: opera.SonicFeatures,
+			hardFork: opera.Sonic,
 			assert: func(t *testing.T, err error) {
 				require.NoError(t, err)
 			},
 		},
 		"allegro": {
-			featureSet: opera.AllegroFeatures,
+			hardFork: opera.Allegro,
 			assert: func(t *testing.T, err error) {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), "LLR upgrade is not supported")
@@ -42,7 +42,7 @@ func TestJsonGenesis_Network_Rules_Validated_Allegro_Only(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			genesis := GenerateFakeJsonGenesis(1, test.featureSet)
+			genesis := GenerateFakeJsonGenesis(1, test.hardFork)
 			genesis.Rules.Upgrades.Llr = true // LLR is not supported in Allegro and Sonic
 			_, err := ApplyGenesisJson(genesis)
 			test.assert(t, err)

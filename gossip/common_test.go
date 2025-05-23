@@ -138,7 +138,7 @@ func (m testConfirmedEventsModule) Start(bs iblockproc.BlockState, es iblockproc
 }
 
 func newTestEnv(firstEpoch idx.Epoch, validatorsNum idx.Validator, tb testing.TB) *testEnv {
-	rules := opera.FakeNetRules(opera.SonicFeatures)
+	rules := opera.FakeNetRules(opera.Sonic)
 	rules.Epochs.MaxEpochDuration = inter.Timestamp(maxEpochDuration)
 	rules.Blocks.MaxEmptyBlockSkipPeriod = 0
 	rules.Emitter.Interval = 0

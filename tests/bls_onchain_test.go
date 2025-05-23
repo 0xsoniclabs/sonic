@@ -15,7 +15,7 @@ import (
 
 func TestBlsVerificationOnChain(t *testing.T) {
 	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
-		FeatureSet: opera.AllegroFeatures,
+		HardFork: opera.Allegro,
 	})
 	defer net.Stop()
 

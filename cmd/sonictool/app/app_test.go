@@ -166,7 +166,7 @@ func TestSonicTool_heal_ExecutesWithoutErrors(t *testing.T) {
 	net := tests.StartIntegrationTestNet(
 		t,
 		tests.IntegrationTestNetOptions{
-			FeatureSet:           opera.SonicFeatures,
+			HardFork:             opera.Sonic,
 			ClientExtraArguments: []string{"--statedb.checkpointinterval", "1"},
 		},
 	)

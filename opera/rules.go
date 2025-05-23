@@ -313,11 +313,11 @@ func MainNetRules() Rules {
 			MaxBlockGas:             MinimumMaxBlockGas,
 			MaxEmptyBlockSkipPeriod: inter.Timestamp(1 * time.Minute),
 		},
-		Upgrades: AllegroFeatures.ToUpgrades(),
+		Upgrades: Allegro.ToUpgrades(),
 	}
 }
 
-func FakeNetRules(features FeatureSet) Rules {
+func FakeNetRules(features HardFork) Rules {
 	return Rules{
 		Name:      "fake",
 		NetworkID: FakeNetworkID,

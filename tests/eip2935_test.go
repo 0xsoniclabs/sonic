@@ -26,13 +26,13 @@ func TestEIP2935_IsAutomaticallyDeployedWithFakeNet(t *testing.T) {
 		"json genesis": func(t *testing.T) *IntegrationTestNet {
 			return StartIntegrationTestNetWithJsonGenesis(t,
 				IntegrationTestNetOptions{
-					FeatureSet: opera.AllegroFeatures,
+					HardFork: opera.Allegro,
 				})
 		},
 		"fake genesis": func(t *testing.T) *IntegrationTestNet {
 			return StartIntegrationTestNetWithFakeGenesis(t,
 				IntegrationTestNetOptions{
-					FeatureSet: opera.AllegroFeatures,
+					HardFork: opera.Allegro,
 				})
 		},
 	}
@@ -92,7 +92,7 @@ func TestEIP2935_DeployContract(t *testing.T) {
 		IntegrationTestNetOptions{
 			// < Allegro automatically deploys the history storage contract
 			// < To test deployment, we need to use a feature set that does not already have the contract
-			FeatureSet: opera.SonicFeatures,
+			HardFork: opera.Sonic,
 			ModifyConfig: func(config *config.Config) {
 				// the transaction to deploy the contract is not replay protected
 				// This has the benefit that the same tx will work in both ethereum and sonic.
@@ -194,7 +194,7 @@ func TestEIP2935_HistoryContractAccumulatesBlockHashes(t *testing.T) {
 
 	net := StartIntegrationTestNetWithFakeGenesis(t,
 		IntegrationTestNetOptions{
-			FeatureSet: opera.AllegroFeatures,
+			HardFork: opera.Allegro,
 		})
 
 	client, err := net.GetClient()

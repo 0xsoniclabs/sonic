@@ -727,18 +727,18 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 	}
 
 	tests := map[string]struct {
-		features          opera.FeatureSet
+		hardFork          opera.HardFork
 		extraSetupBackend func(*MockBackend)
 		setupStateDb      func(*state.MockStateDB)
 		call              func(*testing.T, Backend, TransactionArgs, rpc.BlockNumberOrHash)
 	}{
 		"DoCall sonic": {
-			features:     opera.SonicFeatures,
+			hardFork:     opera.Sonic,
 			setupStateDb: expectedCallsFromTxCall,
 			call:         executeDoCall,
 		},
 		"DoCall allegro": {
-			features: opera.AllegroFeatures,
+			hardFork: opera.Allegro,
 			setupStateDb: func(mockState *state.MockStateDB) {
 				expectedCallsFromHistoryStorageContract(mockState)
 				expectedCallsFromTxCall(mockState)
@@ -746,7 +746,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 			call: executeDoCall,
 		},
 		"StateAtTransaction sonic": {
-			features: opera.SonicFeatures,
+			hardFork: opera.Sonic,
 			setupStateDb: func(mockState *state.MockStateDB) {
 				mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any())
 				mockState.EXPECT().GetCode(sender).Return([]byte{})
@@ -758,7 +758,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 			call: executeStateAtTransaction,
 		},
 		"StateAtTransaction allegro": {
-			features: opera.AllegroFeatures,
+			hardFork: opera.Allegro,
 			setupStateDb: func(mockState *state.MockStateDB) {
 				mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any())
 				mockState.EXPECT().GetCode(sender).Return([]byte{})
@@ -771,7 +771,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 			call: executeStateAtTransaction,
 		},
 		"trace_replayBlock sonic": {
-			features: opera.SonicFeatures,
+			hardFork: opera.Sonic,
 			extraSetupBackend: func(mockBackend *MockBackend) {
 				mockBackend.EXPECT().GetReceiptsByNumber(gomock.Any(), gomock.Any()).
 					Return(types.Receipts{
@@ -788,7 +788,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 			call: executeTraceReplayBlock,
 		},
 		"trace_replayBlock allegro": {
-			features: opera.AllegroFeatures,
+			hardFork: opera.Allegro,
 			extraSetupBackend: func(mockBackend *MockBackend) {
 				mockBackend.EXPECT().GetReceiptsByNumber(gomock.Any(), gomock.Any()).
 					Return(types.Receipts{
@@ -827,9 +827,9 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 			backend.EXPECT().StateAndHeaderByNumberOrHash(gomock.Any(), blockOrHash).
 				Return(mockState, &header, nil).AnyTimes()
 			backend.EXPECT().GetEVM(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-				DoAndReturn(makeTestEVM(test.features)).AnyTimes()
+				DoAndReturn(makeTestEVM(test.hardFork)).AnyTimes()
 			backend.EXPECT().CurrentBlock().AnyTimes().Return(&evmcore.EvmBlock{EvmHeader: header})
-			backend.EXPECT().ChainConfig().AnyTimes().Return(makeChainConfig(test.features))
+			backend.EXPECT().ChainConfig().AnyTimes().Return(makeChainConfig(test.hardFork))
 			backend.EXPECT().SuggestGasTipCap(gomock.Any(), gomock.Any()).AnyTimes().Return(big.NewInt(1))
 			backend.EXPECT().MinGasPrice().AnyTimes().Return(big.NewInt(1))
 			backend.EXPECT().RPCGasCap().AnyTimes().Return(uint64(10000000))
@@ -858,26 +858,27 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 }
 
 // makeChainConfig allows to create a chain config with a given set of features
-func makeChainConfig(features opera.FeatureSet) *params.ChainConfig {
+func makeChainConfig(features opera.HardFork) *params.ChainConfig {
 	switch features {
-	case opera.SonicFeatures:
+	case opera.Sonic:
 		return opera.MainNetRules().EvmChainConfig(
 			[]opera.UpgradeHeight{
-				{Upgrades: opera.SonicFeatures.ToUpgrades(), Height: 0},
+				{Upgrades: opera.Sonic.ToUpgrades(), Height: 0},
 			})
-	case opera.AllegroFeatures:
+	case opera.Allegro:
 		return opera.MainNetRules().EvmChainConfig(
 			[]opera.UpgradeHeight{
-				{Upgrades: opera.SonicFeatures.ToUpgrades(), Height: 0},
-				{Upgrades: opera.AllegroFeatures.ToUpgrades(), Height: 1},
+				{Upgrades: opera.Sonic.ToUpgrades(), Height: 0},
+				{Upgrades: opera.Allegro.ToUpgrades(), Height: 1},
 			})
 	default:
 		panic(fmt.Errorf("unsupported featureSet %v", features))
 	}
 }
 
-// makeTestEVM allows to create an evm instance to use in tests with a given set of features
-func makeTestEVM(features opera.FeatureSet) func(
+// makeTestEVM allows to create an evm instance to use in tests for the given
+// hard fork.
+func makeTestEVM(hardFork opera.HardFork) func(
 	ctx context.Context,
 	statedb vm.StateDB,
 	header *evmcore.EvmHeader,
@@ -887,7 +888,7 @@ func makeTestEVM(features opera.FeatureSet) func(
 
 	return func(ctx context.Context, statedb vm.StateDB, header *evmcore.EvmHeader, vmConfig *vm.Config, blockContext *vm.BlockContext) (*vm.EVM, func() error, error) {
 
-		chainConfig := makeChainConfig(features)
+		chainConfig := makeChainConfig(hardFork)
 
 		if blockContext == nil {
 			ethHeader := header.EthHeader()

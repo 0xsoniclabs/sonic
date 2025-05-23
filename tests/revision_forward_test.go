@@ -20,24 +20,24 @@ func TestTransaction_DelegationDesignationAddressAccessIsConsideredInAllegro(t *
 	gas += 10             // gas in recursive call (is fully consumed due to failed execution)
 
 	tests := map[string]struct {
-		featureSet opera.FeatureSet
-		gas        uint64
+		hardFork opera.HardFork
+		gas      uint64
 	}{
 		"Sonic": {
-			featureSet: opera.SonicFeatures,
-			gas:        gas, // delegate designator ignored, no address access.
+			hardFork: opera.Sonic,
+			gas:      gas, // delegate designator ignored, no address access.
 		},
 		"Allegro": {
-			featureSet: opera.AllegroFeatures,
-			gas:        gas + 2_600, // cold access to delegate billed in interpreter.
+			hardFork: opera.Allegro,
+			gas:      gas + 2_600, // cold access to delegate billed in interpreter.
 		},
 	}
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			net := StartIntegrationTestNetWithJsonGenesis(t, IntegrationTestNetOptions{
-				FeatureSet: test.featureSet,
-				Accounts:   accountsToDeploy(),
+				HardFork: test.hardFork,
+				Accounts: accountsToDeploy(),
 			})
 
 			client, err := net.GetClient()
