@@ -120,10 +120,6 @@ func (p *StateProcessor) Process(
 				}
 			}
 
-			skipped = append(skipped, uint32(i))
-			receipts = append(receipts, nil)
-			err = nil
-			continue
 		}
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
@@ -145,6 +141,10 @@ func (p *StateProcessor) Process(
 			if err != nil {
 				return nil, nil, nil, fmt.Errorf("could not put substate %d [%v]: %w", i, tx.Hash().Hex(), err)
 			}
+			skipped = append(skipped, uint32(i))
+			receipts = append(receipts, nil)
+			err = nil
+			continue
 		}
 
 		txCounter++
