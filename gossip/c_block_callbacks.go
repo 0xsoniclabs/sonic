@@ -1,6 +1,8 @@
 package gossip
 
 import (
+	"bytes"
+	"cmp"
 	"fmt"
 	"math/big"
 	"sort"
@@ -8,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	scc_node "github.com/0xsoniclabs/sonic/scc/node"
 	"github.com/0xsoniclabs/sonic/utils/signers/gsignercache"
@@ -135,7 +138,7 @@ func consensusCallbackBeginBlockFn(
 					atroposTime = e.MedianTime()
 					atroposDegenerate = false
 				}
-				if e.AnyTxs() {
+				if e.AnyTxs() || e.HasProposal() {
 					confirmedEvents = append(confirmedEvents, e.ID())
 				}
 				eventProcessor.ProcessConfirmedEvent(e)
@@ -227,17 +230,45 @@ func consensusCallbackBeginBlockFn(
 
 				// At this point, newValidators may be returned and the rest of the code may be executed in a parallel thread
 				blockFn := func() {
+					const enableDebugPrints = true
+
+					// sort events by Lamport time
+					sort.Sort(confirmedEvents)
+					maxBlockGas := es.Rules.Blocks.MaxBlockGas
+					blockEvents := spillBlockEvents(store, confirmedEvents, maxBlockGas)
 
 					// Start assembling the resulting block.
 					number := uint64(blockCtx.Idx)
 					lastBlockHeader := evmStateReader.GetHeaderByNumber(number - 1)
-					maxBlockGas := es.Rules.Blocks.MaxBlockGas
-					blockDuration := time.Duration(blockCtx.Time - bs.LastBlock.Time)
+
+					// Get a proposal for the block to be created.
+					proposal := inter.Proposal{
+						Number:     blockCtx.Idx,
+						ParentHash: lastBlockHeader.Hash,
+						Time:       blockCtx.Time,
+					}
+					if es.Rules.Upgrades.Allegro { // TODO: use dedicated flag
+						if proposed := getSingleProposerProposal(blockEvents, lastBlockHeader); proposed != nil {
+							proposal = *proposed
+							// TODO: derive prevRandao from the proposal
+						}
+					} else {
+						// Collect transactions from events and schedule them.
+						unorderedTxs := make(types.Transactions, 0, blockEvents.Len()*10)
+						for _, e := range blockEvents {
+							unorderedTxs = append(unorderedTxs, e.Txs()...)
+						}
+
+						signer := gsignercache.Wrap(types.MakeSigner(chainCfg, new(big.Int).SetUint64(number), uint64(blockCtx.Time)))
+						proposal.Transactions = scrambler.GetExecutionOrder(unorderedTxs, signer, es.Rules.Upgrades.Sonic)
+					}
+
+					blockDuration := time.Duration(proposal.Time - bs.LastBlock.Time)
 					blockBuilder := inter.NewBlockBuilder().
 						WithEpoch(blockCtx.Atropos.Epoch()).
 						WithNumber(number).
-						WithParentHash(lastBlockHeader.Hash).
-						WithTime(blockCtx.Time).
+						WithParentHash(proposal.ParentHash).
+						WithTime(proposal.Time).
 						WithPrevRandao(prevRandao).
 						WithGasLimit(maxBlockGas).
 						WithDuration(blockDuration)
@@ -265,21 +296,14 @@ func consensusCallbackBeginBlockFn(
 						)
 					}
 
-					// sort events by Lamport time
-					sort.Sort(confirmedEvents)
-
-					blockEvents := spillBlockEvents(store, confirmedEvents, maxBlockGas)
-					unorderedTxs := make(types.Transactions, 0, blockEvents.Len()*10)
-					for _, e := range blockEvents {
-						unorderedTxs = append(unorderedTxs, e.Txs()...)
-					}
-
-					signer := gsignercache.Wrap(types.MakeSigner(chainCfg, new(big.Int).SetUint64(number), uint64(blockCtx.Time)))
-					orderedTxs := scrambler.GetExecutionOrder(unorderedTxs, signer, es.Rules.Upgrades.Sonic)
-
+					orderedTxs := proposal.Transactions
 					for i, receipt := range evmProcessor.Execute(orderedTxs) {
 						if receipt != nil { // < nil if skipped
 							blockBuilder.AddTransaction(orderedTxs[i], receipt)
+						} else {
+							if enableDebugPrints {
+								fmt.Printf("\tSkipped transaction with nonce %d\n", orderedTxs[i].Nonce())
+							}
 						}
 					}
 
@@ -341,6 +365,9 @@ func consensusCallbackBeginBlockFn(
 					bs = txListener.Finalize() // TODO: refactor to not mutate the bs
 					bs.FinalizedStateRoot = hash.Hash(evmBlock.Root)
 					// At this point, block state is finalized
+					if enableDebugPrints {
+						fmt.Printf("PROCESS: Completed block %d\n", blockCtx.Idx)
+					}
 
 					// Build index for not skipped txs
 					if txIndex {
@@ -493,4 +520,77 @@ func mergeCheaters(a, b lachesis.Cheaters) lachesis.Cheaters {
 		}
 	}
 	return merged
+}
+
+func getSingleProposerProposal(
+	blockEvents inter.EventPayloads,
+	lastBlock *evmcore.EvmHeader,
+) *inter.Proposal {
+
+	desiredBlockNumber := idx.Block(lastBlock.Number.Uint64() + 1)
+	parentHash := lastBlock.Hash
+
+	// Collect payloads for the new block with the matching
+	// number from the events, ignore other payloads.
+	payloads := []*inter.Payload{}
+	for _, e := range blockEvents {
+		if proposal := e.Payload().Proposal; proposal != nil {
+			if proposal.Number != desiredBlockNumber {
+				log.Warn(
+					"Confirmed events contains proposal with wrong block number",
+					"wanted", desiredBlockNumber,
+					"got", proposal.Number,
+					"creator", e.Creator(),
+				)
+				continue
+			}
+			if proposal.ParentHash != parentHash {
+				log.Warn(
+					"Confirmed events contains proposal with wrong parent hash",
+					"wanted", parentHash,
+					"got", proposal.ParentHash,
+					"creator", e.Creator(),
+				)
+				continue
+			}
+
+			payloads = append(payloads, e.Payload())
+		}
+	}
+	if len(payloads) > 1 {
+		log.Warn("Found multiple proposals for the same block",
+			"block", desiredBlockNumber,
+			"proposals", len(payloads),
+		)
+	}
+
+	if len(payloads) == 0 {
+		return nil
+	}
+
+	if len(payloads) == 1 {
+		return payloads[0].Proposal
+	}
+
+	best := payloads[0]
+	for _, p := range payloads {
+		switch cmp.Compare(p.LastSeenProposalTurn, best.LastSeenProposalTurn) {
+		case -1:
+			best = p
+		case 0:
+			// The validation of events should not allow multiple proposals
+			// with the same turn number in a forkless DAG, and forks should
+			// be ignored by the consensus when producing confirmed events.
+			// However, to be conservative, we consider the possibility of
+			// two proposals with the same turn number and use the proposal
+			// hash as a tie breaker.
+			a := p.Proposal.Hash()
+			b := best.Proposal.Hash()
+			if bytes.Compare(a[:], b[:]) < 0 {
+				best = p
+			}
+		case 1:
+		}
+	}
+	return best.Proposal
 }
