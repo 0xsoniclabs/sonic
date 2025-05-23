@@ -36,8 +36,8 @@ pipeline {
         stage('Run tests') {
             steps {
                 catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
-                    sh 'go test -coverprofile=coverage.txt --timeout 30m $(go list ./... | grep -v /tests)'
-                    sh 'make unit-coverage'
+                    sh 'make unit-coverage-all'
+                    sh 'make integration-coverage-all'
                 }
             }
         }
@@ -47,7 +47,7 @@ pipeline {
                 CODECOV_TOKEN = credentials('codecov-uploader-0xsoniclabs-global')
             }
             steps {
-                sh ('codecov upload-process -r 0xsoniclabs/sonic -f ./coverage.tx -t ${CODECOV_TOKEN}')
+                sh ('codecov upload-process -r 0xsoniclabs/sonic -f ./build/coverage/*/unit-cover.out -t ${CODECOV_TOKEN}')
                 sh ('codecov upload-process -r 0xsoniclabs/sonic -f ./build/coverage/*/integration-cover.out -t ${CODECOV_TOKEN}')
             }
         }
