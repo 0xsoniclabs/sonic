@@ -499,7 +499,7 @@ func TestEIP4844Transactions(t *testing.T) {
 		{"empty blob tx before cancun", nil, false, ErrTxTypeNotSupported},
 		{"blob tx before cancun", common.Address{1}.Bytes(), false, ErrTxTypeNotSupported},
 		{"empty blob tx", nil, true, nil},
-		{"blob tx with data", common.Address{1}.Bytes(), true, ErrTxTypeNotSupported},
+		{"blob tx with data", common.Address{1}.Bytes(), true, ErrNonEmptyBlobTx},
 	}
 
 	for _, test := range tests {
@@ -872,20 +872,19 @@ func TestInvalidTransactions(t *testing.T) {
 	tx := transaction(0, 100, key)
 	from, _ := deriveSender(tx)
 
-	testAddBalance(pool, from, big.NewInt(1))
-	if err := pool.AddRemote(tx); !errors.Is(err, ErrInsufficientFunds) {
-		t.Error("expected", ErrInsufficientFunds)
-	}
-
-	balance := new(big.Int).Add(tx.Value(), new(big.Int).Mul(new(big.Int).SetUint64(tx.Gas()), tx.GasPrice()))
-	testAddBalance(pool, from, balance)
 	if err := pool.AddRemote(tx); !errors.Is(err, ErrIntrinsicGas) {
 		t.Error("expected", ErrIntrinsicGas, "got", err)
 	}
 
+	tx = transaction(0, 100000, key)
+	testAddBalance(pool, from, big.NewInt(1))
+	if err := pool.AddRemote(tx); !errors.Is(err, ErrInsufficientFunds) {
+		t.Errorf("expected %v, but got: %v", ErrInsufficientFunds, err)
+	}
+
 	testSetNonce(pool, from, 1)
 	testAddBalance(pool, from, big.NewInt(0xffffffffffffff))
-	tx = transaction(0, 100000, key)
+
 	if err := pool.AddRemote(tx); !errors.Is(err, ErrNonceTooLow) {
 		t.Error("expected", ErrNonceTooLow)
 	}
@@ -973,7 +972,7 @@ func TestTransactionNegativeValue(t *testing.T) {
 	pool, key := setupTxPool()
 	defer pool.Stop()
 
-	tx, _ := types.SignTx(types.NewTransaction(0, common.Address{}, big.NewInt(-1), 100, big.NewInt(1), nil), types.HomesteadSigner{}, key)
+	tx, _ := types.SignTx(types.NewTransaction(0, common.Address{}, big.NewInt(-1), 200_000, big.NewInt(1), nil), types.HomesteadSigner{}, key)
 	from, _ := deriveSender(tx)
 	testAddBalance(pool, from, big.NewInt(1))
 	if err := pool.AddRemote(tx); err != ErrNegativeValue {
@@ -987,7 +986,7 @@ func TestTransactionTipAboveFeeCap(t *testing.T) {
 	pool, key := setupTxPoolWithConfig(eip1559Config)
 	defer pool.Stop()
 
-	tx := dynamicFeeTx(0, 100, big.NewInt(1), big.NewInt(2), key)
+	tx := dynamicFeeTx(0, 200_000, big.NewInt(1), big.NewInt(2), key)
 
 	if err := pool.AddRemote(tx); err != ErrTipAboveFeeCap {
 		t.Error("expected", ErrTipAboveFeeCap, "got", err)
@@ -1003,12 +1002,12 @@ func TestTransactionVeryHighValues(t *testing.T) {
 	veryBigNumber := big.NewInt(1)
 	veryBigNumber.Lsh(veryBigNumber, 300)
 
-	tx := dynamicFeeTx(0, 100, big.NewInt(1), veryBigNumber, key)
+	tx := dynamicFeeTx(0, 200_000, big.NewInt(1), veryBigNumber, key)
 	if err := pool.AddRemote(tx); err != ErrTipVeryHigh {
 		t.Error("expected", ErrTipVeryHigh, "got", err)
 	}
 
-	tx2 := dynamicFeeTx(0, 100, veryBigNumber, big.NewInt(1), key)
+	tx2 := dynamicFeeTx(0, 200_000, veryBigNumber, big.NewInt(1), key)
 	if err := pool.AddRemote(tx2); err != ErrFeeCapVeryHigh {
 		t.Error("expected", ErrFeeCapVeryHigh, "got", err)
 	}

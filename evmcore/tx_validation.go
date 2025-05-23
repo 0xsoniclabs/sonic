@@ -31,6 +31,15 @@ import (
 // validationOptions is a set of options to adjust the validation of transactions
 // according to the current state of the transaction pool.
 type validationOptions struct {
+	currentState TxPoolStateDB // Current state in the blockchain head
+	minTip       *big.Int      // Minimum gas tip to enforce for acceptance into the pool
+	locals       *accountSet   // Set of local transaction to exempt from eviction rules
+	isLocal      bool          // Whether the transaction came from a local source
+}
+
+// NetworkRulesForValidateTx is a set of network rules to validate transactions
+// according to the current state of the blockchain.
+type NetworkRulesForValidateTx struct {
 	istanbul bool // Fork indicator whether we are in the istanbul revision.
 	shanghai bool // Fork indicator whether we are in the shanghai revision.
 
@@ -40,76 +49,58 @@ type validationOptions struct {
 	eip7623 bool // Fork indicator whether we are using EIP-7623 floor gas validation.
 	eip7702 bool // Fork indicator whether we are using EIP-7702 set code transactions.
 
-	currentState   TxPoolStateDB // Current state in the blockchain head
-	currentMaxGas  uint64        // Current gas limit for transaction caps
-	currentBaseFee *big.Int      // Current base fee for transaction caps
-	minTip         *big.Int      // Minimum gas tip to enforce for acceptance into the pool
+	currentMaxGas  uint64   // Current gas limit for transaction caps
+	currentBaseFee *big.Int // Current base fee for transaction caps
 
-	locals  *accountSet // Set of local transaction to exempt from eviction rules
-	isLocal bool        // Whether the transaction came from a local source
-
-	signer types.Signer
+	signer types.Signer // sender is included as part of network rules because it depends on the chainId.
 }
 
 // validateTx checks whether a transaction is valid according to the current
 // options and adheres to some heuristic limits of the local node (price and size).
-func validateTx(tx *types.Transaction, opt validationOptions) error {
+func validateTx(
+	tx *types.Transaction,
+	opt validationOptions,
+	netRules NetworkRulesForValidateTx) error {
 
-	// Accept only legacy transactions until EIP-2718/2930 activates.
-	// Since both eip-2718 and eip-2930 are activated in the berlin fork
-	// (https://blog.ethereum.org/2021/03/08/ethereum-berlin-upgrade-announcement),
-	// they can be grouped in a single flag.
-	if !opt.eip2718 && tx.Type() != types.LegacyTxType {
-		return ErrTxTypeNotSupported
-	}
-	// Reject dynamic fee transactions until EIP-1559 activates.
-	if !opt.eip1559 && tx.Type() == types.DynamicFeeTxType {
-		return ErrTxTypeNotSupported
-	}
-	// Reject blob transactions until EIP-4844 activates or if is already EIP-4844 and they are not empty
-	if tx.Type() == types.BlobTxType {
-		if !opt.eip4844 {
-			return ErrTxTypeNotSupported
-		}
-		// For now, Sonic only supports Blob transactions without blob data.
-		if len(tx.BlobHashes()) > 0 ||
-			(tx.BlobTxSidecar() != nil && len(tx.BlobTxSidecar().BlobHashes()) > 0) {
-			return ErrTxTypeNotSupported
-		}
-	}
-	// validate EIP-7702 transactions, part of prague revision
-	if tx.Type() == types.SetCodeTxType {
-		// Check minimum revision
-		if !opt.eip7702 {
-			return ErrTxTypeNotSupported
-		}
-
-		// Check non-empty authorization list
-		if len(tx.SetCodeAuthorizations()) == 0 {
-			return ErrEmptyAuthorizations
-		}
+	if err := ValidateTxType(tx, netRules); err != nil {
+		return err
 	}
 
-	// Reject transactions over defined size to prevent DOS attacks
-	if uint64(tx.Size()) > txMaxSize {
-		return ErrOversizedData
+	if err := ValidateTxStatic(tx); err != nil {
+		return err
 	}
 
-	// Check whether the init code size has been exceeded, introduced in EIP-3860
-	if opt.shanghai && tx.To() == nil &&
-		len(tx.Data()) > params.MaxInitCodeSize {
-		return fmt.Errorf("%w: code size %v, limit %v", ErrMaxInitCodeSizeExceeded, len(tx.Data()), params.MaxInitCodeSize)
+	if err := ValidateTxForNetwork(tx, netRules); err != nil {
+		return err
 	}
+
+	if err := validateTxForPool(tx, opt, netRules.signer); err != nil {
+		return err
+	}
+
+	if err := ValidateTxForState(tx, opt.currentState, netRules.signer); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// ValidateTxStatic runs a set of verification independent from any context with
+// the aim to identify malformed transactions. It checks the transaction's:
+// - value (must be positive)
+// - gas fee cap and tip cap must be within the 256 bit range
+// - gas fee cap must be greater than or equal to the tip cap
+// - blob transactions must not contain any blob data
+// - set code transactions must not have an empty authorization list
+// - size must be within the defined limit
+//
+// It returns an error if any of the checks fail.
+func ValidateTxStatic(tx *types.Transaction) error {
 
 	// Transactions can't be negative. This may never happen using RLP decoded
 	// transactions but may occur if you create a transaction using the RPC.
 	if tx.Value().Sign() < 0 {
 		return ErrNegativeValue
-	}
-
-	// Ensure the transaction doesn't exceed the current block limit gas.
-	if opt.currentMaxGas < tx.Gas() {
-		return ErrGasLimit
 	}
 
 	// Sanity check for extremely large numbers
@@ -125,19 +116,73 @@ func validateTx(tx *types.Transaction, opt validationOptions) error {
 		return ErrTipAboveFeeCap
 	}
 
-	// Make sure the transaction is signed properly.
-	from, err := types.Sender(opt.signer, tx)
-	if err != nil {
-		return ErrInvalidSender
+	// Sonic only supports Blob transactions without blob data.
+	if tx.Type() == types.BlobTxType &&
+		(len(tx.BlobHashes()) > 0 || (tx.BlobTxSidecar() != nil && len(tx.BlobTxSidecar().BlobHashes()) > 0)) {
+		return ErrNonEmptyBlobTx
 	}
 
-	// Drop non-local transactions under our own minimal accepted gas price or tip
-	local := opt.isLocal || opt.locals.contains(from) // account may be local even if the transaction arrived from the network
-	if !local && tx.GasTipCapIntCmp(opt.minTip) < 0 {
-		log.Trace("Rejecting underpriced tx: pool.gasPrice", "pool.gasPrice",
-			opt.minTip, "tx.GasTipCap", tx.GasTipCap())
-		return ErrUnderpriced
+	// Check non-empty authorization list
+	if tx.Type() == types.SetCodeTxType && len(tx.SetCodeAuthorizations()) == 0 {
+		return ErrEmptyAuthorizations
 	}
+
+	// Reject transactions over defined size to prevent DoS attacks
+	if uint64(tx.Size()) > txMaxSize {
+		return ErrOversizedData
+	}
+
+	return nil
+}
+
+// ValidateTxType runs a set of verifications against the given
+// network rules. It checks that the transaction's type
+// (legacy, access list, dynamic fee, blob, set code) is supported in the current network
+//
+// It returns an error if any of the checks fail.
+func ValidateTxType(tx *types.Transaction, opt NetworkRulesForValidateTx) error {
+	// With the introduction of EIP-2718 transaction envelope, the transaction
+	// can be of different types. Before the Berlin fork
+	// (https://blog.ethereum.org/2021/03/08/ethereum-berlin-upgrade-announcement),
+	// the only accepted type of transaction is legacy.
+	if !opt.eip2718 && tx.Type() != types.LegacyTxType {
+		return ErrTxTypeNotSupported
+	}
+	// NOTE: between eip-2718 and eip-1559, access list transactions are allowed as well.
+
+	// Reject dynamic fee transactions until EIP-1559 activates.
+	if !opt.eip1559 && tx.Type() == types.DynamicFeeTxType {
+		return ErrTxTypeNotSupported
+	}
+	// Reject blob transactions until EIP-4844 activates or if is already EIP-4844 and they are not empty
+	if tx.Type() == types.BlobTxType && !opt.eip4844 {
+		return ErrTxTypeNotSupported
+	}
+	// validate EIP-7702 transactions, part of prague revision
+	if tx.Type() == types.SetCodeTxType && !opt.eip7702 {
+		return ErrTxTypeNotSupported
+	}
+
+	return nil
+}
+
+// ValidateTxForNetwork checks if a transaction is valid based on the current network rules.
+// Specifically, it ensures the transaction adheres to the following conditions:
+// - init code size (if contract creation) is within the defined limit
+// - gas fee cap is greater than the minimum base fee
+// - gas is within the max accepted gas per transaction
+// - gas is greater than the intrinsic gas
+// - gas is greater than the floor data cost (EIP-7623)
+//
+// Returns an error if any of these conditions are not met.
+func ValidateTxForNetwork(tx *types.Transaction, opt NetworkRulesForValidateTx) error {
+
+	// This check does not validate gas, but depends on active revision.
+	// Check whether the init code size has been exceeded, introduced in EIP-3860
+	if opt.shanghai && tx.To() == nil && len(tx.Data()) > params.MaxInitCodeSize {
+		return fmt.Errorf("%w: code size %v, limit %v", ErrMaxInitCodeSizeExceeded, len(tx.Data()), params.MaxInitCodeSize)
+	}
+
 	// Ensure Opera-specific hard bounds
 	if baseFee := opt.currentBaseFee; baseFee != nil {
 		limit := gaspricelimits.GetMinimumFeeCapForTransactionPool(baseFee)
@@ -147,15 +192,9 @@ func validateTx(tx *types.Transaction, opt validationOptions) error {
 		}
 	}
 
-	// Ensure the transaction adheres to nonce ordering
-	if opt.currentState.GetNonce(from) > tx.Nonce() {
-		return ErrNonceTooLow
-	}
-
-	// Transactor should have enough funds to cover the costs
-	// cost == V + GP * GL
-	if utils.Uint256ToBigInt(opt.currentState.GetBalance(from)).Cmp(tx.Cost()) < 0 {
-		return ErrInsufficientFunds
+	// Ensure the transaction doesn't exceed the current block limit gas.
+	if opt.currentMaxGas < tx.Gas() {
+		return ErrGasLimit
 	}
 
 	// Ensure the transaction has more gas than the basic tx fee.
@@ -187,5 +226,58 @@ func validateTx(tx *types.Transaction, opt validationOptions) error {
 		}
 	}
 
+	return nil
+}
+
+// ValidateTxForState checks if a transaction is valid based on the sender's current state.
+// Specifically, it ensures the sender has sufficient balance to cover the transaction cost,
+// and that the transaction's nonce is not lower than the sender's nonce in the state.
+// Returns an error if any of these conditions are not met.
+func ValidateTxForState(tx *types.Transaction, state TxPoolStateDB,
+	signer types.Signer) error {
+
+	// Make sure the transaction is signed properly.
+	from, err := types.Sender(signer, tx)
+	if err != nil {
+		return ErrInvalidSender
+	}
+
+	// Ensure the transaction adheres to nonce ordering
+	if state.GetNonce(from) > tx.Nonce() {
+		return ErrNonceTooLow
+	}
+
+	// Transactor should have enough funds to cover the costs
+	// cost == Value + GasPrice * Gas
+	if utils.Uint256ToBigInt(state.GetBalance(from)).Cmp(tx.Cost()) < 0 {
+		return ErrInsufficientFunds
+	}
+	return nil
+}
+
+// validateTxForPool checks whether a transaction is valid according to the
+// current minimum tip for the pool. It returns an error if the transaction's
+// tip is lower than the minimum tip.
+func validateTxForPool(tx *types.Transaction, opt validationOptions,
+	signer types.Signer) error {
+
+	// Make sure the transaction is signed properly.
+	from, err := types.Sender(signer, tx)
+	if err != nil {
+		return ErrInvalidSender
+	}
+
+	// tx is local if received from the local RPC or if the sender belongs to the local accounts set
+	local := opt.isLocal || opt.locals.contains(from)
+	if local {
+		return nil
+	}
+
+	// Drop non-local transactions under our own minimal accepted gas price or tip.
+	if tx.GasTipCapIntCmp(opt.minTip) < 0 {
+		log.Trace("Rejecting underpriced tx: pool.gasPrice", "pool.gasPrice",
+			opt.minTip, "tx.GasTipCap", tx.GasTipCap())
+		return ErrUnderpriced
+	}
 	return nil
 }
