@@ -11,6 +11,8 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 )
 
+//go:generate mockgen -source=epoch_check.go -destination=epoch_check_mock.go -package=epochcheck
+
 var (
 	ErrTooManyParents    = errors.New("event has too many parents")
 	ErrTooBigGasUsed     = errors.New("event uses too much gas power")
@@ -127,7 +129,9 @@ func (v *Checker) Validate(e inter.EventPayloadI) error {
 	}
 
 	version := uint8(0)
-	if rules.Upgrades.Sonic {
+	if rules.Upgrades.Allegro { // TODO: use dedicated flag
+		version = 3
+	} else if rules.Upgrades.Sonic {
 		version = 2
 	} else if rules.Upgrades.Llr {
 		version = 1
