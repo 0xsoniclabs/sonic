@@ -11,8 +11,16 @@ import (
 )
 
 type TxPosition struct {
-	Block       idx.Block
-	Event       hash.Event
+	Block idx.Block
+	// Deprecated: this used to be a reference to the event that introduced the
+	// transaction which's position this object is representing. It was used to
+	// look up the event in RPC calls, when trying to obtain a transaction based
+	// on its hash. However, all transactions are now stored explicitly and
+	// events are supposed to be pruned eventually. Thus, look-ups should no
+	// longer be done based on events. However, the field is kept for backwards
+	// compatibility with Store data created by older versions of the code.
+	Event hash.Event
+	// Deprecated: for the same reason as the Event field above.
 	EventOffset uint32
 	BlockOffset uint32
 }
