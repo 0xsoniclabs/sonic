@@ -19,7 +19,7 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func TestCreatePayload_InvalidTurn_CreatesEmptyPayload(t *testing.T) {
+func TestCreatePayload_InvalidTurn_CreatesPayloadWithoutProposal(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	world := NewMockworldReader(ctrl)
@@ -29,14 +29,10 @@ func TestCreatePayload_InvalidTurn_CreatesEmptyPayload(t *testing.T) {
 	p2 := hash.Event{2}
 	payloads := map[hash.Event]inter.Payload{
 		p1: {ProposalSyncState: inter.ProposalSyncState{
-			LastSeenProposalTurn:  inter.Turn(0x01),
-			LastSeenProposalFrame: idx.Frame(0x12),
-			LastSeenProposedBlock: idx.Block(0x23),
+			LastSeenProposedBlock: idx.Block(5),
 		}},
 		p2: {ProposalSyncState: inter.ProposalSyncState{
-			LastSeenProposalTurn:  inter.Turn(0x03),
-			LastSeenProposalFrame: idx.Frame(0x11),
-			LastSeenProposedBlock: idx.Block(0x22),
+			LastSeenProposedBlock: idx.Block(5),
 		}},
 	}
 
@@ -44,14 +40,14 @@ func TestCreatePayload_InvalidTurn_CreatesEmptyPayload(t *testing.T) {
 	world.EXPECT().GetEventPayload(p2).Return(payloads[p2])
 
 	world.EXPECT().GetLatestBlock().Return(
-		inter.NewBlockBuilder().WithNumber(5).Build(),
+		inter.NewBlockBuilder().WithNumber(4).Build(),
 	)
 
 	event.EXPECT().Parents().Return(hash.Events{p1, p2})
-	event.EXPECT().Frame().Return(idx.Frame(0x13))
+	event.EXPECT().Frame().Return(idx.Frame(1))
 
-	// This call fails since it tries to propose block 6 while according to the
-	// parent events, a proposal for block 0x23 has already been made.
+	// This call fails since it tries to propose block 5 while according to the
+	// parent events, a proposal for block 5 has already been made.
 	payload, err := createPayload(
 		world, 0, nil, event, nil, nil, nil, nil,
 	)
@@ -67,7 +63,7 @@ func TestCreatePayload_InvalidTurn_CreatesEmptyPayload(t *testing.T) {
 	require.Equal(want, payload)
 }
 
-func TestCreatePayload_UnableToCreateProposalDueToLackOfTimeProgress_CreatesEmptyPayload(t *testing.T) {
+func TestCreatePayload_UnableToCreateProposalDueToLackOfTimeProgress_CreatesPayloadWithoutProposal(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	world := NewMockworldReader(ctrl)
@@ -137,7 +133,6 @@ func TestCreatePayload_InvalidValidators_ForwardsError(t *testing.T) {
 	event.EXPECT().Frame().Return(idx.Frame(0))
 
 	world := NewMockworldReader(ctrl)
-	world.EXPECT().GetEpochStartBlock(event.Epoch()).Return(idx.Block(62))
 	world.EXPECT().GetLatestBlock().Return(
 		inter.NewBlockBuilder().WithNumber(62).Build(),
 	)

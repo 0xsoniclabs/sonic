@@ -40,7 +40,7 @@ func TestProposalSyncState_Join_ComputesTheMaximumForIndividualStateProperties(t
 	}
 }
 
-func TestCalculateIncomingProposalSyncState_ProducesEpochStartStateForGenesisEvent(t *testing.T) {
+func TestCalculateIncomingProposalSyncState_ProducesDefaultStateForGenesisEvent(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	world := NewMockEventReader(ctrl)
@@ -49,13 +49,9 @@ func TestCalculateIncomingProposalSyncState_ProducesEpochStartStateForGenesisEve
 	event.SetEpoch(42)
 	require.Empty(event.Parents())
 
-	epochStartBlock := idx.Block(123)
-	world.EXPECT().GetEpochStartBlock(event.Epoch()).Return(epochStartBlock)
-
 	state := CalculateIncomingProposalSyncState(world, event)
-	require.Equal(Turn(0), state.LastSeenProposalTurn)
-	require.Equal(idx.Frame(0), state.LastSeenProposalFrame)
-	require.Equal(epochStartBlock, state.LastSeenProposedBlock)
+	want := ProposalSyncState{}
+	require.Equal(want, state)
 }
 
 func TestCalculateIncomingProposalSyncState_AggregatesParentStates(t *testing.T) {
@@ -156,12 +152,6 @@ func TestIsAllowedToPropose_RejectsInvalidProposerTurn(t *testing.T) {
 		"wrong proposer": func(input *input) {
 			input.validator = invalidProposer
 		},
-		"proposed block is too old": func(input *input) {
-			input.blockToBeProposed = input.blockToBeProposed - 1
-		},
-		"proposed block is too new": func(input *input) {
-			input.blockToBeProposed = input.blockToBeProposed + 1
-		},
 		"invalid turn progression": func(input *input) {
 			// a proposal made too late needs to be rejected
 			input.currentFrame = input.currentFrame * 10
@@ -208,6 +198,93 @@ func TestIsAllowedToPropose_RejectsInvalidProposerTurn(t *testing.T) {
 	}
 }
 
+func TestIsAllowedToPropose_BlocksProposingLastSeenBlockDuringTimeoutWindow(t *testing.T) {
+	tests := map[string]struct {
+		lastProposalFrame idx.Frame
+		currentFrame      idx.Frame
+		lastProposedBlock idx.Block
+		blockToPropose    idx.Block
+		allowed           bool
+	}{
+		"allow follow-up": {
+			lastProposalFrame: 12,
+			currentFrame:      13,
+			lastProposedBlock: 5,
+			blockToPropose:    6,
+			allowed:           true,
+		},
+		"allow intended correction of old block": {
+			lastProposalFrame: 12,
+			currentFrame:      13,
+			lastProposedBlock: 5,
+			blockToPropose:    4,
+			allowed:           true,
+		},
+		"allow future block": {
+			lastProposalFrame: 12,
+			currentFrame:      13,
+			lastProposedBlock: 5,
+			blockToPropose:    7,
+			allowed:           true,
+		},
+		"deny replacement before timeout": {
+			lastProposalFrame: 12,
+			currentFrame:      13,
+			lastProposedBlock: 5,
+			blockToPropose:    5,
+			allowed:           false,
+		},
+		"allow replacement just before timeout": {
+			lastProposalFrame: 12,
+			currentFrame:      12 + TurnTimeoutInFrames,
+			lastProposedBlock: 5,
+			blockToPropose:    5,
+			allowed:           false,
+		},
+		"allow replacement after timeout": {
+			lastProposalFrame: 12,
+			currentFrame:      12 + TurnTimeoutInFrames + 1,
+			lastProposedBlock: 5,
+			blockToPropose:    5,
+			allowed:           true,
+		},
+		"allow replacement after timeout + 1": {
+			lastProposalFrame: 12,
+			currentFrame:      12 + TurnTimeoutInFrames + 1 + 1,
+			lastProposedBlock: 5,
+			blockToPropose:    5,
+			allowed:           true,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+
+			validator := idx.ValidatorID(1)
+			builder := pos.ValidatorsBuilder{}
+			builder.Set(validator, 10)
+			validators := builder.Build()
+
+			ProposalState := ProposalSyncState{
+				LastSeenProposalTurn:  12,
+				LastSeenProposalFrame: test.lastProposalFrame,
+				LastSeenProposedBlock: test.lastProposedBlock,
+			}
+
+			ok, err := IsAllowedToPropose(
+				validator,
+				validators,
+				ProposalState,
+				test.currentFrame,
+				test.blockToPropose,
+			)
+			require.NoError(err)
+			require.Equal(test.allowed, ok)
+		})
+	}
+}
+
 func TestIsAllowedToPropose_ForwardsTurnSelectionError(t *testing.T) {
 	validators := pos.ValidatorsBuilder{}.Build()
 
@@ -223,4 +300,86 @@ func TestIsAllowedToPropose_ForwardsTurnSelectionError(t *testing.T) {
 	)
 	require.Error(t, got)
 	require.Equal(t, got, want)
+}
+
+func TestGetCurrentTurn_ForKnownExamples_ProducesCorrectTurn(t *testing.T) {
+	tests := map[string]struct {
+		lastTurn     Turn
+		lastFrame    idx.Frame
+		currentFrame idx.Frame
+		want         Turn
+	}{
+		"same frame": {
+			lastTurn:     4,
+			lastFrame:    5,
+			currentFrame: 5,
+			want:         4,
+		},
+		"previous frame should not decrease the turn": {
+			lastTurn:     4,
+			lastFrame:    5,
+			currentFrame: 4,
+			want:         4,
+		},
+		"next frame should not increase the turn": {
+			lastTurn:     4,
+			lastFrame:    5,
+			currentFrame: 6,
+			want:         4,
+		},
+		"a timeout should increase the turn": {
+			lastTurn:     4,
+			lastFrame:    5,
+			currentFrame: 5 + TurnTimeoutInFrames,
+			want:         5,
+		},
+		"multiple timeouts should increase the turn": {
+			lastTurn:     4,
+			lastFrame:    5,
+			currentFrame: 5 + 2*TurnTimeoutInFrames,
+			want:         6,
+		},
+		"multiple timeouts should increase the turn (2)": {
+			lastTurn:     4,
+			lastFrame:    5,
+			currentFrame: 5 + 3*TurnTimeoutInFrames,
+			want:         7,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			got := getCurrentTurn(
+				ProposalSyncState{
+					LastSeenProposalTurn:  test.lastTurn,
+					LastSeenProposalFrame: test.lastFrame,
+				},
+				test.currentFrame,
+			)
+			require.Equal(t, test.want, got)
+		})
+	}
+}
+
+func TestGetCurrentTurn_ForCartesianProductOfInputs_ProducesResultsConsideringTimeouts(t *testing.T) {
+	for turn := range Turn(3) {
+		for start := range idx.Frame(5) {
+			for currentFrame := range idx.Frame(5 * TurnTimeoutInFrames) {
+				got := getCurrentTurn(
+					ProposalSyncState{
+						LastSeenProposalTurn:  turn,
+						LastSeenProposalFrame: start,
+					},
+					currentFrame,
+				)
+
+				want := turn
+				if currentFrame > start {
+					delta := currentFrame - start
+					want += Turn(delta / TurnTimeoutInFrames)
+				}
+				require.Equal(t, want, got)
+			}
+		}
+	}
 }

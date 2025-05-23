@@ -34,20 +34,9 @@ func CalculateIncomingProposalSyncState(
 	reader EventReader,
 	event dag.Event,
 ) ProposalSyncState {
+	// The last seen proposal information of the parents needs to be aggregated.
 	res := ProposalSyncState{}
-	parents := event.Parents()
-
-	// For genesis events without errors, there is no last seen proposal.
-	// However, we need to set the last seen proposed block to the start block
-	// of the epoch to retain progress.
-	if len(parents) == 0 {
-		res.LastSeenProposedBlock = reader.GetEpochStartBlock(event.Epoch())
-		return res
-	}
-
-	// For all other events, the last seen proposal information of the parents
-	// needs to be aggregated.
-	for _, parent := range parents {
+	for _, parent := range event.Parents() {
 		current := reader.GetEventPayload(parent).ProposalSyncState
 		res = JoinProposalSyncStates(res, current)
 	}
@@ -59,8 +48,6 @@ func CalculateIncomingProposalSyncState(
 // particular, the payload of the parent events and the block hight at the start
 // of the current epoch is required.
 type EventReader interface {
-	// GetEpochStartBlock must be able to return the block of the current epoch.
-	GetEpochStartBlock(idx.Epoch) idx.Block
 	// GetEventPayload must be able to return the payload of parent events of an
 	// event for which the incoming proposal sync state is being calculated.
 	GetEventPayload(hash.Event) Payload
@@ -77,15 +64,18 @@ func IsAllowedToPropose(
 	currentFrame idx.Frame,
 	blockToPropose idx.Block,
 ) (bool, error) {
-	// Check that the block about to be proposed is the next expected block.
-	// TODO: show that this throttling mechanism is safe
-	// see https://github.com/0xsoniclabs/sonic-admin/issues/182
-	if proposalState.LastSeenProposedBlock+1 != blockToPropose {
-		return false, nil
+	// Check that the block about to be proposed is not a replacement of the
+	// last seen proposed block, which might not have been confirmed yet.
+	// If a proposal was not confirmed within the timeout period, a replacement
+	// can be proposed.
+	if currentFrame < proposalState.LastSeenProposalFrame+TurnTimeoutInFrames {
+		if blockToPropose == proposalState.LastSeenProposedBlock {
+			return false, nil
+		}
 	}
 
 	// Check whether it is this emitter's turn to propose a new block.
-	nextTurn := proposalState.LastSeenProposalTurn + 1
+	nextTurn := getCurrentTurn(proposalState, currentFrame) + 1
 	proposer, err := GetProposer(validators, nextTurn)
 	if err != nil || proposer != validator {
 		return false, err
@@ -102,4 +92,18 @@ func IsAllowedToPropose(
 			Frame: currentFrame,
 		},
 	), nil
+}
+
+// getCurrentTurn calculates the current turn based on the last seen proposal
+// state and the current frame. This function considers the implicit turn
+// progression that occurs if no proposals are made within the timeout period.
+func getCurrentTurn(
+	proposalState ProposalSyncState,
+	currentFrame idx.Frame,
+) Turn {
+	if currentFrame < proposalState.LastSeenProposalFrame {
+		return proposalState.LastSeenProposalTurn
+	}
+	delta := currentFrame - proposalState.LastSeenProposalFrame
+	return proposalState.LastSeenProposalTurn + Turn(delta/TurnTimeoutInFrames)
 }
