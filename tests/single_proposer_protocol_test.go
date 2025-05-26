@@ -7,7 +7,10 @@ import (
 
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/require"
 )
 
@@ -48,6 +51,9 @@ func testSingleProposerProtocol_CanProcessTransactions(t *testing.T, numNodes in
 		_, err := net.EndowAccount(accounts[i].Address(), big.NewInt(1e18))
 		require.NoError(err)
 	}
+
+	// Check that the network is using the single-proposer protocol.
+	require.Equal(3, getUsedEventVersion(t, client))
 
 	// --- check processing of transactions ---
 
@@ -124,6 +130,12 @@ func testSingleProposerProtocol_CanBeEnabled(t *testing.T, numNodes int) {
 	_, err := net.EndowAccount(address, big.NewInt(50))
 	require.NoError(err)
 
+	// Initially, Version 2 of the event protocol should be used.
+	client, err := net.GetClient()
+	require.NoError(err)
+	defer client.Close()
+	require.Equal(2, getUsedEventVersion(t, client))
+
 	// Send the network rule update.
 	type rulesType struct {
 		Upgrades struct{ Allegro bool }
@@ -138,14 +150,51 @@ func testSingleProposerProtocol_CanBeEnabled(t *testing.T, numNodes int) {
 	_, err = net.EndowAccount(address, big.NewInt(50))
 	require.NoError(err)
 
-	// Advance the epoch and make sure that the network is still able to process
-	// transactions after the switch to the single-proposer protocol.
+	// At this point, still version 2 should be used.
+	require.Equal(2, getUsedEventVersion(t, client))
+
+	// Advance the epoch by one, enabling the single-proposer protocol.
 	require.NoError(net.AdvanceEpoch(1))
+
+	// Check that transactions can still be processed after the epoch change.
 	for range 5 {
 		_, err = net.EndowAccount(address, big.NewInt(50))
 		require.NoError(err)
 	}
 
+	// Check that in this epoch the single-proposer protocol is used.
+	require.Equal(3, getUsedEventVersion(t, client))
+
 	// TODO: check that the single-proposer protocol can also be disabled once
 	// the feature is controlled by its own feature flag.
+}
+
+// getUsedEventVersion retrieves the current event version used by the network.
+func getUsedEventVersion(
+	t *testing.T,
+	client *ethclient.Client,
+) int {
+	t.Helper()
+	require := require.New(t)
+
+	// Get the current epoch.
+	block := struct {
+		Epoch hexutil.Uint64
+	}{}
+	err := client.Client().Call(&block, "eth_getBlockByNumber", rpc.BlockNumber(-1), false)
+	require.NoError(err)
+
+	// Get the head events of the current epoch.
+	heads := []hexutil.Bytes{}
+	err = client.Client().Call(&heads, "dag_getHeads", rpc.BlockNumber(block.Epoch))
+	require.NoError(err)
+
+	// Download one of the head events and fetch the version.
+	event := struct {
+		Version hexutil.Uint64
+	}{}
+	err = client.Client().Call(&event, "dag_getEvent", heads[0].String())
+	require.NoError(err)
+
+	return int(event.Version)
 }
