@@ -33,11 +33,18 @@ pipeline {
             }
         }
 
-        stage('Run tests') {
+        stage('Run unit tests') {
             steps {
                 catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
-                    sh 'make unit-coverage-all'
-                    sh 'make integration-coverage-all'
+                    sh 'make unit-cover-all'
+                }
+            }
+        }
+
+        stage('Run integration tests') {
+            steps {
+                catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                    sh 'make integration-cover-all'
                 }
             }
         }
