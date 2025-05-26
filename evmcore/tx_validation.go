@@ -116,12 +116,6 @@ func ValidateTxStatic(tx *types.Transaction) error {
 		return ErrTipAboveFeeCap
 	}
 
-	// Sonic only supports Blob transactions without blob data.
-	if tx.Type() == types.BlobTxType &&
-		(len(tx.BlobHashes()) > 0 || (tx.BlobTxSidecar() != nil && len(tx.BlobTxSidecar().BlobHashes()) > 0)) {
-		return ErrNonEmptyBlobTx
-	}
-
 	// Check non-empty authorization list
 	if tx.Type() == types.SetCodeTxType && len(tx.SetCodeAuthorizations()) == 0 {
 		return ErrEmptyAuthorizations
@@ -150,9 +144,17 @@ func ValidateTxType(tx *types.Transaction, opt NetworkRulesForValidateTx) error 
 		return ErrTxTypeNotSupported
 	}
 	// Reject blob transactions until EIP-4844 activates or if is already EIP-4844 and they are not empty
-	if tx.Type() == types.BlobTxType && !opt.eip4844 {
-		return ErrTxTypeNotSupported
+	if tx.Type() == types.BlobTxType {
+		if !opt.eip4844 {
+			return ErrTxTypeNotSupported
+		}
+		// Sonic only supports Blob transactions without blob data.
+		if len(tx.BlobHashes()) > 0 ||
+			(tx.BlobTxSidecar() != nil && len(tx.BlobTxSidecar().BlobHashes()) > 0) {
+			return ErrNonEmptyBlobTx
+		}
 	}
+
 	// validate EIP-7702 transactions, part of prague revision
 	if tx.Type() == types.SetCodeTxType && !opt.eip7702 {
 		return ErrTxTypeNotSupported
