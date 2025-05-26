@@ -127,11 +127,6 @@ func ValidateTxStatic(tx *types.Transaction) error {
 		return ErrEmptyAuthorizations
 	}
 
-	// Reject transactions over defined size to prevent DoS attacks
-	if uint64(tx.Size()) > txMaxSize {
-		return ErrOversizedData
-	}
-
 	return nil
 }
 
@@ -260,6 +255,11 @@ func ValidateTxForState(tx *types.Transaction, state TxPoolStateDB,
 // tip is lower than the minimum tip.
 func validateTxForPool(tx *types.Transaction, opt validationOptions,
 	signer types.Signer) error {
+
+	// Reject transactions over defined size to prevent DoS attacks
+	if uint64(tx.Size()) > txMaxSize {
+		return ErrOversizedData
+	}
 
 	// Make sure the transaction is signed properly.
 	from, err := types.Sender(signer, tx)
