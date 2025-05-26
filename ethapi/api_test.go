@@ -610,30 +610,71 @@ func TestTransactionJSONSerialization(t *testing.T) {
 	}
 }
 
-func TestNewRPCTransaction_LegacyTxSignatureCanBeVerified(t *testing.T) {
+func TestNewRPCTransaction_AllTxSignatureAndHashCanBeVerified(t *testing.T) {
 	ChainId := big.NewInt(17)
 
-	tx := &types.LegacyTx{
-		Nonce:    0,
-		To:       &common.Address{1},
-		Gas:      1e6,
-		GasPrice: big.NewInt(500e9),
+	tests := map[string]types.TxData{
+		"legacy": &types.LegacyTx{
+			Nonce:    0,
+			To:       &common.Address{1},
+			Gas:      1e6,
+			GasPrice: big.NewInt(500e9),
+		},
+		"accessList": &types.AccessListTx{
+			ChainID:  ChainId,
+			Nonce:    0,
+			To:       &common.Address{1},
+			Gas:      1e6,
+			GasPrice: big.NewInt(500e9),
+			AccessList: types.AccessList{
+				{Address: common.Address{1}, StorageKeys: []common.Hash{{0x01}}},
+			},
+		},
+		"dynamicFee": &types.DynamicFeeTx{
+			ChainID:   ChainId,
+			Nonce:     0,
+			To:        &common.Address{1},
+			Gas:       1e6,
+			GasFeeCap: big.NewInt(500e9),
+			GasTipCap: big.NewInt(500e9),
+		},
+		"blob": &types.BlobTx{
+			ChainID:    uint256.MustFromBig(ChainId),
+			Nonce:      0,
+			Gas:        1e6,
+			GasFeeCap:  uint256.NewInt(500e9),
+			BlobFeeCap: uint256.NewInt(500e9),
+			BlobHashes: []common.Hash{{0x01}},
+		},
+		"setCode": &types.SetCodeTx{
+			ChainID:  uint256.MustFromBig(ChainId),
+			Nonce:    0,
+			To:       common.Address{42},
+			Gas:      1e6,
+			AuthList: []types.SetCodeAuthorization{{}},
+		},
 	}
-	key, err := crypto.GenerateKey()
-	require.NoError(t, err)
-	signed := signTransaction(t, ChainId, tx, key)
 
-	// some block data for the test
-	blockHash := common.Hash{1, 2, 3, 4}
-	blockNumber := uint64(4321)
-	index := uint64(42)
-	baseFee := big.NewInt(1234)
+	for name, tx := range tests {
+		t.Run(name, func(t *testing.T) {
 
-	rpcTx := newRPCTransaction(signed, blockHash, blockNumber, index, baseFee)
-	require.Equal(t, signed.Hash(), rpcTx.Hash)
+			key, err := crypto.GenerateKey()
+			require.NoError(t, err)
+			signed := signTransaction(t, ChainId, tx, key)
 
-	_, err = types.Sender(types.LatestSignerForChainID(rpcTx.ChainID.ToInt()), signed)
-	require.NoError(t, err, "failed to retrieve transaction sender")
+			// some block data for the test
+			blockHash := common.Hash{1, 2, 3, 4}
+			blockNumber := uint64(4321)
+			index := uint64(42)
+			baseFee := big.NewInt(1234)
+
+			rpcTx := newRPCTransaction(signed, blockHash, blockNumber, index, baseFee)
+			require.Equal(t, signed.Hash(), rpcTx.Hash)
+
+			_, err = types.Sender(types.LatestSignerForChainID(rpcTx.ChainID.ToInt()), signed)
+			require.NoError(t, err, "failed to retrieve transaction sender")
+		})
+	}
 }
 
 func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {

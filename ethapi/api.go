@@ -1402,7 +1402,8 @@ func newRPCTransaction(tx *types.Transaction, blockHash common.Hash, blockNumber
 
 	switch tx.Type() {
 	case types.LegacyTxType:
-		// chainId is needed to verify transaction signature
+		// chainId is required to verify the transaction signature.
+		// Legacy transactions do not include a chainId, so it must be provided explicitly.
 		result.ChainID = (*hexutil.Big)(tx.ChainId())
 	case types.AccessListTxType:
 		copyAccessList(tx, result)
