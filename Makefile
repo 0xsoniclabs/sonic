@@ -36,7 +36,6 @@ sonic-image:
 test:
 	go test -cover ./...
 
-
 .PHONY: coverage
 coverage:
 	go test -coverprofile=cover.prof $$(go list ./... | grep -v '/gossip/contract/' | grep -v '/gossip/emitter/mock' | xargs)
