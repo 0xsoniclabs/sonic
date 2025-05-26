@@ -106,10 +106,12 @@ func createPayload(
 	}
 
 	// Determine whether this validator is allowed to propose a new block.
+	currentEpoch := event.Epoch()
 	isMyTurn, err := inter.IsAllowedToPropose(
 		validator,
 		validators,
 		incomingState,
+		currentEpoch,
 		currentFrame,
 	)
 	if err != nil {

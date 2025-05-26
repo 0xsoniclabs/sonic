@@ -196,6 +196,7 @@ func TestCreatePayload_UnableToCreateProposalDueToLackOfTimeProgress_CreatesPayl
 	world.EXPECT().GetRules().Return(opera.Rules{})
 
 	event.EXPECT().Parents().Return(hash.Events{p1, p2})
+	event.EXPECT().Epoch().Return(idx.Epoch(0x12))
 	event.EXPECT().Frame().Return(idx.Frame(0x14))
 	event.EXPECT().MedianTime().Return(lastBlockTime)
 
@@ -283,6 +284,7 @@ func TestCreatePayload_ValidTurn_ProducesExpectedPayload(t *testing.T) {
 	world.EXPECT().GetRules().Return(opera.Rules{})
 
 	event.EXPECT().Parents().Return(hash.Events{p1, p2})
+	event.EXPECT().Epoch().Return(idx.Epoch(3)).AnyTimes()
 	event.EXPECT().Frame().Return(idx.Frame(4)).AnyTimes()
 	event.EXPECT().MedianTime().Return(inter.Timestamp(1234))
 
@@ -713,6 +715,7 @@ func TestCreatePayload_ReturnsErrorOnRandaoGenerationFailure(t *testing.T) {
 
 	event := inter.NewMockEventI(ctrl)
 	event.EXPECT().Parents().Return(hash.Events{})
+	event.EXPECT().Epoch().Return(idx.Epoch(1))
 	event.EXPECT().Frame().Return(idx.Frame(2)) // tracker should expect frame 2
 	event.EXPECT().MedianTime().Return(inter.Timestamp(1234))
 

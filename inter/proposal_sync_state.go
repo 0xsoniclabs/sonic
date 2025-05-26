@@ -59,11 +59,12 @@ func IsAllowedToPropose(
 	validator idx.ValidatorID,
 	validators *pos.Validators,
 	proposalState ProposalSyncState,
+	currentEpoch idx.Epoch,
 	currentFrame idx.Frame,
 ) (bool, error) {
 	// Check whether it is this emitter's turn to propose a new block.
 	nextTurn := getCurrentTurn(proposalState, currentFrame) + 1
-	proposer, err := GetProposer(validators, nextTurn)
+	proposer, err := GetProposer(validators, currentEpoch, nextTurn)
 	if err != nil || proposer != validator {
 		return false, err
 	}
