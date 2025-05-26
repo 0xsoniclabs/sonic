@@ -148,7 +148,7 @@ func (w worldAdapter) GetEventPayload(event hash.Event) inter.Payload {
 }
 
 func (w worldAdapter) GetEvmChainConfig() *params.ChainConfig {
-	return w.GetRules().EvmChainConfig(w.GetUpgradeHeights())
+	return w.GetRules().CreateTransientEthChainConfig(w.GetUpgradeHeights())
 }
 
 // --- proposal creation ---

@@ -472,7 +472,27 @@ func getEvmFunc(mockState *state.MockStateDB) func(any, any, any, any, any) (*vm
 		blockCtx := vm.BlockContext{
 			Transfer: vm.TransferFunc(func(sd vm.StateDB, a1, a2 common.Address, i *uint256.Int) {}),
 		}
-		return vm.NewEVM(blockCtx, mockState, &opera.BaseChainConfig, opera.DefaultVMConfig), func() error { return nil }, nil
+
+		timestampInThePast := uint64(0)
+
+		chainConfig := params.ChainConfig{
+			// Following upgrades are always enabled in Sonic (from block height 0):
+			HomesteadBlock:      big.NewInt(0),
+			EIP150Block:         big.NewInt(0),
+			EIP155Block:         big.NewInt(0),
+			EIP158Block:         big.NewInt(0),
+			ByzantiumBlock:      big.NewInt(0),
+			ConstantinopleBlock: big.NewInt(0),
+			PetersburgBlock:     big.NewInt(0),
+			IstanbulBlock:       big.NewInt(0),
+			BerlinBlock:         big.NewInt(0),
+			LondonBlock:         big.NewInt(0),
+			// Following upgrades are always enabled in Sonic (past timestamp):
+			ShanghaiTime: &timestampInThePast,
+			CancunTime:   &timestampInThePast,
+		}
+
+		return vm.NewEVM(blockCtx, mockState, &chainConfig, opera.DefaultVMConfig), func() error { return nil }, nil
 	}
 }
 
@@ -859,16 +879,15 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 
 // makeChainConfig allows to create a chain config with a given set of features
 func makeChainConfig(upgrades opera.Upgrades) *params.ChainConfig {
-
 	if upgrades.Allegro {
-		return opera.MainNetRules().EvmChainConfig(
+		return opera.MainNetRules().CreateTransientEthChainConfig(
 			[]opera.UpgradeHeight{
 				{Upgrades: opera.GetSonicUpgrades(), Height: 0},
 				{Upgrades: opera.GetAllegroUpgrades(), Height: 1},
 			})
 	}
 
-	return opera.MainNetRules().EvmChainConfig(
+	return opera.MainNetRules().CreateTransientEthChainConfig(
 		[]opera.UpgradeHeight{
 			{Upgrades: opera.GetSonicUpgrades(), Height: 0},
 		})

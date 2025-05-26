@@ -186,7 +186,7 @@ func consensusCallbackBeginBlockFn(
 				}
 
 				prevRandao := computePrevRandao(confirmedEvents)
-				chainCfg := es.Rules.EvmChainConfig(store.GetUpgradeHeights())
+				chainCfg := es.Rules.CreateTransientEthChainConfig(store.GetUpgradeHeights())
 				evmProcessor := blockProc.EVMModule.Start(
 					blockCtx,
 					statedb,
