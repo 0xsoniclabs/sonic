@@ -1,19 +1,42 @@
 package gossip
 
 import (
+	"bytes"
+	"cmp"
 	"fmt"
+	"iter"
+	"math/big"
+	"slices"
 	"testing"
 
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
+	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/logger"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
 )
 
 func TestConsensusCallback(t *testing.T) {
+	features := map[string]opera.Upgrades{
+		"sonic": opera.GetSonicUpgrades(),
+		"allegro": opera.GetAllegroUpgrades(),
+	}
+
+	for name, feature := range features {
+		t.Run(name, func(t *testing.T) {
+			testConsensusCallback(t, feature)
+		})
+	}
+}
+
+func testConsensusCallback(t *testing.T, upgrades opera.Upgrades) {
 	logger.SetTestMode(t)
 	require := require.New(t)
 
@@ -21,7 +44,7 @@ func TestConsensusCallback(t *testing.T) {
 
 	const validatorsNum = 3
 
-	env := newTestEnv(2, validatorsNum, t)
+	env := newTestEnvWithUpgrades(2, validatorsNum, upgrades, t)
 	t.Cleanup(func() {
 		err := env.Close()
 		require.NoError(err)
@@ -67,4 +90,238 @@ func TestConsensusCallback(t *testing.T) {
 		)
 	}
 
+}
+
+func TestGetBlockProposal_NoEvents_ReturnsNoProposal(t *testing.T) {
+	last := &evmcore.EvmHeader{
+		Number: big.NewInt(100),
+	}
+	require.Nil(t, getBlockProposal(last, nil, nil))
+}
+
+func TestGetBlockProposal_OneMatchingProposal_ReturnsTheGivenProposal(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	event := inter.NewMockEventPayloadI(ctrl)
+
+	lastHash := common.Hash{1, 2, 3}
+	last := &evmcore.EvmHeader{
+		Number: big.NewInt(100),
+		Hash:   lastHash,
+	}
+
+	proposal := inter.Proposal{
+		Number:     101,
+		ParentHash: lastHash,
+	}
+
+	event.EXPECT().Payload().Return(&inter.Payload{Proposal: &proposal})
+	events := []inter.EventPayloadI{event}
+
+	result := getBlockProposal(last, events, nil)
+	require.NotNil(t, result)
+	require.Equal(t, proposal, *result)
+}
+
+func TestGetBlockProposal_WrongProposals_ReturnsNoProposal(t *testing.T) {
+	last := &evmcore.EvmHeader{
+		Number: big.NewInt(100),
+		Hash:   common.Hash{1, 2, 3},
+	}
+
+	tests := map[string]struct {
+		proposal  inter.Proposal
+		loggerMsg string
+	}{
+		"wrong number": {
+			proposal: inter.Proposal{
+				Number:     idx.Block(last.Number.Int64() + 10),
+				ParentHash: last.Hash,
+			},
+			loggerMsg: "wrong block number",
+		},
+		"wrong parent hash": {
+			proposal: inter.Proposal{
+				Number:     idx.Block(last.Number.Int64() + 1),
+				ParentHash: common.Hash{4, 5, 6},
+			},
+			loggerMsg: "wrong parent hash",
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			event := inter.NewMockEventPayloadI(ctrl)
+			logger := logger.NewMockLogger(ctrl)
+
+			payload := &inter.Payload{Proposal: &test.proposal}
+			event.EXPECT().Payload().Return(payload)
+			creator := idx.ValidatorID(1)
+			event.EXPECT().Creator().Return(creator).AnyTimes()
+
+			events := []inter.EventPayloadI{event}
+
+			any := gomock.Any()
+			logger.EXPECT().Warn(
+				gomock.Regex(test.loggerMsg),
+				any, any, any, any, "creator", creator,
+			)
+
+			result := getBlockProposal(last, events, logger)
+			require.Nil(t, result)
+		})
+	}
+}
+
+func TestGetBlockProposal_MultipleValidProposals_EmitsWarning(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	event1 := inter.NewMockEventPayloadI(ctrl)
+	event2 := inter.NewMockEventPayloadI(ctrl)
+	logger := logger.NewMockLogger(ctrl)
+
+	last := &evmcore.EvmHeader{
+		Number: big.NewInt(100),
+		Hash:   common.Hash{1, 2, 3},
+	}
+
+	proposal := &inter.Proposal{
+		Number:     idx.Block(last.Number.Int64() + 1),
+		ParentHash: last.Hash,
+	}
+
+	payload := &inter.Payload{Proposal: proposal}
+	event1.EXPECT().Payload().Return(payload)
+	event2.EXPECT().Payload().Return(payload)
+
+	events := []inter.EventPayloadI{event1, event2}
+
+	logger.EXPECT().Warn(
+		gomock.Regex("multiple proposals"),
+		"block", proposal.Number, "proposals", len(events),
+	)
+
+	result := getBlockProposal(last, events, logger)
+	require.NotNil(t, result)
+	require.Equal(t, *proposal, *result)
+}
+
+func TestGetBlockProposal_MultipleValidProposals_UsesTurnAndHashAsTieBreaker(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	event1 := inter.NewMockEventPayloadI(ctrl)
+	event2 := inter.NewMockEventPayloadI(ctrl)
+	event3 := inter.NewMockEventPayloadI(ctrl)
+	logger := logger.NewMockLogger(ctrl)
+
+	last := &evmcore.EvmHeader{
+		Number: big.NewInt(100),
+		Hash:   common.Hash{1, 2, 3},
+	}
+
+	payloads := []*inter.Payload{
+		{
+			ProposalSyncState: inter.ProposalSyncState{
+				LastSeenProposalTurn: 1,
+			},
+			Proposal: &inter.Proposal{
+				Number:     101,
+				ParentHash: last.Hash,
+				Time:       123,
+			},
+		},
+		{
+			ProposalSyncState: inter.ProposalSyncState{
+				LastSeenProposalTurn: 1,
+			},
+			Proposal: &inter.Proposal{
+				Number:     101,
+				ParentHash: last.Hash,
+				Time:       456,
+			},
+		},
+		{
+			ProposalSyncState: inter.ProposalSyncState{
+				LastSeenProposalTurn: 2,
+			},
+			Proposal: &inter.Proposal{
+				Number:     101,
+				ParentHash: last.Hash,
+				Time:       789,
+			},
+		},
+	}
+
+	slices.SortFunc(payloads, func(a, b *inter.Payload) int {
+		turnA := a.ProposalSyncState.LastSeenProposalTurn
+		turnB := b.ProposalSyncState.LastSeenProposalTurn
+		if res := cmp.Compare(turnA, turnB); res != 0 {
+			return res
+		}
+		hashA := a.Proposal.Hash()
+		hashB := b.Proposal.Hash()
+		return bytes.Compare(hashA[:], hashB[:])
+	})
+
+	event1.EXPECT().Payload().Return(payloads[0]).AnyTimes()
+	event2.EXPECT().Payload().Return(payloads[1]).AnyTimes()
+	event3.EXPECT().Payload().Return(payloads[2]).AnyTimes()
+	events := []inter.EventPayloadI{event1, event2, event3}
+
+	any := gomock.Any()
+	logger.EXPECT().Warn(any, any, any, any, any).AnyTimes()
+
+	for events := range permute(events) {
+		proposal := getBlockProposal(last, events, logger)
+		require.NotNil(t, proposal)
+		require.Equal(t, payloads[0].Proposal, proposal,
+			"should pick the best proposal based on turn and hash",
+		)
+	}
+}
+
+// permute is a utility function that creates an iterator producing all
+// permutations of the input slice.
+func permute[T any](list []T) iter.Seq[[]T] {
+	list = slices.Clone(list) // clone to avoid modifying the original slice
+	return func(yield func([]T) bool) {
+		if len(list) == 0 {
+			yield(list)
+			return
+		}
+		for i := 0; i < len(list); i++ {
+			list[0], list[i] = list[i], list[0] // swap
+			for cur := range permute(list[1:]) {
+				if !yield(append([]T{list[0]}, cur...)) {
+					return
+				}
+			}
+			list[0], list[i] = list[i], list[0] // swap back
+		}
+	}
+}
+
+func TestPermute_EmptyList_ProducesOneResult(t *testing.T) {
+	res := slices.Collect(permute([]int{}))
+	require.Equal(t, [][]int{{}}, res)
+}
+
+func TestPermute_SingletonList_ProducesOneResult(t *testing.T) {
+	res := slices.Collect(permute([]int{1}))
+	require.Equal(t, [][]int{{1}}, res)
+}
+
+func TestPermute_ListOfTwoElements_ProducesTwoResults(t *testing.T) {
+	res := slices.Collect(permute([]int{1, 2}))
+	require.ElementsMatch(t, [][]int{{1, 2}, {2, 1}}, res)
+}
+
+func TestPermute_ListOfThreeElements_ProducesSixResults(t *testing.T) {
+	res := slices.Collect(permute([]int{1, 2, 3}))
+	require.ElementsMatch(t, [][]int{
+		{1, 2, 3},
+		{1, 3, 2},
+		{2, 1, 3},
+		{2, 3, 1},
+		{3, 1, 2},
+		{3, 2, 1},
+	}, res)
 }

@@ -41,3 +41,10 @@ func levelFromString(lvlString string) (slog.Level, error) {
 		return 0, fmt.Errorf("unknown level: %v", lvlString)
 	}
 }
+
+//go:generate mockgen -source=logger.go -destination=logger_mock.go -package=logger
+
+// Logger defined as an alias for log.Logger to allow mocking in tests.
+type Logger interface {
+	log.Logger
+}

@@ -430,16 +430,6 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 			return nil, err
 		}
 		mutEvent.SetPayload(payload)
-		if payload.Proposal != nil {
-			fmt.Printf("EMITTER: created proposal: validator %d, epoch %d, turn %d, frame %d, block %d/%d\n",
-				em.config.Validator.ID,
-				mutEvent.Epoch(),
-				payload.ProposalSyncState.LastSeenProposalTurn,
-				payload.ProposalSyncState.LastSeenProposalFrame,
-				payload.ProposalSyncState.LastSeenProposedBlock,
-				payload.Proposal.Number,
-			)
-		}
 	} else {
 		// Add txs
 		em.addTxs(mutEvent, sortedTxs)

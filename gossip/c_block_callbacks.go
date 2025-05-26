@@ -246,9 +246,19 @@ func consensusCallbackBeginBlockFn(
 						Time:       blockCtx.Time,
 					}
 					if es.Rules.Upgrades.Allegro { // TODO: use dedicated flag
-						if proposed := getSingleProposerProposal(blockEvents, lastBlockHeader); proposed != nil {
+						events := make([]inter.EventPayloadI, 0, blockEvents.Len())
+						for _, e := range blockEvents {
+							events = append(events, e)
+						}
+						if proposed := getBlockProposal(lastBlockHeader, events, log.Root()); proposed != nil {
 							proposal = *proposed
 							// TODO: derive prevRandao from the proposal
+						} else {
+							// If no proposal is found but a block needs to be
+							// created (as this function has been called), we
+							// use a minimum time span to avoid removing gas
+							// allocation time from the next block.
+							proposal.Time = lastBlockHeader.Time + 1
 						}
 					} else {
 						// Collect transactions from events and schedule them.
@@ -513,21 +523,33 @@ func mergeCheaters(a, b lachesis.Cheaters) lachesis.Cheaters {
 	return merged
 }
 
-func getSingleProposerProposal(
-	blockEvents inter.EventPayloads,
+// getBlockProposal attempts to obtain the canonical block proposal for the next
+// block in the given events. A proposal is considered valid, if
+//   - it has the correct block number (last block number + 1), and
+//   - it has the correct parent hash (last block hash)
+//
+// If multiple valid proposals are found, the one proposed in the lowest turn
+// is returned. If there are multiple proposals with the same turn, the one with
+// the lowest hash is returned.
+//
+// If no valid proposals are found, nil is returned. In such a case, no or an
+// empty block should be produced.
+func getBlockProposal(
 	lastBlock *evmcore.EvmHeader,
+	events []inter.EventPayloadI,
+	logger log.Logger,
 ) *inter.Proposal {
 
 	desiredBlockNumber := idx.Block(lastBlock.Number.Uint64() + 1)
 	parentHash := lastBlock.Hash
 
-	// Collect payloads for the new block with the matching
-	// number from the events, ignore other payloads.
+	// Collect all payloads from events proposing the desired block.
 	payloads := []*inter.Payload{}
-	for _, e := range blockEvents {
-		if proposal := e.Payload().Proposal; proposal != nil {
+	for _, e := range events {
+		payload := e.Payload()
+		if proposal := payload.Proposal; proposal != nil {
 			if proposal.Number != desiredBlockNumber {
-				log.Warn(
+				logger.Warn(
 					"Confirmed events contains proposal with wrong block number",
 					"wanted", desiredBlockNumber,
 					"got", proposal.Number,
@@ -536,7 +558,7 @@ func getSingleProposerProposal(
 				continue
 			}
 			if proposal.ParentHash != parentHash {
-				log.Warn(
+				logger.Warn(
 					"Confirmed events contains proposal with wrong parent hash",
 					"wanted", parentHash,
 					"got", proposal.ParentHash,
@@ -545,11 +567,11 @@ func getSingleProposerProposal(
 				continue
 			}
 
-			payloads = append(payloads, e.Payload())
+			payloads = append(payloads, payload)
 		}
 	}
 	if len(payloads) > 1 {
-		log.Warn("Found multiple proposals for the same block",
+		logger.Warn("Found multiple proposals for the same block",
 			"block", desiredBlockNumber,
 			"proposals", len(payloads),
 		)

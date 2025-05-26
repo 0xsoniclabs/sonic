@@ -138,9 +138,17 @@ func (m testConfirmedEventsModule) Start(bs iblockproc.BlockState, es iblockproc
 }
 
 func newTestEnv(firstEpoch idx.Epoch, validatorsNum idx.Validator, tb testing.TB) *testEnv {
-	rules := opera.FakeNetRules(opera.GetSonicUpgrades())
+	return newTestEnvWithUpgrades(firstEpoch, validatorsNum, opera.GetSonicUpgrades(), tb)
+}
+
+func newTestEnvWithUpgrades(
+	firstEpoch idx.Epoch,
+	validatorsNum idx.Validator,
+	upgrades opera.Upgrades,
+	tb testing.TB,
+) *testEnv {
+	rules := opera.FakeNetRules(upgrades)
 	rules.Epochs.MaxEpochDuration = inter.Timestamp(maxEpochDuration)
-	rules.Blocks.MaxEmptyBlockSkipPeriod = 0
 	rules.Emitter.Interval = 0
 
 	genStore := makefakegenesis.FakeGenesisStoreWithRulesAndStart(

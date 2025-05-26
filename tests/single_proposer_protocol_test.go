@@ -12,10 +12,8 @@ import (
 )
 
 func TestSingleProposerProtocol_CanProcessTransactions(t *testing.T) {
-	t.Parallel()
 	for _, numNodes := range []int{1, 3} {
 		t.Run(fmt.Sprintf("numNodes=%d", numNodes), func(t *testing.T) {
-			t.Parallel()
 			testSingleProposerProtocol_CanProcessTransactions(t, numNodes)
 		})
 	}
@@ -31,8 +29,8 @@ func testSingleProposerProtocol_CanProcessTransactions(t *testing.T, numNodes in
 
 	require := require.New(t)
 	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
-		FeatureSet: opera.AllegroFeatures,
-		NumNodes:   numNodes,
+		Upgrades: AsPointer(opera.GetAllegroUpgrades()),
+		NumNodes: numNodes,
 	})
 
 	client, err := net.GetClient()
@@ -105,12 +103,9 @@ func testSingleProposerProtocol_CanProcessTransactions(t *testing.T, numNodes in
 }
 
 func TestSingleProposerProtocol_CanBeEnabled(t *testing.T) {
-	t.Parallel()
-
 	// Test with different numbers of nodes
 	for _, numNodes := range []int{1, 3} {
 		t.Run(fmt.Sprintf("numNodes=%d", numNodes), func(t *testing.T) {
-			t.Parallel()
 			testSingleProposerProtocol_CanBeEnabled(t, numNodes)
 		})
 	}
@@ -121,8 +116,7 @@ func testSingleProposerProtocol_CanBeEnabled(t *testing.T, numNodes int) {
 
 	// The network is initially started using the distributed protocol.
 	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
-		FeatureSet: opera.SonicFeatures,
-		NumNodes:   numNodes,
+		NumNodes: numNodes,
 	})
 
 	// Test that before the switch transactions can be processed.
@@ -140,15 +134,13 @@ func testSingleProposerProtocol_CanBeEnabled(t *testing.T, numNodes int) {
 	updateNetworkRules(t, net, rulesDiff)
 
 	// The rules only take effect after the epoch change. Make sure that until
-	// then transactions can be processed.
+	// then, transactions can be processed.
 	_, err = net.EndowAccount(address, big.NewInt(50))
 	require.NoError(err)
 
-	// Advance the epoch and make sure that the network is now using the
-	// single proposer protocol.
+	// Advance the epoch and make sure that the network is still able to process
+	// transactions after the switch to the single-proposer protocol.
 	require.NoError(net.AdvanceEpoch(1))
-
-	// Check that after the epoch switch transactions can be processed.
 	for range 5 {
 		_, err = net.EndowAccount(address, big.NewInt(50))
 		require.NoError(err)

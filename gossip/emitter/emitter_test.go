@@ -15,6 +15,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/inter"
+	"github.com/0xsoniclabs/sonic/logger"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils/txtime"
 	"github.com/0xsoniclabs/sonic/vecmt"
@@ -120,4 +121,120 @@ type fixedPriceBaseFeeSource struct{}
 
 func (fixedPriceBaseFeeSource) GetCurrentBaseFee() *big.Int {
 	return big.NewInt(1e6)
+}
+
+func TestEmitter_CreateEvent_CreatesCorrectEventVersion(t *testing.T) {
+
+	tests := map[string]struct {
+		upgrades opera.Upgrades
+		version  uint8
+	}{
+		"sonic": {
+			upgrades: opera.Upgrades{
+				Sonic:   true,
+				Allegro: false,
+			},
+			version: 2,
+		},
+		"allegro": {
+			upgrades: opera.Upgrades{
+				Sonic:   true,
+				Allegro: true,
+			},
+			version: 3,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			world := NewMockExternal(ctrl)
+			signer := NewMockSigner(ctrl)
+
+			validator := idx.ValidatorID(1)
+			builder := pos.NewBuilder()
+			builder.Set(validator, pos.Weight(1))
+			validators := builder.Build()
+
+			rules := opera.Rules{
+				Upgrades: test.upgrades,
+			}
+
+			em := &Emitter{
+				config: Config{
+					Validator: ValidatorConfig{
+						ID: validator,
+					},
+				},
+				world: World{
+					External: world,
+					Signer:   signer,
+				},
+				validators: validators,
+			}
+
+			any := gomock.Any()
+			world.EXPECT().GetRules().Return(rules).AnyTimes()
+			world.EXPECT().GetLastEvent(any, any).AnyTimes()
+			world.EXPECT().Build(any, any).AnyTimes()
+			world.EXPECT().Check(any, any).Return(nil).AnyTimes()
+			world.EXPECT().GetLatestBlock().Return(&inter.Block{}).AnyTimes()
+
+			signer.EXPECT().Sign(any, any).AnyTimes()
+
+			event, err := em.createEvent(nil)
+			require.NoError(t, err)
+			require.Equal(t, test.version, event.Version())
+		})
+	}
+}
+
+func TestEmitter_CreateEvent_InvalidValidatorSetIsDetected(t *testing.T) {
+
+	ctrl := gomock.NewController(t)
+	world := NewMockExternal(ctrl)
+	signer := NewMockSigner(ctrl)
+	log := logger.NewMockLogger(ctrl)
+
+	validator := idx.ValidatorID(1)
+	validators := pos.NewBuilder().Build() // invalid empty validator set
+
+	rules := opera.Rules{
+		Upgrades: opera.Upgrades{
+			Sonic:   true,
+			Allegro: true,
+		},
+	}
+
+	em := &Emitter{
+		Periodic: logger.Periodic{
+			Instance: logger.Instance{
+				Log: log,
+			},
+		},
+		config: Config{
+			Validator: ValidatorConfig{
+				ID: validator,
+			},
+		},
+		world: World{
+			External: world,
+			Signer:   signer,
+		},
+		validators: validators,
+	}
+
+	any := gomock.Any()
+	world.EXPECT().GetRules().Return(rules).AnyTimes()
+	world.EXPECT().GetLastEvent(any, any).AnyTimes()
+	world.EXPECT().Build(any, any).AnyTimes()
+	world.EXPECT().Check(any, any).Return(nil).AnyTimes()
+	world.EXPECT().GetLatestBlock().Return(&inter.Block{}).AnyTimes()
+
+	signer.EXPECT().Sign(any, any).AnyTimes()
+
+	log.EXPECT().Error("Failed to create payload", "err", any)
+
+	_, err := em.createEvent(nil)
+	require.ErrorContains(t, err, "no validators")
 }
