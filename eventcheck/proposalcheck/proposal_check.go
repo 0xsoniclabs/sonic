@@ -114,6 +114,7 @@ func (v *Checker) Validate(e inter.EventPayloadI) error {
 		e.Creator(),
 		v.reader.GetEpochValidators(),
 		incoming,
+		e.Epoch(),
 		e.Frame(),
 	)
 	if err != nil {

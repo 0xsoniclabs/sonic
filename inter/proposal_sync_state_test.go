@@ -107,6 +107,7 @@ func TestIsAllowedToPropose_AcceptsValidProposerTurn(t *testing.T) {
 			LastSeenProposalTurn:  last.Turn,
 			LastSeenProposalFrame: last.Frame,
 		},
+		idx.Epoch(42),
 		next.Frame,
 	)
 	require.NoError(err)
@@ -121,8 +122,9 @@ func TestIsAllowedToPropose_RejectsInvalidProposerTurn(t *testing.T) {
 	builder.Set(validatorB, 20)
 	validators := builder.Build()
 
+	validEpoch := idx.Epoch(4)
 	validTurn := Turn(5)
-	validProposer, err := GetProposer(validators, validTurn)
+	validProposer, err := GetProposer(validators, validEpoch, validTurn)
 	require.NoError(t, err)
 	invalidProposer := validatorA
 	if invalidProposer == validProposer {
@@ -162,6 +164,7 @@ func TestIsAllowedToPropose_RejectsInvalidProposerTurn(t *testing.T) {
 				input.validator,
 				validators,
 				ProposalState,
+				validEpoch,
 				input.currentFrame,
 			)
 			require.NoError(err)
@@ -172,6 +175,7 @@ func TestIsAllowedToPropose_RejectsInvalidProposerTurn(t *testing.T) {
 				input.validator,
 				validators,
 				ProposalState,
+				validEpoch,
 				input.currentFrame,
 			)
 			require.NoError(err)
@@ -183,13 +187,14 @@ func TestIsAllowedToPropose_RejectsInvalidProposerTurn(t *testing.T) {
 func TestIsAllowedToPropose_ForwardsTurnSelectionError(t *testing.T) {
 	validators := pos.ValidatorsBuilder{}.Build()
 
-	_, want := GetProposer(validators, Turn(0))
+	_, want := GetProposer(validators, idx.Epoch(0), Turn(0))
 	require.Error(t, want)
 
 	_, got := IsAllowedToPropose(
 		idx.ValidatorID(0),
 		validators,
 		ProposalSyncState{},
+		idx.Epoch(0),
 		idx.Frame(0),
 	)
 	require.Error(t, got)

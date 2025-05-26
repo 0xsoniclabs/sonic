@@ -54,6 +54,7 @@ func TestProposalCheck_Validate_ValidGenesisEventWithProposalPasses(t *testing.T
 	reader.EXPECT().GetEpochValidators().Return(validators)
 
 	event.EXPECT().Creator().Return(validator)
+	event.EXPECT().Epoch().Return(idx.Epoch(4))
 	event.EXPECT().Frame().Return(idx.Frame(1))
 	event.EXPECT().MedianTime().Return(inter.Timestamp(123))
 	event.EXPECT().Parents().Return([]hash.Event{})
@@ -135,6 +136,7 @@ func TestProposalCheck_Validate_ValidEventWithProposalPasses(t *testing.T) {
 	})
 
 	event.EXPECT().Creator().Return(validator)
+	event.EXPECT().Epoch().Return(idx.Epoch(4))
 	event.EXPECT().Frame().Return(idx.Frame(20))
 	event.EXPECT().MedianTime().Return(inter.Timestamp(123))
 	event.EXPECT().Parents().Return([]hash.Event{parent1, parent2})
@@ -249,6 +251,7 @@ func TestChecker_Validate_DetectsInvalidEvent(t *testing.T) {
 			event.EXPECT().AnyMisbehaviourProofs().AnyTimes()
 
 			event.EXPECT().Creator().Return(creator).AnyTimes()
+			event.EXPECT().Epoch().Return(idx.Epoch(0)).AnyTimes()
 			event.EXPECT().Frame().Return(idx.Frame(1)).AnyTimes()
 			event.EXPECT().Parents().Return([]hash.Event{}).AnyTimes()
 			event.EXPECT().Payload().Return(&inter.Payload{
@@ -275,6 +278,7 @@ func TestProposalCheck_Validate_ReportsInvalidValidatorSet(t *testing.T) {
 	reader.EXPECT().GetEpochValidators().Return(validators)
 
 	event.EXPECT().Creator().Return(validator)
+	event.EXPECT().Epoch().Return(idx.Epoch(4))
 	event.EXPECT().Frame().Return(idx.Frame(1))
 	event.EXPECT().Parents().Return([]hash.Event{})
 	event.EXPECT().Payload().Return(&inter.Payload{
