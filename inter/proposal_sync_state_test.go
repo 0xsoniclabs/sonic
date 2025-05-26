@@ -119,6 +119,7 @@ func TestIsAllowedToPropose_AcceptsValidProposerTurn(t *testing.T) {
 			LastSeenProposalFrame: last.Frame,
 			LastSeenProposedBlock: idx.Block(4),
 		},
+		idx.Epoch(42),
 		next.Frame,
 		5, // block to be proposed
 	)
@@ -134,8 +135,9 @@ func TestIsAllowedToPropose_RejectsInvalidProposerTurn(t *testing.T) {
 	builder.Set(validatorB, 20)
 	validators := builder.Build()
 
+	validEpoch := idx.Epoch(4)
 	validTurn := Turn(5)
-	validProposer, err := GetProposer(validators, validTurn)
+	validProposer, err := GetProposer(validators, validEpoch, validTurn)
 	require.NoError(t, err)
 	invalidProposer := validatorA
 	if invalidProposer == validProposer {
@@ -178,6 +180,7 @@ func TestIsAllowedToPropose_RejectsInvalidProposerTurn(t *testing.T) {
 				input.validator,
 				validators,
 				ProposalState,
+				validEpoch,
 				input.currentFrame,
 				input.blockToBeProposed,
 			)
@@ -189,6 +192,7 @@ func TestIsAllowedToPropose_RejectsInvalidProposerTurn(t *testing.T) {
 				input.validator,
 				validators,
 				ProposalState,
+				validEpoch,
 				input.currentFrame,
 				input.blockToBeProposed,
 			)
@@ -276,6 +280,7 @@ func TestIsAllowedToPropose_BlocksProposingLastSeenBlockDuringTimeoutWindow(t *t
 				validator,
 				validators,
 				ProposalState,
+				idx.Epoch(42),
 				test.currentFrame,
 				test.blockToPropose,
 			)
@@ -288,13 +293,14 @@ func TestIsAllowedToPropose_BlocksProposingLastSeenBlockDuringTimeoutWindow(t *t
 func TestIsAllowedToPropose_ForwardsTurnSelectionError(t *testing.T) {
 	validators := pos.ValidatorsBuilder{}.Build()
 
-	_, want := GetProposer(validators, Turn(0))
+	_, want := GetProposer(validators, idx.Epoch(0), Turn(0))
 	require.Error(t, want)
 
 	_, got := IsAllowedToPropose(
 		idx.ValidatorID(0),
 		validators,
 		ProposalSyncState{},
+		idx.Epoch(0),
 		idx.Frame(0),
 		idx.Block(1),
 	)

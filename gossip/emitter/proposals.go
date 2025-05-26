@@ -76,6 +76,7 @@ func createPayload(
 	incomingState := inter.CalculateIncomingProposalSyncState(world, event)
 
 	// Determine whether this validator is allowed to propose a new block.
+	currentEpoch := event.Epoch()
 	currentFrame := event.Frame()
 	latest := world.GetLatestBlock()
 	nextBlock := idx.Block(latest.Number + 1)
@@ -83,6 +84,7 @@ func createPayload(
 		validator,
 		validators,
 		incomingState,
+		currentEpoch,
 		currentFrame,
 		nextBlock,
 	)
