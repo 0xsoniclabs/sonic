@@ -45,19 +45,6 @@ func getTestNetworkRules() NetworkRulesForValidateTx {
 ////////////////////////////////////////////////////////////////////////////////
 // Static Validation
 
-func TestValidateTxStatic_Data_RejectsTxWith(t *testing.T) {
-	oversizedData := make([]byte, txMaxSize+1)
-	for name, tx := range getTxsOfAllTypes() {
-		t.Run(fmt.Sprintf("oversized data/%v", name), func(t *testing.T) {
-
-			setData(t, tx, oversizedData)
-
-			err := ValidateTxStatic(types.NewTx(tx))
-			require.ErrorIs(t, err, ErrOversizedData)
-		})
-	}
-}
-
 func TestValidateTxStatic_Value_RejectsTxWith(t *testing.T) {
 	for name, tx := range getTxsOfAllTypes() {
 		t.Run(fmt.Sprintf("negative value/%v", name), func(t *testing.T) {
@@ -130,23 +117,6 @@ func TestValidateTxStatic_GasPriceAndTip_RejectsTxWith(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestValidateTxStatic_Blobs_RejectsTxWith(t *testing.T) {
-	// blob txs are not supported in sonic, so they must have empty hash list and sidecar
-
-	t.Run("blob tx with non-empty blob hashes", func(t *testing.T) {
-		tx := types.NewTx(makeBlobTx([]common.Hash{{0x01}}, nil))
-		err := ValidateTxStatic(tx)
-		require.ErrorIs(t, err, ErrNonEmptyBlobTx)
-	})
-
-	t.Run("blob tx with non-empty sidecar", func(t *testing.T) {
-		tx := types.NewTx(makeBlobTx(nil,
-			&types.BlobTxSidecar{Commitments: []kzg4844.Commitment{{0x01}}}))
-		err := ValidateTxStatic(tx)
-		require.ErrorIs(t, err, ErrNonEmptyBlobTx)
-	})
 }
 
 func TestValidateTxStatic_AuthorizationList_RejectsTxWith(t *testing.T) {
@@ -231,6 +201,23 @@ func TestValidateTxType_RejectsTxBasedOnTypeAndActiveRevision(t *testing.T) {
 			require.Equal(t, ErrTxTypeNotSupported, err)
 		})
 	}
+}
+
+func TestValidateTxType_Blobs_RejectsTxWith(t *testing.T) {
+	// blob txs are not supported in sonic, so they must have empty hash list and sidecar
+
+	t.Run("blob tx with non-empty blob hashes", func(t *testing.T) {
+		tx := types.NewTx(makeBlobTx([]common.Hash{{0x01}}, nil))
+		err := ValidateTxType(tx, getTestNetworkRules())
+		require.ErrorIs(t, err, ErrNonEmptyBlobTx)
+	})
+
+	t.Run("blob tx with non-empty sidecar", func(t *testing.T) {
+		tx := types.NewTx(makeBlobTx(nil,
+			&types.BlobTxSidecar{Commitments: []kzg4844.Commitment{{0x01}}}))
+		err := ValidateTxType(tx, getTestNetworkRules())
+		require.ErrorIs(t, err, ErrNonEmptyBlobTx)
+	})
 }
 
 func TestValidateTxType_AcceptsTxWith(t *testing.T) {
@@ -492,6 +479,22 @@ func TestValidateTxForState_Balance_AcceptsTxWith(t *testing.T) {
 ////////////////////////////////////////////////////////////////////////////////
 // TxPool Policies Validation
 
+func TestValidateTxForPool_Data_RejectsTxWith(t *testing.T) {
+	oversizedData := make([]byte, txMaxSize+1)
+	for name, tx := range getTxsOfAllTypes() {
+		t.Run(fmt.Sprintf("oversized data/%v", name), func(t *testing.T) {
+
+			setData(t, tx, oversizedData)
+
+			signer := getTestNetworkRules().signer
+			_, signedTx := signTxForTest(t, tx, signer)
+			err := validateTxForPool(signedTx, getTestValidationOptions(),
+				signer)
+			require.ErrorIs(t, err, ErrOversizedData)
+		})
+	}
+}
+
 func TestValidateTxForPool_Signer_RejectsTxWith(t *testing.T) {
 	for name, tx := range getTxsOfAllTypes() {
 		t.Run(fmt.Sprintf("invalid signer/%v", name), func(t *testing.T) {
@@ -561,11 +564,47 @@ func TestValidateTxForPool_GasPriceAndTip_AcceptsNonLocalTxWithBigTip(t *testing
 // ValidateTx
 
 func TestValidateTx_RejectsTxWhen(t *testing.T) {
-	oversizedData := make([]byte, txMaxSize+1)
+
+	for name, tx := range getTxsOfAllTypes() {
+		t.Run(fmt.Sprintf("fails tx type validation/%v", name), func(t *testing.T) {
+			netRules := getTestNetworkRules()
+			switch tx := tx.(type) {
+			case *types.LegacyTx:
+				t.Skip("legacy transactions are always accepted")
+			case *types.AccessListTx:
+				netRules.eip2718 = false
+			case *types.DynamicFeeTx:
+				netRules.eip1559 = false
+			case *types.BlobTx:
+				netRules.eip4844 = false
+			case *types.SetCodeTx:
+				netRules.eip7702 = false
+			default:
+				t.Fatalf("unexpected transaction type: %T", tx)
+			}
+
+			// validate transaction
+			err := validateTx(types.NewTx(tx),
+				getTestValidationOptions(), netRules)
+			require.ErrorIs(t, err, ErrTxTypeNotSupported)
+		})
+	}
+
 	for name, tx := range getTxsOfAllTypes() {
 		t.Run(fmt.Sprintf("fails static validation/%v", name), func(t *testing.T) {
-
-			setData(t, tx, oversizedData)
+			var expectedErr error
+			if !isBlobOrSetCode(tx) {
+				// for legacy and access list transactions, gas price is the same
+				// as tip, so value is set to negative.
+				setValueToNegative(t, tx)
+				expectedErr = ErrNegativeValue
+			} else {
+				// for blob and setCode transactions, value cannot be negative
+				// because they use uint256, so tip is set bigger than gas price.
+				setEffectiveTip(t, tx, big.NewInt(2))
+				setGasPriceOrFeeCap(t, tx, big.NewInt(1))
+				expectedErr = ErrTipAboveFeeCap
+			}
 
 			// --- needed for execution up to relevant check ---
 			netRules := getTestNetworkRules()
@@ -579,7 +618,7 @@ func TestValidateTx_RejectsTxWhen(t *testing.T) {
 			// validate transaction
 			err := validateTx(signedTx,
 				getTestValidationOptions(), netRules)
-			require.ErrorIs(t, err, ErrOversizedData)
+			require.ErrorIs(t, err, expectedErr)
 		})
 	}
 
