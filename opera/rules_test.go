@@ -1,8 +1,11 @@
 package opera
 
 import (
+	"math/big"
 	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestRules_Copy_CopiesAreDisjoint(t *testing.T) {
@@ -192,4 +195,52 @@ func TestRules_MinBaseFee_NoCopy_PreAllegro(t *testing.T) {
 	if got, want := original.Economy.MinBaseFee.Int64(), copied.Economy.MinBaseFee.Int64(); got != want {
 		t.Errorf("original and copied rules must be the same - shallow copy for preAllegro: got %d, want %d", got, want)
 	}
+}
+
+func TestRules_ChainConfigCanBeConstructedFromRules(t *testing.T) {
+	rules := FakeNetRules(AllegroFeatures)
+
+	allegroFork := UpgradeHeight{
+		Upgrades: Upgrades{
+			Berlin:  true,
+			London:  true,
+			Sonic:   true,
+			Allegro: true,
+		},
+		Height: 1,
+		Time:   1_000_000_000, // in nanoseconds
+	}
+
+	tests := map[string]struct {
+		blockHeight  *big.Int
+		blockTime    uint64
+		expectPrague bool
+	}{
+		"before Allegro fork": {
+			blockHeight:  big.NewInt(0),
+			blockTime:    0,
+			expectPrague: false,
+		},
+		"after Allegro fork": {
+			blockHeight:  big.NewInt(2),
+			blockTime:    2, // in seconds
+			expectPrague: true,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+
+			chainConfig := rules.CreateTransientEthChainConfig([]UpgradeHeight{allegroFork})
+
+			require.True(t, chainConfig.IsIstanbul(test.blockHeight))
+			require.True(t, chainConfig.IsBerlin(test.blockHeight))
+			require.True(t, chainConfig.IsLondon(test.blockHeight))
+			require.True(t, chainConfig.IsShanghai(test.blockHeight, test.blockTime))
+			require.True(t, chainConfig.IsCancun(test.blockHeight, test.blockTime))
+
+			require.Equal(t, test.expectPrague, chainConfig.IsPrague(test.blockHeight, test.blockTime))
+		})
+	}
+
 }
