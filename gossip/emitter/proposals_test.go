@@ -119,7 +119,7 @@ func TestWorldAdapter_GetEvmChainConfig_ForwardsCallToGetRulesAndGetUpgradeHeigh
 
 	adapter := worldAdapter{world}
 	got := adapter.GetEvmChainConfig()
-	want := rules.EvmChainConfig(updateHeights)
+	want := rules.CreateTransientEthChainConfig(updateHeights)
 	require.Equal(want, got)
 }
 

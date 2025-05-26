@@ -234,7 +234,7 @@ func (b *GenesisBuilder) ExecuteGenesisTxs(blockProc BlockProc, genesisTxs types
 	txListener := blockProc.TxListenerModule.Start(blockCtx, bs, es, b.tmpStateDB)
 	evmProcessor := blockProc.EVMModule.Start(blockCtx, b.tmpStateDB, dummyHeaderReturner{b.blocks}, func(l *types.Log) {
 		txListener.OnNewLog(l)
-	}, es.Rules, es.Rules.EvmChainConfig([]opera.UpgradeHeight{
+	}, es.Rules, es.Rules.CreateTransientEthChainConfig([]opera.UpgradeHeight{
 		{
 			Upgrades: es.Rules.Upgrades,
 			Height:   0,
