@@ -232,18 +232,18 @@ func FuzzValidateTransaction(f *testing.F) {
 		}
 		stateExpectCalls(state)
 
-		opt, netRules := getTestTransactionsOptionFromRevision(revision, chainId,
+		opt, activeEips, blockState := getTestTransactionsOptionFromRevision(revision, chainId,
 			maxGas, int64(baseFee), int64(minTip))
 		opt.currentState = state
-		netRules.currentMaxGas = maxGas
+		blockState.maxGas = maxGas
 
 		// Validate the transaction
-		validateErr := validateTx(signedTx, opt, netRules)
+		validateErr := validateTx(signedTx, opt, blockState, activeEips)
 
 		// create evm to check validateTx is consistent with processor.
 		evm := makeTestEvm(blockNum, int64(baseFee), uint64(baseFee), state, revision, chainId)
 
-		msg, err := core.TransactionToMessage(signedTx, netRules.signer, evm.Context.BaseFee)
+		msg, err := core.TransactionToMessage(signedTx, opt.signer, evm.Context.BaseFee)
 		require.NoError(t, err)
 
 		gp := new(core.GasPool).AddGas(maxGas)
@@ -482,39 +482,40 @@ func signTxForTestWithChainId(t *testing.T, tx types.TxData, chainId *big.Int) (
 // getTestTransactionsOptionFromRevision creates a validationOptions struct
 // with the specified revision and chain ID.
 func getTestTransactionsOptionFromRevision(revision int8, chainId *big.Int,
-	maxGas uint64, BaseFee, MinTip int64) (validationOptions, NetworkRulesForValidateTx) {
+	maxGas uint64, BaseFee, MinTip int64) (validationOptions, ActiveEips, blockState) {
 	opt := validationOptions{
 		minTip: big.NewInt(MinTip),
 		// locally submitted transactions have the more relaxed validation version. Therefore we test local true.
 		isLocal: true,
+		signer:  types.NewPragueSigner(chainId),
 	}
 
-	netRules := NetworkRulesForValidateTx{
-		currentMaxGas:  maxGas,
-		currentBaseFee: big.NewInt(BaseFee),
-		signer:         types.NewPragueSigner(chainId),
+	activeEips := ActiveEips{}
+	blockState := blockState{
+		maxGas:  maxGas,
+		baseFee: big.NewInt(BaseFee),
 	}
 
 	switch revision {
 	case testPrague:
-		netRules.eip7702 = true
-		netRules.eip7623 = true
+		activeEips.eip7702 = true
+		activeEips.eip7623 = true
 		fallthrough
 	case testCancun:
-		netRules.eip4844 = true
+		activeEips.eip4844 = true
 		fallthrough
 	case testShanghai:
-		netRules.shanghai = true
+		activeEips.shanghai = true
 		fallthrough
 	case testLondon:
-		netRules.eip1559 = true
+		activeEips.eip1559 = true
 		fallthrough
 	case testBerlin:
-		netRules.eip2718 = true
+		activeEips.eip2718 = true
 		fallthrough
 	default:
-		netRules.istanbul = true
+		activeEips.istanbul = true
 	}
 
-	return opt, netRules
+	return opt, activeEips, blockState
 }

@@ -679,19 +679,20 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 		locals:       pool.locals,
 		isLocal:      local,
 	}
-	netRules := NetworkRulesForValidateTx{
-		istanbul:       pool.istanbul,
-		shanghai:       pool.shanghai,
-		eip1559:        pool.eip1559,
-		eip2718:        pool.eip2718,
-		eip4844:        pool.eip4844,
-		eip7623:        pool.eip7623,
-		eip7702:        pool.eip7702,
-		currentMaxGas:  pool.currentMaxGas,
-		currentBaseFee: pool.chain.GetCurrentBaseFee(),
-		signer:         pool.signer,
+	blockState := blockState{
+		maxGas:  pool.currentMaxGas,
+		baseFee: pool.chain.GetCurrentBaseFee(),
 	}
-	err := validateTx(tx, opts, netRules)
+	netRules := ActiveEips{
+		istanbul: pool.istanbul,
+		shanghai: pool.shanghai,
+		eip1559:  pool.eip1559,
+		eip2718:  pool.eip2718,
+		eip4844:  pool.eip4844,
+		eip7623:  pool.eip7623,
+		eip7702:  pool.eip7702,
+	}
+	err := validateTx(tx, opts, blockState, netRules)
 	if err != nil {
 		return err
 	}
