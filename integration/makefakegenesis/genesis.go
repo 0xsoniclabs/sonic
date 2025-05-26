@@ -46,8 +46,8 @@ func FakeKey(n idx.ValidatorID) *ecdsa.PrivateKey {
 	return evmcore.FakeKey(uint32(n))
 }
 
-func FakeGenesisStore(num idx.Validator, balance, stake *big.Int, features opera.FeatureSet) *genesisstore.Store {
-	return FakeGenesisStoreWithRules(num, balance, stake, opera.FakeNetRules(features))
+func FakeGenesisStore(num idx.Validator, balance, stake *big.Int, upgrades *opera.Upgrades) *genesisstore.Store {
+	return FakeGenesisStoreWithRules(num, balance, stake, opera.FakeNetRules(upgrades))
 }
 
 func FakeGenesisStoreWithRules(num idx.Validator, balance, stake *big.Int, rules opera.Rules) *genesisstore.Store {

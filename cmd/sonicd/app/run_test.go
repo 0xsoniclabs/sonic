@@ -29,7 +29,7 @@ func initFakenetDatadir(dataDir string, validatorsNum idx.Validator) {
 		validatorsNum,
 		futils.ToFtm(1000000000),
 		futils.ToFtm(5000000),
-		opera.SonicFeatures,
+		opera.GetSonicUpgrades(),
 	)
 	defer func() {
 		if err := genesisStore.Close(); err != nil {

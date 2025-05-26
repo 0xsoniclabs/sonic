@@ -64,7 +64,7 @@ func TestEmitter(t *testing.T) {
 
 	t.Run("init", func(t *testing.T) {
 		external.EXPECT().GetRules().
-			Return(opera.FakeNetRules(opera.SonicFeatures)).
+			Return(opera.FakeNetRules(opera.GetSonicUpgrades())).
 			AnyTimes()
 
 		external.EXPECT().GetEpochValidators().

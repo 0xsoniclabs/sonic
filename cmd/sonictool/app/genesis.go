@@ -148,13 +148,13 @@ func fakeGenesisImport(ctx *cli.Context) (err error) {
 		return err
 	}
 
-	var featureSet opera.FeatureSet
+	var upgrades *opera.Upgrades
 	upgradesString := ctx.String(FakeUpgrades.Name)
 	switch upgradesString {
 	case "sonic":
-		featureSet = opera.SonicFeatures
+		upgrades = opera.GetSonicUpgrades()
 	case "allegro":
-		featureSet = opera.AllegroFeatures
+		upgrades = opera.GetAllegroUpgrades()
 	default:
 		return fmt.Errorf("invalid profile %v - must be 'sonic' or 'allegro'", upgradesString)
 	}
@@ -163,7 +163,7 @@ func fakeGenesisImport(ctx *cli.Context) (err error) {
 		idx.Validator(validatorsNumber),
 		futils.ToFtm(1_000_000_000),
 		futils.ToFtm(5_000_000),
-		featureSet,
+		upgrades,
 	)
 	defer caution.CloseAndReportError(&err, genesisStore, "failed to close the genesis store")
 	return genesis.ImportGenesisStore(genesis.ImportParams{

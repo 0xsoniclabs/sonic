@@ -169,7 +169,7 @@ func TestRules_Copy_CopiesAreDisjoint(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			// Create a deep copy of the original rules
-			original := FakeNetRules(AllegroFeatures)
+			original := FakeNetRules(GetAllegroUpgrades())
 			copied := original.Copy()
 
 			// Apply the update to the copied rules
@@ -184,7 +184,7 @@ func TestRules_Copy_CopiesAreDisjoint(t *testing.T) {
 }
 
 func TestRules_MinBaseFee_NoCopy_PreAllegro(t *testing.T) {
-	original := FakeNetRules(SonicFeatures)
+	original := FakeNetRules(GetSonicUpgrades())
 	copied := original.Copy()
 
 	copied.Economy.MinBaseFee.SetInt64(2 * copied.Economy.MinBaseFee.Int64())

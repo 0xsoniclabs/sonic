@@ -67,7 +67,7 @@ func TestUpdateRules_ValidityCheckIsConductedIfCheckIsEnabledInUpdatedRuleSet(t 
 func TestUpdateRules_CanUpdateHardForks(t *testing.T) {
 	require := require.New(t)
 
-	rules := FakeNetRules(SonicFeatures)
+	rules := FakeNetRules(GetSonicUpgrades())
 
 	got, err := UpdateRules(rules, []byte(`{"Upgrades":{"Allegro":true}}`))
 	require.NoError(err)
