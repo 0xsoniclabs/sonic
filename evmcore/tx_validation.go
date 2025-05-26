@@ -267,7 +267,8 @@ func validateTxForPool(tx *types.Transaction, opt validationOptions,
 		return ErrInvalidSender
 	}
 
-	// tx is local if received from the local RPC or if the sender belongs to the local accounts set
+	// A transaction is local if received from the local RPC or if the sender belongs to the local accounts set.
+	// For local transactions, minimum gas tips are not enforced.
 	local := opt.isLocal || opt.locals.contains(from)
 	if local {
 		return nil
@@ -275,7 +276,7 @@ func validateTxForPool(tx *types.Transaction, opt validationOptions,
 
 	// Drop non-local transactions under our own minimal accepted gas price or tip.
 	if tx.GasTipCapIntCmp(opt.minTip) < 0 {
-		log.Trace("Rejecting underpriced tx: pool.gasPrice", "pool.gasPrice",
+		log.Trace("Rejecting underpriced tx: pool.minTip", "pool.minTip",
 			opt.minTip, "tx.GasTipCap", tx.GasTipCap())
 		return ErrUnderpriced
 	}
