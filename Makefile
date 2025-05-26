@@ -53,20 +53,20 @@ run-coverage: DATE=$(shell date +"%Y-%m-%d-%T")
 run-coverage: export GOCOVERDIR=./build/coverage/${DATE}
 run-coverage:
 	@mkdir -p ${GOCOVERDIR} ;\
-	go test ${TARGET_PACKAGES} -coverpkg=${COVER_PACKAGES} --timeout=30m -coverprofile=${GOCOVERDIR}/${REPORT_NAME}.out ;\
-	go tool cover -html ${GOCOVERDIR}/${REPORT_NAME}.out -o ${GOCOVERDIR}/${REPORT_NAME}.html ;\
-	echo "Coverage report generated in ${GOCOVERDIR}/${REPORT_NAME}.html"
+	go test -coverpkg=${COVERPACKAGES} --timeout=30m -coverprofile="${GOCOVERDIR}/${REPORTNAME}.out" ${TARGETPACKAGES} ;\
+	go tool cover -html ${GOCOVERDIR}/${REPORTNAME}.out -o ${GOCOVERDIR}/${REPORTNAME}.html ;\
+	echo "Coverage report generated in ${GOCOVERDIR}/${REPORTNAME}.html"
 
 .PHONY: integration-cover-all
-integration-cover-all: COVER_PACKAGES=./...
-integration-cover-all: TARGET_PACKAGES=./tests
-integration-cover-all: REPORT_NAME='integration-cover'
+integration-cover-all: COVERPACKAGES=./...
+integration-cover-all: TARGETPACKAGES=./tests
+integration-cover-all: REPORTNAME="integration-cover"
 integration-cover-all: run-coverage
 
 .PHONY: unit-cover-all
-unit-cover-all: COVER_PACKAGES=`go list ./... | grep -v /tests`
-unit-cover-all: TARGET_PACKAGES=`go list ./... | grep -v /tests`
-unit-cover-all: REPORT_NAME='unit-cover'
+unit-cover-all: COVERPACKAGES=`go list ./... | grep -v /tests`
+unit-cover-all: TARGETPACKAGES=`go list ./... | grep -v /tests`
+unit-cover-all: REPORTNAME="unit-cover"
 unit-cover-all: run-coverage
 
 .PHONY: fuzz-txpool-validatetx-cover
