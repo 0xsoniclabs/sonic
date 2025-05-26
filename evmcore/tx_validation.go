@@ -35,11 +35,12 @@ type validationOptions struct {
 	minTip       *big.Int      // Minimum gas tip to enforce for acceptance into the pool
 	locals       *accountSet   // Set of local transaction to exempt from eviction rules
 	isLocal      bool          // Whether the transaction came from a local source
+	signer       types.Signer  // Signer to use for transaction validation
 }
 
-// NetworkRulesForValidateTx is a set of network rules to validate transactions
+// ActiveEips is a set of network rules to validate transactions
 // according to the current state of the blockchain.
-type NetworkRulesForValidateTx struct {
+type ActiveEips struct {
 	istanbul bool // Fork indicator whether we are in the istanbul revision.
 	shanghai bool // Fork indicator whether we are in the shanghai revision.
 
@@ -48,11 +49,14 @@ type NetworkRulesForValidateTx struct {
 	eip4844 bool // Fork indicator whether we are using EIP-4844 type transactions.
 	eip7623 bool // Fork indicator whether we are using EIP-7623 floor gas validation.
 	eip7702 bool // Fork indicator whether we are using EIP-7702 set code transactions.
+}
 
-	currentMaxGas  uint64   // Current gas limit for transaction caps
-	currentBaseFee *big.Int // Current base fee for transaction caps
-
-	signer types.Signer // sender is included as part of network rules because it depends on the chainId.
+// blockState is a set of options to adjust the validation of transactions
+// according to the current state of the blockchain, specifically the current
+// block's gas limit and base fee.
+type blockState struct {
+	maxGas  uint64   // Current gas limit for transaction caps
+	baseFee *big.Int // Current base fee for transaction caps
 }
 
 // validateTx checks whether a transaction is valid according to the current
@@ -60,7 +64,8 @@ type NetworkRulesForValidateTx struct {
 func validateTx(
 	tx *types.Transaction,
 	opt validationOptions,
-	netRules NetworkRulesForValidateTx) error {
+	currentBlockState blockState,
+	netRules ActiveEips) error {
 
 	if err := ValidateTxType(tx, netRules); err != nil {
 		return err
@@ -70,15 +75,19 @@ func validateTx(
 		return err
 	}
 
-	if err := ValidateTxForNetwork(tx, netRules); err != nil {
+	if err := ValidateTxForBlock(tx, currentBlockState); err != nil {
 		return err
 	}
 
-	if err := validateTxForPool(tx, opt, netRules.signer); err != nil {
+	if err := ValidateGasAndInitCodeSize(tx, netRules); err != nil {
 		return err
 	}
 
-	if err := ValidateTxForState(tx, opt.currentState, netRules.signer); err != nil {
+	if err := validateTxForPool(tx, opt); err != nil {
+		return err
+	}
+
+	if err := ValidateTxForState(tx, opt.currentState, opt.signer); err != nil {
 		return err
 	}
 
@@ -129,7 +138,7 @@ func ValidateTxStatic(tx *types.Transaction) error {
 // (legacy, access list, dynamic fee, blob, set code) is supported in the current network
 //
 // It returns an error if any of the checks fail.
-func ValidateTxType(tx *types.Transaction, opt NetworkRulesForValidateTx) error {
+func ValidateTxType(tx *types.Transaction, opt ActiveEips) error {
 	// With the introduction of EIP-2718 transaction envelope, the transaction
 	// can be of different types. Before the Berlin fork
 	// (https://blog.ethereum.org/2021/03/08/ethereum-berlin-upgrade-announcement),
@@ -163,25 +172,14 @@ func ValidateTxType(tx *types.Transaction, opt NetworkRulesForValidateTx) error 
 	return nil
 }
 
-// ValidateTxForNetwork checks if a transaction is valid based on the current network rules.
-// Specifically, it ensures the transaction adheres to the following conditions:
-// - init code size (if contract creation) is within the defined limit
-// - gas fee cap is greater than the minimum base fee
-// - gas is within the max accepted gas per transaction
-// - gas is greater than the intrinsic gas
-// - gas is greater than the floor data cost (EIP-7623)
-//
-// Returns an error if any of these conditions are not met.
-func ValidateTxForNetwork(tx *types.Transaction, opt NetworkRulesForValidateTx) error {
-
-	// This check does not validate gas, but depends on active revision.
-	// Check whether the init code size has been exceeded, introduced in EIP-3860
-	if opt.shanghai && tx.To() == nil && len(tx.Data()) > params.MaxInitCodeSize {
-		return fmt.Errorf("%w: code size %v, limit %v", ErrMaxInitCodeSizeExceeded, len(tx.Data()), params.MaxInitCodeSize)
-	}
+// ValidateTxForBlock checks if a transaction is valid based on the max gas limit
+// and base fee of the current block.
+// An error is returned if the transaction's gas exceeds the block's gas limit
+// or if the transaction's gas fee cap is below the minimum required base fee.
+func ValidateTxForBlock(tx *types.Transaction, blockState blockState) error {
 
 	// Ensure Opera-specific hard bounds
-	if baseFee := opt.currentBaseFee; baseFee != nil {
+	if baseFee := blockState.baseFee; baseFee != nil {
 		limit := gaspricelimits.GetMinimumFeeCapForTransactionPool(baseFee)
 		if tx.GasFeeCapIntCmp(limit) < 0 {
 			log.Trace("Rejecting underpriced tx: minimumBaseFee", "minimumBaseFee", baseFee, "limit", limit, "tx.GasFeeCap", tx.GasFeeCap())
@@ -190,8 +188,24 @@ func ValidateTxForNetwork(tx *types.Transaction, opt NetworkRulesForValidateTx) 
 	}
 
 	// Ensure the transaction doesn't exceed the current block limit gas.
-	if opt.currentMaxGas < tx.Gas() {
+	if blockState.maxGas < tx.Gas() {
 		return ErrGasLimit
+	}
+
+	return nil
+}
+
+// ValidateGasAndInitCodeSize checks if a transaction has enough Gas and does not
+// exceed the maximum init code size. Both of these checks are affected by
+// the active EIPs in the network, which are passed as options.
+//
+// Returns an error if any of these conditions are not met.
+func ValidateGasAndInitCodeSize(tx *types.Transaction, opt ActiveEips) error {
+
+	// This check does not validate gas, but depends on active revision.
+	// Check whether the init code size has been exceeded, introduced in EIP-3860
+	if opt.shanghai && tx.To() == nil && len(tx.Data()) > params.MaxInitCodeSize {
+		return fmt.Errorf("%w: code size %v, limit %v", ErrMaxInitCodeSizeExceeded, len(tx.Data()), params.MaxInitCodeSize)
 	}
 
 	// Ensure the transaction has more gas than the basic tx fee.
@@ -255,8 +269,7 @@ func ValidateTxForState(tx *types.Transaction, state TxPoolStateDB,
 // validateTxForPool checks whether a transaction is valid according to the
 // current minimum tip for the pool. It returns an error if the transaction's
 // tip is lower than the minimum tip.
-func validateTxForPool(tx *types.Transaction, opt validationOptions,
-	signer types.Signer) error {
+func validateTxForPool(tx *types.Transaction, opt validationOptions) error {
 
 	// Reject transactions over defined size to prevent DoS attacks
 	if uint64(tx.Size()) > txMaxSize {
@@ -264,7 +277,7 @@ func validateTxForPool(tx *types.Transaction, opt validationOptions,
 	}
 
 	// Make sure the transaction is signed properly.
-	from, err := types.Sender(signer, tx)
+	from, err := types.Sender(opt.signer, tx)
 	if err != nil {
 		return ErrInvalidSender
 	}
