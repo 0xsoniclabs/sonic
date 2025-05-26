@@ -119,12 +119,24 @@ func (p *StateProcessor) Process(
 					return nil, nil, nil, fmt.Errorf("could not write skipped tx state to file %d [%v]: %w", i, tx.Hash().Hex(), err)
 				}
 			}
-
+			skipped = append(skipped, uint32(i))
+			receipts = append(receipts, nil)
+			if !errors.Is(err, core.ErrMaxInitCodeSizeExceeded) {
+				err = nil
+				continue
+			}
+			err = nil
 		}
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
 		}
 		if recordSubstate.RecordReplay {
+			if receipt == nil {
+				receipt = &types.Receipt{
+					Logs:  []*types.Log{},
+					Bloom: types.Bloom{},
+				}
+			}
 			// save tx substate into db, merge block hashes to env
 			etherBlock := block.RecordingEthBlock()
 			env := innerSubstate.NewEnv(etherBlock, innerSubstate.HashGethToSubstate(block.SubstateBlockHashes), blockContext)
@@ -141,13 +153,12 @@ func (p *StateProcessor) Process(
 			if err != nil {
 				return nil, nil, nil, fmt.Errorf("could not put substate %d [%v]: %w", i, tx.Hash().Hex(), err)
 			}
-			skipped = append(skipped, uint32(i))
-			receipts = append(receipts, nil)
-			err = nil
-			continue
 		}
 
 		txCounter++
+		if skip {
+			continue
+		}
 		receipts = append(receipts, receipt)
 		allLogs = append(allLogs, receipt.Logs...)
 	}
