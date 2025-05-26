@@ -34,7 +34,7 @@ sonic-image:
 
 .PHONY: test
 test:
-	GOEXPERIMENT=synctest go test -cover -coverprofile=coverage.txt -timeout=30m ./...
+	go test -cover ./...
 
 
 .PHONY: coverage

@@ -15,23 +15,25 @@ var once sync.Once
 
 func SetDataDir(datadir string) {
 	once.Do(func() {
-		go measureDbDir(context.Background(), "db_size", datadir)
-		go measureDbDir(context.Background(), "statedb/disksize", filepath.Join(datadir, "carmen"))
+		go measureDbDir(context.Background(), "db_size", datadir, time.Minute)
+		go measureDbDir(context.Background(), "statedb/disksize",
+			filepath.Join(datadir, "carmen"), time.Minute)
 	})
 }
 
-func measureDbDir(ctx context.Context, name, datadir string) {
+func measureDbDir(ctx context.Context, name, datadir string, delay time.Duration) {
 	var (
 		gauge  = metrics.GetOrRegisterGauge(name, nil)
 		rescan = len(datadir) > 0 && datadir != "inmemory"
 	)
 	for rescan {
-		if ctx.Err() != nil {
+		select {
+		case <-ctx.Done():
 			return
+		case <-time.After(delay):
+			size := sizeOfDir(datadir)
+			gauge.Update(size)
 		}
-		time.Sleep(time.Minute)
-		size := sizeOfDir(datadir)
-		gauge.Update(size)
 	}
 }
 

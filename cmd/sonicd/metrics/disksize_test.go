@@ -1,5 +1,3 @@
-//go:build goexperiment.synctest
-
 package metrics
 
 import (
@@ -8,7 +6,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
-	"testing/synctest"
 	"time"
 
 	"github.com/ethereum/go-ethereum/metrics"
@@ -28,26 +25,16 @@ func TestMeasureDbDir_LogsDBDirSizeEveryMinute(t *testing.T) {
 
 	gaugeName := "testGauge"
 
-	// synctest contexts creates a "bubble" of goroutines that run with a fake
-	// clock allowing fast execution of time-based tests.
-	synctest.Run(func() {
+	ctx, cancel := context.WithCancel(t.Context())
+	go measureDbDir(ctx, gaugeName, tempDir, time.Millisecond)
 
-		ctx, cancel := context.WithCancel(t.Context())
-		// run measureDbDir in a goroutine
-		go measureDbDir(ctx, gaugeName, tempDir)
-
-		for i := range 5 {
-			writeTestData(t, f, testData)
-
-			// disk gets measured once per minute, so we have to wait for that
-			time.Sleep(time.Minute + time.Millisecond)
-
-			// verify the gauge value matches the total size of the file
-			snapshotValueEquals(t, gaugeName, int64(lenTestData*(i+1)))
-		}
-		// we need to cancel the context to stop measureDbDir
-		cancel()
-	})
+	for i := range 5 {
+		writeTestData(t, f, testData)
+		time.Sleep(time.Millisecond * 2)
+		snapshotValueEquals(t, gaugeName, int64(lenTestData*(i+1)))
+	}
+	// we need to cancel the context to stop measureDbDir
+	cancel()
 }
 
 func TestMeasureDbDir_LoopCanBeCancelled(t *testing.T) {
@@ -55,18 +42,15 @@ func TestMeasureDbDir_LoopCanBeCancelled(t *testing.T) {
 	done := make(chan struct{})
 
 	ctx, cancel := context.WithCancel(t.Context())
-	// create a channel to signal when the loop has stopped
 	go func() {
-		// channel will only be closed when the loop stops and measureDbDir returns
 		defer close(done)
-		measureDbDir(ctx, "testGauge", tempDir)
+		measureDbDir(ctx, "testGauge", tempDir, time.Millisecond)
 	}()
-	// enforce cancel right after the goroutine starts
 	cancel()
 
 	select {
 	case <-done: // Success: the goroutine exited
-	case <-time.After(1 * time.Second):
+	case <-time.After(time.Millisecond * 3):
 		t.Fatal("timeout: measureDbDir did not stop after cancellation")
 	}
 }
