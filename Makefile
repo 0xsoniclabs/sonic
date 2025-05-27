@@ -34,12 +34,14 @@ sonic-image:
 
 .PHONY: test
 test:
-	go test -cover --timeout 30m ./...
+	go test --timeout 30m ./...
 
 .PHONY: coverage
 coverage:
-	go test -coverprofile=cover.prof $$(go list ./... | grep -v '/gossip/contract/' | grep -v '/gossip/emitter/mock' | xargs)
-	go tool cover -func cover.prof | grep -e "^total:"
+	@mkdir -p build ;\
+	go test -coverpkg=./... --timeout=30m -coverprofile=build/coverage.cov ./...;\
+	go tool cover -html build/coverage.cov -o build/coverage.html ;\
+	echo "Coverage report generated in build/coverage.html"
 
 .PHONY: fuzz
 fuzz:
@@ -48,26 +50,6 @@ fuzz:
 	go run github.com/dvyukov/go-fuzz/go-fuzz-build -o=./fuzzing/gossip-fuzz.zip ./gossip && \
 	go run github.com/dvyukov/go-fuzz/go-fuzz -workdir=./fuzzing -bin=./fuzzing/gossip-fuzz.zip
 
-.PHONY: run-coverage
-run-coverage: DATE=$(shell date +"%Y-%m-%d-%T")
-run-coverage: export GOCOVERDIR=./build/coverage/${DATE}
-run-coverage:
-	@mkdir -p ${GOCOVERDIR} ;\
-	go test -coverpkg=${COVERPACKAGES} --timeout=30m -coverprofile="${GOCOVERDIR}/${REPORTNAME}.out" ${TARGETPACKAGES} ;\
-	go tool cover -html ${GOCOVERDIR}/${REPORTNAME}.out -o ${GOCOVERDIR}/${REPORTNAME}.html ;\
-	echo "Coverage report generated in ${GOCOVERDIR}/${REPORTNAME}.html"
-
-.PHONY: integration-cover-all
-integration-cover-all: COVERPACKAGES=./...
-integration-cover-all: TARGETPACKAGES=./tests
-integration-cover-all: REPORTNAME="integration-cover"
-integration-cover-all: run-coverage
-
-.PHONY: unit-cover-all
-unit-cover-all: COVERPACKAGES=`go list ./... | grep -v /tests`
-unit-cover-all: TARGETPACKAGES=`go list ./... | grep -v /tests`
-unit-cover-all: REPORTNAME="unit-cover"
-unit-cover-all: run-coverage
 
 .PHONY: fuzz-txpool-validatetx-cover
 fuzz-txpool-validatetx-cover: PACKAGES=./...,github.com/ethereum/go-ethereum/core/...
