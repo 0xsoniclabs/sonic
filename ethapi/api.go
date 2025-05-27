@@ -1359,6 +1359,7 @@ func newRPCTransaction(tx *types.Transaction, blockHash common.Hash, blockNumber
 		Nonce:    hexutil.Uint64(tx.Nonce()),
 		To:       tx.To(),
 		Value:    (*hexutil.Big)(tx.Value()),
+		ChainID:  (*hexutil.Big)(tx.ChainId()),
 		V:        (*hexutil.Big)(v),
 		R:        (*hexutil.Big)(r),
 		S:        (*hexutil.Big)(s),
@@ -1372,7 +1373,6 @@ func newRPCTransaction(tx *types.Transaction, blockHash common.Hash, blockNumber
 	copyAccessList := func(tx *types.Transaction, result *RPCTransaction) {
 		al := tx.AccessList()
 		result.Accesses = &al
-		result.ChainID = (*hexutil.Big)(tx.ChainId())
 	}
 
 	copyDynamicPricingFields := func(tx *types.Transaction, result *RPCTransaction) {
@@ -1401,10 +1401,6 @@ func newRPCTransaction(tx *types.Transaction, blockHash common.Hash, blockNumber
 	}
 
 	switch tx.Type() {
-	case types.LegacyTxType:
-		// chainId is required to verify the transaction signature.
-		// Legacy transactions do not include a chainId, so it must be provided explicitly.
-		result.ChainID = (*hexutil.Big)(tx.ChainId())
 	case types.AccessListTxType:
 		copyAccessList(tx, result)
 	case types.DynamicFeeTxType:
