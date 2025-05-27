@@ -71,7 +71,6 @@ func TestValidateTxStatic_Value_RejectsTxWith(t *testing.T) {
 func TestValidateTxStatic_GasPriceAndTip_RejectsTxWith(t *testing.T) {
 	extremelyLargeN := new(big.Int).Lsh(big.NewInt(1), 256)
 
-	// GasPrice/GasFeeCap tests
 	for name, tx := range getTxsOfAllTypes() {
 		t.Run(fmt.Sprintf("gas fee longer than 256 bits/%s", name), func(t *testing.T) {
 			if isBlobOrSetCode(tx) {
@@ -158,7 +157,7 @@ func TestValidateTxStatic_AcceptsValidTransactions(t *testing.T) {
 func TestValidateTxForNetwork_BeforeEip2718_RejectsNonLegacyTransactions(t *testing.T) {
 	for name, tx := range getTxsOfAllTypes() {
 		if _, ok := tx.(*types.LegacyTx); ok {
-			continue // Skip legacy transactions
+			continue // Skip legacy transactions because they are always supported
 		}
 		t.Run(name, func(t *testing.T) {
 			err := ValidateTxForNetwork(types.NewTx(tx),
@@ -236,7 +235,6 @@ func TestValidateTxForNetwork_Gas_RejectsTxWith(t *testing.T) {
 		t.Run(fmt.Sprintf("gas lower than intrinsic gas/%v", name), func(t *testing.T) {
 			netRules := getTestNetworkRules()
 
-			// setup tx to fail intrinsic gas calculation
 			setGas(t, tx, getIntrinsicGasForTest(t, tx, netRules)-1)
 
 			err := ValidateTxForNetwork(types.NewTx(tx), netRules)
@@ -249,7 +247,6 @@ func TestValidateTxForNetwork_Gas_RejectsTxWith(t *testing.T) {
 		t.Run(fmt.Sprintf("gas lower than floor data gas/%v", name), func(t *testing.T) {
 			netRules := getTestNetworkRules()
 
-			// setup tx to fail intrinsic gas calculation
 			someData := make([]byte, txSlotSize)
 			setData(t, tx, someData)
 			floorDataGas, err := core.FloorDataGas(someData)
@@ -306,7 +303,6 @@ func TestValidateTxForNetwork_Data_RejectsTxWith(t *testing.T) {
 			netRules.shanghai = false
 			netRules.eip4844 = false
 			netRules.eip7623 = false
-			// needs extra gas to allow big data to be afforded.
 
 			setData(t, tx, maxInitCode)
 			setReceiverToNil(t, tx)
@@ -326,7 +322,6 @@ func TestValidateTxForNetwork_Signer_RejectsTxWith(t *testing.T) {
 			netRules := getTestNetworkRules()
 			netRules.signer = types.NewPragueSigner(big.NewInt(2))
 
-			// sign txs with sender
 			key, err := crypto.GenerateKey()
 			require.NoError(t, err)
 			signer1 := types.NewPragueSigner(big.NewInt(1))
@@ -430,7 +425,6 @@ func TestValidateTxForState_Nonce_RejectsTxWith(t *testing.T) {
 	for name, tx := range getTxsOfAllTypes() {
 		t.Run(fmt.Sprintf("older nonce/%v", name), func(t *testing.T) {
 
-			// sign txs with sender and set current balance for account
 			signer := types.NewPragueSigner(big.NewInt(1))
 			address, signedTx := signTxForTest(t, tx, signer)
 			testDb := newTestTxPoolStateDb()
@@ -512,7 +506,6 @@ func TestValidateTxForPool_Data_RejectsTxWith(t *testing.T) {
 func TestValidateTxForPool_Signer_RejectsTxWith(t *testing.T) {
 	for name, tx := range getTxsOfAllTypes() {
 		t.Run(fmt.Sprintf("invalid signer/%v", name), func(t *testing.T) {
-			// sign txs with sender
 			key, err := crypto.GenerateKey()
 			require.NoError(t, err)
 			signer1 := types.NewPragueSigner(big.NewInt(1))
@@ -565,7 +558,6 @@ func TestValidateTxForPool_AcceptsNonLocalTxWithBigTip(t *testing.T) {
 
 			signer := types.NewPragueSigner(big.NewInt(1))
 			opt.locals = newAccountSet(signer)
-			// sign txs with sender
 			_, signedTx := signTxForTest(t, tx, signer)
 
 			err := validateTxForPool(signedTx, opt, signer)
@@ -597,12 +589,13 @@ func TestValidateTx_RejectsTxWhen(t *testing.T) {
 			var expectedErr error
 			if !isBlobOrSetCode(tx) {
 				// for legacy and access list transactions, gas price is the same
-				// as tip, so value is set to negative.
+				// as tip, so negative value is used to reject the transaction.
 				setValueToNegative(t, tx)
 				expectedErr = ErrNegativeValue
 			} else {
 				// for blob and setCode transactions, value cannot be negative
-				// because they use uint256, so tip is set bigger than gas price.
+				// because they use uint256, so a tip bigger than gas price
+				// is used to reject the transaction.
 				setEffectiveTip(t, tx, big.NewInt(2))
 				setGasPriceOrFeeCap(t, tx, big.NewInt(1))
 				expectedErr = ErrTipAboveFeeCap
@@ -612,7 +605,6 @@ func TestValidateTx_RejectsTxWhen(t *testing.T) {
 			setGas(t, tx, getIntrinsicGasForTest(t, tx, netRules)+1)
 			_, signedTx := signTxForTest(t, tx, netRules.signer)
 
-			// validate transaction
 			err := validateTx(signedTx, getTestPoolOptions(),
 				getTestBlockState(), netRules)
 			require.ErrorIs(t, err, expectedErr)
