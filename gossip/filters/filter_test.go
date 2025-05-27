@@ -287,3 +287,39 @@ func getGenesisBlockForTesting(db ethdb.Database, address common.Address, balanc
 	}
 	return genesis.MustCommit(db, triedb.NewDatabase(db, triedb.HashDefaults))
 }
+
+func TestSortLogsByBlockNumberAndLogIndex(t *testing.T) {
+	logs := []*types.Log{
+		{BlockNumber: 100, Index: 2},
+		{BlockNumber: 200, Index: 1},
+		{BlockNumber: 400, Index: 22},
+		{BlockNumber: 100, Index: 1},
+		{BlockNumber: 300, Index: 0},
+		{BlockNumber: 400, Index: 20},
+		{BlockNumber: 100, Index: 3},
+		{BlockNumber: 200, Index: 0},
+	}
+
+	sortLogsByBlockNumberAndLogIndex(logs)
+
+	expected := []struct {
+		blockNumber uint64
+		index       uint
+	}{
+		{100, 1},
+		{100, 2},
+		{100, 3},
+		{200, 0},
+		{200, 1},
+		{300, 0},
+		{400, 20},
+		{400, 22},
+	}
+
+	for i, log := range logs {
+		if log.BlockNumber != expected[i].blockNumber || log.Index != expected[i].index {
+			t.Errorf("Unexpected log at position %d: got (BlockNumber: %d, Index: %d), want (BlockNumber: %d, Index: %d)",
+				i, log.BlockNumber, log.Index, expected[i].blockNumber, expected[i].index)
+		}
+	}
+}

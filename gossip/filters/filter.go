@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"sort"
 
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
@@ -157,6 +158,7 @@ func (f *Filter) indexedLogs(ctx context.Context, begin, end idx.Block) ([]*type
 	if err != nil {
 		return nil, err
 	}
+	sortLogsByBlockNumberAndLogIndex(logs)
 
 	for _, l := range logs {
 		pos := f.backend.GetTxPosition(l.TxHash)
@@ -168,6 +170,15 @@ func (f *Filter) indexedLogs(ctx context.Context, begin, end idx.Block) ([]*type
 	}
 
 	return logs, nil
+}
+
+func sortLogsByBlockNumberAndLogIndex(logs []*types.Log) {
+	sort.Slice(logs, func(i, j int) bool {
+		if logs[i].BlockNumber != logs[j].BlockNumber {
+			return logs[i].BlockNumber < logs[j].BlockNumber
+		}
+		return logs[i].Index < logs[j].Index
+	})
 }
 
 // indexedLogs returns the logs matching the filter criteria based on raw block
