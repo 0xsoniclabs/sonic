@@ -92,14 +92,14 @@ func testConsensusCallback(t *testing.T, upgrades opera.Upgrades) {
 
 }
 
-func TestGetBlockProposal_NoEvents_ReturnsNoProposal(t *testing.T) {
+func TestExtractProposalForNextBlock_NoEvents_ReturnsNoProposal(t *testing.T) {
 	last := &evmcore.EvmHeader{
 		Number: big.NewInt(100),
 	}
-	require.Nil(t, getBlockProposal(last, nil, nil))
+	require.Nil(t, extractProposalForNextBlock(last, nil, nil))
 }
 
-func TestGetBlockProposal_OneMatchingProposal_ReturnsTheGivenProposal(t *testing.T) {
+func TestExtractProposalForNextBlock_OneMatchingProposal_ReturnsTheGivenProposal(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	event := inter.NewMockEventPayloadI(ctrl)
 
@@ -117,12 +117,12 @@ func TestGetBlockProposal_OneMatchingProposal_ReturnsTheGivenProposal(t *testing
 	event.EXPECT().Payload().Return(&inter.Payload{Proposal: &proposal})
 	events := []inter.EventPayloadI{event}
 
-	result := getBlockProposal(last, events, nil)
+	result := extractProposalForNextBlock(last, events, nil)
 	require.NotNil(t, result)
 	require.Equal(t, proposal, *result)
 }
 
-func TestGetBlockProposal_WrongProposals_ReturnsNoProposal(t *testing.T) {
+func TestExtractProposalForNextBlock_WrongProposals_ReturnsNoProposal(t *testing.T) {
 	last := &evmcore.EvmHeader{
 		Number: big.NewInt(100),
 		Hash:   common.Hash{1, 2, 3},
@@ -132,9 +132,23 @@ func TestGetBlockProposal_WrongProposals_ReturnsNoProposal(t *testing.T) {
 		proposal  inter.Proposal
 		loggerMsg string
 	}{
-		"wrong number": {
+		"too high block number": {
 			proposal: inter.Proposal{
-				Number:     idx.Block(last.Number.Int64() + 10),
+				Number:     idx.Block(last.Number.Int64() + 2), // +1 is expected
+				ParentHash: last.Hash,
+			},
+			loggerMsg: "wrong block number",
+		},
+		"block number matching current block": {
+			proposal: inter.Proposal{
+				Number:     idx.Block(last.Number.Int64()),
+				ParentHash: last.Hash,
+			},
+			loggerMsg: "wrong block number",
+		},
+		"too low block number": {
+			proposal: inter.Proposal{
+				Number:     idx.Block(last.Number.Int64() - 1),
 				ParentHash: last.Hash,
 			},
 			loggerMsg: "wrong block number",
@@ -167,13 +181,13 @@ func TestGetBlockProposal_WrongProposals_ReturnsNoProposal(t *testing.T) {
 				any, any, any, any, "creator", creator,
 			)
 
-			result := getBlockProposal(last, events, logger)
+			result := extractProposalForNextBlock(last, events, logger)
 			require.Nil(t, result)
 		})
 	}
 }
 
-func TestGetBlockProposal_MultipleValidProposals_EmitsWarning(t *testing.T) {
+func TestExtractProposalForNextBlock_MultipleValidProposals_EmitsWarning(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	event1 := inter.NewMockEventPayloadI(ctrl)
 	event2 := inter.NewMockEventPayloadI(ctrl)
@@ -200,12 +214,12 @@ func TestGetBlockProposal_MultipleValidProposals_EmitsWarning(t *testing.T) {
 		"block", proposal.Number, "proposals", len(events),
 	)
 
-	result := getBlockProposal(last, events, logger)
+	result := extractProposalForNextBlock(last, events, logger)
 	require.NotNil(t, result)
 	require.Equal(t, *proposal, *result)
 }
 
-func TestGetBlockProposal_MultipleValidProposals_UsesTurnAndHashAsTieBreaker(t *testing.T) {
+func TestExtractProposalForNextBlock_MultipleValidProposals_UsesTurnAndHashAsTieBreaker(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	event1 := inter.NewMockEventPayloadI(ctrl)
 	event2 := inter.NewMockEventPayloadI(ctrl)
@@ -270,7 +284,7 @@ func TestGetBlockProposal_MultipleValidProposals_UsesTurnAndHashAsTieBreaker(t *
 	logger.EXPECT().Warn(any, any, any, any, any).AnyTimes()
 
 	for events := range permute(events) {
-		proposal := getBlockProposal(last, events, logger)
+		proposal := extractProposalForNextBlock(last, events, logger)
 		require.NotNil(t, proposal)
 		require.Equal(t, payloads[0].Proposal, proposal,
 			"should pick the best proposal based on turn and hash",

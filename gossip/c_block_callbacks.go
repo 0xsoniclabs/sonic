@@ -245,14 +245,14 @@ func consensusCallbackBeginBlockFn(
 						ParentHash: lastBlockHeader.Hash,
 						Time:       blockCtx.Time,
 					}
-					if es.Rules.Upgrades.Allegro { // TODO: use dedicated flag
+					if es.Rules.Upgrades.Allegro { // TODO(#193): use dedicated flag
 						events := make([]inter.EventPayloadI, 0, blockEvents.Len())
 						for _, e := range blockEvents {
 							events = append(events, e)
 						}
-						if proposed := getBlockProposal(lastBlockHeader, events, log.Root()); proposed != nil {
+						if proposed := extractProposalForNextBlock(lastBlockHeader, events, log.Root()); proposed != nil {
 							proposal = *proposed
-							// TODO: derive prevRandao from the proposal
+							// TODO(#154): derive prevRandao from the proposal
 						} else {
 							// If no proposal is found but a block needs to be
 							// created (as this function has been called), we
@@ -523,8 +523,8 @@ func mergeCheaters(a, b lachesis.Cheaters) lachesis.Cheaters {
 	return merged
 }
 
-// getBlockProposal attempts to obtain the canonical block proposal for the next
-// block in the given events. A proposal is considered valid, if
+// extractProposalForNextBlock attempts to obtain the canonical block proposal for
+// the next block in the given events. A proposal is considered valid, if
 //   - it has the correct block number (last block number + 1), and
 //   - it has the correct parent hash (last block hash)
 //
@@ -534,7 +534,7 @@ func mergeCheaters(a, b lachesis.Cheaters) lachesis.Cheaters {
 //
 // If no valid proposals are found, nil is returned. In such a case, no or an
 // empty block should be produced.
-func getBlockProposal(
+func extractProposalForNextBlock(
 	lastBlock *evmcore.EvmHeader,
 	events []inter.EventPayloadI,
 	logger log.Logger,

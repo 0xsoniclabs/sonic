@@ -44,7 +44,6 @@ func testSingleProposerProtocol_CanProcessTransactions(t *testing.T, numNodes in
 
 	// Create NumTxsPerRound accounts and send them each 1e18 wei to allow each
 	// of them to send independent transactions in each round.
-	// To avoid
 	accounts := make([]*Account, NumTxsPerRound)
 	for i := range accounts {
 		accounts[i] = NewAccount()
@@ -93,6 +92,10 @@ func testSingleProposerProtocol_CanProcessTransactions(t *testing.T, numNodes in
 			require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
 		}
 
+		// Start a new epoch every EpochLength rounds, but not as part of the
+		// first round to avoid mixing up issued introduced by the transaction
+		// processing and the epoch change. Thus, the first epoch will run for
+		// EpochLength/2 rounds, and the rest for EpochLength rounds.
 		if round%EpochLength == EpochLength/2 {
 			require.NoError(net.AdvanceEpoch(1))
 		}
@@ -165,8 +168,8 @@ func testSingleProposerProtocol_CanBeEnabled(t *testing.T, numNodes int) {
 	// Check that in this epoch the single-proposer protocol is used.
 	require.Equal(3, getUsedEventVersion(t, client))
 
-	// TODO: check that the single-proposer protocol can also be disabled once
-	// the feature is controlled by its own feature flag.
+	// TODO(#193): check that the single-proposer protocol can also be disabled
+	// once the feature is controlled by its own feature flag.
 }
 
 // getUsedEventVersion retrieves the current event version used by the network.

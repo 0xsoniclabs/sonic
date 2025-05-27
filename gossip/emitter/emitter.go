@@ -384,7 +384,7 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 	}
 
 	version := uint8(0)
-	if em.world.GetRules().Upgrades.Allegro { // TODO: introduce dedicated flag
+	if em.world.GetRules().Upgrades.Allegro { // TODO(#193): introduce dedicated flag
 		version = 3
 	} else if em.world.GetRules().Upgrades.Sonic {
 		version = 2
