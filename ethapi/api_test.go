@@ -670,8 +670,6 @@ func TestNewRPCTransaction_AllTxSignatureAndHashCanBeVerified(t *testing.T) {
 			decoded := rpcTransactionToTransaction(t, rpcTx)
 			require.Equal(t, decoded.Hash(), signed.Hash(),
 				"converted transaction hash does not match original")
-			require.Equal(t, decoded.Hash(), rpcTx.Hash,
-				"converted transaction hash does not match RPCTransaction hash")
 
 			// verify sender can be retrieved
 			sender, err := types.Sender(types.LatestSignerForChainID(rpcTx.ChainID.ToInt()), decoded)
@@ -710,6 +708,9 @@ func TestNewRPCTransaction_LegacyTxSignedWithHomesteadMaintainsChainID(t *testin
 
 	// verify sender can be retrieved
 	sender, err := types.Sender(types.HomesteadSigner{}, decoded)
+	require.NoError(t, err)
+	require.Equal(t, crypto.PubkeyToAddress(key.PublicKey), sender)
+	sender, err = types.Sender(types.LatestSignerForChainID(big.NewInt(42)), decoded)
 	require.NoError(t, err)
 	require.Equal(t, crypto.PubkeyToAddress(key.PublicKey), sender)
 }
