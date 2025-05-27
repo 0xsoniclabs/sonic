@@ -151,7 +151,8 @@ func TestIntegrationTestNet_setTransactionDefaults(t *testing.T) {
 
 	net := StartIntegrationTestNet(t,
 		IntegrationTestNetOptions{
-			Upgrades: opera.GetAllegroUpgrades()})
+			Upgrades: AsPointer(opera.GetAllegroUpgrades()),
+		})
 	client, err := net.GetClient()
 	require.NoError(t, err)
 	defer client.Close()

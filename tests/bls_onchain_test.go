@@ -15,7 +15,7 @@ import (
 
 func TestBlsVerificationOnChain(t *testing.T) {
 	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
-		Upgrades: opera.GetAllegroUpgrades(),
+		Upgrades: AsPointer(opera.GetAllegroUpgrades()),
 	})
 	defer net.Stop()
 

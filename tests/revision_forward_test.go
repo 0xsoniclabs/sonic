@@ -20,7 +20,7 @@ func TestTransaction_DelegationDesignationAddressAccessIsConsideredInAllegro(t *
 	gas += 10             // gas in recursive call (is fully consumed due to failed execution)
 
 	tests := map[string]struct {
-		upgrades *opera.Upgrades
+		upgrades opera.Upgrades
 		gas      uint64
 	}{
 		"Sonic": {
@@ -36,7 +36,7 @@ func TestTransaction_DelegationDesignationAddressAccessIsConsideredInAllegro(t *
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			net := StartIntegrationTestNetWithJsonGenesis(t, IntegrationTestNetOptions{
-				Upgrades: test.upgrades,
+				Upgrades: &test.upgrades,
 				Accounts: accountsToDeploy(),
 			})
 

@@ -148,7 +148,7 @@ func fakeGenesisImport(ctx *cli.Context) (err error) {
 		return err
 	}
 
-	var upgrades *opera.Upgrades
+	var upgrades opera.Upgrades
 	upgradesString := ctx.String(FakeUpgrades.Name)
 	switch upgradesString {
 	case "sonic":

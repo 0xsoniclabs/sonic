@@ -71,6 +71,13 @@ type IntegrationTestNetSession interface {
 	AdvanceEpoch(epochs int) error
 }
 
+// AsPointer is a utility function that returns a pointer to the given value.
+// Useful to initialize values which nil value is semantically significant. e.g. to
+// initialize the `Upgrades` field in `IntegrationTestNetOptions` to a non-nil value.
+func AsPointer[T any](v T) *T {
+	return &v
+}
+
 // IntegrationTestNetOptions are configuration options for the integration test network.
 type IntegrationTestNetOptions struct {
 	// Upgrades specifies the upgrades to be used for the integration test network.
@@ -163,9 +170,9 @@ func StartIntegrationTestNetWithFakeGenesis(
 	}
 
 	var upgrades string
-	if *effectiveOptions.Upgrades == *opera.GetSonicUpgrades() {
+	if *effectiveOptions.Upgrades == opera.GetSonicUpgrades() {
 		upgrades = "sonic"
-	} else if *effectiveOptions.Upgrades == *opera.GetAllegroUpgrades() {
+	} else if *effectiveOptions.Upgrades == opera.GetAllegroUpgrades() {
 		upgrades = "allegro"
 	} else {
 		t.Fatal("fake genesis only supports sonic and allegro feature sets")
@@ -200,7 +207,7 @@ func StartIntegrationTestNetWithJsonGenesis(
 
 	jsonGenesis := makefakegenesis.GenerateFakeJsonGenesis(
 		effectiveOptions.NumNodes,
-		effectiveOptions.Upgrades,
+		*effectiveOptions.Upgrades,
 	)
 
 	jsonGenesis.Accounts = append(jsonGenesis.Accounts, effectiveOptions.Accounts...)
@@ -872,7 +879,7 @@ func validateAndSanitizeOptions(options ...IntegrationTestNetOptions) (Integrati
 
 	if len(options) == 0 {
 		return IntegrationTestNetOptions{
-			Upgrades: opera.GetSonicUpgrades(),
+			Upgrades: AsPointer(opera.GetSonicUpgrades()),
 			NumNodes: 1,
 		}, nil
 	}
@@ -880,7 +887,7 @@ func validateAndSanitizeOptions(options ...IntegrationTestNetOptions) (Integrati
 		options[0].NumNodes = 1
 	}
 	if options[0].Upgrades == nil {
-		options[0].Upgrades = opera.GetSonicUpgrades()
+		options[0].Upgrades = AsPointer(opera.GetSonicUpgrades())
 	}
 
 	return options[0], nil

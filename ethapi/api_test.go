@@ -727,7 +727,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 	}
 
 	tests := map[string]struct {
-		upgrades          *opera.Upgrades
+		upgrades          opera.Upgrades
 		extraSetupBackend func(*MockBackend)
 		setupStateDb      func(*state.MockStateDB)
 		call              func(*testing.T, Backend, TransactionArgs, rpc.BlockNumberOrHash)
@@ -858,24 +858,24 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 }
 
 // makeChainConfig allows to create a chain config with a given set of features
-func makeChainConfig(upgrades *opera.Upgrades) *params.ChainConfig {
+func makeChainConfig(upgrades opera.Upgrades) *params.ChainConfig {
 
 	if upgrades.Allegro {
 		return opera.MainNetRules().EvmChainConfig(
 			[]opera.UpgradeHeight{
-				{Upgrades: *opera.GetSonicUpgrades(), Height: 0},
-				{Upgrades: *opera.GetAllegroUpgrades(), Height: 1},
+				{Upgrades: opera.GetSonicUpgrades(), Height: 0},
+				{Upgrades: opera.GetAllegroUpgrades(), Height: 1},
 			})
 	}
 
 	return opera.MainNetRules().EvmChainConfig(
 		[]opera.UpgradeHeight{
-			{Upgrades: *opera.GetSonicUpgrades(), Height: 0},
+			{Upgrades: opera.GetSonicUpgrades(), Height: 0},
 		})
 }
 
 // makeTestEVM allows to create an evm instance to use in tests with a given set of features
-func makeTestEVM(features *opera.Upgrades) func(
+func makeTestEVM(features opera.Upgrades) func(
 	ctx context.Context,
 	statedb vm.StateDB,
 	header *evmcore.EvmHeader,

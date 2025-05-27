@@ -79,7 +79,7 @@ func LoadGenesisJson(filename string) (*GenesisJson, error) {
 // number of validators with some initial tokens.
 func GenerateFakeJsonGenesis(
 	numValidators int,
-	upgrades *opera.Upgrades,
+	upgrades opera.Upgrades,
 ) *GenesisJson {
 	jsonGenesis := &GenesisJson{
 		Rules:         opera.FakeNetRules(upgrades),

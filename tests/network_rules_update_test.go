@@ -18,7 +18,9 @@ import (
 func TestNetworkRule_Update_RulesChangeIsDelayedUntilNextEpochStart(t *testing.T) {
 	require := require.New(t)
 	net := StartIntegrationTestNetWithFakeGenesis(t,
-		IntegrationTestNetOptions{Upgrades: opera.GetAllegroUpgrades()})
+		IntegrationTestNetOptions{
+			Upgrades: AsPointer(opera.GetAllegroUpgrades()),
+		})
 
 	client, err := net.GetClient()
 	require.NoError(err)
@@ -77,7 +79,10 @@ func TestNetworkRule_Update_RulesChangeIsDelayedUntilNextEpochStart(t *testing.T
 
 func TestNetworkRule_Update_RulesChangeDuringEpoch_PreAllegro(t *testing.T) {
 	require := require.New(t)
-	net := StartIntegrationTestNetWithFakeGenesis(t, IntegrationTestNetOptions{Upgrades: opera.GetSonicUpgrades()})
+	net := StartIntegrationTestNetWithFakeGenesis(t,
+		IntegrationTestNetOptions{
+			Upgrades: AsPointer(opera.GetSonicUpgrades()),
+		})
 
 	client, err := net.GetClient()
 	require.NoError(err)
@@ -121,7 +126,10 @@ func TestNetworkRule_Update_RulesChangeDuringEpoch_PreAllegro(t *testing.T) {
 
 func TestNetworkRule_Update_Restart_Recovers_Original_Value(t *testing.T) {
 	require := require.New(t)
-	net := StartIntegrationTestNetWithFakeGenesis(t, IntegrationTestNetOptions{Upgrades: opera.GetAllegroUpgrades()})
+	net := StartIntegrationTestNetWithFakeGenesis(t,
+		IntegrationTestNetOptions{
+			Upgrades: AsPointer(opera.GetAllegroUpgrades()),
+		})
 
 	client, err := net.GetClient()
 	require.NoError(err)
@@ -189,7 +197,10 @@ func TestNetworkRule_Update_Restart_Recovers_Original_Value(t *testing.T) {
 
 func TestNetworkRule_MinEventGas_AllowsChangingRules(t *testing.T) {
 	require := require.New(t)
-	net := StartIntegrationTestNetWithFakeGenesis(t, IntegrationTestNetOptions{Upgrades: opera.GetSonicUpgrades()})
+	net := StartIntegrationTestNetWithFakeGenesis(t,
+		IntegrationTestNetOptions{
+			Upgrades: AsPointer(opera.GetSonicUpgrades()),
+		})
 
 	client, err := net.GetClient()
 	require.NoError(err)

@@ -302,8 +302,8 @@ func (r Rules) EvmChainConfig(hh []UpgradeHeight) *ethparams.ChainConfig {
 }
 
 // SonicUpgrades contains the feature flags for the Sonic upgrade.
-func GetSonicUpgrades() *Upgrades {
-	return &Upgrades{
+func GetSonicUpgrades() Upgrades {
+	return Upgrades{
 		Berlin:  true,
 		London:  true,
 		Llr:     false,
@@ -313,8 +313,8 @@ func GetSonicUpgrades() *Upgrades {
 }
 
 // AllegroUpgrades contains the feature flags for the Allegro upgrade.
-func GetAllegroUpgrades() *Upgrades {
-	return &Upgrades{
+func GetAllegroUpgrades() Upgrades {
+	return Upgrades{
 		Berlin:  true,
 		London:  true,
 		Llr:     false,
@@ -335,11 +335,11 @@ func MainNetRules() Rules {
 			MaxBlockGas:             MinimumMaxBlockGas,
 			MaxEmptyBlockSkipPeriod: inter.Timestamp(1 * time.Minute),
 		},
-		Upgrades: *GetAllegroUpgrades(),
+		Upgrades: GetAllegroUpgrades(),
 	}
 }
 
-func FakeNetRules(upgrades *Upgrades) Rules {
+func FakeNetRules(upgrades Upgrades) Rules {
 	return Rules{
 		Name:      "fake",
 		NetworkID: FakeNetworkID,
@@ -351,7 +351,7 @@ func FakeNetRules(upgrades *Upgrades) Rules {
 			MaxBlockGas:             MinimumMaxBlockGas,
 			MaxEmptyBlockSkipPeriod: inter.Timestamp(3 * time.Second),
 		},
-		Upgrades: *upgrades,
+		Upgrades: upgrades,
 	}
 }
 

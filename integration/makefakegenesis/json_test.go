@@ -22,7 +22,7 @@ func TestJsonGenesis_AcceptsGenesisWithoutCommittee(t *testing.T) {
 
 func TestJsonGenesis_Network_Rules_Validated_Allegro_Only(t *testing.T) {
 	tests := map[string]struct {
-		featureSet *opera.Upgrades
+		featureSet opera.Upgrades
 		assert     func(t *testing.T, err error)
 	}{
 		"sonic": {

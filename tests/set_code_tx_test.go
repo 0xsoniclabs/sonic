@@ -37,7 +37,7 @@ import (
 func TestSetCodeTransaction(t *testing.T) {
 
 	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
-		Upgrades: opera.GetAllegroUpgrades(),
+		Upgrades: AsPointer(opera.GetAllegroUpgrades()),
 	})
 
 	t.Run("Operation", func(t *testing.T) {
