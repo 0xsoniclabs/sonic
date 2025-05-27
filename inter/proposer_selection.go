@@ -20,7 +20,7 @@ func GetProposer(
 ) (idx.ValidatorID, error) {
 
 	// The selection of the proposer for a given round is conducted as follows:
-	//  1. f := sha256(epoch + turn) / 2^256
+	//  1. f := sha256(epoch || turn) / 2^256, (where || is the concatenation operator)
 	//  2. limit := f * total_weight
 	//  3. from the list of validators sorted by their stake, find the first
 	//     validator whose cumulative weight is greater than or equal to limit.
