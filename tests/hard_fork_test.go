@@ -17,7 +17,7 @@ func TestClient_HardForkIsExecutedAndClientAdoptsNewBehaviors(t *testing.T) {
 	net := StartIntegrationTestNetWithFakeGenesis(t,
 		IntegrationTestNetOptions{
 			// Explicitly set the network to use the Sonic Hard Fork
-			FeatureSet: opera.SonicFeatures,
+			Upgrades: AsPointer(opera.GetSonicUpgrades()),
 			// Use 2 nodes to test the rules update propagation
 			NumNodes: 2,
 		},
