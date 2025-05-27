@@ -16,13 +16,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// getTestValidationOptions returns a set of options to adjust the validation of transactions
+// getTestPoolOptions returns a set of options to adjust the validation of transactions
 // considering them as local transactions with a min tip of 1.
-func getTestValidationOptions() validationOptions {
-	return validationOptions{
-		minTip:  big.NewInt(1),
-		isLocal: true,
-		signer:  types.NewPragueSigner(big.NewInt(1)),
+func getTestPoolOptions() poolOptions {
+	return poolOptions{
+		minTip:       big.NewInt(1),
+		isLocal:      true,
+		currentState: nil,
+		locals:       nil,
 	}
 }
 
@@ -38,8 +39,8 @@ func getTestBlockState() blockState {
 
 // getTestNetworkRules returns a set of network rules to adjust the validation of transactions
 // so that it accepts all types of transactions. It also sets the signer to a new Prague signer with chain ID 1.
-func getTestNetworkRules() ActiveEips {
-	return ActiveEips{
+func getTestNetworkRules() NetworkRules {
+	return NetworkRules{
 		istanbul: true,
 		eip2718:  true,
 		eip1559:  true,
@@ -47,6 +48,7 @@ func getTestNetworkRules() ActiveEips {
 		eip4844:  true,
 		eip7623:  true,
 		eip7702:  true,
+		signer:   types.NewPragueSigner(big.NewInt(1)),
 	}
 }
 
@@ -151,36 +153,36 @@ func TestValidateTxStatic_AcceptsValidTransactions(t *testing.T) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Type Validation
+// Network Validation
 
-func TestValidateTxType_BeforeEip2718_RejectsNonLegacyTransactions(t *testing.T) {
+func TestValidateTxForNetwork_BeforeEip2718_RejectsNonLegacyTransactions(t *testing.T) {
 	for name, tx := range getTxsOfAllTypes() {
 		if _, ok := tx.(*types.LegacyTx); ok {
 			continue // Skip legacy transactions
 		}
 		t.Run(name, func(t *testing.T) {
-			err := ValidateTxType(types.NewTx(tx),
-				ActiveEips{eip2718: false})
+			err := ValidateTxForNetwork(types.NewTx(tx),
+				NetworkRules{eip2718: false})
 			require.ErrorIs(t, ErrTxTypeNotSupported, err)
 		})
 	}
 }
 
-func TestValidateTxType_RejectsTxBasedOnTypeAndActiveRevision(t *testing.T) {
+func TestValidateTxForNetwork_RejectsTxBasedOnTypeAndActiveRevision(t *testing.T) {
 	tests := map[string]struct {
 		tx        *types.Transaction
-		configure func(ActiveEips) ActiveEips
+		configure func(NetworkRules) NetworkRules
 	}{
 		"accessList tx before eip2718": {
 			tx: types.NewTx(&types.AccessListTx{}),
-			configure: func(opts ActiveEips) ActiveEips {
+			configure: func(opts NetworkRules) NetworkRules {
 				opts.eip2718 = false
 				return opts
 			},
 		},
 		"dynamic fee tx before eip1559": {
 			tx: types.NewTx(&types.DynamicFeeTx{}),
-			configure: func(opts ActiveEips) ActiveEips {
+			configure: func(opts NetworkRules) NetworkRules {
 				opts.eip2718 = true
 				opts.eip1559 = false
 				return opts
@@ -188,7 +190,7 @@ func TestValidateTxType_RejectsTxBasedOnTypeAndActiveRevision(t *testing.T) {
 		},
 		"blob tx before eip4844": {
 			tx: types.NewTx(makeBlobTx(nil, nil)),
-			configure: func(opts ActiveEips) ActiveEips {
+			configure: func(opts NetworkRules) NetworkRules {
 				opts.eip2718 = true
 				opts.eip4844 = false
 				return opts
@@ -196,7 +198,7 @@ func TestValidateTxType_RejectsTxBasedOnTypeAndActiveRevision(t *testing.T) {
 		},
 		"setCode tx before eip7702": {
 			tx: types.NewTx(&types.SetCodeTx{}),
-			configure: func(opts ActiveEips) ActiveEips {
+			configure: func(opts NetworkRules) NetworkRules {
 				opts.eip2718 = true
 				opts.eip7702 = false
 				return opts
@@ -205,33 +207,149 @@ func TestValidateTxType_RejectsTxBasedOnTypeAndActiveRevision(t *testing.T) {
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			err := ValidateTxType(test.tx, test.configure(getTestNetworkRules()))
+			err := ValidateTxForNetwork(test.tx, test.configure(getTestNetworkRules()))
 			require.Equal(t, ErrTxTypeNotSupported, err)
 		})
 	}
 }
 
-func TestValidateTxType_Blobs_RejectsTxWith(t *testing.T) {
+func TestValidateTxForNetwork_Blobs_RejectsTxWith(t *testing.T) {
 	// blob txs are not supported in sonic, so they must have empty hash list and sidecar
 
 	t.Run("blob tx with non-empty blob hashes", func(t *testing.T) {
 		tx := types.NewTx(makeBlobTx([]common.Hash{{0x01}}, nil))
-		err := ValidateTxType(tx, getTestNetworkRules())
+		err := ValidateTxForNetwork(tx, getTestNetworkRules())
 		require.ErrorIs(t, err, ErrNonEmptyBlobTx)
 	})
 
 	t.Run("blob tx with non-empty sidecar", func(t *testing.T) {
 		tx := types.NewTx(makeBlobTx(nil,
 			&types.BlobTxSidecar{Commitments: []kzg4844.Commitment{{0x01}}}))
-		err := ValidateTxType(tx, getTestNetworkRules())
+		err := ValidateTxForNetwork(tx, getTestNetworkRules())
 		require.ErrorIs(t, err, ErrNonEmptyBlobTx)
 	})
 }
 
-func TestValidateTxType_AcceptsTxWith(t *testing.T) {
+func TestValidateTxForNetwork_Gas_RejectsTxWith(t *testing.T) {
+
+	for name, tx := range getTxsOfAllTypes() {
+		t.Run(fmt.Sprintf("gas lower than intrinsic gas/%v", name), func(t *testing.T) {
+			netRules := getTestNetworkRules()
+
+			// setup tx to fail intrinsic gas calculation
+			setGas(t, tx, getIntrinsicGasForTest(t, tx, netRules)-1)
+
+			err := ValidateTxForNetwork(types.NewTx(tx), netRules)
+			require.ErrorIs(t, err, ErrIntrinsicGas)
+		})
+	}
+
+	// EIP-7623
+	for name, tx := range getTxsOfAllTypes() {
+		t.Run(fmt.Sprintf("gas lower than floor data gas/%v", name), func(t *testing.T) {
+			netRules := getTestNetworkRules()
+
+			// setup tx to fail intrinsic gas calculation
+			someData := make([]byte, txSlotSize)
+			setData(t, tx, someData)
+			floorDataGas, err := core.FloorDataGas(someData)
+			require.NoError(t, err)
+			setGas(t, tx, floorDataGas-1)
+
+			err = ValidateTxForNetwork(types.NewTx(tx), netRules)
+			require.ErrorIs(t, err, ErrFloorDataGas)
+		})
+	}
+
+	for name, tx := range getTxsOfAllTypes() {
+		t.Run(fmt.Sprintf("floor data gas not checked before eip7623/%v", name), func(t *testing.T) {
+			netRules := getTestNetworkRules()
+			netRules.eip7623 = false
+
+			someData := make([]byte, txSlotSize)
+			setData(t, tx, someData)
+			floorDataGas, err := core.FloorDataGas(someData)
+			require.NoError(t, err)
+			setGas(t, tx, floorDataGas-1)
+			_, signedTx := signTxForTest(t, tx, netRules.signer)
+
+			err = ValidateTxForNetwork(signedTx, netRules)
+			require.NoError(t, err)
+
+		})
+	}
+}
+
+func TestValidateTxForNetwork_Data_RejectsTxWith(t *testing.T) {
+	// EIP-3860
+	maxInitCode := make([]byte, params.MaxInitCodeSize+1)
+	for name, tx := range getTxsOfAllTypes() {
+		t.Run(fmt.Sprintf("init code too large/%v", name), func(t *testing.T) {
+			if isBlobOrSetCode(tx) {
+				t.Skip("blob and setCode transactions cannot be used as create")
+			}
+
+			setData(t, tx, maxInitCode)
+			setReceiverToNil(t, tx)
+
+			err := ValidateTxForNetwork(types.NewTx(tx), getTestNetworkRules())
+			require.ErrorIs(t, err, ErrMaxInitCodeSizeExceeded)
+		})
+	}
+
+	for name, tx := range getTxsOfAllTypes() {
+		t.Run(fmt.Sprintf("init code size not checked before shanghai/%v", name), func(t *testing.T) {
+			if isBlobOrSetCode(tx) {
+				t.Skip("blob and setCode transactions cannot be used to initialize a contract")
+			}
+			netRules := getTestNetworkRules()
+			netRules.shanghai = false
+			netRules.eip4844 = false
+			netRules.eip7623 = false
+			// needs extra gas to allow big data to be afforded.
+
+			setData(t, tx, maxInitCode)
+			setReceiverToNil(t, tx)
+			setGas(t, tx, getIntrinsicGasForTest(t, tx, netRules)+1)
+			_, signedTx := signTxForTest(t, tx, netRules.signer)
+
+			err := ValidateTxForNetwork(signedTx, netRules)
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestValidateTxForNetwork_Signer_RejectsTxWith(t *testing.T) {
+	for name, tx := range getTxsOfAllTypes() {
+		t.Run(fmt.Sprintf("invalid signer/%v", name), func(t *testing.T) {
+
+			netRules := getTestNetworkRules()
+			netRules.signer = types.NewPragueSigner(big.NewInt(2))
+
+			// sign txs with sender
+			key, err := crypto.GenerateKey()
+			require.NoError(t, err)
+			signer1 := types.NewPragueSigner(big.NewInt(1))
+			setGas(t, tx, getIntrinsicGasForTest(t, tx, netRules)+1)
+			signedTx, err := types.SignTx(types.NewTx(tx),
+				signer1, key)
+			require.NoError(t, err)
+
+			err = ValidateTxForNetwork(signedTx, netRules)
+			require.ErrorIs(t, err, ErrInvalidSender)
+		})
+	}
+}
+
+func TestValidateTxForNetwork_AcceptsTxWith(t *testing.T) {
 	for name, tx := range getTxsOfAllTypes() {
 		t.Run(name, func(t *testing.T) {
-			err := ValidateTxType(types.NewTx(tx), getTestNetworkRules())
+			netRules := getTestNetworkRules()
+
+			setGas(t, tx, getIntrinsicGasForTest(t, tx, netRules)+1)
+			_, signedTx := signTxForTest(t, tx, netRules.signer)
+
+			err := ValidateTxForNetwork(signedTx, netRules)
 			require.NoError(t, err)
 		})
 	}
@@ -287,108 +405,6 @@ func TestValidateTxForBlock_AcceptsTxWith(t *testing.T) {
 	}
 }
 
-// //////////////////////////////////////////////////////////////////////////////
-// Gas and InitCodeSize Validation
-func TestValidateGasAndInitCodeSize_Gas_RejectsTxWith(t *testing.T) {
-
-	for name, tx := range getTxsOfAllTypes() {
-		t.Run(fmt.Sprintf("gas lower than intrinsic gas/%v", name), func(t *testing.T) {
-			opt := getTestNetworkRules()
-
-			// setup tx to fail intrinsic gas calculation
-			setGas(t, tx, getIntrinsicGasForTest(t, tx, opt)-1)
-
-			err := ValidateGasAndInitCodeSize(types.NewTx(tx), opt)
-			require.ErrorIs(t, err, ErrIntrinsicGas)
-		})
-	}
-
-	// EIP-7623
-	for name, tx := range getTxsOfAllTypes() {
-		t.Run(fmt.Sprintf("gas lower than floor data gas/%v", name), func(t *testing.T) {
-			opt := getTestNetworkRules()
-
-			// setup tx to fail intrinsic gas calculation
-			someData := make([]byte, txSlotSize)
-			setData(t, tx, someData)
-			floorDataGas, err := core.FloorDataGas(someData)
-			require.NoError(t, err)
-			setGas(t, tx, floorDataGas-1)
-
-			err = ValidateGasAndInitCodeSize(types.NewTx(tx), opt)
-			require.ErrorIs(t, err, ErrFloorDataGas)
-		})
-	}
-
-	for name, tx := range getTxsOfAllTypes() {
-		t.Run(fmt.Sprintf("floor data gas not checked before eip7623/%v", name), func(t *testing.T) {
-			opt := getTestNetworkRules()
-			opt.eip7623 = false
-
-			someData := make([]byte, txSlotSize)
-			setData(t, tx, someData)
-			floorDataGas, err := core.FloorDataGas(someData)
-			require.NoError(t, err)
-			setGas(t, tx, floorDataGas-1)
-
-			err = ValidateGasAndInitCodeSize(types.NewTx(tx), opt)
-			require.NoError(t, err)
-
-		})
-	}
-}
-
-func TestValidateGasAndInitCodeSize_Data_RejectsTxWith(t *testing.T) {
-	// EIP-3860
-	maxInitCode := make([]byte, params.MaxInitCodeSize+1)
-	for name, tx := range getTxsOfAllTypes() {
-		t.Run(fmt.Sprintf("init code too large/%v", name), func(t *testing.T) {
-			if isBlobOrSetCode(tx) {
-				t.Skip("blob and setCode transactions cannot be used as create")
-			}
-
-			setData(t, tx, maxInitCode)
-			setReceiverToNil(t, tx)
-
-			err := ValidateGasAndInitCodeSize(types.NewTx(tx), getTestNetworkRules())
-			require.ErrorIs(t, err, ErrMaxInitCodeSizeExceeded)
-		})
-	}
-
-	for name, tx := range getTxsOfAllTypes() {
-		t.Run(fmt.Sprintf("init code size not checked before shanghai/%v", name), func(t *testing.T) {
-			if isBlobOrSetCode(tx) {
-				t.Skip("blob and setCode transactions cannot be used to initialize a contract")
-			}
-			opt := getTestNetworkRules()
-			opt.shanghai = false
-			opt.eip4844 = false
-			opt.eip7623 = false
-			// needs extra gas to allow big data to be afforded.
-
-			setData(t, tx, maxInitCode)
-			setReceiverToNil(t, tx)
-			setGas(t, tx, getIntrinsicGasForTest(t, tx, opt)+1)
-
-			err := ValidateGasAndInitCodeSize(types.NewTx(tx), opt)
-			require.NoError(t, err)
-		})
-	}
-}
-
-func TestValidateGasAndInitCodeSize_AcceptsTxWith(t *testing.T) {
-	for name, tx := range getTxsOfAllTypes() {
-		t.Run(name, func(t *testing.T) {
-			opt := getTestNetworkRules()
-
-			setGas(t, tx, getIntrinsicGasForTest(t, tx, opt)+1)
-
-			err := ValidateGasAndInitCodeSize(types.NewTx(tx), opt)
-			require.NoError(t, err)
-		})
-	}
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 // State Validation
 
@@ -430,29 +446,30 @@ func TestValidateTxForState_Balance_RejectsTxWhen(t *testing.T) {
 	for name, tx := range getTxsOfAllTypes() {
 		t.Run(fmt.Sprintf("insufficient balance/%v", name), func(t *testing.T) {
 
-			opt := getTestValidationOptions()
-			blockState := getTestBlockState()
 			setValue(t, tx, big.NewInt(42))
 
-			// --- needed for execution up to relevant check ---
 			// setup transaction enough gas and fee cap to reach balance check
-			setGasPriceOrFeeCap(t, tx, blockState.baseFee)
-			setGas(t, tx, blockState.maxGas)
-			address, signedTx := signTxForTest(t, tx, opt.signer)
-			// ---
+			someGas := uint64(100_000)
+			someGasFee := big.NewInt(1)
+			setGasPriceOrFeeCap(t, tx, someGasFee)
+			setGas(t, tx, someGas)
+			signer := types.NewPragueSigner(big.NewInt(1))
+			address, signedTx := signTxForTest(t, tx, signer)
 
 			// setup low balance
 			testDb := newTestTxPoolStateDb()
-			// balance = gas * fee cap + value
-			zero := uint256.NewInt(0)
-			txCost := zero.Mul(
-				uint256.NewInt(blockState.maxGas),
-				uint256.MustFromBig(blockState.baseFee),
-			)
-			txCost = zero.Add(txCost, uint256.MustFromBig(signedTx.Value()))
-			testDb.balances[address] = zero.Sub(txCost, uint256.NewInt(1))
 
-			err := ValidateTxForState(signedTx, testDb, opt.signer)
+			// balance = gas * fee cap + value
+			blank := uint256.NewInt(0)
+			txCost := blank.Mul(
+				uint256.NewInt(someGas),
+				uint256.MustFromBig(someGasFee),
+			)
+			txCost = blank.Add(txCost, uint256.MustFromBig(signedTx.Value()))
+			// just not enough than needed
+			testDb.balances[address] = blank.Sub(txCost, uint256.NewInt(1))
+
+			err := ValidateTxForState(signedTx, testDb, signer)
 			require.ErrorIs(t, err, ErrInsufficientFunds)
 		})
 	}
@@ -484,9 +501,9 @@ func TestValidateTxForPool_Data_RejectsTxWith(t *testing.T) {
 
 			setData(t, tx, oversizedData)
 
-			opt := getTestValidationOptions()
-			_, signedTx := signTxForTest(t, tx, opt.signer)
-			err := validateTxForPool(signedTx, opt)
+			signer := types.NewPragueSigner(big.NewInt(1))
+			_, signedTx := signTxForTest(t, tx, signer)
+			err := validateTxForPool(signedTx, getTestPoolOptions(), signer)
 			require.ErrorIs(t, err, ErrOversizedData)
 		})
 	}
@@ -504,10 +521,7 @@ func TestValidateTxForPool_Signer_RejectsTxWith(t *testing.T) {
 			require.NoError(t, err)
 
 			signer2 := types.NewPragueSigner(big.NewInt(2))
-			opts := getTestValidationOptions()
-			opts.signer = signer2
-
-			err = validateTxForPool(signedTx, opts)
+			err = validateTxForPool(signedTx, getTestPoolOptions(), signer2)
 			require.ErrorIs(t, err, ErrInvalidSender)
 		})
 	}
@@ -517,7 +531,7 @@ func TestValidateTxForPool_RejectsNonLocalTxWith(t *testing.T) {
 	for name, tx := range getTxsOfAllTypes() {
 		t.Run(fmt.Sprintf("gas tip lower than pool min tip/%v", name), func(t *testing.T) {
 
-			opt := getTestValidationOptions()
+			opt := getTestPoolOptions()
 			opt.isLocal = false
 			opt.minTip = big.NewInt(2)
 
@@ -526,11 +540,11 @@ func TestValidateTxForPool_RejectsNonLocalTxWith(t *testing.T) {
 			// fee cap needs to be greater than or equal to tip cap
 			setEffectiveTip(t, tx, lowTipCap)
 
-			opts := getTestValidationOptions()
-			opt.locals = newAccountSet(opts.signer)
-			_, signedTx := signTxForTest(t, tx, opts.signer)
+			signer := types.NewPragueSigner(big.NewInt(1))
+			opt.locals = newAccountSet(signer)
+			_, signedTx := signTxForTest(t, tx, signer)
 
-			err := validateTxForPool(signedTx, opt)
+			err := validateTxForPool(signedTx, opt, signer)
 			require.ErrorIs(t, err, ErrUnderpriced)
 		})
 	}
@@ -540,7 +554,7 @@ func TestValidateTxForPool_AcceptsNonLocalTxWithBigTip(t *testing.T) {
 	for name, tx := range getTxsOfAllTypes() {
 		t.Run(name, func(t *testing.T) {
 
-			opt := getTestValidationOptions()
+			opt := getTestPoolOptions()
 			opt.isLocal = false
 			opt.minTip = big.NewInt(2)
 
@@ -549,12 +563,12 @@ func TestValidateTxForPool_AcceptsNonLocalTxWithBigTip(t *testing.T) {
 			// fee cap needs to be greater than or equal to tip cap
 			setEffectiveTip(t, tx, bigTip)
 
-			opts := getTestValidationOptions()
-			opt.locals = newAccountSet(opts.signer)
+			signer := types.NewPragueSigner(big.NewInt(1))
+			opt.locals = newAccountSet(signer)
 			// sign txs with sender
-			_, signedTx := signTxForTest(t, tx, opts.signer)
+			_, signedTx := signTxForTest(t, tx, signer)
 
-			err := validateTxForPool(signedTx, opt)
+			err := validateTxForPool(signedTx, opt, signer)
 			require.NoError(t, err)
 		})
 	}
@@ -566,27 +580,15 @@ func TestValidateTxForPool_AcceptsNonLocalTxWithBigTip(t *testing.T) {
 func TestValidateTx_RejectsTxWhen(t *testing.T) {
 
 	for name, tx := range getTxsOfAllTypes() {
-		t.Run(fmt.Sprintf("fails tx type validation/%v", name), func(t *testing.T) {
+		t.Run(fmt.Sprintf("fails network validation/%v", name), func(t *testing.T) {
 			netRules := getTestNetworkRules()
-			switch tx := tx.(type) {
-			case *types.LegacyTx:
-				t.Skip("legacy transactions are always accepted")
-			case *types.AccessListTx:
-				netRules.eip2718 = false
-			case *types.DynamicFeeTx:
-				netRules.eip1559 = false
-			case *types.BlobTx:
-				netRules.eip4844 = false
-			case *types.SetCodeTx:
-				netRules.eip7702 = false
-			default:
-				t.Fatalf("unexpected transaction type: %T", tx)
-			}
+			// setup tx to fail intrinsic gas calculation
+			setGas(t, tx, getIntrinsicGasForTest(t, tx, netRules)-1)
+			_, signedTx := signTxForTest(t, tx, netRules.signer)
 
-			// validate transaction
-			err := validateTx(types.NewTx(tx),
-				getTestValidationOptions(), getTestBlockState(), netRules)
-			require.ErrorIs(t, err, ErrTxTypeNotSupported)
+			err := validateTx(signedTx, getTestPoolOptions(),
+				getTestBlockState(), netRules)
+			require.ErrorIs(t, err, ErrIntrinsicGas)
 		})
 	}
 
@@ -606,9 +608,13 @@ func TestValidateTx_RejectsTxWhen(t *testing.T) {
 				expectedErr = ErrTipAboveFeeCap
 			}
 
+			netRules := getTestNetworkRules()
+			setGas(t, tx, getIntrinsicGasForTest(t, tx, netRules)+1)
+			_, signedTx := signTxForTest(t, tx, netRules.signer)
+
 			// validate transaction
-			err := validateTx(types.NewTx(tx), getTestValidationOptions(),
-				getTestBlockState(), getTestNetworkRules())
+			err := validateTx(signedTx, getTestPoolOptions(),
+				getTestBlockState(), netRules)
 			require.ErrorIs(t, err, expectedErr)
 		})
 	}
@@ -616,39 +622,24 @@ func TestValidateTx_RejectsTxWhen(t *testing.T) {
 	for name, tx := range getTxsOfAllTypes() {
 		t.Run(fmt.Sprintf("fails block state/%v", name), func(t *testing.T) {
 			blockState := getTestBlockState()
-			blockState.maxGas = 1
-
-			setGas(t, tx, 2)
-			setGasPriceOrFeeCap(t, tx, big.NewInt(1))
-
-			err := validateTx(types.NewTx(tx), getTestValidationOptions(),
-				blockState, getTestNetworkRules())
-			require.ErrorIs(t, err, ErrGasLimit)
-		})
-	}
-
-	for name, tx := range getTxsOfAllTypes() {
-		t.Run(fmt.Sprintf("fails gas and init code size/%v", name), func(t *testing.T) {
+			blockState.baseFee = big.NewInt(2)
 
 			// --- needed for execution up to relevant check ---
-			blockState := getTestBlockState()
-			setGasPriceOrFeeCap(t, tx, blockState.baseFee)
-			// ---
 			netRules := getTestNetworkRules()
-			// setup tx to fail intrinsic gas calculation
-			setGas(t, tx, getIntrinsicGasForTest(t, tx, netRules)-1)
-			opt := getTestValidationOptions()
-			_, signedTx := signTxForTest(t, tx, opt.signer)
+			setGas(t, tx, getIntrinsicGasForTest(t, tx, netRules)+1)
+			setGasPriceOrFeeCap(t, tx, big.NewInt(1))
+			_, signedTx := signTxForTest(t, tx, netRules.signer)
+			// ---
 
-			err := validateTx(signedTx, getTestValidationOptions(),
+			err := validateTx(signedTx, getTestPoolOptions(),
 				blockState, netRules)
-			require.ErrorIs(t, err, ErrIntrinsicGas)
+			require.ErrorIs(t, err, ErrUnderpriced)
 		})
 	}
 
 	for name, tx := range getTxsOfAllTypes() {
 		t.Run(fmt.Sprintf("fails pool policies/%v", name), func(t *testing.T) {
-			opt := getTestValidationOptions()
+			opt := getTestPoolOptions()
 			opt.isLocal = false
 			opt.minTip = big.NewInt(2)
 
@@ -660,14 +651,14 @@ func TestValidateTx_RejectsTxWhen(t *testing.T) {
 			// --- needed for execution up to relevant check ---
 			blockState := getTestBlockState()
 			setGasPriceOrFeeCap(t, tx, blockState.baseFee)
-			intrinsicGas := getIntrinsicGasForTest(t, tx, getTestNetworkRules())
+			netRules := getTestNetworkRules()
+			intrinsicGas := getIntrinsicGasForTest(t, tx, netRules)
 			setGas(t, tx, intrinsicGas+1) // enough gas
 			// ---
+			_, signedTx := signTxForTest(t, tx, netRules.signer)
+			opt.locals = newAccountSet(netRules.signer)
 
-			_, signedTx := signTxForTest(t, tx, opt.signer)
-			opt.locals = newAccountSet(opt.signer)
-
-			err := validateTx(signedTx, opt, blockState, getTestNetworkRules())
+			err := validateTx(signedTx, opt, blockState, netRules)
 			require.ErrorIs(t, err, ErrUnderpriced)
 		})
 	}
@@ -679,20 +670,21 @@ func TestValidateTx_RejectsTxWhen(t *testing.T) {
 			setNonce(t, tx, currentNonce-1)
 
 			// --- needed for execution up to relevant check ---
+			netRules := getTestNetworkRules()
 			blockState := getTestBlockState()
 			setGasPriceOrFeeCap(t, tx, blockState.baseFee)
-			intrinsicGas := getIntrinsicGasForTest(t, tx, getTestNetworkRules())
+			intrinsicGas := getIntrinsicGasForTest(t, tx, netRules)
 			setGas(t, tx, intrinsicGas+1) // enough gas
 			// ---
 
 			// sign txs with sender and set current balance for account
-			address, signedTx := signTxForTest(t, tx, getTestValidationOptions().signer)
+			address, signedTx := signTxForTest(t, tx, netRules.signer)
 			testDb := newTestTxPoolStateDb()
 			testDb.nonces[address] = currentNonce
-			opt := getTestValidationOptions()
+			opt := getTestPoolOptions()
 			opt.currentState = testDb
 
-			err := validateTx(signedTx, opt, blockState, getTestNetworkRules())
+			err := validateTx(signedTx, opt, blockState, netRules)
 			require.ErrorIs(t, err, ErrNonceTooLow)
 		})
 	}
@@ -717,14 +709,14 @@ func TestValidateTx_Success(t *testing.T) {
 			setGas(t, tx, minGas)
 
 			// Sign the transaction
-			address, signedTx := signTxForTest(t, tx, getTestValidationOptions().signer)
+			address, signedTx := signTxForTest(t, tx, netRules.signer)
 
 			// Set up sufficient balance and nonce
 			testDb := newTestTxPoolStateDb()
 			testDb.balances[address] = uint256.NewInt(math.MaxUint64)
 			testDb.nonces[address] = 0
 
-			opts := getTestValidationOptions()
+			opts := getTestPoolOptions()
 			opts.currentState = testDb
 
 			err = validateTx(signedTx, opts, getTestBlockState(), netRules)
@@ -924,7 +916,7 @@ func setValueToNegative(t *testing.T, tx types.TxData) {
 	}
 }
 
-func getIntrinsicGasForTest(t *testing.T, tx types.TxData, opt ActiveEips) uint64 {
+func getIntrinsicGasForTest(t *testing.T, tx types.TxData, opt NetworkRules) uint64 {
 	transaction := types.NewTx(tx)
 	intrGas, err := core.IntrinsicGas(
 		transaction.Data(),
@@ -969,7 +961,7 @@ func BenchmarkValidateTx(b *testing.B) {
 
 	netRules := getTestNetworkRules()
 	blockState := getTestBlockState()
-	opts := getTestValidationOptions()
+	opts := getTestPoolOptions()
 	testDB := newTestTxPoolStateDb()
 	testDB.balances[address] = uint256.NewInt(math.MaxUint64)
 	testDB.nonces[address] = 1
@@ -983,7 +975,7 @@ func BenchmarkValidateTx(b *testing.B) {
 		Value:     uint256.NewInt(1),
 		Data:      []byte("some data"),
 		AuthList:  []types.SetCodeAuthorization{{}},
-	}), opts.signer, key)
+	}), netRules.signer, key)
 	require.NoError(b, err)
 
 	b.ResetTimer()
