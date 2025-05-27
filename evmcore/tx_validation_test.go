@@ -863,23 +863,6 @@ func setReceiverToNil(t *testing.T, tx types.TxData) {
 	}
 }
 
-func setReceiverToNotNil(t *testing.T, tx types.TxData) {
-	switch tx := tx.(type) {
-	case *types.LegacyTx:
-		tx.To = &common.Address{}
-	case *types.AccessListTx:
-		tx.To = &common.Address{}
-	case *types.DynamicFeeTx:
-		tx.To = &common.Address{}
-	case *types.BlobTx:
-		tx.To = common.Address{}
-	case *types.SetCodeTx:
-		tx.To = common.Address{}
-	default:
-		t.Fatalf("unexpected transaction type: %T", tx)
-	}
-}
-
 func setValue(t *testing.T, tx types.TxData, value *big.Int) {
 	switch tx := tx.(type) {
 	case *types.LegacyTx:
