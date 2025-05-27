@@ -25,7 +25,7 @@ import (
 
 func TestConsensusCallback(t *testing.T) {
 	features := map[string]opera.Upgrades{
-		"sonic": opera.GetSonicUpgrades(),
+		"sonic":   opera.GetSonicUpgrades(),
 		"allegro": opera.GetAllegroUpgrades(),
 	}
 
