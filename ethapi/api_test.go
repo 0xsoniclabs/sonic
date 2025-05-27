@@ -880,14 +880,14 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 // makeChainConfig allows to create a chain config with a given set of features
 func makeChainConfig(upgrades opera.Upgrades) *params.ChainConfig {
 	if upgrades.Allegro {
-		return opera.MainNetRules().CreateTransientEthChainConfig(
+		return opera.DefaultMainNetRules(upgrades).CreateTransientEthChainConfig(
 			[]opera.UpgradeHeight{
 				{Upgrades: opera.GetSonicUpgrades(), Height: 0},
 				{Upgrades: opera.GetAllegroUpgrades(), Height: 1},
 			})
 	}
 
-	return opera.MainNetRules().CreateTransientEthChainConfig(
+	return opera.DefaultMainNetRules(upgrades).CreateTransientEthChainConfig(
 		[]opera.UpgradeHeight{
 			{Upgrades: opera.GetSonicUpgrades(), Height: 0},
 		})

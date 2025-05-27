@@ -288,7 +288,7 @@ func GetAllegroUpgrades() Upgrades {
 	}
 }
 
-func MainNetRules() Rules {
+func DefaultMainNetRules(upgrades Upgrades) Rules {
 	return Rules{
 		Name:      "main",
 		NetworkID: MainNetworkID,
@@ -300,7 +300,7 @@ func MainNetRules() Rules {
 			MaxBlockGas:             MinimumMaxBlockGas,
 			MaxEmptyBlockSkipPeriod: inter.Timestamp(1 * time.Minute),
 		},
-		Upgrades: GetAllegroUpgrades(),
+		Upgrades: upgrades,
 	}
 }
 

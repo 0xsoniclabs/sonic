@@ -14,7 +14,7 @@ import (
 
 func TestDefaultRulesAreValid(t *testing.T) {
 	rules := map[string]Rules{
-		"mainnet": MainNetRules(),
+		"mainnet": DefaultMainNetRules(GetAllegroUpgrades()),
 		"fakenet": FakeNetRules(GetAllegroUpgrades()),
 	}
 	for name, r := range rules {

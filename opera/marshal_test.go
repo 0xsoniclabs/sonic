@@ -12,7 +12,7 @@ import (
 func TestUpdateRules(t *testing.T) {
 	require := require.New(t)
 
-	base := MainNetRules()
+	base := DefaultMainNetRules(GetAllegroUpgrades())
 
 	exp := base.Copy()
 	exp.Dag.MaxParents = 5
@@ -42,7 +42,7 @@ func TestUpdateRules_ValidityCheckIsConductedIfCheckIsEnabledInUpdatedRuleSet(t 
 				t.Run(fmt.Sprintf("before=%t,after=%t,valid=%t", enabledBefore, enabledAfter, validUpdate), func(t *testing.T) {
 					require := require.New(t)
 
-					base := MainNetRules()
+					base := DefaultMainNetRules(GetSonicUpgrades())
 					base.Upgrades.Allegro = enabledBefore
 
 					maxParents := 1
@@ -80,7 +80,7 @@ func TestUpdateRules_CanUpdateHardForks(t *testing.T) {
 }
 
 func TestMainNetRulesRLP(t *testing.T) {
-	rules := MainNetRules()
+	rules := DefaultMainNetRules(GetSonicUpgrades())
 	require := require.New(t)
 
 	b, err := rlp.EncodeToBytes(rules)
