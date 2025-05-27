@@ -32,7 +32,7 @@ func GetProposer(
 	}
 
 	// Note that we use big.Rat to preserve precision in the division.
-	// limit := (sha256(epoch + turn) * total_weight) / 2^256
+	// limit := (sha256(epoch || turn) * total_weight) / 2^256
 	data := make([]byte, 0, 4+4)
 	data = binary.BigEndian.AppendUint32(data, uint32(epoch))
 	data = binary.BigEndian.AppendUint32(data, uint32(turn))
