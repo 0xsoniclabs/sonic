@@ -292,6 +292,88 @@ func TestApplyTransaction_InternalTransactionsSkipBaseFeeCharges(t *testing.T) {
 	}
 }
 
+func TestApplyTransaction_BlobHashesNotSupportedAndSkipped(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	state := state.NewMockStateDB(ctrl)
+	evm := vm.NewEVM(vm.BlockContext{}, state, &params.ChainConfig{}, vm.Config{})
+	gp := new(core.GasPool).AddGas(1000000)
+
+	msg := &core.Message{
+		From:       common.Address{1},
+		To:         &common.Address{2},
+		GasLimit:   21000,
+		GasPrice:   big.NewInt(1),
+		BlobHashes: []common.Hash{{0x01}},
+	}
+	usedGas := uint64(0)
+	receipt, gasUsed, skipped, err := applyTransaction(msg, gp, state, big.NewInt(1), nil, &usedGas, evm, nil)
+	require.ErrorContains(t, err, "blob data is not supported")
+	require.Nil(t, receipt)
+	require.Equal(t, uint64(0), gasUsed)
+	require.True(t, skipped)
+}
+
+func TestApplyTransaction_ApplyMessageError_RevertsSnapshotIfPrague(t *testing.T) {
+	versions := map[string]bool{
+		"pre prague": false,
+		"prague":     true,
+	}
+
+	for name, isPrague := range versions {
+		t.Run(name, func(t *testing.T) {
+			pragueTime := uint64(1000)
+			if isPrague {
+				pragueTime = 0
+			}
+			any := gomock.Any()
+			ctrl := gomock.NewController(t)
+			state := state.NewMockStateDB(ctrl)
+			evm := vm.NewEVM(vm.BlockContext{}, state, &params.ChainConfig{
+				LondonBlock:        new(big.Int).SetUint64(0),
+				MergeNetsplitBlock: new(big.Int).SetUint64(0),
+				ShanghaiTime:       new(uint64),
+				CancunTime:         new(uint64),
+				PragueTime:         &pragueTime,
+			}, vm.Config{})
+			gp := new(core.GasPool).AddGas(1000000)
+
+			blockNumber := big.NewInt(100)
+			evm.Context.Random = &common.Hash{0x01} // triggers isMerge
+			evm.Context.BlockNumber = blockNumber   // triggers isMerge
+			evm.Context.Time = 100                  // triggers IsPrague
+
+			initCode := make([]byte, 50000) // large init code to trigger error
+			msg := &core.Message{
+				From:             common.Address{1},
+				To:               nil, // contract creation
+				GasLimit:         1000000,
+				GasPrice:         big.NewInt(1),
+				GasFeeCap:        big.NewInt(0),
+				GasTipCap:        big.NewInt(0),
+				Value:            big.NewInt(0),
+				Data:             initCode,
+				SkipNonceChecks:  true,
+				SkipFromEOACheck: true,
+			}
+
+			state.EXPECT().GetBalance(msg.From).Return(uint256.NewInt(1000000))
+			state.EXPECT().SubBalance(any, any, any)
+
+			if isPrague {
+				// Set up snapshot and revert expectations
+				state.EXPECT().Snapshot().Return(42)
+				state.EXPECT().RevertToSnapshot(42)
+			}
+
+			receipt, gasUsed, skipped, err := applyTransaction(msg, gp, state, blockNumber, nil, new(uint64), evm, nil)
+			require.ErrorContains(t, err, "max initcode size exceeded")
+			require.Nil(t, receipt)
+			require.Equal(t, uint64(0), gasUsed)
+			require.True(t, skipped)
+		})
+	}
+}
+
 // processFunction is a function type alias for the StateProcessor's Process
 // function to allow side-by-side testing of different implementations.
 type processFunction = func(
