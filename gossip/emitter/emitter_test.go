@@ -1,6 +1,7 @@
 package emitter
 
 import (
+	"fmt"
 	"math/big"
 	"testing"
 	"time"
@@ -125,66 +126,67 @@ func (fixedPriceBaseFeeSource) GetCurrentBaseFee() *big.Int {
 
 func TestEmitter_CreateEvent_CreatesCorrectEventVersion(t *testing.T) {
 
-	tests := map[string]struct {
-		upgrades opera.Upgrades
-		version  uint8
-	}{
-		"sonic": {
-			upgrades: opera.Upgrades{
-				Sonic:   true,
-				Allegro: false,
-			},
-			version: 2,
+	tests := map[string]opera.Upgrades{
+		"sonic": opera.Upgrades{
+			Sonic:   true,
+			Allegro: false,
 		},
-		"allegro": {
-			upgrades: opera.Upgrades{
-				Sonic:   true,
-				Allegro: true,
-			},
-			version: 3,
+		"allegro": opera.Upgrades{
+			Sonic:   true,
+			Allegro: true,
 		},
 	}
 
-	for name, test := range tests {
+	validator := idx.ValidatorID(1)
+	builder := pos.NewBuilder()
+	builder.Set(validator, pos.Weight(1))
+	validators := builder.Build()
+
+	for name, upgrades := range tests {
 		t.Run(name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			world := NewMockExternal(ctrl)
-			signer := NewMockSigner(ctrl)
 
-			validator := idx.ValidatorID(1)
-			builder := pos.NewBuilder()
-			builder.Set(validator, pos.Weight(1))
-			validators := builder.Build()
-
-			rules := opera.Rules{
-				Upgrades: test.upgrades,
+			cases := map[bool]uint8{
+				false: 2, // Single-Proposer upgrade is not enabled
+				true:  3, // Single-Proposer upgrade is enabled
 			}
+			for singleProposer, version := range cases {
+				t.Run(fmt.Sprintf("singleProposer=%t", singleProposer), func(t *testing.T) {
+					ctrl := gomock.NewController(t)
+					world := NewMockExternal(ctrl)
+					signer := NewMockSigner(ctrl)
 
-			em := &Emitter{
-				config: Config{
-					Validator: ValidatorConfig{
-						ID: validator,
-					},
-				},
-				world: World{
-					External: world,
-					Signer:   signer,
-				},
-				validators: validators,
+					rules := opera.Rules{
+						Upgrades: upgrades,
+					}
+					rules.Upgrades.SingleProposerBlockFormation = singleProposer
+
+					em := &Emitter{
+						config: Config{
+							Validator: ValidatorConfig{
+								ID: validator,
+							},
+						},
+						world: World{
+							External: world,
+							Signer:   signer,
+						},
+						validators: validators,
+					}
+
+					any := gomock.Any()
+					world.EXPECT().GetRules().Return(rules).AnyTimes()
+					world.EXPECT().GetLastEvent(any, any).AnyTimes()
+					world.EXPECT().Build(any, any).AnyTimes()
+					world.EXPECT().Check(any, any).Return(nil).AnyTimes()
+					world.EXPECT().GetLatestBlock().Return(&inter.Block{}).AnyTimes()
+
+					signer.EXPECT().Sign(any, any).AnyTimes()
+
+					event, err := em.createEvent(nil)
+					require.NoError(t, err)
+					require.Equal(t, version, event.Version())
+				})
 			}
-
-			any := gomock.Any()
-			world.EXPECT().GetRules().Return(rules).AnyTimes()
-			world.EXPECT().GetLastEvent(any, any).AnyTimes()
-			world.EXPECT().Build(any, any).AnyTimes()
-			world.EXPECT().Check(any, any).Return(nil).AnyTimes()
-			world.EXPECT().GetLatestBlock().Return(&inter.Block{}).AnyTimes()
-
-			signer.EXPECT().Sign(any, any).AnyTimes()
-
-			event, err := em.createEvent(nil)
-			require.NoError(t, err)
-			require.Equal(t, test.version, event.Version())
 		})
 	}
 }
@@ -201,8 +203,7 @@ func TestEmitter_CreateEvent_InvalidValidatorSetIsDetected(t *testing.T) {
 
 	rules := opera.Rules{
 		Upgrades: opera.Upgrades{
-			Sonic:   true,
-			Allegro: true,
+			SingleProposerBlockFormation: true,
 		},
 	}
 

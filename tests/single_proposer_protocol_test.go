@@ -30,9 +30,12 @@ func testSingleProposerProtocol_CanProcessTransactions(t *testing.T, numNodes in
 	const EpochLength = 7
 	const NumTxsPerRound = 5
 
+	upgrades := opera.GetAllegroUpgrades()
+	upgrades.SingleProposerBlockFormation = true
+
 	require := require.New(t)
 	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
-		Upgrades: AsPointer(opera.GetAllegroUpgrades()),
+		Upgrades: &upgrades,
 		NumNodes: numNodes,
 	})
 
@@ -111,16 +114,16 @@ func testSingleProposerProtocol_CanProcessTransactions(t *testing.T, numNodes in
 	require.Less(duration, uint64(2*NumRounds))
 }
 
-func TestSingleProposerProtocol_CanBeEnabled(t *testing.T) {
+func TestSingleProposerProtocol_CanBeEnabledAndDisabled(t *testing.T) {
 	// Test with different numbers of nodes
 	for _, numNodes := range []int{1, 3} {
 		t.Run(fmt.Sprintf("numNodes=%d", numNodes), func(t *testing.T) {
-			testSingleProposerProtocol_CanBeEnabled(t, numNodes)
+			testSingleProposerProtocol_CanBeEnabledAndDisabled(t, numNodes)
 		})
 	}
 }
 
-func testSingleProposerProtocol_CanBeEnabled(t *testing.T, numNodes int) {
+func testSingleProposerProtocol_CanBeEnabledAndDisabled(t *testing.T, numNodes int) {
 	require := require.New(t)
 
 	// The network is initially started using the distributed protocol.
@@ -139,37 +142,51 @@ func testSingleProposerProtocol_CanBeEnabled(t *testing.T, numNodes int) {
 	defer client.Close()
 	require.Equal(2, getUsedEventVersion(t, client))
 
-	// Send the network rule update.
+	type upgrades struct {
+		SingleProposerBlockFormation bool
+	}
 	type rulesType struct {
-		Upgrades struct{ Allegro bool }
-	}
-	rulesDiff := rulesType{
-		Upgrades: struct{ Allegro bool }{Allegro: true},
-	}
-	updateNetworkRules(t, net, rulesDiff)
-
-	// The rules only take effect after the epoch change. Make sure that until
-	// then, transactions can be processed.
-	_, err = net.EndowAccount(address, big.NewInt(50))
-	require.NoError(err)
-
-	// At this point, still version 2 should be used.
-	require.Equal(2, getUsedEventVersion(t, client))
-
-	// Advance the epoch by one, enabling the single-proposer protocol.
-	require.NoError(net.AdvanceEpoch(1))
-
-	// Check that transactions can still be processed after the epoch change.
-	for range 5 {
-		_, err = net.EndowAccount(address, big.NewInt(50))
-		require.NoError(err)
+		Upgrades upgrades
 	}
 
-	// Check that in this epoch the single-proposer protocol is used.
-	require.Equal(3, getUsedEventVersion(t, client))
+	// Make sure that the switch can be performed multiple times.
+	for range 2 {
+		steps := []struct {
+			versionBefore int
+			flagValue     bool
+			versionAfter  int
+		}{
+			{2, true, 3},  // Enable single-proposer protocol
+			{3, false, 2}, // Disable single-proposer protocol
+		}
+		for _, step := range steps {
+			// Send the network rule update.
+			rulesDiff := rulesType{
+				Upgrades: upgrades{SingleProposerBlockFormation: step.flagValue},
+			}
+			updateNetworkRules(t, net, rulesDiff)
 
-	// TODO(#193): check that the single-proposer protocol can also be disabled
-	// once the feature is controlled by its own feature flag.
+			// The rules only take effect after the epoch change. Make sure that
+			// until then, transactions can be processed.
+			_, err = net.EndowAccount(address, big.NewInt(50))
+			require.NoError(err)
+
+			// At this point, the old version should still be used.
+			require.Equal(step.versionBefore, getUsedEventVersion(t, client))
+
+			// Advance the epoch by one, enabling the single-proposer protocol.
+			require.NoError(net.AdvanceEpoch(1))
+
+			// Check that transactions can still be processed after the epoch change.
+			for range 5 {
+				_, err = net.EndowAccount(address, big.NewInt(50))
+				require.NoError(err)
+			}
+
+			// At this point, the new version should be used.
+			require.Equal(step.versionAfter, getUsedEventVersion(t, client))
+		}
+	}
 }
 
 // getUsedEventVersion retrieves the current event version used by the network.

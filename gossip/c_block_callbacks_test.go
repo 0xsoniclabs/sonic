@@ -24,9 +24,14 @@ import (
 )
 
 func TestConsensusCallback(t *testing.T) {
+
+	withSingleProposer := opera.GetAllegroUpgrades()
+	withSingleProposer.SingleProposerBlockFormation = true
+
 	features := map[string]opera.Upgrades{
-		"sonic":   opera.GetSonicUpgrades(),
-		"allegro": opera.GetAllegroUpgrades(),
+		"sonic":           opera.GetSonicUpgrades(),
+		"allegro":         opera.GetAllegroUpgrades(),
+		"single proposer": withSingleProposer,
 	}
 
 	for name, feature := range features {

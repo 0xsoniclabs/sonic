@@ -245,7 +245,7 @@ func consensusCallbackBeginBlockFn(
 						ParentHash: lastBlockHeader.Hash,
 						Time:       blockCtx.Time,
 					}
-					if es.Rules.Upgrades.Allegro { // TODO(#193): use dedicated flag
+					if es.Rules.Upgrades.SingleProposerBlockFormation {
 						events := make([]inter.EventPayloadI, 0, blockEvents.Len())
 						for _, e := range blockEvents {
 							events = append(events, e)
