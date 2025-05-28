@@ -39,6 +39,8 @@ func TestClient_IndexedLogsAreInOrder(t *testing.T) {
 		Topics:    [][]common.Hash{{logs[0].Topics[0], logs[1].Topics[0], logs[2].Topics[0]}},
 	})
 	require.NoError(t, err)
+	// EmitEvents is called twice and contract produces 3 logs 5 times
+	require.Len(t, blockLogs, 2*5*3)
 
 	for i := 0; i < len(blockLogs)-1; i++ {
 		current := blockLogs[i]
@@ -50,7 +52,7 @@ func TestClient_IndexedLogsAreInOrder(t *testing.T) {
 		}
 
 		// If BlockNumbers are equal, check if Index is non-decreasing
-		if current.BlockNumber == next.BlockNumber && current.Index > next.Index {
+		if current.BlockNumber == next.BlockNumber && current.Index >= next.Index {
 			t.Errorf("Index out of order for BlockNumber %d: current log %d > next log %d", current.BlockNumber, current.Index, next.Index)
 		}
 	}
