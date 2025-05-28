@@ -264,7 +264,7 @@ func (em *Emitter) getSortedTxs(baseFee *big.Int) *transactionsByPriceAndNonce {
 		txs[from] = lazyTxs
 	}
 
-	sortedTxs := newTransactionsByPriceAndNonce(em.world.TxSigner, txs, baseFee)
+	sortedTxs := newTransactionsByPriceAndNonce(em.world.TransactionSigner, txs, baseFee)
 	em.cache.sortedTxs = sortedTxs
 	em.cache.poolCount = poolCount
 	em.cache.poolBlock = em.world.GetLatestBlockIndex()
@@ -442,7 +442,7 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 	}
 
 	// sign
-	bSig, err := em.world.Signer.Sign(em.config.Validator.PubKey, mutEvent.HashToSign().Bytes())
+	bSig, err := em.world.EventsSigner.Sign(mutEvent.HashToSign().Bytes())
 	if err != nil {
 		em.Periodic.Error(time.Second, "Failed to sign event", "err", err)
 		return nil, err

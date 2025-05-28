@@ -152,7 +152,7 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 	rules := em.world.GetRules()
 	for tx, _ := sorted.Peek(); tx != nil; tx, _ = sorted.Peek() {
 		resolvedTx := tx.Resolve()
-		sender, _ := types.Sender(em.world.TxSigner, resolvedTx)
+		sender, _ := types.Sender(em.world.TransactionSigner, resolvedTx)
 		// check transaction epoch rules (tx type, gas price)
 		if epochcheck.CheckTxs(types.Transactions{resolvedTx}, rules) != nil {
 			txsSkippedEpochRules.Inc(1)

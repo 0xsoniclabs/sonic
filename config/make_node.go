@@ -109,7 +109,7 @@ func MakeNode(ctx *cli.Context, cfg *Config) (*node.Node, *gossip.Service, func(
 			return nil, nil, nil, fmt.Errorf("failed to unlock validator key: %w", err)
 		}
 	}
-	signer := valkeystore.NewSigner(valKeystore)
+	signer := valkeystore.NewSignerAuthority(valKeystore, cfg.Emitter.Validator.PubKey)
 
 	// Create and register a gossip network service.
 	newTxPool := func(reader evmcore.StateReader) gossip.TxPool {

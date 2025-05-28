@@ -67,7 +67,6 @@ type testEnv struct {
 	nonces   map[common.Address]uint64
 	callback callbacks
 	*Service
-	signer  valkeystore.SignerI
 	pubkeys []validatorpk.PubKey
 }
 
@@ -194,8 +193,7 @@ func newTestEnvWithUpgrades(
 		panic(err)
 	}
 
-	valKeystore := valkeystore.NewDefaultMemKeystore()
-	env.signer = valkeystore.NewSigner(valKeystore)
+	keyStore := valkeystore.NewDefaultMemKeystore()
 
 	// register emitters
 	for i := idx.Validator(0); i < validatorsNum; i++ {
@@ -209,9 +207,11 @@ func newTestEnvWithUpgrades(
 		cfg.EmitIntervals = emitter.EmitIntervals{}
 		cfg.MaxParents = idx.Event(validatorsNum/2 + 1)
 		cfg.MaxTxsPerAddress = 10000000
-		_ = valKeystore.Add(pubkey, crypto.FromECDSA(makefakegenesis.FakeKey(vid)), validatorpk.FakePassword)
-		_ = valKeystore.Unlock(pubkey, validatorpk.FakePassword)
-		world := env.EmitterWorld(env.signer)
+		_ = keyStore.Add(pubkey, crypto.FromECDSA(makefakegenesis.FakeKey(vid)), validatorpk.FakePassword)
+		_ = keyStore.Unlock(pubkey, validatorpk.FakePassword)
+
+		signer := valkeystore.NewSignerAuthority(keyStore, pubkey)
+		world := env.EmitterWorld(signer)
 		world.External = testEmitterWorldExternal{world.External, env}
 		em := emitter.NewEmitter(cfg, world, store.AsBaseFeeSource())
 		env.RegisterEmitter(em)

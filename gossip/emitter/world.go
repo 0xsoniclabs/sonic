@@ -45,21 +45,12 @@ type (
 		GetHeader(common.Hash, uint64) *evmcore.EvmHeader
 	}
 
-	// Signer and TxSigner are aliases for mock generator
-	Signer interface {
-		valkeystore.SignerI
-	}
-
-	TxSigner interface {
-		types.Signer
-	}
-
 	// World is an emitter's environment
 	World struct {
 		External
-		TxPool   TxPool
-		Signer   valkeystore.SignerI
-		TxSigner types.Signer
+		TxPool            TxPool
+		EventsSigner      valkeystore.SignerAuthority
+		TransactionSigner types.Signer
 	}
 )
 
