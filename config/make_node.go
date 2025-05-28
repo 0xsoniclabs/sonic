@@ -42,8 +42,8 @@ func MakeNode(ctx *cli.Context, cfg *Config) (*node.Node, *gossip.Service, func(
 	}()
 
 	// check errlock file
-	errlock.SetDefaultDatadir(cfg.Node.DataDir)
-	if err := errlock.Check(); err != nil {
+	errorLock := errlock.New(cfg.Node.DataDir)
+	if err := errorLock.Check(); err != nil {
 		return nil, nil, nil, err
 	}
 
@@ -154,6 +154,7 @@ func MakeNode(ctx *cli.Context, cfg *Config) (*node.Node, *gossip.Service, func(
 			cfg.Emitter,
 			svc.EmitterWorld(signer),
 			gdb.AsBaseFeeSource(),
+			errorLock,
 		))
 	}
 

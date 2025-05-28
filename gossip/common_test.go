@@ -213,7 +213,7 @@ func newTestEnvWithUpgrades(
 		signer := valkeystore.NewSignerAuthority(keyStore, pubkey)
 		world := env.EmitterWorld(signer)
 		world.External = testEmitterWorldExternal{world.External, env}
-		em := emitter.NewEmitter(cfg, world, store.AsBaseFeeSource())
+		em := emitter.NewEmitter(cfg, world, store.AsBaseFeeSource(), nil)
 		env.RegisterEmitter(em)
 		env.pubkeys = append(env.pubkeys, pubkey)
 		em.Start()

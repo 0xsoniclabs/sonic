@@ -61,7 +61,7 @@ func TestEmitter(t *testing.T) {
 		TxPool:            txPool,
 		EventsSigner:      signer,
 		TransactionSigner: txSigner,
-	}, fixedPriceBaseFeeSource{})
+	}, fixedPriceBaseFeeSource{}, nil)
 
 	t.Run("init", func(t *testing.T) {
 		external.EXPECT().GetRules().

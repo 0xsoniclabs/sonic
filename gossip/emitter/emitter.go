@@ -107,6 +107,7 @@ type Emitter struct {
 	logger.Periodic
 
 	baseFeeSource BaseFeeSource
+	errorLock     *errlock.ErrorLock
 
 	lastTimeAnEventWasConfirmed atomic.Pointer[time.Time]
 
@@ -122,6 +123,7 @@ func NewEmitter(
 	config Config,
 	world World,
 	baseFeeSource BaseFeeSource,
+	errorLock *errlock.ErrorLock,
 ) *Emitter {
 	// Randomize event time to decrease chance of 2 parallel instances emitting event at the same time
 	// It increases the chance of detecting parallel instances
@@ -136,6 +138,7 @@ func NewEmitter(
 		globalConfirmingInterval: config.EmitIntervals.Confirming,
 		Periodic:                 logger.Periodic{Instance: logger.New()},
 		baseFeeSource:            baseFeeSource,
+		errorLock:                errorLock,
 	}
 }
 
@@ -358,7 +361,7 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 		if selfParent == nil || *selfParent != *prevEmitted {
 			// This is a user-facing error, so we want to provide a clear message.
 			//nolint:staticcheck // ST1005: allow capitalized error message and punctuation
-			errlock.Permanent(errors.New("Local database does not contain last emitted event - sync the node before enabling validation to avoid double sign."))
+			em.errorLock.Permanent(errors.New("Local database does not contain last emitted event - sync the node before enabling validation to avoid double sign."))
 		}
 	}
 

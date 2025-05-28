@@ -8,7 +8,6 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/hash"
 
 	"github.com/0xsoniclabs/sonic/inter"
-	"github.com/0xsoniclabs/sonic/utils/errlock"
 )
 
 type syncStatus struct {
@@ -35,7 +34,7 @@ func (em *Emitter) onNewExternalEvent(e inter.EventPayloadI) {
 			"please always ensure that no more than one instance of the same validator is running."
 		// This is a user-facing error, so we want to provide a clear message.
 		//nolint:staticcheck // ST1005: allow capitalized error message and punctuation
-		errlock.Permanent(fmt.Errorf(reason, e.ID().String(), em.config.Validator.ID, e.CreationTime().Time().Local().String(), passedSinceEvent.String()))
+		em.errorLock.Permanent(fmt.Errorf(reason, e.ID().String(), em.config.Validator.ID, e.CreationTime().Time().Local().String(), passedSinceEvent.String()))
 		panic("unreachable")
 	}
 }
