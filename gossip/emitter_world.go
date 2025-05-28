@@ -6,7 +6,6 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
@@ -14,7 +13,6 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils/wgmutex"
-	"github.com/0xsoniclabs/sonic/valkeystore"
 	"github.com/0xsoniclabs/sonic/vecmt"
 )
 
@@ -32,8 +30,6 @@ type emitterWorld struct {
 	emitterWorldRead
 	*wgmutex.WgMutex
 	emitter.TxPool
-	valkeystore.SignerI
-	types.Signer
 }
 
 func (ew *emitterWorldProc) Check(emitted *inter.EventPayload, parents inter.Events) error {

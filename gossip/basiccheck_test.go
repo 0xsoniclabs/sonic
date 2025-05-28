@@ -256,3 +256,21 @@ func TestBasicCheckValidate(t *testing.T) {
 		})
 	}
 }
+
+func mutableEventPayloadFromImmutable(e *inter.EventPayload) *inter.MutableEventPayload {
+	me := &inter.MutableEventPayload{}
+	me.SetVersion(e.Version())
+	me.SetNetForkID(e.NetForkID())
+	me.SetCreator(e.Creator())
+	me.SetEpoch(e.Epoch())
+	me.SetCreationTime(e.CreationTime())
+	me.SetMedianTime(e.MedianTime())
+	me.SetPrevEpochHash(e.PrevEpochHash())
+	me.SetExtra(e.Extra())
+	me.SetGasPowerLeft(e.GasPowerLeft())
+	me.SetGasPowerUsed(e.GasPowerUsed())
+	me.SetPayloadHash(e.PayloadHash())
+	me.SetSig(e.Sig())
+	me.SetTxs(e.Txs())
+	return me
+}

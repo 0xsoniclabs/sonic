@@ -18,10 +18,9 @@ import (
 	"github.com/0xsoniclabs/sonic/logger"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils/txtime"
+	"github.com/0xsoniclabs/sonic/valkeystore"
 	"github.com/0xsoniclabs/sonic/vecmt"
 )
-
-//go:generate mockgen -package=mock -destination=mock/world.go github.com/0xsoniclabs/sonic/gossip/emitter External,TxPool,TxSigner,Signer
 
 func TestEmitter(t *testing.T) {
 	cfg := DefaultConfig()
@@ -36,7 +35,7 @@ func TestEmitter(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	external := NewMockExternal(ctrl)
 	txPool := NewMockTxPool(ctrl)
-	signer := NewMockSigner(ctrl)
+	signer := valkeystore.NewMockSignerAuthority(ctrl)
 	txSigner := NewMockTxSigner(ctrl)
 
 	external.EXPECT().Lock().
@@ -57,10 +56,10 @@ func TestEmitter(t *testing.T) {
 		AnyTimes()
 
 	em := NewEmitter(cfg, World{
-		External: external,
-		TxPool:   txPool,
-		Signer:   signer,
-		TxSigner: txSigner,
+		External:          external,
+		TxPool:            txPool,
+		EventsSigner:      signer,
+		TransactionSigner: txSigner,
 	}, fixedPriceBaseFeeSource{})
 
 	t.Run("init", func(t *testing.T) {
@@ -149,7 +148,7 @@ func TestEmitter_CreateEvent_CreatesCorrectEventVersion(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			world := NewMockExternal(ctrl)
-			signer := NewMockSigner(ctrl)
+			signer := valkeystore.NewMockSignerAuthority(ctrl)
 
 			validator := idx.ValidatorID(1)
 			builder := pos.NewBuilder()
@@ -167,8 +166,8 @@ func TestEmitter_CreateEvent_CreatesCorrectEventVersion(t *testing.T) {
 					},
 				},
 				world: World{
-					External: world,
-					Signer:   signer,
+					External:     world,
+					EventsSigner: signer,
 				},
 				validators: validators,
 			}
@@ -180,7 +179,7 @@ func TestEmitter_CreateEvent_CreatesCorrectEventVersion(t *testing.T) {
 			world.EXPECT().Check(any, any).Return(nil).AnyTimes()
 			world.EXPECT().GetLatestBlock().Return(&inter.Block{}).AnyTimes()
 
-			signer.EXPECT().Sign(any, any).AnyTimes()
+			signer.EXPECT().Sign(any).AnyTimes()
 
 			event, err := em.createEvent(nil)
 			require.NoError(t, err)
@@ -193,7 +192,7 @@ func TestEmitter_CreateEvent_InvalidValidatorSetIsDetected(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	world := NewMockExternal(ctrl)
-	signer := NewMockSigner(ctrl)
+	signer := valkeystore.NewMockSignerAuthority(ctrl)
 	log := logger.NewMockLogger(ctrl)
 
 	validator := idx.ValidatorID(1)
@@ -218,8 +217,8 @@ func TestEmitter_CreateEvent_InvalidValidatorSetIsDetected(t *testing.T) {
 			},
 		},
 		world: World{
-			External: world,
-			Signer:   signer,
+			External:     world,
+			EventsSigner: signer,
 		},
 		validators: validators,
 	}
@@ -231,7 +230,7 @@ func TestEmitter_CreateEvent_InvalidValidatorSetIsDetected(t *testing.T) {
 	world.EXPECT().Check(any, any).Return(nil).AnyTimes()
 	world.EXPECT().GetLatestBlock().Return(&inter.Block{}).AnyTimes()
 
-	signer.EXPECT().Sign(any, any).AnyTimes()
+	signer.EXPECT().Sign(any).AnyTimes()
 
 	log.EXPECT().Error("Failed to create payload", "err", any)
 
