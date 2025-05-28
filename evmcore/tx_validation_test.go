@@ -55,9 +55,9 @@ func getTestNetworkRules() NetworkRules {
 ////////////////////////////////////////////////////////////////////////////////
 // Static Validation
 
-func TestValidateTxStatic_Value_RejectsTxWith(t *testing.T) {
+func TestValidateTxStatic_Value_RejectsTxWithNegativeValue(t *testing.T) {
 	for name, tx := range getTxsOfAllTypes() {
-		t.Run(fmt.Sprintf("negative value/%v", name), func(t *testing.T) {
+		t.Run(name, func(t *testing.T) {
 			if isBlobOrSetCode(tx) {
 				t.Skip("blob and setCode transactions cannot have negative value because they use uint256 Value")
 			}
@@ -128,12 +128,10 @@ func TestValidateTxStatic_GasPriceAndTip_RejectsTxWith(t *testing.T) {
 	}
 }
 
-func TestValidateTxStatic_AuthorizationList_RejectsTxWith(t *testing.T) {
-	t.Run("setCode tx with empty authorization list", func(t *testing.T) {
-		tx := types.NewTx(&types.SetCodeTx{})
-		err := ValidateTxStatic(tx)
-		require.ErrorIs(t, err, ErrEmptyAuthorizations)
-	})
+func TestValidateTxStatic_AuthorizationList_RejectsTxWithEmptyAuthorization(t *testing.T) {
+	tx := types.NewTx(&types.SetCodeTx{})
+	err := ValidateTxStatic(tx)
+	require.ErrorIs(t, err, ErrEmptyAuthorizations)
 }
 
 func TestValidateTxStatic_AcceptsValidTransactions(t *testing.T) {
@@ -213,7 +211,7 @@ func TestValidateTxForNetwork_RejectsTxBasedOnTypeAndActiveRevision(t *testing.T
 }
 
 func TestValidateTxForNetwork_Blobs_RejectsTxWith(t *testing.T) {
-	// blob txs are not supported in sonic, so they must have empty hash list and sidecar
+	//  only Blob Transactions with empty blob has and no sidecar are accepted in sonic.
 
 	t.Run("blob tx with non-empty blob hashes", func(t *testing.T) {
 		tx := types.NewTx(makeBlobTx([]common.Hash{{0x01}}, nil))
@@ -315,9 +313,9 @@ func TestValidateTxForNetwork_Data_RejectsTxWith(t *testing.T) {
 	}
 }
 
-func TestValidateTxForNetwork_Signer_RejectsTxWith(t *testing.T) {
+func TestValidateTxForNetwork_Signer_RejectsTxWithInvalidSigner(t *testing.T) {
 	for name, tx := range getTxsOfAllTypes() {
-		t.Run(fmt.Sprintf("invalid signer/%v", name), func(t *testing.T) {
+		t.Run(name, func(t *testing.T) {
 
 			netRules := getTestNetworkRules()
 			netRules.signer = types.NewPragueSigner(big.NewInt(2))
@@ -353,9 +351,9 @@ func TestValidateTxForNetwork_AcceptsTxWith(t *testing.T) {
 ////////////////////////////////////////////////////////////////////////////////
 // Block Validation
 
-func TestValidateTxForBlock_MaxGas_RejectsTxWith(t *testing.T) {
+func TestValidateTxForBlock_MaxGas_RejectsTxWithGasOverMaxGas(t *testing.T) {
 	for name, tx := range getTxsOfAllTypes() {
-		t.Run(fmt.Sprintf("gas over max gas allowed per tx/%v", name), func(t *testing.T) {
+		t.Run(name, func(t *testing.T) {
 			blockState := getTestBlockState()
 			blockState.maxGas = 1
 
@@ -370,9 +368,9 @@ func TestValidateTxForBlock_MaxGas_RejectsTxWith(t *testing.T) {
 	}
 }
 
-func TestValidateTxForBlock_BaseFee_RejectsTxWith(t *testing.T) {
+func TestValidateTxForBlock_BaseFee_RejectsTxWithGasPriceLowerThanBaseFee(t *testing.T) {
 	for name, tx := range getTxsOfAllTypes() {
-		t.Run(fmt.Sprintf("gas price lower than base fee/%v", name), func(t *testing.T) {
+		t.Run(name, func(t *testing.T) {
 			blockState := getTestBlockState()
 			blockState.baseFee = big.NewInt(2)
 
@@ -403,9 +401,9 @@ func TestValidateTxForBlock_AcceptsTxWith(t *testing.T) {
 ////////////////////////////////////////////////////////////////////////////////
 // State Validation
 
-func TestValidateTxForState_Signer_RejectsTxWith(t *testing.T) {
+func TestValidateTxForState_Signer_RejectsTxWithInvalidSigner(t *testing.T) {
 	for name, tx := range getTxsOfAllTypes() {
-		t.Run(fmt.Sprintf("invalid signer/%v", name), func(t *testing.T) {
+		t.Run(name, func(t *testing.T) {
 			// sign txs with sender
 			key, err := crypto.GenerateKey()
 			require.NoError(t, err)
@@ -421,9 +419,9 @@ func TestValidateTxForState_Signer_RejectsTxWith(t *testing.T) {
 	}
 }
 
-func TestValidateTxForState_Nonce_RejectsTxWith(t *testing.T) {
+func TestValidateTxForState_Nonce_RejectsTxWithOlderNonce(t *testing.T) {
 	for name, tx := range getTxsOfAllTypes() {
-		t.Run(fmt.Sprintf("older nonce/%v", name), func(t *testing.T) {
+		t.Run(name, func(t *testing.T) {
 
 			signer := types.NewPragueSigner(big.NewInt(1))
 			address, signedTx := signTxForTest(t, tx, signer)
@@ -436,9 +434,9 @@ func TestValidateTxForState_Nonce_RejectsTxWith(t *testing.T) {
 	}
 }
 
-func TestValidateTxForState_Balance_RejectsTxWhen(t *testing.T) {
+func TestValidateTxForState_Balance_RejectsTxWhenInsufficientBalance(t *testing.T) {
 	for name, tx := range getTxsOfAllTypes() {
-		t.Run(fmt.Sprintf("insufficient balance/%v", name), func(t *testing.T) {
+		t.Run(name, func(t *testing.T) {
 
 			setValue(t, tx, big.NewInt(42))
 
@@ -468,6 +466,7 @@ func TestValidateTxForState_Balance_RejectsTxWhen(t *testing.T) {
 		})
 	}
 }
+
 func TestValidateTxForState_AcceptsTxWith(t *testing.T) {
 	for name, tx := range getTxsOfAllTypes() {
 		t.Run(name, func(t *testing.T) {
@@ -488,10 +487,10 @@ func TestValidateTxForState_AcceptsTxWith(t *testing.T) {
 ////////////////////////////////////////////////////////////////////////////////
 // TxPool Policies Validation
 
-func TestValidateTxForPool_Data_RejectsTxWith(t *testing.T) {
+func TestValidateTxForPool_Data_RejectsTxWithOversizedData(t *testing.T) {
 	oversizedData := make([]byte, txMaxSize+1)
 	for name, tx := range getTxsOfAllTypes() {
-		t.Run(fmt.Sprintf("oversized data/%v", name), func(t *testing.T) {
+		t.Run(name, func(t *testing.T) {
 
 			setData(t, tx, oversizedData)
 
@@ -503,9 +502,9 @@ func TestValidateTxForPool_Data_RejectsTxWith(t *testing.T) {
 	}
 }
 
-func TestValidateTxForPool_Signer_RejectsTxWith(t *testing.T) {
+func TestValidateTxForPool_Signer_RejectsTxWithInvalidSigner(t *testing.T) {
 	for name, tx := range getTxsOfAllTypes() {
-		t.Run(fmt.Sprintf("invalid signer/%v", name), func(t *testing.T) {
+		t.Run(name, func(t *testing.T) {
 			key, err := crypto.GenerateKey()
 			require.NoError(t, err)
 			signer1 := types.NewPragueSigner(big.NewInt(1))
@@ -520,9 +519,9 @@ func TestValidateTxForPool_Signer_RejectsTxWith(t *testing.T) {
 	}
 }
 
-func TestValidateTxForPool_RejectsNonLocalTxWith(t *testing.T) {
+func TestValidateTxForPool_RejectsNonLocalTxWithTipLowerThanMinPool(t *testing.T) {
 	for name, tx := range getTxsOfAllTypes() {
-		t.Run(fmt.Sprintf("gas tip lower than pool min tip/%v", name), func(t *testing.T) {
+		t.Run(name, func(t *testing.T) {
 
 			opt := getTestPoolOptions()
 			opt.isLocal = false
