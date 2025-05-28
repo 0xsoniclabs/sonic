@@ -15,11 +15,12 @@ import (
 // proportional to the validator's stake.
 func GetProposer(
 	validators *pos.Validators,
+	epoch idx.Epoch,
 	turn Turn,
 ) (idx.ValidatorID, error) {
 
 	// The selection of the proposer for a given round is conducted as follows:
-	//  1. f := sha256(turn) / 2^256
+	//  1. f := sha256(epoch || turn) / 2^256, (where || is the concatenation operator)
 	//  2. limit := f * total_weight
 	//  3. from the list of validators sorted by their stake, find the first
 	//     validator whose cumulative weight is greater than or equal to limit.
@@ -31,8 +32,9 @@ func GetProposer(
 	}
 
 	// Note that we use big.Rat to preserve precision in the division.
-	// limit := (sha256(turn) * total_weight) / 2^256
-	data := make([]byte, 0, 4)
+	// limit := (sha256(epoch || turn) * total_weight) / 2^256
+	data := make([]byte, 0, 4+4)
+	data = binary.BigEndian.AppendUint32(data, uint32(epoch))
 	data = binary.BigEndian.AppendUint32(data, uint32(turn))
 	hash := sha256.Sum256(data)
 	limit := new(big.Rat).Quo(

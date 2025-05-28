@@ -148,6 +148,7 @@ func TestCreatePayload_InvalidTurn_CreatesPayloadWithoutProposal(t *testing.T) {
 	)
 
 	event.EXPECT().Parents().Return(hash.Events{p1, p2})
+	event.EXPECT().Epoch().Return(idx.Epoch(0))
 	event.EXPECT().Frame().Return(idx.Frame(1))
 
 	// This call fails since it tries to propose block 5 while according to the
@@ -201,6 +202,7 @@ func TestCreatePayload_UnableToCreateProposalDueToLackOfTimeProgress_CreatesPayl
 	world.EXPECT().GetRules().Return(opera.Rules{})
 
 	event.EXPECT().Parents().Return(hash.Events{p1, p2})
+	event.EXPECT().Epoch().Return(idx.Epoch(0x12))
 	event.EXPECT().Frame().Return(idx.Frame(0x14))
 	event.EXPECT().MedianTime().Return(lastBlockTime)
 
@@ -283,6 +285,7 @@ func TestCreatePayload_ValidTurn_ProducesExpectedPayload(t *testing.T) {
 	world.EXPECT().GetRules().Return(opera.Rules{})
 
 	event.EXPECT().Parents().Return(hash.Events{p1, p2})
+	event.EXPECT().Epoch().Return(idx.Epoch(3)).AnyTimes()
 	event.EXPECT().Frame().Return(idx.Frame(4)).AnyTimes()
 	event.EXPECT().MedianTime().Return(inter.Timestamp(1234))
 
