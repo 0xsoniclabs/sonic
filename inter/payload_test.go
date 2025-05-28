@@ -27,17 +27,15 @@ func TestPayload_Hash_IsShaOfFieldConcatenation(t *testing.T) {
 		payload := &Payload{
 			ProposalSyncState: ProposalSyncState{
 				LastSeenProposalTurn:  Turn(1 + i),
-				LastSeenProposedBlock: idx.Block(2 + i),
-				LastSeenProposalFrame: idx.Frame(3 + i),
+				LastSeenProposalFrame: idx.Frame(2 + i),
 			},
 			Proposal: &Proposal{
-				Number: idx.Block(4 + i),
+				Number: idx.Block(3 + i),
 			},
 		}
 
 		data := []byte{currentPayloadVersion}
 		data = binary.BigEndian.AppendUint32(data, uint32(payload.LastSeenProposalTurn))
-		data = binary.BigEndian.AppendUint64(data, uint64(payload.LastSeenProposedBlock))
 		data = binary.BigEndian.AppendUint32(data, uint32(payload.LastSeenProposalFrame))
 		proposalHash := payload.Proposal.Hash()
 		data = append(data, proposalHash[:]...)
@@ -49,15 +47,13 @@ func TestPayload_Hash_MissingPayloadIsOmittedInHashInput(t *testing.T) {
 	payload := &Payload{
 		ProposalSyncState: ProposalSyncState{
 			LastSeenProposalTurn:  1,
-			LastSeenProposedBlock: 2,
-			LastSeenProposalFrame: 3,
+			LastSeenProposalFrame: 2,
 		},
 		Proposal: nil,
 	}
 
 	data := []byte{currentPayloadVersion}
 	data = binary.BigEndian.AppendUint32(data, uint32(payload.LastSeenProposalTurn))
-	data = binary.BigEndian.AppendUint64(data, uint64(payload.LastSeenProposedBlock))
 	data = binary.BigEndian.AppendUint32(data, uint32(payload.LastSeenProposalFrame))
 	require.Equal(t, hash.Hash(sha256.Sum256(data)), payload.Hash())
 }
@@ -66,9 +62,6 @@ func TestPayload_Hash_ModifyingContent_ChangesHash(t *testing.T) {
 	tests := map[string]func(*Payload){
 		"change last seen proposal turn": func(p *Payload) {
 			p.LastSeenProposalTurn = p.LastSeenProposalTurn + 1
-		},
-		"change last seen proposed block": func(p *Payload) {
-			p.LastSeenProposedBlock = p.LastSeenProposedBlock + 1
 		},
 		"change last seen proposal frame": func(p *Payload) {
 			p.LastSeenProposalFrame = p.LastSeenProposalFrame + 1
@@ -89,8 +82,7 @@ func TestPayload_Hash_ModifyingContent_ChangesHash(t *testing.T) {
 			payload := &Payload{
 				ProposalSyncState: ProposalSyncState{
 					LastSeenProposalTurn:  1,
-					LastSeenProposedBlock: 2,
-					LastSeenProposalFrame: 3,
+					LastSeenProposalFrame: 2,
 				},
 				Proposal: &Proposal{
 					Number: 4,
@@ -112,8 +104,7 @@ func TestPayload_CanBeSerializedAndRestored(t *testing.T) {
 		original := &Payload{
 			ProposalSyncState: ProposalSyncState{
 				LastSeenProposalTurn:  1,
-				LastSeenProposedBlock: 2,
-				LastSeenProposalFrame: 3,
+				LastSeenProposalFrame: 2,
 			},
 			Proposal: proposal,
 		}
@@ -129,7 +120,6 @@ func TestPayload_CanBeSerializedAndRestored(t *testing.T) {
 		// possible because transactions have insignificant meta-information that
 		// is not serialized and restored.
 		require.Equal(original.LastSeenProposalTurn, restored.LastSeenProposalTurn)
-		require.Equal(original.LastSeenProposedBlock, restored.LastSeenProposedBlock)
 		require.Equal(original.LastSeenProposalFrame, restored.LastSeenProposalFrame)
 
 		if original.Proposal == nil {

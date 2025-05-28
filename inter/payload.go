@@ -35,7 +35,6 @@ type Payload struct {
 func (e *Payload) Hash() hash.Hash {
 	data := []byte{currentPayloadVersion}
 	data = binary.BigEndian.AppendUint32(data, uint32(e.LastSeenProposalTurn))
-	data = binary.BigEndian.AppendUint64(data, uint64(e.LastSeenProposedBlock))
 	data = binary.BigEndian.AppendUint32(data, uint32(e.LastSeenProposalFrame))
 	if e.Proposal != nil {
 		hash := e.Proposal.Hash()
@@ -56,7 +55,6 @@ func (e *Payload) Serialize() ([]byte, error) {
 	return proto.Marshal(&pb.Payload{
 		Version:               currentPayloadVersion,
 		LastSeenProposalTurn:  uint32(e.LastSeenProposalTurn),
-		LastSeenProposedBlock: uint64(e.LastSeenProposedBlock),
 		LastSeenProposalFrame: uint32(e.LastSeenProposalFrame),
 		Proposal:              proposal,
 	})
@@ -71,7 +69,6 @@ func (e *Payload) Deserialize(data []byte) error {
 		return fmt.Errorf("unsupported payload version: %d", pb.Version)
 	}
 	e.LastSeenProposalTurn = Turn(pb.LastSeenProposalTurn)
-	e.LastSeenProposedBlock = idx.Block(pb.LastSeenProposedBlock)
 	e.LastSeenProposalFrame = idx.Frame(pb.LastSeenProposalFrame)
 	if pb.Proposal != nil {
 		p := &Proposal{}

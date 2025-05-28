@@ -109,6 +109,8 @@ type Emitter struct {
 	baseFeeSource BaseFeeSource
 
 	lastTimeAnEventWasConfirmed atomic.Pointer[time.Time]
+
+	proposalTracker inter.ProposalTracker
 }
 
 type BaseFeeSource interface {

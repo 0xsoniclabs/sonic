@@ -25,6 +25,43 @@ import (
 	gomock "go.uber.org/mock/gomock"
 )
 
+// MockproposalTracker is a mock of proposalTracker interface.
+type MockproposalTracker struct {
+	ctrl     *gomock.Controller
+	recorder *MockproposalTrackerMockRecorder
+}
+
+// MockproposalTrackerMockRecorder is the mock recorder for MockproposalTracker.
+type MockproposalTrackerMockRecorder struct {
+	mock *MockproposalTracker
+}
+
+// NewMockproposalTracker creates a new mock instance.
+func NewMockproposalTracker(ctrl *gomock.Controller) *MockproposalTracker {
+	mock := &MockproposalTracker{ctrl: ctrl}
+	mock.recorder = &MockproposalTrackerMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockproposalTracker) EXPECT() *MockproposalTrackerMockRecorder {
+	return m.recorder
+}
+
+// IsPending mocks base method.
+func (m *MockproposalTracker) IsPending(frame idx.Frame, block idx.Block) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsPending", frame, block)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// IsPending indicates an expected call of IsPending.
+func (mr *MockproposalTrackerMockRecorder) IsPending(frame, block any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsPending", reflect.TypeOf((*MockproposalTracker)(nil).IsPending), frame, block)
+}
+
 // MockworldReader is a mock of worldReader interface.
 type MockworldReader struct {
 	ctrl     *gomock.Controller
@@ -46,20 +83,6 @@ func NewMockworldReader(ctrl *gomock.Controller) *MockworldReader {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockworldReader) EXPECT() *MockworldReaderMockRecorder {
 	return m.recorder
-}
-
-// GetEpochStartBlock mocks base method.
-func (m *MockworldReader) GetEpochStartBlock(arg0 idx.Epoch) idx.Block {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetEpochStartBlock", arg0)
-	ret0, _ := ret[0].(idx.Block)
-	return ret0
-}
-
-// GetEpochStartBlock indicates an expected call of GetEpochStartBlock.
-func (mr *MockworldReaderMockRecorder) GetEpochStartBlock(arg0 any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEpochStartBlock", reflect.TypeOf((*MockworldReader)(nil).GetEpochStartBlock), arg0)
 }
 
 // GetEventPayload mocks base method.
