@@ -2,10 +2,11 @@ package opera
 
 import (
 	"errors"
-	"github.com/0xsoniclabs/sonic/inter"
 	"math"
 	"math/big"
 	"time"
+
+	"github.com/0xsoniclabs/sonic/inter"
 )
 
 // This file handles the validation of network rules.
@@ -241,6 +242,8 @@ func validateUpgrades(upgrade Upgrades) error {
 	if !upgrade.Allegro {
 		issues = append(issues, errors.New("Allegro upgrade is required"))
 	}
+
+	// The SingleProposerBlockFormation feature can be freely modified.
 
 	return errors.Join(issues...)
 }
