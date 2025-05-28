@@ -679,7 +679,7 @@ func TestNewRPCTransaction_AllTxSignatureAndHashCanBeVerified(t *testing.T) {
 	}
 }
 
-func TestNewRPCTransaction_LegacyTxSignedWithHomesteadMaintainsChainID(t *testing.T) {
+func TestNewRPCTransaction_LegacyTxSignedWithHomesteadCanBeReproducedAndVerified(t *testing.T) {
 
 	tx := &types.LegacyTx{
 		Nonce:    0,
