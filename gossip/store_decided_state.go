@@ -19,6 +19,7 @@ type BlockEpochState struct {
 	EpochState *iblockproc.EpochState
 }
 
+// SetHistoryBlockEpochState stores the block and epoch state in the history table.
 // TODO propose to pass bs, es arguments by pointer
 func (s *Store) SetHistoryBlockEpochState(epoch idx.Epoch, bs iblockproc.BlockState, es iblockproc.EpochState) {
 	bs, es = bs.Copy(), es.Copy()
