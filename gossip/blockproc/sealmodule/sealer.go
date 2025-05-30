@@ -38,8 +38,8 @@ func (s *OperaEpochsSealer) EpochSealing() bool {
 	return sealEpoch || s.bs.EpochCheaters.Len() != 0
 }
 
-func (p *OperaEpochsSealer) Update(bs iblockproc.BlockState, es iblockproc.EpochState) {
-	p.bs, p.es = bs, es
+func (s *OperaEpochsSealer) Update(bs iblockproc.BlockState, es iblockproc.EpochState) {
+	s.bs, s.es = bs, es
 }
 
 // SealEpoch is called after pre-internal transactions are executed
