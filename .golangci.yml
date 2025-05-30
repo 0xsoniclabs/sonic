@@ -1,0 +1,40 @@
+version: "2"
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - misspell
+    - staticcheck
+    - unused
+
+  settings:
+    staticcheck:
+      checks:
+        - "all"
+        # Ignored rules
+        - "-ST1000" # Incorrect or missing package comment.
+        - "-ST1003" # Poorly chosen identifier.
+
+
+formatters:
+  # Enable specific formatter.
+  enable:
+    - gofmt
+
+issues:
+  # do not limit number of findings per linter
+  max-issues-per-linter: 0
+  # do not limit number of same finding
+  max-same-issues: 0
+  # do not limit number of issues per line
+  uniq-by-line: false
+
+output:
+  formats:
+    text:
+      # for CI or automated processing
+      path: ./build/golangci-lint-report.txt
+    html:
+      # for human consumption
+      path: ./build/golangci-lint-report.html
