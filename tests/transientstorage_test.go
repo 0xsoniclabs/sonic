@@ -29,7 +29,7 @@ func TestTransientStorage_TransientStorageIsValidInTransaction(t *testing.T) {
 		t.Fatalf("failed to store value; %v", err)
 	}
 
-	// Check that the value was stored during transaction and emited to logs
+	// Check that the value was stored during transaction and emitted to logs
 	if len(receipt.Logs) != 1 {
 		t.Fatalf("unexpected number of logs; expected 1, got %d", len(receipt.Logs))
 	}

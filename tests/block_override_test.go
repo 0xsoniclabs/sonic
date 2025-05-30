@@ -47,7 +47,7 @@ func TestBlockOverride(t *testing.T) {
 	rpcClient := netClient.Client()
 	defer rpcClient.Close()
 
-	// Set parameters to be overriden
+	// Set parameters to be overridden
 	time := uint64(1234)
 	gasLimit := uint64(567890)
 	blockOverrides := &ethapi.BlockOverrides{

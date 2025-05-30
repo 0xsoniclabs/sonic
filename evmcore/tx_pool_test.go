@@ -3157,7 +3157,7 @@ func TestSampleHashes_AllExpectedTransactionsAreReturned(t *testing.T) {
 			t.Errorf("expected tx %x (nonce %d) missing in samples", txHash, tx.Nonce())
 		}
 		if occurrences > samplingTimes {
-			t.Errorf("expected tx %x (nonce %d) present in samples in more occurences than expected", txHash, tx.Nonce())
+			t.Errorf("expected tx %x (nonce %d) present in samples in more occurrences than expected", txHash, tx.Nonce())
 		}
 	}
 }

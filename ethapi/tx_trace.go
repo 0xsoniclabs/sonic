@@ -165,7 +165,7 @@ func (s *PublicTxTraceAPI) traceTxHash(ctx context.Context, hash common.Hash, tr
 	return s.replayBlock(ctx, block, &hash, traceIndex)
 }
 
-// Replays block and returns traces acording to parameters
+// Replays block and returns traces according to parameters
 //
 // txHash
 //   - if is nil, all transaction traces in the block are collected
@@ -329,7 +329,7 @@ func (s *PublicTxTraceAPI) traceTx(
 	traceActions := txTracer.GetResult()
 	state.EndTransaction()
 
-	// err is error occured before EVM execution
+	// err is error occurred before EVM execution
 	if err != nil {
 		errTrace := txtrace.GetErrorTraceFromMsg(msg, block.Hash, *block.Number, tx.Hash(), index, err)
 		at := make([]txtrace.ActionTrace, 0)
@@ -365,7 +365,7 @@ func getEmptyBlockTrace(blockHash common.Hash, blockNumber big.Int) *[]txtrace.A
 	return &emptyTrace.Actions
 }
 
-// FilterArgs represents the arguments for specifiing trace targets
+// FilterArgs represents the arguments for specifying trace targets
 type FilterArgs struct {
 	FromAddress *[]common.Address      `json:"fromAddress"`
 	ToAddress   *[]common.Address      `json:"toAddress"`

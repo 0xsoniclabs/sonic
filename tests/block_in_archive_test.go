@@ -58,7 +58,7 @@ func TestBlockInArchive(t *testing.T) {
 					return
 				}
 			case err = <-subscription.Err():
-				require.NoError(err, "subscribtion error %v", err)
+				require.NoError(err, "subscription error %v", err)
 			}
 		}
 	}()
