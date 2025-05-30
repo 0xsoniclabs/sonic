@@ -7,7 +7,7 @@ import (
 
 const GoroutinesPerThread = 0.8
 
-// threadPool counts threads in use
+// ThreadPool counts threads in use
 type ThreadPool struct {
 	mu   sync.Mutex
 	cap  int
