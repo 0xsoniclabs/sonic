@@ -221,25 +221,31 @@ func validateUpgrades(upgrade Upgrades) error {
 	}
 
 	if !upgrade.London {
+		//nolint:staticcheck // ST1005: allow capitalized error message to preserve proper name
 		issues = append(issues, errors.New("London upgrade is required"))
 	}
 
 	if !upgrade.Berlin {
+		//nolint:staticcheck // ST1005: allow capitalized error message to preserve proper name
 		issues = append(issues, errors.New("Berlin upgrade is required"))
 	}
 
 	if upgrade.Sonic && !upgrade.London {
+		//nolint:staticcheck // ST1005: allow capitalized error message to preserve proper name
 		issues = append(issues, errors.New("Sonic upgrade requires London"))
 	}
 	if upgrade.London && !upgrade.Berlin {
+		//nolint:staticcheck // ST1005: allow capitalized error message to preserve proper name
 		issues = append(issues, errors.New("London upgrade requires Berlin"))
 	}
 
 	if !upgrade.Sonic {
+		//nolint:staticcheck // ST1005: allow capitalized error message to preserve proper name
 		issues = append(issues, errors.New("Sonic upgrade is required"))
 	}
 
 	if !upgrade.Allegro {
+		//nolint:staticcheck // ST1005: allow capitalized error message to preserve proper name
 		issues = append(issues, errors.New("Allegro upgrade is required"))
 	}
 

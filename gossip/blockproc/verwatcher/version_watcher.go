@@ -33,11 +33,11 @@ func (w *VersionWatcher) Pause() error {
 	have := getVersionNumber()
 	needed := versionNumber(w.store.GetNetworkVersion())
 	if needed > have {
-		return fmt.Errorf("Network upgrade %v was activated. Current node version is %v. "+
-			"Please upgrade your node to continue syncing.", needed, have)
+		return fmt.Errorf("network upgrade %v was activated. Current node version is %v. "+
+			"Please upgrade your node to continue syncing", needed, have)
 	} else if w.store.GetMissedVersion() > 0 {
-		return fmt.Errorf("Node's state is dirty because node was upgraded after the network upgrade %v was activated. "+
-			"Please re-sync the chain data to continue.", versionNumber(w.store.GetMissedVersion()))
+		return fmt.Errorf("node's state is dirty because node was upgraded after the network upgrade %v was activated. "+
+			"Please re-sync the chain data to continue", versionNumber(w.store.GetMissedVersion()))
 	}
 	return nil
 }
