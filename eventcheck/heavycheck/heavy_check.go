@@ -5,14 +5,14 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
 
 	"github.com/0xsoniclabs/sonic/eventcheck/epochcheck"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/validatorpk"
+	"github.com/0xsoniclabs/sonic/valkeystore"
 )
 
 var (
@@ -97,14 +97,6 @@ func (v *Checker) EnqueueEvent(e inter.EventPayloadI, onValidated func(error)) e
 	}
 }
 
-// verifySignature checks the signature against e.Creator.
-func verifySignature(signedHash hash.Hash, sig inter.Signature, pubkey validatorpk.PubKey) bool {
-	if pubkey.Type != validatorpk.Types.Secp256k1 {
-		return false
-	}
-	return crypto.VerifySignature(pubkey.Raw, signedHash.Bytes(), sig.Bytes())
-}
-
 func (v *Checker) ValidateEventLocator(e inter.SignedEventLocator, authEpoch idx.Epoch, authErr error, checkPayload func() bool) error {
 	pubkeys := v.reader.GetEpochPubKeysOf(authEpoch)
 	if len(pubkeys) == 0 {
@@ -117,7 +109,7 @@ func (v *Checker) ValidateEventLocator(e inter.SignedEventLocator, authEpoch idx
 	if checkPayload != nil && !checkPayload() {
 		return ErrWrongPayloadHash
 	}
-	if !verifySignature(e.Locator.HashToSign(), e.Sig, pubkey) {
+	if !valkeystore.VerifySignature(common.Hash(e.Locator.HashToSign()), e.Sig[:], pubkey) {
 		return ErrWrongEventSig
 	}
 	return nil
@@ -135,7 +127,7 @@ func (v *Checker) ValidateEvent(e inter.EventPayloadI) error {
 		return epochcheck.ErrAuth
 	}
 	// event sig
-	if !verifySignature(e.HashToSign(), e.Sig(), pubkey) {
+	if !valkeystore.VerifySignature(common.Hash(e.HashToSign()), e.Sig().Bytes(), pubkey) {
 		return ErrWrongEventSig
 	}
 	// pre-cache tx sig

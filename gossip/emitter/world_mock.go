@@ -16,7 +16,6 @@ import (
 	evmcore "github.com/0xsoniclabs/sonic/evmcore"
 	inter "github.com/0xsoniclabs/sonic/inter"
 	state "github.com/0xsoniclabs/sonic/inter/state"
-	validatorpk "github.com/0xsoniclabs/sonic/inter/validatorpk"
 	opera "github.com/0xsoniclabs/sonic/opera"
 	vecmt "github.com/0xsoniclabs/sonic/vecmt"
 	hash "github.com/Fantom-foundation/lachesis-base/hash"
@@ -351,44 +350,6 @@ func (m *MockExternal) Unlock() {
 func (mr *MockExternalMockRecorder) Unlock() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Unlock", reflect.TypeOf((*MockExternal)(nil).Unlock))
-}
-
-// MockSigner is a mock of Signer interface.
-type MockSigner struct {
-	ctrl     *gomock.Controller
-	recorder *MockSignerMockRecorder
-}
-
-// MockSignerMockRecorder is the mock recorder for MockSigner.
-type MockSignerMockRecorder struct {
-	mock *MockSigner
-}
-
-// NewMockSigner creates a new mock instance.
-func NewMockSigner(ctrl *gomock.Controller) *MockSigner {
-	mock := &MockSigner{ctrl: ctrl}
-	mock.recorder = &MockSignerMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockSigner) EXPECT() *MockSignerMockRecorder {
-	return m.recorder
-}
-
-// Sign mocks base method.
-func (m *MockSigner) Sign(pubkey validatorpk.PubKey, digest []byte) ([]byte, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Sign", pubkey, digest)
-	ret0, _ := ret[0].([]byte)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// Sign indicates an expected call of Sign.
-func (mr *MockSignerMockRecorder) Sign(pubkey, digest any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Sign", reflect.TypeOf((*MockSigner)(nil).Sign), pubkey, digest)
 }
 
 // MockTxSigner is a mock of TxSigner interface.

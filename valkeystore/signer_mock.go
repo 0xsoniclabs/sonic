@@ -13,46 +13,9 @@ import (
 	reflect "reflect"
 
 	validatorpk "github.com/0xsoniclabs/sonic/inter/validatorpk"
+	common "github.com/ethereum/go-ethereum/common"
 	gomock "go.uber.org/mock/gomock"
 )
-
-// MockSignerI is a mock of SignerI interface.
-type MockSignerI struct {
-	ctrl     *gomock.Controller
-	recorder *MockSignerIMockRecorder
-}
-
-// MockSignerIMockRecorder is the mock recorder for MockSignerI.
-type MockSignerIMockRecorder struct {
-	mock *MockSignerI
-}
-
-// NewMockSignerI creates a new mock instance.
-func NewMockSignerI(ctrl *gomock.Controller) *MockSignerI {
-	mock := &MockSignerI{ctrl: ctrl}
-	mock.recorder = &MockSignerIMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockSignerI) EXPECT() *MockSignerIMockRecorder {
-	return m.recorder
-}
-
-// Sign mocks base method.
-func (m *MockSignerI) Sign(pubkey validatorpk.PubKey, digest []byte) ([]byte, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Sign", pubkey, digest)
-	ret0, _ := ret[0].([]byte)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// Sign indicates an expected call of Sign.
-func (mr *MockSignerIMockRecorder) Sign(pubkey, digest any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Sign", reflect.TypeOf((*MockSignerI)(nil).Sign), pubkey, digest)
-}
 
 // MockSignerAuthority is a mock of SignerAuthority interface.
 type MockSignerAuthority struct {
@@ -77,8 +40,22 @@ func (m *MockSignerAuthority) EXPECT() *MockSignerAuthorityMockRecorder {
 	return m.recorder
 }
 
+// PublicKey mocks base method.
+func (m *MockSignerAuthority) PublicKey() validatorpk.PubKey {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PublicKey")
+	ret0, _ := ret[0].(validatorpk.PubKey)
+	return ret0
+}
+
+// PublicKey indicates an expected call of PublicKey.
+func (mr *MockSignerAuthorityMockRecorder) PublicKey() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PublicKey", reflect.TypeOf((*MockSignerAuthority)(nil).PublicKey))
+}
+
 // Sign mocks base method.
-func (m *MockSignerAuthority) Sign(digest []byte) ([]byte, error) {
+func (m *MockSignerAuthority) Sign(digest common.Hash) ([]byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Sign", digest)
 	ret0, _ := ret[0].([]byte)

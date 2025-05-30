@@ -442,7 +442,7 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 	}
 
 	// sign
-	bSig, err := em.world.EventsSigner.Sign(mutEvent.HashToSign().Bytes())
+	bSig, err := em.world.EventsSigner.Sign(common.Hash(mutEvent.HashToSign()))
 	if err != nil {
 		em.Periodic.Error(time.Second, "Failed to sign event", "err", err)
 		return nil, err
