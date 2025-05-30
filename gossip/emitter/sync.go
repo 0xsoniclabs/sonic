@@ -8,7 +8,6 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/hash"
 
 	"github.com/0xsoniclabs/sonic/inter"
-	"github.com/0xsoniclabs/sonic/utils/errlock"
 )
 
 type syncStatus struct {
@@ -33,7 +32,7 @@ func (em *Emitter) onNewExternalEvent(e inter.EventPayloadI) {
 			"The node was stopped by one of the doublesign protection heuristics.\n" +
 			"There's no guaranteed automatic protection against a doublesign, " +
 			"please always ensure that no more than one instance of the same validator is running."
-		errlock.Permanent(fmt.Errorf(reason, e.ID().String(), em.config.Validator.ID, e.CreationTime().Time().Local().String(), passedSinceEvent.String()))
+		em.errorLock.Permanent(fmt.Errorf(reason, e.ID().String(), em.config.Validator.ID, e.CreationTime().Time().Local().String(), passedSinceEvent.String()))
 		panic("unreachable")
 	}
 }

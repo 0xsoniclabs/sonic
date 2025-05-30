@@ -9,9 +9,20 @@ import (
 	"github.com/0xsoniclabs/sonic/utils/caution"
 )
 
+type ErrorLock struct {
+	dataDir string
+}
+
+// New creates a new ErrLock instance with the specified data directory.
+func New(dataDir string) *ErrorLock {
+	return &ErrorLock{
+		dataDir: dataDir,
+	}
+}
+
 // Check if errlock is written
-func Check() error {
-	locked, reason, eLockPath, err := read(datadir)
+func (l *ErrorLock) Check() error {
+	locked, reason, eLockPath, err := read(l.dataDir)
 	if err != nil {
 		return fmt.Errorf("Node isn't allowed to start due to an error reading"+
 			" the lock file %s.\n Please fix the issue. Error message:\n%w",
@@ -26,18 +37,9 @@ func Check() error {
 	return nil
 }
 
-var (
-	datadir string
-)
-
-// SetDefaultDatadir for errlock files
-func SetDefaultDatadir(dir string) {
-	datadir = dir
-}
-
 // Permanent error
-func Permanent(err error) {
-	eLockPath, _ := write(datadir, err.Error())
+func (l *ErrorLock) Permanent(err error) {
+	eLockPath, _ := write(l.dataDir, err.Error())
 	panic(fmt.Errorf("Node is permanently stopping due to an issue. Please fix"+
 		" the issue and then delete file \"%s\". Error message:\n%s",
 		eLockPath, err.Error()))
