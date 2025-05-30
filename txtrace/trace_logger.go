@@ -392,7 +392,7 @@ func CreateActionTrace(bHash common.Hash, bNumber big.Int, tHash common.Hash, tP
 	}
 }
 
-// GetErrorTrace constructs filled error trace
+// GetErrorTraceFromMsg constructs filled error trace
 func GetErrorTraceFromMsg(msg *core.Message, blockHash common.Hash, blockNumber big.Int, txHash common.Hash, index uint64, err error) *ActionTrace {
 	if msg == nil {
 		return createErrorTrace(blockHash, blockNumber, nil, &common.Address{}, txHash, 0, []byte{}, hexutil.Big{}, index, err)
