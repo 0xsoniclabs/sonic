@@ -283,7 +283,7 @@ func (r Rules) EvmChainConfig(hh []UpgradeHeight) *ethparams.ChainConfig {
 		timestamp := new(uint64)
 		if i > 0 {
 			height.SetUint64(uint64(h.Height))
-			*timestamp = uint64(h.Time)
+			*timestamp = uint64(h.Time.Unix())
 		}
 		if cfg.BerlinBlock == nil && h.Upgrades.Berlin {
 			cfg.BerlinBlock = height
