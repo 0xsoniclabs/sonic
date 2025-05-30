@@ -43,7 +43,7 @@ func GenerateNextRandaoReveal(
 	validatorSigner valkeystore.SignerAuthority,
 ) (RandaoReveal, error) {
 	hash := sha256.Sum256(append(domainSeparator[:], previousRandao[:]...))
-	buff, err := validatorSigner.Sign(hash[:])
+	buff, err := validatorSigner.Sign(hash)
 	if err != nil {
 		return RandaoReveal{}, err
 	}
