@@ -181,9 +181,7 @@ func ValidateTxForNetwork(tx *types.Transaction, opt NetworkRules) error {
 // - value (must be positive)
 // - gas fee cap and tip cap must be within the 256 bit range
 // - gas fee cap must be greater than or equal to the tip cap
-// - blob transactions must not contain any blob data
 // - set code transactions must not have an empty authorization list
-// - size must be within the defined limit
 //
 // It returns an error if any of the checks fail.
 func ValidateTxStatic(tx *types.Transaction) error {
