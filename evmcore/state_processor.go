@@ -297,9 +297,17 @@ func applyTransaction(
 		msg.BlobHashes = nil
 	}
 
+	isAllegro := evm.ChainConfig().IsPrague(blockNumber, evm.Context.Time)
+	var snapshot int
+	if isAllegro {
+		snapshot = statedb.Snapshot()
+	}
 	// Apply the transaction to the current state (included in the env).
 	result, err := core.ApplyMessage(evm, msg, gp)
 	if err != nil {
+		if isAllegro {
+			statedb.RevertToSnapshot(snapshot)
+		}
 		return nil, 0, result == nil, err
 	}
 	// Notify about logs with potential state changes.

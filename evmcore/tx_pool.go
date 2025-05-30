@@ -185,6 +185,8 @@ type TxPoolConfig struct {
 	GlobalQueue  uint64 // Maximum number of non-executable transaction slots for all accounts
 
 	Lifetime time.Duration // Maximum amount of time non-executable transaction are queued
+
+	DisableTxPoolValidation bool
 }
 
 // DefaultTxPoolConfig contains the default configurations for the transaction
@@ -765,7 +767,7 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 	isLocal := local || pool.locals.containsTx(tx)
 
 	// If the transaction fails basic validation, discard it
-	if err := pool.validateTx(tx, isLocal); err != nil {
+	if err := pool.validateTx(tx, isLocal); !pool.config.DisableTxPoolValidation && err != nil {
 		log.Trace("Discarding invalid transaction", "hash", hash, "err", err)
 		invalidTxMeter.Mark(1)
 		return false, err
