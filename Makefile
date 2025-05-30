@@ -72,26 +72,7 @@ clean:
 
 # Linting
 
-.PHONY: vet
-vet:
-	go vet ./...
-
-STATICCHECK_VERSION = 2025.1
-.PHONY: staticcheck
-staticcheck:
-	@go install honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION)
-	staticcheck ./...
-
-ERRCHECK_VERSION = v1.9.0
-.PHONY: errcheck
-errorcheck:
-	@go install github.com/kisielk/errcheck@$(ERRCHECK_VERSION)
-	errcheck ./...
-
-.PHONY: deadcode
-deadcode:
-	@go install golang.org/x/tools/cmd/deadcode@latest
-	deadcode -test ./...
-
 .PHONY: lint
-lint: vet staticcheck deadcode errorcheck
+lint: 
+	@go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.6
+	@golangci-lint run ./...
