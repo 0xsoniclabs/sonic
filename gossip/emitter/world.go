@@ -45,7 +45,7 @@ type (
 		GetHeader(common.Hash, uint64) *evmcore.EvmHeader
 	}
 
-	// aliases for mock generator
+	// Signer and TxSigner are aliases for mock generator
 	Signer interface {
 		valkeystore.SignerI
 	}
