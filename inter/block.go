@@ -80,7 +80,7 @@ func (b *Block) EncodeRLP(out io.Writer) error {
 	return rlp.Encode(out, b.blockData)
 }
 
-// EncodeRLP decodes a RLP encoded block.
+// DecodeRLP decodes a RLP encoded block.
 func (b *Block) DecodeRLP(in *rlp.Stream) error {
 	b.hash.Store(nil)
 	return in.Decode(&b.blockData)

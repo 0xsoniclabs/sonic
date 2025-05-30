@@ -25,7 +25,7 @@ func (p *ThreadPool) init() {
 	}
 }
 
-// Capacity of pool
+// Cap returns the capacity of the pool
 func (p *ThreadPool) Cap() int {
 	if p.cap == 0 {
 		p.mu.Lock()

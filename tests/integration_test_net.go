@@ -190,7 +190,7 @@ func StartIntegrationTestNetWithFakeGenesis(
 	return net
 }
 
-// StartIntegrationTestNetWithFakeGenesis starts a single-node test network for
+// StartIntegrationTestNetWithJsonGenesis starts a single-node test network for
 // integration tests using the JSON-Genesis procedure. The JSON genesis procedure
 // is the genesis procedure used in long-running production networks like the
 // Sonic mainnet and the testnet.
@@ -469,7 +469,7 @@ func (n *IntegrationTestNet) Stop() {
 	}
 }
 
-// Stops and restarts the single node on the test network.
+// Restart stops and restarts the single node on the test network.
 func (n *IntegrationTestNet) Restart() error {
 	n.Stop()
 	return n.start()
@@ -486,7 +486,7 @@ func (n *IntegrationTestNet) GetClient() (*ethclient.Client, error) {
 	return n.GetClientConnectedToNode(0)
 }
 
-// GetClient provides raw access to a fresh connection to a selected node on
+// GetClientConnectedToNode provides raw access to a fresh connection to a selected node on
 // the network. The resulting client must be closed after use.
 func (n *IntegrationTestNet) GetClientConnectedToNode(i int) (*ethclient.Client, error) {
 	if i < 0 || i >= len(n.nodes) {
@@ -578,7 +578,7 @@ func (n *IntegrationTestNet) GetHeaders() ([]*types.Header, error) {
 	return headers, nil
 }
 
-// SpawnSession(t) creates a new test session on the network.
+// SpawnSession creates a new test session on the network.
 // The session is backed by an account which will be used to sign and pay for
 // transactions. By using this function, multiple test sessions can be run in
 // parallel on the same network, without conflicting nonce issues, since the
@@ -819,7 +819,7 @@ func (s *Session) GetClient() (*ethclient.Client, error) {
 	return s.GetClientConnectedToNode(0)
 }
 
-// GetClient provides raw access to a fresh connection to a selected node on
+// GetClientConnectedToNode provides raw access to a fresh connection to a selected node on
 // the network. The resulting client must be closed after use.
 func (s *Session) GetClientConnectedToNode(i int) (*ethclient.Client, error) {
 	return s.net.GetClientConnectedToNode(i)
