@@ -27,7 +27,7 @@ func getTestPoolOptions() poolOptions {
 	}
 }
 
-// getTestBlockState returns a test block state database that can be used for
+// getTestBlockState returns a test set of base feee and max gas that can be used for
 // validating transactions in the context of a block. It initializes the state
 // with a base fee of 1 and a max gas of 100_000
 func getTestBlockState() blockState {
