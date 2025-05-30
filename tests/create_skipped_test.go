@@ -21,6 +21,9 @@ func TestAccountCreation_CreateCallsWithInitCodesTooLargeDoNotAlterBalance(t *te
 		t.Run(name, func(t *testing.T) {
 			net := StartIntegrationTestNetWithJsonGenesis(t, IntegrationTestNetOptions{
 				Upgrades: &version,
+				ClientExtraArguments: []string{
+					"--disable-txPool-validation",
+				},
 			})
 
 			client, err := net.GetClient()
