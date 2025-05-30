@@ -436,16 +436,16 @@ func (s *Service) makePeriodicFlusher() PeriodicFlusher {
 	}
 }
 
-func (s *Service) EmitterWorld(signer valkeystore.SignerI) emitter.World {
+func (s *Service) EmitterWorld(signer valkeystore.SignerAuthority) emitter.World {
 	return emitter.World{
 		External: &emitterWorld{
 			emitterWorldProc: emitterWorldProc{s},
 			emitterWorldRead: emitterWorldRead{s.store},
 			WgMutex:          wgmutex.New(s.engineMu, &s.blockProcWg),
 		},
-		TxPool:   s.txpool,
-		Signer:   signer,
-		TxSigner: s.EthAPI.signer,
+		TxPool:            s.txpool,
+		EventsSigner:      signer,
+		TransactionSigner: s.EthAPI.signer,
 	}
 }
 

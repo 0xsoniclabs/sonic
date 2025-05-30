@@ -103,7 +103,7 @@ func (em *Emitter) OnEventConnected(e inter.EventPayloadI) {
 	}
 	em.payloadIndexer.ProcessEvent(e, ancestor.Metric(e.Txs().Len()))
 	for _, tx := range e.Txs() {
-		addr, _ := types.Sender(em.world.TxSigner, tx)
+		addr, _ := types.Sender(em.world.TransactionSigner, tx)
 		em.originatedTxs.Inc(addr)
 	}
 	em.pendingGas += e.GasPowerUsed()
@@ -136,7 +136,7 @@ func (em *Emitter) OnEventConfirmed(he inter.EventI) {
 	if he.AnyTxs() {
 		e := em.world.GetEventPayload(he.ID())
 		for _, tx := range e.Txs() {
-			addr, _ := types.Sender(em.world.TxSigner, tx)
+			addr, _ := types.Sender(em.world.TransactionSigner, tx)
 			em.originatedTxs.Dec(addr)
 
 			if he.Creator() == em.config.Validator.ID {

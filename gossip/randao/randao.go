@@ -40,11 +40,10 @@ type RandaoReveal [64]byte
 //   - Signer is the signer used to sign messages within the gossip package
 func GenerateNextRandaoReveal(
 	previousRandao common.Hash,
-	proposerKey validatorpk.PubKey,
-	Signer valkeystore.SignerI,
+	validatorSigner valkeystore.SignerAuthority,
 ) (RandaoReveal, error) {
 	hash := sha256.Sum256(append(domainSeparator[:], previousRandao[:]...))
-	buff, err := Signer.Sign(proposerKey, hash[:])
+	buff, err := validatorSigner.Sign(hash)
 	if err != nil {
 		return RandaoReveal{}, err
 	}
