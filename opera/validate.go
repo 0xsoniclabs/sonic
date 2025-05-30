@@ -97,8 +97,9 @@ func validateBlocksRules(rules BlocksRules) error {
 	if rules.MaxBlockGas > maximumMaxBlockGas {
 		issues = append(issues, errors.New("Blocks.MaxBlockGas is too high"))
 	}
-
-	// The empty-block skip period is not restricted. There are no too low or too high values.
+	if rules.MaxEmptyBlockSkipPeriod < inter.Timestamp(minEmptyBlockSkipPeriod) {
+		issues = append(issues, errors.New("Blocks.MaxEmptyBlockSkipPeriod is too low"))
+	}
 
 	return errors.Join(issues...)
 }
@@ -161,6 +162,15 @@ const (
 	// maximumMaxBlockGas is the maximum allowed max block gas.
 	// It should fit into 64-bit signed integers to avoid parsing errors in third-party libraries
 	maximumMaxBlockGas = math.MaxInt64
+
+	// minEmptyBlockSkipPeriod sets the minimum time in seconds to produce an empty block when there are no transactions.
+	// The Single-Proposer protocol creates a block about every third frame.
+	// If MaxEmptyBlockSkipPeriod is too low, frequent empty block emissions may overwhelm pending proposals.
+	// Example: A block N exists; a validator proposes a block N+1.
+	// Before this block becomes accepted, a new empty block is created, which replaces the N+1 block.
+	// If MaxEmptyBlockSkipPeriod is too low, empty blocks are created too frequently,
+	// which starves proposals from validators.
+	minEmptyBlockSkipPeriod = 4 * time.Second
 )
 
 // UpperBoundForRuleChangeGasCosts returns the estimated upper bound for the gas costs of a rule change.

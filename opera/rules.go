@@ -371,7 +371,7 @@ func FakeNetRules(upgrades Upgrades) Rules {
 		Economy:   FakeEconomyRules(),
 		Blocks: BlocksRules{
 			MaxBlockGas:             MinimumMaxBlockGas,
-			MaxEmptyBlockSkipPeriod: inter.Timestamp(3 * time.Second),
+			MaxEmptyBlockSkipPeriod: inter.Timestamp(4 * time.Second),
 		},
 		Upgrades: upgrades,
 	}
