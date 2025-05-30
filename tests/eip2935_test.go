@@ -12,6 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -238,14 +239,15 @@ func TestEIP2935_HistoryContractAccumulatesBlockHashes(t *testing.T) {
 			"builtin blockhash does not match the block hash stored in the contract",
 		)
 
-		// read hash must be equal to the block hash retrieved from the client
 		block, err := client.BlockByNumber(t.Context(), big.NewInt(int64(blockNumber)))
 		require.NoError(t, err)
-		require.Equal(t, common.BytesToHash(blockHash.BlockHash[:]), block.Hash(),
-			"read hash does not match the block hash")
 
 		// hash must be equal to the hash from the first loop receipt
-		require.Equal(t, recordedHash, block.Hash(),
+		assert.Equal(t, recordedHash, block.Hash(),
 			"block hash does not match the hash from the receipt")
+
+		// read hash must be equal to the block hash retrieved from the client
+		assert.Equal(t, common.BytesToHash(blockHash.BlockHash[:]), block.Hash(),
+			"read hash does not match the block hash")
 	}
 }
