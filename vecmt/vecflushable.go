@@ -118,7 +118,7 @@ func (w *VecFlushable) Drop() {
 	panic(errNotImplemented)
 }
 
-func (db *VecFlushable) AncientDatadir() (string, error) {
+func (w *VecFlushable) AncientDatadir() (string, error) {
 	panic(errNotImplemented)
 }
 
