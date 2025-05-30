@@ -129,7 +129,7 @@ func (v *Checker) Validate(e inter.EventPayloadI) error {
 	}
 
 	version := uint8(0)
-	if rules.Upgrades.Allegro { // TODO(#193): use dedicated flag
+	if rules.Upgrades.SingleProposerBlockFormation {
 		version = 3
 	} else if rules.Upgrades.Sonic {
 		version = 2
