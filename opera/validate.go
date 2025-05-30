@@ -96,7 +96,7 @@ func validateBlocksRules(rules BlocksRules) error {
 	if rules.MaxBlockGas > maximumMaxBlockGas {
 		issues = append(issues, errors.New("Blocks.MaxBlockGas is too high"))
 	}
-	if rules.MaxEmptyBlockSkipPeriod < inter.Timestamp(minEmptyBlockSkipPeriod*time.Second) {
+	if rules.MaxEmptyBlockSkipPeriod < inter.Timestamp(minEmptyBlockSkipPeriod) {
 		issues = append(issues, errors.New("Blocks.MaxEmptyBlockSkipPeriod is too low"))
 	}
 
@@ -169,7 +169,7 @@ const (
 	// Before this block becomes accepted, a new empty block is created, which replaces the N+1 block.
 	// If MaxEmptyBlockSkipPeriod is too low, empty blocks are created too frequently,
 	// which starves proposals from validators.
-	minEmptyBlockSkipPeriod = 4
+	minEmptyBlockSkipPeriod = 4 * time.Second
 )
 
 // UpperBoundForRuleChangeGasCosts returns the estimated upper bound for the gas costs of a rule change.
