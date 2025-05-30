@@ -9,7 +9,6 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/validatorpk"
 	"github.com/0xsoniclabs/sonic/valkeystore"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
 )
 
 // RandaoReveal contains the randao reveal value, which can be used to generate
@@ -43,7 +42,7 @@ func GenerateNextRandaoReveal(
 	validatorSigner valkeystore.SignerAuthority,
 ) (RandaoReveal, error) {
 	hash := sha256.Sum256(append(domainSeparator[:], previousRandao[:]...))
-	buff, err := validatorSigner.Sign(hash[:])
+	buff, err := validatorSigner.Sign(hash)
 	if err != nil {
 		return RandaoReveal{}, err
 	}
@@ -65,7 +64,7 @@ func (s RandaoReveal) VerifyAndGetRandao(
 
 	// if the signature does not correspond to the input data
 	// for the given proposerPublicKey, then randao cannot be generated.
-	if ok := crypto.VerifySignature(proposerPublicKey.Raw, hash[:], s[:]); !ok {
+	if !valkeystore.VerifySignature(hash, s[:], proposerPublicKey) {
 		return common.Hash{}, false
 	}
 

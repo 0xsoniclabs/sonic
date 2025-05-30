@@ -2,12 +2,15 @@ package emitter
 
 import (
 	"context"
+	"fmt"
 	"math/big"
 	"time"
 
 	"github.com/0xsoniclabs/sonic/gossip/emitter/scheduler"
+	"github.com/0xsoniclabs/sonic/gossip/randao"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/valkeystore"
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
@@ -40,6 +43,9 @@ func (em *Emitter) createPayload(
 	sorted *transactionsByPriceAndNonce,
 ) (inter.Payload, error) {
 	adapter := worldAdapter{External: em.world}
+	randaoMixer := &randaoMixerAdapter{
+		signer: em.world.EventsSigner,
+	}
 	return createPayload(
 		adapter,
 		em.config.Validator.ID,
@@ -47,6 +53,7 @@ func (em *Emitter) createPayload(
 		event,
 		sorted,
 		scheduler.NewScheduler(adapter),
+		randaoMixer,
 		proposalSchedulingTimer,
 		proposalSchedulingTimeoutCounter,
 	)
@@ -68,6 +75,7 @@ func createPayload(
 	event inter.EventI,
 	sorted *transactionsByPriceAndNonce,
 	transactionScheduler txScheduler,
+	randaoMixer randaoMixer,
 	durationMetric timerMetric,
 	timeoutMetric counterMetric,
 ) (inter.Payload, error) {
@@ -106,6 +114,7 @@ func createPayload(
 		currentFrame,
 		transactionScheduler,
 		&transactionPriorityAdapter{sorted},
+		randaoMixer,
 		durationMetric,
 		timeoutMetric,
 	)
@@ -165,6 +174,7 @@ func makeProposal(
 	currentFrame idx.Frame,
 	transactionScheduler txScheduler,
 	candidates scheduler.PrioritizedTransactions,
+	randaoMixer randaoMixer,
 	durationMetric timerMetric,
 	timeoutMetric counterMetric,
 ) *inter.Proposal {
@@ -180,12 +190,20 @@ func makeProposal(
 		rules.Economy.ShortGasPower.AllocPerSec, // TODO: consider using a new rule set parameter
 	)
 
+	randaoReveal, randaoMix, err := randaoMixer.MixRandao(
+		latestBlock.PrevRandao,
+	)
+	if err != nil {
+		// If the randao mixer fails, we cannot create a proposal.
+		return nil
+	}
+
 	// Create the proposal for the next block.
 	proposal := &inter.Proposal{
-		Number:     idx.Block(latestBlock.Number) + 1,
-		ParentHash: latestBlock.Hash(),
-		Time:       newBlockTime,
-		// PrevRandao: -- compute next randao mix based on predecessor --
+		Number:       idx.Block(latestBlock.Number) + 1,
+		ParentHash:   latestBlock.Hash(),
+		Time:         newBlockTime,
+		RandaoReveal: randaoReveal,
 	}
 
 	// This step covers the actual transaction selection and sorting.
@@ -201,7 +219,7 @@ func makeProposal(
 			Number:      proposal.Number,
 			Time:        proposal.Time,
 			GasLimit:    rules.Blocks.MaxBlockGas,
-			MixHash:     common.Hash{},    // TODO: integrate randao reveal
+			MixHash:     randaoMix,
 			Coinbase:    common.Address{}, // TODO: integrate coinbase address
 			BaseFee:     uint256.Int{},    // TODO: integrate base fee
 			BlobBaseFee: uint256.Int{},    // TODO: integrate blob base fee
@@ -291,4 +309,25 @@ type transactionIndex interface {
 	Peek() (*txpool.LazyTransaction, *uint256.Int)
 	Shift()
 	Pop()
+}
+
+type randaoMixer interface {
+	MixRandao(prevRandao common.Hash) (randao.RandaoReveal, common.Hash, error)
+}
+
+type randaoMixerAdapter struct {
+	signer valkeystore.SignerAuthority
+}
+
+func (r *randaoMixerAdapter) MixRandao(prevRandao common.Hash) (randao.RandaoReveal, common.Hash, error) {
+	reveal, err := randao.GenerateNextRandaoReveal(prevRandao, r.signer)
+	if err != nil {
+		return reveal, common.Hash{}, err
+	}
+
+	mix, ok := reveal.VerifyAndGetRandao(prevRandao, r.signer.PublicKey())
+	if !ok {
+		return reveal, common.Hash{}, fmt.Errorf("randao verification failed: %w", err)
+	}
+	return reveal, mix, nil
 }
