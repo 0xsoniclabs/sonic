@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/0xsoniclabs/sonic/eventcheck/proposalcheck"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/scheduler"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -18,6 +19,13 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
+
+func TestEmitter_MaxProposalSize_IsWithinLimitCheckedByEventValidator(t *testing.T) {
+	require.LessOrEqual(t,
+		maxTotalTransactionsSizeInProposalsInBytes,
+		proposalcheck.MaxSizeOfProposedTransactions,
+	)
+}
 
 func TestEmitter_CreatePayload_ProducesValidPayload(t *testing.T) {
 	require := require.New(t)

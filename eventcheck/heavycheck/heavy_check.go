@@ -113,7 +113,11 @@ func (v *Checker) ValidateEvent(e inter.EventPayloadI) error {
 		return ErrWrongEventSig
 	}
 	// pre-cache tx sig
-	for _, tx := range e.Txs() {
+	transactions := e.Txs()
+	if proposal := e.Payload().Proposal; proposal != nil {
+		transactions = proposal.Transactions
+	}
+	for _, tx := range transactions {
 		_, err := types.Sender(v.txSigner, tx)
 		if err != nil {
 			return ErrMalformedTxSig

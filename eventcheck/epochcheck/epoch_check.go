@@ -46,6 +46,10 @@ func New(reader Reader) *Checker {
 
 func CalcGasPowerUsed(e inter.EventPayloadI, rules opera.Rules) uint64 {
 	txsGas := uint64(0)
+	// In the single-proposer protocol, the gas usage of individual transactions
+	// is not attributed to the individual proposer, since each proposer needs
+	// to be able to create proposals with the full gas limit. Thus, only the
+	// transactions being part of the distributed proposal protocol are counted.
 	for _, tx := range e.Txs() {
 		txsGas += tx.Gas()
 	}
