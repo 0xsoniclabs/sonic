@@ -97,24 +97,6 @@ func (v *Checker) EnqueueEvent(e inter.EventPayloadI, onValidated func(error)) e
 	}
 }
 
-func (v *Checker) ValidateEventLocator(e inter.SignedEventLocator, authEpoch idx.Epoch, authErr error, checkPayload func() bool) error {
-	pubkeys := v.reader.GetEpochPubKeysOf(authEpoch)
-	if len(pubkeys) == 0 {
-		return authErr
-	}
-	pubkey, ok := pubkeys[e.Locator.Creator]
-	if !ok {
-		return epochcheck.ErrAuth
-	}
-	if checkPayload != nil && !checkPayload() {
-		return ErrWrongPayloadHash
-	}
-	if !valkeystore.VerifySignature(common.Hash(e.Locator.HashToSign()), e.Sig[:], pubkey) {
-		return ErrWrongEventSig
-	}
-	return nil
-}
-
 // ValidateEvent runs heavy checks for event
 func (v *Checker) ValidateEvent(e inter.EventPayloadI) error {
 	pubkeys, epoch := v.reader.GetEpochPubKeys()
