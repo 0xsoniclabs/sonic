@@ -269,6 +269,7 @@ func mutableEventPayloadFromImmutable(e *inter.EventPayload) *inter.MutableEvent
 	me.SetExtra(e.Extra())
 	me.SetGasPowerLeft(e.GasPowerLeft())
 	me.SetGasPowerUsed(e.GasPowerUsed())
+	me.SetPayload(*e.Payload())
 	me.SetPayloadHash(e.PayloadHash())
 	me.SetSig(e.Sig())
 	me.SetTxs(e.Txs())
