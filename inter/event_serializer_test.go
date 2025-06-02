@@ -563,7 +563,8 @@ func FakeEvent(version uint8, txsNum, mpsNum, bvsNum int, ersNum bool) *EventPay
 		for i := 0; i < len(h); i++ {
 			h[i] = byte(r.Uint32())
 		}
-		if i%3 == 0 {
+		switch i % 3 {
+		case 0:
 			tx := types.NewTx(&types.LegacyTx{
 				Nonce:    r.Uint64(),
 				GasPrice: randBig(r),
@@ -576,7 +577,7 @@ func FakeEvent(version uint8, txsNum, mpsNum, bvsNum int, ersNum bool) *EventPay
 				S:        h.Big(),
 			})
 			txs = append(txs, tx)
-		} else if i%3 == 1 {
+		case 1:
 			tx := types.NewTx(&types.AccessListTx{
 				ChainID:    randBig(r),
 				Nonce:      r.Uint64(),
@@ -591,7 +592,7 @@ func FakeEvent(version uint8, txsNum, mpsNum, bvsNum int, ersNum bool) *EventPay
 				S:          h.Big(),
 			})
 			txs = append(txs, tx)
-		} else {
+		default: // case 2:
 			tx := types.NewTx(&types.DynamicFeeTx{
 				ChainID:    randBig(r),
 				Nonce:      r.Uint64(),

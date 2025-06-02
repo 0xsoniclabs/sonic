@@ -95,7 +95,8 @@ func initAppHelpInternal() {
 	// Override the default app help printer, but only for the global app help
 	originalHelpPrinter := cli.HelpPrinter
 	cli.HelpPrinter = func(w io.Writer, tmpl string, data interface{}) {
-		if tmpl == cmdhelper.AppHelpTemplate {
+		switch tmpl {
+		case cmdhelper.AppHelpTemplate:
 			// Iterate over all the flags and add any uncategorized ones
 			categorized := make(map[string]struct{})
 			for _, group := range AppHelpFlagGroups {
@@ -121,7 +122,7 @@ func initAppHelpInternal() {
 			}
 			// Render out custom usage screen
 			originalHelpPrinter(w, tmpl, cmdhelper.HelpData{App: data, FlagGroups: AppHelpFlagGroups})
-		} else if tmpl == cmdhelper.CommandHelpTemplate {
+		case cmdhelper.CommandHelpTemplate:
 			// Iterate over all command specific flags and categorize them
 			categorized := make(map[string][]cli.Flag)
 			for _, flag := range data.(cli.Command).Flags {
@@ -142,7 +143,7 @@ func initAppHelpInternal() {
 				"cmd":              data,
 				"categorizedFlags": sorted,
 			})
-		} else {
+		default:
 			originalHelpPrinter(w, tmpl, data)
 		}
 	}
