@@ -264,6 +264,7 @@ func TestApplyTransaction_InternalTransactionsSkipBaseFeeCharges(t *testing.T) {
 			any := gomock.Any()
 			state.EXPECT().GetBalance(any).Return(uint256.NewInt(0))
 			state.EXPECT().SubBalance(any, any, any)
+			state.EXPECT().EndTransaction()
 			if !internal {
 				state.EXPECT().GetNonce(any)
 				state.EXPECT().GetCode(any)
@@ -297,6 +298,8 @@ func TestApplyTransaction_BlobHashesNotSupportedAndSkipped(t *testing.T) {
 	state := state.NewMockStateDB(ctrl)
 	evm := vm.NewEVM(vm.BlockContext{}, state, &params.ChainConfig{}, vm.Config{})
 	gp := new(core.GasPool).AddGas(1000000)
+
+	state.EXPECT().EndTransaction()
 
 	msg := &core.Message{
 		From:       common.Address{1},
@@ -358,11 +361,14 @@ func TestApplyTransaction_ApplyMessageError_RevertsSnapshotIfPrague(t *testing.T
 
 			state.EXPECT().GetBalance(msg.From).Return(uint256.NewInt(1000000))
 			state.EXPECT().SubBalance(any, any, any)
+			state.EXPECT().EndTransaction()
 
 			if isPrague {
 				// Set up snapshot and revert expectations
-				state.EXPECT().Snapshot().Return(42)
-				state.EXPECT().RevertToSnapshot(42)
+				gomock.InOrder(
+					state.EXPECT().Snapshot().Return(42),
+					state.EXPECT().RevertToSnapshot(42),
+				)
 			}
 
 			receipt, gasUsed, skipped, err := applyTransaction(msg, gp, state, blockNumber, nil, new(uint64), evm, nil)

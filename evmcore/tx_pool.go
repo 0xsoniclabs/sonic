@@ -186,7 +186,7 @@ type TxPoolConfig struct {
 
 	Lifetime time.Duration // Maximum amount of time non-executable transaction are queued
 
-	DisableTxPoolValidation bool
+	DisableTxPoolValidation bool // Disable transaction pool validation, used for testing only
 }
 
 // DefaultTxPoolConfig contains the default configurations for the transaction

@@ -2,9 +2,11 @@ package tests
 
 import (
 	"math/big"
+	"slices"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/holiman/uint256"
@@ -49,14 +51,32 @@ func TestAccountCreation_CreateCallsWithInitCodesTooLargeDoNotAlterBalance(t *te
 			}
 			tx := signTransaction(t, chainId, txData, sender)
 
+			// Check balance before sending the transaction
 			preBalance, err := client.BalanceAt(t.Context(), sender.Address(), nil)
 			require.NoError(t, err)
 
-			receipt, err := net.Run(tx)
-			require.Error(t, err, "init code size too large")
-			require.Nil(t, receipt)
+			// Send the transaction
+			err = client.SendTransaction(t.Context(), tx)
+			require.NoError(t, err)
 
-			postBalance, err := client.BalanceAt(t.Context(), sender.Address(), nil)
+			// Send another simple transaction to ensure a block is created
+			receipt, err := net.EndowAccount(common.Address{0x42}, big.NewInt(42))
+			require.NoError(t, err)
+			require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+
+			// Check that the simple transaction was included in the block
+			blockTransaction, err := client.BlockByNumber(t.Context(), receipt.BlockNumber)
+			require.NoError(t, err)
+			contains := slices.ContainsFunc(blockTransaction.Transactions(), func(tx *types.Transaction) bool {
+				return tx.Hash() == receipt.TxHash
+			})
+			require.True(t, contains, "transaction should be included in the block")
+
+			// Check that no other transactions were included in the block
+			require.Len(t, blockTransaction.Transactions(), 1, "block should contain exactly one transaction")
+
+			// Check balance after sending the transaction
+			postBalance, err := client.BalanceAt(t.Context(), sender.Address(), receipt.BlockNumber)
 			require.NoError(t, err)
 
 			if version == opera.GetSonicUpgrades() {

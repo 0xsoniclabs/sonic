@@ -291,6 +291,7 @@ func applyTransaction(
 	// For now, Sonic only supports Blob transactions without blob data.
 	if msg.BlobHashes != nil {
 		if len(msg.BlobHashes) > 0 {
+			statedb.EndTransaction()
 			return nil, 0, true, fmt.Errorf("blob data is not supported")
 		}
 		// PreCheck requires non-nil blobHashes not to be empty
@@ -308,6 +309,7 @@ func applyTransaction(
 		if isAllegro {
 			statedb.RevertToSnapshot(snapshot)
 		}
+		statedb.EndTransaction()
 		return nil, 0, result == nil, err
 	}
 	// Notify about logs with potential state changes.
