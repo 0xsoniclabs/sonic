@@ -42,7 +42,7 @@ const (
 	ClientIdentifier = "Sonic"
 )
 
-// These settings ensure that TOML keys use the same names as Go struct fields.
+// TomlSettings ensure that TOML keys use the same names as Go struct fields.
 var TomlSettings = toml.Config{
 	NormFieldName: func(rt reflect.Type, key string) string {
 		return key
