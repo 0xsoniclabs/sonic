@@ -2080,7 +2080,9 @@ func (api *PublicDebugAPI) GetBlockRlp(ctx context.Context, number uint64) (stri
 //
 // This is a temporary method to debug the externalsigner integration,
 func (api *PublicDebugAPI) TestSignCliqueBlock(ctx context.Context, address common.Address, number uint64) (common.Address, error) {
-	return common.Address{}, errors.New("clique isn't supported")
+	// This is a user-facing error, so we want to provide a clear message.
+	//nolint:staticcheck // ST1005: allow capitalized error message and punctuation
+	return common.Address{}, errors.New("Clique isn't supported")
 }
 
 // PrintBlock retrieves a block and returns its pretty printed form.

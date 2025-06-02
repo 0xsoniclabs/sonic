@@ -91,9 +91,11 @@ func LoadAllConfigs(file string, cfg *Config) (err error) {
 		err = errors.New(file + ", " + err.Error())
 	}
 	if err != nil {
-		return fmt.Errorf("failed to decode TOML config file: %v\n"+
+		// This is a user-facing error, so we want to provide a clear message.
+		//nolint:staticcheck // ST1005: allow capitalized error message and punctuation
+		return fmt.Errorf("TOML config file error: %v.\n"+
 			"Use 'dumpconfig' command to get an example config file.\n"+
-			"If node was recently upgraded and a previous network config file is used, then check updates for the config file", err)
+			"If node was recently upgraded and a previous network config file is used, then check updates for the config file.", err)
 	}
 	return nil
 }

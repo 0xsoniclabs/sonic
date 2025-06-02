@@ -13,13 +13,17 @@ import (
 func Check() error {
 	locked, reason, eLockPath, err := read(datadir)
 	if err != nil {
-		return fmt.Errorf("node isn't allowed to start due to an error reading"+
+		// This is a user-facing error, so we want to provide a clear message.
+		//nolint:staticcheck // ST1005: allow capitalized error message and punctuation
+		return fmt.Errorf("Node isn't allowed to start due to an error reading"+
 			" the lock file %s.\n Please fix the issue. Error message:\n%w",
 			eLockPath, err)
 	}
 
 	if locked {
-		return fmt.Errorf("node isn't allowed to start due to a previous error."+
+		// This is a user-facing error, so we want to provide a clear message.
+		//nolint:staticcheck // ST1005: allow capitalized error message and punctuation
+		return fmt.Errorf("Node isn't allowed to start due to a previous error."+
 			" Please fix the issue and then delete file \"%s\". Error message:\n%s",
 			eLockPath, reason)
 	}
@@ -38,7 +42,9 @@ func SetDefaultDatadir(dir string) {
 // Permanent error
 func Permanent(err error) {
 	eLockPath, _ := write(datadir, err.Error())
-	panic(fmt.Errorf("node is permanently stopping due to an issue. Please fix"+
+	// This is a user-facing error, so we want to provide a clear message.
+	//nolint:staticcheck // ST1005: allow capitalized error message and punctuation
+	panic(fmt.Errorf("Node is permanently stopping due to an issue. Please fix"+
 		" the issue and then delete file \"%s\". Error message:\n%s",
 		eLockPath, err.Error()))
 }

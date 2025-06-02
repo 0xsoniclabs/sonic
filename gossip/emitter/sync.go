@@ -27,12 +27,14 @@ func (em *Emitter) onNewExternalEvent(e inter.EventPayloadI) {
 	status := em.currentSyncStatus()
 	if doublesign.DetectParallelInstance(status, em.config.EmitIntervals.ParallelInstanceProtection) {
 		passedSinceEvent := status.Since(status.ExternalSelfEventCreated)
-		reason := "received a recent event (event id=%s) from this validator (validator ID=%d) which wasn't created on this node.\n" +
+		reason := "Received a recent event (event id=%s) from this validator (validator ID=%d) which wasn't created on this node.\n" +
 			"This external event was created %s, %s ago at the time of this error.\n" +
 			"It might mean that a duplicating instance of the same validator is running simultaneously, which may eventually lead to a doublesign.\n" +
 			"The node was stopped by one of the doublesign protection heuristics.\n" +
 			"There's no guaranteed automatic protection against a doublesign, " +
-			"please always ensure that no more than one instance of the same validator is running"
+			"please always ensure that no more than one instance of the same validator is running."
+		// This is a user-facing error, so we want to provide a clear message.
+		//nolint:staticcheck // ST1005: allow capitalized error message and punctuation
 		errlock.Permanent(fmt.Errorf(reason, e.ID().String(), em.config.Validator.ID, e.CreationTime().Time().Local().String(), passedSinceEvent.String()))
 		panic("unreachable")
 	}
