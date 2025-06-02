@@ -13,13 +13,12 @@ type Turn uint32
 // failed. Hence, if for the given number of frames no proposal is made, the
 // current turn times out and the next turn is started.
 //
-// The value is set to 8 frames after empirical testing of the network has shown
-// an average latency of 3 frames. The timeout is set to 8 frames to account for
-// network latency, processing time, and other factors that may cause delays.
+// The value is set to 3 frames after empirical testing of the network has shown
+// an average latency of 3 frames.
 //
 // ATTENTION: All nodes on the network must agree on the same value for this
 // constant. Thus, changing this value requires a hard fork.
-const TurnTimeoutInFrames = 8
+const TurnTimeoutInFrames = 3
 
 // IsValidTurnProgression determines whether `next` is a valid successor of
 // `last`. This is used during event validation to identify valid proposals and

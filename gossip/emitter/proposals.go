@@ -119,7 +119,7 @@ func createPayload(
 	)
 
 	// If no new proposal was created, the payload remains empty.
-	if proposal == nil {
+	if proposal == nil { //|| validator == 2 {
 		return inter.Payload{
 			ProposalSyncState: incomingState,
 		}, nil
