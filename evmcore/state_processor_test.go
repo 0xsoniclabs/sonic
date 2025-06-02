@@ -39,7 +39,6 @@ func (p *StateProcessor) process_iteratively(
 		if skip {
 			skipped = append(skipped, uint32(i))
 			receipts[i] = nil
-			err = nil
 			continue
 		}
 		if err != nil {

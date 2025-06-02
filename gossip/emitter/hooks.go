@@ -86,6 +86,9 @@ func (em *Emitter) OnNewEpoch(newValidators *pos.Validators, newEpoch idx.Epoch)
 			return updMetric(median, current, update, validatorIdx, newValidators)
 		})
 	em.payloadIndexer = ancestor.NewPayloadIndexer(PayloadIndexerSize)
+
+	// forget all seen proposals of the previous epoch
+	em.proposalTracker.Reset()
 }
 
 // OnEventConnected tracks new events
@@ -112,6 +115,11 @@ func (em *Emitter) OnEventConnected(e inter.EventPayloadI) {
 	delete(em.challenges, e.Creator())
 	// mark validator as online
 	delete(em.offlineValidators, e.Creator())
+
+	// track proposals to avoid proposing blocks that are already pending
+	if proposal := e.Payload().Proposal; proposal != nil {
+		em.proposalTracker.RegisterSeenProposal(e.Frame(), proposal.Number)
+	}
 }
 
 func (em *Emitter) OnEventConfirmed(he inter.EventI) {

@@ -164,6 +164,11 @@ func TestRules_Copy_CopiesAreDisjoint(t *testing.T) {
 				rule.Upgrades.Allegro = !rule.Upgrades.Allegro
 			},
 		},
+		"update Upgrades.SingleProposerBlockFormation": {
+			update: func(rule *Rules) {
+				rule.Upgrades.SingleProposerBlockFormation = !rule.Upgrades.SingleProposerBlockFormation
+			},
+		},
 	}
 
 	for name, test := range tests {

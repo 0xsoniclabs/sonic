@@ -50,7 +50,6 @@ func TestEmitter_CreatePayload_ProducesValidPayload(t *testing.T) {
 		ProposalSyncState: inter.ProposalSyncState{
 			LastSeenProposalTurn:  inter.Turn(0),
 			LastSeenProposalFrame: idx.Frame(0),
-			LastSeenProposedBlock: idx.Block(0),
 		},
 	}
 	require.Equal(want, payload)
@@ -90,7 +89,6 @@ func TestWorldAdapter_GetEventPayload_ForwardsCallToGetExternalEventPayload(t *t
 		ProposalSyncState: inter.ProposalSyncState{
 			LastSeenProposalTurn:  inter.Turn(1),
 			LastSeenProposalFrame: idx.Frame(2),
-			LastSeenProposedBlock: idx.Block(3),
 		},
 	}
 
@@ -123,44 +121,30 @@ func TestWorldAdapter_GetEvmChainConfig_ForwardsCallToGetRulesAndGetUpgradeHeigh
 	require.Equal(want, got)
 }
 
-func TestCreatePayload_InvalidTurn_CreatesPayloadWithoutProposal(t *testing.T) {
+func TestCreatePayload_PendingProposal_CreatesPayloadWithoutProposal(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	world := NewMockworldReader(ctrl)
 	event := inter.NewMockEventI(ctrl)
 
-	p1 := hash.Event{1}
-	p2 := hash.Event{2}
-	payloads := map[hash.Event]inter.Payload{
-		p1: {ProposalSyncState: inter.ProposalSyncState{
-			LastSeenProposedBlock: idx.Block(5),
-		}},
-		p2: {ProposalSyncState: inter.ProposalSyncState{
-			LastSeenProposedBlock: idx.Block(5),
-		}},
-	}
-
-	world.EXPECT().GetEventPayload(p1).Return(payloads[p1])
-	world.EXPECT().GetEventPayload(p2).Return(payloads[p2])
-
 	world.EXPECT().GetLatestBlock().Return(
 		inter.NewBlockBuilder().WithNumber(4).Build(),
 	)
 
-	event.EXPECT().Parents().Return(hash.Events{p1, p2})
-	event.EXPECT().Frame().Return(idx.Frame(1))
+	event.EXPECT().Parents().Return(hash.Events{})
+	event.EXPECT().Frame().Return(idx.Frame(2))
+
+	proposalTracker := NewMockproposalTracker(ctrl)
+	proposalTracker.EXPECT().IsPending(idx.Frame(2), idx.Block(5)).Return(true)
 
 	// This call fails since it tries to propose block 5 while according to the
-	// parent events, a proposal for block 5 has already been made.
+	// proposal tracker, a proposal for block 5 has already been made.
 	payload, err := createPayload(
-		world, 0, nil, event, nil, nil, nil, nil,
+		world, 0, nil, event, proposalTracker, nil, nil, nil, nil,
 	)
 
 	want := inter.Payload{
-		ProposalSyncState: inter.JoinProposalSyncStates(
-			payloads[p1].ProposalSyncState,
-			payloads[p2].ProposalSyncState,
-		),
+		ProposalSyncState: inter.ProposalSyncState{},
 	}
 
 	require.NoError(err)
@@ -179,12 +163,10 @@ func TestCreatePayload_UnableToCreateProposalDueToLackOfTimeProgress_CreatesPayl
 		p1: {ProposalSyncState: inter.ProposalSyncState{
 			LastSeenProposalTurn:  inter.Turn(0x01),
 			LastSeenProposalFrame: idx.Frame(0x12),
-			LastSeenProposedBlock: idx.Block(0x23),
 		}},
 		p2: {ProposalSyncState: inter.ProposalSyncState{
 			LastSeenProposalTurn:  inter.Turn(0x03),
 			LastSeenProposalFrame: idx.Frame(0x11),
-			LastSeenProposedBlock: idx.Block(0x22),
 		}},
 	}
 
@@ -209,17 +191,19 @@ func TestCreatePayload_UnableToCreateProposalDueToLackOfTimeProgress_CreatesPayl
 	builder.Set(validator, 10)
 	validators := builder.Build()
 
+	tracker := NewMockproposalTracker(ctrl)
+	tracker.EXPECT().IsPending(idx.Frame(0x14), idx.Block(0x24)).Return(false)
+
 	// This attempt to create a proposal should result in an empty payload since
 	// no time has passed since the last proposal.
 	payload, err := createPayload(
-		world, validator, validators, event, nil, nil, nil, nil,
+		world, validator, validators, event, tracker, nil, nil, nil, nil,
 	)
 
 	want := inter.Payload{
 		ProposalSyncState: inter.ProposalSyncState{
 			LastSeenProposalTurn:  inter.Turn(0x03),
 			LastSeenProposalFrame: idx.Frame(0x12),
-			LastSeenProposedBlock: idx.Block(0x23),
 		},
 	}
 
@@ -242,9 +226,11 @@ func TestCreatePayload_InvalidValidators_ForwardsError(t *testing.T) {
 	)
 
 	validators := pos.ValidatorsBuilder{}.Build()
+	tracker := NewMockproposalTracker(ctrl)
+	tracker.EXPECT().IsPending(idx.Frame(0), idx.Block(63)).Return(false)
 
 	_, err := createPayload(
-		world, 0, validators, event, nil, nil, nil, nil,
+		world, 0, validators, event, tracker, nil, nil, nil, nil,
 	)
 	require.ErrorContains(err, "no validators")
 }
@@ -263,12 +249,10 @@ func TestCreatePayload_ValidTurn_ProducesExpectedPayload(t *testing.T) {
 		p1: {ProposalSyncState: inter.ProposalSyncState{
 			LastSeenProposalTurn:  inter.Turn(1),
 			LastSeenProposalFrame: idx.Frame(2),
-			LastSeenProposedBlock: idx.Block(5),
 		}},
 		p2: {ProposalSyncState: inter.ProposalSyncState{
 			LastSeenProposalTurn:  inter.Turn(1),
 			LastSeenProposalFrame: idx.Frame(2),
-			LastSeenProposedBlock: idx.Block(5),
 		}},
 	}
 
@@ -285,6 +269,9 @@ func TestCreatePayload_ValidTurn_ProducesExpectedPayload(t *testing.T) {
 	event.EXPECT().Parents().Return(hash.Events{p1, p2})
 	event.EXPECT().Frame().Return(idx.Frame(4)).AnyTimes()
 	event.EXPECT().MedianTime().Return(inter.Timestamp(1234))
+
+	tracker := NewMockproposalTracker(ctrl)
+	tracker.EXPECT().IsPending(idx.Frame(4), idx.Block(6)).Return(false)
 
 	validator := idx.ValidatorID(1)
 	builder := pos.ValidatorsBuilder{}
@@ -304,14 +291,13 @@ func TestCreatePayload_ValidTurn_ProducesExpectedPayload(t *testing.T) {
 	timeoutMetric.EXPECT().Inc(any).AnyTimes()
 
 	payload, err := createPayload(
-		world, validator, validators, event, nil,
+		world, validator, validators, event, tracker, nil,
 		scheduler, durationMetric, timeoutMetric,
 	)
 	require.NoError(err)
 
 	require.Equal(inter.Turn(2), payload.LastSeenProposalTurn)
 	require.Equal(idx.Frame(4), payload.LastSeenProposalFrame)
-	require.Equal(idx.Block(6), payload.LastSeenProposedBlock)
 	require.Equal(idx.Block(6), payload.Proposal.Number)
 	require.Equal(inter.Timestamp(1234), payload.Proposal.Time)
 	require.Equal(txs, payload.Proposal.Transactions)
@@ -328,7 +314,6 @@ func TestMakeProposal_ValidArguments_CreatesValidProposal(t *testing.T) {
 	state := inter.ProposalSyncState{
 		LastSeenProposalTurn:  inter.Turn(5),
 		LastSeenProposalFrame: idx.Frame(12),
-		LastSeenProposedBlock: idx.Block(4),
 	}
 	latestBlock := inter.NewBlockBuilder().
 		WithNumber(5).
@@ -390,7 +375,6 @@ func TestMakeProposal_InvalidBlockTime_ReturnsNil(t *testing.T) {
 	state := inter.ProposalSyncState{
 		LastSeenProposalTurn:  inter.Turn(5),
 		LastSeenProposalFrame: idx.Frame(12),
-		LastSeenProposedBlock: idx.Block(4),
 	}
 	latestBlock := inter.NewBlockBuilder().WithTime(1234).Build()
 	for _, delta := range []time.Duration{-1 * time.Nanosecond, 0} {

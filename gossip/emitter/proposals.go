@@ -45,6 +45,7 @@ func (em *Emitter) createPayload(
 		em.config.Validator.ID,
 		em.validators,
 		event,
+		&em.proposalTracker,
 		sorted,
 		scheduler.NewScheduler(adapter),
 		proposalSchedulingTimer,
@@ -66,6 +67,7 @@ func createPayload(
 	validator idx.ValidatorID,
 	validators *pos.Validators,
 	event inter.EventI,
+	proposalTracker proposalTracker,
 	sorted *transactionsByPriceAndNonce,
 	transactionScheduler txScheduler,
 	durationMetric timerMetric,
@@ -75,16 +77,22 @@ func createPayload(
 	// Get the last seen proposal information from the event's parents.
 	incomingState := inter.CalculateIncomingProposalSyncState(world, event)
 
-	// Determine whether this validator is allowed to propose a new block.
+	// Do not re-propose a pending proposal.
 	currentFrame := event.Frame()
 	latest := world.GetLatestBlock()
 	nextBlock := idx.Block(latest.Number + 1)
+	if proposalTracker.IsPending(currentFrame, nextBlock) {
+		return inter.Payload{
+			ProposalSyncState: incomingState,
+		}, nil
+	}
+
+	// Determine whether this validator is allowed to propose a new block.
 	isMyTurn, err := inter.IsAllowedToPropose(
 		validator,
 		validators,
 		incomingState,
 		currentFrame,
-		nextBlock,
 	)
 	if err != nil {
 		return inter.Payload{}, err
@@ -122,11 +130,19 @@ func createPayload(
 	return inter.Payload{
 		ProposalSyncState: inter.ProposalSyncState{
 			LastSeenProposalTurn:  incomingState.LastSeenProposalTurn + 1,
-			LastSeenProposedBlock: proposal.Number,
 			LastSeenProposalFrame: currentFrame,
 		},
 		Proposal: proposal,
 	}, nil
+}
+
+// proposalTracker is an interface for tracking proposals to avoid double
+// proposals.
+type proposalTracker interface {
+	// IsPending checks whether there is a pending proposal for the given frame
+	// and block. If the proposal is pending, it returns true, otherwise it
+	// returns false.
+	IsPending(frame idx.Frame, block idx.Block) bool
 }
 
 // worldReader is an interface for a data source providing all the information

@@ -232,18 +232,18 @@ func FuzzValidateTransaction(f *testing.F) {
 		}
 		stateExpectCalls(state)
 
-		opt := getTestTransactionsOptionFromRevision(revision, chainId,
+		opt, netRules, blockState := getTestTransactionsOptionFromRevision(revision, chainId,
 			maxGas, int64(baseFee), int64(minTip))
 		opt.currentState = state
-		opt.currentMaxGas = maxGas
+		blockState.maxGas = maxGas
 
 		// Validate the transaction
-		validateErr := validateTx(signedTx, opt)
+		validateErr := validateTx(signedTx, opt, blockState, netRules)
 
 		// create evm to check validateTx is consistent with processor.
 		evm := makeTestEvm(blockNum, int64(baseFee), uint64(baseFee), state, revision, chainId)
 
-		msg, err := core.TransactionToMessage(signedTx, opt.signer, evm.Context.BaseFee)
+		msg, err := core.TransactionToMessage(signedTx, netRules.signer, evm.Context.BaseFee)
 		require.NoError(t, err)
 
 		gp := new(core.GasPool).AddGas(maxGas)
@@ -482,36 +482,41 @@ func signTxForTestWithChainId(t *testing.T, tx types.TxData, chainId *big.Int) (
 // getTestTransactionsOptionFromRevision creates a validationOptions struct
 // with the specified revision and chain ID.
 func getTestTransactionsOptionFromRevision(revision int8, chainId *big.Int,
-	maxGas uint64, BaseFee, MinTip int64) validationOptions {
-	opt := validationOptions{
-		currentMaxGas:  maxGas,
-		currentBaseFee: big.NewInt(BaseFee),
-		minTip:         big.NewInt(MinTip),
+	maxGas uint64, BaseFee, MinTip int64) (poolOptions, NetworkRules, blockState) {
+	opt := poolOptions{
+		minTip: big.NewInt(MinTip),
 		// locally submitted transactions have the more relaxed validation version. Therefore we test local true.
 		isLocal: true,
-		signer:  types.NewPragueSigner(chainId),
+	}
+
+	netRules := NetworkRules{
+		signer: types.NewPragueSigner(chainId),
+	}
+	blockState := blockState{
+		maxGas:  maxGas,
+		baseFee: big.NewInt(BaseFee),
 	}
 
 	switch revision {
 	case testPrague:
-		opt.eip7702 = true
-		opt.eip7623 = true
+		netRules.eip7702 = true
+		netRules.eip7623 = true
 		fallthrough
 	case testCancun:
-		opt.eip4844 = true
+		netRules.eip4844 = true
 		fallthrough
 	case testShanghai:
-		opt.shanghai = true
+		netRules.shanghai = true
 		fallthrough
 	case testLondon:
-		opt.eip1559 = true
+		netRules.eip1559 = true
 		fallthrough
 	case testBerlin:
-		opt.eip2718 = true
+		netRules.eip2718 = true
 		fallthrough
 	default:
-		opt.istanbul = true
+		netRules.istanbul = true
 	}
 
-	return opt
+	return opt, netRules, blockState
 }

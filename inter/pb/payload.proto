@@ -26,22 +26,12 @@ message Payload {
     // next turn is starts.
     uint32 lastSeenProposalTurn = 2;
 
-    // The number of the last proposed block seen by the event containing this
-    // payload. A proposal is "seen" if it is contained in an event in the
-    // ancestry of this event. If there are multiple seen proposals, the one with
-    // the highest number is to be used. If this event contains a proposal,
-    // the number of the proposed block is to be used.
-    //
-    // If the event containing this payload is a genesis event, this number is
-    // to be set to the block height at the begin of the respective epoch.
-    uint64 lastSeenProposedBlock = 3;
-
     // The frame number of the last seen proposal. For genesis events, this
     // value is 0.
-    uint32 lastSeenProposalFrame = 4;
+    uint32 lastSeenProposalFrame = 3;
 
     // An optional proposal made by this event. If present, it is the latest
     // seen proposal for this event. Proposals made must be valid successors
     // of the last seen proposal in the strict ancestry of this event.
-    optional Proposal proposal = 5;
+    optional Proposal proposal = 4;
 }

@@ -16,24 +16,17 @@ func TestProposalSyncState_Join_ComputesTheMaximumForIndividualStateProperties(t
 		for turnB := range Turn(5) {
 			for frameA := range idx.Frame(5) {
 				for frameB := range idx.Frame(5) {
-					for blockA := range idx.Block(5) {
-						for blockB := range idx.Block(5) {
-							a := ProposalSyncState{
-								LastSeenProposalTurn:  turnA,
-								LastSeenProposalFrame: frameA,
-								LastSeenProposedBlock: blockA,
-							}
-							b := ProposalSyncState{
-								LastSeenProposalTurn:  turnB,
-								LastSeenProposalFrame: frameB,
-								LastSeenProposedBlock: blockB,
-							}
-							joined := JoinProposalSyncStates(a, b)
-							require.Equal(t, max(turnA, turnB), joined.LastSeenProposalTurn)
-							require.Equal(t, max(frameA, frameB), joined.LastSeenProposalFrame)
-							require.Equal(t, max(blockA, blockB), joined.LastSeenProposedBlock)
-						}
+					a := ProposalSyncState{
+						LastSeenProposalTurn:  turnA,
+						LastSeenProposalFrame: frameA,
 					}
+					b := ProposalSyncState{
+						LastSeenProposalTurn:  turnB,
+						LastSeenProposalFrame: frameB,
+					}
+					joined := JoinProposalSyncStates(a, b)
+					require.Equal(t, max(turnA, turnB), joined.LastSeenProposalTurn)
+					require.Equal(t, max(frameA, frameB), joined.LastSeenProposalFrame)
 				}
 			}
 		}
@@ -66,17 +59,14 @@ func TestCalculateIncomingProposalSyncState_AggregatesParentStates(t *testing.T)
 		p1: {ProposalSyncState: ProposalSyncState{
 			LastSeenProposalTurn:  Turn(0x01),
 			LastSeenProposalFrame: idx.Frame(0x12),
-			LastSeenProposedBlock: idx.Block(0x23),
 		}},
 		p2: {ProposalSyncState: ProposalSyncState{
 			LastSeenProposalTurn:  Turn(0x03),
 			LastSeenProposalFrame: idx.Frame(0x11),
-			LastSeenProposedBlock: idx.Block(0x22),
 		}},
 		p3: {ProposalSyncState: ProposalSyncState{
 			LastSeenProposalTurn:  Turn(0x02),
 			LastSeenProposalFrame: idx.Frame(0x13),
-			LastSeenProposedBlock: idx.Block(0x21),
 		}},
 	}
 
@@ -90,7 +80,6 @@ func TestCalculateIncomingProposalSyncState_AggregatesParentStates(t *testing.T)
 
 	require.Equal(Turn(0x03), state.LastSeenProposalTurn)
 	require.Equal(idx.Frame(0x13), state.LastSeenProposalFrame)
-	require.Equal(idx.Block(0x23), state.LastSeenProposedBlock)
 }
 
 func TestIsAllowedToPropose_AcceptsValidProposerTurn(t *testing.T) {
@@ -117,10 +106,8 @@ func TestIsAllowedToPropose_AcceptsValidProposerTurn(t *testing.T) {
 		ProposalSyncState{
 			LastSeenProposalTurn:  last.Turn,
 			LastSeenProposalFrame: last.Frame,
-			LastSeenProposedBlock: idx.Block(4),
 		},
 		next.Frame,
-		5, // block to be proposed
 	)
 	require.NoError(err)
 	require.True(ok)
@@ -143,9 +130,8 @@ func TestIsAllowedToPropose_RejectsInvalidProposerTurn(t *testing.T) {
 	}
 
 	type input struct {
-		validator         idx.ValidatorID
-		blockToBeProposed idx.Block
-		currentFrame      idx.Frame
+		validator    idx.ValidatorID
+		currentFrame idx.Frame
 	}
 
 	tests := map[string]func(*input){
@@ -165,13 +151,11 @@ func TestIsAllowedToPropose_RejectsInvalidProposerTurn(t *testing.T) {
 			ProposalState := ProposalSyncState{
 				LastSeenProposalTurn:  12,
 				LastSeenProposalFrame: 62,
-				LastSeenProposedBlock: 5,
 			}
 
 			input := input{
-				currentFrame:      67,
-				validator:         validProposer,
-				blockToBeProposed: 6,
+				currentFrame: 67,
+				validator:    validProposer,
 			}
 
 			ok, err := IsAllowedToPropose(
@@ -179,7 +163,6 @@ func TestIsAllowedToPropose_RejectsInvalidProposerTurn(t *testing.T) {
 				validators,
 				ProposalState,
 				input.currentFrame,
-				input.blockToBeProposed,
 			)
 			require.NoError(err)
 			require.True(ok)
@@ -190,97 +173,9 @@ func TestIsAllowedToPropose_RejectsInvalidProposerTurn(t *testing.T) {
 				validators,
 				ProposalState,
 				input.currentFrame,
-				input.blockToBeProposed,
 			)
 			require.NoError(err)
 			require.False(ok)
-		})
-	}
-}
-
-func TestIsAllowedToPropose_BlocksProposingLastSeenBlockDuringTimeoutWindow(t *testing.T) {
-	tests := map[string]struct {
-		lastProposalFrame idx.Frame
-		currentFrame      idx.Frame
-		lastProposedBlock idx.Block
-		blockToPropose    idx.Block
-		allowed           bool
-	}{
-		"allow follow-up": {
-			lastProposalFrame: 12,
-			currentFrame:      13,
-			lastProposedBlock: 5,
-			blockToPropose:    6,
-			allowed:           true,
-		},
-		"allow intended correction of old block": {
-			lastProposalFrame: 12,
-			currentFrame:      13,
-			lastProposedBlock: 5,
-			blockToPropose:    4,
-			allowed:           true,
-		},
-		"allow future block": {
-			lastProposalFrame: 12,
-			currentFrame:      13,
-			lastProposedBlock: 5,
-			blockToPropose:    7,
-			allowed:           true,
-		},
-		"deny replacement before timeout": {
-			lastProposalFrame: 12,
-			currentFrame:      13,
-			lastProposedBlock: 5,
-			blockToPropose:    5,
-			allowed:           false,
-		},
-		"allow replacement just before timeout": {
-			lastProposalFrame: 12,
-			currentFrame:      12 + TurnTimeoutInFrames,
-			lastProposedBlock: 5,
-			blockToPropose:    5,
-			allowed:           false,
-		},
-		"allow replacement after timeout": {
-			lastProposalFrame: 12,
-			currentFrame:      12 + TurnTimeoutInFrames + 1,
-			lastProposedBlock: 5,
-			blockToPropose:    5,
-			allowed:           true,
-		},
-		"allow replacement after timeout + 1": {
-			lastProposalFrame: 12,
-			currentFrame:      12 + TurnTimeoutInFrames + 1 + 1,
-			lastProposedBlock: 5,
-			blockToPropose:    5,
-			allowed:           true,
-		},
-	}
-
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			require := require.New(t)
-
-			validator := idx.ValidatorID(1)
-			builder := pos.ValidatorsBuilder{}
-			builder.Set(validator, 10)
-			validators := builder.Build()
-
-			ProposalState := ProposalSyncState{
-				LastSeenProposalTurn:  12,
-				LastSeenProposalFrame: test.lastProposalFrame,
-				LastSeenProposedBlock: test.lastProposedBlock,
-			}
-
-			ok, err := IsAllowedToPropose(
-				validator,
-				validators,
-				ProposalState,
-				test.currentFrame,
-				test.blockToPropose,
-			)
-			require.NoError(err)
-			require.Equal(test.allowed, ok)
 		})
 	}
 }
@@ -296,7 +191,6 @@ func TestIsAllowedToPropose_ForwardsTurnSelectionError(t *testing.T) {
 		validators,
 		ProposalSyncState{},
 		idx.Frame(0),
-		idx.Block(1),
 	)
 	require.Error(t, got)
 	require.Equal(t, got, want)

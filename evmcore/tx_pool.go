@@ -673,23 +673,27 @@ func (pool *TxPool) local() map[common.Address]types.Transactions {
 // validateTx checks whether a transaction is valid according to the consensus
 // rules and adheres to some heuristic limits of the local node (price and size).
 func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
-	opts := validationOptions{
-		istanbul:       pool.istanbul,
-		shanghai:       pool.shanghai,
-		eip1559:        pool.eip1559,
-		eip2718:        pool.eip2718,
-		eip4844:        pool.eip4844,
-		eip7623:        pool.eip7623,
-		eip7702:        pool.eip7702,
-		currentState:   pool.currentState,
-		currentMaxGas:  pool.currentMaxGas,
-		currentBaseFee: pool.chain.GetCurrentBaseFee(),
-		minTip:         pool.gasPrice,
-		locals:         pool.locals,
-		isLocal:        local,
-		signer:         pool.signer,
+	opts := poolOptions{
+		currentState: pool.currentState,
+		minTip:       pool.gasPrice,
+		locals:       pool.locals,
+		isLocal:      local,
 	}
-	err := validateTx(tx, opts)
+	blockState := blockState{
+		maxGas:  pool.currentMaxGas,
+		baseFee: pool.chain.GetCurrentBaseFee(),
+	}
+	netRules := NetworkRules{
+		istanbul: pool.istanbul,
+		shanghai: pool.shanghai,
+		eip1559:  pool.eip1559,
+		eip2718:  pool.eip2718,
+		eip4844:  pool.eip4844,
+		eip7623:  pool.eip7623,
+		eip7702:  pool.eip7702,
+		signer:   pool.signer,
+	}
+	err := validateTx(tx, opts, blockState, netRules)
 	if err != nil {
 		return err
 	}

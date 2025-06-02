@@ -2387,7 +2387,7 @@ type TraceCallConfig struct {
 }
 
 // TraceCall is generating traces for non historical transactions.
-// It is simmilar to eth_call but with debug capabilities.
+// It is similar to eth_call but with debug capabilities.
 func (api *PublicDebugAPI) TraceCall(ctx context.Context, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, config *TraceCallConfig) (interface{}, error) {
 
 	// If pending block, return error

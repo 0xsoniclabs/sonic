@@ -25,8 +25,13 @@ const (
 	berlinBit              = 1 << 0
 	londonBit              = 1 << 1
 	llrBit                 = 1 << 2
-	sonicBit               = 1 << 3
-	allegroBit             = 1 << 4
+
+	// hard-forks
+	sonicBit   = 1 << 3
+	allegroBit = 1 << 4
+
+	// optional features
+	singleProposerBlockFormationBit = 1 << 63
 
 	MinimumMaxBlockGas          = 5_000_000_000 // < must be large enough to allow internal transactions to seal blocks
 	MaximumMaxBlockGas          = math.MaxInt64 // < should fit into 64-bit signed integers to avoid parsing errors in third-party libraries
@@ -214,9 +219,26 @@ type Upgrades struct {
 	London bool
 	Llr    bool
 
-	// -- Sonic Chain --
-	Sonic   bool // < launch version of the Sonic chain
-	Allegro bool // < first hard fork of the Sonic chain
+	// -- Sonic Chain Hard Forks --
+	Sonic   bool // < launch version of the Sonic chain, introducing Cancun features
+	Allegro bool // < first hard fork of the Sonic chain, introducing Prague features
+
+	// -- Optional Features --
+
+	// SingleProposerBlockFormation enables the creation of full block proposals
+	// by a single proposer, rather than a distributed event-based protocol.
+	// This feature is introduced by V2.1 of the Sonic client. It thus
+	//
+	//    MUST ONLY BE ENABLED WHEN ALL NODES ARE RUNNING V2.1 OR LATER
+	//
+	// Any node not running V2.1 or later will ignore this flag, will not be
+	// able to process the new payload format used by this protocol, and
+	// eventually drop of the network due to the inability to stay synced.
+	//
+	// Given the conditions stated above, the feature is considered optional.
+	// It can be enabled or disabled at any time. Changes in the feature state
+	// become effective at the start of the next epoch.
+	SingleProposerBlockFormation bool
 }
 
 type UpgradeHeight struct {

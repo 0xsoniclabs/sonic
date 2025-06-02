@@ -14,7 +14,6 @@ import (
 type ProposalSyncState struct {
 	LastSeenProposalTurn  Turn
 	LastSeenProposalFrame idx.Frame
-	LastSeenProposedBlock idx.Block
 }
 
 // JoinProposalSyncStates merges two proposal sync states by taking the maximum
@@ -23,7 +22,6 @@ type ProposalSyncState struct {
 func JoinProposalSyncStates(a, b ProposalSyncState) ProposalSyncState {
 	return ProposalSyncState{
 		LastSeenProposalTurn:  max(a.LastSeenProposalTurn, b.LastSeenProposalTurn),
-		LastSeenProposedBlock: max(a.LastSeenProposedBlock, b.LastSeenProposedBlock),
 		LastSeenProposalFrame: max(a.LastSeenProposalFrame, b.LastSeenProposalFrame),
 	}
 }
@@ -62,18 +60,7 @@ func IsAllowedToPropose(
 	validators *pos.Validators,
 	proposalState ProposalSyncState,
 	currentFrame idx.Frame,
-	blockToPropose idx.Block,
 ) (bool, error) {
-	// Check that the block about to be proposed is not a replacement of the
-	// last seen proposed block, which might not have been confirmed yet.
-	// If a proposal was not confirmed within the timeout period, a replacement
-	// can be proposed.
-	if currentFrame < proposalState.LastSeenProposalFrame+TurnTimeoutInFrames {
-		if blockToPropose == proposalState.LastSeenProposedBlock {
-			return false, nil
-		}
-	}
-
 	// Check whether it is this emitter's turn to propose a new block.
 	nextTurn := getCurrentTurn(proposalState, currentFrame) + 1
 	proposer, err := GetProposer(validators, nextTurn)
