@@ -46,11 +46,24 @@ type IntegrationTestNetSession interface {
 	// mainly intended to provide funds to accounts for testing purposes.
 	EndowAccount(address common.Address, value *big.Int) (*types.Receipt, error)
 
+	// EndowAccounts sends the requested amount of tokens to each of the given
+	// accounts. This is a faster than calling EndowAccount for each account since
+	// multiple endowments may get bundled in the same block.
+	EndowAccounts(addresses []common.Address, value *big.Int) ([]*types.Receipt, error)
+
 	// Run sends the given transaction to the network and waits for it to be processed.
 	// The resulting receipt is returned.
 	Run(tx *types.Transaction) (*types.Receipt, error)
+
+	// RunAll sends the given transactions to the network and waits for them to be processed.
+	// The resulting receipts are returned.
+	RunAll(tx []*types.Transaction) ([]*types.Receipt, error)
+
 	// GetReceipt waits for the receipt of the given transaction hash to be available.
 	GetReceipt(txHash common.Hash) (*types.Receipt, error)
+
+	// GetReceipts waits for the receipts of the given transaction hashes to be available.
+	GetReceipts(txHash []common.Hash) ([]*types.Receipt, error)
 
 	// GetTransactOptions provides transaction options to be used to send a transaction
 	// from the given account.
@@ -62,9 +75,13 @@ type IntegrationTestNetSession interface {
 	// GetSessionSponsor returns the default account of the session. This account is used
 	// to sign transactions and pay for gas when using the Apply and EndowAccount methods.
 	GetSessionSponsor() *Account
+
 	// GetClient provides raw access to a fresh connection to the network.
 	// The resulting client must be closed after use.
 	GetClient() (*ethclient.Client, error)
+
+	// GetChainId returns the chain ID of the network.
+	GetChainId() *big.Int
 
 	// AdvanceEpoch sends a transaction to advance to the next epoch.
 	// It also waits until the new epoch is really reached.
@@ -486,6 +503,11 @@ func (n *IntegrationTestNet) GetClient() (*ethclient.Client, error) {
 	return n.GetClientConnectedToNode(0)
 }
 
+// GetChainId returns the chain ID of the network.
+func (n *IntegrationTestNet) GetChainId() *big.Int {
+	return big.NewInt(int64(opera.FakeNetworkID))
+}
+
 // GetClientConnectedToNode provides raw access to a fresh connection to a selected node on
 // the network. The resulting client must be closed after use.
 func (n *IntegrationTestNet) GetClientConnectedToNode(i int) (*ethclient.Client, error) {
@@ -673,6 +695,20 @@ func (s *Session) EndowAccount(
 	address common.Address,
 	value *big.Int,
 ) (*types.Receipt, error) {
+	receipts, err := s.EndowAccounts([]common.Address{address}, value)
+	if err != nil {
+		return nil, err
+	}
+	return receipts[0], nil
+}
+
+// EndowAccounts sends the requested amount of tokens to each of the given
+// accounts. This is a faster than calling EndowAccount for each account since
+// multiple endowments may get bundled in the same block.
+func (s *Session) EndowAccounts(
+	addresses []common.Address,
+	value *big.Int,
+) ([]*types.Receipt, error) {
 	client, err := s.GetClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to the network: %w", err)
@@ -695,33 +731,51 @@ func (s *Session) EndowAccount(
 		return nil, fmt.Errorf("failed to get gas price: %w", err)
 	}
 
-	transaction, err := types.SignTx(types.NewTx(&types.AccessListTx{
-		ChainID:  chainId,
-		Gas:      21000,
-		GasPrice: price,
-		To:       &address,
-		Value:    value,
-		Nonce:    nonce,
-	}), types.NewLondonSigner(chainId), s.account.PrivateKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign transaction: %w", err)
+	transactions := make([]*types.Transaction, len(addresses))
+	for i, address := range addresses {
+		transaction, err := types.SignTx(types.NewTx(&types.AccessListTx{
+			ChainID:  chainId,
+			Gas:      21000,
+			GasPrice: price,
+			To:       &address,
+			Value:    value,
+			Nonce:    nonce,
+		}), types.NewLondonSigner(chainId), s.account.PrivateKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to sign transaction: %w", err)
+		}
+		transactions[i] = transaction
+		nonce++
 	}
-	return s.Run(transaction)
+	return s.RunAll(transactions)
 }
 
 // Run sends the given transaction to the network and waits for it to be processed.
 // The resulting receipt is returned. This function times out after 10 seconds.
 func (s *Session) Run(tx *types.Transaction) (*types.Receipt, error) {
+	receipts, err := s.RunAll([]*types.Transaction{tx})
+	if err != nil {
+		return nil, fmt.Errorf("failed to run transaction: %w", err)
+	}
+	return receipts[0], nil
+}
+
+func (s *Session) RunAll(tx []*types.Transaction) ([]*types.Receipt, error) {
 	client, err := s.GetClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to the Ethereum client: %w", err)
 	}
 	defer client.Close()
-	err = client.SendTransaction(context.Background(), tx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send transaction: %w", err)
+
+	hashes := make([]common.Hash, len(tx))
+	for i, t := range tx {
+		hashes[i] = t.Hash()
+		err = client.SendTransaction(context.Background(), t)
+		if err != nil {
+			return nil, fmt.Errorf("failed to send transaction %d: %w", i, err)
+		}
 	}
-	return s.GetReceipt(tx.Hash())
+	return s.GetReceipts(hashes)
 }
 
 // GetReceipt waits for the receipt of the given transaction hash to be available.
@@ -753,6 +807,18 @@ func (s *Session) GetReceipt(txHash common.Hash) (*types.Receipt, error) {
 		return receipt, nil
 	}
 	return nil, fmt.Errorf("failed to get transaction receipt: timeout")
+}
+
+func (s *Session) GetReceipts(txHash []common.Hash) ([]*types.Receipt, error) {
+	res := make([]*types.Receipt, len(txHash))
+	for i, hash := range txHash {
+		receipt, err := s.GetReceipt(hash)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get receipt for transaction %d: %w", i, err)
+		}
+		res[i] = receipt
+	}
+	return res, nil
 }
 
 // Apply sends a transaction to the network using the session account
@@ -811,6 +877,11 @@ func (s *Session) GetTransactOptions(account *Account) (*bind.TransactOpts, erro
 
 func (s *Session) GetSessionSponsor() *Account {
 	return &s.account
+}
+
+// GetChainId returns the chain ID of the network.
+func (s *Session) GetChainId() *big.Int {
+	return s.net.GetChainId()
 }
 
 // GetClient provides raw access to a fresh connection to the network.

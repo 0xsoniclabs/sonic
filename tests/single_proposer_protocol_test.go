@@ -48,19 +48,20 @@ func testSingleProposerProtocol_CanProcessTransactions(t *testing.T, numNodes in
 	// Create NumTxsPerRound accounts and send them each 1e18 wei to allow each
 	// of them to send independent transactions in each round.
 	accounts := make([]*Account, NumTxsPerRound)
+	addresses := make([]common.Address, NumTxsPerRound)
 	for i := range accounts {
 		accounts[i] = NewAccount()
-		_, err := net.EndowAccount(accounts[i].Address(), big.NewInt(1e18))
-		require.NoError(err)
+		addresses[i] = accounts[i].Address()
 	}
+	_, err = net.EndowAccounts(addresses, big.NewInt(1e18))
+	require.NoError(err)
 
 	// Check that the network is using the single-proposer protocol.
 	require.Equal(3, getUsedEventVersion(t, client))
 
 	// --- check processing of transactions ---
 
-	chainId, err := client.ChainID(t.Context())
-	require.NoError(err)
+	chainId := net.GetChainId()
 	signer := types.NewPragueSigner(chainId)
 	target := common.Address{0x42}
 
@@ -70,7 +71,7 @@ func testSingleProposerProtocol_CanProcessTransactions(t *testing.T, numNodes in
 	// Send a sequence of transactions to the network, in several rounds,
 	// across multiple epochs, and check that all get processed.
 	for round := range uint64(NumRounds) {
-		transactionHashes := []common.Hash{}
+		transactions := []*types.Transaction{}
 		for sender := range NumTxsPerRound {
 			transaction := types.MustSignNewTx(
 				accounts[sender].PrivateKey,
@@ -85,13 +86,13 @@ func testSingleProposerProtocol_CanProcessTransactions(t *testing.T, numNodes in
 					GasTipCap: big.NewInt(int64(sender) + 1),
 				},
 			)
-			transactionHashes = append(transactionHashes, transaction.Hash())
-			require.NoError(client.SendTransaction(t.Context(), transaction))
+			transactions = append(transactions, transaction)
 		}
 
-		for _, hash := range transactionHashes {
-			receipt, err := net.GetReceipt(hash)
-			require.NoError(err)
+		receipts, err := net.RunAll(transactions)
+		require.NoError(err, "failed to run transactions")
+		require.Len(receipts, NumTxsPerRound, "unexpected number of receipts")
+		for _, receipt := range receipts {
 			require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
 		}
 
