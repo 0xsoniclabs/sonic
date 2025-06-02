@@ -227,7 +227,7 @@ func TestBlocksRulesValidation_DetectsIssues(t *testing.T) {
 			issue: "MaxBlockGas is too high",
 		},
 		"max empty block skip period too low": {
-			rules: BlocksRules{MaxEmptyBlockSkipPeriod: 3},
+			rules: BlocksRules{MaxEmptyBlockSkipPeriod: inter.Timestamp(minEmptyBlockSkipPeriod - 1)},
 			issue: "MaxEmptyBlockSkipPeriod is too low",
 		},
 	}
@@ -242,7 +242,7 @@ func TestBlocksRulesValidation_DetectsIssues(t *testing.T) {
 }
 
 func TestBlocksRulesValidation_AcceptsValidRules(t *testing.T) {
-	const maxEmptyBlockSkipPeriod = inter.Timestamp(minEmptyBlockSkipPeriod * time.Second)
+	const maxEmptyBlockSkipPeriod = inter.Timestamp(minEmptyBlockSkipPeriod)
 
 	rules := []BlocksRules{
 		{MaxBlockGas: MinimumMaxBlockGas, MaxEmptyBlockSkipPeriod: maxEmptyBlockSkipPeriod},
