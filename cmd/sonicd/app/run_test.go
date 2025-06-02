@@ -93,11 +93,10 @@ func exec(t *testing.T, args ...string) *testcli {
 	if len(args) < 1 || args[0] != "attach" {
 		// make datadir
 		for i, arg := range args {
-			switch {
-			case arg == "-datadir" || arg == "--datadir":
-				if i < len(args)-1 {
-					tt.Datadir = args[i+1]
-				}
+			isDataDirFlag := (arg == "-datadir" || arg == "--datadir")
+			isNotLastArg := (i < len(args)-1)
+			if isDataDirFlag && isNotLastArg {
+				tt.Datadir = args[i+1]
 			}
 		}
 		if tt.Datadir == "" {
