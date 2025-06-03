@@ -73,7 +73,7 @@ func NewBlockStatement(chainID uint64, number idx.Block, hash, stateRoot common.
 //   - 32 bytes block hash
 //   - 32 bytes state root
 func (s BlockStatement) GetDataToSign() []byte {
-	res := s.statement.getDataToSign("bs")
+	res := s.getDataToSign("bs")
 	res = binary.BigEndian.AppendUint64(res, uint64(s.Number))
 	res = append(res, s.Hash.Bytes()...)
 	res = append(res, s.StateRoot.Bytes()...)
@@ -104,7 +104,7 @@ func NewCommitteeStatement(chainID uint64, period scc.Period, committee scc.Comm
 //   - 8 bytes period
 //   - variable length committee serialization
 func (s CommitteeStatement) GetDataToSign() []byte {
-	res := s.statement.getDataToSign("cs")
+	res := s.getDataToSign("cs")
 	res = binary.BigEndian.AppendUint64(res, uint64(s.Period))
 	res = append(res, s.Committee.Serialize()...)
 	return res

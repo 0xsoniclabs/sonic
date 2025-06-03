@@ -73,9 +73,9 @@ func (em *Emitter) logSyncStatus(wait time.Duration, syncErr error) bool {
 	}
 
 	if wait == 0 {
-		em.Periodic.Info(7*time.Second, "Emitting is paused", "reason", syncErr)
+		em.Info(7*time.Second, "Emitting is paused", "reason", syncErr)
 	} else {
-		em.Periodic.Info(7*time.Second, "Emitting is paused", "reason", syncErr, "wait", wait)
+		em.Info(7*time.Second, "Emitting is paused", "reason", syncErr, "wait", wait)
 	}
 	return false
 }

@@ -89,7 +89,7 @@ func (s *Store) mayCompact(force bool) {
 	if force || s.cont.Size() > s.limit {
 		for _, r := range s.cont.Ranges() {
 			log.Debug("Autocompact", "name", s.name, "from", hexutils.BytesToHex(r.minKey), "to", hexutils.BytesToHex(r.maxKey))
-			_ = s.Store.Compact(r.minKey, r.maxKey)
+			_ = s.Compact(r.minKey, r.maxKey)
 		}
 		s.cont.Reset()
 	}

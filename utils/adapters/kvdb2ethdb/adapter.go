@@ -54,7 +54,7 @@ func (db *Adapter) DeleteRange(start, end []byte) error {
 		if bytes.Compare(key, end) >= 0 {
 			break
 		}
-		if err := db.Store.Delete(key); err != nil {
+		if err := db.Delete(key); err != nil {
 			return err
 		}
 	}

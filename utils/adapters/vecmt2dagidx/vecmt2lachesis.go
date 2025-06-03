@@ -41,6 +41,7 @@ func (b AdapterSeq) Size() int {
 
 // Get i's position in the byte-encoded vector clock
 func (b AdapterSeq) Get(i idx.Validator) dagidx.Seq {
+	//nolint:staticcheck // QF1008: do not omit embedded field for clarity
 	seq := b.HighestBefore.VSeq.Get(i)
 	return &BranchSeq{seq}
 }

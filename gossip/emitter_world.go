@@ -88,7 +88,7 @@ func (ew *emitterWorldProc) PeersNum() int {
 }
 
 func (ew *emitterWorldRead) GetHeads(epoch idx.Epoch) hash.Events {
-	return ew.Store.GetHeadsSlice(epoch)
+	return ew.GetHeadsSlice(epoch)
 }
 
 func (ew *emitterWorldRead) GetLastEvent(epoch idx.Epoch, from idx.ValidatorID) *hash.Event {
@@ -96,5 +96,5 @@ func (ew *emitterWorldRead) GetLastEvent(epoch idx.Epoch, from idx.ValidatorID) 
 }
 
 func (ew *emitterWorldRead) GetBlockEpoch(block idx.Block) idx.Epoch {
-	return ew.Store.FindBlockEpoch(block)
+	return ew.FindBlockEpoch(block)
 }

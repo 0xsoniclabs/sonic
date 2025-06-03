@@ -43,7 +43,7 @@ func (em *Emitter) chooseParents(epoch idx.Epoch, myValidatorID idx.ValidatorID)
 		return nil, nil, true
 	}
 	if len(em.world.DagIndex().NoCheaters(selfParent, hash.Events{*selfParent})) == 0 {
-		em.Periodic.Error(time.Second, "Events emitting isn't allowed due to the doublesign", "validator", myValidatorID)
+		em.Error(time.Second, "Events emitting isn't allowed due to the doublesign", "validator", myValidatorID)
 		return nil, nil, false
 	}
 	parents := hash.Events{*selfParent}

@@ -80,8 +80,8 @@ func TestEventPayloadSerialization(t *testing.T) {
 				require.EqualValues(t, toEncode.sigData, decoded.sigData)
 				require.Equal(t, len(toEncode.txs), len(decoded.txs))
 				require.Equal(t, toEncode.payload.Hash(), decoded.payload.Hash())
-				for i := range toEncode.payloadData.txs {
-					require.EqualValues(t, toEncode.payloadData.txs[i].Hash(), decoded.payloadData.txs[i].Hash())
+				for i := range toEncode.txs {
+					require.EqualValues(t, toEncode.txs[i].Hash(), decoded.txs[i].Hash())
 				}
 				require.EqualValues(t, toEncode.baseEvent, decoded.baseEvent)
 				require.EqualValues(t, toEncode.ID(), decoded.ID())

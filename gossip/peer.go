@@ -550,7 +550,7 @@ func (p *peer) SendPeerInfoRequest() error {
 	// If the peer doesn't support the peer info protocol, don't bother
 	// sending the request. This request would lead to a disconnect
 	// if the peer doesn't understand it.
-	if !p.Peer.RunningCap(ProtocolName, []uint{_Sonic_64, _Sonic_65}) {
+	if !p.RunningCap(ProtocolName, []uint{_Sonic_64, _Sonic_65}) {
 		return nil
 	}
 	return p2p.Send(p.rw, GetPeerInfosMsg, struct{}{})
@@ -562,7 +562,7 @@ func (p *peer) SendEndPointUpdateRequest() error {
 	// If the peer doesn't support version 65 of this protocol, don't bother
 	// sending the request. This request would lead to a disconnect
 	// if the peer doesn't understand it.
-	if !p.Peer.RunningCap(ProtocolName, []uint{_Sonic_65}) {
+	if !p.RunningCap(ProtocolName, []uint{_Sonic_65}) {
 		return nil
 	}
 	return p2p.Send(p.rw, GetEndPointMsg, struct{}{})

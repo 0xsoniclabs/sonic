@@ -157,7 +157,7 @@ func TestSFC(t *testing.T) {
 
 			sfc10, err = sfc100.NewContract(sfc.ContractAddress, env)
 			require.NoError(err)
-			sfcEpoch, err := sfc10.ContractCaller.CurrentEpoch(env.ReadOnly())
+			sfcEpoch, err := sfc10.CurrentEpoch(env.ReadOnly())
 			require.NoError(err)
 			require.Equal(0, sfcEpoch.Cmp(big.NewInt(3)), "current SFC epoch %s", sfcEpoch.String())
 		})

@@ -27,7 +27,7 @@ type LoggingStateDB struct {
 func (l *LoggingStateDB) AddBalance(addr common.Address, amount *uint256.Int, reason tracing.BalanceChangeReason) uint256.Int {
 	prev := l.StateDB.AddBalance(addr, amount, reason)
 	if l.logger.OnBalanceChange != nil && !amount.IsZero() {
-		l.logger.OnBalanceChange(addr, prev.ToBig(), l.StateDB.GetBalance(addr).ToBig(), reason)
+		l.logger.OnBalanceChange(addr, prev.ToBig(), l.GetBalance(addr).ToBig(), reason)
 	}
 	return prev
 }
@@ -35,23 +35,23 @@ func (l *LoggingStateDB) AddBalance(addr common.Address, amount *uint256.Int, re
 func (l *LoggingStateDB) SubBalance(addr common.Address, amount *uint256.Int, reason tracing.BalanceChangeReason) uint256.Int {
 	prev := l.StateDB.SubBalance(addr, amount, reason)
 	if l.logger.OnBalanceChange != nil && !amount.IsZero() {
-		l.logger.OnBalanceChange(addr, prev.ToBig(), l.StateDB.GetBalance(addr).ToBig(), reason)
+		l.logger.OnBalanceChange(addr, prev.ToBig(), l.GetBalance(addr).ToBig(), reason)
 	}
 	return prev
 }
 
 func (l *LoggingStateDB) SetCode(addr common.Address, code []byte) []byte {
-	prevCodeHash := l.StateDB.GetCodeHash(addr)
+	prevCodeHash := l.GetCodeHash(addr)
 	prevCode := l.StateDB.SetCode(addr, code)
 	if l.logger.OnCodeChange != nil {
-		l.logger.OnCodeChange(addr, prevCodeHash, prevCode, l.StateDB.GetCodeHash(addr), code)
+		l.logger.OnCodeChange(addr, prevCodeHash, prevCode, l.GetCodeHash(addr), code)
 	}
 	return prevCode
 }
 
 func (l *LoggingStateDB) SetNonce(addr common.Address, nonce uint64, reason tracing.NonceChangeReason) {
 	if l.logger.OnNonceChange != nil {
-		prev := l.StateDB.GetNonce(addr)
+		prev := l.GetNonce(addr)
 		l.logger.OnNonceChange(addr, prev, nonce)
 	}
 	l.StateDB.SetNonce(addr, nonce, reason)
@@ -74,7 +74,7 @@ func (l *LoggingStateDB) AddLog(log *types.Log) {
 
 func (l *LoggingStateDB) SelfDestruct(addr common.Address) uint256.Int {
 	if l.logger.OnBalanceChange != nil {
-		prev := l.StateDB.GetBalance(addr)
+		prev := l.GetBalance(addr)
 		if prev.Sign() > 0 {
 			l.logger.OnBalanceChange(addr, prev.ToBig(), new(big.Int), tracing.BalanceDecreaseSelfdestruct)
 		}
@@ -88,7 +88,7 @@ func (l *LoggingStateDB) EndTransaction() {
 	if l.logger.OnBalanceChange != nil {
 		for addr := range l.selfDestructed {
 			if l.HasSelfDestructed(addr) {
-				prev := l.StateDB.GetBalance(addr)
+				prev := l.GetBalance(addr)
 				l.logger.OnBalanceChange(addr, prev.ToBig(), new(big.Int), tracing.BalanceDecreaseSelfdestructBurn)
 			}
 		}

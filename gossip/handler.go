@@ -363,7 +363,7 @@ func (h *handler) onlyInterestedEventsI(ids []interface{}) []interface{} {
 func (h *handler) removePeer(id string) {
 	peer := h.peers.Peer(id)
 	if peer != nil {
-		peer.Peer.Disconnect(p2p.DiscUselessPeer)
+		peer.Disconnect(p2p.DiscUselessPeer)
 	}
 }
 

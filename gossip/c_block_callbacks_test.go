@@ -269,8 +269,8 @@ func TestExtractProposalForNextBlock_MultipleValidProposals_UsesTurnAndHashAsTie
 	}
 
 	slices.SortFunc(payloads, func(a, b *inter.Payload) int {
-		turnA := a.ProposalSyncState.LastSeenProposalTurn
-		turnB := b.ProposalSyncState.LastSeenProposalTurn
+		turnA := a.LastSeenProposalTurn
+		turnB := b.LastSeenProposalTurn
 		if res := cmp.Compare(turnA, turnB); res != 0 {
 			return res
 		}

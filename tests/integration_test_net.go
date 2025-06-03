@@ -269,7 +269,8 @@ func startIntegrationTestNet(
 		},
 		nodes: make([]integrationTestNode, options.NumNodes),
 	}
-	net.Session.net = net
+	// the network's session needs to know about the network itself
+	net.net = net
 
 	if verbosityVariable := os.Getenv("SONIC_VERBOSITY"); verbosityVariable == "" {
 		if err := os.Setenv("SONIC_VERBOSITY", "0"); err != nil {

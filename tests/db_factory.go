@@ -69,8 +69,8 @@ func (c *carmenStateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 
 // Commit ends transaction, ends block, and returns the state hash.
 func (c *carmenStateDB) Commit(block uint64, deleteEmptyObjects bool, noStorageWiping bool) (common.Hash, error) {
-	c.logs = c.CarmenStateDB.Logs() // backup logs, they are deleted on committing a tx/block
-	c.CarmenStateDB.EndTransaction()
-	c.CarmenStateDB.EndBlock(block)
-	return c.CarmenStateDB.GetStateHash(), nil
+	c.logs = c.Logs() // backup logs, they are deleted on committing a tx/block
+	c.EndTransaction()
+	c.EndBlock(block)
+	return c.GetStateHash(), nil
 }

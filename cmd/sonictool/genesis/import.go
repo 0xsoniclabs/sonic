@@ -107,7 +107,7 @@ func IsGenesisTrusted(genesisStore *genesisstore.Store, genesisHashes genesis.Ha
 	if err != nil {
 		return fmt.Errorf("failed to calculate hash of genesis: %w", err)
 	}
-	signature, err := g.SignatureSection.GetSignature()
+	signature, err := g.GetSignature()
 	if err != nil {
 		return fmt.Errorf("genesis file doesn't refer to any trusted preset, signature not found: %w", err)
 	}

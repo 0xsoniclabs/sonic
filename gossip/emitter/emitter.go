@@ -372,7 +372,7 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 		parentHeaders[i] = parent
 		if parentHeaders[i].Creator() == em.config.Validator.ID && i != 0 {
 			// there are 2 heads from me, i.e. due to a fork, chooseParents could have found multiple self-parents
-			em.Periodic.Error(5*time.Second, "I've created a fork, events emitting isn't allowed", "creator", em.config.Validator.ID)
+			em.Error(5*time.Second, "I've created a fork, events emitting isn't allowed", "creator", em.config.Validator.ID)
 			return nil, nil
 		}
 		maxLamport = idx.MaxLamport(maxLamport, parent.Lamport())
@@ -418,7 +418,7 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 	err := em.world.Build(mutEvent, nil)
 	if err != nil {
 		if err == ErrNotEnoughGasPower {
-			em.Periodic.Warn(time.Second, "Not enough gas power to emit event. Too small stake?",
+			em.Warn(time.Second, "Not enough gas power to emit event. Too small stake?",
 				"stake%", 100*float64(em.validators.Get(em.config.Validator.ID))/float64(em.validators.TotalWeight()))
 		} else {
 			em.Log.Warn("Dropped event while emitting", "err", err)
@@ -444,7 +444,7 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 	// sign
 	bSig, err := em.world.EventsSigner.Sign(common.Hash(mutEvent.HashToSign()))
 	if err != nil {
-		em.Periodic.Error(time.Second, "Failed to sign event", "err", err)
+		em.Error(time.Second, "Failed to sign event", "err", err)
 		return nil, err
 	}
 	var sig inter.Signature
@@ -456,7 +456,7 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 
 	// check
 	if err := em.world.Check(event, parentHeaders); err != nil {
-		em.Periodic.Error(time.Second, "Emitted incorrect event", "err", err)
+		em.Error(time.Second, "Emitted incorrect event", "err", err)
 		return nil, err
 	}
 

@@ -11,5 +11,5 @@ type EventsOnly struct {
 }
 
 func (c *EventsOnly) Enqueue(e dag.Event, onValidated func(error)) error {
-	return c.Checker.EnqueueEvent(e.(inter.EventPayloadI), onValidated)
+	return c.EnqueueEvent(e.(inter.EventPayloadI), onValidated)
 }

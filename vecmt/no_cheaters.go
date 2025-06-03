@@ -14,7 +14,7 @@ func (vi *Index) NoCheaters(selfParent *hash.Event, options hash.Events) hash.Ev
 	}
 	vi.InitBranchesInfo()
 
-	if !vi.Engine.AtLeastOneFork() {
+	if !vi.AtLeastOneFork() {
 		return options
 	}
 
