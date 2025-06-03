@@ -19,6 +19,7 @@ package evmmodule
 import (
 	"math/big"
 
+	innerSubstate "github.com/0xsoniclabs/sonic/substate"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
@@ -184,13 +185,17 @@ func (p *OperaEVMProcessor) Finalize() (evmBlock *evmcore.EvmBlock, skippedTxs [
 	receipts = p.receipts
 
 	// Commit block
-	p.statedb.EndBlock(evmBlock.Number.Uint64())
+	blockInt := evmBlock.Number.Uint64()
+	p.statedb.EndBlock(blockInt)
 
 	// Get state root
 	evmBlock.Root = p.statedb.GetStateHash()
 
 	// record-replay
-	// TODO stateHash could be recorded here - we wouldn't need to scrape for stateRoots later.
+	err := innerSubstate.PutStateHash(blockInt, evmBlock.Root.Bytes())
+	if err != nil {
+		panic("unable to put state hash: " + err.Error())
+	}
 	return
 }
 

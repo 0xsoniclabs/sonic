@@ -201,7 +201,8 @@ func (c *RecordCarmenStateDB) substateRecordAccess(addr common.Address) {
 	if c.db.Exist(cc.Address(addr)) && !c.db.HasSuicided(cc.Address(addr)) {
 		// insert the account in StateDB.SubstatePreAlloc
 		if _, exist := c.SubstatePreAlloc[stypes.Address(addr)]; !exist {
-			c.SubstatePreAlloc[stypes.Address(addr)] = substate.NewAccount(c.db.GetNonce(cc.Address(addr)), c.db.GetBalance(cc.Address(addr)).ToBig(), c.db.GetCode(cc.Address(addr)))
+			balance := c.db.GetBalance(cc.Address(addr)).Uint256()
+			c.SubstatePreAlloc[stypes.Address(addr)] = substate.NewAccount(c.db.GetNonce(cc.Address(addr)), &balance, c.db.GetCode(cc.Address(addr)))
 		}
 	}
 
@@ -277,8 +278,9 @@ func (c *RecordCarmenStateDB) RecordPostFinalise(dirtyAddresses map[cc.Address]s
 			continue
 		}
 
+		balance := c.db.GetBalance(cc.Address(address)).Uint256()
 		// update the account in StateDB.SubstatePostAlloc
-		acc.Balance = c.db.GetBalance(cc.Address(address)).ToBig()
+		acc.Balance = &balance
 		acc.Nonce = c.db.GetNonce(cc.Address(address))
 		acc.Code = c.db.GetCode(cc.Address(address))
 		storageToUpdate := make(map[stypes.Hash]stypes.Hash)

@@ -20,7 +20,7 @@ go 1.24.0
 
 require (
 	github.com/0xsoniclabs/carmen/go v0.0.0-20250708101910-3666ec34654c
-	github.com/0xsoniclabs/substate v0.0.0-20250226110130-2d8888bf47c6
+	github.com/0xsoniclabs/substate v0.0.0-20250603114206-1e8e868c7657
 	github.com/0xsoniclabs/tosca v0.0.0-20250708111444-f020a558b11e
 	github.com/Fantom-foundation/lachesis-base v0.0.0-20240116072301-a75735c4ef00
 	github.com/cespare/cp v1.1.1
@@ -84,7 +84,6 @@ require (
 	github.com/gofrs/flock v0.12.1 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang-jwt/jwt/v4 v4.5.2 // indirect
-	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/golang/snappy v0.0.5-0.20220116011046-fa5810519dcb // indirect
 	github.com/google/pprof v0.0.0-20240910150728-a0b0bb1d4134 // indirect
 	github.com/google/uuid v1.6.0 // indirect

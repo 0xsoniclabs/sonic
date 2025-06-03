@@ -6,6 +6,7 @@ import (
 
 	"github.com/0xsoniclabs/substate/substate"
 	"github.com/0xsoniclabs/substate/types"
+	"github.com/holiman/uint256"
 )
 
 // legacyTxType
@@ -23,7 +24,7 @@ var testSubstate = &substate.Substate{
 		BlockHashes: make(map[uint64]types.Hash),
 		BaseFee:     new(big.Int).SetUint64(1),
 	},
-	Message:     substate.NewMessage(1, true, new(big.Int).SetUint64(1), 1, types.Address{1}, new(types.Address), new(big.Int).SetUint64(1), []byte{1}, nil, &txType, types.AccessList{}, new(big.Int).SetUint64(1), new(big.Int).SetUint64(1), new(big.Int).SetUint64(1), []types.Hash{}),
+	Message:     substate.NewMessage(1, true, new(big.Int).SetUint64(1), 1, types.Address{1}, new(types.Address), new(big.Int).SetUint64(1), []byte{1}, nil, &txType, types.AccessList{}, new(big.Int).SetUint64(1), new(big.Int).SetUint64(1), new(big.Int).SetUint64(1), []types.Hash{}, []types.SetCodeAuthorization{}),
 	Result:      substate.NewResult(1, types.Bloom{}, []*types.Log{}, types.Address{0}, 1),
 	Block:       37_534_834,
 	Transaction: 1,
@@ -31,7 +32,7 @@ var testSubstate = &substate.Substate{
 
 func TestSubstateDB_PutAndGetSubstate(t *testing.T) {
 	dbPath := t.TempDir() + "test-db"
-	err := NewSubstateDB(dbPath, "pb")
+	err := NewSubstateDB(dbPath)
 	defer staticSubstateDB.Close()
 
 	h1 := types.Hash{}
@@ -40,8 +41,8 @@ func TestSubstateDB_PutAndGetSubstate(t *testing.T) {
 	h2 := types.Hash{}
 	h2.SetBytes(nil)
 
-	testSubstate.InputSubstate[types.Address{1}] = substate.NewAccount(1, new(big.Int).SetUint64(1), h1[:])
-	testSubstate.OutputSubstate[types.Address{2}] = substate.NewAccount(2, new(big.Int).SetUint64(2), h2[:])
+	testSubstate.InputSubstate[types.Address{1}] = substate.NewAccount(1, new(uint256.Int).SetUint64(1), h1[:])
+	testSubstate.OutputSubstate[types.Address{2}] = substate.NewAccount(2, new(uint256.Int).SetUint64(2), h2[:])
 	testSubstate.Env.BlockHashes[1] = types.BytesToHash([]byte{1})
 
 	err = staticSubstateDB.PutSubstate(testSubstate)

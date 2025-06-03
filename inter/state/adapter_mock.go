@@ -28,6 +28,7 @@ package state
 import (
 	reflect "reflect"
 
+	common0 "github.com/0xsoniclabs/carmen/go/common"
 	witness "github.com/0xsoniclabs/carmen/go/common/witness"
 	substate "github.com/0xsoniclabs/substate/substate"
 	common "github.com/ethereum/go-ethereum/common"
@@ -558,6 +559,32 @@ func (m *MockStateDB) Prepare(rules params.Rules, sender, coinbase common.Addres
 func (mr *MockStateDBMockRecorder) Prepare(rules, sender, coinbase, dest, precompiles, txAccesses any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Prepare", reflect.TypeOf((*MockStateDB)(nil).Prepare), rules, sender, coinbase, dest, precompiles, txAccesses)
+}
+
+// RecordPostFinalise mocks base method.
+func (m *MockStateDB) RecordPostFinalise(arg0 map[common0.Address]struct{}) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "RecordPostFinalise", arg0)
+}
+
+// RecordPostFinalise indicates an expected call of RecordPostFinalise.
+func (mr *MockStateDBMockRecorder) RecordPostFinalise(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RecordPostFinalise", reflect.TypeOf((*MockStateDB)(nil).RecordPostFinalise), arg0)
+}
+
+// RecordPreFinalise mocks base method.
+func (m *MockStateDB) RecordPreFinalise() map[common0.Address]struct{} {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RecordPreFinalise")
+	ret0, _ := ret[0].(map[common0.Address]struct{})
+	return ret0
+}
+
+// RecordPreFinalise indicates an expected call of RecordPreFinalise.
+func (mr *MockStateDBMockRecorder) RecordPreFinalise() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RecordPreFinalise", reflect.TypeOf((*MockStateDB)(nil).RecordPreFinalise))
 }
 
 // Release mocks base method.
