@@ -6,7 +6,7 @@ To run a p2p protocol fuzzer locally, use the command:
 ```
 make fuzz
 ```
-That command should generate a `gossip-fuzz.zip` in the `fuzzing/` directory and runs fuzzer:
+That command should generate a `gossip-fuzz.zip` in the `fuzzing/` directory and run the fuzzer:
 
 ```
 2020/12/30 22:50:51 workers: 0, corpus: 1 (3s ago), crashers: 0, restarts: 1/0, execs: 0 (0/sec), cover: 0, uptime: 3s

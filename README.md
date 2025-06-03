@@ -1,4 +1,4 @@
-# Sonic 
+# Sonic
 
 EVM-compatible chain secured by the Lachesis consensus algorithm.
 
@@ -7,19 +7,16 @@ EVM-compatible chain secured by the Lachesis consensus algorithm.
 Building Sonic requires both a Go (version 1.21 or later) and a C compiler. You can install
 them using your favourite package manager. Once the dependencies are installed, run:
 
-```shell
+```sh
 make all
 ```
-The build output are ```build/sonicd``` and ```build/sonictool``` executables.
+The build outputs are ```build/sonicd``` and ```build/sonictool``` executables.
 
 ## Initialization of the Sonic Database
 
-You will need a genesis file to join a network. Please check the following
-site for details how to get one: https://github.com/Fantom-foundation/lachesis_launch
-Once you obtain the most recent genesis file available, you need to use the `sonictool`
-create a starting DB.
+You will need a genesis file to join a network. See [lachesis_launch](https://github.com/Fantom-foundation/lachesis_launch) for details on obtaining one. Once you have a genesis file, initialize the DB:
 
-```shell
+```sh
 sonictool --datadir=<target DB path> genesis <path to the genesis file>
 ```
 
@@ -31,9 +28,9 @@ on how you can run your own `sonicd` instance.
 
 ### Launching a network
 
-Launching `sonicd` readonly (non-validator) node for network specified by the genesis file:
+To launch a `sonicd` read-only (non-validator) node for network specified by the genesis file:
 
-```shell
+```sh
 sonicd --datadir=<DB path>
 ```
 
@@ -42,38 +39,41 @@ sonicd --datadir=<DB path>
 As an alternative to passing the numerous flags to the `sonicd` binary, you can also pass a
 configuration file via:
 
-```shell
+```sh
 sonicd --datadir=<DB path> --config /path/to/your/config.toml
 ```
 
-To get an idea how the file should look like you can use the `dumpconfig` subcommand to
+To get an idea of what the file should look like you can use the `dumpconfig` subcommand to
 export the default configuration:
 
-```shell
+```sh
 sonictool --datadir=<DB path> dumpconfig
 ```
 
 ### Validator
 
-New validator private key may be created with `sonictool --datadir=<DB path> validator new` command.
+To create a new validator private key:
 
-To launch a validator, you have to use `--validator.id` and `--validator.pubkey` flags to enable 
-events emitter. Check the [Fantom Documentation](https://docs.fantom.foundation) for the detailed process 
-of obtaining the validator ID and registering your initial stake.
+```sh
+sonictool --datadir=<DB path> validator new
+```
 
-```shell
+To launch a validator, use the `--validator.id` and `--validator.pubkey` flags. See the [Fantom Documentation](https://docs.fantom.foundation) for details on obtaining a validator ID and registering your initial stake.
+
+```sh
 sonicd --datadir=<DB path> --validator.id=YOUR_ID --validator.pubkey=0xYOUR_PUBKEY
 ```
 
-`sonicd` will prompt you for a password to decrypt your validator private key. Optionally, you can
-specify password with a file using `--validator.password` flag.
+`sonicd` will prompt for a password to decrypt your validator private key. Optionally, use `--validator.password` to specify a password file.
 
 #### Participation in discovery
 
-Optionally you can specify your public IP to straighten connectivity of the network.
-Ensure your TCP/UDP p2p port (5050 by default) isn't blocked by your firewall.
+Optionally, specify your public IP to improve connectivity. Ensure your TCP/UDP p2p port (5050 by default) is open:
 
-```shell
+```sh
 sonicd --datadir=<DB path> --nat=extip:1.2.3.4
 ```
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines. Please also review our [Code of Conduct](CODE_OF_CONDUCT.md).
