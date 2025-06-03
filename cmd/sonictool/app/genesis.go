@@ -31,6 +31,11 @@ var (
 		Name:  "experimental",
 		Usage: "Allow experimental features",
 	}
+	FakeUpgrades = cli.StringFlag{
+		Name:  "upgrades",
+		Usage: "Feature set enabled in the fake network, sonic|allegro.",
+		Value: "sonic",
+	}
 )
 
 func gfileGenesisImport(ctx *cli.Context) (err error) {
