@@ -249,77 +249,68 @@ type UpgradeHeight struct {
 	Time     inter.Timestamp
 }
 
-var BaseChainConfig = ethparams.ChainConfig{
-	ChainID:                 big.NewInt(1337),
-	HomesteadBlock:          big.NewInt(0),
-	DAOForkBlock:            nil,
-	DAOForkSupport:          false,
-	EIP150Block:             big.NewInt(0),
-	EIP155Block:             big.NewInt(0),
-	EIP158Block:             big.NewInt(0),
-	ByzantiumBlock:          big.NewInt(0),
-	ConstantinopleBlock:     big.NewInt(0),
-	PetersburgBlock:         big.NewInt(0),
-	IstanbulBlock:           big.NewInt(0),
-	MuirGlacierBlock:        big.NewInt(0), // EIP-2384: Muir Glacier Difficulty Bomb Delay - relevant for ethereum only
-	BerlinBlock:             nil,           // to be overwritten in EvmChainConfig
-	LondonBlock:             nil,           // to be overwritten in EvmChainConfig
-	ArrowGlacierBlock:       nil,           // EIP-4345: Difficulty Bomb Delay - relevant for ethereum only
-	GrayGlacierBlock:        nil,           // EIP-5133: Delaying Difficulty Bomb - relevant for ethereum only
-	MergeNetsplitBlock:      nil,
-	ShanghaiTime:            nil, // to be overwritten in EvmChainConfig
-	CancunTime:              nil, // to be overwritten in EvmChainConfig
-	PragueTime:              nil, // to be overwritten in EvmChainConfig
-	VerkleTime:              nil,
-	TerminalTotalDifficulty: nil,
-	Ethash:                  new(ethparams.EthashConfig),
-	Clique:                  nil,
-}
+// CreateTransientEvmChainConfig creates an instance of ethparams.ChainConfig
+// for the given block height. The instance of ethparams.ChainConfig shall not be
+// stored for later use, and it should not be considered as a canonical source of
+// information about the chain configuration. It is only valid for the given block
+// height and should be used only for the purpose of configuring Geth tooling.
+//
+// ChainID is semantically equivalent to the Rules.NetworkID
+// upgradeHeights is a list of UpgradeHeight instances that define the
+// block heights at which upgrades become effective.
+// CurrentBlockHeight is the current block height at which the chain config is
+// created.
+//
+// Note about timestamps:
+// go-ethereum's ChainConfig uses timestamps to determine the activation of
+// upgrades from Shanghai onwards. However, Sonic timestamps are measure in
+// nanoseconds, go-ethereum routines use seconds, and the Sonic network has a
+// sub second cadence.  Therefore it is not possible to use timestamps to
+// determine the activation of upgrades. Instead, Sonic relies solely on block
+// heights.
+// Timestamps contained in the returned instance are always set to 0, which
+// considered to be always a past timestamp. This is the reason why the returned
+// ChainConfig is not valid processing any other block height than the one
+// specified by CurrentBlockHeight.
+func CreateTransientEvmChainConfig(
+	chainID uint64,
+	upgradeHeights []UpgradeHeight,
+	currentBlockHeight idx.Block,
+) *ethparams.ChainConfig {
 
-// EvmChainConfig returns ChainConfig for transactions signing and execution
-func (r Rules) EvmChainConfig(hh []UpgradeHeight) *ethparams.ChainConfig {
-	cfg := BaseChainConfig
-	cfg.ChainID = new(big.Int).SetUint64(r.NetworkID)
-	for i, h := range hh {
-		height := new(big.Int)
-		timestamp := new(uint64)
-		if i > 0 {
-			height.SetUint64(uint64(h.Height))
-			*timestamp = uint64(h.Time)
-		}
-		if cfg.BerlinBlock == nil && h.Upgrades.Berlin {
-			cfg.BerlinBlock = height
-		}
-		if !h.Upgrades.Berlin {
-			// disabling upgrade breaks the history replay - should be never used
-			cfg.BerlinBlock = nil
-		}
+	timestampInThePast := uint64(0)
 
-		if cfg.LondonBlock == nil && h.Upgrades.London {
-			cfg.LondonBlock = height
-		}
-		if !h.Upgrades.London {
-			// disabling upgrade breaks the history replay - should be never used
-			cfg.LondonBlock = nil
-		}
+	cfg := ethparams.ChainConfig{
+		ChainID: new(big.Int).SetUint64(chainID),
+		// Following upgrades are always enabled in Sonic (from block height 0):
+		HomesteadBlock:      big.NewInt(0),
+		EIP150Block:         big.NewInt(0),
+		EIP155Block:         big.NewInt(0),
+		EIP158Block:         big.NewInt(0),
+		ByzantiumBlock:      big.NewInt(0),
+		ConstantinopleBlock: big.NewInt(0),
+		PetersburgBlock:     big.NewInt(0),
+		IstanbulBlock:       big.NewInt(0),
+		BerlinBlock:         big.NewInt(0),
+		LondonBlock:         big.NewInt(0),
+		// Following upgrades are always enabled in Sonic (past timestamp):
+		ShanghaiTime: &timestampInThePast,
+		CancunTime:   &timestampInThePast,
+	}
 
-		if cfg.CancunTime == nil && h.Upgrades.Sonic {
-			cfg.ShanghaiTime = timestamp
-			cfg.CancunTime = timestamp
-		}
+	// reverse iterate through the upgrade heights
+	for i := len(upgradeHeights) - 1; i >= 0; i-- {
+		height := new(big.Int).SetUint64(uint64(upgradeHeights[i].Height))
 
-		if cfg.PragueTime == nil && h.Upgrades.Allegro {
-			cfg.PragueTime = timestamp
-		}
+		if height.Cmp(new(big.Int).SetUint64(uint64(currentBlockHeight))) <= 0 {
 
-		if !h.Upgrades.Sonic {
-			// disabling upgrade breaks the history replay - should be never used
-			cfg.ShanghaiTime = nil
-			cfg.CancunTime = nil
-		}
+			upgrade := upgradeHeights[i].Upgrades
 
-		if !h.Upgrades.Allegro {
-			cfg.PragueTime = nil
+			if upgrade.Allegro {
+				cfg.PragueTime = &timestampInThePast
+			}
+
+			break
 		}
 	}
 	return &cfg

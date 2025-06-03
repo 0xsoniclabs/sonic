@@ -1,8 +1,12 @@
 package opera
 
 import (
+	"math/big"
 	"reflect"
 	"testing"
+
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRules_Copy_CopiesAreDisjoint(t *testing.T) {
@@ -201,5 +205,42 @@ func TestRules_MinBaseFee_NoCopy_PreAllegro(t *testing.T) {
 
 	if got, want := original.Economy.MinBaseFee.Int64(), copied.Economy.MinBaseFee.Int64(); got != want {
 		t.Errorf("original and copied rules must be the same - shallow copy for preAllegro: got %d, want %d", got, want)
+	}
+}
+
+func TestCreateTransientEvmChainConfig(t *testing.T) {
+
+	chainID := uint64(12345)
+
+	tests := map[string]Upgrades{
+		"Sonic":   GetSonicUpgrades(),
+		"Allegro": GetAllegroUpgrades(),
+	}
+
+	for name, upgrades := range tests {
+		t.Run(name, func(t *testing.T) {
+
+			timestamp := uint64(1)
+			blockNumber := uint64(123)
+
+			upgradeHeight := UpgradeHeight{
+				Upgrades: upgrades,
+				Height:   idx.Block(blockNumber),
+			}
+
+			chainConfigAfterUpdate := CreateTransientEvmChainConfig(chainID, []UpgradeHeight{upgradeHeight}, idx.Block(blockNumber))
+			require.NotNil(t, chainConfigAfterUpdate, "chainConfig should not be nil")
+
+			require.True(t, chainConfigAfterUpdate.IsCancun(new(big.Int).SetUint64(uint64(upgradeHeight.Height)), timestamp))
+			require.Equal(t, upgrades.Allegro, chainConfigAfterUpdate.IsPrague(new(big.Int).SetUint64(uint64(upgradeHeight.Height)), timestamp), "Allegro upgrade should match")
+
+			chainConfigBeforeUpdate := CreateTransientEvmChainConfig(chainID, []UpgradeHeight{upgradeHeight}, idx.Block(blockNumber-1))
+			require.NotNil(t, chainConfigBeforeUpdate, "chainConfig should not be nil")
+
+			if upgrades.Allegro {
+				require.True(t, chainConfigBeforeUpdate.IsCancun(new(big.Int).SetUint64(uint64(upgradeHeight.Height)), timestamp), "Before Allegro upgrade, Cancun should be true")
+				require.False(t, chainConfigBeforeUpdate.IsPrague(new(big.Int).SetUint64(uint64(upgradeHeight.Height)), timestamp), "Before Allegro upgrade, Prague should be false")
+			}
+		})
 	}
 }
