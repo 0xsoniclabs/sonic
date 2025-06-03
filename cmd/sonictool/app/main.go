@@ -5,11 +5,16 @@ import (
 	"sort"
 
 	"github.com/0xsoniclabs/sonic/config/flags"
+	"github.com/0xsoniclabs/sonic/debug"
 	"github.com/0xsoniclabs/sonic/version"
 	"gopkg.in/urfave/cli.v1"
 )
 
 func Run() error {
+	return RunWithArgs(os.Args)
+}
+
+func RunWithArgs(args []string) error {
 	app := cli.NewApp()
 	app.Name = "sonictool"
 	app.Usage = "the Sonic management tool"
@@ -21,6 +26,8 @@ func Run() error {
 		flags.ArchiveCacheFlag,
 		flags.StateDbCacheCapacityFlag,
 	}
+	app.Flags = append(app.Flags, debug.Flags...)
+
 	app.Commands = []cli.Command{
 		{
 			Name:  "genesis",
@@ -63,12 +70,14 @@ Initialize the database using data from the experimental genesis file.
 					Action:    fakeGenesisImport,
 					Flags: []cli.Flag{
 						ModeFlag,
+						FakeUpgrades,
 					},
 					Description: `
-    sonictool --datadir=<datadir> genesis fake <N> [--mode=validator]
+    sonictool --datadir=<datadir> genesis fake <N> [--mode=validator] [--upgrades=upgrades]
 
 Requires the number of validators in the fake network as the first argument.
 Initialize the database for a testing fakenet.
+--upgrades can be used to define the network features, default is sonic hardfork feature set.
 `,
 				},
 				{
@@ -397,7 +406,16 @@ Converts an account private key to a validator private key and saves in the vali
 			},
 		},
 	}
+
+	app.Before = func(ctx *cli.Context) error {
+		return debug.Setup(ctx)
+	}
+	app.After = func(ctx *cli.Context) error {
+		debug.Exit()
+		return nil
+	}
+
 	sort.Sort(cli.CommandsByName(app.Commands))
 
-	return app.Run(os.Args)
+	return app.Run(args)
 }
