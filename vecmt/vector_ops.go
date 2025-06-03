@@ -13,29 +13,29 @@ type CreationTimer interface {
 	CreationTime() inter.Timestamp
 }
 
-func (b *HighestBefore) InitWithEvent(i idx.Validator, e dag.Event) {
-	b.VSeq.InitWithEvent(i, e)
-	b.VTime.Set(i, e.(CreationTimer).CreationTime())
+func (hb *HighestBefore) InitWithEvent(i idx.Validator, e dag.Event) {
+	hb.VSeq.InitWithEvent(i, e)
+	hb.VTime.Set(i, e.(CreationTimer).CreationTime())
 }
 
-func (b *HighestBefore) IsEmpty(i idx.Validator) bool {
-	return b.VSeq.IsEmpty(i)
+func (hb *HighestBefore) IsEmpty(i idx.Validator) bool {
+	return hb.VSeq.IsEmpty(i)
 }
 
-func (b *HighestBefore) IsForkDetected(i idx.Validator) bool {
-	return b.VSeq.IsForkDetected(i)
+func (hb *HighestBefore) IsForkDetected(i idx.Validator) bool {
+	return hb.VSeq.IsForkDetected(i)
 }
 
-func (b *HighestBefore) Seq(i idx.Validator) idx.Event {
-	return b.VSeq.Seq(i)
+func (hb *HighestBefore) Seq(i idx.Validator) idx.Event {
+	return hb.VSeq.Seq(i)
 }
 
-func (b *HighestBefore) MinSeq(i idx.Validator) idx.Event {
-	return b.VSeq.MinSeq(i)
+func (hb *HighestBefore) MinSeq(i idx.Validator) idx.Event {
+	return hb.VSeq.MinSeq(i)
 }
 
-func (b *HighestBefore) SetForkDetected(i idx.Validator) {
-	b.VSeq.SetForkDetected(i)
+func (hb *HighestBefore) SetForkDetected(i idx.Validator) {
+	hb.VSeq.SetForkDetected(i)
 }
 
 func (hb *HighestBefore) CollectFrom(_other vecengine.HighestBeforeI, num idx.Validator) {

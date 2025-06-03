@@ -33,9 +33,13 @@ func (w *VersionWatcher) Pause() error {
 	have := getVersionNumber()
 	needed := versionNumber(w.store.GetNetworkVersion())
 	if needed > have {
+		// This is a user-facing error, so we want to provide a clear message.
+		//nolint:staticcheck // ST1005: allow capitalized error message and punctuation
 		return fmt.Errorf("Network upgrade %v was activated. Current node version is %v. "+
 			"Please upgrade your node to continue syncing.", needed, have)
 	} else if w.store.GetMissedVersion() > 0 {
+		// This is a user-facing error, so we want to provide a clear message.
+		//nolint:staticcheck // ST1005: allow capitalized error message and punctuation
 		return fmt.Errorf("Node's state is dirty because node was upgraded after the network upgrade %v was activated. "+
 			"Please re-sync the chain data to continue.", versionNumber(w.store.GetMissedVersion()))
 	}

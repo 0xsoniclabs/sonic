@@ -15,7 +15,7 @@ import (
 
 //go:generate mockgen -source=sonic_api.go -package=ethapi -destination=sonic_api_mock.go
 
-// PublicSccAPI provides an API to access certificates of the Sonic
+// PublicSccApi provides an API to access certificates of the Sonic
 // Certification Chain.
 type PublicSccApi struct {
 	backend    SccApiBackend

@@ -410,6 +410,10 @@ Converts an account private key to a validator private key and saves in the vali
 	app.Before = func(ctx *cli.Context) error {
 		return debug.Setup(ctx)
 	}
+	app.After = func(ctx *cli.Context) error {
+		debug.Exit()
+		return nil
+	}
 
 	sort.Sort(cli.CommandsByName(app.Commands))
 

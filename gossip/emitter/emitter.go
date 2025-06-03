@@ -356,7 +356,9 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 	prevEmitted := em.readLastEmittedEventID()
 	if prevEmitted != nil && prevEmitted.Epoch() >= em.epoch {
 		if selfParent == nil || *selfParent != *prevEmitted {
-			errlock.Permanent(errors.New("Local database does not contain last emitted event - sync the node before enabling validation to avoid doublesign"))
+			// This is a user-facing error, so we want to provide a clear message.
+			//nolint:staticcheck // ST1005: allow capitalized error message and punctuation
+			errlock.Permanent(errors.New("Local database does not contain last emitted event - sync the node before enabling validation to avoid double sign."))
 		}
 	}
 

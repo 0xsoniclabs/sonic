@@ -323,7 +323,7 @@ func (r Rules) EvmChainConfig(hh []UpgradeHeight) *ethparams.ChainConfig {
 	return &cfg
 }
 
-// SonicUpgrades contains the feature flags for the Sonic upgrade.
+// GetSonicUpgrades contains the feature flags for the Sonic upgrade.
 func GetSonicUpgrades() Upgrades {
 	return Upgrades{
 		Berlin:  true,
@@ -334,7 +334,7 @@ func GetSonicUpgrades() Upgrades {
 	}
 }
 
-// AllegroUpgrades contains the feature flags for the Allegro upgrade.
+// GetAllegroUpgrades contains the feature flags for the Allegro upgrade.
 func GetAllegroUpgrades() Upgrades {
 	return Upgrades{
 		Berlin:  true,

@@ -7,7 +7,7 @@ import (
 
 const GoroutinesPerThread = 0.8
 
-// threadPool counts threads in use
+// ThreadPool counts threads in use
 type ThreadPool struct {
 	mu   sync.Mutex
 	cap  int
@@ -25,7 +25,7 @@ func (p *ThreadPool) init() {
 	}
 }
 
-// Capacity of pool
+// Cap returns the capacity of the pool
 func (p *ThreadPool) Cap() int {
 	if p.cap == 0 {
 		p.mu.Lock()

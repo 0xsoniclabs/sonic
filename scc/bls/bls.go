@@ -253,21 +253,21 @@ func DeserializeSignature(serialized [96]byte) (Signature, error) {
 
 // Serialize exports the signature into a 96-byte array. This format can be used
 // to serialize the signature to disk or to transmit it over the network.
-func (k Signature) Serialize() [96]byte {
-	return [96]byte(k.sign.Compress())
+func (s Signature) Serialize() [96]byte {
+	return [96]byte(s.sign.Compress())
 }
 
 // String returns the signature as a hexadecimal string prefixed with "0x".
-func (k Signature) String() string {
-	return fmt.Sprintf("0x%x", k.Serialize())
+func (s Signature) String() string {
+	return fmt.Sprintf("0x%x", s.Serialize())
 }
 
-func (k Signature) MarshalJSON() ([]byte, error) {
-	json := jsonhex.Bytes96(k.Serialize())
+func (s Signature) MarshalJSON() ([]byte, error) {
+	json := jsonhex.Bytes96(s.Serialize())
 	return json.MarshalJSON()
 }
 
-func (k *Signature) UnmarshalJSON(data []byte) error {
+func (s *Signature) UnmarshalJSON(data []byte) error {
 	var json jsonhex.Bytes96
 	if err := json.UnmarshalJSON(data); err != nil {
 		return err
@@ -276,6 +276,6 @@ func (k *Signature) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	*k = sig
+	*s = sig
 	return nil
 }
