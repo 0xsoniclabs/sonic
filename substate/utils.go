@@ -1,11 +1,7 @@
 package substate
 
 import (
-	"bytes"
-	"encoding/json"
-	"fmt"
 	"math/big"
-	"os"
 
 	"github.com/0xsoniclabs/substate/substate"
 	stypes "github.com/0xsoniclabs/substate/types"
@@ -16,15 +12,12 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 )
 
-var skippedTxStatesFile = ""
-var unprocessedSkippedTxs *skippedTxData
+var unprocessedException *unprocessedExceptionData
 
-type skippedTxData struct {
-	blockNumber uint64 // block number
-	data        map[int]map[string]interface{}
+type unprocessedExceptionData struct {
+	blockNumber uint64
+	data        map[int]substate.WorldState
 }
-
-// Utils to convert Geth types to Substate types
 
 // HashGethToSubstate converts map of geth's common.Hash to Substate hashes map
 func HashGethToSubstate(g map[uint64]common.Hash) map[uint64]stypes.Hash {
@@ -111,6 +104,9 @@ func NewMessage(msg *core.Message, txType uint8) *substate.Message {
 
 	dataHash := hash.Keccak256Hash(msg.Data)
 
+	// TODO handle SetCodeAuthorization whenever they are added to sonic client
+	setCodeAuthorizations := []stypes.SetCodeAuthorization{}
+
 	txTypeProtobuf := int32(txType)
 	return substate.NewMessage(
 		msg.Nonce,
@@ -127,7 +123,8 @@ func NewMessage(msg *core.Message, txType uint8) *substate.Message {
 		msg.GasFeeCap,
 		msg.GasTipCap,
 		msg.BlobGasFeeCap,
-		HashListToSubstate(msg.BlobHashes))
+		HashListToSubstate(msg.BlobHashes),
+		setCodeAuthorizations)
 }
 
 // NewResult prepares *substate.Result from ether's Receipt
@@ -143,104 +140,60 @@ func NewResult(receipt *types.Receipt) *substate.Result {
 	return res
 }
 
-//if substateRecordReplay.RecordReplay {
-//	// save tx substate into DBs, merge block hashes to env
-//	etherBlock := block.RecordingEthBlock()
-//
-//	//// TODO determine message attributes
-//	////type Message struct {
-//	////	To            *common.Address
-//	////	From          common.Address
-//	////	Nonce         uint64
-//	////	Value         *big.Int
-//	////	GasLimit      uint64
-//	////	GasPrice      *big.Int
-//	////	GasFeeCap     *big.Int
-//	////	GasTipCap     *big.Int
-//	////	Data          []byte
-//	////	AccessList    types.AccessList
-//	////	BlobGasFeeCap *big.Int
-//	////	BlobHashes    []common.Hash
-//	////
-//	////	// When SkipAccountChecks is true, the message nonce is not checked against the
-//	////	// account nonce in state. It also disables checking that the sender is an EOA.
-//	////	// This field will be set to true for operations like RPC eth_call.
-//	////	SkipAccountChecks bool
-//	//
-//	//var to = types2.Address{}
-//	//to.SetBytes(msg.To.Bytes())
-//	//var al = make([]types2.AccessTuple, 0, len(msg.AccessList))
-//	//for _, l := range msg.AccessList {
-//	//	al = append(al, types2.AccessTuple{
-//	//		Address: types2.Address(l.Address),
-//	//	})
-//	//}
-//	//var bh = make([]types2.Hash, 0, len(msg.BlobHashes))
-//	//for _, hash := range msg.BlobHashes {
-//	//	bh = append(bh, types2.Hash(hash))
-//	//}
-//	//mg := substate.NewMessage(msg.Nonce, false, msg.GasPrice, msg.GasLimit, types2.Address(msg.From), &to, msg.Value, msg.Data, nil, al, msg.GasFeeCap, msg.GasTipCap, msg.BlobGasFeeCap, bh)
-//	//
-//	////hash := types2.BytesToHash(etherBlock.Hash().Bytes())
-//	//
-//	//// TODO env blobBaseFee, blobHashes
-//	//env := substate.NewEnv(types2.Address(etherBlock.Coinbase()), etherBlock.Difficulty(), etherBlock.GasLimit(), etherBlock.Number().Uint64(), etherBlock.Time(), etherBlock.BaseFee(), etherBlock.BaseFee(), nil)
-//
-//	//recording := substate.NewSubstate(
-//	//	statedb.GetSubstatePreAlloc(),
-//	//	statedb.GetSubstatePostAlloc(),
-//	//	env,
-//	//	mg,
-//	//	substate.NewResult(receipt),
-//	//	blockNumber.Uint64(),
-//	//	i,
-//	//)
-//
-//
-//	substate.PutSubstate(block.NumberU64(), txCounter, recording)
-//}
-
-// WriteUnprocessedSkippedTxToFile writes the skipped transaction states to a file
-func WriteUnprocessedSkippedTxToFile() error {
-	if unprocessedSkippedTxs == nil {
+// WriteUnprocessedSkippedTxToDatabase writes the skipped transaction states
+func WriteUnprocessedSkippedTxToDatabase() error {
+	if unprocessedException == nil {
 		return nil
 	}
 	defer func() {
-		unprocessedSkippedTxs = nil
+		unprocessedException = nil
 	}()
 
-	//	open skippedTxStatesFile for writing append only
-	file, err := os.OpenFile(skippedTxStatesFile, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
-	if err != nil {
-		return err
-	}
-	var buffer bytes.Buffer
-	encoder := json.NewEncoder(&buffer)
-	encoder.SetIndent("", "")
-	err = encoder.Encode(unprocessedSkippedTxs.data)
-	if err != nil {
-		return err
+	exc := &substate.Exception{
+		Block: OldBlockNumber,
+		Data:  substate.ExceptionBlock{},
 	}
 
-	_, err = file.WriteString(fmt.Sprintf("%d: %s", unprocessedSkippedTxs.blockNumber, buffer.String()))
-	if err != nil {
-		return err
+	if len(unprocessedException.data) == 1 && TxLastIndex == 0 {
+		// there was only single skipped transaction and nothing else
+		pre := unprocessedException.data[0]
+		exc.Data.PreBlock = &pre
+		return staticExceptionDB.PutException(exc)
 	}
 
-	return file.Close()
-}
-
-func RegisterSkippedTx(block uint64, txCounter int, pre substate.WorldState, post substate.WorldState) error {
-	if unprocessedSkippedTxs == nil {
-		unprocessedSkippedTxs = &skippedTxData{
-			blockNumber: block,
-			data:        make(map[int]map[string]interface{}),
+	for txIdx, alloc := range unprocessedException.data {
+		if txIdx != TxLastIndex {
+			if exc.Data.Transactions == nil {
+				exc.Data.Transactions = make(map[int]substate.ExceptionTx)
+			}
+			// fixing after skipped transaction the preTransaction at index of next valid transaction
+			exc.Data.Transactions[txIdx] = substate.ExceptionTx{
+				PreTransaction: &alloc,
+			}
+		} else {
+			// last transaction was skipped, fix before state hash
+			exc.Data.PostBlock = &alloc
 		}
 	}
 
-	unprocessedSkippedTxs.data[txCounter] = map[string]interface{}{
-		"pre":  pre,
-		"post": post,
+	return staticExceptionDB.PutException(exc)
+}
+
+func RegisterSkippedTx(block uint64, txIndex int, alloc substate.WorldState) error {
+	if unprocessedException == nil {
+		unprocessedException = &unprocessedExceptionData{
+			blockNumber: block,
+			data:        make(map[int]substate.WorldState),
+		}
+	}
+
+	if tx, exists := unprocessedException.data[txIndex]; !exists {
+		// if this is the first skipped transaction at this txIndex, we can just add it
+		unprocessedException.data[txIndex] = alloc
+	} else {
+		// if there were two or more skipped transactions right after each other, we need to merge them
+		tx.Merge(alloc)
+		unprocessedException.data[txIndex] = tx
 	}
 	return nil
 }

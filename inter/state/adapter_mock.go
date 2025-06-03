@@ -12,9 +12,10 @@ package state
 import (
 	reflect "reflect"
 
+	common "github.com/0xsoniclabs/carmen/go/common"
 	witness "github.com/0xsoniclabs/carmen/go/common/witness"
 	substate "github.com/0xsoniclabs/substate/substate"
-	common "github.com/ethereum/go-ethereum/common"
+	common0 "github.com/ethereum/go-ethereum/common"
 	stateless "github.com/ethereum/go-ethereum/core/stateless"
 	tracing "github.com/ethereum/go-ethereum/core/tracing"
 	types "github.com/ethereum/go-ethereum/core/types"
@@ -48,7 +49,7 @@ func (m *MockStateDB) EXPECT() *MockStateDBMockRecorder {
 }
 
 // AddAddressToAccessList mocks base method.
-func (m *MockStateDB) AddAddressToAccessList(addr common.Address) {
+func (m *MockStateDB) AddAddressToAccessList(addr common0.Address) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "AddAddressToAccessList", addr)
 }
@@ -60,7 +61,7 @@ func (mr *MockStateDBMockRecorder) AddAddressToAccessList(addr any) *gomock.Call
 }
 
 // AddBalance mocks base method.
-func (m *MockStateDB) AddBalance(arg0 common.Address, arg1 *uint256.Int, arg2 tracing.BalanceChangeReason) {
+func (m *MockStateDB) AddBalance(arg0 common0.Address, arg1 *uint256.Int, arg2 tracing.BalanceChangeReason) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "AddBalance", arg0, arg1, arg2)
 }
@@ -84,7 +85,7 @@ func (mr *MockStateDBMockRecorder) AddLog(arg0 any) *gomock.Call {
 }
 
 // AddPreimage mocks base method.
-func (m *MockStateDB) AddPreimage(arg0 common.Hash, arg1 []byte) {
+func (m *MockStateDB) AddPreimage(arg0 common0.Hash, arg1 []byte) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "AddPreimage", arg0, arg1)
 }
@@ -108,7 +109,7 @@ func (mr *MockStateDBMockRecorder) AddRefund(arg0 any) *gomock.Call {
 }
 
 // AddSlotToAccessList mocks base method.
-func (m *MockStateDB) AddSlotToAccessList(addr common.Address, slot common.Hash) {
+func (m *MockStateDB) AddSlotToAccessList(addr common0.Address, slot common0.Hash) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "AddSlotToAccessList", addr, slot)
 }
@@ -120,7 +121,7 @@ func (mr *MockStateDBMockRecorder) AddSlotToAccessList(addr, slot any) *gomock.C
 }
 
 // AddressInAccessList mocks base method.
-func (m *MockStateDB) AddressInAccessList(addr common.Address) bool {
+func (m *MockStateDB) AddressInAccessList(addr common0.Address) bool {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AddressInAccessList", addr)
 	ret0, _ := ret[0].(bool)
@@ -160,7 +161,7 @@ func (mr *MockStateDBMockRecorder) Copy() *gomock.Call {
 }
 
 // CreateAccount mocks base method.
-func (m *MockStateDB) CreateAccount(arg0 common.Address) {
+func (m *MockStateDB) CreateAccount(arg0 common0.Address) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "CreateAccount", arg0)
 }
@@ -172,7 +173,7 @@ func (mr *MockStateDBMockRecorder) CreateAccount(arg0 any) *gomock.Call {
 }
 
 // CreateContract mocks base method.
-func (m *MockStateDB) CreateContract(arg0 common.Address) {
+func (m *MockStateDB) CreateContract(arg0 common0.Address) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "CreateContract", arg0)
 }
@@ -184,7 +185,7 @@ func (mr *MockStateDBMockRecorder) CreateContract(arg0 any) *gomock.Call {
 }
 
 // Empty mocks base method.
-func (m *MockStateDB) Empty(arg0 common.Address) bool {
+func (m *MockStateDB) Empty(arg0 common0.Address) bool {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Empty", arg0)
 	ret0, _ := ret[0].(bool)
@@ -224,7 +225,7 @@ func (mr *MockStateDBMockRecorder) Error() *gomock.Call {
 }
 
 // Exist mocks base method.
-func (m *MockStateDB) Exist(arg0 common.Address) bool {
+func (m *MockStateDB) Exist(arg0 common0.Address) bool {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Exist", arg0)
 	ret0, _ := ret[0].(bool)
@@ -250,7 +251,7 @@ func (mr *MockStateDBMockRecorder) Finalise() *gomock.Call {
 }
 
 // GetBalance mocks base method.
-func (m *MockStateDB) GetBalance(arg0 common.Address) *uint256.Int {
+func (m *MockStateDB) GetBalance(arg0 common0.Address) *uint256.Int {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetBalance", arg0)
 	ret0, _ := ret[0].(*uint256.Int)
@@ -264,7 +265,7 @@ func (mr *MockStateDBMockRecorder) GetBalance(arg0 any) *gomock.Call {
 }
 
 // GetCode mocks base method.
-func (m *MockStateDB) GetCode(arg0 common.Address) []byte {
+func (m *MockStateDB) GetCode(arg0 common0.Address) []byte {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetCode", arg0)
 	ret0, _ := ret[0].([]byte)
@@ -278,10 +279,10 @@ func (mr *MockStateDBMockRecorder) GetCode(arg0 any) *gomock.Call {
 }
 
 // GetCodeHash mocks base method.
-func (m *MockStateDB) GetCodeHash(arg0 common.Address) common.Hash {
+func (m *MockStateDB) GetCodeHash(arg0 common0.Address) common0.Hash {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetCodeHash", arg0)
-	ret0, _ := ret[0].(common.Hash)
+	ret0, _ := ret[0].(common0.Hash)
 	return ret0
 }
 
@@ -292,7 +293,7 @@ func (mr *MockStateDBMockRecorder) GetCodeHash(arg0 any) *gomock.Call {
 }
 
 // GetCodeSize mocks base method.
-func (m *MockStateDB) GetCodeSize(arg0 common.Address) int {
+func (m *MockStateDB) GetCodeSize(arg0 common0.Address) int {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetCodeSize", arg0)
 	ret0, _ := ret[0].(int)
@@ -306,10 +307,10 @@ func (mr *MockStateDBMockRecorder) GetCodeSize(arg0 any) *gomock.Call {
 }
 
 // GetCommittedState mocks base method.
-func (m *MockStateDB) GetCommittedState(arg0 common.Address, arg1 common.Hash) common.Hash {
+func (m *MockStateDB) GetCommittedState(arg0 common0.Address, arg1 common0.Hash) common0.Hash {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetCommittedState", arg0, arg1)
-	ret0, _ := ret[0].(common.Hash)
+	ret0, _ := ret[0].(common0.Hash)
 	return ret0
 }
 
@@ -320,7 +321,7 @@ func (mr *MockStateDBMockRecorder) GetCommittedState(arg0, arg1 any) *gomock.Cal
 }
 
 // GetLogs mocks base method.
-func (m *MockStateDB) GetLogs(hash, blockHash common.Hash) []*types.Log {
+func (m *MockStateDB) GetLogs(hash, blockHash common0.Hash) []*types.Log {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetLogs", hash, blockHash)
 	ret0, _ := ret[0].([]*types.Log)
@@ -334,7 +335,7 @@ func (mr *MockStateDBMockRecorder) GetLogs(hash, blockHash any) *gomock.Call {
 }
 
 // GetNonce mocks base method.
-func (m *MockStateDB) GetNonce(arg0 common.Address) uint64 {
+func (m *MockStateDB) GetNonce(arg0 common0.Address) uint64 {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetNonce", arg0)
 	ret0, _ := ret[0].(uint64)
@@ -348,7 +349,7 @@ func (mr *MockStateDBMockRecorder) GetNonce(arg0 any) *gomock.Call {
 }
 
 // GetProof mocks base method.
-func (m *MockStateDB) GetProof(addr common.Address, keys []common.Hash) (witness.Proof, error) {
+func (m *MockStateDB) GetProof(addr common0.Address, keys []common0.Hash) (witness.Proof, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetProof", addr, keys)
 	ret0, _ := ret[0].(witness.Proof)
@@ -377,10 +378,10 @@ func (mr *MockStateDBMockRecorder) GetRefund() *gomock.Call {
 }
 
 // GetState mocks base method.
-func (m *MockStateDB) GetState(arg0 common.Address, arg1 common.Hash) common.Hash {
+func (m *MockStateDB) GetState(arg0 common0.Address, arg1 common0.Hash) common0.Hash {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetState", arg0, arg1)
-	ret0, _ := ret[0].(common.Hash)
+	ret0, _ := ret[0].(common0.Hash)
 	return ret0
 }
 
@@ -391,10 +392,10 @@ func (mr *MockStateDBMockRecorder) GetState(arg0, arg1 any) *gomock.Call {
 }
 
 // GetStateHash mocks base method.
-func (m *MockStateDB) GetStateHash() common.Hash {
+func (m *MockStateDB) GetStateHash() common0.Hash {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetStateHash")
-	ret0, _ := ret[0].(common.Hash)
+	ret0, _ := ret[0].(common0.Hash)
 	return ret0
 }
 
@@ -405,10 +406,10 @@ func (mr *MockStateDBMockRecorder) GetStateHash() *gomock.Call {
 }
 
 // GetStorageRoot mocks base method.
-func (m *MockStateDB) GetStorageRoot(addr common.Address) common.Hash {
+func (m *MockStateDB) GetStorageRoot(addr common0.Address) common0.Hash {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetStorageRoot", addr)
-	ret0, _ := ret[0].(common.Hash)
+	ret0, _ := ret[0].(common0.Hash)
 	return ret0
 }
 
@@ -419,10 +420,10 @@ func (mr *MockStateDBMockRecorder) GetStorageRoot(addr any) *gomock.Call {
 }
 
 // GetSubstateBlockHashes mocks base method.
-func (m *MockStateDB) GetSubstateBlockHashes() map[uint64]common.Hash {
+func (m *MockStateDB) GetSubstateBlockHashes() map[uint64]common0.Hash {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetSubstateBlockHashes")
-	ret0, _ := ret[0].(map[uint64]common.Hash)
+	ret0, _ := ret[0].(map[uint64]common0.Hash)
 	return ret0
 }
 
@@ -461,10 +462,10 @@ func (mr *MockStateDBMockRecorder) GetSubstatePreAlloc() *gomock.Call {
 }
 
 // GetTransientState mocks base method.
-func (m *MockStateDB) GetTransientState(addr common.Address, key common.Hash) common.Hash {
+func (m *MockStateDB) GetTransientState(addr common0.Address, key common0.Hash) common0.Hash {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetTransientState", addr, key)
-	ret0, _ := ret[0].(common.Hash)
+	ret0, _ := ret[0].(common0.Hash)
 	return ret0
 }
 
@@ -475,7 +476,7 @@ func (mr *MockStateDBMockRecorder) GetTransientState(addr, key any) *gomock.Call
 }
 
 // HasSelfDestructed mocks base method.
-func (m *MockStateDB) HasSelfDestructed(arg0 common.Address) bool {
+func (m *MockStateDB) HasSelfDestructed(arg0 common0.Address) bool {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "HasSelfDestructed", arg0)
 	ret0, _ := ret[0].(bool)
@@ -503,7 +504,7 @@ func (mr *MockStateDBMockRecorder) PointCache() *gomock.Call {
 }
 
 // Prepare mocks base method.
-func (m *MockStateDB) Prepare(rules params.Rules, sender, coinbase common.Address, dest *common.Address, precompiles []common.Address, txAccesses types.AccessList) {
+func (m *MockStateDB) Prepare(rules params.Rules, sender, coinbase common0.Address, dest *common0.Address, precompiles []common0.Address, txAccesses types.AccessList) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "Prepare", rules, sender, coinbase, dest, precompiles, txAccesses)
 }
@@ -512,6 +513,32 @@ func (m *MockStateDB) Prepare(rules params.Rules, sender, coinbase common.Addres
 func (mr *MockStateDBMockRecorder) Prepare(rules, sender, coinbase, dest, precompiles, txAccesses any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Prepare", reflect.TypeOf((*MockStateDB)(nil).Prepare), rules, sender, coinbase, dest, precompiles, txAccesses)
+}
+
+// RecordPostFinalise mocks base method.
+func (m *MockStateDB) RecordPostFinalise(arg0 map[common.Address]struct{}) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "RecordPostFinalise", arg0)
+}
+
+// RecordPostFinalise indicates an expected call of RecordPostFinalise.
+func (mr *MockStateDBMockRecorder) RecordPostFinalise(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RecordPostFinalise", reflect.TypeOf((*MockStateDB)(nil).RecordPostFinalise), arg0)
+}
+
+// RecordPreFinalise mocks base method.
+func (m *MockStateDB) RecordPreFinalise() map[common.Address]struct{} {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RecordPreFinalise")
+	ret0, _ := ret[0].(map[common.Address]struct{})
+	return ret0
+}
+
+// RecordPreFinalise indicates an expected call of RecordPreFinalise.
+func (mr *MockStateDBMockRecorder) RecordPreFinalise() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RecordPreFinalise", reflect.TypeOf((*MockStateDB)(nil).RecordPreFinalise))
 }
 
 // Release mocks base method.
@@ -539,7 +566,7 @@ func (mr *MockStateDBMockRecorder) RevertToSnapshot(arg0 any) *gomock.Call {
 }
 
 // SelfDestruct mocks base method.
-func (m *MockStateDB) SelfDestruct(arg0 common.Address) {
+func (m *MockStateDB) SelfDestruct(arg0 common0.Address) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "SelfDestruct", arg0)
 }
@@ -551,7 +578,7 @@ func (mr *MockStateDBMockRecorder) SelfDestruct(arg0 any) *gomock.Call {
 }
 
 // Selfdestruct6780 mocks base method.
-func (m *MockStateDB) Selfdestruct6780(arg0 common.Address) {
+func (m *MockStateDB) Selfdestruct6780(arg0 common0.Address) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "Selfdestruct6780", arg0)
 }
@@ -563,7 +590,7 @@ func (mr *MockStateDBMockRecorder) Selfdestruct6780(arg0 any) *gomock.Call {
 }
 
 // SetBalance mocks base method.
-func (m *MockStateDB) SetBalance(addr common.Address, amount *uint256.Int) {
+func (m *MockStateDB) SetBalance(addr common0.Address, amount *uint256.Int) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "SetBalance", addr, amount)
 }
@@ -575,7 +602,7 @@ func (mr *MockStateDBMockRecorder) SetBalance(addr, amount any) *gomock.Call {
 }
 
 // SetCode mocks base method.
-func (m *MockStateDB) SetCode(arg0 common.Address, arg1 []byte) {
+func (m *MockStateDB) SetCode(arg0 common0.Address, arg1 []byte) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "SetCode", arg0, arg1)
 }
@@ -587,7 +614,7 @@ func (mr *MockStateDBMockRecorder) SetCode(arg0, arg1 any) *gomock.Call {
 }
 
 // SetNonce mocks base method.
-func (m *MockStateDB) SetNonce(arg0 common.Address, arg1 uint64) {
+func (m *MockStateDB) SetNonce(arg0 common0.Address, arg1 uint64) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "SetNonce", arg0, arg1)
 }
@@ -599,7 +626,7 @@ func (mr *MockStateDBMockRecorder) SetNonce(arg0, arg1 any) *gomock.Call {
 }
 
 // SetState mocks base method.
-func (m *MockStateDB) SetState(arg0 common.Address, arg1, arg2 common.Hash) {
+func (m *MockStateDB) SetState(arg0 common0.Address, arg1, arg2 common0.Hash) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "SetState", arg0, arg1, arg2)
 }
@@ -611,7 +638,7 @@ func (mr *MockStateDBMockRecorder) SetState(arg0, arg1, arg2 any) *gomock.Call {
 }
 
 // SetStorage mocks base method.
-func (m *MockStateDB) SetStorage(addr common.Address, storage map[common.Hash]common.Hash) {
+func (m *MockStateDB) SetStorage(addr common0.Address, storage map[common0.Hash]common0.Hash) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "SetStorage", addr, storage)
 }
@@ -623,7 +650,7 @@ func (mr *MockStateDBMockRecorder) SetStorage(addr, storage any) *gomock.Call {
 }
 
 // SetTransientState mocks base method.
-func (m *MockStateDB) SetTransientState(addr common.Address, key, value common.Hash) {
+func (m *MockStateDB) SetTransientState(addr common0.Address, key, value common0.Hash) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "SetTransientState", addr, key, value)
 }
@@ -635,7 +662,7 @@ func (mr *MockStateDBMockRecorder) SetTransientState(addr, key, value any) *gomo
 }
 
 // SetTxContext mocks base method.
-func (m *MockStateDB) SetTxContext(thash common.Hash, ti int) {
+func (m *MockStateDB) SetTxContext(thash common0.Hash, ti int) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "SetTxContext", thash, ti)
 }
@@ -647,7 +674,7 @@ func (mr *MockStateDBMockRecorder) SetTxContext(thash, ti any) *gomock.Call {
 }
 
 // SlotInAccessList mocks base method.
-func (m *MockStateDB) SlotInAccessList(addr common.Address, slot common.Hash) (bool, bool) {
+func (m *MockStateDB) SlotInAccessList(addr common0.Address, slot common0.Hash) (bool, bool) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SlotInAccessList", addr, slot)
 	ret0, _ := ret[0].(bool)
@@ -676,7 +703,7 @@ func (mr *MockStateDBMockRecorder) Snapshot() *gomock.Call {
 }
 
 // SubBalance mocks base method.
-func (m *MockStateDB) SubBalance(arg0 common.Address, arg1 *uint256.Int, arg2 tracing.BalanceChangeReason) {
+func (m *MockStateDB) SubBalance(arg0 common0.Address, arg1 *uint256.Int, arg2 tracing.BalanceChangeReason) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "SubBalance", arg0, arg1, arg2)
 }

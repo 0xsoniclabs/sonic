@@ -225,7 +225,7 @@ func lachesisMain(ctx *cli.Context) error {
 
 	if ctx.Bool(flags.RecordingFlag.Name) {
 		recordSubstate.RecordReplay = true
-		err := substate.NewSubstateDB(ctx.String(flags.SubstateDbFlag.Name), ctx.String(flags.SubstateEncodingFlag.Name))
+		err := substate.NewSubstateDB(ctx.String(flags.SubstateDbFlag.Name))
 		if err != nil {
 			return err
 		}

@@ -19,7 +19,6 @@ package evmcore
 import (
 	"errors"
 	"fmt"
-	"math"
 	"math/big"
 
 	innerSubstate "github.com/0xsoniclabs/sonic/substate"
@@ -35,12 +34,6 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/utils/signers/gsignercache"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
-)
-
-// record-replay - global variable tracking number of transactions in a block
-var (
-	txCounter      int
-	oldBlockNumber uint64 = math.MaxUint64
 )
 
 // StateProcessor is a basic Processor, which takes care of transitioning
@@ -85,14 +78,14 @@ func (p *StateProcessor) Process(
 		signer       = gsignercache.Wrap(types.MakeSigner(p.config, header.Number, time))
 	)
 	// record-replay
-	if oldBlockNumber != block.NumberU64() {
-		err = innerSubstate.WriteUnprocessedSkippedTxToFile()
+	if innerSubstate.OldBlockNumber != block.NumberU64() {
+		err = innerSubstate.WriteUnprocessedSkippedTxToDatabase()
 		if err != nil {
-			return nil, nil, nil, fmt.Errorf("could not write skipped tx states to file %d [%v]: %w", block.NumberU64(), txCounter, err)
+			return nil, nil, nil, fmt.Errorf("could not write skipped tx states to file %d [%v]: %w", block.NumberU64(), innerSubstate.TxLastIndex, err)
 		}
 
-		txCounter = 0
-		oldBlockNumber = block.NumberU64()
+		innerSubstate.TxLastIndex = 0
+		innerSubstate.OldBlockNumber = block.NumberU64()
 	}
 	// Iterate over and process the individual transactions
 	for i, tx := range block.Transactions {
@@ -110,11 +103,10 @@ func (p *StateProcessor) Process(
 				dirtyAddresses := statedb.RecordPreFinalise()
 				statedb.RecordPostFinalise(dirtyAddresses)
 
-				pre := statedb.GetSubstatePreAlloc()
 				post := statedb.GetSubstatePostAlloc()
 
-				// write block, txCounter, pre, post to txt file
-				err = innerSubstate.RegisterSkippedTx(blockNumber.Uint64(), txCounter, pre, post)
+				// write block, txIndex, pre, post to txt file
+				err = innerSubstate.RegisterSkippedTx(blockNumber.Uint64(), innerSubstate.TxLastIndex, post)
 				if err != nil {
 					return nil, nil, nil, fmt.Errorf("could not write skipped tx state to file %d [%v]: %w", i, tx.Hash().Hex(), err)
 				}
@@ -139,7 +131,7 @@ func (p *StateProcessor) Process(
 				innerSubstate.NewMessage(msg, tx.Type()),
 				innerSubstate.NewResult(receipt),
 				blockNumber.Uint64(),
-				txCounter,
+				innerSubstate.TxLastIndex,
 			)
 			err := innerSubstate.PutSubstate(recording)
 			if err != nil {
@@ -147,7 +139,7 @@ func (p *StateProcessor) Process(
 			}
 		}
 
-		txCounter++
+		innerSubstate.TxLastIndex++
 		receipts = append(receipts, receipt)
 		allLogs = append(allLogs, receipt.Logs...)
 	}

@@ -1,35 +1,56 @@
 package substate
 
 import (
-	"github.com/syndtr/goleveldb/leveldb/opt"
+	"math"
 
 	"github.com/0xsoniclabs/substate/db"
 	"github.com/0xsoniclabs/substate/substate"
 )
 
+// record-replay - global variable tracking number of transactions in a block
 var (
-	staticSubstateDB db.SubstateDB
+	TxLastIndex    int
+	OldBlockNumber uint64 = math.MaxUint64
+
+	staticSubstateDB  db.SubstateDB
+	staticExceptionDB db.ExceptionDB
+	//staticStateHashDB db.StateHashDB
 )
 
-func NewSubstateDB(path, encoding string) error {
+func NewSubstateDB(path string) error {
 	var err error
-	staticSubstateDB, err = db.NewSubstateDB(path, &opt.Options{ReadOnly: false}, nil, nil)
+	baseDB, err := db.NewDefaultBaseDB(path)
 	if err != nil {
 		return err
 	}
-	staticSubstateDB, err = staticSubstateDB.SetSubstateEncoding(encoding)
-	skippedTxStatesFile = path + "/skipped_tx_states.txt"
-	return err
+	staticSubstateDB = db.MakeDefaultSubstateDBFromBaseDB(baseDB)
+	staticExceptionDB = db.MakeDefaultExceptionDBFromBaseDB(baseDB)
+	//staticStateHashDB = db.MakeDefaultStateHashDBFromBaseDB(baseDB)
+
+	return nil
 }
 
 func CloseSubstateDB() error {
-	err := WriteUnprocessedSkippedTxToFile()
+	err := WriteUnprocessedSkippedTxToDatabase()
 	if err != nil {
 		return err
 	}
-	return staticSubstateDB.Close()
+
+	//return errors.Join(staticSubstateDB.Close(), staticExceptionDB.Close(), staticStateHashDB.Close())
+	return nil
 }
 
 func PutSubstate(ss *substate.Substate) error {
 	return staticSubstateDB.PutSubstate(ss)
+}
+
+func PutStateHash(blockNumber uint64, stateHash []byte) error {
+	//if staticStateHashDB == nil {
+	//	return errors.New("state hash db is not initialized")
+	//}
+	//
+	//if err := staticStateHashDB.PutStateHash(blockNumber, stateHash); err != nil {
+	//	return errors.New(fmt.Sprintf("unable to put state hash for block %d: %v", blockNumber, err))
+	//}
+	return nil
 }
