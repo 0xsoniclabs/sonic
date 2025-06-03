@@ -309,7 +309,8 @@ func TestApplyTransaction_BlobHashesNotSupportedAndSkipped(t *testing.T) {
 		BlobHashes: []common.Hash{{0x01}},
 	}
 	usedGas := uint64(0)
-	receipt, gasUsed, skipped, err := applyTransaction(msg, gp, state, big.NewInt(1), nil, &usedGas, evm, nil)
+	receipt, gasUsed, skipped, err :=
+		applyTransaction(msg, gp, state, big.NewInt(1), nil, &usedGas, evm, nil)
 	require.ErrorContains(t, err, "blob data is not supported")
 	require.Nil(t, receipt)
 	require.Equal(t, uint64(0), gasUsed)
@@ -325,8 +326,10 @@ func TestApplyTransaction_ApplyMessageError_RevertsSnapshotIfPrague(t *testing.T
 	for name, isPrague := range versions {
 		t.Run(name, func(t *testing.T) {
 			pragueTime := uint64(1000)
+			callToSnapshot := 0
 			if isPrague {
 				pragueTime = 0
+				callToSnapshot = 1
 			}
 			any := gomock.Any()
 			ctrl := gomock.NewController(t)
@@ -359,19 +362,16 @@ func TestApplyTransaction_ApplyMessageError_RevertsSnapshotIfPrague(t *testing.T
 				SkipFromEOACheck: true,
 			}
 
-			state.EXPECT().GetBalance(msg.From).Return(uint256.NewInt(1000000))
-			state.EXPECT().SubBalance(any, any, any)
-			state.EXPECT().EndTransaction()
+			gomock.InOrder(
+				state.EXPECT().Snapshot().Return(42).Times(callToSnapshot),
+				state.EXPECT().GetBalance(msg.From).Return(uint256.NewInt(1000000)),
+				state.EXPECT().SubBalance(any, any, any),
+				state.EXPECT().RevertToSnapshot(42).Times(callToSnapshot),
+				state.EXPECT().EndTransaction(),
+			)
 
-			if isPrague {
-				// Set up snapshot and revert expectations
-				gomock.InOrder(
-					state.EXPECT().Snapshot().Return(42),
-					state.EXPECT().RevertToSnapshot(42),
-				)
-			}
-
-			receipt, gasUsed, skipped, err := applyTransaction(msg, gp, state, blockNumber, nil, new(uint64), evm, nil)
+			receipt, gasUsed, skipped, err :=
+				applyTransaction(msg, gp, state, blockNumber, nil, new(uint64), evm, nil)
 			require.ErrorContains(t, err, "max initcode size exceeded")
 			require.Nil(t, receipt)
 			require.Equal(t, uint64(0), gasUsed)
