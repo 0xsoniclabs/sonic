@@ -92,8 +92,9 @@ func exec(t *testing.T, args ...string) *testcli {
 
 	if len(args) < 1 || args[0] != "attach" {
 		// make datadir
-		for i, arg := range args {
-			if (arg == "-datadir" || arg == "--datadir") && (i < len(args)-1) {
+		for i := range len(args) - 1 {
+			arg := args[i]
+			if arg == "-datadir" || arg == "--datadir" {
 				tt.Datadir = args[i+1]
 			}
 		}
