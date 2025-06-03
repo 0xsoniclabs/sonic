@@ -39,7 +39,7 @@ func TestVersionNumber_AreOrderedFollowingSemanticVersioningRules(t *testing.T) 
 	for i := range len(versions) - 1 {
 		a := toVersionNumber(versions[i])
 		b := toVersionNumber(versions[i+1])
-		if !(a < b) {
+		if a >= b {
 			t.Errorf("unexpected result, %s < %s (%d.%d.%d.%d < %d.%d.%d.%d) does not hold",
 				versions[i], versions[i+1],
 				(a>>48)&0xffff, (a>>32)&0xffff, (a>>16)&0xffff, (a>>0)&0xffff,
