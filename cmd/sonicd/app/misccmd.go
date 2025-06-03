@@ -40,6 +40,6 @@ func versionAction(ctx *cli.Context) error {
 	fmt.Println("Go Version:", runtime.Version())
 	fmt.Println("Operating System:", runtime.GOOS)
 	fmt.Printf("GOPATH=%s\n", os.Getenv("GOPATH"))
-	fmt.Printf("GOROOT=%s\n", runtime.GOROOT())
+	fmt.Printf("GOROOT=%s\n", os.Getenv("GOROOT"))
 	return nil
 }
