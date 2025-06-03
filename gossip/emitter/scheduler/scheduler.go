@@ -64,10 +64,7 @@ func (s *Scheduler) Schedule(
 
 	remainingGas := gasLimit
 	var res []*types.Transaction
-	for {
-		if context.Err() != nil {
-			break
-		}
+	for context.Err() == nil {
 		candidate := candidates.Current()
 		if candidate == nil {
 			break
