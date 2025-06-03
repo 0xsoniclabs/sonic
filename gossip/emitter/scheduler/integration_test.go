@@ -32,7 +32,10 @@ func TestIntegration_NoTransactions_ProducesAnEmptySchedule(t *testing.T) {
 		t.Context(),
 		&BlockInfo{},
 		&fakeTxCollection{},
-		100_000_000,
+		Limits{
+			Gas:  100_000_000,
+			Size: 100_000,
+		},
 	))
 }
 
@@ -80,7 +83,10 @@ func TestIntegration_OneTransactions_ProducesScheduleWithOneTransaction(t *testi
 			GasLimit: 100_000_000,
 		},
 		&fakeTxCollection{transactions: txs},
-		100_000_000,
+		Limits{
+			Gas:  100_000_000,
+			Size: 100_000,
+		},
 	)
 
 	require.Equal(t, txs, schedule)

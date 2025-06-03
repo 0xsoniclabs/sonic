@@ -196,9 +196,9 @@ func (m *MockevmProcessorRunner) EXPECT() *MockevmProcessorRunnerMockRecorder {
 }
 
 // Run mocks base method.
-func (m *MockevmProcessorRunner) Run(arg0 int, arg1 *types.Transaction) (*types.Receipt, bool, error) {
+func (m *MockevmProcessorRunner) Run(index int, tx *types.Transaction) (*types.Receipt, bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Run", arg0, arg1)
+	ret := m.ctrl.Call(m, "Run", index, tx)
 	ret0, _ := ret[0].(*types.Receipt)
 	ret1, _ := ret[1].(bool)
 	ret2, _ := ret[2].(error)
@@ -206,7 +206,7 @@ func (m *MockevmProcessorRunner) Run(arg0 int, arg1 *types.Transaction) (*types.
 }
 
 // Run indicates an expected call of Run.
-func (mr *MockevmProcessorRunnerMockRecorder) Run(arg0, arg1 any) *gomock.Call {
+func (mr *MockevmProcessorRunnerMockRecorder) Run(index, tx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Run", reflect.TypeOf((*MockevmProcessorRunner)(nil).Run), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Run", reflect.TypeOf((*MockevmProcessorRunner)(nil).Run), index, tx)
 }

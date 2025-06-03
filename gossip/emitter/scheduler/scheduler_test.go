@@ -2,11 +2,13 @@ package scheduler
 
 import (
 	"context"
+	"math"
 	"math/big"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/inter"
+	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -57,7 +59,7 @@ func TestScheduler_Schedule_ForwardsBlockInfoToTheProcessor(t *testing.T) {
 			BlobBaseFee: blobBaseFee,
 		},
 		txs,
-		0,
+		Limits{},
 	)
 }
 
@@ -92,7 +94,10 @@ func TestScheduler_Schedule_TransactionsAreSignaledAsAcceptedOrSkipped(t *testin
 		t.Context(),
 		&BlockInfo{},
 		txs,
-		uint64(100)*params.TxGas,
+		Limits{
+			Gas:  uint64(100) * params.TxGas,
+			Size: math.MaxUint64, // no size limit
+		},
 	)
 
 	require.Equal(t, []*types.Transaction{tx1, tx3}, result)
@@ -136,10 +141,114 @@ func TestScheduler_Schedule_RetrievalOfTransactionsStopsWhenGasLimitIsReached(t 
 		t.Context(),
 		&BlockInfo{},
 		txs,
-		uint64(20)*params.TxGas,
+		Limits{
+			Gas:  uint64(20) * params.TxGas,
+			Size: math.MaxUint64, // no size limit
+		},
 	)
 
 	require.Equal(t, []*types.Transaction{tx1, tx2, tx3, tx4}, result)
+}
+
+func TestScheduler_Schedule_TooLargeTransactionsAreSkipped(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	factory := NewMockprocessorFactory(ctrl)
+	processor := NewMockprocessor(ctrl)
+	factory.EXPECT().beginBlock(gomock.Any()).Return(processor).AnyTimes()
+	processor.EXPECT().release().AnyTimes()
+
+	txs := NewMockPrioritizedTransactions(ctrl)
+
+	tx1 := types.NewTx(&types.LegacyTx{Nonce: 1})
+	tx2 := types.NewTx(&types.LegacyTx{Nonce: 2, Data: make([]byte, 1000)})
+	tx3 := types.NewTx(&types.LegacyTx{Nonce: 2})
+	tx4 := types.NewTx(&types.LegacyTx{Nonce: 2})
+
+	small := tx1.Size()
+	large := tx2.Size()
+	require.Less(t, small, large)
+	require.Less(t, uint64(10), large)
+
+	gomock.InOrder(
+		txs.EXPECT().Current().Return(tx1),
+		processor.EXPECT().run(tx1, gomock.Any()).Return(true, uint64(5)*params.TxGas),
+		txs.EXPECT().Accept(),
+		txs.EXPECT().Current().Return(tx2),
+		// tx2 is too large, so it is not executed, just skipped
+		txs.EXPECT().Skip(),
+		txs.EXPECT().Current().Return(tx3),
+		processor.EXPECT().run(tx3, gomock.Any()).Return(true, uint64(1)),
+		txs.EXPECT().Accept(),
+		txs.EXPECT().Current().Return(tx4),
+		processor.EXPECT().run(tx4, gomock.Any()).Return(true, uint64(1)),
+		txs.EXPECT().Accept(),
+		txs.EXPECT().Current().Return(nil),
+	)
+
+	scheduler := newScheduler(factory)
+	result := scheduler.Schedule(
+		t.Context(),
+		&BlockInfo{},
+		txs,
+		Limits{
+			Gas:  math.MaxInt64,
+			Size: 3*small + 10,
+		},
+	)
+
+	require.Equal(t, []*types.Transaction{tx1, tx3, tx4}, result)
+}
+
+func TestScheduler_Schedule_SizeLimitIsEnforced(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	factory := NewMockprocessorFactory(ctrl)
+	processor := NewMockprocessor(ctrl)
+	factory.EXPECT().beginBlock(gomock.Any()).Return(processor).AnyTimes()
+	processor.EXPECT().run(gomock.Any(), gomock.Any()).Return(true, uint64(10)).AnyTimes()
+	processor.EXPECT().release().AnyTimes()
+
+	txs := []*types.Transaction{}
+	for i := range uint64(5) {
+		txs = append(txs, types.NewTx(&types.LegacyTx{
+			Nonce: i,
+			Data:  make([]byte, 10*i),
+		}))
+	}
+
+	totalSize := uint64(0)
+	for _, tx := range txs {
+		totalSize += tx.Size()
+	}
+
+	scheduler := newScheduler(factory)
+	for limit := range totalSize + 10 {
+		for input := range utils.Permute(txs) {
+			result := scheduler.Schedule(
+				t.Context(),
+				&BlockInfo{},
+				&fakeTxCollection{input},
+				Limits{
+					Gas:  math.MaxUint64, // no gas limit
+					Size: limit,
+				},
+			)
+
+			want := uint64(0)
+			for _, tx := range input {
+				size := tx.Size()
+				if want+size <= limit {
+					want += size
+				}
+			}
+			got := uint64(0)
+			for _, tx := range result {
+				got += tx.Size()
+			}
+			require.LessOrEqual(t, got, limit)
+			require.Equal(t, want, got)
+		}
+	}
+
 }
 
 func TestScheduler_Schedule_StopsWhenContextIsCancelled(t *testing.T) {
@@ -176,7 +285,10 @@ func TestScheduler_Schedule_StopsWhenContextIsCancelled(t *testing.T) {
 		ctxt,
 		&BlockInfo{},
 		txs,
-		uint64(20)*params.TxGas,
+		Limits{
+			Gas:  uint64(20) * params.TxGas,
+			Size: math.MaxUint64, // no size limit
+		},
 	)
 
 	require.Equal(t, []*types.Transaction{tx1, tx2}, result)
@@ -230,7 +342,10 @@ func TestScheduler_Schedule_IgnoresFailedTransactions(t *testing.T) {
 				t.Context(),
 				&BlockInfo{},
 				&fakeTxCollection{txs},
-				uint64(100)*params.TxGas,
+				Limits{
+					Gas:  uint64(100) * params.TxGas,
+					Size: math.MaxUint64, // no size limit
+				},
 			)
 
 			got := []int{}
@@ -280,7 +395,10 @@ func TestScheduler_Schedule_OrderOfInputTransactionsIsPreserved(t *testing.T) {
 			t.Context(),
 			&BlockInfo{},
 			&fakeTxCollection{txs},
-			limit*params.TxGas,
+			Limits{
+				Gas:  limit * params.TxGas,
+				Size: math.MaxUint64, // no size limit
+			},
 		)
 
 		got := []int{}
@@ -384,7 +502,10 @@ func TestScheduler_Schedule_GetsOptimalPrefixIfAllTransactionsArePassing(t *test
 				t.Context(),
 				&BlockInfo{},
 				&fakeTxCollection{txs},
-				uint64(test.limit*int(params.TxGas)),
+				Limits{
+					Gas:  uint64(test.limit) * params.TxGas,
+					Size: math.MaxUint64, // no size limit
+				},
 			)
 
 			got := []int{}
@@ -433,7 +554,10 @@ func FuzzScheduler_Schedule_PicksLongestPrefixOfAcceptedTransactions(f *testing.
 			t.Context(),
 			&BlockInfo{},
 			&fakeTxCollection{txs},
-			limit*params.TxGas,
+			Limits{
+				Gas:  limit * params.TxGas,
+				Size: math.MaxUint64, // no size limit
+			},
 		)
 
 		// Get the expected schedule by taking all elements from the

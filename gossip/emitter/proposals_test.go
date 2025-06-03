@@ -342,7 +342,10 @@ func TestMakeProposal_ValidArguments_CreatesValidProposal(t *testing.T) {
 			BlobBaseFee: uint256.Int{}, // TODO: implement
 		},
 		nil,
-		getEffectiveGasLimit(delta, rules.Economy.ShortGasPower.AllocPerSec),
+		scheduler.Limits{
+			Gas:  getEffectiveGasLimit(delta, rules.Economy.ShortGasPower.AllocPerSec),
+			Size: maxTotalTransactionsSizeInProposalsInBytes,
+		},
 	).Return(transactions)
 
 	// Scheduling time should be monitored.
@@ -396,7 +399,7 @@ func TestMakeProposal_IfSchedulerTimesOut_SignalTimeoutToMonitor(t *testing.T) {
 	mockScheduler.EXPECT().Schedule(any, any, any, any).Do(
 		func(
 			ctx context.Context, _ *scheduler.BlockInfo,
-			_ scheduler.PrioritizedTransactions, _ uint64,
+			_ scheduler.PrioritizedTransactions, _ scheduler.Limits,
 		) {
 			deadline, ok := ctx.Deadline()
 			require.True(t, ok, "scheduler call should have a deadline")

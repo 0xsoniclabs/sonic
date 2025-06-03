@@ -57,17 +57,24 @@ func (s *Scheduler) Schedule(
 	context context.Context,
 	blockInfo *BlockInfo,
 	candidates PrioritizedTransactions,
-	gasLimit uint64,
+	limits Limits,
 ) []*types.Transaction {
 	processor := s.factory.beginBlock(blockInfo.toEvmBlock())
 	defer processor.release()
 
-	remainingGas := gasLimit
+	remainingGas := limits.Gas
+	remainingSize := limits.Size
 	var res []*types.Transaction
 	for context.Err() == nil {
 		candidate := candidates.Current()
 		if candidate == nil {
 			break
+		}
+
+		size := candidate.Size()
+		if size > remainingSize {
+			candidates.Skip()
+			continue
 		}
 
 		success, gasUsed := processor.run(candidate, remainingGas)
@@ -78,6 +85,7 @@ func (s *Scheduler) Schedule(
 		candidates.Accept()
 		res = append(res, candidate)
 		remainingGas -= gasUsed
+		remainingSize -= size
 		if remainingGas < params.TxGas {
 			break
 		}
@@ -105,6 +113,19 @@ type PrioritizedTransactions interface {
 	// from the collection. Furthermore, any transactions that depend on the
 	// rejected transaction should also be removed from the collection.
 	Skip()
+}
+
+// Limits defines the limits for the block being scheduled. Schedules produced
+// by the scheduler are required to respect these limits.
+type Limits struct {
+	// GasLimit is the maximum amount of gas that can be used by the block. This
+	// is used to limit the amount of computation that can be performed in the
+	// block, preventing it from consuming too processing time.
+	Gas uint64
+	// SizeLimit is the maximum size of the block in bytes. This is used to
+	// limit the size of the block to a reasonable value, preventing it from
+	// growing too large and causing issues with the network.
+	Size uint64
 }
 
 // BlockInfo contains all the block meta-information accessible within EVM

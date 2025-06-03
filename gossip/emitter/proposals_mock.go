@@ -151,7 +151,7 @@ func (m *MocktxScheduler) EXPECT() *MocktxSchedulerMockRecorder {
 }
 
 // Schedule mocks base method.
-func (m *MocktxScheduler) Schedule(arg0 context.Context, arg1 *scheduler.BlockInfo, arg2 scheduler.PrioritizedTransactions, arg3 uint64) []*types.Transaction {
+func (m *MocktxScheduler) Schedule(arg0 context.Context, arg1 *scheduler.BlockInfo, arg2 scheduler.PrioritizedTransactions, arg3 scheduler.Limits) []*types.Transaction {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Schedule", arg0, arg1, arg2, arg3)
 	ret0, _ := ret[0].([]*types.Transaction)
