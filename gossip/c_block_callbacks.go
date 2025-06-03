@@ -131,8 +131,6 @@ func consensusCallbackBeginBlockFn(
 		// events with txs
 		confirmedEvents := make(hash.OrderedEvents, 0, 3*es.Validators.Len())
 
-		validatorKeys := readEpochPubKeys(store, store.GetEpoch())
-
 		return lachesis.BlockCallbacks{
 			ApplyEvent: func(_e dag.Event) {
 				e := _e.(inter.EventI)
@@ -205,7 +203,6 @@ func consensusCallbackBeginBlockFn(
 					store.SetBlockEpochState(bs, es)
 					newValidators = es.Validators
 					txListener.Update(bs, es)
-					validatorKeys = readEpochPubKeys(store, store.GetEpoch())
 				}
 
 				chainCfg := es.Rules.EvmChainConfig(store.GetUpgradeHeights())
@@ -234,12 +231,17 @@ func consensusCallbackBeginBlockFn(
 					}
 					if proposed, proposer := extractProposalForNextBlock(lastBlockHeader, events, log.Root()); proposed != nil {
 						proposal = *proposed
+						validatorKeys := readEpochPubKeys(store, blockCtx.Atropos.Epoch())
 						proposerKey := validatorKeys.PubKeys[proposer]
 
-						var ok bool
-						randao, ok = proposal.RandaoReveal.VerifyAndGetRandao(lastBlockHeader.PrevRandao, proposerKey)
+						blockProposalRandao, ok := proposal.RandaoReveal.VerifyAndGetRandao(lastBlockHeader.PrevRandao, proposerKey)
 						if !ok {
-							log.Error("Failed to verify randao reveal", "err", err, "proposal", proposal.Hash())
+							// If randao reveal cannot be verified, this block will be computed using the
+							// event derived randao value. This can happen if the randao reveal value
+							// was not created according to specification.
+							log.Warn("Failed to verify randao reveal, using DAG randomization", "proposer validator", proposer)
+						} else {
+							randao = blockProposalRandao
 						}
 					} else {
 						// If no proposal is found but a block needs to be
