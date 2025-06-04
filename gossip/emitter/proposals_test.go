@@ -2,6 +2,7 @@ package emitter
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -530,4 +531,42 @@ func TestTransactionPriorityAdapter_ForwardsCallToWrappedType(t *testing.T) {
 		adapter := transactionPriorityAdapter{index}
 		adapter.Skip()
 	})
+}
+
+func TestMakeProposal_SkipsProposalOnRandaoRevealError(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+
+	rules := opera.Rules{}
+	state := inter.ProposalSyncState{
+		LastSeenProposalTurn:  inter.Turn(5),
+		LastSeenProposalFrame: idx.Frame(12),
+	}
+	latestBlock := inter.NewBlockBuilder().
+		WithNumber(5).
+		WithTime(1234).
+		Build()
+
+	delta := 20 * time.Millisecond
+	newBlockTime := inter.Timestamp(1234) + inter.Timestamp(delta)
+	currentFrame := idx.Frame(17)
+
+	randaoMixer := NewMockrandaoMixer(ctrl)
+	randaoMixer.EXPECT().MixRandao(gomock.Any()).Return(
+		randao.RandaoReveal{}, common.Hash{}, errors.New("randao error"))
+
+	// Run the proposal creation.
+	proposal := makeProposal(
+		rules,
+		state,
+		latestBlock,
+		newBlockTime,
+		currentFrame,
+		nil,
+		nil,
+		randaoMixer,
+		nil,
+		nil,
+	)
+	require.Nil(proposal, "proposal should be nil when RandaoReveal fails")
 }
