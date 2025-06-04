@@ -6,10 +6,10 @@ import (
 )
 
 // Permute is a utility function that creates an iterator producing all
-// permutations of the input slice. Du to the nature of permutations, the number
-// of results grows factorially with the size of the input slice, which means
-// that practical use is limited to small slices, in particular for test case
-// generation.
+// permutations of the input slice. Due to the nature of permutations, the
+// number of results grows factorially with the size of the input slice, which
+// means that practical use is limited to small slices, in particular for test
+// case generation.
 //
 // The resulting iterator produces one result at a time. However, the
 // implementation is not optimized for performance nor memory usage. If you
