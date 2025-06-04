@@ -22,29 +22,17 @@ func TestReceipt_InternalTransactionsDoNotChangeReceiptIndex(t *testing.T) {
 	require.NoError(t, err)
 	defer client.Close()
 
-	chainId, err := client.ChainID(t.Context())
-	require.NoError(t, err)
+	chainId := net.GetChainId()
 	gasPrice, err := client.SuggestGasPrice(t.Context())
 	require.NoError(t, err)
 	sender := makeAccountWithBalance(t, net, big.NewInt(1e18))
 
-	startBlockNumber, err := client.BlockNumber(t.Context())
-	require.NoError(t, err)
-
 	numSimpleTxs := 10
+	transactions := prepareTransactions(t, chainId, sender, gasPrice, numSimpleTxs)
 
-	// Send simple transactions
-	for nonce := range numSimpleTxs / 2 {
-		txData := &types.LegacyTx{
-			Nonce:    uint64(nonce),
-			Gas:      100000,
-			GasPrice: gasPrice,
-			To:       &common.Address{0x42},
-			Value:    big.NewInt(1),
-		}
-
-		tx := signTransaction(t, chainId, txData, sender)
-		err = client.SendTransaction(t.Context(), tx)
+	// Send first half of simple transactions
+	for i := range numSimpleTxs / 2 {
+		err = client.SendTransaction(t.Context(), transactions[i])
 		require.NoError(t, err)
 	}
 
@@ -57,10 +45,40 @@ func TestReceipt_InternalTransactionsDoNotChangeReceiptIndex(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, tx)
 
-	// Send simple transactions
-	for nonce := range numSimpleTxs / 2 {
+	// Send second half of simple transactions
+	for i := range numSimpleTxs / 2 {
+		err = client.SendTransaction(t.Context(), transactions[numSimpleTxs/2+i])
+		require.NoError(t, err)
+	}
+
+	// Wait for receipt of the internal transaction
+	receipt, err := net.GetReceipt(tx.Hash())
+	require.NoError(t, err)
+	require.NotNil(t, receipt)
+
+	block, err := client.BlockByNumber(t.Context(), receipt.BlockNumber)
+	require.NoError(t, err)
+	transactions = block.Transactions()
+
+	// Make sure the block contains simple transactions and the internal one
+	require.Greater(t, len(transactions), numSimpleTxs/2,
+		"Block should contain some simple transactions and the internal one")
+
+	for i, tx := range transactions {
+		receipt, err := client.TransactionReceipt(t.Context(), tx.Hash())
+		require.NoError(t, err)
+
+		// Check that the receipt index is equal to the transaction index
+		require.Equal(t, uint(i), receipt.TransactionIndex,
+			"Receipt index does not match transaction index for tx %d", i)
+	}
+}
+
+func prepareTransactions(t *testing.T, chainId *big.Int, sender *Account, gasPrice *big.Int, num int) []*types.Transaction {
+	transactions := make([]*types.Transaction, num)
+	for nonce := range num {
 		txData := &types.LegacyTx{
-			Nonce:    uint64(numSimpleTxs/2 + nonce),
+			Nonce:    uint64(nonce),
 			Gas:      100000,
 			GasPrice: gasPrice,
 			To:       &common.Address{0x42},
@@ -68,35 +86,7 @@ func TestReceipt_InternalTransactionsDoNotChangeReceiptIndex(t *testing.T) {
 		}
 
 		tx := signTransaction(t, chainId, txData, sender)
-		err = client.SendTransaction(t.Context(), tx)
-		require.NoError(t, err)
+		transactions[nonce] = tx
 	}
-
-	// Use blocking call to ensure all transactions have been processed
-	receipt, err := net.EndowAccount(common.Address{0x42}, big.NewInt(1))
-	require.NoError(t, err)
-	require.NotNil(t, receipt)
-
-	endBlockNumber, err := client.BlockNumber(t.Context())
-	require.NoError(t, err)
-
-	// Sanity checks
-	require.Greater(t, endBlockNumber, startBlockNumber,
-		"No blocks were created during the test")
-	require.Less(t, endBlockNumber-startBlockNumber, uint64(numSimpleTxs),
-		"Too many blocks were created during the test")
-
-	for blockNumber := startBlockNumber; blockNumber <= endBlockNumber; blockNumber++ {
-		block, err := client.BlockByNumber(t.Context(), big.NewInt(int64(blockNumber)))
-		require.NoError(t, err)
-
-		for i, tx := range block.Transactions() {
-			receipt, err := client.TransactionReceipt(t.Context(), tx.Hash())
-			require.NoError(t, err)
-
-			// Check that the receipt index is equal to the transaction index
-			require.Equal(t, uint(i), receipt.TransactionIndex,
-				"Receipt index does not match transaction index for tx %d in block %d", i, blockNumber)
-		}
-	}
+	return transactions
 }
