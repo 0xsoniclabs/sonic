@@ -198,7 +198,7 @@ func TestIntegrationTestNet_CanStartWithCustomConfig(t *testing.T) {
 	// validation behaves as expected.
 	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
 		ModifyConfig: func(config *config.Config) {
-			// enable minimum tip check for local tx submission
+			// disable minimum tip check for non-local tx submission
 			config.TxPool.NoLocals = true
 			// increase minimum tip, default is 1
 			config.TxPool.MinimumTip = 10
