@@ -374,6 +374,9 @@ func MakeAllConfigsFromFile(ctx *cli.Context, configFile string) (*Config, error
 	if cfg.Emitter.Validator.ID != 0 && len(cfg.Emitter.PrevEmittedEventFile.Path) == 0 {
 		cfg.Emitter.PrevEmittedEventFile.Path = path.Join(cfg.Node.DataDir, "emitter", fmt.Sprintf("last-%d", cfg.Emitter.Validator.ID))
 	}
+	if ctx.IsSet(flags.TEST_ONLY_DisableTransactionPoolValidation.Name) {
+		cfg.TxPool.DisableTxPoolValidation = true
+	}
 	if err := setTxPool(ctx, &cfg.TxPool); err != nil {
 		return nil, err
 	}

@@ -383,4 +383,10 @@ var (
 			"Setting this to <1 will automatically set the value to a DB defined default.",
 		Value: 0,
 	}
+
+	// --- Testing Only ---
+	TEST_ONLY_DisableTransactionPoolValidation = cli.BoolFlag{
+		Name:  "disable-txPool-validation",
+		Usage: "Disable transaction pool validation",
+	}
 )
