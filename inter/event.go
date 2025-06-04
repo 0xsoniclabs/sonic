@@ -73,7 +73,7 @@ func EmptyPayloadHash(version uint8) hash.Hash {
 		return emptyPayloadHash1
 	case 3:
 		return emptyPayloadHash3
-	default: // version 2
+	default:
 		return hash.Hash(types.EmptyRootHash)
 	}
 }
