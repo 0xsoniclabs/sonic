@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"cmp"
 	"fmt"
-	"iter"
 	"math/big"
 	"slices"
 	"testing"
@@ -288,59 +287,11 @@ func TestExtractProposalForNextBlock_MultipleValidProposals_UsesTurnAndHashAsTie
 	any := gomock.Any()
 	logger.EXPECT().Warn(any, any, any, any, any).AnyTimes()
 
-	for events := range permute(events) {
+	for events := range utils.Permute(events) {
 		proposal := extractProposalForNextBlock(last, events, logger)
 		require.NotNil(t, proposal)
 		require.Equal(t, payloads[0].Proposal, proposal,
 			"should pick the best proposal based on turn and hash",
 		)
 	}
-}
-
-// permute is a utility function that creates an iterator producing all
-// permutations of the input slice.
-func permute[T any](list []T) iter.Seq[[]T] {
-	list = slices.Clone(list) // clone to avoid modifying the original slice
-	return func(yield func([]T) bool) {
-		if len(list) == 0 {
-			yield(list)
-			return
-		}
-		for i := 0; i < len(list); i++ {
-			list[0], list[i] = list[i], list[0] // swap
-			for cur := range permute(list[1:]) {
-				if !yield(append([]T{list[0]}, cur...)) {
-					return
-				}
-			}
-			list[0], list[i] = list[i], list[0] // swap back
-		}
-	}
-}
-
-func TestPermute_EmptyList_ProducesOneResult(t *testing.T) {
-	res := slices.Collect(permute([]int{}))
-	require.Equal(t, [][]int{{}}, res)
-}
-
-func TestPermute_SingletonList_ProducesOneResult(t *testing.T) {
-	res := slices.Collect(permute([]int{1}))
-	require.Equal(t, [][]int{{1}}, res)
-}
-
-func TestPermute_ListOfTwoElements_ProducesTwoResults(t *testing.T) {
-	res := slices.Collect(permute([]int{1, 2}))
-	require.ElementsMatch(t, [][]int{{1, 2}, {2, 1}}, res)
-}
-
-func TestPermute_ListOfThreeElements_ProducesSixResults(t *testing.T) {
-	res := slices.Collect(permute([]int{1, 2, 3}))
-	require.ElementsMatch(t, [][]int{
-		{1, 2, 3},
-		{1, 3, 2},
-		{2, 1, 3},
-		{2, 3, 1},
-		{3, 1, 2},
-		{3, 2, 1},
-	}, res)
 }
