@@ -189,7 +189,7 @@ func testGetBlockReceipts(t *testing.T, blockParam rpc.BlockNumberOrHash) ([]map
 
 	mockObj.EXPECT().GetReceiptsByNumber(gomock.Any(), gomock.Any()).Return(receipts, nil)
 	mockObj.EXPECT().GetTransaction(gomock.Any(), transaction.Hash()).Return(transaction, uint64(0), uint64(0), nil)
-	mockObj.EXPECT().ChainConfig().Return(&params.ChainConfig{}).AnyTimes()
+	mockObj.EXPECT().ChainConfig(gomock.Any()).Return(&params.ChainConfig{}).AnyTimes()
 
 	api := NewPublicTransactionPoolAPI(
 		mockObj,
@@ -281,7 +281,7 @@ func TestReplayTransactionOnEmptyBlock(t *testing.T) {
 	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, any).Return(mockState, nil, nil).AnyTimes()
 	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000)).AnyTimes()
 	mockBackend.EXPECT().GetEVM(any, any, any, any, any).DoAndReturn(getEvmFunc(mockState)).AnyTimes()
-	mockBackend.EXPECT().ChainConfig().Return(&params.ChainConfig{}).AnyTimes()
+	mockBackend.EXPECT().ChainConfig(gomock.Any()).Return(&params.ChainConfig{}).AnyTimes()
 	setExpectedStateCalls(mockState)
 
 	api := NewPublicDebugAPI(mockBackend, 10000, 10000)
@@ -353,7 +353,7 @@ func TestReplayInternalTransaction(t *testing.T) {
 	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000)).AnyTimes()
 	mockBackend.EXPECT().GetTransaction(any, any).Return(types.NewTx(internalTx), block.NumberU64(), txIndex, nil).AnyTimes()
 	mockBackend.EXPECT().GetEVM(any, any, any, noBaseFeeMatcher{expected: true}, any).DoAndReturn(getEvmFuncWithParameters(mockState, chainConfig, &blockCtx, vmConfig)).AnyTimes()
-	mockBackend.EXPECT().ChainConfig().Return(chainConfig).AnyTimes()
+	mockBackend.EXPECT().ChainConfig(gomock.Any()).Return(chainConfig).AnyTimes()
 	setExpectedStateCalls(mockState)
 
 	// Replay transaction
@@ -377,7 +377,7 @@ func TestBlockOverrides(t *testing.T) {
 	mockBackend.EXPECT().BlockByNumber(any, any).Return(block, nil).AnyTimes()
 	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, any).Return(mockState, &evmcore.EvmHeader{Number: big.NewInt(int64(blockNr))}, nil).AnyTimes()
 	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000)).AnyTimes()
-	mockBackend.EXPECT().ChainConfig().Return(&params.ChainConfig{}).AnyTimes()
+	mockBackend.EXPECT().ChainConfig(gomock.Any()).Return(&params.ChainConfig{}).AnyTimes()
 	mockBackend.EXPECT().RPCEVMTimeout().Return(time.Duration(0)).AnyTimes()
 	setExpectedStateCalls(mockState)
 
@@ -422,7 +422,7 @@ func TestGetTransactionReceiptReturnsNilNotError(t *testing.T) {
 	mockBackend := NewMockBackend(ctrl)
 	mockBackend.EXPECT().GetTransaction(gomock.Any(), txHash).Return(&types.Transaction{}, uint64(0), uint64(0), nil)
 	mockBackend.EXPECT().HeaderByNumber(gomock.Any(), gomock.Any()).Return(nil, nil)
-	mockBackend.EXPECT().ChainConfig().Return(&params.ChainConfig{}).AnyTimes()
+	mockBackend.EXPECT().ChainConfig(gomock.Any()).Return(&params.ChainConfig{}).AnyTimes()
 
 	api := NewPublicTransactionPoolAPI(
 		mockBackend,
@@ -472,7 +472,9 @@ func getEvmFunc(mockState *state.MockStateDB) func(any, any, any, any, any) (*vm
 		blockCtx := vm.BlockContext{
 			Transfer: vm.TransferFunc(func(sd vm.StateDB, a1, a2 common.Address, i *uint256.Int) {}),
 		}
-		return vm.NewEVM(blockCtx, mockState, &opera.BaseChainConfig, opera.DefaultVMConfig), func() error { return nil }, nil
+		config := opera.CreateTransientEvmChainConfig(1, nil, 0)
+		return vm.NewEVM(blockCtx, mockState, config, opera.DefaultVMConfig),
+			func() error { return nil }, nil
 	}
 }
 
@@ -724,6 +726,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 	recipient := common.Address{0x2}
 
 	executeDoCall := func(t *testing.T, backend Backend, txArgs TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash) {
+		t.Helper()
 		var stateOverrides *StateOverride
 		var blockOverrides *BlockOverrides
 		timeout := time.Duration(time.Second)
@@ -946,7 +949,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 			backend.EXPECT().GetEVM(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 				DoAndReturn(makeTestEVM(test.upgrades)).AnyTimes()
 			backend.EXPECT().CurrentBlock().AnyTimes().Return(&evmcore.EvmBlock{EvmHeader: header})
-			backend.EXPECT().ChainConfig().AnyTimes().Return(makeChainConfig(test.upgrades))
+			backend.EXPECT().ChainConfig(gomock.Any()).AnyTimes().Return(makeChainConfig(test.upgrades))
 			backend.EXPECT().SuggestGasTipCap(gomock.Any(), gomock.Any()).AnyTimes().Return(big.NewInt(1))
 			backend.EXPECT().MinGasPrice().AnyTimes().Return(big.NewInt(1))
 			backend.EXPECT().RPCGasCap().AnyTimes().Return(uint64(10000000))
@@ -976,19 +979,11 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 
 // makeChainConfig allows to create a chain config with a given set of features
 func makeChainConfig(upgrades opera.Upgrades) *params.ChainConfig {
-
-	if upgrades.Allegro {
-		return opera.MainNetRules().EvmChainConfig(
-			[]opera.UpgradeHeight{
-				{Upgrades: opera.GetSonicUpgrades(), Height: 0},
-				{Upgrades: opera.GetAllegroUpgrades(), Height: 1},
-			})
-	}
-
-	return opera.MainNetRules().EvmChainConfig(
-		[]opera.UpgradeHeight{
-			{Upgrades: opera.GetSonicUpgrades(), Height: 0},
-		})
+	return opera.CreateTransientEvmChainConfig(
+		250,
+		[]opera.UpgradeHeight{{Upgrades: upgrades, Height: 0}},
+		0,
+	)
 }
 
 // makeTestEVM allows to create an evm instance to use in tests with a given set of features

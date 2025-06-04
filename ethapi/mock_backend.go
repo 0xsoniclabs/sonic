@@ -117,17 +117,17 @@ func (mr *MockBackendMockRecorder) CalcBlockExtApi() *gomock.Call {
 }
 
 // ChainConfig mocks base method.
-func (m *MockBackend) ChainConfig() *params.ChainConfig {
+func (m *MockBackend) ChainConfig(blockHeight idx.Block) *params.ChainConfig {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ChainConfig")
+	ret := m.ctrl.Call(m, "ChainConfig", blockHeight)
 	ret0, _ := ret[0].(*params.ChainConfig)
 	return ret0
 }
 
 // ChainConfig indicates an expected call of ChainConfig.
-func (mr *MockBackendMockRecorder) ChainConfig() *gomock.Call {
+func (mr *MockBackendMockRecorder) ChainConfig(blockHeight any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ChainConfig", reflect.TypeOf((*MockBackend)(nil).ChainConfig))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ChainConfig", reflect.TypeOf((*MockBackend)(nil).ChainConfig), blockHeight)
 }
 
 // CurrentBlock mocks base method.
