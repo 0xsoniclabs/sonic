@@ -44,7 +44,7 @@ func (b *GPOBackend) PendingTxs() map[common.Address]types.Transactions {
 }
 
 func (b *GPOBackend) MinGasTip() *big.Int {
-	return b.txpool.GasPrice()
+	return b.txpool.MinTip()
 }
 
 // TotalGasPowerLeft returns a total amount of obtained gas power by the validators, according to the latest events from each validator

@@ -189,7 +189,11 @@ func setTxPool(ctx *cli.Context, cfg *evmcore.TxPoolConfig) error {
 		cfg.Rejournal = ctx.GlobalDuration(flags.TxPoolRejournalFlag.Name)
 	}
 	if ctx.GlobalIsSet(flags.TxPoolPriceLimitFlag.Name) {
-		cfg.PriceLimit = ctx.GlobalUint64(flags.TxPoolPriceLimitFlag.Name)
+		log.Warn("The flag --txpool.pricelimit is deprecated. Use --txpool.mintip instead.")
+		cfg.MinimumTip = ctx.GlobalUint64(flags.TxPoolPriceLimitFlag.Name)
+	}
+	if ctx.GlobalIsSet(flags.TxPoolMinTipFlag.Name) {
+		cfg.MinimumTip = ctx.GlobalUint64(flags.TxPoolMinTipFlag.Name)
 	}
 	if ctx.GlobalIsSet(flags.TxPoolPriceBumpFlag.Name) {
 		cfg.PriceBump = ctx.GlobalUint64(flags.TxPoolPriceBumpFlag.Name)
