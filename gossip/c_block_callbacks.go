@@ -191,7 +191,11 @@ func consensusCallbackBeginBlockFn(
 				}
 
 				randao := computePrevRandao(confirmedEvents)
-				chainCfg := es.Rules.EvmChainConfig(store.GetUpgradeHeights())
+				chainCfg := opera.CreateTransientEvmChainConfig(
+					es.Rules.NetworkID,
+					store.GetUpgradeHeights(),
+					blockCtx.Idx,
+				)
 
 				// sort events by Lamport time
 				sort.Sort(confirmedEvents)

@@ -186,8 +186,12 @@ func (w worldAdapter) GetEventPayload(event hash.Event) inter.Payload {
 	return *w.External.GetEventPayload(event).Payload()
 }
 
-func (w worldAdapter) GetEvmChainConfig() *params.ChainConfig {
-	return w.GetRules().EvmChainConfig(w.GetUpgradeHeights())
+func (w worldAdapter) GetEvmChainConfig(blockHeight idx.Block) *params.ChainConfig {
+	return opera.CreateTransientEvmChainConfig(
+		w.External.GetRules().NetworkID,
+		w.External.GetUpgradeHeights(),
+		blockHeight,
+	)
 }
 
 // --- proposal creation ---

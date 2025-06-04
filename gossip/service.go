@@ -500,7 +500,11 @@ func MakeProtocols(svc *Service, backend *handler, disc enode.Iterator) []p2p.Pr
 				}
 				return nil
 			},
-			Attributes:     []enr.Entry{currentENREntry(svc, 0 /* time */)},
+			Attributes: []enr.Entry{
+				currentENREntry(svc,
+					0, // block height
+					0, // time
+				)},
 			DialCandidates: nodeIter,
 		}
 	}

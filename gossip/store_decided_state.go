@@ -163,8 +163,12 @@ func (s *Store) GetRules() opera.Rules {
 }
 
 // GetEvmChainConfig retrieves current EVM chain config
-func (s *Store) GetEvmChainConfig() *ethparams.ChainConfig {
-	return s.GetRules().EvmChainConfig(s.GetUpgradeHeights())
+func (s *Store) GetEvmChainConfig(blockHeight idx.Block) *ethparams.ChainConfig {
+	return opera.CreateTransientEvmChainConfig(
+		s.GetRules().NetworkID,
+		s.GetUpgradeHeights(),
+		blockHeight,
+	)
 }
 
 // GetEpochRules retrieves current network rules and epoch atomically

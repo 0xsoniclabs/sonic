@@ -44,8 +44,12 @@ func (s *Store) WriteFullBlockRecord(br ibr.LlrIdxFullBlockRecord) (err error) {
 	var decodedReceipts types.Receipts
 	if len(br.Receipts) != 0 {
 		// Note: it's possible for receipts to get indexed twice by BR and block processing
-		decodedReceipts, err = indexRawReceipts(s, br.Receipts, br.Txs, br.Idx, common.Hash(br.BlockHash),
-			s.GetEvmChainConfig(), uint64(br.Time.Unix()), br.BaseFee, defaultBlobGasPrice)
+		decodedReceipts, err = indexRawReceipts(
+			s, br.Receipts, br.Txs,
+			br.Idx, common.Hash(br.BlockHash),
+			s.GetEvmChainConfig(br.Idx),
+			uint64(br.Time.Unix()),
+			br.BaseFee, defaultBlobGasPrice)
 		if err != nil {
 			return err
 		}

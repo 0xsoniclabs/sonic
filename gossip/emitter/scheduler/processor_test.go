@@ -16,7 +16,7 @@ func TestEvmProcessorFactory_BeginBlock_CreatesProcessor(t *testing.T) {
 	chain := NewMockChain(ctrl)
 
 	chain.EXPECT().StateDB().Return(state.NewMockStateDB(ctrl))
-	chain.EXPECT().GetEvmChainConfig().Return(&params.ChainConfig{})
+	chain.EXPECT().GetEvmChainConfig(gomock.Any()).Return(&params.ChainConfig{})
 
 	info := BlockInfo{}
 	factory := &evmProcessorFactory{chain: chain}

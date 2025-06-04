@@ -23,7 +23,7 @@ func TestIntegration_NoTransactions_ProducesAnEmptySchedule(t *testing.T) {
 	chain := NewMockChain(ctrl)
 	state := state.NewMockStateDB(ctrl)
 
-	chain.EXPECT().GetEvmChainConfig().Return(&params.ChainConfig{})
+	chain.EXPECT().GetEvmChainConfig(gomock.Any()).Return(&params.ChainConfig{})
 	chain.EXPECT().StateDB().Return(state)
 	state.EXPECT().Release()
 
@@ -44,7 +44,7 @@ func TestIntegration_OneTransactions_ProducesScheduleWithOneTransaction(t *testi
 	chain := NewMockChain(ctrl)
 	state := state.NewMockStateDB(ctrl)
 
-	chain.EXPECT().GetEvmChainConfig().Return(&params.ChainConfig{})
+	chain.EXPECT().GetEvmChainConfig(gomock.Any()).Return(&params.ChainConfig{})
 	chain.EXPECT().StateDB().Return(state)
 
 	// The scheduler configured for production is running transactions on the
