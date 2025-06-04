@@ -7,10 +7,12 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/holiman/uint256"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
+	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -80,39 +82,57 @@ type OperaEVMProcessor struct {
 }
 
 func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlock {
-	baseFee := p.net.Economy.MinGasPrice
-	if !p.net.Upgrades.London {
-		baseFee = nil
-	} else if p.net.Upgrades.Sonic {
-		baseFee = p.gasBaseFee
-	}
+	blobBaseFee := GetBlobBaseFee()
+	h := MakeEvmHeaderCoveringInputParameters(
+		p.blockIdx,
+		p.block.Time,
+		GetCoinbase(),
+		p.net.Blocks.MaxBlockGas,
+		p.gasBaseFee,
+		blobBaseFee.ToBig(),
+		p.prevRandao,
+	)
+	h.ParentHash = p.prevBlockHash
+	h.GasUsed = p.gasUsed
+	h.Epoch = p.block.Atropos.Epoch()
 
-	prevRandao := common.Hash{}
-	// This condition must be kept, otherwise Opera will not be able to synchronize
-	if p.net.Upgrades.Sonic {
-		prevRandao = p.prevRandao
-	}
+	return evmcore.NewEvmBlock(&h, txs)
+}
 
-	var withdrawalsHash *common.Hash = nil
-	if p.net.Upgrades.Sonic {
-		withdrawalsHash = &types.EmptyWithdrawalsHash
-	}
+func GetCoinbase() common.Address {
+	return common.Address{}
+}
 
-	h := &evmcore.EvmHeader{
-		Number:          p.blockIdx,
-		ParentHash:      p.prevBlockHash,
-		Root:            common.Hash{},
-		Time:            p.block.Time,
-		Coinbase:        common.Address{},
-		GasLimit:        p.net.Blocks.MaxBlockGas,
-		GasUsed:         p.gasUsed,
+func GetBlobBaseFee() uint256.Int {
+	return uint256.Int{}
+}
+
+// MakeEvmHeaderCoveringInputParameters creates an EVM header with the provided
+// parameters serving as input parameters for an EVM execution. For some fields,
+// constant values are used, as these are always the same on Sonic networks.
+//
+// Note: the resulting header does not have execution dependent fields set, like
+// the total gas usage, the state root, or the epoch. These fields are expected
+// to be set by the user of this function, depending on the context.
+func MakeEvmHeaderCoveringInputParameters(
+	number *big.Int,
+	time inter.Timestamp,
+	coinbase common.Address,
+	gasLimit uint64,
+	baseFee *big.Int,
+	blobBaseFee *big.Int,
+	prevRandao common.Hash,
+) evmcore.EvmHeader {
+	return evmcore.EvmHeader{
+		Number:          number,
+		Time:            time,
+		Coinbase:        coinbase,
+		GasLimit:        gasLimit,
 		BaseFee:         baseFee,
+		BlobBaseFee:     blobBaseFee,
 		PrevRandao:      prevRandao,
-		WithdrawalsHash: withdrawalsHash,
-		Epoch:           p.block.Atropos.Epoch(),
+		WithdrawalsHash: &types.EmptyWithdrawalsHash,
 	}
-
-	return evmcore.NewEvmBlock(h, txs)
 }
 
 func (p *OperaEVMProcessor) Execute(txs types.Transactions) types.Receipts {

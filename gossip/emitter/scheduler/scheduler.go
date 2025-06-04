@@ -5,6 +5,7 @@ import (
 	"math/big"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/evmmodule"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
@@ -147,14 +148,14 @@ type BlockInfo struct {
 
 func (b *BlockInfo) toEvmBlock() *evmcore.EvmBlock {
 	return &evmcore.EvmBlock{
-		EvmHeader: evmcore.EvmHeader{
-			Number:      new(big.Int).SetUint64(uint64(b.Number)),
-			Time:        b.Time,
-			GasLimit:    b.GasLimit,
-			Coinbase:    b.Coinbase,
-			PrevRandao:  b.MixHash,
-			BaseFee:     b.BaseFee.ToBig(),
-			BlobBaseFee: b.BlobBaseFee.ToBig(),
-		},
+		EvmHeader: evmmodule.MakeEvmHeaderCoveringInputParameters(
+			new(big.Int).SetUint64(uint64(b.Number)),
+			b.Time,
+			b.Coinbase,
+			b.GasLimit,
+			b.BaseFee.ToBig(),
+			b.BlobBaseFee.ToBig(),
+			b.MixHash,
+		),
 	}
 }

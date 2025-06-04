@@ -5,7 +5,10 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/evmmodule"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/scheduler"
+	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/hash"
@@ -204,6 +207,17 @@ func makeProposal(
 		// PrevRandao: -- compute next randao mix based on predecessor --
 	}
 
+	// Compute the base fee for the next block.
+	parentHeader := &evmcore.EvmHeader{
+		BaseFee:  latestBlock.BaseFee,
+		Duration: time.Duration(latestBlock.Duration),
+	}
+	baseFee := gasprice.GetBaseFeeForNextBlock(parentHeader, rules.Economy)
+	baseFee256, ok := uint256.FromBig(baseFee)
+	if !ok {
+		panic("todo: introduce proper error handling")
+	}
+
 	// This step covers the actual transaction selection and sorting.
 	start := time.Now()
 	ctx, cancel := context.WithDeadline(
@@ -217,10 +231,10 @@ func makeProposal(
 			Number:      proposal.Number,
 			Time:        proposal.Time,
 			GasLimit:    rules.Blocks.MaxBlockGas,
-			MixHash:     common.Hash{},    // TODO: integrate randao reveal
-			Coinbase:    common.Address{}, // TODO: integrate coinbase address
-			BaseFee:     uint256.Int{},    // TODO: integrate base fee
-			BlobBaseFee: uint256.Int{},    // TODO: integrate blob base fee
+			MixHash:     common.Hash{}, // TODO: integrate randao reveal
+			Coinbase:    evmmodule.GetCoinbase(),
+			BaseFee:     *baseFee256,
+			BlobBaseFee: evmmodule.GetBlobBaseFee(),
 		},
 		candidates,
 		effectiveGasLimit,
