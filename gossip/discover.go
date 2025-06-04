@@ -17,6 +17,7 @@
 package gossip
 
 import (
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/forkid"
 	"github.com/ethereum/go-ethereum/p2p/enode"
@@ -49,7 +50,11 @@ func StartENRUpdater(svc *Service, ln *enode.LocalNode) {
 		for {
 			select {
 			case head := <-newHead:
-				ln.Set(currentENREntry(svc, uint64(head.Block.Time.Unix())))
+				ln.Set(currentENREntry(
+					svc,
+					idx.Block(head.Block.Number.Uint64()),
+					uint64(head.Block.Time.Unix()),
+				))
 			case <-sub.Err():
 				// Would be nice to sync with Stop, but there is no
 				// good way to do that.
@@ -60,10 +65,15 @@ func StartENRUpdater(svc *Service, ln *enode.LocalNode) {
 }
 
 // currentENREntry constructs an `eth` ENR entry based on the current state of the chain.
-func currentENREntry(svc *Service, time uint64) *enrEntry {
+func currentENREntry(svc *Service, blockHeigh idx.Block, time uint64) *enrEntry {
 	genesisHash := *svc.store.GetGenesisID()
 	genesisTime := svc.store.GetGenesisTime()
 	return &enrEntry{
-		ForkID: forkid.NewId(svc.store.GetEvmChainConfig(), common.Hash(genesisHash), uint64(genesisTime.Unix()), uint64(svc.store.GetLatestBlockIndex()), time),
+		ForkID: forkid.NewId(
+			svc.store.GetEvmChainConfig(blockHeigh),
+			common.Hash(genesisHash),
+			uint64(genesisTime.Unix()),
+			uint64(svc.store.GetLatestBlockIndex()),
+			time),
 	}
 }

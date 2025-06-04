@@ -189,7 +189,12 @@ func consensusCallbackBeginBlockFn(
 				}
 
 				prevRandao := computePrevRandao(confirmedEvents)
-				chainCfg := es.Rules.EvmChainConfig(store.GetUpgradeHeights())
+				chainCfg := opera.CreateTransientEvmChainConfig(
+					es.Rules.NetworkID,
+					store.GetUpgradeHeights(),
+					blockCtx.Idx,
+				)
+
 				evmProcessor := blockProc.EVMModule.Start(
 					blockCtx,
 					statedb,
