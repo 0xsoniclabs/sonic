@@ -2000,6 +2000,20 @@ func TestTransactionPendingMinimumAllowance(t *testing.T) {
 	}
 }
 
+func TestTransactionPool_CanReadMinTipFromPool(t *testing.T) {
+	t.Parallel()
+
+	// Create the pool to test the min tip config
+	statedb := newTestTxPoolStateDb()
+	blockchain := NewTestBlockChain(statedb)
+
+	pool := NewTxPool(testTxPoolConfig, params.TestChainConfig, blockchain)
+	defer pool.Stop()
+
+	require.Equal(t, testTxPoolConfig.MinimumTip, pool.MinTip().Uint64(),
+		"min tip mismatch: have %v, want %v", pool.MinTip().Uint64(), testTxPoolConfig.MinimumTip)
+}
+
 // Tests that setting the transaction pool min tip to a higher value correctly
 // discards everything cheaper than that and moves any gapped transactions back
 // from the pending pool to the queue.
