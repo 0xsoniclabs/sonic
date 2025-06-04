@@ -102,9 +102,15 @@ func debugTraceSponsoredTransaction(t *testing.T, rpcClient *rpc.Client, txHash 
 	err := rpcClient.Call(&res, "debug_traceTransaction", txHash, traceConfig)
 	require.NoError(err, "failed to call debug_traceTransaction; %v", err)
 
+	// Debug callTracer preserves hierarchical structure of the calls.
+	// Root call is the sponsoring transaction from the sponsor targeting the sponsored contract
+	// in code of sponsored EOA. Then the sponsoring contract in code of sponsored EOA calls
+	// the increment function of counter contract, which acts as a dApp contract.
 	require.Len(res.Calls, 1)
+	// Root call
 	require.Equal(expected.Sponsor, res.From)
 	require.Equal(expected.Sponsored, res.To)
+	// Inner call
 	require.Equal(expected.Sponsored, res.Calls[0].From)
 	require.Equal(expected.CalledContract, res.Calls[0].To)
 }
@@ -112,32 +118,47 @@ func debugTraceSponsoredTransaction(t *testing.T, rpcClient *rpc.Client, txHash 
 func traceSponsoredTransaction(t *testing.T, rpcClient *rpc.Client, txHash common.Hash, expected calledAddresses) {
 	require := require.New(t)
 
-	type traceResult []struct {
-		Action struct {
-			From common.Address `json:"from"`
-			To   common.Address `json:"to"`
-		} `json:"action"`
-		TraceAddress []int `json:"traceAddress"`
-		Subtraces    int   `json:"subtraces"`
+	type traceAction struct {
+		From common.Address `json:"from"`
+		To   common.Address `json:"to"`
+	}
+	type trace struct {
+		Action       traceAction `json:"action"`
+		TraceAddress []int       `json:"traceAddress"`
+		Subtraces    int         `json:"subtraces"`
 	}
 
-	var res traceResult
-	err := rpcClient.Call(&res, "trace_transaction", txHash)
+	var traces []trace
+	err := rpcClient.Call(&traces, "trace_transaction", txHash)
 	require.NoError(err, "failed to call trace_transaction; %v", err)
 
+	// Transaction tracing is not preserving hierarchical structure of the calls.
+	// Each call has a traceAddress, which contains the index of the call
+	// and subtraces count of the inner calls.
+
 	// There should be two inner contract calls
-	require.Len(res, 2)
+	require.Len(traces, 2)
 
-	// Check the first call
-	require.Equal(res[0].Subtraces, 1)
-	require.Len(res[0].TraceAddress, 0)
-	require.Equal(expected.Sponsor, res[0].Action.From)
-	require.Equal(expected.Sponsored, res[0].Action.To)
+	// First call is the sponsoring transaction targeting the sponsored contract
+	// in code of sponsored EOA.
+	require.Contains(traces, trace{
+		Action: traceAction{
+			From: expected.Sponsor,
+			To:   expected.Sponsored,
+		},
+		TraceAddress: []int{},
+		Subtraces:    1,
+	})
 
-	// Check the second call
-	require.Equal(res[1].Subtraces, 0)
-	require.Len(res[1].TraceAddress, 1)
-	require.Equal(res[1].TraceAddress[0], 0)
-	require.Equal(expected.Sponsored, res[1].Action.From)
-	require.Equal(expected.CalledContract, res[1].Action.To)
+	// Second call is the sponsoring contract in code of sponsored EOA
+	// calling the increment function of counter contract,
+	// which acts as a dApp contract.
+	require.Contains(traces, trace{
+		Action: traceAction{
+			From: expected.Sponsored,
+			To:   expected.CalledContract,
+		},
+		TraceAddress: []int{0},
+		Subtraces:    0,
+	})
 }
