@@ -232,14 +232,22 @@ func (b *GenesisBuilder) ExecuteGenesisTxs(blockProc BlockProc, genesisTxs types
 
 	sealer := blockProc.SealerModule.Start(blockCtx, bs, es)
 	txListener := blockProc.TxListenerModule.Start(blockCtx, bs, es, b.tmpStateDB)
-	evmProcessor := blockProc.EVMModule.Start(blockCtx, b.tmpStateDB, dummyHeaderReturner{b.blocks}, func(l *types.Log) {
-		txListener.OnNewLog(l)
-	}, es.Rules, es.Rules.EvmChainConfig([]opera.UpgradeHeight{
-		{
+	chainConfig := opera.CreateTransientEvmChainConfig(
+		es.Rules.NetworkID,
+		// apply upgrades described in genesis rules, effect immediately
+		[]opera.UpgradeHeight{{
 			Upgrades: es.Rules.Upgrades,
-			Height:   0,
-		},
-	}), common.Hash{0x01}) // non-zero PrevRandao necessary to enable Cancun
+			Height:   blockCtx.Idx,
+		}},
+		blockCtx.Idx,
+	)
+	evmProcessor := blockProc.EVMModule.Start(
+		blockCtx, b.tmpStateDB, dummyHeaderReturner{b.blocks},
+		func(l *types.Log) { txListener.OnNewLog(l) },
+		es.Rules,
+		chainConfig,
+		common.Hash{0x01}, // non-zero PrevRandao necessary to enable Cancun
+	)
 
 	// Execute genesis transactions
 	evmProcessor.Execute(genesisTxs)
