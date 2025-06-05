@@ -29,13 +29,7 @@ func TestProposalCheck_Validate_NonVersion3_Passes(t *testing.T) {
 func TestProposalCheck_Validate_ValidGenesisEventWithoutProposalPasses(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	reader := NewMockReader(ctrl)
-	event := inter.NewMockEventPayloadI(ctrl)
-
-	event.EXPECT().Version().Return(uint8(3))
-	event.EXPECT().AnyTxs().Return(false)
-	event.EXPECT().AnyBlockVotes().Return(false)
-	event.EXPECT().AnyEpochVote().Return(false)
-	event.EXPECT().AnyMisbehaviourProofs().Return(false)
+	event := NewMockEventPassingVersion3PropertyTests(ctrl)
 
 	// The event to be tested is a genesis event - there are no parents.
 	event.EXPECT().Parents().Return([]hash.Event{})
@@ -53,17 +47,11 @@ func TestProposalCheck_Validate_ValidGenesisEventWithoutProposalPasses(t *testin
 func TestProposalCheck_Validate_ValidGenesisEventWithProposalPasses(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	reader := NewMockReader(ctrl)
-	event := inter.NewMockEventPayloadI(ctrl)
+	event := NewMockEventPassingVersion3PropertyTests(ctrl)
 
 	validator := idx.ValidatorID(1)
 	validators := pos.EqualWeightValidators([]idx.ValidatorID{validator}, 1)
 	reader.EXPECT().GetEpochValidators().Return(validators)
-
-	event.EXPECT().Version().Return(uint8(3))
-	event.EXPECT().AnyTxs().Return(false)
-	event.EXPECT().AnyBlockVotes().Return(false)
-	event.EXPECT().AnyEpochVote().Return(false)
-	event.EXPECT().AnyMisbehaviourProofs().Return(false)
 
 	event.EXPECT().Creator().Return(validator)
 	event.EXPECT().Frame().Return(idx.Frame(1))
@@ -86,7 +74,7 @@ func TestProposalCheck_Validate_ValidGenesisEventWithProposalPasses(t *testing.T
 func TestProposalCheck_Validate_ValidEventWithoutProposalPasses(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	reader := NewMockReader(ctrl)
-	event := inter.NewMockEventPayloadI(ctrl)
+	event := NewMockEventPassingVersion3PropertyTests(ctrl)
 
 	parent1 := hash.Event{1}
 	parent2 := hash.Event{2}
@@ -108,12 +96,6 @@ func TestProposalCheck_Validate_ValidEventWithoutProposalPasses(t *testing.T) {
 		ProposalSyncState: syncState2,
 	})
 
-	event.EXPECT().Version().Return(uint8(3))
-	event.EXPECT().AnyTxs().Return(false)
-	event.EXPECT().AnyBlockVotes().Return(false)
-	event.EXPECT().AnyEpochVote().Return(false)
-	event.EXPECT().AnyMisbehaviourProofs().Return(false)
-
 	event.EXPECT().Parents().Return([]hash.Event{parent1, parent2})
 	event.EXPECT().Payload().Return(&inter.Payload{
 		ProposalSyncState: joinedState,
@@ -126,7 +108,7 @@ func TestProposalCheck_Validate_ValidEventWithoutProposalPasses(t *testing.T) {
 func TestProposalCheck_Validate_ValidEventWithProposalPasses(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	reader := NewMockReader(ctrl)
-	event := inter.NewMockEventPayloadI(ctrl)
+	event := NewMockEventPassingVersion3PropertyTests(ctrl)
 
 	validator := idx.ValidatorID(1)
 	validators := pos.EqualWeightValidators([]idx.ValidatorID{validator}, 1)
@@ -151,12 +133,6 @@ func TestProposalCheck_Validate_ValidEventWithProposalPasses(t *testing.T) {
 	reader.EXPECT().GetEventPayload(parent2).Return(inter.Payload{
 		ProposalSyncState: syncState2,
 	})
-
-	event.EXPECT().Version().Return(uint8(3))
-	event.EXPECT().AnyTxs().Return(false)
-	event.EXPECT().AnyBlockVotes().Return(false)
-	event.EXPECT().AnyEpochVote().Return(false)
-	event.EXPECT().AnyMisbehaviourProofs().Return(false)
 
 	event.EXPECT().Creator().Return(validator)
 	event.EXPECT().Frame().Return(idx.Frame(20))
@@ -267,10 +243,10 @@ func TestChecker_Validate_DetectsInvalidEvent(t *testing.T) {
 			test.corrupt(event)
 
 			event.EXPECT().Version().Return(uint8(3)).AnyTimes()
-			event.EXPECT().AnyTxs().Return(false).AnyTimes()
-			event.EXPECT().AnyBlockVotes().Return(false).AnyTimes()
-			event.EXPECT().AnyEpochVote().Return(false).AnyTimes()
-			event.EXPECT().AnyMisbehaviourProofs().Return(false).AnyTimes()
+			event.EXPECT().AnyTxs().AnyTimes()
+			event.EXPECT().AnyBlockVotes().AnyTimes()
+			event.EXPECT().AnyEpochVote().AnyTimes()
+			event.EXPECT().AnyMisbehaviourProofs().AnyTimes()
 
 			event.EXPECT().Creator().Return(creator).AnyTimes()
 			event.EXPECT().Frame().Return(idx.Frame(1)).AnyTimes()
@@ -291,18 +267,12 @@ func TestChecker_Validate_DetectsInvalidEvent(t *testing.T) {
 func TestProposalCheck_Validate_ReportsInvalidValidatorSet(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	reader := NewMockReader(ctrl)
-	event := inter.NewMockEventPayloadI(ctrl)
+	event := NewMockEventPassingVersion3PropertyTests(ctrl)
 
 	// An empty validator set is invalid.
 	validator := idx.ValidatorID(1)
 	validators := pos.EqualWeightValidators([]idx.ValidatorID{}, 1)
 	reader.EXPECT().GetEpochValidators().Return(validators)
-
-	event.EXPECT().Version().Return(uint8(3))
-	event.EXPECT().AnyTxs().Return(false)
-	event.EXPECT().AnyBlockVotes().Return(false)
-	event.EXPECT().AnyEpochVote().Return(false)
-	event.EXPECT().AnyMisbehaviourProofs().Return(false)
 
 	event.EXPECT().Creator().Return(validator)
 	event.EXPECT().Frame().Return(idx.Frame(1))
@@ -460,4 +430,14 @@ func TestCheckProposal_DetectsInvalidProposals(t *testing.T) {
 			require.ErrorIs(t, checkProposal(event, *proposal), test.expected)
 		})
 	}
+}
+
+func NewMockEventPassingVersion3PropertyTests(ctrl *gomock.Controller) *inter.MockEventPayloadI {
+	event := inter.NewMockEventPayloadI(ctrl)
+	event.EXPECT().Version().Return(uint8(3)).AnyTimes()
+	event.EXPECT().AnyTxs().AnyTimes()
+	event.EXPECT().AnyBlockVotes().AnyTimes()
+	event.EXPECT().AnyEpochVote().AnyTimes()
+	event.EXPECT().AnyMisbehaviourProofs().AnyTimes()
+	return event
 }

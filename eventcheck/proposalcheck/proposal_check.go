@@ -32,9 +32,9 @@ const (
 	ErrTransactionsExceedSizeLimit    = common.ConstError("total size of transactions in proposal exceeds the allowed limit")
 )
 
-// Checker that block proposal and envelope information in events is valid. This
-// check must only be performed after all parent events are available, as the
-// check requires to read payload information from the parents.
+// Checker verifies that block proposal and proposal sync-state information in
+// events is valid. This check must only be performed after all parent events
+// are available, as the check requires to retrieve the parent's payload data.
 type Checker struct {
 	reader Reader
 }
