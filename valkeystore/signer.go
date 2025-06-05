@@ -25,7 +25,7 @@ type signerAuthorityImpl struct {
 	pubkey  validatorpk.PubKey
 }
 
-// Constructs a new SignerAuthority using the provided keystore and public key.
+// NewSignerAuthority constructs a new SignerAuthority using the provided keystore and public key.
 // The validator's private key is expected to be stored in the keystore
 func NewSignerAuthority(store KeystoreI, pubkey validatorpk.PubKey) SignerAuthority {
 	return &signerAuthorityImpl{

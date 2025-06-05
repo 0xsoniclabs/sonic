@@ -126,11 +126,11 @@ func (fixedPriceBaseFeeSource) GetCurrentBaseFee() *big.Int {
 func TestEmitter_CreateEvent_CreatesCorrectEventVersion(t *testing.T) {
 
 	tests := map[string]opera.Upgrades{
-		"sonic": opera.Upgrades{
+		"sonic": {
 			Sonic:   true,
 			Allegro: false,
 		},
-		"allegro": opera.Upgrades{
+		"allegro": {
 			Sonic:   true,
 			Allegro: true,
 		},

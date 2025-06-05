@@ -15,6 +15,10 @@ linters:
         # Ignored rules
         - "-ST1000" # Incorrect or missing package comment.
         - "-ST1003" # Poorly chosen identifier.
+        # rules ST1023 and QF1011 have few findings, but in those cases adding
+        # the type to the declaration improves readability.
+        - "-ST1023" # Redundant type in variable declaration.
+        - "-QF1011" # Omit redundant type from variable declaration.
 
 
 formatters:
