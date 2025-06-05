@@ -176,7 +176,7 @@ type TxPoolConfig struct {
 	Journal   string           // Journal of local transactions to survive node restarts
 	Rejournal time.Duration    // Time interval to regenerate the local transaction journal
 
-	MinimumTip uint64 // Minimum tip to required to be accepted into the pool
+	MinimumTip uint64 // Minimum tip required to be accepted into the pool
 	PriceBump  uint64 // Minimum price bump percentage to replace an already existing transaction (nonce)
 
 	AccountSlots uint64 // Number of executable transaction slots guaranteed per account
