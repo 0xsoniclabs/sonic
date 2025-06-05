@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"time"
 
+	carmen "github.com/0xsoniclabs/carmen/go/common"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/scheduler"
 	"github.com/0xsoniclabs/sonic/gossip/randao"
 	"github.com/0xsoniclabs/sonic/inter"
@@ -33,6 +34,7 @@ const (
 	// may be altered without the need of a hard fork if need to improve the
 	// performance of the block proposal process.
 	maxTotalTransactionsSizeInProposalsInBytes = 8 * 1024 * 1024 // 8 MiB
+	ErrRandaoGenerationFailed                  = carmen.ConstError("randao reveal generation failed")
 )
 
 // createPayload creates payload to be attached to the given event. The result
@@ -126,7 +128,7 @@ func createPayload(
 	// Make a new proposal. For the time of the block we use the median time,
 	// which is the median of all creation times of the events seen from all
 	// validators.
-	proposal := makeProposal(
+	proposal, err := makeProposal(
 		world.GetRules(),
 		incomingState,
 		latest,
@@ -138,6 +140,9 @@ func createPayload(
 		durationMetric,
 		timeoutMetric,
 	)
+	if err != nil {
+		return inter.Payload{}, err
+	}
 
 	// If no new proposal was created, the payload remains empty.
 	if proposal == nil {
@@ -205,25 +210,23 @@ func makeProposal(
 	randaoMixer randaoMixer,
 	durationMetric timerMetric,
 	timeoutMetric counterMetric,
-) *inter.Proposal {
+) (*inter.Proposal, error) {
 	// Compute the gas limit for the next block. This is the time since the
 	// previous block times the targeted network throughput.
 	lastBlockTime := latestBlock.Time
 	if lastBlockTime >= newBlockTime {
 		// no time has passed, so no new proposal can be made
-		return nil
+		return nil, nil
 	}
 	effectiveGasLimit := getEffectiveGasLimit(
 		newBlockTime.Time().Sub(lastBlockTime.Time()),
 		rules.Economy.ShortGasPower.AllocPerSec, // TODO: consider using a new rule set parameter
 	)
 
-	randaoReveal, randaoMix, err := randaoMixer.MixRandao(
-		latestBlock.PrevRandao,
-	)
+	randaoReveal, randaoMix, err := randaoMixer.MixRandao(latestBlock.PrevRandao)
 	if err != nil {
 		// If the randao mixer fails, we cannot create a proposal.
-		return nil
+		return nil, ErrRandaoGenerationFailed
 	}
 
 	// Create the proposal for the next block.
@@ -265,7 +268,7 @@ func makeProposal(
 		timeoutMetric.Inc(1)
 	}
 
-	return proposal
+	return proposal, nil
 }
 
 // txScheduler is an interface for scheduling transactions in a block

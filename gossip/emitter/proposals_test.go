@@ -375,7 +375,7 @@ func TestMakeProposal_ValidArguments_CreatesValidProposal(t *testing.T) {
 	randaoMixer.EXPECT().MixRandao(any).Return(someRandaoReveal, someRandao, nil)
 
 	// Run the proposal creation.
-	proposal := makeProposal(
+	proposal, err := makeProposal(
 		rules,
 		state,
 		latestBlock,
@@ -387,6 +387,7 @@ func TestMakeProposal_ValidArguments_CreatesValidProposal(t *testing.T) {
 		durationMetric,
 		timeoutMetric,
 	)
+	require.NoError(err)
 
 	require.Equal(idx.Block(latestBlock.Number)+1, proposal.Number)
 	require.Equal(latestBlock.Hash(), proposal.ParentHash)
@@ -403,9 +404,10 @@ func TestMakeProposal_InvalidBlockTime_ReturnsNil(t *testing.T) {
 	latestBlock := inter.NewBlockBuilder().WithTime(1234).Build()
 	for _, delta := range []time.Duration{-1 * time.Nanosecond, 0} {
 		newTime := inter.Timestamp(1234) + inter.Timestamp(delta)
-		payload := makeProposal(
+		payload, err := makeProposal(
 			opera.Rules{}, state, latestBlock, newTime, 0, nil, nil, nil, nil, nil,
 		)
+		require.NoError(t, err, "not error but no-proposal expected")
 		require.Nil(t, payload)
 	}
 }
@@ -442,7 +444,7 @@ func TestMakeProposal_IfSchedulerTimesOut_SignalTimeoutToMonitor(t *testing.T) {
 	randaoMixer := NewMockrandaoMixer(ctrl)
 	randaoMixer.EXPECT().MixRandao(any)
 
-	makeProposal(
+	_, err := makeProposal(
 		opera.Rules{},
 		inter.ProposalSyncState{},
 		inter.NewBlockBuilder().Build(),
@@ -454,6 +456,7 @@ func TestMakeProposal_IfSchedulerTimesOut_SignalTimeoutToMonitor(t *testing.T) {
 		durationMetric,
 		timeoutMetric,
 	)
+	require.NoError(t, err)
 }
 
 func TestGetEffectiveGasLimit_IsProportionalToDelay(t *testing.T) {
@@ -555,7 +558,7 @@ func TestMakeProposal_SkipsProposalOnRandaoRevealError(t *testing.T) {
 		randao.RandaoReveal{}, common.Hash{}, errors.New("randao error"))
 
 	// Run the proposal creation.
-	proposal := makeProposal(
+	_, err := makeProposal(
 		rules,
 		state,
 		latestBlock,
@@ -567,5 +570,5 @@ func TestMakeProposal_SkipsProposalOnRandaoRevealError(t *testing.T) {
 		nil,
 		nil,
 	)
-	require.Nil(proposal, "proposal should be nil when RandaoReveal fails")
+	require.ErrorContains(err, ErrRandaoGenerationFailed.Error())
 }
