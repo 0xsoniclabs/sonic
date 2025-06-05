@@ -211,10 +211,11 @@ func TestExtractProposalForNextBlock_MultipleValidProposals_EmitsWarning(t *test
 		ParentHash: last.Hash,
 	}
 
-	payload := &inter.Payload{Proposal: proposal}
-	event1.EXPECT().Payload().Return(payload)
+	payload1 := &inter.Payload{Proposal: proposal}
+	payload2 := &inter.Payload{Proposal: proposal}
+	event1.EXPECT().Payload().Return(payload1)
 	event1.EXPECT().Creator().Return(idx.ValidatorID(1))
-	event2.EXPECT().Payload().Return(payload)
+	event2.EXPECT().Payload().Return(payload2)
 	event2.EXPECT().Creator().Return(idx.ValidatorID(2))
 
 	events := []inter.EventPayloadI{event1, event2}
@@ -227,7 +228,7 @@ func TestExtractProposalForNextBlock_MultipleValidProposals_EmitsWarning(t *test
 	result, proposer := extractProposalForNextBlock(last, events, logger)
 	require.NotNil(t, result)
 	require.Equal(t, *proposal, *result)
-	require.Equal(t, idx.ValidatorID(2), proposer)
+	require.Equal(t, idx.ValidatorID(1), proposer)
 }
 
 func TestExtractProposalForNextBlock_MultipleValidProposals_UsesTurnAndHashAsTieBreaker(t *testing.T) {
