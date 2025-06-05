@@ -188,6 +188,29 @@ func consensusCallbackBeginBlockFn(
 					}
 				}
 
+				prevRandao := computePrevRandao(confirmedEvents)
+				chainCfg := es.Rules.EvmChainConfig(store.GetUpgradeHeights())
+				evmProcessor := blockProc.EVMModule.Start(
+					blockCtx,
+					statedb,
+					evmStateReader,
+					onNewLogAll,
+					es.Rules,
+					chainCfg,
+					prevRandao,
+				)
+				executionStart := time.Now()
+
+				// Execute pre-internal transactions
+				preInternalTxs := blockProc.PreTxTransactor.PopInternalTxs(blockCtx, bs, es, sealing, statedb)
+				preInternalReceipts := evmProcessor.Execute(preInternalTxs)
+				bs = txListener.Finalize()
+				for _, r := range preInternalReceipts {
+					if r.Status == 0 {
+						log.Warn("Pre-internal transaction reverted", "txid", r.TxHash.String())
+					}
+				}
+
 				// Seal epoch if requested
 				if sealing {
 					sealer.Update(bs, es)
@@ -205,83 +228,47 @@ func consensusCallbackBeginBlockFn(
 					txListener.Update(bs, es)
 				}
 
-				chainCfg := es.Rules.EvmChainConfig(store.GetUpgradeHeights())
-				randao := computePrevRandao(confirmedEvents)
-
 				// At this point, newValidators may be returned and the rest of the code may be executed in a parallel thread
-				// sort events by Lamport time
-				sort.Sort(confirmedEvents)
-				maxBlockGas := es.Rules.Blocks.MaxBlockGas
-				blockEvents := spillBlockEvents(store, confirmedEvents, maxBlockGas)
+				blockFn := func() {
+					// sort events by Lamport time
+					sort.Sort(confirmedEvents)
+					maxBlockGas := es.Rules.Blocks.MaxBlockGas
+					blockEvents := spillBlockEvents(store, confirmedEvents, maxBlockGas)
 
-				// Start assembling the resulting block.
-				number := uint64(blockCtx.Idx)
-				lastBlockHeader := evmStateReader.GetHeaderByNumber(number - 1)
+					// Start assembling the resulting block.
+					number := uint64(blockCtx.Idx)
+					lastBlockHeader := evmStateReader.GetHeaderByNumber(number - 1)
 
-				// Get a proposal for the block to be created.
-				proposal := inter.Proposal{
-					Number:     blockCtx.Idx,
-					ParentHash: lastBlockHeader.Hash,
-					Time:       blockCtx.Time,
-				}
-				if es.Rules.Upgrades.SingleProposerBlockFormation {
-					events := make([]inter.EventPayloadI, 0, blockEvents.Len())
-					for _, e := range blockEvents {
-						events = append(events, e)
+					// Get a proposal for the block to be created.
+					proposal := inter.Proposal{
+						Number:     blockCtx.Idx,
+						ParentHash: lastBlockHeader.Hash,
+						Time:       blockCtx.Time,
 					}
-					if proposed, proposer := extractProposalForNextBlock(lastBlockHeader, events, log.Root()); proposed != nil {
-						proposal = *proposed
-						validatorKeys := readEpochPubKeys(store, blockCtx.Atropos.Epoch())
-						proposerKey := validatorKeys.PubKeys[proposer]
-
-						blockProposalRandao, ok := proposal.RandaoReveal.VerifyAndGetRandao(lastBlockHeader.PrevRandao, proposerKey)
-						if !ok {
-							// If randao reveal cannot be verified, this block will be computed using the
-							// event derived randao value. This can happen if the randao reveal value
-							// was not created according to specification.
-							log.Warn("Failed to verify randao reveal, using DAG randomization", "proposer validator", proposer)
+					if es.Rules.Upgrades.SingleProposerBlockFormation {
+						events := make([]inter.EventPayloadI, 0, blockEvents.Len())
+						for _, e := range blockEvents {
+							events = append(events, e)
+						}
+						if proposed, _ := extractProposalForNextBlock(lastBlockHeader, events, log.Root()); proposed != nil {
+							proposal = *proposed
+							// TODO(#154): derive prevRandao from the proposal
 						} else {
-							randao = blockProposalRandao
+							// If no proposal is found but a block needs to be
+							// created (as this function has been called), we
+							// use a minimum time span to avoid removing gas
+							// allocation time from the next block.
+							proposal.Time = lastBlockHeader.Time + 1
 						}
 					} else {
-						// If no proposal is found but a block needs to be
-						// created (as this function has been called), we
-						// use a minimum time span to avoid removing gas
-						// allocation time from the next block.
-						proposal.Time = lastBlockHeader.Time + 1
-					}
-				} else {
-					// Collect transactions from events and schedule them.
-					unorderedTxs := make(types.Transactions, 0, blockEvents.Len()*10)
-					for _, e := range blockEvents {
-						unorderedTxs = append(unorderedTxs, e.Txs()...)
-					}
-
-					signer := gsignercache.Wrap(types.MakeSigner(chainCfg, new(big.Int).SetUint64(number), uint64(blockCtx.Time)))
-					proposal.Transactions = scrambler.GetExecutionOrder(unorderedTxs, signer, es.Rules.Upgrades.Sonic)
-				}
-
-				evmProcessor := blockProc.EVMModule.Start(
-					blockCtx,
-					statedb,
-					evmStateReader,
-					onNewLogAll,
-					es.Rules,
-					chainCfg,
-					randao,
-				)
-				executionStart := time.Now()
-
-				blockFn := func() {
-
-					// Execute pre-internal transactions
-					preInternalTxs := blockProc.PreTxTransactor.PopInternalTxs(blockCtx, bs, es, sealing, statedb)
-					preInternalReceipts := evmProcessor.Execute(preInternalTxs)
-					bs = txListener.Finalize()
-					for _, r := range preInternalReceipts {
-						if r.Status == 0 {
-							log.Warn("Pre-internal transaction reverted", "txid", r.TxHash.String())
+						// Collect transactions from events and schedule them.
+						unorderedTxs := make(types.Transactions, 0, blockEvents.Len()*10)
+						for _, e := range blockEvents {
+							unorderedTxs = append(unorderedTxs, e.Txs()...)
 						}
+
+						signer := gsignercache.Wrap(types.MakeSigner(chainCfg, new(big.Int).SetUint64(number), uint64(blockCtx.Time)))
+						proposal.Transactions = scrambler.GetExecutionOrder(unorderedTxs, signer, es.Rules.Upgrades.Sonic)
 					}
 
 					blockDuration := time.Duration(proposal.Time - bs.LastBlock.Time)
@@ -290,7 +277,7 @@ func consensusCallbackBeginBlockFn(
 						WithNumber(number).
 						WithParentHash(proposal.ParentHash).
 						WithTime(proposal.Time).
-						WithPrevRandao(randao).
+						WithPrevRandao(prevRandao).
 						WithGasLimit(maxBlockGas).
 						WithDuration(blockDuration)
 
