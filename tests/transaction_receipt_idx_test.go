@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"fmt"
 	"math/big"
 	"testing"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/stretchr/testify/require"
 )
 
@@ -22,21 +24,15 @@ func TestReceipt_InternalTransactionsDoNotChangeReceiptIndex(t *testing.T) {
 	require.NoError(t, err)
 	defer client.Close()
 
-	chainId := net.GetChainId()
-	gasPrice, err := client.SuggestGasPrice(t.Context())
+	// Run one transaction to not interfere with still pending delayed genesis.
+	receipt, err := net.EndowAccount(common.Address{}, big.NewInt(1e18))
 	require.NoError(t, err)
-	sender := makeAccountWithBalance(t, net, big.NewInt(1e18))
+	before := receipt.BlockNumber.Uint64()
 
-	numSimpleTxs := 10
-	transactions := prepareTransactions(t, chainId, sender, gasPrice, numSimpleTxs)
+	initialEpoch, err := getEpochOfBlock(client, int(before))
+	require.NoError(t, err)
 
-	// Send first half of simple transactions
-	for i := range numSimpleTxs / 2 {
-		err = client.SendTransaction(t.Context(), transactions[i])
-		require.NoError(t, err)
-	}
-
-	// Send internal transaction (advance epoch)
+	// Send transaction instructing the network to advance one epoch.
 	contract, err := driverauth100.NewContract(driverauth.ContractAddress, client)
 	require.NoError(t, err)
 	txOpts, err := net.GetTransactOptions(&net.account)
@@ -45,52 +41,82 @@ func TestReceipt_InternalTransactionsDoNotChangeReceiptIndex(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, tx)
 
-	// Send second half of simple transactions
-	for i := range numSimpleTxs / 2 {
-		err = client.SendTransaction(t.Context(), transactions[numSimpleTxs/2+i])
+	// Wait for the epoch to progress while sending in new transactions, hoping
+	// to get a transaction into the epoch-sealing block.
+	for {
+		current, err := client.BlockNumber(t.Context())
+		require.NoError(t, err)
+
+		currentEpoch, err := getEpochOfBlock(client, int(current))
+		require.NoError(t, err)
+		if currentEpoch > initialEpoch {
+			break
+		}
+
+		_, err = net.EndowAccount(common.Address{}, big.NewInt(1e18))
 		require.NoError(t, err)
 	}
 
-	// Wait for receipt of the internal transaction
-	receipt, err := net.GetReceipt(tx.Hash())
+	after, err := client.BlockNumber(t.Context())
 	require.NoError(t, err)
-	require.NotNil(t, receipt)
 
-	block, err := client.BlockByNumber(t.Context(), receipt.BlockNumber)
+	// Search for block containing the internal sealing transactions.
+	var sealingBlock *types.Block
+	for cur := before; cur <= after; cur++ {
+		block, err := client.BlockByNumber(t.Context(), big.NewInt(int64(cur)))
+		require.NoError(t, err)
+
+		if len(block.Transactions()) == 0 {
+			continue
+		}
+		first := block.Transactions()[0]
+
+		sender, err := getSenderOfTransaction(client, first.Hash())
+		require.NoError(t, err)
+		if sender == (common.Address{}) {
+			sealingBlock = block
+			break
+		}
+	}
+	require.NotNil(t, sealingBlock, "No block found with internal transactions")
+
+	// There should be at least 2 internal transactions + one extra transaction.
+	// Internal transactions are send by the zero address.
+	require.Greater(t, len(sealingBlock.Transactions()), 2)
+
+	transactions := sealingBlock.Transactions()
+	sender, err := getSenderOfTransaction(client, transactions[0].Hash())
 	require.NoError(t, err)
-	transactions = block.Transactions()
+	require.Equal(t, common.Address{}, sender)
 
-	// Make sure internal transaction has the correct recipient address
-	require.Equal(t, driverauth.ContractAddress, *tx.To(),
-		"Transaction recipient address should match the driverauth address")
+	sender, err = getSenderOfTransaction(client, transactions[1].Hash())
+	require.NoError(t, err)
+	require.Equal(t, common.Address{}, sender)
 
-	// Make sure the block contains simple transactions and the internal one
-	require.Greater(t, len(transactions), numSimpleTxs/2,
-		"Block should contain some simple transactions and the internal one")
+	sender, err = getSenderOfTransaction(client, transactions[2].Hash())
+	require.NoError(t, err)
+	require.NotEqual(t, common.Address{}, sender)
 
+	// Check that the index numbers of the receipts match the transaction index.
 	for i, tx := range transactions {
 		receipt, err := client.TransactionReceipt(t.Context(), tx.Hash())
 		require.NoError(t, err)
-
-		// Check that the receipt index is equal to the transaction index
 		require.Equal(t, uint(i), receipt.TransactionIndex,
-			"Receipt index does not match transaction index for tx %d", i)
+			"Receipt index does not match transaction index for tx %d", i,
+		)
 	}
 }
 
-func prepareTransactions(t *testing.T, chainId *big.Int, sender *Account, gasPrice *big.Int, num int) []*types.Transaction {
-	transactions := make([]*types.Transaction, num)
-	for nonce := range num {
-		txData := &types.LegacyTx{
-			Nonce:    uint64(nonce),
-			Gas:      100000,
-			GasPrice: gasPrice,
-			To:       &common.Address{0x42},
-			Value:    big.NewInt(1),
-		}
-
-		tx := signTransaction(t, chainId, txData, sender)
-		transactions[nonce] = tx
+func getSenderOfTransaction(
+	client *ethclient.Client,
+	txHash common.Hash,
+) (common.Address, error) {
+	details := struct {
+		From common.Address
+	}{}
+	err := client.Client().Call(&details, "eth_getTransactionByHash", txHash)
+	if err != nil {
+		return common.Address{}, fmt.Errorf("failed to get transaction details: %w", err)
 	}
-	return transactions
+	return details.From, nil
 }
