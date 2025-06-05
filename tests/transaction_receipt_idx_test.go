@@ -60,6 +60,10 @@ func TestReceipt_InternalTransactionsDoNotChangeReceiptIndex(t *testing.T) {
 	require.NoError(t, err)
 	transactions = block.Transactions()
 
+	// Make sure internal transaction has the correct recipient address
+	require.Equal(t, driverauth.ContractAddress, *tx.To(),
+		"Transaction recipient address should match the driverauth address")
+
 	// Make sure the block contains simple transactions and the internal one
 	require.Greater(t, len(transactions), numSimpleTxs/2,
 		"Block should contain some simple transactions and the internal one")
