@@ -13,21 +13,15 @@ import (
 func TestRandao_randaoIntegrationTest(t *testing.T) {
 	const NumNodes = 3
 
-	tests := map[string]struct {
-		hardFork opera.Upgrades
-	}{
-		"dag proposal": {
-			hardFork: opera.GetSonicUpgrades(),
-		},
-		"single proposal": {
-			hardFork: opera.Upgrades{
-				Berlin:                       true,
-				London:                       true,
-				Llr:                          false,
-				Allegro:                      true,
-				Sonic:                        true,
-				SingleProposerBlockFormation: true,
-			},
+	tests := map[string]opera.Upgrades{
+		"dag proposal": opera.GetSonicUpgrades(),
+		"single proposal": opera.Upgrades{
+			Berlin:                       true,
+			London:                       true,
+			Llr:                          false,
+			Allegro:                      true,
+			Sonic:                        true,
+			SingleProposerBlockFormation: true,
 		},
 	}
 
@@ -36,7 +30,7 @@ func TestRandao_randaoIntegrationTest(t *testing.T) {
 			net := StartIntegrationTestNet(t,
 				IntegrationTestNetOptions{
 					NumNodes: NumNodes,
-					Upgrades: &test.hardFork,
+					Upgrades: &test,
 				},
 			)
 			defer net.Stop()
