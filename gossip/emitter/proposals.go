@@ -347,6 +347,10 @@ type transactionIndex interface {
 	Pop()
 }
 
+// randaoMixer is an interface to abstract the randao mixing process.
+// It provides a method to return the reveal and mix hash for the next
+// block without exposing the need for this module to know about the
+// validator keys.
 type randaoMixer interface {
 	MixRandao(prevRandao common.Hash) (randao.RandaoReveal, common.Hash, error)
 }

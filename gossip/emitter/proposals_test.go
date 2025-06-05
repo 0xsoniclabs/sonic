@@ -432,7 +432,7 @@ func TestMakeProposal_IfSchedulerTimesOut_SignalTimeoutToMonitor(t *testing.T) {
 	timeoutMetric.EXPECT().Inc(int64(1))
 
 	randaoMixer := NewMockrandaoMixer(ctrl)
-	randaoMixer.EXPECT().MixRandao(any).Return(randao.RandaoReveal{}, common.Hash{}, nil)
+	randaoMixer.EXPECT().MixRandao(any)
 
 	makeProposal(
 		opera.Rules{},
@@ -539,8 +539,7 @@ func TestMakeProposal_SkipsProposalOnRandaoRevealError(t *testing.T) {
 		WithTime(1234).
 		Build()
 
-	delta := 20 * time.Millisecond
-	newBlockTime := inter.Timestamp(1234) + inter.Timestamp(delta)
+	newBlockTime := latestBlock.Time + 10
 	currentFrame := idx.Frame(17)
 
 	randaoMixer := NewMockrandaoMixer(ctrl)
