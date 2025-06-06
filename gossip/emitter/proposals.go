@@ -6,7 +6,6 @@ import (
 	"math/big"
 	"time"
 
-	carmen "github.com/0xsoniclabs/carmen/go/common"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/scheduler"
 	"github.com/0xsoniclabs/sonic/gossip/randao"
 	"github.com/0xsoniclabs/sonic/inter"
@@ -34,7 +33,6 @@ const (
 	// may be altered without the need of a hard fork if need to improve the
 	// performance of the block proposal process.
 	maxTotalTransactionsSizeInProposalsInBytes = 8 * 1024 * 1024 // 8 MiB
-	ErrRandaoGenerationFailed                  = carmen.ConstError("randao reveal generation failed")
 )
 
 // createPayload creates payload to be attached to the given event. The result
@@ -225,8 +223,7 @@ func makeProposal(
 
 	randaoReveal, randaoMix, err := randaoMixer.MixRandao(latestBlock.PrevRandao)
 	if err != nil {
-		// If the randao mixer fails, we cannot create a proposal.
-		return nil, ErrRandaoGenerationFailed
+		return nil, fmt.Errorf("randao reveal generation failed: %w", err)
 	}
 
 	// Create the proposal for the next block.
