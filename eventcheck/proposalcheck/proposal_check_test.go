@@ -386,7 +386,7 @@ func TestCheckProposal_DetectsInvalidProposals(t *testing.T) {
 	}{
 		"invalid time": {
 			corrupt: func(proposal *inter.Proposal) {
-				proposal.Time = inter.Timestamp(321) // not the median tiem
+				proposal.Time = inter.Timestamp(321) // not the median time
 			},
 			expected: ErrInvalidProposalTime,
 		},
