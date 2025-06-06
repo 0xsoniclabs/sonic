@@ -51,8 +51,8 @@ func (b *EthAPIBackend) SetExtRPCEnabled(v bool) {
 }
 
 // ChainConfig returns the active chain configuration.
-func (b *EthAPIBackend) ChainConfig() *params.ChainConfig {
-	return b.svc.store.GetEvmChainConfig()
+func (b *EthAPIBackend) ChainConfig(blockHeight idx.Block) *params.ChainConfig {
+	return b.svc.store.GetEvmChainConfig(blockHeight)
 }
 
 func (b *EthAPIBackend) CurrentBlock() *evmcore.EvmBlock {
@@ -301,7 +301,14 @@ func (b *EthAPIBackend) GetReceiptsByNumber(ctx context.Context, number rpc.Bloc
 	time := uint64(block.Time.Unix())
 	baseFee := block.BaseFee
 	blobGasPrice := new(big.Int) // TODO issue #147
-	receipts := b.svc.store.evm.GetReceipts(idx.Block(number), b.ChainConfig(), block.Hash, time, baseFee, blobGasPrice, block.Transactions)
+	receipts := b.svc.store.evm.GetReceipts(idx.Block(number),
+		b.ChainConfig(idx.Block(number)),
+		block.Hash,
+		time,
+		baseFee,
+		blobGasPrice,
+		block.Transactions,
+	)
 	return receipts, nil
 }
 
@@ -339,7 +346,7 @@ func (b *EthAPIBackend) GetEVM(ctx context.Context, state vm.StateDB, header *ev
 	} else {
 		context = *blockContext
 	}
-	config := b.ChainConfig()
+	config := b.ChainConfig(idx.Block(context.BlockNumber.Uint64()))
 	return vm.NewEVM(context, state, config, *vmConfig), vmError, nil
 }
 
@@ -538,6 +545,10 @@ func (b *EthAPIBackend) GetEpochBlockState(ctx context.Context, epoch rpc.BlockN
 
 func (b *EthAPIBackend) CalcBlockExtApi() bool {
 	return b.svc.config.RPCBlockExt
+}
+
+func (b *EthAPIBackend) ChainID() *big.Int {
+	return new(big.Int).SetUint64(b.svc.store.GetRules().NetworkID)
 }
 
 func (b *EthAPIBackend) SealedEpochTiming(ctx context.Context) (start inter.Timestamp, end inter.Timestamp) {

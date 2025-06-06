@@ -24,6 +24,7 @@ import (
 	"math"
 	"math/big"
 
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
@@ -84,11 +85,12 @@ func (args *TransactionArgs) setDefaults(ctx context.Context, b Backend) error {
 	}
 	// After london, default to 1559 unless gasPrice is set
 	head := b.CurrentBlock().Header()
+	chainConfig := b.ChainConfig(idx.Block(head.Number.Uint64()))
 	// If user specifies both maxPriorityfee and maxFee, then we do not
 	// need to consult the chain for defaults. It's definitely a London tx.
 	if args.MaxPriorityFeePerGas == nil || args.MaxFeePerGas == nil {
 		// In this clause, user left some fields unspecified.
-		if b.ChainConfig().IsLondon(head.Number) && args.GasPrice == nil {
+		if chainConfig.IsLondon(head.Number) && args.GasPrice == nil {
 			if args.MaxPriorityFeePerGas == nil {
 				tip := b.SuggestGasTipCap(ctx, gasprice.AsDefaultCertainty)
 				args.MaxPriorityFeePerGas = (*hexutil.Big)(tip)
@@ -158,7 +160,7 @@ func (args *TransactionArgs) setDefaults(ctx context.Context, b Backend) error {
 		log.Trace("Estimate gas usage automatically", "gas", args.Gas)
 	}
 	if args.ChainID == nil {
-		id := (*hexutil.Big)(b.ChainConfig().ChainID)
+		id := (*hexutil.Big)(b.ChainID())
 		args.ChainID = id
 	}
 	return nil

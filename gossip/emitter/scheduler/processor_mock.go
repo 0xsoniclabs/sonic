@@ -14,6 +14,7 @@ import (
 
 	evmcore "github.com/0xsoniclabs/sonic/evmcore"
 	state "github.com/0xsoniclabs/sonic/inter/state"
+	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
 	common "github.com/ethereum/go-ethereum/common"
 	types "github.com/ethereum/go-ethereum/core/types"
 	params "github.com/ethereum/go-ethereum/params"
@@ -131,17 +132,17 @@ func (m *MockChain) EXPECT() *MockChainMockRecorder {
 }
 
 // GetEvmChainConfig mocks base method.
-func (m *MockChain) GetEvmChainConfig() *params.ChainConfig {
+func (m *MockChain) GetEvmChainConfig(blockHeight idx.Block) *params.ChainConfig {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetEvmChainConfig")
+	ret := m.ctrl.Call(m, "GetEvmChainConfig", blockHeight)
 	ret0, _ := ret[0].(*params.ChainConfig)
 	return ret0
 }
 
 // GetEvmChainConfig indicates an expected call of GetEvmChainConfig.
-func (mr *MockChainMockRecorder) GetEvmChainConfig() *gomock.Call {
+func (mr *MockChainMockRecorder) GetEvmChainConfig(blockHeight any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEvmChainConfig", reflect.TypeOf((*MockChain)(nil).GetEvmChainConfig))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEvmChainConfig", reflect.TypeOf((*MockChain)(nil).GetEvmChainConfig), blockHeight)
 }
 
 // GetHeader mocks base method.

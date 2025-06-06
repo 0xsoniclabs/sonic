@@ -118,14 +118,14 @@ func TestWorldAdapter_GetEvmChainConfig_ForwardsCallToGetRulesAndGetUpgradeHeigh
 	world := NewMockExternal(ctrl)
 
 	rules := opera.Rules{}
-	updateHeights := []opera.UpgradeHeight{}
+	var updateHeights []opera.UpgradeHeight
 
 	world.EXPECT().GetRules().Return(rules)
 	world.EXPECT().GetUpgradeHeights().Return(updateHeights)
 
 	adapter := worldAdapter{world}
-	got := adapter.GetEvmChainConfig()
-	want := rules.EvmChainConfig(updateHeights)
+	got := adapter.GetEvmChainConfig(idx.Block(1))
+	want := opera.CreateTransientEvmChainConfig(rules.NetworkID, updateHeights, 1)
 	require.Equal(want, got)
 }
 

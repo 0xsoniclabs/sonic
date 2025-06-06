@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
@@ -188,7 +189,8 @@ func (s *PublicTxTraceAPI) replayBlock(ctx context.Context, block *evmcore.EvmBl
 		Actions: make([]txtrace.ActionTrace, 0),
 	}
 
-	signer := gsignercache.Wrap(types.MakeSigner(s.b.ChainConfig(), block.Number, uint64(block.Time.Unix())))
+	chainConfig := s.b.ChainConfig(idx.Block(block.NumberU64()))
+	signer := gsignercache.Wrap(types.MakeSigner(chainConfig, block.Number, uint64(block.Time.Unix())))
 
 	state, _, err := s.b.StateAndHeaderByNumberOrHash(ctx, rpc.BlockNumberOrHash{BlockNumber: &parentBlockNr})
 	if err != nil {
@@ -324,7 +326,8 @@ func (s *PublicTxTraceAPI) traceTx(
 	// Setup the gas pool and stateDB
 	gp := new(core.GasPool).AddGas(msg.GasLimit)
 	state.SetTxContext(tx.Hash(), int(index))
-	resultReceipt, err := evmcore.ApplyTransactionWithEVM(msg, b.ChainConfig(), gp, state, header.Number, block.Hash, tx, &index, vmenv)
+	chainConfig := b.ChainConfig(idx.Block(header.Number.Uint64()))
+	resultReceipt, err := evmcore.ApplyTransactionWithEVM(msg, chainConfig, gp, state, header.Number, block.Hash, tx, &index, vmenv)
 
 	traceActions := txTracer.GetResult()
 	state.EndTransaction()

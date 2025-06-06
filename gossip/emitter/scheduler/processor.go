@@ -4,6 +4,7 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
 )
@@ -39,8 +40,9 @@ type Chain interface {
 	// TODO: follow-up task - simplify this to a GetBlockHash(idx.Block) method.
 	evmcore.DummyChain
 
-	// GetEvmChainConfig returns the current chain configuration for the EVM.
-	GetEvmChainConfig() *params.ChainConfig
+	// GetEvmChainConfig returns the chain configuration for the EVM at the
+	// given block height
+	GetEvmChainConfig(blockHeight idx.Block) *params.ChainConfig
 
 	// StateDB returns a context for running transactions on the head state of
 	// the chain. A non-committable state-DB instance is sufficient.
@@ -59,7 +61,7 @@ func (p *evmProcessorFactory) beginBlock(
 	block *evmcore.EvmBlock,
 ) processor {
 	// TODO: follow-up task - align this with c_block_callbacks.go
-	chainCfg := p.chain.GetEvmChainConfig()
+	chainCfg := p.chain.GetEvmChainConfig(idx.Block(block.Header().Number.Uint64()))
 	vmConfig := opera.DefaultVMConfig
 	state := p.chain.StateDB()
 

@@ -1,8 +1,13 @@
 package opera
 
 import (
+	"math/big"
 	"reflect"
 	"testing"
+
+	"github.com/0xsoniclabs/sonic/utils"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRules_Copy_CopiesAreDisjoint(t *testing.T) {
@@ -196,5 +201,110 @@ func TestRules_MinBaseFee_NoCopy_PreAllegro(t *testing.T) {
 
 	if got, want := original.Economy.MinBaseFee.Int64(), copied.Economy.MinBaseFee.Int64(); got != want {
 		t.Errorf("original and copied rules must be the same - shallow copy for preAllegro: got %d, want %d", got, want)
+	}
+}
+
+func TestCreateTransientEvmChainConfig_ContainsUpgradesBasedOnConstructionTimeBlockHeigh(t *testing.T) {
+
+	chainID := uint64(12345)
+
+	tests := map[string]Upgrades{
+		"Sonic":   GetSonicUpgrades(),
+		"Allegro": GetAllegroUpgrades(),
+	}
+
+	for name, upgrades := range tests {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+
+			timestamp := uint64(1)
+			blockNumber := uint64(123)
+			upgradeHeight := UpgradeHeight{
+				Upgrades: upgrades,
+				Height:   idx.Block(blockNumber),
+			}
+			// transient chain config is statically configured independent of block height
+			// so we can use any block height for the test.
+			anyBlockHeigh := big.NewInt(0)
+
+			// test upgrades at the same height where the upgrade is enabled
+			chainConfigAfterUpdate := CreateTransientEvmChainConfig(chainID, []UpgradeHeight{upgradeHeight}, idx.Block(blockNumber))
+			require.NotNil(chainConfigAfterUpdate, "chainConfig should not be nil")
+			require.True(chainConfigAfterUpdate.IsCancun(anyBlockHeigh, timestamp))
+			require.Equal(upgrades.Allegro, chainConfigAfterUpdate.IsPrague(anyBlockHeigh, timestamp), "Allegro upgrade should match")
+
+			// test upgrades at a height before the upgrade was enabled
+			chainConfigBeforeUpdate := CreateTransientEvmChainConfig(chainID, []UpgradeHeight{upgradeHeight}, idx.Block(blockNumber-1))
+			require.NotNil(chainConfigBeforeUpdate, "chainConfig should not be nil")
+			require.True(chainConfigBeforeUpdate.IsCancun(anyBlockHeigh, timestamp), "Before Allegro upgrade, Cancun should be true")
+			require.False(chainConfigBeforeUpdate.IsPrague(anyBlockHeigh, timestamp), "Before Allegro upgrade, Prague should be false")
+		})
+	}
+}
+
+func TestCreateTransientEvmChainConfig_RespectsBlockHeightOfUpgradeHeight(t *testing.T) {
+
+	// update this test with upgrades which expose feature flags in the chain config
+	upgrades := []Upgrades{
+		GetSonicUpgrades(),
+		GetAllegroUpgrades(),
+		{
+			Allegro: true,
+			Brio:    true,
+		},
+	}
+
+	var upgradeHeights []UpgradeHeight
+	for i, upgrade := range upgrades {
+		upgradeHeights = append(upgradeHeights, UpgradeHeight{
+			Upgrades: upgrade,
+			Height:   idx.Block(i),
+		})
+	}
+	anyBlockHeigh := big.NewInt(0)
+
+	for testUpgradeHeights := range utils.Permute(upgradeHeights) {
+
+		t.Run("Permutation", func(t *testing.T) {
+
+			t.Run("SonicUpgrades", func(t *testing.T) {
+				require := require.New(t)
+				chainConfig := CreateTransientEvmChainConfig(
+					12345,
+					testUpgradeHeights,
+					idx.Block(0),
+				)
+
+				require.True(chainConfig.IsCancun(anyBlockHeigh, 0), "Sonic upgrades should be Cancun")
+				require.False(chainConfig.IsPrague(anyBlockHeigh, 0), "Sonic upgrades should not be Prague")
+				require.False(chainConfig.IsOsaka(anyBlockHeigh, 0), "Sonic upgrades should not be Prague")
+			})
+
+			t.Run("AllegroUpgrades", func(t *testing.T) {
+				require := require.New(t)
+				chainConfig := CreateTransientEvmChainConfig(
+					12345,
+					testUpgradeHeights,
+					idx.Block(1),
+				)
+
+				require.True(chainConfig.IsCancun(anyBlockHeigh, 0), "Allegro upgrades should be Cancun")
+				require.True(chainConfig.IsPrague(anyBlockHeigh, 0), "Allegro upgrades should be Prague")
+				require.False(chainConfig.IsOsaka(anyBlockHeigh, 0), "Allegro upgrades should not be Osaka")
+			})
+
+			t.Run("BrioUpgrades", func(t *testing.T) {
+				require := require.New(t)
+				chainConfig := CreateTransientEvmChainConfig(
+					12345,
+					testUpgradeHeights,
+					idx.Block(2),
+				)
+
+				require.True(chainConfig.IsCancun(anyBlockHeigh, 0), "Brio upgrades should be Cancun")
+				require.True(chainConfig.IsPrague(anyBlockHeigh, 0), "Brio upgrades should be Prague")
+				require.True(chainConfig.IsOsaka(anyBlockHeigh, 0), "Brio upgrades should be Osaka")
+			})
+		})
 	}
 }

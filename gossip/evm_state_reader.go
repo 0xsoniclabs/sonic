@@ -40,7 +40,8 @@ func (r *EvmStateReader) MaxGasLimit() uint64 {
 }
 
 func (r *EvmStateReader) Config() *params.ChainConfig {
-	return r.store.GetEvmChainConfig()
+	blockNumber := r.CurrentBlock().Number
+	return r.store.GetEvmChainConfig(idx.Block(blockNumber.Uint64()))
 }
 
 func (r *EvmStateReader) CurrentBlock() *evmcore.EvmBlock {

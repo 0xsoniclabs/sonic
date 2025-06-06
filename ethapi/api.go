@@ -485,7 +485,8 @@ func (s *PrivateAccountAPI) signTransaction(ctx context.Context, args *Transacti
 	// Assemble the transaction and sign with the wallet
 	tx := args.toTransaction()
 
-	return wallet.SignTxWithPassphrase(account, passwd, tx, s.b.ChainConfig().ChainID)
+	chainID := s.b.ChainConfig(s.b.Progress().CurrentBlock).ChainID
+	return wallet.SignTxWithPassphrase(account, passwd, tx, chainID)
 }
 
 // SendTransaction will create a transaction from the given arguments and
@@ -685,11 +686,8 @@ func (s *PublicBlockChainAPI) GetEpochBlock(ctx context.Context, epoch rpc.Block
 
 // ChainId is the EIP-155 replay-protection chain id for the current ethereum chain config.
 func (s *PublicBlockChainAPI) ChainId() (*hexutil.Big, error) {
-	// if current block is at or past the EIP-155 replay-protection fork block, return chainID from config
-	if config := s.b.ChainConfig(); config.IsEIP155(s.b.CurrentBlock().Number) {
-		return (*hexutil.Big)(config.ChainID), nil
-	}
-	return nil, fmt.Errorf("chain not synced beyond EIP-155 replay-protection fork block")
+	// Sonic is always EIP-155 compliant, so we can safely return the chain ID
+	return (*hexutil.Big)(s.b.ChainID()), nil
 }
 
 // BlockNumber returns the block number of the chain head.
@@ -1506,7 +1504,8 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 		to = crypto.CreateAddress(args.from(), uint64(*args.Nonce))
 	}
 	// Retrieve the precompiles since they don't need to be added to the access list
-	precompiles := vm.ActivePrecompiles(b.ChainConfig().Rules(header.Number, false, uint64(header.Time.Unix())))
+	chainConfig := b.ChainConfig(idx.Block(header.Number.Uint64()))
+	precompiles := vm.ActivePrecompiles(chainConfig.Rules(header.Number, false, uint64(header.Time.Unix())))
 
 	// addressesToExclude contains sender, receiver and precompiles
 	addressesToExclude := map[common.Address]struct{}{args.from(): {}, to: {}}
@@ -1576,7 +1575,8 @@ type PublicTransactionPoolAPI struct {
 func NewPublicTransactionPoolAPI(b Backend, nonceLock *AddrLocker) *PublicTransactionPoolAPI {
 	// The signer used by the API should always be the 'latest' known one because we expect
 	// signers to be backwards-compatible with old transactions.
-	signer := gsignercache.Wrap(types.LatestSignerForChainID(b.ChainConfig().ChainID))
+	chainID := b.ChainID()
+	signer := gsignercache.Wrap(types.LatestSignerForChainID(chainID))
 	return &PublicTransactionPoolAPI{b, nonceLock, signer}
 }
 
@@ -1703,7 +1703,7 @@ func (s *PublicTransactionPoolAPI) formatTxReceipt(header *evmcore.EvmHeader, tx
 	}
 
 	// Derive the sender.
-	signer := gsignercache.Wrap(types.MakeSigner(s.b.ChainConfig(), header.Number, uint64(header.Time.Unix())))
+	signer := gsignercache.Wrap(types.MakeSigner(s.b.ChainConfig(idx.Block(header.Number.Uint64())), header.Number, uint64(header.Time.Unix())))
 	from, _ := internaltx.Sender(signer, tx)
 
 	fields := map[string]interface{}{
@@ -1814,7 +1814,8 @@ func (s *PublicTransactionPoolAPI) sign(addr common.Address, tx *types.Transacti
 		return nil, err
 	}
 	// Request the wallet to sign the transaction
-	return wallet.SignTx(account, tx, s.b.ChainConfig().ChainID)
+	chainID := s.b.ChainID()
+	return wallet.SignTx(account, tx, chainID)
 }
 
 // SubmitTransaction is a helper function that submits tx to txPool and logs a message.
@@ -1831,7 +1832,8 @@ func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction) (c
 	if err := b.SendTx(ctx, tx); err != nil {
 		return common.Hash{}, err
 	} // Print a log with full tx details for manual investigations and interventions
-	signer := gsignercache.Wrap(types.MakeSigner(b.ChainConfig(), b.CurrentBlock().Number, uint64(b.CurrentBlock().Time.Unix())))
+	chainConfig := b.ChainConfig(idx.Block(b.CurrentBlock().Number.Uint64()))
+	signer := gsignercache.Wrap(types.MakeSigner(chainConfig, b.CurrentBlock().Number, uint64(b.CurrentBlock().Time.Unix())))
 	from, err := types.Sender(signer, tx)
 	if err != nil {
 		return common.Hash{}, err
@@ -1871,7 +1873,8 @@ func (s *PublicTransactionPoolAPI) SendTransaction(ctx context.Context, args Tra
 	// Assemble the transaction and sign with the wallet
 	tx := args.toTransaction()
 
-	signed, err := wallet.SignTx(account, tx, s.b.ChainConfig().ChainID)
+	chainID := s.b.ChainID()
+	signed, err := wallet.SignTx(account, tx, chainID)
 	if err != nil {
 		return common.Hash{}, err
 	}
@@ -2158,7 +2161,16 @@ func (api *PublicDebugAPI) TraceTransaction(ctx context.Context, hash common.Has
 // traceTx configures a new tracer according to the provided configuration, and
 // executes the given message in the provided environment. The return value will
 // be tracer dependent.
-func (api *PublicDebugAPI) traceTx(ctx context.Context, tx *types.Transaction, message *core.Message, txctx *tracers.Context, blockHeader *evmcore.EvmHeader, statedb state.StateDB, config *tracers.TraceConfig, blockCtx *vm.BlockContext) (json.RawMessage, error) {
+func (api *PublicDebugAPI) traceTx(
+	ctx context.Context,
+	tx *types.Transaction,
+	message *core.Message,
+	txctx *tracers.Context,
+	blockHeader *evmcore.EvmHeader,
+	statedb state.StateDB,
+	config *tracers.TraceConfig,
+	blockCtx *vm.BlockContext,
+) (json.RawMessage, error) {
 	var (
 		tracer  *tracers.Tracer
 		err     error
@@ -2168,6 +2180,9 @@ func (api *PublicDebugAPI) traceTx(ctx context.Context, tx *types.Transaction, m
 	if config == nil {
 		config = &tracers.TraceConfig{}
 	}
+
+	chainConfig := api.b.ChainConfig(idx.Block(blockHeader.Number.Uint64()))
+
 	// Default tracer is the struct logger
 	if config.Tracer == nil {
 		if config.Config == nil {
@@ -2186,7 +2201,7 @@ func (api *PublicDebugAPI) traceTx(ctx context.Context, tx *types.Transaction, m
 			Stop:      logger.Stop,
 		}
 	} else {
-		tracer, err = tracers.DefaultDirectory.New(*config.Tracer, txctx, config.TracerConfig, api.b.ChainConfig())
+		tracer, err = tracers.DefaultDirectory.New(*config.Tracer, txctx, config.TracerConfig, chainConfig)
 		if err != nil {
 			return nil, err
 		}
@@ -2224,7 +2239,17 @@ func (api *PublicDebugAPI) traceTx(ctx context.Context, tx *types.Transaction, m
 	loggingStateDB.SetTxContext(txctx.TxHash, txctx.TxIndex)
 
 	// Run the transaction with tracing enabled.
-	_, err = evmcore.ApplyTransactionWithEVM(message, api.b.ChainConfig(), new(core.GasPool).AddGas(message.GasLimit), loggingStateDB, blockHeader.Number, txctx.BlockHash, tx, &usedGas, vmenv)
+	_, err = evmcore.ApplyTransactionWithEVM(
+		message,
+		chainConfig,
+		new(core.GasPool).AddGas(message.GasLimit),
+		loggingStateDB,
+		blockHeader.Number,
+		txctx.BlockHash,
+		tx,
+		&usedGas,
+		vmenv,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("tracing failed: %w", err)
 	}
@@ -2288,8 +2313,9 @@ func (api *PublicDebugAPI) traceBlock(ctx context.Context, block *evmcore.EvmBlo
 	defer statedb.Release()
 
 	var (
+		chainConfig   = api.b.ChainConfig(idx.Block(block.Header().Number.Uint64()))
 		txs           = block.Transactions
-		signer        = gsignercache.Wrap(types.MakeSigner(api.b.ChainConfig(), block.Number, uint64(block.Time.Unix())))
+		signer        = gsignercache.Wrap(types.MakeSigner(chainConfig, block.Number, uint64(block.Time.Unix())))
 		results       = make([]*txTraceResult, len(txs))
 		resultsLength int
 	)
@@ -2356,7 +2382,8 @@ func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex in
 	}
 
 	// Recompute transactions up to the target index.
-	signer := gsignercache.Wrap(types.MakeSigner(b.ChainConfig(), block.Number, uint64(block.Time.Unix())))
+	chainConfig := b.ChainConfig(idx.Block(block.NumberU64()))
+	signer := gsignercache.Wrap(types.MakeSigner(chainConfig, block.Number, uint64(block.Time.Unix())))
 	for idx, tx := range block.Transactions {
 		// Assemble the transaction call message and return if the requested offset
 		msg, err := evmcore.TxAsMessage(tx, signer, block.BaseFee)

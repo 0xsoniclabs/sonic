@@ -87,7 +87,8 @@ type Backend interface {
 	TxPoolContentFrom(addr common.Address) (types.Transactions, types.Transactions)
 	SubscribeNewTxsNotify(chan<- evmcore.NewTxsNotify) notify.Subscription
 
-	ChainConfig() *params.ChainConfig
+	ChainConfig(blockHeight idx.Block) *params.ChainConfig
+	ChainID() *big.Int
 	CurrentBlock() *evmcore.EvmBlock
 
 	// Lachesis DAG API
