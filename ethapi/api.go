@@ -2382,7 +2382,8 @@ func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex in
 	}
 
 	// Recompute transactions up to the target index.
-	signer := gsignercache.Wrap(types.LatestSignerForChainID(b.ChainID()))
+	chainConfig := b.ChainConfig(idx.Block(block.NumberU64()))
+	signer := gsignercache.Wrap(types.MakeSigner(chainConfig, block.Number, uint64(block.Time.Unix())))
 	for idx, tx := range block.Transactions {
 		// Assemble the transaction call message and return if the requested offset
 		msg, err := evmcore.TxAsMessage(tx, signer, block.BaseFee)
