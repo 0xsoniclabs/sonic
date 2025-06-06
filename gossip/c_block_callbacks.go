@@ -218,14 +218,13 @@ func consensusCallbackBeginBlockFn(
 						proposerKey := validatorKeys.PubKeys[proposer]
 
 						blockProposalRandao, ok := proposal.RandaoReveal.VerifyAndGetRandao(lastBlockHeader.PrevRandao, proposerKey)
-						if !ok {
+						if ok {
+							randao = blockProposalRandao
+						} else {
 							// If randao reveal cannot be verified, this block will be computed using the
 							// event derived randao value. This can happen if the randao reveal value
 							// was not created according to specification.
 							log.Warn("Failed to verify randao reveal, using DAG randomization", "proposer validator", proposer)
-						} else {
-							// If no proposal is found but a block needs to be
-							randao = blockProposalRandao
 						}
 
 					} else {
