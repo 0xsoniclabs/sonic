@@ -15,7 +15,7 @@ func TestRandao_randaoIntegrationTest(t *testing.T) {
 
 	tests := map[string]opera.Upgrades{
 		"dag proposal": opera.GetSonicUpgrades(),
-		"single proposal": opera.Upgrades{
+		"single proposal": {
 			Berlin:                       true,
 			London:                       true,
 			Llr:                          false,
