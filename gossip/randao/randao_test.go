@@ -1,4 +1,4 @@
-package randao_test
+package randao
 
 import (
 	"crypto/ecdsa"
@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/gossip/randao"
 	"github.com/0xsoniclabs/sonic/inter/validatorpk"
 	"github.com/0xsoniclabs/sonic/valkeystore"
 	"github.com/0xsoniclabs/sonic/valkeystore/encryption"
@@ -28,7 +27,7 @@ func TestRandao_RandaoReveal_CanBeConstructedAndVerified(t *testing.T) {
 	mockBackend.EXPECT().GetUnlocked(publicKey).Return(privateKey, nil)
 	signerAuth := valkeystore.NewSignerAuthority(mockBackend, publicKey)
 
-	source, err := randao.GenerateNextRandaoReveal(previous, signerAuth)
+	source, err := generateNextRandaoReveal(previous, signerAuth)
 	require.NoError(t, err)
 
 	_, ok := source.VerifyAndGetRandao(previous, publicKey)
@@ -45,7 +44,7 @@ func TestRandao_NewRandaoReveal_ConstructionFailsWithInvalidKey(t *testing.T) {
 	publicKey := validatorpk.PubKey{}
 	signer := valkeystore.NewSignerAuthority(mockBackend, publicKey)
 
-	_, err := randao.GenerateNextRandaoReveal(previous, signer)
+	_, err := generateNextRandaoReveal(previous, signer)
 	require.ErrorContains(t, err, "not supported key type")
 }
 
@@ -60,7 +59,7 @@ func TestRandao_RandaoReveal_VerificationDependsOnKnownPublicValues(t *testing.T
 
 	_, differentPublicKey := generateKeyPair(t)
 
-	source, err := randao.GenerateNextRandaoReveal(previous, signer)
+	source, err := generateNextRandaoReveal(previous, signer)
 	require.NoError(t, err)
 
 	tests := map[string]struct {
@@ -94,12 +93,12 @@ func TestRandao_RandaoReveal_InvalidRandaoRevealShallFailVerification(t *testing
 	mockBackend.EXPECT().GetUnlocked(publicKey).Return(privateKey, nil)
 	signer := valkeystore.NewSignerAuthority(mockBackend, publicKey)
 
-	source, err := randao.GenerateNextRandaoReveal(previous, signer)
+	source, err := generateNextRandaoReveal(previous, signer)
 	require.NoError(t, err)
 
 	for i := range len(source) {
 		// modify the signature somehow
-		modifiedSignature := randao.RandaoReveal(make([]byte, len(source)))
+		modifiedSignature := RandaoReveal(make([]byte, len(source)))
 		copy(modifiedSignature[:], source[:])
 		modifiedSignature[i] = modifiedSignature[i] + 1
 
@@ -136,9 +135,9 @@ func TestRandao_NewRandaoReveal_IsDeterministic(t *testing.T) {
 	mockBackend.EXPECT().GetUnlocked(publicKey).Return(privateKey, nil).AnyTimes()
 	signer := valkeystore.NewSignerAuthority(mockBackend, publicKey)
 
-	reveals := make([]randao.RandaoReveal, 10)
+	reveals := make([]RandaoReveal, 10)
 	for i := range 10 {
-		source, err := randao.GenerateNextRandaoReveal(previous, signer)
+		source, err := generateNextRandaoReveal(previous, signer)
 		require.NoError(t, err)
 		reveals[i] = source
 	}
@@ -160,9 +159,9 @@ func TestRandao_GetRandao_IsDeterministic(t *testing.T) {
 	mockBackend.EXPECT().GetUnlocked(publicKey).Return(privateKey, nil).AnyTimes()
 	signer := valkeystore.NewSignerAuthority(mockBackend, publicKey)
 
-	reveals := make([]randao.RandaoReveal, 10)
+	reveals := make([]RandaoReveal, 10)
 	for i := range 10 {
-		source, err := randao.GenerateNextRandaoReveal(previous, signer)
+		source, err := generateNextRandaoReveal(previous, signer)
 		require.NoError(t, err)
 		reveals[i] = source
 	}
@@ -233,7 +232,7 @@ func TestRandaoReveal_EntropyTest(t *testing.T) {
 			publicKey := keys[keyIdx].publicKey
 			signer := valkeystore.NewSignerAuthority(mockBackend, publicKey)
 
-			source, err := randao.GenerateNextRandaoReveal(lastRandao, signer)
+			source, err := generateNextRandaoReveal(lastRandao, signer)
 			require.NoError(t, err)
 			randao, ok := source.VerifyAndGetRandao(lastRandao, publicKey)
 			require.True(t, ok)

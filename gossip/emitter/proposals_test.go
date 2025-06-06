@@ -299,7 +299,7 @@ func TestCreatePayload_ValidTurn_ProducesExpectedPayload(t *testing.T) {
 
 	durationMetric.EXPECT().Update(any).AnyTimes()
 	timeoutMetric.EXPECT().Inc(any).AnyTimes()
-	randaoMixer := NewMockrandaoMixer(ctrl)
+	randaoMixer := randao.NewMockRandaoMixer(ctrl)
 	someRandaoReveal := randao.RandaoReveal{0x42}
 	randaoMixer.EXPECT().MixRandao(any).Return(
 		someRandaoReveal, common.Hash{}, nil,
@@ -371,7 +371,7 @@ func TestMakeProposal_ValidArguments_CreatesValidProposal(t *testing.T) {
 		require.True(duration > 0)
 	})
 
-	randaoMixer := NewMockrandaoMixer(ctrl)
+	randaoMixer := randao.NewMockRandaoMixer(ctrl)
 	randaoMixer.EXPECT().MixRandao(any).Return(someRandaoReveal, someRandao, nil)
 
 	// Run the proposal creation.
@@ -441,7 +441,7 @@ func TestMakeProposal_IfSchedulerTimesOut_SignalTimeoutToMonitor(t *testing.T) {
 	durationMetric.EXPECT().Update(any)
 	timeoutMetric.EXPECT().Inc(int64(1))
 
-	randaoMixer := NewMockrandaoMixer(ctrl)
+	randaoMixer := randao.NewMockRandaoMixer(ctrl)
 	randaoMixer.EXPECT().MixRandao(any)
 
 	_, err := makeProposal(
@@ -553,7 +553,7 @@ func TestMakeProposal_SkipsProposalOnRandaoRevealError(t *testing.T) {
 	newBlockTime := latestBlock.Time + 10
 	currentFrame := idx.Frame(17)
 
-	randaoMixer := NewMockrandaoMixer(ctrl)
+	randaoMixer := randao.NewMockRandaoMixer(ctrl)
 	randaoMixer.EXPECT().MixRandao(gomock.Any()).Return(
 		randao.RandaoReveal{}, common.Hash{}, errors.New("randao error"))
 
