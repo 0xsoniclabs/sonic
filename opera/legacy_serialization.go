@@ -99,6 +99,9 @@ func (u Upgrades) EncodeRLP(w io.Writer) error {
 	if u.Allegro {
 		bitmap.V |= allegroBit
 	}
+	if u.Brio {
+		bitmap.V |= brioBit
+	}
 	if u.SingleProposerBlockFormation {
 		bitmap.V |= singleProposerBlockFormationBit
 	}
@@ -119,6 +122,7 @@ func (u *Upgrades) DecodeRLP(s *rlp.Stream) error {
 	u.Llr = (bitmap.V & llrBit) != 0
 	u.Sonic = (bitmap.V & sonicBit) != 0
 	u.Allegro = (bitmap.V & allegroBit) != 0
+	u.Brio = (bitmap.V & brioBit) != 0
 
 	u.SingleProposerBlockFormation = (bitmap.V & singleProposerBlockFormationBit) != 0
 	return nil

@@ -261,5 +261,10 @@ func validateUpgrades(upgrade Upgrades) error {
 
 	// The SingleProposerBlockFormation feature can be freely modified.
 
+	if upgrade.Brio && !upgrade.Allegro {
+		//nolint:staticcheck // ST1005: allow capitalized error message to preserve proper name
+		issues = append(issues, errors.New("Brio upgrade requires Allegro"))
+	}
+
 	return errors.Join(issues...)
 }

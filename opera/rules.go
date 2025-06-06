@@ -29,6 +29,7 @@ const (
 	// hard-forks
 	sonicBit   = 1 << 3
 	allegroBit = 1 << 4
+	brioBit    = 1 << 5
 
 	// optional features
 	singleProposerBlockFormationBit = 1 << 63
@@ -222,6 +223,7 @@ type Upgrades struct {
 	// -- Sonic Chain Hard Forks --
 	Sonic   bool // < launch version of the Sonic chain, introducing Cancun features
 	Allegro bool // < first hard fork of the Sonic chain, introducing Prague features
+	Brio    bool // < second hard fork of the Sonic chain, introducing Osaka features
 
 	// -- Optional Features --
 
