@@ -45,12 +45,18 @@ type (
 		GetHeader(common.Hash, uint64) *evmcore.EvmHeader
 	}
 
+	// TxSigner is a re-export of the types.Signer interface to allow
+	// mocking it in tests.
+	TxSigner interface {
+		types.Signer
+	}
+
 	// World is an emitter's environment
 	World struct {
 		External
 		TxPool            TxPool
 		EventsSigner      valkeystore.SignerAuthority
-		TransactionSigner types.Signer
+		TransactionSigner TxSigner
 	}
 )
 
