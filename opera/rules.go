@@ -1,9 +1,11 @@
 package opera
 
 import (
+	"cmp"
 	"encoding/json"
 	"math"
 	"math/big"
+	"slices"
 	"time"
 
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
@@ -298,16 +300,24 @@ func CreateTransientEvmChainConfig(
 		CancunTime:   &timestampInThePast,
 	}
 
+	sortedUpgradeHeights := make([]UpgradeHeight, len(upgradeHeights))
+	copy(sortedUpgradeHeights, upgradeHeights)
+
+	slices.SortFunc(sortedUpgradeHeights, func(a, b UpgradeHeight) int {
+		return cmp.Compare(a.Height, b.Height)
+	})
+
 	// reverse iterate through the upgrade heights
-	for i := len(upgradeHeights) - 1; i >= 0; i-- {
-		height := new(big.Int).SetUint64(uint64(upgradeHeights[i].Height))
-
-		if height.Cmp(new(big.Int).SetUint64(uint64(currentBlockHeight))) <= 0 {
-
-			upgrade := upgradeHeights[i].Upgrades
+	for i := len(sortedUpgradeHeights) - 1; i >= 0; i-- {
+		if sortedUpgradeHeights[i].Height <= currentBlockHeight {
+			upgrade := sortedUpgradeHeights[i].Upgrades
 
 			if upgrade.Allegro {
 				cfg.PragueTime = &timestampInThePast
+			}
+
+			if upgrade.Brio {
+				cfg.OsakaTime = &timestampInThePast
 			}
 
 			break
