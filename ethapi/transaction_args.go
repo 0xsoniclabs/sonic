@@ -24,6 +24,7 @@ import (
 	"math"
 	"math/big"
 
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
@@ -82,23 +83,37 @@ func (args *TransactionArgs) setDefaults(ctx context.Context, b Backend) error {
 	if args.GasPrice != nil && (args.MaxFeePerGas != nil || args.MaxPriorityFeePerGas != nil) {
 		return errors.New("both gasPrice and (maxFeePerGas or maxPriorityFeePerGas) specified")
 	}
+	// After london, default to 1559 unless gasPrice is set
+	head := b.CurrentBlock().Header()
+	chainConfig := b.ChainConfig(idx.Block(head.Number.Uint64()))
 	// If user specifies both maxPriorityfee and maxFee, then we do not
 	// need to consult the chain for defaults. It's definitely a London tx.
 	if args.MaxPriorityFeePerGas == nil || args.MaxFeePerGas == nil {
 		// In this clause, user left some fields unspecified.
-		if args.MaxPriorityFeePerGas == nil {
-			tip := b.SuggestGasTipCap(ctx, gasprice.AsDefaultCertainty)
-			args.MaxPriorityFeePerGas = (*hexutil.Big)(tip)
-		}
-		if args.MaxFeePerGas == nil {
-			gasFeeCap := new(big.Int).Add(
-				(*big.Int)(args.MaxPriorityFeePerGas),
-				b.MinGasPrice(),
-			)
-			args.MaxFeePerGas = (*hexutil.Big)(gasFeeCap)
-		}
-		if args.MaxFeePerGas.ToInt().Cmp(args.MaxPriorityFeePerGas.ToInt()) < 0 {
-			return fmt.Errorf("maxFeePerGas (%v) < maxPriorityFeePerGas (%v)", args.MaxFeePerGas, args.MaxPriorityFeePerGas)
+		if chainConfig.IsLondon(head.Number) && args.GasPrice == nil {
+			if args.MaxPriorityFeePerGas == nil {
+				tip := b.SuggestGasTipCap(ctx, gasprice.AsDefaultCertainty)
+				args.MaxPriorityFeePerGas = (*hexutil.Big)(tip)
+			}
+			if args.MaxFeePerGas == nil {
+				gasFeeCap := new(big.Int).Add(
+					(*big.Int)(args.MaxPriorityFeePerGas),
+					b.MinGasPrice(),
+				)
+				args.MaxFeePerGas = (*hexutil.Big)(gasFeeCap)
+			}
+			if args.MaxFeePerGas.ToInt().Cmp(args.MaxPriorityFeePerGas.ToInt()) < 0 {
+				return fmt.Errorf("maxFeePerGas (%v) < maxPriorityFeePerGas (%v)", args.MaxFeePerGas, args.MaxPriorityFeePerGas)
+			}
+		} else {
+			if args.MaxFeePerGas != nil || args.MaxPriorityFeePerGas != nil {
+				return errors.New("maxFeePerGas or maxPriorityFeePerGas specified but london is not active yet")
+			}
+			if args.GasPrice == nil {
+				price := b.SuggestGasTipCap(ctx, gasprice.AsDefaultCertainty)
+				price.Add(price, b.MinGasPrice())
+				args.GasPrice = (*hexutil.Big)(price)
+			}
 		}
 	} else {
 		// Both maxPriorityfee and maxFee set by caller. Sanity-check their internal relation
