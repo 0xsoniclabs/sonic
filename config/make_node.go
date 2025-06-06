@@ -116,7 +116,9 @@ func MakeNode(ctx *cli.Context, cfg *Config) (*node.Node, *gossip.Service, func(
 		if cfg.TxPool.Journal != "" {
 			cfg.TxPool.Journal = path.Join(cfg.Node.DataDir, cfg.TxPool.Journal)
 		}
-		return evmcore.NewTxPool(cfg.TxPool, reader.Config(), reader)
+		pool := evmcore.NewTxPool(cfg.TxPool, reader.Config(), reader)
+		cleanup = append(cleanup, pool.Stop)
+		return pool
 	}
 	haltCheck := func(oldEpoch, newEpoch idx.Epoch, age time.Time) bool {
 		stop := ctx.GlobalIsSet(flags.ExitWhenAgeFlag.Name) && ctx.GlobalDuration(flags.ExitWhenAgeFlag.Name) >= time.Since(age)
