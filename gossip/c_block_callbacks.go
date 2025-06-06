@@ -212,21 +212,8 @@ func consensusCallbackBeginBlockFn(
 						events = append(events, e)
 					}
 					if proposed, proposer := extractProposalForNextBlock(lastBlockHeader, events, log.Root()); proposed != nil {
-
 						proposal = *proposed
-						validatorKeys := readEpochPubKeys(store, blockCtx.Atropos.Epoch())
-						proposerKey := validatorKeys.PubKeys[proposer]
-
-						blockProposalRandao, ok := proposal.RandaoReveal.VerifyAndGetRandao(lastBlockHeader.PrevRandao, proposerKey)
-						if ok {
-							randao = blockProposalRandao
-						} else {
-							// If randao reveal cannot be verified, this block will be computed using the
-							// event derived randao value. This can happen if the randao reveal value
-							// was not created according to specification.
-							log.Warn("Failed to verify randao reveal, using DAG randomization", "proposer validator", proposer)
-						}
-
+						randao = resolveRandaoMix(store, blockCtx, proposal, proposer, lastBlockHeader.PrevRandao, randao)
 					} else {
 						// If no proposal is found but a block needs to be
 						// created (as this function has been called), we
@@ -488,6 +475,35 @@ func consensusCallbackBeginBlockFn(
 				return newValidators
 			},
 		}
+	}
+}
+
+// resolveRandaoMix computes the randao mix to be used by the block processor
+// when using single block proposal.
+//
+// If randao reveal cannot be verified, this block will be computed using the
+// event derived randao value. This can happen if the randao reveal value
+// was not created according to specification. This fallback mechanism will
+// increase the entropy of the system by introducing an un-biased random value
+// reproducible by all nodes.
+func resolveRandaoMix(
+	store *Store,
+	blockCtx iblockproc.BlockCtx,
+	proposal inter.Proposal,
+	proposer idx.ValidatorID,
+	lastBlockRandao common.Hash,
+	fallbackRandao common.Hash,
+) common.Hash {
+	validatorKeys := readEpochPubKeys(store, blockCtx.Atropos.Epoch())
+	proposerKey := validatorKeys.PubKeys[proposer]
+
+	blockProposalRandao, ok := proposal.RandaoReveal.VerifyAndGetRandao(lastBlockRandao, proposerKey)
+	if ok {
+		return blockProposalRandao
+	} else {
+		log.Warn("Failed to verify randao reveal, using DAG randomization", "proposer validator", proposer)
+		//  TODO: instrument a prometheus metric for this case
+		return fallbackRandao
 	}
 }
 
