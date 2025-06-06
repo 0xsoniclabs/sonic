@@ -88,6 +88,7 @@ type Backend interface {
 	SubscribeNewTxsNotify(chan<- evmcore.NewTxsNotify) notify.Subscription
 
 	ChainConfig(blockHeight idx.Block) *params.ChainConfig
+	ChainID() *big.Int
 	CurrentBlock() *evmcore.EvmBlock
 
 	// Lachesis DAG API

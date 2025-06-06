@@ -130,6 +130,20 @@ func (mr *MockBackendMockRecorder) ChainConfig(blockHeight any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ChainConfig", reflect.TypeOf((*MockBackend)(nil).ChainConfig), blockHeight)
 }
 
+// ChainID mocks base method.
+func (m *MockBackend) ChainID() *big.Int {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ChainID")
+	ret0, _ := ret[0].(*big.Int)
+	return ret0
+}
+
+// ChainID indicates an expected call of ChainID.
+func (mr *MockBackendMockRecorder) ChainID() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ChainID", reflect.TypeOf((*MockBackend)(nil).ChainID))
+}
+
 // CurrentBlock mocks base method.
 func (m *MockBackend) CurrentBlock() *evmcore.EvmBlock {
 	m.ctrl.T.Helper()

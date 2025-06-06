@@ -1578,7 +1578,7 @@ type PublicTransactionPoolAPI struct {
 func NewPublicTransactionPoolAPI(b Backend, nonceLock *AddrLocker) *PublicTransactionPoolAPI {
 	// The signer used by the API should always be the 'latest' known one because we expect
 	// signers to be backwards-compatible with old transactions.
-	chainID := b.ChainConfig(0).ChainID
+	chainID := b.ChainID()
 	signer := gsignercache.Wrap(types.LatestSignerForChainID(chainID))
 	return &PublicTransactionPoolAPI{b, nonceLock, signer}
 }
@@ -1817,7 +1817,7 @@ func (s *PublicTransactionPoolAPI) sign(addr common.Address, tx *types.Transacti
 		return nil, err
 	}
 	// Request the wallet to sign the transaction
-	chainID := s.b.ChainConfig(0).ChainID
+	chainID := s.b.ChainID()
 	return wallet.SignTx(account, tx, chainID)
 }
 
@@ -1876,7 +1876,7 @@ func (s *PublicTransactionPoolAPI) SendTransaction(ctx context.Context, args Tra
 	// Assemble the transaction and sign with the wallet
 	tx := args.toTransaction()
 
-	chainID := s.b.ChainConfig(0).ChainID
+	chainID := s.b.ChainID()
 	signed, err := wallet.SignTx(account, tx, chainID)
 	if err != nil {
 		return common.Hash{}, err
@@ -2385,7 +2385,7 @@ func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex in
 	}
 
 	// Recompute transactions up to the target index.
-	signer := gsignercache.Wrap(types.LatestSignerForChainID(b.ChainConfig(0).ChainID))
+	signer := gsignercache.Wrap(types.LatestSignerForChainID(b.ChainID()))
 	for idx, tx := range block.Transactions {
 		// Assemble the transaction call message and return if the requested offset
 		msg, err := evmcore.TxAsMessage(tx, signer, block.BaseFee)
