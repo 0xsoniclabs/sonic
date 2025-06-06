@@ -120,3 +120,111 @@ func getSenderOfTransaction(
 	}
 	return details.From, nil
 }
+
+func TestReceipt_SkippedTransactionsDoNotChangeReceiptIndex(t *testing.T) {
+	upgrades := opera.GetSonicUpgrades()
+	net := StartIntegrationTestNetWithJsonGenesis(t, IntegrationTestNetOptions{
+		Upgrades: &upgrades,
+		ClientExtraArguments: []string{
+			"--disable-txPool-validation",
+		},
+	})
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	chainId := net.GetChainId()
+	gasPrice, err := client.SuggestGasPrice(t.Context())
+	require.NoError(t, err)
+	sender := makeAccountWithBalance(t, net, big.NewInt(1e18))
+	senderSkipped := makeAccountWithBalance(t, net, big.NewInt(1e18))
+
+	numSimpleTxs := 10
+	// Create simple transactions
+	transactions := make([]*types.Transaction, numSimpleTxs)
+	for nonce := range numSimpleTxs {
+		txData := &types.LegacyTx{
+			Nonce:    uint64(nonce),
+			Gas:      100000,
+			GasPrice: gasPrice,
+			To:       &common.Address{0x42},
+			Value:    big.NewInt(1),
+		}
+
+		tx := signTransaction(t, chainId, txData, sender)
+		transactions[nonce] = tx
+	}
+
+	// Create skipped transaction
+	initCode := make([]byte, 50000)
+	txData := &types.LegacyTx{
+		Nonce:    uint64(0),
+		Gas:      10000000,
+		GasPrice: gasPrice,
+		To:       nil, // address 0x00 for contract creation
+		Value:    big.NewInt(0),
+		Data:     initCode,
+	}
+	skippedTx := signTransaction(t, chainId, txData, senderSkipped)
+
+	// Run one transaction to not interfere with any still pending transactions.
+	receipt, err := net.EndowAccount(common.Address{}, big.NewInt(1e18))
+	require.NoError(t, err)
+	before := receipt.BlockNumber.Uint64()
+
+	// Send first half of simple transactions
+	for i := range numSimpleTxs / 2 {
+		err = client.SendTransaction(t.Context(), transactions[i])
+		require.NoError(t, err)
+	}
+
+	// Send skipped transaction
+	err = client.SendTransaction(t.Context(), skippedTx)
+	require.NoError(t, err)
+
+	// Send second half of simple transactions
+	for i := range numSimpleTxs / 2 {
+		err = client.SendTransaction(t.Context(), transactions[numSimpleTxs/2+i])
+		require.NoError(t, err)
+	}
+
+	// Wait for receipts of transactions
+	after := before
+	for _, transaction := range transactions {
+		receipt, err := net.GetReceipt(transaction.Hash())
+		require.NoError(t, err)
+		require.NotNil(t, receipt)
+		if receipt.BlockNumber.Uint64() > after {
+			after = receipt.BlockNumber.Uint64()
+		}
+	}
+
+	// Make sure the skipped transaction was included in the block by checking the balance of the sender.
+	balanceBefore, err := client.BalanceAt(t.Context(), senderSkipped.Address(), big.NewInt(int64(before)))
+	require.NoError(t, err)
+	balanceAfter, err := client.BalanceAt(t.Context(), senderSkipped.Address(), big.NewInt(int64(after)))
+	require.NoError(t, err)
+	require.Greater(t, balanceBefore.Uint64(), balanceAfter.Uint64(),
+		"Balance should have decreased",
+	)
+
+	// All transactions should have ended up in the same block
+	require.Equal(t, after, before+1,
+		"Block number should have increased",
+	)
+
+	// Get block by number
+	block, err := client.BlockByNumber(t.Context(), big.NewInt(int64(after)))
+	require.NoError(t, err)
+
+	for idx, tx := range block.Transactions() {
+		receipt, err := client.TransactionReceipt(t.Context(), tx.Hash())
+		require.NoError(t, err)
+
+		// Check that the receipt index is equal to the transaction index
+		require.Equal(t, uint(idx), receipt.TransactionIndex,
+			"Receipt index does not match transaction index for tx %d", idx,
+		)
+	}
+}
