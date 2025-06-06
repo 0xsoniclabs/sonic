@@ -40,8 +40,8 @@ type Chain interface {
 	// TODO: follow-up task - simplify this to a GetBlockHash(idx.Block) method.
 	evmcore.DummyChain
 
-	// GetEvmChainConfig returns the current chain configuration for the EVM at
-	// the given block height.
+	// GetEvmChainConfig returns the chain configuration for the EVM at the
+	// given block height
 	GetEvmChainConfig(blockHeight idx.Block) *params.ChainConfig
 
 	// StateDB returns a context for running transactions on the head state of
