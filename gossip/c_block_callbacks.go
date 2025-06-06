@@ -502,7 +502,7 @@ func resolveRandaoMix(
 		return blockProposalRandao
 	} else {
 		log.Warn("Failed to verify randao reveal, using DAG randomization", "proposer validator", proposer)
-		//  TODO: instrument a prometheus metric for this case
+		//  TODO: instrument a prometheus metric for this case (#209)
 		return fallbackRandao
 	}
 }
