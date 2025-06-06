@@ -255,10 +255,10 @@ type UpgradeHeight struct {
 // information about the chain configuration. It is only valid for the given block
 // height and should be used only for the purpose of configuring Geth tooling.
 //
-// ChainID is semantically equivalent to the Rules.NetworkID
-// upgradeHeights is a list of UpgradeHeight instances that define the
+// - chainID is semantically equivalent to the Rules.NetworkID
+// - upgradeHeights is a list of UpgradeHeight instances that define the
 // block heights at which upgrades become effective.
-// CurrentBlockHeight is the current block height at which the chain config is
+// - currentBlockHeight is the current block height at which the chain config is
 // created.
 //
 // Note about timestamps:
