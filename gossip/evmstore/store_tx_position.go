@@ -11,8 +11,23 @@ import (
 )
 
 type TxPosition struct {
-	Block       idx.Block
-	Event       hash.Event
+	Block idx.Block
+	// Deprecated: in the past, transactions have been stored as part of the
+	// events that have introduced them to the DAG. When performing a lookup
+	// operation for a transaction on the RPC, this index was queried to locate
+	// the event containing the actual transaction.
+	//
+	// Nowadays, all transactions are stored independently in a separate table
+	// within the gossip database. Thus, this index is no longer needed.
+	// Additionally, with the introduction of the Single-Proposer protocol,
+	// the event payload has been altered, leading to a change in the location
+	// of transactions within the events. Finally, long-term, events shall be
+	// pruned, while transactions are expected to be kept indefinitely.
+	//
+	// Thus, this field should no longer be used. However, the field is kept
+	// for backward compatibility of the RLP encoding of this type.
+	Event hash.Event
+	// Deprecated: for the same reason as the Event field above.
 	EventOffset uint32
 	BlockOffset uint32
 }
