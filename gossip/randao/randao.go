@@ -5,12 +5,15 @@ package randao
 
 import (
 	"crypto/sha256"
+	"fmt"
 
 	"github.com/0xsoniclabs/sonic/inter/validatorpk"
 	"github.com/0xsoniclabs/sonic/valkeystore"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 )
+
+//go:generate mockgen -source=randao.go -destination=randao_mock.go -package=randao
 
 // RandaoReveal contains the randao reveal value, which can be used to generate
 // the next randao value. RandaoReveal can be sent in events to other peers
@@ -34,22 +37,12 @@ import (
 // Where both domainSeparator and previousRandao are known to every peer.
 type RandaoReveal [64]byte
 
-// GenerateNextRandaoReveal Constructs a new RandaoReveal
-//   - previousRandao is the previous randao value
-//   - proposerKey is the public key of the proposer originating this randao value
-//   - Signer is the signer used to sign messages within the gossip package
-func GenerateNextRandaoReveal(
-	previousRandao common.Hash,
-	validatorSigner valkeystore.SignerAuthority,
-) (RandaoReveal, error) {
-	hash := sha256.Sum256(append(domainSeparator[:], previousRandao[:]...))
-	buff, err := validatorSigner.Sign(hash)
-	if err != nil {
-		return RandaoReveal{}, err
-	}
-	var result RandaoReveal
-	copy(result[:], buff[:])
-	return result, nil
+// RandaoMixer is an interface to abstract the randao mixing process.
+// It provides a method to return the reveal and mix hash for the next
+// block without exposing the need for this module to know about the
+// validator keys.
+type RandaoMixer interface {
+	MixRandao(prevRandao common.Hash) (RandaoReveal, common.Hash, error)
 }
 
 // VerifyAndGetRandao verifies randaoReveal and extracts a the corresponding randao value.
@@ -77,3 +70,44 @@ func (s RandaoReveal) VerifyAndGetRandao(
 // and is used to verify the randao reveal signature.
 // https://en.wikipedia.org/wiki/Domain_separation
 var domainSeparator = []byte("Sonic-Randao")
+
+type RandaoMixerAdapter struct {
+	signer valkeystore.SignerAuthority
+}
+
+func NewRandaoMixerAdapter(signer valkeystore.SignerAuthority) *RandaoMixerAdapter {
+	return &RandaoMixerAdapter{
+		signer: signer,
+	}
+}
+
+func (r *RandaoMixerAdapter) MixRandao(prevRandao common.Hash) (RandaoReveal, common.Hash, error) {
+	reveal, err := generateNextRandaoReveal(prevRandao, r.signer)
+	if err != nil {
+		return reveal, common.Hash{}, err
+	}
+
+	mix, ok := reveal.VerifyAndGetRandao(prevRandao, r.signer.PublicKey())
+	if !ok {
+		return reveal, common.Hash{}, fmt.Errorf("failed to generate next randao reveal, randao reveal verification failed")
+	}
+	return reveal, mix, nil
+}
+
+// generateNextRandaoReveal Constructs a new RandaoReveal
+//   - previousRandao is the previous randao value
+//   - proposerKey is the public key of the proposer originating this randao value
+//   - Signer is the signer used to sign messages within the gossip package
+func generateNextRandaoReveal(
+	previousRandao common.Hash,
+	validatorSigner valkeystore.SignerAuthority,
+) (RandaoReveal, error) {
+	hash := sha256.Sum256(append(domainSeparator[:], previousRandao[:]...))
+	buff, err := validatorSigner.Sign(hash)
+	if err != nil {
+		return RandaoReveal{}, fmt.Errorf("failed to generate next randao reveal: %w", err)
+	}
+	var result RandaoReveal
+	copy(result[:], buff[:])
+	return result, nil
+}

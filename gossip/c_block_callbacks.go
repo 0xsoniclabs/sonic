@@ -188,8 +188,52 @@ func consensusCallbackBeginBlockFn(
 					}
 				}
 
-				prevRandao := computePrevRandao(confirmedEvents)
+				randao := computePrevRandao(confirmedEvents)
 				chainCfg := es.Rules.EvmChainConfig(store.GetUpgradeHeights())
+
+				// sort events by Lamport time
+				sort.Sort(confirmedEvents)
+				maxBlockGas := es.Rules.Blocks.MaxBlockGas
+				blockEvents := spillBlockEvents(store, confirmedEvents, maxBlockGas)
+
+				// Start assembling the resulting block.
+				number := uint64(blockCtx.Idx)
+				lastBlockHeader := evmStateReader.GetHeaderByNumber(number - 1)
+
+				// Get a proposal for the block to be created.
+				proposal := inter.Proposal{
+					Number:     blockCtx.Idx,
+					ParentHash: lastBlockHeader.Hash,
+					Time:       blockCtx.Time,
+				}
+				if es.Rules.Upgrades.SingleProposerBlockFormation {
+					events := make([]inter.EventPayloadI, 0, blockEvents.Len())
+					for _, e := range blockEvents {
+						events = append(events, e)
+					}
+					if proposed, proposer := extractProposalForNextBlock(lastBlockHeader, events, log.Root()); proposed != nil {
+						proposal = *proposed
+						randao = resolveRandaoMix(store, blockCtx, proposal, proposer, lastBlockHeader.PrevRandao, randao)
+					} else {
+						// If no proposal is found but a block needs to be
+						// created (as this function has been called), we
+						// use a minimum time span to avoid removing gas
+						// allocation time from the next block.
+						proposal.Time = lastBlockHeader.Time + 1
+						// in this case, the original event-based randao is used.
+					}
+				} else {
+					// Collect transactions from events and schedule them.
+					unorderedTxs := make(types.Transactions, 0, blockEvents.Len()*10)
+					for _, e := range blockEvents {
+						unorderedTxs = append(unorderedTxs, e.Txs()...)
+					}
+
+					signer := gsignercache.Wrap(types.MakeSigner(chainCfg, new(big.Int).SetUint64(number), uint64(blockCtx.Time)))
+					proposal.Transactions = scrambler.GetExecutionOrder(unorderedTxs, signer, es.Rules.Upgrades.Sonic)
+				}
+
+				// prepare block processing
 				evmProcessor := blockProc.EVMModule.Start(
 					blockCtx,
 					statedb,
@@ -197,7 +241,7 @@ func consensusCallbackBeginBlockFn(
 					onNewLogAll,
 					es.Rules,
 					chainCfg,
-					prevRandao,
+					randao,
 				)
 				executionStart := time.Now()
 
@@ -230,46 +274,6 @@ func consensusCallbackBeginBlockFn(
 
 				// At this point, newValidators may be returned and the rest of the code may be executed in a parallel thread
 				blockFn := func() {
-					// sort events by Lamport time
-					sort.Sort(confirmedEvents)
-					maxBlockGas := es.Rules.Blocks.MaxBlockGas
-					blockEvents := spillBlockEvents(store, confirmedEvents, maxBlockGas)
-
-					// Start assembling the resulting block.
-					number := uint64(blockCtx.Idx)
-					lastBlockHeader := evmStateReader.GetHeaderByNumber(number - 1)
-
-					// Get a proposal for the block to be created.
-					proposal := inter.Proposal{
-						Number:     blockCtx.Idx,
-						ParentHash: lastBlockHeader.Hash,
-						Time:       blockCtx.Time,
-					}
-					if es.Rules.Upgrades.SingleProposerBlockFormation {
-						events := make([]inter.EventPayloadI, 0, blockEvents.Len())
-						for _, e := range blockEvents {
-							events = append(events, e)
-						}
-						if proposed := extractProposalForNextBlock(lastBlockHeader, events, log.Root()); proposed != nil {
-							proposal = *proposed
-							// TODO(#154): derive prevRandao from the proposal
-						} else {
-							// If no proposal is found but a block needs to be
-							// created (as this function has been called), we
-							// use a minimum time span to avoid removing gas
-							// allocation time from the next block.
-							proposal.Time = lastBlockHeader.Time + 1
-						}
-					} else {
-						// Collect transactions from events and schedule them.
-						unorderedTxs := make(types.Transactions, 0, blockEvents.Len()*10)
-						for _, e := range blockEvents {
-							unorderedTxs = append(unorderedTxs, e.Txs()...)
-						}
-
-						signer := gsignercache.Wrap(types.MakeSigner(chainCfg, new(big.Int).SetUint64(number), uint64(blockCtx.Time)))
-						proposal.Transactions = scrambler.GetExecutionOrder(unorderedTxs, signer, es.Rules.Upgrades.Sonic)
-					}
 
 					blockDuration := time.Duration(proposal.Time - bs.LastBlock.Time)
 					blockBuilder := inter.NewBlockBuilder().
@@ -277,7 +281,7 @@ func consensusCallbackBeginBlockFn(
 						WithNumber(number).
 						WithParentHash(proposal.ParentHash).
 						WithTime(proposal.Time).
-						WithPrevRandao(prevRandao).
+						WithPrevRandao(randao).
 						WithGasLimit(maxBlockGas).
 						WithDuration(blockDuration)
 
@@ -474,6 +478,35 @@ func consensusCallbackBeginBlockFn(
 	}
 }
 
+// resolveRandaoMix computes the randao mix to be used by the block processor
+// when using single block proposal.
+//
+// If randao reveal cannot be verified, this block will be computed using the
+// event derived randao value. This can happen if the randao reveal value
+// was not created according to specification. This fallback mechanism will
+// increase the entropy of the system by introducing an un-biased random value
+// reproducible by all nodes.
+func resolveRandaoMix(
+	store *Store,
+	blockCtx iblockproc.BlockCtx,
+	proposal inter.Proposal,
+	proposer idx.ValidatorID,
+	lastBlockRandao common.Hash,
+	fallbackRandao common.Hash,
+) common.Hash {
+	validatorKeys := readEpochPubKeys(store, blockCtx.Atropos.Epoch())
+	proposerKey := validatorKeys.PubKeys[proposer]
+
+	blockProposalRandao, ok := proposal.RandaoReveal.VerifyAndGetRandao(lastBlockRandao, proposerKey)
+	if ok {
+		return blockProposalRandao
+	} else {
+		log.Warn("Failed to verify randao reveal, using DAG randomization", "proposer validator", proposer)
+		//  TODO: instrument a prometheus metric for this case (#209)
+		return fallbackRandao
+	}
+}
+
 // spillBlockEvents excludes first events which exceed MaxBlockGas
 func spillBlockEvents(store *Store, events hash.OrderedEvents, maxBlockGas uint64) inter.EventPayloads {
 	fullEvents := make(inter.EventPayloads, len(events))
@@ -538,13 +571,14 @@ func extractProposalForNextBlock(
 	lastBlock *evmcore.EvmHeader,
 	events []inter.EventPayloadI,
 	logger log.Logger,
-) *inter.Proposal {
+) (*inter.Proposal, idx.ValidatorID) {
 
 	desiredBlockNumber := idx.Block(lastBlock.Number.Uint64() + 1)
 	parentHash := lastBlock.Hash
 
 	// Collect all payloads from events proposing the desired block.
 	payloads := []*inter.Payload{}
+	proposers := map[*inter.Payload]idx.ValidatorID{}
 	for _, e := range events {
 		payload := e.Payload()
 		if proposal := payload.Proposal; proposal != nil {
@@ -568,6 +602,7 @@ func extractProposalForNextBlock(
 			}
 
 			payloads = append(payloads, payload)
+			proposers[payload] = e.Creator()
 		}
 	}
 	if len(payloads) > 1 {
@@ -578,11 +613,11 @@ func extractProposalForNextBlock(
 	}
 
 	if len(payloads) == 0 {
-		return nil
+		return nil, 0
 	}
 
 	if len(payloads) == 1 {
-		return payloads[0].Proposal
+		return payloads[0].Proposal, proposers[payloads[0]]
 	}
 
 	best := payloads[0]
@@ -605,5 +640,5 @@ func extractProposalForNextBlock(
 		case 1:
 		}
 	}
-	return best.Proposal
+	return best.Proposal, proposers[best]
 }
