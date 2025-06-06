@@ -189,7 +189,7 @@ func (s *PublicTxTraceAPI) replayBlock(ctx context.Context, block *evmcore.EvmBl
 		Actions: make([]txtrace.ActionTrace, 0),
 	}
 
-	signer := gsignercache.Wrap(types.LatestSignerForChainID(s.b.ChainConfig(0).ChainID))
+	signer := gsignercache.Wrap(types.LatestSignerForChainID(s.b.ChainID()))
 
 	state, _, err := s.b.StateAndHeaderByNumberOrHash(ctx, rpc.BlockNumberOrHash{BlockNumber: &parentBlockNr})
 	if err != nil {

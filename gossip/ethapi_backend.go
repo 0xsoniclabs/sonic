@@ -547,6 +547,10 @@ func (b *EthAPIBackend) CalcBlockExtApi() bool {
 	return b.svc.config.RPCBlockExt
 }
 
+func (b *EthAPIBackend) ChainID() *big.Int {
+	return new(big.Int).SetUint64(b.svc.store.GetRules().NetworkID)
+}
+
 func (b *EthAPIBackend) SealedEpochTiming(ctx context.Context) (start inter.Timestamp, end inter.Timestamp) {
 	es := b.svc.store.GetEpochState()
 	return es.PrevEpochStart, es.EpochStart
