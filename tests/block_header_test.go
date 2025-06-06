@@ -11,6 +11,7 @@ import (
 
 	"github.com/0xsoniclabs/carmen/go/carmen"
 	"github.com/0xsoniclabs/carmen/go/common/immutable"
+	"github.com/0xsoniclabs/carmen/go/database/mpt"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/inter"
@@ -749,6 +750,11 @@ func getVerifiedCounterState(
 	_, storageRoot, complete := proof.GetAccountElements(carmen.Hash(stateRoot), carmen.Address(counterAddress))
 	require.True(complete, "proof is not complete")
 	require.Equal(common.Hash(storageRoot), result.StorageHash, "storage root mismatch")
+
+	// Zero-storage root is interpreted as the empty storage trie.
+	if storageRoot == (carmen.Hash{}) {
+		storageRoot = carmen.Hash(mpt.EmptyNodeEthereumHash)
+	}
 
 	// Check that the storage proof starts with an element that corresponds to
 	// the storage root.
