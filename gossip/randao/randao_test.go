@@ -1,6 +1,7 @@
 package randao
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/rand"
 	"fmt"
@@ -243,6 +244,50 @@ func TestRandaoReveal_EntropyTest(t *testing.T) {
 		entropy := calculate_normalized_shannon_entropy(byteStream)
 		require.Greater(t, entropy, 0.9999, "Entropy should be greater than 0.9999")
 	}
+}
+
+func TestRandaoMixer_CanProduceAVerifiableRandaoReveal(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockBackend := valkeystore.NewMockKeystoreI(ctrl)
+	privateKey, publicKey := generateKeyPair(t)
+	mockBackend.EXPECT().GetUnlocked(publicKey).Return(privateKey, nil).AnyTimes()
+	signer := valkeystore.NewSignerAuthority(mockBackend, publicKey)
+
+	randaoMixer := NewRandaoMixerAdapter(signer)
+
+	previousRandao := common.Hash{}
+	reveal, randao, err := randaoMixer.MixRandao(previousRandao)
+	require.NoError(t, err)
+
+	// Verify the reveal
+	verifiedRandao, ok := reveal.VerifyAndGetRandao(previousRandao, publicKey)
+	require.True(t, ok)
+	require.Equal(t, randao, verifiedRandao)
+}
+
+func TestRandaoMixer_ReturnsErrorIfRandaoGenerationFails(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	signer := valkeystore.NewMockSignerAuthority(ctrl)
+
+	signer.EXPECT().Sign(gomock.Any()).Return(nil, fmt.Errorf("nop"))
+	randaoMixer := NewRandaoMixerAdapter(signer)
+	previousRandao := common.Hash{}
+
+	_, _, err := randaoMixer.MixRandao(previousRandao)
+	require.ErrorContains(t, err, "failed to generate next randao reveal")
+}
+
+func TestRandaoMixer_ReturnsErrorIfRandaoVerificationFails(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	signer := valkeystore.NewMockSignerAuthority(ctrl)
+
+	signer.EXPECT().Sign(gomock.Any()).Return(bytes.Repeat([]byte{0x42}, 64), nil)
+	signer.EXPECT().PublicKey()
+	randaoMixer := NewRandaoMixerAdapter(signer)
+	previousRandao := common.Hash{}
+
+	_, _, err := randaoMixer.MixRandao(previousRandao)
+	require.ErrorContains(t, err, "failed to generate next randao reveal, randao reveal verification failed")
 }
 
 func calculate_normalized_shannon_entropy(data []byte) float64 {
