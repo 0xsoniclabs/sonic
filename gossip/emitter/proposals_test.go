@@ -570,5 +570,38 @@ func TestMakeProposal_SkipsProposalOnRandaoRevealError(t *testing.T) {
 		nil,
 		nil,
 	)
-	require.ErrorContains(err, ErrRandaoGenerationFailed.Error())
+	require.ErrorContains(err, "randao reveal generation failed")
+}
+
+func TestCreatePayload_ReturnsErrorOnRandaoGenerationFailure(t *testing.T) {
+
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	world := NewMockworldReader(ctrl)
+
+	world.EXPECT().GetLatestBlock().Return(
+		inter.NewBlockBuilder().WithNumber(4).Build(), // next expected block number is 5
+	)
+	world.EXPECT().GetRules().Return(opera.Rules{})
+
+	event := inter.NewMockEventI(ctrl)
+	event.EXPECT().Parents().Return(hash.Events{})
+	event.EXPECT().Frame().Return(idx.Frame(2)) // tracker should expect frame 2
+	event.EXPECT().MedianTime().Return(inter.Timestamp(1234))
+
+	validator := idx.ValidatorID(1)
+	builder := pos.ValidatorsBuilder{}
+	builder.Set(validator, 10)
+	validators := builder.Build()
+
+	tracker := NewMockproposalTracker(ctrl)
+	tracker.EXPECT().IsPending(idx.Frame(2), idx.Block(5)).Return(false)
+
+	randaoMixer := randao.NewMockRandaoMixer(ctrl)
+	randaoMixer.EXPECT().MixRandao(gomock.Any()).Return(
+		randao.RandaoReveal{}, common.Hash{}, errors.New("randao error"),
+	)
+
+	_, err := createPayload(world, validator, validators, event, tracker, nil, nil, randaoMixer, nil, nil)
+	require.ErrorContains(err, "randao reveal generation failed")
 }
