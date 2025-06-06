@@ -245,6 +245,12 @@ type Upgrades struct {
 	SingleProposerBlockFormation bool
 }
 
+// UpgradeHeight contains the information about the block height at which
+// the upgrades become effective. The upgrades are defined by the Upgrades
+// struct, which contains the feature flags for the Sonic chain.
+// The Height field is the block height at which the upgrades become effective.
+// The Time field is the timestamp, in the current implementation, it is ignored
+// (See [CreateTransientEvmChainConfig] for details).
 type UpgradeHeight struct {
 	Upgrades Upgrades
 	Height   idx.Block
