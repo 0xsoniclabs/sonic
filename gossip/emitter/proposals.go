@@ -10,7 +10,6 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/randao"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/0xsoniclabs/sonic/valkeystore"
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
@@ -55,9 +54,7 @@ func (em *Emitter) createPayload(
 	sorted *transactionsByPriceAndNonce,
 ) (inter.Payload, error) {
 	adapter := worldAdapter{External: em.world}
-	randaoMixer := &randaoMixerAdapter{
-		signer: em.world.EventsSigner,
-	}
+	randaoMixer := randao.NewRandaoMixerAdapter(em.world.EventsSigner)
 	return createPayload(
 		adapter,
 		em.config.Validator.ID,
@@ -89,7 +86,7 @@ func createPayload(
 	proposalTracker proposalTracker,
 	sorted *transactionsByPriceAndNonce,
 	transactionScheduler txScheduler,
-	randaoMixer randaoMixer,
+	randaoMixer randao.RandaoMixer,
 	durationMetric timerMetric,
 	timeoutMetric counterMetric,
 ) (inter.Payload, error) {
@@ -115,7 +112,8 @@ func createPayload(
 		currentFrame,
 	)
 	if err != nil {
-		return inter.Payload{}, err
+		return inter.Payload{},
+			fmt.Errorf("failed to create event payload, %w", err)
 	}
 	if !isMyTurn {
 		return inter.Payload{
@@ -139,7 +137,8 @@ func createPayload(
 		timeoutMetric,
 	)
 	if err != nil {
-		return inter.Payload{}, err
+		return inter.Payload{},
+			fmt.Errorf("failed to create event payload: %w", err)
 	}
 
 	// If no new proposal was created, the payload remains empty.
@@ -205,7 +204,7 @@ func makeProposal(
 	currentFrame idx.Frame,
 	transactionScheduler txScheduler,
 	candidates scheduler.PrioritizedTransactions,
-	randaoMixer randaoMixer,
+	randaoMixer randao.RandaoMixer,
 	durationMetric timerMetric,
 	timeoutMetric counterMetric,
 ) (*inter.Proposal, error) {
@@ -345,29 +344,4 @@ type transactionIndex interface {
 	Peek() (*txpool.LazyTransaction, *uint256.Int)
 	Shift()
 	Pop()
-}
-
-// randaoMixer is an interface to abstract the randao mixing process.
-// It provides a method to return the reveal and mix hash for the next
-// block without exposing the need for this module to know about the
-// validator keys.
-type randaoMixer interface {
-	MixRandao(prevRandao common.Hash) (randao.RandaoReveal, common.Hash, error)
-}
-
-type randaoMixerAdapter struct {
-	signer valkeystore.SignerAuthority
-}
-
-func (r *randaoMixerAdapter) MixRandao(prevRandao common.Hash) (randao.RandaoReveal, common.Hash, error) {
-	reveal, err := randao.GenerateNextRandaoReveal(prevRandao, r.signer)
-	if err != nil {
-		return reveal, common.Hash{}, err
-	}
-
-	mix, ok := reveal.VerifyAndGetRandao(prevRandao, r.signer.PublicKey())
-	if !ok {
-		return reveal, common.Hash{}, fmt.Errorf("randao verification failed: %w", err)
-	}
-	return reveal, mix, nil
 }

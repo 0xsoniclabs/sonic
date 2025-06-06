@@ -15,12 +15,10 @@ import (
 	time "time"
 
 	scheduler "github.com/0xsoniclabs/sonic/gossip/emitter/scheduler"
-	randao "github.com/0xsoniclabs/sonic/gossip/randao"
 	inter "github.com/0xsoniclabs/sonic/inter"
 	opera "github.com/0xsoniclabs/sonic/opera"
 	hash "github.com/Fantom-foundation/lachesis-base/hash"
 	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
-	common "github.com/ethereum/go-ethereum/common"
 	txpool "github.com/ethereum/go-ethereum/core/txpool"
 	types "github.com/ethereum/go-ethereum/core/types"
 	uint256 "github.com/holiman/uint256"
@@ -296,43 +294,4 @@ func (m *MocktransactionIndex) Shift() {
 func (mr *MocktransactionIndexMockRecorder) Shift() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Shift", reflect.TypeOf((*MocktransactionIndex)(nil).Shift))
-}
-
-// MockrandaoMixer is a mock of randaoMixer interface.
-type MockrandaoMixer struct {
-	ctrl     *gomock.Controller
-	recorder *MockrandaoMixerMockRecorder
-}
-
-// MockrandaoMixerMockRecorder is the mock recorder for MockrandaoMixer.
-type MockrandaoMixerMockRecorder struct {
-	mock *MockrandaoMixer
-}
-
-// NewMockrandaoMixer creates a new mock instance.
-func NewMockrandaoMixer(ctrl *gomock.Controller) *MockrandaoMixer {
-	mock := &MockrandaoMixer{ctrl: ctrl}
-	mock.recorder = &MockrandaoMixerMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockrandaoMixer) EXPECT() *MockrandaoMixerMockRecorder {
-	return m.recorder
-}
-
-// MixRandao mocks base method.
-func (m *MockrandaoMixer) MixRandao(prevRandao common.Hash) (randao.RandaoReveal, common.Hash, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "MixRandao", prevRandao)
-	ret0, _ := ret[0].(randao.RandaoReveal)
-	ret1, _ := ret[1].(common.Hash)
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
-}
-
-// MixRandao indicates an expected call of MixRandao.
-func (mr *MockrandaoMixerMockRecorder) MixRandao(prevRandao any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MixRandao", reflect.TypeOf((*MockrandaoMixer)(nil).MixRandao), prevRandao)
 }
