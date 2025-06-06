@@ -686,11 +686,8 @@ func (s *PublicBlockChainAPI) GetEpochBlock(ctx context.Context, epoch rpc.Block
 
 // ChainId is the EIP-155 replay-protection chain id for the current ethereum chain config.
 func (s *PublicBlockChainAPI) ChainId() (*hexutil.Big, error) {
-	rules, err := s.GetRules(context.Background(), rpc.LatestBlockNumber)
-	if err != nil {
-		return nil, err
-	}
-	return (*hexutil.Big)(new(big.Int).SetUint64(rules.NetworkID)), nil
+	// Sonic is always EIP-155 compliant, so we can safely return the chain ID
+	return (*hexutil.Big)(s.b.ChainID()), nil
 }
 
 // BlockNumber returns the block number of the chain head.
