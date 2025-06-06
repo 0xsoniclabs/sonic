@@ -89,7 +89,7 @@ func (r *RandaoMixerAdapter) MixRandao(prevRandao common.Hash) (RandaoReveal, co
 
 	mix, ok := reveal.VerifyAndGetRandao(prevRandao, r.signer.PublicKey())
 	if !ok {
-		return reveal, common.Hash{}, fmt.Errorf("randao verification failed: %w", err)
+		return reveal, common.Hash{}, fmt.Errorf("failed to generate next randao reveal, randao reveal verification failed")
 	}
 	return reveal, mix, nil
 }
@@ -105,7 +105,7 @@ func generateNextRandaoReveal(
 	hash := sha256.Sum256(append(domainSeparator[:], previousRandao[:]...))
 	buff, err := validatorSigner.Sign(hash)
 	if err != nil {
-		return RandaoReveal{}, err
+		return RandaoReveal{}, fmt.Errorf("failed to generate next randao reveal: %w", err)
 	}
 	var result RandaoReveal
 	copy(result[:], buff[:])
