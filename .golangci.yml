@@ -42,3 +42,5 @@ output:
     html:
       # for human consumption
       path: ./build/golangci-lint-report.html
+    tab:
+      path: stdout
