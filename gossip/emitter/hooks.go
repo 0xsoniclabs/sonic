@@ -36,7 +36,8 @@ func (em *Emitter) OnNewEpoch(newValidators *pos.Validators, newEpoch idx.Epoch)
 	if !em.isValidator() {
 		return
 	}
-	em.prevEmittedAtTime = em.loadPrevEmitTime()
+	lastEmit := em.loadPrevEmitTime()
+	em.prevEmittedAtTime.Store(&lastEmit)
 
 	em.originatedTxs.Clear()
 	em.pendingGas = 0

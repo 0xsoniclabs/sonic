@@ -61,7 +61,7 @@ type Emitter struct {
 	syncStatus syncStatus
 
 	prevIdleTime       time.Time
-	prevEmittedAtTime  time.Time
+	prevEmittedAtTime  atomic.Pointer[time.Time]
 	prevEmittedAtBlock idx.Block
 	originatedTxs      *originatedtxs.Buffer
 	pendingGas         uint64
@@ -220,7 +220,7 @@ func (em *Emitter) tick() {
 
 	em.recheckChallenges()
 	em.recheckIdleTime()
-	if time.Since(em.prevEmittedAtTime) >= em.intervals.Min {
+	if em.timeSinceLastEmit() >= em.intervals.Min {
 		_, err := em.EmitEvent()
 		if err != nil {
 			em.Log.Error("Event emitting error", "err", err)
@@ -319,20 +319,25 @@ func (em *Emitter) EmitEvent() (*inter.EventPayload, error) {
 	emittedGasCounter.Inc(int64(e.GasPowerUsed()))
 	emittedEventsCounter.Inc(1)
 
-	em.prevEmittedAtTime = time.Now() // record time after connecting, to add the event processing time
+	now := time.Now() // record time after connecting, to add the event processing time
+	em.prevEmittedAtTime.Store(&now)
 	em.prevEmittedAtBlock = em.world.GetLatestBlockIndex()
 
 	return e, nil
 }
 
 func (em *Emitter) loadPrevEmitTime() time.Time {
+	var prevEmittedAtTime time.Time
+	if time := em.prevEmittedAtTime.Load(); time != nil {
+		prevEmittedAtTime = *time
+	}
 	prevEventID := em.world.GetLastEvent(em.epoch, em.config.Validator.ID)
 	if prevEventID == nil {
-		return em.prevEmittedAtTime
+		return prevEmittedAtTime
 	}
 	prevEvent := em.world.GetEvent(*prevEventID)
 	if prevEvent == nil {
-		return em.prevEmittedAtTime
+		return prevEmittedAtTime
 	}
 	return prevEvent.CreationTime().Time()
 }
