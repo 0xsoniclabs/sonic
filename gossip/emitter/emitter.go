@@ -87,6 +87,8 @@ type Emitter struct {
 	intervals                EmitIntervals
 	globalConfirmingInterval time.Duration
 
+	intervalsMinLock sync.Mutex // lock for intervals.Min
+
 	done chan struct{}
 	wg   sync.WaitGroup
 
@@ -218,7 +220,12 @@ func (em *Emitter) tick() {
 	}
 
 	em.recheckChallenges()
-	if em.timeSinceLastEmit() >= em.intervals.Min {
+
+	em.intervalsMinLock.Lock()
+	min := em.intervals.Min
+	em.intervalsMinLock.Unlock()
+
+	if em.timeSinceLastEmit() >= min {
 		_, err := em.EmitEvent()
 		if err != nil {
 			em.Log.Error("Event emitting error", "err", err)
