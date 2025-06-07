@@ -1,6 +1,7 @@
 package txtime
 
 import (
+	"sync/atomic"
 	"time"
 
 	"github.com/Fantom-foundation/lachesis-base/utils/wlru"
@@ -10,18 +11,18 @@ import (
 var (
 	globalFinalized, _    = wlru.New(30000, 300000)
 	globalNonFinalized, _ = wlru.New(5000, 50000)
-	Enabled               = false
+	Enabled               = atomic.Bool{}
 )
 
 func Saw(txid common.Hash, t time.Time) {
-	if !Enabled {
+	if !Enabled.Load() {
 		return
 	}
 	globalNonFinalized.ContainsOrAdd(txid, t, 1)
 }
 
 func Validated(txid common.Hash, t time.Time) {
-	if !Enabled {
+	if !Enabled.Load() {
 		return
 	}
 	v, has := globalNonFinalized.Peek(txid)
@@ -32,7 +33,7 @@ func Validated(txid common.Hash, t time.Time) {
 }
 
 func Of(txid common.Hash) time.Time {
-	if !Enabled {
+	if !Enabled.Load() {
 		return time.Time{}
 	}
 	v, has := globalFinalized.Get(txid)
@@ -49,7 +50,7 @@ func Of(txid common.Hash) time.Time {
 }
 
 func Get(txid common.Hash) time.Time {
-	if !Enabled {
+	if !Enabled.Load() {
 		return time.Time{}
 	}
 	v, has := globalFinalized.Get(txid)

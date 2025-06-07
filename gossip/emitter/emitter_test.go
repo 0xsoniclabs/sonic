@@ -84,7 +84,7 @@ func TestEmitter(t *testing.T) {
 	})
 
 	t.Run("memorizeTxTimes", func(t *testing.T) {
-		txtime.Enabled = true
+		txtime.Enabled.Store(true)
 		require := require.New(t)
 		tx1 := types.NewTransaction(1, common.Address{}, big.NewInt(1), 1, big.NewInt(1), nil)
 		tx2 := types.NewTransaction(2, common.Address{}, big.NewInt(2), 2, big.NewInt(2), nil)
