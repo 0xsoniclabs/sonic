@@ -3,6 +3,7 @@ package gossip
 import (
 	"sync/atomic"
 
+	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 
@@ -116,4 +117,24 @@ func readEpochPubKeys(s *Store, epoch idx.Epoch) *ValidatorsPubKeys {
 		Epoch:   epoch,
 		PubKeys: pubkeys,
 	}
+}
+
+// proposalCheckReader is an implementation of the proposalcheck.Reader
+// interface providing access to event payload data and epoch validators.
+type proposalCheckReader struct {
+	store *Store
+}
+
+func newProposalCheckReader(store *Store) proposalCheckReader {
+	return proposalCheckReader{
+		store: store,
+	}
+}
+
+func (r *proposalCheckReader) GetEpochValidators() *pos.Validators {
+	return r.store.GetValidators()
+}
+
+func (r *proposalCheckReader) GetEventPayload(eventID hash.Event) inter.Payload {
+	return *r.store.GetEventPayload(eventID).Payload()
 }

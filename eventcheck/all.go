@@ -6,6 +6,7 @@ import (
 	"github.com/0xsoniclabs/sonic/eventcheck/gaspowercheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/heavycheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/parentscheck"
+	"github.com/0xsoniclabs/sonic/eventcheck/proposalcheck"
 	"github.com/0xsoniclabs/sonic/inter"
 )
 
@@ -15,6 +16,7 @@ type Checkers struct {
 	Epochcheck    *epochcheck.Checker
 	Parentscheck  *parentscheck.Checker
 	Gaspowercheck *gaspowercheck.Checker
+	Proposalcheck *proposalcheck.Checker
 	Heavycheck    *heavycheck.Checker
 }
 
@@ -34,6 +36,9 @@ func (v *Checkers) Validate(e inter.EventPayloadI, parents inter.EventIs) error 
 		selfParent = parents[0]
 	}
 	if err := v.Gaspowercheck.Validate(e, selfParent); err != nil {
+		return err
+	}
+	if err := v.Proposalcheck.Validate(e); err != nil {
 		return err
 	}
 	if err := v.Heavycheck.ValidateEvent(e); err != nil {

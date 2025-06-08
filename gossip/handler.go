@@ -281,6 +281,9 @@ func (h *handler) makeDagProcessor(checkers *eventcheck.Checkers) *dagprocessor.
 		if err := checkers.Gaspowercheck.Validate(e, selfParent); err != nil {
 			return err
 		}
+		if err := checkers.Proposalcheck.Validate(e.(*inter.EventPayload)); err != nil {
+			return err
+		}
 		return nil
 	}
 	parentlessChecker := parentlesscheck.Checker{
