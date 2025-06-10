@@ -89,7 +89,8 @@ var (
 )
 
 func SetupMetrics(ctx *cli.Context) error {
-	if metrics.Enabled() {
+	if ctx.GlobalBool(MetricsEnabledFlag.Name) {
+		metrics.Enable()
 		log.Info("Enabling metrics collection")
 
 		var (
