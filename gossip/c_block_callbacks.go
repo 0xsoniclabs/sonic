@@ -29,9 +29,11 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/verwatcher"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
+	"github.com/0xsoniclabs/sonic/gossip/randao"
 	"github.com/0xsoniclabs/sonic/gossip/scrambler"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
+	"github.com/0xsoniclabs/sonic/inter/validatorpk"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
 )
@@ -213,7 +215,13 @@ func consensusCallbackBeginBlockFn(
 					}
 					if proposed, proposer := extractProposalForNextBlock(lastBlockHeader, events, log.Root()); proposed != nil {
 						proposal = *proposed
-						randao = resolveRandaoMix(store, blockCtx, proposal, proposer, lastBlockHeader.PrevRandao, randao)
+						validatorKeys := readEpochPubKeys(store, blockCtx.Atropos.Epoch())
+						randao = resolveRandaoMix(
+							proposal.RandaoReveal, proposer,
+							validatorKeys.PubKeys,
+							lastBlockHeader.PrevRandao, randao,
+							log.Root(),
+						)
 					} else {
 						// If no proposal is found but a block needs to be
 						// created (as this function has been called), we
@@ -487,21 +495,18 @@ func consensusCallbackBeginBlockFn(
 // increase the entropy of the system by introducing an un-biased random value
 // reproducible by all nodes.
 func resolveRandaoMix(
-	store *Store,
-	blockCtx iblockproc.BlockCtx,
-	proposal inter.Proposal,
+	reveal randao.RandaoReveal,
 	proposer idx.ValidatorID,
+	validatorKeys map[idx.ValidatorID]validatorpk.PubKey,
 	lastBlockRandao common.Hash,
 	fallbackRandao common.Hash,
+	logger log.Logger,
 ) common.Hash {
-	validatorKeys := readEpochPubKeys(store, blockCtx.Atropos.Epoch())
-	proposerKey := validatorKeys.PubKeys[proposer]
-
-	blockProposalRandao, ok := proposal.RandaoReveal.VerifyAndGetRandao(lastBlockRandao, proposerKey)
+	blockProposalRandao, ok := reveal.VerifyAndGetRandao(lastBlockRandao, validatorKeys[proposer])
 	if ok {
 		return blockProposalRandao
 	} else {
-		log.Warn("Failed to verify randao reveal, using DAG randomization", "proposer validator", proposer)
+		logger.Warn("Failed to verify randao reveal, using DAG randomization", "proposer validator", proposer)
 		//  TODO: instrument a prometheus metric for this case (#209)
 		return fallbackRandao
 	}

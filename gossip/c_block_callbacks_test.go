@@ -3,6 +3,8 @@ package gossip
 import (
 	"bytes"
 	"cmp"
+	"crypto/ecdsa"
+	"crypto/rand"
 	"fmt"
 	"math/big"
 	"slices"
@@ -11,15 +13,20 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/gossip/randao"
 	"github.com/0xsoniclabs/sonic/inter"
+	"github.com/0xsoniclabs/sonic/inter/validatorpk"
 	"github.com/0xsoniclabs/sonic/logger"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
+	"github.com/0xsoniclabs/sonic/valkeystore"
+	"github.com/0xsoniclabs/sonic/valkeystore/encryption"
 )
 
 func TestConsensusCallback(t *testing.T) {
@@ -306,4 +313,73 @@ func TestExtractProposalForNextBlock_MultipleValidProposals_UsesTurnAndHashAsTie
 		)
 		require.Equal(t, idx.ValidatorID(1), proposer)
 	}
+}
+
+func TestResolveRandaoMix_ComputesRandaoMixFromReveal(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	logger := logger.NewMockLogger(ctrl)
+	mockBackend := valkeystore.NewMockKeystoreI(ctrl)
+	privateKey, publicKey := generateKeyPair(t)
+	mockBackend.EXPECT().GetUnlocked(publicKey).Return(privateKey, nil).AnyTimes()
+	signer := valkeystore.NewSignerAuthority(mockBackend, publicKey)
+
+	lastRandao := common.Hash{}
+	reveal, expectedMix, err := randao.NewRandaoMixerAdapter(signer).MixRandao(lastRandao)
+	require.NoError(t, err)
+
+	proposer := idx.ValidatorID(1)
+	dagRandao := common.Hash{}
+	validatorKeys := map[idx.ValidatorID]validatorpk.PubKey{
+		proposer: publicKey,
+	}
+
+	mix := resolveRandaoMix(reveal, proposer, validatorKeys, lastRandao, dagRandao, logger)
+	require.NotNil(t, mix, "should return a valid RandaoMix")
+	require.Equal(t, expectedMix, mix, "should compute the correct Randao mix")
+}
+
+func TestResolveRandaoMix_FallsBackToDAGRandaoWhenVerificationFails(t *testing.T) {
+
+	ctrl := gomock.NewController(t)
+	mockBackend := valkeystore.NewMockKeystoreI(ctrl)
+	privateKey, publicKey := generateKeyPair(t)
+	mockBackend.EXPECT().GetUnlocked(publicKey).Return(privateKey, nil).AnyTimes()
+	signer := valkeystore.NewSignerAuthority(mockBackend, publicKey)
+
+	lastRandao := common.Hash{}
+	reveal, _, err := randao.NewRandaoMixerAdapter(signer).MixRandao(lastRandao)
+	require.NoError(t, err)
+
+	proposer := idx.ValidatorID(1)
+	dagRandao := common.Hash{1, 2, 3}
+
+	logger := logger.NewMockLogger(ctrl)
+	logger.EXPECT().Warn("Failed to verify randao reveal, using DAG randomization", "proposer validator", proposer)
+
+	_, wrongKey := generateKeyPair(t)
+	validatorKeys := map[idx.ValidatorID]validatorpk.PubKey{
+		proposer: wrongKey,
+	}
+
+	mix := resolveRandaoMix(reveal, proposer, validatorKeys, lastRandao, dagRandao, logger)
+	require.NotNil(t, mix, "should return a valid RandaoMix")
+	require.Equal(t, dagRandao, mix, "should compute the correct Randao mix")
+}
+
+// generateKeyPair is a helper function that creates a new ECDSA key pair
+// and packs it in the data structures used by the gossip package.
+func generateKeyPair(t testing.TB) (*encryption.PrivateKey, validatorpk.PubKey) {
+	privateKeyECDSA, err := ecdsa.GenerateKey(crypto.S256(), rand.Reader)
+	require.NoError(t, err)
+
+	publicKey := validatorpk.PubKey{
+		Raw:  crypto.FromECDSAPub(&privateKeyECDSA.PublicKey),
+		Type: validatorpk.Types.Secp256k1,
+	}
+	privateKey := &encryption.PrivateKey{
+		Type:    validatorpk.Types.Secp256k1,
+		Decoded: privateKeyECDSA,
+	}
+
+	return privateKey, publicKey
 }
