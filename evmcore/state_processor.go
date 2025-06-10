@@ -90,8 +90,7 @@ func (p *StateProcessor) Process(
 
 	// execute EIP-2935 HistoryStorage contract.
 	if p.config.IsPrague(blockNumber, time) {
-		ProcessParentBlockHash(block.ParentHash, vmenv)
-		statedb.EndTransaction()
+		ProcessParentBlockHash(block.ParentHash, vmenv, statedb)
 	}
 
 	// Iterate over and process the individual transactions
@@ -137,8 +136,7 @@ func (p *StateProcessor) BeginBlock(
 
 	// execute EIP-2935 HistoryStorage contract.
 	if p.config.IsPrague(blockNumber, time) {
-		ProcessParentBlockHash(block.ParentHash, vmEnvironment)
-		stateDb.EndTransaction()
+		ProcessParentBlockHash(block.ParentHash, vmEnvironment, stateDb)
 	}
 
 	return &TransactionProcessor{
@@ -249,7 +247,7 @@ func ApplyTransactionWithEVM(msg *core.Message, config *params.ChainConfig, gp *
 
 // ProcessParentBlockHash stores the parent block hash in the history storage contract
 // as per EIP-2935.
-func ProcessParentBlockHash(prevHash common.Hash, evm *vm.EVM) {
+func ProcessParentBlockHash(prevHash common.Hash, evm *vm.EVM, stateDb state.StateDB) {
 	msg := &core.Message{
 		From:      params.SystemAddress,
 		GasLimit:  30_000_000,
@@ -263,9 +261,10 @@ func ProcessParentBlockHash(prevHash common.Hash, evm *vm.EVM) {
 	txContext := NewEVMTxContext(msg)
 	evm.SetTxContext(txContext)
 
-	evm.StateDB.AddAddressToAccessList(params.HistoryStorageAddress)
+	stateDb.AddAddressToAccessList(params.HistoryStorageAddress)
 	_, _, _ = evm.Call(msg.From, *msg.To, msg.Data, 30_000_000, common.U2560)
-	evm.StateDB.Finalise(true)
+	stateDb.Finalise(true)
+	stateDb.EndTransaction()
 }
 
 func applyTransaction(

@@ -248,7 +248,7 @@ func (s *PublicTxTraceAPI) replayBlock(ctx context.Context, block *evmcore.EvmBl
 			}
 
 			if vmenv.ChainConfig().IsPrague(block.Number, uint64(block.Time.Unix())) {
-				evmcore.ProcessParentBlockHash(block.ParentHash, vmenv)
+				evmcore.ProcessParentBlockHash(block.ParentHash, vmenv, state)
 			}
 
 			res, err := core.ApplyMessage(vmenv, msg, new(core.GasPool).AddGas(msg.GasLimit))

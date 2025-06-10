@@ -1082,7 +1082,7 @@ func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash 
 
 	// execute EIP-2935 HistoryStorage contract.
 	if evm.ChainConfig().IsPrague(header.Number, uint64(header.Time.Unix())) {
-		evmcore.ProcessParentBlockHash(header.ParentHash, evm)
+		evmcore.ProcessParentBlockHash(header.ParentHash, evm, state)
 	}
 
 	// Execute the message.
@@ -2352,7 +2352,7 @@ func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex in
 
 	// execute EIP-2935 HistoryStorage contract.
 	if vmenv.ChainConfig().IsPrague(block.Number, uint64(block.Time.Unix())) {
-		evmcore.ProcessParentBlockHash(block.ParentHash, vmenv)
+		evmcore.ProcessParentBlockHash(block.ParentHash, vmenv, statedb)
 	}
 
 	// Recompute transactions up to the target index.

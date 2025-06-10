@@ -818,6 +818,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 		mockState.EXPECT().SubBalance(params.SystemAddress, uint256.NewInt(0), gomock.Any())
 		mockState.EXPECT().GetRefund().Return(uint64(0))
 		mockState.EXPECT().Finalise(true)
+		mockState.EXPECT().EndTransaction()
 	}
 
 	expectedTraceReplayBlock := func(mockState *state.MockStateDB) {
