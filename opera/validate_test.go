@@ -19,7 +19,7 @@ func TestDefaultRulesAreValid(t *testing.T) {
 	}
 	for name, r := range rules {
 		t.Run(name, func(t *testing.T) {
-			require.NoError(t, r.Validate())
+			require.NoError(t, r.Validate(Rules{}))
 		})
 	}
 }
@@ -57,7 +57,7 @@ func TestValidate_DetectsIssues(t *testing.T) {
 
 	for name, test := range issues {
 		t.Run(name, func(t *testing.T) {
-			err := test.rules.Validate()
+			err := test.rules.Validate(Rules{})
 			require.Error(t, err)
 			require.Contains(t, err.Error(), test.issue)
 		})
@@ -466,9 +466,11 @@ func TestGasPowerRulesValidation_AcceptsValidRules(t *testing.T) {
 }
 
 func TestUpgradesValidation_DetectsIssues(t *testing.T) {
+
 	issues := map[string]struct {
-		upgrade Upgrades
-		issue   string
+		previous Upgrades
+		upgrade  Upgrades
+		issue    string
 	}{
 		"Berlin upgrade is required": {
 			upgrade: Upgrades{},
@@ -502,11 +504,19 @@ func TestUpgradesValidation_DetectsIssues(t *testing.T) {
 			upgrade: Upgrades{Brio: true},
 			issue:   "Brio upgrade requires Allegro",
 		},
+		"Brio upgrade cannot be disabled": {
+			previous: Upgrades{
+				Allegro: true,
+				Brio:    true,
+			},
+			upgrade: Upgrades{Brio: false},
+			issue:   "Brio upgrade cannot be disabled",
+		},
 	}
 
 	for name, test := range issues {
 		t.Run(name, func(t *testing.T) {
-			err := validateUpgrades(test.upgrade)
+			err := validateUpgrades(test.previous, test.upgrade)
 			require.Error(t, err)
 			require.Contains(t, err.Error(), test.issue)
 		})
@@ -514,12 +524,17 @@ func TestUpgradesValidation_DetectsIssues(t *testing.T) {
 }
 
 func TestUpgradesValidation_AcceptsValidRules(t *testing.T) {
-	upgrades := []Upgrades{
-		{Berlin: true, London: true, Sonic: true, Allegro: true},
-	}
+
+	previous := Upgrades{}
+	upgrades := []Upgrades{{
+		Berlin:  true,
+		London:  true,
+		Sonic:   true,
+		Allegro: true,
+	}}
 
 	for _, test := range upgrades {
-		require.NoError(t, validateUpgrades(test))
+		require.NoError(t, validateUpgrades(previous, test))
 	}
 }
 

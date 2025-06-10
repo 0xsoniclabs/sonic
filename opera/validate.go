@@ -24,14 +24,14 @@ import (
 // In such cases, the validation logic must be updated to accommodate the new rules
 // and activated simultaneously with the upgrade.
 
-func validate(rules Rules) error {
+func validate(old, new Rules) error {
 	return errors.Join(
-		validateDagRules(rules.Dag),
-		validateEmitterRules(rules.Emitter),
-		validateEpochsRules(rules.Epochs),
-		validateBlocksRules(rules.Blocks),
-		validateEconomyRules(rules.Economy),
-		validateUpgrades(rules.Upgrades),
+		validateDagRules(new.Dag),
+		validateEmitterRules(new.Emitter),
+		validateEpochsRules(new.Epochs),
+		validateBlocksRules(new.Blocks),
+		validateEconomyRules(new.Economy),
+		validateUpgrades(old.Upgrades, new.Upgrades),
 	)
 }
 
@@ -223,47 +223,52 @@ func validateGasPowerRules(prefix string, rules GasPowerRules) error {
 	return errors.Join(issues...)
 }
 
-func validateUpgrades(upgrade Upgrades) error {
+func validateUpgrades(old, new Upgrades) error {
 	var issues []error
 
-	if upgrade.Llr {
+	if new.Llr {
 		issues = append(issues, errors.New("LLR upgrade is not supported"))
 	}
 
-	if !upgrade.London {
+	if !new.London {
 		//nolint:staticcheck // ST1005: allow capitalized error message to preserve proper name
 		issues = append(issues, errors.New("London upgrade is required"))
 	}
 
-	if !upgrade.Berlin {
+	if !new.Berlin {
 		//nolint:staticcheck // ST1005: allow capitalized error message to preserve proper name
 		issues = append(issues, errors.New("Berlin upgrade is required"))
 	}
 
-	if upgrade.Sonic && !upgrade.London {
+	if new.Sonic && !new.London {
 		//nolint:staticcheck // ST1005: allow capitalized error message to preserve proper name
 		issues = append(issues, errors.New("Sonic upgrade requires London"))
 	}
-	if upgrade.London && !upgrade.Berlin {
+	if new.London && !new.Berlin {
 		//nolint:staticcheck // ST1005: allow capitalized error message to preserve proper name
 		issues = append(issues, errors.New("London upgrade requires Berlin"))
 	}
 
-	if !upgrade.Sonic {
+	if !new.Sonic {
 		//nolint:staticcheck // ST1005: allow capitalized error message to preserve proper name
 		issues = append(issues, errors.New("Sonic upgrade is required"))
 	}
 
-	if !upgrade.Allegro {
+	if !new.Allegro {
 		//nolint:staticcheck // ST1005: allow capitalized error message to preserve proper name
 		issues = append(issues, errors.New("Allegro upgrade is required"))
 	}
 
 	// The SingleProposerBlockFormation feature can be freely modified.
 
-	if upgrade.Brio && !upgrade.Allegro {
+	if new.Brio && !new.Allegro {
 		//nolint:staticcheck // ST1005: allow capitalized error message to preserve proper name
 		issues = append(issues, errors.New("Brio upgrade requires Allegro"))
+	}
+
+	if old.Brio && !new.Brio {
+		//nolint:staticcheck // ST1005: allow capitalized error message to preserve proper name
+		issues = append(issues, errors.New("Brio upgrade cannot be disabled"))
 	}
 
 	return errors.Join(issues...)

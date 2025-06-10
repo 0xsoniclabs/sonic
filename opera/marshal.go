@@ -14,7 +14,7 @@ func UpdateRules(src Rules, diff []byte) (Rules, error) {
 
 	// check validity of the new rules
 	if changed.Upgrades.Allegro {
-		if err := changed.Validate(); err != nil {
+		if err := changed.Validate(src); err != nil {
 			return Rules{}, err
 		}
 	}

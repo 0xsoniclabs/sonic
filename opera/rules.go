@@ -496,8 +496,13 @@ func (r Rules) Copy() Rules {
 // in undesirable network behavior. Rule-setters need to be aware of the implications
 // of their choices and should always test their rules in a controlled environment.
 // This validation is not a substitute for proper testing.
-func (r Rules) Validate() error {
-	return validate(r)
+//
+// previous Rules is used to check for changes in the rules that may conflict with
+// currently running network. It is expected that the rules are validated before
+// they are applied to the network, and that the previous rules are the rules currently
+// running.
+func (r Rules) Validate(previous Rules) error {
+	return validate(previous, r)
 }
 
 func (r Rules) String() string {

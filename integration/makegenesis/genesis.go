@@ -176,7 +176,7 @@ func (b *GenesisBuilder) FinalizeBlockZero(
 	}
 
 	if rules.Upgrades.Allegro {
-		if err := rules.Validate(); err != nil {
+		if err := rules.Validate(opera.Rules{}); err != nil {
 			return common.Hash{}, common.Hash{}, fmt.Errorf("invalid rules: %w", err)
 		}
 	}
