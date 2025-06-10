@@ -91,6 +91,7 @@ func (p *StateProcessor) Process(
 	// execute EIP-2935 HistoryStorage contract.
 	if p.config.IsPrague(blockNumber, time) {
 		ProcessParentBlockHash(block.ParentHash, vmenv)
+		statedb.EndTransaction()
 	}
 
 	// Iterate over and process the individual transactions
@@ -137,6 +138,7 @@ func (p *StateProcessor) BeginBlock(
 	// execute EIP-2935 HistoryStorage contract.
 	if p.config.IsPrague(blockNumber, time) {
 		ProcessParentBlockHash(block.ParentHash, vmEnvironment)
+		stateDb.EndTransaction()
 	}
 
 	return &TransactionProcessor{
