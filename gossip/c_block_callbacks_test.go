@@ -334,7 +334,6 @@ func TestResolveRandaoMix_ComputesRandaoMixFromReveal(t *testing.T) {
 	}
 
 	mix := resolveRandaoMix(reveal, proposer, validatorKeys, lastRandao, dagRandao, logger)
-	require.NotNil(t, mix, "should return a valid RandaoMix")
 	require.Equal(t, expectedMix, mix, "should compute the correct Randao mix")
 }
 
@@ -362,7 +361,6 @@ func TestResolveRandaoMix_FallsBackToDAGRandaoWhenVerificationFails(t *testing.T
 	}
 
 	mix := resolveRandaoMix(reveal, proposer, validatorKeys, lastRandao, dagRandao, logger)
-	require.NotNil(t, mix, "should return a valid RandaoMix")
 	require.Equal(t, dagRandao, mix, "should compute the correct Randao mix")
 }
 
