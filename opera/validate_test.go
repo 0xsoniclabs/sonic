@@ -498,6 +498,10 @@ func TestUpgradesValidation_DetectsIssues(t *testing.T) {
 			upgrade: Upgrades{},
 			issue:   "Allegro upgrade is required",
 		},
+		"Brio upgrade requires Allegro": {
+			upgrade: Upgrades{Brio: true},
+			issue:   "Brio upgrade requires Allegro",
+		},
 	}
 
 	for name, test := range issues {

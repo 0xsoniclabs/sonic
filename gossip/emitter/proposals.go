@@ -2,10 +2,12 @@ package emitter
 
 import (
 	"context"
+	"fmt"
 	"math/big"
 	"time"
 
 	"github.com/0xsoniclabs/sonic/gossip/emitter/scheduler"
+	"github.com/0xsoniclabs/sonic/gossip/randao"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/hash"
@@ -52,6 +54,7 @@ func (em *Emitter) createPayload(
 	sorted *transactionsByPriceAndNonce,
 ) (inter.Payload, error) {
 	adapter := worldAdapter{External: em.world}
+	randaoMixer := randao.NewRandaoMixerAdapter(em.world.EventsSigner)
 	return createPayload(
 		adapter,
 		em.config.Validator.ID,
@@ -60,6 +63,7 @@ func (em *Emitter) createPayload(
 		&em.proposalTracker,
 		sorted,
 		scheduler.NewScheduler(adapter),
+		randaoMixer,
 		proposalSchedulingTimer,
 		proposalSchedulingTimeoutCounter,
 	)
@@ -82,6 +86,7 @@ func createPayload(
 	proposalTracker proposalTracker,
 	sorted *transactionsByPriceAndNonce,
 	transactionScheduler txScheduler,
+	randaoMixer randao.RandaoMixer,
 	durationMetric timerMetric,
 	timeoutMetric counterMetric,
 ) (inter.Payload, error) {
@@ -107,7 +112,8 @@ func createPayload(
 		currentFrame,
 	)
 	if err != nil {
-		return inter.Payload{}, err
+		return inter.Payload{},
+			fmt.Errorf("failed to create event payload, %w", err)
 	}
 	if !isMyTurn {
 		return inter.Payload{
@@ -118,7 +124,7 @@ func createPayload(
 	// Make a new proposal. For the time of the block we use the median time,
 	// which is the median of all creation times of the events seen from all
 	// validators.
-	proposal := makeProposal(
+	proposal, err := makeProposal(
 		world.GetRules(),
 		incomingState,
 		latest,
@@ -126,9 +132,14 @@ func createPayload(
 		currentFrame,
 		transactionScheduler,
 		&transactionPriorityAdapter{sorted},
+		randaoMixer,
 		durationMetric,
 		timeoutMetric,
 	)
+	if err != nil {
+		return inter.Payload{},
+			fmt.Errorf("failed to create event payload: %w", err)
+	}
 
 	// If no new proposal was created, the payload remains empty.
 	if proposal == nil {
@@ -193,27 +204,33 @@ func makeProposal(
 	currentFrame idx.Frame,
 	transactionScheduler txScheduler,
 	candidates scheduler.PrioritizedTransactions,
+	randaoMixer randao.RandaoMixer,
 	durationMetric timerMetric,
 	timeoutMetric counterMetric,
-) *inter.Proposal {
+) (*inter.Proposal, error) {
 	// Compute the gas limit for the next block. This is the time since the
 	// previous block times the targeted network throughput.
 	lastBlockTime := latestBlock.Time
 	if lastBlockTime >= newBlockTime {
 		// no time has passed, so no new proposal can be made
-		return nil
+		return nil, nil
 	}
 	effectiveGasLimit := getEffectiveGasLimit(
 		newBlockTime.Time().Sub(lastBlockTime.Time()),
 		rules.Economy.ShortGasPower.AllocPerSec, // TODO: consider using a new rule set parameter
 	)
 
+	randaoReveal, randaoMix, err := randaoMixer.MixRandao(latestBlock.PrevRandao)
+	if err != nil {
+		return nil, fmt.Errorf("randao reveal generation failed: %w", err)
+	}
+
 	// Create the proposal for the next block.
 	proposal := &inter.Proposal{
-		Number:     idx.Block(latestBlock.Number) + 1,
-		ParentHash: latestBlock.Hash(),
-		Time:       newBlockTime,
-		// PrevRandao: -- compute next randao mix based on predecessor --
+		Number:       idx.Block(latestBlock.Number) + 1,
+		ParentHash:   latestBlock.Hash(),
+		Time:         newBlockTime,
+		RandaoReveal: randaoReveal,
 	}
 
 	// This step covers the actual transaction selection and sorting.
@@ -229,7 +246,7 @@ func makeProposal(
 			Number:      proposal.Number,
 			Time:        proposal.Time,
 			GasLimit:    rules.Blocks.MaxBlockGas,
-			MixHash:     common.Hash{},    // TODO: integrate randao reveal
+			MixHash:     randaoMix,
 			Coinbase:    common.Address{}, // TODO: integrate coinbase address
 			BaseFee:     uint256.Int{},    // TODO: integrate base fee
 			BlobBaseFee: uint256.Int{},    // TODO: integrate blob base fee
@@ -247,7 +264,7 @@ func makeProposal(
 		timeoutMetric.Inc(1)
 	}
 
-	return proposal
+	return proposal, nil
 }
 
 // txScheduler is an interface for scheduling transactions in a block

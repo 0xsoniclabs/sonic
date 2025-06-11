@@ -65,18 +65,45 @@ func TestUpdateRules_ValidityCheckIsConductedIfCheckIsEnabledInUpdatedRuleSet(t 
 }
 
 func TestUpdateRules_CanUpdateHardForks(t *testing.T) {
-	require := require.New(t)
 
-	rules := FakeNetRules(GetSonicUpgrades())
+	tests := map[string]struct {
+		rules Rules
+		diff  []byte
+		want  Upgrades
+	}{
+		"Allegro": {
+			rules: FakeNetRules(GetSonicUpgrades()),
+			diff:  []byte(`{"Upgrades":{"Allegro":true}}`),
+			want: Upgrades{
+				Berlin:  true,
+				London:  true,
+				Sonic:   true,
+				Allegro: true,
+			},
+		},
+		"Brio": {
+			rules: FakeNetRules(GetAllegroUpgrades()),
+			diff:  []byte(`{"Upgrades":{"Brio":true}}`),
+			want: Upgrades{
+				Berlin:  true,
+				London:  true,
+				Sonic:   true,
+				Allegro: true,
+				Brio:    true,
+			},
+		},
+	}
 
-	got, err := UpdateRules(rules, []byte(`{"Upgrades":{"Allegro":true}}`))
-	require.NoError(err)
-	require.Equal(Upgrades{
-		Berlin:  true,
-		London:  true,
-		Sonic:   true,
-		Allegro: true,
-	}, got.Upgrades)
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+
+			require := require.New(t)
+
+			got, err := UpdateRules(test.rules, test.diff)
+			require.NoError(err)
+			require.Equal(got.Upgrades, test.want)
+		})
+	}
 }
 
 func TestMainNetRulesRLP(t *testing.T) {
@@ -101,6 +128,7 @@ func TestUpgradesRLP_CanBeEncodedAndDecoded(t *testing.T) {
 		func(u *Upgrades) { u.Sonic = true },
 		func(u *Upgrades) { u.Allegro = true },
 		func(u *Upgrades) { u.SingleProposerBlockFormation = true },
+		func(u *Upgrades) { u.Brio = true },
 	}
 
 	for mask := range 1 << len(setUpgrade) {

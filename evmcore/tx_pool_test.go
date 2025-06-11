@@ -34,7 +34,6 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/event"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
@@ -390,28 +389,6 @@ func validateEvents(events chan NewTxsNotify, count int) error {
 
 func deriveSender(tx *types.Transaction) (common.Address, error) {
 	return types.Sender(types.HomesteadSigner{}, tx)
-}
-
-// setMinTip is a helper function that updates the minimum tip required by the
-// transaction pool for a new transaction, and drops all transactions below
-// this threshold.
-func setMinTip(pool *TxPool, price *big.Int) {
-	pool.mu.Lock()
-	defer pool.mu.Unlock()
-
-	old := pool.minTip
-	pool.minTip = price
-	// if the min miner fee increased, remove transactions below the new threshold
-	if price.Cmp(old) > 0 {
-		// pool.priced is sorted by GasFeeCap, so we have to iterate through pool.all instead
-		drop := pool.all.RemotesBelowTip(price)
-		for _, tx := range drop {
-			pool.removeTx(tx.Hash(), true)
-		}
-		pool.priced.Removed(len(drop))
-	}
-
-	log.Info("Transaction pool price threshold updated", "price", price)
 }
 
 type testChain struct {
@@ -2015,21 +1992,25 @@ func TestTransactionPool_CanReadMinTipFromPool(t *testing.T) {
 }
 
 // Tests that setting the transaction pool min tip to a higher value correctly
-// discards everything cheaper than that and moves any gapped transactions back
-// from the pending pool to the queue.
+// rejects everything cheaper than.
 //
 // Note, local transactions are never allowed to be dropped.
-// Note, this test is for Legacy transactions only. These transactions use the
-// gas price field to determine the transaction tip, and thus the minimum
-// acceptable tip can be used to filter out transactions that have a low gas price.
-func TestTransactionPoolRepricing(t *testing.T) {
+// Note, Legacy transactions use the gas price field to determine the
+// transaction tip, and thus the minimum acceptable tip can be used to filter
+// out transactions that have a low gas price.
+func TestTransactionPool_RejectsUnderTippedTransactions(t *testing.T) {
 	t.Parallel()
 
 	// Create the pool to test the pricing enforcement with
 	statedb := newTestTxPoolStateDb()
 	blockchain := NewTestBlockChain(statedb)
 
-	pool := NewTxPool(testTxPoolConfig, params.TestChainConfig, blockchain)
+	// Set a minimum tip to filter out under-tipped transactions
+	minTip := big.NewInt(2)
+	// copy the config so we can modify it safely
+	config := testTxPoolConfig
+	config.MinimumTip = minTip.Uint64() + 1
+	pool := NewTxPool(config, params.TestChainConfig, blockchain)
 	defer pool.Stop()
 
 	// Keep track of transaction events to ensure all executables get announced
@@ -2037,310 +2018,58 @@ func TestTransactionPoolRepricing(t *testing.T) {
 	sub := pool.txFeed.Subscribe(events)
 	defer sub.Unsubscribe()
 
-	// Create a number of test accounts and fund them
-	keys := make([]*ecdsa.PrivateKey, 4)
-	for i := 0; i < len(keys); i++ {
-		keys[i], _ = crypto.GenerateKey()
-		testAddBalance(pool, crypto.PubkeyToAddress(keys[i].PublicKey), big.NewInt(1000000))
-	}
-	// Generate and queue a batch of transactions, both pending and queued
+	keys, err := crypto.GenerateKey()
+	require.NoError(t, err, "failed to generate key for testing")
+	testAddBalance(pool, crypto.PubkeyToAddress(keys.PublicKey), big.NewInt(1000000))
+	// generate under-tipped transactions
 	txs := types.Transactions{}
+	// for legacy transactions, the gas price is used to determine the tip
+	txs = append(txs, pricedTransaction(1, 100000, minTip, keys))
+	txs = append(txs, dynamicFeeTx(0, 100000, big.NewInt(2), minTip, keys))
 
-	txs = append(txs, pricedTransaction(0, 100000, big.NewInt(2), keys[0]))
-	txs = append(txs, pricedTransaction(1, 100000, big.NewInt(1), keys[0]))
-	txs = append(txs, pricedTransaction(2, 100000, big.NewInt(2), keys[0]))
-
-	txs = append(txs, pricedTransaction(0, 100000, big.NewInt(1), keys[1]))
-	txs = append(txs, pricedTransaction(1, 100000, big.NewInt(2), keys[1]))
-	txs = append(txs, pricedTransaction(2, 100000, big.NewInt(2), keys[1]))
-
-	txs = append(txs, pricedTransaction(1, 100000, big.NewInt(2), keys[2]))
-	txs = append(txs, pricedTransaction(2, 100000, big.NewInt(1), keys[2]))
-	txs = append(txs, pricedTransaction(3, 100000, big.NewInt(2), keys[2]))
-
-	ltx := pricedTransaction(0, 100000, big.NewInt(1), keys[3])
-
-	// Import the batch and that both pending and queued transactions match up
-	if errs := pool.AddRemotesSync(txs); errors.Join(errs...) != nil {
-		t.Fatalf("failed to add remote transactions: %v", errors.Join(errs...))
-	}
-	if err := pool.AddLocal(ltx); err != nil {
-		t.Fatalf("failed to add local transaction: %v", err)
-	}
-
-	pending, queued := pool.Stats()
-	if pending != 7 {
-		t.Fatalf("pending transactions mismatched: have %d, want %d", pending, 7)
-	}
-	if queued != 3 {
-		t.Fatalf("queued transactions mismatched: have %d, want %d", queued, 3)
-	}
-	if err := validateEvents(events, 7); err != nil {
-		t.Fatalf("original event firing failed: %v", err)
-	}
-	if err := validateTxPoolInternals(pool); err != nil {
-		t.Fatalf("pool internal state corrupted: %v", err)
-	}
-	// Update minimum accepted tip, so that under tipped transactions are dropped
-	setMinTip(pool, big.NewInt(2))
-
-	pending, queued = pool.Stats()
-	if pending != 2 {
-		t.Fatalf("pending transactions mismatched: have %d, want %d", pending, 2)
-	}
-	if queued != 5 {
-		t.Fatalf("queued transactions mismatched: have %d, want %d", queued, 5)
-	}
-	if err := validateEvents(events, 0); err != nil {
-		t.Fatalf("reprice event firing failed: %v", err)
-	}
-	if err := validateTxPoolInternals(pool); err != nil {
-		t.Fatalf("pool internal state corrupted: %v", err)
-	}
-	// Check that we can't add the old transactions back
-	if err := pool.AddRemote(pricedTransaction(1, 100000, big.NewInt(1), keys[0])); err != ErrUnderpriced {
-		t.Fatalf("adding underpriced pending transaction error mismatch: have %v, want %v", err, ErrUnderpriced)
-	}
-	if err := pool.AddRemote(pricedTransaction(0, 100000, big.NewInt(1), keys[1])); err != ErrUnderpriced {
-		t.Fatalf("adding underpriced pending transaction error mismatch: have %v, want %v", err, ErrUnderpriced)
-	}
-	if err := pool.AddRemote(pricedTransaction(2, 100000, big.NewInt(1), keys[2])); err != ErrUnderpriced {
-		t.Fatalf("adding underpriced queued transaction error mismatch: have %v, want %v", err, ErrUnderpriced)
-	}
-	if err := validateEvents(events, 0); err != nil {
-		t.Fatalf("post-reprice event firing failed: %v", err)
-	}
-	if err := validateTxPoolInternals(pool); err != nil {
-		t.Fatalf("pool internal state corrupted: %v", err)
-	}
-	// However we can add local underpriced transactions
-	tx := pricedTransaction(1, 100000, big.NewInt(1), keys[3])
-	if err := pool.AddLocal(tx); err != nil {
-		t.Fatalf("failed to add underpriced local transaction: %v", err)
-	}
-	if pending, _ = pool.Stats(); pending != 3 {
-		t.Fatalf("pending transactions mismatched: have %d, want %d", pending, 3)
-	}
-	if err := validateEvents(events, 1); err != nil {
-		t.Fatalf("post-reprice local event firing failed: %v", err)
-	}
-	if err := validateTxPoolInternals(pool); err != nil {
-		t.Fatalf("pool internal state corrupted: %v", err)
-	}
-	// And we can fill gaps with properly priced transactions
-	if err := pool.AddRemote(pricedTransaction(1, 100000, big.NewInt(2), keys[0])); err != nil {
-		t.Fatalf("failed to add pending transaction: %v", err)
-	}
-	if err := pool.AddRemote(pricedTransaction(0, 100000, big.NewInt(2), keys[1])); err != nil {
-		t.Fatalf("failed to add pending transaction: %v", err)
-	}
-	if err := pool.AddRemote(pricedTransaction(2, 100000, big.NewInt(2), keys[2])); err != nil {
-		t.Fatalf("failed to add queued transaction: %v", err)
-	}
-	if err := validateEvents(events, 5); err != nil {
-		t.Fatalf("post-reprice event firing failed: %v", err)
-	}
-	if err := validateTxPoolInternals(pool); err != nil {
-		t.Fatalf("pool internal state corrupted: %v", err)
-	}
-}
-
-// Tests that setting the transaction pool min tip to a higher value correctly
-// discards everything cheaper (legacy & dynamic fee) than that and moves any
-// gapped transactions back from the pending pool to the queue.
-//
-// Note, local transactions are never allowed to be dropped.
-func TestTransactionPoolRepricingDynamicFee(t *testing.T) {
-	t.Parallel()
-
-	// Create the pool to test the pricing enforcement with
-	pool, _ := setupTxPoolWithConfig(eip1559Config)
-	defer pool.Stop()
-
-	// Keep track of transaction events to ensure all executables get announced
-	events := make(chan NewTxsNotify, 32)
-	sub := pool.txFeed.Subscribe(events)
-	defer sub.Unsubscribe()
-
-	// Create a number of test accounts and fund them
-	keys := make([]*ecdsa.PrivateKey, 4)
-	for i := 0; i < len(keys); i++ {
-		keys[i], _ = crypto.GenerateKey()
-		testAddBalance(pool, crypto.PubkeyToAddress(keys[i].PublicKey), big.NewInt(1000000))
-	}
-	// Generate and queue a batch of transactions, both pending and queued
-	txs := types.Transactions{}
-
-	txs = append(txs, pricedTransaction(0, 100000, big.NewInt(2), keys[0]))
-	txs = append(txs, pricedTransaction(1, 100000, big.NewInt(1), keys[0]))
-	txs = append(txs, pricedTransaction(2, 100000, big.NewInt(2), keys[0]))
-
-	txs = append(txs, dynamicFeeTx(0, 100000, big.NewInt(2), big.NewInt(1), keys[1]))
-	txs = append(txs, dynamicFeeTx(1, 100000, big.NewInt(3), big.NewInt(2), keys[1]))
-	txs = append(txs, dynamicFeeTx(2, 100000, big.NewInt(3), big.NewInt(2), keys[1]))
-
-	txs = append(txs, dynamicFeeTx(1, 100000, big.NewInt(2), big.NewInt(2), keys[2]))
-	txs = append(txs, dynamicFeeTx(2, 100000, big.NewInt(1), big.NewInt(1), keys[2]))
-	txs = append(txs, dynamicFeeTx(3, 100000, big.NewInt(2), big.NewInt(2), keys[2]))
-
-	ltx := dynamicFeeTx(0, 100000, big.NewInt(2), big.NewInt(1), keys[3])
-
-	// Import the batch and that both pending and queued transactions match up
-	if errs := pool.AddRemotesSync(txs); errors.Join(errs...) != nil {
-		t.Fatalf("failed to add transactions: %v", errs)
-	}
-	if err := pool.AddLocal(ltx); err != nil {
-		t.Fatalf("failed to add local transaction: %v", err)
-	}
-
-	pending, queued := pool.Stats()
-	if pending != 7 {
-		t.Fatalf("pending transactions mismatched: have %d, want %d", pending, 7)
-	}
-	if queued != 3 {
-		t.Fatalf("queued transactions mismatched: have %d, want %d", queued, 3)
-	}
-	if err := validateEvents(events, 7); err != nil {
-		t.Fatalf("original event firing failed: %v", err)
-	}
-	if err := validateTxPoolInternals(pool); err != nil {
-		t.Fatalf("pool internal state corrupted: %v", err)
-	}
-	// Update minimum accepted tip, so that under tipped transactions are dropped
-	setMinTip(pool, big.NewInt(2))
-
-	pending, queued = pool.Stats()
-	if pending != 2 {
-		t.Fatalf("pending transactions mismatched: have %d, want %d", pending, 2)
-	}
-	if queued != 5 {
-		t.Fatalf("queued transactions mismatched: have %d, want %d", queued, 5)
-	}
-	if err := validateEvents(events, 0); err != nil {
-		t.Fatalf("reprice event firing failed: %v", err)
-	}
-	if err := validateTxPoolInternals(pool); err != nil {
-		t.Fatalf("pool internal state corrupted: %v", err)
-	}
-	// Check that we can't add the old transactions back
-	tx := pricedTransaction(1, 100000, big.NewInt(1), keys[0])
-	if err := pool.AddRemote(tx); err != ErrUnderpriced {
-		t.Fatalf("adding underpriced pending transaction error mismatch: have %v, want %v", err, ErrUnderpriced)
-	}
-	tx = dynamicFeeTx(0, 100000, big.NewInt(2), big.NewInt(1), keys[1])
-	if err := pool.AddRemote(tx); err != ErrUnderpriced {
-		t.Fatalf("adding underpriced pending transaction error mismatch: have %v, want %v", err, ErrUnderpriced)
-	}
-	tx = dynamicFeeTx(2, 100000, big.NewInt(1), big.NewInt(1), keys[2])
-	if err := pool.AddRemote(tx); err != ErrUnderpriced {
-		t.Fatalf("adding underpriced queued transaction error mismatch: have %v, want %v", err, ErrUnderpriced)
-	}
-	if err := validateEvents(events, 0); err != nil {
-		t.Fatalf("post-reprice event firing failed: %v", err)
-	}
-	if err := validateTxPoolInternals(pool); err != nil {
-		t.Fatalf("pool internal state corrupted: %v", err)
-	}
-	// However we can add local underpriced transactions
-	tx = dynamicFeeTx(1, 100000, big.NewInt(1), big.NewInt(1), keys[3])
-	if err := pool.AddLocal(tx); err != nil {
-		t.Fatalf("failed to add underpriced local transaction: %v", err)
-	}
-	if pending, _ = pool.Stats(); pending != 3 {
-		t.Fatalf("pending transactions mismatched: have %d, want %d", pending, 3)
-	}
-	if err := validateEvents(events, 1); err != nil {
-		t.Fatalf("post-reprice local event firing failed: %v", err)
-	}
-	if err := validateTxPoolInternals(pool); err != nil {
-		t.Fatalf("pool internal state corrupted: %v", err)
-	}
-	// And we can fill gaps with properly priced transactions
-	tx = pricedTransaction(1, 100000, big.NewInt(2), keys[0])
-	if err := pool.AddRemote(tx); err != nil {
-		t.Fatalf("failed to add pending transaction: %v", err)
-	}
-	tx = dynamicFeeTx(0, 100000, big.NewInt(3), big.NewInt(2), keys[1])
-	if err := pool.AddRemote(tx); err != nil {
-		t.Fatalf("failed to add pending transaction: %v", err)
-	}
-	tx = dynamicFeeTx(2, 100000, big.NewInt(2), big.NewInt(2), keys[2])
-	if err := pool.AddRemote(tx); err != nil {
-		t.Fatalf("failed to add queued transaction: %v", err)
-	}
-	if err := validateEvents(events, 5); err != nil {
-		t.Fatalf("post-reprice event firing failed: %v", err)
-	}
-	if err := validateTxPoolInternals(pool); err != nil {
-		t.Fatalf("pool internal state corrupted: %v", err)
+	for _, tx := range txs {
+		if err := pool.AddRemote(tx); err != nil {
+			require.ErrorContains(t, err, "underpriced")
+		}
 	}
 }
 
 // Tests that setting the transaction pool min tip to a higher value does not
-// remove local transactions (legacy & dynamic fee).
-func TestTransactionPoolRepricingKeepsLocals(t *testing.T) {
+// reject local transactions (legacy & dynamic fee).
+func TestTransactionPool_AcceptsUnderTippedLocals(t *testing.T) {
 	t.Parallel()
 
 	// Create the pool to test the pricing enforcement with
 	statedb := newTestTxPoolStateDb()
 	blockchain := NewTestBlockChain(statedb)
 
-	pool := NewTxPool(testTxPoolConfig, eip1559Config, blockchain)
+	// Set a minimum tip to filter out under-tipped transactions
+	minTip := big.NewInt(2)
+	// copy the config so we can modify it safely
+	config := testTxPoolConfig
+	config.MinimumTip = minTip.Uint64() + 1
+	pool := NewTxPool(config, params.TestChainConfig, blockchain)
 	defer pool.Stop()
 
-	// Create a number of test accounts and fund them
-	keys := make([]*ecdsa.PrivateKey, 3)
-	for i := 0; i < len(keys); i++ {
-		keys[i], _ = crypto.GenerateKey()
-		testAddBalance(pool, crypto.PubkeyToAddress(keys[i].PublicKey), big.NewInt(1000*1000000))
-	}
-	// Create transaction (both pending and queued) with a linearly growing gasprice
-	for i := uint64(0); i < 500; i++ {
-		// Add pending transaction.
-		pendingTx := pricedTransaction(i, 100000, big.NewInt(int64(i)), keys[2])
-		if err := pool.AddLocal(pendingTx); err != nil {
-			t.Fatal(err)
-		}
-		// Add queued transaction.
-		queuedTx := pricedTransaction(i+501, 100000, big.NewInt(int64(i)), keys[2])
-		if err := pool.AddLocal(queuedTx); err != nil {
-			t.Fatal(err)
-		}
+	// Keep track of transaction events to ensure all executables get announced
+	events := make(chan NewTxsNotify, 32)
+	sub := pool.txFeed.Subscribe(events)
+	defer sub.Unsubscribe()
 
-		// Add pending dynamic fee transaction.
-		pendingTx = dynamicFeeTx(i, 100000, big.NewInt(int64(i)+1), big.NewInt(int64(i)), keys[1])
-		if err := pool.AddLocal(pendingTx); err != nil {
-			t.Fatal(err)
-		}
-		// Add queued dynamic fee transaction.
-		queuedTx = dynamicFeeTx(i+501, 100000, big.NewInt(int64(i)+1), big.NewInt(int64(i)), keys[1])
-		if err := pool.AddLocal(queuedTx); err != nil {
-			t.Fatal(err)
+	keys, err := crypto.GenerateKey()
+	require.NoError(t, err, "failed to generate key for testing")
+	testAddBalance(pool, crypto.PubkeyToAddress(keys.PublicKey), big.NewInt(1000000))
+	// generate under-tipped transactions
+	txs := types.Transactions{}
+	// for legacy transactions, the gas price is used to determine the tip
+	txs = append(txs, pricedTransaction(1, 100000, minTip, keys))
+	txs = append(txs, dynamicFeeTx(0, 100000, big.NewInt(2), minTip, keys))
+
+	for _, tx := range txs {
+		if err := pool.AddLocal(tx); err != nil {
+			require.NoError(t, err, "failed to add local transaction: %v", err)
 		}
 	}
-	pending, queued := pool.Stats()
-	expPending, expQueued := 1000, 1000
-	validate := func() {
-		pending, queued = pool.Stats()
-		if pending != expPending {
-			t.Fatalf("pending transactions mismatched: have %d, want %d", pending, expPending)
-		}
-		if queued != expQueued {
-			t.Fatalf("queued transactions mismatched: have %d, want %d", queued, expQueued)
-		}
-
-		if err := validateTxPoolInternals(pool); err != nil {
-			t.Fatalf("pool internal state corrupted: %v", err)
-		}
-	}
-	validate()
-
-	// Reprice the pool and check that nothing is dropped
-	setMinTip(pool, big.NewInt(2))
-	validate()
-
-	setMinTip(pool, big.NewInt(100))
-	validate()
 }
 
 // Tests that when the pool reaches its global transaction limit, underpriced
@@ -2348,7 +2077,7 @@ func TestTransactionPoolRepricingKeepsLocals(t *testing.T) {
 // pending transactions are moved into the queue.
 //
 // Note, local transactions are never allowed to be dropped.
-func TestTransactionPoolUnderpricing(t *testing.T) {
+func TestTransactionPool_DropUnderpricedTransactionsWhenPoolIsFull(t *testing.T) {
 	t.Parallel()
 
 	// Create the pool to test the pricing enforcement with
@@ -2458,7 +2187,7 @@ func TestTransactionPoolUnderpricing(t *testing.T) {
 // Tests that more expensive transactions push out cheap ones from the pool, but
 // without producing instability by creating gaps that start jumping transactions
 // back and forth between queued/pending.
-func TestTransactionPoolStableUnderpricing(t *testing.T) {
+func TestTransactionPool_DroppingUnderpricedTransactionsDoesNotCreateNonceGaps(t *testing.T) {
 	t.Parallel()
 
 	// Create the pool to test the pricing enforcement with

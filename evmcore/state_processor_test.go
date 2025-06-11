@@ -212,19 +212,6 @@ func TestProcess_TracksParentBlockHashIfPragueIsEnabled(t *testing.T) {
 		}
 		chain := NewMockDummyChain(ctrl)
 
-		state := state.NewMockStateDB(ctrl)
-
-		if isPrague {
-			any := gomock.Any()
-			state.EXPECT().AddAddressToAccessList(params.HistoryStorageAddress).Times(2)
-			state.EXPECT().Snapshot().Return(0).AnyTimes()
-			state.EXPECT().Exist(params.HistoryStorageAddress).Return(true).AnyTimes()
-			state.EXPECT().AddBalance(any, any, any).AnyTimes()
-			state.EXPECT().SubBalance(any, any, any).AnyTimes()
-			state.EXPECT().GetCode(any).AnyTimes()
-			state.EXPECT().Finalise(any).AnyTimes()
-		}
-
 		processor := NewStateProcessor(&chainConfig, chain)
 
 		tests := map[string]processFunction{
@@ -234,6 +221,22 @@ func TestProcess_TracksParentBlockHashIfPragueIsEnabled(t *testing.T) {
 
 		for name, process := range tests {
 			t.Run(name, func(t *testing.T) {
+				state := state.NewMockStateDB(ctrl)
+
+				if isPrague {
+					any := gomock.Any()
+					gomock.InOrder(
+						state.EXPECT().AddAddressToAccessList(params.HistoryStorageAddress),
+						state.EXPECT().Snapshot().Return(0),
+						state.EXPECT().Exist(params.HistoryStorageAddress).Return(true),
+						state.EXPECT().SubBalance(any, any, any),
+						state.EXPECT().AddBalance(any, any, any),
+						state.EXPECT().GetCode(any).AnyTimes(),
+						state.EXPECT().Finalise(any),
+						state.EXPECT().EndTransaction(), // must be terminated
+					)
+				}
+
 				require := require.New(t)
 				block := &EvmBlock{
 					EvmHeader: EvmHeader{

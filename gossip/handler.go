@@ -266,22 +266,12 @@ func (h *handler) makeDagProcessor(checkers *eventcheck.Checkers) *dagprocessor.
 		return nil
 	}
 	bufferedCheck := func(_e dag.Event, _parents dag.Events) error {
-		e := _e.(inter.EventI)
+		e := _e.(inter.EventPayloadI)
 		parents := make(inter.EventIs, len(_parents))
 		for i := range _parents {
 			parents[i] = _parents[i].(inter.EventI)
 		}
-		var selfParent inter.EventI
-		if e.SelfParent() != nil {
-			selfParent = parents[0]
-		}
-		if err := checkers.Parentscheck.Validate(e, parents); err != nil {
-			return err
-		}
-		if err := checkers.Gaspowercheck.Validate(e, selfParent); err != nil {
-			return err
-		}
-		return nil
+		return validateEventPropertiesDependingOnParents(checkers, e, parents)
 	}
 	parentlessChecker := parentlesscheck.Checker{
 		HeavyCheck: &heavycheck.EventsOnly{Checker: checkers.Heavycheck},
@@ -333,6 +323,27 @@ func (h *handler) makeDagProcessor(checkers *eventcheck.Checkers) *dagprocessor.
 	})
 
 	return newProcessor
+}
+
+func validateEventPropertiesDependingOnParents(
+	checkers *eventcheck.Checkers,
+	event inter.EventPayloadI,
+	parents inter.EventIs,
+) error {
+	var selfParent inter.EventI
+	if event.SelfParent() != nil {
+		selfParent = parents[0]
+	}
+	if err := checkers.Parentscheck.Validate(event, parents); err != nil {
+		return err
+	}
+	if err := checkers.Gaspowercheck.Validate(event, selfParent); err != nil {
+		return err
+	}
+	if err := checkers.Proposalcheck.Validate(event); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (h *handler) isEventInterested(id hash.Event, epoch idx.Epoch) bool {

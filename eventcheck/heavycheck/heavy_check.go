@@ -15,6 +15,8 @@ import (
 	"github.com/0xsoniclabs/sonic/valkeystore"
 )
 
+//go:generate mockgen -source=heavy_check.go -destination=heavy_check_mock.go -package=heavycheck
+
 var (
 	ErrWrongEventSig    = errors.New("event has wrong signature")
 	ErrMalformedTxSig   = errors.New("tx has wrong signature")
