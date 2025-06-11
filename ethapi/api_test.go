@@ -173,6 +173,7 @@ func testGetBlockReceipts(t *testing.T, blockParam rpc.BlockNumberOrHash) ([]map
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	mockObj := NewMockBackend(ctrl)
+	mockObj.EXPECT().ChainID()
 
 	header, transaction, receipts, err := getTestData()
 	if err != nil {
@@ -423,6 +424,7 @@ func TestGetTransactionReceiptReturnsNilNotError(t *testing.T) {
 	mockBackend.EXPECT().GetTransaction(gomock.Any(), txHash).Return(&types.Transaction{}, uint64(0), uint64(0), nil)
 	mockBackend.EXPECT().HeaderByNumber(gomock.Any(), gomock.Any()).Return(nil, nil)
 	mockBackend.EXPECT().ChainConfig(gomock.Any()).Return(&params.ChainConfig{}).AnyTimes()
+	mockBackend.EXPECT().ChainID()
 
 	api := NewPublicTransactionPoolAPI(
 		mockBackend,
