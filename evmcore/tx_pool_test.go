@@ -686,6 +686,17 @@ func TestSetCodeTransactions(t *testing.T) {
 			},
 			pending: 1,
 		},
+		"allow setcode tx with queued tx from delegated account": {
+			test: func(t *testing.T, pool *TxPool) {
+				if err := pool.addRemoteSync(setCodeTx(1, keyC, []unsignedAuth{{0, keyA}})); err != nil {
+					t.Fatalf("failed to add with remote setcode transaction: %v", err)
+				}
+				if err := pool.addRemoteSync(setCodeTx(1, keyB, []unsignedAuth{{1, keyC}})); err != nil {
+					t.Fatalf("failed to add conflicting delegation: %v", err)
+				}
+			},
+			queued: 2,
+		},
 		"allow setcode tx with pending authority tx": {
 			test: func(t *testing.T, pool *TxPool) {
 
