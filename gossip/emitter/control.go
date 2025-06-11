@@ -26,8 +26,16 @@ func updMetric(median, cur, upd idx.Event, validatorIdx idx.Validator, validator
 	return scalarUpdMetric(upd-median, weight, validators.TotalWeight())
 }
 
+func (em *Emitter) timeSinceLastEmit() time.Duration {
+	var lastTime time.Time
+	if last := em.prevEmittedAtTime.Load(); last != nil {
+		lastTime = *last
+	}
+	return time.Since(lastTime)
+}
+
 func (em *Emitter) isAllowedToEmit() bool {
-	passedTime := time.Since(em.prevEmittedAtTime)
+	passedTime := em.timeSinceLastEmit()
 	if passedTime < 0 {
 		passedTime = 0
 	}
