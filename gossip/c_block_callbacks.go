@@ -150,14 +150,74 @@ func consensusCallbackBeginBlockFn(
 				confirmedEventsMeter.Mark(1)
 			},
 			EndBlock: func() (newValidators *pos.Validators) {
-				if atroposTime <= bs.LastBlock.Time {
-					atroposTime = bs.LastBlock.Time + 1
+
+				// sort events by Lamport time
+				sort.Sort(confirmedEvents)
+				maxBlockGas := es.Rules.Blocks.MaxBlockGas
+				blockEvents := spillBlockEvents(store, confirmedEvents, maxBlockGas)
+
+				// Start assembling the resulting block.
+				number := uint64(bs.LastBlock.Idx + 1)
+				lastBlockHeader := evmStateReader.GetHeaderByNumber(number - 1)
+
+				randao := computePrevRandao(confirmedEvents)
+				chainCfg := opera.CreateTransientEvmChainConfig(
+					es.Rules.NetworkID,
+					store.GetUpgradeHeights(),
+					idx.Block(number),
+				)
+
+				// Get a proposal for the block to be created.
+				proposal := inter.Proposal{
+					Number:     idx.Block(number),
+					ParentHash: lastBlockHeader.Hash,
 				}
+				if es.Rules.Upgrades.SingleProposerBlockFormation {
+					events := make([]inter.EventPayloadI, 0, blockEvents.Len())
+					for _, e := range blockEvents {
+						events = append(events, e)
+					}
+					if proposed, proposer := extractProposalForNextBlock(lastBlockHeader, events, log.Root()); proposed != nil {
+						proposal = *proposed
+						validatorKeys := readEpochPubKeys(store, cBlock.Atropos.Epoch())
+						randao = resolveRandaoMix(
+							proposal.RandaoReveal, proposer,
+							validatorKeys.PubKeys,
+							lastBlockHeader.PrevRandao, randao,
+							log.Root(),
+						)
+					} else {
+						// If no proposal is found but a block needs to be
+						// created (as this function has been called), we
+						// use a minimum time span to avoid removing gas
+						// allocation time from the next block.
+						proposal.Time = lastBlockHeader.Time + 1
+						// in this case, the original event-based randao is used.
+					}
+				} else {
+					// Collect transactions from events and schedule them.
+					unorderedTxs := make(types.Transactions, 0, blockEvents.Len()*10)
+					for _, e := range blockEvents {
+						unorderedTxs = append(unorderedTxs, e.Txs()...)
+					}
+
+					signer := gsignercache.Wrap(types.MakeSigner(chainCfg, new(big.Int).SetUint64(number), uint64(atroposTime)))
+					proposal.Transactions = scrambler.GetExecutionOrder(unorderedTxs, signer, es.Rules.Upgrades.Sonic)
+
+					proposal.Time = atroposTime
+				}
+
+				// Make sure the new block time is after the last block time.
+				if proposal.Time <= bs.LastBlock.Time {
+					proposal.Time = bs.LastBlock.Time + 1
+				}
+
 				blockCtx := iblockproc.BlockCtx{
-					Idx:     bs.LastBlock.Idx + 1,
-					Time:    atroposTime,
+					Idx:     proposal.Number,
+					Time:    proposal.Time,
 					Atropos: cBlock.Atropos,
 				}
+
 				// Note:
 				// it's possible that a previous Atropos observes current Atropos (1)
 				// (even stronger statement is true - it's possible that current Atropos is equal to a previous Atropos).
@@ -188,61 +248,6 @@ func consensusCallbackBeginBlockFn(
 					if verWatcher != nil {
 						verWatcher.OnNewLog(l)
 					}
-				}
-
-				randao := computePrevRandao(confirmedEvents)
-				chainCfg := opera.CreateTransientEvmChainConfig(
-					es.Rules.NetworkID,
-					store.GetUpgradeHeights(),
-					blockCtx.Idx,
-				)
-
-				// sort events by Lamport time
-				sort.Sort(confirmedEvents)
-				maxBlockGas := es.Rules.Blocks.MaxBlockGas
-				blockEvents := spillBlockEvents(store, confirmedEvents, maxBlockGas)
-
-				// Start assembling the resulting block.
-				number := uint64(blockCtx.Idx)
-				lastBlockHeader := evmStateReader.GetHeaderByNumber(number - 1)
-
-				// Get a proposal for the block to be created.
-				proposal := inter.Proposal{
-					Number:     blockCtx.Idx,
-					ParentHash: lastBlockHeader.Hash,
-					Time:       blockCtx.Time,
-				}
-				if es.Rules.Upgrades.SingleProposerBlockFormation {
-					events := make([]inter.EventPayloadI, 0, blockEvents.Len())
-					for _, e := range blockEvents {
-						events = append(events, e)
-					}
-					if proposed, proposer := extractProposalForNextBlock(lastBlockHeader, events, log.Root()); proposed != nil {
-						proposal = *proposed
-						validatorKeys := readEpochPubKeys(store, blockCtx.Atropos.Epoch())
-						randao = resolveRandaoMix(
-							proposal.RandaoReveal, proposer,
-							validatorKeys.PubKeys,
-							lastBlockHeader.PrevRandao, randao,
-							log.Root(),
-						)
-					} else {
-						// If no proposal is found but a block needs to be
-						// created (as this function has been called), we
-						// use a minimum time span to avoid removing gas
-						// allocation time from the next block.
-						proposal.Time = lastBlockHeader.Time + 1
-						// in this case, the original event-based randao is used.
-					}
-				} else {
-					// Collect transactions from events and schedule them.
-					unorderedTxs := make(types.Transactions, 0, blockEvents.Len()*10)
-					for _, e := range blockEvents {
-						unorderedTxs = append(unorderedTxs, e.Txs()...)
-					}
-
-					signer := gsignercache.Wrap(types.MakeSigner(chainCfg, new(big.Int).SetUint64(number), uint64(blockCtx.Time)))
-					proposal.Transactions = scrambler.GetExecutionOrder(unorderedTxs, signer, es.Rules.Upgrades.Sonic)
 				}
 
 				// prepare block processing

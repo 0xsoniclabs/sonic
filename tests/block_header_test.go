@@ -43,6 +43,22 @@ func TestBlockHeader_JsonGenesis_SatisfiesInvariants(t *testing.T) {
 	testBlockHeadersOnNetwork(t, net)
 }
 
+func TestBlockHeader_Allegro_SatisfiesInvariants(t *testing.T) {
+	net := StartIntegrationTestNetWithJsonGenesis(t, IntegrationTestNetOptions{
+		Upgrades: AsPointer(opera.GetAllegroUpgrades()),
+	})
+	testBlockHeadersOnNetwork(t, net)
+}
+
+func TestBlockHeader_SingleProposer_SatisfiesInvariants(t *testing.T) {
+	upgrades := opera.GetAllegroUpgrades()
+	upgrades.SingleProposerBlockFormation = true
+	net := StartIntegrationTestNetWithJsonGenesis(t, IntegrationTestNetOptions{
+		Upgrades: &upgrades,
+	})
+	testBlockHeadersOnNetwork(t, net)
+}
+
 func testBlockHeadersOnNetwork(t *testing.T, net *IntegrationTestNet) {
 	const numBlocks = 10
 	require := require.New(t)
