@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"context"
 	"math/big"
 	"testing"
 
@@ -38,7 +37,7 @@ func TestGenesis_NetworkCanCreateNewBlocksAfterExportImport(t *testing.T) {
 	defer client.Close()
 
 	// check address 42 has balance
-	balance42, err := client.BalanceAt(context.Background(), common.Address{42}, nil)
+	balance42, err := client.BalanceAt(t.Context(), common.Address{42}, nil)
 	require.NoError(err)
 	require.Equal(int64(100*numBlocks), balance42.Int64(), "unexpected balance")
 

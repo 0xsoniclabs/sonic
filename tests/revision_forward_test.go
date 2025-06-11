@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"context"
 	"math/big"
 	"testing"
 
@@ -46,10 +45,10 @@ func TestTransaction_DelegationDesignationAddressAccessIsConsideredInAllegro(t *
 
 			sender := makeAccountWithBalance(t, net, big.NewInt(1e18))
 
-			gasPrice, err := client.SuggestGasPrice(context.Background())
+			gasPrice, err := client.SuggestGasPrice(t.Context())
 			require.NoError(t, err)
 
-			chainId, err := client.ChainID(context.Background())
+			chainId, err := client.ChainID(t.Context())
 			require.NoError(t, err)
 
 			recipient := common.HexToAddress("0x44")

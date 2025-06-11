@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"context"
 	"math/big"
 	"math/rand/v2"
 	"testing"
@@ -37,7 +36,7 @@ func TestTransactionOrder(t *testing.T) {
 
 	// Repeat the test for X number of blocks
 	for range numBlocks {
-		blockNrBefore, err := client.BlockNumber(context.Background())
+		blockNrBefore, err := client.BlockNumber(t.Context())
 		require.NoError(t, err)
 
 		options := make([]bind.TransactOpts, 0, numTxs)
@@ -82,7 +81,7 @@ func TestTransactionOrder(t *testing.T) {
 				t.Fatalf("transactions are not ordered, got idx: %d, want idx: %d", accCount, nonce)
 			}
 		}
-		blockNrAfter, err := client.BlockNumber(context.Background())
+		blockNrAfter, err := client.BlockNumber(t.Context())
 		require.NoError(t, err)
 		// At least one block between iterations must be generated
 		// Multiple blocks between iterations can be generated
@@ -101,14 +100,13 @@ func TestTransactionOrder(t *testing.T) {
 	// Check that transactions are ordered correctly in the blockchain and that
 	// for each transaction a correct receipt is available.
 	globalCounter := uint64(0)
-	context := context.Background()
-	lastBlock, err := client.BlockNumber(context)
+	lastBlock, err := client.BlockNumber(t.Context())
 	require.NoError(t, err)
 	for i := range lastBlock + 1 {
-		block, err := client.BlockByNumber(context, big.NewInt(int64(i)))
+		block, err := client.BlockByNumber(t.Context(), big.NewInt(int64(i)))
 		require.NoError(t, err)
 		for i, tx := range block.Transactions() {
-			receipt, err := client.TransactionReceipt(context, tx.Hash())
+			receipt, err := client.TransactionReceipt(t.Context(), tx.Hash())
 			require.NoError(t, err)
 
 			// Check that the receipt matches to the transaction.

@@ -2,7 +2,6 @@ package tests
 
 import (
 	"cmp"
-	"context"
 	"fmt"
 	"math/big"
 	"slices"
@@ -293,7 +292,7 @@ func testHeaders_TransactionRootMatchesBlockTxsHash(t *testing.T, headers []*typ
 	require := require.New(t)
 
 	for i, header := range headers {
-		block, err := client.BlockByNumber(context.Background(), header.Number)
+		block, err := client.BlockByNumber(t.Context(), header.Number)
 		require.NoError(err, "failed to get block %d", i)
 
 		txsHash := types.DeriveSha(block.Transactions(), trie.NewStackTrie(nil))
@@ -307,11 +306,11 @@ func testHeaders_TransactionReceiptReferencesCorrectContext(
 	require := require.New(t)
 
 	for i, header := range headers {
-		block, err := client.BlockByNumber(context.Background(), header.Number)
+		block, err := client.BlockByNumber(t.Context(), header.Number)
 		require.NoError(err, "failed to get block %d", i)
 
 		for j, tx := range block.Transactions() {
-			receipt, err := client.TransactionReceipt(context.Background(), tx.Hash())
+			receipt, err := client.TransactionReceipt(t.Context(), tx.Hash())
 			require.NoError(err, "failed to get transaction receipt")
 
 			require.Equal(tx.Hash(), receipt.TxHash, "transaction hash mismatch")
@@ -326,7 +325,7 @@ func testHeaders_ReceiptBlockHashMatchesBlockHash(t *testing.T, headers []*types
 	require := require.New(t)
 
 	for _, header := range headers {
-		receipts, err := client.BlockReceipts(context.Background(),
+		receipts, err := client.BlockReceipts(t.Context(),
 			rpc.BlockNumberOrHashWithHash(header.Hash(), false))
 		require.NoError(err, "failed to get block receipts")
 
@@ -340,7 +339,7 @@ func testHeaders_ReceiptRootMatchesBlockReceipts(t *testing.T, headers []*types.
 	require := require.New(t)
 
 	for _, header := range headers {
-		receipts, err := client.BlockReceipts(context.Background(),
+		receipts, err := client.BlockReceipts(t.Context(),
 			rpc.BlockNumberOrHashWithHash(header.Hash(), false))
 		require.NoError(err, "failed to get block receipts")
 
@@ -353,7 +352,7 @@ func testHeaders_LogsBloomMatchesLogsInReceipts(t *testing.T, headers []*types.H
 	require := require.New(t)
 
 	for _, header := range headers {
-		receipts, err := client.BlockReceipts(context.Background(),
+		receipts, err := client.BlockReceipts(t.Context(),
 			rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(header.Number.Uint64())))
 		require.NoError(err, "failed to get block receipts")
 
@@ -441,7 +440,7 @@ func testHeaders_LastBlockOfEpochContainsSealingTransaction(t *testing.T, header
 	maxEpoch := 0
 	for i := 0; i < len(headers)-1; i++ {
 
-		block, err := client.BlockByNumber(context.Background(), big.NewInt(int64(i)))
+		block, err := client.BlockByNumber(t.Context(), big.NewInt(int64(i)))
 		require.NoError(err, "failed to get block body")
 
 		currentBlockEpoch, err := getEpochOfBlock(client, i)
@@ -535,7 +534,7 @@ func getStateRoot(client *ethclient.Client, blockNumber int) (common.Hash, error
 
 func testHeaders_SystemContractsHaveNonZeroNonce(t *testing.T, headers []*types.Header, client *ethclient.Client) {
 	require := require.New(t)
-	ctxt := context.Background()
+	ctxt := t.Context()
 	for i := range headers {
 		block := big.NewInt(int64(i))
 		for _, addr := range []common.Address{
@@ -565,7 +564,7 @@ func testHeaders_LogsReferenceTheirContext(t *testing.T, headers []*types.Header
 		blockHash := header.Hash()
 		blockNumber := header.Number.Uint64()
 
-		receipts, err := client.BlockReceipts(context.Background(),
+		receipts, err := client.BlockReceipts(t.Context(),
 			rpc.BlockNumberOrHashWithHash(blockHash, false))
 		require.NoError(err, "failed to get block receipts")
 
@@ -593,7 +592,7 @@ func testHeaders_CanRetrieveLogEvents(t *testing.T, headers []*types.Header, cli
 	allLogs := []types.Log{}
 	for _, header := range headers {
 		blockHash := header.Hash()
-		receipts, err := client.BlockReceipts(context.Background(),
+		receipts, err := client.BlockReceipts(t.Context(),
 			rpc.BlockNumberOrHashWithHash(blockHash, false))
 		require.NoError(err, "failed to get block receipts")
 
@@ -609,7 +608,7 @@ func testHeaders_CanRetrieveLogEvents(t *testing.T, headers []*types.Header, cli
 					topicFilter = append(topicFilter, []common.Hash{topic})
 				}
 				logs, err := client.FilterLogs(
-					context.Background(),
+					t.Context(),
 					ethereum.FilterQuery{
 						BlockHash: &blockHash,
 						Addresses: []common.Address{log.Address},
@@ -627,7 +626,7 @@ func testHeaders_CanRetrieveLogEvents(t *testing.T, headers []*types.Header, cli
 	// Fetch all logs from the chain in a single query and see that no extra
 	// log entries are returned.
 	logs, err := client.FilterLogs(
-		context.Background(),
+		t.Context(),
 		ethereum.FilterQuery{
 			FromBlock: big.NewInt(0),
 			ToBlock:   big.NewInt(int64(len(headers) - 1)),
@@ -653,7 +652,7 @@ func testHeaders_CanRetrieveLogEvents(t *testing.T, headers []*types.Header, cli
 		topicZeroOptions = append(topicZeroOptions, log.Topics[0])
 	}
 	logs, err = client.FilterLogs(
-		context.Background(),
+		t.Context(),
 		ethereum.FilterQuery{
 			ToBlock: big.NewInt(int64(len(headers) - 1)),
 			Topics:  [][]common.Hash{topicZeroOptions},
@@ -681,7 +680,7 @@ func testHeaders_CounterStateIsVerifiable(
 	for i, header := range headers {
 
 		// Get counter value according to the reported logs.
-		receipts, err := client.BlockReceipts(context.Background(), rpc.BlockNumberOrHashWithHash(header.Hash(), false))
+		receipts, err := client.BlockReceipts(t.Context(), rpc.BlockNumberOrHashWithHash(header.Hash(), false))
 		require.NoError(err, "failed to get block receipts")
 		for _, receipt := range receipts {
 			require.Equal(header.Hash(), receipt.BlockHash, "block hash mismatch")
@@ -704,7 +703,7 @@ func testHeaders_CounterStateIsVerifiable(
 		}
 
 		// Get the counter value from the state directly.
-		fromStateAsHash, err := client.StorageAt(context.Background(), counterAddress, common.Hash{}, big.NewInt(int64(i)))
+		fromStateAsHash, err := client.StorageAt(t.Context(), counterAddress, common.Hash{}, big.NewInt(int64(i)))
 		require.NoError(err)
 		fromState := int(new(big.Int).SetBytes(fromStateAsHash).Uint64())
 
@@ -799,7 +798,7 @@ func testScc_HasCommitteeCertificates(
 	require.NoError(err)
 	require.NotEmpty(results, "no committee certificates found")
 
-	chainId, err := client.ChainID(context.Background())
+	chainId, err := client.ChainID(t.Context())
 	require.NoError(err)
 	for _, result := range results {
 		require.Equal(chainId.Uint64(), result.ChainId)
@@ -832,7 +831,7 @@ func testScc_HasBlockCertificatesForBlocks(
 	}
 
 	// Check the certificate content.
-	chainId, err := client.ChainID(context.Background())
+	chainId, err := client.ChainID(t.Context())
 	require.NoError(err)
 	for _, cert := range results {
 		if cert.Number >= uint64(len(headers)) {

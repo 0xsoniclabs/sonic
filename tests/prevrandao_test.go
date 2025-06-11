@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"context"
 	"math/big"
 	"testing"
 
@@ -36,7 +35,7 @@ func TestPrevRandao(t *testing.T) {
 		t.Fatalf("failed to get client; %v", err)
 	}
 	defer client.Close()
-	block, err := client.BlockByNumber(context.Background(), receipt.BlockNumber)
+	block, err := client.BlockByNumber(t.Context(), receipt.BlockNumber)
 	if err != nil {
 		t.Fatalf("failed to get block header; %v", err)
 	}
