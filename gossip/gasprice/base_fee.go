@@ -4,7 +4,6 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/opera"
 )
 
@@ -24,7 +23,7 @@ func GetInitialBaseFee(rules opera.EconomyRules) *big.Int {
 }
 
 // GetBaseFeeForNextBlock computes the base fee for the next block based on the parent block.
-func GetBaseFeeForNextBlock(parent *evmcore.EvmHeader, rules opera.EconomyRules) *big.Int {
+func GetBaseFeeForNextBlock(parent ParentBlockInfo, rules opera.EconomyRules) *big.Int {
 	newPrice := getBaseFeeForNextBlock(parent, rules)
 	if rules.MinBaseFee != nil && newPrice.Cmp(rules.MinBaseFee) < 0 {
 		newPrice.Set(rules.MinBaseFee)
@@ -32,7 +31,19 @@ func GetBaseFeeForNextBlock(parent *evmcore.EvmHeader, rules opera.EconomyRules)
 	return newPrice
 }
 
-func getBaseFeeForNextBlock(parent *evmcore.EvmHeader, rules opera.EconomyRules) *big.Int {
+// ParentBlockInfo contains the information about the parent block that is used
+// to compute the base fee for the next block.
+type ParentBlockInfo struct {
+	// BaseFee is the base fee of the parent block.
+	BaseFee *big.Int
+	// Duration is the time duration between the parent and grand-parent blocks.
+	// It is used to compute the new base fee based on the gas rate observed in the parent block.
+	Duration time.Duration
+	// GasUsed is the total gas used in the parent block.
+	GasUsed uint64
+}
+
+func getBaseFeeForNextBlock(parent ParentBlockInfo, rules opera.EconomyRules) *big.Int {
 	// In general, this function computes the new base fee based on the following formula:
 	//
 	//     newPrice := oldPrice * e^(((rate-targetRate)/targetRate)*duration/128)

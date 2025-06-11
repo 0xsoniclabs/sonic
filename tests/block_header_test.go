@@ -12,7 +12,6 @@ import (
 	"github.com/0xsoniclabs/carmen/go/carmen"
 	"github.com/0xsoniclabs/carmen/go/common/immutable"
 	"github.com/0xsoniclabs/carmen/go/database/mpt"
-	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -261,7 +260,7 @@ func testHeaders_BaseFeeEvolutionFollowsPricingRules(t *testing.T, headers []*ty
 	for i := 1; i < len(headers); i++ {
 		_, duration, err := inter.DecodeExtraData(headers[i-1].Extra)
 		require.NoError(err, "decoding extra data of block %d", i-1)
-		last := &evmcore.EvmHeader{
+		last := gasprice.ParentBlockInfo{
 			BaseFee:  headers[i-1].BaseFee,
 			GasUsed:  headers[i-1].GasUsed,
 			Duration: duration,

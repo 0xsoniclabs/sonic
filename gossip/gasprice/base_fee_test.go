@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/opera"
 )
 
@@ -93,7 +92,7 @@ func TestBaseFee_ExamplePriceAdjustments(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 
-			header := &evmcore.EvmHeader{
+			header := ParentBlockInfo{
 				BaseFee:  big.NewInt(int64(test.parentBaseFee)),
 				GasUsed:  test.parentGasUsed,
 				Duration: test.parentDuration,
@@ -124,7 +123,7 @@ func TestBaseFee_ExamplePriceAdjustments(t *testing.T) {
 
 func TestBaseFee_PriceCanRecoverFromPriceZero(t *testing.T) {
 	target := uint64(1e6)
-	header := &evmcore.EvmHeader{
+	header := ParentBlockInfo{
 		BaseFee:  big.NewInt(0),
 		GasUsed:  target + 1,
 		Duration: time.Second,
@@ -163,7 +162,7 @@ func TestBaseFee_GrowsAtMostTwelveAndAHalfPercentPer15Seconds(t *testing.T) {
 		t.Run(fmt.Sprintf("blockTime=%s", blockTime.String()), func(t *testing.T) {
 			const initialPrice = 100_000_000
 			// Define a header using 2x the target rate of gas in the given block time.
-			header := &evmcore.EvmHeader{
+			header := ParentBlockInfo{
 				BaseFee:  big.NewInt(initialPrice),
 				GasUsed:  uint64((2 * targetRate * blockTime) / time.Second),
 				Duration: blockTime,
@@ -211,7 +210,7 @@ func TestBaseFee_ShrinksAtMostTwelveAndAHalfPercentPer15Seconds(t *testing.T) {
 		t.Run(fmt.Sprintf("blockTime=%s", blockTime.String()), func(t *testing.T) {
 			const initialPrice = 100_000_000
 			// Define a header using no gas at all.
-			header := &evmcore.EvmHeader{
+			header := ParentBlockInfo{
 				BaseFee:  big.NewInt(initialPrice),
 				GasUsed:  0,
 				Duration: blockTime,
@@ -255,7 +254,7 @@ func TestBaseFee_DecayTimeFromInitialToZeroIsApproximately40Minutes(t *testing.T
 	}
 	for _, blockTime := range blockTimes {
 		t.Run(fmt.Sprintf("blockTime=%s", blockTime.String()), func(t *testing.T) {
-			header := &evmcore.EvmHeader{
+			header := ParentBlockInfo{
 				BaseFee:  GetInitialBaseFee(opera.EconomyRules{}),
 				GasUsed:  0,
 				Duration: blockTime,
@@ -298,7 +297,7 @@ func TestBaseFee_DoesNotSinkBelowMinBaseFee(t *testing.T) {
 			}
 
 			t.Run("price does not sink below minimum", func(t *testing.T) {
-				header := &evmcore.EvmHeader{
+				header := ParentBlockInfo{
 					BaseFee:  minPrice,
 					GasUsed:  0, // < should reduce the price
 					Duration: time.Second,
@@ -310,7 +309,7 @@ func TestBaseFee_DoesNotSinkBelowMinBaseFee(t *testing.T) {
 			})
 
 			t.Run("at threshold price is capped at minimum", func(t *testing.T) {
-				header := &evmcore.EvmHeader{
+				header := ParentBlockInfo{
 					BaseFee:  new(big.Int).Add(minPrice, big.NewInt(1)),
 					GasUsed:  0, // < should reduce the price
 					Duration: time.Second,
@@ -419,7 +418,7 @@ func TestApproximateExponential_RandomInputs(t *testing.T) {
 }
 
 func BenchmarkBaseFeeComputation(b *testing.B) {
-	header := &evmcore.EvmHeader{
+	header := ParentBlockInfo{
 		BaseFee:  big.NewInt(1e9),
 		GasUsed:  1e6,
 		Duration: time.Second,
