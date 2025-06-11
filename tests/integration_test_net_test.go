@@ -156,7 +156,8 @@ func TestIntegrationTestNet_CanSpawnParallelSessions(t *testing.T) {
 			session := net.SpawnSession(t)
 
 			receipt, err := session.EndowAccount(common.Address{0x42}, big.NewInt(1000))
-			checkTxExecution(t, receipt, err)
+			require.NoError(t, err)
+			require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 		})
 	}
 }
