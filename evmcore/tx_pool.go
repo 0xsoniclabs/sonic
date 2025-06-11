@@ -1494,7 +1494,7 @@ func (pool *TxPool) truncatePending() {
 	for addr, list := range pool.pending {
 		length := uint64(list.Len())
 		pending += length
-		if length > pool.config.AccountSlots {
+		if !pool.locals.contains(addr) && length > pool.config.AccountSlots {
 			spammers.Push(addr, length)
 		}
 	}
