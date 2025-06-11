@@ -3109,3 +3109,27 @@ func BenchmarkInsertRemoteWithAllLocals(b *testing.B) {
 		pool.Stop()
 	}
 }
+
+// Benchmarks the speed of batch transaction insertion in case of multiple accounts.
+func BenchmarkTruncatePending(b *testing.B) {
+	// Generate a batch of transactions to enqueue into the pool
+	pool, _ := setupTxPool()
+	defer pool.Stop()
+	b.ReportAllocs()
+	batches := make(types.Transactions, 4096+1024+1)
+	for i := range len(batches) {
+		key, _ := crypto.GenerateKey()
+		account := crypto.PubkeyToAddress(key.PublicKey)
+		// get sender address and put balance on it
+		testAddBalance(pool, account, big.NewInt(1000000))
+		batches[i] = transaction(uint64(0), 100000, key)
+	}
+	for _, tx := range batches {
+		_ = pool.addRemoteSync(tx)
+	}
+	b.ResetTimer()
+	// benchmark truncating the pending
+	for range b.N {
+		pool.truncatePending()
+	}
+}
