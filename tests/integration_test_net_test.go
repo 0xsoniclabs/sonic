@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"context"
 	"fmt"
 	"math/big"
 	"testing"
@@ -56,7 +55,7 @@ func TestIntegrationTestNet_CanFetchInformationFromTheNetwork(t *testing.T) {
 	}
 	defer client.Close()
 
-	block, err := client.BlockNumber(context.Background())
+	block, err := client.BlockNumber(t.Context())
 	if err != nil {
 		t.Fatalf("Failed to get block number: %v", err)
 	}
@@ -75,7 +74,7 @@ func TestIntegrationTestNet_CanEndowAccountsWithTokens(t *testing.T) {
 	}
 
 	address := common.Address{0x01}
-	balance, err := client.BalanceAt(context.Background(), address, nil)
+	balance, err := client.BalanceAt(t.Context(), address, nil)
 	if err != nil {
 		t.Fatalf("Failed to get balance for account: %v", err)
 	}
@@ -92,7 +91,7 @@ func TestIntegrationTestNet_CanEndowAccountsWithTokens(t *testing.T) {
 		}
 
 		want := balance.Add(balance, big.NewInt(int64(increment)))
-		balance, err = client.BalanceAt(context.Background(), address, nil)
+		balance, err = client.BalanceAt(t.Context(), address, nil)
 		if err != nil {
 			t.Fatalf("Failed to get balance for account: %v", err)
 		}
@@ -209,10 +208,10 @@ func TestIntegrationTestNet_CanStartWithCustomConfig(t *testing.T) {
 
 	sender := makeAccountWithBalance(t, net, big.NewInt(1e18))
 
-	chainId, err := client.ChainID(context.Background())
+	chainId, err := client.ChainID(t.Context())
 	require.NoError(t, err)
 
-	gp, err := client.SuggestGasPrice(context.Background())
+	gp, err := client.SuggestGasPrice(t.Context())
 	require.NoError(t, err)
 
 	gas, err := core.IntrinsicGas(nil, nil, nil, true, true, true, true)
@@ -225,7 +224,7 @@ func TestIntegrationTestNet_CanStartWithCustomConfig(t *testing.T) {
 		GasFeeCap: gp,
 		GasTipCap: big.NewInt(9),
 	}, sender)
-	err = client.SendTransaction(context.Background(), tx)
+	err = client.SendTransaction(t.Context(), tx)
 	require.ErrorContains(t, err, "transaction underpriced")
 
 	tx = signTransaction(t, chainId, &types.DynamicFeeTx{
@@ -235,7 +234,7 @@ func TestIntegrationTestNet_CanStartWithCustomConfig(t *testing.T) {
 		GasFeeCap: gp,
 		GasTipCap: big.NewInt(10),
 	}, sender)
-	err = client.SendTransaction(context.Background(), tx)
+	err = client.SendTransaction(t.Context(), tx)
 	require.NoError(t, err)
 }
 
@@ -268,10 +267,10 @@ func TestIntegrationTestNet_AccountsToBeDeployedWithGenesisCanBeCalled(t *testin
 
 	sender := makeAccountWithBalance(t, net, big.NewInt(1e18))
 
-	gasPrice, err := client.SuggestGasPrice(context.Background())
+	gasPrice, err := client.SuggestGasPrice(t.Context())
 	require.NoError(t, err)
 
-	chainId, err := client.ChainID(context.Background())
+	chainId, err := client.ChainID(t.Context())
 	require.NoError(t, err)
 
 	txData := &types.LegacyTx{

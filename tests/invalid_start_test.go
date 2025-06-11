@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"context"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/tests/contracts/invalidstart"
@@ -68,13 +67,13 @@ func getTransactionWithCodeAndNoReceiver(t testing.TB, code []byte, net *Integra
 	require.NoError(err, "failed to connect to the network:")
 
 	defer client.Close()
-	chainId, err := client.ChainID(context.Background())
+	chainId, err := client.ChainID(t.Context())
 	require.NoError(err, "failed to get chain ID::")
 
-	nonce, err := client.NonceAt(context.Background(), net.GetSessionSponsor().Address(), nil)
+	nonce, err := client.NonceAt(t.Context(), net.GetSessionSponsor().Address(), nil)
 	require.NoError(err, "failed to get nonce:")
 
-	price, err := client.SuggestGasPrice(context.Background())
+	price, err := client.SuggestGasPrice(t.Context())
 	require.NoError(err, "failed to get gas price:")
 	// ---------
 

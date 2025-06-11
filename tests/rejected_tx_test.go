@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"context"
 	"math/big"
 	"strings"
 	"testing"
@@ -27,7 +26,7 @@ func TestRejectedTx_TransactionsAreRejectedBecauseOfAccountState(t *testing.T) {
 	require.NoError(t, err, "failed to get client")
 	defer client.Close()
 
-	chainId, err := client.ChainID(context.Background())
+	chainId, err := client.ChainID(t.Context())
 	require.NoError(t, err, "failed to get chain ID::")
 
 	testTransactions := map[string]func(testing.TB, *Account) types.TxData{

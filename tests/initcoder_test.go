@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"context"
 	"math/big"
 	"testing"
 
@@ -161,13 +160,13 @@ func runTransactionWithCodeSizeAndGas(t *testing.T, net *IntegrationTestNet, cod
 	require.NoError(err, "failed to connect to the network:")
 	defer client.Close()
 
-	chainId, err := client.ChainID(context.Background())
+	chainId, err := client.ChainID(t.Context())
 	require.NoError(err, "failed to get chain ID::")
 
-	nonce, err := client.NonceAt(context.Background(), net.GetSessionSponsor().Address(), nil)
+	nonce, err := client.NonceAt(t.Context(), net.GetSessionSponsor().Address(), nil)
 	require.NoError(err, "failed to get nonce:")
 
-	price, err := client.SuggestGasPrice(context.Background())
+	price, err := client.SuggestGasPrice(t.Context())
 	require.NoError(err, "failed to get gas price:")
 	// ---------
 

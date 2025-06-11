@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"context"
 	"math/big"
 	"testing"
 
@@ -45,11 +44,11 @@ func TestEIP2935_IsAutomaticallyDeployedWithFakeNet(t *testing.T) {
 			require.NoError(t, err)
 			defer client.Close()
 
-			code, err := client.CodeAt(context.Background(), historyStorageAddress, nil)
+			code, err := client.CodeAt(t.Context(), historyStorageAddress, nil)
 			require.NoError(t, err)
 			require.Equal(t, params.HistoryStorageCode, code)
 
-			nonce, err := client.NonceAt(context.Background(), historyStorageAddress, nil)
+			nonce, err := client.NonceAt(t.Context(), historyStorageAddress, nil)
 			require.NoError(t, err)
 			require.Equal(t, uint64(1), nonce)
 		})
@@ -75,11 +74,11 @@ func TestEIP2935_HistoryContractIsNotDeployedBeforePrague(t *testing.T) {
 			require.NoError(t, err)
 			defer client.Close()
 
-			code, err := client.CodeAt(context.Background(), historyStorageAddress, nil)
+			code, err := client.CodeAt(t.Context(), historyStorageAddress, nil)
 			require.NoError(t, err)
 			require.Empty(t, code)
 
-			nonce, err := client.NonceAt(context.Background(), historyStorageAddress, nil)
+			nonce, err := client.NonceAt(t.Context(), historyStorageAddress, nil)
 			require.NoError(t, err)
 			require.Equal(t, uint64(0), nonce)
 		})
@@ -156,11 +155,11 @@ func TestEIP2935_DeployContract(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
-	code, err := client.CodeAt(context.Background(), historyStorageAddress, nil)
+	code, err := client.CodeAt(t.Context(), historyStorageAddress, nil)
 	require.NoError(t, err)
 	require.Equal(t, params.HistoryStorageCode, code)
 
-	nonce, err := client.NonceAt(context.Background(), historyStorageAddress, nil)
+	nonce, err := client.NonceAt(t.Context(), historyStorageAddress, nil)
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), nonce)
 

@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"context"
 	"math/big"
 	"testing"
 
@@ -38,12 +37,12 @@ func TestNodeRestart_CanRestartAndRestoreItsState(t *testing.T) {
 	require.NoError(err)
 	defer client.Close()
 
-	lastBlock, err := client.BlockByNumber(context.Background(), nil)
+	lastBlock, err := client.BlockByNumber(t.Context(), nil)
 	require.NoError(err)
 	require.GreaterOrEqual(lastBlock.NumberU64(), uint64(numBlocks*numRestarts))
 
 	for i := range lastBlock.NumberU64() {
-		block, err := client.BlockByNumber(context.Background(), big.NewInt(int64(i)))
+		block, err := client.BlockByNumber(t.Context(), big.NewInt(int64(i)))
 		require.NoError(err)
 
 		for _, receipt := range receipts[int(i)] {

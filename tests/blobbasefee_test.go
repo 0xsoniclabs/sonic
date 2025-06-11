@@ -2,7 +2,6 @@ package tests
 
 import (
 	"bytes"
-	"context"
 	"math/big"
 	"testing"
 
@@ -38,7 +37,7 @@ func TestBlobBaseFee_CanReadBlobBaseFeeFromHeadAndBlockAndHistory(t *testing.T) 
 	require.NoError(err, "failed to get client; ", err)
 	defer client.Close()
 
-	block, err := client.BlockByNumber(context.Background(), receipt.BlockNumber)
+	block, err := client.BlockByNumber(t.Context(), receipt.BlockNumber)
 	require.NoError(err, "failed to get block header; ", err)
 	fromBlock := getBlobBaseFeeFrom(block.Header())
 
@@ -79,7 +78,7 @@ func TestBlobBaseFee_CanReadBlobGasUsed(t *testing.T) {
 	defer client.Close()
 
 	// Get blob gas used from the block header of the latest block.
-	block, err := client.BlockByNumber(context.Background(), nil)
+	block, err := client.BlockByNumber(t.Context(), nil)
 	require.NoError(err, "failed to get block header; ", err)
 	require.Empty(*block.BlobGasUsed(), "unexpected value in blob gas used")
 	require.Empty(*block.Header().ExcessBlobGas, "unexpected excess blob gas value")

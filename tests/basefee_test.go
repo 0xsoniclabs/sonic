@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"context"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/tests/contracts/basefee"
@@ -40,7 +39,7 @@ func TestBaseFee_CanReadBaseFeeFromHeadAndBlockAndHistory(t *testing.T) {
 	}
 	defer client.Close()
 
-	block, err := client.BlockByNumber(context.Background(), receipt.BlockNumber)
+	block, err := client.BlockByNumber(t.Context(), receipt.BlockNumber)
 	if err != nil {
 		t.Fatalf("failed to get block header; %v", err)
 	}
