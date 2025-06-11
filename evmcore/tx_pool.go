@@ -715,13 +715,18 @@ func (pool *TxPool) validateAuth(tx *types.Transaction) error {
 	if err := pool.checkDelegationLimit(tx); err != nil {
 		return err
 	}
-	// Authorities cannot conflict with any pending or queued transactions.
-	if auths := tx.SetCodeAuthorizations(); len(auths) > 0 {
-		for _, auth := range auths {
-			addr, _ := auth.Authority()
-			if pool.pending[addr] != nil || pool.queue[addr] != nil {
-				return ErrAuthorityReserved
-			}
+	// For symmetry, allow at most one in-flight tx for any authority with a
+	// pending transaction.
+	for _, auth := range tx.SetCodeAuthorities() {
+		var count int
+		if pending := pool.pending[auth]; pending != nil {
+			count += pending.Len()
+		}
+		if queue := pool.queue[auth]; queue != nil {
+			count += queue.Len()
+		}
+		if count > 1 {
+			return ErrAuthorityReserved
 		}
 	}
 	return nil
