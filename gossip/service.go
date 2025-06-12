@@ -458,7 +458,7 @@ func (s *Service) EmitterWorld(signer valkeystore.SignerAuthority) emitter.World
 
 // RegisterEmitter must be called before service is started
 func (s *Service) RegisterEmitter(em *emitter.Emitter) {
-	txtime.Enabled = true // enable tracking of tx times
+	txtime.Enabled.Store(true) // enable tracking of tx times
 	s.emitters = append(s.emitters, em)
 }
 
