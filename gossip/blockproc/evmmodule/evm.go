@@ -14,7 +14,6 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/0xsoniclabs/sonic/utils"
 )
 
 type EVMModule struct{}
@@ -56,7 +55,7 @@ func (p *EVMModule) Start(
 		onNewLog:      onNewLog,
 		net:           net,
 		evmCfg:        evmCfg,
-		blockIdx:      utils.U64toBig(uint64(block.Idx)),
+		blockIdx:      uint64(block.Idx),
 		prevBlockHash: prevBlockHash,
 		prevRandao:    prevrandao,
 		gasBaseFee:    baseFee,
@@ -71,7 +70,7 @@ type OperaEVMProcessor struct {
 	net      opera.Rules
 	evmCfg   *params.ChainConfig
 
-	blockIdx      *big.Int
+	blockIdx      uint64
 	prevBlockHash common.Hash
 	gasBaseFee    *big.Int
 
@@ -102,21 +101,22 @@ func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlo
 		withdrawalsHash = &types.EmptyWithdrawalsHash
 	}
 
-	h := &evmcore.EvmHeader{
-		Number:          p.blockIdx,
-		ParentHash:      p.prevBlockHash,
-		Root:            common.Hash{},
-		Time:            p.block.Time,
-		Coinbase:        common.Address{},
-		GasLimit:        p.net.Blocks.MaxBlockGas,
-		GasUsed:         p.gasUsed,
-		BaseFee:         baseFee,
-		PrevRandao:      prevRandao,
-		WithdrawalsHash: withdrawalsHash,
-		Epoch:           p.block.Atropos.Epoch(),
-	}
+	h := evmcore.NewEvmHeader(
+		p.blockIdx,
+		p.prevBlockHash,
+		common.Hash{}, // state root is added later
+		p.block.Time,
+		evmcore.GetCoinbase(),
+		p.net.Blocks.MaxBlockGas,
+		p.gasUsed,
+		baseFee,
+		evmcore.GetBlobBaseFee(),
+		prevRandao,
+		withdrawalsHash,
+		p.block.Atropos.Epoch(),
+	)
 
-	return evmcore.NewEvmBlock(h, txs)
+	return evmcore.NewEvmBlock(&h, txs)
 }
 
 func (p *OperaEVMProcessor) Execute(txs types.Transactions) types.Receipts {

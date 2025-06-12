@@ -2,7 +2,6 @@ package scheduler
 
 import (
 	"context"
-	"math/big"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/inter"
@@ -168,14 +167,14 @@ type BlockInfo struct {
 
 func (b *BlockInfo) toEvmBlock() *evmcore.EvmBlock {
 	return &evmcore.EvmBlock{
-		EvmHeader: evmcore.EvmHeader{
-			Number:      new(big.Int).SetUint64(uint64(b.Number)),
-			Time:        b.Time,
-			GasLimit:    b.GasLimit,
-			Coinbase:    b.Coinbase,
-			PrevRandao:  b.MixHash,
-			BaseFee:     b.BaseFee.ToBig(),
-			BlobBaseFee: b.BlobBaseFee.ToBig(),
-		},
+		EvmHeader: evmcore.NewEvmHeaderCoveringInputParameters(
+			uint64(b.Number),
+			b.Time,
+			b.Coinbase,
+			b.GasLimit,
+			b.BaseFee.ToBig(),
+			b.BlobBaseFee,
+			b.MixHash,
+		),
 	}
 }

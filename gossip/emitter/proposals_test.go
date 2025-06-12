@@ -3,6 +3,7 @@ package emitter
 import (
 	"context"
 	"errors"
+	"math/big"
 	"testing"
 	"time"
 
@@ -271,7 +272,10 @@ func TestCreatePayload_ValidTurn_ProducesExpectedPayload(t *testing.T) {
 
 	world.EXPECT().GetLatestBlock().Return(
 		inter.NewBlockBuilder().
-			WithNumber(5).Build(),
+			WithNumber(5).
+			WithBaseFee(big.NewInt(100)).
+			WithDuration(500 * time.Millisecond).
+			Build(),
 	)
 
 	world.EXPECT().GetRules().Return(opera.Rules{})
@@ -334,6 +338,8 @@ func TestMakeProposal_ValidArguments_CreatesValidProposal(t *testing.T) {
 	latestBlock := inter.NewBlockBuilder().
 		WithNumber(5).
 		WithTime(1234).
+		WithBaseFee(big.NewInt(100)).
+		WithDuration(500 * time.Millisecond).
 		Build()
 
 	delta := 20 * time.Millisecond
@@ -356,8 +362,8 @@ func TestMakeProposal_ValidArguments_CreatesValidProposal(t *testing.T) {
 			Time:        newBlockTime,
 			GasLimit:    rules.Blocks.MaxBlockGas,
 			MixHash:     someRandao,
-			BaseFee:     uint256.Int{}, // TODO: implement
-			BlobBaseFee: uint256.Int{}, // TODO: implement
+			BaseFee:     *uint256.NewInt(100),
+			BlobBaseFee: *uint256.NewInt(0),
 		},
 		nil,
 		scheduler.Limits{
@@ -447,7 +453,10 @@ func TestMakeProposal_IfSchedulerTimesOut_SignalTimeoutToMonitor(t *testing.T) {
 	_, err := makeProposal(
 		opera.Rules{},
 		inter.ProposalSyncState{},
-		inter.NewBlockBuilder().Build(),
+		inter.NewBlockBuilder().
+			WithBaseFee(big.NewInt(100)).
+			WithDuration(500*time.Millisecond).
+			Build(),
 		inter.Timestamp(1),
 		0,
 		mockScheduler,
@@ -571,6 +580,49 @@ func TestMakeProposal_SkipsProposalOnRandaoRevealError(t *testing.T) {
 		nil,
 	)
 	require.ErrorContains(err, "randao reveal generation failed")
+}
+
+func TestMakeProposal_SkipsProposalIfBaseFeeIsGettingTooHeigh(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+
+	targetRate := uint64(50_000_000) // 50M gas/sec
+
+	rules := opera.Rules{
+		Economy: opera.EconomyRules{
+			ShortGasPower: opera.GasPowerRules{
+				AllocPerSec: targetRate,
+			},
+		},
+	}
+
+	previousBaseFee := new(big.Int).Lsh(big.NewInt(1), 256)
+	latestBlock := inter.NewBlockBuilder().
+		WithBaseFee(previousBaseFee).
+		WithGasLimit(2 * targetRate).
+		WithGasUsed(2 * targetRate).
+		WithDuration(500 * time.Millisecond).
+		Build()
+
+	newBlockTime := latestBlock.Time + 10
+
+	randaoMixer := randao.NewMockRandaoMixer(ctrl)
+	randaoMixer.EXPECT().MixRandao(gomock.Any())
+
+	// Run the proposal creation.
+	_, err := makeProposal(
+		rules,
+		inter.ProposalSyncState{},
+		latestBlock,
+		newBlockTime,
+		0,
+		nil,
+		nil,
+		randaoMixer,
+		nil,
+		nil,
+	)
+	require.ErrorContains(err, "overflows uint256")
 }
 
 func TestCreatePayload_ReturnsErrorOnRandaoGenerationFailure(t *testing.T) {
