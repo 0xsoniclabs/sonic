@@ -688,11 +688,25 @@ func TestSetCodeTransactions(t *testing.T) {
 		},
 		"allow setcode tx with queued tx from delegated account": {
 			test: func(t *testing.T, pool *TxPool) {
-				if err := pool.addRemoteSync(setCodeTx(1, keyC, []unsignedAuth{{0, keyA}})); err != nil {
-					t.Fatalf("failed to add with remote setcode transaction: %v", err)
+				if err := pool.addRemoteSync(pricedTransaction(1, 100000, big.NewInt(10), keyC)); err != nil {
+					t.Fatalf("failed to add legacy transaction: %v", err)
 				}
 				if err := pool.addRemoteSync(setCodeTx(1, keyB, []unsignedAuth{{1, keyC}})); err != nil {
-					t.Fatalf("failed to add conflicting delegation: %v", err)
+					t.Fatalf("failed to add non conflicting delegation transaction: %v", err)
+				}
+			},
+			queued: 2,
+		},
+		"reject setcode tx with more than one queued tx from delegated account": {
+			test: func(t *testing.T, pool *TxPool) {
+				if err := pool.addRemoteSync(pricedTransaction(1, 100000, big.NewInt(10), keyC)); err != nil {
+					t.Fatalf("failed to add legacy transaction: %v", err)
+				}
+				if err := pool.addRemoteSync(pricedTransaction(2, 100000, big.NewInt(10), keyC)); err != nil {
+					t.Fatalf("failed to add legacy transaction: %v", err)
+				}
+				if err := pool.addRemoteSync(setCodeTx(1, keyB, []unsignedAuth{{1, keyC}})); !errors.Is(err, ErrAuthorityReserved) {
+					t.Fatalf("error mismatch: want %v, have %v", ErrAuthorityReserved, err)
 				}
 			},
 			queued: 2,
