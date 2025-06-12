@@ -113,6 +113,16 @@ func ApplyTransactionWithEVM(msg *core.Message, config *params.ChainConfig, gp *
 	txContext := NewEVMTxContext(msg)
 	evm.Reset(txContext, statedb)
 
+	// For now, Sonic only supports Blob transactions without blob data.
+	if msg.BlobHashes != nil {
+		if len(msg.BlobHashes) > 0 {
+			statedb.Finalise()
+			return nil, fmt.Errorf("blob data is not supported")
+		}
+		// PreCheck requires non-nil blobHashes not to be empty
+		msg.BlobHashes = nil
+	}
+
 	// Apply the transaction to the current state (included in the env).
 	result, err := core.ApplyMessage(evm, msg, gp)
 	if err != nil {
