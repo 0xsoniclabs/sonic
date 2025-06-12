@@ -121,7 +121,7 @@ func getSenderOfTransaction(
 	return details.From, nil
 }
 
-func TestReceipt_SkippedTransactionsDoNotChangeReceiptIndex(t *testing.T) {
+func TestReceipt_SkippedTransactionsDoNotChangeReceiptIndexOrCumulativeGasUsed(t *testing.T) {
 	upgrades := opera.GetSonicUpgrades()
 	net := StartIntegrationTestNetWithJsonGenesis(t, IntegrationTestNetOptions{
 		Upgrades: &upgrades,
@@ -218,13 +218,20 @@ func TestReceipt_SkippedTransactionsDoNotChangeReceiptIndex(t *testing.T) {
 	block, err := client.BlockByNumber(t.Context(), big.NewInt(int64(after)))
 	require.NoError(t, err)
 
+	cumulativeGas := uint64(0)
 	for idx, tx := range block.Transactions() {
 		receipt, err := client.TransactionReceipt(t.Context(), tx.Hash())
 		require.NoError(t, err)
+		cumulativeGas += receipt.GasUsed
 
 		// Check that the receipt index is equal to the transaction index
 		require.Equal(t, uint(idx), receipt.TransactionIndex,
 			"Receipt index does not match transaction index for tx %d", idx,
+		)
+
+		// Check that sum of gas used by each transaction matches the cumulative gas used
+		require.Equal(t, cumulativeGas, receipt.CumulativeGasUsed,
+			"Cumulative gas used does not match for tx %d", idx,
 		)
 	}
 }
