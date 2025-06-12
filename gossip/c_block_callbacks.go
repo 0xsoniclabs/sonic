@@ -270,6 +270,10 @@ func consensusCallbackBeginBlockFn(
 					return nil
 				}
 
+				fmt.Printf("Processing transactions for block %d with gas limit %d\n",
+					proposal.Number, userTransactionGasLimit,
+				)
+
 				sealer := blockProc.SealerModule.Start(blockCtx, bs, es)
 				sealing := sealer.EpochSealing()
 				txListener := blockProc.TxListenerModule.Start(blockCtx, bs, es, statedb)

@@ -75,6 +75,26 @@ func (p *StateProcessor) Process(
 ) (
 	types.Receipts, []*types.Log, []uint32,
 ) {
+	fmt.Printf("Starting processing block %d with the following parameters:\n", block.Number.Uint64())
+	fmt.Printf("  - block header:\n")
+	fmt.Printf("	- number: %d\n", block.Number.Uint64())
+	fmt.Printf("	- time:   %d\n", block.Time)
+	fmt.Printf("	- coinbase: %x\n", block.Coinbase)
+	fmt.Printf("	- gas limit: %d\n", block.GasLimit)
+	fmt.Printf("	- base fee: %d\n", block.BaseFee)
+	fmt.Printf("	- blob base fee: %d\n", block.BlobBaseFee)
+	fmt.Printf("	- mix hash: %x\n", block.PrevRandao)
+	fmt.Printf("  - EVM config:\n")
+	fmt.Printf("	- no base fee: %t\n", cfg.NoBaseFee)
+	fmt.Printf("	- charge excessive gas: %t\n", cfg.ChargeExcessGas)
+	fmt.Printf("	- ignore gas fee cap: %t\n", cfg.IgnoreGasFeeCap)
+	fmt.Printf("	- insufficient balance is not an error: %t\n", cfg.InsufficientBalanceIsNotAnError)
+	fmt.Printf("	- skip tip payment to coinbase: %t\n", cfg.SkipTipPaymentToCoinbase)
+	/*
+		//fmt.Printf("  - chain config: %+v\n", p.config)
+		fmt.Printf("  - VM config: %+v\n", cfg)
+	*/
+
 	receipts := make(types.Receipts, 0, len(block.Transactions))
 	allLogs := make([]*types.Log, 0, len(block.Transactions)*10) // 10 logs per tx is a reasonable estimate
 	skipped := make([]uint32, 0, len(block.Transactions))

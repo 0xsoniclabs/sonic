@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"fmt"
 	"math/big"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
@@ -61,6 +62,10 @@ func (s *Scheduler) Schedule(
 ) []*types.Transaction {
 	processor := s.factory.beginBlock(blockInfo.toEvmBlock())
 	defer processor.release()
+
+	fmt.Printf("Scheduling transactions for block %d with gas limit %d and size limit %d\n",
+		blockInfo.Number, limits.Gas, limits.Size,
+	)
 
 	remainingGas := limits.Gas
 	remainingSize := limits.Size

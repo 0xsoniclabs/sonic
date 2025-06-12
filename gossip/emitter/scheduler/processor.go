@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"fmt"
 	"math"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
@@ -68,6 +69,26 @@ func (p *evmProcessorFactory) beginBlock(
 	chainCfg := p.chain.GetEvmChainConfig(idx.Block(block.Header().Number.Uint64()))
 	vmConfig := opera.GetVmConfig(p.chain.GetCurrentNetworkRules())
 	state := p.chain.StateDB()
+
+	fmt.Printf("Starting scheduling block %d with the following parameters:\n", block.Number.Uint64())
+	fmt.Printf("  - block header:\n")
+	fmt.Printf("	- number: %d\n", block.Number.Uint64())
+	fmt.Printf("	- time:   %d\n", block.Time)
+	fmt.Printf("	- coinbase: %x\n", block.Coinbase)
+	fmt.Printf("	- gas limit: %d\n", block.GasLimit)
+	fmt.Printf("	- base fee: %d\n", block.BaseFee)
+	fmt.Printf("	- blob base fee: %d\n", block.BlobBaseFee)
+	fmt.Printf("	- mix hash: %x\n", block.PrevRandao)
+	fmt.Printf("  - EVM config:\n")
+	fmt.Printf("	- no base fee: %t\n", vmConfig.NoBaseFee)
+	fmt.Printf("	- charge excessive gas: %t\n", vmConfig.ChargeExcessGas)
+	fmt.Printf("	- ignore gas fee cap: %t\n", vmConfig.IgnoreGasFeeCap)
+	fmt.Printf("	- insufficient balance is not an error: %t\n", vmConfig.InsufficientBalanceIsNotAnError)
+	fmt.Printf("	- skip tip payment to coinbase: %t\n", vmConfig.SkipTipPaymentToCoinbase)
+	/*
+		//fmt.Printf("  - chain config: %+v\n", chainCfg)
+		fmt.Printf("  - VM config: %+v\n", vmConfig)
+	*/
 
 	// The gas limit for transactions is enforced on a per-transaction level
 	// in the scheduler. See the scheduler.Schedule method for details. The
