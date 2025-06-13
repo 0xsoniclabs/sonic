@@ -67,11 +67,13 @@ func (em *Emitter) OnNewEpoch(newValidators *pos.Validators, newEpoch idx.Epoch)
 		extConfirmingInterval = em.config.EmitIntervals.Confirming
 	}
 
-	// sanity check to ensure that durations aren't too small/large
-	em.intervalsMinLock.Lock()
-	em.intervals.Min = maxDuration(minDuration(em.config.EmitIntervals.Min*20, extMinInterval), em.config.EmitIntervals.Min/4)
-	em.intervalsMinLock.Unlock()
+	// sanity check to ensure that durations aren't too small/large compared to initial config
+	em.minLock.Lock()
+	em.min = maxDuration(minDuration(em.config.EmitIntervals.Min*20, extMinInterval), em.config.EmitIntervals.Min/4)
+	em.minLock.Unlock()
+	em.confirmingLock.Lock()
 	em.globalConfirmingInterval = maxDuration(minDuration(em.config.EmitIntervals.Confirming*20, extConfirmingInterval), em.config.EmitIntervals.Confirming/4)
+	em.confirmingLock.Unlock()
 	em.recountConfirmingIntervals(newValidators)
 
 	if switchToFCIndexer {

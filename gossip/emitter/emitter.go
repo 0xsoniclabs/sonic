@@ -85,9 +85,11 @@ type Emitter struct {
 	fcIndexer      *ancestor.FCIndexer
 	payloadIndexer *ancestor.PayloadIndexer
 
-	intervals                EmitIntervals
+	// intervals                EmitIntervals
+	min                      time.Duration // minimum time between events
+	minLock                  sync.Mutex    // lock for min
 	globalConfirmingInterval time.Duration
-	intervalsMinLock         sync.Mutex // lock for intervals.Min
+	confirmingLock           sync.Mutex // lock for globalConfirmingInterval
 
 	done chan struct{}
 	wg   sync.WaitGroup
@@ -135,7 +137,7 @@ func NewEmitter(
 		config:                   config,
 		world:                    world,
 		originatedTxs:            originatedtxs.New(SenderCountBufferSize),
-		intervals:                config.EmitIntervals,
+		min:                      config.EmitIntervals.Min,
 		globalConfirmingInterval: config.EmitIntervals.Confirming,
 		Periodic:                 logger.Periodic{Instance: logger.New()},
 		baseFeeSource:            baseFeeSource,
@@ -222,9 +224,9 @@ func (em *Emitter) tick() {
 	em.recheckChallenges()
 	em.recheckIdleTime()
 
-	em.intervalsMinLock.Lock()
-	min := em.intervals.Min
-	em.intervalsMinLock.Unlock()
+	em.minLock.Lock()
+	min := em.min
+	em.minLock.Unlock()
 
 	if em.timeSinceLastEmit() >= min {
 		_, err := em.EmitEvent()

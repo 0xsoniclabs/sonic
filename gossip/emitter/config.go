@@ -14,7 +14,6 @@ import (
 // EmitIntervals is the configuration of emit intervals.
 type EmitIntervals struct {
 	Min                        time.Duration
-	Max                        time.Duration
 	Confirming                 time.Duration // emit time when there's no txs to originate, but at least 1 tx to confirm
 	ParallelInstanceProtection time.Duration
 	DoublesignProtection       time.Duration
@@ -61,7 +60,6 @@ func DefaultConfig() Config {
 
 		EmitIntervals: EmitIntervals{
 			Min:                        150 * time.Millisecond,
-			Max:                        10 * time.Minute,
 			Confirming:                 170 * time.Millisecond,
 			DoublesignProtection:       27 * time.Minute, // should be greater than MaxEmitInterval
 			ParallelInstanceProtection: 1 * time.Minute,
@@ -82,10 +80,6 @@ func DefaultConfig() Config {
 // RandomizeEmitTime and return new config
 func (cfg EmitIntervals) RandomizeEmitTime(rand *rand.Rand) EmitIntervals {
 	config := cfg
-	// value = value - 0.1 * value + 0.1 * random value
-	if config.Max > 10 {
-		config.Max = config.Max - config.Max/10 + time.Duration(rand.Int64N(int64(config.Max/10)))
-	}
 	// value = value + 0.33 * random value
 	if config.DoublesignProtection > 3 {
 		config.DoublesignProtection = config.DoublesignProtection + time.Duration(rand.Int64N(int64(config.DoublesignProtection/3)))
@@ -96,8 +90,7 @@ func (cfg EmitIntervals) RandomizeEmitTime(rand *rand.Rand) EmitIntervals {
 // FakeConfig returns the testing configurations for the events emitter.
 func FakeConfig(num idx.Validator) Config {
 	cfg := DefaultConfig()
-	cfg.EmitIntervals.Max = 10 * time.Second // don't wait long in fakenet
-	cfg.EmitIntervals.DoublesignProtection = cfg.EmitIntervals.Max / 2
+	cfg.EmitIntervals.DoublesignProtection = 10 * time.Second / 2
 	if num <= 1 {
 		// disable self-fork protection if fakenet 1/1
 		cfg.EmitIntervals.DoublesignProtection = 0
