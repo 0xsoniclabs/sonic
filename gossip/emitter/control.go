@@ -45,14 +45,6 @@ func (em *Emitter) isAllowedToEmit() bool {
 	return passedTime >= interval
 }
 
-func (em *Emitter) recheckIdleTime() {
-	em.world.Lock()
-	defer em.world.Unlock()
-	if em.idle() {
-		em.prevIdleTime = time.Now()
-	}
-}
-
 func (em *Emitter) getEmitterIntervalLimit() time.Duration {
 	rules := em.world.GetRules().Emitter
 
