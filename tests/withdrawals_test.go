@@ -2,7 +2,6 @@ package tests
 
 import (
 	"bytes"
-	"context"
 	"math/big"
 	"testing"
 
@@ -31,12 +30,12 @@ func TestWithdrawalFieldsInBlocks(t *testing.T) {
 	t.Run("verify default values of block's Withdrawals list and hash", func(t *testing.T) {
 		require := require.New(t)
 
-		latest, err := client.BlockNumber(context.Background())
+		latest, err := client.BlockNumber(t.Context())
 		require.NoError(err, "Failed to get the latest block number: ", err)
 
 		// we check from block 1 onward because block 0 does not consider Sonic Upgrade.
 		for i := int64(1); i <= int64(latest); i++ {
-			block, err := client.BlockByNumber(context.Background(), big.NewInt(i))
+			block, err := client.BlockByNumber(t.Context(), big.NewInt(i))
 			require.NoError(err, "Failed to get the block: ", err)
 
 			// check that the block has an empty list of withdrawals
@@ -49,7 +48,7 @@ func TestWithdrawalFieldsInBlocks(t *testing.T) {
 		require := require.New(t)
 
 		// get block
-		block, err := client.BlockByNumber(context.Background(), nil)
+		block, err := client.BlockByNumber(t.Context(), nil)
 		requireBase.NoError(err, "Failed to get the block: ", err)
 
 		// encode block

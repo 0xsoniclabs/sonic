@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"context"
 	"math/big"
 	"testing"
 
@@ -276,7 +275,7 @@ func makeAccountWithBalance(t *testing.T, net IntegrationTestNetSession, balance
 
 func getBaseFeeAt(t *testing.T, blockNumber *big.Int, client *ethclient.Client) int64 {
 	t.Helper()
-	block, err := client.BlockByNumber(context.Background(), blockNumber)
+	block, err := client.BlockByNumber(t.Context(), blockNumber)
 	require.NoError(t, err)
 	basefee := block.BaseFee()
 	return basefee.Int64()
@@ -284,7 +283,7 @@ func getBaseFeeAt(t *testing.T, blockNumber *big.Int, client *ethclient.Client) 
 
 func getBalance(t *testing.T, client *ethclient.Client, account common.Address) int64 {
 	t.Helper()
-	balance, err := client.BalanceAt(context.Background(), account, nil)
+	balance, err := client.BalanceAt(t.Context(), account, nil)
 	require.NoError(t, err)
 	return balance.Int64()
 }
@@ -300,7 +299,7 @@ func makeLegacyTx(t *testing.T,
 ) *types.Transaction {
 	t.Helper()
 
-	nonce, err := client.NonceAt(context.Background(), sender.Address(), nil)
+	nonce, err := client.NonceAt(t.Context(), sender.Address(), nil)
 	require.NoError(t, err, "failed to get nonce for account", sender.Address())
 
 	tx := types.NewTx(&types.LegacyTx{
@@ -312,7 +311,7 @@ func makeLegacyTx(t *testing.T,
 		Data:     data,
 	})
 
-	chainId, err := client.ChainID(context.Background())
+	chainId, err := client.ChainID(t.Context())
 	require.NoError(t, err, "failed to get chain ID")
 
 	signer := types.NewEIP155Signer(chainId)
@@ -333,7 +332,7 @@ func makeEip1559Transaction(t *testing.T,
 ) *types.Transaction {
 	t.Helper()
 
-	nonce, err := client.NonceAt(context.Background(), sender.Address(), nil)
+	nonce, err := client.NonceAt(t.Context(), sender.Address(), nil)
 	require.NoError(t, err, "failed to get nonce for account", sender.Address())
 
 	tx := types.NewTx(&types.DynamicFeeTx{
@@ -346,7 +345,7 @@ func makeEip1559Transaction(t *testing.T,
 		Data:      data,
 	})
 
-	chainId, err := client.ChainID(context.Background())
+	chainId, err := client.ChainID(t.Context())
 	require.NoError(t, err, "failed to get chain ID")
 
 	signer := types.NewLondonSigner(chainId)

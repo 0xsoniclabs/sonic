@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"context"
 	"crypto/ecdsa"
 	"math/big"
 	"testing"
@@ -19,7 +18,7 @@ func TestGasPrice_SuggestedGasPricesApproximateActualBaseFees(t *testing.T) {
 
 	fees := []uint64{}
 	suggestions := []uint64{}
-	ctxt := context.Background()
+	ctxt := t.Context()
 	for i := 0; i < 10; i++ {
 		suggestedPrice, err := client.SuggestGasPrice(ctxt)
 		require.NoError(err)
@@ -49,13 +48,13 @@ func TestGasPrice_UnderpricedTransactionsAreRejected(t *testing.T) {
 
 	net, client := makeNetAndClient(t)
 	send := func(tx *types.Transaction) error {
-		return client.SendTransaction(context.Background(), tx)
+		return client.SendTransaction(t.Context(), tx)
 	}
 
-	chainId, err := client.ChainID(context.Background())
+	chainId, err := client.ChainID(t.Context())
 	require.NoError(err, "failed to get chain ID::")
 
-	nonce, err := client.NonceAt(context.Background(), net.GetSessionSponsor().Address(), nil)
+	nonce, err := client.NonceAt(t.Context(), net.GetSessionSponsor().Address(), nil)
 	require.NoError(err, "failed to get nonce:")
 
 	factory := &txFactory{
@@ -63,7 +62,7 @@ func TestGasPrice_UnderpricedTransactionsAreRejected(t *testing.T) {
 		chainId:   chainId,
 	}
 
-	lastBlock, err := client.BlockByNumber(context.Background(), nil)
+	lastBlock, err := client.BlockByNumber(t.Context(), nil)
 	require.NoError(err)
 
 	// Everything below ~5% above the base fee should be rejected.

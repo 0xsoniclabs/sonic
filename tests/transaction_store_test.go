@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"context"
 	"math/big"
 	"slices"
 	"testing"
@@ -29,7 +28,7 @@ func TestTransactionStore_CanTransactionsBeRetrievedFromBlocksAfterRestart(t *te
 	require.NoError(t, err)
 	defer client.Close()
 
-	chainId, err := client.ChainID(context.Background())
+	chainId, err := client.ChainID(t.Context())
 	require.NoError(t, err)
 
 	sender := makeAccountWithBalance(t, net, big.NewInt(1e18))
@@ -102,7 +101,7 @@ func TestTransactionStore_CanTransactionsBeRetrievedFromBlocksAfterRestart(t *te
 		sender))
 
 	for _, tx := range txs {
-		err := client.SendTransaction(context.Background(), tx)
+		err := client.SendTransaction(t.Context(), tx)
 		require.NoError(t, err)
 	}
 
@@ -123,7 +122,7 @@ func TestTransactionStore_CanTransactionsBeRetrievedFromBlocksAfterRestart(t *te
 	require.NoError(t, err)
 
 	for tx, blockNumber := range executedIn {
-		block, err := client.BlockByNumber(context.Background(), blockNumber)
+		block, err := client.BlockByNumber(t.Context(), blockNumber)
 		require.NoError(t, err, "failed to get block %v", blockNumber)
 
 		require.True(t,

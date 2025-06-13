@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -25,7 +24,7 @@ func TestLogSubscription_CanGetCallBacksForLogEvents(t *testing.T) {
 
 	allLogs := make(chan types.Log, NumEvents)
 	subscription, err := client.SubscribeFilterLogs(
-		context.Background(),
+		t.Context(),
 		ethereum.FilterQuery{},
 		allLogs,
 	)
