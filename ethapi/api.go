@@ -2284,17 +2284,18 @@ func (api *PublicDebugAPI) traceBlock(ctx context.Context, block *evmcore.EvmBlo
 		}
 		res, err := api.traceTx(ctx, tx, msg, txctx, block.Header(), statedb, config, nil)
 		if err != nil {
-			return nil, err
+			results[i] = &txTraceResult{TxHash: tx.Hash(), Error: err.Error()}
+			resultsLength += len(err.Error())
+		} else {
+			results[i] = &txTraceResult{TxHash: tx.Hash(), Result: res}
+			resultsLength += len(res)
 		}
+		statedb.Finalise()
 
 		// limit the response size.
-		resultsLength += len(res)
 		if api.maxResponseSize > 0 && resultsLength > api.maxResponseSize {
 			return nil, ErrMaxResponseSize
 		}
-
-		results[i] = &txTraceResult{TxHash: tx.Hash(), Result: res}
-		statedb.Finalise()
 	}
 	return results, nil
 }
@@ -2344,6 +2345,16 @@ func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex in
 			statedb.Release()
 			return nil, nil, err
 		}
+
+		// For now, Sonic only supports Blob transactions without blob data.
+		if msg.BlobHashes != nil {
+			if len(msg.BlobHashes) > 0 {
+				continue // blob data is not supported - this tx will be skipped
+			}
+			// PreCheck requires non-nil blobHashes not to be empty
+			msg.BlobHashes = nil
+		}
+
 		statedb.SetTxContext(tx.Hash(), idx)
 		if _, err := core.ApplyMessage(vmenv, msg, new(core.GasPool).AddGas(tx.Gas())); err != nil {
 			statedb.Release()
