@@ -1,9 +1,9 @@
 package gossip
 
 import (
-	"crypto/rand"
 	"fmt"
 	"math/big"
+	"math/rand/v2"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -163,8 +163,7 @@ func (s *Store) Close() error {
 func (s *Store) IsCommitNeeded() bool {
 	// randomize flushing criteria for each epoch so that nodes would desynchronize flushes
 	if cur := s.GetEpoch(); s.randomOffsetEpoch != cur {
-		randBig, _ := rand.Int(rand.Reader, big.NewInt(100))
-		s.randomOffset = randBig.Uint64()
+		s.randomOffset = uint64(rand.Int32N(100))
 		s.randomOffsetEpoch = cur
 	}
 	ratio := 900 + s.randomOffset
