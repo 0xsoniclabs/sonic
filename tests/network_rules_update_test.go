@@ -287,26 +287,23 @@ func TestNetworkRules_PragueFeaturesBecomeAvailableWithAllegroUpgrade(t *testing
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
 	t.Run("expectations before sonic-allegro hardfork", func(t *testing.T) {
+
+		// Submit a transaction that requires the new behavior
+		tx := makeSetCodeTx(t, net, account)
+		receipt, err := net.Run(tx)
+		require.NoError(t, err)
+		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+
+		delegationIndicator :=
+			hexutil.MustDecode("0xEF01002A00000000000000000000000000000000000000")
+
 		forEachClientInNet(t, net, func(t *testing.T, client *ethclient.Client) {
 
-			// Submit a transaction that requires the new behavior
-			tx := makeSetCodeTx(t, net, account)
-			receipt, err := net.Run(tx)
-			require.NoError(t, err)
-			require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
-
-			delegationIndicator :=
-				hexutil.MustDecode("0xEF01002A00000000000000000000000000000000000000")
+			// make sure that this client has already processed the transaction
+			_, err := net.GetReceipt(tx.Hash())
+			require.NoError(t, err, "failed to get receipt for the transaction")
 
 			code, err := client.CodeAt(t.Context(), account.Address(), nil)
-			require.NoError(t, err)
-			require.Equal(t, code, delegationIndicator)
-
-			// Check that second node executed the transaction
-			client1, err := net.GetClientConnectedToNode(1)
-			require.NoError(t, err)
-
-			code, err = client1.CodeAt(t.Context(), account.Address(), nil)
 			require.NoError(t, err)
 			require.Equal(t, code, delegationIndicator)
 		})
