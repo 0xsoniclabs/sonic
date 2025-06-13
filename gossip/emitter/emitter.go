@@ -60,7 +60,6 @@ type Emitter struct {
 
 	syncStatus syncStatus
 
-	prevIdleTime       time.Time
 	prevEmittedAtTime  atomic.Pointer[time.Time]
 	prevEmittedAtBlock idx.Block
 	originatedTxs      *originatedtxs.Buffer
@@ -219,7 +218,6 @@ func (em *Emitter) tick() {
 	}
 
 	em.recheckChallenges()
-	em.recheckIdleTime()
 	if em.timeSinceLastEmit() >= em.intervals.Min {
 		_, err := em.EmitEvent()
 		if err != nil {
