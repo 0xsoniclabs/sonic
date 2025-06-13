@@ -2,16 +2,21 @@ package tests
 
 import (
 	"encoding/json"
+	"fmt"
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/contract/driverauth100"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
 
@@ -238,6 +243,110 @@ func TestNetworkRule_MinEventGas_AllowsChangingRules(t *testing.T) {
 
 	// Check that these two properties do not contradict each other
 	require.Less(opera.UpperBoundForRuleChangeGasCosts(), defaultGasRules.MaxEventGas, "Upper bound for rule change gas costs should be less than MaxEventGas")
+}
+
+func TestNetworkRules_PragueFeaturesBecomeAvailableWithAllegroUpgrade(t *testing.T) {
+
+	net := StartIntegrationTestNetWithFakeGenesis(t,
+		IntegrationTestNetOptions{
+			// Explicitly set the network to use the Sonic Hard Fork
+			Upgrades: AsPointer(opera.GetSonicUpgrades()),
+			// Use 2 nodes to test the rules update propagation
+			NumNodes: 2,
+		},
+	)
+
+	account := makeAccountWithBalance(t, net, big.NewInt(1e18))
+
+	t.Run("expectations before sonic-allegro hardfork", func(t *testing.T) {
+		forEachClientInNet(t, net, func(t *testing.T, client *ethclient.Client) {
+			tx := makeSetCodeTx(t, net, account)
+			err := client.SendTransaction(t.Context(), tx)
+			require.ErrorContains(t,
+				err, evmcore.ErrTxTypeNotSupported.Error(),
+				"SetCodeTx cannot be accepted before Prague hard fork")
+		})
+	})
+
+	// Update network rules to enable the Allegro Hard Fork
+	type rulesType struct {
+		Upgrades struct{ Allegro bool }
+	}
+	rulesDiff := rulesType{
+		Upgrades: struct{ Allegro bool }{Allegro: true},
+	}
+	updateNetworkRules(t, net, rulesDiff)
+
+	// reach epoch ceiling to apply the new rules
+	advanceEpochAndWaitForBlocks(t, net)
+
+	// Wait for another block, this is time for the tx_pool to tick, run reorg,
+	// and implement the new rules.
+	receipt, err := net.EndowAccount(account.Address(), big.NewInt(1e18))
+	require.NoError(t, err, "failed to endow account with balance")
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+
+	t.Run("expectations before sonic-allegro hardfork", func(t *testing.T) {
+
+		// Submit a transaction that requires the new behavior
+		tx := makeSetCodeTx(t, net, account)
+		receipt, err := net.Run(tx)
+		require.NoError(t, err)
+		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+
+		delegationIndicator :=
+			hexutil.MustDecode("0xEF01002A00000000000000000000000000000000000000")
+
+		forEachClientInNet(t, net, func(t *testing.T, client *ethclient.Client) {
+
+			// make sure that this client has already processed the transaction
+			_, err := net.GetReceipt(tx.Hash())
+			require.NoError(t, err, "failed to get receipt for the transaction")
+
+			code, err := client.CodeAt(t.Context(), account.Address(), nil)
+			require.NoError(t, err)
+			require.Equal(t, code, delegationIndicator)
+		})
+	})
+}
+
+func forEachClientInNet(
+	t *testing.T,
+	net *IntegrationTestNet,
+	fn func(t *testing.T, client *ethclient.Client),
+) {
+	for i := 0; i < net.NumNodes(); i++ {
+		t.Run(fmt.Sprintf("client%d", i), func(t *testing.T) {
+			client, err := net.GetClientConnectedToNode(i)
+			require.NoError(t, err)
+			defer client.Close()
+			fn(t, client)
+		})
+	}
+}
+
+func makeSetCodeTx(
+	t *testing.T,
+	net *IntegrationTestNet,
+	account *Account,
+) *types.Transaction {
+	chainID := net.GetChainId()
+	client, err := net.GetClient()
+	require.NoError(t, err, "failed to get client for the network")
+	nonce, err := client.PendingNonceAt(t.Context(), account.Address())
+	require.NoError(t, err, "failed to get nonce for the account")
+	authorization, err := types.SignSetCode(account.PrivateKey, types.SetCodeAuthorization{
+		ChainID: *uint256.MustFromBig(chainID),
+		Address: common.Address{42},
+		Nonce:   nonce + 1,
+	})
+	require.NoError(t, err, "failed to sign SetCode authorization")
+
+	txData := &types.SetCodeTx{
+		AuthList: []types.SetCodeAuthorization{authorization},
+	}
+	txData = setTransactionDefaults(t, net, txData, account)
+	return signTransaction(t, chainID, txData, account)
 }
 
 // updateNetworkRules sends a transaction to update the network rules.
