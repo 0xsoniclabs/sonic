@@ -6,14 +6,15 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/scheduler"
+	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/gossip/randao"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
@@ -237,6 +238,18 @@ func makeProposal(
 		RandaoReveal: randaoReveal,
 	}
 
+	// Compute the base fee for the next block.
+	parentBlockInfo := gasprice.ParentBlockInfo{
+		BaseFee:  latestBlock.BaseFee,
+		Duration: time.Duration(latestBlock.Duration),
+		GasUsed:  latestBlock.GasUsed,
+	}
+	baseFee := gasprice.GetBaseFeeForNextBlock(parentBlockInfo, rules.Economy)
+	baseFee256, overflow := uint256.FromBig(baseFee)
+	if overflow {
+		return nil, fmt.Errorf("required base fee %s overflows uint256", baseFee)
+	}
+
 	// This step covers the actual transaction selection and sorting.
 	start := time.Now()
 	ctx, cancel := context.WithDeadline(
@@ -251,9 +264,9 @@ func makeProposal(
 			Time:        proposal.Time,
 			GasLimit:    rules.Blocks.MaxBlockGas,
 			MixHash:     randaoMix,
-			Coinbase:    common.Address{}, // TODO: integrate coinbase address
-			BaseFee:     uint256.Int{},    // TODO: integrate base fee
-			BlobBaseFee: uint256.Int{},    // TODO: integrate blob base fee
+			Coinbase:    evmcore.GetCoinbase(),
+			BaseFee:     *baseFee256,
+			BlobBaseFee: evmcore.GetBlobBaseFee(),
 		},
 		candidates,
 		scheduler.Limits{

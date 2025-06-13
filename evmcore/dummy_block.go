@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/holiman/uint256"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -62,6 +63,16 @@ type (
 		Transactions types.Transactions
 	}
 )
+
+// GetCoinbase returns the coinbase to be used by blocks on Sonic networks.
+func GetCoinbase() common.Address {
+	return common.Address{}
+}
+
+// GetBlobBaseFee returns the blob base fee to be used by blocks on Sonic networks.
+func GetBlobBaseFee() uint256.Int {
+	return uint256.Int{}
+}
 
 // NewEvmBlock constructor.
 func NewEvmBlock(h *EvmHeader, txs types.Transactions) *EvmBlock {
