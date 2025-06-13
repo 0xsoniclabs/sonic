@@ -161,8 +161,6 @@ func checkProposal(
 		return ErrInvalidProposalTime
 	}
 
-	// TODO: apply static checks on the randao reveal.
-
 	// --- check the present transactions ---
 
 	// Check that there are no nil-transactions in the proposal.
