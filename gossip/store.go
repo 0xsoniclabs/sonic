@@ -3,6 +3,7 @@ package gossip
 import (
 	"fmt"
 	"math/big"
+	"math/rand/v2"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -11,9 +12,9 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/logger"
 	"github.com/0xsoniclabs/sonic/utils/eventid"
-	"github.com/0xsoniclabs/sonic/utils/randat"
 	"github.com/0xsoniclabs/sonic/utils/rlpstore"
 	"github.com/Fantom-foundation/lachesis-base/common/bigendian"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/kvdb"
 	"github.com/Fantom-foundation/lachesis-base/kvdb/flushable"
 	"github.com/Fantom-foundation/lachesis-base/kvdb/memorydb"
@@ -75,6 +76,10 @@ type Store struct {
 	rlp rlpstore.Helper
 
 	logger.Instance
+
+	// values needed for flush randomizationAdd comment
+	randomOffsetEpoch idx.Epoch // epoch when random offset was selected
+	randomOffset      uint64    // random number re-selected in each epoch between 0 and 99
 }
 
 // NewMemStore creates temporary gossip store for testing purposes.
@@ -157,7 +162,11 @@ func (s *Store) Close() error {
 
 func (s *Store) IsCommitNeeded() bool {
 	// randomize flushing criteria for each epoch so that nodes would desynchronize flushes
-	ratio := 900 + randat.RandAt(uint64(s.GetEpoch()))%100
+	if cur := s.GetEpoch(); s.randomOffsetEpoch != cur {
+		s.randomOffset = uint64(rand.Int32N(100))
+		s.randomOffsetEpoch = cur
+	}
+	ratio := 900 + s.randomOffset
 	return s.isCommitNeeded(ratio, ratio)
 }
 
