@@ -74,58 +74,6 @@ func GetBlobBaseFee() uint256.Int {
 	return uint256.Int{}
 }
 
-// NewEvmHeader creates a new EVM header with the provided parameters.
-func NewEvmHeader(
-	number uint64,
-	parentHash common.Hash,
-	stateRoot common.Hash,
-	time inter.Timestamp,
-	coinbase common.Address,
-	gasLimit uint64,
-	gasUsed uint64,
-	baseFee *big.Int,
-	blobBaseFee uint256.Int,
-	mixHash common.Hash,
-	withdrawalsHash *common.Hash,
-	epoch idx.Epoch,
-) EvmHeader {
-	header := NewEvmHeaderCoveringInputParameters(
-		number, time, coinbase, gasLimit,
-		baseFee, blobBaseFee, mixHash,
-	)
-	header.ParentHash = parentHash
-	header.GasUsed = gasUsed
-	header.WithdrawalsHash = withdrawalsHash
-	header.Epoch = epoch
-	return header
-}
-
-// NewEvmHeaderCoveringInputParameters creates an EVM header with the provided
-// parameters serving as input parameters for an EVM execution.
-//
-// Note: the resulting header does not have execution dependent fields set, like
-// the total gas usage, the state root, or the epoch. These fields are expected
-// to be set by the user of this function, depending on the context.
-func NewEvmHeaderCoveringInputParameters(
-	number uint64,
-	time inter.Timestamp,
-	coinbase common.Address,
-	gasLimit uint64,
-	baseFee *big.Int,
-	blobBaseFee uint256.Int,
-	mixHash common.Hash,
-) EvmHeader {
-	return EvmHeader{
-		Number:      new(big.Int).SetUint64(number),
-		Time:        time,
-		Coinbase:    coinbase,
-		GasLimit:    gasLimit,
-		BaseFee:     baseFee,
-		BlobBaseFee: blobBaseFee.ToBig(),
-		PrevRandao:  mixHash,
-	}
-}
-
 // NewEvmBlock constructor.
 func NewEvmBlock(h *EvmHeader, txs types.Transactions) *EvmBlock {
 	b := &EvmBlock{

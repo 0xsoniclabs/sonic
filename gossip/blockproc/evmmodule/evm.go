@@ -101,22 +101,23 @@ func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlo
 		withdrawalsHash = &types.EmptyWithdrawalsHash
 	}
 
-	h := evmcore.NewEvmHeader(
-		p.blockIdx,
-		p.prevBlockHash,
-		common.Hash{}, // state root is added later
-		p.block.Time,
-		evmcore.GetCoinbase(),
-		p.net.Blocks.MaxBlockGas,
-		p.gasUsed,
-		baseFee,
-		evmcore.GetBlobBaseFee(),
-		prevRandao,
-		withdrawalsHash,
-		p.block.Atropos.Epoch(),
-	)
+	blobBaseFee := evmcore.GetBlobBaseFee()
+	h := &evmcore.EvmHeader{
+		Number:          new(big.Int).SetUint64(p.blockIdx),
+		ParentHash:      p.prevBlockHash,
+		Root:            common.Hash{}, // state root is added later
+		Time:            p.block.Time,
+		Coinbase:        evmcore.GetCoinbase(),
+		GasLimit:        p.net.Blocks.MaxBlockGas,
+		GasUsed:         p.gasUsed,
+		BaseFee:         baseFee,
+		BlobBaseFee:     blobBaseFee.ToBig(),
+		PrevRandao:      prevRandao,
+		WithdrawalsHash: withdrawalsHash,
+		Epoch:           p.block.Atropos.Epoch(),
+	}
 
-	return evmcore.NewEvmBlock(&h, txs)
+	return evmcore.NewEvmBlock(h, txs)
 }
 
 func (p *OperaEVMProcessor) Execute(txs types.Transactions) types.Receipts {
