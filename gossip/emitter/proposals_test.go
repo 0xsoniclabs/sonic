@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/sonic/eventcheck/proposalcheck"
+	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/scheduler"
+	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/gossip/randao"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -623,6 +625,79 @@ func TestMakeProposal_SkipsProposalIfBaseFeeIsGettingTooHeigh(t *testing.T) {
 		nil,
 	)
 	require.ErrorContains(err, "overflows uint256")
+}
+
+func TestMakeProposal_SchedulerIsRunWithCorrectBaseFee(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+
+	targetRate := uint64(50_000_000) // 50M gas/sec
+
+	rules := opera.Rules{
+		Economy: opera.EconomyRules{
+			ShortGasPower: opera.GasPowerRules{
+				AllocPerSec: targetRate,
+			},
+		},
+	}
+
+	previousBaseFee := big.NewInt(1000)
+	latestBlock := inter.NewBlockBuilder().
+		WithBaseFee(previousBaseFee).
+		WithGasUsed(2 * targetRate). // high gas usage, should increase base fee
+		WithDuration(500 * time.Millisecond).
+		Build()
+
+	expectedBaseFee := gasprice.GetBaseFeeForNextBlock(gasprice.ParentBlockInfo{
+		BaseFee:  latestBlock.BaseFee,
+		Duration: time.Duration(latestBlock.Duration),
+		GasUsed:  latestBlock.GasUsed,
+	}, rules.Economy)
+	require.True(expectedBaseFee.Cmp(previousBaseFee) > 0, "expected base fee to increase")
+
+	randaoMix := common.Hash{0x42}
+	randaoMixer := randao.NewMockRandaoMixer(ctrl)
+	randaoMixer.EXPECT().MixRandao(gomock.Any()).Return(
+		randao.RandaoReveal{0x43}, randaoMix, nil,
+	)
+
+	newBlockTime := latestBlock.Time + 10
+
+	txScheduler := NewMocktxScheduler(ctrl)
+	txScheduler.EXPECT().Schedule(
+		gomock.Any(),
+		&scheduler.BlockInfo{
+			Number:      idx.Block(latestBlock.Number + 1),
+			Time:        newBlockTime,
+			GasLimit:    rules.Blocks.MaxBlockGas,
+			MixHash:     randaoMix,
+			Coinbase:    evmcore.GetCoinbase(),
+			BaseFee:     *uint256.MustFromBig(expectedBaseFee),
+			BlobBaseFee: evmcore.GetBlobBaseFee(),
+		},
+		gomock.Any(),
+		gomock.Any(),
+	)
+
+	durationMetric := NewMocktimerMetric(ctrl)
+	durationMetric.EXPECT().Update(gomock.Any()).AnyTimes()
+	timeoutMetric := NewMockcounterMetric(ctrl)
+	timeoutMetric.EXPECT().Inc(gomock.Any()).AnyTimes()
+
+	// Run the proposal creation.
+	_, err := makeProposal(
+		rules,
+		inter.ProposalSyncState{},
+		latestBlock,
+		newBlockTime,
+		0,
+		txScheduler,
+		nil,
+		randaoMixer,
+		durationMetric,
+		timeoutMetric,
+	)
+	require.NoError(err)
 }
 
 func TestCreatePayload_ReturnsErrorOnRandaoGenerationFailure(t *testing.T) {
