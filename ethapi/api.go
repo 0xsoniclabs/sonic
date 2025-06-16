@@ -1693,7 +1693,7 @@ func (s *PublicTransactionPoolAPI) GetRawTransactionByHash(ctx context.Context, 
 
 // formatTxReceipt encodes transaction receipt into the expected API output.
 func (s *PublicTransactionPoolAPI) formatTxReceipt(header *evmcore.EvmHeader, tx *types.Transaction, txIndex uint64, receipt *types.Receipt) map[string]interface{} {
-	// Clone the logs before adding transaction meta data to avoid data racesAdd commentMore actions
+	// Clone the logs before adding transaction meta data to avoid data races
 	// due to concurrent accesses.
 	logs := slices.Clone(receipt.Logs)
 	for i := range logs {
