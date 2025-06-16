@@ -1136,3 +1136,155 @@ func (fcc *FakeChainContext) GetHeader(common.Hash, uint64) *types.Header {
 func (fcc *FakeChainContext) Config() *params.ChainConfig {
 	return fcc.chainConfig
 }
+
+func TestDebugTraceWithBlobTx(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockBackend := NewMockBackend(ctrl)
+	mockState := state.NewMockStateDB(ctrl)
+
+	chainId := big.NewInt(1)
+	key, err := crypto.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	blobTx, err := types.SignTx(types.NewTx(&types.BlobTx{
+		Gas:        21000,
+		GasFeeCap:  uint256.NewInt(1_000_000_000_000),
+		GasTipCap:  uint256.NewInt(1),
+		To:         common.Address{0x1},
+		Nonce:      0,
+		BlobHashes: []common.Hash{},
+	}), types.NewCancunSigner(chainId), key)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	block := &evmcore.EvmBlock{
+		EvmHeader: evmcore.EvmHeader{
+			Number: big.NewInt(5),
+		},
+		Transactions: types.Transactions{
+			blobTx,
+			blobTx,
+		},
+	}
+
+	zero := uint64(0)
+	chainConfig := &params.ChainConfig{
+		ChainID:     chainId,
+		LondonBlock: big.NewInt(0),
+		CancunTime:  &zero,
+	}
+	blockCtx := vm.BlockContext{
+		BlockNumber: block.Number,
+		BaseFee:     big.NewInt(1_000),
+		Transfer:    vm.TransferFunc(func(sd vm.StateDB, a1, a2 common.Address, i *uint256.Int) {}),
+		CanTransfer: vm.CanTransferFunc(func(sd vm.StateDB, a1 common.Address, i *uint256.Int) bool { return true }),
+	}
+
+	vmConfig := opera.DefaultVMConfig
+	vmConfig.NoBaseFee = true
+
+	// transaction index is 1 for obtaining state after transaction 0
+	txIndex := uint64(1)
+
+	any := gomock.Any()
+	mockBackend.EXPECT().GetTransaction(any, any).Return(blobTx, block.NumberU64(), txIndex, nil)
+	mockBackend.EXPECT().BlockByNumber(any, any).Return(block, nil).AnyTimes()
+	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, any).Return(mockState, nil, nil).AnyTimes()
+	mockBackend.EXPECT().ChainConfig(gomock.Any()).Return(chainConfig).AnyTimes()
+	mockBackend.EXPECT().GetEVM(any, any, any, noBaseFeeMatcher{expected: true}, any).DoAndReturn(getEvmFuncWithParameters(mockState, chainConfig, &blockCtx, vmConfig)).AnyTimes()
+	mockState.EXPECT().GetBalance(any).Return(uint256.NewInt(21_000_000_000_000_000)).AnyTimes()
+	setExpectedStateCalls(mockState)
+
+	api := NewPublicDebugAPI(mockBackend, 10000, 10000)
+
+	// Replay the second transaction (includes replaying the first one to initialize the state)
+	_, err = api.TraceTransaction(context.Background(), common.Hash{}, &tracers.TraceConfig{})
+	require.NoError(t, err, "must be possible to trace the blob transaction")
+
+	// Replay the whole block
+	res, err := api.TraceBlockByNumber(context.Background(), rpc.BlockNumber(5), &tracers.TraceConfig{})
+	require.NoError(t, err, "trace block must succeed")
+	require.Empty(t, res[0].Error, "tx must succeed")
+	require.Empty(t, res[1].Error, "tx must succeed")
+}
+
+func TestDebugTraceErrorHandling(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockBackend := NewMockBackend(ctrl)
+	mockState := state.NewMockStateDB(ctrl)
+
+	chainId := big.NewInt(1)
+	key, err := crypto.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	blobTx, err := types.SignTx(types.NewTx(&types.BlobTx{
+		Gas:        21000,
+		GasFeeCap:  uint256.NewInt(1_000_000_000_000),
+		GasTipCap:  uint256.NewInt(1),
+		To:         common.Address{0x1},
+		Nonce:      0,
+		BlobHashes: []common.Hash{{0x01}},
+	}), types.NewCancunSigner(chainId), key)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	block := &evmcore.EvmBlock{
+		EvmHeader: evmcore.EvmHeader{
+			Number: big.NewInt(5),
+		},
+		Transactions: types.Transactions{
+			blobTx,
+			blobTx,
+		},
+	}
+
+	zero := uint64(0)
+	chainConfig := &params.ChainConfig{
+		ChainID:     chainId,
+		LondonBlock: big.NewInt(0),
+		CancunTime:  &zero,
+	}
+	blockCtx := vm.BlockContext{
+		BlockNumber: block.Number,
+		BaseFee:     big.NewInt(1_000),
+		Transfer:    vm.TransferFunc(func(sd vm.StateDB, a1, a2 common.Address, i *uint256.Int) {}),
+		CanTransfer: vm.CanTransferFunc(func(sd vm.StateDB, a1 common.Address, i *uint256.Int) bool { return true }),
+	}
+
+	vmConfig := opera.DefaultVMConfig
+	vmConfig.NoBaseFee = true
+
+	// transaction index is 1 for obtaining state after transaction 0
+	txIndex := uint64(1)
+
+	any := gomock.Any()
+	mockBackend.EXPECT().GetTransaction(any, any).Return(blobTx, block.NumberU64(), txIndex, nil).AnyTimes()
+	mockBackend.EXPECT().BlockByNumber(any, any).Return(block, nil).AnyTimes()
+	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, any).Return(mockState, nil, nil).AnyTimes()
+	mockBackend.EXPECT().ChainConfig(gomock.Any()).Return(chainConfig).AnyTimes()
+	mockBackend.EXPECT().GetEVM(any, any, any, noBaseFeeMatcher{expected: true}, any).DoAndReturn(getEvmFuncWithParameters(mockState, chainConfig, &blockCtx, vmConfig)).AnyTimes()
+	mockState.EXPECT().GetBalance(any).Return(uint256.NewInt(21_000_000_000_000_000)).AnyTimes()
+	setExpectedStateCalls(mockState)
+
+	api := NewPublicDebugAPI(mockBackend, 10000, 10000)
+
+	// Replay the second transaction - initialization by replaing the first one is expected to fail
+	_, err = api.TraceTransaction(context.Background(), common.Hash{}, &tracers.TraceConfig{})
+	require.Equal(t, err.Error(), "tracing failed: blob data is not supported")
+
+	// Replay the whole block - should return errors for individual txs
+	res, err := api.TraceBlockByNumber(context.Background(), rpc.BlockNumber(5), &tracers.TraceConfig{})
+	require.NoError(t, err, "trace block must succeed even when transactions fails")
+	require.Equal(t, res[0].Error, "tracing failed: blob data is not supported")
+	require.Equal(t, res[1].Error, "tracing failed: blob data is not supported")
+}
