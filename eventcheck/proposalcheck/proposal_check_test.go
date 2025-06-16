@@ -12,7 +12,7 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func TestProposalCheck_Validate_NonVersion3_Passes(t *testing.T) {
+func TestProposalCheck_Validate_NonVersion3WithoutProposal_Passes(t *testing.T) {
 	for version := range uint8(10) {
 		if version == 3 {
 			continue
@@ -20,9 +20,27 @@ func TestProposalCheck_Validate_NonVersion3_Passes(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		event := inter.NewMockEventPayloadI(ctrl)
 		event.EXPECT().Version().Return(version)
+		event.EXPECT().Payload().Return(&inter.Payload{})
 
 		checker := New(nil)
 		require.NoError(t, checker.Validate(event))
+	}
+}
+
+func TestProposalCheck_Validate_NonVersion3WithProposal_Fails(t *testing.T) {
+	for version := range uint8(10) {
+		if version == 3 {
+			continue
+		}
+		ctrl := gomock.NewController(t)
+		event := inter.NewMockEventPayloadI(ctrl)
+		event.EXPECT().Version().Return(version)
+		event.EXPECT().Payload().Return(&inter.Payload{
+			Proposal: &inter.Proposal{},
+		})
+
+		checker := New(nil)
+		require.ErrorIs(t, checker.Validate(event), ErrProposalInInvalidEventVersion)
 	}
 }
 
