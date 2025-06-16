@@ -16,9 +16,6 @@ func (em *Emitter) recountConfirmingIntervals(validators *pos.Validators) {
 	// validators with lower stake should emit fewer events to reduce network load
 	// confirmingEmitInterval = piecefunc(totalStakeBeforeMe / totalStake) * MinEmitInterval
 	totalStakeBefore := pos.Weight(0)
-	em.globalConfirmingLock.Lock()
-	globalConfirmingInterval := uint64(em.globalConfirmingInterval)
-	em.globalConfirmingLock.Unlock()
 	for i, stake := range validators.SortedWeights() {
 		vid := validators.GetID(idx.Validator(i))
 		// pos.Weight is uint32, so cast to uint64 to avoid an overflow
@@ -28,7 +25,8 @@ func (em *Emitter) recountConfirmingIntervals(validators *pos.Validators) {
 		}
 		confirmingEmitIntervalRatio := confirmingEmitIntervalF(stakeRatio)
 		em.stakeRatio[vid] = stakeRatio
-		em.expectedEmitIntervals[vid] = time.Duration(piecefunc.Mul(globalConfirmingInterval, confirmingEmitIntervalRatio))
+		em.expectedEmitIntervals[vid] = time.Duration(
+			piecefunc.Mul(em.globalConfirmingInterval.Load(), confirmingEmitIntervalRatio))
 	}
 	em.intervals.Confirming = em.expectedEmitIntervals[em.config.Validator.ID]
 }
