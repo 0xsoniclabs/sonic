@@ -170,7 +170,7 @@ func importEventsFile(srv *gossip.Service, filename string) (err error) {
 		epoch = e.Epoch()
 		batch = append(batch, e)
 		batchSize += 1024 + e.Size()
-		txs += e.Txs().Len()
+		txs += e.Transactions().Len()
 		events++
 	}
 	srv.WaitBlockEnd()

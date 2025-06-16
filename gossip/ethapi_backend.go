@@ -401,15 +401,15 @@ func (b *EthAPIBackend) GetTransaction(ctx context.Context, txHash common.Hash) 
 		tx = b.svc.store.evm.GetTx(txHash)
 	} else {
 		event := b.svc.store.GetEventPayload(position.Event)
-		if position.EventOffset > uint32(event.Txs().Len()) {
+		if position.EventOffset > uint32(event.Transactions().Len()) {
 			return nil, 0, 0, fmt.Errorf("transactions index is corrupted (offset is larger than number of txs in event), event=%s, txid=%s, block=%d, offset=%d, txs_num=%d",
 				position.Event.String(),
 				txHash.String(),
 				position.Block,
 				position.EventOffset,
-				event.Txs().Len())
+				event.Transactions().Len())
 		}
-		tx = event.Txs()[position.EventOffset]
+		tx = event.Transactions()[position.EventOffset]
 	}
 
 	return tx, uint64(position.Block), uint64(position.BlockOffset), nil

@@ -665,7 +665,7 @@ func (h *handler) handleEvents(peer *peer, events dag.Events, ordered bool) {
 	// Mark the hashes as present at the remote node
 	now := time.Now()
 	for _, e := range events {
-		for _, tx := range e.(inter.EventPayloadI).Txs() {
+		for _, tx := range e.(inter.EventPayloadI).Transactions() {
 			txtime.Saw(tx.Hash(), now)
 		}
 		peer.MarkEvent(e.ID())

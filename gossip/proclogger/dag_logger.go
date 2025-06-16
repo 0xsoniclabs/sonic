@@ -35,7 +35,7 @@ func (l *Logger) EventConnectionStarted(e inter.EventPayloadI, emitted bool) fun
 			logType = l.Log.Info
 		}
 		logType(msg, "id", e.ID(), "parents", len(e.Parents()), "by", e.Creator(),
-			"frame", e.Frame(), "txs", e.Txs().Len(),
+			"frame", e.Frame(), "txs", e.Transactions().Len(),
 			"age", utils.PrettyDuration(now.Sub(e.CreationTime().Time())), "t", utils.PrettyDuration(now.Sub(start)))
 		// logging for the summary
 		l.dagSum.totalProcessing += now.Sub(start)

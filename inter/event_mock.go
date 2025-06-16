@@ -876,18 +876,32 @@ func (mr *MockEventPayloadIMockRecorder) String() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "String", reflect.TypeOf((*MockEventPayloadI)(nil).String))
 }
 
-// Txs mocks base method.
-func (m *MockEventPayloadI) Txs() types.Transactions {
+// Transactions mocks base method.
+func (m *MockEventPayloadI) Transactions() types.Transactions {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Txs")
+	ret := m.ctrl.Call(m, "Transactions")
 	ret0, _ := ret[0].(types.Transactions)
 	return ret0
 }
 
-// Txs indicates an expected call of Txs.
-func (mr *MockEventPayloadIMockRecorder) Txs() *gomock.Call {
+// Transactions indicates an expected call of Transactions.
+func (mr *MockEventPayloadIMockRecorder) Transactions() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Txs", reflect.TypeOf((*MockEventPayloadI)(nil).Txs))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Transactions", reflect.TypeOf((*MockEventPayloadI)(nil).Transactions))
+}
+
+// TransactionsToMeter mocks base method.
+func (m *MockEventPayloadI) TransactionsToMeter() types.Transactions {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "TransactionsToMeter")
+	ret0, _ := ret[0].(types.Transactions)
+	return ret0
+}
+
+// TransactionsToMeter indicates an expected call of TransactionsToMeter.
+func (mr *MockEventPayloadIMockRecorder) TransactionsToMeter() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TransactionsToMeter", reflect.TypeOf((*MockEventPayloadI)(nil).TransactionsToMeter))
 }
 
 // Version mocks base method.

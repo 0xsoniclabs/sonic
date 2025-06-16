@@ -57,7 +57,19 @@ type EventPayloadI interface {
 	EventI
 	Sig() Signature
 
-	Txs() types.Transactions
+	// Transactions list the transactions included in this event. These may be
+	// transactions included directly in the payload (version 2 events) or
+	// transactions included in a block proposal (version 3 events).
+	Transactions() types.Transactions
+
+	// TransactionsToMeter returns the transactions that should be used for
+	// metering purposes. These only include transactions that are directly
+	// included in the event payload (version 2 events). Transactions included
+	// in a block proposal (version 3 events) are not charged against a
+	// validator's gas power. Their emission rate is controlled through turns.
+	TransactionsToMeter() types.Transactions
+
+	//Txs() types.Transactions
 	EpochVote() LlrEpochVote
 	BlockVotes() LlrBlockVotes
 	MisbehaviourProofs() []MisbehaviourProof
@@ -201,7 +213,16 @@ func (e *extEventData) GasPowerUsed() uint64 { return e.gasPowerUsed }
 
 func (e *sigData) Sig() Signature { return e.sig }
 
-func (e *payloadData) Txs() types.Transactions { return e.txs }
+func (e *payloadData) Transactions() types.Transactions {
+	if proposal := e.payload.Proposal; proposal != nil {
+		return proposal.Transactions
+	}
+	return e.txs
+}
+
+func (e *payloadData) TransactionsToMeter() types.Transactions {
+	return e.txs
+}
 
 func (e *payloadData) MisbehaviourProofs() []MisbehaviourProof { return e.misbehaviourProofs }
 
@@ -225,12 +246,12 @@ func CalcMisbehaviourProofsHash(mps []MisbehaviourProof) hash.Hash {
 
 func CalcPayloadHash(e EventPayloadI) hash.Hash {
 	if e.Version() == 1 {
-		return hash.Of(hash.Of(CalcTxHash(e.Txs()).Bytes(), CalcMisbehaviourProofsHash(e.MisbehaviourProofs()).Bytes()).Bytes(), hash.Of(e.EpochVote().Hash().Bytes(), e.BlockVotes().Hash().Bytes()).Bytes())
+		return hash.Of(hash.Of(CalcTxHash(e.Transactions()).Bytes(), CalcMisbehaviourProofsHash(e.MisbehaviourProofs()).Bytes()).Bytes(), hash.Of(e.EpochVote().Hash().Bytes(), e.BlockVotes().Hash().Bytes()).Bytes())
 	}
 	if e.Version() == 3 {
 		return e.Payload().Hash()
 	}
-	return CalcTxHash(e.Txs())
+	return CalcTxHash(e.Transactions())
 }
 
 func (e *MutableEventPayload) SetVersion(v uint8) { e.version = v }

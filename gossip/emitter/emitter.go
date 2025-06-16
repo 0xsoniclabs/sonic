@@ -315,7 +315,7 @@ func (em *Emitter) EmitEvent() (*inter.EventPayload, error) {
 	em.world.Broadcast(e)
 
 	// metrics
-	emittedEventsTxsCounter.Inc(int64(e.Txs().Len()))
+	emittedEventsTxsCounter.Inc(int64(e.Transactions().Len()))
 	emittedGasCounter.Inc(int64(e.GasPowerUsed()))
 	emittedEventsCounter.Inc(1)
 
@@ -471,7 +471,7 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 	// set mutEvent name for debug
 	em.nameEventForDebug(event)
 
-	for _, tx := range event.Txs() {
+	for _, tx := range event.Transactions() {
 		txTime := txtime.Get(tx.Hash()) // time when was the tx seen first time
 		if !txTime.Equal(time.Time{}) {
 			txTimeToEmitTimer.Update(time.Since(txTime))

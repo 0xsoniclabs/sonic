@@ -198,7 +198,7 @@ func consensusCallbackBeginBlockFn(
 					// Collect transactions from events and schedule them.
 					unorderedTxs := make(types.Transactions, 0, blockEvents.Len()*10)
 					for _, e := range blockEvents {
-						unorderedTxs = append(unorderedTxs, e.Txs()...)
+						unorderedTxs = append(unorderedTxs, e.Transactions()...)
 					}
 
 					signer := gsignercache.Wrap(types.MakeSigner(chainCfg, new(big.Int).SetUint64(number), uint64(atroposTime)))
@@ -356,7 +356,7 @@ func consensusCallbackBeginBlockFn(
 					// memorize event position of each tx
 					txPositions := make(map[common.Hash]ExtendedTxPosition)
 					for _, e := range blockEvents {
-						for i, tx := range e.Txs() {
+						for i, tx := range e.Transactions() {
 							// If tx was met in multiple events, then assign to first ordered event
 							if _, ok := txPositions[tx.Hash()]; ok {
 								continue

@@ -102,8 +102,8 @@ func (em *Emitter) OnEventConnected(e inter.EventPayloadI) {
 	} else if em.quorumIndexer != nil {
 		em.quorumIndexer.ProcessEvent(e, e.Creator() == em.config.Validator.ID)
 	}
-	em.payloadIndexer.ProcessEvent(e, ancestor.Metric(e.Txs().Len()))
-	for _, tx := range e.Txs() {
+	em.payloadIndexer.ProcessEvent(e, ancestor.Metric(e.Transactions().Len()))
+	for _, tx := range e.Transactions() {
 		addr, _ := types.Sender(em.world.TransactionSigner, tx)
 		em.originatedTxs.Inc(addr)
 	}
@@ -136,7 +136,7 @@ func (em *Emitter) OnEventConfirmed(he inter.EventI) {
 	}
 	if he.AnyTxs() {
 		e := em.world.GetEventPayload(he.ID())
-		for _, tx := range e.Txs() {
+		for _, tx := range e.Transactions() {
 			addr, _ := types.Sender(em.world.TransactionSigner, tx)
 			em.originatedTxs.Dec(addr)
 

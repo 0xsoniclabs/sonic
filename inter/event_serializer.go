@@ -483,7 +483,7 @@ func RPCMarshalEventPayload(event EventPayloadI, inclTx bool) (map[string]interf
 		formatTx := func(tx *types.Transaction) (interface{}, error) {
 			return tx.Hash(), nil
 		}
-		txs := event.Txs()
+		txs := event.Transactions()
 		transactions := make([]interface{}, len(txs))
 		var err error
 		for i, tx := range txs {

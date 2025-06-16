@@ -50,7 +50,7 @@ func CalcGasPowerUsed(e inter.EventPayloadI, rules opera.Rules) uint64 {
 	// is not attributed to the individual proposer, since each proposer needs
 	// to be able to create proposals with the full gas limit. Thus, only the
 	// transactions being part of the distributed proposal protocol are counted.
-	for _, tx := range e.Txs() {
+	for _, tx := range e.TransactionsToMeter() {
 		txsGas += tx.Gas()
 	}
 
@@ -128,7 +128,7 @@ func (v *Checker) Validate(e inter.EventPayloadI) error {
 	if err := v.checkGas(e, rules); err != nil {
 		return err
 	}
-	if err := CheckTxs(e.Txs(), rules); err != nil {
+	if err := CheckTxs(e.Transactions(), rules); err != nil {
 		return err
 	}
 

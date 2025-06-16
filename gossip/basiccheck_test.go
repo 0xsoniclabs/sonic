@@ -272,6 +272,6 @@ func mutableEventPayloadFromImmutable(e *inter.EventPayload) *inter.MutableEvent
 	me.SetPayload(*e.Payload())
 	me.SetPayloadHash(e.PayloadHash())
 	me.SetSig(e.Sig())
-	me.SetTxs(e.Txs())
+	me.SetTxs(e.Transactions())
 	return me
 }

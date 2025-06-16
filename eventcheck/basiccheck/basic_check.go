@@ -56,11 +56,7 @@ func validateTx(tx *types.Transaction) error {
 }
 
 func (v *Checker) checkTxs(e inter.EventPayloadI) error {
-	transactions := e.Txs()
-	if proposal := e.Payload().Proposal; proposal != nil {
-		transactions = proposal.Transactions
-	}
-	for _, tx := range transactions {
+	for _, tx := range e.Transactions() {
 		if err := validateTx(tx); err != nil {
 			return err
 		}

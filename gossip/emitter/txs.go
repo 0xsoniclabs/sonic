@@ -190,7 +190,7 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 		// add
 		e.SetGasPowerUsed(e.GasPowerUsed() + tx.Gas)
 		e.SetGasPowerLeft(e.GasPowerLeft().Sub(tx.Gas))
-		e.SetTxs(append(e.Txs(), resolvedTx))
+		e.SetTxs(append(e.Transactions(), resolvedTx))
 		sorted.Shift()
 	}
 }
