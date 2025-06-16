@@ -5,6 +5,7 @@ import (
 	"cmp"
 	"fmt"
 	"math/big"
+	"slices"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -38,6 +39,8 @@ import (
 	"github.com/0xsoniclabs/sonic/utils"
 )
 
+//go:generate mockgen -source=c_block_callbacks.go -package=gossip -destination=c_block_callbacks_mock.go
+
 var (
 	// Ethereum compatible metrics set (see go-ethereum/core)
 
@@ -49,8 +52,10 @@ var (
 	blockExecutionNonResettingTimer = metrics.GetOrRegisterTimer("chain/execution/nonresetting", nil)
 	blockAgeGauge                   = metrics.GetOrRegisterGauge("chain/block/age", nil)
 
-	processedTxsMeter    = metrics.GetOrRegisterMeter("chain/txs/processed", nil)
-	skippedTxsMeter      = metrics.GetOrRegisterMeter("chain/txs/skipped", nil)
+	processedTxsMeter = metrics.GetOrRegisterMeter("chain/txs/processed", nil)
+	skippedTxsMeter   = metrics.GetOrRegisterMeter("chain/txs/skipped", nil)
+	invalidTxsMeter   = metrics.GetOrRegisterMeter("chain/txs/invalid", nil)
+
 	confirmedEventsMeter = metrics.GetOrRegisterMeter("chain/events/confirmed", nil) // events received from lachesis
 	spilledEventsMeter   = metrics.GetOrRegisterMeter("chain/events/spilled", nil)   // tx excluded because of MaxBlockGas
 )
@@ -206,6 +211,11 @@ func consensusCallbackBeginBlockFn(
 
 					proposal.Time = atroposTime
 				}
+
+				// Filter invalid transactions from the proposal.
+				proposal.Transactions = filterInvalidTransactions(
+					proposal.Transactions, &es.Rules, log.Root(), invalidTxsMeter,
+				)
 
 				// Make sure the new block time is after the last block time.
 				if proposal.Time <= bs.LastBlock.Time {
@@ -655,4 +665,85 @@ func extractProposalForNextBlock(
 		}
 	}
 	return best.Proposal, proposers[best]
+}
+
+// filterInvalidTransactions filters out invalid transactions from the given
+// transactions slice. Invalid transactions are logged and counted in the
+// provided log and metric instances respectively.
+func filterInvalidTransactions(
+	transactions []*types.Transaction,
+	rules *opera.Rules,
+	log log.Logger,
+	counter metricCounter,
+) []*types.Transaction {
+	// This filter is only enabled with the Allegro upgrade.
+	if !rules.Upgrades.Allegro {
+		return transactions
+	}
+	return slices.DeleteFunc(transactions, func(tx *types.Transaction) bool {
+		if err := isValid(tx, rules); err != nil {
+			if log != nil {
+				log.Warn("Invalid transaction in the proposal", "tx", tx.Hash(), "issue", err)
+			}
+			if counter != nil {
+				counter.Mark(1)
+			}
+			return true
+		}
+		return false
+	})
+}
+
+// isValid checks whether a transaction is valid according to the consensus
+// rules. This is the canonical validation set for transactions before they are
+// accepted in blocks. It is used to verify static properties according to the
+// current network rules.
+//
+// Transactions rejected by this step are considered invalid transactions.
+// Honest validators should never produce blocks containing invalid transactions.
+//
+// Valid transactions may still be rejected by the block processor due to nonce
+// or balance issues. In such cases, the transaction is considered a skipped
+// transaction. Skips should be minimized, but can not be completely avoided.
+func isValid(
+	tx *types.Transaction,
+	rules *opera.Rules,
+) error {
+
+	// -- Check transaction type --
+
+	maxTxType := uint8(types.BlobTxType)
+	if rules.Upgrades.Allegro {
+		maxTxType = types.SetCodeTxType
+	}
+	if tx.Type() > maxTxType {
+		return fmt.Errorf("unsupported transaction type %d, max supported is %d", tx.Type(), maxTxType)
+	}
+
+	// -- Check Type specific properties --
+
+	if tx.Type() == types.BlobTxType {
+		if have := len(tx.BlobHashes()); have > 0 {
+			return fmt.Errorf(
+				"blob transaction with blob hashes is not supported, got %d",
+				have,
+			)
+		}
+	}
+
+	if tx.Type() == types.SetCodeTxType {
+		if have := len(tx.SetCodeAuthorizations()); have == 0 {
+			return fmt.Errorf(
+				"set code transaction without authorizations is not supported",
+			)
+		}
+	}
+
+	return nil
+}
+
+// metricCounter is an abstraction of the *metrics.Meter type to facilitate
+// mocking in tests.
+type metricCounter interface {
+	Mark(int64)
 }
