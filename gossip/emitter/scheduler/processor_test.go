@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/stretchr/testify/require"
@@ -16,6 +17,7 @@ func TestEvmProcessorFactory_BeginBlock_CreatesProcessor(t *testing.T) {
 	chain := NewMockChain(ctrl)
 
 	chain.EXPECT().StateDB().Return(state.NewMockStateDB(ctrl))
+	chain.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{})
 	chain.EXPECT().GetEvmChainConfig(gomock.Any()).Return(&params.ChainConfig{})
 
 	info := BlockInfo{}

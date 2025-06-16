@@ -91,7 +91,7 @@ func execStateTest(t *testing.T, st *tests.TestMatcher, test *tests.StateTest) {
 
 			factory := createCarmenFactory(t)
 
-			config := opera.DefaultVMConfig
+			config := opera.GetVmConfig(opera.Rules{})
 			config.ChargeExcessGas = false
 			config.IgnoreGasFeeCap = false
 			config.InsufficientBalanceIsNotAnError = false

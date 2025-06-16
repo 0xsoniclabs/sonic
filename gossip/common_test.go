@@ -464,7 +464,8 @@ func (env *testEnv) callContract(
 	// Create a new environment which holds all relevant information
 	// about the transaction and calling mechanisms.
 	context := evmcore.NewEVMBlockContext(block.Header(), env.GetEvmStateReader(), nil)
-	vmenv := vm.NewEVM(context, state, env.store.GetEvmChainConfig(idx.Block(block.Number.Uint64())), opera.DefaultVMConfig)
+	vmConfig := opera.GetVmConfig(env.store.GetRules())
+	vmenv := vm.NewEVM(context, state, env.store.GetEvmChainConfig(idx.Block(block.Number.Uint64())), vmConfig)
 	gaspool := new(core.GasPool).AddGas(math.MaxUint64)
 	res, err := core.ApplyMessage(vmenv, msg, gaspool)
 	if err != nil {

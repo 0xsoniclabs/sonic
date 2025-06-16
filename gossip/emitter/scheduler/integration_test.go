@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
@@ -23,6 +24,7 @@ func TestIntegration_NoTransactions_ProducesAnEmptySchedule(t *testing.T) {
 	chain := NewMockChain(ctrl)
 	state := state.NewMockStateDB(ctrl)
 
+	chain.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{})
 	chain.EXPECT().GetEvmChainConfig(gomock.Any()).Return(&params.ChainConfig{})
 	chain.EXPECT().StateDB().Return(state)
 	state.EXPECT().Release()
@@ -44,6 +46,7 @@ func TestIntegration_OneTransactions_ProducesScheduleWithOneTransaction(t *testi
 	chain := NewMockChain(ctrl)
 	state := state.NewMockStateDB(ctrl)
 
+	chain.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{})
 	chain.EXPECT().GetEvmChainConfig(gomock.Any()).Return(&params.ChainConfig{})
 	chain.EXPECT().StateDB().Return(state)
 

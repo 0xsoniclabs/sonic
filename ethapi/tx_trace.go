@@ -20,7 +20,6 @@ import (
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/inter/state"
-	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/txtrace"
 	"github.com/0xsoniclabs/sonic/utils/signers/gsignercache"
 )
@@ -240,7 +239,10 @@ func (s *PublicTxTraceAPI) replayBlock(ctx context.Context, block *evmcore.EvmBl
 			}
 
 			state.SetTxContext(tx.Hash(), i)
-			vmConfig := opera.DefaultVMConfig
+			vmConfig, err := GetVmConfig(ctx, s.b, idx.Block(block.NumberU64()))
+			if err != nil {
+				return nil, fmt.Errorf("cannot get vm config for block %d, error: %w", block.NumberU64(), err)
+			}
 			vmConfig.NoBaseFee = true
 			vmConfig.Tracer = nil
 
@@ -293,7 +295,10 @@ func (s *PublicTxTraceAPI) traceTx(
 	status uint64) (*[]txtrace.ActionTrace, error) {
 
 	// Providing default config with tracer
-	cfg := opera.DefaultVMConfig
+	cfg, err := GetVmConfig(ctx, b, idx.Block(header.Number.Uint64()))
+	if err != nil {
+		return nil, fmt.Errorf("cannot get vm config for block %d, error: %w", header.Number.Uint64(), err)
+	}
 	txTracer := txtrace.NewTraceStructLogger(block, uint(index))
 	cfg.Tracer = txTracer.Hooks()
 	cfg.NoBaseFee = true

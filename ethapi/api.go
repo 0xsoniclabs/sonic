@@ -1054,7 +1054,10 @@ func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash 
 	if err != nil {
 		return nil, err
 	}
-	vmConfig := opera.DefaultVMConfig
+	vmConfig, err := GetVmConfig(ctx, b, idx.Block(header.Number.Uint64()))
+	if err != nil {
+		return nil, err
+	}
 	if overrides.HasCodesExceedingOnChainLimit() {
 		// Use geth as VM for computation
 		vmConfig.Tracer = &tracing.Hooks{}
@@ -1545,7 +1548,10 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 
 		// Apply the transaction with the access list tracer
 		tracer := logger.NewAccessListTracer(accessList, addressesToExclude)
-		config := opera.DefaultVMConfig
+		config, err := GetVmConfig(ctx, b, idx.Block(header.Number.Uint64()))
+		if err != nil {
+			return nil, 0, nil, err
+		}
 		config.Tracer = tracer.Hooks()
 		config.NoBaseFee = true
 		vmenv, _, err := b.GetEVM(ctx, statedb, header, &config, nil)
@@ -2214,7 +2220,10 @@ func (api *PublicDebugAPI) traceTx(
 		}
 	}
 
-	evmconfig := opera.DefaultVMConfig
+	evmconfig, err := GetVmConfig(ctx, api.b, idx.Block(blockHeader.Number.Uint64()))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get vm config: %w", err)
+	}
 	evmconfig.Tracer = tracer.Hooks
 	evmconfig.NoBaseFee = true
 
@@ -2375,8 +2384,11 @@ func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex in
 		return nil, statedb, nil
 	}
 
-	// Use default config for replaying transactions with possible no base fee
-	cfg := opera.DefaultVMConfig
+	// Use the block's VM config for replaying transactions with possible no base fee
+	cfg, err := GetVmConfig(ctx, b, idx.Block(block.NumberU64()))
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get vm config: %w", err)
+	}
 	cfg.NoBaseFee = true
 	vmenv, _, err := b.GetEVM(ctx, statedb, block.Header(), &cfg, nil)
 	if err != nil {

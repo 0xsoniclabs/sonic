@@ -40,6 +40,9 @@ type Chain interface {
 	// TODO: follow-up task - simplify this to a GetBlockHash(idx.Block) method.
 	evmcore.DummyChain
 
+	// GetCurrentNetworkRules returns the current network rules for the EVM.
+	GetCurrentNetworkRules() opera.Rules
+
 	// GetEvmChainConfig returns the chain configuration for the EVM at the
 	// given block height
 	GetEvmChainConfig(blockHeight idx.Block) *params.ChainConfig
@@ -62,7 +65,7 @@ func (p *evmProcessorFactory) beginBlock(
 ) processor {
 	// TODO: follow-up task - align this with c_block_callbacks.go
 	chainCfg := p.chain.GetEvmChainConfig(idx.Block(block.Header().Number.Uint64()))
-	vmConfig := opera.DefaultVMConfig
+	vmConfig := opera.GetVmConfig(p.chain.GetCurrentNetworkRules())
 	state := p.chain.StateDB()
 
 	stateProcessor := evmcore.NewStateProcessor(chainCfg, p.chain)

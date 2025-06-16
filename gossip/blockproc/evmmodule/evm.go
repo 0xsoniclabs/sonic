@@ -59,6 +59,7 @@ func (p *EVMModule) Start(
 		prevBlockHash: prevBlockHash,
 		prevRandao:    prevrandao,
 		gasBaseFee:    baseFee,
+		rules:         net,
 	}
 }
 
@@ -80,6 +81,8 @@ type OperaEVMProcessor struct {
 	skippedTxs  []uint32
 	receipts    types.Receipts
 	prevRandao  common.Hash
+
+	rules opera.Rules
 }
 
 func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlock {
@@ -124,9 +127,11 @@ func (p *OperaEVMProcessor) Execute(txs types.Transactions) types.Receipts {
 	evmProcessor := evmcore.NewStateProcessor(p.evmCfg, p.reader)
 	txsOffset := uint(len(p.incomingTxs))
 
+	vmConfig := opera.GetVmConfig(p.rules)
+
 	// Process txs
 	evmBlock := p.evmBlockWith(txs)
-	receipts, _, skipped, err := evmProcessor.Process(evmBlock, p.statedb, opera.DefaultVMConfig, &p.gasUsed, func(l *types.Log) {
+	receipts, _, skipped, err := evmProcessor.Process(evmBlock, p.statedb, vmConfig, &p.gasUsed, func(l *types.Log) {
 		// Note: l.Index is properly set before
 		l.TxIndex += txsOffset
 		p.onNewLog(l)

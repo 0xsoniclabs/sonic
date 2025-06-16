@@ -14,6 +14,7 @@ import (
 
 	evmcore "github.com/0xsoniclabs/sonic/evmcore"
 	state "github.com/0xsoniclabs/sonic/inter/state"
+	opera "github.com/0xsoniclabs/sonic/opera"
 	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
 	common "github.com/ethereum/go-ethereum/common"
 	types "github.com/ethereum/go-ethereum/core/types"
@@ -129,6 +130,20 @@ func NewMockChain(ctrl *gomock.Controller) *MockChain {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockChain) EXPECT() *MockChainMockRecorder {
 	return m.recorder
+}
+
+// GetCurrentNetworkRules mocks base method.
+func (m *MockChain) GetCurrentNetworkRules() opera.Rules {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetCurrentNetworkRules")
+	ret0, _ := ret[0].(opera.Rules)
+	return ret0
+}
+
+// GetCurrentNetworkRules indicates an expected call of GetCurrentNetworkRules.
+func (mr *MockChainMockRecorder) GetCurrentNetworkRules() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCurrentNetworkRules", reflect.TypeOf((*MockChain)(nil).GetCurrentNetworkRules))
 }
 
 // GetEvmChainConfig mocks base method.

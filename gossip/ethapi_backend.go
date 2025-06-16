@@ -50,6 +50,23 @@ func (b *EthAPIBackend) SetExtRPCEnabled(v bool) {
 	b.extRPCEnabled = v
 }
 
+// GetNetworkRules returns the network rules that have been active at the given
+// block height. If the block height is in the future, nil is returned.
+func (b *EthAPIBackend) GetNetworkRules(ctx context.Context, blockHeight idx.Block) (*opera.Rules, error) {
+	header, err := b.HeaderByNumber(ctx, rpc.BlockNumber(blockHeight))
+	if header == nil || err != nil {
+		return nil, err
+	}
+
+	_, es, err := b.GetEpochBlockState(ctx, rpc.BlockNumber(header.Epoch))
+	if err != nil {
+		return nil, err
+	}
+
+	rules := es.Rules
+	return &rules, nil
+}
+
 // ChainConfig returns the active chain configuration.
 func (b *EthAPIBackend) ChainConfig(blockHeight idx.Block) *params.ChainConfig {
 	return b.svc.store.GetEvmChainConfig(blockHeight)
@@ -338,7 +355,11 @@ func (b *EthAPIBackend) GetEVM(ctx context.Context, state vm.StateDB, header *ev
 	vmError := func() error { return nil }
 
 	if vmConfig == nil {
-		vmConfig = &opera.DefaultVMConfig
+		// TODO: get the network rules for the given block
+		// TODO: add a test failing if this is not covered
+		rules := opera.Rules{}
+		config := opera.GetVmConfig(rules)
+		vmConfig = &config
 	}
 	var context vm.BlockContext
 	if blockContext == nil {

@@ -35,11 +35,20 @@ func (tc *TestCase) String() string {
 }
 
 func TestGasCostTest_Sonic(t *testing.T) {
+	t.Run("with distributed proposers", func(t *testing.T) {
+		testGasCosts_Sonic(t, false)
+	})
+	t.Run("with single proposer", func(t *testing.T) {
+		testGasCosts_Sonic(t, true)
+	})
+}
 
-	net := StartIntegrationTestNet(t,
-		IntegrationTestNetOptions{
-			Upgrades: AsPointer(opera.GetSonicUpgrades()),
-		})
+func testGasCosts_Sonic(t *testing.T, singleProposer bool) {
+	upgrades := opera.GetSonicUpgrades()
+	upgrades.SingleProposerBlockFormation = singleProposer
+	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
+		Upgrades: &upgrades,
+	})
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
@@ -98,7 +107,7 @@ func TestGasCostTest_Sonic(t *testing.T) {
 		}
 	})
 
-	t.Run("Sonic processor charges 10% of unused gas", func(t *testing.T) {
+	t.Run("Sonic processor charges 10% of unused gas in distributed proposer mode", func(t *testing.T) {
 		t.Parallel()
 		session := net.SpawnSession(t)
 		for test := range makeGasCostTestInputs(t, session) {
@@ -114,7 +123,9 @@ func TestGasCostTest_Sonic(t *testing.T) {
 				expectedCost, err := core.IntrinsicGas(tx.Data(), tx.AccessList(), tx.SetCodeAuthorizations(), tx.To() == nil, true, true, true)
 				require.NoError(t, err)
 				unused := tx.Gas() - expectedCost
-				expectedCost += unused / 10
+				if !singleProposer {
+					expectedCost += unused / 10
+				}
 
 				receipt, err := session.Run(tx)
 				require.NoError(t, err)
@@ -126,11 +137,20 @@ func TestGasCostTest_Sonic(t *testing.T) {
 }
 
 func TestGasCostTest_Allegro(t *testing.T) {
+	t.Run("with distributed proposers", func(t *testing.T) {
+		testGasCosts_Allegro(t, false)
+	})
+	t.Run("with single proposer", func(t *testing.T) {
+		testGasCosts_Allegro(t, true)
+	})
+}
 
-	net := StartIntegrationTestNet(t,
-		IntegrationTestNetOptions{
-			Upgrades: AsPointer(opera.GetAllegroUpgrades()),
-		})
+func testGasCosts_Allegro(t *testing.T, singleProposer bool) {
+	upgrades := opera.GetAllegroUpgrades()
+	upgrades.SingleProposerBlockFormation = singleProposer
+	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
+		Upgrades: &upgrades,
+	})
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
@@ -214,7 +234,7 @@ func TestGasCostTest_Allegro(t *testing.T) {
 		require.Equal(t, 16, corrections, "expected 16 floor data gas corrections in the generated inputs, got %d", corrections)
 	})
 
-	t.Run("Sonic processor charges 10% of unused gas", func(t *testing.T) {
+	t.Run("Sonic processor charges 10% of unused gas in distributed proposer mode", func(t *testing.T) {
 		t.Parallel()
 		session := net.SpawnSession(t)
 
@@ -244,7 +264,9 @@ func TestGasCostTest_Allegro(t *testing.T) {
 				expectedCost, err := core.IntrinsicGas(tx.Data(), tx.AccessList(), tx.SetCodeAuthorizations(), tx.To() == nil, true, true, true)
 				require.NoError(t, err)
 				unused := tx.Gas() - expectedCost
-				expectedCost += unused / 10
+				if !singleProposer {
+					expectedCost += unused / 10
+				}
 
 				if floorDataGas > expectedCost {
 					expectedCost = floorDataGas
@@ -258,10 +280,23 @@ func TestGasCostTest_Allegro(t *testing.T) {
 			})
 		}
 
+		// The number of cases with costs smaller than floor data gas depends on
+		// the charging of the excess gas fees, which is disabled in single
+		// proposer mode.
+		numCasesWithCostsSmallerThanFloor := 12
+		if singleProposer {
+			numCasesWithCostsSmallerThanFloor = 16
+		}
+
 		// If the test case generation is modified, please change the expected number of out of bound cases
 		// It is important for this test that these values are never 0
 		require.Equal(t, 12, floorGreaterThan20Percent, "expected 12 cases where floor data gas is greater than 20% of the gas, got %d", floorGreaterThan20Percent)
-		require.Equal(t, 12, expectedSmallerThanFloor, "expected 12 cases where the expected cost is smaller than the floor data gas, got %d", expectedSmallerThanFloor)
+		require.Equal(t,
+			numCasesWithCostsSmallerThanFloor, expectedSmallerThanFloor,
+			"expected %d cases where the expected cost is smaller than the floor data gas, got %d",
+			numCasesWithCostsSmallerThanFloor,
+			expectedSmallerThanFloor,
+		)
 	})
 }
 

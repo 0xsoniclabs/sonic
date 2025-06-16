@@ -16,6 +16,7 @@ import (
 	"github.com/0xsoniclabs/carmen/go/common/witness"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core"
@@ -250,11 +251,15 @@ func TestEstimateGas(t *testing.T) {
 
 	mockBackend := NewMockBackend(ctrl)
 	mockState := state.NewMockStateDB(ctrl)
-	mockHeader := &evmcore.EvmHeader{Root: headerRoot}
+	mockHeader := &evmcore.EvmHeader{
+		Number: big.NewInt(1),
+		Root:   headerRoot,
+	}
 
 	blkNr := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
 
 	any := gomock.Any()
+	mockBackend.EXPECT().GetNetworkRules(any, idx.Block(1)).Return(&opera.Rules{}, nil).AnyTimes()
 	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, blkNr).Return(mockState, mockHeader, nil).AnyTimes()
 	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000))
 	mockBackend.EXPECT().MaxGasLimit().Return(uint64(10000000))
@@ -278,6 +283,7 @@ func TestReplayTransactionOnEmptyBlock(t *testing.T) {
 	block := &evmcore.EvmBlock{}
 	block.Number = big.NewInt(5)
 	any := gomock.Any()
+	mockBackend.EXPECT().GetNetworkRules(any, any).Return(&opera.Rules{}, nil).AnyTimes()
 	mockBackend.EXPECT().BlockByNumber(any, any).Return(block, nil)
 	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, any).Return(mockState, nil, nil).AnyTimes()
 	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000)).AnyTimes()
@@ -345,11 +351,12 @@ func TestReplayInternalTransaction(t *testing.T) {
 		CanTransfer: vm.CanTransferFunc(func(sd vm.StateDB, a1 common.Address, i *uint256.Int) bool { return true }),
 	}
 
-	vmConfig := opera.DefaultVMConfig
+	vmConfig := opera.GetVmConfig(opera.Rules{})
 	vmConfig.NoBaseFee = true
 
 	any := gomock.Any()
 	mockBackend.EXPECT().BlockByNumber(any, any).Return(block, nil)
+	mockBackend.EXPECT().GetNetworkRules(any, any).Return(&opera.Rules{}, nil).AnyTimes()
 	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, any).Return(mockState, nil, nil).AnyTimes()
 	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000)).AnyTimes()
 	mockBackend.EXPECT().GetTransaction(any, any).Return(types.NewTx(internalTx), block.NumberU64(), txIndex, nil).AnyTimes()
@@ -376,6 +383,7 @@ func TestBlockOverrides(t *testing.T) {
 
 	any := gomock.Any()
 	mockBackend.EXPECT().BlockByNumber(any, any).Return(block, nil).AnyTimes()
+	mockBackend.EXPECT().GetNetworkRules(any, any).Return(&opera.Rules{}, nil).AnyTimes()
 	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, any).Return(mockState, &evmcore.EvmHeader{Number: big.NewInt(int64(blockNr))}, nil).AnyTimes()
 	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000)).AnyTimes()
 	mockBackend.EXPECT().ChainConfig(gomock.Any()).Return(&params.ChainConfig{}).AnyTimes()
@@ -475,7 +483,8 @@ func getEvmFunc(mockState *state.MockStateDB) func(any, any, any, any, any) (*vm
 			Transfer: vm.TransferFunc(func(sd vm.StateDB, a1, a2 common.Address, i *uint256.Int) {}),
 		}
 		config := opera.CreateTransientEvmChainConfig(1, nil, 0)
-		return vm.NewEVM(blockCtx, mockState, config, opera.DefaultVMConfig),
+		vmConfig := opera.GetVmConfig(opera.Rules{})
+		return vm.NewEVM(blockCtx, mockState, config, vmConfig),
 			func() error { return nil }, nil
 	}
 }
@@ -946,6 +955,8 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 			test.setupStateDb(mockState)
 
 			backend := NewMockBackend(ctrl)
+			backend.EXPECT().GetNetworkRules(gomock.Any(), gomock.Any()).
+				Return(&opera.Rules{}, nil).AnyTimes()
 			backend.EXPECT().StateAndHeaderByNumberOrHash(gomock.Any(), blockOrHash).
 				Return(mockState, &header, nil).AnyTimes()
 			backend.EXPECT().GetEVM(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).

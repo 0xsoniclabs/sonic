@@ -20,6 +20,7 @@ import (
 	inter "github.com/0xsoniclabs/sonic/inter"
 	iblockproc "github.com/0xsoniclabs/sonic/inter/iblockproc"
 	state "github.com/0xsoniclabs/sonic/inter/state"
+	opera "github.com/0xsoniclabs/sonic/opera"
 	scc "github.com/0xsoniclabs/sonic/scc"
 	cert "github.com/0xsoniclabs/sonic/scc/cert"
 	result "github.com/0xsoniclabs/sonic/utils/result"
@@ -335,6 +336,21 @@ func (m *MockBackend) GetLatestCommitteeCertificate() (cert.CommitteeCertificate
 func (mr *MockBackendMockRecorder) GetLatestCommitteeCertificate() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLatestCommitteeCertificate", reflect.TypeOf((*MockBackend)(nil).GetLatestCommitteeCertificate))
+}
+
+// GetNetworkRules mocks base method.
+func (m *MockBackend) GetNetworkRules(ctx context.Context, blockHeight idx.Block) (*opera.Rules, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetNetworkRules", ctx, blockHeight)
+	ret0, _ := ret[0].(*opera.Rules)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetNetworkRules indicates an expected call of GetNetworkRules.
+func (mr *MockBackendMockRecorder) GetNetworkRules(ctx, blockHeight any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNetworkRules", reflect.TypeOf((*MockBackend)(nil).GetNetworkRules), ctx, blockHeight)
 }
 
 // GetOriginatedFee mocks base method.

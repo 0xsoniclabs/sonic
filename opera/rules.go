@@ -9,14 +9,9 @@ import (
 	"time"
 
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/vm"
 	ethparams "github.com/ethereum/go-ethereum/params"
 
 	"github.com/0xsoniclabs/sonic/inter"
-	"github.com/0xsoniclabs/sonic/opera/contracts/evmwriter"
-	"github.com/0xsoniclabs/tosca/go/geth_adapter"
-	"github.com/0xsoniclabs/tosca/go/interpreter/lfvm"
 )
 
 const (
@@ -41,35 +36,6 @@ const (
 	defaultTargetGasRate        = 15_000_000    // 15 MGas/s
 	defaultEventEmitterInterval = 600 * time.Millisecond
 )
-
-var DefaultVMConfig = func() vm.Config {
-
-	// For transaction processing, Tosca's LFVM is used.
-	interpreter, err := lfvm.NewInterpreter(lfvm.Config{})
-	if err != nil {
-		panic(err)
-	}
-	lfvmFactory := geth_adapter.NewGethInterpreterFactory(interpreter)
-
-	// For tracing, Geth's EVM is used.
-	gethFactory := func(evm *vm.EVM) vm.Interpreter {
-		return vm.NewEVMInterpreter(evm)
-	}
-
-	return vm.Config{
-		StatePrecompiles: map[common.Address]vm.PrecompiledStateContract{
-			evmwriter.ContractAddress: &evmwriter.PreCompiledContract{},
-		},
-		Interpreter:           lfvmFactory,
-		InterpreterForTracing: gethFactory,
-
-		// Fantom/Sonic modifications
-		ChargeExcessGas:                 true,
-		IgnoreGasFeeCap:                 true,
-		InsufficientBalanceIsNotAnError: true,
-		SkipTipPaymentToCoinbase:        true,
-	}
-}()
 
 type RulesRLP struct {
 	Name      string
