@@ -74,7 +74,7 @@ func TestEventPayloadSerialization(t *testing.T) {
 
 				var decoded EventPayload
 				err = rlp.DecodeBytes(buf, &decoded)
-				require.NoError(t, err)
+				require.NoError(t, err, "failed to decode encoding of %+v", toEncode)
 
 				require.EqualValues(t, toEncode.extEventData, decoded.extEventData)
 				require.EqualValues(t, toEncode.sigData, decoded.sigData)
@@ -110,6 +110,110 @@ func TestEventPayloadSerialization(t *testing.T) {
 			})
 		}
 	})
+}
+
+func TestEventSerialization_Flaky2(t *testing.T) {
+	t.Parallel()
+	for range 100 {
+		t.Run("random", func(t *testing.T) {
+			t.Parallel()
+			event := FakeEvent(3, 2, 0, 0, false)
+			buf, err := rlp.EncodeToBytes(&event)
+			require.NoError(t, err)
+			var decoded EventPayload
+			err = rlp.DecodeBytes(buf, &decoded)
+			require.NoError(t, err, "failed to decode encoding of %+v", event)
+		})
+	}
+}
+
+func TestEventSerialization_Flaky(t *testing.T) {
+
+	// Failed data:
+	// {SignedEvent:{Event:{baseEvent:{BaseEvent:{epoch:1234 seq:5762101 frame:26190 creator:1892640394 parents:[[0 0 4 210 0 0 1 244 83 219 144 86 250 59 149 6 145 72 153 169 9 48 136 75 176 41 48 74 182 165 28 34]] lamport:1000 id:[0 0 4 210 0 0 3 232 99 66 83 218 142 123 135 23 142 43 242 47 100 1 175 179 7 225 159 209 170 231 33 188]}} extEventData:{version:1 netForkID:14591 creationTime:1418823048812169170 medianTime:13446722647129416609 prevEpochHash:<nil> gasPowerLeft:{Gas:[13708822528903384745 16582119225744604457]} gasPowerUsed:8878188716898717410 extra:[45] anyTxs:true anyBlockVotes:true anyEpochVote:true anyMisbehaviourProofs:true hasProposal:false payloadHash:[146 25 217 255 222 158 125 169 223 156 40 127 240 134 135 235 88 61 242 50 224 40 219 2 138 65 53 11 170 113 173 86]} _baseHash:0xc0016000e0 _locatorHash:0xc0016000a0} sigData:{sig:[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]}} payloadData:{txs:[0xc002ba2680 0xc002ba2000 0xc002ba2080 0xc002ba20c0 0xc002ba2100 0xc002ba2180 0xc002ba21c0 0xc002ba2200 0xc002ba2240 0xc002ba2280 0xc002ba22c0 0xc002ba2300] misbehaviourProofs:[{EventsDoublesign:0xc000036780 BlockVoteDoublesign:<nil> WrongBlockVote:<nil> EpochVoteDoublesign:<nil> WrongEpochVote:<nil>}] epochVote:{Epoch:529 Vote:[92 219 5 218 93 62 243 47 154 235 11 183 28 10 120 39 205 19 209 37 29 189 87 214 77 91 190 143 174 130 34 77]} blockVotes:{Start:804 Epoch:261 Votes:[[88 216 121 178 206 231 70 34 145 143 252 57 205 16 53 209 11 91 223 244 103 100 251 41 156 63 124 65 184 149 233 219]]} payload:{ProposalSyncState:{LastSeenProposalTurn:0 LastSeenProposalFrame:0} Proposal:<nil>}} _size:10491866}
+	//
+	//
+	// Formatted:
+	// {
+	//   SignedEvent:{
+	// 		Event:{
+	// 			baseEvent:{
+	// 				BaseEvent:{
+	// 					epoch:1234
+	// 					seq:5762101
+	// 					frame:26190
+	// 					creator:1892640394
+	// 					parents:[[0 0 4 210 0 0 1 244 83 219 144 86 250 59 149 6 145 72 153 169 9 48 136 75 176 41 48 74 182 165 28 34]]
+	// 					lamport:1000
+	// 					id:[0 0 4 210 0 0 3 232 99 66 83 218 142 123 135 23 142 43 242 47 100 1 175 179 7 225 159 209 170 231 33 188]
+	// 	 	    }
+	// 			}
+	// 			extEventData:{
+	// 				version:1
+	// 				netForkID:14591
+	// 				creationTime:1418823048812169170
+	// 				medianTime:13446722647129416609
+	// 				prevEpochHash:<nil>
+	// 				gasPowerLeft:{Gas:[13708822528903384745 16582119225744604457]}
+	// 				gasPowerUsed:8878188716898717410
+	// 				extra:[45]
+	// 				anyTxs:true
+	// 				anyBlockVotes:true
+	// 				anyEpochVote:true
+	// 				anyMisbehaviourProofs:true
+	// 				hasProposal:false
+	// 				payloadHash:[146 25 217 255 222 158 125 169 223 156 40 127 240 134 135 235 88 61 242 50 224 40 219 2 138 65 53 11 170 113 173 86]
+	// 	    }
+	// 	    _baseHash:0xc0016000e0
+	// 	    _locatorHash:0xc0016000a0
+	// 	}
+	// 	sigData: {
+	// 			sig:[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]
+	// 	}
+	// }
+	// payloadData:{
+	// 		txs:[0xc002ba2680 0xc002ba2000 0xc002ba2080 0xc002ba20c0 0xc002ba2100 0xc002ba2180 0xc002ba21c0 0xc002ba2200 0xc002ba2240 0xc002ba2280 0xc002ba22c0 0xc002ba2300]
+	// 		misbehaviourProofs:[{EventsDoublesign:0xc000036780 BlockVoteDoublesign:<nil> WrongBlockVote:<nil> EpochVoteDoublesign:<nil> WrongEpochVote:<nil>}]
+	// 		epochVote:{Epoch:529 Vote:[92 219 5 218 93 62 243 47 154 235 11 183 28 10 120 39 205 19 209 37 29 189 87 214 77 91 190 143 174 130 34 77]}
+	// 		blockVotes:{Start:804 Epoch:261 Votes:[[88 216 121 178 206 231 70 34 145 143 252 57 205 16 53 209 11 91 223 244 103 100 251 41 156 63 124 65 184 149 233 219]]}
+	// 		payload:{ProposalSyncState:{LastSeenProposalTurn:0 LastSeenProposalFrame:0} Proposal:<nil>}}
+	// _size:10491866
+	//}
+
+	builder := &MutableEventPayload{}
+	builder.SetEpoch(1234)
+	builder.SetSeq(5762101)
+	builder.SetFrame(26190)
+	builder.SetCreator(idx.ValidatorID(1892640394))
+	builder.SetParents(hash.Events{{0, 0, 4, 210, 0, 0, 1, 244, 83, 219, 144, 86, 250, 59, 149, 6, 145, 72, 153, 169, 9, 48, 136, 75, 176, 41, 48, 74, 182, 165, 28, 34}})
+
+	builder.SetLamport(1000)
+
+	builder.SetVersion(1)
+	builder.SetNetForkID(14591)
+	builder.SetCreationTime(1418823048812169170)
+	builder.SetMedianTime(13446722647129416609)
+
+	builder.SetGasPowerLeft(GasPowerLeft{
+		Gas: [2]uint64{13708822528903384745, 16582119225744604457},
+	})
+	builder.SetGasPowerUsed(8878188716898717410)
+	builder.SetExtra([]byte{45})
+
+	builder.SetTxs([]*types.Transaction{
+		types.NewTx(&types.LegacyTx{}),
+	})
+
+	input := builder.Build()
+
+	fmt.Printf("%+v\n", *input)
+	buf, err := rlp.EncodeToBytes(&input)
+	require.NoError(t, err)
+
+	var decoded EventPayload
+	err = rlp.DecodeBytes(buf, &decoded)
+	require.NoError(t, err)
+	t.Fail()
 }
 
 func TestEventUnmarshalCSER_Version2FailsIfHashOfEmptyPayloadIsIncluded(t *testing.T) {
