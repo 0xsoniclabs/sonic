@@ -29,28 +29,28 @@ import (
 var (
 	knownMissingAPIs = namespaceMap{
 		"eth": {
-			"SimulateV1": true,
+			"SimulateV1": struct{}{},
 		},
 		"debug": {
-			"DbAncient":                   true,
-			"DbAncients":                  true,
-			"DbGet":                       true,
-			"GetRawBlock":                 true,
-			"GetRawHeader":                true,
-			"GetRawReceipts":              true,
-			"GetRawTransaction":           true,
-			"IntermediateRoots":           true,
-			"StandardTraceBadBlockToFile": true,
-			"StandardTraceBlockToFile":    true,
-			"TraceBadBlock":               true,
-			"TraceBlock":                  true,
-			"TraceBlockFromFile":          true,
-			"TraceChain":                  true,
+			"DbAncient":                   struct{}{},
+			"DbAncients":                  struct{}{},
+			"DbGet":                       struct{}{},
+			"GetRawBlock":                 struct{}{},
+			"GetRawHeader":                struct{}{},
+			"GetRawReceipts":              struct{}{},
+			"GetRawTransaction":           struct{}{},
+			"IntermediateRoots":           struct{}{},
+			"StandardTraceBadBlockToFile": struct{}{},
+			"StandardTraceBlockToFile":    struct{}{},
+			"TraceBadBlock":               struct{}{},
+			"TraceBlock":                  struct{}{},
+			"TraceBlockFromFile":          struct{}{},
+			"TraceChain":                  struct{}{},
 		},
 	}
 )
 
-type namespaceMap map[string]map[string]bool
+type namespaceMap map[string]map[string]interface{}
 
 // TestRPCApis checks if all go-ethereum RPC APIs are implemented in Sonic
 func TestRPCApis(t *testing.T) {
@@ -121,9 +121,9 @@ func findMissingMethods(a, b namespaceMap) namespaceMap {
 
 	for outerKey, innerMap := range a {
 		for innerKey, value := range innerMap {
-			if !b[outerKey][innerKey] {
+			if _, exists := b[outerKey][innerKey]; !exists {
 				if missing[outerKey] == nil {
-					missing[outerKey] = make(map[string]bool)
+					missing[outerKey] = make(map[string]interface{})
 				}
 				missing[outerKey][innerKey] = value
 			}
@@ -135,11 +135,11 @@ func findMissingMethods(a, b namespaceMap) namespaceMap {
 // parseAPIs returns a map of namespaces and methods
 func parseAPIs(apis []rpc.API) namespaceMap {
 
-	namespaces := make(map[string]map[string]bool)
+	namespaces := make(map[string]map[string]interface{})
 
 	for _, api := range apis {
 		if _, exists := namespaces[api.Namespace]; !exists {
-			namespaces[api.Namespace] = make(map[string]bool)
+			namespaces[api.Namespace] = make(map[string]interface{})
 		}
 		pt := reflect.TypeOf(api.Service)
 		for i := range pt.NumMethod() {
@@ -156,10 +156,8 @@ func (nm namespaceMap) String() string {
 	for key, innerMap := range nm {
 		sb.WriteString(fmt.Sprintf("  \"%s\": [", key))
 		funcs := []string{}
-		for innerKey, ok := range innerMap {
-			if ok {
-				funcs = append(funcs, fmt.Sprintf("\"%s\"", innerKey))
-			}
+		for innerKey, _ := range innerMap {
+			funcs = append(funcs, fmt.Sprintf("\"%s\"", innerKey))
 		}
 		sb.WriteString(strings.Join(funcs, ", "))
 		sb.WriteString("],\n")
