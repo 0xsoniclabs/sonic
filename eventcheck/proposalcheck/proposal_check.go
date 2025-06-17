@@ -16,6 +16,8 @@ const (
 	// being allowed to being included in a single proposal.
 	MaxSizeOfProposedTransactions = 8 * 1024 * 1024 // 8 MiB
 
+	ErrProposalInInvalidEventVersion = common.ConstError("proposal in event with invalid version")
+
 	ErrVersion3MustNotContainIndividualTransactions = common.ConstError("version 3 events must not contain individual transactions")
 	ErrVersion3MustNotContainBlockVotes             = common.ConstError("version 3 events must not contain block votes")
 	ErrVersion3MustNotContainEpochVotes             = common.ConstError("version 3 events must not contain epoch votes")
@@ -64,8 +66,14 @@ func New(reader Reader) *Checker {
 // Validate checks whether the event payload is correctly tracking the proposer
 // state and the validity of a potentially included proposal.
 func (v *Checker) Validate(e inter.EventPayloadI) error {
-	// This check is only applicable to events with version 3.
+	// Only version 3 events are allowed to contain proposals.
 	if e.Version() != 3 {
+		if payload := e.Payload(); payload != nil {
+			if proposal := payload.Proposal; proposal != nil {
+				return ErrProposalInInvalidEventVersion
+			}
+		}
+		// All remaining checks are only applicable to version 3 events.
 		return nil
 	}
 
