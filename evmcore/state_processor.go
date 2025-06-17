@@ -25,6 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 
 	"github.com/0xsoniclabs/sonic/inter/state"
@@ -71,7 +72,7 @@ func NewStateProcessor(config *params.ChainConfig, bc DummyChain) *StateProcesso
 func (p *StateProcessor) Process(
 	block *EvmBlock, statedb state.StateDB, cfg vm.Config, usedGas *uint64, onNewLog func(*types.Log),
 ) (
-	types.Receipts, []*types.Log, []uint32, error,
+	types.Receipts, []*types.Log, []uint32,
 ) {
 	receipts := make(types.Receipts, 0, len(block.Transactions))
 	allLogs := make([]*types.Log, 0, len(block.Transactions)*10) // 10 logs per tx is a reasonable estimate
@@ -97,7 +98,9 @@ func (p *StateProcessor) Process(
 	for i, tx := range block.Transactions {
 		msg, err := TxAsMessage(tx, signer, header.BaseFee)
 		if err != nil {
-			return nil, nil, nil, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
+			log.Error("Failed to convert transaction to message", "tx", tx.Hash().Hex(), "err", err)
+			receipts = append(receipts, nil)
+			continue // skip this transaction, but continue processing the rest of the block
 		}
 
 		statedb.SetTxContext(tx.Hash(), i)
@@ -108,12 +111,14 @@ func (p *StateProcessor) Process(
 			continue
 		}
 		if err != nil {
-			return nil, nil, nil, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
+			log.Error("Failed to apply transaction", "tx", tx.Hash().Hex(), "err", err)
+			receipts = append(receipts, nil)
+			continue // skip this transaction, but continue processing the rest of the block
 		}
 		receipts = append(receipts, receipt)
 		allLogs = append(allLogs, receipt.Logs...)
 	}
-	return receipts, allLogs, skipped, nil
+	return receipts, allLogs, skipped
 }
 
 // BeginBlock starts the processing of a new block and returns a function to

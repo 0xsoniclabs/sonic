@@ -5,7 +5,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
@@ -131,14 +130,11 @@ func (p *OperaEVMProcessor) Execute(txs types.Transactions) types.Receipts {
 
 	// Process txs
 	evmBlock := p.evmBlockWith(txs)
-	receipts, _, skipped, err := evmProcessor.Process(evmBlock, p.statedb, vmConfig, &p.gasUsed, func(l *types.Log) {
+	receipts, _, skipped := evmProcessor.Process(evmBlock, p.statedb, vmConfig, &p.gasUsed, func(l *types.Log) {
 		// Note: l.Index is properly set before
 		l.TxIndex += txsOffset
 		p.onNewLog(l)
 	})
-	if err != nil {
-		log.Crit("EVM internal error", "err", err)
-	}
 
 	if txsOffset > 0 {
 		for i, n := range skipped {

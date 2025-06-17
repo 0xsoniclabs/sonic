@@ -26,7 +26,7 @@ import (
 func (p *StateProcessor) process_iteratively(
 	block *EvmBlock, stateDb state.StateDB, cfg vm.Config, usedGas *uint64, onNewLog func(*types.Log),
 ) (
-	types.Receipts, []*types.Log, []uint32, error,
+	types.Receipts, []*types.Log, []uint32,
 ) {
 	// This implementation is a wrapper around the BeginBlock function, which
 	// handles the actual transaction processing.
@@ -42,14 +42,16 @@ func (p *StateProcessor) process_iteratively(
 			continue
 		}
 		if err != nil {
-			return nil, nil, nil, fmt.Errorf("failed to process transaction %d [%v]: %w", i, tx.Hash().Hex(), err)
+			// If an error occurs, we skip the transaction and continue with the next one.
+			receipts[i] = nil
+			continue
 		}
 		receipts[i] = receipt
 		allLogs = append(allLogs, receipt.Logs...)
 		*usedGas = receipt.CumulativeGasUsed
 	}
 
-	return receipts, allLogs, skipped, nil
+	return receipts, allLogs, skipped
 }
 
 func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
@@ -100,8 +102,7 @@ func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
 
 			vmConfig := vm.Config{}
 			usedGas := new(uint64)
-			receipts, logs, skipped, err := process(block, state, vmConfig, usedGas, onLog)
-			require.NoError(err)
+			receipts, logs, skipped := process(block, state, vmConfig, usedGas, onLog)
 
 			// Receipts should be set accordingly.
 			require.Len(receipts, len(transactions))
@@ -187,12 +188,11 @@ func TestProcess_DetectsTransactionThatCanNotBeConvertedIntoAMessage(t *testing.
 
 			vmConfig := vm.Config{}
 			usedGas := new(uint64)
-			receipts, logs, skipped, err := process(block, state, vmConfig, usedGas, nil)
-			require.ErrorContains(err, "invalid transaction v, r, s values")
+			receipts, logs, skipped := process(block, state, vmConfig, usedGas, nil)
 
-			require.Nil(receipts)
-			require.Nil(logs)
-			require.Nil(skipped)
+			require.ElementsMatch(receipts, []*types.Receipt{nil})
+			require.Empty(logs)
+			require.Empty(skipped)
 		})
 	}
 }
@@ -248,14 +248,74 @@ func TestProcess_TracksParentBlockHashIfPragueIsEnabled(t *testing.T) {
 
 				vmConfig := vm.Config{}
 				usedGas := new(uint64)
-				receipts, logs, skipped, err := process(block, state, vmConfig, usedGas, nil)
-				require.NoError(err)
+				receipts, logs, skipped := process(block, state, vmConfig, usedGas, nil)
 				require.Empty(receipts)
 				require.Empty(logs)
 				require.Empty(skipped)
 			})
 		}
 	}
+}
+
+func TestProcess_FailingTransactionAreSkippedButTheBlockIsNotTerminated(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	state := state.NewMockStateDB(ctrl)
+
+	chainConfig := params.ChainConfig{}
+	chain := NewMockDummyChain(ctrl)
+	processor := NewStateProcessor(&chainConfig, chain)
+
+	block := &EvmBlock{
+		EvmHeader: EvmHeader{
+			Number:   big.NewInt(1),
+			GasLimit: 100_000,
+		},
+		Transactions: []*types.Transaction{
+			// This transaction will fail due to an invalid signature.
+			types.NewTx(&types.LegacyTx{
+				Nonce:    0,
+				To:       &common.Address{},
+				Gas:      21_000,
+				GasPrice: big.NewInt(1),
+				V:        big.NewInt(1), // invalid signature
+			}),
+			// Valid transaction that will succeed.
+			types.NewTx(&types.LegacyTx{
+				Nonce:    0,
+				To:       &common.Address{},
+				Gas:      21_000,
+				GasPrice: big.NewInt(1),
+			}),
+		},
+	}
+
+	// Mock the state database interactions for passing transaction.
+	any := gomock.Any()
+	state.EXPECT().SetTxContext(any, any).Times(1)
+	state.EXPECT().GetBalance(any).Return(uint256.NewInt(1000000)).Times(1)
+	state.EXPECT().SubBalance(any, any, any).Times(2)
+	state.EXPECT().Prepare(any, any, any, any, any, any).Times(1)
+	state.EXPECT().GetNonce(any).Return(uint64(0)).Times(1)
+	state.EXPECT().SetNonce(any, any, any).Times(1)
+	state.EXPECT().GetCode(any).Return(nil).Times(2)
+	state.EXPECT().Snapshot().Return(0).Times(1)
+	state.EXPECT().Exist(any).Return(true).Times(1)
+	state.EXPECT().AddBalance(any, any, any).Times(3)
+	state.EXPECT().GetRefund().Return(uint64(0)).Times(2)
+	state.EXPECT().GetLogs(any, any).Return([]*types.Log{})
+	state.EXPECT().EndTransaction().Times(1)
+	state.EXPECT().TxIndex().Return(0).Times(1)
+
+	// Process the block
+	usedGas := new(uint64)
+	receipts, logs, skipped := processor.Process(block, state, vm.Config{}, usedGas, nil)
+
+	require.Len(t, receipts, 2)
+	require.Nil(t, receipts[0])
+	require.NotNil(t, receipts[1])
+
+	require.Empty(t, logs)
+	require.Empty(t, skipped)
 }
 
 func TestApplyTransaction_InternalTransactionsSkipBaseFeeCharges(t *testing.T) {
@@ -395,7 +455,6 @@ type processFunction = func(
 	receipts types.Receipts,
 	allLogs []*types.Log,
 	skipped []uint32,
-	err error,
 )
 
 func getStateDbMockForTransactions(
