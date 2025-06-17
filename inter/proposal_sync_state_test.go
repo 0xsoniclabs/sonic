@@ -100,7 +100,7 @@ func TestIsAllowedToPropose_AcceptsValidProposerTurn(t *testing.T) {
 	}
 	require.True(IsValidTurnProgression(last, next))
 
-	ok, err := IsAllowedToPropose(
+	ok, nextTurn, err := IsAllowedToPropose(
 		validator,
 		validators,
 		ProposalSyncState{
@@ -112,6 +112,7 @@ func TestIsAllowedToPropose_AcceptsValidProposerTurn(t *testing.T) {
 	)
 	require.NoError(err)
 	require.True(ok)
+	require.Equal(next.Turn, nextTurn)
 }
 
 func TestIsAllowedToPropose_RejectsInvalidProposerTurn(t *testing.T) {
@@ -131,6 +132,17 @@ func TestIsAllowedToPropose_RejectsInvalidProposerTurn(t *testing.T) {
 		invalidProposer = validatorB
 	}
 
+	// search for a future turn that is no longer valid for the proposer
+	invalidTurn := validTurn + 1
+	for {
+		proposer, err := GetProposer(validators, validEpoch, invalidTurn)
+		require.NoError(t, err)
+		if proposer != validProposer {
+			break
+		}
+		invalidTurn++
+	}
+
 	type input struct {
 		validator    idx.ValidatorID
 		currentFrame idx.Frame
@@ -142,7 +154,7 @@ func TestIsAllowedToPropose_RejectsInvalidProposerTurn(t *testing.T) {
 		},
 		"invalid turn progression": func(input *input) {
 			// a proposal made too late needs to be rejected
-			input.currentFrame = input.currentFrame * 10
+			input.currentFrame = idx.Frame(invalidTurn)
 		},
 	}
 
@@ -150,7 +162,7 @@ func TestIsAllowedToPropose_RejectsInvalidProposerTurn(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
 
-			ProposalState := ProposalSyncState{
+			proposalState := ProposalSyncState{
 				LastSeenProposalTurn:  12,
 				LastSeenProposalFrame: 62,
 			}
@@ -160,21 +172,22 @@ func TestIsAllowedToPropose_RejectsInvalidProposerTurn(t *testing.T) {
 				validator:    validProposer,
 			}
 
-			ok, err := IsAllowedToPropose(
+			ok, nextTurn, err := IsAllowedToPropose(
 				input.validator,
 				validators,
-				ProposalState,
+				proposalState,
 				validEpoch,
 				input.currentFrame,
 			)
 			require.NoError(err)
 			require.True(ok)
+			require.Equal(nextTurn, proposalState.LastSeenProposalTurn+1)
 
 			corrupt(&input)
-			ok, err = IsAllowedToPropose(
+			ok, _, err = IsAllowedToPropose(
 				input.validator,
 				validators,
-				ProposalState,
+				proposalState,
 				validEpoch,
 				input.currentFrame,
 			)
@@ -184,13 +197,51 @@ func TestIsAllowedToPropose_RejectsInvalidProposerTurn(t *testing.T) {
 	}
 }
 
+func TestIsAllowedToPropose_ReturnsTurnForTheAllowedProposal(t *testing.T) {
+	require := require.New(t)
+	validator := idx.ValidatorID(1)
+	builder := pos.ValidatorsBuilder{}
+	builder.Set(validator, 10)
+	validators := builder.Build()
+
+	for i := range 50 {
+		frame := idx.Frame(i) + 1
+		inputState := ProposalSyncState{}
+
+		ok, turn, err := IsAllowedToPropose(
+			validator,
+			validators,
+			inputState,
+			idx.Epoch(0),
+			frame,
+		)
+		require.NoError(err)
+		require.True(ok) // < only 1 validator who is always allowed to propose
+
+		// Check that this is indeed a valid turn progression.
+		before := ProposalSummary{
+			Turn:  inputState.LastSeenProposalTurn,
+			Frame: inputState.LastSeenProposalFrame,
+		}
+		after := ProposalSummary{
+			Turn:  turn,
+			Frame: frame,
+		}
+		require.True(
+			IsValidTurnProgression(before, after),
+			"before: %v, after: %v",
+			before, after,
+		)
+	}
+}
+
 func TestIsAllowedToPropose_ForwardsTurnSelectionError(t *testing.T) {
 	validators := pos.ValidatorsBuilder{}.Build()
 
 	_, want := GetProposer(validators, idx.Epoch(0), Turn(0))
 	require.Error(t, want)
 
-	_, got := IsAllowedToPropose(
+	_, _, got := IsAllowedToPropose(
 		idx.ValidatorID(0),
 		validators,
 		ProposalSyncState{},
@@ -226,22 +277,28 @@ func TestGetCurrentTurn_ForKnownExamples_ProducesCorrectTurn(t *testing.T) {
 			currentFrame: 6,
 			want:         4,
 		},
-		"a timeout should increase the turn": {
+		"at the time-out frame, it is still the old turn": {
 			lastTurn:     4,
 			lastFrame:    5,
 			currentFrame: 5 + TurnTimeoutInFrames,
+			want:         4,
+		},
+		"one frame after the timeout it is a new turn": {
+			lastTurn:     4,
+			lastFrame:    5,
+			currentFrame: 5 + TurnTimeoutInFrames + 1,
 			want:         5,
 		},
 		"multiple timeouts should increase the turn": {
 			lastTurn:     4,
 			lastFrame:    5,
-			currentFrame: 5 + 2*TurnTimeoutInFrames,
+			currentFrame: 5 + 2*TurnTimeoutInFrames + 1,
 			want:         6,
 		},
 		"multiple timeouts should increase the turn (2)": {
 			lastTurn:     4,
 			lastFrame:    5,
-			currentFrame: 5 + 3*TurnTimeoutInFrames,
+			currentFrame: 5 + 3*TurnTimeoutInFrames + 1,
 			want:         7,
 		},
 	}
@@ -274,7 +331,7 @@ func TestGetCurrentTurn_ForCartesianProductOfInputs_ProducesResultsConsideringTi
 
 				want := turn
 				if currentFrame > start {
-					delta := currentFrame - start
+					delta := currentFrame - start - 1
 					want += Turn(delta / TurnTimeoutInFrames)
 				}
 				require.Equal(t, want, got)

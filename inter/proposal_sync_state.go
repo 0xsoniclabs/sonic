@@ -54,19 +54,19 @@ type EventReader interface {
 // --- determination of the proposal turn ---
 
 // IsAllowedToPropose checks whether the current validator is allowed to
-// propose a new block.
+// propose a new block. If so, the turn for the allowed proposal is returned.
 func IsAllowedToPropose(
 	validator idx.ValidatorID,
 	validators *pos.Validators,
 	proposalState ProposalSyncState,
 	currentEpoch idx.Epoch,
 	currentFrame idx.Frame,
-) (bool, error) {
+) (bool, Turn, error) {
 	// Check whether it is this emitter's turn to propose a new block.
 	nextTurn := getCurrentTurn(proposalState, currentFrame) + 1
 	proposer, err := GetProposer(validators, currentEpoch, nextTurn)
 	if err != nil || proposer != validator {
-		return false, err
+		return false, 0, err
 	}
 
 	// Check that enough time has passed for the next proposal.
@@ -79,7 +79,7 @@ func IsAllowedToPropose(
 			Turn:  nextTurn,
 			Frame: currentFrame,
 		},
-	), nil
+	), nextTurn, nil
 }
 
 // getCurrentTurn calculates the current turn based on the last seen proposal
@@ -89,9 +89,9 @@ func getCurrentTurn(
 	proposalState ProposalSyncState,
 	currentFrame idx.Frame,
 ) Turn {
-	if currentFrame < proposalState.LastSeenProposalFrame {
+	if currentFrame <= proposalState.LastSeenProposalFrame {
 		return proposalState.LastSeenProposalTurn
 	}
-	delta := currentFrame - proposalState.LastSeenProposalFrame
+	delta := currentFrame - proposalState.LastSeenProposalFrame - 1
 	return proposalState.LastSeenProposalTurn + Turn(delta/TurnTimeoutInFrames)
 }

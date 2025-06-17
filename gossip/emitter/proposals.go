@@ -107,7 +107,7 @@ func createPayload(
 
 	// Determine whether this validator is allowed to propose a new block.
 	currentEpoch := event.Epoch()
-	isMyTurn, err := inter.IsAllowedToPropose(
+	isMyTurn, turn, err := inter.IsAllowedToPropose(
 		validator,
 		validators,
 		incomingState,
@@ -155,7 +155,7 @@ func createPayload(
 	// new proposal.
 	return inter.Payload{
 		ProposalSyncState: inter.ProposalSyncState{
-			LastSeenProposalTurn:  incomingState.LastSeenProposalTurn + 1,
+			LastSeenProposalTurn:  turn,
 			LastSeenProposalFrame: currentFrame,
 		},
 		Proposal: proposal,

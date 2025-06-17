@@ -118,7 +118,7 @@ func (v *Checker) Validate(e inter.EventPayloadI) error {
 	}
 
 	// Check that the proposer was allowed to make this proposal.
-	allowed, err := inter.IsAllowedToPropose(
+	allowed, _, err := inter.IsAllowedToPropose(
 		e.Creator(),
 		v.reader.GetEpochValidators(),
 		incoming,
