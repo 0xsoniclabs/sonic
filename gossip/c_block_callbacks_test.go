@@ -382,7 +382,7 @@ func generateKeyPair(t testing.TB) (*encryption.PrivateKey, validatorpk.PubKey) 
 	return privateKey, publicKey
 }
 
-func TestFilterInvalidTransactions_InactiveWithoutAllegro(t *testing.T) {
+func TestFilterNonPermissibleTransactions_InactiveWithoutAllegro(t *testing.T) {
 	require := require.New(t)
 
 	withoutAllegro := opera.Rules{}
@@ -395,16 +395,16 @@ func TestFilterInvalidTransactions_InactiveWithoutAllegro(t *testing.T) {
 	valid := types.NewTx(&types.LegacyTx{})
 	invalid := types.NewTx(&types.SetCodeTx{})
 
-	require.NoError(isValid(valid, &withAllegro))
-	require.Error(isValid(invalid, &withAllegro))
+	require.NoError(isPermissible(valid, &withAllegro))
+	require.Error(isPermissible(invalid, &withAllegro))
 
 	txs := []*types.Transaction{valid, invalid}
 
-	require.Equal(txs, filterInvalidTransactions(txs, &withoutAllegro, nil, nil))
-	require.Equal([]*types.Transaction{valid}, filterInvalidTransactions(txs, &withAllegro, nil, nil))
+	require.Equal(txs, filterNonPermissibleTransactions(txs, &withoutAllegro, nil, nil))
+	require.Equal([]*types.Transaction{valid}, filterNonPermissibleTransactions(txs, &withAllegro, nil, nil))
 }
 
-func TestFilterInvalidTransactions_FiltersInvalidTransactions(t *testing.T) {
+func TestFilterNonPermissibleTransactions_FiltersNonPermissibleTransactions(t *testing.T) {
 	rules := opera.Rules{
 		Upgrades: opera.Upgrades{
 			Allegro: true,
@@ -419,10 +419,10 @@ func TestFilterInvalidTransactions_FiltersInvalidTransactions(t *testing.T) {
 
 	txs := []*types.Transaction{invalid, valid1, invalid, valid2, invalid, invalid, valid3, invalid}
 	want := []*types.Transaction{valid1, valid2, valid3}
-	require.Equal(t, want, filterInvalidTransactions(txs, &rules, nil, nil))
+	require.Equal(t, want, filterNonPermissibleTransactions(txs, &rules, nil, nil))
 }
 
-func TestFilterInvalidTransactions_LogsIssuesOfInvalidTransactions(t *testing.T) {
+func TestFilterNonPermissibleTransactions_LogsIssuesOfNonPermissibleTransactions(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	log := logger.NewMockLogger(ctrl)
 
@@ -438,18 +438,18 @@ func TestFilterInvalidTransactions_LogsIssuesOfInvalidTransactions(t *testing.T)
 	})
 
 	log.EXPECT().Warn(
-		"Invalid transaction in the proposal",
+		"Non-permissible transaction in the proposal",
 		"tx", gomock.Any(),
-		"issue", isValid(invalid1, &rules),
+		"issue", isPermissible(invalid1, &rules),
 	)
 
 	log.EXPECT().Warn(
-		"Invalid transaction in the proposal",
+		"Non-permissible transaction in the proposal",
 		"tx", gomock.Any(),
-		"issue", isValid(invalid2, &rules),
+		"issue", isPermissible(invalid2, &rules),
 	)
 
-	filterInvalidTransactions(
+	filterNonPermissibleTransactions(
 		[]*types.Transaction{invalid1, invalid2},
 		&rules,
 		log,
@@ -457,7 +457,7 @@ func TestFilterInvalidTransactions_LogsIssuesOfInvalidTransactions(t *testing.T)
 	)
 }
 
-func TestFilterInvalidTransactions_ReportsInvalidTransactionsToMonitoring(t *testing.T) {
+func TestFilterNonPermissibleTransactions_ReportsNonPermissibleTransactionsToMonitoring(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	counter := NewMockmetricCounter(ctrl)
 
@@ -474,7 +474,7 @@ func TestFilterInvalidTransactions_ReportsInvalidTransactionsToMonitoring(t *tes
 	counter.EXPECT().Mark(int64(1))
 	counter.EXPECT().Mark(int64(1))
 
-	filterInvalidTransactions(
+	filterNonPermissibleTransactions(
 		[]*types.Transaction{valid, invalid, valid, invalid},
 		&rules,
 		nil,
@@ -482,7 +482,7 @@ func TestFilterInvalidTransactions_ReportsInvalidTransactionsToMonitoring(t *tes
 	)
 }
 
-func TestIsValid_AcceptsValidTransactions(t *testing.T) {
+func TestIsPermissible_AcceptsPermissibleTransactions(t *testing.T) {
 	tests := map[string]*types.Transaction{
 		"legacy":      types.NewTx(&types.LegacyTx{}),
 		"access list": types.NewTx(&types.AccessListTx{}),
@@ -500,12 +500,12 @@ func TestIsValid_AcceptsValidTransactions(t *testing.T) {
 	}
 	for name, tx := range tests {
 		t.Run(name, func(t *testing.T) {
-			require.NoError(t, isValid(tx, &rules))
+			require.NoError(t, isPermissible(tx, &rules))
 		})
 	}
 }
 
-func TestIsValid_AcceptsSetCodeTransactionsOnlyInAllegro(t *testing.T) {
+func TestIsPermissible_AcceptsSetCodeTransactionsOnlyInAllegro(t *testing.T) {
 	tx := types.NewTx(&types.SetCodeTx{
 		AuthList: []types.SetCodeAuthorization{{}},
 	})
@@ -518,10 +518,10 @@ func TestIsValid_AcceptsSetCodeTransactionsOnlyInAllegro(t *testing.T) {
 				},
 			}
 			if enabled {
-				require.NoError(t, isValid(tx, &rules))
+				require.NoError(t, isPermissible(tx, &rules))
 			} else {
 				require.ErrorContains(t,
-					isValid(tx, &rules),
+					isPermissible(tx, &rules),
 					"unsupported transaction type",
 				)
 			}
@@ -529,7 +529,7 @@ func TestIsValid_AcceptsSetCodeTransactionsOnlyInAllegro(t *testing.T) {
 	}
 }
 
-func TestIsValid_DetectsInvalidTransactions(t *testing.T) {
+func TestIsPermissible_DetectsNonPermissibleTransactions(t *testing.T) {
 	tests := map[string]struct {
 		transaction *types.Transaction
 		issue       string
@@ -557,7 +557,7 @@ func TestIsValid_DetectsInvalidTransactions(t *testing.T) {
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			err := isValid(test.transaction, &rules)
+			err := isPermissible(test.transaction, &rules)
 			require.ErrorContains(t, err, test.issue)
 		})
 	}

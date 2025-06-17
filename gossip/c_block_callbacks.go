@@ -213,7 +213,7 @@ func consensusCallbackBeginBlockFn(
 				}
 
 				// Filter invalid transactions from the proposal.
-				proposal.Transactions = filterInvalidTransactions(
+				proposal.Transactions = filterNonPermissibleTransactions(
 					proposal.Transactions, &es.Rules, log.Root(), invalidTxsMeter,
 				)
 
@@ -667,10 +667,12 @@ func extractProposalForNextBlock(
 	return best.Proposal, proposers[best]
 }
 
-// filterInvalidTransactions filters out invalid transactions from the given
-// transactions slice. Invalid transactions are logged and counted in the
-// provided log and metric instances respectively.
-func filterInvalidTransactions(
+// filterNonPermissibleTransactions filters out transactions that are not allowed
+// to be included in a block according to the network rules. It returns a slice
+// of permissible transactions. For encountered non-permissible transactions
+// log messages are emitted and the number of such transactions is reported to
+// the provided metric counter.
+func filterNonPermissibleTransactions(
 	transactions []*types.Transaction,
 	rules *opera.Rules,
 	log log.Logger,
@@ -681,9 +683,9 @@ func filterInvalidTransactions(
 		return transactions
 	}
 	return slices.DeleteFunc(transactions, func(tx *types.Transaction) bool {
-		if err := isValid(tx, rules); err != nil {
+		if err := isPermissible(tx, rules); err != nil {
 			if log != nil {
-				log.Warn("Invalid transaction in the proposal", "tx", tx.Hash(), "issue", err)
+				log.Warn("Non-permissible transaction in the proposal", "tx", tx.Hash(), "issue", err)
 			}
 			if counter != nil {
 				counter.Mark(1)
@@ -694,18 +696,18 @@ func filterInvalidTransactions(
 	})
 }
 
-// isValid checks whether a transaction is valid according to the consensus
-// rules. This is the canonical validation set for transactions before they are
-// accepted in blocks. It is used to verify static properties according to the
-// current network rules.
+// isPermissible checks whether a transaction is allowed to be included in a
+// block according to the network rules. It is used to control the set of
+// supported transaction types and their properties on the block chain.
 //
-// Transactions rejected by this step are considered invalid transactions.
-// Honest validators should never produce blocks containing invalid transactions.
+// Rejected transactions are considered non-permissible transactions.
+// Honest validators should not suggest non-permissible transactions.
 //
-// Valid transactions may still be rejected by the block processor due to nonce
-// or balance issues. In such cases, the transaction is considered a skipped
-// transaction. Skips should be minimized, but can not be completely avoided.
-func isValid(
+// Permissible transactions may still be rejected by the block processor due to
+// nonce or balance issues. In such cases, the transaction is considered a
+// skipped transaction. Skips should be minimized, but can not be completely
+// avoided.
+func isPermissible(
 	tx *types.Transaction,
 	rules *opera.Rules,
 ) error {
