@@ -1186,7 +1186,7 @@ func TestDebugTraceWithBlobTx(t *testing.T) {
 			CanTransfer: vm.CanTransferFunc(func(sd vm.StateDB, a1 common.Address, i *uint256.Int) bool { return true }),
 		}
 
-		vmConfig := opera.DefaultVMConfig
+		vmConfig := opera.GetVmConfig(opera.Rules{})
 		vmConfig.NoBaseFee = true
 
 		// transaction index is 1 for obtaining state after transaction 0
@@ -1198,6 +1198,7 @@ func TestDebugTraceWithBlobTx(t *testing.T) {
 		mockBackend.EXPECT().GetTransaction(any, any).Return(block.Transactions[txIndex], block.NumberU64(), txIndex, nil)
 		mockBackend.EXPECT().BlockByNumber(any, any).Return(block, nil).AnyTimes()
 		mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, any).Return(mockState, nil, nil).AnyTimes()
+		mockBackend.EXPECT().GetNetworkRules(any, any).Return(&opera.Rules{}, nil).AnyTimes()
 		mockBackend.EXPECT().ChainConfig(gomock.Any()).Return(chainConfig).AnyTimes()
 		mockBackend.EXPECT().GetEVM(any, any, any, noBaseFeeMatcher{expected: true}, any).DoAndReturn(getEvmFuncWithParameters(mockState, chainConfig, &blockCtx, vmConfig)).AnyTimes()
 		mockState.EXPECT().GetBalance(any).Return(uint256.NewInt(21_000_000_000_000_000)).AnyTimes()

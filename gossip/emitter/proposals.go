@@ -190,7 +190,7 @@ func (w worldAdapter) GetEventPayload(event hash.Event) inter.Payload {
 }
 
 func (w worldAdapter) GetCurrentNetworkRules() opera.Rules {
-	return w.External.GetRules()
+	return w.GetRules()
 }
 
 func (w worldAdapter) GetEvmChainConfig(blockHeight idx.Block) *params.ChainConfig {

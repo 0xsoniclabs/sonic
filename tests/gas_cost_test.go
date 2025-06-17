@@ -553,6 +553,6 @@ func TestExcessGasCharges_DisabledInSingleProposerModeInNewAndHistoricRuns(t *te
 
 	// Check that historic network rules are used and retained during restarts.
 	checkHistoricBlocks()
-	net.Restart()
+	require.NoError(net.Restart())
 	checkHistoricBlocks()
 }
