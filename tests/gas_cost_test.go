@@ -109,7 +109,7 @@ func testGasCosts_Sonic(t *testing.T, singleProposer bool) {
 		}
 	})
 
-	t.Run("Sonic processor charges 10% of unused gas in distributed proposer mode", func(t *testing.T) {
+	t.Run("Sonic processor charges 10% of unused gas", func(t *testing.T) {
 		t.Parallel()
 		session := net.SpawnSession(t)
 		for test := range makeGasCostTestInputs(t, session) {
@@ -236,7 +236,7 @@ func testGasCosts_Allegro(t *testing.T, singleProposer bool) {
 		require.Equal(t, 16, corrections, "expected 16 floor data gas corrections in the generated inputs, got %d", corrections)
 	})
 
-	t.Run("Sonic processor charges 10% of unused gas in distributed proposer mode", func(t *testing.T) {
+	t.Run("Sonic processor charges 10% of unused gas", func(t *testing.T) {
 		t.Parallel()
 		session := net.SpawnSession(t)
 
@@ -460,7 +460,7 @@ func makeGasCostTestInputs(
 
 }
 
-func TestExcessGasCharges_DisabledInSingleProposerMode(t *testing.T) {
+func TestExcessGasCharges_DisabledInSingleProposerModeInNewAndHistoricRuns(t *testing.T) {
 	require := require.New(t)
 
 	upgrades := opera.GetAllegroUpgrades()

@@ -355,10 +355,15 @@ func (b *EthAPIBackend) GetEVM(ctx context.Context, state vm.StateDB, header *ev
 	vmError := func() error { return nil }
 
 	if vmConfig == nil {
-		// TODO: get the network rules for the given block
-		// TODO: add a test failing if this is not covered
-		rules := opera.Rules{}
-		config := opera.GetVmConfig(rules)
+		block := idx.Block(header.Number.Uint64())
+		rules, err := b.GetNetworkRules(ctx, block)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to get network rules for block %d: %w", block, err)
+		}
+		if rules == nil {
+			return nil, nil, fmt.Errorf("network rules for block %d are not found", block)
+		}
+		config := opera.GetVmConfig(*rules)
 		vmConfig = &config
 	}
 	var context vm.BlockContext

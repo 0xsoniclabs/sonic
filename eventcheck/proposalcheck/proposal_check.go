@@ -190,9 +190,5 @@ func checkProposal(
 		return ErrTransactionsExceedSizeLimit
 	}
 
-	// Other transaction properties like the range of valid transaction types,
-	// value range limits, and gas limits are checked by the basic and epoch
-	// checks.
-
 	return nil
 }
