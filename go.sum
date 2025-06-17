@@ -1,7 +1,7 @@
 github.com/0xsoniclabs/carmen/go v0.0.0-20250530111616-fabde4233b62 h1:NF+A6zk8FYDuDk9aTVtzn7/e8kj+LERtyt+cfcHz+vM=
 github.com/0xsoniclabs/carmen/go v0.0.0-20250530111616-fabde4233b62/go.mod h1:s161Ju9dIK9gZ982wBx2WaCNN5Hv4OjC6YyoftKKF48=
-github.com/0xsoniclabs/go-ethereum v0.0.0-20250606081222-364a8490a93b h1:yCLfmzZ4Csbblkzyjw2m0Rhcus+wb3X0xatFUX9EmPQ=
-github.com/0xsoniclabs/go-ethereum v0.0.0-20250606081222-364a8490a93b/go.mod h1:neQD30i5v+/u41EUK4C9lFAnjefSWD6xhbdGI/rg6YQ=
+github.com/0xsoniclabs/go-ethereum v0.0.0-20250617161519-7d950436278b h1:COCmc0OvXYUG5EKwG7TwTKB9/s9NP3IQ8jn9lSFj/+w=
+github.com/0xsoniclabs/go-ethereum v0.0.0-20250617161519-7d950436278b/go.mod h1:neQD30i5v+/u41EUK4C9lFAnjefSWD6xhbdGI/rg6YQ=
 github.com/0xsoniclabs/tosca v0.0.0-20250414093812-91b42e73396f h1:Cqn4e6+R7zbQxZuzOkjvO1PTHCXz/wbR9ZCKTf69uvk=
 github.com/0xsoniclabs/tosca v0.0.0-20250414093812-91b42e73396f/go.mod h1:LujnkwOuuV44CNdNI/YI8bFb8YGKSq4Imof7n4sxcfc=
 github.com/DataDog/zstd v1.5.6 h1:LbEglqepa/ipmmQJUDnSsfvA8e8IStVcGaFWDuxvGOY=
