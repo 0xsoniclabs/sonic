@@ -710,6 +710,10 @@ func isValid(
 	rules *opera.Rules,
 ) error {
 
+	if tx == nil {
+		return fmt.Errorf("nil transaction")
+	}
+
 	// -- Check transaction type --
 
 	maxTxType := uint8(types.BlobTxType)

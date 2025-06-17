@@ -534,6 +534,10 @@ func TestIsValid_DetectsInvalidTransactions(t *testing.T) {
 		transaction *types.Transaction
 		issue       string
 	}{
+		"nil transaction": {
+			transaction: nil,
+			issue:       "nil transaction",
+		},
 		"blob with blob hashes": {
 			transaction: types.NewTx(&types.BlobTx{
 				BlobHashes: []common.Hash{{1, 2, 3}},
