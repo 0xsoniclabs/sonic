@@ -90,8 +90,8 @@ type Backend interface {
 	SubscribeNewTxsNotify(chan<- evmcore.NewTxsNotify) notify.Subscription
 
 	ChainID() *big.Int
-	ChainConfig(blockHeight idx.Block) *params.ChainConfig
 	CurrentBlock() *evmcore.EvmBlock
+	ChainConfig(blockHeight idx.Block) *params.ChainConfig
 
 	GetNetworkRules(ctx context.Context, blockHeight idx.Block) (*opera.Rules, error)
 
