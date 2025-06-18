@@ -2,8 +2,8 @@ github.com/0xsoniclabs/cacheutils v0.0.0-20250320134355-5a9aa4df3861 h1:bPq81jZ4
 github.com/0xsoniclabs/cacheutils v0.0.0-20250320134355-5a9aa4df3861/go.mod h1:h8zoP6oh9hqWigMrCY+4WAZBBJBLgphzf4SRYDdFB4A=
 github.com/0xsoniclabs/carmen/go v0.0.0-20250530111616-fabde4233b62 h1:NF+A6zk8FYDuDk9aTVtzn7/e8kj+LERtyt+cfcHz+vM=
 github.com/0xsoniclabs/carmen/go v0.0.0-20250530111616-fabde4233b62/go.mod h1:s161Ju9dIK9gZ982wBx2WaCNN5Hv4OjC6YyoftKKF48=
-github.com/0xsoniclabs/consensus v0.0.0-20250505134421-01a8b6438c92 h1:/+ozN1jjuFKxsOO5SXDs3L+7Ee9JK9LIsXdCDIxcBTg=
-github.com/0xsoniclabs/consensus v0.0.0-20250505134421-01a8b6438c92/go.mod h1:pMaQZ4qKfFOpFidA6pKW/53+TAUwy0mHH1FeVthLn1w=
+github.com/0xsoniclabs/consensus v0.0.0-20250616084056-3c45cdd22d21 h1:p9IbA6C5vhErh0OAfKWP0EhFogSaQL8HsSXq+DN96iw=
+github.com/0xsoniclabs/consensus v0.0.0-20250616084056-3c45cdd22d21/go.mod h1:pMaQZ4qKfFOpFidA6pKW/53+TAUwy0mHH1FeVthLn1w=
 github.com/0xsoniclabs/go-ethereum v0.0.0-20250623123926-e563918a84b4 h1:CXx1PvzOP9kXGKSdPE+S+va2ovhFWnfb3nE7mStpNA4=
 github.com/0xsoniclabs/go-ethereum v0.0.0-20250623123926-e563918a84b4/go.mod h1:1VtASSKSjBQIF9mFv5/B5sllR7KFR05tVsiouSGI2dQ=
 github.com/0xsoniclabs/kvdb v0.0.0-20250224113306-fe6d2ca29563 h1:jx+6rC5/buNABHcuxfL2gdd7zbqvHMMN2u+RdEJO/FY=
