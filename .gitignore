@@ -5,6 +5,8 @@
 .vscode
 .idea/
 
+DB
+
 # Go prof output
 *.prof
 

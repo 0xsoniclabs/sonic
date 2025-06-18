@@ -3,7 +3,7 @@ module github.com/0xsoniclabs/sonic
 go 1.24.0
 
 require (
-	github.com/0xsoniclabs/cacheutils v0.0.0-20250320134355-5a9aa4df3861
+	github.com/0xsoniclabs/cacheutils v0.0.0-20250613191108-1116adc94796
 	github.com/0xsoniclabs/carmen/go v0.0.0-20250113102336-97f8b8616eff
 	github.com/0xsoniclabs/consensus v0.0.0-20250616084056-3c45cdd22d21
 	github.com/0xsoniclabs/kvdb v0.0.0-20250224113306-fe6d2ca29563
@@ -130,6 +130,8 @@ require (
 	pgregory.net/rand v1.0.2 // indirect
 	rsc.io/tmplfunc v0.0.3 // indirect
 )
+
+replace github.com/0xsoniclabs/consensus => /Users/tjofi/code/consensus
 
 replace github.com/ethereum/go-ethereum => github.com/0xsoniclabs/go-ethereum v0.0.0-20250210213022-86eca3554809
 
