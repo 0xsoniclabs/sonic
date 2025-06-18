@@ -337,6 +337,10 @@ func (n *Node) ConfirmProposal(proposal inter.Proposal) {
 	}
 }
 
+// --- fakes required for the implementation of nodes ---
+
+// fakeWorld adapts the Node's internal state to the interface required by the
+// payload creation logic.
 type fakeWorld struct {
 	node *Node
 }
@@ -356,12 +360,15 @@ func (w *fakeWorld) GetRules() opera.Rules {
 	return opera.Rules{}
 }
 
+// fakeRandaoMixer is producing fake RANDAO reveals for the tests.
 type fakeRandaoMixer struct{}
 
 func (fakeRandaoMixer) MixRandao(common.Hash) (randao.RandaoReveal, common.Hash, error) {
 	return randao.RandaoReveal{}, common.Hash{}, nil
 }
 
+// fakeScheduler is a no-op scheduler for the tests. It does not schedule any
+// transactions, as the tests do not require transaction scheduling.
 type fakeScheduler struct{}
 
 func (fakeScheduler) Schedule(
@@ -373,10 +380,13 @@ func (fakeScheduler) Schedule(
 	return nil
 }
 
+// fakeTimerMetric is a no-op timer metric for the tests. It ignores any calls.
 type fakeTimerMetric struct{}
 
 func (fakeTimerMetric) Update(time.Duration) {}
 
+// NodeMask is a bitmask used by the test infrastructure above to identify
+// subsets of nodes. In particular, it is used to identify honest nodes.
 type NodeMask uint32
 
 func (mask NodeMask) Contains(id int) bool {
@@ -402,7 +412,12 @@ func (mask NodeMask) String() string {
 	return builder.String()
 }
 
+// enumerateNodeMasks generates all possible node masks for a given number of
+// nodes. The maximum number of nodes is 32.
 func enumerateNodeMasks(numNodes int) iter.Seq[NodeMask] {
+	if numNodes < 0 || numNodes > 32 {
+		panic(fmt.Sprintf("numNodes must be in range [0, 32], got %d", numNodes))
+	}
 	return func(yield func(NodeMask) bool) {
 		for mask := NodeMask(0); mask < (1 << numNodes); mask++ {
 			if !yield(mask) {
