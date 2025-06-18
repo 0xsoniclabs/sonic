@@ -43,6 +43,7 @@ func (p *StateProcessor) process_iteratively(
 		}
 		if err != nil {
 			// If an error occurs, we skip the transaction and continue with the next one.
+			skipped = append(skipped, uint32(i))
 			receipts[i] = nil
 			continue
 		}
@@ -191,8 +192,8 @@ func TestProcess_DetectsTransactionThatCanNotBeConvertedIntoAMessage(t *testing.
 			receipts, logs, skipped := process(block, state, vmConfig, usedGas, nil)
 
 			require.ElementsMatch(receipts, []*types.Receipt{nil})
+			require.ElementsMatch(skipped, []uint32{0})
 			require.Empty(logs)
-			require.Empty(skipped)
 		})
 	}
 }
@@ -313,9 +314,8 @@ func TestProcess_FailingTransactionAreSkippedButTheBlockIsNotTerminated(t *testi
 	require.Len(t, receipts, 2)
 	require.Nil(t, receipts[0])
 	require.NotNil(t, receipts[1])
-
+	require.Len(t, skipped, 1)
 	require.Empty(t, logs)
-	require.Empty(t, skipped)
 }
 
 func TestApplyTransaction_InternalTransactionsSkipBaseFeeCharges(t *testing.T) {

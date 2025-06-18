@@ -99,6 +99,7 @@ func (p *StateProcessor) Process(
 		msg, err := TxAsMessage(tx, signer, header.BaseFee)
 		if err != nil {
 			log.Error("Failed to convert transaction to message", "tx", tx.Hash().Hex(), "err", err)
+			skipped = append(skipped, uint32(i))
 			receipts = append(receipts, nil)
 			continue // skip this transaction, but continue processing the rest of the block
 		}
@@ -112,6 +113,7 @@ func (p *StateProcessor) Process(
 		}
 		if err != nil {
 			log.Error("Failed to apply transaction", "tx", tx.Hash().Hex(), "err", err)
+			skipped = append(skipped, uint32(i))
 			receipts = append(receipts, nil)
 			continue // skip this transaction, but continue processing the rest of the block
 		}
