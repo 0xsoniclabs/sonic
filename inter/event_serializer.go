@@ -20,7 +20,7 @@ var (
 	ErrUnknownVersion    = errors.New("unknown serialization version")
 )
 
-const MaxSerializationVersion = 3
+const MaxSerializationVersion = 4
 
 const ProtocolMaxMsgSize = 10 * 1024 * 1024
 
@@ -73,10 +73,10 @@ func (e *Event) MarshalCSER(w *cser.Writer) error {
 		w.Bool(e.AnyEpochVote())
 		w.Bool(e.AnyBlockVotes())
 	}
-	if e.Version() == 3 {
+	if e.Version() == 4 {
 		w.Bool(e.HasProposal())
 	}
-	if e.AnyTxs() || e.AnyMisbehaviourProofs() || e.AnyBlockVotes() || e.AnyEpochVote() || e.Version() == 3 {
+	if e.AnyTxs() || e.AnyMisbehaviourProofs() || e.AnyBlockVotes() || e.AnyEpochVote() || e.Version() == 4 {
 		w.FixedBytes(e.PayloadHash().Bytes())
 	}
 	// extra
@@ -150,11 +150,11 @@ func eventUnmarshalCSER(r *cser.Reader, e *MutableEventPayload) (err error) {
 	anyMisbehaviourProofs := version == 1 && r.Bool()
 	anyEpochVote := version == 1 && r.Bool()
 	anyBlockVotes := version == 1 && r.Bool()
-	hasProposal := version == 3 && r.Bool()
+	hasProposal := version == 4 && r.Bool()
 	payloadHash := EmptyPayloadHash(version)
-	if anyTxs || anyMisbehaviourProofs || anyEpochVote || anyBlockVotes || version == 3 {
+	if anyTxs || anyMisbehaviourProofs || anyEpochVote || anyBlockVotes || version == 4 {
 		r.FixedBytes(payloadHash[:])
-		if version != 3 && payloadHash == EmptyPayloadHash(version) {
+		if version != 4 && payloadHash == EmptyPayloadHash(version) {
 			return cser.ErrNonCanonicalEncoding
 		}
 	}
@@ -256,7 +256,7 @@ func (e *EventPayload) MarshalCSER(w *cser.Writer) error {
 	if e.AnyBlockVotes() != (len(e.blockVotes.Votes) != 0) {
 		return ErrSerMalformedEvent
 	}
-	if e.Version() == 3 {
+	if e.Version() == 4 {
 		if e.AnyBlockVotes() || e.AnyEpochVote() || e.AnyMisbehaviourProofs() || e.AnyTxs() {
 			return ErrSerMalformedEvent
 		}
@@ -303,7 +303,7 @@ func (e *EventPayload) MarshalCSER(w *cser.Writer) error {
 			return err
 		}
 	}
-	if e.Version() == 3 {
+	if e.Version() == 4 {
 		b, err := e.Payload().Serialize()
 		if err != nil {
 			return err
@@ -382,7 +382,7 @@ func (e *MutableEventPayload) UnmarshalCSER(r *cser.Reader) error {
 	}
 	e.blockVotes = bvs
 	// generic payload
-	if e.Version() == 3 {
+	if e.Version() == 4 {
 		b := r.SliceBytes(ProtocolMaxMsgSize)
 		if err := e.payload.Deserialize(b); err != nil {
 			return err

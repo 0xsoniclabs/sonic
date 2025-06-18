@@ -7,7 +7,6 @@ import (
 	base "github.com/Fantom-foundation/lachesis-base/eventcheck/basiccheck"
 	"github.com/ethereum/go-ethereum/core/types"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/inter"
 )
 
@@ -34,14 +33,23 @@ func New() *Checker {
 
 // validateTx checks whether a transaction is valid according to the consensus
 // rules
-func validateTx(tx *types.Transaction) error {
+func validateTx(tx *types.Transaction, version uint8) error {
 	// Transactions can't be negative. This may never happen using RLP decoded
 	// transactions but may occur if you create a transaction using the RPC.
 	if tx.Value().Sign() < 0 || tx.GasPrice().Sign() < 0 {
 		return ErrNegativeValue
 	}
+
+	var intrGas uint64
+	var err error
 	// Ensure the transaction has more gas than the basic tx fee.
-	intrGas, err := evmcore.IntrinsicGas(tx.Data(), tx.AccessList(), tx.To() == nil)
+	// before allegro use old intrinsic gas calculation
+	if version < 3 {
+		intrGas, err = intrinsicGas(tx.Data(), tx.AccessList(), tx.To() == nil)
+	} else {
+		intrGas, err = intrinsicGasAllegro(tx.Data(), tx.AccessList(), tx.SetCodeAuthorizations(), tx.To() == nil)
+
+	}
 	if err != nil {
 		return err
 	}
@@ -57,7 +65,7 @@ func validateTx(tx *types.Transaction) error {
 
 func (v *Checker) checkTxs(e inter.EventPayloadI) error {
 	for _, tx := range e.Transactions() {
-		if err := validateTx(tx); err != nil {
+		if err := validateTx(tx, e.Version()); err != nil {
 			return err
 		}
 	}

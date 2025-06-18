@@ -134,6 +134,8 @@ func (v *Checker) Validate(e inter.EventPayloadI) error {
 
 	version := uint8(0)
 	if rules.Upgrades.SingleProposerBlockFormation {
+		version = 4
+	} else if rules.Upgrades.Allegro {
 		version = 3
 	} else if rules.Upgrades.Sonic {
 		version = 2

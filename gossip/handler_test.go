@@ -43,7 +43,7 @@ func TestValidateEventPropertiesDependingOnParents(t *testing.T) {
 		},
 		"proposal check violation": {
 			modify: func(event *inter.MutableEventPayload) {
-				event.SetVersion(3)
+				event.SetVersion(4)
 				event.SetPayload(inter.Payload{
 					ProposalSyncState: inter.ProposalSyncState{
 						LastSeenProposalTurn: 75,

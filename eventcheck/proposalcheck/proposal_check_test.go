@@ -12,9 +12,9 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func TestProposalCheck_Validate_NonVersion3WithoutProposal_Passes(t *testing.T) {
+func TestProposalCheck_Validate_NonVersion4WithoutProposal_Passes(t *testing.T) {
 	for version := range uint8(10) {
-		if version == 3 {
+		if version == 4 {
 			continue
 		}
 		ctrl := gomock.NewController(t)
@@ -27,9 +27,9 @@ func TestProposalCheck_Validate_NonVersion3WithoutProposal_Passes(t *testing.T) 
 	}
 }
 
-func TestProposalCheck_Validate_NonVersion3WithProposal_Fails(t *testing.T) {
+func TestProposalCheck_Validate_NonVersion4WithProposal_Fails(t *testing.T) {
 	for version := range uint8(10) {
-		if version == 3 {
+		if version == 4 {
 			continue
 		}
 		ctrl := gomock.NewController(t)
@@ -47,7 +47,7 @@ func TestProposalCheck_Validate_NonVersion3WithProposal_Fails(t *testing.T) {
 func TestProposalCheck_Validate_ValidGenesisEventWithoutProposalPasses(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	reader := NewMockReader(ctrl)
-	event := NewMockEventPassingVersion3PropertyTests(ctrl)
+	event := NewMockEventPassingVersion4PropertyTests(ctrl)
 
 	// The event to be tested is a genesis event - there are no parents.
 	event.EXPECT().Parents().Return([]hash.Event{})
@@ -65,7 +65,7 @@ func TestProposalCheck_Validate_ValidGenesisEventWithoutProposalPasses(t *testin
 func TestProposalCheck_Validate_ValidGenesisEventWithProposalPasses(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	reader := NewMockReader(ctrl)
-	event := NewMockEventPassingVersion3PropertyTests(ctrl)
+	event := NewMockEventPassingVersion4PropertyTests(ctrl)
 
 	validator := idx.ValidatorID(1)
 	validators := pos.EqualWeightValidators([]idx.ValidatorID{validator}, 1)
@@ -93,7 +93,7 @@ func TestProposalCheck_Validate_ValidGenesisEventWithProposalPasses(t *testing.T
 func TestProposalCheck_Validate_ValidEventWithoutProposalPasses(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	reader := NewMockReader(ctrl)
-	event := NewMockEventPassingVersion3PropertyTests(ctrl)
+	event := NewMockEventPassingVersion4PropertyTests(ctrl)
 
 	parent1 := hash.Event{1}
 	parent2 := hash.Event{2}
@@ -127,7 +127,7 @@ func TestProposalCheck_Validate_ValidEventWithoutProposalPasses(t *testing.T) {
 func TestProposalCheck_Validate_ValidEventWithProposalPasses(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	reader := NewMockReader(ctrl)
-	event := NewMockEventPassingVersion3PropertyTests(ctrl)
+	event := NewMockEventPassingVersion4PropertyTests(ctrl)
 
 	validator := idx.ValidatorID(1)
 	validators := pos.EqualWeightValidators([]idx.ValidatorID{validator}, 1)
@@ -177,27 +177,27 @@ func TestChecker_Validate_DetectsInvalidEvent(t *testing.T) {
 		corrupt  func(event *inter.MockEventPayloadI)
 		expected error
 	}{
-		"invalid version 3 content": {
+		"invalid version 4 content": {
 			corrupt: func(event *inter.MockEventPayloadI) {
 				// just one example of invalid content
 				event.EXPECT().AnyTxs().Return(true)
 			},
-			expected: ErrVersion3MustNotContainIndividualTransactions,
+			expected: ErrVersion4MustNotContainIndividualTransactions,
 		},
 		"nil payload": {
 			corrupt: func(event *inter.MockEventPayloadI) {
 				event.EXPECT().Payload().Return(nil)
 			},
-			expected: ErrVersion3MustHaveANonNilPayload,
+			expected: ErrVersion4MustHaveANonNilPayload,
 		},
 		"sudden nil payload": {
 			corrupt: func(event *inter.MockEventPayloadI) {
-				// This is called by the version-3 checker.
+				// This is called by the version-4 checker.
 				event.EXPECT().Payload().Return(&inter.Payload{})
 				// This is called by Validate before running payload checks.
 				event.EXPECT().Payload().Return(nil)
 			},
-			expected: ErrVersion3MustHaveANonNilPayload,
+			expected: ErrVersion4MustHaveANonNilPayload,
 		},
 		"proposal without sync state progression": {
 			corrupt: func(event *inter.MockEventPayloadI) {
@@ -262,7 +262,7 @@ func TestChecker_Validate_DetectsInvalidEvent(t *testing.T) {
 
 			test.corrupt(event)
 
-			event.EXPECT().Version().Return(uint8(3)).AnyTimes()
+			event.EXPECT().Version().Return(uint8(4)).AnyTimes()
 			event.EXPECT().AnyTxs().AnyTimes()
 			event.EXPECT().AnyBlockVotes().AnyTimes()
 			event.EXPECT().AnyEpochVote().AnyTimes()
@@ -288,7 +288,7 @@ func TestChecker_Validate_DetectsInvalidEvent(t *testing.T) {
 func TestProposalCheck_Validate_ReportsInvalidValidatorSet(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	reader := NewMockReader(ctrl)
-	event := NewMockEventPassingVersion3PropertyTests(ctrl)
+	event := NewMockEventPassingVersion4PropertyTests(ctrl)
 
 	// An empty validator set is invalid.
 	validator := idx.ValidatorID(1)
@@ -313,14 +313,14 @@ func TestProposalCheck_Validate_ReportsInvalidValidatorSet(t *testing.T) {
 	require.ErrorContains(t, checker.Validate(event), "no validators")
 }
 
-func TestCheckVersion3EventProperties_AcceptsValidEvent(t *testing.T) {
+func TestCheckVersion4EventProperties_AcceptsValidEvent(t *testing.T) {
 	builder := inter.MutableEventPayload{}
-	builder.SetVersion(3)
+	builder.SetVersion(4)
 	event := builder.Build()
-	require.NoError(t, checkVersion3EventProperties(event))
+	require.NoError(t, checkVersion4EventProperties(event))
 }
 
-func TestCheckVersion3EventProperties_DetectsInvalidContent(t *testing.T) {
+func TestCheckVersion4EventProperties_DetectsInvalidContent(t *testing.T) {
 
 	tests := map[string]struct {
 		taint    func(event *inter.MockEventPayloadI)
@@ -330,31 +330,31 @@ func TestCheckVersion3EventProperties_DetectsInvalidContent(t *testing.T) {
 			taint: func(event *inter.MockEventPayloadI) {
 				event.EXPECT().AnyTxs().Return(true)
 			},
-			expected: ErrVersion3MustNotContainIndividualTransactions,
+			expected: ErrVersion4MustNotContainIndividualTransactions,
 		},
 		"with block votes": {
 			taint: func(event *inter.MockEventPayloadI) {
 				event.EXPECT().AnyBlockVotes().Return(true)
 			},
-			expected: ErrVersion3MustNotContainBlockVotes,
+			expected: ErrVersion4MustNotContainBlockVotes,
 		},
 		"with epoch votes": {
 			taint: func(event *inter.MockEventPayloadI) {
 				event.EXPECT().AnyEpochVote().Return(true)
 			},
-			expected: ErrVersion3MustNotContainEpochVotes,
+			expected: ErrVersion4MustNotContainEpochVotes,
 		},
 		"with misbehavior proofs": {
 			taint: func(event *inter.MockEventPayloadI) {
 				event.EXPECT().AnyMisbehaviourProofs().Return(true)
 			},
-			expected: ErrVersion3MustNotContainMisbehaviorProofs,
+			expected: ErrVersion4MustNotContainMisbehaviorProofs,
 		},
 		"with nil payload": {
 			taint: func(event *inter.MockEventPayloadI) {
 				event.EXPECT().Payload().Return(nil)
 			},
-			expected: ErrVersion3MustHaveANonNilPayload,
+			expected: ErrVersion4MustHaveANonNilPayload,
 		},
 	}
 
@@ -367,7 +367,7 @@ func TestCheckVersion3EventProperties_DetectsInvalidContent(t *testing.T) {
 			event.EXPECT().AnyBlockVotes().AnyTimes()
 			event.EXPECT().AnyEpochVote().AnyTimes()
 			event.EXPECT().AnyMisbehaviourProofs().AnyTimes()
-			got := checkVersion3EventProperties(event)
+			got := checkVersion4EventProperties(event)
 			require.ErrorIs(t, got, test.expected)
 		})
 	}
@@ -454,9 +454,9 @@ func TestCheckProposal_DetectsInvalidProposals(t *testing.T) {
 	}
 }
 
-func NewMockEventPassingVersion3PropertyTests(ctrl *gomock.Controller) *inter.MockEventPayloadI {
+func NewMockEventPassingVersion4PropertyTests(ctrl *gomock.Controller) *inter.MockEventPayloadI {
 	event := inter.NewMockEventPayloadI(ctrl)
-	event.EXPECT().Version().Return(uint8(3)).AnyTimes()
+	event.EXPECT().Version().Return(uint8(4)).AnyTimes()
 	event.EXPECT().AnyTxs().AnyTimes()
 	event.EXPECT().AnyBlockVotes().AnyTimes()
 	event.EXPECT().AnyEpochVote().AnyTimes()

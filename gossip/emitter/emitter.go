@@ -401,6 +401,8 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 
 	version := uint8(0)
 	if em.world.GetRules().Upgrades.SingleProposerBlockFormation {
+		version = 4
+	} else if em.world.GetRules().Upgrades.Allegro {
 		version = 3
 	} else if em.world.GetRules().Upgrades.Sonic {
 		version = 2
@@ -438,7 +440,7 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 		return nil, nil
 	}
 
-	if version == 3 {
+	if version == 4 {
 		// add proposal sync state and an optional proposal
 		payload, err := em.createPayload(mutEvent, sortedTxs)
 		if err != nil {

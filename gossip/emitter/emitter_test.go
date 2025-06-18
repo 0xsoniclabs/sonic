@@ -125,14 +125,17 @@ func (fixedPriceBaseFeeSource) GetCurrentBaseFee() *big.Int {
 
 func TestEmitter_CreateEvent_CreatesCorrectEventVersion(t *testing.T) {
 
-	tests := map[string]opera.Upgrades{
+	tests := map[string]struct {
+		upgrades opera.Upgrades
+		version  uint8
+	}{
 		"sonic": {
-			Sonic:   true,
-			Allegro: false,
+			upgrades: opera.Upgrades{Sonic: true, Allegro: false},
+			version:  2,
 		},
 		"allegro": {
-			Sonic:   true,
-			Allegro: true,
+			upgrades: opera.Upgrades{Sonic: true, Allegro: true},
+			version:  3,
 		},
 	}
 
@@ -141,12 +144,12 @@ func TestEmitter_CreateEvent_CreatesCorrectEventVersion(t *testing.T) {
 	builder.Set(validator, pos.Weight(1))
 	validators := builder.Build()
 
-	for name, upgrades := range tests {
+	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 
 			cases := map[bool]uint8{
-				false: 2, // Single-Proposer upgrade is not enabled
-				true:  3, // Single-Proposer upgrade is enabled
+				false: test.version, // Single-Proposer upgrade is not enabled
+				true:  4,            // Single-Proposer upgrade is enabled
 			}
 			for singleProposer, version := range cases {
 				t.Run(fmt.Sprintf("singleProposer=%t", singleProposer), func(t *testing.T) {
@@ -155,7 +158,7 @@ func TestEmitter_CreateEvent_CreatesCorrectEventVersion(t *testing.T) {
 					signer := valkeystore.NewMockSignerAuthority(ctrl)
 
 					rules := opera.Rules{
-						Upgrades: upgrades,
+						Upgrades: test.upgrades,
 					}
 					rules.Upgrades.SingleProposerBlockFormation = singleProposer
 

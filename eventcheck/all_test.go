@@ -61,7 +61,7 @@ func TestCheckers_Validate_ValidEventPassesValidation(t *testing.T) {
 		},
 		"proposal check violation": {
 			modify: func(event *inter.MutableEventPayload) {
-				event.SetVersion(3)
+				event.SetVersion(4)
 				event.SetPayload(inter.Payload{
 					ProposalSyncState: inter.ProposalSyncState{
 						LastSeenProposalTurn: 75,
@@ -135,7 +135,7 @@ func TestCheckers_Validate_ValidEventPassesValidation(t *testing.T) {
 				},
 			}
 
-			if event.Version() == 3 {
+			if event.Version() == 4 {
 				rules.Upgrades.SingleProposerBlockFormation = true
 			}
 

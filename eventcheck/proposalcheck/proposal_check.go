@@ -18,11 +18,11 @@ const (
 
 	ErrProposalInInvalidEventVersion = common.ConstError("proposal in event with invalid version")
 
-	ErrVersion3MustNotContainIndividualTransactions = common.ConstError("version 3 events must not contain individual transactions")
-	ErrVersion3MustNotContainBlockVotes             = common.ConstError("version 3 events must not contain block votes")
-	ErrVersion3MustNotContainEpochVotes             = common.ConstError("version 3 events must not contain epoch votes")
-	ErrVersion3MustNotContainMisbehaviorProofs      = common.ConstError("version 3 events must not contain misbehavior proofs")
-	ErrVersion3MustHaveANonNilPayload               = common.ConstError("version 3 events must have a non-nil payload")
+	ErrVersion4MustNotContainIndividualTransactions = common.ConstError("version 4 events must not contain individual transactions")
+	ErrVersion4MustNotContainBlockVotes             = common.ConstError("version 4 events must not contain block votes")
+	ErrVersion4MustNotContainEpochVotes             = common.ConstError("version 4 events must not contain epoch votes")
+	ErrVersion4MustNotContainMisbehaviorProofs      = common.ConstError("version 4 events must not contain misbehavior proofs")
+	ErrVersion4MustHaveANonNilPayload               = common.ConstError("version 4 events must have a non-nil payload")
 
 	ErrSyncStateProgressionWithoutProposal     = common.ConstError("sync state progression without proposal in event payload")
 	ErrProposalWithoutSyncStateProgression     = common.ConstError("proposal without sync state progression in event payload")
@@ -66,26 +66,26 @@ func New(reader Reader) *Checker {
 // Validate checks whether the event payload is correctly tracking the proposer
 // state and the validity of a potentially included proposal.
 func (v *Checker) Validate(e inter.EventPayloadI) error {
-	// Only version 3 events are allowed to contain proposals.
-	if e.Version() != 3 {
+	// Only version 4 events are allowed to contain proposals.
+	if e.Version() != 4 {
 		if payload := e.Payload(); payload != nil {
 			if proposal := payload.Proposal; proposal != nil {
 				return ErrProposalInInvalidEventVersion
 			}
 		}
-		// All remaining checks are only applicable to version 3 events.
+		// All remaining checks are only applicable to version 4 events.
 		return nil
 	}
 
-	// Check version 3 properties.
-	if err := checkVersion3EventProperties(e); err != nil {
+	// Check version 4 properties.
+	if err := checkVersion4EventProperties(e); err != nil {
 		return err
 	}
 
 	// Check that the payload is not nil.
 	payload := e.Payload()
 	if payload == nil {
-		return ErrVersion3MustHaveANonNilPayload
+		return ErrVersion4MustHaveANonNilPayload
 	}
 
 	// Check valid progression of the proposal sync state.
@@ -136,24 +136,24 @@ func (v *Checker) Validate(e inter.EventPayloadI) error {
 	return checkProposal(e, *proposal)
 }
 
-// checkVersion3EventProperties checks key properties of the event payload for
-// version 3 events.
-func checkVersion3EventProperties(e inter.EventPayloadI) error {
-	// None of the version 1 or 2 payload fields must be present.
+// checkVersion4EventProperties checks key properties of the event payload for
+// version 4 events.
+func checkVersion4EventProperties(e inter.EventPayloadI) error {
+	// None of the version 1, 2 or 3 payload fields must be present.
 	if e.AnyTxs() {
-		return ErrVersion3MustNotContainIndividualTransactions
+		return ErrVersion4MustNotContainIndividualTransactions
 	}
 	if e.AnyBlockVotes() {
-		return ErrVersion3MustNotContainBlockVotes
+		return ErrVersion4MustNotContainBlockVotes
 	}
 	if e.AnyEpochVote() {
-		return ErrVersion3MustNotContainEpochVotes
+		return ErrVersion4MustNotContainEpochVotes
 	}
 	if e.AnyMisbehaviourProofs() {
-		return ErrVersion3MustNotContainMisbehaviorProofs
+		return ErrVersion4MustNotContainMisbehaviorProofs
 	}
 	if e.Payload() == nil {
-		return ErrVersion3MustHaveANonNilPayload
+		return ErrVersion4MustHaveANonNilPayload
 	}
 	return nil
 }

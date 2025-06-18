@@ -17,7 +17,7 @@ func TestChecker_Validate_SingleProposerIntroducesNewFormat(t *testing.T) {
 
 	versions := map[bool]uint8{
 		false: 2, // old format
-		true:  3, // new format
+		true:  4, // new format
 	}
 
 	for enabled, version := range versions {

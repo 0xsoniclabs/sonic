@@ -59,13 +59,13 @@ type EventPayloadI interface {
 
 	// Transactions list the transactions included in this event. These may be
 	// transactions included directly in the payload (version 2 events) or
-	// transactions included in a block proposal (version 3 events).
+	// transactions included in a block proposal (version 4 events).
 	Transactions() types.Transactions
 
 	// TransactionsToMeter returns the transactions that should be used for
 	// metering purposes. These only include transactions that are directly
 	// included in the event payload (version 2 events). Transactions included
-	// in a block proposal (version 3 events) are not charged against a
+	// in a block proposal (version 4 events) are not charged against a
 	// validator's gas power. Their emission rate is controlled through turns.
 	TransactionsToMeter() types.Transactions
 
@@ -77,14 +77,14 @@ type EventPayloadI interface {
 }
 
 var emptyPayloadHash1 = CalcPayloadHash(&MutableEventPayload{extEventData: extEventData{version: 1}})
-var emptyPayloadHash3 = CalcPayloadHash(&MutableEventPayload{extEventData: extEventData{version: 3}})
+var emptyPayloadHash4 = CalcPayloadHash(&MutableEventPayload{extEventData: extEventData{version: 4}})
 
 func EmptyPayloadHash(version uint8) hash.Hash {
 	switch version {
 	case 1:
 		return emptyPayloadHash1
-	case 3:
-		return emptyPayloadHash3
+	case 4:
+		return emptyPayloadHash4
 	default:
 		return hash.Hash(types.EmptyRootHash)
 	}
@@ -248,7 +248,7 @@ func CalcPayloadHash(e EventPayloadI) hash.Hash {
 	if e.Version() == 1 {
 		return hash.Of(hash.Of(CalcTxHash(e.Transactions()).Bytes(), CalcMisbehaviourProofsHash(e.MisbehaviourProofs()).Bytes()).Bytes(), hash.Of(e.EpochVote().Hash().Bytes(), e.BlockVotes().Hash().Bytes()).Bytes())
 	}
-	if e.Version() == 3 {
+	if e.Version() == 4 {
 		return e.Payload().Hash()
 	}
 	return CalcTxHash(e.Transactions())
