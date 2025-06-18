@@ -243,11 +243,16 @@ func TestGasCostTest_Allegro(t *testing.T) {
 
 				expectedCost, err := core.IntrinsicGas(tx.Data(), tx.AccessList(), tx.SetCodeAuthorizations(), tx.To() == nil, true, true, true)
 				require.NoError(t, err)
-				unused := tx.Gas() - expectedCost
-				expectedCost += unused / 10
 
-				if floorDataGas > expectedCost {
+				if floorDataGas <= expectedCost {
+					unused := tx.Gas() - expectedCost
+					expectedCost += unused / 10
+				} else {
 					expectedCost = floorDataGas
+
+					// Even if the floor data gas has to be paid, we still charge 10% of unused gas
+					unused := tx.Gas() - expectedCost
+					expectedCost += unused / 10
 					expectedSmallerThanFloor++
 				}
 
@@ -261,7 +266,7 @@ func TestGasCostTest_Allegro(t *testing.T) {
 		// If the test case generation is modified, please change the expected number of out of bound cases
 		// It is important for this test that these values are never 0
 		require.Equal(t, 12, floorGreaterThan20Percent, "expected 12 cases where floor data gas is greater than 20% of the gas, got %d", floorGreaterThan20Percent)
-		require.Equal(t, 12, expectedSmallerThanFloor, "expected 12 cases where the expected cost is smaller than the floor data gas, got %d", expectedSmallerThanFloor)
+		require.Equal(t, 16, expectedSmallerThanFloor, "expected 16 cases where the expected cost is smaller than the floor data gas, got %d", expectedSmallerThanFloor)
 	})
 }
 
