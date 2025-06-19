@@ -96,7 +96,7 @@ func TestIsAllowedToPropose_AcceptsValidProposerTurn(t *testing.T) {
 	}
 	next := ProposalSummary{
 		Turn:  Turn(6),
-		Frame: idx.Frame(17),
+		Frame: idx.Frame(14),
 	}
 	require.True(IsValidTurnProgression(last, next))
 
@@ -168,7 +168,7 @@ func TestIsAllowedToPropose_RejectsInvalidProposerTurn(t *testing.T) {
 			}
 
 			input := input{
-				currentFrame: 67,
+				currentFrame: 64,
 				validator:    validProposer,
 			}
 

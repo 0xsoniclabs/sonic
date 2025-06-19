@@ -155,13 +155,13 @@ func TestProposalCheck_Validate_ValidEventWithProposalPasses(t *testing.T) {
 
 	event.EXPECT().Creator().Return(validator)
 	event.EXPECT().Epoch().Return(idx.Epoch(4))
-	event.EXPECT().Frame().Return(idx.Frame(20))
+	event.EXPECT().Frame().Return(idx.Frame(16))
 	event.EXPECT().MedianTime().Return(inter.Timestamp(123))
 	event.EXPECT().Parents().Return([]hash.Event{parent1, parent2})
 	event.EXPECT().Payload().Return(&inter.Payload{
 		ProposalSyncState: inter.ProposalSyncState{
 			LastSeenProposalTurn:  joinedState.LastSeenProposalTurn + 1,
-			LastSeenProposalFrame: 20,
+			LastSeenProposalFrame: 16,
 		},
 		Proposal: &inter.Proposal{
 			Time: inter.Timestamp(123),
