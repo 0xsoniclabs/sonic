@@ -1,6 +1,8 @@
 package scheduler
 
 import (
+	"math"
+
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -67,9 +69,13 @@ func (p *evmProcessorFactory) beginBlock(
 	vmConfig := opera.GetVmConfig(p.chain.GetCurrentNetworkRules())
 	state := p.chain.StateDB()
 
+	// The gas limit for transactions is enforced on a per-transaction level
+	// in the scheduler. See the scheduler.Schedule method for details. The
+	// total gas used for attempting to schedule transactions is not limited.
+	gasLimit := uint64(math.MaxUint64)
 	stateProcessor := evmcore.NewStateProcessor(chainCfg, p.chain)
 	return &evmProcessor{
-		processor: stateProcessor.BeginBlock(block, state, vmConfig, nil),
+		processor: stateProcessor.BeginBlock(block, state, vmConfig, gasLimit, nil),
 		stateDb:   state,
 	}
 }

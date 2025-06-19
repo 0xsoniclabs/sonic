@@ -70,7 +70,8 @@ func NewStateProcessor(config *params.ChainConfig, bc DummyChain) *StateProcesso
 // Future hard-forks may be used to clean up the rules and make them more
 // consistent.
 func (p *StateProcessor) Process(
-	block *EvmBlock, statedb state.StateDB, cfg vm.Config, usedGas *uint64, onNewLog func(*types.Log),
+	block *EvmBlock, statedb state.StateDB, cfg vm.Config, gasLimit uint64,
+	usedGas *uint64, onNewLog func(*types.Log),
 ) (
 	types.Receipts, []*types.Log, []uint32,
 ) {
@@ -78,7 +79,7 @@ func (p *StateProcessor) Process(
 	allLogs := make([]*types.Log, 0, len(block.Transactions)*10) // 10 logs per tx is a reasonable estimate
 	skipped := make([]uint32, 0, len(block.Transactions))
 	var (
-		gp           = new(core.GasPool).AddGas(block.GasLimit)
+		gp           = new(core.GasPool).AddGas(gasLimit)
 		receipt      *types.Receipt
 		header       = block.Header()
 		time         = uint64(block.Time.Unix())
@@ -123,10 +124,11 @@ func (p *StateProcessor) Process(
 // This is required by the transaction scheduler in the emitter, which needs to
 // probe individual transactions to determine their applicability and gas usage.
 func (p *StateProcessor) BeginBlock(
-	block *EvmBlock, stateDb state.StateDB, cfg vm.Config, onNewLog func(*types.Log),
+	block *EvmBlock, stateDb state.StateDB, cfg vm.Config, gasLimit uint64,
+	onNewLog func(*types.Log),
 ) *TransactionProcessor {
 	var (
-		gp            = new(core.GasPool).AddGas(block.GasLimit)
+		gp            = new(core.GasPool).AddGas(gasLimit)
 		header        = block.Header()
 		time          = uint64(block.Time.Unix())
 		blockContext  = NewEVMBlockContext(header, p.bc, nil)

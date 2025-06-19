@@ -24,13 +24,14 @@ import (
 // and the TransactionProcessor implementation behave the same way as the
 // Process method.
 func (p *StateProcessor) process_iteratively(
-	block *EvmBlock, stateDb state.StateDB, cfg vm.Config, usedGas *uint64, onNewLog func(*types.Log),
+	block *EvmBlock, stateDb state.StateDB, cfg vm.Config, gasLimit uint64,
+	usedGas *uint64, onNewLog func(*types.Log),
 ) (
 	types.Receipts, []*types.Log, []uint32,
 ) {
 	// This implementation is a wrapper around the BeginBlock function, which
 	// handles the actual transaction processing.
-	txProcessor := p.BeginBlock(block, stateDb, cfg, onNewLog)
+	txProcessor := p.BeginBlock(block, stateDb, cfg, gasLimit, onNewLog)
 	receipts := make(types.Receipts, len(block.Transactions))
 	skipped := make([]uint32, 0, len(block.Transactions))
 	allLogs := make([]*types.Log, 0, len(block.Transactions))
@@ -102,8 +103,9 @@ func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
 			}
 
 			vmConfig := vm.Config{}
+			gasLimit := uint64(blockGasLimit)
 			usedGas := new(uint64)
-			receipts, logs, skipped := process(block, state, vmConfig, usedGas, onLog)
+			receipts, logs, skipped := process(block, state, vmConfig, gasLimit, usedGas, onLog)
 
 			// Receipts should be set accordingly.
 			require.Len(receipts, len(transactions))
@@ -188,8 +190,9 @@ func TestProcess_DetectsTransactionThatCanNotBeConvertedIntoAMessage(t *testing.
 			}
 
 			vmConfig := vm.Config{}
+			gasLimit := uint64(math.MaxUint64)
 			usedGas := new(uint64)
-			receipts, logs, skipped := process(block, state, vmConfig, usedGas, nil)
+			receipts, logs, skipped := process(block, state, vmConfig, gasLimit, usedGas, nil)
 
 			require.ElementsMatch(receipts, []*types.Receipt{nil})
 			require.ElementsMatch(skipped, []uint32{0})
@@ -248,8 +251,9 @@ func TestProcess_TracksParentBlockHashIfPragueIsEnabled(t *testing.T) {
 				require.Equal(isPrague, chainConfig.IsPrague(block.Number, uint64(block.Time)))
 
 				vmConfig := vm.Config{}
+				gasLimit := uint64(math.MaxUint64)
 				usedGas := new(uint64)
-				receipts, logs, skipped := process(block, state, vmConfig, usedGas, nil)
+				receipts, logs, skipped := process(block, state, vmConfig, gasLimit, usedGas, nil)
 				require.Empty(receipts)
 				require.Empty(logs)
 				require.Empty(skipped)
@@ -308,14 +312,104 @@ func TestProcess_FailingTransactionAreSkippedButTheBlockIsNotTerminated(t *testi
 	state.EXPECT().TxIndex().Return(0).Times(1)
 
 	// Process the block
+	gasLimit := uint64(math.MaxUint64)
 	usedGas := new(uint64)
-	receipts, logs, skipped := processor.Process(block, state, vm.Config{}, usedGas, nil)
+	receipts, logs, skipped := processor.Process(block, state, vm.Config{}, gasLimit, usedGas, nil)
 
 	require.Len(t, receipts, 2)
 	require.Nil(t, receipts[0])
 	require.NotNil(t, receipts[1])
 	require.Len(t, skipped, 1)
 	require.Empty(t, logs)
+}
+
+func TestProcess_EnforcesGasLimitBySkippingExcessiveTransactions(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	chainConfig := params.ChainConfig{}
+	chain := NewMockDummyChain(ctrl)
+	processor := NewStateProcessor(&chainConfig, chain)
+
+	tests := map[string]processFunction{
+		"bulk":        processor.Process,
+		"incremental": processor.process_iteratively,
+	}
+
+	zero := common.Address{}
+	transactions := []*types.Transaction{
+		types.NewTx(&types.LegacyTx{Nonce: 1, To: &zero, Gas: 21_000}),
+		types.NewTx(&types.LegacyTx{Nonce: 2, To: &zero, Gas: 21_000}),
+		types.NewTx(&types.LegacyTx{Nonce: 3, To: &zero, Gas: 21_000}),
+	}
+	state := getStateDbMockForTransactions(ctrl, transactions)
+
+	for name, process := range tests {
+		t.Run(name, func(t *testing.T) {
+			block := &EvmBlock{
+				EvmHeader: EvmHeader{
+					Number:   big.NewInt(1),
+					GasLimit: math.MaxUint64,
+				},
+				Transactions: transactions,
+			}
+
+			vmConfig := vm.Config{}
+			usedGas := new(uint64)
+
+			tests := map[string]struct {
+				gasLimit uint64
+				passing  int
+			}{
+				"no gas": {
+					gasLimit: 0,
+					passing:  0,
+				},
+				"not enough for one": {
+					gasLimit: 21_000 - 1,
+					passing:  0,
+				},
+				"enough for one": {
+					gasLimit: 21_000,
+					passing:  1,
+				},
+				"not enough for two": {
+					gasLimit: 2*21_000 - 1,
+					passing:  1,
+				},
+				"enough for two": {
+					gasLimit: 2 * 21_000,
+					passing:  2,
+				},
+				"enough for three": {
+					gasLimit: 3 * 21_000,
+					passing:  3,
+				},
+				"more than enough": {
+					gasLimit: math.MaxUint64,
+					passing:  3,
+				},
+			}
+
+			for name, test := range tests {
+				t.Run(name, func(t *testing.T) {
+					require := require.New(t)
+					gasLimit := test.gasLimit
+					receipts, logs, skipped := process(block, state, vmConfig, gasLimit, usedGas, nil)
+					require.Len(receipts, 3)
+					require.Len(logs, test.passing) // the mocked StateDB produces 1 log per transaction
+					require.Len(skipped, 3-test.passing)
+
+					for i := range test.passing {
+						require.NotNil(receipts[i])
+					}
+					for i := test.passing; i < 3; i++ {
+						require.Nil(receipts[i])
+						require.Contains(skipped, uint32(i))
+					}
+				})
+			}
+
+		})
+	}
 }
 
 func TestApplyTransaction_InternalTransactionsSkipBaseFeeCharges(t *testing.T) {
@@ -447,6 +541,7 @@ type processFunction = func(
 	block *EvmBlock,
 	statedb state.StateDB,
 	cfg vm.Config,
+	gasLimit uint64,
 	usedGas *uint64,
 	onNewLog func(*types.Log),
 ) (

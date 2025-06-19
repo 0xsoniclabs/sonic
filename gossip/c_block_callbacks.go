@@ -172,6 +172,19 @@ func consensusCallbackBeginBlockFn(
 					idx.Block(number),
 				)
 
+				// The maximum amount of gas to be used for non-internal
+				// transactions in the resulting block. Note that this gas limit
+				// is different than the official BlockGasLimit, which is
+				// announced as part of the block, constant over the duration of
+				// a block, and must be large enough to include inner
+				// transactions. In Sonic, the Block's GasLimit is a network
+				// rule parameter.
+				// The limit defined here is the dynamically adjusted gas limit
+				// used to regulate the traffic on the network. Block proposals
+				// made in the single-proposer mode are expected to honor this
+				// gas limit. With this parameter, this limit is enforced.
+				userTransactionGasLimit := maxBlockGas
+
 				// Get a proposal for the block to be created.
 				proposal := inter.Proposal{
 					Number:     idx.Block(number),
@@ -193,6 +206,12 @@ func consensusCallbackBeginBlockFn(
 							lastBlockHeader.PrevRandao, randao,
 							log.Root(),
 						)
+
+						userTransactionGasLimit = inter.GetEffectiveGasLimit(
+							proposal.Time.Time().Sub(lastBlockHeader.Time.Time()),
+							es.Rules.Economy.ShortGasPower.AllocPerSec,
+						)
+
 					} else {
 						// If no proposal is found but a block needs to be
 						// created (as this function has been called), we
@@ -276,7 +295,7 @@ func consensusCallbackBeginBlockFn(
 
 				// Execute pre-internal transactions
 				preInternalTxs := blockProc.PreTxTransactor.PopInternalTxs(blockCtx, bs, es, sealing, statedb)
-				preInternalReceipts := evmProcessor.Execute(preInternalTxs)
+				preInternalReceipts := evmProcessor.Execute(preInternalTxs, maxBlockGas)
 				bs = txListener.Finalize()
 				for _, r := range preInternalReceipts {
 					if r.Status == 0 {
@@ -323,7 +342,7 @@ func consensusCallbackBeginBlockFn(
 
 					// Execute post-internal transactions
 					internalTxs := blockProc.PostTxTransactor.PopInternalTxs(blockCtx, bs, es, sealing, statedb)
-					internalReceipts := evmProcessor.Execute(internalTxs)
+					internalReceipts := evmProcessor.Execute(internalTxs, maxBlockGas)
 					for _, r := range internalReceipts {
 						if r.Status == 0 {
 							log.Warn("Internal transaction reverted", "txid", r.TxHash.String())
@@ -338,7 +357,7 @@ func consensusCallbackBeginBlockFn(
 					}
 
 					orderedTxs := proposal.Transactions
-					for i, receipt := range evmProcessor.Execute(orderedTxs) {
+					for i, receipt := range evmProcessor.Execute(orderedTxs, userTransactionGasLimit) {
 						if receipt != nil { // < nil if skipped
 							blockBuilder.AddTransaction(orderedTxs[i], receipt)
 						}

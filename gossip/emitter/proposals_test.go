@@ -370,7 +370,7 @@ func TestMakeProposal_ValidArguments_CreatesValidProposal(t *testing.T) {
 		},
 		nil,
 		scheduler.Limits{
-			Gas:  getEffectiveGasLimit(delta, rules.Economy.ShortGasPower.AllocPerSec),
+			Gas:  inter.GetEffectiveGasLimit(delta, rules.Economy.ShortGasPower.AllocPerSec),
 			Size: maxTotalTransactionsSizeInProposalsInBytes,
 		},
 	).Return(transactions)
@@ -468,43 +468,6 @@ func TestMakeProposal_IfSchedulerTimesOut_SignalTimeoutToMonitor(t *testing.T) {
 		timeoutMetric,
 	)
 	require.NoError(t, err)
-}
-
-func TestGetEffectiveGasLimit_IsProportionalToDelay(t *testing.T) {
-	rates := []uint64{0, 1, 20, 1234, 10_000_000_000} // < gas/sec
-	delay := []time.Duration{
-		0, 1 * time.Nanosecond, 50 * time.Microsecond,
-		100 * time.Millisecond, 1500 * time.Millisecond,
-	}
-
-	for _, rate := range rates {
-		for _, d := range delay {
-			got := getEffectiveGasLimit(d, rate)
-			want := rate * uint64(d) / uint64(time.Second)
-			require.Equal(t, want, got, "rate %d, delay %v", rate, d)
-		}
-	}
-}
-
-func TestGetEffectiveGasLimit_IsZeroForNegativeDelay(t *testing.T) {
-	require.Equal(t, uint64(0), getEffectiveGasLimit(-1*time.Nanosecond, 100))
-	require.Equal(t, uint64(0), getEffectiveGasLimit(-1*time.Second, 100))
-	require.Equal(t, uint64(0), getEffectiveGasLimit(-1*time.Hour, 100))
-}
-
-func TestGetEffectiveGasLimit_IsCappedAtMaximumAccumulationTime(t *testing.T) {
-	rate := uint64(100)
-	maxAccumulationTime := maxAccumulationTime
-	for _, d := range []time.Duration{
-		maxAccumulationTime,
-		maxAccumulationTime + 1*time.Nanosecond,
-		maxAccumulationTime + 1*time.Second,
-		maxAccumulationTime + 1*time.Hour,
-	} {
-		got := getEffectiveGasLimit(d, rate)
-		want := getEffectiveGasLimit(maxAccumulationTime, rate)
-		require.Equal(t, want, got, "delay %v", d)
-	}
 }
 
 func TestTransactionPriorityAdapter_ForwardsCallToWrappedType(t *testing.T) {
