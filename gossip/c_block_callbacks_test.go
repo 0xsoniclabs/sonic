@@ -262,8 +262,9 @@ func TestExtractProposalForNextBlock_MultipleValidProposals_UsesTurnAndHashAsTie
 				LastSeenProposalTurn: 1,
 			},
 			Proposal: &inter.Proposal{
-				Number:     101,
-				ParentHash: last.Hash,
+				Number:       101,
+				ParentHash:   last.Hash,
+				RandaoReveal: randao.RandaoReveal{1, 2, 3},
 			},
 		},
 		{
@@ -271,8 +272,9 @@ func TestExtractProposalForNextBlock_MultipleValidProposals_UsesTurnAndHashAsTie
 				LastSeenProposalTurn: 1,
 			},
 			Proposal: &inter.Proposal{
-				Number:     101,
-				ParentHash: last.Hash,
+				Number:       101,
+				ParentHash:   last.Hash,
+				RandaoReveal: randao.RandaoReveal{4, 5, 6},
 			},
 		},
 		{
@@ -280,8 +282,9 @@ func TestExtractProposalForNextBlock_MultipleValidProposals_UsesTurnAndHashAsTie
 				LastSeenProposalTurn: 2,
 			},
 			Proposal: &inter.Proposal{
-				Number:     101,
-				ParentHash: last.Hash,
+				Number:       101,
+				ParentHash:   last.Hash,
+				RandaoReveal: randao.RandaoReveal{7, 8, 9},
 			},
 		},
 	}
