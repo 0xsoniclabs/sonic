@@ -97,7 +97,7 @@ func (p *StateProcessor) Process(
 	for i, tx := range block.Transactions {
 		msg, err := TxAsMessage(tx, signer, header.BaseFee)
 		if err != nil {
-			log.Error("Failed to convert transaction to message", "tx", tx.Hash().Hex(), "err", err)
+			log.Info("Failed to convert transaction to message", "tx", tx.Hash().Hex(), "err", err)
 			skipped = append(skipped, uint32(i))
 			receipts = append(receipts, nil)
 			continue // skip this transaction, but continue processing the rest of the block
@@ -106,7 +106,7 @@ func (p *StateProcessor) Process(
 		statedb.SetTxContext(tx.Hash(), i)
 		receipt, _, err = applyTransaction(msg, gp, statedb, blockNumber, tx, usedGas, vmenv, onNewLog)
 		if err != nil {
-			log.Error("Failed to apply transaction", "tx", tx.Hash().Hex(), "err", err)
+			log.Info("Failed to apply transaction", "tx", tx.Hash().Hex(), "err", err)
 			skipped = append(skipped, uint32(i))
 			receipts = append(receipts, nil)
 			continue // skip this transaction, but continue processing the rest of the block
