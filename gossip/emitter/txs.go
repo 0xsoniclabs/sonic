@@ -42,7 +42,7 @@ func (em *Emitter) maxGasPowerToUse(e *inter.MutableEventPayload) uint64 {
 		upperThreshold := em.config.LimitedTpsThreshold
 		downThreshold := em.config.NoTxsThreshold
 
-		estimatedAlloc := gaspowercheck.CalcValidatorGasPower(e, e.CreationTime(), e.MedianTime(), 0, em.validators, gaspowercheck.Config{
+		estimatedAlloc := gaspowercheck.CalcValidatorGasPower(e, e.CreationTime(), e.MedianTime(), 0, em.validators.Load(), gaspowercheck.Config{
 			Idx:                inter.LongTermGas,
 			AllocPerSec:        rules.Economy.LongGasPower.AllocPerSec * 4 / 5,
 			MaxAllocPeriod:     inter.Timestamp(time.Minute),
@@ -176,7 +176,7 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 			continue
 		}
 		// my turn, i.e. try to not include the same tx simultaneously by different validators
-		if !em.isMyTxTurn(tx.Hash, sender, resolvedTx.Nonce(), time.Now(), em.validators, e.Creator(), idx.Epoch(em.epoch.Load())) {
+		if !em.isMyTxTurn(tx.Hash, sender, resolvedTx.Nonce(), time.Now(), em.validators.Load(), e.Creator(), idx.Epoch(em.epoch.Load())) {
 			txsSkippedNotMyTurn.Inc(1)
 			sorted.Pop()
 			continue

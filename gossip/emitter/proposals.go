@@ -58,7 +58,7 @@ func (em *Emitter) createPayload(
 	return createPayload(
 		adapter,
 		em.config.Validator.ID,
-		em.validators,
+		em.validators.Load(),
 		event,
 		&em.proposalTracker,
 		sorted,

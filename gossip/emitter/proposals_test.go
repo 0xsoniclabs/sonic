@@ -51,9 +51,9 @@ func TestEmitter_CreatePayload_ProducesValidPayload(t *testing.T) {
 	validators := builder.Build()
 
 	emitter := &Emitter{
-		world:      World{External: world},
-		validators: validators,
+		world: World{External: world},
 	}
+	emitter.validators.Store(validators)
 
 	// It is not this emitter's turn to propose a block, so the payload just
 	// contains the proposal sync state but no proposal.
@@ -85,9 +85,9 @@ func TestEmitter_CreatePayload_FailsOnInvalidValidators(t *testing.T) {
 	validators := pos.ValidatorsBuilder{}.Build() // no validators
 
 	emitter := &Emitter{
-		world:      World{External: world},
-		validators: validators,
+		world: World{External: world},
 	}
+	emitter.validators.Store(validators)
 
 	_, err := emitter.createPayload(event, nil)
 	require.ErrorContains(err, "no validators")
