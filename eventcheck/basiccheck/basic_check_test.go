@@ -8,6 +8,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -48,7 +49,7 @@ func TestChecker_IntrinsicGas_LegacyCalculationDoesNotAccountForInitDataOrAuthLi
 			To:  nil,
 			Gas: 21_000,
 			// some data that takes
-			Data: []byte("this is a string that is longer than 32 bytes, so it will cost more"),
+			Data: make([]byte, params.MaxInitCodeSize),
 		}),
 		"setCodeTx": types.NewTx(&types.SetCodeTx{
 			To:       common.Address{},
@@ -68,4 +69,41 @@ func TestChecker_IntrinsicGas_LegacyCalculationDoesNotAccountForInitDataOrAuthLi
 			require.Greater(t, costNew, costLegacy)
 		})
 	}
+}
+
+func TestChecker_IntrinsicGas_LegacyIsCheaperOrSameForAllRevisionCombinations(t *testing.T) {
+
+	trueFalse := []bool{true, false}
+
+	for _, homestead := range trueFalse {
+		for _, istanbul := range trueFalse {
+			for _, shanghai := range trueFalse {
+				t.Run(makeTestName(homestead, istanbul, shanghai), func(t *testing.T) {
+
+					costLegacy, err := intrinsicGasLegacy([]byte("test"), nil, false)
+					require.NoError(t, err)
+
+					costNew, err := core.IntrinsicGas([]byte("test"), nil, nil, false, homestead, istanbul, shanghai)
+					require.NoError(t, err)
+
+					require.GreaterOrEqual(t, costNew, costLegacy)
+
+				})
+			}
+		}
+	}
+}
+
+func makeTestName(homestead, istanbul, shanghai bool) string {
+	name := ""
+	withWithout := func(fork bool) string {
+		if fork {
+			return "With"
+		}
+		return "Without"
+	}
+	name += withWithout(homestead) + "Homestead"
+	name += withWithout(istanbul) + "Istanbul"
+	name += withWithout(shanghai) + "Shanghai"
+	return name
 }
