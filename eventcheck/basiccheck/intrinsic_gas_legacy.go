@@ -14,18 +14,24 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-package evmcore
+package basiccheck
 
 import (
 	"math"
 
+	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/params"
 )
 
-// IntrinsicGas computes the 'intrinsic gas' for a message with the given data.
-func IntrinsicGas(data []byte, accessList types.AccessList, isContractCreation bool) (uint64, error) {
+// intrinsicGasLegacy computes the 'intrinsic gas' for a message with the given data.
+// This is an outdated version of
+// https://github.com/ethereum/go-ethereum/blob/master/core/state_transition.go#L71
+// and is only kept for history reproduction.
+// It does not account for init data or authorization lists.
+// It also assumes, that the Homestead, Istanbul, and Shanghai forks are always active.
+func intrinsicGasLegacy(data []byte, accessList types.AccessList, isContractCreation bool) (uint64, error) {
 	// Set the starting gas for the raw transaction
 	var gas uint64
 	if isContractCreation {
@@ -50,7 +56,7 @@ func IntrinsicGas(data []byte, accessList types.AccessList, isContractCreation b
 
 		z := uint64(len(data)) - nz
 		if (math.MaxUint64-gas)/params.TxDataZeroGas < z {
-			return 0, ErrGasUintOverflow
+			return 0, evmcore.ErrGasUintOverflow
 		}
 		gas += z * params.TxDataZeroGas
 	}
