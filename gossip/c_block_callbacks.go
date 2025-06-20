@@ -176,7 +176,7 @@ func consensusCallbackBeginBlockFn(
 				// transactions in the resulting block. Note that this gas limit
 				// is different than the official BlockGasLimit, which is
 				// announced as part of the block, constant over the duration of
-				// a block, and must be large enough to include inner
+				// a block, and must be large enough to include internal
 				// transactions. In Sonic, the Block's GasLimit is a network
 				// rule parameter.
 				// The limit defined here is the dynamically adjusted gas limit
