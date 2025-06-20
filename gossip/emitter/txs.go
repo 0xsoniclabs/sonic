@@ -176,7 +176,7 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 			continue
 		}
 		// my turn, i.e. try to not include the same tx simultaneously by different validators
-		if !em.isMyTxTurn(tx.Hash, sender, resolvedTx.Nonce(), time.Now(), em.validators, e.Creator(), em.epoch) {
+		if !em.isMyTxTurn(tx.Hash, sender, resolvedTx.Nonce(), time.Now(), em.validators, e.Creator(), idx.Epoch(em.epoch.Load())) {
 			txsSkippedNotMyTurn.Inc(1)
 			sorted.Pop()
 			continue

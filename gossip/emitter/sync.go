@@ -6,6 +6,7 @@ import (
 
 	"github.com/Fantom-foundation/lachesis-base/emitter/doublesign"
 	"github.com/Fantom-foundation/lachesis-base/hash"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 
 	"github.com/0xsoniclabs/sonic/inter"
 )
@@ -53,7 +54,7 @@ func (em *Emitter) currentSyncStatus() doublesign.SyncStatus {
 		s.P2PSynced = em.syncStatus.p2pSynced
 	}
 	prevEmitted := em.readLastEmittedEventID()
-	if prevEmitted != nil && (em.world.GetEvent(*prevEmitted) == nil && em.epoch <= prevEmitted.Epoch()) {
+	if prevEmitted != nil && (em.world.GetEvent(*prevEmitted) == nil && idx.Epoch(em.epoch.Load()) <= prevEmitted.Epoch()) {
 		s.P2PSynced = time.Time{}
 	}
 	return s

@@ -31,7 +31,8 @@ func (em *Emitter) OnNewEpoch(newValidators *pos.Validators, newEpoch idx.Epoch)
 		em.syncStatus.becameValidator = time.Now()
 	}
 
-	em.validators, em.epoch = newValidators, newEpoch
+	em.validators = newValidators
+	em.epoch.Store(uint32(newEpoch))
 
 	if !em.isValidator() {
 		return

@@ -68,7 +68,7 @@ type Emitter struct {
 	// note: track validators and epoch internally to avoid referring to
 	// validators of a future epoch inside OnEventConnected of last epoch event
 	validators *pos.Validators
-	epoch      idx.Epoch
+	epoch      atomic.Uint32
 
 	// challenges is deadlines when each validator should emit an event
 	challenges map[idx.ValidatorID]time.Time
@@ -335,7 +335,7 @@ func (em *Emitter) loadPrevEmitTime() time.Time {
 	if time := em.prevEmittedAtTime.Load(); time != nil {
 		prevEmittedAtTime = *time
 	}
-	prevEventID := em.world.GetLastEvent(em.epoch, em.config.Validator.ID)
+	prevEventID := em.world.GetLastEvent(idx.Epoch(em.epoch.Load()), em.config.Validator.ID)
 	if prevEventID == nil {
 		return prevEmittedAtTime
 	}
@@ -361,12 +361,12 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 	)
 
 	// Find parents
-	selfParent, parents, ok := em.chooseParents(em.epoch, em.config.Validator.ID)
+	selfParent, parents, ok := em.chooseParents(idx.Epoch(em.epoch.Load()), em.config.Validator.ID)
 	if !ok {
 		return nil, nil
 	}
 	prevEmitted := em.readLastEmittedEventID()
-	if prevEmitted != nil && prevEmitted.Epoch() >= em.epoch {
+	if prevEmitted != nil && prevEmitted.Epoch() >= idx.Epoch(em.epoch.Load()) {
 		if selfParent == nil || *selfParent != *prevEmitted {
 			// This is a user-facing error, so we want to provide a clear message.
 			//nolint:staticcheck // ST1005: allow capitalized error message and punctuation
@@ -410,7 +410,7 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 
 	mutEvent := &inter.MutableEventPayload{}
 	mutEvent.SetVersion(version)
-	mutEvent.SetEpoch(em.epoch)
+	mutEvent.SetEpoch(idx.Epoch(em.epoch.Load()))
 	mutEvent.SetSeq(selfParentSeq + 1)
 	mutEvent.SetCreator(em.config.Validator.ID)
 
