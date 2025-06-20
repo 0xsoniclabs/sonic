@@ -339,7 +339,7 @@ func TestApplyTransaction_InternalTransactionsSkipBaseFeeCharges(t *testing.T) {
 			// The transaction will fail for various reasons, but for this test
 			// this is not relevant. We just want to check if the base fee
 			// configuration flag is updated to match the SkipAccountChecks flag.
-			_, _, _, err := applyTransaction(&core.Message{
+			_, _, err := applyTransaction(&core.Message{
 				SkipNonceChecks:  internal,
 				SkipFromEOACheck: internal,
 				GasPrice:         big.NewInt(0),
@@ -372,12 +372,11 @@ func TestApplyTransaction_BlobHashesNotSupportedAndSkipped(t *testing.T) {
 		BlobHashes: []common.Hash{{0x01}},
 	}
 	usedGas := uint64(0)
-	receipt, gasUsed, skipped, err :=
+	receipt, gasUsed, err :=
 		applyTransaction(msg, gp, state, big.NewInt(1), nil, &usedGas, evm, nil)
 	require.ErrorContains(t, err, "blob data is not supported")
 	require.Nil(t, receipt)
 	require.Equal(t, uint64(0), gasUsed)
-	require.True(t, skipped)
 }
 
 func TestApplyTransaction_ApplyMessageError_RevertsSnapshotIfPrague(t *testing.T) {
@@ -433,12 +432,11 @@ func TestApplyTransaction_ApplyMessageError_RevertsSnapshotIfPrague(t *testing.T
 				state.EXPECT().EndTransaction(),
 			)
 
-			receipt, gasUsed, skipped, err :=
+			receipt, gasUsed, err :=
 				applyTransaction(msg, gp, state, blockNumber, nil, new(uint64), evm, nil)
 			require.ErrorContains(t, err, "max initcode size exceeded")
 			require.Nil(t, receipt)
 			require.Equal(t, uint64(0), gasUsed)
-			require.True(t, skipped)
 		})
 	}
 }

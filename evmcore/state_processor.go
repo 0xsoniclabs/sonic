@@ -80,7 +80,6 @@ func (p *StateProcessor) Process(
 	var (
 		gp           = new(core.GasPool).AddGas(block.GasLimit)
 		receipt      *types.Receipt
-		skip         bool
 		header       = block.Header()
 		time         = uint64(block.Time.Unix())
 		blockContext = NewEVMBlockContext(header, p.bc, nil)
@@ -105,12 +104,7 @@ func (p *StateProcessor) Process(
 		}
 
 		statedb.SetTxContext(tx.Hash(), i)
-		receipt, _, skip, err = applyTransaction(msg, gp, statedb, blockNumber, tx, usedGas, vmenv, onNewLog)
-		if skip {
-			skipped = append(skipped, uint32(i))
-			receipts = append(receipts, nil)
-			continue
-		}
+		receipt, _, err = applyTransaction(msg, gp, statedb, blockNumber, tx, usedGas, vmenv, onNewLog)
 		if err != nil {
 			log.Error("Failed to apply transaction", "tx", tx.Hash().Hex(), "err", err)
 			skipped = append(skipped, uint32(i))
@@ -186,11 +180,11 @@ func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) (
 		)
 	}
 	tp.stateDb.SetTxContext(tx.Hash(), i)
-	receipt, _, skip, err := applyTransaction(
+	receipt, _, err = applyTransaction(
 		msg, tp.gp, tp.stateDb, tp.blockNumber, tx,
 		&tp.usedGas, tp.vmEnvironment, tp.onNewLog,
 	)
-	return receipt, skip, err
+	return receipt, err != nil, err
 }
 
 // ApplyTransactionWithEVM attempts to apply a transaction to the given state database
@@ -296,7 +290,6 @@ func applyTransaction(
 ) (
 	*types.Receipt,
 	uint64,
-	bool,
 	error,
 ) {
 	// Create a new context to be used in the EVM environment.
@@ -310,7 +303,7 @@ func applyTransaction(
 	if msg.BlobHashes != nil {
 		if len(msg.BlobHashes) > 0 {
 			statedb.EndTransaction()
-			return nil, 0, true, fmt.Errorf("blob data is not supported")
+			return nil, 0, fmt.Errorf("blob data is not supported")
 		}
 		// PreCheck requires non-nil blobHashes not to be empty
 		msg.BlobHashes = nil
@@ -328,7 +321,7 @@ func applyTransaction(
 			statedb.RevertToSnapshot(snapshot)
 		}
 		statedb.EndTransaction()
-		return nil, 0, result == nil, err
+		return nil, 0, err
 	}
 	// Notify about logs with potential state changes.
 	// At this point the final block hash is not yet known, so we pass an empty
@@ -367,7 +360,7 @@ func applyTransaction(
 	receipt.Bloom = types.CreateBloom(receipt)
 	receipt.BlockNumber = blockNumber
 	receipt.TransactionIndex = uint(statedb.TxIndex())
-	return receipt, result.UsedGas, false, err
+	return receipt, result.UsedGas, nil
 }
 
 func TxAsMessage(tx *types.Transaction, signer types.Signer, baseFee *big.Int) (*core.Message, error) {
