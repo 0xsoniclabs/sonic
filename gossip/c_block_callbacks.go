@@ -208,7 +208,7 @@ func consensusCallbackBeginBlockFn(
 						)
 
 						userTransactionGasLimit = inter.GetEffectiveGasLimit(
-							proposal.Time.Time().Sub(lastBlockHeader.Time.Time()),
+							blockTime.Time().Sub(lastBlockHeader.Time.Time()),
 							es.Rules.Economy.ShortGasPower.AllocPerSec,
 						)
 
