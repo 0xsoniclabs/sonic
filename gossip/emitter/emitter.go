@@ -67,7 +67,7 @@ type Emitter struct {
 
 	// note: track validators and epoch internally to avoid referring to
 	// validators of a future epoch inside OnEventConnected of last epoch event
-	validators *pos.Validators
+	validators atomic.Pointer[pos.Validators]
 	epoch      atomic.Uint32
 
 	// challenges is deadlines when each validator should emit an event
@@ -430,8 +430,9 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 	err := em.world.Build(mutEvent, nil)
 	if err != nil {
 		if err == ErrNotEnoughGasPower {
+			validators := em.validators.Load()
 			em.Warn(time.Second, "Not enough gas power to emit event. Too small stake?",
-				"stake%", 100*float64(em.validators.Get(em.config.Validator.ID))/float64(em.validators.TotalWeight()))
+				"stake%", 100*float64(validators.Get(em.config.Validator.ID))/float64(validators.TotalWeight()))
 		} else {
 			em.Log.Warn("Dropped event while emitting", "err", err)
 		}
@@ -490,7 +491,7 @@ func (em *Emitter) idle() bool {
 }
 
 func (em *Emitter) isValidator() bool {
-	return em.config.Validator.ID != 0 && em.validators.Exists(em.config.Validator.ID)
+	return em.config.Validator.ID != 0 && em.validators.Load().Exists(em.config.Validator.ID)
 }
 
 func (em *Emitter) nameEventForDebug(e *inter.EventPayload) {

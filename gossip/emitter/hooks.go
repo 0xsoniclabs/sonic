@@ -27,11 +27,12 @@ func (em *Emitter) OnNewEpoch(newValidators *pos.Validators, newEpoch idx.Epoch)
 	if em.maxParents > rules.Dag.MaxParents {
 		em.maxParents = rules.Dag.MaxParents
 	}
-	if em.validators != nil && em.isValidator() && !em.validators.Exists(em.config.Validator.ID) && newValidators.Exists(em.config.Validator.ID) {
+	validators := em.validators.Load()
+	if validators != nil && em.isValidator() && !validators.Exists(em.config.Validator.ID) && newValidators.Exists(em.config.Validator.ID) {
 		em.syncStatus.becameValidator = time.Now()
 	}
 
-	em.validators = newValidators
+	em.validators.Store(newValidators)
 	em.epoch.Store(uint32(newEpoch))
 
 	if !em.isValidator() {

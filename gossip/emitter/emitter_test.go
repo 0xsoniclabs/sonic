@@ -169,8 +169,8 @@ func TestEmitter_CreateEvent_CreatesCorrectEventVersion(t *testing.T) {
 							External:     world,
 							EventsSigner: signer,
 						},
-						validators: validators,
 					}
+					em.validators.Store(validators)
 
 					any := gomock.Any()
 					world.EXPECT().GetRules().Return(rules).AnyTimes()
@@ -221,8 +221,8 @@ func TestEmitter_CreateEvent_InvalidValidatorSetIsDetected(t *testing.T) {
 			External:     world,
 			EventsSigner: signer,
 		},
-		validators: validators,
 	}
+	em.validators.Store(validators)
 
 	any := gomock.Any()
 	world.EXPECT().GetRules().Return(rules).AnyTimes()
