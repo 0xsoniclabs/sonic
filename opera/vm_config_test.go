@@ -8,24 +8,18 @@ import (
 )
 
 func TestGetVmConfig_SingleProposerModeDisablesExcessGasCharging(t *testing.T) {
-	for _, enabled := range []bool{true, false} {
-		t.Run(fmt.Sprintf("SingleProposerModeEnabled=%t", enabled), func(t *testing.T) {
+	for _, singleProposerMode := range []bool{true, false} {
+		t.Run(fmt.Sprintf("SingleProposerModeEnabled=%t", singleProposerMode), func(t *testing.T) {
 			require := require.New(t)
 			rules := Rules{
 				Upgrades: Upgrades{
-					SingleProposerBlockFormation: enabled,
+					SingleProposerBlockFormation: singleProposerMode,
 				},
 			}
 
 			vmConfig := GetVmConfig(rules)
 
-			require.NotEqual(
-				enabled,
-				vmConfig.ChargeExcessGas,
-				"Expected ChargeExcessGas to be %t when SingleProposerBlockFormation is %t",
-				!enabled,
-				enabled,
-			)
+			require.NotEqual(singleProposerMode, vmConfig.ChargeExcessGas)
 		})
 	}
 }
