@@ -19,7 +19,6 @@ package basiccheck
 import (
 	"math"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/params"
@@ -56,7 +55,7 @@ func intrinsicGasLegacy(data []byte, accessList types.AccessList, isContractCrea
 
 		z := uint64(len(data)) - nz
 		if (math.MaxUint64-gas)/params.TxDataZeroGas < z {
-			return 0, evmcore.ErrGasUintOverflow
+			return 0, vm.ErrGasUintOverflow
 		}
 		gas += z * params.TxDataZeroGas
 	}
