@@ -62,10 +62,7 @@ func TestRPCApis(t *testing.T) {
 
 	// look for missing methods which are in Sonic and are not in known missing
 	missing := findMissingMethods(missingInSonic, knownMissingAPIs)
-	if len(missing) != 0 {
-		t.Errorf("Missing namespaces: %v", missing)
-	}
-
+	require.Zero(t, len(missing), "missing namespaces %v", missing)
 }
 
 // getNodeService returns a gossip service
@@ -134,7 +131,6 @@ func findMissingMethods(a, b namespaceMap) namespaceMap {
 
 // parseAPIs returns a map of namespaces and methods
 func parseAPIs(apis []rpc.API) namespaceMap {
-
 	namespaces := make(map[string]map[string]interface{})
 
 	for _, api := range apis {
