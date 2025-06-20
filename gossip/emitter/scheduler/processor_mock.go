@@ -95,18 +95,18 @@ func (mr *MockprocessorMockRecorder) release() *gomock.Call {
 }
 
 // run mocks base method.
-func (m *Mockprocessor) run(tx *types.Transaction, gasLimit uint64) (bool, uint64) {
+func (m *Mockprocessor) run(tx *types.Transaction) (bool, uint64) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "run", tx, gasLimit)
+	ret := m.ctrl.Call(m, "run", tx)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(uint64)
 	return ret0, ret1
 }
 
 // run indicates an expected call of run.
-func (mr *MockprocessorMockRecorder) run(tx, gasLimit any) *gomock.Call {
+func (mr *MockprocessorMockRecorder) run(tx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "run", reflect.TypeOf((*Mockprocessor)(nil).run), tx, gasLimit)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "run", reflect.TypeOf((*Mockprocessor)(nil).run), tx)
 }
 
 // MockChain is a mock of Chain interface.

@@ -71,13 +71,18 @@ func (s *Scheduler) Schedule(
 			break
 		}
 
+		if candidate.Gas() > remainingGas {
+			candidates.Skip()
+			continue
+		}
+
 		size := candidate.Size()
 		if size > remainingSize {
 			candidates.Skip()
 			continue
 		}
 
-		success, gasUsed := processor.run(candidate, remainingGas)
+		success, gasUsed := processor.run(candidate)
 		if !success || gasUsed > remainingGas {
 			candidates.Skip()
 			continue

@@ -22,9 +22,8 @@ type processorFactory interface {
 // individual transactions to be scheduled in a block.
 type processor interface {
 	// run runs the given transaction in the context of the current block
-	// and returns the result of the execution. The gas limit is the maximum
-	// amount of gas that can be used by the transaction.
-	run(tx *types.Transaction, gasLimit uint64) (success bool, gasUsed uint64)
+	// and returns the result of the execution.
+	run(tx *types.Transaction) (success bool, gasUsed uint64)
 
 	// release releases the resources used by the processor. In particular, it
 	// allows implementations to release temporary database state.
@@ -86,7 +85,7 @@ type evmProcessor struct {
 	stateDb   state.StateDB
 }
 
-func (p *evmProcessor) run(tx *types.Transaction, gasLimit uint64) (
+func (p *evmProcessor) run(tx *types.Transaction) (
 	result bool, gasUsed uint64,
 ) {
 	// Note: the index can be set to 0 since code running inside the EVM can not
@@ -96,7 +95,7 @@ func (p *evmProcessor) run(tx *types.Transaction, gasLimit uint64) (
 	if skipped || err != nil || receipt == nil {
 		return false, 0
 	}
-	return receipt.GasUsed < gasLimit, receipt.GasUsed
+	return true, receipt.GasUsed
 }
 
 func (p *evmProcessor) release() {

@@ -35,23 +35,9 @@ func TestEvmProcessor_Run_IfExecutionSucceeds_ReportsSuccessAndGasUsage(t *testi
 	}, false, nil)
 
 	processor := &evmProcessor{processor: runner}
-	success, gasUsed := processor.run(nil, 50)
+	success, gasUsed := processor.run(nil)
 	require.True(t, success)
 	require.Equal(t, uint64(10), gasUsed)
-}
-
-func TestEvmProcessor_Run_IfGasLimitIsExceeded_ReportsAFailedExecution(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	runner := NewMockevmProcessorRunner(ctrl)
-
-	runner.EXPECT().Run(0, nil).Return(&types.Receipt{
-		GasUsed: 100,
-	}, false, nil)
-
-	processor := &evmProcessor{processor: runner}
-	success, used := processor.run(nil, 50)
-	require.False(t, success)
-	require.Equal(t, uint64(100), used)
 }
 
 func TestEvmProcessor_Run_IfExecutionFailed_ReportsAFailedExecution(t *testing.T) {
@@ -61,7 +47,7 @@ func TestEvmProcessor_Run_IfExecutionFailed_ReportsAFailedExecution(t *testing.T
 		runner := NewMockevmProcessorRunner(ctrl)
 		runner.EXPECT().Run(0, nil).Return(nil, true, nil)
 		processor := &evmProcessor{processor: runner}
-		success, _ := processor.run(nil, 50)
+		success, _ := processor.run(nil)
 		require.False(t, success)
 	})
 
@@ -70,7 +56,7 @@ func TestEvmProcessor_Run_IfExecutionFailed_ReportsAFailedExecution(t *testing.T
 		runner := NewMockevmProcessorRunner(ctrl)
 		runner.EXPECT().Run(0, nil).Return(nil, false, fmt.Errorf("failed"))
 		processor := &evmProcessor{processor: runner}
-		success, _ := processor.run(nil, 50)
+		success, _ := processor.run(nil)
 		require.False(t, success)
 	})
 
@@ -79,7 +65,7 @@ func TestEvmProcessor_Run_IfExecutionFailed_ReportsAFailedExecution(t *testing.T
 		runner := NewMockevmProcessorRunner(ctrl)
 		runner.EXPECT().Run(0, nil).Return(nil, false, nil)
 		processor := &evmProcessor{processor: runner}
-		success, _ := processor.run(nil, 50)
+		success, _ := processor.run(nil)
 		require.False(t, success)
 	})
 }
