@@ -70,23 +70,23 @@ func (s *Store) ApplyGenesis(g genesis.Genesis) (err error) {
 	// write EVM items
 	liveReader, err := g.FwsLiveSection.GetReader()
 	if err != nil {
-		s.Log.Info("Fantom World State Live data not available in the genesis", "err", err)
+		s.Log.Info("Sonic World State Live data not available in the genesis", "err", err)
 	}
 
 	if liveReader != nil { // has S5 section - import S5 data
-		s.Log.Info("Importing Fantom World State Live data from genesis")
+		s.Log.Info("Importing Sonic World State Live data from genesis")
 		err = s.evm.ImportLiveWorldState(liveReader)
 		if err != nil {
-			return fmt.Errorf("failed to import Fantom World State data from genesis; %v", err)
+			return fmt.Errorf("failed to import Sonic World State data from genesis; %v", err)
 		}
 
 		// import S5 archive
 		archiveReader, _ := g.FwsArchiveSection.GetReader()
 		if archiveReader != nil { // has archive section
-			s.Log.Info("Importing Fantom World State Archive data from genesis")
+			s.Log.Info("Importing Sonic World State Archive data from genesis")
 			err = s.evm.ImportArchiveWorldState(archiveReader)
 			if err != nil {
-				return fmt.Errorf("failed to import Fantom World State Archive data from genesis; %v", err)
+				return fmt.Errorf("failed to import Sonic World State Archive data from genesis; %v", err)
 			}
 		} else { // no archive section - initialize archive from the live section
 			s.Log.Info("No archive in the genesis file - initializing the archive from the live state", "blockNum", lastBlock.Idx)
@@ -96,7 +96,7 @@ func (s *Store) ApplyGenesis(g genesis.Genesis) (err error) {
 			}
 			err = s.evm.InitializeArchiveWorldState(liveToArchiveReader, uint64(lastBlock.Idx))
 			if err != nil {
-				return fmt.Errorf("failed to import Fantom World State data from genesis; %v", err)
+				return fmt.Errorf("failed to import Sonic World State data from genesis; %v", err)
 			}
 		}
 	} else { // no S5 section in the genesis file
