@@ -656,7 +656,6 @@ func FakeEvent(version uint8, txsNum, mpsNum, bvsNum int, ersNum bool) *EventPay
 			Proposal: &Proposal{
 				Number:       idx.Block(rand.IntN(10_000_000)),
 				ParentHash:   common.Hash(randHash(r)),
-				Time:         Timestamp(rand.Uint64()),
 				RandaoReveal: randao.RandaoReveal(randBytes(r, 64)),
 				Transactions: txs,
 			},

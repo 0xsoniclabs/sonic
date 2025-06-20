@@ -177,13 +177,15 @@ func consensusCallbackBeginBlockFn(
 					Number:     idx.Block(number),
 					ParentHash: lastBlockHeader.Hash,
 				}
+				var blockTime inter.Timestamp
 				if es.Rules.Upgrades.SingleProposerBlockFormation {
 					events := make([]inter.EventPayloadI, 0, blockEvents.Len())
 					for _, e := range blockEvents {
 						events = append(events, e)
 					}
-					if proposed, proposer := extractProposalForNextBlock(lastBlockHeader, events, log.Root()); proposed != nil {
+					if proposed, proposer, time := extractProposalForNextBlock(lastBlockHeader, events, log.Root()); proposed != nil {
 						proposal = *proposed
+						blockTime = time
 						validatorKeys := readEpochPubKeys(store, cBlock.Atropos.Epoch())
 						randao = resolveRandaoMix(
 							proposal.RandaoReveal, proposer,
@@ -196,7 +198,7 @@ func consensusCallbackBeginBlockFn(
 						// created (as this function has been called), we
 						// use a minimum time span to avoid removing gas
 						// allocation time from the next block.
-						proposal.Time = lastBlockHeader.Time + 1
+						blockTime = lastBlockHeader.Time + 1
 						// in this case, the original event-based randao is used.
 					}
 				} else {
@@ -209,7 +211,7 @@ func consensusCallbackBeginBlockFn(
 					signer := gsignercache.Wrap(types.MakeSigner(chainCfg, new(big.Int).SetUint64(number), uint64(atroposTime)))
 					proposal.Transactions = scrambler.GetExecutionOrder(unorderedTxs, signer, es.Rules.Upgrades.Sonic)
 
-					proposal.Time = atroposTime
+					blockTime = atroposTime
 				}
 
 				// Filter invalid transactions from the proposal.
@@ -218,13 +220,13 @@ func consensusCallbackBeginBlockFn(
 				)
 
 				// Make sure the new block time is after the last block time.
-				if proposal.Time <= bs.LastBlock.Time {
-					proposal.Time = bs.LastBlock.Time + 1
+				if blockTime <= bs.LastBlock.Time {
+					blockTime = bs.LastBlock.Time + 1
 				}
 
 				blockCtx := iblockproc.BlockCtx{
 					Idx:     proposal.Number,
-					Time:    proposal.Time,
+					Time:    blockTime,
 					Atropos: cBlock.Atropos,
 				}
 
@@ -302,12 +304,12 @@ func consensusCallbackBeginBlockFn(
 				// At this point, newValidators may be returned and the rest of the code may be executed in a parallel thread
 				blockFn := func() {
 
-					blockDuration := time.Duration(proposal.Time - bs.LastBlock.Time)
+					blockDuration := time.Duration(blockCtx.Time - bs.LastBlock.Time)
 					blockBuilder := inter.NewBlockBuilder().
 						WithEpoch(blockCtx.Atropos.Epoch()).
 						WithNumber(number).
 						WithParentHash(proposal.ParentHash).
-						WithTime(proposal.Time).
+						WithTime(blockCtx.Time).
 						WithPrevRandao(randao).
 						WithGasLimit(maxBlockGas).
 						WithDuration(blockDuration)
@@ -595,14 +597,19 @@ func extractProposalForNextBlock(
 	lastBlock *evmcore.EvmHeader,
 	events []inter.EventPayloadI,
 	logger log.Logger,
-) (*inter.Proposal, idx.ValidatorID) {
+) (*inter.Proposal, idx.ValidatorID, inter.Timestamp) {
 
 	desiredBlockNumber := idx.Block(lastBlock.Number.Uint64() + 1)
 	parentHash := lastBlock.Hash
 
+	type PayloadInfo struct {
+		Payload  *inter.Payload
+		Proposer idx.ValidatorID
+		Time     inter.Timestamp
+	}
+
 	// Collect all payloads from events proposing the desired block.
-	payloads := []*inter.Payload{}
-	proposers := map[*inter.Payload]idx.ValidatorID{}
+	payloads := []PayloadInfo{}
 	for _, e := range events {
 		payload := e.Payload()
 		if proposal := payload.Proposal; proposal != nil {
@@ -625,8 +632,11 @@ func extractProposalForNextBlock(
 				continue
 			}
 
-			payloads = append(payloads, payload)
-			proposers[payload] = e.Creator()
+			payloads = append(payloads, PayloadInfo{
+				Payload:  payload,
+				Proposer: e.Creator(),
+				Time:     e.MedianTime(),
+			})
 		}
 	}
 	if len(payloads) > 1 {
@@ -637,16 +647,16 @@ func extractProposalForNextBlock(
 	}
 
 	if len(payloads) == 0 {
-		return nil, 0
+		return nil, 0, 0
 	}
 
 	if len(payloads) == 1 {
-		return payloads[0].Proposal, proposers[payloads[0]]
+		return payloads[0].Payload.Proposal, payloads[0].Proposer, payloads[0].Time
 	}
 
 	best := payloads[0]
 	for _, p := range payloads {
-		switch cmp.Compare(p.LastSeenProposalTurn, best.LastSeenProposalTurn) {
+		switch cmp.Compare(p.Payload.LastSeenProposalTurn, best.Payload.LastSeenProposalTurn) {
 		case -1:
 			best = p
 		case 0:
@@ -656,15 +666,15 @@ func extractProposalForNextBlock(
 			// However, to be conservative, we consider the possibility of
 			// two proposals with the same turn number and use the proposal
 			// hash as a tie breaker.
-			a := p.Proposal.Hash()
-			b := best.Proposal.Hash()
+			a := p.Payload.Proposal.Hash()
+			b := best.Payload.Proposal.Hash()
 			if bytes.Compare(a[:], b[:]) < 0 {
 				best = p
 			}
 		case 1:
 		}
 	}
-	return best.Proposal, proposers[best]
+	return best.Payload.Proposal, best.Proposer, best.Time
 }
 
 // filterNonPermissibleTransactions filters out transactions that are not allowed

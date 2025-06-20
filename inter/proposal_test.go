@@ -27,7 +27,6 @@ func TestProposal_Hash_IsShaOfFieldConcatenation(t *testing.T) {
 		proposal := &Proposal{
 			Number:       idx.Block(1 + i),
 			ParentHash:   [32]byte{0: 1, 1: byte(i), 31: 2},
-			Time:         Timestamp(3 + i),
 			RandaoReveal: randao.RandaoReveal([]byte{4: 4, 5: byte(i), 63: 5}),
 			Transactions: []*types.Transaction{
 				types.NewTx(&types.LegacyTx{Nonce: 1}),
@@ -40,7 +39,6 @@ func TestProposal_Hash_IsShaOfFieldConcatenation(t *testing.T) {
 			data := []byte{}
 			data = binary.BigEndian.AppendUint64(data, uint64(proposal.Number))
 			data = append(data, proposal.ParentHash[:]...)
-			data = binary.BigEndian.AppendUint64(data, uint64(proposal.Time))
 			data = append(data, proposal.RandaoReveal[:]...)
 			for _, tx := range proposal.Transactions {
 				txHash := tx.Hash()
@@ -60,9 +58,6 @@ func TestProposal_Hash_ModifyingContent_ChangesHash(t *testing.T) {
 		},
 		"change parent hash": func(p *Proposal) {
 			p.ParentHash[0] = p.ParentHash[0] + 1
-		},
-		"change timestamp": func(p *Proposal) {
-			p.Time = p.Time + 1
 		},
 		"change randao reveal": func(p *Proposal) {
 			p.RandaoReveal[0] = p.RandaoReveal[0] + 1
@@ -86,7 +81,6 @@ func TestProposal_Hash_ModifyingContent_ChangesHash(t *testing.T) {
 			proposal := &Proposal{
 				Number:       1,
 				ParentHash:   [32]byte{1},
-				Time:         2,
 				RandaoReveal: randao.RandaoReveal([]byte{3, 63: 0}),
 				Transactions: []*types.Transaction{
 					types.NewTx(&types.LegacyTx{Nonce: 1}),
@@ -108,7 +102,6 @@ func TestProposal_CanBeSerializedAndRestored(t *testing.T) {
 	original := &Proposal{
 		Number:       1,
 		ParentHash:   [32]byte{2},
-		Time:         3,
 		RandaoReveal: randao.RandaoReveal([]byte{4, 64: 0}),
 		Transactions: []*types.Transaction{
 			types.NewTx(&types.LegacyTx{Nonce: 1}),
@@ -128,7 +121,6 @@ func TestProposal_CanBeSerializedAndRestored(t *testing.T) {
 	// is not serialized and restored.
 	require.Equal(original.Number, restored.Number)
 	require.Equal(original.ParentHash, restored.ParentHash)
-	require.Equal(original.Time, restored.Time)
 	require.Equal(original.RandaoReveal, restored.RandaoReveal)
 
 	require.Equal(len(original.Transactions), len(restored.Transactions))

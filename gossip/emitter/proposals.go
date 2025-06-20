@@ -240,7 +240,6 @@ func makeProposal(
 	proposal := &inter.Proposal{
 		Number:       idx.Block(latestBlock.Number) + 1,
 		ParentHash:   latestBlock.Hash(),
-		Time:         newBlockTime,
 		RandaoReveal: randaoReveal,
 	}
 
@@ -267,7 +266,7 @@ func makeProposal(
 		ctx,
 		&scheduler.BlockInfo{
 			Number:      proposal.Number,
-			Time:        proposal.Time,
+			Time:        newBlockTime,
 			GasLimit:    rules.Blocks.MaxBlockGas,
 			MixHash:     randaoMix,
 			Coinbase:    evmcore.GetCoinbase(),

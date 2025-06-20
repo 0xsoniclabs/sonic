@@ -107,9 +107,10 @@ func TestExtractProposalForNextBlock_NoEvents_ReturnsNoProposal(t *testing.T) {
 	last := &evmcore.EvmHeader{
 		Number: big.NewInt(100),
 	}
-	result, proposer := extractProposalForNextBlock(last, nil, nil)
+	result, proposer, time := extractProposalForNextBlock(last, nil, nil)
 	require.Nil(t, result)
 	require.Equal(t, idx.ValidatorID(0), proposer)
+	require.Equal(t, inter.Timestamp(0), time)
 }
 
 func TestExtractProposalForNextBlock_OneMatchingProposal_ReturnsTheGivenProposal(t *testing.T) {
@@ -129,12 +130,14 @@ func TestExtractProposalForNextBlock_OneMatchingProposal_ReturnsTheGivenProposal
 
 	event.EXPECT().Payload().Return(&inter.Payload{Proposal: &proposal})
 	event.EXPECT().Creator().Return(idx.ValidatorID(33)).AnyTimes()
+	event.EXPECT().MedianTime().Return(inter.Timestamp(1234)).AnyTimes()
 	events := []inter.EventPayloadI{event}
 
-	result, proposer := extractProposalForNextBlock(last, events, nil)
+	result, proposer, time := extractProposalForNextBlock(last, events, nil)
 	require.NotNil(t, result)
 	require.Equal(t, proposal, *result)
 	require.Equal(t, idx.ValidatorID(33), proposer)
+	require.Equal(t, inter.Timestamp(1234), time)
 }
 
 func TestExtractProposalForNextBlock_WrongProposals_ReturnsNoProposal(t *testing.T) {
@@ -196,7 +199,7 @@ func TestExtractProposalForNextBlock_WrongProposals_ReturnsNoProposal(t *testing
 				any, any, any, any, "creator", creator,
 			)
 
-			result, _ := extractProposalForNextBlock(last, events, logger)
+			result, _, _ := extractProposalForNextBlock(last, events, logger)
 			require.Nil(t, result)
 		})
 	}
@@ -222,8 +225,10 @@ func TestExtractProposalForNextBlock_MultipleValidProposals_EmitsWarning(t *test
 	payload2 := &inter.Payload{Proposal: proposal}
 	event1.EXPECT().Payload().Return(payload1)
 	event1.EXPECT().Creator().Return(idx.ValidatorID(1))
+	event1.EXPECT().MedianTime().Return(inter.Timestamp(1))
 	event2.EXPECT().Payload().Return(payload2)
 	event2.EXPECT().Creator().Return(idx.ValidatorID(2))
+	event2.EXPECT().MedianTime().Return(inter.Timestamp(2))
 
 	events := []inter.EventPayloadI{event1, event2}
 
@@ -232,10 +237,11 @@ func TestExtractProposalForNextBlock_MultipleValidProposals_EmitsWarning(t *test
 		"block", proposal.Number, "proposals", len(events),
 	)
 
-	result, proposer := extractProposalForNextBlock(last, events, logger)
+	result, proposer, time := extractProposalForNextBlock(last, events, logger)
 	require.NotNil(t, result)
 	require.Equal(t, *proposal, *result)
 	require.Equal(t, idx.ValidatorID(1), proposer)
+	require.Equal(t, inter.Timestamp(1), time)
 }
 
 func TestExtractProposalForNextBlock_MultipleValidProposals_UsesTurnAndHashAsTieBreaker(t *testing.T) {
@@ -258,7 +264,6 @@ func TestExtractProposalForNextBlock_MultipleValidProposals_UsesTurnAndHashAsTie
 			Proposal: &inter.Proposal{
 				Number:     101,
 				ParentHash: last.Hash,
-				Time:       123,
 			},
 		},
 		{
@@ -268,7 +273,6 @@ func TestExtractProposalForNextBlock_MultipleValidProposals_UsesTurnAndHashAsTie
 			Proposal: &inter.Proposal{
 				Number:     101,
 				ParentHash: last.Hash,
-				Time:       456,
 			},
 		},
 		{
@@ -278,7 +282,6 @@ func TestExtractProposalForNextBlock_MultipleValidProposals_UsesTurnAndHashAsTie
 			Proposal: &inter.Proposal{
 				Number:     101,
 				ParentHash: last.Hash,
-				Time:       789,
 			},
 		},
 	}
@@ -296,22 +299,26 @@ func TestExtractProposalForNextBlock_MultipleValidProposals_UsesTurnAndHashAsTie
 
 	event1.EXPECT().Payload().Return(payloads[0]).AnyTimes()
 	event1.EXPECT().Creator().Return(idx.ValidatorID(1)).AnyTimes()
+	event1.EXPECT().MedianTime().Return(inter.Timestamp(1)).AnyTimes()
 	event2.EXPECT().Payload().Return(payloads[1]).AnyTimes()
 	event2.EXPECT().Creator().Return(idx.ValidatorID(2)).AnyTimes()
+	event2.EXPECT().MedianTime().Return(inter.Timestamp(2)).AnyTimes()
 	event3.EXPECT().Payload().Return(payloads[2]).AnyTimes()
 	event3.EXPECT().Creator().Return(idx.ValidatorID(3)).AnyTimes()
+	event3.EXPECT().MedianTime().Return(inter.Timestamp(3)).AnyTimes()
 	events := []inter.EventPayloadI{event1, event2, event3}
 
 	any := gomock.Any()
 	logger.EXPECT().Warn(any, any, any, any, any).AnyTimes()
 
 	for events := range utils.Permute(events) {
-		proposal, proposer := extractProposalForNextBlock(last, events, logger)
+		proposal, proposer, time := extractProposalForNextBlock(last, events, logger)
 		require.NotNil(t, proposal)
 		require.Equal(t, payloads[0].Proposal, proposal,
 			"should pick the best proposal based on turn and hash",
 		)
 		require.Equal(t, idx.ValidatorID(1), proposer)
+		require.Equal(t, inter.Timestamp(1), time)
 	}
 }
 

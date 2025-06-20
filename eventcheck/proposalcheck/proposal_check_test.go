@@ -74,16 +74,13 @@ func TestProposalCheck_Validate_ValidGenesisEventWithProposalPasses(t *testing.T
 	event.EXPECT().Creator().Return(validator)
 	event.EXPECT().Epoch().Return(idx.Epoch(4))
 	event.EXPECT().Frame().Return(idx.Frame(1))
-	event.EXPECT().MedianTime().Return(inter.Timestamp(123))
 	event.EXPECT().Parents().Return([]hash.Event{})
 	event.EXPECT().Payload().Return(&inter.Payload{
 		ProposalSyncState: inter.ProposalSyncState{
 			LastSeenProposalTurn:  1,
 			LastSeenProposalFrame: 1,
 		},
-		Proposal: &inter.Proposal{
-			Time: inter.Timestamp(123),
-		},
+		Proposal: &inter.Proposal{},
 	}).AnyTimes()
 
 	checker := New(reader)
@@ -156,16 +153,13 @@ func TestProposalCheck_Validate_ValidEventWithProposalPasses(t *testing.T) {
 	event.EXPECT().Creator().Return(validator)
 	event.EXPECT().Epoch().Return(idx.Epoch(4))
 	event.EXPECT().Frame().Return(idx.Frame(16))
-	event.EXPECT().MedianTime().Return(inter.Timestamp(123))
 	event.EXPECT().Parents().Return([]hash.Event{parent1, parent2})
 	event.EXPECT().Payload().Return(&inter.Payload{
 		ProposalSyncState: inter.ProposalSyncState{
 			LastSeenProposalTurn:  joinedState.LastSeenProposalTurn + 1,
 			LastSeenProposalFrame: 16,
 		},
-		Proposal: &inter.Proposal{
-			Time: inter.Timestamp(123),
-		},
+		Proposal: &inter.Proposal{},
 	}).AnyTimes()
 
 	checker := New(reader)
@@ -304,9 +298,7 @@ func TestProposalCheck_Validate_ReportsInvalidValidatorSet(t *testing.T) {
 			LastSeenProposalTurn:  1,
 			LastSeenProposalFrame: 1,
 		},
-		Proposal: &inter.Proposal{
-			Time: inter.Timestamp(123),
-		},
+		Proposal: &inter.Proposal{},
 	}).AnyTimes()
 
 	checker := New(reader)
@@ -391,10 +383,7 @@ func TestCheckProposal_AcceptsValidProposal(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			event := inter.NewMockEventPayloadI(ctrl)
 
-			medianTime := inter.Timestamp(123)
-			event.EXPECT().MedianTime().Return(medianTime)
 			require.NoError(t, checkProposal(event, inter.Proposal{
-				Time:         medianTime,
 				Transactions: transactions,
 			}))
 		})
@@ -406,12 +395,6 @@ func TestCheckProposal_DetectsInvalidProposals(t *testing.T) {
 		corrupt  func(proposal *inter.Proposal)
 		expected error
 	}{
-		"invalid time": {
-			corrupt: func(proposal *inter.Proposal) {
-				proposal.Time = inter.Timestamp(321) // not the median time
-			},
-			expected: ErrInvalidProposalTime,
-		},
 		"nil transaction": {
 			corrupt: func(proposal *inter.Proposal) {
 				proposal.Transactions = []*types.Transaction{
@@ -441,12 +424,7 @@ func TestCheckProposal_DetectsInvalidProposals(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			event := inter.NewMockEventPayloadI(ctrl)
 
-			medianTime := inter.Timestamp(123)
-			event.EXPECT().MedianTime().Return(medianTime)
-
-			proposal := &inter.Proposal{
-				Time: medianTime,
-			}
+			proposal := &inter.Proposal{}
 			test.corrupt(proposal)
 
 			require.ErrorIs(t, checkProposal(event, *proposal), test.expected)

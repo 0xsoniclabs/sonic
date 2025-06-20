@@ -12,17 +12,14 @@ message Proposal {
     // The number of the proposed block.
     uint64 number = 1;
 
-    // The time stamp to be used in the block, expressed in Unix nano-seconds.
-    uint64 timestamp = 2;
-    
     // The hash of the parent block, to establish the basis this proposal is build on.
-    bytes parent_hash = 3;
+    bytes parent_hash = 2;
 
     // The verifiable source of randomness to be used during block execution. 
     // https://eth2book.info/capella/part2/building_blocks/randomness/#the-randao
-    bytes randao_reveal = 4;
+    bytes randao_reveal = 3;
 
     // The list of transactions to be included in the block in their execution
     // order.
-    repeated Transaction transactions = 5;
+    repeated Transaction transactions = 4;
 }

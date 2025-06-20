@@ -29,7 +29,6 @@ const (
 	ErrInvalidTurnProgression                  = common.ConstError("invalid turn progression in proposal sync state")
 	ErrProposalMadeByProposerWithoutPermission = common.ConstError("proposal made by proposer without permission")
 
-	ErrInvalidProposalTime            = common.ConstError("invalid time for block proposal")
 	ErrProposalContainsNilTransaction = common.ConstError("nil transaction in proposal")
 	ErrTransactionsExceedSizeLimit    = common.ConstError("total size of transactions in proposal exceeds the allowed limit")
 )
@@ -163,15 +162,6 @@ func checkProposal(
 	event inter.EventPayloadI,
 	proposal inter.Proposal,
 ) error {
-	// --- Metadata checks ---
-
-	// Check that the proposal uses the event's median time.
-	if want, got := proposal.Time, event.MedianTime(); want != got {
-		return ErrInvalidProposalTime
-	}
-
-	// TODO: apply static checks on the randao reveal.
-
 	// --- check the present transactions ---
 
 	// Check that there are no nil-transactions in the proposal.

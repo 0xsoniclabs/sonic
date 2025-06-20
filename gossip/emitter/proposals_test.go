@@ -322,7 +322,6 @@ func TestCreatePayload_ValidTurn_ProducesExpectedPayload(t *testing.T) {
 	require.Equal(inter.Turn(2), payload.LastSeenProposalTurn)
 	require.Equal(idx.Frame(4), payload.LastSeenProposalFrame)
 	require.Equal(idx.Block(6), payload.Proposal.Number)
-	require.Equal(inter.Timestamp(1234), payload.Proposal.Time)
 	require.Equal(txs, payload.Proposal.Transactions)
 	require.Equal(someRandaoReveal, payload.Proposal.RandaoReveal)
 }
@@ -401,7 +400,6 @@ func TestMakeProposal_ValidArguments_CreatesValidProposal(t *testing.T) {
 
 	require.Equal(idx.Block(latestBlock.Number)+1, proposal.Number)
 	require.Equal(latestBlock.Hash(), proposal.ParentHash)
-	require.Equal(newBlockTime, proposal.Time)
 	require.Equal(transactions, proposal.Transactions)
 	require.Equal(someRandaoReveal, proposal.RandaoReveal)
 }
