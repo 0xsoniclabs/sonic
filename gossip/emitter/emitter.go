@@ -8,7 +8,6 @@ import (
 	"os"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/0xsoniclabs/sonic/utils"
@@ -60,7 +59,7 @@ type Emitter struct {
 
 	syncStatus syncStatus
 
-	prevEmittedAtTime  atomic.Pointer[time.Time]
+	prevEmittedAtTime  time.Time
 	prevEmittedAtBlock idx.Block
 	originatedTxs      *originatedtxs.Buffer
 	pendingGas         uint64
@@ -85,8 +84,10 @@ type Emitter struct {
 	payloadIndexer *ancestor.PayloadIndexer
 
 	intervals                EmitIntervals
-	globalConfirmingInterval atomic.Uint64
-	intervalsMinLock         sync.Mutex // lock for intervals.Min
+	globalConfirmingInterval time.Duration
+
+	// lock to be used between tick and hooks that access the state of the emitter
+	lock sync.Mutex
 
 	done chan struct{}
 	wg   sync.WaitGroup
@@ -109,7 +110,7 @@ type Emitter struct {
 	baseFeeSource BaseFeeSource
 	errorLock     *errlock.ErrorLock
 
-	lastTimeAnEventWasConfirmed atomic.Pointer[time.Time]
+	lastTimeAnEventWasConfirmed time.Time
 
 	proposalTracker inter.ProposalTracker
 }
@@ -130,15 +131,15 @@ func NewEmitter(
 	rand := rand.New(rand.NewPCG(uint64(os.Getpid()), uint64(time.Now().UnixNano())))
 	config.EmitIntervals = config.EmitIntervals.RandomizeEmitTime(rand)
 	res := &Emitter{
-		config:        config,
-		world:         world,
-		originatedTxs: originatedtxs.New(SenderCountBufferSize),
-		intervals:     config.EmitIntervals,
-		Periodic:      logger.Periodic{Instance: logger.New()},
-		baseFeeSource: baseFeeSource,
-		errorLock:     errorLock,
+		config:                   config,
+		world:                    world,
+		originatedTxs:            originatedtxs.New(SenderCountBufferSize),
+		intervals:                config.EmitIntervals,
+		Periodic:                 logger.Periodic{Instance: logger.New()},
+		baseFeeSource:            baseFeeSource,
+		errorLock:                errorLock,
+		globalConfirmingInterval: config.EmitIntervals.Confirming,
 	}
-	res.globalConfirmingInterval.Store(uint64(config.EmitIntervals.Confirming))
 	return res
 }
 
@@ -218,13 +219,11 @@ func (em *Emitter) tick() {
 		return
 	}
 
+	em.lock.Lock()
+	defer em.lock.Unlock()
+
 	em.recheckChallenges()
-
-	em.intervalsMinLock.Lock()
-	min := em.intervals.Min
-	em.intervalsMinLock.Unlock()
-
-	if em.timeSinceLastEmit() >= min {
+	if time.Since(em.prevEmittedAtTime) >= em.intervals.Min {
 		_, err := em.EmitEvent()
 		if err != nil {
 			em.Log.Error("Event emitting error", "err", err)
@@ -324,7 +323,7 @@ func (em *Emitter) EmitEvent() (*inter.EventPayload, error) {
 	emittedEventsCounter.Inc(1)
 
 	now := time.Now() // record time after connecting, to add the event processing time
-	em.prevEmittedAtTime.Store(&now)
+	em.prevEmittedAtTime = now
 	em.prevEmittedAtBlock = em.world.GetLatestBlockIndex()
 
 	return e, nil
@@ -332,8 +331,8 @@ func (em *Emitter) EmitEvent() (*inter.EventPayload, error) {
 
 func (em *Emitter) loadPrevEmitTime() time.Time {
 	var prevEmittedAtTime time.Time
-	if time := em.prevEmittedAtTime.Load(); time != nil {
-		prevEmittedAtTime = *time
+	if time := em.prevEmittedAtTime; !time.IsZero() {
+		prevEmittedAtTime = time
 	}
 	prevEventID := em.world.GetLastEvent(em.epoch, em.config.Validator.ID)
 	if prevEventID == nil {

@@ -26,16 +26,8 @@ func updMetric(median, cur, upd idx.Event, validatorIdx idx.Validator, validator
 	return scalarUpdMetric(upd-median, weight, validators.TotalWeight())
 }
 
-func (em *Emitter) timeSinceLastEmit() time.Duration {
-	var lastTime time.Time
-	if last := em.prevEmittedAtTime.Load(); last != nil {
-		lastTime = *last
-	}
-	return time.Since(lastTime)
-}
-
 func (em *Emitter) isAllowedToEmit() bool {
-	passedTime := em.timeSinceLastEmit()
+	passedTime := time.Since(em.prevEmittedAtTime)
 	if passedTime < 0 {
 		passedTime = 0
 	}
@@ -49,15 +41,15 @@ func (em *Emitter) getEmitterIntervalLimit() time.Duration {
 	rules := em.world.GetRules().Emitter
 
 	var lastConfirmationTime time.Time
-	if last := em.lastTimeAnEventWasConfirmed.Load(); last != nil {
-		lastConfirmationTime = *last
+	if last := em.lastTimeAnEventWasConfirmed; !last.IsZero() {
+		lastConfirmationTime = last
 	} else {
 		// If we have not seen any event confirmed so far, we take the current time
 		// as the last confirmation time. Thus, during start-up we would not unnecessarily
 		// slow down the event emission for the very first event. The switch into the stall
 		// mode is delayed by the stall-threshold.
 		now := time.Now()
-		em.lastTimeAnEventWasConfirmed.Store(&now)
+		em.lastTimeAnEventWasConfirmed = now
 		lastConfirmationTime = now
 	}
 

@@ -25,8 +25,7 @@ func (em *Emitter) recountConfirmingIntervals(validators *pos.Validators) {
 		}
 		confirmingEmitIntervalRatio := confirmingEmitIntervalF(stakeRatio)
 		em.stakeRatio[vid] = stakeRatio
-		em.expectedEmitIntervals[vid] = time.Duration(
-			piecefunc.Mul(em.globalConfirmingInterval.Load(), confirmingEmitIntervalRatio))
+		em.expectedEmitIntervals[vid] = time.Duration(piecefunc.Mul(uint64(em.globalConfirmingInterval), confirmingEmitIntervalRatio))
 	}
 	em.intervals.Confirming = em.expectedEmitIntervals[em.config.Validator.ID]
 }
