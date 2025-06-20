@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"context"
 	"math/big"
 	"testing"
 
@@ -91,10 +90,10 @@ func testBlobTx_WithNilSidecarIsExecuted(t *testing.T, ctxt *testContext) {
 func createTestBlobTransaction(t *testing.T, ctxt *testContext, data ...[]byte) (*types.Transaction, error) {
 	require := require.New(t)
 
-	chainId, err := ctxt.client.ChainID(context.Background())
+	chainId, err := ctxt.client.ChainID(t.Context())
 	require.NoError(err, "failed to get chain ID::")
 
-	nonce, err := ctxt.client.NonceAt(context.Background(), ctxt.net.GetSessionSponsor().Address(), nil)
+	nonce, err := ctxt.client.NonceAt(t.Context(), ctxt.net.GetSessionSponsor().Address(), nil)
 	require.NoError(err, "failed to get nonce:")
 
 	var sidecar *types.BlobTxSidecar
@@ -144,10 +143,10 @@ func createTestBlobTransaction(t *testing.T, ctxt *testContext, data ...[]byte) 
 func createTestBlobTransactionWithNilSidecar(t *testing.T, ctxt *testContext) (*types.Transaction, error) {
 	require := require.New(t)
 
-	chainId, err := ctxt.client.ChainID(context.Background())
+	chainId, err := ctxt.client.ChainID(t.Context())
 	require.NoError(err, "failed to get chain ID::")
 
-	nonce, err := ctxt.client.NonceAt(context.Background(), ctxt.net.GetSessionSponsor().Address(), nil)
+	nonce, err := ctxt.client.NonceAt(t.Context(), ctxt.net.GetSessionSponsor().Address(), nil)
 	require.NoError(err, "failed to get nonce:")
 
 	// Create and return transaction with the blob data and cryptographic proofs
@@ -172,11 +171,11 @@ func checkBlocksSanity(t *testing.T, client *ethclient.Client) {
 	// number where the last block was not correctly serialized
 	require := require.New(t)
 
-	lastBlock, err := client.BlockByNumber(context.Background(), nil)
+	lastBlock, err := client.BlockByNumber(t.Context(), nil)
 	require.NoError(err)
 
 	for i := uint64(0); i < lastBlock.Number().Uint64(); i++ {
-		_, err := client.BlockByNumber(context.Background(), big.NewInt(int64(i)))
+		_, err := client.BlockByNumber(t.Context(), big.NewInt(int64(i)))
 		require.NoError(err)
 	}
 }

@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"context"
 	"fmt"
 	"testing"
 
@@ -31,7 +30,7 @@ func TestBlockInArchive(t *testing.T) {
 		defer close(done)
 		rpcClient := client.Client()
 		headChannel := make(chan *types.Header)
-		subscription, err := client.SubscribeNewHead(context.Background(), headChannel)
+		subscription, err := client.SubscribeNewHead(t.Context(), headChannel)
 		require.NoError(err, "failed to subscribe to new head %v", err)
 		lastBlockNumber := uint64(0)
 
