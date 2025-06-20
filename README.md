@@ -58,7 +58,7 @@ To create a new validator private key:
 sonictool --datadir=<DB path> validator new
 ```
 
-To launch a validator, use the `--validator.id` and `--validator.pubkey` flags. See the [Fantom Documentation](https://docs.fantom.foundation) for details on obtaining a validator ID and registering your initial stake.
+To launch a validator, use the `--validator.id` and `--validator.pubkey` flags. See the [Sonic Documentation](https://docs.soniclabs.com/) for details on obtaining a validator ID and registering your initial stake.
 
 ```sh
 sonicd --datadir=<DB path> --validator.id=YOUR_ID --validator.pubkey=0xYOUR_PUBKEY

@@ -231,7 +231,7 @@ func exportBlockCertificates(ctx context.Context, gdb *gossip.Store, writer *uni
 }
 
 func exportFwsSection(ctx context.Context, gdb *gossip.Store, writer *unitWriter) error {
-	log.Info("Exporting Fantom World State Live data")
+	log.Info("Exporting Sonic World State Live data")
 	if err := gdb.EvmStore().ExportLiveWorldState(ctx, writer); err != nil {
 		return err
 	}
@@ -239,13 +239,13 @@ func exportFwsSection(ctx context.Context, gdb *gossip.Store, writer *unitWriter
 	if err != nil {
 		return err
 	}
-	log.Info("Exported Fantom World State Live data")
+	log.Info("Exported Sonic World State Live data")
 	fmt.Printf("- FWS hash: %v \n", fwsHash.String())
 	return nil
 }
 
 func exportFwaSection(ctx context.Context, gdb *gossip.Store, writer *unitWriter) error {
-	log.Info("Exporting Fantom World State Archive data")
+	log.Info("Exporting Sonic World State Archive data")
 	if err := gdb.EvmStore().ExportArchiveWorldState(ctx, writer); err != nil {
 		return err
 	}
@@ -254,7 +254,7 @@ func exportFwaSection(ctx context.Context, gdb *gossip.Store, writer *unitWriter
 	if err != nil {
 		return err
 	}
-	log.Info("Exported Fantom World State Archive data")
+	log.Info("Exported Sonic World State Archive data")
 	fmt.Printf("- FWA hash: %v \n", fwaHash.String())
 	return nil
 }

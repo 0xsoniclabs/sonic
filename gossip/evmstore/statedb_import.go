@@ -29,7 +29,7 @@ import (
 
 var emptyCodeHash = crypto.Keccak256(nil)
 
-// ImportLiveWorldState imports Fantom World State data from the live state genesis section.
+// ImportLiveWorldState imports Sonic World State data from the live state genesis section.
 // Must be called before the first Open call.
 func (s *Store) ImportLiveWorldState(liveReader io.Reader) error {
 	liveDir := filepath.Join(s.parameters.Directory, "live")
@@ -42,7 +42,7 @@ func (s *Store) ImportLiveWorldState(liveReader io.Reader) error {
 	return nil
 }
 
-// ImportArchiveWorldState imports Fantom World State data from the archive state genesis section.
+// ImportArchiveWorldState imports Sonic World State data from the archive state genesis section.
 // Must be called before the first Open call.
 func (s *Store) ImportArchiveWorldState(archiveReader io.Reader) error {
 	if s.parameters.Archive == carmen.NoArchive {
@@ -61,7 +61,7 @@ func (s *Store) ImportArchiveWorldState(archiveReader io.Reader) error {
 	return fmt.Errorf("archive is used, but cannot be initialized from FWS live genesis section")
 }
 
-// InitializeArchiveWorldState imports Fantom World State data from the live state genesis section.
+// InitializeArchiveWorldState imports Sonic World State data from the live state genesis section.
 // Must be called before the first Open call.
 func (s *Store) InitializeArchiveWorldState(liveReader io.Reader, blockNum uint64) error {
 	if s.parameters.Archive == carmen.NoArchive {
@@ -80,7 +80,7 @@ func (s *Store) InitializeArchiveWorldState(liveReader io.Reader, blockNum uint6
 	return fmt.Errorf("archive is used, but cannot be initialized from FWS live genesis section")
 }
 
-// ExportLiveWorldState exports Fantom World State data for the live state genesis section.
+// ExportLiveWorldState exports Sonic World State data for the live state genesis section.
 // The Store must be closed during the call.
 func (s *Store) ExportLiveWorldState(ctx context.Context, out io.Writer) error {
 	liveDir := filepath.Join(s.parameters.Directory, "live")
@@ -90,7 +90,7 @@ func (s *Store) ExportLiveWorldState(ctx context.Context, out io.Writer) error {
 	return nil
 }
 
-// ExportArchiveWorldState exports Fantom World State data for the archive state genesis section.
+// ExportArchiveWorldState exports Sonic World State data for the archive state genesis section.
 // The Store must be closed during the call.
 func (s *Store) ExportArchiveWorldState(ctx context.Context, out io.Writer) error {
 	archiveDir := filepath.Join(s.parameters.Directory, "archive")

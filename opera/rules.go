@@ -147,11 +147,11 @@ type EconomyRules struct {
 
 	// MinGasPrice defines a lower boundary for the gas price
 	// on the network. However, its interpretation is different
-	// in the context of the Fantom and Sonic networks.
+	// in the context of the Sonic and Sonic networks.
 	//
-	// On the Fantom network: MinGasPrice is the minimum gas price
+	// On the Sonic network: MinGasPrice is the minimum gas price
 	// defining the base fee of a block. The MinGasPrice is set by
-	// the node driver and SFC on the Fantom network and adjusted
+	// the node driver and SFC on the Sonic network and adjusted
 	// based on load observed during an epoch. Base fees charged
 	// on the network correspond exactly to the MinGasPrice.
 	//
@@ -161,7 +161,7 @@ type EconomyRules struct {
 
 	// MinBaseFee is a lower bound for the base fee on the network.
 	// This option is only supported by the Sonic network. On the
-	// Fantom network it is ignored.
+	// Sonic network it is ignored.
 	//
 	// On the Sonic network, base fees are automatically adjusted
 	// after each block based on the observed gas consumption rate.
@@ -183,7 +183,7 @@ type BlocksRules struct {
 }
 
 type Upgrades struct {
-	// -- Fantom Chain --
+	// -- Sonic Chain --
 	Berlin bool
 	London bool
 	Llr    bool

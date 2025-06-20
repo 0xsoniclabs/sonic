@@ -159,8 +159,8 @@ type handler struct {
 	logger.Instance
 }
 
-// newHandler returns a new Fantom sub protocol manager. The Fantom sub protocol manages peers capable
-// with the Fantom network.
+// newHandler returns a new Sonic sub protocol manager. The Sonic sub protocol manages peers capable
+// with the Sonic network.
 func newHandler(
 	c handlerConfig,
 ) (
@@ -437,7 +437,7 @@ func (h *handler) Start(maxPeers int) {
 }
 
 func (h *handler) Stop() {
-	log.Info("Stopping Fantom protocol")
+	log.Info("Stopping Sonic protocol")
 
 	h.dagLeecher.Stop()
 	h.dagSeeder.Stop()
@@ -475,7 +475,7 @@ func (h *handler) Stop() {
 	h.wg.Wait()
 	h.peerWG.Wait()
 
-	log.Info("Fantom protocol stopped")
+	log.Info("Sonic protocol stopped")
 }
 
 func (h *handler) myProgress() PeerProgress {
