@@ -9,6 +9,7 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/stretchr/testify/require"
 )
 
@@ -153,7 +154,8 @@ func testLargeTransactionLoadTest(
 
 	// Create a list of large transactions to flood the network.
 	transactions := []*types.Transaction{}
-	data := make([]byte, 125_000) // 125 KB of data, all zeros (cheapest)
+	data := make([]byte, 125_000)
+	gas := uint64(len(data))*params.TxCostFloorPerToken + 21_000
 	for nonce := range uint64(numRounds) {
 		for i := range accounts {
 			tx := types.MustSignNewTx(
@@ -161,7 +163,7 @@ func testLargeTransactionLoadTest(
 				signer,
 				&types.AccessListTx{
 					ChainID:  chainId,
-					Gas:      125_000*10 + 21_000, // 125 KB of data + base gas
+					Gas:      gas,
 					GasPrice: big.NewInt(1e11),
 					To:       &common.Address{0x42},
 					Nonce:    nonce,
