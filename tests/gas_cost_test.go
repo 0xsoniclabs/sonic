@@ -267,8 +267,8 @@ func testGasCosts_Allegro(t *testing.T, singleProposer bool) {
 				require.NoError(t, err)
 
 				if floorDataGas <= expectedCost {
-					unused := tx.Gas() - expectedCost
 					if !singleProposer {
+						unused := tx.Gas() - expectedCost
 						expectedCost += unused / 10
 					}
 				} else {
@@ -276,7 +276,9 @@ func testGasCosts_Allegro(t *testing.T, singleProposer bool) {
 
 					// Even if the floor data gas has to be paid, we still charge 10% of unused gas
 					unused := tx.Gas() - expectedCost
-					expectedCost += unused / 10
+					if !singleProposer {
+						expectedCost += unused / 10
+					}
 					expectedSmallerThanFloor++
 				}
 
@@ -285,14 +287,6 @@ func testGasCosts_Allegro(t *testing.T, singleProposer bool) {
 				assert.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 				assert.Equal(t, expectedCost, receipt.GasUsed)
 			})
-		}
-
-		// The number of cases with costs smaller than floor data gas depends on
-		// the charging of the excess gas fees, which is disabled in single
-		// proposer mode.
-		numCasesWithCostsSmallerThanFloor := 12
-		if singleProposer {
-			numCasesWithCostsSmallerThanFloor = 16
 		}
 
 		// If the test case generation is modified, please change the expected number of out of bound cases

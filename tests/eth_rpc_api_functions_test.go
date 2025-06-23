@@ -20,7 +20,7 @@ import (
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/ethereum/go-ethereum/tests"
+	"github.com/ethereum/go-ethereum/rpc/rpc_test_utils"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -54,7 +54,7 @@ type namespaceMap map[string]map[string]interface{}
 
 // TestRPCApis checks if all go-ethereum RPC APIs are implemented in Sonic
 func TestRPCApis(t *testing.T) {
-	ethAPIs := parseAPIs(tests.GetRPCApis())
+	ethAPIs := parseAPIs(rpc_test_utils.GetRpcApis())
 	sonicAPIs := parseAPIs(getNodeService(t).APIs())
 
 	// look for missing methods which are in go-ethereum and not in Sonic

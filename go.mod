@@ -4,7 +4,7 @@ go 1.24.0
 
 require (
 	github.com/0xsoniclabs/carmen/go v0.0.0-20250530111616-fabde4233b62
-	github.com/0xsoniclabs/tosca v0.0.0-20250618081101-b59dccc6495d
+	github.com/0xsoniclabs/tosca v0.0.0-20250623125359-d6ba532bd94d
 	github.com/Fantom-foundation/lachesis-base v0.0.0-20240116072301-a75735c4ef00
 	github.com/cespare/cp v1.1.1
 	github.com/consensys/gnark-crypto v0.16.0
@@ -126,7 +126,7 @@ require (
 	rsc.io/tmplfunc v0.0.3 // indirect
 )
 
-replace github.com/ethereum/go-ethereum => github.com/0xsoniclabs/go-ethereum v0.0.0-20250618065725-8daadf4ecd95
+replace github.com/ethereum/go-ethereum => github.com/0xsoniclabs/go-ethereum v0.0.0-20250623123926-e563918a84b4
 
 replace github.com/Fantom-foundation/lachesis-base => github.com/Fantom-foundation/lachesis-base-sonic v0.0.0-20250212122819-abaef8bb9abb
 
