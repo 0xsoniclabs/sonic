@@ -147,7 +147,7 @@ type EconomyRules struct {
 
 	// MinGasPrice defines a lower boundary for the gas price
 	// on the network. However, its interpretation is different
-	// in the context of the Sonic and Sonic networks.
+	// in the context of the Sonic networks.
 	//
 	// On the Sonic network: MinGasPrice is the minimum gas price
 	// defining the base fee of a block. The MinGasPrice is set by
