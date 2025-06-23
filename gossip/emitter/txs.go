@@ -148,10 +148,21 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 		return
 	}
 
+	totalTxSizeInBytes := uint64(0)
+
 	// sort transactions by price and nonce
 	rules := em.world.GetRules()
 	for tx, _ := sorted.Peek(); tx != nil; tx, _ = sorted.Peek() {
 		resolvedTx := tx.Resolve()
+
+		// check transaction size limits
+		txSize := resolvedTx.Size()
+		if totalTxSizeInBytes+txSize > maxTotalTransactionsSizeInEventInBytes {
+			txsSkippedSizeLimit.Inc(1)
+			sorted.Pop()
+			continue
+		}
+
 		sender, _ := types.Sender(em.world.TransactionSigner, resolvedTx)
 		// check transaction epoch rules (tx type, gas price)
 		if epochcheck.CheckTxs(types.Transactions{resolvedTx}, rules) != nil {
@@ -191,6 +202,7 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 		e.SetGasPowerUsed(e.GasPowerUsed() + tx.Gas)
 		e.SetGasPowerLeft(e.GasPowerLeft().Sub(tx.Gas))
 		e.SetTxs(append(e.Transactions(), resolvedTx))
+		totalTxSizeInBytes += txSize
 		sorted.Shift()
 	}
 }

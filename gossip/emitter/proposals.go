@@ -22,18 +22,6 @@ import (
 
 //go:generate mockgen -source=proposals.go -destination=proposals_mock.go -package=emitter
 
-const (
-	// maxTotalTransactionsSizeInProposalsInBytes is the maximum size of all
-	// transactions in a proposal. Since a proposal must fit into a single
-	// consensus event, there is a limit of ~10MB on the total size to ensure
-	// that it can be encoded and transferred over the network.
-	//
-	// This constant is local to the emitter and does not affect consensus. It
-	// may be altered without the need of a hard fork if need to improve the
-	// performance of the block proposal process.
-	maxTotalTransactionsSizeInProposalsInBytes = 8 * 1024 * 1024 // 8 MiB
-)
-
 // createPayload creates payload to be attached to the given event. The result
 // may include a new block proposal if the current validator is allowed to make
 // a proposal. Otherwise, the payload contains meta-data required to track the
@@ -275,7 +263,7 @@ func makeProposal(
 		candidates,
 		scheduler.Limits{
 			Gas:  effectiveGasLimit,
-			Size: maxTotalTransactionsSizeInProposalsInBytes,
+			Size: maxTotalTransactionsSizeInEventInBytes,
 		},
 	)
 

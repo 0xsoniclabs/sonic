@@ -349,6 +349,28 @@ func makeSetCodeTx(
 	return signTransaction(t, chainID, txData, account)
 }
 
+// getNetworkRules retrieves the current network rules from the node.
+func getNetworkRules(t *testing.T, net IntegrationTestNetSession) opera.Rules {
+	t.Helper()
+	require := require.New(t)
+
+	client, err := net.GetClient()
+	require.NoError(err)
+	defer client.Close()
+
+	for range 10 {
+		var rules opera.Rules
+		err = client.Client().Call(&rules, "eth_getRules", "latest")
+		require.NoError(err)
+		if len(rules.Name) > 0 {
+			return rules
+		}
+	}
+
+	t.Fatal("Failed to retrieve network rules after 10 attempts")
+	return opera.Rules{}
+}
+
 // updateNetworkRules sends a transaction to update the network rules.
 func updateNetworkRules(t *testing.T, net IntegrationTestNetSession, rulesChange any) {
 	t.Helper()

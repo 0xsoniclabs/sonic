@@ -27,7 +27,7 @@ import (
 
 func TestEmitter_MaxProposalSize_IsWithinLimitCheckedByEventValidator(t *testing.T) {
 	require.LessOrEqual(t,
-		maxTotalTransactionsSizeInProposalsInBytes,
+		maxTotalTransactionsSizeInEventInBytes,
 		proposalcheck.MaxSizeOfProposedTransactions,
 	)
 }
@@ -371,7 +371,7 @@ func TestMakeProposal_ValidArguments_CreatesValidProposal(t *testing.T) {
 		nil,
 		scheduler.Limits{
 			Gas:  inter.GetEffectiveGasLimit(delta, rules.Economy.ShortGasPower.AllocPerSec),
-			Size: maxTotalTransactionsSizeInProposalsInBytes,
+			Size: maxTotalTransactionsSizeInEventInBytes,
 		},
 	).Return(transactions)
 

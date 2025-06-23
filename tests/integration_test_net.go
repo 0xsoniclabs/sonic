@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -762,19 +763,19 @@ func (s *Session) Run(tx *types.Transaction) (*types.Receipt, error) {
 }
 
 func (s *Session) RunAll(tx []*types.Transaction) ([]*types.Receipt, error) {
-	client, err := s.GetClient()
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to the Ethereum client: %w", err)
-	}
-	defer client.Close()
-
 	hashes := make([]common.Hash, len(tx))
+	err := runParallelWithClient(s.net, len(tx), func(client *ethclient.Client, i int) error {
+		err := client.SendTransaction(context.Background(), tx[i])
+		if err != nil {
+			return fmt.Errorf("failed to send transaction %d: %w", i, err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to send transactions: %w", err)
+	}
 	for i, t := range tx {
 		hashes[i] = t.Hash()
-		err = client.SendTransaction(context.Background(), t)
-		if err != nil {
-			return nil, fmt.Errorf("failed to send transaction %d: %w", i, err)
-		}
 	}
 	return s.GetReceipts(hashes)
 }
@@ -782,44 +783,91 @@ func (s *Session) RunAll(tx []*types.Transaction) ([]*types.Receipt, error) {
 // GetReceipt waits for the receipt of the given transaction hash to be available.
 // The function times out after 10 seconds.
 func (s *Session) GetReceipt(txHash common.Hash) (*types.Receipt, error) {
-	client, err := s.GetClient()
+	receipts, err := s.GetReceipts([]common.Hash{txHash})
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to the Ethereum client: %w", err)
-	}
-	defer client.Close()
+		return nil, fmt.Errorf("failed to get receipt: %w", err)
 
-	// Wait for the response with some exponential backoff.
-	const maxDelay = 100 * time.Millisecond
-	now := time.Now()
-	delay := time.Millisecond
-	for time.Since(now) < 100*time.Second {
-		receipt, err := client.TransactionReceipt(context.Background(), txHash)
-		if errors.Is(err, ethereum.NotFound) {
-			time.Sleep(delay)
-			delay = 2 * delay
-			if delay > maxDelay {
-				delay = maxDelay
-			}
-			continue
-		}
-		if err != nil {
-			return nil, fmt.Errorf("failed to get transaction receipt: %w", err)
-		}
-		return receipt, nil
 	}
-	return nil, fmt.Errorf("failed to get transaction receipt: timeout")
+	return receipts[0], nil
 }
 
 func (s *Session) GetReceipts(txHash []common.Hash) ([]*types.Receipt, error) {
 	res := make([]*types.Receipt, len(txHash))
-	for i, hash := range txHash {
-		receipt, err := s.GetReceipt(hash)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get receipt for transaction %d: %w", i, err)
-		}
-		res[i] = receipt
+	err := runParallelWithClient(
+		s.net,
+		len(txHash),
+		func(client *ethclient.Client, i int) error {
+			hash := txHash[i]
+			// Wait for the response with some exponential backoff.
+			const maxDelay = 100 * time.Millisecond
+			now := time.Now()
+			delay := time.Millisecond
+			for time.Since(now) < 100*time.Second {
+				receipt, err := client.TransactionReceipt(context.Background(), hash)
+				if errors.Is(err, ethereum.NotFound) {
+					time.Sleep(delay)
+					delay = 2 * delay
+					if delay > maxDelay {
+						delay = maxDelay
+					}
+					continue
+				}
+				if err != nil {
+					return fmt.Errorf("failed to get transaction receipt: %w", err)
+				}
+				res[i] = receipt
+				return nil
+			}
+			return fmt.Errorf("failed to get transaction receipt: timeout")
+		},
+	)
+	if err != nil {
+		return nil, err
 	}
 	return res, nil
+}
+
+// runParallelWithClient as a helper function to run a number of jobs in parallel
+// where each job requires access to the network through a client.
+func runParallelWithClient(
+	net IntegrationTestNetSession,
+	numJobs int,
+	job func(*ethclient.Client, int) error,
+) error {
+	numWorkers := max(min(numJobs, 16), 1)
+	var wg sync.WaitGroup
+	wg.Add(numWorkers)
+	workerErrors := make([]error, numWorkers)
+	jobErrors := make([]error, numJobs)
+	var jobCounter atomic.Int32
+	for worker := range numWorkers {
+		go func() {
+			defer wg.Done()
+
+			client, err := net.GetClient()
+			if err != nil {
+				workerErrors[worker] = fmt.Errorf("failed to connect to the network: %w", err)
+				return
+			}
+			defer client.Close()
+
+			for {
+				i := int(jobCounter.Add(1) - 1)
+				if i >= numJobs {
+					return // all jobs are done
+				}
+				if err := job(client, i); err != nil {
+					jobErrors[i] = err
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	return errors.Join(
+		errors.Join(workerErrors...),
+		errors.Join(jobErrors...),
+	)
 }
 
 // Apply sends a transaction to the network using the session account

@@ -33,11 +33,23 @@ const (
 	PayloadIndexerSize    = 5000
 )
 
+const (
+	// maxTotalTransactionsSizeInEventInBytes is the maximum size of all
+	// transactions in an event. There is a limit of ~10MB per event to ensure
+	// that it can be encoded and transferred over the network.
+	//
+	// This constant is local to the emitter and does not affect consensus. It
+	// may be altered without the need of a hard fork if need to improve the
+	// performance of the block formation process.
+	maxTotalTransactionsSizeInEventInBytes = 8 * 1024 * 1024 // 8 MiB
+)
+
 var (
 	emittedEventsCounter        = metrics.GetOrRegisterCounter("emitter/events", nil)                    // amount of emitted events
 	emittedEventsTxsCounter     = metrics.GetOrRegisterCounter("emitter/txs", nil)                       // amount of txs in emitted events
 	emittedGasCounter           = metrics.GetOrRegisterCounter("emitter/gas", nil)                       // consumed validator gas
 	txsSkippedNoValidatorGas    = metrics.GetOrRegisterCounter("emitter/skipped/novalidatorgas", nil)    // validator does not have enough gas
+	txsSkippedSizeLimit         = metrics.GetOrRegisterCounter("emitter/skipped/sizelimit", nil)         // tx skipped because of event size limit
 	txsSkippedEpochRules        = metrics.GetOrRegisterCounter("emitter/skipped/epochrules", nil)        // tx skipped because of epoch rules (like insufficient gasPrice)
 	txsSkippedConflictingSender = metrics.GetOrRegisterCounter("emitter/skipped/conflictingsender", nil) // tx by given sender in some unconfirmed event
 	txsSkippedNotMyTurn         = metrics.GetOrRegisterCounter("emitter/skipped/notmyturn", nil)         // tx should be handled by other validator
