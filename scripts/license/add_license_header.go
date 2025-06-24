@@ -22,6 +22,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	_ "embed"
 	"flag"
 	"fmt"
 	"log"
@@ -40,6 +41,8 @@ var (
 		".yml":        "#",
 		"BUILD":       "#",
 	}
+	//go:embed license_header.txt
+	licenseHeader string
 )
 
 func main() {
@@ -63,7 +66,7 @@ func main() {
 	result := 0
 	for ext, prefix := range extensions {
 		fmt.Printf("Processing files with extension %s using prefix '%s'\n", ext, prefix)
-		err := processFiles(rootDir, ext, prefix, string(license), *checkOnly, *checkDoubleHeader)
+		err := processFiles(rootDir, ext, prefix, licenseHeader, *checkOnly, *checkDoubleHeader)
 		if err != nil {
 			log.Fatalf("Error processing files with extension %s: %v\n", ext, err)
 		}
@@ -175,20 +178,6 @@ func checkDoubleHeader(path, prefix string) error {
 		}
 	}
 	return nil
-}
-
-func getLicenseHeader() (string, error) {
-	scriptDir, err := os.Getwd()
-	if err != nil {
-		return "", fmt.Errorf("failed to get working directory: %v", err)
-	}
-	licensePath := filepath.Join(scriptDir, licenseFile)
-	license, err := os.ReadFile(licensePath)
-	if err != nil {
-		return "", fmt.Errorf("failed to read license header: %v", err)
-	}
-	fmt.Printf("Using license header from: %s\n", licensePath)
-	return string(license), nil
 }
 
 func shouldIgnore(path string) bool {

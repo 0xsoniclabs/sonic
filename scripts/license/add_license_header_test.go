@@ -62,10 +62,7 @@ func Test_Recognizes_CurrentSonicLicense(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = tmpFile.Close() }()
 
-	license, err := getLicenseHeader()
-	require.NoError(t, err)
-
-	_, err = tmpFile.WriteString(addPrefix(string(license), "//") + "\npackage main")
+	_, err = tmpFile.WriteString(addPrefix(licenseHeader, "//") + "\npackage main")
 	require.NoError(t, err)
 	originalContent, err := os.ReadFile(tmpFile.Name())
 	require.NoError(t, err)
@@ -78,7 +75,7 @@ func Test_Recognizes_CurrentSonicLicense(t *testing.T) {
 	err = copyFile(tmpFile.Name(), copy.Name())
 	require.NoError(t, err)
 
-	err = processFiles(tmpDir, ".go", "//", string(license), false, false)
+	err = processFiles(tmpDir, ".go", "//", licenseHeader, false, false)
 	require.NoError(t, err)
 
 	contentAfter, err := os.ReadFile(copy.Name())
@@ -102,14 +99,12 @@ func Test_Replaces_OldLicenseHeader(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, tmpFile.Close())
 
-	license, err := getLicenseHeader()
-	require.NoError(t, err)
-	err = processFiles(tmpDir, ".go", "//", string(license), false, false)
+	err = processFiles(tmpDir, ".go", "//", licenseHeader, false, false)
 	require.NoError(t, err)
 
 	content, err := os.ReadFile(tmpFile.Name())
 	require.NoError(t, err)
-	require.Contains(t, string(content), addPrefix(string(license), "//"))
+	require.Contains(t, string(content), addPrefix(licenseHeader, "//"))
 
 	require.NotContains(t, string(content), oldLicense)
 }
@@ -122,20 +117,17 @@ func Test_Adds_LicenseHeader(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = tmpFile.Close() }()
 
-	license, err := getLicenseHeader()
-	require.NoError(t, err)
-
 	// write a sample license header to the file
 	_, err = tmpFile.WriteString("package main\n\nfunc main() {}\n")
 	require.NoError(t, err)
 	require.NoError(t, tmpFile.Close())
 
-	err = processFiles(tmpDir, ".go", "//", license, false, false)
+	err = processFiles(tmpDir, ".go", "//", licenseHeader, false, false)
 	require.NoError(t, err)
 
 	content, err := os.ReadFile(tmpFile.Name())
 	require.NoError(t, err)
-	extendLicenseHeader := addPrefix(license, "//")
+	extendLicenseHeader := addPrefix(licenseHeader, "//")
 	require.Contains(t, string(content), extendLicenseHeader)
 }
 
@@ -155,11 +147,8 @@ func Test_Detects_DoubleHeader(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = tmpFile.Close() }()
 
-	license, err := getLicenseHeader()
-	require.NoError(t, err)
-
 	// write a sample license header to the file
-	_, err = tmpFile.WriteString(addPrefix(string(license), "//") + addPrefix(string(license), "//") + "\npackage main")
+	_, err = tmpFile.WriteString(addPrefix(licenseHeader, "//") + addPrefix(licenseHeader, "//") + "\npackage main")
 	require.NoError(t, err)
 
 	// Check for double license headers
@@ -174,15 +163,12 @@ func Test_OnlyOnEmptyLineAfterHeader(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = tmpFile.Close() }()
 
-	license, err := getLicenseHeader()
-	require.NoError(t, err)
-
 	// write a sample license header to the file
-	_, err = tmpFile.WriteString(addPrefix(string(license), "//") + "\npackage main\n\nfunc main() {}\n")
+	_, err = tmpFile.WriteString(addPrefix(licenseHeader, "//") + "\npackage main\n\nfunc main() {}\n")
 	require.NoError(t, err)
 
 	// Check for double license headers
-	err = processFiles(tmpDir, ".go", "//", license, false, false)
+	err = processFiles(tmpDir, ".go", "//", licenseHeader, false, false)
 	require.NoError(t, err)
 
 	content, err := os.ReadFile(tmpFile.Name())
