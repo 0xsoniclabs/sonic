@@ -165,7 +165,7 @@ func processFile(path, licenseHeader string, checkOnly bool) error {
 
 	// Add header
 	newContent := licenseHeader + "\n" + string(content)
-	return os.WriteFile(path, []byte(newContent), 0222)
+	return os.WriteFile(path, []byte(newContent), 0000)
 }
 
 func checkDoubleHeader(path, prefix string) error {
