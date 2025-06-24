@@ -49,24 +49,25 @@ func main() {
 	// process optional flag
 	checkOnly := flag.Bool("check", false, "Check mode: only verify headers, do not modify files")
 	checkDoubleHeader := flag.Bool("double-header", false, "Check for double license headers")
+	var targetDir string
+	flag.StringVar(&targetDir, "dir", "", "Target directory to start processing files from. This flag is required to run.")
 	flag.Parse()
 
-	license, err := getLicenseHeader()
-	if err != nil {
-		log.Fatalf("Failed to get license header: %v\n", err)
+	// get root dir from args
+	if len(targetDir) <= 0 {
+		log.Fatal("Please provide a directory to look for files, use -dir\n")
 	}
-
-	rootDir, err := os.Getwd()
-	if err != nil {
-		log.Fatalf("Failed to get working directory: %v\n", err)
+	// Check if the directory exists
+	if _, err := os.Stat(targetDir); os.IsNotExist(err) {
+		log.Fatalf("Invalid target directory: '%s'\n", targetDir)
 	}
-	rootDir = filepath.Join(rootDir, "../..")
+	fmt.Printf("Processing files in directory: %s\n", targetDir)
 
 	// Process files with specified extensions
 	result := 0
 	for ext, prefix := range extensions {
 		fmt.Printf("Processing files with extension %s using prefix '%s'\n", ext, prefix)
-		err := processFiles(rootDir, ext, prefix, licenseHeader, *checkOnly, *checkDoubleHeader)
+		err := processFiles(targetDir, ext, prefix, licenseHeader, *checkOnly, *checkDoubleHeader)
 		if err != nil {
 			log.Fatalf("Error processing files with extension %s: %v\n", ext, err)
 		}
