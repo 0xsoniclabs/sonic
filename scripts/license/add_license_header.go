@@ -48,7 +48,7 @@ var (
 func main() {
 	// process optional flag
 	checkOnly := flag.Bool("check", false, "Check mode: only verify headers, do not modify files")
-	checkDoubleHeader := flag.Bool("double-header", false, "Check for double license headers")
+	checkDoubleHeader := flag.Bool("double-header", false, "Check for double license headers,  do not modify files")
 	var targetDir string
 	flag.StringVar(&targetDir, "dir", "", "Target directory to start processing files from. This flag is required to run.")
 	flag.Parse()
@@ -64,7 +64,6 @@ func main() {
 	fmt.Printf("Processing files in directory: %s\n", targetDir)
 
 	// Process files with specified extensions
-	result := 0
 	for ext, prefix := range extensions {
 		fmt.Printf("Processing files with extension %s using prefix '%s'\n", ext, prefix)
 		err := processFiles(targetDir, ext, prefix, licenseHeader, *checkOnly, *checkDoubleHeader)
@@ -72,13 +71,19 @@ func main() {
 			log.Fatalf("Error processing files with extension %s: %v\n", ext, err)
 		}
 	}
-	os.Exit(result)
+	os.Exit(0)
 }
 
-func processFiles(root, ext, prefix, license string, checkOnly, doubleHeader bool) error {
+// processFiles walks through the directory tree starting from root,
+// finds files with the specified extension and processes them by adding or
+// checking the license header.
+//
+// checkOnly indicates whether to only check the headers without modifying files.
+// doubleHeader indicates whether to only check for double license headers.
+func processFiles(dir, ext, prefix, license string, checkOnly, doubleHeader bool) error {
 	licenseHeader := addPrefix(license, prefix)
 	var files []string
-	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return nil
 		}
@@ -91,8 +96,9 @@ func processFiles(root, ext, prefix, license string, checkOnly, doubleHeader boo
 		return nil
 	})
 	if err != nil {
-		return fmt.Errorf("failed to walk directory %s: %v", root, err)
+		return fmt.Errorf("failed to walk directory %s: %v", dir, err)
 	}
+	anyFails := false
 	for _, f := range files {
 		if doubleHeader {
 			if err := checkDoubleHeader(f, prefix); err != nil {
@@ -103,10 +109,16 @@ func processFiles(root, ext, prefix, license string, checkOnly, doubleHeader boo
 		if err := processFile(f, licenseHeader, checkOnly); err != nil {
 			fmt.Println(err)
 			if checkOnly {
+				// record there was an error but continue checking other files
+				anyFails = true
 				continue
 			}
 			return err
 		}
+	}
+	// return an error if there were any files that failed the check
+	if anyFails {
+		return fmt.Errorf("some files do not have the correct license header")
 	}
 	return nil
 }
@@ -123,10 +135,6 @@ func processFile(path, licenseHeader string, checkOnly bool) error {
 
 	// check if the file has the first line of geth lincense header
 	if strings.Contains(lines[0], "The go-ethereum Authors") {
-		// license header is 15 lines, 16th should be empty
-		if strings.TrimSpace(lines[15]) != "" {
-			lines[14] += "\n"
-		}
 		return nil
 	}
 
@@ -146,9 +154,7 @@ func processFile(path, licenseHeader string, checkOnly bool) error {
 	// this means the file has an old license header, we need to replace it
 	if strings.Contains(lines[0], "Sonic Operations Ltd") {
 		// search for the first empty line after the old license header
-		counter := 0
 		for i, line := range lines {
-			counter += len(line)
 			if strings.TrimSpace(line) == "" {
 				// remove lines up to this point
 				content = []byte(strings.Join(lines[i+1:], "\n"))
