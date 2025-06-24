@@ -35,11 +35,17 @@ import (
 var licenseHeader string
 
 func main() {
-	// process optional flag
-	checkOnly := flag.Bool("check", false, "Check mode: only verify headers, do not modify files")
-	checkDoubleHeader := flag.Bool("double-header", false, "Check for double license headers,  do not modify files")
+	// process command line flags
+	checkOnly := flag.Bool("check", false,
+		"Check mode: only verify headers, do not modify files")
+
+	checkDoubleHeader := flag.Bool("double-header", false,
+		"Check for double license headers, do not modify files. If this flag is set, the -check flag is ignored.")
+
 	var targetDir string
-	flag.StringVar(&targetDir, "dir", "", "Target directory to start processing files from. This flag is required to run.")
+	flag.StringVar(&targetDir, "dir", "",
+		"Target directory to start processing files from. This flag is required to run.")
+
 	flag.Parse()
 
 	// get root dir from args
@@ -53,7 +59,7 @@ func main() {
 	fmt.Printf("Processing files in directory: %s\n", targetDir)
 
 	// This map defines the file extensions and their corresponding comment prefixes
-	// that will be used to add the license header.
+	// that will be added to the license header.
 	extensions := map[string]string{
 		".go":         "//",
 		"Jenkinsfile": "//",
@@ -72,12 +78,13 @@ func main() {
 	os.Exit(0)
 }
 
-// processFiles walks through the directory tree starting from root,
+// processFiles walks through the directory tree starting from dir,
 // finds files with the specified extension and processes them by adding or
 // checking the license header.
 //
 // checkOnly indicates whether to only check the headers without modifying files.
 // doubleHeader indicates whether to only check for double license headers.
+// if doubleHeader is true, checkOnly is ignored.
 func processFiles(dir, ext, prefix, license string, checkOnly, doubleHeader bool) error {
 	licenseHeader := addPrefix(license, prefix)
 	var files []string
@@ -85,7 +92,7 @@ func processFiles(dir, ext, prefix, license string, checkOnly, doubleHeader bool
 		if err != nil || info.IsDir() {
 			return nil
 		}
-		// result of building should not be checked
+		// build files should not be checked
 		if shouldIgnore(path, []string{"/build/"}) {
 			return nil
 		}
@@ -122,13 +129,18 @@ func processFiles(dir, ext, prefix, license string, checkOnly, doubleHeader bool
 	return nil
 }
 
-func processFile(path, licenseHeader string, checkOnly bool) error {
-	content, err := os.ReadFile(path)
+// processFile checks if the file given has the correct license header.
+// If checkOnly is true, it only checks the header without modifying the file.
+// If the file has an old license header, it replaces it with the new one.
+// If the file does not have a license header, it adds the new one.
+// If the file has the correct license header, it does nothing.
+func processFile(file, licenseHeader string, checkOnly bool) error {
+	content, err := os.ReadFile(file)
 	if err != nil {
-		return fmt.Errorf("failed to read %s: %v", path, err)
+		return fmt.Errorf("failed to read %s: %v", file, err)
 	}
-	// we check the first 20 lines because the license header should be the top 15 lines.
-	lines := strings.SplitN(string(content), "\n", 20)
+
+	lines := strings.Split(string(content), "\n")
 	licenseLines := strings.Split(strings.TrimSuffix(licenseHeader, "\n"), "\n")
 	needsUpdate := false
 
@@ -147,7 +159,7 @@ func processFile(path, licenseHeader string, checkOnly bool) error {
 		return nil
 	}
 	if checkOnly {
-		return fmt.Errorf("missing or incorrect license header: %s", path)
+		return fmt.Errorf("missing or incorrect license header: %s", file)
 	}
 
 	// this means the file has an old license header, we need to replace it
@@ -164,7 +176,7 @@ func processFile(path, licenseHeader string, checkOnly bool) error {
 
 	// Add header
 	newContent := licenseHeader + "\n" + string(content)
-	return os.WriteFile(path, []byte(newContent), 0000)
+	return os.WriteFile(file, []byte(newContent), 0000)
 }
 
 func checkDoubleHeader(path, prefix string) error {

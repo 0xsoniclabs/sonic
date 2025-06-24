@@ -37,7 +37,7 @@ func Test_Recognizes_GethLicense(t *testing.T) {
 
 	// create a copy of the file with the same content
 	copyName := filepath.Join(tmpDir, "test_geth_license_copy.go")
-	require.NoError(t, copyFile(originalFileName, copyName))
+	require.NoError(t, os.WriteFile(copyName, originalContent, 0440))
 
 	require.NoError(t, processFiles(tmpDir, ".go", "//", gethHeader, false, false))
 
@@ -60,7 +60,7 @@ func Test_Recognizes_CurrentSonicLicense(t *testing.T) {
 
 	// create a copy of the file with the same content
 	copyName := filepath.Join(tmpDir, "test_geth_license_copy.go")
-	require.NoError(t, copyFile(tmpFileName, copyName))
+	require.NoError(t, os.WriteFile(copyName, originalContent, 0440))
 
 	require.NoError(t, processFiles(tmpDir, ".go", "//", licenseHeader, false, false))
 
@@ -105,14 +105,6 @@ func Test_Adds_LicenseHeader(t *testing.T) {
 	require.NoError(t, err)
 	extendLicenseHeader := addPrefix(licenseHeader, "//")
 	require.Contains(t, string(content), extendLicenseHeader)
-}
-
-func copyFile(src, dst string) error {
-	originalContent, err := os.ReadFile(src)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(dst, originalContent, 0440)
 }
 
 func Test_Detects_DoubleHeader(t *testing.T) {
