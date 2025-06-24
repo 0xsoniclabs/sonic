@@ -274,8 +274,6 @@ func testGasCosts_Allegro(t *testing.T, singleProposer bool) {
 					unused := tx.Gas() - expectedCost
 					expectedCost += unused / 10
 				}
-					expectedSmallerThanFloor++
-				}
 
 				receipt, err := session.Run(tx)
 				require.NoError(t, err)
