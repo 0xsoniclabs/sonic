@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -142,17 +143,19 @@ func Test_OnlyOneEmptyLineAfterHeader(t *testing.T) {
 	content, err := os.ReadFile(tmpFileName)
 	require.NoError(t, err)
 
-	content, err := os.ReadFile(tmpFile.Name())
-	require.NoError(t, err)
-	firstEmptyLine := false
-	for _, line := range string(content) {
-		if firstEmptyLine && line != '\n' {
-			require.Fail(t, "There should be an empty line after the license header")
-		} else {
-			break // found code after the header
+	alreadyFoundEmptyLine := false
+	for i, line := range strings.Split(string(content), "\n") {
+		if len(line) == 0 {
+			if !alreadyFoundEmptyLine {
+				alreadyFoundEmptyLine = true
+				continue // first empty line after the header
+			}
+			// if we found a second empty line, fail the test
+			require.Fail(t, "There should be only one empty line after the license header", i)
 		}
-		if !firstEmptyLine && line == '\n' {
-			firstEmptyLine = true
+		// there is a non-empty line after the first empty line
+		if alreadyFoundEmptyLine {
+			break // all is good
 		}
 	}
 }
