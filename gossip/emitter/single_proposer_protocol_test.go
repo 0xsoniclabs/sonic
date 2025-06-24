@@ -6,6 +6,7 @@ import (
 	"iter"
 	"math"
 	"math/big"
+	"math/rand/v2"
 	"slices"
 	"strings"
 	"testing"
@@ -31,6 +32,81 @@ import (
 // In each simulation, it is checked that progress can be made by the honest
 // nodes, even if dishonest nodes do not propose anything.
 func TestSingleProposerProtocol_SilentValidators_ProtocolIsLive(t *testing.T) {
+	testNetworksWithDishonestNodes(t,
+		(*Node).EmitEventWithoutProposal,
+		func(t *testing.T, honestNodes NodeMask, events map[idx.ValidatorID][]inter.EventPayloadI) {
+			// Check that dishonest nodes did not propose anything.
+			for creator, eventList := range events {
+				if honestNodes.Contains(int(creator)) {
+					continue // skip honest nodes
+				}
+				for _, event := range eventList {
+					require.Nil(t,
+						event.Payload().Proposal,
+						"Dishonest node %d should have not proposed anything",
+						creator,
+					)
+				}
+			}
+		},
+	)
+}
+
+// TestSingleProposerProtocol_FaultyValidators_ProtocolIsLive is the same as
+// the previous test, but it checks that the protocol is still live even if
+// dishonest nodes propose events with proposals for the wrong blocks.
+func TestSingleProposerProtocol_FaultyValidators_ProtocolIsLive(t *testing.T) {
+	testNetworksWithDishonestNodes(t,
+		(*Node).EmitEventWithFaultyProposal,
+		func(t *testing.T, honestNodes NodeMask, events map[idx.ValidatorID][]inter.EventPayloadI) {
+			// Check that dishonest nodes proposed ridiculous blocks.
+			for creator, eventList := range events {
+				if honestNodes.Contains(int(creator)) {
+					continue // skip honest nodes
+				}
+				for _, event := range eventList {
+					if proposal := event.Payload().Proposal; proposal != nil {
+						require.GreaterOrEqual(t, proposal.Number, idx.Block(100_000))
+					}
+				}
+			}
+		},
+	)
+}
+
+// TestSingleProposerProtocol_SilentOrFaultyValidators_ProtocolIsLive simulates
+// various networks with dishonest nodes that either do not propose events at
+// all or propose events with faulty proposals. The test checks that the honest
+// nodes can still make progress and reach the target number of blocks.
+func TestSingleProposerProtocol_SilentOrFaultyValidators_ProtocolIsLive(t *testing.T) {
+	testNetworksWithDishonestNodes(t,
+		func(node *Node) (inter.EventPayloadI, error) {
+			if rand.Int32()%2 == 0 {
+				return node.EmitEventWithoutProposal()
+			}
+			return node.EmitEventWithFaultyProposal()
+		},
+		func(t *testing.T, honestNodes NodeMask, events map[idx.ValidatorID][]inter.EventPayloadI) {
+			// Check that dishonest nodes proposed ridiculous blocks.
+			for creator, eventList := range events {
+				if honestNodes.Contains(int(creator)) {
+					continue // skip honest nodes
+				}
+				for _, event := range eventList {
+					if proposal := event.Payload().Proposal; proposal != nil {
+						require.GreaterOrEqual(t, proposal.Number, idx.Block(100_000))
+					}
+				}
+			}
+		},
+	)
+}
+
+func testNetworksWithDishonestNodes(
+	t *testing.T,
+	getDishonestEvent func(*Node) (inter.EventPayloadI, error),
+	checkEvents func(*testing.T, NodeMask, map[idx.ValidatorID][]inter.EventPayloadI),
+) {
 	t.Parallel()
 	for numNodes := range 6 {
 		t.Run(
@@ -50,10 +126,14 @@ func TestSingleProposerProtocol_SilentValidators_ProtocolIsLive(t *testing.T) {
 									fmt.Sprintf("honestNodes=%s", honestNodes),
 									func(t *testing.T) {
 										t.Parallel()
-										testNetworkWithSilentNodes(
+										events := testNetworkWithDishonestNodes(
 											t, numNodes,
 											idx.Frame(delay), honestNodes,
+											getDishonestEvent,
 										)
+										if checkEvents != nil {
+											checkEvents(t, honestNodes, events)
+										}
 									},
 								)
 							}
@@ -65,12 +145,13 @@ func TestSingleProposerProtocol_SilentValidators_ProtocolIsLive(t *testing.T) {
 	}
 }
 
-func testNetworkWithSilentNodes(
+func testNetworkWithDishonestNodes(
 	t *testing.T,
 	numNodes int,
 	confirmationDelay idx.Frame,
 	honestNodes NodeMask,
-) {
+	getDishonestEvent func(*Node) (inter.EventPayloadI, error),
+) map[idx.ValidatorID][]inter.EventPayloadI {
 	const NumBlocks = 50
 	maxRounds := NumBlocks * numNodes * int(confirmationDelay+1) * 10
 	require := require.New(t)
@@ -79,8 +160,7 @@ func testNetworkWithSilentNodes(
 	rounds := 0
 
 	pending := []inter.EventPayloadI{}
-
-	proposalCounts := map[idx.ValidatorID]int{}
+	events := map[idx.ValidatorID][]inter.EventPayloadI{}
 	for network.GetNode(0).GetBlockHeight() < NumBlocks {
 		for i, sender := range network.Nodes() {
 
@@ -92,9 +172,10 @@ func testNetworkWithSilentNodes(
 				event, err = sender.EmitEvent()
 				require.NoError(err)
 			} else {
-				event, err = sender.EmitEventWithoutProposal()
+				event, err = getDishonestEvent(sender)
 				require.NoError(err)
 			}
+			events[event.Creator()] = append(events[event.Creator()], event)
 
 			// Distribute the event to all nodes synchronously. Thus, all nodes
 			// will receive the event at the same time.
@@ -103,7 +184,6 @@ func testNetworkWithSilentNodes(
 			// Keep track of in-flight proposals.
 			if proposal := event.Payload().Proposal; proposal != nil {
 				pending = append(pending, event)
-				proposalCounts[event.Creator()]++
 			}
 
 			// Inform nodes about confirmed proposals.
@@ -125,15 +205,7 @@ func testNetworkWithSilentNodes(
 			NumBlocks, network.GetNode(0).GetBlockHeight(),
 		)
 	}
-
-	// Check the contributions of each node.
-	for creator := range idx.ValidatorID(numNodes) {
-		if honestNodes.Contains(int(creator)) {
-			require.Greater(proposalCounts[creator], 0, "Node %d should have proposed something", creator)
-		} else {
-			require.Zero(proposalCounts[creator], "Node %d should not have proposed anything", creator)
-		}
-	}
+	return events
 }
 
 // --- Simulation infrastructure for the single proposer protocol tests ---
@@ -223,16 +295,56 @@ func (n *Node) EmitEvent() (inter.EventPayloadI, error) {
 	return n.emitEventInternal(true)
 }
 
+func (n *Node) EmitEventWithFaultyProposal() (inter.EventPayloadI, error) {
+	// Create a payload that passes the validation but proposals an invalid block.
+	event := n.createBaseEvent()
+
+	world := &fakeWorld{node: n}
+	incomingState := inter.CalculateIncomingProposalSyncState(world, event)
+
+	// If it is this node's turn, create a proposal with an invalid block.
+	// Determine whether this validator is allowed to propose a new block.
+	currentEpoch := event.Epoch()
+	isMyTurn, turn, err := inter.IsAllowedToPropose(
+		n.validator,
+		n.validators,
+		incomingState,
+		currentEpoch,
+		event.Frame(),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create event payload, %w", err)
+	}
+
+	if isMyTurn {
+		// Introduce a proposal for the wrong block.
+		event.SetPayload(inter.Payload{
+			ProposalSyncState: inter.ProposalSyncState{
+				LastSeenProposalTurn:  turn,
+				LastSeenProposalFrame: event.Frame(),
+			},
+			Proposal: &inter.Proposal{
+				Number: idx.Block(100_000), // < invalid proposal for the next block
+				// Other fields are not important for the test.
+			},
+		})
+	} else {
+		event.SetPayload(inter.Payload{
+			ProposalSyncState: incomingState,
+		})
+	}
+
+	return event.Build(), nil
+}
+
 func (n *Node) EmitEventWithoutProposal() (inter.EventPayloadI, error) {
 	return n.emitEventInternal(false)
 }
 
-func (n *Node) emitEventInternal(
-	includeProposalIfPossible bool,
-) (inter.EventPayloadI, error) {
+func (n *Node) createBaseEvent() *inter.MutableEventPayload {
 	// This function builds an event with payload data sufficient to pass the
 	// proposal checker.
-	event := inter.MutableEventPayload{}
+	event := &inter.MutableEventPayload{}
 	event.SetVersion(3)
 	event.SetCreator(n.validator)
 
@@ -264,6 +376,13 @@ func (n *Node) emitEventInternal(
 		event.SetCreationTime(creationTime)
 		event.SetMedianTime(creationTime) // is not checked, but needs to progress
 	}
+	return event
+}
+
+func (n *Node) emitEventInternal(
+	includeProposalIfPossible bool,
+) (inter.EventPayloadI, error) {
+	event := n.createBaseEvent()
 
 	// Create the payload for the event.
 	creator := n.validator
@@ -274,7 +393,7 @@ func (n *Node) emitEventInternal(
 		&fakeWorld{node: n},
 		creator,
 		n.validators,
-		&event,
+		event,
 		&n.tracker,
 		nil,
 		fakeScheduler{},
