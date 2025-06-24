@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"context"
 	"fmt"
 	"math/big"
 	"testing"
@@ -161,20 +160,20 @@ func testSponsoring(t *testing.T, net IntegrationTestNetSession) {
 	effectiveCost = effectiveCost.Mul(
 		receipt.EffectiveGasPrice,
 		big.NewInt(int64(receipt.GasUsed)))
-	balance, err := client.BalanceAt(context.Background(), sponsor.Address(), nil)
+	balance, err := client.BalanceAt(t.Context(), sponsor.Address(), nil)
 	require.NoError(t, err)
 	assert.Equal(t,
 		new(big.Int).Sub(
 			big.NewInt(1e18), effectiveCost),
 		balance, "sponsor balance must be reduced by the transaction cost")
 
-	balance, err = client.BalanceAt(context.Background(), sponsored.Address(), nil)
+	balance, err = client.BalanceAt(t.Context(), sponsored.Address(), nil)
 	require.NoError(t, err)
 	assert.Equal(t,
 		int64(0),
 		balance.Int64(), "sponsored balance must be reduced by the value transferred")
 
-	balance, err = client.BalanceAt(context.Background(), receiver.Address(), nil)
+	balance, err = client.BalanceAt(t.Context(), receiver.Address(), nil)
 	require.NoError(t, err)
 	assert.Equal(t,
 		big.NewInt(10),
@@ -231,18 +230,18 @@ func testBatching(t *testing.T, net IntegrationTestNetSession) {
 		big.NewInt(int64(batchReceipt.GasUsed)))
 	effectiveCost = effectiveCost.Add(effectiveCost, big.NewInt(1234+4321))
 
-	balance, err := client.BalanceAt(context.Background(), sender.Address(), nil)
+	balance, err := client.BalanceAt(t.Context(), sender.Address(), nil)
 	require.NoError(t, err)
 	assert.Equal(t,
 		new(big.Int).Sub(
 			big.NewInt(1e18), effectiveCost), balance)
 
 	// Check that the receivers have received the funds
-	balance1, err := client.BalanceAt(context.Background(), receiver1.Address(), nil)
+	balance1, err := client.BalanceAt(t.Context(), receiver1.Address(), nil)
 	require.NoError(t, err)
 	assert.Equal(t, big.NewInt(1234), balance1)
 
-	balance2, err := client.BalanceAt(context.Background(), receiver2.Address(), nil)
+	balance2, err := client.BalanceAt(t.Context(), receiver2.Address(), nil)
 	require.NoError(t, err)
 	assert.Equal(t, big.NewInt(4321), balance2)
 }
@@ -280,7 +279,7 @@ func testPrivilegeDeescalation(t *testing.T, session IntegrationTestNetSession) 
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
 	// Check that authorization has been set
-	data, err := client.StorageAt(context.Background(), account.Address(), common.Hash{}, nil)
+	data, err := client.StorageAt(t.Context(), account.Address(), common.Hash{}, nil)
 	require.NoError(t, err)
 	addr := userAccount.Address()
 	require.Equal(t, addr[:], data[12:32], "contract has not been initialized correctly")
@@ -289,7 +288,7 @@ func testPrivilegeDeescalation(t *testing.T, session IntegrationTestNetSession) 
 	delegatedContract, err := privilege_deescalation.NewPrivilegeDeescalation(account.Address(), client)
 	require.NoError(t, err)
 
-	accountBalanceBefore, err := client.BalanceAt(context.Background(), account.Address(), nil)
+	accountBalanceBefore, err := client.BalanceAt(t.Context(), account.Address(), nil)
 	require.NoError(t, err)
 
 	// issue a normal transaction from userAccount to transfer funds to receiver
@@ -303,11 +302,11 @@ func testPrivilegeDeescalation(t *testing.T, session IntegrationTestNetSession) 
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
 	// check balances
-	accountBalanceAfter, err := client.BalanceAt(context.Background(), account.Address(), nil)
+	accountBalanceAfter, err := client.BalanceAt(t.Context(), account.Address(), nil)
 	require.NoError(t, err)
 	assert.Equal(t, new(big.Int).Sub(accountBalanceBefore, big.NewInt(1234)), accountBalanceAfter)
 
-	receivedBalance, err := client.BalanceAt(context.Background(), receiver.Address(), nil)
+	receivedBalance, err := client.BalanceAt(t.Context(), receiver.Address(), nil)
 	require.NoError(t, err)
 	assert.Equal(t, big.NewInt(1234), receivedBalance)
 
@@ -358,7 +357,7 @@ func testDelegateCanBeSetAndUnset(t *testing.T, session IntegrationTestNetSessio
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
 	// check that code has been set
-	codeSet, err := client.CodeAt(context.Background(), account.Address(), nil)
+	codeSet, err := client.CodeAt(t.Context(), account.Address(), nil)
 	require.NoError(t, err)
 	expectedCode := append([]byte{0xef, 0x01, 0x00}, delegateAddress[:]...)
 	require.Equal(t, expectedCode, codeSet, "code in account is expected to be delegation designation")
@@ -370,7 +369,7 @@ func testDelegateCanBeSetAndUnset(t *testing.T, session IntegrationTestNetSessio
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
 	// check that code has been unset
-	codeUnset, err := client.CodeAt(context.Background(), account.Address(), nil)
+	codeUnset, err := client.CodeAt(t.Context(), account.Address(), nil)
 	require.NoError(t, err)
 	require.Equal(t, []byte{}, codeUnset, "code in account is expected to be empty")
 }
@@ -383,7 +382,7 @@ func testInvalidAuthorizationsAreIgnored(t *testing.T, net *IntegrationTestNet) 
 	require.NoError(t, err)
 	defer client.Close()
 
-	chainId, err := client.ChainID(context.Background())
+	chainId, err := client.ChainID(t.Context())
 	require.NoError(t, err, "failed to get chain ID")
 
 	// list invalid authorizations
@@ -443,14 +442,14 @@ func testInvalidAuthorizationsAreIgnored(t *testing.T, net *IntegrationTestNet) 
 				return []types.SetCodeAuthorization{wrong}
 			},
 			check: func(t *testing.T, wrongAccount, _ *Account) {
-				code, err := client.CodeAt(context.Background(), wrongAccount.Address(), nil)
+				code, err := client.CodeAt(t.Context(), wrongAccount.Address(), nil)
 				require.NoError(t, err)
 				require.Equal(t, []byte{}, code, "code in account is expected to be unmodified")
 			},
 		},
 		"before correct authorization": {
 			makeAuthorizations: func(t *testing.T, wrong types.SetCodeAuthorization, rightAccount *Account) []types.SetCodeAuthorization {
-				nonce, err := client.NonceAt(context.Background(), rightAccount.Address(), nil)
+				nonce, err := client.NonceAt(t.Context(), rightAccount.Address(), nil)
 				require.NoError(t, err, "failed to get nonce for account", rightAccount.Address())
 
 				valid, err := types.SignSetCode(rightAccount.PrivateKey,
@@ -463,11 +462,11 @@ func testInvalidAuthorizationsAreIgnored(t *testing.T, net *IntegrationTestNet) 
 				return []types.SetCodeAuthorization{wrong, valid}
 			},
 			check: func(t *testing.T, wrongAccount, rightAccount *Account) {
-				code, err := client.CodeAt(context.Background(), wrongAccount.Address(), nil)
+				code, err := client.CodeAt(t.Context(), wrongAccount.Address(), nil)
 				require.NoError(t, err)
 				require.Equal(t, []byte{}, code, "code in account is expected to be unmodified")
 
-				code, err = client.CodeAt(context.Background(), rightAccount.Address(), nil)
+				code, err = client.CodeAt(t.Context(), rightAccount.Address(), nil)
 				require.NoError(t, err)
 				expectedCode := append([]byte{0xef, 0x01, 0x00}, common.Address{43}.Bytes()...)
 				require.Equal(t, expectedCode, code, "code in account is expected to be delegation designation")
@@ -475,7 +474,7 @@ func testInvalidAuthorizationsAreIgnored(t *testing.T, net *IntegrationTestNet) 
 		},
 		"after correct authorization": {
 			makeAuthorizations: func(t *testing.T, wrong types.SetCodeAuthorization, rightAccount *Account) []types.SetCodeAuthorization {
-				nonce, err := client.NonceAt(context.Background(), rightAccount.Address(), nil)
+				nonce, err := client.NonceAt(t.Context(), rightAccount.Address(), nil)
 				require.NoError(t, err, "failed to get nonce for account", rightAccount.Address())
 
 				valid, err := types.SignSetCode(rightAccount.PrivateKey,
@@ -488,11 +487,11 @@ func testInvalidAuthorizationsAreIgnored(t *testing.T, net *IntegrationTestNet) 
 				return []types.SetCodeAuthorization{valid, wrong}
 			},
 			check: func(t *testing.T, wrongAccount, rightAccount *Account) {
-				code, err := client.CodeAt(context.Background(), wrongAccount.Address(), nil)
+				code, err := client.CodeAt(t.Context(), wrongAccount.Address(), nil)
 				require.NoError(t, err)
 				require.Equal(t, []byte{}, code, "code in account is expected to be unmodified")
 
-				code, err = client.CodeAt(context.Background(), rightAccount.Address(), nil)
+				code, err = client.CodeAt(t.Context(), rightAccount.Address(), nil)
 				require.NoError(t, err)
 				expectedCode := append([]byte{0xef, 0x01, 0x00}, common.Address{43}.Bytes()...)
 				require.Equal(t, expectedCode, code, "code in account is expected to be delegation designation")
@@ -507,7 +506,7 @@ func testInvalidAuthorizationsAreIgnored(t *testing.T, net *IntegrationTestNet) 
 				session := net.SpawnSession(t)
 
 				wrongAuthAccount := makeAccountWithBalance(t, session, big.NewInt(1e18)) // < will transfer funds
-				nonce, err := client.NonceAt(context.Background(), wrongAuthAccount.Address(), nil)
+				nonce, err := client.NonceAt(t.Context(), wrongAuthAccount.Address(), nil)
 				require.NoError(t, err, "failed to get nonce for account", wrongAuthAccount.Address())
 
 				wrongAuthorization, err := test.makeAuthorization(wrongAuthAccount, nonce)
@@ -550,12 +549,12 @@ func testAuthorizationsAreExecutedInOrder(t *testing.T, session IntegrationTestN
 	require.NoError(t, err)
 	defer client.Close()
 
-	chainId, err := client.ChainID(context.Background())
+	chainId, err := client.ChainID(t.Context())
 	require.NoError(t, err, "failed to get chain ID")
 
 	account := makeAccountWithBalance(t, session, big.NewInt(1e18)) // < will transfer funds
 
-	nonce, err := client.NonceAt(context.Background(), account.Address(), nil)
+	nonce, err := client.NonceAt(t.Context(), account.Address(), nil)
 	require.NoError(t, err, "failed to get nonce for account", account.Address())
 
 	authorizationA, err := types.SignSetCode(account.PrivateKey,
@@ -597,7 +596,7 @@ func testAuthorizationsAreExecutedInOrder(t *testing.T, session IntegrationTestN
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
 	// last delegation is set
-	code, err := client.CodeAt(context.Background(), account.Address(), nil)
+	code, err := client.CodeAt(t.Context(), account.Address(), nil)
 	require.NoError(t, err)
 	expectedCode := append([]byte{0xef, 0x01, 0x00}, common.Address{24}.Bytes()...)
 	require.Equal(t, expectedCode, code, "code in account is expected to be delegation designation")
@@ -611,19 +610,19 @@ func testMultipleAccountsCanSubmitAuthorizations(t *testing.T, session Integrati
 	require.NoError(t, err)
 	defer client.Close()
 
-	chainId, err := client.ChainID(context.Background())
+	chainId, err := client.ChainID(t.Context())
 	require.NoError(t, err, "failed to get chain ID")
 
 	account := makeAccountWithBalance(t, session, big.NewInt(1e18)) // < Pays for the transaction
-	nonce, err := client.NonceAt(context.Background(), account.Address(), nil)
+	nonce, err := client.NonceAt(t.Context(), account.Address(), nil)
 	require.NoError(t, err, "failed to get nonce for account", account.Address())
 
 	authorizerA := NewAccount() // < no cost
-	authorizerANonce, err := client.NonceAt(context.Background(), authorizerA.Address(), nil)
+	authorizerANonce, err := client.NonceAt(t.Context(), authorizerA.Address(), nil)
 	require.NoError(t, err, "failed to get nonce for account", authorizerA.Address())
 
 	authorizerB := NewAccount() // < no cost
-	authorizerBNonce, err := client.NonceAt(context.Background(), authorizerB.Address(), nil)
+	authorizerBNonce, err := client.NonceAt(t.Context(), authorizerB.Address(), nil)
 	require.NoError(t, err, "failed to get nonce for account", authorizerB.Address())
 
 	authorizationA, err := types.SignSetCode(authorizerA.PrivateKey, types.SetCodeAuthorization{
@@ -668,11 +667,11 @@ func testMultipleAccountsCanSubmitAuthorizations(t *testing.T, session Integrati
 	// check that delegations are set to the correct address
 	expectedCode := append([]byte{0xef, 0x01, 0x00}, common.Address{42}.Bytes()...)
 
-	codeA, err := client.CodeAt(context.Background(), authorizerA.Address(), nil)
+	codeA, err := client.CodeAt(t.Context(), authorizerA.Address(), nil)
 	require.NoError(t, err)
 	assert.Equal(t, expectedCode, codeA, "code in account is expected to be delegation designation")
 
-	codeB, err := client.CodeAt(context.Background(), authorizerB.Address(), nil)
+	codeB, err := client.CodeAt(t.Context(), authorizerB.Address(), nil)
 	require.NoError(t, err)
 	assert.Equal(t, expectedCode, codeB, "code in account is expected to be delegation designation")
 }
@@ -698,7 +697,7 @@ func testAuthorizationSucceedsWithFailingTx(t *testing.T, session IntegrationTes
 	require.Equal(t, types.ReceiptStatusFailed, receipt.Status)
 
 	// delegation is set nevertheless
-	code, err := client.CodeAt(context.Background(), account.Address(), nil)
+	code, err := client.CodeAt(t.Context(), account.Address(), nil)
 	require.NoError(t, err)
 	expectedCode := append([]byte{0xef, 0x01, 0x00}, delegateAddress.Bytes()...)
 	require.Equal(t, expectedCode, code, "code in account is expected to be delegation designation")
@@ -726,7 +725,7 @@ func testAuthorizationFromNonExistingAccount(t *testing.T, session IntegrationTe
 	// whenever the transaction succeeds, is not relevant for this test
 
 	// check that account exists and has a delegation designation
-	code, err := client.CodeAt(context.Background(), nonExistingAccount.Address(), nil)
+	code, err := client.CodeAt(t.Context(), nonExistingAccount.Address(), nil)
 	require.NoError(t, err)
 	expectedCode := append([]byte{0xef, 0x01, 0x00}, common.Address{42}.Bytes()...)
 	require.Equal(t, expectedCode, code, "code in account is expected to be delegation designation")
@@ -743,7 +742,7 @@ func testNoDelegateToDelegated(t *testing.T, session IntegrationTestNetSession) 
 	require.NoError(t, err)
 	defer client.Close()
 
-	chainId, err := client.ChainID(context.Background())
+	chainId, err := client.ChainID(t.Context())
 	require.NoError(t, err, "failed to get chain ID")
 
 	sponsor := makeAccountWithBalance(t, session, big.NewInt(1e18))
@@ -756,11 +755,11 @@ func testNoDelegateToDelegated(t *testing.T, session IntegrationTestNetSession) 
 	require.Equal(t, types.ReceiptStatusSuccessful, deployReceipt.Status)
 	counterContractAddress := deployReceipt.ContractAddress
 
-	sponsorNonce, err := client.NonceAt(context.Background(), sponsor.Address(), nil)
+	sponsorNonce, err := client.NonceAt(t.Context(), sponsor.Address(), nil)
 	require.NoError(t, err, "failed to get nonce for account", sponsor.Address())
-	account1Nonce, err := client.NonceAt(context.Background(), account1.Address(), nil)
+	account1Nonce, err := client.NonceAt(t.Context(), account1.Address(), nil)
 	require.NoError(t, err, "failed to get nonce for account", account1.Address())
-	account2Nonce, err := client.NonceAt(context.Background(), account2.Address(), nil)
+	account2Nonce, err := client.NonceAt(t.Context(), account2.Address(), nil)
 	require.NoError(t, err, "failed to get nonce for account", account2.Address())
 
 	// auth1 delegates to account2
@@ -822,7 +821,7 @@ func testChainOfCalls(t *testing.T, session IntegrationTestNetSession) {
 	require.NoError(t, err)
 	defer client.Close()
 
-	chainId, err := client.ChainID(context.Background())
+	chainId, err := client.ChainID(t.Context())
 	require.NoError(t, err, "failed to get chain ID")
 
 	sponsor := makeAccountWithBalance(t, session, big.NewInt(1e18)) // < Pays for the transaction gas, originates the call-chain
@@ -835,11 +834,11 @@ func testChainOfCalls(t *testing.T, session IntegrationTestNetSession) {
 	require.Equal(t, types.ReceiptStatusSuccessful, deployReceipt.Status)
 	transitiveContractAddress := deployReceipt.ContractAddress
 
-	sponsorNonce, err := client.NonceAt(context.Background(), sponsor.Address(), nil)
+	sponsorNonce, err := client.NonceAt(t.Context(), sponsor.Address(), nil)
 	require.NoError(t, err, "failed to get nonce for account", sponsor.Address())
-	account1Nonce, err := client.NonceAt(context.Background(), account1.Address(), nil)
+	account1Nonce, err := client.NonceAt(t.Context(), account1.Address(), nil)
 	require.NoError(t, err, "failed to get nonce for account", account1.Address())
-	account2Nonce, err := client.NonceAt(context.Background(), account2.Address(), nil)
+	account2Nonce, err := client.NonceAt(t.Context(), account2.Address(), nil)
 	require.NoError(t, err, "failed to get nonce for account", account2.Address())
 
 	// both accounts delegate to the transitive contract
@@ -891,11 +890,11 @@ func testChainOfCalls(t *testing.T, session IntegrationTestNetSession) {
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
 	// Check balance has flown correctly
-	balance, err := client.BalanceAt(context.Background(), account1.Address(), nil)
+	balance, err := client.BalanceAt(t.Context(), account1.Address(), nil)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(0), balance.Uint64())
 
-	balance, err = client.BalanceAt(context.Background(), account2.Address(), nil)
+	balance, err = client.BalanceAt(t.Context(), account2.Address(), nil)
 	require.NoError(t, err)
 	assert.Equal(t, big.NewInt(1234), balance)
 
@@ -928,13 +927,13 @@ func makeEip7702Transaction(t *testing.T,
 ) *types.Transaction {
 	t.Helper()
 
-	chainId, err := client.ChainID(context.Background())
+	chainId, err := client.ChainID(t.Context())
 	require.NoError(t, err, "failed to get chain ID")
 
-	sponsoredNonce, err := client.NonceAt(context.Background(), sponsored.Address(), nil)
+	sponsoredNonce, err := client.NonceAt(t.Context(), sponsored.Address(), nil)
 	require.NoError(t, err, "failed to get nonce for account", sponsored.Address())
 
-	sponsorNonce, err := client.NonceAt(context.Background(), sponsor.Address(), nil)
+	sponsorNonce, err := client.NonceAt(t.Context(), sponsor.Address(), nil)
 	require.NoError(t, err, "failed to get nonce for account", sponsor.Address())
 
 	// If self sponsored, there are two nonces values to take care of, the transaction
@@ -990,11 +989,11 @@ func TestSetCodeTransaction_IsRejectBeforeAllegro(t *testing.T) {
 	require.NoError(t, err)
 	defer client.Close()
 
-	chainId, err := client.ChainID(context.Background())
+	chainId, err := client.ChainID(t.Context())
 	require.NoError(t, err, "failed to get chain ID")
 
 	tx := signTransaction(t, chainId, &types.SetCodeTx{}, net.GetSessionSponsor())
 
-	err = client.SendTransaction(context.Background(), tx)
+	err = client.SendTransaction(t.Context(), tx)
 	require.ErrorContains(t, err, "transaction type not supported")
 }

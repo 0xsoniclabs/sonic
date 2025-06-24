@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"context"
 	"fmt"
 	"math/big"
 	"slices"
@@ -22,7 +21,7 @@ func TestChainId_RejectsAllTxSignedWithWrongChainId(t *testing.T) {
 	client, err := net.GetClient()
 	require.NoError(t, err, "failed to get client")
 	defer client.Close()
-	actualChainID, err := client.ChainID(context.Background())
+	actualChainID, err := client.ChainID(t.Context())
 	require.NoError(t, err, "failed to get chain ID")
 	differentChainId := new(big.Int).Add(actualChainID, big.NewInt(1))
 
@@ -109,7 +108,7 @@ func TestChainId_AcceptsLegacyTxSignedWithHomestead(t *testing.T) {
 	account := makeAccountWithBalance(t, net, big.NewInt(1e18))
 
 	// get current nonce and sign the tx.
-	nonce, err := client.NonceAt(context.Background(), account.Address(), nil)
+	nonce, err := client.NonceAt(t.Context(), account.Address(), nil)
 	require.NoError(t, err, "failed to get nonce")
 
 	to := &common.Address{42}
@@ -131,7 +130,7 @@ func TestChainId_AcceptsLegacyTxSignedWithHomestead(t *testing.T) {
 
 	// get the transaction by hash and verify that it has the correct chain ID
 	var json *ethapi.RPCTransaction
-	err = client.Client().CallContext(context.Background(), &json,
+	err = client.Client().CallContext(t.Context(), &json,
 		"eth_getTransactionByHash", signed.Hash(),
 	)
 	require.NoError(t, err)

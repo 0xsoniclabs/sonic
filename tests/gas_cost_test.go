@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"context"
 	"iter"
 	"math/big"
 	"strings"
@@ -56,7 +55,7 @@ func testGasCosts_Sonic(t *testing.T, singleProposer bool) {
 	require.NoError(t, err)
 	defer client.Close()
 
-	chainId, err := client.ChainID(context.Background())
+	chainId, err := client.ChainID(t.Context())
 	require.NoError(t, err)
 
 	// From https://eips.ethereum.org/EIPS/eip-7623
@@ -79,7 +78,7 @@ func testGasCosts_Sonic(t *testing.T, singleProposer bool) {
 				tx := signTransaction(t, chainId, test.txPayload, session.GetSessionSponsor())
 				require.NoError(t, err)
 
-				err := client.SendTransaction(context.Background(), tx)
+				err := client.SendTransaction(t.Context(), tx)
 				require.Error(t, err)
 				require.Condition(t, func() bool {
 					return strings.Contains(err.Error(), "intrinsic gas too low")
@@ -158,7 +157,7 @@ func testGasCosts_Allegro(t *testing.T, singleProposer bool) {
 	require.NoError(t, err)
 	defer client.Close()
 
-	chainId, err := client.ChainID(context.Background())
+	chainId, err := client.ChainID(t.Context())
 	require.NoError(t, err)
 
 	// From https://eips.ethereum.org/EIPS/eip-7623
@@ -197,7 +196,7 @@ func testGasCosts_Allegro(t *testing.T, singleProposer bool) {
 				tx := signTransaction(t, chainId, test.txPayload, session.GetSessionSponsor())
 				require.NoError(t, err)
 
-				err := client.SendTransaction(context.Background(), tx)
+				err := client.SendTransaction(t.Context(), tx)
 				require.Error(t, err)
 				require.Condition(t, func() bool {
 					return strings.Contains(err.Error(), "intrinsic gas too low") ||
@@ -299,7 +298,7 @@ func makeGasCostTestInputs(
 	require.NoError(t, err)
 	defer client.Close()
 
-	gasPrice, err := client.SuggestGasPrice(context.Background())
+	gasPrice, err := client.SuggestGasPrice(t.Context())
 	require.NoError(t, err)
 
 	existingAccountAddress := session.GetSessionSponsor().Address()

@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"context"
 	"math/big"
 	"testing"
 
@@ -73,7 +72,7 @@ func testVisibleBlockHashOnHead(
 
 			want := common.Hash{}
 			if observed < current {
-				hash, err := client.BlockByNumber(context.Background(), entry.ObservedBlock)
+				hash, err := client.BlockByNumber(t.Context(), entry.ObservedBlock)
 				require.NoError(err, "failed to get block hash; %v", err)
 				want = hash.Hash()
 			}
@@ -93,15 +92,13 @@ func testVisibleBlockHashesInArchive(
 	require.NoError(err, "failed to get client; %v", err)
 	defer client.Close()
 
-	ctxt := context.Background()
-
 	// Get list of all block hashes.
-	numBlocks, err := client.BlockNumber(ctxt)
+	numBlocks, err := client.BlockNumber(t.Context())
 	require.NoError(err, "failed to get block number; %v", err)
 
 	hashes := []common.Hash{}
 	for i := uint64(0); i <= numBlocks; i++ {
-		hash, err := client.BlockByNumber(ctxt, big.NewInt(int64(i)))
+		hash, err := client.BlockByNumber(t.Context(), big.NewInt(int64(i)))
 		require.NoError(err, "failed to get block hash; %v", err)
 		hashes = append(hashes, hash.Hash())
 	}

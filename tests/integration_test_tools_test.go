@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"context"
 	"math/big"
 	"testing"
 
@@ -59,13 +58,13 @@ func setTransactionDefaults[T types.TxData](
 	tmpTx := types.NewTx(txPayload)
 	nonce := tmpTx.Nonce()
 	if tmpTx.Nonce() == 0 {
-		nonce, err = client.PendingNonceAt(context.Background(), sender.Address())
+		nonce, err = client.PendingNonceAt(t.Context(), sender.Address())
 		require.NoError(t, err)
 	}
 
 	gasPrice := tmpTx.GasPrice()
 	if gasPrice == nil || gasPrice.Sign() == 0 {
-		gasPrice, err = client.SuggestGasPrice(context.Background())
+		gasPrice, err = client.SuggestGasPrice(t.Context())
 		require.NoError(t, err)
 	}
 
@@ -157,7 +156,7 @@ func TestIntegrationTestNet_setTransactionDefaults(t *testing.T) {
 	require.NoError(t, err)
 	defer client.Close()
 
-	chainId, err := client.ChainID(context.Background())
+	chainId, err := client.ChainID(t.Context())
 	require.NoError(t, err)
 
 	type modificationFunction func(t *testing.T, tx *types.TxData)
