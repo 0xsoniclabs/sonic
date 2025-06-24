@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"context"
 	"crypto/rand"
 	"math/big"
 	"testing"
@@ -180,7 +179,7 @@ func testSelfDestruct_Constructor(t *testing.T, net *IntegrationTestNet) {
 			for name, effect := range test.effects {
 				t.Run(name, func(t *testing.T) {
 					t.Parallel()
-					effect(require, &effectContext)
+					effect(t, &effectContext)
 				})
 			}
 		})
@@ -339,7 +338,7 @@ func testSelfDestruct_NestedCall(t *testing.T, net *IntegrationTestNet) {
 			for name, effect := range test.effects {
 				t.Run(name, func(t *testing.T) {
 					t.Parallel()
-					effect(require, &effectContext)
+					effect(t, &effectContext)
 				})
 			}
 		})
@@ -361,17 +360,18 @@ type effectContext struct {
 	beneficiaryAddress common.Address                    //< address of the beneficiary account
 }
 
-type effectFunction func(require *require.Assertions, ctx *effectContext)
+type effectFunction func(t testing.TB, ctx *effectContext)
 type deployTxFunction[T any] func(opts *bind.TransactOpts, backend bind.ContractBackend, beneficiaryAddress common.Address) (common.Address, *types.Transaction, *T, error)
 type executeTxFunction[T any] func(contract *T, opts *bind.TransactOpts, beneficiaryAddress common.Address) (*types.Transaction, error)
 
 // executionHalted checks that the execution stopped after selfdestruct
 // This is done by looking for logs
 func executionHalted() effectFunction {
-	return func(require *require.Assertions, ctx *effectContext) {
+	return func(t testing.TB, ctx *effectContext) {
 		for _, log := range ctx.allLogs {
 			_, err := ctx.contract.ParseLogAfterDestruct(*log)
 			require.Error(
+				t,
 				err,
 				"execution should have halted, log after selfdestruct should not be present",
 			)
@@ -385,29 +385,30 @@ func executionHalted() effectFunction {
 // the internal value of the contract storage will be emitted before the
 // transaction is  completed.
 func nestedContractValueAfterSelfDestructIs(value int64) effectFunction {
-	return func(require *require.Assertions, ctx *effectContext) {
+	return func(t testing.TB, ctx *effectContext) {
 		for _, log := range ctx.allLogs {
 			storage, err := ctx.factory.ParseLogContractStorage(*log)
 			if err != nil {
 				continue
 			}
 			require.Equal(
+				t,
 				value,
 				storage.Value.Int64(),
 				"storage value differs",
 			)
 			return
 		}
-		require.Fail("no log with storage value found")
+		require.Fail(t, "no log with storage value found")
 	}
 }
 
 // contractBalanceIs reads the contract balance and compare it to the expected value
 func contractBalanceIs(expected int64) effectFunction {
-	return func(require *require.Assertions, ctx *effectContext) {
-		balance, err := ctx.client.BalanceAt(context.Background(), ctx.contractAddress, nil)
-		require.NoError(err)
-		require.Equal(
+	return func(t testing.TB, ctx *effectContext) {
+		balance, err := ctx.client.BalanceAt(t.Context(), ctx.contractAddress, nil)
+		require.NoError(t, err)
+		require.Equal(t,
 			expected,
 			balance.Int64(),
 			"balance not expected",
@@ -417,11 +418,12 @@ func contractBalanceIs(expected int64) effectFunction {
 
 // contractStorageIs reads the contract storage and compare it to the expected value
 func contractStorageIs(expected int64) effectFunction {
-	return func(require *require.Assertions, ctx *effectContext) {
-		data, err := ctx.client.StorageAt(context.Background(), ctx.contractAddress, common.Hash{}, nil)
-		require.NoError(err)
+	return func(t testing.TB, ctx *effectContext) {
+		data, err := ctx.client.StorageAt(t.Context(), ctx.contractAddress, common.Hash{}, nil)
+		require.NoError(t, err)
 		storage := new(big.Int).SetBytes(data)
 		require.Equal(
+			t,
 			expected,
 			storage.Int64(),
 			"storage value differs",
@@ -430,10 +432,11 @@ func contractStorageIs(expected int64) effectFunction {
 }
 
 func beneficiaryBalanceIs(expected int64) effectFunction {
-	return func(require *require.Assertions, ctx *effectContext) {
-		balance, err := ctx.client.BalanceAt(context.Background(), ctx.beneficiaryAddress, nil)
-		require.NoError(err)
+	return func(t testing.TB, ctx *effectContext) {
+		balance, err := ctx.client.BalanceAt(t.Context(), ctx.beneficiaryAddress, nil)
+		require.NoError(t, err)
 		require.Equal(
+			t,
 			expected,
 			balance.Int64(),
 			"balance not expected",
@@ -442,10 +445,11 @@ func beneficiaryBalanceIs(expected int64) effectFunction {
 }
 
 func contractCodeSizeIs(expected int) effectFunction {
-	return func(require *require.Assertions, ctx *effectContext) {
-		code, err := ctx.client.CodeAt(context.Background(), ctx.contractAddress, nil)
-		require.NoError(err)
+	return func(t testing.TB, ctx *effectContext) {
+		code, err := ctx.client.CodeAt(t.Context(), ctx.contractAddress, nil)
+		require.NoError(t, err)
 		require.Equal(
+			t,
 			expected,
 			len(code),
 			"code size not expected",
@@ -454,10 +458,11 @@ func contractCodeSizeIs(expected int) effectFunction {
 }
 
 func contractCodeSizeIsNot(notExpected int) effectFunction {
-	return func(require *require.Assertions, ctx *effectContext) {
-		code, err := ctx.client.CodeAt(context.Background(), ctx.contractAddress, nil)
-		require.NoError(err)
+	return func(t testing.TB, ctx *effectContext) {
+		code, err := ctx.client.CodeAt(t.Context(), ctx.contractAddress, nil)
+		require.NoError(t, err)
 		require.NotEqual(
+			t,
 			notExpected,
 			len(code),
 			"code size not expected",
