@@ -266,19 +266,14 @@ func testGasCosts_Allegro(t *testing.T, singleProposer bool) {
 				expectedCost, err := core.IntrinsicGas(tx.Data(), tx.AccessList(), tx.SetCodeAuthorizations(), tx.To() == nil, true, true, true)
 				require.NoError(t, err)
 
-				if floorDataGas <= expectedCost {
-					if !singleProposer {
-						unused := tx.Gas() - expectedCost
-						expectedCost += unused / 10
-					}
-				} else {
+				if floorDataGas > expectedCost {
 					expectedCost = floorDataGas
-
-					// Even if the floor data gas has to be paid, we still charge 10% of unused gas
+					expectedSmallerThanFloor++
+				}
+				if !singleProposer {
 					unused := tx.Gas() - expectedCost
-					if !singleProposer {
-						expectedCost += unused / 10
-					}
+					expectedCost += unused / 10
+				}
 					expectedSmallerThanFloor++
 				}
 
