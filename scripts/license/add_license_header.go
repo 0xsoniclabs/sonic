@@ -190,8 +190,8 @@ func checkDoubleHeader(path, prefix string) error {
 // shouldIgnore checks if the file path should be ignored based on certain patterns.
 func shouldIgnore(path string, ignoredPaths []string) bool {
 	// the scripts ignores everything inside a build directory
-	for _, pat := range ignoredPaths {
-		if strings.Contains(path, pat) {
+	for _, pathFragment := range ignoredPaths {
+		if strings.Contains(path, pathFragment) {
 			return true
 		}
 	}
