@@ -2,13 +2,14 @@ package metrics
 
 import (
 	"fmt"
+	"strings"
+	"time"
+
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/metrics/exp"
 	"github.com/ethereum/go-ethereum/metrics/influxdb"
 	"gopkg.in/urfave/cli.v1"
-	"strings"
-	"time"
 )
 
 var (
@@ -89,7 +90,8 @@ var (
 )
 
 func SetupMetrics(ctx *cli.Context) error {
-	if metrics.Enabled() {
+	if ctx.GlobalBool(MetricsEnabledFlag.Name) {
+		metrics.Enable()
 		log.Info("Enabling metrics collection")
 
 		var (
