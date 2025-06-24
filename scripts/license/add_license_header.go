@@ -31,19 +31,8 @@ import (
 	"strings"
 )
 
-var (
-	licenseFile = "license_header.txt"
-	ignorePaths = []string{"/build/"}
-	extensions  = map[string]string{
-		".go":         "//",
-		"Jenkinsfile": "//",
-		"go.mod":      "//",
-		".yml":        "#",
-		"BUILD":       "#",
-	}
-	//go:embed license_header.txt
-	licenseHeader string
-)
+//go:embed license_header.txt
+var licenseHeader string
 
 func main() {
 	// process optional flag
@@ -63,6 +52,15 @@ func main() {
 	}
 	fmt.Printf("Processing files in directory: %s\n", targetDir)
 
+	// This map defines the file extensions and their corresponding comment prefixes
+	// that will be used to add the license header.
+	extensions := map[string]string{
+		".go":         "//",
+		"Jenkinsfile": "//",
+		"go.mod":      "//",
+		".yml":        "#",
+		"BUILD":       "#",
+	}
 	// Process files with specified extensions
 	for ext, prefix := range extensions {
 		fmt.Printf("Processing files with extension %s using prefix '%s'\n", ext, prefix)
@@ -87,7 +85,8 @@ func processFiles(dir, ext, prefix, license string, checkOnly, doubleHeader bool
 		if err != nil || info.IsDir() {
 			return nil
 		}
-		if shouldIgnore(path) {
+		// result of building should not be checked
+		if shouldIgnore(path, []string{"/build/"}) {
 			return nil
 		}
 		if matchExtension(path, ext) {
@@ -173,8 +172,9 @@ func checkDoubleHeader(path, prefix string) error {
 	if err != nil {
 		return fmt.Errorf("failed to read %s: %v", path, err)
 	}
-	// we check the first 20 lines because the license header should be the top 15 lines.
+
 	lines := strings.Split(string(content), "\n")
+
 	// if the first line does not contain "Copyright", we assume there is no license header
 	if !strings.Contains(lines[0], "Copyright") {
 		return nil
@@ -187,8 +187,10 @@ func checkDoubleHeader(path, prefix string) error {
 	return nil
 }
 
-func shouldIgnore(path string) bool {
-	for _, pat := range ignorePaths {
+// shouldIgnore checks if the file path should be ignored based on certain patterns.
+func shouldIgnore(path string, ignoredPaths []string) bool {
+	// the scripts ignores everything inside a build directory
+	for _, pat := range ignoredPaths {
 		if strings.Contains(path, pat) {
 			return true
 		}
