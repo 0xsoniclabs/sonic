@@ -22,9 +22,11 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/gossip/randao"
 	"github.com/0xsoniclabs/sonic/inter/pb"
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
@@ -214,4 +216,49 @@ func TestPayload_Deserialize_InvalidTransaction_FailsDecoding(t *testing.T) {
 	got := payload.Deserialize(data)
 	require.Error(got)
 	require.Equal(want, got)
+}
+
+func FuzzPayloadDeserialization(f *testing.F) {
+	examples := []Payload{
+		{},
+		{
+			ProposalSyncState: ProposalSyncState{
+				LastSeenProposalTurn:  1,
+				LastSeenProposalFrame: 2,
+			},
+		},
+		{
+			ProposalSyncState: ProposalSyncState{
+				LastSeenProposalTurn:  1,
+				LastSeenProposalFrame: 2,
+			},
+			Proposal: &Proposal{
+				Number:       idx.Block(3),
+				ParentHash:   common.Hash{12, 13, 14, 15},
+				RandaoReveal: randao.RandaoReveal{16, 17, 18, 19},
+				Transactions: []*types.Transaction{
+					types.NewTx(&types.LegacyTx{}),
+					types.NewTx(&types.LegacyTx{}),
+					types.NewTx(&types.LegacyTx{}),
+				},
+			},
+		},
+	}
+
+	f.Add([]byte{})
+	f.Add([]byte{1, 2, 3})
+	for _, example := range examples {
+		data, err := example.Serialize()
+		if err != nil {
+			f.Fatal(err)
+		}
+		f.Add(data)
+	}
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		// Serialization errors are expected and OK. What we want to test for is
+		// whether the decoder can handle the data without panicking.
+		var payload Payload
+		_ = payload.Deserialize(data)
+	})
 }
