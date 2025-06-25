@@ -380,10 +380,7 @@ func TestCheckProposal_AcceptsValidProposal(t *testing.T) {
 
 	for name, transactions := range tests {
 		t.Run(name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			event := inter.NewMockEventPayloadI(ctrl)
-
-			require.NoError(t, checkProposal(event, inter.Proposal{
+			require.NoError(t, checkProposal(inter.Proposal{
 				Transactions: transactions,
 			}))
 		})
@@ -421,13 +418,9 @@ func TestCheckProposal_DetectsInvalidProposals(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			event := inter.NewMockEventPayloadI(ctrl)
-
 			proposal := &inter.Proposal{}
 			test.corrupt(proposal)
-
-			require.ErrorIs(t, checkProposal(event, *proposal), test.expected)
+			require.ErrorIs(t, checkProposal(*proposal), test.expected)
 		})
 	}
 }

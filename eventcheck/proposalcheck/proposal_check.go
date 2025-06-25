@@ -132,7 +132,7 @@ func (v *Checker) Validate(e inter.EventPayloadI) error {
 	}
 
 	// --- check the content of the proposal ---
-	return checkProposal(e, *proposal)
+	return checkProposal(*proposal)
 }
 
 // checkVersion3EventProperties checks key properties of the event payload for
@@ -157,12 +157,10 @@ func checkVersion3EventProperties(e inter.EventPayloadI) error {
 	return nil
 }
 
-// checkProposal checks the proposal in the event payload for validity.
-func checkProposal(
-	event inter.EventPayloadI,
-	proposal inter.Proposal,
-) error {
-	// --- check the present transactions ---
+// checkProposal checks the proposal for validity. A proposal is valid if there
+// are no nil transactions and the total size of the transactions does not
+// exceed a maximum limit of MaxSizeOfProposedTransactions.
+func checkProposal(proposal inter.Proposal) error {
 
 	// Check that there are no nil-transactions in the proposal.
 	for _, tx := range proposal.Transactions {
