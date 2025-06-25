@@ -39,7 +39,7 @@ func Test_Recognizes_GethLicense(t *testing.T) {
 	copyName := filepath.Join(tmpDir, "test_geth_license_copy.go")
 	require.NoError(t, os.WriteFile(copyName, originalContent, 0440))
 
-	require.NoError(t, processFiles(tmpDir, ".go", "//", gethHeader, false, false))
+	require.NoError(t, processFiles(tmpDir, ".go", "//", gethHeader, false))
 
 	contentAfter, err := os.ReadFile(copyName)
 	require.NoError(t, err)
@@ -62,7 +62,7 @@ func Test_Recognizes_CurrentSonicLicense(t *testing.T) {
 	copyName := filepath.Join(tmpDir, "test_geth_license_copy.go")
 	require.NoError(t, os.WriteFile(copyName, originalContent, 0440))
 
-	require.NoError(t, processFiles(tmpDir, ".go", "//", licenseHeader, false, false))
+	require.NoError(t, processFiles(tmpDir, ".go", "//", licenseHeader, false))
 
 	contentAfter, err := os.ReadFile(copyName)
 	require.NoError(t, err)
@@ -82,7 +82,7 @@ func Test_Replaces_OldLicenseHeader(t *testing.T) {
 
 	require.NoError(t, os.WriteFile(tmpFileName, originalContent, 0660))
 
-	require.NoError(t, processFiles(tmpDir, ".go", "//", licenseHeader, false, false))
+	require.NoError(t, processFiles(tmpDir, ".go", "//", licenseHeader, false))
 
 	content, err := os.ReadFile(tmpFileName)
 	require.NoError(t, err)
@@ -99,7 +99,7 @@ func Test_Adds_LicenseHeader(t *testing.T) {
 	// write a file without license header
 	require.NoError(t, os.WriteFile(tmpFileName, []byte("package main\n\nfunc main() {}\n"), 0660))
 
-	require.NoError(t, processFiles(tmpDir, ".go", "//", licenseHeader, false, false))
+	require.NoError(t, processFiles(tmpDir, ".go", "//", licenseHeader, false))
 
 	content, err := os.ReadFile(tmpFileName)
 	require.NoError(t, err)
@@ -130,7 +130,7 @@ func Test_OnlyOneEmptyLineAfterHeader(t *testing.T) {
 	fileWithHeader := addPrefix(licenseHeader, "//") + "\npackage main\nfunc main() {}\n"
 	require.NoError(t, os.WriteFile(tmpFileName, []byte(fileWithHeader), 0660))
 
-	require.NoError(t, processFiles(tmpDir, ".go", "//", licenseHeader, false, false))
+	require.NoError(t, processFiles(tmpDir, ".go", "//", licenseHeader, false))
 
 	content, err := os.ReadFile(tmpFileName)
 	require.NoError(t, err)

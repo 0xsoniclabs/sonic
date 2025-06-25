@@ -39,9 +39,6 @@ func main() {
 	checkOnly := flag.Bool("check", false,
 		"Check mode: only verify headers, do not modify files")
 
-	checkDoubleHeader := flag.Bool("double-header", false,
-		"Check for double license headers, do not modify files. If this flag is set, the -check flag is ignored.")
-
 	var targetDir string
 	flag.StringVar(&targetDir, "dir", "",
 		"Target directory to start processing files from. This flag is required to run.")
@@ -72,7 +69,7 @@ func main() {
 	// Process files with specified extensions
 	for ext, prefix := range patterns {
 		fmt.Printf("Processing files with extension %s using prefix '%s'\n", ext, prefix)
-		err := processFiles(targetDir, ext, prefix, licenseHeader, *checkOnly, *checkDoubleHeader)
+		err := processFiles(targetDir, ext, prefix, licenseHeader, *checkOnly)
 		if err != nil {
 			log.Fatalf("Error processing files with extension %s: %v\n", ext, err)
 		}
@@ -87,7 +84,7 @@ func main() {
 // checkOnly indicates whether to only check the headers without modifying files.
 // doubleHeader indicates whether to only check for double license headers.
 // if doubleHeader is true, checkOnly is ignored.
-func processFiles(dir, ext, prefix, license string, checkOnly, doubleHeader bool) error {
+func processFiles(dir, ext, prefix, license string, checkOnly bool) error {
 	licenseHeader := addPrefix(license, prefix)
 	var files []string
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
@@ -108,25 +105,25 @@ func processFiles(dir, ext, prefix, license string, checkOnly, doubleHeader bool
 	}
 	anyFails := false
 	for _, f := range files {
-		if doubleHeader {
-			if err := checkDoubleHeader(f, prefix); err != nil {
-				fmt.Println(err)
-			}
-			continue
-		}
 		if err := processFile(f, licenseHeader, checkOnly); err != nil {
 			fmt.Println(err)
-			if checkOnly {
-				// record there was an error but continue checking other files
-				anyFails = true
-				continue
+			if !checkOnly {
+				// if check mode is not enabled, return the error
+				return err
 			}
-			return err
+			// since check mode is enabled, record that there was a failure
+			anyFails = true
+		}
+			if checkOnly {
+			if err := checkDoubleHeader(f, prefix); err != nil {
+				fmt.Println(err)
+				anyFails = true
+			}
 		}
 	}
 	// return an error if there were any files that failed the check
 	if anyFails {
-		return fmt.Errorf("some files do not have the correct license header")
+		return fmt.Errorf("some files do not have the correct license header or have double headers")
 	}
 	return nil
 }
