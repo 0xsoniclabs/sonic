@@ -688,3 +688,29 @@ func FakeEvent(version uint8, txsNum, mpsNum, bvsNum int, ersNum bool) *EventPay
 
 	return random.Build()
 }
+
+func FuzzEventDeserialization(f *testing.F) {
+	examples := []EventPayload{
+		emptyEvent(0),
+		emptyEvent(1),
+		emptyEvent(2),
+		emptyEvent(3),
+		*FakeEvent(1, 12, 1, 1, true),
+		*FakeEvent(2, 12, 0, 0, false),
+		*FakeEvent(3, 12, 0, 0, false),
+	}
+
+	for _, example := range examples {
+		data, err := rlp.EncodeToBytes(&example)
+		if err != nil {
+			f.Fatal(err)
+		}
+		f.Add(data)
+	}
+	f.Fuzz(func(t *testing.T, data []byte) {
+		// Parsing errors are expected and OK. What we want to test for is
+		// whether the decoder can handle the data without panicking.
+		var event EventPayload
+		_ = rlp.DecodeBytes(data, &event)
+	})
+}
