@@ -34,16 +34,10 @@ func Test_Recognizes_GethLicense(t *testing.T) {
 
 	originalContent, err := os.ReadFile(originalFileName)
 	require.NoError(t, err)
-
-	// create a copy of the file with the same content
-	copyName := filepath.Join(tmpDir, "test_geth_license_copy.go")
-	require.NoError(t, os.WriteFile(copyName, originalContent, 0440))
-
 	require.NoError(t, processFiles(tmpDir, ".go", "//", gethHeader, false))
 
-	contentAfter, err := os.ReadFile(copyName)
+	contentAfter, err := os.ReadFile(originalFileName)
 	require.NoError(t, err)
-
 	require.Equal(t, originalContent, contentAfter)
 }
 
@@ -57,14 +51,9 @@ func Test_Recognizes_CurrentSonicLicense(t *testing.T) {
 
 	originalContent, err := os.ReadFile(tmpFileName)
 	require.NoError(t, err)
-
-	// create a copy of the file with the same content
-	copyName := filepath.Join(tmpDir, "test_geth_license_copy.go")
-	require.NoError(t, os.WriteFile(copyName, originalContent, 0440))
-
 	require.NoError(t, processFiles(tmpDir, ".go", "//", licenseHeader, false))
 
-	contentAfter, err := os.ReadFile(copyName)
+	contentAfter, err := os.ReadFile(tmpFileName)
 	require.NoError(t, err)
 	require.Equal(t, originalContent, contentAfter)
 }
