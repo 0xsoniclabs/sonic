@@ -210,28 +210,30 @@ func TestReceipt_SkippedTransactionsDoNotChangeReceiptIndexOrCumulativeGasUsed(t
 	)
 
 	// All transactions should have ended up in the same block
-	require.Equal(t, after, before+1,
+	require.Greater(t, after, before,
 		"Block number should have increased",
 	)
 
-	// Get block by number
-	block, err := client.BlockByNumber(t.Context(), big.NewInt(int64(after)))
-	require.NoError(t, err)
-
-	cumulativeGas := uint64(0)
-	for idx, tx := range block.Transactions() {
-		receipt, err := client.TransactionReceipt(t.Context(), tx.Hash())
+	// Get the receipts of all blocks between before and after
+	for number := before + 1; number <= after; number++ {
+		block, err := client.BlockByNumber(t.Context(), big.NewInt(int64(number)))
 		require.NoError(t, err)
-		cumulativeGas += receipt.GasUsed
 
-		// Check that the receipt index is equal to the transaction index
-		require.Equal(t, uint(idx), receipt.TransactionIndex,
-			"Receipt index does not match transaction index for tx %d", idx,
-		)
+		cumulativeGas := uint64(0)
+		for idx, tx := range block.Transactions() {
+			receipt, err := client.TransactionReceipt(t.Context(), tx.Hash())
+			require.NoError(t, err)
+			cumulativeGas += receipt.GasUsed
 
-		// Check that sum of gas used by each transaction matches the cumulative gas used
-		require.Equal(t, cumulativeGas, receipt.CumulativeGasUsed,
-			"Cumulative gas used does not match for tx %d", idx,
-		)
+			// Check that the receipt index is equal to the transaction index
+			require.Equal(t, uint(idx), receipt.TransactionIndex,
+				"Receipt index does not match transaction index for tx %d", idx,
+			)
+
+			// Check that sum of gas used by each transaction matches the cumulative gas used
+			require.Equal(t, cumulativeGas, receipt.CumulativeGasUsed,
+				"Cumulative gas used does not match for tx %d", idx,
+			)
+		}
 	}
 }
