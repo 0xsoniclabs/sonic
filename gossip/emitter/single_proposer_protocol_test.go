@@ -43,7 +43,7 @@ func TestSingleProposerProtocol_SilentValidators_ProtocolIsLive(t *testing.T) {
 				for _, event := range eventList {
 					require.Nil(t,
 						event.Payload().Proposal,
-						"Dishonest node %d should have not proposed anything",
+						"Silent node %d should have not proposed anything",
 						creator,
 					)
 				}
