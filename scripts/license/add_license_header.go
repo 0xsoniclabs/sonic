@@ -58,17 +58,19 @@ func main() {
 	}
 	fmt.Printf("Processing files in directory: %s\n", targetDir)
 
-	// This map defines the file extensions and their corresponding comment prefixes
-	// that will be added to the license header.
-	extensions := map[string]string{
+	// This map defines the file patterns for files names or extensions, and
+	// their corresponding comment prefixes that will be added to the license header.
+	// Patterns that start with a dot (.) are treated as file extensions,
+	// while others are treated as specific file names.
+	patterns := map[string]string{
 		".go":         "//",
-		"Jenkinsfile": "//",
-		"go.mod":      "//",
 		".yml":        "#",
+		"go.mod":      "//",
+		"Jenkinsfile": "//",
 		"BUILD":       "#",
 	}
 	// Process files with specified extensions
-	for ext, prefix := range extensions {
+	for ext, prefix := range patterns {
 		fmt.Printf("Processing files with extension %s using prefix '%s'\n", ext, prefix)
 		err := processFiles(targetDir, ext, prefix, licenseHeader, *checkOnly, *checkDoubleHeader)
 		if err != nil {
@@ -96,7 +98,7 @@ func processFiles(dir, ext, prefix, license string, checkOnly, doubleHeader bool
 		if shouldIgnore(path, []string{"/build/"}) {
 			return nil
 		}
-		if matchExtension(path, ext) {
+		if matchPattern(path, ext) {
 			files = append(files, path)
 		}
 		return nil
@@ -210,11 +212,11 @@ func shouldIgnore(path string, ignoredPaths []string) bool {
 	return false
 }
 
-func matchExtension(path, ext string) bool {
-	if ext[0] == '.' {
-		return strings.HasSuffix(path, ext)
+func matchPattern(path, pat string) bool {
+	if pat[0] == '.' {
+		return strings.HasSuffix(path, pat)
 	}
-	return filepath.Base(path) == ext
+	return filepath.Base(path) == pat
 }
 
 func addPrefix(license, prefix string) string {
