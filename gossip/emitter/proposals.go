@@ -213,9 +213,11 @@ func makeProposal(
 		// no time has passed, so no new proposal can be made
 		return nil, nil
 	}
+	blockGasLimit := rules.Blocks.MaxBlockGas
 	effectiveGasLimit := inter.GetEffectiveGasLimit(
 		newBlockTime.Time().Sub(lastBlockTime.Time()),
 		rules.Economy.ShortGasPower.AllocPerSec,
+		blockGasLimit,
 	)
 
 	randaoReveal, randaoMix, err := randaoMixer.MixRandao(latestBlock.PrevRandao)
@@ -254,7 +256,7 @@ func makeProposal(
 		&scheduler.BlockInfo{
 			Number:      proposal.Number,
 			Time:        newBlockTime,
-			GasLimit:    rules.Blocks.MaxBlockGas,
+			GasLimit:    blockGasLimit,
 			MixHash:     randaoMix,
 			Coinbase:    evmcore.GetCoinbase(),
 			BaseFee:     *baseFee256,

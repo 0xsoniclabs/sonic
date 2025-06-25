@@ -370,7 +370,11 @@ func TestMakeProposal_ValidArguments_CreatesValidProposal(t *testing.T) {
 		},
 		nil,
 		scheduler.Limits{
-			Gas:  inter.GetEffectiveGasLimit(delta, rules.Economy.ShortGasPower.AllocPerSec),
+			Gas: inter.GetEffectiveGasLimit(
+				delta,
+				rules.Economy.ShortGasPower.AllocPerSec,
+				rules.Blocks.MaxBlockGas,
+			),
 			Size: maxTotalTransactionsSizeInEventInBytes,
 		},
 	).Return(transactions)

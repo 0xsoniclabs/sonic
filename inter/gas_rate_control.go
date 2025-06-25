@@ -15,10 +15,11 @@ const maxAccumulationTime = 2 * time.Second
 // GetEffectiveGasLimit computes the effective gas limit for the next block.
 // This is the time since the last block times the targeted network throughput.
 // The result is capped to the gas that corresponds to a maximum accumulation
-// time of maxAccumulationTime.
+// time of maxAccumulationTime and the given block limit.
 func GetEffectiveGasLimit(
 	delta time.Duration,
 	targetedThroughput uint64,
+	blockLimit uint64,
 ) uint64 {
 	if delta <= 0 {
 		return 0
@@ -26,11 +27,11 @@ func GetEffectiveGasLimit(
 	if delta > maxAccumulationTime {
 		delta = maxAccumulationTime
 	}
-	return new(big.Int).Div(
+	return min(blockLimit, new(big.Int).Div(
 		new(big.Int).Mul(
 			big.NewInt(int64(targetedThroughput)),
 			big.NewInt(int64(delta.Nanoseconds())),
 		),
 		big.NewInt(int64(time.Second.Nanoseconds())),
-	).Uint64()
+	).Uint64())
 }
