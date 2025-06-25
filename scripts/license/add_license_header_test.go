@@ -11,8 +11,7 @@ import (
 
 func Test_Recognizes_GethLicense(t *testing.T) {
 	// make a temporary file
-	tmpDir := t.TempDir()
-	originalFileName := filepath.Join(tmpDir, "test_geth_license.go")
+	originalFileName := filepath.Join(t.TempDir(), "test_geth_license.go")
 
 	gethHeader := `Copyright 2014 The go-ethereum Authors
 				   This file is part of the go-ethereum library.
@@ -30,11 +29,9 @@ func Test_Recognizes_GethLicense(t *testing.T) {
 				    You should have received a copy of the GNU Lesser General Public License
 				    along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.`
 
-	require.NoError(t, os.WriteFile(originalFileName, []byte(gethHeader), 0644))
-
-	originalContent, err := os.ReadFile(originalFileName)
-	require.NoError(t, err)
-	require.NoError(t, processFiles(tmpDir, ".go", "//", gethHeader, false))
+	originalContent := []byte(gethHeader)
+	require.NoError(t, os.WriteFile(originalFileName, originalContent, 0644))
+	require.NoError(t, processFiles(originalFileName, ".go", "//", gethHeader, false))
 
 	contentAfter, err := os.ReadFile(originalFileName)
 	require.NoError(t, err)
@@ -42,16 +39,12 @@ func Test_Recognizes_GethLicense(t *testing.T) {
 }
 
 func Test_Recognizes_CurrentSonicLicense(t *testing.T) {
-	// make a temporary folder
-	tmpDir := t.TempDir()
+	// make a file in a temp folder
+	tmpFileName := filepath.Join(t.TempDir(), "test_license")
+	originalContent := []byte(addPrefix(licenseHeader, "//") + "\npackage main")
+	require.NoError(t, os.WriteFile(tmpFileName, originalContent, 0660))
 
-	// make a temporary file in that folder
-	tmpFileName := filepath.Join(tmpDir, "test_license")
-	require.NoError(t, os.WriteFile(tmpFileName, []byte(addPrefix(licenseHeader, "//")+"\npackage main"), 0660))
-
-	originalContent, err := os.ReadFile(tmpFileName)
-	require.NoError(t, err)
-	require.NoError(t, processFiles(tmpDir, ".go", "//", licenseHeader, false))
+	require.NoError(t, processFiles(tmpFileName, ".go", "//", licenseHeader, false))
 
 	contentAfter, err := os.ReadFile(tmpFileName)
 	require.NoError(t, err)
@@ -59,48 +52,41 @@ func Test_Recognizes_CurrentSonicLicense(t *testing.T) {
 }
 
 func Test_Replaces_OldLicenseHeader(t *testing.T) {
-	// make a temporary folder
-	tmpDir := t.TempDir()
-	// make a temporary file in that folder
-	tmpFileName := filepath.Join(tmpDir, "test_license.go")
+
+	tmpFileName := filepath.Join(t.TempDir(), "test_license.go")
 	// write a sample license header to the file
 	oldLicense := `Copyright 2024 Sonic Operations Ltd
 				   This file is part of some old version
 				   of the Sonic Client`
-	originalContent := []byte(addPrefix(oldLicense, "//") + "\npackage main\n")
+	require.NoError(t,
+		os.WriteFile(
+			tmpFileName,
+			[]byte(addPrefix(oldLicense, "//")+"\npackage main\n"),
+			0660))
 
-	require.NoError(t, os.WriteFile(tmpFileName, originalContent, 0660))
+	require.NoError(t, processFiles(tmpFileName, ".go", "//", licenseHeader, false))
 
-	require.NoError(t, processFiles(tmpDir, ".go", "//", licenseHeader, false))
-
-	content, err := os.ReadFile(tmpFileName)
+	contentAfter, err := os.ReadFile(tmpFileName)
 	require.NoError(t, err)
-	require.Contains(t, string(content), addPrefix(licenseHeader, "//"))
+	require.Contains(t, string(contentAfter), addPrefix(licenseHeader, "//"))
 
-	require.NotContains(t, string(content), oldLicense)
+	require.NotContains(t, string(contentAfter), oldLicense)
 }
 
 func Test_Adds_LicenseHeader(t *testing.T) {
-	// make a temporary folder
-	tmpDir := t.TempDir()
-	// make a temporary file in that folder
-	tmpFileName := filepath.Join(tmpDir, "test_license.go")
-	// write a file without license header
+	tmpFileName := filepath.Join(t.TempDir(), "test_license.go")
 	require.NoError(t, os.WriteFile(tmpFileName, []byte("package main\n\nfunc main() {}\n"), 0660))
 
-	require.NoError(t, processFiles(tmpDir, ".go", "//", licenseHeader, false))
+	require.NoError(t, processFiles(tmpFileName, ".go", "//", licenseHeader, false))
 
-	content, err := os.ReadFile(tmpFileName)
+	contentAfter, err := os.ReadFile(tmpFileName)
 	require.NoError(t, err)
 	extendLicenseHeader := addPrefix(licenseHeader, "//")
-	require.Contains(t, string(content), extendLicenseHeader)
+	require.Contains(t, string(contentAfter), extendLicenseHeader)
 }
 
 func Test_Detects_DoubleHeader(t *testing.T) {
-	// make a temporary folder
-	tmpDir := t.TempDir()
-	// make a temporary file in that folder
-	tmpFileName := filepath.Join(tmpDir, "test_license.go")
+	tmpFileName := filepath.Join(t.TempDir(), "test_license.go")
 	doubleHeaderString := addPrefix(licenseHeader, "//") +
 		addPrefix(licenseHeader, "//") +
 		"\npackage main"
@@ -111,21 +97,18 @@ func Test_Detects_DoubleHeader(t *testing.T) {
 }
 
 func Test_OnlyOneEmptyLineAfterHeader(t *testing.T) {
-	// make a temporary folder
-	tmpDir := t.TempDir()
-	// make a temporary file in that folder
-	tmpFileName := filepath.Join(tmpDir, "test_license.go")
+	tmpFileName := filepath.Join(t.TempDir(), "test_license.go")
 
-	fileWithHeader := addPrefix(licenseHeader, "//") + "\npackage main\nfunc main() {}\n"
+	fileWithHeader := "// This is some documentation\npackage main\nfunc main() {}\n"
 	require.NoError(t, os.WriteFile(tmpFileName, []byte(fileWithHeader), 0660))
 
-	require.NoError(t, processFiles(tmpDir, ".go", "//", licenseHeader, false))
+	require.NoError(t, processFiles(tmpFileName, ".go", "//", licenseHeader, false))
 
-	content, err := os.ReadFile(tmpFileName)
+	contentAfter, err := os.ReadFile(tmpFileName)
 	require.NoError(t, err)
 
 	alreadyFoundEmptyLine := false
-	for i, line := range strings.Split(string(content), "\n") {
+	for i, line := range strings.Split(string(contentAfter), "\n") {
 		if len(line) == 0 {
 			if !alreadyFoundEmptyLine {
 				alreadyFoundEmptyLine = true

@@ -74,7 +74,6 @@ func main() {
 			log.Fatalf("Error processing files with extension %s: %v\n", ext, err)
 		}
 	}
-	os.Exit(0)
 }
 
 // processFiles walks through the directory tree starting from dir,
@@ -114,7 +113,7 @@ func processFiles(dir, ext, prefix, license string, checkOnly bool) error {
 			// since check mode is enabled, record that there was a failure
 			anyFails = true
 		}
-			if checkOnly {
+		if checkOnly {
 			if err := checkDoubleHeader(f, prefix); err != nil {
 				fmt.Println(err)
 				anyFails = true
@@ -128,7 +127,7 @@ func processFiles(dir, ext, prefix, license string, checkOnly bool) error {
 	return nil
 }
 
-// processFile checks if the file given has the correct license header.
+// processFile checks if the file given has the correct license header and corrects it if requested.
 // If checkOnly is true, it only checks the header without modifying the file.
 // If the file has an old license header, it replaces it with the new one.
 // If the file does not have a license header, it adds the new one.
