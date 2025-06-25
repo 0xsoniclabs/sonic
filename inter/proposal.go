@@ -3,6 +3,7 @@ package inter
 import (
 	"crypto/sha256"
 	"encoding/binary"
+	"fmt"
 
 	"github.com/0xsoniclabs/sonic/gossip/randao"
 	"github.com/0xsoniclabs/sonic/inter/pb"
@@ -83,6 +84,9 @@ func (p *Proposal) fromProto(pb *pb.Proposal) error {
 	copy(p.ParentHash[:], pb.ParentHash)
 	copy(p.RandaoReveal[:], pb.RandaoReveal)
 	for _, tx := range pb.Transactions {
+		if tx == nil {
+			return fmt.Errorf("nil transaction in proposal")
+		}
 		var transaction types.Transaction
 		if err := transaction.UnmarshalBinary(tx.Encoded); err != nil {
 			return err

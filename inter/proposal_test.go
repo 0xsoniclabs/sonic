@@ -177,3 +177,29 @@ func TestProposal_fromProto_FailsOnInvalidTransaction(t *testing.T) {
 	require.Error(got)
 	require.Equal(want, got)
 }
+
+func TestProposal_fromProto_FailsOnNilTransaction(t *testing.T) {
+	require := require.New(t)
+
+	pbProposal := &pb.Proposal{
+		Transactions: []*pb.Transaction{nil},
+	}
+
+	proposal := &Proposal{}
+	got := proposal.fromProto(pbProposal)
+	require.ErrorContains(got, "nil transaction in proposal")
+}
+
+func TestProposal_fromProto_FailsOnEmptyTransactionEncoding(t *testing.T) {
+	require := require.New(t)
+
+	pbProposal := &pb.Proposal{
+		Transactions: []*pb.Transaction{
+			{Encoded: nil},
+		},
+	}
+
+	proposal := &Proposal{}
+	got := proposal.fromProto(pbProposal)
+	require.ErrorContains(got, "typed transaction too short")
+}
