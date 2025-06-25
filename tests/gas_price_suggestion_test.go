@@ -18,16 +18,15 @@ func TestGasPrice_SuggestedGasPricesApproximateActualBaseFees(t *testing.T) {
 
 	fees := []uint64{}
 	suggestions := []uint64{}
-	ctxt := t.Context()
 	for i := 0; i < 10; i++ {
-		suggestedPrice, err := client.SuggestGasPrice(ctxt)
+		suggestedPrice, err := client.SuggestGasPrice(t.Context())
 		require.NoError(err)
 
 		// new block
 		receipt, err := net.EndowAccount(common.Address{42}, big.NewInt(100))
 		require.NoError(err)
 
-		lastBlock, err := client.BlockByNumber(ctxt, receipt.BlockNumber)
+		lastBlock, err := client.BlockByNumber(t.Context(), receipt.BlockNumber)
 		require.NoError(err)
 
 		// store suggested and actual prices.

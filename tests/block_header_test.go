@@ -534,7 +534,6 @@ func getStateRoot(client *ethclient.Client, blockNumber int) (common.Hash, error
 
 func testHeaders_SystemContractsHaveNonZeroNonce(t *testing.T, headers []*types.Header, client *ethclient.Client) {
 	require := require.New(t)
-	ctxt := t.Context()
 	for i := range headers {
 		block := big.NewInt(int64(i))
 		for _, addr := range []common.Address{
@@ -544,7 +543,7 @@ func testHeaders_SystemContractsHaveNonZeroNonce(t *testing.T, headers []*types.
 			sfc.ContractAddress,
 			evmwriter.ContractAddress,
 		} {
-			nonce, err := client.NonceAt(ctxt, addr, block)
+			nonce, err := client.NonceAt(t.Context(), addr, block)
 			require.NoError(err, "failed to get nonce for %s at block %d", addr, i)
 
 			want := uint64(1)
