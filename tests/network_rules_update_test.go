@@ -376,18 +376,26 @@ func updateNetworkRules(t *testing.T, net IntegrationTestNetSession, rulesChange
 	t.Helper()
 	require := require.New(t)
 
+	b, err := json.Marshal(rulesChange)
+	require.NoError(err)
+
+	updateNetworkRulesRaw(t, net, string(b))
+}
+
+// updateNetworkRulesRaw sends a transaction to update the network rules with raw byte data.
+func updateNetworkRulesRaw(t *testing.T, net IntegrationTestNetSession, change string) {
+	t.Helper()
+	require := require.New(t)
+
 	client, err := net.GetClient()
 	require.NoError(err)
 	defer client.Close()
-
-	b, err := json.Marshal(rulesChange)
-	require.NoError(err)
 
 	contract, err := driverauth100.NewContract(driverauth.ContractAddress, client)
 	require.NoError(err)
 
 	receipt, err := net.Apply(func(ops *bind.TransactOpts) (*types.Transaction, error) {
-		return contract.UpdateNetworkRules(ops, b)
+		return contract.UpdateNetworkRules(ops, []byte(change))
 	})
 
 	require.NoError(err)

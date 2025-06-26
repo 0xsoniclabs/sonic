@@ -488,11 +488,9 @@ func TestExcessGasCharges_DisabledInSingleProposerModeInNewAndHistoricRuns(t *te
 	receipts = append(receipts, receipt)
 
 	// Switch to single proposer mode.
-	updateNetworkRules(t, net, map[string]map[string]bool{
-		"Upgrades": {
-			"SingleProposerBlockFormation": true,
-		},
-	})
+	updateNetworkRulesRaw(t, net,
+		`{"Upgrades": {"SingleProposerBlockFormation": true}}`,
+	)
 	require.NoError(net.AdvanceEpoch(1))
 
 	receipt, err = net.Run(types.MustSignNewTx(
