@@ -209,10 +209,7 @@ func TestReceipt_SkippedTransactionsDoNotChangeReceiptIndexOrCumulativeGasUsed(t
 		"Balance should have decreased",
 	)
 
-	// All transactions should have ended up in the same block
-	require.Greater(t, after, before,
-		"Block number should have increased",
-	)
+	require.Greater(t, after, before, "Block number should have increased")
 
 	// Get the receipts of all blocks between before and after
 	for number := before + 1; number <= after; number++ {
