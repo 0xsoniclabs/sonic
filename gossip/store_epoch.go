@@ -127,7 +127,7 @@ func (s *Store) createEpochStore(epoch idx.Epoch) {
 	name := fmt.Sprintf("gossip-%d", epoch)
 	db, err := s.dbs.OpenDB(name)
 	if err != nil {
-		s.Log.Crit("Filed to open DB", "name", name, "err", err)
+		s.Log.Crit("Failed to open DB", "name", name, "err", err)
 	}
 	s.epochStore.Store(newEpochStore(epoch, db))
 }
