@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
+	"runtime/pprof"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -19,6 +22,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/contract/driverauth100"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/stretchr/testify/require"
 
 	sonicd "github.com/0xsoniclabs/sonic/cmd/sonicd/app"
 	sonictool "github.com/0xsoniclabs/sonic/cmd/sonictool/app"
@@ -143,6 +147,8 @@ type IntegrationTestNet struct {
 
 	sessionsMutex sync.Mutex
 	Session
+
+	profiler netProfiler
 }
 
 // per-node state for the integration test network
@@ -152,6 +158,56 @@ type integrationTestNode struct {
 	shutdown  chan<- struct{}
 	done      <-chan struct{}
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// Memory profiler.
+// Should write down to a file the current memory state once per second.
+////////////////////////////////////////////////////////////////////////////////
+
+type netProfiler struct {
+	dir    string
+	buffer *bytes.Buffer
+	tb     testing.TB
+	// highest memory usage seen so far, used to avoid writing the same profile multiple times
+	highestSeen uint64
+}
+
+func profileRoutine(ctx context.Context, n *netProfiler) {
+
+	n.highestSeen = 0
+
+	buffer := bytes.NewBuffer(nil)
+	memStats := &runtime.MemStats{}
+
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			runtime.ReadMemStats(memStats)
+			if memStats.HeapAlloc <= n.highestSeen {
+				continue
+			}
+			buffer.Reset()
+			n.highestSeen = memStats.HeapAlloc
+			pprof.WriteHeapProfile(buffer)
+
+		case <-ctx.Done():
+			// clean the file with the name of the test case that started the profiling
+			fileName := filepath.Join(n.dir, fmt.Sprintf("mem_%v.pprof", n.tb.Name()))
+			f, err := os.Create(fileName)
+			require.NoError(n.tb, err, "Failed to create memory profile file", fileName)
+			defer func() { _ = f.Close() }()
+			wrote, err := f.Write(buffer.Bytes())
+			require.NoError(n.tb, err, "Failed to write heap profile")
+			require.NotZero(n.tb, wrote, "Failed to write heap profile, no bytes written")
+			return
+		}
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 
 // StartIntegrationTestNet starts a single-node test network for integration tests.
 // The node serving the network is started in the same process as the caller. This
@@ -272,6 +328,17 @@ func startIntegrationTestNet(
 	}
 	// the network's session needs to know about the network itself
 	net.net = net
+
+	buildProfile := "./build/profile/"
+	require.NoError(t, os.MkdirAll(buildProfile, os.ModeDir|os.ModePerm),
+		"Failed to create profile directory")
+
+	net.profiler = netProfiler{
+		dir: buildProfile,
+		tb:  t,
+	}
+
+	go profileRoutine(t.Context(), &net.profiler)
 
 	if verbosityVariable := os.Getenv("SONIC_VERBOSITY"); verbosityVariable == "" {
 		if err := os.Setenv("SONIC_VERBOSITY", "0"); err != nil {
