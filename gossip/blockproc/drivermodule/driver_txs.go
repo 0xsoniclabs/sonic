@@ -178,10 +178,11 @@ func (p *DriverTxListener) OnNewReceipt(tx *types.Transaction, r *types.Receipt,
 }
 
 func effectiveGasPrice(tx *types.Transaction, baseFee *big.Int) *big.Int {
-	if baseFee == nil {
+	gasTip, err := tx.EffectiveGasTip(baseFee)
+	if baseFee == nil || err != nil {
 		return tx.GasPrice()
 	}
-	return new(big.Int).Add(baseFee, tx.EffectiveGasTipValue(baseFee))
+	return new(big.Int).Add(baseFee, gasTip)
 }
 
 func decodeDataBytes(l *types.Log) ([]byte, error) {
