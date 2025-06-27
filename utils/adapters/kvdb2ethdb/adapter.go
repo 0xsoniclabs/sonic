@@ -76,3 +76,9 @@ func (db *Adapter) DeleteRange(start, end []byte) error {
 	}
 	return nil
 }
+
+func (db *Adapter) SyncKeyValue() error {
+	// kvdb does not support SyncKeyValue, so we return nil.
+	// This is a no-op in the context of kvdb.
+	return nil
+}
