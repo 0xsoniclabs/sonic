@@ -742,6 +742,7 @@ func (pool *TxPool) validateAuth(tx *types.Transaction) error {
 func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err error) {
 	// If the transaction is already known, discard it
 	hash := tx.Hash()
+	log.Trace("TxPool received new transaction", "hash", hash, "local", local)
 	if pool.all.Get(hash) != nil {
 		log.Trace("Discarding already known transaction", "hash", hash)
 		return false, ErrAlreadyKnown
@@ -1635,7 +1636,7 @@ func (pool *TxPool) demoteUnexecutables() {
 		for _, tx := range olds {
 			hash := tx.Hash()
 			pool.all.Remove(hash)
-			log.Trace("Removed old pending transaction", "hash", hash)
+			log.Trace("Removed old pending transaction", "hash", hash, "nonce", tx.Nonce(), "theirNonce", nonce)
 		}
 		// Drop all transactions that are too costly (low balance or out of gas), and queue any invalids back for later
 		drops, invalids := list.Filter(utils.Uint256ToBigInt(pool.currentState.GetBalance(addr)), pool.currentMaxGas)

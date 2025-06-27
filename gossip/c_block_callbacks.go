@@ -239,6 +239,10 @@ func consensusCallbackBeginBlockFn(
 					proposal.Transactions, &es.Rules, log.Root(), invalidTxsMeter,
 				)
 
+				for _, tx := range proposal.Transactions {
+					log.Info("Processing transaction", "block", number, "tx", tx.Hash().String())
+				}
+
 				// Make sure the new block time is after the last block time.
 				if blockTime <= bs.LastBlock.Time {
 					blockTime = bs.LastBlock.Time + 1
