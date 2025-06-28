@@ -21,7 +21,9 @@ import (
 	"math/rand"
 	"testing"
 
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/consensus/inter/idx"
+
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	scc_node "github.com/0xsoniclabs/sonic/scc/node"
@@ -254,8 +256,8 @@ func TestStore_EnumerateBlockCertificates_ReturnsAllCertificates(t *testing.T) {
 	store, err := NewMemStore(t)
 	require.NoError(err)
 
-	var originals []cert.BlockCertificate
-	for number := range idx.Block(N) {
+	var originals []BlockCertificate
+	for number := range consensus.BlockID(N) {
 		cur := cert.NewCertificate(cert.BlockStatement{
 			Number: number,
 			Hash:   [32]byte{byte(number)},
@@ -265,7 +267,7 @@ func TestStore_EnumerateBlockCertificates_ReturnsAllCertificates(t *testing.T) {
 		originals = append(originals, cur)
 	}
 
-	for first := range idx.Block(N) {
+	for first := range consensus.BlockID(N) {
 		last := first + 2
 		if last > N {
 			last = N

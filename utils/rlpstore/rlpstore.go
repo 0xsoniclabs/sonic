@@ -17,7 +17,7 @@
 package rlpstore
 
 import (
-	"github.com/0xsoniclabs/consensus/kvdb"
+	"github.com/0xsoniclabs/kvdb"
 	"github.com/0xsoniclabs/sonic/logger"
 	"github.com/ethereum/go-ethereum/rlp"
 )

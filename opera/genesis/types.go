@@ -17,8 +17,9 @@
 package genesis
 
 import (
-	"github.com/0xsoniclabs/consensus/hash"
 	"io"
+
+	"github.com/0xsoniclabs/consensus/consensus"
 
 	"github.com/0xsoniclabs/sonic/inter/ibr"
 	"github.com/0xsoniclabs/sonic/inter/ier"
@@ -26,9 +27,9 @@ import (
 )
 
 type (
-	Hashes map[string]hash.Hash
+	Hashes map[string]consensus.Hash
 	Header struct {
-		GenesisID   hash.Hash
+		GenesisID   consensus.Hash
 		NetworkID   uint64
 		NetworkName string
 	}

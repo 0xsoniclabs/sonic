@@ -26,6 +26,7 @@
 package objstream
 
 import (
+
 	reflect "reflect"
 
 	gomock "go.uber.org/mock/gomock"

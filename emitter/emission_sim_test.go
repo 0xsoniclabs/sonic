@@ -12,17 +12,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xsoniclabs/consensus/abft"
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/dag"
-	"github.com/0xsoniclabs/consensus/inter/dag/tdag"
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/inter/pos"
+	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/consensus/consensus/consensusengine"
+
 	"github.com/0xsoniclabs/sonic/emitter/ancestor"
 )
 
 type Results struct {
-	maxFrame  idx.Frame
+	maxFrame  consensus.Frame
 	numEvents int
 }
 
@@ -47,7 +44,7 @@ type cityLatency struct {
 type QITestEvents []*QITestEvent
 
 type QITestEvent struct {
-	tdag.TestEvent
+	consensus.TestEvent
 	creationTime int
 }
 
@@ -58,11 +55,11 @@ func Benchmark_Emission(b *testing.B) {
 	stakeDist := stakeCumDist()             // for stakes drawn from distribution
 	stakeRNG := rand.New(rand.NewSource(0)) // for stakes drawn from distribution
 
-	weights := make([]pos.Weight, numNodes)
+	weights := make([]consensus.Weight, numNodes)
 	for i, _ := range weights {
 		// uncomment one of the below options for valiator stake distribution
-		weights[i] = pos.Weight(1)                               //for equal stake
-		weights[i] = pos.Weight(sampleDist(stakeRNG, stakeDist)) // for non-equal stake sample from Sonic main net validator stake distribution
+		weights[i] = consensus.Weight(1)                               //for equal stake
+		weights[i] = consensus.Weight(sampleDist(stakeRNG, stakeDist)) // for non-equal stake sample from Sonic main net validator stake distribution
 	}
 	sort.Slice(weights, func(i, j int) bool { return weights[i] > weights[j] }) // sort weights in order
 	QIParentCount := 12                                                         // maximum number of parents selected by FC indexer
@@ -136,7 +133,7 @@ func Benchmark_Emission(b *testing.B) {
 
 }
 
-func simulate(weights []pos.Weight, QIParentCount int, randParentCount int, offlineNodes bool, latency latency, maxLatency int, simulationDuration int) Results {
+func simulate(weights []consensus.Weight, QIParentCount int, randParentCount int, offlineNodes bool, latency latency, maxLatency int, simulationDuration int) Results {
 
 	numValidators := len(weights)
 
@@ -175,20 +172,20 @@ func simulate(weights []pos.Weight, QIParentCount int, randParentCount int, offl
 	}
 
 	// create a list of heads for each node
-	headsAll := make([]dag.Events, numValidators)
+	headsAll := make([]consensus.Events, numValidators)
 
 	//setup nodes
-	nodes := tdag.GenNodes(numValidators)
-	validators := pos.ArrayToValidators(nodes, weights)
+	nodes := consensus.GenNodes(numValidators)
+	validators := consensus.ArrayToValidators(nodes, weights)
 
-	var input *abft.EventStore
-	var lch *abft.CoreLachesis
+	var input *consensusengine.EventStore
+	var lch *consensusengine.CoreLachesis
 	var dagIndexer ancestor.DagIndex
-	inputs := make([]abft.EventStore, numValidators)
-	lchs := make([]abft.CoreLachesis, numValidators)
+	inputs := make([]consensusengine.EventStore, numValidators)
+	lchs := make([]consensusengine.CoreLachesis, numValidators)
 	fcIndexers := make([]*ancestor.FCIndexer, numValidators)
 	for i := 0; i < numValidators; i++ {
-		lch, _, input, dagIndexer = abft.NewCoreLachesis(nodes, weights)
+		lch, _, input, dagIndexer = consensusengine.NewCoreLachesis(nodes, weights)
 		lchs[i] = *lch
 		inputs[i] = *input
 		fcIndexers[i] = ancestor.NewFCIndexer(validators, dagIndexer, nodes[i])
@@ -198,7 +195,7 @@ func simulate(weights []pos.Weight, QIParentCount int, randParentCount int, offl
 	sortWeights := validators.SortedWeights()
 	sortedIDs := validators.SortedIDs()
 	onlineStake := validators.TotalWeight()
-	online := make(map[idx.ValidatorID]bool)
+	online := make(map[consensus.ValidatorID]bool)
 	for i := len(sortWeights) - 1; i >= 0; i-- {
 		online[sortedIDs[i]] = true
 		if offlineNodes {
@@ -316,9 +313,9 @@ func simulate(weights []pos.Weight, QIParentCount int, randParentCount int, offl
 						selfID := nodes[self]
 						e := &QITestEvent{}
 						e.SetCreator(selfID)
-						e.SetParents(hash.Events{}) // first parent is empty hash
+						e.SetParents(consensus.EventHashes{}) // first parent is empty hash
 
-						var parents dag.Events
+						var parents consensus.Events
 						if isLeaf[self] { // leaf event
 							e.SetSeq(1)
 							e.SetLamport(1)
@@ -329,8 +326,8 @@ func simulate(weights []pos.Weight, QIParentCount int, randParentCount int, offl
 						}
 
 						// get heads for parent selection
-						var heads dag.Events
-						var allHeads dag.Events
+						var heads consensus.Events
+						var allHeads consensus.Events
 						for _, head := range headsAll[self] {
 							heads = append(heads, head)
 							allHeads = append(allHeads, head)
@@ -390,7 +387,7 @@ func simulate(weights []pos.Weight, QIParentCount int, randParentCount int, offl
 						var id [24]byte
 						copy(id[:], hasher.Sum(nil)[:24])
 						e.SetID(id)
-						hash.SetEventName(e.ID(), fmt.Sprintf("%03d%04d", self, e.Seq()))
+						consensus.SetEventName(e.ID(), fmt.Sprintf("%03d%04d", self, e.Seq()))
 						e.creationTime = simTime
 
 						createRandEvent := randEvRNG[self].Float64() < randEvRate // used for introducing randomly created events
@@ -461,7 +458,7 @@ func simulate(weights []pos.Weight, QIParentCount int, randParentCount int, offl
 		totalEventsComplete += nEv
 		// fmt.Println("Stake: ", weights[i], "event rate: ", float64(nEv)*1000/float64(simTime), " events/stake: ", float64(nEv)/float64(weights[i]))
 	}
-	var maxFrame idx.Frame = 0
+	var maxFrame consensus.Frame = 0
 	for _, events := range headsAll {
 		for _, event := range events {
 			if event.Frame() > maxFrame {
@@ -484,7 +481,7 @@ func simulate(weights []pos.Weight, QIParentCount int, randParentCount int, offl
 
 }
 
-func updateHeads(newEvent dag.Event, heads *dag.Events) {
+func updateHeads(newEvent consensus.Event, heads *consensus.Events) {
 	// remove newEvent's parents from heads
 	for _, parent := range newEvent.Parents() {
 		for i := 0; i < len(*heads); i++ {
@@ -498,7 +495,7 @@ func updateHeads(newEvent dag.Event, heads *dag.Events) {
 	*heads = append(*heads, newEvent) //add newEvent to heads
 }
 
-func processEvent(input abft.EventStore, lchs *abft.CoreLachesis, e *QITestEvent, fcIndexer *ancestor.FCIndexer, heads *dag.Events, self idx.ValidatorID, time int) (frame idx.Frame) {
+func processEvent(input consensusengine.EventStore, lchs *consensusengine.CoreLachesis, e *QITestEvent, fcIndexer *ancestor.FCIndexer, heads *consensus.Events, self consensus.ValidatorID, time int) (frame consensus.Frame) {
 	input.SetEvent(e)
 
 	lchs.DagIndexer.Add(e)

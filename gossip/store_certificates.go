@@ -22,8 +22,8 @@ import (
 	"iter"
 	"math"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/kvdb"
+	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/kvdb"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/0xsoniclabs/sonic/utils/result"
@@ -79,7 +79,7 @@ func (s *Store) UpdateBlockCertificate(certificate cert.BlockCertificate) error 
 
 // GetBlockCertificate retrieves the certificate for the given block.
 // If no certificate is found, an error is returned.
-func (s *Store) GetBlockCertificate(block idx.Block) (cert.BlockCertificate, error) {
+func (s *Store) GetBlockCertificate(block consensus.BlockID) (BlockCertificate, error) {
 	return getCertificate[cert.BlockStatement](
 		uint64(block),
 		s.table.BlockCertificates,
@@ -96,7 +96,7 @@ func (s *Store) GetLatestBlockCertificate() (cert.BlockCertificate, error) {
 // the given block number. The certificates are yielded in ascending order of
 // block number. If an error occurs during iteration, it is yielded as the
 // last result.
-func (s *Store) EnumerateBlockCertificates(first idx.Block) iter.Seq[result.T[cert.BlockCertificate]] {
+func (s *Store) EnumerateBlockCertificates(first consensus.BlockID) iter.Seq[result.T[BlockCertificate]] {
 	return enumerateCertificates[cert.BlockStatement](
 		uint64(first),
 		s.table.BlockCertificates,
@@ -107,7 +107,14 @@ func (s *Store) EnumerateBlockCertificates(first idx.Block) iter.Seq[result.T[ce
 // getKey returns the key used to store certificates in the key/value store.
 func getKey(index uint64) []byte {
 	// big endian to sort entries in DB by period
-	return binary.BigEndian.AppendUint64(nil, index)
+	return binary.BigEndian.AppendUint64(nil, uint64(period))
+}
+
+// getBlockCertificateKey returns the key used to store block certificates
+// in the key/value store.
+func getBlockCertificateKey(number consensus.BlockID) []byte {
+	// big endian to sort entries in DB by block
+	return binary.BigEndian.AppendUint64(nil, uint64(number))
 }
 
 // updateCertificate stores the certificate in the key/value store.

@@ -21,10 +21,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/inter/pos"
-	"github.com/0xsoniclabs/consensus/lachesis"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -58,24 +55,24 @@ var (
 )
 
 // FakeKey gets n-th fake private key.
-func FakeKey(n idx.ValidatorID) *ecdsa.PrivateKey {
+func FakeKey(n consensus.ValidatorID) *ecdsa.PrivateKey {
 	return evmcore.FakeKey(uint32(n))
 }
 
-func FakeGenesisStore(num idx.Validator, balance, stake *big.Int, upgrades opera.Upgrades) *genesisstore.Store {
+func FakeGenesisStore(num consensus.ValidatorIndex, balance, stake *big.Int, upgrades opera.Upgrades) *genesisstore.Store {
 	return FakeGenesisStoreWithRules(num, balance, stake, opera.FakeNetRules(upgrades))
 }
 
-func FakeGenesisStoreWithRules(num idx.Validator, balance, stake *big.Int, rules opera.Rules) *genesisstore.Store {
+func FakeGenesisStoreWithRules(num consensus.ValidatorIndex, balance, stake *big.Int, rules opera.Rules) *genesisstore.Store {
 	return FakeGenesisStoreWithRulesAndStart(num, balance, stake, rules, 2, 1)
 }
 
 func FakeGenesisStoreWithRulesAndStart(
-	num idx.Validator,
+	num consensus.ValidatorIndex,
 	balance, stake *big.Int,
 	rules opera.Rules,
-	epoch idx.Epoch,
-	block idx.Block,
+	epoch consensus.Epoch,
+	block consensus.BlockID,
 ) *genesisstore.Store {
 	builder := makegenesis.NewGenesisBuilder()
 
@@ -134,14 +131,14 @@ func FakeGenesisStoreWithRulesAndStart(
 				LastBlock: iblockproc.BlockCtx{
 					Idx:     block - 1,
 					Time:    FakeGenesisTime,
-					Atropos: hash.Event{},
+					Atropos: consensus.EventHash{},
 				},
-				FinalizedStateRoot:    hash.Hash(genesisStateRoot),
+				FinalizedStateRoot:    consensus.Hash(genesisStateRoot),
 				EpochGas:              0,
-				EpochCheaters:         lachesis.Cheaters{},
+				EpochCheaters:         consensus.Cheaters{},
 				CheatersWritten:       0,
 				ValidatorStates:       make([]iblockproc.ValidatorBlockState, 0),
-				NextValidatorProfiles: make(map[idx.ValidatorID]drivertype.Validator),
+				NextValidatorProfiles: make(map[consensus.ValidatorID]drivertype.Validator),
 				DirtyRules:            nil,
 				AdvanceEpochs:         0,
 			},
@@ -149,10 +146,10 @@ func FakeGenesisStoreWithRulesAndStart(
 				Epoch:             epoch - 1,
 				EpochStart:        FakeGenesisTime,
 				PrevEpochStart:    FakeGenesisTime - 1,
-				EpochStateRoot:    hash.Hash(genesisStateRoot),
-				Validators:        pos.NewBuilder().Build(),
+				EpochStateRoot:    consensus.Hash(genesisStateRoot),
+				Validators:        consensus.NewBuilder().Build(),
 				ValidatorStates:   make([]iblockproc.ValidatorEpochState, 0),
-				ValidatorProfiles: make(map[idx.ValidatorID]drivertype.Validator),
+				ValidatorProfiles: make(map[consensus.ValidatorID]drivertype.Validator),
 				Rules:             rules,
 			},
 		},
@@ -206,7 +203,7 @@ func txBuilder() func(calldata []byte, addr common.Address) *types.Transaction {
 	}
 }
 
-func GetGenesisTxs(sealedEpoch idx.Epoch, validators gpos.Validators, totalSupply *big.Int, delegations []drivercall.Delegation, driverOwner common.Address) types.Transactions {
+func GetGenesisTxs(sealedEpoch consensus.Epoch, validators gpos.Validators, totalSupply *big.Int, delegations []drivercall.Delegation, driverOwner common.Address) types.Transactions {
 	buildTx := txBuilder()
 	internalTxs := make(types.Transactions, 0, 15)
 	// initialization
@@ -225,10 +222,10 @@ func GetGenesisTxs(sealedEpoch idx.Epoch, validators gpos.Validators, totalSuppl
 	return internalTxs
 }
 
-func GetFakeValidators(num idx.Validator) gpos.Validators {
+func GetFakeValidators(num consensus.ValidatorIndex) gpos.Validators {
 	validators := make(gpos.Validators, 0, num)
 
-	for i := idx.ValidatorID(1); i <= idx.ValidatorID(num); i++ {
+	for i := consensus.ValidatorID(1); i <= consensus.ValidatorID(num); i++ {
 		key := FakeKey(i)
 		addr := crypto.PubkeyToAddress(key.PublicKey)
 		pubkeyraw := crypto.FromECDSAPub(&key.PublicKey)

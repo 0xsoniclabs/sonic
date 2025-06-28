@@ -27,9 +27,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/inter/pos"
+	"github.com/0xsoniclabs/consensus/consensus"
+
 	"github.com/0xsoniclabs/sonic/emitter/ancestor"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/sonic/utils/txtime"
@@ -88,23 +87,24 @@ type Emitter struct {
 
 	syncStatus syncStatus
 
-	prevEmittedAtTime  atomic.Pointer[time.Time]
-	prevEmittedAtBlock idx.Block
+	prevIdleTime       time.Time
+	prevEmittedAtTime  time.Time
+	prevEmittedAtBlock consensus.BlockID
 	originatedTxs      *originatedtxs.Buffer
 	pendingGas         uint64
 
 	// note: track validators and epoch internally to avoid referring to
 	// validators of a future epoch inside OnEventConnected of last epoch event
-	validators atomic.Pointer[pos.Validators]
-	epoch      atomic.Uint32
+	validators *consensus.Validators
+	epoch      consensus.Epoch
 
 	// challenges is deadlines when each validator should emit an event
-	challenges map[idx.ValidatorID]time.Time
+	challenges map[consensus.ValidatorID]time.Time
 	// offlineValidators is a map of validators which are likely to be offline
 	// This map may be different on different instances
-	offlineValidators     map[idx.ValidatorID]bool
-	expectedEmitIntervals map[idx.ValidatorID]time.Duration
-	stakeRatio            map[idx.ValidatorID]uint64
+	offlineValidators     map[consensus.ValidatorID]bool
+	expectedEmitIntervals map[consensus.ValidatorID]time.Duration
+	stakeRatio            map[consensus.ValidatorID]uint64
 
 	prevRecheckedChallenges time.Time
 
@@ -119,12 +119,12 @@ type Emitter struct {
 	done chan struct{}
 	wg   sync.WaitGroup
 
-	maxParents idx.Event
+	maxParents consensus.Seq
 
 	cache struct {
 		sortedTxs *transactionsByPriceAndNonce
 		poolTime  time.Time
-		poolBlock idx.Block
+		poolBlock consensus.BlockID
 		poolCount int
 	}
 
@@ -382,10 +382,10 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 	}
 
 	var (
-		selfParentSeq  idx.Event
+		selfParentSeq  consensus.Seq
 		selfParentTime inter.Timestamp
-		parents        hash.Events
-		maxLamport     idx.Lamport
+		parents        consensus.EventHashes
+		maxLamport     consensus.Lamport
 	)
 
 	// Find parents
@@ -415,7 +415,7 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 			em.Error(5*time.Second, "I've created a fork, events emitting isn't allowed", "creator", em.config.Validator.ID)
 			return nil, nil
 		}
-		maxLamport = idx.MaxLamport(maxLamport, parent.Lamport())
+		maxLamport = consensus.MaxLamport(maxLamport, parent.Lamport())
 	}
 
 	selfParentSeq = 0
@@ -523,13 +523,13 @@ func (em *Emitter) isValidator() bool {
 }
 
 func (em *Emitter) nameEventForDebug(e *inter.EventPayload) {
-	name := []rune(hash.GetNodeName(e.Creator()))
+	name := []rune(consensus.GetNodeName(e.Creator()))
 	if len(name) < 1 {
 		return
 	}
 
 	name = name[len(name)-1:]
-	hash.SetEventName(e.ID(), fmt.Sprintf("%s%03d",
+	consensus.SetEventName(e.ID(), fmt.Sprintf("%s%03d",
 		strings.ToLower(string(name)),
 		e.Seq()))
 }

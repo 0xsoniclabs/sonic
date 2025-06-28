@@ -17,8 +17,8 @@
 package evmstore
 
 import (
+	"github.com/0xsoniclabs/cacheutils/cachescale"
 	carmen "github.com/0xsoniclabs/carmen/go/state"
-	"github.com/0xsoniclabs/consensus/utils/cachescale"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 )
 

@@ -1,21 +1,19 @@
 package ancestor
 
-import (
-	"github.com/0xsoniclabs/consensus/hash"
-)
+import "github.com/0xsoniclabs/consensus/consensus"
 
 type Metric uint64
 
 type MetricStrategy struct {
-	metricFn func(hash.Events) Metric
+	metricFn func(consensus.EventHashes) Metric
 }
 
-func NewMetricStrategy(metricFn func(hash.Events) Metric) *MetricStrategy {
+func NewMetricStrategy(metricFn func(consensus.EventHashes) Metric) *MetricStrategy {
 	return &MetricStrategy{metricFn}
 }
 
 // Choose chooses the hash from the specified options
-func (st *MetricStrategy) Choose(existing hash.Events, options hash.Events) int {
+func (st *MetricStrategy) Choose(existing consensus.EventHashes, options consensus.EventHashes) int {
 	var maxI int
 	var maxWeight Metric
 	// find option with a maximum weight

@@ -4,7 +4,7 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/0xsoniclabs/consensus/hash"
+	"github.com/0xsoniclabs/consensus/consensus"
 )
 
 /*
@@ -26,6 +26,6 @@ func NewRandomStrategy(r *rand.Rand) *RandomStrategy {
 }
 
 // Choose chooses the hash from the specified options
-func (st *RandomStrategy) Choose(_ hash.Events, options hash.Events) int {
+func (st *RandomStrategy) Choose(_ consensus.EventHashes, options consensus.EventHashes) int {
 	return st.r.Intn(len(options))
 }

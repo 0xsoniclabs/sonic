@@ -5,8 +5,8 @@ import (
 	"math"
 	"testing"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
+
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/suite"
 
@@ -20,7 +20,7 @@ type LLRHeavyCheckTestSuite struct {
 
 	env        *testEnv
 	me         *inter.MutableEventPayload
-	startEpoch idx.Epoch
+	startEpoch consensus.Epoch
 }
 
 func (s *LLRHeavyCheckTestSuite) SetupSuite() {
@@ -40,7 +40,7 @@ func (s *LLRHeavyCheckTestSuite) SetupSuite() {
 
 	s.env = env
 	s.me = mutableEventPayloadFromImmutable(e)
-	s.startEpoch = idx.Epoch(startEpoch)
+	s.startEpoch = consensus.Epoch(startEpoch)
 }
 
 func (s *LLRHeavyCheckTestSuite) TearDownSuite() {
@@ -78,11 +78,11 @@ func (s *LLRHeavyCheckTestSuite) TestHeavyCheckValidateEvent() {
 			nil,
 			func() {
 				s.me.SetVersion(1)
-				s.me.SetEpoch(idx.Epoch(s.startEpoch))
+				s.me.SetEpoch(consensus.Epoch(s.startEpoch))
 				s.me.SetCreator(3)
-				s.me.SetSeq(idx.Event(1))
-				s.me.SetFrame(idx.Frame(1))
-				s.me.SetLamport(idx.Lamport(1))
+				s.me.SetSeq(consensus.Seq(1))
+				s.me.SetFrame(consensus.Frame(1))
+				s.me.SetLamport(consensus.Lamport(1))
 				s.me.SetPayloadHash(inter.CalcPayloadHash(s.me))
 
 				sig, err := s.env.signer.Sign(s.env.pubkeys[2], s.me.HashToSign().Bytes())
@@ -97,7 +97,7 @@ func (s *LLRHeavyCheckTestSuite) TestHeavyCheckValidateEvent() {
 			epochcheck.ErrNotRelevant,
 			func() {
 				s.me.SetVersion(1)
-				s.me.SetEpoch(idx.Epoch(s.startEpoch + 1))
+				s.me.SetEpoch(consensus.Epoch(s.startEpoch + 1))
 				s.me.SetCreator(3)
 				s.me.SetPayloadHash(inter.CalcPayloadHash(s.me))
 
@@ -113,11 +113,11 @@ func (s *LLRHeavyCheckTestSuite) TestHeavyCheckValidateEvent() {
 			epochcheck.ErrAuth,
 			func() {
 				s.me.SetVersion(1)
-				s.me.SetEpoch(idx.Epoch(s.startEpoch))
-				s.me.SetSeq(idx.Event(1))
-				s.me.SetFrame(idx.Frame(1))
-				s.me.SetLamport(idx.Lamport(1))
-				invalidCreator := idx.ValidatorID(100)
+				s.me.SetEpoch(consensus.Epoch(s.startEpoch))
+				s.me.SetSeq(consensus.Seq(1))
+				s.me.SetFrame(consensus.Frame(1))
+				s.me.SetLamport(consensus.Lamport(1))
+				invalidCreator := consensus.ValidatorID(100)
 				s.me.SetCreator(invalidCreator)
 				s.me.SetPayloadHash(inter.CalcPayloadHash(s.me))
 
@@ -133,11 +133,11 @@ func (s *LLRHeavyCheckTestSuite) TestHeavyCheckValidateEvent() {
 			heavycheck.ErrWrongEventSig,
 			func() {
 				s.me.SetVersion(1)
-				s.me.SetEpoch(idx.Epoch(s.startEpoch))
+				s.me.SetEpoch(consensus.Epoch(s.startEpoch))
 				s.me.SetCreator(3)
-				s.me.SetSeq(idx.Event(1))
-				s.me.SetFrame(idx.Frame(1))
-				s.me.SetLamport(idx.Lamport(1))
+				s.me.SetSeq(consensus.Seq(1))
+				s.me.SetFrame(consensus.Frame(1))
+				s.me.SetLamport(consensus.Lamport(1))
 				s.me.SetPayloadHash(inter.CalcPayloadHash(s.me))
 
 				sig, err := s.env.signer.Sign(s.env.pubkeys[1], s.me.HashToSign().Bytes())
@@ -152,12 +152,12 @@ func (s *LLRHeavyCheckTestSuite) TestHeavyCheckValidateEvent() {
 			heavycheck.ErrMalformedTxSig,
 			func() {
 				s.me.SetVersion(1)
-				s.me.SetEpoch(idx.Epoch(s.startEpoch))
+				s.me.SetEpoch(consensus.Epoch(s.startEpoch))
 				s.me.SetCreator(3)
-				s.me.SetSeq(idx.Event(1))
-				s.me.SetFrame(idx.Frame(1))
-				s.me.SetLamport(idx.Lamport(1))
-				h := hash.BytesToEvent(bytes.Repeat([]byte{math.MaxUint8}, 32))
+				s.me.SetSeq(consensus.Seq(1))
+				s.me.SetFrame(consensus.Frame(1))
+				s.me.SetLamport(consensus.Lamport(1))
+				h := consensus.BytesToEvent(bytes.Repeat([]byte{math.MaxUint8}, 32))
 				tx1 := types.NewTx(&types.LegacyTx{
 					Nonce:    math.MaxUint64,
 					GasPrice: h.Big(),
@@ -183,13 +183,13 @@ func (s *LLRHeavyCheckTestSuite) TestHeavyCheckValidateEvent() {
 			heavycheck.ErrWrongPayloadHash,
 			func() {
 				s.me.SetVersion(1)
-				s.me.SetEpoch(idx.Epoch(s.startEpoch))
-				s.me.SetSeq(idx.Event(1))
-				s.me.SetFrame(idx.Frame(1))
-				s.me.SetLamport(idx.Lamport(1))
+				s.me.SetEpoch(consensus.Epoch(s.startEpoch))
+				s.me.SetSeq(consensus.Seq(1))
+				s.me.SetFrame(consensus.Frame(1))
+				s.me.SetLamport(consensus.Lamport(1))
 				s.me.SetCreator(3)
 
-				invalidPayloadHash := hash.Hash{}
+				invalidPayloadHash := consensus.Hash{}
 				s.me.SetPayloadHash(invalidPayloadHash)
 
 				sig, err := s.env.signer.Sign(s.env.pubkeys[2], s.me.HashToSign().Bytes())

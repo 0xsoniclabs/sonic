@@ -26,6 +26,8 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
+	"github.com/ethereum/go-ethereum/core/types"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"go.uber.org/mock/gomock"

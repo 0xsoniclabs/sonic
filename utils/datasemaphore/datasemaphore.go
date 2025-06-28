@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/0xsoniclabs/consensus/inter/dag"
+	"github.com/0xsoniclabs/consensus/consensus"
 )
 
 // DataSemaphore implements a resource control mechanism for limiting concurrent processing
@@ -14,17 +14,17 @@ type DataSemaphore struct {
 	// github.com/0xsoniclabs/consensus/inter/dag
 	//
 	// type Metric struct {
-	//     Num  idx.Event // Event is a uint64
+	//     Num  consensus.Seq // Event is a uint64
 	//     Size uint64
 	// }
-	processing    dag.Metric                                                             // Tracks currently used resources (event count and size)
-	maxProcessing dag.Metric                                                             // Maximum allowed resources to be used concurrently
-	mu            sync.Mutex                                                             // Mutex for thread-safe access to semaphore state
-	cond          *sync.Cond                                                             // Condition variable for signaling when resources become available
-	warning       func(received dag.Metric, processing dag.Metric, releasing dag.Metric) // Callback for resource accounting anomalies
+	processing    consensus.Metric                                                                         // Tracks currently used resources (event count and size)
+	maxProcessing consensus.Metric                                                                         // Maximum allowed resources to be used concurrently
+	mu            sync.Mutex                                                                               // Mutex for thread-safe access to semaphore state
+	cond          *sync.Cond                                                                               // Condition variable for signaling when resources become available
+	warning       func(received consensus.Metric, processing consensus.Metric, releasing consensus.Metric) // Callback for resource accounting anomalies
 }
 
-func New(maxProcessing dag.Metric, warning func(received dag.Metric, processing dag.Metric, releasing dag.Metric)) *DataSemaphore {
+func New(maxProcessing consensus.Metric, warning func(received consensus.Metric, processing consensus.Metric, releasing consensus.Metric)) *DataSemaphore {
 	s := &DataSemaphore{
 		maxProcessing: maxProcessing,
 		warning:       warning,
@@ -38,7 +38,7 @@ func New(maxProcessing dag.Metric, warning func(received dag.Metric, processing 
 // weight: resources to acquire (event count and size)
 // timeout: maximum time to wait for resources to become available
 // Returns true if resources were successfully acquired, false otherwise
-func (s *DataSemaphore) Acquire(weight dag.Metric, timeout time.Duration) bool {
+func (s *DataSemaphore) Acquire(weight consensus.Metric, timeout time.Duration) bool {
 	// Calculate deadline for timeout
 	deadline := time.Now().Add(timeout)
 
@@ -74,14 +74,14 @@ func (s *DataSemaphore) Acquire(weight dag.Metric, timeout time.Duration) bool {
 // TryAcquire attempts to acquire resources without blocking.
 // weight: resources to acquire (event count and size)
 // Returns true if resources were acquired, false if not enough resources were available
-func (s *DataSemaphore) TryAcquire(weight dag.Metric) bool {
+func (s *DataSemaphore) TryAcquire(weight consensus.Metric) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.tryAcquire(weight)
 }
 
 // Must be called with mutex already locked.
-func (s *DataSemaphore) tryAcquire(metric dag.Metric) bool {
+func (s *DataSemaphore) tryAcquire(metric consensus.Metric) bool {
 	tmp := s.processing // Create temporary copy to check if acquisition is possible
 	tmp.Num += metric.Num
 	tmp.Size += metric.Size
@@ -99,7 +99,7 @@ func (s *DataSemaphore) tryAcquire(metric dag.Metric) bool {
 // Release returns previously acquired resources to the semaphore.
 // If more resources are released than were acquired, triggers the warning callback
 // and resets the semaphore state to prevent further anomalies
-func (s *DataSemaphore) Release(weight dag.Metric) {
+func (s *DataSemaphore) Release(weight consensus.Metric) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -110,7 +110,7 @@ func (s *DataSemaphore) Release(weight dag.Metric) {
 			s.warning(s.processing, s.processing, weight)
 		}
 		// Reset processing to prevent further issues
-		s.processing = dag.Metric{}
+		s.processing = consensus.Metric{}
 	} else {
 		// Normal case - subtract the released resources
 		s.processing.Num -= weight.Num
@@ -129,24 +129,24 @@ func (s *DataSemaphore) Terminate() {
 	defer s.mu.Unlock()
 
 	// Set max processing to zero to prevent new acquisitions
-	s.maxProcessing = dag.Metric{}
+	s.maxProcessing = consensus.Metric{}
 
 	// Wake up all waiting goroutines so they can detect termination
 	s.cond.Broadcast()
 }
 
 // Processing returns the current resource usage
-func (s *DataSemaphore) Processing() dag.Metric {
+func (s *DataSemaphore) Processing() consensus.Metric {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.processing
 }
 
 // Available returns the currently available resource capacity.
-func (s *DataSemaphore) Available() dag.Metric {
+func (s *DataSemaphore) Available() consensus.Metric {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return dag.Metric{
+	return consensus.Metric{
 		Num:  s.maxProcessing.Num - s.processing.Num,
 		Size: s.maxProcessing.Size - s.processing.Size,
 	}

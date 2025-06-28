@@ -19,8 +19,7 @@ package proclogger
 import (
 	"time"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/logger"
@@ -28,15 +27,15 @@ import (
 )
 
 type dagSum struct {
-	connected       idx.Event
+	connected       consensus.Seq
 	totalProcessing time.Duration
 }
 
 type llrSum struct {
-	bvs idx.Block
-	brs idx.Block
-	evs idx.Epoch
-	ers idx.Epoch
+	bvs consensus.BlockID
+	brs consensus.BlockID
+	evs consensus.Epoch
+	ers consensus.Epoch
 }
 
 type Logger struct {
@@ -45,9 +44,9 @@ type Logger struct {
 	llrSum llrSum
 
 	// latest logged data
-	lastEpoch     idx.Epoch
-	lastBlock     idx.Block
-	lastID        hash.Event
+	lastEpoch     consensus.Epoch
+	lastBlock     consensus.BlockID
+	lastID        consensus.EventHash
 	lastEventTime inter.Timestamp
 	lastLlrTime   inter.Timestamp
 

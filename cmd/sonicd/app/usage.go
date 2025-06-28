@@ -25,6 +25,8 @@ import (
 
 	"github.com/0xsoniclabs/sonic/cmd/sonicd/cmdhelper"
 
+	"github.com/0xsoniclabs/sonic/cmd/sonicd/cmdhelper"
+
 	cli "gopkg.in/urfave/cli.v1"
 
 	"github.com/0xsoniclabs/sonic/debug"

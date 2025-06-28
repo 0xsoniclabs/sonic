@@ -17,7 +17,7 @@
 package evmstore
 
 import (
-	"github.com/0xsoniclabs/consensus/kvdb/batched"
+	"github.com/0xsoniclabs/kvdb/batched"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 
 	"github.com/0xsoniclabs/sonic/utils/dbutil/autocompact"

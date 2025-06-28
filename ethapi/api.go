@@ -26,13 +26,14 @@ import (
 	"slices"
 	"time"
 
+	"github.com/0xsoniclabs/consensus/consensus"
+
 	cc "github.com/0xsoniclabs/carmen/go/common"
 	"github.com/0xsoniclabs/carmen/go/common/immutable"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice/gaspricelimits"
 	bip39 "github.com/tyler-smith/go-bip39"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/inter/state"
@@ -136,8 +137,8 @@ func (s *PublicEthereumAPI) FeeHistory(ctx context.Context, blockCount geth_math
 		return nil, err
 	}
 	oldest := last
-	if oldest > idx.Block(blockCount) {
-		oldest -= idx.Block(blockCount - 1)
+	if oldest > consensus.BlockID(blockCount) {
+		oldest -= consensus.BlockID(blockCount - 1)
 	} else {
 		oldest = 0
 	}
@@ -842,7 +843,7 @@ func (s *PublicBlockChainAPI) GetHeaderByNumber(ctx context.Context, number rpc.
 	return s.getHeaderWithReceipts(ctx, header, rpc.BlockNumber(header.Number.Uint64()))
 }
 
-// GetHeaderByHash returns the requested header by hash.
+// GetHeaderByHash returns the requested header by consensus.
 func (s *PublicBlockChainAPI) GetHeaderByHash(ctx context.Context, hash common.Hash) (*evmcore.EvmHeaderJson, error) {
 	header, err := s.b.HeaderByHash(ctx, hash)
 	if header == nil || err != nil {
@@ -1596,7 +1597,7 @@ func (s *PublicTransactionPoolAPI) GetBlockTransactionCountByNumber(ctx context.
 	return nil
 }
 
-// GetBlockTransactionCountByHash returns the number of transactions in the block with the given hash.
+// GetBlockTransactionCountByHash returns the number of transactions in the block with the given consensus.
 func (s *PublicTransactionPoolAPI) GetBlockTransactionCountByHash(ctx context.Context, blockHash common.Hash) *hexutil.Uint {
 	if block, _ := s.b.BlockByHash(ctx, blockHash); block != nil {
 		n := hexutil.Uint(len(block.Transactions))
@@ -1680,7 +1681,7 @@ func (s *PublicTransactionPoolAPI) GetTransactionByHash(ctx context.Context, has
 	return nil, nil
 }
 
-// GetRawTransactionByHash returns the bytes of the transaction for the given hash.
+// GetRawTransactionByHash returns the bytes of the transaction for the given consensus.
 func (s *PublicTransactionPoolAPI) GetRawTransactionByHash(ctx context.Context, hash common.Hash) (hexutil.Bytes, error) {
 	// Retrieve a finalized transaction, or a pooled otherwise
 	tx, _, _, err := s.b.GetTransaction(ctx, hash)
@@ -1757,7 +1758,7 @@ func (s *PublicTransactionPoolAPI) formatTxReceipt(header *evmcore.EvmHeader, tx
 	return fields
 }
 
-// GetTransactionReceipt returns the transaction receipt for the given transaction hash.
+// GetTransactionReceipt returns the transaction receipt for the given transaction consensus.
 func (s *PublicTransactionPoolAPI) GetTransactionReceipt(ctx context.Context, hash common.Hash) (map[string]interface{}, error) {
 	tx, blockNumber, index, err := s.b.GetTransaction(ctx, hash)
 	if tx == nil || err != nil {

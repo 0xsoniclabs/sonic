@@ -20,7 +20,8 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/0xsoniclabs/consensus/hash"
+	"github.com/0xsoniclabs/consensus/consensus"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/p2p"
 )
@@ -111,7 +112,7 @@ func (ps *peerSet) UselessNum() int {
 
 // PeersWithoutEvent retrieves a list of peers that do not have a given event in
 // their set of known hashes so it might be propagated to them.
-func (ps *peerSet) PeersWithoutEvent(e hash.Event) []*peer {
+func (ps *peerSet) PeersWithoutEvent(e consensus.EventHash) []*peer {
 	ps.lock.RLock()
 	defer ps.lock.RUnlock()
 

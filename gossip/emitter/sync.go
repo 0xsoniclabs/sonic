@@ -20,8 +20,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/0xsoniclabs/consensus/hash"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/consensus/inter/idx"
+
 	"github.com/0xsoniclabs/sonic/emitter/doublesign"
 
 	"github.com/0xsoniclabs/sonic/inter"
@@ -31,7 +32,7 @@ type syncStatus struct {
 	startup                   time.Time
 	lastConnected             time.Time
 	p2pSynced                 time.Time
-	prevLocalEmittedID        hash.Event
+	prevLocalEmittedID        consensus.EventHash
 	externalSelfEventCreated  time.Time
 	externalSelfEventDetected time.Time
 	becameValidator           time.Time

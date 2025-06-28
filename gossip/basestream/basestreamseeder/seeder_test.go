@@ -11,12 +11,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/0xsoniclabs/consensus/consensus"
+
 	"github.com/stretchr/testify/require"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/dag"
-	"github.com/0xsoniclabs/consensus/inter/dag/tdag"
-	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/0xsoniclabs/sonic/gossip/basestream"
 )
 
@@ -63,11 +61,11 @@ func testSeederResponsesOrder(t *testing.T, maxPeers int, maxEvents int) {
 	config := defaultConfig()
 	config.MaxPendingResponsesSize = 5000
 
-	events := make(dag.Events, maxEvents)
+	events := make(consensus.Events, maxEvents)
 	for i := range events {
-		e := &tdag.TestEvent{}
-		e.SetEpoch(idx.Epoch(i / 10))
-		e.SetLamport(idx.Lamport(i / 2))
+		e := &consensus.TestEvent{}
+		e.SetEpoch(consensus.Epoch(i / 10))
+		e.SetLamport(consensus.Lamport(i / 2))
 		var rID [24]byte
 		copy(rID[:], big.NewInt(int64(i+1)).Bytes())
 		events[i] = e.Build(rID)
@@ -84,8 +82,8 @@ func testSeederResponsesOrder(t *testing.T, maxPeers int, maxEvents int) {
 			onKey func(key basestream.Locator) bool, onAppended func(items basestream.Payload) bool) basestream.Payload {
 
 			res := testPayload{
-				IDs:    hash.Events{},
-				Events: dag.Events{},
+				IDs:    consensus.EventHashes{},
+				Events: consensus.Events{},
 				Size:   0,
 			}
 
@@ -174,7 +172,7 @@ func testSeederResponsesOrder(t *testing.T, maxPeers int, maxEvents int) {
 	}
 	// check that all the responses were sent in a correct order
 	for _, sessionResponses := range responses.peerSession {
-		prev := hash.Event{}
+		prev := consensus.EventHash{}
 		done := false
 		for _, r := range sessionResponses {
 			require.False(t, done)
