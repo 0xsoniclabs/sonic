@@ -14,6 +14,7 @@ import (
 	mapset "github.com/deckarep/golang-set"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/enode"
@@ -283,6 +284,9 @@ func SplitTransactions(txs types.Transactions, fn func(types.Transactions)) {
 // AsyncSendTransactions queues list of transactions propagation to a remote
 // peer. If the peer's broadcast queue is full, the transactions are silently dropped.
 func (p *peer) AsyncSendTransactions(txs types.Transactions, queue chan broadcastItem) {
+	for _, tx := range txs {
+		log.Info("Sending transaction", "hash", tx.Hash().String(), "peer", p.id)
+	}
 	if p.asyncSendNonEncodedItem(txs, EvmTxsMsg, queue) {
 		sentTxsPromotedCounter.Inc(int64(len(txs)))
 		// Mark all the transactions as known, but ensure we don't overflow our limits
@@ -301,6 +305,9 @@ func (p *peer) AsyncSendTransactions(txs types.Transactions, queue chan broadcas
 // AsyncSendTransactionHashes queues list of transactions propagation to a remote
 // peer. If the peer's broadcast queue is full, the transactions are silently dropped.
 func (p *peer) AsyncSendTransactionHashes(txids []common.Hash, queue chan broadcastItem) {
+	for _, tx := range txids {
+		log.Info("Sending transaction IDs", "hash", tx.String(), "peer", p.id)
+	}
 	if p.asyncSendNonEncodedItem(txids, NewEvmTxHashesMsg, queue) {
 		sentTxHashesCounter.Inc(int64(len(txids)))
 		// Mark all the transactions as known, but ensure we don't overflow our limits

@@ -515,6 +515,7 @@ func isUseless(node *enode.Node, name string) bool {
 // this function terminates, the peer is disconnected.
 func (h *handler) handle(p *peer) error {
 	p.Log().Trace("Connecting peer", "peer", p.ID(), "name", p.Name())
+	log.Info("Connecting peer", "peer", p.ID(), "name", p.Name())
 
 	useless := isUseless(p.Node(), p.Name())
 	if !p.Peer.Info().Network.Trusted && useless && h.peers.UselessNum() >= h.maxPeers/10 {
@@ -613,11 +614,15 @@ func (h *handler) handleTxHashes(p *peer, announces []common.Hash) {
 	// Mark the hashes as present at the remote node
 	now := time.Now()
 	for _, id := range announces {
+		log.Info("Received transaction hash", "hash", id.String(), "peer", p.id)
 		txtime.Saw(id, now)
 		p.MarkTransaction(id)
 	}
 	// Schedule all the unknown hashes for retrieval
 	requestTransactions := func(ids []interface{}) error {
+		for _, id := range interfacesToTxids(ids) {
+			log.Info("Requesting transactions", "hash", id.String(), "peer", p.id)
+		}
 		return p.RequestTransactions(interfacesToTxids(ids))
 	}
 	_ = h.txFetcher.NotifyAnnounces(p.id, txidsToInterfaces(announces), time.Now(), requestTransactions)
@@ -628,6 +633,7 @@ func (h *handler) handleTxs(p *peer, txs types.Transactions) {
 	now := time.Now()
 	for _, tx := range txs {
 		txid := tx.Hash()
+		log.Info("Received transaction", "hash", txid.String(), "peer", p.id)
 		txtime.Saw(txid, now)
 		p.MarkTransaction(txid)
 	}
@@ -706,6 +712,7 @@ func (h *handler) handleMsg(p *peer) (err error) {
 	if err != nil {
 		return err
 	}
+	log.Info("Received message", "peer", p.id, "code", msg.Code, "size", msg.Size)
 	if msg.Size > protocolMaxMsgSize {
 		return errResp(ErrMsgTooLarge, "%v > %v", msg.Size, protocolMaxMsgSize)
 	}
@@ -738,19 +745,23 @@ func (h *handler) handleMsg(p *peer) (err error) {
 	case EvmTxsMsg:
 		// Transactions arrived, make sure we have a valid and fresh graph to handle them
 		if !h.syncStatus.AcceptTxs() {
+			log.Info("Not accepting transactions", "peer", p.id, "status", h.syncStatus)
 			break
 		}
 		// Transactions can be processed, parse all of them and deliver to the pool
 		var txs types.Transactions
 		if err := msg.Decode(&txs); err != nil {
+			log.Info("Failed to decode transactions", "peer", p.id, "err", err)
 			return errResp(ErrDecode, "msg %v: %v", msg, err)
 		}
 		if err := checkLenLimits(len(txs), txs); err != nil {
+			log.Info("Transactions too large", "peer", p.id, "err", err)
 			return err
 		}
 		txids := make([]interface{}, txs.Len())
 		for i, tx := range txs {
 			txids[i] = tx.Hash()
+			log.Info("Received transaction", "hash", txids[i].(common.Hash).String(), "peer", p.id)
 		}
 		_ = h.txFetcher.NotifyReceived(txids)
 		h.handleTxs(p, txs)
