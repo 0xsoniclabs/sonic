@@ -1089,6 +1089,9 @@ func (h *handler) emittedBroadcastLoop() {
 	for {
 		select {
 		case emitted := <-h.emittedEventsCh:
+			// If this node starts emitting events, it is considered synced and
+			// can start accepting transactions.
+			h.syncStatus.MarkMaybeSynced()
 			h.BroadcastEvent(emitted, 0)
 		// Err() channel will be closed when unsubscribing.
 		case <-h.emittedEventsSub.Err():
