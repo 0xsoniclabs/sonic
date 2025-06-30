@@ -4,6 +4,7 @@
 # IDE
 .vscode
 .idea/
+.un~
 
 # Go prof output
 *.prof
@@ -15,9 +16,10 @@
 */*.test
 */*.out
 fuzzing/
+**/tmp
 
 # Build output
-build
+**/build
 dist
 
 # Dependencies
@@ -37,15 +39,7 @@ glide.lock
 *.tgz
 *.zip
 
-# opera project specific
-scripts/certs
-scripts/nodes
-scripts/peers.json
-scripts/docker/upx
-nodes
-peers.json
-certs
-lachesis_*
+# Sonic specific
 !*.go
 *.log
 *.graph
@@ -60,3 +54,14 @@ testnet.g
 .#*
 
 **/coverage.txt
+
+# demo files
+demo/*.datadir
+demo/tool.datadir
+demo/*.log
+
+# contract compilation files
+gossip/contract/solc/*.json
+gossip/contract/solc/*.abi
+gossip/contract/solc/*.bin
+gossip/contract/solc/*.bin-runtime
