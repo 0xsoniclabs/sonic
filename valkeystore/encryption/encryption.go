@@ -106,7 +106,13 @@ func (ks Keystore) EncryptKey(pubkey validatorpk.PubKey, key []byte, auth string
 		PublicKey: common.Bytes2Hex(pubkey.Raw),
 		Crypto:    cryptoStruct,
 	}
-	return json.Marshal(encryptedKeyJSON)
+	// assign marshal results and return them, to hint to the GC that
+	// encryptedKeyJSON and cryptoStruct can be garbage collected
+	encoded, err := json.Marshal(encryptedKeyJSON)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode encrypted key: %w", err)
+	}
+	return encoded, nil
 }
 
 // DecryptKey decrypts a key from a json blob, returning the private key itself.
