@@ -141,11 +141,12 @@ func NewGenesisBuilder() *GenesisBuilder {
 		panic(fmt.Errorf("failed to create temporary dir for GenesisBuilder: %v", err))
 	}
 	carmenState, err := carmen.NewState(carmen.Parameters{
-		Variant:   "go-file",
-		Schema:    carmen.Schema(5),
-		Archive:   carmen.S5Archive,
-		Directory: carmenDir,
-		LiveCache: 1, // use minimum cache (not default)
+		Variant:      "go-file",
+		Schema:       carmen.Schema(5),
+		Archive:      carmen.S5Archive,
+		Directory:    carmenDir,
+		LiveCache:    1, // use minimum cache (not default)
+		ArchiveCache: 1, // use minimum cache (not default)
 	})
 	if err != nil {
 		panic(fmt.Errorf("failed to create carmen state; %s", err))
