@@ -283,7 +283,8 @@ func lachesisMainInternal(
 		return config.SaveAllConfigs(outputConfigFile, cfg)
 	}
 
-	if err := startNode(ctx, node); err != nil {
+	stop := make(chan bool, 1)
+	if err := startNode(ctx, node, stop); err != nil {
 		return fmt.Errorf("failed to start the node: %w", err)
 	}
 
@@ -300,6 +301,7 @@ func lachesisMainInternal(
 			go func() {
 				<-control.Shutdown
 				log.Info("Got shutdown signal, shutting down...")
+				close(stop)
 				if err := node.Close(); err != nil {
 					log.Warn("Error during shutdown", "err", err)
 				}
@@ -313,7 +315,11 @@ func lachesisMainInternal(
 
 // startNode boots up the system node and all registered protocols, after which
 // it unlocks any requested accounts, and starts the RPC/IPC interfaces.
-func startNode(ctx *cli.Context, stack *node.Node) error {
+func startNode(
+	ctx *cli.Context,
+	stack *node.Node,
+	stop <-chan bool,
+) error {
 	// Start up the node itself
 	if err := stack.Start(); err != nil {
 		return fmt.Errorf("error starting protocol stack: %w", err)
@@ -325,8 +331,12 @@ func startNode(ctx *cli.Context, stack *node.Node) error {
 
 		startFreeDiskSpaceMonitor(ctx, stopNodeSig, stack.InstanceDir())
 
-		<-stopNodeSig
-		log.Info("Got interrupt, shutting down...")
+		select {
+		case <-stopNodeSig:
+			log.Info("Got interrupt, shutting down...")
+		case <-stop:
+			log.Info("Received stop signal, shutting down...")
+		}
 		done := make(chan struct{})
 		go func() {
 			defer close(done)
@@ -364,6 +374,7 @@ func startNode(ctx *cli.Context, stack *node.Node) error {
 	rpcClient := stack.Attach()
 	ethClient := ethclient.NewClient(rpcClient)
 	go func() {
+		defer ethClient.Close()
 		// Open any wallets already attached
 		for _, wallet := range stack.AccountManager().Wallets() {
 			if err := wallet.Open(""); err != nil {
@@ -371,29 +382,34 @@ func startNode(ctx *cli.Context, stack *node.Node) error {
 			}
 		}
 		// Listen for wallet event till termination
-		for event := range events {
-			switch event.Kind {
-			case accounts.WalletArrived:
-				if err := event.Wallet.Open(""); err != nil {
-					log.Warn("New wallet appeared, failed to open", "url", event.Wallet.URL(), "err", err)
-				}
-			case accounts.WalletOpened:
-				status, _ := event.Wallet.Status()
-				log.Info("New wallet appeared", "url", event.Wallet.URL(), "status", status)
+		for {
+			select {
+			case event := <-events:
+				switch event.Kind {
+				case accounts.WalletArrived:
+					if err := event.Wallet.Open(""); err != nil {
+						log.Warn("New wallet appeared, failed to open", "url", event.Wallet.URL(), "err", err)
+					}
+				case accounts.WalletOpened:
+					status, _ := event.Wallet.Status()
+					log.Info("New wallet appeared", "url", event.Wallet.URL(), "status", status)
 
-				var derivationPaths []accounts.DerivationPath
-				if event.Wallet.URL().Scheme == "ledger" {
-					derivationPaths = append(derivationPaths, accounts.LegacyLedgerBaseDerivationPath)
-				}
-				derivationPaths = append(derivationPaths, accounts.DefaultBaseDerivationPath)
+					var derivationPaths []accounts.DerivationPath
+					if event.Wallet.URL().Scheme == "ledger" {
+						derivationPaths = append(derivationPaths, accounts.LegacyLedgerBaseDerivationPath)
+					}
+					derivationPaths = append(derivationPaths, accounts.DefaultBaseDerivationPath)
 
-				event.Wallet.SelfDerive(derivationPaths, ethClient)
+					event.Wallet.SelfDerive(derivationPaths, ethClient)
 
-			case accounts.WalletDropped:
-				log.Info("Old wallet dropped", "url", event.Wallet.URL())
-				if err := event.Wallet.Close(); err != nil {
-					log.Warn("Failed to close wallet", "url", event.Wallet.URL(), "err", err)
+				case accounts.WalletDropped:
+					log.Info("Old wallet dropped", "url", event.Wallet.URL())
+					if err := event.Wallet.Close(); err != nil {
+						log.Warn("Failed to close wallet", "url", event.Wallet.URL(), "err", err)
+					}
 				}
+			case <-stop:
+				return
 			}
 		}
 	}()

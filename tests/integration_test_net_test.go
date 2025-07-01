@@ -17,8 +17,12 @@
 package tests
 
 import (
+	"bytes"
 	"fmt"
 	"math/big"
+	"os"
+	"runtime"
+	"runtime/pprof"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/config"
@@ -325,4 +329,40 @@ func TestIntegrationTestNet_AdvanceEpoch(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, epochBefore+13, epochAfter)
+}
+
+func TestIntegrationTestNet_MemoryUsage(t *testing.T) {
+	for i := range 100 {
+		t.Run("MemoryUsage", func(t *testing.T) {
+			net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
+				NumNodes: 1,
+				/*
+					ModifyConfig: func(cfg *config.Config) {
+						// do nothing
+					},
+				*/
+			})
+
+			net.Stop()
+		})
+		var stats runtime.MemStats
+		runtime.ReadMemStats(&stats)
+		numGoroutines := runtime.NumGoroutine()
+		fmt.Printf("Iteration %d: %d B = %d MiB, %d go routines\n", i, stats.HeapInuse, stats.HeapInuse/(1024*1024), numGoroutines)
+
+		buffer := bytes.NewBuffer(nil)
+		pprof.WriteHeapProfile(buffer)
+		os.WriteFile(fmt.Sprintf("heap_profile_%d.pprof", i), buffer.Bytes(), 0644)
+
+		if stats.HeapInuse > 600*1024*1024 || numGoroutines > 20 {
+			t.Errorf("Resource usage too high: %d B = %d MiB, %d goroutines", stats.HeapInuse, stats.HeapInuse/(1024*1024), numGoroutines)
+
+			stacks := make([]byte, 100*1024*1024)
+			size := runtime.Stack(stacks, true)
+			os.WriteFile("goroutine_stacks.txt", stacks[:size], 0644)
+
+			return
+		}
+	}
+	t.Fail()
 }
