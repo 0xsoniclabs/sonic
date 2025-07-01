@@ -131,12 +131,13 @@ func jsonGenesisImport(ctx *cli.Context) (err error) {
 	}
 	defer caution.CloseAndReportError(&err, genesisStore, "failed to close the genesis store")
 	return genesis.ImportGenesisStore(genesis.ImportParams{
-		GenesisStore:  genesisStore,
-		DataDir:       dataDir,
-		ValidatorMode: validatorMode,
-		CacheRatio:    cacheRatio,
-		LiveDbCache:   ctx.GlobalInt64(flags.LiveDbCacheFlag.Name),
-		ArchiveCache:  ctx.GlobalInt64(flags.ArchiveCacheFlag.Name),
+		GenesisStore:     genesisStore,
+		DataDir:          dataDir,
+		ValidatorMode:    validatorMode,
+		CacheRatio:       cacheRatio,
+		LiveDbCache:      ctx.GlobalInt64(flags.LiveDbCacheFlag.Name),
+		ArchiveCache:     ctx.GlobalInt64(flags.ArchiveCacheFlag.Name),
+		StateDbCacheSize: ctx.GlobalInt64(flags.StateDbCacheCapacityFlag.Name),
 	})
 }
 
