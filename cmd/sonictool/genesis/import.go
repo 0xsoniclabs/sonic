@@ -38,6 +38,7 @@ type ImportParams struct {
 	ValidatorMode             bool
 	CacheRatio                cachescale.Func
 	LiveDbCache, ArchiveCache int64 // in bytes
+	StateDbCacheSize          int64 // number of elements
 }
 
 func ImportGenesisStore(params ImportParams) (err error) {
@@ -57,12 +58,13 @@ func ImportGenesisStore(params ImportParams) (err error) {
 	setGenesisProcessing(chaindataDir)
 
 	gdb, err := db.MakeGossipDb(db.GossipDbParameters{
-		Dbs:           dbs,
-		DataDir:       params.DataDir,
-		ValidatorMode: params.ValidatorMode,
-		CacheRatio:    params.CacheRatio,
-		LiveDbCache:   params.LiveDbCache,
-		ArchiveCache:  params.ArchiveCache,
+		Dbs:              dbs,
+		DataDir:          params.DataDir,
+		ValidatorMode:    params.ValidatorMode,
+		CacheRatio:       params.CacheRatio,
+		LiveDbCache:      params.LiveDbCache,
+		ArchiveCache:     params.ArchiveCache,
+		StateDbCacheSize: params.StateDbCacheSize,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create gossip db: %w", err)
