@@ -52,7 +52,7 @@ func (s *Store) ImportLiveWorldState(liveReader io.Reader) error {
 	if err := os.MkdirAll(liveDir, 0700); err != nil {
 		return fmt.Errorf("failed to create carmen dir during FWS import; %v", err)
 	}
-	if err := mptio.ImportLiveDb(mptio.NewLog(), liveDir, liveReader); err != nil {
+	if err := mptio.ImportLiveDb(mptio.NewLog(), liveDir, liveReader, 2_000); err != nil {
 		return fmt.Errorf("failed to import LiveDB; %v", err)
 	}
 	return nil
@@ -69,7 +69,7 @@ func (s *Store) ImportArchiveWorldState(archiveReader io.Reader) error {
 		if err := os.MkdirAll(archiveDir, 0700); err != nil {
 			return fmt.Errorf("failed to create carmen archive dir during FWS import; %v", err)
 		}
-		if err := mptio.ImportArchive(mptio.NewLog(), archiveDir, archiveReader); err != nil {
+		if err := mptio.ImportArchive(mptio.NewLog(), archiveDir, archiveReader, 2_000); err != nil {
 			return fmt.Errorf("failed to initialize Archive; %v", err)
 		}
 		return nil

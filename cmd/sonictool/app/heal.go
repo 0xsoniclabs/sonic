@@ -135,7 +135,7 @@ func healLiveFromArchive(ctx context.Context, carmenLiveDir, carmenArchiveDir st
 		}
 	}()
 
-	err = mptio.ImportLiveDb(mptio.NewLog(), carmenLiveDir, bufReader)
+	err = mptio.ImportLiveDb(mptio.NewLog(), carmenLiveDir, bufReader, 0)
 
 	wg.Wait()
 	return errors.Join(err, exportErr)
