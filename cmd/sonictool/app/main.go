@@ -379,7 +379,7 @@ Note that exporting your key in unencrypted format is NOT supported.
 
 Keys are stored under <DATADIR>/keystore/validator.
 It is safe to transfer the entire directory or the individual keys therein
-between Opera nodes by simply copying.
+between Sonic nodes by simply copying.
 
 Make sure you backup your keys regularly.
 `,

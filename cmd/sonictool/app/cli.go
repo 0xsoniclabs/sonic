@@ -43,10 +43,10 @@ var (
 	}
 )
 
-// remoteConsole will connect to a remote opera instance, attaching a JavaScript
+// remoteConsole will connect to a remote sonic instance, attaching a JavaScript
 // console to it.
 func remoteConsole(ctx *cli.Context) (err error) {
-	// Attach to a remotely running opera instance and start the JavaScript console
+	// Attach to a remotely running sonic instance and start the JavaScript console
 	endpoint := ctx.Args().First()
 	if endpoint == "" {
 		if !ctx.GlobalIsSet(flags.DataDirFlag.Name) {
