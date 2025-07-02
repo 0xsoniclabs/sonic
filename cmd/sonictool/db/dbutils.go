@@ -85,6 +85,7 @@ type GossipDbParameters struct {
 	ValidatorMode             bool
 	CacheRatio                cachescale.Func
 	LiveDbCache, ArchiveCache int64 // in bytes
+	StateDbCacheSize          int64 // number of elements
 }
 
 func MakeGossipDb(params GossipDbParameters) (*gossip.Store, error) {
@@ -102,6 +103,7 @@ func MakeGossipDb(params GossipDbParameters) (*gossip.Store, error) {
 		gdbConfig.EVM.StateDb.ArchiveCache = params.ArchiveCache
 	}
 	gdbConfig.EVM.StateDb.Directory = filepath.Join(params.DataDir, "carmen")
+	gdbConfig.EVM.Cache.StateDbCapacity = int(params.StateDbCacheSize)
 
 	gdb, err := gossip.NewStore(params.Dbs, gdbConfig)
 	if err != nil {
