@@ -191,40 +191,50 @@ const heapProfileEnvVar = "SONIC_TEST_HEAP_PROFILE"
 // `../build/profile/` directory.
 func startHeapProfiler(tb testing.TB) {
 
-	// highest memory usage seen so far,
-	// used to write only the peak consumption to a file
-	highestSeen := uint64(0)
-	ctx := tb.Context()
-
-	buffer := bytes.NewBuffer(nil)
-	memStats := &runtime.MemStats{}
-
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			runtime.ReadMemStats(memStats)
-			if memStats.HeapAlloc <= highestSeen {
-				continue
-			}
-			buffer.Reset()
-			highestSeen = memStats.HeapAlloc
-			require.NoError(tb, pprof.WriteHeapProfile(buffer))
-
-		case <-ctx.Done():
-			// write a file with the name of the test case that started the profiling
-			buildProfile := "../build/profile/"
-			require.NoError(tb, os.MkdirAll(buildProfile, os.ModeDir|os.ModePerm),
-				"Failed to create profile directory")
-
-			fileName := strings.ReplaceAll(tb.Name(), "/", "_")
-			fileName = filepath.Join(buildProfile, fmt.Sprintf("mem_%v.pprof", fileName))
-
-			require.NoError(tb, os.WriteFile(fileName, buffer.Bytes(), 0644))
-			return
-		}
+	heapProfile := os.Getenv(heapProfileEnvVar)
+	if !(heapProfile == "1" &&
+		strings.EqualFold(heapProfile, "on") &&
+		strings.EqualFold(heapProfile, "true")) {
+		return
 	}
+
+	go func() {
+
+		// highest memory usage seen so far,
+		// used to write only the peak consumption to a file
+		highestSeen := uint64(0)
+		ctx := tb.Context()
+
+		buffer := bytes.NewBuffer(nil)
+		memStats := &runtime.MemStats{}
+
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				runtime.ReadMemStats(memStats)
+				if memStats.HeapAlloc <= highestSeen {
+					continue
+				}
+				buffer.Reset()
+				highestSeen = memStats.HeapAlloc
+				require.NoError(tb, pprof.WriteHeapProfile(buffer))
+
+			case <-ctx.Done():
+				// write a file with the name of the test case that started the profiling
+				buildProfile := "../build/profile/"
+				require.NoError(tb, os.MkdirAll(buildProfile, os.ModeDir|os.ModePerm),
+					"Failed to create profile directory")
+
+				fileName := strings.ReplaceAll(tb.Name(), "/", "_")
+				fileName = filepath.Join(buildProfile, fmt.Sprintf("mem_%v.pprof", fileName))
+
+				require.NoError(tb, os.WriteFile(fileName, buffer.Bytes(), 0644))
+				return
+			}
+		}
+	}()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -350,12 +360,7 @@ func startIntegrationTestNet(
 	// the network's session needs to know about the network itself
 	net.net = net
 
-	heapProfile := os.Getenv(heapProfileEnvVar)
-	if heapProfile == "1" ||
-		strings.EqualFold(heapProfile, "on") ||
-		strings.EqualFold(heapProfile, "true") {
-		go startHeapProfiler(t)
-	}
+	startHeapProfiler(t)
 
 	if verbosityVariable := os.Getenv("SONIC_VERBOSITY"); verbosityVariable == "" {
 		if err := os.Setenv("SONIC_VERBOSITY", "0"); err != nil {
