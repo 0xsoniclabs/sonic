@@ -370,6 +370,7 @@ func startNode(ctx *cli.Context, stack *node.Node, stop <-chan bool) error {
 	rpcClient := stack.Attach()
 	ethClient := ethclient.NewClient(rpcClient)
 	go func() {
+		defer ethClient.Close()
 		// Open any wallets already attached
 		for _, wallet := range stack.AccountManager().Wallets() {
 			if err := wallet.Open(""); err != nil {
@@ -377,29 +378,34 @@ func startNode(ctx *cli.Context, stack *node.Node, stop <-chan bool) error {
 			}
 		}
 		// Listen for wallet event till termination
-		for event := range events {
-			switch event.Kind {
-			case accounts.WalletArrived:
-				if err := event.Wallet.Open(""); err != nil {
-					log.Warn("New wallet appeared, failed to open", "url", event.Wallet.URL(), "err", err)
-				}
-			case accounts.WalletOpened:
-				status, _ := event.Wallet.Status()
-				log.Info("New wallet appeared", "url", event.Wallet.URL(), "status", status)
+		for {
+			select {
+			case event := <-events:
+				switch event.Kind {
+				case accounts.WalletArrived:
+					if err := event.Wallet.Open(""); err != nil {
+						log.Warn("New wallet appeared, failed to open", "url", event.Wallet.URL(), "err", err)
+					}
+				case accounts.WalletOpened:
+					status, _ := event.Wallet.Status()
+					log.Info("New wallet appeared", "url", event.Wallet.URL(), "status", status)
 
-				var derivationPaths []accounts.DerivationPath
-				if event.Wallet.URL().Scheme == "ledger" {
-					derivationPaths = append(derivationPaths, accounts.LegacyLedgerBaseDerivationPath)
-				}
-				derivationPaths = append(derivationPaths, accounts.DefaultBaseDerivationPath)
+					var derivationPaths []accounts.DerivationPath
+					if event.Wallet.URL().Scheme == "ledger" {
+						derivationPaths = append(derivationPaths, accounts.LegacyLedgerBaseDerivationPath)
+					}
+					derivationPaths = append(derivationPaths, accounts.DefaultBaseDerivationPath)
 
-				event.Wallet.SelfDerive(derivationPaths, ethClient)
+					event.Wallet.SelfDerive(derivationPaths, ethClient)
 
-			case accounts.WalletDropped:
-				log.Info("Old wallet dropped", "url", event.Wallet.URL())
-				if err := event.Wallet.Close(); err != nil {
-					log.Warn("Failed to close wallet", "url", event.Wallet.URL(), "err", err)
+				case accounts.WalletDropped:
+					log.Info("Old wallet dropped", "url", event.Wallet.URL())
+					if err := event.Wallet.Close(); err != nil {
+						log.Warn("Failed to close wallet", "url", event.Wallet.URL(), "err", err)
+					}
 				}
+			case <-stop:
+				return
 			}
 		}
 	}()
