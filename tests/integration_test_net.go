@@ -17,6 +17,7 @@
 package tests
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -26,7 +27,10 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
+	"runtime/pprof"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -35,6 +39,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/contract/driverauth100"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/stretchr/testify/require"
 
 	sonicd "github.com/0xsoniclabs/sonic/cmd/sonicd/app"
 	sonictool "github.com/0xsoniclabs/sonic/cmd/sonictool/app"
@@ -169,6 +174,72 @@ type integrationTestNode struct {
 	done      <-chan struct{}
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// Memory profiler.
+// if enabled with the `SONIC_TEST_HEAP_PROFILE` env var, it will write a heap dump to
+// the `../build/profile/` directory at the end of the test run.
+// The file will be named `mem_<test_name>.pprof` where `<test_name>` is the name
+// of the test that started the profiling.
+// The environment variable can be set to `1`, `on`, or `true` (regardless of case)
+// to enable the profiling.
+////////////////////////////////////////////////////////////////////////////////
+
+const heapProfileEnvVar = "SONIC_TEST_HEAP_PROFILE"
+
+// startHeapProfiler starts a goroutine that periodically checks the heap memory
+// usage and at the end of the test, writes a heap profile to a file in
+// `../build/profile/` directory.
+func startHeapProfiler(tb testing.TB) {
+
+	heapProfile := os.Getenv(heapProfileEnvVar)
+	if heapProfile != "1" &&
+		!strings.EqualFold(heapProfile, "on") &&
+		!strings.EqualFold(heapProfile, "true") {
+		return
+	}
+
+	go func() {
+
+		// highest memory usage seen so far,
+		// used to write only the peak consumption to a file
+		highestSeen := uint64(0)
+		ctx := tb.Context()
+
+		buffer := bytes.NewBuffer(nil)
+		memStats := &runtime.MemStats{}
+
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				runtime.ReadMemStats(memStats)
+				if memStats.HeapAlloc <= highestSeen {
+					continue
+				}
+				buffer.Reset()
+				highestSeen = memStats.HeapAlloc
+				require.NoError(tb, pprof.WriteHeapProfile(buffer))
+
+			case <-ctx.Done():
+				// write a file with the name of the test case that started the profiling
+				buildProfile := "../build/profile/"
+				require.NoError(tb, os.MkdirAll(buildProfile, os.ModeDir|os.ModePerm),
+					"Failed to create profile directory")
+
+				fileName := strings.ReplaceAll(tb.Name(), "/", "_")
+				fileName = filepath.Join(buildProfile, fmt.Sprintf("mem_%v.pprof", fileName))
+
+				require.NoError(tb, os.WriteFile(fileName, buffer.Bytes(), 0644))
+				return
+			}
+		}
+	}()
+}
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
 // StartIntegrationTestNet starts a single-node test network for integration tests.
 // The node serving the network is started in the same process as the caller. This
 // is intended to facilitate debugging of client code in the context of a running
@@ -288,6 +359,8 @@ func startIntegrationTestNet(
 	}
 	// the network's session needs to know about the network itself
 	net.net = net
+
+	startHeapProfiler(t)
 
 	if verbosityVariable := os.Getenv("SONIC_VERBOSITY"); verbosityVariable == "" {
 		if err := os.Setenv("SONIC_VERBOSITY", "0"); err != nil {
