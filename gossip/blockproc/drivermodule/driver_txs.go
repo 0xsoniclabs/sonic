@@ -178,10 +178,11 @@ func (p *DriverTxListener) OnNewReceipt(tx *types.Transaction, r *types.Receipt,
 }
 
 func effectiveGasPrice(tx *types.Transaction, baseFee *big.Int) *big.Int {
-	gasTip, err := tx.EffectiveGasTip(baseFee)
-	if baseFee == nil || err != nil {
+	if baseFee == nil {
 		return tx.GasPrice()
 	}
+	gasTip, err := tx.EffectiveGasTip(baseFee)
+	_ = err // EffectiveGasTip returns an error for negative values, this is no problem here
 	return new(big.Int).Add(baseFee, gasTip)
 }
 
