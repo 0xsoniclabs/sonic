@@ -478,8 +478,10 @@ func (s *Service) RegisterEmitter(em *emitter.Emitter) {
 	s.emitters = append(s.emitters, em)
 }
 
+type CleanupFunc func()
+
 // MakeProtocols constructs the P2P protocol definitions for `opera`.
-func MakeProtocols(svc *Service, backend *handler, disc enode.Iterator) ([]p2p.Protocol, func()) {
+func MakeProtocols(svc *Service, backend *handler, disc enode.Iterator) ([]p2p.Protocol, CleanupFunc) {
 	nodeIter := enode.NewFairMix(time.Second)
 	nodeIter.AddSource(disc)
 	nodeIter.AddSource(backend.GetSuggestedPeerIterator())
@@ -524,11 +526,11 @@ func MakeProtocols(svc *Service, backend *handler, disc enode.Iterator) ([]p2p.P
 			DialCandidates: nodeIter,
 		}
 	}
-	return protocols, func() { nodeIter.Close() }
+	return protocols, CleanupFunc(nodeIter.Close)
 }
 
 // Protocols returns protocols the service can communicate on.
-func (s *Service) Protocols() ([]p2p.Protocol, func()) {
+func (s *Service) Protocols() ([]p2p.Protocol, CleanupFunc) {
 	return MakeProtocols(s, s.handler, s.operaDialCandidates)
 }
 
