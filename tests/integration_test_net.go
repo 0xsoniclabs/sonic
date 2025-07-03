@@ -192,9 +192,9 @@ const heapProfileEnvVar = "SONIC_TEST_HEAP_PROFILE"
 func startHeapProfiler(tb testing.TB) {
 
 	heapProfile := os.Getenv(heapProfileEnvVar)
-	if !(heapProfile == "1" &&
-		strings.EqualFold(heapProfile, "on") &&
-		strings.EqualFold(heapProfile, "true")) {
+	if heapProfile != "1" &&
+		!strings.EqualFold(heapProfile, "on") &&
+		!strings.EqualFold(heapProfile, "true") {
 		return
 	}
 
