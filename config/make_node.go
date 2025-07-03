@@ -177,7 +177,9 @@ func MakeNode(ctx *cli.Context, cfg *Config) (*node.Node, *gossip.Service, func(
 	}
 
 	stack.RegisterAPIs(svc.APIs())
-	stack.RegisterProtocols(svc.Protocols())
+	protocols, cleanupProtocols := svc.Protocols()
+	cleanup = append(cleanup, cleanupProtocols)
+	stack.RegisterProtocols(protocols)
 	stack.RegisterLifecycle(svc)
 
 	rules, _ := gdb.GetEpochRules()
