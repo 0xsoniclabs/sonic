@@ -578,6 +578,7 @@ func testHeaders_LogsReferenceTheirContext(t *testing.T, headers []*types.Header
 	for _, header := range headers {
 		blockHash := header.Hash()
 		blockNumber := header.Number.Uint64()
+		blockTime := header.Time
 
 		receipts, err := client.BlockReceipts(t.Context(),
 			rpc.BlockNumberOrHashWithHash(blockHash, false))
@@ -589,6 +590,7 @@ func testHeaders_LogsReferenceTheirContext(t *testing.T, headers []*types.Header
 				numLogs++
 				require.Equal(blockHash, log.BlockHash, "block hash mismatch")
 				require.Equal(blockNumber, log.BlockNumber, "block number mismatch")
+				require.Equal(blockTime, log.BlockTimestamp, "block timestamp mismatch")
 				require.Equal(receipt.TxHash, log.TxHash, "transaction hash mismatch")
 				require.Equal(uint(txIndex), log.TxIndex, "transaction index mismatch")
 				require.Equal(uint(index), log.Index, "log index mismatch")
