@@ -1737,8 +1737,8 @@ func (s *PublicTransactionPoolAPI) formatTxReceipt(header *evmcore.EvmHeader, tx
 	if header.BaseFee == nil {
 		fields["effectiveGasPrice"] = hexutil.Uint64(tx.GasPrice().Uint64())
 	} else {
-		gasTip, err := tx.EffectiveGasTip(header.BaseFee)
-		_ = err // EffectiveGasTip returns an error for negative values, this is no problem here
+		// EffectiveGasTip returns an error for negative values, this is no problem here
+		gasTip, _ := tx.EffectiveGasTip(header.BaseFee)
 		gasPrice := new(big.Int).Add(header.BaseFee, gasTip)
 		fields["effectiveGasPrice"] = hexutil.Uint64(gasPrice.Uint64())
 	}
