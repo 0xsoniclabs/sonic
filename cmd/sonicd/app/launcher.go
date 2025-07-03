@@ -283,7 +283,8 @@ func lachesisMainInternal(
 		return config.SaveAllConfigs(outputConfigFile, cfg)
 	}
 
-	if err := startNode(ctx, node); err != nil {
+	stop := make(chan bool, 1)
+	if err := startNode(ctx, node, stop); err != nil {
 		return fmt.Errorf("failed to start the node: %w", err)
 	}
 
@@ -300,6 +301,7 @@ func lachesisMainInternal(
 			go func() {
 				<-control.Shutdown
 				log.Info("Got shutdown signal, shutting down...")
+				close(stop)
 				if err := node.Close(); err != nil {
 					log.Warn("Error during shutdown", "err", err)
 				}
@@ -313,7 +315,7 @@ func lachesisMainInternal(
 
 // startNode boots up the system node and all registered protocols, after which
 // it unlocks any requested accounts, and starts the RPC/IPC interfaces.
-func startNode(ctx *cli.Context, stack *node.Node) error {
+func startNode(ctx *cli.Context, stack *node.Node, stop <-chan bool) error {
 	// Start up the node itself
 	if err := stack.Start(); err != nil {
 		return fmt.Errorf("error starting protocol stack: %w", err)
@@ -325,8 +327,12 @@ func startNode(ctx *cli.Context, stack *node.Node) error {
 
 		startFreeDiskSpaceMonitor(ctx, stopNodeSig, stack.InstanceDir())
 
-		<-stopNodeSig
-		log.Info("Got interrupt, shutting down...")
+		select {
+		case <-stopNodeSig:
+			log.Info("Node got interrupt, shutting down...")
+		case <-stop:
+			log.Info("Node received stop signal, shutting down...")
+		}
 		done := make(chan struct{})
 		go func() {
 			defer close(done)
