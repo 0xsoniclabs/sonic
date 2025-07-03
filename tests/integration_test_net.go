@@ -21,7 +21,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"math"
 	"math/big"
@@ -165,8 +164,6 @@ type IntegrationTestNet struct {
 
 	sessionsMutex sync.Mutex
 	Session
-
-	profiler netProfiler
 }
 
 // per-node state for the integration test network
@@ -179,29 +176,25 @@ type integrationTestNode struct {
 
 ////////////////////////////////////////////////////////////////////////////////
 // Memory profiler.
-// if enabled with the `-test.heap.profile` flag, it will write a heap dump to
+// if enabled with the `SONIC_TEST_HEAP_PROFILE` env var, it will write a heap dump to
 // the `../build/profile/` directory at the end of the test run.
 // The file will be named `mem_<test_name>.pprof` where `<test_name>` is the name
 // of the test that started the profiling.
+// The environment variable can be set to `1`, `on`, or `true` (regardless of case)
+// to enable the profiling.
 ////////////////////////////////////////////////////////////////////////////////
 
-type netProfiler struct {
-	tb testing.TB
+const heapProfileEnvVar = "SONIC_TEST_HEAP_PROFILE"
+
+// startHeapProfiler starts a goroutine that periodically checks the heap memory
+// usage and at the end of the test, writes a heap profile to a file in
+// `../build/profile/` directory.
+func startHeapProfiler(tb testing.TB) {
+
 	// highest memory usage seen so far,
 	// used to write only the peak consumption to a file
-	highestSeen uint64
-}
-
-// since `go test` already parses the flag, this variable needs to be declared
-// at the package level, so that it can be parsed when go test parses other flags.
-var testProfileEnabled = flag.Bool("test.heap.profile", false,
-	`Enable memory profiling for integration tests. 
-	If set, a memory profile will be written to the build/profile directory 
-	at the end of the test run.`)
-
-func profileRoutine(ctx context.Context, n *netProfiler) {
-
-	n.highestSeen = 0
+	highestSeen := uint64(0)
+	ctx := tb.Context()
 
 	buffer := bytes.NewBuffer(nil)
 	memStats := &runtime.MemStats{}
@@ -212,23 +205,23 @@ func profileRoutine(ctx context.Context, n *netProfiler) {
 		select {
 		case <-ticker.C:
 			runtime.ReadMemStats(memStats)
-			if memStats.HeapAlloc <= n.highestSeen {
+			if memStats.HeapAlloc <= highestSeen {
 				continue
 			}
 			buffer.Reset()
-			n.highestSeen = memStats.HeapAlloc
-			require.NoError(n.tb, pprof.WriteHeapProfile(buffer))
+			highestSeen = memStats.HeapAlloc
+			require.NoError(tb, pprof.WriteHeapProfile(buffer))
 
 		case <-ctx.Done():
 			// write a file with the name of the test case that started the profiling
 			buildProfile := "../build/profile/"
-			require.NoError(n.tb, os.MkdirAll(buildProfile, os.ModeDir|os.ModePerm),
+			require.NoError(tb, os.MkdirAll(buildProfile, os.ModeDir|os.ModePerm),
 				"Failed to create profile directory")
 
-			fileName := strings.ReplaceAll(n.tb.Name(), "/", "_")
+			fileName := strings.ReplaceAll(tb.Name(), "/", "_")
 			fileName = filepath.Join(buildProfile, fmt.Sprintf("mem_%v.pprof", fileName))
 
-			require.NoError(n.tb, os.WriteFile(fileName, buffer.Bytes(), 0644))
+			require.NoError(tb, os.WriteFile(fileName, buffer.Bytes(), 0644))
 			return
 		}
 	}
@@ -357,9 +350,11 @@ func startIntegrationTestNet(
 	// the network's session needs to know about the network itself
 	net.net = net
 
-	if testProfileEnabled != nil && *testProfileEnabled {
-		net.profiler = netProfiler{tb: t}
-		go profileRoutine(t.Context(), &net.profiler)
+	heapProfile := os.Getenv(heapProfileEnvVar)
+	if heapProfile == "1" ||
+		strings.EqualFold(heapProfile, "on") ||
+		strings.EqualFold(heapProfile, "true") {
+		go startHeapProfiler(t)
 	}
 
 	if verbosityVariable := os.Getenv("SONIC_VERBOSITY"); verbosityVariable == "" {
