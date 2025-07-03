@@ -380,7 +380,7 @@ func TestFilter_IndexedLogsReturnsLogsWithTimestampOrError(t *testing.T) {
 				backend:   backend,
 				config:    testConfig(),
 				addresses: []common.Address{{0x42}},
-				topics:    [][]common.Hash{[]common.Hash{common.Hash{0x01}}, {common.Hash{0x02}}},
+				topics:    [][]common.Hash{},
 				block:     common.Hash{0x00},
 				begin:     0,
 				end:       2,
