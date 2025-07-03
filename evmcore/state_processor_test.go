@@ -323,7 +323,7 @@ func TestProcess_FailingTransactionAreSkippedButTheBlockIsNotTerminated(t *testi
 	state.EXPECT().Exist(any).Return(true).Times(1)
 	state.EXPECT().AddBalance(any, any, any).Times(3)
 	state.EXPECT().GetRefund().Return(uint64(0)).Times(2)
-	state.EXPECT().GetLogs(any, any).Return([]*types.Log{})
+	state.EXPECT().GetLogs(any, any, any).Return([]*types.Log{})
 	state.EXPECT().EndTransaction().Times(1)
 	state.EXPECT().TxIndex().Return(0).Times(1)
 
@@ -589,8 +589,8 @@ func getStateDbMockForTransactions(
 	any := gomock.Any()
 
 	// Have transaction specific logs.
-	state.EXPECT().GetLogs(any, any).DoAndReturn(
-		func(_, _ common.Hash) []*types.Log {
+	state.EXPECT().GetLogs(any, any, any).DoAndReturn(
+		func(_, _ common.Hash, _ uint64) []*types.Log {
 			return []*types.Log{
 				{Address: common.Address{byte(*txIndex)}},
 			}

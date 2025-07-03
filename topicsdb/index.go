@@ -103,7 +103,7 @@ func (tt *index) Push(recs ...*types.Log) error {
 			return ErrTooBigTopics
 		}
 
-		id := NewID(rec.BlockNumber, rec.TxHash, rec.Index)
+		id := NewID(rec.BlockNumber, rec.TxHash, uint64(rec.Index), rec.BlockTimestamp)
 
 		// write data
 		buf := make([]byte, 0, common.HashLength*len(rec.Topics)+common.HashLength+common.AddressLength+len(rec.Data))

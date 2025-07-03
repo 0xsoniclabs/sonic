@@ -44,6 +44,7 @@ import (
 type MockStateDB struct {
 	ctrl     *gomock.Controller
 	recorder *MockStateDBMockRecorder
+	isgomock struct{}
 }
 
 // MockStateDBMockRecorder is the mock recorder for MockStateDB.
@@ -166,15 +167,15 @@ func (mr *MockStateDBMockRecorder) AddressInAccessList(addr any) *gomock.Call {
 }
 
 // BeginBlock mocks base method.
-func (m *MockStateDB) BeginBlock(number uint64) {
+func (m *MockStateDB) BeginBlock(number, timestamp uint64) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "BeginBlock", number)
+	m.ctrl.Call(m, "BeginBlock", number, timestamp)
 }
 
 // BeginBlock indicates an expected call of BeginBlock.
-func (mr *MockStateDBMockRecorder) BeginBlock(number any) *gomock.Call {
+func (mr *MockStateDBMockRecorder) BeginBlock(number, timestamp any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BeginBlock", reflect.TypeOf((*MockStateDB)(nil).BeginBlock), number)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BeginBlock", reflect.TypeOf((*MockStateDB)(nil).BeginBlock), number, timestamp)
 }
 
 // Copy mocks base method.
@@ -364,17 +365,17 @@ func (mr *MockStateDBMockRecorder) GetCommittedState(arg0, arg1 any) *gomock.Cal
 }
 
 // GetLogs mocks base method.
-func (m *MockStateDB) GetLogs(hash, blockHash common.Hash) []*types.Log {
+func (m *MockStateDB) GetLogs(hash, blockHash common.Hash, blkTimestamp uint64) []*types.Log {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetLogs", hash, blockHash)
+	ret := m.ctrl.Call(m, "GetLogs", hash, blockHash, blkTimestamp)
 	ret0, _ := ret[0].([]*types.Log)
 	return ret0
 }
 
 // GetLogs indicates an expected call of GetLogs.
-func (mr *MockStateDBMockRecorder) GetLogs(hash, blockHash any) *gomock.Call {
+func (mr *MockStateDBMockRecorder) GetLogs(hash, blockHash, blkTimestamp any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLogs", reflect.TypeOf((*MockStateDB)(nil).GetLogs), hash, blockHash)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLogs", reflect.TypeOf((*MockStateDB)(nil).GetLogs), hash, blockHash, blkTimestamp)
 }
 
 // GetNonce mocks base method.

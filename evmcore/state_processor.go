@@ -249,7 +249,7 @@ func ApplyTransactionWithEVM(msg *core.Message, config *params.ChainConfig, gp *
 	// Tracing doesn't need logs and bloom.
 	if evm.Config.Tracer == nil {
 		// Set the receipt logs and create the bloom filter.
-		receipt.Logs = statedb.GetLogs(tx.Hash(), blockHash) // don't store logs when tracing
+		receipt.Logs = statedb.GetLogs(tx.Hash(), blockHash, evm.Context.Time) // don't store logs when tracing
 		receipt.Bloom = types.CreateBloom(receipt)
 	}
 	receipt.BlockHash = blockHash
@@ -330,7 +330,7 @@ func applyTransaction(
 	// hash. For the consumers of the log messages, as for instance the driver
 	// contract listener, only the sender, topics, and the data are relevant.
 	// The block hash is not used.
-	logs := statedb.GetLogs(tx.Hash(), common.Hash{})
+	logs := statedb.GetLogs(tx.Hash(), common.Hash{}, evm.Context.Time)
 	if onNewLog != nil {
 		for _, l := range logs {
 			onNewLog(l)

@@ -45,10 +45,11 @@ func (rec *logrec) fetch(
 	logrecTable kvdb.Reader,
 ) {
 	r := &types.Log{
-		BlockNumber: rec.ID.BlockNumber(),
-		TxHash:      rec.ID.TxHash(),
-		Index:       rec.ID.Index(),
-		Topics:      make([]common.Hash, rec.topicsCount),
+		BlockNumber:    rec.ID.BlockNumber(),
+		TxHash:         rec.ID.TxHash(),
+		Index:          rec.ID.Index(),
+		Topics:         make([]common.Hash, rec.topicsCount),
+		BlockTimestamp: rec.ID.Timestamp(),
 	}
 
 	var (

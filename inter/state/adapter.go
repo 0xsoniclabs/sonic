@@ -30,7 +30,7 @@ type StateDB interface {
 	vm.StateDB
 
 	Error() error
-	GetLogs(hash common.Hash, blockHash common.Hash) []*types.Log
+	GetLogs(hash common.Hash, blockHash common.Hash, blkTimestamp uint64) []*types.Log
 	SetTxContext(thash common.Hash, ti int)
 	TxIndex() int
 	GetProof(addr common.Address, keys []common.Hash) (witness.Proof, error)
@@ -39,7 +39,7 @@ type StateDB interface {
 	Copy() StateDB
 	GetStateHash() common.Hash
 
-	BeginBlock(number uint64)
+	BeginBlock(number uint64, timestamp uint64)
 	EndBlock(number uint64)
 	EndTransaction()
 	Release()

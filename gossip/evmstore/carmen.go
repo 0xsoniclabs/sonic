@@ -50,6 +50,8 @@ type CarmenStateDB struct {
 
 	// current block - set by BeginBlock
 	blockNum uint64
+	// block timestamp - set by BeginBlock
+	blockTimestamp uint64
 
 	// current transaction - set by Prepare
 	txHash  common.Hash
@@ -75,7 +77,7 @@ func (c *CarmenStateDB) AddLog(log *types.Log) {
 	c.db.AddLog(&carmenLog)
 }
 
-func (c *CarmenStateDB) GetLogs(txHash common.Hash, blockHash common.Hash) []*types.Log {
+func (c *CarmenStateDB) GetLogs(txHash common.Hash, blockHash common.Hash, timestamp uint64) []*types.Log {
 	if txHash != c.txHash {
 		panic("obtaining logs of not-current tx not supported")
 	}
@@ -83,14 +85,15 @@ func (c *CarmenStateDB) GetLogs(txHash common.Hash, blockHash common.Hash) []*ty
 	logs := make([]*types.Log, len(carmenLogs))
 	for i, clog := range carmenLogs {
 		log := &types.Log{
-			Address:     common.Address(clog.Address),
-			Topics:      nil,
-			Data:        clog.Data,
-			BlockNumber: c.blockNum,
-			TxHash:      c.txHash,
-			TxIndex:     uint(c.txIndex),
-			BlockHash:   blockHash,
-			Index:       clog.Index,
+			Address:        common.Address(clog.Address),
+			Topics:         nil,
+			Data:           clog.Data,
+			BlockNumber:    c.blockNum,
+			TxHash:         c.txHash,
+			TxIndex:        uint(c.txIndex),
+			BlockHash:      blockHash,
+			Index:          clog.Index,
+			BlockTimestamp: c.blockTimestamp,
 		}
 		for _, topic := range clog.Topics {
 			log.Topics = append(log.Topics, common.Hash(topic))
@@ -105,13 +108,14 @@ func (c *CarmenStateDB) Logs() []*types.Log {
 	logs := make([]*types.Log, len(carmenLogs))
 	for i, clog := range carmenLogs {
 		log := &types.Log{
-			Address:     common.Address(clog.Address),
-			Topics:      nil,
-			Data:        clog.Data,
-			BlockNumber: c.blockNum,
-			TxHash:      c.txHash,
-			TxIndex:     uint(c.txIndex),
-			Index:       clog.Index,
+			Address:        common.Address(clog.Address),
+			Topics:         nil,
+			Data:           clog.Data,
+			BlockNumber:    c.blockNum,
+			TxHash:         c.txHash,
+			TxIndex:        uint(c.txIndex),
+			Index:          clog.Index,
+			BlockTimestamp: c.blockTimestamp,
 		}
 		for _, topic := range clog.Topics {
 			log.Topics = append(log.Topics, common.Hash(topic))
@@ -324,10 +328,12 @@ func (c *CarmenStateDB) SetTxContext(txHash common.Hash, txIndex int) {
 	c.db.ClearAccessList()
 }
 
-func (c *CarmenStateDB) BeginBlock(number uint64) {
+func (c *CarmenStateDB) BeginBlock(number uint64, timestamp uint64) {
 	utils.NewPointCache(pointCacheSize)
 	c.accessEvents = geth_state.NewAccessEvents(nil)
 	c.blockNum = number
+	c.blockTimestamp = timestamp
+
 	if db, ok := c.db.(carmen.StateDB); ok {
 		db.BeginBlock()
 	}

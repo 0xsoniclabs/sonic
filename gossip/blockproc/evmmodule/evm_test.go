@@ -41,7 +41,7 @@ func TestEvm_IgnoresGasPriceOfInternalTransactions(t *testing.T) {
 	targetAddress := common.Address{0x01}
 	any := gomock.Any()
 
-	stateDb.EXPECT().BeginBlock(any)
+	stateDb.EXPECT().BeginBlock(any, any)
 	stateDb.EXPECT().SetTxContext(any, any)
 	stateDb.EXPECT().GetBalance(zeroAddress).Return(zero)
 	stateDb.EXPECT().SubBalance(zeroAddress, zero, tracing.BalanceDecreaseGasBuy)
@@ -55,7 +55,7 @@ func TestEvm_IgnoresGasPriceOfInternalTransactions(t *testing.T) {
 	stateDb.EXPECT().GetCode(targetAddress).MinTimes(1)
 	stateDb.EXPECT().GetRefund().AnyTimes().Return(uint64(0))
 	stateDb.EXPECT().AddBalance(zeroAddress, zero, tracing.BalanceIncreaseGasReturn)
-	stateDb.EXPECT().GetLogs(any, any)
+	stateDb.EXPECT().GetLogs(any, any, any)
 	stateDb.EXPECT().EndTransaction()
 	stateDb.EXPECT().TxIndex()
 

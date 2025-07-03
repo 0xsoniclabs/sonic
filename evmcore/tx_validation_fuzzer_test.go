@@ -397,7 +397,7 @@ func stateExpectCalls(state *state.MockStateDB) {
 
 	state.EXPECT().GetCodeHash(any).Return(types.EmptyCodeHash).AnyTimes()
 	state.EXPECT().GetCodeSize(any).Return(0).AnyTimes()
-	state.EXPECT().GetLogs(any, any).Return([]*types.Log{}).AnyTimes()
+	state.EXPECT().GetLogs(any, any, any).Return([]*types.Log{}).AnyTimes()
 	state.EXPECT().GetNonce(any).Return(uint64(1)).AnyTimes()
 	state.EXPECT().GetRefund().Return(uint64(0)).AnyTimes()
 	state.EXPECT().GetState(any, any).Return(common.Hash{}).AnyTimes()

@@ -61,7 +61,7 @@ func (p *EVMModule) Start(
 	}
 
 	// Start block
-	statedb.BeginBlock(uint64(block.Idx))
+	statedb.BeginBlock(uint64(block.Idx), uint64(block.Time.Unix()))
 
 	return &OperaEVMProcessor{
 		block:         block,
