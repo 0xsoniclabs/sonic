@@ -37,6 +37,7 @@ import (
 type MockRawKeystoreI struct {
 	ctrl     *gomock.Controller
 	recorder *MockRawKeystoreIMockRecorder
+	isgomock struct{}
 }
 
 // MockRawKeystoreIMockRecorder is the mock recorder for MockRawKeystoreI.
@@ -103,6 +104,7 @@ func (mr *MockRawKeystoreIMockRecorder) Has(pubkey any) *gomock.Call {
 type MockKeystoreI struct {
 	ctrl     *gomock.Controller
 	recorder *MockKeystoreIMockRecorder
+	isgomock struct{}
 }
 
 // MockKeystoreIMockRecorder is the mock recorder for MockKeystoreI.

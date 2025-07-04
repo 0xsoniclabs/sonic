@@ -36,6 +36,7 @@ import (
 type MockPrioritizedTransactions struct {
 	ctrl     *gomock.Controller
 	recorder *MockPrioritizedTransactionsMockRecorder
+	isgomock struct{}
 }
 
 // MockPrioritizedTransactionsMockRecorder is the mock recorder for MockPrioritizedTransactions.

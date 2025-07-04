@@ -36,6 +36,7 @@ import (
 type MockDummyChain struct {
 	ctrl     *gomock.Controller
 	recorder *MockDummyChainMockRecorder
+	isgomock struct{}
 }
 
 // MockDummyChainMockRecorder is the mock recorder for MockDummyChain.

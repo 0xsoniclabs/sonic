@@ -44,6 +44,7 @@ import (
 type MockproposalTracker struct {
 	ctrl     *gomock.Controller
 	recorder *MockproposalTrackerMockRecorder
+	isgomock struct{}
 }
 
 // MockproposalTrackerMockRecorder is the mock recorder for MockproposalTracker.
@@ -81,6 +82,7 @@ func (mr *MockproposalTrackerMockRecorder) IsPending(frame, block any) *gomock.C
 type MockworldReader struct {
 	ctrl     *gomock.Controller
 	recorder *MockworldReaderMockRecorder
+	isgomock struct{}
 }
 
 // MockworldReaderMockRecorder is the mock recorder for MockworldReader.
@@ -146,6 +148,7 @@ func (mr *MockworldReaderMockRecorder) GetRules() *gomock.Call {
 type MocktxScheduler struct {
 	ctrl     *gomock.Controller
 	recorder *MocktxSchedulerMockRecorder
+	isgomock struct{}
 }
 
 // MocktxSchedulerMockRecorder is the mock recorder for MocktxScheduler.
@@ -183,6 +186,7 @@ func (mr *MocktxSchedulerMockRecorder) Schedule(arg0, arg1, arg2, arg3 any) *gom
 type MocktimerMetric struct {
 	ctrl     *gomock.Controller
 	recorder *MocktimerMetricMockRecorder
+	isgomock struct{}
 }
 
 // MocktimerMetricMockRecorder is the mock recorder for MocktimerMetric.
@@ -218,6 +222,7 @@ func (mr *MocktimerMetricMockRecorder) Update(arg0 any) *gomock.Call {
 type MockcounterMetric struct {
 	ctrl     *gomock.Controller
 	recorder *MockcounterMetricMockRecorder
+	isgomock struct{}
 }
 
 // MockcounterMetricMockRecorder is the mock recorder for MockcounterMetric.
@@ -253,6 +258,7 @@ func (mr *MockcounterMetricMockRecorder) Inc(arg0 any) *gomock.Call {
 type MocktransactionIndex struct {
 	ctrl     *gomock.Controller
 	recorder *MocktransactionIndexMockRecorder
+	isgomock struct{}
 }
 
 // MocktransactionIndexMockRecorder is the mock recorder for MocktransactionIndex.

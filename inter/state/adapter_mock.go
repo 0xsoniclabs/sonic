@@ -44,6 +44,7 @@ import (
 type MockStateDB struct {
 	ctrl     *gomock.Controller
 	recorder *MockStateDBMockRecorder
+	isgomock struct{}
 }
 
 // MockStateDBMockRecorder is the mock recorder for MockStateDB.

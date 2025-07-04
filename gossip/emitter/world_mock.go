@@ -44,6 +44,7 @@ import (
 type MockExternal struct {
 	ctrl     *gomock.Controller
 	recorder *MockExternalMockRecorder
+	isgomock struct{}
 }
 
 // MockExternalMockRecorder is the mock recorder for MockExternal.
@@ -370,6 +371,7 @@ func (mr *MockExternalMockRecorder) Unlock() *gomock.Call {
 type MockTxSigner struct {
 	ctrl     *gomock.Controller
 	recorder *MockTxSignerMockRecorder
+	isgomock struct{}
 }
 
 // MockTxSignerMockRecorder is the mock recorder for MockTxSigner.
@@ -467,6 +469,7 @@ func (mr *MockTxSignerMockRecorder) SignatureValues(tx, sig any) *gomock.Call {
 type MockReader struct {
 	ctrl     *gomock.Controller
 	recorder *MockReaderMockRecorder
+	isgomock struct{}
 }
 
 // MockReaderMockRecorder is the mock recorder for MockReader.
@@ -617,6 +620,7 @@ func (mr *MockReaderMockRecorder) GetRules() *gomock.Call {
 type MockTxPool struct {
 	ctrl     *gomock.Controller
 	recorder *MockTxPoolMockRecorder
+	isgomock struct{}
 }
 
 // MockTxPoolMockRecorder is the mock recorder for MockTxPool.
