@@ -1,6 +1,8 @@
 .PHONY: all
 all: sonicd sonictool
 
+# build
+
 GOPROXY ?= "https://proxy.golang.org,direct"
 .PHONY: sonicd sonictool
 sonicd:
@@ -32,6 +34,8 @@ sonic-image:
     	    --network=host \
     	    -f ./docker/Dockerfile.opera -t "sonic:$(TAG)" .
 
+# test
+
 .PHONY: test
 test:
 	go test --timeout 30m ./...
@@ -42,6 +46,8 @@ coverage:
 	go test -coverpkg=./... --timeout=30m -coverprofile=build/coverage.cov ./... && \
 	go tool cover -html build/coverage.cov -o build/coverage.html &&\
 	echo "Coverage report generated in build/coverage.html"
+
+# Fuzzing
 
 .PHONY: fuzz
 fuzz:
@@ -76,6 +82,16 @@ clean:
 lint: 
 	@go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.6
 	@golangci-lint run ./...
+
+.PHONY: generated-check
+generated-check:
+	@ go generate ./... > /dev/null 2>&1 ;\
+	 make license-add > /dev/null 2>&1
+	@ git diff --exit-code > /dev/null 2>&1 && \
+	 (echo "Generated files are up to date." && exit 0) || \
+	 (echo "Generated files are not up to date. Please update them." && exit 1)
+
+# License checks
 
 .PHONY: license-check
 license-check:
