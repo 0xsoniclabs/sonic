@@ -377,7 +377,7 @@ func validateEvents(events chan NewTxsNotify, count int) error {
 		select {
 		case ev := <-events:
 			received = append(received, ev.Txs...)
-		case <-time.After(30 * time.Second):
+		case <-time.After(5 * time.Second):
 			return fmt.Errorf("event #%d not fired", len(received))
 		}
 	}
@@ -2409,6 +2409,8 @@ func TestTransactionPoolUnderpricingDynamicFee(t *testing.T) {
 	if err := pool.AddRemote(tx); err != nil { // +K1:2, -K0:1 => Pend K0:0 K1:0, K2:0; Que K1:2
 		t.Fatalf("failed to add well priced transaction: %v", err)
 	}
+
+	pool.waitForIdleReorgLoop_forTesting()
 	tx = dynamicFeeTx(3, 100000, big.NewInt(4), big.NewInt(1), keys[1])
 	if err := pool.AddRemote(tx); err != nil { // +K1:3, -K1:0 => Pend K0:0 K2:0; Que K1:2 K1:3
 		t.Fatalf("failed to add well priced transaction: %v", err)
