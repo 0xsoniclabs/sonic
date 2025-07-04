@@ -45,9 +45,7 @@ func TestEthCall_CodeLargerThanMaxInitCodeSizeIsAccepted(t *testing.T) {
 	net := StartIntegrationTestNet(t)
 
 	client, err := net.GetClient()
-	if err != nil {
-		t.Fatalf("Failed to connect to the integration test network: %v", err)
-	}
+	require.NoError(t, err, "Failed to connect to the integration test network")
 	defer client.Close()
 
 	rpcClient := client.Client()

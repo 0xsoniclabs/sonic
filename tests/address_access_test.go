@@ -87,14 +87,14 @@ func TestAddressAccess(t *testing.T) {
 
 	t.Run("archive access is warm", func(t *testing.T) {
 
-		tests := map[string]func(t testing.TB) (*big.Int, error){
-			"origin": func(t testing.TB) (*big.Int, error) {
+		tests := map[string]func(t *testing.T) (*big.Int, error){
+			"origin": func(t *testing.T) (*big.Int, error) {
 				originAddr, err := contract.GetOrigin(nil)
 				require.NoError(t, err)
 				_, cost, err := contract.GetAddressAccessCost(nil, originAddr)
 				return cost, err
 			},
-			"coinbase": func(t testing.TB) (*big.Int, error) {
+			"coinbase": func(t *testing.T) (*big.Int, error) {
 				coinbaseAddr, err := contract.GetCoinBaseAddress(nil)
 				require.NoError(t, err)
 				_, cost, err := contract.GetAddressAccessCost(nil, coinbaseAddr)

@@ -53,16 +53,13 @@ func TestBaseFee_CanReadBaseFeeFromHeadAndBlockAndHistory(t *testing.T) {
 	fromArchive, err := contract.GetBaseFee(&bind.CallOpts{BlockNumber: receipt.BlockNumber})
 	require.NoError(t, err)
 
-	require.GreaterOrEqual(t,
-		fromLog.Sign(), 0,
+	require.Positive(t, fromLog.Int64(),
 		"base fee should be non-negative",
 	)
-	require.Equal(t,
-		fromLog, fromBlock,
+	require.Equal(t, fromLog, fromBlock,
 		"base fee from log should match base fee from block header",
 	)
-	require.Equal(t,
-		fromLog, fromArchive,
+	require.Equal(t, fromLog, fromArchive,
 		"base fee from log should match base fee from archive",
 	)
 }
