@@ -91,6 +91,34 @@ generated-check:
 	 (echo "Generated files are up to date." && exit 0) || \
 	 (echo "Generated files are not up to date. Please update them." && exit 1)
 
+.PHONY: generators-version-check
+generators-version-check:
+	@echo "Checking tool versions..."
+	@check_version() { \
+		cmd=$$1; required=$$2; version_cmd=$$3; \
+		version=$$($$version_cmd 2>&1 | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -n1); \
+		if [ -z "$$version" ]; then \
+			echo "$$cmd not found or version not detectable"; exit 1; \
+		fi; \
+		echo "$$cmd version: $$version"; \
+		if [ "$$(printf "%s\n%s" "$$required" "$$version" | sort -V | head -n1)" != "$$required" ]; then \
+			echo "$$cmd version must be >= $$required"; exit 1; \
+		fi; \
+	} && \
+	check_version "mockgen" "0.5.0" "mockgen -version" && \
+	check_version "protoc-gen-go" "1.30.0" "protoc-gen-go --version" && \
+	check_version "solc" "0.8.20" "solc --version" && \
+	echo "Generators meet version requirements."
+
+.PHONY: generators-update
+generators-update:
+	@echo "Updating generators..."
+	@go install go.uber.org/mock/mockgen@v0.5.0
+	@go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.30.0
+	@echo "run manually: sudo apt-get install solc=1:0.8.30-0ubuntu1~noble"
+	@echo "Generators updated."
+
+
 # License checks
 
 .PHONY: license-check
