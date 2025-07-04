@@ -35,6 +35,7 @@ import (
 type MockmetricCounter struct {
 	ctrl     *gomock.Controller
 	recorder *MockmetricCounterMockRecorder
+	isgomock struct{}
 }
 
 // MockmetricCounterMockRecorder is the mock recorder for MockmetricCounter.

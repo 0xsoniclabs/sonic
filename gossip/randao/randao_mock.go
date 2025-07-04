@@ -36,6 +36,7 @@ import (
 type MockRandaoMixer struct {
 	ctrl     *gomock.Controller
 	recorder *MockRandaoMixerMockRecorder
+	isgomock struct{}
 }
 
 // MockRandaoMixerMockRecorder is the mock recorder for MockRandaoMixer.

@@ -35,6 +35,7 @@ import (
 type MockSerializer struct {
 	ctrl     *gomock.Controller
 	recorder *MockSerializerMockRecorder
+	isgomock struct{}
 }
 
 // MockSerializerMockRecorder is the mock recorder for MockSerializer.
@@ -73,6 +74,7 @@ func (mr *MockSerializerMockRecorder) Serialize() *gomock.Call {
 type MockDeserializer struct {
 	ctrl     *gomock.Controller
 	recorder *MockDeserializerMockRecorder
+	isgomock struct{}
 }
 
 // MockDeserializerMockRecorder is the mock recorder for MockDeserializer.

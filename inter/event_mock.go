@@ -38,6 +38,7 @@ import (
 type MockEventI struct {
 	ctrl     *gomock.Controller
 	recorder *MockEventIMockRecorder
+	isgomock struct{}
 }
 
 // MockEventIMockRecorder is the mock recorder for MockEventI.
@@ -439,6 +440,7 @@ func (mr *MockEventIMockRecorder) Version() *gomock.Call {
 type MockEventPayloadI struct {
 	ctrl     *gomock.Controller
 	recorder *MockEventPayloadIMockRecorder
+	isgomock struct{}
 }
 
 // MockEventPayloadIMockRecorder is the mock recorder for MockEventPayloadI.

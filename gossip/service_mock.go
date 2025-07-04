@@ -35,6 +35,7 @@ import (
 type MockArchiveBlockHeightSource struct {
 	ctrl     *gomock.Controller
 	recorder *MockArchiveBlockHeightSourceMockRecorder
+	isgomock struct{}
 }
 
 // MockArchiveBlockHeightSourceMockRecorder is the mock recorder for MockArchiveBlockHeightSource.

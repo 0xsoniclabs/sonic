@@ -37,6 +37,7 @@ import (
 type MockSignerAuthority struct {
 	ctrl     *gomock.Controller
 	recorder *MockSignerAuthorityMockRecorder
+	isgomock struct{}
 }
 
 // MockSignerAuthorityMockRecorder is the mock recorder for MockSignerAuthority.
