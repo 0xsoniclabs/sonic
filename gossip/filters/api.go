@@ -24,6 +24,7 @@ import (
 	"math/big"
 	"sync"
 	"time"
+	"weak"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 
@@ -83,19 +84,25 @@ func NewPublicFilterAPI(backend Backend, cfg Config) *PublicFilterAPI {
 		events:  NewEventSystem(backend),
 		filters: make(map[rpc.ID]*filter),
 	}
-	go api.timeoutLoop(5 * time.Minute)
+	go timeoutLoop(weak.Make(api), 5*time.Minute)
 
 	return api
 }
 
 // timeoutLoop runs at the interval set by 'timeout' and deletes filters
 // that have not been recently used. It is started when the API is created.
-func (api *PublicFilterAPI) timeoutLoop(timeout time.Duration) {
+func timeoutLoop(
+	api weak.Pointer[PublicFilterAPI],
+	timeout time.Duration,
+) {
 	var toUninstall []*Subscription
 	ticker := time.NewTicker(timeout)
 	defer ticker.Stop()
-	for {
-		<-ticker.C
+	for range ticker.C {
+		api := api.Value()
+		if api == nil {
+			return // API has been destroyed, exit the loop
+		}
 		api.filtersMu.Lock()
 		for id, f := range api.filters {
 			select {
