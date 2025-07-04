@@ -91,6 +91,10 @@ generated-check:
 	 (echo "Generated files are up to date." && exit 0) || \
 	 (echo "Generated files are not up to date. Please update them." && exit 1)
 
+MOCKGEN_VERSION="0.5.2"
+PROTO_VERSION="1.36.5"
+SOLC_VERSION="0.8.30"
+
 .PHONY: generators-version-check
 generators-version-check:
 	@echo "Checking tool versions..."
@@ -105,17 +109,18 @@ generators-version-check:
 			echo "$$cmd version must be >= $$required"; exit 1; \
 		fi; \
 	} && \
-	check_version "mockgen" "0.5.0" "mockgen -version" && \
-	check_version "protoc-gen-go" "1.30.0" "protoc-gen-go --version" && \
-	check_version "solc" "0.8.20" "solc --version" && \
+	check_version "mockgen" "$(MOCKGEN_VERSION)" "mockgen -version" && \
+	check_version "protoc-gen-go" "$(PROTO_VERSION)" "protoc-gen-go --version" && \
+	check_version "solc" "$(SOLC_VERSION)" "solc --version" && \
 	echo "Generators meet version requirements."
 
 .PHONY: generators-update
 generators-update:
-	@echo "Updating generators..."
-	@go install go.uber.org/mock/mockgen@v0.5.0
-	@go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.30.0
-	@echo "run manually: sudo apt-get install solc=1:0.8.30-0ubuntu1~noble"
+	@echo "Updating mockgen..."
+	@go install go.uber.org/mock/mockgen@v$(MOCKGEN_VERSION)
+	@echo "Updating proto..."
+	@go install google.golang.org/protobuf/cmd/protoc-gen-go@v$(PROTO_VERSION)
+	@echo "run manually: sudo apt-get install solc=1:$(SOLC_VERSION)-0ubuntu1~noble"
 	@echo "Generators updated."
 
 
