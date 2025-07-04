@@ -203,13 +203,10 @@ func TestIntegrationTestNet_setTransactionDefaults(t *testing.T) {
 	withData := func(size, zeroes int) modificationFunction {
 
 		makeData := func(t *testing.T, size, numZeroes int) []byte {
-			if zeroes > size {
-				t.Fatalf("zeroes %d > size %d", zeroes, size)
-			}
-			if zeroes < 1 {
-				// please add one 0, so that init-code starts with STOP
-				t.Fatalf("zeroes %d < 1", zeroes)
-			}
+			require.GreaterOrEqual(t, size, zeroes)
+			// please add one 0, so that init-code starts with STOP
+			require.Greater(t, zeroes, 0)
+
 			data := make([]byte, size)
 			for i := numZeroes; i < size; i++ {
 				data[i] = 1
