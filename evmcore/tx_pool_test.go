@@ -73,6 +73,15 @@ func init() {
 	pragueConfig.PragueTime = new(uint64)
 }
 
+// waitForIdleReorgLoop_forTesting allows tests to wait for the reorg loop to
+// finish its current run. This is useful for tests that want to control the
+// timing of reorgs and promotions, ensuring that the pool is in a stable state
+// before proceeding with further assertions or actions.
+func (pool *TxPool) waitForIdleReorgLoop_forTesting() {
+	pool.waitForIdleReorgLoopRequestCh <- struct{}{}
+	<-pool.waitForIdleReorgLoopResponseCh
+}
+
 type testTxPoolStateDb struct {
 	balances   map[common.Address]*uint256.Int
 	nonces     map[common.Address]uint64

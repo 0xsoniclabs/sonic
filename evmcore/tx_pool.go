@@ -1167,15 +1167,6 @@ func (pool *TxPool) requestPromoteExecutables(set *accountSet) chan struct{} {
 	}
 }
 
-// waitForIdleReorgLoop_forTesting allows tests to wait for the reorg loop to
-// finish its current run. This is useful for tests that want to control the
-// timing of reorgs and promotions, ensuring that the pool is in a stable state
-// before proceeding with further assertions or actions.
-func (pool *TxPool) waitForIdleReorgLoop_forTesting() {
-	pool.waitForIdleReorgLoopRequestCh <- struct{}{}
-	<-pool.waitForIdleReorgLoopResponseCh
-}
-
 // queueTxEvent enqueues a transaction event to be sent in the next reorg run.
 func (pool *TxPool) queueTxEvent(tx *types.Transaction) {
 	select {
