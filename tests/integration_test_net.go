@@ -266,13 +266,9 @@ func StartIntegrationTestNetWithFakeGenesis(
 	t.Helper()
 
 	effectiveOptions, err := validateAndSanitizeOptions(options...)
-	if err != nil {
-		t.Fatal("failed to validate and sanitize options: ", err)
-	}
-
-	if len(effectiveOptions.Accounts) != 0 {
-		t.Fatal("fake genesis does not support custom accounts")
-	}
+	require.NoError(t, err, "failed to validate and sanitize options")
+	require.Equal(t, 0, len(effectiveOptions.Accounts),
+		"fake genesis does not support custom accounts")
 
 	var upgrades string
 	if *effectiveOptions.Upgrades == opera.GetSonicUpgrades() {
@@ -289,9 +285,8 @@ func StartIntegrationTestNetWithFakeGenesis(
 		[]string{"genesis", "fake", "1", "--upgrades", upgrades},
 		effectiveOptions,
 	)
-	if err != nil {
-		t.Fatal("failed to start integration test network: ", err)
-	}
+	require.NoError(t, err, "failed to start integration test network with fake genesis")
+
 	return net
 }
 
@@ -306,9 +301,7 @@ func StartIntegrationTestNetWithJsonGenesis(
 	t.Helper()
 
 	effectiveOptions, err := validateAndSanitizeOptions(options...)
-	if err != nil {
-		t.Fatal("failed to validate and sanitize options: ", err)
-	}
+	require.NoError(t, err, "failed to validate and sanitize options")
 
 	jsonGenesis := makefakegenesis.GenerateFakeJsonGenesis(
 		effectiveOptions.NumNodes,
@@ -321,16 +314,12 @@ func StartIntegrationTestNetWithJsonGenesis(
 	jsonGenesis.Rules.Emitter.Interval = inter.Timestamp(time.Millisecond)
 
 	encoded, err := json.MarshalIndent(jsonGenesis, "", "  ")
-	if err != nil {
-		t.Fatal("failed to marshal genesis json:", err)
-	}
+	require.NoError(t, err, "failed to marshal genesis json")
 
 	directory := t.TempDir()
 	jsonFile := filepath.Join(directory, "genesis.json")
 	err = os.WriteFile(jsonFile, encoded, 0644)
-	if err != nil {
-		t.Fatal("failed to write genesis json file: ", err)
-	}
+	require.NoError(t, err, "failed to write genesis json file")
 
 	net, err := startIntegrationTestNet(
 		t,
@@ -338,9 +327,8 @@ func StartIntegrationTestNetWithJsonGenesis(
 		[]string{"genesis", "json", "--experimental", jsonFile},
 		effectiveOptions,
 	)
-	if err != nil {
-		t.Fatal("failed to start integration test network: ", err)
-	}
+	require.NoError(t, err, "failed to start integration test network with json genesis")
+
 	return net
 }
 
@@ -363,9 +351,7 @@ func startIntegrationTestNet(
 	startHeapProfiler(t)
 
 	if verbosityVariable := os.Getenv("SONIC_VERBOSITY"); verbosityVariable == "" {
-		if err := os.Setenv("SONIC_VERBOSITY", "0"); err != nil {
-			t.Fatal("failed to set verbosity: ", err)
-		}
+		require.NoError(t, os.Setenv("SONIC_VERBOSITY", "1"), "failed to set verbosity")
 	}
 
 	// start the integration test nodes
@@ -381,14 +367,10 @@ func startIntegrationTestNet(
 			"--statedb.archivecache", "1",
 			"--statedb.cache", "1024",
 		}, sonicToolArguments...)
-		if err := sonictool.RunWithArgs(args); err != nil {
-			return nil, fmt.Errorf("failed to initialize the test network: %w", err)
-		}
+		require.NoError(t, sonictool.RunWithArgs(args), "failed to initialize the test network")
 	}
 
-	if err := net.start(); err != nil {
-		return nil, fmt.Errorf("failed to start the test network: %w", err)
-	}
+	require.NoError(t, net.start(), "failed to start the integration test network")
 	t.Cleanup(net.Stop)
 	return net, nil
 }
@@ -715,12 +697,8 @@ func (n *IntegrationTestNet) SpawnSession(t *testing.T) IntegrationTestNetSessio
 		PrivateKey: key,
 	}
 	receipt, err := n.EndowAccount(nextSessionAccount.Address(), new(big.Int).SetUint64(math.MaxUint64))
-	if err != nil {
-		t.Fatalf("Failed to endow account: %v", err)
-	}
-	if receipt.Status != types.ReceiptStatusSuccessful {
-		t.Fatalf("Failed to endow account: %v", receipt.Status)
-	}
+	require.NoError(t, err, "Failed to endow account")
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "Failed to endow account")
 
 	return &Session{
 		net:     n,

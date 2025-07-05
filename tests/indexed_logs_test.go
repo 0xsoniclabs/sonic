@@ -63,9 +63,7 @@ func TestClient_IndexedLogsAreInOrder(t *testing.T) {
 		next := blockLogs[i+1]
 
 		// Check if BlockNumber is non-decreasing
-		if current.BlockNumber > next.BlockNumber {
-			t.Errorf("BlockNumber out of order: %d > %d", current.BlockNumber, next.BlockNumber)
-		}
+		require.LessOrEqual(t, current.BlockNumber, next.BlockNumber)
 
 		// If BlockNumbers are equal, check if Index is non-decreasing
 		if current.BlockNumber == next.BlockNumber && current.Index >= next.Index {

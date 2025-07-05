@@ -80,9 +80,7 @@ func TestTransactionOrder(t *testing.T) {
 		}
 
 		// Check that correct number of transactions has been sent
-		if got, want := uint64(len(transactions)), numTxs; got != want {
-			t.Fatalf("unexpected number of transactions, got: %d, want: %d", got, want)
-		}
+		require.Equal(t, len(transactions), int(numTxs), "unexpected number of transactions")
 
 		// Check that the value in receipt is incremented by one - signals the transactions are ordered
 		for _, tx := range transactions {
@@ -93,25 +91,19 @@ func TestTransactionOrder(t *testing.T) {
 			// Nonce starts at 0 and count starts at 1 per account
 			accCount := count.PerAddrCount.Uint64()
 			nonce := tx.Nonce() + 1
-			if accCount != nonce {
-				t.Fatalf("transactions are not ordered, got idx: %d, want idx: %d", accCount, nonce)
-			}
+			require.Equal(t, accCount, nonce, "transactions are not ordered")
 		}
 		blockNrAfter, err := client.BlockNumber(t.Context())
 		require.NoError(t, err)
 		// At least one block between iterations must be generated
 		// Multiple blocks between iterations can be generated
-		if blockNrBefore >= blockNrAfter {
-			t.Fatalf("no new block generated between iterations")
-		}
+		require.Greater(t, blockNrAfter, blockNrBefore, "no new block generated between iterations")
 	}
 
 	gotCount, err := contract.GetTotalCount(nil)
 	require.NoError(t, err)
 
-	if got, want := gotCount.Uint64(), numTxs*numBlocks; got != want {
-		t.Errorf("wrong count, got: %d, want: %d", got, want)
-	}
+	require.Equal(t, gotCount.Uint64(), numTxs*numBlocks, "total count does not match expected")
 
 	// Check that transactions are ordered correctly in the blockchain and that
 	// for each transaction a correct receipt is available.
