@@ -211,7 +211,7 @@ func (p *peer) MarkTransaction(hash common.Hash) {
 	p.knownTxs.Add(hash)
 }
 
-// SendTransactionHashes sends transaction hashess to the peer and includes the hashes
+// SendTransactionHashes sends transaction hashes to the peer and includes the hashes
 // in its transaction hash set for future reference.
 func (p *peer) SendTransactionHashes(txids []common.Hash) error {
 	// Mark all the transactions as known, but ensure we don't overflow our limits
