@@ -1279,7 +1279,7 @@ func (pool *TxPool) runReorg(done chan struct{}, reset *txpoolResetRequest, dirt
 	if reset != nil {
 		pool.demoteUnexecutables()
 		if baseFee := pool.chain.GetCurrentBaseFee(); baseFee != nil {
-			// Opera-specific base fee
+			// Sonic-specific base fee
 			pool.priced.SetBaseFee(baseFee)
 		} else {
 			// for tests only
@@ -1321,7 +1321,7 @@ func (pool *TxPool) runReorg(done chan struct{}, reset *txpoolResetRequest, dirt
 // reset retrieves the current state of the blockchain and ensures the content
 // of the transaction pool is valid with regard to the chain state.
 func (pool *TxPool) reset(oldHead, newHead *EvmHeader) {
-	// update chain config (Opera-specific)
+	// update chain config (Sonic-specific)
 	if newConfig := pool.chain.Config(); newConfig != nil {
 		pool.chainconfig = newConfig
 	}

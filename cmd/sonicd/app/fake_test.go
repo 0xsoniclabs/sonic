@@ -35,7 +35,7 @@ const (
 )
 
 func TestFakeNetFlag_NonValidator(t *testing.T) {
-	// Start an opera console, make sure it's cleaned up and terminate the console
+	// Start an sonic console, make sure it's cleaned up and terminate the console
 	dataDir := tmpdir(t)
 	initFakenetDatadir(dataDir, 3)
 	cli := exec(t,
@@ -63,7 +63,7 @@ func TestFakeNetFlag_NonValidator(t *testing.T) {
 }
 
 func TestFakeNetFlag_Validator(t *testing.T) {
-	// Start an opera console, make sure it's cleaned up and terminate the console
+	// Start a sonic console, make sure it's cleaned up and terminate the console
 	dataDir := tmpdir(t)
 	initFakenetDatadir(dataDir, 3)
 	cli := exec(t,

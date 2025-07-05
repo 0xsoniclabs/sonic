@@ -322,7 +322,7 @@ func cacheScaler(ctx *cli.Context) cachescale.Func {
 	if !ctx.GlobalIsSet(flags.CacheFlag.Name) {
 		recommendedCache := totalMemory / 2
 		if recommendedCache > baseSize {
-			log.Warn(fmt.Sprintf("Please add '--%s %d' flag to allocate more cache for Opera. Total memory is %d MB.", flags.CacheFlag.Name, recommendedCache, totalMemory))
+			log.Warn(fmt.Sprintf("Please add '--%s %d' flag to allocate more cache for Sonic. Total memory is %d MB.", flags.CacheFlag.Name, recommendedCache, totalMemory))
 		}
 		return cachescale.Identity
 	}
