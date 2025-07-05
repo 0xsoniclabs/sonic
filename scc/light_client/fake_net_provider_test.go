@@ -22,7 +22,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -96,7 +96,7 @@ func TestServer_GetBlockCertificates_CanRetrieveCertificates(t *testing.T) {
 		require.NotZero(len(certs))
 		for _, cert := range certs {
 			require.Equal(chainId.Uint64(), cert.Subject().ChainId)
-			if cert.Subject().Number >= idx.Block(len(headers)) {
+			if cert.Subject().Number >= consensus.BlockID(len(headers)) {
 				continue
 			}
 			header := headers[cert.Subject().Number]

@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/ethereum/go-ethereum/common"
@@ -59,7 +59,7 @@ func TestMultiplexer_tryAllProviders_TriesAllProvidersOnFails(t *testing.T) {
 	m, err := newMultiplexer(p1, p2)
 	require.NoError(t, err)
 	_, err = tryAll(m.providers, func(p provider) ([]cert.BlockCertificate, error) {
-		return p.getBlockCertificates(idx.Block(0), uint64(1))
+		return p.getBlockCertificates(consensus.BlockID(0), uint64(1))
 	})
 	require.ErrorContains(t, err, "all providers failed")
 }
@@ -75,7 +75,7 @@ func TestMultiplexer_tryAllProviders_ReturnsFirstSuccess(t *testing.T) {
 	m, err := newMultiplexer(p1, p2)
 	require.NoError(t, err)
 	_, err = tryAll(m.providers, func(p provider) ([]cert.BlockCertificate, error) {
-		return p.getBlockCertificates(idx.Block(0), uint64(1))
+		return p.getBlockCertificates(consensus.BlockID(0), uint64(1))
 	})
 	require.NoError(t, err)
 }
@@ -93,7 +93,7 @@ func TestMultiplexer_GetCertificates_PropagatesError(t *testing.T) {
 	p1.EXPECT().getBlockCertificates(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("error1")).Times(1)
 	p2.EXPECT().getBlockCertificates(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("error2")).Times(1)
 
-	_, err = m.getBlockCertificates(idx.Block(0), uint64(1))
+	_, err = m.getBlockCertificates(consensus.BlockID(0), uint64(1))
 	require.ErrorContains(err, "all providers failed")
 	require.ErrorContains(err, "error1")
 	require.ErrorContains(err, "error2")
@@ -110,7 +110,7 @@ func TestMultiplexer_GetCertificates_PropagatesError(t *testing.T) {
 	p1.EXPECT().getAccountProof(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("error5")).Times(1)
 	p2.EXPECT().getAccountProof(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("error6")).Times(1)
 
-	_, err = m.getAccountProof(common.Address{0x01}, idx.Block(0))
+	_, err = m.getAccountProof(common.Address{0x01}, consensus.BlockID(0))
 	require.ErrorContains(err, "all providers failed")
 	require.ErrorContains(err, "error5")
 	require.ErrorContains(err, "error6")

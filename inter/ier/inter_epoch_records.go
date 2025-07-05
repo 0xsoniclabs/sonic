@@ -17,8 +17,7 @@
 package ier
 
 import (
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 )
@@ -30,9 +29,9 @@ type LlrFullEpochRecord struct {
 
 type LlrIdxFullEpochRecord struct {
 	LlrFullEpochRecord
-	Idx idx.Epoch
+	Idx consensus.Epoch
 }
 
-func (er LlrFullEpochRecord) Hash() hash.Hash {
-	return hash.Of(er.BlockState.Hash().Bytes(), er.EpochState.Hash().Bytes())
+func (er LlrFullEpochRecord) Hash() consensus.Hash {
+	return consensus.Of(er.BlockState.Hash().Bytes(), er.EpochState.Hash().Bytes())
 }

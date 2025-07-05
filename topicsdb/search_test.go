@@ -20,7 +20,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
@@ -51,7 +51,7 @@ func BenchmarkSearch(b *testing.B) {
 
 	pooled := withThreadPool{index}
 
-	for dsc, method := range map[string]func(context.Context, idx.Block, idx.Block, [][]common.Hash) ([]*types.Log, error){
+	for dsc, method := range map[string]func(context.Context, consensus.BlockID, consensus.BlockID, [][]common.Hash) ([]*types.Log, error){
 		"index":  index.FindInBlocks,
 		"pooled": pooled.FindInBlocks,
 	} {

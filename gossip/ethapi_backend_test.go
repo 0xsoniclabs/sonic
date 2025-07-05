@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -30,8 +30,8 @@ import (
 func TestEthApiBackend_GetNetworkRules_LoadsRulesFromEpoch(t *testing.T) {
 	require := require.New(t)
 
-	blockNumber := idx.Block(12)
-	epoch := idx.Epoch(3)
+	blockNumber := consensus.BlockID(12)
+	epoch := consensus.Epoch(3)
 
 	store, err := NewMemStore(t)
 	require.NoError(err)
@@ -79,7 +79,7 @@ func TestEthApiBackend_GetNetworkRules_LoadsRulesFromEpoch(t *testing.T) {
 func TestEthApiBackend_GetNetworkRules_MissingBlockReturnsNilRules(t *testing.T) {
 	require := require.New(t)
 
-	blockNumber := idx.Block(12)
+	blockNumber := consensus.BlockID(12)
 
 	store, err := NewMemStore(t)
 	require.NoError(err)

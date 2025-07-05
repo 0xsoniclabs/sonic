@@ -22,7 +22,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/version"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/inter/validatorpk"
 	"github.com/0xsoniclabs/sonic/opera"
 )
@@ -37,7 +37,7 @@ type EmitIntervals struct {
 }
 
 type ValidatorConfig struct {
-	ID     idx.ValidatorID
+	ID     consensus.ValidatorID
 	PubKey validatorpk.PubKey
 }
 
@@ -56,7 +56,7 @@ type Config struct {
 
 	MaxTxsPerAddress int
 
-	MaxParents idx.Event
+	MaxParents consensus.Seq
 
 	// thresholds on GasLeft
 	LimitedTpsThreshold uint64
@@ -110,7 +110,7 @@ func (cfg EmitIntervals) RandomizeEmitTime(rand *rand.Rand) EmitIntervals {
 }
 
 // FakeConfig returns the testing configurations for the events emitter.
-func FakeConfig(num idx.Validator) Config {
+func FakeConfig(num consensus.ValidatorIndex) Config {
 	cfg := DefaultConfig()
 	cfg.EmitIntervals.Max = 10 * time.Second // don't wait long in fakenet
 	cfg.EmitIntervals.DoublesignProtection = cfg.EmitIntervals.Max / 2

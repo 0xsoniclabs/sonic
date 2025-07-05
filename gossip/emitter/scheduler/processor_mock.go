@@ -31,7 +31,7 @@ import (
 	evmcore "github.com/0xsoniclabs/sonic/evmcore"
 	state "github.com/0xsoniclabs/sonic/inter/state"
 	opera "github.com/0xsoniclabs/sonic/opera"
-	idx "github.com/0xsoniclabs/consensus/inter/idx"
+	consensus "github.com/0xsoniclabs/consensus/consensus"
 	common "github.com/ethereum/go-ethereum/common"
 	types "github.com/ethereum/go-ethereum/core/types"
 	params "github.com/ethereum/go-ethereum/params"
@@ -163,7 +163,7 @@ func (mr *MockChainMockRecorder) GetCurrentNetworkRules() *gomock.Call {
 }
 
 // GetEvmChainConfig mocks base method.
-func (m *MockChain) GetEvmChainConfig(blockHeight idx.Block) *params.ChainConfig {
+func (m *MockChain) GetEvmChainConfig(blockHeight consensus.BlockID) *params.ChainConfig {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetEvmChainConfig", blockHeight)
 	ret0, _ := ret[0].(*params.ChainConfig)

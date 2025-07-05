@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/carmen/go/carmen"
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/holiman/uint256"
@@ -80,7 +80,7 @@ func (c *LightClient) Close() {
 // Sync updates the light client state using certificates from the provider.
 // This serves as the primary method for synchronizing the light client state
 // with the network.
-func (c *LightClient) Sync() (idx.Block, error) {
+func (c *LightClient) Sync() (consensus.BlockID, error) {
 	return c.state.sync(c.provider)
 }
 

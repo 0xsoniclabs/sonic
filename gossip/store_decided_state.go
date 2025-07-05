@@ -17,8 +17,7 @@
 package gossip
 
 import (
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/inter/pos"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/ethereum/go-ethereum/log"
 	ethparams "github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -37,7 +36,7 @@ type BlockEpochState struct {
 
 // SetHistoryBlockEpochState stores the block and epoch state in the history table.
 // TODO propose to pass bs, es arguments by pointer
-func (s *Store) SetHistoryBlockEpochState(epoch idx.Epoch, bs iblockproc.BlockState, es iblockproc.EpochState) {
+func (s *Store) SetHistoryBlockEpochState(epoch consensus.Epoch, bs iblockproc.BlockState, es iblockproc.EpochState) {
 	bs, es = bs.Copy(), es.Copy()
 	bes := &BlockEpochState{
 		BlockState: &bs,
@@ -49,7 +48,7 @@ func (s *Store) SetHistoryBlockEpochState(epoch idx.Epoch, bs iblockproc.BlockSt
 	s.cache.BlockEpochStateHistory.Add(epoch, bes, nominalSize)
 }
 
-func (s *Store) GetHistoryBlockEpochState(epoch idx.Epoch) (*iblockproc.BlockState, *iblockproc.EpochState) {
+func (s *Store) GetHistoryBlockEpochState(epoch consensus.Epoch) (*iblockproc.BlockState, *iblockproc.EpochState) {
 	// Get HistoryBlockEpochState from LRU cache first.
 	if v, ok := s.cache.BlockEpochStateHistory.Get(epoch); ok {
 		bes := v.(*BlockEpochState)
@@ -86,7 +85,7 @@ func (s *Store) ForEachHistoryBlockEpochState(fn func(iblockproc.BlockState, ibl
 	}
 }
 
-func (s *Store) GetHistoryEpochState(epoch idx.Epoch) *iblockproc.EpochState {
+func (s *Store) GetHistoryEpochState(epoch consensus.Epoch) *iblockproc.EpochState {
 	// check current BlockEpochState as a cache
 	if v := s.cache.BlockEpochState.Load(); v != nil {
 		bes := v.(*BlockEpochState)
@@ -99,7 +98,7 @@ func (s *Store) GetHistoryEpochState(epoch idx.Epoch) *iblockproc.EpochState {
 	return es
 }
 
-func (s *Store) HasHistoryBlockEpochState(epoch idx.Epoch) bool {
+func (s *Store) HasHistoryBlockEpochState(epoch consensus.Epoch) bool {
 	has, _ := s.table.BlockEpochStateHistory.Has(epoch.Bytes())
 	return has
 }
@@ -148,23 +147,23 @@ func (s *Store) GetBlockEpochState() (iblockproc.BlockState, iblockproc.EpochSta
 }
 
 // GetEpoch retrieves the current epoch
-func (s *Store) GetEpoch() idx.Epoch {
+func (s *Store) GetEpoch() consensus.Epoch {
 	return s.GetEpochState().Epoch
 }
 
 // GetValidators retrieves current validators
-func (s *Store) GetValidators() *pos.Validators {
+func (s *Store) GetValidators() *consensus.Validators {
 	return s.GetEpochState().Validators
 }
 
 // GetEpochValidators retrieves the current epoch and validators atomically
-func (s *Store) GetEpochValidators() (*pos.Validators, idx.Epoch) {
+func (s *Store) GetEpochValidators() (*consensus.Validators, consensus.Epoch) {
 	es := s.GetEpochState()
 	return es.Validators, es.Epoch
 }
 
 // GetLatestBlockIndex retrieves the current block number
-func (s *Store) GetLatestBlockIndex() idx.Block {
+func (s *Store) GetLatestBlockIndex() consensus.BlockID {
 	return s.GetBlockState().LastBlock.Idx
 }
 
@@ -179,7 +178,7 @@ func (s *Store) GetRules() opera.Rules {
 }
 
 // GetEvmChainConfig retrieves current EVM chain config
-func (s *Store) GetEvmChainConfig(blockHeight idx.Block) *ethparams.ChainConfig {
+func (s *Store) GetEvmChainConfig(blockHeight consensus.BlockID) *ethparams.ChainConfig {
 	return opera.CreateTransientEvmChainConfig(
 		s.GetRules().NetworkID,
 		s.GetUpgradeHeights(),
@@ -188,7 +187,7 @@ func (s *Store) GetEvmChainConfig(blockHeight idx.Block) *ethparams.ChainConfig 
 }
 
 // GetEpochRules retrieves current network rules and epoch atomically
-func (s *Store) GetEpochRules() (opera.Rules, idx.Epoch) {
+func (s *Store) GetEpochRules() (opera.Rules, consensus.Epoch) {
 	es := s.GetEpochState()
 	return es.Rules, es.Epoch
 }

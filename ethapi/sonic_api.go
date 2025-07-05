@@ -23,7 +23,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/0xsoniclabs/sonic/utils/result"
@@ -98,13 +98,13 @@ type SccApiBackend interface {
 	EnumerateCommitteeCertificates(first scc.Period) iter.Seq[result.T[cert.CommitteeCertificate]]
 
 	GetLatestBlockCertificate() (cert.BlockCertificate, error)
-	EnumerateBlockCertificates(first idx.Block) iter.Seq[result.T[cert.BlockCertificate]]
+	EnumerateBlockCertificates(first consensus.BlockID) iter.Seq[result.T[cert.BlockCertificate]]
 }
 
 // --- Period and Block Numbers -----------------------------------------------
 
 type PeriodNumber = index[scc.Period]
-type BlockNumber = index[idx.Block]
+type BlockNumber = index[consensus.BlockID]
 
 // index is an JSON RPC argument type for uint64 numbers. It can be
 // either a non-negative integer or the special value "latest". The integer

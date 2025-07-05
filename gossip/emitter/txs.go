@@ -19,10 +19,8 @@ package emitter
 import (
 	"time"
 
-	"github.com/0xsoniclabs/consensus/common/bigendian"
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/inter/pos"
+	"github.com/0xsoniclabs/consensus/utils/byteutils"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
@@ -119,7 +117,7 @@ func (em *Emitter) maxGasPowerToUse(e *inter.MutableEventPayload) uint64 {
 	return maxGasToUse
 }
 
-func getTxRoundIndex(now, txTime time.Time, validatorsNum idx.Validator) int {
+func getTxRoundIndex(now, txTime time.Time, validatorsNum consensus.ValidatorIndex) int {
 	passed := now.Sub(txTime)
 	if passed < 0 {
 		passed = 0
@@ -128,7 +126,7 @@ func getTxRoundIndex(now, txTime time.Time, validatorsNum idx.Validator) int {
 }
 
 // safe for concurrent use
-func (em *Emitter) isMyTxTurn(txHash common.Hash, sender common.Address, accountNonce uint64, now time.Time, validators *pos.Validators, me idx.ValidatorID, epoch idx.Epoch) bool {
+func (em *Emitter) isMyTxTurn(txHash common.Hash, sender common.Address, accountNonce uint64, now time.Time, validators *consensus.Validators, me consensus.ValidatorID, epoch consensus.Epoch) bool {
 	txTime := txtime.Of(txHash)
 
 	roundIndex := getTxRoundIndex(now, txTime, validators.Len())
@@ -138,14 +136,14 @@ func (em *Emitter) isMyTxTurn(txHash common.Hash, sender common.Address, account
 	}
 
 	// generate seed for generating the validators sequence for the tx
-	roundsHash := hash.Of(sender.Bytes(), bigendian.Uint64ToBytes(accountNonce/TxTurnNonces), epoch.Bytes())
+	roundsHash := consensus.Of(sender.Bytes(), byteutils.Uint64ToBigEndian(accountNonce/TxTurnNonces), epoch.Bytes())
 
 	// generate the validators sequence for the tx
 	rounds := utils.WeightedPermutation(int(validators.Len()), validators.SortedWeights(), roundsHash)
 
 	// take a validator from the sequence, skip offline validators
 	for ; roundIndex < len(rounds); roundIndex++ {
-		chosenValidator := validators.GetID(idx.Validator(rounds[roundIndex]))
+		chosenValidator := validators.GetID(consensus.ValidatorIndex(rounds[roundIndex]))
 		if chosenValidator == me {
 			return true // current validator is the chosen - emit
 		}
@@ -203,7 +201,7 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 			continue
 		}
 		// my turn, i.e. try to not include the same tx simultaneously by different validators
-		if !em.isMyTxTurn(tx.Hash, sender, resolvedTx.Nonce(), time.Now(), em.validators.Load(), e.Creator(), idx.Epoch(em.epoch.Load())) {
+		if !em.isMyTxTurn(tx.Hash, sender, resolvedTx.Nonce(), time.Now(), em.validators.Load(), e.Creator(), consensus.Epoch(em.epoch.Load())) {
 			txsSkippedNotMyTurn.Inc(1)
 			sorted.Pop()
 			continue

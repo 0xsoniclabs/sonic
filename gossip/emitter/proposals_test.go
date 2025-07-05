@@ -23,9 +23,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/inter/pos"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/eventcheck/proposalcheck"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/scheduler"
@@ -54,16 +52,16 @@ func TestEmitter_CreatePayload_ProducesValidPayload(t *testing.T) {
 	world := NewMockExternal(ctrl)
 	event := inter.NewMockEventI(ctrl)
 
-	event.EXPECT().Parents().Return(hash.Events{})
-	event.EXPECT().Epoch().Return(idx.Epoch(12)).AnyTimes()
-	event.EXPECT().Frame().Return(idx.Frame(0))
+	event.EXPECT().Parents().Return(consensus.EventHashes{})
+	event.EXPECT().Epoch().Return(consensus.Epoch(12)).AnyTimes()
+	event.EXPECT().Frame().Return(consensus.Frame(0))
 
 	world.EXPECT().GetLatestBlock().Return(
 		inter.NewBlockBuilder().WithNumber(61).Build(),
 	)
 
-	builder := pos.ValidatorsBuilder{}
-	builder.Set(idx.ValidatorID(123), 10) // => different validator
+	builder := consensus.ValidatorsBuilder{}
+	builder.Set(consensus.ValidatorID(123), 10) // => different validator
 	validators := builder.Build()
 
 	emitter := &Emitter{
@@ -78,7 +76,7 @@ func TestEmitter_CreatePayload_ProducesValidPayload(t *testing.T) {
 	want := inter.Payload{
 		ProposalSyncState: inter.ProposalSyncState{
 			LastSeenProposalTurn:  inter.Turn(0),
-			LastSeenProposalFrame: idx.Frame(0),
+			LastSeenProposalFrame: consensus.Frame(0),
 		},
 	}
 	require.Equal(want, payload)
@@ -90,15 +88,15 @@ func TestEmitter_CreatePayload_FailsOnInvalidValidators(t *testing.T) {
 	world := NewMockExternal(ctrl)
 	event := inter.NewMockEventI(ctrl)
 
-	event.EXPECT().Parents().Return(hash.Events{})
-	event.EXPECT().Epoch().Return(idx.Epoch(12)).AnyTimes()
-	event.EXPECT().Frame().Return(idx.Frame(0))
+	event.EXPECT().Parents().Return(consensus.EventHashes{})
+	event.EXPECT().Epoch().Return(consensus.Epoch(12)).AnyTimes()
+	event.EXPECT().Frame().Return(consensus.Frame(0))
 
 	world.EXPECT().GetLatestBlock().Return(
 		inter.NewBlockBuilder().WithNumber(62).Build(),
 	)
 
-	validators := pos.ValidatorsBuilder{}.Build() // no validators
+	validators := consensus.ValidatorsBuilder{}.Build() // no validators
 
 	emitter := &Emitter{
 		world: World{External: world},
@@ -117,7 +115,7 @@ func TestWorldAdapter_GetEventPayload_ForwardsCallToGetExternalEventPayload(t *t
 	payload := inter.Payload{
 		ProposalSyncState: inter.ProposalSyncState{
 			LastSeenProposalTurn:  inter.Turn(1),
-			LastSeenProposalFrame: idx.Frame(2),
+			LastSeenProposalFrame: consensus.Frame(2),
 		},
 	}
 
@@ -125,7 +123,7 @@ func TestWorldAdapter_GetEventPayload_ForwardsCallToGetExternalEventPayload(t *t
 	builder.SetPayload(payload)
 	eventPayload := builder.Build()
 
-	event := hash.Event{1}
+	event := consensus.EventHash{1}
 	world.EXPECT().GetEventPayload(event).Return(eventPayload)
 
 	adapter := worldAdapter{world}
@@ -145,7 +143,7 @@ func TestWorldAdapter_GetEvmChainConfig_ForwardsCallToGetRulesAndGetUpgradeHeigh
 	world.EXPECT().GetUpgradeHeights().Return(updateHeights)
 
 	adapter := worldAdapter{world}
-	got := adapter.GetEvmChainConfig(idx.Block(1))
+	got := adapter.GetEvmChainConfig(consensus.BlockID(1))
 	want := opera.CreateTransientEvmChainConfig(rules.NetworkID, updateHeights, 1)
 	require.Equal(want, got)
 }
@@ -160,11 +158,11 @@ func TestCreatePayload_PendingProposal_CreatesPayloadWithoutProposal(t *testing.
 		inter.NewBlockBuilder().WithNumber(4).Build(),
 	)
 
-	event.EXPECT().Parents().Return(hash.Events{})
-	event.EXPECT().Frame().Return(idx.Frame(2))
+	event.EXPECT().Parents().Return(consensus.EventHashes{})
+	event.EXPECT().Frame().Return(consensus.Frame(2))
 
 	proposalTracker := NewMockproposalTracker(ctrl)
-	proposalTracker.EXPECT().IsPending(idx.Frame(2), idx.Block(5)).Return(true)
+	proposalTracker.EXPECT().IsPending(consensus.Frame(2), consensus.BlockID(5)).Return(true)
 
 	// This call fails since it tries to propose block 5 while according to the
 	// proposal tracker, a proposal for block 5 has already been made.
@@ -186,16 +184,16 @@ func TestCreatePayload_UnableToCreateProposalDueToLackOfTimeProgress_CreatesPayl
 	world := NewMockworldReader(ctrl)
 	event := inter.NewMockEventI(ctrl)
 
-	p1 := hash.Event{1}
-	p2 := hash.Event{2}
-	payloads := map[hash.Event]inter.Payload{
+	p1 := consensus.EventHash{1}
+	p2 := consensus.EventHash{2}
+	payloads := map[consensus.EventHash]inter.Payload{
 		p1: {ProposalSyncState: inter.ProposalSyncState{
 			LastSeenProposalTurn:  inter.Turn(0x01),
-			LastSeenProposalFrame: idx.Frame(0x12),
+			LastSeenProposalFrame: consensus.Frame(0x12),
 		}},
 		p2: {ProposalSyncState: inter.ProposalSyncState{
 			LastSeenProposalTurn:  inter.Turn(0x03),
-			LastSeenProposalFrame: idx.Frame(0x11),
+			LastSeenProposalFrame: consensus.Frame(0x11),
 		}},
 	}
 
@@ -211,18 +209,18 @@ func TestCreatePayload_UnableToCreateProposalDueToLackOfTimeProgress_CreatesPayl
 	)
 	world.EXPECT().GetRules().Return(opera.Rules{})
 
-	event.EXPECT().Parents().Return(hash.Events{p1, p2})
-	event.EXPECT().Epoch().Return(idx.Epoch(0x12))
-	event.EXPECT().Frame().Return(idx.Frame(0x14))
+	event.EXPECT().Parents().Return(consensus.EventHashes{p1, p2})
+	event.EXPECT().Epoch().Return(consensus.Epoch(0x12))
+	event.EXPECT().Frame().Return(consensus.Frame(0x14))
 	event.EXPECT().MedianTime().Return(lastBlockTime)
 
-	validator := idx.ValidatorID(1)
-	builder := pos.ValidatorsBuilder{}
+	validator := consensus.ValidatorID(1)
+	builder := consensus.ValidatorsBuilder{}
 	builder.Set(validator, 10)
 	validators := builder.Build()
 
 	tracker := NewMockproposalTracker(ctrl)
-	tracker.EXPECT().IsPending(idx.Frame(0x14), idx.Block(0x24)).Return(false)
+	tracker.EXPECT().IsPending(consensus.Frame(0x14), consensus.BlockID(0x24)).Return(false)
 
 	// This attempt to create a proposal should result in an empty payload since
 	// no time has passed since the last proposal.
@@ -233,7 +231,7 @@ func TestCreatePayload_UnableToCreateProposalDueToLackOfTimeProgress_CreatesPayl
 	want := inter.Payload{
 		ProposalSyncState: inter.ProposalSyncState{
 			LastSeenProposalTurn:  inter.Turn(0x03),
-			LastSeenProposalFrame: idx.Frame(0x12),
+			LastSeenProposalFrame: consensus.Frame(0x12),
 		},
 	}
 
@@ -246,18 +244,18 @@ func TestCreatePayload_InvalidValidators_ForwardsError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
 	event := inter.NewMockEventI(ctrl)
-	event.EXPECT().Parents().Return(hash.Events{})
-	event.EXPECT().Epoch().Return(idx.Epoch(12)).AnyTimes()
-	event.EXPECT().Frame().Return(idx.Frame(0))
+	event.EXPECT().Parents().Return(consensus.EventHashes{})
+	event.EXPECT().Epoch().Return(consensus.Epoch(12)).AnyTimes()
+	event.EXPECT().Frame().Return(consensus.Frame(0))
 
 	world := NewMockworldReader(ctrl)
 	world.EXPECT().GetLatestBlock().Return(
 		inter.NewBlockBuilder().WithNumber(62).Build(),
 	)
 
-	validators := pos.ValidatorsBuilder{}.Build()
+	validators := consensus.ValidatorsBuilder{}.Build()
 	tracker := NewMockproposalTracker(ctrl)
-	tracker.EXPECT().IsPending(idx.Frame(0), idx.Block(63)).Return(false)
+	tracker.EXPECT().IsPending(consensus.Frame(0), consensus.BlockID(63)).Return(false)
 
 	_, err := createPayload(
 		world, 0, validators, event, tracker, nil, nil, nil, nil, nil,
@@ -273,16 +271,16 @@ func TestCreatePayload_ValidTurn_ProducesExpectedPayload(t *testing.T) {
 	durationMetric := NewMocktimerMetric(ctrl)
 	timeoutMetric := NewMockcounterMetric(ctrl)
 
-	p1 := hash.Event{1}
-	p2 := hash.Event{2}
-	payloads := map[hash.Event]inter.Payload{
+	p1 := consensus.EventHash{1}
+	p2 := consensus.EventHash{2}
+	payloads := map[consensus.EventHash]inter.Payload{
 		p1: {ProposalSyncState: inter.ProposalSyncState{
 			LastSeenProposalTurn:  inter.Turn(1),
-			LastSeenProposalFrame: idx.Frame(2),
+			LastSeenProposalFrame: consensus.Frame(2),
 		}},
 		p2: {ProposalSyncState: inter.ProposalSyncState{
 			LastSeenProposalTurn:  inter.Turn(1),
-			LastSeenProposalFrame: idx.Frame(2),
+			LastSeenProposalFrame: consensus.Frame(2),
 		}},
 	}
 
@@ -299,16 +297,16 @@ func TestCreatePayload_ValidTurn_ProducesExpectedPayload(t *testing.T) {
 
 	world.EXPECT().GetRules().Return(opera.Rules{})
 
-	event.EXPECT().Parents().Return(hash.Events{p1, p2})
-	event.EXPECT().Epoch().Return(idx.Epoch(3)).AnyTimes()
-	event.EXPECT().Frame().Return(idx.Frame(4)).AnyTimes()
+	event.EXPECT().Parents().Return(consensus.EventHashes{p1, p2})
+	event.EXPECT().Epoch().Return(consensus.Epoch(3)).AnyTimes()
+	event.EXPECT().Frame().Return(consensus.Frame(4)).AnyTimes()
 	event.EXPECT().MedianTime().Return(inter.Timestamp(1234))
 
 	tracker := NewMockproposalTracker(ctrl)
-	tracker.EXPECT().IsPending(idx.Frame(4), idx.Block(6)).Return(false)
+	tracker.EXPECT().IsPending(consensus.Frame(4), consensus.BlockID(6)).Return(false)
 
-	validator := idx.ValidatorID(1)
-	builder := pos.ValidatorsBuilder{}
+	validator := consensus.ValidatorID(1)
+	builder := consensus.ValidatorsBuilder{}
 	builder.Set(validator, 10)
 	validators := builder.Build()
 
@@ -336,8 +334,8 @@ func TestCreatePayload_ValidTurn_ProducesExpectedPayload(t *testing.T) {
 	require.NoError(err)
 
 	require.Equal(inter.Turn(2), payload.LastSeenProposalTurn)
-	require.Equal(idx.Frame(4), payload.LastSeenProposalFrame)
-	require.Equal(idx.Block(6), payload.Proposal.Number)
+	require.Equal(consensus.Frame(4), payload.LastSeenProposalFrame)
+	require.Equal(consensus.BlockID(6), payload.Proposal.Number)
 	require.Equal(txs, payload.Proposal.Transactions)
 	require.Equal(someRandaoReveal, payload.Proposal.RandaoReveal)
 }
@@ -352,7 +350,7 @@ func TestMakeProposal_ValidArguments_CreatesValidProposal(t *testing.T) {
 	rules := opera.Rules{}
 	state := inter.ProposalSyncState{
 		LastSeenProposalTurn:  inter.Turn(5),
-		LastSeenProposalFrame: idx.Frame(12),
+		LastSeenProposalFrame: consensus.Frame(12),
 	}
 	latestBlock := inter.NewBlockBuilder().
 		WithNumber(5).
@@ -363,7 +361,7 @@ func TestMakeProposal_ValidArguments_CreatesValidProposal(t *testing.T) {
 
 	delta := 20 * time.Millisecond
 	newBlockTime := inter.Timestamp(1234) + inter.Timestamp(delta)
-	currentFrame := idx.Frame(17)
+	currentFrame := consensus.Frame(17)
 
 	transactions := []*types.Transaction{
 		types.NewTx(&types.LegacyTx{Nonce: 1}),
@@ -377,7 +375,7 @@ func TestMakeProposal_ValidArguments_CreatesValidProposal(t *testing.T) {
 	mockScheduler.EXPECT().Schedule(
 		any,
 		&scheduler.BlockInfo{
-			Number:      idx.Block(latestBlock.Number) + 1,
+			Number:      consensus.BlockID(latestBlock.Number) + 1,
 			Time:        newBlockTime,
 			GasLimit:    rules.Blocks.MaxBlockGas,
 			MixHash:     someRandao,
@@ -418,7 +416,7 @@ func TestMakeProposal_ValidArguments_CreatesValidProposal(t *testing.T) {
 	)
 	require.NoError(err)
 
-	require.Equal(idx.Block(latestBlock.Number)+1, proposal.Number)
+	require.Equal(consensus.BlockID(latestBlock.Number)+1, proposal.Number)
 	require.Equal(latestBlock.Hash(), proposal.ParentHash)
 	require.Equal(transactions, proposal.Transactions)
 	require.Equal(someRandaoReveal, proposal.RandaoReveal)
@@ -427,7 +425,7 @@ func TestMakeProposal_ValidArguments_CreatesValidProposal(t *testing.T) {
 func TestMakeProposal_InvalidBlockTime_ReturnsNil(t *testing.T) {
 	state := inter.ProposalSyncState{
 		LastSeenProposalTurn:  inter.Turn(5),
-		LastSeenProposalFrame: idx.Frame(12),
+		LastSeenProposalFrame: consensus.Frame(12),
 	}
 	latestBlock := inter.NewBlockBuilder().WithTime(1234).Build()
 	for _, delta := range []time.Duration{-1 * time.Nanosecond, 0} {
@@ -537,7 +535,7 @@ func TestMakeProposal_SkipsProposalOnRandaoRevealError(t *testing.T) {
 	rules := opera.Rules{}
 	state := inter.ProposalSyncState{
 		LastSeenProposalTurn:  inter.Turn(5),
-		LastSeenProposalFrame: idx.Frame(12),
+		LastSeenProposalFrame: consensus.Frame(12),
 	}
 	latestBlock := inter.NewBlockBuilder().
 		WithNumber(5).
@@ -545,7 +543,7 @@ func TestMakeProposal_SkipsProposalOnRandaoRevealError(t *testing.T) {
 		Build()
 
 	newBlockTime := latestBlock.Time + 10
-	currentFrame := idx.Frame(17)
+	currentFrame := consensus.Frame(17)
 
 	randaoMixer := randao.NewMockRandaoMixer(ctrl)
 	randaoMixer.EXPECT().MixRandao(gomock.Any()).Return(
@@ -650,7 +648,7 @@ func TestMakeProposal_SchedulerIsRunWithCorrectBaseFee(t *testing.T) {
 	txScheduler.EXPECT().Schedule(
 		gomock.Any(),
 		&scheduler.BlockInfo{
-			Number:      idx.Block(latestBlock.Number + 1),
+			Number:      consensus.BlockID(latestBlock.Number + 1),
 			Time:        newBlockTime,
 			GasLimit:    rules.Blocks.MaxBlockGas,
 			MixHash:     randaoMix,
@@ -695,18 +693,18 @@ func TestCreatePayload_ReturnsErrorOnRandaoGenerationFailure(t *testing.T) {
 	world.EXPECT().GetRules().Return(opera.Rules{})
 
 	event := inter.NewMockEventI(ctrl)
-	event.EXPECT().Parents().Return(hash.Events{})
-	event.EXPECT().Epoch().Return(idx.Epoch(1))
-	event.EXPECT().Frame().Return(idx.Frame(2)) // tracker should expect frame 2
+	event.EXPECT().Parents().Return(consensus.EventHashes{})
+	event.EXPECT().Epoch().Return(consensus.Epoch(1))
+	event.EXPECT().Frame().Return(consensus.Frame(2)) // tracker should expect frame 2
 	event.EXPECT().MedianTime().Return(inter.Timestamp(1234))
 
-	validator := idx.ValidatorID(1)
-	builder := pos.ValidatorsBuilder{}
+	validator := consensus.ValidatorID(1)
+	builder := consensus.ValidatorsBuilder{}
 	builder.Set(validator, 10)
 	validators := builder.Build()
 
 	tracker := NewMockproposalTracker(ctrl)
-	tracker.EXPECT().IsPending(idx.Frame(2), idx.Block(5)).Return(false)
+	tracker.EXPECT().IsPending(consensus.Frame(2), consensus.BlockID(5)).Return(false)
 
 	randaoMixer := randao.NewMockRandaoMixer(ctrl)
 	randaoMixer.EXPECT().MixRandao(gomock.Any()).Return(

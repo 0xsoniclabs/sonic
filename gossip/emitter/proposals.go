@@ -21,9 +21,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/inter/pos"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/scheduler"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
@@ -84,8 +82,8 @@ func (em *Emitter) createPayload(
 // optionally a new block proposal, if all preconditions are met.
 func createPayload(
 	world worldReader,
-	validator idx.ValidatorID,
-	validators *pos.Validators,
+	validator consensus.ValidatorID,
+	validators *consensus.Validators,
 	event inter.EventI,
 	proposalTracker proposalTracker,
 	sorted *transactionsByPriceAndNonce,
@@ -101,7 +99,7 @@ func createPayload(
 	// Do not re-propose a pending proposal.
 	currentFrame := event.Frame()
 	latest := world.GetLatestBlock()
-	nextBlock := idx.Block(latest.Number + 1)
+	nextBlock := consensus.BlockID(latest.Number + 1)
 	if proposalTracker.IsPending(currentFrame, nextBlock) {
 		return inter.Payload{
 			ProposalSyncState: incomingState,
@@ -171,7 +169,7 @@ type proposalTracker interface {
 	// IsPending checks whether there is a pending proposal for the given frame
 	// and block. If the proposal is pending, it returns true, otherwise it
 	// returns false.
-	IsPending(frame idx.Frame, block idx.Block) bool
+	IsPending(frame consensus.Frame, block consensus.BlockID) bool
 }
 
 // worldReader is an interface for a data source providing all the information
@@ -188,7 +186,7 @@ type worldAdapter struct {
 	External
 }
 
-func (w worldAdapter) GetEventPayload(event hash.Event) inter.Payload {
+func (w worldAdapter) GetEventPayload(event consensus.EventHash) inter.Payload {
 	return *w.External.GetEventPayload(event).Payload()
 }
 
@@ -196,7 +194,7 @@ func (w worldAdapter) GetCurrentNetworkRules() opera.Rules {
 	return w.GetRules()
 }
 
-func (w worldAdapter) GetEvmChainConfig(blockHeight idx.Block) *params.ChainConfig {
+func (w worldAdapter) GetEvmChainConfig(blockHeight consensus.BlockID) *params.ChainConfig {
 	return opera.CreateTransientEvmChainConfig(
 		w.GetRules().NetworkID,
 		w.GetUpgradeHeights(),
@@ -215,7 +213,7 @@ func makeProposal(
 	incomingSyncState inter.ProposalSyncState,
 	latestBlock *inter.Block,
 	newBlockTime inter.Timestamp,
-	currentFrame idx.Frame,
+	currentFrame consensus.Frame,
 	transactionScheduler txScheduler,
 	candidates scheduler.PrioritizedTransactions,
 	randaoMixer randao.RandaoMixer,
@@ -243,7 +241,7 @@ func makeProposal(
 
 	// Create the proposal for the next block.
 	proposal := &inter.Proposal{
-		Number:       idx.Block(latestBlock.Number) + 1,
+		Number:       consensus.BlockID(latestBlock.Number) + 1,
 		ParentHash:   latestBlock.Hash(),
 		RandaoReveal: randaoReveal,
 	}

@@ -22,9 +22,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/inter/pos"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
@@ -42,9 +40,9 @@ import (
 func TestEmitter(t *testing.T) {
 	cfg := DefaultConfig()
 	gValidators := makefakegenesis.GetFakeValidators(3)
-	vv := pos.NewBuilder()
+	vv := consensus.NewBuilder()
 	for _, v := range gValidators {
-		vv.Set(v.ID, pos.Weight(1))
+		vv.Set(v.ID, consensus.Weight(1))
 	}
 	validators := vv.Build()
 	cfg.Validator.ID = gValidators[0].ID
@@ -85,11 +83,11 @@ func TestEmitter(t *testing.T) {
 			AnyTimes()
 
 		external.EXPECT().GetEpochValidators().
-			Return(validators, idx.Epoch(1)).
+			Return(validators, consensus.Epoch(1)).
 			AnyTimes()
 
-		external.EXPECT().GetLastEvent(idx.Epoch(1), cfg.Validator.ID).
-			Return((*hash.Event)(nil)).
+		external.EXPECT().GetLastEvent(consensus.Epoch(1), cfg.Validator.ID).
+			Return((*consensus.EventHash)(nil)).
 			AnyTimes()
 
 		external.EXPECT().GetGenesisTime().
@@ -152,9 +150,9 @@ func TestEmitter_CreateEvent_CreatesCorrectEventVersion(t *testing.T) {
 		},
 	}
 
-	validator := idx.ValidatorID(1)
-	builder := pos.NewBuilder()
-	builder.Set(validator, pos.Weight(1))
+	validator := consensus.ValidatorID(1)
+	builder := consensus.NewBuilder()
+	builder.Set(validator, consensus.Weight(1))
 	validators := builder.Build()
 
 	for name, upgrades := range tests {
@@ -213,8 +211,8 @@ func TestEmitter_CreateEvent_InvalidValidatorSetIsDetected(t *testing.T) {
 	signer := valkeystore.NewMockSignerAuthority(ctrl)
 	log := logger.NewMockLogger(ctrl)
 
-	validator := idx.ValidatorID(1)
-	validators := pos.NewBuilder().Build() // invalid empty validator set
+	validator := consensus.ValidatorID(1)
+	validators := consensus.NewBuilder().Build() // invalid empty validator set
 
 	rules := opera.Rules{
 		Upgrades: opera.Upgrades{

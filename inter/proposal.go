@@ -21,8 +21,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/gossip/randao"
 	"github.com/0xsoniclabs/sonic/inter/pb"
 	"github.com/ethereum/go-ethereum/common"
@@ -38,7 +37,7 @@ import (
 // created by a proposer. It is signed by the proposer and sent to
 // validators for validation and inclusion in the blockchain.
 type Proposal struct {
-	Number       idx.Block
+	Number       consensus.BlockID
 	ParentHash   common.Hash
 	RandaoReveal randao.RandaoReveal
 	Transactions []*types.Transaction
@@ -46,7 +45,7 @@ type Proposal struct {
 
 // Hash computes a cryptographic hash of the proposal. The hash can be used to
 // sign and verify the proposal.
-func (p *Proposal) Hash() hash.Hash {
+func (p *Proposal) Hash() consensus.Hash {
 	data := []byte{}
 	data = binary.BigEndian.AppendUint64(data, uint64(p.Number))
 	data = append(data, p.ParentHash[:]...)
@@ -96,7 +95,7 @@ func (p *Proposal) toProto() (*pb.Proposal, error) {
 
 func (p *Proposal) fromProto(pb *pb.Proposal) error {
 	// Restore individual fields.
-	p.Number = idx.Block(pb.Number)
+	p.Number = consensus.BlockID(pb.Number)
 	copy(p.ParentHash[:], pb.ParentHash)
 	copy(p.RandaoReveal[:], pb.RandaoReveal)
 	for _, tx := range pb.Transactions {

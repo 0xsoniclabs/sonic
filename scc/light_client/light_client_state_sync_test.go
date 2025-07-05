@@ -21,7 +21,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/bls"
 	"github.com/0xsoniclabs/sonic/scc/cert"
@@ -37,14 +37,14 @@ func TestLightClientState_CanSyncWithProvider(t *testing.T) {
 	// generate history of blocks and committees certificates
 	blockHeight := scc.BLOCKS_PER_PERIOD * 50 / 3
 	firstCommittee, provider, err := generateCertificatesAndProvider(
-		ctrl, idx.Block(blockHeight))
+		ctrl, consensus.BlockID(blockHeight))
 	require.NoError(err)
 
 	// create a new state with the first committee
 	state := newState(firstCommittee)
 	headNumber, err := state.sync(provider)
 	require.NoError(err)
-	require.Equal(idx.Block(blockHeight), headNumber)
+	require.Equal(consensus.BlockID(blockHeight), headNumber)
 }
 
 // /////////////////////////
@@ -58,7 +58,7 @@ func TestLightClientState_CanSyncWithProvider(t *testing.T) {
 // blocks certificates.
 func generateCertificatesAndProvider(
 	ctrl *gomock.Controller,
-	blockHeight idx.Block,
+	blockHeight consensus.BlockID,
 ) (scc.Committee, provider, error) {
 
 	// generate first committee with committees and blocks certificates
@@ -76,7 +76,7 @@ func generateCertificatesAndProvider(
 // generateHistory generates a history of blocks and committees certificates.
 // Certificates are signed by 3 committee members and the committee rotates
 // every period.
-func generateHistory(blockHeight idx.Block) (
+func generateHistory(blockHeight consensus.BlockID) (
 	genesis scc.Committee,
 	blocks []cert.BlockCertificate,
 	committees []cert.CommitteeCertificate,
@@ -102,7 +102,7 @@ func generateHistory(blockHeight idx.Block) (
 
 	// generate certificates up to blockHeight.
 	committee := genesis
-	head := idx.Block(0)
+	head := consensus.BlockID(0)
 	headHash := common.Hash{}
 	for i := head; i < blockHeight; i++ {
 
@@ -160,7 +160,7 @@ func generateHistory(blockHeight idx.Block) (
 // if the block number is LatestBlock, it returns the latest block.
 func prepareProvider(
 	ctrl *gomock.Controller,
-	blockHeight idx.Block,
+	blockHeight consensus.BlockID,
 	blocks []cert.BlockCertificate,
 	committees []cert.CommitteeCertificate,
 ) provider {
@@ -169,7 +169,7 @@ func prepareProvider(
 	prov.
 		EXPECT().
 		getBlockCertificates(gomock.Any(), gomock.Any()).
-		DoAndReturn(func(number idx.Block, max uint64) ([]cert.BlockCertificate, error) {
+		DoAndReturn(func(number consensus.BlockID, max uint64) ([]cert.BlockCertificate, error) {
 			if number == LatestBlock {
 				return blocks[len(blocks)-1:], nil
 			}

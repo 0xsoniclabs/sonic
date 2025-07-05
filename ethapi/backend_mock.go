@@ -32,8 +32,7 @@ import (
 	reflect "reflect"
 	time "time"
 
-	hash "github.com/0xsoniclabs/consensus/hash"
-	idx "github.com/0xsoniclabs/consensus/inter/idx"
+	consensus "github.com/0xsoniclabs/consensus/consensus"
 	evmcore "github.com/0xsoniclabs/sonic/evmcore"
 	inter "github.com/0xsoniclabs/sonic/inter"
 	iblockproc "github.com/0xsoniclabs/sonic/inter/iblockproc"
@@ -134,7 +133,7 @@ func (mr *MockBackendMockRecorder) CalcBlockExtApi() *gomock.Call {
 }
 
 // ChainConfig mocks base method.
-func (m *MockBackend) ChainConfig(blockHeight idx.Block) *params.ChainConfig {
+func (m *MockBackend) ChainConfig(blockHeight consensus.BlockID) *params.ChainConfig {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ChainConfig", blockHeight)
 	ret0, _ := ret[0].(*params.ChainConfig)
@@ -176,10 +175,10 @@ func (mr *MockBackendMockRecorder) CurrentBlock() *gomock.Call {
 }
 
 // CurrentEpoch mocks base method.
-func (m *MockBackend) CurrentEpoch(ctx context.Context) idx.Epoch {
+func (m *MockBackend) CurrentEpoch(ctx context.Context) consensus.Epoch {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CurrentEpoch", ctx)
-	ret0, _ := ret[0].(idx.Epoch)
+	ret0, _ := ret[0].(consensus.Epoch)
 	return ret0
 }
 
@@ -190,7 +189,7 @@ func (mr *MockBackendMockRecorder) CurrentEpoch(ctx any) *gomock.Call {
 }
 
 // EnumerateBlockCertificates mocks base method.
-func (m *MockBackend) EnumerateBlockCertificates(first idx.Block) iter.Seq[result.T[cert.BlockCertificate]] {
+func (m *MockBackend) EnumerateBlockCertificates(first consensus.BlockID) iter.Seq[result.T[cert.BlockCertificate]] {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "EnumerateBlockCertificates", first)
 	ret0, _ := ret[0].(iter.Seq[result.T[cert.BlockCertificate]])
@@ -232,10 +231,10 @@ func (mr *MockBackendMockRecorder) ExtRPCEnabled() *gomock.Call {
 }
 
 // GetDowntime mocks base method.
-func (m *MockBackend) GetDowntime(ctx context.Context, vid idx.ValidatorID) (idx.Block, inter.Timestamp, error) {
+func (m *MockBackend) GetDowntime(ctx context.Context, vid consensus.ValidatorID) (consensus.BlockID, inter.Timestamp, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetDowntime", ctx, vid)
-	ret0, _ := ret[0].(idx.Block)
+	ret0, _ := ret[0].(consensus.BlockID)
 	ret1, _ := ret[1].(inter.Timestamp)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
@@ -310,10 +309,10 @@ func (mr *MockBackendMockRecorder) GetEventPayload(ctx, shortEventID any) *gomoc
 }
 
 // GetHeads mocks base method.
-func (m *MockBackend) GetHeads(ctx context.Context, epoch rpc.BlockNumber) (hash.Events, error) {
+func (m *MockBackend) GetHeads(ctx context.Context, epoch rpc.BlockNumber) (consensus.EventHashes, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetHeads", ctx, epoch)
-	ret0, _ := ret[0].(hash.Events)
+	ret0, _ := ret[0].(consensus.EventHashes)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -355,7 +354,7 @@ func (mr *MockBackendMockRecorder) GetLatestCommitteeCertificate() *gomock.Call 
 }
 
 // GetNetworkRules mocks base method.
-func (m *MockBackend) GetNetworkRules(ctx context.Context, blockHeight idx.Block) (*opera.Rules, error) {
+func (m *MockBackend) GetNetworkRules(ctx context.Context, blockHeight consensus.BlockID) (*opera.Rules, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetNetworkRules", ctx, blockHeight)
 	ret0, _ := ret[0].(*opera.Rules)
@@ -370,7 +369,7 @@ func (mr *MockBackendMockRecorder) GetNetworkRules(ctx, blockHeight any) *gomock
 }
 
 // GetOriginatedFee mocks base method.
-func (m *MockBackend) GetOriginatedFee(ctx context.Context, vid idx.ValidatorID) (*big.Int, error) {
+func (m *MockBackend) GetOriginatedFee(ctx context.Context, vid consensus.ValidatorID) (*big.Int, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetOriginatedFee", ctx, vid)
 	ret0, _ := ret[0].(*big.Int)
@@ -461,7 +460,7 @@ func (mr *MockBackendMockRecorder) GetTransaction(ctx, txHash any) *gomock.Call 
 }
 
 // GetUptime mocks base method.
-func (m *MockBackend) GetUptime(ctx context.Context, vid idx.ValidatorID) (*big.Int, error) {
+func (m *MockBackend) GetUptime(ctx context.Context, vid consensus.ValidatorID) (*big.Int, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetUptime", ctx, vid)
 	ret0, _ := ret[0].(*big.Int)
@@ -590,10 +589,10 @@ func (mr *MockBackendMockRecorder) RPCTxFeeCap() *gomock.Call {
 }
 
 // ResolveRpcBlockNumberOrHash mocks base method.
-func (m *MockBackend) ResolveRpcBlockNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (idx.Block, error) {
+func (m *MockBackend) ResolveRpcBlockNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (consensus.BlockID, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ResolveRpcBlockNumberOrHash", ctx, blockNrOrHash)
-	ret0, _ := ret[0].(idx.Block)
+	ret0, _ := ret[0].(consensus.BlockID)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

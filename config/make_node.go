@@ -28,7 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/usbwallet"
 	"github.com/ethereum/go-ethereum/metrics"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/config/flags"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip"
@@ -136,9 +136,9 @@ func MakeNode(ctx *cli.Context, cfg *Config) (*node.Node, *gossip.Service, func(
 		cleanup = append(cleanup, pool.Stop)
 		return pool
 	}
-	haltCheck := func(oldEpoch, newEpoch idx.Epoch, age time.Time) bool {
+	haltCheck := func(oldEpoch, newEpoch consensus.Epoch, age time.Time) bool {
 		stop := ctx.GlobalIsSet(flags.ExitWhenAgeFlag.Name) && ctx.GlobalDuration(flags.ExitWhenAgeFlag.Name) >= time.Since(age)
-		stop = stop || ctx.GlobalIsSet(flags.ExitWhenEpochFlag.Name) && idx.Epoch(ctx.GlobalUint64(flags.ExitWhenEpochFlag.Name)) <= newEpoch
+		stop = stop || ctx.GlobalIsSet(flags.ExitWhenEpochFlag.Name) && consensus.Epoch(ctx.GlobalUint64(flags.ExitWhenEpochFlag.Name)) <= newEpoch
 		if stop {
 			go func() {
 				// do it in a separate thread to avoid deadlock

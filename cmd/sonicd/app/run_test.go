@@ -22,9 +22,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/0xsoniclabs/consensus/utils/cachescale"
+	"github.com/0xsoniclabs/cacheutils/cachescale"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/cmd/sonictool/genesis"
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
@@ -40,7 +40,7 @@ func tmpdir(t *testing.T) string {
 	return t.TempDir()
 }
 
-func initFakenetDatadir(dataDir string, validatorsNum idx.Validator) {
+func initFakenetDatadir(dataDir string, validatorsNum consensus.ValidatorIndex) {
 	genesisStore := makefakegenesis.FakeGenesisStore(
 		validatorsNum,
 		futils.ToFtm(1000000000),

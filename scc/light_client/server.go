@@ -21,7 +21,7 @@ import (
 
 	"github.com/0xsoniclabs/carmen/go/carmen"
 	"github.com/0xsoniclabs/carmen/go/common/immutable"
-	idx "github.com/0xsoniclabs/consensus/inter/idx"
+	consensus "github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/cert"
@@ -146,7 +146,7 @@ func (s server) getCommitteeCertificates(first scc.Period, maxResults uint64) ([
 //   - cert.BlockCertificate: The block certificates for the given block number
 //     and the following blocks.
 //   - error: Not nil if the provider failed to obtain the requested certificates.
-func (s server) getBlockCertificates(first idx.Block, maxResults uint64) ([]cert.BlockCertificate, error) {
+func (s server) getBlockCertificates(first consensus.BlockID, maxResults uint64) ([]cert.BlockCertificate, error) {
 	if maxResults == 0 {
 		return nil, nil
 	}
@@ -178,9 +178,9 @@ func (s server) getBlockCertificates(first idx.Block, maxResults uint64) ([]cert
 		results = results[:maxResults]
 	}
 	certs := make([]cert.BlockCertificate, len(results))
-	var currentBlock idx.Block
+	var currentBlock consensus.BlockID
 	if first == LatestBlock {
-		currentBlock = idx.Block(results[0].Number)
+		currentBlock = consensus.BlockID(results[0].Number)
 	} else {
 		currentBlock = first
 	}
@@ -204,7 +204,7 @@ func (s server) getBlockCertificates(first idx.Block, maxResults uint64) ([]cert
 // Returns:
 // - AccountProof: The proof of the account at the given height.
 // - error: Not nil if the provider failed to obtain the requested account proof.
-func (s server) getAccountProof(address common.Address, height idx.Block) (carmen.WitnessProof, error) {
+func (s server) getAccountProof(address common.Address, height consensus.BlockID) (carmen.WitnessProof, error) {
 	heightString := fmt.Sprintf("0x%x", height)
 	if height == LatestBlock {
 		heightString = "latest"

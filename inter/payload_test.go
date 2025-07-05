@@ -22,8 +22,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/inter/pb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
@@ -43,10 +42,10 @@ func TestPayload_Hash_IsShaOfFieldConcatenation(t *testing.T) {
 		payload := &Payload{
 			ProposalSyncState: ProposalSyncState{
 				LastSeenProposalTurn:  Turn(1 + i),
-				LastSeenProposalFrame: idx.Frame(2 + i),
+				LastSeenProposalFrame: consensus.Frame(2 + i),
 			},
 			Proposal: &Proposal{
-				Number: idx.Block(3 + i),
+				Number: consensus.BlockID(3 + i),
 			},
 		}
 
@@ -55,7 +54,7 @@ func TestPayload_Hash_IsShaOfFieldConcatenation(t *testing.T) {
 		data = binary.BigEndian.AppendUint32(data, uint32(payload.LastSeenProposalFrame))
 		proposalHash := payload.Proposal.Hash()
 		data = append(data, proposalHash[:]...)
-		require.Equal(t, hash.Hash(sha256.Sum256(data)), payload.Hash())
+		require.Equal(t, consensus.Hash(sha256.Sum256(data)), payload.Hash())
 	}
 }
 
@@ -71,7 +70,7 @@ func TestPayload_Hash_MissingPayloadIsOmittedInHashInput(t *testing.T) {
 	data := []byte{currentPayloadVersion}
 	data = binary.BigEndian.AppendUint32(data, uint32(payload.LastSeenProposalTurn))
 	data = binary.BigEndian.AppendUint32(data, uint32(payload.LastSeenProposalFrame))
-	require.Equal(t, hash.Hash(sha256.Sum256(data)), payload.Hash())
+	require.Equal(t, consensus.Hash(sha256.Sum256(data)), payload.Hash())
 }
 
 func TestPayload_Hash_ModifyingContent_ChangesHash(t *testing.T) {

@@ -20,7 +20,7 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 )
 
 // ProposalTracker is a thread-safe structure that tracks proposals seen in the
@@ -39,8 +39,8 @@ type ProposalTracker struct {
 }
 
 type proposalTrackerEntry struct {
-	frame idx.Frame
-	block idx.Block
+	frame consensus.Frame
+	block consensus.BlockID
 }
 
 // Reset clears the list of pending proposals. After the pending proposals are
@@ -55,8 +55,8 @@ func (t *ProposalTracker) Reset() {
 // proposal at a given frame height. This proposal is tracked until it times
 // out.
 func (t *ProposalTracker) RegisterSeenProposal(
-	frame idx.Frame,
-	block idx.Block,
+	frame consensus.Frame,
+	block consensus.BlockID,
 ) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -74,8 +74,8 @@ func (t *ProposalTracker) RegisterSeenProposal(
 // according to the given frame height. Thus, users of this function should
 // ensure that the frame number is always monotonically increasing.
 func (t *ProposalTracker) IsPending(
-	frame idx.Frame,
-	block idx.Block,
+	frame consensus.Frame,
+	block consensus.BlockID,
 ) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()

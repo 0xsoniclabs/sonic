@@ -21,7 +21,7 @@ import (
 	"fmt"
 
 	"github.com/0xsoniclabs/carmen/go/carmen"
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/ethereum/go-ethereum/common"
@@ -85,7 +85,7 @@ func (m *multiplexer) getCommitteeCertificates(first scc.Period, maxResults uint
 //   - cert.BlockCertificate: The block certificates for the given block number
 //     and the following blocks.
 //   - error: Not nil if the provider failed to obtain the requested certificates.
-func (m *multiplexer) getBlockCertificates(first idx.Block, maxResults uint64) ([]cert.BlockCertificate, error) {
+func (m *multiplexer) getBlockCertificates(first consensus.BlockID, maxResults uint64) ([]cert.BlockCertificate, error) {
 	return tryAll(m.providers, func(p provider) ([]cert.BlockCertificate, error) {
 		return p.getBlockCertificates(first, maxResults)
 	})
@@ -101,7 +101,7 @@ func (m *multiplexer) getBlockCertificates(first idx.Block, maxResults uint64) (
 // Returns:
 //   - WitnessProof: witness proof for the given account.
 //   - error: Not nil if the provider failed to obtain the requested account proof.
-func (m *multiplexer) getAccountProof(address common.Address, height idx.Block) (carmen.WitnessProof, error) {
+func (m *multiplexer) getAccountProof(address common.Address, height consensus.BlockID) (carmen.WitnessProof, error) {
 	return tryAll(m.providers, func(p provider) (carmen.WitnessProof, error) {
 		return p.getAccountProof(address, height)
 	})

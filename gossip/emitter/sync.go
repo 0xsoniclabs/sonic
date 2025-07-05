@@ -20,8 +20,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/emitter/doublesign"
 
 	"github.com/0xsoniclabs/sonic/inter"
@@ -31,7 +30,7 @@ type syncStatus struct {
 	startup                   time.Time
 	lastConnected             time.Time
 	p2pSynced                 time.Time
-	prevLocalEmittedID        hash.Event
+	prevLocalEmittedID        consensus.EventHash
 	externalSelfEventCreated  time.Time
 	externalSelfEventDetected time.Time
 	becameValidator           time.Time
@@ -70,7 +69,7 @@ func (em *Emitter) currentSyncStatus() doublesign.SyncStatus {
 		s.P2PSynced = em.syncStatus.p2pSynced
 	}
 	prevEmitted := em.readLastEmittedEventID()
-	if prevEmitted != nil && (em.world.GetEvent(*prevEmitted) == nil && idx.Epoch(em.epoch.Load()) <= prevEmitted.Epoch()) {
+	if prevEmitted != nil && (em.world.GetEvent(*prevEmitted) == nil && consensus.Epoch(em.epoch.Load()) <= prevEmitted.Epoch()) {
 		s.P2PSynced = time.Time{}
 	}
 	return s

@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/carmen/go/carmen"
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/ethereum/go-ethereum/common"
@@ -152,13 +152,13 @@ func TestRetry_GetCertificates_PropagatesError(t *testing.T) {
 
 	provider.EXPECT().getBlockCertificates(gomock.Any(), gomock.Any()).
 		Return(nil, fmt.Errorf("provider failed")).Times(int(maxRetries))
-	bcerts, err := retryProvider.getBlockCertificates(idx.Block(1), uint64(1))
+	bcerts, err := retryProvider.getBlockCertificates(consensus.BlockID(1), uint64(1))
 	require.Error(err)
 	require.Nil(bcerts)
 
 	provider.EXPECT().getAccountProof(gomock.Any(), gomock.Any()).
 		Return(nil, fmt.Errorf("provider failed")).Times(int(maxRetries))
-	proof, err := retryProvider.getAccountProof(common.Address{}, idx.Block(1))
+	proof, err := retryProvider.getAccountProof(common.Address{}, consensus.BlockID(1))
 	require.Error(err)
 	require.Nil(proof)
 }
@@ -185,7 +185,7 @@ func TestRetry_GetCertificates_ReceivesCertificates(t *testing.T) {
 	provider.EXPECT().getBlockCertificates(gomock.Any(), gomock.Any()).
 		Return(blockCert, nil).Times(1)
 
-	bcerts, err := retryProvider.getBlockCertificates(idx.Block(1), uint64(1))
+	bcerts, err := retryProvider.getBlockCertificates(consensus.BlockID(1), uint64(1))
 	require.NoError(err)
 	require.Equal(blockCert, bcerts)
 
@@ -193,7 +193,7 @@ func TestRetry_GetCertificates_ReceivesCertificates(t *testing.T) {
 	provider.EXPECT().getAccountProof(gomock.Any(), gomock.Any()).
 		Return(wantProof, nil).Times(1)
 
-	gotProof, err := retryProvider.getAccountProof(common.Address{}, idx.Block(1))
+	gotProof, err := retryProvider.getAccountProof(common.Address{}, consensus.BlockID(1))
 	require.NoError(err)
 	require.Equal(wantProof, gotProof)
 }

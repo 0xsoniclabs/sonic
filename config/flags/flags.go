@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/0xsoniclabs/consensus/utils/cachescale"
+	"github.com/0xsoniclabs/cacheutils/cachescale"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip"
 	pcsclite "github.com/gballet/go-libpcsclite"

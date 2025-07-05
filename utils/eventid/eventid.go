@@ -19,15 +19,14 @@ package eventid
 import (
 	"sync"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 )
 
 type Cache struct {
-	ids     map[hash.Event]bool
+	ids     map[consensus.EventHash]bool
 	mu      sync.RWMutex
 	maxSize int
-	epoch   idx.Epoch
+	epoch   consensus.Epoch
 }
 
 func NewCache(maxSize int) *Cache {
@@ -36,14 +35,14 @@ func NewCache(maxSize int) *Cache {
 	}
 }
 
-func (c *Cache) Reset(epoch idx.Epoch) {
+func (c *Cache) Reset(epoch consensus.Epoch) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.ids = make(map[hash.Event]bool)
+	c.ids = make(map[consensus.EventHash]bool)
 	c.epoch = epoch
 }
 
-func (c *Cache) Has(id hash.Event) (has bool, ok bool) {
+func (c *Cache) Has(id consensus.EventHash) (has bool, ok bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -56,7 +55,7 @@ func (c *Cache) Has(id hash.Event) (has bool, ok bool) {
 	return c.ids[id], true
 }
 
-func (c *Cache) Add(id hash.Event) bool {
+func (c *Cache) Add(id consensus.EventHash) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -74,7 +73,7 @@ func (c *Cache) Add(id hash.Event) bool {
 	return true
 }
 
-func (c *Cache) Remove(id hash.Event) {
+func (c *Cache) Remove(id consensus.EventHash) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 

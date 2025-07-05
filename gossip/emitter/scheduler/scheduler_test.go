@@ -22,7 +22,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/utils"
@@ -40,7 +40,7 @@ func TestScheduler_Schedule_ForwardsBlockInfoToTheProcessor(t *testing.T) {
 	processor := NewMockprocessor(ctrl)
 	txs := NewMockPrioritizedTransactions(ctrl)
 
-	number := idx.Block(2)
+	number := consensus.BlockID(2)
 	time := inter.Timestamp(345)
 	gasLimit := uint64(67)
 	coinbase := common.Address{0, 8, 15}
@@ -66,7 +66,7 @@ func TestScheduler_Schedule_ForwardsBlockInfoToTheProcessor(t *testing.T) {
 	newScheduler(factory).Schedule(
 		t.Context(),
 		&BlockInfo{
-			Number:      idx.Block(number),
+			Number:      consensus.BlockID(number),
 			Time:        time,
 			GasLimit:    gasLimit,
 			Coinbase:    coinbase,

@@ -24,8 +24,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 
 	"github.com/0xsoniclabs/sonic/gossip/protocols/dag/dagstream"
 )
@@ -49,9 +48,9 @@ func testLeecherNoDeadlocks(t *testing.T, maxPeers int) {
 	config.MaxSessionRestart = 5 * time.Millisecond * 5
 	config.BaseProgressWatchdog = 3 * time.Millisecond * 5
 	config.Session.RecheckInterval = time.Millisecond
-	epoch := idx.Epoch(1)
+	epoch := consensus.Epoch(1)
 	leecher := New(epoch, rand.IntN(2) == 0, config, Callbacks{
-		IsProcessed: func(id hash.Event) bool {
+		IsProcessed: func(id consensus.EventHash) bool {
 			return rand.IntN(2) == 0
 		},
 		RequestChunk: func(peer string, r dagstream.Request) error {
@@ -61,8 +60,8 @@ func testLeecherNoDeadlocks(t *testing.T, maxPeers int) {
 		Suspend: func(peer string) bool {
 			return rand.IntN(10) == 0
 		},
-		PeerEpoch: func(peer string) idx.Epoch {
-			return 1 + epoch/2 + idx.Epoch(rand.IntN(int(epoch*2)))
+		PeerEpoch: func(peer string) consensus.Epoch {
+			return 1 + epoch/2 + consensus.Epoch(rand.IntN(int(epoch*2)))
 		},
 	})
 	terminated := false
@@ -90,7 +89,7 @@ func testLeecherNoDeadlocks(t *testing.T, maxPeers int) {
 		select {
 		case req := <-requests:
 			if rand.IntN(10) != 0 {
-				err := leecher.NotifyChunkReceived(req.request.Session.ID, hash.FakeEvent(), rand.IntN(5) == 0)
+				err := leecher.NotifyChunkReceived(req.request.Session.ID, consensus.FakeEvent(), rand.IntN(5) == 0)
 				if !terminated {
 					require.NoError(t, err)
 				}

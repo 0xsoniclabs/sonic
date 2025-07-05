@@ -19,7 +19,7 @@ package inter
 import (
 	"testing"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/stretchr/testify/require"
 )
 
@@ -62,7 +62,7 @@ func TestProposalTracker_RegisterSeenProposal_CanHandleMultipleProposalsInSameFr
 	require := require.New(t)
 	tracker := &ProposalTracker{}
 
-	now := idx.Frame(5)
+	now := consensus.Frame(5)
 	require.False(tracker.IsPending(now, 0))
 	require.False(tracker.IsPending(now, 1))
 
@@ -87,8 +87,8 @@ func TestProposalTracker_RegisterSeenProposal_CanHandleMultipleProposalsInSameFr
 
 func TestProposalTracker_IsPending_InitiallyNoProposalsArePending(t *testing.T) {
 	tracker := &ProposalTracker{}
-	for b := range idx.Block(10) {
-		for f := range idx.Frame(10) {
+	for b := range consensus.BlockID(10) {
+		for f := range consensus.Frame(10) {
 			require.False(
 				t, tracker.IsPending(f, b),
 				"block %d should not be pending in frame %d", b, f,
@@ -101,8 +101,8 @@ func TestProposalTracker_IsPending_PurgesOutdatedProposals(t *testing.T) {
 	require := require.New(t)
 	tracker := &ProposalTracker{}
 
-	block := idx.Block(123)
-	initialFrame := idx.Frame(12)
+	block := consensus.BlockID(123)
+	initialFrame := consensus.Frame(12)
 	currentFrame := initialFrame
 	require.False(tracker.IsPending(currentFrame, block))
 	tracker.RegisterSeenProposal(currentFrame, block)

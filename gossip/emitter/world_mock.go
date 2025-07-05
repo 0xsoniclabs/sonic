@@ -34,9 +34,7 @@ import (
 	state "github.com/0xsoniclabs/sonic/inter/state"
 	opera "github.com/0xsoniclabs/sonic/opera"
 	vecmt "github.com/0xsoniclabs/sonic/vecmt"
-	hash "github.com/0xsoniclabs/consensus/hash"
-	idx "github.com/0xsoniclabs/consensus/inter/idx"
-	pos "github.com/0xsoniclabs/consensus/inter/pos"
+	consensus "github.com/0xsoniclabs/consensus/consensus"
 	common "github.com/ethereum/go-ethereum/common"
 	types "github.com/ethereum/go-ethereum/core/types"
 	gomock "go.uber.org/mock/gomock"
@@ -120,11 +118,11 @@ func (mr *MockExternalMockRecorder) DagIndex() *gomock.Call {
 }
 
 // GetEpochValidators mocks base method.
-func (m *MockExternal) GetEpochValidators() (*pos.Validators, idx.Epoch) {
+func (m *MockExternal) GetEpochValidators() (*consensus.Validators, consensus.Epoch) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetEpochValidators")
-	ret0, _ := ret[0].(*pos.Validators)
-	ret1, _ := ret[1].(idx.Epoch)
+	ret0, _ := ret[0].(*consensus.Validators)
+	ret1, _ := ret[1].(consensus.Epoch)
 	return ret0, ret1
 }
 
@@ -135,7 +133,7 @@ func (mr *MockExternalMockRecorder) GetEpochValidators() *gomock.Call {
 }
 
 // GetEvent mocks base method.
-func (m *MockExternal) GetEvent(arg0 hash.Event) *inter.Event {
+func (m *MockExternal) GetEvent(arg0 consensus.EventHash) *inter.Event {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetEvent", arg0)
 	ret0, _ := ret[0].(*inter.Event)
@@ -149,7 +147,7 @@ func (mr *MockExternalMockRecorder) GetEvent(arg0 any) *gomock.Call {
 }
 
 // GetEventPayload mocks base method.
-func (m *MockExternal) GetEventPayload(arg0 hash.Event) *inter.EventPayload {
+func (m *MockExternal) GetEventPayload(arg0 consensus.EventHash) *inter.EventPayload {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetEventPayload", arg0)
 	ret0, _ := ret[0].(*inter.EventPayload)
@@ -191,10 +189,10 @@ func (mr *MockExternalMockRecorder) GetHeader(arg0, arg1 any) *gomock.Call {
 }
 
 // GetHeads mocks base method.
-func (m *MockExternal) GetHeads(arg0 idx.Epoch) hash.Events {
+func (m *MockExternal) GetHeads(arg0 consensus.Epoch) consensus.EventHashes {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetHeads", arg0)
-	ret0, _ := ret[0].(hash.Events)
+	ret0, _ := ret[0].(consensus.EventHashes)
 	return ret0
 }
 
@@ -205,10 +203,10 @@ func (mr *MockExternalMockRecorder) GetHeads(arg0 any) *gomock.Call {
 }
 
 // GetLastEvent mocks base method.
-func (m *MockExternal) GetLastEvent(epoch idx.Epoch, from idx.ValidatorID) *hash.Event {
+func (m *MockExternal) GetLastEvent(epoch consensus.Epoch, from consensus.ValidatorID) *consensus.EventHash {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetLastEvent", epoch, from)
-	ret0, _ := ret[0].(*hash.Event)
+	ret0, _ := ret[0].(*consensus.EventHash)
 	return ret0
 }
 
@@ -233,10 +231,10 @@ func (mr *MockExternalMockRecorder) GetLatestBlock() *gomock.Call {
 }
 
 // GetLatestBlockIndex mocks base method.
-func (m *MockExternal) GetLatestBlockIndex() idx.Block {
+func (m *MockExternal) GetLatestBlockIndex() consensus.BlockID {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetLatestBlockIndex")
-	ret0, _ := ret[0].(idx.Block)
+	ret0, _ := ret[0].(consensus.BlockID)
 	return ret0
 }
 
@@ -489,11 +487,11 @@ func (m *MockReader) EXPECT() *MockReaderMockRecorder {
 }
 
 // GetEpochValidators mocks base method.
-func (m *MockReader) GetEpochValidators() (*pos.Validators, idx.Epoch) {
+func (m *MockReader) GetEpochValidators() (*consensus.Validators, consensus.Epoch) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetEpochValidators")
-	ret0, _ := ret[0].(*pos.Validators)
-	ret1, _ := ret[1].(idx.Epoch)
+	ret0, _ := ret[0].(*consensus.Validators)
+	ret1, _ := ret[1].(consensus.Epoch)
 	return ret0, ret1
 }
 
@@ -504,7 +502,7 @@ func (mr *MockReaderMockRecorder) GetEpochValidators() *gomock.Call {
 }
 
 // GetEvent mocks base method.
-func (m *MockReader) GetEvent(arg0 hash.Event) *inter.Event {
+func (m *MockReader) GetEvent(arg0 consensus.EventHash) *inter.Event {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetEvent", arg0)
 	ret0, _ := ret[0].(*inter.Event)
@@ -518,7 +516,7 @@ func (mr *MockReaderMockRecorder) GetEvent(arg0 any) *gomock.Call {
 }
 
 // GetEventPayload mocks base method.
-func (m *MockReader) GetEventPayload(arg0 hash.Event) *inter.EventPayload {
+func (m *MockReader) GetEventPayload(arg0 consensus.EventHash) *inter.EventPayload {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetEventPayload", arg0)
 	ret0, _ := ret[0].(*inter.EventPayload)
@@ -546,10 +544,10 @@ func (mr *MockReaderMockRecorder) GetGenesisTime() *gomock.Call {
 }
 
 // GetHeads mocks base method.
-func (m *MockReader) GetHeads(arg0 idx.Epoch) hash.Events {
+func (m *MockReader) GetHeads(arg0 consensus.Epoch) consensus.EventHashes {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetHeads", arg0)
-	ret0, _ := ret[0].(hash.Events)
+	ret0, _ := ret[0].(consensus.EventHashes)
 	return ret0
 }
 
@@ -560,10 +558,10 @@ func (mr *MockReaderMockRecorder) GetHeads(arg0 any) *gomock.Call {
 }
 
 // GetLastEvent mocks base method.
-func (m *MockReader) GetLastEvent(epoch idx.Epoch, from idx.ValidatorID) *hash.Event {
+func (m *MockReader) GetLastEvent(epoch consensus.Epoch, from consensus.ValidatorID) *consensus.EventHash {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetLastEvent", epoch, from)
-	ret0, _ := ret[0].(*hash.Event)
+	ret0, _ := ret[0].(*consensus.EventHash)
 	return ret0
 }
 
@@ -588,10 +586,10 @@ func (mr *MockReaderMockRecorder) GetLatestBlock() *gomock.Call {
 }
 
 // GetLatestBlockIndex mocks base method.
-func (m *MockReader) GetLatestBlockIndex() idx.Block {
+func (m *MockReader) GetLatestBlockIndex() consensus.BlockID {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetLatestBlockIndex")
-	ret0, _ := ret[0].(idx.Block)
+	ret0, _ := ret[0].(consensus.BlockID)
 	return ret0
 }
 

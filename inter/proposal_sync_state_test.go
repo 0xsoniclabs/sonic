@@ -19,10 +19,7 @@ package inter
 import (
 	"testing"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/dag"
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/inter/pos"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/stretchr/testify/require"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -30,8 +27,8 @@ import (
 func TestProposalSyncState_Join_ComputesTheMaximumForIndividualStateProperties(t *testing.T) {
 	for turnA := range Turn(5) {
 		for turnB := range Turn(5) {
-			for frameA := range idx.Frame(5) {
-				for frameB := range idx.Frame(5) {
+			for frameA := range consensus.Frame(5) {
+				for frameB := range consensus.Frame(5) {
 					a := ProposalSyncState{
 						LastSeenProposalTurn:  turnA,
 						LastSeenProposalFrame: frameA,
@@ -68,21 +65,21 @@ func TestCalculateIncomingProposalSyncState_AggregatesParentStates(t *testing.T)
 	ctrl := gomock.NewController(t)
 	world := NewMockEventReader(ctrl)
 
-	p1 := hash.Event{1}
-	p2 := hash.Event{2}
-	p3 := hash.Event{3}
-	parents := map[hash.Event]Payload{
+	p1 := consensus.EventHash{1}
+	p2 := consensus.EventHash{2}
+	p3 := consensus.EventHash{3}
+	parents := map[consensus.EventHash]Payload{
 		p1: {ProposalSyncState: ProposalSyncState{
 			LastSeenProposalTurn:  Turn(0x01),
-			LastSeenProposalFrame: idx.Frame(0x12),
+			LastSeenProposalFrame: consensus.Frame(0x12),
 		}},
 		p2: {ProposalSyncState: ProposalSyncState{
 			LastSeenProposalTurn:  Turn(0x03),
-			LastSeenProposalFrame: idx.Frame(0x11),
+			LastSeenProposalFrame: consensus.Frame(0x11),
 		}},
 		p3: {ProposalSyncState: ProposalSyncState{
 			LastSeenProposalTurn:  Turn(0x02),
-			LastSeenProposalFrame: idx.Frame(0x13),
+			LastSeenProposalFrame: consensus.Frame(0x13),
 		}},
 	}
 
@@ -90,29 +87,29 @@ func TestCalculateIncomingProposalSyncState_AggregatesParentStates(t *testing.T)
 	world.EXPECT().GetEventPayload(p2).Return(parents[p2])
 	world.EXPECT().GetEventPayload(p3).Return(parents[p3])
 
-	event := &dag.MutableBaseEvent{}
-	event.SetParents(hash.Events{p1, p2, p3})
+	event := &consensus.MutableBaseEvent{}
+	event.SetParents(consensus.EventHashes{p1, p2, p3})
 	state := CalculateIncomingProposalSyncState(world, event)
 
 	require.Equal(Turn(0x03), state.LastSeenProposalTurn)
-	require.Equal(idx.Frame(0x13), state.LastSeenProposalFrame)
+	require.Equal(consensus.Frame(0x13), state.LastSeenProposalFrame)
 }
 
 func TestIsAllowedToPropose_AcceptsValidProposerTurn(t *testing.T) {
 	require := require.New(t)
 
-	validator := idx.ValidatorID(1)
-	builder := pos.ValidatorsBuilder{}
+	validator := consensus.ValidatorID(1)
+	builder := consensus.ValidatorsBuilder{}
 	builder.Set(validator, 10)
 	validators := builder.Build()
 
 	last := ProposalSummary{
 		Turn:  Turn(5),
-		Frame: idx.Frame(12),
+		Frame: consensus.Frame(12),
 	}
 	next := ProposalSummary{
 		Turn:  Turn(6),
-		Frame: idx.Frame(14),
+		Frame: consensus.Frame(14),
 	}
 	require.True(IsValidTurnProgression(last, next))
 
@@ -123,7 +120,7 @@ func TestIsAllowedToPropose_AcceptsValidProposerTurn(t *testing.T) {
 			LastSeenProposalTurn:  last.Turn,
 			LastSeenProposalFrame: last.Frame,
 		},
-		idx.Epoch(42),
+		consensus.Epoch(42),
 		next.Frame,
 	)
 	require.NoError(err)
@@ -132,14 +129,14 @@ func TestIsAllowedToPropose_AcceptsValidProposerTurn(t *testing.T) {
 }
 
 func TestIsAllowedToPropose_RejectsInvalidProposerTurn(t *testing.T) {
-	validatorA := idx.ValidatorID(1)
-	validatorB := idx.ValidatorID(2)
-	builder := pos.ValidatorsBuilder{}
+	validatorA := consensus.ValidatorID(1)
+	validatorB := consensus.ValidatorID(2)
+	builder := consensus.ValidatorsBuilder{}
 	builder.Set(validatorA, 10)
 	builder.Set(validatorB, 20)
 	validators := builder.Build()
 
-	validEpoch := idx.Epoch(4)
+	validEpoch := consensus.Epoch(4)
 	validTurn := Turn(5)
 	validProposer, err := GetProposer(validators, validEpoch, validTurn)
 	require.NoError(t, err)
@@ -160,8 +157,8 @@ func TestIsAllowedToPropose_RejectsInvalidProposerTurn(t *testing.T) {
 	}
 
 	type input struct {
-		validator    idx.ValidatorID
-		currentFrame idx.Frame
+		validator    consensus.ValidatorID
+		currentFrame consensus.Frame
 	}
 
 	tests := map[string]func(*input){
@@ -170,7 +167,7 @@ func TestIsAllowedToPropose_RejectsInvalidProposerTurn(t *testing.T) {
 		},
 		"invalid turn progression": func(input *input) {
 			// a proposal made too late needs to be rejected
-			input.currentFrame = idx.Frame(invalidTurn)
+			input.currentFrame = consensus.Frame(invalidTurn)
 		},
 	}
 
@@ -215,20 +212,20 @@ func TestIsAllowedToPropose_RejectsInvalidProposerTurn(t *testing.T) {
 
 func TestIsAllowedToPropose_ReturnsTurnForTheAllowedProposal(t *testing.T) {
 	require := require.New(t)
-	validator := idx.ValidatorID(1)
-	builder := pos.ValidatorsBuilder{}
+	validator := consensus.ValidatorID(1)
+	builder := consensus.ValidatorsBuilder{}
 	builder.Set(validator, 10)
 	validators := builder.Build()
 
 	for i := range 50 {
-		frame := idx.Frame(i) + 1
+		frame := consensus.Frame(i) + 1
 		inputState := ProposalSyncState{}
 
 		ok, turn, err := IsAllowedToPropose(
 			validator,
 			validators,
 			inputState,
-			idx.Epoch(0),
+			consensus.Epoch(0),
 			frame,
 		)
 		require.NoError(err)
@@ -252,17 +249,17 @@ func TestIsAllowedToPropose_ReturnsTurnForTheAllowedProposal(t *testing.T) {
 }
 
 func TestIsAllowedToPropose_ForwardsTurnSelectionError(t *testing.T) {
-	validators := pos.ValidatorsBuilder{}.Build()
+	validators := consensus.ValidatorsBuilder{}.Build()
 
-	_, want := GetProposer(validators, idx.Epoch(0), Turn(0))
+	_, want := GetProposer(validators, consensus.Epoch(0), Turn(0))
 	require.Error(t, want)
 
 	_, _, got := IsAllowedToPropose(
-		idx.ValidatorID(0),
+		consensus.ValidatorID(0),
 		validators,
 		ProposalSyncState{},
-		idx.Epoch(0),
-		idx.Frame(0),
+		consensus.Epoch(0),
+		consensus.Frame(0),
 	)
 	require.Error(t, got)
 	require.Equal(t, got, want)
@@ -271,8 +268,8 @@ func TestIsAllowedToPropose_ForwardsTurnSelectionError(t *testing.T) {
 func TestGetCurrentTurn_ForKnownExamples_ProducesCorrectTurn(t *testing.T) {
 	tests := map[string]struct {
 		lastTurn     Turn
-		lastFrame    idx.Frame
-		currentFrame idx.Frame
+		lastFrame    consensus.Frame
+		currentFrame consensus.Frame
 		want         Turn
 	}{
 		"same frame": {
@@ -335,8 +332,8 @@ func TestGetCurrentTurn_ForKnownExamples_ProducesCorrectTurn(t *testing.T) {
 
 func TestGetCurrentTurn_ForCartesianProductOfInputs_ProducesResultsConsideringTimeouts(t *testing.T) {
 	for turn := range Turn(3) {
-		for start := range idx.Frame(5) {
-			for currentFrame := range idx.Frame(5 * TurnTimeoutInFrames) {
+		for start := range consensus.Frame(5) {
+			for currentFrame := range consensus.Frame(5 * TurnTimeoutInFrames) {
 				got := getCurrentTurn(
 					ProposalSyncState{
 						LastSeenProposalTurn:  turn,

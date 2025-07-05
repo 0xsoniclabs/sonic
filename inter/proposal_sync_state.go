@@ -17,10 +17,7 @@
 package inter
 
 import (
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/dag"
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/inter/pos"
+	"github.com/0xsoniclabs/consensus/consensus"
 )
 
 //go:generate mockgen -source=proposal_sync_state.go -destination=proposal_sync_state_mock.go -package=inter
@@ -29,7 +26,7 @@ import (
 // events on the DAG to facilitate the proposal selection.
 type ProposalSyncState struct {
 	LastSeenProposalTurn  Turn
-	LastSeenProposalFrame idx.Frame
+	LastSeenProposalFrame consensus.Frame
 }
 
 // JoinProposalSyncStates merges two proposal sync states by taking the maximum
@@ -46,7 +43,7 @@ func JoinProposalSyncStates(a, b ProposalSyncState) ProposalSyncState {
 // from the event's parents.
 func CalculateIncomingProposalSyncState(
 	reader EventReader,
-	event dag.Event,
+	event consensus.Event,
 ) ProposalSyncState {
 	// The last seen proposal information of the parents needs to be aggregated.
 	res := ProposalSyncState{}
@@ -64,7 +61,7 @@ func CalculateIncomingProposalSyncState(
 type EventReader interface {
 	// GetEventPayload must be able to return the payload of parent events of an
 	// event for which the incoming proposal sync state is being calculated.
-	GetEventPayload(hash.Event) Payload
+	GetEventPayload(consensus.EventHash) Payload
 }
 
 // --- determination of the proposal turn ---
@@ -72,11 +69,11 @@ type EventReader interface {
 // IsAllowedToPropose checks whether the current validator is allowed to
 // propose a new block. If so, the turn for the allowed proposal is returned.
 func IsAllowedToPropose(
-	validator idx.ValidatorID,
-	validators *pos.Validators,
+	validator consensus.ValidatorID,
+	validators *consensus.Validators,
 	proposalState ProposalSyncState,
-	currentEpoch idx.Epoch,
-	currentFrame idx.Frame,
+	currentEpoch consensus.Epoch,
+	currentFrame consensus.Frame,
 ) (bool, Turn, error) {
 	// Check whether it is this emitter's turn to propose a new block.
 	nextTurn := getCurrentTurn(proposalState, currentFrame) + 1
@@ -103,7 +100,7 @@ func IsAllowedToPropose(
 // progression that occurs if no proposals are made within the timeout period.
 func getCurrentTurn(
 	proposalState ProposalSyncState,
-	currentFrame idx.Frame,
+	currentFrame consensus.Frame,
 ) Turn {
 	if currentFrame <= proposalState.LastSeenProposalFrame {
 		return proposalState.LastSeenProposalTurn

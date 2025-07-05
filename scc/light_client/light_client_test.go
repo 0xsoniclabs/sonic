@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/carmen/go/carmen"
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/bls"
 	"github.com/0xsoniclabs/sonic/scc/cert"
@@ -110,7 +110,7 @@ func TestLightClient_Sync_ReturnsErrorOnStateSyncFailure(t *testing.T) {
 	prov := NewMockprovider(ctrl)
 
 	// setup block certificate
-	blockNumber := idx.Block(scc.BLOCKS_PER_PERIOD*1 + 42)
+	blockNumber := consensus.BlockID(scc.BLOCKS_PER_PERIOD*1 + 42)
 	blockCert := cert.NewCertificate(
 		cert.NewBlockStatement(0, blockNumber, common.Hash{0x1}, common.Hash{}))
 	// expect to return head
@@ -142,7 +142,7 @@ func TestLightClientState_Sync_UpdatesStateToHead(t *testing.T) {
 	prov := NewMockprovider(ctrl)
 
 	// setup block for period 1.
-	blockNumber := idx.Block(scc.BLOCKS_PER_PERIOD*1 + 1)
+	blockNumber := consensus.BlockID(scc.BLOCKS_PER_PERIOD*1 + 1)
 	blockCert := cert.NewCertificate(
 		cert.NewBlockStatement(0, blockNumber, common.Hash{0x1}, common.Hash{0x2}))
 
@@ -317,7 +317,7 @@ func TestLightClient_GetBalance_ReturnsBalance(t *testing.T) {
 	require.NoError(err)
 	c.provider = prov
 	c.state.hasSynced = true
-	c.state.headNumber = idx.Block(42)
+	c.state.headNumber = consensus.BlockID(42)
 	wantBalance := uint256.NewInt(42)
 
 	proof := carmen.NewMockWitnessProof(ctrl)
@@ -325,7 +325,7 @@ func TestLightClient_GetBalance_ReturnsBalance(t *testing.T) {
 		Return(carmen.NewAmountFromUint256(wantBalance), true, nil)
 
 	// setup rpc provider to return proof
-	prov.EXPECT().getAccountProof(common.Address{0x01}, idx.Block(42)).
+	prov.EXPECT().getAccountProof(common.Address{0x01}, consensus.BlockID(42)).
 		Return(proof, nil)
 
 	// get balance function receives the proof and uses the state root to verify

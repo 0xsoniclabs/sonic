@@ -31,7 +31,7 @@ import (
 	carmen "github.com/0xsoniclabs/carmen/go/carmen"
 	scc "github.com/0xsoniclabs/sonic/scc"
 	cert "github.com/0xsoniclabs/sonic/scc/cert"
-	idx "github.com/0xsoniclabs/consensus/inter/idx"
+	consensus "github.com/0xsoniclabs/consensus/consensus"
 	common "github.com/ethereum/go-ethereum/common"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -73,7 +73,7 @@ func (mr *MockproviderMockRecorder) close() *gomock.Call {
 }
 
 // getAccountProof mocks base method.
-func (m *Mockprovider) getAccountProof(address common.Address, height idx.Block) (carmen.WitnessProof, error) {
+func (m *Mockprovider) getAccountProof(address common.Address, height consensus.BlockID) (carmen.WitnessProof, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "getAccountProof", address, height)
 	ret0, _ := ret[0].(carmen.WitnessProof)
@@ -88,7 +88,7 @@ func (mr *MockproviderMockRecorder) getAccountProof(address, height any) *gomock
 }
 
 // getBlockCertificates mocks base method.
-func (m *Mockprovider) getBlockCertificates(first idx.Block, maxResults uint64) ([]cert.BlockCertificate, error) {
+func (m *Mockprovider) getBlockCertificates(first consensus.BlockID, maxResults uint64) ([]cert.BlockCertificate, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "getBlockCertificates", first, maxResults)
 	ret0, _ := ret[0].([]cert.BlockCertificate)

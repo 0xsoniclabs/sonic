@@ -20,7 +20,7 @@ import (
 	"context"
 	"math/big"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/ethereum/go-ethereum/common"
@@ -160,7 +160,7 @@ type BlockInfo struct {
 	// by the scheduler for try-running transactions.
 
 	// Number of the block being scheduled, accessible by the NUMBER opcode.
-	Number idx.Block
+	Number consensus.BlockID
 
 	// Time is the block time of the block being scheduled, accessible by the
 	// TIMESTAMP opcode.

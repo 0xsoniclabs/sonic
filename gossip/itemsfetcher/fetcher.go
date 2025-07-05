@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/0xsoniclabs/consensus/utils/wlru"
+	"github.com/0xsoniclabs/cacheutils/wlru"
 	"github.com/0xsoniclabs/sonic/utils/workers"
 )
 

@@ -17,7 +17,7 @@
 package gossip
 
 import (
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/forkid"
 	"github.com/ethereum/go-ethereum/p2p/enode"
@@ -52,7 +52,7 @@ func StartENRUpdater(svc *Service, ln *enode.LocalNode) {
 			case head := <-newHead:
 				ln.Set(currentENREntry(
 					svc,
-					idx.Block(head.Block.Number.Uint64()),
+					consensus.BlockID(head.Block.Number.Uint64()),
 					uint64(head.Block.Time.Unix()),
 				))
 			case <-sub.Err():
@@ -65,7 +65,7 @@ func StartENRUpdater(svc *Service, ln *enode.LocalNode) {
 }
 
 // currentENREntry constructs an `eth` ENR entry based on the current state of the chain.
-func currentENREntry(svc *Service, blockHeigh idx.Block, time uint64) *enrEntry {
+func currentENREntry(svc *Service, blockHeigh consensus.BlockID, time uint64) *enrEntry {
 	genesisHash := *svc.store.GetGenesisID()
 	genesisTime := svc.store.GetGenesisTime()
 	return &enrEntry{

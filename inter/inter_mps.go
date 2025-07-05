@@ -17,8 +17,7 @@
 package inter
 
 import (
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 )
 
 const (
@@ -32,21 +31,21 @@ type EventsDoublesign struct {
 }
 
 type BlockVoteDoublesign struct {
-	Block idx.Block
+	Block consensus.BlockID
 	Pair  [2]LlrSignedBlockVotes
 }
 
-func (p BlockVoteDoublesign) GetVote(i int) hash.Hash {
+func (p BlockVoteDoublesign) GetVote(i int) consensus.Hash {
 	return p.Pair[i].Val.Votes[p.Block-p.Pair[i].Val.Start]
 }
 
 type WrongBlockVote struct {
-	Block      idx.Block
+	Block      consensus.BlockID
 	Pals       [MinAccomplicesForProof]LlrSignedBlockVotes
 	WrongEpoch bool
 }
 
-func (p WrongBlockVote) GetVote(i int) hash.Hash {
+func (p WrongBlockVote) GetVote(i int) consensus.Hash {
 	return p.Pals[i].Val.Votes[p.Block-p.Pals[i].Val.Start]
 }
 

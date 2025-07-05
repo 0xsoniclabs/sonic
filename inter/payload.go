@@ -21,8 +21,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/inter/pb"
 	"google.golang.org/protobuf/proto"
 )
@@ -48,7 +47,7 @@ type Payload struct {
 
 // Hash computes a secure hash of the payload that can be used for signing and
 // verifying the payload.
-func (e *Payload) Hash() hash.Hash {
+func (e *Payload) Hash() consensus.Hash {
 	data := []byte{currentPayloadVersion}
 	data = binary.BigEndian.AppendUint32(data, uint32(e.LastSeenProposalTurn))
 	data = binary.BigEndian.AppendUint32(data, uint32(e.LastSeenProposalFrame))
@@ -85,7 +84,7 @@ func (e *Payload) Deserialize(data []byte) error {
 		return fmt.Errorf("unsupported payload version: %d", pb.Version)
 	}
 	e.LastSeenProposalTurn = Turn(pb.LastSeenProposalTurn)
-	e.LastSeenProposalFrame = idx.Frame(pb.LastSeenProposalFrame)
+	e.LastSeenProposalFrame = consensus.Frame(pb.LastSeenProposalFrame)
 	if pb.Proposal != nil {
 		p := &Proposal{}
 		if err := p.fromProto(pb.Proposal); err != nil {

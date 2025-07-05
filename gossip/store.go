@@ -24,13 +24,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xsoniclabs/consensus/common/bigendian"
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/kvdb"
-	"github.com/0xsoniclabs/consensus/kvdb/flushable"
-	"github.com/0xsoniclabs/consensus/kvdb/memorydb"
-	"github.com/0xsoniclabs/consensus/kvdb/table"
-	"github.com/0xsoniclabs/consensus/utils/wlru"
+	"github.com/0xsoniclabs/consensus/utils/byteutils"
+	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/kvdb"
+	"github.com/0xsoniclabs/kvdb/flushable"
+	"github.com/0xsoniclabs/kvdb/memorydb"
+	"github.com/0xsoniclabs/kvdb/table"
+	"github.com/0xsoniclabs/cacheutils/wlru"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/logger"
@@ -94,7 +94,7 @@ type Store struct {
 	logger.Instance
 
 	// values needed for flush randomizationAdd comment
-	randomOffsetEpoch idx.Epoch // epoch when random offset was selected
+	randomOffsetEpoch consensus.Epoch // epoch when random offset was selected
 	randomOffset      uint64    // random number re-selected in each epoch between 0 and 99
 }
 
@@ -208,7 +208,7 @@ func (s *Store) Commit() error {
 func (s *Store) flushDBs() error {
 	now := time.Now()
 	s.prevFlushTime.Store(now)
-	flushID := bigendian.Uint64ToBytes(uint64(now.UnixNano()))
+	flushID := byteutils.Uint64ToBigEndian(uint64(now.UnixNano()))
 	return s.dbs.Flush(flushID)
 }
 

@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/carmen/go/carmen"
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/ethereum/go-ethereum/common"
@@ -101,7 +101,7 @@ func (r retryProvider) getCommitteeCertificates(first scc.Period, maxResults uin
 //   - []cert.BlockCertificate: The block certificates for the given block number
 //     and the following blocks.
 //   - error: An error if the provider failed to obtain the requested certificates.
-func (r retryProvider) getBlockCertificates(first idx.Block, maxResults uint64) ([]cert.BlockCertificate, error) {
+func (r retryProvider) getBlockCertificates(first consensus.BlockID, maxResults uint64) ([]cert.BlockCertificate, error) {
 	return retry(r.maxRetries, r.timeout, func() ([]cert.BlockCertificate, error) {
 		return r.provider.getBlockCertificates(first, maxResults)
 	})
@@ -117,7 +117,7 @@ func (r retryProvider) getBlockCertificates(first idx.Block, maxResults uint64) 
 // Returns:
 // - AccountProof: The proof of the account at the given height.
 // - error: Not nil if the provider failed to obtain the requested account proof.
-func (r retryProvider) getAccountProof(address common.Address, height idx.Block) (carmen.WitnessProof, error) {
+func (r retryProvider) getAccountProof(address common.Address, height consensus.BlockID) (carmen.WitnessProof, error) {
 	return retry(r.maxRetries, r.timeout, func() (carmen.WitnessProof, error) {
 		return r.provider.getAccountProof(address, height)
 	})

@@ -21,7 +21,7 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 
@@ -44,9 +44,9 @@ var (
 
 // Reader is accessed by the validator to get the current state.
 type Reader interface {
-	GetEpochPubKeys() (map[idx.ValidatorID]validatorpk.PubKey, idx.Epoch)
-	GetEpochPubKeysOf(idx.Epoch) map[idx.ValidatorID]validatorpk.PubKey
-	GetEpochBlockStart(idx.Epoch) idx.Block
+	GetEpochPubKeys() (map[consensus.ValidatorID]validatorpk.PubKey, consensus.Epoch)
+	GetEpochPubKeysOf(consensus.Epoch) map[consensus.ValidatorID]validatorpk.PubKey
+	GetEpochBlockStart(consensus.Epoch) consensus.BlockID
 }
 
 // Checker which requires only parents list + current epoch info

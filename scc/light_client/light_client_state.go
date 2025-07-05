@@ -19,7 +19,7 @@ package light_client
 import (
 	"fmt"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/ethereum/go-ethereum/common"
@@ -29,7 +29,7 @@ import (
 type state struct {
 	committee  scc.Committee
 	period     scc.Period
-	headNumber idx.Block
+	headNumber consensus.BlockID
 	headHash   common.Hash
 	headRoot   common.Hash
 	hasSynced  bool
@@ -46,7 +46,7 @@ func newState(committee scc.Committee) *state {
 
 // head returns the block number of the latest known block and a bool which
 // is only true if the state has already been successfully synced.
-func (s *state) head() (idx.Block, bool) {
+func (s *state) head() (consensus.BlockID, bool) {
 	return s.headNumber, s.hasSynced
 }
 
@@ -61,7 +61,7 @@ func (s *state) stateRoot() (common.Hash, bool) {
 // with the network.
 // If successful, the most recent block number is returned.
 // If an error occurs, the returned block number is 0 with the corresponding error.
-func (s *state) sync(p provider) (idx.Block, error) {
+func (s *state) sync(p provider) (consensus.BlockID, error) {
 	if p == nil {
 		return 0, fmt.Errorf("cannot update with nil provider")
 	}

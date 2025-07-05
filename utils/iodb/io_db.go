@@ -19,8 +19,8 @@ package iodb
 import (
 	"io"
 
-	"github.com/0xsoniclabs/consensus/common/bigendian"
-	"github.com/0xsoniclabs/consensus/kvdb"
+	"github.com/0xsoniclabs/consensus/utils/byteutils"
+	"github.com/0xsoniclabs/kvdb"
 
 	"github.com/0xsoniclabs/sonic/utils/ioread"
 )
@@ -51,7 +51,7 @@ func (it *Iterator) Next() bool {
 		return false
 	}
 
-	lenKey := bigendian.BytesToUint32(lenB[:])
+	lenKey := byteutils.BigEndianToUint32(lenB[:])
 	key := make([]byte, lenKey)
 	it.err = ioread.ReadAll(it.reader, key)
 	if it.err != nil {
@@ -63,7 +63,7 @@ func (it *Iterator) Next() bool {
 		return false
 	}
 
-	lenValue := bigendian.BytesToUint32(lenB[:])
+	lenValue := byteutils.BigEndianToUint32(lenB[:])
 	value := make([]byte, lenValue)
 	it.err = ioread.ReadAll(it.reader, value)
 	if it.err != nil {

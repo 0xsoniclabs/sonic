@@ -22,8 +22,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/gossip/randao"
 	"github.com/0xsoniclabs/sonic/inter/pb"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -41,7 +40,7 @@ func TestProposal_Hash_IsShaOfFieldConcatenation(t *testing.T) {
 	for i := range 5 {
 
 		proposal := &Proposal{
-			Number:       idx.Block(1 + i),
+			Number:       consensus.BlockID(1 + i),
 			ParentHash:   [32]byte{0: 1, 1: byte(i), 31: 2},
 			RandaoReveal: randao.RandaoReveal([]byte{4: 4, 5: byte(i), 63: 5}),
 			Transactions: []*types.Transaction{
@@ -51,7 +50,7 @@ func TestProposal_Hash_IsShaOfFieldConcatenation(t *testing.T) {
 			},
 		}
 
-		hash := func(proposal *Proposal) hash.Hash {
+		hash := func(proposal *Proposal) consensus.Hash {
 			data := []byte{}
 			data = binary.BigEndian.AppendUint64(data, uint64(proposal.Number))
 			data = append(data, proposal.ParentHash[:]...)

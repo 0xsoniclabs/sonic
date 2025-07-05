@@ -24,7 +24,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	ethparams "github.com/ethereum/go-ethereum/params"
 
 	"github.com/0xsoniclabs/sonic/inter"
@@ -108,8 +108,8 @@ type EpochsRules struct {
 
 // DagRules of Lachesis DAG (directed acyclic graph).
 type DagRules struct {
-	MaxParents     idx.Event
-	MaxFreeParents idx.Event // maximum number of parents with no gas cost
+	MaxParents     consensus.Seq
+	MaxFreeParents consensus.Seq // maximum number of parents with no gas cost
 	MaxExtraData   uint32
 }
 
@@ -151,13 +151,13 @@ type EmitterRules struct {
 
 // BlocksMissed is information about missed blocks from a staker
 type BlocksMissed struct {
-	BlocksNum idx.Block
+	BlocksNum consensus.BlockID
 	Period    inter.Timestamp
 }
 
 // EconomyRules contains economy constants
 type EconomyRules struct {
-	BlockMissedSlack idx.Block
+	BlockMissedSlack consensus.BlockID
 
 	Gas GasRules
 
@@ -235,7 +235,7 @@ type Upgrades struct {
 // (See [CreateTransientEvmChainConfig] for details).
 type UpgradeHeight struct {
 	Upgrades Upgrades
-	Height   idx.Block
+	Height   consensus.BlockID
 	Time     inter.Timestamp
 }
 
@@ -265,7 +265,7 @@ type UpgradeHeight struct {
 func CreateTransientEvmChainConfig(
 	chainID uint64,
 	upgradeHeights []UpgradeHeight,
-	currentBlockHeight idx.Block,
+	currentBlockHeight consensus.BlockID,
 ) *ethparams.ChainConfig {
 
 	timestampInThePast := uint64(0)

@@ -28,7 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/trie"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
 )
@@ -54,7 +54,7 @@ type (
 
 		PrevRandao common.Hash // == mixHash/mixDigest
 
-		Epoch idx.Epoch
+		Epoch consensus.Epoch
 	}
 
 	EvmBlock struct {

@@ -20,14 +20,13 @@ import (
 	"io"
 	"math/big"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/inter/pos"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/ethereum/go-ethereum/rlp"
 
 	"github.com/0xsoniclabs/sonic/inter/drivertype"
 )
 
-type ValidatorProfiles map[idx.ValidatorID]drivertype.Validator
+type ValidatorProfiles map[consensus.ValidatorID]drivertype.Validator
 
 func (vv ValidatorProfiles) Copy() ValidatorProfiles {
 	cp := make(ValidatorProfiles, len(vv))
@@ -41,7 +40,7 @@ func (vv ValidatorProfiles) Copy() ValidatorProfiles {
 }
 
 func (vv ValidatorProfiles) SortedArray() []drivertype.ValidatorAndID {
-	builder := pos.NewBigBuilder()
+	builder := consensus.NewBigBuilder()
 	for id, profile := range vv {
 		builder.Set(id, profile.Weight)
 	}

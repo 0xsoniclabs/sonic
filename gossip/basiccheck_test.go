@@ -23,8 +23,7 @@ import (
 	"testing"
 
 	lbasiccheck "github.com/0xsoniclabs/consensus/eventcheck/basiccheck"
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 
@@ -77,62 +76,62 @@ func TestBasicCheckValidate(t *testing.T) {
 		},
 		"Validate checkInited ErrNoParents": {
 			prepareTest: func(payload *inter.MutableEventPayload) {
-				payload.SetEpoch(idx.Epoch(1))
-				payload.SetFrame(idx.Frame(1))
-				payload.SetLamport(idx.Lamport(1))
-				payload.SetSeq(idx.Event(2))
-				parents := hash.Events{}
+				payload.SetEpoch(consensus.Epoch(1))
+				payload.SetFrame(consensus.Frame(1))
+				payload.SetLamport(consensus.Lamport(1))
+				payload.SetSeq(consensus.Seq(2))
+				parents := consensus.EventHashes{}
 				payload.SetParents(parents)
 			},
 			expectedErr: lbasiccheck.ErrNoParents,
 		},
 		"Validate ErrHugeValue-1": {
 			prepareTest: func(payload *inter.MutableEventPayload) {
-				payload.SetSeq(idx.Event(1))
-				payload.SetEpoch(idx.Epoch(1))
-				payload.SetFrame(idx.Frame(1))
-				payload.SetLamport(idx.Lamport(1))
+				payload.SetSeq(consensus.Seq(1))
+				payload.SetEpoch(consensus.Epoch(1))
+				payload.SetFrame(consensus.Frame(1))
+				payload.SetLamport(consensus.Lamport(1))
 				payload.SetGasPowerUsed(math.MaxInt64 - 1)
 			},
 			expectedErr: lbasiccheck.ErrHugeValue,
 		},
 		"Validate ErrHugeValue-2": {
 			prepareTest: func(payload *inter.MutableEventPayload) {
-				payload.SetSeq(idx.Event(1))
-				payload.SetEpoch(idx.Epoch(1))
-				payload.SetFrame(idx.Frame(1))
-				payload.SetLamport(idx.Lamport(1))
+				payload.SetSeq(consensus.Seq(1))
+				payload.SetEpoch(consensus.Epoch(1))
+				payload.SetFrame(consensus.Frame(1))
+				payload.SetLamport(consensus.Lamport(1))
 				payload.SetGasPowerLeft(inter.GasPowerLeft{Gas: [2]uint64{math.MaxInt64 - 1, math.MaxInt64}})
 			},
 			expectedErr: lbasiccheck.ErrHugeValue,
 		},
 		"Validate ErrZeroTime-1": {
 			prepareTest: func(payload *inter.MutableEventPayload) {
-				payload.SetSeq(idx.Event(1))
-				payload.SetEpoch(idx.Epoch(1))
-				payload.SetFrame(idx.Frame(1))
-				payload.SetLamport(idx.Lamport(1))
+				payload.SetSeq(consensus.Seq(1))
+				payload.SetEpoch(consensus.Epoch(1))
+				payload.SetFrame(consensus.Frame(1))
+				payload.SetLamport(consensus.Lamport(1))
 				payload.SetCreationTime(0)
 			},
 			expectedErr: basiccheck.ErrZeroTime,
 		},
 		"Validate ErrZeroTime-2": {
 			prepareTest: func(payload *inter.MutableEventPayload) {
-				payload.SetSeq(idx.Event(1))
-				payload.SetEpoch(idx.Epoch(1))
-				payload.SetFrame(idx.Frame(1))
-				payload.SetLamport(idx.Lamport(1))
+				payload.SetSeq(consensus.Seq(1))
+				payload.SetEpoch(consensus.Epoch(1))
+				payload.SetFrame(consensus.Frame(1))
+				payload.SetLamport(consensus.Lamport(1))
 				payload.SetMedianTime(0)
 			},
 			expectedErr: basiccheck.ErrZeroTime,
 		},
 		"Validate checkTxs validateTx ErrNegativeValue-1": {
 			prepareTest: func(payload *inter.MutableEventPayload) {
-				payload.SetSeq(idx.Event(1))
-				payload.SetEpoch(idx.Epoch(1))
-				payload.SetFrame(idx.Frame(1))
-				payload.SetLamport(idx.Lamport(1))
-				h := hash.BytesToEvent(bytes.Repeat([]byte{math.MaxUint8}, 32))
+				payload.SetSeq(consensus.Seq(1))
+				payload.SetEpoch(consensus.Epoch(1))
+				payload.SetFrame(consensus.Frame(1))
+				payload.SetLamport(consensus.Lamport(1))
+				h := consensus.BytesToEvent(bytes.Repeat([]byte{math.MaxUint8}, 32))
 				tx1 := types.NewTx(&types.LegacyTx{
 					Nonce:    math.MaxUint64,
 					GasPrice: h.Big(),
@@ -152,11 +151,11 @@ func TestBasicCheckValidate(t *testing.T) {
 		},
 		"Validate checkTxs validateTx ErrNegativeValue-2": {
 			prepareTest: func(payload *inter.MutableEventPayload) {
-				payload.SetSeq(idx.Event(1))
-				payload.SetEpoch(idx.Epoch(1))
-				payload.SetFrame(idx.Frame(1))
-				payload.SetLamport(idx.Lamport(1))
-				h := hash.BytesToEvent(bytes.Repeat([]byte{math.MaxUint8}, 32))
+				payload.SetSeq(consensus.Seq(1))
+				payload.SetEpoch(consensus.Epoch(1))
+				payload.SetFrame(consensus.Frame(1))
+				payload.SetLamport(consensus.Lamport(1))
+				h := consensus.BytesToEvent(bytes.Repeat([]byte{math.MaxUint8}, 32))
 				tx1 := types.NewTx(&types.LegacyTx{
 					Nonce:    math.MaxUint64,
 					GasPrice: big.NewInt(-1000),
@@ -176,11 +175,11 @@ func TestBasicCheckValidate(t *testing.T) {
 		},
 		"Validate checkTxs validateTx ErrIntrinsicGas": {
 			prepareTest: func(payload *inter.MutableEventPayload) {
-				payload.SetSeq(idx.Event(1))
-				payload.SetEpoch(idx.Epoch(1))
-				payload.SetFrame(idx.Frame(1))
-				payload.SetLamport(idx.Lamport(1))
-				h := hash.BytesToEvent(bytes.Repeat([]byte{math.MaxUint8}, 32))
+				payload.SetSeq(consensus.Seq(1))
+				payload.SetEpoch(consensus.Epoch(1))
+				payload.SetFrame(consensus.Frame(1))
+				payload.SetLamport(consensus.Lamport(1))
+				h := consensus.BytesToEvent(bytes.Repeat([]byte{math.MaxUint8}, 32))
 				tx1 := types.NewTx(&types.LegacyTx{
 					Nonce:    math.MaxUint64,
 					GasPrice: h.Big(),
@@ -200,11 +199,11 @@ func TestBasicCheckValidate(t *testing.T) {
 		},
 		"Validate checkTxs validateTx ErrTipAboveFeeCap": {
 			prepareTest: func(payload *inter.MutableEventPayload) {
-				payload.SetSeq(idx.Event(1))
-				payload.SetEpoch(idx.Epoch(1))
-				payload.SetFrame(idx.Frame(1))
-				payload.SetLamport(idx.Lamport(1))
-				h := hash.BytesToEvent(bytes.Repeat([]byte{math.MaxUint8}, 32))
+				payload.SetSeq(consensus.Seq(1))
+				payload.SetEpoch(consensus.Epoch(1))
+				payload.SetFrame(consensus.Frame(1))
+				payload.SetLamport(consensus.Lamport(1))
+				h := consensus.BytesToEvent(bytes.Repeat([]byte{math.MaxUint8}, 32))
 				tx1 := types.NewTx(&types.DynamicFeeTx{
 					Nonce:     math.MaxUint64,
 					To:        nil,
@@ -226,11 +225,11 @@ func TestBasicCheckValidate(t *testing.T) {
 		},
 		"Validate returns nil": {
 			prepareTest: func(payload *inter.MutableEventPayload) {
-				payload.SetSeq(idx.Event(1))
-				payload.SetEpoch(idx.Epoch(1))
-				payload.SetFrame(idx.Frame(1))
-				payload.SetLamport(idx.Lamport(1))
-				h := hash.BytesToEvent(bytes.Repeat([]byte{math.MaxUint8}, 32))
+				payload.SetSeq(consensus.Seq(1))
+				payload.SetEpoch(consensus.Epoch(1))
+				payload.SetFrame(consensus.Frame(1))
+				payload.SetLamport(consensus.Lamport(1))
+				h := consensus.BytesToEvent(bytes.Repeat([]byte{math.MaxUint8}, 32))
 				tx1 := types.NewTx(&types.DynamicFeeTx{
 					Nonce:     math.MaxUint64,
 					To:        nil,

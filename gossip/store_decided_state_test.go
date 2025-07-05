@@ -19,7 +19,7 @@ package gossip
 import (
 	"testing"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/stretchr/testify/require"
 )
 
@@ -27,9 +27,9 @@ func TestStore_GetLatestBlock_ReportsLatestBlock(t *testing.T) {
 	require := require.New(t)
 	store := initStoreForTests(t)
 
-	require.Equal(idx.Block(2), store.GetLatestBlockIndex())
+	require.Equal(consensus.BlockID(2), store.GetLatestBlockIndex())
 	got := store.GetLatestBlock()
-	want := store.GetBlock(idx.Block(2))
+	want := store.GetBlock(consensus.BlockID(2))
 	require.Equal(uint64(2), got.Number)
 	require.Equal(want, got)
 }

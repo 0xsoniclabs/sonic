@@ -22,7 +22,7 @@ import (
 	"path"
 	"testing"
 
-	"github.com/0xsoniclabs/consensus/kvdb/table"
+	"github.com/0xsoniclabs/kvdb/table"
 	"github.com/0xsoniclabs/sonic/utils/adapters/ethdb2kvdb"
 
 	"github.com/0xsoniclabs/sonic/topicsdb"

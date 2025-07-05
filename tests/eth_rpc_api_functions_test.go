@@ -23,8 +23,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xsoniclabs/consensus/abft"
-	"github.com/0xsoniclabs/consensus/utils/cachescale"
+	"github.com/0xsoniclabs/consensus/consensus/consensusengine"
+	"github.com/0xsoniclabs/consensus/consensus/consensusstore"
+	"github.com/0xsoniclabs/cacheutils/cachescale"
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip"
@@ -185,13 +186,13 @@ const (
 )
 
 // makeTestEngine creates test engine
-func makeTestEngine(gdb *gossip.Store) (*abft.Lachesis, *vecmt.Index) {
-	cdb := abft.NewMemStore()
-	_ = cdb.ApplyGenesis(&abft.Genesis{
+func makeTestEngine(gdb *gossip.Store) (*consensusengine.Lachesis, *vecmt.Index) {
+	cdb := consensusstore.NewMemStore()
+	_ = cdb.ApplyGenesis(&consensusstore.Genesis{
 		Epoch:      gdb.GetEpoch(),
 		Validators: gdb.GetValidators(),
 	})
 	vecClock := vecmt.NewIndex(nil, vecmt.LiteConfig())
-	engine := abft.NewLachesis(cdb, nil, nil, nil, abft.LiteConfig())
+	engine := consensusengine.NewLachesis(cdb, nil, nil, nil, consensusengine.LiteConfig())
 	return engine, vecClock
 }

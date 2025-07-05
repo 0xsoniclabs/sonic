@@ -19,8 +19,7 @@ package gossip
 import (
 	"sync/atomic"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/ethereum/go-ethereum/common"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
@@ -103,14 +102,14 @@ func (ew *emitterWorldProc) PeersNum() int {
 	return ew.s.handler.peers.Len()
 }
 
-func (ew *emitterWorldRead) GetHeads(epoch idx.Epoch) hash.Events {
+func (ew *emitterWorldRead) GetHeads(epoch consensus.Epoch) consensus.EventHashes {
 	return ew.GetHeadsSlice(epoch)
 }
 
-func (ew *emitterWorldRead) GetLastEvent(epoch idx.Epoch, from idx.ValidatorID) *hash.Event {
+func (ew *emitterWorldRead) GetLastEvent(epoch consensus.Epoch, from consensus.ValidatorID) *consensus.EventHash {
 	return ew.Store.GetLastEvent(epoch, from)
 }
 
-func (ew *emitterWorldRead) GetBlockEpoch(block idx.Block) idx.Epoch {
+func (ew *emitterWorldRead) GetBlockEpoch(block consensus.BlockID) consensus.Epoch {
 	return ew.FindBlockEpoch(block)
 }

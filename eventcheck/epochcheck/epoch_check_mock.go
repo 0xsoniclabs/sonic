@@ -29,8 +29,7 @@ import (
 	reflect "reflect"
 
 	opera "github.com/0xsoniclabs/sonic/opera"
-	idx "github.com/0xsoniclabs/consensus/inter/idx"
-	pos "github.com/0xsoniclabs/consensus/inter/pos"
+	consensus "github.com/0xsoniclabs/consensus/consensus"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -58,11 +57,11 @@ func (m *MockReader) EXPECT() *MockReaderMockRecorder {
 }
 
 // GetEpochRules mocks base method.
-func (m *MockReader) GetEpochRules() (opera.Rules, idx.Epoch) {
+func (m *MockReader) GetEpochRules() (opera.Rules, consensus.Epoch) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetEpochRules")
 	ret0, _ := ret[0].(opera.Rules)
-	ret1, _ := ret[1].(idx.Epoch)
+	ret1, _ := ret[1].(consensus.Epoch)
 	return ret0, ret1
 }
 
@@ -73,11 +72,11 @@ func (mr *MockReaderMockRecorder) GetEpochRules() *gomock.Call {
 }
 
 // GetEpochValidators mocks base method.
-func (m *MockReader) GetEpochValidators() (*pos.Validators, idx.Epoch) {
+func (m *MockReader) GetEpochValidators() (*consensus.Validators, consensus.Epoch) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetEpochValidators")
-	ret0, _ := ret[0].(*pos.Validators)
-	ret1, _ := ret[1].(idx.Epoch)
+	ret0, _ := ret[0].(*consensus.Validators)
+	ret1, _ := ret[1].(consensus.Epoch)
 	return ret0, ret1
 }
 

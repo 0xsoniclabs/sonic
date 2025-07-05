@@ -34,8 +34,9 @@ import (
 	"github.com/0xsoniclabs/sonic/version"
 	"github.com/ethereum/go-ethereum/common/fdlimit"
 
-	"github.com/0xsoniclabs/consensus/abft"
-	"github.com/0xsoniclabs/consensus/utils/cachescale"
+	"github.com/0xsoniclabs/consensus/consensus/consensusstore"
+	"github.com/0xsoniclabs/consensus/consensus/consensusengine"
+	"github.com/0xsoniclabs/cacheutils/cachescale"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
@@ -77,8 +78,8 @@ type Config struct {
 	Emitter       emitter.Config
 	TxPool        evmcore.TxPoolConfig
 	OperaStore    gossip.StoreConfig
-	Lachesis      abft.Config
-	LachesisStore abft.StoreConfig
+	Lachesis      consensusengine.Config
+	LachesisStore consensusstore.StoreConfig
 	VectorClock   vecmt.IndexConfig
 	DBs           integration.DBsConfig
 }
@@ -350,8 +351,8 @@ func MakeAllConfigsFromFile(ctx *cli.Context, configFile string) (*Config, error
 		Emitter:       emitter.DefaultConfig(),
 		TxPool:        evmcore.DefaultTxPoolConfig,
 		OperaStore:    gossip.DefaultStoreConfig(cacheRatio),
-		Lachesis:      abft.DefaultConfig(),
-		LachesisStore: abft.DefaultStoreConfig(cacheRatio),
+		Lachesis:      consensusengine.DefaultConfig(),
+		LachesisStore: consensusstore.DefaultStoreConfig(cacheRatio),
 		VectorClock:   vecmt.DefaultConfig(cacheRatio),
 	}
 

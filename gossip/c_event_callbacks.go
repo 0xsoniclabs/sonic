@@ -23,9 +23,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/metrics"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/dag"
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/gossip/dagprocessor"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
@@ -139,13 +137,13 @@ func processLastEvent(lasts *concurrent.ValidatorEventsSet, e *inter.EventPayloa
 	return lasts
 }
 
-func (s *Service) switchEpochTo(newEpoch idx.Epoch) {
+func (s *Service) switchEpochTo(newEpoch consensus.Epoch) {
 	s.store.cache.EventIDs.Reset(newEpoch)
 	s.store.SetHighestLamport(0)
 	// reset dag indexer
 	s.store.resetEpochStore(newEpoch)
 	es := s.store.getEpochStore(newEpoch)
-	s.dagIndexer.Reset(s.store.GetValidators(), es.table.DagIndex, func(id hash.Event) dag.Event {
+	s.dagIndexer.Reset(s.store.GetValidators(), es.table.DagIndex, func(id consensus.EventHash) consensus.Event {
 		return s.store.GetEvent(id)
 	})
 	// notify event checkers about new validation data
@@ -158,7 +156,7 @@ func (s *Service) switchEpochTo(newEpoch idx.Epoch) {
 	s.feed.newEpoch.Send(newEpoch)
 }
 
-func (s *Service) SwitchEpochTo(newEpoch idx.Epoch) error {
+func (s *Service) SwitchEpochTo(newEpoch consensus.Epoch) error {
 	bs, es := s.store.GetHistoryBlockEpochState(newEpoch)
 	if bs == nil {
 		return errNonExistingEpoch
@@ -179,7 +177,7 @@ func (s *Service) SwitchEpochTo(newEpoch idx.Epoch) error {
 	return nil
 }
 
-func (s *Service) processEventEpochIndex(e *inter.EventPayload, oldEpoch, newEpoch idx.Epoch) {
+func (s *Service) processEventEpochIndex(e *inter.EventPayload, oldEpoch, newEpoch consensus.Epoch) {
 	// index DAG heads and last events
 	s.store.SetHeads(oldEpoch, processEventHeads(s.store.GetHeads(oldEpoch), e))
 	s.store.SetLastEvents(oldEpoch, processLastEvent(s.store.GetLastEvents(oldEpoch), e))

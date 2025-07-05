@@ -20,9 +20,10 @@ import (
 	"crypto/ecdsa"
 	"fmt"
 
-	"github.com/0xsoniclabs/consensus/abft"
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/kvdb"
+	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/consensus/consensus/consensusengine"
+	"github.com/0xsoniclabs/consensus/consensus/consensusstore"
+	"github.com/0xsoniclabs/kvdb"
 	"github.com/0xsoniclabs/sonic/gossip"
 	"github.com/0xsoniclabs/sonic/utils/adapters/vecmt2dagidx"
 	"github.com/0xsoniclabs/sonic/utils/caution"
@@ -44,8 +45,8 @@ var (
 type Configs struct {
 	Opera         gossip.Config
 	OperaStore    gossip.StoreConfig
-	Lachesis      abft.Config
-	LachesisStore abft.StoreConfig
+	Lachesis      consensusengine.Config
+	LachesisStore consensusstore.StoreConfig
 	VectorClock   vecmt.IndexConfig
 	DBs           DBsConfig
 }
@@ -56,7 +57,7 @@ func panics(name string) func(error) {
 	}
 }
 
-func getStores(producer kvdb.FlushableDBProducer, cfg Configs) (*gossip.Store, *abft.Store, error) {
+func getStores(producer kvdb.FlushableDBProducer, cfg Configs) (*gossip.Store, *consensusstore.Store, error) {
 	gdb, err := gossip.NewStore(producer, cfg.OperaStore)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to open gossip store: %w", err)
@@ -66,30 +67,30 @@ func getStores(producer kvdb.FlushableDBProducer, cfg Configs) (*gossip.Store, *
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to open lachesis database: %w", err)
 	}
-	cGetEpochDB := func(epoch idx.Epoch) kvdb.Store {
+	cGetEpochDB := func(epoch consensus.Epoch) kvdb.Store {
 		cEpochDb, err := producer.OpenDB(fmt.Sprintf("lachesis-%d", epoch))
 		if err != nil {
 			panic(fmt.Errorf("failed to open lachesis-%d database: %w", epoch, err))
 		}
 		return cEpochDb
 	}
-	cdb := abft.NewStore(cMainDb, cGetEpochDB, panics("Lachesis store"), cfg.LachesisStore)
+	cdb := consensusstore.NewStore(cMainDb, cGetEpochDB, panics("Lachesis store"), cfg.LachesisStore)
 	return gdb, cdb, nil
 }
 
-func rawMakeEngine(gdb *gossip.Store, cdb *abft.Store, cfg Configs) (*abft.Lachesis, *vecmt.Index, gossip.BlockProc, error) {
+func rawMakeEngine(gdb *gossip.Store, cdb *consensusstore.Store, cfg Configs) (*consensusengine.Lachesis, *vecmt.Index, gossip.BlockProc, error) {
 	blockProc := gossip.DefaultBlockProc()
 	// create consensus
 	vecClock := vecmt.NewIndex(panics("Vector clock"), cfg.VectorClock)
-	engine := abft.NewLachesis(cdb, &GossipStoreAdapter{gdb}, vecmt2dagidx.Wrap(vecClock), panics("Lachesis"), cfg.Lachesis)
+	engine := consensusengine.NewLachesis(cdb, &GossipStoreAdapter{gdb}, vecmt2dagidx.Wrap(vecClock), panics("Lachesis"), cfg.Lachesis)
 	return engine, vecClock, blockProc, nil
 }
 
 func makeEngine(chaindataDir string, cfg Configs) (
-	_ *abft.Lachesis,
+	_ *consensusengine.Lachesis,
 	_ *vecmt.Index,
 	_ *gossip.Store,
-	_ *abft.Store,
+	_ *consensusstore.Store,
 	_ gossip.BlockProc,
 	_ func() error,
 	err error,
@@ -129,7 +130,7 @@ func makeEngine(chaindataDir string, cfg Configs) (
 }
 
 // MakeEngine makes consensus engine from config.
-func MakeEngine(chaindataDir string, cfg Configs) (*abft.Lachesis, *vecmt.Index, *gossip.Store, *abft.Store, gossip.BlockProc, func() error, error) {
+func MakeEngine(chaindataDir string, cfg Configs) (*consensusengine.Lachesis, *vecmt.Index, *gossip.Store, *consensusstore.Store, gossip.BlockProc, func() error, error) {
 	if isEmpty(chaindataDir) || isInterrupted(chaindataDir) {
 		return nil, nil, nil, nil, gossip.BlockProc{}, nil, fmt.Errorf("database is empty or the genesis import interrupted")
 	}

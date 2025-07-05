@@ -32,7 +32,7 @@ import (
 	scc "github.com/0xsoniclabs/sonic/scc"
 	cert "github.com/0xsoniclabs/sonic/scc/cert"
 	result "github.com/0xsoniclabs/sonic/utils/result"
-	idx "github.com/0xsoniclabs/consensus/inter/idx"
+	consensus "github.com/0xsoniclabs/consensus/consensus"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -60,7 +60,7 @@ func (m *MockSccApiBackend) EXPECT() *MockSccApiBackendMockRecorder {
 }
 
 // EnumerateBlockCertificates mocks base method.
-func (m *MockSccApiBackend) EnumerateBlockCertificates(first idx.Block) iter.Seq[result.T[cert.BlockCertificate]] {
+func (m *MockSccApiBackend) EnumerateBlockCertificates(first consensus.BlockID) iter.Seq[result.T[cert.BlockCertificate]] {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "EnumerateBlockCertificates", first)
 	ret0, _ := ret[0].(iter.Seq[result.T[cert.BlockCertificate]])

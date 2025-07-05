@@ -19,7 +19,7 @@ package vecmt
 import (
 	"encoding/binary"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/consensus/vecengine"
 
 	"github.com/0xsoniclabs/sonic/inter"
@@ -40,7 +40,7 @@ type (
 )
 
 // NewHighestBefore creates new HighestBefore vector.
-func NewHighestBefore(size idx.Validator) *HighestBefore {
+func NewHighestBefore(size consensus.ValidatorIndex) *HighestBefore {
 	return &HighestBefore{
 		VSeq:  vecengine.NewHighestBeforeSeq(size),
 		VTime: NewHighestBeforeTime(size),
@@ -48,13 +48,13 @@ func NewHighestBefore(size idx.Validator) *HighestBefore {
 }
 
 // NewHighestBeforeTime creates new HighestBeforeTime vector.
-func NewHighestBeforeTime(size idx.Validator) *HighestBeforeTime {
+func NewHighestBeforeTime(size consensus.ValidatorIndex) *HighestBeforeTime {
 	b := make(HighestBeforeTime, size*8)
 	return &b
 }
 
 // Get i's position in the byte-encoded vector clock
-func (b HighestBeforeTime) Get(i idx.Validator) inter.Timestamp {
+func (b HighestBeforeTime) Get(i consensus.ValidatorIndex) inter.Timestamp {
 	for i >= b.Size() {
 		return 0
 	}
@@ -62,7 +62,7 @@ func (b HighestBeforeTime) Get(i idx.Validator) inter.Timestamp {
 }
 
 // Set i's position in the byte-encoded vector clock
-func (b *HighestBeforeTime) Set(i idx.Validator, time inter.Timestamp) {
+func (b *HighestBeforeTime) Set(i consensus.ValidatorIndex, time inter.Timestamp) {
 	for i >= b.Size() {
 		// append zeros if exceeds size
 		*b = append(*b, []byte{0, 0, 0, 0, 0, 0, 0, 0}...)
@@ -71,6 +71,6 @@ func (b *HighestBeforeTime) Set(i idx.Validator, time inter.Timestamp) {
 }
 
 // Size of the vector clock
-func (b HighestBeforeTime) Size() idx.Validator {
-	return idx.Validator(len(b) / 8)
+func (b HighestBeforeTime) Size() consensus.ValidatorIndex {
+	return consensus.ValidatorIndex(len(b) / 8)
 }

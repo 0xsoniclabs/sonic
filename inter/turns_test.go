@@ -19,7 +19,7 @@ package inter
 import (
 	"testing"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 )
 
 func TestIsValidTurnProgression_ExampleCasesAndResults(t *testing.T) {
@@ -204,9 +204,9 @@ func TestIsValidTurnProgression_EnumerationTests(t *testing.T) {
 	type S = ProposalSummary
 	const C = TurnTimeoutInFrames
 	for lastTurn := range Turn(10) {
-		for lastFrame := range idx.Frame(10) {
+		for lastFrame := range consensus.Frame(10) {
 			for nextTurn := range Turn(C * 10) {
-				for nextFrame := range idx.Frame(C * 10) {
+				for nextFrame := range consensus.Frame(C * 10) {
 					last := S{
 						Turn:  lastTurn,
 						Frame: lastFrame,
@@ -249,11 +249,11 @@ func FuzzIsValidTurnProgression(f *testing.F) {
 	f.Fuzz(func(t *testing.T, lastTurn, nextTurn, lastFrame, nextFrame uint32) {
 		last := ProposalSummary{
 			Turn:  Turn(lastTurn),
-			Frame: idx.Frame(lastFrame),
+			Frame: consensus.Frame(lastFrame),
 		}
 		next := ProposalSummary{
 			Turn:  Turn(nextTurn),
-			Frame: idx.Frame(nextFrame),
+			Frame: consensus.Frame(nextFrame),
 		}
 
 		want := isValidTurnProgressionForTests(last, next)

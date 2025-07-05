@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/bls"
 	"github.com/0xsoniclabs/sonic/scc/cert"
@@ -96,7 +96,7 @@ func TestLightClientState_Sync_UpdatesOnlyHeadWhen_SyncToCurrentPeriod(t *testin
 	s.period = 1
 
 	// setup block for period 1.
-	blockNumber := idx.Block(scc.BLOCKS_PER_PERIOD*1 + 1)
+	blockNumber := consensus.BlockID(scc.BLOCKS_PER_PERIOD*1 + 1)
 	blockCert := cert.NewCertificate(
 		cert.NewBlockStatement(0, blockNumber, common.Hash{0x1}, common.Hash{0x2}))
 
@@ -168,7 +168,7 @@ func TestLightClientState_Sync_IgnoresSameBlockOrPeriod(t *testing.T) {
 	expectQueryForBlockOfPeriod(prov, 0)
 
 	s := newState(scc.NewCommittee())
-	lastBlockSyncedTo := idx.Block(1)
+	lastBlockSyncedTo := consensus.BlockID(1)
 	s.headNumber = lastBlockSyncedTo
 
 	_, err := s.sync(prov)
@@ -187,7 +187,7 @@ func TestLightClientState_Sync_FailsWithOlderHead(t *testing.T) {
 	expectQueryForBlockOfPeriod(prov, 0)
 
 	s := newState(scc.NewCommittee())
-	lastBlockSyncedTo := idx.Block(3)
+	lastBlockSyncedTo := consensus.BlockID(3)
 	s.headNumber = lastBlockSyncedTo
 
 	_, err := s.sync(prov)
@@ -276,7 +276,7 @@ func TestLightClientState_Sync_UpdatesState(t *testing.T) {
 	prov := NewMockprovider(ctrl)
 
 	// setup block for period 1.
-	blockNumber := idx.Block(scc.BLOCKS_PER_PERIOD*1 + 1)
+	blockNumber := consensus.BlockID(scc.BLOCKS_PER_PERIOD*1 + 1)
 	blockCert := cert.NewCertificate(
 		cert.NewBlockStatement(0, blockNumber, common.Hash{0x1}, common.Hash{0x2}))
 
@@ -324,7 +324,7 @@ func TestLightClientState_Sync_UpdatesState(t *testing.T) {
 // /////////////////////////
 
 func expectQueryForBlockOfPeriod(prov *Mockprovider, period scc.Period) {
-	blockNumber := idx.Block(scc.BLOCKS_PER_PERIOD*period + 1)
+	blockNumber := consensus.BlockID(scc.BLOCKS_PER_PERIOD*period + 1)
 	blockCert := cert.NewCertificate(
 		cert.NewBlockStatement(0, blockNumber, common.Hash{}, common.Hash{}))
 

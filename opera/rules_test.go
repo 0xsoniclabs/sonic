@@ -21,7 +21,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/stretchr/testify/require"
 )
@@ -242,20 +242,20 @@ func TestCreateTransientEvmChainConfig_ContainsUpgradesBasedOnConstructionTimeBl
 			blockNumber := uint64(123)
 			upgradeHeight := UpgradeHeight{
 				Upgrades: upgrades,
-				Height:   idx.Block(blockNumber),
+				Height:   consensus.BlockID(blockNumber),
 			}
 			// transient chain config is statically configured independent of block height
 			// so we can use any block height for the test.
 			anyBlockHeigh := big.NewInt(0)
 
 			// test upgrades at the same height where the upgrade is enabled
-			chainConfigAfterUpdate := CreateTransientEvmChainConfig(chainID, []UpgradeHeight{upgradeHeight}, idx.Block(blockNumber))
+			chainConfigAfterUpdate := CreateTransientEvmChainConfig(chainID, []UpgradeHeight{upgradeHeight}, consensus.BlockID(blockNumber))
 			require.NotNil(chainConfigAfterUpdate, "chainConfig should not be nil")
 			require.True(chainConfigAfterUpdate.IsCancun(anyBlockHeigh, timestamp))
 			require.Equal(upgrades.Allegro, chainConfigAfterUpdate.IsPrague(anyBlockHeigh, timestamp), "Allegro upgrade should match")
 
 			// test upgrades at a height before the upgrade was enabled
-			chainConfigBeforeUpdate := CreateTransientEvmChainConfig(chainID, []UpgradeHeight{upgradeHeight}, idx.Block(blockNumber-1))
+			chainConfigBeforeUpdate := CreateTransientEvmChainConfig(chainID, []UpgradeHeight{upgradeHeight}, consensus.BlockID(blockNumber-1))
 			require.NotNil(chainConfigBeforeUpdate, "chainConfig should not be nil")
 			require.True(chainConfigBeforeUpdate.IsCancun(anyBlockHeigh, timestamp), "Before Allegro upgrade, Cancun should be true")
 			require.False(chainConfigBeforeUpdate.IsPrague(anyBlockHeigh, timestamp), "Before Allegro upgrade, Prague should be false")
@@ -279,7 +279,7 @@ func TestCreateTransientEvmChainConfig_RespectsBlockHeightOfUpgradeHeight(t *tes
 	for i, upgrade := range upgrades {
 		upgradeHeights = append(upgradeHeights, UpgradeHeight{
 			Upgrades: upgrade,
-			Height:   idx.Block(i),
+			Height:   consensus.BlockID(i),
 		})
 	}
 	anyBlockHeigh := big.NewInt(0)
@@ -293,7 +293,7 @@ func TestCreateTransientEvmChainConfig_RespectsBlockHeightOfUpgradeHeight(t *tes
 				chainConfig := CreateTransientEvmChainConfig(
 					12345,
 					testUpgradeHeights,
-					idx.Block(0),
+					consensus.BlockID(0),
 				)
 
 				require.True(chainConfig.IsCancun(anyBlockHeigh, 0), "Sonic upgrades should be Cancun")
@@ -306,7 +306,7 @@ func TestCreateTransientEvmChainConfig_RespectsBlockHeightOfUpgradeHeight(t *tes
 				chainConfig := CreateTransientEvmChainConfig(
 					12345,
 					testUpgradeHeights,
-					idx.Block(1),
+					consensus.BlockID(1),
 				)
 
 				require.True(chainConfig.IsCancun(anyBlockHeigh, 0), "Allegro upgrades should be Cancun")
@@ -319,7 +319,7 @@ func TestCreateTransientEvmChainConfig_RespectsBlockHeightOfUpgradeHeight(t *tes
 				chainConfig := CreateTransientEvmChainConfig(
 					12345,
 					testUpgradeHeights,
-					idx.Block(2),
+					consensus.BlockID(2),
 				)
 
 				require.True(chainConfig.IsCancun(anyBlockHeigh, 0), "Brio upgrades should be Cancun")

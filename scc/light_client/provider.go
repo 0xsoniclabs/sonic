@@ -20,7 +20,7 @@ import (
 	"math"
 
 	"github.com/0xsoniclabs/carmen/go/carmen"
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/ethereum/go-ethereum/common"
@@ -55,7 +55,7 @@ type provider interface {
 	//   - cert.BlockCertificate: The block certificates for the given block number
 	//     and the following blocks.
 	//   - error: Not nil if the provider failed to obtain the requested certificates.
-	getBlockCertificates(first idx.Block, maxResults uint64) ([]cert.BlockCertificate, error)
+	getBlockCertificates(first consensus.BlockID, maxResults uint64) ([]cert.BlockCertificate, error)
 
 	// GetAccountProof returns the account proof corresponding to the
 	// given address at the given height.
@@ -67,7 +67,7 @@ type provider interface {
 	// Returns:
 	// - WitnessProof: witness proof for the account proof.
 	// - error: Not nil if the provider failed to obtain the requested account proof.
-	getAccountProof(address common.Address, height idx.Block) (carmen.WitnessProof, error)
+	getAccountProof(address common.Address, height consensus.BlockID) (carmen.WitnessProof, error)
 
 	// close closes the Provider.
 	// Closing an already closed provider has no effect
@@ -75,4 +75,4 @@ type provider interface {
 }
 
 // LatestBlock is a constant used to indicate the latest block.
-const LatestBlock = idx.Block(math.MaxUint64)
+const LatestBlock = consensus.BlockID(math.MaxUint64)

@@ -17,7 +17,7 @@
 package inter
 
 import (
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 )
 
 // Turn is the turn number of a proposal. Turns are used to orchestrate the
@@ -86,5 +86,5 @@ type ProposalSummary struct {
 	// Turn is the turn number the proposal was made in.
 	Turn Turn
 	// Frame is the frame number the proposal was made in.
-	Frame idx.Frame
+	Frame consensus.Frame
 }

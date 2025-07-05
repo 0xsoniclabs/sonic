@@ -20,9 +20,7 @@ import (
 	"testing"
 
 	parentscheckbase "github.com/0xsoniclabs/consensus/eventcheck/parentscheck"
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/inter/pos"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/eventcheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/gaspowercheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/parentscheck"
@@ -83,11 +81,11 @@ func TestValidateEventPropertiesDependingOnParents(t *testing.T) {
 				Proposalcheck: proposalcheck.New(proposalCheckReader),
 			}
 
-			epoch := idx.Epoch(12)
+			epoch := consensus.Epoch(12)
 
-			creator := idx.ValidatorID(1)
-			validatorsBuilder := pos.ValidatorsBuilder{}
-			validatorsBuilder.Set(creator, pos.Weight(100))
+			creator := consensus.ValidatorID(1)
+			validatorsBuilder := consensus.ValidatorsBuilder{}
+			validatorsBuilder.Set(creator, consensus.Weight(100))
 			validators := validatorsBuilder.Build()
 
 			// Create a parent event.
@@ -104,7 +102,7 @@ func TestValidateEventPropertiesDependingOnParents(t *testing.T) {
 			builder.SetLamport(1)
 			builder.SetSeq(2)
 			builder.SetCreationTime(1)
-			builder.SetParents([]hash.Event{parent.ID()})
+			builder.SetParents([]consensus.EventHash{parent.ID()})
 
 			test.modify(&builder)
 

@@ -28,9 +28,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/inter/pos"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/eventcheck/proposalcheck"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/scheduler"
 	"github.com/0xsoniclabs/sonic/gossip/randao"
@@ -50,7 +48,7 @@ import (
 func TestSingleProposerProtocol_SilentValidators_ProtocolIsLive(t *testing.T) {
 	testNetworksWithDishonestNodes(t,
 		(*Node).EmitEventWithoutProposal,
-		func(t *testing.T, honestNodes NodeMask, events map[idx.ValidatorID][]inter.EventPayloadI) {
+		func(t *testing.T, honestNodes NodeMask, events map[consensus.ValidatorID][]inter.EventPayloadI) {
 			// Check that dishonest nodes did not propose anything.
 			for creator, eventList := range events {
 				if honestNodes.Contains(int(creator)) {
@@ -74,7 +72,7 @@ func TestSingleProposerProtocol_SilentValidators_ProtocolIsLive(t *testing.T) {
 func TestSingleProposerProtocol_FaultyValidators_ProtocolIsLive(t *testing.T) {
 	testNetworksWithDishonestNodes(t,
 		(*Node).EmitEventWithFaultyProposal,
-		func(t *testing.T, honestNodes NodeMask, events map[idx.ValidatorID][]inter.EventPayloadI) {
+		func(t *testing.T, honestNodes NodeMask, events map[consensus.ValidatorID][]inter.EventPayloadI) {
 			// Check that dishonest nodes proposed ridiculous blocks.
 			for creator, eventList := range events {
 				if honestNodes.Contains(int(creator)) {
@@ -82,7 +80,7 @@ func TestSingleProposerProtocol_FaultyValidators_ProtocolIsLive(t *testing.T) {
 				}
 				for _, event := range eventList {
 					if proposal := event.Payload().Proposal; proposal != nil {
-						require.GreaterOrEqual(t, proposal.Number, idx.Block(100_000))
+						require.GreaterOrEqual(t, proposal.Number, consensus.BlockID(100_000))
 					}
 				}
 			}
@@ -102,7 +100,7 @@ func TestSingleProposerProtocol_SilentOrFaultyValidators_ProtocolIsLive(t *testi
 			}
 			return node.EmitEventWithFaultyProposal()
 		},
-		func(t *testing.T, honestNodes NodeMask, events map[idx.ValidatorID][]inter.EventPayloadI) {
+		func(t *testing.T, honestNodes NodeMask, events map[consensus.ValidatorID][]inter.EventPayloadI) {
 			// Check that dishonest nodes proposed ridiculous blocks.
 			for creator, eventList := range events {
 				if honestNodes.Contains(int(creator)) {
@@ -110,7 +108,7 @@ func TestSingleProposerProtocol_SilentOrFaultyValidators_ProtocolIsLive(t *testi
 				}
 				for _, event := range eventList {
 					if proposal := event.Payload().Proposal; proposal != nil {
-						require.GreaterOrEqual(t, proposal.Number, idx.Block(100_000))
+						require.GreaterOrEqual(t, proposal.Number, consensus.BlockID(100_000))
 					}
 				}
 			}
@@ -121,7 +119,7 @@ func TestSingleProposerProtocol_SilentOrFaultyValidators_ProtocolIsLive(t *testi
 func testNetworksWithDishonestNodes(
 	t *testing.T,
 	getDishonestEvent func(*Node) (inter.EventPayloadI, error),
-	checkEvents func(*testing.T, NodeMask, map[idx.ValidatorID][]inter.EventPayloadI),
+	checkEvents func(*testing.T, NodeMask, map[consensus.ValidatorID][]inter.EventPayloadI),
 ) {
 	t.Parallel()
 	for numNodes := range 6 {
@@ -144,7 +142,7 @@ func testNetworksWithDishonestNodes(
 										t.Parallel()
 										events := testNetworkWithDishonestNodes(
 											t, numNodes,
-											idx.Frame(delay), honestNodes,
+											consensus.Frame(delay), honestNodes,
 											getDishonestEvent,
 										)
 										if checkEvents != nil {
@@ -164,10 +162,10 @@ func testNetworksWithDishonestNodes(
 func testNetworkWithDishonestNodes(
 	t *testing.T,
 	numNodes int,
-	confirmationDelay idx.Frame,
+	confirmationDelay consensus.Frame,
 	honestNodes NodeMask,
 	getDishonestEvent func(*Node) (inter.EventPayloadI, error),
-) map[idx.ValidatorID][]inter.EventPayloadI {
+) map[consensus.ValidatorID][]inter.EventPayloadI {
 	const NumBlocks = 50
 	maxRounds := NumBlocks * numNodes * int(confirmationDelay+1) * 10
 	require := require.New(t)
@@ -176,7 +174,7 @@ func testNetworkWithDishonestNodes(
 	rounds := 0
 
 	pending := []inter.EventPayloadI{}
-	events := map[idx.ValidatorID][]inter.EventPayloadI{}
+	events := map[consensus.ValidatorID][]inter.EventPayloadI{}
 	for network.GetNode(0).GetBlockHeight() < NumBlocks {
 		for i, sender := range network.Nodes() {
 
@@ -230,24 +228,24 @@ func testNetworkWithDishonestNodes(
 // tasks such as broadcasting events and checking events for validity.
 type Network struct {
 	t          *testing.T
-	validators *pos.Validators
+	validators *consensus.Validators
 	nodes      []*Node
 
-	payloads map[hash.Event]inter.Payload
+	payloads map[consensus.EventHash]inter.Payload
 	checker  *proposalcheck.Checker
 }
 
 // NewNetwork creates a new network with the given number of nodes.
 func NewNetwork(t *testing.T, numNodes int) *Network {
-	builder := pos.NewBuilder()
-	for id := range idx.ValidatorID(numNodes) {
+	builder := consensus.NewBuilder()
+	for id := range consensus.ValidatorID(numNodes) {
 		builder.Set(id, 1)
 	}
 	validators := builder.Build()
 	nodes := make([]*Node, numNodes)
 	for i := range nodes {
 		nodes[i] = &Node{
-			validator:  idx.ValidatorID(i),
+			validator:  consensus.ValidatorID(i),
 			validators: validators,
 		}
 	}
@@ -256,14 +254,14 @@ func NewNetwork(t *testing.T, numNodes int) *Network {
 		t:          t,
 		validators: validators,
 		nodes:      nodes,
-		payloads:   make(map[hash.Event]inter.Payload),
+		payloads:   make(map[consensus.EventHash]inter.Payload),
 	}
 
 	ctrl := gomock.NewController(t)
 	reader := proposalcheck.NewMockReader(ctrl)
 	reader.EXPECT().GetEpochValidators().Return(res.validators).AnyTimes()
 	reader.EXPECT().GetEventPayload(gomock.Any()).DoAndReturn(
-		func(eventHash hash.Event) inter.Payload {
+		func(eventHash consensus.EventHash) inter.Payload {
 			return res.payloads[eventHash]
 		},
 	).AnyTimes()
@@ -294,12 +292,12 @@ func (n *Network) BroadCastEvent(event inter.EventPayloadI) {
 // also tracks its own local state, including the latest events seen from other
 // nodes and the current block height.
 type Node struct {
-	validator  idx.ValidatorID
-	validators *pos.Validators
+	validator  consensus.ValidatorID
+	validators *consensus.Validators
 	lastBlock  uint64
 
-	tips     map[idx.ValidatorID]inter.EventPayloadI
-	payloads map[hash.Event]inter.Payload
+	tips     map[consensus.ValidatorID]inter.EventPayloadI
+	payloads map[consensus.EventHash]inter.Payload
 	tracker  inter.ProposalTracker
 }
 
@@ -340,7 +338,7 @@ func (n *Node) EmitEventWithFaultyProposal() (inter.EventPayloadI, error) {
 				LastSeenProposalFrame: event.Frame(),
 			},
 			Proposal: &inter.Proposal{
-				Number: idx.Block(100_000), // < invalid proposal for the next block
+				Number: consensus.BlockID(100_000), // < invalid proposal for the next block
 				// Other fields are not important for the test.
 			},
 		})
@@ -373,7 +371,7 @@ func (n *Node) createBaseEvent() *inter.MutableEventPayload {
 	} else {
 		// Create an event with parents.
 		event.SetSeq(selfParent.Seq() + 1)
-		parents := []hash.Event{selfParent.ID()}
+		parents := []consensus.EventHash{selfParent.ID()}
 		for id, tip := range n.tips {
 			if id != n.validator {
 				parents = append(parents, tip.ID())
@@ -403,7 +401,7 @@ func (n *Node) emitEventInternal(
 	// Create the payload for the event.
 	creator := n.validator
 	if !includeProposalIfPossible {
-		creator = idx.ValidatorID(math.MaxUint32) // < invalid creator
+		creator = consensus.ValidatorID(math.MaxUint32) // < invalid creator
 	}
 	payload, err := createPayload(
 		&fakeWorld{node: n},
@@ -426,9 +424,9 @@ func (n *Node) emitEventInternal(
 	return event.Build(), nil
 }
 
-func (n *Node) getNextFrameNumber() idx.Frame {
-	res := idx.Frame(1)
-	seen := map[idx.Frame]int{}
+func (n *Node) getNextFrameNumber() consensus.Frame {
+	res := consensus.Frame(1)
+	seen := map[consensus.Frame]int{}
 	for _, tip := range n.tips {
 		seen[tip.Frame()]++
 		if tip.Frame() > res {
@@ -447,13 +445,13 @@ func (n *Node) getNextFrameNumber() idx.Frame {
 func (n *Node) ReceiveEvent(event inter.EventPayloadI) {
 	// Keep track of known events of other validators.
 	if n.tips == nil {
-		n.tips = make(map[idx.ValidatorID]inter.EventPayloadI)
+		n.tips = make(map[consensus.ValidatorID]inter.EventPayloadI)
 	}
 	n.tips[event.Creator()] = event
 
 	// Keep track of payloads.
 	if n.payloads == nil {
-		n.payloads = make(map[hash.Event]inter.Payload)
+		n.payloads = make(map[consensus.EventHash]inter.Payload)
 	}
 	n.payloads[event.ID()] = *event.Payload()
 
@@ -480,7 +478,7 @@ type fakeWorld struct {
 	node *Node
 }
 
-func (w *fakeWorld) GetEventPayload(id hash.Event) inter.Payload {
+func (w *fakeWorld) GetEventPayload(id consensus.EventHash) inter.Payload {
 	return w.node.payloads[id]
 }
 

@@ -19,9 +19,7 @@ package proposalcheck
 import (
 	"testing"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/inter/pos"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
@@ -66,7 +64,7 @@ func TestProposalCheck_Validate_ValidGenesisEventWithoutProposalPasses(t *testin
 	event := NewMockEventPassingVersion3PropertyTests(ctrl)
 
 	// The event to be tested is a genesis event - there are no parents.
-	event.EXPECT().Parents().Return([]hash.Event{})
+	event.EXPECT().Parents().Return([]consensus.EventHash{})
 	event.EXPECT().Payload().Return(&inter.Payload{
 		ProposalSyncState: inter.ProposalSyncState{
 			LastSeenProposalTurn:  0,
@@ -83,14 +81,14 @@ func TestProposalCheck_Validate_ValidGenesisEventWithProposalPasses(t *testing.T
 	reader := NewMockReader(ctrl)
 	event := NewMockEventPassingVersion3PropertyTests(ctrl)
 
-	validator := idx.ValidatorID(1)
-	validators := pos.EqualWeightValidators([]idx.ValidatorID{validator}, 1)
+	validator := consensus.ValidatorID(1)
+	validators := consensus.EqualWeightValidators([]consensus.ValidatorID{validator}, 1)
 	reader.EXPECT().GetEpochValidators().Return(validators)
 
 	event.EXPECT().Creator().Return(validator)
-	event.EXPECT().Epoch().Return(idx.Epoch(4))
-	event.EXPECT().Frame().Return(idx.Frame(1))
-	event.EXPECT().Parents().Return([]hash.Event{})
+	event.EXPECT().Epoch().Return(consensus.Epoch(4))
+	event.EXPECT().Frame().Return(consensus.Frame(1))
+	event.EXPECT().Parents().Return([]consensus.EventHash{})
 	event.EXPECT().Payload().Return(&inter.Payload{
 		ProposalSyncState: inter.ProposalSyncState{
 			LastSeenProposalTurn:  1,
@@ -108,8 +106,8 @@ func TestProposalCheck_Validate_ValidEventWithoutProposalPasses(t *testing.T) {
 	reader := NewMockReader(ctrl)
 	event := NewMockEventPassingVersion3PropertyTests(ctrl)
 
-	parent1 := hash.Event{1}
-	parent2 := hash.Event{2}
+	parent1 := consensus.EventHash{1}
+	parent2 := consensus.EventHash{2}
 
 	syncState1 := inter.ProposalSyncState{
 		LastSeenProposalTurn:  12,
@@ -128,7 +126,7 @@ func TestProposalCheck_Validate_ValidEventWithoutProposalPasses(t *testing.T) {
 		ProposalSyncState: syncState2,
 	})
 
-	event.EXPECT().Parents().Return([]hash.Event{parent1, parent2})
+	event.EXPECT().Parents().Return([]consensus.EventHash{parent1, parent2})
 	event.EXPECT().Payload().Return(&inter.Payload{
 		ProposalSyncState: joinedState,
 	}).AnyTimes()
@@ -142,12 +140,12 @@ func TestProposalCheck_Validate_ValidEventWithProposalPasses(t *testing.T) {
 	reader := NewMockReader(ctrl)
 	event := NewMockEventPassingVersion3PropertyTests(ctrl)
 
-	validator := idx.ValidatorID(1)
-	validators := pos.EqualWeightValidators([]idx.ValidatorID{validator}, 1)
+	validator := consensus.ValidatorID(1)
+	validators := consensus.EqualWeightValidators([]consensus.ValidatorID{validator}, 1)
 	reader.EXPECT().GetEpochValidators().Return(validators)
 
-	parent1 := hash.Event{1}
-	parent2 := hash.Event{2}
+	parent1 := consensus.EventHash{1}
+	parent2 := consensus.EventHash{2}
 
 	syncState1 := inter.ProposalSyncState{
 		LastSeenProposalTurn:  12,
@@ -167,9 +165,9 @@ func TestProposalCheck_Validate_ValidEventWithProposalPasses(t *testing.T) {
 	})
 
 	event.EXPECT().Creator().Return(validator)
-	event.EXPECT().Epoch().Return(idx.Epoch(4))
-	event.EXPECT().Frame().Return(idx.Frame(16))
-	event.EXPECT().Parents().Return([]hash.Event{parent1, parent2})
+	event.EXPECT().Epoch().Return(consensus.Epoch(4))
+	event.EXPECT().Frame().Return(consensus.Frame(16))
+	event.EXPECT().Parents().Return([]consensus.EventHash{parent1, parent2})
 	event.EXPECT().Payload().Return(&inter.Payload{
 		ProposalSyncState: inter.ProposalSyncState{
 			LastSeenProposalTurn:  joinedState.LastSeenProposalTurn + 1,
@@ -254,7 +252,7 @@ func TestChecker_Validate_DetectsInvalidEvent(t *testing.T) {
 					},
 					Proposal: &inter.Proposal{},
 				}).AnyTimes()
-				event.EXPECT().Creator().Return(idx.ValidatorID(12))
+				event.EXPECT().Creator().Return(consensus.ValidatorID(12))
 			},
 			expected: ErrProposalMadeByProposerWithoutPermission,
 		},
@@ -266,8 +264,8 @@ func TestChecker_Validate_DetectsInvalidEvent(t *testing.T) {
 			reader := NewMockReader(ctrl)
 			event := inter.NewMockEventPayloadI(ctrl)
 
-			creator := idx.ValidatorID(1)
-			validators := pos.EqualWeightValidators([]idx.ValidatorID{creator}, 1)
+			creator := consensus.ValidatorID(1)
+			validators := consensus.EqualWeightValidators([]consensus.ValidatorID{creator}, 1)
 			reader.EXPECT().GetEpochValidators().Return(validators).AnyTimes()
 
 			test.corrupt(event)
@@ -279,9 +277,9 @@ func TestChecker_Validate_DetectsInvalidEvent(t *testing.T) {
 			event.EXPECT().AnyMisbehaviourProofs().AnyTimes()
 
 			event.EXPECT().Creator().Return(creator).AnyTimes()
-			event.EXPECT().Epoch().Return(idx.Epoch(0)).AnyTimes()
-			event.EXPECT().Frame().Return(idx.Frame(1)).AnyTimes()
-			event.EXPECT().Parents().Return([]hash.Event{}).AnyTimes()
+			event.EXPECT().Epoch().Return(consensus.Epoch(0)).AnyTimes()
+			event.EXPECT().Frame().Return(consensus.Frame(1)).AnyTimes()
+			event.EXPECT().Parents().Return([]consensus.EventHash{}).AnyTimes()
 			event.EXPECT().Payload().Return(&inter.Payload{
 				ProposalSyncState: inter.ProposalSyncState{
 					LastSeenProposalTurn:  0,
@@ -301,14 +299,14 @@ func TestProposalCheck_Validate_ReportsInvalidValidatorSet(t *testing.T) {
 	event := NewMockEventPassingVersion3PropertyTests(ctrl)
 
 	// An empty validator set is invalid.
-	validator := idx.ValidatorID(1)
-	validators := pos.EqualWeightValidators([]idx.ValidatorID{}, 1)
+	validator := consensus.ValidatorID(1)
+	validators := consensus.EqualWeightValidators([]consensus.ValidatorID{}, 1)
 	reader.EXPECT().GetEpochValidators().Return(validators)
 
 	event.EXPECT().Creator().Return(validator)
-	event.EXPECT().Epoch().Return(idx.Epoch(4))
-	event.EXPECT().Frame().Return(idx.Frame(1))
-	event.EXPECT().Parents().Return([]hash.Event{})
+	event.EXPECT().Epoch().Return(consensus.Epoch(4))
+	event.EXPECT().Frame().Return(consensus.Frame(1))
+	event.EXPECT().Parents().Return([]consensus.EventHash{})
 	event.EXPECT().Payload().Return(&inter.Payload{
 		ProposalSyncState: inter.ProposalSyncState{
 			LastSeenProposalTurn:  1,

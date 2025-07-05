@@ -21,21 +21,20 @@ import (
 	"math"
 	"testing"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/inter/pos"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/stretchr/testify/require"
 )
 
 func TestGetProposer_IsDeterministic(t *testing.T) {
 	require := require.New(t)
 
-	builder := pos.ValidatorsBuilder{}
+	builder := consensus.ValidatorsBuilder{}
 	builder.Set(1, 10)
 	builder.Set(2, 20)
 	builder.Set(3, 30)
 	validators := builder.Build()
 
-	for epoch := range idx.Epoch(5) {
+	for epoch := range consensus.Epoch(5) {
 		for turn := range Turn(5) {
 			a, err := GetProposer(validators, epoch, turn)
 			require.NoError(err)
@@ -49,19 +48,19 @@ func TestGetProposer_IsDeterministic(t *testing.T) {
 func TestGetProposer_EqualStakes_SelectionIsDeterministic(t *testing.T) {
 	require := require.New(t)
 
-	builder := pos.ValidatorsBuilder{}
+	builder := consensus.ValidatorsBuilder{}
 	builder.Set(1, 10)
 	builder.Set(2, 10)
 	validators1 := builder.Build()
 
-	builder = pos.ValidatorsBuilder{}
+	builder = consensus.ValidatorsBuilder{}
 	builder.Set(2, 10)
 	builder.Set(1, 10)
 	validators2 := builder.Build()
 
 	const N = 50
-	want := []idx.ValidatorID{}
-	for epoch := range idx.Epoch(N) {
+	want := []consensus.ValidatorID{}
+	for epoch := range consensus.Epoch(N) {
 		for turn := range Turn(N) {
 			got, err := GetProposer(validators1, epoch, turn)
 			require.NoError(err)
@@ -71,7 +70,7 @@ func TestGetProposer_EqualStakes_SelectionIsDeterministic(t *testing.T) {
 
 	for range 10 {
 		counter := 0
-		for epoch := range idx.Epoch(N) {
+		for epoch := range consensus.Epoch(N) {
 			for turn := range Turn(N) {
 				got, err := GetProposer(validators2, epoch, turn)
 				require.NoError(err)
@@ -85,18 +84,18 @@ func TestGetProposer_EqualStakes_SelectionIsDeterministic(t *testing.T) {
 func TestGetProposer_ZeroStake_IsIgnored(t *testing.T) {
 	require := require.New(t)
 
-	builder := pos.ValidatorsBuilder{}
+	builder := consensus.ValidatorsBuilder{}
 	builder.Set(1, 0)
 	builder.Set(2, 1)
 	validators := builder.Build()
 
 	require.Len(validators.Idxs(), 1, "validator with zero stake should be ignored")
 
-	for epoch := range idx.Epoch(5) {
+	for epoch := range consensus.Epoch(5) {
 		for turn := range Turn(50) {
 			a, err := GetProposer(validators, epoch, turn)
 			require.NoError(err)
-			require.Equal(idx.ValidatorID(2), a, "unexpected proposer")
+			require.Equal(consensus.ValidatorID(2), a, "unexpected proposer")
 		}
 	}
 }
@@ -104,7 +103,7 @@ func TestGetProposer_ZeroStake_IsIgnored(t *testing.T) {
 func TestGetProposer_EmptyValidatorSet_Fails(t *testing.T) {
 	require := require.New(t)
 
-	builder := pos.ValidatorsBuilder{}
+	builder := consensus.ValidatorsBuilder{}
 	validators := builder.Build()
 
 	_, err := GetProposer(validators, 0, 0)
@@ -115,8 +114,8 @@ func TestGetProposer_ProposersAreSelectedProportionalToStake(t *testing.T) {
 	t.Parallel()
 
 	validators := map[string][]struct {
-		id     idx.ValidatorID
-		weight pos.Weight
+		id     consensus.ValidatorID
+		weight consensus.Weight
 	}{
 		"single": {
 			{id: 1, weight: 10},
@@ -157,7 +156,7 @@ func TestGetProposer_ProposersAreSelectedProportionalToStake(t *testing.T) {
 	for name, vals := range validators {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			builder := pos.ValidatorsBuilder{}
+			builder := consensus.ValidatorsBuilder{}
 			for _, v := range vals {
 				builder.Set(v.id, v.weight)
 			}
@@ -167,7 +166,7 @@ func TestGetProposer_ProposersAreSelectedProportionalToStake(t *testing.T) {
 				t.Run(fmt.Sprintf("byTurns/samples=%v", size.samples), func(t *testing.T) {
 					checkDistribution(
 						t, validators, size.samples, size.tolerance,
-						func(i int) (idx.ValidatorID, error) {
+						func(i int) (consensus.ValidatorID, error) {
 							return GetProposer(validators, 0, Turn(i))
 						},
 					)
@@ -176,8 +175,8 @@ func TestGetProposer_ProposersAreSelectedProportionalToStake(t *testing.T) {
 				t.Run(fmt.Sprintf("byEpochs/samples=%v", size.samples), func(t *testing.T) {
 					checkDistribution(
 						t, validators, size.samples, size.tolerance,
-						func(i int) (idx.ValidatorID, error) {
-							return GetProposer(validators, idx.Epoch(i), 0)
+						func(i int) (consensus.ValidatorID, error) {
+							return GetProposer(validators, consensus.Epoch(i), 0)
 						},
 					)
 				})
@@ -186,8 +185,8 @@ func TestGetProposer_ProposersAreSelectedProportionalToStake(t *testing.T) {
 					sqrt := int(math.Pow(float64(size.samples), 0.5))
 					checkDistribution(
 						t, validators, size.samples, size.tolerance,
-						func(i int) (idx.ValidatorID, error) {
-							epoch := idx.Epoch(i / sqrt)
+						func(i int) (consensus.ValidatorID, error) {
+							epoch := consensus.Epoch(i / sqrt)
 							turn := Turn(i % sqrt)
 							return GetProposer(validators, epoch, turn)
 						},
@@ -200,15 +199,15 @@ func TestGetProposer_ProposersAreSelectedProportionalToStake(t *testing.T) {
 
 func checkDistribution(
 	t *testing.T,
-	validators *pos.Validators,
+	validators *consensus.Validators,
 	samples int,
 	tolerance float64,
-	get func(i int) (idx.ValidatorID, error),
+	get func(i int) (consensus.ValidatorID, error),
 ) {
 	t.Helper()
 	require := require.New(t)
 	t.Parallel()
-	counters := map[idx.ValidatorID]int{}
+	counters := map[consensus.ValidatorID]int{}
 	for i := range samples {
 		proposer, err := get(i)
 		require.NoError(err)

@@ -22,18 +22,17 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/inter/pos"
+	"github.com/0xsoniclabs/consensus/consensus"
 )
 
 // GetProposer returns the designated proposer for a given turn.
 // The proposer is determined through deterministic sampling of validators
 // proportional to the validator's stake.
 func GetProposer(
-	validators *pos.Validators,
-	epoch idx.Epoch,
+	validators *consensus.Validators,
+	epoch consensus.Epoch,
 	turn Turn,
-) (idx.ValidatorID, error) {
+) (consensus.ValidatorID, error) {
 
 	// The selection of the proposer for a given round is conducted as follows:
 	//  1. f := sha256(epoch || turn) / 2^256, (where || is the concatenation operator)

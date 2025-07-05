@@ -17,7 +17,7 @@
 package verwatcher
 
 import (
-	"github.com/0xsoniclabs/consensus/common/bigendian"
+	"github.com/0xsoniclabs/consensus/utils/byteutils"
 )
 
 const (
@@ -28,7 +28,7 @@ const (
 // SetNetworkVersion stores network version.
 func (s *Store) SetNetworkVersion(v uint64) {
 	s.cache.networkVersion.Store(v)
-	err := s.mainDB.Put([]byte(nvKey), bigendian.Uint64ToBytes(v))
+	err := s.mainDB.Put([]byte(nvKey), byteutils.Uint64ToBigEndian(v))
 	if err != nil {
 		s.Log.Crit("Failed to put key", "err", err)
 	}
@@ -45,7 +45,7 @@ func (s *Store) GetNetworkVersion() uint64 {
 	}
 	v := uint64(0)
 	if valBytes != nil {
-		v = bigendian.BytesToUint64(valBytes)
+		v = byteutils.BigEndianToUint64(valBytes)
 	}
 	s.cache.networkVersion.Store(v)
 	return v
@@ -54,7 +54,7 @@ func (s *Store) GetNetworkVersion() uint64 {
 // SetMissedVersion stores non-supported network upgrade.
 func (s *Store) SetMissedVersion(v uint64) {
 	s.cache.missedVersion.Store(v)
-	err := s.mainDB.Put([]byte(mvKey), bigendian.Uint64ToBytes(v))
+	err := s.mainDB.Put([]byte(mvKey), byteutils.Uint64ToBigEndian(v))
 	if err != nil {
 		s.Log.Crit("Failed to put key", "err", err)
 	}
@@ -71,7 +71,7 @@ func (s *Store) GetMissedVersion() uint64 {
 	}
 	v := uint64(0)
 	if valBytes != nil {
-		v = bigendian.BytesToUint64(valBytes)
+		v = byteutils.BigEndianToUint64(valBytes)
 	}
 	s.cache.missedVersion.Store(v)
 	return v

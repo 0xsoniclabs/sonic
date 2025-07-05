@@ -26,7 +26,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -80,16 +80,16 @@ func testConsensusCallback(t *testing.T, upgrades opera.Upgrades) {
 	// save start balances
 	balances := make([]*uint256.Int, validatorsNum)
 	for i := range balances {
-		balances[i] = env.State().GetBalance(env.Address(idx.ValidatorID(i + 1)))
+		balances[i] = env.State().GetBalance(env.Address(consensus.ValidatorID(i + 1)))
 	}
 
 	for n := uint64(0); n < rounds; n++ {
 		// transfers
 		txs := make([]*types.Transaction, validatorsNum)
-		for i := idx.Validator(0); i < validatorsNum; i++ {
+		for i := consensus.ValidatorIndex(0); i < validatorsNum; i++ {
 			from := i % validatorsNum
 			to := 0
-			txs[i] = env.Transfer(idx.ValidatorID(from+1), idx.ValidatorID(to+1), utils.ToFtm(100))
+			txs[i] = env.Transfer(consensus.ValidatorID(from+1), consensus.ValidatorID(to+1), utils.ToFtm(100))
 		}
 		tm := sameEpoch
 		if n%10 == 0 {
@@ -112,7 +112,7 @@ func testConsensusCallback(t *testing.T, upgrades opera.Upgrades) {
 	for i := range balances {
 		require.Equal(
 			balances[i],
-			env.State().GetBalance(env.Address(idx.ValidatorID(i+1))),
+			env.State().GetBalance(env.Address(consensus.ValidatorID(i+1))),
 			fmt.Sprintf("account%d", i),
 		)
 	}
@@ -125,7 +125,7 @@ func TestExtractProposalForNextBlock_NoEvents_ReturnsNoProposal(t *testing.T) {
 	}
 	result, proposer, time := extractProposalForNextBlock(last, nil, nil)
 	require.Nil(t, result)
-	require.Equal(t, idx.ValidatorID(0), proposer)
+	require.Equal(t, consensus.ValidatorID(0), proposer)
 	require.Equal(t, inter.Timestamp(0), time)
 }
 
@@ -145,14 +145,14 @@ func TestExtractProposalForNextBlock_OneMatchingProposal_ReturnsTheGivenProposal
 	}
 
 	event.EXPECT().Payload().Return(&inter.Payload{Proposal: &proposal})
-	event.EXPECT().Creator().Return(idx.ValidatorID(33)).AnyTimes()
+	event.EXPECT().Creator().Return(consensus.ValidatorID(33)).AnyTimes()
 	event.EXPECT().MedianTime().Return(inter.Timestamp(1234)).AnyTimes()
 	events := []inter.EventPayloadI{event}
 
 	result, proposer, time := extractProposalForNextBlock(last, events, nil)
 	require.NotNil(t, result)
 	require.Equal(t, proposal, *result)
-	require.Equal(t, idx.ValidatorID(33), proposer)
+	require.Equal(t, consensus.ValidatorID(33), proposer)
 	require.Equal(t, inter.Timestamp(1234), time)
 }
 
@@ -168,28 +168,28 @@ func TestExtractProposalForNextBlock_WrongProposals_ReturnsNoProposal(t *testing
 	}{
 		"too high block number": {
 			proposal: inter.Proposal{
-				Number:     idx.Block(last.Number.Int64() + 2), // +1 is expected
+				Number:     consensus.BlockID(last.Number.Int64() + 2), // +1 is expected
 				ParentHash: last.Hash,
 			},
 			loggerMsg: "wrong block number",
 		},
 		"block number matching current block": {
 			proposal: inter.Proposal{
-				Number:     idx.Block(last.Number.Int64()),
+				Number:     consensus.BlockID(last.Number.Int64()),
 				ParentHash: last.Hash,
 			},
 			loggerMsg: "wrong block number",
 		},
 		"too low block number": {
 			proposal: inter.Proposal{
-				Number:     idx.Block(last.Number.Int64() - 1),
+				Number:     consensus.BlockID(last.Number.Int64() - 1),
 				ParentHash: last.Hash,
 			},
 			loggerMsg: "wrong block number",
 		},
 		"wrong parent hash": {
 			proposal: inter.Proposal{
-				Number:     idx.Block(last.Number.Int64() + 1),
+				Number:     consensus.BlockID(last.Number.Int64() + 1),
 				ParentHash: common.Hash{4, 5, 6},
 			},
 			loggerMsg: "wrong parent hash",
@@ -204,7 +204,7 @@ func TestExtractProposalForNextBlock_WrongProposals_ReturnsNoProposal(t *testing
 
 			payload := &inter.Payload{Proposal: &test.proposal}
 			event.EXPECT().Payload().Return(payload)
-			creator := idx.ValidatorID(1)
+			creator := consensus.ValidatorID(1)
 			event.EXPECT().Creator().Return(creator).AnyTimes()
 
 			events := []inter.EventPayloadI{event}
@@ -233,17 +233,17 @@ func TestExtractProposalForNextBlock_MultipleValidProposals_EmitsWarning(t *test
 	}
 
 	proposal := &inter.Proposal{
-		Number:     idx.Block(last.Number.Int64() + 1),
+		Number:     consensus.BlockID(last.Number.Int64() + 1),
 		ParentHash: last.Hash,
 	}
 
 	payload1 := &inter.Payload{Proposal: proposal}
 	payload2 := &inter.Payload{Proposal: proposal}
 	event1.EXPECT().Payload().Return(payload1)
-	event1.EXPECT().Creator().Return(idx.ValidatorID(1))
+	event1.EXPECT().Creator().Return(consensus.ValidatorID(1))
 	event1.EXPECT().MedianTime().Return(inter.Timestamp(1))
 	event2.EXPECT().Payload().Return(payload2)
-	event2.EXPECT().Creator().Return(idx.ValidatorID(2))
+	event2.EXPECT().Creator().Return(consensus.ValidatorID(2))
 	event2.EXPECT().MedianTime().Return(inter.Timestamp(2))
 
 	events := []inter.EventPayloadI{event1, event2}
@@ -256,7 +256,7 @@ func TestExtractProposalForNextBlock_MultipleValidProposals_EmitsWarning(t *test
 	result, proposer, time := extractProposalForNextBlock(last, events, logger)
 	require.NotNil(t, result)
 	require.Equal(t, *proposal, *result)
-	require.Equal(t, idx.ValidatorID(1), proposer)
+	require.Equal(t, consensus.ValidatorID(1), proposer)
 	require.Equal(t, inter.Timestamp(1), time)
 }
 
@@ -317,13 +317,13 @@ func TestExtractProposalForNextBlock_MultipleValidProposals_UsesTurnAndHashAsTie
 	})
 
 	event1.EXPECT().Payload().Return(payloads[0]).AnyTimes()
-	event1.EXPECT().Creator().Return(idx.ValidatorID(1)).AnyTimes()
+	event1.EXPECT().Creator().Return(consensus.ValidatorID(1)).AnyTimes()
 	event1.EXPECT().MedianTime().Return(inter.Timestamp(1)).AnyTimes()
 	event2.EXPECT().Payload().Return(payloads[1]).AnyTimes()
-	event2.EXPECT().Creator().Return(idx.ValidatorID(2)).AnyTimes()
+	event2.EXPECT().Creator().Return(consensus.ValidatorID(2)).AnyTimes()
 	event2.EXPECT().MedianTime().Return(inter.Timestamp(2)).AnyTimes()
 	event3.EXPECT().Payload().Return(payloads[2]).AnyTimes()
-	event3.EXPECT().Creator().Return(idx.ValidatorID(3)).AnyTimes()
+	event3.EXPECT().Creator().Return(consensus.ValidatorID(3)).AnyTimes()
 	event3.EXPECT().MedianTime().Return(inter.Timestamp(3)).AnyTimes()
 	events := []inter.EventPayloadI{event1, event2, event3}
 
@@ -336,7 +336,7 @@ func TestExtractProposalForNextBlock_MultipleValidProposals_UsesTurnAndHashAsTie
 		require.Equal(t, payloads[0].Proposal, proposal,
 			"should pick the best proposal based on turn and hash",
 		)
-		require.Equal(t, idx.ValidatorID(1), proposer)
+		require.Equal(t, consensus.ValidatorID(1), proposer)
 		require.Equal(t, inter.Timestamp(1), time)
 	}
 }
@@ -353,9 +353,9 @@ func TestResolveRandaoMix_ComputesRandaoMixFromReveal(t *testing.T) {
 	reveal, expectedMix, err := randao.NewRandaoMixerAdapter(signer).MixRandao(lastRandao)
 	require.NoError(t, err)
 
-	proposer := idx.ValidatorID(1)
+	proposer := consensus.ValidatorID(1)
 	dagRandao := common.Hash{}
-	validatorKeys := map[idx.ValidatorID]validatorpk.PubKey{
+	validatorKeys := map[consensus.ValidatorID]validatorpk.PubKey{
 		proposer: publicKey,
 	}
 
@@ -375,14 +375,14 @@ func TestResolveRandaoMix_FallsBackToDAGRandaoWhenVerificationFails(t *testing.T
 	reveal, _, err := randao.NewRandaoMixerAdapter(signer).MixRandao(lastRandao)
 	require.NoError(t, err)
 
-	proposer := idx.ValidatorID(1)
+	proposer := consensus.ValidatorID(1)
 	dagRandao := common.Hash{1, 2, 3}
 
 	logger := logger.NewMockLogger(ctrl)
 	logger.EXPECT().Warn("Failed to verify randao reveal, using DAG randomization", "proposer validator", proposer)
 
 	_, wrongKey := generateKeyPair(t)
-	validatorKeys := map[idx.ValidatorID]validatorpk.PubKey{
+	validatorKeys := map[consensus.ValidatorID]validatorpk.PubKey{
 		proposer: wrongKey,
 	}
 

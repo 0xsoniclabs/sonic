@@ -19,7 +19,7 @@ package scheduler
 import (
 	"math"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -54,7 +54,7 @@ type processor interface {
 // test-running transactions.
 type Chain interface {
 	// DummyChain needs to be implemented in order to resolve past block hashes.
-	// TODO: follow-up task - simplify this to a GetBlockHash(idx.Block) method.
+	// TODO: follow-up task - simplify this to a GetBlockHash(consensus.BlockID) method.
 	evmcore.DummyChain
 
 	// GetCurrentNetworkRules returns the current network rules for the EVM.
@@ -62,7 +62,7 @@ type Chain interface {
 
 	// GetEvmChainConfig returns the chain configuration for the EVM at the
 	// given block height
-	GetEvmChainConfig(blockHeight idx.Block) *params.ChainConfig
+	GetEvmChainConfig(blockHeight consensus.BlockID) *params.ChainConfig
 
 	// StateDB returns a context for running transactions on the head state of
 	// the chain. A non-committable state-DB instance is sufficient.
@@ -81,7 +81,7 @@ func (p *evmProcessorFactory) beginBlock(
 	block *evmcore.EvmBlock,
 ) processor {
 	// TODO: follow-up task - align this with c_block_callbacks.go
-	chainCfg := p.chain.GetEvmChainConfig(idx.Block(block.Header().Number.Uint64()))
+	chainCfg := p.chain.GetEvmChainConfig(consensus.BlockID(block.Header().Number.Uint64()))
 	vmConfig := opera.GetVmConfig(p.chain.GetCurrentNetworkRules())
 	state := p.chain.StateDB()
 

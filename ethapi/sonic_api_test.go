@@ -23,7 +23,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/0xsoniclabs/sonic/utils/result"
@@ -179,9 +179,9 @@ func TestSonicApi_GetBlockCertificate_CanProduceBlockCertificates(t *testing.T) 
 		results = append(results, result.New(c))
 	}
 
-	backend.EXPECT().EnumerateBlockCertificates(idx.Block(1)).Return(slices.Values(results))
+	backend.EXPECT().EnumerateBlockCertificates(consensus.BlockID(1)).Return(slices.Values(results))
 
-	first := NewIndex(idx.Block(1))
+	first := NewIndex(consensus.BlockID(1))
 	res, err := api.GetBlockCertificates(context.Background(), first, 10)
 	require.NoError(t, err)
 	require.Equal(t, len(certificates), len(res))
@@ -199,7 +199,7 @@ func TestSonicApi_GetBlockCertificates_CanReturnLatestCertificate(t *testing.T) 
 	certificate := cert.NewCertificate(cert.BlockStatement{Number: 12})
 	backend.EXPECT().GetLatestBlockCertificate().Return(certificate, nil)
 
-	latest := NewLatest[idx.Block]()
+	latest := NewLatest[consensus.BlockID]()
 	res, err := api.GetBlockCertificates(context.Background(), latest, 1)
 	require.NoError(t, err)
 	require.Len(t, res, 1)
@@ -214,7 +214,7 @@ func TestSonicApi_GetBlockCertificates_ReportsErrorIfLatestCouldNotBeFound(t *te
 	injected := fmt.Errorf("injected error")
 	backend.EXPECT().GetLatestBlockCertificate().Return(cert.BlockCertificate{}, injected)
 
-	latest := NewLatest[idx.Block]()
+	latest := NewLatest[consensus.BlockID]()
 	_, err := api.GetBlockCertificates(context.Background(), latest, 1)
 	require.ErrorIs(t, err, injected)
 }

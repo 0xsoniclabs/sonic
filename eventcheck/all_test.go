@@ -21,8 +21,7 @@ import (
 	"testing"
 
 	parentscheckbase "github.com/0xsoniclabs/consensus/eventcheck/parentscheck"
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/inter/pos"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/eventcheck/basiccheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/epochcheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/gaspowercheck"
@@ -107,11 +106,11 @@ func TestCheckers_Validate_ValidEventPassesValidation(t *testing.T) {
 				heavyCheckReader,
 			)
 
-			epoch := idx.Epoch(12)
+			epoch := consensus.Epoch(12)
 
-			creator := idx.ValidatorID(1)
-			builder := pos.ValidatorsBuilder{}
-			builder.Set(creator, pos.Weight(100))
+			creator := consensus.ValidatorID(1)
+			builder := consensus.ValidatorsBuilder{}
+			builder.Set(creator, consensus.Weight(100))
 			validators := builder.Build()
 
 			// Prepare a private and public key for signing the event.
@@ -166,7 +165,7 @@ func TestCheckers_Validate_ValidEventPassesValidation(t *testing.T) {
 			}
 			gasPowerCheckReader.EXPECT().GetValidationContext().Return(validationContext).AnyTimes()
 
-			keys := map[idx.ValidatorID]validatorpk.PubKey{
+			keys := map[consensus.ValidatorID]validatorpk.PubKey{
 				creator: {
 					Raw:  crypto.FromECDSAPub(&privateKey.PublicKey),
 					Type: validatorpk.Types.Secp256k1,

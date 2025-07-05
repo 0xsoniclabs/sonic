@@ -19,9 +19,7 @@ package sealmodule
 import (
 	"math/big"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
-	"github.com/0xsoniclabs/consensus/inter/pos"
-	"github.com/0xsoniclabs/consensus/lachesis"
+	"github.com/0xsoniclabs/consensus/consensus"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
@@ -62,7 +60,7 @@ func (s *OperaEpochsSealer) Update(bs iblockproc.BlockState, es iblockproc.Epoch
 func (s *OperaEpochsSealer) SealEpoch() (iblockproc.BlockState, iblockproc.EpochState) {
 	// Select new validators
 	oldValidators := s.es.Validators
-	builder := pos.NewBigBuilder()
+	builder := consensus.NewBigBuilder()
 	for v, profile := range s.bs.NextValidatorProfiles {
 		builder.Set(v, profile.Weight)
 	}
@@ -73,7 +71,7 @@ func (s *OperaEpochsSealer) SealEpoch() (iblockproc.BlockState, iblockproc.Epoch
 	// Build new []ValidatorEpochState and []ValidatorBlockState
 	newValidatorEpochStates := make([]iblockproc.ValidatorEpochState, newValidators.Len())
 	newValidatorBlockStates := make([]iblockproc.ValidatorBlockState, newValidators.Len())
-	for newValIdx := idx.Validator(0); newValIdx < newValidators.Len(); newValIdx++ {
+	for newValIdx := consensus.ValidatorIndex(0); newValIdx < newValidators.Len(); newValIdx++ {
 		// default values
 		newValidatorBlockStates[newValIdx] = iblockproc.ValidatorBlockState{
 			Originated: new(big.Int),
@@ -107,7 +105,7 @@ func (s *OperaEpochsSealer) SealEpoch() (iblockproc.BlockState, iblockproc.Epoch
 	s.es.EpochStateRoot = s.bs.FinalizedStateRoot
 
 	s.bs.EpochGas = 0
-	s.bs.EpochCheaters = lachesis.Cheaters{}
+	s.bs.EpochCheaters = consensus.Cheaters{}
 	s.bs.CheatersWritten = 0
 	newEpoch := s.es.Epoch + 1
 	s.es.Epoch = newEpoch

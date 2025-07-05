@@ -30,11 +30,11 @@ import (
 	"github.com/0xsoniclabs/carmen/go/common/amount"
 	"github.com/0xsoniclabs/carmen/go/common/immutable"
 	"github.com/0xsoniclabs/carmen/go/common/witness"
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/consensus"
+	gethconsensus "github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/eth/tracers"
 	"github.com/holiman/uint256"
@@ -275,7 +275,7 @@ func TestEstimateGas(t *testing.T) {
 	blkNr := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
 
 	any := gomock.Any()
-	mockBackend.EXPECT().GetNetworkRules(any, idx.Block(1)).Return(&opera.Rules{}, nil).AnyTimes()
+	mockBackend.EXPECT().GetNetworkRules(any, consensus.BlockID(1)).Return(&opera.Rules{}, nil).AnyTimes()
 	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, blkNr).Return(mockState, mockHeader, nil).AnyTimes()
 	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000))
 	mockBackend.EXPECT().MaxGasLimit().Return(uint64(10000000))
@@ -1151,7 +1151,7 @@ type FakeChainContext struct {
 	chainConfig *params.ChainConfig
 }
 
-func (fcc *FakeChainContext) Engine() consensus.Engine {
+func (fcc *FakeChainContext) Engine() gethconsensus.Engine {
 	// currently not used in tests, if needed: engine will have to be faked
 	return nil
 }

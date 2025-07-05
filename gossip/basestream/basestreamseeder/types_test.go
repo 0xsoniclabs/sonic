@@ -6,8 +6,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/dag"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/gossip/basestream"
 )
 
@@ -28,12 +27,12 @@ func (l testLocator) Inc() basestream.Locator {
 }
 
 type testPayload struct {
-	IDs    hash.Events
-	Events dag.Events
+	IDs    consensus.EventHashes
+	Events consensus.Events
 	Size   uint64
 }
 
-func (p testPayload) AddEvent(id hash.Event, event dag.Event) {
+func (p testPayload) AddEvent(id consensus.EventHash, event consensus.Event) {
 	p.IDs = append(p.IDs, id)          // nolint:staticcheck
 	p.Events = append(p.Events, event) // nolint:staticcheck
 	p.Size += uint64(event.Size())     // nolint:staticcheck

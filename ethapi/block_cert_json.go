@@ -17,7 +17,7 @@
 package ethapi
 
 import (
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/bls"
 	"github.com/0xsoniclabs/sonic/scc/cert"
@@ -45,7 +45,7 @@ func (b BlockCertificate) ToCertificate() cert.BlockCertificate {
 	newCert := cert.NewCertificateWithSignature(
 		cert.NewBlockStatement(
 			b.ChainId,
-			idx.Block(b.Number),
+			consensus.BlockID(b.Number),
 			b.Hash,
 			b.StateRoot),
 		aggregatedSignature)

@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/stretchr/testify/require"
@@ -32,7 +32,7 @@ func TestGetVmConfig_RetrievesVmConfigFromRules(t *testing.T) {
 	backend := NewMockBackend(ctrl)
 
 	ctx := t.Context()
-	height := idx.Block(12)
+	height := consensus.BlockID(12)
 
 	rules := opera.Rules{}
 	backend.EXPECT().GetNetworkRules(ctx, height).Return(&rules, nil).AnyTimes()

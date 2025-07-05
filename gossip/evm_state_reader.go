@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
@@ -57,7 +57,7 @@ func (r *EvmStateReader) MaxGasLimit() uint64 {
 
 func (r *EvmStateReader) Config() *params.ChainConfig {
 	blockNumber := r.CurrentBlock().Number
-	return r.store.GetEvmChainConfig(idx.Block(blockNumber.Uint64()))
+	return r.store.GetEvmChainConfig(consensus.BlockID(blockNumber.Uint64()))
 }
 
 func (r *EvmStateReader) CurrentBlock() *evmcore.EvmBlock {
@@ -80,8 +80,8 @@ func (r *EvmStateReader) LastHeaderWithArchiveState() (*evmcore.EvmHeader, error
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest archive block; %v", err)
 	}
-	if !empty && idx.Block(latestArchiveBlock) < latestBlock {
-		latestBlock = idx.Block(latestArchiveBlock)
+	if !empty && consensus.BlockID(latestArchiveBlock) < latestBlock {
+		latestBlock = consensus.BlockID(latestArchiveBlock)
 	}
 
 	return r.getBlock(common.Hash{}, latestBlock, false).Header(), nil
@@ -92,14 +92,14 @@ func (r *EvmStateReader) GetHeaderByNumber(n uint64) *evmcore.EvmHeader {
 }
 
 func (r *EvmStateReader) GetHeader(h common.Hash, n uint64) *evmcore.EvmHeader {
-	return r.getBlock(h, idx.Block(n), false).Header()
+	return r.getBlock(h, consensus.BlockID(n), false).Header()
 }
 
 func (r *EvmStateReader) GetBlock(h common.Hash, n uint64) *evmcore.EvmBlock {
-	return r.getBlock(h, idx.Block(n), true)
+	return r.getBlock(h, consensus.BlockID(n), true)
 }
 
-func (r *EvmStateReader) getBlock(h common.Hash, n idx.Block, readTxs bool) *evmcore.EvmBlock {
+func (r *EvmStateReader) getBlock(h common.Hash, n consensus.BlockID, readTxs bool) *evmcore.EvmBlock {
 	block := r.store.GetBlock(n)
 	if block == nil {
 		return nil

@@ -33,8 +33,7 @@ import (
 	scheduler "github.com/0xsoniclabs/sonic/gossip/emitter/scheduler"
 	inter "github.com/0xsoniclabs/sonic/inter"
 	opera "github.com/0xsoniclabs/sonic/opera"
-	hash "github.com/0xsoniclabs/consensus/hash"
-	idx "github.com/0xsoniclabs/consensus/inter/idx"
+	consensus "github.com/0xsoniclabs/consensus/consensus"
 	txpool "github.com/ethereum/go-ethereum/core/txpool"
 	types "github.com/ethereum/go-ethereum/core/types"
 	uint256 "github.com/holiman/uint256"
@@ -65,7 +64,7 @@ func (m *MockproposalTracker) EXPECT() *MockproposalTrackerMockRecorder {
 }
 
 // IsPending mocks base method.
-func (m *MockproposalTracker) IsPending(frame idx.Frame, block idx.Block) bool {
+func (m *MockproposalTracker) IsPending(frame consensus.Frame, block consensus.BlockID) bool {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "IsPending", frame, block)
 	ret0, _ := ret[0].(bool)
@@ -102,7 +101,7 @@ func (m *MockworldReader) EXPECT() *MockworldReaderMockRecorder {
 }
 
 // GetEventPayload mocks base method.
-func (m *MockworldReader) GetEventPayload(arg0 hash.Event) inter.Payload {
+func (m *MockworldReader) GetEventPayload(arg0 consensus.EventHash) inter.Payload {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetEventPayload", arg0)
 	ret0, _ := ret[0].(inter.Payload)

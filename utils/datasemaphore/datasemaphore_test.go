@@ -5,12 +5,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xsoniclabs/consensus/inter/dag"
+	"github.com/0xsoniclabs/consensus/consensus"
 )
 
 func TestNew(t *testing.T) {
-	maxProcessing := dag.Metric{Num: 10, Size: 1000}
-	warningFunc := func(received, processing, releasing dag.Metric) {}
+	maxProcessing := consensus.Metric{Num: 10, Size: 1000}
+	warningFunc := func(received, processing, releasing consensus.Metric) {}
 
 	semaphore := New(maxProcessing, warningFunc)
 
@@ -28,11 +28,11 @@ func TestNew(t *testing.T) {
 }
 
 func TestTryAcquire(t *testing.T) {
-	maxProcessing := dag.Metric{Num: 10, Size: 1000}
+	maxProcessing := consensus.Metric{Num: 10, Size: 1000}
 	semaphore := New(maxProcessing, nil)
 
 	// Test successful acquisition
-	weight := dag.Metric{Num: 5, Size: 500}
+	weight := consensus.Metric{Num: 5, Size: 500}
 	if !semaphore.TryAcquire(weight) {
 		t.Errorf("Expected to acquire semaphore with weight %v", weight)
 	}
@@ -43,7 +43,7 @@ func TestTryAcquire(t *testing.T) {
 	}
 
 	// Test successful second acquisition
-	weight2 := dag.Metric{Num: 3, Size: 300}
+	weight2 := consensus.Metric{Num: 3, Size: 300}
 	if !semaphore.TryAcquire(weight2) {
 		t.Errorf("Expected to acquire semaphore with weight %v", weight2)
 	}
@@ -54,13 +54,13 @@ func TestTryAcquire(t *testing.T) {
 	}
 
 	// Test failed acquisition due to exceeding Num
-	weightExceedNum := dag.Metric{Num: 3, Size: 100}
+	weightExceedNum := consensus.Metric{Num: 3, Size: 100}
 	if semaphore.TryAcquire(weightExceedNum) {
 		t.Errorf("Expected acquisition to fail with weight %v", weightExceedNum)
 	}
 
 	// Test failed acquisition due to exceeding Size
-	weightExceedSize := dag.Metric{Num: 1, Size: 201}
+	weightExceedSize := consensus.Metric{Num: 1, Size: 201}
 	if semaphore.TryAcquire(weightExceedSize) {
 		t.Errorf("Expected acquisition to fail with weight %v", weightExceedSize)
 	}
@@ -68,28 +68,28 @@ func TestTryAcquire(t *testing.T) {
 
 func TestAcquire(t *testing.T) {
 	// Test 1: Immediate acquisition (no waiting)
-	maxProcessing := dag.Metric{Num: 10, Size: 1000}
+	maxProcessing := consensus.Metric{Num: 10, Size: 1000}
 	semaphore := New(maxProcessing, nil)
 
-	weight := dag.Metric{Num: 5, Size: 500}
+	weight := consensus.Metric{Num: 5, Size: 500}
 	if !semaphore.Acquire(weight, 100*time.Millisecond) {
 		t.Errorf("Expected immediate acquisition to succeed")
 	}
 
 	// Test 2: Acquisition that should fail due to timeout
-	weightExceed := dag.Metric{Num: 6, Size: 600}
+	weightExceed := consensus.Metric{Num: 6, Size: 600}
 	if semaphore.Acquire(weightExceed, 10*time.Millisecond) {
 		t.Errorf("Expected acquisition to fail due to timeout")
 	}
 
 	// Test 3: Immediate failure due to weight > maxProcessing
-	weightTooLarge := dag.Metric{Num: 11, Size: 500}
+	weightTooLarge := consensus.Metric{Num: 11, Size: 500}
 	if semaphore.Acquire(weightTooLarge, 10*time.Millisecond) {
 		t.Errorf("Expected immediate failure for weight > maxProcessing")
 	}
 
 	// Test 4: Immediate failure due to weight.Size > maxProcessing.Size
-	weightTooLargeSize := dag.Metric{Num: 5, Size: 1001}
+	weightTooLargeSize := consensus.Metric{Num: 5, Size: 1001}
 	if semaphore.Acquire(weightTooLargeSize, 10*time.Millisecond) {
 		t.Errorf("Expected immediate failure for weight.Size > maxProcessing.Size")
 	}
@@ -97,7 +97,7 @@ func TestAcquire(t *testing.T) {
 
 // Acquire with a separate goroutine for release
 func TestAcquireWithRelease(t *testing.T) {
-	maxProcessing := dag.Metric{Num: 10, Size: 1000}
+	maxProcessing := consensus.Metric{Num: 10, Size: 1000}
 	semaphore := New(maxProcessing, nil)
 
 	// First, acquire all resources
@@ -112,7 +112,7 @@ func TestAcquireWithRelease(t *testing.T) {
 		done <- true
 	}()
 
-	smallWeight := dag.Metric{Num: 1, Size: 100}
+	smallWeight := consensus.Metric{Num: 1, Size: 100}
 	result := semaphore.Acquire(smallWeight, 200*time.Millisecond)
 
 	// Wait for the release goroutine to complete
@@ -130,13 +130,13 @@ func TestAcquireWithRelease(t *testing.T) {
 
 func TestRelease(t *testing.T) {
 	var warningCalled bool
-	warningFunc := func(received, processing, releasing dag.Metric) {
+	warningFunc := func(received, processing, releasing consensus.Metric) {
 		warningCalled = true
 	}
 
-	maxProcessing := dag.Metric{Num: 10, Size: 1000}
+	maxProcessing := consensus.Metric{Num: 10, Size: 1000}
 	semaphore := New(maxProcessing, warningFunc)
-	weight := dag.Metric{Num: 5, Size: 500}
+	weight := consensus.Metric{Num: 5, Size: 500}
 	semaphore.TryAcquire(weight)
 
 	// Test normal release
@@ -148,7 +148,7 @@ func TestRelease(t *testing.T) {
 
 	// Test over-release (should trigger warning)
 	semaphore.TryAcquire(weight)
-	overWeight := dag.Metric{Num: 6, Size: 500}
+	overWeight := consensus.Metric{Num: 6, Size: 500}
 	semaphore.Release(overWeight)
 
 	if !warningCalled {
@@ -168,22 +168,22 @@ func TestRelease(t *testing.T) {
 }
 
 func TestTerminate(t *testing.T) {
-	maxProcessing := dag.Metric{Num: 10, Size: 1000}
+	maxProcessing := consensus.Metric{Num: 10, Size: 1000}
 	semaphore := New(maxProcessing, nil)
 
 	semaphore.Terminate()
 
-	weight := dag.Metric{Num: 1, Size: 1}
+	weight := consensus.Metric{Num: 1, Size: 1}
 	if semaphore.TryAcquire(weight) {
 		t.Error("Acquisition should fail after termination")
 	}
 }
 
 func TestTerminateWithWaiting(t *testing.T) {
-	maxProcessing := dag.Metric{Num: 10, Size: 1000}
+	maxProcessing := consensus.Metric{Num: 10, Size: 1000}
 	semaphore := New(maxProcessing, nil)
 
-	semaphore.TryAcquire(dag.Metric{Num: 8, Size: 800})
+	semaphore.TryAcquire(consensus.Metric{Num: 8, Size: 800})
 
 	// Set up a channel to signal completion
 	done := make(chan bool, 1)
@@ -195,7 +195,7 @@ func TestTerminateWithWaiting(t *testing.T) {
 		}()
 
 		// This should block until terminated
-		largeWeight := dag.Metric{Num: 5, Size: 500}
+		largeWeight := consensus.Metric{Num: 5, Size: 500}
 		result := semaphore.Acquire(largeWeight, 500*time.Millisecond)
 		if result {
 			t.Error("Expected acquisition to fail after terminate")
@@ -218,7 +218,7 @@ func TestTerminateWithWaiting(t *testing.T) {
 }
 
 func TestAvailable(t *testing.T) {
-	maxProcessing := dag.Metric{Num: 10, Size: 1000}
+	maxProcessing := consensus.Metric{Num: 10, Size: 1000}
 	semaphore := New(maxProcessing, nil)
 
 	// Test initial available resources
@@ -228,7 +228,7 @@ func TestAvailable(t *testing.T) {
 	}
 
 	// Test available after acquisition
-	weight := dag.Metric{Num: 4, Size: 400}
+	weight := consensus.Metric{Num: 4, Size: 400}
 	semaphore.TryAcquire(weight)
 
 	available = semaphore.Available()
@@ -238,7 +238,7 @@ func TestAvailable(t *testing.T) {
 }
 
 func TestConcurrentAcquireRelease(t *testing.T) {
-	maxProcessing := dag.Metric{Num: 10, Size: 1000}
+	maxProcessing := consensus.Metric{Num: 10, Size: 1000}
 	semaphore := New(maxProcessing, nil)
 
 	const numGoroutines = 5
@@ -252,7 +252,7 @@ func TestConcurrentAcquireRelease(t *testing.T) {
 			defer wg.Done()
 
 			for j := 0; j < iterations; j++ {
-				weight := dag.Metric{Num: 1, Size: 100}
+				weight := consensus.Metric{Num: 1, Size: 100}
 				if semaphore.TryAcquire(weight) {
 					// Brief work simulation
 					time.Sleep(1 * time.Millisecond)
@@ -286,18 +286,18 @@ func TestConcurrentAcquireRelease(t *testing.T) {
 }
 
 func TestAcquireWithWaiting(t *testing.T) {
-	maxProcessing := dag.Metric{Num: 10, Size: 1000}
+	maxProcessing := consensus.Metric{Num: 10, Size: 1000}
 	semaphore := New(maxProcessing, nil)
 
 	// Acquire most resources
-	semaphore.TryAcquire(dag.Metric{Num: 8, Size: 800})
+	semaphore.TryAcquire(consensus.Metric{Num: 8, Size: 800})
 	// Set up a channel to signal completion
 	done := make(chan bool, 1)
 	acquireSucceeded := false
 
 	go func() {
 		// This should initially block, then succeed
-		weight := dag.Metric{Num: 3, Size: 300}
+		weight := consensus.Metric{Num: 3, Size: 300}
 		acquireSucceeded = semaphore.Acquire(weight, 500*time.Millisecond)
 		if acquireSucceeded {
 			semaphore.Release(weight)
@@ -309,7 +309,7 @@ func TestAcquireWithWaiting(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	// Release resources to allow waiting goroutine to proceed
-	semaphore.Release(dag.Metric{Num: 2, Size: 200})
+	semaphore.Release(consensus.Metric{Num: 2, Size: 200})
 
 	// Wait for goroutine completion with timeout
 	select {
@@ -324,7 +324,7 @@ func TestAcquireWithWaiting(t *testing.T) {
 	}
 
 	// Release remaining resources
-	semaphore.Release(dag.Metric{Num: 6, Size: 600})
+	semaphore.Release(consensus.Metric{Num: 6, Size: 600})
 
 	// Check final state
 	processing := semaphore.Processing()

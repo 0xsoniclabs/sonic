@@ -20,8 +20,7 @@ import (
 	"fmt"
 
 	"github.com/0xsoniclabs/carmen/go/common"
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/pos"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/inter"
 )
 
@@ -62,12 +61,12 @@ type Reader interface {
 	// GetEpochValidators returns the validators for the epoch in which the
 	// event was created. This is used to check whether the proposer is allowed
 	// to make a proposal in the event.
-	GetEpochValidators() *pos.Validators
+	GetEpochValidators() *consensus.Validators
 
 	// GetEventPayload returns the payload of the event with the given hash.
 	// This is used to obtain the payload of the parent events of the event to
 	// be checked.
-	GetEventPayload(hash.Event) inter.Payload
+	GetEventPayload(consensus.EventHash) inter.Payload
 }
 
 // New creates a new Checker validating the content of an event's proposal

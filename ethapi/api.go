@@ -32,7 +32,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/gasprice/gaspricelimits"
 	bip39 "github.com/tyler-smith/go-bip39"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/inter/state"
@@ -136,8 +136,8 @@ func (s *PublicEthereumAPI) FeeHistory(ctx context.Context, blockCount geth_math
 		return nil, err
 	}
 	oldest := last
-	if oldest > idx.Block(blockCount) {
-		oldest -= idx.Block(blockCount - 1)
+	if oldest > consensus.BlockID(blockCount) {
+		oldest -= consensus.BlockID(blockCount - 1)
 	} else {
 		oldest = 0
 	}
@@ -1054,7 +1054,7 @@ func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash 
 	if err != nil {
 		return nil, err
 	}
-	vmConfig, err := GetVmConfig(ctx, b, idx.Block(header.Number.Uint64()))
+	vmConfig, err := GetVmConfig(ctx, b, consensus.BlockID(header.Number.Uint64()))
 	if err != nil {
 		return nil, err
 	}
@@ -1508,7 +1508,7 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 		to = crypto.CreateAddress(args.from(), uint64(*args.Nonce))
 	}
 	// Retrieve the precompiles since they don't need to be added to the access list
-	chainConfig := b.ChainConfig(idx.Block(header.Number.Uint64()))
+	chainConfig := b.ChainConfig(consensus.BlockID(header.Number.Uint64()))
 	precompiles := vm.ActivePrecompiles(chainConfig.Rules(header.Number, false, uint64(header.Time.Unix())))
 
 	// addressesToExclude contains sender, receiver and precompiles
@@ -1548,7 +1548,7 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 
 		// Apply the transaction with the access list tracer
 		tracer := logger.NewAccessListTracer(accessList, addressesToExclude)
-		config, err := GetVmConfig(ctx, b, idx.Block(header.Number.Uint64()))
+		config, err := GetVmConfig(ctx, b, consensus.BlockID(header.Number.Uint64()))
 		if err != nil {
 			return nil, 0, nil, err
 		}
@@ -1716,7 +1716,7 @@ func (s *PublicTransactionPoolAPI) formatTxReceipt(header *evmcore.EvmHeader, tx
 	}
 
 	// Derive the sender.
-	signer := gsignercache.Wrap(types.MakeSigner(s.b.ChainConfig(idx.Block(header.Number.Uint64())), header.Number, uint64(header.Time.Unix())))
+	signer := gsignercache.Wrap(types.MakeSigner(s.b.ChainConfig(consensus.BlockID(header.Number.Uint64())), header.Number, uint64(header.Time.Unix())))
 	from, _ := internaltx.Sender(signer, tx)
 
 	fields := map[string]interface{}{
@@ -1845,7 +1845,7 @@ func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction) (c
 	if err := b.SendTx(ctx, tx); err != nil {
 		return common.Hash{}, err
 	} // Print a log with full tx details for manual investigations and interventions
-	chainConfig := b.ChainConfig(idx.Block(b.CurrentBlock().Number.Uint64()))
+	chainConfig := b.ChainConfig(consensus.BlockID(b.CurrentBlock().Number.Uint64()))
 	signer := gsignercache.Wrap(types.MakeSigner(chainConfig, b.CurrentBlock().Number, uint64(b.CurrentBlock().Time.Unix())))
 	from, err := types.Sender(signer, tx)
 	if err != nil {
@@ -2194,7 +2194,7 @@ func (api *PublicDebugAPI) traceTx(
 		config = &tracers.TraceConfig{}
 	}
 
-	chainConfig := api.b.ChainConfig(idx.Block(blockHeader.Number.Uint64()))
+	chainConfig := api.b.ChainConfig(consensus.BlockID(blockHeader.Number.Uint64()))
 
 	// Default tracer is the struct logger
 	if config.Tracer == nil {
@@ -2220,7 +2220,7 @@ func (api *PublicDebugAPI) traceTx(
 		}
 	}
 
-	evmconfig, err := GetVmConfig(ctx, api.b, idx.Block(blockHeader.Number.Uint64()))
+	evmconfig, err := GetVmConfig(ctx, api.b, consensus.BlockID(blockHeader.Number.Uint64()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get vm config: %w", err)
 	}
@@ -2329,7 +2329,7 @@ func (api *PublicDebugAPI) traceBlock(ctx context.Context, block *evmcore.EvmBlo
 	defer statedb.Release()
 
 	var (
-		chainConfig   = api.b.ChainConfig(idx.Block(block.Header().Number.Uint64()))
+		chainConfig   = api.b.ChainConfig(consensus.BlockID(block.Header().Number.Uint64()))
 		txs           = block.Transactions
 		signer        = gsignercache.Wrap(types.MakeSigner(chainConfig, block.Number, uint64(block.Time.Unix())))
 		results       = make([]*txTraceResult, len(txs))
@@ -2385,7 +2385,7 @@ func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex in
 	}
 
 	// Use the block's VM config for replaying transactions with possible no base fee
-	cfg, err := GetVmConfig(ctx, b, idx.Block(block.NumberU64()))
+	cfg, err := GetVmConfig(ctx, b, consensus.BlockID(block.NumberU64()))
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get vm config: %w", err)
 	}
@@ -2402,7 +2402,7 @@ func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex in
 	}
 
 	// Recompute transactions up to the target index.
-	chainConfig := b.ChainConfig(idx.Block(block.NumberU64()))
+	chainConfig := b.ChainConfig(consensus.BlockID(block.NumberU64()))
 	signer := gsignercache.Wrap(types.MakeSigner(chainConfig, block.Number, uint64(block.Time.Unix())))
 	for idx, tx := range block.Transactions {
 		// Assemble the transaction call message and return if the requested offset

@@ -26,7 +26,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -73,7 +73,7 @@ type blockData struct {
 	TransactionHashes []common.Hash
 
 	// Fields required for linking the block internally to a lachesis epoch.
-	Epoch idx.Epoch
+	Epoch consensus.Epoch
 
 	// The duration of this block, being the difference between the predecessor
 	// block's timestamp and this block's timestamp, in nanoseconds.
@@ -251,7 +251,7 @@ func (b *BlockBuilder) WithPrevRandao(prevRandao common.Hash) *BlockBuilder {
 	return b
 }
 
-func (b *BlockBuilder) WithEpoch(epoch idx.Epoch) *BlockBuilder {
+func (b *BlockBuilder) WithEpoch(epoch consensus.Epoch) *BlockBuilder {
 	b.block.Epoch = epoch
 	return b
 }

@@ -23,8 +23,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/0xsoniclabs/consensus/hash"
-	"github.com/0xsoniclabs/consensus/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -42,12 +41,12 @@ import (
 
 // PeerProgress is synchronization status of a peer
 type PeerProgress struct {
-	CurrentEpoch     idx.Epoch
-	CurrentBlock     idx.Block
-	CurrentBlockHash hash.Event
+	CurrentEpoch     consensus.Epoch
+	CurrentBlock     consensus.BlockID
+	CurrentBlockHash consensus.EventHash
 	CurrentBlockTime inter.Timestamp
-	HighestBlock     idx.Block
-	HighestEpoch     idx.Epoch
+	HighestBlock     consensus.BlockID
+	HighestEpoch     consensus.Epoch
 }
 
 // Backend interface provides the common API services (that are provided by
@@ -71,7 +70,7 @@ type Backend interface {
 	HeaderByHash(ctx context.Context, hash common.Hash) (*evmcore.EvmHeader, error)
 	BlockByNumber(ctx context.Context, number rpc.BlockNumber) (*evmcore.EvmBlock, error)
 	StateAndHeaderByNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (state.StateDB, *evmcore.EvmHeader, error)
-	ResolveRpcBlockNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (idx.Block, error)
+	ResolveRpcBlockNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (consensus.BlockID, error)
 	BlockByHash(ctx context.Context, hash common.Hash) (*evmcore.EvmBlock, error)
 	GetReceiptsByNumber(ctx context.Context, number rpc.BlockNumber) (types.Receipts, error)
 	GetEVM(ctx context.Context, state vm.StateDB, header *evmcore.EvmHeader, vmConfig *vm.Config, blockContext *vm.BlockContext) (*vm.EVM, func() error, error)
@@ -89,24 +88,24 @@ type Backend interface {
 	TxPoolContentFrom(addr common.Address) (types.Transactions, types.Transactions)
 	SubscribeNewTxsNotify(chan<- evmcore.NewTxsNotify) notify.Subscription
 
-	ChainConfig(blockHeight idx.Block) *params.ChainConfig
+	ChainConfig(blockHeight consensus.BlockID) *params.ChainConfig
 	ChainID() *big.Int
 	CurrentBlock() *evmcore.EvmBlock
 
-	GetNetworkRules(ctx context.Context, blockHeight idx.Block) (*opera.Rules, error)
+	GetNetworkRules(ctx context.Context, blockHeight consensus.BlockID) (*opera.Rules, error)
 
 	// Lachesis DAG API
 	GetEventPayload(ctx context.Context, shortEventID string) (*inter.EventPayload, error)
 	GetEvent(ctx context.Context, shortEventID string) (*inter.Event, error)
-	GetHeads(ctx context.Context, epoch rpc.BlockNumber) (hash.Events, error)
-	CurrentEpoch(ctx context.Context) idx.Epoch
+	GetHeads(ctx context.Context, epoch rpc.BlockNumber) (consensus.EventHashes, error)
+	CurrentEpoch(ctx context.Context) consensus.Epoch
 	SealedEpochTiming(ctx context.Context) (start inter.Timestamp, end inter.Timestamp)
 
 	// Lachesis aBFT API
 	GetEpochBlockState(ctx context.Context, epoch rpc.BlockNumber) (*iblockproc.BlockState, *iblockproc.EpochState, error)
-	GetDowntime(ctx context.Context, vid idx.ValidatorID) (idx.Block, inter.Timestamp, error)
-	GetUptime(ctx context.Context, vid idx.ValidatorID) (*big.Int, error)
-	GetOriginatedFee(ctx context.Context, vid idx.ValidatorID) (*big.Int, error)
+	GetDowntime(ctx context.Context, vid consensus.ValidatorID) (consensus.BlockID, inter.Timestamp, error)
+	GetUptime(ctx context.Context, vid consensus.ValidatorID) (*big.Int, error)
+	GetOriginatedFee(ctx context.Context, vid consensus.ValidatorID) (*big.Int, error)
 
 	SccApiBackend
 }
@@ -172,7 +171,7 @@ func GetAPIs(apiBackend Backend) []rpc.API {
 func GetVmConfig(
 	ctx context.Context,
 	backend Backend,
-	blockHeight idx.Block,
+	blockHeight consensus.BlockID,
 ) (vm.Config, error) {
 	rules, err := backend.GetNetworkRules(ctx, blockHeight)
 	if err != nil {
