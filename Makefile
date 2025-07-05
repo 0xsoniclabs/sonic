@@ -1,6 +1,8 @@
 .PHONY: all
 all: sonicd sonictool
 
+# build
+
 GOPROXY ?= "https://proxy.golang.org,direct"
 .PHONY: sonicd sonictool
 sonicd:
@@ -32,6 +34,8 @@ sonic-image:
     	    --network=host \
     	    -f ./docker/Dockerfile.opera -t "sonic:$(TAG)" .
 
+# test
+
 .PHONY: test
 test:
 	go test --timeout 30m ./...
@@ -42,6 +46,8 @@ coverage:
 	go test -coverpkg=./... --timeout=30m -coverprofile=build/coverage.cov ./... && \
 	go tool cover -html build/coverage.cov -o build/coverage.html &&\
 	echo "Coverage report generated in build/coverage.html"
+
+# Fuzzing
 
 .PHONY: fuzz
 fuzz:
@@ -76,6 +82,49 @@ clean:
 lint: 
 	@go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.6
 	@golangci-lint run ./...
+
+.PHONY: generated-check
+generated-check:
+	@ go generate ./... > /dev/null 2>&1 ;\
+	 make license-add > /dev/null 2>&1
+	@ git diff --exit-code > /dev/null 2>&1 && \
+	 (echo "Generated files are up to date." && exit 0) || \
+	 (echo "Generated files are not up to date. Please update them." && exit 1)
+
+MOCKGEN_VERSION="0.5.2"
+PROTO_VERSION="1.36.5"
+SOLC_VERSION="0.8.30"
+
+.PHONY: generators-version-check
+generators-version-check:
+	@echo "Checking tool versions..."
+	@check_version() { \
+		cmd=$$1; required=$$2; version_cmd=$$3; \
+		version=$$($$version_cmd 2>&1 | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -n1); \
+		if [ -z "$$version" ]; then \
+			echo "$$cmd not found or version not detectable"; exit 1; \
+		fi; \
+		echo "$$cmd version: $$version"; \
+		if [ "$$(printf "%s\n%s" "$$required" "$$version" | sort -V | head -n1)" != "$$required" ]; then \
+			echo "$$cmd version must be >= $$required"; exit 1; \
+		fi; \
+	} && \
+	check_version "mockgen" "$(MOCKGEN_VERSION)" "mockgen -version" && \
+	check_version "protoc-gen-go" "$(PROTO_VERSION)" "protoc-gen-go --version" && \
+	check_version "solc" "$(SOLC_VERSION)" "solc --version" && \
+	echo "Generators meet version requirements."
+
+.PHONY: generators-update
+generators-update:
+	@echo "Updating mockgen..."
+	@go install go.uber.org/mock/mockgen@v$(MOCKGEN_VERSION)
+	@echo "Updating proto..."
+	@go install google.golang.org/protobuf/cmd/protoc-gen-go@v$(PROTO_VERSION)
+	@echo "run manually: sudo apt-get install solc=1:$(SOLC_VERSION)-0ubuntu1~noble"
+	@echo "Generators updated."
+
+
+# License checks
 
 .PHONY: license-check
 license-check:
