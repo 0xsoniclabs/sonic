@@ -181,7 +181,9 @@ func effectiveGasPrice(tx *types.Transaction, baseFee *big.Int) *big.Int {
 	if baseFee == nil {
 		return tx.GasPrice()
 	}
-	return new(big.Int).Add(baseFee, tx.EffectiveGasTipValue(baseFee))
+	// EffectiveGasTip returns an error for negative values, this is no problem here
+	gasTip, _ := tx.EffectiveGasTip(baseFee)
+	return new(big.Int).Add(baseFee, gasTip)
 }
 
 func decodeDataBytes(l *types.Log) ([]byte, error) {

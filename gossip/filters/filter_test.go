@@ -18,12 +18,18 @@ package filters
 
 import (
 	"context"
+	"fmt"
 	"math/big"
 	"path"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/gossip/evmstore"
+	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/utils/adapters/ethdb2kvdb"
 	"github.com/Fantom-foundation/lachesis-base/kvdb/table"
+	"github.com/stretchr/testify/require"
+	gomock "go.uber.org/mock/gomock"
 
 	"github.com/0xsoniclabs/sonic/topicsdb"
 	"github.com/ethereum/go-ethereum/common"
@@ -321,5 +327,73 @@ func TestSortLogsByBlockNumberAndLogIndex(t *testing.T) {
 			t.Errorf("Unexpected log at position %d: got (BlockNumber: %d, Index: %d), want (BlockNumber: %d, Index: %d)",
 				i, log.BlockNumber, log.Index, expected[i].blockNumber, expected[i].index)
 		}
+	}
+}
+
+func TestFilter_IndexedLogsReturnsLogsWithTimestampOrError(t *testing.T) {
+	timestamp := inter.Timestamp(55)
+	tests := map[string]struct {
+		primeMock     func(*MockBackend)
+		expectedError error
+	}{
+		"no error": {
+			primeMock: func(backend *MockBackend) {
+				backend.EXPECT().HeaderByNumber(gomock.Any(), gomock.Any()).Return(&evmcore.EvmHeader{Time: timestamp}, nil)
+			},
+			expectedError: nil,
+		},
+		"error on header retrieval": {
+			primeMock: func(backend *MockBackend) {
+				backend.EXPECT().HeaderByNumber(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("error"))
+			},
+			expectedError: fmt.Errorf("failed to get header for block 1 containing relevant log entry"),
+		},
+		"nil header": {
+			primeMock: func(backend *MockBackend) {
+				backend.EXPECT().HeaderByNumber(gomock.Any(), gomock.Any()).Return(nil, nil)
+			},
+			expectedError: fmt.Errorf("header for block 1 containing relevant log entry not found"),
+		},
+	}
+
+	logs := []*types.Log{
+		{
+			BlockNumber: 1,
+			Address:     common.HexToAddress("0x42"),
+			Topics:      []common.Hash{common.HexToHash("0x01")},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			backend := NewMockBackend(ctrl)
+			index := topicsdb.NewMockIndex(ctrl)
+
+			backend.EXPECT().EvmLogIndex().Return(index)
+			index.EXPECT().FindInBlocks(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(logs, nil)
+			backend.EXPECT().GetTxPosition(gomock.Any()).Return(&evmstore.TxPosition{})
+
+			test.primeMock(backend)
+
+			filter := &Filter{
+				backend:   backend,
+				config:    testConfig(),
+				addresses: []common.Address{{0x42}},
+				topics:    [][]common.Hash{},
+				block:     common.Hash{0x00},
+				begin:     0,
+				end:       2,
+			}
+
+			logs, err := filter.indexedLogs(t.Context(), 0, 2)
+			if test.expectedError != nil {
+				require.Error(t, err)
+				require.ErrorContains(t, err, test.expectedError.Error())
+			} else {
+				require.Equal(t, uint64(timestamp.Unix()), logs[0].BlockTimestamp)
+				require.NoError(t, err)
+			}
+		})
 	}
 }
