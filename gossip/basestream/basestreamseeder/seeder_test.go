@@ -11,9 +11,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/consensus/consensus/consensustest"
+
 	"github.com/stretchr/testify/require"
 
-	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/gossip/basestream"
 )
 
@@ -62,7 +64,7 @@ func testSeederResponsesOrder(t *testing.T, maxPeers int, maxEvents int) {
 
 	events := make(consensus.Events, maxEvents)
 	for i := range events {
-		e := &consensus.TestEvent{}
+		e := &consensustest.TestEvent{}
 		e.SetEpoch(consensus.Epoch(i / 10))
 		e.SetLamport(consensus.Lamport(i / 2))
 		var rID [24]byte

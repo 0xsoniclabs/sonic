@@ -19,11 +19,11 @@ package gossip
 import (
 	"testing"
 
-	parentscheckbase "github.com/0xsoniclabs/consensus/eventcheck/parentscheck"
 	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/eventcheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/gaspowercheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/parentscheck"
+	parentscheckbase "github.com/0xsoniclabs/sonic/eventcheck/parentscheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/proposalcheck"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/ethereum/go-ethereum/p2p/discover/discfilter"

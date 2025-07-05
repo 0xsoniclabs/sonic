@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/consensus/consensus/consensustest"
 	"github.com/0xsoniclabs/kvdb/memorydb"
 
 	"github.com/0xsoniclabs/sonic/inter"
@@ -57,7 +58,7 @@ func (e *eventWithCreationTime) CreationTime() inter.Timestamp {
 func BenchmarkIndex_Add(b *testing.B) {
 	b.StopTimer()
 	ordered := make(consensus.Events, 0)
-	nodes, _, _ := consensus.ASCIIschemeForEach(testASCIIScheme, consensus.ForEachEvent{
+	nodes, _, _ := consensustest.ASCIIschemeForEach(testASCIIScheme, consensustest.ForEachEvent{
 		Process: func(e consensus.Event, name string) {
 			ordered = append(ordered, e)
 		},

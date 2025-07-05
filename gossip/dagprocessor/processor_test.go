@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/consensus/consensus/consensustest"
+
 	"github.com/0xsoniclabs/cacheutils/cachescale"
 	"github.com/0xsoniclabs/sonic/utils/datasemaphore"
 )
@@ -47,10 +49,10 @@ func shuffleEventsIntoChunks(inEvents consensus.Events) []consensus.Events {
 
 func testProcessor(t *testing.T) {
 	t.Helper()
-	nodes := consensus.GenNodes(5)
+	nodes := consensustest.GenNodes(5)
 
 	var ordered consensus.Events
-	_ = consensus.ForEachRandEvent(nodes, 10, 3, nil, consensus.ForEachEvent{
+	_ = consensustest.ForEachRandEvent(nodes, 10, 3, nil, consensustest.ForEachEvent{
 		Process: func(e consensus.Event, name string) {
 			ordered = append(ordered, e)
 		},
@@ -170,10 +172,10 @@ func TestProcessorReleasing(t *testing.T) {
 
 func testProcessorReleasing(t *testing.T, maxEvents int, try int64) {
 	t.Helper()
-	nodes := consensus.GenNodes(5)
+	nodes := consensustest.GenNodes(5)
 
 	var ordered consensus.Events
-	_ = consensus.ForEachRandEvent(nodes, 10, 3, rand.New(rand.NewSource(try)), consensus.ForEachEvent{ // nolint:gosec
+	_ = consensustest.ForEachRandEvent(nodes, 10, 3, rand.New(rand.NewSource(try)), consensustest.ForEachEvent{ // nolint:gosec
 		Process: func(e consensus.Event, name string) {
 			ordered = append(ordered, e)
 		},
@@ -185,8 +187,8 @@ func testProcessorReleasing(t *testing.T, maxEvents int, try int64) {
 	})
 
 	limit := consensus.Metric{
-		Num:  consensus.Seq(rand.Intn(maxEvents)),    // nolint:gosec
-		Size: uint64(rand.Intn(maxEvents * 100)), // nolint:gosec
+		Num:  consensus.Seq(rand.Intn(maxEvents)), // nolint:gosec
+		Size: uint64(rand.Intn(maxEvents * 100)),  // nolint:gosec
 	}
 	limitPlus1group := consensus.Metric{
 		Num:  limit.Num + maxGroupSize.Num,

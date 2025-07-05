@@ -19,8 +19,9 @@ package epochcheck
 import (
 	"errors"
 
-	base "github.com/0xsoniclabs/consensus/eventcheck/epochcheck"
 	"github.com/0xsoniclabs/consensus/consensus"
+
+	base "github.com/0xsoniclabs/sonic/eventcheck/base/epochcheck"
 	"github.com/ethereum/go-ethereum/core/types"
 
 	"github.com/0xsoniclabs/sonic/inter"

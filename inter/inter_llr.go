@@ -79,11 +79,11 @@ func (bvs LlrBlockVotes) Hash() consensus.Hash {
 }
 
 func (bvs LlrSignedBlockVotes) CalcPayloadHash() consensus.Hash {
-	return consensus.Of(bvs.TxsAndMisbehaviourProofsHash.Bytes(), consensus.Of(bvs.EpochVoteHash.Bytes(), bvs.Val.Hash().Bytes()).Bytes())
+	return consensus.EventHashFromBytes(bvs.TxsAndMisbehaviourProofsHash.Bytes(), consensus.EventHashFromBytes(bvs.EpochVoteHash.Bytes(), bvs.Val.Hash().Bytes()).Bytes())
 }
 
 func (ev LlrSignedEpochVote) CalcPayloadHash() consensus.Hash {
-	return consensus.Of(ev.TxsAndMisbehaviourProofsHash.Bytes(), consensus.Of(ev.Val.Hash().Bytes(), ev.BlockVotesHash.Bytes()).Bytes())
+	return consensus.EventHashFromBytes(ev.TxsAndMisbehaviourProofsHash.Bytes(), consensus.EventHashFromBytes(ev.Val.Hash().Bytes(), ev.BlockVotesHash.Bytes()).Bytes())
 }
 
 func (ev LlrSignedEpochVote) Size() uint64 {

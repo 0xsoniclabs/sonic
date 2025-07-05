@@ -19,13 +19,14 @@ package parentscheck
 import (
 	"errors"
 
-	base "github.com/0xsoniclabs/consensus/eventcheck/parentscheck"
+	base "github.com/0xsoniclabs/sonic/eventcheck/base/parentscheck"
 
 	"github.com/0xsoniclabs/sonic/inter"
 )
 
 var (
-	ErrPastTime = errors.New("event has lower claimed time than self-parent")
+	ErrPastTime     = errors.New("event has lower claimed time than self-parent")
+	ErrWrongLamport = errors.New("event has wrong Lamport time")
 )
 
 // Checker which require only parents list + current epoch info

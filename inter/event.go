@@ -19,8 +19,8 @@ package inter
 import (
 	"crypto/sha256"
 
-	"github.com/0xsoniclabs/consensus/utils/byteutils"
 	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/consensus/utils/byteutils"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
@@ -260,7 +260,9 @@ func CalcMisbehaviourProofsHash(mps []MisbehaviourProof) consensus.Hash {
 
 func CalcPayloadHash(e EventPayloadI) consensus.Hash {
 	if e.Version() == 1 {
-		return consensus.Of(consensus.Of(CalcTxHash(e.Transactions()).Bytes(), CalcMisbehaviourProofsHash(e.MisbehaviourProofs()).Bytes()).Bytes(), consensus.Of(e.EpochVote().Hash().Bytes(), e.BlockVotes().Hash().Bytes()).Bytes())
+		return consensus.EventHashFromBytes(consensus.EventHashFromBytes(CalcTxHash(e.Transactions()).Bytes(), CalcMisbehaviourProofsHash(e.MisbehaviourProofs()).Bytes()).Bytes(), consensus.EventHashFromBytes(e.EpochVote().Hash().Bytes(), e.BlockVotes().Hash().Bytes()).Bytes())
+	} else {
+		return CalcTxHash(e.Transactions())
 	}
 	if e.Version() == 3 {
 		return e.Payload().Hash()
@@ -320,7 +322,7 @@ func calcEventID(h consensus.Hash) (id [24]byte) {
 }
 
 func calcEventHashes(ser []byte, e EventI) (locator consensus.Hash, base consensus.Hash) {
-	base = consensus.Of(ser)
+	base = consensus.EventHashFromBytes(ser)
 	if e.Version() < 1 {
 		return base, base
 	}
@@ -381,7 +383,7 @@ func (e *MutableEventPayload) Build() *EventPayload {
 }
 
 func (l EventLocator) HashToSign() consensus.Hash {
-	return consensus.Of(l.BaseHash.Bytes(), byteutils.Uint16ToBigEndian(l.NetForkID), l.Epoch.Bytes(), l.Seq.Bytes(), l.Lamport.Bytes(), l.Creator.Bytes(), l.PayloadHash.Bytes())
+	return consensus.EventHashFromBytes(l.BaseHash.Bytes(), byteutils.Uint16ToBigEndian(l.NetForkID), l.Epoch.Bytes(), l.Seq.Bytes(), l.Lamport.Bytes(), l.Creator.Bytes(), l.PayloadHash.Bytes())
 }
 
 func (l EventLocator) ID() consensus.EventHash {

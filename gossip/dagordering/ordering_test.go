@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/consensus/consensus/consensustest"
 )
 
 func TestEventsBuffer(t *testing.T) {
@@ -19,11 +20,11 @@ func TestEventsBuffer(t *testing.T) {
 
 func testEventsBuffer(t *testing.T, try int64) {
 	t.Helper()
-	nodes := consensus.GenNodes(5)
+	nodes := consensustest.GenNodes(5)
 
 	var ordered consensus.Events
 	r := rand.New(rand.NewSource(try)) // nolint:gosec
-	_ = consensus.ForEachRandEvent(nodes, 10, 3, r, consensus.ForEachEvent{
+	_ = consensustest.ForEachRandEvent(nodes, 10, 3, r, consensustest.ForEachEvent{
 		Process: func(e consensus.Event, name string) {
 			ordered = append(ordered, e)
 		},
@@ -106,11 +107,11 @@ func TestEventsBufferReleasing(t *testing.T) {
 
 func testEventsBufferReleasing(t *testing.T, maxEvents int, try int64) {
 	t.Helper()
-	nodes := consensus.GenNodes(5)
+	nodes := consensustest.GenNodes(5)
 	eventsPerNode := 1 + rand.Intn(maxEvents)/5 // nolint:gosec
 
 	var ordered consensus.Events
-	_ = consensus.ForEachRandEvent(nodes, eventsPerNode, 3, rand.New(rand.NewSource(try)), consensus.ForEachEvent{ // nolint:gosec
+	_ = consensustest.ForEachRandEvent(nodes, eventsPerNode, 3, rand.New(rand.NewSource(try)), consensustest.ForEachEvent{ // nolint:gosec
 		Process: func(e consensus.Event, name string) {
 			ordered = append(ordered, e)
 		},

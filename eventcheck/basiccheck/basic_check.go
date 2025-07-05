@@ -20,7 +20,7 @@ import (
 	"errors"
 	"math"
 
-	base "github.com/0xsoniclabs/consensus/eventcheck/basiccheck"
+	base "github.com/0xsoniclabs/sonic/eventcheck/base/basiccheck"
 	"github.com/ethereum/go-ethereum/core/types"
 
 	"github.com/0xsoniclabs/sonic/inter"

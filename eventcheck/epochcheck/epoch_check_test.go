@@ -21,7 +21,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/consensus/consensus"
-	base "github.com/0xsoniclabs/consensus/eventcheck/epochcheck"
+	base "github.com/0xsoniclabs/sonic/eventcheck/base/epochcheck"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/stretchr/testify/require"

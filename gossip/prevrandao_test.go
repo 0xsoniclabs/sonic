@@ -22,10 +22,11 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/consensus/consensus/consensustest"
 )
 
 func TestComputePrevRandao_ComputationIsDeterministic(t *testing.T) {
-	events := consensus.FakeEvents(5)
+	events := consensustest.FakeEventHashes(5)
 	randao1 := computePrevRandao(events)
 	rand.Shuffle(len(events), func(i, j int) {
 		events[i], events[j] = events[j], events[i]

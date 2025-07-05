@@ -4,9 +4,10 @@ import (
 	"math"
 	"sync"
 
-	"github.com/0xsoniclabs/consensus/eventcheck"
 	"github.com/0xsoniclabs/consensus/consensus"
+
 	"github.com/0xsoniclabs/cacheutils/wlru"
+	eventcheck "github.com/0xsoniclabs/sonic/eventcheck/base"
 )
 
 type (

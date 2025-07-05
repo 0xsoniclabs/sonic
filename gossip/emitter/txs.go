@@ -136,7 +136,7 @@ func (em *Emitter) isMyTxTurn(txHash common.Hash, sender common.Address, account
 	}
 
 	// generate seed for generating the validators sequence for the tx
-	roundsHash := consensus.Of(sender.Bytes(), byteutils.Uint64ToBigEndian(accountNonce/TxTurnNonces), epoch.Bytes())
+	roundsHash := consensus.EventHashFromBytes(sender.Bytes(), byteutils.Uint64ToBigEndian(accountNonce/TxTurnNonces), epoch.Bytes())
 
 	// generate the validators sequence for the tx
 	rounds := utils.WeightedPermutation(int(validators.Len()), validators.SortedWeights(), roundsHash)

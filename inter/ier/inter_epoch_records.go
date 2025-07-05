@@ -33,5 +33,5 @@ type LlrIdxFullEpochRecord struct {
 }
 
 func (er LlrFullEpochRecord) Hash() consensus.Hash {
-	return consensus.Of(er.BlockState.Hash().Bytes(), er.EpochState.Hash().Bytes())
+	return consensus.EventHashFromBytes(er.BlockState.Hash().Bytes(), er.EpochState.Hash().Bytes())
 }

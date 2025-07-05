@@ -17,7 +17,7 @@
 package eventcheck
 
 import (
-	base "github.com/0xsoniclabs/consensus/eventcheck"
+	base "github.com/0xsoniclabs/sonic/eventcheck/base"
 
 	"github.com/0xsoniclabs/sonic/eventcheck/epochcheck"
 )

@@ -12,8 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xsoniclabs/consensus/consensus/consensusengine"
 	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/consensus/consensus/consensusengine"
+	"github.com/0xsoniclabs/consensus/consensus/consensustest"
+
 	"github.com/0xsoniclabs/sonic/emitter/ancestor"
 )
 
@@ -43,7 +45,7 @@ type cityLatency struct {
 type QITestEvents []*QITestEvent
 
 type QITestEvent struct {
-	consensus.TestEvent
+	consensustest.TestEvent
 	creationTime int
 }
 
@@ -174,13 +176,13 @@ func simulate(weights []consensus.Weight, QIParentCount int, randParentCount int
 	headsAll := make([]consensus.Events, numValidators)
 
 	//setup nodes
-	nodes := consensus.GenNodes(numValidators)
+	nodes := consensustest.GenNodes(numValidators)
 	validators := consensus.ArrayToValidators(nodes, weights)
 
-	var input *consensusengine.EventStore
+	var input *consensustest.TestEventSource
 	var lch *consensusengine.CoreLachesis
 	var dagIndexer ancestor.DagIndex
-	inputs := make([]consensusengine.EventStore, numValidators)
+	inputs := make([]consensustest.TestEventSource, numValidators)
 	lchs := make([]consensusengine.CoreLachesis, numValidators)
 	fcIndexers := make([]*ancestor.FCIndexer, numValidators)
 	for i := 0; i < numValidators; i++ {
@@ -494,7 +496,7 @@ func updateHeads(newEvent consensus.Event, heads *consensus.Events) {
 	*heads = append(*heads, newEvent) //add newEvent to heads
 }
 
-func processEvent(input consensusengine.EventStore, lchs *consensusengine.CoreLachesis, e *QITestEvent, fcIndexer *ancestor.FCIndexer, heads *consensus.Events, self consensus.ValidatorID, time int) (frame consensus.Frame) {
+func processEvent(input consensustest.TestEventSource, lchs *consensusengine.CoreLachesis, e *QITestEvent, fcIndexer *ancestor.FCIndexer, heads *consensus.Events, self consensus.ValidatorID, time int) (frame consensus.Frame) {
 	input.SetEvent(e)
 
 	lchs.DagIndexer.Add(e)
