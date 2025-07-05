@@ -305,6 +305,9 @@ type TxPool struct {
 	reorgDoneCh     chan chan struct{}
 	reorgShutdownCh chan struct{}  // requests shutdown of scheduleReorgLoop
 	wg              sync.WaitGroup // tracks loop, scheduleReorgLoop
+
+	waitForIdleReorgLoopRequestCh  chan struct{} // requests to wait for reorg completion
+	waitForIdleReorgLoopResponseCh chan struct{} // responses to waitForReorgDoneRequestCh
 }
 
 type txpoolResetRequest struct {
@@ -334,6 +337,9 @@ func NewTxPool(config TxPoolConfig, chainconfig *params.ChainConfig, chain State
 		reorgDoneCh:     make(chan chan struct{}),
 		reorgShutdownCh: make(chan struct{}),
 		minTip:          new(big.Int).SetUint64(config.MinimumTip),
+
+		waitForIdleReorgLoopRequestCh:  make(chan struct{}),
+		waitForIdleReorgLoopResponseCh: make(chan struct{}),
 	}
 	pool.locals = newAccountSet(pool.signer)
 	for _, addr := range config.Locals {
@@ -1237,6 +1243,13 @@ func (pool *TxPool) scheduleReorgLoop() {
 			}
 			close(nextDone)
 			return
+
+		case <-pool.waitForIdleReorgLoopRequestCh:
+			if curDone != nil {
+				<-curDone
+				curDone = nil
+			}
+			pool.waitForIdleReorgLoopResponseCh <- struct{}{}
 		}
 	}
 }
