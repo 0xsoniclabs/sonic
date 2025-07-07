@@ -16,7 +16,7 @@
 */*.test
 */*.out
 fuzzing/
-**/coverage.txt
+coverage.txt
 
 # Build output
 build
