@@ -26,21 +26,47 @@ import (
 	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
 
-func TestChainId_RejectsAllTxSignedWithWrongChainId(t *testing.T) {
+func TestChainId(t *testing.T) {
+	net := StartIntegrationTestNet(t,
+		IntegrationTestNetOptions{
+			ModifyConfig: func(config *config.Config) {
+				// The transactions signed with the Homestead are not replay protected.
+				// The default configuration rejects this sort of transaction,
+				// so they need to be explicitly allowed.
+				config.Opera.AllowUnprotectedTxs = true
+			},
+		})
+	defer net.Stop()
 
-	net := StartIntegrationTestNet(t)
-	account := makeAccountWithBalance(t, net, big.NewInt(1e18))
 	client, err := net.GetClient()
 	require.NoError(t, err, "failed to get client")
 	defer client.Close()
+
+	account := makeAccountWithBalance(t, net, big.NewInt(1e18))
 	actualChainID, err := client.ChainID(t.Context())
 	require.NoError(t, err, "failed to get chain ID")
 	differentChainId := new(big.Int).Add(actualChainID, big.NewInt(1))
 
+	t.Run("RejectsAllTxsSignedWithWrongChainId", func(t *testing.T) {
+		testChainId_RejectsAllTxSignedWithWrongChainId(t, net, account, differentChainId)
+	})
+
+	t.Run("AcceptsLegacyTxSignedWithHomestead", func(t *testing.T) {
+		testChainId_AcceptsLegacyTxSignedWithHomestead(t, net, client, account)
+	})
+}
+
+func testChainId_RejectsAllTxSignedWithWrongChainId(
+	t *testing.T,
+	net *IntegrationTestNet,
+	account *Account,
+	differentChainId *big.Int,
+) {
 	// Homestead signer is not included because it does not have a chain ID
 	signerSupportedTypes := map[string]struct {
 		signer  types.Signer
@@ -86,6 +112,7 @@ func TestChainId_RejectsAllTxSignedWithWrongChainId(t *testing.T) {
 	for signerName, test := range signerSupportedTypes {
 		for txTypeName, txData := range getTxsOfAllTypes {
 			t.Run(fmt.Sprintf("%s_%s", signerName, txTypeName), func(t *testing.T) {
+				t.Parallel()
 
 				tx := types.NewTx(txData)
 				// if the signer does not support the transaction type,
@@ -107,21 +134,11 @@ func TestChainId_RejectsAllTxSignedWithWrongChainId(t *testing.T) {
 	}
 }
 
-func TestChainId_AcceptsLegacyTxSignedWithHomestead(t *testing.T) {
-	net := StartIntegrationTestNet(t,
-		IntegrationTestNetOptions{
-			ModifyConfig: func(config *config.Config) {
-				// The transactions signed with the Homestead are not replay protected.
-				// The default configuration rejects this sort of transaction,
-				// so they need to be explicitly allowed.
-				config.Opera.AllowUnprotectedTxs = true
-			},
-		},
-	)
-	client, err := net.GetClient()
-	require.NoError(t, err)
-	defer client.Close()
-	account := makeAccountWithBalance(t, net, big.NewInt(1e18))
+func testChainId_AcceptsLegacyTxSignedWithHomestead(
+	t *testing.T,
+	net *IntegrationTestNet,
+	client *ethclient.Client,
+	account *Account) {
 
 	// get current nonce and sign the tx.
 	nonce, err := client.NonceAt(t.Context(), account.Address(), nil)
