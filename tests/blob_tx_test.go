@@ -17,13 +17,20 @@
 package tests
 
 import (
+	"bytes"
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/tests/contracts/blobbasefee"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
@@ -44,6 +51,16 @@ func TestBlobTransaction(t *testing.T) {
 
 	t.Run("blob tx with nil sidecar is executed", func(t *testing.T) {
 		testBlobTx_WithNilSidecarIsExecuted(t, ctxt)
+		checkBlocksSanity(t, ctxt.client)
+	})
+
+	t.Run("blob base fee can be read from head, block and history", func(t *testing.T) {
+		testBlobBaseFee_CanReadBlobBaseFeeFromHeadAndBlockAndHistory(t, ctxt)
+		checkBlocksSanity(t, ctxt.client)
+	})
+
+	t.Run("blob gas used can be read from block header", func(t *testing.T) {
+		testBlobBaseFee_CanReadBlobGasUsed(t, ctxt)
 		checkBlocksSanity(t, ctxt.client)
 	})
 }
@@ -102,6 +119,71 @@ func testBlobTx_WithNilSidecarIsExecuted(t *testing.T, ctxt *testContext) {
 		"transaction must succeed",
 	)
 }
+
+func testBlobBaseFee_CanReadBlobBaseFeeFromHeadAndBlockAndHistory(t *testing.T, ctxt *testContext) {
+	require := require.New(t)
+
+	// Deploy the blob base fee contract.
+	contract, _, err := DeployContract(ctxt.net, blobbasefee.DeployBlobbasefee)
+	require.NoError(err, "failed to deploy contract; ", err)
+
+	// Collect the current blob base fee from the head state.
+	receipt, err := ctxt.net.Apply(contract.LogCurrentBlobBaseFee)
+	require.NoError(err, "failed to log current blob base fee; ", err)
+	require.Equal(len(receipt.Logs), 1, "unexpected number of logs; expected 1, got ", len(receipt.Logs))
+
+	entry, err := contract.ParseCurrentBlobBaseFee(*receipt.Logs[0])
+	require.NoError(err, "failed to parse log; ", err)
+	fromLog := entry.Fee.Uint64()
+
+	// Collect the blob base fee from the block header.
+	block, err := ctxt.client.BlockByNumber(t.Context(), receipt.BlockNumber)
+	require.NoError(err, "failed to get block header; ", err)
+	fromBlock := getBlobBaseFeeFrom(block.Header())
+
+	// Collect the blob base fee from the archive.
+	fromArchive, err := contract.GetBlobBaseFee(&bind.CallOpts{BlockNumber: receipt.BlockNumber})
+	require.NoError(err, "failed to get blob base fee from archive; ", err)
+
+	// call the blob base fee rpc method
+	fromRpc := new(hexutil.Uint64)
+	err = ctxt.client.Client().Call(&fromRpc, "eth_blobBaseFee")
+	require.NoError(err, "failed to get blob base fee from rpc; ", err)
+
+	// we check blob base fee is one because it is not implemented yet. TODO issue #147
+	require.Equal(fromLog, uint64(1), "invalid blob base fee from log; ", fromLog)
+	require.Equal(fromLog, fromArchive.Uint64(), "blob base fee mismatch; from log %v, from archive %v", fromLog, fromArchive)
+	require.Equal(fromLog, fromBlock, "blob base fee mismatch; from log %v, from block %v", fromLog, fromBlock)
+	require.Equal(fromLog, uint64(*fromRpc), "blob base fee mismatch; from log %v, from rpc %v", fromLog, fromRpc)
+}
+
+func testBlobBaseFee_CanReadBlobGasUsed(t *testing.T, ctxt *testContext) {
+	require := require.New(t)
+
+	// Get blob gas used from the block header of the latest block.
+	block, err := ctxt.client.BlockByNumber(t.Context(), nil)
+	require.NoError(err, "failed to get block header; ", err)
+	require.Empty(*block.BlobGasUsed(), "unexpected value in blob gas used")
+	require.Empty(*block.Header().ExcessBlobGas, "unexpected excess blob gas value")
+
+	// check value for blob gas used is rlp encoded and decoded
+	buffer := bytes.NewBuffer(make([]byte, 0))
+	err = block.EncodeRLP(buffer)
+	require.NoError(err, "failed to encode block header; ", err)
+
+	// decode block
+	stream := rlp.NewStream(buffer, 0)
+	err = block.DecodeRLP(stream)
+	require.NoError(err, "failed to decode block header; ", err)
+
+	// check blob gas used and excess blob gas are zero
+	require.Empty(*block.BlobGasUsed(), "unexpected blob gas used value")
+	require.Empty(*block.Header().ExcessBlobGas, "unexpected excess blob gas value")
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Helper Functions
+////////////////////////////////////////////////////////////////////////////////
 
 func createTestBlobTransaction(t *testing.T, ctxt *testContext, data ...[]byte) (*types.Transaction, error) {
 	require := require.New(t)
@@ -213,4 +295,16 @@ func MakeTestContext(t *testing.T) *testContext {
 func (tc *testContext) Close() {
 	tc.client.Close()
 	tc.net.Stop()
+}
+
+// helper functions to calculate blob base fee based on https://eips.ethereum.org/EIPS/eip-4844#gas-accounting
+func getBlobBaseFeeFrom(header *types.Header) uint64 {
+	cancunTime := uint64(0)
+	config := &params.ChainConfig{}
+	config.LondonBlock = big.NewInt(0)
+	config.CancunTime = &cancunTime
+	config.BlobScheduleConfig = &params.BlobScheduleConfig{
+		Cancun: params.DefaultCancunBlobConfig,
+	}
+	return eip4844.CalcBlobFee(config, header).Uint64()
 }
