@@ -1,3 +1,3 @@
-demo/*.datadir
-demo/tool.datadir
-demo/*.log
+sonic*.datadir
+tool.datadir
+*.log
