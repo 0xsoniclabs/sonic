@@ -16,7 +16,6 @@
 */*.test
 */*.out
 fuzzing/
-**/tmp
 
 # Build output
 **/build
@@ -54,14 +53,3 @@ testnet.g
 .#*
 
 **/coverage.txt
-
-# demo files
-demo/*.datadir
-demo/tool.datadir
-demo/*.log
-
-# contract compilation files
-gossip/contract/solc/*.json
-gossip/contract/solc/*.abi
-gossip/contract/solc/*.bin
-gossip/contract/solc/*.bin-runtime
