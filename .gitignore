@@ -16,9 +16,10 @@
 */*.test
 */*.out
 fuzzing/
+**/coverage.txt
 
 # Build output
-**/build
+build
 dist
 
 # Dependencies
@@ -39,7 +40,6 @@ glide.lock
 *.zip
 
 # Sonic specific
-!*.go
 *.log
 *.graph
 *.gv
@@ -52,4 +52,3 @@ testnet.g
 
 .#*
 
-**/coverage.txt
