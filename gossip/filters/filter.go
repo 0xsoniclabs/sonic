@@ -35,6 +35,8 @@ import (
 	"github.com/0xsoniclabs/sonic/topicsdb"
 )
 
+//go:generate mockgen -source=filter.go -package=filters -destination=filter_mock.go
+
 type Backend interface {
 	HeaderByNumber(ctx context.Context, blockNr rpc.BlockNumber) (*evmcore.EvmHeader, error)
 	HeaderByHash(ctx context.Context, blockHash common.Hash) (*evmcore.EvmHeader, error)
@@ -166,6 +168,16 @@ func (f *Filter) indexedLogs(ctx context.Context, begin, end consensus.BlockID) 
 		} else {
 			log.Warn("tx index empty", "hash", l.TxHash)
 		}
+
+		// Fetch timestamp for the log from the header.
+		header, err := f.backend.HeaderByNumber(ctx, rpc.BlockNumber(l.BlockNumber))
+		if err != nil {
+			return nil, fmt.Errorf("failed to get header for block %d containing relevant log entry: %w", l.BlockNumber, err)
+		}
+		if header == nil {
+			return nil, fmt.Errorf("header for block %d containing relevant log entry not found", l.BlockNumber)
+		}
+		l.BlockTimestamp = uint64(header.Time.Unix())
 	}
 
 	return logs, nil

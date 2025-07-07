@@ -261,7 +261,9 @@ func (gpo *Oracle) calcTxpoolStat() txpoolStat {
 	p := uint64(0)
 	for _, tx := range sorted {
 		for p < uint64(len(s.percentiles)) && gasCounter >= p*maxGasToIndex/uint64(len(s.percentiles)) {
-			s.percentiles[p] = tx.EffectiveGasTipValue(minGasPrice)
+			// EffectiveGasTip returns an error for negative values, this is no problem here
+			gasTip, _ := tx.EffectiveGasTip(minGasPrice)
+			s.percentiles[p] = gasTip
 			if s.percentiles[p].Sign() < 0 {
 				s.percentiles[p] = minGasPrice
 			} else {
