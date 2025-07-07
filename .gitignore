@@ -4,6 +4,7 @@
 # IDE
 .vscode
 .idea/
+.un~
 
 # Go prof output
 *.prof
@@ -15,6 +16,7 @@
 */*.test
 */*.out
 fuzzing/
+coverage.txt
 
 # Build output
 build
@@ -37,16 +39,7 @@ glide.lock
 *.tgz
 *.zip
 
-# opera project specific
-scripts/certs
-scripts/nodes
-scripts/peers.json
-scripts/docker/upx
-nodes
-peers.json
-certs
-lachesis_*
-!*.go
+# Sonic specific
 *.log
 *.graph
 *.gv
@@ -59,4 +52,3 @@ testnet.g
 
 .#*
 
-**/coverage.txt
