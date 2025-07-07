@@ -28,7 +28,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/stretchr/testify/require"
 	req "github.com/stretchr/testify/require"
 )
 
@@ -178,19 +177,20 @@ func TestBlockHash_EIP2935_IsAutomaticallyDeployedWithFakeNet(t *testing.T) {
 
 	for name, netConstructor := range tests {
 		t.Run(name, func(t *testing.T) {
+			require := req.New(t)
 			net := netConstructor(t)
 
 			client, err := net.GetClient()
-			require.NoError(t, err)
+			require.NoError(err)
 			defer client.Close()
 
 			code, err := client.CodeAt(t.Context(), historyStorageAddress, nil)
-			require.NoError(t, err)
-			require.Equal(t, params.HistoryStorageCode, code)
+			require.NoError(err)
+			require.Equal(params.HistoryStorageCode, code)
 
 			nonce, err := client.NonceAt(t.Context(), historyStorageAddress, nil)
-			require.NoError(t, err)
-			require.Equal(t, uint64(1), nonce)
+			require.NoError(err)
+			require.Equal(uint64(1), nonce)
 		})
 	}
 }
@@ -208,24 +208,26 @@ func TestBlockHash_EIP2935_HistoryContractIsNotDeployedBeforePrague(t *testing.T
 
 	for name, netConstructor := range tests {
 		t.Run(name, func(t *testing.T) {
+			require := req.New(t)
 			net := netConstructor(t)
 
 			client, err := net.GetClient()
-			require.NoError(t, err)
+			require.NoError(err)
 			defer client.Close()
 
 			code, err := client.CodeAt(t.Context(), historyStorageAddress, nil)
-			require.NoError(t, err)
-			require.Empty(t, code)
+			require.NoError(err)
+			require.Empty(code)
 
 			nonce, err := client.NonceAt(t.Context(), historyStorageAddress, nil)
-			require.NoError(t, err)
-			require.Equal(t, uint64(0), nonce)
+			require.NoError(err)
+			require.Equal(uint64(0), nonce)
 		})
 	}
 }
 
 func TestBlockHash_EIP2935_DeployContract(t *testing.T) {
+	require := req.New(t)
 
 	net := StartIntegrationTestNet(t,
 		IntegrationTestNetOptions{
@@ -242,7 +244,7 @@ func TestBlockHash_EIP2935_DeployContract(t *testing.T) {
 	)
 
 	client, err := net.GetClient()
-	require.NoError(t, err)
+	require.NoError(err)
 	defer client.Close()
 
 	// Deploy transaction as described in EIP-2935
@@ -264,11 +266,11 @@ func TestBlockHash_EIP2935_DeployContract(t *testing.T) {
 	//   }
 
 	v, ok := new(big.Int).SetString("0x1b", 0)
-	require.True(t, ok)
+	require.True(ok)
 	r, ok := new(big.Int).SetString("0x539", 0)
-	require.True(t, ok)
+	require.True(ok)
 	s, ok := new(big.Int).SetString("0xaa12693182426612186309f02cfe8a80a0000", 0)
-	require.True(t, ok)
+	require.True(ok)
 
 	payload := &types.LegacyTx{
 		Nonce:    0,
@@ -285,51 +287,53 @@ func TestBlockHash_EIP2935_DeployContract(t *testing.T) {
 
 	// The transaction is pre EIP-155, (the chain ID is not included in the signature)
 	sender, err := types.HomesteadSigner{}.Sender(tx)
-	require.NoError(t, err)
-	require.Equal(t, senderAddr, sender)
+	require.NoError(err)
+	require.Equal(senderAddr, sender)
 
 	_, err = net.EndowAccount(senderAddr, big.NewInt(1e18))
-	require.NoError(t, err)
+	require.NoError(err)
 
 	receipt, err := net.Run(tx)
-	require.NoError(t, err)
-	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+	require.NoError(err)
+	require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
 
 	code, err := client.CodeAt(t.Context(), historyStorageAddress, nil)
-	require.NoError(t, err)
-	require.Equal(t, params.HistoryStorageCode, code)
+	require.NoError(err)
+	require.Equal(params.HistoryStorageCode, code)
 
 	nonce, err := client.NonceAt(t.Context(), historyStorageAddress, nil)
-	require.NoError(t, err)
-	require.Equal(t, uint64(1), nonce)
+	require.NoError(err)
+	require.Equal(uint64(1), nonce)
 
 	readHistoryStorageContract, receipt, err := DeployContract(net, read_history_storage.DeployReadHistoryStorage)
-	require.NoError(t, err)
-	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+	require.NoError(err)
+	require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
 
 	// Create one block and use the contract to read the block hash. because this
 	// network is running in Sonic, no block hashes are stored in the history storage contract.
 	receipt, err = net.EndowAccount(NewAccount().Address(), big.NewInt(1e18))
-	require.NoError(t, err)
+	require.NoError(err)
 	blockNumber := receipt.BlockNumber
 
 	receipt, err = net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
 		return readHistoryStorageContract.ReadHistoryStorage(opts, blockNumber)
 	})
-	require.NoError(t, err)
-	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+	require.NoError(err)
+	require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
 
-	require.Len(t, receipt.Logs, 1)
+	require.Len(receipt.Logs, 1)
 	blockHash, err := readHistoryStorageContract.ParseBlockHash(*receipt.Logs[0])
-	require.NoError(t, err)
+	require.NoError(err)
 
 	// read hash is null because the processor is not calling the history storage contract
-	require.Equal(t, common.Hash{31: 0x00},
+	require.Equal(common.Hash{31: 0x00},
 		common.BytesToHash(blockHash.BlockHash[:]))
 
 }
 
 func TestBlockHash_EIP2935_HistoryContractAccumulatesBlockHashes(t *testing.T) {
+
+	require := req.New(t)
 
 	net := StartIntegrationTestNetWithFakeGenesis(t,
 		IntegrationTestNetOptions{
@@ -337,12 +341,12 @@ func TestBlockHash_EIP2935_HistoryContractAccumulatesBlockHashes(t *testing.T) {
 		})
 
 	client, err := net.GetClient()
-	require.NoError(t, err)
+	require.NoError(err)
 	defer client.Close()
 
 	readHistoryStorageContract, receipt, err := DeployContract(net, read_history_storage.DeployReadHistoryStorage)
-	require.NoError(t, err)
-	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+	require.NoError(err)
+	require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
 
 	// eip-2935 describes a buffer-ring of 8191 block hashes.
 	// testing this is impractical, this test checks a smaller range to ensure that contract
@@ -353,8 +357,8 @@ func TestBlockHash_EIP2935_HistoryContractAccumulatesBlockHashes(t *testing.T) {
 	hashes := make(map[uint64]common.Hash)
 	for range testIterations {
 		receipt, err := net.EndowAccount(NewAccount().Address(), big.NewInt(1e18))
-		require.NoError(t, err)
-		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+		require.NoError(err)
+		require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
 		hashes[receipt.BlockNumber.Uint64()] = receipt.BlockHash
 	}
 
@@ -363,15 +367,15 @@ func TestBlockHash_EIP2935_HistoryContractAccumulatesBlockHashes(t *testing.T) {
 		receipt, err = net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
 			return readHistoryStorageContract.ReadHistoryStorage(opts, new(big.Int).SetUint64(blockNumber))
 		})
-		require.NoError(t, err)
-		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
-		require.Len(t, receipt.Logs, 1)
+		require.NoError(err)
+		require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
+		require.Len(receipt.Logs, 1)
 
 		blockHash, err := readHistoryStorageContract.ParseBlockHash(*receipt.Logs[0])
-		require.NoError(t, err)
-		require.Equal(t, 0, blockHash.QueriedBlock.Cmp(big.NewInt(int64(blockNumber))))
+		require.NoError(err)
+		require.Equal(0, blockHash.QueriedBlock.Cmp(big.NewInt(int64(blockNumber))))
 
-		require.Equal(t,
+		require.Equal(
 			common.BytesToHash(blockHash.BlockHash[:]),
 			common.BytesToHash(blockHash.BuiltinBlockHash[:]),
 			"builtin blockhash does not match the block hash stored in the contract",
@@ -379,12 +383,12 @@ func TestBlockHash_EIP2935_HistoryContractAccumulatesBlockHashes(t *testing.T) {
 
 		// read hash must be equal to the block hash retrieved from the client
 		block, err := client.BlockByNumber(t.Context(), big.NewInt(int64(blockNumber)))
-		require.NoError(t, err)
-		require.Equal(t, common.BytesToHash(blockHash.BlockHash[:]), block.Hash(),
+		require.NoError(err)
+		require.Equal(common.BytesToHash(blockHash.BlockHash[:]), block.Hash(),
 			"read hash does not match the block hash")
 
 		// hash must be equal to the hash from the first loop receipt
-		require.Equal(t, recordedHash, block.Hash(),
+		require.Equal(recordedHash, block.Hash(),
 			"block hash does not match the hash from the receipt")
 	}
 }
