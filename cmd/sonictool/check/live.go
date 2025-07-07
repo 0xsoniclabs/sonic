@@ -45,7 +45,7 @@ func CheckLiveStateDb(ctx context.Context, dataDir string, cacheRatio cachescale
 	if err := mpt.VerifyFileLiveTrie(ctx, liveDir, info.Config, verificationObserver{}); err != nil {
 		return fmt.Errorf("live state verification failed: %w", err)
 	}
-	log.Info("Verification of the live state succeed")
+	log.Info("Verification of the live state succeeded")
 	return nil
 }
 

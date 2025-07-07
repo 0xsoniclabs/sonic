@@ -35,7 +35,7 @@ func createGdb(dataDir string, cacheRatio cachescale.Func, archive carmen.Archiv
 	carmenDir := filepath.Join(dataDir, "carmen")
 
 	if stat, err := os.Stat(chaindataDir); err != nil || !stat.IsDir() {
-		return nil, nil, fmt.Errorf("unable to validate: datadir does not contain chandata")
+		return nil, nil, fmt.Errorf("unable to validate: datadir does not contain chaindata")
 	}
 	if stat, err := os.Stat(carmenDir); err != nil || !stat.IsDir() {
 		return nil, nil, fmt.Errorf("unable to validate: datadir does not contain carmen")
