@@ -30,6 +30,7 @@ import (
 )
 
 func TestBlockParameters_BlockHeaderMatchesObservableBlockParameters(t *testing.T) {
+	t.Parallel()
 	hardForks := map[string]opera.Upgrades{
 		"sonic": {
 			Berlin:  true,
@@ -51,6 +52,7 @@ func TestBlockParameters_BlockHeaderMatchesObservableBlockParameters(t *testing.
 		t.Run(name, func(t *testing.T) {
 			for _, singleProposer := range []bool{false, true} {
 				t.Run(fmt.Sprintf("single_proposer=%t", singleProposer), func(t *testing.T) {
+					t.Parallel()
 					upgrades := upgrades
 					upgrades.SingleProposerBlockFormation = singleProposer
 

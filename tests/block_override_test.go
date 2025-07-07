@@ -36,6 +36,7 @@ const (
 )
 
 func TestBlockOverride(t *testing.T) {
+	t.Parallel()
 	require := req.New(t)
 	net := StartIntegrationTestNet(t)
 
@@ -78,10 +79,12 @@ func TestBlockOverride(t *testing.T) {
 	}
 
 	t.Run("eth_call block override", func(t *testing.T) {
+		t.Parallel()
 		compareCalls(t, rpcClient, contractAddress, blockNumber, blockOverrides, makeEthCall)
 	})
 
 	t.Run("debug_traceCall block override", func(t *testing.T) {
+		t.Parallel()
 		compareCalls(t, rpcClient, contractAddress, blockNumber, blockOverrides, makeDebugTraceCall)
 	})
 

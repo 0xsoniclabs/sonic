@@ -28,6 +28,7 @@ import (
 )
 
 func TestBlockHash_CorrectBlockHashesAreAccessibleInContracts(t *testing.T) {
+	t.Parallel()
 	require := req.New(t)
 	net := StartIntegrationTestNet(t)
 

@@ -30,6 +30,7 @@ import (
 )
 
 func TestBlsVerificationOnChain(t *testing.T) {
+	t.Parallel()
 	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
 		Upgrades: AsPointer(opera.GetAllegroUpgrades()),
 	})
@@ -51,7 +52,6 @@ func TestBlsVerificationOnChain(t *testing.T) {
 
 	for _, testVariant := range testVariants {
 		t.Run(testVariant.name, func(t *testing.T) {
-
 			pubKeys, signature, msg := getBlsData(testVariant.signersCount)
 			tests := []struct {
 				name      string
@@ -67,6 +67,7 @@ func TestBlsVerificationOnChain(t *testing.T) {
 			}
 			for _, test := range tests {
 				t.Run(test.name, func(t *testing.T) {
+					t.Parallel()
 					pubKeysBytes, signatureBytes, msgBytes, err := parseInputData(test.pubkeys, test.signature, test.message)
 					require.NoError(t, err, "failed to parse test data; %v", err)
 

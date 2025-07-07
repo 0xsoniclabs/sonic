@@ -24,6 +24,7 @@ import (
 )
 
 func TestBaseFee_CanReadBaseFeeFromHeadAndBlockAndHistory(t *testing.T) {
+	t.Parallel()
 	net := StartIntegrationTestNet(t)
 
 	// Deploy the base fee contract.

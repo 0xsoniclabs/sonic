@@ -31,7 +31,7 @@ import (
 // For failure on empty fakenet archive it was needed to modify
 // carmen database to slow down async writes to archive db.
 func TestBlockInArchive(t *testing.T) {
-
+	t.Parallel()
 	require := require.New(t)
 	net := StartIntegrationTestNetWithJsonGenesis(t)
 	defer net.Stop()

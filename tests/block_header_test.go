@@ -49,16 +49,19 @@ import (
 )
 
 func TestBlockHeader_FakeGenesis_SatisfiesInvariants(t *testing.T) {
+	t.Parallel()
 	net := StartIntegrationTestNetWithFakeGenesis(t)
 	testBlockHeadersOnNetwork(t, net)
 }
 
 func TestBlockHeader_JsonGenesis_SatisfiesInvariants(t *testing.T) {
+	t.Parallel()
 	net := StartIntegrationTestNetWithJsonGenesis(t)
 	testBlockHeadersOnNetwork(t, net)
 }
 
 func TestBlockHeader_Allegro_SatisfiesInvariants(t *testing.T) {
+	t.Parallel()
 	net := StartIntegrationTestNetWithJsonGenesis(t, IntegrationTestNetOptions{
 		Upgrades: AsPointer(opera.GetAllegroUpgrades()),
 	})
@@ -66,6 +69,7 @@ func TestBlockHeader_Allegro_SatisfiesInvariants(t *testing.T) {
 }
 
 func TestBlockHeader_SingleProposer_SatisfiesInvariants(t *testing.T) {
+	t.Parallel()
 	upgrades := opera.GetAllegroUpgrades()
 	upgrades.SingleProposerBlockFormation = true
 	net := StartIntegrationTestNetWithJsonGenesis(t, IntegrationTestNetOptions{
@@ -104,102 +108,127 @@ func testBlockHeadersOnNetwork(t *testing.T, net *IntegrationTestNet) {
 		defer client.Close()
 
 		t.Run("CompareHeaderHashes", func(t *testing.T) {
+			t.Parallel()
 			testHeaders_CompareHeaderHashes(t, originalHashes, headers)
 		})
 
 		t.Run("BlockNumberEqualsPositionInChain", func(t *testing.T) {
+			t.Parallel()
 			testHeaders_BlockNumberEqualsPositionInChain(t, headers)
 		})
 
 		t.Run("ParentHashCoversParentContent", func(t *testing.T) {
+			t.Parallel()
 			testHeaders_ParentHashCoversParentContent(t, headers)
 		})
 
 		t.Run("GasUsedIsBelowGasLimit", func(t *testing.T) {
+			t.Parallel()
 			testHeaders_GasUsedIsBelowGasLimit(t, headers)
 		})
 
 		t.Run("EncodesDurationAndNanoTimeInExtraData", func(t *testing.T) {
+			t.Parallel()
 			testHeaders_EncodesDurationAndNanoTimeInExtraData(t, headers)
 		})
 
 		t.Run("BaseFeeEvolutionFollowsPricingRules", func(t *testing.T) {
+			t.Parallel()
 			testHeaders_BaseFeeEvolutionFollowsPricingRules(t, headers)
 		})
 
 		t.Run("TransactionRootMatchesHashOfBlockTxs", func(t *testing.T) {
+			t.Parallel()
 			testHeaders_TransactionRootMatchesBlockTxsHash(t, headers, client)
 		})
 
 		t.Run("TransactionReceiptReferencesCorrectContext", func(t *testing.T) {
+			t.Parallel()
 			testHeaders_TransactionReceiptReferencesCorrectContext(t, headers, client)
 		})
 
 		t.Run("ReceiptBlockHashMatchesBlockHash", func(t *testing.T) {
+			t.Parallel()
 			testHeaders_ReceiptBlockHashMatchesBlockHash(t, headers, client)
 		})
 
 		t.Run("ReceiptRootMatchesBlockReceipts", func(t *testing.T) {
+			t.Parallel()
 			testHeaders_ReceiptRootMatchesBlockReceipts(t, headers, client)
 		})
 
 		t.Run("LogsBloomMatchesLogsInReceipts", func(t *testing.T) {
+			t.Parallel()
 			testHeaders_LogsBloomMatchesLogsInReceipts(t, headers, client)
 		})
 
 		t.Run("CoinbaseIsZeroForAllBlocks", func(t *testing.T) {
+			t.Parallel()
 			testHeaders_CoinbaseIsZeroForAllBlocks(t, headers)
 		})
 
 		t.Run("DifficultyIsZeroForAllBlocks", func(t *testing.T) {
+			t.Parallel()
 			testHeaders_DifficultyIsZeroForAllBlocks(t, headers)
 		})
 
 		t.Run("NonceIsZeroForAllBlocks", func(t *testing.T) {
+			t.Parallel()
 			testHeaders_NonceIsZeroForAllBlocks(t, headers)
 		})
 
 		t.Run("TimeProgressesMonotonically", func(t *testing.T) {
+			t.Parallel()
 			testHeaders_TimeProgressesMonotonically(t, headers)
 		})
 
 		t.Run("MixDigestDiffersForAllBlocks", func(t *testing.T) {
+			t.Parallel()
 			testHeaders_MixDigestDiffersForAllBlocks(t, headers)
 		})
 
 		t.Run("InitialBlocksHaveCorrectEpochNumbers", func(t *testing.T) {
+			t.Parallel()
 			testHeaders_InitialBlocksHaveCorrectEpochNumbers(t, client)
 		})
 
 		t.Run("LastBlockOfEpochContainsSealingTransaction", func(t *testing.T) {
+			t.Parallel()
 			testHeaders_LastBlockOfEpochContainsSealingTransaction(t, headers, client)
 		})
 
 		t.Run("StateRootsMatchActualStateRoots", func(t *testing.T) {
+			t.Parallel()
 			testHeaders_StateRootsMatchActualStateRoots(t, headers, client)
 		})
 
 		t.Run("SystemContractsHaveNonZeroNonce", func(t *testing.T) {
+			t.Parallel()
 			testHeaders_SystemContractsHaveNonZeroNonce(t, headers, client)
 		})
 
 		t.Run("LogsReferenceTheirContext", func(t *testing.T) {
+			t.Parallel()
 			testHeaders_LogsReferenceTheirContext(t, headers, client)
 		})
 
 		t.Run("CanRetrieveLogEvents", func(t *testing.T) {
+			t.Parallel()
 			testHeaders_CanRetrieveLogEvents(t, headers, client)
 		})
 
 		t.Run("CounterStateIsVerifiable", func(t *testing.T) {
+			t.Parallel()
 			testHeaders_CounterStateIsVerifiable(t, headers, client, counterAddress)
 		})
 
 		t.Run("HasCommitteeCertificates", func(t *testing.T) {
+			t.Parallel()
 			testScc_HasCommitteeCertificates(t, client)
 		})
 
 		t.Run("HasBlockCertificatesForBlocks", func(t *testing.T) {
+			t.Parallel()
 			testScc_HasBlockCertificatesForBlocks(t, headers, client)
 		})
 	}

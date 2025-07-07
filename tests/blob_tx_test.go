@@ -41,25 +41,30 @@ func TestBlobTransaction(t *testing.T) {
 	defer ctxt.Close()
 
 	t.Run("blob tx with non-empty blobs is rejected", func(t *testing.T) {
+		t.Parallel()
 		testBlobTx_WithBlobsIsRejected(t, ctxt)
 	})
 
 	t.Run("blob tx with empty blobs is executed", func(t *testing.T) {
+		t.Parallel()
 		testBlobTx_WithEmptyBlobsIsExecuted(t, ctxt)
 		checkBlocksSanity(t, ctxt.client)
 	})
 
 	t.Run("blob tx with nil sidecar is executed", func(t *testing.T) {
+		t.Parallel()
 		testBlobTx_WithNilSidecarIsExecuted(t, ctxt)
 		checkBlocksSanity(t, ctxt.client)
 	})
 
 	t.Run("blob base fee can be read from head, block and history", func(t *testing.T) {
+		t.Parallel()
 		testBlobBaseFee_CanReadBlobBaseFeeFromHeadAndBlockAndHistory(t, ctxt)
 		checkBlocksSanity(t, ctxt.client)
 	})
 
 	t.Run("blob gas used can be read from block header", func(t *testing.T) {
+		t.Parallel()
 		testBlobBaseFee_CanReadBlobGasUsed(t, ctxt)
 		checkBlocksSanity(t, ctxt.client)
 	})

@@ -49,6 +49,7 @@ func TestAddressAccess(t *testing.T) {
 	}
 
 	t.Run("coinbase yields zero address", func(t *testing.T) {
+		t.Parallel()
 		coinBaseAddress, err := contract.GetCoinBaseAddress(nil)
 		if err != nil {
 			t.Fatalf("Failed to get coinbase address: %v", err)
@@ -60,6 +61,7 @@ func TestAddressAccess(t *testing.T) {
 	})
 
 	t.Run("tx access is warm", func(t *testing.T) {
+		t.Parallel()
 		tests := map[string]func(*bind.TransactOpts) (*types.Transaction, error){
 			"coinbase": contract.TouchCoinBase,
 			"origin":   contract.TouchOrigin,
@@ -93,7 +95,7 @@ func TestAddressAccess(t *testing.T) {
 	})
 
 	t.Run("archive access is warm", func(t *testing.T) {
-
+		t.Parallel()
 		tests := map[string]func() (*big.Int, error){
 			"origin": func() (*big.Int, error) {
 				originAddr, err := contract.GetOrigin(nil)
@@ -115,6 +117,7 @@ func TestAddressAccess(t *testing.T) {
 
 		for name, access := range tests {
 			t.Run(name, func(t *testing.T) {
+				t.Parallel()
 
 				cost, err := access()
 				if err != nil {
