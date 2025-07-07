@@ -27,13 +27,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/0xsoniclabs/consensus/dagindexer"
+
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 
-	"github.com/0xsoniclabs/consensus/consensus"
-	"github.com/0xsoniclabs/consensus/consensus/consensusstore"
-	"github.com/0xsoniclabs/consensus/consensus/consensusengine"
 	"github.com/0xsoniclabs/cacheutils/cachescale"
+	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/consensus/consensus/consensusengine"
+	"github.com/0xsoniclabs/consensus/consensus/consensusstore"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -58,7 +60,6 @@ import (
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/sonic/utils/adapters/vecmt2dagidx"
 	"github.com/0xsoniclabs/sonic/valkeystore"
-	"github.com/0xsoniclabs/sonic/vecmt"
 )
 
 const (
@@ -103,14 +104,14 @@ func (g *testGossipStoreAdapter) GetEvent(id consensus.EventHash) consensus.Even
 	return e
 }
 
-func makeTestEngine(gdb *Store) (*consensusengine.Lachesis, *vecmt.Index) {
+func makeTestEngine(gdb *Store) (*consensusengine.Lachesis, *dagindexer.Index) {
 	cdb := consensusstore.NewMemStore()
 	_ = cdb.ApplyGenesis(&consensusstore.Genesis{
 		Epoch:      gdb.GetEpoch(),
 		Validators: gdb.GetValidators(),
 	})
-	vecClock := vecmt.NewIndex(panics("Vector clock"), vecmt.LiteConfig())
-	engine := consensusengine.NewLachesis(cdb, &testGossipStoreAdapter{gdb}, vecmt2dagidx.Wrap(vecClock), panics("Lachesis"), consensusengine.LiteConfig())
+	vecClock := dagindexer.NewIndex(panics("Vector clock"), dagindexer.LiteConfig())
+	engine := consensusengine.NewLachesis(cdb, &testGossipStoreAdapter{gdb}, vecmt2dagidx.Wrap(vecClock), panics("Lachesis"), consensusengine.DefaultConfig())
 	return engine, vecClock
 }
 

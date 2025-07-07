@@ -20,6 +20,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"github.com/0xsoniclabs/consensus/dagindexer"
 	"net"
 	"os"
 	"path"
@@ -51,7 +52,6 @@ import (
 	"github.com/0xsoniclabs/sonic/integration"
 	"github.com/0xsoniclabs/sonic/utils/caution"
 	"github.com/0xsoniclabs/sonic/utils/memory"
-	"github.com/0xsoniclabs/sonic/vecmt"
 )
 
 const (
@@ -80,7 +80,7 @@ type Config struct {
 	OperaStore    gossip.StoreConfig
 	Lachesis      consensusengine.Config
 	LachesisStore consensusstore.StoreConfig
-	VectorClock   vecmt.IndexConfig
+	VectorClock   dagindexer.IndexConfig
 	DBs           integration.DBsConfig
 }
 
@@ -353,7 +353,7 @@ func MakeAllConfigsFromFile(ctx *cli.Context, configFile string) (*Config, error
 		OperaStore:    gossip.DefaultStoreConfig(cacheRatio),
 		Lachesis:      consensusengine.DefaultConfig(),
 		LachesisStore: consensusstore.DefaultStoreConfig(cacheRatio),
-		VectorClock:   vecmt.DefaultConfig(cacheRatio),
+		VectorClock:   dagindexer.DefaultConfig(cacheRatio),
 	}
 
 	if ctx.GlobalIsSet(FakeNetFlag.Name) {

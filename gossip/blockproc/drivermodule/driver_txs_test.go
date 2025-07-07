@@ -53,7 +53,7 @@ func TestReceiptRewardWithoutFixEnabled(t *testing.T) {
 			Originated: big.NewInt(OrigOriginated),
 		}},
 	}
-	valsBuilder := consensus.NewBuilder()
+	valsBuilder := consensus.NewValidatorsBuilder()
 	valsBuilder.Set(1, 100)
 
 	rules := opera.MainNetRules()
@@ -94,7 +94,7 @@ func TestReceiptRewardWithFixEnabled(t *testing.T) {
 			Originated: big.NewInt(OrigOriginated),
 		}},
 	}
-	valsBuilder := consensus.NewBuilder()
+	valsBuilder := consensus.NewValidatorsBuilder()
 	valsBuilder.Set(1, 100)
 
 	rules := opera.MainNetRules()
@@ -135,7 +135,7 @@ func TestReceiptRewardWithBlobsAndFixEnabled(t *testing.T) {
 			Originated: big.NewInt(OrigOriginated),
 		}},
 	}
-	valsBuilder := consensus.NewBuilder()
+	valsBuilder := consensus.NewValidatorsBuilder()
 	valsBuilder.Set(1, 100)
 
 	rules := opera.MainNetRules()

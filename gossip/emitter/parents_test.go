@@ -19,10 +19,11 @@ package emitter
 import (
 	"testing"
 
+	"github.com/0xsoniclabs/consensus/dagindexer"
+
 	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/kvdb/memorydb"
 	"github.com/0xsoniclabs/sonic/emitter/ancestor"
-	"github.com/0xsoniclabs/sonic/vecmt"
 	"go.uber.org/mock/gomock"
 )
 
@@ -68,7 +69,7 @@ func TestChooseParents_NonGenesisEventMustHaveOneSelfParent(t *testing.T) {
 	epoch := consensus.Epoch(1)
 	validatorId := consensus.ValidatorID(1)
 
-	validatorIndex := vecmt.NewIndex(nil, vecmt.LiteConfig())
+	validatorIndex := dagindexer.NewIndex(nil, dagindexer.LiteConfig())
 	validatorIndex.Reset(consensus.ArrayToValidators(
 		[]consensus.ValidatorID{1, 2},
 		[]consensus.Weight{1, 1},

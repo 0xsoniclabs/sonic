@@ -54,7 +54,7 @@ func TestChecker_Validate_SingleProposerIntroducesNewFormat(t *testing.T) {
 			event.EXPECT().EpochVote().AnyTimes()
 			event.EXPECT().Creator().Return(creator).AnyTimes()
 
-			builder := consensus.NewBuilder()
+			builder := consensus.NewValidatorsBuilder()
 			builder.Set(creator, 10)
 			validators := builder.Build()
 			reader.EXPECT().GetEpochValidators().Return(validators, consensus.Epoch(0)).AnyTimes()

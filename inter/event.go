@@ -203,6 +203,8 @@ func (e *extEventData) NetForkID() uint16 { return e.netForkID }
 
 func (e *extEventData) CreationTime() Timestamp { return e.creationTime }
 
+func (e *extEventData) CreationTimePortable() uint64 { return uint64(e.creationTime) }
+
 func (e *extEventData) MedianTime() Timestamp { return e.medianTime }
 
 func (e *extEventData) PrevEpochHash() *consensus.Hash { return e.prevEpochHash }
@@ -261,8 +263,6 @@ func CalcMisbehaviourProofsHash(mps []MisbehaviourProof) consensus.Hash {
 func CalcPayloadHash(e EventPayloadI) consensus.Hash {
 	if e.Version() == 1 {
 		return consensus.EventHashFromBytes(consensus.EventHashFromBytes(CalcTxHash(e.Transactions()).Bytes(), CalcMisbehaviourProofsHash(e.MisbehaviourProofs()).Bytes()).Bytes(), consensus.EventHashFromBytes(e.EpochVote().Hash().Bytes(), e.BlockVotes().Hash().Bytes()).Bytes())
-	} else {
-		return CalcTxHash(e.Transactions())
 	}
 	if e.Version() == 3 {
 		return e.Payload().Hash()

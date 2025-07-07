@@ -22,6 +22,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/0xsoniclabs/consensus/dagindexer"
+
 	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -34,13 +36,12 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils/txtime"
 	"github.com/0xsoniclabs/sonic/valkeystore"
-	"github.com/0xsoniclabs/sonic/vecmt"
 )
 
 func TestEmitter(t *testing.T) {
 	cfg := DefaultConfig()
 	gValidators := makefakegenesis.GetFakeValidators(3)
-	vv := consensus.NewBuilder()
+	vv := consensus.NewValidatorsBuilder()
 	for _, v := range gValidators {
 		vv.Set(v.ID, consensus.Weight(1))
 	}
@@ -58,7 +59,7 @@ func TestEmitter(t *testing.T) {
 	external.EXPECT().Unlock().
 		AnyTimes()
 	external.EXPECT().DagIndex().
-		Return((*vecmt.Index)(nil)).
+		Return((*dagindexer.Index)(nil)).
 		AnyTimes()
 	external.EXPECT().IsSynced().
 		Return(true).
@@ -151,7 +152,7 @@ func TestEmitter_CreateEvent_CreatesCorrectEventVersion(t *testing.T) {
 	}
 
 	validator := consensus.ValidatorID(1)
-	builder := consensus.NewBuilder()
+	builder := consensus.NewValidatorsBuilder()
 	builder.Set(validator, consensus.Weight(1))
 	validators := builder.Build()
 
@@ -212,7 +213,7 @@ func TestEmitter_CreateEvent_InvalidValidatorSetIsDetected(t *testing.T) {
 	log := logger.NewMockLogger(ctrl)
 
 	validator := consensus.ValidatorID(1)
-	validators := consensus.NewBuilder().Build() // invalid empty validator set
+	validators := consensus.NewValidatorsBuilder().Build() // invalid empty validator set
 
 	rules := opera.Rules{
 		Upgrades: opera.Upgrades{

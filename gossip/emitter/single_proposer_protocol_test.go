@@ -237,7 +237,7 @@ type Network struct {
 
 // NewNetwork creates a new network with the given number of nodes.
 func NewNetwork(t *testing.T, numNodes int) *Network {
-	builder := consensus.NewBuilder()
+	builder := consensus.NewValidatorsBuilder()
 	for id := range consensus.ValidatorID(numNodes) {
 		builder.Set(id, 1)
 	}

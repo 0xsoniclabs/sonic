@@ -114,7 +114,7 @@ func (fc *FCIndexer) ValidatorsPastMe() consensus.Weight {
 
 	for creator, e := range fc.highestEvents {
 		if fc.greater(e.id, e.frame, kPrev, selfFrame) {
-			kGreaterWeight.Count(creator)
+			kGreaterWeight.CountVoteByID(creator)
 		}
 	}
 	return kGreaterWeight.Sum() // self should not create a new event

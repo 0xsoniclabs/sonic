@@ -30,10 +30,10 @@ import (
 	reflect "reflect"
 
 	evmcore "github.com/0xsoniclabs/sonic/evmcore"
+	dagindexer "github.com/0xsoniclabs/consensus/dagindexer"
 	inter "github.com/0xsoniclabs/sonic/inter"
 	state "github.com/0xsoniclabs/sonic/inter/state"
 	opera "github.com/0xsoniclabs/sonic/opera"
-	vecmt "github.com/0xsoniclabs/sonic/vecmt"
 	consensus "github.com/0xsoniclabs/consensus/consensus"
 	common "github.com/ethereum/go-ethereum/common"
 	types "github.com/ethereum/go-ethereum/core/types"
@@ -104,10 +104,10 @@ func (mr *MockExternalMockRecorder) Check(e, parents any) *gomock.Call {
 }
 
 // DagIndex mocks base method.
-func (m *MockExternal) DagIndex() *vecmt.Index {
+func (m *MockExternal) DagIndex() *dagindexer.Index {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DagIndex")
-	ret0, _ := ret[0].(*vecmt.Index)
+	ret0, _ := ret[0].(*dagindexer.Index)
 	return ret0
 }
 

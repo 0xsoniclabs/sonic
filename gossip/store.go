@@ -24,13 +24,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xsoniclabs/consensus/utils/byteutils"
+	"github.com/0xsoniclabs/cacheutils/wlru"
 	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/consensus/utils/byteutils"
 	"github.com/0xsoniclabs/kvdb"
 	"github.com/0xsoniclabs/kvdb/flushable"
 	"github.com/0xsoniclabs/kvdb/memorydb"
 	"github.com/0xsoniclabs/kvdb/table"
-	"github.com/0xsoniclabs/cacheutils/wlru"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/logger"
@@ -95,7 +95,7 @@ type Store struct {
 
 	// values needed for flush randomizationAdd comment
 	randomOffsetEpoch consensus.Epoch // epoch when random offset was selected
-	randomOffset      uint64    // random number re-selected in each epoch between 0 and 99
+	randomOffset      uint64          // random number re-selected in each epoch between 0 and 99
 }
 
 // NewMemStore creates temporary gossip store for testing purposes.
