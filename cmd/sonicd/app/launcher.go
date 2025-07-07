@@ -236,7 +236,7 @@ func initApp() *cli.App {
 	return app
 }
 
-// sonicd is the main entry point into the system if no special subcommand is ran.
+// lachesisMain is the main entry point into the system if no special sub-command is ran.
 // It creates a default node based on the command line arguments and runs it in
 // blocking mode, waiting for it to be shut down.
 func lachesisMain(ctx *cli.Context) error {
