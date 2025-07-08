@@ -219,7 +219,7 @@ func ValidateTxStatic(tx *types.Transaction) error {
 // or if the transaction's gas fee cap is below the minimum required base fee.
 func ValidateTxForBlock(tx *types.Transaction, blockState blockState) error {
 
-	// Ensure Opera-specific hard bounds
+	// Ensure Sonic-specific hard bounds
 	if baseFee := blockState.baseFee; baseFee != nil {
 		limit := gaspricelimits.GetMinimumFeeCapForTransactionPool(baseFee)
 		if tx.GasFeeCapIntCmp(limit) < 0 {

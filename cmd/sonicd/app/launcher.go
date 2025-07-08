@@ -236,7 +236,7 @@ func initApp() *cli.App {
 	return app
 }
 
-// opera is the main entry point into the system if no special subcommand is ran.
+// lachesisMain is the main entry point into the system if no special sub-command is ran.
 // It creates a default node based on the command line arguments and runs it in
 // blocking mode, waiting for it to be shut down.
 func lachesisMain(ctx *cli.Context) error {
@@ -366,7 +366,7 @@ func startNode(ctx *cli.Context, stack *node.Node, stop <-chan bool) error {
 	events := make(chan accounts.WalletEvent, 16)
 	stack.AccountManager().Subscribe(events)
 
-	// Create a client to interact with local opera node.
+	// Create a client to interact with local sonic node.
 	rpcClient := stack.Attach()
 	ethClient := ethclient.NewClient(rpcClient)
 	go func() {
