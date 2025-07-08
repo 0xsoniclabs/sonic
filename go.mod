@@ -20,10 +20,10 @@ go 1.24.0
 
 require (
 	github.com/0xsoniclabs/cacheutils v0.0.0-20250320134355-5a9aa4df3861
-	github.com/0xsoniclabs/carmen/go v0.0.0-20250530111616-fabde4233b62
+	github.com/0xsoniclabs/carmen/go v0.0.0-20250708101910-3666ec34654c
 	github.com/0xsoniclabs/consensus v0.0.0-20250616084056-3c45cdd22d21
 	github.com/0xsoniclabs/kvdb v0.0.0-20250709123301-a981e39aa2ea
-	github.com/0xsoniclabs/tosca v0.0.0-20250624065842-ec138d34756c
+	github.com/0xsoniclabs/tosca v0.0.0-20250708111444-f020a558b11e
 	github.com/cespare/cp v1.1.1
 	github.com/consensys/gnark-crypto v0.18.0
 	github.com/davecgh/go-spew v1.1.1
