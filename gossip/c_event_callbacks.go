@@ -22,7 +22,7 @@ import (
 	"sync/atomic"
 
 	"github.com/0xsoniclabs/consensus/consensus"
-	"github.com/0xsoniclabs/consensus/dagindexer"
+	"github.com/0xsoniclabs/consensus/consensus/dagindexer"
 	"github.com/0xsoniclabs/sonic/eventcheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/epochcheck"
 	"github.com/0xsoniclabs/sonic/gossip/dagprocessor"

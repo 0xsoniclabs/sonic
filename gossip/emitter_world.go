@@ -19,17 +19,15 @@ package gossip
 import (
 	"sync/atomic"
 
-	"github.com/0xsoniclabs/consensus/dagindexer"
-
 	"github.com/0xsoniclabs/consensus/consensus"
-	"github.com/ethereum/go-ethereum/common"
-
+	"github.com/0xsoniclabs/consensus/consensus/dagindexer"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils/wgmutex"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 type emitterWorldProc struct {

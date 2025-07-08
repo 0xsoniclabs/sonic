@@ -496,9 +496,9 @@ func (h *handler) myProgress() PeerProgress {
 	bs := h.store.GetBlockState()
 	epoch := h.store.GetEpoch()
 	return PeerProgress{
-		Epoch:            epoch,
-		LastBlockIdx:     bs.LastBlock.Idx,
-		LastBlockAtropos: bs.LastBlock.Atropos,
+		Epoch:           epoch,
+		LastBlockIdx:    bs.LastBlock.Idx,
+		LastBlockLeader: bs.LastBlock.Leader,
 	}
 }
 

@@ -31,7 +31,7 @@ FEATURES:
 
 * poset: Replaced Leemon Baird's original "Fair" ordering method with 
 Lamport timestamps.
-* poset: Introduced the concept of Frames and Roots to enable initializing a
+* poset: Introduced the concept of Frames and Bases to enable initializing a
 poset from a "non-zero" state.
 * node: Added FastSync protocol to enable nodes to catch up with other nodes 
 without downloading the entire poset. 
@@ -40,6 +40,6 @@ without downloading the entire poset.
 IMPROVEMENTS:
 
 * poset: Refactored the consensus methods around the concept of Frames.
-* poset: Removed special case for "initial" Events, and make use of Roots 
+* poset: Removed special case for "initial" Events, and make use of Bases 
 instead. 
 * docs: Added sections on Lachesis and FastSync.

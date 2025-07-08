@@ -27,7 +27,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xsoniclabs/consensus/dagindexer"
+	"github.com/0xsoniclabs/consensus/consensus/dagindexer"
 
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/p2p/enode"

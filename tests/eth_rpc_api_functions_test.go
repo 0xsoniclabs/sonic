@@ -26,7 +26,7 @@ import (
 	"github.com/0xsoniclabs/cacheutils/cachescale"
 	"github.com/0xsoniclabs/consensus/consensus/consensusengine"
 	"github.com/0xsoniclabs/consensus/consensus/consensusstore"
-	"github.com/0xsoniclabs/consensus/dagindexer"
+	"github.com/0xsoniclabs/consensus/consensus/dagindexer"
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip"

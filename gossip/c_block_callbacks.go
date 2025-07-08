@@ -127,7 +127,7 @@ func consensusCallbackBeginBlockFn(
 		bs := store.GetBlockState().Copy()
 		es := store.GetEpochState().Copy()
 
-		// merge cheaters to ensure that every cheater will get punished even if only previous (not current) Atropos observed a doublesign
+		// merge cheaters to ensure that every cheater will get punished even if only previous (not current) Leader observed a doublesign
 		// this feature is needed because blocks may be skipped even if cheaters list isn't empty
 		// otherwise cheaters would get punished after a first block where cheaters were observed
 		bs.EpochCheaters = mergeCheaters(bs.EpochCheaters, cBlock.Cheaters)
@@ -144,17 +144,17 @@ func consensusCallbackBeginBlockFn(
 
 		eventProcessor := blockProc.EventsModule.Start(bs, es)
 
-		atroposTime := bs.LastBlock.Time + 1
-		atroposDegenerate := true
+		leaderTime := bs.LastBlock.Time + 1
+		leaderDegenerate := true
 		// events with txs
 		confirmedEvents := make(consensus.EventHashes, 0, 3*es.Validators.Len())
 
 		return consensus.BlockCallbacks{
 			ApplyEvent: func(_e consensus.Event) {
 				e := _e.(inter.EventI)
-				if cBlock.Atropos == e.ID() {
-					atroposTime = e.MedianTime()
-					atroposDegenerate = false
+				if cBlock.Leader == e.ID() {
+					leaderTime = e.MedianTime()
+					leaderDegenerate = false
 				}
 				if e.AnyTxs() || e.HasProposal() {
 					confirmedEvents = append(confirmedEvents, e.ID())
@@ -210,7 +210,7 @@ func consensusCallbackBeginBlockFn(
 					if proposed, proposer, time := extractProposalForNextBlock(lastBlockHeader, events, log.Root()); proposed != nil {
 						proposal = *proposed
 						blockTime = time
-						validatorKeys := readEpochPubKeys(store, cBlock.Atropos.Epoch())
+						validatorKeys := readEpochPubKeys(store, cBlock.Leader.Epoch())
 						randao = resolveRandaoMix(
 							proposal.RandaoReveal, proposer,
 							validatorKeys.PubKeys,
@@ -239,10 +239,10 @@ func consensusCallbackBeginBlockFn(
 						unorderedTxs = append(unorderedTxs, e.Transactions()...)
 					}
 
-					signer := gsignercache.Wrap(types.MakeSigner(chainCfg, new(big.Int).SetUint64(number), uint64(atroposTime)))
+					signer := gsignercache.Wrap(types.MakeSigner(chainCfg, new(big.Int).SetUint64(number), uint64(leaderTime)))
 					proposal.Transactions = scrambler.GetExecutionOrder(unorderedTxs, signer, es.Rules.Upgrades.Sonic)
 
-					blockTime = atroposTime
+					blockTime = leaderTime
 				}
 
 				// Filter invalid transactions from the proposal.
@@ -256,20 +256,20 @@ func consensusCallbackBeginBlockFn(
 				}
 
 				blockCtx := iblockproc.BlockCtx{
-					Idx:     proposal.Number,
-					Time:    blockTime,
-					Atropos: cBlock.Atropos,
+					Idx:    proposal.Number,
+					Time:   blockTime,
+					Leader: cBlock.Leader,
 				}
 
 				// Note:
-				// it's possible that a previous Atropos observes current Atropos (1)
-				// (even stronger statement is true - it's possible that current Atropos is equal to a previous Atropos).
+				// it's possible that a previous Leader observes current Leader (1)
+				// (even stronger statement is true - it's possible that current Leader is equal to a previous Leader).
 				// (1) is true when and only when ApplyEvent wasn't called.
-				// In other words, we should assume that every non-cheater root may be elected as an Atropos in any order,
-				// even if typically every previous Atropos happened-before current Atropos
+				// In other words, we should assume that every non-cheater root may be elected as an Leader in any order,
+				// even if typically every previous Leader happened-before current Leader
 				// We have to skip block in case (1) to ensure that every block ID is unique.
-				// If Atropos ID wasn't used as a block ID, it wouldn't be required.
-				skipBlock := atroposDegenerate
+				// If Leader ID wasn't used as a block ID, it wouldn't be required.
+				skipBlock := leaderDegenerate
 				// Check if empty block should be pruned
 				emptyBlock := len(confirmedEvents) == 0 && len(cBlock.Cheaters) == 0
 				skipBlock = skipBlock || (emptyBlock && blockCtx.Time < bs.LastBlock.Time+es.Rules.Blocks.MaxEmptyBlockSkipPeriod)
@@ -278,7 +278,7 @@ func consensusCallbackBeginBlockFn(
 				if skipBlock {
 					// save the latest block state even if block is skipped
 					store.SetBlockEpochState(bs, es)
-					log.Debug("Frame is skipped", "atropos", cBlock.Atropos.String())
+					log.Debug("Frame is skipped", "leader", cBlock.Leader.String())
 					return nil
 				}
 
@@ -337,7 +337,7 @@ func consensusCallbackBeginBlockFn(
 
 					blockDuration := time.Duration(blockCtx.Time - bs.LastBlock.Time)
 					blockBuilder := inter.NewBlockBuilder().
-						WithEpoch(blockCtx.Atropos.Epoch()).
+						WithEpoch(blockCtx.Leader.Epoch()).
 						WithNumber(number).
 						WithParentHash(proposal.ParentHash).
 						WithTime(blockCtx.Time).

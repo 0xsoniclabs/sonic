@@ -30,7 +30,7 @@ import (
 	reflect "reflect"
 
 	evmcore "github.com/0xsoniclabs/sonic/evmcore"
-	dagindexer "github.com/0xsoniclabs/consensus/dagindexer"
+	dagindexer "github.com/0xsoniclabs/consensus/consensus/dagindexer"
 	inter "github.com/0xsoniclabs/sonic/inter"
 	state "github.com/0xsoniclabs/sonic/inter/state"
 	opera "github.com/0xsoniclabs/sonic/opera"
