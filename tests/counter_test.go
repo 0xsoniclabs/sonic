@@ -30,24 +30,29 @@ import (
 func TestCounter(t *testing.T) {
 	net := StartIntegrationTestNet(t)
 
-	// Deploy the counter contract.
-	contract, receipt, err := DeployContract(net, counter.DeployCounter)
-	require.NoError(t, err, "failed to deploy contract; %v", err)
-
 	t.Run("CanIncrementAndReadCounterFromHead", func(t *testing.T) {
-		testCounter_CanIncrementAndReadCounterFromHead(t, net, contract)
+		t.Parallel()
+		session := net.SpawnSession(t)
+		testCounter_CanIncrementAndReadCounterFromHead(t, session)
 	})
 
 	t.Run("CanReadHistoricCounterValues", func(t *testing.T) {
-		testCounter_CanReadHistoricCounterValues(t, net, contract, receipt)
+		t.Parallel()
+		session := net.SpawnSession(t)
+		testCounter_CanReadHistoricCounterValues(t, session)
 	})
 }
 
 func testCounter_CanIncrementAndReadCounterFromHead(
 	t *testing.T,
-	net *IntegrationTestNet,
-	contract *counter.Counter,
+	net IntegrationTestNetSession,
 ) {
+
+	// Deploy the counter contract.
+	contract, receipt, err := DeployContract(net, counter.DeployCounter)
+	require.NoError(t, err, "failed to deploy contract; %v", err)
+	require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
+
 	baseCount, err := contract.GetCount(nil)
 	require.NoError(t, err, "failed to get initial counter value")
 	// Increment the counter a few times and check that the value is as expected.
@@ -65,10 +70,13 @@ func testCounter_CanIncrementAndReadCounterFromHead(
 
 func testCounter_CanReadHistoricCounterValues(
 	t *testing.T,
-	net *IntegrationTestNet,
-	contract *counter.Counter,
-	receipt *types.Receipt,
+	net IntegrationTestNetSession,
 ) {
+
+	// Deploy the counter contract.
+	contract, receipt, err := DeployContract(net, counter.DeployCounter)
+	require.NoError(t, err, "failed to deploy contract; %v", err)
+	require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
 
 	client, err := net.GetClient()
 	require.NoError(t, err, "failed to get client")
