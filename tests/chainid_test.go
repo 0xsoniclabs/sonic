@@ -41,22 +41,20 @@ func TestChainId(t *testing.T) {
 				config.Opera.AllowUnprotectedTxs = true
 			},
 		})
-	defer net.Stop()
+
+	account := makeAccountWithBalance(t, net, big.NewInt(1e18))
 
 	client, err := net.GetClient()
 	require.NoError(t, err, "failed to get client")
-	defer client.Close()
-
-	account := makeAccountWithBalance(t, net, big.NewInt(1e18))
-	actualChainID, err := client.ChainID(t.Context())
-	require.NoError(t, err, "failed to get chain ID")
-	differentChainId := new(big.Int).Add(actualChainID, big.NewInt(1))
+	t.Cleanup(client.Close)
 
 	t.Run("RejectsAllTxsSignedWithWrongChainId", func(t *testing.T) {
-		testChainId_RejectsAllTxSignedWithWrongChainId(t, net, account, differentChainId)
+		t.Parallel()
+		testChainId_RejectsAllTxSignedWithWrongChainId(t, net, client, account)
 	})
 
 	t.Run("AcceptsLegacyTxSignedWithHomestead", func(t *testing.T) {
+		t.Parallel()
 		testChainId_AcceptsLegacyTxSignedWithHomestead(t, net, client, account)
 	})
 }
@@ -64,9 +62,15 @@ func TestChainId(t *testing.T) {
 func testChainId_RejectsAllTxSignedWithWrongChainId(
 	t *testing.T,
 	net *IntegrationTestNet,
+	client *ethclient.Client,
 	account *Account,
-	differentChainId *big.Int,
 ) {
+
+	actualChainID, err := client.ChainID(t.Context())
+	require.NoError(t, err, "failed to get chain ID")
+
+	differentChainId := new(big.Int).Add(actualChainID, big.NewInt(1))
+
 	// Homestead signer is not included because it does not have a chain ID
 	signerSupportedTypes := map[string]struct {
 		signer  types.Signer
