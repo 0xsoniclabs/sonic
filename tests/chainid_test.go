@@ -26,7 +26,6 @@ import (
 	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
@@ -44,27 +43,26 @@ func TestChainId(t *testing.T) {
 
 	account := makeAccountWithBalance(t, net, big.NewInt(1e18))
 
-	client, err := net.GetClient()
-	require.NoError(t, err, "failed to get client")
-	t.Cleanup(client.Close)
-
 	t.Run("RejectsAllTxsSignedWithWrongChainId", func(t *testing.T) {
 		t.Parallel()
-		testChainId_RejectsAllTxSignedWithWrongChainId(t, net, client, account)
+		testChainId_RejectsAllTxSignedWithWrongChainId(t, net, account)
 	})
 
 	t.Run("AcceptsLegacyTxSignedWithHomestead", func(t *testing.T) {
 		t.Parallel()
-		testChainId_AcceptsLegacyTxSignedWithHomestead(t, net, client, account)
+		testChainId_AcceptsLegacyTxSignedWithHomestead(t, net, account)
 	})
 }
 
 func testChainId_RejectsAllTxSignedWithWrongChainId(
 	t *testing.T,
 	net *IntegrationTestNet,
-	client *ethclient.Client,
 	account *Account,
 ) {
+
+	client, err := net.GetClient()
+	require.NoError(t, err, "failed to get client")
+	t.Cleanup(client.Close)
 
 	actualChainID, err := client.ChainID(t.Context())
 	require.NoError(t, err, "failed to get chain ID")
@@ -141,8 +139,11 @@ func testChainId_RejectsAllTxSignedWithWrongChainId(
 func testChainId_AcceptsLegacyTxSignedWithHomestead(
 	t *testing.T,
 	net *IntegrationTestNet,
-	client *ethclient.Client,
 	account *Account) {
+
+	client, err := net.GetClient()
+	require.NoError(t, err, "failed to get client")
+	t.Cleanup(client.Close)
 
 	// get current nonce and sign the tx.
 	nonce, err := client.NonceAt(t.Context(), account.Address(), nil)
