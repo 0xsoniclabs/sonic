@@ -23,6 +23,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCounter_CanIncrementAndReadCounterFromHead(t *testing.T) {
@@ -30,25 +31,17 @@ func TestCounter_CanIncrementAndReadCounterFromHead(t *testing.T) {
 
 	// Deploy the counter contract.
 	contract, _, err := DeployContract(net, counter.DeployCounter)
-	if err != nil {
-		t.Fatalf("failed to deploy contract; %v", err)
-	}
+	require.NoError(t, err)
 
 	// Increment the counter a few times and check that the value is as expected.
 	for i := 0; i < 10; i++ {
 		counter, err := contract.GetCount(nil)
-		if err != nil {
-			t.Fatalf("failed to get counter value; %v", err)
-		}
+		require.NoError(t, err, "failed to get counter value")
 
-		if counter.Cmp(new(big.Int).SetInt64(int64(i))) != 0 {
-			t.Fatalf("unexpected counter value; expected %d, got %v", i, counter)
-		}
+		require.Equal(t, int64(i), counter.Int64(), "unexpected counter value")
 
 		_, err = net.Apply(contract.IncrementCounter)
-		if err != nil {
-			t.Fatalf("failed to increment counter; %v", err)
-		}
+		require.NoError(t, err, "failed to apply increment counter contract")
 	}
 }
 
@@ -57,18 +50,15 @@ func TestCounter_CanReadHistoricCounterValues(t *testing.T) {
 
 	// Deploy the counter contract.
 	contract, receipt, err := DeployContract(net, counter.DeployCounter)
-	if err != nil {
-		t.Fatalf("failed to deploy contract; %v", err)
-	}
+	require.NoError(t, err, "failed to deploy contract")
 
 	// Increment the counter a few times and record the block height.
 	updates := map[int]int{}                       // block height -> counter
 	updates[int(receipt.BlockNumber.Uint64())] = 0 // contract deployed
 	for i := 0; i < 10; i++ {
 		receipt, err := net.Apply(contract.IncrementCounter)
-		if err != nil {
-			t.Fatalf("failed to increment counter; %v", err)
-		}
+		require.NoError(t, err, "failed to apply increment counter contract")
+
 		updates[int(receipt.BlockNumber.Uint64())] = i + 1
 	}
 
@@ -90,11 +80,7 @@ func TestCounter_CanReadHistoricCounterValues(t *testing.T) {
 			want = v
 		}
 		got, err := contract.GetCount(&bind.CallOpts{BlockNumber: big.NewInt(int64(i))})
-		if err != nil {
-			t.Fatalf("failed to get counter value at block %d; %v", i, err)
-		}
-		if got.Cmp(big.NewInt(int64(want))) != 0 {
-			t.Errorf("unexpected counter value at block %d; expected %d, got %v", i, want, got)
-		}
+		require.NoError(t, err, "failed to get counter value at block %d", i)
+		require.Equal(t, int64(want), got.Int64(), "unexpected counter value at block %d", i)
 	}
 }

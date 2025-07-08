@@ -57,9 +57,7 @@ func TestBlockInArchive(t *testing.T) {
 				// Check if block is in archive
 				var res interface{}
 				err := rpcClient.Call(&res, "eth_getBalance", net.account.Address().String(), hexutil.EncodeUint64(blockHeader.Number.Uint64()))
-				if err != nil {
-					require.NoError(err, "failed to call eth_getBalance %v", err)
-				}
+				require.NoError(err, "failed to call eth_getBalance %v", err)
 
 				// Check that the block number is in order
 				if lastBlockNumber == 0 || blockHeader.Number.Uint64() == lastBlockNumber+1 {
@@ -79,9 +77,7 @@ func TestBlockInArchive(t *testing.T) {
 	}()
 
 	contract, _, err := DeployContract(net, transientstorage.DeployTransientstorage)
-	if err != nil {
-		t.Errorf("failed to deploy contract %v", err)
-	}
+	require.NoError(err, "failed to deploy contract %v", err)
 
 	for {
 		select {

@@ -34,9 +34,8 @@ import (
 
 func TestIntegrationTestNet_CanStartRestartAndStopIntegrationTestNet(t *testing.T) {
 	net := StartIntegrationTestNet(t)
-	if err := net.Restart(); err != nil {
-		t.Fatalf("Failed to restart the test network: %v", err)
-	}
+	require.NoError(t, net.Restart(), "Failed to restart the test network")
+
 	net.Stop()
 }
 
@@ -47,9 +46,9 @@ func TestIntegrationTestNet_CanRestartWithGenesisExportAndImport(t *testing.T) {
 			net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
 				NumNodes: numNodes,
 			})
-			if err := net.RestartWithExportImport(); err != nil {
-				t.Fatalf("Failed to restart the test network: %v", err)
-			}
+			require.NoError(t, net.RestartWithExportImport(),
+				"Failed to restart the test network with export and import")
+
 			net.Stop()
 		})
 	}
@@ -66,15 +65,11 @@ func TestIntegrationTestNet_CanFetchInformationFromTheNetwork(t *testing.T) {
 	net := StartIntegrationTestNet(t)
 
 	client, err := net.GetClient()
-	if err != nil {
-		t.Fatalf("Failed to connect to the integration test network: %v", err)
-	}
+	require.NoError(t, err, "Failed to connect to the integration test network")
 	defer client.Close()
 
 	block, err := client.BlockNumber(t.Context())
-	if err != nil {
-		t.Fatalf("Failed to get block number: %v", err)
-	}
+	require.NoError(t, err, "Failed to get block number")
 
 	if block == 0 || block > 1000 {
 		t.Errorf("Unexpected block number: %v", block)
@@ -85,35 +80,25 @@ func TestIntegrationTestNet_CanEndowAccountsWithTokens(t *testing.T) {
 	net := StartIntegrationTestNet(t)
 
 	client, err := net.GetClient()
-	if err != nil {
-		t.Fatalf("Failed to connect to the integration test network: %v", err)
-	}
+	require.NoError(t, err, "Failed to connect to the integration test network")
+	defer client.Close()
 
 	address := common.Address{0x01}
 	balance, err := client.BalanceAt(t.Context(), address, nil)
-	if err != nil {
-		t.Fatalf("Failed to get balance for account: %v", err)
-	}
+	require.NoError(t, err, "Failed to get balance for account")
 
 	for i := 0; i < 10; i++ {
 		increment := int64(1000)
 
 		receipt, err := net.EndowAccount(address, big.NewInt(increment))
-		if err != nil {
-			t.Fatalf("Failed to endow account 1: %v", err)
-		}
-		if want, got := types.ReceiptStatusSuccessful, receipt.Status; want != got {
-			t.Fatalf("Expected status %v, got %v", want, got)
-		}
+		require.NoError(t, err, "Failed to endow account 1")
+		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
 		want := balance.Add(balance, big.NewInt(int64(increment)))
 		balance, err = client.BalanceAt(t.Context(), address, nil)
-		if err != nil {
-			t.Fatalf("Failed to get balance for account: %v", err)
-		}
-		if want, got := want, balance; want.Cmp(got) != 0 {
-			t.Fatalf("Unexpected balance for account, got %v, wanted %v", got, want)
-		}
+		require.NoError(t, err, "Failed to get balance for account")
+		require.Equal(t, want.Uint64(), balance.Uint64(), "Unexpected balance for account after endowment")
+
 		balance = want
 	}
 }
@@ -122,29 +107,19 @@ func TestIntegrationTestNet_CanDeployContracts(t *testing.T) {
 	net := StartIntegrationTestNet(t)
 
 	_, receipt, err := DeployContract(net, counter.DeployCounter)
-	if err != nil {
-		t.Fatalf("Failed to deploy contract: %v", err)
-	}
-	if receipt.Status != types.ReceiptStatusSuccessful {
-		t.Errorf("Contract deployment failed: %v", receipt)
-	}
+	require.NoError(t, err, "Failed to deploy contract")
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "Contract deployment failed")
 }
 
 func TestIntegrationTestNet_CanInteractWithContract(t *testing.T) {
 	net := StartIntegrationTestNet(t)
 
 	contract, _, err := DeployContract(net, counter.DeployCounter)
-	if err != nil {
-		t.Fatalf("Failed to deploy contract: %v", err)
-	}
+	require.NoError(t, err, "Failed to deploy contract")
 
 	receipt, err := net.Apply(contract.IncrementCounter)
-	if err != nil {
-		t.Fatalf("Failed to send transaction: %v", err)
-	}
-	if receipt.Status != types.ReceiptStatusSuccessful {
-		t.Errorf("Contract deployment failed: %v", receipt)
-	}
+	require.NoError(t, err, "Failed to increment counter")
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "Counter increment failed")
 }
 
 func TestIntegrationTestNet_CanSpawnParallelSessions(t *testing.T) {
@@ -156,7 +131,8 @@ func TestIntegrationTestNet_CanSpawnParallelSessions(t *testing.T) {
 			session := net.SpawnSession(t)
 
 			receipt, err := session.EndowAccount(common.Address{0x42}, big.NewInt(1000))
-			checkTxExecution(t, receipt, err)
+			require.NoError(t, err)
+			require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 		})
 	}
 }

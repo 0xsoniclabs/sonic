@@ -26,6 +26,7 @@ import (
 	"github.com/0xsoniclabs/carmen/go/state/gostate"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/tests"
+	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -98,9 +99,7 @@ func execStateTest(t *testing.T, st *tests.TestMatcher, test *tests.StateTest) {
 			config.SkipTipPaymentToCoinbase = false
 
 			err := test.RunWith(subtest, config, factory, func(err error, state *tests.StateTestState) {})
-			if err := st.CheckFailure(t, err); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, st.CheckFailure(t, err))
 		})
 	}
 }
@@ -111,9 +110,8 @@ func createCarmenFactory(t *testing.T) carmenFactory {
 	// ethereum tests creates extensively long test names, which causes t.TempDir fails
 	// on a too long names. For this reason, we use os.MkdirTemp instead.
 	dir, err := os.MkdirTemp("", "eth-tests-carmen-*")
-	if err != nil {
-		t.Fatalf("cannot create temp dir: %v", err)
-	}
+	require.NoError(t, err, "cannot create temp dir for carmen state")
+
 	t.Cleanup(func() {
 		if err := os.RemoveAll(dir); err != nil {
 			t.Fatalf("cannot remove temp dir: %v", err)
@@ -128,9 +126,8 @@ func createCarmenFactory(t *testing.T) carmenFactory {
 	}
 
 	st, err := carmen.NewState(parameters)
-	if err != nil {
-		t.Fatalf("cannot create state: %v", err)
-	}
+	require.NoError(t, err, "cannot create state")
+
 	t.Cleanup(func() {
 		if err := st.Close(); err != nil {
 			t.Fatalf("cannot close state: %v", err)

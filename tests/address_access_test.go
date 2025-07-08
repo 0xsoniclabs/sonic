@@ -24,6 +24,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/stretchr/testify/require"
 )
 
 func TestAddressAccess(t *testing.T) {
@@ -32,31 +33,25 @@ func TestAddressAccess(t *testing.T) {
 	net := StartIntegrationTestNet(t)
 
 	contract, receipt, err := DeployContract(net, accessCost.DeployAccessCost)
-	checkTxExecution(t, receipt, err)
+	require.NoError(t, err)
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
 	// Execute function on an address, cold access
 	receipt, err = net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
 		return contract.TouchAddress(opts, someAccountAddress)
 	})
-	checkTxExecution(t, receipt, err)
+	require.NoError(t, err)
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+
 	txColdAccess, err := contract.ParseLogCost(*receipt.Logs[0])
-	if err != nil {
-		t.Fatalf("Failed to parse log: %v", err)
-	}
+	require.NoError(t, err)
 	_, viewColdAccess, err := contract.GetAddressAccessCost(nil, someAccountAddress)
-	if err != nil {
-		t.Fatalf("Failed to get address access cost: %v", err)
-	}
+	require.NoError(t, err)
 
 	t.Run("coinbase yields zero address", func(t *testing.T) {
 		coinBaseAddress, err := contract.GetCoinBaseAddress(nil)
-		if err != nil {
-			t.Fatalf("Failed to get coinbase address: %v", err)
-		}
-
-		if want, got := (common.Address{}), coinBaseAddress; want != got {
-			t.Errorf("Expected coinbase address %v, got %v", want, got)
-		}
+		require.NoError(t, err)
+		require.Equal(t, common.Address{}, coinBaseAddress)
 	})
 
 	t.Run("tx access is warm", func(t *testing.T) {
@@ -77,37 +72,31 @@ func TestAddressAccess(t *testing.T) {
 		for name, access := range tests {
 			t.Run(name, func(t *testing.T) {
 				receipt, err = net.Apply(access)
-				checkTxExecution(t, receipt, err)
+				require.NoError(t, err)
+				require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+
 				warmAccess, err := contract.ParseLogCost(*receipt.Logs[0])
-				if err != nil {
-					t.Fatalf("Failed to parse log: %v", err)
-				}
+				require.NoError(t, err)
 
 				// Difference must be the extra cost of a cold access
 				diff := new(big.Int).Sub(txColdAccess.Cost, warmAccess.Cost)
-				if want, got := big.NewInt(2500), diff; want.Cmp(got) != 0 {
-					t.Errorf("Expected cost difference %v, got %v", want, got)
-				}
+				require.Equal(t, big.NewInt(2500), diff, "Expected cost difference of 2500 for warm access")
 			})
 		}
 	})
 
 	t.Run("archive access is warm", func(t *testing.T) {
 
-		tests := map[string]func() (*big.Int, error){
-			"origin": func() (*big.Int, error) {
+		tests := map[string]func(t *testing.T) (*big.Int, error){
+			"origin": func(t *testing.T) (*big.Int, error) {
 				originAddr, err := contract.GetOrigin(nil)
-				if err != nil {
-					return nil, err
-				}
+				require.NoError(t, err)
 				_, cost, err := contract.GetAddressAccessCost(nil, originAddr)
 				return cost, err
 			},
-			"coinbase": func() (*big.Int, error) {
+			"coinbase": func(t *testing.T) (*big.Int, error) {
 				coinbaseAddr, err := contract.GetCoinBaseAddress(nil)
-				if err != nil {
-					return nil, err
-				}
+				require.NoError(t, err)
 				_, cost, err := contract.GetAddressAccessCost(nil, coinbaseAddr)
 				return cost, err
 			},
@@ -115,29 +104,11 @@ func TestAddressAccess(t *testing.T) {
 
 		for name, access := range tests {
 			t.Run(name, func(t *testing.T) {
-
-				cost, err := access()
-				if err != nil {
-					t.Fatalf("Failed to get address access cost: %v", err)
-				}
+				cost, err := access(t)
+				require.NoError(t, err)
 				diff := new(big.Int).Sub(viewColdAccess, cost)
-				if want, got := big.NewInt(2500), diff; want.Cmp(got) != 0 {
-					t.Errorf("Expected cost difference %v, got %v", want, got)
-				}
+				require.Equal(t, big.NewInt(2500), diff, "Expected cost difference of 2500 for warm access")
 			})
 		}
 	})
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// helpers
-
-func checkTxExecution(t *testing.T, receipt *types.Receipt, err error) {
-	t.Helper()
-	if err != nil {
-		t.Fatalf("Failed to execute transaction; %v", err)
-	}
-	if want, got := types.ReceiptStatusSuccessful, receipt.Status; want != got {
-		t.Errorf("Expected status %v, got %v", want, got)
-	}
 }

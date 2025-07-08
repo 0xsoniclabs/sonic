@@ -39,9 +39,8 @@ func TestNodeRestart_CanRestartAndRestoreItsState(t *testing.T) {
 	for i := 0; i < numRestarts; i++ {
 		for range numBlocks {
 			receipt, err := net.EndowAccount(common.Address{42}, big.NewInt(100))
-			if err != nil {
-				t.Fatalf("failed to endow account; %v", err)
-			}
+			require.NoError(err, "failed to endow account")
+
 			block := int(receipt.BlockNumber.Int64())
 			receipts[block] = append(receipts[block], receipt)
 		}
