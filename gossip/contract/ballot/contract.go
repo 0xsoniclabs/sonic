@@ -45,23 +45,23 @@ var (
 	_ = abi.ConvertType
 )
 
-// ContractMetaData contains all meta data concerning the Contract contract.
-var ContractMetaData = &bind.MetaData{
-	ABI: "[{\"inputs\":[{\"internalType\":\"bytes32[]\",\"name\":\"proposalNames\",\"type\":\"bytes32[]\"}],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"bytes32\",\"name\":\"name\",\"type\":\"bytes32\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"voteCount\",\"type\":\"uint256\"}],\"name\":\"NewProposal\",\"type\":\"event\"},{\"constant\":true,\"inputs\":[],\"name\":\"chairperson\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"}],\"name\":\"delegate\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"internalType\":\"address\",\"name\":\"voter\",\"type\":\"address\"}],\"name\":\"giveRightToVote\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"proposals\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"name\",\"type\":\"bytes32\"},{\"internalType\":\"uint256\",\"name\":\"voteCount\",\"type\":\"uint256\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"proposal\",\"type\":\"uint256\"}],\"name\":\"vote\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"name\":\"voters\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"weight\",\"type\":\"uint256\"},{\"internalType\":\"bool\",\"name\":\"voted\",\"type\":\"bool\"},{\"internalType\":\"address\",\"name\":\"delegate\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"vote\",\"type\":\"uint256\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[],\"name\":\"winnerName\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"winnerName_\",\"type\":\"bytes32\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[],\"name\":\"winningProposal\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"winningProposal_\",\"type\":\"uint256\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"}]",
-	Bin: "0x608060405234801561001057600080fd5b506040516108f33803806108f38339818101604052602081101561003357600080fd5b810190808051604051939291908464010000000082111561005357600080fd5b90830190602082018581111561006857600080fd5b825186602082028301116401000000008211171561008557600080fd5b82525081516020918201928201910280838360005b838110156100b257818101518382015260200161009a565b50505050919091016040908152600080546001600160a01b03191633178082556001600160a01b03168152600160208190529181209190915593505050505b81518110156101ac576002604051806040016040528084848151811061011357fe5b602090810291909101810151825260009181018290528354600181810186559483529181902083516002909302019182559190910151910155815133907f4913a1b403184a1c69ab16947e9f4c7a1e48c069dccde91f2bf550ea77becc5b9084908490811061017e57fe5b60200260200101516000604051808381526020018281526020019250505060405180910390a26001016100f1565b5050610736806101bd6000396000f3fe608060405234801561001057600080fd5b50600436106100885760003560e01c8063609ff1bd1161005b578063609ff1bd1461012c5780639e7b8d6114610146578063a3ec138d1461016c578063e2ba53f0146101c057610088565b80630121b93f1461008d578063013cf08b146100ac5780632e4176cf146100e25780635c19a95c14610106575b600080fd5b6100aa600480360360208110156100a357600080fd5b50356101c8565b005b6100c9600480360360208110156100c257600080fd5b50356102cb565b6040805192835260208301919091528051918290030190f35b6100ea6102f6565b604080516001600160a01b039092168252519081900360200190f35b6100aa6004803603602081101561011c57600080fd5b50356001600160a01b0316610305565b610134610516565b60408051918252519081900360200190f35b6100aa6004803603602081101561015c57600080fd5b50356001600160a01b031661057d565b6101926004803603602081101561018257600080fd5b50356001600160a01b0316610678565b6040805194855292151560208501526001600160a01b03909116838301526060830152519081900360800190f35b6101346106ac565b336000908152600160205260409020805461022a576040805162461bcd60e51b815260206004820152601460248201527f486173206e6f20726967687420746f20766f7465000000000000000000000000604482015290519081900360640190fd5b600181015460ff1615610284576040805162461bcd60e51b815260206004820152600e60248201527f416c726561647920766f7465642e000000000000000000000000000000000000604482015290519081900360640190fd5b6001818101805460ff19169091179055600280820183905581548154909190849081106102ad57fe5b60009182526020909120600160029092020101805490910190555050565b600281815481106102d857fe5b60009182526020909120600290910201805460019091015490915082565b6000546001600160a01b031681565b3360009081526001602081905260409091209081015460ff1615610370576040805162461bcd60e51b815260206004820152601260248201527f596f7520616c726561647920766f7465642e0000000000000000000000000000604482015290519081900360640190fd5b6001600160a01b0382163314156103ce576040805162461bcd60e51b815260206004820152601e60248201527f53656c662d64656c65676174696f6e20697320646973616c6c6f7765642e0000604482015290519081900360640190fd5b6001600160a01b038281166000908152600160208190526040909120015461010090041615610478576001600160a01b039182166000908152600160208190526040909120015461010090049091169033821415610473576040805162461bcd60e51b815260206004820152601960248201527f466f756e64206c6f6f7020696e2064656c65676174696f6e2e00000000000000604482015290519081900360640190fd5b6103ce565b6001818101805460ff191682177fffffffffffffffffffffff0000000000000000000000000000000000000000ff166101006001600160a01b0386169081029190911790915560009081526020829052604090209081015460ff1615610509578154600282810154815481106104ea57fe5b6000918252602090912060016002909202010180549091019055610511565b815481540181555b505050565b600080805b60025481101561057857816002828154811061053357fe5b9060005260206000209060020201600101541115610570576002818154811061055857fe5b90600052602060002090600202016001015491508092505b60010161051b565b505090565b6000546001600160a01b031633146105c65760405162461bcd60e51b81526004018080602001828103825260288152602001806106da6028913960400191505060405180910390fd5b6001600160a01b0381166000908152600160208190526040909120015460ff1615610638576040805162461bcd60e51b815260206004820152601860248201527f54686520766f74657220616c726561647920766f7465642e0000000000000000604482015290519081900360640190fd5b6001600160a01b0381166000908152600160205260409020541561065b57600080fd5b6001600160a01b0316600090815260016020819052604090912055565b600160208190526000918252604090912080549181015460029091015460ff82169161010090046001600160a01b03169084565b600060026106b8610516565b815481106106c257fe5b90600052602060002090600202016000015490509056fe4f6e6c79206368616972706572736f6e2063616e206769766520726967687420746f20766f74652ea265627a7a72315820777dd6264553d97c382eef05435413c6880245612ff8406c7d0782109204345164736f6c634300050c0032",
+// BallotMetaData contains all meta data concerning the Ballot contract.
+var BallotMetaData = &bind.MetaData{
+	ABI: "[{\"inputs\":[{\"internalType\":\"bytes32[]\",\"name\":\"proposalNames\",\"type\":\"bytes32[]\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"bytes32\",\"name\":\"name\",\"type\":\"bytes32\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"voteCount\",\"type\":\"uint256\"}],\"name\":\"NewProposal\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"chairperson\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"}],\"name\":\"delegate\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"voter\",\"type\":\"address\"}],\"name\":\"giveRightToVote\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"proposals\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"name\",\"type\":\"bytes32\"},{\"internalType\":\"uint256\",\"name\":\"voteCount\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"proposal\",\"type\":\"uint256\"}],\"name\":\"vote\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"name\":\"voters\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"weight\",\"type\":\"uint256\"},{\"internalType\":\"bool\",\"name\":\"voted\",\"type\":\"bool\"},{\"internalType\":\"address\",\"name\":\"delegate\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"vote\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"winnerName\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"winnerName_\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"winningProposal\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"winningProposal_\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"}]",
+	Bin: "0x608060405234801561000f575f5ffd5b5060405161137f38038061137f8339818101604052810190610031919061035f565b335f5f6101000a81548173ffffffffffffffffffffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffffffffffffff1602179055506001805f5f5f9054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff1681526020019081526020015f205f01819055505f5f90505b81518110156101c45760026040518060400160405280848481518110610102576101016103a6565b5b602002602001015181526020015f815250908060018154018082558091505060019003905f5260205f2090600202015f909190919091505f820151815f01556020820151816001015550503373ffffffffffffffffffffffffffffffffffffffff167f4913a1b403184a1c69ab16947e9f4c7a1e48c069dccde91f2bf550ea77becc5b838381518110610198576101976103a6565b5b60200260200101515f6040516101af92919061042d565b60405180910390a280806001019150506100d9565b5050610454565b5f604051905090565b5f5ffd5b5f5ffd5b5f5ffd5b5f601f19601f8301169050919050565b7f4e487b71000000000000000000000000000000000000000000000000000000005f52604160045260245ffd5b610226826101e0565b810181811067ffffffffffffffff82111715610245576102446101f0565b5b80604052505050565b5f6102576101cb565b9050610263828261021d565b919050565b5f67ffffffffffffffff821115610282576102816101f0565b5b602082029050602081019050919050565b5f5ffd5b5f819050919050565b6102a981610297565b81146102b3575f5ffd5b50565b5f815190506102c4816102a0565b92915050565b5f6102dc6102d784610268565b61024e565b905080838252602082019050602084028301858111156102ff576102fe610293565b5b835b81811015610328578061031488826102b6565b845260208401935050602081019050610301565b5050509392505050565b5f82601f830112610346576103456101dc565b5b81516103568482602086016102ca565b91505092915050565b5f60208284031215610374576103736101d4565b5b5f82015167ffffffffffffffff811115610391576103906101d8565b5b61039d84828501610332565b91505092915050565b7f4e487b71000000000000000000000000000000000000000000000000000000005f52603260045260245ffd5b6103dc81610297565b82525050565b5f819050919050565b5f819050919050565b5f819050919050565b5f61041761041261040d846103e2565b6103f4565b6103eb565b9050919050565b610427816103fd565b82525050565b5f6040820190506104405f8301856103d3565b61044d602083018461041e565b9392505050565b610f1e806104615f395ff3fe608060405234801561000f575f5ffd5b5060043610610086575f3560e01c8063609ff1bd11610059578063609ff1bd146101115780639e7b8d611461012f578063a3ec138d1461014b578063e2ba53f01461017e57610086565b80630121b93f1461008a578063013cf08b146100a65780632e4176cf146100d75780635c19a95c146100f5575b5f5ffd5b6100a4600480360381019061009f9190610998565b61019c565b005b6100c060048036038101906100bb9190610998565b6102d7565b6040516100ce9291906109ea565b60405180910390f35b6100df610306565b6040516100ec9190610a50565b60405180910390f35b61010f600480360381019061010a9190610a93565b61032a565b005b6101196106af565b6040516101269190610abe565b60405180910390f35b61014960048036038101906101449190610a93565b61072d565b005b61016560048036038101906101609190610a93565b6108d9565b6040516101759493929190610af1565b60405180910390f35b610186610931565b6040516101939190610b34565b60405180910390f35b5f60015f3373ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff1681526020019081526020015f2090505f815f015403610221576040517f08c379a000000000000000000000000000000000000000000000000000000000815260040161021890610ba7565b60405180910390fd5b806001015f9054906101000a900460ff1615610272576040517f08c379a000000000000000000000000000000000000000000000000000000000815260040161026990610c0f565b60405180910390fd5b6001816001015f6101000a81548160ff021916908315150217905550818160020181905550805f0154600283815481106102af576102ae610c2d565b5b905f5260205f2090600202016001015f8282546102cc9190610c87565b925050819055505050565b600281815481106102e6575f80fd5b905f5260205f2090600202015f91509050805f0154908060010154905082565b5f5f9054906101000a900473ffffffffffffffffffffffffffffffffffffffff1681565b5f60015f3373ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff1681526020019081526020015f209050806001015f9054906101000a900460ff16156103bb576040517f08c379a00000000000000000000000000000000000000000000000000000000081526004016103b290610d04565b60405180910390fd5b3373ffffffffffffffffffffffffffffffffffffffff168273ffffffffffffffffffffffffffffffffffffffff1603610429576040517f08c379a000000000000000000000000000000000000000000000000000000000815260040161042090610d6c565b60405180910390fd5b5b5f73ffffffffffffffffffffffffffffffffffffffff1660015f8473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff1681526020019081526020015f2060010160019054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16146105935760015f8373ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff1681526020019081526020015f2060010160019054906101000a900473ffffffffffffffffffffffffffffffffffffffff1691503373ffffffffffffffffffffffffffffffffffffffff168273ffffffffffffffffffffffffffffffffffffffff160361058e576040517f08c379a000000000000000000000000000000000000000000000000000000000815260040161058590610dd4565b60405180910390fd5b61042a565b6001816001015f6101000a81548160ff021916908315150217905550818160010160016101000a81548173ffffffffffffffffffffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffffffffffffff1602179055505f60015f8473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff1681526020019081526020015f209050806001015f9054906101000a900460ff161561068d57815f0154600282600201548154811061066457610663610c2d565b5b905f5260205f2090600202016001015f8282546106819190610c87565b925050819055506106aa565b815f0154815f015f8282546106a29190610c87565b925050819055505b505050565b5f5f5f90505f5f90505b6002805490508110156107285781600282815481106106db576106da610c2d565b5b905f5260205f20906002020160010154111561071b576002818154811061070557610704610c2d565b5b905f5260205f2090600202016001015491508092505b80806001019150506106b9565b505090565b5f5f9054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff163373ffffffffffffffffffffffffffffffffffffffff16146107bb576040517f08c379a00000000000000000000000000000000000000000000000000000000081526004016107b290610e62565b60405180910390fd5b60015f8273ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff1681526020019081526020015f206001015f9054906101000a900460ff1615610848576040517f08c379a000000000000000000000000000000000000000000000000000000000815260040161083f90610eca565b60405180910390fd5b5f60015f8373ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff1681526020019081526020015f205f015414610892575f5ffd5b6001805f8373ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff1681526020019081526020015f205f018190555050565b6001602052805f5260405f205f91509050805f015490806001015f9054906101000a900460ff16908060010160019054906101000a900473ffffffffffffffffffffffffffffffffffffffff16908060020154905084565b5f600261093c6106af565b8154811061094d5761094c610c2d565b5b905f5260205f2090600202015f0154905090565b5f5ffd5b5f819050919050565b61097781610965565b8114610981575f5ffd5b50565b5f813590506109928161096e565b92915050565b5f602082840312156109ad576109ac610961565b5b5f6109ba84828501610984565b91505092915050565b5f819050919050565b6109d5816109c3565b82525050565b6109e481610965565b82525050565b5f6040820190506109fd5f8301856109cc565b610a0a60208301846109db565b9392505050565b5f73ffffffffffffffffffffffffffffffffffffffff82169050919050565b5f610a3a82610a11565b9050919050565b610a4a81610a30565b82525050565b5f602082019050610a635f830184610a41565b92915050565b610a7281610a30565b8114610a7c575f5ffd5b50565b5f81359050610a8d81610a69565b92915050565b5f60208284031215610aa857610aa7610961565b5b5f610ab584828501610a7f565b91505092915050565b5f602082019050610ad15f8301846109db565b92915050565b5f8115159050919050565b610aeb81610ad7565b82525050565b5f608082019050610b045f8301876109db565b610b116020830186610ae2565b610b1e6040830185610a41565b610b2b60608301846109db565b95945050505050565b5f602082019050610b475f8301846109cc565b92915050565b5f82825260208201905092915050565b7f486173206e6f20726967687420746f20766f74650000000000000000000000005f82015250565b5f610b91601483610b4d565b9150610b9c82610b5d565b602082019050919050565b5f6020820190508181035f830152610bbe81610b85565b9050919050565b7f416c726561647920766f7465642e0000000000000000000000000000000000005f82015250565b5f610bf9600e83610b4d565b9150610c0482610bc5565b602082019050919050565b5f6020820190508181035f830152610c2681610bed565b9050919050565b7f4e487b71000000000000000000000000000000000000000000000000000000005f52603260045260245ffd5b7f4e487b71000000000000000000000000000000000000000000000000000000005f52601160045260245ffd5b5f610c9182610965565b9150610c9c83610965565b9250828201905080821115610cb457610cb3610c5a565b5b92915050565b7f596f7520616c726561647920766f7465642e00000000000000000000000000005f82015250565b5f610cee601283610b4d565b9150610cf982610cba565b602082019050919050565b5f6020820190508181035f830152610d1b81610ce2565b9050919050565b7f53656c662d64656c65676174696f6e20697320646973616c6c6f7765642e00005f82015250565b5f610d56601e83610b4d565b9150610d6182610d22565b602082019050919050565b5f6020820190508181035f830152610d8381610d4a565b9050919050565b7f466f756e64206c6f6f7020696e2064656c65676174696f6e2e000000000000005f82015250565b5f610dbe601983610b4d565b9150610dc982610d8a565b602082019050919050565b5f6020820190508181035f830152610deb81610db2565b9050919050565b7f4f6e6c79206368616972706572736f6e2063616e2067697665207269676874205f8201527f746f20766f74652e000000000000000000000000000000000000000000000000602082015250565b5f610e4c602883610b4d565b9150610e5782610df2565b604082019050919050565b5f6020820190508181035f830152610e7981610e40565b9050919050565b7f54686520766f74657220616c726561647920766f7465642e00000000000000005f82015250565b5f610eb4601883610b4d565b9150610ebf82610e80565b602082019050919050565b5f6020820190508181035f830152610ee181610ea8565b905091905056fea26469706673582212200e6ad99452546cf9a4a9f650cdcd23bf80a61a5c3ec9bd821390b37664e7073864736f6c634300081e0033",
 }
 
-// ContractABI is the input ABI used to generate the binding from.
-// Deprecated: Use ContractMetaData.ABI instead.
-var ContractABI = ContractMetaData.ABI
+// BallotABI is the input ABI used to generate the binding from.
+// Deprecated: Use BallotMetaData.ABI instead.
+var BallotABI = BallotMetaData.ABI
 
-// ContractBin is the compiled bytecode used for deploying new contracts.
-// Deprecated: Use ContractMetaData.Bin instead.
-var ContractBin = ContractMetaData.Bin
+// BallotBin is the compiled bytecode used for deploying new contracts.
+// Deprecated: Use BallotMetaData.Bin instead.
+var BallotBin = BallotMetaData.Bin
 
-// DeployContract deploys a new Ethereum contract, binding an instance of Contract to it.
-func DeployContract(auth *bind.TransactOpts, backend bind.ContractBackend, proposalNames [][32]byte) (common.Address, *types.Transaction, *Contract, error) {
-	parsed, err := ContractMetaData.GetAbi()
+// DeployBallot deploys a new Ethereum contract, binding an instance of Ballot to it.
+func DeployBallot(auth *bind.TransactOpts, backend bind.ContractBackend, proposalNames [][32]byte) (common.Address, *types.Transaction, *Ballot, error) {
+	parsed, err := BallotMetaData.GetAbi()
 	if err != nil {
 		return common.Address{}, nil, nil, err
 	}
@@ -69,111 +69,111 @@ func DeployContract(auth *bind.TransactOpts, backend bind.ContractBackend, propo
 		return common.Address{}, nil, nil, errors.New("GetABI returned nil")
 	}
 
-	address, tx, contract, err := bind.DeployContract(auth, *parsed, common.FromHex(ContractBin), backend, proposalNames)
+	address, tx, contract, err := bind.DeployContract(auth, *parsed, common.FromHex(BallotBin), backend, proposalNames)
 	if err != nil {
 		return common.Address{}, nil, nil, err
 	}
-	return address, tx, &Contract{ContractCaller: ContractCaller{contract: contract}, ContractTransactor: ContractTransactor{contract: contract}, ContractFilterer: ContractFilterer{contract: contract}}, nil
+	return address, tx, &Ballot{BallotCaller: BallotCaller{contract: contract}, BallotTransactor: BallotTransactor{contract: contract}, BallotFilterer: BallotFilterer{contract: contract}}, nil
 }
 
-// Contract is an auto generated Go binding around an Ethereum contract.
-type Contract struct {
-	ContractCaller     // Read-only binding to the contract
-	ContractTransactor // Write-only binding to the contract
-	ContractFilterer   // Log filterer for contract events
+// Ballot is an auto generated Go binding around an Ethereum contract.
+type Ballot struct {
+	BallotCaller     // Read-only binding to the contract
+	BallotTransactor // Write-only binding to the contract
+	BallotFilterer   // Log filterer for contract events
 }
 
-// ContractCaller is an auto generated read-only Go binding around an Ethereum contract.
-type ContractCaller struct {
+// BallotCaller is an auto generated read-only Go binding around an Ethereum contract.
+type BallotCaller struct {
 	contract *bind.BoundContract // Generic contract wrapper for the low level calls
 }
 
-// ContractTransactor is an auto generated write-only Go binding around an Ethereum contract.
-type ContractTransactor struct {
+// BallotTransactor is an auto generated write-only Go binding around an Ethereum contract.
+type BallotTransactor struct {
 	contract *bind.BoundContract // Generic contract wrapper for the low level calls
 }
 
-// ContractFilterer is an auto generated log filtering Go binding around an Ethereum contract events.
-type ContractFilterer struct {
+// BallotFilterer is an auto generated log filtering Go binding around an Ethereum contract events.
+type BallotFilterer struct {
 	contract *bind.BoundContract // Generic contract wrapper for the low level calls
 }
 
-// ContractSession is an auto generated Go binding around an Ethereum contract,
+// BallotSession is an auto generated Go binding around an Ethereum contract,
 // with pre-set call and transact options.
-type ContractSession struct {
-	Contract     *Contract         // Generic contract binding to set the session for
+type BallotSession struct {
+	Contract     *Ballot           // Generic contract binding to set the session for
 	CallOpts     bind.CallOpts     // Call options to use throughout this session
 	TransactOpts bind.TransactOpts // Transaction auth options to use throughout this session
 }
 
-// ContractCallerSession is an auto generated read-only Go binding around an Ethereum contract,
+// BallotCallerSession is an auto generated read-only Go binding around an Ethereum contract,
 // with pre-set call options.
-type ContractCallerSession struct {
-	Contract *ContractCaller // Generic contract caller binding to set the session for
-	CallOpts bind.CallOpts   // Call options to use throughout this session
+type BallotCallerSession struct {
+	Contract *BallotCaller // Generic contract caller binding to set the session for
+	CallOpts bind.CallOpts // Call options to use throughout this session
 }
 
-// ContractTransactorSession is an auto generated write-only Go binding around an Ethereum contract,
+// BallotTransactorSession is an auto generated write-only Go binding around an Ethereum contract,
 // with pre-set transact options.
-type ContractTransactorSession struct {
-	Contract     *ContractTransactor // Generic contract transactor binding to set the session for
-	TransactOpts bind.TransactOpts   // Transaction auth options to use throughout this session
+type BallotTransactorSession struct {
+	Contract     *BallotTransactor // Generic contract transactor binding to set the session for
+	TransactOpts bind.TransactOpts // Transaction auth options to use throughout this session
 }
 
-// ContractRaw is an auto generated low-level Go binding around an Ethereum contract.
-type ContractRaw struct {
-	Contract *Contract // Generic contract binding to access the raw methods on
+// BallotRaw is an auto generated low-level Go binding around an Ethereum contract.
+type BallotRaw struct {
+	Contract *Ballot // Generic contract binding to access the raw methods on
 }
 
-// ContractCallerRaw is an auto generated low-level read-only Go binding around an Ethereum contract.
-type ContractCallerRaw struct {
-	Contract *ContractCaller // Generic read-only contract binding to access the raw methods on
+// BallotCallerRaw is an auto generated low-level read-only Go binding around an Ethereum contract.
+type BallotCallerRaw struct {
+	Contract *BallotCaller // Generic read-only contract binding to access the raw methods on
 }
 
-// ContractTransactorRaw is an auto generated low-level write-only Go binding around an Ethereum contract.
-type ContractTransactorRaw struct {
-	Contract *ContractTransactor // Generic write-only contract binding to access the raw methods on
+// BallotTransactorRaw is an auto generated low-level write-only Go binding around an Ethereum contract.
+type BallotTransactorRaw struct {
+	Contract *BallotTransactor // Generic write-only contract binding to access the raw methods on
 }
 
-// NewContract creates a new instance of Contract, bound to a specific deployed contract.
-func NewContract(address common.Address, backend bind.ContractBackend) (*Contract, error) {
-	contract, err := bindContract(address, backend, backend, backend)
+// NewBallot creates a new instance of Ballot, bound to a specific deployed contract.
+func NewBallot(address common.Address, backend bind.ContractBackend) (*Ballot, error) {
+	contract, err := bindBallot(address, backend, backend, backend)
 	if err != nil {
 		return nil, err
 	}
-	return &Contract{ContractCaller: ContractCaller{contract: contract}, ContractTransactor: ContractTransactor{contract: contract}, ContractFilterer: ContractFilterer{contract: contract}}, nil
+	return &Ballot{BallotCaller: BallotCaller{contract: contract}, BallotTransactor: BallotTransactor{contract: contract}, BallotFilterer: BallotFilterer{contract: contract}}, nil
 }
 
-// NewContractCaller creates a new read-only instance of Contract, bound to a specific deployed contract.
-func NewContractCaller(address common.Address, caller bind.ContractCaller) (*ContractCaller, error) {
-	contract, err := bindContract(address, caller, nil, nil)
+// NewBallotCaller creates a new read-only instance of Ballot, bound to a specific deployed contract.
+func NewBallotCaller(address common.Address, caller bind.ContractCaller) (*BallotCaller, error) {
+	contract, err := bindBallot(address, caller, nil, nil)
 	if err != nil {
 		return nil, err
 	}
-	return &ContractCaller{contract: contract}, nil
+	return &BallotCaller{contract: contract}, nil
 }
 
-// NewContractTransactor creates a new write-only instance of Contract, bound to a specific deployed contract.
-func NewContractTransactor(address common.Address, transactor bind.ContractTransactor) (*ContractTransactor, error) {
-	contract, err := bindContract(address, nil, transactor, nil)
+// NewBallotTransactor creates a new write-only instance of Ballot, bound to a specific deployed contract.
+func NewBallotTransactor(address common.Address, transactor bind.ContractTransactor) (*BallotTransactor, error) {
+	contract, err := bindBallot(address, nil, transactor, nil)
 	if err != nil {
 		return nil, err
 	}
-	return &ContractTransactor{contract: contract}, nil
+	return &BallotTransactor{contract: contract}, nil
 }
 
-// NewContractFilterer creates a new log filterer instance of Contract, bound to a specific deployed contract.
-func NewContractFilterer(address common.Address, filterer bind.ContractFilterer) (*ContractFilterer, error) {
-	contract, err := bindContract(address, nil, nil, filterer)
+// NewBallotFilterer creates a new log filterer instance of Ballot, bound to a specific deployed contract.
+func NewBallotFilterer(address common.Address, filterer bind.ContractFilterer) (*BallotFilterer, error) {
+	contract, err := bindBallot(address, nil, nil, filterer)
 	if err != nil {
 		return nil, err
 	}
-	return &ContractFilterer{contract: contract}, nil
+	return &BallotFilterer{contract: contract}, nil
 }
 
-// bindContract binds a generic wrapper to an already deployed contract.
-func bindContract(address common.Address, caller bind.ContractCaller, transactor bind.ContractTransactor, filterer bind.ContractFilterer) (*bind.BoundContract, error) {
-	parsed, err := ContractMetaData.GetAbi()
+// bindBallot binds a generic wrapper to an already deployed contract.
+func bindBallot(address common.Address, caller bind.ContractCaller, transactor bind.ContractTransactor, filterer bind.ContractFilterer) (*bind.BoundContract, error) {
+	parsed, err := BallotMetaData.GetAbi()
 	if err != nil {
 		return nil, err
 	}
@@ -184,46 +184,46 @@ func bindContract(address common.Address, caller bind.ContractCaller, transactor
 // sets the output to result. The result type might be a single field for simple
 // returns, a slice of interfaces for anonymous returns and a struct for named
 // returns.
-func (_Contract *ContractRaw) Call(opts *bind.CallOpts, result *[]interface{}, method string, params ...interface{}) error {
-	return _Contract.Contract.ContractCaller.contract.Call(opts, result, method, params...)
+func (_Ballot *BallotRaw) Call(opts *bind.CallOpts, result *[]interface{}, method string, params ...interface{}) error {
+	return _Ballot.Contract.BallotCaller.contract.Call(opts, result, method, params...)
 }
 
 // Transfer initiates a plain transaction to move funds to the contract, calling
 // its default method if one is available.
-func (_Contract *ContractRaw) Transfer(opts *bind.TransactOpts) (*types.Transaction, error) {
-	return _Contract.Contract.ContractTransactor.contract.Transfer(opts)
+func (_Ballot *BallotRaw) Transfer(opts *bind.TransactOpts) (*types.Transaction, error) {
+	return _Ballot.Contract.BallotTransactor.contract.Transfer(opts)
 }
 
 // Transact invokes the (paid) contract method with params as input values.
-func (_Contract *ContractRaw) Transact(opts *bind.TransactOpts, method string, params ...interface{}) (*types.Transaction, error) {
-	return _Contract.Contract.ContractTransactor.contract.Transact(opts, method, params...)
+func (_Ballot *BallotRaw) Transact(opts *bind.TransactOpts, method string, params ...interface{}) (*types.Transaction, error) {
+	return _Ballot.Contract.BallotTransactor.contract.Transact(opts, method, params...)
 }
 
 // Call invokes the (constant) contract method with params as input values and
 // sets the output to result. The result type might be a single field for simple
 // returns, a slice of interfaces for anonymous returns and a struct for named
 // returns.
-func (_Contract *ContractCallerRaw) Call(opts *bind.CallOpts, result *[]interface{}, method string, params ...interface{}) error {
-	return _Contract.Contract.contract.Call(opts, result, method, params...)
+func (_Ballot *BallotCallerRaw) Call(opts *bind.CallOpts, result *[]interface{}, method string, params ...interface{}) error {
+	return _Ballot.Contract.contract.Call(opts, result, method, params...)
 }
 
 // Transfer initiates a plain transaction to move funds to the contract, calling
 // its default method if one is available.
-func (_Contract *ContractTransactorRaw) Transfer(opts *bind.TransactOpts) (*types.Transaction, error) {
-	return _Contract.Contract.contract.Transfer(opts)
+func (_Ballot *BallotTransactorRaw) Transfer(opts *bind.TransactOpts) (*types.Transaction, error) {
+	return _Ballot.Contract.contract.Transfer(opts)
 }
 
 // Transact invokes the (paid) contract method with params as input values.
-func (_Contract *ContractTransactorRaw) Transact(opts *bind.TransactOpts, method string, params ...interface{}) (*types.Transaction, error) {
-	return _Contract.Contract.contract.Transact(opts, method, params...)
+func (_Ballot *BallotTransactorRaw) Transact(opts *bind.TransactOpts, method string, params ...interface{}) (*types.Transaction, error) {
+	return _Ballot.Contract.contract.Transact(opts, method, params...)
 }
 
 // Chairperson is a free data retrieval call binding the contract method 0x2e4176cf.
 //
 // Solidity: function chairperson() view returns(address)
-func (_Contract *ContractCaller) Chairperson(opts *bind.CallOpts) (common.Address, error) {
+func (_Ballot *BallotCaller) Chairperson(opts *bind.CallOpts) (common.Address, error) {
 	var out []interface{}
-	err := _Contract.contract.Call(opts, &out, "chairperson")
+	err := _Ballot.contract.Call(opts, &out, "chairperson")
 
 	if err != nil {
 		return *new(common.Address), err
@@ -238,26 +238,26 @@ func (_Contract *ContractCaller) Chairperson(opts *bind.CallOpts) (common.Addres
 // Chairperson is a free data retrieval call binding the contract method 0x2e4176cf.
 //
 // Solidity: function chairperson() view returns(address)
-func (_Contract *ContractSession) Chairperson() (common.Address, error) {
-	return _Contract.Contract.Chairperson(&_Contract.CallOpts)
+func (_Ballot *BallotSession) Chairperson() (common.Address, error) {
+	return _Ballot.Contract.Chairperson(&_Ballot.CallOpts)
 }
 
 // Chairperson is a free data retrieval call binding the contract method 0x2e4176cf.
 //
 // Solidity: function chairperson() view returns(address)
-func (_Contract *ContractCallerSession) Chairperson() (common.Address, error) {
-	return _Contract.Contract.Chairperson(&_Contract.CallOpts)
+func (_Ballot *BallotCallerSession) Chairperson() (common.Address, error) {
+	return _Ballot.Contract.Chairperson(&_Ballot.CallOpts)
 }
 
 // Proposals is a free data retrieval call binding the contract method 0x013cf08b.
 //
 // Solidity: function proposals(uint256 ) view returns(bytes32 name, uint256 voteCount)
-func (_Contract *ContractCaller) Proposals(opts *bind.CallOpts, arg0 *big.Int) (struct {
+func (_Ballot *BallotCaller) Proposals(opts *bind.CallOpts, arg0 *big.Int) (struct {
 	Name      [32]byte
 	VoteCount *big.Int
 }, error) {
 	var out []interface{}
-	err := _Contract.contract.Call(opts, &out, "proposals", arg0)
+	err := _Ballot.contract.Call(opts, &out, "proposals", arg0)
 
 	outstruct := new(struct {
 		Name      [32]byte
@@ -277,34 +277,34 @@ func (_Contract *ContractCaller) Proposals(opts *bind.CallOpts, arg0 *big.Int) (
 // Proposals is a free data retrieval call binding the contract method 0x013cf08b.
 //
 // Solidity: function proposals(uint256 ) view returns(bytes32 name, uint256 voteCount)
-func (_Contract *ContractSession) Proposals(arg0 *big.Int) (struct {
+func (_Ballot *BallotSession) Proposals(arg0 *big.Int) (struct {
 	Name      [32]byte
 	VoteCount *big.Int
 }, error) {
-	return _Contract.Contract.Proposals(&_Contract.CallOpts, arg0)
+	return _Ballot.Contract.Proposals(&_Ballot.CallOpts, arg0)
 }
 
 // Proposals is a free data retrieval call binding the contract method 0x013cf08b.
 //
 // Solidity: function proposals(uint256 ) view returns(bytes32 name, uint256 voteCount)
-func (_Contract *ContractCallerSession) Proposals(arg0 *big.Int) (struct {
+func (_Ballot *BallotCallerSession) Proposals(arg0 *big.Int) (struct {
 	Name      [32]byte
 	VoteCount *big.Int
 }, error) {
-	return _Contract.Contract.Proposals(&_Contract.CallOpts, arg0)
+	return _Ballot.Contract.Proposals(&_Ballot.CallOpts, arg0)
 }
 
 // Voters is a free data retrieval call binding the contract method 0xa3ec138d.
 //
 // Solidity: function voters(address ) view returns(uint256 weight, bool voted, address delegate, uint256 vote)
-func (_Contract *ContractCaller) Voters(opts *bind.CallOpts, arg0 common.Address) (struct {
+func (_Ballot *BallotCaller) Voters(opts *bind.CallOpts, arg0 common.Address) (struct {
 	Weight   *big.Int
 	Voted    bool
 	Delegate common.Address
 	Vote     *big.Int
 }, error) {
 	var out []interface{}
-	err := _Contract.contract.Call(opts, &out, "voters", arg0)
+	err := _Ballot.contract.Call(opts, &out, "voters", arg0)
 
 	outstruct := new(struct {
 		Weight   *big.Int
@@ -328,33 +328,33 @@ func (_Contract *ContractCaller) Voters(opts *bind.CallOpts, arg0 common.Address
 // Voters is a free data retrieval call binding the contract method 0xa3ec138d.
 //
 // Solidity: function voters(address ) view returns(uint256 weight, bool voted, address delegate, uint256 vote)
-func (_Contract *ContractSession) Voters(arg0 common.Address) (struct {
+func (_Ballot *BallotSession) Voters(arg0 common.Address) (struct {
 	Weight   *big.Int
 	Voted    bool
 	Delegate common.Address
 	Vote     *big.Int
 }, error) {
-	return _Contract.Contract.Voters(&_Contract.CallOpts, arg0)
+	return _Ballot.Contract.Voters(&_Ballot.CallOpts, arg0)
 }
 
 // Voters is a free data retrieval call binding the contract method 0xa3ec138d.
 //
 // Solidity: function voters(address ) view returns(uint256 weight, bool voted, address delegate, uint256 vote)
-func (_Contract *ContractCallerSession) Voters(arg0 common.Address) (struct {
+func (_Ballot *BallotCallerSession) Voters(arg0 common.Address) (struct {
 	Weight   *big.Int
 	Voted    bool
 	Delegate common.Address
 	Vote     *big.Int
 }, error) {
-	return _Contract.Contract.Voters(&_Contract.CallOpts, arg0)
+	return _Ballot.Contract.Voters(&_Ballot.CallOpts, arg0)
 }
 
 // WinnerName is a free data retrieval call binding the contract method 0xe2ba53f0.
 //
 // Solidity: function winnerName() view returns(bytes32 winnerName_)
-func (_Contract *ContractCaller) WinnerName(opts *bind.CallOpts) ([32]byte, error) {
+func (_Ballot *BallotCaller) WinnerName(opts *bind.CallOpts) ([32]byte, error) {
 	var out []interface{}
-	err := _Contract.contract.Call(opts, &out, "winnerName")
+	err := _Ballot.contract.Call(opts, &out, "winnerName")
 
 	if err != nil {
 		return *new([32]byte), err
@@ -369,23 +369,23 @@ func (_Contract *ContractCaller) WinnerName(opts *bind.CallOpts) ([32]byte, erro
 // WinnerName is a free data retrieval call binding the contract method 0xe2ba53f0.
 //
 // Solidity: function winnerName() view returns(bytes32 winnerName_)
-func (_Contract *ContractSession) WinnerName() ([32]byte, error) {
-	return _Contract.Contract.WinnerName(&_Contract.CallOpts)
+func (_Ballot *BallotSession) WinnerName() ([32]byte, error) {
+	return _Ballot.Contract.WinnerName(&_Ballot.CallOpts)
 }
 
 // WinnerName is a free data retrieval call binding the contract method 0xe2ba53f0.
 //
 // Solidity: function winnerName() view returns(bytes32 winnerName_)
-func (_Contract *ContractCallerSession) WinnerName() ([32]byte, error) {
-	return _Contract.Contract.WinnerName(&_Contract.CallOpts)
+func (_Ballot *BallotCallerSession) WinnerName() ([32]byte, error) {
+	return _Ballot.Contract.WinnerName(&_Ballot.CallOpts)
 }
 
 // WinningProposal is a free data retrieval call binding the contract method 0x609ff1bd.
 //
 // Solidity: function winningProposal() view returns(uint256 winningProposal_)
-func (_Contract *ContractCaller) WinningProposal(opts *bind.CallOpts) (*big.Int, error) {
+func (_Ballot *BallotCaller) WinningProposal(opts *bind.CallOpts) (*big.Int, error) {
 	var out []interface{}
-	err := _Contract.contract.Call(opts, &out, "winningProposal")
+	err := _Ballot.contract.Call(opts, &out, "winningProposal")
 
 	if err != nil {
 		return *new(*big.Int), err
@@ -400,83 +400,83 @@ func (_Contract *ContractCaller) WinningProposal(opts *bind.CallOpts) (*big.Int,
 // WinningProposal is a free data retrieval call binding the contract method 0x609ff1bd.
 //
 // Solidity: function winningProposal() view returns(uint256 winningProposal_)
-func (_Contract *ContractSession) WinningProposal() (*big.Int, error) {
-	return _Contract.Contract.WinningProposal(&_Contract.CallOpts)
+func (_Ballot *BallotSession) WinningProposal() (*big.Int, error) {
+	return _Ballot.Contract.WinningProposal(&_Ballot.CallOpts)
 }
 
 // WinningProposal is a free data retrieval call binding the contract method 0x609ff1bd.
 //
 // Solidity: function winningProposal() view returns(uint256 winningProposal_)
-func (_Contract *ContractCallerSession) WinningProposal() (*big.Int, error) {
-	return _Contract.Contract.WinningProposal(&_Contract.CallOpts)
+func (_Ballot *BallotCallerSession) WinningProposal() (*big.Int, error) {
+	return _Ballot.Contract.WinningProposal(&_Ballot.CallOpts)
 }
 
 // Delegate is a paid mutator transaction binding the contract method 0x5c19a95c.
 //
 // Solidity: function delegate(address to) returns()
-func (_Contract *ContractTransactor) Delegate(opts *bind.TransactOpts, to common.Address) (*types.Transaction, error) {
-	return _Contract.contract.Transact(opts, "delegate", to)
+func (_Ballot *BallotTransactor) Delegate(opts *bind.TransactOpts, to common.Address) (*types.Transaction, error) {
+	return _Ballot.contract.Transact(opts, "delegate", to)
 }
 
 // Delegate is a paid mutator transaction binding the contract method 0x5c19a95c.
 //
 // Solidity: function delegate(address to) returns()
-func (_Contract *ContractSession) Delegate(to common.Address) (*types.Transaction, error) {
-	return _Contract.Contract.Delegate(&_Contract.TransactOpts, to)
+func (_Ballot *BallotSession) Delegate(to common.Address) (*types.Transaction, error) {
+	return _Ballot.Contract.Delegate(&_Ballot.TransactOpts, to)
 }
 
 // Delegate is a paid mutator transaction binding the contract method 0x5c19a95c.
 //
 // Solidity: function delegate(address to) returns()
-func (_Contract *ContractTransactorSession) Delegate(to common.Address) (*types.Transaction, error) {
-	return _Contract.Contract.Delegate(&_Contract.TransactOpts, to)
+func (_Ballot *BallotTransactorSession) Delegate(to common.Address) (*types.Transaction, error) {
+	return _Ballot.Contract.Delegate(&_Ballot.TransactOpts, to)
 }
 
 // GiveRightToVote is a paid mutator transaction binding the contract method 0x9e7b8d61.
 //
 // Solidity: function giveRightToVote(address voter) returns()
-func (_Contract *ContractTransactor) GiveRightToVote(opts *bind.TransactOpts, voter common.Address) (*types.Transaction, error) {
-	return _Contract.contract.Transact(opts, "giveRightToVote", voter)
+func (_Ballot *BallotTransactor) GiveRightToVote(opts *bind.TransactOpts, voter common.Address) (*types.Transaction, error) {
+	return _Ballot.contract.Transact(opts, "giveRightToVote", voter)
 }
 
 // GiveRightToVote is a paid mutator transaction binding the contract method 0x9e7b8d61.
 //
 // Solidity: function giveRightToVote(address voter) returns()
-func (_Contract *ContractSession) GiveRightToVote(voter common.Address) (*types.Transaction, error) {
-	return _Contract.Contract.GiveRightToVote(&_Contract.TransactOpts, voter)
+func (_Ballot *BallotSession) GiveRightToVote(voter common.Address) (*types.Transaction, error) {
+	return _Ballot.Contract.GiveRightToVote(&_Ballot.TransactOpts, voter)
 }
 
 // GiveRightToVote is a paid mutator transaction binding the contract method 0x9e7b8d61.
 //
 // Solidity: function giveRightToVote(address voter) returns()
-func (_Contract *ContractTransactorSession) GiveRightToVote(voter common.Address) (*types.Transaction, error) {
-	return _Contract.Contract.GiveRightToVote(&_Contract.TransactOpts, voter)
+func (_Ballot *BallotTransactorSession) GiveRightToVote(voter common.Address) (*types.Transaction, error) {
+	return _Ballot.Contract.GiveRightToVote(&_Ballot.TransactOpts, voter)
 }
 
 // Vote is a paid mutator transaction binding the contract method 0x0121b93f.
 //
 // Solidity: function vote(uint256 proposal) returns()
-func (_Contract *ContractTransactor) Vote(opts *bind.TransactOpts, proposal *big.Int) (*types.Transaction, error) {
-	return _Contract.contract.Transact(opts, "vote", proposal)
+func (_Ballot *BallotTransactor) Vote(opts *bind.TransactOpts, proposal *big.Int) (*types.Transaction, error) {
+	return _Ballot.contract.Transact(opts, "vote", proposal)
 }
 
 // Vote is a paid mutator transaction binding the contract method 0x0121b93f.
 //
 // Solidity: function vote(uint256 proposal) returns()
-func (_Contract *ContractSession) Vote(proposal *big.Int) (*types.Transaction, error) {
-	return _Contract.Contract.Vote(&_Contract.TransactOpts, proposal)
+func (_Ballot *BallotSession) Vote(proposal *big.Int) (*types.Transaction, error) {
+	return _Ballot.Contract.Vote(&_Ballot.TransactOpts, proposal)
 }
 
 // Vote is a paid mutator transaction binding the contract method 0x0121b93f.
 //
 // Solidity: function vote(uint256 proposal) returns()
-func (_Contract *ContractTransactorSession) Vote(proposal *big.Int) (*types.Transaction, error) {
-	return _Contract.Contract.Vote(&_Contract.TransactOpts, proposal)
+func (_Ballot *BallotTransactorSession) Vote(proposal *big.Int) (*types.Transaction, error) {
+	return _Ballot.Contract.Vote(&_Ballot.TransactOpts, proposal)
 }
 
-// ContractNewProposalIterator is returned from FilterNewProposal and is used to iterate over the raw logs and unpacked data for NewProposal events raised by the Contract contract.
-type ContractNewProposalIterator struct {
-	Event *ContractNewProposal // Event containing the contract specifics and raw log
+// BallotNewProposalIterator is returned from FilterNewProposal and is used to iterate over the raw logs and unpacked data for NewProposal events raised by the Ballot contract.
+type BallotNewProposalIterator struct {
+	Event *BallotNewProposal // Event containing the contract specifics and raw log
 
 	contract *bind.BoundContract // Generic contract to use for unpacking event data
 	event    string              // Event name to use for unpacking event data
@@ -490,7 +490,7 @@ type ContractNewProposalIterator struct {
 // Next advances the iterator to the subsequent event, returning whether there
 // are any more events found. In case of a retrieval or parsing error, false is
 // returned and Error() can be queried for the exact failure.
-func (it *ContractNewProposalIterator) Next() bool {
+func (it *BallotNewProposalIterator) Next() bool {
 	// If the iterator failed, stop iterating
 	if it.fail != nil {
 		return false
@@ -499,7 +499,7 @@ func (it *ContractNewProposalIterator) Next() bool {
 	if it.done {
 		select {
 		case log := <-it.logs:
-			it.Event = new(ContractNewProposal)
+			it.Event = new(BallotNewProposal)
 			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
 				it.fail = err
 				return false
@@ -514,7 +514,7 @@ func (it *ContractNewProposalIterator) Next() bool {
 	// Iterator still in progress, wait for either a data or an error event
 	select {
 	case log := <-it.logs:
-		it.Event = new(ContractNewProposal)
+		it.Event = new(BallotNewProposal)
 		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
 			it.fail = err
 			return false
@@ -530,19 +530,19 @@ func (it *ContractNewProposalIterator) Next() bool {
 }
 
 // Error returns any retrieval or parsing error occurred during filtering.
-func (it *ContractNewProposalIterator) Error() error {
+func (it *BallotNewProposalIterator) Error() error {
 	return it.fail
 }
 
 // Close terminates the iteration process, releasing any pending underlying
 // resources.
-func (it *ContractNewProposalIterator) Close() error {
+func (it *BallotNewProposalIterator) Close() error {
 	it.sub.Unsubscribe()
 	return nil
 }
 
-// ContractNewProposal represents a NewProposal event raised by the Contract contract.
-type ContractNewProposal struct {
+// BallotNewProposal represents a NewProposal event raised by the Ballot contract.
+type BallotNewProposal struct {
 	From      common.Address
 	Name      [32]byte
 	VoteCount *big.Int
@@ -552,31 +552,31 @@ type ContractNewProposal struct {
 // FilterNewProposal is a free log retrieval operation binding the contract event 0x4913a1b403184a1c69ab16947e9f4c7a1e48c069dccde91f2bf550ea77becc5b.
 //
 // Solidity: event NewProposal(address indexed from, bytes32 name, uint256 voteCount)
-func (_Contract *ContractFilterer) FilterNewProposal(opts *bind.FilterOpts, from []common.Address) (*ContractNewProposalIterator, error) {
+func (_Ballot *BallotFilterer) FilterNewProposal(opts *bind.FilterOpts, from []common.Address) (*BallotNewProposalIterator, error) {
 
 	var fromRule []interface{}
 	for _, fromItem := range from {
 		fromRule = append(fromRule, fromItem)
 	}
 
-	logs, sub, err := _Contract.contract.FilterLogs(opts, "NewProposal", fromRule)
+	logs, sub, err := _Ballot.contract.FilterLogs(opts, "NewProposal", fromRule)
 	if err != nil {
 		return nil, err
 	}
-	return &ContractNewProposalIterator{contract: _Contract.contract, event: "NewProposal", logs: logs, sub: sub}, nil
+	return &BallotNewProposalIterator{contract: _Ballot.contract, event: "NewProposal", logs: logs, sub: sub}, nil
 }
 
 // WatchNewProposal is a free log subscription operation binding the contract event 0x4913a1b403184a1c69ab16947e9f4c7a1e48c069dccde91f2bf550ea77becc5b.
 //
 // Solidity: event NewProposal(address indexed from, bytes32 name, uint256 voteCount)
-func (_Contract *ContractFilterer) WatchNewProposal(opts *bind.WatchOpts, sink chan<- *ContractNewProposal, from []common.Address) (event.Subscription, error) {
+func (_Ballot *BallotFilterer) WatchNewProposal(opts *bind.WatchOpts, sink chan<- *BallotNewProposal, from []common.Address) (event.Subscription, error) {
 
 	var fromRule []interface{}
 	for _, fromItem := range from {
 		fromRule = append(fromRule, fromItem)
 	}
 
-	logs, sub, err := _Contract.contract.WatchLogs(opts, "NewProposal", fromRule)
+	logs, sub, err := _Ballot.contract.WatchLogs(opts, "NewProposal", fromRule)
 	if err != nil {
 		return nil, err
 	}
@@ -586,8 +586,8 @@ func (_Contract *ContractFilterer) WatchNewProposal(opts *bind.WatchOpts, sink c
 			select {
 			case log := <-logs:
 				// New log arrived, parse the event and forward to the user
-				event := new(ContractNewProposal)
-				if err := _Contract.contract.UnpackLog(event, "NewProposal", log); err != nil {
+				event := new(BallotNewProposal)
+				if err := _Ballot.contract.UnpackLog(event, "NewProposal", log); err != nil {
 					return err
 				}
 				event.Raw = log
@@ -611,9 +611,9 @@ func (_Contract *ContractFilterer) WatchNewProposal(opts *bind.WatchOpts, sink c
 // ParseNewProposal is a log parse operation binding the contract event 0x4913a1b403184a1c69ab16947e9f4c7a1e48c069dccde91f2bf550ea77becc5b.
 //
 // Solidity: event NewProposal(address indexed from, bytes32 name, uint256 voteCount)
-func (_Contract *ContractFilterer) ParseNewProposal(log types.Log) (*ContractNewProposal, error) {
-	event := new(ContractNewProposal)
-	if err := _Contract.contract.UnpackLog(event, "NewProposal", log); err != nil {
+func (_Ballot *BallotFilterer) ParseNewProposal(log types.Log) (*BallotNewProposal, error) {
+	event := new(BallotNewProposal)
+	if err := _Ballot.contract.UnpackLog(event, "NewProposal", log); err != nil {
 		return nil, err
 	}
 	event.Raw = log
