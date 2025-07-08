@@ -53,15 +53,11 @@ func testCounter_CanIncrementAndReadCounterFromHead(
 	require.NoError(t, err, "failed to deploy contract; %v", err)
 	require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
 
-	baseCount, err := contract.GetCount(nil)
-	require.NoError(t, err, "failed to get initial counter value")
 	// Increment the counter a few times and check that the value is as expected.
 	for i := 0; i < 10; i++ {
 		counter, err := contract.GetCount(nil)
 		require.NoError(t, err, "failed to get counter value")
-
-		require.Equal(t, baseCount.Int64()+int64(i), counter.Int64(),
-			"unexpected counter value; expected %d, got %v", baseCount.Int64()+int64(i), counter)
+		require.Equal(t, int64(i), counter.Int64(), "unexpected counter value")
 
 		_, err = net.Apply(contract.IncrementCounter)
 		require.NoError(t, err, "failed to apply increment counter contract")
@@ -78,26 +74,14 @@ func testCounter_CanReadHistoricCounterValues(
 	require.NoError(t, err, "failed to deploy contract; %v", err)
 	require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
 
-	client, err := net.GetClient()
-	require.NoError(t, err, "failed to get client")
-	defer client.Close()
-
-	block, err := client.BlockByNumber(t.Context(), nil)
-	require.NoError(t, err, "failed to get block")
-
-	blockNumber := block.Number()
-
-	baseCount, err := contract.GetCount(nil)
-	require.NoError(t, err, "failed to get initial counter value; %v", err)
-
 	// Increment the counter a few times and record the block height.
-	updates := map[int]int64{}                            // block height -> counter
-	updates[int(blockNumber.Int64())] = baseCount.Int64() // contract deployed
+	updates := map[int]int{}                       // block height -> counter
+	updates[int(receipt.BlockNumber.Uint64())] = 0 // contract deployed
 	for i := 0; i < 10; i++ {
 		receipt, err := net.Apply(contract.IncrementCounter)
 		require.NoError(t, err, "failed to apply increment counter contract")
 
-		updates[int(receipt.BlockNumber.Int64())] = int64(i) + baseCount.Int64() + 1 // record the counter value at this block height
+		updates[int(receipt.BlockNumber.Uint64())] = i + 1
 	}
 
 	minHeight := math.MaxInt
@@ -112,13 +96,13 @@ func testCounter_CanReadHistoricCounterValues(
 	}
 
 	// Check that the counter value at each block height is as expected.
-	want := int64(0)
+	want := 0
 	for i := minHeight; i <= maxHeight; i++ {
 		if v, found := updates[i]; found {
 			want = v
 		}
 		got, err := contract.GetCount(&bind.CallOpts{BlockNumber: big.NewInt(int64(i))})
 		require.NoError(t, err, "failed to get counter value at block %d", i)
-		require.Equal(t, want, got.Int64(), "unexpected counter value at block %d", i)
+		require.Equal(t, int64(want), got.Int64(), "unexpected counter value at block %d", i)
 	}
 }
