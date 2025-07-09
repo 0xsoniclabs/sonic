@@ -21,6 +21,7 @@ import (
 	"os"
 	"os/signal"
 	"sort"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -257,6 +258,21 @@ func lachesisMainInternal(
 	cfg, err := config.MakeAllConfigs(ctx)
 	if err != nil {
 		return err
+	}
+
+	// Provide some user feedback on past and future RPC changes.
+	for flag, modules := range map[string][]string{
+		flags.HTTPApiFlag.Name: cfg.Node.HTTPModules,
+		flags.WSApiFlag.Name:   cfg.Node.WSModules,
+	} {
+		for _, module := range modules {
+			if strings.ToLower(module) == "ftm" {
+				log.Warn(fmt.Sprintf("The 'ftm' API is deprecated, use 'eth' instead (--%s).", flag))
+			}
+			if strings.ToLower(module) == "sonic" {
+				log.Warn(fmt.Sprintf("The 'sonic' API is experimental and should not be used in production environments (--%s).", flag))
+			}
+		}
 	}
 
 	metrics.SetDataDir(cfg.Node.DataDir) // report disk space usage into metrics
