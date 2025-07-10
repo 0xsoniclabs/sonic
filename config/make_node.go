@@ -132,7 +132,7 @@ func MakeNode(ctx *cli.Context, cfg *Config) (*node.Node, *gossip.Service, func(
 		if cfg.TxPool.Journal != "" {
 			cfg.TxPool.Journal = path.Join(cfg.Node.DataDir, cfg.TxPool.Journal)
 		}
-		pool := evmcore.NewTxPool(cfg.TxPool, reader.Config(), reader)
+		pool := evmcore.NewTxPool(cfg.TxPool, reader.Config(), reader, log.Root())
 		cleanup = append(cleanup, pool.Stop)
 		return pool
 	}
