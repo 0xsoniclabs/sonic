@@ -27,6 +27,7 @@ import (
 	"testing"
 
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/Fantom-foundation/lachesis-base/lachesis"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -551,6 +552,52 @@ func TestIsPermissible_AcceptsSetCodeTransactionsOnlyInAllegro(t *testing.T) {
 					"unsupported transaction type",
 				)
 			}
+		})
+	}
+}
+
+func TestMergeCheaters_CanMergeLists(t *testing.T) {
+
+	// This test checks the current behavior of merging cheaters lists,
+	// it does not check for order or duplicates. Although the function
+	// can be improved, any modification risks breaking the history reply.
+	//
+	// - it will copy verbatim the cheaters from the first argument list
+	// and append cheaters from the second list, removing checking for duplicates.
+	// - it will not remove duplicates in the first argument list if any.
+	// - it will preserve the order of both lists.
+
+	tests := map[string]struct {
+		a, b     lachesis.Cheaters
+		expected lachesis.Cheaters
+	}{
+		"both empty": {},
+		"a empty": {
+			b:        lachesis.Cheaters{1, 2, 3},
+			expected: lachesis.Cheaters{1, 2, 3},
+		},
+		"b empty": {
+			a:        lachesis.Cheaters{1, 2, 3},
+			expected: lachesis.Cheaters{1, 2, 3},
+		},
+		"no overlap": {
+			a:        lachesis.Cheaters{1, 2, 3},
+			b:        lachesis.Cheaters{4, 5, 6},
+			expected: lachesis.Cheaters{1, 2, 3, 4, 5, 6},
+		},
+		"overlap": {
+			a:        lachesis.Cheaters{1, 2, 3},
+			b:        lachesis.Cheaters{3, 4, 5},
+			expected: lachesis.Cheaters{1, 2, 3, 4, 5},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+
+			// merge cheaters
+			cheaters := mergeCheaters(test.a, test.b)
+			require.Equal(t, test.expected, cheaters, "cheaters should be merged correctly")
 		})
 	}
 }
