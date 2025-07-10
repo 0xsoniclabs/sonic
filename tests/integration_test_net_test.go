@@ -61,9 +61,50 @@ func TestIntegrationTestNet_CanStartMultipleConsecutiveInstances(t *testing.T) {
 	}
 }
 
-func TestIntegrationTestNet_CanFetchInformationFromTheNetwork(t *testing.T) {
+func TestIntegrationTestNet_Can(t *testing.T) {
 	net := StartIntegrationTestNet(t)
 
+	t.Run("EndowAccountsWithTokens", func(t *testing.T) {
+		t.Parallel()
+		session := net.SpawnSession(t)
+		testIntegrationTestNet_CanEndowAccountsWithTokens(t, session)
+	})
+
+	t.Run("DeployContracts", func(t *testing.T) {
+		t.Parallel()
+		session := net.SpawnSession(t)
+		testIntegrationTestNet_CanDeployContracts(t, session)
+	})
+
+	t.Run("InteractWithContract", func(t *testing.T) {
+		t.Parallel()
+		session := net.SpawnSession(t)
+		testIntegrationTestNet_CanInteractWithContract(t, session)
+	})
+
+	t.Run("FetchInformationFromTheNetwork", func(t *testing.T) {
+		t.Parallel()
+		testIntegrationTestNet_CanFetchInformationFromTheNetwork(t, net)
+	})
+
+	t.Run("SpawnParallelSessions", func(t *testing.T) {
+		t.Parallel()
+		testIntegrationTestNet_CanSpawnParallelSessions(t, net)
+	})
+
+	t.Run("DefaultContainsASingleNode", func(t *testing.T) {
+		t.Parallel()
+		testIntegrationTestNet_DefaultContainsASingleNode(t, net)
+	})
+
+	t.Run("AdvanceEpoch", func(t *testing.T) {
+		t.Parallel()
+		testIntegrationTestNet_AdvanceEpoch(t, net)
+	})
+
+}
+
+func testIntegrationTestNet_CanFetchInformationFromTheNetwork(t *testing.T, net *IntegrationTestNet) {
 	client, err := net.GetClient()
 	require.NoError(t, err, "Failed to connect to the integration test network")
 	defer client.Close()
@@ -71,15 +112,15 @@ func TestIntegrationTestNet_CanFetchInformationFromTheNetwork(t *testing.T) {
 	block, err := client.BlockNumber(t.Context())
 	require.NoError(t, err, "Failed to get block number")
 
-	if block == 0 || block > 1000 {
-		t.Errorf("Unexpected block number: %v", block)
-	}
+	require.NotZero(t, block, "Block number should not be zero")
+	require.LessOrEqual(t, block, uint64(1000), "Block number should not exceed 1000")
 }
 
-func TestIntegrationTestNet_CanEndowAccountsWithTokens(t *testing.T) {
-	net := StartIntegrationTestNet(t)
-
-	client, err := net.GetClient()
+// testIntegrationTestNet_CanEndowAccountsWithTokens needs its own session because it
+// modifies the state of the network by endowing an account with tokens, otherwise
+// it can trigger a transaction replacement with a transaction from another test.
+func testIntegrationTestNet_CanEndowAccountsWithTokens(t *testing.T, session IntegrationTestNetSession) {
+	client, err := session.GetClient()
 	require.NoError(t, err, "Failed to connect to the integration test network")
 	defer client.Close()
 
@@ -90,7 +131,7 @@ func TestIntegrationTestNet_CanEndowAccountsWithTokens(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		increment := int64(1000)
 
-		receipt, err := net.EndowAccount(address, big.NewInt(increment))
+		receipt, err := session.EndowAccount(address, big.NewInt(increment))
 		require.NoError(t, err, "Failed to endow account 1")
 		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
@@ -103,28 +144,28 @@ func TestIntegrationTestNet_CanEndowAccountsWithTokens(t *testing.T) {
 	}
 }
 
-func TestIntegrationTestNet_CanDeployContracts(t *testing.T) {
-	net := StartIntegrationTestNet(t)
-
-	_, receipt, err := DeployContract(net, counter.DeployCounter)
+// testIntegrationTestNet_CanDeployContracts needs its own session because it
+// deploys a counter contract, and this should not overlap with other tests that
+// might also deploy contracts.
+func testIntegrationTestNet_CanDeployContracts(t *testing.T, session IntegrationTestNetSession) {
+	_, receipt, err := DeployContract(session, counter.DeployCounter)
 	require.NoError(t, err, "Failed to deploy contract")
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "Contract deployment failed")
 }
 
-func TestIntegrationTestNet_CanInteractWithContract(t *testing.T) {
-	net := StartIntegrationTestNet(t)
-
-	contract, _, err := DeployContract(net, counter.DeployCounter)
+// testIntegrationTestNet_CanInteractWithContract needs its own session because it
+// deploys and interacts with a counter contract, and this should not overlap
+// with other tests that might also deploy or interact with contracts.
+func testIntegrationTestNet_CanInteractWithContract(t *testing.T, session IntegrationTestNetSession) {
+	contract, _, err := DeployContract(session, counter.DeployCounter)
 	require.NoError(t, err, "Failed to deploy contract")
 
-	receipt, err := net.Apply(contract.IncrementCounter)
+	receipt, err := session.Apply(contract.IncrementCounter)
 	require.NoError(t, err, "Failed to increment counter")
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "Counter increment failed")
 }
 
-func TestIntegrationTestNet_CanSpawnParallelSessions(t *testing.T) {
-	net := StartIntegrationTestNet(t)
-
+func testIntegrationTestNet_CanSpawnParallelSessions(t *testing.T, net *IntegrationTestNet) {
 	for i := range 15 {
 		t.Run(fmt.Sprint("SpawnSession", i), func(t *testing.T) {
 			t.Parallel()
@@ -137,9 +178,27 @@ func TestIntegrationTestNet_CanSpawnParallelSessions(t *testing.T) {
 	}
 }
 
-func TestIntegrationTestNet_DefaultContainsASingleNode(t *testing.T) {
-	net := StartIntegrationTestNet(t)
+func testIntegrationTestNet_DefaultContainsASingleNode(t *testing.T, net *IntegrationTestNet) {
 	require.Equal(t, 1, net.NumNodes())
+}
+
+func testIntegrationTestNet_AdvanceEpoch(t *testing.T, net *IntegrationTestNet) {
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	var epochBefore hexutil.Uint64
+	err = client.Client().Call(&epochBefore, "eth_currentEpoch")
+	require.NoError(t, err)
+
+	err = net.AdvanceEpoch(13)
+	require.NoError(t, err)
+
+	var epochAfter hexutil.Uint64
+	err = client.Client().Call(&epochAfter, "eth_currentEpoch")
+	require.NoError(t, err)
+
+	require.Equal(t, epochBefore+13, epochAfter)
 }
 
 func TestIntegrationTestNet_CanRunMultipleNodes(t *testing.T) {
@@ -280,25 +339,4 @@ func TestIntegrationTestNet_AccountsToBeDeployedWithGenesisCanBeCalled(t *testin
 
 	require.Equal(t, topic, receipt.Logs[0].Topics[0])
 
-}
-
-func TestIntegrationTestNet_AdvanceEpoch(t *testing.T) {
-	net := StartIntegrationTestNet(t)
-
-	client, err := net.GetClient()
-	require.NoError(t, err)
-	defer client.Close()
-
-	var epochBefore hexutil.Uint64
-	err = client.Client().Call(&epochBefore, "eth_currentEpoch")
-	require.NoError(t, err)
-
-	err = net.AdvanceEpoch(13)
-	require.NoError(t, err)
-
-	var epochAfter hexutil.Uint64
-	err = client.Client().Call(&epochAfter, "eth_currentEpoch")
-	require.NoError(t, err)
-
-	require.Equal(t, epochBefore+13, epochAfter)
 }
