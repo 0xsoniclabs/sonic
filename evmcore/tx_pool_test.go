@@ -188,6 +188,12 @@ func (bc *testBlockChain) SubscribeNewBlock(ch chan<- ChainHeadNotify) event.Sub
 	return bc.chainHeadFeed.Subscribe(ch)
 }
 
+func (bc *testBlockChain) SetGasLimit(gasLimit uint64) {
+	bc.mu.Lock()
+	defer bc.mu.Unlock()
+	bc.gasLimit = gasLimit
+}
+
 func transaction(nonce uint64, gaslimit uint64, key *ecdsa.PrivateKey) *types.Transaction {
 	return pricedTransaction(nonce, gaslimit, big.NewInt(1), key)
 }
@@ -1321,7 +1327,7 @@ func TestTransactionDropping(t *testing.T) {
 		t.Errorf("total transaction mismatch: have %d, want %d", pool.all.Count(), 4)
 	}
 	// Reduce the block gas limit, check that invalidated transactions are dropped
-	pool.chain.(*testBlockChain).gasLimit = 100
+	pool.chain.(*testBlockChain).SetGasLimit(100)
 	<-pool.requestReset(nil, nil)
 
 	if _, ok := pool.pending[account].txs.items[tx0.Nonce()]; !ok {
