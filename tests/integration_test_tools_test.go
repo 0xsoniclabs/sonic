@@ -17,13 +17,17 @@
 package tests
 
 import (
+	"fmt"
 	"math/big"
 	"testing"
+	"time"
 
+	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
@@ -160,6 +164,58 @@ func computeMinimumGas(t *testing.T, session IntegrationTestNetSession, tx types
 	}
 
 	return minimumGas
+}
+
+// waitUntilTransactionIsRetiredFromPool waits until the transaction no longer exists in the transaction pool.
+// Because the transaction pool eviction is asynchronous, executed transactions may remain in the pool
+// for some time after they have been executed.
+// function will eventually time out if the transaction is not retired and an error will be returned.
+func waitUntilTransactionIsRetiredFromPool(t *testing.T, client *ethclient.Client, tx *types.Transaction) error {
+	t.Helper()
+
+	txHash := tx.Hash()
+	txSender, err := types.Sender(types.NewPragueSigner(tx.ChainId()), tx)
+	require.NoError(t, err, "failed to get transaction sender address")
+
+	startTime := time.Now()
+	timeout := 500 * time.Millisecond
+	for {
+		if time.Since(startTime) > timeout {
+			return fmt.Errorf("transaction %s was not retired from the pool in time", txHash.String())
+		}
+
+		// txpool_content returns a map containing two maps:
+		// - pending: transactions that are pending to be executed
+		// - queued: transactions that are queued to be executed
+		// each of the internal maps group transactions by sender address
+		var content map[string]map[string]map[string]*ethapi.RPCTransaction
+		err := client.Client().Call(&content, "txpool_content")
+		require.NoError(t, err, "failed to get txpool content")
+
+		found := false
+		if txs, isPending := content["pending"][txSender.Hex()]; isPending {
+			for _, tx := range txs {
+				if tx.Hash == txHash {
+					found = true
+					break
+				}
+			}
+		}
+		if txs, isQueued := content["queued"][txSender.Hex()]; isQueued {
+			for _, tx := range txs {
+				if tx.Hash == txHash {
+					found = true
+					break
+				}
+			}
+		}
+		if !found {
+			break
+		}
+
+		time.Sleep(10 * time.Millisecond)
+	}
+	return nil
 }
 
 func TestIntegrationTestNet_setTransactionDefaults(t *testing.T) {
@@ -469,4 +525,44 @@ func TestIntegrationTestNet_setTransactionDefaults(t *testing.T) {
 		_, err := net.Run(tx)
 		require.ErrorContains(t, err, "underpriced")
 	})
+}
+
+func Test_WaitUntilTransactionIsRetiredFromPool_waitsFromCompletion(t *testing.T) {
+	net := StartIntegrationTestNet(t,
+		IntegrationTestNetOptions{
+			Upgrades: AsPointer(opera.GetAllegroUpgrades()),
+		})
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	account := makeAccountWithBalance(t, net, big.NewInt(1e18))
+
+	chainId, err := client.ChainID(t.Context())
+	require.NoError(t, err)
+
+	txData := setTransactionDefaults(t, net, &types.LegacyTx{}, account)
+	txData.Nonce = 1
+	txInvalidNonce := signTransaction(t, chainId, txData, account)
+
+	err = client.SendTransaction(t.Context(), txInvalidNonce)
+	require.NoError(t, err)
+
+	// Because nonce is set to current nonce + 1, the transaction will not be executed
+	// waiting must time out
+	err = waitUntilTransactionIsRetiredFromPool(t, client, txInvalidNonce)
+	require.ErrorContains(t, err, fmt.Sprintf("transaction %s was not retired from the pool in time", txInvalidNonce.Hash().String()))
+
+	txData.Nonce = 0
+	txCorrectNonce := signTransaction(t, chainId, txData, account)
+
+	err = client.SendTransaction(t.Context(), txCorrectNonce)
+	require.NoError(t, err)
+
+	// Once the valid nonce transaction is sent, both transactions will be executed
+	// and retired from the pool
+	err = waitUntilTransactionIsRetiredFromPool(t, client, txInvalidNonce)
+	require.NoError(t, err)
+	err = waitUntilTransactionIsRetiredFromPool(t, client, txCorrectNonce)
+	require.NoError(t, err)
 }

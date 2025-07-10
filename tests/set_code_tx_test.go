@@ -378,6 +378,10 @@ func testDelegateCanBeSetAndUnset(t *testing.T, session IntegrationTestNetSessio
 	expectedCode := append([]byte{0xef, 0x01, 0x00}, delegateAddress[:]...)
 	require.Equal(t, expectedCode, codeSet, "code in account is expected to be delegation designation")
 
+	// wait until previous transaction has been
+	err = waitUntilTransactionIsRetiredFromPool(t, client, setCodeTx)
+	require.NoError(t, err, "transaction should be retired from the pool")
+
 	// unset by delegating to an empty address
 	unsetCodeTx := makeEip7702Transaction(t, client, account, account, common.Address{}, []byte{})
 	receipt, err = session.Run(unsetCodeTx)
