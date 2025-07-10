@@ -97,6 +97,10 @@ func testGasPrice_UnderpricedTransactionsAreRejected(
 	// SetCode transactions are restricted to a max of one in-flight transaction
 	// per address, so we need to use a different account.
 	setCodeAccount := makeAccountWithBalance(t, net, big.NewInt(1e18))
+	setCodeFactory := &txFactory{
+		senderKey: setCodeAccount.PrivateKey,
+		chainId:   chainId,
+	}
 
 	nonce, err := client.NonceAt(t.Context(), net.GetSessionSponsor().Address(), nil)
 	require.NoError(err, "failed to get nonce:")
@@ -128,8 +132,7 @@ func testGasPrice_UnderpricedTransactionsAreRejected(
 
 		// SetCode transactions are restricted to a max of one in-flight transaction
 		// per address, so we need to use a different account.
-		err = send(makeSetCodeTransactionWithPrice(t, chainId, 0, feeCap, 0,
-			setCodeAccount.Address(), setCodeAccount.PrivateKey))
+		err = send(setCodeFactory.makeSetCodeTransactionWithPrice(t, chainId, 0, feeCap, 0))
 		require.ErrorContains(err, "transaction underpriced")
 	}
 
@@ -141,8 +144,7 @@ func testGasPrice_UnderpricedTransactionsAreRejected(
 	require.NoError(send(factory.makeBlobTransactionWithPrice(t, nonce+3, feeCap, 0)))
 	// SetCode transactions are restricted to a max of one in-flight transaction
 	// per address, so we need to use a different account.
-	require.NoError(send(makeSetCodeTransactionWithPrice(t, chainId, 0, feeCap, 0,
-		setCodeAccount.Address(), setCodeAccount.PrivateKey)))
+	require.NoError(send(setCodeFactory.makeSetCodeTransactionWithPrice(t, chainId, 0, feeCap, 0)))
 }
 
 func makeNetAndClient(t *testing.T) (*IntegrationTestNet, *ethclient.Client) {
@@ -237,16 +239,14 @@ func (f *txFactory) makeBlobTransactionWithPrice(
 	return transaction
 }
 
-func makeSetCodeTransactionWithPrice(
+func (f *txFactory) makeSetCodeTransactionWithPrice(
 	t *testing.T,
 	chainId *big.Int,
 	nonce uint64,
 	price int64,
 	value int64,
-	address common.Address,
-	privateKey *ecdsa.PrivateKey,
 ) *types.Transaction {
-	auths, err := types.SignSetCode(privateKey, types.SetCodeAuthorization{
+	auths, err := types.SignSetCode(f.senderKey, types.SetCodeAuthorization{
 		ChainID: *uint256.MustFromBig(chainId),
 		Address: common.Address{44},
 		Nonce:   1,
@@ -259,10 +259,9 @@ func makeSetCodeTransactionWithPrice(
 		GasFeeCap: uint256.MustFromBig(big.NewInt(price)),
 		GasTipCap: uint256.MustFromBig(big.NewInt(0)),
 		Nonce:     nonce,
-		To:        address,
 		Value:     uint256.MustFromBig(big.NewInt(value)),
 		AuthList:  []types.SetCodeAuthorization{auths},
-	}), types.NewPragueSigner(chainId), privateKey)
+	}), types.NewPragueSigner(chainId), f.senderKey)
 	require.NoError(t, err, "failed to sign transaction:")
 	return transaction
 }
