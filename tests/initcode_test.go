@@ -50,6 +50,7 @@ func TestInitCodeSizeLimitAndMetered(t *testing.T) {
 	var gasForCreate uint64 = 32035 + receipt.GasUsed
 	t.Run("create", func(t *testing.T) {
 		t.Parallel()
+		// This tests creates multiple sessions in parallel inside sub-tests.
 		testForVariant(t, net, contract, contract.CreatetWith, gasForCreate, wordCostCreate)
 	})
 
@@ -59,13 +60,14 @@ func TestInitCodeSizeLimitAndMetered(t *testing.T) {
 	const wordCostCreate2 uint64 = wordCostCreate + 6
 	t.Run("create2", func(t *testing.T) {
 		t.Parallel()
+		// This tests creates multiple sessions in parallel inside sub-tests.
 		testForVariant(t, net, contract, contract.Create2With, gasForCreate, wordCostCreate2)
 	})
 
 	t.Run("create transaction", func(t *testing.T) {
 		t.Parallel()
-		session := net.SpawnSession(t)
-		testForTransaction(t, session)
+		// This tests creates multiple sessions in parallel inside sub-tests.
+		testForTransaction(t, net)
 	})
 }
 
@@ -99,10 +101,10 @@ func testForVariant(t *testing.T, net *IntegrationTestNet,
 
 	t.Run("fails without enough gas", func(t *testing.T) {
 		t.Parallel()
+		require := require.New(t)
 		session := net.SpawnSession(t)
 		// 4 for a zero byte, 1 to make it fail.
 		receipt, err := createContractWithCodeLenAndGas(session, variant, 1, gasForContract-wordCost-1)
-		require := require.New(t)
 		require.NoError(err)
 		require.Equal(types.ReceiptStatusFailed, receipt.Status,
 			"unexpectedly succeeded to create contract without enough gas")
@@ -110,9 +112,9 @@ func testForVariant(t *testing.T, net *IntegrationTestNet,
 
 	t.Run("with max init code size", func(t *testing.T) {
 		t.Parallel()
+		require := require.New(t)
 		session := net.SpawnSession(t)
 		receipt, err := createContractWithCodeLenAndGas(session, variant, MAX_INIT_CODE_SIZE, sufficientGas)
-		require := require.New(t)
 		require.NoError(err)
 		require.Equal(types.ReceiptStatusSuccessful, receipt.Status,
 			"failed to create contract with code length ", MAX_INIT_CODE_SIZE)
@@ -120,19 +122,20 @@ func testForVariant(t *testing.T, net *IntegrationTestNet,
 
 	t.Run("aborts with init code size larger than MAX_INITCODE_SIZE", func(t *testing.T) {
 		t.Parallel()
+		require := require.New(t)
 		session := net.SpawnSession(t)
 		receipt, err := createContractWithCodeLenAndGas(session, variant, MAX_INIT_CODE_SIZE+1, sufficientGas)
-		require := require.New(t)
 		require.NoError(err)
 		require.Equal(types.ReceiptStatusFailed, receipt.Status,
 			"unexpectedly succeeded to create contract with init code length greater than MAX_INITCODE_SIZE")
 	})
 }
 
-func testForTransaction(t *testing.T, session IntegrationTestNetSession) {
+func testForTransaction(t *testing.T, net *IntegrationTestNet) {
 	t.Run("charges depending on the init code size", func(t *testing.T) {
 		t.Parallel()
 		require := require.New(t)
+		session := net.SpawnSession(t)
 		// transactions charge 4 gas for each zero byte in data.
 		const zeroByteCost uint64 = 4
 		// create a transaction with 1 byte of code.
@@ -155,6 +158,7 @@ func testForTransaction(t *testing.T, session IntegrationTestNetSession) {
 	t.Run("aborts with init code size larger than MAX_INITCODE_SIZE", func(t *testing.T) {
 		t.Parallel()
 		require := require.New(t)
+		session := net.SpawnSession(t)
 		// as specified in https://eips.ethereum.org/EIPS/eip-3860#rules,
 		// this is similar to transactions considered invalid for not meeting the intrinsic gas cost requirement.
 		_, err := runTransactionWithCodeSizeAndGas(t, session, MAX_INIT_CODE_SIZE+1, sufficientGas)
