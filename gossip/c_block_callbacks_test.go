@@ -555,6 +555,68 @@ func TestIsPermissible_AcceptsSetCodeTransactionsOnlyInAllegro(t *testing.T) {
 	}
 }
 
+func TestMergeCheaters_CanMergeLists(t *testing.T) {
+
+	// This test checks the current behavior of merging cheaters lists,
+	// it does not check for order or duplicates. Although the function
+	// can be improved, any modification risks breaking the history replay.
+	//
+	// - it will copy verbatim the cheaters from the first argument list
+	// and append cheaters from the second list, removing duplicates.
+	// - it will not remove duplicates from the first argument list if any.
+	// - it will preserve the order of both lists.
+	// - it does not modify the original lists.
+
+	tests := map[string]struct {
+		a, b     consensus.Cheaters
+		expected consensus.Cheaters
+	}{
+		"both empty returns nil": {},
+		"a empty returns b": {
+			b:        consensus.Cheaters{1, 2, 3},
+			expected: consensus.Cheaters{1, 2, 3},
+		},
+		"b empty returns a": {
+			a:        consensus.Cheaters{1, 2, 3},
+			expected: consensus.Cheaters{1, 2, 3},
+		},
+		"merges both lists": {
+			a:        consensus.Cheaters{1, 2, 3},
+			b:        consensus.Cheaters{4, 5, 6},
+			expected: consensus.Cheaters{1, 2, 3, 4, 5, 6},
+		},
+		"preserves duplicates from first list": {
+			a:        consensus.Cheaters{1, 2, 3, 1, 2, 3},
+			b:        consensus.Cheaters{7},
+			expected: consensus.Cheaters{1, 2, 3, 1, 2, 3, 7},
+		},
+		"removes duplicates from second list": {
+			a:        consensus.Cheaters{1, 2, 3},
+			b:        consensus.Cheaters{3, 4, 2},
+			expected: consensus.Cheaters{1, 2, 3, 4},
+		},
+		"order is preserved": {
+			a:        consensus.Cheaters{1, 3, 5},
+			b:        consensus.Cheaters{2, 4},
+			expected: consensus.Cheaters{1, 3, 5, 2, 4},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+
+			copyA := slices.Clone(test.a)
+			copyB := slices.Clone(test.b)
+
+			// merge cheaters
+			cheaters := mergeCheaters(test.a, test.b)
+			require.Equal(t, test.expected, cheaters)
+			require.Equal(t, test.a, copyA, "first argument should not be modified")
+			require.Equal(t, test.b, copyB, "second argument should not be modified")
+		})
+	}
+}
+
 func TestIsPermissible_DetectsNonPermissibleTransactions(t *testing.T) {
 	tests := map[string]struct {
 		transaction *types.Transaction
