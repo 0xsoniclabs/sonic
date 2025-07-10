@@ -23,21 +23,40 @@ import (
 
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 )
 
-func TestCounter_CanIncrementAndReadCounterFromHead(t *testing.T) {
+func TestCounter(t *testing.T) {
 	net := StartIntegrationTestNet(t)
 
+	t.Run("CanIncrementAndReadCounterFromHead", func(t *testing.T) {
+		t.Parallel()
+		session := net.SpawnSession(t)
+		testCounter_CanIncrementAndReadCounterFromHead(t, session)
+	})
+
+	t.Run("CanReadHistoricCounterValues", func(t *testing.T) {
+		t.Parallel()
+		session := net.SpawnSession(t)
+		testCounter_CanReadHistoricCounterValues(t, session)
+	})
+}
+
+func testCounter_CanIncrementAndReadCounterFromHead(
+	t *testing.T,
+	net IntegrationTestNetSession,
+) {
+
 	// Deploy the counter contract.
-	contract, _, err := DeployContract(net, counter.DeployCounter)
-	require.NoError(t, err)
+	contract, receipt, err := DeployContract(net, counter.DeployCounter)
+	require.NoError(t, err, "failed to deploy contract; %v", err)
+	require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
 
 	// Increment the counter a few times and check that the value is as expected.
 	for i := 0; i < 10; i++ {
 		counter, err := contract.GetCount(nil)
 		require.NoError(t, err, "failed to get counter value")
-
 		require.Equal(t, int64(i), counter.Int64(), "unexpected counter value")
 
 		_, err = net.Apply(contract.IncrementCounter)
@@ -45,12 +64,15 @@ func TestCounter_CanIncrementAndReadCounterFromHead(t *testing.T) {
 	}
 }
 
-func TestCounter_CanReadHistoricCounterValues(t *testing.T) {
-	net := StartIntegrationTestNet(t)
+func testCounter_CanReadHistoricCounterValues(
+	t *testing.T,
+	net IntegrationTestNetSession,
+) {
 
 	// Deploy the counter contract.
 	contract, receipt, err := DeployContract(net, counter.DeployCounter)
-	require.NoError(t, err, "failed to deploy contract")
+	require.NoError(t, err, "failed to deploy contract; %v", err)
+	require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
 
 	// Increment the counter a few times and record the block height.
 	updates := map[int]int{}                       // block height -> counter
