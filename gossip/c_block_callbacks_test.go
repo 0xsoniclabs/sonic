@@ -564,8 +564,9 @@ func TestMergeCheaters_CanMergeLists(t *testing.T) {
 	//
 	// - it will copy verbatim the cheaters from the first argument list
 	// and append cheaters from the second list, removing duplicates.
-	// - it will not remove duplicates in the first argument list if any.
+	// - it will not remove duplicates from the first argument list if any.
 	// - it will preserve the order of both lists.
+	// - it does not modify the original lists.
 
 	tests := map[string]struct {
 		a, b     lachesis.Cheaters
@@ -605,9 +606,14 @@ func TestMergeCheaters_CanMergeLists(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 
+			copyA := slices.Clone(test.a)
+			copyB := slices.Clone(test.b)
+
 			// merge cheaters
 			cheaters := mergeCheaters(test.a, test.b)
-			require.Equal(t, test.expected, cheaters, "cheaters should be merged correctly")
+			require.Equal(t, test.expected, cheaters)
+			require.Equal(t, test.a, copyA, "first argument should not be modified")
+			require.Equal(t, test.b, copyB, "second argument should not be modified")
 		})
 	}
 }
