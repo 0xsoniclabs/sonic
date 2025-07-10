@@ -560,10 +560,10 @@ func TestMergeCheaters_CanMergeLists(t *testing.T) {
 
 	// This test checks the current behavior of merging cheaters lists,
 	// it does not check for order or duplicates. Although the function
-	// can be improved, any modification risks breaking the history reply.
+	// can be improved, any modification risks breaking the history replay.
 	//
 	// - it will copy verbatim the cheaters from the first argument list
-	// and append cheaters from the second list, removing checking for duplicates.
+	// and append cheaters from the second list, removing duplicates.
 	// - it will not remove duplicates in the first argument list if any.
 	// - it will preserve the order of both lists.
 
@@ -571,24 +571,34 @@ func TestMergeCheaters_CanMergeLists(t *testing.T) {
 		a, b     lachesis.Cheaters
 		expected lachesis.Cheaters
 	}{
-		"both empty": {},
-		"a empty": {
+		"both empty returns nil": {},
+		"a empty returns b": {
 			b:        lachesis.Cheaters{1, 2, 3},
 			expected: lachesis.Cheaters{1, 2, 3},
 		},
-		"b empty": {
+		"b empty returns a": {
 			a:        lachesis.Cheaters{1, 2, 3},
 			expected: lachesis.Cheaters{1, 2, 3},
 		},
-		"no overlap": {
+		"merges both lists": {
 			a:        lachesis.Cheaters{1, 2, 3},
 			b:        lachesis.Cheaters{4, 5, 6},
 			expected: lachesis.Cheaters{1, 2, 3, 4, 5, 6},
 		},
-		"overlap": {
+		"preserves duplicates from first list": {
+			a:        lachesis.Cheaters{1, 2, 3, 1, 2, 3},
+			b:        lachesis.Cheaters{7},
+			expected: lachesis.Cheaters{1, 2, 3, 1, 2, 3, 7},
+		},
+		"removes duplicates from second list": {
 			a:        lachesis.Cheaters{1, 2, 3},
-			b:        lachesis.Cheaters{3, 4, 5},
-			expected: lachesis.Cheaters{1, 2, 3, 4, 5},
+			b:        lachesis.Cheaters{3, 4, 2},
+			expected: lachesis.Cheaters{1, 2, 3, 4},
+		},
+		"order is preserved": {
+			a:        lachesis.Cheaters{1, 3, 5},
+			b:        lachesis.Cheaters{2, 4},
+			expected: lachesis.Cheaters{1, 3, 5, 2, 4},
 		},
 	}
 
