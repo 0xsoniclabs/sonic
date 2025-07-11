@@ -91,7 +91,7 @@ func processFiles(dir, ext, prefix, license string, checkOnly bool) error {
 			return nil
 		}
 		// build files should not be checked
-		if shouldIgnore(path, []string{"/build/"}) {
+		if shouldIgnore(path, []string{"/build/", "_mock.go", ".pb.go"}) {
 			return nil
 		}
 		if matchPattern(path, ext) {
@@ -136,6 +136,10 @@ func processFile(file, licenseHeader string, checkOnly bool) error {
 	content, err := os.ReadFile(file)
 	if err != nil {
 		return fmt.Errorf("failed to read %s: %v", file, err)
+	}
+
+	if strings.Contains(strings.ToLower(string(content)), strings.ToLower("code generated")) {
+		return nil // skip generated files
 	}
 
 	lines := strings.Split(string(content), "\n")

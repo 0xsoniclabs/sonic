@@ -139,3 +139,27 @@ func Test_OnlyOneEmptyLineAfterHeader(t *testing.T) {
 		}
 	}
 }
+
+func Test_IgnoresGeneratedFiles(t *testing.T) {
+	tmpFileName := filepath.Join(t.TempDir(), "some_generated_file.go")
+	originalContent := []byte("// Code generated - DO NOT EDIT.\npackage main\n")
+	require.NoError(t, os.WriteFile(tmpFileName, originalContent, 0660))
+
+	require.NoError(t, processFiles(tmpFileName, ".go", "//", licenseHeader, false))
+
+	contentAfter, err := os.ReadFile(tmpFileName)
+	require.NoError(t, err)
+	require.Equal(t, string(originalContent), string(contentAfter))
+}
+
+func Test_IgnoresMockFile(t *testing.T) {
+	tmpFileName := filepath.Join(t.TempDir(), "some_mock.go")
+	originalContent := []byte("// Some header.\npackage main\n")
+	require.NoError(t, os.WriteFile(tmpFileName, originalContent, 0660))
+
+	require.NoError(t, processFiles(tmpFileName, ".go", "//", licenseHeader, false))
+
+	contentAfter, err := os.ReadFile(tmpFileName)
+	require.NoError(t, err)
+	require.Equal(t, string(originalContent), string(contentAfter))
+}
