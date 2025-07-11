@@ -961,6 +961,52 @@ func TestSetCodeTransactionsReorg(t *testing.T) {
 	}
 }
 
+func TestSetCodeTransaction_RemoveAuthorityWhenSetCodeTxIsRemoved(t *testing.T) {
+	db := newTestTxPoolStateDb()
+	blockchain := NewTestBlockChain(db)
+
+	// initialize the pool
+	pool := NewTxPool(testTxPoolConfig, pragueConfig, blockchain)
+	defer pool.Stop()
+
+	// Create the test accounts
+	keyA, _ := crypto.GenerateKey()
+	addrA := crypto.PubkeyToAddress(keyA.PublicKey)
+	testAddBalance(pool, addrA, big.NewInt(params.Ether))
+
+	// Add a legacy transactions
+	legacyTx := pricedTransaction(2, 100000, big.NewInt(1000), keyA)
+	err := pool.addRemoteSync(legacyTx)
+	require.NoError(t, err, "failed to add remote transaction")
+
+	// Add a set code transaction
+	var authList []types.SetCodeAuthorization
+	auth, err := types.SignSetCode(keyA, types.SetCodeAuthorization{
+		ChainID: *uint256.MustFromBig(params.TestChainConfig.ChainID),
+		Address: common.Address{0x42},
+		Nonce:   0,
+	})
+	require.NoError(t, err)
+	authList = append(authList, auth)
+	setCodeTx := pricedSetCodeTxWithAuth(0, 250000, uint256.NewInt(10), uint256.NewInt(3), keyA, authList)
+	err = pool.addRemoteSync(setCodeTx)
+	require.NoError(t, err, "failed to add with remote setcode transaction")
+
+	//  check that authority was added
+	_, ok := pool.all.auths[addrA]
+	require.True(t, ok, "expected authority to be added to the pool")
+
+	//  check that removing non set code tx does not remove authority
+	pool.removeTx(legacyTx.Hash(), true)
+	_, ok = pool.all.auths[addrA]
+	require.True(t, ok, "expected authority to be added to the pool")
+
+	// check that removing set code tx removes authority
+	pool.removeTx(setCodeTx.Hash(), true)
+	_, ok = pool.all.auths[addrA]
+	require.False(t, ok, "expected authority to be removed from the pool")
+}
+
 func TestInvalidTransactions(t *testing.T) {
 	t.Parallel()
 
