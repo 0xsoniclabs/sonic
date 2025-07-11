@@ -21,6 +21,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -28,9 +29,29 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestGasPrice_SuggestedGasPricesApproximateActualBaseFees(t *testing.T) {
-	require := require.New(t)
+func TestGasPrice(t *testing.T) {
+
 	net, client := makeNetAndClient(t)
+
+	t.Run("SuggestedGasPriceApproximateActualBaseFees", func(t *testing.T) {
+		t.Parallel()
+		session := net.SpawnSession(t)
+		testGasPrice_SuggestedGasPricesApproximateActualBaseFees(t, session, client)
+	})
+
+	t.Run("UnderpricedTransactionsAreRejected", func(t *testing.T) {
+		t.Parallel()
+		session := net.SpawnSession(t)
+		testGasPrice_UnderpricedTransactionsAreRejected(t, session, client)
+	})
+}
+
+func testGasPrice_SuggestedGasPricesApproximateActualBaseFees(
+	t *testing.T,
+	net IntegrationTestNetSession,
+	client *ethclient.Client,
+) {
+	require := require.New(t)
 
 	fees := []uint64{}
 	suggestions := []uint64{}
@@ -41,6 +62,7 @@ func TestGasPrice_SuggestedGasPricesApproximateActualBaseFees(t *testing.T) {
 		// new block
 		receipt, err := net.EndowAccount(common.Address{42}, big.NewInt(100))
 		require.NoError(err)
+		require.Equal(receipt.Status, types.ReceiptStatusSuccessful, "receipt status should be successful")
 
 		lastBlock, err := client.BlockByNumber(t.Context(), receipt.BlockNumber)
 		require.NoError(err)
@@ -58,16 +80,27 @@ func TestGasPrice_SuggestedGasPricesApproximateActualBaseFees(t *testing.T) {
 	}
 }
 
-func TestGasPrice_UnderpricedTransactionsAreRejected(t *testing.T) {
+func testGasPrice_UnderpricedTransactionsAreRejected(
+	t *testing.T,
+	net IntegrationTestNetSession,
+	client *ethclient.Client,
+) {
 	require := require.New(t)
 
-	net, client := makeNetAndClient(t)
 	send := func(tx *types.Transaction) error {
 		return client.SendTransaction(t.Context(), tx)
 	}
 
 	chainId, err := client.ChainID(t.Context())
 	require.NoError(err, "failed to get chain ID::")
+
+	// SetCode transactions are restricted to a max of one in-flight transaction
+	// per address, so we need to use a different account.
+	setCodeAccount := makeAccountWithBalance(t, net, big.NewInt(1e18))
+	setCodeFactory := &txFactory{
+		senderKey: setCodeAccount.PrivateKey,
+		chainId:   chainId,
+	}
 
 	nonce, err := client.NonceAt(t.Context(), net.GetSessionSponsor().Address(), nil)
 	require.NoError(err, "failed to get nonce:")
@@ -96,6 +129,11 @@ func TestGasPrice_UnderpricedTransactionsAreRejected(t *testing.T) {
 
 		err = send(factory.makeBlobTransactionWithPrice(t, nonce, feeCap, 0))
 		require.ErrorContains(err, "transaction underpriced")
+
+		// SetCode transactions are restricted to a max of one in-flight transaction
+		// per address, so we need to use a different account.
+		err = send(setCodeFactory.makeSetCodeTransactionWithPrice(t, chainId, 0, feeCap, 0))
+		require.ErrorContains(err, "transaction underpriced")
 	}
 
 	// Everything over ~5% above the base fee should be accepted.
@@ -104,10 +142,15 @@ func TestGasPrice_UnderpricedTransactionsAreRejected(t *testing.T) {
 	require.NoError(send(factory.makeAccessListTransactionWithPrice(t, nonce+1, feeCap, 0)))
 	require.NoError(send(factory.makeDynamicFeeTransactionWithPrice(t, nonce+2, feeCap, 0)))
 	require.NoError(send(factory.makeBlobTransactionWithPrice(t, nonce+3, feeCap, 0)))
+	// SetCode transactions are restricted to a max of one in-flight transaction
+	// per address, so we need to use a different account.
+	require.NoError(send(setCodeFactory.makeSetCodeTransactionWithPrice(t, chainId, 0, feeCap, 0)))
 }
 
 func makeNetAndClient(t *testing.T) (*IntegrationTestNet, *ethclient.Client) {
-	net := StartIntegrationTestNet(t)
+	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
+		Upgrades: AsPointer(opera.GetAllegroUpgrades()),
+	})
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
@@ -192,6 +235,33 @@ func (f *txFactory) makeBlobTransactionWithPrice(
 		BlobHashes: nil,                  // blob hashes in the transaction
 		Sidecar:    nil,                  // sidecar data in the transaction
 	}), types.NewCancunSigner(f.chainId), f.senderKey)
+	require.NoError(t, err, "failed to sign transaction:")
+	return transaction
+}
+
+func (f *txFactory) makeSetCodeTransactionWithPrice(
+	t *testing.T,
+	chainId *big.Int,
+	nonce uint64,
+	price int64,
+	value int64,
+) *types.Transaction {
+	auths, err := types.SignSetCode(f.senderKey, types.SetCodeAuthorization{
+		ChainID: *uint256.MustFromBig(chainId),
+		Address: common.Address{44},
+		Nonce:   1,
+	})
+	require.NoError(t, err, "failed to sign SetCode authorization")
+
+	transaction, err := types.SignTx(types.NewTx(&types.SetCodeTx{
+		ChainID:   uint256.MustFromBig(chainId),
+		Gas:       58_000,
+		GasFeeCap: uint256.MustFromBig(big.NewInt(price)),
+		GasTipCap: uint256.MustFromBig(big.NewInt(0)),
+		Nonce:     nonce,
+		Value:     uint256.MustFromBig(big.NewInt(value)),
+		AuthList:  []types.SetCodeAuthorization{auths},
+	}), types.NewPragueSigner(chainId), f.senderKey)
 	require.NoError(t, err, "failed to sign transaction:")
 	return transaction
 }
