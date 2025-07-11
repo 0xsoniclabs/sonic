@@ -1992,7 +1992,7 @@ func (t *txLookup) Remove(hash common.Hash) {
 		return
 	}
 
-	t.removeAuthorities(tx, log.Root())
+	t.removeAuthorities(tx)
 	t.slots -= numSlots(tx)
 	slotsGauge.Update(int64(t.slots))
 
@@ -2002,7 +2002,7 @@ func (t *txLookup) Remove(hash common.Hash) {
 
 // removeAuthorities stops tracking the supplied tx in relation to its
 // authorities.
-func (t *txLookup) removeAuthorities(tx *types.Transaction, logger log.Logger) {
+func (t *txLookup) removeAuthorities(tx *types.Transaction) {
 
 	hash := tx.Hash()
 	for _, addr := range tx.SetCodeAuthorities() {
@@ -2013,7 +2013,7 @@ func (t *txLookup) removeAuthorities(tx *types.Transaction, logger log.Logger) {
 			list = append(list[:i], list[i+1:]...)
 
 		} else {
-			logger.Error("Authority with untracked tx", "addr", addr, "hash", hash)
+			log.Error("Authority with untracked tx", "addr", addr, "hash", hash)
 		}
 
 		if len(list) == 0 {
