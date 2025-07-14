@@ -64,22 +64,23 @@ func TestIntegrationTestNet_CanStartMultipleConsecutiveInstances(t *testing.T) {
 func TestIntegrationTestNet_Can(t *testing.T) {
 	net := StartIntegrationTestNet(t)
 
+	session1 := net.SpawnSession(t)
+	session2 := net.SpawnSession(t)
+	session3 := net.SpawnSession(t)
+
 	t.Run("EndowAccountsWithTokens", func(t *testing.T) {
 		t.Parallel()
-		session := net.SpawnSession(t)
-		testIntegrationTestNet_CanEndowAccountsWithTokens(t, session)
+		testIntegrationTestNet_CanEndowAccountsWithTokens(t, session1)
 	})
 
 	t.Run("DeployContracts", func(t *testing.T) {
 		t.Parallel()
-		session := net.SpawnSession(t)
-		testIntegrationTestNet_CanDeployContracts(t, session)
+		testIntegrationTestNet_CanDeployContracts(t, session2)
 	})
 
 	t.Run("InteractWithContract", func(t *testing.T) {
 		t.Parallel()
-		session := net.SpawnSession(t)
-		testIntegrationTestNet_CanInteractWithContract(t, session)
+		testIntegrationTestNet_CanInteractWithContract(t, session3)
 	})
 
 	t.Run("FetchInformationFromTheNetwork", func(t *testing.T) {
