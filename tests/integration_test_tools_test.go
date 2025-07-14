@@ -218,12 +218,26 @@ func waitUntilTransactionIsRetiredFromPool(t *testing.T, client *ethclient.Clien
 	return nil
 }
 
-func TestIntegrationTestNet_setTransactionDefaults(t *testing.T) {
+func TestIntegrationTestNetTools(t *testing.T) {
 
 	net := StartIntegrationTestNet(t,
 		IntegrationTestNetOptions{
 			Upgrades: AsPointer(opera.GetAllegroUpgrades()),
 		})
+
+	t.Run("setTransactionDefaults sets the transaction defaults", func(t *testing.T) {
+		t.Parallel()
+		testIntegrationTestNet_setTransactionDefaults(t, net)
+	})
+
+	t.Run("waitUntilTransactionIsRetiredFromPool waits from completion", func(t *testing.T) {
+		t.Parallel()
+		test_WaitUntilTransactionIsRetiredFromPool_waitsFromCompletion(t, net)
+	})
+}
+
+func testIntegrationTestNet_setTransactionDefaults(t *testing.T, net *IntegrationTestNet) {
+
 	client, err := net.GetClient()
 	require.NoError(t, err)
 	defer client.Close()
@@ -397,7 +411,7 @@ func TestIntegrationTestNet_setTransactionDefaults(t *testing.T) {
 	}
 
 	t.Run("filled transactions can be executed", func(t *testing.T) {
-
+		t.Parallel()
 		tests := generateTestDataBasedOnModificationCombinations(
 			func() types.TxData { return nil },
 			[][]modificationFunction{
@@ -426,7 +440,9 @@ func TestIntegrationTestNet_setTransactionDefaults(t *testing.T) {
 			},
 		)
 
-		nonce, err := client.NonceAt(t.Context(), net.GetSessionSponsor().Address(), nil)
+		session := net.SpawnSession(t)
+
+		nonce, err := client.NonceAt(t.Context(), session.GetSessionSponsor().Address(), nil)
 		require.NoError(t, err)
 
 		pending := []common.Hash{}
@@ -448,8 +464,8 @@ func TestIntegrationTestNet_setTransactionDefaults(t *testing.T) {
 			}
 			nonce++
 
-			txData := setTransactionDefaults(t, net, tx, net.GetSessionSponsor())
-			tx := signTransaction(t, chainId, txData, net.GetSessionSponsor())
+			txData := setTransactionDefaults(t, session, tx, session.GetSessionSponsor())
+			tx := signTransaction(t, chainId, txData, session.GetSessionSponsor())
 
 			// the filled values suffice to get the transaction accepted and executed
 			err := client.SendTransaction(t.Context(), tx)
@@ -458,7 +474,7 @@ func TestIntegrationTestNet_setTransactionDefaults(t *testing.T) {
 		}
 
 		for _, txHash := range pending {
-			receipt, err := net.GetReceipt(txHash)
+			receipt, err := session.GetReceipt(txHash)
 			require.NoError(t, err)
 			require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 		}
@@ -467,81 +483,87 @@ func TestIntegrationTestNet_setTransactionDefaults(t *testing.T) {
 	t.Run("zero nonce is defaulted", func(t *testing.T) {
 		// this generation is tested isolated because the previous test case
 		// utilizes manual nonce setting to issue multiple transactions asynchronously
-
+		t.Parallel()
+		session := net.SpawnSession(t)
 		// account has a non-zero nonce
-		receipt, err := net.EndowAccount(common.Address{}, big.NewInt(1))
+		receipt, err := session.EndowAccount(common.Address{}, big.NewInt(1))
 		require.NoError(t, err)
 		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
-		txData := setTransactionDefaults(t, net, &types.LegacyTx{}, net.GetSessionSponsor())
-		tx := signTransaction(t, chainId, txData, net.GetSessionSponsor())
+		txData := setTransactionDefaults(t, session, &types.LegacyTx{}, session.GetSessionSponsor())
+		tx := signTransaction(t, chainId, txData, session.GetSessionSponsor())
 
-		nonce, err := client.NonceAt(t.Context(), net.GetSessionSponsor().Address(), nil)
+		nonce, err := client.NonceAt(t.Context(), session.GetSessionSponsor().Address(), nil)
 		require.NoError(t, err)
 
 		require.Equal(t, nonce, tx.Nonce())
 	})
 
 	t.Run("non-zero nonce is not defaulted", func(t *testing.T) {
-
+		t.Parallel()
+		session := net.SpawnSession(t)
 		// endowments modify the account nonce
-		receipt, err := net.EndowAccount(common.Address{}, big.NewInt(1))
+		receipt, err := session.EndowAccount(common.Address{}, big.NewInt(1))
 		require.NoError(t, err)
 		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
-		receipt, err = net.EndowAccount(common.Address{}, big.NewInt(1))
+		receipt, err = session.EndowAccount(common.Address{}, big.NewInt(1))
 		require.NoError(t, err)
 		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
-		txData := setTransactionDefaults(t, net, &types.LegacyTx{
+		txData := setTransactionDefaults(t, session, &types.LegacyTx{
 			Nonce: 1,
-		}, net.GetSessionSponsor())
-		tx := signTransaction(t, chainId, txData, net.GetSessionSponsor())
+		}, session.GetSessionSponsor())
+		tx := signTransaction(t, chainId, txData, session.GetSessionSponsor())
 
 		// the filled values suffice to get the transaction accepted and executed
-		_, err = net.Run(tx)
+		_, err = session.Run(tx)
 		require.ErrorContains(t, err, "nonce too low")
 	})
 
 	t.Run("non-zero gas is not defaulted ", func(t *testing.T) {
+		t.Parallel()
+		session := net.SpawnSession(t)
 
-		txData := setTransactionDefaults(t, net, &types.LegacyTx{
+		txData := setTransactionDefaults(t, session, &types.LegacyTx{
 			Gas: 1,
-		}, net.GetSessionSponsor())
-		tx := signTransaction(t, chainId, txData, net.GetSessionSponsor())
+		}, session.GetSessionSponsor())
+		tx := signTransaction(t, chainId, txData, session.GetSessionSponsor())
 
 		// the filled values suffice to get the transaction accepted and executed
-		_, err := net.Run(tx)
+		_, err := session.Run(tx)
 		require.ErrorContains(t, err, " intrinsic gas too low")
 	})
 
 	t.Run("non-zero gas-price is not defaulted ", func(t *testing.T) {
+		t.Parallel()
 
-		txData := setTransactionDefaults(t, net, &types.LegacyTx{
+		session := net.SpawnSession(t)
+		txData := setTransactionDefaults(t, session, &types.LegacyTx{
 			GasPrice: big.NewInt(1),
-		}, net.GetSessionSponsor())
-		tx := signTransaction(t, chainId, txData, net.GetSessionSponsor())
+		}, session.GetSessionSponsor())
+		tx := signTransaction(t, chainId, txData, session.GetSessionSponsor())
 
 		// the filled values suffice to get the transaction accepted and executed
-		_, err := net.Run(tx)
+		_, err := session.Run(tx)
 		require.ErrorContains(t, err, "underpriced")
 	})
 }
 
-func Test_WaitUntilTransactionIsRetiredFromPool_waitsFromCompletion(t *testing.T) {
-	net := StartIntegrationTestNet(t,
-		IntegrationTestNetOptions{
-			Upgrades: AsPointer(opera.GetAllegroUpgrades()),
-		})
-	client, err := net.GetClient()
+func test_WaitUntilTransactionIsRetiredFromPool_waitsFromCompletion(
+	t *testing.T, net *IntegrationTestNet) {
+
+	session := net.SpawnSession(t)
+
+	client, err := session.GetClient()
 	require.NoError(t, err)
 	defer client.Close()
 
-	account := makeAccountWithBalance(t, net, big.NewInt(1e18))
+	account := makeAccountWithBalance(t, session, big.NewInt(1e18))
 
 	chainId, err := client.ChainID(t.Context())
 	require.NoError(t, err)
 
-	txData := setTransactionDefaults(t, net, &types.LegacyTx{}, account)
+	txData := setTransactionDefaults(t, session, &types.LegacyTx{}, account)
 	txData.Nonce = 1
 	txInvalidNonce := signTransaction(t, chainId, txData, account)
 
