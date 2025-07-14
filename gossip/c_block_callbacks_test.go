@@ -26,6 +26,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/lachesis"
 	"github.com/ethereum/go-ethereum/common"
@@ -654,101 +655,105 @@ func TestIsPermissible_DetectsNonPermissibleTransactions(t *testing.T) {
 
 func TestSpillBlockEvents(t *testing.T) {
 
+	type payloadSetup func(ctrl *gomock.Controller) *inter.MockEventPayloadI
+	makeMockEventPayload :=
+		func(gasUsed uint64, sig inter.Signature) payloadSetup {
+			return func(ctrl *gomock.Controller) *inter.MockEventPayloadI {
+				payload := inter.NewMockEventPayloadI(ctrl)
+				payload.EXPECT().GasPowerUsed().Return(gasUsed).AnyTimes()
+				payload.EXPECT().Sig().Return(sig).AnyTimes()
+				return payload
+			}
+		}
+
 	tests := map[string]struct {
-		events      []hash.Event
 		maxBlockGas uint64
-		setup       func(*MockEventPayloadSource)
+		events      map[hash.Event]payloadSetup
 		// The test uses mocks for payloads, use the signatures to uniquely identify
-		// events in the result
+		// events in the result.
 		expectedSignatures []inter.Signature
 	}{
 		"empty input returns empty set": {
 			expectedSignatures: []inter.Signature{},
 		},
 		"single event with gas usage below limit is included": {
-			events:      []hash.Event{{0x42}},
 			maxBlockGas: 10,
-			setup: func(mockSource *MockEventPayloadSource) {
-				payload := inter.NewMockEventPayloadI(mockSource.ctrl)
-				payload.EXPECT().GasPowerUsed().Return(uint64(5))
-				payload.EXPECT().Sig().Return(inter.Signature{0x42})
-				mockSource.EXPECT().GetEventPayload(hash.Event{0x42}).Return(payload)
+			events: map[hash.Event]payloadSetup{
+				{0x42}: makeMockEventPayload(5, inter.Signature{0x42}),
 			},
 			expectedSignatures: []inter.Signature{{0x42}},
 		},
 		"single event with gas usage exceeding limit is spilled": {
-			events:      []hash.Event{{0x42}},
 			maxBlockGas: 10,
-			setup: func(mockSource *MockEventPayloadSource) {
-				payload := inter.NewMockEventPayloadI(mockSource.ctrl)
-				payload.EXPECT().GasPowerUsed().Return(uint64(15))
-				mockSource.EXPECT().GetEventPayload(hash.Event{0x42}).Return(payload)
+			events: map[hash.Event]payloadSetup{
+				{0x42}: makeMockEventPayload(11, inter.Signature{0x42}),
 			},
 			expectedSignatures: []inter.Signature{},
 		},
 		"multiple events with gas usage below limit are included": {
-			events:      []hash.Event{{0x42}, {0x43}, {0x44}},
 			maxBlockGas: 30,
-			setup: func(mockSource *MockEventPayloadSource) {
-				payload1 := inter.NewMockEventPayloadI(mockSource.ctrl)
-				payload1.EXPECT().GasPowerUsed().Return(uint64(10))
-				payload1.EXPECT().Sig().Return(inter.Signature{0x42})
-				mockSource.EXPECT().GetEventPayload(hash.Event{0x42}).Return(payload1)
-
-				payload2 := inter.NewMockEventPayloadI(mockSource.ctrl)
-				payload2.EXPECT().GasPowerUsed().Return(uint64(10))
-				payload2.EXPECT().Sig().Return(inter.Signature{0x43})
-				mockSource.EXPECT().GetEventPayload(hash.Event{0x43}).Return(payload2)
-
-				payload3 := inter.NewMockEventPayloadI(mockSource.ctrl)
-				payload3.EXPECT().GasPowerUsed().Return(uint64(10))
-				payload3.EXPECT().Sig().Return(inter.Signature{0x44})
-				mockSource.EXPECT().GetEventPayload(hash.Event{0x44}).Return(payload3)
+			events: map[hash.Event]payloadSetup{
+				{0x42}: makeMockEventPayload(10, inter.Signature{0x42}),
+				{0x43}: makeMockEventPayload(10, inter.Signature{0x43}),
+				{0x44}: makeMockEventPayload(10, inter.Signature{0x44}),
 			},
 			expectedSignatures: []inter.Signature{{0x42}, {0x43}, {0x44}},
 		},
 		"multiple events with last gas usage exceeding limit are spilled": {
-			events:      []hash.Event{{0x42}, {0x43}, {0x44}},
-			maxBlockGas: 20,
-			setup: func(mockSource *MockEventPayloadSource) {
-				payload1 := inter.NewMockEventPayloadI(mockSource.ctrl)
-				payload1.EXPECT().GasPowerUsed().Return(uint64(21))
-				mockSource.EXPECT().GetEventPayload(hash.Event{0x44}).Return(payload1)
+			events: map[hash.Event]payloadSetup{
+				{0x42}: makeMockEventPayload(1, inter.Signature{0x42}),
+				{0x43}: makeMockEventPayload(1, inter.Signature{0x43}),
+				{0x44}: makeMockEventPayload(21, inter.Signature{0x44}), // last event checked first
 			},
+			maxBlockGas:        20,
 			expectedSignatures: []inter.Signature{},
 		},
 		"multiple events are included until gas limit is reached, rest is spilled": {
-			events:      []hash.Event{{0x42}, {0x43}, {0x44}, {0x45}},
-			maxBlockGas: 20,
-			setup: func(mockSource *MockEventPayloadSource) {
-				payload1 := inter.NewMockEventPayloadI(mockSource.ctrl)
-				payload1.EXPECT().GasPowerUsed().Return(uint64(10))
-				payload1.EXPECT().Sig().Return(inter.Signature{0x45})
-				mockSource.EXPECT().GetEventPayload(hash.Event{0x45}).Return(payload1)
-
-				payload2 := inter.NewMockEventPayloadI(mockSource.ctrl)
-				payload2.EXPECT().GasPowerUsed().Return(uint64(10))
-				payload2.EXPECT().Sig().Return(inter.Signature{0x44})
-				mockSource.EXPECT().GetEventPayload(hash.Event{0x44}).Return(payload2)
-
-				payload3 := inter.NewMockEventPayloadI(mockSource.ctrl)
-				payload3.EXPECT().GasPowerUsed().Return(uint64(10))
-				mockSource.EXPECT().GetEventPayload(hash.Event{0x43}).Return(payload3)
+			events: map[hash.Event]payloadSetup{
+				{0x42}: makeMockEventPayload(1, inter.Signature{0x42}),
+				{0x43}: makeMockEventPayload(10, inter.Signature{0x43}),
+				{0x44}: makeMockEventPayload(10, inter.Signature{0x44}),
+				{0x45}: makeMockEventPayload(10, inter.Signature{0x45}), // last event checked first
 			},
+			maxBlockGas:        20,
 			expectedSignatures: []inter.Signature{{0x44}, {0x45}},
+		},
+		"multiple events are included until gas limit is exceeded, rest is spilled even if they would fit independently": {
+			events: map[hash.Event]payloadSetup{
+				{0x42}: makeMockEventPayload(1, inter.Signature{0x42}),
+				{0x43}: makeMockEventPayload(11, inter.Signature{0x43}),
+				{0x44}: makeMockEventPayload(10, inter.Signature{0x44}),
+			},
+			maxBlockGas:        20,
+			expectedSignatures: []inter.Signature{{0x44}},
 		},
 	}
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
-			mockSource := NewMockEventPayloadSource(ctrl)
-			if test.setup != nil {
-				test.setup(mockSource)
+			payloads := make(map[hash.Event]inter.EventPayloadI, len(test.events))
+			for e, makePayload := range test.events {
+				payloads[e] = makePayload(ctrl)
 			}
 
-			computed := spillBlockEvents(mockSource, test.events, test.maxBlockGas)
+			events := make([]hash.Event, 0, len(test.events))
+			for e := range test.events {
+				events = append(events, e)
+			}
+			// tests are order-dependent, so sort inputs
+			slices.SortFunc(events, func(a, b hash.Event) int {
+				return bytes.Compare(a[:], b[:])
+			})
 
+			getEventPayload := func(id hash.Event) inter.EventPayloadI {
+				if payload, ok := payloads[id]; ok {
+					return payload
+				}
+				return nil
+			}
+
+			computed := spillBlockEvents(events, test.maxBlockGas, getEventPayload)
 			foundSignatures := make([]inter.Signature, 0, len(computed))
 			for _, event := range computed {
 				foundSignatures = append(foundSignatures, event.Sig())
