@@ -651,3 +651,109 @@ func TestIsPermissible_DetectsNonPermissibleTransactions(t *testing.T) {
 		})
 	}
 }
+
+func TestSpillBlockEvents(t *testing.T) {
+
+	tests := map[string]struct {
+		events      []hash.Event
+		maxBlockGas uint64
+		setup       func(*MockEventPayloadSource)
+		// The test uses mocks for payloads, use the signatures to uniquely identify
+		// events in the result
+		expectedSignatures []inter.Signature
+	}{
+		"empty input returns empty set": {
+			expectedSignatures: []inter.Signature{},
+		},
+		"single event with gas usage below limit is included": {
+			events:      []hash.Event{{0x42}},
+			maxBlockGas: 10,
+			setup: func(mockSource *MockEventPayloadSource) {
+				payload := inter.NewMockEventPayloadI(mockSource.ctrl)
+				payload.EXPECT().GasPowerUsed().Return(uint64(5))
+				payload.EXPECT().Sig().Return(inter.Signature{0x42})
+				mockSource.EXPECT().GetEventPayload(hash.Event{0x42}).Return(payload)
+			},
+			expectedSignatures: []inter.Signature{{0x42}},
+		},
+		"single event with gas usage exceeding limit is spilled": {
+			events:      []hash.Event{{0x42}},
+			maxBlockGas: 10,
+			setup: func(mockSource *MockEventPayloadSource) {
+				payload := inter.NewMockEventPayloadI(mockSource.ctrl)
+				payload.EXPECT().GasPowerUsed().Return(uint64(15))
+				mockSource.EXPECT().GetEventPayload(hash.Event{0x42}).Return(payload)
+			},
+			expectedSignatures: []inter.Signature{},
+		},
+		"multiple events with gas usage below limit are included": {
+			events:      []hash.Event{{0x42}, {0x43}, {0x44}},
+			maxBlockGas: 30,
+			setup: func(mockSource *MockEventPayloadSource) {
+				payload1 := inter.NewMockEventPayloadI(mockSource.ctrl)
+				payload1.EXPECT().GasPowerUsed().Return(uint64(10))
+				payload1.EXPECT().Sig().Return(inter.Signature{0x42})
+				mockSource.EXPECT().GetEventPayload(hash.Event{0x42}).Return(payload1)
+
+				payload2 := inter.NewMockEventPayloadI(mockSource.ctrl)
+				payload2.EXPECT().GasPowerUsed().Return(uint64(10))
+				payload2.EXPECT().Sig().Return(inter.Signature{0x43})
+				mockSource.EXPECT().GetEventPayload(hash.Event{0x43}).Return(payload2)
+
+				payload3 := inter.NewMockEventPayloadI(mockSource.ctrl)
+				payload3.EXPECT().GasPowerUsed().Return(uint64(10))
+				payload3.EXPECT().Sig().Return(inter.Signature{0x44})
+				mockSource.EXPECT().GetEventPayload(hash.Event{0x44}).Return(payload3)
+			},
+			expectedSignatures: []inter.Signature{{0x42}, {0x43}, {0x44}},
+		},
+		"multiple events with last gas usage exceeding limit are spilled": {
+			events:      []hash.Event{{0x42}, {0x43}, {0x44}},
+			maxBlockGas: 20,
+			setup: func(mockSource *MockEventPayloadSource) {
+				payload1 := inter.NewMockEventPayloadI(mockSource.ctrl)
+				payload1.EXPECT().GasPowerUsed().Return(uint64(21))
+				mockSource.EXPECT().GetEventPayload(hash.Event{0x44}).Return(payload1)
+			},
+			expectedSignatures: []inter.Signature{},
+		},
+		"multiple events are included until gas limit is reached, rest is spilled": {
+			events:      []hash.Event{{0x42}, {0x43}, {0x44}, {0x45}},
+			maxBlockGas: 20,
+			setup: func(mockSource *MockEventPayloadSource) {
+				payload1 := inter.NewMockEventPayloadI(mockSource.ctrl)
+				payload1.EXPECT().GasPowerUsed().Return(uint64(10))
+				payload1.EXPECT().Sig().Return(inter.Signature{0x45})
+				mockSource.EXPECT().GetEventPayload(hash.Event{0x45}).Return(payload1)
+
+				payload2 := inter.NewMockEventPayloadI(mockSource.ctrl)
+				payload2.EXPECT().GasPowerUsed().Return(uint64(10))
+				payload2.EXPECT().Sig().Return(inter.Signature{0x44})
+				mockSource.EXPECT().GetEventPayload(hash.Event{0x44}).Return(payload2)
+
+				payload3 := inter.NewMockEventPayloadI(mockSource.ctrl)
+				payload3.EXPECT().GasPowerUsed().Return(uint64(10))
+				mockSource.EXPECT().GetEventPayload(hash.Event{0x43}).Return(payload3)
+			},
+			expectedSignatures: []inter.Signature{{0x44}, {0x45}},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			mockSource := NewMockEventPayloadSource(ctrl)
+			if test.setup != nil {
+				test.setup(mockSource)
+			}
+
+			computed := spillBlockEvents(mockSource, test.events, test.maxBlockGas)
+
+			foundSignatures := make([]inter.Signature, 0, len(computed))
+			for _, event := range computed {
+				foundSignatures = append(foundSignatures, event.Sig())
+			}
+			require.Equal(t, test.expectedSignatures, foundSignatures)
+		})
+	}
+}
