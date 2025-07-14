@@ -191,7 +191,7 @@ var initFilterAndFlags = sync.OnceFunc(func() {
 })
 
 // init the CLI app.
-func initApp() *cli.App {
+func initApp(control *AppControl) *cli.App {
 	initFilterAndFlags()
 
 	app := cli.NewApp()
@@ -211,8 +211,13 @@ func initApp() *cli.App {
 	app.Flags = append(app.Flags, debug.Flags...)
 	app.Flags = append(app.Flags, metricsFlags...)
 
+	var logger log.Logger
+	if control != nil {
+		logger = control.Logger
+	}
+
 	app.Before = func(ctx *cli.Context) error {
-		if err := debug.Setup(ctx); err != nil {
+		if err := debug.Setup(ctx, logger); err != nil {
 			return err
 		}
 

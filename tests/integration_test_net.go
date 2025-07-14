@@ -191,7 +191,8 @@ type IntegrationTestNet struct {
 	sessionsMutex sync.Mutex
 	Session
 
-	// fake logger to report calls to log.Error or log.Critical
+	// fakeLogger is a custom logger that will hold a reference to the testing.T
+	// and fail the test if at any point there is a call to log.Error or log.Crit
 	fakeLogger *fakeLogger
 }
 
@@ -412,7 +413,6 @@ func startIntegrationTestNet(
 			l: log.Root(),
 			t: t,
 		}
-		log.SetDefault(net.fakeLogger)
 	}
 
 	err := net.start()
@@ -517,6 +517,10 @@ func (n *IntegrationTestNet) start() error {
 				NodeIdAnnouncement:   nodeIds[i],
 				HttpPortAnnouncement: httpPorts[i],
 				Shutdown:             stop,
+			}
+
+			if n.fakeLogger != nil {
+				control.Logger = n.fakeLogger
 			}
 
 			if err := sonicd.RunWithArgs(args, control); err != nil {
