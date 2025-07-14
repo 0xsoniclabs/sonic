@@ -82,7 +82,7 @@ func (tt *testcli) readConfig() {
 func init() {
 	// Run the app if we've been exec'd as "sonic-test" in exec().
 	reexec.Register("sonic-test", func() {
-		app := initApp()
+		app := initApp(nil)
 		initAppHelp()
 		if err := app.Run(os.Args); err != nil {
 			fmt.Fprintln(os.Stderr, err)
