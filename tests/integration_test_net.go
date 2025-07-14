@@ -39,6 +39,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/contract/driverauth100"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/stretchr/testify/require"
 
 	sonicd "github.com/0xsoniclabs/sonic/cmd/sonicd/app"
@@ -136,6 +137,11 @@ type IntegrationTestNetOptions struct {
 	ModifyConfig func(*config.Config)
 	// Accounts to be deployed with the genesis.
 	Accounts []makefakegenesis.Account
+
+	// IgnoreLogErrors is a boolean flag that, when set to true, will cause the
+	// integration test network to ignore all log messages at the ERROR
+	// level or higher.
+	IgnoreLogErrors bool
 }
 
 // IntegrationTestNet is a in-process test network for integration tests. When
@@ -164,6 +170,9 @@ type IntegrationTestNet struct {
 
 	sessionsMutex sync.Mutex
 	Session
+
+	// fake logger to report calls to log.Error or log.Critical
+	fakeLogger *fakeLogger
 }
 
 // per-node state for the integration test network
@@ -370,8 +379,22 @@ func startIntegrationTestNet(
 		require.NoError(t, sonictool.RunWithArgs(args), "failed to initialize the test network")
 	}
 
-	require.NoError(t, net.start(), "failed to start the integration test network")
+	if !options.IgnoreLogErrors {
+		// The fake logger holds a reference to the testing.T which instantiated
+		// the test net. Errors logged by this context or any sub-tests,
+		// will cause the top-level test to fail, even though the immediate
+		// caller of the log.Error will not be marked as the error source.
+		net.fakeLogger = &fakeLogger{
+			l: log.Root(),
+			t: t,
+		}
+		log.SetDefault(net.fakeLogger)
+	}
+
+	err := net.start()
+	require.NoError(t, err, "failed to start the integration test network")
 	t.Cleanup(net.Stop)
+
 	return net, nil
 }
 
@@ -557,6 +580,8 @@ func (n *IntegrationTestNet) Stop() {
 		<-n.nodes[i].done
 		n.nodes[i].done = nil
 	}
+
+	log.SetDefault(n.fakeLogger.l) // restore the original logger
 }
 
 // Restart stops and restarts the single node on the test network.
@@ -671,6 +696,10 @@ func (n *IntegrationTestNet) GetHeaders() ([]*types.Header, error) {
 	}
 
 	return headers, nil
+}
+
+func (n *IntegrationTestNet) AddExpectedError(expectedError string) {
+	n.fakeLogger.addExpectedError(expectedError)
 }
 
 // SpawnSession creates a new test session on the network.
