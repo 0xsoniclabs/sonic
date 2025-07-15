@@ -655,20 +655,14 @@ func TestIsPermissible_DetectsNonPermissibleTransactions(t *testing.T) {
 
 func TestSpillBlockEvents(t *testing.T) {
 
-	type payloadSetup func(ctrl *gomock.Controller) *inter.MockEventPayloadI
-	makeMockEventPayload :=
-		func(gasUsed uint64, sig inter.Signature) payloadSetup {
-			return func(ctrl *gomock.Controller) *inter.MockEventPayloadI {
-				payload := inter.NewMockEventPayloadI(ctrl)
-				payload.EXPECT().GasPowerUsed().Return(gasUsed).AnyTimes()
-				payload.EXPECT().Sig().Return(sig).AnyTimes()
-				return payload
-			}
+	makeEventPayload :=
+		func(gasUsed uint64, sig inter.Signature) fakePayload {
+			return fakePayload{gasUsed: gasUsed, signature: sig}
 		}
 
 	tests := map[string]struct {
 		maxBlockGas uint64
-		events      map[hash.Event]payloadSetup
+		events      map[hash.Event]fakePayload
 		// The test uses mocks for payloads, use the signatures to uniquely identify
 		// events in the result.
 		expectedSignatures []inter.Signature
@@ -678,52 +672,52 @@ func TestSpillBlockEvents(t *testing.T) {
 		},
 		"single event with gas usage below limit is included": {
 			maxBlockGas: 10,
-			events: map[hash.Event]payloadSetup{
-				{0x42}: makeMockEventPayload(5, inter.Signature{0x42}),
+			events: map[hash.Event]fakePayload{
+				{0x42}: makeEventPayload(5, inter.Signature{0x42}),
 			},
 			expectedSignatures: []inter.Signature{{0x42}},
 		},
 		"single event with gas usage exceeding limit is spilled": {
 			maxBlockGas: 10,
-			events: map[hash.Event]payloadSetup{
-				{0x42}: makeMockEventPayload(11, inter.Signature{0x42}),
+			events: map[hash.Event]fakePayload{
+				{0x42}: makeEventPayload(11, inter.Signature{0x42}),
 			},
 			expectedSignatures: []inter.Signature{},
 		},
 		"multiple events with gas usage below limit are included": {
 			maxBlockGas: 30,
-			events: map[hash.Event]payloadSetup{
-				{0x42}: makeMockEventPayload(10, inter.Signature{0x42}),
-				{0x43}: makeMockEventPayload(10, inter.Signature{0x43}),
-				{0x44}: makeMockEventPayload(10, inter.Signature{0x44}),
+			events: map[hash.Event]fakePayload{
+				{0x42}: makeEventPayload(10, inter.Signature{0x42}),
+				{0x43}: makeEventPayload(10, inter.Signature{0x43}),
+				{0x44}: makeEventPayload(10, inter.Signature{0x44}),
 			},
 			expectedSignatures: []inter.Signature{{0x42}, {0x43}, {0x44}},
 		},
 		"multiple events with last gas usage exceeding limit are spilled": {
 			maxBlockGas: 20,
-			events: map[hash.Event]payloadSetup{
-				{0x42}: makeMockEventPayload(1, inter.Signature{0x42}),
-				{0x43}: makeMockEventPayload(1, inter.Signature{0x43}),
-				{0x44}: makeMockEventPayload(21, inter.Signature{0x44}), // last event checked first
+			events: map[hash.Event]fakePayload{
+				{0x42}: makeEventPayload(1, inter.Signature{0x42}),
+				{0x43}: makeEventPayload(1, inter.Signature{0x43}),
+				{0x44}: makeEventPayload(21, inter.Signature{0x44}), // last event checked first
 			},
 			expectedSignatures: []inter.Signature{},
 		},
 		"multiple events are included until gas limit is reached, rest is spilled": {
 			maxBlockGas: 20,
-			events: map[hash.Event]payloadSetup{
-				{0x42}: makeMockEventPayload(1, inter.Signature{0x42}),
-				{0x43}: makeMockEventPayload(10, inter.Signature{0x43}),
-				{0x44}: makeMockEventPayload(10, inter.Signature{0x44}),
-				{0x45}: makeMockEventPayload(10, inter.Signature{0x45}), // last event checked first
+			events: map[hash.Event]fakePayload{
+				{0x42}: makeEventPayload(1, inter.Signature{0x42}),
+				{0x43}: makeEventPayload(10, inter.Signature{0x43}),
+				{0x44}: makeEventPayload(10, inter.Signature{0x44}),
+				{0x45}: makeEventPayload(10, inter.Signature{0x45}), // last event checked first
 			},
 			expectedSignatures: []inter.Signature{{0x44}, {0x45}},
 		},
 		"multiple events are included until gas limit is exceeded, rest is spilled even if they would fit independently": {
 			maxBlockGas: 20,
-			events: map[hash.Event]payloadSetup{
-				{0x42}: makeMockEventPayload(1, inter.Signature{0x42}),
-				{0x43}: makeMockEventPayload(11, inter.Signature{0x43}),
-				{0x44}: makeMockEventPayload(10, inter.Signature{0x44}),
+			events: map[hash.Event]fakePayload{
+				{0x42}: makeEventPayload(1, inter.Signature{0x42}),
+				{0x43}: makeEventPayload(11, inter.Signature{0x43}),
+				{0x44}: makeEventPayload(10, inter.Signature{0x44}),
 			},
 			expectedSignatures: []inter.Signature{{0x44}},
 		},
@@ -731,11 +725,6 @@ func TestSpillBlockEvents(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			payloads := make(map[hash.Event]inter.EventPayloadI, len(test.events))
-			for e, makePayload := range test.events {
-				payloads[e] = makePayload(ctrl)
-			}
 
 			events := make([]hash.Event, 0, len(test.events))
 			for e := range test.events {
@@ -747,8 +736,8 @@ func TestSpillBlockEvents(t *testing.T) {
 			})
 
 			getEventPayload := func(id hash.Event) inter.EventPayloadI {
-				if payload, ok := payloads[id]; ok {
-					return payload
+				if payload, ok := test.events[id]; ok {
+					return &payload
 				}
 				return nil
 			}
@@ -761,4 +750,17 @@ func TestSpillBlockEvents(t *testing.T) {
 			require.Equal(t, test.expectedSignatures, foundSignatures)
 		})
 	}
+}
+
+type fakePayload struct {
+	inter.EventPayloadI // just here to satisfy the interface
+	signature           inter.Signature
+	gasUsed             uint64
+}
+
+func (p *fakePayload) Sig() inter.Signature {
+	return p.signature
+}
+func (p *fakePayload) GasPowerUsed() uint64 {
+	return p.gasUsed
 }
