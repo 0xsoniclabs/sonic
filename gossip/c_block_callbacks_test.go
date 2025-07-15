@@ -700,31 +700,31 @@ func TestSpillBlockEvents(t *testing.T) {
 			expectedSignatures: []inter.Signature{{0x42}, {0x43}, {0x44}},
 		},
 		"multiple events with last gas usage exceeding limit are spilled": {
+			maxBlockGas: 20,
 			events: map[hash.Event]payloadSetup{
 				{0x42}: makeMockEventPayload(1, inter.Signature{0x42}),
 				{0x43}: makeMockEventPayload(1, inter.Signature{0x43}),
 				{0x44}: makeMockEventPayload(21, inter.Signature{0x44}), // last event checked first
 			},
-			maxBlockGas:        20,
 			expectedSignatures: []inter.Signature{},
 		},
 		"multiple events are included until gas limit is reached, rest is spilled": {
+			maxBlockGas: 20,
 			events: map[hash.Event]payloadSetup{
 				{0x42}: makeMockEventPayload(1, inter.Signature{0x42}),
 				{0x43}: makeMockEventPayload(10, inter.Signature{0x43}),
 				{0x44}: makeMockEventPayload(10, inter.Signature{0x44}),
 				{0x45}: makeMockEventPayload(10, inter.Signature{0x45}), // last event checked first
 			},
-			maxBlockGas:        20,
 			expectedSignatures: []inter.Signature{{0x44}, {0x45}},
 		},
 		"multiple events are included until gas limit is exceeded, rest is spilled even if they would fit independently": {
+			maxBlockGas: 20,
 			events: map[hash.Event]payloadSetup{
 				{0x42}: makeMockEventPayload(1, inter.Signature{0x42}),
 				{0x43}: makeMockEventPayload(11, inter.Signature{0x43}),
 				{0x44}: makeMockEventPayload(10, inter.Signature{0x44}),
 			},
-			maxBlockGas:        20,
 			expectedSignatures: []inter.Signature{{0x44}},
 		},
 	}
