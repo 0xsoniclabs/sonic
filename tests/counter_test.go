@@ -21,32 +21,27 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 )
 
-func TestCounter(t *testing.T) {
-	net := StartIntegrationTestNet(t)
+type CounterTest struct{}
 
-	t.Run("CanIncrementAndReadCounterFromHead", func(t *testing.T) {
-		t.Parallel()
-		session := net.SpawnSession(t)
-		testCounter_CanIncrementAndReadCounterFromHead(t, session)
-	})
-
-	t.Run("CanReadHistoricCounterValues", func(t *testing.T) {
-		t.Parallel()
-		session := net.SpawnSession(t)
-		testCounter_CanReadHistoricCounterValues(t, session)
-	})
+func (CounterTest) GetUpgradesForTest() []opera.Upgrades {
+	return []opera.Upgrades{
+		opera.GetSonicUpgrades(),
+		opera.GetAllegroUpgrades(),
+	}
 }
 
-func testCounter_CanIncrementAndReadCounterFromHead(
+func (CounterTest) TestCanIncrementAndReadCounterFromHead(
 	t *testing.T,
 	net IntegrationTestNetSession,
 ) {
+	t.Parallel()
 
 	// Deploy the counter contract.
 	contract, receipt, err := DeployContract(net, counter.DeployCounter)
@@ -64,10 +59,11 @@ func testCounter_CanIncrementAndReadCounterFromHead(
 	}
 }
 
-func testCounter_CanReadHistoricCounterValues(
+func (CounterTest) TestCanReadHistoricCounterValues(
 	t *testing.T,
 	net IntegrationTestNetSession,
 ) {
+	t.Parallel()
 
 	// Deploy the counter contract.
 	contract, receipt, err := DeployContract(net, counter.DeployCounter)
@@ -105,4 +101,8 @@ func testCounter_CanReadHistoricCounterValues(
 		require.NoError(t, err, "failed to get counter value at block %d", i)
 		require.Equal(t, int64(want), got.Int64(), "unexpected counter value at block %d", i)
 	}
+}
+
+func init() {
+	testRegistry.Register(CounterTest{})
 }
