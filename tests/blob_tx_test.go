@@ -21,6 +21,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/blobbasefee"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -35,37 +36,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestBlobTransaction(t *testing.T) {
+type BlobTransactionTest struct{}
 
-	ctxt := MakeTestContext(t)
-	defer ctxt.Close()
-
-	t.Run("blob tx with non-empty blobs is rejected", func(t *testing.T) {
-		testBlobTx_WithBlobsIsRejected(t, ctxt)
-	})
-
-	t.Run("blob tx with empty blobs is executed", func(t *testing.T) {
-		testBlobTx_WithEmptyBlobsIsExecuted(t, ctxt)
-		checkBlocksSanity(t, ctxt.client)
-	})
-
-	t.Run("blob tx with nil sidecar is executed", func(t *testing.T) {
-		testBlobTx_WithNilSidecarIsExecuted(t, ctxt)
-		checkBlocksSanity(t, ctxt.client)
-	})
-
-	t.Run("blob base fee can be read from head, block and history", func(t *testing.T) {
-		testBlobBaseFee_CanReadBlobBaseFeeFromHeadAndBlockAndHistory(t, ctxt)
-		checkBlocksSanity(t, ctxt.client)
-	})
-
-	t.Run("blob gas used can be read from block header", func(t *testing.T) {
-		testBlobBaseFee_CanReadBlobGasUsed(t, ctxt)
-		checkBlocksSanity(t, ctxt.client)
-	})
+func (BlobTransactionTest) GetUpgradesForTest() []opera.Upgrades {
+	return []opera.Upgrades{
+		opera.GetSonicUpgrades(),
+		opera.GetAllegroUpgrades(),
+	}
 }
 
-func testBlobTx_WithBlobsIsRejected(t *testing.T, ctxt *testContext) {
+func (BlobTransactionTest) TestBlobsIsRejected(t *testing.T, net IntegrationTestNetSession) {
+	t.Parallel()
 	require := require.New(t)
 	nonZeroNumberOfBlobs := 2
 
@@ -76,26 +57,27 @@ func testBlobTx_WithBlobsIsRejected(t *testing.T, ctxt *testContext) {
 		copy(blobs[i], blob[:])
 	}
 
-	tx, err := createTestBlobTransaction(t, ctxt, blobs...)
+	tx, err := createTestBlobTransaction(t, net, blobs...)
 	require.NoError(err)
 
 	// attempt to run tx
-	_, err = ctxt.net.Run(tx)
+	_, err = net.Run(tx)
 	require.ErrorContains(err, "non-empty blob transaction are not supported")
 
 	// repeat same tx (regression against reported repeated tx issue)
-	_, err = ctxt.net.Run(tx)
+	_, err = net.Run(tx)
 	require.ErrorContains(err, "non-empty blob transaction are not supported")
 }
 
-func testBlobTx_WithEmptyBlobsIsExecuted(t *testing.T, ctxt *testContext) {
+func (BlobTransactionTest) TestEmptyBlobsIsExecuted(t *testing.T, net IntegrationTestNetSession) {
+	t.Parallel()
 	require := require.New(t)
 
-	tx, err := createTestBlobTransaction(t, ctxt)
+	tx, err := createTestBlobTransaction(t, net)
 	require.NoError(err)
 
 	// run tx
-	receipt, err := ctxt.net.Run(tx)
+	receipt, err := net.Run(tx)
 	require.NoError(err, "transaction must be accepted")
 	require.Equal(
 		types.ReceiptStatusSuccessful,
@@ -104,14 +86,14 @@ func testBlobTx_WithEmptyBlobsIsExecuted(t *testing.T, ctxt *testContext) {
 	)
 }
 
-func testBlobTx_WithNilSidecarIsExecuted(t *testing.T, ctxt *testContext) {
+func (BlobTransactionTest) TestNilSidecarIsExecuted(t *testing.T, net IntegrationTestNetSession) {
 	require := require.New(t)
 
-	tx, err := createTestBlobTransactionWithNilSidecar(t, ctxt)
+	tx, err := createTestBlobTransactionWithNilSidecar(t, net)
 	require.NoError(err)
 
 	// run tx
-	receipt, err := ctxt.net.Run(tx)
+	receipt, err := net.Run(tx)
 	require.NoError(err, "transaction must be accepted")
 	require.Equal(
 		types.ReceiptStatusSuccessful,
@@ -120,15 +102,20 @@ func testBlobTx_WithNilSidecarIsExecuted(t *testing.T, ctxt *testContext) {
 	)
 }
 
-func testBlobBaseFee_CanReadBlobBaseFeeFromHeadAndBlockAndHistory(t *testing.T, ctxt *testContext) {
+func (BlobTransactionTest) TestCanReadBlobBaseFeeFromHeadAndBlockAndHistory(t *testing.T, net IntegrationTestNetSession) {
+	t.Parallel()
 	require := require.New(t)
+
+	client, err := net.GetClient()
+	require.NoError(err, "failed to get client")
+	defer client.Close()
 
 	// Deploy the blob base fee contract.
-	contract, _, err := DeployContract(ctxt.net, blobbasefee.DeployBlobbasefee)
+	contract, _, err := DeployContract(net, blobbasefee.DeployBlobbasefee)
 	require.NoError(err, "failed to deploy contract; ", err)
 
 	// Collect the current blob base fee from the head state.
-	receipt, err := ctxt.net.Apply(contract.LogCurrentBlobBaseFee)
+	receipt, err := net.Apply(contract.LogCurrentBlobBaseFee)
 	require.NoError(err, "failed to log current blob base fee; ", err)
 	require.Equal(len(receipt.Logs), 1, "unexpected number of logs; expected 1, got ", len(receipt.Logs))
 
@@ -137,7 +124,7 @@ func testBlobBaseFee_CanReadBlobBaseFeeFromHeadAndBlockAndHistory(t *testing.T, 
 	fromLog := entry.Fee.Uint64()
 
 	// Collect the blob base fee from the block header.
-	block, err := ctxt.client.BlockByNumber(t.Context(), receipt.BlockNumber)
+	block, err := client.BlockByNumber(t.Context(), receipt.BlockNumber)
 	require.NoError(err, "failed to get block header; ", err)
 	fromBlock := getBlobBaseFeeFrom(block.Header())
 
@@ -147,7 +134,7 @@ func testBlobBaseFee_CanReadBlobBaseFeeFromHeadAndBlockAndHistory(t *testing.T, 
 
 	// call the blob base fee rpc method
 	fromRpc := new(hexutil.Uint64)
-	err = ctxt.client.Client().Call(&fromRpc, "eth_blobBaseFee")
+	err = client.Client().Call(&fromRpc, "eth_blobBaseFee")
 	require.NoError(err, "failed to get blob base fee from rpc; ", err)
 
 	// we check blob base fee is one because it is not implemented yet. TODO issue #147
@@ -157,11 +144,16 @@ func testBlobBaseFee_CanReadBlobBaseFeeFromHeadAndBlockAndHistory(t *testing.T, 
 	require.Equal(fromLog, uint64(*fromRpc), "blob base fee mismatch; from log %v, from rpc %v", fromLog, fromRpc)
 }
 
-func testBlobBaseFee_CanReadBlobGasUsed(t *testing.T, ctxt *testContext) {
+func (BlobTransactionTest) TestCanReadBlobGasUsed(t *testing.T, net IntegrationTestNetSession) {
+	t.Parallel()
 	require := require.New(t)
 
+	client, err := net.GetClient()
+	require.NoError(err, "failed to get client")
+	defer client.Close()
+
 	// Get blob gas used from the block header of the latest block.
-	block, err := ctxt.client.BlockByNumber(t.Context(), nil)
+	block, err := client.BlockByNumber(t.Context(), nil)
 	require.NoError(err, "failed to get block header; ", err)
 	require.Empty(*block.BlobGasUsed(), "unexpected value in blob gas used")
 	require.Empty(*block.Header().ExcessBlobGas, "unexpected excess blob gas value")
@@ -185,13 +177,16 @@ func testBlobBaseFee_CanReadBlobGasUsed(t *testing.T, ctxt *testContext) {
 // Helper Functions
 ////////////////////////////////////////////////////////////////////////////////
 
-func createTestBlobTransaction(t *testing.T, ctxt *testContext, data ...[]byte) (*types.Transaction, error) {
+func createTestBlobTransaction(t *testing.T, net IntegrationTestNetSession, data ...[]byte) (*types.Transaction, error) {
 	require := require.New(t)
+	client, err := net.GetClient()
+	require.NoError(err, "failed to get client")
+	defer client.Close()
 
-	chainId, err := ctxt.client.ChainID(t.Context())
+	chainId, err := client.ChainID(t.Context())
 	require.NoError(err, "failed to get chain ID::")
 
-	nonce, err := ctxt.client.NonceAt(t.Context(), ctxt.net.GetSessionSponsor().Address(), nil)
+	nonce, err := client.NonceAt(t.Context(), net.GetSessionSponsor().Address(), nil)
 	require.NoError(err, "failed to get nonce:")
 
 	var sidecar *types.BlobTxSidecar
@@ -235,16 +230,19 @@ func createTestBlobTransaction(t *testing.T, ctxt *testContext, data ...[]byte) 
 		Sidecar:    sidecar,               // sidecar data in the transaction
 	})
 
-	return types.SignTx(tx, types.NewCancunSigner(chainId), ctxt.net.GetSessionSponsor().PrivateKey)
+	return types.SignTx(tx, types.NewCancunSigner(chainId), net.GetSessionSponsor().PrivateKey)
 }
 
-func createTestBlobTransactionWithNilSidecar(t *testing.T, ctxt *testContext) (*types.Transaction, error) {
+func createTestBlobTransactionWithNilSidecar(t *testing.T, net IntegrationTestNetSession) (*types.Transaction, error) {
 	require := require.New(t)
+	client, err := net.GetClient()
+	require.NoError(err, "failed to get client")
+	defer client.Close()
 
-	chainId, err := ctxt.client.ChainID(t.Context())
+	chainId, err := client.ChainID(t.Context())
 	require.NoError(err, "failed to get chain ID::")
 
-	nonce, err := ctxt.client.NonceAt(t.Context(), ctxt.net.GetSessionSponsor().Address(), nil)
+	nonce, err := client.NonceAt(t.Context(), net.GetSessionSponsor().Address(), nil)
 	require.NoError(err, "failed to get nonce:")
 
 	// Create and return transaction with the blob data and cryptographic proofs
@@ -261,7 +259,7 @@ func createTestBlobTransactionWithNilSidecar(t *testing.T, ctxt *testContext) (*
 		Sidecar:    nil,                   // sidecar data in the transaction
 	})
 
-	return types.SignTx(tx, types.NewCancunSigner(chainId), ctxt.net.GetSessionSponsor().PrivateKey)
+	return types.SignTx(tx, types.NewCancunSigner(chainId), net.GetSessionSponsor().PrivateKey)
 }
 
 func checkBlocksSanity(t *testing.T, client *ethclient.Client) {
@@ -278,25 +276,6 @@ func checkBlocksSanity(t *testing.T, client *ethclient.Client) {
 	}
 }
 
-type testContext struct {
-	net    *IntegrationTestNet
-	client *ethclient.Client
-}
-
-func MakeTestContext(t *testing.T) *testContext {
-	net := StartIntegrationTestNet(t)
-
-	client, err := net.GetClient()
-	require.NoError(t, err)
-
-	return &testContext{net, client}
-}
-
-func (tc *testContext) Close() {
-	tc.client.Close()
-	tc.net.Stop()
-}
-
 // helper functions to calculate blob base fee based on https://eips.ethereum.org/EIPS/eip-4844#gas-accounting
 func getBlobBaseFeeFrom(header *types.Header) uint64 {
 	cancunTime := uint64(0)
@@ -307,4 +286,8 @@ func getBlobBaseFeeFrom(header *types.Header) uint64 {
 		Cancun: params.DefaultCancunBlobConfig,
 	}
 	return eip4844.CalcBlobFee(config, header).Uint64()
+}
+
+func init() {
+	testRegistry.Register(BlobTransactionTest{})
 }
