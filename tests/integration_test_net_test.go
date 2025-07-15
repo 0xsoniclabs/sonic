@@ -63,6 +63,8 @@ func TestIntegrationTestNet_CanStartMultipleConsecutiveInstances(t *testing.T) {
 
 func TestIntegrationTestNet_Can(t *testing.T) {
 	net := StartIntegrationTestNet(t)
+	// by default, the integration test network starts with a single node
+	require.Equal(t, 1, net.NumNodes())
 
 	session1 := net.SpawnSession(t)
 	session2 := net.SpawnSession(t)
@@ -91,11 +93,6 @@ func TestIntegrationTestNet_Can(t *testing.T) {
 	t.Run("SpawnParallelSessions", func(t *testing.T) {
 		t.Parallel()
 		testIntegrationTestNet_CanSpawnParallelSessions(t, net)
-	})
-
-	t.Run("DefaultContainsASingleNode", func(t *testing.T) {
-		t.Parallel()
-		testIntegrationTestNet_DefaultContainsASingleNode(t, net)
 	})
 
 	t.Run("AdvanceEpoch", func(t *testing.T) {
@@ -177,10 +174,6 @@ func testIntegrationTestNet_CanSpawnParallelSessions(t *testing.T, net *Integrat
 			require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 		})
 	}
-}
-
-func testIntegrationTestNet_DefaultContainsASingleNode(t *testing.T, net *IntegrationTestNet) {
-	require.Equal(t, 1, net.NumNodes())
 }
 
 func testIntegrationTestNet_AdvanceEpoch(t *testing.T, net *IntegrationTestNet) {
