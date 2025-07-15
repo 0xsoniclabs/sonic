@@ -21,6 +21,7 @@ import (
 	"math/big"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
@@ -115,6 +116,7 @@ func TestLargeTransactions_LargeTransactionLoadTest(t *testing.T) {
 	for name, upgrades := range hardForks {
 		for mode, singleProposer := range modes {
 			t.Run(fmt.Sprintf("%s/%s", name, mode), func(t *testing.T) {
+				t.Parallel()
 				effectiveUpgrades := upgrades
 				effectiveUpgrades.SingleProposerBlockFormation = singleProposer
 				testLargeTransactionLoadTest(t, &effectiveUpgrades)
@@ -172,6 +174,7 @@ func testLargeTransactionLoadTest(
 	require.NoError(err)
 
 	chainId := net.GetChainId()
+	fmt.Printf("Chain ID for %v: %d\n", t.Name(), chainId)
 	signer := types.NewCancunSigner(chainId)
 
 	// Create a list of large transactions to flood the network.
@@ -200,8 +203,10 @@ func testLargeTransactionLoadTest(
 	// load peak.
 	slices.Reverse(transactions)
 
+	before := time.Now()
 	receipts, err := net.RunAll(transactions)
 	require.NoError(err, "failed to run transactions")
+	fmt.Printf("Time taken for %d transactions: %v\n", len(transactions), time.Since(before))
 	for _, receipt := range receipts {
 		require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
 	}
