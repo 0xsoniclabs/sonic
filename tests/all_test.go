@@ -24,7 +24,8 @@ func (r *Registry) Register(test TestFixture) {
 
 var testRegistry Registry
 
-func TestIntegration(t *testing.T) {
+func TestAll(t *testing.T) {
+	t.Parallel()
 
 	nets := make(map[common.Hash]*IntegrationTestNet)
 
@@ -32,31 +33,29 @@ func TestIntegration(t *testing.T) {
 		testType := reflect.TypeOf(test)
 
 		up := test.GetUpgradesForTest()
-
 		for _, upgrade := range up {
+			// TODO: inject session sponsor into genesis
 
 			// TODO: name the net by the upgrade:
 			// - generate name?
 			// - create enums with presets?
-
-			var net *IntegrationTestNet
-			if catched, ok := nets[hashUpgrades(upgrade)]; ok {
-				net = catched
-			} else {
-				net = StartIntegrationTestNet(t, IntegrationTestNetOptions{Upgrades: &upgrade})
-				nets[hashUpgrades(upgrade)] = net
-			}
-
-			// TODO: parallelize net creation?  this may require pre-pass over all tests
-			// TODO: inject session sponsor into genesis
-
 			t.Run(testType.Name(), func(t *testing.T) {
+				_, ok := nets[hashUpgrades(upgrade)]
+				if !ok {
+					nets[hashUpgrades(upgrade)] = StartIntegrationTestNet(t, IntegrationTestNetOptions{Upgrades: &upgrade})
+				}
+
 				t.Parallel()
+
 				for i := range testType.NumMethod() {
 					testCase := testType.Method(i)
 
+					// TODO: check signature of testCase.Func
+					// - may make sense to support multiple signatures
+
 					if strings.HasPrefix(testCase.Name, "Test") {
 						t.Run(testCase.Name, func(t *testing.T) {
+							net := nets[hashUpgrades(upgrade)]
 							session := net.SpawnSession(t)
 							testCase.Func.Call([]reflect.Value{
 								reflect.ValueOf(test),
@@ -65,6 +64,9 @@ func TestIntegration(t *testing.T) {
 							})
 						})
 					}
+
+					// TODO: error on ignored public method, this may be an
+					// unlinked and ignored test
 				}
 			})
 		}

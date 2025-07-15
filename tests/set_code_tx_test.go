@@ -49,94 +49,19 @@ import (
 //
 // Notice that the test contracts used in this test model the expected behavior
 // and do not implement ERC-20 as described in the EIP use case examples.
-func TestSetCodeTransaction(t *testing.T) {
+type SetCode struct {
+}
 
-	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
-		Upgrades: AsPointer(opera.GetAllegroUpgrades()),
-	})
-
-	t.Run("Operation", func(t *testing.T) {
-		t.Parallel()
-		// operation tests check basic operation of the SetCode transaction
-
-		t.Run("Delegate can be set and unset", func(t *testing.T) {
-			t.Parallel()
-			session := net.SpawnSession(t)
-			testDelegateCanBeSetAndUnset(t, session)
-		})
-
-		t.Run("Invalid authorizations are ignored", func(t *testing.T) {
-			t.Parallel()
-			testInvalidAuthorizationsAreIgnored(t, net)
-		})
-
-		t.Run("Authorizations are executed in order", func(t *testing.T) {
-			t.Parallel()
-			session := net.SpawnSession(t)
-			testAuthorizationsAreExecutedInOrder(t, session)
-		})
-
-		t.Run("Multiple accounts can submit authorizations", func(t *testing.T) {
-			t.Parallel()
-			session := net.SpawnSession(t)
-			testMultipleAccountsCanSubmitAuthorizations(t, session)
-		})
-
-		t.Run("Authorization succeeds with failing tx", func(t *testing.T) {
-			t.Parallel()
-			session := net.SpawnSession(t)
-			testAuthorizationSucceedsWithFailingTx(t, session)
-		})
-
-		t.Run("Authorization can be issued from a non existing account", func(t *testing.T) {
-			t.Parallel()
-			session := net.SpawnSession(t)
-			testAuthorizationFromNonExistingAccount(t, session)
-		})
-
-		t.Run("Delegations cannot be transitive", func(t *testing.T) {
-			t.Parallel()
-			session := net.SpawnSession(t)
-			testNoDelegateToDelegated(t, session)
-		})
-
-		t.Run("Delegations can trigger chains of calls", func(t *testing.T) {
-			t.Parallel()
-			session := net.SpawnSession(t)
-			testChainOfCalls(t, session)
-		})
-
-	})
-
-	t.Run("UseCase", func(t *testing.T) {
-		t.Parallel()
-		// UseCase tests check the use cases described in the EIP-7702 specification
-
-		t.Run("Transaction Sponsoring", func(t *testing.T) {
-			t.Parallel()
-			session := net.SpawnSession(t)
-			testSponsoring(t, session)
-		})
-
-		t.Run("Transaction Batching", func(t *testing.T) {
-			t.Parallel()
-			session := net.SpawnSession(t)
-			testBatching(t, session)
-		})
-
-		t.Run("Privilege Deescalation", func(t *testing.T) {
-			t.Parallel()
-			session := net.SpawnSession(t)
-			testPrivilegeDeescalation(t, session)
-		})
-	})
+func (SetCode) GetUpgradesForTest() []opera.Upgrades {
+	return []opera.Upgrades{opera.GetAllegroUpgrades()}
 }
 
 // testSponsoring executes a transaction in behalf of another account:
 // - The sponsor account pays for the gas for the transaction
 // - The sponsored account is the context of the transaction, and its state is modified
 // - The delegate account is the contract that will be executed
-func testSponsoring(t *testing.T, net IntegrationTestNetSession) {
+func (SetCode) TestSponsoring(t *testing.T, net IntegrationTestNetSession) {
+	t.Parallel()
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
@@ -200,7 +125,8 @@ func testSponsoring(t *testing.T, net IntegrationTestNetSession) {
 // - The sponsor and sponsored accounts are the same, this is a self-sponsored transaction.
 // - The delegate account is the contract that will be executed, which implements the batch of calls
 // - Multiple receiver accounts will receive the funds
-func testBatching(t *testing.T, net IntegrationTestNetSession) {
+func (SetCode) TestBatching(t *testing.T, net IntegrationTestNetSession) {
+	t.Parallel()
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
@@ -264,7 +190,8 @@ func testBatching(t *testing.T, net IntegrationTestNetSession) {
 
 // testPrivilegeDeescalation executes a transaction where an account allows restricted access
 // to its internal state to a second account.
-func testPrivilegeDeescalation(t *testing.T, session IntegrationTestNetSession) {
+func (SetCode) TestPrivilegeDeescalation(t *testing.T, session IntegrationTestNetSession) {
+	t.Parallel()
 
 	client, err := session.GetClient()
 	require.NoError(t, err)
@@ -350,7 +277,8 @@ func testPrivilegeDeescalation(t *testing.T, session IntegrationTestNetSession) 
 // testDelegateCanBeSetAndUnset checks that a delegate can be set and unset
 // The EIP-7702 specification describes the method to restore an EOA code to
 // its original state by setting the delegate to the zero address.
-func testDelegateCanBeSetAndUnset(t *testing.T, session IntegrationTestNetSession) {
+func (SetCode) TestDelegateCanBeSetAndUnset(t *testing.T, session IntegrationTestNetSession) {
+	t.Parallel()
 
 	client, err := session.GetClient()
 	require.NoError(t, err)
@@ -396,7 +324,8 @@ func testDelegateCanBeSetAndUnset(t *testing.T, session IntegrationTestNetSessio
 
 // testInvalidAuthorizationsAreIgnored checks that invalid authorizations are ignored
 // whilst the transaction is still executed.
-func testInvalidAuthorizationsAreIgnored(t *testing.T, net *IntegrationTestNet) {
+func (SetCode) TestInvalidAuthorizationsAreIgnored(t *testing.T, net IntegrationTestNetSession) {
+	t.Parallel()
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
@@ -522,17 +451,17 @@ func testInvalidAuthorizationsAreIgnored(t *testing.T, net *IntegrationTestNet) 
 	for caseName, test := range wrongAuthorizations {
 		for scenarioName, scenario := range scenarios {
 			t.Run(fmt.Sprintf("%s/%s", caseName, scenarioName), func(t *testing.T) {
-				t.Parallel()
-				session := net.SpawnSession(t)
+				// t.Parallel()
+				// session := net.SpawnSession(t)
 
-				wrongAuthAccount := makeAccountWithBalance(t, session, big.NewInt(1e18)) // < will transfer funds
+				wrongAuthAccount := makeAccountWithBalance(t, net, big.NewInt(1e18)) // < will transfer funds
 				nonce, err := client.NonceAt(t.Context(), wrongAuthAccount.Address(), nil)
 				require.NoError(t, err, "failed to get nonce for account", wrongAuthAccount.Address())
 
 				wrongAuthorization, err := test.makeAuthorization(wrongAuthAccount, nonce)
 				require.NoError(t, err, "failed to sign SetCode authorization")
 
-				rightAuthAccount := makeAccountWithBalance(t, session, big.NewInt(1e18)) // < will transfer funds
+				rightAuthAccount := makeAccountWithBalance(t, net, big.NewInt(1e18)) // < will transfer funds
 				authorizations := scenario.makeAuthorizations(t, wrongAuthorization, rightAuthAccount)
 
 				tx, err := types.SignTx(
@@ -550,7 +479,7 @@ func testInvalidAuthorizationsAreIgnored(t *testing.T, net *IntegrationTestNet) 
 				require.NoError(t, err, "failed to create transaction")
 
 				// execute transaction
-				receipt, err := session.Run(tx)
+				receipt, err := net.Run(tx)
 				require.NoError(t, err)
 				// because no delegation is set, transaction call to self (no code) will succeed
 				require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
@@ -563,7 +492,8 @@ func testInvalidAuthorizationsAreIgnored(t *testing.T, net *IntegrationTestNet) 
 }
 
 // testAuthorizationsAreExecutedInOrder checks that authorizations are executed in order
-func testAuthorizationsAreExecutedInOrder(t *testing.T, session IntegrationTestNetSession) {
+func (SetCode) TestAuthorizationsAreExecutedInOrder(t *testing.T, session IntegrationTestNetSession) {
+	t.Parallel()
 
 	client, err := session.GetClient()
 	require.NoError(t, err)
@@ -624,7 +554,8 @@ func testAuthorizationsAreExecutedInOrder(t *testing.T, session IntegrationTestN
 
 // testMultipleAccountsCanSubmitAuthorizations checks that multiple accounts can submit authorizations
 // and those accounts may be unrelated to the account receiver of the transaction.
-func testMultipleAccountsCanSubmitAuthorizations(t *testing.T, session IntegrationTestNetSession) {
+func (SetCode) TestMultipleAccountsCanSubmitAuthorizations(t *testing.T, session IntegrationTestNetSession) {
+	t.Parallel()
 
 	client, err := session.GetClient()
 	require.NoError(t, err)
@@ -698,7 +629,8 @@ func testMultipleAccountsCanSubmitAuthorizations(t *testing.T, session Integrati
 
 // testAuthorizationSucceedsWithFailingTx checks that an authorization is executed
 // even if the transaction fails
-func testAuthorizationSucceedsWithFailingTx(t *testing.T, session IntegrationTestNetSession) {
+func (SetCode) TestAuthorizationSucceedsWithFailingTx(t *testing.T, session IntegrationTestNetSession) {
+	t.Parallel()
 
 	client, err := session.GetClient()
 	require.NoError(t, err)
@@ -725,7 +657,8 @@ func testAuthorizationSucceedsWithFailingTx(t *testing.T, session IntegrationTes
 
 // testAuthorizationFromNonExistingAccount checks that an authorization can signed by
 // a non exiting account, creating the account on the fly.
-func testAuthorizationFromNonExistingAccount(t *testing.T, session IntegrationTestNetSession) {
+func (SetCode) TestAuthorizationFromNonExistingAccount(t *testing.T, session IntegrationTestNetSession) {
+	t.Parallel()
 
 	client, err := session.GetClient()
 	require.NoError(t, err)
@@ -756,7 +689,8 @@ func testAuthorizationFromNonExistingAccount(t *testing.T, session IntegrationTe
 // > In case a delegation designator points to another designator, creating a
 // > potential  chain or loop of designators, clients must retrieve only the
 // > first code and then stop following the designator chain.
-func testNoDelegateToDelegated(t *testing.T, session IntegrationTestNetSession) {
+func (SetCode) TestNoDelegateToDelegated(t *testing.T, session IntegrationTestNetSession) {
+	t.Parallel()
 
 	client, err := session.GetClient()
 	require.NoError(t, err)
@@ -835,7 +769,8 @@ func testNoDelegateToDelegated(t *testing.T, session IntegrationTestNetSession) 
 }
 
 // testChainOfCalls checks that delegations can used over transitive calls between contracts.
-func testChainOfCalls(t *testing.T, session IntegrationTestNetSession) {
+func (SetCode) TestChainOfCalls(t *testing.T, session IntegrationTestNetSession) {
+	t.Parallel()
 
 	client, err := session.GetClient()
 	require.NoError(t, err)
@@ -1003,17 +938,27 @@ func getCallData(t *testing.T, session IntegrationTestNetSession,
 	return tx.Data()
 }
 
-func TestSetCodeTransaction_IsRejectBeforeAllegro(t *testing.T) {
-	net := StartIntegrationTestNet(t)
-	client, err := net.GetClient()
+type SetCodeBeforeAllegro struct{}
+
+func (SetCodeBeforeAllegro) GetUpgradesForTest() []opera.Upgrades {
+	return []opera.Upgrades{opera.GetSonicUpgrades()}
+}
+
+func (SetCodeBeforeAllegro) TestIsRejected(t *testing.T, session IntegrationTestNetSession) {
+	client, err := session.GetClient()
 	require.NoError(t, err)
 	defer client.Close()
 
 	chainId, err := client.ChainID(t.Context())
 	require.NoError(t, err, "failed to get chain ID")
 
-	tx := signTransaction(t, chainId, &types.SetCodeTx{}, net.GetSessionSponsor())
+	tx := signTransaction(t, chainId, &types.SetCodeTx{}, session.GetSessionSponsor())
 
 	err = client.SendTransaction(t.Context(), tx)
 	require.ErrorContains(t, err, "transaction type not supported")
+}
+
+func init() {
+	testRegistry.Register(SetCode{})
+	testRegistry.Register(SetCodeBeforeAllegro{})
 }
