@@ -19,13 +19,23 @@ package tests
 import (
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/basefee"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/stretchr/testify/require"
 )
 
-func TestBaseFee_CanReadBaseFeeFromHeadAndBlockAndHistory(t *testing.T) {
-	net := StartIntegrationTestNet(t)
+type BaseFeeTest struct{}
+
+func (BaseFeeTest) GetUpgradesForTest() []opera.Upgrades {
+	return []opera.Upgrades{
+		opera.GetSonicUpgrades(),
+		opera.GetAllegroUpgrades(),
+	}
+}
+
+func (BaseFeeTest) TestCanReadBaseFeeFromHeadAndBlockAndHistory(t *testing.T, net IntegrationTestNetSession) {
+	t.Parallel()
 
 	// Deploy the base fee contract.
 	contract, _, err := DeployContract(net, basefee.DeployBasefee)
@@ -62,4 +72,8 @@ func TestBaseFee_CanReadBaseFeeFromHeadAndBlockAndHistory(t *testing.T) {
 	require.Equal(t, fromLog, fromArchive,
 		"base fee from log should match base fee from archive",
 	)
+}
+
+func init() {
+	testRegistry.Register(BaseFeeTest{})
 }
