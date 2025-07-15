@@ -177,11 +177,15 @@ func consensusCallbackBeginBlockFn(
 				maxBlockGas := es.Rules.Blocks.MaxBlockGas
 				blockEvents := spillBlockEvents(confirmedEvents, maxBlockGas,
 					func(id hash.Event) inter.EventPayloadI {
-						e := store.GetEventPayload(id)
-						if e == nil {
-							return nil
-						}
-						return e
+						// Note: currently, GetEventPayload returns a pointer to struct,
+						// conversion to interface may yield a broken interface if
+						// the value is nil.
+						// Adding a nil check to return a nil interface would
+						// solve that, but at this point in the code, every event
+						// must have a known payload, and getting a nil would be a
+						// critical error. We will let it panic if that happens,
+						// as there is no recovery from it.
+						return store.GetEventPayload(id)
 					},
 				)
 
