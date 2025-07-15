@@ -54,24 +54,31 @@ func TestBlockHeader_FakeGenesis_SatisfiesInvariants(t *testing.T) {
 }
 
 func TestBlockHeader_JsonGenesis_SatisfiesInvariants(t *testing.T) {
-	net := StartIntegrationTestNetWithJsonGenesis(t)
-	testBlockHeadersOnNetwork(t, net)
-}
-
-func TestBlockHeader_Allegro_SatisfiesInvariants(t *testing.T) {
-	net := StartIntegrationTestNetWithJsonGenesis(t, IntegrationTestNetOptions{
-		Upgrades: AsPointer(opera.GetAllegroUpgrades()),
-	})
-	testBlockHeadersOnNetwork(t, net)
-}
-
-func TestBlockHeader_SingleProposer_SatisfiesInvariants(t *testing.T) {
-	upgrades := opera.GetAllegroUpgrades()
-	upgrades.SingleProposerBlockFormation = true
-	net := StartIntegrationTestNetWithJsonGenesis(t, IntegrationTestNetOptions{
-		Upgrades: &upgrades,
-	})
-	testBlockHeadersOnNetwork(t, net)
+	upgrades := map[string]opera.Upgrades{
+		"Sonic":   opera.GetSonicUpgrades(),
+		"Allegro": opera.GetAllegroUpgrades(),
+	}
+	modes := map[string]bool{
+		"DistributedProposer": false,
+		"SingleProposer":      true,
+	}
+	for name, upgrades := range upgrades {
+		t.Run(name, func(t *testing.T) {
+			upgrades := upgrades
+			t.Parallel()
+			for singleProposer, isSingleProposer := range modes {
+				t.Run(singleProposer, func(t *testing.T) {
+					upgrades := upgrades
+					t.Parallel()
+					upgrades.SingleProposerBlockFormation = isSingleProposer
+					net := StartIntegrationTestNetWithJsonGenesis(t, IntegrationTestNetOptions{
+						Upgrades: &upgrades,
+					})
+					testBlockHeadersOnNetwork(t, net)
+				})
+			}
+		})
+	}
 }
 
 func testBlockHeadersOnNetwork(t *testing.T, net *IntegrationTestNet) {
