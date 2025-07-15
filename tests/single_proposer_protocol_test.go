@@ -31,14 +31,27 @@ import (
 )
 
 func TestSingleProposerProtocol_CanProcessTransactions(t *testing.T) {
-	for _, numNodes := range []int{1, 3} {
-		t.Run(fmt.Sprintf("numNodes=%d", numNodes), func(t *testing.T) {
-			testSingleProposerProtocol_CanProcessTransactions(t, numNodes)
+	upgrades := map[string]opera.Upgrades{
+		"Sonic":   opera.GetSonicUpgrades(),
+		"Allegro": opera.GetAllegroUpgrades(),
+	}
+
+	for name, upgrades := range upgrades {
+		t.Run(name, func(t *testing.T) {
+			for _, numNodes := range []int{1, 3} {
+				t.Run(fmt.Sprintf("numNodes=%d", numNodes), func(t *testing.T) {
+					testSingleProposerProtocol_CanProcessTransactions(t, numNodes, upgrades)
+				})
+			}
 		})
 	}
 }
 
-func testSingleProposerProtocol_CanProcessTransactions(t *testing.T, numNodes int) {
+func testSingleProposerProtocol_CanProcessTransactions(
+	t *testing.T,
+	numNodes int,
+	upgrades opera.Upgrades,
+) {
 	// This test is a general smoke test for the single-proposer protocol. It
 	// checks that transactions can be processed and that the network is not
 	// producing (excessive) empty blocks.
@@ -46,7 +59,6 @@ func testSingleProposerProtocol_CanProcessTransactions(t *testing.T, numNodes in
 	const EpochLength = 7
 	const NumTxsPerRound = 5
 
-	upgrades := opera.GetAllegroUpgrades()
 	upgrades.SingleProposerBlockFormation = true
 
 	require := require.New(t)
@@ -132,20 +144,34 @@ func testSingleProposerProtocol_CanProcessTransactions(t *testing.T, numNodes in
 }
 
 func TestSingleProposerProtocol_CanBeEnabledAndDisabled(t *testing.T) {
-	// Test with different numbers of nodes
-	for _, numNodes := range []int{1, 3} {
-		t.Run(fmt.Sprintf("numNodes=%d", numNodes), func(t *testing.T) {
-			testSingleProposerProtocol_CanBeEnabledAndDisabled(t, numNodes)
+	upgrades := map[string]opera.Upgrades{
+		"Sonic":   opera.GetSonicUpgrades(),
+		"Allegro": opera.GetAllegroUpgrades(),
+	}
+
+	for name, upgrades := range upgrades {
+		t.Run(name, func(t *testing.T) {
+			for _, numNodes := range []int{1, 3} {
+				t.Run(fmt.Sprintf("numNodes=%d", numNodes), func(t *testing.T) {
+					testSingleProposerProtocol_CanBeEnabledAndDisabled(t, numNodes, upgrades)
+				})
+			}
 		})
 	}
 }
 
-func testSingleProposerProtocol_CanBeEnabledAndDisabled(t *testing.T, numNodes int) {
+func testSingleProposerProtocol_CanBeEnabledAndDisabled(
+	t *testing.T,
+	numNodes int,
+	mode opera.Upgrades,
+) {
 	require := require.New(t)
 
 	// The network is initially started using the distributed protocol.
+	mode.SingleProposerBlockFormation = false
 	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
 		NumNodes: numNodes,
+		Upgrades: &mode,
 	})
 
 	// Test that before the switch transactions can be processed.
@@ -204,6 +230,18 @@ func testSingleProposerProtocol_CanBeEnabledAndDisabled(t *testing.T, numNodes i
 			require.Equal(step.versionAfter, getUsedEventVersion(t, client))
 		}
 	}
+
+	// Run some consistency checks after the test.
+	headers, err := net.GetHeaders()
+	require.NoError(err)
+
+	// Test parent/child relation properties.
+	testHeaders_BlockNumberEqualsPositionInChain(t, headers)
+	testHeaders_ParentHashCoversParentContent(t, headers)
+	testHeaders_EncodesDurationAndNanoTimeInExtraData(t, headers)
+	testHeaders_TimeProgressesMonotonically(t, headers)
+	testHeaders_BaseFeeEvolutionFollowsPricingRules(t, headers)
+	testHeaders_GasUsedIsBelowGasLimit(t, headers)
 }
 
 // getUsedEventVersion retrieves the current event version used by the network.
