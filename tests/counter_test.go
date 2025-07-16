@@ -21,35 +21,20 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 )
 
-func TestCounter(t *testing.T) {
-	net := StartIntegrationTestNet(t)
+func TestCounter_CanIncrementAndReadCounterFromHead(t *testing.T) {
 
-	t.Run("CanIncrementAndReadCounterFromHead", func(t *testing.T) {
-		t.Parallel()
-		session := net.SpawnSession(t)
-		testCounter_CanIncrementAndReadCounterFromHead(t, session)
-	})
-
-	t.Run("CanReadHistoricCounterValues", func(t *testing.T) {
-		t.Parallel()
-		session := net.SpawnSession(t)
-		testCounter_CanReadHistoricCounterValues(t, session)
-	})
-}
-
-func testCounter_CanIncrementAndReadCounterFromHead(
-	t *testing.T,
-	net IntegrationTestNetSession,
-) {
+	session := getSession(t, opera.GetSonicUpgrades())
+	t.Parallel()
 
 	// Deploy the counter contract.
-	contract, receipt, err := DeployContract(net, counter.DeployCounter)
+	contract, receipt, err := DeployContract(session, counter.DeployCounter)
 	require.NoError(t, err, "failed to deploy contract; %v", err)
 	require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
 
@@ -59,18 +44,17 @@ func testCounter_CanIncrementAndReadCounterFromHead(
 		require.NoError(t, err, "failed to get counter value")
 		require.Equal(t, int64(i), counter.Int64(), "unexpected counter value")
 
-		_, err = net.Apply(contract.IncrementCounter)
+		_, err = session.Apply(contract.IncrementCounter)
 		require.NoError(t, err, "failed to apply increment counter contract")
 	}
 }
 
-func testCounter_CanReadHistoricCounterValues(
-	t *testing.T,
-	net IntegrationTestNetSession,
-) {
+func TestCounter_CanReadHistoricCounterValues(t *testing.T) {
 
+	session := getSession(t, opera.GetSonicUpgrades())
+	t.Parallel()
 	// Deploy the counter contract.
-	contract, receipt, err := DeployContract(net, counter.DeployCounter)
+	contract, receipt, err := DeployContract(session, counter.DeployCounter)
 	require.NoError(t, err, "failed to deploy contract; %v", err)
 	require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
 
@@ -78,7 +62,7 @@ func testCounter_CanReadHistoricCounterValues(
 	updates := map[int]int{}                       // block height -> counter
 	updates[int(receipt.BlockNumber.Uint64())] = 0 // contract deployed
 	for i := 0; i < 10; i++ {
-		receipt, err := net.Apply(contract.IncrementCounter)
+		receipt, err := session.Apply(contract.IncrementCounter)
 		require.NoError(t, err, "failed to apply increment counter contract")
 
 		updates[int(receipt.BlockNumber.Uint64())] = i + 1
