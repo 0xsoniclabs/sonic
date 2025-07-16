@@ -371,7 +371,6 @@ func startIntegrationTestNet(
 	}
 
 	require.NoError(t, net.start(), "failed to start the integration test network")
-	t.Cleanup(net.Stop)
 	return net, nil
 }
 

@@ -19,20 +19,22 @@ package tests
 import (
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/basefee"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/stretchr/testify/require"
 )
 
 func TestBaseFee_CanReadBaseFeeFromHeadAndBlockAndHistory(t *testing.T) {
-	net := StartIntegrationTestNet(t)
+	session := getSession(t, opera.GetSonicUpgrades())
+	t.Parallel()
 
 	// Deploy the base fee contract.
-	contract, _, err := DeployContract(net, basefee.DeployBasefee)
+	contract, _, err := DeployContract(session, basefee.DeployBasefee)
 	require.NoError(t, err)
 
 	// Collect the current base fee from the head state.
-	receipt, err := net.Apply(contract.LogCurrentBaseFee)
+	receipt, err := session.Apply(contract.LogCurrentBaseFee)
 	require.NoError(t, err)
 	require.Len(t, receipt.Logs, 1, "expected exactly one log entry for the base fee")
 
@@ -41,7 +43,7 @@ func TestBaseFee_CanReadBaseFeeFromHeadAndBlockAndHistory(t *testing.T) {
 	fromLog := entry.Fee
 
 	// Collect the base fee from the block header.
-	client, err := net.GetClient()
+	client, err := session.GetClient()
 	require.NoError(t, err)
 	defer client.Close()
 
