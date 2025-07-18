@@ -21,6 +21,8 @@ import (
 
 	"github.com/0xsoniclabs/sonic/config/flags"
 	"gopkg.in/urfave/cli.v1"
+
+	"github.com/ethereum/go-ethereum/log"
 )
 
 // Run starts sonicd with the regular command line arguments.
@@ -40,6 +42,9 @@ type AppControl struct {
 	// The process is stopped by sending a message through this channel, or by
 	// closing it.
 	Shutdown <-chan struct{}
+	// Logger is the logger to be used by the application. If nil, the default logger
+	// is used which keeps into consideration the verbosity environment variable.
+	Logger log.Logger
 }
 
 // RunWithArgs starts sonicd with the given command line arguments.
@@ -52,7 +57,7 @@ func RunWithArgs(
 	args []string,
 	control *AppControl,
 ) error {
-	app := initApp()
+	app := initApp(control)
 	initAppHelp()
 
 	// If present, take ownership and inject the control struct into the action.

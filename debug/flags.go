@@ -118,7 +118,7 @@ func init() {
 
 // Setup initializes profiling and logging based on the CLI flags.
 // It should be called as early as possible in the program.
-func Setup(ctx *cli.Context) error {
+func Setup(ctx *cli.Context, logger log.Logger) error {
 	setupMutex.Lock()
 	defer setupMutex.Unlock()
 
@@ -126,7 +126,7 @@ func Setup(ctx *cli.Context) error {
 		return nil
 	}
 
-	err := setup(ctx)
+	err := setup(ctx, logger)
 	if err != nil {
 		return err
 	}
@@ -140,30 +140,11 @@ var (
 	setupDone  = false
 )
 
-func setup(ctx *cli.Context) error {
-	var handler slog.Handler
-	output := io.Writer(os.Stderr)
-	if ctx.GlobalBool(logjsonFlag.Name) {
-		handler = slog.NewJSONHandler(output, nil)
-	} else {
-		useColor := (isatty.IsTerminal(os.Stderr.Fd()) || isatty.IsCygwinTerminal(os.Stderr.Fd())) && os.Getenv("TERM") != "dumb"
-		if useColor {
-			output = colorable.NewColorableStderr()
-		}
-		handler = log.NewTerminalHandler(output, useColor)
-	}
-	glogger = log.NewGlogHandler(handler)
+func setup(ctx *cli.Context, logger log.Logger) error {
 
-	// logging
-	verbosity := log.FromLegacyLevel(ctx.GlobalInt(verbosityFlag.Name))
-	glogger.Verbosity(verbosity)
-	vmodule := ctx.GlobalString(vmoduleFlag.Name)
-	err := glogger.Vmodule(vmodule)
-	if err != nil {
-		return fmt.Errorf("failed to set --%s: %w", vmoduleFlag.Name, err)
+	if err := setLogger(ctx, logger); err != nil {
+		return fmt.Errorf("failed to set logger: %w", err)
 	}
-
-	log.SetDefault(log.NewLogger(glogger))
 
 	// profiling, tracing
 	runtime.MemProfileRate = memprofilerateFlag.Value
@@ -200,6 +181,39 @@ func setup(ctx *cli.Context) error {
 		// It cannot be imported because it will cause a cyclical dependency.
 		StartPProf(address, !ctx.GlobalIsSet("metrics.addr"))
 	}
+	return nil
+}
+
+func setLogger(ctx *cli.Context, logger log.Logger) error {
+
+	if logger != nil {
+		log.SetDefault(logger)
+		return nil
+	}
+
+	var handler slog.Handler
+	output := io.Writer(os.Stderr)
+	if ctx.GlobalBool(logjsonFlag.Name) {
+		handler = slog.NewJSONHandler(output, nil)
+	} else {
+		useColor := (isatty.IsTerminal(os.Stderr.Fd()) || isatty.IsCygwinTerminal(os.Stderr.Fd())) && os.Getenv("TERM") != "dumb"
+		if useColor {
+			output = colorable.NewColorableStderr()
+		}
+		handler = log.NewTerminalHandler(output, useColor)
+	}
+	glogger = log.NewGlogHandler(handler)
+
+	// logging
+	verbosity := log.FromLegacyLevel(ctx.GlobalInt(verbosityFlag.Name))
+	glogger.Verbosity(verbosity)
+	vmodule := ctx.GlobalString(vmoduleFlag.Name)
+	err := glogger.Vmodule(vmodule)
+	if err != nil {
+		return fmt.Errorf("failed to set --%s: %w", vmoduleFlag.Name, err)
+	}
+
+	log.SetDefault(log.NewLogger(glogger))
 	return nil
 }
 
