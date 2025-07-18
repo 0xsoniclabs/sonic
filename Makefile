@@ -29,8 +29,8 @@ TAG ?= "latest"
 .PHONY: sonic-image
 sonic-image:
 	docker build \
-    	    --network=host \
-    	    -f ./docker/Dockerfile.opera -t "sonic:$(TAG)" .
+		--network=host \
+		-f ./Dockerfile -t "sonic:$(TAG)" .
 
 .PHONY: test
 test:

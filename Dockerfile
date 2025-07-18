@@ -5,7 +5,7 @@
 # docker run --name sonic1 --entrypoint sonictool sonic --datadir=/var/sonic genesis fake 1
 # docker run --volumes-from sonic1 -p 5050:5050 -p 5050:5050/udp -p 18545:18545 sonic --fakenet 1/1 --http --http.addr=0.0.0.0
 
-FROM golang:1.22 as builder
+FROM golang:1.24 AS builder
 
 RUN apt-get update && apt-get install -y git musl-dev make
 
@@ -17,7 +17,7 @@ RUN go mod download
 RUN make all
 
 
-FROM golang:1.22
+FROM golang:1.24
 
 COPY --from=builder /go/Sonic/build/sonicd /usr/local/bin/
 COPY --from=builder /go/Sonic/build/sonictool /usr/local/bin/
