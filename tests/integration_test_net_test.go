@@ -66,23 +66,22 @@ func TestIntegrationTestNet_Can(t *testing.T) {
 	// by default, the integration test network starts with a single node
 	require.Equal(t, 1, net.NumNodes())
 
-	session1 := net.SpawnSession(t)
-	session2 := net.SpawnSession(t)
-	session3 := net.SpawnSession(t)
-
 	t.Run("EndowAccountsWithTokens", func(t *testing.T) {
+		session := net.SpawnSession(t)
 		t.Parallel()
-		testIntegrationTestNet_CanEndowAccountsWithTokens(t, session1)
+		testIntegrationTestNet_CanEndowAccountsWithTokens(t, session)
 	})
 
 	t.Run("DeployContracts", func(t *testing.T) {
+		session := net.SpawnSession(t)
 		t.Parallel()
-		testIntegrationTestNet_CanDeployContracts(t, session2)
+		testIntegrationTestNet_CanDeployContracts(t, session)
 	})
 
 	t.Run("InteractWithContract", func(t *testing.T) {
+		session := net.SpawnSession(t)
 		t.Parallel()
-		testIntegrationTestNet_CanInteractWithContract(t, session3)
+		testIntegrationTestNet_CanInteractWithContract(t, session)
 	})
 
 	t.Run("FetchInformationFromTheNetwork", func(t *testing.T) {
@@ -91,8 +90,9 @@ func TestIntegrationTestNet_Can(t *testing.T) {
 	})
 
 	t.Run("SpawnParallelSessions", func(t *testing.T) {
+		session := net.SpawnSession(t)
 		t.Parallel()
-		testIntegrationTestNet_CanSpawnParallelSessions(t, net)
+		testIntegrationTestNet_CanSpawnParallelSessions(t, session)
 	})
 
 	t.Run("AdvanceEpoch", func(t *testing.T) {
@@ -163,12 +163,9 @@ func testIntegrationTestNet_CanInteractWithContract(t *testing.T, session Integr
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "Counter increment failed")
 }
 
-func testIntegrationTestNet_CanSpawnParallelSessions(t *testing.T, net *IntegrationTestNet) {
+func testIntegrationTestNet_CanSpawnParallelSessions(t *testing.T, session IntegrationTestNetSession) {
 	for i := range 15 {
 		t.Run(fmt.Sprint("SpawnSession", i), func(t *testing.T) {
-			t.Parallel()
-			session := net.SpawnSession(t)
-
 			receipt, err := session.EndowAccount(common.Address{0x42}, big.NewInt(1000))
 			require.NoError(t, err)
 			require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
