@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
@@ -62,8 +63,12 @@ func getSession(t *testing.T, upgrades opera.Upgrades) IntegrationTestNetSession
 	if ok {
 		return net.SpawnSession(t)
 	}
+
 	t.Logf("Starting network for upgrade: %v", upgrades)
-	myNet := StartIntegrationTestNet(t)
+	myNet := StartIntegrationTestNet(t, IntegrationTestNetOptions{
+		Upgrades:      AsPointer(upgrades),
+		TestDirectory: makeName(upgrades),
+	})
 	activeSessions[hashOptions(upgrades)] = myNet
 	return myNet.SpawnSession(t)
 }
@@ -79,4 +84,30 @@ func hashOptions(upgrades opera.Upgrades) common.Hash {
 	}
 	h.Write(jsonData)
 	return common.BytesToHash(h.Sum(nil))
+}
+
+func makeName(upgrades opera.Upgrades) string {
+	name := "/tmp/"
+	if upgrades.Berlin {
+		name += "Berlin_"
+	}
+	if upgrades.London {
+		name += "London_"
+	}
+	if upgrades.Llr {
+		name += "Llr_"
+	}
+	if upgrades.Sonic {
+		name += "Sonic_"
+	}
+	if upgrades.Allegro {
+		name += "Allegro_"
+	}
+	if upgrades.SingleProposerBlockFormation {
+		name += "SingleProposer_"
+	}
+	if len(name) > len("/tmp/") {
+		name = name[:len(name)-1] // Remove trailing underscore
+	}
+	return fmt.Sprintf("%s%d", name, time.Now().Unix())
 }
