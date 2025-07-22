@@ -324,8 +324,7 @@ func StartIntegrationTestNetWithJsonGenesis(
 
 	var directory string
 	if effectiveOptions.TestDirectory != "" {
-		directory = effectiveOptions.TestDirectory
-		err := os.MkdirAll(directory, os.ModeDir|os.ModePerm)
+		directory, err = os.MkdirTemp(effectiveOptions.TestDirectory, "TestNet")
 		require.NoError(t, err, "failed to create test directory")
 	} else {
 		directory = t.TempDir()

@@ -21,7 +21,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"testing"
-	"time"
 
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
@@ -109,5 +108,5 @@ func makeName(upgrades opera.Upgrades) string {
 	if len(name) > len("/tmp/") {
 		name = name[:len(name)-1] // Remove trailing underscore
 	}
-	return fmt.Sprintf("%s%d", name, time.Now().Unix())
+	return name
 }
