@@ -68,7 +68,7 @@ func getSession(t *testing.T, upgrades opera.Upgrades) IntegrationTestNetSession
 		activeTestNetInstances = make(map[common.Hash]*IntegrationTestNet)
 	}
 
-	net, ok := activeTestNetInstances[hashOptions(upgrades)]
+	net, ok := activeTestNetInstances[hashUpgrades(upgrades)]
 	if ok {
 		return net.SpawnSession(t)
 	}
@@ -80,11 +80,11 @@ func getSession(t *testing.T, upgrades opera.Upgrades) IntegrationTestNetSession
 		// will be stopped after all tests in the package have finished.
 		SkipCleanUp: true,
 	})
-	activeTestNetInstances[hashOptions(upgrades)] = myNet
+	activeTestNetInstances[hashUpgrades(upgrades)] = myNet
 	return myNet.SpawnSession(t)
 }
 
-func hashOptions(upgrades opera.Upgrades) common.Hash {
+func hashUpgrades(upgrades opera.Upgrades) common.Hash {
 	hash := sha256.New()
 
 	// in the unlikely case of an error it is safe to ignore it since the
