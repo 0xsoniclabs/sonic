@@ -24,11 +24,13 @@ import (
 	"fmt"
 	"math/big"
 	"slices"
+	"sync"
 	"testing"
 
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/lachesis"
+	"github.com/Fantom-foundation/lachesis-base/utils/workers"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -37,8 +39,11 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc"
+	"github.com/0xsoniclabs/sonic/gossip/emitter"
 	"github.com/0xsoniclabs/sonic/gossip/randao"
 	"github.com/0xsoniclabs/sonic/inter"
+	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/validatorpk"
 	"github.com/0xsoniclabs/sonic/logger"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -118,7 +123,213 @@ func testConsensusCallback(t *testing.T, upgrades opera.Upgrades) {
 			fmt.Sprintf("account%d", i),
 		)
 	}
+}
 
+func TestConsensusCallback_SingleProposerHandlingSkippingOfBlocks(t *testing.T) {
+	t.Parallel()
+	MaxEmptyBlockSkipPeriod := inter.Timestamp(10_000)
+
+	tests := map[string]struct {
+		lastBlockTime inter.Timestamp
+		atroposTime   inter.Timestamp
+		proposal      *inter.Proposal
+		proposalTime  inter.Timestamp
+		producesBlock bool
+		blockTime     inter.Timestamp
+	}{
+		"no proposal, before max empty block skip period": {
+			lastBlockTime: inter.Timestamp(1000),
+			atroposTime:   inter.Timestamp(2000),
+			proposal:      nil,
+			producesBlock: false,
+		},
+		"no proposal, after max empty block skip period": {
+			lastBlockTime: inter.Timestamp(1000),
+			atroposTime:   inter.Timestamp(1000 + MaxEmptyBlockSkipPeriod + 1),
+			proposal:      nil,
+			producesBlock: true,
+			blockTime:     inter.Timestamp(1000 + MaxEmptyBlockSkipPeriod + 1),
+		},
+		"empty proposal, before max empty block skip period": {
+			lastBlockTime: inter.Timestamp(1000),
+			atroposTime:   inter.Timestamp(2000),
+			proposal:      &inter.Proposal{},
+			producesBlock: false, // empty proposals are ignored
+		},
+		"empty proposal, after max empty block skip period": {
+			lastBlockTime: inter.Timestamp(1000),
+			atroposTime:   inter.Timestamp(1000 + MaxEmptyBlockSkipPeriod + 2),
+			proposal:      &inter.Proposal{},
+			proposalTime:  inter.Timestamp(1000 + MaxEmptyBlockSkipPeriod + 1),
+			producesBlock: true, // an empty block is created, with the proposal time
+			blockTime:     inter.Timestamp(1000 + MaxEmptyBlockSkipPeriod + 1),
+		},
+		"non-empty proposal, before max empty block skip period": {
+			lastBlockTime: inter.Timestamp(1000),
+			atroposTime:   inter.Timestamp(2000),
+			proposal: &inter.Proposal{
+				Transactions: []*types.Transaction{types.NewTx(&types.LegacyTx{})},
+			},
+			proposalTime:  inter.Timestamp(1500),
+			producesBlock: true,
+			blockTime:     inter.Timestamp(1500),
+		},
+		"non-empty proposal, after max empty block skip period": {
+			lastBlockTime: inter.Timestamp(1000),
+			atroposTime:   inter.Timestamp(1000 + MaxEmptyBlockSkipPeriod + 2),
+			proposal: &inter.Proposal{
+				Transactions: []*types.Transaction{types.NewTx(&types.LegacyTx{})},
+			},
+			proposalTime:  inter.Timestamp(1000 + MaxEmptyBlockSkipPeriod + 1),
+			producesBlock: true,
+			blockTime:     inter.Timestamp(1000 + MaxEmptyBlockSkipPeriod + 1),
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			// Evaluate a confirmed block with a two events, one carrying the
+			// proposal given in the test, the other being the atropos.
+
+			// Create a store with an applied genesis.
+			upgrades := opera.GetAllegroUpgrades()
+			upgrades.SingleProposerBlockFormation = true
+			store := newInMemoryStoreWithGenesisData(t, upgrades, 1, 2)
+
+			// Create the event carrying the proposal, if there is one.
+			var events []*inter.EventPayload
+			if test.proposal != nil {
+				builder := inter.MutableEventPayload{}
+				builder.SetVersion(3)
+				builder.SetEpoch(2)
+				builder.SetMedianTime(test.proposalTime)
+				if test.proposal != nil {
+					proposal := *test.proposal
+					// Fix some required fields in any proposal.
+					proposal.Number = 1
+					proposal.ParentHash = store.GetBlock(0).Hash()
+					builder.SetPayload(inter.Payload{
+						Proposal: &proposal,
+					})
+				}
+				events = append(events, builder.Build())
+			}
+
+			// Create the atropos event of the current block.
+			builder := inter.MutableEventPayload{}
+			builder.SetVersion(3)
+			builder.SetEpoch(2)
+			builder.SetMedianTime(test.atroposTime)
+			atropos := builder.Build()
+			events = append(events, atropos)
+
+			// Publish the events in the store.
+			for _, event := range events {
+				store.SetEvent(event)
+			}
+
+			// Update the block and epoch state to match the test conditions.
+			bs := store.GetBlockState()
+			bs.LastBlock = iblockproc.BlockCtx{
+				Time: test.lastBlockTime,
+			}
+			es := store.GetEpochState()
+			es.Rules.Blocks.MaxEmptyBlockSkipPeriod = MaxEmptyBlockSkipPeriod
+			store.SetBlockEpochState(bs, es)
+
+			// Create the environment for the consensus callback cycle.
+			ctrl := gomock.NewController(t)
+			_any := gomock.Any()
+
+			confirmedEventProcessor := blockproc.NewMockConfirmedEventsProcessor(ctrl)
+			confirmedEventProcessor.EXPECT().Finalize(_any, _any).Return(iblockproc.BlockState{})
+			confirmedEventProcessor.EXPECT().ProcessConfirmedEvent(_any).MaxTimes(2)
+
+			eventsModule := blockproc.NewMockConfirmedEventsModule(ctrl)
+			eventsModule.EXPECT().Start(_any, _any).Return(confirmedEventProcessor)
+
+			proc := BlockProc{
+				EventsModule: eventsModule,
+			}
+
+			// If a block is produced, mocks for the block creation process
+			// need to be set up. This is implicitly checking that the
+			// expectation of whether a block is produced or not is correct.
+			if test.producesBlock {
+				sealer := blockproc.NewMockSealerProcessor(ctrl)
+				sealer.EXPECT().EpochSealing().Return(false)
+
+				sealerModule := blockproc.NewMockSealerModule(ctrl)
+				sealerModule.EXPECT().Start(_any, _any, _any).Return(sealer)
+
+				txListener := blockproc.NewMockTxListener(ctrl)
+				txListener.EXPECT().Finalize().Return(iblockproc.BlockState{}).AnyTimes()
+
+				txListenerModule := blockproc.NewMockTxListenerModule(ctrl)
+				txListenerModule.EXPECT().Start(_any, _any, _any, _any).Return(txListener)
+
+				evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
+				evmProcessor.EXPECT().Execute(_any, _any).Return(types.Receipts{}).MinTimes(1)
+				evmProcessor.EXPECT().Finalize().Return(&evmcore.EvmBlock{
+					EvmHeader: evmcore.EvmHeader{
+						BaseFee: big.NewInt(0),
+						TxHash:  common.Hash{1, 2, 3},
+					},
+				}, nil, nil)
+
+				evmModule := blockproc.NewMockEVM(ctrl)
+				evmModule.EXPECT().
+					Start(_any, _any, _any, _any, _any, _any, _any).
+					DoAndReturn(func(block iblockproc.BlockCtx, _, _, _, _, _, _ any) blockproc.EVMProcessor {
+						require.Equal(t, test.blockTime, block.Time)
+						return evmProcessor
+					})
+
+				txTransactor := blockproc.NewMockTxTransactor(ctrl)
+				txTransactor.EXPECT().PopInternalTxs(_any, _any, _any, _any, _any).Return(types.Transactions{}).AnyTimes()
+
+				proc = BlockProc{
+					EventsModule:     eventsModule,
+					SealerModule:     sealerModule,
+					TxListenerModule: txListenerModule,
+					EVMModule:        evmModule,
+					PreTxTransactor:  txTransactor,
+					PostTxTransactor: txTransactor,
+				}
+			}
+
+			// Create the worker group for running the callbacks.
+			stop := make(chan struct{})
+			var workerWaitGroup sync.WaitGroup
+			workers := workers.New(&workerWaitGroup, stop, 1)
+			workers.Start(1)
+			defer func() {
+				close(stop)
+				workerWaitGroup.Wait()
+			}()
+
+			// Prepare the callback functions.
+			var callbackWaitGroup sync.WaitGroup
+			bootstrapping := false
+			blockBusyFlag := uint32(0)
+			emitters := []*emitter.Emitter{}
+			beginBlock := consensusCallbackBeginBlockFn(
+				workers, &callbackWaitGroup, &blockBusyFlag, store, proc, false, nil, &emitters, nil, &bootstrapping, nil,
+			)
+
+			// Run a full consensus callback cycle for this block.
+			callbacks := beginBlock(&lachesis.Block{
+				Atropos: atropos.ID(),
+			})
+			for _, event := range events {
+				callbacks.ApplyEvent(event)
+			}
+			callbacks.EndBlock()
+
+			callbackWaitGroup.Wait()
+		})
+	}
 }
 
 func TestExtractProposalForNextBlock_NoEvents_ReturnsNoProposal(t *testing.T) {

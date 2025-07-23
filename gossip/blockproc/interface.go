@@ -17,11 +17,12 @@
 package blockproc
 
 import (
+	"math/big"
+
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
-	"math/big"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/inter"
@@ -29,6 +30,8 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 )
+
+//go:generate mockgen -source=interface.go -package=blockproc -destination=interface_mock.go
 
 type TxListener interface {
 	OnNewLog(*types.Log)
