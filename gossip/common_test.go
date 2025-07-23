@@ -29,6 +29,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/stretchr/testify/require"
 
 	"github.com/Fantom-foundation/lachesis-base/abft"
 	"github.com/Fantom-foundation/lachesis-base/hash"
@@ -162,28 +163,7 @@ func newTestEnvWithUpgrades(
 	upgrades opera.Upgrades,
 	tb testing.TB,
 ) *testEnv {
-	rules := opera.FakeNetRules(upgrades)
-	rules.Epochs.MaxEpochDuration = inter.Timestamp(maxEpochDuration)
-	rules.Emitter.Interval = 0
-
-	genStore := makefakegenesis.FakeGenesisStoreWithRulesAndStart(
-		validatorsNum,
-		utils.ToFtm(genesisBalance),
-		utils.ToFtm(genesisStake),
-		rules,
-		firstEpoch,
-		2,
-	)
-	genesis := genStore.Genesis()
-
-	store, err := NewMemStore(tb)
-	if err != nil {
-		panic(fmt.Errorf("NewMemStore failed; %w", err))
-	}
-	err = store.ApplyGenesis(genesis)
-	if err != nil {
-		panic(fmt.Errorf("ApplyGenesis failed; %w", err))
-	}
+	store := newInMemoryStoreWithGenesisData(tb, upgrades, validatorsNum, firstEpoch)
 
 	// install blockProc callbacks
 	env := &testEnv{
@@ -197,6 +177,7 @@ func newTestEnvWithUpgrades(
 
 	// create the service
 	txPool := &dummyTxPool{}
+	var err error
 	env.Service, err = newService(DefaultConfig(cachescale.Identity), store, blockProc, engine, vecClock, func(_ evmcore.StateReader) TxPool {
 		return txPool
 	}, enode.ID{})
@@ -240,6 +221,39 @@ func newTestEnvWithUpgrades(
 	env.verWatcher.Start()
 
 	return env
+}
+
+func newInMemoryStoreWithGenesisData(
+	tb testing.TB,
+	upgrades opera.Upgrades,
+	numValidators idx.Validator,
+	firstEpoch idx.Epoch,
+) *Store {
+	tb.Helper()
+	require := require.New(tb)
+	rules := opera.FakeNetRules(upgrades)
+	rules.Epochs.MaxEpochDuration = inter.Timestamp(maxEpochDuration)
+	rules.Emitter.Interval = 0
+
+	genStore := makefakegenesis.FakeGenesisStoreWithRulesAndStart(
+		numValidators,
+		utils.ToFtm(genesisBalance),
+		utils.ToFtm(genesisStake),
+		rules,
+		firstEpoch,
+		2,
+	)
+	genesis := genStore.Genesis()
+
+	store, err := NewMemStore(tb)
+	tb.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			tb.Fatalf("failed to close test store: %v", err)
+		}
+	})
+	require.NoError(err)
+	require.NoError(store.ApplyGenesis(genesis))
+	return store
 }
 
 func (env *testEnv) Close() error {

@@ -236,13 +236,15 @@ func consensusCallbackBeginBlockFn(
 							es.Rules.Economy.ShortGasPower.AllocPerSec,
 							maxBlockGas,
 						)
-
 					} else {
-						// If no proposal is found but a block needs to be
-						// created (as this function has been called), we
-						// use a minimum time span to avoid removing gas
-						// allocation time from the next block.
-						blockTime = lastBlockHeader.Time + 1
+						// If no proposal is found but the code below decides
+						// that a block needs to be created (to honor the max
+						// time between empty blocks), we use the atropos time
+						// as the block time -- as this is the time the skip
+						// timer is using to determine whether the time
+						// limit for empty blocks has been reached and a new
+						// empty block is to be emitted.
+						blockTime = atroposTime
 						// in this case, the original event-based randao is used.
 					}
 				} else {
@@ -285,6 +287,9 @@ func consensusCallbackBeginBlockFn(
 				skipBlock := atroposDegenerate
 				// Check if empty block should be pruned
 				emptyBlock := confirmedEvents.Len() == 0 && cBlock.Cheaters.Len() == 0
+				if es.Rules.Upgrades.SingleProposerBlockFormation {
+					emptyBlock = cBlock.Cheaters.Len() == 0 && len(proposal.Transactions) == 0
+				}
 				skipBlock = skipBlock || (emptyBlock && blockCtx.Time < bs.LastBlock.Time+es.Rules.Blocks.MaxEmptyBlockSkipPeriod)
 				// Finalize the progress of eventProcessor
 				bs = eventProcessor.Finalize(blockCtx, skipBlock) // TODO: refactor to not mutate the bs, it is unclear
@@ -293,6 +298,13 @@ func consensusCallbackBeginBlockFn(
 					store.SetBlockEpochState(bs, es)
 					log.Debug("Frame is skipped", "atropos", cBlock.Atropos.String())
 					return nil
+				}
+				if emptyBlock {
+					log.Debug(
+						"Deliberately producing empty block",
+						"idx", blockCtx.Idx,
+						"time_since_last", time.Duration(blockCtx.Time-bs.LastBlock.Time),
+					)
 				}
 
 				sealer := blockProc.SealerModule.Start(blockCtx, bs, es)
