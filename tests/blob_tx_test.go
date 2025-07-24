@@ -28,7 +28,6 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
-	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/holiman/uint256"
@@ -264,7 +263,7 @@ func createTestBlobTransactionWithNilSidecar(t *testing.T, ctxt *testContext) (*
 	return types.SignTx(tx, types.NewCancunSigner(chainId), ctxt.net.GetSessionSponsor().PrivateKey)
 }
 
-func checkBlocksSanity(t *testing.T, client *ethclient.Client) {
+func checkBlocksSanity(t *testing.T, client *SharedClient) {
 	// This check is a regression from an issue found while fetching a block by
 	// number where the last block was not correctly serialized
 	require := require.New(t)
@@ -280,7 +279,7 @@ func checkBlocksSanity(t *testing.T, client *ethclient.Client) {
 
 type testContext struct {
 	net    *IntegrationTestNet
-	client *ethclient.Client
+	client *SharedClient
 }
 
 func MakeTestContext(t *testing.T) *testContext {

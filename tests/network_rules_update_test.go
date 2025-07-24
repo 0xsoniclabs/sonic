@@ -31,7 +31,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
@@ -275,7 +274,7 @@ func TestNetworkRules_PragueFeaturesBecomeAvailableWithAllegroUpgrade(t *testing
 	account := makeAccountWithBalance(t, net, big.NewInt(1e18))
 
 	t.Run("expectations before sonic-allegro hardfork", func(t *testing.T) {
-		forEachClientInNet(t, net, func(t *testing.T, client *ethclient.Client) {
+		forEachClientInNet(t, net, func(t *testing.T, client *SharedClient) {
 			tx := makeSetCodeTx(t, net, account)
 			err := client.SendTransaction(t.Context(), tx)
 			require.ErrorContains(t,
@@ -313,7 +312,7 @@ func TestNetworkRules_PragueFeaturesBecomeAvailableWithAllegroUpgrade(t *testing
 		delegationIndicator :=
 			hexutil.MustDecode("0xEF01002A00000000000000000000000000000000000000")
 
-		forEachClientInNet(t, net, func(t *testing.T, client *ethclient.Client) {
+		forEachClientInNet(t, net, func(t *testing.T, client *SharedClient) {
 
 			// make sure that this client has already processed the transaction
 			_, err := net.GetReceipt(tx.Hash())
@@ -329,7 +328,7 @@ func TestNetworkRules_PragueFeaturesBecomeAvailableWithAllegroUpgrade(t *testing
 func forEachClientInNet(
 	t *testing.T,
 	net *IntegrationTestNet,
-	fn func(t *testing.T, client *ethclient.Client),
+	fn func(t *testing.T, client *SharedClient),
 ) {
 	for i := 0; i < net.NumNodes(); i++ {
 		t.Run(fmt.Sprintf("client%d", i), func(t *testing.T) {

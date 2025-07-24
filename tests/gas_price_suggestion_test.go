@@ -24,7 +24,6 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
@@ -49,7 +48,7 @@ func TestGasPrice(t *testing.T) {
 func testGasPrice_SuggestedGasPricesApproximateActualBaseFees(
 	t *testing.T,
 	net IntegrationTestNetSession,
-	client *ethclient.Client,
+	client *SharedClient,
 ) {
 	require := require.New(t)
 
@@ -83,7 +82,7 @@ func testGasPrice_SuggestedGasPricesApproximateActualBaseFees(
 func testGasPrice_UnderpricedTransactionsAreRejected(
 	t *testing.T,
 	net IntegrationTestNetSession,
-	client *ethclient.Client,
+	client *SharedClient,
 ) {
 	require := require.New(t)
 
@@ -147,7 +146,7 @@ func testGasPrice_UnderpricedTransactionsAreRejected(
 	require.NoError(send(setCodeFactory.makeSetCodeTransactionWithPrice(t, chainId, 0, feeCap, 0)))
 }
 
-func makeNetAndClient(t *testing.T) (*IntegrationTestNet, *ethclient.Client) {
+func makeNetAndClient(t *testing.T) (*IntegrationTestNet, *SharedClient) {
 	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
 		Upgrades: AsPointer(opera.GetAllegroUpgrades()),
 	})

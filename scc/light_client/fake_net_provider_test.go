@@ -25,7 +25,6 @@ import (
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/require"
 )
@@ -137,7 +136,7 @@ func TestServer_CanRequestMaxNumberOfResults(t *testing.T) {
 // helper functions
 ////////////////////////////////////////
 
-func startNetAndGetClient(t *testing.T) (*tests.IntegrationTestNet, *ethclient.Client) {
+func startNetAndGetClient(t *testing.T) (*tests.IntegrationTestNet, *tests.SharedClient) {
 	t.Helper()
 	require := require.New(t)
 	// start network
