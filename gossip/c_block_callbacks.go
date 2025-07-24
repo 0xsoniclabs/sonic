@@ -236,26 +236,6 @@ func consensusCallbackBeginBlockFn(
 							es.Rules.Economy.ShortGasPower.AllocPerSec,
 							maxBlockGas,
 						)
-					} else {
-						// If no proposal is found, we use the atropos time as
-						// the potential time for a block to be created.
-						//
-						// The skip-block logic below generally prevents empty
-						// blocks from being created. However, periodically, to
-						// provide a life-ness signal, the network is emitting
-						// empty blocks if there is no actual traffic. This is
-						// controlled by the MaxEmptyBlockSkipPeriod. The block
-						// time selected here is going to be the time for this
-						// empty block to be created.
-						//
-						// To make sure that the gap between subsequent empty
-						// blocks is large enough, the block time needs to be
-						// progressing in pace with the atropos time. Otherwise,
-						// there will be an increased rate of empty blocks after
-						// the first one.
-
-						// Also, in this case, the rando value derived from the
-						// confirmed events is used.
 					}
 				} else {
 					// Collect transactions from events and schedule them.
@@ -301,7 +281,7 @@ func consensusCallbackBeginBlockFn(
 					// be empty or may have been found invalid (wrong block
 					// number or wrong parent hash). Thus, just checking for
 					// the number of confirmed events is not enough. However,
-					// the can check the actual number of transactions to be
+					// we can check the actual number of transactions to be
 					// included in the block. If there are none -- and there are
 					// no cheaters resulting in internal transactions to be
 					// included -- the resulting block would be empty, and should
