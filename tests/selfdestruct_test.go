@@ -25,7 +25,6 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/stretchr/testify/require"
 )
 
@@ -367,7 +366,7 @@ func testSelfDestruct_NestedCall(t *testing.T, net *IntegrationTestNet) {
 // avoid clashes between tests. This struct will be filled with the results of
 // the each test setup.
 type effectContext struct {
-	client             *ethclient.Client                 //< client to interact with the network
+	client             *SharedClient                     //< client to interact with the network
 	contract           *selfdestruct.SelfDestruct        //< contract to test (may have selfdestructed)
 	factory            *selfdestruct.SelfDestructFactory //< factory contract to deploy new contracts
 	executionReceipt   *types.Receipt                    //< receipt of the execution transaction for constructor tests

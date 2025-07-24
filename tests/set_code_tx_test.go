@@ -31,7 +31,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -939,7 +938,7 @@ func testChainOfCalls(t *testing.T, session IntegrationTestNetSession) {
 // - delegate account is the contract address installed in the delegator code
 // - callData is used to pass the encoded use of the delegate's called method ABI
 func makeEip7702Transaction(t *testing.T,
-	client *ethclient.Client,
+	client *SharedClient,
 	sponsor *Account,
 	sponsored *Account,
 	delegate common.Address,

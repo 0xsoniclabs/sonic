@@ -22,7 +22,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/stretchr/testify/require"
 )
 
@@ -289,7 +288,7 @@ func makeAccountWithBalance(t *testing.T, net IntegrationTestNetSession, balance
 	return account
 }
 
-func getBaseFeeAt(t *testing.T, blockNumber *big.Int, client *ethclient.Client) int64 {
+func getBaseFeeAt(t *testing.T, blockNumber *big.Int, client *SharedClient) int64 {
 	t.Helper()
 	block, err := client.BlockByNumber(t.Context(), blockNumber)
 	require.NoError(t, err)
@@ -297,7 +296,7 @@ func getBaseFeeAt(t *testing.T, blockNumber *big.Int, client *ethclient.Client) 
 	return basefee.Int64()
 }
 
-func getBalance(t *testing.T, client *ethclient.Client, account common.Address) int64 {
+func getBalance(t *testing.T, client *SharedClient, account common.Address) int64 {
 	t.Helper()
 	balance, err := client.BalanceAt(t.Context(), account, nil)
 	require.NoError(t, err)
@@ -307,7 +306,7 @@ func getBalance(t *testing.T, client *ethclient.Client, account common.Address) 
 // makeLegacyTx creates a legacy transaction from a CallMsg, filling in the nonce
 // and gas limit.
 func makeLegacyTx(t *testing.T,
-	client *ethclient.Client,
+	client *SharedClient,
 	gasPrice int64,
 	sender *Account,
 	to *common.Address,
@@ -339,7 +338,7 @@ func makeLegacyTx(t *testing.T,
 // makeLegacyTx creates a legacy transaction from a CallMsg, filling in the nonce
 // and gas limit.
 func makeEip1559Transaction(t *testing.T,
-	client *ethclient.Client,
+	client *SharedClient,
 	maxFeeCap int64,
 	maxGasTip int64,
 	sender *Account,

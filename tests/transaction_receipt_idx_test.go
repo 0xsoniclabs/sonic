@@ -26,7 +26,6 @@ import (
 	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/stretchr/testify/require"
 )
 
@@ -124,7 +123,7 @@ func TestReceipt_InternalTransactionsDoNotChangeReceiptIndex(t *testing.T) {
 }
 
 func getSenderOfTransaction(
-	client *ethclient.Client,
+	client *SharedClient,
 	txHash common.Hash,
 ) (common.Address, error) {
 	details := struct {
