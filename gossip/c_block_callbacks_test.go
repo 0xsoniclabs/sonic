@@ -125,7 +125,7 @@ func testConsensusCallback(t *testing.T, upgrades opera.Upgrades) {
 	}
 }
 
-func TestConsensusCallback_SingleProposerHandlingSkippingOfBlocks(t *testing.T) {
+func TestConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testing.T) {
 	t.Parallel()
 	MaxEmptyBlockSkipPeriod := inter.Timestamp(10_000)
 
@@ -158,7 +158,7 @@ func TestConsensusCallback_SingleProposerHandlingSkippingOfBlocks(t *testing.T) 
 		},
 		"empty proposal, after max empty block skip period": {
 			lastBlockTime: inter.Timestamp(1000),
-			atroposTime:   inter.Timestamp(1000 + MaxEmptyBlockSkipPeriod + 2),
+			atroposTime:   inter.Timestamp(1000 + MaxEmptyBlockSkipPeriod + 42),
 			proposal:      &inter.Proposal{},
 			proposalTime:  inter.Timestamp(1000 + MaxEmptyBlockSkipPeriod + 1),
 			producesBlock: true, // an empty block is created, with the proposal time
@@ -176,7 +176,7 @@ func TestConsensusCallback_SingleProposerHandlingSkippingOfBlocks(t *testing.T) 
 		},
 		"non-empty proposal, after max empty block skip period": {
 			lastBlockTime: inter.Timestamp(1000),
-			atroposTime:   inter.Timestamp(1000 + MaxEmptyBlockSkipPeriod + 2),
+			atroposTime:   inter.Timestamp(1000 + MaxEmptyBlockSkipPeriod + 42),
 			proposal: &inter.Proposal{
 				Transactions: []*types.Transaction{types.NewTx(&types.LegacyTx{})},
 			},

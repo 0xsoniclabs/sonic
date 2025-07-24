@@ -92,7 +92,7 @@ func testPacingOfEmptyBlocks(
 		require.NoError(err)
 
 		// check if the block is empty
-		require.Equal(0, len(block.Transactions()), "Block %d should be empty", i)
+		require.Empty(block.Transactions(), "Block %d should be empty", i)
 
 		// Check that the time since the last block is in [4s, 5s)
 		header := block.Header()

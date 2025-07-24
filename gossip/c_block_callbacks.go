@@ -218,7 +218,7 @@ func consensusCallbackBeginBlockFn(
 					Number:     idx.Block(number),
 					ParentHash: lastBlockHeader.Hash,
 				}
-				var blockTime inter.Timestamp
+				blockTime := atroposTime
 				if es.Rules.Upgrades.SingleProposerBlockFormation {
 					if proposed, proposer, time := extractProposalForNextBlock(lastBlockHeader, blockEvents, log.Root()); proposed != nil {
 						proposal = *proposed
@@ -237,15 +237,25 @@ func consensusCallbackBeginBlockFn(
 							maxBlockGas,
 						)
 					} else {
-						// If no proposal is found but the code below decides
-						// that a block needs to be created (to honor the max
-						// time between empty blocks), we use the atropos time
-						// as the block time -- as this is the time the skip
-						// timer is using to determine whether the time
-						// limit for empty blocks has been reached and a new
-						// empty block is to be emitted.
-						blockTime = atroposTime
-						// in this case, the original event-based randao is used.
+						// If no proposal is found, we use the atropos time as
+						// the potential time for a block to be created.
+						//
+						// The skip-block logic below generally prevents empty
+						// blocks from being created. However, periodically, to
+						// provide a life-ness signal, the network is emitting
+						// empty blocks if there is no actual traffic. This is
+						// controlled by the MaxEmptyBlockSkipPeriod. The block
+						// time selected here is going to be the time for this
+						// empty block to be created.
+						//
+						// To make sure that the gap between subsequent empty
+						// blocks is large enough, the block time needs to be
+						// progressing in pace with the atropos time. Otherwise,
+						// there will be an increased rate of empty blocks after
+						// the first one.
+
+						// Also, in this case, the rando value derived from the
+						// confirmed events is used.
 					}
 				} else {
 					// Collect transactions from events and schedule them.
@@ -256,8 +266,6 @@ func consensusCallbackBeginBlockFn(
 
 					signer := gsignercache.Wrap(types.MakeSigner(chainCfg, new(big.Int).SetUint64(number), uint64(atroposTime)))
 					proposal.Transactions = scrambler.GetExecutionOrder(unorderedTxs, signer, es.Rules.Upgrades.Sonic)
-
-					blockTime = atroposTime
 				}
 
 				// Filter invalid transactions from the proposal.
@@ -288,6 +296,16 @@ func consensusCallbackBeginBlockFn(
 				// Check if empty block should be pruned
 				emptyBlock := confirmedEvents.Len() == 0 && cBlock.Cheaters.Len() == 0
 				if es.Rules.Upgrades.SingleProposerBlockFormation {
+					// Just checking for the number of confirmed events is not
+					// enough in the SingleProposer mode, because proposals may
+					// be empty or may have been found invalid (wrong block
+					// number or wrong parent hash). Thus, just checking for
+					// the number of confirmed events is not enough. However,
+					// the can check the actual number of transactions to be
+					// included in the block. If there are none -- and there are
+					// no cheaters resulting in internal transactions to be
+					// included -- the resulting block would be empty, and should
+					// in general be skipped.
 					emptyBlock = cBlock.Cheaters.Len() == 0 && len(proposal.Transactions) == 0
 				}
 				skipBlock = skipBlock || (emptyBlock && blockCtx.Time < bs.LastBlock.Time+es.Rules.Blocks.MaxEmptyBlockSkipPeriod)
