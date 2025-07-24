@@ -4,7 +4,7 @@ EVM-compatible chain secured by the Lachesis consensus algorithm.
 
 ## Building the source
 
-Building Sonic requires both a Go (version 1.21 or later) and a C compiler. You can install
+Building Sonic requires both a Go (version 1.24 or later) and a C compiler. You can install
 them using your favourite package manager. Once the dependencies are installed, run:
 
 ```sh
