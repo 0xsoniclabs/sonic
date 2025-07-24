@@ -35,6 +35,7 @@ import (
 	"github.com/0xsoniclabs/sonic/eventcheck/heavycheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/parentlesscheck"
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/gossip/monitoring"
 	"github.com/0xsoniclabs/sonic/gossip/protocols/dag/dagstream"
 	"github.com/0xsoniclabs/sonic/gossip/protocols/dag/dagstream/dagstreamleecher"
 	"github.com/0xsoniclabs/sonic/gossip/protocols/dag/dagstream/dagstreamseeder"
@@ -173,6 +174,8 @@ type handler struct {
 	localEndPointSource LocalEndPointSource
 
 	logger.Instance
+
+	eventMonitor monitoring.EventMonitor
 }
 
 // newHandler returns a new Sonic sub protocol manager. The Sonic sub protocol manages peers capable
@@ -204,6 +207,8 @@ func newHandler(
 		localEndPointSource: c.localEndPointSource,
 
 		Instance: logger.New("PM"),
+
+		eventMonitor: monitoring.NewEventMonitor(),
 	}
 	h.started.Add(1)
 
@@ -678,6 +683,12 @@ func (h *handler) handleEventHashes(p *peer, announces hash.Events) {
 }
 
 func (h *handler) handleEvents(peer *peer, events dag.Events, ordered bool) {
+	// Notify event monitoring about the incoming events.
+	if h.eventMonitor != nil {
+		for _, e := range events {
+			h.eventMonitor.OnIncomingEvent(e.ID())
+		}
+	}
 	// Mark the hashes as present at the remote node
 	now := time.Now()
 	for _, e := range events {
@@ -1016,6 +1027,9 @@ func (h *handler) decideBroadcastAggressiveness(size int, passed time.Duration, 
 // BroadcastEvent will either propagate a event to a subset of it's peers, or
 // will only announce it's availability (depending what's requested).
 func (h *handler) BroadcastEvent(event *inter.EventPayload, passed time.Duration) int {
+	if h.eventMonitor != nil {
+		h.eventMonitor.OnOutgoingEvent(event.ID())
+	}
 	if passed < 0 {
 		passed = 0
 	}
