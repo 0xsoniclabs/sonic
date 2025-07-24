@@ -107,7 +107,7 @@ func (p *StateProcessor) Process(
 		statedb.SetTxContext(tx.Hash(), i)
 		receipt, _, err = applyTransaction(msg, gp, statedb, blockNumber, tx, usedGas, vmenv, onNewLog)
 		if err != nil {
-			log.Info("Failed to apply transaction", "tx", tx.Hash().Hex(), "err", err)
+			log.Debug("Failed to apply transaction", "tx", tx.Hash().Hex(), "err", err)
 			skipped = append(skipped, uint32(i))
 			receipts = append(receipts, nil)
 			continue // skip this transaction, but continue processing the rest of the block
