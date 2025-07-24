@@ -29,6 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rpc"
 
@@ -57,6 +58,18 @@ type TransactionArgs struct {
 	// Introduced by AccessListTxType transaction.
 	AccessList *types.AccessList `json:"accessList,omitempty"`
 	ChainID    *hexutil.Big      `json:"chainId,omitempty"`
+
+	// For BlobTxType
+	BlobFeeCap *hexutil.Big  `json:"maxFeePerBlobGas"`
+	BlobHashes []common.Hash `json:"blobVersionedHashes,omitempty"`
+
+	// For BlobTxType transactions with blob sidecar
+	Blobs       []kzg4844.Blob       `json:"blobs"`
+	Commitments []kzg4844.Commitment `json:"commitments"`
+	Proofs      []kzg4844.Proof      `json:"proofs"`
+
+	// For SetCodeTxType
+	AuthorizationList []types.SetCodeAuthorization `json:"authorizationList"`
 }
 
 // from retrieves the transaction sender address.
@@ -150,6 +163,9 @@ func (args *TransactionArgs) setDefaults(ctx context.Context, b Backend) error {
 			Value:                args.Value,
 			Data:                 args.Data,
 			AccessList:           args.AccessList,
+			BlobFeeCap:           args.BlobFeeCap,
+			BlobHashes:           args.BlobHashes,
+			AuthorizationList:    args.AuthorizationList,
 		}
 		pendingBlockNr := rpc.BlockNumberOrHashWithNumber(rpc.PendingBlockNumber)
 		estimated, err := DoEstimateGas(ctx, b, callArgs, pendingBlockNr, b.RPCGasCap())
@@ -212,7 +228,7 @@ func (args *TransactionArgs) ToMessage(globalGasCap uint64, baseFee *big.Int) (*
 			gasPrice = args.GasPrice.ToInt()
 			gasFeeCap, gasTipCap = gasPrice, gasPrice
 		} else {
-			// User specified 1559 gas feilds (or none), use those
+			// User specified 1559 gas fields (or none), use those
 			gasFeeCap = new(big.Int)
 			if args.MaxFeePerGas != nil {
 				gasFeeCap = args.MaxFeePerGas.ToInt()
@@ -237,19 +253,28 @@ func (args *TransactionArgs) ToMessage(globalGasCap uint64, baseFee *big.Int) (*
 	if args.AccessList != nil {
 		accessList = *args.AccessList
 	}
+
+	var blobGasFeeCap *big.Int
+	if args.BlobFeeCap != nil {
+		blobGasFeeCap = args.BlobFeeCap.ToInt()
+	}
+
 	return &core.Message{
-		From:             addr,
-		To:               args.To,
-		Nonce:            0,
-		Value:            value,
-		GasLimit:         gas,
-		GasPrice:         gasPrice,
-		GasFeeCap:        gasFeeCap,
-		GasTipCap:        gasTipCap,
-		Data:             data,
-		AccessList:       accessList,
-		SkipNonceChecks:  true,
-		SkipFromEOACheck: true,
+		From:                  addr,
+		To:                    args.To,
+		Nonce:                 0,
+		Value:                 value,
+		GasLimit:              gas,
+		GasPrice:              gasPrice,
+		GasFeeCap:             gasFeeCap,
+		GasTipCap:             gasTipCap,
+		Data:                  data,
+		AccessList:            accessList,
+		BlobGasFeeCap:         blobGasFeeCap,
+		BlobHashes:            args.BlobHashes,
+		SetCodeAuthorizations: args.AuthorizationList,
+		SkipNonceChecks:       true,
+		SkipFromEOACheck:      true,
 	}, nil
 }
 
