@@ -1222,7 +1222,8 @@ func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNr
 
 		result, err := DoCall(ctx, b, args, blockNrOrHash, nil, nil, 0, gasCap)
 		if err != nil {
-			if errors.Is(err, core.ErrIntrinsicGas) {
+			if errors.Is(err, core.ErrIntrinsicGas) ||
+				errors.Is(err, core.ErrFloorDataGas) {
 				return true, nil, nil // Special case, raise gas limit
 			}
 			return true, nil, err // Bail out
