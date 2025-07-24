@@ -35,14 +35,14 @@ import (
 
 func TestEstimateGas(t *testing.T) {
 	t.Run("Sonic", func(t *testing.T) {
-		net := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+		session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 		t.Parallel()
-		doTestEstimate(t, net, makeTestCases(t, net))
+		doTestEstimate(t, session, makeTestCases(t, session))
 	})
 	t.Run("Allegro", func(t *testing.T) {
-		net := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+		session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 		t.Parallel()
-		doTestEstimate(t, net, makeAllegroCases(t, net))
+		doTestEstimate(t, session, makeAllegroCases(t, session))
 	})
 }
 
@@ -119,10 +119,15 @@ func makeAllegroCases(t *testing.T, session IntegrationTestNetSession) map[strin
 		})
 	require.NoError(t, err, "failed to create authorization; %v", err)
 
-	cases["authorizations list"] = &types.SetCodeTx{
+	cases["authorizations"] = &types.SetCodeTx{
 		To:       account.Address(),
 		Data:     counterCallData,
 		AuthList: []types.SetCodeAuthorization{auth},
+	}
+	cases["multiple authorizations"] = &types.SetCodeTx{
+		To:       account.Address(),
+		Data:     counterCallData,
+		AuthList: []types.SetCodeAuthorization{auth, auth},
 	}
 	return cases
 }
