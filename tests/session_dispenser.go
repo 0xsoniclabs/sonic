@@ -50,7 +50,7 @@ func TestMain(m *testing.M) {
 	activeTestNetInstances = nil
 }
 
-// getSession creates a new session for network running on the
+// getIntegrationTestNetSession creates a new session for network running on the
 // given Upgrade. If there is no network running with this Upgrade, a new one
 // will be initialized.
 // If a tests can run in parallel, the call to t.Parallel() should be done
@@ -59,11 +59,14 @@ func TestMain(m *testing.M) {
 // A typical use case would look as follows:
 //
 //	t.Run("test_case", func(t *testing.T) {
-//		session := getSession(t, opera.GetSonicUpgrades())
+//		session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 //		t.Parallel()
 //		< use session instead of net of the rest of the test >
 //	})
-func getSession(t *testing.T, upgrades opera.Upgrades) IntegrationTestNetSession {
+//
+// This function uses a global state that is cleaned up after the execution of
+// the tests in `tests` package.
+func getIntegrationTestNetSession(t *testing.T, upgrades opera.Upgrades) IntegrationTestNetSession {
 	if activeTestNetInstances == nil {
 		activeTestNetInstances = make(map[common.Hash]*IntegrationTestNet)
 	}
@@ -73,7 +76,6 @@ func getSession(t *testing.T, upgrades opera.Upgrades) IntegrationTestNetSession
 		return net.SpawnSession(t)
 	}
 
-	t.Logf("Starting reusable test integration network for upgrade: %v", upgrades)
 	myNet := StartIntegrationTestNet(t, IntegrationTestNetOptions{
 		Upgrades: AsPointer(upgrades),
 		// Networks started by here will survive the test calling it, so they

@@ -30,7 +30,7 @@ import (
 
 func TestCounter_CanIncrementAndReadCounterFromHead(t *testing.T) {
 
-	session := getSession(t, opera.GetSonicUpgrades())
+	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 	t.Parallel()
 
 	// Deploy the counter contract.
@@ -51,7 +51,7 @@ func TestCounter_CanIncrementAndReadCounterFromHead(t *testing.T) {
 
 func TestCounter_CanReadHistoricCounterValues(t *testing.T) {
 
-	session := getSession(t, opera.GetSonicUpgrades())
+	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 	t.Parallel()
 	// Deploy the counter contract.
 	contract, receipt, err := DeployContract(session, counter.DeployCounter)
