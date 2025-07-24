@@ -692,6 +692,7 @@ func (n *IntegrationTestNet) RestartWithExportImport() error {
 
 // GetHeaders returns the headers of all blocks on the network from block 0 to the latest block.
 func (n *IntegrationTestNet) GetHeaders() ([]*types.Header, error) {
+
 	client, err := n.GetClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to the Ethereum client: %w", err)
