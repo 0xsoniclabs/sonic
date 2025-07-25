@@ -1089,6 +1089,7 @@ func validateAndSanitizeOptions(options ...IntegrationTestNetOptions) (Integrati
 	return options[0], nil
 }
 
+// isDataRaceDetectionEnabled checks if the test is running with `-race` flag enabled.
 func isDataRaceDetectionEnabled() bool {
 	info, ok := debug.ReadBuildInfo()
 	if !ok {

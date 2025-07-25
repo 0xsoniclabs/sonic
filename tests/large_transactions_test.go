@@ -115,7 +115,6 @@ func TestLargeTransactions_LargeTransactionLoadTest(t *testing.T) {
 	for name, upgrades := range hardForks {
 		for mode, singleProposer := range modes {
 			t.Run(fmt.Sprintf("%s/%s", name, mode), func(t *testing.T) {
-				t.Parallel()
 				effectiveUpgrades := upgrades
 				effectiveUpgrades.SingleProposerBlockFormation = singleProposer
 				testLargeTransactionLoadTest(t, &effectiveUpgrades)
