@@ -1089,7 +1089,7 @@ func validateAndSanitizeOptions(options ...IntegrationTestNetOptions) (Integrati
 	return options[0], nil
 }
 
-func isRaceTest() bool {
+func isDataRaceDetectionEnabled() bool {
 	info, ok := debug.ReadBuildInfo()
 	if !ok {
 		return false
