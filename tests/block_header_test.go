@@ -48,6 +48,7 @@ import (
 )
 
 func TestBlockHeader_FakeGenesis_SatisfiesInvariants(t *testing.T) {
+	t.Parallel()
 	net := StartIntegrationTestNetWithFakeGenesis(t)
 	testBlockHeadersOnNetwork(t, net)
 }

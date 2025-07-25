@@ -52,6 +52,7 @@ func (tc *TestCase) String() string {
 }
 
 func TestGasCostTest_Sonic(t *testing.T) {
+	// t.Parallel()
 	t.Run("with distributed proposers", func(t *testing.T) {
 		testGasCosts_Sonic(t, false)
 	})
@@ -63,9 +64,11 @@ func TestGasCostTest_Sonic(t *testing.T) {
 func testGasCosts_Sonic(t *testing.T, singleProposer bool) {
 	upgrades := opera.GetSonicUpgrades()
 	upgrades.SingleProposerBlockFormation = singleProposer
-	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
-		Upgrades: &upgrades,
-	})
+	// net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
+	// 	Upgrades: &upgrades,
+	// })
+	net := getIntegrationTestNetSession(t, upgrades, 1)
+	t.Parallel()
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
@@ -84,8 +87,8 @@ func testGasCosts_Sonic(t *testing.T, singleProposer bool) {
 	// > )
 
 	t.Run("reject transactions with insufficient gas", func(t *testing.T) {
-		t.Parallel()
 		session := net.SpawnSession(t)
+		t.Parallel()
 		for test := range makeGasCostTestInputs(t, session) {
 			t.Run(test.String(), func(t *testing.T) {
 				test.txPayload.Gas = test.txPayload.Gas - 1
@@ -104,8 +107,8 @@ func testGasCosts_Sonic(t *testing.T, singleProposer bool) {
 	})
 
 	t.Run("transactions with exact gas succeed", func(t *testing.T) {
-		t.Parallel()
 		session := net.SpawnSession(t)
+		t.Parallel()
 		for test := range makeGasCostTestInputs(t, session) {
 			t.Run(test.String(), func(t *testing.T) {
 				test.txPayload = setTransactionDefaults(t, session, test.txPayload, session.GetSessionSponsor())
@@ -125,8 +128,8 @@ func testGasCosts_Sonic(t *testing.T, singleProposer bool) {
 	})
 
 	t.Run("Sonic processor charges 10% of unused gas", func(t *testing.T) {
-		t.Parallel()
 		session := net.SpawnSession(t)
+		t.Parallel()
 		for test := range makeGasCostTestInputs(t, session) {
 			t.Run(test.String(), func(t *testing.T) {
 
@@ -165,9 +168,12 @@ func TestGasCostTest_Allegro(t *testing.T) {
 func testGasCosts_Allegro(t *testing.T, singleProposer bool) {
 	upgrades := opera.GetAllegroUpgrades()
 	upgrades.SingleProposerBlockFormation = singleProposer
-	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
-		Upgrades: &upgrades,
-	})
+	// net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
+	// 	Upgrades: &upgrades,
+	// })
+
+	net := getIntegrationTestNetSession(t, upgrades, 1)
+	t.Parallel()
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
@@ -464,7 +470,7 @@ func makeGasCostTestInputs(
 
 func TestExcessGasCharges_DisabledInSingleProposerModeInNewAndHistoricRuns(t *testing.T) {
 	require := require.New(t)
-
+	t.Parallel()
 	upgrades := opera.GetAllegroUpgrades()
 	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
 		Upgrades: &upgrades,

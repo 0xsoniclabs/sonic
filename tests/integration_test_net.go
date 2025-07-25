@@ -103,12 +103,20 @@ type IntegrationTestNetSession interface {
 	// The resulting client must be closed after use.
 	GetClient() (*SharedClient, error)
 
+	// GetWebSocketClient provides raw access to a fresh connection to the network
+	// The resulting client must be closed after use.
+	GetWebSocketClient() (*SharedClient, error)
+
 	// GetChainId returns the chain ID of the network.
 	GetChainId() *big.Int
 
 	// AdvanceEpoch sends a transaction to advance to the next epoch.
 	// It also waits until the new epoch is really reached.
 	AdvanceEpoch(epochs int) error
+
+	GetNumNodes() int
+	GetClientConnectedToNode(node int) (*SharedClient, error)
+	SpawnSession(t *testing.T) IntegrationTestNetSession
 }
 
 // AsPointer is a utility function that returns a pointer to the given value.
@@ -390,23 +398,23 @@ func (n *integrationTestNode) getStateDir() string {
 	return filepath.Join(n.directory, "state")
 }
 
-func (n *IntegrationTestNet) start() error {
-	if n.nodes[0].done != nil {
+func (s *IntegrationTestNet) start() error {
+	if s.nodes[0].done != nil {
 		return errors.New("network already started")
 	}
 
-	nodeIds := make([]chan string, len(n.nodes))
-	httpPorts := make([]chan string, len(n.nodes))
+	nodeIds := make([]chan string, len(s.nodes))
+	httpPorts := make([]chan string, len(s.nodes))
 	for i := range nodeIds {
 		nodeIds[i] = make(chan string, 1)
 		httpPorts[i] = make(chan string, 1)
 	}
 
-	for i := range n.nodes {
+	for i := range s.nodes {
 		stop := make(chan struct{})
 		done := make(chan struct{})
-		n.nodes[i].shutdown = stop
-		n.nodes[i].done = done
+		s.nodes[i].shutdown = stop
+		s.nodes[i].done = done
 		go func() {
 			defer close(done)
 
@@ -428,11 +436,11 @@ func (n *IntegrationTestNet) start() error {
 				"sonicd",
 
 				// data storage options
-				"--datadir", n.nodes[i].getStateDir(),
+				"--datadir", s.nodes[i].getStateDir(),
 				"--datadir.minfreedisk", "0",
 
 				// fake network options
-				"--fakenet", fmt.Sprintf("%d/%d", i+1, len(n.nodes)),
+				"--fakenet", fmt.Sprintf("%d/%d", i+1, len(s.nodes)),
 
 				// http-client option
 				"--http", "--http.addr", "127.0.0.1", "--http.port", "0",
@@ -455,10 +463,10 @@ func (n *IntegrationTestNet) start() error {
 				"--ipcpath", fmt.Sprintf("%s/sonic.ipc", tmp),
 			},
 				// append extra arguments
-				n.options.ClientExtraArguments...,
+				s.options.ClientExtraArguments...,
 			)
 
-			if n.options.ModifyConfig != nil {
+			if s.options.ModifyConfig != nil {
 				configFile := filepath.Join(tmp, "config.toml")
 				if err := sonicd.RunWithArgs(append(args, "--dump-config", configFile), nil); err != nil {
 					panic(fmt.Sprint("Failed to dump config file:", err))
@@ -467,7 +475,7 @@ func (n *IntegrationTestNet) start() error {
 				if err := config.LoadAllConfigs(configFile, &loadedConfig); err != nil {
 					panic(fmt.Sprint("Failed to load default config file:", err))
 				}
-				n.options.ModifyConfig(&loadedConfig)
+				s.options.ModifyConfig(&loadedConfig)
 				if err := config.SaveAllConfigs(configFile, &loadedConfig); err != nil {
 					panic(fmt.Sprint("Failed to save modified config file:", err))
 				}
@@ -488,8 +496,8 @@ func (n *IntegrationTestNet) start() error {
 
 	// Collect all enode IDs and HTTP ports.
 	endPointPattern := regexp.MustCompile(`^http://.*:(\d+)$`)
-	nodeEnodes := make([]string, len(n.nodes))
-	for i := range n.nodes {
+	nodeEnodes := make([]string, len(s.nodes))
+	for i := range s.nodes {
 		id, ok := <-nodeIds[i]
 		if !ok {
 			return fmt.Errorf("failed to start the network, no ID announced for node %d", i)
@@ -509,23 +517,23 @@ func (n *IntegrationTestNet) start() error {
 		if err != nil {
 			return fmt.Errorf("failed to parse the HTTP port %s: %w", endpoint, err)
 		}
-		n.nodes[i].httpPort = httpPort
+		s.nodes[i].httpPort = httpPort
 	}
 
-	n.nodes[0].clients = &sync.Pool{
+	s.nodes[0].clients = &sync.Pool{
 		New: func() any {
-			client, err := ethclient.Dial(fmt.Sprintf("http://localhost:%d", n.nodes[0].httpPort))
+			client, err := ethclient.Dial(fmt.Sprintf("http://localhost:%d", s.nodes[0].httpPort))
 			if err != nil {
 				return nil
 			}
-			sharedClient := SharedClient{*client, n.nodes[0].clients}
+			sharedClient := SharedClient{*client, s.nodes[0].clients}
 			return &sharedClient
 		},
 	}
 
 	// connect to blockchain network
 	var err error
-	n.client, err = n.GetClient()
+	s.client, err = s.GetClient()
 	if err != nil {
 		return fmt.Errorf("failed to connect to the Ethereum client: %w", err)
 	}
@@ -540,7 +548,7 @@ func (n *IntegrationTestNet) start() error {
 		if time.Since(start) > timeout {
 			return fmt.Errorf("failed to successfully start up a test network within %v", timeout)
 		}
-		_, err := n.client.ChainID(context.Background())
+		_, err := s.client.ChainID(context.Background())
 		if err != nil {
 			time.Sleep(delay)
 			delay = 2 * delay
@@ -554,7 +562,7 @@ func (n *IntegrationTestNet) start() error {
 
 	// Connect the nodes with each other.
 	for i, enode := range nodeEnodes {
-		if err := n.client.Client().Call(nil, "admin_addPeer", enode); err != nil {
+		if err := s.client.Client().Call(nil, "admin_addPeer", enode); err != nil {
 			return fmt.Errorf("failed to connect to node %d: %v", i, err)
 		}
 	}
@@ -563,93 +571,102 @@ func (n *IntegrationTestNet) start() error {
 }
 
 // Stop shuts the underlying network down.
-func (n *IntegrationTestNet) Stop() {
+func (s *IntegrationTestNet) Stop() {
 
-	if n.client != nil {
-		n.client.Close()
+	if s.client != nil {
+		s.client.Close()
 	}
 
-	if n.nodes[0].done == nil {
+	if s.nodes[0].done == nil {
 		return
 	}
 
 	// send the stop signal to all nodes
-	for i := range n.nodes {
-		close(n.nodes[i].shutdown)
-		n.nodes[i].shutdown = nil
+	for i := range s.nodes {
+		close(s.nodes[i].shutdown)
+		s.nodes[i].shutdown = nil
 	}
 
 	// wait for all nodes to be stopped
-	for i := range n.nodes {
-		<-n.nodes[i].done
-		n.nodes[i].done = nil
+	for i := range s.nodes {
+		<-s.nodes[i].done
+		s.nodes[i].done = nil
 	}
 
 	// release all clients back to the pool
-	for i := range n.nodes {
-		n.nodes[i].clients = nil
+	for i := range s.nodes {
+		s.nodes[i].clients = nil
 	}
 
 }
 
 // Restart stops and restarts the single node on the test network.
-func (n *IntegrationTestNet) Restart() error {
-	n.Stop()
-	return n.start()
+func (s *IntegrationTestNet) Restart() error {
+	s.Stop()
+	return s.start()
 }
 
 // NumNodes returns the number of nodes on the network.
-func (n *IntegrationTestNet) NumNodes() int {
-	return len(n.nodes)
+func (s *IntegrationTestNet) NumNodes() int {
+	return len(s.nodes)
 }
 
 // GetClient provides raw access to a fresh connection to the network.
 // The resulting client must be closed after use.
-func (n *IntegrationTestNet) GetClient() (*SharedClient, error) {
-	newClient := n.nodes[0].clients.Get().(*SharedClient)
+func (s *IntegrationTestNet) GetClient() (*SharedClient, error) {
+	newClient := s.nodes[0].clients.Get().(*SharedClient)
 	if newClient == nil {
-		client, err := ethclient.Dial(fmt.Sprintf("http://localhost:%d", n.nodes[0].httpPort))
-		return &SharedClient{*client, n.nodes[0].clients}, err
+		client, err := ethclient.Dial(fmt.Sprintf("http://localhost:%d", s.nodes[0].httpPort))
+		return &SharedClient{*client, s.nodes[0].clients}, err
 	}
 	return newClient, nil
 }
 
 // GetChainId returns the chain ID of the network.
-func (n *IntegrationTestNet) GetChainId() *big.Int {
+func (s *IntegrationTestNet) GetChainId() *big.Int {
 	return big.NewInt(int64(opera.FakeNetworkID))
 }
 
 // GetClientConnectedToNode provides raw access to a fresh connection to a selected node on
 // the network. The resulting client must be closed after use.
-func (n *IntegrationTestNet) GetClientConnectedToNode(i int) (*ethclient.Client, error) {
-	if i < 0 || i >= len(n.nodes) {
+func (s *IntegrationTestNet) GetClientConnectedToNode(i int) (*SharedClient, error) {
+	if i < 0 || i >= len(s.nodes) {
 		return nil, fmt.Errorf("node index out of bounds: %d", i)
 	}
-	return ethclient.Dial(fmt.Sprintf("http://localhost:%d", n.nodes[i].httpPort))
+	client, err := ethclient.Dial(fmt.Sprintf("http://localhost:%d", s.nodes[i].httpPort))
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to node %d: %w", i, err)
+	}
+	sharedClient := SharedClient{*client, s.nodes[i].clients}
+	return &sharedClient, nil
 }
 
 // GetWebSocketClient provides raw access to a fresh connection to the network
 // using the WebSocket protocol. The resulting client must be closed after use.
-func (n *IntegrationTestNet) GetWebSocketClient() (*ethclient.Client, error) {
-	return ethclient.Dial(fmt.Sprintf("ws://localhost:%d", n.nodes[0].httpPort))
+func (s *IntegrationTestNet) GetWebSocketClient() (*SharedClient, error) {
+	client, err := ethclient.Dial(fmt.Sprintf("ws://localhost:%d", s.nodes[0].httpPort))
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to WebSocket: %w", err)
+	}
+	return &SharedClient{*client, s.nodes[0].clients}, nil
 }
 
-func (n *IntegrationTestNet) GetDirectory() string {
-	return n.nodes[0].directory
+func (s *IntegrationTestNet) GetDirectory() string {
+	return s.nodes[0].directory
 }
 
 // GetJsonRpcPort returns the JSON-RPC port of the first node in the network.
-func (n *IntegrationTestNet) GetJsonRpcPort() int {
-	return n.nodes[0].httpPort
+func (s *IntegrationTestNet) GetJsonRpcPort() int {
+	return s.nodes[0].httpPort
 }
 
 // RestartWithExportImport stops the network, exports the genesis file, cleans the
 // temporary directory, imports the genesis file, and starts the network again.
-func (n *IntegrationTestNet) RestartWithExportImport() error {
-	n.Stop()
+func (s *IntegrationTestNet) RestartWithExportImport() error {
+	s.Stop()
 	fmt.Println("Network stopped. Exporting genesis file...")
 
-	for _, node := range n.nodes {
+	for _, node := range s.nodes {
 		// export
 		genesisFile := filepath.Join(node.directory, "testGenesis.g")
 		err := sonictool.RunWithArgs([]string{
@@ -683,20 +700,20 @@ func (n *IntegrationTestNet) RestartWithExportImport() error {
 	fmt.Println("Genesis file imported. Restarting network...")
 
 	// start network again
-	return n.start()
+	return s.start()
 }
 
 // GetHeaders returns the headers of all blocks on the network from block 0 to the latest block.
-func (n *IntegrationTestNet) GetHeaders() ([]*types.Header, error) {
+func (s *IntegrationTestNet) GetHeaders() ([]*types.Header, error) {
 
-	lastBlock, err := n.client.BlockByNumber(context.Background(), nil)
+	lastBlock, err := s.client.BlockByNumber(context.Background(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get last block: %w", err)
 	}
 
 	headers := []*types.Header{}
 	for i := int64(0); i < int64(lastBlock.NumberU64()); i++ {
-		header, err := n.client.HeaderByNumber(context.Background(), big.NewInt(i))
+		header, err := s.client.HeaderByNumber(context.Background(), big.NewInt(i))
 		if err != nil {
 			return nil, fmt.Errorf("failed to get header: %w", err)
 		}
@@ -720,23 +737,25 @@ func (n *IntegrationTestNet) GetHeaders() ([]*types.Header, error) {
 //				session := net.SpawnSession(t)
 //		        < use session instead of net of the rest of the test >
 //		})
-func (n *IntegrationTestNet) SpawnSession(t *testing.T) IntegrationTestNetSession {
+func (s *IntegrationTestNet) SpawnSession(t *testing.T) IntegrationTestNetSession {
 	t.Helper()
-	n.sessionsMutex.Lock()
-	defer n.sessionsMutex.Unlock()
+	s.sessionsMutex.Lock()
+	defer s.sessionsMutex.Unlock()
 
 	key, _ := geth_crypto.GenerateKey()
 	nextSessionAccount := Account{
 		PrivateKey: key,
 	}
-	receipt, err := n.EndowAccount(nextSessionAccount.Address(), new(big.Int).SetUint64(math.MaxUint64))
+	maxU64 := new(big.Int).SetUint64(math.MaxUint64)
+	manyMaxU64 := new(big.Int).Mul(maxU64, big.NewInt(100))
+	receipt, err := s.EndowAccount(nextSessionAccount.Address(), manyMaxU64)
 	require.NoError(t, err, "Failed to endow account")
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "Failed to endow account")
-	client, err := n.GetClient()
+	client, err := s.GetClient()
 	require.NoError(t, err, "Failed to connect to the Ethereum client")
 
 	return &Session{
-		net:     n,
+		net:     s,
 		account: nextSessionAccount,
 		client:  client,
 	}
@@ -786,6 +805,8 @@ type Session struct {
 	net     *IntegrationTestNet
 	account Account
 	client  *SharedClient
+
+	sessionsMutex sync.Mutex
 }
 
 func (s *Session) GetUpgrades() opera.Upgrades {
@@ -1040,9 +1061,19 @@ func (s *Session) GetClient() (*SharedClient, error) {
 	return s.client, nil
 }
 
+// GetWebSocketClient provides raw access to a fresh connection to the network
+// using the WebSocket protocol. The resulting client must be closed after use.
+func (s *Session) GetWebSocketClient() (*SharedClient, error) {
+	client, err := ethclient.Dial(fmt.Sprintf("ws://localhost:%d", s.net.nodes[0].httpPort))
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to WebSocket: %w", err)
+	}
+	return &SharedClient{*client, s.net.nodes[0].clients}, nil
+}
+
 // GetClientConnectedToNode provides raw access to a fresh connection to a selected node on
 // the network. The resulting client must be closed after use.
-func (s *Session) GetClientConnectedToNode(i int) (*ethclient.Client, error) {
+func (s *Session) GetClientConnectedToNode(i int) (*SharedClient, error) {
 	return s.net.GetClientConnectedToNode(i)
 }
 
@@ -1084,6 +1115,46 @@ func (s *Session) AdvanceEpoch(epochs int) error {
 	}
 
 	return nil
+}
+
+func (s *Session) GetNumNodes() int {
+	return s.net.NumNodes()
+}
+
+// SpawnSession creates a new test session on the network.
+// The session is backed by an account which will be used to sign and pay for
+// transactions. By using this function, multiple test sessions can be run in
+// parallel on the same network, without conflicting nonce issues, since the
+// accounts are isolated.
+//
+// A typical use case would look as follows:
+//
+//	 net := StartIntegrationTestNet(t)
+//		t.Run("test_case",, func(t *testing.T) {
+//				t.Parallel()
+//				session := net.SpawnSession(t)
+//		        < use session instead of net of the rest of the test >
+//		})
+func (s *Session) SpawnSession(t *testing.T) IntegrationTestNetSession {
+	t.Helper()
+	s.sessionsMutex.Lock()
+	defer s.sessionsMutex.Unlock()
+
+	key, _ := geth_crypto.GenerateKey()
+	nextSessionAccount := Account{
+		PrivateKey: key,
+	}
+	receipt, err := s.EndowAccount(nextSessionAccount.Address(), new(big.Int).SetUint64(math.MaxUint64))
+	require.NoError(t, err, "Failed to endow account")
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "Failed to endow account")
+	client, err := s.GetClient()
+	require.NoError(t, err, "Failed to connect to the Ethereum client")
+
+	return &Session{
+		net:     s.net,
+		account: nextSessionAccount,
+		client:  client,
+	}
 }
 
 // validateAndSanitizeOptions ensures that the options are valid and sets the default values.
