@@ -54,6 +54,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	geth_crypto "github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/rpc"
 )
 
 // IntegrationTestNetSession a collection of methods to run tests against the
@@ -100,7 +101,7 @@ type IntegrationTestNetSession interface {
 
 	// GetClient provides raw access to a fresh connection to the network.
 	// The resulting client must be closed after use.
-	GetClient() (*ethclient.Client, error)
+	GetClient() (*SharedClient, error)
 
 	// GetChainId returns the chain ID of the network.
 	GetChainId() *big.Int
@@ -175,6 +176,8 @@ type integrationTestNode struct {
 	httpPort  int
 	shutdown  chan<- struct{}
 	done      <-chan struct{}
+
+	clients *sync.Pool
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -509,12 +512,23 @@ func (n *IntegrationTestNet) start() error {
 		n.nodes[i].httpPort = httpPort
 	}
 
+	n.nodes[0].clients = &sync.Pool{
+		New: func() any {
+			client, err := ethclient.Dial(fmt.Sprintf("http://localhost:%d", n.nodes[0].httpPort))
+			if err != nil {
+				return nil
+			}
+			sharedClient := SharedClient{*client, n.nodes[0].clients}
+			return &sharedClient
+		},
+	}
+
 	// connect to blockchain network
-	client, err := n.GetClient()
+	var err error
+	n.client, err = n.GetClient()
 	if err != nil {
 		return fmt.Errorf("failed to connect to the Ethereum client: %w", err)
 	}
-	defer client.Close()
 
 	const timeout = 300 * time.Second
 	start := time.Now()
@@ -526,7 +540,7 @@ func (n *IntegrationTestNet) start() error {
 		if time.Since(start) > timeout {
 			return fmt.Errorf("failed to successfully start up a test network within %v", timeout)
 		}
-		_, err := client.ChainID(context.Background())
+		_, err := n.client.ChainID(context.Background())
 		if err != nil {
 			time.Sleep(delay)
 			delay = 2 * delay
@@ -540,7 +554,7 @@ func (n *IntegrationTestNet) start() error {
 
 	// Connect the nodes with each other.
 	for i, enode := range nodeEnodes {
-		if err := client.Client().Call(nil, "admin_addPeer", enode); err != nil {
+		if err := n.client.Client().Call(nil, "admin_addPeer", enode); err != nil {
 			return fmt.Errorf("failed to connect to node %d: %v", i, err)
 		}
 	}
@@ -550,6 +564,11 @@ func (n *IntegrationTestNet) start() error {
 
 // Stop shuts the underlying network down.
 func (n *IntegrationTestNet) Stop() {
+
+	if n.client != nil {
+		n.client.Close()
+	}
+
 	if n.nodes[0].done == nil {
 		return
 	}
@@ -565,6 +584,12 @@ func (n *IntegrationTestNet) Stop() {
 		<-n.nodes[i].done
 		n.nodes[i].done = nil
 	}
+
+	// release all clients back to the pool
+	for i := range n.nodes {
+		n.nodes[i].clients = nil
+	}
+
 }
 
 // Restart stops and restarts the single node on the test network.
@@ -580,8 +605,13 @@ func (n *IntegrationTestNet) NumNodes() int {
 
 // GetClient provides raw access to a fresh connection to the network.
 // The resulting client must be closed after use.
-func (n *IntegrationTestNet) GetClient() (*ethclient.Client, error) {
-	return n.GetClientConnectedToNode(0)
+func (n *IntegrationTestNet) GetClient() (*SharedClient, error) {
+	newClient := n.nodes[0].clients.Get().(*SharedClient)
+	if newClient == nil {
+		client, err := ethclient.Dial(fmt.Sprintf("http://localhost:%d", n.nodes[0].httpPort))
+		return &SharedClient{*client, n.nodes[0].clients}, err
+	}
+	return newClient, nil
 }
 
 // GetChainId returns the chain ID of the network.
@@ -658,20 +688,15 @@ func (n *IntegrationTestNet) RestartWithExportImport() error {
 
 // GetHeaders returns the headers of all blocks on the network from block 0 to the latest block.
 func (n *IntegrationTestNet) GetHeaders() ([]*types.Header, error) {
-	client, err := n.GetClient()
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to the Ethereum client: %w", err)
-	}
-	defer client.Close()
 
-	lastBlock, err := client.BlockByNumber(context.Background(), nil)
+	lastBlock, err := n.client.BlockByNumber(context.Background(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get last block: %w", err)
 	}
 
 	headers := []*types.Header{}
 	for i := int64(0); i < int64(lastBlock.NumberU64()); i++ {
-		header, err := client.HeaderByNumber(context.Background(), big.NewInt(i))
+		header, err := n.client.HeaderByNumber(context.Background(), big.NewInt(i))
 		if err != nil {
 			return nil, fmt.Errorf("failed to get header: %w", err)
 		}
@@ -707,10 +732,13 @@ func (n *IntegrationTestNet) SpawnSession(t *testing.T) IntegrationTestNetSessio
 	receipt, err := n.EndowAccount(nextSessionAccount.Address(), new(big.Int).SetUint64(math.MaxUint64))
 	require.NoError(t, err, "Failed to endow account")
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "Failed to endow account")
+	client, err := n.GetClient()
+	require.NoError(t, err, "Failed to connect to the Ethereum client")
 
 	return &Session{
 		net:     n,
 		account: nextSessionAccount,
+		client:  client,
 	}
 }
 
@@ -718,11 +746,8 @@ func (n *IntegrationTestNet) SpawnSession(t *testing.T) IntegrationTestNetSessio
 // The contract is deployed with by the network's validator account. The function returns the
 // deployed contract instance and the transaction receipt.
 func DeployContract[T any](n IntegrationTestNetSession, deploy contractDeployer[T]) (*T, *types.Receipt, error) {
-
-	client, err := n.GetClient()
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to connect to the Ethereum client: %w", err)
-	}
+	// get client cannot return an error
+	client, _ := n.GetClient()
 	defer client.Close()
 
 	transactOptions, err := n.GetTransactOptions(n.GetSessionSponsor())
@@ -760,6 +785,7 @@ type contractDeployer[T any] func(*bind.TransactOpts, bind.ContractBackend) (com
 type Session struct {
 	net     *IntegrationTestNet
 	account Account
+	client  *SharedClient
 }
 
 func (s *Session) GetUpgrades() opera.Upgrades {
@@ -839,7 +865,7 @@ func (s *Session) Run(tx *types.Transaction) (*types.Receipt, error) {
 
 func (s *Session) RunAll(tx []*types.Transaction) ([]*types.Receipt, error) {
 	hashes := make([]common.Hash, len(tx))
-	err := runParallelWithClient(s.net, len(tx), func(client *ethclient.Client, i int) error {
+	err := runParallelWithClient(s.net, len(tx), func(client *SharedClient, i int) error {
 		err := client.SendTransaction(context.Background(), tx[i])
 		if err != nil {
 			return fmt.Errorf("failed to send transaction %d: %w", i, err)
@@ -871,7 +897,7 @@ func (s *Session) GetReceipts(txHash []common.Hash) ([]*types.Receipt, error) {
 	err := runParallelWithClient(
 		s.net,
 		len(txHash),
-		func(client *ethclient.Client, i int) error {
+		func(client *SharedClient, i int) error {
 			hash := txHash[i]
 			// Wait for the response with some exponential backoff.
 			const maxDelay = 100 * time.Millisecond
@@ -907,7 +933,7 @@ func (s *Session) GetReceipts(txHash []common.Hash) ([]*types.Receipt, error) {
 func runParallelWithClient(
 	net IntegrationTestNetSession,
 	numJobs int,
-	job func(*ethclient.Client, int) error,
+	job func(*SharedClient, int) error,
 ) error {
 	numWorkers := max(min(numJobs, 16), 1)
 	var wg sync.WaitGroup
@@ -1010,8 +1036,8 @@ func (s *Session) GetChainId() *big.Int {
 
 // GetClient provides raw access to a fresh connection to the network.
 // The resulting client must be closed after use.
-func (s *Session) GetClient() (*ethclient.Client, error) {
-	return s.GetClientConnectedToNode(0)
+func (s *Session) GetClient() (*SharedClient, error) {
+	return s.client, nil
 }
 
 // GetClientConnectedToNode provides raw access to a fresh connection to a selected node on
@@ -1023,18 +1049,13 @@ func (s *Session) GetClientConnectedToNode(i int) (*ethclient.Client, error) {
 // AdvanceEpoch trigger the sealing of an epoch and the epoch number to progress by the given number.
 // The function blocks until the final epoch has been reached.
 func (s *Session) AdvanceEpoch(epochs int) error {
-	client, err := s.GetClient()
-	if err != nil {
-		return fmt.Errorf("failed to connect to the client: %w", err)
-	}
-	defer client.Close()
 
 	var currentEpoch hexutil.Uint64
-	if err := client.Client().Call(&currentEpoch, "eth_currentEpoch"); err != nil {
+	if err := s.client.Client().Call(&currentEpoch, "eth_currentEpoch"); err != nil {
 		return fmt.Errorf("failed to get current epoch: %w", err)
 	}
 
-	contract, err := driverauth100.NewContract(driverauth.ContractAddress, client)
+	contract, err := driverauth100.NewContract(driverauth.ContractAddress, s.client)
 	if err != nil {
 		return fmt.Errorf("failed to create contract: %w", err)
 	}
@@ -1053,7 +1074,7 @@ func (s *Session) AdvanceEpoch(epochs int) error {
 	// wait until the epoch is advanced
 	for {
 		var newEpoch hexutil.Uint64
-		if err := client.Client().Call(&newEpoch, "eth_currentEpoch"); err != nil {
+		if err := s.client.Client().Call(&newEpoch, "eth_currentEpoch"); err != nil {
 			return fmt.Errorf("failed to get current epoch: %w", err)
 		}
 
@@ -1086,4 +1107,22 @@ func validateAndSanitizeOptions(options ...IntegrationTestNetOptions) (Integrati
 	}
 
 	return options[0], nil
+}
+
+type ethClient = ethclient.Client
+
+type SharedClient struct {
+	ethClient
+	pool *sync.Pool
+}
+
+func (s *SharedClient) Close() {
+	if s.pool == nil {
+		return
+	}
+	s.pool.Put(s)
+}
+
+func (s *SharedClient) Client() *rpc.Client {
+	return s.ethClient.Client()
 }

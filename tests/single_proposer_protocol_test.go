@@ -25,7 +25,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/require"
 )
@@ -247,7 +246,7 @@ func testSingleProposerProtocol_CanBeEnabledAndDisabled(
 // getUsedEventVersion retrieves the current event version used by the network.
 func getUsedEventVersion(
 	t *testing.T,
-	client *ethclient.Client,
+	client *SharedClient,
 ) int {
 	t.Helper()
 	require := require.New(t)

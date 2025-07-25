@@ -66,12 +66,17 @@ func TestMain(m *testing.M) {
 //
 // This function uses a global state that is cleaned up after the execution of
 // the tests in `tests` package.
-func getIntegrationTestNetSession(t *testing.T, upgrades opera.Upgrades) IntegrationTestNetSession {
+func getIntegrationTestNetSession(t *testing.T, upgrades opera.Upgrades, numNodes int) IntegrationTestNetSession {
+	if numNodes <= 0 {
+		numNodes = 1
+	}
+
 	if activeTestNetInstances == nil {
 		activeTestNetInstances = make(map[common.Hash]*IntegrationTestNet)
 	}
 
-	net, ok := activeTestNetInstances[hashUpgrades(upgrades)]
+	configHash := hashUpgrades(upgrades, numNodes)
+	net, ok := activeTestNetInstances[configHash]
 	if ok {
 		return net.SpawnSession(t)
 	}
@@ -82,16 +87,19 @@ func getIntegrationTestNetSession(t *testing.T, upgrades opera.Upgrades) Integra
 		// will be stopped after all tests in the package have finished.
 		SkipCleanUp: true,
 	})
-	activeTestNetInstances[hashUpgrades(upgrades)] = myNet
+	activeTestNetInstances[configHash] = myNet
 	return myNet.SpawnSession(t)
 }
 
-func hashUpgrades(upgrades opera.Upgrades) common.Hash {
+func hashUpgrades(upgrades opera.Upgrades, numNodes int) common.Hash {
 	hash := sha256.New()
 
 	// in the unlikely case of an error it is safe to ignore it since the
 	// test would fail anyway
 	jsonData, _ := json.Marshal(upgrades)
+	jsonNodes, _ := json.Marshal(numNodes)
+	// concatenate the json data and the number of nodes
+	jsonData = append(jsonData, jsonNodes...)
 	// random write does not return error
 	_, _ = hash.Write(jsonData)
 	return common.BytesToHash(hash.Sum(nil))
