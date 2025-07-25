@@ -56,6 +56,8 @@ func makeTestCases(t *testing.T, session IntegrationTestNetSession) map[string]t
 		return dataContract.SendData(opts, make([]byte, 40_000))
 	})
 	smallCallData := getCallData(t, session, func(opts *bind.TransactOpts) (*types.Transaction, error) {
+		// although the contract function receives no parameters, call data will still
+		// contain the function selector and the empty data, so it will not be empty.
 		return dataContract.SendData(opts, nil)
 	})
 
@@ -148,7 +150,7 @@ func doTestEstimate(
 		t.Run(name, func(t *testing.T) {
 
 			tmpTx := types.NewTx(txData)
-			// first compute intrinsic gas, if intrinsic gas fails the estimate
+			// first compute intrinsic gas: if intrinsic gas fails, estimate
 			// will fail too
 			intrinsicGas, err := core.IntrinsicGas(
 				tmpTx.Data(),
