@@ -97,9 +97,9 @@ func TestLargeTransactions_CanHandleLargeTransactions(t *testing.T) {
 
 func TestLargeTransactions_LargeTransactionLoadTest(t *testing.T) {
 
-	if isRaceTest() {
+	if isDataRaceDetectionEnabled() {
 		t.Skip(`Due to the concurrency requirements of this test, 
-		it becomes unstable when running with the race condition detector.`)
+		it becomes unstable when running with enabled data race detection.`)
 	}
 
 	hardForks := map[string]opera.Upgrades{
