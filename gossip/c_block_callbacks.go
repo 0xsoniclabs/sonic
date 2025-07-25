@@ -237,6 +237,10 @@ func consensusCallbackBeginBlockFn(
 							maxBlockGas,
 						)
 					}
+					// Notice that empty blocks follow non-SingleBlockFormation
+					// rules, regarding block times and randao values. This
+					// facilitates the utilization of the same mechanisms to
+					// process or skip empty blocks.
 				} else {
 					// Collect transactions from events and schedule them.
 					unorderedTxs := make(types.Transactions, 0, len(blockEvents)*10)
