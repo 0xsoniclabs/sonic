@@ -21,7 +21,6 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
 	"github.com/0xsoniclabs/sonic/tests/contracts/data_reader"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -37,28 +36,44 @@ func TestEstimateGas(t *testing.T) {
 	t.Run("Sonic", func(t *testing.T) {
 		session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 		t.Parallel()
-		doTestEstimate(t, session, makeTestCases(t, session))
+
+		dataContract, receipt, err := DeployContract(session, data_reader.DeployDataReader)
+		require.NoError(t, err, "failed to deploy contract; %v", err)
+		require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
+		dataContractAddress := receipt.ContractAddress
+
+		doTestEstimate(t, session, makeTestCases(t, session, dataContract, dataContractAddress))
 	})
 	t.Run("Allegro", func(t *testing.T) {
 		session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 		t.Parallel()
-		doTestEstimate(t, session, makeAllegroCases(t, session))
+
+		dataContract, receipt, err := DeployContract(session, data_reader.DeployDataReader)
+		require.NoError(t, err, "failed to deploy contract; %v", err)
+		require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
+		dataContractAddress := receipt.ContractAddress
+
+		doTestEstimate(t, session, makeAllegroCases(t, session, dataContract, dataContractAddress))
 	})
 }
 
-func makeTestCases(t *testing.T, session IntegrationTestNetSession) map[string]types.TxData {
+func makeTestCases(
+	t *testing.T,
+	session IntegrationTestNetSession,
+	contract *data_reader.DataReader,
+	contractAddress common.Address,
+) map[string]types.TxData {
 
-	dataContract, receipt, err := DeployContract(session, data_reader.DeployDataReader)
-	require.NoError(t, err, "failed to deploy contract; %v", err)
-	require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
-	dataContractAddress := receipt.ContractAddress
-	largeCallData := getCallData(t, session, func(opts *bind.TransactOpts) (*types.Transaction, error) {
-		return dataContract.SendData(opts, make([]byte, 40_000))
+	largeCallDataZeros := getCallData(t, session, func(opts *bind.TransactOpts) (*types.Transaction, error) {
+		return contract.SendData(opts, make([]byte, 40_000))
+	})
+	largeCallDataOnes := getCallData(t, session, func(opts *bind.TransactOpts) (*types.Transaction, error) {
+		return contract.SendData(opts, []byte{0xFF, 40_000: 0xFF})
 	})
 	smallCallData := getCallData(t, session, func(opts *bind.TransactOpts) (*types.Transaction, error) {
 		// although the contract function receives no parameters, call data will still
 		// contain the function selector and the empty data, so it will not be empty.
-		return dataContract.SendData(opts, nil)
+		return contract.SendData(opts, nil)
 	})
 
 	return map[string]types.TxData{
@@ -88,47 +103,52 @@ func makeTestCases(t *testing.T, session IntegrationTestNetSession) map[string]t
 			},
 		},
 		"call contract with small data": &types.LegacyTx{
-			To:   &dataContractAddress,
+			To:   &contractAddress,
 			Data: smallCallData,
 		},
-		"call contract with large data": &types.LegacyTx{
-			To:   &dataContractAddress,
-			Data: largeCallData,
+		"call with large data with zeros": &types.LegacyTx{
+			To:   &contractAddress,
+			Data: largeCallDataZeros,
+		},
+		"call with large data with ones": &types.LegacyTx{
+			To:   &contractAddress,
+			Data: largeCallDataOnes,
 		},
 	}
 }
 
-func makeAllegroCases(t *testing.T, session IntegrationTestNetSession) map[string]types.TxData {
+func makeAllegroCases(
+	t *testing.T,
+	session IntegrationTestNetSession,
+	contract *data_reader.DataReader,
+	contractAddress common.Address,
+) map[string]types.TxData {
+
 	// Allegro executes all test cases for Sonic as well.
-	cases := makeTestCases(t, session)
+	cases := makeTestCases(t, session, contract, contractAddress)
 
+	// create authorization, use new account to avoid altering session sponsor state
 	account := makeAccountWithBalance(t, session, big.NewInt(1e18))
-
-	counter, receipt, err := DeployContract(session, counter.DeployCounter)
-	require.NoError(t, err, "failed to deploy contract; %v", err)
-	require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
-	counterAddress := receipt.ContractAddress
-	counterCallData := getCallData(t, session, func(opts *bind.TransactOpts) (*types.Transaction, error) {
-		return counter.IncrementCounter(opts)
-	})
-
-	// create authorization from account to counter contract
 	auth, err := types.SignSetCode(account.PrivateKey,
 		types.SetCodeAuthorization{
 			ChainID: *uint256.MustFromBig(session.GetChainId()),
-			Address: counterAddress,
+			Address: contractAddress,
 			Nonce:   1,
 		})
 	require.NoError(t, err, "failed to create authorization; %v", err)
 
+	callData := getCallData(t, session, func(opts *bind.TransactOpts) (*types.Transaction, error) {
+		return contract.SendData(opts, make([]byte, 128))
+	})
+
 	cases["authorizations"] = &types.SetCodeTx{
 		To:       account.Address(),
-		Data:     counterCallData,
+		Data:     callData,
 		AuthList: []types.SetCodeAuthorization{auth},
 	}
 	cases["multiple authorizations"] = &types.SetCodeTx{
 		To:       account.Address(),
-		Data:     counterCallData,
+		Data:     callData,
 		AuthList: []types.SetCodeAuthorization{auth, auth},
 	}
 	return cases
