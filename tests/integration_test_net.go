@@ -28,6 +28,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"runtime/debug"
 	"runtime/pprof"
 	"strconv"
 	"strings"
@@ -1086,4 +1087,17 @@ func validateAndSanitizeOptions(options ...IntegrationTestNetOptions) (Integrati
 	}
 
 	return options[0], nil
+}
+
+func isRaceTest() bool {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return false
+	}
+	for _, setting := range info.Settings {
+		if setting.Key == "-race" && setting.Value == "true" {
+			return true
+		}
+	}
+	return false
 }

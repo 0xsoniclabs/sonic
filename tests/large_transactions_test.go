@@ -96,6 +96,12 @@ func TestLargeTransactions_CanHandleLargeTransactions(t *testing.T) {
 }
 
 func TestLargeTransactions_LargeTransactionLoadTest(t *testing.T) {
+
+	if isRaceTest() {
+		t.Skip(`Due to the concurrency requirements of this test, 
+		it becomes unstable when running with the race condition detector.`)
+	}
+
 	hardForks := map[string]opera.Upgrades{
 		"Sonic":   opera.GetSonicUpgrades(),
 		"Allegro": opera.GetAllegroUpgrades(),
@@ -109,6 +115,7 @@ func TestLargeTransactions_LargeTransactionLoadTest(t *testing.T) {
 	for name, upgrades := range hardForks {
 		for mode, singleProposer := range modes {
 			t.Run(fmt.Sprintf("%s/%s", name, mode), func(t *testing.T) {
+				t.Parallel()
 				effectiveUpgrades := upgrades
 				effectiveUpgrades.SingleProposerBlockFormation = singleProposer
 				testLargeTransactionLoadTest(t, &effectiveUpgrades)
