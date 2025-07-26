@@ -1,7 +1,7 @@
 {
   "_": "This is a sample JSON genesis file. Use 'sonictool genesis json example-genesis.json' to generate a database from it.",
   "rules": {
-    "Name": "sample-demonet",
+    "Name": "sample-sonic-network",
     "NetworkID": 4003,
     "Dag": {
       "MaxParents": 10,
@@ -10,7 +10,7 @@
     },
     "Epochs": {
       "MaxEpochGas": 1875000000,
-      "MaxEpochDuration": 14400000000000
+      "MaxEpochDuration": 3600000000000
     },
     "Blocks": {
       "MaxBlockGas": 1000000000,
@@ -19,7 +19,7 @@
     "Economy": {
       "BlockMissedSlack": 50,
       "Gas": {
-        "MaxEventGas": 12528000,
+        "MaxEventGas": 30030000,
         "EventGas": 25000,
         "ParentGas": 1000,
         "ExtraDataGas": 25,
@@ -31,15 +31,15 @@
       "MinGasPrice": 1000000000,
       "MinBaseFee": 1000,
       "ShortGasPower": {
-        "AllocPerSec": 11250000,
-        "MaxAllocPeriod": 300000000000,
+        "AllocPerSec": 25250000,
+        "MaxAllocPeriod": 5000000000,
         "StartupAllocPeriod": 2500000000,
         "MinStartupGas": 560000
       },
       "LongGasPower": {
-        "AllocPerSec": 5625000,
-        "MaxAllocPeriod": 3600000000000,
-        "StartupAllocPeriod": 5000000000,
+        "AllocPerSec": 25250000,
+        "MaxAllocPeriod": 5000000000,
+        "StartupAllocPeriod": 2500000000,
         "MinStartupGas": 560000
       }
     },
@@ -47,10 +47,13 @@
       "Berlin": true,
       "London": true,
       "Llr": false,
-      "Sonic": true
+      "Sonic": true,
+      "Allegro": true,
+      "Brio": false,
+      "SingleProposerBlockFormation": false
     }
   },
-  "blockZeroTime": "2024-11-01T00:00:00+01:00",
+  "blockZeroTime": "2025-07-01T00:00:00+01:00",
   "accounts": [
     {
       "name": "Network initializer",
