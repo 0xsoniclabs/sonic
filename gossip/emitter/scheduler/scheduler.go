@@ -18,6 +18,7 @@ package scheduler
 
 import (
 	"context"
+	"fmt"
 	"math/big"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
@@ -75,8 +76,11 @@ func (s *Scheduler) Schedule(
 	candidates PrioritizedTransactions,
 	limits Limits,
 ) []*types.Transaction {
+	debug := false
 	processor := s.factory.beginBlock(blockInfo.toEvmBlock())
 	defer processor.release()
+
+	signer := types.LatestSignerForChainID(big.NewInt(4003))
 
 	remainingGas := limits.Gas
 	remainingSize := limits.Size
@@ -84,22 +88,40 @@ func (s *Scheduler) Schedule(
 	for context.Err() == nil {
 		candidate := candidates.Current()
 		if candidate == nil {
+			if debug {
+				fmt.Printf("\tno more candidates to schedule\n")
+			}
 			break
+		}
+		if debug {
+			sender, _ := signer.Sender(candidate) // Ensure the candidate is valid
+			fmt.Printf("\tconsidering candidate from %v with nonce %d ..\n",
+				sender, candidate.Nonce(),
+			)
 		}
 
 		if candidate.Gas() > remainingGas {
 			candidates.Skip()
+			if debug {
+				fmt.Printf("\t\tskipped candidate due to gas limit\n")
+			}
 			continue
 		}
 
 		size := candidate.Size()
 		if size > remainingSize {
+			if debug {
+				fmt.Printf("\t\tskipped candidate due to size limit\n")
+			}
 			candidates.Skip()
 			continue
 		}
 
 		success, gasUsed := processor.run(candidate)
 		if !success || gasUsed > remainingGas {
+			if debug {
+				fmt.Printf("\t\tskipped candidate due to failed execution\n")
+			}
 			candidates.Skip()
 			continue
 		}
@@ -111,6 +133,16 @@ func (s *Scheduler) Schedule(
 			break
 		}
 	}
+
+	/*
+		fmt.Printf("\nScheduler used %d/%d gas (%.2f%%) and %d/%d bytes (%.2f%%) for %d transactions\n",
+			limits.Gas-remainingGas, limits.Gas,
+			float64(limits.Gas-remainingGas)/float64(limits.Gas)*100,
+			limits.Size-remainingSize, limits.Size,
+			float64(limits.Size-remainingSize)/float64(limits.Size)*100,
+			len(res),
+		)
+	*/
 
 	return res
 }

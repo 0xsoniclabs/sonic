@@ -445,9 +445,11 @@ func (n *IntegrationTestNet) start() error {
 				"--nodiscover",
 
 				// database memory usage options
-				"--statedb.livecache", "1",
-				"--statedb.archivecache", "1",
-				"--statedb.cache", "1024",
+				/*
+					"--statedb.livecache", "1",
+					"--statedb.archivecache", "1",
+					"--statedb.cache", "1024",
+				*/
 
 				"--ipcpath", fmt.Sprintf("%s/sonic.ipc", tmp),
 			},
@@ -810,13 +812,14 @@ func (s *Session) EndowAccounts(
 
 	transactions := make([]*types.Transaction, len(addresses))
 	for i, address := range addresses {
-		transaction, err := types.SignTx(types.NewTx(&types.AccessListTx{
-			ChainID:  chainId,
-			Gas:      21000,
-			GasPrice: price,
-			To:       &address,
-			Value:    value,
-			Nonce:    nonce,
+		transaction, err := types.SignTx(types.NewTx(&types.DynamicFeeTx{
+			ChainID:   chainId,
+			Gas:       21000,
+			GasFeeCap: new(big.Int).Mul(price, big.NewInt(10)),
+			GasTipCap: big.NewInt(1),
+			To:        &address,
+			Value:     value,
+			Nonce:     nonce,
 		}), types.NewLondonSigner(chainId), s.account.PrivateKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to sign transaction: %w", err)

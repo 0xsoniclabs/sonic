@@ -264,7 +264,8 @@ func makeProposal(
 	start := time.Now()
 	ctx, cancel := context.WithDeadline(
 		context.Background(),
-		start.Add(100*time.Millisecond),
+		//start.Add(100*time.Millisecond),
+		start.Add(100*time.Second),
 	)
 	defer cancel()
 	proposal.Transactions = transactionScheduler.Schedule(
@@ -286,9 +287,13 @@ func makeProposal(
 	)
 
 	// Track scheduling time in monitoring metrics.
-	durationMetric.Update(time.Since(start))
+	duration := time.Since(start)
+	durationMetric.Update(duration)
 	if ctx.Err() != nil {
+		fmt.Printf("Scheduling of %d transactions timed out after %v\n", len(proposal.Transactions), duration)
 		timeoutMetric.Inc(1)
+	} else {
+		fmt.Printf("Scheduling of %d transactions completed in %v\n", len(proposal.Transactions), duration)
 	}
 
 	return proposal, nil

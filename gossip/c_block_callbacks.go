@@ -540,6 +540,14 @@ func consensusCallbackBeginBlockFn(
 						"t", utils.PrettyDuration(now.Sub(start)),
 						"epoch", evmBlock.Epoch,
 					)
+					/*
+						fmt.Printf("New block %d with %d txs, gas used %d, took %s\n",
+							blockCtx.Idx,
+							len(evmBlock.Transactions),
+							evmBlock.GasUsed,
+							utils.PrettyDuration(now.Sub(start)),
+						)
+					*/
 					blockAgeGauge.Update(int64(blockAge.Nanoseconds()))
 
 					processedTxsMeter.Mark(int64(len(evmBlock.Transactions)))

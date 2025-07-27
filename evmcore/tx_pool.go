@@ -198,10 +198,10 @@ var DefaultTxPoolConfig = TxPoolConfig{
 	MinimumTip: 1,
 	PriceBump:  10,
 
-	AccountSlots: 16,
+	AccountSlots: 1 << 16,
 	GlobalSlots:  1024 + 256, // urgent + floating queue capacity with 4:1 ratio
-	AccountQueue: 32,
-	GlobalQueue:  256,
+	AccountQueue: 1 << 16,
+	GlobalQueue:  1 << 16,
 
 	Lifetime: 3 * time.Hour,
 }
@@ -896,7 +896,7 @@ func (pool *TxPool) journalTx(from common.Address, tx *types.Transaction) {
 		return
 	}
 	if err := pool.journal.insert(tx); err != nil {
-		log.Warn("Failed to journal local transaction", "err", err)
+		//log.Warn("Failed to journal local transaction", "err", err)
 	}
 }
 
