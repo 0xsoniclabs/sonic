@@ -21,6 +21,7 @@ import (
 	"math/rand/v2"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter_event_emitter"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -34,7 +35,8 @@ func TestTransactionOrder(t *testing.T) {
 		numBlocks   = uint64(3)
 		numTxs      = numAccounts * numPerAcc
 	)
-	net := StartIntegrationTestNet(t)
+	net := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	t.Parallel()
 
 	contract, _, err := DeployContract(net, counter_event_emitter.DeployCounterEventEmitter)
 	require.NoError(t, err)

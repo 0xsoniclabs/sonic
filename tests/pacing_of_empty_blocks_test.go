@@ -43,7 +43,6 @@ func TestPacingOfEmptyBlocks(t *testing.T) {
 				upgrades := upgrades
 				upgrades.SingleProposerBlockFormation = singleProposer
 				t.Run(mode, func(t *testing.T) {
-					t.Parallel()
 					testPacingOfEmptyBlocks(t, upgrades)
 				})
 			}
@@ -56,9 +55,8 @@ func testPacingOfEmptyBlocks(
 	upgrades opera.Upgrades,
 ) {
 	require := require.New(t)
-	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
-		Upgrades: &upgrades,
-	})
+	net := getIntegrationTestNetSession(t, upgrades)
+	t.Parallel()
 
 	maxEmptyInterval := 4 * time.Second
 

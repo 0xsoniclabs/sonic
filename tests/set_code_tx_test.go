@@ -50,17 +50,16 @@ import (
 // and do not implement ERC-20 as described in the EIP use case examples.
 func TestSetCodeTransaction(t *testing.T) {
 
-	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
-		Upgrades: AsPointer(opera.GetAllegroUpgrades()),
-	})
+	net := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	t.Parallel()
 
 	t.Run("Operation", func(t *testing.T) {
 		t.Parallel()
 		// operation tests check basic operation of the SetCode transaction
 
 		t.Run("Delegate can be set and unset", func(t *testing.T) {
-			t.Parallel()
 			session := net.SpawnSession(t)
+			t.Parallel()
 			testDelegateCanBeSetAndUnset(t, session)
 		})
 
@@ -70,38 +69,38 @@ func TestSetCodeTransaction(t *testing.T) {
 		})
 
 		t.Run("Authorizations are executed in order", func(t *testing.T) {
-			t.Parallel()
 			session := net.SpawnSession(t)
+			t.Parallel()
 			testAuthorizationsAreExecutedInOrder(t, session)
 		})
 
 		t.Run("Multiple accounts can submit authorizations", func(t *testing.T) {
-			t.Parallel()
 			session := net.SpawnSession(t)
+			t.Parallel()
 			testMultipleAccountsCanSubmitAuthorizations(t, session)
 		})
 
 		t.Run("Authorization succeeds with failing tx", func(t *testing.T) {
-			t.Parallel()
 			session := net.SpawnSession(t)
+			t.Parallel()
 			testAuthorizationSucceedsWithFailingTx(t, session)
 		})
 
 		t.Run("Authorization can be issued from a non existing account", func(t *testing.T) {
-			t.Parallel()
 			session := net.SpawnSession(t)
+			t.Parallel()
 			testAuthorizationFromNonExistingAccount(t, session)
 		})
 
 		t.Run("Delegations cannot be transitive", func(t *testing.T) {
-			t.Parallel()
 			session := net.SpawnSession(t)
+			t.Parallel()
 			testNoDelegateToDelegated(t, session)
 		})
 
 		t.Run("Delegations can trigger chains of calls", func(t *testing.T) {
-			t.Parallel()
 			session := net.SpawnSession(t)
+			t.Parallel()
 			testChainOfCalls(t, session)
 		})
 
@@ -112,20 +111,20 @@ func TestSetCodeTransaction(t *testing.T) {
 		// UseCase tests check the use cases described in the EIP-7702 specification
 
 		t.Run("Transaction Sponsoring", func(t *testing.T) {
-			t.Parallel()
 			session := net.SpawnSession(t)
+			t.Parallel()
 			testSponsoring(t, session)
 		})
 
 		t.Run("Transaction Batching", func(t *testing.T) {
-			t.Parallel()
 			session := net.SpawnSession(t)
+			t.Parallel()
 			testBatching(t, session)
 		})
 
 		t.Run("Privilege Deescalation", func(t *testing.T) {
-			t.Parallel()
 			session := net.SpawnSession(t)
+			t.Parallel()
 			testPrivilegeDeescalation(t, session)
 		})
 	})
@@ -395,7 +394,7 @@ func testDelegateCanBeSetAndUnset(t *testing.T, session IntegrationTestNetSessio
 
 // testInvalidAuthorizationsAreIgnored checks that invalid authorizations are ignored
 // whilst the transaction is still executed.
-func testInvalidAuthorizationsAreIgnored(t *testing.T, net *IntegrationTestNet) {
+func testInvalidAuthorizationsAreIgnored(t *testing.T, net IntegrationTestNetSession) {
 
 	client, err := net.GetClient()
 	require.NoError(t, err)

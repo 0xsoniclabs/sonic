@@ -19,6 +19,7 @@ package tests
 import (
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/invalidstart"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
@@ -30,7 +31,8 @@ func TestInvalidStart_IdentifiesInvalidStartContract(t *testing.T) {
 	invalidCode := []byte{0x60, 0xef, 0x60, 0x00, 0x53, 0x60, 0x01, 0x60, 0x00, 0xf3}
 	validCode := []byte{0x60, 0xfe, 0x60, 0x00, 0x53, 0x60, 0x01, 0x60, 0x00, 0xf3}
 
-	net := StartIntegrationTestNet(t)
+	net := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	t.Parallel()
 
 	// Deploy the invalid start contract.
 	contract, _, err := DeployContract(net, invalidstart.DeployInvalidstart)
@@ -75,7 +77,7 @@ func TestInvalidStart_IdentifiesInvalidStartContract(t *testing.T) {
 	require.Equal(types.ReceiptStatusSuccessful, receipt.Status, "failed on transfer to empty receiver with valid code")
 }
 
-func getTransactionWithCodeAndNoReceiver(t testing.TB, code []byte, net *IntegrationTestNet) (*types.Transaction, error) {
+func getTransactionWithCodeAndNoReceiver(t testing.TB, code []byte, net IntegrationTestNetSession) (*types.Transaction, error) {
 	// these values are needed for the transaction but are irrelevant for the test
 	t.Helper()
 	require := require.New(t)

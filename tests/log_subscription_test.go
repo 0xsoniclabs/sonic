@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter_event_emitter"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -29,7 +30,8 @@ import (
 func TestLogSubscription_CanGetCallBacksForLogEvents(t *testing.T) {
 	const NumEvents = 3
 	require := require.New(t)
-	net := StartIntegrationTestNet(t)
+	net := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	t.Parallel()
 
 	contract, _, err := DeployContract(net, counter_event_emitter.DeployCounterEventEmitter)
 	require.NoError(err)

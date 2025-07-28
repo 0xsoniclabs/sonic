@@ -21,6 +21,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/selfdestruct"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -30,7 +31,8 @@ import (
 
 func TestSelfDestruct(t *testing.T) {
 
-	net := StartIntegrationTestNet(t)
+	net := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	t.Parallel()
 
 	t.Run("constructor", func(t *testing.T) {
 		t.Parallel()
@@ -43,7 +45,7 @@ func TestSelfDestruct(t *testing.T) {
 	})
 }
 
-func testSelfDestruct_Constructor(t *testing.T, net *IntegrationTestNet) {
+func testSelfDestruct_Constructor(t *testing.T, net IntegrationTestNetSession) {
 	contractInitialBalance := int64(1234)
 
 	tests := map[string]struct {
@@ -201,7 +203,7 @@ func testSelfDestruct_Constructor(t *testing.T, net *IntegrationTestNet) {
 	}
 }
 
-func testSelfDestruct_NestedCall(t *testing.T, net *IntegrationTestNet) {
+func testSelfDestruct_NestedCall(t *testing.T, net IntegrationTestNetSession) {
 	contractInitialBalance := int64(1234)
 
 	tests := map[string]struct {

@@ -23,6 +23,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
 	"github.com/0xsoniclabs/tosca/go/tosca/vm"
 	"github.com/ethereum/go-ethereum/common"
@@ -62,9 +63,10 @@ func TestIntegrationTestNet_CanStartMultipleConsecutiveInstances(t *testing.T) {
 }
 
 func TestIntegrationTestNet_Can(t *testing.T) {
-	net := StartIntegrationTestNet(t)
+	net := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	t.Parallel()
 	// by default, the integration test network starts with a single node
-	require.Equal(t, 1, net.NumNodes())
+	require.Equal(t, 1, net.GetNumNodes())
 
 	t.Run("EndowAccountsWithTokens", func(t *testing.T) {
 		session := net.SpawnSession(t)
@@ -102,7 +104,7 @@ func TestIntegrationTestNet_Can(t *testing.T) {
 
 }
 
-func testIntegrationTestNet_CanFetchInformationFromTheNetwork(t *testing.T, net *IntegrationTestNet) {
+func testIntegrationTestNet_CanFetchInformationFromTheNetwork(t *testing.T, net IntegrationTestNetSession) {
 	client, err := net.GetClient()
 	require.NoError(t, err, "Failed to connect to the integration test network")
 	defer client.Close()
@@ -173,7 +175,7 @@ func testIntegrationTestNet_CanSpawnParallelSessions(t *testing.T, session Integ
 	}
 }
 
-func testIntegrationTestNet_AdvanceEpoch(t *testing.T, net *IntegrationTestNet) {
+func testIntegrationTestNet_AdvanceEpoch(t *testing.T, net IntegrationTestNetSession) {
 	client, err := net.GetClient()
 	require.NoError(t, err)
 	defer client.Close()

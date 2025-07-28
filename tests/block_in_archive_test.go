@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/transientstorage"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -33,8 +34,8 @@ import (
 func TestBlockInArchive(t *testing.T) {
 
 	require := require.New(t)
-	net := StartIntegrationTestNetWithJsonGenesis(t)
-	defer net.Stop()
+	net := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	t.Parallel()
 
 	client, err := net.GetWebSocketClient()
 	require.NoError(err, "failed to get client ", err)
@@ -56,7 +57,8 @@ func TestBlockInArchive(t *testing.T) {
 
 				// Check if block is in archive
 				var res interface{}
-				err := rpcClient.Call(&res, "eth_getBalance", net.account.Address().String(), hexutil.EncodeUint64(blockHeader.Number.Uint64()))
+				err := rpcClient.Call(&res, "eth_getBalance", net.GetSessionSponsor().Address().String(),
+					hexutil.EncodeUint64(blockHeader.Number.Uint64()))
 				require.NoError(err, "failed to call eth_getBalance %v", err)
 
 				// Check that the block number is in order
