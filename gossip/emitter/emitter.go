@@ -273,16 +273,19 @@ func (em *Emitter) getSortedTxs(baseFee *big.Int) *transactionsByPriceAndNonce {
 	}
 	// Build the cache
 	pendingTxs, err := em.world.TxPool.Pending(true)
-	globalLoggingMutex.Lock()
-	fmt.Printf("Creator %d - Number of senders in pending transactions: %d\n", em.config.Validator.ID, len(pendingTxs))
 	numTxs := 0
-	for from, txs := range pendingTxs {
-		if len(txs) > 1 {
-			fmt.Printf("\tSender %s has %d transactions\n", from, len(txs))
-		}
+	for _, txs := range pendingTxs {
 		numTxs += len(txs)
 	}
-	fmt.Printf("\tTotal number of pending transactions: %d\n", numTxs)
+	globalLoggingMutex.Lock()
+	fmt.Printf("Creator %d - %d pending transactions of %d senders\n", em.config.Validator.ID, numTxs, len(pendingTxs))
+	if len(pendingTxs) > 1 && numTxs != len(pendingTxs) {
+		for from, txs := range pendingTxs {
+			if len(txs) > 1 {
+				fmt.Printf("\tSender %s has %d transactions\n", from, len(txs))
+			}
+		}
+	}
 	globalLoggingMutex.Unlock()
 	if err != nil {
 		em.Log.Error("Tx pool transactions fetching error", "err", err)

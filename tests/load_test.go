@@ -29,7 +29,7 @@ func TestLoadStressTest(t *testing.T) {
 func testLoadStressTest(t *testing.T, singleProposer bool) {
 	require := require.New(t)
 	const (
-		NumNodes               = 1
+		NumNodes               = 2
 		NumAccounts            = 50_000
 		TransactionsPerAccount = 1
 		Rate                   = 500 // transactions per second
