@@ -2,7 +2,6 @@ package tests
 
 import (
 	"encoding/json"
-	"errors"
 	"math/big"
 	"slices"
 	"sync"
@@ -13,7 +12,6 @@ import (
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
@@ -112,14 +110,38 @@ func testLoadStressTest(t *testing.T, singleProposer bool) {
 
 	start := time.Now()
 
-	var samples []time.Duration
-	var mutex sync.Mutex
+	allDone := make(chan struct{})
+	endTimes := map[common.Hash]time.Time{}
+	go func() {
+		defer close(allDone)
+		client, err := net.GetClient()
+		require.NoError(err)
+		defer client.Close()
+
+		last, err := client.BlockNumber(t.Context())
+		require.NoError(err)
+		for len(endTimes) < len(transactions) {
+			number, err := client.BlockNumber(t.Context())
+			require.NoError(err)
+			if number > last {
+				now := time.Now()
+				block, err := client.BlockByNumber(t.Context(), big.NewInt(int64(number)))
+				require.NoError(err)
+				for _, tx := range block.Transactions() {
+					endTimes[tx.Hash()] = now
+				}
+			} else {
+				time.Sleep(time.Millisecond)
+			}
+		}
+	}()
 
 	pacer := &pacer{rate: Rate}
 	pacer.Start()
 	defer pacer.Stop()
 
 	t.Logf("Starting load generators ...")
+	startTimes := make([]time.Time, len(transactions))
 	var wg2 sync.WaitGroup
 	workers := 2 * Rate
 	wg2.Add(workers)
@@ -136,33 +158,34 @@ func testLoadStressTest(t *testing.T, singleProposer bool) {
 					break // all transactions have been sent
 				}
 				tx := transactions[next]
-				hash := tx.Hash()
 
 				pacer.Wait()
-				start := time.Now()
+				startTimes[next] = time.Now()
 				require.NoError(client.SendTransaction(t.Context(), tx))
-
-				for {
-					receipt, err := client.TransactionReceipt(t.Context(), hash)
-					if errors.Is(err, ethereum.NotFound) {
-						time.Sleep(10 * time.Millisecond)
-						continue
-					}
-					require.NoError(err)
-					require.NotNil(receipt)
-					require.True(receipt.Status == types.ReceiptStatusSuccessful)
-					break
-				}
-
-				elapsed := time.Since(start)
-				mutex.Lock()
-				//t.Logf("Transaction %d for account %d processed in %v", tx.Nonce(), i, elapsed)
-				samples = append(samples, elapsed)
-				mutex.Unlock()
 			}
 		}()
 	}
 	wg2.Wait()
+
+	<-allDone
+
+	samples := make([]time.Duration, 0, len(transactions))
+	for i, tx := range transactions {
+		startTime := startTimes[i]
+		endTime, ok := endTimes[tx.Hash()]
+		if !ok {
+			t.Fatalf("Transaction %s not found in end times", tx.Hash())
+		}
+		samples = append(samples, endTime.Sub(startTime))
+	}
+
+	/*
+		last := time.Time{}
+		for _, time := range startTimes {
+			fmt.Printf("Send at %v - delta %v\n", time, time.Sub(last))
+			last = time
+		}
+	*/
 
 	/*
 		t.Logf("Collected delays: %d samples", len(samples))
@@ -215,7 +238,7 @@ func (p *pacer) Start() {
 			last = now
 			pending += new.Seconds() * p.rate
 			if pending < 1 {
-				time.Sleep(time.Millisecond)
+				time.Sleep(time.Second / time.Duration(p.rate))
 			}
 			for pending >= 1 {
 				select {
