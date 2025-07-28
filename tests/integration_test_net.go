@@ -111,6 +111,9 @@ type IntegrationTestNetSession interface {
 	// It also waits until the new epoch is really reached.
 	AdvanceEpoch(epochs int) error
 
+	// SpawnSession creates a new test session on the network based from the
+	// network's sponsor account. This should be done before entering a new
+	// parallel context to prevent conflicting nonces inside.
 	SpawnSession(t *testing.T) IntegrationTestNetSession
 }
 
@@ -735,7 +738,6 @@ func (n *IntegrationTestNet) SpawnSession(t *testing.T) IntegrationTestNetSessio
 	nextSessionAccount := Account{
 		PrivateKey: key,
 	}
-
 	receipt, err := n.EndowAccount(nextSessionAccount.Address(), new(big.Int).SetUint64(math.MaxUint64))
 	require.NoError(t, err, "Failed to endow account")
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "Failed to endow account")
