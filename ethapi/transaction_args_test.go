@@ -111,11 +111,11 @@ func TestTransactionArgs_ToMessage_Empty(t *testing.T) {
 	require.Equal(t, uint64(0), msg.Nonce, "Nonce should be hardcoded to 0")
 }
 
-func TestTransactionArgs_ToMessage_TrivialFields(t *testing.T) {
+func TestTransactionArgs_ToMessage_TrivialFieldsAreCopied(t *testing.T) {
 	t.Parallel()
 	// this test checks that the trivial fields of TransactionArgs
 	// are correctly converted to a core.Message,
-	// Trivial fields are those which do not include any complex logic
+	// Trivial fields are those which do not include any logic
 
 	txArgs := TransactionArgs{
 		To:    &common.Address{0x1},
@@ -152,11 +152,11 @@ func TestTransactionArgs_ToMessage_TrivialFields(t *testing.T) {
 		To:       &common.Address{0x1},
 		Nonce:    0, // hardcoded to 0
 		Value:    big.NewInt(0x3),
-		GasLimit: 0x5, // from Gas field
+		GasLimit: 0x5,
 
-		GasPrice:  big.NewInt(0), // not set, so defaults to 0
-		GasFeeCap: big.NewInt(0), // not set, so defaults to 0
-		GasTipCap: big.NewInt(0), // not set, so defaults to
+		GasPrice:  big.NewInt(0), // not set, so it defaults to 0
+		GasFeeCap: big.NewInt(0), // not set, so it defaults to 0
+		GasTipCap: big.NewInt(0), // not set, so it defaults to 0
 
 		Data: []byte{0x4},
 		AccessList: types.AccessList{
@@ -187,7 +187,7 @@ func TestTransactionArgs_ToMessage_TrivialFields(t *testing.T) {
 
 }
 
-func TestTransactionArgs_ToMessage_GasPriceFollowEIP1559Rules(t *testing.T) {
+func TestTransactionArgs_ToMessage_GasPriceFollowsEIP1559Rules(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
@@ -303,7 +303,7 @@ func TestTransactionArgs_ToMessage_GasPriceFollowEIP1559Rules(t *testing.T) {
 				SkipNonceChecks:  true,
 				SkipFromEOACheck: true,
 			},
-			baseFee: nil, // is ignored
+			baseFee: nil,
 		},
 		"eip1559 with gas tip cap and basefee": {
 			args: TransactionArgs{
@@ -372,7 +372,6 @@ func TestTransactionArgs_ToMessage_GasPriceFollowEIP1559Rules(t *testing.T) {
 			require.NoError(t, err, "Failed to convert TransactionArgs to message")
 
 			require.Equal(t, test.expectedMsg, *msg)
-
 		})
 	}
 }
