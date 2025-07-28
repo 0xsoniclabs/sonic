@@ -37,6 +37,8 @@ func TestAccountCreation_CreateCallsWithInitCodesTooLargeDoNotAlterBalance(t *te
 
 	for name, version := range versions {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
 			net := StartIntegrationTestNetWithJsonGenesis(t, IntegrationTestNetOptions{
 				Upgrades: &version,
 				ClientExtraArguments: []string{
@@ -114,10 +116,8 @@ func TestAccountCreation_CreateCallsProducingCodesTooLargeProduceAUnsuccessfulRe
 		byte(vm.RETURN),
 	}...)
 
-	upgrade := opera.GetSonicUpgrades()
-	net := StartIntegrationTestNetWithJsonGenesis(t, IntegrationTestNetOptions{
-		Upgrades: &upgrade,
-	})
+	net := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	t.Parallel()
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
