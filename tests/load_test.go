@@ -19,14 +19,24 @@ import (
 
 func TestLoadStressTest(t *testing.T) {
 	t.Run("SingleProposer", func(t *testing.T) {
-		testLoadStressTest(t, true)
+		t.Run("singleSource", func(t *testing.T) {
+			testLoadStressTest(t, true, true)
+		})
+		t.Run("distributedSource", func(t *testing.T) {
+			testLoadStressTest(t, true, false)
+		})
 	})
 	t.Run("DistributedProposer", func(t *testing.T) {
-		testLoadStressTest(t, false)
+		t.Run("singleSource", func(t *testing.T) {
+			testLoadStressTest(t, false, true)
+		})
+		t.Run("distributedSource", func(t *testing.T) {
+			testLoadStressTest(t, false, false)
+		})
 	})
 }
 
-func testLoadStressTest(t *testing.T, singleProposer bool) {
+func testLoadStressTest(t *testing.T, singleProposer bool, singleSource bool) {
 	require := require.New(t)
 	const (
 		NumNodes               = 2
@@ -146,10 +156,15 @@ func testLoadStressTest(t *testing.T, singleProposer bool) {
 	workers := 2 * Rate
 	wg2.Add(workers)
 	var counter atomic.Uint32
-	for range workers {
+	for i := range workers {
 		go func() {
 			defer wg2.Done()
-			client, err := net.GetClient()
+			entryPoint := 0
+			if !singleSource {
+				entryPoint = i % NumNodes
+			}
+			client, err := net.GetClientConnectedToNode(entryPoint)
+			//client, err := net.GetClient()
 			require.NoError(err)
 			defer client.Close()
 			for {
