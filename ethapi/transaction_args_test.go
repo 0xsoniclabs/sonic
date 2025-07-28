@@ -452,7 +452,7 @@ func TestTransactionArgs_ToTransaction(t *testing.T) {
 	}{
 		"legacy transaction": {
 			args: TransactionArgs{
-				To:       &common.Address{0x01},
+				To:       &common.Address{0x41},
 				Nonce:    asPointer(hexutil.Uint64(0x42)),
 				Gas:      asPointer(hexutil.Uint64(0x43)),
 				GasPrice: (*hexutil.Big)(big.NewInt(0x44)),
@@ -460,7 +460,7 @@ func TestTransactionArgs_ToTransaction(t *testing.T) {
 				Data:     asPointer(hexutil.Bytes{0x46}),
 			},
 			expected: types.NewTx(&types.LegacyTx{
-				To:       &common.Address{0x01},
+				To:       &common.Address{0x41},
 				Nonce:    0x42,
 				Gas:      0x43,
 				GasPrice: big.NewInt(0x44),
@@ -470,7 +470,7 @@ func TestTransactionArgs_ToTransaction(t *testing.T) {
 		},
 		"accessList transaction": {
 			args: TransactionArgs{
-				To:       &common.Address{0x01},
+				To:       &common.Address{0x41},
 				Nonce:    asPointer(hexutil.Uint64(0x42)),
 				Gas:      asPointer(hexutil.Uint64(0x43)),
 				GasPrice: (*hexutil.Big)(big.NewInt(0x44)),
@@ -487,7 +487,7 @@ func TestTransactionArgs_ToTransaction(t *testing.T) {
 				}),
 			},
 			expected: types.NewTx(&types.AccessListTx{
-				To:       &common.Address{0x01},
+				To:       &common.Address{0x41},
 				Nonce:    0x42,
 				Gas:      0x43,
 				GasPrice: big.NewInt(0x44),
@@ -506,7 +506,7 @@ func TestTransactionArgs_ToTransaction(t *testing.T) {
 		},
 		"dynamicFee transaction": {
 			args: TransactionArgs{
-				To:                   &common.Address{0x01},
+				To:                   &common.Address{0x41},
 				Nonce:                asPointer(hexutil.Uint64(0x42)),
 				Gas:                  asPointer(hexutil.Uint64(0x43)),
 				MaxFeePerGas:         (*hexutil.Big)(big.NewInt(0x44)),
@@ -520,7 +520,7 @@ func TestTransactionArgs_ToTransaction(t *testing.T) {
 				}),
 			},
 			expected: types.NewTx(&types.DynamicFeeTx{
-				To:        &common.Address{0x01},
+				To:        &common.Address{0x41},
 				Nonce:     0x42,
 				Gas:       0x43,
 				GasFeeCap: big.NewInt(0x44),
@@ -536,7 +536,7 @@ func TestTransactionArgs_ToTransaction(t *testing.T) {
 		},
 		"blob transaction": {
 			args: TransactionArgs{
-				To:                   &common.Address{0x01},
+				To:                   &common.Address{0x41},
 				Nonce:                asPointer(hexutil.Uint64(0x42)),
 				Gas:                  asPointer(hexutil.Uint64(0x43)),
 				MaxFeePerGas:         (*hexutil.Big)(big.NewInt(0x44)),
@@ -555,7 +555,7 @@ func TestTransactionArgs_ToTransaction(t *testing.T) {
 				},
 			},
 			expected: types.NewTx(&types.BlobTx{
-				To:        common.Address{0x01},
+				To:        common.Address{0x41},
 				Nonce:     0x42,
 				Gas:       0x43,
 				GasFeeCap: uint256.NewInt(0x44),
@@ -576,7 +576,7 @@ func TestTransactionArgs_ToTransaction(t *testing.T) {
 		},
 		"setCode transaction": {
 			args: TransactionArgs{
-				To:                   &common.Address{0x01},
+				To:                   &common.Address{0x41},
 				Nonce:                asPointer(hexutil.Uint64(0x42)),
 				Gas:                  asPointer(hexutil.Uint64(0x43)),
 				MaxFeePerGas:         (*hexutil.Big)(big.NewInt(0x44)),
@@ -597,7 +597,7 @@ func TestTransactionArgs_ToTransaction(t *testing.T) {
 				},
 			},
 			expected: types.NewTx(&types.SetCodeTx{
-				To:        common.Address{0x01},
+				To:        common.Address{0x41},
 				Nonce:     0x42,
 				Gas:       0x43,
 				GasFeeCap: uint256.NewInt(0x44),
@@ -638,7 +638,7 @@ func TestTransactionArgs_ToTransaction(t *testing.T) {
 			// access list
 			require.Equal(t, test.expected.AccessList(), converted.AccessList())
 
-			// eip1559 gas pricing
+			// dynamic gas fee - eip1559
 			require.Equal(t, test.expected.GasFeeCap(), converted.GasFeeCap())
 			require.Equal(t, test.expected.GasTipCap(), converted.GasTipCap())
 
