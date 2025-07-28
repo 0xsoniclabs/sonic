@@ -92,6 +92,7 @@ type IntegrationTestNetSession interface {
 	// GetTransactOptions provides transaction options to be used to send a transaction
 	// from the given account.
 	GetTransactOptions(account *Account) (*bind.TransactOpts, error)
+
 	// Apply sends a transaction to the network using the session account.
 	// and waits for the transaction to be processed. The resulting receipt is returned.
 	Apply(issue func(*bind.TransactOpts) (*types.Transaction, error)) (*types.Receipt, error)
@@ -110,6 +111,16 @@ type IntegrationTestNetSession interface {
 	// AdvanceEpoch sends a transaction to advance to the next epoch.
 	// It also waits until the new epoch is really reached.
 	AdvanceEpoch(epochs int) error
+
+	// GetWebSocketClient provides raw access to a fresh connection to the network
+	// The resulting client must be closed after use.
+	GetWebSocketClient() (*ethClient, error)
+
+	// GetNumNodes returns the number of nodes in the network.
+	GetNumNodes() int
+
+	// GetClientConnectedToNode returns a client connected to the specified node.
+	GetClientConnectedToNode(node int) (*PooledEhtClient, error)
 
 	// SpawnSession creates a new test session on the network based from the
 	// network's sponsor account. This should be done before entering a new
@@ -634,8 +645,12 @@ func (n *IntegrationTestNet) GetClientConnectedToNode(i int) (*PooledEhtClient, 
 
 // GetWebSocketClient provides raw access to a fresh connection to the network
 // using the WebSocket protocol. The resulting client must be closed after use.
-func (n *IntegrationTestNet) GetWebSocketClient() (*ethclient.Client, error) {
-	return ethclient.Dial(fmt.Sprintf("ws://localhost:%d", n.nodes[0].httpPort))
+func (n *IntegrationTestNet) GetWebSocketClient() (*ethClient, error) {
+	client, err := ethclient.Dial(fmt.Sprintf("ws://localhost:%d", n.nodes[0].httpPort))
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to WebSocket: %w", err)
+	}
+	return client, nil
 }
 
 func (n *IntegrationTestNet) GetDirectory() string {
@@ -750,7 +765,7 @@ func (n *IntegrationTestNet) SpawnSession(t *testing.T) IntegrationTestNetSessio
 }
 
 // DeployContract is a utility function handling the deployment of a contract on the network.
-// The contract is deployed with by the network's validator account. The function returns the
+// The contract is deployed by the network's validator account. The function returns the
 // deployed contract instance and the transaction receipt.
 func DeployContract[T any](n IntegrationTestNetSession, deploy contractDeployer[T]) (*T, *types.Receipt, error) {
 	client, err := n.GetClient()
@@ -794,10 +809,6 @@ type contractDeployer[T any] func(*bind.TransactOpts, bind.ContractBackend) (com
 type Session struct {
 	net     *IntegrationTestNet
 	account Account
-}
-
-func (s *Session) SpawnSession(t *testing.T) IntegrationTestNetSession {
-	return s.net.SpawnSession(t)
 }
 
 func (s *Session) GetUpgrades() opera.Upgrades {
@@ -1052,6 +1063,12 @@ func (s *Session) GetClient() (*PooledEhtClient, error) {
 	return s.net.GetClientConnectedToNode(0)
 }
 
+// GetWebSocketClient provides raw access to a fresh connection to the network
+// using the WebSocket protocol. The resulting client must be closed after use.
+func (s *Session) GetWebSocketClient() (*ethClient, error) {
+	return s.net.GetWebSocketClient()
+}
+
 // GetClientConnectedToNode provides raw access to a fresh connection to a selected node on
 // the network. The resulting client must be closed after use.
 func (s *Session) GetClientConnectedToNode(i int) (*PooledEhtClient, error) {
@@ -1100,6 +1117,28 @@ func (s *Session) AdvanceEpoch(epochs int) error {
 	}
 
 	return nil
+}
+
+func (s *Session) GetNumNodes() int {
+	return s.net.NumNodes()
+}
+
+// SpawnSession creates a new test session on the network.
+// The session is backed by an account which will be used to sign and pay for
+// transactions. By using this function, multiple test sessions can be run in
+// parallel on the same network, without conflicting nonce issues, since the
+// accounts are isolated.
+//
+// A typical use case would look as follows:
+//
+//	 session := getIntegrationTestNetSession(t)
+//		t.Run("test_case",, func(t *testing.T) {
+//				session := session.SpawnSession(t)
+//				t.Parallel()
+//		        < use session instead of net of the rest of the test >
+//		})
+func (s *Session) SpawnSession(t *testing.T) IntegrationTestNetSession {
+	return s.net.SpawnSession(t)
 }
 
 // validateAndSanitizeOptions ensures that the options are valid and sets the default values.
