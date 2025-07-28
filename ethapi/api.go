@@ -1050,7 +1050,7 @@ func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash 
 	defer cancel()
 
 	// Get a new instance of the EVM.
-	msg, err := args.ToMessage(globalGasCap, header.BaseFee)
+	msg, err := args.ToMessage(globalGasCap, header.BaseFee, log.Root())
 	if err != nil {
 		return nil, err
 	}
@@ -1541,7 +1541,7 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 		statedb := db.Copy()
 		// Set the accesslist to the last al
 		args.AccessList = &accessList
-		msg, err := args.ToMessage(b.RPCGasCap(), header.BaseFee)
+		msg, err := args.ToMessage(b.RPCGasCap(), header.BaseFee, log.Root())
 		if err != nil {
 			statedb.Release()
 			return nil, 0, nil, err
@@ -2524,7 +2524,7 @@ func getEvmBlockFromNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNum
 
 // getTxAndMessage returns transaction and message constructed from transaction arguments
 func getTxAndMessage(args *TransactionArgs, block *evmcore.EvmBlock, b Backend) (*types.Transaction, *core.Message, error) {
-	msg, err := args.ToMessage(b.RPCGasCap(), block.BaseFee)
+	msg, err := args.ToMessage(b.RPCGasCap(), block.BaseFee, log.Root())
 	if err != nil {
 		return nil, nil, err
 	}

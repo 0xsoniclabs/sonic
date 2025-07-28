@@ -21,15 +21,18 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/logger"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
-func TestTransactionArgs_GasCap(t *testing.T) {
+func TestTransactionArgs_ToMessage_GasCap(t *testing.T) {
 	t.Parallel()
 
 	var (
@@ -88,17 +91,38 @@ func TestTransactionArgs_GasCap(t *testing.T) {
 
 	for _, test := range tests {
 		args := TransactionArgs{Gas: test.argGas}
-		msg, err := args.ToMessage(test.globalGasCap, nil)
+		msg, err := args.ToMessage(test.globalGasCap, nil, log.Root())
 		require.Nil(t, err)
 		require.Equal(t, test.expectedGas, msg.GasLimit, test.name)
 	}
+}
+
+func TestTransactionArgs_ToMessage_CapsGasToProvidedGlobalAndLogsWarning(t *testing.T) {
+	t.Parallel()
+
+	args := TransactionArgs{
+		Gas: asPointer(hexutil.Uint64(150)),
+	}
+
+	ctrl := gomock.NewController(t)
+	logger := logger.NewMockLogger(ctrl)
+	logger.EXPECT().Warn("Caller gas above allowance, capping",
+		gomock.Any(), gomock.Any(),
+		gomock.Any(), gomock.Any(),
+	)
+
+	globalGasCap := uint64(100)
+
+	msg, err := args.ToMessage(globalGasCap, nil, logger)
+	require.NoError(t, err, "Failed to convert TransactionArgs to message")
+	require.Equal(t, globalGasCap, msg.GasLimit, "Gas limit should be capped to the provided global gas cap")
 }
 
 func TestTransactionArgs_ToMessage_Empty(t *testing.T) {
 	t.Parallel()
 
 	empty := TransactionArgs{}
-	msg, err := empty.ToMessage(0x123, big.NewInt(100))
+	msg, err := empty.ToMessage(0x123, big.NewInt(100), nil)
 	require.NoError(t, err, "Failed to convert empty TransactionArgs to message")
 
 	require.NotNil(t, msg)
@@ -145,7 +169,7 @@ func TestTransactionArgs_ToMessage_TrivialFieldsAreCopied(t *testing.T) {
 			},
 		},
 	}
-	msg, err := txArgs.ToMessage(0x4321, big.NewInt(100))
+	msg, err := txArgs.ToMessage(0x4321, big.NewInt(100), nil)
 	require.NoError(t, err)
 
 	require.Equal(t, core.Message{
@@ -368,7 +392,7 @@ func TestTransactionArgs_ToMessage_GasPriceFollowsEIP1559Rules(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			msg, err := test.args.ToMessage(0, test.baseFee)
+			msg, err := test.args.ToMessage(0, test.baseFee, nil)
 			require.NoError(t, err, "Failed to convert TransactionArgs to message")
 
 			require.Equal(t, test.expectedMsg, *msg)
@@ -405,7 +429,7 @@ func TestTransactionArgs_ToMessage_RejectsConversionWithIncoherentGasPricing(t *
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			msg, err := tc.args.ToMessage(0, nil)
+			msg, err := tc.args.ToMessage(0, nil, nil)
 			require.Nil(t, msg)
 			require.EqualError(t, err, "both gasPrice and (maxFeePerGas or maxPriorityFeePerGas) specified")
 		})
