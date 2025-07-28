@@ -415,7 +415,6 @@ func (n *Node) emitEventInternal(
 		fakeScheduler{},
 		fakeRandaoMixer{},
 		fakeTimerMetric{},
-		fakeCounterMetric{},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create payload: %w", err)
@@ -519,11 +518,6 @@ func (fakeScheduler) Schedule(
 type fakeTimerMetric struct{}
 
 func (fakeTimerMetric) Update(time.Duration) {}
-
-// fakeCounterMetric is a no-op counter metric for the tests. It ignores any calls.
-type fakeCounterMetric struct{}
-
-func (fakeCounterMetric) Inc(int64) {}
 
 // NodeMask is a bitmask used by the test infrastructure above to identify
 // subsets of nodes. In particular, it is used to identify honest nodes.

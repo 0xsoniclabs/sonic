@@ -17,7 +17,6 @@
 package emitter
 
 import (
-	"context"
 	"errors"
 	"math/big"
 	"testing"
@@ -169,7 +168,7 @@ func TestCreatePayload_PendingProposal_CreatesPayloadWithoutProposal(t *testing.
 	// This call fails since it tries to propose block 5 while according to the
 	// proposal tracker, a proposal for block 5 has already been made.
 	payload, err := createPayload(
-		world, 0, nil, event, proposalTracker, nil, nil, nil, nil, nil,
+		world, 0, nil, event, proposalTracker, nil, nil, nil, nil,
 	)
 
 	want := inter.Payload{
@@ -227,7 +226,7 @@ func TestCreatePayload_UnableToCreateProposalDueToLackOfTimeProgress_CreatesPayl
 	// This attempt to create a proposal should result in an empty payload since
 	// no time has passed since the last proposal.
 	payload, err := createPayload(
-		world, validator, validators, event, tracker, nil, nil, nil, nil, nil,
+		world, validator, validators, event, tracker, nil, nil, nil, nil,
 	)
 
 	want := inter.Payload{
@@ -260,7 +259,7 @@ func TestCreatePayload_InvalidValidators_ForwardsError(t *testing.T) {
 	tracker.EXPECT().IsPending(idx.Frame(0), idx.Block(63)).Return(false)
 
 	_, err := createPayload(
-		world, 0, validators, event, tracker, nil, nil, nil, nil, nil,
+		world, 0, validators, event, tracker, nil, nil, nil, nil,
 	)
 	require.ErrorContains(err, "no validators")
 }
@@ -271,7 +270,6 @@ func TestCreatePayload_ValidTurn_ProducesExpectedPayload(t *testing.T) {
 	world := NewMockworldReader(ctrl)
 	event := inter.NewMockEventI(ctrl)
 	durationMetric := NewMocktimerMetric(ctrl)
-	timeoutMetric := NewMockcounterMetric(ctrl)
 
 	p1 := hash.Event{1}
 	p2 := hash.Event{2}
@@ -322,7 +320,6 @@ func TestCreatePayload_ValidTurn_ProducesExpectedPayload(t *testing.T) {
 	scheduler.EXPECT().Schedule(any, any, any, any).Return(txs)
 
 	durationMetric.EXPECT().Update(any).AnyTimes()
-	timeoutMetric.EXPECT().Inc(any).AnyTimes()
 	randaoMixer := randao.NewMockRandaoMixer(ctrl)
 	someRandaoReveal := randao.RandaoReveal{0x42}
 	randaoMixer.EXPECT().MixRandao(any).Return(
@@ -331,7 +328,7 @@ func TestCreatePayload_ValidTurn_ProducesExpectedPayload(t *testing.T) {
 
 	payload, err := createPayload(
 		world, validator, validators, event, tracker, nil,
-		scheduler, randaoMixer, durationMetric, timeoutMetric,
+		scheduler, randaoMixer, durationMetric,
 	)
 	require.NoError(err)
 
@@ -347,7 +344,6 @@ func TestMakeProposal_ValidArguments_CreatesValidProposal(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockScheduler := NewMocktxScheduler(ctrl)
 	durationMetric := NewMocktimerMetric(ctrl)
-	timeoutMetric := NewMockcounterMetric(ctrl)
 
 	rules := opera.Rules{}
 	state := inter.ProposalSyncState{
@@ -414,7 +410,6 @@ func TestMakeProposal_ValidArguments_CreatesValidProposal(t *testing.T) {
 		nil,
 		randaoMixer,
 		durationMetric,
-		timeoutMetric,
 	)
 	require.NoError(err)
 
@@ -433,61 +428,11 @@ func TestMakeProposal_InvalidBlockTime_ReturnsNil(t *testing.T) {
 	for _, delta := range []time.Duration{-1 * time.Nanosecond, 0} {
 		newTime := inter.Timestamp(1234) + inter.Timestamp(delta)
 		payload, err := makeProposal(
-			opera.Rules{}, state, latestBlock, newTime, 0, nil, nil, nil, nil, nil,
+			opera.Rules{}, state, latestBlock, newTime, 0, nil, nil, nil, nil,
 		)
 		require.NoError(t, err, "not error but no-proposal expected")
 		require.Nil(t, payload)
 	}
-}
-
-func TestMakeProposal_IfSchedulerTimesOut_SignalTimeoutToMonitor(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	mockScheduler := NewMocktxScheduler(ctrl)
-	durationMetric := NewMocktimerMetric(ctrl)
-	timeoutMetric := NewMockcounterMetric(ctrl)
-
-	any := gomock.Any()
-	mockScheduler.EXPECT().Schedule(any, any, any, any).Do(
-		func(
-			ctx context.Context, _ *scheduler.BlockInfo,
-			_ scheduler.PrioritizedTransactions, _ scheduler.Limits,
-		) {
-			deadline, ok := ctx.Deadline()
-			require.True(t, ok, "scheduler call should have a deadline")
-			for {
-				delay := time.Until(deadline)
-				if delay > 0 {
-					<-time.After(delay)
-				}
-				if err := ctx.Err(); err != nil {
-					require.ErrorIs(t, err, context.DeadlineExceeded)
-					break
-				}
-			}
-		})
-
-	durationMetric.EXPECT().Update(any)
-	timeoutMetric.EXPECT().Inc(int64(1))
-
-	randaoMixer := randao.NewMockRandaoMixer(ctrl)
-	randaoMixer.EXPECT().MixRandao(any)
-
-	_, err := makeProposal(
-		opera.Rules{},
-		inter.ProposalSyncState{},
-		inter.NewBlockBuilder().
-			WithBaseFee(big.NewInt(100)).
-			WithDuration(500*time.Millisecond).
-			Build(),
-		inter.Timestamp(1),
-		0,
-		mockScheduler,
-		nil,
-		randaoMixer,
-		durationMetric,
-		timeoutMetric,
-	)
-	require.NoError(t, err)
 }
 
 func TestTransactionPriorityAdapter_ForwardsCallToWrappedType(t *testing.T) {
@@ -562,7 +507,6 @@ func TestMakeProposal_SkipsProposalOnRandaoRevealError(t *testing.T) {
 		nil,
 		randaoMixer,
 		nil,
-		nil,
 	)
 	require.ErrorContains(err, "randao reveal generation failed")
 }
@@ -604,7 +548,6 @@ func TestMakeProposal_SkipsProposalIfBaseFeeIsGettingTooHeigh(t *testing.T) {
 		nil,
 		nil,
 		randaoMixer,
-		nil,
 		nil,
 	)
 	require.ErrorContains(err, "overflows uint256")
@@ -678,7 +621,6 @@ func TestMakeProposal_SchedulerIsRunWithCorrectBaseFee(t *testing.T) {
 		nil,
 		randaoMixer,
 		durationMetric,
-		timeoutMetric,
 	)
 	require.NoError(err)
 }
@@ -713,6 +655,6 @@ func TestCreatePayload_ReturnsErrorOnRandaoGenerationFailure(t *testing.T) {
 		randao.RandaoReveal{}, common.Hash{}, errors.New("randao error"),
 	)
 
-	_, err := createPayload(world, validator, validators, event, tracker, nil, nil, randaoMixer, nil, nil)
+	_, err := createPayload(world, validator, validators, event, tracker, nil, nil, randaoMixer, nil)
 	require.ErrorContains(err, "randao reveal generation failed")
 }

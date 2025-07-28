@@ -69,7 +69,6 @@ func (em *Emitter) createPayload(
 		scheduler.NewScheduler(adapter),
 		randaoMixer,
 		proposalSchedulingTimer,
-		proposalSchedulingTimeoutCounter,
 	)
 }
 
@@ -92,7 +91,6 @@ func createPayload(
 	transactionScheduler txScheduler,
 	randaoMixer randao.RandaoMixer,
 	durationMetric timerMetric,
-	timeoutMetric counterMetric,
 ) (inter.Payload, error) {
 
 	// Get the last seen proposal information from the event's parents.
@@ -140,7 +138,6 @@ func createPayload(
 		&transactionPriorityAdapter{sorted},
 		randaoMixer,
 		durationMetric,
-		timeoutMetric,
 	)
 	if err != nil {
 		return inter.Payload{},
@@ -220,7 +217,6 @@ func makeProposal(
 	candidates scheduler.PrioritizedTransactions,
 	randaoMixer randao.RandaoMixer,
 	durationMetric timerMetric,
-	timeoutMetric counterMetric,
 ) (*inter.Proposal, error) {
 	// Compute the gas limit for the next block. This is the time since the
 	// previous block times the targeted network throughput.
@@ -262,13 +258,8 @@ func makeProposal(
 
 	// This step covers the actual transaction selection and sorting.
 	start := time.Now()
-	ctx, cancel := context.WithDeadline(
-		context.Background(),
-		start.Add(100*time.Millisecond),
-	)
-	defer cancel()
 	proposal.Transactions = transactionScheduler.Schedule(
-		ctx,
+		context.Background(),
 		&scheduler.BlockInfo{
 			Number:      proposal.Number,
 			Time:        newBlockTime,
@@ -287,9 +278,6 @@ func makeProposal(
 
 	// Track scheduling time in monitoring metrics.
 	durationMetric.Update(time.Since(start))
-	if ctx.Err() != nil {
-		timeoutMetric.Inc(1)
-	}
 
 	return proposal, nil
 }
