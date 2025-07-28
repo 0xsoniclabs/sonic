@@ -168,6 +168,7 @@ func testLoadStressTest(t *testing.T, singleProposer bool) {
 	wg2.Wait()
 
 	<-allDone
+	duration := time.Since(start)
 
 	samples := make([]time.Duration, 0, len(transactions))
 	for i, tx := range transactions {
@@ -179,22 +180,47 @@ func testLoadStressTest(t *testing.T, singleProposer bool) {
 		samples = append(samples, endTime.Sub(startTime))
 	}
 
-	/*
+	// Log the block times if needed
+	if false {
+		client, err := net.GetClient()
+		require.NoError(err)
+		defer client.Close()
+
+		getUnixTime := func(header *types.Header) time.Time {
+			t.Helper()
+			nanos, _, err := inter.DecodeExtraData(header.Extra)
+			require.NoError(err)
+			return time.Unix(int64(header.Time), int64(nanos))
+		}
+
+		block, err := client.BlockNumber(t.Context())
+		require.NoError(err)
 		last := time.Time{}
-		for _, time := range startTimes {
-			fmt.Printf("Send at %v - delta %v\n", time, time.Sub(last))
+		for number := range block + 1 {
+			header, err := client.HeaderByNumber(t.Context(), big.NewInt(int64(number)))
+			require.NoError(err)
+			time := getUnixTime(header)
+			diff := time.Sub(last)
+			t.Logf("Block %d - %s\n", number, diff)
 			last = time
 		}
-	*/
+	}
 
-	/*
+	if false {
+		last := time.Time{}
+		for _, time := range startTimes {
+			t.Logf("Send at %v - delta %v\n", time, time.Sub(last))
+			last = time
+		}
+	}
+
+	if false {
 		t.Logf("Collected delays: %d samples", len(samples))
 		for _, sample := range samples {
-			fmt.Printf("%d\n", sample.Milliseconds())
+			t.Logf("%d", sample.Milliseconds())
 		}
-	*/
+	}
 
-	duration := time.Since(start)
 	t.Logf("Load test completed in %v", duration)
 	t.Logf("Total transactions: %d", NumAccounts*TransactionsPerAccount)
 	t.Logf("Average transactions per second: %.2f", float64(NumAccounts*TransactionsPerAccount)/duration.Seconds())
@@ -207,6 +233,8 @@ func testLoadStressTest(t *testing.T, singleProposer bool) {
 
 	slices.Sort(samples)
 	t.Logf("Avg: %v", avg)
+	t.Logf("Min: %v", samples[0])
+	t.Logf("P10: %v", samples[len(samples)*10/100])
 	t.Logf("P50: %v", samples[len(samples)*50/100])
 	t.Logf("P90: %v", samples[len(samples)*90/100])
 	t.Logf("P95: %v", samples[len(samples)*95/100])
