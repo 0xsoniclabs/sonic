@@ -260,6 +260,8 @@ func (em *Emitter) tick() {
 	}
 }
 
+var globalLoggingMutex sync.Mutex
+
 func (em *Emitter) getSortedTxs(baseFee *big.Int) *transactionsByPriceAndNonce {
 	// Short circuit if pool wasn't updated since the cache was built
 	poolCount := em.world.TxPool.Count()
@@ -271,6 +273,17 @@ func (em *Emitter) getSortedTxs(baseFee *big.Int) *transactionsByPriceAndNonce {
 	}
 	// Build the cache
 	pendingTxs, err := em.world.TxPool.Pending(true)
+	globalLoggingMutex.Lock()
+	fmt.Printf("Creator %d - Number of senders in pending transactions: %d\n", em.config.Validator.ID, len(pendingTxs))
+	numTxs := 0
+	for from, txs := range pendingTxs {
+		if len(txs) > 1 {
+			fmt.Printf("\tSender %s has %d transactions\n", from, len(txs))
+		}
+		numTxs += len(txs)
+	}
+	fmt.Printf("\tTotal number of pending transactions: %d\n", numTxs)
+	globalLoggingMutex.Unlock()
 	if err != nil {
 		em.Log.Error("Tx pool transactions fetching error", "err", err)
 		return nil
