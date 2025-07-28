@@ -468,7 +468,7 @@ func TestTransactionArgs_ToTransaction(t *testing.T) {
 				Data:     []byte{0x46},
 			}),
 		},
-		"AccessList transaction": {
+		"accessList transaction": {
 			args: TransactionArgs{
 				To:       &common.Address{0x01},
 				Nonce:    asPointer(hexutil.Uint64(0x42)),
@@ -504,7 +504,7 @@ func TestTransactionArgs_ToTransaction(t *testing.T) {
 				},
 			}),
 		},
-		"DynamicFee transaction": {
+		"dynamicFee transaction": {
 			args: TransactionArgs{
 				To:                   &common.Address{0x01},
 				Nonce:                asPointer(hexutil.Uint64(0x42)),
@@ -534,7 +534,7 @@ func TestTransactionArgs_ToTransaction(t *testing.T) {
 				},
 			}),
 		},
-		"Blob transaction": {
+		"blob transaction": {
 			args: TransactionArgs{
 				To:                   &common.Address{0x01},
 				Nonce:                asPointer(hexutil.Uint64(0x42)),
@@ -574,7 +574,7 @@ func TestTransactionArgs_ToTransaction(t *testing.T) {
 				},
 			}),
 		},
-		"SetCode transaction": {
+		"setCode transaction": {
 			args: TransactionArgs{
 				To:                   &common.Address{0x01},
 				Nonce:                asPointer(hexutil.Uint64(0x42)),
