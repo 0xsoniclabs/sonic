@@ -122,12 +122,16 @@ func TestTransactionArgs_ToMessage_Empty(t *testing.T) {
 	t.Parallel()
 
 	empty := TransactionArgs{}
-	msg, err := empty.ToMessage(0x123, big.NewInt(100), nil)
+
+	gasCap := uint64(0x123)
+	baseFee := big.NewInt(100)
+
+	msg, err := empty.ToMessage(gasCap, baseFee, nil)
 	require.NoError(t, err, "Failed to convert empty TransactionArgs to message")
 
 	require.NotNil(t, msg)
 	require.Nil(t, msg.To)
-	require.Equal(t, uint64(0x123), msg.GasLimit)
+	require.Equal(t, gasCap, msg.GasLimit)
 	require.Equal(t, big.NewInt(0), msg.GasPrice)
 	require.Equal(t, big.NewInt(0), msg.Value)
 	require.Nil(t, msg.BlobGasFeeCap)
