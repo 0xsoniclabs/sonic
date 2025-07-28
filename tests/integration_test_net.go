@@ -102,7 +102,7 @@ type IntegrationTestNetSession interface {
 
 	// GetClient provides raw access to a fresh connection to the network.
 	// The resulting client must be closed after use.
-	GetClient() (*SharedClient, error)
+	GetClient() (*PooledEhtClient, error)
 
 	// GetChainId returns the chain ID of the network.
 	GetChainId() *big.Int
@@ -518,7 +518,7 @@ func (n *IntegrationTestNet) start() error {
 				if err != nil {
 					return nil
 				}
-				sharedClient := SharedClient{*client, n.nodes[i].clients}
+				sharedClient := PooledEhtClient{*client, n.nodes[i].clients}
 				return &sharedClient
 			},
 		}
@@ -601,7 +601,7 @@ func (n *IntegrationTestNet) NumNodes() int {
 
 // GetClient provides raw access to a fresh connection to the network.
 // The resulting client must be closed after use.
-func (n *IntegrationTestNet) GetClient() (*SharedClient, error) {
+func (n *IntegrationTestNet) GetClient() (*PooledEhtClient, error) {
 	return n.GetClientConnectedToNode(0)
 }
 
@@ -612,11 +612,11 @@ func (n *IntegrationTestNet) GetChainId() *big.Int {
 
 // GetClientConnectedToNode provides raw access to a fresh connection to a selected node on
 // the network. The resulting client must be closed after use.
-func (n *IntegrationTestNet) GetClientConnectedToNode(i int) (*SharedClient, error) {
+func (n *IntegrationTestNet) GetClientConnectedToNode(i int) (*PooledEhtClient, error) {
 	if i < 0 || i >= len(n.nodes) {
 		return nil, fmt.Errorf("node index out of bounds: %d", i)
 	}
-	client := n.nodes[i].clients.Get().(*SharedClient)
+	client := n.nodes[i].clients.Get().(*PooledEhtClient)
 	if client != nil {
 		return client, nil
 	}
@@ -624,7 +624,7 @@ func (n *IntegrationTestNet) GetClientConnectedToNode(i int) (*SharedClient, err
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to the Ethereum client: %w", err)
 	}
-	return &SharedClient{*ethclient, n.nodes[i].clients}, nil
+	return &PooledEhtClient{*ethclient, n.nodes[i].clients}, nil
 }
 
 // GetWebSocketClient provides raw access to a fresh connection to the network
@@ -687,7 +687,6 @@ func (n *IntegrationTestNet) RestartWithExportImport() error {
 
 // GetHeaders returns the headers of all blocks on the network from block 0 to the latest block.
 func (n *IntegrationTestNet) GetHeaders() ([]*types.Header, error) {
-
 	client, err := n.GetClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to the Ethereum client: %w", err)
@@ -868,7 +867,7 @@ func (s *Session) Run(tx *types.Transaction) (*types.Receipt, error) {
 
 func (s *Session) RunAll(tx []*types.Transaction) ([]*types.Receipt, error) {
 	hashes := make([]common.Hash, len(tx))
-	err := runParallelWithClient(s.net, len(tx), func(client *SharedClient, i int) error {
+	err := runParallelWithClient(s.net, len(tx), func(client *PooledEhtClient, i int) error {
 		err := client.SendTransaction(context.Background(), tx[i])
 		if err != nil {
 			return fmt.Errorf("failed to send transaction %d: %w", i, err)
@@ -900,7 +899,7 @@ func (s *Session) GetReceipts(txHash []common.Hash) ([]*types.Receipt, error) {
 	err := runParallelWithClient(
 		s.net,
 		len(txHash),
-		func(client *SharedClient, i int) error {
+		func(client *PooledEhtClient, i int) error {
 			hash := txHash[i]
 			// Wait for the response with some exponential backoff.
 			const maxDelay = 100 * time.Millisecond
@@ -936,7 +935,7 @@ func (s *Session) GetReceipts(txHash []common.Hash) ([]*types.Receipt, error) {
 func runParallelWithClient(
 	net IntegrationTestNetSession,
 	numJobs int,
-	job func(*SharedClient, int) error,
+	job func(*PooledEhtClient, int) error,
 ) error {
 	numWorkers := max(min(numJobs, 16), 1)
 	var wg sync.WaitGroup
@@ -1039,13 +1038,13 @@ func (s *Session) GetChainId() *big.Int {
 
 // GetClient provides raw access to a fresh connection to node zero on the network.
 // The resulting client must be closed after use.
-func (s *Session) GetClient() (*SharedClient, error) {
-	return s.net.nodes[0].clients.Get().(*SharedClient), nil
+func (s *Session) GetClient() (*PooledEhtClient, error) {
+	return s.net.GetClientConnectedToNode(0)
 }
 
 // GetClientConnectedToNode provides raw access to a fresh connection to a selected node on
 // the network. The resulting client must be closed after use.
-func (s *Session) GetClientConnectedToNode(i int) (*SharedClient, error) {
+func (s *Session) GetClientConnectedToNode(i int) (*PooledEhtClient, error) {
 	return s.net.GetClientConnectedToNode(i)
 }
 
@@ -1129,9 +1128,13 @@ func isDataRaceDetectionEnabled() bool {
 	return false
 }
 
+// ethClient is an alias for ethclient.Client to avoid name conflicts with
+// the method `.Client()` of the type PooledEhtClient.
 type ethClient = ethclient.Client
 
-type SharedClient struct {
+// PooledEhtClient is a wrapper around ethClient that provides a Close method
+// that returns the client to the shared client pool.
+type PooledEhtClient struct {
 	ethClient
 	// Each shared client needs to know to which pool it has to return.
 	// Keeping a reference to the pool allows the shared client to be compliant
@@ -1140,7 +1143,7 @@ type SharedClient struct {
 }
 
 // Close returns the shared client to the pool it was generated from.
-func (s *SharedClient) Close() {
+func (s *PooledEhtClient) Close() {
 	if s.pool == nil {
 		return
 	}
@@ -1148,6 +1151,6 @@ func (s *SharedClient) Close() {
 }
 
 // Client provides access to the underlying RPC Client.
-func (s *SharedClient) Client() *rpc.Client {
+func (s *PooledEhtClient) Client() *rpc.Client {
 	return s.ethClient.Client()
 }

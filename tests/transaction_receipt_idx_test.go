@@ -123,7 +123,7 @@ func TestReceipt_InternalTransactionsDoNotChangeReceiptIndex(t *testing.T) {
 }
 
 func getSenderOfTransaction(
-	client *SharedClient,
+	client *PooledEhtClient,
 	txHash common.Hash,
 ) (common.Address, error) {
 	details := struct {

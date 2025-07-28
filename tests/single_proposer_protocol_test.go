@@ -246,7 +246,7 @@ func testSingleProposerProtocol_CanBeEnabledAndDisabled(
 // getUsedEventVersion retrieves the current event version used by the network.
 func getUsedEventVersion(
 	t *testing.T,
-	client *SharedClient,
+	client *PooledEhtClient,
 ) int {
 	t.Helper()
 	require := require.New(t)

@@ -169,7 +169,7 @@ func computeMinimumGas(t *testing.T, session IntegrationTestNetSession, tx types
 // Because the transaction pool eviction is asynchronous, executed transactions may remain in the pool
 // for some time after they have been executed.
 // function will eventually time out if the transaction is not retired and an error will be returned.
-func waitUntilTransactionIsRetiredFromPool(t *testing.T, client *SharedClient, tx *types.Transaction) error {
+func waitUntilTransactionIsRetiredFromPool(t *testing.T, client *PooledEhtClient, tx *types.Transaction) error {
 	t.Helper()
 
 	txHash := tx.Hash()

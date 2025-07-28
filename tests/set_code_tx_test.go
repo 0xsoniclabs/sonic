@@ -938,7 +938,7 @@ func testChainOfCalls(t *testing.T, session IntegrationTestNetSession) {
 // - delegate account is the contract address installed in the delegator code
 // - callData is used to pass the encoded use of the delegate's called method ABI
 func makeEip7702Transaction(t *testing.T,
-	client *SharedClient,
+	client *PooledEhtClient,
 	sponsor *Account,
 	sponsored *Account,
 	delegate common.Address,

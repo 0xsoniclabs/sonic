@@ -48,7 +48,7 @@ func TestGasPrice(t *testing.T) {
 func testGasPrice_SuggestedGasPricesApproximateActualBaseFees(
 	t *testing.T,
 	net IntegrationTestNetSession,
-	client *SharedClient,
+	client *PooledEhtClient,
 ) {
 	require := require.New(t)
 
@@ -82,7 +82,7 @@ func testGasPrice_SuggestedGasPricesApproximateActualBaseFees(
 func testGasPrice_UnderpricedTransactionsAreRejected(
 	t *testing.T,
 	net IntegrationTestNetSession,
-	client *SharedClient,
+	client *PooledEhtClient,
 ) {
 	require := require.New(t)
 
@@ -146,7 +146,7 @@ func testGasPrice_UnderpricedTransactionsAreRejected(
 	require.NoError(send(setCodeFactory.makeSetCodeTransactionWithPrice(t, chainId, 0, feeCap, 0)))
 }
 
-func makeNetAndClient(t *testing.T) (*IntegrationTestNet, *SharedClient) {
+func makeNetAndClient(t *testing.T) (*IntegrationTestNet, *PooledEhtClient) {
 	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
 		Upgrades: AsPointer(opera.GetAllegroUpgrades()),
 	})

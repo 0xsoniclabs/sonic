@@ -263,7 +263,7 @@ func createTestBlobTransactionWithNilSidecar(t *testing.T, ctxt *testContext) (*
 	return types.SignTx(tx, types.NewCancunSigner(chainId), ctxt.net.GetSessionSponsor().PrivateKey)
 }
 
-func checkBlocksSanity(t *testing.T, client *SharedClient) {
+func checkBlocksSanity(t *testing.T, client *PooledEhtClient) {
 	// This check is a regression from an issue found while fetching a block by
 	// number where the last block was not correctly serialized
 	require := require.New(t)
@@ -279,7 +279,7 @@ func checkBlocksSanity(t *testing.T, client *SharedClient) {
 
 type testContext struct {
 	net    *IntegrationTestNet
-	client *SharedClient
+	client *PooledEhtClient
 }
 
 func MakeTestContext(t *testing.T) *testContext {

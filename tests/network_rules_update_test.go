@@ -274,7 +274,7 @@ func TestNetworkRules_PragueFeaturesBecomeAvailableWithAllegroUpgrade(t *testing
 	account := makeAccountWithBalance(t, net, big.NewInt(1e18))
 
 	t.Run("expectations before sonic-allegro hardfork", func(t *testing.T) {
-		forEachClientInNet(t, net, func(t *testing.T, client *SharedClient) {
+		forEachClientInNet(t, net, func(t *testing.T, client *PooledEhtClient) {
 			tx := makeSetCodeTx(t, net, account)
 			err := client.SendTransaction(t.Context(), tx)
 			require.ErrorContains(t,
@@ -312,7 +312,7 @@ func TestNetworkRules_PragueFeaturesBecomeAvailableWithAllegroUpgrade(t *testing
 		delegationIndicator :=
 			hexutil.MustDecode("0xEF01002A00000000000000000000000000000000000000")
 
-		forEachClientInNet(t, net, func(t *testing.T, client *SharedClient) {
+		forEachClientInNet(t, net, func(t *testing.T, client *PooledEhtClient) {
 
 			// make sure that this client has already processed the transaction
 			_, err := net.GetReceipt(tx.Hash())
@@ -328,7 +328,7 @@ func TestNetworkRules_PragueFeaturesBecomeAvailableWithAllegroUpgrade(t *testing
 func forEachClientInNet(
 	t *testing.T,
 	net *IntegrationTestNet,
-	fn func(t *testing.T, client *SharedClient),
+	fn func(t *testing.T, client *PooledEhtClient),
 ) {
 	for i := 0; i < net.NumNodes(); i++ {
 		t.Run(fmt.Sprintf("client%d", i), func(t *testing.T) {
