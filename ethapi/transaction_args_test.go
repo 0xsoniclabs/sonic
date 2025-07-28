@@ -208,7 +208,6 @@ func TestTransactionArgs_ToMessage_TrivialFieldsAreCopied(t *testing.T) {
 		SkipNonceChecks:  true,
 		SkipFromEOACheck: true,
 	}, *msg)
-
 }
 
 func TestTransactionArgs_ToMessage_GasPriceFollowsEIP1559Rules(t *testing.T) {
@@ -219,7 +218,7 @@ func TestTransactionArgs_ToMessage_GasPriceFollowsEIP1559Rules(t *testing.T) {
 		expectedMsg core.Message
 		baseFee     *big.Int
 	}{
-		"zero initialized": {
+		"zero initialized and without basefee uses pre-eip1559 rules": {
 			args: TransactionArgs{},
 			expectedMsg: core.Message{
 				GasLimit: math.MaxInt64,
@@ -233,54 +232,13 @@ func TestTransactionArgs_ToMessage_GasPriceFollowsEIP1559Rules(t *testing.T) {
 				SkipNonceChecks:  true,
 				SkipFromEOACheck: true,
 			},
-			baseFee: big.NewInt(0),
 		},
-		"legacy gas price model": {
-			args: TransactionArgs{
-				GasPrice: (*hexutil.Big)(big.NewInt(10000000)),
-			},
+		"zero initialized and basefee uses eip1559 rules": {
+			args: TransactionArgs{},
 			expectedMsg: core.Message{
 				GasLimit: math.MaxInt64,
 				Value:    big.NewInt(0),
 
-				GasPrice:  big.NewInt(10000000),
-				GasFeeCap: big.NewInt(10000000),
-				GasTipCap: big.NewInt(10000000),
-
-				// Hardcoded values
-				SkipNonceChecks:  true,
-				SkipFromEOACheck: true,
-			},
-			baseFee: nil, // is ignored
-		},
-		"legacy gas price model with basefee": {
-			args: TransactionArgs{
-				GasPrice: (*hexutil.Big)(big.NewInt(10000000)),
-			},
-			expectedMsg: core.Message{
-				GasLimit: math.MaxInt64,
-				Value:    big.NewInt(0),
-
-				GasPrice:  big.NewInt(10000000),
-				GasFeeCap: big.NewInt(10000000),
-				GasTipCap: big.NewInt(10000000),
-
-				// Hardcoded values
-				SkipNonceChecks:  true,
-				SkipFromEOACheck: true,
-			},
-			baseFee: big.NewInt(77), // is ignored
-		},
-		"eip1559 with gas fee cap": {
-			args: TransactionArgs{
-				MaxFeePerGas: (*hexutil.Big)(big.NewInt(1234)),
-			},
-			expectedMsg: core.Message{
-				GasLimit: math.MaxInt64,
-				Value:    big.NewInt(0),
-
-				// nil basefee, the algorithm will treat the transaction
-				// as legacy with 0 GasPrice
 				GasPrice:  big.NewInt(0),
 				GasFeeCap: big.NewInt(0),
 				GasTipCap: big.NewInt(0),
@@ -289,9 +247,59 @@ func TestTransactionArgs_ToMessage_GasPriceFollowsEIP1559Rules(t *testing.T) {
 				SkipNonceChecks:  true,
 				SkipFromEOACheck: true,
 			},
-			baseFee: nil, // is ignored
+			baseFee: big.NewInt(77),
 		},
-		"eip1559 with gas fee cap and basefee": {
+		"gasPrice and basefee promotes gas pricing to eip1559 rules": {
+			args: TransactionArgs{
+				GasPrice: (*hexutil.Big)(big.NewInt(10000000)),
+			},
+			expectedMsg: core.Message{
+				GasLimit: math.MaxInt64,
+				Value:    big.NewInt(0),
+
+				GasPrice:  big.NewInt(10000000),
+				GasFeeCap: big.NewInt(10000000),
+				GasTipCap: big.NewInt(10000000),
+				// Hardcoded values
+				SkipNonceChecks:  true,
+				SkipFromEOACheck: true,
+			},
+			baseFee: big.NewInt(77),
+		},
+		"gasPrice and no basefee promotes gas pricing to eip1559 rules": {
+			args: TransactionArgs{
+				GasPrice: (*hexutil.Big)(big.NewInt(10000000)),
+			},
+			expectedMsg: core.Message{
+				GasLimit: math.MaxInt64,
+				Value:    big.NewInt(0),
+
+				GasPrice:  big.NewInt(10000000),
+				GasFeeCap: big.NewInt(10000000),
+				GasTipCap: big.NewInt(10000000),
+				// Hardcoded values
+				SkipNonceChecks:  true,
+				SkipFromEOACheck: true,
+			},
+		},
+		"maxFeePerGas and no basefee uses pre-eip1559 rules": {
+			args: TransactionArgs{
+				MaxFeePerGas: (*hexutil.Big)(big.NewInt(1234)),
+			},
+			expectedMsg: core.Message{
+				GasLimit: math.MaxInt64,
+				Value:    big.NewInt(0),
+
+				GasPrice:  big.NewInt(0),
+				GasFeeCap: big.NewInt(0),
+				GasTipCap: big.NewInt(0),
+
+				// Hardcoded values
+				SkipNonceChecks:  true,
+				SkipFromEOACheck: true,
+			},
+		},
+		"maxFeePerGas and basefee uses eip1559 rules": {
 			args: TransactionArgs{
 				MaxFeePerGas: (*hexutil.Big)(big.NewInt(1234)),
 			},
@@ -309,7 +317,7 @@ func TestTransactionArgs_ToMessage_GasPriceFollowsEIP1559Rules(t *testing.T) {
 			},
 			baseFee: big.NewInt(77),
 		},
-		"eip1559 with gas tip cap": {
+		"maxPriorityFeePerGas and no basefee uses pre-eip1559 rules": {
 			args: TransactionArgs{
 				MaxPriorityFeePerGas: (*hexutil.Big)(big.NewInt(1234)),
 			},
@@ -317,8 +325,6 @@ func TestTransactionArgs_ToMessage_GasPriceFollowsEIP1559Rules(t *testing.T) {
 				GasLimit: math.MaxInt64,
 				Value:    big.NewInt(0),
 
-				// nil basefee, the algorithm will treat the transaction
-				// as legacy with 0 GasPrice
 				GasPrice:  big.NewInt(0),
 				GasFeeCap: big.NewInt(0),
 				GasTipCap: big.NewInt(0),
@@ -327,9 +333,8 @@ func TestTransactionArgs_ToMessage_GasPriceFollowsEIP1559Rules(t *testing.T) {
 				SkipNonceChecks:  true,
 				SkipFromEOACheck: true,
 			},
-			baseFee: nil,
 		},
-		"eip1559 with gas tip cap and basefee": {
+		"maxPriorityFeePerGas and basefee uses eip1559 rules": {
 			args: TransactionArgs{
 				MaxPriorityFeePerGas: (*hexutil.Big)(big.NewInt(1234)),
 			},
@@ -347,7 +352,7 @@ func TestTransactionArgs_ToMessage_GasPriceFollowsEIP1559Rules(t *testing.T) {
 			},
 			baseFee: big.NewInt(77),
 		},
-		"eip1559 with gas fee cap and gas tip cap": {
+		"maxFeePerGas, maxPriorityFeePerGas and no basefee uses pre-eip1559 rules": {
 			args: TransactionArgs{
 				MaxFeePerGas:         (*hexutil.Big)(big.NewInt(1234)),
 				MaxPriorityFeePerGas: (*hexutil.Big)(big.NewInt(5678)),
@@ -356,8 +361,6 @@ func TestTransactionArgs_ToMessage_GasPriceFollowsEIP1559Rules(t *testing.T) {
 				GasLimit: math.MaxInt64,
 				Value:    big.NewInt(0),
 
-				// nil basefee, the algorithm will treat the transaction
-				// as legacy with 0 GasPrice
 				GasPrice:  big.NewInt(0),
 				GasFeeCap: big.NewInt(0),
 				GasTipCap: big.NewInt(0),
@@ -367,7 +370,7 @@ func TestTransactionArgs_ToMessage_GasPriceFollowsEIP1559Rules(t *testing.T) {
 				SkipFromEOACheck: true,
 			},
 		},
-		"eip1559 with gas fee cap and gas tip cap and base fee": {
+		"maxFeePerGas, maxPriorityFeePerGas and basefee uses eip1559 rules": {
 			args: TransactionArgs{
 				MaxFeePerGas:         (*hexutil.Big)(big.NewInt(1234)),
 				MaxPriorityFeePerGas: (*hexutil.Big)(big.NewInt(5678)),

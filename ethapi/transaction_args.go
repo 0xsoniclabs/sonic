@@ -185,7 +185,11 @@ func (args *TransactionArgs) setDefaults(ctx context.Context, b Backend) error {
 // ToMessage converts the transaction arguments to the Message type used by the
 // core evm. This method is used in calls and traces that do not require a real
 // live transaction.
-func (args *TransactionArgs) ToMessage(globalGasCap uint64, baseFee *big.Int) (*core.Message, error) {
+//
+// This function will cap the Gas value of the message to the global gas cap provided.
+// If the argument baseFee is nil. Pre-EIP1559 gas pricing is assumed, otherwise
+// EIP1559 gas pricing is assumed.
+func (args *TransactionArgs) ToMessage(globalGasCap uint64, baseFee *big.Int, log log.Logger) (*core.Message, error) {
 	// Reject invalid combinations of pre- and post-1559 fee styles
 	if args.GasPrice != nil && (args.MaxFeePerGas != nil || args.MaxPriorityFeePerGas != nil) {
 		return nil, errors.New("both gasPrice and (maxFeePerGas or maxPriorityFeePerGas) specified")
