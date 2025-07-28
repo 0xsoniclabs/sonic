@@ -31,6 +31,7 @@ import (
 )
 
 func TestChainId(t *testing.T) {
+	t.Parallel()
 	net := StartIntegrationTestNet(t,
 		IntegrationTestNetOptions{
 			ModifyConfig: func(config *config.Config) {

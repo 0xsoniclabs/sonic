@@ -55,8 +55,7 @@ func testPacingOfEmptyBlocks(
 	upgrades opera.Upgrades,
 ) {
 	require := require.New(t)
-	net := getIntegrationTestNetSession(t, upgrades)
-	t.Parallel()
+	net := StartIntegrationTestNet(t)
 
 	maxEmptyInterval := 4 * time.Second
 
