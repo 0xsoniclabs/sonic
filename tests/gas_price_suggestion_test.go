@@ -31,16 +31,17 @@ import (
 func TestGasPrice(t *testing.T) {
 
 	net, client := makeNetAndClient(t)
+	t.Parallel()
 
 	t.Run("SuggestedGasPriceApproximateActualBaseFees", func(t *testing.T) {
-		t.Parallel()
 		session := net.SpawnSession(t)
+		t.Parallel()
 		testGasPrice_SuggestedGasPricesApproximateActualBaseFees(t, session, client)
 	})
 
 	t.Run("UnderpricedTransactionsAreRejected", func(t *testing.T) {
-		t.Parallel()
 		session := net.SpawnSession(t)
+		t.Parallel()
 		testGasPrice_UnderpricedTransactionsAreRejected(t, session, client)
 	})
 }
@@ -146,10 +147,8 @@ func testGasPrice_UnderpricedTransactionsAreRejected(
 	require.NoError(send(setCodeFactory.makeSetCodeTransactionWithPrice(t, chainId, 0, feeCap, 0)))
 }
 
-func makeNetAndClient(t *testing.T) (*IntegrationTestNet, *PooledEhtClient) {
-	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
-		Upgrades: AsPointer(opera.GetAllegroUpgrades()),
-	})
+func makeNetAndClient(t *testing.T) (IntegrationTestNetSession, *PooledEhtClient) {
+	net := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 
 	client, err := net.GetClient()
 	require.NoError(t, err)

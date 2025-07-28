@@ -20,6 +20,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/contractcreator"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -35,7 +36,8 @@ const sufficientGas = uint64(150_000)
 func TestInitCodeSizeLimitAndMetered(t *testing.T) {
 	requireBase := require.New(t)
 
-	net := StartIntegrationTestNet(t)
+	net := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	t.Parallel()
 
 	contract, receipt, err := DeployContract(net, contractcreator.DeployContractcreator)
 	requireBase.NoError(err)
@@ -71,7 +73,7 @@ func TestInitCodeSizeLimitAndMetered(t *testing.T) {
 	})
 }
 
-func testForVariant(t *testing.T, net *IntegrationTestNet,
+func testForVariant(t *testing.T, net IntegrationTestNetSession,
 	contract *contractcreator.Contractcreator, variant variant,
 	gasForContract, wordCost uint64) {
 
@@ -131,7 +133,7 @@ func testForVariant(t *testing.T, net *IntegrationTestNet,
 	})
 }
 
-func testForTransaction(t *testing.T, net *IntegrationTestNet) {
+func testForTransaction(t *testing.T, net IntegrationTestNetSession) {
 	t.Run("charges depending on the init code size", func(t *testing.T) {
 		t.Parallel()
 		require := require.New(t)
@@ -170,7 +172,7 @@ func testForTransaction(t *testing.T, net *IntegrationTestNet) {
 	})
 }
 
-func createContractSuccessfully(t *testing.T, net *IntegrationTestNet, variant variant, codeLen, gasLimit uint64) *types.Receipt {
+func createContractSuccessfully(t *testing.T, net IntegrationTestNetSession, variant variant, codeLen, gasLimit uint64) *types.Receipt {
 	receipt, err := createContractWithCodeLenAndGas(net, variant, codeLen, gasLimit)
 	require := require.New(t)
 	require.NoError(err)

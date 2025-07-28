@@ -38,9 +38,8 @@ import (
 // assign fees for a dApp also in this delegate scenario and dApp
 // address will be visible in the trace
 func TestTrace7702Transaction(t *testing.T) {
-	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
-		Upgrades: AsPointer(opera.GetAllegroUpgrades()),
-	})
+	net := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	t.Parallel()
 
 	sponsor := makeAccountWithBalance(t, net, big.NewInt(1e18))
 	sponsored := makeAccountWithBalance(t, net, big.NewInt(10))

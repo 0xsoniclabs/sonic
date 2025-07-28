@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/ethapi"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -28,7 +29,8 @@ import (
 )
 
 func TestGetAccount(t *testing.T) {
-	net := StartIntegrationTestNet(t)
+	net := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	t.Parallel()
 
 	// Deploy the transient storage contract
 	_, deployReceipt, err := DeployContract(net, counter.DeployCounter)

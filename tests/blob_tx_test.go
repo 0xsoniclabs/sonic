@@ -21,6 +21,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/blobbasefee"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -38,6 +39,7 @@ func TestBlobTransaction(t *testing.T) {
 
 	ctxt := MakeTestContext(t)
 	defer ctxt.Close()
+	t.Parallel()
 
 	t.Run("blob tx with non-empty blobs is rejected", func(t *testing.T) {
 		testBlobTx_WithBlobsIsRejected(t, ctxt)
@@ -278,13 +280,12 @@ func checkBlocksSanity(t *testing.T, client *PooledEhtClient) {
 }
 
 type testContext struct {
-	net    *IntegrationTestNet
+	net    IntegrationTestNetSession
 	client *PooledEhtClient
 }
 
 func MakeTestContext(t *testing.T) *testContext {
-	net := StartIntegrationTestNet(t)
-
+	net := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 	client, err := net.GetClient()
 	require.NoError(t, err)
 
@@ -293,7 +294,6 @@ func MakeTestContext(t *testing.T) *testContext {
 
 func (tc *testContext) Close() {
 	tc.client.Close()
-	tc.net.Stop()
 }
 
 // helper functions to calculate blob base fee based on https://eips.ethereum.org/EIPS/eip-4844#gas-accounting

@@ -32,10 +32,8 @@ import (
 func TestRejectedTx_TransactionsAreRejectedBecauseOfAccountState(t *testing.T) {
 
 	// start network
-	net := StartIntegrationTestNet(t,
-		IntegrationTestNetOptions{
-			Upgrades: AsPointer(opera.GetAllegroUpgrades()),
-		})
+	net := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	t.Parallel()
 
 	// create a client
 	client, err := net.GetClient()

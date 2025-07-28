@@ -218,6 +218,7 @@ func waitUntilTransactionIsRetiredFromPool(t *testing.T, client *PooledEhtClient
 }
 
 func TestIntegrationTestNetTools(t *testing.T) {
+	t.Parallel()
 
 	t.Run("setTransactionDefaults sets the transaction defaults", func(t *testing.T) {
 		session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())

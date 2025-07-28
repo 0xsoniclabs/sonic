@@ -21,6 +21,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -30,8 +31,8 @@ import (
 func TestWithdrawalFieldsInBlocks(t *testing.T) {
 	requireBase := require.New(t)
 
-	// start network.
-	net := StartIntegrationTestNet(t)
+	net := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	t.Parallel()
 
 	// run endowment to ensure at least one block exists
 	receipt, err := net.EndowAccount(common.Address{42}, big.NewInt(1))

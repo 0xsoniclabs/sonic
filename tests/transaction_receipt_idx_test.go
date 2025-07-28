@@ -30,10 +30,8 @@ import (
 )
 
 func TestReceipt_InternalTransactionsDoNotChangeReceiptIndex(t *testing.T) {
-	upgrades := opera.GetSonicUpgrades()
-	net := StartIntegrationTestNetWithJsonGenesis(t, IntegrationTestNetOptions{
-		Upgrades: &upgrades,
-	})
+	net := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	t.Parallel()
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
@@ -50,7 +48,7 @@ func TestReceipt_InternalTransactionsDoNotChangeReceiptIndex(t *testing.T) {
 	// Send transaction instructing the network to advance one epoch.
 	contract, err := driverauth100.NewContract(driverauth.ContractAddress, client)
 	require.NoError(t, err)
-	txOpts, err := net.GetTransactOptions(&net.account)
+	txOpts, err := net.GetTransactOptions(net.GetSessionSponsor())
 	require.NoError(t, err)
 	tx, err := contract.AdvanceEpochs(txOpts, big.NewInt(int64(1)))
 	require.NoError(t, err)
