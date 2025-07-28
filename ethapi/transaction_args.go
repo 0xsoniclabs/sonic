@@ -198,6 +198,12 @@ func (args *TransactionArgs) ToMessage(globalGasCap uint64, baseFee *big.Int) (*
 		globalGasCap = math.MaxInt64
 	}
 
+	// Use nonce if specified, otherwise set to zero.
+	var nonce uint64
+	if args.Nonce != nil {
+		nonce = uint64(*args.Nonce)
+	}
+
 	gas := globalGasCap
 
 	if args.Gas != nil {
@@ -262,7 +268,7 @@ func (args *TransactionArgs) ToMessage(globalGasCap uint64, baseFee *big.Int) (*
 	return &core.Message{
 		From:                  addr,
 		To:                    args.To,
-		Nonce:                 0,
+		Nonce:                 nonce,
 		Value:                 value,
 		GasLimit:              gas,
 		GasPrice:              gasPrice,

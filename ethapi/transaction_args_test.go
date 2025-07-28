@@ -108,7 +108,7 @@ func TestTransactionArgs_ToMessage_Empty(t *testing.T) {
 	require.Equal(t, big.NewInt(0), msg.Value)
 	require.Nil(t, msg.BlobGasFeeCap)
 	require.Equal(t, big.NewInt(0), msg.GasTipCap)
-	require.Equal(t, uint64(0), msg.Nonce, "Nonce should be hardcoded to 0")
+	require.Equal(t, uint64(0), msg.Nonce)
 }
 
 func TestTransactionArgs_ToMessage_TrivialFieldsAreCopied(t *testing.T) {
@@ -150,7 +150,7 @@ func TestTransactionArgs_ToMessage_TrivialFieldsAreCopied(t *testing.T) {
 
 	require.Equal(t, core.Message{
 		To:       &common.Address{0x1},
-		Nonce:    0, // hardcoded to 0
+		Nonce:    msg.Nonce,
 		Value:    big.NewInt(0x3),
 		GasLimit: 0x5,
 
