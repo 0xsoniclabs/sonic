@@ -439,6 +439,215 @@ func TestTransactionArgs_ToMessage_RejectsConversionWithIncoherentGasPricing(t *
 			msg, err := tc.args.ToMessage(0, nil, nil)
 			require.Nil(t, msg)
 			require.EqualError(t, err, "both gasPrice and (maxFeePerGas or maxPriorityFeePerGas) specified")
+
+		})
+	}
+}
+
+func TestTransactionArgs_ToTransaction(t *testing.T) {
+
+	tests := map[string]struct {
+		args     TransactionArgs
+		expected *types.Transaction
+	}{
+		"legacy transaction": {
+			args: TransactionArgs{
+				To:       &common.Address{0x01},
+				Nonce:    asPointer(hexutil.Uint64(0x42)),
+				Gas:      asPointer(hexutil.Uint64(0x43)),
+				GasPrice: (*hexutil.Big)(big.NewInt(0x44)),
+				Value:    (*hexutil.Big)(big.NewInt(0x45)),
+				Data:     asPointer(hexutil.Bytes{0x46}),
+			},
+			expected: types.NewTx(&types.LegacyTx{
+				To:       &common.Address{0x01},
+				Nonce:    0x42,
+				Gas:      0x43,
+				GasPrice: big.NewInt(0x44),
+				Value:    big.NewInt(0x45),
+				Data:     []byte{0x46},
+			}),
+		},
+		"AccessList transaction": {
+			args: TransactionArgs{
+				To:       &common.Address{0x01},
+				Nonce:    asPointer(hexutil.Uint64(0x42)),
+				Gas:      asPointer(hexutil.Uint64(0x43)),
+				GasPrice: (*hexutil.Big)(big.NewInt(0x44)),
+				Value:    (*hexutil.Big)(big.NewInt(0x45)),
+				Data:     asPointer(hexutil.Bytes{0x46}),
+				AccessList: asPointer(types.AccessList{
+					{
+						Address: common.Address{0x01},
+						StorageKeys: []common.Hash{
+							common.HexToHash("0x1234"),
+							common.HexToHash("0x5678"),
+						},
+					},
+				}),
+			},
+			expected: types.NewTx(&types.AccessListTx{
+				To:       &common.Address{0x01},
+				Nonce:    0x42,
+				Gas:      0x43,
+				GasPrice: big.NewInt(0x44),
+				Value:    big.NewInt(0x45),
+				Data:     []byte{0x46},
+				AccessList: types.AccessList{
+					{
+						Address: common.Address{0x01},
+						StorageKeys: []common.Hash{
+							common.HexToHash("0x1234"),
+							common.HexToHash("0x5678"),
+						},
+					},
+				},
+			}),
+		},
+		"DynamicFee transaction": {
+			args: TransactionArgs{
+				To:                   &common.Address{0x01},
+				Nonce:                asPointer(hexutil.Uint64(0x42)),
+				Gas:                  asPointer(hexutil.Uint64(0x43)),
+				MaxFeePerGas:         (*hexutil.Big)(big.NewInt(0x44)),
+				MaxPriorityFeePerGas: (*hexutil.Big)(big.NewInt(0x45)),
+				Value:                (*hexutil.Big)(big.NewInt(0x46)),
+				Data:                 asPointer(hexutil.Bytes{0x47}),
+				AccessList: asPointer(types.AccessList{
+					{
+						Address: common.Address{0x01},
+					},
+				}),
+			},
+			expected: types.NewTx(&types.DynamicFeeTx{
+				To:        &common.Address{0x01},
+				Nonce:     0x42,
+				Gas:       0x43,
+				GasFeeCap: big.NewInt(0x44),
+				GasTipCap: big.NewInt(0x45),
+				Value:     big.NewInt(0x46),
+				Data:      []byte{0x47},
+				AccessList: types.AccessList{
+					{
+						Address: common.Address{0x01},
+					},
+				},
+			}),
+		},
+		"Blob transaction": {
+			args: TransactionArgs{
+				To:                   &common.Address{0x01},
+				Nonce:                asPointer(hexutil.Uint64(0x42)),
+				Gas:                  asPointer(hexutil.Uint64(0x43)),
+				MaxFeePerGas:         (*hexutil.Big)(big.NewInt(0x44)),
+				MaxPriorityFeePerGas: (*hexutil.Big)(big.NewInt(0x45)),
+				Value:                (*hexutil.Big)(big.NewInt(0x46)),
+				Data:                 asPointer(hexutil.Bytes{0x47}),
+				AccessList: asPointer(types.AccessList{
+					{
+						Address: common.Address{0x01},
+					},
+				}),
+				BlobFeeCap: (*hexutil.Big)(big.NewInt(0x48)),
+				BlobHashes: []common.Hash{
+					common.HexToHash("0x49"),
+					common.HexToHash("0x4a"),
+				},
+			},
+			expected: types.NewTx(&types.BlobTx{
+				To:        common.Address{0x01},
+				Nonce:     0x42,
+				Gas:       0x43,
+				GasFeeCap: uint256.NewInt(0x44),
+				GasTipCap: uint256.NewInt(0x45),
+				Value:     uint256.NewInt(0x46),
+				Data:      []byte{0x47},
+				AccessList: types.AccessList{
+					{
+						Address: common.Address{0x01},
+					},
+				},
+				BlobFeeCap: uint256.NewInt(0x48),
+				BlobHashes: []common.Hash{
+					common.HexToHash("0x49"),
+					common.HexToHash("0x4a"),
+				},
+			}),
+		},
+		"SetCode transaction": {
+			args: TransactionArgs{
+				To:                   &common.Address{0x01},
+				Nonce:                asPointer(hexutil.Uint64(0x42)),
+				Gas:                  asPointer(hexutil.Uint64(0x43)),
+				MaxFeePerGas:         (*hexutil.Big)(big.NewInt(0x44)),
+				MaxPriorityFeePerGas: (*hexutil.Big)(big.NewInt(0x45)),
+				Value:                (*hexutil.Big)(big.NewInt(0x46)),
+				Data:                 asPointer(hexutil.Bytes{0x47}),
+				AccessList: asPointer(types.AccessList{
+					{
+						Address: common.Address{0x01},
+					},
+				}),
+				AuthorizationList: []types.SetCodeAuthorization{
+					{
+						Address: common.Address{0x01},
+						Nonce:   0x02,
+						ChainID: *uint256.NewInt(0x03),
+					},
+				},
+			},
+			expected: types.NewTx(&types.SetCodeTx{
+				To:        common.Address{0x01},
+				Nonce:     0x42,
+				Gas:       0x43,
+				GasFeeCap: uint256.NewInt(0x44),
+				GasTipCap: uint256.NewInt(0x45),
+				Value:     uint256.NewInt(0x46),
+				Data:      []byte{0x47},
+				AccessList: types.AccessList{
+					{
+						Address: common.Address{0x01},
+					},
+				},
+				AuthList: []types.SetCodeAuthorization{
+					{
+						Address: common.Address{0x01},
+						Nonce:   0x02,
+						ChainID: *uint256.NewInt(0x03),
+					},
+				},
+			}),
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			converted := test.args.ToTransaction()
+
+			// expected type must match
+			require.Equal(t, test.expected.Type(), converted.Type())
+
+			// trivial fields from the legacy transaction type
+			require.Equal(t, test.expected.ChainId(), converted.ChainId())
+			require.Equal(t, test.expected.To(), converted.To())
+			require.Equal(t, test.expected.Nonce(), converted.Nonce())
+			require.Equal(t, test.expected.Gas(), converted.Gas())
+			require.Equal(t, test.expected.Value(), converted.Value())
+			require.Equal(t, test.expected.Data(), converted.Data())
+
+			// access list
+			require.Equal(t, test.expected.AccessList(), converted.AccessList())
+
+			// eip1559 gas pricing
+			require.Equal(t, test.expected.GasFeeCap(), converted.GasFeeCap())
+			require.Equal(t, test.expected.GasTipCap(), converted.GasTipCap())
+
+			// blobs
+			require.Equal(t, test.expected.BlobGasFeeCap(), converted.BlobGasFeeCap())
+			require.Equal(t, test.expected.BlobHashes(), converted.BlobHashes())
+
+			// set code authorizations
+			require.Equal(t, test.expected.SetCodeAuthorizations(), converted.SetCodeAuthorizations())
 		})
 	}
 }
