@@ -219,25 +219,22 @@ func waitUntilTransactionIsRetiredFromPool(t *testing.T, client *PooledEhtClient
 
 func TestIntegrationTestNetTools(t *testing.T) {
 
-	net := StartIntegrationTestNet(t,
-		IntegrationTestNetOptions{
-			Upgrades: AsPointer(opera.GetAllegroUpgrades()),
-		})
-
 	t.Run("setTransactionDefaults sets the transaction defaults", func(t *testing.T) {
+		session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 		t.Parallel()
-		testIntegrationTestNet_setTransactionDefaults(t, net)
+		testIntegrationTestNet_setTransactionDefaults(t, session)
 	})
 
 	t.Run("waitUntilTransactionIsRetiredFromPool waits from completion", func(t *testing.T) {
+		session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 		t.Parallel()
-		test_WaitUntilTransactionIsRetiredFromPool_waitsFromCompletion(t, net)
+		test_WaitUntilTransactionIsRetiredFromPool_waitsFromCompletion(t, session)
 	})
 }
 
-func testIntegrationTestNet_setTransactionDefaults(t *testing.T, net *IntegrationTestNet) {
+func testIntegrationTestNet_setTransactionDefaults(t *testing.T, session IntegrationTestNetSession) {
 
-	client, err := net.GetClient()
+	client, err := session.GetClient()
 	require.NoError(t, err)
 	defer client.Close()
 
@@ -410,6 +407,7 @@ func testIntegrationTestNet_setTransactionDefaults(t *testing.T, net *Integratio
 	}
 
 	t.Run("filled transactions can be executed", func(t *testing.T) {
+		session := session.SpawnSession(t)
 		t.Parallel()
 		tests := generateTestDataBasedOnModificationCombinations(
 			func() types.TxData { return nil },
@@ -438,8 +436,6 @@ func testIntegrationTestNet_setTransactionDefaults(t *testing.T, net *Integratio
 				return tc
 			},
 		)
-
-		session := net.SpawnSession(t)
 
 		nonce, err := client.NonceAt(t.Context(), session.GetSessionSponsor().Address(), nil)
 		require.NoError(t, err)
@@ -482,8 +478,8 @@ func testIntegrationTestNet_setTransactionDefaults(t *testing.T, net *Integratio
 	t.Run("zero nonce is defaulted", func(t *testing.T) {
 		// this generation is tested isolated because the previous test case
 		// utilizes manual nonce setting to issue multiple transactions asynchronously
+		session := session.SpawnSession(t)
 		t.Parallel()
-		session := net.SpawnSession(t)
 		// account has a non-zero nonce
 		receipt, err := session.EndowAccount(common.Address{}, big.NewInt(1))
 		require.NoError(t, err)
@@ -499,8 +495,8 @@ func testIntegrationTestNet_setTransactionDefaults(t *testing.T, net *Integratio
 	})
 
 	t.Run("non-zero nonce is not defaulted", func(t *testing.T) {
+		session := session.SpawnSession(t)
 		t.Parallel()
-		session := net.SpawnSession(t)
 		// endowments modify the account nonce
 		receipt, err := session.EndowAccount(common.Address{}, big.NewInt(1))
 		require.NoError(t, err)
@@ -520,8 +516,8 @@ func testIntegrationTestNet_setTransactionDefaults(t *testing.T, net *Integratio
 	})
 
 	t.Run("non-zero gas is not defaulted ", func(t *testing.T) {
+		session := session.SpawnSession(t)
 		t.Parallel()
-		session := net.SpawnSession(t)
 
 		txData := setTransactionDefaults(t, session, &types.LegacyTx{
 			Gas: 1,
@@ -534,9 +530,9 @@ func testIntegrationTestNet_setTransactionDefaults(t *testing.T, net *Integratio
 	})
 
 	t.Run("non-zero gas-price is not defaulted ", func(t *testing.T) {
+		session := session.SpawnSession(t)
 		t.Parallel()
 
-		session := net.SpawnSession(t)
 		txData := setTransactionDefaults(t, session, &types.LegacyTx{
 			GasPrice: big.NewInt(1),
 		}, session.GetSessionSponsor())
@@ -549,9 +545,7 @@ func testIntegrationTestNet_setTransactionDefaults(t *testing.T, net *Integratio
 }
 
 func test_WaitUntilTransactionIsRetiredFromPool_waitsFromCompletion(
-	t *testing.T, net *IntegrationTestNet) {
-
-	session := net.SpawnSession(t)
+	t *testing.T, session IntegrationTestNetSession) {
 
 	client, err := session.GetClient()
 	require.NoError(t, err)

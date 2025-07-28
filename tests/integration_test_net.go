@@ -110,6 +110,8 @@ type IntegrationTestNetSession interface {
 	// AdvanceEpoch sends a transaction to advance to the next epoch.
 	// It also waits until the new epoch is really reached.
 	AdvanceEpoch(epochs int) error
+
+	SpawnSession(t *testing.T) IntegrationTestNetSession
 }
 
 // AsPointer is a utility function that returns a pointer to the given value.
@@ -733,6 +735,7 @@ func (n *IntegrationTestNet) SpawnSession(t *testing.T) IntegrationTestNetSessio
 	nextSessionAccount := Account{
 		PrivateKey: key,
 	}
+
 	receipt, err := n.EndowAccount(nextSessionAccount.Address(), new(big.Int).SetUint64(math.MaxUint64))
 	require.NoError(t, err, "Failed to endow account")
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "Failed to endow account")
@@ -788,6 +791,10 @@ type contractDeployer[T any] func(*bind.TransactOpts, bind.ContractBackend) (com
 type Session struct {
 	net     *IntegrationTestNet
 	account Account
+}
+
+func (s *Session) SpawnSession(t *testing.T) IntegrationTestNetSession {
+	return s.net.SpawnSession(t)
 }
 
 func (s *Session) GetUpgrades() opera.Upgrades {
