@@ -26,6 +26,7 @@ import (
 )
 
 func TestClient_IndexedLogsAreInOrder(t *testing.T) {
+	t.Parallel()
 	net := StartIntegrationTestNetWithFakeGenesis(t)
 
 	contract, receipt, err := DeployContract(net, indexed_logs.DeployIndexedLogs)

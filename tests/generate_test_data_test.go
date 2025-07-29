@@ -55,6 +55,7 @@ func generateTestDataBasedOnModificationCombinations[T any, Piece any](
 }
 
 func TestCartesianProduct_CountInstantiations(t *testing.T) {
+	t.Parallel()
 
 	count := func(_ int, modifier []int) int {
 		var count int
@@ -83,6 +84,7 @@ func TestCartesianProduct_CountInstantiations(t *testing.T) {
 }
 
 func TestCartesianProduct_noPiecesReturnOriginalObject(t *testing.T) {
+	t.Parallel()
 	makeOriginal := func() int { return 36 }
 	it := generateTestDataBasedOnModificationCombinations(
 		makeOriginal,
@@ -103,6 +105,7 @@ func TestCartesianProduct_noPiecesReturnOriginalObject(t *testing.T) {
 }
 
 func TestCartesianProduct_AcceptsFunctionsAsPieces(t *testing.T) {
+	t.Parallel()
 
 	type TestType struct {
 		A int

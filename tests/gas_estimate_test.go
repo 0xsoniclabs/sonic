@@ -33,6 +33,7 @@ import (
 )
 
 func TestEstimateGas(t *testing.T) {
+	t.Parallel()
 	t.Run("Sonic", func(t *testing.T) {
 		session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 		t.Parallel()

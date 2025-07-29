@@ -30,6 +30,7 @@ import (
 )
 
 func TestLargeTransactions_CanHandleLargeTransactions(t *testing.T) {
+	t.Parallel()
 	require := require.New(t)
 	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
 		Upgrades: AsPointer(opera.GetAllegroUpgrades()),
@@ -96,6 +97,7 @@ func TestLargeTransactions_CanHandleLargeTransactions(t *testing.T) {
 }
 
 func TestLargeTransactions_LargeTransactionLoadTest(t *testing.T) {
+	t.Parallel()
 
 	if isDataRaceDetectionEnabled() {
 		t.Skip(`Due to the concurrency requirements of this test, 

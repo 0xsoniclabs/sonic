@@ -70,6 +70,7 @@ type namespaceMap map[string]map[string]interface{}
 
 // TestRPCApis checks if all go-ethereum RPC APIs are implemented in Sonic
 func TestRPCApis(t *testing.T) {
+	t.Parallel()
 	ethAPIs := parseAPIs(rpc_test_utils.GetRpcApis())
 	sonicAPIs := parseAPIs(getNodeService(t).APIs())
 

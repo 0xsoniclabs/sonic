@@ -1002,6 +1002,7 @@ func getCallData(t *testing.T, session IntegrationTestNetSession,
 }
 
 func TestSetCodeTransaction_IsRejectBeforeAllegro(t *testing.T) {
+	t.Parallel()
 	net := StartIntegrationTestNet(t)
 	client, err := net.GetClient()
 	require.NoError(t, err)

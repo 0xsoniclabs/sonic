@@ -32,6 +32,7 @@ import (
 )
 
 func TestBlockHash_CorrectBlockHashesAreAccessibleInContracts(t *testing.T) {
+	t.Parallel()
 	require := req.New(t)
 	net := StartIntegrationTestNet(t)
 
@@ -159,6 +160,7 @@ var (
 )
 
 func TestBlockHash_EIP2935_IsAutomaticallyDeployedWithFakeNet(t *testing.T) {
+	t.Parallel()
 
 	tests := map[string]func(t *testing.T) IntegrationTestNetSession{
 		"json genesis": func(t *testing.T) IntegrationTestNetSession {
@@ -194,6 +196,7 @@ func TestBlockHash_EIP2935_IsAutomaticallyDeployedWithFakeNet(t *testing.T) {
 }
 
 func TestBlockHash_EIP2935_HistoryContractIsNotDeployedBeforePrague(t *testing.T) {
+	t.Parallel()
 
 	tests := map[string]func(t *testing.T) IntegrationTestNetSession{
 		"json genesis": func(t *testing.T) IntegrationTestNetSession {
@@ -226,6 +229,7 @@ func TestBlockHash_EIP2935_HistoryContractIsNotDeployedBeforePrague(t *testing.T
 }
 
 func TestBlockHash_EIP2935_DeployContract(t *testing.T) {
+	t.Parallel()
 	require := req.New(t)
 
 	net := StartIntegrationTestNet(t,
@@ -331,6 +335,7 @@ func TestBlockHash_EIP2935_DeployContract(t *testing.T) {
 }
 
 func TestBlockHash_EIP2935_HistoryContractAccumulatesBlockHashes(t *testing.T) {
+	t.Parallel()
 
 	require := req.New(t)
 

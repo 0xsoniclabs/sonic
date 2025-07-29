@@ -25,6 +25,7 @@ import (
 )
 
 func TestGenesis_NetworkCanCreateNewBlocksAfterExportImport(t *testing.T) {
+	t.Parallel()
 	const numBlocks = 3
 	require := require.New(t)
 

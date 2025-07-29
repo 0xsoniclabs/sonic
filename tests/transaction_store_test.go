@@ -29,6 +29,7 @@ import (
 )
 
 func TestTransactionStore_CanTransactionsBeRetrievedFromBlocksAfterRestart(t *testing.T) {
+	t.Parallel()
 
 	// This test will execute a series of transactions.
 	// After restarting the network, it will query the block where each transaction
