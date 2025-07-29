@@ -54,6 +54,7 @@ func TestBlockHeader_FakeGenesis_SatisfiesInvariants(t *testing.T) {
 }
 
 func TestBlockHeader_JsonGenesis_SatisfiesInvariants(t *testing.T) {
+	t.Parallel()
 	upgrades := map[string]opera.Upgrades{
 		"Sonic":   opera.GetSonicUpgrades(),
 		"Allegro": opera.GetAllegroUpgrades(),
@@ -214,6 +215,7 @@ func testBlockHeadersOnNetwork(t *testing.T, net *IntegrationTestNet) {
 	t.Run("BeforeRestart", runTests)
 
 	require.NoError(net.Restart())
+	// TODO: block 14 missing - flakiness
 	t.Run("AfterRestart", runTests)
 
 	require.NoError(net.RestartWithExportImport())

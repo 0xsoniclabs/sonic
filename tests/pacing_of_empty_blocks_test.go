@@ -27,6 +27,7 @@ import (
 )
 
 func TestPacingOfEmptyBlocks(t *testing.T) {
+	t.Parallel()
 	hardFork := map[string]opera.Upgrades{
 		"sonic":   opera.GetSonicUpgrades(),
 		"allegro": opera.GetAllegroUpgrades(),

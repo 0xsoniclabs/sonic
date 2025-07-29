@@ -52,6 +52,7 @@ func (tc *TestCase) String() string {
 }
 
 func TestGasCostTest_Sonic(t *testing.T) {
+	t.Parallel()
 	t.Run("with distributed proposers", func(t *testing.T) {
 		testGasCosts_Sonic(t, false)
 	})
@@ -154,6 +155,7 @@ func testGasCosts_Sonic(t *testing.T, singleProposer bool) {
 }
 
 func TestGasCostTest_Allegro(t *testing.T) {
+	t.Parallel()
 	t.Run("with distributed proposers", func(t *testing.T) {
 		testGasCosts_Allegro(t, false)
 	})

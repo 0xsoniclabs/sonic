@@ -30,6 +30,7 @@ import (
 )
 
 func TestSingleProposerProtocol_CanProcessTransactions(t *testing.T) {
+	t.Parallel()
 	upgrades := map[string]opera.Upgrades{
 		"Sonic":   opera.GetSonicUpgrades(),
 		"Allegro": opera.GetAllegroUpgrades(),
@@ -143,6 +144,7 @@ func testSingleProposerProtocol_CanProcessTransactions(
 }
 
 func TestSingleProposerProtocol_CanBeEnabledAndDisabled(t *testing.T) {
+	t.Parallel()
 	upgrades := map[string]opera.Upgrades{
 		"Sonic":   opera.GetSonicUpgrades(),
 		"Allegro": opera.GetAllegroUpgrades(),

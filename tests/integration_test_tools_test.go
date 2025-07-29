@@ -229,6 +229,7 @@ func TestIntegrationTestNetTools(t *testing.T) {
 	t.Run("waitUntilTransactionIsRetiredFromPool waits from completion", func(t *testing.T) {
 		session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 		t.Parallel()
+		// TODO: make sure this parallel is in the proper place and not before a session spawning.
 		test_WaitUntilTransactionIsRetiredFromPool_waitsFromCompletion(t, session)
 	})
 }
