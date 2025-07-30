@@ -189,7 +189,13 @@ func (args *TransactionArgs) setDefaults(ctx context.Context, b Backend) error {
 // This function will cap the Gas value of the message to the global gas cap provided.
 // If the argument baseFee is nil, pre-EIP1559 gas pricing is assumed, otherwise
 // EIP1559 gas pricing is assumed.
-func (args *TransactionArgs) ToMessage(globalGasCap uint64, baseFee *big.Int, log log.Logger) (*core.Message, error) {
+func (args *TransactionArgs) ToMessage(globalGasCap uint64, baseFee *big.Int) (*core.Message, error) {
+	return args.toMessage(globalGasCap, baseFee, log.Root())
+}
+
+// toMessage is an abstracted version of ToMessage that allows passing a custom logger,
+// to test that the log messages are correctly emitted.
+func (args *TransactionArgs) toMessage(globalGasCap uint64, baseFee *big.Int, log log.Logger) (*core.Message, error) {
 	// Reject invalid combinations of pre- and post-1559 fee styles
 	if args.GasPrice != nil && (args.MaxFeePerGas != nil || args.MaxPriorityFeePerGas != nil) {
 		return nil, errors.New("both gasPrice and (maxFeePerGas or maxPriorityFeePerGas) specified")
