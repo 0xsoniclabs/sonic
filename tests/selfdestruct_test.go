@@ -32,7 +32,7 @@ import (
 func TestSelfDestruct(t *testing.T) {
 
 	net := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
-	t.Parallel()
+	//t.Parallel()
 
 	t.Run("constructor", func(t *testing.T) {
 		t.Parallel()
