@@ -284,7 +284,7 @@ func TestEstimateGas(t *testing.T) {
 
 	api := NewPublicBlockChainAPI(mockBackend)
 
-	gas, err := api.EstimateGas(context.Background(), getTxArgs(t), &blkNr)
+	gas, err := api.EstimateGas(context.Background(), getTxArgs(t), &blkNr, nil, nil)
 	require.NoError(t, err, "failed to estimate gas")
 	require.Greater(t, gas, uint64(0))
 }

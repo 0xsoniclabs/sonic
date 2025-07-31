@@ -1153,7 +1153,7 @@ func (s *PublicBlockChainAPI) Call(ctx context.Context, args TransactionArgs, bl
 }
 
 // DoEstimateGas - binary search the gas requirement, as it may be higher than the amount used
-func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, gasCap uint64) (hexutil.Uint64, error) {
+func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, overrides *StateOverride, blockOverrides *BlockOverrides, gasCap uint64) (hexutil.Uint64, error) {
 	// Binary search the gas requirement, as it may be higher than the amount used
 	var (
 		lo  uint64 = params.TxGas - 1
@@ -1188,6 +1188,9 @@ func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNr
 			return 0, err
 		}
 		defer state.Release()
+		if err := overrides.Apply(state); err != nil {
+			return 0, err
+		}
 		balance := state.GetBalance(*args.From) // from can't be nil
 		available := utils.Uint256ToBigInt(balance)
 		if args.Value != nil {
@@ -1220,7 +1223,7 @@ func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNr
 	executable := func(gas uint64) (bool, *core.ExecutionResult, error) {
 		args.Gas = (*hexutil.Uint64)(&gas)
 
-		result, err := DoCall(ctx, b, args, blockNrOrHash, nil, nil, 0, gasCap)
+		result, err := DoCall(ctx, b, args, blockNrOrHash, overrides, blockOverrides, 0, gasCap)
 		if err != nil {
 			if errors.Is(err, core.ErrIntrinsicGas) ||
 				errors.Is(err, core.ErrFloorDataGas) {
@@ -1269,12 +1272,12 @@ func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNr
 
 // EstimateGas returns an estimate of the amount of gas needed to execute the
 // given transaction against the current pending block.
-func (s *PublicBlockChainAPI) EstimateGas(ctx context.Context, args TransactionArgs, blockNrOrHash *rpc.BlockNumberOrHash) (hexutil.Uint64, error) {
+func (s *PublicBlockChainAPI) EstimateGas(ctx context.Context, args TransactionArgs, blockNrOrHash *rpc.BlockNumberOrHash, overrides *StateOverride, blockOverrides *BlockOverrides) (hexutil.Uint64, error) {
 	bNrOrHash := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
 	if blockNrOrHash != nil {
 		bNrOrHash = *blockNrOrHash
 	}
-	return DoEstimateGas(ctx, s.b, args, bNrOrHash, s.b.RPCGasCap())
+	return DoEstimateGas(ctx, s.b, args, bNrOrHash, overrides, blockOverrides, s.b.RPCGasCap())
 }
 
 // RPCMarshalBlock converts the given block to the RPC output which depends on fullTx. If inclTx is true transactions are
