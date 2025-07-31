@@ -28,7 +28,7 @@ import (
 
 func TestPrevRandao(t *testing.T) {
 	net := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
-	t.Parallel()
+	// t.Parallel()
 
 	// Deploy the contract.
 	contract, _, err := DeployContract(net, prevrandao.DeployPrevrandao)

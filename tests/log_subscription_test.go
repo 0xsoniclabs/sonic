@@ -29,8 +29,6 @@ import (
 func TestLogSubscription_CanGetCallBacksForLogEvents(t *testing.T) {
 	const NumEvents = 3
 	require := require.New(t)
-	// net := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
-	// t.Parallel()
 	net := StartIntegrationTestNet(t)
 
 	contract, _, err := DeployContract(net, counter_event_emitter.DeployCounterEventEmitter)

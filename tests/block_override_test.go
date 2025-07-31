@@ -40,7 +40,7 @@ func TestBlockOverride(t *testing.T) {
 	require := req.New(t)
 
 	net := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
-	t.Parallel()
+	//t.Parallel()
 
 	// Deploy the block override observer contract.
 	_, receipt, err := DeployContract(net, block_override.DeployBlockOverride)

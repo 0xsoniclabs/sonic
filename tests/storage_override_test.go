@@ -32,7 +32,7 @@ import (
 
 func TestSetStorage_PreExisting_Contract_Storage_Temporarily_Overridden(t *testing.T) {
 	net := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
-	t.Parallel()
+	//t.Parallel()
 
 	// Deploy the contract.
 	contract, receipt, err := DeployContract(net, storage.DeployStorage)
@@ -107,7 +107,7 @@ func TestSetStorage_Contract_Not_On_Blockchain_Executed_With_Extra_Storage(t *te
 
 	// start network
 	net := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
-	t.Parallel()
+	//t.Parallel()
 
 	// create a client
 	client, err := net.GetClient()
