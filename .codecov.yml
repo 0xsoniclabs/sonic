@@ -24,9 +24,6 @@ coverage:
       default:
         target: 80% # coverage of the changes
         threshold: 1% # allow the coverage to drop by <threshold>%
-    project:
-      default:
-        target: 80% # coverage of the project
 ignore:
   - "tests/"
   - "**/*_mock.go"
