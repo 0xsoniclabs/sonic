@@ -404,6 +404,7 @@ func TestBlockOverrides(t *testing.T) {
 	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000)).AnyTimes()
 	mockBackend.EXPECT().ChainConfig(gomock.Any()).Return(&params.ChainConfig{}).AnyTimes()
 	mockBackend.EXPECT().RPCEVMTimeout().Return(time.Duration(0)).AnyTimes()
+	mockBackend.EXPECT().MaxGasLimit().Return(uint64(10000000)).AnyTimes()
 	setExpectedStateCalls(mockState)
 
 	expectedBlockCtx := &vm.BlockContext{
@@ -428,15 +429,20 @@ func TestBlockOverrides(t *testing.T) {
 		BlockOverrides: blockOverrides,
 	}
 
-	_, err := apiDebug.TraceCall(context.Background(), getTxArgs(t), rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(blockNr)), traceConfig)
+	rpcBlkNr := rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(blockNr))
+
+	_, err := apiDebug.TraceCall(context.Background(), getTxArgs(t), rpcBlkNr, traceConfig)
 	require.NoError(t, err, "debug api must be able to override block number and base fee")
 
-	// Check block overrides on eth api with eth_call rpc function
+	// Check block overrides on eth api with eth_call and eth_estimateGas rpc function
 	apiEth := NewPublicBlockChainAPI(mockBackend)
 
-	_, err = apiEth.Call(context.Background(), getTxArgs(t), rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(blockNr)), nil, blockOverrides)
+	_, err = apiEth.Call(context.Background(), getTxArgs(t), rpcBlkNr, nil, blockOverrides)
 	require.NoError(t, err, "debug api must be able to override block number and base fee")
 
+	_, err = apiEth.EstimateGas(context.Background(), getTxArgs(t), &rpcBlkNr, nil, blockOverrides)
+	require.NoError(t, err, "estimate gas must be able to override block number and base fee")
+}
 }
 
 func TestGetTransactionReceiptReturnsNilNotError(t *testing.T) {
