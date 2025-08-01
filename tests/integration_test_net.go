@@ -37,21 +37,21 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xsoniclabs/sonic/gossip/contract/driverauth100"
-	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/stretchr/testify/require"
 
 	sonicd "github.com/0xsoniclabs/sonic/cmd/sonicd/app"
 	sonictool "github.com/0xsoniclabs/sonic/cmd/sonictool/app"
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/gossip/contract/driverauth100"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	geth_crypto "github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -92,6 +92,7 @@ type IntegrationTestNetSession interface {
 	// GetTransactOptions provides transaction options to be used to send a transaction
 	// from the given account.
 	GetTransactOptions(account *Account) (*bind.TransactOpts, error)
+
 	// Apply sends a transaction to the network using the session account.
 	// and waits for the transaction to be processed. The resulting receipt is returned.
 	Apply(issue func(*bind.TransactOpts) (*types.Transaction, error)) (*types.Receipt, error)
@@ -107,9 +108,15 @@ type IntegrationTestNetSession interface {
 	// GetChainId returns the chain ID of the network.
 	GetChainId() *big.Int
 
-	// AdvanceEpoch sends a transaction to advance to the next epoch.
-	// It also waits until the new epoch is really reached.
-	AdvanceEpoch(epochs int) error
+	// GetWebSocketClient provides raw access to a fresh connection to the network
+	// The resulting client must be closed after use.
+	GetWebSocketClient() (*ethClient, error)
+
+	// GetNumNodes returns the number of nodes in the network.
+	GetNumNodes() int
+
+	// GetClientConnectedToNode returns a client connected to the specified node.
+	GetClientConnectedToNode(node int) (*PooledEhtClient, error)
 
 	// SpawnSession creates a new test session on the network based from the
 	// network's sponsor account. This should be done before entering a new
@@ -634,8 +641,12 @@ func (n *IntegrationTestNet) GetClientConnectedToNode(i int) (*PooledEhtClient, 
 
 // GetWebSocketClient provides raw access to a fresh connection to the network
 // using the WebSocket protocol. The resulting client must be closed after use.
-func (n *IntegrationTestNet) GetWebSocketClient() (*ethclient.Client, error) {
-	return ethclient.Dial(fmt.Sprintf("ws://localhost:%d", n.nodes[0].httpPort))
+func (n *IntegrationTestNet) GetWebSocketClient() (*ethClient, error) {
+	client, err := ethclient.Dial(fmt.Sprintf("ws://localhost:%d", n.nodes[0].httpPort))
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to WebSocket: %w", err)
+	}
+	return client, nil
 }
 
 func (n *IntegrationTestNet) GetDirectory() string {
@@ -748,8 +759,52 @@ func (n *IntegrationTestNet) SpawnSession(t *testing.T) IntegrationTestNetSessio
 	}
 }
 
+// AdvanceEpoch trigger the sealing of an epoch and the epoch number to progress by the given number.
+// The function blocks until the final epoch has been reached.
+func (n *IntegrationTestNet) AdvanceEpoch(epochs int) error {
+	client, err := n.GetClient()
+	if err != nil {
+		return fmt.Errorf("failed to connect to the client: %w", err)
+	}
+
+	var currentEpoch hexutil.Uint64
+	if err := client.Client().Call(&currentEpoch, "eth_currentEpoch"); err != nil {
+		return fmt.Errorf("failed to get current epoch: %w", err)
+	}
+
+	contract, err := driverauth100.NewContract(driverauth.ContractAddress, client)
+	if err != nil {
+		return fmt.Errorf("failed to create contract: %w", err)
+	}
+
+	receipt, err := n.Apply(func(ops *bind.TransactOpts) (*types.Transaction, error) {
+		return contract.AdvanceEpochs(ops, big.NewInt(int64(epochs)))
+	})
+	if err != nil {
+		return fmt.Errorf("failed to send transaction: %w", err)
+	}
+
+	if got, want := receipt.Status, types.ReceiptStatusSuccessful; got != want {
+		return fmt.Errorf("expected status %d, got %d", want, got)
+	}
+
+	// wait until the epoch is advanced
+	for {
+		var newEpoch hexutil.Uint64
+		if err := client.Client().Call(&newEpoch, "eth_currentEpoch"); err != nil {
+			return fmt.Errorf("failed to get current epoch: %w", err)
+		}
+
+		if newEpoch >= currentEpoch+hexutil.Uint64(epochs) {
+			break
+		}
+	}
+
+	return nil
+}
+
 // DeployContract is a utility function handling the deployment of a contract on the network.
-// The contract is deployed with by the network's validator account. The function returns the
+// The contract is deployed by the network's validator account. The function returns the
 // deployed contract instance and the transaction receipt.
 func DeployContract[T any](n IntegrationTestNetSession, deploy contractDeployer[T]) (*T, *types.Receipt, error) {
 	client, err := n.GetClient()
@@ -793,10 +848,6 @@ type contractDeployer[T any] func(*bind.TransactOpts, bind.ContractBackend) (com
 type Session struct {
 	net     *IntegrationTestNet
 	account Account
-}
-
-func (s *Session) SpawnSession(t *testing.T) IntegrationTestNetSession {
-	return s.net.SpawnSession(t)
 }
 
 func (s *Session) GetUpgrades() opera.Upgrades {
@@ -1051,54 +1102,38 @@ func (s *Session) GetClient() (*PooledEhtClient, error) {
 	return s.net.GetClientConnectedToNode(0)
 }
 
+// GetWebSocketClient provides raw access to a fresh connection to the network
+// using the WebSocket protocol. The resulting client must be closed after use.
+func (s *Session) GetWebSocketClient() (*ethClient, error) {
+	return s.net.GetWebSocketClient()
+}
+
 // GetClientConnectedToNode provides raw access to a fresh connection to a selected node on
 // the network. The resulting client must be closed after use.
 func (s *Session) GetClientConnectedToNode(i int) (*PooledEhtClient, error) {
 	return s.net.GetClientConnectedToNode(i)
 }
 
-// AdvanceEpoch trigger the sealing of an epoch and the epoch number to progress by the given number.
-// The function blocks until the final epoch has been reached.
-func (s *Session) AdvanceEpoch(epochs int) error {
-	client, err := s.GetClient()
-	if err != nil {
-		return fmt.Errorf("failed to connect to the client: %w", err)
-	}
+func (s *Session) GetNumNodes() int {
+	return s.net.NumNodes()
+}
 
-	var currentEpoch hexutil.Uint64
-	if err := client.Client().Call(&currentEpoch, "eth_currentEpoch"); err != nil {
-		return fmt.Errorf("failed to get current epoch: %w", err)
-	}
-
-	contract, err := driverauth100.NewContract(driverauth.ContractAddress, client)
-	if err != nil {
-		return fmt.Errorf("failed to create contract: %w", err)
-	}
-
-	receipt, err := s.Apply(func(ops *bind.TransactOpts) (*types.Transaction, error) {
-		return contract.AdvanceEpochs(ops, big.NewInt(int64(epochs)))
-	})
-	if err != nil {
-		return fmt.Errorf("failed to send transaction: %w", err)
-	}
-
-	if got, want := receipt.Status, types.ReceiptStatusSuccessful; got != want {
-		return fmt.Errorf("expected status %d, got %d", want, got)
-	}
-
-	// wait until the epoch is advanced
-	for {
-		var newEpoch hexutil.Uint64
-		if err := client.Client().Call(&newEpoch, "eth_currentEpoch"); err != nil {
-			return fmt.Errorf("failed to get current epoch: %w", err)
-		}
-
-		if newEpoch >= currentEpoch+hexutil.Uint64(epochs) {
-			break
-		}
-	}
-
-	return nil
+// SpawnSession creates a new test session on the network.
+// The session is backed by an account which will be used to sign and pay for
+// transactions. By using this function, multiple test sessions can be run in
+// parallel on the same network, without conflicting nonce issues, since the
+// accounts are isolated.
+//
+// A typical use case would look as follows:
+//
+//	 session := getIntegrationTestNetSession(t)
+//		t.Run("test_case",, func(t *testing.T) {
+//				session := session.SpawnSession(t)
+//				t.Parallel()
+//		        < use session instead of net of the rest of the test >
+//		})
+func (s *Session) SpawnSession(t *testing.T) IntegrationTestNetSession {
+	return s.net.SpawnSession(t)
 }
 
 // validateAndSanitizeOptions ensures that the options are valid and sets the default values.
