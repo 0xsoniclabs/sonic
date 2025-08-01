@@ -62,46 +62,11 @@ func TestIntegrationTestNet_CanStartMultipleConsecutiveInstances(t *testing.T) {
 	}
 }
 
-func TestIntegrationTestNet_Can(t *testing.T) {
+func TestIntegrationTestNet_CanFetchInformationFromTheNetwork(t *testing.T) {
 	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 	t.Parallel()
 
-	// by default, the integration test network starts with a single node
-	require.Equal(t, 1, session.GetNumNodes())
-
-	t.Run("EndowAccountsWithTokens", func(t *testing.T) {
-		session := session.SpawnSession(t)
-		t.Parallel()
-		testIntegrationTestNet_CanEndowAccountsWithTokens(t, session)
-	})
-
-	t.Run("DeployContracts", func(t *testing.T) {
-		session := session.SpawnSession(t)
-		t.Parallel()
-		testIntegrationTestNet_CanDeployContracts(t, session)
-	})
-
-	t.Run("InteractWithContract", func(t *testing.T) {
-		session := session.SpawnSession(t)
-		t.Parallel()
-		testIntegrationTestNet_CanInteractWithContract(t, session)
-	})
-
-	t.Run("FetchInformationFromTheNetwork", func(t *testing.T) {
-		session := session.SpawnSession(t)
-		t.Parallel()
-		testIntegrationTestNet_CanFetchInformationFromTheNetwork(t, session)
-	})
-
-	t.Run("SpawnParallelSessions", func(t *testing.T) {
-		session := session.SpawnSession(t)
-		t.Parallel()
-		testIntegrationTestNet_CanSpawnParallelSessions(t, session)
-	})
-}
-
-func testIntegrationTestNet_CanFetchInformationFromTheNetwork(t *testing.T, net IntegrationTestNetSession) {
-	client, err := net.GetClient()
+	client, err := session.GetClient()
 	require.NoError(t, err, "Failed to connect to the integration test network")
 	defer client.Close()
 
@@ -115,7 +80,10 @@ func testIntegrationTestNet_CanFetchInformationFromTheNetwork(t *testing.T, net 
 // testIntegrationTestNet_CanEndowAccountsWithTokens needs its own session because it
 // modifies the state of the network by endowing an account with tokens, otherwise
 // it can trigger a transaction replacement with a transaction from another test.
-func testIntegrationTestNet_CanEndowAccountsWithTokens(t *testing.T, session IntegrationTestNetSession) {
+func TestIntegrationTestNet_CanEndowAccountsWithTokens(t *testing.T) {
+	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	t.Parallel()
+
 	client, err := session.GetClient()
 	require.NoError(t, err, "Failed to connect to the integration test network")
 	defer client.Close()
@@ -143,7 +111,10 @@ func testIntegrationTestNet_CanEndowAccountsWithTokens(t *testing.T, session Int
 // testIntegrationTestNet_CanDeployContracts needs its own session because it
 // deploys a counter contract, and this should not overlap with other tests that
 // might also deploy contracts.
-func testIntegrationTestNet_CanDeployContracts(t *testing.T, session IntegrationTestNetSession) {
+func TestIntegrationTestNet_CanDeployContracts(t *testing.T) {
+	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	t.Parallel()
+
 	_, receipt, err := DeployContract(session, counter.DeployCounter)
 	require.NoError(t, err, "Failed to deploy contract")
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "Contract deployment failed")
@@ -152,7 +123,10 @@ func testIntegrationTestNet_CanDeployContracts(t *testing.T, session Integration
 // testIntegrationTestNet_CanInteractWithContract needs its own session because it
 // deploys and interacts with a counter contract, and this should not overlap
 // with other tests that might also deploy or interact with contracts.
-func testIntegrationTestNet_CanInteractWithContract(t *testing.T, session IntegrationTestNetSession) {
+func TestIntegrationTestNet_CanInteractWithContract(t *testing.T) {
+	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	t.Parallel()
+
 	contract, _, err := DeployContract(session, counter.DeployCounter)
 	require.NoError(t, err, "Failed to deploy contract")
 
@@ -161,7 +135,10 @@ func testIntegrationTestNet_CanInteractWithContract(t *testing.T, session Integr
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "Counter increment failed")
 }
 
-func testIntegrationTestNet_CanSpawnParallelSessions(t *testing.T, session IntegrationTestNetSession) {
+func TestIntegrationTestNet_CanSpawnParallelSessions(t *testing.T) {
+	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	t.Parallel()
+
 	for i := range 15 {
 		t.Run(fmt.Sprint("SpawnSession", i), func(t *testing.T) {
 			receipt, err := session.EndowAccount(common.Address{0x42}, big.NewInt(1000))

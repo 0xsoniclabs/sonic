@@ -35,47 +35,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestBlobTransaction(t *testing.T) {
-
+func TestBlobTx_WithBlobsIsRejected(t *testing.T) {
 	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 	t.Parallel()
 
-	t.Run("blob tx with non-empty blobs is rejected", func(t *testing.T) {
-		session := session.SpawnSession(t)
-		t.Parallel()
-		testBlobTx_WithBlobsIsRejected(t, session)
-	})
-
-	t.Run("blob tx with empty blobs is executed", func(t *testing.T) {
-		session := session.SpawnSession(t)
-		t.Parallel()
-		testBlobTx_WithEmptyBlobsIsExecuted(t, session)
-		checkBlocksSanity(t, session)
-	})
-
-	t.Run("blob tx with nil sidecar is executed", func(t *testing.T) {
-		session := session.SpawnSession(t)
-		t.Parallel()
-		testBlobTx_WithNilSidecarIsExecuted(t, session)
-		checkBlocksSanity(t, session)
-	})
-
-	t.Run("blob base fee can be read from head, block and history", func(t *testing.T) {
-		session := session.SpawnSession(t)
-		t.Parallel()
-		testBlobBaseFee_CanReadBlobBaseFeeFromHeadAndBlockAndHistory(t, session)
-		checkBlocksSanity(t, session)
-	})
-
-	t.Run("blob gas used can be read from block header", func(t *testing.T) {
-		session := session.SpawnSession(t)
-		t.Parallel()
-		testBlobBaseFee_CanReadBlobGasUsed(t, session)
-		checkBlocksSanity(t, session)
-	})
-}
-
-func testBlobTx_WithBlobsIsRejected(t *testing.T, session IntegrationTestNetSession) {
 	require := require.New(t)
 	nonZeroNumberOfBlobs := 2
 
@@ -98,7 +61,10 @@ func testBlobTx_WithBlobsIsRejected(t *testing.T, session IntegrationTestNetSess
 	require.ErrorContains(err, "non-empty blob transaction are not supported")
 }
 
-func testBlobTx_WithEmptyBlobsIsExecuted(t *testing.T, session IntegrationTestNetSession) {
+func TestBlobTx_WithEmptyBlobsIsExecuted(t *testing.T) {
+	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	t.Parallel()
+
 	require := require.New(t)
 
 	tx, err := createTestBlobTransaction(t, session)
@@ -114,7 +80,10 @@ func testBlobTx_WithEmptyBlobsIsExecuted(t *testing.T, session IntegrationTestNe
 	)
 }
 
-func testBlobTx_WithNilSidecarIsExecuted(t *testing.T, session IntegrationTestNetSession) {
+func TestBlobTx_WithNilSidecarIsExecuted(t *testing.T) {
+	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	t.Parallel()
+
 	require := require.New(t)
 
 	tx, err := createTestBlobTransactionWithNilSidecar(t, session)
@@ -130,7 +99,10 @@ func testBlobTx_WithNilSidecarIsExecuted(t *testing.T, session IntegrationTestNe
 	)
 }
 
-func testBlobBaseFee_CanReadBlobBaseFeeFromHeadAndBlockAndHistory(t *testing.T, session IntegrationTestNetSession) {
+func TestBlobBaseFee_CanReadBlobBaseFeeFromHeadAndBlockAndHistory(t *testing.T) {
+	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	t.Parallel()
+
 	require := require.New(t)
 
 	client, err := session.GetClient()
@@ -171,7 +143,10 @@ func testBlobBaseFee_CanReadBlobBaseFeeFromHeadAndBlockAndHistory(t *testing.T, 
 	require.Equal(fromLog, uint64(*fromRpc), "blob base fee mismatch; from log %v, from rpc %v", fromLog, fromRpc)
 }
 
-func testBlobBaseFee_CanReadBlobGasUsed(t *testing.T, session IntegrationTestNetSession) {
+func TestBlobBaseFee_CanReadBlobGasUsed(t *testing.T) {
+	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	t.Parallel()
+
 	require := require.New(t)
 
 	client, err := session.GetClient()
