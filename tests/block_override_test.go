@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/ethapi"
+	"github.com/0xsoniclabs/sonic/opera"
 	block_override "github.com/0xsoniclabs/sonic/tests/contracts/blockoverride"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -37,7 +38,8 @@ const (
 
 func TestBlockOverride(t *testing.T) {
 	require := req.New(t)
-	net := StartIntegrationTestNet(t)
+
+	net := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 
 	// Deploy the block override observer contract.
 	_, receipt, err := DeployContract(net, block_override.DeployBlockOverride)

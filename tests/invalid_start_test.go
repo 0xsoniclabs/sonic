@@ -19,6 +19,7 @@ package tests
 import (
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/invalidstart"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
@@ -30,7 +31,7 @@ func TestInvalidStart_IdentifiesInvalidStartContract(t *testing.T) {
 	invalidCode := []byte{0x60, 0xef, 0x60, 0x00, 0x53, 0x60, 0x01, 0x60, 0x00, 0xf3}
 	validCode := []byte{0x60, 0xfe, 0x60, 0x00, 0x53, 0x60, 0x01, 0x60, 0x00, 0xf3}
 
-	net := StartIntegrationTestNet(t)
+	net := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 
 	// Deploy the invalid start contract.
 	contract, _, err := DeployContract(net, invalidstart.DeployInvalidstart)
@@ -75,18 +76,18 @@ func TestInvalidStart_IdentifiesInvalidStartContract(t *testing.T) {
 	require.Equal(types.ReceiptStatusSuccessful, receipt.Status, "failed on transfer to empty receiver with valid code")
 }
 
-func getTransactionWithCodeAndNoReceiver(t testing.TB, code []byte, net *IntegrationTestNet) (*types.Transaction, error) {
+func getTransactionWithCodeAndNoReceiver(t testing.TB, code []byte, session IntegrationTestNetSession) (*types.Transaction, error) {
 	// these values are needed for the transaction but are irrelevant for the test
 	t.Helper()
 	require := require.New(t)
-	client, err := net.GetClient()
+	client, err := session.GetClient()
 	require.NoError(err, "failed to connect to the network:")
 
 	defer client.Close()
 	chainId, err := client.ChainID(t.Context())
 	require.NoError(err, "failed to get chain ID::")
 
-	nonce, err := client.NonceAt(t.Context(), net.GetSessionSponsor().Address(), nil)
+	nonce, err := client.NonceAt(t.Context(), session.GetSessionSponsor().Address(), nil)
 	require.NoError(err, "failed to get nonce:")
 
 	price, err := client.SuggestGasPrice(t.Context())
@@ -100,7 +101,7 @@ func getTransactionWithCodeAndNoReceiver(t testing.TB, code []byte, net *Integra
 		To:       nil,
 		Nonce:    nonce,
 		Data:     code,
-	}), types.NewLondonSigner(chainId), net.GetSessionSponsor().PrivateKey)
+	}), types.NewLondonSigner(chainId), session.GetSessionSponsor().PrivateKey)
 	require.NoError(err, "failed to sign transaction:")
 
 	return transaction, nil

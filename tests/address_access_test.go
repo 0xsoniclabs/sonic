@@ -20,6 +20,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/opera"
 	accessCost "github.com/0xsoniclabs/sonic/tests/contracts/access_cost"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -30,7 +31,7 @@ import (
 func TestAddressAccess(t *testing.T) {
 	someAccountAddress := common.Address{1}
 
-	net := StartIntegrationTestNet(t)
+	net := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 
 	contract, receipt, err := DeployContract(net, accessCost.DeployAccessCost)
 	require.NoError(t, err)

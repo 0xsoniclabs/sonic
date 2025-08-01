@@ -35,7 +35,6 @@ import (
 func TestEstimateGas(t *testing.T) {
 	t.Run("Sonic", func(t *testing.T) {
 		session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
-		t.Parallel()
 
 		dataContract, receipt, err := DeployContract(session, data_reader.DeployDataReader)
 		require.NoError(t, err, "failed to deploy contract; %v", err)
@@ -46,7 +45,6 @@ func TestEstimateGas(t *testing.T) {
 	})
 	t.Run("Allegro", func(t *testing.T) {
 		session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
-		t.Parallel()
 
 		dataContract, receipt, err := DeployContract(session, data_reader.DeployDataReader)
 		require.NoError(t, err, "failed to deploy contract; %v", err)
