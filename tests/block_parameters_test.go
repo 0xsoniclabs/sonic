@@ -30,21 +30,10 @@ import (
 )
 
 func TestBlockParameters_BlockHeaderMatchesObservableBlockParameters(t *testing.T) {
+	t.Parallel()
 	hardForks := map[string]opera.Upgrades{
-		"sonic": {
-			Berlin:  true,
-			London:  true,
-			Llr:     false,
-			Sonic:   true,
-			Allegro: false,
-		},
-		"allegro": {
-			Berlin:  true,
-			London:  true,
-			Llr:     false,
-			Sonic:   true,
-			Allegro: true,
-		},
+		"sonic":   opera.GetSonicUpgrades(),
+		"allegro": opera.GetAllegroUpgrades(),
 	}
 
 	for name, upgrades := range hardForks {
@@ -53,7 +42,7 @@ func TestBlockParameters_BlockHeaderMatchesObservableBlockParameters(t *testing.
 				t.Run(fmt.Sprintf("single_proposer=%t", singleProposer), func(t *testing.T) {
 					upgrades := upgrades
 					upgrades.SingleProposerBlockFormation = singleProposer
-
+					t.Parallel()
 					net := StartIntegrationTestNetWithJsonGenesis(t,
 						IntegrationTestNetOptions{
 							Upgrades: &upgrades,

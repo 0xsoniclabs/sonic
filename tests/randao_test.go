@@ -27,6 +27,7 @@ import (
 )
 
 func TestRandao_randaoIntegrationTest(t *testing.T) {
+	t.Parallel()
 	const NumNodes = 3
 
 	tests := map[string]opera.Upgrades{

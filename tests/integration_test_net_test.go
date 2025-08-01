@@ -23,6 +23,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
 	"github.com/0xsoniclabs/tosca/go/tosca/vm"
 	"github.com/ethereum/go-ethereum/common"
@@ -33,6 +34,7 @@ import (
 )
 
 func TestIntegrationTestNet_CanStartRestartAndStopIntegrationTestNet(t *testing.T) {
+	t.Parallel()
 	net := StartIntegrationTestNet(t)
 	require.NoError(t, net.Restart(), "Failed to restart the test network")
 
@@ -40,6 +42,7 @@ func TestIntegrationTestNet_CanStartRestartAndStopIntegrationTestNet(t *testing.
 }
 
 func TestIntegrationTestNet_CanRestartWithGenesisExportAndImport(t *testing.T) {
+	t.Parallel()
 	for _, numNodes := range []int{1, 2} {
 		t.Run(fmt.Sprintf("NumNodes=%d", numNodes), func(t *testing.T) {
 			t.Parallel()
@@ -55,6 +58,7 @@ func TestIntegrationTestNet_CanRestartWithGenesisExportAndImport(t *testing.T) {
 }
 
 func TestIntegrationTestNet_CanStartMultipleConsecutiveInstances(t *testing.T) {
+	t.Parallel()
 	for range 2 {
 		net := StartIntegrationTestNet(t)
 		net.Stop()
@@ -62,9 +66,10 @@ func TestIntegrationTestNet_CanStartMultipleConsecutiveInstances(t *testing.T) {
 }
 
 func TestIntegrationTestNet_Can(t *testing.T) {
-	net := StartIntegrationTestNet(t)
+	net := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	t.Parallel()
 	// by default, the integration test network starts with a single node
-	require.Equal(t, 1, net.NumNodes())
+	require.Equal(t, 1, net.GetNumNodes())
 
 	t.Run("EndowAccountsWithTokens", func(t *testing.T) {
 		session := net.SpawnSession(t)
@@ -85,8 +90,9 @@ func TestIntegrationTestNet_Can(t *testing.T) {
 	})
 
 	t.Run("FetchInformationFromTheNetwork", func(t *testing.T) {
+		session := net.SpawnSession(t)
 		t.Parallel()
-		testIntegrationTestNet_CanFetchInformationFromTheNetwork(t, net)
+		testIntegrationTestNet_CanFetchInformationFromTheNetwork(t, session)
 	})
 
 	t.Run("SpawnParallelSessions", func(t *testing.T) {
@@ -94,15 +100,9 @@ func TestIntegrationTestNet_Can(t *testing.T) {
 		t.Parallel()
 		testIntegrationTestNet_CanSpawnParallelSessions(t, session)
 	})
-
-	t.Run("AdvanceEpoch", func(t *testing.T) {
-		t.Parallel()
-		testIntegrationTestNet_AdvanceEpoch(t, net)
-	})
-
 }
 
-func testIntegrationTestNet_CanFetchInformationFromTheNetwork(t *testing.T, net *IntegrationTestNet) {
+func testIntegrationTestNet_CanFetchInformationFromTheNetwork(t *testing.T, net IntegrationTestNetSession) {
 	client, err := net.GetClient()
 	require.NoError(t, err, "Failed to connect to the integration test network")
 	defer client.Close()
@@ -173,7 +173,11 @@ func testIntegrationTestNet_CanSpawnParallelSessions(t *testing.T, session Integ
 	}
 }
 
-func testIntegrationTestNet_AdvanceEpoch(t *testing.T, net *IntegrationTestNet) {
+func TestIntegrationTestNet_AdvanceEpoch(t *testing.T) {
+	t.Parallel()
+
+	net := StartIntegrationTestNet(t)
+
 	client, err := net.GetClient()
 	require.NoError(t, err)
 	defer client.Close()
@@ -182,6 +186,7 @@ func testIntegrationTestNet_AdvanceEpoch(t *testing.T, net *IntegrationTestNet) 
 	err = client.Client().Call(&epochBefore, "eth_currentEpoch")
 	require.NoError(t, err)
 
+	// TODO: does advanceEpoch need it to be the validator session sponsor?
 	err = net.AdvanceEpoch(13)
 	require.NoError(t, err)
 
@@ -193,6 +198,7 @@ func testIntegrationTestNet_AdvanceEpoch(t *testing.T, net *IntegrationTestNet) 
 }
 
 func TestIntegrationTestNet_CanRunMultipleNodes(t *testing.T) {
+	t.Parallel()
 	for _, numNodes := range []int{1, 2, 3} {
 		t.Run(fmt.Sprintf("NumNodes%d", numNodes), func(t *testing.T) {
 			t.Parallel()
@@ -233,7 +239,7 @@ func TestIntegrationTestNet_CanRunMultipleNodes(t *testing.T) {
 }
 
 func TestIntegrationTestNet_CanStartWithCustomConfig(t *testing.T) {
-
+	t.Parallel()
 	// This test checks that configuration changes are applied to the network
 	// by modifying the tx_pool configuration and checking that the transaction
 	// validation behaves as expected.
@@ -281,6 +287,7 @@ func TestIntegrationTestNet_CanStartWithCustomConfig(t *testing.T) {
 }
 
 func TestIntegrationTestNet_AccountsToBeDeployedWithGenesisCanBeCalled(t *testing.T) {
+	t.Parallel()
 	address := common.HexToAddress("0x42")
 	topic := common.Hash{0x24}
 	code := []byte{byte(vm.PUSH32)}

@@ -32,6 +32,7 @@ import (
 )
 
 func TestBlockHash_CorrectBlockHashesAreAccessibleInContracts(t *testing.T) {
+	t.Parallel()
 	require := req.New(t)
 	net := StartIntegrationTestNet(t)
 
@@ -159,15 +160,13 @@ var (
 )
 
 func TestBlockHash_EIP2935_IsAutomaticallyDeployedWithFakeNet(t *testing.T) {
+	t.Parallel()
 
-	tests := map[string]func(t *testing.T) *IntegrationTestNet{
-		"json genesis": func(t *testing.T) *IntegrationTestNet {
-			return StartIntegrationTestNetWithJsonGenesis(t,
-				IntegrationTestNetOptions{
-					Upgrades: AsPointer(opera.GetAllegroUpgrades()),
-				})
+	tests := map[string]func(t *testing.T) IntegrationTestNetSession{
+		"json genesis": func(t *testing.T) IntegrationTestNetSession {
+			return getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 		},
-		"fake genesis": func(t *testing.T) *IntegrationTestNet {
+		"fake genesis": func(t *testing.T) IntegrationTestNetSession {
 			return StartIntegrationTestNetWithFakeGenesis(t,
 				IntegrationTestNetOptions{
 					Upgrades: AsPointer(opera.GetAllegroUpgrades()),
@@ -179,6 +178,7 @@ func TestBlockHash_EIP2935_IsAutomaticallyDeployedWithFakeNet(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			require := req.New(t)
 			net := netConstructor(t)
+			t.Parallel()
 
 			client, err := net.GetClient()
 			require.NoError(err)
@@ -196,12 +196,13 @@ func TestBlockHash_EIP2935_IsAutomaticallyDeployedWithFakeNet(t *testing.T) {
 }
 
 func TestBlockHash_EIP2935_HistoryContractIsNotDeployedBeforePrague(t *testing.T) {
+	t.Parallel()
 
-	tests := map[string]func(t *testing.T) *IntegrationTestNet{
-		"json genesis": func(t *testing.T) *IntegrationTestNet {
-			return StartIntegrationTestNetWithJsonGenesis(t)
+	tests := map[string]func(t *testing.T) IntegrationTestNetSession{
+		"json genesis": func(t *testing.T) IntegrationTestNetSession {
+			return getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 		},
-		"fake genesis": func(t *testing.T) *IntegrationTestNet {
+		"fake genesis": func(t *testing.T) IntegrationTestNetSession {
 			return StartIntegrationTestNetWithFakeGenesis(t)
 		},
 	}
@@ -210,6 +211,7 @@ func TestBlockHash_EIP2935_HistoryContractIsNotDeployedBeforePrague(t *testing.T
 		t.Run(name, func(t *testing.T) {
 			require := req.New(t)
 			net := netConstructor(t)
+			t.Parallel()
 
 			client, err := net.GetClient()
 			require.NoError(err)
@@ -227,6 +229,7 @@ func TestBlockHash_EIP2935_HistoryContractIsNotDeployedBeforePrague(t *testing.T
 }
 
 func TestBlockHash_EIP2935_DeployContract(t *testing.T) {
+	t.Parallel()
 	require := req.New(t)
 
 	net := StartIntegrationTestNet(t,
@@ -332,6 +335,7 @@ func TestBlockHash_EIP2935_DeployContract(t *testing.T) {
 }
 
 func TestBlockHash_EIP2935_HistoryContractAccumulatesBlockHashes(t *testing.T) {
+	t.Parallel()
 
 	require := req.New(t)
 
@@ -368,7 +372,7 @@ func TestBlockHash_EIP2935_HistoryContractAccumulatesBlockHashes(t *testing.T) {
 			return readHistoryStorageContract.ReadHistoryStorage(opts, new(big.Int).SetUint64(blockNumber))
 		})
 		require.NoError(err)
-		require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
+		require.Equal(types.ReceiptStatusSuccessful, receipt.Status, "failed to read history storage")
 		require.Len(receipt.Logs, 1)
 
 		blockHash, err := readHistoryStorageContract.ParseBlockHash(*receipt.Logs[0])

@@ -218,6 +218,7 @@ func waitUntilTransactionIsRetiredFromPool(t *testing.T, client *PooledEhtClient
 }
 
 func TestIntegrationTestNetTools(t *testing.T) {
+	t.Parallel()
 
 	t.Run("setTransactionDefaults sets the transaction defaults", func(t *testing.T) {
 		session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
@@ -228,6 +229,7 @@ func TestIntegrationTestNetTools(t *testing.T) {
 	t.Run("waitUntilTransactionIsRetiredFromPool waits from completion", func(t *testing.T) {
 		session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 		t.Parallel()
+		// TODO: make sure this parallel is in the proper place and not before a session spawning.
 		test_WaitUntilTransactionIsRetiredFromPool_waitsFromCompletion(t, session)
 	})
 }

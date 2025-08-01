@@ -29,6 +29,7 @@ import (
 )
 
 func TestTransaction_DelegationDesignationAddressAccessIsConsideredInAllegro(t *testing.T) {
+	t.Parallel()
 	gas := uint64(21_000) // transaction base
 	gas += 7 * 3          // 7 push instructions
 	gas += 2_600          // cold access to recipient

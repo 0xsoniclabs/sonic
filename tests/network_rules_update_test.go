@@ -36,6 +36,7 @@ import (
 )
 
 func TestNetworkRule_Update_RulesChangeIsDelayedUntilNextEpochStart(t *testing.T) {
+	t.Parallel()
 	require := require.New(t)
 	net := StartIntegrationTestNetWithFakeGenesis(t,
 		IntegrationTestNetOptions{
@@ -98,6 +99,7 @@ func TestNetworkRule_Update_RulesChangeIsDelayedUntilNextEpochStart(t *testing.T
 }
 
 func TestNetworkRule_Update_RulesChangeDuringEpoch_PreAllegro(t *testing.T) {
+	t.Parallel()
 	require := require.New(t)
 	net := StartIntegrationTestNetWithFakeGenesis(t,
 		IntegrationTestNetOptions{
@@ -145,6 +147,7 @@ func TestNetworkRule_Update_RulesChangeDuringEpoch_PreAllegro(t *testing.T) {
 }
 
 func TestNetworkRule_Update_Restart_Recovers_Original_Value(t *testing.T) {
+	t.Parallel()
 	require := require.New(t)
 	net := StartIntegrationTestNetWithFakeGenesis(t,
 		IntegrationTestNetOptions{
@@ -216,6 +219,7 @@ func TestNetworkRule_Update_Restart_Recovers_Original_Value(t *testing.T) {
 }
 
 func TestNetworkRule_MinEventGas_AllowsChangingRules(t *testing.T) {
+	t.Parallel()
 	require := require.New(t)
 	net := StartIntegrationTestNetWithFakeGenesis(t,
 		IntegrationTestNetOptions{
@@ -261,6 +265,7 @@ func TestNetworkRule_MinEventGas_AllowsChangingRules(t *testing.T) {
 }
 
 func TestNetworkRules_PragueFeaturesBecomeAvailableWithAllegroUpgrade(t *testing.T) {
+	t.Parallel()
 
 	net := StartIntegrationTestNetWithFakeGenesis(t,
 		IntegrationTestNetOptions{

@@ -30,10 +30,8 @@ import (
 )
 
 func TestReceipt_InternalTransactionsDoNotChangeReceiptIndex(t *testing.T) {
-	upgrades := opera.GetSonicUpgrades()
-	net := StartIntegrationTestNetWithJsonGenesis(t, IntegrationTestNetOptions{
-		Upgrades: &upgrades,
-	})
+	t.Parallel()
+	net := StartIntegrationTestNet(t)
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
@@ -50,7 +48,7 @@ func TestReceipt_InternalTransactionsDoNotChangeReceiptIndex(t *testing.T) {
 	// Send transaction instructing the network to advance one epoch.
 	contract, err := driverauth100.NewContract(driverauth.ContractAddress, client)
 	require.NoError(t, err)
-	txOpts, err := net.GetTransactOptions(&net.account)
+	txOpts, err := net.GetTransactOptions(net.GetSessionSponsor())
 	require.NoError(t, err)
 	tx, err := contract.AdvanceEpochs(txOpts, big.NewInt(int64(1)))
 	require.NoError(t, err)
@@ -59,6 +57,7 @@ func TestReceipt_InternalTransactionsDoNotChangeReceiptIndex(t *testing.T) {
 	// Wait for the epoch to progress while sending in new transactions, hoping
 	// to get a transaction into the epoch-sealing block.
 	for {
+		// 	// TODO: should this be a call to AdvanceEpochs?
 		current, err := client.BlockNumber(t.Context())
 		require.NoError(t, err)
 
@@ -67,8 +66,8 @@ func TestReceipt_InternalTransactionsDoNotChangeReceiptIndex(t *testing.T) {
 		if currentEpoch > initialEpoch {
 			break
 		}
-
-		_, err = net.EndowAccount(common.Address{}, big.NewInt(1e18))
+		// TODO: can this endow just one?
+		_, err = net.EndowAccount(common.Address{}, big.NewInt(1))
 		require.NoError(t, err)
 	}
 
@@ -137,6 +136,7 @@ func getSenderOfTransaction(
 }
 
 func TestReceipt_SkippedTransactionsDoNotChangeReceiptIndexOrCumulativeGasUsed(t *testing.T) {
+	t.Parallel()
 	upgrades := opera.GetSonicUpgrades()
 	net := StartIntegrationTestNetWithJsonGenesis(t, IntegrationTestNetOptions{
 		Upgrades: &upgrades,

@@ -55,6 +55,7 @@ func TestLogSubscription_CanGetCallBacksForLogEvents(t *testing.T) {
 	for i := range NumEvents {
 		select {
 		case log := <-allLogs:
+			// TODO: signature missmatched?
 			event, err := contract.ParseCount(log)
 			require.NoError(err)
 			require.Equal(uint64(i+1), event.TotalCount.Uint64())
