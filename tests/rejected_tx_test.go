@@ -32,13 +32,11 @@ import (
 func TestRejectedTx_TransactionsAreRejectedBecauseOfAccountState(t *testing.T) {
 
 	// start network
-	net := StartIntegrationTestNet(t,
-		IntegrationTestNetOptions{
-			Upgrades: AsPointer(opera.GetAllegroUpgrades()),
-		})
+	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	t.Parallel()
 
 	// create a client
-	client, err := net.GetClient()
+	client, err := session.GetClient()
 	require.NoError(t, err, "failed to get client")
 	defer client.Close()
 
@@ -71,7 +69,7 @@ func TestRejectedTx_TransactionsAreRejectedBecauseOfAccountState(t *testing.T) {
 			auth, err := types.SignSetCode(account.PrivateKey,
 				types.SetCodeAuthorization{
 					ChainID: *uint256.MustFromBig(chainId),
-					Address: net.GetSessionSponsor().Address(),
+					Address: session.GetSessionSponsor().Address(),
 					Nonce:   0,
 				})
 			require.NoError(t, err)
@@ -89,16 +87,16 @@ func TestRejectedTx_TransactionsAreRejectedBecauseOfAccountState(t *testing.T) {
 				account := NewAccount()
 
 				txData := txFactory(t, account)
-				txData = setTransactionDefaults(t, net, txData, account)
+				txData = setTransactionDefaults(t, session, txData, account)
 				tx := signTransaction(t, chainId, txData, account)
 				cost := tx.Cost()
 
 				//  endow account with less than the cost of the transaction
-				receipt, err := net.EndowAccount(account.Address(), new(big.Int).Sub(cost, big.NewInt(1)))
+				receipt, err := session.EndowAccount(account.Address(), new(big.Int).Sub(cost, big.NewInt(1)))
 				require.NoError(t, err)
 				require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
-				_, err = net.Run(tx)
+				_, err = session.Run(tx)
 				require.ErrorContains(t, err, "insufficient funds")
 			})
 
@@ -106,22 +104,22 @@ func TestRejectedTx_TransactionsAreRejectedBecauseOfAccountState(t *testing.T) {
 				account := NewAccount()
 
 				txData := txFactory(t, account)
-				txData = setTransactionDefaults(t, net, txData, account)
+				txData = setTransactionDefaults(t, session, txData, account)
 				tx := signTransaction(t, chainId, txData, account)
 
 				// provide enough funds for successful execution
-				receipt, err := net.EndowAccount(account.Address(), big.NewInt(1e18))
+				receipt, err := session.EndowAccount(account.Address(), big.NewInt(1e18))
 				require.NoError(t, err)
 				require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
 				// submit transaction once
-				receipt, err = net.Run(tx)
+				receipt, err = session.Run(tx)
 				require.NoError(t, err)
 				require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
 				for {
 					// submit transaction again
-					_, err := net.Run(tx)
+					_, err := session.Run(tx)
 					require.Error(t, err)
 
 					// Pool may take longer to purge the transaction after its execution.

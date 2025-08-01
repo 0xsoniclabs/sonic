@@ -30,14 +30,13 @@ import (
 )
 
 func TestBlsVerificationOnChain(t *testing.T) {
-	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
-		Upgrades: AsPointer(opera.GetAllegroUpgrades()),
-	})
-	defer net.Stop()
+	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	t.Parallel()
 
 	// Deploy contract with transaction options
-	blsContract, _, err := DeployContract(net, blsContracts.DeployBLS)
+	blsContract, receipt, err := DeployContract(session, blsContracts.DeployBLS)
 	require.NoError(t, err, "failed to deploy contract; %v", err)
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "contract deployment failed; %v", err)
 
 	testVariants := []struct {
 		name         string
@@ -51,6 +50,7 @@ func TestBlsVerificationOnChain(t *testing.T) {
 
 	for _, testVariant := range testVariants {
 		t.Run(testVariant.name, func(t *testing.T) {
+			t.Parallel()
 
 			pubKeys, signature, msg := getBlsData(testVariant.signersCount)
 			tests := []struct {
@@ -67,6 +67,8 @@ func TestBlsVerificationOnChain(t *testing.T) {
 			}
 			for _, test := range tests {
 				t.Run(test.name, func(t *testing.T) {
+					t.Parallel()
+
 					pubKeysBytes, signatureBytes, msgBytes, err := parseInputData(test.pubkeys, test.signature, test.message)
 					require.NoError(t, err, "failed to parse test data; %v", err)
 
@@ -77,15 +79,18 @@ func TestBlsVerificationOnChain(t *testing.T) {
 			}
 
 			t.Run("update signature", func(t *testing.T) {
+				session := session.SpawnSession(t)
+				t.Parallel()
+
 				pubKeysBytes, signatureBytes, msgBytes, err := parseInputData(pubKeys, signature, msg)
 				require.NoError(t, err, "failed to parse test data; %v", err)
 
-				receipt, err := net.Apply(func(ops *bind.TransactOpts) (*types.Transaction, error) {
+				receipt, err := session.Apply(func(ops *bind.TransactOpts) (*types.Transaction, error) {
 					ops.GasLimit = 10000000
 					return testVariant.updateFunc(ops, pubKeysBytes, signatureBytes, msgBytes)
 				})
 				require.NoError(t, err, "failed to get receipt; %v", err)
-				t.Logf("gas used for updating signature: %v", receipt.GasUsed)
+				require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "transaction failed; %v", err)
 
 				updatedSignature, err := blsContract.Signature(nil)
 				require.NoError(t, err, "failed to get updated signature; %v", err)

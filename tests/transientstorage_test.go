@@ -19,16 +19,18 @@ package tests
 import (
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/transientstorage"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/stretchr/testify/require"
 )
 
 func TestTransientStorage_TransientStorageIsValidInTransaction(t *testing.T) {
-	net := StartIntegrationTestNet(t)
+	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	t.Parallel()
 
 	// Deploy the transient storage contract
-	contract, _, err := DeployContract(net, transientstorage.DeployTransientstorage)
+	contract, _, err := DeployContract(session, transientstorage.DeployTransientstorage)
 	require.NoError(t, err, "failed to deploy contract")
 
 	// Get the value from the contract before changing it
@@ -36,7 +38,7 @@ func TestTransientStorage_TransientStorageIsValidInTransaction(t *testing.T) {
 	require.NoError(t, err, "failed to get value")
 
 	// Store the value in transient storage value
-	receipt, err := net.Apply(contract.StoreValue)
+	receipt, err := session.Apply(contract.StoreValue)
 	require.NoError(t, err, "failed to store value")
 
 	// Check that the value was stored during transaction and emitted to logs

@@ -52,6 +52,7 @@ func (tc *TestCase) String() string {
 }
 
 func TestGasCostTest_Sonic(t *testing.T) {
+	t.Parallel()
 	t.Run("with distributed proposers", func(t *testing.T) {
 		testGasCosts_Sonic(t, false)
 	})
@@ -63,16 +64,11 @@ func TestGasCostTest_Sonic(t *testing.T) {
 func testGasCosts_Sonic(t *testing.T, singleProposer bool) {
 	upgrades := opera.GetSonicUpgrades()
 	upgrades.SingleProposerBlockFormation = singleProposer
-	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
-		Upgrades: &upgrades,
-	})
 
-	client, err := net.GetClient()
-	require.NoError(t, err)
-	defer client.Close()
+	session := getIntegrationTestNetSession(t, upgrades)
+	t.Parallel()
 
-	chainId, err := client.ChainID(t.Context())
-	require.NoError(t, err)
+	chainId := session.GetChainId()
 
 	// From https://eips.ethereum.org/EIPS/eip-7623
 	// Gas used before Prague update:
@@ -85,16 +81,21 @@ func testGasCosts_Sonic(t *testing.T, singleProposer bool) {
 
 	t.Run("reject transactions with insufficient gas", func(t *testing.T) {
 		t.Parallel()
-		session := net.SpawnSession(t)
 		for test := range makeGasCostTestInputs(t, session) {
 			t.Run(test.String(), func(t *testing.T) {
+				session := session.SpawnSession(t)
+				t.Parallel()
+
+				client, err := session.GetClient()
+				require.NoError(t, err)
+				defer client.Close()
+
 				test.txPayload.Gas = test.txPayload.Gas - 1
 				test.txPayload = setTransactionDefaults(t, session, test.txPayload, session.GetSessionSponsor())
 
 				tx := signTransaction(t, chainId, test.txPayload, session.GetSessionSponsor())
-				require.NoError(t, err)
 
-				err := client.SendTransaction(t.Context(), tx)
+				err = client.SendTransaction(t.Context(), tx)
 				require.Error(t, err)
 				require.Condition(t, func() bool {
 					return strings.Contains(err.Error(), "intrinsic gas too low")
@@ -105,12 +106,13 @@ func testGasCosts_Sonic(t *testing.T, singleProposer bool) {
 
 	t.Run("transactions with exact gas succeed", func(t *testing.T) {
 		t.Parallel()
-		session := net.SpawnSession(t)
 		for test := range makeGasCostTestInputs(t, session) {
 			t.Run(test.String(), func(t *testing.T) {
+				session := session.SpawnSession(t)
+				t.Parallel()
+
 				test.txPayload = setTransactionDefaults(t, session, test.txPayload, session.GetSessionSponsor())
 				tx := signTransaction(t, chainId, test.txPayload, session.GetSessionSponsor())
-				require.NoError(t, err)
 
 				expectedCost, err := core.IntrinsicGas(tx.Data(), tx.AccessList(), tx.SetCodeAuthorizations(), tx.To() == nil, true, true, true)
 				require.NoError(t, err)
@@ -126,16 +128,16 @@ func testGasCosts_Sonic(t *testing.T, singleProposer bool) {
 
 	t.Run("Sonic processor charges 10% of unused gas", func(t *testing.T) {
 		t.Parallel()
-		session := net.SpawnSession(t)
 		for test := range makeGasCostTestInputs(t, session) {
 			t.Run(test.String(), func(t *testing.T) {
+				session := session.SpawnSession(t)
+				t.Parallel()
 
 				// Increase gas by 20% to make sure we have some unused gas
 				test.txPayload.Gas = uint64(float32(test.txPayload.Gas) * 1.2)
 				test.txPayload = setTransactionDefaults(t, session, test.txPayload, session.GetSessionSponsor())
 
 				tx := signTransaction(t, chainId, test.txPayload, session.GetSessionSponsor())
-				require.NoError(t, err)
 
 				expectedCost, err := core.IntrinsicGas(tx.Data(), tx.AccessList(), tx.SetCodeAuthorizations(), tx.To() == nil, true, true, true)
 				require.NoError(t, err)
@@ -154,6 +156,8 @@ func testGasCosts_Sonic(t *testing.T, singleProposer bool) {
 }
 
 func TestGasCostTest_Allegro(t *testing.T) {
+	t.Parallel()
+
 	t.Run("with distributed proposers", func(t *testing.T) {
 		testGasCosts_Allegro(t, false)
 	})
@@ -165,16 +169,11 @@ func TestGasCostTest_Allegro(t *testing.T) {
 func testGasCosts_Allegro(t *testing.T, singleProposer bool) {
 	upgrades := opera.GetAllegroUpgrades()
 	upgrades.SingleProposerBlockFormation = singleProposer
-	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
-		Upgrades: &upgrades,
-	})
 
-	client, err := net.GetClient()
-	require.NoError(t, err)
-	defer client.Close()
+	session := getIntegrationTestNetSession(t, upgrades)
+	t.Parallel()
 
-	chainId, err := client.ChainID(t.Context())
-	require.NoError(t, err)
+	chainId := session.GetChainId()
 
 	// From https://eips.ethereum.org/EIPS/eip-7623
 	// Gas used after Prague update:
@@ -201,18 +200,24 @@ func testGasCosts_Allegro(t *testing.T, singleProposer bool) {
 	}
 
 	t.Run("reject transactions with insufficient gas", func(t *testing.T) {
+		session := session.SpawnSession(t)
 		t.Parallel()
-		session := net.SpawnSession(t)
+
 		for test := range makeGasCostTestInputs(t, session) {
 			t.Run(test.String(), func(t *testing.T) {
+				session := session.SpawnSession(t)
+				t.Parallel()
+
+				client, err := session.GetClient()
+				require.NoError(t, err)
+				defer client.Close()
 
 				test.txPayload.Gas = computeEIP7623GasCost(t, test.txPayload) - 1
 				test.txPayload = setTransactionDefaults(t, session, test.txPayload, session.GetSessionSponsor())
 
 				tx := signTransaction(t, chainId, test.txPayload, session.GetSessionSponsor())
-				require.NoError(t, err)
 
-				err := client.SendTransaction(t.Context(), tx)
+				err = client.SendTransaction(t.Context(), tx)
 				require.Error(t, err)
 				require.Condition(t, func() bool {
 					return strings.Contains(err.Error(), "intrinsic gas too low") ||
@@ -223,8 +228,9 @@ func testGasCosts_Allegro(t *testing.T, singleProposer bool) {
 	})
 
 	t.Run("transactions with exact gas succeed", func(t *testing.T) {
+
+		session := session.SpawnSession(t)
 		t.Parallel()
-		session := net.SpawnSession(t)
 
 		var corrections int
 		for test := range makeGasCostTestInputs(t, session) {
@@ -238,7 +244,6 @@ func testGasCosts_Allegro(t *testing.T, singleProposer bool) {
 				test.txPayload = setTransactionDefaults(t, session, test.txPayload, session.GetSessionSponsor())
 
 				tx := signTransaction(t, chainId, test.txPayload, session.GetSessionSponsor())
-				require.NoError(t, err)
 
 				receipt, err := session.Run(tx)
 				require.NoError(t, err)
@@ -252,8 +257,9 @@ func testGasCosts_Allegro(t *testing.T, singleProposer bool) {
 	})
 
 	t.Run("Sonic processor charges 10% of unused gas", func(t *testing.T) {
+
+		session := session.SpawnSession(t)
 		t.Parallel()
-		session := net.SpawnSession(t)
 
 		var floorGreaterThan20Percent int
 		var expectedSmallerThanFloor int

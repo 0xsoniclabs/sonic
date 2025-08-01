@@ -20,6 +20,7 @@ import (
 	"math"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/stretchr/testify/require"
@@ -42,16 +43,12 @@ func TestEthCall_CodeLargerThanMaxInitCodeSizeIsAccepted(t *testing.T) {
 			math.MaxUint16 + 1,
 		},
 	}
-	net := StartIntegrationTestNet(t)
-
-	client, err := net.GetClient()
-	require.NoError(t, err, "Failed to connect to the integration test network")
-	defer client.Close()
-
-	rpcClient := client.Client()
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
+			session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+			t.Parallel()
+
 			accountWithHugeCode := "0x5555555555555555555555555555555555555555"
 
 			txArguments := map[string]string{
@@ -66,8 +63,12 @@ func TestEthCall_CodeLargerThanMaxInitCodeSizeIsAccepted(t *testing.T) {
 				},
 			}
 
+			client, err := session.GetClient()
+			require.NoError(t, err, "Failed to connect to the integration test network")
+			defer client.Close()
+
 			var res interface{}
-			err = rpcClient.Call(&res, "eth_call", txArguments, requestedBlock, stateOverrides)
+			err = client.Client().Call(&res, "eth_call", txArguments, requestedBlock, stateOverrides)
 			require.NoError(t, err)
 		})
 	}

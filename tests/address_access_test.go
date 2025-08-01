@@ -20,6 +20,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/opera"
 	accessCost "github.com/0xsoniclabs/sonic/tests/contracts/access_cost"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -30,14 +31,15 @@ import (
 func TestAddressAccess(t *testing.T) {
 	someAccountAddress := common.Address{1}
 
-	net := StartIntegrationTestNet(t)
+	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	t.Parallel()
 
-	contract, receipt, err := DeployContract(net, accessCost.DeployAccessCost)
+	contract, receipt, err := DeployContract(session, accessCost.DeployAccessCost)
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
 	// Execute function on an address, cold access
-	receipt, err = net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
+	receipt, err = session.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
 		return contract.TouchAddress(opts, someAccountAddress)
 	})
 	require.NoError(t, err)
@@ -71,7 +73,7 @@ func TestAddressAccess(t *testing.T) {
 
 		for name, access := range tests {
 			t.Run(name, func(t *testing.T) {
-				receipt, err = net.Apply(access)
+				receipt, err = session.Apply(access)
 				require.NoError(t, err)
 				require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 

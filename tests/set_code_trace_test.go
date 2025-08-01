@@ -38,43 +38,42 @@ import (
 // assign fees for a dApp also in this delegate scenario and dApp
 // address will be visible in the trace
 func TestTrace7702Transaction(t *testing.T) {
-	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
-		Upgrades: AsPointer(opera.GetAllegroUpgrades()),
-	})
+	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	t.Parallel()
 
-	sponsor := makeAccountWithBalance(t, net, big.NewInt(1e18))
-	sponsored := makeAccountWithBalance(t, net, big.NewInt(10))
+	sponsor := makeAccountWithBalance(t, session, big.NewInt(1e18))
+	sponsored := makeAccountWithBalance(t, session, big.NewInt(10))
 
 	// Deploy the contract to forward the call
-	sponsoringDelegate, receipt, err := DeployContract(net, sponsoring.DeploySponsoring)
+	sponsoringDelegate, receipt, err := DeployContract(session, sponsoring.DeploySponsoring)
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 	delegateAddress := receipt.ContractAddress
 
 	// Deploy simple contract to increment the counter
-	counterContract, receipt, err := DeployContract(net, counter.DeployCounter)
+	counterContract, receipt, err := DeployContract(session, counter.DeployCounter)
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 	counterAddress := receipt.ContractAddress
 
 	// Prepare calldata for incrementing the counter
-	counterCallData := getCallData(t, net, func(opts *bind.TransactOpts) (*types.Transaction, error) {
+	counterCallData := getCallData(t, session, func(opts *bind.TransactOpts) (*types.Transaction, error) {
 		return counterContract.IncrementCounter(opts)
 	})
 
 	// Prepare calldata for the sponsoring transaction
-	sponsoringCallData := getCallData(t, net, func(opts *bind.TransactOpts) (*types.Transaction, error) {
+	sponsoringCallData := getCallData(t, session, func(opts *bind.TransactOpts) (*types.Transaction, error) {
 		// Increment the counter in the context of the sponsored account
 		return sponsoringDelegate.Execute(opts, counterAddress, big.NewInt(0), counterCallData)
 	})
 
-	client, err := net.GetClient()
+	client, err := session.GetClient()
 	require.NoError(t, err)
 	defer client.Close()
 
 	// Create a setCode transaction calling the counter contract
 	setCodeTx := makeEip7702Transaction(t, client, sponsor, sponsored, delegateAddress, sponsoringCallData)
-	receipt, err = net.Run(setCodeTx)
+	receipt, err = session.Run(setCodeTx)
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
@@ -84,15 +83,12 @@ func TestTrace7702Transaction(t *testing.T) {
 		CalledContract: counterAddress,
 	}
 
-	rpcClient := client.Client()
-	defer rpcClient.Close()
-
 	t.Run("Debug 7702 transaction with callTracer", func(t *testing.T) {
-		debugTraceSponsoredTransaction(t, rpcClient, setCodeTx.Hash(), expectedAddress)
+		debugTraceSponsoredTransaction(t, client.Client(), setCodeTx.Hash(), expectedAddress)
 	})
 
 	t.Run("Trace 7702 transaction", func(t *testing.T) {
-		traceSponsoredTransaction(t, rpcClient, setCodeTx.Hash(), expectedAddress)
+		traceSponsoredTransaction(t, client.Client(), setCodeTx.Hash(), expectedAddress)
 	})
 }
 

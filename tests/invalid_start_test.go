@@ -19,6 +19,7 @@ package tests
 import (
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/invalidstart"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
@@ -30,63 +31,64 @@ func TestInvalidStart_IdentifiesInvalidStartContract(t *testing.T) {
 	invalidCode := []byte{0x60, 0xef, 0x60, 0x00, 0x53, 0x60, 0x01, 0x60, 0x00, 0xf3}
 	validCode := []byte{0x60, 0xfe, 0x60, 0x00, 0x53, 0x60, 0x01, 0x60, 0x00, 0xf3}
 
-	net := StartIntegrationTestNet(t)
+	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	t.Parallel()
 
 	// Deploy the invalid start contract.
-	contract, _, err := DeployContract(net, invalidstart.DeployInvalidstart)
+	contract, _, err := DeployContract(session, invalidstart.DeployInvalidstart)
 	require.NoError(err)
 
 	// -- invalid codes
 
 	// attempt to create a contract with code starting with 0xEF using CREATE
-	receipt, err := net.Apply(contract.CreateContractWithInvalidCode)
+	receipt, err := session.Apply(contract.CreateContractWithInvalidCode)
 	require.NoError(err)
 	require.Equal(types.ReceiptStatusFailed, receipt.Status, "unexpected succeeded on invalid code with CREATE")
 
 	// attempt to create a contract with code starting with 0xEF using CREATE2
-	receipt, err = net.Apply(contract.Create2ContractWithInvalidCode)
+	receipt, err = session.Apply(contract.Create2ContractWithInvalidCode)
 	require.NoError(err)
 	require.Equal(types.ReceiptStatusFailed, receipt.Status, "unexpected succeeded on invalid code with CREATE2")
 
 	// attempt to run a transaction without receiver, with an invalid code.
-	invalidTransaction, err := getTransactionWithCodeAndNoReceiver(t, invalidCode, net)
+	invalidTransaction, err := getTransactionWithCodeAndNoReceiver(t, invalidCode, session)
 	require.NoError(err)
-	receipt, err = net.Run(invalidTransaction)
+	receipt, err = session.Run(invalidTransaction)
 	require.NoError(err)
 	require.Equal(types.ReceiptStatusFailed, receipt.Status, "unexpected succeeded on transfer to empty receiver with invalid code")
 
 	// -- valid codes
 
 	// create a contract with valid code using CREATE
-	receipt, err = net.Apply(contract.CreateContractWithValidCode)
+	receipt, err = session.Apply(contract.CreateContractWithValidCode)
 	require.NoError(err)
 	require.Equal(types.ReceiptStatusSuccessful, receipt.Status, "failed on valid code with CREATE")
 
 	// create a contract with valid code using CREATE2
-	receipt, err = net.Apply(contract.Create2ContractWithValidCode)
+	receipt, err = session.Apply(contract.Create2ContractWithValidCode)
 	require.NoError(err)
 	require.Equal(types.ReceiptStatusSuccessful, receipt.Status, "failed on valid code with CREATE2")
 
 	// run a transaction without receiver, with a valid code.
-	validTransaction, err := getTransactionWithCodeAndNoReceiver(t, validCode, net)
+	validTransaction, err := getTransactionWithCodeAndNoReceiver(t, validCode, session)
 	require.NoError(err)
-	receipt, err = net.Run(validTransaction)
+	receipt, err = session.Run(validTransaction)
 	require.NoError(err)
 	require.Equal(types.ReceiptStatusSuccessful, receipt.Status, "failed on transfer to empty receiver with valid code")
 }
 
-func getTransactionWithCodeAndNoReceiver(t testing.TB, code []byte, net *IntegrationTestNet) (*types.Transaction, error) {
+func getTransactionWithCodeAndNoReceiver(t testing.TB, code []byte, session IntegrationTestNetSession) (*types.Transaction, error) {
 	// these values are needed for the transaction but are irrelevant for the test
 	t.Helper()
 	require := require.New(t)
-	client, err := net.GetClient()
+	client, err := session.GetClient()
 	require.NoError(err, "failed to connect to the network:")
 
 	defer client.Close()
 	chainId, err := client.ChainID(t.Context())
 	require.NoError(err, "failed to get chain ID::")
 
-	nonce, err := client.NonceAt(t.Context(), net.GetSessionSponsor().Address(), nil)
+	nonce, err := client.NonceAt(t.Context(), session.GetSessionSponsor().Address(), nil)
 	require.NoError(err, "failed to get nonce:")
 
 	price, err := client.SuggestGasPrice(t.Context())
@@ -100,7 +102,7 @@ func getTransactionWithCodeAndNoReceiver(t testing.TB, code []byte, net *Integra
 		To:       nil,
 		Nonce:    nonce,
 		Data:     code,
-	}), types.NewLondonSigner(chainId), net.GetSessionSponsor().PrivateKey)
+	}), types.NewLondonSigner(chainId), session.GetSessionSponsor().PrivateKey)
 	require.NoError(err, "failed to sign transaction:")
 
 	return transaction, nil

@@ -21,6 +21,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/selfdestruct"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -28,22 +29,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSelfDestruct(t *testing.T) {
-
-	net := StartIntegrationTestNet(t)
-
-	t.Run("constructor", func(t *testing.T) {
-		t.Parallel()
-		testSelfDestruct_Constructor(t, net)
-	})
-
-	t.Run("nested call", func(t *testing.T) {
-		t.Parallel()
-		testSelfDestruct_NestedCall(t, net)
-	})
-}
-
-func testSelfDestruct_Constructor(t *testing.T, net *IntegrationTestNet) {
+func TestSelfDestruct_Constructor(t *testing.T) {
 	contractInitialBalance := int64(1234)
 
 	tests := map[string]struct {
@@ -141,8 +127,9 @@ func testSelfDestruct_Constructor(t *testing.T, net *IntegrationTestNet) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
+
+			session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 			t.Parallel()
-			session := net.SpawnSession(t)
 
 			// New beneficiary address for each test
 			beneficiaryAddress := common.Address{}
@@ -201,7 +188,7 @@ func testSelfDestruct_Constructor(t *testing.T, net *IntegrationTestNet) {
 	}
 }
 
-func testSelfDestruct_NestedCall(t *testing.T, net *IntegrationTestNet) {
+func TestSelfDestruct_NestedCall(t *testing.T) {
 	contractInitialBalance := int64(1234)
 
 	tests := map[string]struct {
@@ -294,8 +281,9 @@ func testSelfDestruct_NestedCall(t *testing.T, net *IntegrationTestNet) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
+
+			session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 			t.Parallel()
-			session := net.SpawnSession(t)
 
 			// generate a new beneficiary address for each test
 			beneficiaryAddress := common.Address{}

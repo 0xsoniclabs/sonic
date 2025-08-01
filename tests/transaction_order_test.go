@@ -34,6 +34,8 @@ func TestTransactionOrder(t *testing.T) {
 		numBlocks   = uint64(3)
 		numTxs      = numAccounts * numPerAcc
 	)
+
+	t.Parallel()
 	net := StartIntegrationTestNet(t)
 
 	contract, _, err := DeployContract(net, counter_event_emitter.DeployCounterEventEmitter)
