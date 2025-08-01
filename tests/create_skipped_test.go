@@ -114,10 +114,7 @@ func TestAccountCreation_CreateCallsProducingCodesTooLargeProduceAUnsuccessfulRe
 		byte(vm.RETURN),
 	}...)
 
-	upgrade := opera.GetSonicUpgrades()
-	net := StartIntegrationTestNetWithJsonGenesis(t, IntegrationTestNetOptions{
-		Upgrades: &upgrade,
-	})
+	net := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 
 	client, err := net.GetClient()
 	require.NoError(t, err)

@@ -30,10 +30,7 @@ import (
 )
 
 func TestBlsVerificationOnChain(t *testing.T) {
-	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
-		Upgrades: AsPointer(opera.GetAllegroUpgrades()),
-	})
-	defer net.Stop()
+	net := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 
 	// Deploy contract with transaction options
 	blsContract, _, err := DeployContract(net, blsContracts.DeployBLS)

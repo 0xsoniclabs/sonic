@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/transientstorage"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -33,10 +34,9 @@ import (
 func TestBlockInArchive(t *testing.T) {
 
 	require := require.New(t)
-	net := StartIntegrationTestNetWithJsonGenesis(t)
-	defer net.Stop()
+	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 
-	client, err := net.GetWebSocketClient()
+	client, err := session.GetWebSocketClient()
 	require.NoError(err, "failed to get client ", err)
 	defer client.Close()
 	done := make(chan struct{})
@@ -56,7 +56,8 @@ func TestBlockInArchive(t *testing.T) {
 
 				// Check if block is in archive
 				var res interface{}
-				err := rpcClient.Call(&res, "eth_getBalance", net.account.Address().String(), hexutil.EncodeUint64(blockHeader.Number.Uint64()))
+				err := rpcClient.Call(&res, "eth_getBalance", session.GetSessionSponsor().Address().String(),
+					hexutil.EncodeUint64(blockHeader.Number.Uint64()))
 				require.NoError(err, "failed to call eth_getBalance %v", err)
 
 				// Check that the block number is in order
@@ -76,7 +77,7 @@ func TestBlockInArchive(t *testing.T) {
 		}
 	}()
 
-	contract, _, err := DeployContract(net, transientstorage.DeployTransientstorage)
+	contract, _, err := DeployContract(session, transientstorage.DeployTransientstorage)
 	require.NoError(err, "failed to deploy contract %v", err)
 
 	for {
@@ -84,7 +85,7 @@ func TestBlockInArchive(t *testing.T) {
 		case <-done:
 			return
 		default:
-			txOptions, err := net.GetTransactOptions(net.GetSessionSponsor())
+			txOptions, err := session.GetTransactOptions(session.GetSessionSponsor())
 			require.NoError(err, "failed to get transaction options %v", err)
 			txOptions.Nonce = nil
 			txOptions.GasLimit = 0

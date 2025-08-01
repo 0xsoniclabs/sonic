@@ -20,6 +20,7 @@ import (
 	"math"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/stretchr/testify/require"
@@ -42,7 +43,7 @@ func TestEthCall_CodeLargerThanMaxInitCodeSizeIsAccepted(t *testing.T) {
 			math.MaxUint16 + 1,
 		},
 	}
-	net := StartIntegrationTestNet(t)
+	net := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 
 	client, err := net.GetClient()
 	require.NoError(t, err, "Failed to connect to the integration test network")

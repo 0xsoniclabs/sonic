@@ -20,6 +20,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
@@ -31,14 +32,14 @@ const enoughGasPrice = 150_000_000_000
 
 func TestTransactionGasPrice(t *testing.T) {
 
-	net := StartIntegrationTestNet(t)
+	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 
-	client, err := net.GetClient()
+	client, err := session.GetClient()
 	require.NoError(t, err)
 	defer client.Close()
 
 	// use a fresh account to send transactions from
-	account := makeAccountWithBalance(t, net, big.NewInt(1e18))
+	account := makeAccountWithBalance(t, session, big.NewInt(1e18))
 
 	t.Run("Legacy transaction, effectivePrice is equal to requested price", func(t *testing.T) {
 
@@ -58,7 +59,7 @@ func TestTransactionGasPrice(t *testing.T) {
 		// 2: make & execute transaction
 		tx := makeLegacyTx(t, client, specifiedPrice, account, &common.Address{}, nil)
 
-		receipt, err := net.Run(tx)
+		receipt, err := session.Run(tx)
 		require.NoError(t, err)
 		require.Equal(t,
 			receipt.Status,
@@ -111,7 +112,7 @@ func TestTransactionGasPrice(t *testing.T) {
 		// 2: make & execute transaction
 		tx := makeEip1559Transaction(t, client, maxGasPrice, 0, account, &common.Address{}, nil)
 
-		receipt, err := net.Run(tx)
+		receipt, err := session.Run(tx)
 		require.NoError(t, err)
 		require.Equal(t,
 			receipt.Status,
@@ -174,7 +175,7 @@ func TestTransactionGasPrice(t *testing.T) {
 		// 2: make & execute transaction
 		tx := makeEip1559Transaction(t, client, maxGasPrice, tip, account, &common.Address{}, nil)
 
-		receipt, err := net.Run(tx)
+		receipt, err := session.Run(tx)
 		require.NoError(t, err)
 		require.Equal(t,
 			receipt.Status,
@@ -234,7 +235,7 @@ func TestTransactionGasPrice(t *testing.T) {
 		// 2: make & execute transaction
 		tx := makeEip1559Transaction(t, client, maxGasPrice, tip, account, &common.Address{}, nil)
 
-		receipt, err := net.Run(tx)
+		receipt, err := session.Run(tx)
 		require.NoError(t, err)
 		require.Equal(t,
 			receipt.Status,
