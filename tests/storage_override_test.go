@@ -65,9 +65,6 @@ func TestSetStorage_PreExisting_Contract_Storage_Temporarily_Overridden(t *testi
 	require.NoError(t, err, "failed to get client")
 	defer client.Close()
 
-	// rpcClient does not need to be closed, as it comes from a pooled client
-	rpcClient := client.Client()
-
 	// Parse the ABI
 	parsedABI, err := abi.JSON(strings.NewReader(storage.StorageMetaData.ABI))
 	require.NoError(t, err, "failed to parse ABI; %v", err)
@@ -77,7 +74,7 @@ func TestSetStorage_PreExisting_Contract_Storage_Temporarily_Overridden(t *testi
 
 	// call eth_call of the contract to override the storage
 	var result string
-	err = rpcClient.Call(&result, "eth_call",
+	err = client.Client().Call(&result, "eth_call",
 		map[string]interface{}{
 			"to":   addressStr,
 			"data": hexutil.Encode(data),
@@ -116,11 +113,8 @@ func TestSetStorage_Contract_Not_On_Blockchain_Executed_With_Extra_Storage(t *te
 
 	contractAddress := common.Address{1}.String()
 
-	// rpcClient does not need to be closed, as it comes from a pooled client
-	rpcClient := client.Client()
-
 	var result string
-	err = rpcClient.Call(&result, "eth_call",
+	err = client.Client().Call(&result, "eth_call",
 		map[string]interface{}{
 			"to":   contractAddress,
 			"data": "0x2e64cec1",

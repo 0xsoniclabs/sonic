@@ -97,7 +97,6 @@ func TestBlockOverride(t *testing.T) {
 
 		compareCalls(t, netClient.Client(), contractAddress, blockNumber, blockOverrides, makeDebugTraceCall)
 	})
-
 }
 
 func compareCalls(t *testing.T, rpcClient *rpc.Client, contractAddress common.Address, blockNumber uint64, blockOverrides *ethapi.BlockOverrides,
@@ -109,9 +108,6 @@ func compareCalls(t *testing.T, rpcClient *rpc.Client, contractAddress common.Ad
 
 	paramsOverride, err := callFunc(t, rpcClient, contractAddress, blockNumber, blockOverrides)
 	require.NoError(err, "failed to make eth_call; %v", err)
-
-	t.Logf("params: %v", params)
-	t.Logf("params: %v", paramsOverride)
 
 	err = checkAllFieldsAreDifferent(params, paramsOverride)
 	require.NoError(err, "failed to compare block parameters; %v", err)

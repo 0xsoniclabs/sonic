@@ -83,15 +83,12 @@ func TestTrace7702Transaction(t *testing.T) {
 		CalledContract: counterAddress,
 	}
 
-	// rpcClient does not need to be closed, as it comes from a pooled client
-	rpcClient := client.Client()
-
 	t.Run("Debug 7702 transaction with callTracer", func(t *testing.T) {
-		debugTraceSponsoredTransaction(t, rpcClient, setCodeTx.Hash(), expectedAddress)
+		debugTraceSponsoredTransaction(t, client.Client(), setCodeTx.Hash(), expectedAddress)
 	})
 
 	t.Run("Trace 7702 transaction", func(t *testing.T) {
-		traceSponsoredTransaction(t, rpcClient, setCodeTx.Hash(), expectedAddress)
+		traceSponsoredTransaction(t, client.Client(), setCodeTx.Hash(), expectedAddress)
 	})
 }
 
