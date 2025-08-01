@@ -545,16 +545,27 @@ func runEstimateGasOverrideTest(t *testing.T, test stateOverrideEstimateGasTest)
 	mockBackend.EXPECT().RPCEVMTimeout().Return(time.Duration(0)).AnyTimes()
 	mockBackend.EXPECT().MaxGasLimit().Return(uint64(10000000)).AnyTimes()
 	mockBackend.EXPECT().GetEVM(any, any, any, any, any).DoAndReturn(getEvmFunc(mockState)).AnyTimes()
+	mockBackend.EXPECT().CurrentBlock().Return(block).AnyTimes()
+	mockBackend.EXPECT().SuggestGasTipCap(gomock.Any(), gomock.Any()).Return(big.NewInt(1)).AnyTimes()
+	mockBackend.EXPECT().MinGasPrice().Return(big.NewInt(0)).AnyTimes()
+	mockBackend.EXPECT().GetPoolNonce(gomock.Any(), gomock.Any()).Return(uint64(0), nil).AnyTimes()
 
-	setExpectedStateCalls(mockState)
+	mockState.EXPECT().GetBalance(any).Return(uint256.NewInt(12345678901234567890)).AnyTimes()
 	mockState.EXPECT().SetCode(gomock.Any(), gomock.Any()).AnyTimes()
 	mockState.EXPECT().SetBalance(gomock.Any(), gomock.Any()).AnyTimes()
 	mockState.EXPECT().SetStorage(gomock.Any(), gomock.Any()).AnyTimes()
 	mockState.EXPECT().SetState(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+	setExpectedStateCalls(mockState)
+
+	mockBackend.EXPECT().ChainID().Return(big.NewInt(1)).AnyTimes()
+
+	txArgs := getTxArgs(t)
+	err := txArgs.setDefaults(t.Context(), mockBackend)
+	require.NoError(t, err)
 
 	// Run estimation test
 	apiEth := NewPublicBlockChainAPI(mockBackend)
-	gas, err := apiEth.EstimateGas(context.Background(), getTxArgs(t), &rpcBlkNr, test.stateOverride, nil)
+	gas, err := apiEth.EstimateGas(context.Background(), txArgs, &rpcBlkNr, test.stateOverride, nil)
 	if test.err {
 		require.Error(t, err)
 	} else {
