@@ -39,21 +39,23 @@ const (
 func TestBlockOverride(t *testing.T) {
 	require := req.New(t)
 
-	net := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	t.Parallel()
 
 	// Deploy the block override observer contract.
-	_, receipt, err := DeployContract(net, block_override.DeployBlockOverride)
+	_, receipt, err := DeployContract(session, block_override.DeployBlockOverride)
 	require.NoError(err, "failed to deploy contract; %v", err)
 	contractAddress := receipt.ContractAddress
 
-	netClient, err := net.GetClient()
+	netClient, err := session.GetClient()
 	require.NoError(err, "failed to get client; %v", err)
+	defer netClient.Close()
 
 	contract, err := block_override.NewBlockOverride(contractAddress, netClient)
 	require.NoError(err, "failed to instantiate contract")
 
 	// Call contract method to be sure it is deployed.
-	receiptObserve, err := net.Apply(contract.Observe)
+	receiptObserve, err := session.Apply(contract.Observe)
 	require.NoError(err, "failed to observe block hash; %v", err)
 	require.Equal(types.ReceiptStatusSuccessful, receiptObserve.Status,
 		"failed to observe block hash; %v", err,
@@ -61,9 +63,6 @@ func TestBlockOverride(t *testing.T) {
 
 	// Need block number for eth_call and debug_traceCall
 	blockNumber := receiptObserve.BlockNumber.Uint64()
-
-	rpcClient := netClient.Client()
-	defer rpcClient.Close()
 
 	// Set parameters to be overridden
 	time := uint64(1234)
@@ -80,11 +79,23 @@ func TestBlockOverride(t *testing.T) {
 	}
 
 	t.Run("eth_call block override", func(t *testing.T) {
-		compareCalls(t, rpcClient, contractAddress, blockNumber, blockOverrides, makeEthCall)
+		t.Parallel()
+
+		netClient, err := session.GetClient()
+		require.NoError(err, "failed to get client; %v", err)
+		defer netClient.Close()
+
+		compareCalls(t, netClient.Client(), contractAddress, blockNumber, blockOverrides, makeEthCall)
 	})
 
 	t.Run("debug_traceCall block override", func(t *testing.T) {
-		compareCalls(t, rpcClient, contractAddress, blockNumber, blockOverrides, makeDebugTraceCall)
+		t.Parallel()
+
+		netClient, err := session.GetClient()
+		require.NoError(err, "failed to get client; %v", err)
+		defer netClient.Close()
+
+		compareCalls(t, netClient.Client(), contractAddress, blockNumber, blockOverrides, makeDebugTraceCall)
 	})
 
 }

@@ -29,22 +29,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSelfDestruct(t *testing.T) {
-
-	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
-
-	t.Run("constructor", func(t *testing.T) {
-		t.Parallel()
-		testSelfDestruct_Constructor(t, session)
-	})
-
-	t.Run("nested call", func(t *testing.T) {
-		t.Parallel()
-		testSelfDestruct_NestedCall(t, session)
-	})
-}
-
-func testSelfDestruct_Constructor(t *testing.T, session IntegrationTestNetSession) {
+func TestSelfDestruct_Constructor(t *testing.T) {
 	contractInitialBalance := int64(1234)
 
 	tests := map[string]struct {
@@ -142,7 +127,8 @@ func testSelfDestruct_Constructor(t *testing.T, session IntegrationTestNetSessio
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
-			session := session.SpawnSession(t)
+
+			session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 			t.Parallel()
 
 			// New beneficiary address for each test
@@ -202,7 +188,7 @@ func testSelfDestruct_Constructor(t *testing.T, session IntegrationTestNetSessio
 	}
 }
 
-func testSelfDestruct_NestedCall(t *testing.T, net IntegrationTestNetSession) {
+func TestSelfDestruct_NestedCall(t *testing.T) {
 	contractInitialBalance := int64(1234)
 
 	tests := map[string]struct {
@@ -295,7 +281,8 @@ func testSelfDestruct_NestedCall(t *testing.T, net IntegrationTestNetSession) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
-			session := net.SpawnSession(t)
+
+			session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 			t.Parallel()
 
 			// generate a new beneficiary address for each test

@@ -38,27 +38,38 @@ import (
 func TestBlobTransaction(t *testing.T) {
 
 	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	t.Parallel()
 
 	t.Run("blob tx with non-empty blobs is rejected", func(t *testing.T) {
+		session := session.SpawnSession(t)
+		t.Parallel()
 		testBlobTx_WithBlobsIsRejected(t, session)
 	})
 
 	t.Run("blob tx with empty blobs is executed", func(t *testing.T) {
+		session := session.SpawnSession(t)
+		t.Parallel()
 		testBlobTx_WithEmptyBlobsIsExecuted(t, session)
 		checkBlocksSanity(t, session)
 	})
 
 	t.Run("blob tx with nil sidecar is executed", func(t *testing.T) {
+		session := session.SpawnSession(t)
+		t.Parallel()
 		testBlobTx_WithNilSidecarIsExecuted(t, session)
 		checkBlocksSanity(t, session)
 	})
 
 	t.Run("blob base fee can be read from head, block and history", func(t *testing.T) {
+		session := session.SpawnSession(t)
+		t.Parallel()
 		testBlobBaseFee_CanReadBlobBaseFeeFromHeadAndBlockAndHistory(t, session)
 		checkBlocksSanity(t, session)
 	})
 
 	t.Run("blob gas used can be read from block header", func(t *testing.T) {
+		session := session.SpawnSession(t)
+		t.Parallel()
 		testBlobBaseFee_CanReadBlobGasUsed(t, session)
 		checkBlocksSanity(t, session)
 	})

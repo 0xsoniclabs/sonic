@@ -30,6 +30,8 @@ import (
 )
 
 func TestAccountCreation_CreateCallsWithInitCodesTooLargeDoNotAlterBalance(t *testing.T) {
+	t.Parallel()
+
 	versions := map[string]opera.Upgrades{
 		"sonic":   opera.GetSonicUpgrades(),
 		"allegro": opera.GetAllegroUpgrades(),
@@ -37,6 +39,8 @@ func TestAccountCreation_CreateCallsWithInitCodesTooLargeDoNotAlterBalance(t *te
 
 	for name, version := range versions {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
 			net := StartIntegrationTestNetWithJsonGenesis(t, IntegrationTestNetOptions{
 				Upgrades: &version,
 				ClientExtraArguments: []string{
@@ -114,13 +118,14 @@ func TestAccountCreation_CreateCallsProducingCodesTooLargeProduceAUnsuccessfulRe
 		byte(vm.RETURN),
 	}...)
 
-	net := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	t.Parallel()
 
-	client, err := net.GetClient()
+	client, err := session.GetClient()
 	require.NoError(t, err)
 	defer client.Close()
 
-	sender := makeAccountWithBalance(t, net, big.NewInt(1e18))
+	sender := makeAccountWithBalance(t, session, big.NewInt(1e18))
 
 	gasPrice, err := client.SuggestGasPrice(t.Context())
 	require.NoError(t, err)
@@ -138,7 +143,7 @@ func TestAccountCreation_CreateCallsProducingCodesTooLargeProduceAUnsuccessfulRe
 	}
 	tx := signTransaction(t, chainId, txData, sender)
 
-	receipt, err := net.Run(tx)
+	receipt, err := session.Run(tx)
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusFailed, receipt.Status)
 }

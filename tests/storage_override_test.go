@@ -32,6 +32,7 @@ import (
 
 func TestSetStorage_PreExisting_Contract_Storage_Temporarily_Overridden(t *testing.T) {
 	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	t.Parallel()
 
 	// Deploy the contract.
 	contract, receipt, err := DeployContract(session, storage.DeployStorage)
@@ -64,8 +65,8 @@ func TestSetStorage_PreExisting_Contract_Storage_Temporarily_Overridden(t *testi
 	require.NoError(t, err, "failed to get client")
 	defer client.Close()
 
+	// rpcClient does not need to be closed, as it comes from a pooled client
 	rpcClient := client.Client()
-	defer rpcClient.Close()
 
 	// Parse the ABI
 	parsedABI, err := abi.JSON(strings.NewReader(storage.StorageMetaData.ABI))
@@ -106,6 +107,7 @@ func TestSetStorage_Contract_Not_On_Blockchain_Executed_With_Extra_Storage(t *te
 
 	// start network
 	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	t.Parallel()
 
 	// create a client
 	client, err := session.GetClient()
@@ -114,10 +116,10 @@ func TestSetStorage_Contract_Not_On_Blockchain_Executed_With_Extra_Storage(t *te
 
 	contractAddress := common.Address{1}.String()
 
-	var result string
+	// rpcClient does not need to be closed, as it comes from a pooled client
 	rpcClient := client.Client()
-	defer rpcClient.Close()
 
+	var result string
 	err = rpcClient.Call(&result, "eth_call",
 		map[string]interface{}{
 			"to":   contractAddress,

@@ -53,6 +53,7 @@ func TestCounter_CanReadHistoricCounterValues(t *testing.T) {
 
 	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 	t.Parallel()
+
 	// Deploy the counter contract.
 	contract, receipt, err := DeployContract(session, counter.DeployCounter)
 	require.NoError(t, err, "failed to deploy contract; %v", err)

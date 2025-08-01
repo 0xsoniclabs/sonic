@@ -21,7 +21,6 @@ import (
 	"math/rand/v2"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter_event_emitter"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -36,12 +35,13 @@ func TestTransactionOrder(t *testing.T) {
 		numTxs      = numAccounts * numPerAcc
 	)
 
-	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	t.Parallel()
+	net := StartIntegrationTestNet(t)
 
-	contract, _, err := DeployContract(session, counter_event_emitter.DeployCounterEventEmitter)
+	contract, _, err := DeployContract(net, counter_event_emitter.DeployCounterEventEmitter)
 	require.NoError(t, err)
 
-	client, err := session.GetClient()
+	client, err := net.GetClient()
 	require.NoError(t, err)
 	defer client.Close()
 
@@ -49,7 +49,7 @@ func TestTransactionOrder(t *testing.T) {
 
 	// Only transactions from different accounts can change order.
 	for range numAccounts {
-		accounts = append(accounts, makeAccountWithBalance(t, session, big.NewInt(1e18)))
+		accounts = append(accounts, makeAccountWithBalance(t, net, big.NewInt(1e18)))
 	}
 
 	// Repeat the test for X number of blocks
@@ -60,7 +60,7 @@ func TestTransactionOrder(t *testing.T) {
 		options := make([]bind.TransactOpts, 0, numTxs)
 		// Each account creates M transactions
 		for _, acc := range accounts {
-			opts, err := session.GetTransactOptions(acc)
+			opts, err := net.GetTransactOptions(acc)
 			require.NoError(t, err)
 			for range numPerAcc {
 				options = append(options, *opts)
@@ -86,7 +86,7 @@ func TestTransactionOrder(t *testing.T) {
 
 		// Check that the value in receipt is incremented by one - signals the transactions are ordered
 		for _, tx := range transactions {
-			receipt, err := session.GetReceipt(tx.Hash()) // first query synchronizes the execution
+			receipt, err := net.GetReceipt(tx.Hash()) // first query synchronizes the execution
 			require.NoError(t, err)
 			count, err := contract.ParseCount(*receipt.Logs[0])
 			require.NoError(t, err)

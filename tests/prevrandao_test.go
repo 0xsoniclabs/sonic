@@ -27,13 +27,14 @@ import (
 )
 
 func TestPrevRandao(t *testing.T) {
-	net := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	t.Parallel()
 
 	// Deploy the contract.
-	contract, _, err := DeployContract(net, prevrandao.DeployPrevrandao)
+	contract, _, err := DeployContract(session, prevrandao.DeployPrevrandao)
 	require.NoError(t, err)
 	// Collect the current PrevRandao fee from the head state.
-	receipt, err := net.Apply(contract.LogCurrentPrevRandao)
+	receipt, err := session.Apply(contract.LogCurrentPrevRandao)
 	require.NoError(t, err)
 	require.Len(t, receipt.Logs, 1, "expected exactly one log entry")
 
@@ -41,7 +42,7 @@ func TestPrevRandao(t *testing.T) {
 	require.NoError(t, err, "failed to parse log entry")
 	fromLog := entry.Prevrandao
 
-	client, err := net.GetClient()
+	client, err := session.GetClient()
 	require.NoError(t, err)
 	defer client.Close()
 

@@ -31,47 +31,48 @@ func TestInvalidStart_IdentifiesInvalidStartContract(t *testing.T) {
 	invalidCode := []byte{0x60, 0xef, 0x60, 0x00, 0x53, 0x60, 0x01, 0x60, 0x00, 0xf3}
 	validCode := []byte{0x60, 0xfe, 0x60, 0x00, 0x53, 0x60, 0x01, 0x60, 0x00, 0xf3}
 
-	net := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	t.Parallel()
 
 	// Deploy the invalid start contract.
-	contract, _, err := DeployContract(net, invalidstart.DeployInvalidstart)
+	contract, _, err := DeployContract(session, invalidstart.DeployInvalidstart)
 	require.NoError(err)
 
 	// -- invalid codes
 
 	// attempt to create a contract with code starting with 0xEF using CREATE
-	receipt, err := net.Apply(contract.CreateContractWithInvalidCode)
+	receipt, err := session.Apply(contract.CreateContractWithInvalidCode)
 	require.NoError(err)
 	require.Equal(types.ReceiptStatusFailed, receipt.Status, "unexpected succeeded on invalid code with CREATE")
 
 	// attempt to create a contract with code starting with 0xEF using CREATE2
-	receipt, err = net.Apply(contract.Create2ContractWithInvalidCode)
+	receipt, err = session.Apply(contract.Create2ContractWithInvalidCode)
 	require.NoError(err)
 	require.Equal(types.ReceiptStatusFailed, receipt.Status, "unexpected succeeded on invalid code with CREATE2")
 
 	// attempt to run a transaction without receiver, with an invalid code.
-	invalidTransaction, err := getTransactionWithCodeAndNoReceiver(t, invalidCode, net)
+	invalidTransaction, err := getTransactionWithCodeAndNoReceiver(t, invalidCode, session)
 	require.NoError(err)
-	receipt, err = net.Run(invalidTransaction)
+	receipt, err = session.Run(invalidTransaction)
 	require.NoError(err)
 	require.Equal(types.ReceiptStatusFailed, receipt.Status, "unexpected succeeded on transfer to empty receiver with invalid code")
 
 	// -- valid codes
 
 	// create a contract with valid code using CREATE
-	receipt, err = net.Apply(contract.CreateContractWithValidCode)
+	receipt, err = session.Apply(contract.CreateContractWithValidCode)
 	require.NoError(err)
 	require.Equal(types.ReceiptStatusSuccessful, receipt.Status, "failed on valid code with CREATE")
 
 	// create a contract with valid code using CREATE2
-	receipt, err = net.Apply(contract.Create2ContractWithValidCode)
+	receipt, err = session.Apply(contract.Create2ContractWithValidCode)
 	require.NoError(err)
 	require.Equal(types.ReceiptStatusSuccessful, receipt.Status, "failed on valid code with CREATE2")
 
 	// run a transaction without receiver, with a valid code.
-	validTransaction, err := getTransactionWithCodeAndNoReceiver(t, validCode, net)
+	validTransaction, err := getTransactionWithCodeAndNoReceiver(t, validCode, session)
 	require.NoError(err)
-	receipt, err = net.Run(validTransaction)
+	receipt, err = session.Run(validTransaction)
 	require.NoError(err)
 	require.Equal(types.ReceiptStatusSuccessful, receipt.Status, "failed on transfer to empty receiver with valid code")
 }

@@ -39,6 +39,7 @@ import (
 // address will be visible in the trace
 func TestTrace7702Transaction(t *testing.T) {
 	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	t.Parallel()
 
 	sponsor := makeAccountWithBalance(t, session, big.NewInt(1e18))
 	sponsored := makeAccountWithBalance(t, session, big.NewInt(10))
@@ -82,8 +83,8 @@ func TestTrace7702Transaction(t *testing.T) {
 		CalledContract: counterAddress,
 	}
 
+	// rpcClient does not need to be closed, as it comes from a pooled client
 	rpcClient := client.Client()
-	defer rpcClient.Close()
 
 	t.Run("Debug 7702 transaction with callTracer", func(t *testing.T) {
 		debugTraceSponsoredTransaction(t, rpcClient, setCodeTx.Hash(), expectedAddress)

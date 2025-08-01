@@ -64,6 +64,7 @@ func TestIntegrationTestNet_CanStartMultipleConsecutiveInstances(t *testing.T) {
 
 func TestIntegrationTestNet_Can(t *testing.T) {
 	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	t.Parallel()
 
 	// by default, the integration test network starts with a single node
 	require.Equal(t, 1, session.GetNumNodes())

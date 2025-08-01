@@ -29,20 +29,20 @@ import (
 )
 
 func TestGetAccount(t *testing.T) {
-	net := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	t.Parallel()
 
 	// Deploy the transient storage contract
-	_, deployReceipt, err := DeployContract(net, counter.DeployCounter)
+	_, deployReceipt, err := DeployContract(session, counter.DeployCounter)
 	require.NoError(t, err, "failed to deploy contract")
 
 	addr := deployReceipt.ContractAddress
 
-	c, err := net.GetClient()
+	c, err := session.GetClient()
 	require.NoError(t, err, "failed to get client")
 	defer c.Close()
-
+	// rpcClient does not need to be closed, as it comes from a pooled client
 	rpcClient := c.Client()
-	defer rpcClient.Close()
 
 	var res ethapi.GetAccountResult
 	err = rpcClient.Call(&res, "eth_getAccount", addr, rpc.LatestBlockNumber)

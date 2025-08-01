@@ -49,56 +49,56 @@ import (
 // Notice that the test contracts used in this test model the expected behavior
 // and do not implement ERC-20 as described in the EIP use case examples.
 func TestSetCodeTransaction(t *testing.T) {
-
-	net := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	t.Parallel()
 
 	t.Run("Operation", func(t *testing.T) {
 		t.Parallel()
 		// operation tests check basic operation of the SetCode transaction
 
 		t.Run("Delegate can be set and unset", func(t *testing.T) {
-			session := net.SpawnSession(t)
+			session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 			t.Parallel()
 			testDelegateCanBeSetAndUnset(t, session)
 		})
 
 		t.Run("Invalid authorizations are ignored", func(t *testing.T) {
+			session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 			t.Parallel()
-			testInvalidAuthorizationsAreIgnored(t, net)
+			testInvalidAuthorizationsAreIgnored(t, session)
 		})
 
 		t.Run("Authorizations are executed in order", func(t *testing.T) {
-			session := net.SpawnSession(t)
+			session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 			t.Parallel()
 			testAuthorizationsAreExecutedInOrder(t, session)
 		})
 
 		t.Run("Multiple accounts can submit authorizations", func(t *testing.T) {
-			session := net.SpawnSession(t)
+			session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 			t.Parallel()
 			testMultipleAccountsCanSubmitAuthorizations(t, session)
 		})
 
 		t.Run("Authorization succeeds with failing tx", func(t *testing.T) {
-			session := net.SpawnSession(t)
+			session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 			t.Parallel()
 			testAuthorizationSucceedsWithFailingTx(t, session)
 		})
 
 		t.Run("Authorization can be issued from a non existing account", func(t *testing.T) {
-			session := net.SpawnSession(t)
+			session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 			t.Parallel()
 			testAuthorizationFromNonExistingAccount(t, session)
 		})
 
 		t.Run("Delegations cannot be transitive", func(t *testing.T) {
-			session := net.SpawnSession(t)
+			session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 			t.Parallel()
 			testNoDelegateToDelegated(t, session)
 		})
 
 		t.Run("Delegations can trigger chains of calls", func(t *testing.T) {
-			session := net.SpawnSession(t)
+			session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 			t.Parallel()
 			testChainOfCalls(t, session)
 		})
@@ -110,19 +110,19 @@ func TestSetCodeTransaction(t *testing.T) {
 		// UseCase tests check the use cases described in the EIP-7702 specification
 
 		t.Run("Transaction Sponsoring", func(t *testing.T) {
-			session := net.SpawnSession(t)
+			session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 			t.Parallel()
 			testSponsoring(t, session)
 		})
 
 		t.Run("Transaction Batching", func(t *testing.T) {
-			session := net.SpawnSession(t)
+			session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 			t.Parallel()
 			testBatching(t, session)
 		})
 
 		t.Run("Privilege Deescalation", func(t *testing.T) {
-			session := net.SpawnSession(t)
+			session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 			t.Parallel()
 			testPrivilegeDeescalation(t, session)
 		})

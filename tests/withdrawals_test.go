@@ -32,6 +32,7 @@ func TestWithdrawalFieldsInBlocks(t *testing.T) {
 	requireBase := require.New(t)
 
 	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	t.Parallel()
 
 	// run endowment to ensure at least one block exists
 	receipt, err := session.EndowAccount(common.Address{42}, big.NewInt(1))
