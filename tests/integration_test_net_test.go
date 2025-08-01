@@ -23,6 +23,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
 	"github.com/0xsoniclabs/tosca/go/tosca/vm"
 	"github.com/ethereum/go-ethereum/common"
@@ -62,47 +63,43 @@ func TestIntegrationTestNet_CanStartMultipleConsecutiveInstances(t *testing.T) {
 }
 
 func TestIntegrationTestNet_Can(t *testing.T) {
-	net := StartIntegrationTestNet(t)
+	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+
 	// by default, the integration test network starts with a single node
-	require.Equal(t, 1, net.NumNodes())
+	require.Equal(t, 1, session.GetNumNodes())
 
 	t.Run("EndowAccountsWithTokens", func(t *testing.T) {
-		session := net.SpawnSession(t)
+		session := session.SpawnSession(t)
 		t.Parallel()
 		testIntegrationTestNet_CanEndowAccountsWithTokens(t, session)
 	})
 
 	t.Run("DeployContracts", func(t *testing.T) {
-		session := net.SpawnSession(t)
+		session := session.SpawnSession(t)
 		t.Parallel()
 		testIntegrationTestNet_CanDeployContracts(t, session)
 	})
 
 	t.Run("InteractWithContract", func(t *testing.T) {
-		session := net.SpawnSession(t)
+		session := session.SpawnSession(t)
 		t.Parallel()
 		testIntegrationTestNet_CanInteractWithContract(t, session)
 	})
 
 	t.Run("FetchInformationFromTheNetwork", func(t *testing.T) {
+		session := session.SpawnSession(t)
 		t.Parallel()
-		testIntegrationTestNet_CanFetchInformationFromTheNetwork(t, net)
+		testIntegrationTestNet_CanFetchInformationFromTheNetwork(t, session)
 	})
 
 	t.Run("SpawnParallelSessions", func(t *testing.T) {
-		session := net.SpawnSession(t)
+		session := session.SpawnSession(t)
 		t.Parallel()
 		testIntegrationTestNet_CanSpawnParallelSessions(t, session)
 	})
-
-	t.Run("AdvanceEpoch", func(t *testing.T) {
-		t.Parallel()
-		testIntegrationTestNet_AdvanceEpoch(t, net)
-	})
-
 }
 
-func testIntegrationTestNet_CanFetchInformationFromTheNetwork(t *testing.T, net *IntegrationTestNet) {
+func testIntegrationTestNet_CanFetchInformationFromTheNetwork(t *testing.T, net IntegrationTestNetSession) {
 	client, err := net.GetClient()
 	require.NoError(t, err, "Failed to connect to the integration test network")
 	defer client.Close()
@@ -173,7 +170,9 @@ func testIntegrationTestNet_CanSpawnParallelSessions(t *testing.T, session Integ
 	}
 }
 
-func testIntegrationTestNet_AdvanceEpoch(t *testing.T, net *IntegrationTestNet) {
+func TestIntegrationTestNet_AdvanceEpoch(t *testing.T) {
+	net := StartIntegrationTestNet(t)
+
 	client, err := net.GetClient()
 	require.NoError(t, err)
 	defer client.Close()
@@ -233,7 +232,6 @@ func TestIntegrationTestNet_CanRunMultipleNodes(t *testing.T) {
 }
 
 func TestIntegrationTestNet_CanStartWithCustomConfig(t *testing.T) {
-
 	// This test checks that configuration changes are applied to the network
 	// by modifying the tx_pool configuration and checking that the transaction
 	// validation behaves as expected.
