@@ -387,7 +387,7 @@ func getNetworkRules(t *testing.T, net IntegrationTestNetSession) opera.Rules {
 }
 
 // updateNetworkRules sends a transaction to update the network rules.
-func updateNetworkRules(t *testing.T, net IntegrationTestNetSession, rulesChange any) {
+func updateNetworkRules(t *testing.T, net *IntegrationTestNet, rulesChange any) {
 	t.Helper()
 	require := require.New(t)
 
@@ -412,7 +412,7 @@ func updateNetworkRules(t *testing.T, net IntegrationTestNetSession, rulesChange
 // advanceEpochAndWaitForBlocks sends a transaction to advance to the next epoch.
 // It also waits until the new epoch is really reached and the next two blocks are produced.
 // It is useful to test a situation when the rule change is applied to the next block after the epoch change.
-func advanceEpochAndWaitForBlocks(t *testing.T, net IntegrationTestNetSession) {
+func advanceEpochAndWaitForBlocks(t *testing.T, net *IntegrationTestNet) {
 	t.Helper()
 
 	require := require.New(t)
