@@ -37,10 +37,8 @@ func (s *Store) SetReceipts(n idx.Block, receipts types.Receipts) {
 		receiptsStorage[i] = (*types.ReceiptForStorage)(r)
 	}
 
-	size := s.SetRawReceipts(n, receiptsStorage)
-
 	// Add to LRU cache.
-	s.cache.Receipts.Add(n, receipts, uint(size))
+	s.cache.Receipts.Add(n, receipts)
 }
 
 // SetRawReceipts stores raw transaction receipts.
@@ -93,14 +91,11 @@ func UnwrapStorageReceipts(receiptsStorage []*types.ReceiptForStorage, n idx.Blo
 
 // GetReceipts returns stored transaction receipts.
 func (s *Store) GetReceipts(n idx.Block, config *params.ChainConfig, hash common.Hash, time uint64, baseFee *big.Int, blobGasPrice *big.Int, txs types.Transactions) types.Receipts {
-	// Get data from LRU cache first.
-	if s.cache.Receipts != nil {
-		if c, ok := s.cache.Receipts.Get(n); ok {
-			return c.(types.Receipts)
-		}
+	if receipts, ok := s.cache.Receipts.Get(n); ok {
+		return receipts
 	}
 
-	receiptsStorage, size := s.GetRawReceipts(n)
+	receiptsStorage, _ := s.GetRawReceipts(n)
 
 	receipts, err := UnwrapStorageReceipts(receiptsStorage, n, config, hash, time, baseFee, blobGasPrice, txs)
 	if err != nil {
@@ -108,7 +103,7 @@ func (s *Store) GetReceipts(n idx.Block, config *params.ChainConfig, hash common
 	}
 
 	// Add to LRU cache.
-	s.cache.Receipts.Add(n, receipts, uint(size))
+	s.cache.Receipts.Add(n, receipts)
 
 	return receipts
 }

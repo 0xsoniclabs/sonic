@@ -22,16 +22,20 @@ import (
 	"path/filepath"
 
 	carmen "github.com/0xsoniclabs/carmen/go/state"
+	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/logger"
 	"github.com/0xsoniclabs/sonic/topicsdb"
 	"github.com/0xsoniclabs/sonic/utils/rlpstore"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/kvdb"
 	"github.com/Fantom-foundation/lachesis-base/kvdb/table"
-	"github.com/Fantom-foundation/lachesis-base/utils/wlru"
+	"github.com/cespare/xxhash/v2"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-)
+	"github.com/ethereum/go-ethereum/log"
 
-const nominalSize uint = 1
+	"github.com/elastic/go-freelru"
+)
 
 // Store is a node persistent storage working over physical key-value database.
 type Store struct {
@@ -48,9 +52,9 @@ type Store struct {
 	EvmLogs topicsdb.Index
 
 	cache struct {
-		TxPositions *wlru.Cache `cache:"-"` // store by pointer
-		Receipts    *wlru.Cache `cache:"-"` // store by value
-		EvmBlocks   *wlru.Cache `cache:"-"` // store by pointer
+		TxPositions *freelru.SyncedLRU[common.Hash, TxPosition]
+		Receipts    *freelru.SyncedLRU[idx.Block, types.Receipts]
+		EvmBlocks   *freelru.SyncedLRU[idx.Block, *evmcore.EvmBlock]
 	}
 
 	rlp rlpstore.Helper
@@ -102,9 +106,6 @@ func (s *Store) Open() error {
 func (s *Store) Close() error {
 	// set all table/cache fields to nil
 	table.MigrateTables(&s.table, nil)
-	table.MigrateCaches(&s.cache, func() interface{} {
-		return nil
-	})
 	s.EvmLogs.Close()
 
 	if s.liveStateDb != nil {
@@ -121,9 +122,19 @@ func (s *Store) Close() error {
 }
 
 func (s *Store) initCache() {
-	s.cache.Receipts = s.makeCache(s.cfg.Cache.ReceiptsSize, s.cfg.Cache.ReceiptsBlocks)
-	s.cache.TxPositions = s.makeCache(nominalSize*uint(s.cfg.Cache.TxPositions), s.cfg.Cache.TxPositions)
-	s.cache.EvmBlocks = s.makeCache(s.cfg.Cache.EvmBlocksSize, s.cfg.Cache.EvmBlocksNum)
+	var err error
+	s.cache.Receipts, err = freelru.NewSynced[idx.Block, types.Receipts](uint32(s.cfg.Cache.ReceiptsSize), blockIdToInt)
+	if err != nil {
+		log.Crit("Failed to create receipts cache", "err", err)
+	}
+	s.cache.TxPositions, err = freelru.NewSynced[common.Hash, TxPosition](uint32(s.cfg.Cache.TxPositions), hashToInt)
+	if err != nil {
+		log.Crit("Failed to create tx positions cache", "err", err)
+	}
+	s.cache.EvmBlocks, err = freelru.NewSynced[idx.Block, *evmcore.EvmBlock](uint32(s.cfg.Cache.EvmBlocksNum), blockIdToInt)
+	if err != nil {
+		log.Crit("Failed to create EVM blocks cache", "err", err)
+	}
 }
 
 // IndexLogs indexes EVM logs
@@ -137,15 +148,6 @@ func (s *Store) IndexLogs(recs ...*types.Log) {
 /*
  * Utils:
  */
-
-func (s *Store) makeCache(weight uint, size int) *wlru.Cache {
-	cache, err := wlru.New(weight, size)
-	if err != nil {
-		s.Log.Crit("Failed to create LRU cache", "err", err)
-		return nil
-	}
-	return cache
-}
 
 func (s *Store) initCarmen() error {
 	params := s.parameters
@@ -172,4 +174,11 @@ func (s *Store) initCarmen() error {
 		}
 	}
 	return nil
+}
+
+func hashToInt(hash common.Hash) uint32 {
+	return uint32(xxhash.Sum64(hash[:]))
+}
+func blockIdToInt(block idx.Block) uint32 {
+	return uint32(block)
 }
