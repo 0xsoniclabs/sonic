@@ -28,29 +28,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestGasPrice(t *testing.T) {
-
-	net, client := makeNetAndClient(t)
-
-	t.Run("SuggestedGasPriceApproximateActualBaseFees", func(t *testing.T) {
-		t.Parallel()
-		session := net.SpawnSession(t)
-		testGasPrice_SuggestedGasPricesApproximateActualBaseFees(t, session, client)
-	})
-
-	t.Run("UnderpricedTransactionsAreRejected", func(t *testing.T) {
-		t.Parallel()
-		session := net.SpawnSession(t)
-		testGasPrice_UnderpricedTransactionsAreRejected(t, session, client)
-	})
-}
-
-func testGasPrice_SuggestedGasPricesApproximateActualBaseFees(
-	t *testing.T,
-	net IntegrationTestNetSession,
-	client *PooledEhtClient,
-) {
+func TestGasPrice_SuggestedGasPricesApproximateActualBaseFees(t *testing.T) {
 	require := require.New(t)
+
+	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+
+	client, err := session.GetClient()
+	require.NoError(err, "failed to get client")
+	defer client.Close()
 
 	fees := []uint64{}
 	suggestions := []uint64{}
@@ -59,7 +44,7 @@ func testGasPrice_SuggestedGasPricesApproximateActualBaseFees(
 		require.NoError(err)
 
 		// new block
-		receipt, err := net.EndowAccount(common.Address{42}, big.NewInt(100))
+		receipt, err := session.EndowAccount(common.Address{42}, big.NewInt(100))
 		require.NoError(err)
 		require.Equal(receipt.Status, types.ReceiptStatusSuccessful, "receipt status should be successful")
 
@@ -79,12 +64,14 @@ func testGasPrice_SuggestedGasPricesApproximateActualBaseFees(
 	}
 }
 
-func testGasPrice_UnderpricedTransactionsAreRejected(
-	t *testing.T,
-	net IntegrationTestNetSession,
-	client *PooledEhtClient,
-) {
+func TestGasPrice_UnderpricedTransactionsAreRejected(t *testing.T) {
 	require := require.New(t)
+
+	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+
+	client, err := session.GetClient()
+	require.NoError(err, "failed to get client")
+	defer client.Close()
 
 	send := func(tx *types.Transaction) error {
 		return client.SendTransaction(t.Context(), tx)
@@ -95,17 +82,17 @@ func testGasPrice_UnderpricedTransactionsAreRejected(
 
 	// SetCode transactions are restricted to a max of one in-flight transaction
 	// per address, so we need to use a different account.
-	setCodeAccount := makeAccountWithBalance(t, net, big.NewInt(1e18))
+	setCodeAccount := makeAccountWithBalance(t, session, big.NewInt(1e18))
 	setCodeFactory := &txFactory{
 		senderKey: setCodeAccount.PrivateKey,
 		chainId:   chainId,
 	}
 
-	nonce, err := client.NonceAt(t.Context(), net.GetSessionSponsor().Address(), nil)
+	nonce, err := client.NonceAt(t.Context(), session.GetSessionSponsor().Address(), nil)
 	require.NoError(err, "failed to get nonce:")
 
 	factory := &txFactory{
-		senderKey: net.GetSessionSponsor().PrivateKey,
+		senderKey: session.GetSessionSponsor().PrivateKey,
 		chainId:   chainId,
 	}
 
@@ -144,18 +131,6 @@ func testGasPrice_UnderpricedTransactionsAreRejected(
 	// SetCode transactions are restricted to a max of one in-flight transaction
 	// per address, so we need to use a different account.
 	require.NoError(send(setCodeFactory.makeSetCodeTransactionWithPrice(t, chainId, 0, feeCap, 0)))
-}
-
-func makeNetAndClient(t *testing.T) (*IntegrationTestNet, *PooledEhtClient) {
-	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
-		Upgrades: AsPointer(opera.GetAllegroUpgrades()),
-	})
-
-	client, err := net.GetClient()
-	require.NoError(t, err)
-	t.Cleanup(func() { client.Close() })
-
-	return net, client
 }
 
 type txFactory struct {
