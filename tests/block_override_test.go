@@ -44,10 +44,11 @@ func TestBlockOverride(t *testing.T) {
 	require.NoError(err, "failed to deploy contract; %v", err)
 	contractAddress := receipt.ContractAddress
 
-	netClient, err := net.GetClient()
+	client, err := net.GetClient()
 	require.NoError(err, "failed to get client; %v", err)
+	defer client.Close()
 
-	contract, err := block_override.NewBlockOverride(contractAddress, netClient)
+	contract, err := block_override.NewBlockOverride(contractAddress, client)
 	require.NoError(err, "failed to instantiate contract")
 
 	// Call contract method to be sure it is deployed.
@@ -59,9 +60,6 @@ func TestBlockOverride(t *testing.T) {
 
 	// Need block number for eth_call and debug_traceCall
 	blockNumber := receiptObserve.BlockNumber.Uint64()
-
-	rpcClient := netClient.Client()
-	defer rpcClient.Close()
 
 	// Set parameters to be overridden
 	time := uint64(1234)
@@ -78,11 +76,17 @@ func TestBlockOverride(t *testing.T) {
 	}
 
 	t.Run("eth_call block override", func(t *testing.T) {
-		compareCalls(t, rpcClient, contractAddress, blockNumber, blockOverrides, makeEthCall)
+		newClient, err := net.GetClient()
+		require.NoError(err, "failed to get client; %v", err)
+		defer newClient.Close()
+		compareCalls(t, newClient.Client(), contractAddress, blockNumber, blockOverrides, makeEthCall)
 	})
 
 	t.Run("debug_traceCall block override", func(t *testing.T) {
-		compareCalls(t, rpcClient, contractAddress, blockNumber, blockOverrides, makeDebugTraceCall)
+		newClient, err := net.GetClient()
+		require.NoError(err, "failed to get client; %v", err)
+		defer newClient.Close()
+		compareCalls(t, newClient.Client(), contractAddress, blockNumber, blockOverrides, makeDebugTraceCall)
 	})
 
 }

@@ -48,8 +48,6 @@ func TestEthCall_CodeLargerThanMaxInitCodeSizeIsAccepted(t *testing.T) {
 	require.NoError(t, err, "Failed to connect to the integration test network")
 	defer client.Close()
 
-	rpcClient := client.Client()
-
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			accountWithHugeCode := "0x5555555555555555555555555555555555555555"
@@ -67,7 +65,7 @@ func TestEthCall_CodeLargerThanMaxInitCodeSizeIsAccepted(t *testing.T) {
 			}
 
 			var res interface{}
-			err = rpcClient.Call(&res, "eth_call", txArguments, requestedBlock, stateOverrides)
+			err = client.Client().Call(&res, "eth_call", txArguments, requestedBlock, stateOverrides)
 			require.NoError(t, err)
 		})
 	}
