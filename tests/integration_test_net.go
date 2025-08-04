@@ -101,7 +101,7 @@ type IntegrationTestNetSession interface {
 	// to sign transactions and pay for gas when using the Apply and EndowAccount methods.
 	GetSessionSponsor() *Account
 
-	// GetClient provides raw access to a fresh connection to the network.
+	// GetClient provides raw access to a connection to the network.
 	// The resulting client must be closed after use.
 	GetClient() (*PooledEhtClient, error)
 
@@ -115,12 +115,15 @@ type IntegrationTestNetSession interface {
 
 	// GetWebSocketClient provides raw access to a fresh connection to the network
 	// The resulting client must be closed after use.
+	// This function does not returned a PooledEthClient, because they need to
+	// be kept apart since their behavior is different.
 	GetWebSocketClient() (*ethClient, error)
 
-	// NumNodes returns the number of nodes in the network.
+	// NumNodes returns the number of nodes in the test network.
 	NumNodes() int
 
-	// GetClientConnectedToNode returns a client connected to the specified node.
+	// GetClientConnectedToNode returns a client connected to the specified node
+	// in the test network.
 	GetClientConnectedToNode(node int) (*PooledEhtClient, error)
 }
 
