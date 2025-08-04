@@ -1182,12 +1182,13 @@ func (pool *TxPool) scheduleReorgLoop() {
 	defer pool.wg.Done()
 
 	var (
-		curDone       chan struct{} // non-nil while runReorg is active
-		nextDone      = make(chan struct{})
-		launchNextRun bool
-		reset         *txpoolResetRequest
-		dirtyAccounts *accountSet
-		queuedEvents  = make(map[common.Address]*txSortedMap)
+		curDone                   chan struct{} // non-nil while runReorg is active
+		nextDone                  = make(chan struct{})
+		launchNextRun             bool
+		reset                     *txpoolResetRequest
+		dirtyAccounts             *accountSet
+		queuedEvents              = make(map[common.Address]*txSortedMap)
+		requestedSignalAfterReorg bool
 	)
 	for {
 		// Launch next background reorg if needed
@@ -1235,6 +1236,10 @@ func (pool *TxPool) scheduleReorgLoop() {
 
 		case <-curDone:
 			curDone = nil
+			if requestedSignalAfterReorg {
+				requestedSignalAfterReorg = false
+				pool.waitForIdleReorgLoopResponseCh <- struct{}{}
+			}
 
 		case <-pool.reorgShutdownCh:
 			// Wait for current run to finish.
@@ -1245,11 +1250,8 @@ func (pool *TxPool) scheduleReorgLoop() {
 			return
 
 		case <-pool.waitForIdleReorgLoopRequestCh:
-			if curDone != nil {
-				<-curDone
-				curDone = nil
-			}
-			pool.waitForIdleReorgLoopResponseCh <- struct{}{}
+			launchNextRun = true
+			requestedSignalAfterReorg = true
 		}
 	}
 }
