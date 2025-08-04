@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/ethapi"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -28,15 +29,15 @@ import (
 )
 
 func TestGetAccount(t *testing.T) {
-	net := StartIntegrationTestNet(t)
+	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 
 	// Deploy the transient storage contract
-	_, deployReceipt, err := DeployContract(net, counter.DeployCounter)
+	_, deployReceipt, err := DeployContract(session, counter.DeployCounter)
 	require.NoError(t, err, "failed to deploy contract")
 
 	addr := deployReceipt.ContractAddress
 
-	client, err := net.GetClient()
+	client, err := session.GetClient()
 	require.NoError(t, err, "failed to get client")
 	defer client.Close()
 

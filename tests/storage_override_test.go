@@ -21,6 +21,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/storage"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -30,12 +31,10 @@ import (
 )
 
 func TestSetStorage_PreExisting_Contract_Storage_Temporarily_Overridden(t *testing.T) {
-	net := StartIntegrationTestNet(t)
-
-	defer net.Stop()
+	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 
 	// Deploy the contract.
-	contract, receipt, err := DeployContract(net, storage.DeployStorage)
+	contract, receipt, err := DeployContract(session, storage.DeployStorage)
 	require.NoError(t, err, "failed to deploy contract; %v", err)
 
 	checkStorage := func(t *testing.T) {
@@ -61,7 +60,7 @@ func TestSetStorage_PreExisting_Contract_Storage_Temporarily_Overridden(t *testi
 	addressStr := address.String()
 
 	// get the client to call RPC methods
-	client, err := net.GetClient()
+	client, err := session.GetClient()
 	require.NoError(t, err, "failed to get client")
 	defer client.Close()
 
@@ -103,10 +102,10 @@ func TestSetStorage_Contract_Not_On_Blockchain_Executed_With_Extra_Storage(t *te
 	require := require.New(t)
 
 	// start network
-	net := StartIntegrationTestNet(t)
+	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 
 	// create a client
-	client, err := net.GetClient()
+	client, err := session.GetClient()
 	require.NoError(err, "failed to get client")
 	defer client.Close()
 

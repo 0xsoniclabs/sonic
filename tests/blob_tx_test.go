@@ -21,6 +21,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/blobbasefee"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -36,34 +37,34 @@ import (
 
 func TestBlobTransaction(t *testing.T) {
 
-	net := StartIntegrationTestNet(t)
+	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 
 	t.Run("blob tx with non-empty blobs is rejected", func(t *testing.T) {
-		testBlobTx_WithBlobsIsRejected(t, net)
+		testBlobTx_WithBlobsIsRejected(t, session)
 	})
 
 	t.Run("blob tx with empty blobs is executed", func(t *testing.T) {
-		testBlobTx_WithEmptyBlobsIsExecuted(t, net)
-		checkBlocksSanity(t, net)
+		testBlobTx_WithEmptyBlobsIsExecuted(t, session)
+		checkBlocksSanity(t, session)
 	})
 
 	t.Run("blob tx with nil sidecar is executed", func(t *testing.T) {
-		testBlobTx_WithNilSidecarIsExecuted(t, net)
-		checkBlocksSanity(t, net)
+		testBlobTx_WithNilSidecarIsExecuted(t, session)
+		checkBlocksSanity(t, session)
 	})
 
 	t.Run("blob base fee can be read from head, block and history", func(t *testing.T) {
-		testBlobBaseFee_CanReadBlobBaseFeeFromHeadAndBlockAndHistory(t, net)
-		checkBlocksSanity(t, net)
+		testBlobBaseFee_CanReadBlobBaseFeeFromHeadAndBlockAndHistory(t, session)
+		checkBlocksSanity(t, session)
 	})
 
 	t.Run("blob gas used can be read from block header", func(t *testing.T) {
-		testBlobBaseFee_CanReadBlobGasUsed(t, net)
-		checkBlocksSanity(t, net)
+		testBlobBaseFee_CanReadBlobGasUsed(t, session)
+		checkBlocksSanity(t, session)
 	})
 }
 
-func testBlobTx_WithBlobsIsRejected(t *testing.T, net *IntegrationTestNet) {
+func testBlobTx_WithBlobsIsRejected(t *testing.T, session IntegrationTestNetSession) {
 	require := require.New(t)
 	nonZeroNumberOfBlobs := 2
 
@@ -74,26 +75,26 @@ func testBlobTx_WithBlobsIsRejected(t *testing.T, net *IntegrationTestNet) {
 		copy(blobs[i], blob[:])
 	}
 
-	tx, err := createTestBlobTransaction(t, net, blobs...)
+	tx, err := createTestBlobTransaction(t, session, blobs...)
 	require.NoError(err)
 
 	// attempt to run tx
-	_, err = net.net.Run(tx)
+	_, err = session.Run(tx)
 	require.ErrorContains(err, "non-empty blob transaction are not supported")
 
 	// repeat same tx (regression against reported repeated tx issue)
-	_, err = net.net.Run(tx)
+	_, err = session.Run(tx)
 	require.ErrorContains(err, "non-empty blob transaction are not supported")
 }
 
-func testBlobTx_WithEmptyBlobsIsExecuted(t *testing.T, net *IntegrationTestNet) {
+func testBlobTx_WithEmptyBlobsIsExecuted(t *testing.T, session IntegrationTestNetSession) {
 	require := require.New(t)
 
-	tx, err := createTestBlobTransaction(t, net)
+	tx, err := createTestBlobTransaction(t, session)
 	require.NoError(err)
 
 	// run tx
-	receipt, err := net.Run(tx)
+	receipt, err := session.Run(tx)
 	require.NoError(err, "transaction must be accepted")
 	require.Equal(
 		types.ReceiptStatusSuccessful,
@@ -102,14 +103,14 @@ func testBlobTx_WithEmptyBlobsIsExecuted(t *testing.T, net *IntegrationTestNet) 
 	)
 }
 
-func testBlobTx_WithNilSidecarIsExecuted(t *testing.T, net *IntegrationTestNet) {
+func testBlobTx_WithNilSidecarIsExecuted(t *testing.T, session IntegrationTestNetSession) {
 	require := require.New(t)
 
-	tx, err := createTestBlobTransactionWithNilSidecar(t, net)
+	tx, err := createTestBlobTransactionWithNilSidecar(t, session)
 	require.NoError(err)
 
 	// run tx
-	receipt, err := net.Run(tx)
+	receipt, err := session.Run(tx)
 	require.NoError(err, "transaction must be accepted")
 	require.Equal(
 		types.ReceiptStatusSuccessful,
@@ -118,15 +119,15 @@ func testBlobTx_WithNilSidecarIsExecuted(t *testing.T, net *IntegrationTestNet) 
 	)
 }
 
-func testBlobBaseFee_CanReadBlobBaseFeeFromHeadAndBlockAndHistory(t *testing.T, net *IntegrationTestNet) {
+func testBlobBaseFee_CanReadBlobBaseFeeFromHeadAndBlockAndHistory(t *testing.T, session IntegrationTestNetSession) {
 	require := require.New(t)
 
 	// Deploy the blob base fee contract.
-	contract, _, err := DeployContract(net, blobbasefee.DeployBlobbasefee)
+	contract, _, err := DeployContract(session, blobbasefee.DeployBlobbasefee)
 	require.NoError(err, "failed to deploy contract; ", err)
 
 	// Collect the current blob base fee from the head state.
-	receipt, err := net.Apply(contract.LogCurrentBlobBaseFee)
+	receipt, err := session.Apply(contract.LogCurrentBlobBaseFee)
 	require.NoError(err, "failed to log current blob base fee; ", err)
 	require.Equal(len(receipt.Logs), 1, "unexpected number of logs; expected 1, got ", len(receipt.Logs))
 
@@ -134,7 +135,7 @@ func testBlobBaseFee_CanReadBlobBaseFeeFromHeadAndBlockAndHistory(t *testing.T, 
 	require.NoError(err, "failed to parse log; ", err)
 	fromLog := entry.Fee.Uint64()
 
-	client, err := net.GetClient()
+	client, err := session.GetClient()
 	require.NoError(err, "failed to get client")
 	defer client.Close()
 
@@ -159,10 +160,10 @@ func testBlobBaseFee_CanReadBlobBaseFeeFromHeadAndBlockAndHistory(t *testing.T, 
 	require.Equal(fromLog, uint64(*fromRpc), "blob base fee mismatch; from log %v, from rpc %v", fromLog, fromRpc)
 }
 
-func testBlobBaseFee_CanReadBlobGasUsed(t *testing.T, net *IntegrationTestNet) {
+func testBlobBaseFee_CanReadBlobGasUsed(t *testing.T, session IntegrationTestNetSession) {
 	require := require.New(t)
 
-	client, err := net.GetClient()
+	client, err := session.GetClient()
 	require.NoError(err, "failed to get client")
 	defer client.Close()
 
@@ -191,17 +192,17 @@ func testBlobBaseFee_CanReadBlobGasUsed(t *testing.T, net *IntegrationTestNet) {
 // Helper Functions
 ////////////////////////////////////////////////////////////////////////////////
 
-func createTestBlobTransaction(t *testing.T, net *IntegrationTestNet, data ...[]byte) (*types.Transaction, error) {
+func createTestBlobTransaction(t *testing.T, session IntegrationTestNetSession, data ...[]byte) (*types.Transaction, error) {
 	require := require.New(t)
 
-	client, err := net.GetClient()
+	client, err := session.GetClient()
 	require.NoError(err, "failed to get client")
 	defer client.Close()
 
 	chainId, err := client.ChainID(t.Context())
 	require.NoError(err, "failed to get chain ID::")
 
-	nonce, err := client.NonceAt(t.Context(), net.net.GetSessionSponsor().Address(), nil)
+	nonce, err := client.NonceAt(t.Context(), session.GetSessionSponsor().Address(), nil)
 	require.NoError(err, "failed to get nonce:")
 
 	var sidecar *types.BlobTxSidecar
@@ -245,20 +246,20 @@ func createTestBlobTransaction(t *testing.T, net *IntegrationTestNet, data ...[]
 		Sidecar:    sidecar,               // sidecar data in the transaction
 	})
 
-	return types.SignTx(tx, types.NewCancunSigner(chainId), net.net.GetSessionSponsor().PrivateKey)
+	return types.SignTx(tx, types.NewCancunSigner(chainId), session.GetSessionSponsor().PrivateKey)
 }
 
-func createTestBlobTransactionWithNilSidecar(t *testing.T, net *IntegrationTestNet) (*types.Transaction, error) {
+func createTestBlobTransactionWithNilSidecar(t *testing.T, session IntegrationTestNetSession) (*types.Transaction, error) {
 	require := require.New(t)
 
-	client, err := net.GetClient()
+	client, err := session.GetClient()
 	require.NoError(err, "failed to get client")
 	defer client.Close()
 
 	chainId, err := client.ChainID(t.Context())
 	require.NoError(err, "failed to get chain ID::")
 
-	nonce, err := client.NonceAt(t.Context(), net.net.GetSessionSponsor().Address(), nil)
+	nonce, err := client.NonceAt(t.Context(), session.GetSessionSponsor().Address(), nil)
 	require.NoError(err, "failed to get nonce:")
 
 	// Create and return transaction with the blob data and cryptographic proofs
@@ -275,15 +276,15 @@ func createTestBlobTransactionWithNilSidecar(t *testing.T, net *IntegrationTestN
 		Sidecar:    nil,                   // sidecar data in the transaction
 	})
 
-	return types.SignTx(tx, types.NewCancunSigner(chainId), net.net.GetSessionSponsor().PrivateKey)
+	return types.SignTx(tx, types.NewCancunSigner(chainId), session.GetSessionSponsor().PrivateKey)
 }
 
-func checkBlocksSanity(t *testing.T, net *IntegrationTestNet) {
+func checkBlocksSanity(t *testing.T, session IntegrationTestNetSession) {
 	// This check is a regression from an issue found while fetching a block by
 	// number where the last block was not correctly serialized
 	require := require.New(t)
 
-	client, err := net.GetClient()
+	client, err := session.GetClient()
 	require.NoError(err, "failed to get client")
 	defer client.Close()
 
