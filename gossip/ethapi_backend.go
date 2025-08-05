@@ -98,8 +98,8 @@ func (b *EthAPIBackend) HistoryPruningCutoff() uint64 {
 }
 
 func (b *EthAPIBackend) ResolveRpcBlockNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (idx.Block, error) {
-	latest := b.svc.store.GetLatestBlockIndex()
 	if number, ok := blockNrOrHash.Number(); ok {
+		latest := b.svc.store.GetLatestBlockIndex()
 		if isLatestBlockNumber(number) {
 			return latest, nil
 		} else if number == rpc.EarliestBlockNumber {
@@ -117,7 +117,7 @@ func (b *EthAPIBackend) ResolveRpcBlockNumberOrHash(ctx context.Context, blockNr
 		}
 		return *index, nil
 	}
-	return 0, errors.New("unknown header selector")
+	return 0, errors.New("unknown rpc selector for number or hash")
 }
 
 // HeaderByNumber returns evm block header by its number, or nil if not exists.
@@ -141,17 +141,11 @@ func (b *EthAPIBackend) HeaderByHash(ctx context.Context, h common.Hash) (*evmco
 // BlockByNumber returns evm block by its number, or nil if not exists.
 func (b *EthAPIBackend) BlockByNumber(ctx context.Context, number rpc.BlockNumber) (*evmcore.EvmBlock, error) {
 	// Otherwise, resolve and return the block
-	var blk *evmcore.EvmBlock
-	if isLatestBlockNumber(number) {
-		blk = b.state.CurrentBlock()
-	} else if number == rpc.EarliestBlockNumber {
-		blk = b.state.GetBlock(common.Hash{}, b.HistoryPruningCutoff())
-	} else {
-		n := uint64(number.Int64())
-		blk = b.state.GetBlock(common.Hash{}, n)
+	blockIdx, err := b.ResolveRpcBlockNumberOrHash(ctx, rpc.BlockNumberOrHashWithNumber(number))
+	if err != nil {
+		return nil, err
 	}
-
-	return blk, nil
+	return b.state.GetBlock(common.Hash{}, uint64(blockIdx)), nil
 }
 
 // isLatestBlockNumber returns true if the block number is latest, pending, finalized or safe
@@ -338,12 +332,11 @@ func (b *EthAPIBackend) GetReceiptsByNumber(ctx context.Context, number rpc.Bloc
 		return nil, errors.New("transactions index is disabled (enable TxIndex and re-process the DAGs)")
 	}
 
-	if isLatestBlockNumber(number) {
-		header := b.state.CurrentHeader()
-		number = rpc.BlockNumber(header.Number.Uint64())
-	} else if number == rpc.EarliestBlockNumber {
-		number = rpc.BlockNumber(b.HistoryPruningCutoff())
+	blockNumber, err := b.ResolveRpcBlockNumberOrHash(ctx, rpc.BlockNumberOrHashWithNumber(number))
+	if err != nil {
+		return nil, err
 	}
+	number = rpc.BlockNumber(blockNumber)
 
 	block := b.state.GetBlock(common.Hash{}, uint64(number))
 	time := uint64(block.Time.Unix())
