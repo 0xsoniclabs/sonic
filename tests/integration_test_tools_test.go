@@ -552,6 +552,63 @@ func testIntegrationTestNet_setTransactionDefaults(t *testing.T, session Integra
 	})
 }
 
+func Test_testIntegrationTestNet_setTransactionDefaults_IsCorrectAfterUpgradesChange(t *testing.T) {
+	net := StartIntegrationTestNetWithJsonGenesis(t)
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	sender := makeAccountWithBalance(t, net, big.NewInt(1e18))
+
+	tx := signTransaction(t, net.GetChainId(),
+		setTransactionDefaults(
+			t, net,
+			&types.LegacyTx{
+				To:    &common.Address{0x42},
+				Value: big.NewInt(1),
+				// large data buffer, starting with an STOP opcode
+				Data: []byte{0x0, 40_000: 0xff},
+			},
+			sender),
+		sender)
+
+	receipt, err := net.Run(tx)
+	require.NoError(t, err)
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+
+	type rulesType struct {
+		Upgrades struct{ Allegro bool }
+	}
+	rulesDiff := rulesType{
+		Upgrades: struct{ Allegro bool }{Allegro: true},
+	}
+	updateNetworkRules(t, net, rulesDiff)
+	err = net.AdvanceEpoch(1)
+	require.NoError(t, err)
+	advanceEpochAndWaitForBlocks(t, net)
+
+	// Wait until tx pool updates
+	tx2 := signTransaction(t, net.GetChainId(),
+		setTransactionDefaults(
+			t, net,
+			&types.LegacyTx{
+				To:    &common.Address{0x42},
+				Value: big.NewInt(1),
+				Nonce: 1,
+				// large data buffer, starting with an STOP opcode
+				Data: []byte{0x0, 40_000: 0xff},
+			},
+			sender),
+		sender)
+	receipt2, err := net.Run(tx2)
+	require.NoError(t, err)
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt2.Status)
+
+	// This test relies on the fact that Allegro introduces extra gas for large data buffers.
+	require.Greater(t, receipt2.GasUsed, receipt.GasUsed)
+}
+
 func test_WaitUntilTransactionIsRetiredFromPool_waitsFromCompletion(
 	t *testing.T, session IntegrationTestNetSession) {
 
