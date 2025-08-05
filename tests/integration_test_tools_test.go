@@ -156,7 +156,15 @@ func computeMinimumGas(t *testing.T, session IntegrationTestNetSession, tx types
 	minimumGas, err := core.IntrinsicGas(data, authList, authorizations, isCreate, true, true, true)
 	require.NoError(t, err)
 
-	if session.GetUpgrades().Allegro {
+	client, err := session.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	var currentRules opera.Rules
+	err = client.Client().Call(&currentRules, "eth_getRules", "latest")
+	require.NoError(t, err)
+
+	if currentRules.Upgrades.Allegro {
 		floorDataGas, err := core.FloorDataGas(data)
 		require.NoError(t, err)
 		minimumGas = max(minimumGas, floorDataGas)
