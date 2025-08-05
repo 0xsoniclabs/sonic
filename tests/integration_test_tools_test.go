@@ -230,7 +230,7 @@ func TestIntegrationTestNetTools(t *testing.T) {
 	t.Run("setTransactionDefaults sets the transaction defaults", func(t *testing.T) {
 		session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 		t.Parallel()
-		testIntegrationTestNet_setTransactionDefaults(t, session)
+		testIntegrationTestNetTools_setTransactionDefaults(t, session)
 	})
 
 	t.Run("waitUntilTransactionIsRetiredFromPool waits from completion", func(t *testing.T) {
@@ -240,7 +240,7 @@ func TestIntegrationTestNetTools(t *testing.T) {
 	})
 }
 
-func testIntegrationTestNet_setTransactionDefaults(t *testing.T, session IntegrationTestNetSession) {
+func testIntegrationTestNetTools_setTransactionDefaults(t *testing.T, session IntegrationTestNetSession) {
 
 	client, err := session.GetClient()
 	require.NoError(t, err)
@@ -552,7 +552,7 @@ func testIntegrationTestNet_setTransactionDefaults(t *testing.T, session Integra
 	})
 }
 
-func Test_testIntegrationTestNet_setTransactionDefaults_IsCorrectAfterUpgradesChange(t *testing.T) {
+func Test_testIntegrationTestNetTools_setTransactionDefaults_IsCorrectAfterUpgradesChange(t *testing.T) {
 	net := StartIntegrationTestNetWithJsonGenesis(t)
 
 	client, err := net.GetClient()
