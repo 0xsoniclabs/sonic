@@ -125,7 +125,7 @@ func setTransactionDefaults[T types.TxData](
 func computeMinimumGas(t *testing.T, session IntegrationTestNetSession, tx types.TxData) uint64 {
 
 	var data []byte
-	var authList []types.AccessTuple
+	var accessList []types.AccessTuple
 	var authorizations []types.SetCodeAuthorization
 	var isCreate bool
 	switch tx := tx.(type) {
@@ -134,26 +134,26 @@ func computeMinimumGas(t *testing.T, session IntegrationTestNetSession, tx types
 		isCreate = tx.To == nil
 	case *types.AccessListTx:
 		data = tx.Data
-		authList = tx.AccessList
+		accessList = tx.AccessList
 		isCreate = tx.To == nil
 	case *types.DynamicFeeTx:
 		data = tx.Data
-		authList = tx.AccessList
+		accessList = tx.AccessList
 		isCreate = tx.To == nil
 	case *types.BlobTx:
 		data = tx.Data
-		authList = tx.AccessList
+		accessList = tx.AccessList
 		isCreate = false
 	case *types.SetCodeTx:
 		data = tx.Data
-		authList = tx.AccessList
+		accessList = tx.AccessList
 		authorizations = tx.AuthList
 		isCreate = false
 	default:
 		t.Fatalf("unexpected transaction type: %T", tx)
 	}
 
-	minimumGas, err := core.IntrinsicGas(data, authList, authorizations, isCreate, true, true, true)
+	minimumGas, err := core.IntrinsicGas(data, accessList, authorizations, isCreate, true, true, true)
 	require.NoError(t, err)
 
 	client, err := session.GetClient()
