@@ -46,13 +46,13 @@ func (s *Store) SetHistoryBlockEpochState(epoch idx.Epoch, bs iblockproc.BlockSt
 	// Write to the DB
 	s.rlp.Set(s.table.BlockEpochStateHistory, epoch.Bytes(), bes)
 	// Save to the LRU cache
-	s.cache.BlockEpochStateHistory.Add(epoch, bes, nominalSize)
+	s.cache.BlockEpochStateHistory.Add(epoch, bes)
 }
 
 func (s *Store) GetHistoryBlockEpochState(epoch idx.Epoch) (*iblockproc.BlockState, *iblockproc.EpochState) {
 	// Get HistoryBlockEpochState from LRU cache first.
 	if v, ok := s.cache.BlockEpochStateHistory.Get(epoch); ok {
-		bes := v.(*BlockEpochState)
+		bes := v
 		if bes.EpochState.Epoch == epoch {
 			bs := bes.BlockState.Copy()
 			es := bes.EpochState.Copy()
@@ -65,7 +65,7 @@ func (s *Store) GetHistoryBlockEpochState(epoch idx.Epoch) (*iblockproc.BlockSta
 		return nil, nil
 	}
 	// Save to the LRU cache
-	s.cache.BlockEpochStateHistory.Add(epoch, v, nominalSize)
+	s.cache.BlockEpochStateHistory.Add(epoch, v)
 	bs := v.BlockState.Copy()
 	es := v.EpochState.Copy()
 	return &bs, &es

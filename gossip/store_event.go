@@ -53,17 +53,17 @@ func (s *Store) SetEvent(e *inter.EventPayload) {
 	s.rlp.Set(s.table.Events, key, e)
 
 	// Add to LRU cache.
-	s.cache.Events.Add(e.ID(), e, uint(e.Size()))
+	s.cache.Events.Add(e.ID(), e)
 	eh := e.Event
-	s.cache.EventsHeaders.Add(e.ID(), &eh, nominalSize)
+	s.cache.EventsHeaders.Add(e.ID(), &eh)
 	s.cache.EventIDs.Add(e.ID())
 }
 
 // GetEventPayload returns stored event.
 func (s *Store) GetEventPayload(id hash.Event) *inter.EventPayload {
 	// Get event from LRU cache first.
-	if ev, ok := s.cache.Events.Get(id); ok {
-		return ev.(*inter.EventPayload)
+	if event, ok := s.cache.Events.Get(id); ok {
+		return event
 	}
 
 	key := id.Bytes()
@@ -71,9 +71,9 @@ func (s *Store) GetEventPayload(id hash.Event) *inter.EventPayload {
 
 	// Put event to LRU cache.
 	if w != nil {
-		s.cache.Events.Add(id, w, uint(w.Size()))
+		s.cache.Events.Add(id, w)
 		eh := w.Event
-		s.cache.EventsHeaders.Add(id, &eh, nominalSize)
+		s.cache.EventsHeaders.Add(id, &eh)
 	}
 
 	return w
@@ -82,8 +82,8 @@ func (s *Store) GetEventPayload(id hash.Event) *inter.EventPayload {
 // GetEvent returns stored event.
 func (s *Store) GetEvent(id hash.Event) *inter.Event {
 	// Get event from LRU cache first.
-	if ev, ok := s.cache.EventsHeaders.Get(id); ok {
-		return ev.(*inter.Event)
+	if event, ok := s.cache.EventsHeaders.Get(id); ok {
+		return event
 	}
 
 	key := id.Bytes()
@@ -95,8 +95,8 @@ func (s *Store) GetEvent(id hash.Event) *inter.Event {
 	eh := w.Event
 
 	// Put event to LRU cache.
-	s.cache.Events.Add(id, w, uint(w.Size()))
-	s.cache.EventsHeaders.Add(id, &eh, nominalSize)
+	s.cache.Events.Add(id, w)
+	s.cache.EventsHeaders.Add(id, &eh)
 
 	return &eh
 }

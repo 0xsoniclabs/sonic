@@ -26,16 +26,21 @@ import (
 
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
+	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/logger"
 	"github.com/0xsoniclabs/sonic/utils/eventid"
 	"github.com/0xsoniclabs/sonic/utils/rlpstore"
 	"github.com/Fantom-foundation/lachesis-base/common/bigendian"
+	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/kvdb"
 	"github.com/Fantom-foundation/lachesis-base/kvdb/flushable"
 	"github.com/Fantom-foundation/lachesis-base/kvdb/memorydb"
 	"github.com/Fantom-foundation/lachesis-base/kvdb/table"
 	"github.com/Fantom-foundation/lachesis-base/utils/wlru"
+	"github.com/cespare/xxhash/v2"
+	"github.com/elastic/go-freelru"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 // Store is a node persistent storage working over physical key-value database.
@@ -76,13 +81,14 @@ type Store struct {
 	epochStore atomic.Value
 
 	cache struct {
-		Events                 *wlru.Cache `cache:"-"` // store by pointer
-		EventIDs               *eventid.Cache
-		EventsHeaders          *wlru.Cache  `cache:"-"` // store by pointer
-		Blocks                 *wlru.Cache  `cache:"-"` // store by pointer
-		BlockHashes            *wlru.Cache  `cache:"-"` // store by value
-		BRHashes               *wlru.Cache  `cache:"-"` // store by value
-		BlockEpochStateHistory *wlru.Cache  `cache:"-"` // store by pointer
+		EventIDs *eventid.Cache
+
+		Events        *freelru.SyncedLRU[hash.Event, *inter.EventPayload]
+		EventsHeaders *freelru.SyncedLRU[hash.Event, *inter.Event]
+		Blocks        *freelru.SyncedLRU[idx.Block, *inter.Block]
+
+		BlockHashes            *freelru.SyncedLRU[common.Hash, idx.Block]
+		BlockEpochStateHistory *freelru.SyncedLRU[idx.Epoch, *BlockEpochState]
 		BlockEpochState        atomic.Value // store by value
 		HighestLamport         atomic.Value // store by value
 		UpgradeHeights         atomic.Value // store by pointer
@@ -137,32 +143,46 @@ func NewStore(dbs kvdb.FlushableDBProducer, cfg StoreConfig) (*Store, error) {
 }
 
 func (s *Store) initCache() {
-	s.cache.Events = s.makeCache(s.cfg.Cache.EventsSize, s.cfg.Cache.EventsNum)
-	s.cache.Blocks = s.makeCache(s.cfg.Cache.BlocksSize, s.cfg.Cache.BlocksNum)
-
-	blockHashesNum := s.cfg.Cache.BlocksNum
-	blockHashesCacheSize := nominalSize * uint(blockHashesNum)
-	s.cache.BlockHashes = s.makeCache(blockHashesCacheSize, blockHashesNum)
-	s.cache.BRHashes = s.makeCache(blockHashesCacheSize, blockHashesNum)
-
-	eventsHeadersNum := s.cfg.Cache.EventsNum
-	eventsHeadersCacheSize := nominalSize * uint(eventsHeadersNum)
-	s.cache.EventsHeaders = s.makeCache(eventsHeadersCacheSize, eventsHeadersNum)
 
 	s.cache.EventIDs = eventid.NewCache(s.cfg.Cache.EventsIDsNum)
+	var err error
 
-	blockEpochStatesNum := s.cfg.Cache.BlockEpochStateNum
-	blockEpochStatesSize := nominalSize * uint(blockEpochStatesNum)
-	s.cache.BlockEpochStateHistory = s.makeCache(blockEpochStatesSize, blockEpochStatesNum)
+	s.cache.Events, err = freelru.NewSynced[hash.Event, *inter.EventPayload](uint32(s.cfg.Cache.EventsSize), eventHashToInt)
+	if err != nil {
+		s.Log.Crit("Failed to create freelru cache for events", "err", err)
+	}
+
+	s.cache.Blocks, err = freelru.NewSynced[idx.Block, *inter.Block](uint32(s.cfg.Cache.BlocksSize), func(b idx.Block) uint32 {
+		return uint32(b)
+	})
+	if err != nil {
+		s.Log.Crit("Failed to create freelru cache for blocks", "err", err)
+	}
+
+	s.cache.BlockHashes, err = freelru.NewSynced[common.Hash, idx.Block](uint32(s.cfg.Cache.BlocksNum), func(h common.Hash) uint32 {
+		return uint32(xxhash.Sum64(h[:]))
+	})
+	if err != nil {
+		s.Log.Crit("Failed to create freelru cache for block hashes", "err", err)
+	}
+
+	s.cache.EventsHeaders, err = freelru.NewSynced[hash.Event, *inter.Event](uint32(s.cfg.Cache.EventsIDsNum), eventHashToInt)
+	if err != nil {
+		s.Log.Crit("Failed to create freelru cache for events headers", "err", err)
+	}
+
+	s.cache.BlockEpochStateHistory, err = freelru.NewSynced[idx.Epoch, *BlockEpochState](uint32(s.cfg.Cache.BlockEpochStateNum), func(epoch idx.Epoch) uint32 {
+		return uint32(xxhash.Sum64(epoch.Bytes()))
+	})
+	if err != nil {
+		s.Log.Crit("Failed to create freelru cache for block epoch states", "err", err)
+	}
 }
 
 // Close closes underlying database.
 func (s *Store) Close() error {
 	// set all tables/caches fields to nil
 	table.MigrateTables(&s.table, nil)
-	table.MigrateCaches(&s.cache, func() interface{} {
-		return nil
-	})
 
 	if err := s.mainDB.Close(); err != nil {
 		return err
@@ -239,4 +259,8 @@ func (s *Store) makeCache(weight uint, size int) *wlru.Cache {
 		return nil
 	}
 	return cache
+}
+
+func eventHashToInt(event hash.Event) uint32 {
+	return uint32(xxhash.Sum64(event[:]))
 }

@@ -37,8 +37,6 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/protocols/dag/dagstream/dagstreamseeder"
 )
 
-const nominalSize uint = 1
-
 type (
 	// ProtocolConfig is config for p2p protocol
 	ProtocolConfig struct {

@@ -67,21 +67,21 @@ func (s *Store) SetBlock(n idx.Block, b *inter.Block) {
 	s.rlp.Set(s.table.Blocks, n.Bytes(), b)
 
 	// Add to LRU cache.
-	s.cache.Blocks.Add(n, b, uint(b.EstimateSize()))
+	s.cache.Blocks.Add(n, b)
 }
 
 // GetBlock returns stored block.
 func (s *Store) GetBlock(n idx.Block) *inter.Block {
 	// Get block from LRU cache first.
 	if c, ok := s.cache.Blocks.Get(n); ok {
-		return c.(*inter.Block)
+		return c
 	}
 
 	block, _ := s.rlp.Get(s.table.Blocks, n.Bytes(), &inter.Block{}).(*inter.Block)
 
 	// Add to LRU cache.
 	if block != nil {
-		s.cache.Blocks.Add(n, block, uint(block.EstimateSize()))
+		s.cache.Blocks.Add(n, block)
 	}
 
 	return block
@@ -111,17 +111,13 @@ func (s *Store) SetBlockIndex(id common.Hash, n idx.Block) {
 		s.Log.Crit("Failed to put key-value", "err", err)
 	}
 
-	s.cache.BlockHashes.Add(id, n, nominalSize)
+	s.cache.BlockHashes.Add(id, n)
 }
 
 // GetBlockIndex returns stored block index.
 func (s *Store) GetBlockIndex(id common.Hash) *idx.Block {
-	nVal, ok := s.cache.BlockHashes.Get(id)
-	if ok {
-		n, ok := nVal.(idx.Block)
-		if ok {
-			return &n
-		}
+	if nVal, ok := s.cache.BlockHashes.Get(id); ok {
+		return &nVal
 	}
 
 	buf, err := s.table.BlockHashes.Get(id.Bytes())
@@ -137,7 +133,7 @@ func (s *Store) GetBlockIndex(id common.Hash) *idx.Block {
 	}
 	n := idx.BytesToBlock(buf)
 
-	s.cache.BlockHashes.Add(id, n, nominalSize)
+	s.cache.BlockHashes.Add(id, n)
 
 	return &n
 }
@@ -184,7 +180,7 @@ func (s *Store) SetEpochBlock(b idx.Block, e idx.Epoch) {
 
 func (s *Store) FindBlockEpoch(b idx.Block) idx.Epoch {
 	if c, ok := s.cache.Blocks.Get(b); ok {
-		return c.(*inter.Block).Epoch
+		return c.Epoch
 	}
 
 	it := s.table.EpochBlocks.NewIterator(nil, (math.MaxUint64 - b).Bytes())
