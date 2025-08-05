@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
-package tests
+package single_proposer
 
 import (
 	"fmt"
@@ -22,6 +22,9 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/opera"
+	. "github.com/0xsoniclabs/sonic/tests"
+	"github.com/0xsoniclabs/sonic/tests/block_header"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -206,7 +209,7 @@ func testSingleProposerProtocol_CanBeEnabledAndDisabled(
 			rulesDiff := rulesType{
 				Upgrades: upgrades{SingleProposerBlockFormation: step.flagValue},
 			}
-			updateNetworkRules(t, net, rulesDiff)
+			UpdateNetworkRules(t, net, rulesDiff)
 
 			// The rules only take effect after the epoch change. Make sure that
 			// until then, transactions can be processed.
@@ -234,13 +237,14 @@ func testSingleProposerProtocol_CanBeEnabledAndDisabled(
 	headers, err := net.GetHeaders()
 	require.NoError(err)
 
-	// Test parent/child relation properties.
-	testHeaders_BlockNumberEqualsPositionInChain(t, headers)
-	testHeaders_ParentHashCoversParentContent(t, headers)
-	testHeaders_EncodesDurationAndNanoTimeInExtraData(t, headers)
-	testHeaders_TimeProgressesMonotonically(t, headers)
-	testHeaders_BaseFeeEvolutionFollowsPricingRules(t, headers)
-	testHeaders_GasUsedIsBelowGasLimit(t, headers)
+	// // Test parent/child relation properties.
+	// TestHeaders_BlockNumberEqualsPositionInChain(t, headers)
+	// TestHeaders_ParentHashCoversParentContent(t, headers)
+	// TestHeaders_EncodesDurationAndNanoTimeInExtraData(t, headers)
+	// TestHeaders_TimeProgressesMonotonically(t, headers)
+	// TestHeaders_BaseFeeEvolutionFollowsPricingRules(t, headers)
+	// TestHeaders_GasUsedIsBelowGasLimit(t, headers)
+	block_header.HeadersParentChildProperties(t, headers)
 }
 
 // getUsedEventVersion retrieves the current event version used by the network.

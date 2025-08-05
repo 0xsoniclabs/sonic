@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
-package tests
+package chain_id
 
 import (
 	"fmt"
@@ -24,11 +24,16 @@ import (
 
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/ethapi"
+	. "github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
+
+// Constant large enough to satisfied tx validation checks
+// deduced from net rules minimum gas price
+const enoughGasPrice = 150_000_000_000
 
 func TestChainId(t *testing.T) {
 	net := StartIntegrationTestNet(t,
@@ -41,7 +46,7 @@ func TestChainId(t *testing.T) {
 			},
 		})
 
-	account := makeAccountWithBalance(t, net, big.NewInt(1e18))
+	account := MakeAccountWithBalance(t, net, big.NewInt(1e18))
 
 	t.Run("RejectsAllTxsSignedWithWrongChainId", func(t *testing.T) {
 		t.Parallel()

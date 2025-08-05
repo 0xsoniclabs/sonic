@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
-package tests
+package large_transactions
 
 import (
 	"fmt"
@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/opera"
+	. "github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
@@ -97,7 +98,7 @@ func TestLargeTransactions_CanHandleLargeTransactions(t *testing.T) {
 
 func TestLargeTransactions_LargeTransactionLoadTest(t *testing.T) {
 
-	if isDataRaceDetectionEnabled() {
+	if IsDataRaceDetectionEnabled() {
 		t.Skip(`Due to the concurrency requirements of this test, 
 		it becomes unstable when running with enabled data race detection.`)
 	}
@@ -145,7 +146,7 @@ func testLargeTransactionLoadTest(
 
 	// Increase the gas limit to allow for larger transactions in blocks. These
 	// limits are beyond safe limits acceptable for production.
-	current := getNetworkRules(t, net)
+	current := GetNetworkRules(t, net)
 
 	modified := current.Copy()
 	modified.Economy.Gas.MaxEventGas = 1_000_000_000
@@ -153,11 +154,11 @@ func testLargeTransactionLoadTest(
 	modified.Economy.ShortGasPower.MaxAllocPeriod = 50_000_000_000
 	modified.Economy.LongGasPower = modified.Economy.ShortGasPower
 	modified.Emitter.Interval = 200_000_000 // low a bit down to provoke larger events
-	updateNetworkRules(t, net, modified)
+	UpdateNetworkRules(t, net, modified)
 	require.NoError(net.AdvanceEpoch(1))
 
 	// Check that the modification was applied.
-	current = getNetworkRules(t, net)
+	current = GetNetworkRules(t, net)
 	require.Equal(modified, current)
 
 	// Create accounts and provide them with funds to run the load test.

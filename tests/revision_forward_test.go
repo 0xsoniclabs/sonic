@@ -59,7 +59,7 @@ func TestTransaction_DelegationDesignationAddressAccessIsConsideredInAllegro(t *
 			require.NoError(t, err)
 			defer client.Close()
 
-			sender := makeAccountWithBalance(t, net, big.NewInt(1e18))
+			sender := MakeAccountWithBalance(t, net, big.NewInt(1e18))
 
 			gasPrice, err := client.SuggestGasPrice(t.Context())
 			require.NoError(t, err)
@@ -78,7 +78,7 @@ func TestTransaction_DelegationDesignationAddressAccessIsConsideredInAllegro(t *
 				Data:       []byte{},
 				AccessList: types.AccessList{},
 			}
-			tx := signTransaction(t, chainId, txData, sender)
+			tx := SignTransaction(t, chainId, txData, sender)
 
 			receipt, err := net.Run(tx)
 			require.NoError(t, err)

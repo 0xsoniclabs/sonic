@@ -89,8 +89,8 @@ func TestRejectedTx_TransactionsAreRejectedBecauseOfAccountState(t *testing.T) {
 				account := NewAccount()
 
 				txData := txFactory(t, account)
-				txData = setTransactionDefaults(t, net, txData, account)
-				tx := signTransaction(t, chainId, txData, account)
+				txData = SetTransactionDefaults(t, net, txData, account)
+				tx := SignTransaction(t, chainId, txData, account)
 				cost := tx.Cost()
 
 				//  endow account with less than the cost of the transaction
@@ -106,8 +106,8 @@ func TestRejectedTx_TransactionsAreRejectedBecauseOfAccountState(t *testing.T) {
 				account := NewAccount()
 
 				txData := txFactory(t, account)
-				txData = setTransactionDefaults(t, net, txData, account)
-				tx := signTransaction(t, chainId, txData, account)
+				txData = SetTransactionDefaults(t, net, txData, account)
+				tx := SignTransaction(t, chainId, txData, account)
 
 				// provide enough funds for successful execution
 				receipt, err := net.EndowAccount(account.Address(), big.NewInt(1e18))

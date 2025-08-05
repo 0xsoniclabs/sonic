@@ -25,145 +25,10 @@ import (
 	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
-
-// signTransaction is a testing helper that signs a transaction with the
-// key from the provided account
-func signTransaction(
-	t *testing.T,
-	chainId *big.Int,
-	payload types.TxData,
-	from *Account,
-) *types.Transaction {
-	t.Helper()
-	res, err := types.SignTx(
-		types.NewTx(payload),
-		types.NewPragueSigner(chainId),
-		from.PrivateKey)
-	require.NoError(t, err)
-	return res
-}
-
-// setTransactionDefaults defaults the transaction common fields to meaningful values
-//
-//   - If nonce is zeroed: It configures the nonce of the transaction to be the
-//     current nonce of the sender account
-//   - If gas price or gas fee cap is zeroed: It configures the gas price of the
-//     transaction to be the suggested gas price
-//   - If gas is zeroed: It configures the gas of the transaction to be the
-//     minimum gas required to execute the transaction
-//     Filled gas is a static minimum value, it does not account for the gas
-//     costs of the contract opcodes.
-//
-// Notice that this function is generic, returning the same type as the input, this
-// allows further manual configuration of the transaction fields after the defaults are set.
-func setTransactionDefaults[T types.TxData](
-	t *testing.T,
-	net IntegrationTestNetSession,
-	txPayload T,
-	sender *Account,
-) T {
-	t.Helper()
-
-	client, err := net.GetClient()
-	require.NoError(t, err)
-	defer client.Close()
-
-	// use a types.Transaction type to access polymorphic getters
-	tmpTx := types.NewTx(txPayload)
-	nonce := tmpTx.Nonce()
-	if tmpTx.Nonce() == 0 {
-		nonce, err = client.PendingNonceAt(t.Context(), sender.Address())
-		require.NoError(t, err)
-	}
-
-	gasPrice := tmpTx.GasPrice()
-	if gasPrice == nil || gasPrice.Sign() == 0 {
-		gasPrice, err = client.SuggestGasPrice(t.Context())
-		require.NoError(t, err)
-	}
-
-	gas := tmpTx.Gas()
-	if gas == 0 {
-		gas = computeMinimumGas(t, net, txPayload)
-	}
-
-	switch tx := types.TxData(txPayload).(type) {
-	case *types.LegacyTx:
-		tx.Nonce = nonce
-		tx.Gas = gas
-		tx.GasPrice = gasPrice
-	case *types.AccessListTx:
-		tx.Nonce = nonce
-		tx.Gas = gas
-		tx.GasPrice = big.NewInt(500e9)
-	case *types.DynamicFeeTx:
-		tx.Nonce = nonce
-		tx.Gas = gas
-		tx.GasFeeCap = gasPrice
-	case *types.BlobTx:
-		tx.Nonce = nonce
-		tx.Gas = gas
-		tx.GasFeeCap = uint256.MustFromBig(gasPrice)
-	case *types.SetCodeTx:
-		tx.Nonce = nonce
-		tx.Gas = gas
-		tx.GasFeeCap = uint256.MustFromBig(gasPrice)
-	default:
-		t.Fatalf("unexpected transaction type: %T", tx)
-	}
-
-	return txPayload
-}
-
-// ComputeMinimumGas computes the minimum gas required to execute a transaction,
-// this accounts for all gas costs except for the contract opcodes gas costs.
-func computeMinimumGas(t *testing.T, session IntegrationTestNetSession, tx types.TxData) uint64 {
-
-	var data []byte
-	var authList []types.AccessTuple
-	var authorizations []types.SetCodeAuthorization
-	var isCreate bool
-	switch tx := tx.(type) {
-	case *types.LegacyTx:
-		data = tx.Data
-		isCreate = tx.To == nil
-	case *types.AccessListTx:
-		data = tx.Data
-		authList = tx.AccessList
-		isCreate = tx.To == nil
-	case *types.DynamicFeeTx:
-		data = tx.Data
-		authList = tx.AccessList
-		isCreate = tx.To == nil
-	case *types.BlobTx:
-		data = tx.Data
-		authList = tx.AccessList
-		isCreate = false
-	case *types.SetCodeTx:
-		data = tx.Data
-		authList = tx.AccessList
-		authorizations = tx.AuthList
-		isCreate = false
-	default:
-		t.Fatalf("unexpected transaction type: %T", tx)
-	}
-
-	minimumGas, err := core.IntrinsicGas(data, authList, authorizations, isCreate, true, true, true)
-	require.NoError(t, err)
-
-	if session.GetUpgrades().Allegro {
-		floorDataGas, err := core.FloorDataGas(data)
-		require.NoError(t, err)
-		minimumGas = max(minimumGas, floorDataGas)
-	}
-
-	return minimumGas
-}
 
 // waitUntilTransactionIsRetiredFromPool waits until the transaction no longer exists in the transaction pool.
 // Because the transaction pool eviction is asynchronous, executed transactions may remain in the pool
@@ -409,7 +274,7 @@ func testIntegrationTestNet_setTransactionDefaults(t *testing.T, session Integra
 	t.Run("filled transactions can be executed", func(t *testing.T) {
 		session := session.SpawnSession(t)
 		t.Parallel()
-		tests := generateTestDataBasedOnModificationCombinations(
+		tests := GenerateTestDataBasedOnModificationCombinations(
 			func() types.TxData { return nil },
 			[][]modificationFunction{
 				// Transaction type
@@ -459,8 +324,8 @@ func testIntegrationTestNet_setTransactionDefaults(t *testing.T, session Integra
 			}
 			nonce++
 
-			txData := setTransactionDefaults(t, session, tx, session.GetSessionSponsor())
-			tx := signTransaction(t, chainId, txData, session.GetSessionSponsor())
+			txData := SetTransactionDefaults(t, session, tx, session.GetSessionSponsor())
+			tx := SignTransaction(t, chainId, txData, session.GetSessionSponsor())
 
 			// the filled values suffice to get the transaction accepted and executed
 			err := client.SendTransaction(t.Context(), tx)
@@ -485,8 +350,8 @@ func testIntegrationTestNet_setTransactionDefaults(t *testing.T, session Integra
 		require.NoError(t, err)
 		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
-		txData := setTransactionDefaults(t, session, &types.LegacyTx{}, session.GetSessionSponsor())
-		tx := signTransaction(t, chainId, txData, session.GetSessionSponsor())
+		txData := SetTransactionDefaults(t, session, &types.LegacyTx{}, session.GetSessionSponsor())
+		tx := SignTransaction(t, chainId, txData, session.GetSessionSponsor())
 
 		nonce, err := client.NonceAt(t.Context(), session.GetSessionSponsor().Address(), nil)
 		require.NoError(t, err)
@@ -505,10 +370,10 @@ func testIntegrationTestNet_setTransactionDefaults(t *testing.T, session Integra
 		require.NoError(t, err)
 		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
-		txData := setTransactionDefaults(t, session, &types.LegacyTx{
+		txData := SetTransactionDefaults(t, session, &types.LegacyTx{
 			Nonce: 1,
 		}, session.GetSessionSponsor())
-		tx := signTransaction(t, chainId, txData, session.GetSessionSponsor())
+		tx := SignTransaction(t, chainId, txData, session.GetSessionSponsor())
 
 		// the filled values suffice to get the transaction accepted and executed
 		_, err = session.Run(tx)
@@ -519,10 +384,10 @@ func testIntegrationTestNet_setTransactionDefaults(t *testing.T, session Integra
 		session := session.SpawnSession(t)
 		t.Parallel()
 
-		txData := setTransactionDefaults(t, session, &types.LegacyTx{
+		txData := SetTransactionDefaults(t, session, &types.LegacyTx{
 			Gas: 1,
 		}, session.GetSessionSponsor())
-		tx := signTransaction(t, chainId, txData, session.GetSessionSponsor())
+		tx := SignTransaction(t, chainId, txData, session.GetSessionSponsor())
 
 		// the filled values suffice to get the transaction accepted and executed
 		_, err := session.Run(tx)
@@ -533,10 +398,10 @@ func testIntegrationTestNet_setTransactionDefaults(t *testing.T, session Integra
 		session := session.SpawnSession(t)
 		t.Parallel()
 
-		txData := setTransactionDefaults(t, session, &types.LegacyTx{
+		txData := SetTransactionDefaults(t, session, &types.LegacyTx{
 			GasPrice: big.NewInt(1),
 		}, session.GetSessionSponsor())
-		tx := signTransaction(t, chainId, txData, session.GetSessionSponsor())
+		tx := SignTransaction(t, chainId, txData, session.GetSessionSponsor())
 
 		// the filled values suffice to get the transaction accepted and executed
 		_, err := session.Run(tx)
@@ -551,14 +416,14 @@ func test_WaitUntilTransactionIsRetiredFromPool_waitsFromCompletion(
 	require.NoError(t, err)
 	defer client.Close()
 
-	account := makeAccountWithBalance(t, session, big.NewInt(1e18))
+	account := MakeAccountWithBalance(t, session, big.NewInt(1e18))
 
 	chainId, err := client.ChainID(t.Context())
 	require.NoError(t, err)
 
-	txData := setTransactionDefaults(t, session, &types.LegacyTx{}, account)
+	txData := SetTransactionDefaults(t, session, &types.LegacyTx{}, account)
 	txData.Nonce = 1
-	txInvalidNonce := signTransaction(t, chainId, txData, account)
+	txInvalidNonce := SignTransaction(t, chainId, txData, account)
 
 	err = client.SendTransaction(t.Context(), txInvalidNonce)
 	require.NoError(t, err)
@@ -569,7 +434,7 @@ func test_WaitUntilTransactionIsRetiredFromPool_waitsFromCompletion(
 	require.ErrorContains(t, err, fmt.Sprintf("transaction %s was not retired from the pool in time", txInvalidNonce.Hash().String()))
 
 	txData.Nonce = 0
-	txCorrectNonce := signTransaction(t, chainId, txData, account)
+	txCorrectNonce := SignTransaction(t, chainId, txData, account)
 
 	err = client.SendTransaction(t.Context(), txCorrectNonce)
 	require.NoError(t, err)

@@ -42,8 +42,8 @@ func TestTrace7702Transaction(t *testing.T) {
 		Upgrades: AsPointer(opera.GetAllegroUpgrades()),
 	})
 
-	sponsor := makeAccountWithBalance(t, net, big.NewInt(1e18))
-	sponsored := makeAccountWithBalance(t, net, big.NewInt(10))
+	sponsor := MakeAccountWithBalance(t, net, big.NewInt(1e18))
+	sponsored := MakeAccountWithBalance(t, net, big.NewInt(10))
 
 	// Deploy the contract to forward the call
 	sponsoringDelegate, receipt, err := DeployContract(net, sponsoring.DeploySponsoring)
