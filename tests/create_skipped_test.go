@@ -115,6 +115,7 @@ func TestAccountCreation_CreateCallsProducingCodesTooLargeProduceAUnsuccessfulRe
 	}...)
 
 	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	t.Parallel()
 
 	client, err := session.GetClient()
 	require.NoError(t, err)

@@ -35,6 +35,7 @@ func TestBlockInArchive(t *testing.T) {
 
 	require := require.New(t)
 	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	t.Parallel()
 
 	client, err := session.GetWebSocketClient()
 	require.NoError(err, "failed to get client ", err)

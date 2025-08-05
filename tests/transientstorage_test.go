@@ -27,6 +27,7 @@ import (
 
 func TestTransientStorage_TransientStorageIsValidInTransaction(t *testing.T) {
 	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	t.Parallel()
 
 	// Deploy the transient storage contract
 	contract, _, err := DeployContract(session, transientstorage.DeployTransientstorage)

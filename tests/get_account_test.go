@@ -30,6 +30,7 @@ import (
 
 func TestGetAccount(t *testing.T) {
 	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	t.Parallel()
 
 	// Deploy the transient storage contract
 	_, deployReceipt, err := DeployContract(session, counter.DeployCounter)

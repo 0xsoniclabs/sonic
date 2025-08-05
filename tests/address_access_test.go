@@ -32,6 +32,7 @@ func TestAddressAccess(t *testing.T) {
 	someAccountAddress := common.Address{1}
 
 	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	t.Parallel()
 
 	contract, receipt, err := DeployContract(session, accessCost.DeployAccessCost)
 	require.NoError(t, err)

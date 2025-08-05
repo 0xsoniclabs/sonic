@@ -44,6 +44,7 @@ func TestEthCall_CodeLargerThanMaxInitCodeSizeIsAccepted(t *testing.T) {
 		},
 	}
 	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	t.Parallel()
 
 	client, err := session.GetClient()
 	require.NoError(t, err, "Failed to connect to the integration test network")

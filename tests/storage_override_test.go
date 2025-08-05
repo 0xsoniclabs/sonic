@@ -32,6 +32,7 @@ import (
 
 func TestSetStorage_PreExisting_Contract_Storage_Temporarily_Overridden(t *testing.T) {
 	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	t.Parallel()
 
 	// Deploy the contract.
 	contract, receipt, err := DeployContract(session, storage.DeployStorage)

@@ -28,6 +28,7 @@ import (
 
 func TestPrevRandao(t *testing.T) {
 	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	t.Parallel()
 
 	// Deploy the contract.
 	contract, _, err := DeployContract(session, prevrandao.DeployPrevrandao)
