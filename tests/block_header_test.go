@@ -48,11 +48,15 @@ import (
 )
 
 func TestBlockHeader_FakeGenesis_SatisfiesInvariants(t *testing.T) {
+	t.Parallel()
+
 	net := StartIntegrationTestNetWithFakeGenesis(t)
 	testBlockHeadersOnNetwork(t, net)
 }
 
 func TestBlockHeader_JsonGenesis_SatisfiesInvariants(t *testing.T) {
+	t.Parallel()
+
 	upgrades := map[string]opera.Upgrades{
 		"Sonic":   opera.GetSonicUpgrades(),
 		"Allegro": opera.GetAllegroUpgrades(),
