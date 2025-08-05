@@ -102,7 +102,7 @@ func (b *EthAPIBackend) ResolveRpcBlockNumberOrHash(ctx context.Context, blockNr
 		}
 		return idx.Block(number), nil
 	} else if h, ok := blockNrOrHash.Hash(); ok {
-		index := b.svc.store.GetBlockIndex(hash.Event(h))
+		index := b.svc.store.GetBlockIndex(h)
 		if index == nil {
 			return 0, errors.New("block not found")
 		}
@@ -122,7 +122,7 @@ func (b *EthAPIBackend) HeaderByNumber(ctx context.Context, number rpc.BlockNumb
 
 // HeaderByHash returns evm block header by its (atropos) hash, or nil if not exists.
 func (b *EthAPIBackend) HeaderByHash(ctx context.Context, h common.Hash) (*evmcore.EvmHeader, error) {
-	index := b.svc.store.GetBlockIndex(hash.Event(h))
+	index := b.svc.store.GetBlockIndex(h)
 	if index == nil {
 		return nil, fmt.Errorf("block with hash %s not found", h.String())
 	}
@@ -163,7 +163,7 @@ func (b *EthAPIBackend) StateAndHeaderByNumberOrHash(ctx context.Context, blockN
 	} else if number, ok := blockNrOrHash.Number(); ok {
 		header = b.state.GetHeader(common.Hash{}, uint64(number))
 	} else if h, ok := blockNrOrHash.Hash(); ok {
-		index := b.svc.store.GetBlockIndex(hash.Event(h))
+		index := b.svc.store.GetBlockIndex(h)
 		if index == nil {
 			return nil, nil, errors.New("header not found")
 		}
@@ -299,7 +299,7 @@ func (b *EthAPIBackend) ForEachEpochEvent(ctx context.Context, epoch rpc.BlockNu
 }
 
 func (b *EthAPIBackend) BlockByHash(ctx context.Context, h common.Hash) (*evmcore.EvmBlock, error) {
-	index := b.svc.store.GetBlockIndex(hash.Event(h))
+	index := b.svc.store.GetBlockIndex(h)
 	if index == nil {
 		return nil, nil
 	}
@@ -347,7 +347,7 @@ func (b *EthAPIBackend) GetReceiptsByNumber(ctx context.Context, number rpc.Bloc
 
 // GetReceipts retrieves the receipts for all transactions in a given block.
 func (b *EthAPIBackend) GetReceipts(ctx context.Context, block common.Hash) (types.Receipts, error) {
-	number := b.svc.store.GetBlockIndex(hash.Event(block))
+	number := b.svc.store.GetBlockIndex(block)
 	if number == nil {
 		return nil, nil
 	}
