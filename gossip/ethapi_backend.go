@@ -92,15 +92,24 @@ func (b *EthAPIBackend) CurrentBlock() *evmcore.EvmBlock {
 	return b.state.CurrentBlock()
 }
 
+// HistoryPruningCutoff returns the block height at which pruning was done.
+func (b *EthAPIBackend) HistoryPruningCutoff() uint64 {
+	return 0
+}
+
 func (b *EthAPIBackend) ResolveRpcBlockNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (idx.Block, error) {
 	latest := b.svc.store.GetLatestBlockIndex()
-	if number, ok := blockNrOrHash.Number(); ok && isLatestBlockNumber(number) {
-		return latest, nil
-	} else if number, ok := blockNrOrHash.Number(); ok {
-		if idx.Block(number) > latest {
-			return 0, errors.New("block not found")
+	if number, ok := blockNrOrHash.Number(); ok {
+		if isLatestBlockNumber(number) {
+			return latest, nil
+		} else if number == rpc.EarliestBlockNumber {
+			return idx.Block(b.HistoryPruningCutoff()), nil
+		} else {
+			if idx.Block(number) > latest {
+				return 0, errors.New("block not found")
+			}
+			return idx.Block(number), nil
 		}
-		return idx.Block(number), nil
 	} else if h, ok := blockNrOrHash.Hash(); ok {
 		index := b.svc.store.GetBlockIndex(hash.Event(h))
 		if index == nil {
@@ -135,6 +144,8 @@ func (b *EthAPIBackend) BlockByNumber(ctx context.Context, number rpc.BlockNumbe
 	var blk *evmcore.EvmBlock
 	if isLatestBlockNumber(number) {
 		blk = b.state.CurrentBlock()
+	} else if number == rpc.EarliestBlockNumber {
+		blk = b.state.GetBlock(common.Hash{}, b.HistoryPruningCutoff())
 	} else {
 		n := uint64(number.Int64())
 		blk = b.state.GetBlock(common.Hash{}, n)
@@ -273,9 +284,11 @@ func (b *EthAPIBackend) epochWithDefault(ctx context.Context, epoch rpc.BlockNum
 	current := b.svc.store.GetEpoch()
 
 	switch {
+	case epoch == rpc.EarliestBlockNumber:
+		requested = idx.Epoch(b.HistoryPruningCutoff())
 	case epoch == rpc.PendingBlockNumber:
 		requested = current
-	case epoch == rpc.LatestBlockNumber:
+	case isLatestBlockNumber(epoch):
 		requested = current - 1
 	case epoch >= 0 && idx.Epoch(epoch) <= current:
 		requested = idx.Epoch(epoch)
@@ -328,6 +341,8 @@ func (b *EthAPIBackend) GetReceiptsByNumber(ctx context.Context, number rpc.Bloc
 	if isLatestBlockNumber(number) {
 		header := b.state.CurrentHeader()
 		number = rpc.BlockNumber(header.Number.Uint64())
+	} else if number == rpc.EarliestBlockNumber {
+		number = rpc.BlockNumber(b.HistoryPruningCutoff())
 	}
 
 	block := b.state.GetBlock(common.Hash{}, uint64(number))
@@ -574,12 +589,14 @@ func (b *EthAPIBackend) GetDowntime(ctx context.Context, vid idx.ValidatorID) (i
 }
 
 func (b *EthAPIBackend) GetEpochBlockState(ctx context.Context, epoch rpc.BlockNumber) (*iblockproc.BlockState, *iblockproc.EpochState, error) {
-	if epoch == rpc.PendingBlockNumber {
+	switch epoch {
+	case rpc.PendingBlockNumber:
 		bs, es := b.svc.store.GetBlockState(), b.svc.store.GetEpochState()
 		return &bs, &es, nil
-	}
-	if epoch == rpc.LatestBlockNumber {
+	case rpc.LatestBlockNumber, rpc.FinalizedBlockNumber, rpc.SafeBlockNumber:
 		epoch = rpc.BlockNumber(b.svc.store.GetEpoch())
+	case rpc.EarliestBlockNumber:
+		epoch = rpc.BlockNumber(b.HistoryPruningCutoff())
 	}
 	bs, es := b.svc.store.GetHistoryBlockEpochState(idx.Epoch(epoch))
 	return bs, es, nil

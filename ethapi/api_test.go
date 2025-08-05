@@ -61,6 +61,10 @@ func TestGetBlockReceipts(t *testing.T) {
 			block: rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(42)),
 		},
 		{
+			name:  "earliest",
+			block: rpc.BlockNumberOrHashWithNumber(rpc.EarliestBlockNumber),
+		},
+		{
 			name:  "latest",
 			block: rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber),
 		},

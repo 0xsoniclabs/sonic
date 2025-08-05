@@ -65,6 +65,7 @@ type Backend interface {
 	RPCTxFeeCap() float64         // global tx fee cap for all transaction related APIs
 	UnprotectedAllowed() bool     // allows only for EIP155 transactions.
 	CalcBlockExtApi() bool
+	HistoryPruningCutoff() uint64 // block height at which pruning was done
 
 	// Blockchain API
 	HeaderByNumber(ctx context.Context, number rpc.BlockNumber) (*evmcore.EvmHeader, error)

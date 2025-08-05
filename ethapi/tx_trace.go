@@ -556,15 +556,23 @@ func parseFilterArguments(b Backend, args FilterArgs) (fromBlock rpc.BlockNumber
 
 	if args.FromBlock != nil {
 		fromBlock = *args.FromBlock.BlockNumber
-		if fromBlock == rpc.LatestBlockNumber || fromBlock == rpc.PendingBlockNumber {
+		if fromBlock == rpc.LatestBlockNumber || fromBlock == rpc.PendingBlockNumber ||
+			fromBlock == rpc.FinalizedBlockNumber || fromBlock == rpc.SafeBlockNumber {
 			fromBlock = blockHead
+		}
+		if fromBlock == rpc.EarliestBlockNumber {
+			fromBlock = rpc.BlockNumber(b.HistoryPruningCutoff())
 		}
 	}
 
 	if args.ToBlock != nil {
 		toBlock = *args.ToBlock.BlockNumber
-		if toBlock == rpc.LatestBlockNumber || toBlock == rpc.PendingBlockNumber {
+		if toBlock == rpc.LatestBlockNumber || toBlock == rpc.PendingBlockNumber ||
+			fromBlock == rpc.FinalizedBlockNumber || fromBlock == rpc.SafeBlockNumber {
 			toBlock = blockHead
+		}
+		if toBlock == rpc.EarliestBlockNumber {
+			toBlock = rpc.BlockNumber(b.HistoryPruningCutoff())
 		}
 	} else {
 		toBlock = blockHead
