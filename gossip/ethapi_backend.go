@@ -106,18 +106,18 @@ func (b *EthAPIBackend) ResolveRpcBlockNumberOrHash(ctx context.Context, blockNr
 			return idx.Block(b.HistoryPruningCutoff()), nil
 		} else {
 			if idx.Block(number) > latest {
-				return 0, errors.New("block not found")
+				return 0, fmt.Errorf("block %v not found; latest block is %v", number, latest)
 			}
 			return idx.Block(number), nil
 		}
 	} else if h, ok := blockNrOrHash.Hash(); ok {
 		index := b.svc.store.GetBlockIndex(hash.Event(h))
 		if index == nil {
-			return 0, errors.New("block not found")
+			return 0, fmt.Errorf("block with hash %s not found", h.String())
 		}
 		return *index, nil
 	}
-	return 0, errors.New("unknown rpc selector for number or hash")
+	return 0, fmt.Errorf("unknown rpc selector for number or hash")
 }
 
 // HeaderByNumber returns evm block header by its number, or nil if not exists.
@@ -143,7 +143,8 @@ func (b *EthAPIBackend) BlockByNumber(ctx context.Context, number rpc.BlockNumbe
 	// Otherwise, resolve and return the block
 	blockIdx, err := b.ResolveRpcBlockNumberOrHash(ctx, rpc.BlockNumberOrHashWithNumber(number))
 	if err != nil {
-		return nil, err
+		// when block not found, return nil as rpc clients expect this
+		return nil, nil
 	}
 	return b.state.GetBlock(common.Hash{}, uint64(blockIdx)), nil
 }
@@ -334,7 +335,8 @@ func (b *EthAPIBackend) GetReceiptsByNumber(ctx context.Context, number rpc.Bloc
 
 	blockNumber, err := b.ResolveRpcBlockNumberOrHash(ctx, rpc.BlockNumberOrHashWithNumber(number))
 	if err != nil {
-		return nil, err
+		// when block not found, return nil as rpc clients expect this
+		return nil, nil
 	}
 	number = rpc.BlockNumber(blockNumber)
 
