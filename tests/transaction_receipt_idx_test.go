@@ -44,7 +44,7 @@ func TestReceipt_InternalTransactionsDoNotChangeReceiptIndex(t *testing.T) {
 	require.NoError(t, err)
 	before := receipt.BlockNumber.Uint64()
 
-	initialEpoch, err := getEpochOfBlock(client, int(before))
+	initialEpoch, err := GetEpochOfBlock(client, int(before))
 	require.NoError(t, err)
 
 	// Send transaction instructing the network to advance one epoch.
@@ -62,7 +62,7 @@ func TestReceipt_InternalTransactionsDoNotChangeReceiptIndex(t *testing.T) {
 		current, err := client.BlockNumber(t.Context())
 		require.NoError(t, err)
 
-		currentEpoch, err := getEpochOfBlock(client, int(current))
+		currentEpoch, err := GetEpochOfBlock(client, int(current))
 		require.NoError(t, err)
 		if currentEpoch > initialEpoch {
 			break
@@ -152,8 +152,8 @@ func TestReceipt_SkippedTransactionsDoNotChangeReceiptIndexOrCumulativeGasUsed(t
 	chainId := net.GetChainId()
 	gasPrice, err := client.SuggestGasPrice(t.Context())
 	require.NoError(t, err)
-	sender := makeAccountWithBalance(t, net, big.NewInt(1e18))
-	senderSkipped := makeAccountWithBalance(t, net, big.NewInt(1e18))
+	sender := MakeAccountWithBalance(t, net, big.NewInt(1e18))
+	senderSkipped := MakeAccountWithBalance(t, net, big.NewInt(1e18))
 
 	numSimpleTxs := 10
 	// Create simple transactions
@@ -167,7 +167,7 @@ func TestReceipt_SkippedTransactionsDoNotChangeReceiptIndexOrCumulativeGasUsed(t
 			Value:    big.NewInt(1),
 		}
 
-		tx := signTransaction(t, chainId, txData, sender)
+		tx := SignTransaction(t, chainId, txData, sender)
 		transactions[nonce] = tx
 	}
 
@@ -181,7 +181,7 @@ func TestReceipt_SkippedTransactionsDoNotChangeReceiptIndexOrCumulativeGasUsed(t
 		Value:    big.NewInt(0),
 		Data:     initCode,
 	}
-	skippedTx := signTransaction(t, chainId, txData, senderSkipped)
+	skippedTx := SignTransaction(t, chainId, txData, senderSkipped)
 
 	// Run one transaction to not interfere with any still pending transactions.
 	receipt, err := net.EndowAccount(common.Address{}, big.NewInt(1e18))

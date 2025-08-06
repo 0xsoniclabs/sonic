@@ -32,15 +32,15 @@ const enoughGasPrice = 150_000_000_000
 
 func TestTransactionGasPrice(t *testing.T) {
 
-	sessio := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 	t.Parallel()
 
-	client, err := sessio.GetClient()
+	client, err := session.GetClient()
 	require.NoError(t, err)
 	defer client.Close()
 
 	// use a fresh account to send transactions from
-	account := makeAccountWithBalance(t, sessio, big.NewInt(1e18))
+	account := MakeAccountWithBalance(t, session, big.NewInt(1e18))
 
 	t.Run("Legacy transaction, effectivePrice is equal to requested price", func(t *testing.T) {
 
@@ -60,7 +60,7 @@ func TestTransactionGasPrice(t *testing.T) {
 		// 2: make & execute transaction
 		tx := makeLegacyTx(t, client, specifiedPrice, account, &common.Address{}, nil)
 
-		receipt, err := sessio.Run(tx)
+		receipt, err := session.Run(tx)
 		require.NoError(t, err)
 		require.Equal(t,
 			receipt.Status,
@@ -113,7 +113,7 @@ func TestTransactionGasPrice(t *testing.T) {
 		// 2: make & execute transaction
 		tx := makeEip1559Transaction(t, client, maxGasPrice, 0, account, &common.Address{}, nil)
 
-		receipt, err := sessio.Run(tx)
+		receipt, err := session.Run(tx)
 		require.NoError(t, err)
 		require.Equal(t,
 			receipt.Status,
@@ -176,7 +176,7 @@ func TestTransactionGasPrice(t *testing.T) {
 		// 2: make & execute transaction
 		tx := makeEip1559Transaction(t, client, maxGasPrice, tip, account, &common.Address{}, nil)
 
-		receipt, err := sessio.Run(tx)
+		receipt, err := session.Run(tx)
 		require.NoError(t, err)
 		require.Equal(t,
 			receipt.Status,
@@ -236,7 +236,7 @@ func TestTransactionGasPrice(t *testing.T) {
 		// 2: make & execute transaction
 		tx := makeEip1559Transaction(t, client, maxGasPrice, tip, account, &common.Address{}, nil)
 
-		receipt, err := sessio.Run(tx)
+		receipt, err := session.Run(tx)
 		require.NoError(t, err)
 		require.Equal(t,
 			receipt.Status,
@@ -275,19 +275,6 @@ func TestTransactionGasPrice(t *testing.T) {
 			)
 		})
 	})
-}
-
-// makeAccountWithBalance creates a new account and endows it with the given balance.
-// Creating the account this way allows to get access to the private key to sign transactions.
-func makeAccountWithBalance(t *testing.T, net IntegrationTestNetSession, balance *big.Int) *Account {
-	t.Helper()
-	account := NewAccount()
-	receipt, err := net.EndowAccount(account.Address(), balance)
-	require.NoError(t, err)
-	require.Equal(t,
-		receipt.Status, types.ReceiptStatusSuccessful,
-		"endowing account failed")
-	return account
 }
 
 func getBaseFeeAt(t *testing.T, blockNumber *big.Int, client *PooledEhtClient) int64 {

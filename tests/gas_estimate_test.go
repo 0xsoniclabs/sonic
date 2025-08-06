@@ -128,7 +128,7 @@ func makeAllegroCases(
 	cases := makeTestCases(t, session, contract, contractAddress)
 
 	// create authorization, use new account to avoid altering session sponsor state
-	account := makeAccountWithBalance(t, session, big.NewInt(1e18))
+	account := MakeAccountWithBalance(t, session, big.NewInt(1e18))
 	auth, err := types.SignSetCode(account.PrivateKey,
 		types.SetCodeAuthorization{
 			ChainID: *uint256.MustFromBig(session.GetChainId()),
@@ -159,7 +159,7 @@ func doTestEstimate(
 	session IntegrationTestNetSession,
 	tests map[string]types.TxData) {
 
-	account := makeAccountWithBalance(t, session, big.NewInt(1e18))
+	account := MakeAccountWithBalance(t, session, big.NewInt(1e18))
 	netUpgrades := session.GetUpgrades()
 
 	client, err := session.GetClient()

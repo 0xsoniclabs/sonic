@@ -206,7 +206,7 @@ func testSingleProposerProtocol_CanBeEnabledAndDisabled(
 			rulesDiff := rulesType{
 				Upgrades: upgrades{SingleProposerBlockFormation: step.flagValue},
 			}
-			updateNetworkRules(t, net, rulesDiff)
+			UpdateNetworkRules(t, net, rulesDiff)
 
 			// The rules only take effect after the epoch change. Make sure that
 			// until then, transactions can be processed.

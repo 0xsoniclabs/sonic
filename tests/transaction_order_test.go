@@ -47,7 +47,7 @@ func TestTransactionOrder(t *testing.T) {
 
 	// Only transactions from different accounts can change order.
 	for range numAccounts {
-		accounts = append(accounts, makeAccountWithBalance(t, net, big.NewInt(1e18)))
+		accounts = append(accounts, MakeAccountWithBalance(t, net, big.NewInt(1e18)))
 	}
 
 	// Repeat the test for X number of blocks
