@@ -122,33 +122,23 @@ func (s *PublicTxTraceAPI) Call(ctx context.Context, args TransactionArgs, trace
 // Block - trace_block function returns transaction traces in given block
 func (s *PublicTxTraceAPI) Block(ctx context.Context, numberOrHash rpc.BlockNumberOrHash) (*[]txtrace.ActionTrace, error) {
 
-	blockNumber, _ := numberOrHash.Number()
-
-	if blockNumber == rpc.PendingBlockNumber {
-		return nil, fmt.Errorf("cannot trace pending block")
-	}
-
-	currentBlockNumber := s.b.CurrentBlock().NumberU64()
-	if blockNumber == rpc.LatestBlockNumber {
-		blockNumber = rpc.BlockNumber(currentBlockNumber)
-	}
-
-	if uint64(blockNumber.Int64()) > currentBlockNumber {
-		return nil, fmt.Errorf("requested block number %v is greater than current head block number %v", blockNumber.Int64(), currentBlockNumber)
+	blockNumber, err := s.b.ResolveRpcBlockNumberOrHash(ctx, numberOrHash)
+	if err != nil {
+		return nil, err
 	}
 
 	defer func(start time.Time) {
-		log.Debug("Executing trace_block call finished", "block", blockNumber.Int64(), "runtime", time.Since(start))
+		log.Debug("Executing trace_block call finished", "block", blockNumber, "runtime", time.Since(start))
 	}(time.Now())
 
-	block, err := s.b.BlockByNumber(ctx, blockNumber)
+	block, err := s.b.BlockByNumber(ctx, rpc.BlockNumber(blockNumber))
 	if err != nil {
-		return nil, fmt.Errorf("cannot get block %v from db got %v", blockNumber.Int64(), err.Error())
+		return nil, fmt.Errorf("cannot get block %v from db got %v", blockNumber, err.Error())
 	}
 
 	traces, err := s.replayBlock(ctx, block, nil, nil)
 	if err != nil {
-		return nil, fmt.Errorf("cannot trace block %v got %v", blockNumber.Int64(), err.Error())
+		return nil, fmt.Errorf("cannot trace block %v got %v", blockNumber, err.Error())
 	}
 
 	return traces, nil
@@ -561,8 +551,7 @@ func parseFilterArguments(b Backend, args FilterArgs) (fromBlock rpc.BlockNumber
 	blockHead := rpc.BlockNumber(b.CurrentBlock().NumberU64())
 
 	if args.FromBlock != nil {
-		fromBlock = *args.FromBlock.BlockNumber
-		blockNumber, err := b.ResolveRpcBlockNumberOrHash(context.Background(), rpc.BlockNumberOrHashWithNumber(fromBlock))
+		blockNumber, err := b.ResolveRpcBlockNumberOrHash(context.Background(), rpc.BlockNumberOrHashWithNumber(*args.FromBlock.BlockNumber))
 		if err != nil {
 			return 0, 0, nil, nil, err
 		}
@@ -570,8 +559,7 @@ func parseFilterArguments(b Backend, args FilterArgs) (fromBlock rpc.BlockNumber
 	}
 
 	if args.ToBlock != nil {
-		toBlock = *args.ToBlock.BlockNumber
-		blockNumber, err := b.ResolveRpcBlockNumberOrHash(context.Background(), rpc.BlockNumberOrHashWithNumber(toBlock))
+		blockNumber, err := b.ResolveRpcBlockNumberOrHash(context.Background(), rpc.BlockNumberOrHashWithNumber(*args.ToBlock.BlockNumber))
 		if err != nil {
 			return 0, 0, nil, nil, err
 		}
