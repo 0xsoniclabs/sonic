@@ -37,6 +37,7 @@ func TestInitCodeSizeLimitAndMetered(t *testing.T) {
 	requireBase := require.New(t)
 
 	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	t.Parallel()
 
 	contract, receipt, err := DeployContract(session, contractcreator.DeployContractcreator)
 	requireBase.NoError(err)
