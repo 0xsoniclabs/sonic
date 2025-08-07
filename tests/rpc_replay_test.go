@@ -29,6 +29,7 @@ import (
 )
 
 func TestRpcReplay_IsConsistentWithUpgradesAtBlockHeight(t *testing.T) {
+	t.Parallel()
 
 	// This test checks the behavior of the RPC methods after an upgrade
 	// when using the block number before and after the upgrade.
