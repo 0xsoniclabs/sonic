@@ -45,10 +45,10 @@ func TestRpcReplay_IsConsistentWithUpgradesAtBlockHeight(t *testing.T) {
 	require.NoError(t, err)
 	defer client.Close()
 
-	sender := makeAccountWithBalance(t, net, big.NewInt(1e18))
+	sender := MakeAccountWithBalance(t, net, big.NewInt(1e18))
 
-	tx := signTransaction(t, net.GetChainId(),
-		setTransactionDefaults(
+	tx := SignTransaction(t, net.GetChainId(),
+		SetTransactionDefaults(
 			t, net,
 			&types.LegacyTx{
 				To:    &common.Address{0x42},
@@ -71,13 +71,13 @@ func TestRpcReplay_IsConsistentWithUpgradesAtBlockHeight(t *testing.T) {
 	rulesDiff := rulesType{
 		Upgrades: struct{ Allegro bool }{Allegro: true},
 	}
-	updateNetworkRules(t, net, rulesDiff)
+	UpdateNetworkRules(t, net, rulesDiff)
 	err = net.AdvanceEpoch(1)
 	require.NoError(t, err)
 	advanceEpochAndWaitForBlocks(t, net)
 
-	tx2 := signTransaction(t, net.GetChainId(),
-		setTransactionDefaults(
+	tx2 := SignTransaction(t, net.GetChainId(),
+		SetTransactionDefaults(
 			t, net,
 			&types.LegacyTx{
 				To:    &common.Address{0x42},
