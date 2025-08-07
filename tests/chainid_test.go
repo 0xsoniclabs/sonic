@@ -41,7 +41,7 @@ func TestChainId(t *testing.T) {
 			},
 		})
 
-	account := makeAccountWithBalance(t, net, big.NewInt(1e18))
+	account := MakeAccountWithBalance(t, net, big.NewInt(1e18))
 
 	t.Run("RejectsAllTxsSignedWithWrongChainId", func(t *testing.T) {
 		t.Parallel()

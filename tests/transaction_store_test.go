@@ -47,14 +47,14 @@ func TestTransactionStore_CanTransactionsBeRetrievedFromBlocksAfterRestart(t *te
 	chainId, err := client.ChainID(t.Context())
 	require.NoError(t, err)
 
-	sender := makeAccountWithBalance(t, net, big.NewInt(1e18))
+	sender := MakeAccountWithBalance(t, net, big.NewInt(1e18))
 	senderAddress := sender.Address()
 
 	// launch one transaction from each type
 	txs := make([]*types.Transaction, 0)
 
 	// Type 0: legacy transaction
-	txs = append(txs, signTransaction(t, chainId,
+	txs = append(txs, SignTransaction(t, chainId,
 		&types.LegacyTx{
 			Nonce:    0,
 			To:       &senderAddress,
@@ -64,7 +64,7 @@ func TestTransactionStore_CanTransactionsBeRetrievedFromBlocksAfterRestart(t *te
 		sender))
 
 	// Type 1: AccessList transaction
-	txs = append(txs, signTransaction(t, chainId,
+	txs = append(txs, SignTransaction(t, chainId,
 		&types.AccessListTx{
 			Nonce:    1,
 			To:       &senderAddress,
@@ -77,7 +77,7 @@ func TestTransactionStore_CanTransactionsBeRetrievedFromBlocksAfterRestart(t *te
 		sender))
 
 	// Type 2: DynamicFee transaction
-	txs = append(txs, signTransaction(t, chainId,
+	txs = append(txs, SignTransaction(t, chainId,
 		&types.DynamicFeeTx{
 			Nonce:     2,
 			To:        &senderAddress,
@@ -88,7 +88,7 @@ func TestTransactionStore_CanTransactionsBeRetrievedFromBlocksAfterRestart(t *te
 		sender))
 
 	// Type 3: Blob transaction
-	txs = append(txs, signTransaction(t, chainId,
+	txs = append(txs, SignTransaction(t, chainId,
 		&types.BlobTx{
 			Nonce:     3,
 			Gas:       1e6,
@@ -105,7 +105,7 @@ func TestTransactionStore_CanTransactionsBeRetrievedFromBlocksAfterRestart(t *te
 		Nonce:   5,
 	})
 	require.NoError(t, err, "failed to sign SetCode authorization")
-	txs = append(txs, signTransaction(t, chainId,
+	txs = append(txs, SignTransaction(t, chainId,
 		&types.SetCodeTx{
 			Nonce:     4,
 			To:        senderAddress,

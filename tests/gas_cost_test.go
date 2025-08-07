@@ -89,9 +89,9 @@ func testGasCosts_Sonic(t *testing.T, singleProposer bool) {
 		for test := range makeGasCostTestInputs(t, session) {
 			t.Run(test.String(), func(t *testing.T) {
 				test.txPayload.Gas = test.txPayload.Gas - 1
-				test.txPayload = setTransactionDefaults(t, session, test.txPayload, session.GetSessionSponsor())
+				test.txPayload = SetTransactionDefaults(t, session, test.txPayload, session.GetSessionSponsor())
 
-				tx := signTransaction(t, chainId, test.txPayload, session.GetSessionSponsor())
+				tx := SignTransaction(t, chainId, test.txPayload, session.GetSessionSponsor())
 				require.NoError(t, err)
 
 				err := client.SendTransaction(t.Context(), tx)
@@ -108,8 +108,8 @@ func testGasCosts_Sonic(t *testing.T, singleProposer bool) {
 		session := net.SpawnSession(t)
 		for test := range makeGasCostTestInputs(t, session) {
 			t.Run(test.String(), func(t *testing.T) {
-				test.txPayload = setTransactionDefaults(t, session, test.txPayload, session.GetSessionSponsor())
-				tx := signTransaction(t, chainId, test.txPayload, session.GetSessionSponsor())
+				test.txPayload = SetTransactionDefaults(t, session, test.txPayload, session.GetSessionSponsor())
+				tx := SignTransaction(t, chainId, test.txPayload, session.GetSessionSponsor())
 				require.NoError(t, err)
 
 				expectedCost, err := core.IntrinsicGas(tx.Data(), tx.AccessList(), tx.SetCodeAuthorizations(), tx.To() == nil, true, true, true)
@@ -132,9 +132,9 @@ func testGasCosts_Sonic(t *testing.T, singleProposer bool) {
 
 				// Increase gas by 20% to make sure we have some unused gas
 				test.txPayload.Gas = uint64(float32(test.txPayload.Gas) * 1.2)
-				test.txPayload = setTransactionDefaults(t, session, test.txPayload, session.GetSessionSponsor())
+				test.txPayload = SetTransactionDefaults(t, session, test.txPayload, session.GetSessionSponsor())
 
-				tx := signTransaction(t, chainId, test.txPayload, session.GetSessionSponsor())
+				tx := SignTransaction(t, chainId, test.txPayload, session.GetSessionSponsor())
 				require.NoError(t, err)
 
 				expectedCost, err := core.IntrinsicGas(tx.Data(), tx.AccessList(), tx.SetCodeAuthorizations(), tx.To() == nil, true, true, true)
@@ -207,9 +207,9 @@ func testGasCosts_Allegro(t *testing.T, singleProposer bool) {
 			t.Run(test.String(), func(t *testing.T) {
 
 				test.txPayload.Gas = computeEIP7623GasCost(t, test.txPayload) - 1
-				test.txPayload = setTransactionDefaults(t, session, test.txPayload, session.GetSessionSponsor())
+				test.txPayload = SetTransactionDefaults(t, session, test.txPayload, session.GetSessionSponsor())
 
-				tx := signTransaction(t, chainId, test.txPayload, session.GetSessionSponsor())
+				tx := SignTransaction(t, chainId, test.txPayload, session.GetSessionSponsor())
 				require.NoError(t, err)
 
 				err := client.SendTransaction(t.Context(), tx)
@@ -235,9 +235,9 @@ func testGasCosts_Allegro(t *testing.T, singleProposer bool) {
 					corrections++
 				}
 				test.txPayload.Gas = correctedGasCost
-				test.txPayload = setTransactionDefaults(t, session, test.txPayload, session.GetSessionSponsor())
+				test.txPayload = SetTransactionDefaults(t, session, test.txPayload, session.GetSessionSponsor())
 
-				tx := signTransaction(t, chainId, test.txPayload, session.GetSessionSponsor())
+				tx := SignTransaction(t, chainId, test.txPayload, session.GetSessionSponsor())
 				require.NoError(t, err)
 
 				receipt, err := session.Run(tx)
@@ -273,9 +273,9 @@ func testGasCosts_Allegro(t *testing.T, singleProposer bool) {
 				}
 
 				test.txPayload.Gas = incremented
-				test.txPayload = setTransactionDefaults(t, session, test.txPayload, session.GetSessionSponsor())
+				test.txPayload = SetTransactionDefaults(t, session, test.txPayload, session.GetSessionSponsor())
 
-				tx := signTransaction(t, chainId, test.txPayload, session.GetSessionSponsor())
+				tx := SignTransaction(t, chainId, test.txPayload, session.GetSessionSponsor())
 				require.NoError(t, err)
 
 				expectedCost, err := core.IntrinsicGas(tx.Data(), tx.AccessList(), tx.SetCodeAuthorizations(), tx.To() == nil, true, true, true)
@@ -356,7 +356,7 @@ func makeGasCostTestInputs(
 		}
 	}
 
-	return generateTestDataBasedOnModificationCombinations(
+	return GenerateTestDataBasedOnModificationCombinations(
 		func() TestCase {
 			t.Helper()
 
@@ -504,7 +504,7 @@ func TestExcessGasCharges_DisabledInSingleProposerModeInNewAndHistoricRuns(t *te
 	receipts = append(receipts, receipt)
 
 	// Switch to single proposer mode.
-	updateNetworkRules(t, net, map[string]map[string]bool{
+	UpdateNetworkRules(t, net, map[string]map[string]bool{
 		"Upgrades": {
 			"SingleProposerBlockFormation": true,
 		},

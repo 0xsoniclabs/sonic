@@ -82,7 +82,7 @@ func TestGasPrice_UnderpricedTransactionsAreRejected(t *testing.T) {
 
 	// SetCode transactions are restricted to a max of one in-flight transaction
 	// per address, so we need to use a different account.
-	setCodeAccount := makeAccountWithBalance(t, session, big.NewInt(1e18))
+	setCodeAccount := MakeAccountWithBalance(t, session, big.NewInt(1e18))
 	setCodeFactory := &txFactory{
 		senderKey: setCodeAccount.PrivateKey,
 		chainId:   chainId,
