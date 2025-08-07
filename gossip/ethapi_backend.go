@@ -163,11 +163,29 @@ func isLatestBlockNumber(number rpc.BlockNumber) bool {
 
 // StateAndHeaderByNumberOrHash returns evm state and block header by block number or block hash, err if not exists.
 func (b *EthAPIBackend) StateAndHeaderByNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (state.StateDB, *evmcore.EvmHeader, error) {
-	number, err := b.ResolveRpcBlockNumberOrHash(ctx, blockNrOrHash)
-	if err != nil {
-		return nil, nil, err
+
+	var header *evmcore.EvmHeader
+	if number, ok := blockNrOrHash.Number(); ok {
+		if isLatestBlockNumber(number) {
+			var err error
+			header, err = b.state.LastHeaderWithArchiveState()
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to get latest block number; %v", err)
+			}
+		} else if number == rpc.EarliestBlockNumber {
+			header = b.state.GetHeader(common.Hash{}, b.HistoryPruningCutoff())
+		} else {
+			header = b.state.GetHeader(common.Hash{}, uint64(number))
+		}
+	} else if h, ok := blockNrOrHash.Hash(); ok {
+		index := b.svc.store.GetBlockIndex(hash.Event(h))
+		if index == nil {
+			return nil, nil, errors.New("header not found")
+		}
+		header = b.state.GetHeader(common.Hash{}, uint64(*index))
+	} else {
+		return nil, nil, errors.New("unknown header selector")
 	}
-	header := b.state.GetHeader(common.Hash{}, uint64(number))
 
 	if header == nil {
 		return nil, nil, errors.New("header not found")
