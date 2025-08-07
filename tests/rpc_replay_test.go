@@ -28,7 +28,7 @@ import (
 	"golang.org/x/exp/slices"
 )
 
-func TestRpcReplay_ResultOfCallsIsConsistentWithUpgradesAtBlockHeight(t *testing.T) {
+func TestRpcReplay_IsConsistentWithUpgradesAtBlockHeight(t *testing.T) {
 
 	// This test checks the behavior of the RPC methods after an upgrade
 	// when using the block number before and after the upgrade.
