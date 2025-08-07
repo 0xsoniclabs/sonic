@@ -450,8 +450,7 @@ func testHeaders_MixDigestDiffersForAllBlocks(t *testing.T, headers []*types.Hea
 func testHeaders_InitialBlocksHaveCorrectEpochNumbers(t *testing.T, client *PooledEhtClient) {
 	require := require.New(t)
 	for block, want := range []int{1, 1, 2} {
-		got, err := getEpochOfBlock(client, block)
-		require.NoError(err, "failed to get epoch of block %d", block)
+		got := GetEpochOfBlock(t, client, block)
 		require.Equal(want, got, "block %d", block)
 	}
 }
@@ -465,11 +464,9 @@ func testHeaders_LastBlockOfEpochContainsSealingTransaction(t *testing.T, header
 		block, err := client.BlockByNumber(t.Context(), big.NewInt(int64(i)))
 		require.NoError(err, "failed to get block body")
 
-		currentBlockEpoch, err := getEpochOfBlock(client, i)
-		require.NoError(err, "failed to get epoch of block %d", i)
+		currentBlockEpoch := GetEpochOfBlock(t, client, i)
 
-		nextBlockEpoch, err := getEpochOfBlock(client, i+1)
-		require.NoError(err, "failed to get epoch of block %d", i+1)
+		nextBlockEpoch := GetEpochOfBlock(t, client, i+1)
 
 		shouldContainSealingTx := currentBlockEpoch != nextBlockEpoch
 
@@ -493,22 +490,6 @@ func testHeaders_LastBlockOfEpochContainsSealingTransaction(t *testing.T, header
 			maxEpoch = currentBlockEpoch
 		}
 	}
-}
-
-func getEpochOfBlock(client *PooledEhtClient, blockNumber int) (int, error) {
-	var result struct {
-		Epoch hexutil.Uint64
-	}
-	err := client.Client().Call(
-		&result,
-		"eth_getBlockByNumber",
-		fmt.Sprintf("0x%x", blockNumber),
-		false,
-	)
-	if err != nil {
-		return 0, err
-	}
-	return int(result.Epoch), nil
 }
 
 func testHeaders_StateRootsMatchActualStateRoots(t *testing.T, headers []*types.Header, client *PooledEhtClient) {
