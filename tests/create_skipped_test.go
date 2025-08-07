@@ -48,7 +48,7 @@ func TestAccountCreation_CreateCallsWithInitCodesTooLargeDoNotAlterBalance(t *te
 			require.NoError(t, err)
 			defer client.Close()
 
-			sender := makeAccountWithBalance(t, net, big.NewInt(1e18))
+			sender := MakeAccountWithBalance(t, net, big.NewInt(1e18))
 
 			gasPrice, err := client.SuggestGasPrice(t.Context())
 			require.NoError(t, err)
@@ -65,7 +65,7 @@ func TestAccountCreation_CreateCallsWithInitCodesTooLargeDoNotAlterBalance(t *te
 				Value:    big.NewInt(0),
 				Data:     initCode,
 			}
-			tx := signTransaction(t, chainId, txData, sender)
+			tx := SignTransaction(t, chainId, txData, sender)
 
 			// Check balance before sending the transaction
 			preBalance, err := client.BalanceAt(t.Context(), sender.Address(), nil)
@@ -121,7 +121,7 @@ func TestAccountCreation_CreateCallsProducingCodesTooLargeProduceAUnsuccessfulRe
 	require.NoError(t, err)
 	defer client.Close()
 
-	sender := makeAccountWithBalance(t, session, big.NewInt(1e18))
+	sender := MakeAccountWithBalance(t, session, big.NewInt(1e18))
 
 	gasPrice, err := client.SuggestGasPrice(t.Context())
 	require.NoError(t, err)
@@ -137,7 +137,7 @@ func TestAccountCreation_CreateCallsProducingCodesTooLargeProduceAUnsuccessfulRe
 		Value:    big.NewInt(0),
 		Data:     initCode,
 	}
-	tx := signTransaction(t, chainId, txData, sender)
+	tx := SignTransaction(t, chainId, txData, sender)
 
 	receipt, err := session.Run(tx)
 	require.NoError(t, err)

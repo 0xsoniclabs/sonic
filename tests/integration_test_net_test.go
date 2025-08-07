@@ -245,7 +245,7 @@ func TestIntegrationTestNet_CanStartWithCustomConfig(t *testing.T) {
 	client, err := net.GetClient()
 	require.NoError(t, err)
 
-	sender := makeAccountWithBalance(t, net, big.NewInt(1e18))
+	sender := MakeAccountWithBalance(t, net, big.NewInt(1e18))
 
 	chainId, err := client.ChainID(t.Context())
 	require.NoError(t, err)
@@ -256,7 +256,7 @@ func TestIntegrationTestNet_CanStartWithCustomConfig(t *testing.T) {
 	gas, err := core.IntrinsicGas(nil, nil, nil, true, true, true, true)
 	require.NoError(t, err)
 
-	tx := signTransaction(t, chainId, &types.DynamicFeeTx{
+	tx := SignTransaction(t, chainId, &types.DynamicFeeTx{
 		Nonce:     0,
 		Value:     big.NewInt(100),
 		Gas:       gas,
@@ -266,7 +266,7 @@ func TestIntegrationTestNet_CanStartWithCustomConfig(t *testing.T) {
 	err = client.SendTransaction(t.Context(), tx)
 	require.ErrorContains(t, err, "transaction underpriced")
 
-	tx = signTransaction(t, chainId, &types.DynamicFeeTx{
+	tx = SignTransaction(t, chainId, &types.DynamicFeeTx{
 		Nonce:     1,
 		Value:     big.NewInt(100),
 		Gas:       gas,
@@ -304,7 +304,7 @@ func TestIntegrationTestNet_AccountsToBeDeployedWithGenesisCanBeCalled(t *testin
 	require.NoError(t, err)
 	defer client.Close()
 
-	sender := makeAccountWithBalance(t, net, big.NewInt(1e18))
+	sender := MakeAccountWithBalance(t, net, big.NewInt(1e18))
 
 	gasPrice, err := client.SuggestGasPrice(t.Context())
 	require.NoError(t, err)
@@ -320,7 +320,7 @@ func TestIntegrationTestNet_AccountsToBeDeployedWithGenesisCanBeCalled(t *testin
 		Value:    big.NewInt(0),
 		Data:     []byte{},
 	}
-	tx := signTransaction(t, chainId, txData, sender)
+	tx := SignTransaction(t, chainId, txData, sender)
 
 	receipt, err := net.Run(tx)
 	require.NoError(t, err)

@@ -145,7 +145,7 @@ func testLargeTransactionLoadTest(
 
 	// Increase the gas limit to allow for larger transactions in blocks. These
 	// limits are beyond safe limits acceptable for production.
-	current := getNetworkRules(t, net)
+	current := GetNetworkRules(t, net)
 
 	modified := current.Copy()
 	modified.Economy.Gas.MaxEventGas = 1_000_000_000
@@ -153,11 +153,11 @@ func testLargeTransactionLoadTest(
 	modified.Economy.ShortGasPower.MaxAllocPeriod = 50_000_000_000
 	modified.Economy.LongGasPower = modified.Economy.ShortGasPower
 	modified.Emitter.Interval = 200_000_000 // low a bit down to provoke larger events
-	updateNetworkRules(t, net, modified)
+	UpdateNetworkRules(t, net, modified)
 	require.NoError(net.AdvanceEpoch(1))
 
 	// Check that the modification was applied.
-	current = getNetworkRules(t, net)
+	current = GetNetworkRules(t, net)
 	require.Equal(modified, current)
 
 	// Create accounts and provide them with funds to run the load test.

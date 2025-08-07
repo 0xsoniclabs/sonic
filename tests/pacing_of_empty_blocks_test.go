@@ -62,11 +62,11 @@ func testPacingOfEmptyBlocks(
 
 	maxEmptyInterval := 4 * time.Second
 
-	rules := getNetworkRules(t, net)
+	rules := GetNetworkRules(t, net)
 	rules.Blocks.MaxEmptyBlockSkipPeriod = inter.Timestamp(maxEmptyInterval)
-	updateNetworkRules(t, net, rules)
+	UpdateNetworkRules(t, net, rules)
 
-	rules = getNetworkRules(t, net)
+	rules = GetNetworkRules(t, net)
 	require.Equal(inter.Timestamp(maxEmptyInterval), rules.Blocks.MaxEmptyBlockSkipPeriod)
 
 	client, err := net.GetClient()

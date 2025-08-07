@@ -41,8 +41,8 @@ func TestTrace7702Transaction(t *testing.T) {
 	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 	t.Parallel()
 
-	sponsor := makeAccountWithBalance(t, session, big.NewInt(1e18))
-	sponsored := makeAccountWithBalance(t, session, big.NewInt(10))
+	sponsor := MakeAccountWithBalance(t, session, big.NewInt(1e18))
+	sponsored := MakeAccountWithBalance(t, session, big.NewInt(10))
 
 	// Deploy the contract to forward the call
 	sponsoringDelegate, receipt, err := DeployContract(session, sponsoring.DeploySponsoring)

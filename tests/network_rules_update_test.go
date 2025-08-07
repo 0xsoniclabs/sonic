@@ -27,7 +27,6 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
 	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -62,7 +61,7 @@ func TestNetworkRule_Update_RulesChangeIsDelayedUntilNextEpochStart(t *testing.T
 	updateRequest.Economy.MinBaseFee = new(big.Int).SetInt64(newMinBaseFee)
 
 	// Update network rules
-	updateNetworkRules(t, net, updateRequest)
+	UpdateNetworkRules(t, net, updateRequest)
 
 	// Network rule should not change - it must be an epoch bound
 	var updatedRules rulesType
@@ -124,7 +123,7 @@ func TestNetworkRule_Update_RulesChangeDuringEpoch_PreAllegro(t *testing.T) {
 	updateRequest.Economy.MinBaseFee = new(big.Int).SetInt64(newMinBaseFee)
 
 	// Update network rules
-	updateNetworkRules(t, net, updateRequest)
+	UpdateNetworkRules(t, net, updateRequest)
 
 	// Network rule applied immediately - only for pre-Allegro versions
 	var updatedRules rulesType
@@ -171,7 +170,7 @@ func TestNetworkRule_Update_Restart_Recovers_Original_Value(t *testing.T) {
 	updateRequest.Economy.MinBaseFee = new(big.Int).SetInt64(newMinBaseFee)
 
 	// Update network rules
-	updateNetworkRules(t, net, updateRequest)
+	UpdateNetworkRules(t, net, updateRequest)
 
 	// Restart the network, since the rules happened within a current epoch
 	// it should not be applied immediately but persisted to be applied at the end of the epoch.
@@ -271,7 +270,7 @@ func TestNetworkRules_PragueFeaturesBecomeAvailableWithAllegroUpgrade(t *testing
 		},
 	)
 
-	account := makeAccountWithBalance(t, net, big.NewInt(1e18))
+	account := MakeAccountWithBalance(t, net, big.NewInt(1e18))
 
 	t.Run("expectations before sonic-allegro hardfork", func(t *testing.T) {
 		forEachClientInNet(t, net, func(t *testing.T, client *PooledEhtClient) {
@@ -290,7 +289,7 @@ func TestNetworkRules_PragueFeaturesBecomeAvailableWithAllegroUpgrade(t *testing
 	rulesDiff := rulesType{
 		Upgrades: struct{ Allegro bool }{Allegro: true},
 	}
-	updateNetworkRules(t, net, rulesDiff)
+	UpdateNetworkRules(t, net, rulesDiff)
 
 	// reach epoch ceiling to apply the new rules
 	advanceEpochAndWaitForBlocks(t, net)
@@ -360,53 +359,8 @@ func makeSetCodeTx(
 	txData := &types.SetCodeTx{
 		AuthList: []types.SetCodeAuthorization{authorization},
 	}
-	txData = setTransactionDefaults(t, net, txData, account)
-	return signTransaction(t, chainID, txData, account)
-}
-
-// getNetworkRules retrieves the current network rules from the node.
-func getNetworkRules(t *testing.T, net IntegrationTestNetSession) opera.Rules {
-	t.Helper()
-	require := require.New(t)
-
-	client, err := net.GetClient()
-	require.NoError(err)
-	defer client.Close()
-
-	for range 10 {
-		var rules opera.Rules
-		err = client.Client().Call(&rules, "eth_getRules", "latest")
-		require.NoError(err)
-		if len(rules.Name) > 0 {
-			return rules
-		}
-	}
-
-	t.Fatal("Failed to retrieve network rules after 10 attempts")
-	return opera.Rules{}
-}
-
-// updateNetworkRules sends a transaction to update the network rules.
-func updateNetworkRules(t *testing.T, net *IntegrationTestNet, rulesChange any) {
-	t.Helper()
-	require := require.New(t)
-
-	client, err := net.GetClient()
-	require.NoError(err)
-	defer client.Close()
-
-	b, err := json.Marshal(rulesChange)
-	require.NoError(err)
-
-	contract, err := driverauth100.NewContract(driverauth.ContractAddress, client)
-	require.NoError(err)
-
-	receipt, err := net.Apply(func(ops *bind.TransactOpts) (*types.Transaction, error) {
-		return contract.UpdateNetworkRules(ops, b)
-	})
-
-	require.NoError(err)
-	require.Equal(receipt.Status, types.ReceiptStatusSuccessful)
+	txData = SetTransactionDefaults(t, net, txData, account)
+	return SignTransaction(t, chainID, txData, account)
 }
 
 // advanceEpochAndWaitForBlocks sends a transaction to advance to the next epoch.
