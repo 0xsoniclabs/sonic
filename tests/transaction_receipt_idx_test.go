@@ -44,8 +44,7 @@ func TestReceipt_InternalTransactionsDoNotChangeReceiptIndex(t *testing.T) {
 	require.NoError(t, err)
 	before := receipt.BlockNumber.Uint64()
 
-	initialEpoch, err := GetEpochOfBlock(client, int(before))
-	require.NoError(t, err)
+	initialEpoch := GetEpochOfBlock(t, client, int(before))
 
 	// Send transaction instructing the network to advance one epoch.
 	contract, err := driverauth100.NewContract(driverauth.ContractAddress, client)
@@ -62,8 +61,7 @@ func TestReceipt_InternalTransactionsDoNotChangeReceiptIndex(t *testing.T) {
 		current, err := client.BlockNumber(t.Context())
 		require.NoError(t, err)
 
-		currentEpoch, err := GetEpochOfBlock(client, int(current))
-		require.NoError(t, err)
+		currentEpoch := GetEpochOfBlock(t, client, int(current))
 		if currentEpoch > initialEpoch {
 			break
 		}

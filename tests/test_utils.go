@@ -275,7 +275,7 @@ func GetNetworkRules(t *testing.T, net IntegrationTestNetSession) opera.Rules {
 	return opera.Rules{}
 }
 
-func GetEpochOfBlock(client *PooledEhtClient, blockNumber int) (int, error) {
+func GetEpochOfBlock(t *testing.T, client *PooledEhtClient, blockNumber int) int {
 	var result struct {
 		Epoch hexutil.Uint64
 	}
@@ -285,10 +285,8 @@ func GetEpochOfBlock(client *PooledEhtClient, blockNumber int) (int, error) {
 		fmt.Sprintf("0x%x", blockNumber),
 		false,
 	)
-	if err != nil {
-		return 0, err
-	}
-	return int(result.Epoch), nil
+	require.NoError(t, err, "failed to get block number", blockNumber)
+	return int(result.Epoch)
 }
 
 // MakeAccountWithBalance creates a new account and endows it with the given balance.
