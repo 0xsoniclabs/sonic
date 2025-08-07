@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/ethapi"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -28,23 +29,21 @@ import (
 )
 
 func TestGetAccount(t *testing.T) {
-	net := StartIntegrationTestNet(t)
+	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	t.Parallel()
 
 	// Deploy the transient storage contract
-	_, deployReceipt, err := DeployContract(net, counter.DeployCounter)
+	_, deployReceipt, err := DeployContract(session, counter.DeployCounter)
 	require.NoError(t, err, "failed to deploy contract")
 
 	addr := deployReceipt.ContractAddress
 
-	c, err := net.GetClient()
+	client, err := session.GetClient()
 	require.NoError(t, err, "failed to get client")
-	defer c.Close()
-
-	rpcClient := c.Client()
-	defer rpcClient.Close()
+	defer client.Close()
 
 	var res ethapi.GetAccountResult
-	err = rpcClient.Call(&res, "eth_getAccount", addr, rpc.LatestBlockNumber)
+	err = client.Client().Call(&res, "eth_getAccount", addr, rpc.LatestBlockNumber)
 	require.NoError(t, err, "failed to call get account")
 
 	// Extract proof to find actual StorageHash(Root), Nonce, Balance and CodeHash
@@ -54,7 +53,7 @@ func TestGetAccount(t *testing.T) {
 		Balance     *hexutil.U256
 		CodeHash    common.Hash
 	}
-	err = rpcClient.Call(
+	err = client.Client().Call(
 		&proofRes,
 		"eth_getProof",
 		addr,

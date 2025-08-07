@@ -30,13 +30,11 @@ import (
 )
 
 func TestBlsVerificationOnChain(t *testing.T) {
-	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
-		Upgrades: AsPointer(opera.GetAllegroUpgrades()),
-	})
-	defer net.Stop()
+	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	t.Parallel()
 
 	// Deploy contract with transaction options
-	blsContract, _, err := DeployContract(net, blsContracts.DeployBLS)
+	blsContract, _, err := DeployContract(session, blsContracts.DeployBLS)
 	require.NoError(t, err, "failed to deploy contract; %v", err)
 
 	testVariants := []struct {
@@ -80,7 +78,7 @@ func TestBlsVerificationOnChain(t *testing.T) {
 				pubKeysBytes, signatureBytes, msgBytes, err := parseInputData(pubKeys, signature, msg)
 				require.NoError(t, err, "failed to parse test data; %v", err)
 
-				receipt, err := net.Apply(func(ops *bind.TransactOpts) (*types.Transaction, error) {
+				receipt, err := session.Apply(func(ops *bind.TransactOpts) (*types.Transaction, error) {
 					ops.GasLimit = 10000000
 					return testVariant.updateFunc(ops, pubKeysBytes, signatureBytes, msgBytes)
 				})

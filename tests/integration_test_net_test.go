@@ -94,12 +94,6 @@ func TestIntegrationTestNet_Can(t *testing.T) {
 		t.Parallel()
 		testIntegrationTestNet_CanSpawnParallelSessions(t, session)
 	})
-
-	t.Run("AdvanceEpoch", func(t *testing.T) {
-		t.Parallel()
-		testIntegrationTestNet_AdvanceEpoch(t, net)
-	})
-
 }
 
 func testIntegrationTestNet_CanFetchInformationFromTheNetwork(t *testing.T, net *IntegrationTestNet) {
@@ -173,7 +167,10 @@ func testIntegrationTestNet_CanSpawnParallelSessions(t *testing.T, session Integ
 	}
 }
 
-func testIntegrationTestNet_AdvanceEpoch(t *testing.T, net *IntegrationTestNet) {
+func TestIntegrationTestNet_AdvanceEpoch(t *testing.T) {
+
+	net := StartIntegrationTestNet(t)
+
 	client, err := net.GetClient()
 	require.NoError(t, err)
 	defer client.Close()

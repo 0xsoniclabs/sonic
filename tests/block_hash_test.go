@@ -335,16 +335,14 @@ func TestBlockHash_EIP2935_HistoryContractAccumulatesBlockHashes(t *testing.T) {
 
 	require := req.New(t)
 
-	net := StartIntegrationTestNetWithFakeGenesis(t,
-		IntegrationTestNetOptions{
-			Upgrades: AsPointer(opera.GetAllegroUpgrades()),
-		})
+	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	t.Parallel()
 
-	client, err := net.GetClient()
+	client, err := session.GetClient()
 	require.NoError(err)
 	defer client.Close()
 
-	readHistoryStorageContract, receipt, err := DeployContract(net, read_history_storage.DeployReadHistoryStorage)
+	readHistoryStorageContract, receipt, err := DeployContract(session, read_history_storage.DeployReadHistoryStorage)
 	require.NoError(err)
 	require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
 
@@ -356,7 +354,7 @@ func TestBlockHash_EIP2935_HistoryContractAccumulatesBlockHashes(t *testing.T) {
 	// Fist loop just issues synchronous transactions to create blocks
 	hashes := make(map[uint64]common.Hash)
 	for range testIterations {
-		receipt, err := net.EndowAccount(NewAccount().Address(), big.NewInt(1e18))
+		receipt, err := session.EndowAccount(NewAccount().Address(), big.NewInt(1e18))
 		require.NoError(err)
 		require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
 		hashes[receipt.BlockNumber.Uint64()] = receipt.BlockHash
@@ -364,7 +362,7 @@ func TestBlockHash_EIP2935_HistoryContractAccumulatesBlockHashes(t *testing.T) {
 
 	// second loop queries block hashes of the blocks generated in the first loop
 	for blockNumber, recordedHash := range hashes {
-		receipt, err = net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
+		receipt, err = session.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
 			return readHistoryStorageContract.ReadHistoryStorage(opts, new(big.Int).SetUint64(blockNumber))
 		})
 		require.NoError(err)

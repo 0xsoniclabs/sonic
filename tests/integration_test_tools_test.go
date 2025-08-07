@@ -125,7 +125,7 @@ func setTransactionDefaults[T types.TxData](
 func computeMinimumGas(t *testing.T, session IntegrationTestNetSession, tx types.TxData) uint64 {
 
 	var data []byte
-	var authList []types.AccessTuple
+	var accessList []types.AccessTuple
 	var authorizations []types.SetCodeAuthorization
 	var isCreate bool
 	switch tx := tx.(type) {
@@ -134,29 +134,37 @@ func computeMinimumGas(t *testing.T, session IntegrationTestNetSession, tx types
 		isCreate = tx.To == nil
 	case *types.AccessListTx:
 		data = tx.Data
-		authList = tx.AccessList
+		accessList = tx.AccessList
 		isCreate = tx.To == nil
 	case *types.DynamicFeeTx:
 		data = tx.Data
-		authList = tx.AccessList
+		accessList = tx.AccessList
 		isCreate = tx.To == nil
 	case *types.BlobTx:
 		data = tx.Data
-		authList = tx.AccessList
+		accessList = tx.AccessList
 		isCreate = false
 	case *types.SetCodeTx:
 		data = tx.Data
-		authList = tx.AccessList
+		accessList = tx.AccessList
 		authorizations = tx.AuthList
 		isCreate = false
 	default:
 		t.Fatalf("unexpected transaction type: %T", tx)
 	}
 
-	minimumGas, err := core.IntrinsicGas(data, authList, authorizations, isCreate, true, true, true)
+	minimumGas, err := core.IntrinsicGas(data, accessList, authorizations, isCreate, true, true, true)
 	require.NoError(t, err)
 
-	if session.GetUpgrades().Allegro {
+	client, err := session.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	var currentRules opera.Rules
+	err = client.Client().Call(&currentRules, "eth_getRules", "latest")
+	require.NoError(t, err)
+
+	if currentRules.Upgrades.Allegro {
 		floorDataGas, err := core.FloorDataGas(data)
 		require.NoError(t, err)
 		minimumGas = max(minimumGas, floorDataGas)
@@ -222,7 +230,7 @@ func TestIntegrationTestNetTools(t *testing.T) {
 	t.Run("setTransactionDefaults sets the transaction defaults", func(t *testing.T) {
 		session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 		t.Parallel()
-		testIntegrationTestNet_setTransactionDefaults(t, session)
+		testIntegrationTestNetTools_setTransactionDefaults(t, session)
 	})
 
 	t.Run("waitUntilTransactionIsRetiredFromPool waits from completion", func(t *testing.T) {
@@ -232,7 +240,7 @@ func TestIntegrationTestNetTools(t *testing.T) {
 	})
 }
 
-func testIntegrationTestNet_setTransactionDefaults(t *testing.T, session IntegrationTestNetSession) {
+func testIntegrationTestNetTools_setTransactionDefaults(t *testing.T, session IntegrationTestNetSession) {
 
 	client, err := session.GetClient()
 	require.NoError(t, err)
@@ -542,6 +550,63 @@ func testIntegrationTestNet_setTransactionDefaults(t *testing.T, session Integra
 		_, err := session.Run(tx)
 		require.ErrorContains(t, err, "underpriced")
 	})
+}
+
+func Test_testIntegrationTestNetTools_setTransactionDefaults_IsCorrectAfterUpgradesChange(t *testing.T) {
+	net := StartIntegrationTestNetWithJsonGenesis(t)
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	sender := makeAccountWithBalance(t, net, big.NewInt(1e18))
+
+	tx := signTransaction(t, net.GetChainId(),
+		setTransactionDefaults(
+			t, net,
+			&types.LegacyTx{
+				To:    &common.Address{0x42},
+				Value: big.NewInt(1),
+				// large data buffer, starting with an STOP opcode
+				Data: []byte{0x0, 40_000: 0xff},
+			},
+			sender),
+		sender)
+
+	receipt, err := net.Run(tx)
+	require.NoError(t, err)
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+
+	type rulesType struct {
+		Upgrades struct{ Allegro bool }
+	}
+	rulesDiff := rulesType{
+		Upgrades: struct{ Allegro bool }{Allegro: true},
+	}
+	updateNetworkRules(t, net, rulesDiff)
+	err = net.AdvanceEpoch(1)
+	require.NoError(t, err)
+	advanceEpochAndWaitForBlocks(t, net)
+
+	// Wait until tx pool updates
+	tx2 := signTransaction(t, net.GetChainId(),
+		setTransactionDefaults(
+			t, net,
+			&types.LegacyTx{
+				To:    &common.Address{0x42},
+				Value: big.NewInt(1),
+				Nonce: 1,
+				// large data buffer, starting with an STOP opcode
+				Data: []byte{0x0, 40_000: 0xff},
+			},
+			sender),
+		sender)
+	receipt2, err := net.Run(tx2)
+	require.NoError(t, err)
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt2.Status)
+
+	// This test relies on the fact that Allegro introduces extra gas for large data buffers.
+	require.Greater(t, receipt2.GasUsed, receipt.GasUsed)
 }
 
 func test_WaitUntilTransactionIsRetiredFromPool_waitsFromCompletion(
