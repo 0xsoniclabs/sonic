@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/opera"
+	. "github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
@@ -97,7 +98,7 @@ func TestLargeTransactions_CanHandleLargeTransactions(t *testing.T) {
 
 func TestLargeTransactions_LargeTransactionLoadTest(t *testing.T) {
 
-	if isDataRaceDetectionEnabled() {
+	if IsDataRaceDetectionEnabled() {
 		t.Skip(`Due to the concurrency requirements of this test, 
 		it becomes unstable when running with enabled data race detection.`)
 	}
