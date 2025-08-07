@@ -99,7 +99,7 @@ func (b *EthAPIBackend) HistoryPruningCutoff() uint64 {
 
 func (b *EthAPIBackend) ResolveRpcBlockNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (idx.Block, error) {
 	if number, ok := blockNrOrHash.Number(); ok {
-		latest := b.svc.store.GetLatestBlockIndex()
+		latest := idx.Block(b.state.CurrentBlock().NumberU64())
 		if isLatestBlockNumber(number) {
 			return latest, nil
 		} else if number == rpc.EarliestBlockNumber {
