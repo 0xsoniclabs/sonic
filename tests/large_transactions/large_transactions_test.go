@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
@@ -31,11 +32,11 @@ import (
 
 func TestLargeTransactions_CanHandleLargeTransactions(t *testing.T) {
 	require := require.New(t)
-	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
-		Upgrades: AsPointer(opera.GetAllegroUpgrades()),
+	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+		Upgrades: tests.AsPointer(opera.GetAllegroUpgrades()),
 	})
 
-	account := NewAccount()
+	account := tests.NewAccount()
 	_, err := net.EndowAccount(account.Address(), big.NewInt(1e18))
 	require.NoError(err)
 
@@ -97,7 +98,7 @@ func TestLargeTransactions_CanHandleLargeTransactions(t *testing.T) {
 
 func TestLargeTransactions_LargeTransactionLoadTest(t *testing.T) {
 
-	if isDataRaceDetectionEnabled() {
+	if tests.IsDataRaceDetectionEnabled() {
 		t.Skip(`Due to the concurrency requirements of this test, 
 		it becomes unstable when running with enabled data race detection.`)
 	}
@@ -138,14 +139,14 @@ func testLargeTransactionLoadTest(
 		numRounds   = 10
 	)
 	require := require.New(t)
-	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
+	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
 		Upgrades: upgrades,
 		NumNodes: 3,
 	})
 
 	// Increase the gas limit to allow for larger transactions in blocks. These
 	// limits are beyond safe limits acceptable for production.
-	current := GetNetworkRules(t, net)
+	current := tests.GetNetworkRules(t, net)
 
 	modified := current.Copy()
 	modified.Economy.Gas.MaxEventGas = 1_000_000_000
@@ -153,18 +154,18 @@ func testLargeTransactionLoadTest(
 	modified.Economy.ShortGasPower.MaxAllocPeriod = 50_000_000_000
 	modified.Economy.LongGasPower = modified.Economy.ShortGasPower
 	modified.Emitter.Interval = 200_000_000 // low a bit down to provoke larger events
-	UpdateNetworkRules(t, net, modified)
+	tests.UpdateNetworkRules(t, net, modified)
 	require.NoError(net.AdvanceEpoch(1))
 
 	// Check that the modification was applied.
-	current = GetNetworkRules(t, net)
+	current = tests.GetNetworkRules(t, net)
 	require.Equal(modified, current)
 
 	// Create accounts and provide them with funds to run the load test.
-	accounts := make([]*Account, numAccounts)
+	accounts := make([]*tests.Account, numAccounts)
 	addresses := make([]common.Address, len(accounts))
 	for i := range accounts {
-		accounts[i] = NewAccount()
+		accounts[i] = tests.NewAccount()
 		addresses[i] = accounts[i].Address()
 	}
 	endowment := new(big.Int).Mul(big.NewInt(100), big.NewInt(1e18))
