@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/tests/block_header"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -235,12 +236,7 @@ func testSingleProposerProtocol_CanBeEnabledAndDisabled(
 	require.NoError(err)
 
 	// Test parent/child relation properties.
-	testHeaders_BlockNumberEqualsPositionInChain(t, headers)
-	testHeaders_ParentHashCoversParentContent(t, headers)
-	testHeaders_EncodesDurationAndNanoTimeInExtraData(t, headers)
-	testHeaders_TimeProgressesMonotonically(t, headers)
-	testHeaders_BaseFeeEvolutionFollowsPricingRules(t, headers)
-	testHeaders_GasUsedIsBelowGasLimit(t, headers)
+	block_header.HeadersParentChildProperties(t, headers)
 }
 
 // getUsedEventVersion retrieves the current event version used by the network.
