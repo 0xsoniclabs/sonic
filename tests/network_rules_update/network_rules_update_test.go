@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
-package tests
+package network_rules_update
 
 import (
 	"encoding/json"
@@ -26,6 +26,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/contract/driverauth100"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
+	. "github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -35,6 +36,8 @@ import (
 )
 
 func TestNetworkRule_Update_RulesChangeIsDelayedUntilNextEpochStart(t *testing.T) {
+	t.Parallel()
+
 	require := require.New(t)
 	net := StartIntegrationTestNetWithFakeGenesis(t,
 		IntegrationTestNetOptions{
@@ -81,7 +84,7 @@ func TestNetworkRule_Update_RulesChangeIsDelayedUntilNextEpochStart(t *testing.T
 	require.Less(blockBefore.BaseFee().Int64(), newMinBaseFee, "BaseFee should not reflect new MinBaseFee")
 
 	// apply epoch change
-	advanceEpochAndWaitForBlocks(t, net)
+	AdvanceEpochAndWaitForBlocks(t, net)
 
 	// rule should be effective
 	err = client.Client().Call(&updatedRules, "eth_getRules", "latest")
@@ -97,6 +100,8 @@ func TestNetworkRule_Update_RulesChangeIsDelayedUntilNextEpochStart(t *testing.T
 }
 
 func TestNetworkRule_Update_RulesChangeDuringEpoch_PreAllegro(t *testing.T) {
+	t.Parallel()
+
 	require := require.New(t)
 	net := StartIntegrationTestNetWithFakeGenesis(t,
 		IntegrationTestNetOptions{
@@ -144,6 +149,8 @@ func TestNetworkRule_Update_RulesChangeDuringEpoch_PreAllegro(t *testing.T) {
 }
 
 func TestNetworkRule_Update_Restart_Recovers_Original_Value(t *testing.T) {
+	t.Parallel()
+
 	require := require.New(t)
 	net := StartIntegrationTestNetWithFakeGenesis(t,
 		IntegrationTestNetOptions{
@@ -199,7 +206,7 @@ func TestNetworkRule_Update_Restart_Recovers_Original_Value(t *testing.T) {
 		"Network rules should not change - it must be an epoch bound")
 
 	// apply epoch change
-	advanceEpochAndWaitForBlocks(t, net)
+	AdvanceEpochAndWaitForBlocks(t, net)
 
 	// rule change should be effective
 	err = client2.Client().Call(&updatedRules, "eth_getRules", "latest")
@@ -215,6 +222,8 @@ func TestNetworkRule_Update_Restart_Recovers_Original_Value(t *testing.T) {
 }
 
 func TestNetworkRule_MinEventGas_AllowsChangingRules(t *testing.T) {
+	t.Parallel()
+
 	require := require.New(t)
 	net := StartIntegrationTestNetWithFakeGenesis(t,
 		IntegrationTestNetOptions{
@@ -239,7 +248,7 @@ func TestNetworkRule_MinEventGas_AllowsChangingRules(t *testing.T) {
 	require.NoError(err)
 
 	msg := ethereum.CallMsg{
-		From:     net.account.Address(),
+		From:     net.GetSessionSponsor().Address(),
 		To:       &driverauth.ContractAddress,
 		GasPrice: gasPrice.Mul(gasPrice, big.NewInt(10)),
 		Data:     input,
@@ -260,6 +269,7 @@ func TestNetworkRule_MinEventGas_AllowsChangingRules(t *testing.T) {
 }
 
 func TestNetworkRules_PragueFeaturesBecomeAvailableWithAllegroUpgrade(t *testing.T) {
+	t.Parallel()
 
 	net := StartIntegrationTestNetWithFakeGenesis(t,
 		IntegrationTestNetOptions{
@@ -292,7 +302,7 @@ func TestNetworkRules_PragueFeaturesBecomeAvailableWithAllegroUpgrade(t *testing
 	UpdateNetworkRules(t, net, rulesDiff)
 
 	// reach epoch ceiling to apply the new rules
-	advanceEpochAndWaitForBlocks(t, net)
+	AdvanceEpochAndWaitForBlocks(t, net)
 
 	// Wait for another block, this is time for the tx_pool to tick, run reorg,
 	// and implement the new rules.
@@ -361,33 +371,4 @@ func makeSetCodeTx(
 	}
 	txData = SetTransactionDefaults(t, net, txData, account)
 	return SignTransaction(t, chainID, txData, account)
-}
-
-// advanceEpochAndWaitForBlocks sends a transaction to advance to the next epoch.
-// It also waits until the new epoch is really reached and the next two blocks are produced.
-// It is useful to test a situation when the rule change is applied to the next block after the epoch change.
-func advanceEpochAndWaitForBlocks(t *testing.T, net *IntegrationTestNet) {
-	t.Helper()
-
-	require := require.New(t)
-
-	err := net.AdvanceEpoch(1)
-	require.NoError(err)
-
-	client, err := net.GetClient()
-	require.NoError(err)
-	defer client.Close()
-
-	currentBlock, err := client.BlockByNumber(t.Context(), nil)
-	require.NoError(err)
-
-	// wait the next two blocks as some rules (such as min base fee) are applied
-	// to the next block after the epoch change becomes effective
-	for {
-		newBlock, err := client.BlockByNumber(t.Context(), nil)
-		require.NoError(err)
-		if newBlock.Number().Int64() > currentBlock.Number().Int64()+1 {
-			break
-		}
-	}
 }
