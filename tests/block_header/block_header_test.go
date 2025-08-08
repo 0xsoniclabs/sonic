@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
-package tests
+package block_header
 
 import (
 	"cmp"
@@ -22,19 +22,17 @@ import (
 	"math/big"
 	"slices"
 	"testing"
-	"time"
 
 	"github.com/0xsoniclabs/carmen/go/carmen"
 	"github.com/0xsoniclabs/carmen/go/common/immutable"
 	"github.com/0xsoniclabs/carmen/go/database/mpt"
-	"github.com/0xsoniclabs/sonic/gossip/gasprice"
-	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driver"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
 	"github.com/0xsoniclabs/sonic/opera/contracts/evmwriter"
 	"github.com/0xsoniclabs/sonic/opera/contracts/netinit"
 	"github.com/0xsoniclabs/sonic/opera/contracts/sfc"
+	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter_event_emitter"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -48,11 +46,15 @@ import (
 )
 
 func TestBlockHeader_FakeGenesis_SatisfiesInvariants(t *testing.T) {
-	net := StartIntegrationTestNetWithFakeGenesis(t)
+	t.Parallel()
+
+	net := tests.StartIntegrationTestNetWithFakeGenesis(t)
 	testBlockHeadersOnNetwork(t, net)
 }
 
 func TestBlockHeader_JsonGenesis_SatisfiesInvariants(t *testing.T) {
+	t.Parallel()
+
 	upgrades := map[string]opera.Upgrades{
 		"Sonic":   opera.GetSonicUpgrades(),
 		"Allegro": opera.GetAllegroUpgrades(),
@@ -70,7 +72,7 @@ func TestBlockHeader_JsonGenesis_SatisfiesInvariants(t *testing.T) {
 					upgrades := upgrades
 					t.Parallel()
 					upgrades.SingleProposerBlockFormation = isSingleProposer
-					net := StartIntegrationTestNetWithJsonGenesis(t, IntegrationTestNetOptions{
+					net := tests.StartIntegrationTestNetWithJsonGenesis(t, tests.IntegrationTestNetOptions{
 						Upgrades: &upgrades,
 					})
 					testBlockHeadersOnNetwork(t, net)
@@ -80,13 +82,13 @@ func TestBlockHeader_JsonGenesis_SatisfiesInvariants(t *testing.T) {
 	}
 }
 
-func testBlockHeadersOnNetwork(t *testing.T, net *IntegrationTestNet) {
+func testBlockHeadersOnNetwork(t *testing.T, net *tests.IntegrationTestNet) {
 	const numBlocks = 10
 	require := require.New(t)
 
 	// Produce a few blocks on the network. We use the counter contract since
 	// it is also producing events.
-	counter, receipt, err := DeployContract(net, counter_event_emitter.DeployCounterEventEmitter)
+	counter, receipt, err := tests.DeployContract(net, counter_event_emitter.DeployCounterEventEmitter)
 	require.NoError(err)
 	for range numBlocks {
 		_, err := net.Apply(counter.Increment)
@@ -228,89 +230,7 @@ func testHeaders_CompareHeaderHashes(t *testing.T, hashes []common.Hash, newHead
 	}
 }
 
-func testHeaders_BlockNumberEqualsPositionInChain(t *testing.T, headers []*types.Header) {
-	require := require.New(t)
-	for i, header := range headers {
-		require.Equal(header.Number.Uint64(), uint64(i))
-	}
-}
-
-func testHeaders_ParentHashCoversParentContent(t *testing.T, headers []*types.Header) {
-	require := require.New(t)
-
-	// The parent hash of block 0 is expected to be zero.
-	require.Equal(
-		headers[0].ParentHash, common.Hash{},
-		"invalid parent hash for block 0",
-	)
-
-	// All other blocks have a parent hash that matches the previous block's hash.
-	for i := 1; i < len(headers); i++ {
-		require.Equal(
-			headers[i].ParentHash,
-			headers[i-1].Hash(),
-			"invalid hash stored in block %d for block %d", i, i-1,
-		)
-	}
-}
-
-func testHeaders_GasUsedIsBelowGasLimit(t *testing.T, headers []*types.Header) {
-	require := require.New(t)
-	for i, header := range headers {
-		require.LessOrEqual(header.GasUsed, header.GasLimit, "block %d", i)
-	}
-}
-
-func testHeaders_EncodesDurationAndNanoTimeInExtraData(t *testing.T, headers []*types.Header) {
-	require := require.New(t)
-
-	getUnixTime := func(header *types.Header) time.Time {
-		t.Helper()
-		nanos, _, err := inter.DecodeExtraData(header.Extra)
-		require.NoError(err)
-		return time.Unix(int64(header.Time), int64(nanos))
-	}
-
-	// Check the nano-time and duration encoded in the extra data field.
-	for i := 1; i < len(headers); i++ {
-		require.Equal(len(headers[i].Extra), 12, "extra data length of block %d", i)
-		lastTime := getUnixTime(headers[i-1])
-		currentTime := getUnixTime(headers[i])
-		wantedDuration := currentTime.Sub(lastTime)
-		_, gotDuration, err := inter.DecodeExtraData(headers[i].Extra)
-		require.NoError(err, "decoding extra data of block %d", i)
-		require.Equal(wantedDuration, gotDuration, "duration of block %d", i)
-	}
-}
-
-func testHeaders_BaseFeeEvolutionFollowsPricingRules(t *testing.T, headers []*types.Header) {
-	require := require.New(t)
-
-	// The genesis block must use the initial base fee.
-	rules := opera.FakeEconomyRules()
-	require.Equal(
-		gasprice.GetInitialBaseFee(rules),
-		headers[0].BaseFee,
-	)
-
-	// All other blocks compute the base-fee based on the previous block.
-	for i := 1; i < len(headers); i++ {
-		_, duration, err := inter.DecodeExtraData(headers[i-1].Extra)
-		require.NoError(err, "decoding extra data of block %d", i-1)
-		last := gasprice.ParentBlockInfo{
-			BaseFee:  headers[i-1].BaseFee,
-			GasUsed:  headers[i-1].GasUsed,
-			Duration: duration,
-		}
-		require.Equal(
-			gasprice.GetBaseFeeForNextBlock(last, rules),
-			headers[i].BaseFee,
-			"base fee of block %d", i,
-		)
-	}
-}
-
-func testHeaders_TransactionRootMatchesBlockTxsHash(t *testing.T, headers []*types.Header, client *PooledEhtClient) {
+func testHeaders_TransactionRootMatchesBlockTxsHash(t *testing.T, headers []*types.Header, client *tests.PooledEhtClient) {
 	require := require.New(t)
 
 	for i, header := range headers {
@@ -323,7 +243,7 @@ func testHeaders_TransactionRootMatchesBlockTxsHash(t *testing.T, headers []*typ
 }
 
 func testHeaders_TransactionReceiptReferencesCorrectContext(
-	t *testing.T, headers []*types.Header, client *PooledEhtClient,
+	t *testing.T, headers []*types.Header, client *tests.PooledEhtClient,
 ) {
 	require := require.New(t)
 
@@ -343,7 +263,7 @@ func testHeaders_TransactionReceiptReferencesCorrectContext(
 	}
 }
 
-func testHeaders_ReceiptBlockHashMatchesBlockHash(t *testing.T, headers []*types.Header, client *PooledEhtClient) {
+func testHeaders_ReceiptBlockHashMatchesBlockHash(t *testing.T, headers []*types.Header, client *tests.PooledEhtClient) {
 	require := require.New(t)
 
 	for _, header := range headers {
@@ -357,7 +277,7 @@ func testHeaders_ReceiptBlockHashMatchesBlockHash(t *testing.T, headers []*types
 	}
 }
 
-func testHeaders_ReceiptRootMatchesBlockReceipts(t *testing.T, headers []*types.Header, client *PooledEhtClient) {
+func testHeaders_ReceiptRootMatchesBlockReceipts(t *testing.T, headers []*types.Header, client *tests.PooledEhtClient) {
 	require := require.New(t)
 
 	for _, header := range headers {
@@ -370,7 +290,7 @@ func testHeaders_ReceiptRootMatchesBlockReceipts(t *testing.T, headers []*types.
 	}
 }
 
-func testHeaders_LogsBloomMatchesLogsInReceipts(t *testing.T, headers []*types.Header, client *PooledEhtClient) {
+func testHeaders_LogsBloomMatchesLogsInReceipts(t *testing.T, headers []*types.Header, client *tests.PooledEhtClient) {
 	require := require.New(t)
 
 	for _, header := range headers {
@@ -408,22 +328,6 @@ func testHeaders_NonceIsZeroForAllBlocks(t *testing.T, headers []*types.Header) 
 	}
 }
 
-func testHeaders_TimeProgressesMonotonically(t *testing.T, headers []*types.Header) {
-	require := require.New(t)
-
-	getTimeFrom := func(header *types.Header) time.Time {
-		currentNano, _, err := inter.DecodeExtraData(header.Extra)
-		require.NoError(err)
-		return time.Unix(int64(header.Time), int64(currentNano))
-	}
-
-	for i := 1; i < len(headers); i++ {
-		currentTime := getTimeFrom(headers[i])
-		previousTime := getTimeFrom(headers[i-1])
-		require.Greater(currentTime, previousTime, "time is not monotonically increasing. block %d", i)
-	}
-}
-
 func testHeaders_MixDigestDiffersForAllBlocks(t *testing.T, headers []*types.Header) {
 	require := require.New(t)
 
@@ -447,15 +351,15 @@ func testHeaders_MixDigestDiffersForAllBlocks(t *testing.T, headers []*types.Hea
 	require.NotZero(len(seen), "no non-empty blocks in the chain")
 }
 
-func testHeaders_InitialBlocksHaveCorrectEpochNumbers(t *testing.T, client *PooledEhtClient) {
+func testHeaders_InitialBlocksHaveCorrectEpochNumbers(t *testing.T, client *tests.PooledEhtClient) {
 	require := require.New(t)
 	for block, want := range []int{1, 1, 2} {
-		got := GetEpochOfBlock(t, client, block)
+		got := tests.GetEpochOfBlock(t, client, block)
 		require.Equal(want, got, "block %d", block)
 	}
 }
 
-func testHeaders_LastBlockOfEpochContainsSealingTransaction(t *testing.T, headers []*types.Header, client *PooledEhtClient) {
+func testHeaders_LastBlockOfEpochContainsSealingTransaction(t *testing.T, headers []*types.Header, client *tests.PooledEhtClient) {
 	require := require.New(t)
 
 	maxEpoch := 0
@@ -464,9 +368,9 @@ func testHeaders_LastBlockOfEpochContainsSealingTransaction(t *testing.T, header
 		block, err := client.BlockByNumber(t.Context(), big.NewInt(int64(i)))
 		require.NoError(err, "failed to get block body")
 
-		currentBlockEpoch := GetEpochOfBlock(t, client, i)
+		currentBlockEpoch := tests.GetEpochOfBlock(t, client, i)
 
-		nextBlockEpoch := GetEpochOfBlock(t, client, i+1)
+		nextBlockEpoch := tests.GetEpochOfBlock(t, client, i+1)
 
 		shouldContainSealingTx := currentBlockEpoch != nextBlockEpoch
 
@@ -492,7 +396,7 @@ func testHeaders_LastBlockOfEpochContainsSealingTransaction(t *testing.T, header
 	}
 }
 
-func testHeaders_StateRootsMatchActualStateRoots(t *testing.T, headers []*types.Header, client *PooledEhtClient) {
+func testHeaders_StateRootsMatchActualStateRoots(t *testing.T, headers []*types.Header, client *tests.PooledEhtClient) {
 	require := require.New(t)
 	for i, header := range headers {
 		// The direct way to get the state root of a block would be to request the
@@ -508,7 +412,7 @@ func testHeaders_StateRootsMatchActualStateRoots(t *testing.T, headers []*types.
 	}
 }
 
-func getStateRoot(client *PooledEhtClient, blockNumber int) (common.Hash, error) {
+func getStateRoot(client *tests.PooledEhtClient, blockNumber int) (common.Hash, error) {
 	var result struct {
 		AccountProof []string
 	}
@@ -535,7 +439,7 @@ func getStateRoot(client *PooledEhtClient, blockNumber int) (common.Hash, error)
 	return common.BytesToHash(crypto.Keccak256(data)), nil
 }
 
-func testHeaders_SystemContractsHaveNonZeroNonce(t *testing.T, headers []*types.Header, client *PooledEhtClient) {
+func testHeaders_SystemContractsHaveNonZeroNonce(t *testing.T, headers []*types.Header, client *tests.PooledEhtClient) {
 	require := require.New(t)
 	for i := range headers {
 		block := big.NewInt(int64(i))
@@ -558,7 +462,7 @@ func testHeaders_SystemContractsHaveNonZeroNonce(t *testing.T, headers []*types.
 	}
 }
 
-func testHeaders_LogsReferenceTheirContext(t *testing.T, headers []*types.Header, client *PooledEhtClient) {
+func testHeaders_LogsReferenceTheirContext(t *testing.T, headers []*types.Header, client *tests.PooledEhtClient) {
 	require := require.New(t)
 
 	numLogs := 0
@@ -590,7 +494,7 @@ func testHeaders_LogsReferenceTheirContext(t *testing.T, headers []*types.Header
 	require.NotZero(numLogs, "no logs found in the chain")
 }
 
-func testHeaders_CanRetrieveLogEvents(t *testing.T, headers []*types.Header, client *PooledEhtClient) {
+func testHeaders_CanRetrieveLogEvents(t *testing.T, headers []*types.Header, client *tests.PooledEhtClient) {
 	require := require.New(t)
 
 	allLogs := []types.Log{}
@@ -672,7 +576,7 @@ func testHeaders_CanRetrieveLogEvents(t *testing.T, headers []*types.Header, cli
 func testHeaders_CounterStateIsVerifiable(
 	t *testing.T,
 	headers []*types.Header,
-	client *PooledEhtClient,
+	client *tests.PooledEhtClient,
 	counterAddress common.Address,
 ) {
 	require := require.New(t)
@@ -722,7 +626,7 @@ func testHeaders_CounterStateIsVerifiable(
 
 func getVerifiedCounterState(
 	t *testing.T,
-	client *PooledEhtClient,
+	client *tests.PooledEhtClient,
 	stateRoot common.Hash,
 	counterAddress common.Address,
 	blockNumber int,
@@ -792,7 +696,7 @@ func getVerifiedCounterState(
 
 func testScc_HasCommitteeCertificates(
 	t *testing.T,
-	client *PooledEhtClient,
+	client *tests.PooledEhtClient,
 ) {
 	require := require.New(t)
 	results := []struct {
@@ -812,7 +716,7 @@ func testScc_HasCommitteeCertificates(
 func testScc_HasBlockCertificatesForBlocks(
 	t *testing.T,
 	headers []*types.Header,
-	client *PooledEhtClient,
+	client *tests.PooledEhtClient,
 ) {
 	require := require.New(t)
 
