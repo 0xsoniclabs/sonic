@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
-package tests
+package pacing_of_empty_blocks
 
 import (
 	"math/big"
@@ -23,6 +23,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
+	. "github.com/0xsoniclabs/sonic/tests"
 	"github.com/stretchr/testify/require"
 )
 
