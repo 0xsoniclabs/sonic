@@ -546,26 +546,13 @@ func (n *IntegrationTestNet) start() error {
 	}
 	defer client.Close()
 
-	const timeout = 300 * time.Second
-	start := time.Now()
-
 	// wait for the node to be ready to serve requests
-	const maxDelay = 100 * time.Millisecond
-	delay := time.Millisecond
-	for {
-		if time.Since(start) > timeout {
-			return fmt.Errorf("failed to successfully start up a test network within %v", timeout)
-		}
-		_, err := client.ChainID(context.Background())
-		if err != nil {
-			time.Sleep(delay)
-			delay = 2 * delay
-			if delay > maxDelay {
-				delay = maxDelay
-			}
-			continue
-		}
-		break
+	err = WaitFor(context.Background(), func(ctx context.Context) (bool, error) {
+		_, err := client.ChainID(ctx)
+		return err == nil, nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed to connect to the Ethereum client: %w", err)
 	}
 
 	// Connect the nodes with each other.
@@ -761,46 +748,33 @@ func (n *IntegrationTestNet) SpawnSession(t *testing.T) IntegrationTestNetSessio
 // AdvanceEpoch trigger the sealing of an epoch and the epoch number to progress by the given number.
 // The function blocks until the final epoch has been reached. This method can only be called
 // on a validator account.
-func (s *Session) AdvanceEpoch(epochs int) error {
+func (s *Session) AdvanceEpoch(t testing.TB, epochs int) {
+	t.Helper()
 	client, err := s.GetClient()
-	if err != nil {
-		return fmt.Errorf("failed to connect to the client: %w", err)
-	}
+	require.NoError(t, err, "failed to connect to the Ethereum client")
 
 	var currentEpoch hexutil.Uint64
-	if err := client.Client().Call(&currentEpoch, "eth_currentEpoch"); err != nil {
-		return fmt.Errorf("failed to get current epoch: %w", err)
-	}
+	err = client.Client().Call(&currentEpoch, "eth_currentEpoch")
+	require.NoError(t, err, "failed to get current epoch")
 
 	contract, err := driverauth100.NewContract(driverauth.ContractAddress, client)
-	if err != nil {
-		return fmt.Errorf("failed to create contract: %w", err)
-	}
+	require.NoError(t, err, "failed to create contract instance")
 
 	receipt, err := s.Apply(func(ops *bind.TransactOpts) (*types.Transaction, error) {
 		return contract.AdvanceEpochs(ops, big.NewInt(int64(epochs)))
 	})
-	if err != nil {
-		return fmt.Errorf("failed to send transaction: %w", err)
-	}
-
-	if got, want := receipt.Status, types.ReceiptStatusSuccessful; got != want {
-		return fmt.Errorf("expected status %d, got %d", want, got)
-	}
+	require.NoError(t, err, "failed to advance epoch")
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
 	// wait until the epoch is advanced
-	for {
+	err = WaitFor(t.Context(), func(ctx context.Context) (bool, error) {
 		var newEpoch hexutil.Uint64
 		if err := client.Client().Call(&newEpoch, "eth_currentEpoch"); err != nil {
-			return fmt.Errorf("failed to get current epoch: %w", err)
+			return false, fmt.Errorf("failed to get current epoch: %w", err)
 		}
-
-		if newEpoch >= currentEpoch+hexutil.Uint64(epochs) {
-			break
-		}
-	}
-
-	return nil
+		return newEpoch >= currentEpoch+hexutil.Uint64(epochs), nil
+	})
+	require.NoError(t, err, "failed to wait for epoch to advance")
 }
 
 // DeployContract is a utility function handling the deployment of a contract on the network.
@@ -965,27 +939,22 @@ func (s *Session) GetReceipts(txHash []common.Hash) ([]*types.Receipt, error) {
 		len(txHash),
 		func(client *PooledEhtClient, i int) error {
 			hash := txHash[i]
-			// Wait for the response with some exponential backoff.
-			const maxDelay = 100 * time.Millisecond
-			now := time.Now()
-			delay := time.Millisecond
-			for time.Since(now) < 100*time.Second {
-				receipt, err := client.TransactionReceipt(context.Background(), hash)
+
+			err := WaitFor(context.Background(), func(ctx context.Context) (bool, error) {
+				receipt, err := client.TransactionReceipt(ctx, hash)
 				if errors.Is(err, ethereum.NotFound) {
-					time.Sleep(delay)
-					delay = 2 * delay
-					if delay > maxDelay {
-						delay = maxDelay
-					}
-					continue
+					return false, nil // receipt not yet available, keep waiting
 				}
 				if err != nil {
-					return fmt.Errorf("failed to get transaction receipt: %w", err)
+					return false, fmt.Errorf("failed to get transaction receipt: %w", err)
 				}
 				res[i] = receipt
-				return nil
+				return true, nil // receipt available, stop waiting
+			})
+			if err != nil {
+				return fmt.Errorf("failed to get transaction receipt: %w", err)
 			}
-			return fmt.Errorf("failed to get transaction receipt: timeout")
+			return nil
 		},
 	)
 	if err != nil {

@@ -17,6 +17,7 @@
 package tests
 
 import (
+	"context"
 	"fmt"
 	"math/big"
 	"testing"
@@ -28,22 +29,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestIntegrationTestNetTools(t *testing.T) {
-
-	t.Run("setTransactionDefaults sets the transaction defaults", func(t *testing.T) {
-		session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
-		t.Parallel()
-		testIntegrationTestNetTools_setTransactionDefaults(t, session)
-	})
-
-	t.Run("waitUntilTransactionIsRetiredFromPool waits from completion", func(t *testing.T) {
-		session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
-		t.Parallel()
-		test_WaitUntilTransactionIsRetiredFromPool_waitsFromCompletion(t, session)
-	})
-}
-
-func testIntegrationTestNetTools_setTransactionDefaults(t *testing.T, session IntegrationTestNetSession) {
+func TestSetTransactionDefaults_CanInitializeAllTransactionTypes(t *testing.T) {
+	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	t.Parallel()
 
 	client, err := session.GetClient()
 	require.NoError(t, err)
@@ -355,7 +343,7 @@ func testIntegrationTestNetTools_setTransactionDefaults(t *testing.T, session In
 	})
 }
 
-func Test_testIntegrationTestNetTools_setTransactionDefaults_IsCorrectAfterUpgradesChange(t *testing.T) {
+func TestSetTransactionDefaults_IsCorrectAfterUpgradesChange(t *testing.T) {
 	net := StartIntegrationTestNetWithJsonGenesis(t)
 
 	client, err := net.GetClient()
@@ -387,8 +375,7 @@ func Test_testIntegrationTestNetTools_setTransactionDefaults_IsCorrectAfterUpgra
 		Upgrades: struct{ Allegro bool }{Allegro: true},
 	}
 	UpdateNetworkRules(t, net, rulesDiff)
-	err = net.AdvanceEpoch(1)
-	require.NoError(t, err)
+	net.AdvanceEpoch(t, 1)
 	AdvanceEpochAndWaitForBlocks(t, net)
 
 	// Wait until tx pool updates
@@ -412,8 +399,12 @@ func Test_testIntegrationTestNetTools_setTransactionDefaults_IsCorrectAfterUpgra
 	require.Greater(t, receipt2.GasUsed, receipt.GasUsed)
 }
 
-func test_WaitUntilTransactionIsRetiredFromPool_waitsFromCompletion(
-	t *testing.T, session IntegrationTestNetSession) {
+func TestWaitUntilTransactionIsRetiredFromPool_waitsFromCompletion(t *testing.T) {
+	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	t.Parallel()
+
+	// TODO: this test can benefit from using synctest once it is available
+	// This test expects some large timers to time-out
 
 	client, err := session.GetClient()
 	require.NoError(t, err)
@@ -433,8 +424,8 @@ func test_WaitUntilTransactionIsRetiredFromPool_waitsFromCompletion(
 
 	// Because nonce is set to current nonce + 1, the transaction will not be executed
 	// waiting must time out
-	err = waitUntilTransactionIsRetiredFromPool(t, client, txInvalidNonce)
-	require.ErrorContains(t, err, fmt.Sprintf("transaction %s was not retired from the pool in time", txInvalidNonce.Hash().String()))
+	err = WaitUntilTransactionIsRetiredFromPool(t, client, txInvalidNonce)
+	require.ErrorContains(t, err, "wait timeout")
 
 	txData.Nonce = 0
 	txCorrectNonce := SignTransaction(t, chainId, txData, account)
@@ -444,8 +435,57 @@ func test_WaitUntilTransactionIsRetiredFromPool_waitsFromCompletion(
 
 	// Once the valid nonce transaction is sent, both transactions will be executed
 	// and retired from the pool
-	err = waitUntilTransactionIsRetiredFromPool(t, client, txInvalidNonce)
+	err = WaitUntilTransactionIsRetiredFromPool(t, client, txInvalidNonce)
 	require.NoError(t, err)
-	err = waitUntilTransactionIsRetiredFromPool(t, client, txCorrectNonce)
+	err = WaitUntilTransactionIsRetiredFromPool(t, client, txCorrectNonce)
 	require.NoError(t, err)
+}
+
+func TestWaitFor_SucceedsWhenPredicateIsSatisfied(t *testing.T) {
+	t.Parallel()
+
+	// right away
+	err := WaitFor(t.Context(), func(ctx context.Context) (bool, error) {
+		return true, nil
+	})
+	require.NoError(t, err, "WaitFor should not error")
+
+	// after some tries
+	count := 0
+	err = WaitFor(t.Context(), func(ctx context.Context) (bool, error) {
+		count++
+		return count == 10, nil
+	})
+	require.NoError(t, err, "WaitFor should not error")
+}
+
+func TestWaitFor_EventuallyTimesOut(t *testing.T) {
+	t.Parallel()
+	// TODO: once golang 1.25 is released, this is a candidate to run using
+	// synctest
+	// For the time being, this parallel routine takes ~100 seconds, which is
+	// less than the longest running integration test. Therefore it should not
+	// affect the total execution time.
+	err := WaitFor(t.Context(), func(ctx context.Context) (bool, error) {
+		return false, nil
+	})
+	require.ErrorContains(t, err, "wait timeout")
+}
+
+func TestWaitFor_ForwardsErrors(t *testing.T) {
+	t.Parallel()
+
+	// right away
+	err := WaitFor(t.Context(), func(ctx context.Context) (bool, error) {
+		return false, fmt.Errorf("some error")
+	})
+	require.ErrorContains(t, err, "some error")
+
+	// after some tries
+	count := 0
+	err = WaitFor(t.Context(), func(ctx context.Context) (bool, error) {
+		count++
+		return count == 10, fmt.Errorf("some error")
+	})
+	require.ErrorContains(t, err, "some error")
 }
