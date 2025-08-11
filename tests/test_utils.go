@@ -190,6 +190,10 @@ func WaitUntilTransactionIsRetiredFromPool(t *testing.T, client *PooledEhtClient
 	txSender, err := types.Sender(types.NewPragueSigner(tx.ChainId()), tx)
 	require.NoError(t, err, "failed to get transaction sender address")
 
+	// txpool_content returns a map containing two maps:
+	// - pending: transactions that are pending to be executed
+	// - queued: transactions that are queued to be executed
+	// each of the internal maps group transactions by sender address
 	var content map[string]map[string]map[string]*ethapi.RPCTransaction
 	return WaitFor(t.Context(), func(ctx context.Context) (bool, error) {
 
