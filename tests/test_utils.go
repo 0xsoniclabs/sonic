@@ -350,6 +350,39 @@ func _cartesianProductRecursion[T any](current []T, elements [][]T, callback fun
 	return true
 }
 
+// WaitFor repeatedly calls the predicate function until it returns true, it errors
+// or the timeout is reached.
+//
+// The predicate function receives a context (to forward expiration into internal
+// calls) and returns a found boolean and an error (if any).
+//
+// Total wait time is hard-coded to a very generous 100 seconds, this is to allow
+// tests with -race not to timeout because their very slow progress. This value is
+// arbitrary and was selected by the previous version of this algorithm.
+func WaitFor(ctx context.Context, predicate func(context.Context) (bool, error)) error {
+
+	timedContext, cancel := context.WithTimeout(ctx, 100*time.Second)
+	defer cancel()
+
+	// implement some backoff strategy: sleeps get longer the longer it
+	// takes to receive the event
+	backoff := 5 * time.Millisecond
+
+	for {
+		ok, err := predicate(timedContext)
+		if ok || err != nil {
+			return err
+		}
+		select {
+		case <-timedContext.Done():
+			return fmt.Errorf("wait timeout")
+		case <-time.After(backoff):
+			// The predicate was not satisfied, backoff and try again.
+			backoff = backoff * 2
+		}
+	}
+}
+
 // AdvanceEpochAndWaitForBlocks sends a transaction to advance to the next epoch.
 // It also waits until the new epoch is really reached and the next two blocks are produced.
 // It is useful to test a situation when the rule change is applied to the next block after the epoch change.

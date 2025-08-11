@@ -17,6 +17,8 @@
 package tests
 
 import (
+	"context"
+	"fmt"
 	"math/big"
 	"testing"
 
@@ -446,4 +448,53 @@ func test_WaitUntilTransactionIsRetiredFromPool_waitsFromCompletion(
 	require.NoError(t, err)
 	err = waitUntilTransactionIsRetiredFromPool(t, client, txCorrectNonce)
 	require.NoError(t, err)
+}
+
+func TestWaitFor_SucceedsWhenPredicateIsSatisfied(t *testing.T) {
+	t.Parallel()
+
+	// right away
+	err := WaitFor(t.Context(), func(ctx context.Context) (bool, error) {
+		return true, nil
+	})
+	require.NoError(t, err, "WaitFor should not error")
+
+	// after some tries
+	count := 0
+	err = WaitFor(t.Context(), func(ctx context.Context) (bool, error) {
+		count++
+		return count == 10, nil
+	})
+	require.NoError(t, err, "WaitFor should not error")
+}
+
+func TestWaitFor_EventuallyTimesOut(t *testing.T) {
+	t.Parallel()
+	// TODO: once golang 1.25 is released, this is a candidate to run using
+	// synctest
+	// For the time being, this parallel routine takes ~100 seconds, which is
+	// less than the longest running integration test. Therefore it should not
+	// affect the total execution time.
+	err := WaitFor(t.Context(), func(ctx context.Context) (bool, error) {
+		return false, nil
+	})
+	require.ErrorContains(t, err, "wait timeout")
+}
+
+func TestWaitFor_ForwardsErrors(t *testing.T) {
+	t.Parallel()
+
+	// right away
+	err := WaitFor(t.Context(), func(ctx context.Context) (bool, error) {
+		return false, fmt.Errorf("some error")
+	})
+	require.ErrorContains(t, err, "some error")
+
+	// after some tries
+	count := 0
+	err = WaitFor(t.Context(), func(ctx context.Context) (bool, error) {
+		count++
+		return count == 10, fmt.Errorf("some error")
+	})
+	require.ErrorContains(t, err, "some error")
 }
