@@ -29,22 +29,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestIntegrationTestNetTools(t *testing.T) {
-
-	t.Run("setTransactionDefaults sets the transaction defaults", func(t *testing.T) {
-		session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
-		t.Parallel()
-		testIntegrationTestNetTools_setTransactionDefaults(t, session)
-	})
-
-	t.Run("waitUntilTransactionIsRetiredFromPool waits from completion", func(t *testing.T) {
-		session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
-		t.Parallel()
-		test_WaitUntilTransactionIsRetiredFromPool_waitsFromCompletion(t, session)
-	})
-}
-
-func testIntegrationTestNetTools_setTransactionDefaults(t *testing.T, session IntegrationTestNetSession) {
+func TestSetTransactionDefaults_CanInitializeAllTransactionTypes(t *testing.T) {
+	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	t.Parallel()
 
 	client, err := session.GetClient()
 	require.NoError(t, err)
@@ -356,7 +343,7 @@ func testIntegrationTestNetTools_setTransactionDefaults(t *testing.T, session In
 	})
 }
 
-func Test_testIntegrationTestNetTools_setTransactionDefaults_IsCorrectAfterUpgradesChange(t *testing.T) {
+func TestSetTransactionDefaults_IsCorrectAfterUpgradesChange(t *testing.T) {
 	net := StartIntegrationTestNetWithJsonGenesis(t)
 
 	client, err := net.GetClient()
@@ -412,8 +399,12 @@ func Test_testIntegrationTestNetTools_setTransactionDefaults_IsCorrectAfterUpgra
 	require.Greater(t, receipt2.GasUsed, receipt.GasUsed)
 }
 
-func test_WaitUntilTransactionIsRetiredFromPool_waitsFromCompletion(
-	t *testing.T, session IntegrationTestNetSession) {
+func TestWaitUntilTransactionIsRetiredFromPool_waitsFromCompletion(t *testing.T) {
+	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	t.Parallel()
+
+	// TODO: this test can benefit from using synctest once it is available
+	// This test expects some large timers to time-out
 
 	client, err := session.GetClient()
 	require.NoError(t, err)
@@ -433,7 +424,7 @@ func test_WaitUntilTransactionIsRetiredFromPool_waitsFromCompletion(
 
 	// Because nonce is set to current nonce + 1, the transaction will not be executed
 	// waiting must time out
-	err = waitUntilTransactionIsRetiredFromPool(t, client, txInvalidNonce)
+	err = WaitUntilTransactionIsRetiredFromPool(t, client, txInvalidNonce)
 	require.ErrorContains(t, err, "wait timeout")
 
 	txData.Nonce = 0
@@ -444,9 +435,9 @@ func test_WaitUntilTransactionIsRetiredFromPool_waitsFromCompletion(
 
 	// Once the valid nonce transaction is sent, both transactions will be executed
 	// and retired from the pool
-	err = waitUntilTransactionIsRetiredFromPool(t, client, txInvalidNonce)
+	err = WaitUntilTransactionIsRetiredFromPool(t, client, txInvalidNonce)
 	require.NoError(t, err)
-	err = waitUntilTransactionIsRetiredFromPool(t, client, txCorrectNonce)
+	err = WaitUntilTransactionIsRetiredFromPool(t, client, txCorrectNonce)
 	require.NoError(t, err)
 }
 

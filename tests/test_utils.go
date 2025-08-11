@@ -179,31 +179,24 @@ func computeMinimumGas(t *testing.T, session IntegrationTestNetSession, tx types
 	return minimumGas
 }
 
-// waitUntilTransactionIsRetiredFromPool waits until the transaction no longer exists in the transaction pool.
+// WaitUntilTransactionIsRetiredFromPool waits until the transaction no longer exists in the transaction pool.
 // Because the transaction pool eviction is asynchronous, executed transactions may remain in the pool
 // for some time after they have been executed.
 // function will eventually time out if the transaction is not retired and an error will be returned.
-func waitUntilTransactionIsRetiredFromPool(t *testing.T, client *PooledEhtClient, tx *types.Transaction) error {
+func WaitUntilTransactionIsRetiredFromPool(t *testing.T, client *PooledEhtClient, tx *types.Transaction) error {
 	t.Helper()
 
 	txHash := tx.Hash()
 	txSender, err := types.Sender(types.NewPragueSigner(tx.ChainId()), tx)
 	require.NoError(t, err, "failed to get transaction sender address")
 
-	startTime := time.Now()
-	timeout := 500 * time.Millisecond
-	for {
-		if time.Since(startTime) > timeout {
-			return fmt.Errorf("transaction %s was not retired from the pool in time", txHash.String())
-		}
+	var content map[string]map[string]map[string]*ethapi.RPCTransaction
+	return WaitFor(t.Context(), func(ctx context.Context) (bool, error) {
 
-		// txpool_content returns a map containing two maps:
-		// - pending: transactions that are pending to be executed
-		// - queued: transactions that are queued to be executed
-		// each of the internal maps group transactions by sender address
-		var content map[string]map[string]map[string]*ethapi.RPCTransaction
 		err := client.Client().Call(&content, "txpool_content")
-		require.NoError(t, err, "failed to get txpool content")
+		if err != nil {
+			return false, err
+		}
 
 		found := false
 		if txs, isPending := content["pending"][txSender.Hex()]; isPending {
@@ -222,13 +215,10 @@ func waitUntilTransactionIsRetiredFromPool(t *testing.T, client *PooledEhtClient
 				}
 			}
 		}
-		if !found {
-			break
-		}
 
-		time.Sleep(10 * time.Millisecond)
-	}
-	return nil
+		return !found, nil
+	})
+
 }
 
 // UpdateNetworkRules sends a transaction to update the network rules.
