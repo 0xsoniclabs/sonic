@@ -17,6 +17,7 @@
 package tests
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"iter"
@@ -178,31 +179,28 @@ func computeMinimumGas(t *testing.T, session IntegrationTestNetSession, tx types
 	return minimumGas
 }
 
-// waitUntilTransactionIsRetiredFromPool waits until the transaction no longer exists in the transaction pool.
+// WaitUntilTransactionIsRetiredFromPool waits until the transaction no longer exists in the transaction pool.
 // Because the transaction pool eviction is asynchronous, executed transactions may remain in the pool
 // for some time after they have been executed.
 // function will eventually time out if the transaction is not retired and an error will be returned.
-func waitUntilTransactionIsRetiredFromPool(t *testing.T, client *PooledEhtClient, tx *types.Transaction) error {
+func WaitUntilTransactionIsRetiredFromPool(t *testing.T, client *PooledEhtClient, tx *types.Transaction) error {
 	t.Helper()
 
 	txHash := tx.Hash()
 	txSender, err := types.Sender(types.NewPragueSigner(tx.ChainId()), tx)
 	require.NoError(t, err, "failed to get transaction sender address")
 
-	startTime := time.Now()
-	timeout := 500 * time.Millisecond
-	for {
-		if time.Since(startTime) > timeout {
-			return fmt.Errorf("transaction %s was not retired from the pool in time", txHash.String())
-		}
+	// txpool_content returns a map containing two maps:
+	// - pending: transactions that are pending to be executed
+	// - queued: transactions that are queued to be executed
+	// each of the internal maps group transactions by sender address
+	var content map[string]map[string]map[string]*ethapi.RPCTransaction
+	return WaitFor(t.Context(), func(ctx context.Context) (bool, error) {
 
-		// txpool_content returns a map containing two maps:
-		// - pending: transactions that are pending to be executed
-		// - queued: transactions that are queued to be executed
-		// each of the internal maps group transactions by sender address
-		var content map[string]map[string]map[string]*ethapi.RPCTransaction
 		err := client.Client().Call(&content, "txpool_content")
-		require.NoError(t, err, "failed to get txpool content")
+		if err != nil {
+			return false, err
+		}
 
 		found := false
 		if txs, isPending := content["pending"][txSender.Hex()]; isPending {
@@ -221,13 +219,10 @@ func waitUntilTransactionIsRetiredFromPool(t *testing.T, client *PooledEhtClient
 				}
 			}
 		}
-		if !found {
-			break
-		}
 
-		time.Sleep(10 * time.Millisecond)
-	}
-	return nil
+		return !found, nil
+	})
+
 }
 
 // UpdateNetworkRules sends a transaction to update the network rules.
@@ -262,17 +257,17 @@ func GetNetworkRules(t *testing.T, net IntegrationTestNetSession) opera.Rules {
 	require.NoError(err)
 	defer client.Close()
 
-	for range 10 {
-		var rules opera.Rules
+	var rules opera.Rules
+	err = WaitFor(t.Context(), func(ctx context.Context) (bool, error) {
 		err = client.Client().Call(&rules, "eth_getRules", "latest")
-		require.NoError(err)
-		if len(rules.Name) > 0 {
-			return rules
+		if err != nil {
+			return false, err
 		}
-	}
+		return len(rules.Name) > 0, nil
+	})
 
-	t.Fatal("Failed to retrieve network rules after 10 attempts")
-	return opera.Rules{}
+	require.NoError(err, "failed to get network rules")
+	return rules
 }
 
 func GetEpochOfBlock(t *testing.T, client *PooledEhtClient, blockNumber int) int {
@@ -350,6 +345,42 @@ func _cartesianProductRecursion[T any](current []T, elements [][]T, callback fun
 	return true
 }
 
+// WaitFor repeatedly calls the predicate function until it returns true, it errors
+// or the timeout is reached.
+//
+// The predicate function receives a context (to forward expiration into internal
+// calls) and returns a found boolean and an error (if any).
+// - return (false, nil) when the stopping condition is not satisfied
+// - return (false, err) when the predicate function encountered an error
+// - return (true, nil) when the stopping condition is satisfied
+//
+// Total wait time is hard-coded to a very generous 100 seconds, this is to allow
+// tests with -race not to timeout because their very slow progress. This value is
+// arbitrary and was selected by the previous version of this algorithm.
+func WaitFor(ctx context.Context, predicate func(context.Context) (bool, error)) error {
+
+	timedContext, cancel := context.WithTimeout(ctx, 100*time.Second)
+	defer cancel()
+
+	// implement some backoff strategy: sleeps get longer the longer it
+	// takes to receive the event
+	backoff := 5 * time.Millisecond
+
+	for {
+		ok, err := predicate(timedContext)
+		if ok || err != nil {
+			return err
+		}
+		select {
+		case <-timedContext.Done():
+			return fmt.Errorf("wait timeout")
+		case <-time.After(backoff):
+			// The predicate was not satisfied, backoff and try again.
+			backoff = backoff * 2
+		}
+	}
+}
+
 // AdvanceEpochAndWaitForBlocks sends a transaction to advance to the next epoch.
 // It also waits until the new epoch is really reached and the next two blocks are produced.
 // It is useful to test a situation when the rule change is applied to the next block after the epoch change.
@@ -358,8 +389,7 @@ func AdvanceEpochAndWaitForBlocks(t *testing.T, net *IntegrationTestNet) {
 
 	require := require.New(t)
 
-	err := net.AdvanceEpoch(1)
-	require.NoError(err)
+	net.AdvanceEpoch(t, 1)
 
 	client, err := net.GetClient()
 	require.NoError(err)
@@ -370,11 +400,12 @@ func AdvanceEpochAndWaitForBlocks(t *testing.T, net *IntegrationTestNet) {
 
 	// wait the next two blocks as some rules (such as min base fee) are applied
 	// to the next block after the epoch change becomes effective
-	for {
+	err = WaitFor(t.Context(), func(ctx context.Context) (bool, error) {
 		newBlock, err := client.BlockByNumber(t.Context(), nil)
-		require.NoError(err)
-		if newBlock.Number().Int64() > currentBlock.Number().Int64()+1 {
-			break
+		if err != nil {
+			return false, err
 		}
-	}
+		return newBlock.Number().Int64() > currentBlock.Number().Int64()+1, nil
+	})
+	require.NoError(err, "failed to wait for the next two blocks after epoch change")
 }

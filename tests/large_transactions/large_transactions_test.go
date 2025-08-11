@@ -155,7 +155,7 @@ func testLargeTransactionLoadTest(
 	modified.Economy.LongGasPower = modified.Economy.ShortGasPower
 	modified.Emitter.Interval = 200_000_000 // low a bit down to provoke larger events
 	tests.UpdateNetworkRules(t, net, modified)
-	require.NoError(net.AdvanceEpoch(1))
+	net.AdvanceEpoch(t, 1)
 
 	// Check that the modification was applied.
 	current = tests.GetNetworkRules(t, net)

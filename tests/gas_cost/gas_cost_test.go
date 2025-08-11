@@ -524,7 +524,7 @@ func TestExcessGasCharges_DisabledInSingleProposerModeInNewAndHistoricRuns(t *te
 			"SingleProposerBlockFormation": true,
 		},
 	})
-	require.NoError(net.AdvanceEpoch(1))
+	net.AdvanceEpoch(t, 1)
 
 	receipt, err = net.Run(types.MustSignNewTx(
 		account.PrivateKey, signer,
