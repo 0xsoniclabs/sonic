@@ -21,7 +21,9 @@ import (
 	"fmt"
 	"math/big"
 	"slices"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/0xsoniclabs/carmen/go/carmen"
 	"github.com/0xsoniclabs/carmen/go/common/immutable"
@@ -405,38 +407,45 @@ func testHeaders_StateRootsMatchActualStateRoots(t *testing.T, headers []*types.
 		// root we see in the database. To get access to the database, we request
 		// a witness proof for an account at the given block. From this proof we
 		// we have a list of state-root candidates which we can test for.
-		want, err := getStateRoot(client, int(header.Number.Int64()))
-		require.NoError(err, "failed to get witness proof for block %d", i)
+		want := getStateRoot(t, client, int(header.Number.Int64()))
 		got := header.Root
 		require.Equal(want, got, "state root mismatch for block %d", i)
 	}
 }
 
-func getStateRoot(client *tests.PooledEhtClient, blockNumber int) (common.Hash, error) {
+func getStateRoot(t *testing.T, client *tests.PooledEhtClient, blockNumber int) common.Hash {
 	var result struct {
 		AccountProof []string
 	}
-	err := client.Client().Call(
-		&result,
-		"eth_getProof",
-		fmt.Sprintf("%v", common.Address{}),
-		[]string{},
-		fmt.Sprintf("0x%x", blockNumber),
-	)
-	if err != nil {
-		return common.Hash{}, fmt.Errorf("failed to get witness proof; %v", err)
+	gotProof := false
+	maxRetries := 10
+	retry := 0
+	for !gotProof || retry >= maxRetries {
+		err := client.Client().Call(
+			&result,
+			"eth_getProof",
+			fmt.Sprintf("%v", common.Address{}),
+			[]string{},
+			fmt.Sprintf("0x%x", blockNumber),
+		)
+
+		if err != nil && strings.Contains(err.Error(), "not present in the archive") {
+			// wait a bit to give the DB a chance to catch up
+			time.Sleep(100 * time.Millisecond)
+			retry++
+			continue
+		}
+		require.NoError(t, err, "failed to get witness proof")
+		gotProof = true
 	}
 
 	// The hash of the first element of the account proof is the state root.
-	if len(result.AccountProof) == 0 {
-		return common.Hash{}, fmt.Errorf("no account proof found")
-	}
+	require.NotEqual(t, 0, len(result.AccountProof), "no account proof found")
 
 	data, err := hexutil.Decode(result.AccountProof[0])
-	if err != nil {
-		return common.Hash{}, err
-	}
-	return common.BytesToHash(crypto.Keccak256(data)), nil
+	require.NoError(t, err, "failed to decode account proof element")
+
+	return common.BytesToHash(crypto.Keccak256(data))
 }
 
 func testHeaders_SystemContractsHaveNonZeroNonce(t *testing.T, headers []*types.Header, client *tests.PooledEhtClient) {
