@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
-package tests
+package pacing_of_empty_blocks
 
 import (
 	"math/big"
@@ -23,6 +23,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/stretchr/testify/require"
 )
 
@@ -56,17 +57,17 @@ func testPacingOfEmptyBlocks(
 	upgrades opera.Upgrades,
 ) {
 	require := require.New(t)
-	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
+	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
 		Upgrades: &upgrades,
 	})
 
 	maxEmptyInterval := 4 * time.Second
 
-	rules := GetNetworkRules(t, net)
+	rules := tests.GetNetworkRules(t, net)
 	rules.Blocks.MaxEmptyBlockSkipPeriod = inter.Timestamp(maxEmptyInterval)
-	UpdateNetworkRules(t, net, rules)
+	tests.UpdateNetworkRules(t, net, rules)
 
-	rules = GetNetworkRules(t, net)
+	rules = tests.GetNetworkRules(t, net)
 	require.Equal(inter.Timestamp(maxEmptyInterval), rules.Blocks.MaxEmptyBlockSkipPeriod)
 
 	client, err := net.GetClient()
