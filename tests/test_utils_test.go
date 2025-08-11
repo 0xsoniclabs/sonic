@@ -17,7 +17,6 @@
 package tests
 
 import (
-	"fmt"
 	"math/big"
 	"testing"
 
@@ -387,8 +386,7 @@ func Test_testIntegrationTestNetTools_setTransactionDefaults_IsCorrectAfterUpgra
 		Upgrades: struct{ Allegro bool }{Allegro: true},
 	}
 	UpdateNetworkRules(t, net, rulesDiff)
-	err = net.AdvanceEpoch(1)
-	require.NoError(t, err)
+	net.AdvanceEpoch(t, 1)
 	AdvanceEpochAndWaitForBlocks(t, net)
 
 	// Wait until tx pool updates
@@ -434,7 +432,7 @@ func test_WaitUntilTransactionIsRetiredFromPool_waitsFromCompletion(
 	// Because nonce is set to current nonce + 1, the transaction will not be executed
 	// waiting must time out
 	err = waitUntilTransactionIsRetiredFromPool(t, client, txInvalidNonce)
-	require.ErrorContains(t, err, fmt.Sprintf("transaction %s was not retired from the pool in time", txInvalidNonce.Hash().String()))
+	require.ErrorContains(t, err, "wait timeout")
 
 	txData.Nonce = 0
 	txCorrectNonce := SignTransaction(t, chainId, txData, account)

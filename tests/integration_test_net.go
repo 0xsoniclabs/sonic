@@ -761,7 +761,7 @@ func (n *IntegrationTestNet) SpawnSession(t *testing.T) IntegrationTestNetSessio
 // AdvanceEpoch trigger the sealing of an epoch and the epoch number to progress by the given number.
 // The function blocks until the final epoch has been reached. This method can only be called
 // on a validator account.
-func (s *Session) AdvanceEpoch(epochs int) error {
+func (s *Session) AdvanceEpoch(t testing.TB, epochs int) {
 	client, err := s.GetClient()
 	if err != nil {
 		return fmt.Errorf("failed to connect to the client: %w", err)

@@ -179,8 +179,7 @@ func TestIntegrationTestNet_AdvanceEpoch(t *testing.T) {
 	err = client.Client().Call(&epochBefore, "eth_currentEpoch")
 	require.NoError(t, err)
 
-	err = net.AdvanceEpoch(13)
-	require.NoError(t, err)
+	net.AdvanceEpoch(t, 13)
 
 	var epochAfter hexutil.Uint64
 	err = client.Client().Call(&epochAfter, "eth_currentEpoch")

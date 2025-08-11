@@ -129,7 +129,7 @@ func testSingleProposerProtocol_CanProcessTransactions(
 		// processing and the epoch change. Thus, the first epoch will run for
 		// EpochLength/2 rounds, and the rest for EpochLength rounds.
 		if round%EpochLength == EpochLength/2 {
-			require.NoError(net.AdvanceEpoch(1))
+			net.AdvanceEpoch(t, 1)
 		}
 	}
 
@@ -218,7 +218,7 @@ func testSingleProposerProtocol_CanBeEnabledAndDisabled(
 			require.Equal(step.versionBefore, getUsedEventVersion(t, client))
 
 			// Advance the epoch by one, enabling the single-proposer protocol.
-			require.NoError(net.AdvanceEpoch(1))
+			net.AdvanceEpoch(t, 1)
 
 			// Check that transactions can still be processed after the epoch change.
 			for range 5 {
