@@ -350,6 +350,9 @@ func _cartesianProductRecursion[T any](current []T, elements [][]T, callback fun
 //
 // The predicate function receives a context (to forward expiration into internal
 // calls) and returns a found boolean and an error (if any).
+// - return (false, nil) when the stopping condition is not satisfied
+// - return (false, err) when the predicate function encountered an error
+// - return (true, nil) when the stopping condition is satisfied
 //
 // Total wait time is hard-coded to a very generous 100 seconds, this is to allow
 // tests with -race not to timeout because their very slow progress. This value is
