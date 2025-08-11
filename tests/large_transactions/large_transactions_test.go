@@ -17,7 +17,6 @@
 package tests
 
 import (
-	"fmt"
 	"math/big"
 	"slices"
 	"testing"
@@ -31,6 +30,8 @@ import (
 )
 
 func TestLargeTransactions_CanHandleLargeTransactions(t *testing.T) {
+	t.Parallel()
+
 	require := require.New(t)
 	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
 		Upgrades: tests.AsPointer(opera.GetAllegroUpgrades()),
@@ -97,6 +98,7 @@ func TestLargeTransactions_CanHandleLargeTransactions(t *testing.T) {
 }
 
 func TestLargeTransactions_LargeTransactionLoadTest(t *testing.T) {
+	t.Parallel()
 
 	if tests.IsDataRaceDetectionEnabled() {
 		t.Skip(`Due to the concurrency requirements of this test, 
@@ -114,13 +116,19 @@ func TestLargeTransactions_LargeTransactionLoadTest(t *testing.T) {
 	}
 
 	for name, upgrades := range hardForks {
-		for mode, singleProposer := range modes {
-			t.Run(fmt.Sprintf("%s/%s", name, mode), func(t *testing.T) {
-				effectiveUpgrades := upgrades
-				effectiveUpgrades.SingleProposerBlockFormation = singleProposer
-				testLargeTransactionLoadTest(t, &effectiveUpgrades)
-			})
-		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			for mode, singleProposer := range modes {
+				t.Run(mode, func(t *testing.T) {
+					t.Parallel()
+
+					effectiveUpgrades := upgrades
+					effectiveUpgrades.SingleProposerBlockFormation = singleProposer
+					testLargeTransactionLoadTest(t, &effectiveUpgrades)
+				})
+			}
+		})
 	}
 }
 
