@@ -74,7 +74,7 @@ func TestRpcReplay_IsConsistentWithUpgradesAtBlockHeight(t *testing.T) {
 	UpdateNetworkRules(t, net, rulesDiff)
 	err = net.AdvanceEpoch(1)
 	require.NoError(t, err)
-	advanceEpochAndWaitForBlocks(t, net)
+	AdvanceEpochAndWaitForBlocks(t, net)
 
 	tx2 := SignTransaction(t, net.GetChainId(),
 		SetTransactionDefaults(

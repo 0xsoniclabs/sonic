@@ -349,3 +349,32 @@ func _cartesianProductRecursion[T any](current []T, elements [][]T, callback fun
 	}
 	return true
 }
+
+// AdvanceEpochAndWaitForBlocks sends a transaction to advance to the next epoch.
+// It also waits until the new epoch is really reached and the next two blocks are produced.
+// It is useful to test a situation when the rule change is applied to the next block after the epoch change.
+func AdvanceEpochAndWaitForBlocks(t *testing.T, net *IntegrationTestNet) {
+	t.Helper()
+
+	require := require.New(t)
+
+	err := net.AdvanceEpoch(1)
+	require.NoError(err)
+
+	client, err := net.GetClient()
+	require.NoError(err)
+	defer client.Close()
+
+	currentBlock, err := client.BlockByNumber(t.Context(), nil)
+	require.NoError(err)
+
+	// wait the next two blocks as some rules (such as min base fee) are applied
+	// to the next block after the epoch change becomes effective
+	for {
+		newBlock, err := client.BlockByNumber(t.Context(), nil)
+		require.NoError(err)
+		if newBlock.Number().Int64() > currentBlock.Number().Int64()+1 {
+			break
+		}
+	}
+}

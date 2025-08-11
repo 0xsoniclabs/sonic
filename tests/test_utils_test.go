@@ -389,7 +389,7 @@ func Test_testIntegrationTestNetTools_setTransactionDefaults_IsCorrectAfterUpgra
 	UpdateNetworkRules(t, net, rulesDiff)
 	err = net.AdvanceEpoch(1)
 	require.NoError(t, err)
-	advanceEpochAndWaitForBlocks(t, net)
+	AdvanceEpochAndWaitForBlocks(t, net)
 
 	// Wait until tx pool updates
 	tx2 := SignTransaction(t, net.GetChainId(),
