@@ -18,12 +18,12 @@ package block_header
 
 import (
 	"cmp"
+	"context"
 	"fmt"
 	"math/big"
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/0xsoniclabs/carmen/go/carmen"
 	"github.com/0xsoniclabs/carmen/go/common/immutable"
@@ -417,10 +417,8 @@ func getStateRoot(t *testing.T, client *tests.PooledEhtClient, blockNumber int) 
 	var result struct {
 		AccountProof []string
 	}
-	gotProof := false
-	maxRetries := 10
-	retry := 0
-	for !gotProof || retry >= maxRetries {
+
+	err := tests.WaitFor(context.Background(), func(ctx context.Context) (bool, error) {
 		err := client.Client().Call(
 			&result,
 			"eth_getProof",
@@ -428,16 +426,17 @@ func getStateRoot(t *testing.T, client *tests.PooledEhtClient, blockNumber int) 
 			[]string{},
 			fmt.Sprintf("0x%x", blockNumber),
 		)
-
-		if err != nil && strings.Contains(err.Error(), "not present in the archive") {
+		if err != nil && strings.Contains(err.Error(), "not found") {
 			// wait a bit to give the DB a chance to catch up
-			time.Sleep(100 * time.Millisecond)
-			retry++
-			continue
+			return false, nil
 		}
-		require.NoError(t, err, "failed to get witness proof")
-		gotProof = true
-	}
+		// any other error is considered a failure
+		if err != nil {
+			return false, fmt.Errorf("failed to get witness proof: %w", err)
+		}
+		return true, nil
+	})
+	require.NoError(t, err, "failed to get witness proof")
 
 	// The hash of the first element of the account proof is the state root.
 	require.NotEqual(t, 0, len(result.AccountProof), "no account proof found")
