@@ -17,6 +17,7 @@
 package tests
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"iter"
@@ -262,17 +263,17 @@ func GetNetworkRules(t *testing.T, net IntegrationTestNetSession) opera.Rules {
 	require.NoError(err)
 	defer client.Close()
 
-	for range 10 {
-		var rules opera.Rules
+	var rules opera.Rules
+	err = WaitFor(t.Context(), func(ctx context.Context) (bool, error) {
 		err = client.Client().Call(&rules, "eth_getRules", "latest")
-		require.NoError(err)
-		if len(rules.Name) > 0 {
-			return rules
+		if err != nil {
+			return false, err
 		}
-	}
+		return len(rules.Name) > 0, nil
+	})
 
-	t.Fatal("Failed to retrieve network rules after 10 attempts")
-	return opera.Rules{}
+	require.NoError(err, "failed to get network rules")
+	return rules
 }
 
 func GetEpochOfBlock(t *testing.T, client *PooledEhtClient, blockNumber int) int {
@@ -391,8 +392,7 @@ func AdvanceEpochAndWaitForBlocks(t *testing.T, net *IntegrationTestNet) {
 
 	require := require.New(t)
 
-	err := net.AdvanceEpoch(1)
-	require.NoError(err)
+	net.AdvanceEpoch(t, 1)
 
 	client, err := net.GetClient()
 	require.NoError(err)
@@ -403,11 +403,12 @@ func AdvanceEpochAndWaitForBlocks(t *testing.T, net *IntegrationTestNet) {
 
 	// wait the next two blocks as some rules (such as min base fee) are applied
 	// to the next block after the epoch change becomes effective
-	for {
+	err = WaitFor(t.Context(), func(ctx context.Context) (bool, error) {
 		newBlock, err := client.BlockByNumber(t.Context(), nil)
-		require.NoError(err)
-		if newBlock.Number().Int64() > currentBlock.Number().Int64()+1 {
-			break
+		if err != nil {
+			return false, err
 		}
-	}
+		return newBlock.Number().Int64() > currentBlock.Number().Int64()+1, nil
+	})
+	require.NoError(err, "failed to wait for the next two blocks after epoch change")
 }
