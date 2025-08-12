@@ -34,7 +34,7 @@ sonic-image:
 
 .PHONY: test
 test:
-	GOMEMLIMIT=10GiB go test --timeout 30m ./...
+	go test --timeout 30m ./...
 
 .PHONY: coverage
 coverage:
