@@ -18,9 +18,11 @@ package block_header
 
 import (
 	"cmp"
+	"context"
 	"fmt"
 	"math/big"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/0xsoniclabs/carmen/go/carmen"
@@ -398,6 +400,9 @@ func testHeaders_LastBlockOfEpochContainsSealingTransaction(t *testing.T, header
 
 func testHeaders_StateRootsMatchActualStateRoots(t *testing.T, headers []*types.Header, client *tests.PooledEhtClient) {
 	require := require.New(t)
+	// wait until last block is received.
+	waitForProofOf(t, client, len(headers)-1)
+
 	for i, header := range headers {
 		// The direct way to get the state root of a block would be to request the
 		// block header and extract the state root from it. However, we would like
@@ -405,14 +410,46 @@ func testHeaders_StateRootsMatchActualStateRoots(t *testing.T, headers []*types.
 		// root we see in the database. To get access to the database, we request
 		// a witness proof for an account at the given block. From this proof we
 		// we have a list of state-root candidates which we can test for.
-		want, err := getStateRoot(client, int(header.Number.Int64()))
-		require.NoError(err, "failed to get witness proof for block %d", i)
+		want := getStateRoot(t, client, int(header.Number.Int64()))
 		got := header.Root
 		require.Equal(want, got, "state root mismatch for block %d", i)
 	}
 }
 
-func getStateRoot(client *tests.PooledEhtClient, blockNumber int) (common.Hash, error) {
+func getStateRoot(t *testing.T, client *tests.PooledEhtClient, blockNumber int) common.Hash {
+
+	accountProof, err := getProofFor(t, client, blockNumber)
+	require.NoError(t, err, "failed to get account proof for block %d", blockNumber)
+
+	// The hash of the first element of the account proof is the state root.
+	require.NotEqual(t, 0, len(accountProof), "no account proof found")
+
+	data, err := hexutil.Decode(accountProof[0])
+	require.NoError(t, err, "failed to decode account proof element")
+
+	return common.BytesToHash(crypto.Keccak256(data))
+}
+
+func waitForProofOf(t *testing.T, client *tests.PooledEhtClient, blockNumber int) {
+	err := tests.WaitFor(context.Background(), func(ctx context.Context) (bool, error) {
+		_, err := getProofFor(t, client, blockNumber)
+		if err != nil && strings.Contains(err.Error(), "not found") {
+			// wait a bit to give the DB a chance to catch up
+			return false, nil
+		}
+		// any other error is considered a failure
+		if err != nil {
+			return false, fmt.Errorf("failed to get witness proof: %w", err)
+		}
+		return true, nil
+	})
+	require.NoError(t, err, "failed to get witness proof")
+}
+
+// getProofFor retrieves the account proof for the given block number.
+// This is meant to be a testing only function, hence having a *testing.T
+// unused parameter.
+func getProofFor(_ *testing.T, client *tests.PooledEhtClient, blockNumber int) ([]string, error) {
 	var result struct {
 		AccountProof []string
 	}
@@ -423,20 +460,7 @@ func getStateRoot(client *tests.PooledEhtClient, blockNumber int) (common.Hash, 
 		[]string{},
 		fmt.Sprintf("0x%x", blockNumber),
 	)
-	if err != nil {
-		return common.Hash{}, fmt.Errorf("failed to get witness proof; %v", err)
-	}
-
-	// The hash of the first element of the account proof is the state root.
-	if len(result.AccountProof) == 0 {
-		return common.Hash{}, fmt.Errorf("no account proof found")
-	}
-
-	data, err := hexutil.Decode(result.AccountProof[0])
-	if err != nil {
-		return common.Hash{}, err
-	}
-	return common.BytesToHash(crypto.Keccak256(data)), nil
+	return result.AccountProof, err
 }
 
 func testHeaders_SystemContractsHaveNonZeroNonce(t *testing.T, headers []*types.Header, client *tests.PooledEhtClient) {
