@@ -400,6 +400,9 @@ func testHeaders_LastBlockOfEpochContainsSealingTransaction(t *testing.T, header
 
 func testHeaders_StateRootsMatchActualStateRoots(t *testing.T, headers []*types.Header, client *tests.PooledEhtClient) {
 	require := require.New(t)
+	// wait until last block is received.
+	waitForProofOf(t, client, len(headers)-1)
+
 	for i, header := range headers {
 		// The direct way to get the state root of a block would be to request the
 		// block header and extract the state root from it. However, we would like
@@ -414,18 +417,22 @@ func testHeaders_StateRootsMatchActualStateRoots(t *testing.T, headers []*types.
 }
 
 func getStateRoot(t *testing.T, client *tests.PooledEhtClient, blockNumber int) common.Hash {
-	var result struct {
-		AccountProof []string
-	}
 
+	accountProof, err := getProofFor(t, client, blockNumber)
+	require.NoError(t, err, "failed to get account proof for block %d", blockNumber)
+
+	// The hash of the first element of the account proof is the state root.
+	require.NotEqual(t, 0, len(accountProof), "no account proof found")
+
+	data, err := hexutil.Decode(accountProof[0])
+	require.NoError(t, err, "failed to decode account proof element")
+
+	return common.BytesToHash(crypto.Keccak256(data))
+}
+
+func waitForProofOf(t *testing.T, client *tests.PooledEhtClient, blockNumber int) {
 	err := tests.WaitFor(context.Background(), func(ctx context.Context) (bool, error) {
-		err := client.Client().Call(
-			&result,
-			"eth_getProof",
-			fmt.Sprintf("%v", common.Address{}),
-			[]string{},
-			fmt.Sprintf("0x%x", blockNumber),
-		)
+		_, err := getProofFor(t, client, blockNumber)
 		if err != nil && strings.Contains(err.Error(), "not found") {
 			// wait a bit to give the DB a chance to catch up
 			return false, nil
@@ -437,14 +444,23 @@ func getStateRoot(t *testing.T, client *tests.PooledEhtClient, blockNumber int) 
 		return true, nil
 	})
 	require.NoError(t, err, "failed to get witness proof")
+}
 
-	// The hash of the first element of the account proof is the state root.
-	require.NotEqual(t, 0, len(result.AccountProof), "no account proof found")
-
-	data, err := hexutil.Decode(result.AccountProof[0])
-	require.NoError(t, err, "failed to decode account proof element")
-
-	return common.BytesToHash(crypto.Keccak256(data))
+// getProofFor retrieves the account proof for the given block number.
+// This is meant to be a testing only function, hence having a *testing.T
+// unused parameter.
+func getProofFor(_ *testing.T, client *tests.PooledEhtClient, blockNumber int) ([]string, error) {
+	var result struct {
+		AccountProof []string
+	}
+	err := client.Client().Call(
+		&result,
+		"eth_getProof",
+		fmt.Sprintf("%v", common.Address{}),
+		[]string{},
+		fmt.Sprintf("0x%x", blockNumber),
+	)
+	return result.AccountProof, err
 }
 
 func testHeaders_SystemContractsHaveNonZeroNonce(t *testing.T, headers []*types.Header, client *tests.PooledEhtClient) {
