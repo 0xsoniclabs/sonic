@@ -44,6 +44,7 @@ func TestBlockOverride(t *testing.T) {
 	// Deploy the block override observer contract.
 	_, receipt, err := DeployContract(session, block_override.DeployBlockOverride)
 	require.NoError(err, "failed to deploy contract; %v", err)
+	require.Equal(types.ReceiptStatusSuccessful, receipt.Status, "Deployment Unsuccessful")
 	contractAddress := receipt.ContractAddress
 
 	client, err := session.GetClient()
