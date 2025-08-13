@@ -101,12 +101,12 @@ func makeFuzzedHandler(t *testing.T) (*handler, error) {
 		heavyCheckReader    HeavyCheckReader
 		gasPowerCheckReader GasPowerCheckReader
 		proposalChecker     proposalCheckReader
-	// TODO: init
 	)
 
 	mu := new(sync.RWMutex)
 
-	txSigner := gsignercache.Wrap(types.LatestSignerForChainID(big.NewInt(1234)))
+	chainId := big.NewInt(1234)
+	txSigner := gsignercache.Wrap(types.LatestSignerForChainID(chainId))
 	config := DefaultConfig(cachescale.Identity)
 	checkers := makeCheckers(config.HeavyCheck, txSigner, &heavyCheckReader, &gasPowerCheckReader, &proposalChecker, store)
 
