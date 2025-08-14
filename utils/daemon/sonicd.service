@@ -1,0 +1,15 @@
+[Unit]
+Description=sonicd-test
+
+[Service]
+Type=notify
+WatchdogSec=30s
+Restart=on-failure
+
+ExecStart=%h/.local/bin/sonicd --datadir %S/sonicd-test --fakenet 1/1 --statedb.checkpointinterval 7
+StateDirectory=sonicd-test
+
+ExecStopPost=%h/.local/bin/sonictool --datadir  %S/sonicd-test  heal
+
+[Install]
+WantedBy=multi-user.target

@@ -30,6 +30,8 @@ import (
 	"github.com/0xsoniclabs/sonic/cmd/sonicd/metrics"
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/config/flags"
+	"github.com/0xsoniclabs/sonic/debug"
+	"github.com/0xsoniclabs/sonic/utils/daemon"
 	"github.com/0xsoniclabs/sonic/version"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/console/prompt"
@@ -40,8 +42,6 @@ import (
 	"gopkg.in/urfave/cli.v1"
 
 	ethmetrics "github.com/ethereum/go-ethereum/metrics"
-
-	"github.com/0xsoniclabs/sonic/debug"
 
 	// Force-load the tracer engines to trigger registration
 	_ "github.com/ethereum/go-ethereum/eth/tracers/js"
@@ -325,6 +325,10 @@ func lachesisMainInternal(
 		}
 	}
 
+	// From this point on, the service is initialized and normal operation
+	// begins
+	daemon.NotifyReady()
+
 	node.Wait()
 	return nil
 }
@@ -351,6 +355,7 @@ func startNode(ctx *cli.Context, stack *node.Node, stop <-chan bool) error {
 		}
 		done := make(chan struct{})
 		go func() {
+			daemon.NotifyStopping()
 			defer close(done)
 			if err := stack.Close(); err != nil {
 				log.Warn("Error during shutdown", "err", err)

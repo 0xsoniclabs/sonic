@@ -116,6 +116,10 @@ func consensusCallbackBeginBlockFn(
 	sccNode *scc_node.Node,
 ) lachesis.BeginBlockFn {
 	return func(cBlock *lachesis.Block) lachesis.BlockCallbacks {
+
+		// // If blocks are being produced, the system is working
+		// daemon.NotifyHeartbeat()
+
 		if *bootstrapping {
 			// ignore block processing during bootstrapping
 			return lachesis.BlockCallbacks{
