@@ -61,3 +61,14 @@ license-check:
 .PHONY: license-add
 license-add:
 	go run ./scripts/license/add_license_header.go -dir ./
+
+# install
+
+.PHONY: install
+install: all
+install:
+	mkdir -p ~/.local/bin
+	cp build/sonicd ~/.local/bin/
+	cp build/sonictool ~/.local/bin/
+	cp utils/daemon/sonicd.service ~/.config/systemd/user/
+	systemctl --user daemon-reload
