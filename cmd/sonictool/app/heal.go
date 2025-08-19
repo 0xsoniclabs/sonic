@@ -25,6 +25,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 
@@ -51,6 +52,7 @@ func heal(ctx *cli.Context) error {
 	chaindataDir := filepath.Join(dataDir, "chaindata")
 	carmenArchiveDir := filepath.Join(dataDir, "carmen", "archive")
 	carmenLiveDir := filepath.Join(dataDir, "carmen", "live")
+	emitterDir := filepath.Join(dataDir, "emitter")
 
 	archiveInfo, err := os.Stat(carmenArchiveDir)
 	if err != nil || !archiveInfo.IsDir() {
@@ -106,7 +108,34 @@ func heal(ctx *cli.Context) error {
 		return fmt.Errorf("failed to re-create carmen live state from archive; %w", err)
 	}
 
+	log.Info("Removing emitter last epoch caches")
+	if err := healEmitterDb(emitterDir); err != nil {
+		return err
+	}
+
 	log.Info("Healing finished")
+	return nil
+}
+
+func healEmitterDb(emitterDir string) error {
+
+	// Emitter (only in validator mode) keeps last received events from
+	// any other validator. Such events refer to the current epoch and
+	// the healing process will revert to the last completed epoch.
+	// Deleting these files prevents referencing events deleted during
+	// revert and triggers sync.
+
+	files, err := os.ReadDir(emitterDir)
+	if err != nil {
+		return fmt.Errorf("failed to read dir: %w", err)
+	}
+	for _, file := range files {
+		if strings.HasPrefix(file.Name(), "last-") {
+			if err := os.RemoveAll(filepath.Join(emitterDir, file.Name())); err != nil {
+				return fmt.Errorf("failed to remove file: %w", err)
+			}
+		}
+	}
 	return nil
 }
 
