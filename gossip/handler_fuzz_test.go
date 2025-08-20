@@ -14,19 +14,18 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
-//go:build gofuzz
-// +build gofuzz
-
 package gossip
 
 import (
 	"bytes"
 	"errors"
+	"math/big"
 	"math/rand/v2"
 	"sync"
+	"testing"
 
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
-	_ "github.com/dvyukov/go-fuzz/go-fuzz-defs"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/enode"
@@ -39,87 +38,94 @@ import (
 	"github.com/0xsoniclabs/sonic/utils/signers/gsignercache"
 )
 
-const (
-	fuzzHot      int = 1  // if the fuzzer should increase priority of the given input during subsequent fuzzing;
-	fuzzCold     int = -1 // if the input must not be added to corpus even if gives new coverage;
-	fuzzNoMatter int = 0  // otherwise.
-)
+func FuzzGossipHandler(f *testing.F) {
 
-var (
-	fuzzedHandler *handler
-)
-
-func FuzzHandler(data []byte) int {
-	var err error
-	if fuzzedHandler == nil {
-		fuzzedHandler, err = makeFuzzedHandler()
+	// Note: this fuzzer has large memory requirements.
+	// at the time of this message, one iteration requires 1.5 GiB of memory.
+	//
+	// To avoid OOM situations, use -parallel
+	// > go test -fuzz FuzzGossipHandler ./gossip/ -v -parallel=6
+	f.Fuzz(func(t *testing.T, data []byte) {
+		handler, err := makeFuzzedHandler(t)
 		if err != nil {
-			panic(err)
+			t.Fatalf("Failed to create fuzzed handler: %v", err)
 		}
-	}
 
-	msg, err := newFuzzMsg(data)
-	if err != nil {
-		return fuzzCold
-	}
-	input := &fuzzMsgReadWriter{msg}
-	other := &peer{
-		version: ProtocolVersion,
-		Peer:    p2p.NewPeer(randomID(), "fake-node-1", []p2p.Cap{}),
-		rw:      input,
-	}
+		msg, err := newFuzzMsg(data)
+		if err != nil {
+			t.Skip("input data is not a message, skip this run")
+		}
 
-	err = fuzzedHandler.handleMsg(other)
-	if err != nil {
-		return fuzzNoMatter
-	}
+		input := &fuzzMsgReadWriter{msg}
+		other := &peer{
+			version: 1,
+			Peer:    p2p.NewPeer(randomID(), "fake-node-1", []p2p.Cap{}),
+			rw:      input,
+		}
 
-	return fuzzHot
+		// errors are ok, we are fuzzing for crash
+		// therefore we are interested in inputs that can both
+		// be processed or generate an error
+		_ = handler.handleMsg(other)
+	})
 }
 
-func makeFuzzedHandler() (h *handler, err error) {
+func makeFuzzedHandler(t *testing.T) (*handler, error) {
 	const (
 		genesisStakers = 3
 		genesisBalance = 1e18
 		genesisStake   = 2 * 4e6
 	)
 
+	upgrades := opera.GetSonicUpgrades()
+
 	genStore := makefakegenesis.FakeGenesisStore(
 		genesisStakers,
 		utils.ToFtm(genesisBalance),
 		utils.ToFtm(genesisStake),
+		upgrades,
 	)
 	genesis := genStore.Genesis()
 
-	config := DefaultConfig(cachescale.Identity)
-	store, err := NewMemStore()
+	store, err := NewMemStore(t)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	err = store.ApplyGenesis(genesis, statedb.Config{})
+	err = store.ApplyGenesis(genesis)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	t.Cleanup(func() { _ = store.Close() })
 
 	var (
-		network             = opera.FakeNetRules()
 		heavyCheckReader    HeavyCheckReader
 		gasPowerCheckReader GasPowerCheckReader
-		// TODO: init
+		proposalChecker     proposalCheckReader
 	)
 
 	mu := new(sync.RWMutex)
-	feed := new(ServiceFeed)
-	net := store.GetRules()
-	txSigner := gsignercache.Wrap(types.LatestSignerForChainID(net.EvmChainConfig().ChainID))
-	checkers := makeCheckers(config.HeavyCheck, txSigner, &heavyCheckReader, &gasPowerCheckReader, store)
 
-	txpool := evmcore.NewTxPool(evmcore.DefaultTxPoolConfig, network.EvmChainConfig(), &EvmStateReader{
+	chainId := big.NewInt(1234)
+	txSigner := gsignercache.Wrap(types.LatestSignerForChainID(chainId))
+	config := DefaultConfig(cachescale.Identity)
+	checkers := makeCheckers(config.HeavyCheck, txSigner, &heavyCheckReader, &gasPowerCheckReader, &proposalChecker, store)
+
+	feed := new(ServiceFeed)
+	chainconfig := opera.CreateTransientEvmChainConfig(
+		1234,
+		[]opera.UpgradeHeight{{
+			Upgrades: upgrades,
+			Height:   idx.Block(0),
+		}},
+		idx.Block(0),
+	)
+	txpool := evmcore.NewTxPool(evmcore.DefaultTxPoolConfig, chainconfig, &EvmStateReader{
 		ServiceFeed: feed,
 		store:       store,
 	})
+	t.Cleanup(txpool.Stop)
 
-	h, err = newHandler(
+	h, err := newHandler(
 		handlerConfig{
 			config:   config,
 			notifier: feed,
@@ -134,11 +140,12 @@ func makeFuzzedHandler() (h *handler, err error) {
 			},
 		})
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	h.Start(3)
-	return nil
+	t.Cleanup(h.Stop)
+	return h, nil
 }
 
 func randomID() (id enode.ID) {
