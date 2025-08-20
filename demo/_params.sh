@@ -4,14 +4,14 @@ declare -ri N="${N:-3}"
 declare -ri M="${M:-2}"
 declare -r  TAG="${TAG:-latest}"
 
-PORT_BASE=3000
-RPCP_BASE=4000
-WSP_BASE=4500
+export PORT_BASE=3000
+export RPCP_BASE=4000
+export WSP_BASE=4500
 
 attach_and_exec() {
     local i=$1
     local CMD=$2
-    local RPCP=$(($RPCP_BASE+$i))
+    local RPCP=$((RPCP_BASE+i))
 
     for attempt in $(seq 40)
     do
@@ -19,15 +19,12 @@ attach_and_exec() {
         then
             echo "  - attempt ${attempt}: " >&2
         fi
-
-        res=$(../build/sonictool --datadir=tool.datadir cli --exec "${CMD}" http://127.0.0.1:${RPCP} 2> /dev/null)
-        if [ $? -eq 0 ]
+        
+        if res=$(../build/sonictool --datadir=tool.datadir cli --exec "${CMD}" http://127.0.0.1:${RPCP} 2> /dev/null)
         then
-            #echo "success" >&2
-            echo $res
+            echo "$res"
             return 0
         else
-            #echo "wait" >&2
             sleep 1
         fi
     done
