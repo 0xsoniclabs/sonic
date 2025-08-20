@@ -27,7 +27,6 @@ require (
 	github.com/davecgh/go-spew v1.1.1
 	github.com/deckarep/golang-set v1.8.0
 	github.com/docker/docker v27.3.1+incompatible
-	github.com/dvyukov/go-fuzz v0.0.0-20240924070022-e577bee5275c
 	github.com/ethereum/go-ethereum v1.15.0
 	github.com/gballet/go-libpcsclite v0.0.0-20191108122812-4678299bea08
 	github.com/hashicorp/golang-lru v1.0.2
@@ -146,5 +145,3 @@ require (
 replace github.com/ethereum/go-ethereum => github.com/0xsoniclabs/go-ethereum v0.0.0-20250627083633-bbe492095a30
 
 replace github.com/Fantom-foundation/lachesis-base => github.com/Fantom-foundation/lachesis-base-sonic v0.0.0-20250701061954-44075d09185c
-
-replace github.com/dvyukov/go-fuzz => github.com/guzenok/go-fuzz v0.0.0-20210201043429-a8e90a2a4f88
