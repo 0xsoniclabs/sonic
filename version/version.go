@@ -33,7 +33,7 @@ const (
 	// for each release. The main branch is always the next minor version
 	// compared to the latest release branch.
 	Major = 2
-	Minor = 1
+	Minor = 2
 
 	// The patch version, which must only be non-zero for release candidates
 	// and official releases. All development versions must have a patch
