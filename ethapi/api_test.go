@@ -762,7 +762,7 @@ func TestTransactionJSONSerialization(t *testing.T) {
 			index := uint64(0)
 			baseFee := big.NewInt(1234)
 
-			rpcTx := newRPCTransaction(signed, blockHash, blockNumber, index, baseFee)
+			rpcTx := newRPCTransaction(signed, blockHash, blockNumber, index, baseFee, chainId)
 			require.Equal(t, signed.Hash(), rpcTransactionToTransaction(t, rpcTx).Hash())
 
 			encoded, err := json.Marshal(rpcTx)
@@ -833,7 +833,7 @@ func TestNewRPCTransaction_AllTxSignatureAndHashCanBeVerified(t *testing.T) {
 			require.NoError(t, err)
 			signed := signTransaction(t, chainId, tx, key)
 
-			rpcTx := newRPCTransaction(signed, common.Hash{}, 0, 0, big.NewInt(0))
+			rpcTx := newRPCTransaction(signed, common.Hash{}, 0, 0, big.NewInt(0), chainId)
 			require.Equal(t, signed.Hash(), rpcTx.Hash)
 			require.Equal(t, chainId.Int64(), rpcTx.ChainID.ToInt().Int64())
 
@@ -868,7 +868,7 @@ func TestNewRPCTransaction_LegacyTxSignedWithHomesteadCanBeReproducedAndVerified
 	require.Equal(t, int64(0), signed.ChainId().Int64())
 
 	// convert to RPCTransaction
-	rpcTx := newRPCTransaction(signed, common.Hash{}, 0, 0, big.NewInt(0))
+	rpcTx := newRPCTransaction(signed, common.Hash{}, 0, 0, big.NewInt(0), signed.ChainId())
 	require.Equal(t, signed.Hash(), rpcTx.Hash)
 	require.Equal(t, int64(0), rpcTx.ChainID.ToInt().Int64())
 
