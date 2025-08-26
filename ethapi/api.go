@@ -1356,11 +1356,12 @@ func newRPCTransaction(tx *types.Transaction, blockHash common.Hash, blockNumber
 	from, _ := internaltx.Sender(signer, tx)
 
 	// Set the chain id for internal transaction
-	var txChainId *big.Int
+	txChainId := tx.ChainId()
 	if from == (common.Address{}) {
+		// if the sender is the zero address,
+		// this is an internal transaction and chainId
+		// cannot be retrieved from the signature
 		txChainId = chainId
-	} else {
-		txChainId = tx.ChainId()
 	}
 	v, r, s := tx.RawSignatureValues()
 	result := &RPCTransaction{
