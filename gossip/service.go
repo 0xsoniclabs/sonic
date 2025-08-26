@@ -504,8 +504,14 @@ func MakeProtocols(svc *Service, backend *handler, disc enode.Iterator) ([]p2p.P
 				case <-backend.quitSync:
 					return p2p.DiscQuitting
 				default:
+					backend.wgLock.Lock()
 					backend.wg.Add(1)
-					defer backend.wg.Done()
+					backend.wgLock.Unlock()
+					defer func() {
+						backend.wgLock.Lock()
+						backend.wg.Done()
+						backend.wgLock.Unlock()
+					}()
 					return backend.handle(peer)
 				}
 			},

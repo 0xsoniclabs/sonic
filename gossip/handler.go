@@ -160,6 +160,7 @@ type handler struct {
 	// and processing
 	loopsWg sync.WaitGroup
 	wg      sync.WaitGroup
+	wgLock  sync.Mutex
 	peerWG  sync.WaitGroup
 	started sync.WaitGroup
 
