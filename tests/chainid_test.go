@@ -24,6 +24,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/ethapi"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/holiman/uint256"
@@ -51,11 +52,6 @@ func TestChainId(t *testing.T) {
 	t.Run("AcceptsLegacyTxSignedWithHomestead", func(t *testing.T) {
 		t.Parallel()
 		testChainId_AcceptsLegacyTxSignedWithHomestead(t, net, account)
-	})
-
-	t.Run("InternalTransactionHasCorrectChainId", func(t *testing.T) {
-		t.Parallel()
-		testChainId_InternalTransactionHasCorrectChainId(t, net, account)
 	})
 }
 
@@ -189,10 +185,10 @@ func testChainId_AcceptsLegacyTxSignedWithHomestead(
 	require.Equal(t, int64(0), decodedTx.ChainId().Int64())
 }
 
-func testChainId_InternalTransactionHasCorrectChainId(
-	t *testing.T,
-	net *IntegrationTestNet,
-	account *Account) {
+func TestChainId_InternalTransactionHasCorrectChainId(t *testing.T) {
+
+	net := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	t.Parallel()
 
 	client, err := net.GetClient()
 	require.NoError(t, err, "failed to get client")
