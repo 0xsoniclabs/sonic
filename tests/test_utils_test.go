@@ -375,7 +375,6 @@ func TestSetTransactionDefaults_IsCorrectAfterUpgradesChange(t *testing.T) {
 		Upgrades: struct{ Allegro bool }{Allegro: true},
 	}
 	UpdateNetworkRules(t, net, rulesDiff)
-	net.AdvanceEpoch(t, 1)
 	AdvanceEpochAndWaitForBlocks(t, net)
 
 	// Wait until tx pool updates
