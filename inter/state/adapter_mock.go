@@ -562,21 +562,21 @@ func (mr *MockStateDBMockRecorder) Prepare(rules, sender, coinbase, dest, precom
 }
 
 // RecordPostFinalise mocks base method.
-func (m *MockStateDB) RecordPostFinalise(arg0 map[common0.Address]struct{}) {
+func (m *MockStateDB) RecordPostEndTransaction(arg0 map[common0.Address]struct{}) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "RecordPostFinalise", arg0)
+	m.ctrl.Call(m, "RecordPostEndTransaction", arg0)
 }
 
 // RecordPostFinalise indicates an expected call of RecordPostFinalise.
 func (mr *MockStateDBMockRecorder) RecordPostFinalise(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RecordPostFinalise", reflect.TypeOf((*MockStateDB)(nil).RecordPostFinalise), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RecordPostEndTransaction", reflect.TypeOf((*MockStateDB)(nil).RecordPostEndTransaction), arg0)
 }
 
 // RecordPreFinalise mocks base method.
-func (m *MockStateDB) RecordPreFinalise() map[common0.Address]struct{} {
+func (m *MockStateDB) RecordPreEndTransaction() map[common0.Address]struct{} {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RecordPreFinalise")
+	ret := m.ctrl.Call(m, "RecordPreEndTransaction")
 	ret0, _ := ret[0].(map[common0.Address]struct{})
 	return ret0
 }
@@ -584,7 +584,7 @@ func (m *MockStateDB) RecordPreFinalise() map[common0.Address]struct{} {
 // RecordPreFinalise indicates an expected call of RecordPreFinalise.
 func (mr *MockStateDBMockRecorder) RecordPreFinalise() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RecordPreFinalise", reflect.TypeOf((*MockStateDB)(nil).RecordPreFinalise))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RecordPreEndTransaction", reflect.TypeOf((*MockStateDB)(nil).RecordPreEndTransaction))
 }
 
 // Release mocks base method.

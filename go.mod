@@ -20,7 +20,7 @@ go 1.24.0
 
 require (
 	github.com/0xsoniclabs/carmen/go v0.0.0-20250708101910-3666ec34654c
-	github.com/0xsoniclabs/substate v0.0.0-20250603114206-1e8e868c7657
+	github.com/0xsoniclabs/substate v0.0.0-20250822061647-ed560155fc5a
 	github.com/0xsoniclabs/tosca v0.0.0-20250708111444-f020a558b11e
 	github.com/Fantom-foundation/lachesis-base v0.0.0-20240116072301-a75735c4ef00
 	github.com/cespare/cp v1.1.1

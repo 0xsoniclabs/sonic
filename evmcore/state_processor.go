@@ -100,9 +100,9 @@ func (p *StateProcessor) Process(
 
 	// record-replay
 	if innerSubstate.OldBlockNumber != block.NumberU64() {
-		err = innerSubstate.WriteUnprocessedSkippedTxToDatabase()
+		err := innerSubstate.WriteUnprocessedSkippedTxToDatabase()
 		if err != nil {
-			return nil, nil, nil, fmt.Errorf("could not write skipped tx states to file %d [%v]: %w", block.NumberU64(), innerSubstate.TxLastIndex, err)
+			panic(fmt.Errorf("could not write skipped tx states to file %d [%v]: %w", block.NumberU64(), innerSubstate.TxLastIndex, err))
 		}
 
 		innerSubstate.TxLastIndex = 0
@@ -127,15 +127,15 @@ func (p *StateProcessor) Process(
 			if recordSubstate.RecordReplay && errors.Is(err, core.ErrMaxInitCodeSizeExceeded) {
 				//max initcode size exceeded: code size
 				// Finalize didn't happen load preAlloc and postAlloc without calling it
-				dirtyAddresses := statedb.RecordPreFinalise()
-				statedb.RecordPostFinalise(dirtyAddresses)
+				dirtyAddresses := statedb.RecordPreEndTransaction()
+				statedb.RecordPostEndTransaction(dirtyAddresses)
 
 				post := statedb.GetSubstatePostAlloc()
 
 				// write block, txIndex, pre, post to txt file
 				err = innerSubstate.RegisterSkippedTx(blockNumber.Uint64(), innerSubstate.TxLastIndex, post)
 				if err != nil {
-					return nil, nil, nil, fmt.Errorf("could not write skipped tx state to file %d [%v]: %w", i, tx.Hash().Hex(), err)
+					panic(fmt.Errorf("could not write skipped tx state to file %d [%v]: %w", i, tx.Hash().Hex(), err))
 				}
 			}
 
@@ -156,9 +156,9 @@ func (p *StateProcessor) Process(
 				blockNumber.Uint64(),
 				innerSubstate.TxLastIndex,
 			)
-			err := innerSubstate.PutSubstate(recording)
+			err = innerSubstate.PutSubstate(recording)
 			if err != nil {
-				return nil, nil, nil, fmt.Errorf("could not put substate %d [%v]: %w", i, tx.Hash().Hex(), err)
+				panic(fmt.Errorf("could not put substate %d [%v]: %w", i, tx.Hash().Hex(), err))
 			}
 		}
 

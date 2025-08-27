@@ -430,10 +430,10 @@ func (c *CarmenStateDB) GetSubstateBlockHashes() map[uint64]common.Hash {
 }
 
 // record-replay
-func (c *CarmenStateDB) RecordPreFinalise() map[cc.Address]struct{} {
+func (c *CarmenStateDB) RecordPreEndTransaction() map[cc.Address]struct{} {
 	return nil
 }
 
 // record-replay
-func (c *CarmenStateDB) RecordPostFinalise(map[cc.Address]struct{}) {
+func (c *CarmenStateDB) RecordPostEndTransaction(map[cc.Address]struct{}) {
 }

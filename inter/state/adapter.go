@@ -50,6 +50,6 @@ type StateDB interface {
 	GetSubstatePreAlloc() substate.WorldState
 	GetSubstatePostAlloc() substate.WorldState
 	GetSubstateBlockHashes() map[uint64]common.Hash
-	RecordPreFinalise() map[cc.Address]struct{}
-	RecordPostFinalise(map[cc.Address]struct{})
+	RecordPreEndTransaction() map[cc.Address]struct{}
+	RecordPostEndTransaction(map[cc.Address]struct{})
 }

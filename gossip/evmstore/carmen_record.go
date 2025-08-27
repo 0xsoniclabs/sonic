@@ -1,3 +1,19 @@
+// Copyright 2025 Sonic Operations Ltd
+// This file is part of the Sonic Client
+//
+// Sonic is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Sonic is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with Sonic. If not, see <http://www.gnu.org/licenses/>.
+
 package evmstore
 
 import (
@@ -35,19 +51,16 @@ func (c *RecordCarmenStateDB) Empty(addr common.Address) bool {
 }
 
 func (c *RecordCarmenStateDB) GetBalance(addr common.Address) *uint256.Int {
-
 	c.substateRecordAccess(addr)
 	return c.CarmenStateDB.GetBalance(addr)
 }
 
 func (c *RecordCarmenStateDB) GetNonce(addr common.Address) uint64 {
-
 	c.substateRecordAccess(addr)
 	return c.CarmenStateDB.GetNonce(addr)
 }
 
 func (c *RecordCarmenStateDB) GetCode(addr common.Address) []byte {
-
 	c.substateRecordAccess(addr)
 	return c.CarmenStateDB.GetCode(addr)
 }
@@ -94,14 +107,14 @@ func (c *RecordCarmenStateDB) HasSelfDestructed(addr common.Address) bool {
 	return c.CarmenStateDB.HasSelfDestructed(addr)
 }
 
-func (c *RecordCarmenStateDB) AddBalance(addr common.Address, value *uint256.Int, reason tracing.BalanceChangeReason) {
+func (c *RecordCarmenStateDB) AddBalance(addr common.Address, value *uint256.Int, reason tracing.BalanceChangeReason) uint256.Int {
 	c.substateRecordAccess(addr)
-	c.CarmenStateDB.AddBalance(addr, value, reason)
+	return c.CarmenStateDB.AddBalance(addr, value, reason)
 }
 
-func (c *RecordCarmenStateDB) SubBalance(addr common.Address, value *uint256.Int, reason tracing.BalanceChangeReason) {
+func (c *RecordCarmenStateDB) SubBalance(addr common.Address, value *uint256.Int, reason tracing.BalanceChangeReason) uint256.Int {
 	c.substateRecordAccess(addr)
-	c.CarmenStateDB.SubBalance(addr, value, reason)
+	return c.CarmenStateDB.SubBalance(addr, value, reason)
 }
 
 func (c *RecordCarmenStateDB) SetBalance(addr common.Address, balance *uint256.Int) {
@@ -109,20 +122,20 @@ func (c *RecordCarmenStateDB) SetBalance(addr common.Address, balance *uint256.I
 	c.CarmenStateDB.SetBalance(addr, balance)
 }
 
-func (c *RecordCarmenStateDB) SetNonce(addr common.Address, nonce uint64) {
+func (c *RecordCarmenStateDB) SetNonce(addr common.Address, nonce uint64, reason tracing.NonceChangeReason) {
 	c.substateRecordAccess(addr)
-	c.CarmenStateDB.SetNonce(addr, nonce)
+	c.CarmenStateDB.SetNonce(addr, nonce, reason)
 }
 
-func (c *RecordCarmenStateDB) SetCode(addr common.Address, code []byte) {
+func (c *RecordCarmenStateDB) SetCode(addr common.Address, code []byte) []byte {
 	c.substateRecordAccess(addr)
-	c.CarmenStateDB.SetCode(addr, code)
+	return c.CarmenStateDB.SetCode(addr, code)
 }
 
-func (c *RecordCarmenStateDB) SetState(addr common.Address, key, value common.Hash) {
+func (c *RecordCarmenStateDB) SetState(addr common.Address, key, value common.Hash) common.Hash {
 	c.substateRecordAccess(addr)
 	c.substateStorageAccess(addr, key, value)
-	c.CarmenStateDB.SetState(addr, key, value)
+	return c.CarmenStateDB.SetState(addr, key, value)
 }
 
 func (c *RecordCarmenStateDB) SetTransientState(addr common.Address, key, value common.Hash) {
@@ -138,14 +151,14 @@ func (c *RecordCarmenStateDB) SetStorage(addr common.Address, storage map[common
 	c.CarmenStateDB.SetStorage(addr, storage)
 }
 
-func (c *RecordCarmenStateDB) SelfDestruct(addr common.Address) {
+func (c *RecordCarmenStateDB) SelfDestruct(addr common.Address) uint256.Int {
 	c.substateRecordAccess(addr)
-	c.CarmenStateDB.SelfDestruct(addr)
+	return c.CarmenStateDB.SelfDestruct(addr)
 }
 
-func (c *RecordCarmenStateDB) Selfdestruct6780(addr common.Address) {
+func (c *RecordCarmenStateDB) SelfDestruct6780(addr common.Address) (uint256.Int, bool) {
 	c.substateRecordAccess(addr)
-	c.CarmenStateDB.Selfdestruct6780(addr)
+	return c.CarmenStateDB.SelfDestruct6780(addr)
 }
 
 func (c *RecordCarmenStateDB) CreateAccount(addr common.Address) {
@@ -168,12 +181,12 @@ func (c *RecordCarmenStateDB) Copy() state.StateDB {
 	}
 }
 
-func (c *RecordCarmenStateDB) Finalise() {
-	dirtyAddresses := c.RecordPreFinalise()
+func (c *RecordCarmenStateDB) EndTransaction() {
+	dirtyAddresses := c.RecordPreEndTransaction()
 
-	c.CarmenStateDB.Finalise()
+	c.CarmenStateDB.EndTransaction()
 
-	c.RecordPostFinalise(dirtyAddresses)
+	c.RecordPostEndTransaction(dirtyAddresses)
 }
 
 func (c *RecordCarmenStateDB) SetTxContext(txHash common.Hash, txIndex int) {
@@ -224,7 +237,7 @@ func (c *RecordCarmenStateDB) substateStorageAccess(addr common.Address, key com
 	}
 }
 
-func (c *RecordCarmenStateDB) RecordPreFinalise() map[cc.Address]struct{} {
+func (c *RecordCarmenStateDB) RecordPreEndTransaction() map[cc.Address]struct{} {
 	dirtyAddresses := make(map[cc.Address]struct{})
 
 	// copy original storage values to Prestate and Poststate
@@ -258,7 +271,7 @@ func (c *RecordCarmenStateDB) RecordPreFinalise() map[cc.Address]struct{} {
 	return dirtyAddresses
 }
 
-func (c *RecordCarmenStateDB) RecordPostFinalise(dirtyAddresses map[cc.Address]struct{}) {
+func (c *RecordCarmenStateDB) RecordPostEndTransaction(dirtyAddresses map[cc.Address]struct{}) {
 	for address := range dirtyAddresses {
 		if c.db.Exist(address) {
 			s := make(map[stypes.Hash]stypes.Hash)

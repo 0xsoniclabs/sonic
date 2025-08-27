@@ -110,7 +110,7 @@ func NewMessage(msg *core.Message, txType uint8) *substate.Message {
 	txTypeProtobuf := int32(txType)
 	return substate.NewMessage(
 		msg.Nonce,
-		msg.SkipAccountChecks,
+		!msg.SkipNonceChecks,
 		msg.GasPrice,
 		msg.GasLimit,
 		stypes.Address(msg.From),
