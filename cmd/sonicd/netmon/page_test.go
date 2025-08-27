@@ -18,6 +18,7 @@ func TestSummaryPage_CanRenderEmptyPage(t *testing.T) {
 		context.Background(),
 		enode.ID{},
 		map[enode.ID][]*enode.Node{},
+		map[enode.ID]string{},
 	)
 	require.NoError(err)
 	page, err := renderToString(&summary)

@@ -717,6 +717,10 @@ func (h *handler) handleEvents(peer *peer, events dag.Events, ordered bool) {
 // handleMsg is invoked whenever an inbound message is received from a remote
 // peer. The remote connection is torn down upon returning any error.
 func (h *handler) handleMsg(p *peer) (err error) {
+
+
+	h.connectionAdvisor.SetName(p.ID(), p.Fullname())
+
 	// Read the next message from the remote peer, and ensure it's fully consumed
 	msg, err := p.rw.ReadMsg()
 	if err != nil {

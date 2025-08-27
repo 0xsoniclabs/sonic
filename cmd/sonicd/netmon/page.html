@@ -36,6 +36,7 @@
             <th>Port</th>
             <th>Peer ID</th>
             <th>Number of Peers</th>
+            <th>Name</th>
         </tr>
         {{range $index, $element := .Peers}}
             <tr>
@@ -44,6 +45,7 @@
                 <td>{{$element.Port}}</td>
                 <td>{{$element.ID}}</td>
                 <td>{{len .Peers}}</td>
+                <td>{{$element.Name}}</td>
             </tr>
         {{end}}
     </table>
@@ -56,6 +58,7 @@
             <th>IP</th>
             <th>Port</th>
             <th>Peer ID</th>
+            <th>Name</th>
         </tr>
         {{range $index, $element := .Nodes}}
             <tr>
@@ -63,6 +66,7 @@
                 <td>{{$element.IP}}</td>
                 <td>{{$element.Port}}</td>
                 <td>{{$element.ID}}</td>
+                <td>{{$element.Name}}</td>
             </tr>
         {{end}}
     </table>

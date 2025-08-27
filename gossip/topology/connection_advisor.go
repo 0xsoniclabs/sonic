@@ -17,6 +17,7 @@
 package topology
 
 import (
+	"maps"
 	"slices"
 	"sync"
 	"time"
@@ -29,6 +30,14 @@ import (
 type ConnectionTracker interface {
 	GetLocalId() enode.ID
 	GetNeighborhood() map[enode.ID][]*enode.Node
+
+	SetName(enode.ID, string)
+	GetNames() map[enode.ID]string
+}
+
+type NeighborInfo struct {
+	Name  string
+	Enode *enode.Node
 }
 
 // ConnectionAdvisor is a utility that provides suggestions on which peers to
@@ -81,6 +90,8 @@ type connectionAdvisor[I comparable, R any] struct {
 
 	// Keep track of the neighbors of each peer.
 	neighborhood map[I]neighborhoodEntry[R]
+
+	names map[I]string
 
 	// The ID of the local node.
 	localId I
@@ -183,4 +194,19 @@ func (c *connectionAdvisor[I, T]) GetNeighborhood() map[I][]T {
 		res[peer] = slices.Clone(entry.peers)
 	}
 	return res
+}
+
+func (c *connectionAdvisor[I, T]) SetName(peer I, name string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.names == nil {
+		c.names = make(map[I]string)
+	}
+	c.names[peer] = name
+}
+
+func (c *connectionAdvisor[I, T]) GetNames() map[I]string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return maps.Clone(c.names)
 }

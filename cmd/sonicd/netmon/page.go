@@ -21,10 +21,12 @@ type SummaryPage struct {
 }
 
 type PeerInfo struct {
-	ID    string
-	IP    string
-	Port  int
-	Peers []PeerInfo
+	ID     string
+	IP     string
+	Port   int
+	Peers  []PeerInfo
+	Record string
+	Name   string
 }
 
 // CreateSummaryPage creates a new summary page from the given neighborhood.
@@ -32,6 +34,7 @@ func CreateSummaryPage(
 	context context.Context,
 	localId enode.ID,
 	neighborhood map[enode.ID][]*enode.Node,
+	names map[enode.ID]string,
 ) (SummaryPage, error) {
 	// Index all known nodes by their ID.
 	peers := map[enode.ID]*enode.Node{}
@@ -46,7 +49,9 @@ func CreateSummaryPage(
 		if node, found := peers[peer]; found {
 			info.ID = node.ID().String()
 			info.IP = node.IP().String()
+			info.Record = node.Record().String()
 			info.Port = node.TCP()
+			info.Name = names[peer]
 		} else {
 			info.ID = peer.String()
 		}
@@ -84,11 +89,13 @@ func CreateSummaryPage(
 	})
 
 	// Render the graph using graphviz.
-	graph, err := createNetworkSvg(context, &page)
-	if err != nil {
-		return SummaryPage{}, err
-	}
-	page.Graph = template.HTML(graph)
+	/*
+		graph, err := createNetworkSvg(context, &page)
+		if err != nil {
+			return SummaryPage{}, err
+		}
+		page.Graph = template.HTML(graph)
+	*/
 	return page, nil
 }
 

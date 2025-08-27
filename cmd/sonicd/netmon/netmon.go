@@ -6,7 +6,7 @@ import (
 	"net"
 	"net/http"
 
-	"github.com/Fantom-foundation/go-opera/gossip/topology"
+	"github.com/0xsoniclabs/sonic/gossip/topology"
 	"github.com/ethereum/go-ethereum/log"
 	"gopkg.in/urfave/cli.v1"
 )
@@ -74,7 +74,8 @@ func (h *networkMonitorHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 
 	localId := h.tracker.GetLocalId()
 	neighborhood := h.tracker.GetNeighborhood()
-	page, err := CreateSummaryPage(r.Context(), localId, neighborhood)
+	names := h.tracker.GetNames()
+	page, err := CreateSummaryPage(r.Context(), localId, neighborhood, names)
 	if err != nil {
 		log.Warn("Failed to create network monitor page", "err", err)
 		return
