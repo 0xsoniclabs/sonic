@@ -200,8 +200,10 @@ func (c *CarmenStateDB) GetStorageRoot(addr common.Address) common.Hash {
 	return h
 }
 
-func (c *CarmenStateDB) GetCommittedState(addr common.Address, hash common.Hash) common.Hash {
-	return common.Hash(c.db.GetCommittedState(cc.Address(addr), cc.Key(hash)))
+func (c *CarmenStateDB) GetStateAndCommittedState(addr common.Address, hash common.Hash) (common.Hash, common.Hash) {
+	state := common.Hash(c.db.GetState(cc.Address(addr), cc.Key(hash)))
+	committed := common.Hash(c.db.GetCommittedState(cc.Address(addr), cc.Key(hash)))
+	return state, committed
 }
 
 func (c *CarmenStateDB) HasSelfDestructed(addr common.Address) bool {
