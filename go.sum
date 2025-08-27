@@ -1,9 +1,9 @@
 github.com/0xsoniclabs/carmen/go v0.0.0-20250708101910-3666ec34654c h1:xWV02BKxkNrFZhqrHHXYdAOzabJlY5dR9BLPvd5Yrpc=
 github.com/0xsoniclabs/carmen/go v0.0.0-20250708101910-3666ec34654c/go.mod h1:pOYoZnXK6Dacga5Yoh7/38ibbOJ57/B3Q54zMxWtqG8=
-github.com/0xsoniclabs/go-ethereum v0.0.0-20250627083633-bbe492095a30 h1:3vpMpd29elfFfiaDG01WDRPpxX1P8I6jNuxQUkdDRn8=
-github.com/0xsoniclabs/go-ethereum v0.0.0-20250627083633-bbe492095a30/go.mod h1:yBASzR5thK8ugXyLfz9doxUsDJrkAfDOePc5upeFvvg=
-github.com/0xsoniclabs/tosca v0.0.0-20250708111444-f020a558b11e h1:+gDH+qjjyncJ7hTaGFUmcSEbiBjsP+0bBD5GJW9vGcs=
-github.com/0xsoniclabs/tosca v0.0.0-20250708111444-f020a558b11e/go.mod h1:zzKcaCnE7yFmNv9ob+wEmpYmTjm8n6D0jyvPCiA+YYE=
+github.com/0xsoniclabs/go-ethereum v0.0.0-20250827114033-a49cee8740d2 h1:OHaJBUO/R6SOHCDNMskfnakEz59bo1fl7Tmz73GCUnA=
+github.com/0xsoniclabs/go-ethereum v0.0.0-20250827114033-a49cee8740d2/go.mod h1:pm9P/VM1zE+1AQPGpoCEaA/0sbu7GFNex/nyjjPRcrU=
+github.com/0xsoniclabs/tosca v0.0.0-20250827120708-52129450d9b0 h1:7Papogpu6Up6NTfalh4m3FEkprb5UX/j1otQAgm9/l8=
+github.com/0xsoniclabs/tosca v0.0.0-20250827120708-52129450d9b0/go.mod h1:HO+N0cPuqKXy77gCmHLPnRcD8VvLCdNi5N5wGZl+tuk=
 github.com/DataDog/zstd v1.5.6 h1:LbEglqepa/ipmmQJUDnSsfvA8e8IStVcGaFWDuxvGOY=
 github.com/DataDog/zstd v1.5.6/go.mod h1:g4AWEaM3yOg3HYfnJ3YIawPnVdXJh9QME85blwSAmyw=
 github.com/Fantom-foundation/lachesis-base-sonic v0.0.0-20250701061954-44075d09185c h1:WpQufGBaH6jUqS+naqohiamg6PpckdtsLzSdEcCSkHs=
@@ -70,6 +70,8 @@ github.com/docker/docker v27.3.1+incompatible h1:KttF0XoteNTicmUtBO0L2tP+J7FGRFT
 github.com/docker/docker v27.3.1+incompatible/go.mod h1:eEKB0N0r5NX/I1kEveEz05bcu8tLC/8azJZsviup8Sk=
 github.com/dop251/goja v0.0.0-20240919115326-6c7d1df7ff05 h1:oK4+QcKsczZjHYTHD0JAdkvq5w74JEkG95J0XNBx/BI=
 github.com/dop251/goja v0.0.0-20240919115326-6c7d1df7ff05/go.mod h1:MxLav0peU43GgvwVgNbLAj1s/bSGboKkhuULvq/7hx4=
+github.com/emicklei/dot v1.6.2 h1:08GN+DD79cy/tzN6uLCT84+2Wk9u+wvqP+Hkx/dIR8A=
+github.com/emicklei/dot v1.6.2/go.mod h1:DeV7GvQtIw4h2u73RKBkkFdvVAz0D9fzeJrgPW6gy/s=
 github.com/emirpasic/gods v1.18.1 h1:FXtiHYKDGKCW2KzwZKx0iC0PQmdlorYgdFG9jPXJ1Bc=
 github.com/emirpasic/gods v1.18.1/go.mod h1:8tpGGwCnJ5H4r6BWwaV6OrWmMoPhUl5jm/FMNAnJvWQ=
 github.com/ethereum/c-kzg-4844/v2 v2.1.0 h1:gQropX9YFBhl3g4HYhwE70zq3IHFRgbbNPw0Shwzf5w=
@@ -80,8 +82,8 @@ github.com/ethereum/go-verkle v0.2.2 h1:I2W0WjnrFUIzzVPwm8ykY+7pL2d4VhlsePn4j7cn
 github.com/ethereum/go-verkle v0.2.2/go.mod h1:M3b90YRnzqKyyzBEWJGqj8Qff4IDeXnzFw0P9bFw3uk=
 github.com/fatih/color v1.17.0 h1:GlRw1BRJxkpqUCBKzKOw098ed57fEsKeNjpTe3cSjK4=
 github.com/fatih/color v1.17.0/go.mod h1:YZ7TlrGPkiz6ku9fK3TLD/pl3CpsiFyu8N92HLgmosI=
-github.com/ferranbt/fastssz v0.1.2 h1:Dky6dXlngF6Qjc+EfDipAkE83N5I5DE68bY6O0VLNPk=
-github.com/ferranbt/fastssz v0.1.2/go.mod h1:X5UPrE2u1UJjxHA8X54u04SBwdAQjG2sFtWs39YxyWs=
+github.com/ferranbt/fastssz v0.1.4 h1:OCDB+dYDEQDvAgtAGnTSidK1Pe2tW3nFV40XyMkTeDY=
+github.com/ferranbt/fastssz v0.1.4/go.mod h1:Ea3+oeoRGGLGm5shYAeDgu6PGUlcvQhE2fILyD9+tGg=
 github.com/fsnotify/fsnotify v1.4.7/go.mod h1:jwhsz4b93w/PPRr/qN1Yymfu8t87LnFCMoQvtojpjFo=
 github.com/fsnotify/fsnotify v1.4.9/go.mod h1:znqG4EE+3YCdAaPaxE2ZRY/06pZUdp0tY4IgpuI1SZQ=
 github.com/fsnotify/fsnotify v1.7.0 h1:8JEhPFa5W2WU7YfeZzPNqzMP6Lwt7L2715Ggo0nosvA=
@@ -242,8 +244,8 @@ github.com/prometheus/common v0.59.1 h1:LXb1quJHWm1P6wq/U824uxYi4Sg0oGvNeUm1z5dJ
 github.com/prometheus/common v0.59.1/go.mod h1:GpWM7dewqmVYcd7SmRaiWVe9SSqjf0UrwnYnpEZNuT0=
 github.com/prometheus/procfs v0.15.1 h1:YagwOFzUgYfKKHX6Dr+sHT7km/hxC76UB0learggepc=
 github.com/prometheus/procfs v0.15.1/go.mod h1:fB45yRUv8NstnjriLhBQLuOUt+WW4BsoGhij/e3PBqk=
-github.com/prysmaticlabs/gohashtree v0.0.1-alpha.0.20220714111606-acbb2962fb48 h1:cSo6/vk8YpvkLbk9v3FO97cakNmUoxwi2KMP8hd5WIw=
-github.com/prysmaticlabs/gohashtree v0.0.1-alpha.0.20220714111606-acbb2962fb48/go.mod h1:4pWaT30XoEx1j8KNJf3TV+E3mQkaufn7mf+jRNb/Fuk=
+github.com/prysmaticlabs/gohashtree v0.0.4-beta h1:H/EbCuXPeTV3lpKeXGPpEV9gsUpkqOOVnWapUyeWro4=
+github.com/prysmaticlabs/gohashtree v0.0.4-beta/go.mod h1:BFdtALS+Ffhg3lGQIHv9HDWuHS8cTvHZzrHWxwOtGOs=
 github.com/rivo/uniseg v0.2.0/go.mod h1:J6wj4VEh+S6ZtnVlnTBMWIodfgj8LQOQFoIToxlJtxc=
 github.com/rivo/uniseg v0.4.7 h1:WUdvkW8uEhrYfLC4ZzdpI2ztxP1I582+49Oc5Mq64VQ=
 github.com/rivo/uniseg v0.4.7/go.mod h1:FN3SvrM+Zdj16jyLfmOkMNblXMcoc8DfTHruCPUcx88=
