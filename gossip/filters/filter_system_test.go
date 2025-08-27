@@ -66,11 +66,11 @@ func (b *testBackend) HeaderByNumber(ctx context.Context, blockNr rpc.BlockNumbe
 	)
 	if blockNr == rpc.LatestBlockNumber {
 		hash = rawdb.ReadHeadBlockHash(b.db)
-		number := rawdb.ReadHeaderNumber(b.db, hash)
-		if number == nil {
+		number, ok := rawdb.ReadHeaderNumber(b.db, hash)
+		if !ok {
 			return nil, nil
 		}
-		num = *number
+		num = number
 	} else {
 		num = uint64(blockNr)
 		hash = rawdb.ReadCanonicalHash(b.db, num)
@@ -83,20 +83,20 @@ func (b *testBackend) HeaderByNumber(ctx context.Context, blockNr rpc.BlockNumbe
 }
 
 func (b *testBackend) HeaderByHash(ctx context.Context, hash common.Hash) (*evmcore.EvmHeader, error) {
-	number := rawdb.ReadHeaderNumber(b.db, hash)
-	if number == nil {
+	number, ok := rawdb.ReadHeaderNumber(b.db, hash)
+	if !ok {
 		return nil, nil
 	}
 
-	h := rawdb.ReadHeader(b.db, hash, *number)
+	h := rawdb.ReadHeader(b.db, hash, number)
 	eh := evmcore.ConvertFromEthHeader(h)
 	eh.Hash = h.Hash()
 	return eh, nil
 }
 
 func (b *testBackend) GetReceipts(ctx context.Context, hash common.Hash) (types.Receipts, error) {
-	if number := rawdb.ReadHeaderNumber(b.db, hash); number != nil {
-		return rawdb.ReadReceipts(b.db, hash, *number, 0 /*time*/, params.TestChainConfig), nil
+	if number, ok := rawdb.ReadHeaderNumber(b.db, hash); !ok {
+		return rawdb.ReadReceipts(b.db, hash, number, 0 /*time*/, params.TestChainConfig), nil
 	}
 	return nil, nil
 }
@@ -106,12 +106,12 @@ func (b *testBackend) GetReceiptsByNumber(ctx context.Context, number rpc.BlockN
 }
 
 func (b *testBackend) GetLogs(ctx context.Context, hash common.Hash) ([][]*types.Log, error) {
-	number := rawdb.ReadHeaderNumber(b.db, hash)
-	if number == nil {
+	number, ok := rawdb.ReadHeaderNumber(b.db, hash)
+	if !ok {
 		return nil, nil
 	}
 
-	receipts := rawdb.ReadReceipts(b.db, hash, *number, 0 /*time*/, params.TestChainConfig)
+	receipts := rawdb.ReadReceipts(b.db, hash, number, 0 /*time*/, params.TestChainConfig)
 	logs := make([][]*types.Log, len(receipts))
 	for i, receipt := range receipts {
 		logs[i] = receipt.Logs
