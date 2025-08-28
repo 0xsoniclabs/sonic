@@ -17,6 +17,15 @@ This guide provides an introduction to the framework's core concepts, to start a
     - [Init and Restart](#init-and-restart)
     - [Send transactions in parallel](#send-transactions-in-parallel)
 
+## Overview
+
+Our integration tests simulate a running network with one or many validator nodes, aimed to verify end-to-end properties of the network. Before diving into the details, it's helpful to understand the primary building blocks of our testing infrastructure.
+
+Key concepts:
+- `Network`: The main object representing a (possibly multi-node) network. It is a self-contained environment that can be started and stopped for a single test. Its life cycle is usually managed by the test where it is created.
+- `Session`: An isolated context within a `Network`. It provides a dedicated account and a safe environment for sending transactions in parallel. While a Network can be shared, a Session is designed to be used by a single test or subtest to avoid resource collisions.
+- `Sponsor`: Is a special account with a significant balance that funds and signs transactions. Both `Network` and `Session` have a sponsor account that is used to send transactions.
+- `Account`: Is a standard Go common.Address with an associated private key. They are created and funded by a `Sponsor` to be used in test transactions. Usually used as origin/destination for a transaction.
 
 
 ## Starting a test network
