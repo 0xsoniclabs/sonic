@@ -64,7 +64,7 @@ As we have developed more tests we noticed certain patterns and made functions t
 - `net.GetReceipt(txHash)`: Queries the network until it gets a receipt for the given tx hash, or returns timeout. (There is an alternative `GetReceipts`, which does the same but for a list of transactions)
 - `net.Apply(issue)`: A utility function for contract interactions that sends a transaction and waits for it to be processed.
 - `net.SessionSponsor()`: Returns the account sponsoring the network or session, which is the account used for signing all transactions without explicit signatures (more on sessions in the [Time and Memory limitations](#time-and-memory-limitations) section)
-- `net.GetClient()`: Returns a client connected to the node 0 of the network. More on this in [Client](#client)
+- `net.GetClient()`: Returns a client connected to the node 0 of the network. More on this in [Client](#client). Other nodes can be reached using `net.GetClientConnectedToNode(i)` where `i` is the number id (e.g. 1,2,3) of the node.
 - `net.GetChainId`: Returns the chain ID of the network.
 - `net.SpawnSession`: Returns a new session with a fresh account. More on this in [Session](#time-and-memory-limitations)
 - `DeployContract`: Deploys a given contract on the network returning the receipt of the deploy and an error. The functions of the contract can be called using the afore mentioned `net.Apply` function. For examples on how to write/generate contracts look into `tests/contracts` folder.
