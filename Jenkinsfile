@@ -15,7 +15,18 @@
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
 pipeline {
-    agent { label 'pr' }
+    agent {
+        docker {
+            label 'pr'
+            image 'golang:1.24'
+            // The docker image is meant to use root user, cache folders are
+            // created for that use case, when forwarding user ids (like jenkins does)
+            // go is incapable of finding the mandatory cache path.
+            // This command mounts the tmp directory as a cache folder where
+            // go expects it to be.
+            args '-v/tmp:/.cache'
+        }
+    }
 
     options {
         timestamps()
@@ -67,6 +78,9 @@ pipeline {
         stage('Clean up') {
             steps {
                 sh 'make clean'
+                // cache is mounted from outside of the docker filesystem
+                // clean it to avoid leaking resources
+                sh 'go clean -cache'
             }
         }
     }
