@@ -4,6 +4,7 @@ This document is designed to help newcomers navigate our integration testing fra
 This guide provides an introduction to the framework's core concepts, to start a test network, interact with its nodes, and use helper utilities to write clean and efficient tests.
 
 ## Table of content
+ - [Overview](#overview)
  - [Starting a Test Net](#starting-a-test-network)
     - [Options](#options)
     - [Frequently used Functionalities](#frequently-used-functionalities)
@@ -13,7 +14,7 @@ This guide provides an introduction to the framework's core concepts, to start a
     - [Session from shared network](#session-from-shared-network)
 - [Require](#require)
 - [Miscellaneous utilities](#miscellaneous-utilities)
-- [Example](#example)
+- [Minimal Examples](#minimal-examples)
     - [Init and Restart](#init-and-restart)
     - [Send transactions in parallel](#send-transactions-in-parallel)
 
@@ -30,7 +31,7 @@ Key concepts:
 
 ## Starting a test network
 
-The core of the testing infrastructure is defined in integration_test_net.go, which provides the tools to simulate a network with one or more nodes. To instantiate a new network, use one of the following functions: 
+The core of the testing infrastructure is defined in integration_test_net.go, which provides the tools to run a network with one or more nodes. To instantiate a new network, use one of the following functions: 
 - `net := StartIntegrationTestNet(t)`
 - `net := StartIntegrationTestNetWithFakeGenesis(t)`
 - `net := StartIntegrationTestNetWithJsonGenesis(t)`
@@ -39,11 +40,11 @@ Unless your test specifically requires a fake genesis, StartIntegrationTestNet i
 
 ### Options
 
-Each of the initialization functions accepts an optional `IntegrationTestNetOptions`. This options allow you to customize the network, mainly with:
-- `Upgrades`: Which hard fork should the network run (e.g., `Sonic`,`Allegro`).
+Each of the initialization functions accepts an optional `IntegrationTestNetOptions` parameter. This options allow you to customize the network, mainly with:
+- `Upgrades`: Which hard fork should the network be initialized with (e.g., `Sonic`,`Allegro`).
 - `NumNodes`:  Sets the number of nodes to be started in the network.
 - `ClientExtraArguments`:  Provides additional command-line arguments for the Sonic Client.
-- `ModifyConfig`: Allows for modifications to the network's TOML configuration file.
+- `ModifyConfig`: Allows for modifications to the client's TOML configuration file.
 - `Accounts`: Adds specific accounts into the test genesis.
 
 `Upgrades` and `Nodes` being the most commonly used of all, feel free to play around with these two but be CAREFUL about modifying any of the other options. Next is an example
@@ -58,14 +59,15 @@ net := StartIntegrationTestNetWithJsonGenesis(t,
 ### Frequently used Functionalities
 
 As we have developed more tests we noticed certain patterns and made functions to shorten or replace such patterns. The following is a list of those:
-- `net.EndowAccount(address, value)`: Transfers `value` tokens to the `address` from the account sponsoring the validator. (There is an alternative `EndowAccounts`, which does the same but to a list of addresses)
+- `net.EndowAccount(address, value)`: Transfers `value` tokens to the `address` from the network's treasury/faucet account. (There is an alternative `EndowAccounts`, which does the same but to a list of addresses; use this if you want to initialize multiple accounts faster)
 - `net.Run(tx)`: Sends a transaction, waits for its execution, and returns the transaction receipt. (There is an alternative `RunAll`, which does the same but with a list of transactions)
 - `net.GetReceipt(txHash)`: Queries the network until it gets a receipt for the given tx hash, or returns timeout. (There is an alternative `GetReceipts`, which does the same but for a list of transactions)
 - `net.Apply(issue)`: A utility function for contract interactions that sends a transaction and waits for it to be processed.
-- `net.SessionSponsor()`: Returns the account sponsoring the network or session, which is the account used for signing all the transactions (more on sessions in the [Time and Memory limitations](#time-and-memory-limitations) section)
+- `net.SessionSponsor()`: Returns the account sponsoring the network or session, which is the account used for signing all transactions without explicit signatures (more on sessions in the [Time and Memory limitations](#time-and-memory-limitations) section)
 - `net.GetClient()`: Returns a client connected to the node 0 of the network. More on this in [Client](#client)
 - `net.GetChainId`: Returns the chain ID of the network.
 - `net.SpawnSession`: Returns a new session with a fresh account. More on this in [Session](#time-and-memory-limitations)
+- `DeployContract`: Deploys a given contract on the network returning the receipt of the deploy and an error. The functions of the contract can be called using the afore mentioned `net.Apply` function. For examples on how to write/generate contracts look into `tests/contracts` folder.
 - If your test case requires it there is `net.Stop` and `net.Restart`.
 
 
@@ -85,7 +87,7 @@ The error must be checked. The clients are pooled per node and thus must be clos
 
 ## Time and Memory limitations 
 
-Originally, each integration test started its own network, which became slow as the number of tests grew. To reduce runtime, `t.Parallel()` was introduced when test cases inside an integration test could be executed in parallel, but this created a risk of race conditions on nonces and other shared network resources.
+Originally, each integration test started its own network, which became slow as the number of tests grew. To reduce runtime, `t.Parallel()` was introduced when test cases inside an integration test could be executed in parallel, but this created a risk of synchronization issues on nonces and other shared network resources.
 
 A Session solves this by providing a dedicated address for a single test. When you spawn a session, it creates a new, independent account. By using a session, a test can send transactions without worrying about nonce collisions or resource conflicts with other tests running in parallel.
 
@@ -184,7 +186,7 @@ These functions are designed to prevent the re-implementation of common logic ac
 
 Note that because some integration tests are in sub-packages, some of these functions need to be public, but to enforce that they are only used in tests, they take a `t *testing.T` parameter. Keep this in mind when implementing new helper functions.
 
-## Example
+## Minimal Examples
 ### Init and Restart
 ```Go
 package tests
