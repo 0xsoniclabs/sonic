@@ -103,6 +103,45 @@ If your test case has any of the following requirements it should stick to using
 If an integration test does not do any of the actions mentioned in the previous section, it is probably a good candidate to use a session from a shared network, reusing resources and reducing overall runtime.
 Sessions can be produced by the usual `net := StartIntegrationTestNet(t)` by simply calling `session := net.SpawnSession(t)`. 
 Alternatively, sessions can be produced by `session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())`. This method requires the `Upgrades` to be provided and spawns a session in a network using that specif Upgrade. This new session is part of a shared network amongst multiple tests, so it is safe to run in parallel, just be mindful that calling `t.Parallel()` should always be done after spawning new sessions (regardless of whether they come from a shared network or not).
+The reason for this is that calling `t.Parallel` will make the rest of the test run in a parallel context with other tests marked as parallel as well. If two (or more) tests running in parallel try to spawn a session from the same network, then they would end up executing endowments to the new addresses, and since this process is automated, the nonce is queried from the status of the network and the endowments for the new sessions could be sent with the same nonce.
+Instead of the following risky order
+```Go
+func TestSomething(t *testing.T){
+	t.Parallel(t) // first start the parallel section
+	// if another test has the same pattern, multiple attempts to create new sessions in parallel
+	// could make them fail
+	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	someTest(t, session)
+}
+```
+the safer option should be the one to use
+```Go
+func TestSomething(t *testing.T){
+	// the code before t.Parallel is executed sequentially for all tests in the same context
+	// hence it is safe to interact with shared resources and 
+	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	t.Parallel(t) // start the parallel section
+	someTest(t, session)
+}
+```
+In the case of multiple sub-tests executing in parallel the following pattern is recommended
+```Go
+func TestManySubCases(t *testing.T){
+	// first get a session
+	session := getIntegrationTestNetSesion(t, opera.GetSonicUpgrades())
+	t.Parallel()
+	t.Run("subcase1", func(){
+		subSession := session.SpawnSession()
+		t.Parallel()
+		subcase1(subSession)
+	})
+	t.Run("subcase2", func(){
+		subSession := session.SpawnSession()
+		t.Parallel()
+		subcase2(subSession)
+	})
+}
+```
 
 ## Adding a Test
 
