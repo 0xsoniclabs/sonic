@@ -37,6 +37,8 @@ func (s *Store) SetReceipts(n idx.Block, receipts types.Receipts) {
 		receiptsStorage[i] = (*types.ReceiptForStorage)(r)
 	}
 
+	//time.Sleep(time.Second)
+
 	size := s.SetRawReceipts(n, receiptsStorage)
 
 	// Add to LRU cache.

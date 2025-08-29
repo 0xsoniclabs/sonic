@@ -100,12 +100,18 @@ func (b *EthAPIBackend) HistoryPruningCutoff() uint64 {
 func (b *EthAPIBackend) ResolveRpcBlockNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (idx.Block, error) {
 	if number, ok := blockNrOrHash.Number(); ok {
 		latest := idx.Block(b.state.CurrentBlock().NumberU64())
+		/*
+			if idx.Block(number) > latest {
+				fmt.Printf("Requested %d / latest %d\n", number, latest)
+			}
+		*/
 		if isLatestBlockNumber(number) {
 			return latest, nil
 		} else if number == rpc.EarliestBlockNumber {
 			return idx.Block(b.HistoryPruningCutoff()), nil
 		} else {
 			if idx.Block(number) > latest {
+				//fmt.Printf(" - block not found!\n")
 				return 0, fmt.Errorf("block %v not found; latest block is %v", number, latest)
 			}
 			return idx.Block(number), nil
@@ -343,6 +349,7 @@ func (b *EthAPIBackend) GetReceiptsByNumber(ctx context.Context, number rpc.Bloc
 		return nil, errors.New("transactions index is disabled (enable TxIndex and re-process the DAGs)")
 	}
 
+	// TODO: Check whether this resolution can be flaky
 	blockNumber, err := b.ResolveRpcBlockNumberOrHash(ctx, rpc.BlockNumberOrHashWithNumber(number))
 	if err != nil {
 		// when block not found, return nil as rpc clients expect this

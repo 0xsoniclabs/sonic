@@ -17,6 +17,7 @@
 package tests
 
 import (
+	"errors"
 	"fmt"
 	"math/big"
 	"sync"
@@ -98,6 +99,33 @@ func TestLogBloom_query(t *testing.T) {
 	testRoutineDone := make(chan struct{})
 	testRoutine := sync.Once{}
 
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		client, err := net.GetClient()
+		require.NoError(err, "failed to get client; ", err)
+		defer client.Close()
+
+		for {
+			select {
+			case <-stop:
+				return
+			case <-time.After(100 * time.Millisecond):
+			default:
+			}
+
+			block, err := client.BlockByNumber(t.Context(), nil)
+			require.NoError(err)
+			if len(block.Transactions()) == 0 || block.NumberU64() <= 2 {
+				continue
+			}
+			if (types.Bloom{} == block.Bloom()) {
+				t.Errorf("expected non-empty bloom in block %d", block.NumberU64())
+			}
+		}
+	}()
+
 	tasks := sync.WaitGroup{}
 	tasks.Add(1)
 	go func() {
@@ -172,6 +200,9 @@ func TestLogBloom_query(t *testing.T) {
 
 	tasks.Wait()
 
+	close(stop)
+	<-done
+
 	close(shutdownTestRoutine)
 	<-testRoutineDone
 }
@@ -200,4 +231,114 @@ func pollHeadAndCheckBloom(t *testing.T,
 			assert.Fail(t, fmt.Sprintf("expected non-empty bloom filter in head for block %d", lastHead.NumberU64()))
 		}
 	}
+}
+
+func TestLogBloom_query2(t *testing.T) {
+	const NumBatches = 60
+	require := require.New(t)
+
+	// This test relies on transactions included in the block to be only
+	// the transactions generated in the test itself, test may fail if other
+	// blocks are generated in the background.
+	//
+	// For this reason this test uses a dedicated network.
+	net := StartIntegrationTestNetWithJsonGenesis(t)
+
+	contract, _, err := DeployContract(net, counter_event_emitter.DeployCounterEventEmitter)
+	require.NoError(err)
+
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		client, err := net.GetClient()
+		require.NoError(err, "failed to get client; ", err)
+		defer client.Close()
+
+		next := int64(0)
+		for {
+			select {
+			case <-stop:
+				return
+			case <-time.After(time.Millisecond):
+			default:
+			}
+
+			//header, err := client.HeaderByNumber(t.Context(), nil)
+			//header, err := client.HeaderByNumber(t.Context(), big.NewInt(next))
+			block, err := client.BlockByNumber(t.Context(), big.NewInt(next))
+			if errors.Is(err, ethereum.NotFound) {
+				continue
+			}
+			require.NoError(err)
+			next++
+			if block.NumberU64() <= 2 {
+				continue
+			}
+			//fmt.Printf("Fetched header for block %d with bloom %x\n", header.Number.Uint64(), header.Bloom)
+			if (types.Bloom{} == block.Bloom()) {
+				t.Errorf("expected non-empty bloom in block %d", block.NumberU64())
+			}
+		}
+	}()
+
+	tasks := sync.WaitGroup{}
+	tasks.Add(1)
+	go func() {
+		defer tasks.Done()
+
+		client, err := net.GetClient()
+		require.NoError(err, "failed to get client; ", err)
+		defer client.Close()
+
+		for i := range NumBatches {
+			fmt.Printf("Running batch %d\n", i)
+			opts, err := net.GetTransactOptions(net.GetSessionSponsor())
+			require.NoError(err)
+
+			// accumulate 10 txs per block
+			batch := []*types.Transaction{}
+			for range 10 {
+				opts.NoSend = true
+				tx, err := contract.Increment(opts)
+				require.NoError(err)
+				batch = append(batch, tx)
+				opts.Nonce.Add(opts.Nonce, big.NewInt(1))
+			}
+
+			for _, tx := range batch {
+				err := client.SendTransaction(t.Context(), tx)
+				require.NoError(err)
+			}
+
+			// wait for this batch before starting a new one
+			// (this waits for block creation)
+			hashes := make([]common.Hash, len(batch))
+			for i, tx := range batch {
+				hashes[i] = tx.Hash()
+			}
+
+			receipts, err := net.GetReceipts(hashes)
+			require.NoError(err)
+
+			for _, receipt := range receipts {
+				require.NotEqual(
+					types.Bloom{},
+					receipt.Bloom,
+					"expected non-empty bloom filter",
+				)
+			}
+
+			blockNum := uint64(0)
+			for _, receipt := range receipts {
+				blockNum = max(blockNum, receipt.BlockNumber.Uint64())
+			}
+		}
+
+	}()
+
+	tasks.Wait()
+
+	close(stop)
+	<-done
 }

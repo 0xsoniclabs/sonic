@@ -323,6 +323,7 @@ func (es *EventSystem) broadcast(filters filterIndex, ev interface{}) {
 			f.hashes <- hashes
 		}
 	case evmcore.ChainHeadNotify:
+		// this was commented out when I saw the issue more often
 		blkNumber := rpc.BlockNumber(e.Block.Number.Int64())
 		receipts, _ := es.backend.GetReceiptsByNumber(context.Background(), blkNumber)
 		h := e.Block.ToJson(receipts)

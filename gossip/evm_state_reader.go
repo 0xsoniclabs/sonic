@@ -56,6 +56,7 @@ func (r *EvmStateReader) MaxGasLimit() uint64 {
 }
 
 func (r *EvmStateReader) Config() *params.ChainConfig {
+	//blockNumber := r.CurrentHeader().Number
 	blockNumber := r.CurrentBlock().Number
 	return r.store.GetEvmChainConfig(idx.Block(blockNumber.Uint64()))
 }
@@ -104,6 +105,11 @@ func (r *EvmStateReader) getBlock(h common.Hash, n idx.Block, readTxs bool) *evm
 	if block == nil {
 		return nil
 	}
+	/*
+		if (n > 2 && block.LogBloom == types.Bloom{}) {
+			fmt.Printf("loaded block %d with zero bloom\n", n)
+		}
+	*/
 	if (h != common.Hash{}) && (h != block.Hash()) {
 		return nil
 	}
