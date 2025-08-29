@@ -19,11 +19,11 @@ pipeline {
         docker {
             label 'pr'
             image 'golang:1.24'
-            // The docker image is meant to use root user, cache folders are
-            // created for that use case, when forwarding user ids (like jenkins does)
+            // The golang image is meant to use root user, cache folders are
+            // created for that use case. When forwarding user ids (like jenkins does)
             // go is incapable of finding the mandatory cache path.
             // This command mounts the tmp directory as a cache folder where
-            // go expects it to be.
+            // go expects it to be when forwarding user id.
             args '-v/tmp:/.cache'
         }
     }
