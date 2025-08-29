@@ -17,24 +17,32 @@
 package tests
 
 import (
+	"fmt"
+	"math/big"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter_event_emitter"
 	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestLogSubscription_CanGetCallBacksForLogEvents(t *testing.T) {
+	t.Parallel()
+
 	const NumEvents = 3
 	require := require.New(t)
-	net := StartIntegrationTestNet(t)
+	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 
-	contract, _, err := DeployContract(net, counter_event_emitter.DeployCounterEventEmitter)
+	contract, _, err := DeployContract(session, counter_event_emitter.DeployCounterEventEmitter)
 	require.NoError(err)
 
-	client, err := net.GetWebSocketClient()
+	client, err := session.GetWebSocketClient()
 	require.NoError(err, "failed to get client; ", err)
 	defer client.Close()
 
@@ -48,7 +56,7 @@ func TestLogSubscription_CanGetCallBacksForLogEvents(t *testing.T) {
 	defer subscription.Unsubscribe()
 
 	for range NumEvents {
-		_, err = net.Apply(contract.Increment)
+		_, err = session.Apply(contract.Increment)
 		require.NoError(err)
 	}
 
@@ -60,6 +68,136 @@ func TestLogSubscription_CanGetCallBacksForLogEvents(t *testing.T) {
 			require.Equal(uint64(i+1), event.TotalCount.Uint64())
 		case <-time.After(5 * time.Second):
 			require.Fail("expected log event not received")
+		}
+	}
+}
+
+func TestLogBloom_query(t *testing.T) {
+	const NumBatches = 60
+	require := require.New(t)
+
+	// This test relies on transactions included in the block to be only
+	// the transactions generated in the test itself, test may fail if other
+	// blocks are generated in the background.
+	//
+	// For this reason this test uses a dedicated network.
+	net := StartIntegrationTestNetWithJsonGenesis(t)
+
+	contract, _, err := DeployContract(net, counter_event_emitter.DeployCounterEventEmitter)
+	require.NoError(err)
+
+	wsClient, err := net.GetWebSocketClient()
+	require.NoError(err, "failed to get client; ", err)
+	defer wsClient.Close()
+
+	newHeadChannel := make(chan *types.Header)
+	subscription, err := wsClient.SubscribeNewHead(t.Context(), newHeadChannel)
+	require.NoError(err)
+
+	shutdownTestRoutine := make(chan struct{})
+	testRoutineDone := make(chan struct{})
+	testRoutine := sync.Once{}
+
+	tasks := sync.WaitGroup{}
+	tasks.Add(1)
+	go func() {
+		defer tasks.Done()
+		defer subscription.Unsubscribe()
+		defer close(newHeadChannel)
+
+		client, err := net.GetClient()
+		require.NoError(err, "failed to get client; ", err)
+		defer client.Close()
+
+		for range NumBatches {
+			opts, err := net.GetTransactOptions(net.GetSessionSponsor())
+			require.NoError(err)
+
+			// accumulate 10 txs per block
+			batch := []*types.Transaction{}
+			for range 10 {
+				opts.NoSend = true
+				tx, err := contract.Increment(opts)
+				require.NoError(err)
+				batch = append(batch, tx)
+				opts.Nonce.Add(opts.Nonce, big.NewInt(1))
+			}
+
+			for _, tx := range batch {
+				err := client.SendTransaction(t.Context(), tx)
+				require.NoError(err)
+			}
+
+			// wait for this batch before starting a new one
+			// (this waits for block creation)
+			hashes := make([]common.Hash, len(batch))
+			for i, tx := range batch {
+				hashes[i] = tx.Hash()
+			}
+			receipts, err := net.GetReceipts(hashes)
+			require.NoError(err)
+
+			for _, receipt := range receipts {
+				require.NotEqual(
+					types.Bloom{},
+					receipt.Bloom,
+					"expected non-empty bloom filter",
+				)
+			}
+
+			blockNum := uint64(0)
+			for _, receipt := range receipts {
+				blockNum = max(blockNum, receipt.BlockNumber.Uint64())
+			}
+
+			// start test after first generation of blocks with logs and Bloom
+			testRoutine.Do(func() {
+				go pollHeadAndCheckBloom(t, net, shutdownTestRoutine, testRoutineDone)
+			})
+		}
+
+	}()
+
+	tasks.Add(1)
+	go func() {
+		defer tasks.Done()
+
+		for head := range newHeadChannel {
+
+			if head.Bloom == (types.Bloom{}) {
+				assert.Fail(t, fmt.Sprintf("expected non-empty bloom filter in head for block %d", head.Number.Uint64()))
+			}
+		}
+	}()
+
+	tasks.Wait()
+
+	close(shutdownTestRoutine)
+	<-testRoutineDone
+}
+
+func pollHeadAndCheckBloom(t *testing.T,
+	session IntegrationTestNetSession,
+	finalized <-chan struct{}, done chan<- struct{},
+) {
+	defer close(done)
+
+	client, err := session.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	for {
+		select {
+		case <-finalized:
+			return
+		default:
+		}
+
+		lastHead, err := client.BlockByNumber(t.Context(), nil)
+		require.NoError(t, err)
+
+		if lastHead.Bloom() == (types.Bloom{}) {
+			assert.Fail(t, fmt.Sprintf("expected non-empty bloom filter in head for block %d", lastHead.NumberU64()))
 		}
 	}
 }
