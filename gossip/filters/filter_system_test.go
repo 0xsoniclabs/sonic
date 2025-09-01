@@ -95,10 +95,11 @@ func (b *testBackend) HeaderByHash(ctx context.Context, hash common.Hash) (*evmc
 }
 
 func (b *testBackend) GetReceipts(ctx context.Context, hash common.Hash) (types.Receipts, error) {
-	if number, ok := rawdb.ReadHeaderNumber(b.db, hash); !ok {
-		return rawdb.ReadReceipts(b.db, hash, number, 0 /*time*/, params.TestChainConfig), nil
+	number, ok := rawdb.ReadHeaderNumber(b.db, hash)
+	if !ok {
+		return nil, nil
 	}
-	return nil, nil
+	return rawdb.ReadReceipts(b.db, hash, number, 0 /*time*/, params.TestChainConfig), nil
 }
 
 func (b *testBackend) GetReceiptsByNumber(ctx context.Context, number rpc.BlockNumber) (types.Receipts, error) {
