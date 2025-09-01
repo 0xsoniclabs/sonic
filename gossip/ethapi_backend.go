@@ -343,12 +343,15 @@ func (b *EthAPIBackend) GetReceiptsByNumber(ctx context.Context, number rpc.Bloc
 		return nil, errors.New("transactions index is disabled (enable TxIndex and re-process the DAGs)")
 	}
 
-	blockNumber, err := b.ResolveRpcBlockNumberOrHash(ctx, rpc.BlockNumberOrHashWithNumber(number))
-	if err != nil {
-		// when block not found, return nil as rpc clients expect this
-		return nil, nil
-	}
-	number = rpc.BlockNumber(blockNumber)
+	// TODO: Check whether this resolution can be flaky
+	/*
+		blockNumber, err := b.ResolveRpcBlockNumberOrHash(ctx, rpc.BlockNumberOrHashWithNumber(number))
+		if err != nil {
+			// when block not found, return nil as rpc clients expect this
+			return nil, nil
+		}
+		number = rpc.BlockNumber(blockNumber)
+	*/
 
 	block := b.state.GetBlock(common.Hash{}, uint64(number))
 	time := uint64(block.Time.Unix())
