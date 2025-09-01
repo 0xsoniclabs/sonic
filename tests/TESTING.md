@@ -177,3 +177,7 @@ func TestCounter_CanIncrementAndReadCounterFromHead(t *testing.T) {
 ## Memory Analysis 
 
 There is an optional tool to get heap memory reports per test, it was added in [PR#350](https://github.com/0xsoniclabs/sonic/pull/350)
+
+## Require
+
+Please use [testify/require]((https://github.com/stretchr/testify/blob/master/require/doc.go) ) for improved readability.
