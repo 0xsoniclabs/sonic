@@ -38,7 +38,18 @@ import (
 )
 
 // CreateTransaction fills the given tx with acceptable values for the given
-// session, signs it, and returns the signed transaction.
+// session, signs it with the sponsoring account, and returns the signed transaction.
+// The values modified if defaults are:
+//   - ChainID: It replaces the ChainID of the transaction with the chainID of
+//     the given session.
+//   - If nonce is zeroed: It configures the nonce of the transaction to be the
+//     current nonce of the sender account
+//   - If gas price or gas fee cap is zeroed: It configures the gas price of the
+//     transaction to be the suggested gas price
+//   - If gas is zeroed: It configures the gas of the transaction to be the
+//     minimum gas required to execute the transaction
+//     Filled gas is a static minimum value, it does not account for the gas
+//     costs of the contract opcodes.
 func CreateTransaction(t *testing.T, session IntegrationTestNetSession, tx types.TxData) *types.Transaction {
 	t.Helper()
 	sponsor := session.GetSessionSponsor()
