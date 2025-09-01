@@ -37,6 +37,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// CreateTransaction fills the given tx with acceptable values for the given
+// session, signs it, and returns the signed transaction.
+func CreateTransaction(t *testing.T, session IntegrationTestNetSession, tx types.TxData) *types.Transaction {
+	t.Helper()
+	sponsor := session.GetSessionSponsor()
+	signedTx := SignTransaction(
+		t,
+		session.GetChainId(),
+		SetTransactionDefaults(t, session, tx, sponsor),
+		sponsor,
+	)
+	return signedTx
+}
+
 // SignTransaction is a testing helper that signs a transaction with the
 // key from the provided account
 func SignTransaction(
