@@ -258,8 +258,7 @@ func TestSetTransactionDefaults_CanInitializeAllTransactionTypes(t *testing.T) {
 			}
 			nonce++
 
-			txData := SetTransactionDefaults(t, session, tx, session.GetSessionSponsor())
-			tx := SignTransaction(t, chainId, txData, session.GetSessionSponsor())
+			tx := CreateTransaction(t, session, tx, session.GetSessionSponsor())
 
 			// the filled values suffice to get the transaction accepted and executed
 			err := client.SendTransaction(t.Context(), tx)
@@ -284,8 +283,7 @@ func TestSetTransactionDefaults_CanInitializeAllTransactionTypes(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
-		txData := SetTransactionDefaults(t, session, &types.LegacyTx{}, session.GetSessionSponsor())
-		tx := SignTransaction(t, chainId, txData, session.GetSessionSponsor())
+		tx := CreateTransaction(t, session, &types.LegacyTx{}, session.GetSessionSponsor())
 
 		nonce, err := client.NonceAt(t.Context(), session.GetSessionSponsor().Address(), nil)
 		require.NoError(t, err)
@@ -304,10 +302,7 @@ func TestSetTransactionDefaults_CanInitializeAllTransactionTypes(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
-		txData := SetTransactionDefaults(t, session, &types.LegacyTx{
-			Nonce: 1,
-		}, session.GetSessionSponsor())
-		tx := SignTransaction(t, chainId, txData, session.GetSessionSponsor())
+		tx := CreateTransaction(t, session, &types.LegacyTx{Nonce: 1}, session.GetSessionSponsor())
 
 		// the filled values suffice to get the transaction accepted and executed
 		_, err = session.Run(tx)
@@ -318,10 +313,7 @@ func TestSetTransactionDefaults_CanInitializeAllTransactionTypes(t *testing.T) {
 		session := session.SpawnSession(t)
 		t.Parallel()
 
-		txData := SetTransactionDefaults(t, session, &types.LegacyTx{
-			Gas: 1,
-		}, session.GetSessionSponsor())
-		tx := SignTransaction(t, chainId, txData, session.GetSessionSponsor())
+		tx := CreateTransaction(t, session, &types.LegacyTx{Gas: 1}, session.GetSessionSponsor())
 
 		// the filled values suffice to get the transaction accepted and executed
 		_, err := session.Run(tx)
@@ -332,10 +324,7 @@ func TestSetTransactionDefaults_CanInitializeAllTransactionTypes(t *testing.T) {
 		session := session.SpawnSession(t)
 		t.Parallel()
 
-		txData := SetTransactionDefaults(t, session, &types.LegacyTx{
-			GasPrice: big.NewInt(1),
-		}, session.GetSessionSponsor())
-		tx := SignTransaction(t, chainId, txData, session.GetSessionSponsor())
+		tx := CreateTransaction(t, session, &types.LegacyTx{GasPrice: big.NewInt(1)}, session.GetSessionSponsor())
 
 		// the filled values suffice to get the transaction accepted and executed
 		_, err := session.Run(tx)
