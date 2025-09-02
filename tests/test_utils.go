@@ -38,7 +38,7 @@ import (
 )
 
 // CreateTransaction fills the given tx with acceptable values for the given
-// session, signs it with the sponsoring account, and returns the signed transaction.
+// session, signs it with the given account, and returns the signed transaction.
 // The values modified if defaults are:
 //   - ChainID: It replaces the ChainID of the transaction with the chainID of
 //     the given session.
