@@ -50,14 +50,13 @@ import (
 //     minimum gas required to execute the transaction
 //     Filled gas is a static minimum value, it does not account for the gas
 //     costs of the contract opcodes.
-func CreateTransaction(t *testing.T, session IntegrationTestNetSession, tx types.TxData) *types.Transaction {
+func CreateTransaction(t *testing.T, session IntegrationTestNetSession, tx types.TxData, account *Account) *types.Transaction {
 	t.Helper()
-	sponsor := session.GetSessionSponsor()
 	signedTx := SignTransaction(
 		t,
 		session.GetChainId(),
-		SetTransactionDefaults(t, session, tx, sponsor),
-		sponsor,
+		SetTransactionDefaults(t, session, tx, account),
+		account,
 	)
 	return signedTx
 }
