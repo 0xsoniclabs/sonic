@@ -97,6 +97,9 @@ func (b *EthAPIBackend) HistoryPruningCutoff() uint64 {
 	return 0
 }
 
+// ResolveRpcBlockNumberOrHash returns block number by block number or block hash.
+// It translates block tags like "latest" or "earliest" to their respective block numbers.
+// This function doesn't check for block number range validity.
 func (b *EthAPIBackend) ResolveRpcBlockNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (idx.Block, error) {
 	if number, ok := blockNrOrHash.Number(); ok {
 		latest := idx.Block(b.state.CurrentBlock().NumberU64())
@@ -105,9 +108,6 @@ func (b *EthAPIBackend) ResolveRpcBlockNumberOrHash(ctx context.Context, blockNr
 		} else if number == rpc.EarliestBlockNumber {
 			return idx.Block(b.HistoryPruningCutoff()), nil
 		} else {
-			if idx.Block(number) > latest {
-				return 0, fmt.Errorf("block %v not found; latest block is %v", number, latest)
-			}
 			return idx.Block(number), nil
 		}
 	} else if h, ok := blockNrOrHash.Hash(); ok {
@@ -343,15 +343,12 @@ func (b *EthAPIBackend) GetReceiptsByNumber(ctx context.Context, number rpc.Bloc
 		return nil, errors.New("transactions index is disabled (enable TxIndex and re-process the DAGs)")
 	}
 
-	// TODO: Check whether this resolution can be flaky
-	/*
-		blockNumber, err := b.ResolveRpcBlockNumberOrHash(ctx, rpc.BlockNumberOrHashWithNumber(number))
-		if err != nil {
-			// when block not found, return nil as rpc clients expect this
-			return nil, nil
-		}
-		number = rpc.BlockNumber(blockNumber)
-	*/
+	blockNumber, err := b.ResolveRpcBlockNumberOrHash(ctx, rpc.BlockNumberOrHashWithNumber(number))
+	if err != nil {
+		// when block not found, return nil as rpc clients expect this
+		return nil, nil
+	}
+	number = rpc.BlockNumber(blockNumber)
 
 	block := b.state.GetBlock(common.Hash{}, uint64(number))
 	time := uint64(block.Time.Unix())
