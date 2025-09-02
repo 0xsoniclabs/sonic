@@ -294,18 +294,18 @@ func TestSetTransactionDefaults_CanInitializeAllTransactionTypes(t *testing.T) {
 	t.Run("non-zero nonce is not defaulted", func(t *testing.T) {
 		session := session.SpawnSession(t)
 		t.Parallel()
+
 		// endowments modify the account nonce
-		receipt, err := session.EndowAccount(common.Address{}, big.NewInt(1))
-		require.NoError(t, err)
-		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
-		receipt, err = session.EndowAccount(common.Address{}, big.NewInt(1))
-		require.NoError(t, err)
-		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+		for range 3 {
+			receipt, err := session.EndowAccount(common.Address{}, big.NewInt(1))
+			require.NoError(t, err)
+			require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+		}
 
 		tx := CreateTransaction(t, session, &types.LegacyTx{Nonce: 1}, session.GetSessionSponsor())
 
 		// the filled values suffice to get the transaction accepted and executed
-		_, err = session.Run(tx)
+		_, err := session.Run(tx)
 		require.ErrorContains(t, err, "nonce too low")
 	})
 
