@@ -20,7 +20,7 @@ Our integration tests simulate a running network with one or many validator node
 
 - `Network`: The main object representing a (possibly multi-node) network. It is a self-contained environment that can be started and stopped for a single test. Its life cycle is managed by the test where it is created.
 - `Session`: A session is a view of a isolated set of addresses existing in the blockchain state which allows the execution of transactions and accounts modifications without collisions with other tests. Sessions can be executed in parallel.
-- `Account`: Is a pair of `common.Address` and a private key.
+- `Account`: Is a pair of address and key, where the address is used to signal sender/receiver and the key is used to sign the transactions.
 - `Sponsor`: Is a special account with a significant balance that funds and signs transactions. Both `Network` and `Session` have a sponsor account that is used to send transactions.
 - `Transactions`: They are the messages via which users can interact with the network. `Transactions` can be explicitly constructed or implicitly by using contracts ABI or account endowments.
 - `Contracts` can be generated from solidity code (for examples look into [`sonic/tests/contracts`](https://github.com/0xsoniclabs/sonic/tree/main/tests/contracts)). A solidity file and `gen.go` file are needed for the generation.
@@ -60,9 +60,10 @@ Here are some considerations to keep in mind when adding new integration tests:
 		require.Equal(modified, newConfig)
 	}	
 	```
-	`Upgrades` indicates which hard fork options the network uses. `opera.Sonic` hard fork is used as a default.
 
 	Otherwise we highly encourage you to use `session := getIntegrationTestNetSession(t, Upgrade)`
+
+	`Upgrades` indicates which hard fork options the network uses. `opera.Sonic` hard fork is used as a default.
 
 	```Go
 	func TestMultipleSessions_CanSendLegacyTransactionsInBulk(t *testing.T) {
@@ -75,7 +76,7 @@ Here are some considerations to keep in mind when adding new integration tests:
 			signedTx := SignTransaction(t, chainId, tx, session.GetSessionSponsor())
 			txs = append(txs, signedTx)
 		}
-		receipts, err := net.RunAll(txs)
+		receipts, err := session.RunAll(txs)
 		require.NoError(t, err, "failed to send transaction")
 		require.Equal(t, len(receipts), len(txs))
 	}
@@ -109,12 +110,16 @@ Here are some considerations to keep in mind when adding new integration tests:
 
 ## Client
 
-The network can produce `Client`s connected to the different nodes. These need to be closed and they can be used to interact with the JSON-RPC API.
+Networks or sessions can produce `Client`s connected to the different nodes. These need to be closed and they can be used to interact with the JSON-RPC API.
 
 ```Go
 func TestSendTransaction_Asynchronously(t *testing.T){
 	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 	chainId := session.GetChainId()
+
+	client, err := session.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
 
 	hashes := hash[]
 	for i := range 5 {
@@ -124,16 +129,16 @@ func TestSendTransaction_Asynchronously(t *testing.T){
 		require.NoError(t, err, "failed to send transaction")
 		hash = append(hash, signedTx.Hash())
 	}
-	receipts, err := net.GetReceipts(hashes)
+	receipts, err := session.GetReceipts(hashes)
 	require.NoError(t, err)
 	require.Equal(t, len(receipts), len(hashes))
 }
 
 ```
 In this example all 5 transactions are submitted one after the other without waiting for the receipts, that means that by the time the `for` loop ends, we do not know if the transactions have been processed and added into a new block or not. 
-`net.GetReceipts` will wait until all of the transactions have been executed (and their receipts reported via RPC).
+`session.GetReceipts` will wait until all of the transactions have been executed (and their receipts reported via RPC).
 
-Transactions can also be sent via `net.RunAll` which wait until it gets the receipts for all the transactions or with `client.SendTransaction` which does not wait for the transactions to be executed, hence enabling to send transactions asynchronously. The use `RunAll` can be observed in `TestMultipleSessions_CanSendLegacyTransactionsInBulk`
+Transactions can also be sent via `session.RunAll` which wait until it gets the receipts for all the transactions or with `client.SendTransaction` which does not wait for the transactions to be executed, hence enabling to send transactions asynchronously. The use `RunAll` can be observed in `TestMultipleSessions_CanSendLegacyTransactionsInBulk`
 
 
 One can also get *websocket* client to subscribe to different methods like `TestBlockInArchive`
