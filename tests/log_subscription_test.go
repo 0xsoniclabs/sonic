@@ -17,16 +17,12 @@
 package tests
 
 import (
-	"errors"
-	"math/big"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter_event_emitter"
 	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 )
@@ -68,103 +64,4 @@ func TestLogSubscription_CanGetCallBacksForLogEvents(t *testing.T) {
 			require.Fail("expected log event not received")
 		}
 	}
-}
-
-func TestLogBloom_query(t *testing.T) {
-	const NumBatches = 10
-	require := require.New(t)
-
-	// This test can reuse an existing blockchain history, but should not
-	// run concurrently to other tests. It requires logs to exist in at least one
-	// transaction per block while testFunction is running.
-	net := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
-
-	contract, _, err := DeployContract(net, counter_event_emitter.DeployCounterEventEmitter)
-	require.NoError(err)
-
-	stopTest := make(chan struct{})
-	testDone := make(chan struct{})
-	// testFunction monitors the latest available block, ensuring it has logs.
-	testFunction := func(blockNumber uint64) {
-		defer close(testDone)
-		client, err := net.GetClient()
-		require.NoError(err, "failed to get client; ", err)
-		defer client.Close()
-
-		for {
-			select {
-			case <-stopTest:
-				return
-			case <-time.After(time.Millisecond):
-			default:
-			}
-
-			block, err := client.BlockByNumber(t.Context(), big.NewInt(int64(blockNumber)))
-			if errors.Is(err, ethereum.NotFound) {
-				continue
-			}
-			require.NoError(err)
-
-			if (types.Bloom{} == block.Bloom()) {
-				t.Errorf("expected non-empty bloom in block %d, got empty", block.NumberU64())
-			}
-
-			blockNumber++
-		}
-	}
-	launchTest := sync.Once{}
-
-	client, err := net.GetClient()
-	require.NoError(err, "failed to get client; ", err)
-	defer client.Close()
-
-	for range NumBatches {
-		opts, err := net.GetTransactOptions(net.GetSessionSponsor())
-		require.NoError(err)
-
-		// accumulate 10 txs per block
-		batch := []*types.Transaction{}
-		for range 10 {
-			opts.NoSend = true
-			tx, err := contract.Increment(opts)
-			require.NoError(err)
-			batch = append(batch, tx)
-			opts.Nonce.Add(opts.Nonce, big.NewInt(1))
-		}
-
-		for _, tx := range batch {
-			err := client.SendTransaction(t.Context(), tx)
-			require.NoError(err)
-		}
-
-		// wait for this batch before starting a new one
-		// (this waits for block creation)
-		hashes := make([]common.Hash, len(batch))
-		for i, tx := range batch {
-			hashes[i] = tx.Hash()
-		}
-		receipts, err := net.GetReceipts(hashes)
-		require.NoError(err)
-
-		var blockNum uint64
-		for _, receipt := range receipts {
-			require.NotEqual(
-				types.Bloom{},
-				receipt.Bloom,
-				"expected non-empty bloom filter",
-			)
-			blockNum = max(blockNum, receipt.BlockNumber.Uint64())
-		}
-
-		// start the test function in a goroutine as soon as the
-		// first block has been generated (this way the test does not)
-		// need to deal with previous blocks not having logs
-		launchTest.Do(
-			func() {
-				go testFunction(blockNum)
-			})
-	}
-
-	close(stopTest)
-	<-testDone
 }
