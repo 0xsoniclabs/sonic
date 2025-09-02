@@ -296,16 +296,21 @@ func TestSetTransactionDefaults_CanInitializeAllTransactionTypes(t *testing.T) {
 		t.Parallel()
 
 		// endowments modify the account nonce
-		for range 3 {
-			receipt, err := session.EndowAccount(common.Address{}, big.NewInt(1))
+		var receipt *types.Receipt
+		var err error
+		for range 2 {
+			receipt, err = session.EndowAccount(common.Address{}, big.NewInt(1))
 			require.NoError(t, err)
 			require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 		}
 
+		err = waitUntilTransactionIsRetiredFromPoolByHash(t, client, receipt.TxHash, session.GetSessionSponsor().Address())
+		require.NoError(t, err)
+
 		tx := CreateTransaction(t, session, &types.LegacyTx{Nonce: 1}, session.GetSessionSponsor())
 
 		// the filled values suffice to get the transaction accepted and executed
-		_, err := session.Run(tx)
+		_, err = session.Run(tx)
 		require.ErrorContains(t, err, "nonce too low")
 	})
 
