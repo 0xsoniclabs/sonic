@@ -30,6 +30,7 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -213,6 +214,15 @@ func WaitUntilTransactionIsRetiredFromPool(t *testing.T, client *PooledEhtClient
 	txHash := tx.Hash()
 	txSender, err := types.Sender(types.NewPragueSigner(tx.ChainId()), tx)
 	require.NoError(t, err, "failed to get transaction sender address")
+	return waitUntilTransactionIsRetiredFromPoolByHash(t, client, txHash, txSender)
+}
+
+// WaitUntilTransactionIsRetiredFromPool waits until the transaction of the given hash
+// no longer exists in the transaction pool.
+// Because the transaction pool eviction is asynchronous, executed transactions may remain in the pool
+// for some time after they have been executed.
+// function will eventually time out if the transaction is not retired and an error will be returned.
+func waitUntilTransactionIsRetiredFromPoolByHash(t *testing.T, client *PooledEhtClient, txHash common.Hash, txSender common.Address) error {
 
 	// txpool_content returns a map containing two maps:
 	// - pending: transactions that are pending to be executed
@@ -246,7 +256,6 @@ func WaitUntilTransactionIsRetiredFromPool(t *testing.T, client *PooledEhtClient
 
 		return !found, nil
 	})
-
 }
 
 // UpdateNetworkRules sends a transaction to update the network rules.
