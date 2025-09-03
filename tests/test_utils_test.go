@@ -294,13 +294,18 @@ func TestSetTransactionDefaults_CanInitializeAllTransactionTypes(t *testing.T) {
 	t.Run("non-zero nonce is not defaulted", func(t *testing.T) {
 		session := session.SpawnSession(t)
 		t.Parallel()
+
 		// endowments modify the account nonce
-		receipt, err := session.EndowAccount(common.Address{}, big.NewInt(1))
+		var receipt *types.Receipt
+		var err error
+		for range 2 {
+			receipt, err = session.EndowAccount(common.Address{}, big.NewInt(1))
+			require.NoError(t, err)
+			require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+		}
+
+		err = waitUntilTransactionIsRetiredFromPoolByHash(t, client, receipt.TxHash, session.GetSessionSponsor().Address())
 		require.NoError(t, err)
-		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
-		receipt, err = session.EndowAccount(common.Address{}, big.NewInt(1))
-		require.NoError(t, err)
-		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
 		tx := CreateTransaction(t, session, &types.LegacyTx{Nonce: 1}, session.GetSessionSponsor())
 
