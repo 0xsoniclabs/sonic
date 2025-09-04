@@ -29,7 +29,7 @@ import (
 
 func TestLogSubscription_CanGetCallBacksForLogEvents(t *testing.T) {
 
-	const NumEvents = 3
+	const NumEvents = 10
 	require := require.New(t)
 	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 
