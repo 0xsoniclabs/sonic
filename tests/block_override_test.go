@@ -42,21 +42,14 @@ func TestBlockOverride(t *testing.T) {
 	t.Parallel()
 
 	// Deploy the block override observer contract.
-	_, receipt, err := DeployContract(session, block_override.DeployBlockOverride)
+	contract, receipt, err := DeployContract(session, block_override.DeployBlockOverride)
 	require.NoError(err, "failed to deploy contract; %v", err)
 	require.Equal(types.ReceiptStatusSuccessful, receipt.Status, "Deployment Unsuccessful")
 	contractAddress := receipt.ContractAddress
 
-	client, err := session.GetClient()
-	require.NoError(err, "failed to get client; %v", err)
-	defer client.Close()
-
-	contract, err := block_override.NewBlockOverride(contractAddress, client)
-	require.NoError(err, "failed to instantiate contract")
-
 	// Call contract method to be sure it is deployed.
 	receiptObserve, err := session.Apply(contract.Observe)
-	require.NoError(err, "failed to observe block hash; %v", err)
+	require.NoError(err, "failed to observe block; %v", err)
 	require.Equal(types.ReceiptStatusSuccessful, receiptObserve.Status,
 		"failed to observe block hash; %v", err,
 	)
