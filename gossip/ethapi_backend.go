@@ -97,6 +97,9 @@ func (b *EthAPIBackend) HistoryPruningCutoff() uint64 {
 	return 0
 }
 
+// ResolveRpcBlockNumberOrHash returns block number by block number or block hash.
+// It translates block tags like "latest" or "earliest" to their respective block numbers.
+// This function doesn't check for block number range validity.
 func (b *EthAPIBackend) ResolveRpcBlockNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (idx.Block, error) {
 	if number, ok := blockNrOrHash.Number(); ok {
 		latest := idx.Block(b.state.CurrentBlock().NumberU64())
@@ -105,9 +108,6 @@ func (b *EthAPIBackend) ResolveRpcBlockNumberOrHash(ctx context.Context, blockNr
 		} else if number == rpc.EarliestBlockNumber {
 			return idx.Block(b.HistoryPruningCutoff()), nil
 		} else {
-			if idx.Block(number) > latest {
-				return 0, fmt.Errorf("block %v not found; latest block is %v", number, latest)
-			}
 			return idx.Block(number), nil
 		}
 	} else if h, ok := blockNrOrHash.Hash(); ok {
