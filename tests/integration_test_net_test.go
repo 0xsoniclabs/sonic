@@ -42,7 +42,6 @@ func TestIntegrationTestNet_CanStartRestartAndStopIntegrationTestNet(t *testing.
 func TestIntegrationTestNet_CanRestartWithGenesisExportAndImport(t *testing.T) {
 	for _, numNodes := range []int{1, 2} {
 		t.Run(fmt.Sprintf("NumNodes=%d", numNodes), func(t *testing.T) {
-			t.Parallel()
 			net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
 				NumNodes: numNodes,
 			})
@@ -191,7 +190,6 @@ func TestIntegrationTestNet_AdvanceEpoch(t *testing.T) {
 func TestIntegrationTestNet_CanRunMultipleNodes(t *testing.T) {
 	for _, numNodes := range []int{1, 2, 3} {
 		t.Run(fmt.Sprintf("NumNodes%d", numNodes), func(t *testing.T) {
-			t.Parallel()
 			net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
 				NumNodes: numNodes,
 			})

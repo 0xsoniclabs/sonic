@@ -748,9 +748,9 @@ func (n *IntegrationTestNet) SpawnSession(t *testing.T) IntegrationTestNetSessio
 // AdvanceEpoch trigger the sealing of an epoch and the epoch number to progress by the given number.
 // The function blocks until the final epoch has been reached. This method can only be called
 // on a validator account.
-func (s *Session) AdvanceEpoch(t testing.TB, epochs int) {
+func (n *IntegrationTestNet) AdvanceEpoch(t testing.TB, epochs int) {
 	t.Helper()
-	client, err := s.GetClient()
+	client, err := n.GetClient()
 	require.NoError(t, err, "failed to connect to the Ethereum client")
 
 	var currentEpoch hexutil.Uint64
@@ -760,7 +760,7 @@ func (s *Session) AdvanceEpoch(t testing.TB, epochs int) {
 	contract, err := driverauth100.NewContract(driverauth.ContractAddress, client)
 	require.NoError(t, err, "failed to create contract instance")
 
-	receipt, err := s.Apply(func(ops *bind.TransactOpts) (*types.Transaction, error) {
+	receipt, err := n.Apply(func(ops *bind.TransactOpts) (*types.Transaction, error) {
 		return contract.AdvanceEpochs(ops, big.NewInt(int64(epochs)))
 	})
 	require.NoError(t, err, "failed to advance epoch")

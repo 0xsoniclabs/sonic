@@ -30,12 +30,37 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
+
+// CreateTransaction fills the given tx with acceptable values for the given
+// session, signs it with the given account, and returns the signed transaction.
+// The values modified if defaults are:
+//   - ChainID: It replaces the ChainID of the transaction with the chainID of
+//     the given session.
+//   - If nonce is zeroed: It configures the nonce of the transaction to be the
+//     current nonce of the sender account
+//   - If gas price or gas fee cap is zeroed: It configures the gas price of the
+//     transaction to be the suggested gas price
+//   - If gas is zeroed: It configures the gas of the transaction to be the
+//     minimum gas required to execute the transaction
+//     Filled gas is a static minimum value, it does not account for the gas
+//     costs of the contract opcodes.
+func CreateTransaction(t *testing.T, session IntegrationTestNetSession, tx types.TxData, account *Account) *types.Transaction {
+	t.Helper()
+	signedTx := SignTransaction(
+		t,
+		session.GetChainId(),
+		SetTransactionDefaults(t, session, tx, account),
+		account,
+	)
+	return signedTx
+}
 
 // SignTransaction is a testing helper that signs a transaction with the
 // key from the provided account
@@ -189,6 +214,15 @@ func WaitUntilTransactionIsRetiredFromPool(t *testing.T, client *PooledEhtClient
 	txHash := tx.Hash()
 	txSender, err := types.Sender(types.NewPragueSigner(tx.ChainId()), tx)
 	require.NoError(t, err, "failed to get transaction sender address")
+	return waitUntilTransactionIsRetiredFromPoolByHash(t, client, txHash, txSender)
+}
+
+// WaitUntilTransactionIsRetiredFromPool waits until the transaction of the given hash
+// no longer exists in the transaction pool.
+// Because the transaction pool eviction is asynchronous, executed transactions may remain in the pool
+// for some time after they have been executed.
+// function will eventually time out if the transaction is not retired and an error will be returned.
+func waitUntilTransactionIsRetiredFromPoolByHash(t *testing.T, client *PooledEhtClient, txHash common.Hash, txSender common.Address) error {
 
 	// txpool_content returns a map containing two maps:
 	// - pending: transactions that are pending to be executed
@@ -222,7 +256,6 @@ func WaitUntilTransactionIsRetiredFromPool(t *testing.T, client *PooledEhtClient
 
 		return !found, nil
 	})
-
 }
 
 // UpdateNetworkRules sends a transaction to update the network rules.

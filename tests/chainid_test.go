@@ -24,6 +24,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/ethapi"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/holiman/uint256"
@@ -182,6 +183,33 @@ func testChainId_AcceptsLegacyTxSignedWithHomestead(
 	decodedTx := rpcTransactionToTransaction(t, json)
 	require.Equal(t, signed.Hash(), decodedTx.Hash())
 	require.Equal(t, int64(0), decodedTx.ChainId().Int64())
+}
+
+func TestChainId_InternalTransactionHasCorrectChainId(t *testing.T) {
+
+	net := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	t.Parallel()
+
+	client, err := net.GetClient()
+	require.NoError(t, err, "failed to get client")
+	t.Cleanup(client.Close)
+
+	wantChainId, err := client.ChainID(t.Context())
+	require.NoError(t, err, "failed to get chain ID")
+
+	// block 1 contains internal transactions as network is initialized
+	block, err := client.BlockByNumber(t.Context(), big.NewInt(1))
+	require.NoError(t, err, "failed to get block nr. 1")
+	require.Greater(t, block.Transactions().Len(), 0, "block nr. 1 should have transactions")
+
+	// get the transaction by hash and verify that it has the correct chain ID
+	var json *ethapi.RPCTransaction
+	err = client.Client().CallContext(t.Context(), &json,
+		"eth_getTransactionByHash", block.Transactions()[0].Hash().String(),
+	)
+	require.NoError(t, err)
+	require.Equal(t, json.From, common.Address{}, "internal transaction should have a empty from address")
+	require.Equal(t, wantChainId, json.ChainID.ToInt())
 }
 
 func rpcTransactionToTransaction(t *testing.T, tx *ethapi.RPCTransaction) *types.Transaction {

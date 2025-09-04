@@ -34,6 +34,7 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	geth_math "github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/eth/tracers"
@@ -762,7 +763,7 @@ func TestTransactionJSONSerialization(t *testing.T) {
 			index := uint64(0)
 			baseFee := big.NewInt(1234)
 
-			rpcTx := newRPCTransaction(signed, blockHash, blockNumber, index, baseFee)
+			rpcTx := newRPCTransaction(signed, blockHash, blockNumber, index, baseFee, chainId)
 			require.Equal(t, signed.Hash(), rpcTransactionToTransaction(t, rpcTx).Hash())
 
 			encoded, err := json.Marshal(rpcTx)
@@ -833,7 +834,7 @@ func TestNewRPCTransaction_AllTxSignatureAndHashCanBeVerified(t *testing.T) {
 			require.NoError(t, err)
 			signed := signTransaction(t, chainId, tx, key)
 
-			rpcTx := newRPCTransaction(signed, common.Hash{}, 0, 0, big.NewInt(0))
+			rpcTx := newRPCTransaction(signed, common.Hash{}, 0, 0, big.NewInt(0), chainId)
 			require.Equal(t, signed.Hash(), rpcTx.Hash)
 			require.Equal(t, chainId.Int64(), rpcTx.ChainID.ToInt().Int64())
 
@@ -868,7 +869,7 @@ func TestNewRPCTransaction_LegacyTxSignedWithHomesteadCanBeReproducedAndVerified
 	require.Equal(t, int64(0), signed.ChainId().Int64())
 
 	// convert to RPCTransaction
-	rpcTx := newRPCTransaction(signed, common.Hash{}, 0, 0, big.NewInt(0))
+	rpcTx := newRPCTransaction(signed, common.Hash{}, 0, 0, big.NewInt(0), signed.ChainId())
 	require.Equal(t, signed.Hash(), rpcTx.Hash)
 	require.Equal(t, int64(0), rpcTx.ChainID.ToInt().Int64())
 
@@ -1407,4 +1408,28 @@ func TestDebugTraceWithBlobTx(t *testing.T) {
 		require.Equal(t, res[0].Error, "tracing failed: blob data is not supported")
 		require.Equal(t, res[1].Error, "tracing failed: blob data is not supported")
 	})
+}
+
+func TestFeeHistory_BlockNotFound(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockBackend := NewMockBackend(ctrl)
+
+	requestedBlock := rpc.BlockNumber(100)
+
+	currentBlock := evmcore.NewEvmBlock(
+		&evmcore.EvmHeader{
+			Number: big.NewInt(requestedBlock.Int64() - 1),
+		}, nil)
+
+	mockBackend.EXPECT().
+		ResolveRpcBlockNumberOrHash(gomock.Any(), rpc.BlockNumberOrHash{BlockNumber: &requestedBlock}).
+		Return(idx.Block(uint64(requestedBlock)), nil).
+		AnyTimes()
+	mockBackend.EXPECT().CurrentBlock().Return(currentBlock).AnyTimes()
+
+	ethAPI := NewPublicEthereumAPI(mockBackend)
+	_, err := ethAPI.FeeHistory(context.Background(), geth_math.HexOrDecimal64(5), requestedBlock, nil)
+	require.Error(t, err, "expected error when block is not found")
 }

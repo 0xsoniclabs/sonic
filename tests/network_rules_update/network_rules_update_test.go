@@ -369,6 +369,5 @@ func makeSetCodeTx(
 	txData := &types.SetCodeTx{
 		AuthList: []types.SetCodeAuthorization{authorization},
 	}
-	txData = tests.SetTransactionDefaults(t, net, txData, account)
-	return tests.SignTransaction(t, chainID, txData, account)
+	return tests.CreateTransaction(t, net, txData, account)
 }

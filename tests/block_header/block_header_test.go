@@ -433,7 +433,7 @@ func getStateRoot(t *testing.T, client *tests.PooledEhtClient, blockNumber int) 
 func waitForProofOf(t *testing.T, client *tests.PooledEhtClient, blockNumber int) {
 	err := tests.WaitFor(context.Background(), func(ctx context.Context) (bool, error) {
 		_, err := getProofFor(t, client, blockNumber)
-		if err != nil && strings.Contains(err.Error(), "not found") {
+		if err != nil && strings.Contains(err.Error(), "not present") {
 			// wait a bit to give the DB a chance to catch up
 			return false, nil
 		}
