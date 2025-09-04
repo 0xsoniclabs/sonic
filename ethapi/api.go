@@ -136,8 +136,8 @@ func (s *PublicEthereumAPI) FeeHistory(ctx context.Context, blockCount geth_math
 		return nil, err
 	}
 
-	if uint64(last) > s.b.CurrentBlock().NumberU64() {
-		return nil, fmt.Errorf("block %d not found; latest block is %d", last, s.b.CurrentBlock().NumberU64())
+	if latest := s.b.CurrentBlock().NumberU64(); uint64(last) > latest {
+		return nil, fmt.Errorf("block %d not found; latest block is %d", last, latest)
 	}
 
 	oldest := last
