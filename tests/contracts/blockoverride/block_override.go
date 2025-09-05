@@ -1,19 +1,3 @@
-// Copyright 2025 Sonic Operations Ltd
-// This file is part of the Sonic Client
-//
-// Sonic is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Lesser General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// Sonic is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU Lesser General Public License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with Sonic. If not, see <http://www.gnu.org/licenses/>.
-
 // Code generated - DO NOT EDIT.
 // This file is a generated binding and any manual changes will be lost.
 
@@ -47,8 +31,8 @@ var (
 
 // BlockOverrideMetaData contains all meta data concerning the BlockOverride contract.
 var BlockOverrideMetaData = &bind.MetaData{
-	ABI: "[{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"currentBlock\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"observedBlock\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"bytes32\",\"name\":\"blockHash\",\"type\":\"bytes32\"}],\"name\":\"Seen\",\"type\":\"event\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"nr\",\"type\":\"uint256\"}],\"name\":\"getBlockHash\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"getBlockParameters\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"number\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"difficulty\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"time\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"gaslimit\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"coinbase\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"random\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"basefee\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"blobbasefee\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"observe\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}]",
-	Bin: "0x6080604052348015600e575f5ffd5b5061040c8061001c5f395ff3fe608060405234801561000f575f5ffd5b506004361061003f575f3560e01c806314fc78fc14610043578063a3289b771461004d578063ee82ac5e14610072575b5f5ffd5b61004b6100a2565b005b610055610136565b6040516100699897969594939291906101c1565b60405180910390f35b61008c6004803603810190610087919061026b565b610160565b60405161009991906102ae565b60405180910390f35b5f5f90505f6005436100b491906102f4565b90506101048111156100d15761010e816100ce9190610327565b91505b5f8290505b818111610131575f814090507f2e2db0da10eef8180d8a58ccf88e981740e8a677554b25fe1e1f973a8db746964383836040516101159392919061035a565b60405180910390a15080806101299061038f565b9150506100d6565b505050565b5f5f5f5f5f5f5f5f4397504496504295504594504193504492504891504a90509091929394959697565b5f81409050919050565b5f819050919050565b61017c8161016a565b82525050565b5f73ffffffffffffffffffffffffffffffffffffffff82169050919050565b5f6101ab82610182565b9050919050565b6101bb816101a1565b82525050565b5f610100820190506101d55f83018b610173565b6101e2602083018a610173565b6101ef6040830189610173565b6101fc6060830188610173565b61020960808301876101b2565b61021660a0830186610173565b61022360c0830185610173565b61023060e0830184610173565b9998505050505050505050565b5f5ffd5b61024a8161016a565b8114610254575f5ffd5b50565b5f8135905061026581610241565b92915050565b5f602082840312156102805761027f61023d565b5b5f61028d84828501610257565b91505092915050565b5f819050919050565b6102a881610296565b82525050565b5f6020820190506102c15f83018461029f565b92915050565b7f4e487b71000000000000000000000000000000000000000000000000000000005f52601160045260245ffd5b5f6102fe8261016a565b91506103098361016a565b9250828201905080821115610321576103206102c7565b5b92915050565b5f6103318261016a565b915061033c8361016a565b9250828203905081811115610354576103536102c7565b5b92915050565b5f60608201905061036d5f830186610173565b61037a6020830185610173565b610387604083018461029f565b949350505050565b5f6103998261016a565b91507fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff82036103cb576103ca6102c7565b5b60018201905091905056fea264697066735822122072246b84b78c5095d5c6e5ae7f4dcde5e38b87274061ad8aab6af7a5d2b0d21f64736f6c634300081c0033",
+	ABI: "[{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"currentBlock\",\"type\":\"uint256\"}],\"name\":\"BlockNumber\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"getBlockParameters\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"number\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"difficulty\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"time\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"gaslimit\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"coinbase\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"random\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"basefee\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"blobbasefee\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"logBlockNumber\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}]",
+	Bin: "0x6080604052348015600e575f5ffd5b506102128061001c5f395ff3fe608060405234801561000f575f5ffd5b5060043610610034575f3560e01c80635978a24514610038578063a3289b7714610042575b5f5ffd5b610040610067565b005b61004a6100a0565b60405161005e989796959493929190610121565b60405180910390f35b7fc04eeb4cfe0799838abac8fa75bca975bff679179886c80c84a7b93229a1a61843604051610096919061019d565b60405180910390a1565b5f5f5f5f5f5f5f5f4397504496504295504594504193504492504891504a90509091929394959697565b5f819050919050565b6100dc816100ca565b82525050565b5f73ffffffffffffffffffffffffffffffffffffffff82169050919050565b5f61010b826100e2565b9050919050565b61011b81610101565b82525050565b5f610100820190506101355f83018b6100d3565b610142602083018a6100d3565b61014f60408301896100d3565b61015c60608301886100d3565b6101696080830187610112565b61017660a08301866100d3565b61018360c08301856100d3565b61019060e08301846100d3565b9998505050505050505050565b5f6020820190506101b05f8301846100d3565b9291505056fea26469706673582212200288b441f8f4067a9fc4e0e79d98c59e35464f2d7003b812fe205acd760dae5664736f6c637828302e382e32392d646576656c6f702e323032342e31312e312b636f6d6d69742e66636130626433310059",
 }
 
 // BlockOverrideABI is the input ABI used to generate the binding from.
@@ -218,37 +202,6 @@ func (_BlockOverride *BlockOverrideTransactorRaw) Transact(opts *bind.TransactOp
 	return _BlockOverride.Contract.contract.Transact(opts, method, params...)
 }
 
-// GetBlockHash is a free data retrieval call binding the contract method 0xee82ac5e.
-//
-// Solidity: function getBlockHash(uint256 nr) view returns(bytes32)
-func (_BlockOverride *BlockOverrideCaller) GetBlockHash(opts *bind.CallOpts, nr *big.Int) ([32]byte, error) {
-	var out []interface{}
-	err := _BlockOverride.contract.Call(opts, &out, "getBlockHash", nr)
-
-	if err != nil {
-		return *new([32]byte), err
-	}
-
-	out0 := *abi.ConvertType(out[0], new([32]byte)).(*[32]byte)
-
-	return out0, err
-
-}
-
-// GetBlockHash is a free data retrieval call binding the contract method 0xee82ac5e.
-//
-// Solidity: function getBlockHash(uint256 nr) view returns(bytes32)
-func (_BlockOverride *BlockOverrideSession) GetBlockHash(nr *big.Int) ([32]byte, error) {
-	return _BlockOverride.Contract.GetBlockHash(&_BlockOverride.CallOpts, nr)
-}
-
-// GetBlockHash is a free data retrieval call binding the contract method 0xee82ac5e.
-//
-// Solidity: function getBlockHash(uint256 nr) view returns(bytes32)
-func (_BlockOverride *BlockOverrideCallerSession) GetBlockHash(nr *big.Int) ([32]byte, error) {
-	return _BlockOverride.Contract.GetBlockHash(&_BlockOverride.CallOpts, nr)
-}
-
 // GetBlockParameters is a free data retrieval call binding the contract method 0xa3289b77.
 //
 // Solidity: function getBlockParameters() view returns(uint256 number, uint256 difficulty, uint256 time, uint256 gaslimit, address coinbase, uint256 random, uint256 basefee, uint256 blobbasefee)
@@ -324,30 +277,30 @@ func (_BlockOverride *BlockOverrideCallerSession) GetBlockParameters() (struct {
 	return _BlockOverride.Contract.GetBlockParameters(&_BlockOverride.CallOpts)
 }
 
-// Observe is a paid mutator transaction binding the contract method 0x14fc78fc.
+// LogBlockNumber is a paid mutator transaction binding the contract method 0x5978a245.
 //
-// Solidity: function observe() returns()
-func (_BlockOverride *BlockOverrideTransactor) Observe(opts *bind.TransactOpts) (*types.Transaction, error) {
-	return _BlockOverride.contract.Transact(opts, "observe")
+// Solidity: function logBlockNumber() returns()
+func (_BlockOverride *BlockOverrideTransactor) LogBlockNumber(opts *bind.TransactOpts) (*types.Transaction, error) {
+	return _BlockOverride.contract.Transact(opts, "logBlockNumber")
 }
 
-// Observe is a paid mutator transaction binding the contract method 0x14fc78fc.
+// LogBlockNumber is a paid mutator transaction binding the contract method 0x5978a245.
 //
-// Solidity: function observe() returns()
-func (_BlockOverride *BlockOverrideSession) Observe() (*types.Transaction, error) {
-	return _BlockOverride.Contract.Observe(&_BlockOverride.TransactOpts)
+// Solidity: function logBlockNumber() returns()
+func (_BlockOverride *BlockOverrideSession) LogBlockNumber() (*types.Transaction, error) {
+	return _BlockOverride.Contract.LogBlockNumber(&_BlockOverride.TransactOpts)
 }
 
-// Observe is a paid mutator transaction binding the contract method 0x14fc78fc.
+// LogBlockNumber is a paid mutator transaction binding the contract method 0x5978a245.
 //
-// Solidity: function observe() returns()
-func (_BlockOverride *BlockOverrideTransactorSession) Observe() (*types.Transaction, error) {
-	return _BlockOverride.Contract.Observe(&_BlockOverride.TransactOpts)
+// Solidity: function logBlockNumber() returns()
+func (_BlockOverride *BlockOverrideTransactorSession) LogBlockNumber() (*types.Transaction, error) {
+	return _BlockOverride.Contract.LogBlockNumber(&_BlockOverride.TransactOpts)
 }
 
-// BlockOverrideSeenIterator is returned from FilterSeen and is used to iterate over the raw logs and unpacked data for Seen events raised by the BlockOverride contract.
-type BlockOverrideSeenIterator struct {
-	Event *BlockOverrideSeen // Event containing the contract specifics and raw log
+// BlockOverrideBlockNumberIterator is returned from FilterBlockNumber and is used to iterate over the raw logs and unpacked data for BlockNumber events raised by the BlockOverride contract.
+type BlockOverrideBlockNumberIterator struct {
+	Event *BlockOverrideBlockNumber // Event containing the contract specifics and raw log
 
 	contract *bind.BoundContract // Generic contract to use for unpacking event data
 	event    string              // Event name to use for unpacking event data
@@ -361,7 +314,7 @@ type BlockOverrideSeenIterator struct {
 // Next advances the iterator to the subsequent event, returning whether there
 // are any more events found. In case of a retrieval or parsing error, false is
 // returned and Error() can be queried for the exact failure.
-func (it *BlockOverrideSeenIterator) Next() bool {
+func (it *BlockOverrideBlockNumberIterator) Next() bool {
 	// If the iterator failed, stop iterating
 	if it.fail != nil {
 		return false
@@ -370,7 +323,7 @@ func (it *BlockOverrideSeenIterator) Next() bool {
 	if it.done {
 		select {
 		case log := <-it.logs:
-			it.Event = new(BlockOverrideSeen)
+			it.Event = new(BlockOverrideBlockNumber)
 			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
 				it.fail = err
 				return false
@@ -385,7 +338,7 @@ func (it *BlockOverrideSeenIterator) Next() bool {
 	// Iterator still in progress, wait for either a data or an error event
 	select {
 	case log := <-it.logs:
-		it.Event = new(BlockOverrideSeen)
+		it.Event = new(BlockOverrideBlockNumber)
 		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
 			it.fail = err
 			return false
@@ -401,43 +354,41 @@ func (it *BlockOverrideSeenIterator) Next() bool {
 }
 
 // Error returns any retrieval or parsing error occurred during filtering.
-func (it *BlockOverrideSeenIterator) Error() error {
+func (it *BlockOverrideBlockNumberIterator) Error() error {
 	return it.fail
 }
 
 // Close terminates the iteration process, releasing any pending underlying
 // resources.
-func (it *BlockOverrideSeenIterator) Close() error {
+func (it *BlockOverrideBlockNumberIterator) Close() error {
 	it.sub.Unsubscribe()
 	return nil
 }
 
-// BlockOverrideSeen represents a Seen event raised by the BlockOverride contract.
-type BlockOverrideSeen struct {
-	CurrentBlock  *big.Int
-	ObservedBlock *big.Int
-	BlockHash     [32]byte
-	Raw           types.Log // Blockchain specific contextual infos
+// BlockOverrideBlockNumber represents a BlockNumber event raised by the BlockOverride contract.
+type BlockOverrideBlockNumber struct {
+	CurrentBlock *big.Int
+	Raw          types.Log // Blockchain specific contextual infos
 }
 
-// FilterSeen is a free log retrieval operation binding the contract event 0x2e2db0da10eef8180d8a58ccf88e981740e8a677554b25fe1e1f973a8db74696.
+// FilterBlockNumber is a free log retrieval operation binding the contract event 0xc04eeb4cfe0799838abac8fa75bca975bff679179886c80c84a7b93229a1a618.
 //
-// Solidity: event Seen(uint256 currentBlock, uint256 observedBlock, bytes32 blockHash)
-func (_BlockOverride *BlockOverrideFilterer) FilterSeen(opts *bind.FilterOpts) (*BlockOverrideSeenIterator, error) {
+// Solidity: event BlockNumber(uint256 currentBlock)
+func (_BlockOverride *BlockOverrideFilterer) FilterBlockNumber(opts *bind.FilterOpts) (*BlockOverrideBlockNumberIterator, error) {
 
-	logs, sub, err := _BlockOverride.contract.FilterLogs(opts, "Seen")
+	logs, sub, err := _BlockOverride.contract.FilterLogs(opts, "BlockNumber")
 	if err != nil {
 		return nil, err
 	}
-	return &BlockOverrideSeenIterator{contract: _BlockOverride.contract, event: "Seen", logs: logs, sub: sub}, nil
+	return &BlockOverrideBlockNumberIterator{contract: _BlockOverride.contract, event: "BlockNumber", logs: logs, sub: sub}, nil
 }
 
-// WatchSeen is a free log subscription operation binding the contract event 0x2e2db0da10eef8180d8a58ccf88e981740e8a677554b25fe1e1f973a8db74696.
+// WatchBlockNumber is a free log subscription operation binding the contract event 0xc04eeb4cfe0799838abac8fa75bca975bff679179886c80c84a7b93229a1a618.
 //
-// Solidity: event Seen(uint256 currentBlock, uint256 observedBlock, bytes32 blockHash)
-func (_BlockOverride *BlockOverrideFilterer) WatchSeen(opts *bind.WatchOpts, sink chan<- *BlockOverrideSeen) (event.Subscription, error) {
+// Solidity: event BlockNumber(uint256 currentBlock)
+func (_BlockOverride *BlockOverrideFilterer) WatchBlockNumber(opts *bind.WatchOpts, sink chan<- *BlockOverrideBlockNumber) (event.Subscription, error) {
 
-	logs, sub, err := _BlockOverride.contract.WatchLogs(opts, "Seen")
+	logs, sub, err := _BlockOverride.contract.WatchLogs(opts, "BlockNumber")
 	if err != nil {
 		return nil, err
 	}
@@ -447,8 +398,8 @@ func (_BlockOverride *BlockOverrideFilterer) WatchSeen(opts *bind.WatchOpts, sin
 			select {
 			case log := <-logs:
 				// New log arrived, parse the event and forward to the user
-				event := new(BlockOverrideSeen)
-				if err := _BlockOverride.contract.UnpackLog(event, "Seen", log); err != nil {
+				event := new(BlockOverrideBlockNumber)
+				if err := _BlockOverride.contract.UnpackLog(event, "BlockNumber", log); err != nil {
 					return err
 				}
 				event.Raw = log
@@ -469,12 +420,12 @@ func (_BlockOverride *BlockOverrideFilterer) WatchSeen(opts *bind.WatchOpts, sin
 	}), nil
 }
 
-// ParseSeen is a log parse operation binding the contract event 0x2e2db0da10eef8180d8a58ccf88e981740e8a677554b25fe1e1f973a8db74696.
+// ParseBlockNumber is a log parse operation binding the contract event 0xc04eeb4cfe0799838abac8fa75bca975bff679179886c80c84a7b93229a1a618.
 //
-// Solidity: event Seen(uint256 currentBlock, uint256 observedBlock, bytes32 blockHash)
-func (_BlockOverride *BlockOverrideFilterer) ParseSeen(log types.Log) (*BlockOverrideSeen, error) {
-	event := new(BlockOverrideSeen)
-	if err := _BlockOverride.contract.UnpackLog(event, "Seen", log); err != nil {
+// Solidity: event BlockNumber(uint256 currentBlock)
+func (_BlockOverride *BlockOverrideFilterer) ParseBlockNumber(log types.Log) (*BlockOverrideBlockNumber, error) {
+	event := new(BlockOverrideBlockNumber)
+	if err := _BlockOverride.contract.UnpackLog(event, "BlockNumber", log); err != nil {
 		return nil, err
 	}
 	event.Raw = log
