@@ -23,7 +23,7 @@ Our integration tests simulate a running network with one or many validator node
 - `Account`: Is a pair of address and key, where the address is used to signal sender/receiver and the key is used to sign the transactions.
 - `Sponsor`: Is a special account with a significant balance that funds and signs transactions. Both `Network` and `Session` have a sponsor account that is used to send transactions.
 - `Transactions`: They are the messages via which users can interact with the network. `Transactions` can be explicitly constructed or implicitly by using contracts ABI or account endowments.
-- `Contracts` can be generated from solidity code (for examples look into [`sonic/tests/contracts`](https://github.com/0xsoniclabs/sonic/tree/main/tests/contracts)). A solidity file and `gen.go` file are needed for the generation.
+- `Contracts`: Are programs stored on the blockchain. They have can have some logic processing inside and access to the blockchain status. To use them in a test they need to be compiled from solidity code into go. More about this on its own section below.
 
 ## Getting Started
 
@@ -145,7 +145,7 @@ One can also get *websocket* client to subscribe to different methods like `Test
 
 ## Solidty Contracts
 
-Solidy code can be hand crafted and then used to generate the corresponding Go code. For examples on this please look at `sonic/tests/contracts/counter/`, one must write the `.sol` file, such as
+Solidy code can be hand crafted and then used to generate the corresponding Go code. For examples on this please look at [`sonic/tests/contracts/counter`](https://github.com/0xsoniclabs/sonic/tree/main/tests/contracts/counter/), one must write the `.sol` file, such as
 ```Solidity
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
