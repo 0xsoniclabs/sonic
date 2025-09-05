@@ -350,20 +350,6 @@ func (mr *MockStateDBMockRecorder) GetCodeSize(arg0 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCodeSize", reflect.TypeOf((*MockStateDB)(nil).GetCodeSize), arg0)
 }
 
-// GetCommittedState mocks base method.
-func (m *MockStateDB) GetCommittedState(arg0 common.Address, arg1 common.Hash) common.Hash {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetCommittedState", arg0, arg1)
-	ret0, _ := ret[0].(common.Hash)
-	return ret0
-}
-
-// GetCommittedState indicates an expected call of GetCommittedState.
-func (mr *MockStateDBMockRecorder) GetCommittedState(arg0, arg1 any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCommittedState", reflect.TypeOf((*MockStateDB)(nil).GetCommittedState), arg0, arg1)
-}
-
 // GetLogs mocks base method.
 func (m *MockStateDB) GetLogs(hash, blockHash common.Hash) []*types.Log {
 	m.ctrl.T.Helper()
@@ -433,6 +419,21 @@ func (m *MockStateDB) GetState(arg0 common.Address, arg1 common.Hash) common.Has
 func (mr *MockStateDBMockRecorder) GetState(arg0, arg1 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetState", reflect.TypeOf((*MockStateDB)(nil).GetState), arg0, arg1)
+}
+
+// GetStateAndCommittedState mocks base method.
+func (m *MockStateDB) GetStateAndCommittedState(arg0 common.Address, arg1 common.Hash) (common.Hash, common.Hash) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetStateAndCommittedState", arg0, arg1)
+	ret0, _ := ret[0].(common.Hash)
+	ret1, _ := ret[1].(common.Hash)
+	return ret0, ret1
+}
+
+// GetStateAndCommittedState indicates an expected call of GetStateAndCommittedState.
+func (mr *MockStateDBMockRecorder) GetStateAndCommittedState(arg0, arg1 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetStateAndCommittedState", reflect.TypeOf((*MockStateDB)(nil).GetStateAndCommittedState), arg0, arg1)
 }
 
 // GetStateHash mocks base method.

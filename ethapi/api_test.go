@@ -985,7 +985,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 		mockState.EXPECT().AddRefund(gomock.Any()).Times(2)
 		mockState.EXPECT().SlotInAccessList(params.HistoryStorageAddress, gomock.Any())
 		mockState.EXPECT().AddSlotToAccessList(params.HistoryStorageAddress, gomock.Any())
-		mockState.EXPECT().GetState(params.HistoryStorageAddress, gomock.Any())
+		mockState.EXPECT().GetStateAndCommittedState(params.HistoryStorageAddress, gomock.Any())
 		mockState.EXPECT().SubRefund(gomock.Any())
 		mockState.EXPECT().Exist(params.HistoryStorageAddress).Return(true)
 		mockState.EXPECT().SubBalance(params.SystemAddress, uint256.NewInt(0), gomock.Any())
