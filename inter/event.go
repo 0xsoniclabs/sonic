@@ -18,6 +18,7 @@ package inter
 
 import (
 	"crypto/sha256"
+	"time"
 
 	"github.com/Fantom-foundation/lachesis-base/common/bigendian"
 	"github.com/Fantom-foundation/lachesis-base/hash"
@@ -165,7 +166,8 @@ type EventPayload struct {
 	payloadData
 
 	// cache
-	_size int
+	_size         int
+	BufferEntered time.Time
 }
 
 type MutableEventPayload struct {

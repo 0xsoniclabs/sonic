@@ -70,6 +70,12 @@ const (
 
 var (
 	broadcastedTxsCounter = metrics.GetOrRegisterCounter("p2p_txs_broadcasted", nil)
+
+	eventsSpilledIncompleteCounter = metrics.GetOrRegisterCounter("p2p_events_spilled_incomplete", nil)
+	dagProcessorBufferNum          = metrics.GetOrRegisterGauge("dag_proc_buffer_num", nil)  // the amount of events in the DAG-processor buffer
+	dagProcessorBufferSize         = metrics.GetOrRegisterGauge("dag_proc_buffer_size", nil) // the total size of events in the DAG-processor buffer
+	dagProcessorBufferTime         = metrics.GetOrRegisterTimer("dag_proc_buffer_time", nil) // the time of waiting in the DAG-processor buffer
+	dagProcessorTasksCount         = metrics.GetOrRegisterGauge("dag_proc_tasks_count", nil)
 )
 
 func errResp(code errCode, format string, v ...interface{}) error {
@@ -279,10 +285,18 @@ func (h *handler) makeDagProcessor(checkers *eventcheck.Checkers) *dagprocessor.
 		if err := checkers.Epochcheck.Validate(e.(inter.EventPayloadI)); err != nil {
 			return err
 		}
+
+		// event enters the heavy check (before entering the buffer)
+		e.(*inter.EventPayload).BufferEntered = time.Now()
+
 		return nil
 	}
 	bufferedCheck := func(_e dag.Event, _parents dag.Events) error {
 		e := _e.(inter.EventPayloadI)
+
+		// event is now complete
+		dagProcessorBufferTime.Update(time.Since(_e.(*inter.EventPayload).BufferEntered))
+
 		parents := make(inter.EventIs, len(_parents))
 		for i := range _parents {
 			parents[i] = _parents[i].(inter.EventI)
@@ -317,6 +331,11 @@ func (h *handler) makeDagProcessor(checkers *eventcheck.Checkers) *dagprocessor.
 				if eventcheck.IsBan(err) {
 					log.Warn("Incoming event rejected", "event", e.ID().String(), "creator", e.Creator(), "err", err)
 					h.removePeer(peer)
+				}
+
+				// measure the amount of spilled events (exceeding the dag-ordering buffer size)
+				if errors.Is(err, eventcheck.ErrSpilledEvent) {
+					eventsSpilledIncompleteCounter.Inc(1)
 				}
 			},
 
@@ -712,6 +731,12 @@ func (h *handler) handleEvents(peer *peer, events dag.Events, ordered bool) {
 		_ = h.dagFetcher.NotifyAnnounces(peer.id, eventIDsToInterfaces(ids), now, requestEvents)
 	}
 	_ = h.dagProcessor.Enqueue(peer.id, notTooHigh, ordered, notifyAnnounces, nil)
+
+	// measure usage of the DAG-processor buffer
+	bufferUsage := h.dagProcessor.TotalBuffered()
+	dagProcessorBufferNum.Update(int64(bufferUsage.Num))
+	dagProcessorBufferSize.Update(int64(bufferUsage.Size))
+	dagProcessorTasksCount.Update(int64(h.dagProcessor.TasksCount()))
 }
 
 // handleMsg is invoked whenever an inbound message is received from a remote
