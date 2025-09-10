@@ -278,6 +278,7 @@ type TxPool struct {
 
 	istanbul bool // Fork indicator whether we are in the istanbul stage.
 	shanghai bool // Fork indicator whether we are in the shanghai stage.
+	osaka    bool // Fork indicator whether we are in the osaka stage.
 	eip2718  bool // Fork indicator whether we are using EIP-2718 type transactions.
 	eip1559  bool // Fork indicator whether we are using EIP-1559 type transactions.
 	eip4844  bool // Fork indicator whether we are using EIP-4844 type transactions.
@@ -673,6 +674,7 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 	netRules := NetworkRules{
 		istanbul: pool.istanbul,
 		shanghai: pool.shanghai,
+		osaka:    pool.osaka,
 		eip1559:  pool.eip1559,
 		eip2718:  pool.eip2718,
 		eip4844:  pool.eip4844,
@@ -1432,6 +1434,7 @@ func (pool *TxPool) reset(oldHead, newHead *EvmHeader) {
 	pool.eip4844 = pool.chainconfig.IsCancun(next, uint64(newHead.Time.Unix()))
 	pool.eip7623 = pool.chainconfig.IsPrague(next, uint64(newHead.Time.Unix()))
 	pool.eip7702 = pool.chainconfig.IsPrague(next, uint64(newHead.Time.Unix()))
+	pool.osaka = pool.chainconfig.IsOsaka(next, uint64(newHead.Time.Unix()))
 }
 
 // promoteExecutables moves transactions that have become processable from the
