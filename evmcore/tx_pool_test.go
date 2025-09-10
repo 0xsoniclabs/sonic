@@ -20,6 +20,7 @@ import (
 	"crypto/ecdsa"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"math/rand/v2"
 	"os"
@@ -3132,6 +3133,49 @@ func TestSampleHashesManySenders(t *testing.T) {
 			t.Errorf("expected tx %x (nonce %d) present in samples in more occurrences than expected", txHash, tx.Nonce())
 		}
 	}
+}
+
+func TestTxPool_ResetDropsTransactionsWithHighGas(t *testing.T) {
+
+	statedb := newTestTxPoolStateDb()
+	blockchain := NewTestBlockChain(statedb)
+	blockchain.SetGasLimit(params.MaxTxGas * 2)
+	testChainConfig := params.TestChainConfig
+
+	pool := NewTxPool(testTxPoolConfig, testChainConfig, blockchain)
+	defer pool.Stop()
+
+	// make a transaction with over params.MaxTxGas gas and nonce 0
+	key, _ := crypto.GenerateKey()
+	tx := pricedTransaction(0, params.MaxTxGas+1, big.NewInt(1), key)
+	testAddBalance(pool, crypto.PubkeyToAddress(key.PublicKey), big.NewInt(math.MaxInt64))
+
+	err := pool.addRemoteSync(tx)
+	require.NoError(t, err, "failed to add transaction: %v", err)
+
+	// make a transaction with little gas and nonce 1
+	smallTx := pricedTransaction(1, 21000, big.NewInt(1), key)
+	err = pool.addRemoteSync(smallTx)
+	require.NoError(t, err, "failed to add transaction: %v", err)
+
+	pending, queued := pool.stats()
+	require.Equal(t, 2, pending, "pending list should have 2 tx but has: %d", pending)
+	require.Equal(t, 0, queued, "queued list should be empty but has: %d", queued)
+
+	someTime := uint64(5)
+	testChainConfig.OsakaTime = &someTime
+
+	// Number and BaseFee are not relevant for the test, but are necessary to simulate "normal" behavior
+	oldHeader := &EvmHeader{Number: big.NewInt(4), Time: 4}
+	newHeader := &EvmHeader{Number: big.NewInt(5), Time: 5, BaseFee: big.NewInt(100)}
+	<-pool.requestReset(oldHeader, newHeader)
+
+	pool.waitForIdleReorgLoop_forTesting()
+
+	// transaction with nonce 0 should be dropped, nonce 1 should be moved to queued
+	pending, queued = pool.stats()
+	require.Equal(t, 0, pending, "pending list should be empty but has: %d", pending)
+	require.Equal(t, 1, queued, "queued list should have 1 tx but has: %d", queued)
 }
 
 // Benchmarks the speed of validating the contents of the pending queue of the
