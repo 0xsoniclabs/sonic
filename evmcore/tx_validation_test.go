@@ -64,6 +64,7 @@ func getTestNetworkRules() NetworkRules {
 		eip4844:  true,
 		eip7623:  true,
 		eip7702:  true,
+		osaka:    true,
 		signer:   types.NewPragueSigner(big.NewInt(1)),
 	}
 }
@@ -287,6 +288,30 @@ func TestValidateTxForNetwork_Gas_RejectsTxWith(t *testing.T) {
 			err = ValidateTxForNetwork(signedTx, netRules)
 			require.NoError(t, err)
 
+		})
+	}
+
+	for name, tx := range getTxsOfAllTypes() {
+		t.Run(fmt.Sprintf("gas over limit accepted before osaka/%v", name), func(t *testing.T) {
+			netRules := getTestNetworkRules()
+			netRules.osaka = false
+
+			setGas(t, tx, params.MaxTxGas+1)
+			_, signedTx := signTxForTest(t, tx, netRules.signer)
+
+			err := ValidateTxForNetwork(signedTx, netRules)
+			require.NoError(t, err)
+		})
+	}
+
+	for name, tx := range getTxsOfAllTypes() {
+		t.Run(fmt.Sprintf("gas higher than max gas limit/%v", name), func(t *testing.T) {
+			netRules := getTestNetworkRules()
+
+			setGas(t, tx, params.MaxTxGas+1)
+
+			err := ValidateTxForNetwork(types.NewTx(tx), netRules)
+			require.ErrorIs(t, err, ErrGasLimitTooHigh)
 		})
 	}
 }

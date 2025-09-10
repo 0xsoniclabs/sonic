@@ -105,4 +105,7 @@ var (
 
 	// ErrNonEmptyBlobTx is returned if a blob transaction has non-empty blob data.
 	ErrNonEmptyBlobTx = errors.New("non-empty blob transaction are not supported")
+
+	// -- EIP-7825 error --
+	ErrGasLimitTooHigh = errors.New("transaction gas limit too high")
 )
