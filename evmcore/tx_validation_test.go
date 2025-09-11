@@ -66,7 +66,7 @@ func getTestNetworkRules() NetworkRules {
 		eip7702:  true,
 		osaka:    true,
 		signer:   types.NewPragueSigner(big.NewInt(1)),
-		maxTxGas: 16_000_000, // 25 million gas should be enough
+		maxTxGas: 16_000_000, // 16 million gas should be enough
 	}
 }
 
