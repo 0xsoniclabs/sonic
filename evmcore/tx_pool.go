@@ -681,6 +681,7 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 		eip7623:  pool.eip7623,
 		eip7702:  pool.eip7702,
 		signer:   pool.signer,
+		maxTxGas: pool.currentMaxGas,
 	}
 	err := validateTx(tx, opts, blockState, netRules)
 	if err != nil {

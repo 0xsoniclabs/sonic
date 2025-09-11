@@ -296,7 +296,7 @@ func TestValidateTxForNetwork_Gas_RejectsTxWith(t *testing.T) {
 			netRules := getTestNetworkRules()
 			netRules.osaka = false
 
-			setGas(t, tx, params.MaxTxGas+1)
+			setGas(t, tx, netRules.maxTxGas+1)
 			_, signedTx := signTxForTest(t, tx, netRules.signer)
 
 			err := ValidateTxForNetwork(signedTx, netRules)
@@ -308,7 +308,7 @@ func TestValidateTxForNetwork_Gas_RejectsTxWith(t *testing.T) {
 		t.Run(fmt.Sprintf("gas higher than max gas limit/%v", name), func(t *testing.T) {
 			netRules := getTestNetworkRules()
 
-			setGas(t, tx, params.MaxTxGas+1)
+			setGas(t, tx, netRules.maxTxGas+1)
 
 			err := ValidateTxForNetwork(types.NewTx(tx), netRules)
 			require.ErrorIs(t, err, ErrGasLimitTooHigh)

@@ -51,6 +51,8 @@ type NetworkRules struct {
 	eip7702 bool // Fork indicator whether we are using EIP-7702 set code transactions.
 
 	signer types.Signer // Signer to use for transaction validation
+
+	maxTxGas uint64 // Maximum gas allowed per transaction
 }
 
 // blockState is a set of options to adjust the validation of transactions
@@ -170,8 +172,8 @@ func ValidateTxForNetwork(tx *types.Transaction, opt NetworkRules) error {
 		}
 	}
 
-	if opt.osaka && tx.Gas() > params.MaxTxGas {
-		return fmt.Errorf("%w: tx gas %v, should be under %v", ErrGasLimitTooHigh, tx.Gas(), params.MaxGasLimit)
+	if opt.osaka && tx.Gas() > opt.maxTxGas {
+		return fmt.Errorf("%w: tx gas %v, should be under %v", ErrGasLimitTooHigh, tx.Gas(), opt.maxTxGas)
 	}
 
 	if _, err := types.Sender(opt.signer, tx); err != nil {
