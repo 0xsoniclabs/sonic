@@ -129,12 +129,13 @@ type testBlockChain struct {
 	statedb       *testTxPoolStateDb
 	gasLimit      uint64
 	chainHeadFeed *event.Feed
+	chainconfig   *params.ChainConfig
 
 	mu sync.RWMutex
 }
 
 func NewTestBlockChain(statedb *testTxPoolStateDb) *testBlockChain {
-	return &testBlockChain{statedb, 10000000, new(event.Feed), sync.RWMutex{}}
+	return &testBlockChain{statedb, 10000000, new(event.Feed), &params.ChainConfig{}, sync.RWMutex{}}
 }
 
 func (bc *testBlockChain) changeStateDB(statedb *testTxPoolStateDb) {
@@ -170,7 +171,11 @@ func (bc *testBlockChain) MaxGasLimit() uint64 {
 	return bc.CurrentBlock().GasLimit
 }
 func (bc *testBlockChain) Config() *params.ChainConfig {
-	return nil
+	return bc.chainconfig
+}
+
+func (bc *testBlockChain) setConfig(config *params.ChainConfig) {
+	bc.chainconfig = config
 }
 
 func (bc *testBlockChain) GetBlock(hash common.Hash, number uint64) *EvmBlock {
@@ -3140,9 +3145,8 @@ func TestTxPool_ResetDropsTransactionsWithHighGas(t *testing.T) {
 	statedb := newTestTxPoolStateDb()
 	blockchain := NewTestBlockChain(statedb)
 	blockchain.SetGasLimit(params.MaxTxGas * 2)
-	testChainConfig := params.TestChainConfig
 
-	pool := NewTxPool(testTxPoolConfig, testChainConfig, blockchain)
+	pool := NewTxPool(testTxPoolConfig, params.TestChainConfig, blockchain)
 	defer pool.Stop()
 
 	// make a transaction with over params.MaxTxGas gas and nonce 0
@@ -3163,7 +3167,9 @@ func TestTxPool_ResetDropsTransactionsWithHighGas(t *testing.T) {
 	require.Equal(t, 0, queued, "queued list should be empty but has: %d", queued)
 
 	someTime := uint64(5)
+	testChainConfig := *params.TestChainConfig
 	testChainConfig.OsakaTime = &someTime
+	blockchain.setConfig(&testChainConfig)
 
 	// Number and BaseFee are not relevant for the test, but are necessary to simulate "normal" behavior
 	oldHeader := &EvmHeader{Number: big.NewInt(4), Time: 4}
