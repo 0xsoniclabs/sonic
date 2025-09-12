@@ -66,7 +66,9 @@ func getTestNetworkRules() NetworkRules {
 		eip7702:  true,
 		osaka:    true,
 		signer:   types.NewPragueSigner(big.NewInt(1)),
-		maxTxGas: 16_000_000, // 16 million gas should be enough
+		// EIP-7825 fixes this limit to 16M gas, Sonic network leaves this
+		// parameter configurable via network rules
+		maxTxGas: 16_000_000,
 	}
 }
 
