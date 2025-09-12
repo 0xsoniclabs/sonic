@@ -16,15 +16,9 @@
 
 pipeline {
     agent {
-        docker {
+        dockerfile {
+            filename 'CI/Dockerfile.jenkins'
             label 'pr'
-            image 'golang:1.24'
-            // The golang image is meant to use root user, cache folders are
-            // created for that use case. When forwarding user ids (like jenkins does)
-            // go is incapable of finding the mandatory cache path.
-            // This command mounts the tmp directory as a cache folder where
-            // go expects it to be when forwarding user id.
-            args '-v/tmp:/.cache'
         }
     }
 
@@ -78,9 +72,6 @@ pipeline {
         stage('Clean up') {
             steps {
                 sh 'make clean'
-                // cache is mounted from outside of the docker filesystem
-                // clean it to avoid leaking resources
-                sh 'go clean -cache'
             }
         }
     }
