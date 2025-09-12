@@ -240,9 +240,7 @@ func TestNetworkRules_UpdateToBrio_DropsLargeGasTxs(t *testing.T) {
 	// make a transaction with over 20M gas
 	tx := tests.CreateTransaction(t, net, &types.LegacyTx{
 		To:    &common.Address{1},
-		Value: big.NewInt(1),
 		Gas:   21_000_000,
-		Data:  []byte{},
 		Nonce: 1, // High nonce that cannot be executed yet but will not be dropped from the txpool
 	}, newAccount)
 
@@ -250,13 +248,9 @@ func TestNetworkRules_UpdateToBrio_DropsLargeGasTxs(t *testing.T) {
 	require.NoError(err, "failed to send high gas transaction")
 
 	var content map[string]map[string]map[string]*ethapi.RPCTransaction
-
 	err = client.Client().Call(&content, "txpool_content")
 	require.NoError(err, "failed to get tx pool status")
 	require.Equal(1, len(content["queued"]), "expected the high gas tx to be in the queued section of the tx pool")
-
-	defaultGasRules := opera.DefaultGasRules()
-	defaultGasRules.MaxEventGas = 2 >> 24 // 16,777,216
 
 	type rulesType struct {
 		Economy  struct{ GasRules opera.GasRules }
@@ -270,6 +264,8 @@ func TestNetworkRules_UpdateToBrio_DropsLargeGasTxs(t *testing.T) {
 	require.NotEqual(0, originalRules.Economy.GasRules.MaxEventGas, "GasRules should be filled")
 
 	updatedRules := originalRules
+	defaultGasRules := opera.DefaultGasRules()
+	defaultGasRules.MaxEventGas = 2 >> 24 // 16,777,216
 	updatedRules.Economy.GasRules = defaultGasRules
 	updatedRules.Upgrades.Brio = true
 
@@ -278,15 +274,14 @@ func TestNetworkRules_UpdateToBrio_DropsLargeGasTxs(t *testing.T) {
 
 	err = client.Client().Call(&content, "txpool_content")
 	require.NoError(err, "failed to get tx pool status")
+	require.Equal(1, len(content["queued"]), "expected the high gas tx to be in the queued section of the tx pool")
 
 	// reach epoch ceiling to apply the new rules
 	tests.AdvanceEpochAndWaitForBlocks(t, net)
 
 	err = client.Client().Call(&content, "txpool_content")
 	require.NoError(err, "failed to get tx pool status")
-
 	require.Equal(0, len(content["queued"]))
-
 }
 
 func TestNetworkRule_MinEventGas_AllowsChangingRules(t *testing.T) {

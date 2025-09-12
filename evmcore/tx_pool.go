@@ -285,6 +285,8 @@ type TxPool struct {
 	eip7623  bool // Fork indicator whether we are using EIP-7623 floor gas validation.
 	eip7702  bool // Fork indicator whether we are using EIP-7702 type transactions.
 
+	osakaResetTriggered bool // whether the first osaka reset has been executed or not.
+
 	currentState  TxPoolStateDB // Current state in the blockchain head
 	pendingNonces *txNoncer     // Pending state tracking virtual nonces
 	currentMaxGas uint64        // Current gas limit for transaction caps
@@ -1270,9 +1272,10 @@ func (pool *TxPool) runReorg(done chan struct{}, reset *txpoolResetRequest, dirt
 	}
 	pool.mu.Lock()
 	if reset != nil {
+		// need to call discard before reset to check if rules will change
+		pool.discardTxsWithTooLargeGasOsaka(reset.oldHead, reset.newHead)
 		// Reset from the old head to the new, rescheduling any reorged transactions
 		pool.reset(reset.oldHead, reset.newHead)
-		pool.discardTxsWithTooLargeGasOsaka(reset.oldHead, reset.newHead)
 
 		// Nonces were reset, discard any events that became stale
 		for addr := range events {
@@ -1707,7 +1710,8 @@ func (pool *TxPool) discardTxsWithTooLargeGasOsaka(oldHead, newHead *EvmHeader) 
 		return
 	}
 	// Discard the transactions with the gas limit higher than the cap.
-	if pool.chainconfig.IsOsaka(newHead.Number, uint64(newHead.Time)) &&
+	// Compare old and new config.
+	if pool.chain.Config().IsOsaka(newHead.Number, uint64(newHead.Time)) &&
 		!pool.chainconfig.IsOsaka(oldHead.Number, uint64(oldHead.Time)) {
 		var hashes []common.Hash
 		pool.all.Range(func(hash common.Hash, tx *types.Transaction, local bool) bool {

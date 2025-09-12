@@ -174,8 +174,13 @@ func (bc *testBlockChain) Config() *params.ChainConfig {
 	return bc.chainconfig
 }
 
+// setConfig sets the chain config for the blockchain. If config is nil, it does nothing.
 func (bc *testBlockChain) setConfig(config *params.ChainConfig) {
-	bc.chainconfig = config
+	if config == nil {
+		return
+	}
+	cpy := *config
+	bc.chainconfig = &cpy
 }
 
 func (bc *testBlockChain) GetBlock(hash common.Hash, number uint64) *EvmBlock {
@@ -3167,10 +3172,14 @@ func TestTxPool_ResetDropsTransactionsWithHighGas(t *testing.T) {
 	require.Equal(t, 0, queued, "queued list should be empty but has: %d", queued)
 
 	// if a config changes but it is not osaka, the transaction should not be dropped
-	someTime := uint64(5)
-	testChainConfig := *params.TestChainConfig
-	testChainConfig.ShanghaiTime = &someTime
-	blockchain.setConfig(&testChainConfig)
+	timestampInThePast := uint64(0)
+
+	// make a copy of the chain config that is safe to modify
+	copy := *params.TestChainConfig
+	testChainConfig := &copy
+
+	testChainConfig.ShanghaiTime = &timestampInThePast
+	blockchain.setConfig(testChainConfig)
 
 	// Number and BaseFee are not relevant for the test, but are necessary to simulate "normal" behavior
 	oldHeader := &EvmHeader{Number: big.NewInt(4), Time: 4}
@@ -3183,8 +3192,8 @@ func TestTxPool_ResetDropsTransactionsWithHighGas(t *testing.T) {
 	require.Equal(t, 0, queued, "queued list should be empty but has: %d", queued)
 
 	// now osaka is enabled and the transaction should be discarded
-	testChainConfig.OsakaTime = &someTime
-	blockchain.setConfig(&testChainConfig)
+	testChainConfig.OsakaTime = &timestampInThePast
+	blockchain.setConfig(testChainConfig)
 
 	<-pool.requestReset(oldHeader, newHeader)
 	pool.waitForIdleReorgLoop_forTesting()
