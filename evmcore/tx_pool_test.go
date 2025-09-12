@@ -3166,16 +3166,27 @@ func TestTxPool_ResetDropsTransactionsWithHighGas(t *testing.T) {
 	require.Equal(t, 2, pending, "pending list should have 2 tx but has: %d", pending)
 	require.Equal(t, 0, queued, "queued list should be empty but has: %d", queued)
 
+	// if a config changes but it is not osaka, the transaction should not be dropped
 	someTime := uint64(5)
 	testChainConfig := *params.TestChainConfig
-	testChainConfig.OsakaTime = &someTime
+	testChainConfig.ShanghaiTime = &someTime
 	blockchain.setConfig(&testChainConfig)
 
 	// Number and BaseFee are not relevant for the test, but are necessary to simulate "normal" behavior
 	oldHeader := &EvmHeader{Number: big.NewInt(4), Time: 4}
 	newHeader := &EvmHeader{Number: big.NewInt(5), Time: 5, BaseFee: big.NewInt(100)}
 	<-pool.requestReset(oldHeader, newHeader)
+	pool.waitForIdleReorgLoop_forTesting()
 
+	pending, queued = pool.stats()
+	require.Equal(t, 2, pending, "pending list should have 2 tx but has: %d", pending)
+	require.Equal(t, 0, queued, "queued list should be empty but has: %d", queued)
+
+	// now osaka is enabled and the transaction should be discarded
+	testChainConfig.OsakaTime = &someTime
+	blockchain.setConfig(&testChainConfig)
+
+	<-pool.requestReset(oldHeader, newHeader)
 	pool.waitForIdleReorgLoop_forTesting()
 
 	// transaction with nonce 0 should be dropped, nonce 1 should be moved to queued
