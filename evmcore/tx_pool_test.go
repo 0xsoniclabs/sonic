@@ -135,7 +135,7 @@ type testBlockChain struct {
 }
 
 func NewTestBlockChain(statedb *testTxPoolStateDb) *testBlockChain {
-	return &testBlockChain{statedb, 10000000, new(event.Feed), &params.ChainConfig{}, sync.RWMutex{}}
+	return &testBlockChain{statedb, 10000000, new(event.Feed), nil, sync.RWMutex{}}
 }
 
 func (bc *testBlockChain) changeStateDB(statedb *testTxPoolStateDb) {
