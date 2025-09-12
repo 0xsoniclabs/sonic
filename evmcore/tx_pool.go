@@ -1703,12 +1703,12 @@ func (pool *TxPool) demoteUnexecutables() {
 // discardTxsWithTooLargeGasOsaka removes transactions that exceed the maximum gas limit,
 // if the reset is already in Osaka.
 func (pool *TxPool) discardTxsWithTooLargeGasOsaka(oldHead, newHead *EvmHeader) {
-	if (newHead == nil && oldHead == nil) ||
-		(newHead == oldHead) {
+	if newHead == nil || oldHead == nil || newHead == oldHead {
 		return
 	}
 	// Discard the transactions with the gas limit higher than the cap.
-	if pool.chainconfig.IsOsaka(newHead.Number, uint64(newHead.Time)) {
+	if pool.chainconfig.IsOsaka(newHead.Number, uint64(newHead.Time)) &&
+		!pool.chainconfig.IsOsaka(oldHead.Number, uint64(oldHead.Time)) {
 		var hashes []common.Hash
 		pool.all.Range(func(hash common.Hash, tx *types.Transaction, local bool) bool {
 			if tx.Gas() > params.MaxTxGas {
