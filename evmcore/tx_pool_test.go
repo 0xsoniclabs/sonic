@@ -3145,10 +3145,11 @@ func TestSampleHashesManySenders(t *testing.T) {
 	}
 }
 
-func TestTxPool_ResetDropsTransactionsWithHighGas(t *testing.T) {
+func TestTxPool_ActivatingOsakaDropsTransactionsWithHighGas(t *testing.T) {
 
 	statedb := newTestTxPoolStateDb()
 	blockchain := NewTestBlockChain(statedb)
+	// set a very high gas limit
 	blockchain.SetGasLimit(params.MaxTxGas * 2)
 
 	pool := NewTxPool(testTxPoolConfig, params.TestChainConfig, blockchain)
@@ -3171,7 +3172,7 @@ func TestTxPool_ResetDropsTransactionsWithHighGas(t *testing.T) {
 	require.Equal(t, 2, pending, "pending list should have 2 tx but has: %d", pending)
 	require.Equal(t, 0, queued, "queued list should be empty but has: %d", queued)
 
-	// if a config changes but it is not osaka, the transaction should not be dropped
+	// if a config changes but it is not osaka, the first transaction should not be dropped
 	timestampInThePast := uint64(0)
 
 	// make a copy of the chain config that is safe to modify
@@ -3181,9 +3182,10 @@ func TestTxPool_ResetDropsTransactionsWithHighGas(t *testing.T) {
 	testChainConfig.ShanghaiTime = &timestampInThePast
 	blockchain.setConfig(testChainConfig)
 
-	// Number and BaseFee are not relevant for the test, but are necessary to simulate "normal" behavior
+	// header parameters are not relevant for the test, but are necessary to prevent panics
 	oldHeader := &EvmHeader{Number: big.NewInt(4), Time: 4}
 	newHeader := &EvmHeader{Number: big.NewInt(5), Time: 5, BaseFee: big.NewInt(100)}
+
 	<-pool.requestReset(oldHeader, newHeader)
 	pool.waitForIdleReorgLoop_forTesting()
 

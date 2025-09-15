@@ -285,8 +285,6 @@ type TxPool struct {
 	eip7623  bool // Fork indicator whether we are using EIP-7623 floor gas validation.
 	eip7702  bool // Fork indicator whether we are using EIP-7702 type transactions.
 
-	osakaResetTriggered bool // whether the first osaka reset has been executed or not.
-
 	currentState  TxPoolStateDB // Current state in the blockchain head
 	pendingNonces *txNoncer     // Pending state tracking virtual nonces
 	currentMaxGas uint64        // Current gas limit for transaction caps
@@ -1703,23 +1701,23 @@ func (pool *TxPool) demoteUnexecutables() {
 	}
 }
 
-// discardTxsWithTooLargeGasOsaka removes transactions that exceed the maximum gas limit,
-// if the reset is already in Osaka.
+// discardTxsWithTooLargeGasOsaka removes transactions that exceed the pool's
+// maximum gas limit, if there is a new config which activates Osaka.
 func (pool *TxPool) discardTxsWithTooLargeGasOsaka(oldHead, newHead *EvmHeader) {
 	if newHead == nil || oldHead == nil || newHead == oldHead {
 		return
 	}
-	// Discard the transactions with the gas limit higher than the cap.
 	// Compare old and new config.
 	if pool.chain.Config().IsOsaka(newHead.Number, uint64(newHead.Time)) &&
 		!pool.chainconfig.IsOsaka(oldHead.Number, uint64(oldHead.Time)) {
 		var hashes []common.Hash
+		// Discard the transactions with the gas limit higher than the cap.
 		pool.all.Range(func(hash common.Hash, tx *types.Transaction, local bool) bool {
 			if tx.Gas() > params.MaxTxGas {
 				hashes = append(hashes, hash)
 			}
 			return true
-		}, true, true) // we want to get both local and remote txs
+		}, true, true) // we want to filter both local and remote txs
 		for _, hash := range hashes {
 			pool.removeTx(hash, true)
 		}
