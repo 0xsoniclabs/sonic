@@ -3172,6 +3172,15 @@ func TestTxPool_ActivatingOsakaDropsTransactionsWithHighGas(t *testing.T) {
 	require.Equal(t, 2, pending, "pending list should have 2 tx but has: %d", pending)
 	require.Equal(t, 0, queued, "queued list should be empty but has: %d", queued)
 
+	// add a forever queued transaction with nonce 3
+	bigQueuedTx := pricedTransaction(3, params.MaxTxGas+1, big.NewInt(1), key)
+	err = pool.addRemoteSync(bigQueuedTx)
+	require.NoError(t, err, "failed to add transaction: %v", err)
+
+	pending, queued = pool.stats()
+	require.Equal(t, 2, pending, "pending list should have 2 tx but has: %d", pending)
+	require.Equal(t, 1, queued, "queued list should have 1 tx but has: %d", queued)
+
 	// if a config changes but it is not osaka, the first transaction should not be dropped
 	timestampInThePast := uint64(0)
 
@@ -3191,10 +3200,11 @@ func TestTxPool_ActivatingOsakaDropsTransactionsWithHighGas(t *testing.T) {
 
 	pending, queued = pool.stats()
 	require.Equal(t, 2, pending, "pending list should have 2 tx but has: %d", pending)
-	require.Equal(t, 0, queued, "queued list should be empty but has: %d", queued)
+	require.Equal(t, 1, queued, "queued list should be empty but has: %d", queued)
 
 	// now osaka is enabled and the transaction should be discarded
 	testChainConfig.OsakaTime = &timestampInThePast
+	blockchain.gasLimit = 1 << 24 // set 16M
 	blockchain.setConfig(testChainConfig)
 
 	<-pool.requestReset(oldHeader, newHeader)
