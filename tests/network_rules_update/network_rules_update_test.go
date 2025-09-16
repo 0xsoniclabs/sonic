@@ -253,20 +253,20 @@ func TestNetworkRules_UpdateToBrio_DropsLargeGasTxs(t *testing.T) {
 	require.Equal(1, len(content["queued"]), "expected the high gas tx to be in the queued section of the tx pool")
 
 	type rulesType struct {
-		Economy  struct{ GasRules opera.GasRules }
+		Economy  struct{ Gas opera.GasRules }
 		Upgrades struct{ Brio bool }
 	}
 
 	var originalRules rulesType
 	err = client.Client().Call(&originalRules, "eth_getRules", "latest")
 	require.NoError(err)
-	require.NotNil(originalRules.Economy.GasRules, "GasRules should be filled")
-	require.NotEqual(0, originalRules.Economy.GasRules.MaxEventGas, "GasRules should be filled")
+	require.NotNil(originalRules.Economy.Gas, "GasRules should be filled")
+	require.NotEqual(0, originalRules.Economy.Gas.MaxEventGas, "GasRules should be filled")
 
 	updatedRules := originalRules
 	defaultGasRules := opera.DefaultGasRules()
 	defaultGasRules.MaxEventGas = 2 >> 24 // 16,777,216
-	updatedRules.Economy.GasRules = defaultGasRules
+	updatedRules.Economy.Gas = defaultGasRules
 	updatedRules.Upgrades.Brio = true
 
 	// Update network rules
