@@ -265,7 +265,7 @@ func TestNetworkRules_UpdateToBrio_DropsLargeGasTxs(t *testing.T) {
 
 	updatedRules := originalRules
 	defaultGasRules := opera.DefaultGasRules()
-	defaultGasRules.MaxEventGas = 2 >> 24 // 16,777,216
+	defaultGasRules.MaxEventGas = 16_777_216 // inspired by params.MaxTxGas
 	updatedRules.Economy.Gas = defaultGasRules
 	updatedRules.Upgrades.Brio = true
 
