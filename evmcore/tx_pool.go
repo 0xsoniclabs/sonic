@@ -1270,8 +1270,6 @@ func (pool *TxPool) runReorg(done chan struct{}, reset *txpoolResetRequest, dirt
 	}
 	pool.mu.Lock()
 	if reset != nil {
-		// need to call discard before reset to check if rules will change
-		pool.discardTxsWithTooLargeGasOsaka(reset.oldHead, reset.newHead)
 		// Reset from the old head to the new, rescheduling any reorged transactions
 		pool.reset(reset.oldHead, reset.newHead)
 
@@ -1697,29 +1695,6 @@ func (pool *TxPool) demoteUnexecutables() {
 		// Delete the entire pending entry if it became empty.
 		if list.Empty() {
 			delete(pool.pending, addr)
-		}
-	}
-}
-
-// discardTxsWithTooLargeGasOsaka removes transactions that exceed the pool's
-// maximum gas limit, if there is a new config which activates Osaka.
-func (pool *TxPool) discardTxsWithTooLargeGasOsaka(oldHead, newHead *EvmHeader) {
-	if newHead == nil || oldHead == nil || newHead == oldHead {
-		return
-	}
-	// Compare old and new config.
-	if pool.chain.Config().IsOsaka(newHead.Number, uint64(newHead.Time)) &&
-		!pool.chainconfig.IsOsaka(oldHead.Number, uint64(oldHead.Time)) {
-		var hashes []common.Hash
-		// Discard the transactions with the gas limit higher than the cap.
-		pool.all.Range(func(hash common.Hash, tx *types.Transaction, local bool) bool {
-			if tx.Gas() > params.MaxTxGas {
-				hashes = append(hashes, hash)
-			}
-			return true
-		}, true, true) // we want to filter both local and remote txs
-		for _, hash := range hashes {
-			pool.removeTx(hash, true)
 		}
 	}
 }
