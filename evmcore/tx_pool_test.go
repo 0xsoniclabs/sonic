@@ -3157,8 +3157,9 @@ func TestTxPool_ActivatingOsakaDropsTransactionsWithHighGas(t *testing.T) {
 
 	// make a transaction with over params.MaxTxGas gas and nonce 0
 	key, _ := crypto.GenerateKey()
+	newAddress := crypto.PubkeyToAddress(key.PublicKey)
 	tx := pricedTransaction(0, params.MaxTxGas+1, big.NewInt(1), key)
-	testAddBalance(pool, crypto.PubkeyToAddress(key.PublicKey), big.NewInt(math.MaxInt64))
+	testAddBalance(pool, newAddress, big.NewInt(math.MaxInt64))
 
 	err := pool.addRemoteSync(tx)
 	require.NoError(t, err, "failed to add transaction: %v", err)
@@ -3168,18 +3169,18 @@ func TestTxPool_ActivatingOsakaDropsTransactionsWithHighGas(t *testing.T) {
 	err = pool.addRemoteSync(smallTx)
 	require.NoError(t, err, "failed to add transaction: %v", err)
 
-	pending, queued := pool.stats()
-	require.Equal(t, 2, pending, "pending list should have 2 tx but has: %d", pending)
-	require.Equal(t, 0, queued, "queued list should be empty but has: %d", queued)
+	pending, queued := pool.Content()
+	require.Equal(t, 2, len(pending[newAddress]), "pending list should have 2 tx but has: %d", len(pending[newAddress]))
+	require.Equal(t, 0, len(queued[newAddress]), "queued list should be empty but has: %d", len(queued[newAddress]))
 
 	// add a forever queued transaction with nonce 3
 	bigQueuedTx := pricedTransaction(3, params.MaxTxGas+1, big.NewInt(1), key)
 	err = pool.addRemoteSync(bigQueuedTx)
 	require.NoError(t, err, "failed to add transaction: %v", err)
 
-	pending, queued = pool.stats()
-	require.Equal(t, 2, pending, "pending list should have 2 tx but has: %d", pending)
-	require.Equal(t, 1, queued, "queued list should have 1 tx but has: %d", queued)
+	pending, queued = pool.Content()
+	require.Equal(t, 2, len(pending[newAddress]), "pending list should have 2 tx but has: %d", len(pending[newAddress]))
+	require.Equal(t, 1, len(queued[newAddress]), "queued list should have 1 tx but has: %d", len(queued[newAddress]))
 
 	// if a config changes but it is not osaka, the first transaction should not be dropped
 	timestampInThePast := uint64(0)
@@ -3198,9 +3199,9 @@ func TestTxPool_ActivatingOsakaDropsTransactionsWithHighGas(t *testing.T) {
 	<-pool.requestReset(oldHeader, newHeader)
 	pool.waitForIdleReorgLoop_forTesting()
 
-	pending, queued = pool.stats()
-	require.Equal(t, 2, pending, "pending list should have 2 tx but has: %d", pending)
-	require.Equal(t, 1, queued, "queued list should be empty but has: %d", queued)
+	pending, queued = pool.Content()
+	require.Equal(t, 2, len(pending[newAddress]), "pending list should have 2 tx but has: %d", len(pending[newAddress]))
+	require.Equal(t, 1, len(queued[newAddress]), "queued list should be empty but has: %d", len(queued[newAddress]))
 
 	// now osaka is enabled and the transaction should be discarded
 	testChainConfig.OsakaTime = &timestampInThePast
@@ -3211,9 +3212,9 @@ func TestTxPool_ActivatingOsakaDropsTransactionsWithHighGas(t *testing.T) {
 	pool.waitForIdleReorgLoop_forTesting()
 
 	// transaction with nonce 0 should be dropped, nonce 1 should be moved to queued
-	pending, queued = pool.stats()
-	require.Equal(t, 0, pending, "pending list should be empty but has: %d", pending)
-	require.Equal(t, 1, queued, "queued list should have 1 tx but has: %d", queued)
+	pending, queued = pool.Content()
+	require.Equal(t, 0, len(pending[newAddress]), "pending list should be empty but has: %d", len(pending[newAddress]))
+	require.Equal(t, 1, len(queued[newAddress]), "queued list should have 1 tx but has: %d", len(queued[newAddress]))
 }
 
 // Benchmarks the speed of validating the contents of the pending queue of the
