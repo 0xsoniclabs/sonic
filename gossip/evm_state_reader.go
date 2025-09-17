@@ -60,6 +60,10 @@ func (r *EvmStateReader) Config() *params.ChainConfig {
 	return r.store.GetEvmChainConfig(idx.Block(blockNumber.Uint64()))
 }
 
+func (r *EvmStateReader) GetCurrentRules() opera.Rules {
+	return r.store.GetRules()
+}
+
 func (r *EvmStateReader) CurrentBlock() *evmcore.EvmBlock {
 	n := r.store.GetLatestBlockIndex()
 

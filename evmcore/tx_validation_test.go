@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 // getTestPoolOptions returns a set of options to adjust the validation of transactions
@@ -616,19 +617,25 @@ func TestValidateTx_RejectsTxWhen(t *testing.T) {
 
 	for name, tx := range getTxsOfAllTypes() {
 		t.Run(fmt.Sprintf("fails network validation/%v", name), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			chain := NewMockStateReader(ctrl)
+
 			netRules := getTestNetworkRules()
 			// setup tx to fail intrinsic gas calculation
 			setGas(t, tx, getIntrinsicGasForTest(t, tx, netRules)-1)
 			_, signedTx := signTxForTest(t, tx, netRules.signer)
 
 			err := validateTx(signedTx, getTestPoolOptions(),
-				getTestBlockState(), netRules)
+				getTestBlockState(), netRules, chain)
 			require.ErrorIs(t, err, ErrIntrinsicGas)
 		})
 	}
 
 	for name, tx := range getTxsOfAllTypes() {
 		t.Run(fmt.Sprintf("fails static validation/%v", name), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			chain := NewMockStateReader(ctrl)
+
 			var expectedErr error
 			if !isBlobOrSetCode(tx) {
 				// for legacy and access list transactions, gas price is the same
@@ -649,13 +656,16 @@ func TestValidateTx_RejectsTxWhen(t *testing.T) {
 			_, signedTx := signTxForTest(t, tx, netRules.signer)
 
 			err := validateTx(signedTx, getTestPoolOptions(),
-				getTestBlockState(), netRules)
+				getTestBlockState(), netRules, chain)
 			require.ErrorIs(t, err, expectedErr)
 		})
 	}
 
 	for name, tx := range getTxsOfAllTypes() {
 		t.Run(fmt.Sprintf("fails block state/%v", name), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			chain := NewMockStateReader(ctrl)
+
 			blockState := getTestBlockState()
 			blockState.baseFee = big.NewInt(2)
 
@@ -667,13 +677,16 @@ func TestValidateTx_RejectsTxWhen(t *testing.T) {
 			// ---
 
 			err := validateTx(signedTx, getTestPoolOptions(),
-				blockState, netRules)
+				blockState, netRules, chain)
 			require.ErrorIs(t, err, ErrUnderpriced)
 		})
 	}
 
 	for name, tx := range getTxsOfAllTypes() {
 		t.Run(fmt.Sprintf("fails pool policies/%v", name), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			chain := NewMockStateReader(ctrl)
+
 			opt := getTestPoolOptions()
 			opt.isLocal = false
 			opt.minTip = big.NewInt(2)
@@ -693,13 +706,16 @@ func TestValidateTx_RejectsTxWhen(t *testing.T) {
 			_, signedTx := signTxForTest(t, tx, netRules.signer)
 			opt.locals = newAccountSet(netRules.signer)
 
-			err := validateTx(signedTx, opt, blockState, netRules)
+			err := validateTx(signedTx, opt, blockState, netRules, chain)
 			require.ErrorIs(t, err, ErrUnderpriced)
 		})
 	}
 
 	for name, tx := range getTxsOfAllTypes() {
 		t.Run(fmt.Sprintf("fails state validation/%v", name), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			chain := NewMockStateReader(ctrl)
+
 			// set nonce lower than the current account nonce
 			currentNonce := uint64(2)
 			setNonce(t, tx, currentNonce-1)
@@ -719,7 +735,7 @@ func TestValidateTx_RejectsTxWhen(t *testing.T) {
 			opt := getTestPoolOptions()
 			opt.currentState = testDb
 
-			err := validateTx(signedTx, opt, blockState, netRules)
+			err := validateTx(signedTx, opt, blockState, netRules, chain)
 			require.ErrorIs(t, err, ErrNonceTooLow)
 		})
 	}
@@ -728,6 +744,8 @@ func TestValidateTx_RejectsTxWhen(t *testing.T) {
 func TestValidateTx_Success(t *testing.T) {
 	for name, tx := range getTxsOfAllTypes() {
 		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			chain := NewMockStateReader(ctrl)
 
 			netRules := getTestNetworkRules()
 
@@ -754,7 +772,7 @@ func TestValidateTx_Success(t *testing.T) {
 			opts := getTestPoolOptions()
 			opts.currentState = testDb
 
-			err = validateTx(signedTx, opts, getTestBlockState(), netRules)
+			err = validateTx(signedTx, opts, getTestBlockState(), netRules, chain)
 			require.NoError(t, err)
 		})
 	}
@@ -973,6 +991,9 @@ func makeBlobTx(hashes []common.Hash, sidecar *types.BlobTxSidecar) types.TxData
 // Benchmarks
 
 func BenchmarkValidateTx(b *testing.B) {
+	ctrl := gomock.NewController(b)
+	chain := NewMockStateReader(ctrl)
+
 	key, err := crypto.GenerateKey()
 	require.NoError(b, err)
 	address := crypto.PubkeyToAddress(key.PublicKey)
@@ -998,7 +1019,7 @@ func BenchmarkValidateTx(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		err = validateTx(tx, opts, blockState, netRules)
+		err = validateTx(tx, opts, blockState, netRules, chain)
 		require.NoError(b, err)
 	}
 }

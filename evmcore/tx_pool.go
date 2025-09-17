@@ -37,10 +37,13 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/sonic/utils/signers/gsignercache"
 	"github.com/0xsoniclabs/sonic/utils/txtime"
 )
+
+//go:generate mockgen -source=tx_pool.go -destination=tx_pool_mock.go -package=evmcore
 
 const (
 	// chainHeadChanSize is the size of channel listening to ChainHeadNotify.
@@ -95,6 +98,14 @@ var (
 	// ErrOutOfOrderTxFromDelegated is returned when the transaction with gapped
 	// nonce received from the accounts with delegation or pending delegation.
 	ErrOutOfOrderTxFromDelegated = errors.New("gapped-nonce tx from delegated accounts")
+
+	// ErrNotSponsored is returned when a transaction is a sponsorship request
+	// but the current chain does not support sponsored transactions.
+	ErrSponsoredTransactionsNotSupported = errors.New("sponsored transactions not supported")
+
+	// ErrInsufficientSponsorship is returned when a transaction is not
+	// sufficiently sponsored according to the subsidies registry contract.
+	ErrInsufficientSponsorship = errors.New("insufficient sponsorship funds")
 )
 
 var (
@@ -167,6 +178,7 @@ type StateReader interface {
 	MaxGasLimit() uint64
 	SubscribeNewBlock(ch chan<- ChainHeadNotify) notify.Subscription
 	Config() *params.ChainConfig
+	GetCurrentRules() opera.Rules
 }
 
 // TxPoolConfig are the configuration parameters of the transaction pool.
@@ -683,7 +695,7 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 		signer:   pool.signer,
 		maxTxGas: pool.currentMaxGas,
 	}
-	err := validateTx(tx, opts, blockState, netRules)
+	err := validateTx(tx, opts, blockState, netRules, pool.chain)
 	if err != nil {
 		return err
 	}

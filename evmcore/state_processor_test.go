@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -74,10 +75,10 @@ func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
 
 	blockGasLimit := 2*21_000 + 10_000
 	transactions := []*types.Transaction{
-		types.NewTx(&types.LegacyTx{Nonce: 0, To: &common.Address{}, Gas: 21_000}), // passes
-		types.NewTx(&types.LegacyTx{Nonce: 3, To: &common.Address{}, Gas: 21_000}), // skipped due to nonce
-		types.NewTx(&types.LegacyTx{Nonce: 0, To: &common.Address{}, Gas: 21_000}), // passes (mock does not track nonces)
-		types.NewTx(&types.LegacyTx{Nonce: 0, To: &common.Address{}, Gas: 21_000}), // skipped due to block gas limit
+		types.NewTx(&types.LegacyTx{Nonce: 0, To: &common.Address{}, Gas: 21_000, GasPrice: big.NewInt(1)}), // passes
+		types.NewTx(&types.LegacyTx{Nonce: 3, To: &common.Address{}, Gas: 21_000, GasPrice: big.NewInt(1)}), // skipped due to nonce
+		types.NewTx(&types.LegacyTx{Nonce: 0, To: &common.Address{}, Gas: 21_000, GasPrice: big.NewInt(1)}), // passes (mock does not track nonces)
+		types.NewTx(&types.LegacyTx{Nonce: 0, To: &common.Address{}, Gas: 21_000, GasPrice: big.NewInt(1)}), // skipped due to block gas limit
 	}
 
 	key, err := crypto.GenerateKey()
@@ -92,7 +93,7 @@ func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
 
 	chainConfig := params.ChainConfig{}
 	chain := NewMockDummyChain(ctrl)
-	processor := NewStateProcessor(&chainConfig, chain)
+	processor := NewStateProcessor(&chainConfig, chain, opera.Upgrades{})
 
 	tests := map[string]processFunction{
 		"bulk":        processor.Process,
@@ -191,7 +192,7 @@ func TestProcess_DetectsTransactionThatCanNotBeConvertedIntoAMessage(t *testing.
 	}
 
 	state := getStateDbMockForTransactions(ctrl, transactions)
-	processor := NewStateProcessor(&chainConfig, chain)
+	processor := NewStateProcessor(&chainConfig, chain, opera.Upgrades{})
 	tests := map[string]processFunction{
 		"bulk":        processor.Process,
 		"incremental": processor.process_iteratively,
@@ -247,7 +248,7 @@ func TestProcess_TracksParentBlockHashIfPragueIsEnabled(t *testing.T) {
 		}
 		chain := NewMockDummyChain(ctrl)
 
-		processor := NewStateProcessor(&chainConfig, chain)
+		processor := NewStateProcessor(&chainConfig, chain, opera.Upgrades{})
 
 		tests := map[string]processFunction{
 			"bulk":        processor.Process,
@@ -299,7 +300,7 @@ func TestProcess_FailingTransactionAreSkippedButTheBlockIsNotTerminated(t *testi
 
 	chainConfig := params.ChainConfig{}
 	chain := NewMockDummyChain(ctrl)
-	processor := NewStateProcessor(&chainConfig, chain)
+	processor := NewStateProcessor(&chainConfig, chain, opera.Upgrades{})
 
 	block := &EvmBlock{
 		EvmHeader: EvmHeader{
@@ -357,7 +358,7 @@ func TestProcess_EnforcesGasLimitBySkippingExcessiveTransactions(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	chainConfig := params.ChainConfig{}
 	chain := NewMockDummyChain(ctrl)
-	processor := NewStateProcessor(&chainConfig, chain)
+	processor := NewStateProcessor(&chainConfig, chain, opera.Upgrades{})
 
 	tests := map[string]processFunction{
 		"bulk":        processor.Process,

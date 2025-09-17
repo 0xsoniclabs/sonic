@@ -28,7 +28,9 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils/signers/gsignercache"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
 )
@@ -38,8 +40,9 @@ import (
 //
 // StateProcessor implements Processor.
 type StateProcessor struct {
-	config *params.ChainConfig // Chain configuration options
-	bc     DummyChain          // Canonical block chain
+	config   *params.ChainConfig // Chain configuration options
+	bc       DummyChain          // Canonical block chain
+	upgrades opera.Upgrades      // Upgrade information
 }
 
 // ProcessedTransaction bundles a transaction with its receipt. It is produced
@@ -50,11 +53,16 @@ type ProcessedTransaction struct {
 	Receipt     *types.Receipt
 }
 
-// NewStateProcessor initialises a new StateProcessor.
-func NewStateProcessor(config *params.ChainConfig, bc DummyChain) *StateProcessor {
+// NewStateProcessor initializes a new StateProcessor.
+func NewStateProcessor(
+	config *params.ChainConfig,
+	bc DummyChain,
+	upgrades opera.Upgrades,
+) *StateProcessor {
 	return &StateProcessor{
-		config: config,
-		bc:     bc,
+		config:   config,
+		bc:       bc,
+		upgrades: upgrades,
 	}
 }
 
@@ -97,27 +105,150 @@ func (p *StateProcessor) Process(
 	}
 
 	// Iterate over and process the individual transactions
-	for i, tx := range block.Transactions {
-		msg, err := TxAsMessage(tx, signer, header.BaseFee)
+	txCounter := 0
+	for _, tx := range block.Transactions {
+		counterBefore := txCounter
+		processed, err := runTransaction(p.upgrades, tx, signer, header.BaseFee, vmenv,
+			func(msg *core.Message, tx *types.Transaction, noBaseFee bool) (*types.Receipt, error) {
+				vmenv.Config.NoBaseFee = noBaseFee
+				statedb.SetTxContext(tx.Hash(), txCounter)
+				txCounter++
+				receipt, _, err := applyTransaction(
+					msg, gp, statedb, blockNumber, tx,
+					usedGas, vmenv, onNewLog,
+				)
+				return receipt, err
+			},
+		)
 		if err != nil {
-			log.Info("Failed to convert transaction to message", "tx", tx.Hash().Hex(), "err", err)
+			log.Warn("Error processing transactions", "err", err)
+		}
+		if len(processed) == 0 {
 			numSkipped++
-			continue // skip this transaction, but continue processing the rest of the block
+		} else {
+			result = append(result, processed...)
 		}
 
-		statedb.SetTxContext(tx.Hash(), i)
-		receipt, _, err := applyTransaction(msg, gp, statedb, blockNumber, tx, usedGas, vmenv, onNewLog)
-		if err != nil {
-			log.Debug("Failed to apply transaction", "tx", tx.Hash().Hex(), "err", err)
-			numSkipped++
-			continue // skip this transaction, but continue processing the rest of the block
+		// Ensure that even if the current transaction was skipped for any
+		// reason, the txCounter is still incremented. This means that the
+		// transaction index in the receipts might not match the index of
+		// the transaction in the block. This might actually be an issue in the
+		// block processing semantic, but to remain compatible with the existing
+		// behavior, we need to preserve this until we can safely change it.
+		if txCounter == counterBefore {
+			txCounter++
 		}
-		result = append(result, ProcessedTransaction{
-			Transaction: tx,
-			Receipt:     receipt,
-		})
 	}
 	return result, numSkipped
+}
+
+func runTransaction(
+	upgrades opera.Upgrades,
+	tx *types.Transaction,
+	signer types.Signer,
+	baseFee *big.Int,
+	evm *vm.EVM,
+	run func(*core.Message, *types.Transaction, bool) (*types.Receipt, error),
+) ([]ProcessedTransaction, error) {
+	if upgrades.GasSubsidies {
+		if !internaltx.IsInternal(tx) && subsidies.IsSponsorshipRequest(tx) {
+			return runSponsoredTransaction(upgrades, tx, signer, baseFee, evm, run)
+		}
+	}
+	return runRegularTransaction(tx, signer, baseFee, run)
+}
+
+func runRegularTransaction(
+	tx *types.Transaction,
+	signer types.Signer,
+	baseFee *big.Int,
+	run func(*core.Message, *types.Transaction, bool) (*types.Receipt, error),
+) ([]ProcessedTransaction, error) {
+	msg, err := TxAsMessage(tx, signer, baseFee)
+	if err != nil {
+		log.Info("Failed to convert transaction to message", "tx", tx.Hash().Hex(), "err", err)
+		return nil, err
+	}
+	receipt, err := run(msg, tx, false)
+	if err != nil {
+		log.Debug("Failed to apply transaction", "tx", tx.Hash().Hex(), "err", err)
+		return nil, err
+	}
+	return []ProcessedTransaction{{
+		Transaction: tx,
+		Receipt:     receipt,
+	}}, nil
+}
+
+func runSponsoredTransaction(
+	upgrades opera.Upgrades,
+	tx *types.Transaction,
+	signer types.Signer,
+	baseFee *big.Int,
+	evm *vm.EVM,
+	run func(*core.Message, *types.Transaction, bool) (*types.Receipt, error),
+) ([]ProcessedTransaction, error) {
+	msg, err := TxAsMessage(tx, signer, baseFee)
+	if err != nil {
+		log.Info("Failed to convert transaction to message", "tx", tx.Hash().Hex(), "err", err)
+		return nil, err
+	}
+
+	// Check that the requested transaction is covered by a sponsorship.
+	covered, fundId, err := subsidies.IsCovered(upgrades, evm, signer, tx, baseFee)
+	if err != nil {
+		log.Warn("Failed to check sponsorship coverage", "tx", tx.Hash().Hex(), "err", err)
+		return nil, err
+	}
+	if !covered {
+		log.Debug("Sponsorship request is not covered", "tx", tx.Hash().Hex())
+		return nil, err
+	}
+
+	// Run the sponsored transaction.
+	receipt, err := run(msg, tx, true)
+	if err != nil {
+		log.Debug("Failed to apply transaction", "tx", tx.Hash().Hex(), "err", err)
+		return nil, err
+	}
+
+	result := make([]ProcessedTransaction, 0, 2)
+	result = append(result, ProcessedTransaction{
+		Transaction: tx,
+		Receipt:     receipt,
+	})
+
+	// Run the internal transaction to deduct the fees from the sponsorship pool.
+	tx, err = subsidies.GetFeeChargeTransaction(evm.StateDB, fundId, receipt.GasUsed, baseFee)
+	if err != nil {
+		// This should never happen as we already checked that the sponsorship
+		// is covered.
+		log.Error("Failed to create gas charge transaction for sponsored tx", "tx", tx.Hash().Hex(), "err", err)
+		// Note: we do NOT skip the transaction here, as it has been executed
+		// successfully. However, this means that the sponsorship funds are
+		// not deducted and the sponsorship balance is not updated and the
+		// execution of the sponsored transaction was effectively free.
+		// This is a preferable outcome compared to terminating the full
+		// processing of the block.
+		return result, nil
+	}
+	msg, err = TxAsMessage(tx, signer, baseFee)
+	if err != nil {
+		log.Error("Failed to convert sponsorship charging transaction to message", "tx", tx.Hash().Hex(), "err", err)
+		return result, nil // effectively free execution of the sponsored transaction
+	}
+	receipt, err = run(msg, tx, false)
+	if err != nil {
+		log.Error("Failed to apply sponsorship charging transaction", "tx", tx.Hash().Hex(), "err", err)
+		return result, nil // effectively free execution of the sponsored transaction
+	}
+	if receipt.Status != types.ReceiptStatusSuccessful {
+		log.Warn("Sponsorship charging transaction failed", "tx", tx.Hash().Hex())
+	}
+	return append(result, ProcessedTransaction{
+		Transaction: tx,
+		Receipt:     receipt,
+	}), nil
 }
 
 // BeginBlock starts the processing of a new block and returns a function to
@@ -145,6 +276,7 @@ func (p *StateProcessor) BeginBlock(
 	}
 
 	return &TransactionProcessor{
+		upgrades:      p.upgrades,
 		blockNumber:   blockNumber,
 		gp:            gp,
 		header:        header,
@@ -166,6 +298,7 @@ type TransactionProcessor struct {
 	stateDb       state.StateDB
 	usedGas       uint64
 	vmEnvironment *vm.EVM
+	upgrades      opera.Upgrades
 }
 
 // Run processes a single transaction in the block, where i is the index of
@@ -177,21 +310,18 @@ func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) (
 	[]ProcessedTransaction,
 	error,
 ) {
-	msg, err := TxAsMessage(tx, tp.signer, tp.header.BaseFee)
-	if err != nil {
-		return nil, fmt.Errorf(
-			"failed to convert transaction: %w", err,
-		)
-	}
-	tp.stateDb.SetTxContext(tx.Hash(), i)
-	receipt, _, err := applyTransaction(
-		msg, tp.gp, tp.stateDb, tp.blockNumber, tx,
-		&tp.usedGas, tp.vmEnvironment, tp.onNewLog,
+	return runTransaction(tp.upgrades, tx, tp.signer, tp.header.BaseFee, tp.vmEnvironment,
+		func(msg *core.Message, tx *types.Transaction, noBaseFee bool) (*types.Receipt, error) {
+			tp.vmEnvironment.Config.NoBaseFee = noBaseFee
+			tp.stateDb.SetTxContext(tx.Hash(), i)
+			i++
+			receipt, _, err := applyTransaction(
+				msg, tp.gp, tp.stateDb, tp.blockNumber, tx,
+				&tp.usedGas, tp.vmEnvironment, tp.onNewLog,
+			)
+			return receipt, err
+		},
 	)
-	return []ProcessedTransaction{{
-		Transaction: tx,
-		Receipt:     receipt,
-	}}, err
 }
 
 // ApplyTransactionWithEVM attempts to apply a transaction to the given state database
@@ -304,7 +434,7 @@ func applyTransaction(
 	evm.SetTxContext(txContext)
 
 	// Skip checking of base fee limits for internal transactions.
-	evm.Config.NoBaseFee = msg.SkipNonceChecks
+	evm.Config.NoBaseFee = evm.Config.NoBaseFee || msg.SkipNonceChecks
 
 	// For now, Sonic only supports Blob transactions without blob data.
 	if msg.BlobHashes != nil {

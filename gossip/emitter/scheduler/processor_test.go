@@ -34,7 +34,7 @@ func TestEvmProcessorFactory_BeginBlock_CreatesProcessor(t *testing.T) {
 	chain := NewMockChain(ctrl)
 
 	chain.EXPECT().StateDB().Return(state.NewMockStateDB(ctrl))
-	chain.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{})
+	chain.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{}).AnyTimes()
 	chain.EXPECT().GetEvmChainConfig(gomock.Any()).Return(&params.ChainConfig{})
 
 	info := BlockInfo{}
