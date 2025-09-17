@@ -18,11 +18,9 @@ package block_header
 
 import (
 	"cmp"
-	"context"
 	"fmt"
 	"math/big"
 	"slices"
-	"strings"
 	"testing"
 
 	"github.com/0xsoniclabs/carmen/go/carmen"
@@ -396,7 +394,7 @@ func testHeaders_LastBlockOfEpochContainsSealingTransaction(t *testing.T, header
 func testHeaders_StateRootsMatchActualStateRoots(t *testing.T, headers []*types.Header, client *tests.PooledEhtClient) {
 	require := require.New(t)
 	// wait until last block is received.
-	waitForProofOf(t, client, len(headers)-1)
+	tests.WaitForProofOf(t, client, len(headers)-1)
 
 	for i, header := range headers {
 		// The direct way to get the state root of a block would be to request the
@@ -405,57 +403,10 @@ func testHeaders_StateRootsMatchActualStateRoots(t *testing.T, headers []*types.
 		// root we see in the database. To get access to the database, we request
 		// a witness proof for an account at the given block. From this proof we
 		// we have a list of state-root candidates which we can test for.
-		want := getStateRoot(t, client, int(header.Number.Int64()))
+		want := tests.GetStateRoot(t, client, int(header.Number.Int64()))
 		got := header.Root
 		require.Equal(want, got, "state root mismatch for block %d", i)
 	}
-}
-
-func getStateRoot(t *testing.T, client *tests.PooledEhtClient, blockNumber int) common.Hash {
-
-	accountProof, err := getProofFor(t, client, blockNumber)
-	require.NoError(t, err, "failed to get account proof for block %d", blockNumber)
-
-	// The hash of the first element of the account proof is the state root.
-	require.NotEqual(t, 0, len(accountProof), "no account proof found")
-
-	data, err := hexutil.Decode(accountProof[0])
-	require.NoError(t, err, "failed to decode account proof element")
-
-	return common.BytesToHash(crypto.Keccak256(data))
-}
-
-func waitForProofOf(t *testing.T, client *tests.PooledEhtClient, blockNumber int) {
-	err := tests.WaitFor(context.Background(), func(ctx context.Context) (bool, error) {
-		_, err := getProofFor(t, client, blockNumber)
-		if err != nil && strings.Contains(err.Error(), "not present") {
-			// wait a bit to give the DB a chance to catch up
-			return false, nil
-		}
-		// any other error is considered a failure
-		if err != nil {
-			return false, fmt.Errorf("failed to get witness proof: %w", err)
-		}
-		return true, nil
-	})
-	require.NoError(t, err, "failed to get witness proof")
-}
-
-// getProofFor retrieves the account proof for the given block number.
-// This is meant to be a testing only function, hence having a *testing.T
-// unused parameter.
-func getProofFor(_ *testing.T, client *tests.PooledEhtClient, blockNumber int) ([]string, error) {
-	var result struct {
-		AccountProof []string
-	}
-	err := client.Client().Call(
-		&result,
-		"eth_getProof",
-		fmt.Sprintf("%v", common.Address{}),
-		[]string{},
-		fmt.Sprintf("0x%x", blockNumber),
-	)
-	return result.AccountProof, err
 }
 
 func testHeaders_SystemContractsHaveNonZeroNonce(t *testing.T, headers []*types.Header, client *tests.PooledEhtClient) {

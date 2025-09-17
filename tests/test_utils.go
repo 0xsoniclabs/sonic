@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"iter"
 	"math/big"
+	"strings"
 	"testing"
 	"time"
 
@@ -34,6 +35,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
@@ -441,4 +443,51 @@ func AdvanceEpochAndWaitForBlocks(t *testing.T, net *IntegrationTestNet) {
 		return newBlock.Number().Int64() > currentBlock.Number().Int64()+1, nil
 	})
 	require.NoError(err, "failed to wait for the next two blocks after epoch change")
+}
+
+// getProofFor retrieves the account proof for the given block number.
+// This is meant to be a testing only function, hence having a *testing.T
+// unused parameter.
+func getProofFor(_ *testing.T, client *PooledEhtClient, blockNumber int) ([]string, error) {
+	var result struct {
+		AccountProof []string
+	}
+	err := client.Client().Call(
+		&result,
+		"eth_getProof",
+		fmt.Sprintf("%v", common.Address{}),
+		[]string{},
+		fmt.Sprintf("0x%x", blockNumber),
+	)
+	return result.AccountProof, err
+}
+
+func GetStateRoot(t *testing.T, client *PooledEhtClient, blockNumber int) common.Hash {
+
+	accountProof, err := getProofFor(t, client, blockNumber)
+	require.NoError(t, err, "failed to get account proof for block %d", blockNumber)
+
+	// The hash of the first element of the account proof is the state root.
+	require.NotEqual(t, 0, len(accountProof), "no account proof found")
+
+	data, err := hexutil.Decode(accountProof[0])
+	require.NoError(t, err, "failed to decode account proof element")
+
+	return common.BytesToHash(crypto.Keccak256(data))
+}
+
+func WaitForProofOf(t *testing.T, client *PooledEhtClient, blockNumber int) {
+	err := WaitFor(context.Background(), func(ctx context.Context) (bool, error) {
+		_, err := getProofFor(t, client, blockNumber)
+		if err != nil && strings.Contains(err.Error(), "not present") {
+			// wait a bit to give the DB a chance to catch up
+			return false, nil
+		}
+		// any other error is considered a failure
+		if err != nil {
+			return false, fmt.Errorf("failed to get witness proof: %w", err)
+		}
+		return true, nil
+	})
+	require.NoError(t, err, "failed to get witness proof")
 }
