@@ -28,6 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 
+	"github.com/0xsoniclabs/sonic/evmcore/subsidies"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/utils/signers/gsignercache"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
@@ -96,6 +97,9 @@ func (p *StateProcessor) Process(
 
 	// Iterate over and process the individual transactions
 	for i, tx := range block.Transactions {
+		isSponsored := subsidies.IsSponsorshipRequest(tx)
+		// TODO: check coverage, otherwise skip;
+		vmenv.Config.NoBaseFee = isSponsored
 		msg, err := TxAsMessage(tx, signer, header.BaseFee)
 		if err != nil {
 			log.Info("Failed to convert transaction to message", "tx", tx.Hash().Hex(), "err", err)
@@ -114,6 +118,10 @@ func (p *StateProcessor) Process(
 		}
 		receipts = append(receipts, receipt)
 		allLogs = append(allLogs, receipt.Logs...)
+
+		if isSponsored {
+			// TODO: introduce gas-charging TX for sponsored transactions
+		}
 	}
 	return receipts, allLogs, skipped
 }
