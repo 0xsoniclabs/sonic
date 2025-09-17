@@ -229,6 +229,7 @@ func FuzzValidateTransaction(f *testing.F) {
 
 		// a full persistent state is not need. ValidateTx needs to see the same state as the processor.
 		ctxt := gomock.NewController(t)
+		chain := NewMockStateReader(ctxt)
 
 		chainId := big.NewInt(84)
 
@@ -254,7 +255,7 @@ func FuzzValidateTransaction(f *testing.F) {
 		blockState.maxGas = maxGas
 
 		// Validate the transaction
-		validateErr := validateTx(signedTx, opt, blockState, netRules)
+		validateErr := validateTx(signedTx, opt, blockState, netRules, chain)
 
 		// create evm to check validateTx is consistent with processor.
 		evm := makeTestEvm(blockNum, int64(baseFee), uint64(baseFee), state, revision, chainId)

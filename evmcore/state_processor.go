@@ -293,6 +293,7 @@ func (p *StateProcessor) BeginBlock(
 	}
 
 	return &TransactionProcessor{
+		upgrades:      p.upgrades,
 		blockNumber:   blockNumber,
 		gp:            gp,
 		header:        header,
@@ -300,7 +301,6 @@ func (p *StateProcessor) BeginBlock(
 		signer:        signer,
 		stateDb:       stateDb,
 		vmEnvironment: vmEnvironment,
-		upgrades:      p.upgrades,
 	}
 }
 
@@ -450,7 +450,7 @@ func applyTransaction(
 	evm.SetTxContext(txContext)
 
 	// Skip checking of base fee limits for internal transactions.
-	evm.Config.NoBaseFee = msg.SkipNonceChecks
+	evm.Config.NoBaseFee = evm.Config.NoBaseFee || msg.SkipNonceChecks
 
 	// For now, Sonic only supports Blob transactions without blob data.
 	if msg.BlobHashes != nil {

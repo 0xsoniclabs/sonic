@@ -61,7 +61,7 @@ func testTransactionPriceNonceSort(t *testing.T, baseFee *big.Int) {
 		count := 25
 		for i := 0; i < 25; i++ {
 			var tx *types.Transaction
-			gasFeeCap := rand.IntN(50)
+			gasFeeCap := rand.IntN(50) + 1 // => 0 is a sponsorship request that gets always accepted
 			if baseFee == nil {
 				tx = types.NewTx(&types.LegacyTx{
 					Nonce:    uint64(start + i),

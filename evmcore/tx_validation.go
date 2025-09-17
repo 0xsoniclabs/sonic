@@ -18,12 +18,19 @@ package evmcore
 
 import (
 	"fmt"
+	"math"
 	"math/big"
+	"time"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice/gaspricelimits"
+	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 )
@@ -69,7 +76,9 @@ func validateTx(
 	tx *types.Transaction,
 	opt poolOptions,
 	currentBlockState blockState,
-	netRules NetworkRules) error {
+	netRules NetworkRules,
+	state StateReader,
+) error {
 
 	// The transaction is checked against network rules to detect unsupported
 	// transaction types first, ensuring protocol compliance before performing
@@ -91,6 +100,10 @@ func validateTx(
 	}
 
 	if err := ValidateTxForState(tx, opt.currentState, netRules.signer); err != nil {
+		return err
+	}
+
+	if err := validateSponsorshipRequest(tx, netRules.signer, state); err != nil {
 		return err
 	}
 
@@ -227,7 +240,8 @@ func ValidateTxStatic(tx *types.Transaction) error {
 func ValidateTxForBlock(tx *types.Transaction, blockState blockState) error {
 
 	// Ensure Sonic-specific hard bounds
-	if baseFee := blockState.baseFee; baseFee != nil {
+	isSponsorRequest := subsidies.IsSponsorshipRequest(tx)
+	if baseFee := blockState.baseFee; !isSponsorRequest && baseFee != nil {
 		limit := gaspricelimits.GetMinimumFeeCapForTransactionPool(baseFee)
 		if tx.GasFeeCapIntCmp(limit) < 0 {
 			log.Trace("Rejecting underpriced tx: minimumBaseFee", "minimumBaseFee", baseFee, "limit", limit, "tx.GasFeeCap", tx.GasFeeCap())
@@ -263,7 +277,8 @@ func ValidateTxForState(tx *types.Transaction, state TxPoolStateDB,
 
 	// Transactor should have enough funds to cover the costs
 	// cost == Value + GasPrice * Gas
-	if utils.Uint256ToBigInt(state.GetBalance(from)).Cmp(tx.Cost()) < 0 {
+	isSponsorRequest := subsidies.IsSponsorshipRequest(tx)
+	if !isSponsorRequest && utils.Uint256ToBigInt(state.GetBalance(from)).Cmp(tx.Cost()) < 0 {
 		return ErrInsufficientFunds
 	}
 	return nil
@@ -294,10 +309,67 @@ func validateTxForPool(tx *types.Transaction, opt poolOptions,
 	}
 
 	// Drop non-local transactions under our own minimal accepted gas price or tip.
-	if tx.GasTipCapIntCmp(opt.minTip) < 0 {
+	isSponsorRequest := subsidies.IsSponsorshipRequest(tx)
+	if !isSponsorRequest && tx.GasTipCapIntCmp(opt.minTip) < 0 {
 		log.Trace("Rejecting underpriced tx: pool.minTip", "pool.minTip",
 			opt.minTip, "tx.GasTipCap", tx.GasTipCap())
 		return ErrUnderpriced
 	}
+	return nil
+}
+
+func validateSponsorshipRequest(
+	tx *types.Transaction,
+	signer types.Signer,
+	chain StateReader,
+) error {
+	if !subsidies.IsSponsorshipRequest(tx) {
+		return nil
+	}
+
+	rules := chain.GetCurrentRules()
+	if !rules.Upgrades.GasSubsidies {
+		return ErrSponsoredTransactionsNotSupported
+	}
+
+	currentBlock := chain.CurrentBlock()
+
+	baseFee := chain.GetCurrentBaseFee()
+	blockContext := vm.BlockContext{
+		CanTransfer: CanTransfer,
+		Transfer:    Transfer,
+		GetHash: func(number uint64) common.Hash {
+			block := chain.GetBlock(common.Hash{}, number)
+			if block != nil {
+				return block.Hash
+			}
+			return common.Hash{}
+		},
+		BlockNumber: new(big.Int).Add(currentBlock.Number, common.Big1),
+		Time:        uint64(time.Now().Unix()),
+		Difficulty:  big.NewInt(0),
+		BaseFee:     chain.GetCurrentBaseFee(),
+		GasLimit:    math.MaxInt64,
+		Random:      &common.Hash{}, // < signals Revision >= Merge
+		BlobBaseFee: big.NewInt(1),  // TODO issue #147
+	}
+
+	db, err := chain.GetTxPoolStateDB()
+	if err != nil {
+		return fmt.Errorf("failed to get state: %w", err)
+	}
+
+	// Create a EVM processor instance to run the IsCovered query.
+	vmConfig := opera.GetVmConfig(rules)
+	vm := vm.NewEVM(blockContext, db.(state.StateDB), chain.Config(), vmConfig)
+	isSponsored, _, err := subsidies.IsCovered(rules.Upgrades, vm, signer, tx, baseFee)
+	if err != nil {
+		return fmt.Errorf("sponsorship check failed: %w", err)
+	}
+
+	if !isSponsored {
+		return ErrInsufficientSponsorship
+	}
+
 	return nil
 }

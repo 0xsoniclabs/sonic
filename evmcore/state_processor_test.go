@@ -67,10 +67,10 @@ func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
 
 	blockGasLimit := 2*21_000 + 10_000
 	transactions := []*types.Transaction{
-		types.NewTx(&types.LegacyTx{Nonce: 0, To: &common.Address{}, Gas: 21_000}), // passes
-		types.NewTx(&types.LegacyTx{Nonce: 3, To: &common.Address{}, Gas: 21_000}), // skipped due to nonce
-		types.NewTx(&types.LegacyTx{Nonce: 0, To: &common.Address{}, Gas: 21_000}), // passes (mock does not track nonces)
-		types.NewTx(&types.LegacyTx{Nonce: 0, To: &common.Address{}, Gas: 21_000}), // skipped due to block gas limit
+		types.NewTx(&types.LegacyTx{Nonce: 0, To: &common.Address{}, Gas: 21_000, GasPrice: big.NewInt(1)}), // passes
+		types.NewTx(&types.LegacyTx{Nonce: 3, To: &common.Address{}, Gas: 21_000, GasPrice: big.NewInt(1)}), // skipped due to nonce
+		types.NewTx(&types.LegacyTx{Nonce: 0, To: &common.Address{}, Gas: 21_000, GasPrice: big.NewInt(1)}), // passes (mock does not track nonces)
+		types.NewTx(&types.LegacyTx{Nonce: 0, To: &common.Address{}, Gas: 21_000, GasPrice: big.NewInt(1)}), // skipped due to block gas limit
 	}
 
 	key, err := crypto.GenerateKey()

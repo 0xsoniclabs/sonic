@@ -29,6 +29,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -126,6 +128,7 @@ func (t testTxPoolStateDb) Release() {
 }
 
 type testBlockChain struct {
+	state.StateDB
 	statedb       *testTxPoolStateDb
 	gasLimit      uint64
 	chainHeadFeed *event.Feed
@@ -134,7 +137,7 @@ type testBlockChain struct {
 }
 
 func NewTestBlockChain(statedb *testTxPoolStateDb) *testBlockChain {
-	return &testBlockChain{statedb, 10000000, new(event.Feed), sync.RWMutex{}}
+	return &testBlockChain{nil, statedb, 10000000, new(event.Feed), sync.RWMutex{}}
 }
 
 func (bc *testBlockChain) changeStateDB(statedb *testTxPoolStateDb) {
@@ -171,6 +174,9 @@ func (bc *testBlockChain) MaxGasLimit() uint64 {
 }
 func (bc *testBlockChain) Config() *params.ChainConfig {
 	return nil
+}
+func (bc *testBlockChain) GetCurrentRules() opera.Rules {
+	return opera.FakeNetRules(opera.GetSonicUpgrades())
 }
 
 func (bc *testBlockChain) GetBlock(hash common.Hash, number uint64) *EvmBlock {
@@ -2341,11 +2347,11 @@ func TestTransactionPool_DropUnderpricedTransactionsWhenPoolIsFull(t *testing.T)
 		t.Fatalf("pool internal state corrupted: %v", err)
 	}
 	// Ensure that adding local transactions can push out even higher priced ones
-	ltx = pricedTransaction(1, 100000, big.NewInt(0), keys[2])
+	ltx = pricedTransaction(1, 100000, big.NewInt(1), keys[2])
 	if err := pool.AddLocal(ltx); err != nil {
 		t.Fatalf("failed to append underpriced local transaction: %v", err)
 	}
-	ltx = pricedTransaction(0, 100000, big.NewInt(0), keys[3])
+	ltx = pricedTransaction(0, 100000, big.NewInt(1), keys[3])
 	if err := pool.AddLocal(ltx); err != nil {
 		t.Fatalf("failed to add new underpriced local transaction: %v", err)
 	}
@@ -2526,11 +2532,11 @@ func TestTransactionPoolUnderpricingDynamicFee(t *testing.T) {
 		t.Fatalf("pool internal state corrupted: %v", err)
 	}
 	// Ensure that adding local transactions can push out even higher priced ones
-	ltx = dynamicFeeTx(1, 100000, big.NewInt(0), big.NewInt(0), keys[2])
+	ltx = dynamicFeeTx(1, 100000, big.NewInt(1), big.NewInt(0), keys[2])
 	if err := pool.AddLocal(ltx); err != nil {
 		t.Fatalf("failed to append underpriced local transaction: %v", err)
 	}
-	ltx = dynamicFeeTx(0, 100000, big.NewInt(0), big.NewInt(0), keys[3])
+	ltx = dynamicFeeTx(0, 100000, big.NewInt(1), big.NewInt(0), keys[3])
 	if err := pool.AddLocal(ltx); err != nil {
 		t.Fatalf("failed to add new underpriced local transaction: %v", err)
 	}
