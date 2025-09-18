@@ -53,7 +53,7 @@ func TestIsCovered_ConsultsSubsidiesRegistry(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			state := state.NewMockStateDB(ctrl)
 
-			registryAddress := common.Address{1, 2, 3}
+			registryAddress := registry.GetAddress()
 			code := registry.GetCode()
 			hash := crypto.Keccak256Hash(code)
 
@@ -101,7 +101,6 @@ func TestIsCovered_ConsultsSubsidiesRegistry(t *testing.T) {
 			}
 
 			covered, err := IsCovered(
-				registryAddress,
 				blockContext,
 				signer,
 				chainConfig,
@@ -120,7 +119,7 @@ func BenchmarkIsCovered_NoCoverage(b *testing.B) {
 	ctrl := gomock.NewController(b)
 	state := state.NewMockStateDB(ctrl)
 
-	registryAddress := common.Address{1, 2, 3}
+	registryAddress := registry.GetAddress()
 	code := registry.GetCode()
 	hash := crypto.Keccak256Hash(code)
 
@@ -169,7 +168,6 @@ func BenchmarkIsCovered_NoCoverage(b *testing.B) {
 	b.ResetTimer()
 	for b.Loop() {
 		_, err := IsCovered(
-			registryAddress,
 			blockContext,
 			signer,
 			chainConfig,
