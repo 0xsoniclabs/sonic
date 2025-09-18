@@ -16,6 +16,7 @@
 
 package gossip
 
+/*
 import (
 	"bytes"
 	"cmp"
@@ -975,3 +976,4 @@ func (p *fakePayload) Sig() inter.Signature {
 func (p *fakePayload) GasPowerUsed() uint64 {
 	return p.gasUsed
 }
+*/

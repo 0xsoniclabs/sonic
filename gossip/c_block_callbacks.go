@@ -372,13 +372,6 @@ func consensusCallbackBeginBlockFn(
 						WithGasLimit(maxBlockGas).
 						WithDuration(blockDuration)
 
-					for i := range preInternalTxs {
-						blockBuilder.AddTransaction(
-							preInternalTxs[i],
-							preInternalReceipts[i],
-						)
-					}
-
 					// Execute post-internal transactions
 					internalTxs := blockProc.PostTxTransactor.PopInternalTxs(blockCtx, bs, es, sealing, statedb)
 					internalReceipts := evmProcessor.Execute(internalTxs, maxBlockGas)
@@ -388,27 +381,21 @@ func consensusCallbackBeginBlockFn(
 						}
 					}
 
-					for i := range internalTxs {
-						blockBuilder.AddTransaction(
-							internalTxs[i],
-							internalReceipts[i],
-						)
-					}
-
 					orderedTxs := proposal.Transactions
-					for i, receipt := range evmProcessor.Execute(orderedTxs, userTransactionGasLimit) {
-						if receipt != nil { // < nil if skipped
-							blockBuilder.AddTransaction(orderedTxs[i], receipt)
-						}
-					}
+					evmProcessor.Execute(orderedTxs, userTransactionGasLimit)
 
-					evmBlock, skippedTxs, allReceipts := evmProcessor.Finalize()
+					evmBlock, allReceipts, numSkipped := evmProcessor.Finalize()
 
 					// Add results of the transaction processing to the block.
 					blockBuilder.
 						WithStateRoot(common.Hash(evmBlock.Root)).
 						WithGasUsed(evmBlock.GasUsed).
 						WithBaseFee(evmBlock.BaseFee)
+
+					for i, tx := range evmBlock.Transactions {
+						// TODO: make sure that there are equally many transactions and receipts
+						blockBuilder.AddTransaction(tx, allReceipts[i])
+					}
 
 					// Complete the block.
 					block := blockBuilder.Build()
@@ -535,7 +522,7 @@ func consensusCallbackBeginBlockFn(
 						"gas_used", evmBlock.GasUsed,
 						"gas_rate", float64(evmBlock.GasUsed)/blockDuration.Seconds(),
 						"base_fee", evmBlock.BaseFee.String(),
-						"txs", fmt.Sprintf("%d/%d", len(evmBlock.Transactions), len(skippedTxs)),
+						"txs", fmt.Sprintf("%d/%d", len(evmBlock.Transactions), numSkipped),
 						"age", utils.PrettyDuration(blockAge),
 						"t", utils.PrettyDuration(now.Sub(start)),
 						"epoch", evmBlock.Epoch,
@@ -543,7 +530,7 @@ func consensusCallbackBeginBlockFn(
 					blockAgeGauge.Update(int64(blockAge.Nanoseconds()))
 
 					processedTxsMeter.Mark(int64(len(evmBlock.Transactions)))
-					skippedTxsMeter.Mark(int64(len(skippedTxs)))
+					skippedTxsMeter.Mark(int64(numSkipped))
 				}
 				if confirmedEvents.Len() != 0 {
 					atomic.StoreUint32(blockBusyFlag, 1)

@@ -2,6 +2,7 @@ package tests
 
 import (
 	"math/big"
+	"slices"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/evmcore/subsidies/registry"
@@ -97,9 +98,10 @@ func TestGasSubsidies_CanRunSubsidizedTransactions(t *testing.T) {
 	require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
 
 	// check that the sponsorship funds got deposited
+	donation := big.NewInt(1e16)
 	sponsorship, err := registry.UserSponsorships(nil, sponsee.Address(), receiver.Address())
 	require.NoError(err)
-	require.Equal(big.NewInt(1e16), sponsorship.Funds)
+	require.Equal(donation, sponsorship.Funds)
 
 	// --- try to submit a sponsored transaction ---
 
@@ -111,6 +113,39 @@ func TestGasSubsidies_CanRunSubsidizedTransactions(t *testing.T) {
 	require.NoError(err)
 	require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
 
+	block, err := client.BlockByNumber(t.Context(), receipt.BlockNumber)
+	require.NoError(err)
+	require.True(slices.ContainsFunc(
+		block.Transactions(),
+		func(cur *types.Transaction) bool {
+			return cur.Hash() == tx.Hash()
+		},
+	))
+
+	// Check that the payment transaction is included right after the sponsored
+	// transaction and that it was successful and has a non-zero value.
+	found := false
+	for i, tx := range block.Transactions() {
+		if tx.Hash() == receipt.TxHash {
+			require.Less(i, len(block.Transactions()))
+			payment := block.Transactions()[i+1]
+			receipt, err := net.GetReceipt(payment.Hash())
+			require.NoError(err)
+			require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
+			found = true
+			break
+		}
+	}
+	require.True(found, "sponsored transaction not found in the block")
+
+	// check that the sponsorship funds got deducted
+	ops := &bind.CallOpts{
+		BlockNumber: receipt.BlockNumber,
+	}
+	sponsorship, err = registry.UserSponsorships(ops, sponsee.Address(), receiver.Address())
+	require.NoError(err)
+	require.Less(sponsorship.Funds.Uint64(), donation.Uint64())
+
 	// TODO:
 	// - check the effects of the sponsored transaction
 }
@@ -121,3 +156,4 @@ func TestGasSubsidies_CanRunSubsidizedTransactions(t *testing.T) {
 //  - check that the sponsorship funds are correctly deducted after a sponsored tx
 //  - check that the sponsorship request is rejected if there are insufficient funds
 //  - check that the sponsorship request is rejected if the registry contract is not deployed
+//  - test that fee charging transactions and sealing transactions use proper nonces (incrementally, no gaps)
