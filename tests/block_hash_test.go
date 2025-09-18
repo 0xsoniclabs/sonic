@@ -80,7 +80,15 @@ func testVisibleBlockHashOnHead(
 		)
 
 		blockNumber := receipt.BlockNumber.Uint64()
-		require.Len(receipt.Logs, int(blockNumber+6), "unexpected number of logs")
+		expectedNumLogs := blockNumber + 6
+		// EIP-2935 specifies that only the 256 most recent block hashes are available
+		// And there is a contract logic, which adds 5 extra blocks.
+		// So the maximum number of logs is 261.
+		// (The contract logic is not part of EIP-2935, but it is useful for testing.)
+		if expectedNumLogs > 262 {
+			expectedNumLogs = 262
+		}
+		require.Len(receipt.Logs, int(expectedNumLogs), "unexpected number of logs")
 
 		for _, log := range receipt.Logs {
 			entry, err := contract.ParseSeen(*log)

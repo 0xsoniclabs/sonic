@@ -42,27 +42,19 @@ func TestBlockOverride(t *testing.T) {
 	t.Parallel()
 
 	// Deploy the block override observer contract.
-	_, receipt, err := DeployContract(session, block_override.DeployBlockOverride)
+	contract, receipt, err := DeployContract(session, block_override.DeployBlockOverride)
 	require.NoError(err, "failed to deploy contract; %v", err)
 	require.Equal(types.ReceiptStatusSuccessful, receipt.Status, "Deployment Unsuccessful")
 	contractAddress := receipt.ContractAddress
 
-	client, err := session.GetClient()
-	require.NoError(err, "failed to get client; %v", err)
-	defer client.Close()
+	//Call contract method to be sure it is deployed.
+	receiptLog, err := session.Apply(contract.LogBlockNumber)
+	require.NoError(err, "failed to create a log")
+	require.Equal(types.ReceiptStatusSuccessful, receiptLog.Status,
+		"failed to create a log")
 
-	contract, err := block_override.NewBlockOverride(contractAddress, client)
-	require.NoError(err, "failed to instantiate contract")
-
-	// Call contract method to be sure it is deployed.
-	receiptObserve, err := session.Apply(contract.Observe)
-	require.NoError(err, "failed to observe block hash; %v", err)
-	require.Equal(types.ReceiptStatusSuccessful, receiptObserve.Status,
-		"failed to observe block hash; %v", err,
-	)
-
-	// Need block number for eth_call and debug_traceCall
-	blockNumber := receiptObserve.BlockNumber.Uint64()
+	// Need valid block number for eth_call and debug_traceCall
+	blockNumber := receiptLog.BlockNumber.Uint64()
 
 	// Set parameters to be overridden
 	time := uint64(1234)

@@ -8,7 +8,7 @@ contract BlockHash {
         uint256 start = 0;
         uint256 end = block.number + 5;
         if (end > 260) {
-            start = end - 270;
+            start = end - 261;
         }
         for (uint256 i = start; i <= end; i++) {
             bytes32 blockHash = blockhash(i);

@@ -32,7 +32,6 @@ import (
 )
 
 func TestSingleProposerProtocol_CanProcessTransactions(t *testing.T) {
-	t.Parallel()
 
 	upgrades := map[string]opera.Upgrades{
 		"Sonic":   opera.GetSonicUpgrades(),
@@ -41,12 +40,8 @@ func TestSingleProposerProtocol_CanProcessTransactions(t *testing.T) {
 
 	for name, upgrades := range upgrades {
 		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
 			for _, numNodes := range []int{1, 3} {
 				t.Run(fmt.Sprintf("numNodes=%d", numNodes), func(t *testing.T) {
-					t.Parallel()
-
 					testSingleProposerProtocol_CanProcessTransactions(t, numNodes, upgrades)
 				})
 			}
@@ -151,7 +146,6 @@ func testSingleProposerProtocol_CanProcessTransactions(
 }
 
 func TestSingleProposerProtocol_CanBeEnabledAndDisabled(t *testing.T) {
-	t.Parallel()
 	upgrades := map[string]opera.Upgrades{
 		"Sonic":   opera.GetSonicUpgrades(),
 		"Allegro": opera.GetAllegroUpgrades(),
@@ -159,12 +153,9 @@ func TestSingleProposerProtocol_CanBeEnabledAndDisabled(t *testing.T) {
 
 	for name, upgrades := range upgrades {
 		t.Run(name, func(t *testing.T) {
-			t.Parallel()
 
 			for _, numNodes := range []int{1, 3} {
 				t.Run(fmt.Sprintf("numNodes=%d", numNodes), func(t *testing.T) {
-					t.Parallel()
-
 					testSingleProposerProtocol_CanBeEnabledAndDisabled(t, numNodes, upgrades)
 				})
 			}

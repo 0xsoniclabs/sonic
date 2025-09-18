@@ -126,6 +126,8 @@ func testIntegrationTestNet_CanEndowAccountsWithTokens(t *testing.T, session Int
 		require.NoError(t, err, "Failed to endow account 1")
 		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
+		WaitForProofOf(t, client, int(receipt.BlockNumber.Uint64()))
+
 		want := balance.Add(balance, big.NewInt(int64(increment)))
 		balance, err = client.BalanceAt(t.Context(), address, nil)
 		require.NoError(t, err, "Failed to get balance for account")
