@@ -54,7 +54,15 @@ func IsCovered(
 	// Create a EVM processor instance to run the IsCovered query.
 	vmConfig := opera.GetVmConfig(rules)
 	vm := vm.NewEVM(blockContext, state, chainConfig, vmConfig)
+	return IsCoveredBy(vm, signer, tx, blockContext.BaseFee)
+}
 
+func IsCoveredBy( // < TODO: find a better name
+	vm *vm.EVM,
+	signer types.Signer,
+	tx *types.Transaction,
+	baseFee *big.Int,
+) (bool, error) {
 	// Build the example query call to the subsidies registry contract.
 	caller := common.Address{}
 	target := registry.GetAddress()
@@ -65,7 +73,7 @@ func IsCovered(
 		return false, fmt.Errorf("failed to get transaction details: %v", err)
 	}
 	maxGas := tx.Gas() + SponsorshipOverheadGasCost
-	maxFee := new(big.Int).Mul(blockContext.BaseFee, new(big.Int).SetUint64(maxGas))
+	maxFee := new(big.Int).Mul(baseFee, new(big.Int).SetUint64(maxGas))
 	input := packIsCoveredInput(from, to, selector, maxFee)
 
 	// Run the query on the EVM and the provided state.
@@ -84,7 +92,7 @@ func IsCovered(
 // intended to be introduced by the block processor after the sponsored
 // transaction has been executed.
 func GetFeeChargeTransaction(
-	state state.StateDB,
+	nonceSource NonceSource,
 	signer types.Signer,
 	tx *types.Transaction,
 	gasUsed uint64,
@@ -92,7 +100,7 @@ func GetFeeChargeTransaction(
 ) (*types.Transaction, error) {
 	const gasLimit = 100_000 // TODO: re-evaluate this value
 	sender := common.Address{}
-	nonce := state.GetNonce(sender)
+	nonce := nonceSource.GetNonce(sender)
 	from, to, selector, err := getTransactionDetails(signer, tx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get transaction details: %v", err)
@@ -106,6 +114,10 @@ func GetFeeChargeTransaction(
 	return types.NewTransaction(
 		nonce, registry.GetAddress(), common.Big0, gasLimit, common.Big0, input,
 	), nil
+}
+
+type NonceSource interface {
+	GetNonce(addr common.Address) uint64
 }
 
 // --- utility functions ---

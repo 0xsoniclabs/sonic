@@ -16,6 +16,7 @@
 
 package evmcore
 
+/*
 import (
 	"fmt"
 	"math"
@@ -612,3 +613,4 @@ func getStateDbMockForTransactions(
 	state.EXPECT().EndTransaction().AnyTimes()
 	return state
 }
+*/

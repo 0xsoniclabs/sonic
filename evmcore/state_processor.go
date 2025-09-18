@@ -52,18 +52,15 @@ func NewStateProcessor(config *params.ChainConfig, bc DummyChain) *StateProcesso
 }
 
 // Process processes the state changes according to the Ethereum rules by running
-// the transaction messages using the StateDB, collecting all receipts, logs,
-// the indexes of skipped transactions, and the used gas via an output parameter.
+// the transaction messages using the StateDB. For sponsored transactions,
+// additional internal transactions may be added. The list of all executed
+// transactions and their receipts is collected. The total used gas is reported
+// via an output parameter.
 //
 // A transaction is skipped if for some reason its execution in the given order
 // is not possible. Skipped transactions do not consume any gas and do not affect
-// the usedGas counter. The receipts for skipped transactions are nil. Processing
-// continues with the next transaction in the block.
-//
-// Some reasons leading to issues during the execution of a transaction can lead
-// to a general fail of the Process step. Among those are, for instance, the
-// inability of restoring the sender from a transactions signature. In such a
-// case, the full processing is aborted and an error is returned.
+// the usedGas counter. Processing continues with the next transaction in the
+// block.
 //
 // Note that these rules are part of the replicated state machine and must be
 // consistent among all nodes on the network. The encoded rules have been
@@ -74,11 +71,11 @@ func (p *StateProcessor) Process(
 	block *EvmBlock, statedb state.StateDB, cfg vm.Config, gasLimit uint64,
 	usedGas *uint64, onNewLog func(*types.Log),
 ) (
-	types.Receipts, []*types.Log, []uint32,
+	types.Transactions, types.Receipts, int,
 ) {
-	receipts := make(types.Receipts, 0, len(block.Transactions))
-	allLogs := make([]*types.Log, 0, len(block.Transactions)*10) // 10 logs per tx is a reasonable estimate
-	skipped := make([]uint32, 0, len(block.Transactions))
+	transactions := make(types.Transactions, 0, 2*len(block.Transactions))
+	receipts := make(types.Receipts, 0, 2*len(block.Transactions))
+	numSkipped := 0
 	var (
 		gp           = new(core.GasPool).AddGas(gasLimit)
 		receipt      *types.Receipt
@@ -96,34 +93,78 @@ func (p *StateProcessor) Process(
 	}
 
 	// Iterate over and process the individual transactions
-	for i, tx := range block.Transactions {
-		isSponsored := subsidies.IsSponsorshipRequest(tx)
-		// TODO: check coverage, otherwise skip;
-		vmenv.Config.NoBaseFee = isSponsored
+	txCounter := 0
+	for _, tx := range block.Transactions {
 		msg, err := TxAsMessage(tx, signer, header.BaseFee)
 		if err != nil {
 			log.Info("Failed to convert transaction to message", "tx", tx.Hash().Hex(), "err", err)
-			skipped = append(skipped, uint32(i))
-			receipts = append(receipts, nil)
+			numSkipped++
 			continue // skip this transaction, but continue processing the rest of the block
 		}
 
-		statedb.SetTxContext(tx.Hash(), i)
+		// Make sure the costs for a sponsorship request are covered.
+		// Note: internal transactions are exempt from sponsorship checks. For
+		// those, no transaction fees are charged at all.
+		isSponsored := false
+		if msg.From != (common.Address{}) && subsidies.IsSponsorshipRequest(tx) {
+			// Check that the requested transaction is covered by a sponsorship.
+			covered, err := subsidies.IsCoveredBy(vmenv, signer, tx, header.BaseFee)
+			if err != nil {
+				log.Warn("Failed to check sponsorship coverage", "tx", tx.Hash().Hex(), "err", err)
+				numSkipped++
+				continue // skip this transaction, but continue processing the rest of the block
+			}
+			if !covered {
+				log.Debug("Sponsorship request is not covered", "tx", tx.Hash().Hex())
+				numSkipped++
+				continue
+			}
+			isSponsored = true
+		}
+		vmenv.Config.NoBaseFee = isSponsored
+
+		statedb.SetTxContext(tx.Hash(), txCounter)
+		txCounter++
 		receipt, _, err = applyTransaction(msg, gp, statedb, blockNumber, tx, usedGas, vmenv, onNewLog)
 		if err != nil {
 			log.Debug("Failed to apply transaction", "tx", tx.Hash().Hex(), "err", err)
-			skipped = append(skipped, uint32(i))
-			receipts = append(receipts, nil)
+			numSkipped++
 			continue // skip this transaction, but continue processing the rest of the block
 		}
+		transactions = append(transactions, tx)
 		receipts = append(receipts, receipt)
-		allLogs = append(allLogs, receipt.Logs...)
 
 		if isSponsored {
-			// TODO: introduce gas-charging TX for sponsored transactions
+			tx, err := subsidies.GetFeeChargeTransaction(vmenv.StateDB, signer, tx, receipt.GasUsed, header.BaseFee)
+			if err != nil {
+				// This should never happen as we already checked that the sponsorship
+				// is covered.
+				log.Error("Failed to create gas charge transaction for sponsored tx", "tx", tx.Hash().Hex(), "err", err)
+				// Note: we do NOT skip the transaction here, as it has been executed
+				// successfully. However, this means that the sponsorship funds are
+				// not deducted and the sponsorship balance is not updated and the
+				// execution of the sponsored transaction was effectively free.
+				// This is a preferable outcome compared to terminating the full
+				// processing of the block.
+				continue
+			}
+			msg, err := TxAsMessage(tx, signer, header.BaseFee)
+			if err != nil {
+				log.Error("Failed to convert sponsorship charging transaction to message", "tx", tx.Hash().Hex(), "err", err)
+				continue // effectively free execution of the sponsored transaction
+			}
+			statedb.SetTxContext(tx.Hash(), txCounter)
+			txCounter++
+			receipt, _, err = applyTransaction(msg, gp, statedb, blockNumber, tx, usedGas, vmenv, onNewLog)
+			if err != nil {
+				log.Error("Failed to apply sponsorship charging transaction", "tx", tx.Hash().Hex(), "err", err)
+				continue // effectively free execution of the sponsored transaction
+			}
+			transactions = append(transactions, tx)
+			receipts = append(receipts, receipt)
 		}
 	}
-	return receipts, allLogs, skipped
+	return transactions, receipts, numSkipped
 }
 
 // BeginBlock starts the processing of a new block and returns a function to
@@ -183,6 +224,8 @@ func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) (
 	skipped bool,
 	err error,
 ) {
+	// TODO: integrate sponsorship operations and integrated fee charging Txs
+
 	msg, err := TxAsMessage(tx, tp.signer, tp.header.BaseFee)
 	if err != nil {
 		return nil, false, fmt.Errorf(
@@ -307,7 +350,7 @@ func applyTransaction(
 	evm.SetTxContext(txContext)
 
 	// Skip checking of base fee limits for internal transactions.
-	evm.Config.NoBaseFee = msg.SkipNonceChecks
+	evm.Config.NoBaseFee = evm.Config.NoBaseFee || msg.SkipNonceChecks
 
 	// For now, Sonic only supports Blob transactions without blob data.
 	if msg.BlobHashes != nil {
