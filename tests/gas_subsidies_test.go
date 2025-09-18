@@ -8,6 +8,7 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 )
@@ -105,6 +106,9 @@ func TestGasSubsidies_CanRunSubsidizedTransactions(t *testing.T) {
 
 	// --- try to submit a sponsored transaction ---
 
+	burnedBefore, err := client.BalanceAt(t.Context(), common.Address{}, nil)
+	require.NoError(err)
+
 	// Now it should be possible to submit the transaction from the sponsee.
 	require.NoError(client.SendTransaction(t.Context(), tx))
 
@@ -146,8 +150,17 @@ func TestGasSubsidies_CanRunSubsidizedTransactions(t *testing.T) {
 	require.NoError(err)
 	require.Less(sponsorship.Funds.Uint64(), donation.Uint64())
 
-	// TODO:
-	// - check the effects of the sponsored transaction
+	// the different in the sponsorship funds should have been burned
+	burnedAfter, err := client.BalanceAt(t.Context(), common.Address{}, nil)
+	require.NoError(err)
+	require.Greater(burnedAfter.Uint64(), burnedBefore.Uint64())
+
+	// the sponsorship difference and the increase in burned funds should be equal
+	diff := new(big.Int).Sub(burnedAfter, burnedBefore)
+	reduced := new(big.Int).Sub(donation, sponsorship.Funds)
+	require.Equal(0, diff.Cmp(reduced),
+		"the burned amount should equal the reduction of the sponsorship funds",
+	)
 }
 
 // TODO: test the following properties
