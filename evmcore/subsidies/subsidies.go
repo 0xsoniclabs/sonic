@@ -37,7 +37,6 @@ func IsSponsorshipRequest(tx *types.Transaction) bool {
 // registry contract. It returns true if sponsorship funds are available to
 // cover the given transaction, false otherwise.
 func IsCovered(
-	subsidiesRegistry common.Address,
 	blockContext vm.BlockContext,
 	signer types.Signer,
 	chainConfig *params.ChainConfig,
@@ -58,7 +57,7 @@ func IsCovered(
 
 	// Build the example query call to the subsidies registry contract.
 	caller := common.Address{}
-	target := subsidiesRegistry
+	target := registry.GetAddress()
 
 	// Build the input data for the IsCovered call.
 	from, to, selector, err := getTransactionDetails(signer, tx)
@@ -85,7 +84,6 @@ func IsCovered(
 // intended to be introduced by the block processor after the sponsored
 // transaction has been executed.
 func GetFeeChargeTransaction(
-	subsidiesRegistry common.Address,
 	state state.StateDB,
 	signer types.Signer,
 	tx *types.Transaction,
@@ -106,7 +104,7 @@ func GetFeeChargeTransaction(
 	)
 	input := packDeductFeesInput(from, to, selector, fee)
 	return types.NewTransaction(
-		nonce, subsidiesRegistry, common.Big0, gasLimit, common.Big0, input,
+		nonce, registry.GetAddress(), common.Big0, gasLimit, common.Big0, input,
 	), nil
 }
 
