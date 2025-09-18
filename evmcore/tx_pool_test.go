@@ -129,13 +129,12 @@ type testBlockChain struct {
 	statedb       *testTxPoolStateDb
 	gasLimit      uint64
 	chainHeadFeed *event.Feed
-	chainconfig   *params.ChainConfig
 
 	mu sync.RWMutex
 }
 
 func NewTestBlockChain(statedb *testTxPoolStateDb) *testBlockChain {
-	return &testBlockChain{statedb, 10000000, new(event.Feed), nil, sync.RWMutex{}}
+	return &testBlockChain{statedb, 10000000, new(event.Feed), sync.RWMutex{}}
 }
 
 func (bc *testBlockChain) changeStateDB(statedb *testTxPoolStateDb) {
@@ -171,16 +170,7 @@ func (bc *testBlockChain) MaxGasLimit() uint64 {
 	return bc.CurrentBlock().GasLimit
 }
 func (bc *testBlockChain) Config() *params.ChainConfig {
-	return bc.chainconfig
-}
-
-// setConfig sets the chain config for the blockchain. If config is nil, it does nothing.
-func (bc *testBlockChain) setConfig(config *params.ChainConfig) {
-	if config == nil {
-		return
-	}
-	cpy := *config
-	bc.chainconfig = &cpy
+	return nil
 }
 
 func (bc *testBlockChain) GetBlock(hash common.Hash, number uint64) *EvmBlock {
@@ -3157,9 +3147,9 @@ func TestTxPool_ActivatingOsakaDropsTransactionsWithHighGas(t *testing.T) {
 
 	// make a transaction with over params.MaxTxGas gas and nonce 0
 	key, _ := crypto.GenerateKey()
-	newAddress := crypto.PubkeyToAddress(key.PublicKey)
+	address := crypto.PubkeyToAddress(key.PublicKey)
 	tx := pricedTransaction(0, params.MaxTxGas+1, big.NewInt(1), key)
-	testAddBalance(pool, newAddress, big.NewInt(math.MaxInt64))
+	testAddBalance(pool, address, big.NewInt(math.MaxInt64))
 
 	err := pool.addRemoteSync(tx)
 	require.NoError(t, err, "failed to add transaction: %v", err)
@@ -3170,8 +3160,10 @@ func TestTxPool_ActivatingOsakaDropsTransactionsWithHighGas(t *testing.T) {
 	require.NoError(t, err, "failed to add transaction: %v", err)
 
 	pending, queued := pool.Content()
-	require.Equal(t, 2, len(pending[newAddress]), "pending list should have 2 tx but has: %d", len(pending[newAddress]))
-	require.Equal(t, 0, len(queued[newAddress]), "queued list should be empty but has: %d", len(queued[newAddress]))
+	require.Equal(t, 2, len(pending[address]), "pending list should have 2 tx but has: %d", len(pending[address]))
+	require.Equal(t, 0, len(queued[address]), "queued list should be empty but has: %d", len(queued[address]))
+	require.EqualValues(t, 0, pending[address][0].Nonce())
+	require.EqualValues(t, 1, pending[address][1].Nonce())
 
 	// add a forever queued transaction with nonce 3
 	bigQueuedTx := pricedTransaction(3, params.MaxTxGas+1, big.NewInt(1), key)
@@ -3179,42 +3171,27 @@ func TestTxPool_ActivatingOsakaDropsTransactionsWithHighGas(t *testing.T) {
 	require.NoError(t, err, "failed to add transaction: %v", err)
 
 	pending, queued = pool.Content()
-	require.Equal(t, 2, len(pending[newAddress]), "pending list should have 2 tx but has: %d", len(pending[newAddress]))
-	require.Equal(t, 1, len(queued[newAddress]), "queued list should have 1 tx but has: %d", len(queued[newAddress]))
-
-	// if a config changes but it is not osaka, the first transaction should not be dropped
-	timestampInThePast := uint64(0)
-
-	// make a copy of the chain config that is safe to modify
-	copy := *params.TestChainConfig
-	testChainConfig := &copy
-
-	testChainConfig.ShanghaiTime = &timestampInThePast
-	blockchain.setConfig(testChainConfig)
+	require.Equal(t, 2, len(pending[address]), "pending list should have 2 tx but has: %d", len(pending[address]))
+	require.Equal(t, 1, len(queued[address]), "queued list should have 1 tx but has: %d", len(queued[address]))
+	require.EqualValues(t, 0, pending[address][0].Nonce())
+	require.EqualValues(t, 1, pending[address][1].Nonce())
+	require.EqualValues(t, 3, queued[address][0].Nonce())
 
 	// header parameters are not relevant for the test, but are necessary to prevent panics
 	oldHeader := &EvmHeader{Number: big.NewInt(4), Time: 4}
 	newHeader := &EvmHeader{Number: big.NewInt(5), Time: 5, BaseFee: big.NewInt(100)}
 
-	<-pool.requestReset(oldHeader, newHeader)
-	pool.waitForIdleReorgLoop_forTesting()
-
-	pending, queued = pool.Content()
-	require.Equal(t, 2, len(pending[newAddress]), "pending list should have 2 tx but has: %d", len(pending[newAddress]))
-	require.Equal(t, 1, len(queued[newAddress]), "queued list should be empty but has: %d", len(queued[newAddress]))
-
-	// now osaka is enabled and the transaction should be discarded
-	testChainConfig.OsakaTime = &timestampInThePast
+	// lowering the gas limit should drop the tx with too high gas
 	blockchain.gasLimit = 1 << 24 // set 16M
-	blockchain.setConfig(testChainConfig)
 
 	<-pool.requestReset(oldHeader, newHeader)
 	pool.waitForIdleReorgLoop_forTesting()
 
 	// transaction with nonce 0 should be dropped, nonce 1 should be moved to queued
 	pending, queued = pool.Content()
-	require.Equal(t, 0, len(pending[newAddress]), "pending list should be empty but has: %d", len(pending[newAddress]))
-	require.Equal(t, 1, len(queued[newAddress]), "queued list should have 1 tx but has: %d", len(queued[newAddress]))
+	require.Equal(t, 0, len(pending[address]), "pending list should be empty but has: %d", len(pending[address]))
+	require.Equal(t, 1, len(queued[address]), "queued list should have 1 tx but has: %d", len(queued[address]))
+	require.EqualValues(t, 1, queued[address][0].Nonce())
 }
 
 // Benchmarks the speed of validating the contents of the pending queue of the

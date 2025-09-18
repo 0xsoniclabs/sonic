@@ -222,7 +222,7 @@ func TestNetworkRule_Update_Restart_Recovers_Original_Value(t *testing.T) {
 	require.GreaterOrEqual(blockAfter.BaseFee().Int64(), newMinBaseFee, "BaseFee should reflect new MinBaseFee")
 }
 
-func TestNetworkRules_UpdateToBrio_DropsLargeGasTxs(t *testing.T) {
+func TestNetworkRules_UpdateMaxEventGas_DropsLargeGasTxs(t *testing.T) {
 	t.Parallel()
 
 	require := require.New(t)
@@ -267,7 +267,6 @@ func TestNetworkRules_UpdateToBrio_DropsLargeGasTxs(t *testing.T) {
 	defaultGasRules := opera.DefaultGasRules()
 	defaultGasRules.MaxEventGas = 16_777_216 // inspired by params.MaxTxGas
 	updatedRules.Economy.Gas = defaultGasRules
-	updatedRules.Upgrades.Brio = true
 
 	// Update network rules
 	tests.UpdateNetworkRules(t, net, updatedRules)
