@@ -157,6 +157,7 @@ func TestGasSubsidies_CanRunSubsidizedTransactions(t *testing.T) {
 			payment := block.Transactions()[i+1]
 			receipt, err := net.GetReceipt(payment.Hash())
 			require.NoError(err)
+			require.Less(receipt.GasUsed, uint64(100_000))
 			require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
 			found = true
 			break

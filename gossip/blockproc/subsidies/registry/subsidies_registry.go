@@ -31,8 +31,8 @@ var (
 
 // RegistryMetaData contains all meta data concerning the Registry contract.
 var RegistryMetaData = &bind.MetaData{
-	ABI: "[{\"inputs\":[{\"internalType\":\"contractFeeBurner\",\"name\":\"feeBurner_\",\"type\":\"address\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"name\":\"accountSponsorships\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"funds\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"locked\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"totalContributions\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"},{\"internalType\":\"bytes4\",\"name\":\"\",\"type\":\"bytes4\"}],\"name\":\"callSponsorships\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"funds\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"locked\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"totalContributions\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"name\":\"contractSponsorships\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"funds\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"locked\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"totalContributions\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"bytes4\",\"name\":\"functionSelector\",\"type\":\"bytes4\"},{\"internalType\":\"uint256\",\"name\":\"fee\",\"type\":\"uint256\"}],\"name\":\"deductFees\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"globalSponsorship\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"funds\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"locked\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"totalContributions\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"bytes4\",\"name\":\"functionSelector\",\"type\":\"bytes4\"},{\"internalType\":\"uint256\",\"name\":\"fee\",\"type\":\"uint256\"}],\"name\":\"isCovered\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"},{\"internalType\":\"bytes4\",\"name\":\"\",\"type\":\"bytes4\"}],\"name\":\"serviceSponsorships\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"funds\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"locked\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"totalContributions\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"}],\"name\":\"sponsorAccount\",\"outputs\":[],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"bytes4\",\"name\":\"functionSelector\",\"type\":\"bytes4\"}],\"name\":\"sponsorCall\",\"outputs\":[],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"}],\"name\":\"sponsorContract\",\"outputs\":[],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"sponsorGlobal\",\"outputs\":[],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"bytes4\",\"name\":\"functionSelector\",\"type\":\"bytes4\"}],\"name\":\"sponsorService\",\"outputs\":[],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"}],\"name\":\"sponsorUser\",\"outputs\":[],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"name\":\"userSponsorships\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"funds\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"locked\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"totalContributions\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"amount\",\"type\":\"uint256\"}],\"name\":\"withdrawAccountSponsorship\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"bytes4\",\"name\":\"functionSelector\",\"type\":\"bytes4\"},{\"internalType\":\"uint256\",\"name\":\"amount\",\"type\":\"uint256\"}],\"name\":\"withdrawCallSponsorship\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"amount\",\"type\":\"uint256\"}],\"name\":\"withdrawContractSponsorship\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"amount\",\"type\":\"uint256\"}],\"name\":\"withdrawGlobalSponsorship\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"bytes4\",\"name\":\"functionSelector\",\"type\":\"bytes4\"},{\"internalType\":\"uint256\",\"name\":\"amount\",\"type\":\"uint256\"}],\"name\":\"withdrawServiceSponsorship\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"amount\",\"type\":\"uint256\"}],\"name\":\"withdrawUserSponsorship\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}]",
-	Bin: "0x6080604052348015600e575f5ffd5b50604051610eb2380380610eb2833981016040819052602b91604e565b5f80546001600160a01b0319166001600160a01b03929092169190911790556079565b5f60208284031215605d575f5ffd5b81516001600160a01b03811681146072575f5ffd5b9392505050565b610e2c806100865f395ff3fe60806040526004361061011b575f3560e01c8063944557d61161009d578063cc77aec811610062578063cc77aec814610379578063daf21aa3146103b3578063e32213bb146103c6578063f1cdef06146103e5578063f8117aa814610404575f5ffd5b8063944557d61461026657806399bc8bee146102855780639c31691e146102a4578063aae83110146102ef578063b5dfce0714610334575f5ffd5b80633f49695a116100e35780633f49695a146101df5780633ff8b209146101fe578063533c23c6146102385780636c2f07861461024b5780637d2e55641461025e575f5ffd5b806302f8297c1461011f5780630c617f961461015d578063174299631461017e5780632cc051571461019d57806336a656a7146101b0575b5f5ffd5b34801561012a575f5ffd5b5060015460025460035461013d92919083565b604080519384526020840192909252908201526060015b60405180910390f35b348015610168575f5ffd5b5061017c610177366004610bab565b610417565b005b348015610189575f5ffd5b5061017c610198366004610bdd565b610426565b61017c6101ab366004610c05565b61044c565b3480156101bb575f5ffd5b506101cf6101ca366004610c4d565b61047b565b6040519015158152602001610154565b3480156101ea575f5ffd5b5061017c6101f9366004610c95565b610598565b348015610209575f5ffd5b5061013d610218366004610ccf565b60056020525f908152604090208054600182015460029092015490919083565b61017c610246366004610cef565b6105cc565b61017c610259366004610d17565b610603565b61017c610644565b348015610271575f5ffd5b5061017c610280366004610c4d565b610652565b348015610290575f5ffd5b5061017c61029f366004610c4d565b6108d7565b3480156102af575f5ffd5b5061013d6102be366004610d17565b600760209081525f938452604080852082529284528284209052825290208054600182015460029092015490919083565b3480156102fa575f5ffd5b5061013d610309366004610c05565b600660209081525f928352604080842090915290825290208054600182015460029092015490919083565b34801561033f575f5ffd5b5061013d61034e366004610cef565b600860209081525f928352604080842090915290825290208054600182015460029092015490919083565b348015610384575f5ffd5b5061013d610393366004610ccf565b60096020525f908152604090208054600182015460029092015490919083565b61017c6103c1366004610ccf565b610918565b3480156103d1575f5ffd5b5061017c6103e0366004610d57565b61093a565b3480156103f0575f5ffd5b5061017c6103ff366004610bdd565b610971565b61017c610412366004610ccf565b610993565b610423600133836109b5565b50565b6001600160a01b0382165f9081526005602052604090206104489033836109b5565b5050565b6001600160a01b038083165f908152600660209081526040808320938516835292905220610448903334610b47565b6001600160a01b038085165f90815260076020908152604080832093871683529281528282206001600160e01b03198616835290529081205482116104c257506001610590565b6001600160a01b038086165f9081526006602090815260408083209388168352929052205482116104f557506001610590565b6001600160a01b0385165f90815260056020526040902054821161051b57506001610590565b6001600160a01b0384165f9081526008602090815260408083206001600160e01b031987168452909152902054821161055657506001610590565b6001600160a01b0384165f90815260096020526040902054821161057c57506001610590565b600154821161058d57506001610590565b505f5b949350505050565b6001600160a01b038084165f9081526006602090815260408083209386168352929052206105c79033836109b5565b505050565b6001600160a01b0382165f9081526008602090815260408083206001600160e01b0319851684529091529020610448903334610b47565b6001600160a01b038084165f90815260076020908152604080832093861683529281528282206001600160e01b0319851683529052206105c7903334610b47565b61065060013334610b47565b565b331561065c575f5ffd5b6106688484848461047b565b610670575f5ffd5b5f805460408051630214284360e61b815290516001600160a01b039092169263850a10c0928592600480820193929182900301818588803b1580156106b3575f5ffd5b505af11580156106c5573d5f5f3e3d5ffd5b505050506001600160a01b038581165f90815260076020908152604080832093881683529281528282206001600160e01b031987168352905220548211905061075b576001600160a01b038085165f90815260076020908152604080832093871683529281528282206001600160e01b03198616835290529081208054839290610750908490610d94565b909155506108d19050565b6001600160a01b038085165f9081526006602090815260408083209387168352929052205481116107bc576001600160a01b038085165f90815260066020908152604080832093871683529290529081208054839290610750908490610d94565b6001600160a01b0384165f908152600560205260409020548111610801576001600160a01b0384165f9081526005602052604081208054839290610750908490610d94565b6001600160a01b0383165f9081526008602090815260408083206001600160e01b0319861684529091529020548111610870576001600160a01b0383165f9081526008602090815260408083206001600160e01b03198616845290915281208054839290610750908490610d94565b6001600160a01b0383165f9081526009602052604090205481116108b5576001600160a01b0383165f9081526009602052604081208054839290610750908490610d94565b60015481116108d1578060015f015f8282546107509190610d94565b50505050565b6001600160a01b038085165f90815260076020908152604080832093871683529281528282206001600160e01b0319861683529052206108d19033836109b5565b6001600160a01b0381165f908152600960205260409020610423903334610b47565b6001600160a01b0383165f9081526008602090815260408083206001600160e01b03198616845290915290206105c79033836109b5565b6001600160a01b0382165f9081526009602052604090206104489033836109b5565b6001600160a01b0381165f908152600560205260409020610423903334610b47565b6001600160a01b0382165f908152600384016020526040902054811115610a2f5760405162461bcd60e51b8152602060048201526024808201527f4e6f7420656e6f75676820636f6e747269627574696f6e7320746f20776974686044820152636472617760e01b60648201526084015b60405180910390fd5b600283015483545f9190610a439084610dad565b610a4d9190610dc4565b90505f836001600160a01b0316826040515f6040518083038185875af1925050503d805f8114610a98576040519150601f19603f3d011682016040523d82523d5f602084013e610a9d565b606091505b5050905080610ae05760405162461bcd60e51b815260206004820152600f60248201526e151c985b9cd9995c8819985a5b1959608a1b6044820152606401610a26565b6001600160a01b0384165f90815260038601602052604081208054859290610b09908490610d94565b9250508190555082856002015f828254610b239190610d94565b90915550508454829086905f90610b3b908490610d94565b90915550505050505050565b80835f015f828254610b599190610de3565b90915550506001600160a01b0382165f90815260038401602052604081208054839290610b87908490610de3565b9250508190555080836002015f828254610ba19190610de3565b9091555050505050565b5f60208284031215610bbb575f5ffd5b5035919050565b80356001600160a01b0381168114610bd8575f5ffd5b919050565b5f5f60408385031215610bee575f5ffd5b610bf783610bc2565b946020939093013593505050565b5f5f60408385031215610c16575f5ffd5b610c1f83610bc2565b9150610c2d60208401610bc2565b90509250929050565b80356001600160e01b031981168114610bd8575f5ffd5b5f5f5f5f60808587031215610c60575f5ffd5b610c6985610bc2565b9350610c7760208601610bc2565b9250610c8560408601610c36565b9396929550929360600135925050565b5f5f5f60608486031215610ca7575f5ffd5b610cb084610bc2565b9250610cbe60208501610bc2565b929592945050506040919091013590565b5f60208284031215610cdf575f5ffd5b610ce882610bc2565b9392505050565b5f5f60408385031215610d00575f5ffd5b610d0983610bc2565b9150610c2d60208401610c36565b5f5f5f60608486031215610d29575f5ffd5b610d3284610bc2565b9250610d4060208501610bc2565b9150610d4e60408501610c36565b90509250925092565b5f5f5f60608486031215610d69575f5ffd5b610d7284610bc2565b9250610cbe60208501610c36565b634e487b7160e01b5f52601160045260245ffd5b81810381811115610da757610da7610d80565b92915050565b8082028115828204841417610da757610da7610d80565b5f82610dde57634e487b7160e01b5f52601260045260245ffd5b500490565b80820180821115610da757610da7610d8056fea26469706673582212204414c63da8d831fc70634421eeec4776926efac81a2054bf072a865de0f05c8364736f6c634300081b0033",
+	ABI: "[{\"inputs\":[{\"internalType\":\"contractFeeBurner\",\"name\":\"feeBurner_\",\"type\":\"address\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"name\":\"accountSponsorships\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"funds\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"totalContributions\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"},{\"internalType\":\"bytes4\",\"name\":\"\",\"type\":\"bytes4\"}],\"name\":\"callSponsorships\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"funds\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"totalContributions\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"name\":\"contractSponsorships\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"funds\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"totalContributions\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"bytes4\",\"name\":\"functionSelector\",\"type\":\"bytes4\"},{\"internalType\":\"uint256\",\"name\":\"fee\",\"type\":\"uint256\"}],\"name\":\"deductFees\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"globalSponsorship\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"funds\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"totalContributions\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"bytes4\",\"name\":\"functionSelector\",\"type\":\"bytes4\"},{\"internalType\":\"uint256\",\"name\":\"fee\",\"type\":\"uint256\"}],\"name\":\"isCovered\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"},{\"internalType\":\"bytes4\",\"name\":\"\",\"type\":\"bytes4\"}],\"name\":\"serviceSponsorships\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"funds\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"totalContributions\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"}],\"name\":\"sponsorAccount\",\"outputs\":[],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"bytes4\",\"name\":\"functionSelector\",\"type\":\"bytes4\"}],\"name\":\"sponsorCall\",\"outputs\":[],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"}],\"name\":\"sponsorContract\",\"outputs\":[],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"sponsorGlobal\",\"outputs\":[],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"bytes4\",\"name\":\"functionSelector\",\"type\":\"bytes4\"}],\"name\":\"sponsorService\",\"outputs\":[],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"}],\"name\":\"sponsorUser\",\"outputs\":[],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"name\":\"userSponsorships\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"funds\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"totalContributions\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"amount\",\"type\":\"uint256\"}],\"name\":\"withdrawAccountSponsorship\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"bytes4\",\"name\":\"functionSelector\",\"type\":\"bytes4\"},{\"internalType\":\"uint256\",\"name\":\"amount\",\"type\":\"uint256\"}],\"name\":\"withdrawCallSponsorship\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"amount\",\"type\":\"uint256\"}],\"name\":\"withdrawContractSponsorship\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"amount\",\"type\":\"uint256\"}],\"name\":\"withdrawGlobalSponsorship\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"bytes4\",\"name\":\"functionSelector\",\"type\":\"bytes4\"},{\"internalType\":\"uint256\",\"name\":\"amount\",\"type\":\"uint256\"}],\"name\":\"withdrawServiceSponsorship\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"amount\",\"type\":\"uint256\"}],\"name\":\"withdrawUserSponsorship\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}]",
+	Bin: "0x6080604052348015600e575f5ffd5b50604051610ed9380380610ed9833981016040819052602b91604e565b5f80546001600160a01b0319166001600160a01b03929092169190911790556079565b5f60208284031215605d575f5ffd5b81516001600160a01b03811681146072575f5ffd5b9392505050565b610e53806100865f395ff3fe60806040526004361061011b575f3560e01c8063944557d61161009d578063cc77aec811610062578063cc77aec81461034f578063daf21aa314610381578063e32213bb14610394578063f1cdef06146103b3578063f8117aa8146103d2575f5ffd5b8063944557d61461025457806399bc8bee146102735780639c31691e14610292578063aae83110146102d5578063b5dfce0714610312575f5ffd5b80633f49695a116100e35780633f49695a146101d55780633ff8b209146101f4578063533c23c6146102265780636c2f0786146102395780637d2e55641461024c575f5ffd5b806302f8297c1461011f5780630c617f961461015357806317429963146101745780632cc051571461019357806336a656a7146101a6575b5f5ffd5b34801561012a575f5ffd5b50600154600254610139919082565b604080519283526020830191909152015b60405180910390f35b34801561015e575f5ffd5b5061017261016d366004610bd2565b6103e5565b005b34801561017f575f5ffd5b5061017261018e366004610c04565b6103f4565b6101726101a1366004610c2c565b61041a565b3480156101b1575f5ffd5b506101c56101c0366004610c74565b610449565b604051901515815260200161014a565b3480156101e0575f5ffd5b506101726101ef366004610cbc565b610462565b3480156101ff575f5ffd5b5061013961020e366004610cf6565b60046020525f90815260409020805460019091015482565b610172610234366004610d16565b610496565b610172610247366004610d3e565b6104cd565b61017261050e565b34801561025f575f5ffd5b5061017261026e366004610c74565b61051c565b34801561027e575f5ffd5b5061017261028d366004610c74565b610647565b34801561029d575f5ffd5b506101396102ac366004610d3e565b600660209081525f93845260408085208252928452828420905282529020805460019091015482565b3480156102e0575f5ffd5b506101396102ef366004610c2c565b600560209081525f92835260408084209091529082529020805460019091015482565b34801561031d575f5ffd5b5061013961032c366004610d16565b600760209081525f92835260408084209091529082529020805460019091015482565b34801561035a575f5ffd5b50610139610369366004610cf6565b60086020525f90815260409020805460019091015482565b61017261038f366004610cf6565b61068e565b34801561039f575f5ffd5b506101726103ae366004610d7e565b6106b0565b3480156103be575f5ffd5b506101726103cd366004610c04565b6106e7565b6101726103e0366004610cf6565b610709565b6103f16001338361072b565b50565b6001600160a01b0382165f90815260046020526040902061041690338361072b565b5050565b6001600160a01b038083165f90815260056020908152604080832093851683529290522061041690333461098e565b5f5f610457868686866109f2565b979650505050505050565b6001600160a01b038084165f90815260056020908152604080832093861683529290522061049190338361072b565b505050565b6001600160a01b0382165f9081526007602090815260408083206001600160e01b031985168452909152902061041690333461098e565b6001600160a01b038084165f90815260066020908152604080832093861683529281528282206001600160e01b03198516835290522061049190333461098e565b61051a6001333461098e565b565b3315610526575f5ffd5b5f5f610534868686866109f2565b915091508061058a5760405162461bcd60e51b815260206004820152601c60248201527f4e6f2073706f6e736f727368697020706f7420617661696c61626c650000000060448201526064015b60405180910390fd5b81548311156105ce5760405162461bcd60e51b815260206004820152601060248201526f4e6f7420656e6f7567682066756e647360801b6044820152606401610581565b5f805460408051630214284360e61b815290516001600160a01b039092169263850a10c0928792600480820193929182900301818588803b158015610611575f5ffd5b505af1158015610623573d5f5f3e3d5ffd5b505050505082825f015f82825461063a9190610dbb565b9091555050505050505050565b6001600160a01b038085165f90815260066020908152604080832093871683529281528282206001600160e01b03198616835290522061068890338361072b565b50505050565b6001600160a01b0381165f9081526008602052604090206103f190333461098e565b6001600160a01b0383165f9081526007602090815260408083206001600160e01b031986168452909152902061049190338361072b565b6001600160a01b0382165f90815260086020526040902061041690338361072b565b6001600160a01b0381165f9081526004602052604090206103f190333461098e565b5f3a116107a05760405162461bcd60e51b815260206004820152603c60248201527f5769746864726177616c7320617265206e6f7420737570706f7274656420746860448201527f726f7567682073706f6e736f726564207472616e73616374696f6e73000000006064820152608401610581565b6001600160a01b0382165f9081526002840160205260409020548111156108155760405162461bcd60e51b8152602060048201526024808201527f4e6f7420656e6f75676820636f6e747269627574696f6e7320746f20776974686044820152636472617760e01b6064820152608401610581565b600183015483545f91906108299084610dd4565b6108339190610deb565b84549091508111156108965760405162461bcd60e51b815260206004820152602660248201527f4e6f7420656e6f75676820617661696c61626c652066756e647320746f20776960448201526574686472617760d01b6064820152608401610581565b5f836001600160a01b0316826040515f6040518083038185875af1925050503d805f81146108df576040519150601f19603f3d011682016040523d82523d5f602084013e6108e4565b606091505b50509050806109275760405162461bcd60e51b815260206004820152600f60248201526e151c985b9cd9995c8819985a5b1959608a1b6044820152606401610581565b6001600160a01b0384165f90815260028601602052604081208054859290610950908490610dbb565b9250508190555082856001015f82825461096a9190610dbb565b90915550508454829086905f90610982908490610dbb565b90915550505050505050565b80835f015f8282546109a09190610e0a565b90915550506001600160a01b0382165f908152600284016020526040812080548392906109ce908490610e0a565b9250508190555080836001015f8282546109e89190610e0a565b9091555050505050565b6001600160a01b038085165f90815260066020908152604080832093871683529281528282206001600160e01b03198616835290529081205481908311610a725750506001600160a01b038085165f90815260066020908152604080832093871683529281528282206001600160e01b0319861683529052206001610bc9565b6001600160a01b038087165f908152600560209081526040808320938916835292905220548311610aca5750506001600160a01b038085165f9081526005602090815260408083209387168352929052206001610bc9565b6001600160a01b0386165f908152600460205260409020548311610b085750506001600160a01b0384165f9081526004602052604090206001610bc9565b6001600160a01b0385165f9081526007602090815260408083206001600160e01b0319881684529091529020548311610b705750506001600160a01b0383165f9081526007602090815260408083206001600160e01b03198616845290915290206001610bc9565b6001600160a01b0385165f908152600860205260409020548311610bae5750506001600160a01b0383165f9081526008602052604090206001610bc9565b6001548311610bc257506001905080610bc9565b50600190505f5b94509492505050565b5f60208284031215610be2575f5ffd5b5035919050565b80356001600160a01b0381168114610bff575f5ffd5b919050565b5f5f60408385031215610c15575f5ffd5b610c1e83610be9565b946020939093013593505050565b5f5f60408385031215610c3d575f5ffd5b610c4683610be9565b9150610c5460208401610be9565b90509250929050565b80356001600160e01b031981168114610bff575f5ffd5b5f5f5f5f60808587031215610c87575f5ffd5b610c9085610be9565b9350610c9e60208601610be9565b9250610cac60408601610c5d565b9396929550929360600135925050565b5f5f5f60608486031215610cce575f5ffd5b610cd784610be9565b9250610ce560208501610be9565b929592945050506040919091013590565b5f60208284031215610d06575f5ffd5b610d0f82610be9565b9392505050565b5f5f60408385031215610d27575f5ffd5b610d3083610be9565b9150610c5460208401610c5d565b5f5f5f60608486031215610d50575f5ffd5b610d5984610be9565b9250610d6760208501610be9565b9150610d7560408501610c5d565b90509250925092565b5f5f5f60608486031215610d90575f5ffd5b610d9984610be9565b9250610ce560208501610c5d565b634e487b7160e01b5f52601160045260245ffd5b81810381811115610dce57610dce610da7565b92915050565b8082028115828204841417610dce57610dce610da7565b5f82610e0557634e487b7160e01b5f52601260045260245ffd5b500490565b80820180821115610dce57610dce610da756fea26469706673582212202e85733bb495143f5a3a56b984e0d5b53520c2e8bf3a960422ccfe88a0c75a9d64736f6c634300081b0033",
 }
 
 // RegistryABI is the input ABI used to generate the binding from.
@@ -204,10 +204,9 @@ func (_Registry *RegistryTransactorRaw) Transact(opts *bind.TransactOpts, method
 
 // AccountSponsorships is a free data retrieval call binding the contract method 0x3ff8b209.
 //
-// Solidity: function accountSponsorships(address ) view returns(uint256 funds, uint256 locked, uint256 totalContributions)
+// Solidity: function accountSponsorships(address ) view returns(uint256 funds, uint256 totalContributions)
 func (_Registry *RegistryCaller) AccountSponsorships(opts *bind.CallOpts, arg0 common.Address) (struct {
 	Funds              *big.Int
-	Locked             *big.Int
 	TotalContributions *big.Int
 }, error) {
 	var out []interface{}
@@ -215,7 +214,6 @@ func (_Registry *RegistryCaller) AccountSponsorships(opts *bind.CallOpts, arg0 c
 
 	outstruct := new(struct {
 		Funds              *big.Int
-		Locked             *big.Int
 		TotalContributions *big.Int
 	})
 	if err != nil {
@@ -223,8 +221,7 @@ func (_Registry *RegistryCaller) AccountSponsorships(opts *bind.CallOpts, arg0 c
 	}
 
 	outstruct.Funds = *abi.ConvertType(out[0], new(*big.Int)).(**big.Int)
-	outstruct.Locked = *abi.ConvertType(out[1], new(*big.Int)).(**big.Int)
-	outstruct.TotalContributions = *abi.ConvertType(out[2], new(*big.Int)).(**big.Int)
+	outstruct.TotalContributions = *abi.ConvertType(out[1], new(*big.Int)).(**big.Int)
 
 	return *outstruct, err
 
@@ -232,10 +229,9 @@ func (_Registry *RegistryCaller) AccountSponsorships(opts *bind.CallOpts, arg0 c
 
 // AccountSponsorships is a free data retrieval call binding the contract method 0x3ff8b209.
 //
-// Solidity: function accountSponsorships(address ) view returns(uint256 funds, uint256 locked, uint256 totalContributions)
+// Solidity: function accountSponsorships(address ) view returns(uint256 funds, uint256 totalContributions)
 func (_Registry *RegistrySession) AccountSponsorships(arg0 common.Address) (struct {
 	Funds              *big.Int
-	Locked             *big.Int
 	TotalContributions *big.Int
 }, error) {
 	return _Registry.Contract.AccountSponsorships(&_Registry.CallOpts, arg0)
@@ -243,10 +239,9 @@ func (_Registry *RegistrySession) AccountSponsorships(arg0 common.Address) (stru
 
 // AccountSponsorships is a free data retrieval call binding the contract method 0x3ff8b209.
 //
-// Solidity: function accountSponsorships(address ) view returns(uint256 funds, uint256 locked, uint256 totalContributions)
+// Solidity: function accountSponsorships(address ) view returns(uint256 funds, uint256 totalContributions)
 func (_Registry *RegistryCallerSession) AccountSponsorships(arg0 common.Address) (struct {
 	Funds              *big.Int
-	Locked             *big.Int
 	TotalContributions *big.Int
 }, error) {
 	return _Registry.Contract.AccountSponsorships(&_Registry.CallOpts, arg0)
@@ -254,10 +249,9 @@ func (_Registry *RegistryCallerSession) AccountSponsorships(arg0 common.Address)
 
 // CallSponsorships is a free data retrieval call binding the contract method 0x9c31691e.
 //
-// Solidity: function callSponsorships(address , address , bytes4 ) view returns(uint256 funds, uint256 locked, uint256 totalContributions)
+// Solidity: function callSponsorships(address , address , bytes4 ) view returns(uint256 funds, uint256 totalContributions)
 func (_Registry *RegistryCaller) CallSponsorships(opts *bind.CallOpts, arg0 common.Address, arg1 common.Address, arg2 [4]byte) (struct {
 	Funds              *big.Int
-	Locked             *big.Int
 	TotalContributions *big.Int
 }, error) {
 	var out []interface{}
@@ -265,7 +259,6 @@ func (_Registry *RegistryCaller) CallSponsorships(opts *bind.CallOpts, arg0 comm
 
 	outstruct := new(struct {
 		Funds              *big.Int
-		Locked             *big.Int
 		TotalContributions *big.Int
 	})
 	if err != nil {
@@ -273,8 +266,7 @@ func (_Registry *RegistryCaller) CallSponsorships(opts *bind.CallOpts, arg0 comm
 	}
 
 	outstruct.Funds = *abi.ConvertType(out[0], new(*big.Int)).(**big.Int)
-	outstruct.Locked = *abi.ConvertType(out[1], new(*big.Int)).(**big.Int)
-	outstruct.TotalContributions = *abi.ConvertType(out[2], new(*big.Int)).(**big.Int)
+	outstruct.TotalContributions = *abi.ConvertType(out[1], new(*big.Int)).(**big.Int)
 
 	return *outstruct, err
 
@@ -282,10 +274,9 @@ func (_Registry *RegistryCaller) CallSponsorships(opts *bind.CallOpts, arg0 comm
 
 // CallSponsorships is a free data retrieval call binding the contract method 0x9c31691e.
 //
-// Solidity: function callSponsorships(address , address , bytes4 ) view returns(uint256 funds, uint256 locked, uint256 totalContributions)
+// Solidity: function callSponsorships(address , address , bytes4 ) view returns(uint256 funds, uint256 totalContributions)
 func (_Registry *RegistrySession) CallSponsorships(arg0 common.Address, arg1 common.Address, arg2 [4]byte) (struct {
 	Funds              *big.Int
-	Locked             *big.Int
 	TotalContributions *big.Int
 }, error) {
 	return _Registry.Contract.CallSponsorships(&_Registry.CallOpts, arg0, arg1, arg2)
@@ -293,10 +284,9 @@ func (_Registry *RegistrySession) CallSponsorships(arg0 common.Address, arg1 com
 
 // CallSponsorships is a free data retrieval call binding the contract method 0x9c31691e.
 //
-// Solidity: function callSponsorships(address , address , bytes4 ) view returns(uint256 funds, uint256 locked, uint256 totalContributions)
+// Solidity: function callSponsorships(address , address , bytes4 ) view returns(uint256 funds, uint256 totalContributions)
 func (_Registry *RegistryCallerSession) CallSponsorships(arg0 common.Address, arg1 common.Address, arg2 [4]byte) (struct {
 	Funds              *big.Int
-	Locked             *big.Int
 	TotalContributions *big.Int
 }, error) {
 	return _Registry.Contract.CallSponsorships(&_Registry.CallOpts, arg0, arg1, arg2)
@@ -304,10 +294,9 @@ func (_Registry *RegistryCallerSession) CallSponsorships(arg0 common.Address, ar
 
 // ContractSponsorships is a free data retrieval call binding the contract method 0xcc77aec8.
 //
-// Solidity: function contractSponsorships(address ) view returns(uint256 funds, uint256 locked, uint256 totalContributions)
+// Solidity: function contractSponsorships(address ) view returns(uint256 funds, uint256 totalContributions)
 func (_Registry *RegistryCaller) ContractSponsorships(opts *bind.CallOpts, arg0 common.Address) (struct {
 	Funds              *big.Int
-	Locked             *big.Int
 	TotalContributions *big.Int
 }, error) {
 	var out []interface{}
@@ -315,7 +304,6 @@ func (_Registry *RegistryCaller) ContractSponsorships(opts *bind.CallOpts, arg0 
 
 	outstruct := new(struct {
 		Funds              *big.Int
-		Locked             *big.Int
 		TotalContributions *big.Int
 	})
 	if err != nil {
@@ -323,8 +311,7 @@ func (_Registry *RegistryCaller) ContractSponsorships(opts *bind.CallOpts, arg0 
 	}
 
 	outstruct.Funds = *abi.ConvertType(out[0], new(*big.Int)).(**big.Int)
-	outstruct.Locked = *abi.ConvertType(out[1], new(*big.Int)).(**big.Int)
-	outstruct.TotalContributions = *abi.ConvertType(out[2], new(*big.Int)).(**big.Int)
+	outstruct.TotalContributions = *abi.ConvertType(out[1], new(*big.Int)).(**big.Int)
 
 	return *outstruct, err
 
@@ -332,10 +319,9 @@ func (_Registry *RegistryCaller) ContractSponsorships(opts *bind.CallOpts, arg0 
 
 // ContractSponsorships is a free data retrieval call binding the contract method 0xcc77aec8.
 //
-// Solidity: function contractSponsorships(address ) view returns(uint256 funds, uint256 locked, uint256 totalContributions)
+// Solidity: function contractSponsorships(address ) view returns(uint256 funds, uint256 totalContributions)
 func (_Registry *RegistrySession) ContractSponsorships(arg0 common.Address) (struct {
 	Funds              *big.Int
-	Locked             *big.Int
 	TotalContributions *big.Int
 }, error) {
 	return _Registry.Contract.ContractSponsorships(&_Registry.CallOpts, arg0)
@@ -343,10 +329,9 @@ func (_Registry *RegistrySession) ContractSponsorships(arg0 common.Address) (str
 
 // ContractSponsorships is a free data retrieval call binding the contract method 0xcc77aec8.
 //
-// Solidity: function contractSponsorships(address ) view returns(uint256 funds, uint256 locked, uint256 totalContributions)
+// Solidity: function contractSponsorships(address ) view returns(uint256 funds, uint256 totalContributions)
 func (_Registry *RegistryCallerSession) ContractSponsorships(arg0 common.Address) (struct {
 	Funds              *big.Int
-	Locked             *big.Int
 	TotalContributions *big.Int
 }, error) {
 	return _Registry.Contract.ContractSponsorships(&_Registry.CallOpts, arg0)
@@ -354,10 +339,9 @@ func (_Registry *RegistryCallerSession) ContractSponsorships(arg0 common.Address
 
 // GlobalSponsorship is a free data retrieval call binding the contract method 0x02f8297c.
 //
-// Solidity: function globalSponsorship() view returns(uint256 funds, uint256 locked, uint256 totalContributions)
+// Solidity: function globalSponsorship() view returns(uint256 funds, uint256 totalContributions)
 func (_Registry *RegistryCaller) GlobalSponsorship(opts *bind.CallOpts) (struct {
 	Funds              *big.Int
-	Locked             *big.Int
 	TotalContributions *big.Int
 }, error) {
 	var out []interface{}
@@ -365,7 +349,6 @@ func (_Registry *RegistryCaller) GlobalSponsorship(opts *bind.CallOpts) (struct 
 
 	outstruct := new(struct {
 		Funds              *big.Int
-		Locked             *big.Int
 		TotalContributions *big.Int
 	})
 	if err != nil {
@@ -373,8 +356,7 @@ func (_Registry *RegistryCaller) GlobalSponsorship(opts *bind.CallOpts) (struct 
 	}
 
 	outstruct.Funds = *abi.ConvertType(out[0], new(*big.Int)).(**big.Int)
-	outstruct.Locked = *abi.ConvertType(out[1], new(*big.Int)).(**big.Int)
-	outstruct.TotalContributions = *abi.ConvertType(out[2], new(*big.Int)).(**big.Int)
+	outstruct.TotalContributions = *abi.ConvertType(out[1], new(*big.Int)).(**big.Int)
 
 	return *outstruct, err
 
@@ -382,10 +364,9 @@ func (_Registry *RegistryCaller) GlobalSponsorship(opts *bind.CallOpts) (struct 
 
 // GlobalSponsorship is a free data retrieval call binding the contract method 0x02f8297c.
 //
-// Solidity: function globalSponsorship() view returns(uint256 funds, uint256 locked, uint256 totalContributions)
+// Solidity: function globalSponsorship() view returns(uint256 funds, uint256 totalContributions)
 func (_Registry *RegistrySession) GlobalSponsorship() (struct {
 	Funds              *big.Int
-	Locked             *big.Int
 	TotalContributions *big.Int
 }, error) {
 	return _Registry.Contract.GlobalSponsorship(&_Registry.CallOpts)
@@ -393,10 +374,9 @@ func (_Registry *RegistrySession) GlobalSponsorship() (struct {
 
 // GlobalSponsorship is a free data retrieval call binding the contract method 0x02f8297c.
 //
-// Solidity: function globalSponsorship() view returns(uint256 funds, uint256 locked, uint256 totalContributions)
+// Solidity: function globalSponsorship() view returns(uint256 funds, uint256 totalContributions)
 func (_Registry *RegistryCallerSession) GlobalSponsorship() (struct {
 	Funds              *big.Int
-	Locked             *big.Int
 	TotalContributions *big.Int
 }, error) {
 	return _Registry.Contract.GlobalSponsorship(&_Registry.CallOpts)
@@ -435,10 +415,9 @@ func (_Registry *RegistryCallerSession) IsCovered(from common.Address, to common
 
 // ServiceSponsorships is a free data retrieval call binding the contract method 0xb5dfce07.
 //
-// Solidity: function serviceSponsorships(address , bytes4 ) view returns(uint256 funds, uint256 locked, uint256 totalContributions)
+// Solidity: function serviceSponsorships(address , bytes4 ) view returns(uint256 funds, uint256 totalContributions)
 func (_Registry *RegistryCaller) ServiceSponsorships(opts *bind.CallOpts, arg0 common.Address, arg1 [4]byte) (struct {
 	Funds              *big.Int
-	Locked             *big.Int
 	TotalContributions *big.Int
 }, error) {
 	var out []interface{}
@@ -446,7 +425,6 @@ func (_Registry *RegistryCaller) ServiceSponsorships(opts *bind.CallOpts, arg0 c
 
 	outstruct := new(struct {
 		Funds              *big.Int
-		Locked             *big.Int
 		TotalContributions *big.Int
 	})
 	if err != nil {
@@ -454,8 +432,7 @@ func (_Registry *RegistryCaller) ServiceSponsorships(opts *bind.CallOpts, arg0 c
 	}
 
 	outstruct.Funds = *abi.ConvertType(out[0], new(*big.Int)).(**big.Int)
-	outstruct.Locked = *abi.ConvertType(out[1], new(*big.Int)).(**big.Int)
-	outstruct.TotalContributions = *abi.ConvertType(out[2], new(*big.Int)).(**big.Int)
+	outstruct.TotalContributions = *abi.ConvertType(out[1], new(*big.Int)).(**big.Int)
 
 	return *outstruct, err
 
@@ -463,10 +440,9 @@ func (_Registry *RegistryCaller) ServiceSponsorships(opts *bind.CallOpts, arg0 c
 
 // ServiceSponsorships is a free data retrieval call binding the contract method 0xb5dfce07.
 //
-// Solidity: function serviceSponsorships(address , bytes4 ) view returns(uint256 funds, uint256 locked, uint256 totalContributions)
+// Solidity: function serviceSponsorships(address , bytes4 ) view returns(uint256 funds, uint256 totalContributions)
 func (_Registry *RegistrySession) ServiceSponsorships(arg0 common.Address, arg1 [4]byte) (struct {
 	Funds              *big.Int
-	Locked             *big.Int
 	TotalContributions *big.Int
 }, error) {
 	return _Registry.Contract.ServiceSponsorships(&_Registry.CallOpts, arg0, arg1)
@@ -474,10 +450,9 @@ func (_Registry *RegistrySession) ServiceSponsorships(arg0 common.Address, arg1 
 
 // ServiceSponsorships is a free data retrieval call binding the contract method 0xb5dfce07.
 //
-// Solidity: function serviceSponsorships(address , bytes4 ) view returns(uint256 funds, uint256 locked, uint256 totalContributions)
+// Solidity: function serviceSponsorships(address , bytes4 ) view returns(uint256 funds, uint256 totalContributions)
 func (_Registry *RegistryCallerSession) ServiceSponsorships(arg0 common.Address, arg1 [4]byte) (struct {
 	Funds              *big.Int
-	Locked             *big.Int
 	TotalContributions *big.Int
 }, error) {
 	return _Registry.Contract.ServiceSponsorships(&_Registry.CallOpts, arg0, arg1)
@@ -485,10 +460,9 @@ func (_Registry *RegistryCallerSession) ServiceSponsorships(arg0 common.Address,
 
 // UserSponsorships is a free data retrieval call binding the contract method 0xaae83110.
 //
-// Solidity: function userSponsorships(address , address ) view returns(uint256 funds, uint256 locked, uint256 totalContributions)
+// Solidity: function userSponsorships(address , address ) view returns(uint256 funds, uint256 totalContributions)
 func (_Registry *RegistryCaller) UserSponsorships(opts *bind.CallOpts, arg0 common.Address, arg1 common.Address) (struct {
 	Funds              *big.Int
-	Locked             *big.Int
 	TotalContributions *big.Int
 }, error) {
 	var out []interface{}
@@ -496,7 +470,6 @@ func (_Registry *RegistryCaller) UserSponsorships(opts *bind.CallOpts, arg0 comm
 
 	outstruct := new(struct {
 		Funds              *big.Int
-		Locked             *big.Int
 		TotalContributions *big.Int
 	})
 	if err != nil {
@@ -504,8 +477,7 @@ func (_Registry *RegistryCaller) UserSponsorships(opts *bind.CallOpts, arg0 comm
 	}
 
 	outstruct.Funds = *abi.ConvertType(out[0], new(*big.Int)).(**big.Int)
-	outstruct.Locked = *abi.ConvertType(out[1], new(*big.Int)).(**big.Int)
-	outstruct.TotalContributions = *abi.ConvertType(out[2], new(*big.Int)).(**big.Int)
+	outstruct.TotalContributions = *abi.ConvertType(out[1], new(*big.Int)).(**big.Int)
 
 	return *outstruct, err
 
@@ -513,10 +485,9 @@ func (_Registry *RegistryCaller) UserSponsorships(opts *bind.CallOpts, arg0 comm
 
 // UserSponsorships is a free data retrieval call binding the contract method 0xaae83110.
 //
-// Solidity: function userSponsorships(address , address ) view returns(uint256 funds, uint256 locked, uint256 totalContributions)
+// Solidity: function userSponsorships(address , address ) view returns(uint256 funds, uint256 totalContributions)
 func (_Registry *RegistrySession) UserSponsorships(arg0 common.Address, arg1 common.Address) (struct {
 	Funds              *big.Int
-	Locked             *big.Int
 	TotalContributions *big.Int
 }, error) {
 	return _Registry.Contract.UserSponsorships(&_Registry.CallOpts, arg0, arg1)
@@ -524,10 +495,9 @@ func (_Registry *RegistrySession) UserSponsorships(arg0 common.Address, arg1 com
 
 // UserSponsorships is a free data retrieval call binding the contract method 0xaae83110.
 //
-// Solidity: function userSponsorships(address , address ) view returns(uint256 funds, uint256 locked, uint256 totalContributions)
+// Solidity: function userSponsorships(address , address ) view returns(uint256 funds, uint256 totalContributions)
 func (_Registry *RegistryCallerSession) UserSponsorships(arg0 common.Address, arg1 common.Address) (struct {
 	Funds              *big.Int
-	Locked             *big.Int
 	TotalContributions *big.Int
 }, error) {
 	return _Registry.Contract.UserSponsorships(&_Registry.CallOpts, arg0, arg1)
