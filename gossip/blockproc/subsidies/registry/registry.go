@@ -36,6 +36,7 @@ const IsCoveredFunctionSelector = 0x36a656a7
 const DeductFeesFunctionSelector = 0x944557d6
 
 // TODO: reevaluate these values
+
 const GasLimitForIsCoveredCall = 15_000
 const GasLimitForDeductFeesCall = 100_000
 
