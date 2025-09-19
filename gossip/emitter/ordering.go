@@ -22,7 +22,7 @@ import (
 	"math/big"
 	"slices"
 
-	"github.com/0xsoniclabs/sonic/evmcore/subsidies"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
