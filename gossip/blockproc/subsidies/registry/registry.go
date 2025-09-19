@@ -38,12 +38,16 @@ const DeductFeesFunctionSelector = 0x944557d6
 // The deployment transaction was generated to be issued by an EOA account
 // which's private key got discarded afterwards. The contract is thus
 // deployed at an address that cannot be pre-occupied by anybody.
+//
+// For developers: if you need to re-generate the deployment transaction
+// (e.g. because the contract got modified), you can use the unit test
+// TestGenerateDeploymentTransaction to get fresh values for those variables.
 
-var creatorAddress = hexutil.MustDecode("0x07439b2b9875c982ee21f06dE16765da065a605C")
-var contractAddress = hexutil.MustDecode("0xc3def5Af83db73DB1A49f7bC2C6Ad35f4e71E3c5")
+var creatorAddress = hexutil.MustDecode("0x3aA7d3bdc309070181d1cE381D964d33C6Ad9Eb8")
+var contractAddress = hexutil.MustDecode("0x71331479A7bB85B37e6210b0e4E4BF4F681261e6")
 var deploymentV = hexutil.MustDecode("0x1c")
-var deploymentR = hexutil.MustDecode("0x766ce129cba0c2d3e286700c719333a4aaa7bede63726ca31281d2d5d22ae114")
-var deploymentS = hexutil.MustDecode("0x2c21f5aedc1424c4156b81ef7b2d8f989bb938672069d5117d5eb771a71bcb50")
+var deploymentR = hexutil.MustDecode("0x7b29e78247c868230d57ad0657c6ebbe8d543d462237f6d55eb4a2b6c44a4ff1")
+var deploymentS = hexutil.MustDecode("0x56d0f0dfb231c1b93bb23b4d7ce466bdcecdf92513c6882147616afe3d08d425")
 
 // GetAddress returns the address of the deployed SubsidiesRegistry.
 func GetAddress() common.Address {

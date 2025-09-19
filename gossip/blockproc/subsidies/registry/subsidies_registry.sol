@@ -4,24 +4,51 @@ pragma solidity ^0.8.24;
 contract SubsidiesRegistry {
 
     struct Pot {
-      uint256 funds;
+      uint256 funds;   // < total funds available
+      uint256 locked;  // < funds pre-allocated for ongoing transactions
       uint256 totalContributions;
       mapping(address => uint256) contributors;
     }
 
     FeeBurner feeBurner;
 
-    // From -> To -> Deposit Amount
+    // Global pot for any transaction
+    Pot public globalSponsorship;
+
+    // From -> Pot
+    mapping(address => Pot) public accountSponsorships;
+
+    // From -> To -> Pot
     mapping(address => mapping(address => Pot)) public userSponsorships;
 
-    // To -> Function Selector -> Deposit Amount
-    mapping(address => mapping(bytes4 => Pot)) public operationSponsorships;
+    // From -> To -> Function -> Pot
+    mapping(address => mapping(address => mapping(bytes4 => Pot))) public callSponsorships;
 
-    // To -> Deposit Amount
+    // To -> Function -> Pot
+    mapping(address => mapping(bytes4 => Pot)) public serviceSponsorships;
+
+    // To -> Pot
     mapping(address => Pot) public contractSponsorships;
+
 
     constructor(FeeBurner feeBurner_) {
         feeBurner = feeBurner_;
+    }
+
+    function sponsorGlobal() public payable{
+        _addFunds(globalSponsorship, msg.sender, msg.value);
+    }
+
+    function withdrawGlobalSponsorship(uint256 amount) public {
+        _withdrawFunds(globalSponsorship, msg.sender, amount);
+    }
+
+    function sponsorAccount(address from) public payable{
+        _addFunds(accountSponsorships[from], msg.sender, msg.value);
+    }
+
+    function withdrawAccountSponsorship(address from, uint256 amount) public {
+        _withdrawFunds(accountSponsorships[from], msg.sender, amount);
     }
 
     function sponsorUser(address from, address to) public payable{
@@ -32,12 +59,20 @@ contract SubsidiesRegistry {
         _withdrawFunds(userSponsorships[from][to], msg.sender, amount);
     }
 
-    function sponsorMethod(address to, bytes4 functionSelector) public payable{
-        _addFunds(operationSponsorships[to][functionSelector], msg.sender, msg.value);
+    function sponsorCall(address from, address to, bytes4 functionSelector) public payable{
+        _addFunds(callSponsorships[from][to][functionSelector], msg.sender, msg.value);
     }
 
-    function withdrawMethodSponsorship(address to, bytes4 functionSelector, uint256 amount) public {
-        _withdrawFunds(operationSponsorships[to][functionSelector], msg.sender, amount);
+    function withdrawCallSponsorship(address from, address to, bytes4 functionSelector, uint256 amount) public {
+        _withdrawFunds(callSponsorships[from][to][functionSelector], msg.sender, amount);
+    }
+
+    function sponsorService(address to, bytes4 functionSelector) public payable{
+        _addFunds(serviceSponsorships[to][functionSelector], msg.sender, msg.value);
+    }
+
+    function withdrawServiceSponsorship(address to, bytes4 functionSelector, uint256 amount) public {
+        _withdrawFunds(serviceSponsorships[to][functionSelector], msg.sender, amount);
     }
 
     function sponsorContract(address to) public payable{
@@ -49,13 +84,22 @@ contract SubsidiesRegistry {
     }
 
     function isCovered(address from, address to, bytes4 functionSelector, uint256 fee) public view returns(bool){
+        if(callSponsorships[from][to][functionSelector].funds >= fee){
+            return true;
+        }
         if(userSponsorships[from][to].funds >= fee){
             return true;
         }
-        if(operationSponsorships[to][functionSelector].funds >= fee){
+        if(accountSponsorships[from].funds >= fee){
+            return true;
+        }
+        if(serviceSponsorships[to][functionSelector].funds >= fee){
             return true;
         }
         if(contractSponsorships[to].funds >= fee){
+            return true;
+        }
+        if (globalSponsorship.funds >= fee){
             return true;
         }
         return false;
@@ -65,16 +109,30 @@ contract SubsidiesRegistry {
         require(msg.sender == address(0)); // < only be called through internal transactions
         require(isCovered(from, to, functionSelector, fee));
         feeBurner.burnNativeTokens{value: fee}();
+
+        // Go from the most specific to the least specific pot.
+        if (callSponsorships[from][to][functionSelector].funds >= fee){
+            callSponsorships[from][to][functionSelector].funds -= fee;
+            return;
+        }
         if(userSponsorships[from][to].funds >= fee){
             userSponsorships[from][to].funds -= fee;
             return;
         }
-        if(operationSponsorships[to][functionSelector].funds >= fee){
-            operationSponsorships[to][functionSelector].funds -= fee;
+        if (accountSponsorships[from].funds >= fee){
+            accountSponsorships[from].funds -= fee;
             return;
         }
-        if(contractSponsorships[to].funds >= fee){
+        if (serviceSponsorships[to][functionSelector].funds >= fee){
+            serviceSponsorships[to][functionSelector].funds -= fee;
+            return;
+        }
+        if (contractSponsorships[to].funds >= fee){
             contractSponsorships[to].funds -= fee;
+            return;
+        }
+        if (globalSponsorship.funds >= fee){
+            globalSponsorship.funds -= fee;
             return;
         }
     }
@@ -93,10 +151,6 @@ contract SubsidiesRegistry {
         pot.contributors[sponsor] -= amount;
         pot.totalContributions -= amount;
         pot.funds -= share;
-    }
-
-    receive() external payable {
-        require(false, "Use sponsor functions to add funds");
     }
 
     // TODO: define policies for the following features
