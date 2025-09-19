@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -46,9 +47,11 @@ func TestEvmProcessor_Run_IfExecutionSucceeds_ReportsSuccessAndGasUsage(t *testi
 	ctrl := gomock.NewController(t)
 	runner := NewMockevmProcessorRunner(ctrl)
 
-	runner.EXPECT().Run(0, nil).Return(&types.Receipt{
-		GasUsed: 10,
-	}, false, nil)
+	runner.EXPECT().Run(0, nil).Return([]evmcore.ProcessedTransaction{{
+		Receipt: &types.Receipt{
+			GasUsed: 10,
+		},
+	}}, nil)
 
 	processor := &evmProcessor{processor: runner}
 	success, gasUsed := processor.run(nil)
@@ -61,7 +64,7 @@ func TestEvmProcessor_Run_IfExecutionFailed_ReportsAFailedExecution(t *testing.T
 	t.Run("skipped", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		runner := NewMockevmProcessorRunner(ctrl)
-		runner.EXPECT().Run(0, nil).Return(nil, true, nil)
+		runner.EXPECT().Run(0, nil).Return(nil, nil)
 		processor := &evmProcessor{processor: runner}
 		success, _ := processor.run(nil)
 		require.False(t, success)
@@ -70,16 +73,7 @@ func TestEvmProcessor_Run_IfExecutionFailed_ReportsAFailedExecution(t *testing.T
 	t.Run("failed", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		runner := NewMockevmProcessorRunner(ctrl)
-		runner.EXPECT().Run(0, nil).Return(nil, false, fmt.Errorf("failed"))
-		processor := &evmProcessor{processor: runner}
-		success, _ := processor.run(nil)
-		require.False(t, success)
-	})
-
-	t.Run("no receipt", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		runner := NewMockevmProcessorRunner(ctrl)
-		runner.EXPECT().Run(0, nil).Return(nil, false, nil)
+		runner.EXPECT().Run(0, nil).Return(nil, fmt.Errorf("failed"))
 		processor := &evmProcessor{processor: runner}
 		success, _ := processor.run(nil)
 		require.False(t, success)
