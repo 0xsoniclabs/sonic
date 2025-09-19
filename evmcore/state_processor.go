@@ -76,7 +76,6 @@ func (p *StateProcessor) Process(
 	result := make([]ProcessedTransaction, 0, 2*len(block.Transactions))
 	var (
 		gp           = new(core.GasPool).AddGas(gasLimit)
-		receipt      *types.Receipt
 		header       = block.Header()
 		time         = uint64(block.Time.Unix())
 		blockContext = NewEVMBlockContext(header, p.bc, nil)
@@ -93,80 +92,130 @@ func (p *StateProcessor) Process(
 	// Iterate over and process the individual transactions
 	txCounter := 0
 	for _, tx := range block.Transactions {
-		msg, err := TxAsMessage(tx, signer, header.BaseFee)
+		processed, err := runTransaction(tx, signer, header.BaseFee, vmenv,
+			func(msg *core.Message, tx *types.Transaction, noBaseFee bool) (*types.Receipt, error) {
+				vmenv.Config.NoBaseFee = noBaseFee
+				statedb.SetTxContext(tx.Hash(), txCounter)
+				txCounter++
+				receipt, _, err := applyTransaction(
+					msg, gp, statedb, blockNumber, tx,
+					usedGas, vmenv, onNewLog,
+				)
+				return receipt, err
+			},
+		)
 		if err != nil {
-			log.Info("Failed to convert transaction to message", "tx", tx.Hash().Hex(), "err", err)
+			log.Warn("Error processing transactions", "err", err)
+		}
+		if len(processed) == 0 {
 			numSkipped++
-			continue // skip this transaction, but continue processing the rest of the block
-		}
-
-		// Make sure the costs for a sponsorship request are covered.
-		// Note: internal transactions are exempt from sponsorship checks. For
-		// those, no transaction fees are charged at all.
-		isSponsored := false
-		if msg.From != (common.Address{}) && subsidies.IsSponsorshipRequest(tx) {
-			// Check that the requested transaction is covered by a sponsorship.
-			covered, err := subsidies.IsCoveredBy(vmenv, signer, tx, header.BaseFee)
-			if err != nil {
-				log.Warn("Failed to check sponsorship coverage", "tx", tx.Hash().Hex(), "err", err)
-				numSkipped++
-				continue // skip this transaction, but continue processing the rest of the block
-			}
-			if !covered {
-				log.Debug("Sponsorship request is not covered", "tx", tx.Hash().Hex())
-				numSkipped++
-				continue
-			}
-			isSponsored = true
-		}
-		vmenv.Config.NoBaseFee = isSponsored
-
-		statedb.SetTxContext(tx.Hash(), txCounter)
-		txCounter++
-		receipt, _, err = applyTransaction(msg, gp, statedb, blockNumber, tx, usedGas, vmenv, onNewLog)
-		if err != nil {
-			log.Debug("Failed to apply transaction", "tx", tx.Hash().Hex(), "err", err)
-			numSkipped++
-			continue // skip this transaction, but continue processing the rest of the block
-		}
-		result = append(result, ProcessedTransaction{
-			Transaction: tx,
-			Receipt:     receipt,
-		})
-
-		if isSponsored {
-			tx, err := subsidies.GetFeeChargeTransaction(vmenv.StateDB, signer, tx, receipt.GasUsed, header.BaseFee)
-			if err != nil {
-				// This should never happen as we already checked that the sponsorship
-				// is covered.
-				log.Error("Failed to create gas charge transaction for sponsored tx", "tx", tx.Hash().Hex(), "err", err)
-				// Note: we do NOT skip the transaction here, as it has been executed
-				// successfully. However, this means that the sponsorship funds are
-				// not deducted and the sponsorship balance is not updated and the
-				// execution of the sponsored transaction was effectively free.
-				// This is a preferable outcome compared to terminating the full
-				// processing of the block.
-				continue
-			}
-			msg, err := TxAsMessage(tx, signer, header.BaseFee)
-			if err != nil {
-				log.Error("Failed to convert sponsorship charging transaction to message", "tx", tx.Hash().Hex(), "err", err)
-				continue // effectively free execution of the sponsored transaction
-			}
-			statedb.SetTxContext(tx.Hash(), txCounter)
-			txCounter++
-			receipt, _, err = applyTransaction(msg, gp, statedb, blockNumber, tx, usedGas, vmenv, onNewLog)
-			if err != nil {
-				log.Error("Failed to apply sponsorship charging transaction", "tx", tx.Hash().Hex(), "err", err)
-				continue // effectively free execution of the sponsored transaction
-			}
-			result = append(result, ProcessedTransaction{
-				Transaction: tx,
-				Receipt:     receipt,
-			})
+		} else {
+			result = append(result, processed...)
 		}
 	}
 	return result, numSkipped
+}
+
+func runTransaction(
+	tx *types.Transaction,
+	signer types.Signer,
+	baseFee *big.Int,
+	evm *vm.EVM,
+	run func(*core.Message, *types.Transaction, bool) (*types.Receipt, error),
+) ([]ProcessedTransaction, error) {
+	if !internaltx.IsInternal(tx) && subsidies.IsSponsorshipRequest(tx) {
+		return runSponsoredTransaction(tx, signer, baseFee, evm, run)
+	}
+	return runRegularTransaction(tx, signer, baseFee, run)
+}
+
+func runRegularTransaction(
+	tx *types.Transaction,
+	signer types.Signer,
+	baseFee *big.Int,
+	run func(*core.Message, *types.Transaction, bool) (*types.Receipt, error),
+) ([]ProcessedTransaction, error) {
+	msg, err := TxAsMessage(tx, signer, baseFee)
+	if err != nil {
+		log.Info("Failed to convert transaction to message", "tx", tx.Hash().Hex(), "err", err)
+		return nil, err
+	}
+	receipt, err := run(msg, tx, false)
+	if err != nil {
+		log.Debug("Failed to apply transaction", "tx", tx.Hash().Hex(), "err", err)
+		return nil, err
+	}
+	return []ProcessedTransaction{{
+		Transaction: tx,
+		Receipt:     receipt,
+	}}, nil
+}
+
+func runSponsoredTransaction(
+	tx *types.Transaction,
+	signer types.Signer,
+	baseFee *big.Int,
+	evm *vm.EVM,
+	run func(*core.Message, *types.Transaction, bool) (*types.Receipt, error),
+) ([]ProcessedTransaction, error) {
+	msg, err := TxAsMessage(tx, signer, baseFee)
+	if err != nil {
+		log.Info("Failed to convert transaction to message", "tx", tx.Hash().Hex(), "err", err)
+		return nil, err
+	}
+
+	// Check that the requested transaction is covered by a sponsorship.
+	covered, err := subsidies.IsCoveredBy(evm, signer, tx, baseFee)
+	if err != nil {
+		log.Warn("Failed to check sponsorship coverage", "tx", tx.Hash().Hex(), "err", err)
+		return nil, err
+	}
+	if !covered {
+		log.Debug("Sponsorship request is not covered", "tx", tx.Hash().Hex())
+		return nil, err
+	}
+
+	// Run the sponsored transaction.
+	receipt, err := run(msg, tx, true)
+	if err != nil {
+		log.Debug("Failed to apply transaction", "tx", tx.Hash().Hex(), "err", err)
+		return nil, err
+	}
+
+	result := make([]ProcessedTransaction, 0, 2)
+	result = append(result, ProcessedTransaction{
+		Transaction: tx,
+		Receipt:     receipt,
+	})
+
+	// Run the internal transaction to deduct the fees from the sponsorship pool.
+	tx, err = subsidies.GetFeeChargeTransaction(evm.StateDB, signer, tx, receipt.GasUsed, baseFee)
+	if err != nil {
+		// This should never happen as we already checked that the sponsorship
+		// is covered.
+		log.Error("Failed to create gas charge transaction for sponsored tx", "tx", tx.Hash().Hex(), "err", err)
+		// Note: we do NOT skip the transaction here, as it has been executed
+		// successfully. However, this means that the sponsorship funds are
+		// not deducted and the sponsorship balance is not updated and the
+		// execution of the sponsored transaction was effectively free.
+		// This is a preferable outcome compared to terminating the full
+		// processing of the block.
+		return result, nil
+	}
+	msg, err = TxAsMessage(tx, signer, baseFee)
+	if err != nil {
+		log.Error("Failed to convert sponsorship charging transaction to message", "tx", tx.Hash().Hex(), "err", err)
+		return result, nil // effectively free execution of the sponsored transaction
+	}
+	receipt, err = run(msg, tx, false)
+	if err != nil {
+		log.Error("Failed to apply sponsorship charging transaction", "tx", tx.Hash().Hex(), "err", err)
+		return result, nil // effectively free execution of the sponsored transaction
+	}
+	return append(result, ProcessedTransaction{
+		Transaction: tx,
+		Receipt:     receipt,
+	}), nil
 }
 
 // ProcessedTransaction bundles a transaction with its receipt. It is produced
@@ -229,24 +278,21 @@ type TransactionProcessor struct {
 // whether the transaction was skipped, and any error that occurred during
 // processing.
 func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) (
-	receipt *types.Receipt,
-	skipped bool,
+	_ []ProcessedTransaction,
 	err error,
 ) {
-	// TODO: integrate sponsorship operations and integrated fee charging Txs
-
-	msg, err := TxAsMessage(tx, tp.signer, tp.header.BaseFee)
-	if err != nil {
-		return nil, false, fmt.Errorf(
-			"failed to convert transaction: %w", err,
-		)
-	}
-	tp.stateDb.SetTxContext(tx.Hash(), i)
-	receipt, _, err = applyTransaction(
-		msg, tp.gp, tp.stateDb, tp.blockNumber, tx,
-		&tp.usedGas, tp.vmEnvironment, tp.onNewLog,
+	return runTransaction(tx, tp.signer, tp.header.BaseFee, tp.vmEnvironment,
+		func(msg *core.Message, tx *types.Transaction, noBaseFee bool) (*types.Receipt, error) {
+			tp.vmEnvironment.Config.NoBaseFee = noBaseFee
+			tp.stateDb.SetTxContext(tx.Hash(), i)
+			i++
+			receipt, _, err := applyTransaction(
+				msg, tp.gp, tp.stateDb, tp.blockNumber, tx,
+				&tp.usedGas, tp.vmEnvironment, tp.onNewLog,
+			)
+			return receipt, err
+		},
 	)
-	return receipt, err != nil, err
 }
 
 // ApplyTransactionWithEVM attempts to apply a transaction to the given state database

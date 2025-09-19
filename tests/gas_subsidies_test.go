@@ -31,9 +31,22 @@ import (
 )
 
 func TestGasSubsidies_CanRunSubsidizedTransactions(t *testing.T) {
+	t.Parallel()
+	t.Run("single proposer", func(t *testing.T) {
+		t.Parallel()
+		testCanRunSubsidizedTransactions(t, true)
+	})
+	t.Run("distributed proposer", func(t *testing.T) {
+		t.Parallel()
+		testCanRunSubsidizedTransactions(t, false)
+	})
+}
+
+func testCanRunSubsidizedTransactions(t *testing.T, singleProposer bool) {
 	require := require.New(t)
 
 	upgrades := opera.GetSonicUpgrades()
+	upgrades.SingleProposerBlockFormation = singleProposer
 	upgrades.GasSubsidies = true
 
 	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{

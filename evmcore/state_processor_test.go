@@ -51,21 +51,14 @@ func (p *StateProcessor) process_iteratively(
 	processed := make([]ProcessedTransaction, 0, len(block.Transactions))
 	skipped := 0
 	for i, tx := range block.Transactions {
-		receipt, skip, err := txProcessor.Run(i, tx)
-		if skip {
-			skipped++
-			continue
-		}
+		newProcessed, err := txProcessor.Run(i, tx)
 		if err != nil {
 			// If an error occurs, we skip the transaction and continue with the next one.
 			skipped++
 			continue
 		}
-		processed = append(processed, ProcessedTransaction{
-			Transaction: tx,
-			Receipt:     receipt,
-		})
-		*usedGas = receipt.CumulativeGasUsed
+		processed = append(processed, newProcessed...)
+		*usedGas = newProcessed[len(newProcessed)-1].Receipt.CumulativeGasUsed
 	}
 
 	return processed, skipped
