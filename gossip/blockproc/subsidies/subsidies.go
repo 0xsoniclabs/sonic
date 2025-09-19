@@ -35,7 +35,9 @@ import (
 // transaction is sponsored. It covers the overhead of calling the subsidies
 // registry contract to check for available funds and to deduct the fees after
 // the sponsored transaction has been executed.
-const SponsorshipOverheadGasCost = 50_000 // < TODO: reevaluate this value
+const SponsorshipOverheadGasCost = 0 +
+	registry.GasLimitForIsCoveredCall +
+	registry.GasLimitForDeductFeesCall
 
 // IsSponsorshipRequest checks if a transaction is requesting sponsorship from
 // a pre-allocated sponsorship pool. A sponsorship request is defined as a
@@ -93,7 +95,7 @@ func IsCoveredBy( // < TODO: find a better name
 	input := packIsCoveredInput(from, to, selector, maxFee)
 
 	// Run the query on the EVM and the provided state.
-	const initialGas = 15_000 // TODO: figure out a sensible value
+	const initialGas = registry.GasLimitForIsCoveredCall
 	result, _, err := vm.Call(caller, target, input, initialGas, uint256.NewInt(0))
 	if err != nil {
 		return false, fmt.Errorf("EVM call failed: %v", err)
@@ -114,7 +116,7 @@ func GetFeeChargeTransaction(
 	gasUsed uint64,
 	gasPrice *big.Int,
 ) (*types.Transaction, error) {
-	const gasLimit = 100_000 // TODO: re-evaluate this value
+	const gasLimit = registry.GasLimitForDeductFeesCall
 	sender := common.Address{}
 	nonce := nonceSource.GetNonce(sender)
 	from, to, selector, err := getTransactionDetails(signer, tx)
