@@ -170,3 +170,7 @@ func TestGasSubsidies_CanRunSubsidizedTransactions(t *testing.T) {
 //  - check that the sponsorship request is rejected if there are insufficient funds
 //  - check that the sponsorship request is rejected if the registry contract is not deployed
 //  - test that fee charging transactions and sealing transactions use proper nonces (incrementally, no gaps)
+//  - test cumulative gas usage of multiple sponsored transactions in a block
+//  - test receipt to transaction mapping in blocks with (multiple) sponsored transactions and internal transactions
+//  - test correct log message indexing in blocks with (multiple) sponsored transactions and internal transactions
+//  - test correct nonce usage of internal transactions (pre-, post- and fee charging transactions
