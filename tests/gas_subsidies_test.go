@@ -21,6 +21,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/evmcore/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
@@ -36,8 +37,12 @@ func TestGasSubsidies_CanRunSubsidizedTransactions(t *testing.T) {
 	upgrades.GasSubsidies = true
 
 	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
-		ClientExtraArguments: []string{
-			"--allow-zero-chainid-txs",
+		ModifyConfig: func(config *config.Config) {
+			// The transaction to deploy the subsidies registry contract has
+			// chain id 0, and is thus not replay protected. To be able to
+			// submit it, we need to allow unprotected transactions in the
+			// transaction pool.
+			config.Opera.AllowUnprotectedTxs = true
 		},
 		Upgrades: &upgrades,
 	})

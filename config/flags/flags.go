@@ -394,9 +394,4 @@ var (
 		Name:  "disable-txPool-validation",
 		Usage: "Disable transaction pool validation",
 	}
-
-	TEST_ONLY_AllowTransactionsWithZeroChainId = cli.BoolFlag{
-		Name:  "allow-zero-chainid-txs",
-		Usage: "Allow transactions with chain id zero (for testing only!)",
-	}
 )
