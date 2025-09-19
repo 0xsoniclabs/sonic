@@ -397,9 +397,6 @@ func MakeAllConfigsFromFile(ctx *cli.Context, configFile string) (*Config, error
 	if ctx.IsSet(flags.TEST_ONLY_DisableTransactionPoolValidation.Name) {
 		cfg.TxPool.DisableTxPoolValidation = true
 	}
-	if ctx.IsSet(flags.TEST_ONLY_AllowTransactionsWithZeroChainId.Name) {
-		cfg.Opera.AllowUnprotectedTxs = true
-	}
 	if err := setTxPool(ctx, &cfg.TxPool); err != nil {
 		return nil, err
 	}
