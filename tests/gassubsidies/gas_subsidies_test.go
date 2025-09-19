@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
-package gassubsidiaries
+package gassubsidies
 
 import (
 	"testing"
@@ -71,7 +71,7 @@ func TestGasSubsidies_CanBeEnabledAndDisabled(
 
 			err = client.Client().Call(&originalRules, "eth_getRules", "latest")
 			require.NoError(err)
-			require.Equal(true, originalRules.Upgrades.GasSubsidies, "GasSubsidies should be disabled initially")
+			require.Equal(true, originalRules.Upgrades.GasSubsidies, "GasSubsidies should be enabled after the update")
 
 			// Disable gas subsidies.
 			rulesDiff = rulesType{
@@ -84,7 +84,7 @@ func TestGasSubsidies_CanBeEnabledAndDisabled(
 
 			err = client.Client().Call(&originalRules, "eth_getRules", "latest")
 			require.NoError(err)
-			require.Equal(false, originalRules.Upgrades.GasSubsidies, "GasSubsidies should be disabled initially")
+			require.Equal(false, originalRules.Upgrades.GasSubsidies, "GasSubsidies should be after the update")
 		})
 	}
 }

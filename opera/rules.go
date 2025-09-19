@@ -352,18 +352,6 @@ func GetAllegroUpgrades() Upgrades {
 	}
 }
 
-// GetBrioUpgrades contains the feature flags for the Brio upgrade.
-func GetBrioUpgrades() Upgrades {
-	return Upgrades{
-		Berlin:  true,
-		London:  true,
-		Llr:     false,
-		Sonic:   true,
-		Allegro: true,
-		Brio:    true,
-	}
-}
-
 func MainNetRules() Rules {
 	return Rules{
 		Name:      "main",
