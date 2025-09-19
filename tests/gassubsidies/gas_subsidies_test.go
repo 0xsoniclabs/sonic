@@ -84,7 +84,7 @@ func TestGasSubsidies_CanBeEnabledAndDisabled(
 
 			err = client.Client().Call(&originalRules, "eth_getRules", "latest")
 			require.NoError(err)
-			require.Equal(false, originalRules.Upgrades.GasSubsidies, "GasSubsidies should be after the update")
+			require.Equal(false, originalRules.Upgrades.GasSubsidies, "GasSubsidies should be disabled after the update")
 		})
 	}
 }
