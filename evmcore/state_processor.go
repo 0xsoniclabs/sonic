@@ -71,11 +71,9 @@ func (p *StateProcessor) Process(
 	block *EvmBlock, statedb state.StateDB, cfg vm.Config, gasLimit uint64,
 	usedGas *uint64, onNewLog func(*types.Log),
 ) (
-	types.Transactions, types.Receipts, int,
+	_ []ProcessedTransaction, numSkipped int,
 ) {
-	transactions := make(types.Transactions, 0, 2*len(block.Transactions))
-	receipts := make(types.Receipts, 0, 2*len(block.Transactions))
-	numSkipped := 0
+	result := make([]ProcessedTransaction, 0, 2*len(block.Transactions))
 	var (
 		gp           = new(core.GasPool).AddGas(gasLimit)
 		receipt      *types.Receipt
@@ -131,8 +129,10 @@ func (p *StateProcessor) Process(
 			numSkipped++
 			continue // skip this transaction, but continue processing the rest of the block
 		}
-		transactions = append(transactions, tx)
-		receipts = append(receipts, receipt)
+		result = append(result, ProcessedTransaction{
+			Transaction: tx,
+			Receipt:     receipt,
+		})
 
 		if isSponsored {
 			tx, err := subsidies.GetFeeChargeTransaction(vmenv.StateDB, signer, tx, receipt.GasUsed, header.BaseFee)
@@ -160,11 +160,20 @@ func (p *StateProcessor) Process(
 				log.Error("Failed to apply sponsorship charging transaction", "tx", tx.Hash().Hex(), "err", err)
 				continue // effectively free execution of the sponsored transaction
 			}
-			transactions = append(transactions, tx)
-			receipts = append(receipts, receipt)
+			result = append(result, ProcessedTransaction{
+				Transaction: tx,
+				Receipt:     receipt,
+			})
 		}
 	}
-	return transactions, receipts, numSkipped
+	return result, numSkipped
+}
+
+// ProcessedTransaction bundles a transaction with its receipt. It is produced
+// by the StateProcessor's Process function for each non-skipped transaction.
+type ProcessedTransaction struct {
+	Transaction *types.Transaction
+	Receipt     *types.Receipt
 }
 
 // BeginBlock starts the processing of a new block and returns a function to

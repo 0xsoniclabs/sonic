@@ -334,11 +334,11 @@ func consensusCallbackBeginBlockFn(
 
 				// Execute pre-internal transactions
 				preInternalTxs := blockProc.PreTxTransactor.PopInternalTxs(blockCtx, bs, es, sealing, statedb)
-				preInternalReceipts := evmProcessor.Execute(preInternalTxs, maxBlockGas)
+				preInternalProcessedTxs := evmProcessor.Execute(preInternalTxs, maxBlockGas)
 				bs = txListener.Finalize()
-				for _, r := range preInternalReceipts {
-					if r.Status == 0 {
-						log.Warn("Pre-internal transaction reverted", "txid", r.TxHash.String())
+				for _, cur := range preInternalProcessedTxs {
+					if cur.Receipt.Status == 0 {
+						log.Warn("Pre-internal transaction reverted", "txid", cur.Receipt.TxHash.String())
 					}
 				}
 
@@ -374,15 +374,15 @@ func consensusCallbackBeginBlockFn(
 
 					// Execute post-internal transactions
 					internalTxs := blockProc.PostTxTransactor.PopInternalTxs(blockCtx, bs, es, sealing, statedb)
-					internalReceipts := evmProcessor.Execute(internalTxs, maxBlockGas)
-					for _, r := range internalReceipts {
-						if r.Status == 0 {
-							log.Warn("Internal transaction reverted", "txid", r.TxHash.String())
+					internalProcessedTxs := evmProcessor.Execute(internalTxs, maxBlockGas)
+					for _, cur := range internalProcessedTxs {
+						if cur.Receipt.Status == 0 {
+							log.Warn("Internal transaction reverted", "txid", cur.Receipt.TxHash.String())
 						}
 					}
 
 					orderedTxs := proposal.Transactions
-					evmProcessor.Execute(orderedTxs, userTransactionGasLimit)
+					processedTxs := evmProcessor.Execute(orderedTxs, userTransactionGasLimit)
 
 					evmBlock, allReceipts, numSkipped := evmProcessor.Finalize()
 
@@ -392,9 +392,14 @@ func consensusCallbackBeginBlockFn(
 						WithGasUsed(evmBlock.GasUsed).
 						WithBaseFee(evmBlock.BaseFee)
 
-					for i, tx := range evmBlock.Transactions {
-						// TODO: make sure that there are equally many transactions and receipts
-						blockBuilder.AddTransaction(tx, allReceipts[i])
+					for _, transactions := range [][]evmcore.ProcessedTransaction{
+						preInternalProcessedTxs,
+						internalProcessedTxs,
+						processedTxs,
+					} {
+						for _, cur := range transactions {
+							blockBuilder.AddTransaction(cur.Transaction, cur.Receipt)
+						}
 					}
 
 					// Complete the block.
