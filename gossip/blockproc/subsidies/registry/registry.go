@@ -43,11 +43,11 @@ const DeductFeesFunctionSelector = 0x944557d6
 // (e.g. because the contract got modified), you can use the unit test
 // TestGenerateDeploymentTransaction to get fresh values for those variables.
 
-var creatorAddress = hexutil.MustDecode("0x3aA7d3bdc309070181d1cE381D964d33C6Ad9Eb8")
-var contractAddress = hexutil.MustDecode("0x71331479A7bB85B37e6210b0e4E4BF4F681261e6")
+var creatorAddress = hexutil.MustDecode("0xC22D8cA2F7E277D2369393DdF977b58AC3dC3548")
+var contractAddress = hexutil.MustDecode("0xAB9d93f0589e1Ec5F6bB39F61535658f80ca60E9")
 var deploymentV = hexutil.MustDecode("0x1c")
-var deploymentR = hexutil.MustDecode("0x7b29e78247c868230d57ad0657c6ebbe8d543d462237f6d55eb4a2b6c44a4ff1")
-var deploymentS = hexutil.MustDecode("0x56d0f0dfb231c1b93bb23b4d7ce466bdcecdf92513c6882147616afe3d08d425")
+var deploymentR = hexutil.MustDecode("0xdce35359b218af10fd4c3c7c360e15a65e273384edb6a2d7bbaa41899d8b5388")
+var deploymentS = hexutil.MustDecode("0x3353f3d693771664f0cf40ccc721b97f57f5c0ed4d1088e4a314112c9bfd7909")
 
 // GetAddress returns the address of the deployed SubsidiesRegistry.
 func GetAddress() common.Address {

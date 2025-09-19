@@ -4,8 +4,7 @@ pragma solidity ^0.8.24;
 contract SubsidiesRegistry {
 
     struct Pot {
-      uint256 funds;   // < total funds available
-      uint256 locked;  // < funds pre-allocated for ongoing transactions
+      uint256 funds;
       uint256 totalContributions;
       mapping(address => uint256) contributors;
     }
@@ -84,57 +83,40 @@ contract SubsidiesRegistry {
     }
 
     function isCovered(address from, address to, bytes4 functionSelector, uint256 fee) public view returns(bool){
-        if(callSponsorships[from][to][functionSelector].funds >= fee){
-            return true;
-        }
-        if(userSponsorships[from][to].funds >= fee){
-            return true;
-        }
-        if(accountSponsorships[from].funds >= fee){
-            return true;
-        }
-        if(serviceSponsorships[to][functionSelector].funds >= fee){
-            return true;
-        }
-        if(contractSponsorships[to].funds >= fee){
-            return true;
-        }
-        if (globalSponsorship.funds >= fee){
-            return true;
-        }
-        return false;
+        ( , bool exists) = _getPot(from, to, functionSelector, fee);
+        return exists;
     }
 
     function deductFees(address from, address to, bytes4 functionSelector, uint256 fee) public {
         require(msg.sender == address(0)); // < only be called through internal transactions
-        require(isCovered(from, to, functionSelector, fee));
-        feeBurner.burnNativeTokens{value: fee}();
 
-        // Go from the most specific to the least specific pot.
-        if (callSponsorships[from][to][functionSelector].funds >= fee){
-            callSponsorships[from][to][functionSelector].funds -= fee;
-            return;
+        (Pot storage pot, bool exists) = _getPot(from, to, functionSelector, fee);
+        require(exists, "No sponsorship pot available");
+        require(pot.funds >= fee, "Not enough funds");
+        feeBurner.burnNativeTokens{value: fee}();
+        pot.funds -= fee;
+    }
+
+    function _getPot(address from, address to, bytes4 functionSelector, uint256 fee) internal view returns (Pot storage, bool) {
+        if (callSponsorships[from][to][functionSelector].funds >= fee) {
+            return (callSponsorships[from][to][functionSelector], true);
         }
-        if(userSponsorships[from][to].funds >= fee){
-            userSponsorships[from][to].funds -= fee;
-            return;
+        if (userSponsorships[from][to].funds >= fee) {
+            return (userSponsorships[from][to], true);
         }
-        if (accountSponsorships[from].funds >= fee){
-            accountSponsorships[from].funds -= fee;
-            return;
+        if (accountSponsorships[from].funds >= fee) {
+            return (accountSponsorships[from], true);
         }
-        if (serviceSponsorships[to][functionSelector].funds >= fee){
-            serviceSponsorships[to][functionSelector].funds -= fee;
-            return;
+        if (serviceSponsorships[to][functionSelector].funds >= fee) {
+            return (serviceSponsorships[to][functionSelector], true);
         }
-        if (contractSponsorships[to].funds >= fee){
-            contractSponsorships[to].funds -= fee;
-            return;
+        if (contractSponsorships[to].funds >= fee) {
+            return (contractSponsorships[to], true);
         }
-        if (globalSponsorship.funds >= fee){
-            globalSponsorship.funds -= fee;
-            return;
+        if (globalSponsorship.funds >= fee) {
+            return (globalSponsorship, true);
         }
+        return (globalSponsorship, false);
     }
 
     function _addFunds(Pot storage pot, address sponsor, uint256 amount) internal {
@@ -144,8 +126,10 @@ contract SubsidiesRegistry {
     }
 
     function _withdrawFunds(Pot storage pot, address sponsor, uint256 amount) internal {
+        require(tx.gasprice > 0, "Withdrawals are not supported through sponsored transactions");
         require(pot.contributors[sponsor] >= amount, "Not enough contributions to withdraw");
         uint256 share = (amount * pot.funds) / pot.totalContributions;
+        require(share <= pot.funds, "Not enough available funds to withdraw");
         (bool success, ) = sponsor.call{value: share}("");
         require(success, "Transfer failed");
         pot.contributors[sponsor] -= amount;
