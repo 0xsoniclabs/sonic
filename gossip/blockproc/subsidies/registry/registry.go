@@ -35,6 +35,10 @@ import (
 const IsCoveredFunctionSelector = 0x36a656a7
 const DeductFeesFunctionSelector = 0x944557d6
 
+// TODO: reevaluate these values
+const GasLimitForIsCoveredCall = 15_000
+const GasLimitForDeductFeesCall = 100_000
+
 // The deployment transaction was generated to be issued by an EOA account
 // which's private key got discarded afterwards. The contract is thus
 // deployed at an address that cannot be pre-occupied by anybody.
