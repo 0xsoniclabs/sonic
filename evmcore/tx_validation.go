@@ -22,7 +22,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/0xsoniclabs/sonic/evmcore/subsidies"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice/gaspricelimits"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/utils"
