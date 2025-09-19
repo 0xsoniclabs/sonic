@@ -92,10 +92,9 @@ type OperaEVMProcessor struct {
 
 	gasUsed uint64
 
-	incomingTxs types.Transactions
-	receipts    types.Receipts
-	numSkipped  int
-	prevRandao  common.Hash
+	processedTxs []evmcore.ProcessedTransaction
+	numSkipped   int
+	prevRandao   common.Hash
 
 	rules opera.Rules
 }
@@ -138,15 +137,15 @@ func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlo
 	return evmcore.NewEvmBlock(h, txs)
 }
 
-func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) types.Receipts {
+func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) []evmcore.ProcessedTransaction {
 	evmProcessor := evmcore.NewStateProcessor(p.evmCfg, p.reader)
-	txsOffset := uint(len(p.incomingTxs))
+	txsOffset := uint(len(p.processedTxs))
 
 	vmConfig := opera.GetVmConfig(p.rules)
 
 	// Process txs
 	evmBlock := p.evmBlockWith(txs)
-	processed, receipts, skipped := evmProcessor.Process(evmBlock, p.statedb, vmConfig, gasLimit, &p.gasUsed, func(l *types.Log) {
+	processed, skipped := evmProcessor.Process(evmBlock, p.statedb, vmConfig, gasLimit, &p.gasUsed, func(l *types.Log) {
 		// Note: l.Index is properly set before
 		l.TxIndex += txsOffset
 		p.onNewLog(l)
@@ -155,32 +154,26 @@ func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) typ
 	p.numSkipped += skipped
 
 	if txsOffset > 0 {
-		for _, r := range receipts {
-			if r != nil {
-				r.TransactionIndex += txsOffset
+		for _, cur := range processed {
+			if cur.Receipt != nil {
+				cur.Receipt.TransactionIndex += txsOffset
 			}
 		}
 	}
 
-	p.incomingTxs = append(p.incomingTxs, processed...)
-	p.receipts = append(p.receipts, receipts...)
-
-	// Create receipts for incoming transactions.
-	index := map[*types.Transaction]*types.Receipt{}
-	for i, tx := range processed {
-		index[tx] = receipts[i]
-	}
-	res := make(types.Receipts, 0, len(txs))
-	for _, tx := range txs {
-		if r, ok := index[tx]; ok {
-			res = append(res, r)
-		}
-	}
-	return res
+	p.processedTxs = append(p.processedTxs, processed...)
+	return processed
 }
 
 func (p *OperaEVMProcessor) Finalize() (*evmcore.EvmBlock, types.Receipts, int) {
-	evmBlock := p.evmBlockWith(p.incomingTxs)
+	transactions := make(types.Transactions, 0, len(p.processedTxs))
+	receipts := make(types.Receipts, 0, len(p.processedTxs))
+	for _, cur := range p.processedTxs {
+		transactions = append(transactions, cur.Transaction)
+		receipts = append(receipts, cur.Receipt)
+	}
+
+	evmBlock := p.evmBlockWith(transactions)
 
 	// Commit block
 	p.statedb.EndBlock(evmBlock.Number.Uint64())
@@ -188,5 +181,5 @@ func (p *OperaEVMProcessor) Finalize() (*evmcore.EvmBlock, types.Receipts, int) 
 	// Get state root
 	evmBlock.Root = p.statedb.GetStateHash()
 
-	return evmBlock, p.receipts, p.numSkipped
+	return evmBlock, receipts, p.numSkipped
 }
