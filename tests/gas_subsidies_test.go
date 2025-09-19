@@ -24,7 +24,7 @@ import (
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
@@ -37,6 +37,7 @@ func TestGasSubsidies_CanRunSubsidizedTransactions(t *testing.T) {
 	upgrades.GasSubsidies = true
 
 	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
+		//NumNodes: 3,
 		ModifyConfig: func(config *config.Config) {
 			// The transaction to deploy the subsidies registry contract has
 			// chain id 0, and is thus not replay protected. To be able to

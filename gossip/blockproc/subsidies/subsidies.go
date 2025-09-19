@@ -93,7 +93,7 @@ func IsCoveredBy( // < TODO: find a better name
 	input := packIsCoveredInput(from, to, selector, maxFee)
 
 	// Run the query on the EVM and the provided state.
-	const initialGas = 7_500 // TODO: figure out a sensible value
+	const initialGas = 15_000 // TODO: figure out a sensible value
 	result, _, err := vm.Call(caller, target, input, initialGas, uint256.NewInt(0))
 	if err != nil {
 		return false, fmt.Errorf("EVM call failed: %v", err)
