@@ -237,7 +237,6 @@ func TestCreateTransientEvmChainConfig_ContainsUpgradesBasedOnConstructionTimeBl
 	tests := map[string]Upgrades{
 		"Sonic":   GetSonicUpgrades(),
 		"Allegro": GetAllegroUpgrades(),
-		"Brio":    GetBrioUpgrades(),
 	}
 
 	for name, upgrades := range tests {
@@ -275,7 +274,10 @@ func TestCreateTransientEvmChainConfig_RespectsBlockHeightOfUpgradeHeight(t *tes
 	upgrades := []Upgrades{
 		GetSonicUpgrades(),
 		GetAllegroUpgrades(),
-		GetBrioUpgrades(),
+		{
+			Allegro: true,
+			Brio:    true,
+		},
 	}
 
 	var upgradeHeights []UpgradeHeight
