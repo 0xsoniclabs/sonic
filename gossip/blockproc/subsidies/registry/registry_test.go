@@ -87,5 +87,5 @@ func TestGenerateDeploymentTransaction(t *testing.T) {
 	fmt.Printf("  R: 0x%x\n", r)
 	fmt.Printf("  S: 0x%x\n", s)
 
-	t.Fail() // uncomment to see the output when running "go test"
+	//t.Fail() // uncomment to see the output when running "go test"
 }

@@ -16,7 +16,6 @@
 
 package evmmodule
 
-/*
 import (
 	"math"
 	"math/big"
@@ -90,16 +89,16 @@ func TestEvm_IgnoresGasPriceOfInternalTransactions(t *testing.T) {
 	nonce := uint64(15)
 	inner := types.NewTransaction(nonce, targetAddress, common.Big0, 1e10, common.Big0, nil)
 
-	receipts := processor.Execute([]*types.Transaction{inner}, math.MaxUint64)
+	processedTxs := processor.Execute([]*types.Transaction{inner}, math.MaxUint64)
 
-	if len(receipts) != 1 {
-		t.Fatalf("Expected 1 receipt, got %d", len(receipts))
+	if len(processedTxs) != 1 {
+		t.Fatalf("Expected 1 processed transaction, got %d", len(processedTxs))
 	}
-	if receipts[0] == nil {
-		t.Fatalf("Transaction was skipped")
+	receipt := processedTxs[0].Receipt
+	if receipt == nil {
+		t.Fatalf("Expected receipt to be non-nil")
 	}
-	if want, got := types.ReceiptStatusSuccessful, receipts[0].Status; want != got {
+	if want, got := types.ReceiptStatusSuccessful, receipt.Status; want != got {
 		t.Errorf("Expected status %v, got %v", want, got)
 	}
 }
-*/
