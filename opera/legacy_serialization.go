@@ -121,6 +121,9 @@ func (u Upgrades) EncodeRLP(w io.Writer) error {
 	if u.SingleProposerBlockFormation {
 		bitmap.V |= singleProposerBlockFormationBit
 	}
+	if u.GasSubsidies {
+		bitmap.V |= gasSubsidiesBit
+	}
 	return rlp.Encode(w, &bitmap)
 }
 
@@ -141,6 +144,7 @@ func (u *Upgrades) DecodeRLP(s *rlp.Stream) error {
 	u.Brio = (bitmap.V & brioBit) != 0
 
 	u.SingleProposerBlockFormation = (bitmap.V & singleProposerBlockFormationBit) != 0
+	u.GasSubsidies = (bitmap.V & gasSubsidiesBit) != 0
 	return nil
 }
 
