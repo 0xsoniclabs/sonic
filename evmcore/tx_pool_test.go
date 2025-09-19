@@ -3182,7 +3182,7 @@ func TestTxPool_ActivatingOsakaDropsTransactionsWithHighGas(t *testing.T) {
 	newHeader := &EvmHeader{Number: big.NewInt(5), Time: 5, BaseFee: big.NewInt(100)}
 
 	// lowering the gas limit should drop the tx with too high gas
-	blockchain.gasLimit = 1 << 24 // set 16M
+	blockchain.SetGasLimit(1 << 24)
 
 	<-pool.requestReset(oldHeader, newHeader)
 	pool.waitForIdleReorgLoop_forTesting()
