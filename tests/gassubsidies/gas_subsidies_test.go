@@ -31,19 +31,23 @@ func TestGasSubsidies_CanBeEnabledAndDisabled(
 
 	// The network is initially started using the distributed protocol.
 	net := tests.StartIntegrationTestNet(t)
-	upgrades := map[string]opera.Upgrades{
-		"sonic":   opera.GetSonicUpgrades(),
-		"allegro": opera.GetAllegroUpgrades(),
-		//"brio":  opera.GetBrioUpgrades(),
+	// a sliced is used here to ensure the forks get updated in an acceptable order.
+	upgrades := []struct {
+		name    string
+		upgrade opera.Upgrades
+	}{
+		{name: "sonic", upgrade: opera.GetSonicUpgrades()},
+		{name: "allegro", upgrade: opera.GetAllegroUpgrades()},
+		//{name: "brio", upgrade: opera.GetBrioUpgrades()},
 	}
-	for name, upgrade := range upgrades {
-		t.Run(name, func(t *testing.T) {
+	for _, test := range upgrades {
+		t.Run(test.name, func(t *testing.T) {
 			client, err := net.GetClient()
 			require.NoError(err)
 			defer client.Close()
 
 			// enforce the current upgrade
-			tests.UpdateNetworkRules(t, net, upgrade)
+			tests.UpdateNetworkRules(t, net, test.upgrade)
 			// Advance the epoch by one to apply the change.
 			net.AdvanceEpoch(t, 1)
 
