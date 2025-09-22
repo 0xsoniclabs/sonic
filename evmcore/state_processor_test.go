@@ -126,8 +126,8 @@ func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
 			// Receipts should be set accordingly.
 			require.Len(receipts, len(transactions))
 
-			logMsg0 := &types.Log{Address: common.Address{0}}
-			logMsg2 := &types.Log{Address: common.Address{2}}
+			logMsg0 := &types.Log{Address: common.Address{0}, TxIndex: 0}
+			logMsg2 := &types.Log{Address: common.Address{2}, TxIndex: 2}
 
 			require.NotNil(receipts[0])
 			require.Equal(&types.Receipt{
@@ -177,6 +177,12 @@ func TestProcess_DetectsTransactionThatCanNotBeConvertedIntoAMessage(t *testing.
 	chainConfig := params.ChainConfig{}
 	chain := NewMockDummyChain(ctrl)
 
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	signer := types.FrontierSigner{}
+
+	logMsg1 := &types.Log{Address: common.Address{1}, TxIndex: 1}
+
 	// The conversion into a evmcore Message depends on the ability to check
 	// the signature and to derive the sender address. To stimulate a failure
 	// in the conversion, a invalid signature is used.
@@ -184,6 +190,11 @@ func TestProcess_DetectsTransactionThatCanNotBeConvertedIntoAMessage(t *testing.
 		types.NewTx(&types.LegacyTx{
 			Nonce: 1, To: &common.Address{}, Gas: 21_000,
 			R: big.NewInt(1), S: big.NewInt(2), V: big.NewInt(3),
+		}),
+		// Make sure that a transaction succeeding the failing one is processed
+		// correctly.
+		types.MustSignNewTx(key, signer, &types.LegacyTx{
+			Nonce: 0, To: &common.Address{}, Gas: 21_000,
 		}),
 	}
 
@@ -210,9 +221,22 @@ func TestProcess_DetectsTransactionThatCanNotBeConvertedIntoAMessage(t *testing.
 			usedGas := new(uint64)
 			receipts, logs, skipped := process(block, state, vmConfig, gasLimit, usedGas, nil)
 
-			require.ElementsMatch(receipts, []*types.Receipt{nil})
+			require.Len(receipts, len(transactions))
+			require.Nil(receipts[0])
+			require.Equal(&types.Receipt{
+				Status:            types.ReceiptStatusSuccessful,
+				GasUsed:           21_000,
+				CumulativeGasUsed: 21_000,
+				BlockNumber:       block.Number,
+				TransactionIndex:  1, // Even though the first tx is skipped, the index is still 1
+				TxHash:            transactions[1].Hash(),
+				Bloom: types.CreateBloom(&types.Receipt{
+					Logs: []*types.Log{logMsg1},
+				}),
+				Logs: []*types.Log{logMsg1},
+			}, receipts[1])
 			require.ElementsMatch(skipped, []uint32{0})
-			require.Empty(logs)
+			require.ElementsMatch(logs, []*types.Log{logMsg1})
 		})
 	}
 }
@@ -592,7 +616,10 @@ func getStateDbMockForTransactions(
 	state.EXPECT().GetLogs(any, any).DoAndReturn(
 		func(_, _ common.Hash) []*types.Log {
 			return []*types.Log{
-				{Address: common.Address{byte(*txIndex)}},
+				{
+					Address: common.Address{byte(*txIndex)},
+					TxIndex: uint(*txIndex),
+				},
 			}
 		},
 	).AnyTimes()
