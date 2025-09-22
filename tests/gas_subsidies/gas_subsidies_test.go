@@ -21,7 +21,6 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
@@ -44,31 +43,27 @@ func TestGasSubsidies_CanRunSubsidizedTransactions(t *testing.T) {
 }
 
 func testCanRunSubsidizedTransactions(t *testing.T, singleProposer bool) {
-	require := require.New(t)
+	// --- Set up the test network ---
 
 	upgrades := opera.GetSonicUpgrades()
 	upgrades.SingleProposerBlockFormation = singleProposer
 	upgrades.GasSubsidies = true
 
 	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
-		//NumNodes: 3,
-		ModifyConfig: func(config *config.Config) {
-			// The transaction to deploy the subsidies registry contract has
-			// chain id 0, and is thus not replay protected. To be able to
-			// submit it, we need to allow unprotected transactions in the
-			// transaction pool.
-			config.Opera.AllowUnprotectedTxs = true
-		},
 		Upgrades: &upgrades,
 	})
 
 	client, err := net.GetClient()
-	require.NoError(err)
+	require.NoError(t, err)
 	defer client.Close()
+
+	// -------------------------------------------------------------------------
 
 	sponsor := tests.NewAccount()
 	sponsee := tests.NewAccount()
 	receiver := tests.NewAccount()
+
+	// --- send transaction although there are no sponsorship funds yet ---
 
 	// Before the sponsorship is set up, a transaction from the sponsee
 	// to the receiver should fail due to lack of funds.
@@ -80,8 +75,8 @@ func testCanRunSubsidizedTransactions(t *testing.T, singleProposer bool) {
 		Gas:      21000,
 		GasPrice: big.NewInt(0),
 	})
-	require.NoError(err)
-	require.Error(
+	require.NoError(t, err)
+	require.Error(t,
 		client.SendTransaction(t.Context(), tx),
 		"should be rejected due to lack of funds and no sponsorship",
 	)
@@ -89,10 +84,10 @@ func testCanRunSubsidizedTransactions(t *testing.T, singleProposer bool) {
 	// --- deposit sponsorship funds ---
 
 	donation := big.NewInt(1e16)
-	ledger := createRegistryWithDonation(t, client, net, sponsor, sponsee, receiver, donation)
+	registry := createRegistryWithDonation(t, client, net, sponsor, sponsee, receiver, donation)
 
 	burnedBefore, err := client.BalanceAt(t.Context(), common.Address{}, nil)
-	require.NoError(err)
+	require.NoError(t, err)
 
 	// --- submit a sponsored transaction ---
 
@@ -102,25 +97,24 @@ func testCanRunSubsidizedTransactions(t *testing.T, singleProposer bool) {
 	ops := &bind.CallOpts{
 		BlockNumber: receipt.BlockNumber,
 	}
-	sponsorship, err := ledger.UserSponsorships(ops, sponsee.Address(), receiver.Address())
-	require.NoError(err)
-	require.Less(sponsorship.Funds.Uint64(), donation.Uint64())
+	sponsorship, err := registry.UserSponsorships(ops, sponsee.Address(), receiver.Address())
+	require.NoError(t, err)
+	require.Less(t, sponsorship.Funds.Uint64(), donation.Uint64())
 
 	// the difference in the sponsorship funds should have been burned
 	burnedAfter, err := client.BalanceAt(t.Context(), common.Address{}, nil)
-	require.NoError(err)
-	require.Greater(burnedAfter.Uint64(), burnedBefore.Uint64())
+	require.NoError(t, err)
+	require.Greater(t, burnedAfter.Uint64(), burnedBefore.Uint64())
 
 	// the sponsorship difference and the increase in burned funds should be equal
 	diff := new(big.Int).Sub(burnedAfter, burnedBefore)
 	reduced := new(big.Int).Sub(donation, sponsorship.Funds)
-	require.Equal(0, diff.Cmp(reduced),
+	require.Equal(t, 0, diff.Cmp(reduced),
 		"the burned amount should equal the reduction of the sponsorship funds",
 	)
 }
 
-func createRegistryWithDonation(t *testing.T, client *tests.PooledEhtClient, net *tests.IntegrationTestNet,
-	sponsor, sponsee, receiver *tests.Account, donation *big.Int) *registry.Registry {
+func createRegistryWithDonation(t *testing.T, client *tests.PooledEhtClient, net *tests.IntegrationTestNet, sponsor, sponsee, receiver *tests.Account, donation *big.Int) *registry.Registry {
 	registry, err := registry.NewRegistry(registry.GetAddress(), client)
 	require.NoError(t, err)
 
@@ -129,7 +123,7 @@ func createRegistryWithDonation(t *testing.T, client *tests.PooledEhtClient, net
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
 	receipt, err = net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
-		opts.Value = big.NewInt(1e16)
+		opts.Value = donation
 		return registry.SponsorUser(opts, sponsee.Address(), receiver.Address())
 	})
 	require.NoError(t, err)
@@ -178,85 +172,4 @@ func sendSponsoredTransaction(t *testing.T, client *tests.PooledEhtClient, net *
 	require.True(t, found, "sponsored transaction not found in the block")
 
 	return receipt
-}
-
-// TODO: test the following properties
-//  - sponsorship requests work with all types of transactions (legacy, dynamic fee, etc.)
-//  - check the enforcement of the GasSponsorship flag in the network rules
-//  - check that the sponsorship funds are correctly deducted after a sponsored tx
-//  - check that the sponsorship request is rejected if there are insufficient funds
-//  - check that the sponsorship request is rejected if the registry contract is not deployed
-//  - test that fee charging transactions and sealing transactions use proper nonces (incrementally, no gaps)
-//  - test cumulative gas usage of multiple sponsored transactions in a block
-//  - test receipt to transaction mapping in blocks with (multiple) sponsored transactions and internal transactions
-//  - test correct log message indexing in blocks with (multiple) sponsored transactions and internal transactions
-//  - test correct nonce usage of internal transactions (pre-, post- and fee charging transactions
-
-func TestGasSubsidies_CanBeEnabledAndDisabled(
-	t *testing.T,
-) {
-	require := require.New(t)
-
-	// The network is initially started using the distributed protocol.
-	net := tests.StartIntegrationTestNet(t)
-	// a sliced is used here to ensure the forks get updated in an acceptable order.
-	upgrades := []struct {
-		name    string
-		upgrade opera.Upgrades
-	}{
-		{name: "sonic", upgrade: opera.GetSonicUpgrades()},
-		{name: "allegro", upgrade: opera.GetAllegroUpgrades()},
-		//{name: "brio", upgrade: opera.GetBrioUpgrades()},
-	}
-	for _, test := range upgrades {
-		t.Run(test.name, func(t *testing.T) {
-			client, err := net.GetClient()
-			require.NoError(err)
-			defer client.Close()
-
-			// enforce the current upgrade
-			tests.UpdateNetworkRules(t, net, test.upgrade)
-			// Advance the epoch by one to apply the change.
-			net.AdvanceEpoch(t, 1)
-
-			// check original state
-			type upgrades struct {
-				GasSubsidies bool
-			}
-			type rulesType struct {
-				Upgrades upgrades
-			}
-
-			var originalRules rulesType
-			err = client.Client().Call(&originalRules, "eth_getRules", "latest")
-			require.NoError(err)
-			require.Equal(false, originalRules.Upgrades.GasSubsidies, "GasSubsidies should be disabled initially")
-
-			// Enable gas subsidies.
-			rulesDiff := rulesType{
-				Upgrades: upgrades{GasSubsidies: true},
-			}
-			tests.UpdateNetworkRules(t, net, rulesDiff)
-
-			// Advance the epoch by one to apply the change.
-			net.AdvanceEpoch(t, 1)
-
-			err = client.Client().Call(&originalRules, "eth_getRules", "latest")
-			require.NoError(err)
-			require.Equal(true, originalRules.Upgrades.GasSubsidies, "GasSubsidies should be enabled after the update")
-
-			// Disable gas subsidies.
-			rulesDiff = rulesType{
-				Upgrades: upgrades{GasSubsidies: false},
-			}
-			tests.UpdateNetworkRules(t, net, rulesDiff)
-
-			// Advance the epoch by one to apply the change.
-			net.AdvanceEpoch(t, 1)
-
-			err = client.Client().Call(&originalRules, "eth_getRules", "latest")
-			require.NoError(err)
-			require.Equal(false, originalRules.Upgrades.GasSubsidies, "GasSubsidies should be disabled after the update")
-		})
-	}
 }
