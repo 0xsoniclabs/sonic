@@ -34,6 +34,8 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
+//go:generate mockgen -source=state_processor_test.go -destination=state_processor_test_mock.go -package=evmcore
+
 // process_iteratively is an internal implementation of the StateProcessor's
 // Process method using BeginBlock and an iterative transaction processing
 // based on the TransactionProcessor. It is used to make sure that BeginBlock
@@ -43,33 +45,25 @@ func (p *StateProcessor) process_iteratively(
 	block *EvmBlock, stateDb state.StateDB, cfg vm.Config, gasLimit uint64,
 	usedGas *uint64, onNewLog func(*types.Log),
 ) (
-	types.Receipts, []*types.Log, []uint32,
+	[]ProcessedTransaction, int,
 ) {
 	// This implementation is a wrapper around the BeginBlock function, which
 	// handles the actual transaction processing.
 	txProcessor := p.BeginBlock(block, stateDb, cfg, gasLimit, onNewLog)
-	receipts := make(types.Receipts, len(block.Transactions))
-	skipped := make([]uint32, 0, len(block.Transactions))
-	allLogs := make([]*types.Log, 0, len(block.Transactions))
+	processed := make([]ProcessedTransaction, 0, len(block.Transactions))
+	skipped := 0
 	for i, tx := range block.Transactions {
-		receipt, skip, err := txProcessor.Run(i, tx)
-		if skip {
-			skipped = append(skipped, uint32(i))
-			receipts[i] = nil
-			continue
-		}
+		newProcessed, err := txProcessor.Run(i, tx)
 		if err != nil {
 			// If an error occurs, we skip the transaction and continue with the next one.
-			skipped = append(skipped, uint32(i))
-			receipts[i] = nil
+			skipped++
 			continue
 		}
-		receipts[i] = receipt
-		allLogs = append(allLogs, receipt.Logs...)
-		*usedGas = receipt.CumulativeGasUsed
+		processed = append(processed, newProcessed...)
+		*usedGas = newProcessed[len(newProcessed)-1].Receipt.CumulativeGasUsed
 	}
 
-	return receipts, allLogs, skipped
+	return processed, skipped
 }
 
 func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
@@ -121,15 +115,16 @@ func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
 			vmConfig := vm.Config{}
 			gasLimit := uint64(blockGasLimit)
 			usedGas := new(uint64)
-			receipts, logs, skipped := process(block, state, vmConfig, gasLimit, usedGas, onLog)
+			processed, skipped := process(block, state, vmConfig, gasLimit, usedGas, onLog)
 
-			// Receipts should be set accordingly.
-			require.Len(receipts, len(transactions))
+			// Only passed transactions should be reported.
+			require.Len(processed, 2)
 
 			logMsg0 := &types.Log{Address: common.Address{0}, TxIndex: 0}
 			logMsg2 := &types.Log{Address: common.Address{2}, TxIndex: 2}
 
-			require.NotNil(receipts[0])
+			require.Equal(processed[0].Transaction, transactions[0])
+			require.NotNil(processed[0].Receipt)
 			require.Equal(&types.Receipt{
 				Status:            types.ReceiptStatusSuccessful,
 				GasUsed:           21_000,
@@ -141,11 +136,10 @@ func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
 					Logs: []*types.Log{logMsg0},
 				}),
 				Logs: []*types.Log{logMsg0},
-			}, receipts[0])
+			}, processed[0].Receipt)
 
-			require.Nil(receipts[1])
-
-			require.NotNil(receipts[2])
+			require.Equal(processed[1].Transaction, transactions[2])
+			require.NotNil(processed[1].Receipt)
 			require.Equal(&types.Receipt{
 				Status:            types.ReceiptStatusSuccessful,
 				GasUsed:           21_000,
@@ -157,14 +151,9 @@ func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
 					Logs: []*types.Log{logMsg2},
 				}),
 				Logs: []*types.Log{logMsg2},
-			}, receipts[2])
+			}, processed[1].Receipt)
 
-			require.Nil(receipts[3])
-
-			require.Equal([]*types.Log{logMsg0, logMsg2}, logs)
-			require.Equal([]*types.Log{logMsg0, logMsg2}, reportedLogs)
-
-			require.Equal([]uint32{1, 3}, skipped)
+			require.Equal(2, skipped)
 
 			require.Equal(uint64(21_000+21_000), *usedGas)
 		})
@@ -219,10 +208,9 @@ func TestProcess_DetectsTransactionThatCanNotBeConvertedIntoAMessage(t *testing.
 			vmConfig := vm.Config{}
 			gasLimit := uint64(math.MaxUint64)
 			usedGas := new(uint64)
-			receipts, logs, skipped := process(block, state, vmConfig, gasLimit, usedGas, nil)
+			processed, skipped := process(block, state, vmConfig, gasLimit, usedGas, nil)
 
-			require.Len(receipts, len(transactions))
-			require.Nil(receipts[0])
+			require.Len(processed, 1)
 			require.Equal(&types.Receipt{
 				Status:            types.ReceiptStatusSuccessful,
 				GasUsed:           21_000,
@@ -234,9 +222,9 @@ func TestProcess_DetectsTransactionThatCanNotBeConvertedIntoAMessage(t *testing.
 					Logs: []*types.Log{logMsg1},
 				}),
 				Logs: []*types.Log{logMsg1},
-			}, receipts[1])
-			require.ElementsMatch(skipped, []uint32{0})
-			require.ElementsMatch(logs, []*types.Log{logMsg1})
+			}, processed[0].Receipt)
+			require.Equal(1, skipped)
+			require.ElementsMatch(processed[0].Receipt.Logs, []*types.Log{logMsg1})
 		})
 	}
 }
@@ -293,10 +281,10 @@ func TestProcess_TracksParentBlockHashIfPragueIsEnabled(t *testing.T) {
 				vmConfig := vm.Config{}
 				gasLimit := uint64(math.MaxUint64)
 				usedGas := new(uint64)
-				receipts, logs, skipped := process(block, state, vmConfig, gasLimit, usedGas, nil)
-				require.Empty(receipts)
-				require.Empty(logs)
-				require.Empty(skipped)
+				processed, skipped := process(block, state, vmConfig, gasLimit, usedGas, nil)
+				require.Empty(processed)
+				require.Zero(skipped)
+				require.Zero(*usedGas)
 			})
 		}
 	}
@@ -354,13 +342,12 @@ func TestProcess_FailingTransactionAreSkippedButTheBlockIsNotTerminated(t *testi
 	// Process the block
 	gasLimit := uint64(math.MaxUint64)
 	usedGas := new(uint64)
-	receipts, logs, skipped := processor.Process(block, state, vm.Config{}, gasLimit, usedGas, nil)
+	processed, skipped := processor.Process(block, state, vm.Config{}, gasLimit, usedGas, nil)
 
-	require.Len(t, receipts, 2)
-	require.Nil(t, receipts[0])
-	require.NotNil(t, receipts[1])
-	require.Len(t, skipped, 1)
-	require.Empty(t, logs)
+	require.Len(t, processed, 1)
+	require.Equal(t, block.Transactions[1], processed[0].Transaction)
+	require.NotNil(t, processed[0].Receipt)
+	require.Equal(t, 1, skipped)
 }
 
 func TestProcess_EnforcesGasLimitBySkippingExcessiveTransactions(t *testing.T) {
@@ -433,17 +420,13 @@ func TestProcess_EnforcesGasLimitBySkippingExcessiveTransactions(t *testing.T) {
 				t.Run(name, func(t *testing.T) {
 					require := require.New(t)
 					gasLimit := test.gasLimit
-					receipts, logs, skipped := process(block, state, vmConfig, gasLimit, usedGas, nil)
-					require.Len(receipts, 3)
-					require.Len(logs, test.passing) // the mocked StateDB produces 1 log per transaction
-					require.Len(skipped, 3-test.passing)
+					processed, skipped := process(block, state, vmConfig, gasLimit, usedGas, nil)
+					require.Len(processed, test.passing)
+					require.Equal(skipped, 3-test.passing)
 
-					for i := range test.passing {
-						require.NotNil(receipts[i])
-					}
-					for i := test.passing; i < 3; i++ {
-						require.Nil(receipts[i])
-						require.Contains(skipped, uint32(i))
+					for i, cur := range processed {
+						require.Equal(cur.Transaction, transactions[i])
+						require.NotNil(cur.Receipt)
 					}
 				})
 			}
@@ -585,9 +568,8 @@ type processFunction = func(
 	usedGas *uint64,
 	onNewLog func(*types.Log),
 ) (
-	receipts types.Receipts,
-	allLogs []*types.Log,
-	skipped []uint32,
+	_ []ProcessedTransaction,
+	numSkipped int,
 )
 
 func getStateDbMockForTransactions(
@@ -639,3 +621,90 @@ func getStateDbMockForTransactions(
 	state.EXPECT().EndTransaction().AnyTimes()
 	return state
 }
+
+func TestRunTransaction_ForwardsConvertedMessageToRunAndUsesReceipt(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	runner := NewMock_txRunner(ctrl)
+
+	key, err := crypto.GenerateKey()
+	require.NoError(err)
+	signer := types.LatestSignerForChainID(nil)
+	tx := types.MustSignNewTx(key, signer, &types.LegacyTx{
+		Nonce: 0, To: &common.Address{}, Gas: 21_000,
+	})
+
+	baseFee := big.NewInt(100)
+	runner.EXPECT().run(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(msg *core.Message, toRun *types.Transaction) (*types.Receipt, error) {
+			want, err := TxAsMessage(tx, signer, baseFee)
+			require.NoError(err)
+			require.Equal(want, msg)
+			require.Equal(tx, toRun)
+			return &types.Receipt{
+				Status:            types.ReceiptStatusSuccessful,
+				GasUsed:           21_000,
+				CumulativeGasUsed: 40_000,
+			}, nil
+		},
+	)
+
+	processed, err := runTransaction(tx, signer, baseFee, runner.run)
+
+	require.NoError(err)
+	require.Len(processed, 1)
+	require.Equal(tx, processed[0].Transaction)
+	require.NotNil(processed[0].Receipt)
+	require.Equal(&types.Receipt{
+		Status:            types.ReceiptStatusSuccessful,
+		GasUsed:           21_000,
+		CumulativeGasUsed: 40_000,
+	}, processed[0].Receipt)
+}
+
+func TestRunTransaction_InvalidSignature_ReportsExecutionError(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	runner := NewMock_txRunner(ctrl)
+
+	signer := types.LatestSignerForChainID(nil)
+	invalidTx := types.NewTx(&types.LegacyTx{
+		Nonce: 0, To: &common.Address{}, Gas: 21_000, V: big.NewInt(1),
+	})
+
+	baseFee := big.NewInt(100)
+	runner.EXPECT().run(gomock.Any(), gomock.Any()).Times(0)
+
+	_, err := runTransaction(invalidTx, signer, baseFee, runner.run)
+	require.Error(err)
+}
+
+func TestRunTransaction_FailedExecution_ReportsErrorAndNoReceipt(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	runner := NewMock_txRunner(ctrl)
+
+	key, err := crypto.GenerateKey()
+	require.NoError(err)
+	signer := types.LatestSignerForChainID(nil)
+	tx := types.MustSignNewTx(key, signer, &types.LegacyTx{
+		Nonce: 0, To: &common.Address{}, Gas: 21_000,
+	})
+
+	baseFee := big.NewInt(100)
+	injectedError := fmt.Errorf("execution failed")
+	runner.EXPECT().run(gomock.Any(), gomock.Any()).Return(nil, injectedError)
+
+	processed, err := runTransaction(tx, signer, baseFee, runner.run)
+	require.ErrorIs(err, injectedError)
+	require.Len(processed, 0)
+}
+
+// _txRunner is a helper interface to allow mocking the run function passed
+// to runTransaction.
+type _txRunner interface {
+	run(*core.Message, *types.Transaction) (*types.Receipt, error)
+}
+
+// Make use of the runner interface to eliminate unused warning.
+var _ _txRunner = (*Mock_txRunner)(nil)

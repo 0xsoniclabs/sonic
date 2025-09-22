@@ -334,11 +334,11 @@ func consensusCallbackBeginBlockFn(
 
 				// Execute pre-internal transactions
 				preInternalTxs := blockProc.PreTxTransactor.PopInternalTxs(blockCtx, bs, es, sealing, statedb)
-				preInternalReceipts := evmProcessor.Execute(preInternalTxs, maxBlockGas)
+				preInternalProcessedTxs := evmProcessor.Execute(preInternalTxs, maxBlockGas)
 				bs = txListener.Finalize()
-				for _, r := range preInternalReceipts {
-					if r.Status == 0 {
-						log.Warn("Pre-internal transaction reverted", "txid", r.TxHash.String())
+				for _, cur := range preInternalProcessedTxs {
+					if cur.Receipt.Status == 0 {
+						log.Warn("Pre-internal transaction reverted", "txid", cur.Receipt.TxHash.String())
 					}
 				}
 
@@ -372,37 +372,35 @@ func consensusCallbackBeginBlockFn(
 						WithGasLimit(maxBlockGas).
 						WithDuration(blockDuration)
 
-					for i := range preInternalTxs {
+					for _, cur := range preInternalProcessedTxs {
 						blockBuilder.AddTransaction(
-							preInternalTxs[i],
-							preInternalReceipts[i],
+							cur.Transaction,
+							cur.Receipt,
 						)
 					}
 
 					// Execute post-internal transactions
 					internalTxs := blockProc.PostTxTransactor.PopInternalTxs(blockCtx, bs, es, sealing, statedb)
-					internalReceipts := evmProcessor.Execute(internalTxs, maxBlockGas)
-					for _, r := range internalReceipts {
-						if r.Status == 0 {
-							log.Warn("Internal transaction reverted", "txid", r.TxHash.String())
+					internalProcessedTxs := evmProcessor.Execute(internalTxs, maxBlockGas)
+					for _, cur := range internalProcessedTxs {
+						if cur.Receipt.Status == 0 {
+							log.Warn("Internal transaction reverted", "txid", cur.Receipt.TxHash.String())
 						}
 					}
 
-					for i := range internalTxs {
+					for _, cur := range internalProcessedTxs {
 						blockBuilder.AddTransaction(
-							internalTxs[i],
-							internalReceipts[i],
+							cur.Transaction,
+							cur.Receipt,
 						)
 					}
 
 					orderedTxs := proposal.Transactions
-					for i, receipt := range evmProcessor.Execute(orderedTxs, userTransactionGasLimit) {
-						if receipt != nil { // < nil if skipped
-							blockBuilder.AddTransaction(orderedTxs[i], receipt)
-						}
+					for _, cur := range evmProcessor.Execute(orderedTxs, userTransactionGasLimit) {
+						blockBuilder.AddTransaction(cur.Transaction, cur.Receipt)
 					}
 
-					evmBlock, skippedTxs, allReceipts := evmProcessor.Finalize()
+					evmBlock, allReceipts, numSkipped := evmProcessor.Finalize()
 
 					// Add results of the transaction processing to the block.
 					blockBuilder.
@@ -535,7 +533,7 @@ func consensusCallbackBeginBlockFn(
 						"gas_used", evmBlock.GasUsed,
 						"gas_rate", float64(evmBlock.GasUsed)/blockDuration.Seconds(),
 						"base_fee", evmBlock.BaseFee.String(),
-						"txs", fmt.Sprintf("%d/%d", len(evmBlock.Transactions), len(skippedTxs)),
+						"txs", fmt.Sprintf("%d/%d", len(evmBlock.Transactions), numSkipped),
 						"age", utils.PrettyDuration(blockAge),
 						"t", utils.PrettyDuration(now.Sub(start)),
 						"epoch", evmBlock.Epoch,
@@ -543,7 +541,7 @@ func consensusCallbackBeginBlockFn(
 					blockAgeGauge.Update(int64(blockAge.Nanoseconds()))
 
 					processedTxsMeter.Mark(int64(len(evmBlock.Transactions)))
-					skippedTxsMeter.Mark(int64(len(skippedTxs)))
+					skippedTxsMeter.Mark(int64(numSkipped))
 				}
 				if confirmedEvents.Len() != 0 {
 					atomic.StoreUint32(blockBusyFlag, 1)

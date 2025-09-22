@@ -94,15 +94,16 @@ func TestEvm_IgnoresGasPriceOfInternalTransactions(t *testing.T) {
 	nonce := uint64(15)
 	inner := types.NewTransaction(nonce, targetAddress, common.Big0, 1e10, common.Big0, nil)
 
-	receipts := processor.Execute([]*types.Transaction{inner}, math.MaxUint64)
+	processedTxs := processor.Execute([]*types.Transaction{inner}, math.MaxUint64)
 
-	if len(receipts) != 1 {
-		t.Fatalf("Expected 1 receipt, got %d", len(receipts))
+	if len(processedTxs) != 1 {
+		t.Fatalf("Expected 1 processed transaction, got %d", len(processedTxs))
 	}
-	if receipts[0] == nil {
-		t.Fatalf("Transaction was skipped")
+	receipt := processedTxs[0].Receipt
+	if receipt == nil {
+		t.Fatalf("Expected receipt to be non-nil")
 	}
-	if want, got := types.ReceiptStatusSuccessful, receipts[0].Status; want != got {
+	if want, got := types.ReceiptStatusSuccessful, receipt.Status; want != got {
 		t.Errorf("Expected status %v, got %v", want, got)
 	}
 }
@@ -172,19 +173,19 @@ func TestOperaEVMProcessor_Execute_ProducesContinuousTxIndexesInLogsAndReceipts(
 	// transactions and some have just one.
 	txIndex := uint(0)
 	for range N {
-		receipts := processor.Execute(types.Transactions{tx, tx}, math.MaxUint64)
-		require.Len(receipts, 2)
-		require.NotNil(receipts[0])
-		require.NotNil(receipts[1])
-		require.Equal(txIndex, receipts[0].TransactionIndex)
+		processed := processor.Execute(types.Transactions{tx, tx}, math.MaxUint64)
+		require.Len(processed, 2)
+		require.NotNil(processed[0].Receipt)
+		require.NotNil(processed[1].Receipt)
+		require.Equal(txIndex, processed[0].Receipt.TransactionIndex)
 		txIndex++
-		require.Equal(txIndex, receipts[1].TransactionIndex)
+		require.Equal(txIndex, processed[1].Receipt.TransactionIndex)
 		txIndex++
 
-		receipts = processor.Execute(types.Transactions{tx}, math.MaxUint64)
-		require.Len(receipts, 1)
-		require.NotNil(receipts[0])
-		require.Equal(txIndex, receipts[0].TransactionIndex)
+		processed = processor.Execute(types.Transactions{tx}, math.MaxUint64)
+		require.Len(processed, 1)
+		require.NotNil(processed[0].Receipt)
+		require.Equal(txIndex, processed[0].Receipt.TransactionIndex)
 		txIndex++
 	}
 }

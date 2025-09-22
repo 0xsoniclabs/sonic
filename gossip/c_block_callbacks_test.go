@@ -270,13 +270,13 @@ func TestConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testi
 				txListenerModule.EXPECT().Start(_any, _any, _any, _any).Return(txListener)
 
 				evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
-				evmProcessor.EXPECT().Execute(_any, _any).Return(types.Receipts{}).MinTimes(1)
+				evmProcessor.EXPECT().Execute(_any, _any).Return([]evmcore.ProcessedTransaction{}).MinTimes(1)
 				evmProcessor.EXPECT().Finalize().Return(&evmcore.EvmBlock{
 					EvmHeader: evmcore.EvmHeader{
 						BaseFee: big.NewInt(0),
 						TxHash:  common.Hash{1, 2, 3},
 					},
-				}, nil, nil)
+				}, nil, 0)
 
 				evmModule := blockproc.NewMockEVM(ctrl)
 				evmModule.EXPECT().

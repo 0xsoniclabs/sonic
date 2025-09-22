@@ -42,6 +42,14 @@ type StateProcessor struct {
 	bc     DummyChain          // Canonical block chain
 }
 
+// ProcessedTransaction bundles a transaction with its receipt. It is produced
+// by the StateProcessor's Process function for each non-skipped transaction.
+// When produced by the Process function, neither field is nil.
+type ProcessedTransaction struct {
+	Transaction *types.Transaction
+	Receipt     *types.Receipt
+}
+
 // NewStateProcessor initialises a new StateProcessor.
 func NewStateProcessor(config *params.ChainConfig, bc DummyChain) *StateProcessor {
 	return &StateProcessor{
@@ -51,18 +59,14 @@ func NewStateProcessor(config *params.ChainConfig, bc DummyChain) *StateProcesso
 }
 
 // Process processes the state changes according to the Ethereum rules by running
-// the transaction messages using the StateDB, collecting all receipts, logs,
-// the indexes of skipped transactions, and the used gas via an output parameter.
+// the given block's transactions using the StateDB. The list of all executed
+// transactions and their receipts is collected. The total used gas is reported
+// via an output parameter.
 //
 // A transaction is skipped if for some reason its execution in the given order
 // is not possible. Skipped transactions do not consume any gas and do not affect
-// the usedGas counter. The receipts for skipped transactions are nil. Processing
-// continues with the next transaction in the block.
-//
-// Some reasons leading to issues during the execution of a transaction can lead
-// to a general fail of the Process step. Among those are, for instance, the
-// inability of restoring the sender from a transactions signature. In such a
-// case, the full processing is aborted and an error is returned.
+// the usedGas counter. Processing continues with the next transaction in the
+// block.
 //
 // Note that these rules are part of the replicated state machine and must be
 // consistent among all nodes on the network. The encoded rules have been
@@ -73,14 +77,11 @@ func (p *StateProcessor) Process(
 	block *EvmBlock, statedb state.StateDB, cfg vm.Config, gasLimit uint64,
 	usedGas *uint64, onNewLog func(*types.Log),
 ) (
-	types.Receipts, []*types.Log, []uint32,
+	_ []ProcessedTransaction, numSkipped int,
 ) {
-	receipts := make(types.Receipts, 0, len(block.Transactions))
-	allLogs := make([]*types.Log, 0, len(block.Transactions)*10) // 10 logs per tx is a reasonable estimate
-	skipped := make([]uint32, 0, len(block.Transactions))
+	result := make([]ProcessedTransaction, 0, 2*len(block.Transactions))
 	var (
 		gp           = new(core.GasPool).AddGas(gasLimit)
-		receipt      *types.Receipt
 		header       = block.Header()
 		time         = uint64(block.Time.Unix())
 		blockContext = NewEVMBlockContext(header, p.bc, nil)
@@ -95,27 +96,68 @@ func (p *StateProcessor) Process(
 	}
 
 	// Iterate over and process the individual transactions
-	for i, tx := range block.Transactions {
-		msg, err := TxAsMessage(tx, signer, header.BaseFee)
+	txCounter := 0
+	for _, tx := range block.Transactions {
+		counterBefore := txCounter
+		processed, err := runTransaction(tx, signer, header.BaseFee,
+			func(msg *core.Message, tx *types.Transaction) (*types.Receipt, error) {
+				statedb.SetTxContext(tx.Hash(), txCounter)
+				txCounter++
+				receipt, _, err := applyTransaction(
+					msg, gp, statedb, blockNumber, tx,
+					usedGas, vmenv, onNewLog,
+				)
+				return receipt, err
+			},
+		)
 		if err != nil {
-			log.Info("Failed to convert transaction to message", "tx", tx.Hash().Hex(), "err", err)
-			skipped = append(skipped, uint32(i))
-			receipts = append(receipts, nil)
-			continue // skip this transaction, but continue processing the rest of the block
+			log.Warn("Error processing transactions", "err", err)
 		}
 
-		statedb.SetTxContext(tx.Hash(), i)
-		receipt, _, err = applyTransaction(msg, gp, statedb, blockNumber, tx, usedGas, vmenv, onNewLog)
-		if err != nil {
-			log.Debug("Failed to apply transaction", "tx", tx.Hash().Hex(), "err", err)
-			skipped = append(skipped, uint32(i))
-			receipts = append(receipts, nil)
-			continue // skip this transaction, but continue processing the rest of the block
+		if len(processed) == 0 {
+			numSkipped++
+		} else {
+			result = append(result, processed...)
 		}
-		receipts = append(receipts, receipt)
-		allLogs = append(allLogs, receipt.Logs...)
+
+		// Ensure that even if the current transaction was skipped for any
+		// reason, the txCounter is still incremented. This means that the
+		// transaction index in the receipts might not match the index of
+		// the transaction in the block. This might actually be an issue in the
+		// block processing semantic, but to remain compatible with the existing
+		// behavior, we need to preserve this until we can safely change it.
+		if txCounter == counterBefore {
+			txCounter++
+		}
 	}
-	return receipts, allLogs, skipped
+	return result, numSkipped
+}
+
+// runTransaction handles the processing of the given transaction in an execution
+// environment provided by the run function. If enabled, it also handles sponsored
+// transactions by checking for sufficient sponsorship funds before executing the
+// sponsored transactions and charging the sponsorship fee after execution.
+func runTransaction(
+	tx *types.Transaction,
+	signer types.Signer,
+	baseFee *big.Int,
+	run func(*core.Message, *types.Transaction) (*types.Receipt, error),
+) ([]ProcessedTransaction, error) {
+	// TODO: add support for sponsored transactions
+	msg, err := TxAsMessage(tx, signer, baseFee)
+	if err != nil {
+		log.Info("Failed to convert transaction to message", "tx", tx.Hash().Hex(), "err", err)
+		return nil, err
+	}
+	receipt, err := run(msg, tx)
+	if err != nil {
+		log.Debug("Failed to apply transaction", "tx", tx.Hash().Hex(), "err", err)
+		return nil, err
+	}
+	return []ProcessedTransaction{{
+		Transaction: tx,
+		Receipt:     receipt,
+	}}, nil
 }
 
 // BeginBlock starts the processing of a new block and returns a function to
@@ -167,26 +209,25 @@ type TransactionProcessor struct {
 }
 
 // Run processes a single transaction in the block, where i is the index of
-// the transaction in the block. It returns the receipt of the transaction,
-// whether the transaction was skipped, and any error that occurred during
-// processing.
+// the transaction in the block. It returns the list of transactions processed
+// as a consequence of running the given transaction, which may be more than
+// one, and the associated receipts. An error is returned if the given
+// transaction could not be processed.
 func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) (
-	receipt *types.Receipt,
-	skipped bool,
-	err error,
+	[]ProcessedTransaction,
+	error,
 ) {
-	msg, err := TxAsMessage(tx, tp.signer, tp.header.BaseFee)
-	if err != nil {
-		return nil, false, fmt.Errorf(
-			"failed to convert transaction: %w", err,
-		)
-	}
-	tp.stateDb.SetTxContext(tx.Hash(), i)
-	receipt, _, err = applyTransaction(
-		msg, tp.gp, tp.stateDb, tp.blockNumber, tx,
-		&tp.usedGas, tp.vmEnvironment, tp.onNewLog,
+	return runTransaction(tx, tp.signer, tp.header.BaseFee,
+		func(msg *core.Message, tx *types.Transaction) (*types.Receipt, error) {
+			tp.stateDb.SetTxContext(tx.Hash(), i)
+			i++
+			receipt, _, err := applyTransaction(
+				msg, tp.gp, tp.stateDb, tp.blockNumber, tx,
+				&tp.usedGas, tp.vmEnvironment, tp.onNewLog,
+			)
+			return receipt, err
+		},
 	)
-	return receipt, err != nil, err
 }
 
 // ApplyTransactionWithEVM attempts to apply a transaction to the given state database
