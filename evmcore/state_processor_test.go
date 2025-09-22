@@ -119,8 +119,8 @@ func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
 			// Only passed transactions should be reported.
 			require.Len(processed, 2)
 
-			logMsg0 := &types.Log{Address: common.Address{0}}
-			logMsg2 := &types.Log{Address: common.Address{2}}
+			logMsg0 := &types.Log{Address: common.Address{0}, TxIndex: 0}
+			logMsg2 := &types.Log{Address: common.Address{2}, TxIndex: 2}
 
 			require.Equal(processed[0].Transaction, transactions[0])
 			require.NotNil(processed[0].Receipt)
@@ -165,6 +165,10 @@ func TestProcess_DetectsTransactionThatCanNotBeConvertedIntoAMessage(t *testing.
 	chainConfig := params.ChainConfig{}
 	chain := NewMockDummyChain(ctrl)
 
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	signer := types.FrontierSigner{}
+
 	// The conversion into a evmcore Message depends on the ability to check
 	// the signature and to derive the sender address. To stimulate a failure
 	// in the conversion, a invalid signature is used.
@@ -172,6 +176,11 @@ func TestProcess_DetectsTransactionThatCanNotBeConvertedIntoAMessage(t *testing.
 		types.NewTx(&types.LegacyTx{
 			Nonce: 1, To: &common.Address{}, Gas: 21_000,
 			R: big.NewInt(1), S: big.NewInt(2), V: big.NewInt(3),
+		}),
+		// Make sure that a transaction succeeding the failing one is processed
+		// correctly.
+		types.MustSignNewTx(key, signer, &types.LegacyTx{
+			Nonce: 0, To: &common.Address{}, Gas: 21_000,
 		}),
 	}
 
@@ -574,7 +583,10 @@ func getStateDbMockForTransactions(
 	state.EXPECT().GetLogs(any, any).DoAndReturn(
 		func(_, _ common.Hash) []*types.Log {
 			return []*types.Log{
-				{Address: common.Address{byte(*txIndex)}},
+				{
+					Address: common.Address{byte(*txIndex)},
+					TxIndex: uint(*txIndex),
+				},
 			}
 		},
 	).AnyTimes()
