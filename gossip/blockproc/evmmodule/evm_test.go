@@ -147,8 +147,7 @@ func TestOperaEVMProcessor_Execute_ProducesContinuousTxIndexesInLogsAndReceipts(
 		},
 	)
 
-	// Also the logs should be reported in consecutive order, one per
-	// transaction.
+	// Logs should be reported in consecutive order, one per transaction.
 	const N = 5
 	for i := range N * 3 {
 		logConsumer.EXPECT().OnNewLog(LogWithTxIndex(uint(i)))
