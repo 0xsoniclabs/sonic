@@ -17,10 +17,14 @@
 package gassubsidies
 
 import (
+	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
 
@@ -31,6 +35,20 @@ func TestGasSubsidies_CanBeEnabledAndDisabled(
 
 	// The network is initially started using the distributed protocol.
 	net := tests.StartIntegrationTestNet(t)
+
+	// make an account with 0 balance.
+	account := tests.MakeAccountWithBalance(t, net, big.NewInt(0))
+	address := account.Address()
+
+	zeroPriceTxs := []types.TxData{
+		&types.LegacyTx{GasPrice: big.NewInt(0), Gas: 100_000, To: &address},
+		&types.AccessListTx{GasPrice: big.NewInt(0), Gas: 100_000, To: &address},
+		&types.DynamicFeeTx{GasFeeCap: big.NewInt(0), Gas: 100_000, To: &address},
+		&types.BlobTx{GasFeeCap: uint256.NewInt(0), Gas: 100_000, To: address},
+		&types.SetCodeTx{GasFeeCap: uint256.NewInt(0), Gas: 100_000, To: address,
+			AuthList: []types.SetCodeAuthorization{{}}},
+	}
+
 	// a sliced is used here to ensure the forks get updated in an acceptable order.
 	upgrades := []struct {
 		name    string
@@ -46,10 +64,13 @@ func TestGasSubsidies_CanBeEnabledAndDisabled(
 			require.NoError(err)
 			defer client.Close()
 
-			// enforce the current upgrade
-			tests.UpdateNetworkRules(t, net, test.upgrade)
+			// enforce the current test upgrade
+			testRules := tests.GetNetworkRules(t, net)
+			testRules.Upgrades = test.upgrade
+			tests.UpdateNetworkRules(t, net, testRules)
+
 			// Advance the epoch by one to apply the change.
-			net.AdvanceEpoch(t, 1)
+			tests.AdvanceEpochAndWaitForBlocks(t, net)
 
 			// check original state
 			type upgrades struct {
@@ -64,6 +85,18 @@ func TestGasSubsidies_CanBeEnabledAndDisabled(
 			require.NoError(err)
 			require.Equal(false, originalRules.Upgrades.GasSubsidies, "GasSubsidies should be disabled initially")
 
+			for i, tx := range zeroPriceTxs {
+				signedTx := tests.SignTransaction(t, net.GetChainId(), tx, account)
+				err = client.SendTransaction(t.Context(), signedTx)
+
+				// setcode tx are not supported in sonic upgrade
+				if test.name == "sonic" && i == 4 {
+					require.ErrorAs(err, &evmcore.ErrTxTypeNotSupported, "setcode tx should not be supported in sonic upgrade")
+				} else {
+					require.ErrorAs(err, &evmcore.ErrSponsoredTransactionsNotSupported, "transaction with 0 gas price should be rejected when GasSubsidies is disabled")
+				}
+			}
+
 			// Enable gas subsidies.
 			rulesDiff := rulesType{
 				Upgrades: upgrades{GasSubsidies: true},
@@ -76,6 +109,18 @@ func TestGasSubsidies_CanBeEnabledAndDisabled(
 			err = client.Client().Call(&originalRules, "eth_getRules", "latest")
 			require.NoError(err)
 			require.Equal(true, originalRules.Upgrades.GasSubsidies, "GasSubsidies should be enabled after the update")
+
+			for i, tx := range zeroPriceTxs {
+				signedTx := tests.SignTransaction(t, net.GetChainId(), tx, account)
+				err = client.SendTransaction(t.Context(), signedTx)
+
+				// setcode tx are not supported in sonic upgrade
+				if test.name == "sonic" && i == 4 {
+					require.ErrorAs(err, &evmcore.ErrTxTypeNotSupported, "setcode tx should not be supported in sonic upgrade")
+				} else {
+					require.ErrorAs(err, &evmcore.ErrInsufficientSponsorship, "transaction with 0 gas price should be rejected when GasSubsidies is disabled")
+				}
+			}
 
 			// Disable gas subsidies.
 			rulesDiff = rulesType{
