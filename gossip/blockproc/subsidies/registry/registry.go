@@ -48,11 +48,11 @@ const GasLimitForDeductFeesCall = 100_000
 // (e.g. because the contract got modified), you can use the unit test
 // TestGenerateDeploymentTransaction to get fresh values for those variables.
 
-var creatorAddress = hexutil.MustDecode("0xC22D8cA2F7E277D2369393DdF977b58AC3dC3548")
-var contractAddress = hexutil.MustDecode("0xAB9d93f0589e1Ec5F6bB39F61535658f80ca60E9")
-var deploymentV = hexutil.MustDecode("0x1c")
-var deploymentR = hexutil.MustDecode("0xdce35359b218af10fd4c3c7c360e15a65e273384edb6a2d7bbaa41899d8b5388")
-var deploymentS = hexutil.MustDecode("0x3353f3d693771664f0cf40ccc721b97f57f5c0ed4d1088e4a314112c9bfd7909")
+var creatorAddress = hexutil.MustDecode("0x8749C01B2f3000a7b663D51d33a4F51642cA9e1D")
+var contractAddress = hexutil.MustDecode("0x254587776F4c518be8D6AfFCFFc1028403d9249b")
+var deploymentV = hexutil.MustDecode("0x1b")
+var deploymentR = hexutil.MustDecode("0xb5950f38a349285e77b8a80f8755c9b1f2e0ef1fe97caaa6a4509f28a8f68385")
+var deploymentS = hexutil.MustDecode("0x2d5d841da3345484702912424a4f7346ab6e6e32d6814964becce511807ecac5")
 
 // GetAddress returns the address of the deployed SubsidiesRegistry.
 func GetAddress() common.Address {

@@ -65,38 +65,6 @@ func testCanRunSubsidizedTransactions(t *testing.T, singleProposer bool) {
 	require.NoError(err)
 	defer client.Close()
 
-	// --- deploy the subsidies registry contract ---
-
-	// check that the contract is not deployed yet
-	registryAddress := registry.GetAddress()
-	nonce, err := client.NonceAt(t.Context(), registryAddress, nil)
-	require.NoError(err)
-	require.Equal(uint64(0), nonce)
-
-	// Deploy the subsidies registry contract.
-	tx, creator := registry.GetDeploymentTransaction()
-
-	receipt, err := net.EndowAccount(creator, new(big.Int).Mul(big.NewInt(1e18), big.NewInt(100)))
-	require.NoError(err)
-	require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
-
-	require.NoError(client.SendTransaction(t.Context(), tx))
-
-	receipt, err = net.GetReceipt(tx.Hash())
-	require.NoError(err)
-	require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
-
-	// check that the contract is deployed
-	nonce, err = client.NonceAt(t.Context(), registryAddress, nil)
-	require.NoError(err)
-	require.Equal(uint64(1), nonce)
-	code, err := client.CodeAt(t.Context(), registryAddress, nil)
-	require.NoError(err)
-	require.NotEmpty(code)
-	require.Equal(registry.GetCode(), code)
-
-	// -------------------------------------------------------------------------
-
 	sponsor := NewAccount()
 	sponsee := NewAccount()
 	receiver := NewAccount()
@@ -106,7 +74,7 @@ func testCanRunSubsidizedTransactions(t *testing.T, singleProposer bool) {
 	chainId := net.GetChainId()
 	receiverAddress := receiver.Address()
 	signer := types.LatestSignerForChainID(chainId)
-	tx, err = types.SignNewTx(sponsee.PrivateKey, signer, &types.LegacyTx{
+	tx, err := types.SignNewTx(sponsee.PrivateKey, signer, &types.LegacyTx{
 		To:       &receiverAddress,
 		Gas:      21000,
 		GasPrice: big.NewInt(0),
@@ -122,7 +90,7 @@ func testCanRunSubsidizedTransactions(t *testing.T, singleProposer bool) {
 	registry, err := registry.NewRegistry(registry.GetAddress(), client)
 	require.NoError(err)
 
-	receipt, err = net.EndowAccount(sponsor.Address(), big.NewInt(1e18))
+	receipt, err := net.EndowAccount(sponsor.Address(), big.NewInt(1e18))
 	require.NoError(err)
 	require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
 

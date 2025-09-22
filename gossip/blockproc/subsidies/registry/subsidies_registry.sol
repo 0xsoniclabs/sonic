@@ -9,7 +9,7 @@ contract SubsidiesRegistry {
       mapping(address => uint256) contributors;
     }
 
-    FeeBurner feeBurner;
+    FeeBurner private constant feeBurner = FeeBurner(0xFC00FACE00000000000000000000000000000000);
 
     // Global pot for any transaction
     Pot public globalSponsorship;
@@ -28,11 +28,6 @@ contract SubsidiesRegistry {
 
     // To -> Pot
     mapping(address => Pot) public contractSponsorships;
-
-
-    constructor(FeeBurner feeBurner_) {
-        feeBurner = feeBurner_;
-    }
 
     function sponsorGlobal() public payable{
         _addFunds(globalSponsorship, msg.sender, msg.value);
