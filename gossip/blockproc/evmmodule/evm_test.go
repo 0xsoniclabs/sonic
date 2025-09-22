@@ -17,6 +17,7 @@
 package evmmodule
 
 import (
+	"fmt"
 	"math"
 	"math/big"
 	"testing"
@@ -27,10 +28,14 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	tracing "github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
 	uint256 "github.com/holiman/uint256"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
+
+//go:generate mockgen -source=evm_test.go -destination=evm_test_mock.go -package=evmmodule
 
 func TestEvm_IgnoresGasPriceOfInternalTransactions(t *testing.T) {
 	ctrl := gomock.NewController(t)
@@ -100,4 +105,121 @@ func TestEvm_IgnoresGasPriceOfInternalTransactions(t *testing.T) {
 	if want, got := types.ReceiptStatusSuccessful, receipts[0].Status; want != got {
 		t.Errorf("Expected status %v, got %v", want, got)
 	}
+}
+
+func TestOperaEVMProcessor_Execute_ProducesContinuousTxIndexesInLogsAndReceipts(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	stateDb := state.NewMockStateDB(ctrl)
+	logConsumer := NewMock_onNewLog(ctrl)
+
+	any := gomock.Any()
+	stateDb.EXPECT().BeginBlock(any).AnyTimes()
+	stateDb.EXPECT().GetNonce(any).AnyTimes().Return(uint64(0))
+	stateDb.EXPECT().GetCode(any).AnyTimes().Return(nil)
+	stateDb.EXPECT().GetBalance(any).AnyTimes().Return(uint256.NewInt(1e18))
+	stateDb.EXPECT().SubBalance(any, any, any).AnyTimes()
+	stateDb.EXPECT().Prepare(any, any, any, any, any, any).AnyTimes()
+	stateDb.EXPECT().SetNonce(any, any, any).AnyTimes()
+	stateDb.EXPECT().Snapshot().AnyTimes().Return(1)
+	stateDb.EXPECT().Exist(any).AnyTimes().Return(true)
+	stateDb.EXPECT().AddBalance(any, any, any).AnyTimes()
+	stateDb.EXPECT().GetRefund().AnyTimes().Return(uint64(0))
+	stateDb.EXPECT().EndTransaction().AnyTimes()
+
+	// track the Tx index set in the state db
+	currentTxIndex := 0
+	stateDb.EXPECT().SetTxContext(any, any).AnyTimes().Do(
+		func(_ common.Hash, txIndex int) {
+			currentTxIndex = txIndex
+		},
+	)
+	stateDb.EXPECT().TxIndex().AnyTimes().DoAndReturn(
+		func() int {
+			return currentTxIndex
+		},
+	)
+	stateDb.EXPECT().GetLogs(any, any).AnyTimes().DoAndReturn(
+		func(_, _ common.Hash) []*types.Log {
+			return []*types.Log{{
+				TxIndex: uint(currentTxIndex),
+			}}
+		},
+	)
+
+	// Logs should be reported in consecutive order, one per transaction.
+	const N = 5
+	for i := range N * 3 {
+		logConsumer.EXPECT().OnNewLog(LogWithTxIndex(uint(i)))
+	}
+
+	evmModule := New()
+	processor := evmModule.Start(
+		iblockproc.BlockCtx{}, stateDb, nil, logConsumer.OnNewLog,
+		opera.Rules{}, &params.ChainConfig{}, common.Hash{},
+	)
+
+	key, err := crypto.GenerateKey()
+	require.NoError(err)
+
+	signer := types.LatestSignerForChainID(nil)
+	tx := types.MustSignNewTx(key, signer, &types.LegacyTx{
+		To: &common.Address{}, Nonce: 0, Gas: 21_0000,
+	})
+
+	// Make sure that the transaction index in the receipts is continuous
+	// across multiple Execute calls, even when some calls have multiple
+	// transactions and some have just one.
+	txIndex := uint(0)
+	for range N {
+		receipts := processor.Execute(types.Transactions{tx, tx}, math.MaxUint64)
+		require.Len(receipts, 2)
+		require.NotNil(receipts[0])
+		require.NotNil(receipts[1])
+		require.Equal(txIndex, receipts[0].TransactionIndex)
+		txIndex++
+		require.Equal(txIndex, receipts[1].TransactionIndex)
+		txIndex++
+
+		receipts = processor.Execute(types.Transactions{tx}, math.MaxUint64)
+		require.Len(receipts, 1)
+		require.NotNil(receipts[0])
+		require.Equal(txIndex, receipts[0].TransactionIndex)
+		txIndex++
+	}
+}
+
+// onNewLog is a helper interface to allow mocking the onNewLog function
+// passed to the EVM processor.
+type _onNewLog interface {
+	OnNewLog(*types.Log)
+}
+
+// Added to avoid unused warning of onNewLog interface which is only used for
+// generating the mock.
+var _ _onNewLog = (*Mock_onNewLog)(nil)
+
+// LogWithTxIndex creates a gomock matcher that matches a log message with the
+// given transaction index.
+func LogWithTxIndex(id any) gomock.Matcher {
+	if matcher, ok := id.(gomock.Matcher); ok {
+		return logWithTxIndex{txIndex: matcher}
+	}
+	return LogWithTxIndex(gomock.Eq(id))
+}
+
+type logWithTxIndex struct {
+	txIndex gomock.Matcher
+}
+
+func (i logWithTxIndex) Matches(arg any) bool {
+	log, ok := arg.(*types.Log)
+	if !ok || log == nil {
+		return false
+	}
+	return i.txIndex.Matches(log.TxIndex)
+}
+
+func (i logWithTxIndex) String() string {
+	return fmt.Sprintf("Log with TxIndex: %s", i.txIndex.String())
 }
