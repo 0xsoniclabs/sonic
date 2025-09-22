@@ -30,6 +30,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils/signers/gsignercache"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
 )
@@ -39,15 +40,21 @@ import (
 //
 // StateProcessor implements Processor.
 type StateProcessor struct {
-	config *params.ChainConfig // Chain configuration options
-	bc     DummyChain          // Canonical block chain
+	config   *params.ChainConfig // Chain configuration options
+	bc       DummyChain          // Canonical block chain
+	upgrades opera.Upgrades      // Upgrade information
 }
 
-// NewStateProcessor initialises a new StateProcessor.
-func NewStateProcessor(config *params.ChainConfig, bc DummyChain) *StateProcessor {
+// NewStateProcessor initializes a new StateProcessor.
+func NewStateProcessor(
+	config *params.ChainConfig,
+	bc DummyChain,
+	upgrades opera.Upgrades,
+) *StateProcessor {
 	return &StateProcessor{
-		config: config,
-		bc:     bc,
+		config:   config,
+		bc:       bc,
+		upgrades: upgrades,
 	}
 }
 
@@ -92,7 +99,7 @@ func (p *StateProcessor) Process(
 	// Iterate over and process the individual transactions
 	txCounter := 0
 	for _, tx := range block.Transactions {
-		processed, err := runTransaction(tx, signer, header.BaseFee, vmenv,
+		processed, err := runTransaction(p.upgrades, tx, signer, header.BaseFee, vmenv,
 			func(msg *core.Message, tx *types.Transaction, noBaseFee bool) (*types.Receipt, error) {
 				vmenv.Config.NoBaseFee = noBaseFee
 				statedb.SetTxContext(tx.Hash(), txCounter)
@@ -117,14 +124,17 @@ func (p *StateProcessor) Process(
 }
 
 func runTransaction(
+	upgrades opera.Upgrades,
 	tx *types.Transaction,
 	signer types.Signer,
 	baseFee *big.Int,
 	evm *vm.EVM,
 	run func(*core.Message, *types.Transaction, bool) (*types.Receipt, error),
 ) ([]ProcessedTransaction, error) {
-	if !internaltx.IsInternal(tx) && subsidies.IsSponsorshipRequest(tx) {
-		return runSponsoredTransaction(tx, signer, baseFee, evm, run)
+	if upgrades.GasSubsidies {
+		if !internaltx.IsInternal(tx) && subsidies.IsSponsorshipRequest(tx) {
+			return runSponsoredTransaction(tx, signer, baseFee, evm, run)
+		}
 	}
 	return runRegularTransaction(tx, signer, baseFee, run)
 }
@@ -250,6 +260,7 @@ func (p *StateProcessor) BeginBlock(
 	}
 
 	return &TransactionProcessor{
+		upgrades:      p.upgrades,
 		blockNumber:   blockNumber,
 		gp:            gp,
 		header:        header,
@@ -271,6 +282,7 @@ type TransactionProcessor struct {
 	stateDb       state.StateDB
 	usedGas       uint64
 	vmEnvironment *vm.EVM
+	upgrades      opera.Upgrades
 }
 
 // Run processes a single transaction in the block, where i is the index of
@@ -281,7 +293,7 @@ func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) (
 	_ []ProcessedTransaction,
 	err error,
 ) {
-	return runTransaction(tx, tp.signer, tp.header.BaseFee, tp.vmEnvironment,
+	return runTransaction(tp.upgrades, tx, tp.signer, tp.header.BaseFee, tp.vmEnvironment,
 		func(msg *core.Message, tx *types.Transaction, noBaseFee bool) (*types.Receipt, error) {
 			tp.vmEnvironment.Config.NoBaseFee = noBaseFee
 			tp.stateDb.SetTxContext(tx.Hash(), i)
