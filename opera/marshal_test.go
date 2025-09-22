@@ -145,6 +145,7 @@ func TestUpgradesRLP_CanBeEncodedAndDecoded(t *testing.T) {
 		func(u *Upgrades) { u.Allegro = true },
 		func(u *Upgrades) { u.SingleProposerBlockFormation = true },
 		func(u *Upgrades) { u.Brio = true },
+		func(u *Upgrades) { u.GasSubsidies = true },
 	}
 
 	for mask := range 1 << len(setUpgrade) {

@@ -46,6 +46,7 @@ const (
 
 	// optional features
 	singleProposerBlockFormationBit = 1 << 63
+	gasSubsidiesBit                 = 1 << 62
 
 	MinimumMaxBlockGas          = 5_000_000_000 // < must be large enough to allow internal transactions to seal blocks
 	MaximumMaxBlockGas          = math.MaxInt64 // < should fit into 64-bit signed integers to avoid parsing errors in third-party libraries
@@ -225,6 +226,21 @@ type Upgrades struct {
 	// It can be enabled or disabled at any time. Changes in the feature state
 	// become effective at the start of the next epoch.
 	SingleProposerBlockFormation bool
+
+	// GasSubsidies enables the gas subsidies feature, allowing
+	// transactions with zero gas price to be processed, provided
+	// that they are subsidized.
+	// This feature is introduced by V2.1.2 of the Sonic client. It thus
+	//
+	//    MUST ONLY BE ENABLED WHEN ALL NODES ARE RUNNING V2.1.2 OR LATER
+	//
+	// Any node not running V2.1.2 or later will ignore this flag, and
+	// transactions with zero gas price will not be accepted.
+	//
+	// Given the conditions stated above, the feature is considered optional.
+	// It can be enabled or disabled at any time. Changes in the feature state
+	// become effective at the start of the next epoch.
+	GasSubsidies bool
 }
 
 // UpgradeHeight contains the information about the block height at which
