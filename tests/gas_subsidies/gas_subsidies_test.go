@@ -24,6 +24,7 @@ import (
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -43,13 +44,13 @@ func TestGasSubsidies_CanRunSubsidizedTransactions(t *testing.T) {
 }
 
 func testCanRunSubsidizedTransactions(t *testing.T, singleProposer bool) {
-	require := require.New(t)
+	// --- Set up the test network ---
 
 	upgrades := opera.GetSonicUpgrades()
 	upgrades.SingleProposerBlockFormation = singleProposer
 	upgrades.GasSubsidies = true
 
-	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
+	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
 		//NumNodes: 3,
 		ModifyConfig: func(config *config.Config) {
 			// The transaction to deploy the subsidies registry contract has
@@ -62,12 +63,16 @@ func testCanRunSubsidizedTransactions(t *testing.T, singleProposer bool) {
 	})
 
 	client, err := net.GetClient()
-	require.NoError(err)
+	require.NoError(t, err)
 	defer client.Close()
 
-	sponsor := NewAccount()
-	sponsee := NewAccount()
-	receiver := NewAccount()
+	// -------------------------------------------------------------------------
+
+	sponsor := tests.NewAccount()
+	sponsee := tests.NewAccount()
+	receiver := tests.NewAccount()
+
+	// --- send transaction although there are no sponsorship funds yet ---
 
 	// Before the sponsorship is set up, a transaction from the sponsee
 	// to the receiver should fail due to lack of funds.
@@ -79,50 +84,79 @@ func testCanRunSubsidizedTransactions(t *testing.T, singleProposer bool) {
 		Gas:      21000,
 		GasPrice: big.NewInt(0),
 	})
-	require.NoError(err)
-	require.Error(
+	require.NoError(t, err)
+	require.Error(t,
 		client.SendTransaction(t.Context(), tx),
 		"should be rejected due to lack of funds and no sponsorship",
 	)
 
 	// --- deposit sponsorship funds ---
 
-	registry, err := registry.NewRegistry(registry.GetAddress(), client)
-	require.NoError(err)
-
-	receipt, err := net.EndowAccount(sponsor.Address(), big.NewInt(1e18))
-	require.NoError(err)
-	require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
-
-	receipt, err = net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
-		opts.Value = big.NewInt(1e16)
-		return registry.SponsorUser(opts, sponsee.Address(), receiver.Address())
-	})
-	require.NoError(err)
-	require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
-
-	// check that the sponsorship funds got deposited
 	donation := big.NewInt(1e16)
-	sponsorship, err := registry.UserSponsorships(nil, sponsee.Address(), receiver.Address())
-	require.NoError(err)
-	require.Equal(donation, sponsorship.Funds)
-
-	// --- try to submit a sponsored transaction ---
+	registry := createRegistryWithDonation(t, client, net, sponsor, sponsee, receiver, donation)
 
 	burnedBefore, err := client.BalanceAt(t.Context(), common.Address{}, nil)
-	require.NoError(err)
+	require.NoError(t, err)
 
-	// Now it should be possible to submit the transaction from the sponsee.
-	require.NoError(client.SendTransaction(t.Context(), tx))
+	// --- submit a sponsored transaction ---
+
+	receipt := sendSponsoredTransaction(t, client, net, tx)
+
+	// check that the sponsorship funds got deducted
+	ops := &bind.CallOpts{
+		BlockNumber: receipt.BlockNumber,
+	}
+	sponsorship, err := registry.UserSponsorships(ops, sponsee.Address(), receiver.Address())
+	require.NoError(t, err)
+	require.Less(t, sponsorship.Funds.Uint64(), donation.Uint64())
+
+	// the difference in the sponsorship funds should have been burned
+	burnedAfter, err := client.BalanceAt(t.Context(), common.Address{}, nil)
+	require.NoError(t, err)
+	require.Greater(t, burnedAfter.Uint64(), burnedBefore.Uint64())
+
+	// the sponsorship difference and the increase in burned funds should be equal
+	diff := new(big.Int).Sub(burnedAfter, burnedBefore)
+	reduced := new(big.Int).Sub(donation, sponsorship.Funds)
+	require.Equal(t, 0, diff.Cmp(reduced),
+		"the burned amount should equal the reduction of the sponsorship funds",
+	)
+}
+
+func createRegistryWithDonation(t *testing.T, client *tests.PooledEhtClient, net *tests.IntegrationTestNet, sponsor, sponsee, receiver *tests.Account, donation *big.Int) *registry.Registry {
+	registry, err := registry.NewRegistry(registry.GetAddress(), client)
+	require.NoError(t, err)
+
+	receipt, err := net.EndowAccount(sponsor.Address(), big.NewInt(1e18))
+	require.NoError(t, err)
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+
+	receipt, err = net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
+		opts.Value = donation
+		return registry.SponsorUser(opts, sponsee.Address(), receiver.Address())
+	})
+	require.NoError(t, err)
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+
+	// check that the sponsorship funds got deposited
+	sponsorship, err := registry.UserSponsorships(nil, sponsee.Address(), receiver.Address())
+	require.NoError(t, err)
+	require.Equal(t, donation, sponsorship.Funds)
+
+	return registry
+}
+
+func sendSponsoredTransaction(t *testing.T, client *tests.PooledEhtClient, net *tests.IntegrationTestNet, tx *types.Transaction) *types.Receipt {
+	require.NoError(t, client.SendTransaction(t.Context(), tx))
 
 	// Wait for the sponsored transaction to be executed.
-	receipt, err = net.GetReceipt(tx.Hash())
-	require.NoError(err)
-	require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
+	receipt, err := net.GetReceipt(tx.Hash())
+	require.NoError(t, err)
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
 	block, err := client.BlockByNumber(t.Context(), receipt.BlockNumber)
-	require.NoError(err)
-	require.True(slices.ContainsFunc(
+	require.NoError(t, err)
+	require.True(t, slices.ContainsFunc(
 		block.Transactions(),
 		func(cur *types.Transaction) bool {
 			return cur.Hash() == tx.Hash()
@@ -134,47 +168,17 @@ func testCanRunSubsidizedTransactions(t *testing.T, singleProposer bool) {
 	found := false
 	for i, tx := range block.Transactions() {
 		if tx.Hash() == receipt.TxHash {
-			require.Less(i, len(block.Transactions()))
+			require.Less(t, i, len(block.Transactions()))
 			payment := block.Transactions()[i+1]
 			receipt, err := net.GetReceipt(payment.Hash())
-			require.NoError(err)
-			require.Less(receipt.GasUsed, uint64(100_000))
-			require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
+			require.NoError(t, err)
+			require.Less(t, receipt.GasUsed, uint64(100_000))
+			require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 			found = true
 			break
 		}
 	}
-	require.True(found, "sponsored transaction not found in the block")
+	require.True(t, found, "sponsored transaction not found in the block")
 
-	// check that the sponsorship funds got deducted
-	ops := &bind.CallOpts{
-		BlockNumber: receipt.BlockNumber,
-	}
-	sponsorship, err = registry.UserSponsorships(ops, sponsee.Address(), receiver.Address())
-	require.NoError(err)
-	require.Less(sponsorship.Funds.Uint64(), donation.Uint64())
-
-	// the different in the sponsorship funds should have been burned
-	burnedAfter, err := client.BalanceAt(t.Context(), common.Address{}, nil)
-	require.NoError(err)
-	require.Greater(burnedAfter.Uint64(), burnedBefore.Uint64())
-
-	// the sponsorship difference and the increase in burned funds should be equal
-	diff := new(big.Int).Sub(burnedAfter, burnedBefore)
-	reduced := new(big.Int).Sub(donation, sponsorship.Funds)
-	require.Equal(0, diff.Cmp(reduced),
-		"the burned amount should equal the reduction of the sponsorship funds",
-	)
+	return receipt
 }
-
-// TODO: test the following properties
-//  - sponsorship requests work with all types of transactions (legacy, dynamic fee, etc.)
-//  - check the enforcement of the GasSponsorship flag in the network rules
-//  - check that the sponsorship funds are correctly deducted after a sponsored tx
-//  - check that the sponsorship request is rejected if there are insufficient funds
-//  - check that the sponsorship request is rejected if the registry contract is not deployed
-//  - test that fee charging transactions and sealing transactions use proper nonces (incrementally, no gaps)
-//  - test cumulative gas usage of multiple sponsored transactions in a block
-//  - test receipt to transaction mapping in blocks with (multiple) sponsored transactions and internal transactions
-//  - test correct log message indexing in blocks with (multiple) sponsored transactions and internal transactions
-//  - test correct nonce usage of internal transactions (pre-, post- and fee charging transactions
