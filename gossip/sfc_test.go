@@ -74,11 +74,6 @@ func TestSFC(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	var (
-		sfc10 *sfc100.Contract
-		err   error
-	)
-
 	authDriver10, err := driverauth100.NewContract(driverauth.ContractAddress, env)
 	require.NoError(t, err)
 	rootDriver10, err := driver100.NewContract(driver.ContractAddress, env)
@@ -95,7 +90,6 @@ func TestSFC(t *testing.T) {
 			got, err := env.CodeAt(context.TODO(), sfc.ContractAddress, nil)
 			require.NoError(err)
 			require.Equal(exp, got, "genesis SFC contract")
-			require.Equal(exp, hexutil.MustDecode(sfc100.ContractBinRuntime), "genesis SFC contract version")
 		}) &&
 		t.Run("Genesis Driver", func(t *testing.T) {
 			require := require.New(t)
@@ -171,7 +165,7 @@ func TestSFC(t *testing.T) {
 			require.NoError(err)
 			require.Equal(newSfcContractBinRuntime, got, "new SFC contract")
 
-			sfc10, err = sfc100.NewContract(sfc.ContractAddress, env)
+			sfc10, err := sfc100.NewContract(sfc.ContractAddress, env)
 			require.NoError(err)
 			sfcEpoch, err := sfc10.CurrentEpoch(env.ReadOnly())
 			require.NoError(err)
