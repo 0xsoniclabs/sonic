@@ -229,7 +229,7 @@ type Upgrades struct {
 
 	// GasSubsidies enables the gas subsidies feature, allowing
 	// transactions with zero gas price to be processed, provided
-	// that they are covered by a sponsorship.
+	// that they are subsidized.
 	// This feature is introduced by V2.1.2 of the Sonic client. It thus
 	//
 	//    MUST ONLY BE ENABLED WHEN ALL NODES ARE RUNNING V2.1.2 OR LATER

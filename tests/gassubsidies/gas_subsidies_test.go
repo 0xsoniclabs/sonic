@@ -38,6 +38,7 @@ func TestGasSubsidies_CanBeEnabledAndDisabled(
 	}{
 		{name: "sonic", upgrade: opera.GetSonicUpgrades()},
 		{name: "allegro", upgrade: opera.GetAllegroUpgrades()},
+		// Brio is commented out until the gas cap is properly handled for internal transactions.
 		//{name: "brio", upgrade: opera.GetBrioUpgrades()},
 	}
 	for _, test := range upgrades {
@@ -47,9 +48,11 @@ func TestGasSubsidies_CanBeEnabledAndDisabled(
 			defer client.Close()
 
 			// enforce the current upgrade
-			tests.UpdateNetworkRules(t, net, test.upgrade)
+			testRules := tests.GetNetworkRules(t, net)
+			testRules.Upgrades = test.upgrade
+			tests.UpdateNetworkRules(t, net, testRules)
 			// Advance the epoch by one to apply the change.
-			net.AdvanceEpoch(t, 1)
+			tests.AdvanceEpochAndWaitForBlocks(t, net)
 
 			// check original state
 			type upgrades struct {
