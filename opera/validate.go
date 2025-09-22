@@ -287,5 +287,7 @@ func validateUpgrades(old, new Upgrades) error {
 		issues = append(issues, errors.New("Brio upgrade cannot be disabled"))
 	}
 
+	// The GasSubsidies feature can be freely modified.
+
 	return errors.Join(issues...)
 }
