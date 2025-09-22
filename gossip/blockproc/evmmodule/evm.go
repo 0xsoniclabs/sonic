@@ -138,7 +138,7 @@ func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlo
 }
 
 func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) []evmcore.ProcessedTransaction {
-	evmProcessor := evmcore.NewStateProcessor(p.evmCfg, p.reader)
+	evmProcessor := evmcore.NewStateProcessor(p.evmCfg, p.reader, p.net.Upgrades)
 	txsOffset := uint(len(p.processedTxs))
 
 	vmConfig := opera.GetVmConfig(p.rules)
