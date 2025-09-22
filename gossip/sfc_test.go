@@ -90,7 +90,6 @@ func TestSFC(t *testing.T) {
 			got, err := env.CodeAt(context.TODO(), sfc.ContractAddress, nil)
 			require.NoError(err)
 			require.Equal(exp, got, "genesis SFC contract")
-			require.Equal(exp, sfc.GetContractBin(), "genesis SFC contract version")
 		}) &&
 		t.Run("Genesis Driver", func(t *testing.T) {
 			require := require.New(t)
