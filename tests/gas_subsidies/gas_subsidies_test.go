@@ -260,3 +260,88 @@ func TestGasSubsidies_CanBeEnabledAndDisabled(
 		})
 	}
 }
+
+func TestGasSubsidies_InternalTransactionHasConsecutiveNonce(t *testing.T) {
+	require := require.New(t)
+
+	upgrades := opera.GetAllegroUpgrades()
+	upgrades.GasSubsidies = true
+	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+		Upgrades: &upgrades,
+	})
+
+	client, err := net.GetClient()
+	require.NoError(err)
+	defer client.Close()
+
+	sponsor := tests.NewAccount()
+	sponsee := tests.NewAccount()
+	receiver := tests.NewAccount()
+	donation := big.NewInt(1e16)
+
+	// set up sponsorship
+	createRegistryWithDonation(t, client, net, sponsor, sponsee, receiver, donation)
+
+	interanlNonce, err := client.PendingNonceAt(t.Context(), common.Address{})
+	require.NoError(err)
+
+	receipt := sendSponsoredTransactionWithNonce(t, net, receiver.Address(), sponsee, 0)
+
+	txIndex, block := getTransactionIndexInBlock(t, client, receipt)
+	require.Less(txIndex, len(block.Transactions())-1,
+		"the sponsored transaction should not be the last transaction in the block",
+	)
+	// check that the payment transaction has the same nonce as the internal transaction
+	payment := block.Transactions()[txIndex+1]
+	require.False(payment.Protected()) // should be a nonce-signed transaction
+	require.Equal(interanlNonce, payment.Nonce(),
+		"the payment transaction should have the same nonce as the internal transaction",
+	)
+
+	receipt = sendSponsoredTransactionWithNonce(t, net, receiver.Address(), sponsee, 1)
+
+	txIndex, block = getTransactionIndexInBlock(t, client, receipt)
+
+	require.Less(txIndex, len(block.Transactions())-1,
+		"the sponsored transaction should not be the last transaction in the block",
+	)
+	payment = block.Transactions()[txIndex+1]
+	require.False(payment.Protected()) // should be a nonce-signed transaction
+	require.Equal(interanlNonce+1, payment.Nonce(),
+		"the payment transaction should have nonce incremented by 1",
+	)
+}
+
+func sendSponsoredTransactionWithNonce(t *testing.T, net *tests.IntegrationTestNet, receiver common.Address, sender *tests.Account, nonce uint64) *types.Receipt {
+	require := require.New(t)
+
+	signer := types.LatestSignerForChainID(net.GetChainId())
+	client, err := net.GetClient()
+	require.NoError(err)
+	defer client.Close()
+	sponsoredTx, err := types.SignNewTx(sender.PrivateKey, signer, &types.LegacyTx{
+		To:       &receiver,
+		Gas:      21000,
+		GasPrice: big.NewInt(0),
+		Nonce:    nonce,
+	})
+	require.NoError(err)
+
+	receipt := sendSponsoredTransaction(t, client, net, sponsoredTx)
+	return receipt
+}
+
+func getTransactionIndexInBlock(t *testing.T, client *tests.PooledEhtClient, receipt *types.Receipt) (int, *types.Block) {
+	require := require.New(t)
+
+	block, err := client.BlockByNumber(t.Context(), receipt.BlockNumber)
+	require.NoError(err)
+
+	for i, tx := range block.Transactions() {
+		if tx.Hash() == receipt.TxHash {
+			return i, block
+		}
+	}
+	require.Fail("transaction not found in block")
+	return -1, nil
+}
