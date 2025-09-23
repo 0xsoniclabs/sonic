@@ -38,13 +38,13 @@ const (
 	// The patch version, which must only be non-zero for release candidates
 	// and official releases. All development versions must have a patch
 	// version of 0.
-	Patch = 1
+	Patch = 2
 
 	// The pre-release version. This is set to "dev" for development versions
 	// on the main branch and should be updated to "rc.X" for release candidates
 	// on release branches only. For a final release, this must be set to an
 	// empty string. All other values are invalid.
-	PreRelease = ""
+	PreRelease = "rc.1"
 )
 
 // Get returns the complete version information.
