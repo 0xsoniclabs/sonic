@@ -44,7 +44,7 @@ const (
 	// on the main branch and should be updated to "rc.X" for release candidates
 	// on release branches only. For a final release, this must be set to an
 	// empty string. All other values are invalid.
-	PreRelease = "rc.2"
+	PreRelease = ""
 )
 
 // Get returns the complete version information.
