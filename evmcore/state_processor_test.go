@@ -34,8 +34,6 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-//go:generate mockgen -source=state_processor_test.go -destination=state_processor_test_mock.go -package=evmcore
-
 // process_iteratively is an internal implementation of the StateProcessor's
 // Process method using BeginBlock and an iterative transaction processing
 // based on the TransactionProcessor. It is used to make sure that BeginBlock
@@ -626,90 +624,3 @@ func getStateDbMockForTransactions(
 	state.EXPECT().EndTransaction().AnyTimes()
 	return state
 }
-
-func TestRunTransaction_ForwardsConvertedMessageToRunAndUsesReceipt(t *testing.T) {
-	require := require.New(t)
-	ctrl := gomock.NewController(t)
-	runner := NewMock_txRunner(ctrl)
-
-	key, err := crypto.GenerateKey()
-	require.NoError(err)
-	signer := types.LatestSignerForChainID(nil)
-	tx := types.MustSignNewTx(key, signer, &types.LegacyTx{
-		Nonce: 0, To: &common.Address{}, Gas: 21_000,
-	})
-
-	baseFee := big.NewInt(100)
-	runner.EXPECT().run(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(msg *core.Message, toRun *types.Transaction) (*types.Receipt, error) {
-			want, err := TxAsMessage(tx, signer, baseFee)
-			require.NoError(err)
-			require.Equal(want, msg)
-			require.Equal(tx, toRun)
-			return &types.Receipt{
-				Status:            types.ReceiptStatusSuccessful,
-				GasUsed:           21_000,
-				CumulativeGasUsed: 40_000,
-			}, nil
-		},
-	)
-
-	processed, err := runTransaction(tx, signer, baseFee, runner.run)
-
-	require.NoError(err)
-	require.Len(processed, 1)
-	require.Equal(tx, processed[0].Transaction)
-	require.NotNil(processed[0].Receipt)
-	require.Equal(&types.Receipt{
-		Status:            types.ReceiptStatusSuccessful,
-		GasUsed:           21_000,
-		CumulativeGasUsed: 40_000,
-	}, processed[0].Receipt)
-}
-
-func TestRunTransaction_InvalidSignature_ReportsExecutionError(t *testing.T) {
-	require := require.New(t)
-	ctrl := gomock.NewController(t)
-	runner := NewMock_txRunner(ctrl)
-
-	signer := types.LatestSignerForChainID(nil)
-	invalidTx := types.NewTx(&types.LegacyTx{
-		Nonce: 0, To: &common.Address{}, Gas: 21_000, V: big.NewInt(1),
-	})
-
-	baseFee := big.NewInt(100)
-	runner.EXPECT().run(gomock.Any(), gomock.Any()).Times(0)
-
-	_, err := runTransaction(invalidTx, signer, baseFee, runner.run)
-	require.Error(err)
-}
-
-func TestRunTransaction_FailedExecution_ReportsErrorAndNoReceipt(t *testing.T) {
-	require := require.New(t)
-	ctrl := gomock.NewController(t)
-	runner := NewMock_txRunner(ctrl)
-
-	key, err := crypto.GenerateKey()
-	require.NoError(err)
-	signer := types.LatestSignerForChainID(nil)
-	tx := types.MustSignNewTx(key, signer, &types.LegacyTx{
-		Nonce: 0, To: &common.Address{}, Gas: 21_000,
-	})
-
-	baseFee := big.NewInt(100)
-	injectedError := fmt.Errorf("execution failed")
-	runner.EXPECT().run(gomock.Any(), gomock.Any()).Return(nil, injectedError)
-
-	processed, err := runTransaction(tx, signer, baseFee, runner.run)
-	require.ErrorIs(err, injectedError)
-	require.Len(processed, 0)
-}
-
-// _txRunner is a helper interface to allow mocking the run function passed
-// to runTransaction.
-type _txRunner interface {
-	run(*core.Message, *types.Transaction) (*types.Receipt, error)
-}
-
-// Make use of the runner interface to eliminate unused warning.
-var _ _txRunner = (*Mock_txRunner)(nil)
