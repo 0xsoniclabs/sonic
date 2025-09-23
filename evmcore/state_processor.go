@@ -77,7 +77,7 @@ func (p *StateProcessor) Process(
 	block *EvmBlock, statedb state.StateDB, cfg vm.Config, gasLimit uint64,
 	usedGas *uint64, onNewLog func(*types.Log),
 ) (
-	_ []ProcessedTransaction, numSkipped int,
+	[]ProcessedTransaction, int,
 ) {
 	result := make([]ProcessedTransaction, 0, 2*len(block.Transactions))
 	var (
@@ -88,6 +88,7 @@ func (p *StateProcessor) Process(
 		vmenv        = vm.NewEVM(blockContext, statedb, p.config, cfg)
 		blockNumber  = block.Number
 		signer       = gsignercache.Wrap(types.MakeSigner(p.config, header.Number, time))
+		numSkipped   = 0
 	)
 
 	// execute EIP-2935 HistoryStorage contract.
@@ -111,7 +112,7 @@ func (p *StateProcessor) Process(
 			},
 		)
 		if err != nil {
-			log.Warn("Error processing transactions", "err", err)
+			log.Warn("Error processing transaction", "tx", tx.Hash().Hex(), "err", err)
 		}
 
 		if len(processed) == 0 {

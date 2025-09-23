@@ -60,7 +60,12 @@ func (p *StateProcessor) process_iteratively(
 			continue
 		}
 		processed = append(processed, newProcessed...)
-		*usedGas = newProcessed[len(newProcessed)-1].Receipt.CumulativeGasUsed
+
+		// Update the used gas to reflect the cumulative gas used so far, as
+		// reported by the last processed transaction.
+		if len(newProcessed) > 0 {
+			*usedGas = newProcessed[len(newProcessed)-1].Receipt.CumulativeGasUsed
+		}
 	}
 
 	return processed, skipped
@@ -568,8 +573,8 @@ type processFunction = func(
 	usedGas *uint64,
 	onNewLog func(*types.Log),
 ) (
-	_ []ProcessedTransaction,
-	numSkipped int,
+	[]ProcessedTransaction,
+	int,
 )
 
 func getStateDbMockForTransactions(
