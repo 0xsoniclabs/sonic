@@ -18,6 +18,7 @@ package evmcore
 
 import (
 	"fmt"
+	"iter"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -77,7 +78,7 @@ func (p *StateProcessor) Process(
 	block *EvmBlock, statedb state.StateDB, cfg vm.Config, gasLimit uint64,
 	usedGas *uint64, onNewLog func(*types.Log),
 ) (
-	_ []ProcessedTransaction, numSkipped int,
+	[]ProcessedTransaction, int,
 ) {
 	result := make([]ProcessedTransaction, 0, 2*len(block.Transactions))
 	var (
@@ -88,6 +89,7 @@ func (p *StateProcessor) Process(
 		vmenv        = vm.NewEVM(blockContext, statedb, p.config, cfg)
 		blockNumber  = block.Number
 		signer       = gsignercache.Wrap(types.MakeSigner(p.config, header.Number, time))
+		numSkipped   = 0
 	)
 
 	// execute EIP-2935 HistoryStorage contract.
@@ -96,68 +98,37 @@ func (p *StateProcessor) Process(
 	}
 
 	// Iterate over and process the individual transactions
-	txCounter := 0
-	for _, tx := range block.Transactions {
-		counterBefore := txCounter
-		processed, err := runTransaction(tx, signer, header.BaseFee,
-			func(msg *core.Message, tx *types.Transaction) (*types.Receipt, error) {
-				statedb.SetTxContext(tx.Hash(), txCounter)
-				txCounter++
-				receipt, _, err := applyTransaction(
-					msg, gp, statedb, blockNumber, tx,
-					usedGas, vmenv, onNewLog,
-				)
-				return receipt, err
-			},
-		)
+	for i, tx := range applySubsidies(block.Transactions) {
+		msg, err := TxAsMessage(tx, signer, header.BaseFee)
 		if err != nil {
-			log.Warn("Error processing transactions", "err", err)
-		}
-
-		if len(processed) == 0 {
+			log.Info("Failed to convert transaction to message", "tx", tx.Hash().Hex(), "err", err)
 			numSkipped++
-		} else {
-			result = append(result, processed...)
+			continue // skip this transaction, but continue processing the rest of the block
 		}
 
-		// Ensure that even if the current transaction was skipped for any
-		// reason, the txCounter is still incremented. This means that the
-		// transaction index in the receipts might not match the index of
-		// the transaction in the block. This might actually be an issue in the
-		// block processing semantic, but to remain compatible with the existing
-		// behavior, we need to preserve this until we can safely change it.
-		if txCounter == counterBefore {
-			txCounter++
+		statedb.SetTxContext(tx.Hash(), i)
+		receipt, _, err := applyTransaction(msg, gp, statedb, blockNumber, tx, usedGas, vmenv, onNewLog)
+		if err != nil {
+			numSkipped++
+			continue // skip this transaction, but continue processing the rest of the block
 		}
+
+		result = append(result, ProcessedTransaction{Transaction: tx, Receipt: receipt})
 	}
 	return result, numSkipped
 }
 
-// runTransaction handles the processing of the given transaction in an execution
-// environment provided by the run function. If enabled, it also handles sponsored
-// transactions by checking for sufficient sponsorship funds before executing the
-// sponsored transactions and charging the sponsorship fee after execution.
-func runTransaction(
-	tx *types.Transaction,
-	signer types.Signer,
-	baseFee *big.Int,
-	run func(*core.Message, *types.Transaction) (*types.Receipt, error),
-) ([]ProcessedTransaction, error) {
-	// TODO: add support for sponsored transactions
-	msg, err := TxAsMessage(tx, signer, baseFee)
-	if err != nil {
-		log.Info("Failed to convert transaction to message", "tx", tx.Hash().Hex(), "err", err)
-		return nil, err
+func applySubsidies(transactions []*types.Transaction) iter.Seq2[int, *types.Transaction] {
+	return func(yield func(int, *types.Transaction) bool) {
+		for i, tx := range transactions {
+			// TODO: check and inject internal subsidy transactions here
+			// if tx has price 0 and is subsidized, yield 2 txs instead of one
+			// and increment i accordingly.
+			if !yield(i, tx) {
+				return
+			}
+		}
 	}
-	receipt, err := run(msg, tx)
-	if err != nil {
-		log.Debug("Failed to apply transaction", "tx", tx.Hash().Hex(), "err", err)
-		return nil, err
-	}
-	return []ProcessedTransaction{{
-		Transaction: tx,
-		Receipt:     receipt,
-	}}, nil
 }
 
 // BeginBlock starts the processing of a new block and returns a function to
@@ -214,20 +185,22 @@ type TransactionProcessor struct {
 // one, and the associated receipts. An error is returned if the given
 // transaction could not be processed.
 func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) (
-	[]ProcessedTransaction,
-	error,
-) {
-	return runTransaction(tx, tp.signer, tp.header.BaseFee,
-		func(msg *core.Message, tx *types.Transaction) (*types.Receipt, error) {
-			tp.stateDb.SetTxContext(tx.Hash(), i)
-			i++
-			receipt, _, err := applyTransaction(
-				msg, tp.gp, tp.stateDb, tp.blockNumber, tx,
-				&tp.usedGas, tp.vmEnvironment, tp.onNewLog,
-			)
-			return receipt, err
-		},
-	)
+	[]ProcessedTransaction, error) {
+	result := make([]ProcessedTransaction, 0, 2)
+
+	msg, err := TxAsMessage(tx, tp.signer, tp.header.BaseFee)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to convert transaction to message: tx, tx.Hash().Hex() %w", err)
+	}
+
+	tp.stateDb.SetTxContext(tx.Hash(), i)
+	receipt, _, err := applyTransaction(msg, tp.gp, tp.stateDb, tp.blockNumber, tx, &tp.usedGas, tp.vmEnvironment, tp.onNewLog)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to apply transaction: tx %w", err)
+	}
+
+	result = append(result, ProcessedTransaction{Transaction: tx, Receipt: receipt})
+	return result, nil
 }
 
 // ApplyTransactionWithEVM attempts to apply a transaction to the given state database
