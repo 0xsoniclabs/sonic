@@ -92,9 +92,10 @@ type OperaEVMProcessor struct {
 
 	gasUsed uint64
 
-	processedTxs []evmcore.ProcessedTransaction
-	numSkipped   int
-	prevRandao   common.Hash
+	incomingTxs types.Transactions
+	skippedTxs  []uint32
+	receipts    types.Receipts
+	prevRandao  common.Hash
 
 	rules opera.Rules
 }
@@ -137,43 +138,49 @@ func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlo
 	return evmcore.NewEvmBlock(h, txs)
 }
 
-func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) []evmcore.ProcessedTransaction {
+func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) types.Receipts {
 	evmProcessor := evmcore.NewStateProcessor(p.evmCfg, p.reader)
-	txsOffset := uint(len(p.processedTxs))
+	txsOffset := uint(len(p.incomingTxs))
 
 	vmConfig := opera.GetVmConfig(p.rules)
 
 	// Process txs
 	evmBlock := p.evmBlockWith(txs)
-	processed, skipped := evmProcessor.Process(evmBlock, p.statedb, vmConfig, gasLimit, &p.gasUsed, func(l *types.Log) {
+	receipts, _, skipped := evmProcessor.Process(evmBlock, p.statedb, vmConfig, gasLimit, &p.gasUsed, func(l *types.Log) {
 		// Note: l.Index is properly set before
 		l.TxIndex += txsOffset
 		p.onNewLog(l)
 	})
 
-	p.numSkipped += skipped
-
 	if txsOffset > 0 {
-		for _, cur := range processed {
-			if cur.Receipt != nil {
-				cur.Receipt.TransactionIndex += txsOffset
+		for i, n := range skipped {
+			skipped[i] = n + uint32(txsOffset)
+		}
+		for _, r := range receipts {
+			if r != nil {
+				r.TransactionIndex += txsOffset
 			}
 		}
 	}
 
-	p.processedTxs = append(p.processedTxs, processed...)
-	return processed
-}
-
-func (p *OperaEVMProcessor) Finalize() (*evmcore.EvmBlock, types.Receipts, int) {
-	transactions := make(types.Transactions, 0, len(p.processedTxs))
-	receipts := make(types.Receipts, 0, len(p.processedTxs))
-	for _, cur := range p.processedTxs {
-		transactions = append(transactions, cur.Transaction)
-		receipts = append(receipts, cur.Receipt)
+	p.incomingTxs = append(p.incomingTxs, txs...)
+	p.skippedTxs = append(p.skippedTxs, skipped...)
+	for _, receipt := range receipts {
+		if receipt != nil {
+			p.receipts = append(p.receipts, receipt)
+		}
 	}
 
-	evmBlock := p.evmBlockWith(transactions)
+	return receipts
+}
+
+func (p *OperaEVMProcessor) Finalize() (evmBlock *evmcore.EvmBlock, skippedTxs []uint32, receipts types.Receipts) {
+	evmBlock = p.evmBlockWith(
+		// Filter skipped transactions. Receipts are filtered already
+		filterSkippedTxs(p.incomingTxs, p.skippedTxs),
+	)
+	skippedTxs = p.skippedTxs
+	receipts = p.receipts
 
 	// Commit block
 	p.statedb.EndBlock(evmBlock.Number.Uint64())
@@ -181,5 +188,23 @@ func (p *OperaEVMProcessor) Finalize() (*evmcore.EvmBlock, types.Receipts, int) 
 	// Get state root
 	evmBlock.Root = p.statedb.GetStateHash()
 
-	return evmBlock, receipts, p.numSkipped
+	return
+}
+
+func filterSkippedTxs(txs types.Transactions, skippedTxs []uint32) types.Transactions {
+	if len(skippedTxs) == 0 {
+		// short circuit if nothing to skip
+		return txs
+	}
+	skipCount := 0
+	filteredTxs := make(types.Transactions, 0, len(txs))
+	for i, tx := range txs {
+		if skipCount < len(skippedTxs) && skippedTxs[skipCount] == uint32(i) {
+			skipCount++
+		} else {
+			filteredTxs = append(filteredTxs, tx)
+		}
+	}
+
+	return filteredTxs
 }
