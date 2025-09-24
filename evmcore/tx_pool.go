@@ -709,8 +709,11 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 func (pool *TxPool) checkDelegationLimit(tx *types.Transaction) error {
 	from, _ := types.Sender(pool.signer, tx) // validated
 
+	codeHash := pool.currentState.GetCodeHash(from)
+	hasNoCode := codeHash == types.EmptyCodeHash || codeHash == common.Hash{}
+
 	// early return if the sender has neither delegation nor pending delegation.
-	if pool.currentState.GetCodeHash(from) == types.EmptyCodeHash && len(pool.all.auths[from]) == 0 {
+	if hasNoCode && len(pool.all.auths[from]) == 0 {
 		return nil
 	}
 	pending := pool.pending[from]
