@@ -28,4 +28,5 @@ ignore:
   - "tests/"
   - "**/*_mock.go"
   - "**/*_test.go"
+  - "**/*_abigen.go"
   - "**/*.pb.go"
