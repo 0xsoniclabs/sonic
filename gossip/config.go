@@ -38,6 +38,8 @@ import (
 )
 
 const nominalSize uint = 1
+const dagBufferNumLimitCoefficient = 5
+const dagBufferSizeLimitCoefficient = 28
 
 type (
 	// ProtocolConfig is config for p2p protocol
@@ -166,8 +168,8 @@ func DefaultConfig(scale cachescale.Func) Config {
 				Size: scale.U64(30 * opt.MiB),
 			},
 			EventsSemaphoreLimit: dag.Metric{
-				Num:  scale.Events(10000),
-				Size: scale.U64(30 * opt.MiB),
+				Num:  scale.Events(32510),
+				Size: scale.U64(200 * opt.MiB),
 			},
 			BVsSemaphoreLimit: dag.Metric{
 				Num:  scale.Events(5000),
@@ -224,8 +226,9 @@ func DefaultConfig(scale cachescale.Func) Config {
 	}
 	sessionCfg := cfg.Protocol.DagStreamLeecher.Session
 	cfg.Protocol.DagProcessor.EventsBufferLimit.Num = idx.Event(sessionCfg.ParallelChunksDownload)*
-		idx.Event(sessionCfg.DefaultChunkItemsNum) + softLimitItems
-	cfg.Protocol.DagProcessor.EventsBufferLimit.Size = uint64(sessionCfg.ParallelChunksDownload)*sessionCfg.DefaultChunkItemsSize + 8*opt.MiB
+		idx.Event(sessionCfg.DefaultChunkItemsNum)*dagBufferNumLimitCoefficient + softLimitItems
+	cfg.Protocol.DagProcessor.EventsBufferLimit.Size = uint64(sessionCfg.ParallelChunksDownload)*
+		sessionCfg.DefaultChunkItemsSize*dagBufferSizeLimitCoefficient + 8*opt.MiB
 	cfg.Protocol.DagStreamLeecher.MaxSessionRestart = 4 * time.Minute
 	cfg.Protocol.DagFetcher.ArriveTimeout = 4 * time.Second
 	cfg.Protocol.DagFetcher.HashLimit = 10000
