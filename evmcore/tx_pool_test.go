@@ -880,6 +880,36 @@ func TestSetCodeTransactions(t *testing.T) {
 				}
 			},
 		},
+		"zero value code hash is treated as no code": {
+			pending: 2,
+			test: func(t *testing.T, pool *TxPool) {
+				db.codeHashes[addrA] = common.Hash{}
+
+				// first transaction is accepted
+				if err := pool.addRemoteSync(pricedTransaction(0, 100000, big.NewInt(1), keyA)); err != nil {
+					t.Fatalf("failed to add remote transaction: %v", err)
+				}
+				// second transaction should not be rejected
+				if err := pool.addRemoteSync(pricedTransaction(1, 100000, big.NewInt(1), keyA)); err != nil {
+					t.Fatalf("error mismatch: want %v, have %v", ErrInflightTxLimitReached, err)
+				}
+			},
+		},
+		"empty code hash is treated as no code": {
+			pending: 2,
+			test: func(t *testing.T, pool *TxPool) {
+				db.codeHashes[addrA] = types.EmptyCodeHash
+
+				// first transaction is accepted
+				if err := pool.addRemoteSync(pricedTransaction(0, 100000, big.NewInt(1), keyA)); err != nil {
+					t.Fatalf("failed to add remote transaction: %v", err)
+				}
+				// second transaction should not be rejected
+				if err := pool.addRemoteSync(pricedTransaction(1, 100000, big.NewInt(1), keyA)); err != nil {
+					t.Fatalf("error mismatch: want %v, have %v", ErrInflightTxLimitReached, err)
+				}
+			},
+		},
 	}
 
 	for name, test := range tests {
