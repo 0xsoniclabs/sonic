@@ -126,9 +126,6 @@ func TestIsSponsorshipRequest_DynamicFeeTransaction_IsRejectedIf(t *testing.T) {
 		"non-zero fee cap": func(tx *types.DynamicFeeTx) {
 			tx.GasFeeCap = big.NewInt(1)
 		},
-		"non-zero tip cap": func(tx *types.DynamicFeeTx) {
-			tx.GasTipCap = big.NewInt(1)
-		},
 	}
 
 	for name, modify := range tests {

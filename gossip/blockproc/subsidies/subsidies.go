@@ -41,15 +41,12 @@ const SponsorshipOverheadGasCost = 0 +
 
 // IsSponsorshipRequest checks if a transaction is requesting sponsorship from
 // a pre-allocated sponsorship pool. A sponsorship request is defined as a
-// transaction with zero value and zero gas price (legacy) or zero gas fee cap
-// and zero gas tip cap (EIP-1559).
+// transaction with a maximum gas price of zero.
 func IsSponsorshipRequest(tx *types.Transaction) bool {
 	return tx != nil &&
 		!internaltx.IsInternal(tx) &&
 		tx.To() != nil &&
-		tx.GasPrice().Sign() == 0 &&
-		tx.GasFeeCap().Sign() == 0 &&
-		tx.GasTipCap().Sign() == 0
+		tx.GasPrice().Sign() == 0
 }
 
 // FundId is an identifier for a fund in the subsidies registry contract.
