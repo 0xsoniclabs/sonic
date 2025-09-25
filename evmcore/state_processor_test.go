@@ -42,26 +42,31 @@ import (
 func (p *StateProcessor) process_iteratively(
 	block *EvmBlock, stateDb state.StateDB, cfg vm.Config, gasLimit uint64,
 	usedGas *uint64, onNewLog func(*types.Log),
-) []ProcessedTransaction {
+) ([]IncludedTransaction, int) {
 	// This implementation is a wrapper around the BeginBlock function, which
 	// handles the actual transaction processing.
 	txProcessor := p.BeginBlock(block, stateDb, cfg, gasLimit, onNewLog)
-	processed := make([]ProcessedTransaction, len(block.Transactions))
+	included := []IncludedTransaction{}
+	numSkipped := 0
 	for i, tx := range block.Transactions {
-		processed[i].Transaction = tx
 		receipt, skip, err := txProcessor.Run(i, tx)
 		if skip {
+			numSkipped++
 			continue
 		}
 		if err != nil {
 			// If an error occurs, we skip the transaction and continue with the next one.
+			numSkipped++
 			continue
 		}
-		processed[i].Receipt = receipt
+		included = append(included, IncludedTransaction{
+			Transaction: tx,
+			Receipt:     receipt,
+		})
 		*usedGas = receipt.CumulativeGasUsed
 	}
 
-	return processed
+	return included, numSkipped
 }
 
 func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
@@ -113,19 +118,17 @@ func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
 			vmConfig := vm.Config{}
 			gasLimit := uint64(blockGasLimit)
 			usedGas := new(uint64)
-			processed := process(block, state, vmConfig, gasLimit, usedGas, onLog)
+			included, numSkipped := process(block, state, vmConfig, gasLimit, usedGas, onLog)
 
 			// Receipts should be set accordingly.
-			require.Len(processed, len(transactions))
-			require.Equal(transactions[0], processed[0].Transaction)
-			require.Equal(transactions[1], processed[1].Transaction)
-			require.Equal(transactions[2], processed[2].Transaction)
-			require.Equal(transactions[3], processed[3].Transaction)
+			require.Len(included, 2)
+			require.Equal(transactions[0], included[0].Transaction)
+			require.Equal(transactions[2], included[1].Transaction)
 
 			logMsg0 := &types.Log{Address: common.Address{0}, TxIndex: 0}
 			logMsg2 := &types.Log{Address: common.Address{2}, TxIndex: 2}
 
-			require.NotNil(processed[0].Receipt)
+			require.NotNil(included[0].Receipt)
 			require.Equal(&types.Receipt{
 				Status:            types.ReceiptStatusSuccessful,
 				GasUsed:           21_000,
@@ -137,11 +140,9 @@ func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
 					Logs: []*types.Log{logMsg0},
 				}),
 				Logs: []*types.Log{logMsg0},
-			}, processed[0].Receipt)
+			}, included[0].Receipt)
 
-			require.Nil(processed[1].Receipt)
-
-			require.NotNil(processed[2].Receipt)
+			require.NotNil(included[1].Receipt)
 			require.Equal(&types.Receipt{
 				Status:            types.ReceiptStatusSuccessful,
 				GasUsed:           21_000,
@@ -153,9 +154,9 @@ func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
 					Logs: []*types.Log{logMsg2},
 				}),
 				Logs: []*types.Log{logMsg2},
-			}, processed[2].Receipt)
+			}, included[1].Receipt)
 
-			require.Nil(processed[3].Receipt)
+			require.Equal(2, numSkipped)
 
 			require.Equal([]*types.Log{logMsg0, logMsg2}, reportedLogs)
 
@@ -212,13 +213,11 @@ func TestProcess_DetectsTransactionThatCanNotBeConvertedIntoAMessage(t *testing.
 			vmConfig := vm.Config{}
 			gasLimit := uint64(math.MaxUint64)
 			usedGas := new(uint64)
-			processed := process(block, state, vmConfig, gasLimit, usedGas, nil)
+			included, numSkipped := process(block, state, vmConfig, gasLimit, usedGas, nil)
 
-			require.Len(processed, len(transactions))
-			require.Equal(transactions[0], processed[0].Transaction)
-			require.Equal(transactions[1], processed[1].Transaction)
+			require.Len(included, 1)
+			require.Equal(transactions[1], included[0].Transaction)
 
-			require.Nil(processed[0].Receipt)
 			require.Equal(&types.Receipt{
 				Status:            types.ReceiptStatusSuccessful,
 				GasUsed:           21_000,
@@ -230,7 +229,9 @@ func TestProcess_DetectsTransactionThatCanNotBeConvertedIntoAMessage(t *testing.
 					Logs: []*types.Log{logMsg1},
 				}),
 				Logs: []*types.Log{logMsg1},
-			}, processed[1].Receipt)
+			}, included[0].Receipt)
+
+			require.Equal(1, numSkipped)
 		})
 	}
 }
@@ -287,8 +288,9 @@ func TestProcess_TracksParentBlockHashIfPragueIsEnabled(t *testing.T) {
 				vmConfig := vm.Config{}
 				gasLimit := uint64(math.MaxUint64)
 				usedGas := new(uint64)
-				receipts := process(block, state, vmConfig, gasLimit, usedGas, nil)
-				require.Empty(receipts)
+				included, numSkipped := process(block, state, vmConfig, gasLimit, usedGas, nil)
+				require.Empty(included)
+				require.Equal(0, numSkipped)
 			})
 		}
 	}
@@ -346,13 +348,12 @@ func TestProcess_FailingTransactionAreSkippedButTheBlockIsNotTerminated(t *testi
 	// Process the block
 	gasLimit := uint64(math.MaxUint64)
 	usedGas := new(uint64)
-	processed := processor.Process(block, state, vm.Config{}, gasLimit, usedGas, nil)
+	included, numSkipped := processor.Process(block, state, vm.Config{}, gasLimit, usedGas, nil)
 
-	require.Len(t, processed, 2)
-	require.Equal(t, processed[0].Transaction, block.Transactions[0])
-	require.Nil(t, processed[0].Receipt)
-	require.Equal(t, processed[1].Transaction, block.Transactions[1])
-	require.NotNil(t, processed[1].Receipt)
+	require.Len(t, included, 1)
+	require.Equal(t, included[0].Transaction, block.Transactions[1])
+	require.NotNil(t, included[0].Receipt)
+	require.Equal(t, 1, numSkipped)
 }
 
 func TestProcess_EnforcesGasLimitBySkippingExcessiveTransactions(t *testing.T) {
@@ -425,18 +426,13 @@ func TestProcess_EnforcesGasLimitBySkippingExcessiveTransactions(t *testing.T) {
 				t.Run(name, func(t *testing.T) {
 					require := require.New(t)
 					gasLimit := test.gasLimit
-					processed := process(block, state, vmConfig, gasLimit, usedGas, nil)
-					require.Len(processed, 3)
-
-					for i, tx := range transactions {
-						require.Equal(tx, processed[i].Transaction)
-					}
+					included, numSkipped := process(block, state, vmConfig, gasLimit, usedGas, nil)
+					require.Len(included, test.passing)
 					for i := range test.passing {
-						require.NotNil(processed[i].Receipt)
+						require.Equal(transactions[i], included[i].Transaction)
+						require.NotNil(included[i].Receipt)
 					}
-					for i := test.passing; i < 3; i++ {
-						require.Nil(processed[i].Receipt)
-					}
+					require.Equal(len(transactions)-test.passing, numSkipped)
 				})
 			}
 
@@ -576,7 +572,10 @@ type processFunction = func(
 	gasLimit uint64,
 	usedGas *uint64,
 	onNewLog func(*types.Log),
-) []ProcessedTransaction
+) (
+	included []IncludedTransaction,
+	numSkipped int,
+)
 
 func getStateDbMockForTransactions(
 	ctrl *gomock.Controller,

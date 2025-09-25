@@ -241,30 +241,24 @@ func TestOperaEVMProcessor_Finalize_ReportsAggregatedNumberOfSkippedTransactions
 		To: &common.Address{}, Nonce: 1, Gas: 21_0000,
 	})
 
-	processed := processor.Execute(types.Transactions{validTx}, math.MaxUint64)
-	require.Len(processed, 1)
-	require.Equal(validTx, processed[0].Transaction)
-	require.NotNil(processed[0].Receipt)
+	included := processor.Execute(types.Transactions{validTx}, math.MaxUint64)
+	require.Len(included, 1)
+	require.Equal(validTx, included[0].Transaction)
+	require.NotNil(included[0].Receipt)
 
 	_, numSkipped, _ := processor.Finalize()
 	require.Equal(0, numSkipped)
 
-	processed = processor.Execute(types.Transactions{skippedTx}, math.MaxUint64)
-	require.Len(processed, 1)
-	require.Equal(skippedTx, processed[0].Transaction)
-	require.Nil(processed[0].Receipt)
+	included = processor.Execute(types.Transactions{skippedTx}, math.MaxUint64)
+	require.Len(included, 0)
 
 	_, numSkipped, _ = processor.Finalize()
 	require.Equal(1, numSkipped)
 
-	processed = processor.Execute(types.Transactions{skippedTx, validTx, skippedTx}, math.MaxUint64)
-	require.Len(processed, 3)
-	require.Equal(skippedTx, processed[0].Transaction)
-	require.Nil(processed[0].Receipt)
-	require.Equal(validTx, processed[1].Transaction)
-	require.NotNil(processed[1].Receipt)
-	require.Equal(skippedTx, processed[2].Transaction)
-	require.Nil(processed[2].Receipt)
+	included = processor.Execute(types.Transactions{skippedTx, validTx, skippedTx}, math.MaxUint64)
+	require.Len(included, 1)
+	require.Equal(validTx, included[0].Transaction)
+	require.NotNil(included[0].Receipt)
 
 	_, numSkipped, _ = processor.Finalize()
 	require.Equal(3, numSkipped)

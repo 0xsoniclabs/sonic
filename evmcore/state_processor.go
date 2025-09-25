@@ -50,11 +50,9 @@ func NewStateProcessor(config *params.ChainConfig, bc DummyChain) *StateProcesso
 	}
 }
 
-// ProcessedTransaction represents a transaction that was considered for
-// inclusion in a block by the state processor. It contains the transaction
-// itself and the receipt either confirming its execution, or nil if the
-// transaction was skipped.
-type ProcessedTransaction struct {
+// IncludedTransaction represents a transaction that has been included in a
+// block along with its receipt.
+type IncludedTransaction struct {
 	Transaction *types.Transaction
 	Receipt     *types.Receipt
 }
@@ -84,8 +82,27 @@ type ProcessedTransaction struct {
 func (p *StateProcessor) Process(
 	block *EvmBlock, statedb state.StateDB, cfg vm.Config, gasLimit uint64,
 	usedGas *uint64, onNewLog func(*types.Log),
-) []ProcessedTransaction {
-	processed := make([]ProcessedTransaction, len(block.Transactions))
+) ([]IncludedTransaction, int) {
+	processed := p.process(block, statedb, cfg, gasLimit, usedGas, onNewLog)
+	numSkipped := 0
+	included := make([]IncludedTransaction, 0, len(processed))
+	for _, tx := range processed {
+		if tx.Receipt == nil {
+			numSkipped++
+		} else {
+			included = append(included, tx)
+		}
+	}
+	return included, numSkipped
+}
+
+type processedTransaction = IncludedTransaction
+
+func (p *StateProcessor) process(
+	block *EvmBlock, statedb state.StateDB, cfg vm.Config, gasLimit uint64,
+	usedGas *uint64, onNewLog func(*types.Log),
+) []processedTransaction {
+	processed := make([]processedTransaction, len(block.Transactions))
 	var (
 		gp           = new(core.GasPool).AddGas(gasLimit)
 		receipt      *types.Receipt
