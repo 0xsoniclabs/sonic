@@ -189,6 +189,82 @@ func TestOperaEVMProcessor_Execute_ProducesContinuousTxIndexesInLogsAndReceipts(
 	}
 }
 
+func TestOperaEVMProcessor_Finalize_ReportsAggregatedNumberOfSkippedTransactions(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	stateDb := state.NewMockStateDB(ctrl)
+	logConsumer := NewMock_onNewLog(ctrl)
+
+	// Create a state DB mock that allows to run transactions but does not keep
+	// any state. Thus, the same valid transaction can be executed multiple times,
+	// but any transaction with a nonce > 0 will always be skipped.
+	any := gomock.Any()
+	stateDb.EXPECT().BeginBlock(any).AnyTimes()
+	stateDb.EXPECT().GetNonce(any).AnyTimes().Return(uint64(0))
+	stateDb.EXPECT().GetCode(any).AnyTimes().Return(nil)
+	stateDb.EXPECT().GetBalance(any).AnyTimes().Return(uint256.NewInt(1e18))
+	stateDb.EXPECT().SubBalance(any, any, any).AnyTimes()
+	stateDb.EXPECT().Prepare(any, any, any, any, any, any).AnyTimes()
+	stateDb.EXPECT().SetNonce(any, any, any).AnyTimes()
+	stateDb.EXPECT().Snapshot().AnyTimes().Return(1)
+	stateDb.EXPECT().Exist(any).AnyTimes().Return(true)
+	stateDb.EXPECT().AddBalance(any, any, any).AnyTimes()
+	stateDb.EXPECT().GetRefund().AnyTimes().Return(uint64(0))
+	stateDb.EXPECT().EndTransaction().AnyTimes()
+	stateDb.EXPECT().SetTxContext(any, any).AnyTimes()
+	stateDb.EXPECT().TxIndex().AnyTimes()
+	stateDb.EXPECT().GetLogs(any, any).AnyTimes()
+	stateDb.EXPECT().EndBlock(any).AnyTimes()
+	stateDb.EXPECT().GetStateHash().AnyTimes()
+
+	evmModule := New()
+	processor := evmModule.Start(
+		iblockproc.BlockCtx{}, stateDb, nil, logConsumer.OnNewLog,
+		opera.Rules{}, &params.ChainConfig{}, common.Hash{},
+	)
+
+	key, err := crypto.GenerateKey()
+	require.NoError(err)
+
+	signer := types.LatestSignerForChainID(nil)
+
+	// A valid transaction with a nonce of 0; since the state DB is stateless,
+	// this transaction can be executed multiple times and will not be skipped.
+	validTx := types.MustSignNewTx(key, signer, &types.LegacyTx{
+		To: &common.Address{}, Nonce: 0, Gas: 21_0000,
+	})
+
+	// A transaction that will be skipped because of a nonce gap.
+	// This transaction has a nonce of 1, but the state DB always returns
+	// a nonce of 0, so this transaction will always be skipped.
+	skippedTx := types.MustSignNewTx(key, signer, &types.LegacyTx{
+		To: &common.Address{}, Nonce: 1, Gas: 21_0000,
+	})
+
+	receipts := processor.Execute(types.Transactions{validTx}, math.MaxUint64)
+	require.Len(receipts, 1)
+	require.NotNil(receipts[0])
+
+	_, numSkipped, _ := processor.Finalize()
+	require.Equal(0, numSkipped)
+
+	receipts = processor.Execute(types.Transactions{skippedTx}, math.MaxUint64)
+	require.Len(receipts, 1)
+	require.Nil(receipts[0])
+
+	_, numSkipped, _ = processor.Finalize()
+	require.Equal(1, numSkipped)
+
+	receipts = processor.Execute(types.Transactions{skippedTx, validTx, skippedTx}, math.MaxUint64)
+	require.Len(receipts, 3)
+	require.Nil(receipts[0])
+	require.NotNil(receipts[1])
+	require.Nil(receipts[2])
+
+	_, numSkipped, _ = processor.Finalize()
+	require.Equal(3, numSkipped)
+}
+
 // onNewLog is a helper interface to allow mocking the onNewLog function
 // passed to the EVM processor.
 type _onNewLog interface {
