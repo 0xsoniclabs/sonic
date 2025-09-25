@@ -39,7 +39,7 @@ import (
 
 const nominalSize uint = 1
 const dagBufferNumLimitCoefficient = 5
-const dagBufferSizeLimitCoefficient = 28
+const dagBufferSizeLimitCoefficient = 10
 
 type (
 	// ProtocolConfig is config for p2p protocol
