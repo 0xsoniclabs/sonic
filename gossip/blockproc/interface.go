@@ -68,7 +68,16 @@ type ConfirmedEventsModule interface {
 }
 
 type EVMProcessor interface {
-	Execute(txs types.Transactions, gasLimit uint64) []evmcore.ProcessedTransaction
+	// Execute attempts to run the given transactions within the provided gas
+	// limit on the EVM. It returns a slice of IncludedTransaction, each
+	// containing a transaction and its corresponding receipt. The order of
+	// transactions in the returned slice corresponds to their execution
+	// order, preserving the original order from the input slice.
+	// If a transaction cannot be executed (e.g., due to insufficient gas),
+	// it is skipped and not included in the returned slice. Every transaction
+	// that is successfully executed will have its receipt included in the
+	// result.
+	Execute(txs types.Transactions, gasLimit uint64) []evmcore.IncludedTransaction
 	Finalize() (evmBlock *evmcore.EvmBlock, numSkipped int, receipts types.Receipts)
 }
 

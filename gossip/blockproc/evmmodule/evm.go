@@ -92,9 +92,10 @@ type OperaEVMProcessor struct {
 
 	gasUsed uint64
 
-	incomingTxs  types.Transactions
-	processedTxs []evmcore.ProcessedTransaction
-	prevRandao   common.Hash
+	incomingTxs types.Transactions
+	includedTxs []evmcore.IncludedTransaction
+	numSkipped  int
+	prevRandao  common.Hash
 
 	rules opera.Rules
 }
@@ -137,7 +138,7 @@ func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlo
 	return evmcore.NewEvmBlock(h, txs)
 }
 
-func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) []evmcore.ProcessedTransaction {
+func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) []evmcore.IncludedTransaction {
 	evmProcessor := evmcore.NewStateProcessor(p.evmCfg, p.reader)
 	txsOffset := uint(len(p.incomingTxs))
 
@@ -145,37 +146,33 @@ func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) []e
 
 	// Process txs
 	evmBlock := p.evmBlockWith(txs)
-	processed := evmProcessor.Process(evmBlock, p.statedb, vmConfig, gasLimit, &p.gasUsed, func(l *types.Log) {
+	included, numSkipped := evmProcessor.Process(evmBlock, p.statedb, vmConfig, gasLimit, &p.gasUsed, func(l *types.Log) {
 		// Note: l.Index is properly set before
 		l.TxIndex += txsOffset
 		p.onNewLog(l)
 	})
 
 	if txsOffset > 0 {
-		for _, p := range processed {
-			if p.Receipt != nil {
-				p.Receipt.TransactionIndex += txsOffset
-			}
+		for _, p := range included {
+			p.Receipt.TransactionIndex += txsOffset
 		}
 	}
 
 	p.incomingTxs = append(p.incomingTxs, txs...)
-	p.processedTxs = append(p.processedTxs, processed...)
+	p.includedTxs = append(p.includedTxs, included...)
+	p.numSkipped += numSkipped
 
-	return processed
+	return included
 }
 
 func (p *OperaEVMProcessor) Finalize() (evmBlock *evmcore.EvmBlock, numSkipped int, receipts types.Receipts) {
 	transactions := make(types.Transactions, 0, len(p.incomingTxs))
 	receipts = make(types.Receipts, 0, len(p.incomingTxs))
-	for _, tx := range p.processedTxs {
-		if tx.Receipt != nil {
-			transactions = append(transactions, tx.Transaction)
-			receipts = append(receipts, tx.Receipt)
-		} else {
-			numSkipped++
-		}
+	for _, tx := range p.includedTxs {
+		transactions = append(transactions, tx.Transaction)
+		receipts = append(receipts, tx.Receipt)
 	}
+	numSkipped = p.numSkipped
 
 	evmBlock = p.evmBlockWith(transactions)
 
