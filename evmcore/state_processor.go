@@ -73,10 +73,9 @@ func (p *StateProcessor) Process(
 	block *EvmBlock, statedb state.StateDB, cfg vm.Config, gasLimit uint64,
 	usedGas *uint64, onNewLog func(*types.Log),
 ) (
-	types.Receipts, []*types.Log, []uint32,
+	types.Receipts, []uint32,
 ) {
 	receipts := make(types.Receipts, 0, len(block.Transactions))
-	allLogs := make([]*types.Log, 0, len(block.Transactions)*10) // 10 logs per tx is a reasonable estimate
 	skipped := make([]uint32, 0, len(block.Transactions))
 	var (
 		gp           = new(core.GasPool).AddGas(gasLimit)
@@ -113,9 +112,8 @@ func (p *StateProcessor) Process(
 			continue // skip this transaction, but continue processing the rest of the block
 		}
 		receipts = append(receipts, receipt)
-		allLogs = append(allLogs, receipt.Logs...)
 	}
-	return receipts, allLogs, skipped
+	return receipts, skipped
 }
 
 // BeginBlock starts the processing of a new block and returns a function to
