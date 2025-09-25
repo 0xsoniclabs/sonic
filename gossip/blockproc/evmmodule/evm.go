@@ -138,7 +138,7 @@ func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlo
 	return evmcore.NewEvmBlock(h, txs)
 }
 
-func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) types.Receipts {
+func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) []blockproc.IncludedTransaction {
 	evmProcessor := evmcore.NewStateProcessor(p.evmCfg, p.reader)
 	txsOffset := uint(len(p.incomingTxs))
 
@@ -171,7 +171,16 @@ func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) typ
 		}
 	}
 
-	return receipts
+	result := make([]blockproc.IncludedTransaction, 0, len(txs)-len(skipped))
+	for i, receipt := range receipts {
+		if receipt != nil && i < len(txs) {
+			result = append(result, blockproc.IncludedTransaction{
+				Transaction: txs[i],
+				Receipt:     receipt,
+			})
+		}
+	}
+	return result
 }
 
 func (p *OperaEVMProcessor) Finalize() (evmBlock *evmcore.EvmBlock, numSkipped int, receipts types.Receipts) {
