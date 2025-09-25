@@ -42,6 +42,14 @@ type StateProcessor struct {
 	bc     DummyChain          // Canonical block chain
 }
 
+// Log is a stripped down version of types.Log restricted to the fields that
+// can be provided while processing a block, before it being finalized.
+type Log struct {
+	Address common.Address
+	Topics  []common.Hash
+	Data    []byte
+}
+
 // NewStateProcessor initialises a new StateProcessor.
 func NewStateProcessor(config *params.ChainConfig, bc DummyChain) *StateProcessor {
 	return &StateProcessor{
@@ -71,7 +79,7 @@ func NewStateProcessor(config *params.ChainConfig, bc DummyChain) *StateProcesso
 // consistent.
 func (p *StateProcessor) Process(
 	block *EvmBlock, statedb state.StateDB, cfg vm.Config, gasLimit uint64,
-	usedGas *uint64, onNewLog func(*types.Log),
+	usedGas *uint64, onNewLog func(*Log),
 ) (
 	types.Receipts, []uint32,
 ) {
@@ -123,7 +131,7 @@ func (p *StateProcessor) Process(
 // probe individual transactions to determine their applicability and gas usage.
 func (p *StateProcessor) BeginBlock(
 	block *EvmBlock, stateDb state.StateDB, cfg vm.Config, gasLimit uint64,
-	onNewLog func(*types.Log),
+	onNewLog func(*Log),
 ) *TransactionProcessor {
 	var (
 		gp            = new(core.GasPool).AddGas(gasLimit)
@@ -157,7 +165,7 @@ type TransactionProcessor struct {
 	blockNumber   *big.Int
 	gp            *core.GasPool
 	header        *EvmHeader
-	onNewLog      func(*types.Log)
+	onNewLog      func(*Log)
 	signer        types.Signer
 	stateDb       state.StateDB
 	usedGas       uint64
@@ -286,7 +294,7 @@ func applyTransaction(
 	tx *types.Transaction,
 	usedGas *uint64,
 	evm *vm.EVM,
-	onNewLog func(*types.Log),
+	onNewLog func(*Log),
 ) (
 	*types.Receipt,
 	uint64,
@@ -331,7 +339,11 @@ func applyTransaction(
 	logs := statedb.GetLogs(tx.Hash(), common.Hash{})
 	if onNewLog != nil {
 		for _, l := range logs {
-			onNewLog(l)
+			onNewLog(&Log{
+				Address: l.Address,
+				Topics:  l.Topics,
+				Data:    l.Data,
+			})
 		}
 	}
 

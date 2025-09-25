@@ -41,7 +41,7 @@ func (p *EVMModule) Start(
 	block iblockproc.BlockCtx,
 	statedb state.StateDB,
 	reader evmcore.DummyChain,
-	onNewLog func(*types.Log),
+	onNewLog func(*evmcore.Log),
 	net opera.Rules,
 	evmCfg *params.ChainConfig,
 	prevrandao common.Hash,
@@ -82,7 +82,7 @@ type OperaEVMProcessor struct {
 	block    iblockproc.BlockCtx
 	reader   evmcore.DummyChain
 	statedb  state.StateDB
-	onNewLog func(*types.Log)
+	onNewLog func(*evmcore.Log)
 	net      opera.Rules
 	evmCfg   *params.ChainConfig
 
@@ -146,11 +146,7 @@ func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) typ
 
 	// Process txs
 	evmBlock := p.evmBlockWith(txs)
-	receipts, skipped := evmProcessor.Process(evmBlock, p.statedb, vmConfig, gasLimit, &p.gasUsed, func(l *types.Log) {
-		// Note: l.Index is properly set before
-		l.TxIndex += txsOffset
-		p.onNewLog(l)
-	})
+	receipts, skipped := evmProcessor.Process(evmBlock, p.statedb, vmConfig, gasLimit, &p.gasUsed, p.onNewLog)
 
 	if txsOffset > 0 {
 		for i, n := range skipped {
@@ -159,6 +155,9 @@ func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) typ
 		for _, r := range receipts {
 			if r != nil {
 				r.TransactionIndex += txsOffset
+				for _, l := range r.Logs {
+					l.TxIndex += txsOffset
+				}
 			}
 		}
 	}

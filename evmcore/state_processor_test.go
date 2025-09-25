@@ -41,7 +41,7 @@ import (
 // Process method.
 func (p *StateProcessor) process_iteratively(
 	block *EvmBlock, stateDb state.StateDB, cfg vm.Config, gasLimit uint64,
-	usedGas *uint64, onNewLog func(*types.Log),
+	usedGas *uint64, onNewLog func(*Log),
 ) (
 	types.Receipts, []uint32,
 ) {
@@ -111,8 +111,8 @@ func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
 				Transactions: transactions,
 			}
 
-			reportedLogs := []*types.Log{}
-			onLog := func(log *types.Log) {
+			reportedLogs := []*Log{}
+			onLog := func(log *Log) {
 				reportedLogs = append(reportedLogs, log)
 			}
 
@@ -159,7 +159,19 @@ func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
 
 			require.Nil(receipts[3])
 
-			require.Equal([]*types.Log{logMsg0, logMsg2}, reportedLogs)
+			want := []*Log{
+				{
+					Address: logMsg0.Address,
+					Topics:  logMsg0.Topics,
+					Data:    logMsg0.Data,
+				},
+				{
+					Address: logMsg2.Address,
+					Topics:  logMsg2.Topics,
+					Data:    logMsg2.Data,
+				},
+			}
+			require.Equal(want, reportedLogs)
 
 			require.Equal([]uint32{1, 3}, skipped)
 
@@ -576,7 +588,7 @@ type processFunction = func(
 	cfg vm.Config,
 	gasLimit uint64,
 	usedGas *uint64,
-	onNewLog func(*types.Log),
+	onNewLog func(*Log),
 ) (
 	receipts types.Receipts,
 	skipped []uint32,
