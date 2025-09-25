@@ -43,14 +43,13 @@ func (p *StateProcessor) process_iteratively(
 	block *EvmBlock, stateDb state.StateDB, cfg vm.Config, gasLimit uint64,
 	usedGas *uint64, onNewLog func(*types.Log),
 ) (
-	types.Receipts, []*types.Log, []uint32,
+	types.Receipts, []uint32,
 ) {
 	// This implementation is a wrapper around the BeginBlock function, which
 	// handles the actual transaction processing.
 	txProcessor := p.BeginBlock(block, stateDb, cfg, gasLimit, onNewLog)
 	receipts := make(types.Receipts, len(block.Transactions))
 	skipped := make([]uint32, 0, len(block.Transactions))
-	allLogs := make([]*types.Log, 0, len(block.Transactions))
 	for i, tx := range block.Transactions {
 		receipt, skip, err := txProcessor.Run(i, tx)
 		if skip {
@@ -65,11 +64,10 @@ func (p *StateProcessor) process_iteratively(
 			continue
 		}
 		receipts[i] = receipt
-		allLogs = append(allLogs, receipt.Logs...)
 		*usedGas = receipt.CumulativeGasUsed
 	}
 
-	return receipts, allLogs, skipped
+	return receipts, skipped
 }
 
 func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
@@ -121,7 +119,7 @@ func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
 			vmConfig := vm.Config{}
 			gasLimit := uint64(blockGasLimit)
 			usedGas := new(uint64)
-			receipts, logs, skipped := process(block, state, vmConfig, gasLimit, usedGas, onLog)
+			receipts, skipped := process(block, state, vmConfig, gasLimit, usedGas, onLog)
 
 			// Receipts should be set accordingly.
 			require.Len(receipts, len(transactions))
@@ -161,7 +159,6 @@ func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
 
 			require.Nil(receipts[3])
 
-			require.Equal([]*types.Log{logMsg0, logMsg2}, logs)
 			require.Equal([]*types.Log{logMsg0, logMsg2}, reportedLogs)
 
 			require.Equal([]uint32{1, 3}, skipped)
@@ -219,7 +216,7 @@ func TestProcess_DetectsTransactionThatCanNotBeConvertedIntoAMessage(t *testing.
 			vmConfig := vm.Config{}
 			gasLimit := uint64(math.MaxUint64)
 			usedGas := new(uint64)
-			receipts, logs, skipped := process(block, state, vmConfig, gasLimit, usedGas, nil)
+			receipts, skipped := process(block, state, vmConfig, gasLimit, usedGas, nil)
 
 			require.Len(receipts, len(transactions))
 			require.Nil(receipts[0])
@@ -236,7 +233,6 @@ func TestProcess_DetectsTransactionThatCanNotBeConvertedIntoAMessage(t *testing.
 				Logs: []*types.Log{logMsg1},
 			}, receipts[1])
 			require.ElementsMatch(skipped, []uint32{0})
-			require.ElementsMatch(logs, []*types.Log{logMsg1})
 		})
 	}
 }
@@ -293,9 +289,8 @@ func TestProcess_TracksParentBlockHashIfPragueIsEnabled(t *testing.T) {
 				vmConfig := vm.Config{}
 				gasLimit := uint64(math.MaxUint64)
 				usedGas := new(uint64)
-				receipts, logs, skipped := process(block, state, vmConfig, gasLimit, usedGas, nil)
+				receipts, skipped := process(block, state, vmConfig, gasLimit, usedGas, nil)
 				require.Empty(receipts)
-				require.Empty(logs)
 				require.Empty(skipped)
 			})
 		}
@@ -354,13 +349,12 @@ func TestProcess_FailingTransactionAreSkippedButTheBlockIsNotTerminated(t *testi
 	// Process the block
 	gasLimit := uint64(math.MaxUint64)
 	usedGas := new(uint64)
-	receipts, logs, skipped := processor.Process(block, state, vm.Config{}, gasLimit, usedGas, nil)
+	receipts, skipped := processor.Process(block, state, vm.Config{}, gasLimit, usedGas, nil)
 
 	require.Len(t, receipts, 2)
 	require.Nil(t, receipts[0])
 	require.NotNil(t, receipts[1])
 	require.Len(t, skipped, 1)
-	require.Empty(t, logs)
 }
 
 func TestProcess_EnforcesGasLimitBySkippingExcessiveTransactions(t *testing.T) {
@@ -433,9 +427,8 @@ func TestProcess_EnforcesGasLimitBySkippingExcessiveTransactions(t *testing.T) {
 				t.Run(name, func(t *testing.T) {
 					require := require.New(t)
 					gasLimit := test.gasLimit
-					receipts, logs, skipped := process(block, state, vmConfig, gasLimit, usedGas, nil)
+					receipts, skipped := process(block, state, vmConfig, gasLimit, usedGas, nil)
 					require.Len(receipts, 3)
-					require.Len(logs, test.passing) // the mocked StateDB produces 1 log per transaction
 					require.Len(skipped, 3-test.passing)
 
 					for i := range test.passing {
@@ -586,7 +579,6 @@ type processFunction = func(
 	onNewLog func(*types.Log),
 ) (
 	receipts types.Receipts,
-	allLogs []*types.Log,
 	skipped []uint32,
 )
 
