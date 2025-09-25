@@ -284,14 +284,14 @@ func (b *GenesisBuilder) ExecuteGenesisTxs(blockProc BlockProc, genesisTxs types
 	internalTxs := blockProc.PostTxTransactor.PopInternalTxs(blockCtx, bs, es, true, b.tmpStateDB)
 	evmProcessor.Execute(internalTxs, es.Rules.Blocks.MaxBlockGas)
 
-	evmBlock, skippedTxs, receipts := evmProcessor.Finalize()
+	evmBlock, numSkippedTxs, receipts := evmProcessor.Finalize()
 	for i, r := range receipts {
 		if r.Status == 0 {
 			return fmt.Errorf("genesis transaction %d of %d reverted", i, len(receipts))
 		}
 	}
-	if len(skippedTxs) != 0 {
-		return fmt.Errorf("genesis transaction is skipped (%v)", skippedTxs)
+	if numSkippedTxs != 0 {
+		return fmt.Errorf("genesis transaction is skipped (num=%d)", numSkippedTxs)
 	}
 	bs = txListener.Finalize()
 	bs.FinalizedStateRoot = hash.Hash(evmBlock.Root)
