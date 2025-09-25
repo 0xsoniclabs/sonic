@@ -67,13 +67,6 @@ type ConfirmedEventsModule interface {
 	Start(bs iblockproc.BlockState, es iblockproc.EpochState) ConfirmedEventsProcessor
 }
 
-// IncludedTransaction represents a transaction that has been included in a
-// block along with its receipt.
-type IncludedTransaction struct {
-	Transaction *types.Transaction
-	Receipt     *types.Receipt
-}
-
 type EVMProcessor interface {
 	// Execute attempts to run the given transactions within the provided gas
 	// limit on the EVM. It returns a slice of IncludedTransaction, each
@@ -84,7 +77,7 @@ type EVMProcessor interface {
 	// it is skipped and not included in the returned slice. Every transaction
 	// that is successfully executed will have its receipt included in the
 	// result.
-	Execute(txs types.Transactions, gasLimit uint64) []IncludedTransaction
+	Execute(txs types.Transactions, gasLimit uint64) []evmcore.IncludedTransaction
 	Finalize() (evmBlock *evmcore.EvmBlock, numSkipped int, receipts types.Receipts)
 }
 
