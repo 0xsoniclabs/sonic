@@ -17,11 +17,11 @@
 package evmmodule
 
 import (
-	"fmt"
 	"math"
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -111,7 +111,6 @@ func TestOperaEVMProcessor_Execute_ProducesContinuousTxIndexesInLogsAndReceipts(
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	stateDb := state.NewMockStateDB(ctrl)
-	logConsumer := NewMock_onNewLog(ctrl)
 
 	any := gomock.Any()
 	stateDb.EXPECT().BeginBlock(any).AnyTimes()
@@ -147,15 +146,9 @@ func TestOperaEVMProcessor_Execute_ProducesContinuousTxIndexesInLogsAndReceipts(
 		},
 	)
 
-	// Logs should be reported in consecutive order, one per transaction.
-	const N = 5
-	for i := range N * 3 {
-		logConsumer.EXPECT().OnNewLog(LogWithTxIndex(uint(i)))
-	}
-
 	evmModule := New()
 	processor := evmModule.Start(
-		iblockproc.BlockCtx{}, stateDb, nil, logConsumer.OnNewLog,
+		iblockproc.BlockCtx{}, stateDb, nil, nil,
 		opera.Rules{}, &params.ChainConfig{}, common.Hash{},
 	)
 
@@ -171,20 +164,23 @@ func TestOperaEVMProcessor_Execute_ProducesContinuousTxIndexesInLogsAndReceipts(
 	// across multiple Execute calls, even when some calls have multiple
 	// transactions and some have just one.
 	txIndex := uint(0)
-	for range N {
+	for range 5 {
 		receipts := processor.Execute(types.Transactions{tx, tx}, math.MaxUint64)
 		require.Len(receipts, 2)
 		require.NotNil(receipts[0])
 		require.NotNil(receipts[1])
 		require.Equal(txIndex, receipts[0].TransactionIndex)
+		require.Equal(txIndex, receipts[0].Logs[0].TxIndex)
 		txIndex++
 		require.Equal(txIndex, receipts[1].TransactionIndex)
+		require.Equal(txIndex, receipts[1].Logs[0].TxIndex)
 		txIndex++
 
 		receipts = processor.Execute(types.Transactions{tx}, math.MaxUint64)
 		require.Len(receipts, 1)
 		require.NotNil(receipts[0])
 		require.Equal(txIndex, receipts[0].TransactionIndex)
+		require.Equal(txIndex, receipts[0].Logs[0].TxIndex)
 		txIndex++
 	}
 }
@@ -268,34 +264,9 @@ func TestOperaEVMProcessor_Finalize_ReportsAggregatedNumberOfSkippedTransactions
 // onNewLog is a helper interface to allow mocking the onNewLog function
 // passed to the EVM processor.
 type _onNewLog interface {
-	OnNewLog(*types.Log)
+	OnNewLog(*evmcore.Log)
 }
 
 // Added to avoid unused warning of onNewLog interface which is only used for
 // generating the mock.
 var _ _onNewLog = (*Mock_onNewLog)(nil)
-
-// LogWithTxIndex creates a gomock matcher that matches a log message with the
-// given transaction index.
-func LogWithTxIndex(id any) gomock.Matcher {
-	if matcher, ok := id.(gomock.Matcher); ok {
-		return logWithTxIndex{txIndex: matcher}
-	}
-	return LogWithTxIndex(gomock.Eq(id))
-}
-
-type logWithTxIndex struct {
-	txIndex gomock.Matcher
-}
-
-func (i logWithTxIndex) Matches(arg any) bool {
-	log, ok := arg.(*types.Log)
-	if !ok || log == nil {
-		return false
-	}
-	return i.txIndex.Matches(log.TxIndex)
-}
-
-func (i logWithTxIndex) String() string {
-	return fmt.Sprintf("Log with TxIndex: %s", i.txIndex.String())
-}

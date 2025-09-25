@@ -22,8 +22,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethereum/go-ethereum/core/types"
-
+	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/logger"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driver"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driver/driverpos"
@@ -62,7 +61,7 @@ func (w *VersionWatcher) Pause() error {
 	return nil
 }
 
-func (w *VersionWatcher) OnNewLog(l *types.Log) {
+func (w *VersionWatcher) OnNewLog(l *evmcore.Log) {
 	if l.Address != driver.ContractAddress {
 		return
 	}

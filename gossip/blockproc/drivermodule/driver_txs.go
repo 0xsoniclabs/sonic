@@ -26,6 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 
+	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/drivertype"
@@ -186,7 +187,7 @@ func effectiveGasPrice(tx *types.Transaction, baseFee *big.Int) *big.Int {
 	return new(big.Int).Add(baseFee, gasTip)
 }
 
-func decodeDataBytes(l *types.Log) ([]byte, error) {
+func decodeDataBytes(l *evmcore.Log) ([]byte, error) {
 	if len(l.Data) < 32 {
 		return nil, io.ErrUnexpectedEOF
 	}
@@ -201,7 +202,7 @@ func decodeDataBytes(l *types.Log) ([]byte, error) {
 	return l.Data[start+32 : start+32+size], nil
 }
 
-func (p *DriverTxListener) OnNewLog(l *types.Log) {
+func (p *DriverTxListener) OnNewLog(l *evmcore.Log) {
 	if l.Address != driver.ContractAddress {
 		return
 	}

@@ -260,7 +260,7 @@ func (b *GenesisBuilder) ExecuteGenesisTxs(blockProc BlockProc, genesisTxs types
 	)
 	evmProcessor := blockProc.EVMModule.Start(
 		blockCtx, b.tmpStateDB, dummyHeaderReturner{b.blocks},
-		func(l *types.Log) { txListener.OnNewLog(l) },
+		txListener.OnNewLog,
 		es.Rules,
 		chainConfig,
 		common.Hash{0x01}, // non-zero PrevRandao necessary to enable Cancun

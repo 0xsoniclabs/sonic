@@ -64,7 +64,7 @@ func (mr *MockTxListenerMockRecorder) Finalize() *gomock.Call {
 }
 
 // OnNewLog mocks base method.
-func (m *MockTxListener) OnNewLog(arg0 *types.Log) {
+func (m *MockTxListener) OnNewLog(arg0 *evmcore.Log) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "OnNewLog", arg0)
 }
@@ -445,7 +445,7 @@ func (m *MockEVM) EXPECT() *MockEVMMockRecorder {
 }
 
 // Start mocks base method.
-func (m *MockEVM) Start(block iblockproc.BlockCtx, statedb state.StateDB, reader evmcore.DummyChain, onNewLog func(*types.Log), net opera.Rules, evmCfg *params.ChainConfig, prevrandao common.Hash) EVMProcessor {
+func (m *MockEVM) Start(block iblockproc.BlockCtx, statedb state.StateDB, reader evmcore.DummyChain, onNewLog func(*evmcore.Log), net opera.Rules, evmCfg *params.ChainConfig, prevrandao common.Hash) EVMProcessor {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Start", block, statedb, reader, onNewLog, net, evmCfg, prevrandao)
 	ret0, _ := ret[0].(EVMProcessor)
