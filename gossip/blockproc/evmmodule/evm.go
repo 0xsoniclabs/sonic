@@ -174,12 +174,12 @@ func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) typ
 	return receipts
 }
 
-func (p *OperaEVMProcessor) Finalize() (evmBlock *evmcore.EvmBlock, skippedTxs []uint32, receipts types.Receipts) {
+func (p *OperaEVMProcessor) Finalize() (evmBlock *evmcore.EvmBlock, numSkipped int, receipts types.Receipts) {
 	evmBlock = p.evmBlockWith(
 		// Filter skipped transactions. Receipts are filtered already
 		filterSkippedTxs(p.incomingTxs, p.skippedTxs),
 	)
-	skippedTxs = p.skippedTxs
+	numSkipped = len(p.skippedTxs)
 	receipts = p.receipts
 
 	// Commit block
