@@ -402,7 +402,7 @@ func consensusCallbackBeginBlockFn(
 						}
 					}
 
-					evmBlock, skippedTxs, allReceipts := evmProcessor.Finalize()
+					evmBlock, numSkippedTxs, allReceipts := evmProcessor.Finalize()
 
 					// Add results of the transaction processing to the block.
 					blockBuilder.
@@ -535,7 +535,7 @@ func consensusCallbackBeginBlockFn(
 						"gas_used", evmBlock.GasUsed,
 						"gas_rate", float64(evmBlock.GasUsed)/blockDuration.Seconds(),
 						"base_fee", evmBlock.BaseFee.String(),
-						"txs", fmt.Sprintf("%d/%d", len(evmBlock.Transactions), len(skippedTxs)),
+						"txs", fmt.Sprintf("%d/%d", len(evmBlock.Transactions), numSkippedTxs),
 						"age", utils.PrettyDuration(blockAge),
 						"t", utils.PrettyDuration(now.Sub(start)),
 						"epoch", evmBlock.Epoch,
@@ -543,7 +543,7 @@ func consensusCallbackBeginBlockFn(
 					blockAgeGauge.Update(int64(blockAge.Nanoseconds()))
 
 					processedTxsMeter.Mark(int64(len(evmBlock.Transactions)))
-					skippedTxsMeter.Mark(int64(len(skippedTxs)))
+					skippedTxsMeter.Mark(int64(numSkippedTxs))
 				}
 				if confirmedEvents.Len() != 0 {
 					atomic.StoreUint32(blockBusyFlag, 1)

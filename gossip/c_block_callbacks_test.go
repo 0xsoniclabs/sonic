@@ -276,7 +276,7 @@ func TestConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testi
 						BaseFee: big.NewInt(0),
 						TxHash:  common.Hash{1, 2, 3},
 					},
-				}, nil, nil)
+				}, 0, nil)
 
 				evmModule := blockproc.NewMockEVM(ctrl)
 				evmModule.EXPECT().

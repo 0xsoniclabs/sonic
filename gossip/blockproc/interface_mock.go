@@ -405,11 +405,11 @@ func (mr *MockEVMProcessorMockRecorder) Execute(txs, gasLimit any) *gomock.Call 
 }
 
 // Finalize mocks base method.
-func (m *MockEVMProcessor) Finalize() (*evmcore.EvmBlock, []uint32, types.Receipts) {
+func (m *MockEVMProcessor) Finalize() (*evmcore.EvmBlock, int, types.Receipts) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Finalize")
 	ret0, _ := ret[0].(*evmcore.EvmBlock)
-	ret1, _ := ret[1].([]uint32)
+	ret1, _ := ret[1].(int)
 	ret2, _ := ret[2].(types.Receipts)
 	return ret0, ret1, ret2
 }
