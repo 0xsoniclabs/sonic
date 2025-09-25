@@ -86,7 +86,7 @@ func getTransactionWithCodeAndNoReceiver(t testing.TB, code []byte, net *Integra
 	chainId, err := client.ChainID(t.Context())
 	require.NoError(err, "failed to get chain ID::")
 
-	nonce, err := client.NonceAt(t.Context(), net.GetSessionSponsor().Address(), nil)
+	nonce, err := client.PendingNonceAt(t.Context(), net.GetSessionSponsor().Address())
 	require.NoError(err, "failed to get nonce:")
 
 	price, err := client.SuggestGasPrice(t.Context())
