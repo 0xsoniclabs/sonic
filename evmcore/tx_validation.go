@@ -353,6 +353,7 @@ func validateSponsorshipRequest(
 	}
 
 	db, err := chain.GetTxPoolStateDB()
+	defer db.Release()
 	if err != nil {
 		return fmt.Errorf("failed to get state: %w", err)
 	}
