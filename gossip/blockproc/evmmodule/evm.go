@@ -42,14 +42,14 @@ func (p *EVMModule) Start(
 	statedb state.StateDB,
 	reader evmcore.DummyChain,
 	onNewLog func(*types.Log),
-	net opera.Rules,
+	rules opera.Rules,
 	evmCfg *params.ChainConfig,
 	prevrandao common.Hash,
 ) blockproc.EVMProcessor {
 	var prevBlockHash common.Hash
 	var baseFee *big.Int
 	if block.Idx == 0 {
-		baseFee = gasprice.GetInitialBaseFee(net.Economy)
+		baseFee = gasprice.GetInitialBaseFee(rules.Economy)
 	} else {
 		header := reader.GetHeader(common.Hash{}, uint64(block.Idx-1))
 		prevBlockHash = header.Hash
@@ -57,7 +57,7 @@ func (p *EVMModule) Start(
 			BaseFee:  header.BaseFee,
 			Duration: header.Duration,
 			GasUsed:  header.GasUsed,
-		}, net.Economy)
+		}, rules.Economy)
 	}
 
 	// Start block
@@ -68,13 +68,12 @@ func (p *EVMModule) Start(
 		reader:        reader,
 		statedb:       statedb,
 		onNewLog:      onNewLog,
-		net:           net,
+		rules:         rules,
 		evmCfg:        evmCfg,
 		blockIdx:      uint64(block.Idx),
 		prevBlockHash: prevBlockHash,
 		prevRandao:    prevrandao,
 		gasBaseFee:    baseFee,
-		rules:         net,
 	}
 }
 
@@ -83,7 +82,7 @@ type OperaEVMProcessor struct {
 	reader   evmcore.DummyChain
 	statedb  state.StateDB
 	onNewLog func(*types.Log)
-	net      opera.Rules
+	rules    opera.Rules
 	evmCfg   *params.ChainConfig
 
 	blockIdx      uint64
@@ -96,26 +95,24 @@ type OperaEVMProcessor struct {
 	skippedTxs  []uint32
 	receipts    types.Receipts
 	prevRandao  common.Hash
-
-	rules opera.Rules
 }
 
 func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlock {
-	baseFee := p.net.Economy.MinGasPrice
-	if !p.net.Upgrades.London {
+	baseFee := p.rules.Economy.MinGasPrice
+	if !p.rules.Upgrades.London {
 		baseFee = nil
-	} else if p.net.Upgrades.Sonic {
+	} else if p.rules.Upgrades.Sonic {
 		baseFee = p.gasBaseFee
 	}
 
 	prevRandao := common.Hash{}
 	// This condition must be kept, otherwise Sonic will not be able to synchronize
-	if p.net.Upgrades.Sonic {
+	if p.rules.Upgrades.Sonic {
 		prevRandao = p.prevRandao
 	}
 
 	var withdrawalsHash *common.Hash = nil
-	if p.net.Upgrades.Sonic {
+	if p.rules.Upgrades.Sonic {
 		withdrawalsHash = &types.EmptyWithdrawalsHash
 	}
 
@@ -126,7 +123,7 @@ func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlo
 		Root:            common.Hash{}, // state root is added later
 		Time:            p.block.Time,
 		Coinbase:        evmcore.GetCoinbase(),
-		GasLimit:        p.net.Blocks.MaxBlockGas,
+		GasLimit:        p.rules.Blocks.MaxBlockGas,
 		GasUsed:         p.gasUsed,
 		BaseFee:         baseFee,
 		BlobBaseFee:     blobBaseFee.ToBig(),
