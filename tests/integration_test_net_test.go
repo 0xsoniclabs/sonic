@@ -22,7 +22,9 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/config"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
 	"github.com/0xsoniclabs/tosca/go/tosca/vm"
 	"github.com/ethereum/go-ethereum/common"
@@ -326,4 +328,71 @@ func TestIntegrationTestNet_AccountsToBeDeployedWithGenesisCanBeCalled(t *testin
 
 	require.Equal(t, topic, receipt.Logs[0].Topics[0])
 
+}
+
+func TestIntegrationTestNet_GasSubsidiesContractDefaultDeployed(t *testing.T) {
+	upgrade := opera.GetSonicUpgrades()
+	upgrade.GasSubsidies = true
+
+	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
+		Upgrades: &upgrade,
+	})
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	var code hexutil.Bytes
+	err = client.Client().Call(&code, "eth_getCode", registry.GetAddress(), "latest")
+	require.NoError(t, err)
+	require.NotEmpty(t, code, "Gas subsidy registry contract not deployed")
+}
+
+func TestIntegrationTestNet_GasSubsidiesContractCanBeDeployedManually(t *testing.T) {
+	require := require.New(t)
+
+	upgrade := opera.GetSonicUpgrades()
+	upgrade.GasSubsidies = false
+
+	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
+		ModifyConfig: func(config *config.Config) {
+			// The transaction to deploy the subsidies registry contract has
+			// chain id 0, and is thus not replay protected. To be able to
+			// submit it, we need to allow unprotected transactions in the
+			// transaction pool.
+			config.Opera.AllowUnprotectedTxs = true
+		},
+		Upgrades: &upgrade,
+	})
+
+	client, err := net.GetClient()
+	require.NoError(err)
+	defer client.Close()
+
+	registryAddress := registry.GetAddress()
+	nonce, err := client.NonceAt(t.Context(), registryAddress, nil)
+	require.NoError(err)
+	require.Equal(uint64(0), nonce)
+
+	// Deploy the subsidies registry contract.
+	tx, creator := registry.GetDeploymentTransaction()
+
+	receipt, err := net.EndowAccount(creator, new(big.Int).Mul(big.NewInt(1e18), big.NewInt(100)))
+	require.NoError(err)
+	require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
+
+	require.NoError(client.SendTransaction(t.Context(), tx))
+
+	receipt, err = net.GetReceipt(tx.Hash())
+	require.NoError(err)
+	require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
+
+	// check that the contract is deployed
+	nonce, err = client.NonceAt(t.Context(), registryAddress, nil)
+	require.NoError(err)
+	require.Equal(uint64(1), nonce)
+	code, err := client.CodeAt(t.Context(), registryAddress, nil)
+	require.NoError(err)
+	require.NotEmpty(code)
+	require.Equal(registry.GetCode(), code)
 }
