@@ -94,15 +94,15 @@ func TestEvm_IgnoresGasPriceOfInternalTransactions(t *testing.T) {
 	nonce := uint64(15)
 	inner := types.NewTransaction(nonce, targetAddress, common.Big0, 1e10, common.Big0, nil)
 
-	receipts := processor.Execute([]*types.Transaction{inner}, math.MaxUint64)
+	processed := processor.Execute([]*types.Transaction{inner}, math.MaxUint64)
 
-	if len(receipts) != 1 {
-		t.Fatalf("Expected 1 receipt, got %d", len(receipts))
+	if len(processed) != 1 {
+		t.Fatalf("Expected 1 processed transaction, got %d", len(processed))
 	}
-	if receipts[0] == nil {
+	if processed[0].Receipt == nil {
 		t.Fatalf("Transaction was skipped")
 	}
-	if want, got := types.ReceiptStatusSuccessful, receipts[0].Status; want != got {
+	if want, got := types.ReceiptStatusSuccessful, processed[0].Receipt.Status; want != got {
 		t.Errorf("Expected status %v, got %v", want, got)
 	}
 }
@@ -172,19 +172,19 @@ func TestOperaEVMProcessor_Execute_ProducesContinuousTxIndexesInLogsAndReceipts(
 	// transactions and some have just one.
 	txIndex := uint(0)
 	for range N {
-		receipts := processor.Execute(types.Transactions{tx, tx}, math.MaxUint64)
-		require.Len(receipts, 2)
-		require.NotNil(receipts[0])
-		require.NotNil(receipts[1])
-		require.Equal(txIndex, receipts[0].TransactionIndex)
+		processed := processor.Execute(types.Transactions{tx, tx}, math.MaxUint64)
+		require.Len(processed, 2)
+		require.NotNil(processed[0].Receipt)
+		require.NotNil(processed[1].Receipt)
+		require.Equal(txIndex, processed[0].Receipt.TransactionIndex)
 		txIndex++
-		require.Equal(txIndex, receipts[1].TransactionIndex)
+		require.Equal(txIndex, processed[1].Receipt.TransactionIndex)
 		txIndex++
 
-		receipts = processor.Execute(types.Transactions{tx}, math.MaxUint64)
-		require.Len(receipts, 1)
-		require.NotNil(receipts[0])
-		require.Equal(txIndex, receipts[0].TransactionIndex)
+		processed = processor.Execute(types.Transactions{tx}, math.MaxUint64)
+		require.Len(processed, 1)
+		require.NotNil(processed[0].Receipt)
+		require.Equal(txIndex, processed[0].Receipt.TransactionIndex)
 		txIndex++
 	}
 }
@@ -241,25 +241,30 @@ func TestOperaEVMProcessor_Finalize_ReportsAggregatedNumberOfSkippedTransactions
 		To: &common.Address{}, Nonce: 1, Gas: 21_0000,
 	})
 
-	receipts := processor.Execute(types.Transactions{validTx}, math.MaxUint64)
-	require.Len(receipts, 1)
-	require.NotNil(receipts[0])
+	processed := processor.Execute(types.Transactions{validTx}, math.MaxUint64)
+	require.Len(processed, 1)
+	require.Equal(validTx, processed[0].Transaction)
+	require.NotNil(processed[0].Receipt)
 
 	_, numSkipped, _ := processor.Finalize()
 	require.Equal(0, numSkipped)
 
-	receipts = processor.Execute(types.Transactions{skippedTx}, math.MaxUint64)
-	require.Len(receipts, 1)
-	require.Nil(receipts[0])
+	processed = processor.Execute(types.Transactions{skippedTx}, math.MaxUint64)
+	require.Len(processed, 1)
+	require.Equal(skippedTx, processed[0].Transaction)
+	require.Nil(processed[0].Receipt)
 
 	_, numSkipped, _ = processor.Finalize()
 	require.Equal(1, numSkipped)
 
-	receipts = processor.Execute(types.Transactions{skippedTx, validTx, skippedTx}, math.MaxUint64)
-	require.Len(receipts, 3)
-	require.Nil(receipts[0])
-	require.NotNil(receipts[1])
-	require.Nil(receipts[2])
+	processed = processor.Execute(types.Transactions{skippedTx, validTx, skippedTx}, math.MaxUint64)
+	require.Len(processed, 3)
+	require.Equal(skippedTx, processed[0].Transaction)
+	require.Nil(processed[0].Receipt)
+	require.Equal(validTx, processed[1].Transaction)
+	require.NotNil(processed[1].Receipt)
+	require.Equal(skippedTx, processed[2].Transaction)
+	require.Nil(processed[2].Receipt)
 
 	_, numSkipped, _ = processor.Finalize()
 	require.Equal(3, numSkipped)
