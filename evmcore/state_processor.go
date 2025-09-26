@@ -85,10 +85,8 @@ func (p *StateProcessor) Process(
 	block *EvmBlock, statedb state.StateDB, cfg vm.Config, gasLimit uint64,
 	usedGas *uint64, onNewLog func(*types.Log),
 ) []ProcessedTransaction {
-	processed := make([]ProcessedTransaction, len(block.Transactions))
 	var (
 		gp           = new(core.GasPool).AddGas(gasLimit)
-		receipt      *types.Receipt
 		header       = block.Header()
 		time         = uint64(block.Time.Unix())
 		blockContext = NewEVMBlockContext(header, p.bc, nil)
@@ -103,16 +101,41 @@ func (p *StateProcessor) Process(
 	}
 
 	// Iterate over and process the individual transactions
-	for i, tx := range block.Transactions {
+	return runTransactions(
+		block.Transactions, signer, header.BaseFee, statedb,
+		gp, blockNumber, usedGas, vmenv, onNewLog, 0,
+	)
+}
+
+// runTransaction is a helper function to process a list of transactions. It
+// returns a list of ProcessedTransaction, containing the transaction and its
+// receipt (or nil if the transaction was skipped).
+//
+// The function is intended to be used by both the Process function and the
+// incremental transaction processor (BeginBlock/TransactionProcessor).
+func runTransactions(
+	transactions types.Transactions,
+	signer types.Signer,
+	baseFee *big.Int,
+	statedb state.StateDB,
+	gp *core.GasPool,
+	blockNumber *big.Int,
+	usedGas *uint64,
+	vmenv *vm.EVM,
+	onNewLog func(*types.Log),
+	txIndexOffset int,
+) []ProcessedTransaction {
+	processed := make([]ProcessedTransaction, len(transactions))
+	for i, tx := range transactions {
 		processed[i].Transaction = tx
-		msg, err := TxAsMessage(tx, signer, header.BaseFee)
+		msg, err := TxAsMessage(tx, signer, baseFee)
 		if err != nil {
 			log.Info("Failed to convert transaction to message", "tx", tx.Hash().Hex(), "err", err)
 			continue // skip this transaction, but continue processing the rest of the block
 		}
 
-		statedb.SetTxContext(tx.Hash(), i)
-		receipt, _, err = applyTransaction(msg, gp, statedb, blockNumber, tx, usedGas, vmenv, onNewLog)
+		statedb.SetTxContext(tx.Hash(), i+txIndexOffset)
+		receipt, _, err := applyTransaction(msg, gp, statedb, blockNumber, tx, usedGas, vmenv, onNewLog)
 		if err != nil {
 			log.Debug("Failed to apply transaction", "tx", tx.Hash().Hex(), "err", err)
 			continue // skip this transaction, but continue processing the rest of the block
@@ -179,18 +202,11 @@ func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) (
 	skipped bool,
 	err error,
 ) {
-	msg, err := TxAsMessage(tx, tp.signer, tp.header.BaseFee)
-	if err != nil {
-		return nil, false, fmt.Errorf(
-			"failed to convert transaction: %w", err,
-		)
-	}
-	tp.stateDb.SetTxContext(tx.Hash(), i)
-	receipt, _, err = applyTransaction(
-		msg, tp.gp, tp.stateDb, tp.blockNumber, tx,
-		&tp.usedGas, tp.vmEnvironment, tp.onNewLog,
+	processed := runTransactions(
+		[]*types.Transaction{tx}, tp.signer, tp.header.BaseFee, tp.stateDb,
+		tp.gp, tp.blockNumber, &tp.usedGas, tp.vmEnvironment, tp.onNewLog, i,
 	)
-	return receipt, err != nil, err
+	return processed[0].Receipt, processed[0].Receipt == nil, nil
 }
 
 // ApplyTransactionWithEVM attempts to apply a transaction to the given state database
