@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -46,19 +47,16 @@ func (p *StateProcessor) process_iteratively(
 	// This implementation is a wrapper around the BeginBlock function, which
 	// handles the actual transaction processing.
 	txProcessor := p.BeginBlock(block, stateDb, cfg, gasLimit, onNewLog)
-	processed := make([]ProcessedTransaction, len(block.Transactions))
+	processed := make([]ProcessedTransaction, 0, len(block.Transactions))
 	for i, tx := range block.Transactions {
-		processed[i].Transaction = tx
-		receipt, skip, err := txProcessor.Run(i, tx)
-		if skip {
-			continue
+		processed = append(processed, txProcessor.Run(i, tx)...)
+	}
+
+	// The total used gas is cumulative gas used reported by the last receipt.
+	for _, tx := range processed {
+		if tx.Receipt != nil {
+			*usedGas = tx.Receipt.CumulativeGasUsed
 		}
-		if err != nil {
-			// If an error occurs, we skip the transaction and continue with the next one.
-			continue
-		}
-		processed[i].Receipt = receipt
-		*usedGas = receipt.CumulativeGasUsed
 	}
 
 	return processed
@@ -87,7 +85,7 @@ func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
 
 	chainConfig := params.ChainConfig{}
 	chain := NewMockDummyChain(ctrl)
-	processor := NewStateProcessor(&chainConfig, chain)
+	processor := NewStateProcessor(&chainConfig, chain, opera.Upgrades{})
 
 	tests := map[string]processFunction{
 		"bulk":        processor.Process,
@@ -192,7 +190,7 @@ func TestProcess_DetectsTransactionThatCanNotBeConvertedIntoAMessage(t *testing.
 	}
 
 	state := getStateDbMockForTransactions(ctrl, transactions)
-	processor := NewStateProcessor(&chainConfig, chain)
+	processor := NewStateProcessor(&chainConfig, chain, opera.Upgrades{})
 	tests := map[string]processFunction{
 		"bulk":        processor.Process,
 		"incremental": processor.process_iteratively,
@@ -250,7 +248,7 @@ func TestProcess_TracksParentBlockHashIfPragueIsEnabled(t *testing.T) {
 		}
 		chain := NewMockDummyChain(ctrl)
 
-		processor := NewStateProcessor(&chainConfig, chain)
+		processor := NewStateProcessor(&chainConfig, chain, opera.Upgrades{})
 
 		tests := map[string]processFunction{
 			"bulk":        processor.Process,
@@ -300,7 +298,7 @@ func TestProcess_FailingTransactionAreSkippedButTheBlockIsNotTerminated(t *testi
 
 	chainConfig := params.ChainConfig{}
 	chain := NewMockDummyChain(ctrl)
-	processor := NewStateProcessor(&chainConfig, chain)
+	processor := NewStateProcessor(&chainConfig, chain, opera.Upgrades{})
 
 	block := &EvmBlock{
 		EvmHeader: EvmHeader{
@@ -359,7 +357,7 @@ func TestProcess_EnforcesGasLimitBySkippingExcessiveTransactions(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	chainConfig := params.ChainConfig{}
 	chain := NewMockDummyChain(ctrl)
-	processor := NewStateProcessor(&chainConfig, chain)
+	processor := NewStateProcessor(&chainConfig, chain, opera.Upgrades{})
 
 	tests := map[string]processFunction{
 		"bulk":        processor.Process,
