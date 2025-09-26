@@ -50,6 +50,15 @@ func NewStateProcessor(config *params.ChainConfig, bc DummyChain) *StateProcesso
 	}
 }
 
+// ProcessedTransaction represents a transaction that was considered for
+// inclusion in a block by the state processor. It contains the transaction
+// itself and the receipt either confirming its execution, or nil if the
+// transaction was skipped.
+type ProcessedTransaction struct {
+	Transaction *types.Transaction
+	Receipt     *types.Receipt
+}
+
 // Process processes the state changes according to the Ethereum rules by running
 // the transaction messages using the StateDB, collecting receipts for applied
 // transactions, nil-receipts for skipped transactions, and the used gas via an
@@ -75,8 +84,8 @@ func NewStateProcessor(config *params.ChainConfig, bc DummyChain) *StateProcesso
 func (p *StateProcessor) Process(
 	block *EvmBlock, statedb state.StateDB, cfg vm.Config, gasLimit uint64,
 	usedGas *uint64, onNewLog func(*types.Log),
-) types.Receipts {
-	receipts := make(types.Receipts, len(block.Transactions))
+) []ProcessedTransaction {
+	processed := make([]ProcessedTransaction, len(block.Transactions))
 	var (
 		gp           = new(core.GasPool).AddGas(gasLimit)
 		receipt      *types.Receipt
@@ -95,6 +104,7 @@ func (p *StateProcessor) Process(
 
 	// Iterate over and process the individual transactions
 	for i, tx := range block.Transactions {
+		processed[i].Transaction = tx
 		msg, err := TxAsMessage(tx, signer, header.BaseFee)
 		if err != nil {
 			log.Info("Failed to convert transaction to message", "tx", tx.Hash().Hex(), "err", err)
@@ -107,9 +117,9 @@ func (p *StateProcessor) Process(
 			log.Debug("Failed to apply transaction", "tx", tx.Hash().Hex(), "err", err)
 			continue // skip this transaction, but continue processing the rest of the block
 		}
-		receipts[i] = receipt
+		processed[i].Receipt = receipt
 	}
-	return receipts
+	return processed
 }
 
 // BeginBlock starts the processing of a new block and returns a function to

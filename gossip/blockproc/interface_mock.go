@@ -391,10 +391,10 @@ func (m *MockEVMProcessor) EXPECT() *MockEVMProcessorMockRecorder {
 }
 
 // Execute mocks base method.
-func (m *MockEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) types.Receipts {
+func (m *MockEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) []evmcore.ProcessedTransaction {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Execute", txs, gasLimit)
-	ret0, _ := ret[0].(types.Receipts)
+	ret0, _ := ret[0].([]evmcore.ProcessedTransaction)
 	return ret0
 }
 

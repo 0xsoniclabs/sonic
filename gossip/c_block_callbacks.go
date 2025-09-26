@@ -334,11 +334,11 @@ func consensusCallbackBeginBlockFn(
 
 				// Execute pre-internal transactions
 				preInternalTxs := blockProc.PreTxTransactor.PopInternalTxs(blockCtx, bs, es, sealing, statedb)
-				preInternalReceipts := evmProcessor.Execute(preInternalTxs, maxBlockGas)
+				preInternalProcessedTxs := evmProcessor.Execute(preInternalTxs, maxBlockGas)
 				bs = txListener.Finalize()
-				for _, r := range preInternalReceipts {
-					if r.Status == 0 {
-						log.Warn("Pre-internal transaction reverted", "txid", r.TxHash.String())
+				for _, tx := range preInternalProcessedTxs {
+					if tx.Receipt == nil || tx.Receipt.Status == 0 {
+						log.Warn("Pre-internal transaction skipped or reverted", "txid", tx.Transaction.Hash().String())
 					}
 				}
 
@@ -372,33 +372,40 @@ func consensusCallbackBeginBlockFn(
 						WithGasLimit(maxBlockGas).
 						WithDuration(blockDuration)
 
-					for i := range preInternalTxs {
-						blockBuilder.AddTransaction(
-							preInternalTxs[i],
-							preInternalReceipts[i],
-						)
+					for _, cur := range preInternalProcessedTxs {
+						if cur.Receipt != nil {
+							blockBuilder.AddTransaction(
+								cur.Transaction,
+								cur.Receipt,
+							)
+						}
 					}
 
 					// Execute post-internal transactions
 					internalTxs := blockProc.PostTxTransactor.PopInternalTxs(blockCtx, bs, es, sealing, statedb)
-					internalReceipts := evmProcessor.Execute(internalTxs, maxBlockGas)
-					for _, r := range internalReceipts {
-						if r.Status == 0 {
-							log.Warn("Internal transaction reverted", "txid", r.TxHash.String())
+					internalProcessedTxs := evmProcessor.Execute(internalTxs, maxBlockGas)
+					for _, tx := range internalProcessedTxs {
+						if tx.Receipt == nil || tx.Receipt.Status == 0 {
+							log.Warn("Internal transaction skipped or reverted", "txid", tx.Transaction.Hash().String())
 						}
 					}
 
-					for i := range internalTxs {
-						blockBuilder.AddTransaction(
-							internalTxs[i],
-							internalReceipts[i],
-						)
+					for _, cur := range internalProcessedTxs {
+						if cur.Receipt != nil {
+							blockBuilder.AddTransaction(
+								cur.Transaction,
+								cur.Receipt,
+							)
+						}
 					}
 
 					orderedTxs := proposal.Transactions
-					for i, receipt := range evmProcessor.Execute(orderedTxs, userTransactionGasLimit) {
-						if receipt != nil { // < nil if skipped
-							blockBuilder.AddTransaction(orderedTxs[i], receipt)
+					for _, processed := range evmProcessor.Execute(orderedTxs, userTransactionGasLimit) {
+						if processed.Receipt != nil { // < nil if skipped
+							blockBuilder.AddTransaction(
+								processed.Transaction,
+								processed.Receipt,
+							)
 						}
 					}
 
