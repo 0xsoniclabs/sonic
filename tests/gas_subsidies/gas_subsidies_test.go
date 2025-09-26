@@ -219,13 +219,7 @@ func TestGasSubsidies_InternalTransaction_ConsecutiveNonces(t *testing.T) {
 func TestGasSubsidies_InternalTransaction_ConsistentReceipts(t *testing.T) {
 	require := require.New(t)
 
-	upgrades := opera.GetAllegroUpgrades()
-	upgrades.GasSubsidies = true
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
-		Upgrades: &upgrades,
-	})
-
-	client, err := net.GetClient()
+	client, err := session.GetClient()
 	require.NoError(err)
 	defer client.Close()
 
@@ -235,15 +229,15 @@ func TestGasSubsidies_InternalTransaction_ConsistentReceipts(t *testing.T) {
 	receiverAddress := receiver.Address()
 	donation := big.NewInt(1e16)
 
-	anotherAccount := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
+	anotherAccount := tests.MakeAccountWithBalance(t, session, big.NewInt(1e18))
 
 	// set up sponsorship
-	createRegistryWithDonation(t, client, net, sponsor, sponsee, receiver, donation)
+	createRegistryWithDonation(t, client, session, sponsor, sponsee, receiver, donation)
 	suggestedGasPrice, err := client.SuggestGasPrice(t.Context())
 	require.NoError(err)
 
 	makeNonSponsoredTransaction := func(nonce uint64) *types.Transaction {
-		signer := types.LatestSignerForChainID(net.GetChainId())
+		signer := types.LatestSignerForChainID(session.GetChainId())
 		tx, err := types.SignNewTx(anotherAccount.PrivateKey, signer, &types.LegacyTx{
 			To:       &receiverAddress,
 			Gas:      21000,
@@ -262,13 +256,13 @@ func TestGasSubsidies_InternalTransaction_ConsistentReceipts(t *testing.T) {
 		hashes = append(hashes, tx.Hash())
 		require.NoError(client.SendTransaction(t.Context(), tx), "failed to send transaction %v", i)
 
-		tx = makeSponsoredTransactionWithNonce(t, net, receiverAddress, sponsee, i)
+		tx = makeSponsoredTransactionWithNonce(t, session, receiverAddress, sponsee, i)
 		hashes = append(hashes, tx.Hash())
 		require.NoError(client.SendTransaction(t.Context(), tx), "failed to send transaction %v", i)
 	}
 
 	// wait for all of them to be processed
-	receipts, err := net.GetReceipts(hashes)
+	receipts, err := session.GetReceipts(hashes)
 	require.NoError(err)
 
 	block, err := client.BlockByNumber(t.Context(), receipts[0].BlockNumber)
@@ -299,16 +293,17 @@ func TestGasSubsidies_InternalTransaction_ConsistentReceipts(t *testing.T) {
 
 }
 
-func createRegistryWithDonation(t *testing.T, client *tests.PooledEhtClient, net *tests.IntegrationTestNet,
-	sponsor, sponsee, receiver *tests.Account, donation *big.Int) *registry.Registry {
+func createRegistryWithDonation(t *testing.T, client *tests.PooledEhtClient,
+	session tests.IntegrationTestNetSession, sponsor, sponsee, receiver *tests.Account,
+	donation *big.Int) *registry.Registry {
 	registry, err := registry.NewRegistry(registry.GetAddress(), client)
 	require.NoError(t, err)
 
-	receipt, err := net.EndowAccount(sponsor.Address(), big.NewInt(1e18))
+	receipt, err := session.EndowAccount(sponsor.Address(), big.NewInt(1e18))
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
-	receipt, err = net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
+	receipt, err = session.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
 		opts.Value = big.NewInt(1e16)
 		return registry.SponsorUser(opts, sponsee.Address(), receiver.Address())
 	})
@@ -323,11 +318,12 @@ func createRegistryWithDonation(t *testing.T, client *tests.PooledEhtClient, net
 	return registry
 }
 
-func sendSponsoredTransaction(t *testing.T, client *tests.PooledEhtClient, net *tests.IntegrationTestNet, tx *types.Transaction) *types.Receipt {
+func sendSponsoredTransaction(t *testing.T, client *tests.PooledEhtClient,
+	session tests.IntegrationTestNetSession, tx *types.Transaction) *types.Receipt {
 	require.NoError(t, client.SendTransaction(t.Context(), tx))
 
 	// Wait for the sponsored transaction to be executed.
-	receipt, err := net.GetReceipt(tx.Hash())
+	receipt, err := session.GetReceipt(tx.Hash())
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
@@ -347,7 +343,7 @@ func sendSponsoredTransaction(t *testing.T, client *tests.PooledEhtClient, net *
 		if tx.Hash() == receipt.TxHash {
 			require.Less(t, i, len(block.Transactions()))
 			payment := block.Transactions()[i+1]
-			receipt, err := net.GetReceipt(payment.Hash())
+			receipt, err := session.GetReceipt(payment.Hash())
 			require.NoError(t, err)
 			require.Less(t, receipt.GasUsed, uint64(100_000))
 			require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
@@ -360,23 +356,27 @@ func sendSponsoredTransaction(t *testing.T, client *tests.PooledEhtClient, net *
 	return receipt
 }
 
-func sendSponsoredTransactionWithNonce(t *testing.T, net *tests.IntegrationTestNet, receiver common.Address, sender *tests.Account, nonce uint64) *types.Receipt {
+func sendSponsoredTransactionWithNonce(t *testing.T,
+	session tests.IntegrationTestNetSession, receiver common.Address,
+	sender *tests.Account, nonce uint64) *types.Receipt {
 	require := require.New(t)
 
-	sponsoredTx := makeSponsoredTransactionWithNonce(t, net, receiver, sender, nonce)
+	sponsoredTx := makeSponsoredTransactionWithNonce(t, session, receiver, sender, nonce)
 
-	client, err := net.GetClient()
+	client, err := session.GetClient()
 	require.NoError(err)
 	defer client.Close()
 
-	receipt := sendSponsoredTransaction(t, client, net, sponsoredTx)
+	receipt := sendSponsoredTransaction(t, client, session, sponsoredTx)
 	return receipt
 }
 
-func makeSponsoredTransactionWithNonce(t *testing.T, net *tests.IntegrationTestNet, receiver common.Address, sender *tests.Account, nonce uint64) *types.Transaction {
+func makeSponsoredTransactionWithNonce(t *testing.T,
+	session tests.IntegrationTestNetSession, receiver common.Address,
+	sender *tests.Account, nonce uint64) *types.Transaction {
 	require := require.New(t)
 
-	signer := types.LatestSignerForChainID(net.GetChainId())
+	signer := types.LatestSignerForChainID(session.GetChainId())
 	sponsoredTx, err := types.SignNewTx(sender.PrivateKey, signer, &types.LegacyTx{
 		To:       &receiver,
 		Gas:      21000,
