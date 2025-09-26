@@ -15,7 +15,12 @@
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
 pipeline {
-    agent { label 'pr' }
+    agent {
+        dockerfile {
+            filename 'CI/Dockerfile.jenkins'
+            label 'pr'
+        }
+    }
 
     options {
         timestamps()
