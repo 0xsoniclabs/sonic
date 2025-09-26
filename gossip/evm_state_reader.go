@@ -162,7 +162,7 @@ func (r *EvmStateReader) getBlock(h common.Hash, n idx.Block, readTxs bool) *evm
 }
 
 // GetTxPoolStateDB obtains StateDB for TxPool
-func (r *EvmStateReader) GetTxPoolStateDB() (evmcore.TxPoolStateDB, error) {
+func (r *EvmStateReader) GetTxPoolStateDB() (state.StateDB, error) {
 	return r.store.evm.GetTxPoolStateDB()
 }
 
