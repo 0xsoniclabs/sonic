@@ -28,8 +28,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/ethereum/go-ethereum/common"
+
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -83,6 +85,8 @@ func (pool *TxPool) waitForIdleReorgLoop_forTesting() {
 }
 
 type testTxPoolStateDb struct {
+	state.StateDB // embedded to ensure interface compliance
+
 	balances   map[common.Address]*uint256.Int
 	nonces     map[common.Address]uint64
 	codeHashes map[common.Address]common.Hash
@@ -112,12 +116,13 @@ func (t testTxPoolStateDb) GetCodeHash(addr common.Address) common.Hash {
 	return hash
 }
 
-func (t testTxPoolStateDb) SetCode(addr common.Address, code []byte) {
+func (t testTxPoolStateDb) SetCode(addr common.Address, code []byte) []byte {
 	if len(code) == 0 {
 		delete(t.codeHashes, addr)
 	} else {
 		t.codeHashes[addr] = crypto.Keccak256Hash(code)
 	}
+	return code
 }
 
 func (t testTxPoolStateDb) Release() {
@@ -176,7 +181,7 @@ func (bc *testBlockChain) GetBlock(hash common.Hash, number uint64) *EvmBlock {
 	return bc.CurrentBlock()
 }
 
-func (bc *testBlockChain) GetTxPoolStateDB() (TxPoolStateDB, error) {
+func (bc *testBlockChain) GetTxPoolStateDB() (state.StateDB, error) {
 	bc.mu.Lock()
 	defer bc.mu.Unlock()
 	return bc.statedb, nil
