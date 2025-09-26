@@ -74,7 +74,7 @@ func TestGasSubsidies_RequestIsRejectedInCaseOfInsufficientFunds(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create a sponsorship with insufficient funds (1e15 wei).
-	// The gas usage of the sponsored transaction is 134095 gas,
+	// The gas usage of the sponsor transaction is 134095 gas,
 	// with a gas price greater than 1e10, the transaction will fail.
 	donation := big.NewInt(1e15)
 	receipt, err = net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
