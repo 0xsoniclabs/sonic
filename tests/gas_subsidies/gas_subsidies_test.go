@@ -17,11 +17,11 @@
 package gassubsidies
 
 import (
+	"fmt"
 	"math/big"
 	"slices"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
@@ -103,26 +103,60 @@ func TestGasSubsidies_CanBeEnabledAndDisabled(
 	}
 }
 
-func TestGasSubsidies_SubsidizedTransactionDeductsSubsidyFunds(t *testing.T) {
+func TestGasSubsidies_InternalTransaction(t *testing.T) {
+
+	upgrades := []struct {
+		name    string
+		upgrade opera.Upgrades
+	}{
+		{name: "sonic", upgrade: opera.GetSonicUpgrades()},
+		{name: "allegro", upgrade: opera.GetAllegroUpgrades()},
+		//{name: "brio", upgrade: opera.GetBrioUpgrades()},
+	}
+	singleProposerOption := map[string]bool{
+		"singleProposer": true,
+		"distributed":    false,
+	}
+
+	for _, test := range upgrades {
+		for mode, enabled := range singleProposerOption {
+			t.Run(fmt.Sprintf("%s/%v", test.name, mode), func(t *testing.T) {
+				t.Parallel()
+
+				test.upgrade.GasSubsidies = true
+				test.upgrade.SingleProposerBlockFormation = enabled
+				net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+					Upgrades: &test.upgrade,
+				})
+
+				t.Run("ConsecutiveNonces", func(t *testing.T) {
+					session := net.SpawnSession(t)
+					testGasSubsidies_InternalTransaction_ConsecutiveNonces(t, session)
+				})
+
+				t.Run("ConsistentReceipts", func(t *testing.T) {
+					session := net.SpawnSession(t)
+					testGasSubsidies_InternalTransaction_ConsistentReceipts(t, session)
+				})
+
+				t.Run("CanRunSubsidizedTransactions", func(t *testing.T) {
+					session := net.SpawnSession(t)
+					testCanRunSubsidizedTransactions(t, session)
+				})
+
+				t.Run("SubsidizedTransactionDeductsSubsidyFunds", func(t *testing.T) {
+					session := net.SpawnSession(t)
+					testGasSubsidies_SubsidizedTransactionDeductsSubsidyFunds(t, session)
+				})
+			})
+		}
+	}
+}
+
+func testCanRunSubsidizedTransactions(t *testing.T, session tests.IntegrationTestNetSession) {
 	require := require.New(t)
 
-	// --- setup ---
-
-	upgrades := opera.GetAllegroUpgrades()
-	upgrades.GasSubsidies = true
-	net := tests.StartIntegrationTestNet(t,
-		tests.IntegrationTestNetOptions{
-			ModifyConfig: func(config *config.Config) {
-				// The transaction to deploy the subsidies registry contract has
-				// chain id 0, and is thus not replay protected. To be able to
-				// submit it, we need to allow unprotected transactions in the
-				// transaction pool.
-				config.Opera.AllowUnprotectedTxs = true
-			},
-			Upgrades: &upgrades,
-		})
-
-	client, err := net.GetClient()
+	client, err := session.GetClient()
 	require.NoError(err)
 	defer client.Close()
 
@@ -133,12 +167,12 @@ func TestGasSubsidies_SubsidizedTransactionDeductsSubsidyFunds(t *testing.T) {
 	donation := big.NewInt(1e16)
 
 	// set up sponsorship
-	createRegistryWithDonation(t, client, net, sponsor, sponsee, receiver, donation)
+	createRegistryWithDonation(t, client, session, sponsor, sponsee, receiver, donation)
 
 	interanlNonce, err := client.PendingNonceAt(t.Context(), common.Address{})
 	require.NoError(err)
 
-	receipt := sendSponsoredTransactionWithNonce(t, net, receiver.Address(), sponsee, 0)
+	receipt := sendSponsoredTransactionWithNonce(t, session, receiver.Address(), sponsee, 0)
 
 	txIndex, block := getTransactionIndexInBlock(t, client, receipt)
 	require.Less(txIndex, len(block.Transactions())-1,
@@ -151,7 +185,7 @@ func TestGasSubsidies_SubsidizedTransactionDeductsSubsidyFunds(t *testing.T) {
 		"the payment transaction should have the same nonce as the internal transaction",
 	)
 
-	receipt = sendSponsoredTransactionWithNonce(t, net, receiver.Address(), sponsee, 1)
+	receipt = sendSponsoredTransactionWithNonce(t, session, receiver.Address(), sponsee, 1)
 
 	txIndex, block = getTransactionIndexInBlock(t, client, receipt)
 
@@ -165,16 +199,13 @@ func TestGasSubsidies_SubsidizedTransactionDeductsSubsidyFunds(t *testing.T) {
 	)
 }
 
-func TestGasSubsidies_InternalTransaction_ConsecutiveNonces(t *testing.T) {
+func testGasSubsidies_InternalTransaction_ConsecutiveNonces(t *testing.T, session tests.IntegrationTestNetSession) {
 	require := require.New(t)
 
 	upgrades := opera.GetAllegroUpgrades()
 	upgrades.GasSubsidies = true
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
-		Upgrades: &upgrades,
-	})
 
-	client, err := net.GetClient()
+	client, err := session.GetClient()
 	require.NoError(err)
 	defer client.Close()
 
@@ -184,12 +215,12 @@ func TestGasSubsidies_InternalTransaction_ConsecutiveNonces(t *testing.T) {
 	donation := big.NewInt(1e16)
 
 	// set up sponsorship
-	createRegistryWithDonation(t, client, net, sponsor, sponsee, receiver, donation)
+	createRegistryWithDonation(t, client, session, sponsor, sponsee, receiver, donation)
 
 	internalNonce, err := client.PendingNonceAt(t.Context(), common.Address{})
 	require.NoError(err)
 
-	receipt := sendSponsoredTransactionWithNonce(t, net, receiver.Address(), sponsee, 0)
+	receipt := sendSponsoredTransactionWithNonce(t, session, receiver.Address(), sponsee, 0)
 
 	txIndex, block := getTransactionIndexInBlock(t, client, receipt)
 	require.Less(txIndex, len(block.Transactions())-1,
@@ -202,7 +233,7 @@ func TestGasSubsidies_InternalTransaction_ConsecutiveNonces(t *testing.T) {
 		"the payment transaction should have the same nonce as the internal transaction",
 	)
 
-	receipt = sendSponsoredTransactionWithNonce(t, net, receiver.Address(), sponsee, 1)
+	receipt = sendSponsoredTransactionWithNonce(t, session, receiver.Address(), sponsee, 1)
 
 	txIndex, block = getTransactionIndexInBlock(t, client, receipt)
 
@@ -216,7 +247,8 @@ func TestGasSubsidies_InternalTransaction_ConsecutiveNonces(t *testing.T) {
 	)
 }
 
-func TestGasSubsidies_InternalTransaction_ConsistentReceipts(t *testing.T) {
+func testGasSubsidies_InternalTransaction_ConsistentReceipts(t *testing.T,
+	session tests.IntegrationTestNetSession) {
 	require := require.New(t)
 
 	client, err := session.GetClient()
@@ -290,7 +322,66 @@ func TestGasSubsidies_InternalTransaction_ConsistentReceipts(t *testing.T) {
 			"receipt tx hash does not match transaction hash for tx %d", i,
 		)
 	}
+}
 
+func testGasSubsidies_SubsidizedTransactionDeductsSubsidyFunds(t *testing.T, session tests.IntegrationTestNetSession) {
+	require := require.New(t)
+
+	client, err := session.GetClient()
+	require.NoError(err)
+	defer client.Close()
+
+	sponsor := tests.NewAccount()
+	sponsee := tests.NewAccount()
+	receiver := tests.NewAccount()
+
+	// Before the sponsorship is set up, a transaction from the sponsee
+	// to the receiver should fail due to lack of funds.
+	chainId := session.GetChainId()
+	receiverAddress := receiver.Address()
+	signer := types.LatestSignerForChainID(chainId)
+	tx, err := types.SignNewTx(sponsee.PrivateKey, signer, &types.LegacyTx{
+		To:       &receiverAddress,
+		Gas:      21000,
+		GasPrice: big.NewInt(0),
+	})
+	require.NoError(err)
+	require.Error(
+		client.SendTransaction(t.Context(), tx),
+		"should be rejected due to lack of funds and no sponsorship",
+	)
+
+	// --- deposit sponsorship funds ---
+
+	donation := big.NewInt(1e16)
+	ledger := createRegistryWithDonation(t, client, session, sponsor, sponsee, receiver, donation)
+
+	burnedBefore, err := client.BalanceAt(t.Context(), common.Address{}, nil)
+	require.NoError(err)
+
+	// --- submit a sponsored transaction ---
+
+	receipt := sendSponsoredTransaction(t, client, session, tx)
+
+	// check that the sponsorship funds got deducted
+	ops := &bind.CallOpts{
+		BlockNumber: receipt.BlockNumber,
+	}
+	sponsorship, err := ledger.UserSponsorships(ops, sponsee.Address(), receiver.Address())
+	require.NoError(err)
+	require.Less(sponsorship.Funds.Uint64(), donation.Uint64())
+
+	// the difference in the sponsorship funds should have been burned
+	burnedAfter, err := client.BalanceAt(t.Context(), common.Address{}, nil)
+	require.NoError(err)
+	require.Greater(burnedAfter.Uint64(), burnedBefore.Uint64())
+
+	// the sponsorship difference and the increase in burned funds should be equal
+	diff := new(big.Int).Sub(burnedAfter, burnedBefore)
+	reduced := new(big.Int).Sub(donation, sponsorship.Funds)
+	require.Equal(0, diff.Cmp(reduced),
+		"the burned amount should equal the reduction of the sponsorship funds",
+	)
 }
 
 func createRegistryWithDonation(t *testing.T, client *tests.PooledEhtClient,
