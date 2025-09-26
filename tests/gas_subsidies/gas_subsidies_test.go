@@ -14,15 +14,13 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
-package tests
+package gas_subsidies
 
 import (
 	"math/big"
-	"slices"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/config"
-	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -117,67 +115,6 @@ func testCanRunSubsidizedTransactions(t *testing.T, singleProposer bool) {
 	require.Equal(0, diff.Cmp(reduced),
 		"the burned amount should equal the reduction of the sponsorship funds",
 	)
-}
-
-func createRegistryWithDonation(t *testing.T, client *tests.PooledEhtClient, net *tests.IntegrationTestNet,
-	sponsor, sponsee, receiver *tests.Account, donation *big.Int) *registry.Registry {
-	registry, err := registry.NewRegistry(registry.GetAddress(), client)
-	require.NoError(t, err)
-
-	receipt, err := net.EndowAccount(sponsor.Address(), big.NewInt(1e18))
-	require.NoError(t, err)
-	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
-
-	receipt, err = net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
-		opts.Value = big.NewInt(1e16)
-		return registry.SponsorUser(opts, sponsee.Address(), receiver.Address())
-	})
-	require.NoError(t, err)
-	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
-
-	// check that the sponsorship funds got deposited
-	sponsorship, err := registry.UserSponsorships(nil, sponsee.Address(), receiver.Address())
-	require.NoError(t, err)
-	require.Equal(t, donation, sponsorship.Funds)
-
-	return registry
-}
-
-func sendSponsoredTransaction(t *testing.T, client *tests.PooledEhtClient, net *tests.IntegrationTestNet, tx *types.Transaction) *types.Receipt {
-	require.NoError(t, client.SendTransaction(t.Context(), tx))
-
-	// Wait for the sponsored transaction to be executed.
-	receipt, err := net.GetReceipt(tx.Hash())
-	require.NoError(t, err)
-	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
-
-	block, err := client.BlockByNumber(t.Context(), receipt.BlockNumber)
-	require.NoError(t, err)
-	require.True(t, slices.ContainsFunc(
-		block.Transactions(),
-		func(cur *types.Transaction) bool {
-			return cur.Hash() == tx.Hash()
-		},
-	))
-
-	// Check that the payment transaction is included right after the sponsored
-	// transaction and that it was successful and has a non-zero value.
-	found := false
-	for i, tx := range block.Transactions() {
-		if tx.Hash() == receipt.TxHash {
-			require.Less(t, i, len(block.Transactions()))
-			payment := block.Transactions()[i+1]
-			receipt, err := net.GetReceipt(payment.Hash())
-			require.NoError(t, err)
-			require.Less(t, receipt.GasUsed, uint64(100_000))
-			require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
-			found = true
-			break
-		}
-	}
-	require.True(t, found, "sponsored transaction not found in the block")
-
-	return receipt
 }
 
 // TODO: test the following properties
