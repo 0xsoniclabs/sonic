@@ -56,47 +56,47 @@ contract SubsidiesRegistry {
 
     // --- Funding infrastructure used by the Sonic client ---
 
-    function isCovered(
-        address from,    // transaction sender
-        address to,      // transaction recipient
-        uint256 nonce,   // transaction nonce
-        bytes calldata callData,    // transaction call data
-        uint256 fee      // required fee to be covered
-    ) public view returns(
-        bool covered,    // true, if covered, false otherwise
-        bytes32 fundId   // if covered, the fund ID covering the fee
-    ){
+    function chooseFund(
+        address from,
+        address to,
+        uint256 /*value*/,
+        uint256 nonce,
+        bytes calldata callData,
+        uint256 fee
+    ) public view returns (bytes32 fundId) {
         // Check all possible sponsorship funds in order of precedence.
+        bool covered;
         (covered, fundId) = approvalSponsorshipFundId(from, to, callData);
         if (covered && sponsorships[fundId].funds >= fee) {
-            return (true, fundId);
+            return fundId;
         }
         (covered, fundId) = callSponsorshipFundId(from, to, callData);
         if (covered && sponsorships[fundId].funds >= fee) {
-            return (true, fundId);
+            return fundId;
         }
         (covered, fundId) = accountSponsorshipFundId(from);
         if (covered && sponsorships[fundId].funds >= fee) {
-            return (true, fundId);
+            return fundId;
         }
         (covered, fundId) = contractSponsorshipFundId(to);
         if (covered && sponsorships[fundId].funds >= fee) {
-            return (true, fundId);
+            return fundId;
         }
         (covered, fundId) = bootstrapSponsorshipFund(nonce);
         if (covered && sponsorships[fundId].funds >= fee) {
-            return (true, fundId);
+            return fundId;
         }
         (covered, fundId) = globalSponsorshipFundId();
         if (covered && sponsorships[fundId].funds >= fee) {
-            return (true, fundId);
+            return fundId;
         }
-        // No sponsorship found to cover the fee.
-        return (false, bytes32(0));
+        // No sponsorship found to cover the fee, returning the 0 fund.
+        return bytes32(0);
     }
 
     function deductFees(bytes32 fundId, uint256 fee) public {
         require(msg.sender == address(0)); // < only be called through internal transactions
+        require(fundId != bytes32(0), "No sponsorship fund chosen");
         Fund storage fund = sponsorships[fundId];
         require(fund.funds >= fee, "Not enough funds");
         feeBurner.burnNativeTokens{value: fee}();
