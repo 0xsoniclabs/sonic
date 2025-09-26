@@ -29,14 +29,21 @@ import (
 	"testing"
 	"time"
 
+	"github.com/0xsoniclabs/carmen/go/common/witness"
+	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/ethereum/go-ethereum/common"
+
+	geth_state "github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/stateless"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/params"
+	trie_utils "github.com/ethereum/go-ethereum/trie/utils"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
@@ -113,16 +120,159 @@ func (t testTxPoolStateDb) GetCodeHash(addr common.Address) common.Hash {
 	return hash
 }
 
-func (t testTxPoolStateDb) SetCode(addr common.Address, code []byte) {
+func (t testTxPoolStateDb) SetCode(addr common.Address, code []byte) []byte {
 	if len(code) == 0 {
 		delete(t.codeHashes, addr)
 	} else {
 		t.codeHashes[addr] = crypto.Keccak256Hash(code)
 	}
+	return code
 }
 
 func (t testTxPoolStateDb) Release() {
 	// no-op
+}
+
+// The following list of methods are included to satisfy the sonic's StateDB interface.
+// they are no used in the tests, and will panic if called.
+
+func (t testTxPoolStateDb) Error() error {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) GetLogs(hash common.Hash, blockHash common.Hash) []*types.Log {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) SetTxContext(thash common.Hash, ti int) {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) TxIndex() int {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) GetProof(addr common.Address, keys []common.Hash) (witness.Proof, error) {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) SetBalance(addr common.Address, amount *uint256.Int) {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) SetStorage(addr common.Address, storage map[common.Hash]common.Hash) {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) Copy() state.StateDB {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) GetStateHash() common.Hash {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) BeginBlock(number uint64) {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) EndBlock(number uint64) {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) EndTransaction() {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) CreateAccount(common.Address) {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) CreateContract(common.Address) {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) SubBalance(common.Address, *uint256.Int, tracing.BalanceChangeReason) uint256.Int {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) AddBalance(common.Address, *uint256.Int, tracing.BalanceChangeReason) uint256.Int {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) SetNonce(common.Address, uint64, tracing.NonceChangeReason) {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) GetCode(common.Address) []byte {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) GetCodeSize(common.Address) int {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) AddRefund(uint64) {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) SubRefund(uint64) {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) GetRefund() uint64 {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) GetStateAndCommittedState(common.Address, common.Hash) (common.Hash, common.Hash) {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) GetState(common.Address, common.Hash) common.Hash {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) SetState(common.Address, common.Hash, common.Hash) common.Hash {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) GetStorageRoot(addr common.Address) common.Hash {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) GetTransientState(addr common.Address, key common.Hash) common.Hash {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) SetTransientState(addr common.Address, key, value common.Hash) {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) SelfDestruct(common.Address) uint256.Int {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) HasSelfDestructed(common.Address) bool {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) SelfDestruct6780(common.Address) (uint256.Int, bool) {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) Exist(common.Address) bool {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) Empty(common.Address) bool {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) AddressInAccessList(addr common.Address) bool {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) SlotInAccessList(addr common.Address, slot common.Hash) (addressOk bool, slotOk bool) {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) AddAddressToAccessList(addr common.Address) {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) AddSlotToAccessList(addr common.Address, slot common.Hash) {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) PointCache() *trie_utils.PointCache {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) Prepare(rules params.Rules, sender, coinbase common.Address, dest *common.Address, precompiles []common.Address, txAccesses types.AccessList) {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) RevertToSnapshot(int) {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) Snapshot() int {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) AddLog(*types.Log) {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) AddPreimage(common.Hash, []byte) {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) Witness() *stateless.Witness {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) AccessEvents() *geth_state.AccessEvents {
+	panic("not implemented")
+}
+func (t testTxPoolStateDb) Finalise(bool) {
+	panic("not implemented")
 }
 
 type testBlockChain struct {
@@ -177,7 +327,7 @@ func (bc *testBlockChain) GetBlock(hash common.Hash, number uint64) *EvmBlock {
 	return bc.CurrentBlock()
 }
 
-func (bc *testBlockChain) GetTxPoolStateDB() (TxPoolStateDB, error) {
+func (bc *testBlockChain) GetTxPoolStateDB() (state.StateDB, error) {
 	bc.mu.Lock()
 	defer bc.mu.Unlock()
 	return bc.statedb, nil

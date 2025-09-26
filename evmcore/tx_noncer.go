@@ -19,6 +19,7 @@ package evmcore
 import (
 	"sync"
 
+	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -26,13 +27,13 @@ import (
 // accounts in the pool, falling back to reading from a real state database if
 // an account is unknown.
 type txNoncer struct {
-	fallback TxPoolStateDB
+	fallback state.StateDB
 	nonces   map[common.Address]uint64
 	lock     sync.Mutex
 }
 
 // newTxNoncer creates a new virtual state database to track the pool nonces.
-func newTxNoncer(statedb TxPoolStateDB) *txNoncer {
+func newTxNoncer(statedb state.StateDB) *txNoncer {
 	return &txNoncer{
 		fallback: statedb,
 		nonces:   make(map[common.Address]uint64),

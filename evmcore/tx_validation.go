@@ -21,6 +21,7 @@ import (
 	"math/big"
 
 	"github.com/0xsoniclabs/sonic/gossip/gasprice/gaspricelimits"
+	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -31,7 +32,7 @@ import (
 // poolOptions is a set of options to adjust the validation of transactions
 // according to the current state of the transaction pool.
 type poolOptions struct {
-	currentState TxPoolStateDB // Current state in the blockchain head
+	currentState state.StateDB // Current state in the blockchain head
 	minTip       *big.Int      // Minimum gas tip to enforce for acceptance into the pool
 	locals       *accountSet   // Set of local transaction to exempt from eviction rules
 	isLocal      bool          // Whether the transaction came from a local source
@@ -247,7 +248,7 @@ func ValidateTxForBlock(tx *types.Transaction, blockState blockState) error {
 // Specifically, it ensures the sender has sufficient balance to cover the transaction cost,
 // and that the transaction's nonce is not lower than the sender's nonce in the state.
 // Returns an error if any of these conditions are not met.
-func ValidateTxForState(tx *types.Transaction, state TxPoolStateDB,
+func ValidateTxForState(tx *types.Transaction, state state.StateDB,
 	signer types.Signer) error {
 
 	// Make sure the transaction is signed properly.

@@ -35,8 +35,8 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/holiman/uint256"
 
+	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/sonic/utils/signers/gsignercache"
 	"github.com/0xsoniclabs/sonic/utils/txtime"
@@ -150,19 +150,12 @@ const (
 	TxStatusIncluded
 )
 
-type TxPoolStateDB interface {
-	GetNonce(addr common.Address) uint64
-	GetBalance(addr common.Address) *uint256.Int
-	GetCodeHash(addr common.Address) common.Hash
-	Release()
-}
-
 // StateReader provides the state of blockchain and current gas limit to do
 // some pre checks in tx pool and event subscribers.
 type StateReader interface {
 	CurrentBlock() *EvmBlock
 	GetBlock(hash common.Hash, number uint64) *EvmBlock
-	GetTxPoolStateDB() (TxPoolStateDB, error)
+	GetTxPoolStateDB() (state.StateDB, error)
 	GetCurrentBaseFee() *big.Int
 	MaxGasLimit() uint64
 	SubscribeNewBlock(ch chan<- ChainHeadNotify) notify.Subscription
@@ -285,7 +278,7 @@ type TxPool struct {
 	eip7623  bool // Fork indicator whether we are using EIP-7623 floor gas validation.
 	eip7702  bool // Fork indicator whether we are using EIP-7702 type transactions.
 
-	currentState  TxPoolStateDB // Current state in the blockchain head
+	currentState  state.StateDB // Current state in the blockchain head
 	pendingNonces *txNoncer     // Pending state tracking virtual nonces
 	currentMaxGas uint64        // Current gas limit for transaction caps
 
