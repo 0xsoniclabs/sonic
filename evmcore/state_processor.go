@@ -51,8 +51,10 @@ func NewStateProcessor(config *params.ChainConfig, bc DummyChain) *StateProcesso
 }
 
 // Process processes the state changes according to the Ethereum rules by running
-// the transaction messages using the StateDB, collecting all receipts, logs,
-// the indexes of skipped transactions, and the used gas via an output parameter.
+// the transaction messages using the StateDB, collecting receipts for applied
+// transactions, nil-receipts for skipped transactions, and the used gas via an
+// output parameter. The resulting list of receipts matches the order of the
+// transactions in the block.
 //
 // A transaction is skipped if for some reason its execution in the given order
 // is not possible. Skipped transactions do not consume any gas and do not affect
@@ -62,7 +64,8 @@ func NewStateProcessor(config *params.ChainConfig, bc DummyChain) *StateProcesso
 // Some reasons leading to issues during the execution of a transaction can lead
 // to a general fail of the Process step. Among those are, for instance, the
 // inability of restoring the sender from a transactions signature. In such a
-// case, the full processing is aborted and an error is returned.
+// case, the corresponding transaction is skipped, but the processing of the
+// block continues. The error is logged, but not returned to the caller.
 //
 // Note that these rules are part of the replicated state machine and must be
 // consistent among all nodes on the network. The encoded rules have been
@@ -72,11 +75,8 @@ func NewStateProcessor(config *params.ChainConfig, bc DummyChain) *StateProcesso
 func (p *StateProcessor) Process(
 	block *EvmBlock, statedb state.StateDB, cfg vm.Config, gasLimit uint64,
 	usedGas *uint64, onNewLog func(*types.Log),
-) (
-	types.Receipts, []uint32,
-) {
-	receipts := make(types.Receipts, 0, len(block.Transactions))
-	skipped := make([]uint32, 0, len(block.Transactions))
+) types.Receipts {
+	receipts := make(types.Receipts, len(block.Transactions))
 	var (
 		gp           = new(core.GasPool).AddGas(gasLimit)
 		receipt      *types.Receipt
@@ -98,8 +98,6 @@ func (p *StateProcessor) Process(
 		msg, err := TxAsMessage(tx, signer, header.BaseFee)
 		if err != nil {
 			log.Info("Failed to convert transaction to message", "tx", tx.Hash().Hex(), "err", err)
-			skipped = append(skipped, uint32(i))
-			receipts = append(receipts, nil)
 			continue // skip this transaction, but continue processing the rest of the block
 		}
 
@@ -107,13 +105,11 @@ func (p *StateProcessor) Process(
 		receipt, _, err = applyTransaction(msg, gp, statedb, blockNumber, tx, usedGas, vmenv, onNewLog)
 		if err != nil {
 			log.Debug("Failed to apply transaction", "tx", tx.Hash().Hex(), "err", err)
-			skipped = append(skipped, uint32(i))
-			receipts = append(receipts, nil)
 			continue // skip this transaction, but continue processing the rest of the block
 		}
-		receipts = append(receipts, receipt)
+		receipts[i] = receipt
 	}
-	return receipts, skipped
+	return receipts
 }
 
 // BeginBlock starts the processing of a new block and returns a function to
@@ -278,6 +274,10 @@ func ProcessParentBlockHash(prevHash common.Hash, evm *vm.EVM, stateDb state.Sta
 	stateDb.EndTransaction()
 }
 
+// applyTransaction attempts to apply a transaction defined by the given message
+// to the provided EVM environment. If successful, a non-nil receipt and the
+// used gas is returned. If it fails, an error is returned and the receipt is
+// guaranteed to be nil.
 func applyTransaction(
 	msg *core.Message,
 	gp *core.GasPool,
