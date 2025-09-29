@@ -18,70 +18,41 @@ package evmcore
 
 import (
 	"fmt"
-	"math"
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
-
-// getTestPoolOptions returns a set of options to adjust the validation of transactions
-// considering them as local transactions with a min tip of 1.
-func getTestPoolOptions() poolOptions {
-	return poolOptions{
-		minTip:       big.NewInt(1),
-		isLocal:      true,
-		currentState: nil,
-		locals:       nil,
-	}
-}
-
-// getTestBlockState returns a test set of base feee and max gas that can be used for
-// validating transactions in the context of a block. It initializes the state
-// with a base fee of 1 and a max gas of 100_000
-func getTestBlockState() blockState {
-	return blockState{
-		baseFee: big.NewInt(1),
-		maxGas:  100_000,
-	}
-}
-
-// getTestNetworkRules returns a set of network rules to adjust the validation of transactions
-// so that it accepts all types of transactions. It also sets the signer to a new Prague signer with chain ID 1.
-func getTestNetworkRules() NetworkRules {
-	return NetworkRules{
-		istanbul: true,
-		eip2718:  true,
-		eip1559:  true,
-		shanghai: true,
-		eip4844:  true,
-		eip7623:  true,
-		eip7702:  true,
-		osaka:    true,
-		signer:   types.NewPragueSigner(big.NewInt(1)),
-		// EIP-7825 fixes this limit to 16M gas, Sonic network leaves this
-		// parameter configurable via network rules
-		maxTxGas: 16_000_000,
-	}
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 // Static Validation
 
 func TestValidateTxStatic_Value_RejectsTxWithNegativeValue(t *testing.T) {
-	for name, tx := range getTxsOfAllTypes() {
-		t.Run(name, func(t *testing.T) {
-			if isBlobOrSetCode(tx) {
-				t.Skip("blob and setCode transactions cannot have negative value because they use uint256 Value")
-			}
-			setValueToNegative(t, tx)
+	txs := []types.TxData{
+		&types.LegacyTx{
+			Value: big.NewInt(-1),
+		},
+		&types.AccessListTx{
+			Value: big.NewInt(-1),
+		},
+		&types.DynamicFeeTx{
+			Value: big.NewInt(-1),
+		},
+		&types.DynamicFeeTx{
+			Value: big.NewInt(-1),
+		},
+	}
+
+	for _, tx := range txs {
+		t.Run(transactionTypeName(tx), func(t *testing.T) {
 			err := ValidateTxStatic(types.NewTx(tx))
 			require.ErrorIs(t, err, ErrNegativeValue)
 		})
@@ -89,80 +60,89 @@ func TestValidateTxStatic_Value_RejectsTxWithNegativeValue(t *testing.T) {
 }
 
 func TestValidateTxStatic_GasPriceAndTip_RejectsTxWith(t *testing.T) {
-	extremelyLargeN := new(big.Int).Lsh(big.NewInt(1), 256)
+	extremelyLargeValue := new(big.Int).Lsh(big.NewInt(1), 256)
 
-	for name, tx := range getTxsOfAllTypes() {
-		t.Run(fmt.Sprintf("gas fee longer than 256 bits/%s", name), func(t *testing.T) {
-			if isBlobOrSetCode(tx) {
-				t.Skip("blob and setCode transactions cannot have gas price larger than uint256")
-			}
-			setGasPriceOrFeeCap(t, tx, extremelyLargeN)
-			err := ValidateTxStatic(types.NewTx(tx))
-			require.ErrorIs(t, err, ErrFeeCapVeryHigh)
-		})
-	}
+	t.Run("gas fee larger than 256 bits", func(t *testing.T) {
+		txs := []types.TxData{
+			&types.LegacyTx{
+				GasPrice: extremelyLargeValue,
+			},
+			&types.AccessListTx{
+				GasPrice: extremelyLargeValue,
+			},
+			&types.DynamicFeeTx{
+				GasFeeCap: extremelyLargeValue,
+			},
+			&types.DynamicFeeTx{
+				GasFeeCap: extremelyLargeValue,
+			},
+		}
 
-	// GasTipCap test
-	for name, tx := range getTxsOfAllTypes() {
-		t.Run(fmt.Sprintf("gas tip longer than 256 bits/%s", name), func(t *testing.T) {
-			// Blob and setCode transactions can never have a Tip with bit length
-			// larger than 256 because of the type they use for this field.
-			if isBlobOrSetCode(tx) {
-				t.Skip("blob and setCode transactions cannot have gas tip larger than u256")
-			}
-
-			// set gas tip cap too large
-			setEffectiveTip(t, tx, extremelyLargeN)
-
-			err := ValidateTxStatic(types.NewTx(tx))
-
-			if _, ok := tx.(*types.DynamicFeeTx); ok {
-				require.ErrorIs(t, err, ErrTipVeryHigh)
-			} else if isLegacyOrAccessList(tx) {
-				// because tip is the same as gas fee cap for legacy and access list
-				// transactions, we need to check if the error is the same as for
-				// gas fee cap instead
+		for _, tx := range txs {
+			t.Run(transactionTypeName(tx), func(t *testing.T) {
+				err := ValidateTxStatic(types.NewTx(tx))
 				require.ErrorIs(t, err, ErrFeeCapVeryHigh)
-			} else {
-				t.Fatal("unknown transaction type")
-			}
-		})
-	}
+			})
+		}
+	})
 
-	// GasFeeCap and GasTipCap test
-	for name, tx := range getTxsOfAllTypes() {
-		t.Run(fmt.Sprintf("gas fee lower than gas tip/%v", name), func(t *testing.T) {
+	t.Run("gas tip larger than 256 bits", func(t *testing.T) {
+		txs := []types.TxData{
+			&types.DynamicFeeTx{
+				GasTipCap: extremelyLargeValue,
+			},
+			&types.DynamicFeeTx{
+				GasTipCap: extremelyLargeValue,
+			},
+		}
 
-			setGasPriceOrFeeCap(t, tx, big.NewInt(1))
-			setEffectiveTip(t, tx, big.NewInt(2))
+		for _, tx := range txs {
+			t.Run(transactionTypeName(tx), func(t *testing.T) {
+				err := ValidateTxStatic(types.NewTx(tx))
+				require.ErrorIs(t, err, ErrTipVeryHigh)
+			})
+		}
+	})
 
-			err := ValidateTxStatic(types.NewTx(tx))
-			if isLegacyOrAccessList(tx) {
-				// legacy and access list transactions use the same field for
-				// gas fee and gas tip, so no error will be produced.
-				require.NoError(t, err)
-			} else {
+	t.Run("gas fee lower than gas tip", func(t *testing.T) {
+		txs := []types.TxData{
+			&types.DynamicFeeTx{
+				GasFeeCap: big.NewInt(1),
+				GasTipCap: big.NewInt(2),
+			},
+			&types.DynamicFeeTx{
+				GasFeeCap: big.NewInt(1),
+				GasTipCap: big.NewInt(2),
+			},
+		}
+
+		for _, tx := range txs {
+			t.Run(transactionTypeName(tx), func(t *testing.T) {
+				err := ValidateTxStatic(types.NewTx(tx))
 				require.ErrorIs(t, err, ErrTipAboveFeeCap)
-			}
-		})
-	}
+			})
+		}
+	})
 }
 
 func TestValidateTxStatic_AuthorizationList_RejectsTxWithEmptyAuthorization(t *testing.T) {
-	tx := types.NewTx(&types.SetCodeTx{})
-	err := ValidateTxStatic(tx)
+	err := ValidateTxStatic(types.NewTx(&types.SetCodeTx{}))
 	require.ErrorIs(t, err, ErrEmptyAuthorizations)
 }
 
 func TestValidateTxStatic_AcceptsValidTransactions(t *testing.T) {
-	for name, tx := range getTxsOfAllTypes() {
-		t.Run(name, func(t *testing.T) {
-			// set acceptable values
-			setGasPriceOrFeeCap(t, tx, big.NewInt(2))
-			setEffectiveTip(t, tx, big.NewInt(1))
-			setValue(t, tx, big.NewInt(1))
-			setData(t, tx, []byte("some data"))
 
+	tests := []types.TxData{
+		&types.LegacyTx{},
+		&types.AccessListTx{},
+		&types.DynamicFeeTx{},
+		&types.BlobTx{},
+		&types.SetCodeTx{
+			AuthList: []types.SetCodeAuthorization{{}},
+		},
+	}
+	for _, tx := range tests {
+		t.Run(transactionTypeName(tx), func(t *testing.T) {
 			err := ValidateTxStatic(types.NewTx(tx))
 			require.NoError(t, err)
 		})
@@ -173,59 +153,63 @@ func TestValidateTxStatic_AcceptsValidTransactions(t *testing.T) {
 // Network Validation
 
 func TestValidateTxForNetwork_BeforeEip2718_RejectsNonLegacyTransactions(t *testing.T) {
-	for name, tx := range getTxsOfAllTypes() {
-		if _, ok := tx.(*types.LegacyTx); ok {
-			continue // Skip legacy transactions because they are always supported
-		}
-		t.Run(name, func(t *testing.T) {
-			err := ValidateTxForNetwork(types.NewTx(tx),
-				NetworkRules{eip2718: false})
+
+	tests := []types.TxData{
+		&types.AccessListTx{},
+		&types.DynamicFeeTx{},
+		&types.BlobTx{},
+		&types.SetCodeTx{
+			AuthList: []types.SetCodeAuthorization{{}},
+		},
+	}
+
+	for _, tx := range tests {
+		t.Run(transactionTypeName(tx), func(t *testing.T) {
+
+			ctrl := gomock.NewController(t)
+			chain := NewMockStateReader(ctrl)
+			signer := NewMockSigner(ctrl)
+
+			rules := NetworkRules{eip2718: false}
+			err := ValidateTxForNetwork(types.NewTx(tx), rules, chain, signer)
 			require.ErrorIs(t, ErrTxTypeNotSupported, err)
 		})
 	}
 }
 
 func TestValidateTxForNetwork_RejectsTxBasedOnTypeAndActiveRevision(t *testing.T) {
+
 	tests := map[string]struct {
-		tx        *types.Transaction
-		configure func(NetworkRules) NetworkRules
+		tx    types.TxData
+		rules NetworkRules
 	}{
-		"accessList tx before eip2718": {
-			tx: types.NewTx(&types.AccessListTx{}),
-			configure: func(opts NetworkRules) NetworkRules {
-				opts.eip2718 = false
-				return opts
-			},
+		"reject access list tx before eip2718": {
+			tx:    &types.AccessListTx{},
+			rules: NetworkRules{eip2718: false},
 		},
-		"dynamic fee tx before eip1559": {
-			tx: types.NewTx(&types.DynamicFeeTx{}),
-			configure: func(opts NetworkRules) NetworkRules {
-				opts.eip2718 = true
-				opts.eip1559 = false
-				return opts
-			},
+		"reject dynamic fee tx before eip1559": {
+			tx:    &types.DynamicFeeTx{},
+			rules: NetworkRules{eip2718: true, eip1559: false},
 		},
-		"blob tx before eip4844": {
-			tx: types.NewTx(makeBlobTx(nil, nil)),
-			configure: func(opts NetworkRules) NetworkRules {
-				opts.eip2718 = true
-				opts.eip4844 = false
-				return opts
-			},
+		"reject blob tx before eip4844": {
+			tx:    &types.BlobTx{},
+			rules: NetworkRules{eip2718: true, eip1559: true, eip4844: false},
 		},
-		"setCode tx before eip7702": {
-			tx: types.NewTx(&types.SetCodeTx{}),
-			configure: func(opts NetworkRules) NetworkRules {
-				opts.eip2718 = true
-				opts.eip7702 = false
-				return opts
-			},
+		"reject setCode tx before eip7702": {
+			tx:    &types.SetCodeTx{AuthList: []types.SetCodeAuthorization{{}}},
+			rules: NetworkRules{eip2718: true, eip1559: true, eip4844: false, eip7702: false},
 		},
 	}
+
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			err := ValidateTxForNetwork(test.tx, test.configure(getTestNetworkRules()))
-			require.Equal(t, ErrTxTypeNotSupported, err)
+
+			ctrl := gomock.NewController(t)
+			chain := NewMockStateReader(ctrl)
+			signer := NewMockSigner(ctrl)
+
+			err := ValidateTxForNetwork(types.NewTx(test.tx), test.rules, chain, signer)
+			require.ErrorIs(t, ErrTxTypeNotSupported, err)
 		})
 	}
 }
@@ -234,159 +218,295 @@ func TestValidateTxForNetwork_Blobs_RejectsTxWith(t *testing.T) {
 	//  only Blob Transactions with empty blob has and no sidecar are accepted in sonic.
 
 	t.Run("blob tx with non-empty blob hashes", func(t *testing.T) {
-		tx := types.NewTx(makeBlobTx([]common.Hash{{0x01}}, nil))
-		err := ValidateTxForNetwork(tx, getTestNetworkRules())
+		tx := types.NewTx(&types.BlobTx{
+			BlobHashes: []common.Hash{{0x01}},
+		})
+
+		rules := NetworkRules{eip2718: true, eip1559: true, eip4844: true}
+		err := ValidateTxForNetwork(tx, rules, nil, nil)
 		require.ErrorIs(t, err, ErrNonEmptyBlobTx)
 	})
 
 	t.Run("blob tx with non-empty sidecar", func(t *testing.T) {
-		tx := types.NewTx(makeBlobTx(nil,
-			&types.BlobTxSidecar{Commitments: []kzg4844.Commitment{{0x01}}}))
-		err := ValidateTxForNetwork(tx, getTestNetworkRules())
+
+		tx := types.NewTx(&types.BlobTx{
+			Sidecar: &types.BlobTxSidecar{Commitments: []kzg4844.Commitment{{0x01}}},
+		})
+
+		rules := NetworkRules{eip2718: true, eip1559: true, eip4844: true}
+		err := ValidateTxForNetwork(tx, rules, nil, nil)
 		require.ErrorIs(t, err, ErrNonEmptyBlobTx)
 	})
 }
 
-func TestValidateTxForNetwork_Gas_RejectsTxWith(t *testing.T) {
+func TestValidateTxForNetwork_Gas_RejectsTx_IntrinsicGasTooLow(t *testing.T) {
 
-	for name, tx := range getTxsOfAllTypes() {
-		t.Run(fmt.Sprintf("gas lower than intrinsic gas/%v", name), func(t *testing.T) {
-			netRules := getTestNetworkRules()
+	// 0 gas is always lower than any required intrinsic gas
+	test := []types.TxData{
+		&types.LegacyTx{},
+		&types.AccessListTx{},
+		&types.DynamicFeeTx{},
+		&types.BlobTx{},
+		&types.SetCodeTx{
+			AuthList: []types.SetCodeAuthorization{{}},
+		},
+	}
 
-			setGas(t, tx, getIntrinsicGasForTest(t, tx, netRules)-1)
-
-			err := ValidateTxForNetwork(types.NewTx(tx), netRules)
+	for _, tx := range test {
+		t.Run(transactionTypeName(tx), func(t *testing.T) {
+			rules := NetworkRules{eip2718: true, eip1559: true, eip4844: true, eip7702: true}
+			err := ValidateTxForNetwork(types.NewTx(tx), rules, nil, nil)
 			require.ErrorIs(t, err, ErrIntrinsicGas)
-		})
-	}
-
-	// EIP-7623
-	for name, tx := range getTxsOfAllTypes() {
-		t.Run(fmt.Sprintf("gas lower than floor data gas/%v", name), func(t *testing.T) {
-			netRules := getTestNetworkRules()
-
-			someData := make([]byte, txSlotSize)
-			setData(t, tx, someData)
-			floorDataGas, err := core.FloorDataGas(someData)
-			require.NoError(t, err)
-			setGas(t, tx, floorDataGas-1)
-
-			err = ValidateTxForNetwork(types.NewTx(tx), netRules)
-			require.ErrorIs(t, err, ErrFloorDataGas)
-		})
-	}
-
-	for name, tx := range getTxsOfAllTypes() {
-		t.Run(fmt.Sprintf("floor data gas not checked before eip7623/%v", name), func(t *testing.T) {
-			netRules := getTestNetworkRules()
-			netRules.eip7623 = false
-
-			someData := make([]byte, txSlotSize)
-			setData(t, tx, someData)
-			floorDataGas, err := core.FloorDataGas(someData)
-			require.NoError(t, err)
-			setGas(t, tx, floorDataGas-1)
-			_, signedTx := signTxForTest(t, tx, netRules.signer)
-
-			err = ValidateTxForNetwork(signedTx, netRules)
-			require.NoError(t, err)
-
-		})
-	}
-
-	for name, tx := range getTxsOfAllTypes() {
-		t.Run(fmt.Sprintf("gas over limit accepted before osaka/%v", name), func(t *testing.T) {
-			netRules := getTestNetworkRules()
-			netRules.osaka = false
-
-			setGas(t, tx, netRules.maxTxGas+1)
-			_, signedTx := signTxForTest(t, tx, netRules.signer)
-
-			err := ValidateTxForNetwork(signedTx, netRules)
-			require.NoError(t, err)
-		})
-	}
-
-	for name, tx := range getTxsOfAllTypes() {
-		t.Run(fmt.Sprintf("gas higher than max gas limit/%v", name), func(t *testing.T) {
-			netRules := getTestNetworkRules()
-
-			setGas(t, tx, netRules.maxTxGas+1)
-
-			err := ValidateTxForNetwork(types.NewTx(tx), netRules)
-			require.ErrorIs(t, err, ErrGasLimitTooHigh)
 		})
 	}
 }
 
-func TestValidateTxForNetwork_Data_RejectsTxWith(t *testing.T) {
-	// EIP-3860
-	maxInitCode := make([]byte, params.MaxInitCodeSize+1)
-	for name, tx := range getTxsOfAllTypes() {
-		t.Run(fmt.Sprintf("init code too large/%v", name), func(t *testing.T) {
-			if isBlobOrSetCode(tx) {
-				t.Skip("blob and setCode transactions cannot be used as create")
-			}
+func TestValidateTxForNetwork_Gas_RejectsTx_GasLowerThanFloorDataGas(t *testing.T) {
 
-			setData(t, tx, maxInitCode)
-			setReceiverToNil(t, tx)
+	someData := make([]byte, 1024)
+	floorDataGas, err := core.FloorDataGas(someData)
+	require.NoError(t, err)
 
-			err := ValidateTxForNetwork(types.NewTx(tx), getTestNetworkRules())
-			require.ErrorIs(t, err, ErrMaxInitCodeSizeExceeded)
-		})
+	// 0 gas is always lower than any required intrinsic gas
+	test := []types.TxData{
+		&types.LegacyTx{
+			Data: someData,
+			Gas:  floorDataGas - 1,
+			To:   &common.Address{}, // not a contract creation
+		},
+		&types.AccessListTx{
+			Data: someData,
+			Gas:  floorDataGas - 1,
+			To:   &common.Address{}, // not a contract creation
+		},
+		&types.DynamicFeeTx{
+			Data: someData,
+			Gas:  floorDataGas - 1,
+			To:   &common.Address{}, // not a contract creation
+		},
+		&types.BlobTx{
+			Data: someData,
+			Gas:  floorDataGas - 1,
+		},
+		&types.SetCodeTx{
+			Data: someData,
+			Gas:  floorDataGas - 1,
+		},
 	}
 
-	for name, tx := range getTxsOfAllTypes() {
-		t.Run(fmt.Sprintf("init code size not checked before shanghai/%v", name), func(t *testing.T) {
-			if isBlobOrSetCode(tx) {
-				t.Skip("blob and setCode transactions cannot be used to initialize a contract")
+	for _, tx := range test {
+		t.Run(transactionTypeName(tx), func(t *testing.T) {
+			rules := NetworkRules{eip2718: true, eip1559: true, eip4844: true, eip7702: true, eip7623: true}
+			err := ValidateTxForNetwork(types.NewTx(tx), rules, nil, nil)
+			require.ErrorIs(t, err, ErrFloorDataGas)
+
+			// check that the error is not happening with eip7623 disabled
+			ctrl := gomock.NewController(t)
+			signer := NewMockSigner(ctrl)
+			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{}, nil)
+
+			rules.eip7623 = false
+			err = ValidateTxForNetwork(types.NewTx(tx), rules, nil, signer)
+			require.NoError(t, err)
+
+		})
+	}
+}
+
+func TestValidateTxForNetwork_GasLimitIsCheckedAfterOsaka(t *testing.T) {
+
+	gasLimit := uint64(30_000_000)
+
+	test := []types.TxData{
+		&types.LegacyTx{
+			To:  &common.Address{}, // not a contract creation
+			Gas: gasLimit + 1,
+		},
+		&types.AccessListTx{
+			To:  &common.Address{}, // not a contract creation
+			Gas: gasLimit + 1,
+		},
+		&types.DynamicFeeTx{
+			To:  &common.Address{}, // not a contract creation
+			Gas: gasLimit + 1,
+		},
+		&types.BlobTx{
+			Gas: gasLimit + 1,
+		},
+		&types.BlobTx{
+			Gas: gasLimit + 1,
+		},
+		&types.SetCodeTx{
+			Gas: gasLimit + 1,
+		},
+	}
+
+	for _, tx := range test {
+		t.Run(transactionTypeName(tx), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			chain := NewMockStateReader(ctrl)
+			chain.EXPECT().MaxGasLimit().Return(gasLimit).AnyTimes()
+			signer := NewMockSigner(ctrl)
+			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{}, nil).AnyTimes()
+
+			rules := NetworkRules{
+				eip2718: true,
+				eip1559: true,
+				eip4844: true,
+				eip7702: true,
+				eip7623: true,
+				osaka:   true,
 			}
-			netRules := getTestNetworkRules()
-			netRules.shanghai = false
-			netRules.eip4844 = false
-			netRules.eip7623 = false
+			err := ValidateTxForNetwork(types.NewTx(tx), rules, chain, signer)
+			require.ErrorIs(t, err, ErrGasLimitTooHigh)
 
-			setData(t, tx, maxInitCode)
-			setReceiverToNil(t, tx)
-			setGas(t, tx, getIntrinsicGasForTest(t, tx, netRules)+1)
-			_, signedTx := signTxForTest(t, tx, netRules.signer)
+			// check that the error is not happening with osaka disabled
+			rules.osaka = false
+			err = ValidateTxForNetwork(types.NewTx(tx), rules, chain, signer)
+			require.NoError(t, err)
+		})
+	}
+}
 
-			err := ValidateTxForNetwork(signedTx, netRules)
+func TestValidateTxForNetwork_InitCodeTooLarge_ReturnsError(t *testing.T) {
+
+	data := make([]byte, params.MaxInitCodeSize+1)
+	gas, err := core.IntrinsicGas(data, nil, nil, true, true, true, true)
+	require.NoError(t, err)
+
+	tests := []types.TxData{
+		&types.LegacyTx{
+			To:   nil, // contract creation
+			Gas:  gas,
+			Data: data,
+		},
+		&types.AccessListTx{
+			To:   nil, // contract creation
+			Gas:  gas,
+			Data: data,
+		},
+		&types.DynamicFeeTx{
+			To:   nil, // contract creation
+			Gas:  gas,
+			Data: data,
+		},
+	}
+
+	for _, tx := range tests {
+		t.Run(transactionTypeName(tx), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			chain := NewMockStateReader(ctrl)
+			signer := NewMockSigner(ctrl)
+			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{}, nil).AnyTimes()
+
+			rules := NetworkRules{
+				istanbul: true,
+				shanghai: true,
+				eip2718:  true,
+				eip1559:  true,
+				eip4844:  true,
+			}
+
+			err := ValidateTxForNetwork(types.NewTx(tx), rules, chain, signer)
+			require.ErrorIs(t, err, ErrMaxInitCodeSizeExceeded)
+
+			// check that the error is not happening with shanghai disabled
+			rules.shanghai = false
+			err = ValidateTxForNetwork(types.NewTx(tx), rules, chain, signer)
 			require.NoError(t, err)
 		})
 	}
 }
 
 func TestValidateTxForNetwork_Signer_RejectsTxWithInvalidSigner(t *testing.T) {
-	for name, tx := range getTxsOfAllTypes() {
-		t.Run(name, func(t *testing.T) {
 
-			netRules := getTestNetworkRules()
-			netRules.signer = types.NewPragueSigner(big.NewInt(2))
+	tests := []types.TxData{
+		&types.LegacyTx{
+			To:  &common.Address{}, // not a contract creation
+			Gas: 21000,
+		},
+		&types.AccessListTx{
+			To:  &common.Address{}, // not a contract creation
+			Gas: 21000,
+		},
+		&types.DynamicFeeTx{
+			To:  &common.Address{}, // not a contract creation
+			Gas: 21000,
+		},
+		&types.BlobTx{
+			Gas: 21000,
+		},
+		&types.SetCodeTx{
+			Gas:      50_000,
+			AuthList: []types.SetCodeAuthorization{{}},
+		},
+	}
 
-			key, err := crypto.GenerateKey()
-			require.NoError(t, err)
-			signer1 := types.NewPragueSigner(big.NewInt(1))
-			setGas(t, tx, getIntrinsicGasForTest(t, tx, netRules)+1)
-			signedTx, err := types.SignTx(types.NewTx(tx),
-				signer1, key)
-			require.NoError(t, err)
+	for _, tx := range tests {
+		t.Run(transactionTypeName(tx), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			chain := NewMockStateReader(ctrl)
+			signer := NewMockSigner(ctrl)
+			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{}, fmt.Errorf("some error"))
 
-			err = ValidateTxForNetwork(signedTx, netRules)
+			rules := NetworkRules{
+				istanbul: true,
+				shanghai: true,
+				eip2718:  true,
+				eip1559:  true,
+				eip4844:  true,
+				eip7702:  true,
+			}
+
+			err := ValidateTxForNetwork(types.NewTx(tx), rules, chain, signer)
 			require.ErrorIs(t, err, ErrInvalidSender)
+
 		})
 	}
 }
 
-func TestValidateTxForNetwork_AcceptsTxWith(t *testing.T) {
-	for name, tx := range getTxsOfAllTypes() {
-		t.Run(name, func(t *testing.T) {
-			netRules := getTestNetworkRules()
+func TestValidateTxForNetwork_AcceptsTransactions(t *testing.T) {
 
-			setGas(t, tx, getIntrinsicGasForTest(t, tx, netRules)+1)
-			_, signedTx := signTxForTest(t, tx, netRules.signer)
+	tests := []types.TxData{
+		&types.LegacyTx{
+			To:  &common.Address{}, // not a contract creation
+			Gas: 21000,
+		},
+		&types.AccessListTx{
+			To:  &common.Address{}, // not a contract creation
+			Gas: 21000,
+		},
+		&types.DynamicFeeTx{
+			To:  &common.Address{}, // not a contract creation
+			Gas: 21000,
+		},
+		&types.BlobTx{
+			Gas: 21000,
+		},
+		&types.SetCodeTx{
+			Gas:      50_000,
+			AuthList: []types.SetCodeAuthorization{{}},
+		},
+	}
 
-			err := ValidateTxForNetwork(signedTx, netRules)
+	for _, tx := range tests {
+		t.Run(transactionTypeName(tx), func(t *testing.T) {
+
+			ctrl := gomock.NewController(t)
+			chain := NewMockStateReader(ctrl)
+			signer := NewMockSigner(ctrl)
+			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{}, nil)
+
+			rules := NetworkRules{
+				istanbul: true,
+				shanghai: true,
+				eip2718:  true,
+				eip1559:  true,
+				eip4844:  true,
+				eip7702:  true,
+			}
+
+			err := ValidateTxForNetwork(types.NewTx(tx), rules, chain, signer)
 			require.NoError(t, err)
 		})
 	}
@@ -396,47 +516,124 @@ func TestValidateTxForNetwork_AcceptsTxWith(t *testing.T) {
 // Block Validation
 
 func TestValidateTxForBlock_MaxGas_RejectsTxWithGasOverMaxGas(t *testing.T) {
-	for name, tx := range getTxsOfAllTypes() {
-		t.Run(name, func(t *testing.T) {
-			blockState := getTestBlockState()
-			blockState.maxGas = 1
 
-			setGas(t, tx, 2)
-			// --- needed for execution up to relevant check ---
-			setGasPriceOrFeeCap(t, tx, big.NewInt(blockState.baseFee.Int64()))
-			// ---
+	tests := []types.TxData{
+		&types.LegacyTx{
+			To:       &common.Address{}, // not a contract creation
+			Gas:      100_000,
+			GasPrice: big.NewInt(1),
+		},
+		&types.AccessListTx{
+			To:       &common.Address{}, // not a contract creation
+			Gas:      100_000,
+			GasPrice: big.NewInt(1),
+		},
+		&types.DynamicFeeTx{
+			To:        &common.Address{}, // not a contract creation
+			Gas:       100_000,
+			GasFeeCap: big.NewInt(1),
+		},
+		&types.BlobTx{
+			Gas:       100_000,
+			GasFeeCap: uint256.NewInt(1),
+		},
+		&types.SetCodeTx{
+			Gas:       100_000,
+			GasFeeCap: uint256.NewInt(1),
+			AuthList:  []types.SetCodeAuthorization{{}},
+		},
+	}
 
-			err := ValidateTxForBlock(types.NewTx(tx), blockState)
+	for _, tx := range tests {
+		t.Run(transactionTypeName(tx), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			chain := NewMockStateReader(ctrl)
+			chain.EXPECT().MaxGasLimit().Return(uint64(99_999))
+			chain.EXPECT().GetCurrentBaseFee().Return(big.NewInt(1)).AnyTimes()
+
+			err := ValidateTxForBlock(types.NewTx(tx), chain)
 			require.ErrorIs(t, err, ErrGasLimit)
 		})
 	}
 }
 
 func TestValidateTxForBlock_BaseFee_RejectsTxWithGasPriceLowerThanBaseFee(t *testing.T) {
-	for name, tx := range getTxsOfAllTypes() {
-		t.Run(name, func(t *testing.T) {
-			blockState := getTestBlockState()
-			blockState.baseFee = big.NewInt(2)
+	tests := []types.TxData{
+		&types.LegacyTx{
+			To:       &common.Address{}, // not a contract creation
+			Gas:      100_000,
+			GasPrice: big.NewInt(1),
+		},
+		&types.AccessListTx{
+			To:       &common.Address{}, // not a contract creation
+			Gas:      100_000,
+			GasPrice: big.NewInt(1),
+		},
+		&types.DynamicFeeTx{
+			To:        &common.Address{}, // not a contract creation
+			Gas:       100_000,
+			GasFeeCap: big.NewInt(1),
+		},
+		&types.BlobTx{
+			Gas:       100_000,
+			GasFeeCap: uint256.NewInt(1),
+		},
+		&types.SetCodeTx{
+			Gas:       100_000,
+			GasFeeCap: uint256.NewInt(1),
+			AuthList:  []types.SetCodeAuthorization{{}},
+		},
+	}
 
-			// gas fee cap should be higher than current gas price
-			setGasPriceOrFeeCap(t, tx, big.NewInt(1))
+	for _, tx := range tests {
+		t.Run(transactionTypeName(tx), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			chain := NewMockStateReader(ctrl)
+			chain.EXPECT().GetCurrentBaseFee().Return(big.NewInt(2))
 
-			err := ValidateTxForBlock(types.NewTx(tx), blockState)
+			err := ValidateTxForBlock(types.NewTx(tx), chain)
 			require.ErrorIs(t, err, ErrUnderpriced)
 		})
 	}
 }
 
-func TestValidateTxForBlock_AcceptsTxWith(t *testing.T) {
-	for name, tx := range getTxsOfAllTypes() {
-		t.Run(name, func(t *testing.T) {
-			blockState := getTestBlockState()
+func TestValidateTxForBlock_AcceptsTransactions(t *testing.T) {
 
-			// setup transaction enough gas and fee cap to reach base fee check
-			setGasPriceOrFeeCap(t, tx, blockState.baseFee)
-			setGas(t, tx, blockState.maxGas-1)
+	tests := []types.TxData{
+		&types.LegacyTx{
+			To:       &common.Address{}, // not a contract creation
+			Gas:      100_000,
+			GasPrice: big.NewInt(1),
+		},
+		&types.AccessListTx{
+			To:       &common.Address{}, // not a contract creation
+			Gas:      100_000,
+			GasPrice: big.NewInt(1),
+		},
+		&types.DynamicFeeTx{
+			To:        &common.Address{}, // not a contract creation
+			Gas:       100_000,
+			GasFeeCap: big.NewInt(1),
+		},
+		&types.BlobTx{
+			Gas:       100_000,
+			GasFeeCap: uint256.NewInt(1),
+		},
+		&types.SetCodeTx{
+			Gas:       100_000,
+			GasFeeCap: uint256.NewInt(1),
+			AuthList:  []types.SetCodeAuthorization{{}},
+		},
+	}
 
-			err := ValidateTxForBlock(types.NewTx(tx), blockState)
+	for _, tx := range tests {
+		t.Run(transactionTypeName(tx), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			chain := NewMockStateReader(ctrl)
+			chain.EXPECT().MaxGasLimit().Return(uint64(100_000))
+			chain.EXPECT().GetCurrentBaseFee().Return(big.NewInt(1))
+
+			err := ValidateTxForBlock(types.NewTx(tx), chain)
 			require.NoError(t, err)
 		})
 	}
@@ -446,83 +643,125 @@ func TestValidateTxForBlock_AcceptsTxWith(t *testing.T) {
 // State Validation
 
 func TestValidateTxForState_Signer_RejectsTxWithInvalidSigner(t *testing.T) {
-	for name, tx := range getTxsOfAllTypes() {
-		t.Run(name, func(t *testing.T) {
-			// sign txs with sender
-			key, err := crypto.GenerateKey()
-			require.NoError(t, err)
-			signer1 := types.NewPragueSigner(big.NewInt(1))
-			signer2 := types.NewPragueSigner(big.NewInt(2))
-			signedTx, err := types.SignTx(types.NewTx(tx),
-				signer1, key)
-			require.NoError(t, err)
 
-			err = ValidateTxForState(signedTx, newTestTxPoolStateDb(), signer2)
+	test := []types.TxData{
+		&types.LegacyTx{},
+		&types.AccessListTx{},
+		&types.DynamicFeeTx{},
+		&types.BlobTx{},
+		&types.SetCodeTx{
+			AuthList: []types.SetCodeAuthorization{{}},
+		},
+	}
+
+	for _, tx := range test {
+		t.Run(transactionTypeName(tx), func(t *testing.T) {
+			signer := NewMockSigner(gomock.NewController(t))
+			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{}, fmt.Errorf("some error"))
+			err := ValidateTxForState(types.NewTx(tx), nil, signer)
 			require.ErrorIs(t, err, ErrInvalidSender)
 		})
 	}
 }
 
 func TestValidateTxForState_Nonce_RejectsTxWithOlderNonce(t *testing.T) {
-	for name, tx := range getTxsOfAllTypes() {
-		t.Run(name, func(t *testing.T) {
+	tests := []types.TxData{
+		&types.LegacyTx{},
+		&types.AccessListTx{},
+		&types.DynamicFeeTx{},
+		&types.BlobTx{},
+		&types.SetCodeTx{
+			AuthList: []types.SetCodeAuthorization{{}},
+		},
+	}
+	for _, tx := range tests {
+		t.Run(transactionTypeName(tx), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			state := state.NewMockStateDB(ctrl)
+			state.EXPECT().GetNonce(gomock.Any()).Return(uint64(1))
+			signer := NewMockSigner(ctrl)
+			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{}, nil)
 
-			signer := types.NewPragueSigner(big.NewInt(1))
-			address, signedTx := signTxForTest(t, tx, signer)
-			testDb := newTestTxPoolStateDb()
-			testDb.nonces[address] = signedTx.Nonce() + 1
-
-			err := ValidateTxForState(signedTx, testDb, signer)
+			err := ValidateTxForState(types.NewTx(tx), state, signer)
 			require.ErrorIs(t, err, ErrNonceTooLow)
 		})
 	}
 }
 
 func TestValidateTxForState_Balance_RejectsTxWhenInsufficientBalance(t *testing.T) {
-	for name, tx := range getTxsOfAllTypes() {
-		t.Run(name, func(t *testing.T) {
+	tests := []types.TxData{
+		&types.LegacyTx{
+			Gas:      100,
+			GasPrice: big.NewInt(1),
+		},
+		&types.AccessListTx{
+			Gas:      100,
+			GasPrice: big.NewInt(1),
+		},
+		&types.DynamicFeeTx{
+			Gas:       100,
+			GasFeeCap: big.NewInt(1),
+		},
+		&types.BlobTx{
+			Gas:       100,
+			GasFeeCap: uint256.NewInt(1),
+		},
+		&types.SetCodeTx{
+			Gas:       100,
+			GasFeeCap: uint256.NewInt(1),
+			AuthList:  []types.SetCodeAuthorization{{}},
+		},
+	}
+	for _, tx := range tests {
+		t.Run(transactionTypeName(tx), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			state := state.NewMockStateDB(ctrl)
+			state.EXPECT().GetNonce(gomock.Any()).Return(uint64(0))
+			state.EXPECT().GetBalance(gomock.Any()).Return(uint256.NewInt(99))
+			signer := NewMockSigner(ctrl)
+			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{}, nil)
 
-			setValue(t, tx, big.NewInt(42))
-
-			// setup transaction enough gas and fee cap to reach balance check
-			someGas := uint64(100_000)
-			someGasFee := big.NewInt(1)
-			setGasPriceOrFeeCap(t, tx, someGasFee)
-			setGas(t, tx, someGas)
-			signer := types.NewPragueSigner(big.NewInt(1))
-			address, signedTx := signTxForTest(t, tx, signer)
-
-			// setup low balance
-			testDb := newTestTxPoolStateDb()
-
-			// balance = gas * fee cap + value
-			blank := uint256.NewInt(0)
-			txCost := blank.Mul(
-				uint256.NewInt(someGas),
-				uint256.MustFromBig(someGasFee),
-			)
-			txCost = blank.Add(txCost, uint256.MustFromBig(signedTx.Value()))
-			// just not enough than needed
-			testDb.balances[address] = blank.Sub(txCost, uint256.NewInt(1))
-
-			err := ValidateTxForState(signedTx, testDb, signer)
+			err := ValidateTxForState(types.NewTx(tx), state, signer)
 			require.ErrorIs(t, err, ErrInsufficientFunds)
 		})
 	}
 }
 
-func TestValidateTxForState_AcceptsTxWith(t *testing.T) {
-	for name, tx := range getTxsOfAllTypes() {
-		t.Run(name, func(t *testing.T) {
+func TestValidateTxForState_AcceptsTransactions(t *testing.T) {
 
-			setNonce(t, tx, 42)
-			signer := types.NewPragueSigner(big.NewInt(1))
-			address, signedTx := signTxForTest(t, tx, signer)
-			testDb := newTestTxPoolStateDb()
-			testDb.balances[address] = uint256.NewInt(math.MaxUint64)
-			testDb.nonces[address] = 42
+	tests := []types.TxData{
+		&types.LegacyTx{
+			Gas:      100,
+			GasPrice: big.NewInt(1),
+		},
+		&types.AccessListTx{
+			Gas:      100,
+			GasPrice: big.NewInt(1),
+		},
+		&types.DynamicFeeTx{
+			Gas:       100,
+			GasFeeCap: big.NewInt(1),
+		},
+		&types.BlobTx{
+			Gas:       100,
+			GasFeeCap: uint256.NewInt(1),
+		},
+		&types.SetCodeTx{
+			Gas:       100,
+			GasFeeCap: uint256.NewInt(1),
+			AuthList:  []types.SetCodeAuthorization{{}},
+		},
+	}
+	for _, tx := range tests {
+		t.Run(transactionTypeName(tx), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			state := state.NewMockStateDB(ctrl)
+			state.EXPECT().GetNonce(gomock.Any()).Return(uint64(0))
+			state.EXPECT().GetBalance(gomock.Any()).Return(uint256.NewInt(100))
+			signer := NewMockSigner(ctrl)
+			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{}, nil)
 
-			err := ValidateTxForState(signedTx, testDb, signer)
+			err := ValidateTxForState(types.NewTx(tx), state, signer)
 			require.NoError(t, err)
 		})
 	}
@@ -532,78 +771,119 @@ func TestValidateTxForState_AcceptsTxWith(t *testing.T) {
 // TxPool Policies Validation
 
 func TestValidateTxForPool_Data_RejectsTxWithOversizedData(t *testing.T) {
-	oversizedData := make([]byte, txMaxSize+1)
-	for name, tx := range getTxsOfAllTypes() {
-		t.Run(name, func(t *testing.T) {
+	data := make([]byte, txMaxSize+1)
+	tests := []types.TxData{
+		&types.LegacyTx{
+			Data: data,
+		},
+		&types.AccessListTx{
+			Data: data,
+		},
+		&types.DynamicFeeTx{
+			Data: data,
+		},
+		&types.BlobTx{
+			Data: data,
+		},
+		&types.SetCodeTx{
+			Data:     data,
+			AuthList: []types.SetCodeAuthorization{{}},
+		},
+	}
 
-			setData(t, tx, oversizedData)
-
-			signer := types.NewPragueSigner(big.NewInt(1))
-			_, signedTx := signTxForTest(t, tx, signer)
-			err := validateTxForPool(signedTx, getTestPoolOptions(), signer)
+	for _, tx := range tests {
+		t.Run(transactionTypeName(tx), func(t *testing.T) {
+			opts := poolOptions{}
+			err := validateTxForPool(types.NewTx(tx), opts, nil)
 			require.ErrorIs(t, err, ErrOversizedData)
 		})
 	}
 }
 
 func TestValidateTxForPool_Signer_RejectsTxWithInvalidSigner(t *testing.T) {
-	for name, tx := range getTxsOfAllTypes() {
-		t.Run(name, func(t *testing.T) {
-			key, err := crypto.GenerateKey()
-			require.NoError(t, err)
-			signer1 := types.NewPragueSigner(big.NewInt(1))
-			signedTx, err := types.SignTx(types.NewTx(tx),
-				signer1, key)
-			require.NoError(t, err)
+	tests := []types.TxData{
+		&types.LegacyTx{},
+		&types.AccessListTx{},
+		&types.DynamicFeeTx{},
+		&types.BlobTx{},
+		&types.SetCodeTx{
+			AuthList: []types.SetCodeAuthorization{{}},
+		},
+	}
 
-			signer2 := types.NewPragueSigner(big.NewInt(2))
-			err = validateTxForPool(signedTx, getTestPoolOptions(), signer2)
+	for _, tx := range tests {
+		t.Run(transactionTypeName(tx), func(t *testing.T) {
+			opts := poolOptions{}
+			ctrl := gomock.NewController(t)
+			signer := NewMockSigner(ctrl)
+			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{}, fmt.Errorf("some error"))
+			err := validateTxForPool(types.NewTx(tx), opts, signer)
 			require.ErrorIs(t, err, ErrInvalidSender)
 		})
 	}
 }
 
 func TestValidateTxForPool_RejectsNonLocalTxWithTipLowerThanMinPool(t *testing.T) {
-	for name, tx := range getTxsOfAllTypes() {
-		t.Run(name, func(t *testing.T) {
+	tip := big.NewInt(1)
+	tests := []types.TxData{
+		&types.DynamicFeeTx{
+			GasTipCap: tip,
+		},
+		&types.BlobTx{
+			GasTipCap: uint256.MustFromBig(tip),
+		},
+		&types.SetCodeTx{
+			GasTipCap: uint256.MustFromBig(tip),
+			AuthList:  []types.SetCodeAuthorization{{}},
+		},
+	}
 
-			opt := getTestPoolOptions()
-			opt.isLocal = false
-			opt.minTip = big.NewInt(2)
+	for _, tx := range tests {
+		t.Run(transactionTypeName(tx), func(t *testing.T) {
+			opts := poolOptions{
+				minTip: new(big.Int).Add(tip, big.NewInt(1)),
+				locals: newAccountSet(nil),
+			}
 
-			// setup low tip cap
-			lowTipCap := new(big.Int).Sub(opt.minTip, big.NewInt(1))
-			// fee cap needs to be greater than or equal to tip cap
-			setEffectiveTip(t, tx, lowTipCap)
+			ctrl := gomock.NewController(t)
+			signer := NewMockSigner(ctrl)
+			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{}, nil)
 
-			signer := types.NewPragueSigner(big.NewInt(1))
-			opt.locals = newAccountSet(signer)
-			_, signedTx := signTxForTest(t, tx, signer)
-
-			err := validateTxForPool(signedTx, opt, signer)
+			err := validateTxForPool(types.NewTx(tx), opts, signer)
 			require.ErrorIs(t, err, ErrUnderpriced)
 		})
 	}
+
 }
 
-func TestValidateTxForPool_AcceptsNonLocalTxWithBigTip(t *testing.T) {
-	for name, tx := range getTxsOfAllTypes() {
-		t.Run(name, func(t *testing.T) {
+func TestValidateTxForPool_AcceptsNonLocalTxWithTipBiggerThanMin(t *testing.T) {
 
-			opt := getTestPoolOptions()
-			opt.isLocal = false
-			opt.minTip = big.NewInt(2)
+	tip := big.NewInt(2)
+	tests := []types.TxData{
+		&types.DynamicFeeTx{
+			GasTipCap: tip,
+		},
+		&types.BlobTx{
+			GasTipCap: uint256.MustFromBig(tip),
+		},
+		&types.SetCodeTx{
+			GasTipCap: uint256.MustFromBig(tip),
+			AuthList:  []types.SetCodeAuthorization{{}},
+		},
+	}
 
-			// setup low tip cap
-			bigTip := new(big.Int).Add(opt.minTip, big.NewInt(1))
-			// fee cap needs to be greater than or equal to tip cap
-			setEffectiveTip(t, tx, bigTip)
+	for _, tx := range tests {
+		t.Run(transactionTypeName(tx), func(t *testing.T) {
+			opts := poolOptions{
+				minTip: big.NewInt(1),
+				locals: newAccountSet(nil),
+			}
 
-			signer := types.NewPragueSigner(big.NewInt(1))
-			opt.locals = newAccountSet(signer)
-			_, signedTx := signTxForTest(t, tx, signer)
+			ctrl := gomock.NewController(t)
+			signer := NewMockSigner(ctrl)
+			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{}, nil)
 
-			err := validateTxForPool(signedTx, opt, signer)
+			err := validateTxForPool(types.NewTx(tx), opts, signer)
 			require.NoError(t, err)
 		})
 	}
@@ -612,393 +892,322 @@ func TestValidateTxForPool_AcceptsNonLocalTxWithBigTip(t *testing.T) {
 ////////////////////////////////////////////////////////////////////////////////
 // ValidateTx
 
-func TestValidateTx_RejectsTxWhen(t *testing.T) {
-
-	for name, tx := range getTxsOfAllTypes() {
-		t.Run(fmt.Sprintf("fails network validation/%v", name), func(t *testing.T) {
-			netRules := getTestNetworkRules()
-			// setup tx to fail intrinsic gas calculation
-			setGas(t, tx, getIntrinsicGasForTest(t, tx, netRules)-1)
-			_, signedTx := signTxForTest(t, tx, netRules.signer)
-
-			err := validateTx(signedTx, getTestPoolOptions(),
-				getTestBlockState(), netRules)
-			require.ErrorIs(t, err, ErrIntrinsicGas)
-		})
+func TestValidateTx_RejectsTx_whenNetworkValidationFails(t *testing.T) {
+	tests := []types.TxData{
+		&types.LegacyTx{},
+		&types.AccessListTx{},
+		&types.DynamicFeeTx{},
+		&types.BlobTx{},
+		&types.SetCodeTx{
+			AuthList: []types.SetCodeAuthorization{{}},
+		},
 	}
 
-	for name, tx := range getTxsOfAllTypes() {
-		t.Run(fmt.Sprintf("fails static validation/%v", name), func(t *testing.T) {
-			var expectedErr error
-			if !isBlobOrSetCode(tx) {
-				// for legacy and access list transactions, gas price is the same
-				// as tip, so negative value is used to reject the transaction.
-				setValueToNegative(t, tx)
-				expectedErr = ErrNegativeValue
-			} else {
-				// for blob and setCode transactions, value cannot be negative
-				// because they use uint256, so a tip bigger than gas price
-				// is used to reject the transaction.
-				setEffectiveTip(t, tx, big.NewInt(2))
-				setGasPriceOrFeeCap(t, tx, big.NewInt(1))
-				expectedErr = ErrTipAboveFeeCap
+	for _, tx := range tests {
+		t.Run(transactionTypeName(tx), func(t *testing.T) {
+			opts := poolOptions{}
+
+			rules := NetworkRules{}
+
+			err := validateTx(types.NewTx(tx), opts, rules, nil, nil, nil)
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestValidateTx_RejectsTx_WhenStaticValidationFails(t *testing.T) {
+	tests := []types.TxData{
+		&types.LegacyTx{
+			Gas:      100_000,
+			GasPrice: big.NewInt(-1), // invalid as it has negative gas price
+		},
+		&types.AccessListTx{
+			Gas:      100_000,
+			GasPrice: big.NewInt(-1), // invalid as it has negative gas price
+		},
+		&types.DynamicFeeTx{
+			Gas:       100_000,
+			GasFeeCap: big.NewInt(-1), // invalid as it has negative gas price
+		},
+		&types.BlobTx{
+			Gas:       100_000,
+			GasFeeCap: uint256.NewInt(1),
+			GasTipCap: uint256.NewInt(2), // invalid as tip is above fee cap
+		},
+		&types.SetCodeTx{
+			Gas: 100_000,
+			// invalid as it has empty auth list
+		},
+	}
+
+	for _, tx := range tests {
+		t.Run(transactionTypeName(tx), func(t *testing.T) {
+			opts := poolOptions{}
+
+			rules := NetworkRules{
+				eip2718: true,
+				eip1559: true,
+				eip4844: true,
+				eip7702: true,
+			}
+			ctrl := gomock.NewController(t)
+			signer := NewMockSigner(ctrl)
+			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{}, nil).AnyTimes()
+
+			chain := NewMockStateReader(ctrl)
+			chain.EXPECT().GetCurrentBaseFee().Return(big.NewInt(5)).AnyTimes()
+			state := state.NewMockStateDB(ctrl)
+
+			err := validateTx(types.NewTx(tx), opts, rules, chain, state, signer)
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestValidateTx_RejectsTx_WhenBlockValidationFails(t *testing.T) {
+
+	tests := []types.TxData{
+		&types.LegacyTx{
+			Gas:      100_000,
+			GasPrice: big.NewInt(10),
+		},
+		&types.AccessListTx{
+			Gas:      100_000,
+			GasPrice: big.NewInt(10),
+		},
+		&types.DynamicFeeTx{
+			Gas:       100_000,
+			GasFeeCap: big.NewInt(10),
+		},
+		&types.BlobTx{
+			Gas:       100_000,
+			GasFeeCap: uint256.NewInt(10),
+		},
+		&types.SetCodeTx{
+			Gas:       100_000,
+			GasFeeCap: uint256.NewInt(10),
+			AuthList:  []types.SetCodeAuthorization{{}},
+		},
+	}
+
+	for _, tx := range tests {
+		t.Run(transactionTypeName(tx), func(t *testing.T) {
+			opts := poolOptions{}
+
+			rules := NetworkRules{
+				eip2718: true,
+				eip1559: true,
+				eip4844: true,
+				eip7702: true,
+			}
+			ctrl := gomock.NewController(t)
+			signer := NewMockSigner(ctrl)
+			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{}, nil).AnyTimes()
+
+			chain := NewMockStateReader(ctrl)
+			chain.EXPECT().GetCurrentBaseFee().Return(big.NewInt(5)).AnyTimes()
+			chain.EXPECT().MaxGasLimit().Return(uint64(50_000)).AnyTimes() // lower than tx gas
+			state := state.NewMockStateDB(ctrl)
+
+			err := validateTx(types.NewTx(tx), opts, rules, chain, state, signer)
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestValidateTx_RejectsTx_WhenPoolValidationFails(t *testing.T) {
+
+	tests := []types.TxData{
+		&types.LegacyTx{
+			Gas:      100_000,
+			GasPrice: big.NewInt(10),
+		},
+		&types.AccessListTx{
+			Gas:      100_000,
+			GasPrice: big.NewInt(10),
+		},
+		&types.DynamicFeeTx{
+			Gas:       100_000,
+			GasFeeCap: big.NewInt(10),
+		},
+		&types.BlobTx{
+			Gas:       100_000,
+			GasFeeCap: uint256.NewInt(10),
+		},
+		&types.SetCodeTx{
+			Gas:       100_000,
+			GasFeeCap: uint256.NewInt(10),
+			AuthList:  []types.SetCodeAuthorization{{}},
+		},
+	}
+
+	for _, tx := range tests {
+		t.Run(transactionTypeName(tx), func(t *testing.T) {
+
+			rules := NetworkRules{
+				eip2718: true,
+				eip1559: true,
+				eip4844: true,
+				eip7702: true,
+			}
+			ctrl := gomock.NewController(t)
+			signer := NewMockSigner(ctrl)
+			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{}, nil).AnyTimes()
+			signer.EXPECT().Equal(gomock.Any()).Return(false).AnyTimes()
+
+			chain := NewMockStateReader(ctrl)
+			chain.EXPECT().GetCurrentBaseFee().Return(big.NewInt(5)).AnyTimes()
+			chain.EXPECT().MaxGasLimit().Return(uint64(100_000)).AnyTimes()
+			state := state.NewMockStateDB(ctrl)
+
+			opts := poolOptions{
+				minTip: big.NewInt(20), // higher than tx tip
+				locals: newAccountSet(signer),
 			}
 
-			netRules := getTestNetworkRules()
-			setGas(t, tx, getIntrinsicGasForTest(t, tx, netRules)+1)
-			_, signedTx := signTxForTest(t, tx, netRules.signer)
-
-			err := validateTx(signedTx, getTestPoolOptions(),
-				getTestBlockState(), netRules)
-			require.ErrorIs(t, err, expectedErr)
+			err := validateTx(types.NewTx(tx), opts, rules, chain, state, signer)
+			require.Error(t, err)
 		})
 	}
+}
 
-	for name, tx := range getTxsOfAllTypes() {
-		t.Run(fmt.Sprintf("fails block state/%v", name), func(t *testing.T) {
-			blockState := getTestBlockState()
-			blockState.baseFee = big.NewInt(2)
+func TestValidateTx_RejectsTx_WhenSateValidationFails(t *testing.T) {
 
-			// --- needed for execution up to relevant check ---
-			netRules := getTestNetworkRules()
-			setGas(t, tx, getIntrinsicGasForTest(t, tx, netRules)+1)
-			setGasPriceOrFeeCap(t, tx, big.NewInt(1))
-			_, signedTx := signTxForTest(t, tx, netRules.signer)
-			// ---
-
-			err := validateTx(signedTx, getTestPoolOptions(),
-				blockState, netRules)
-			require.ErrorIs(t, err, ErrUnderpriced)
-		})
+	tests := []types.TxData{
+		&types.LegacyTx{
+			Gas:      100_000,
+			GasPrice: big.NewInt(10),
+		},
+		&types.AccessListTx{
+			Gas:      100_000,
+			GasPrice: big.NewInt(10),
+		},
+		&types.DynamicFeeTx{
+			Gas:       100_000,
+			GasFeeCap: big.NewInt(10),
+		},
+		&types.BlobTx{
+			Gas:       100_000,
+			GasFeeCap: uint256.NewInt(10),
+		},
+		&types.SetCodeTx{
+			Gas:       100_000,
+			GasFeeCap: uint256.NewInt(10),
+			AuthList:  []types.SetCodeAuthorization{{}},
+		},
 	}
 
-	for name, tx := range getTxsOfAllTypes() {
-		t.Run(fmt.Sprintf("fails pool policies/%v", name), func(t *testing.T) {
-			opt := getTestPoolOptions()
-			opt.isLocal = false
-			opt.minTip = big.NewInt(2)
+	for _, tx := range tests {
+		t.Run(transactionTypeName(tx), func(t *testing.T) {
 
-			// setup low tip cap
-			lowTipCap := new(big.Int).Sub(opt.minTip, big.NewInt(1))
-			// fee cap needs to be greater than or equal to tip cap
-			setEffectiveTip(t, tx, lowTipCap)
+			rules := NetworkRules{
+				eip2718: true,
+				eip1559: true,
+				eip4844: true,
+				eip7702: true,
+			}
+			ctrl := gomock.NewController(t)
+			signer := NewMockSigner(ctrl)
+			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{}, nil).AnyTimes()
+			signer.EXPECT().Equal(gomock.Any()).Return(false).AnyTimes()
 
-			// --- needed for execution up to relevant check ---
-			blockState := getTestBlockState()
-			setGasPriceOrFeeCap(t, tx, blockState.baseFee)
-			netRules := getTestNetworkRules()
-			intrinsicGas := getIntrinsicGasForTest(t, tx, netRules)
-			setGas(t, tx, intrinsicGas+1) // enough gas
-			// ---
-			_, signedTx := signTxForTest(t, tx, netRules.signer)
-			opt.locals = newAccountSet(netRules.signer)
+			chain := NewMockStateReader(ctrl)
+			chain.EXPECT().GetCurrentBaseFee().Return(big.NewInt(5)).AnyTimes()
+			chain.EXPECT().MaxGasLimit().Return(uint64(100_000)).AnyTimes()
+			state := state.NewMockStateDB(ctrl)
+			state.EXPECT().GetNonce(gomock.Any()).Return(uint64(1)).AnyTimes() // higher than tx nonce 0
 
-			err := validateTx(signedTx, opt, blockState, netRules)
-			require.ErrorIs(t, err, ErrUnderpriced)
-		})
-	}
+			opts := poolOptions{
+				minTip:  big.NewInt(0),
+				isLocal: true,
+				locals:  newAccountSet(signer),
+			}
 
-	for name, tx := range getTxsOfAllTypes() {
-		t.Run(fmt.Sprintf("fails state validation/%v", name), func(t *testing.T) {
-			// set nonce lower than the current account nonce
-			currentNonce := uint64(2)
-			setNonce(t, tx, currentNonce-1)
-
-			// --- needed for execution up to relevant check ---
-			netRules := getTestNetworkRules()
-			blockState := getTestBlockState()
-			setGasPriceOrFeeCap(t, tx, blockState.baseFee)
-			intrinsicGas := getIntrinsicGasForTest(t, tx, netRules)
-			setGas(t, tx, intrinsicGas+1) // enough gas
-			// ---
-
-			// sign txs with sender and set current balance for account
-			address, signedTx := signTxForTest(t, tx, netRules.signer)
-			testDb := newTestTxPoolStateDb()
-			testDb.nonces[address] = currentNonce
-			opt := getTestPoolOptions()
-			opt.currentState = testDb
-
-			err := validateTx(signedTx, opt, blockState, netRules)
-			require.ErrorIs(t, err, ErrNonceTooLow)
+			err := validateTx(types.NewTx(tx), opts, rules, chain, state, signer)
+			require.Error(t, err)
 		})
 	}
 }
 
 func TestValidateTx_Success(t *testing.T) {
-	for name, tx := range getTxsOfAllTypes() {
-		t.Run(name, func(t *testing.T) {
 
-			netRules := getTestNetworkRules()
+	tests := []types.TxData{
+		&types.LegacyTx{
+			Gas:      100_000,
+			GasPrice: big.NewInt(10),
+		},
+		&types.AccessListTx{
+			Gas:      100_000,
+			GasPrice: big.NewInt(10),
+		},
+		&types.DynamicFeeTx{
+			Gas:       100_000,
+			GasFeeCap: big.NewInt(10),
+			GasTipCap: big.NewInt(5),
+		},
+		&types.BlobTx{
+			Gas:       100_000,
+			GasFeeCap: uint256.NewInt(10),
+			GasTipCap: uint256.NewInt(5),
+		},
+		&types.SetCodeTx{
+			Gas:       100_000,
+			GasFeeCap: uint256.NewInt(10),
+			GasTipCap: uint256.NewInt(5),
+			AuthList:  []types.SetCodeAuthorization{{}},
+		},
+	}
 
-			setNonce(t, tx, 0)
-			setGasPriceOrFeeCap(t, tx, big.NewInt(2))
-			setEffectiveTip(t, tx, big.NewInt(1))
-			setData(t, tx, []byte("some data"))
+	for _, tx := range tests {
+		t.Run(transactionTypeName(tx), func(t *testing.T) {
 
-			intrinsicGas := getIntrinsicGasForTest(t, tx, netRules)
-			setValue(t, tx, big.NewInt(1))
-			floorDataGas, err := core.FloorDataGas(types.NewTx(tx).Data())
-			require.NoError(t, err)
-			minGas := max(intrinsicGas, floorDataGas) + 1
-			setGas(t, tx, minGas)
+			rules := NetworkRules{
+				eip2718: true,
+				eip1559: true,
+				eip4844: true,
+				eip7702: true,
+			}
+			ctrl := gomock.NewController(t)
+			signer := NewMockSigner(ctrl)
+			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{}, nil).AnyTimes()
+			signer.EXPECT().Equal(gomock.Any()).Return(false).AnyTimes()
 
-			// Sign the transaction
-			address, signedTx := signTxForTest(t, tx, netRules.signer)
+			chain := NewMockStateReader(ctrl)
+			chain.EXPECT().GetCurrentBaseFee().Return(big.NewInt(5)).AnyTimes()
+			chain.EXPECT().MaxGasLimit().Return(uint64(100_000)).AnyTimes()
+			state := state.NewMockStateDB(ctrl)
+			state.EXPECT().GetNonce(gomock.Any()).Return(uint64(0)).AnyTimes()
+			state.EXPECT().GetBalance(gomock.Any()).Return(uint256.NewInt(1_000_000)).AnyTimes()
 
-			// Set up sufficient balance and nonce
-			testDb := newTestTxPoolStateDb()
-			testDb.balances[address] = uint256.NewInt(math.MaxUint64)
-			testDb.nonces[address] = 0
+			opts := poolOptions{
+				minTip:  big.NewInt(0),
+				isLocal: true,
+				locals:  newAccountSet(signer),
+			}
 
-			opts := getTestPoolOptions()
-			opts.currentState = testDb
-
-			err = validateTx(signedTx, opts, getTestBlockState(), netRules)
+			err := validateTx(types.NewTx(tx), opts, rules, chain, state, signer)
 			require.NoError(t, err)
 		})
 	}
 }
 
-////////////////////////////////////////////////////////////////////////////////
-// Helper functions for testing.
+// =============================================================================
+// Helpers
+// =============================================================================
 
-// getTxsOfAllTypes returns a list of all transaction types for testing.
-func getTxsOfAllTypes() map[string]types.TxData {
-	return map[string]types.TxData{
-		"Legacy":     &types.LegacyTx{},
-		"AccessList": &types.AccessListTx{},
-		"DynamicFee": &types.DynamicFeeTx{},
-		"Blob":       makeBlobTx(nil, nil),
-		"SetCode":    &types.SetCodeTx{AuthList: []types.SetCodeAuthorization{{}}},
-	}
-}
-
-// signTxForTest generates a new key, signs the transaction with it, and returns
-// the signer, address, and signed transaction.
-func signTxForTest(t *testing.T, tx types.TxData, signer types.Signer) (common.Address, *types.Transaction) {
-	key, err := crypto.GenerateKey()
-	address := crypto.PubkeyToAddress(key.PublicKey)
-	require.NoError(t, err)
-	signedTx, err := types.SignTx(types.NewTx(tx), signer, key)
-	require.NoError(t, err)
-	return address, signedTx
-}
-
-// setNonce sets the nonce for a transaction.
-func setNonce(t *testing.T, tx types.TxData, nonce uint64) {
-	switch tx := tx.(type) {
+func transactionTypeName(tx types.TxData) string {
+	switch tx.(type) {
 	case *types.LegacyTx:
-		tx.Nonce = nonce
+		return "legacy"
 	case *types.AccessListTx:
-		tx.Nonce = nonce
+		return "access list"
 	case *types.DynamicFeeTx:
-		tx.Nonce = nonce
+		return "dynamic fee"
 	case *types.BlobTx:
-		tx.Nonce = nonce
+		return "blob"
 	case *types.SetCodeTx:
-		tx.Nonce = nonce
+		return "setCode"
 	default:
-		t.Fatalf("unexpected transaction type: %T", tx)
-	}
-}
-
-// setEffectiveTip sets the gas fee cap for a transaction. For legacy and access list
-// transactions, it sets the gas price instead since those types do not have a tip.
-func setEffectiveTip(t *testing.T, tx types.TxData, gasTipCap *big.Int) {
-	switch tx := tx.(type) {
-	case *types.LegacyTx:
-		tx.GasPrice = gasTipCap
-	case *types.AccessListTx:
-		tx.GasPrice = gasTipCap
-	case *types.DynamicFeeTx:
-		tx.GasTipCap = gasTipCap
-	case *types.BlobTx:
-		tx.GasTipCap = uint256.MustFromBig(gasTipCap)
-	case *types.SetCodeTx:
-		tx.GasTipCap = uint256.MustFromBig(gasTipCap)
-	default:
-		t.Fatalf("unexpected transaction type: %T", tx)
-	}
-}
-
-// setGasFeeCap sets the gas fee cap for a transaction. For legacy and access list
-// transactions, it sets the gas price.
-func setGasPriceOrFeeCap(t *testing.T, tx types.TxData, gasFeeCap *big.Int) {
-	// for all transaction types, the methods GasPrice and GasFeeCap return
-	// always the same field. Either gasPrice or gasFeeCap, depending on the
-	// transaction type.
-	switch tx := tx.(type) {
-	case *types.LegacyTx:
-		tx.GasPrice = gasFeeCap
-	case *types.AccessListTx:
-		tx.GasPrice = gasFeeCap
-	case *types.DynamicFeeTx:
-		tx.GasFeeCap = gasFeeCap
-	case *types.BlobTx:
-		tx.GasFeeCap = uint256.MustFromBig(gasFeeCap)
-	case *types.SetCodeTx:
-		tx.GasFeeCap = uint256.MustFromBig(gasFeeCap)
-	default:
-		t.Fatalf("unexpected transaction type: %T", tx)
-	}
-}
-
-// setGas sets the gas limit for a transaction.
-func setGas(t *testing.T, tx types.TxData, gas uint64) {
-	switch tx := tx.(type) {
-	case *types.LegacyTx:
-		tx.Gas = gas
-	case *types.AccessListTx:
-		tx.Gas = gas
-	case *types.DynamicFeeTx:
-		tx.Gas = gas
-	case *types.BlobTx:
-		tx.Gas = gas
-	case *types.SetCodeTx:
-		tx.Gas = gas
-	default:
-		t.Fatalf("unexpected transaction type: %T", tx)
-	}
-}
-
-// setData is a helper function to add oversized data to a transaction.
-func setData(t *testing.T, tx types.TxData, data []byte) {
-	switch tx := tx.(type) {
-	case *types.LegacyTx:
-		tx.Data = data
-	case *types.AccessListTx:
-		tx.Data = data
-	case *types.DynamicFeeTx:
-		tx.Data = data
-	case *types.BlobTx:
-		tx.Data = data
-	case *types.SetCodeTx:
-		tx.Data = data
-	default:
-		t.Fatalf("unexpected transaction type: %T", tx)
-	}
-}
-
-// setReceiverToNil is a helper function to set the "To" field of a transaction to nil.
-func setReceiverToNil(t *testing.T, tx types.TxData) {
-	switch tx := tx.(type) {
-	case *types.LegacyTx:
-		tx.To = nil
-	case *types.AccessListTx:
-		tx.To = nil
-	case *types.DynamicFeeTx:
-		tx.To = nil
-	case *types.BlobTx:
-		t.Fatal("blob transaction cannot have nil To field")
-	case *types.SetCodeTx:
-		t.Fatal("setCode transaction cannot have nil To field")
-	default:
-		t.Fatalf("unexpected transaction type: %T", tx)
-	}
-}
-
-func setValue(t *testing.T, tx types.TxData, value *big.Int) {
-	switch tx := tx.(type) {
-	case *types.LegacyTx:
-		tx.Value = value
-	case *types.AccessListTx:
-		tx.Value = value
-	case *types.DynamicFeeTx:
-		tx.Value = value
-	case *types.BlobTx:
-		tx.Value = uint256.MustFromBig(value)
-	case *types.SetCodeTx:
-		tx.Value = uint256.MustFromBig(value)
-	default:
-		t.Fatalf("unexpected transaction type: %T", tx)
-	}
-}
-
-// setValueToNegative is a helper function to set the "Value" field of a transaction to a negative value.
-// for blob and setCode transactions, it sets the value to zero since they use uint256.
-func setValueToNegative(t *testing.T, tx types.TxData) {
-	switch tx := tx.(type) {
-	case *types.LegacyTx:
-		tx.Value = big.NewInt(-1)
-	case *types.AccessListTx:
-		tx.Value = big.NewInt(-1)
-	case *types.DynamicFeeTx:
-		tx.Value = big.NewInt(-1)
-	case *types.BlobTx:
-		t.Fatal("blob transactions cannot have negative value")
-	case *types.SetCodeTx:
-		t.Fatal("setCode transactions cannot have negative value")
-	default:
-		t.Fatalf("unexpected transaction type: %T", tx)
-	}
-}
-
-func getIntrinsicGasForTest(t *testing.T, tx types.TxData, opt NetworkRules) uint64 {
-	transaction := types.NewTx(tx)
-	intrGas, err := core.IntrinsicGas(
-		transaction.Data(),
-		transaction.AccessList(),
-		transaction.SetCodeAuthorizations(),
-		transaction.To() == nil, // is contract creation
-		true,                    // is homestead
-		opt.istanbul,            // is eip-2028 (transactional data gas cost reduction)
-		opt.shanghai,            // is eip-3860 (limit and meter init-code )
-	)
-	require.NoError(t, err)
-	return intrGas
-}
-
-func isLegacyOrAccessList(tx types.TxData) bool {
-	_, okLegacy := tx.(*types.LegacyTx)
-	_, okAccessList := tx.(*types.AccessListTx)
-	return okLegacy || okAccessList
-}
-
-func isBlobOrSetCode(tx types.TxData) bool {
-	_, okBlob := tx.(*types.BlobTx)
-	_, okSetCode := tx.(*types.SetCodeTx)
-	return okBlob || okSetCode
-}
-
-// blobTx
-func makeBlobTx(hashes []common.Hash, sidecar *types.BlobTxSidecar) types.TxData {
-	return &types.BlobTx{
-		BlobHashes: hashes,
-		Sidecar:    sidecar,
-	}
-}
-
-///////////////////////////////////////////////////////////////////////
-// Benchmarks
-
-func BenchmarkValidateTx(b *testing.B) {
-	key, err := crypto.GenerateKey()
-	require.NoError(b, err)
-	address := crypto.PubkeyToAddress(key.PublicKey)
-
-	netRules := getTestNetworkRules()
-	blockState := getTestBlockState()
-	opts := getTestPoolOptions()
-	testDB := newTestTxPoolStateDb()
-	testDB.balances[address] = uint256.NewInt(math.MaxUint64)
-	testDB.nonces[address] = 1
-	opts.currentState = testDB
-
-	// make a good transaction
-	tx, err := types.SignTx(types.NewTx(&types.SetCodeTx{
-		Nonce:     1,
-		Gas:       50_000,
-		GasFeeCap: uint256.MustFromBig(blockState.baseFee),
-		Value:     uint256.NewInt(1),
-		Data:      []byte("some data"),
-		AuthList:  []types.SetCodeAuthorization{{}},
-	}), netRules.signer, key)
-	require.NoError(b, err)
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		err = validateTx(tx, opts, blockState, netRules)
-		require.NoError(b, err)
+		return "unknown"
 	}
 }

@@ -42,6 +42,8 @@ import (
 	"github.com/0xsoniclabs/sonic/utils/txtime"
 )
 
+//go:generate mockgen -source=tx_pool.go -destination=tx_pool_mock.go -package=evmcore
+
 const (
 	// chainHeadChanSize is the size of channel listening to ChainHeadNotify.
 	chainHeadChanSize = 10
@@ -655,14 +657,9 @@ func (pool *TxPool) local() map[common.Address]types.Transactions {
 // rules and adheres to some heuristic limits of the local node (price and size).
 func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 	opts := poolOptions{
-		currentState: pool.currentState,
-		minTip:       pool.minTip,
-		locals:       pool.locals,
-		isLocal:      local,
-	}
-	blockState := blockState{
-		maxGas:  pool.currentMaxGas,
-		baseFee: pool.chain.GetCurrentBaseFee(),
+		minTip:  pool.minTip,
+		locals:  pool.locals,
+		isLocal: local,
 	}
 	netRules := NetworkRules{
 		istanbul: pool.istanbul,
@@ -673,10 +670,8 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 		eip4844:  pool.eip4844,
 		eip7623:  pool.eip7623,
 		eip7702:  pool.eip7702,
-		signer:   pool.signer,
-		maxTxGas: pool.currentMaxGas,
 	}
-	err := validateTx(tx, opts, blockState, netRules)
+	err := validateTx(tx, opts, netRules, pool.chain, pool.currentState, pool.signer)
 	if err != nil {
 		return err
 	}
