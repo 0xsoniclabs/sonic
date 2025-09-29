@@ -51,7 +51,7 @@ func (p *StateProcessor) process_iteratively(
 		processed = append(processed, txProcessor.Run(i, tx)...)
 	}
 
-	// The total used gas is cumulative gas used reported by the last receipt.
+	// The used gas is the cumulative gas used reported by the last receipt.
 	for _, tx := range processed {
 		if tx.Receipt != nil {
 			*usedGas = tx.Receipt.CumulativeGasUsed
