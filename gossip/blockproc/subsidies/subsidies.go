@@ -36,7 +36,7 @@ import (
 // registry contract to check for available funds and to deduct the fees after
 // the sponsored transaction has been executed.
 const SponsorshipOverheadGasCost = 0 +
-	registry.GasLimitForIsCoveredCall +
+	registry.GasLimitForChooseFundCall +
 	registry.GasLimitForDeductFeesCall
 
 // IsSponsorshipRequest checks if a transaction is requesting sponsorship from
@@ -80,13 +80,13 @@ func IsCovered(
 	// Build the input data for the IsCovered call.
 	maxGas := tx.Gas() + SponsorshipOverheadGasCost
 	maxFee := new(big.Int).Mul(baseFee, new(big.Int).SetUint64(maxGas))
-	input, err := createIsCoveredInput(reader, tx, maxFee)
+	input, err := createChooseFundInput(reader, tx, maxFee)
 	if err != nil {
 		return false, FundId{}, fmt.Errorf("failed to create input for subsidies registry call: %w", err)
 	}
 
 	// Run the query on the EVM and the provided state.
-	const initialGas = registry.GasLimitForIsCoveredCall
+	const initialGas = registry.GasLimitForChooseFundCall
 	result, _, err := vm.Call(caller, target, input, initialGas, uint256.NewInt(0))
 	if err != nil {
 		return false, FundId{}, fmt.Errorf("EVM call failed: %w", err)
@@ -98,7 +98,7 @@ func IsCovered(
 	}
 
 	// Parse the result of the call.
-	covered, fundID, err := parseIsCoveredResult(result)
+	covered, fundID, err := parseChooseFundResult(result)
 	if err != nil {
 		return false, FundId{}, fmt.Errorf("failed to parse result of subsidies registry call: %w", err)
 	}
@@ -169,9 +169,9 @@ type SenderReader interface {
 
 // --- utility functions ---
 
-// createIsCoveredInput creates the input data for the IsCovered call to the
+// createChooseFundInput creates the input data for the chooseFund call to the
 // subsidies registry contract.
-func createIsCoveredInput(
+func createChooseFundInput(
 	reader SenderReader,
 	tx *types.Transaction,
 	fee *big.Int,
@@ -191,7 +191,7 @@ func createIsCoveredInput(
 
 	// Add the function selector for `isCovered`.
 	input := []byte{}
-	input = binary.BigEndian.AppendUint32(input, registry.IsCoveredFunctionSelector)
+	input = binary.BigEndian.AppendUint32(input, registry.ChooseFundFunctionSelector)
 
 	// The from and to addresses are padded to 32 bytes.
 	addressPadding := [12]byte{}
@@ -199,6 +199,9 @@ func createIsCoveredInput(
 	input = append(input, from[:]...)
 	input = append(input, addressPadding[:]...)
 	input = append(input, to[:]...)
+
+	// The value is padded to 32 bytes.
+	input = append(input, tx.Value().FillBytes(make([]byte, 32))...)
 
 	// The nonce is padded to 32 bytes.
 	uint64Padding := [24]byte{}
@@ -208,7 +211,7 @@ func createIsCoveredInput(
 	// The calldata is a dynamic parameter, encoded as its offset in the input
 	// data. Dynamic sized parameters are at the end of the input data.
 	input = append(input, uint64Padding[:]...)
-	input = binary.BigEndian.AppendUint64(input, 32*5) // 5 32-byte parameters
+	input = binary.BigEndian.AppendUint64(input, 32*6) // 6 32-byte parameters
 
 	// The fee is padded to 32 bytes.
 	input = append(input, fee.FillBytes(make([]byte, 32))...)
@@ -228,25 +231,15 @@ func createIsCoveredInput(
 	return input, nil
 }
 
-// parseIsCoveredResult parses the result of the IsCovered call to the
+// parseChooseFundResult parses the result of the IsCovered call to the
 // subsidies registry contract.
-func parseIsCoveredResult(data []byte) (covered bool, fundID FundId, err error) {
-	// The result is a tuple of type (bool, bytes32). The first 32 bytes are the
-	// boolean result, the second 32 bytes are the fund ID.
-	if len(data) != 2*32 {
-		return false, FundId{}, fmt.Errorf("invalid result length from IsCovered call: %d", len(data))
+func parseChooseFundResult(data []byte) (covered bool, fundID FundId, err error) {
+	// The result is a 32-byte long FundId.
+	if len(data) != 32 {
+		return false, FundId{}, fmt.Errorf("invalid result length from chooseFund call: %d", len(data))
 	}
-
-	// The first result is a boolean, encoded as a 32-byte value.
-	// 0 = false, 1 = true
-	result := common.Hash(data[0:32])
-	if result == (common.Hash{}) {
-		return false, FundId{}, nil
-	}
-	if result != (common.Hash{31: 1}) {
-		return false, FundId{}, fmt.Errorf("invalid boolean value in IsCovered result: 0x%x", result)
-	}
-	return true, FundId(data[32:64]), nil
+	fundId := FundId(data[0:32])
+	return fundId != (FundId{}), fundId, nil
 }
 
 // createDeductFeesInput creates the input data for the DeductFees call to the
