@@ -32,7 +32,7 @@ import (
 func Fund(
 	t *testing.T,
 	session tests.IntegrationTestNetSession,
-	sponsor, sponsee, receiver *tests.Account,
+	sponsor, sponsee, receiver common.Address,
 	donation *big.Int,
 ) *registry.Registry {
 
@@ -43,19 +43,19 @@ func Fund(
 	registry, err := registry.NewRegistry(registry.GetAddress(), client)
 	require.NoError(t, err)
 
-	receipt, err := session.EndowAccount(sponsor.Address(), big.NewInt(1e18))
+	receipt, err := session.EndowAccount(sponsor, big.NewInt(1e18))
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
 	receipt, err = session.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
-		opts.Value = big.NewInt(1e16)
-		return registry.SponsorUser(opts, sponsee.Address(), receiver.Address())
+		opts.Value = donation
+		return registry.SponsorUser(opts, sponsee, receiver)
 	})
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
 	// check that the sponsorship funds got deposited
-	sponsorship, err := registry.UserSponsorships(nil, sponsee.Address(), receiver.Address())
+	sponsorship, err := registry.UserSponsorships(nil, sponsee, receiver)
 	require.NoError(t, err)
 	require.Equal(t, donation, sponsorship.Funds)
 

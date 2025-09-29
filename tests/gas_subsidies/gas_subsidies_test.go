@@ -18,12 +18,16 @@ package gas_subsidies
 
 import (
 	"fmt"
+	"math"
 	"math/big"
+	"slices"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
+	"github.com/0xsoniclabs/sonic/tests/contracts/indexed_logs"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -124,7 +128,7 @@ func TestGasSubsidies_InternalTransaction_HaveConsistentNonces(t *testing.T) {
 	donation := big.NewInt(1e16)
 
 	// set up sponsorship
-	Fund(t, net, sponsor, sponsee, receiver, donation)
+	Fund(t, net, sponsor.Address(), sponsee.Address(), receiver.Address(), donation)
 
 	internalNonce, err := client.PendingNonceAt(t.Context(), common.Address{})
 	require.NoError(err)
@@ -218,6 +222,11 @@ func TestGasSubsidies(t *testing.T) {
 					t.Parallel()
 					testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t, session)
 				})
+
+				// t.Run("ProperlyLogsSubsidizedTransaction", func(t *testing.T) {
+				// 	session := net.SpawnSession(t)
+				// 	testGasSubsidies_ProperlyLogsSubsidizedTransaction(t, session)
+				// })
 			})
 		}
 	}
@@ -240,7 +249,7 @@ func testGasSubsidies_Receipts_HaveConsistentTransactionIndices(t *testing.T,
 	anotherAccount := tests.MakeAccountWithBalance(t, session, big.NewInt(1e18))
 
 	// set up sponsorship
-	Fund(t, session, sponsor, sponsee, receiver, donation)
+	Fund(t, session, sponsor.Address(), sponsee.Address(), receiverAddress, donation)
 	suggestedGasPrice, err := client.SuggestGasPrice(t.Context())
 	require.NoError(err)
 
@@ -335,7 +344,7 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, se
 	// --- deposit sponsorship funds ---
 
 	donation := big.NewInt(1e16)
-	ledger := Fund(t, session, sponsor, sponsee, receiver, donation)
+	ledger := Fund(t, session, sponsor.Address(), sponsee.Address(), receiver.Address(), donation)
 
 	burnedBefore, err := client.BalanceAt(t.Context(), common.Address{}, nil)
 	require.NoError(err)
@@ -365,4 +374,109 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, se
 	require.Equal(0, diff.Cmp(reduced),
 		"the burned amount should equal the reduction of the sponsorship funds",
 	)
+}
+
+// func testGasSubsidies_ProperlyLogsSubsidizedTransaction(t *testing.T, session tests.IntegrationTestNetSession) {
+func TestGasSubsidies_ProperlyLogsSubsidizedTransaction(t *testing.T) {
+	// --- deploy the registry contract and deposit sponsorship funds ---
+
+	require := require.New(t)
+
+	upgrade := opera.GetAllegroUpgrades()
+	upgrade.GasSubsidies = true
+	upgrade.SingleProposerBlockFormation = true
+	session := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+		Upgrades: &upgrade,
+	})
+
+	client, err := session.GetClient()
+	require.NoError(err)
+	defer client.Close()
+
+	sponsor := tests.NewAccount()
+	t.Logf("sponsor: %v", sponsor.Address())
+	sponsee := tests.NewAccount()
+	t.Logf("sponsee: %v", sponsee.Address())
+	donation := big.NewInt(math.MaxInt64)
+
+	contract, receipt, err := tests.DeployContract(session, indexed_logs.DeployIndexedLogs)
+	require.NoError(err)
+	require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
+
+	contractAddress := receipt.ContractAddress
+	t.Logf("deployed contract at %v", contractAddress)
+
+	_ = Fund(t, session, sponsor.Address(), sponsee.Address(), contractAddress, donation)
+
+	txReceiptBlock1, err := session.Apply(contract.EmitEvents)
+	require.NoError(err)
+	logs := txReceiptBlock1.Logs
+
+	// -- submit a sponsored transaction --
+	hashes := []common.Hash{}
+	numTxs := 5
+	var tx *types.Transaction
+	for range numTxs {
+
+		txOpts, err := session.GetTransactOptions(sponsee)
+		require.NoError(err)
+
+		txOpts.GasPrice = big.NewInt(0)
+		tx, err = contract.EmitEvents(txOpts)
+		require.NoError(err)
+
+		hashes = append(hashes, tx.Hash())
+	}
+
+	err = tests.WaitUntilTransactionIsRetiredFromPool(t, client, tx)
+	require.NoError(err, "failed to wait until the transaction is retired from the pool")
+
+	// Wait for the sponsored transaction to be executed.
+	receipts, err := session.GetReceipts(hashes)
+	require.NoError(err)
+	for _, receipt := range receipts {
+		require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
+	}
+
+	block, err := client.BlockByNumber(t.Context(), receipts[0].BlockNumber)
+	require.NoError(err)
+
+	// check that all transactions are in the same block
+	found := 0
+	for _, tx := range block.Transactions() {
+		if slices.Contains(hashes, tx.Hash()) {
+			found++
+		}
+	}
+	require.Equal(numTxs, found, "not all sponsored transactions found in the block")
+	from := receipts[0].BlockNumber
+	to := receipts[len(receipts)-1].BlockNumber
+	require.Equal(from, to, "sponsored transactions should be in the same block")
+
+	// Search in indexed logs in parallel
+	blockLogs, err := client.FilterLogs(t.Context(), ethereum.FilterQuery{
+		FromBlock: receipts[0].BlockNumber,
+		ToBlock:   receipts[len(receipts)-1].BlockNumber,
+		Addresses: []common.Address{contractAddress},
+		Topics:    [][]common.Hash{{logs[0].Topics[0]}}, //, logs[1].Topics[0], logs[2].Topics[0]}},
+	})
+	require.NoError(err)
+	require.Equal(numTxs*5, len(blockLogs), "number of logs should match number of transactions in the block")
+
+	for i, tx := range block.Transactions() {
+		if internaltx.IsInternal(tx) {
+			// if the transaction is internal, it should not have any logs
+			for _, log := range blockLogs {
+				require.NotEqual(tx.Hash(), log.TxHash, "internal transaction should not have logs")
+			}
+			continue
+		} else {
+			// times 5 because each transaction produces 5 logs
+			logsPerTx := 5
+			for l := range logsPerTx {
+				// i/2 because every second transaction is internal and does not generate logs
+				require.Equal(tx.Hash(), blockLogs[i/2*logsPerTx+l].TxHash, "log tx hash does not match %v", i)
+			}
+		}
+	}
 }
