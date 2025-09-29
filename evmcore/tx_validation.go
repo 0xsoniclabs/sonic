@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice/gaspricelimits"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/utils"
@@ -29,17 +30,22 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 )
 
+//go:generate mockgen -source=tx_validation.go -destination=tx_validation_mock.go -package=evmcore
+
 // poolOptions is a set of options to adjust the validation of transactions
 // according to the current state of the transaction pool.
 type poolOptions struct {
-	currentState state.StateDB // Current state in the blockchain head
-	minTip       *big.Int      // Minimum gas tip to enforce for acceptance into the pool
-	locals       *accountSet   // Set of local transaction to exempt from eviction rules
-	isLocal      bool          // Whether the transaction came from a local source
+	minTip  *big.Int    // Minimum gas tip to enforce for acceptance into the pool
+	locals  *accountSet // Set of local transaction to exempt from eviction rules
+	isLocal bool        // Whether the transaction came from a local source
 }
 
 // NetworkRules is a set of network rules to validate transactions
 // according to the current state of the blockchain.
+//
+// This structure is derived from the transaction pool chainConfig and
+// not from opera.Rules because the pool is not aware of opera.Rules and
+// tx_pool_test.go heavily relies on chainConfig to set up the network rules.
 type NetworkRules struct {
 	istanbul bool // Fork indicator whether we are in the istanbul revision.
 	shanghai bool // Fork indicator whether we are in the shanghai revision.
@@ -50,18 +56,11 @@ type NetworkRules struct {
 	eip4844 bool // Fork indicator whether we are using EIP-4844 type transactions.
 	eip7623 bool // Fork indicator whether we are using EIP-7623 floor gas validation.
 	eip7702 bool // Fork indicator whether we are using EIP-7702 set code transactions.
-
-	signer types.Signer // Signer to use for transaction validation
-
-	maxTxGas uint64 // Maximum gas allowed per transaction
 }
 
-// blockState is a set of options to adjust the validation of transactions
-// according to the current state of the blockchain, specifically the max gas
-// and base fee of the current block.
-type blockState struct {
-	maxGas  uint64   // Current gas limit for transaction caps
-	baseFee *big.Int // Current base fee for transaction
+// Signer wraps types.Signer to allow mocking it in tests.
+type Signer interface {
+	types.Signer
 }
 
 // validateTx checks whether a transaction is valid according to the current
@@ -69,13 +68,16 @@ type blockState struct {
 func validateTx(
 	tx *types.Transaction,
 	opt poolOptions,
-	currentBlockState blockState,
-	netRules NetworkRules) error {
+	netRules NetworkRules,
+	chain StateReader,
+	state state.StateDB, // Although this can be retrieved from chain, it's passed explicitly to avoid extra db-pool accesses
+	signer types.Signer,
+) error {
 
 	// The transaction is checked against network rules to detect unsupported
 	// transaction types first, ensuring protocol compliance before performing
 	// further validation.
-	if err := ValidateTxForNetwork(tx, netRules); err != nil {
+	if err := ValidateTxForNetwork(tx, netRules, chain, signer); err != nil {
 		return err
 	}
 
@@ -83,15 +85,15 @@ func validateTx(
 		return err
 	}
 
-	if err := ValidateTxForBlock(tx, currentBlockState); err != nil {
+	if err := ValidateTxForBlock(tx, chain); err != nil {
 		return err
 	}
 
-	if err := validateTxForPool(tx, opt, netRules.signer); err != nil {
+	if err := validateTxForPool(tx, opt, signer); err != nil {
 		return err
 	}
 
-	if err := ValidateTxForState(tx, opt.currentState, netRules.signer); err != nil {
+	if err := ValidateTxForState(tx, state, signer); err != nil {
 		return err
 	}
 
@@ -107,23 +109,23 @@ func validateTx(
 // - the transaction has been signed with a valid signer for the current chain
 //
 // It returns an error if any of the checks fail.
-func ValidateTxForNetwork(tx *types.Transaction, opt NetworkRules) error {
+func ValidateTxForNetwork(tx *types.Transaction, rules NetworkRules, chain StateReader, signer types.Signer) error {
 	// With the introduction of EIP-2718 transaction envelope, the transaction
 	// can be of different types. Before the Berlin fork
 	// (https://blog.ethereum.org/2021/03/08/ethereum-berlin-upgrade-announcement),
 	// the only accepted type of transaction is legacy.
-	if !opt.eip2718 && tx.Type() != types.LegacyTxType {
+	if !rules.eip2718 && tx.Type() != types.LegacyTxType {
 		return ErrTxTypeNotSupported
 	}
 	// NOTE: between eip-2718 and eip-1559, access list transactions are allowed as well.
 
 	// Reject dynamic fee transactions until EIP-1559 activates.
-	if !opt.eip1559 && tx.Type() == types.DynamicFeeTxType {
+	if !rules.eip1559 && tx.Type() == types.DynamicFeeTxType {
 		return ErrTxTypeNotSupported
 	}
 	// Reject blob transactions until EIP-4844 activates or if is already EIP-4844 and they are not empty
 	if tx.Type() == types.BlobTxType {
-		if !opt.eip4844 {
+		if !rules.eip4844 {
 			return ErrTxTypeNotSupported
 		}
 		// Sonic only supports Blob transactions without blob data.
@@ -134,13 +136,13 @@ func ValidateTxForNetwork(tx *types.Transaction, opt NetworkRules) error {
 	}
 
 	// validate EIP-7702 transactions, part of prague revision
-	if tx.Type() == types.SetCodeTxType && !opt.eip7702 {
+	if tx.Type() == types.SetCodeTxType && !rules.eip7702 {
 		return ErrTxTypeNotSupported
 	}
 
 	// This check does not validate gas, but depends on active revision.
 	// Check whether the init code size has been exceeded, introduced in EIP-3860
-	if opt.shanghai && tx.To() == nil && len(tx.Data()) > params.MaxInitCodeSize {
+	if rules.shanghai && tx.To() == nil && len(tx.Data()) > params.MaxInitCodeSize {
 		return fmt.Errorf("%w: code size %v, limit %v", ErrMaxInitCodeSizeExceeded, len(tx.Data()), params.MaxInitCodeSize)
 	}
 
@@ -151,8 +153,8 @@ func ValidateTxForNetwork(tx *types.Transaction, opt NetworkRules) error {
 		tx.SetCodeAuthorizations(),
 		tx.To() == nil, // is contract creation
 		true,           // is homestead
-		opt.istanbul,   // is eip-2028 (transactional data gas cost reduction)
-		opt.shanghai,   // is eip-3860 (limit and meter init-code )
+		rules.istanbul, // is eip-2028 (transactional data gas cost reduction)
+		rules.shanghai, // is eip-3860 (limit and meter init-code )
 	)
 	if err != nil {
 		return err
@@ -163,7 +165,7 @@ func ValidateTxForNetwork(tx *types.Transaction, opt NetworkRules) error {
 
 	// EIP-7623 part of Prague revision: Floor data gas
 	// see: https://eips.ethereum.org/EIPS/eip-7623
-	if opt.eip7623 {
+	if rules.eip7623 {
 		floorDataGas, err := core.FloorDataGas(tx.Data())
 		if err != nil {
 			return err
@@ -173,11 +175,11 @@ func ValidateTxForNetwork(tx *types.Transaction, opt NetworkRules) error {
 		}
 	}
 
-	if opt.osaka && tx.Gas() > opt.maxTxGas {
-		return fmt.Errorf("%w: tx gas %v, should be under %v", ErrGasLimitTooHigh, tx.Gas(), opt.maxTxGas)
+	if rules.osaka && tx.Gas() > chain.MaxGasLimit() {
+		return fmt.Errorf("%w: tx gas %v, should be under %v", ErrGasLimitTooHigh, tx.Gas(), chain.MaxGasLimit())
 	}
 
-	if _, err := types.Sender(opt.signer, tx); err != nil {
+	if _, err := types.Sender(signer, tx); err != nil {
 		return ErrInvalidSender
 	}
 
@@ -225,10 +227,11 @@ func ValidateTxStatic(tx *types.Transaction) error {
 // and base fee of the current block.
 // An error is returned if the transaction's gas exceeds the block's gas limit
 // or if the transaction's gas fee cap is below the minimum required base fee.
-func ValidateTxForBlock(tx *types.Transaction, blockState blockState) error {
+func ValidateTxForBlock(tx *types.Transaction, chain StateReader) error {
 
 	// Ensure Sonic-specific hard bounds
-	if baseFee := blockState.baseFee; baseFee != nil {
+	isSponsorRequest := subsidies.IsSponsorshipRequest(tx)
+	if baseFee := chain.GetCurrentBaseFee(); !isSponsorRequest && baseFee != nil {
 		limit := gaspricelimits.GetMinimumFeeCapForTransactionPool(baseFee)
 		if tx.GasFeeCapIntCmp(limit) < 0 {
 			log.Trace("Rejecting underpriced tx: minimumBaseFee", "minimumBaseFee", baseFee, "limit", limit, "tx.GasFeeCap", tx.GasFeeCap())
@@ -237,7 +240,7 @@ func ValidateTxForBlock(tx *types.Transaction, blockState blockState) error {
 	}
 
 	// Ensure the transaction doesn't exceed the current block limit gas.
-	if blockState.maxGas < tx.Gas() {
+	if chain.MaxGasLimit() < tx.Gas() {
 		return ErrGasLimit
 	}
 
@@ -248,8 +251,7 @@ func ValidateTxForBlock(tx *types.Transaction, blockState blockState) error {
 // Specifically, it ensures the sender has sufficient balance to cover the transaction cost,
 // and that the transaction's nonce is not lower than the sender's nonce in the state.
 // Returns an error if any of these conditions are not met.
-func ValidateTxForState(tx *types.Transaction, state state.StateDB,
-	signer types.Signer) error {
+func ValidateTxForState(tx *types.Transaction, state state.StateDB, signer types.Signer) error {
 
 	// Make sure the transaction is signed properly.
 	from, err := types.Sender(signer, tx)
@@ -264,7 +266,8 @@ func ValidateTxForState(tx *types.Transaction, state state.StateDB,
 
 	// Transactor should have enough funds to cover the costs
 	// cost == Value + GasPrice * Gas
-	if utils.Uint256ToBigInt(state.GetBalance(from)).Cmp(tx.Cost()) < 0 {
+	isSponsorRequest := subsidies.IsSponsorshipRequest(tx)
+	if !isSponsorRequest && utils.Uint256ToBigInt(state.GetBalance(from)).Cmp(tx.Cost()) < 0 {
 		return ErrInsufficientFunds
 	}
 	return nil
@@ -295,7 +298,8 @@ func validateTxForPool(tx *types.Transaction, opt poolOptions,
 	}
 
 	// Drop non-local transactions under our own minimal accepted gas price or tip.
-	if tx.GasTipCapIntCmp(opt.minTip) < 0 {
+	isSponsorRequest := subsidies.IsSponsorshipRequest(tx)
+	if !isSponsorRequest && tx.GasTipCapIntCmp(opt.minTip) < 0 {
 		log.Trace("Rejecting underpriced tx: pool.minTip", "pool.minTip",
 			opt.minTip, "tx.GasTipCap", tx.GasTipCap())
 		return ErrUnderpriced
