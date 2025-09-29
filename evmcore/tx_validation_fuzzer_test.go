@@ -256,8 +256,7 @@ func FuzzValidateTransaction(f *testing.F) {
 		chain.EXPECT().GetCurrentBaseFee().Return(big.NewInt(int64(baseFee))).AnyTimes()
 		chain.EXPECT().MaxGasLimit().Return(maxGas).AnyTimes()
 
-		opt, netRules := getTestTransactionsOptionFromRevision(revision, chainId,
-			maxGas, int64(baseFee), int64(minTip))
+		opt, netRules := getTestTransactionsOptionFromRevision(revision, int64(minTip))
 
 		signer := types.LatestSignerForChainID(chainId)
 
@@ -505,8 +504,7 @@ func signTxForTestWithChainId(t *testing.T, tx types.TxData, chainId *big.Int) (
 
 // getTestTransactionsOptionFromRevision creates a validationOptions struct
 // with the specified revision and chain ID.
-func getTestTransactionsOptionFromRevision(revision int8, chainId *big.Int,
-	maxGas uint64, BaseFee, MinTip int64) (poolOptions, NetworkRules) {
+func getTestTransactionsOptionFromRevision(revision int8, MinTip int64) (poolOptions, NetworkRules) {
 	opt := poolOptions{
 		minTip: big.NewInt(MinTip),
 		// locally submitted transactions have the more relaxed validation version. Therefore we test local true.
