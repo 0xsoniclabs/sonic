@@ -273,17 +273,17 @@ func TestValidateTxForNetwork_Gas_RejectsTx_GasLowerThanFloorDataGas(t *testing.
 		&types.LegacyTx{
 			Data: someData,
 			Gas:  floorDataGas - 1,
-			To:   &common.Address{}, // not a contract creation
+			To:   &common.Address{42}, // not a contract creation
 		},
 		&types.AccessListTx{
 			Data: someData,
 			Gas:  floorDataGas - 1,
-			To:   &common.Address{}, // not a contract creation
+			To:   &common.Address{42}, // not a contract creation
 		},
 		&types.DynamicFeeTx{
 			Data: someData,
 			Gas:  floorDataGas - 1,
-			To:   &common.Address{}, // not a contract creation
+			To:   &common.Address{42}, // not a contract creation
 		},
 		&types.BlobTx{
 			Data: someData,
@@ -304,7 +304,7 @@ func TestValidateTxForNetwork_Gas_RejectsTx_GasLowerThanFloorDataGas(t *testing.
 			// check that the error is not happening with eip7623 disabled
 			ctrl := gomock.NewController(t)
 			signer := NewMockSigner(ctrl)
-			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{}, nil)
+			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{42}, nil)
 
 			rules.eip7623 = false
 			err = ValidateTxForNetwork(types.NewTx(tx), rules, nil, signer)
@@ -320,15 +320,15 @@ func TestValidateTxForNetwork_GasLimitIsCheckedAfterOsaka(t *testing.T) {
 
 	test := []types.TxData{
 		&types.LegacyTx{
-			To:  &common.Address{}, // not a contract creation
+			To:  &common.Address{42}, // not a contract creation
 			Gas: gasLimit + 1,
 		},
 		&types.AccessListTx{
-			To:  &common.Address{}, // not a contract creation
+			To:  &common.Address{42}, // not a contract creation
 			Gas: gasLimit + 1,
 		},
 		&types.DynamicFeeTx{
-			To:  &common.Address{}, // not a contract creation
+			To:  &common.Address{42}, // not a contract creation
 			Gas: gasLimit + 1,
 		},
 		&types.BlobTx{
@@ -345,7 +345,7 @@ func TestValidateTxForNetwork_GasLimitIsCheckedAfterOsaka(t *testing.T) {
 			chain := NewMockStateReader(ctrl)
 			chain.EXPECT().MaxGasLimit().Return(gasLimit).AnyTimes()
 			signer := NewMockSigner(ctrl)
-			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{}, nil).AnyTimes()
+			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{42}, nil).AnyTimes()
 
 			rules := NetworkRules{
 				eip2718: true,
@@ -395,7 +395,7 @@ func TestValidateTxForNetwork_InitCodeTooLarge_ReturnsError(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			chain := NewMockStateReader(ctrl)
 			signer := NewMockSigner(ctrl)
-			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{}, nil).AnyTimes()
+			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{42}, nil).AnyTimes()
 
 			rules := NetworkRules{
 				istanbul: true,
@@ -420,15 +420,15 @@ func TestValidateTxForNetwork_Signer_RejectsTxWithInvalidSigner(t *testing.T) {
 
 	tests := []types.TxData{
 		&types.LegacyTx{
-			To:  &common.Address{}, // not a contract creation
+			To:  &common.Address{42}, // not a contract creation
 			Gas: 21000,
 		},
 		&types.AccessListTx{
-			To:  &common.Address{}, // not a contract creation
+			To:  &common.Address{42}, // not a contract creation
 			Gas: 21000,
 		},
 		&types.DynamicFeeTx{
-			To:  &common.Address{}, // not a contract creation
+			To:  &common.Address{42}, // not a contract creation
 			Gas: 21000,
 		},
 		&types.BlobTx{
@@ -445,7 +445,7 @@ func TestValidateTxForNetwork_Signer_RejectsTxWithInvalidSigner(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			chain := NewMockStateReader(ctrl)
 			signer := NewMockSigner(ctrl)
-			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{}, fmt.Errorf("some error"))
+			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{42}, fmt.Errorf("some error"))
 
 			rules := NetworkRules{
 				istanbul: true,
@@ -467,15 +467,15 @@ func TestValidateTxForNetwork_AcceptsTransactions(t *testing.T) {
 
 	tests := []types.TxData{
 		&types.LegacyTx{
-			To:  &common.Address{}, // not a contract creation
+			To:  &common.Address{42}, // not a contract creation
 			Gas: 21000,
 		},
 		&types.AccessListTx{
-			To:  &common.Address{}, // not a contract creation
+			To:  &common.Address{42}, // not a contract creation
 			Gas: 21000,
 		},
 		&types.DynamicFeeTx{
-			To:  &common.Address{}, // not a contract creation
+			To:  &common.Address{42}, // not a contract creation
 			Gas: 21000,
 		},
 		&types.BlobTx{
@@ -493,7 +493,7 @@ func TestValidateTxForNetwork_AcceptsTransactions(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			chain := NewMockStateReader(ctrl)
 			signer := NewMockSigner(ctrl)
-			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{}, nil)
+			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{42}, nil)
 
 			rules := NetworkRules{
 				istanbul: true,
@@ -517,17 +517,17 @@ func TestValidateTxForBlock_MaxGas_RejectsTxWithGasOverMaxGas(t *testing.T) {
 
 	tests := []types.TxData{
 		&types.LegacyTx{
-			To:       &common.Address{}, // not a contract creation
+			To:       &common.Address{42}, // not a contract creation
 			Gas:      100_000,
 			GasPrice: big.NewInt(1),
 		},
 		&types.AccessListTx{
-			To:       &common.Address{}, // not a contract creation
+			To:       &common.Address{42}, // not a contract creation
 			Gas:      100_000,
 			GasPrice: big.NewInt(1),
 		},
 		&types.DynamicFeeTx{
-			To:        &common.Address{}, // not a contract creation
+			To:        &common.Address{42}, // not a contract creation
 			Gas:       100_000,
 			GasFeeCap: big.NewInt(1),
 		},
@@ -558,17 +558,17 @@ func TestValidateTxForBlock_MaxGas_RejectsTxWithGasOverMaxGas(t *testing.T) {
 func TestValidateTxForBlock_BaseFee_RejectsTxWithGasPriceLowerThanBaseFee(t *testing.T) {
 	tests := []types.TxData{
 		&types.LegacyTx{
-			To:       &common.Address{}, // not a contract creation
+			To:       &common.Address{42}, // not a contract creation
 			Gas:      100_000,
 			GasPrice: big.NewInt(1),
 		},
 		&types.AccessListTx{
-			To:       &common.Address{}, // not a contract creation
+			To:       &common.Address{42}, // not a contract creation
 			Gas:      100_000,
 			GasPrice: big.NewInt(1),
 		},
 		&types.DynamicFeeTx{
-			To:        &common.Address{}, // not a contract creation
+			To:        &common.Address{42}, // not a contract creation
 			Gas:       100_000,
 			GasFeeCap: big.NewInt(1),
 		},
@@ -599,17 +599,17 @@ func TestValidateTxForBlock_AcceptsTransactions(t *testing.T) {
 
 	tests := []types.TxData{
 		&types.LegacyTx{
-			To:       &common.Address{}, // not a contract creation
+			To:       &common.Address{42}, // not a contract creation
 			Gas:      100_000,
 			GasPrice: big.NewInt(1),
 		},
 		&types.AccessListTx{
-			To:       &common.Address{}, // not a contract creation
+			To:       &common.Address{42}, // not a contract creation
 			Gas:      100_000,
 			GasPrice: big.NewInt(1),
 		},
 		&types.DynamicFeeTx{
-			To:        &common.Address{}, // not a contract creation
+			To:        &common.Address{42}, // not a contract creation
 			Gas:       100_000,
 			GasFeeCap: big.NewInt(1),
 		},
@@ -655,7 +655,7 @@ func TestValidateTxForState_Signer_RejectsTxWithInvalidSigner(t *testing.T) {
 	for _, tx := range test {
 		t.Run(transactionTypeName(tx), func(t *testing.T) {
 			signer := NewMockSigner(gomock.NewController(t))
-			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{}, fmt.Errorf("some error"))
+			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{42}, fmt.Errorf("some error"))
 			err := ValidateTxForState(types.NewTx(tx), nil, signer)
 			require.ErrorIs(t, err, ErrInvalidSender)
 		})
@@ -678,7 +678,7 @@ func TestValidateTxForState_Nonce_RejectsTxWithOlderNonce(t *testing.T) {
 			state := state.NewMockStateDB(ctrl)
 			state.EXPECT().GetNonce(gomock.Any()).Return(uint64(1))
 			signer := NewMockSigner(ctrl)
-			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{}, nil)
+			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{42}, nil)
 
 			err := ValidateTxForState(types.NewTx(tx), state, signer)
 			require.ErrorIs(t, err, ErrNonceTooLow)
@@ -717,7 +717,7 @@ func TestValidateTxForState_Balance_RejectsTxWhenInsufficientBalance(t *testing.
 			state.EXPECT().GetNonce(gomock.Any()).Return(uint64(0))
 			state.EXPECT().GetBalance(gomock.Any()).Return(uint256.NewInt(99))
 			signer := NewMockSigner(ctrl)
-			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{}, nil)
+			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{42}, nil)
 
 			err := ValidateTxForState(types.NewTx(tx), state, signer)
 			require.ErrorIs(t, err, ErrInsufficientFunds)
@@ -757,7 +757,7 @@ func TestValidateTxForState_AcceptsTransactions(t *testing.T) {
 			state.EXPECT().GetNonce(gomock.Any()).Return(uint64(0))
 			state.EXPECT().GetBalance(gomock.Any()).Return(uint256.NewInt(100))
 			signer := NewMockSigner(ctrl)
-			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{}, nil)
+			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{42}, nil)
 
 			err := ValidateTxForState(types.NewTx(tx), state, signer)
 			require.NoError(t, err)
@@ -814,7 +814,7 @@ func TestValidateTxForPool_Signer_RejectsTxWithInvalidSigner(t *testing.T) {
 			opts := poolOptions{}
 			ctrl := gomock.NewController(t)
 			signer := NewMockSigner(ctrl)
-			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{}, fmt.Errorf("some error"))
+			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{42}, fmt.Errorf("some error"))
 			err := validateTxForPool(types.NewTx(tx), opts, signer)
 			require.ErrorIs(t, err, ErrInvalidSender)
 		})
@@ -845,7 +845,7 @@ func TestValidateTxForPool_RejectsNonLocalTxWithTipLowerThanMinPool(t *testing.T
 
 			ctrl := gomock.NewController(t)
 			signer := NewMockSigner(ctrl)
-			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{}, nil)
+			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{42}, nil)
 
 			err := validateTxForPool(types.NewTx(tx), opts, signer)
 			require.ErrorIs(t, err, ErrUnderpriced)
@@ -879,7 +879,7 @@ func TestValidateTxForPool_AcceptsNonLocalTxWithTipBiggerThanMin(t *testing.T) {
 
 			ctrl := gomock.NewController(t)
 			signer := NewMockSigner(ctrl)
-			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{}, nil)
+			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{42}, nil)
 
 			err := validateTxForPool(types.NewTx(tx), opts, signer)
 			require.NoError(t, err)
@@ -950,7 +950,7 @@ func TestValidateTx_RejectsTx_WhenStaticValidationFails(t *testing.T) {
 			}
 			ctrl := gomock.NewController(t)
 			signer := NewMockSigner(ctrl)
-			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{}, nil).AnyTimes()
+			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{42}, nil).AnyTimes()
 
 			chain := NewMockStateReader(ctrl)
 			chain.EXPECT().GetCurrentBaseFee().Return(big.NewInt(5)).AnyTimes()
@@ -1000,7 +1000,7 @@ func TestValidateTx_RejectsTx_WhenBlockValidationFails(t *testing.T) {
 			}
 			ctrl := gomock.NewController(t)
 			signer := NewMockSigner(ctrl)
-			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{}, nil).AnyTimes()
+			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{42}, nil).AnyTimes()
 
 			chain := NewMockStateReader(ctrl)
 			chain.EXPECT().GetCurrentBaseFee().Return(big.NewInt(5)).AnyTimes()
@@ -1050,7 +1050,7 @@ func TestValidateTx_RejectsTx_WhenPoolValidationFails(t *testing.T) {
 			}
 			ctrl := gomock.NewController(t)
 			signer := NewMockSigner(ctrl)
-			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{}, nil).AnyTimes()
+			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{42}, nil).AnyTimes()
 			signer.EXPECT().Equal(gomock.Any()).Return(false).AnyTimes()
 
 			chain := NewMockStateReader(ctrl)
@@ -1106,7 +1106,7 @@ func TestValidateTx_RejectsTx_WhenStateValidationFails(t *testing.T) {
 			}
 			ctrl := gomock.NewController(t)
 			signer := NewMockSigner(ctrl)
-			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{}, nil).AnyTimes()
+			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{42}, nil).AnyTimes()
 			signer.EXPECT().Equal(gomock.Any()).Return(false).AnyTimes()
 
 			chain := NewMockStateReader(ctrl)
@@ -1167,7 +1167,7 @@ func TestValidateTx_Success(t *testing.T) {
 			}
 			ctrl := gomock.NewController(t)
 			signer := NewMockSigner(ctrl)
-			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{}, nil).AnyTimes()
+			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{42}, nil).AnyTimes()
 			signer.EXPECT().Equal(gomock.Any()).Return(false).AnyTimes()
 
 			chain := NewMockStateReader(ctrl)
