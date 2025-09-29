@@ -89,7 +89,9 @@ func (p *evmProcessorFactory) beginBlock(
 	// in the scheduler. See the scheduler.Schedule method for details. The
 	// total gas used for attempting to schedule transactions is not limited.
 	gasLimit := uint64(math.MaxUint64)
-	stateProcessor := evmcore.NewStateProcessor(chainCfg, p.chain)
+	stateProcessor := evmcore.NewStateProcessor(
+		chainCfg, p.chain, p.chain.GetCurrentNetworkRules().Upgrades,
+	)
 	return &evmProcessor{
 		processor: stateProcessor.BeginBlock(block, state, vmConfig, gasLimit, nil),
 		stateDb:   state,

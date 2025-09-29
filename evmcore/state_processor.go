@@ -28,7 +28,9 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils/signers/gsignercache"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
 )
@@ -40,15 +42,21 @@ import (
 //
 // StateProcessor implements Processor.
 type StateProcessor struct {
-	config *params.ChainConfig // Chain configuration options
-	bc     DummyChain          // Canonical block chain
+	config   *params.ChainConfig // Chain configuration options
+	bc       DummyChain          // Canonical block chain
+	upgrades opera.Upgrades      // Enabled network upgrades
 }
 
-// NewStateProcessor initialises a new StateProcessor.
-func NewStateProcessor(config *params.ChainConfig, bc DummyChain) *StateProcessor {
+// NewStateProcessor initializes a new StateProcessor.
+func NewStateProcessor(
+	config *params.ChainConfig,
+	bc DummyChain,
+	upgrades opera.Upgrades,
+) *StateProcessor {
 	return &StateProcessor{
-		config: config,
-		bc:     bc,
+		config:   config,
+		bc:       bc,
+		upgrades: upgrades,
 	}
 }
 
@@ -105,7 +113,7 @@ func (p *StateProcessor) Process(
 	// Iterate over and process the individual transactions
 	return runTransactions(newRunContext(
 		signer, header.BaseFee, statedb, gp, blockNumber, usedGas,
-		onNewLog, &transactionRunner{evm{vmenv}},
+		onNewLog, p.upgrades, &transactionRunner{evm{vmenv}},
 	), block.Transactions, 0)
 }
 
@@ -120,6 +128,7 @@ type runContext struct {
 	blockNumber *big.Int
 	usedGas     *uint64
 	onNewLog    func(*types.Log)
+	upgrades    opera.Upgrades
 	runner      _transactionRunner
 }
 
@@ -135,6 +144,7 @@ func newRunContext(
 	blockNumber *big.Int,
 	usedGas *uint64,
 	onNewLog func(*types.Log),
+	upgrades opera.Upgrades,
 	runner _transactionRunner,
 ) *runContext {
 	return &runContext{
@@ -145,6 +155,7 @@ func newRunContext(
 		blockNumber: blockNumber,
 		usedGas:     usedGas,
 		onNewLog:    onNewLog,
+		upgrades:    upgrades,
 		runner:      runner,
 	}
 }
@@ -163,9 +174,15 @@ func runTransactions(
 	processed := make([]ProcessedTransaction, 0, len(transactions))
 	for _, tx := range transactions {
 		nextId := len(processed) + txIndexOffset
-		processed = append(processed,
-			context.runner.runRegularTransaction(context, tx, nextId),
-		)
+		if context.upgrades.GasSubsidies && subsidies.IsSponsorshipRequest(tx) {
+			processed = append(processed,
+				context.runner.runSponsoredTransaction(context, tx, nextId)...,
+			)
+		} else {
+			processed = append(processed,
+				context.runner.runRegularTransaction(context, tx, nextId),
+			)
+		}
 	}
 	return processed
 }
@@ -175,7 +192,7 @@ func runTransactions(
 // sponsored transactions.
 type _transactionRunner interface {
 	runRegularTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) ProcessedTransaction
-	// Upcoming: runSponsoredTransaction
+	runSponsoredTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) []ProcessedTransaction
 }
 
 // transactionRunner implements the _transactionRunner interface by using an
@@ -189,27 +206,101 @@ func (r *transactionRunner) runRegularTransaction(
 	tx *types.Transaction,
 	txIndex int,
 ) ProcessedTransaction {
-	return r.evm.runTransaction(ctxt, tx, txIndex)
+	return r.evm.runWithBaseFeeCheck(ctxt, tx, txIndex)
+}
+
+func (r *transactionRunner) runSponsoredTransaction(
+	ctxt *runContext,
+	tx *types.Transaction,
+	txIndex int,
+) []ProcessedTransaction {
+	// Check the remaining available gas to be used in this block.
+	available := ctxt.gasPool.Gas()
+	needed := tx.Gas() + subsidies.SponsorshipOverheadGasCost
+	if available < needed {
+		log.Debug("Not enough gas left in block for sponsored transaction",
+			"tx", tx.Hash().Hex(), "available", available, "needed", needed,
+		)
+		return []ProcessedTransaction{{Transaction: tx}}
+	}
+
+	// Run the IsCovered query in a snapshot to avoid spilling any side-effects
+	// like warm storage slots or refunds into the actual transaction.
+	snapshot := ctxt.statedb.Snapshot()
+	covered, fundId, err := subsidies.IsCovered(
+		ctxt.upgrades, r.evm, ctxt.signer, tx, ctxt.baseFee,
+	)
+	ctxt.statedb.RevertToSnapshot(snapshot)
+	if err != nil {
+		log.Warn("Failed to query subsidies registry", "tx", tx.Hash().Hex(), "err", err)
+		return []ProcessedTransaction{{Transaction: tx}}
+	}
+	if !covered {
+		log.Debug("Transaction is not covered by a subsidy", "tx", tx.Hash().Hex())
+		return []ProcessedTransaction{{Transaction: tx}}
+	}
+
+	// Run the sponsored transaction.
+	processed := r.evm.runWithoutBaseFeeCheck(ctxt, tx, txIndex)
+	if processed.Receipt == nil {
+		log.Debug("Sponsored transaction skipped", "tx", tx.Hash().Hex())
+		return []ProcessedTransaction{processed}
+	}
+
+	// Charge the fee for the sponsored transaction to the subsidy fund.
+	gasUsed := processed.Receipt.GasUsed
+	feeChargingTx, err := subsidies.GetFeeChargeTransaction(
+		ctxt.statedb, fundId, gasUsed, ctxt.baseFee,
+	)
+	if err != nil {
+		// Note: at this point the sponsored transaction has been executed, but
+		// we are not able to charge the fee to the subsidy fund. At this point
+		// we can not undo the sponsored transaction, and we can not abort the
+		// block formation. So we have to let this go. This sponsored
+		// transaction was on the house (meaning on the network).
+		log.Warn("Failed to create fee charging transaction", "tx", tx.Hash().Hex(), "err", err)
+		return []ProcessedTransaction{processed}
+	}
+	return []ProcessedTransaction{
+		processed,
+		r.evm.runWithoutBaseFeeCheck(ctxt, feeChargingTx, txIndex+1),
+	}
 }
 
 // _evm is an interface to an EVM instance that can be used to run a single
 // transaction. It is used by the transactionRunner to decouple the transaction
 // running logic from the actual EVM implementation, enabling easier testing.
 type _evm interface {
-	runTransaction(*runContext, *types.Transaction, int) ProcessedTransaction
-	// Upcoming: sponsored transaction support
+	subsidies.VirtualMachine
+	runWithBaseFeeCheck(*runContext, *types.Transaction, int) ProcessedTransaction
+	runWithoutBaseFeeCheck(*runContext, *types.Transaction, int) ProcessedTransaction
 }
 
-// evm is the production implementation of the _evm interface using a real EVM
-// instance.
 type evm struct {
 	*vm.EVM
 }
 
-func (e evm) runTransaction(
+func (e evm) runWithBaseFeeCheck(
 	ctxt *runContext,
 	tx *types.Transaction,
 	txIndex int,
+) ProcessedTransaction {
+	return e._runTransaction(ctxt, tx, txIndex, true)
+}
+
+func (e evm) runWithoutBaseFeeCheck(
+	ctxt *runContext,
+	tx *types.Transaction,
+	txIndex int,
+) ProcessedTransaction {
+	return e._runTransaction(ctxt, tx, txIndex, false)
+}
+
+func (e evm) _runTransaction(
+	ctxt *runContext,
+	tx *types.Transaction,
+	txIndex int,
+	checkBaseFee bool,
 ) ProcessedTransaction {
 	msg, err := TxAsMessage(tx, ctxt.signer, ctxt.baseFee)
 	if err != nil {
@@ -217,6 +308,7 @@ func (e evm) runTransaction(
 		return ProcessedTransaction{Transaction: tx}
 	}
 
+	e.Config.NoBaseFee = !checkBaseFee
 	ctxt.statedb.SetTxContext(tx.Hash(), txIndex)
 	receipt, _, err := applyTransaction(
 		msg, ctxt.gasPool, ctxt.statedb, ctxt.blockNumber, tx,
@@ -261,6 +353,7 @@ func (p *StateProcessor) BeginBlock(
 		signer:        signer,
 		stateDb:       stateDb,
 		vmEnvironment: vmEnvironment,
+		upgrades:      p.upgrades,
 	}
 }
 
@@ -275,6 +368,7 @@ type TransactionProcessor struct {
 	stateDb       state.StateDB
 	usedGas       uint64
 	vmEnvironment *vm.EVM
+	upgrades      opera.Upgrades
 }
 
 // Run processes a single transaction in the block, where i is the index of
@@ -284,7 +378,7 @@ type TransactionProcessor struct {
 func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) []ProcessedTransaction {
 	return runTransactions(newRunContext(
 		tp.signer, tp.header.BaseFee, tp.stateDb, tp.gp, tp.blockNumber,
-		&tp.usedGas, tp.onNewLog, &transactionRunner{evm{tp.vmEnvironment}},
+		&tp.usedGas, tp.onNewLog, tp.upgrades, &transactionRunner{evm{tp.vmEnvironment}},
 	), []*types.Transaction{tx}, i)
 }
 
@@ -402,7 +496,7 @@ func applyTransaction(
 	evm.SetTxContext(txContext)
 
 	// Skip checking of base fee limits for internal transactions.
-	evm.Config.NoBaseFee = msg.SkipNonceChecks
+	evm.Config.NoBaseFee = evm.Config.NoBaseFee || msg.SkipNonceChecks
 
 	// For now, Sonic only supports Blob transactions without blob data.
 	if msg.BlobHashes != nil {

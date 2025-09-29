@@ -12,7 +12,9 @@ package evmcore
 import (
 	reflect "reflect"
 
+	common "github.com/ethereum/go-ethereum/common"
 	types "github.com/ethereum/go-ethereum/core/types"
+	uint256 "github.com/holiman/uint256"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -54,6 +56,20 @@ func (mr *Mock_transactionRunnerMockRecorder) runRegularTransaction(ctxt, tx, tx
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "runRegularTransaction", reflect.TypeOf((*Mock_transactionRunner)(nil).runRegularTransaction), ctxt, tx, txIndex)
 }
 
+// runSponsoredTransaction mocks base method.
+func (m *Mock_transactionRunner) runSponsoredTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) []ProcessedTransaction {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "runSponsoredTransaction", ctxt, tx, txIndex)
+	ret0, _ := ret[0].([]ProcessedTransaction)
+	return ret0
+}
+
+// runSponsoredTransaction indicates an expected call of runSponsoredTransaction.
+func (mr *Mock_transactionRunnerMockRecorder) runSponsoredTransaction(ctxt, tx, txIndex any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "runSponsoredTransaction", reflect.TypeOf((*Mock_transactionRunner)(nil).runSponsoredTransaction), ctxt, tx, txIndex)
+}
+
 // Mock_evm is a mock of _evm interface.
 type Mock_evm struct {
 	ctrl     *gomock.Controller
@@ -78,16 +94,46 @@ func (m *Mock_evm) EXPECT() *Mock_evmMockRecorder {
 	return m.recorder
 }
 
-// runTransaction mocks base method.
-func (m *Mock_evm) runTransaction(arg0 *runContext, arg1 *types.Transaction, arg2 int) ProcessedTransaction {
+// Call mocks base method.
+func (m *Mock_evm) Call(from, to common.Address, input []byte, gas uint64, value *uint256.Int) ([]byte, uint64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "runTransaction", arg0, arg1, arg2)
+	ret := m.ctrl.Call(m, "Call", from, to, input, gas, value)
+	ret0, _ := ret[0].([]byte)
+	ret1, _ := ret[1].(uint64)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// Call indicates an expected call of Call.
+func (mr *Mock_evmMockRecorder) Call(from, to, input, gas, value any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Call", reflect.TypeOf((*Mock_evm)(nil).Call), from, to, input, gas, value)
+}
+
+// runWithBaseFeeCheck mocks base method.
+func (m *Mock_evm) runWithBaseFeeCheck(arg0 *runContext, arg1 *types.Transaction, arg2 int) ProcessedTransaction {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "runWithBaseFeeCheck", arg0, arg1, arg2)
 	ret0, _ := ret[0].(ProcessedTransaction)
 	return ret0
 }
 
-// runTransaction indicates an expected call of runTransaction.
-func (mr *Mock_evmMockRecorder) runTransaction(arg0, arg1, arg2 any) *gomock.Call {
+// runWithBaseFeeCheck indicates an expected call of runWithBaseFeeCheck.
+func (mr *Mock_evmMockRecorder) runWithBaseFeeCheck(arg0, arg1, arg2 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "runTransaction", reflect.TypeOf((*Mock_evm)(nil).runTransaction), arg0, arg1, arg2)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "runWithBaseFeeCheck", reflect.TypeOf((*Mock_evm)(nil).runWithBaseFeeCheck), arg0, arg1, arg2)
+}
+
+// runWithoutBaseFeeCheck mocks base method.
+func (m *Mock_evm) runWithoutBaseFeeCheck(arg0 *runContext, arg1 *types.Transaction, arg2 int) ProcessedTransaction {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "runWithoutBaseFeeCheck", arg0, arg1, arg2)
+	ret0, _ := ret[0].(ProcessedTransaction)
+	return ret0
+}
+
+// runWithoutBaseFeeCheck indicates an expected call of runWithoutBaseFeeCheck.
+func (mr *Mock_evmMockRecorder) runWithoutBaseFeeCheck(arg0, arg1, arg2 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "runWithoutBaseFeeCheck", reflect.TypeOf((*Mock_evm)(nil).runWithoutBaseFeeCheck), arg0, arg1, arg2)
 }

@@ -22,9 +22,14 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/opera/contracts/sfc"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -84,7 +89,7 @@ func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
 
 	chainConfig := params.ChainConfig{}
 	chain := NewMockDummyChain(ctrl)
-	processor := NewStateProcessor(&chainConfig, chain)
+	processor := NewStateProcessor(&chainConfig, chain, opera.Upgrades{})
 
 	tests := map[string]processFunction{
 		"bulk":        processor.Process,
@@ -189,7 +194,7 @@ func TestProcess_DetectsTransactionThatCanNotBeConvertedIntoAMessage(t *testing.
 	}
 
 	state := getStateDbMockForTransactions(ctrl, transactions)
-	processor := NewStateProcessor(&chainConfig, chain)
+	processor := NewStateProcessor(&chainConfig, chain, opera.Upgrades{})
 	tests := map[string]processFunction{
 		"bulk":        processor.Process,
 		"incremental": processor.process_iteratively,
@@ -247,7 +252,7 @@ func TestProcess_TracksParentBlockHashIfPragueIsEnabled(t *testing.T) {
 		}
 		chain := NewMockDummyChain(ctrl)
 
-		processor := NewStateProcessor(&chainConfig, chain)
+		processor := NewStateProcessor(&chainConfig, chain, opera.Upgrades{})
 
 		tests := map[string]processFunction{
 			"bulk":        processor.Process,
@@ -297,7 +302,7 @@ func TestProcess_FailingTransactionAreSkippedButTheBlockIsNotTerminated(t *testi
 
 	chainConfig := params.ChainConfig{}
 	chain := NewMockDummyChain(ctrl)
-	processor := NewStateProcessor(&chainConfig, chain)
+	processor := NewStateProcessor(&chainConfig, chain, opera.Upgrades{})
 
 	block := &EvmBlock{
 		EvmHeader: EvmHeader{
@@ -356,7 +361,7 @@ func TestProcess_EnforcesGasLimitBySkippingExcessiveTransactions(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	chainConfig := params.ChainConfig{}
 	chain := NewMockDummyChain(ctrl)
-	processor := NewStateProcessor(&chainConfig, chain)
+	processor := NewStateProcessor(&chainConfig, chain, opera.Upgrades{})
 
 	tests := map[string]processFunction{
 		"bulk":        processor.Process,
@@ -624,3 +629,593 @@ func getStateDbMockForTransactions(
 	state.EXPECT().EndTransaction().AnyTimes()
 	return state
 }
+
+func TestRunTransactions_GasSubsidiesDisabled_ProcessesRegularTransaction(t *testing.T) {
+	tests := map[string]*types.Transaction{
+		"regular": getRegularTransaction(t),
+		"request": getSponsorshipRequest(t),
+	}
+
+	for name, tx := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			runner := NewMock_transactionRunner(ctrl)
+			context := &runContext{
+				runner:   runner,
+				upgrades: opera.Upgrades{GasSubsidies: false},
+			}
+			runner.EXPECT().runRegularTransaction(context, tx, 0)
+			runTransactions(context, []*types.Transaction{tx}, 0)
+		})
+	}
+}
+
+func TestRunTransactions_GasSubsidiesEnabled_RunsRegularTransactionWithoutSponsorship(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	runner := NewMock_transactionRunner(ctrl)
+
+	tx := getRegularTransaction(t)
+	processed := ProcessedTransaction{
+		Transaction: tx,
+	}
+
+	context := &runContext{
+		runner:   runner,
+		upgrades: opera.Upgrades{GasSubsidies: true},
+	}
+	runner.EXPECT().runRegularTransaction(context, tx, 0).Return(processed)
+	got := runTransactions(context, []*types.Transaction{tx}, 0)
+	require.Equal(t, []ProcessedTransaction{processed}, got)
+}
+
+func TestRunTransactions_GasSubsidiesEnabled_RunsSponsorshipRequestWithSponsorship(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	runner := NewMock_transactionRunner(ctrl)
+
+	tx := getSponsorshipRequest(t)
+
+	context := &runContext{
+		runner:   runner,
+		upgrades: opera.Upgrades{GasSubsidies: true},
+	}
+	runner.EXPECT().runSponsoredTransaction(context, tx, 0).Return([]ProcessedTransaction{{
+		Transaction: tx,
+		Receipt:     nil,
+	}})
+	processed := runTransactions(context, []*types.Transaction{tx}, 0)
+	require.Len(t, processed, 1)
+	require.Equal(t, tx, processed[0].Transaction)
+	require.Nil(t, processed[0].Receipt)
+}
+
+func TestRunSponsoredTransaction_InsufficientGas_SkipsTransaction(t *testing.T) {
+	tests := map[string]struct {
+		availableGas uint64
+		shouldSkip   bool
+	}{
+		"no gas": {
+			availableGas: 0,
+			shouldSkip:   true,
+		},
+		"not enough for sponsored tx": {
+			availableGas: 20_999,
+			shouldSkip:   true,
+		},
+		"enough for sponsored tx, not enough for fee deduction": {
+			availableGas: 21_000,
+			shouldSkip:   true,
+		},
+		"just not enough for both": {
+			availableGas: 21_000 + subsidies.SponsorshipOverheadGasCost - 1,
+			shouldSkip:   true,
+		},
+		"enough for both": {
+			availableGas: 21_000 + subsidies.SponsorshipOverheadGasCost,
+			shouldSkip:   false,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			state := state.NewMockStateDB(ctrl)
+			evm := NewMock_evm(ctrl)
+
+			tx := getSponsorshipRequest(t)
+
+			gasPool := new(core.GasPool).AddGas(test.availableGas)
+			context := &runContext{
+				gasPool:  gasPool,
+				statedb:  state,
+				signer:   types.LatestSignerForChainID(nil),
+				baseFee:  big.NewInt(1),
+				upgrades: opera.Upgrades{GasSubsidies: true},
+			}
+
+			if !test.shouldSkip {
+
+				// Snapshot for the IsCovered call
+				state.EXPECT().Snapshot().Return(1)
+				state.EXPECT().RevertToSnapshot(1)
+
+				// Request for the nonce of the internal fee-deduction.
+				state.EXPECT().GetNonce(common.Address{}).Return(uint64(123))
+
+				// Call made by IsCovered
+				any := gomock.Any()
+				evm.EXPECT().Call(any, any, any, any, any).
+					Return([]byte{31: 1}, uint64(0), nil) // indicates "covered"
+
+				evm.EXPECT().runWithoutBaseFeeCheck(any, tx, any).Return(ProcessedTransaction{
+					Transaction: tx,
+					Receipt: &types.Receipt{
+						Status:  types.ReceiptStatusSuccessful,
+						GasUsed: 21_000,
+					},
+				})
+
+				// Expect the fee deduction transaction to be processed as well.
+				evm.EXPECT().runWithoutBaseFeeCheck(any, any, any).Return(ProcessedTransaction{
+					Transaction: &types.Transaction{},
+					Receipt: &types.Receipt{
+						Status:  types.ReceiptStatusSuccessful,
+						GasUsed: subsidies.SponsorshipOverheadGasCost,
+					},
+				})
+			}
+
+			runner := &transactionRunner{evm: evm}
+			got := runner.runSponsoredTransaction(context, tx, 0)
+
+			if test.shouldSkip {
+				want := []ProcessedTransaction{{
+					Transaction: tx,
+					Receipt:     nil,
+				}}
+				require.Equal(t, want, got)
+			} else {
+				require.Len(t, got, 2)
+				require.Equal(t, tx, got[0].Transaction)
+				require.NotNil(t, got[0].Receipt)
+				require.NotNil(t, got[1].Transaction)
+				require.NotNil(t, got[1].Receipt)
+			}
+		})
+	}
+}
+
+func TestRunSponsoredTransaction_SponsorshipNotCovered_ReturnsASkippedTransaction(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	state := state.NewMockStateDB(ctrl)
+
+	tx := types.NewTx(&types.LegacyTx{
+		Nonce: 0, To: &common.Address{1}, Gas: 21_000,
+	})
+
+	// Snapshot for the IsCovered call
+	state.EXPECT().Snapshot().Return(1)
+	state.EXPECT().RevertToSnapshot(1)
+
+	gasPool := new(core.GasPool).AddGas(1_000_000)
+	context := &runContext{
+		statedb:  state,
+		gasPool:  gasPool,
+		upgrades: opera.Upgrades{GasSubsidies: false}, // < nothing is covered
+	}
+
+	runner := &transactionRunner{}
+	got := runner.runSponsoredTransaction(context, tx, 0)
+	want := []ProcessedTransaction{{
+		Transaction: tx,
+		Receipt:     nil,
+	}}
+	require.Equal(t, want, got)
+}
+
+func TestRunSponsoredTransaction_SponsorshipCoverageCheckFails_ReturnsASkippedTransaction(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	state := state.NewMockStateDB(ctrl)
+	evm := NewMock_evm(ctrl)
+
+	tx := getSponsorshipRequest(t)
+
+	// Snapshot for the IsCovered call
+	state.EXPECT().Snapshot().Return(1)
+	state.EXPECT().RevertToSnapshot(1)
+
+	// Call made by IsCovered fails.
+	any := gomock.Any()
+	issue := fmt.Errorf("sponsorship check failed")
+	evm.EXPECT().Call(any, any, any, any, any).Return(nil, uint64(0), issue)
+
+	gasPool := new(core.GasPool).AddGas(1_000_000)
+	context := &runContext{
+		statedb:  state,
+		signer:   types.LatestSignerForChainID(nil),
+		baseFee:  big.NewInt(1),
+		gasPool:  gasPool,
+		upgrades: opera.Upgrades{GasSubsidies: true},
+	}
+
+	runner := &transactionRunner{evm: evm}
+	got := runner.runSponsoredTransaction(context, tx, 0)
+	want := []ProcessedTransaction{{
+		Transaction: tx,
+		Receipt:     nil,
+	}}
+	require.Equal(t, want, got)
+}
+
+func TestRunSponsoredTransaction_SponsoredTransactionIsSkipped_NoFeeDeductionTxIsIssued(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	state := state.NewMockStateDB(ctrl)
+	evm := NewMock_evm(ctrl)
+
+	tx := getSponsorshipRequest(t)
+
+	// Snapshot for the IsCovered call
+	state.EXPECT().Snapshot().Return(1)
+	state.EXPECT().RevertToSnapshot(1)
+
+	// Let the IsCovered call indicate that the transaction is covered,
+	any := gomock.Any()
+	evm.EXPECT().Call(any, any, any, any, any).
+		Return([]byte{31: 1}, uint64(0), nil) // indicates "covered"
+
+	// Let the sponsored transaction be processed, but result in a skipped
+	// transaction (e.g. due to a wrong nonce).
+	evm.EXPECT().runWithoutBaseFeeCheck(any, tx, any).Return(ProcessedTransaction{
+		Transaction: tx,
+		Receipt:     nil,
+	})
+
+	gasPool := new(core.GasPool).AddGas(1_000_000)
+	context := &runContext{
+		statedb:  state,
+		signer:   types.LatestSignerForChainID(nil),
+		baseFee:  big.NewInt(1),
+		gasPool:  gasPool,
+		upgrades: opera.Upgrades{GasSubsidies: true},
+	}
+
+	runner := &transactionRunner{evm: evm}
+	got := runner.runSponsoredTransaction(context, tx, 0)
+	want := []ProcessedTransaction{{
+		Transaction: tx,
+		Receipt:     nil,
+	}}
+	require.Equal(t, want, got)
+}
+
+func TestRunSponsoredTransaction_FailingCreationOfFeeDeduction_TransactionIsAcceptedWithoutFeeDeduction(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	state := state.NewMockStateDB(ctrl)
+	evm := NewMock_evm(ctrl)
+
+	tx := getSponsorshipRequest(t)
+
+	// Snapshot for the IsCovered call
+	state.EXPECT().Snapshot().Return(1)
+	state.EXPECT().RevertToSnapshot(1)
+
+	// Nonce request for the fee deduction transaction
+	state.EXPECT().GetNonce(common.Address{}).Return(uint64(123))
+
+	// Let the IsCovered call indicate that the transaction is covered,
+	any := gomock.Any()
+	evm.EXPECT().Call(any, any, any, any, any).
+		Return([]byte{31: 1}, uint64(0), nil) // indicates "covered"
+
+	// Simulate huge gas prices, that are still ok for the sponsored transaction
+	// but that cause an overflow when the overhead gas is added.
+	gasUsed := uint64(21_000_000_000) // < note: much more than the tx gas limit
+	gasPrice := new(big.Int).Lsh(big.NewInt(1), 230)
+
+	_, overflow := uint256.FromBig(
+		new(big.Int).Mul(
+			gasPrice,
+			new(big.Int).SetUint64(tx.Gas()+subsidies.SponsorshipOverheadGasCost),
+		),
+	)
+	require.False(t, overflow, "test setup invalid: gas price overflows maximum fees for sponsored transaction")
+
+	_, overflow = uint256.FromBig(new(big.Int).Mul(gasPrice, new(big.Int).SetUint64(gasUsed)))
+	require.True(t, overflow, "test setup invalid: gas price does not cause overflow")
+
+	// The sponsored transaction is processed successfully, consuming huge
+	// amounts of gas for some reason.
+	processed := ProcessedTransaction{
+		Transaction: tx,
+		Receipt: &types.Receipt{
+			Status:  types.ReceiptStatusSuccessful,
+			GasUsed: gasUsed,
+		},
+	}
+	evm.EXPECT().runWithoutBaseFeeCheck(any, tx, any).Return(processed)
+
+	gasPool := new(core.GasPool).AddGas(1_000_000)
+	context := &runContext{
+		statedb:  state,
+		signer:   types.LatestSignerForChainID(nil),
+		baseFee:  gasPrice,
+		gasPool:  gasPool,
+		upgrades: opera.Upgrades{GasSubsidies: true},
+	}
+
+	runner := &transactionRunner{evm: evm}
+	got := runner.runSponsoredTransaction(context, tx, 0)
+	want := []ProcessedTransaction{processed}
+	require.Equal(t, want, got)
+}
+
+func TestRunSponsoredTransaction_TxIndexIsIncrementedForFeeDeductionTx(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	state := state.NewMockStateDB(ctrl)
+	evm := NewMock_evm(ctrl)
+
+	tx := getSponsorshipRequest(t)
+
+	// Snapshot for the IsCovered call
+	state.EXPECT().Snapshot().Return(1)
+	state.EXPECT().RevertToSnapshot(1)
+
+	// Nonce request for the fee deduction transaction
+	state.EXPECT().GetNonce(common.Address{}).Return(uint64(123))
+
+	any := gomock.Any()
+	evm.EXPECT().Call(any, any, any, any, any).
+		Return([]byte{31: 1}, uint64(0), nil) // indicates "covered"
+
+	txIndex := 7
+	evm.EXPECT().runWithoutBaseFeeCheck(any, tx, txIndex).
+		Return(ProcessedTransaction{
+			Transaction: tx,
+			Receipt:     &types.Receipt{},
+		})
+
+	evm.EXPECT().runWithoutBaseFeeCheck(any, gomock.Not(tx), txIndex+1).
+		Return(ProcessedTransaction{
+			Transaction: tx,
+			Receipt:     &types.Receipt{},
+		})
+
+	gasPool := new(core.GasPool).AddGas(1_000_000)
+	context := &runContext{
+		statedb:  state,
+		signer:   types.LatestSignerForChainID(nil),
+		baseFee:  big.NewInt(1),
+		gasPool:  gasPool,
+		upgrades: opera.Upgrades{GasSubsidies: true},
+	}
+
+	runner := &transactionRunner{evm: evm}
+	got := runner.runSponsoredTransaction(context, tx, txIndex)
+	require.Len(t, got, 2)
+	require.Equal(t, tx, got[0].Transaction)
+	require.NotNil(t, got[0].Receipt)
+	require.NotNil(t, got[1].Transaction)
+	require.NotNil(t, got[1].Receipt)
+}
+
+func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSuccessfully(t *testing.T) {
+	// This test is an integration test covering the combination of the state
+	// processor's runTransaction function, the subsidies package's utility
+	// functions and the on-chain subsidies registry and SFC contracts.
+	// The aim of this test is to provide a high-level coverage of the
+	// interaction of these components, making sure that a sponsored
+	// transaction that is covered by a fund is processed successfully,
+	// resulting in two successful transactions: the sponsored transaction
+	// itself and the subsequent fee deduction transaction.
+	// This test is a smoke test for the overall functionality, and does not
+	// aim to cover all edge cases or failure scenarios.
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+
+	key, err := crypto.GenerateKey()
+	require.NoError(err)
+	signer := types.LatestSignerForChainID(nil)
+
+	sender := crypto.PubkeyToAddress(key.PublicKey)
+	target := common.Address{1, 2, 3}
+	tx := types.MustSignNewTx(key, signer, &types.LegacyTx{
+		Nonce: 0, To: &target, Gas: 21_000,
+	})
+	require.True(subsidies.IsSponsorshipRequest(tx))
+	txIndex := 12
+
+	// --- prepare state DB interactions ---
+	state := state.NewMockStateDB(ctrl)
+
+	any := gomock.Any()
+	//zero := uint256.NewInt(0)
+	zeroAddress := common.Address{}
+	sfcAddress := sfc.ContractAddress
+	sfcCode := sfc.GetContractBin()
+	registryAddress := registry.GetAddress()
+	registryCodeHash := crypto.Keccak256Hash(registry.GetCode())
+
+	// Define the expected sequence of calls to the StateDB, focusing on the
+	// handling of snapshots and state modifications.
+	gomock.InOrder(
+		// --- The effects of the IsCovered call ---
+		state.EXPECT().Snapshot().Return(1), // < added by runSponsoredTransaction
+		state.EXPECT().Snapshot().Return(2), // < added for the chooseFund call by the EVM (not reverted)
+		state.EXPECT().GetCode(registryAddress).Return(registry.GetCode()),
+		// the effects of the IsCovered call in runSponsoredTransaction must be
+		// reverted to avoid spilling side-effects into the actual transaction
+		state.EXPECT().RevertToSnapshot(1),
+
+		// --- The effects of the sponsored transaction itself ---
+		state.EXPECT().SetTxContext(tx.Hash(), txIndex),
+		state.EXPECT().SetNonce(sender, uint64(1), tracing.NonceChangeEoACall),
+		state.EXPECT().Snapshot().Return(3), // < for the transaction processing
+		state.EXPECT().EndTransaction(),
+		state.EXPECT().TxIndex().Return(txIndex),
+
+		// --- Preparation of the fee deduction transaction ---
+		state.EXPECT().GetNonce(zeroAddress).Return(uint64(123)),
+
+		// --- The effects of the fee deduction transaction ---
+		state.EXPECT().SetTxContext(any, txIndex+1),
+		state.EXPECT().SetNonce(zeroAddress, uint64(124), tracing.NonceChangeEoACall),
+		state.EXPECT().Snapshot().Return(4),                           // < for the deductFees call
+		state.EXPECT().Snapshot().Return(5),                           // < for the nested burnNativeToken call to SFC
+		state.EXPECT().SetState(sfcAddress, any, any).AnyTimes(),      // < update of the total token supply
+		state.EXPECT().Snapshot().Return(6),                           // < transfer to account 0
+		state.EXPECT().SetState(registryAddress, any, any).AnyTimes(), // < update of the fund
+		state.EXPECT().EndTransaction(),
+		state.EXPECT().TxIndex().Return(txIndex+1),
+	)
+
+	// StateDB interactions that are occurring, and need to be accounted for,
+	// but that are not relevant for this test. They basically set the execution
+	// environment required for running sponsored transactions.
+
+	state.EXPECT().Exist(zeroAddress).Return(true).AnyTimes()
+	state.EXPECT().GetCode(zeroAddress).Return(nil).AnyTimes()
+	state.EXPECT().GetNonce(zeroAddress).Return(uint64(123)).AnyTimes()
+	state.EXPECT().GetBalance(zeroAddress).Return(uint256.NewInt(1e18)).AnyTimes()
+
+	state.EXPECT().Exist(sfcAddress).Return(true).AnyTimes()
+	state.EXPECT().GetCode(sfcAddress).Return(sfcCode).AnyTimes()
+	state.EXPECT().GetCodeHash(sfcAddress).Return(crypto.Keccak256Hash(sfcCode)).AnyTimes()
+	state.EXPECT().GetCodeSize(sfcAddress).Return(len(sfcCode)).AnyTimes()
+	state.EXPECT().GetNonce(sfcAddress).Return(uint64(0)).AnyTimes()
+	state.EXPECT().GetBalance(sfcAddress).Return(uint256.NewInt(1e18)).AnyTimes()
+	state.EXPECT().GetState(sfcAddress, any).Return(common.Hash{1}).AnyTimes()
+	state.EXPECT().GetStateAndCommittedState(sfcAddress, any).Return(common.Hash{1}, common.Hash{1}).AnyTimes()
+
+	state.EXPECT().Exist(registryAddress).Return(true).AnyTimes()
+	state.EXPECT().GetCode(registryAddress).Return(registry.GetCode()).AnyTimes()
+	state.EXPECT().GetCodeHash(registryAddress).Return(registryCodeHash).AnyTimes()
+	state.EXPECT().GetBalance(registryAddress).Return(uint256.NewInt(1e18)).AnyTimes()
+	state.EXPECT().GetState(registryAddress, any).Return(common.Hash{1}).AnyTimes()
+	state.EXPECT().GetStateAndCommittedState(registryAddress, any).Return(common.Hash{1}, common.Hash{1}).AnyTimes()
+
+	state.EXPECT().Exist(target).Return(false).AnyTimes()
+	state.EXPECT().GetCode(target).Return(nil).AnyTimes()
+
+	state.EXPECT().GetNonce(sender).Return(uint64(0)).AnyTimes()
+	state.EXPECT().GetCode(sender).Return(nil)
+	state.EXPECT().GetBalance(sender).Return(uint256.NewInt(1_000_000))
+
+	// the actual balance changes are not relevant for this test
+	state.EXPECT().AddBalance(any, any, any).AnyTimes()
+	state.EXPECT().SubBalance(any, any, any).AnyTimes()
+
+	state.EXPECT().AddRefund(any).AnyTimes()
+	state.EXPECT().GetRefund().Return(uint64(0)).AnyTimes()
+	state.EXPECT().SubRefund(any).AnyTimes()
+
+	state.EXPECT().Prepare(any, any, any, any, any, any).AnyTimes()
+	state.EXPECT().AddressInAccessList(any).Return(true).AnyTimes()
+	state.EXPECT().SlotInAccessList(any, any).Return(true, true).AnyTimes()
+	state.EXPECT().AddAddressToAccessList(any).AnyTimes()
+	state.EXPECT().AddSlotToAccessList(any, any).AnyTimes()
+
+	// also logs are not relevant for this test
+	state.EXPECT().AddLog(any).AnyTimes()
+	state.EXPECT().GetLogs(any, any).Return(nil).AnyTimes()
+
+	// --- Create an EVM instance capable of processing code ---
+
+	rules := opera.FakeNetRules(opera.GetSonicUpgrades())
+	vmConfig := opera.GetVmConfig(rules)
+
+	var updateHeights []opera.UpgradeHeight
+	chainConfig := opera.CreateTransientEvmChainConfig(
+		rules.NetworkID,
+		updateHeights,
+		1,
+	)
+
+	baseFee := big.NewInt(1)
+	blockContext := vm.BlockContext{
+		BlockNumber: big.NewInt(123),
+		BaseFee:     baseFee,
+		Transfer: func(_ vm.StateDB, _ common.Address, _ common.Address, amount *uint256.Int) {
+			// do nothing
+		},
+		CanTransfer: func(_ vm.StateDB, _ common.Address, amount *uint256.Int) bool {
+			return true
+		},
+		Random: &common.Hash{}, // < signals Revision >= Merge
+	}
+	vm := vm.NewEVM(blockContext, state, chainConfig, vmConfig)
+	runner := &transactionRunner{evm{vm}}
+
+	gasPool := new(core.GasPool).AddGas(1_000_000)
+	usedGas := new(uint64)
+	context := &runContext{
+		signer:   signer,
+		baseFee:  baseFee,
+		statedb:  state,
+		gasPool:  gasPool,
+		usedGas:  usedGas,
+		runner:   runner,
+		upgrades: opera.Upgrades{GasSubsidies: true},
+	}
+
+	// --- start of actual test ---
+
+	processedTransactions := runner.runSponsoredTransaction(context, tx, txIndex)
+
+	// the transaction should be sponsored successfully
+	require.Len(processedTransactions, 2)
+	require.Equal(tx, processedTransactions[0].Transaction)
+	require.NotNil(processedTransactions[0].Receipt)
+
+	// the fee deduction transaction should be the second one
+	require.NotNil(processedTransactions[1].Transaction)
+	callData := processedTransactions[1].Transaction.Data()
+	require.Equal(4+2*32, len(callData)) // chooseFund + deductFees
+
+	fundId := subsidies.FundId(callData[4:])
+	gasUsed := processedTransactions[0].Receipt.GasUsed
+	gasPrice := baseFee // gas price is base fee for sponsored tx - TODO: should tip be added?
+
+	feeDeductionTx, err := subsidies.GetFeeChargeTransaction(state, fundId, gasUsed, gasPrice)
+	require.NoError(err)
+	got := processedTransactions[1].Transaction
+	require.Equal(feeDeductionTx.Hash(), got.Hash())
+	require.NotNil(processedTransactions[1].Receipt)
+	require.Equal(types.ReceiptStatusSuccessful, processedTransactions[1].Receipt.Status)
+
+	// the total gas usage should be the sum of both transactions
+	require.Equal(
+		processedTransactions[0].Receipt.GasUsed+processedTransactions[1].Receipt.GasUsed,
+		*usedGas,
+	)
+}
+
+// --- Utility functions for creating test transactions ---
+
+func getRegularTransaction(t *testing.T) *types.Transaction {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	signer := types.LatestSignerForChainID(nil)
+	return types.MustSignNewTx(key, signer, &types.LegacyTx{
+		Nonce: 0, To: &common.Address{1}, Gas: 21_000, GasPrice: big.NewInt(1),
+	})
+}
+
+func getSponsorshipRequest(t *testing.T) *types.Transaction {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	signer := types.LatestSignerForChainID(nil)
+	return types.MustSignNewTx(key, signer, &types.LegacyTx{
+		Nonce: 0, To: &common.Address{1}, Gas: 21_000,
+	})
+}
+
+func TestTransactionGenerationUtilities(t *testing.T) {
+	regular := getRegularTransaction(t)
+	request := getSponsorshipRequest(t)
+
+	require.False(t, subsidies.IsSponsorshipRequest(regular))
+	require.True(t, subsidies.IsSponsorshipRequest(request))
+}
+
+// TODO:
+//  - test progression of txIndex in sponsored transactions
+//  - test that EVM is progressing txIndex by processed transactions
