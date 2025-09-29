@@ -179,6 +179,9 @@ func createChooseFundInput(
 	if reader == nil || tx == nil || fee == nil {
 		return nil, fmt.Errorf("invalid transaction, reader, or fee")
 	}
+	if fee.BitLen() > 256 {
+		return nil, fmt.Errorf("fee does not fit into 32 bytes")
+	}
 	from, err := reader.Sender(tx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to derive sender: %w", err)
