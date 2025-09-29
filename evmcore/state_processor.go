@@ -194,7 +194,7 @@ type TransactionProcessor struct {
 }
 
 // Run processes a single transaction in the block, where i is the index of
-// the transaction in the block. It returns the list of all transactions being
+// the transaction in the block. It returns the list of all transactions that were
 // attempted to be processed to cover the given transaction as well as their
 // receipts if they did not get skipped.
 func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) []ProcessedTransaction {
