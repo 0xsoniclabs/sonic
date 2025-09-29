@@ -612,6 +612,9 @@ func testAuthorizationsAreExecutedInOrder(t *testing.T, session IntegrationTestN
 	require.NoError(t, err)
 	// because no delegation is set, transaction call to self will succeed
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+	// CodeAt looks a the archive state, so we need to wait until
+	// the most recent block is saved in archive.
+	WaitForProofOf(t, client, int(receipt.BlockNumber.Int64()))
 
 	// last delegation is set
 	code, err := client.CodeAt(t.Context(), account.Address(), nil)
