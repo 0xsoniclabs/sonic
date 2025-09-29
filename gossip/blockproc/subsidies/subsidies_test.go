@@ -560,7 +560,7 @@ func TestGetFeeChargeTransaction_FeeOverflows_ReturnsError(t *testing.T) {
 	require.ErrorContains(err, "fee calculation overflow")
 }
 
-func TestCreateIsCoveredInput_ValidInputs_ProducesCorrectInputData(t *testing.T) {
+func TestCreateChooseFundInput_ValidInputs_ProducesCorrectInputData(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	reader := NewMockSenderReader(ctrl)
@@ -647,13 +647,29 @@ func TestCreateIsCoveredInput_ValidInputs_ProducesCorrectInputData(t *testing.T)
 	require.Equal(parameter[:], input[:32])
 }
 
-func TestCreateIsCoveredInput_NilTransaction_ReturnsError(t *testing.T) {
+func TestCreateChooseFundInput_NilTransaction_ReturnsError(t *testing.T) {
 	require := require.New(t)
 	_, err := createChooseFundInput(nil, nil, nil)
 	require.ErrorContains(err, "invalid transaction")
 }
 
-func TestCreateIsCoveredInput_TransactionWithoutReceiver_ProducesAZeroedReceiver(t *testing.T) {
+func TestCreateChooseFundInput_FeeOverflow_ReturnsError(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	reader := NewMockSenderReader(ctrl)
+	reader.EXPECT().Sender(gomock.Any()).Return(common.Address{}, nil).AnyTimes()
+	tx := types.NewTx(&types.LegacyTx{})
+
+	tooHighFee := new(big.Int).Lsh(big.NewInt(1), 256) // 2^256
+	_, err := createChooseFundInput(reader, tx, tooHighFee)
+	require.ErrorContains(err, "fee does not fit into 32 bytes")
+
+	justAcceptableFee := new(big.Int).Sub(tooHighFee, big.NewInt(1))
+	_, err = createChooseFundInput(reader, tx, justAcceptableFee)
+	require.NoError(err)
+}
+
+func TestCreateChooseFundInput_TransactionWithoutReceiver_ProducesAZeroedReceiver(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	reader := NewMockSenderReader(ctrl)
@@ -672,7 +688,7 @@ func TestCreateIsCoveredInput_TransactionWithoutReceiver_ProducesAZeroedReceiver
 	require.Equal(make([]byte, 32), target)
 }
 
-func TestCreateIsCoveredInput_SenderReaderFails_ReturnsError(t *testing.T) {
+func TestCreateChooseFundInput_SenderReaderFails_ReturnsError(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	reader := NewMockSenderReader(ctrl)
@@ -686,7 +702,7 @@ func TestCreateIsCoveredInput_SenderReaderFails_ReturnsError(t *testing.T) {
 	require.ErrorIs(err, issue)
 }
 
-func TestCreateIsCoveredInput_LongCallData_CallDataIsEncodedCorrectly(t *testing.T) {
+func TestCreateChooseFundInput_LongCallData_CallDataIsEncodedCorrectly(t *testing.T) {
 	for n := range 1024 {
 		t.Run(fmt.Sprintf("data length %d", n), func(t *testing.T) {
 			require := require.New(t)
