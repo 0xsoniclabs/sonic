@@ -46,9 +46,8 @@ func TestValidateTxStatic_Value_RejectsTxWithNegativeValue(t *testing.T) {
 		&types.DynamicFeeTx{
 			Value: big.NewInt(-1),
 		},
-		&types.DynamicFeeTx{
-			Value: big.NewInt(-1),
-		},
+		// BlobTx value is unsigned
+		// SetCodeTx value is unsigned
 	}
 
 	for _, tx := range txs {
@@ -73,9 +72,8 @@ func TestValidateTxStatic_GasPriceAndTip_RejectsTxWith(t *testing.T) {
 			&types.DynamicFeeTx{
 				GasFeeCap: extremelyLargeValue,
 			},
-			&types.DynamicFeeTx{
-				GasFeeCap: extremelyLargeValue,
-			},
+			// blob GasFeeCap is uint256, cannot overflow
+			// SetCodeTx GasFeeCap is uint256, cannot overflow
 		}
 
 		for _, tx := range txs {
@@ -91,9 +89,8 @@ func TestValidateTxStatic_GasPriceAndTip_RejectsTxWith(t *testing.T) {
 			&types.DynamicFeeTx{
 				GasTipCap: extremelyLargeValue,
 			},
-			&types.DynamicFeeTx{
-				GasTipCap: extremelyLargeValue,
-			},
+			// blob GasTipCap is uint256, cannot overflow
+			// SetCodeTx GasTipCap is uint256, cannot overflow
 		}
 
 		for _, tx := range txs {
@@ -110,9 +107,13 @@ func TestValidateTxStatic_GasPriceAndTip_RejectsTxWith(t *testing.T) {
 				GasFeeCap: big.NewInt(1),
 				GasTipCap: big.NewInt(2),
 			},
-			&types.DynamicFeeTx{
-				GasFeeCap: big.NewInt(1),
-				GasTipCap: big.NewInt(2),
+			&types.BlobTx{
+				GasFeeCap: uint256.NewInt(1),
+				GasTipCap: uint256.NewInt(2),
+			},
+			&types.SetCodeTx{
+				GasFeeCap: uint256.NewInt(1),
+				GasTipCap: uint256.NewInt(2),
 			},
 		}
 
@@ -333,9 +334,6 @@ func TestValidateTxForNetwork_GasLimitIsCheckedAfterOsaka(t *testing.T) {
 		&types.BlobTx{
 			Gas: gasLimit + 1,
 		},
-		&types.BlobTx{
-			Gas: gasLimit + 1,
-		},
 		&types.SetCodeTx{
 			Gas: gasLimit + 1,
 		},
@@ -360,7 +358,7 @@ func TestValidateTxForNetwork_GasLimitIsCheckedAfterOsaka(t *testing.T) {
 			err := ValidateTxForNetwork(types.NewTx(tx), rules, chain, signer)
 			require.ErrorIs(t, err, ErrGasLimitTooHigh)
 
-			// check that the error is not happening with osaka disabled
+			// check that the error is not reported with osaka disabled
 			rules.osaka = false
 			err = ValidateTxForNetwork(types.NewTx(tx), rules, chain, signer)
 			require.NoError(t, err)
@@ -1061,7 +1059,7 @@ func TestValidateTx_RejectsTx_WhenPoolValidationFails(t *testing.T) {
 			state := state.NewMockStateDB(ctrl)
 
 			opts := poolOptions{
-				minTip: big.NewInt(20), // higher than tx tip
+				minTip: big.NewInt(20), // transactions are tipping 0, so this will fail
 				locals: newAccountSet(signer),
 			}
 
