@@ -216,7 +216,7 @@ func TestValidateTxForNetwork_RejectsTxBasedOnTypeAndActiveRevision(t *testing.T
 }
 
 func TestValidateTxForNetwork_Blobs_RejectsTxWith(t *testing.T) {
-	//  only Blob Transactions with empty blob has and no sidecar are accepted in sonic.
+	//  only Blob Transactions with empty blob hash and no sidecar are accepted in sonic.
 
 	t.Run("blob tx with non-empty blob hashes", func(t *testing.T) {
 		tx := types.NewTx(&types.BlobTx{
@@ -1069,7 +1069,7 @@ func TestValidateTx_RejectsTx_WhenPoolValidationFails(t *testing.T) {
 	}
 }
 
-func TestValidateTx_RejectsTx_WhenSateValidationFails(t *testing.T) {
+func TestValidateTx_RejectsTx_WhenStateValidationFails(t *testing.T) {
 
 	tests := []types.TxData{
 		&types.LegacyTx{
