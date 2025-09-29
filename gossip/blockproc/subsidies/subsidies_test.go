@@ -324,7 +324,7 @@ func TestIsCovered_GasSubsidiesDisabled_ReturnsFalse(t *testing.T) {
 	any := gomock.Any()
 	vm.EXPECT().
 		Call(any, any, any, any, any).
-		Return(encodeIsCoveredResult(true, selectedFundId), uint64(0), nil).
+		Return(selectedFundId[:], uint64(0), nil).
 		AnyTimes()
 
 	upgrades := opera.Upgrades{}
@@ -358,7 +358,7 @@ func TestIsCovered_NotASponsorshipRequest_ReturnsFalse(t *testing.T) {
 	selectedFundId := FundId{1, 2, 3}
 	vm.EXPECT().
 		Call(any, any, any, any, any).
-		Return(encodeIsCoveredResult(true, selectedFundId), uint64(0), nil).
+		Return(selectedFundId[:], uint64(0), nil).
 		AnyTimes()
 
 	upgrades := opera.Upgrades{
@@ -405,17 +405,18 @@ func TestIsCovered_NotCoveredByFunds_ReturnsFalse(t *testing.T) {
 		To: &common.Address{},
 	})
 
-	// If the EVM returns false, IsCovered returns false.
+	// If the query returns the 0-fund ID, IsCovered returns false.
 	any := gomock.Any()
-	selectedFundId := FundId{1, 2, 3}
-	vm.EXPECT().Call(any, any, any, any, any).Return(encodeIsCoveredResult(false, selectedFundId), uint64(0), nil)
+	selectedFundId := FundId{}
+	vm.EXPECT().Call(any, any, any, any, any).Return(selectedFundId[:], uint64(0), nil)
 	covered, fundId, err := IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
 	require.NoError(err)
 	require.False(covered)
 	require.Empty(fundId)
 
-	// If the EVM returns true, IsCovered returns true.
-	vm.EXPECT().Call(any, any, any, any, any).Return(encodeIsCoveredResult(true, selectedFundId), uint64(0), nil)
+	// If the query returns a non-zero fund ID, IsCovered returns true.
+	selectedFundId = FundId{1, 2, 3}
+	vm.EXPECT().Call(any, any, any, any, any).Return(selectedFundId[:], uint64(0), nil)
 	covered, fundId, err = IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
 	require.NoError(err)
 	require.True(covered)
@@ -571,28 +572,33 @@ func TestCreateIsCoveredInput_ValidInputs_ProducesCorrectInputData(t *testing.T)
 	fillRandom(t, sender[:])
 	fillRandom(t, receiver[:])
 	fillRandom(t, data)
+
+	valueData := [32]byte{}
+	fillRandom(t, valueData[:])
+	value := new(big.Int).SetBytes(valueData[:])
+
 	nonce := rand.Uint64()
 
-	tx := types.NewTransaction(nonce, receiver, common.Big0, 21000, common.Big0, data)
+	tx := types.NewTransaction(nonce, receiver, value, 21000, common.Big0, data)
 	reader.EXPECT().Sender(tx).Return(sender, nil)
 
 	feeData := [32]byte{}
 	fillRandom(t, feeData[:])
 	fee := new(big.Int).SetBytes(feeData[:])
 
-	input, err := createIsCoveredInput(reader, tx, fee)
+	input, err := createChooseFundInput(reader, tx, fee)
 	require.NoError(err)
 
 	// Check the length of the input data.
 	// - 4 bytes function selector
-	// - 5 * 32 bytes for parameters
+	// - 6 * 32 bytes for parameters
 	// - 2 * 32 bytes for dynamic bytes parameter (length + one 32-byte chunk)
-	require.Equal(4+5*32+2*32, len(input))
+	require.Equal(4+6*32+2*32, len(input))
 
 	// Function Selector
 	require.Equal(
 		binary.BigEndian.Uint32(input[0:4]),
-		uint32(registry.IsCoveredFunctionSelector),
+		uint32(registry.ChooseFundFunctionSelector),
 	)
 	input = input[4:]
 
@@ -608,6 +614,10 @@ func TestCreateIsCoveredInput_ValidInputs_ProducesCorrectInputData(t *testing.T)
 	require.Equal(parameter[:], input[:32])
 	input = input[32:]
 
+	// Value
+	require.Equal(input[:32], valueData[:])
+	input = input[32:]
+
 	// Nonce
 	parameter = [32]byte{}
 	binary.BigEndian.PutUint64(parameter[24:32], nonce)
@@ -615,7 +625,7 @@ func TestCreateIsCoveredInput_ValidInputs_ProducesCorrectInputData(t *testing.T)
 	input = input[32:]
 
 	// Offset for call data
-	parameter = [32]byte{31: 5 * 32}
+	parameter = [32]byte{31: 6 * 32}
 	require.Equal(parameter[:], input[:32])
 	input = input[32:]
 
@@ -639,7 +649,7 @@ func TestCreateIsCoveredInput_ValidInputs_ProducesCorrectInputData(t *testing.T)
 
 func TestCreateIsCoveredInput_NilTransaction_ReturnsError(t *testing.T) {
 	require := require.New(t)
-	_, err := createIsCoveredInput(nil, nil, nil)
+	_, err := createChooseFundInput(nil, nil, nil)
 	require.ErrorContains(err, "invalid transaction")
 }
 
@@ -655,7 +665,7 @@ func TestCreateIsCoveredInput_TransactionWithoutReceiver_ProducesAZeroedReceiver
 	tx := types.NewContractCreation(nonce, common.Big0, 21000, common.Big0, nil)
 	reader.EXPECT().Sender(tx).Return(sender, nil)
 
-	input, err := createIsCoveredInput(reader, tx, common.Big0)
+	input, err := createChooseFundInput(reader, tx, common.Big0)
 	require.NoError(err)
 
 	target := input[4+32 : 4+2*32] // < receiver address
@@ -671,7 +681,7 @@ func TestCreateIsCoveredInput_SenderReaderFails_ReturnsError(t *testing.T) {
 	issue := fmt.Errorf("injected issue")
 	reader.EXPECT().Sender(tx).Return(common.Address{}, issue)
 
-	_, err := createIsCoveredInput(reader, tx, big.NewInt(1))
+	_, err := createChooseFundInput(reader, tx, big.NewInt(1))
 	require.ErrorContains(err, "failed to derive sender")
 	require.ErrorIs(err, issue)
 }
@@ -699,17 +709,17 @@ func TestCreateIsCoveredInput_LongCallData_CallDataIsEncodedCorrectly(t *testing
 			fillRandom(t, feeData[:])
 			fee := new(big.Int).SetBytes(feeData[:])
 
-			input, err := createIsCoveredInput(reader, tx, fee)
+			input, err := createChooseFundInput(reader, tx, fee)
 			require.NoError(err)
 
 			numChunks := (len(data) + 31) / 32
 
 			// Check the length of the input data.
-			require.Equal(4+5*32+(1+numChunks)*32, len(input))
+			require.Equal(4+6*32+(1+numChunks)*32, len(input))
 
 			// Offset for call data
-			parameter := [32]byte{31: 5 * 32}
-			input = input[4+3*32:] // skip function selector + first 3 parameters
+			parameter := [32]byte{31: 6 * 32}
+			input = input[4+4*32:] // skip function selector + first 4 parameters
 			require.Equal(parameter[:], input[:32])
 			input = input[32:]
 
@@ -733,19 +743,11 @@ func TestParseIsCoveredResult_ValidInputs_ParsesCorrectly(t *testing.T) {
 		covered bool
 		fundId  FundId
 	}{
-		"not covered, empty fund": {
+		"empty fund": {
 			covered: false,
 			fundId:  FundId{},
 		},
-		"not covered, non-empty fund": {
-			covered: false,
-			fundId:  FundId{1, 2, 3},
-		},
-		"covered, empty fund": {
-			covered: true,
-			fundId:  FundId{},
-		},
-		"covered, non-empty fund": {
+		"non-empty fund": {
 			covered: true,
 			fundId:  FundId{1, 2, 3},
 		},
@@ -754,8 +756,8 @@ func TestParseIsCoveredResult_ValidInputs_ParsesCorrectly(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
-			input := encodeIsCoveredResult(test.covered, test.fundId)
-			covered, fundId, err := parseIsCoveredResult(input)
+			input := test.fundId[:]
+			covered, fundId, err := parseChooseFundResult(input)
 			require.NoError(err)
 			require.Equal(test.covered, covered)
 			wantedFund := test.fundId
@@ -777,27 +779,19 @@ func TestParseIsCoveredResult_InvalidInputs_ReturnsError(t *testing.T) {
 			issue: "invalid result length",
 		},
 		"too short": {
-			input: make([]byte, 63),
+			input: make([]byte, 31),
 			issue: "invalid result length",
 		},
 		"too long": {
-			input: make([]byte, 2*32+1),
+			input: make([]byte, 32+1),
 			issue: "invalid result length",
-		},
-		"invalid covered 1": {
-			input: []byte{0x02, 63: 0x00},
-			issue: "invalid boolean value",
-		},
-		"invalid covered 2": {
-			input: []byte{31: 0x02, 63: 0x00},
-			issue: "invalid boolean value",
 		},
 	}
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
-			_, _, err := parseIsCoveredResult(test.input)
+			_, _, err := parseChooseFundResult(test.input)
 			require.ErrorContains(err, test.issue)
 		})
 	}
@@ -840,15 +834,6 @@ func TestCreateDeductFeeInput_CombinesFundIdWithFee(t *testing.T) {
 			})
 		}
 	}
-}
-
-func encodeIsCoveredResult(covered bool, fundId FundId) []byte {
-	result := make([]byte, 2*32)
-	if covered {
-		result[31] = 1
-	}
-	copy(result[32:], fundId[:])
-	return result
 }
 
 func fillRandom(t *testing.T, b []byte) {
