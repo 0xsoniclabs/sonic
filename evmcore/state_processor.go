@@ -194,19 +194,14 @@ type TransactionProcessor struct {
 }
 
 // Run processes a single transaction in the block, where i is the index of
-// the transaction in the block. It returns the receipt of the transaction,
-// whether the transaction was skipped, and any error that occurred during
-// processing.
-func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) (
-	receipt *types.Receipt,
-	skipped bool,
-	err error,
-) {
-	processed := runTransactions(
+// the transaction in the block. It returns the list of all transactions that
+// have been attempted to be processed to cover the given transaction as well as
+// their receipts if they did not get skipped.
+func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) []ProcessedTransaction {
+	return runTransactions(
 		[]*types.Transaction{tx}, tp.signer, tp.header.BaseFee, tp.stateDb,
 		tp.gp, tp.blockNumber, &tp.usedGas, tp.vmEnvironment, tp.onNewLog, i,
 	)
-	return processed[0].Receipt, processed[0].Receipt == nil, nil
 }
 
 // ApplyTransactionWithEVM attempts to apply a transaction to the given state database

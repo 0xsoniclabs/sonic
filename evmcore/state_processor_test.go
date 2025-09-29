@@ -46,19 +46,16 @@ func (p *StateProcessor) process_iteratively(
 	// This implementation is a wrapper around the BeginBlock function, which
 	// handles the actual transaction processing.
 	txProcessor := p.BeginBlock(block, stateDb, cfg, gasLimit, onNewLog)
-	processed := make([]ProcessedTransaction, len(block.Transactions))
+	processed := make([]ProcessedTransaction, 0, len(block.Transactions))
 	for i, tx := range block.Transactions {
-		processed[i].Transaction = tx
-		receipt, skip, err := txProcessor.Run(i, tx)
-		if skip {
-			continue
+		processed = append(processed, txProcessor.Run(i, tx)...)
+	}
+
+	// The used gas is the cumulative gas used reported by the last receipt.
+	for _, tx := range processed {
+		if tx.Receipt != nil {
+			*usedGas = tx.Receipt.CumulativeGasUsed
 		}
-		if err != nil {
-			// If an error occurs, we skip the transaction and continue with the next one.
-			continue
-		}
-		processed[i].Receipt = receipt
-		*usedGas = receipt.CumulativeGasUsed
 	}
 
 	return processed
