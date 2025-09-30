@@ -228,15 +228,19 @@ func FuzzValidateTransaction(f *testing.F) {
 		}
 
 		// a full persistent state is not need. ValidateTx needs to see the same state as the processor.
-		ctxt := gomock.NewController(t)
+		ctrl := gomock.NewController(t)
 
 		chainId := big.NewInt(84)
 
-		tx := makeTxOfType(txType, nonce, gas, feeCap, tip, data, value,
-			isCreate, chainId, accessListSize, authListSize)
+		tx := makeTxOfType(
+			txType, nonce, gas, feeCap,
+			tip, data, value, isCreate,
+			chainId, accessListSize,
+			authListSize,
+		)
 		from, signedTx := signTxForTestWithChainId(t, tx, chainId)
 
-		state := state.NewMockStateDB(ctxt)
+		state := state.NewMockStateDB(ctrl)
 		state.EXPECT().GetBalance(from).Return(uint256.NewInt(stateBalance)).AnyTimes()
 		state.EXPECT().GetNonce(from).Return(stateNonce).AnyTimes()
 		if txType == types.SetCodeTxType {
@@ -248,18 +252,21 @@ func FuzzValidateTransaction(f *testing.F) {
 		}
 		stateExpectCalls(state)
 
-		opt, netRules, blockState := getTestTransactionsOptionFromRevision(revision, chainId,
-			maxGas, int64(baseFee), int64(minTip))
-		opt.currentState = state
-		blockState.maxGas = maxGas
+		chain := NewMockStateReader(ctrl)
+		chain.EXPECT().GetCurrentBaseFee().Return(big.NewInt(int64(baseFee))).AnyTimes()
+		chain.EXPECT().MaxGasLimit().Return(maxGas).AnyTimes()
+
+		opt, netRules := getTestTransactionsOptionFromRevision(revision, int64(minTip))
+
+		signer := types.LatestSignerForChainID(chainId)
 
 		// Validate the transaction
-		validateErr := validateTx(signedTx, opt, blockState, netRules)
+		validateErr := validateTx(signedTx, opt, netRules, chain, state, signer)
 
 		// create evm to check validateTx is consistent with processor.
 		evm := makeTestEvm(blockNum, int64(baseFee), uint64(baseFee), state, revision, chainId)
 
-		msg, err := core.TransactionToMessage(signedTx, netRules.signer, evm.Context.BaseFee)
+		msg, err := core.TransactionToMessage(signedTx, signer, evm.Context.BaseFee)
 		require.NoError(t, err)
 
 		gp := new(core.GasPool).AddGas(maxGas)
@@ -497,21 +504,14 @@ func signTxForTestWithChainId(t *testing.T, tx types.TxData, chainId *big.Int) (
 
 // getTestTransactionsOptionFromRevision creates a validationOptions struct
 // with the specified revision and chain ID.
-func getTestTransactionsOptionFromRevision(revision int8, chainId *big.Int,
-	maxGas uint64, BaseFee, MinTip int64) (poolOptions, NetworkRules, blockState) {
+func getTestTransactionsOptionFromRevision(revision int8, MinTip int64) (poolOptions, NetworkRules) {
 	opt := poolOptions{
 		minTip: big.NewInt(MinTip),
 		// locally submitted transactions have the more relaxed validation version. Therefore we test local true.
 		isLocal: true,
 	}
 
-	netRules := NetworkRules{
-		signer: types.NewPragueSigner(chainId),
-	}
-	blockState := blockState{
-		maxGas:  maxGas,
-		baseFee: big.NewInt(BaseFee),
-	}
+	netRules := NetworkRules{}
 
 	switch revision {
 	case testPrague:
@@ -534,5 +534,5 @@ func getTestTransactionsOptionFromRevision(revision int8, chainId *big.Int,
 		netRules.istanbul = true
 	}
 
-	return opt, netRules, blockState
+	return opt, netRules
 }
