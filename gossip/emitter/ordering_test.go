@@ -23,11 +23,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/holiman/uint256"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTransactionPriceNonceSortLegacy(t *testing.T) {
@@ -193,4 +195,37 @@ func TestTransactionTimeSort(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestTransactionsOrdering_ZeroGasTip(t *testing.T) {
+	t.Parallel()
+
+	// This test ensures that transactions with zero gas tip do not overflow
+	// when calculating the miner fee for sorting purposes.
+
+	tx := types.NewTx(&types.DynamicFeeTx{
+		Nonce:     uint64(0),
+		To:        &common.Address{},
+		Value:     big.NewInt(100),
+		Gas:       100,
+		GasFeeCap: big.NewInt(50),
+		GasTipCap: big.NewInt(0),
+		Data:      nil,
+	})
+
+	lazy := &txpool.LazyTransaction{
+		Hash:      tx.Hash(),
+		Tx:        tx,
+		Time:      tx.Time(),
+		GasFeeCap: utils.BigIntToUint256(tx.GasFeeCap()),
+		GasTipCap: utils.BigIntToUint256(tx.GasTipCap()),
+		Gas:       tx.Gas(),
+		BlobGas:   tx.BlobGas(),
+	}
+	from := common.Address{1}
+	baseFee := uint256.NewInt(10)
+
+	withFee, err := newTxWithMinerFee(lazy, from, baseFee)
+	require.NoError(t, err)
+	require.Equal(t, withFee.fees.Uint64(), uint64(0), "expected zero miner fee")
 }
