@@ -22,7 +22,6 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
 
@@ -98,25 +97,38 @@ func TestGasSubsidies_CanBeEnabledAndDisabled(
 	}
 }
 
-func TestGasSubsidies_Enabled_DeploysRegistryContract(t *testing.T) {
-	require := require.New(t)
+func TestGasSubsidies_DeploysRegistryContract(t *testing.T) {
+	tests := map[string]func(t *testing.T) *tests.IntegrationTestNet{
+		"json genesis": func(t *testing.T) *tests.IntegrationTestNet {
+			return tests.StartIntegrationTestNetWithJsonGenesis(t,
+				tests.IntegrationTestNetOptions{
+					Upgrades: tests.AsPointer(opera.GetAllegroUpgrades()),
+				})
+		},
+		"fake genesis": func(t *testing.T) *tests.IntegrationTestNet {
+			return tests.StartIntegrationTestNetWithFakeGenesis(t,
+				tests.IntegrationTestNetOptions{
+					Upgrades: tests.AsPointer(opera.GetAllegroUpgrades()),
+				})
+		},
+	}
 
-	upgrades := opera.GetSonicUpgrades()
-	upgrades.GasSubsidies = true
+	for name, netConstructor := range tests {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+			net := netConstructor(t)
 
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
-		Upgrades: &upgrades,
-	})
+			client, err := net.GetClient()
+			require.NoError(err)
+			defer client.Close()
 
-	address := common.Address{42}
+			code, err := client.CodeAt(t.Context(), registry.GetAddress(), nil)
+			require.NoError(err)
+			require.Equal(registry.GetCode(), code)
 
-	client, err := net.GetClient()
-	require.NoError(err)
-	defer client.Close()
-
-	ledger, err := registry.NewRegistry(registry.GetAddress(), client)
-	require.NoError(err)
-
-	_, _, err = ledger.AccountSponsorshipFundId(nil, address)
-	require.NoError(err)
+			nonce, err := client.NonceAt(t.Context(), registry.GetAddress(), nil)
+			require.NoError(err)
+			require.Equal(uint64(1), nonce)
+		})
+	}
 }

@@ -115,6 +115,9 @@ func FakeGenesisStoreWithRulesAndStart(
 	// set non-zero code for pre-compiled contracts
 	builder.SetCode(evmwriter.ContractAddress, []byte{0})
 	builder.SetNonce(evmwriter.ContractAddress, 1)
+	// Deploy the gas subsidies registry contract.
+	builder.SetCode(registry.GetAddress(), registry.GetCode())
+	builder.SetNonce(registry.GetAddress(), 1)
 
 	// Configure pre-deployed contracts, according to the hardfork of the fake-net
 	if rules.Upgrades.Allegro {
@@ -122,12 +125,6 @@ func FakeGenesisStoreWithRulesAndStart(
 		// see: https://eips.ethereum.org/EIPS/eip-2935
 		builder.SetCode(params.HistoryStorageAddress, params.HistoryStorageCode)
 		builder.SetNonce(params.HistoryStorageAddress, 1)
-	}
-
-	// Deploy the gas subsidies registry contract if enabled.
-	if rules.Upgrades.GasSubsidies {
-		builder.SetCode(registry.GetAddress(), registry.GetCode())
-		builder.SetNonce(registry.GetAddress(), 1)
 	}
 
 	_, genesisStateRoot, err := builder.FinalizeBlockZero(rules, FakeGenesisTime)
