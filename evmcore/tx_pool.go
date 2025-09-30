@@ -672,6 +672,8 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 		eip4844:  pool.eip4844,
 		eip7623:  pool.eip7623,
 		eip7702:  pool.eip7702,
+
+		gasSubsidies: pool.chain.GetCurrentRules().Upgrades.GasSubsidies,
 	}
 	err := validateTx(tx, opts, netRules, pool.chain, pool.currentState, pool.signer)
 	if err != nil {
