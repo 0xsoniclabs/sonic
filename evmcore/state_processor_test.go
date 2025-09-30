@@ -920,7 +920,7 @@ func TestRunSponsoredTransaction_FailingCreationOfFeeDeduction_TransactionIsAcce
 	require.False(t, overflow, "test setup invalid: gas price overflows maximum fees for sponsored transaction")
 
 	_, overflow = uint256.FromBig(new(big.Int).Mul(gasPrice, new(big.Int).SetUint64(gasUsed)))
-	require.True(t, overflow, "test setup invalid: gas price does not cause overflow")
+	require.True(t, overflow, "test setup invalid: gas price does not cause overflow for gas used")
 
 	// The sponsored transaction is processed successfully, consuming huge
 	// amounts of gas for some reason.
@@ -1137,7 +1137,6 @@ func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSucc
 	state := state.NewMockStateDB(ctrl)
 
 	any := gomock.Any()
-	//zero := uint256.NewInt(0)
 	zeroAddress := common.Address{}
 	sfcAddress := sfc.ContractAddress
 	sfcCode := sfc.GetContractBin()
