@@ -1182,6 +1182,7 @@ func TestValidateTx_AcceptsZeroGasPriceTransactions_WhenSubsidiesAreEnabled(t *t
 			chain.EXPECT().MaxGasLimit().Return(uint64(100_000)).AnyTimes()
 			state := state.NewMockStateDB(ctrl)
 			state.EXPECT().GetNonce(gomock.Any()).Return(uint64(0)).AnyTimes()
+			state.EXPECT().GetBalance(gomock.Any()).Return(uint256.NewInt(0)).AnyTimes()
 
 			opts := poolOptions{
 				minTip:  big.NewInt(0),

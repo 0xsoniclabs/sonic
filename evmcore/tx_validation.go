@@ -270,8 +270,10 @@ func ValidateTxForState(tx *types.Transaction, state state.StateDB, signer types
 
 	// Transactor should have enough funds to cover the costs
 	// cost == Value + GasPrice * Gas
-	isSponsorRequest := subsidies.IsSponsorshipRequest(tx)
-	if !isSponsorRequest && utils.Uint256ToBigInt(state.GetBalance(from)).Cmp(tx.Cost()) < 0 {
+	//
+	// Note, sponsored transactions can have a value transfer, the sponsor will cover the gas cost.
+	// However, the sender must still have enough balance to cover the value transfer.
+	if utils.Uint256ToBigInt(state.GetBalance(from)).Cmp(tx.Cost()) < 0 {
 		return ErrInsufficientFunds
 	}
 	return nil
