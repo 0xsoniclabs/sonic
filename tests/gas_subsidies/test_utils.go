@@ -2,11 +2,11 @@ package gas_subsidies
 
 import (
 	"math/big"
-	"slices"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/tests"
+	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -29,9 +29,17 @@ import (
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
-func createRegistryWithDonation(t *testing.T, client *tests.PooledEhtClient,
-	session tests.IntegrationTestNetSession, sponsor, sponsee, receiver *tests.Account,
-	donation *big.Int) *registry.Registry {
+func Fund(
+	t *testing.T,
+	session tests.IntegrationTestNetSession,
+	sponsor, sponsee, receiver *tests.Account,
+	donation *big.Int,
+) *registry.Registry {
+
+	client, err := session.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
 	registry, err := registry.NewRegistry(registry.GetAddress(), client)
 	require.NoError(t, err)
 
@@ -54,57 +62,42 @@ func createRegistryWithDonation(t *testing.T, client *tests.PooledEhtClient,
 	return registry
 }
 
-func sendSponsoredTransaction(t *testing.T, client *tests.PooledEhtClient,
-	session tests.IntegrationTestNetSession, tx *types.Transaction) *types.Receipt {
-	require.NoError(t, client.SendTransaction(t.Context(), tx))
+func validateSponsoredTxInBlock(
+	t *testing.T,
+	session tests.IntegrationTestNetSession,
+	txHash common.Hash) {
 
-	// Wait for the sponsored transaction to be executed.
-	receipt, err := session.GetReceipt(tx.Hash())
-	require.NoError(t, err)
-	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+	require := require.New(t)
+
+	client, err := session.GetClient()
+	require.NoError(err)
+	defer client.Close()
+
+	receipt, err := session.GetReceipt(txHash)
+	require.NoError(err)
+	require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
 
 	block, err := client.BlockByNumber(t.Context(), receipt.BlockNumber)
-	require.NoError(t, err)
-	require.True(t, slices.ContainsFunc(
-		block.Transactions(),
-		func(cur *types.Transaction) bool {
-			return cur.Hash() == tx.Hash()
-		},
-	))
+	require.NoError(err)
 
 	// Check that the payment transaction is included right after the sponsored
 	// transaction and that it was successful and has a non-zero value.
 	found := false
 	for i, tx := range block.Transactions() {
 		if tx.Hash() == receipt.TxHash {
-			require.Less(t, i, len(block.Transactions()))
+			require.Less(i, len(block.Transactions()))
 			payment := block.Transactions()[i+1]
+			require.True(internaltx.IsInternal(payment), "payment transaction should be internal")
 			receipt, err := session.GetReceipt(payment.Hash())
-			require.NoError(t, err)
-			require.Less(t, receipt.GasUsed, uint64(100_000))
-			require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+			require.NoError(err)
+			require.Less(receipt.GasUsed, uint64(100_000))
+			require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
 			found = true
 			break
 		}
 	}
-	require.True(t, found, "sponsored transaction not found in the block")
+	require.True(found, "sponsored transaction not found in the block")
 
-	return receipt
-}
-
-func sendSponsoredTransactionWithNonce(t *testing.T,
-	session tests.IntegrationTestNetSession, receiver common.Address,
-	sender *tests.Account, nonce uint64) *types.Receipt {
-	require := require.New(t)
-
-	sponsoredTx := makeSponsoredTransactionWithNonce(t, session, receiver, sender, nonce)
-
-	client, err := session.GetClient()
-	require.NoError(err)
-	defer client.Close()
-
-	receipt := sendSponsoredTransaction(t, client, session, sponsoredTx)
-	return receipt
 }
 
 func makeSponsoredTransactionWithNonce(t *testing.T,
@@ -123,7 +116,11 @@ func makeSponsoredTransactionWithNonce(t *testing.T,
 	return sponsoredTx
 }
 
-func getTransactionIndexInBlock(t *testing.T, client *tests.PooledEhtClient, receipt *types.Receipt) (int, *types.Block) {
+func getTransactionIndexInBlock(
+	t *testing.T,
+	client *tests.PooledEhtClient,
+	receipt *types.Receipt,
+) (int, *types.Block) {
 	require := require.New(t)
 
 	block, err := client.BlockByNumber(t.Context(), receipt.BlockNumber)

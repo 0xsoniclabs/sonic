@@ -23,6 +23,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
+	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -32,7 +33,6 @@ import (
 func TestGasSubsidies_CanBeEnabledAndDisabled(
 	t *testing.T,
 ) {
-	t.Parallel()
 	require := require.New(t)
 
 	// The network is initially started using the distributed protocol.
@@ -102,8 +102,87 @@ func TestGasSubsidies_CanBeEnabledAndDisabled(
 	}
 }
 
-func TestGasSubsidies_InternalTransaction(t *testing.T) {
-	t.Parallel()
+func TestGasSubsidies_InternalTransaction_HaveConsistentNonces(t *testing.T) {
+	require := require.New(t)
+
+	upgrade := opera.GetAllegroUpgrades()
+	upgrade.GasSubsidies = true
+	// this test needs its own network instance because it needs to check
+	// what that the nonces of internal payment transactions are consistent
+	// with the nonces of the seal epoch internal transactions.
+	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+		Upgrades: &upgrade,
+	})
+
+	client, err := net.GetClient()
+	require.NoError(err)
+	defer client.Close()
+
+	sponsor := tests.NewAccount()
+	sponsee := tests.NewAccount()
+	receiver := tests.NewAccount()
+	donation := big.NewInt(1e16)
+
+	// set up sponsorship
+	Fund(t, net, sponsor, sponsee, receiver, donation)
+
+	internalNonce, err := client.PendingNonceAt(t.Context(), common.Address{})
+	require.NoError(err)
+
+	tx := makeSponsoredTransactionWithNonce(t, net, receiver.Address(), sponsee, 0)
+	receipt, err := net.Run(tx)
+	require.NoError(err)
+	require.Equal(receipt.Status, types.ReceiptStatusSuccessful)
+
+	txIndex, block := getTransactionIndexInBlock(t, client, receipt)
+	require.Less(txIndex, len(block.Transactions())-1,
+		"the sponsored transaction should not be the last transaction in the block",
+	)
+	// check that the payment transaction has the same nonce as the internal transaction
+	payment := block.Transactions()[txIndex+1]
+	require.True(internaltx.IsInternal(payment), "payment transaction should not be internal")
+	require.Equal(internalNonce, payment.Nonce(),
+		"the payment transaction should have the same nonce as the internal transaction",
+	)
+
+	tx = makeSponsoredTransactionWithNonce(t, net, receiver.Address(), sponsee, 1)
+	receipt, err = net.Run(tx)
+	require.NoError(err)
+	require.Equal(receipt.Status, types.ReceiptStatusSuccessful)
+
+	txIndex, block = getTransactionIndexInBlock(t, client, receipt)
+
+	require.Less(txIndex, len(block.Transactions())-1,
+		"the sponsored transaction should not be the last transaction in the block",
+	)
+	payment = block.Transactions()[txIndex+1]
+	require.True(internaltx.IsInternal(payment), "payment transaction should not be internal")
+	require.Equal(internalNonce+1, payment.Nonce(),
+		"the payment transaction should have nonce incremented by 1",
+	)
+
+	net.AdvanceEpoch(t, 1)
+
+	tx = makeSponsoredTransactionWithNonce(t, net, receiver.Address(), sponsee, 2)
+	receipt, err = net.Run(tx)
+	require.NoError(err)
+	require.Equal(receipt.Status, types.ReceiptStatusSuccessful)
+
+	txIndex, block = getTransactionIndexInBlock(t, client, receipt)
+	require.Less(txIndex, len(block.Transactions())-1,
+		"the sponsored transaction should not be the last transaction in the block",
+	)
+	payment = block.Transactions()[txIndex+1]
+	require.True(internaltx.IsInternal(payment), "payment transaction should not be internal")
+	internalNonce += 2 + // for the 2 sponsored transactions
+		2 // for the 2 internal transactions in the seal epoch
+	require.Equal(internalNonce, payment.Nonce(),
+		"the payment transaction should have nonce incremented by 1",
+	)
+
+}
+
+func TestGasSubsidies(t *testing.T) {
 
 	upgrades := []struct {
 		name    string
@@ -121,7 +200,6 @@ func TestGasSubsidies_InternalTransaction(t *testing.T) {
 	for _, test := range upgrades {
 		for mode, enabled := range singleProposerOption {
 			t.Run(fmt.Sprintf("%s/%v", test.name, mode), func(t *testing.T) {
-				t.Parallel()
 
 				test.upgrade.GasSubsidies = true
 				test.upgrade.SingleProposerBlockFormation = enabled
@@ -129,125 +207,23 @@ func TestGasSubsidies_InternalTransaction(t *testing.T) {
 					Upgrades: &test.upgrade,
 				})
 
-				t.Run("ConsecutiveNonces", func(t *testing.T) {
+				t.Run("Receipts_HaveConsistentTransactionNonces", func(t *testing.T) {
 					session := net.SpawnSession(t)
-					testGasSubsidies_InternalTransaction_ConsecutiveNonces(t, session)
-				})
-
-				t.Run("ConsistentReceipts", func(t *testing.T) {
-					session := net.SpawnSession(t)
-					testGasSubsidies_InternalTransaction_ConsistentReceipts(t, session)
-				})
-
-				t.Run("CanRunSubsidizedTransactions", func(t *testing.T) {
-					session := net.SpawnSession(t)
-					testCanRunSubsidizedTransactions(t, session)
+					t.Parallel()
+					testGasSubsidies_Receipts_HaveConsistentTransactionIndices(t, session)
 				})
 
 				t.Run("SubsidizedTransactionDeductsSubsidyFunds", func(t *testing.T) {
 					session := net.SpawnSession(t)
-					testGasSubsidies_SubsidizedTransactionDeductsSubsidyFunds(t, session)
+					t.Parallel()
+					testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t, session)
 				})
 			})
 		}
 	}
 }
 
-func testCanRunSubsidizedTransactions(t *testing.T, session tests.IntegrationTestNetSession) {
-	require := require.New(t)
-
-	client, err := session.GetClient()
-	require.NoError(err)
-	defer client.Close()
-
-	sponsor := tests.NewAccount()
-	sponsee := tests.NewAccount()
-	receiver := tests.NewAccount()
-
-	donation := big.NewInt(1e16)
-
-	// set up sponsorship
-	createRegistryWithDonation(t, client, session, sponsor, sponsee, receiver, donation)
-
-	interanlNonce, err := client.PendingNonceAt(t.Context(), common.Address{})
-	require.NoError(err)
-
-	receipt := sendSponsoredTransactionWithNonce(t, session, receiver.Address(), sponsee, 0)
-
-	txIndex, block := getTransactionIndexInBlock(t, client, receipt)
-	require.Less(txIndex, len(block.Transactions())-1,
-		"the sponsored transaction should not be the last transaction in the block",
-	)
-	// check that the payment transaction has the same nonce as the internal transaction
-	payment := block.Transactions()[txIndex+1]
-	require.False(payment.Protected()) // should be a nonce-signed transaction
-	require.Equal(interanlNonce, payment.Nonce(),
-		"the payment transaction should have the same nonce as the internal transaction",
-	)
-
-	receipt = sendSponsoredTransactionWithNonce(t, session, receiver.Address(), sponsee, 1)
-
-	txIndex, block = getTransactionIndexInBlock(t, client, receipt)
-
-	require.Less(txIndex, len(block.Transactions())-1,
-		"the sponsored transaction should not be the last transaction in the block",
-	)
-	payment = block.Transactions()[txIndex+1]
-	require.False(payment.Protected()) // should be a nonce-signed transaction
-	require.Equal(interanlNonce+1, payment.Nonce(),
-		"the payment transaction should have nonce incremented by 1",
-	)
-}
-
-func testGasSubsidies_InternalTransaction_ConsecutiveNonces(t *testing.T, session tests.IntegrationTestNetSession) {
-	require := require.New(t)
-
-	upgrades := opera.GetAllegroUpgrades()
-	upgrades.GasSubsidies = true
-
-	client, err := session.GetClient()
-	require.NoError(err)
-	defer client.Close()
-
-	sponsor := tests.NewAccount()
-	sponsee := tests.NewAccount()
-	receiver := tests.NewAccount()
-	donation := big.NewInt(1e16)
-
-	// set up sponsorship
-	createRegistryWithDonation(t, client, session, sponsor, sponsee, receiver, donation)
-
-	internalNonce, err := client.PendingNonceAt(t.Context(), common.Address{})
-	require.NoError(err)
-
-	receipt := sendSponsoredTransactionWithNonce(t, session, receiver.Address(), sponsee, 0)
-
-	txIndex, block := getTransactionIndexInBlock(t, client, receipt)
-	require.Less(txIndex, len(block.Transactions())-1,
-		"the sponsored transaction should not be the last transaction in the block",
-	)
-	// check that the payment transaction has the same nonce as the internal transaction
-	payment := block.Transactions()[txIndex+1]
-	require.False(payment.Protected()) // should be a nonce-signed transaction
-	require.Equal(internalNonce, payment.Nonce(),
-		"the payment transaction should have the same nonce as the internal transaction",
-	)
-
-	receipt = sendSponsoredTransactionWithNonce(t, session, receiver.Address(), sponsee, 1)
-
-	txIndex, block = getTransactionIndexInBlock(t, client, receipt)
-
-	require.Less(txIndex, len(block.Transactions())-1,
-		"the sponsored transaction should not be the last transaction in the block",
-	)
-	payment = block.Transactions()[txIndex+1]
-	require.False(payment.Protected()) // should be a nonce-signed transaction
-	require.Equal(internalNonce+1, payment.Nonce(),
-		"the payment transaction should have nonce incremented by 1",
-	)
-}
-
-func testGasSubsidies_InternalTransaction_ConsistentReceipts(t *testing.T,
+func testGasSubsidies_Receipts_HaveConsistentTransactionIndices(t *testing.T,
 	session tests.IntegrationTestNetSession) {
 	require := require.New(t)
 
@@ -264,27 +240,19 @@ func testGasSubsidies_InternalTransaction_ConsistentReceipts(t *testing.T,
 	anotherAccount := tests.MakeAccountWithBalance(t, session, big.NewInt(1e18))
 
 	// set up sponsorship
-	createRegistryWithDonation(t, client, session, sponsor, sponsee, receiver, donation)
+	Fund(t, session, sponsor, sponsee, receiver, donation)
 	suggestedGasPrice, err := client.SuggestGasPrice(t.Context())
 	require.NoError(err)
-
-	makeNonSponsoredTransaction := func(nonce uint64) *types.Transaction {
-		signer := types.LatestSignerForChainID(session.GetChainId())
-		tx, err := types.SignNewTx(anotherAccount.PrivateKey, signer, &types.LegacyTx{
-			To:       &receiverAddress,
-			Gas:      21000,
-			GasPrice: suggestedGasPrice,
-			Nonce:    nonce,
-		})
-		require.NoError(err)
-		return tx
-	}
-	_ = makeNonSponsoredTransaction(0)
 
 	numTxs := 5
 	hashes := []common.Hash{}
 	for i := uint64(0); i < uint64(numTxs); i++ {
-		tx := makeNonSponsoredTransaction(i)
+		tx := tests.CreateTransaction(t, session, &types.LegacyTx{
+			To:       &receiverAddress,
+			Gas:      21000,
+			GasPrice: suggestedGasPrice,
+			Nonce:    i,
+		}, anotherAccount)
 		hashes = append(hashes, tx.Hash())
 		require.NoError(client.SendTransaction(t.Context(), tx), "failed to send transaction %v", i)
 
@@ -300,6 +268,10 @@ func testGasSubsidies_InternalTransaction_ConsistentReceipts(t *testing.T,
 	block, err := client.BlockByNumber(t.Context(), receipts[0].BlockNumber)
 	require.NoError(err)
 
+	blockReceipts := []*types.Receipt{}
+	err = client.Client().Call(&blockReceipts, "eth_getBlockReceipts", fmt.Sprintf("0x%v", block.Number().String()))
+	require.NoError(err)
+
 	for i, tx := range block.Transactions() {
 
 		receipt, err := client.TransactionReceipt(t.Context(), tx.Hash())
@@ -309,8 +281,8 @@ func testGasSubsidies_InternalTransaction_ConsistentReceipts(t *testing.T,
 		)
 
 		// if this is a payment transaction, the one before must be the sponsored tx
-		if !tx.Protected() {
-			require.True(block.Transactions()[i-1].Protected(),
+		if internaltx.IsInternal(tx) {
+			require.False(internaltx.IsInternal(block.Transactions()[i-1]),
 				"payment transaction at index %d must be preceded by a sponsored transaction", i,
 			)
 		}
@@ -321,10 +293,19 @@ func testGasSubsidies_InternalTransaction_ConsistentReceipts(t *testing.T,
 		require.Equal(receipt.TxHash, tx.Hash(),
 			"receipt tx hash does not match transaction hash for tx %d", i,
 		)
+
+		// verify that the receipt obtained from eth_getBlockReceipts matches
+		// the one obtained from eth_getTransactionReceipt
+		require.Equal(blockReceipts[i].TxHash, receipt.TxHash,
+			"receipt tx hash does not match eth_getBlockReceipts for tx %d", i,
+		)
+		require.Equal(blockReceipts[i].TransactionIndex, receipt.TransactionIndex,
+			"receipt index does not match eth_getBlockReceipts for tx %d", i,
+		)
 	}
 }
 
-func testGasSubsidies_SubsidizedTransactionDeductsSubsidyFunds(t *testing.T, session tests.IntegrationTestNetSession) {
+func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, session tests.IntegrationTestNetSession) {
 	require := require.New(t)
 
 	client, err := session.GetClient()
@@ -354,14 +335,16 @@ func testGasSubsidies_SubsidizedTransactionDeductsSubsidyFunds(t *testing.T, ses
 	// --- deposit sponsorship funds ---
 
 	donation := big.NewInt(1e16)
-	ledger := createRegistryWithDonation(t, client, session, sponsor, sponsee, receiver, donation)
+	ledger := Fund(t, session, sponsor, sponsee, receiver, donation)
 
 	burnedBefore, err := client.BalanceAt(t.Context(), common.Address{}, nil)
 	require.NoError(err)
 
 	// --- submit a sponsored transaction ---
 
-	receipt := sendSponsoredTransaction(t, client, session, tx)
+	receipt, err := session.Run(tx)
+	require.NoError(err)
+	validateSponsoredTxInBlock(t, session, receipt.TxHash)
 
 	// check that the sponsorship funds got deducted
 	ops := &bind.CallOpts{
