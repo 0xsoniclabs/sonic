@@ -132,7 +132,7 @@ func TestGasSubsidies_CallingRegistryBeforeDeploy_FailsTransaction(t *testing.T)
 			}
 			ok, _, err := registryInstance.AccountSponsorshipFundId(&opts, sponsee.Address())
 			require.Error(err)
-			require.False(ok, "registry should have a fund ID")
+			require.False(ok, "there should be no registry")
 
 		})
 	}
