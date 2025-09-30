@@ -40,7 +40,7 @@ func TestIntegration_NoTransactions_ProducesAnEmptySchedule(t *testing.T) {
 	chain := NewMockChain(ctrl)
 	state := state.NewMockStateDB(ctrl)
 
-	chain.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{})
+	chain.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{}).AnyTimes()
 	chain.EXPECT().GetEvmChainConfig(gomock.Any()).Return(&params.ChainConfig{})
 	chain.EXPECT().StateDB().Return(state)
 	state.EXPECT().Release()
@@ -62,7 +62,7 @@ func TestIntegration_OneTransactions_ProducesScheduleWithOneTransaction(t *testi
 	chain := NewMockChain(ctrl)
 	state := state.NewMockStateDB(ctrl)
 
-	chain.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{})
+	chain.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{}).AnyTimes()
 	chain.EXPECT().GetEvmChainConfig(gomock.Any()).Return(&params.ChainConfig{})
 	chain.EXPECT().StateDB().Return(state)
 
