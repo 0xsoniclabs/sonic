@@ -56,6 +56,8 @@ type NetworkRules struct {
 	eip4844 bool // Fork indicator whether we are using EIP-4844 type transactions.
 	eip7623 bool // Fork indicator whether we are using EIP-7623 floor gas validation.
 	eip7702 bool // Fork indicator whether we are using EIP-7702 set code transactions.
+
+	gasSubsidies bool // Indicator whether gas subsidies are active.
 }
 
 // Signer wraps types.Signer to allow mocking it in tests.
@@ -85,17 +87,19 @@ func validateTx(
 		return err
 	}
 
-	if err := ValidateTxForBlock(tx, chain); err != nil {
+	if err := ValidateTxForBlock(tx, netRules, chain); err != nil {
 		return err
 	}
 
-	if err := validateTxForPool(tx, opt, signer); err != nil {
+	if err := validateTxForPool(tx, netRules, opt, signer); err != nil {
 		return err
 	}
 
 	if err := ValidateTxForState(tx, state, signer); err != nil {
 		return err
 	}
+
+	// TODO: check the backing of sponsored transactions
 
 	return nil
 }
@@ -227,10 +231,10 @@ func ValidateTxStatic(tx *types.Transaction) error {
 // and base fee of the current block.
 // An error is returned if the transaction's gas exceeds the block's gas limit
 // or if the transaction's gas fee cap is below the minimum required base fee.
-func ValidateTxForBlock(tx *types.Transaction, chain StateReader) error {
+func ValidateTxForBlock(tx *types.Transaction, netRules NetworkRules, chain StateReader) error {
 
 	// Ensure Sonic-specific hard bounds
-	isSponsorRequest := subsidies.IsSponsorshipRequest(tx)
+	isSponsorRequest := netRules.gasSubsidies && subsidies.IsSponsorshipRequest(tx)
 	if baseFee := chain.GetCurrentBaseFee(); !isSponsorRequest && baseFee != nil {
 		limit := gaspricelimits.GetMinimumFeeCapForTransactionPool(baseFee)
 		if tx.GasFeeCapIntCmp(limit) < 0 {
@@ -276,8 +280,12 @@ func ValidateTxForState(tx *types.Transaction, state state.StateDB, signer types
 // validateTxForPool checks whether a transaction is valid according to the
 // current minimum tip for the pool. It returns an error if the transaction's
 // tip is lower than the minimum tip.
-func validateTxForPool(tx *types.Transaction, opt poolOptions,
-	signer types.Signer) error {
+func validateTxForPool(
+	tx *types.Transaction,
+	netRules NetworkRules,
+	opt poolOptions,
+	signer types.Signer,
+) error {
 
 	// Reject transactions over defined size to prevent DoS attacks
 	if uint64(tx.Size()) > txMaxSize {
@@ -298,7 +306,7 @@ func validateTxForPool(tx *types.Transaction, opt poolOptions,
 	}
 
 	// Drop non-local transactions under our own minimal accepted gas price or tip.
-	isSponsorRequest := subsidies.IsSponsorshipRequest(tx)
+	isSponsorRequest := netRules.gasSubsidies && subsidies.IsSponsorshipRequest(tx)
 	if !isSponsorRequest && tx.GasTipCapIntCmp(opt.minTip) < 0 {
 		log.Trace("Rejecting underpriced tx: pool.minTip", "pool.minTip",
 			opt.minTip, "tx.GasTipCap", tx.GasTipCap())

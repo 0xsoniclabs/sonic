@@ -549,7 +549,7 @@ func TestValidateTxForBlock_MaxGas_RejectsTxWithGasOverMaxGas(t *testing.T) {
 			chain.EXPECT().MaxGasLimit().Return(uint64(99_999))
 			chain.EXPECT().GetCurrentBaseFee().Return(big.NewInt(1)).AnyTimes()
 
-			err := ValidateTxForBlock(types.NewTx(tx), chain)
+			err := ValidateTxForBlock(types.NewTx(tx), NetworkRules{}, chain)
 			require.ErrorIs(t, err, ErrGasLimit)
 		})
 	}
@@ -589,7 +589,7 @@ func TestValidateTxForBlock_BaseFee_RejectsTxWithGasPriceLowerThanBaseFee(t *tes
 			chain := NewMockStateReader(ctrl)
 			chain.EXPECT().GetCurrentBaseFee().Return(big.NewInt(2))
 
-			err := ValidateTxForBlock(types.NewTx(tx), chain)
+			err := ValidateTxForBlock(types.NewTx(tx), NetworkRules{}, chain)
 			require.ErrorIs(t, err, ErrUnderpriced)
 		})
 	}
@@ -631,7 +631,7 @@ func TestValidateTxForBlock_AcceptsTransactions(t *testing.T) {
 			chain.EXPECT().MaxGasLimit().Return(uint64(100_000))
 			chain.EXPECT().GetCurrentBaseFee().Return(big.NewInt(1))
 
-			err := ValidateTxForBlock(types.NewTx(tx), chain)
+			err := ValidateTxForBlock(types.NewTx(tx), NetworkRules{}, chain)
 			require.NoError(t, err)
 		})
 	}
@@ -792,7 +792,7 @@ func TestValidateTxForPool_Data_RejectsTxWithOversizedData(t *testing.T) {
 	for _, tx := range tests {
 		t.Run(transactionTypeName(tx), func(t *testing.T) {
 			opts := poolOptions{}
-			err := validateTxForPool(types.NewTx(tx), opts, nil)
+			err := validateTxForPool(types.NewTx(tx), NetworkRules{}, opts, nil)
 			require.ErrorIs(t, err, ErrOversizedData)
 		})
 	}
@@ -815,7 +815,7 @@ func TestValidateTxForPool_Signer_RejectsTxWithInvalidSigner(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			signer := NewMockSigner(ctrl)
 			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{42}, fmt.Errorf("some error"))
-			err := validateTxForPool(types.NewTx(tx), opts, signer)
+			err := validateTxForPool(types.NewTx(tx), NetworkRules{}, opts, signer)
 			require.ErrorIs(t, err, ErrInvalidSender)
 		})
 	}
@@ -847,7 +847,7 @@ func TestValidateTxForPool_RejectsNonLocalTxWithTipLowerThanMinPool(t *testing.T
 			signer := NewMockSigner(ctrl)
 			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{42}, nil)
 
-			err := validateTxForPool(types.NewTx(tx), opts, signer)
+			err := validateTxForPool(types.NewTx(tx), NetworkRules{}, opts, signer)
 			require.ErrorIs(t, err, ErrUnderpriced)
 		})
 	}
@@ -881,7 +881,7 @@ func TestValidateTxForPool_AcceptsNonLocalTxWithTipBiggerThanMin(t *testing.T) {
 			signer := NewMockSigner(ctrl)
 			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{42}, nil)
 
-			err := validateTxForPool(types.NewTx(tx), opts, signer)
+			err := validateTxForPool(types.NewTx(tx), NetworkRules{}, opts, signer)
 			require.NoError(t, err)
 		})
 	}
@@ -1122,6 +1122,79 @@ func TestValidateTx_RejectsTx_WhenStateValidationFails(t *testing.T) {
 			}
 
 			err := validateTx(types.NewTx(tx), opts, rules, chain, state, signer)
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestValidateTx_AcceptsZeroGasPriceTransactions_WhenSubsidiesAreEnabled(t *testing.T) {
+	tests := []types.TxData{
+		&types.LegacyTx{
+			To:       &common.Address{42}, // not a contract creation
+			Gas:      100_000,
+			GasPrice: big.NewInt(0),
+			V:        big.NewInt(27), // not an internal tx
+		},
+		&types.AccessListTx{
+			To:       &common.Address{42}, // not a contract creation
+			Gas:      50_000,
+			GasPrice: big.NewInt(0),
+			V:        big.NewInt(27), // not an internal tx
+		},
+		&types.DynamicFeeTx{
+			To:        &common.Address{42}, // not a contract creation
+			Gas:       50_000,
+			GasFeeCap: big.NewInt(0),
+			GasTipCap: big.NewInt(0),
+			V:         big.NewInt(27), // not an internal tx
+		},
+		&types.BlobTx{
+			Gas:       50_000,
+			GasFeeCap: uint256.NewInt(0),
+			GasTipCap: uint256.NewInt(0),
+			V:         uint256.NewInt(27), // not an internal tx
+		},
+		&types.SetCodeTx{
+			Gas:       50_000,
+			GasFeeCap: uint256.NewInt(0),
+			GasTipCap: uint256.NewInt(0),
+			AuthList:  []types.SetCodeAuthorization{{}},
+			V:         uint256.NewInt(27), // not an internal tx
+		},
+	}
+
+	for _, tx := range tests {
+		t.Run(transactionTypeName(tx), func(t *testing.T) {
+			rules := NetworkRules{
+				eip2718:      true,
+				eip1559:      true,
+				eip4844:      true,
+				eip7702:      true,
+				gasSubsidies: true,
+			}
+			ctrl := gomock.NewController(t)
+			signer := NewMockSigner(ctrl)
+			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{42}, nil).AnyTimes()
+			signer.EXPECT().Equal(gomock.Any()).Return(false).AnyTimes()
+
+			chain := NewMockStateReader(ctrl)
+			chain.EXPECT().GetCurrentBaseFee().Return(big.NewInt(5)).AnyTimes()
+			chain.EXPECT().MaxGasLimit().Return(uint64(100_000)).AnyTimes()
+			state := state.NewMockStateDB(ctrl)
+			state.EXPECT().GetNonce(gomock.Any()).Return(uint64(0)).AnyTimes()
+
+			opts := poolOptions{
+				minTip:  big.NewInt(0),
+				isLocal: true,
+				locals:  newAccountSet(signer),
+			}
+
+			err := validateTx(types.NewTx(tx), opts, rules, chain, state, signer)
+			require.NoError(t, err)
+
+			//Check that the same transaction is rejected when gas subsidies are disabled
+			rules.gasSubsidies = false
+			err = validateTx(types.NewTx(tx), opts, rules, chain, state, signer)
 			require.Error(t, err)
 		})
 	}

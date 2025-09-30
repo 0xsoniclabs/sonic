@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/ethereum/go-ethereum/common"
 
@@ -176,6 +177,10 @@ func (bc *testBlockChain) MaxGasLimit() uint64 {
 }
 func (bc *testBlockChain) Config() *params.ChainConfig {
 	return nil
+}
+
+func (bc *testBlockChain) GetCurrentRules() opera.Rules {
+	return opera.Rules{}
 }
 
 func (bc *testBlockChain) GetBlock(hash common.Hash, number uint64) *EvmBlock {
