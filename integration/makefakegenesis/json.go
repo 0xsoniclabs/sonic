@@ -25,6 +25,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/integration/makegenesis"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/drivertype"
@@ -144,6 +145,16 @@ func GenerateFakeJsonGenesis(
 			Name:    "HistoryStorage",
 			Address: params.HistoryStorageAddress,
 			Code:    params.HistoryStorageCode,
+			Nonce:   1,
+		})
+	}
+
+	// Deploy the gas subsidies registry contract if enabled.
+	if upgrades.GasSubsidies {
+		jsonGenesis.Accounts = append(jsonGenesis.Accounts, Account{
+			Name:    "GasSubsidiesRegistry",
+			Address: registry.GetAddress(),
+			Code:    registry.GetCode(),
 			Nonce:   1,
 		})
 	}

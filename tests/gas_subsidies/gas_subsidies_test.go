@@ -14,13 +14,15 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
-package gassubsidies
+package gas_subsidies
 
 import (
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
 
@@ -94,4 +96,27 @@ func TestGasSubsidies_CanBeEnabledAndDisabled(
 			require.Equal(false, originalRules.Upgrades.GasSubsidies, "GasSubsidies should be disabled after the update")
 		})
 	}
+}
+
+func TestGasSubsidies_Enabled_DeploysRegistryContract(t *testing.T) {
+	require := require.New(t)
+
+	upgrades := opera.GetSonicUpgrades()
+	upgrades.GasSubsidies = true
+
+	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+		Upgrades: &upgrades,
+	})
+
+	address := common.Address{42}
+
+	client, err := net.GetClient()
+	require.NoError(err)
+	defer client.Close()
+
+	ledger, err := registry.NewRegistry(registry.GetAddress(), client)
+	require.NoError(err)
+
+	_, _, err = ledger.AccountSponsorshipFundId(nil, address)
+	require.NoError(err)
 }
