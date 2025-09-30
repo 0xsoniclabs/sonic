@@ -135,12 +135,6 @@ func GenerateFakeJsonGenesis(
 			Code:    []byte{0},
 			Nonce:   1,
 		},
-		{
-			Name:    "GasSubsidiesRegistry",
-			Address: registry.GetAddress(),
-			Code:    registry.GetCode(),
-			Nonce:   1,
-		},
 	}
 
 	// Configure pre-deployed contracts, according to the hardfork of the fake-net
@@ -151,6 +145,16 @@ func GenerateFakeJsonGenesis(
 			Name:    "HistoryStorage",
 			Address: params.HistoryStorageAddress,
 			Code:    params.HistoryStorageCode,
+			Nonce:   1,
+		})
+	}
+
+	// Deploy the gas subsidies registry contract if enabled.
+	if upgrades.GasSubsidies {
+		jsonGenesis.Accounts = append(jsonGenesis.Accounts, Account{
+			Name:    "GasSubsidiesRegistry",
+			Address: registry.GetAddress(),
+			Code:    registry.GetCode(),
 			Nonce:   1,
 		})
 	}

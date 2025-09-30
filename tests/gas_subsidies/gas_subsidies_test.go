@@ -22,6 +22,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/stretchr/testify/require"
 )
 
@@ -97,38 +98,42 @@ func TestGasSubsidies_CanBeEnabledAndDisabled(
 	}
 }
 
-func TestGasSubsidies_DeploysRegistryContract(t *testing.T) {
-	tests := map[string]func(t *testing.T) *tests.IntegrationTestNet{
-		"json genesis": func(t *testing.T) *tests.IntegrationTestNet {
-			return tests.StartIntegrationTestNetWithJsonGenesis(t,
-				tests.IntegrationTestNetOptions{
-					Upgrades: tests.AsPointer(opera.GetAllegroUpgrades()),
-				})
-		},
-		"fake genesis": func(t *testing.T) *tests.IntegrationTestNet {
-			return tests.StartIntegrationTestNetWithFakeGenesis(t,
-				tests.IntegrationTestNetOptions{
-					Upgrades: tests.AsPointer(opera.GetAllegroUpgrades()),
-				})
-		},
+func TestGasSubsidies_CallingRegistryBeforeDeploy_FailsTransaction(t *testing.T) {
+	upgrades := map[string]opera.Upgrades{
+		"sonic":   opera.GetSonicUpgrades(),
+		"allegro": opera.GetAllegroUpgrades(),
+		// Brio is commented out until the gas cap is properly handled for internal transactions.
+		//"brio":opera.GetBrioUpgrades(),
 	}
 
-	for name, netConstructor := range tests {
+	for name, upgrade := range upgrades {
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
-			net := netConstructor(t)
+			net := tests.StartIntegrationTestNetWithJsonGenesis(t, tests.IntegrationTestNetOptions{
+				Upgrades: &upgrade,
+			})
 
 			client, err := net.GetClient()
 			require.NoError(err)
-			defer client.Close()
+
+			sponsor := tests.NewAccount()
+			sponsee := tests.NewAccount()
 
 			code, err := client.CodeAt(t.Context(), registry.GetAddress(), nil)
 			require.NoError(err)
-			require.Equal(registry.GetCode(), code)
+			require.Empty(code)
 
-			nonce, err := client.NonceAt(t.Context(), registry.GetAddress(), nil)
+			registryInstance, err := registry.NewRegistry(registry.GetAddress(), client)
 			require.NoError(err)
-			require.Equal(uint64(1), nonce)
+			client.Close()
+
+			opts := bind.CallOpts{
+				From: sponsor.Address(),
+			}
+			ok, _, err := registryInstance.AccountSponsorshipFundId(&opts, sponsee.Address())
+			require.Error(err)
+			require.False(ok, "registry should have a fund ID")
+
 		})
 	}
 }
