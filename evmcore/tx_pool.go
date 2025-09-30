@@ -36,6 +36,7 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
@@ -570,12 +571,32 @@ func (pool *TxPool) Pending(enforceTips bool) (map[common.Address]types.Transact
 
 		// If the miner requests tip enforcement, cap the lists now
 		if enforceTips && !pool.locals.contains(addr) {
-			for i, tx := range txs {
-				if tx.EffectiveGasTipIntCmp(pool.minTip, pool.priced.urgent.baseFee) < 0 {
-					txs = txs[:i]
+
+			prioritizedTxs := make(types.Transactions, 0, len(txs))
+			for _, tx := range txs {
+				if tx.EffectiveGasTipIntCmp(pool.minTip, pool.priced.urgent.baseFee) >= 0 {
+					prioritizedTxs = append(prioritizedTxs, tx)
 					break
 				}
 			}
+
+			// append sponsored transactions
+			for i := len(txs) - 1; i >= 0; i-- {
+				tx := txs[i]
+
+				if tx.GasTipCap().Sign() != 0 {
+					break
+				}
+
+				// Pending does has no responsibility to filter out invalid sponsored txs
+				// this belongs to add and reorg. At this location, it can be assumed
+				// that if the tx is a sponsorship request, it is backed by a valid subsidy.
+				if subsidies.IsSponsorshipRequest(tx) {
+					prioritizedTxs = append(prioritizedTxs, tx)
+				}
+			}
+
+			txs = prioritizedTxs
 		}
 		if len(txs) > 0 {
 			pending[addr] = txs
