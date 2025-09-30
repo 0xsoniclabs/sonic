@@ -101,10 +101,50 @@ func (p *StateProcessor) Process(
 	}
 
 	// Iterate over and process the individual transactions
-	return runTransactions(
-		block.Transactions, signer, header.BaseFee, statedb,
-		gp, blockNumber, usedGas, vmenv, onNewLog, 0,
-	)
+	return runTransactions(newRunContext(
+		signer, header.BaseFee, statedb, gp, blockNumber, usedGas,
+		onNewLog, &transactionRunner{evm{vmenv}},
+	), block.Transactions, 0)
+}
+
+// runContext bundles the parameters required for processing transactions in a
+// block. It is used as input to the runTransactions helper function and passed
+// along the processing layers to make the parameters available where needed.
+type runContext struct {
+	signer      types.Signer
+	baseFee     *big.Int
+	statedb     state.StateDB
+	gasPool     *core.GasPool
+	blockNumber *big.Int
+	usedGas     *uint64
+	onNewLog    func(*types.Log)
+	runner      _transactionRunner
+}
+
+// newRunContext creates a new runContext instance bundling the given parameters
+// required for processing transactions in a block. In productive code this
+// function should be used instead of directly creating a runContext instance to
+// ensure that all required parameters are provided.
+func newRunContext(
+	signer types.Signer,
+	baseFee *big.Int,
+	statedb state.StateDB,
+	gasPool *core.GasPool,
+	blockNumber *big.Int,
+	usedGas *uint64,
+	onNewLog func(*types.Log),
+	runner _transactionRunner,
+) *runContext {
+	return &runContext{
+		signer:      signer,
+		baseFee:     baseFee,
+		statedb:     statedb,
+		gasPool:     gasPool,
+		blockNumber: blockNumber,
+		usedGas:     usedGas,
+		onNewLog:    onNewLog,
+		runner:      runner,
+	}
 }
 
 // runTransaction is a helper function to process a list of transactions. It
@@ -114,35 +154,77 @@ func (p *StateProcessor) Process(
 // The function is intended to be used by both the Process function and the
 // incremental transaction processor (BeginBlock/TransactionProcessor).
 func runTransactions(
+	context *runContext,
 	transactions types.Transactions,
-	signer types.Signer,
-	baseFee *big.Int,
-	statedb state.StateDB,
-	gp *core.GasPool,
-	blockNumber *big.Int,
-	usedGas *uint64,
-	vmenv *vm.EVM,
-	onNewLog func(*types.Log),
 	txIndexOffset int,
 ) []ProcessedTransaction {
-	processed := make([]ProcessedTransaction, len(transactions))
-	for i, tx := range transactions {
-		processed[i].Transaction = tx
-		msg, err := TxAsMessage(tx, signer, baseFee)
-		if err != nil {
-			log.Info("Failed to convert transaction to message", "tx", tx.Hash().Hex(), "err", err)
-			continue // skip this transaction, but continue processing the rest of the block
-		}
-
-		statedb.SetTxContext(tx.Hash(), i+txIndexOffset)
-		receipt, _, err := applyTransaction(msg, gp, statedb, blockNumber, tx, usedGas, vmenv, onNewLog)
-		if err != nil {
-			log.Debug("Failed to apply transaction", "tx", tx.Hash().Hex(), "err", err)
-			continue // skip this transaction, but continue processing the rest of the block
-		}
-		processed[i].Receipt = receipt
+	processed := make([]ProcessedTransaction, 0, len(transactions))
+	for _, tx := range transactions {
+		nextId := len(processed) + txIndexOffset
+		processed = append(processed,
+			context.runner.runRegularTransaction(context, tx, nextId),
+		)
 	}
 	return processed
+}
+
+// _transactionRunner is an interface for components implementing the logic
+// required for running transactions with various rules, e.g. regular or
+// sponsored transactions.
+type _transactionRunner interface {
+	runRegularTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) ProcessedTransaction
+	// Upcoming: runSponsoredTransaction
+}
+
+// transactionRunner implements the _transactionRunner interface by using an
+// _evm instance to run transactions.
+type transactionRunner struct {
+	evm _evm
+}
+
+func (r *transactionRunner) runRegularTransaction(
+	ctxt *runContext,
+	tx *types.Transaction,
+	txIndex int,
+) ProcessedTransaction {
+	return r.evm.runTransaction(ctxt, tx, txIndex)
+}
+
+// _evm is an interface to an EVM instance that can be used to run a single
+// transaction. It is used by the transactionRunner to decouple the transaction
+// running logic from the actual EVM implementation, enabling easier testing.
+type _evm interface {
+	runTransaction(*runContext, *types.Transaction, int) ProcessedTransaction
+	// Upcoming: sponsored transaction support
+}
+
+// evm is the production implementation of the _evm interface using a real EVM
+// instance.
+type evm struct {
+	*vm.EVM
+}
+
+func (e evm) runTransaction(
+	ctxt *runContext,
+	tx *types.Transaction,
+	txIndex int,
+) ProcessedTransaction {
+	msg, err := TxAsMessage(tx, ctxt.signer, ctxt.baseFee)
+	if err != nil {
+		log.Info("Failed to convert transaction to message", "tx", tx.Hash().Hex(), "err", err)
+		return ProcessedTransaction{Transaction: tx}
+	}
+
+	ctxt.statedb.SetTxContext(tx.Hash(), txIndex)
+	receipt, _, err := applyTransaction(
+		msg, ctxt.gasPool, ctxt.statedb, ctxt.blockNumber, tx,
+		ctxt.usedGas, e.EVM, ctxt.onNewLog,
+	)
+	if err != nil {
+		log.Debug("Failed to apply transaction", "tx", tx.Hash().Hex(), "err", err)
+		return ProcessedTransaction{Transaction: tx}
+	}
+	return ProcessedTransaction{Transaction: tx, Receipt: receipt}
 }
 
 // BeginBlock starts the processing of a new block and returns a function to
@@ -198,10 +280,10 @@ type TransactionProcessor struct {
 // have been attempted to be processed to cover the given transaction as well as
 // their receipts if they did not get skipped.
 func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) []ProcessedTransaction {
-	return runTransactions(
-		[]*types.Transaction{tx}, tp.signer, tp.header.BaseFee, tp.stateDb,
-		tp.gp, tp.blockNumber, &tp.usedGas, tp.vmEnvironment, tp.onNewLog, i,
-	)
+	return runTransactions(newRunContext(
+		tp.signer, tp.header.BaseFee, tp.stateDb, tp.gp, tp.blockNumber,
+		&tp.usedGas, tp.onNewLog, &transactionRunner{evm{tp.vmEnvironment}},
+	), []*types.Transaction{tx}, i)
 }
 
 // ApplyTransactionWithEVM attempts to apply a transaction to the given state database
