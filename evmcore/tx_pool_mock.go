@@ -14,6 +14,7 @@ import (
 	reflect "reflect"
 
 	state "github.com/0xsoniclabs/sonic/inter/state"
+	opera "github.com/0xsoniclabs/sonic/opera"
 	common "github.com/ethereum/go-ethereum/common"
 	event "github.com/ethereum/go-ethereum/event"
 	params "github.com/ethereum/go-ethereum/params"
@@ -98,6 +99,20 @@ func (m *MockStateReader) GetCurrentBaseFee() *big.Int {
 func (mr *MockStateReaderMockRecorder) GetCurrentBaseFee() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCurrentBaseFee", reflect.TypeOf((*MockStateReader)(nil).GetCurrentBaseFee))
+}
+
+// GetCurrentRules mocks base method.
+func (m *MockStateReader) GetCurrentRules() opera.Rules {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetCurrentRules")
+	ret0, _ := ret[0].(opera.Rules)
+	return ret0
+}
+
+// GetCurrentRules indicates an expected call of GetCurrentRules.
+func (mr *MockStateReaderMockRecorder) GetCurrentRules() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCurrentRules", reflect.TypeOf((*MockStateReader)(nil).GetCurrentRules))
 }
 
 // GetTxPoolStateDB mocks base method.
