@@ -258,13 +258,22 @@ func (r *transactionRunner) runSponsoredTransaction(
 		// we can not undo the sponsored transaction, and we can not abort the
 		// block formation. So we have to let this go. This sponsored
 		// transaction was on the house (meaning on the network).
-		log.Warn("Failed to create fee charging transaction", "tx", tx.Hash().Hex(), "err", err)
+		log.Warn("Failed to create fee charging transaction", "sponsored-tx", tx.Hash().Hex(), "err", err)
 		return []ProcessedTransaction{processed}
 	}
-	return []ProcessedTransaction{
-		processed,
-		r.evm.runWithoutBaseFeeCheck(ctxt, feeChargingTx, txIndex+1),
+	processedDeduction := r.evm.runWithoutBaseFeeCheck(ctxt, feeChargingTx, txIndex+1)
+	if processedDeduction.Receipt == nil {
+		// Note: at this point, the deduction transaction was skipped, meaning
+		// the subsidy fund was not charged. We can not abort the block
+		// formation, so we have to let this go.
+		log.Warn("Fee charging transaction was skipped", "sponsored-tx", tx.Hash().Hex())
 	}
+	if processedDeduction.Receipt != nil && processedDeduction.Receipt.Status == types.ReceiptStatusFailed {
+		// Note: at this point, the deduction transaction failed, meaning the
+		// subsidy fund was not charged.
+		log.Warn("Fee charging transaction failed", "sponsored-tx", tx.Hash().Hex())
+	}
+	return []ProcessedTransaction{processed, processedDeduction}
 }
 
 // _evm is an interface to an EVM instance that can be used to run a single

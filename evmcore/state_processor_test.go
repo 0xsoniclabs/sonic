@@ -948,6 +948,116 @@ func TestRunSponsoredTransaction_FailingCreationOfFeeDeduction_TransactionIsAcce
 	require.Equal(t, want, got)
 }
 
+func TestRunSponsoredTransaction_FeeDeductionTxIsSkipped_TransactionIsAcceptedWithoutFeeDeduction(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	state := state.NewMockStateDB(ctrl)
+	evm := NewMock_evm(ctrl)
+
+	tx := getSponsorshipRequest(t)
+
+	// Snapshot for the IsCovered call
+	state.EXPECT().Snapshot().Return(1)
+	state.EXPECT().RevertToSnapshot(1)
+
+	// Nonce request for the fee deduction transaction
+	state.EXPECT().GetNonce(common.Address{}).Return(uint64(123))
+
+	// Let the IsCovered call indicate that the transaction is covered,
+	any := gomock.Any()
+	evm.EXPECT().Call(any, any, any, any, any).
+		Return([]byte{31: 1}, uint64(0), nil) // indicates "covered"
+
+	// Expect the sponsored transaction to be processed successfully.
+	processedSponsoredTransaction := ProcessedTransaction{
+		Transaction: tx,
+		Receipt: &types.Receipt{
+			Status:  types.ReceiptStatusSuccessful,
+			GasUsed: 21_000,
+		},
+	}
+	evm.EXPECT().runWithoutBaseFeeCheck(any, tx, any).Return(processedSponsoredTransaction)
+
+	skippedFeeDeductionTransaction := ProcessedTransaction{
+		Transaction: &types.Transaction{},
+		Receipt:     nil,
+	}
+	evm.EXPECT().runWithoutBaseFeeCheck(any, gomock.Not(tx), any).
+		Return(skippedFeeDeductionTransaction)
+
+	gasPool := new(core.GasPool).AddGas(1_000_000)
+	context := &runContext{
+		statedb:  state,
+		signer:   types.LatestSignerForChainID(nil),
+		baseFee:  big.NewInt(1),
+		gasPool:  gasPool,
+		upgrades: opera.Upgrades{GasSubsidies: true},
+	}
+
+	runner := &transactionRunner{evm: evm}
+	got := runner.runSponsoredTransaction(context, tx, 0)
+	want := []ProcessedTransaction{
+		processedSponsoredTransaction,
+		skippedFeeDeductionTransaction,
+	}
+	require.Equal(t, want, got)
+}
+
+func TestRunSponsoredTransaction_FeeDeductionTxFails_TransactionIsAcceptedWithoutFeeDeduction(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	state := state.NewMockStateDB(ctrl)
+	evm := NewMock_evm(ctrl)
+
+	tx := getSponsorshipRequest(t)
+
+	// Snapshot for the IsCovered call
+	state.EXPECT().Snapshot().Return(1)
+	state.EXPECT().RevertToSnapshot(1)
+
+	// Nonce request for the fee deduction transaction
+	state.EXPECT().GetNonce(common.Address{}).Return(uint64(123))
+
+	// Let the IsCovered call indicate that the transaction is covered,
+	any := gomock.Any()
+	evm.EXPECT().Call(any, any, any, any, any).
+		Return([]byte{31: 1}, uint64(0), nil) // indicates "covered"
+
+	// Expect the sponsored transaction to be processed successfully.
+	processedSponsoredTransaction := ProcessedTransaction{
+		Transaction: tx,
+		Receipt: &types.Receipt{
+			Status:  types.ReceiptStatusSuccessful,
+			GasUsed: 21_000,
+		},
+	}
+	evm.EXPECT().runWithoutBaseFeeCheck(any, tx, any).Return(processedSponsoredTransaction)
+
+	skippedFeeDeductionTransaction := ProcessedTransaction{
+		Transaction: &types.Transaction{},
+		Receipt: &types.Receipt{
+			Status: types.ReceiptStatusFailed,
+		},
+	}
+	evm.EXPECT().runWithoutBaseFeeCheck(any, gomock.Not(tx), any).
+		Return(skippedFeeDeductionTransaction)
+
+	gasPool := new(core.GasPool).AddGas(1_000_000)
+	context := &runContext{
+		statedb:  state,
+		signer:   types.LatestSignerForChainID(nil),
+		baseFee:  big.NewInt(1),
+		gasPool:  gasPool,
+		upgrades: opera.Upgrades{GasSubsidies: true},
+	}
+
+	runner := &transactionRunner{evm: evm}
+	got := runner.runSponsoredTransaction(context, tx, 0)
+	want := []ProcessedTransaction{
+		processedSponsoredTransaction,
+		skippedFeeDeductionTransaction,
+	}
+	require.Equal(t, want, got)
+}
+
 func TestRunSponsoredTransaction_TxIndexIsIncrementedForFeeDeductionTx(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	state := state.NewMockStateDB(ctrl)
