@@ -37,6 +37,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 
 	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/sonic/utils/signers/gsignercache"
 	"github.com/0xsoniclabs/sonic/utils/txtime"
@@ -162,6 +163,7 @@ type StateReader interface {
 	MaxGasLimit() uint64
 	SubscribeNewBlock(ch chan<- ChainHeadNotify) notify.Subscription
 	Config() *params.ChainConfig
+	GetCurrentRules() opera.Rules
 }
 
 // TxPoolConfig are the configuration parameters of the transaction pool.
@@ -668,6 +670,8 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 		eip4844:  pool.eip4844,
 		eip7623:  pool.eip7623,
 		eip7702:  pool.eip7702,
+
+		gasSubsidies: pool.chain.GetCurrentRules().Upgrades.GasSubsidies,
 	}
 	err := validateTx(tx, opts, netRules, pool.chain, pool.currentState, pool.signer)
 	if err != nil {
