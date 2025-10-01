@@ -14,13 +14,15 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
-package gassubsidies
+package gas_subsidies
 
 import (
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/stretchr/testify/require"
 )
 
@@ -92,6 +94,46 @@ func TestGasSubsidies_CanBeEnabledAndDisabled(
 			err = client.Client().Call(&originalRules, "eth_getRules", "latest")
 			require.NoError(err)
 			require.Equal(false, originalRules.Upgrades.GasSubsidies, "GasSubsidies should be disabled after the update")
+		})
+	}
+}
+
+func TestGasSubsidies_CallingRegistryBeforeDeploy_FailsTransaction(t *testing.T) {
+	upgrades := map[string]opera.Upgrades{
+		"sonic":   opera.GetSonicUpgrades(),
+		"allegro": opera.GetAllegroUpgrades(),
+		// Brio is commented out until the gas cap is properly handled for internal transactions.
+		//"brio":opera.GetBrioUpgrades(),
+	}
+
+	for name, upgrade := range upgrades {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+			net := tests.StartIntegrationTestNetWithJsonGenesis(t, tests.IntegrationTestNetOptions{
+				Upgrades: &upgrade,
+			})
+
+			client, err := net.GetClient()
+			require.NoError(err)
+
+			sponsor := tests.NewAccount()
+			sponsee := tests.NewAccount()
+
+			code, err := client.CodeAt(t.Context(), registry.GetAddress(), nil)
+			require.NoError(err)
+			require.Empty(code)
+
+			registryInstance, err := registry.NewRegistry(registry.GetAddress(), client)
+			require.NoError(err)
+			client.Close()
+
+			opts := bind.CallOpts{
+				From: sponsor.Address(),
+			}
+			ok, _, err := registryInstance.AccountSponsorshipFundId(&opts, sponsee.Address())
+			require.Error(err)
+			require.False(ok, "there should be no registry")
+
 		})
 	}
 }
