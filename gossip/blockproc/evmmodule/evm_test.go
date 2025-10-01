@@ -22,6 +22,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -186,6 +187,48 @@ func TestOperaEVMProcessor_Execute_ProducesContinuousTxIndexesInLogsAndReceipts(
 		require.NotNil(processed[0].Receipt)
 		require.Equal(txIndex, processed[0].Receipt.TransactionIndex)
 		txIndex++
+	}
+}
+
+func TestOperaEVMProcessor_Execute_StateProcessorIntroducesTransactions_ProducesContinuousTxIndexes(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	factory := NewMock_stateProcessorFactory(ctrl)
+	stateProcessor := NewMock_stateProcessor(ctrl)
+
+	any := gomock.Any()
+	factory.EXPECT().NewStateProcessor(any, any, any).Return(stateProcessor).AnyTimes()
+
+	stateProcessor.EXPECT().Process(
+		any, any, any, any, any, any,
+	).Return([]evmcore.ProcessedTransaction{
+		{Receipt: &types.Receipt{TransactionIndex: 0}},
+		{Receipt: &types.Receipt{TransactionIndex: 1}},
+		{Receipt: &types.Receipt{TransactionIndex: 2}},
+		{Receipt: &types.Receipt{TransactionIndex: 3}},
+		{Receipt: &types.Receipt{TransactionIndex: 4}},
+	}).Times(2)
+
+	processor := &OperaEVMProcessor{
+		processorFactory: factory,
+	}
+
+	tx := types.NewTx(&types.LegacyTx{
+		To: &common.Address{}, Nonce: 0, Gas: 21_0000,
+	})
+
+	// The first patch should index transactions as they are executed.
+	processed := processor.Execute([]*types.Transaction{tx, tx}, math.MaxUint64)
+	require.Len(processed, 5)
+	for i, p := range processed {
+		require.Equal(uint(i), p.Receipt.TransactionIndex)
+	}
+
+	// the next batch should be offset by the first patch
+	processor.Execute([]*types.Transaction{tx, tx}, math.MaxUint64)
+	require.Len(processed, 5)
+	for i, p := range processed {
+		require.Equal(uint(i+5), p.Receipt.TransactionIndex)
 	}
 }
 
