@@ -215,7 +215,7 @@ func TestTransactionsOrdering_MinerFeesCanBeComputedWithAllTransactions(t *testi
 				Value:     big.NewInt(100),
 				GasFeeCap: big.NewInt(0),
 				GasTipCap: big.NewInt(0),
-				V:         big.NewInt(27), // non-internal transaction cannot be sponsored
+				V:         big.NewInt(27), // non-internal, since internal transaction cannot be sponsored
 			}),
 			expectedMinerFee: 0,
 		},

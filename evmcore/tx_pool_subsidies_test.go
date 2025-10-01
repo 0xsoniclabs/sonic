@@ -63,8 +63,8 @@ func TestTxPool_SponsoredTransactionsAreIncludedInThePendingSet(t *testing.T) {
 	const transactionsPerSender = 5
 
 	// Queue some sponsored transactions
-	const sponsoredTxs = 5
-	for range sponsoredTxs {
+	const sponsoredBatches = 5
+	for range sponsoredBatches {
 		txs := createTransactions(t, &types.LegacyTx{
 			GasPrice: big.NewInt(0),
 			Gas:      21_000,
@@ -78,8 +78,8 @@ func TestTxPool_SponsoredTransactionsAreIncludedInThePendingSet(t *testing.T) {
 	}
 
 	// Add some valid normal transactions with tips above the minimum
-	const tippedTransactions = 5
-	for range tippedTransactions {
+	const tippedBatches = 5
+	for range tippedBatches {
 		txs := createTransactions(t, &types.DynamicFeeTx{
 			GasTipCap: big.NewInt(int64(poolConfig.MinimumTip)), // valid tip
 			GasFeeCap: big.NewInt(100),
@@ -94,8 +94,8 @@ func TestTxPool_SponsoredTransactionsAreIncludedInThePendingSet(t *testing.T) {
 	}
 
 	// Add some valid local transactions with tips bellow the minimum
-	const localTransactions = 5
-	for range localTransactions {
+	const localBatches = 5
+	for range localBatches {
 		txs := createTransactions(t, &types.DynamicFeeTx{
 			GasTipCap: big.NewInt(int64(poolConfig.MinimumTip - 1)), // below minimum tip, but valid as local
 			GasFeeCap: big.NewInt(100),
@@ -112,7 +112,7 @@ func TestTxPool_SponsoredTransactionsAreIncludedInThePendingSet(t *testing.T) {
 	pending, err := pool.Pending(true) // with tips enforcement
 	require.NoError(t, err)
 	require.Len(t, pending,
-		sponsoredTxs+tippedTransactions+localTransactions,
+		sponsoredBatches+tippedBatches+localBatches,
 		"expected all valid txs to be included")
 
 	pendingSponsored := make([]*types.Transaction, 0, len(pending))
@@ -128,11 +128,12 @@ func TestTxPool_SponsoredTransactionsAreIncludedInThePendingSet(t *testing.T) {
 		}
 	}
 	require.Len(t, pendingSponsored,
-		sponsoredTxs*transactionsPerSender,
-		"expected all sponsored txs to be included")
+		sponsoredBatches*transactionsPerSender,
+		"expected all sponsored txs to be found")
 	require.Len(t, pendingNormal,
-		tippedTransactions*transactionsPerSender+localTransactions*transactionsPerSender,
-		"expected all tipped txs to be included")
+		tippedBatches*transactionsPerSender+
+			localBatches*transactionsPerSender,
+		"expected all tipped txs to be found")
 }
 
 ////////////////////////////////////////////////////////////////////////////////
