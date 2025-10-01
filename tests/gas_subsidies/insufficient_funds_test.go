@@ -20,6 +20,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
@@ -40,16 +41,10 @@ func TestGasSubsidies_RequestIsRejectedInCaseOfInsufficientFunds(t *testing.T) {
 	require.NoError(t, err)
 	defer client.Close()
 
-	// -------------------------------------------------------------------------
-
 	sponsor := tests.NewAccount()
 	sponsee := tests.NewAccount()
 	receiver := tests.NewAccount()
 
-	// --- send transaction although there are no sponsorship funds yet ---
-
-	// Before the sponsorship is set up, a transaction from the sponsee
-	// to the receiver should fail due to lack of funds.
 	chainId := net.GetChainId()
 	receiverAddress := receiver.Address()
 	signer := types.LatestSignerForChainID(chainId)
@@ -59,55 +54,66 @@ func TestGasSubsidies_RequestIsRejectedInCaseOfInsufficientFunds(t *testing.T) {
 		GasPrice: big.NewInt(0),
 	})
 	require.NoError(t, err)
-	require.Error(t,
-		client.SendTransaction(t.Context(), tx),
-		"should be rejected due to lack of funds and no sponsorship",
-	)
 
+	// Transfer funds to the sponsor account
 	receipt, err := net.EndowAccount(sponsor.Address(), big.NewInt(1e18))
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
-	// --- deposit sponsorship funds ---
-
-	registry, err := registry.NewRegistry(registry.GetAddress(), client)
+	// Create a new sponsorship registry
+	sponsorRegistry, err := registry.NewRegistry(registry.GetAddress(), client)
 	require.NoError(t, err)
 
-	// Create a sponsorship with insufficient funds (1e15 wei).
-	// The gas usage of the sponsor transaction is 134095 gas,
-	// with a gas price greater than 1e10, the transaction will fail.
-	donation := big.NewInt(1e15)
+	// Calculate the price for the sponsored transaction
+	cost := tx.Gas() + subsidies.SponsorshipOverheadGasCost
+
+	// Create a new sponsorship with insufficient funds
+	header, err := client.HeaderByHash(t.Context(), receipt.BlockHash)
+	require.NoError(t, err)
+	donation := big.NewInt(int64(cost) * header.BaseFee.Int64() / 2) // only half the required funds
 	receipt, err = net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
 		opts.Value = donation
-		return registry.SponsorUser(opts, sponsee.Address(), receiver.Address())
+		return sponsorRegistry.SponsorUser(opts, sponsee.Address(), receiver.Address())
 	})
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
-	require.Error(t,
-		client.SendTransaction(t.Context(), tx),
-		"should be rejected due to lack of funds",
-	)
+	// Try to send the sponsored transaction
+	require.Error(t, client.SendTransaction(t.Context(), tx), "transaction should be rejected due to insufficient funds")
 
-	// Increase the sponsorship funds by another 1e15 to 2e15 wei.
-	donation = big.NewInt(1e15)
+	// Add the second half of the required funds
 	receipt, err = net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
 		opts.Value = donation
-		return registry.SponsorUser(opts, sponsee.Address(), receiver.Address())
+		return sponsorRegistry.SponsorUser(opts, sponsee.Address(), receiver.Address())
 	})
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
-	// --- submit a sponsored transaction ---
-
-	receipt = sendSponsoredTransaction(t, client, net, tx)
-
-	// check that the sponsorship funds got deducted
+	// get the funds before resending the transaction
 	ops := &bind.CallOpts{
 		BlockNumber: receipt.BlockNumber,
 	}
-	sponsorship, err := registry.UserSponsorships(ops, sponsee.Address(), receiver.Address())
+	sponsorship, err := sponsorRegistry.UserSponsorships(ops, sponsee.Address(), receiver.Address())
 	require.NoError(t, err)
-	require.Less(t, sponsorship.Funds.Uint64(), donation.Uint64())
+	fundsBefore := sponsorship.Funds.Uint64()
 
+	// Send the sponsored transaction
+	require.NoError(t, client.SendTransaction(t.Context(), tx))
+	receipt, err = net.GetReceipt(tx.Hash())
+	require.NoError(t, err)
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+
+	// get the baseFee of the block where the tx was included
+	header, err = client.HeaderByHash(t.Context(), receipt.BlockHash)
+	require.NoError(t, err)
+	baseFee := header.BaseFee
+
+	ops = &bind.CallOpts{
+		BlockNumber: receipt.BlockNumber,
+	}
+	sponsorship, err = sponsorRegistry.UserSponsorships(ops, sponsee.Address(), receiver.Address())
+	require.NoError(t, err)
+	fundsAfter := sponsorship.Funds.Uint64()
+
+	require.Equal(t, fundsBefore-cost*baseFee.Uint64(), fundsAfter)
 }
