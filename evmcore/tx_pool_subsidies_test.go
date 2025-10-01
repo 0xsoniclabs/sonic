@@ -59,48 +59,60 @@ func TestTxPool_SponsoredTransactionsAreIncludedInThePendingSet(t *testing.T) {
 	// Instantiate the pool
 	pool := NewTxPool(poolConfig, chainConfig, chain)
 
+	// transactions per sender
+	const transactionsPerSender = 5
+
 	// Queue some sponsored transactions
 	const sponsoredTxs = 5
 	for range sponsoredTxs {
-		tx := signTx(t, &types.LegacyTx{
+		txs := createTransactions(t, &types.LegacyTx{
 			GasPrice: big.NewInt(0),
 			Gas:      21_000,
 			To:       &common.Address{1}, // not a contract creation
-		}, chainId)
-		err := pool.addRemoteSync(tx)
-		require.NoError(t, err)
+		}, chainId, transactionsPerSender)
+
+		for _, tx := range txs {
+			err := pool.addRemoteSync(tx)
+			require.NoError(t, err)
+		}
 	}
 
 	// Add some valid normal transactions with tips above the minimum
 	const tippedTransactions = 5
 	for range tippedTransactions {
-		tx := signTx(t, &types.DynamicFeeTx{
+		txs := createTransactions(t, &types.DynamicFeeTx{
 			GasTipCap: big.NewInt(int64(poolConfig.MinimumTip)), // valid tip
 			GasFeeCap: big.NewInt(100),
 			Gas:       21_000,
 			To:        &common.Address{1}, // not a contract creation
-		}, chainId)
-		err := pool.addRemoteSync(tx)
-		require.NoError(t, err)
+		}, chainId, transactionsPerSender)
+
+		for _, tx := range txs {
+			err := pool.addRemoteSync(tx)
+			require.NoError(t, err)
+		}
 	}
 
 	// Add some valid local transactions with tips bellow the minimum
 	const localTransactions = 5
 	for range localTransactions {
-		tx := signTx(t, &types.DynamicFeeTx{
+		txs := createTransactions(t, &types.DynamicFeeTx{
 			GasTipCap: big.NewInt(int64(poolConfig.MinimumTip - 1)), // below minimum tip, but valid as local
 			GasFeeCap: big.NewInt(100),
 			Gas:       21_000,
 			To:        &common.Address{1}, // not a contract creation
-		}, chainId)
-		err := pool.AddLocal(tx)
-		require.NoError(t, err)
+		}, chainId, transactionsPerSender)
+
+		for _, tx := range txs {
+			err := pool.AddLocal(tx)
+			require.NoError(t, err)
+		}
 	}
 
 	pending, err := pool.Pending(true) // with tips enforcement
 	require.NoError(t, err)
-	require.Len(t,
-		pending, sponsoredTxs+tippedTransactions+localTransactions,
+	require.Len(t, pending,
+		sponsoredTxs+tippedTransactions+localTransactions,
 		"expected all valid txs to be included")
 
 	pendingSponsored := make([]*types.Transaction, 0, len(pending))
@@ -115,8 +127,12 @@ func TestTxPool_SponsoredTransactionsAreIncludedInThePendingSet(t *testing.T) {
 			}
 		}
 	}
-	require.Len(t, pendingSponsored, sponsoredTxs, "expected all sponsored txs to be included")
-	require.Len(t, pendingNormal, tippedTransactions+localTransactions, "expected all tipped txs to be included")
+	require.Len(t, pendingSponsored,
+		sponsoredTxs*transactionsPerSender,
+		"expected all sponsored txs to be included")
+	require.Len(t, pendingNormal,
+		tippedTransactions*transactionsPerSender+localTransactions*transactionsPerSender,
+		"expected all tipped txs to be included")
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -153,16 +169,40 @@ func mockChain(ctrl *gomock.Controller, chainConfig *params.ChainConfig, upgrade
 }
 
 // singTx creates and signs a transaction with a new key for each call.
-func signTx(t *testing.T, txData types.TxData, chainId *big.Int) *types.Transaction {
+func createTransactions(t *testing.T, txData types.TxData, chainId *big.Int, n int) []*types.Transaction {
 	t.Helper()
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
+	res := make([]*types.Transaction, n)
 
-	signer := types.LatestSignerForChainID(chainId)
-	return types.MustSignNewTx(key, signer, txData)
+	for i := range n {
+		SetNonce(txData, uint64(i))
+
+		signer := types.LatestSignerForChainID(chainId)
+		tx := types.MustSignNewTx(key, signer, txData)
+		res[i] = tx
+	}
+	return res
 }
 
 //go:generate mockgen -source=tx_pool_subsidies_test.go -destination=tx_pool_subsidies_test_mock.go -package=evmcore
+
+func SetNonce(tx types.TxData, nonce uint64) {
+	switch d := (tx).(type) {
+	case *types.LegacyTx:
+		d.Nonce = nonce
+	case *types.AccessListTx:
+		d.Nonce = nonce
+	case *types.DynamicFeeTx:
+		d.Nonce = nonce
+	case *types.BlobTx:
+		d.Nonce = nonce
+	case *types.SetCodeTx:
+		d.Nonce = nonce
+	default:
+		panic("unknown tx type")
+	}
+}
 
 // subscriber is a wrapper around event.Subscription to allow mocking it.
 type subscriber interface {
