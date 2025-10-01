@@ -103,6 +103,10 @@ var (
 	// ErrSponsorshipRejected is returned when a sponsored transaction request is
 	// not backed by a valid subsidy.
 	ErrSponsorshipRejected = errors.New("transaction sponsorship rejected")
+
+	// ErrSponsoredTransactionsDisabled is returned when validating a sponsorship
+	// request if gas subsidies are disabled in the current network rules.
+	ErrSponsoredTransactionsDisabled = errors.New("sponsored transactions are disabled")
 )
 
 var (

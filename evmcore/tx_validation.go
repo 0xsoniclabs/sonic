@@ -331,7 +331,10 @@ func validateSponsoredTransactions(
 
 	// No check is conducted if gas subsidies are not active.
 	if !netRules.gasSubsidies {
-		return nil
+		if !subsidies.IsSponsorshipRequest(tx) {
+			return nil
+		}
+		return ErrSponsoredTransactionsDisabled
 	}
 
 	// If the transaction is not a sponsorship request, skip all sponsored transaction checks.

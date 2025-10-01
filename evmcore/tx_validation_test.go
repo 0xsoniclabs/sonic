@@ -1217,7 +1217,16 @@ func Test_validateSponsoredTransactions_RejectsSponsoredTransactions(t *testing.
 		configure        func(SubsidiesChecker *MocksubsidiesChecker)
 		expectedError    error
 	}{
-		"ignore sponsored tx when subsidies are disabled": {
+		"ignore non-sponsored tx when subsidies are disabled": {
+			subsidiesEnabled: false,
+			tx: &types.LegacyTx{
+				// contract creation => never sponsored
+				Gas:      100_000,
+				GasPrice: big.NewInt(0),
+				V:        big.NewInt(27), // not an internal tx
+			},
+		},
+		"reject sponsored tx when subsidies are disabled": {
 			subsidiesEnabled: false,
 			tx: &types.LegacyTx{
 				To:       &common.Address{42}, // not a contract creation
@@ -1225,6 +1234,7 @@ func Test_validateSponsoredTransactions_RejectsSponsoredTransactions(t *testing.
 				GasPrice: big.NewInt(0),
 				V:        big.NewInt(27), // not an internal tx
 			},
+			expectedError: ErrSponsoredTransactionsDisabled,
 		},
 		"ignore tx when it is not a sponsor request": {
 			subsidiesEnabled: true,
