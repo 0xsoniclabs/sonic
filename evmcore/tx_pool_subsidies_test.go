@@ -33,12 +33,6 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-//go:generate mockgen -source=tx_pool_subsidies_test.go -destination=tx_pool_subsidies_test_mock.go -package=evmcore
-
-type subscriber interface {
-	event.Subscription
-}
-
 // This file contains tests related to gas subsidies in the transaction pool.
 // This file is intentionally separated from other pool tests to avoid polluting
 // them with extra test tools.
@@ -166,6 +160,13 @@ func signTx(t *testing.T, txData types.TxData, chainId *big.Int) *types.Transact
 
 	signer := types.LatestSignerForChainID(chainId)
 	return types.MustSignNewTx(key, signer, txData)
+}
+
+//go:generate mockgen -source=tx_pool_subsidies_test.go -destination=tx_pool_subsidies_test_mock.go -package=evmcore
+
+// subscriber is a wrapper around event.Subscription to allow mocking it.
+type subscriber interface {
+	event.Subscription
 }
 
 // suppress unused warning

@@ -588,7 +588,7 @@ func (pool *TxPool) Pending(enforceTips bool) (map[common.Address]types.Transact
 					break
 				}
 
-				// Pending does has no responsibility to filter out invalid sponsored txs
+				// Pending is not responsible for filtering out invalid sponsored txs
 				// this belongs to add and reorg. At this location, it can be assumed
 				// that if the tx is a sponsorship request, it is backed by a valid subsidy.
 				if subsidies.IsSponsorshipRequest(tx) {
