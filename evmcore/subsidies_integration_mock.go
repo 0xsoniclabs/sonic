@@ -16,40 +16,40 @@ import (
 	gomock "go.uber.org/mock/gomock"
 )
 
-// MockSubsidiesChecker is a mock of SubsidiesChecker interface.
-type MockSubsidiesChecker struct {
+// MocksubsidiesChecker is a mock of subsidiesChecker interface.
+type MocksubsidiesChecker struct {
 	ctrl     *gomock.Controller
-	recorder *MockSubsidiesCheckerMockRecorder
+	recorder *MocksubsidiesCheckerMockRecorder
 	isgomock struct{}
 }
 
-// MockSubsidiesCheckerMockRecorder is the mock recorder for MockSubsidiesChecker.
-type MockSubsidiesCheckerMockRecorder struct {
-	mock *MockSubsidiesChecker
+// MocksubsidiesCheckerMockRecorder is the mock recorder for MocksubsidiesChecker.
+type MocksubsidiesCheckerMockRecorder struct {
+	mock *MocksubsidiesChecker
 }
 
-// NewMockSubsidiesChecker creates a new mock instance.
-func NewMockSubsidiesChecker(ctrl *gomock.Controller) *MockSubsidiesChecker {
-	mock := &MockSubsidiesChecker{ctrl: ctrl}
-	mock.recorder = &MockSubsidiesCheckerMockRecorder{mock}
+// NewMocksubsidiesChecker creates a new mock instance.
+func NewMocksubsidiesChecker(ctrl *gomock.Controller) *MocksubsidiesChecker {
+	mock := &MocksubsidiesChecker{ctrl: ctrl}
+	mock.recorder = &MocksubsidiesCheckerMockRecorder{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockSubsidiesChecker) EXPECT() *MockSubsidiesCheckerMockRecorder {
+func (m *MocksubsidiesChecker) EXPECT() *MocksubsidiesCheckerMockRecorder {
 	return m.recorder
 }
 
-// IsSponsored mocks base method.
-func (m *MockSubsidiesChecker) IsSponsored(tx *types.Transaction) bool {
+// isSponsored mocks base method.
+func (m *MocksubsidiesChecker) isSponsored(tx *types.Transaction) bool {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "IsSponsored", tx)
+	ret := m.ctrl.Call(m, "isSponsored", tx)
 	ret0, _ := ret[0].(bool)
 	return ret0
 }
 
-// IsSponsored indicates an expected call of IsSponsored.
-func (mr *MockSubsidiesCheckerMockRecorder) IsSponsored(tx any) *gomock.Call {
+// isSponsored indicates an expected call of isSponsored.
+func (mr *MocksubsidiesCheckerMockRecorder) isSponsored(tx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsSponsored", reflect.TypeOf((*MockSubsidiesChecker)(nil).IsSponsored), tx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "isSponsored", reflect.TypeOf((*MocksubsidiesChecker)(nil).isSponsored), tx)
 }

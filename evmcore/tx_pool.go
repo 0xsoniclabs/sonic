@@ -99,6 +99,14 @@ var (
 	// ErrOutOfOrderTxFromDelegated is returned when the transaction with gapped
 	// nonce received from the accounts with delegation or pending delegation.
 	ErrOutOfOrderTxFromDelegated = errors.New("gapped-nonce tx from delegated accounts")
+
+	// ErrSponsorshipRejected is returned when a sponsored transaction request is
+	// not backed by a valid subsidy.
+	ErrSponsorshipRejected = errors.New("transaction sponsorship rejected")
+
+	// ErrSponsoredTransactionsDisabled is returned when validating a sponsorship
+	// request if gas subsidies are disabled in the current network rules.
+	ErrSponsoredTransactionsDisabled = errors.New("sponsored transactions are disabled")
 )
 
 var (
@@ -167,6 +175,15 @@ type StateReader interface {
 	GetCurrentRules() opera.Rules
 	GetHeader(common.Hash, uint64) *EvmHeader
 }
+
+// subsidiesCheckerFactory is a factory method to create a subsidies checker instance.
+// This facilitates testing of the TxPool by using injected mock implementations.
+type subsidiesCheckerFactory func(
+	rules opera.Rules,
+	chain StateReader,
+	state state.StateDB,
+	signer types.Signer,
+) subsidiesChecker
 
 // TxPoolConfig are the configuration parameters of the transaction pool.
 type TxPoolConfig struct {
@@ -307,6 +324,8 @@ type TxPool struct {
 
 	waitForIdleReorgLoopRequestCh  chan struct{} // requests to wait for reorg completion
 	waitForIdleReorgLoopResponseCh chan struct{} // responses to waitForReorgDoneRequestCh
+
+	subsidiesCheckerFactory subsidiesCheckerFactory // Factory to create a subsidies checker instance
 }
 
 type txpoolResetRequest struct {
@@ -315,7 +334,19 @@ type txpoolResetRequest struct {
 
 // NewTxPool creates a new transaction pool to gather, sort and filter inbound
 // transactions from the network.
-func NewTxPool(config TxPoolConfig, chainconfig *params.ChainConfig, chain StateReader) *TxPool {
+func NewTxPool(
+	config TxPoolConfig,
+	chainconfig *params.ChainConfig,
+	chain StateReader) *TxPool {
+	return newTxPool(config, chainconfig, chain, newSubsidiesChecker)
+}
+
+func newTxPool(
+	config TxPoolConfig,
+	chainconfig *params.ChainConfig,
+	chain StateReader,
+	subsidiesCheckerFactory subsidiesCheckerFactory,
+) *TxPool {
 	// Sanitize the input to ensure no vulnerable gas prices are set
 	config = (&config).sanitize()
 
@@ -339,6 +370,8 @@ func NewTxPool(config TxPoolConfig, chainconfig *params.ChainConfig, chain State
 
 		waitForIdleReorgLoopRequestCh:  make(chan struct{}),
 		waitForIdleReorgLoopResponseCh: make(chan struct{}),
+
+		subsidiesCheckerFactory: subsidiesCheckerFactory,
 	}
 	pool.locals = newAccountSet(pool.signer)
 	for _, addr := range config.Locals {
@@ -675,7 +708,23 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 
 		gasSubsidies: pool.chain.GetCurrentRules().Upgrades.GasSubsidies,
 	}
-	err := validateTx(tx, opts, netRules, pool.chain, pool.currentState, pool.signer)
+
+	subsidiesChecker := pool.subsidiesCheckerFactory(
+		pool.chain.GetCurrentRules(),
+		pool.chain,
+		pool.currentState,
+		pool.signer,
+	)
+
+	err := validateTx(
+		tx,
+		opts,
+		netRules,
+		pool.chain,
+		pool.currentState,
+		subsidiesChecker,
+		pool.signer,
+	)
 	if err != nil {
 		return err
 	}
