@@ -334,6 +334,13 @@ type txpoolResetRequest struct {
 func NewTxPool(
 	config TxPoolConfig,
 	chainconfig *params.ChainConfig,
+	chain StateReader) *TxPool {
+	return newTxPool(config, chainconfig, chain, NewSubsidiesChecker)
+}
+
+func newTxPool(
+	config TxPoolConfig,
+	chainconfig *params.ChainConfig,
 	chain StateReader,
 	subsidiesCheckerFactory subsidiesCheckerFactory,
 ) *TxPool {
