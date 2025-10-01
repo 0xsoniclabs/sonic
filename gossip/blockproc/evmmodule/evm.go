@@ -21,6 +21,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/params"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
@@ -30,6 +31,8 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 )
+
+//go:generate mockgen -source=evm.go -destination=evm_mock.go -package=evmmodule
 
 type EVMModule struct{}
 
@@ -64,16 +67,17 @@ func (p *EVMModule) Start(
 	statedb.BeginBlock(uint64(block.Idx))
 
 	return &OperaEVMProcessor{
-		block:         block,
-		reader:        reader,
-		statedb:       statedb,
-		onNewLog:      onNewLog,
-		rules:         rules,
-		evmCfg:        evmCfg,
-		blockIdx:      uint64(block.Idx),
-		prevBlockHash: prevBlockHash,
-		prevRandao:    prevrandao,
-		gasBaseFee:    baseFee,
+		block:            block,
+		reader:           reader,
+		statedb:          statedb,
+		onNewLog:         onNewLog,
+		rules:            rules,
+		evmCfg:           evmCfg,
+		blockIdx:         uint64(block.Idx),
+		prevBlockHash:    prevBlockHash,
+		prevRandao:       prevrandao,
+		gasBaseFee:       baseFee,
+		processorFactory: stateProcessorFactory{},
 	}
 }
 
@@ -91,9 +95,10 @@ type OperaEVMProcessor struct {
 
 	gasUsed uint64
 
-	incomingTxs  types.Transactions
 	processedTxs []evmcore.ProcessedTransaction
 	prevRandao   common.Hash
+
+	processorFactory _stateProcessorFactory
 }
 
 func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlock {
@@ -135,8 +140,8 @@ func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlo
 }
 
 func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) []evmcore.ProcessedTransaction {
-	evmProcessor := evmcore.NewStateProcessor(p.evmCfg, p.reader, p.rules.Upgrades)
-	txsOffset := uint(len(p.incomingTxs))
+	evmProcessor := p.processorFactory.NewStateProcessor(p.evmCfg, p.reader, p.rules.Upgrades)
+	txsOffset := uint(len(p.processedTxs))
 
 	vmConfig := opera.GetVmConfig(p.rules)
 
@@ -156,15 +161,14 @@ func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) []e
 		}
 	}
 
-	p.incomingTxs = append(p.incomingTxs, txs...)
 	p.processedTxs = append(p.processedTxs, processed...)
 
 	return processed
 }
 
 func (p *OperaEVMProcessor) Finalize() (evmBlock *evmcore.EvmBlock, numSkipped int, receipts types.Receipts) {
-	transactions := make(types.Transactions, 0, len(p.incomingTxs))
-	receipts = make(types.Receipts, 0, len(p.incomingTxs))
+	transactions := make(types.Transactions, 0, len(p.processedTxs))
+	receipts = make(types.Receipts, 0, len(p.processedTxs))
 	for _, tx := range p.processedTxs {
 		if tx.Receipt != nil {
 			transactions = append(transactions, tx.Transaction)
@@ -183,4 +187,39 @@ func (p *OperaEVMProcessor) Finalize() (evmBlock *evmcore.EvmBlock, numSkipped i
 	evmBlock.Root = p.statedb.GetStateHash()
 
 	return
+}
+
+// _stateProcessorFactory is an internal interface to allow introducing mocked
+// state processors in tests.
+type _stateProcessorFactory interface {
+	NewStateProcessor(
+		evmCfg *params.ChainConfig,
+		reader evmcore.DummyChain,
+		upgrades opera.Upgrades,
+	) _stateProcessor
+}
+
+// _stateProcessor is an internal interface to allow introducing mocked
+// state processors in tests.
+type _stateProcessor interface {
+	Process(
+		block *evmcore.EvmBlock,
+		statedb state.StateDB,
+		vmCfg vm.Config,
+		gasLimit uint64,
+		gasUsed *uint64,
+		onNewLog func(*types.Log),
+	) []evmcore.ProcessedTransaction
+}
+
+// stateProcessorFactory is the production implementation of the
+// _stateProcessorFactory using the real evmcore.StateProcessor.
+type stateProcessorFactory struct{}
+
+func (stateProcessorFactory) NewStateProcessor(
+	evmCfg *params.ChainConfig,
+	reader evmcore.DummyChain,
+	upgrades opera.Upgrades,
+) _stateProcessor {
+	return evmcore.NewStateProcessor(evmCfg, reader, upgrades)
 }
