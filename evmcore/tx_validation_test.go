@@ -955,9 +955,9 @@ func TestValidateTx_RejectsTx_WhenStaticValidationFails(t *testing.T) {
 			chain := NewMockStateReader(ctrl)
 			chain.EXPECT().GetCurrentBaseFee().Return(big.NewInt(5)).AnyTimes()
 			state := state.NewMockStateDB(ctrl)
-			SubsidiesChecker := NewMockSubsidiesChecker(ctrl)
+			subsidiesChecker := NewMockSubsidiesChecker(ctrl)
 
-			err := validateTx(types.NewTx(tx), opts, rules, chain, state, SubsidiesChecker, signer)
+			err := validateTx(types.NewTx(tx), opts, rules, chain, state, subsidiesChecker, signer)
 			require.Error(t, err)
 		})
 	}
@@ -1229,13 +1229,13 @@ func Test_validateSponsoredTransactions_RejectsSponsoredTransactions(t *testing.
 		"ignore tx when it is not a sponsor request": {
 			subsidiesEnabled: true,
 			tx: &types.LegacyTx{
-				// contract creation
+				// contract creation => never sponsored
 				Gas:      100_000,
 				GasPrice: big.NewInt(0),
 				V:        big.NewInt(27), // not an internal tx
 			},
 		},
-		"reject tx when soponsorship is not approved": {
+		"reject tx when sponsorship is not approved": {
 			subsidiesEnabled: true,
 			tx: &types.LegacyTx{
 				To:       &common.Address{42}, // not a contract creation
