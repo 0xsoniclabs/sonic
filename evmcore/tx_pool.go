@@ -99,6 +99,10 @@ var (
 	// ErrOutOfOrderTxFromDelegated is returned when the transaction with gapped
 	// nonce received from the accounts with delegation or pending delegation.
 	ErrOutOfOrderTxFromDelegated = errors.New("gapped-nonce tx from delegated accounts")
+
+	// ErrSponsorshipRejected is returned when a sponsored transaction request is
+	// not backed by a valid subsidy.
+	ErrSponsorshipRejected = errors.New("transaction sponsorship rejected")
 )
 
 var (
@@ -356,6 +360,8 @@ func NewTxPool(
 
 		waitForIdleReorgLoopRequestCh:  make(chan struct{}),
 		waitForIdleReorgLoopResponseCh: make(chan struct{}),
+
+		subsidiesCheckerFactory: subsidiesCheckerFactory,
 	}
 	pool.locals = newAccountSet(pool.signer)
 	for _, addr := range config.Locals {
@@ -693,7 +699,23 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 
 		gasSubsidies: pool.chain.GetCurrentRules().Upgrades.GasSubsidies,
 	}
-	err := validateTx(tx, opts, netRules, pool.chain, pool.currentState, pool.signer)
+
+	subsidiesChecker := pool.subsidiesCheckerFactory(
+		pool.chain.GetCurrentRules(),
+		pool.chain,
+		pool.currentState,
+		pool.signer,
+	)
+
+	err := validateTx(
+		tx,
+		opts,
+		netRules,
+		pool.chain,
+		pool.currentState,
+		subsidiesChecker,
+		pool.signer,
+	)
 	if err != nil {
 		return err
 	}
