@@ -214,20 +214,10 @@ func (r *transactionRunner) runSponsoredTransaction(
 	tx *types.Transaction,
 	txIndex int,
 ) []ProcessedTransaction {
-	// Check the remaining available gas to be used in this block.
-	available := ctxt.gasPool.Gas()
-	needed := tx.Gas() + subsidies.SponsorshipOverheadGasCost
-	if available < needed {
-		log.Debug("Not enough gas left in block for sponsored transaction",
-			"tx", tx.Hash().Hex(), "available", available, "needed", needed,
-		)
-		return []ProcessedTransaction{{Transaction: tx}}
-	}
-
 	// Run the IsCovered query in a snapshot to avoid spilling any side-effects
 	// like warm storage slots or refunds into the actual transaction.
 	snapshot := ctxt.statedb.Snapshot()
-	covered, fundId, err := subsidies.IsCovered(
+	covered, fundId, config, err := subsidies.IsCovered(
 		ctxt.upgrades, r.evm, ctxt.signer, tx, ctxt.baseFee,
 	)
 	ctxt.statedb.RevertToSnapshot(snapshot)
@@ -237,6 +227,16 @@ func (r *transactionRunner) runSponsoredTransaction(
 	}
 	if !covered {
 		log.Debug("Transaction is not covered by a subsidy", "tx", tx.Hash().Hex())
+		return []ProcessedTransaction{{Transaction: tx}}
+	}
+
+	// Check the remaining available gas to be used in this block.
+	available := ctxt.gasPool.Gas()
+	needed := tx.Gas() + config.SponsorshipOverheadGasCost
+	if available < needed {
+		log.Debug("Not enough gas left in block for sponsored transaction",
+			"tx", tx.Hash().Hex(), "available", available, "needed", needed,
+		)
 		return []ProcessedTransaction{{Transaction: tx}}
 	}
 
@@ -250,7 +250,7 @@ func (r *transactionRunner) runSponsoredTransaction(
 	// Charge the fee for the sponsored transaction to the subsidy fund.
 	gasUsed := processed.Receipt.GasUsed
 	feeChargingTx, err := subsidies.GetFeeChargeTransaction(
-		ctxt.statedb, fundId, gasUsed, ctxt.baseFee,
+		ctxt.statedb, fundId, config, gasUsed, ctxt.baseFee,
 	)
 	if err != nil {
 		// Note: at this point the sponsored transaction has been executed, but

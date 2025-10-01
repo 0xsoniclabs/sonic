@@ -31,14 +31,6 @@ import (
 
 //go:generate mockgen -source=subsidies.go -destination=subsidies_mock.go -package=subsidies
 
-// SponsorshipOverheadGasCost is the additional gas cost incurred when a
-// transaction is sponsored. It covers the overhead of calling the subsidies
-// registry contract to check for available funds and to deduct the fees after
-// the sponsored transaction has been executed.
-const SponsorshipOverheadGasCost = 0 +
-	registry.GasLimitForChooseFundCall +
-	registry.GasLimitForDeductFeesCall
-
 // IsSponsorshipRequest checks if a transaction is requesting sponsorship from
 // a pre-allocated sponsorship pool. A sponsorship request is defined as a
 // transaction with a maximum gas price of zero.
@@ -65,44 +57,63 @@ func IsCovered(
 	reader SenderReader,
 	tx *types.Transaction,
 	baseFee *big.Int,
-) (bool, FundId, error) {
+) (bool, FundId, GasConfig, error) {
 	if !upgrades.GasSubsidies {
-		return false, FundId{}, nil
+		return false, FundId{}, GasConfig{}, nil
 	}
 	if !IsSponsorshipRequest(tx) {
-		return false, FundId{}, nil
+		return false, FundId{}, GasConfig{}, nil
 	}
 
-	// Build the example query call to the subsidies registry contract.
+	// Derive the sender of the transaction before interacting with the EVM.
+	sender, err := reader.Sender(tx)
+	if err != nil {
+		return false, FundId{}, GasConfig{}, fmt.Errorf("failed to derive sender: %w", err)
+	}
+
+	// Fetch the current configuration from the subsidies registry.
+	gasConfig, err := getGasConfig(vm)
+	if err != nil {
+		return false, FundId{}, GasConfig{}, fmt.Errorf("failed to get gas config: %w", err)
+	}
+
+	// Build the choose-fund query call to the subsidies registry contract.
 	caller := common.Address{}
 	target := registry.GetAddress()
 
 	// Build the input data for the IsCovered call.
-	maxGas := tx.Gas() + SponsorshipOverheadGasCost
+	maxGas := tx.Gas() + gasConfig.overheadToCharge // < maximum what is charged for
 	maxFee := new(big.Int).Mul(baseFee, new(big.Int).SetUint64(maxGas))
-	input, err := createChooseFundInput(reader, tx, maxFee)
+	input, err := createChooseFundInput(sender, tx, maxFee)
 	if err != nil {
-		return false, FundId{}, fmt.Errorf("failed to create input for subsidies registry call: %w", err)
+		return false, FundId{}, GasConfig{}, fmt.Errorf("failed to create input for subsidies registry call: %w", err)
 	}
 
 	// Run the query on the EVM and the provided state.
-	const initialGas = registry.GasLimitForChooseFundCall
-	result, _, err := vm.Call(caller, target, input, initialGas, uint256.NewInt(0))
+	result, _, err := vm.Call(caller, target, input, gasConfig.chooseFundGasLimit, uint256.NewInt(0))
 	if err != nil {
-		return false, FundId{}, fmt.Errorf("EVM call failed: %w", err)
+		return false, FundId{}, GasConfig{}, fmt.Errorf("EVM call failed: %w", err)
 	}
 
 	// An empty result indicates that there is no contract installed.
 	if len(result) == 0 {
-		return false, FundId{}, fmt.Errorf("subsidies registry contract not found")
+		return false, FundId{}, GasConfig{}, fmt.Errorf("subsidies registry contract not found")
 	}
 
 	// Parse the result of the call.
 	covered, fundID, err := parseChooseFundResult(result)
 	if err != nil {
-		return false, FundId{}, fmt.Errorf("failed to parse result of subsidies registry call: %w", err)
+		return false, FundId{}, GasConfig{}, fmt.Errorf("failed to parse result of subsidies registry call: %w", err)
 	}
-	return covered, fundID, nil
+	return covered, fundID, GasConfig{
+		DeductFeesGasCost:          gasConfig.deductFeesGasLimit,
+		SponsorshipOverheadGasCost: gasConfig.overheadToCharge,
+	}, nil
+}
+
+type GasConfig struct {
+	SponsorshipOverheadGasCost uint64
+	DeductFeesGasCost          uint64
 }
 
 // VirtualMachine is a minimal interface for an EVM instance that can be used
@@ -129,10 +140,10 @@ type VirtualMachine interface {
 func GetFeeChargeTransaction(
 	nonceSource NonceSource,
 	fundId FundId,
+	config GasConfig,
 	gasUsed uint64,
 	gasPrice *big.Int,
 ) (*types.Transaction, error) {
-	const gasLimit = registry.GasLimitForDeductFeesCall
 	sender := common.Address{}
 	nonce := nonceSource.GetNonce(sender)
 
@@ -140,7 +151,7 @@ func GetFeeChargeTransaction(
 	fee, overflow := uint256.FromBig(new(big.Int).Mul(
 		new(big.Int).Add(
 			new(big.Int).SetUint64(gasUsed),
-			new(big.Int).SetUint64(SponsorshipOverheadGasCost),
+			new(big.Int).SetUint64(config.SponsorshipOverheadGasCost),
 		),
 		gasPrice,
 	))
@@ -150,7 +161,8 @@ func GetFeeChargeTransaction(
 
 	input := createDeductFeesInput(fundId, *fee)
 	return types.NewTransaction(
-		nonce, registry.GetAddress(), common.Big0, gasLimit, common.Big0, input,
+		nonce, registry.GetAddress(), common.Big0,
+		config.DeductFeesGasCost, common.Big0, input,
 	), nil
 }
 
@@ -169,22 +181,75 @@ type SenderReader interface {
 
 // --- utility functions ---
 
+// getGasConfig queries the subsidies registry contract for the current gas
+// configuration. It returns the gas limits to be used when calling the
+// `chooseFund` and `deductFees` functions, as well as the overhead to charge
+// for sponsored transactions.
+func getGasConfig(
+	vm VirtualMachine,
+) (gasConfig, error) {
+	// Call the getGasConfig function on the subsidies registry contract, which
+	// takes no arguments and returns three uint64 values.
+	caller := common.Address{}
+	target := registry.GetAddress()
+
+	// Build the input data for the IsCovered call.
+	input := make([]byte, 4) // function selector only
+	binary.BigEndian.PutUint32(input, registry.GetGasConfigFunctionSelector)
+
+	// Run the query on the EVM and the provided state.
+	const initialGas = registry.GasLimitForGetGasConfig
+	result, _, err := vm.Call(caller, target, input, initialGas, uint256.NewInt(0))
+	if err != nil {
+		return gasConfig{}, fmt.Errorf("EVM call failed: %w", err)
+	}
+
+	// An empty result indicates that there is no contract installed.
+	if len(result) == 0 {
+		return gasConfig{}, fmt.Errorf("subsidies registry contract not found")
+	}
+
+	if len(result) != 3*32 {
+		return gasConfig{}, fmt.Errorf("invalid result length from getGasConfig call, wanted %d, got %d", 3*32, len(result))
+	}
+
+	// check for uint64 overflows
+	type bytes24 [24]byte
+	zero := bytes24{}
+	if bytes24(result[0:32-8]) != zero ||
+		bytes24(result[32:64-8]) != zero ||
+		bytes24(result[64:96-8]) != zero {
+		return gasConfig{}, fmt.Errorf("invalid result from getGasConfig call, values do not fit into uint64")
+	}
+
+	chooseFundGasLimit := binary.BigEndian.Uint64(result[32-8 : 32])
+	deductFeesGasLimit := binary.BigEndian.Uint64(result[64-8 : 64])
+	overheadToCharge := binary.BigEndian.Uint64(result[96-8 : 96])
+	return gasConfig{
+		chooseFundGasLimit: chooseFundGasLimit,
+		deductFeesGasLimit: deductFeesGasLimit,
+		overheadToCharge:   overheadToCharge,
+	}, nil
+}
+
+type gasConfig struct {
+	chooseFundGasLimit uint64
+	deductFeesGasLimit uint64
+	overheadToCharge   uint64
+}
+
 // createChooseFundInput creates the input data for the chooseFund call to the
 // subsidies registry contract.
 func createChooseFundInput(
-	reader SenderReader,
+	sender common.Address,
 	tx *types.Transaction,
 	fee *big.Int,
 ) ([]byte, error) {
-	if reader == nil || tx == nil || fee == nil {
-		return nil, fmt.Errorf("invalid transaction, reader, or fee")
+	if tx == nil || fee == nil {
+		return nil, fmt.Errorf("invalid transaction or fee")
 	}
 	if fee.BitLen() > 256 {
 		return nil, fmt.Errorf("fee does not fit into 32 bytes")
-	}
-	from, err := reader.Sender(tx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to derive sender: %w", err)
 	}
 
 	to := common.Address{}
@@ -199,7 +264,7 @@ func createChooseFundInput(
 	// The from and to addresses are padded to 32 bytes.
 	addressPadding := [12]byte{}
 	input = append(input, addressPadding[:]...)
-	input = append(input, from[:]...)
+	input = append(input, sender[:]...)
 	input = append(input, addressPadding[:]...)
 	input = append(input, to[:]...)
 
