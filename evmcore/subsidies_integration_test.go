@@ -32,6 +32,9 @@ import (
 	gomock "go.uber.org/mock/gomock"
 )
 
+// static assert interface implementation
+var _ subsidiesChecker = &subsidiesIntegrationImplementation{}
+
 func TestSubsidiesIntegration_SubsidiesCheckerCanExecuteContracts(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
@@ -55,7 +58,7 @@ func TestSubsidiesIntegration_SubsidiesCheckerCanExecuteContracts(t *testing.T) 
 
 	signer := types.LatestSignerForChainID(big.NewInt(1))
 
-	checker := NewSubsidiesChecker(rules, chain, state, signer)
+	checker := newSubsidiesChecker(rules, chain, state, signer)
 
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
@@ -95,7 +98,7 @@ func TestSubsidiesIntegration_SubsidiesCheckerReturnsFalseIfContractIsNotDeploye
 
 	signer := types.LatestSignerForChainID(big.NewInt(1))
 
-	checker := NewSubsidiesChecker(rules, chain, state, signer)
+	checker := newSubsidiesChecker(rules, chain, state, signer)
 
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
@@ -124,7 +127,8 @@ func makeHappyStateDb(
 	chain := NewMockStateReader(ctrl)
 	chain.EXPECT().CurrentBlock().Return(&EvmBlock{
 		EvmHeader: EvmHeader{
-			Number: big.NewInt(1),
+			Number:     big.NewInt(1),
+			PrevRandao: common.Hash{1}, // revision >= merge
 		},
 	}).AnyTimes()
 	chain.EXPECT().GetCurrentBaseFee().Return(big.NewInt(1)).AnyTimes()
@@ -143,5 +147,6 @@ func makeHappyStateDb(
 	state.EXPECT().GetState(any, any).Return(common.Hash{}).AnyTimes()
 	state.EXPECT().GetRefund().Return(uint64(0)).AnyTimes()
 	state.EXPECT().SubRefund(any).Return().AnyTimes()
+	state.EXPECT().RevertToSnapshot(any).AnyTimes()
 	return chain, state
 }

@@ -17,51 +17,46 @@
 package evmcore
 
 import (
-	"log/slog"
-	"math"
-	"math/big"
-	"time"
-
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 //go:generate mockgen -source=subsidies_integration.go -destination=subsidies_integration_mock.go -package=evmcore
 
-// SubsidiesChecker is an interface for checking if a transaction is sponsored
+// subsidiesChecker is an interface for checking if a transaction is sponsored
 // by the subsidies contract.
 // it does not include [subsidies.IsCovered] directly to avoid creating dependencies
 // on state for an operation which is pure.
 //
 // This interface facilitates testing and decouples the subsidies integration
 // logic from the transaction pool.
-type SubsidiesChecker interface {
+type subsidiesChecker interface {
 	isSponsored(tx *types.Transaction) bool
 }
 
-// SubsidiesIntegrationImplementation uses the subsidies contract to determine
+// subsidiesIntegrationImplementation uses the subsidies contract to determine
 // if a transaction is sponsored.
-type SubsidiesIntegrationImplementation struct {
+type subsidiesIntegrationImplementation struct {
 	rules  opera.Rules
 	chain  StateReader
 	state  state.StateDB
 	signer types.Signer
 }
 
-// NewSubsidiesChecker creates a new SubsidiesChecker instance.
+// newSubsidiesChecker creates a new SubsidiesChecker instance.
 // This instance is capable of executing the subsidies contract to determine
 // if a transaction is sponsored.
-func NewSubsidiesChecker(
+func newSubsidiesChecker(
 	rules opera.Rules,
 	chain StateReader,
 	state state.StateDB,
 	signer types.Signer,
-) SubsidiesChecker {
-	return &SubsidiesIntegrationImplementation{
+) subsidiesChecker {
+	return &subsidiesIntegrationImplementation{
 		rules:  rules,
 		chain:  chain,
 		state:  state,
@@ -69,38 +64,20 @@ func NewSubsidiesChecker(
 	}
 }
 
-func (s *SubsidiesIntegrationImplementation) isSponsored(tx *types.Transaction) bool {
+func (s *subsidiesIntegrationImplementation) isSponsored(tx *types.Transaction) bool {
 	currentBlock := s.chain.CurrentBlock()
 	baseFee := s.chain.GetCurrentBaseFee()
-	blockContext := vm.BlockContext{
-		CanTransfer: CanTransfer,
-		Transfer:    Transfer,
-		GetHash: func(number uint64) common.Hash {
-			block := s.chain.GetBlock(common.Hash{}, number)
-			if block != nil {
-				return block.Hash
-			}
-			return common.Hash{}
-		},
-		BlockNumber: new(big.Int).Add(currentBlock.Number, common.Big1),
-		Time:        uint64(time.Now().Unix()),
-		Difficulty:  big.NewInt(0),
-		BaseFee:     baseFee,
-		GasLimit:    math.MaxInt64,
-		Random:      &common.Hash{}, // < signals Revision >= Merge
-		BlobBaseFee: big.NewInt(1),  // TODO issue #147
-	}
 
 	// Create a EVM processor instance to run the IsCovered query.
+	blockContext := NewEVMBlockContext(currentBlock.Header(), s.chain, nil)
 	vmConfig := opera.GetVmConfig(s.rules)
 	vm := vm.NewEVM(blockContext, s.state, s.chain.Config(), vmConfig)
+
+	// Query the subsidies registry contract to determine if the transaction is sponsored.
 	isSponsored, _, err := subsidies.IsCovered(s.rules.Upgrades, vm, s.signer, tx, baseFee)
 	if err != nil {
-		slog.Warn("Error checking if tx is sponsored", "tx", tx.Hash(), "err", err)
+		log.Warn("Error checking if tx is sponsored", "tx", tx.Hash(), "err", err)
 		return false
 	}
 	return isSponsored
 }
-
-// static assert interface implementation
-var _ SubsidiesChecker = &SubsidiesIntegrationImplementation{}
