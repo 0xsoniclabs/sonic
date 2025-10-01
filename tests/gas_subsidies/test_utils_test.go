@@ -22,6 +22,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
+	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 )
@@ -45,7 +46,7 @@ func TestGasSubsidies_HelperFunctions(t *testing.T) {
 	require.NoError(t, err)
 	defer client.Close()
 
-	registry := Fund(t, net, sponsor, sponsee, donation)
+	registry := Fund(t, net, sponsor.Address(), sponsee.Address(), donation)
 
 	tx := types.LegacyTx{
 		To:       &receiverAddress,
@@ -53,14 +54,14 @@ func TestGasSubsidies_HelperFunctions(t *testing.T) {
 		GasPrice: big.NewInt(1e9),
 	}
 
-	sponsoredTx := makeSponsorRequestTransaction(t, &tx, net.GetChainId(), sponsor.PrivateKey)
+	sponsoredTx := makeSponsorRequestTransaction(t, &tx, net.GetChainId(), sponsee.PrivateKey)
 	require.Equal(t, sponsoredTx.GasPrice(), big.NewInt(0))
 
 	// need to wait for subsidies to be implemented.
-	// receipt, err := net.Run(sponsoredTx)
-	// require.NoError(t, err)
-	// require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
-	// validateSponsoredTxInBlock(t, net, sponsoredTx.Hash())
+	receipt, err := net.Run(sponsoredTx)
+	require.NoError(t, err)
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+	validateSponsoredTxInBlock(t, net, sponsoredTx.Hash())
 
 	// check that the sponsorship funds got deducted
 	ok, fundId, err := registry.AccountSponsorshipFundId(nil, sponsee.Address())
@@ -69,15 +70,10 @@ func TestGasSubsidies_HelperFunctions(t *testing.T) {
 
 	sponsorship, err := registry.Sponsorships(nil, fundId)
 	require.NoError(t, err)
-	require.Equal(t, donation, sponsorship.Funds)
-
-	normalTx := tests.CreateTransaction(t, net, &types.LegacyTx{}, sponsor)
-	receipt, err := net.Run(normalTx)
-	require.NoError(t, err)
-	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+	require.Less(t, sponsorship.Funds.Uint64(), donation.Uint64())
 
 	txIndex, block := getTransactionIndexInBlock(t, client, receipt)
 	require.GreaterOrEqual(t, len(block.Transactions()), txIndex+1)
 	require.Equal(t, receipt.TxHash, block.Transactions()[txIndex].Hash())
-	// require.True(t, internaltx.IsInternal(block.Transactions()[txIndex+1])) // this check is only for subsidized transactions
+	require.True(t, internaltx.IsInternal(block.Transactions()[txIndex+1])) // this check is only for subsidized transactions
 }

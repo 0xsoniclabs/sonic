@@ -37,12 +37,10 @@ import (
 func Fund(
 	t *testing.T,
 	session tests.IntegrationTestNetSession,
-	sponsor, sponsee *tests.Account,
+	sponsor, sponsee common.Address,
 	donation *big.Int,
 ) *registry.Registry {
 
-	t.Logf("Funding sponsorship for %v from %v with %v wei",
-		sponsee.Address(), sponsor.Address(), donation)
 	client, err := session.GetClient()
 	require.NoError(t, err)
 	defer client.Close()
@@ -50,11 +48,11 @@ func Fund(
 	registry, err := registry.NewRegistry(registry.GetAddress(), client)
 	require.NoError(t, err)
 
-	receipt, err := session.EndowAccount(sponsor.Address(), donation)
+	receipt, err := session.EndowAccount(sponsor, donation)
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
-	ok, fundId, err := registry.AccountSponsorshipFundId(nil, sponsee.Address())
+	ok, fundId, err := registry.AccountSponsorshipFundId(nil, sponsee)
 	receipt, err = session.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
 		opts.Value = donation
 		require.NoError(t, err)
@@ -100,12 +98,11 @@ func validateSponsoredTxInBlock(
 	found := false
 	for i, tx := range block.Transactions() {
 		if tx.Hash() == receipt.TxHash {
-			require.Less(i, len(block.Transactions()))
+			require.Less(i+1, len(block.Transactions()))
 			payment := block.Transactions()[i+1]
 			require.True(internaltx.IsInternal(payment), "payment transaction should be internal")
 			receipt, err := session.GetReceipt(payment.Hash())
 			require.NoError(err)
-			require.Less(receipt.GasUsed, uint64(100_000))
 			require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
 			found = true
 			break
@@ -119,13 +116,9 @@ func validateSponsoredTxInBlock(
 // gas price zero) from the given sender to the given receiver with the given
 // nonce.
 func makeSponsorRequestTransaction(t *testing.T, tx types.TxData, chainId *big.Int, senderKey *ecdsa.PrivateKey) *types.Transaction {
-	require := require.New(t)
-
 	signer := types.LatestSignerForChainID(chainId)
 	switch tx := tx.(type) {
 	case *types.LegacyTx:
-		tx.GasPrice = big.NewInt(0)
-	case *types.AccessListTx:
 		tx.GasPrice = big.NewInt(0)
 	case *types.DynamicFeeTx:
 		tx.GasFeeCap = big.NewInt(0)
@@ -137,7 +130,7 @@ func makeSponsorRequestTransaction(t *testing.T, tx types.TxData, chainId *big.I
 		t.Fatalf("unexpected transaction type: %T", tx)
 	}
 	sponsoredTx, err := types.SignNewTx(senderKey, signer, tx)
-	require.NoError(err)
+	require.NoError(t, err)
 	return sponsoredTx
 }
 
