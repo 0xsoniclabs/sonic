@@ -3394,6 +3394,6 @@ func testSubsidiesCheckerFactory(
 	chain StateReader,
 	state state.StateDB,
 	signer types.Signer,
-) SubsidiesChecker {
+) subsidiesChecker {
 	return nil
 }

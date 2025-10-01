@@ -260,7 +260,7 @@ func FuzzValidateTransaction(f *testing.F) {
 
 		signer := types.LatestSignerForChainID(chainId)
 
-		subsidiesChecker := NewMockSubsidiesChecker(ctrl)
+		subsidiesChecker := NewMocksubsidiesChecker(ctrl)
 
 		// Validate the transaction
 		validateErr := validateTx(signedTx, opt, netRules, chain, state, subsidiesChecker, signer)

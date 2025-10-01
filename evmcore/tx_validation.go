@@ -73,7 +73,7 @@ func validateTx(
 	netRules NetworkRules,
 	chain StateReader,
 	state state.StateDB, // Although this can be retrieved from chain, it's passed explicitly to avoid extra db-pool accesses
-	subsidiesChecker SubsidiesChecker,
+	subsidiesChecker subsidiesChecker,
 	signer types.Signer,
 ) error {
 
@@ -326,7 +326,7 @@ func validateTxForPool(
 func validateSponsoredTransactions(
 	tx *types.Transaction,
 	netRules NetworkRules,
-	SubsidiesChecker SubsidiesChecker,
+	SubsidiesChecker subsidiesChecker,
 ) error {
 
 	// No check is conducted if gas subsidies are not active.
@@ -340,7 +340,7 @@ func validateSponsoredTransactions(
 	}
 
 	// Sponsored transactions are only valid if they are explicitly marked as sponsored by the subsidies checker.
-	if !SubsidiesChecker.IsSponsored(tx) {
+	if !SubsidiesChecker.isSponsored(tx) {
 		return ErrSponsorshipRejected
 	}
 

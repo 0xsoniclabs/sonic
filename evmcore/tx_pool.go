@@ -179,7 +179,7 @@ type subsidiesCheckerFactory func(
 	chain StateReader,
 	state state.StateDB,
 	signer types.Signer,
-) SubsidiesChecker
+) subsidiesChecker
 
 // TxPoolConfig are the configuration parameters of the transaction pool.
 type TxPoolConfig struct {
@@ -335,7 +335,7 @@ func NewTxPool(
 	config TxPoolConfig,
 	chainconfig *params.ChainConfig,
 	chain StateReader) *TxPool {
-	return newTxPool(config, chainconfig, chain, NewSubsidiesChecker)
+	return newTxPool(config, chainconfig, chain, newSubsidiesChecker)
 }
 
 func newTxPool(
