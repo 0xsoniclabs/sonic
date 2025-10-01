@@ -260,8 +260,10 @@ func FuzzValidateTransaction(f *testing.F) {
 
 		signer := types.LatestSignerForChainID(chainId)
 
+		subsidiesChecker := NewMocksubsidiesChecker(ctrl)
+
 		// Validate the transaction
-		validateErr := validateTx(signedTx, opt, netRules, chain, state, signer)
+		validateErr := validateTx(signedTx, opt, netRules, chain, state, subsidiesChecker, signer)
 
 		// create evm to check validateTx is consistent with processor.
 		evm := makeTestEvm(blockNum, int64(baseFee), uint64(baseFee), state, revision, chainId)

@@ -119,10 +119,13 @@ func makeFuzzedHandler(t *testing.T) (*handler, error) {
 		}},
 		idx.Block(0),
 	)
-	txpool := evmcore.NewTxPool(evmcore.DefaultTxPoolConfig, chainconfig, &EvmStateReader{
-		ServiceFeed: feed,
-		store:       store,
-	})
+	txpool := evmcore.NewTxPool(
+		evmcore.DefaultTxPoolConfig,
+		chainconfig,
+		&EvmStateReader{
+			ServiceFeed: feed,
+			store:       store,
+		})
 	t.Cleanup(txpool.Stop)
 
 	h, err := newHandler(

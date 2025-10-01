@@ -72,6 +72,7 @@ func validateTx(
 	netRules NetworkRules,
 	chain StateReader,
 	state state.StateDB, // Although this can be retrieved from chain, it's passed explicitly to avoid extra db-pool accesses
+	subsidiesChecker subsidiesChecker,
 	signer types.Signer,
 ) error {
 
@@ -98,7 +99,9 @@ func validateTx(
 		return err
 	}
 
-	// TODO: check the backing of sponsored transactions
+	if err := validateSponsoredTransactions(tx, netRules, subsidiesChecker); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -309,5 +312,35 @@ func validateTxForPool(
 			opt.minTip, "tx.GasTipCap", tx.GasTipCap())
 		return ErrUnderpriced
 	}
+	return nil
+}
+
+// validateSponsoredTransactions checks if a transaction is a sponsored transaction
+// and if there is any subsidy fund which covers the gas costs
+// If no fund is available, it returns an error rejecting the transaction
+func validateSponsoredTransactions(
+	tx *types.Transaction,
+	netRules NetworkRules,
+	SubsidiesChecker subsidiesChecker,
+) error {
+
+	// No check is conducted if gas subsidies are not active.
+	if !netRules.gasSubsidies {
+		if !subsidies.IsSponsorshipRequest(tx) {
+			return nil
+		}
+		return ErrSponsoredTransactionsDisabled
+	}
+
+	// If the transaction is not a sponsorship request, skip all sponsored transaction checks.
+	if !subsidies.IsSponsorshipRequest(tx) {
+		return nil
+	}
+
+	// Sponsored transactions are only valid if they are explicitly marked as sponsored by the subsidies checker.
+	if !SubsidiesChecker.isSponsored(tx) {
+		return ErrSponsorshipRejected
+	}
+
 	return nil
 }

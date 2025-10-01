@@ -27,15 +27,15 @@ import (
 
 //go:generate mockgen -source=subsidies_integration.go -destination=subsidies_integration_mock.go -package=evmcore
 
-// SubsidiesChecker is an interface for checking if a transaction is sponsored
+// subsidiesChecker is an interface for checking if a transaction is sponsored
 // by the subsidies contract.
 // it does not include [subsidies.IsCovered] directly to avoid creating dependencies
 // on state for an operation which is pure.
 //
 // This interface facilitates testing and decouples the subsidies integration
 // logic from the transaction pool.
-type SubsidiesChecker interface {
-	IsSponsored(tx *types.Transaction) bool
+type subsidiesChecker interface {
+	isSponsored(tx *types.Transaction) bool
 }
 
 // SubsidiesIntegrationImplementation uses the subsidies contract to determine
@@ -47,15 +47,15 @@ type SubsidiesIntegrationImplementation struct {
 	signer types.Signer
 }
 
-// NewSubsidiesChecker creates a new SubsidiesChecker instance.
+// newSubsidiesChecker creates a new SubsidiesChecker instance.
 // This instance is capable of executing the subsidies contract to determine
 // if a transaction is sponsored.
-func NewSubsidiesChecker(
+func newSubsidiesChecker(
 	rules opera.Rules,
 	chain StateReader,
 	state state.StateDB,
 	signer types.Signer,
-) SubsidiesChecker {
+) subsidiesChecker {
 	return &SubsidiesIntegrationImplementation{
 		rules:  rules,
 		chain:  chain,
@@ -64,7 +64,7 @@ func NewSubsidiesChecker(
 	}
 }
 
-func (s *SubsidiesIntegrationImplementation) IsSponsored(tx *types.Transaction) bool {
+func (s *SubsidiesIntegrationImplementation) isSponsored(tx *types.Transaction) bool {
 	currentBlock := s.chain.CurrentBlock()
 	baseFee := s.chain.GetCurrentBaseFee()
 
