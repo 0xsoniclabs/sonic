@@ -45,6 +45,7 @@ import (
 	"github.com/0xsoniclabs/sonic/opera/contracts/netinit"
 	netinitcall "github.com/0xsoniclabs/sonic/opera/contracts/netinit/netinitcalls"
 	"github.com/0xsoniclabs/sonic/opera/contracts/sfc"
+	"github.com/0xsoniclabs/sonic/opera/contracts/subsidiesreg"
 	"github.com/0xsoniclabs/sonic/opera/genesis"
 	"github.com/0xsoniclabs/sonic/opera/genesis/gpos"
 	"github.com/0xsoniclabs/sonic/opera/genesisstore"
@@ -114,6 +115,13 @@ func FakeGenesisStoreWithRulesAndStart(
 	// set non-zero code for pre-compiled contracts
 	builder.SetCode(evmwriter.ContractAddress, []byte{0})
 	builder.SetNonce(evmwriter.ContractAddress, 1)
+
+	// deploy Subsidies Registry
+	builder.SetCode(subsidiesreg.ContractImplAddress, subsidiesreg.GetContractImplBin())
+	builder.SetNonce(subsidiesreg.ContractImplAddress, 1)
+	builder.SetCode(subsidiesreg.ContractAddress, subsidiesreg.GetContractProxyBin())
+	builder.SetNonce(subsidiesreg.ContractAddress, 1)
+	builder.SetStorage(subsidiesreg.ContractAddress, subsidiesreg.ImplSlotId, common.BytesToHash(subsidiesreg.ContractImplAddress.Bytes()))
 
 	// Configure pre-deployed contracts, according to the hardfork of the fake-net
 	if rules.Upgrades.Allegro {
@@ -222,6 +230,10 @@ func GetGenesisTxs(sealedEpoch idx.Epoch, validators gpos.Validators, totalSuppl
 		calldata := drivercall.SetGenesisDelegation(delegation)
 		internalTxs = append(internalTxs, buildTx(calldata, driver.ContractAddress))
 	}
+
+	// Initialize Subsidies Registry
+	internalTxs = append(internalTxs, buildTx(subsidiesreg.InitializeCalldata, subsidiesreg.ContractAddress))
+
 	return internalTxs
 }
 
