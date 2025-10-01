@@ -42,8 +42,10 @@ type txWithMinerFee struct {
 func newTxWithMinerFee(tx *txpool.LazyTransaction, from common.Address, baseFee *uint256.Int) (*txWithMinerFee, error) {
 	tip := new(uint256.Int).Set(tx.GasTipCap)
 	if baseFee != nil {
-		if tx.GasFeeCap.Cmp(baseFee) < 0 && !subsidies.IsSponsorshipRequest(tx.Tx) {
-			return nil, types.ErrGasFeeCapTooLow
+		if tx.GasFeeCap.Cmp(baseFee) < 0 {
+			if !subsidies.IsSponsorshipRequest(tx.Tx) {
+				return nil, types.ErrGasFeeCapTooLow
+			}
 		}
 		tip = new(uint256.Int).Sub(tx.GasFeeCap, baseFee)
 		if tip.Gt(tx.GasTipCap) {

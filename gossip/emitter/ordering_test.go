@@ -66,8 +66,8 @@ func testTransactionPriceNonceSort(t *testing.T, baseFee *big.Int) {
 			gasFeeCap := rand.IntN(50)
 			if baseFee == nil {
 				tx = types.NewTx(&types.LegacyTx{
-					Nonce:    uint64(start + i),
-					To:       &common.Address{},
+					Nonce: uint64(start + i),
+					// no to, cannot be a sponsored tx
 					Value:    big.NewInt(100),
 					Gas:      100,
 					GasPrice: big.NewInt(int64(gasFeeCap)),
@@ -75,8 +75,8 @@ func testTransactionPriceNonceSort(t *testing.T, baseFee *big.Int) {
 				})
 			} else {
 				tx = types.NewTx(&types.DynamicFeeTx{
-					Nonce:     uint64(start + i),
-					To:        &common.Address{},
+					Nonce: uint64(start + i),
+					// no to, cannot be a sponsored tx
 					Value:     big.NewInt(100),
 					Gas:       100,
 					GasFeeCap: big.NewInt(int64(gasFeeCap)),
