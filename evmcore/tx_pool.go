@@ -36,6 +36,7 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
@@ -570,7 +571,7 @@ func (pool *TxPool) Pending(enforceTips bool) (map[common.Address]types.Transact
 		// If the miner requests tip enforcement, cap the lists now
 		if enforceTips && !pool.locals.contains(addr) {
 			for i, tx := range txs {
-				if tx.EffectiveGasTipIntCmp(pool.minTip, pool.priced.urgent.baseFee) < 0 {
+				if tx.EffectiveGasTipIntCmp(pool.minTip, pool.priced.urgent.baseFee) < 0 && !subsidies.IsSponsorshipRequest(tx) {
 					txs = txs[:i]
 					break
 				}
