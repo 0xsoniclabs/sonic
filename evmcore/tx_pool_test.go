@@ -341,7 +341,7 @@ func setupTxPoolWithConfig(config *params.ChainConfig) (*TxPool, *ecdsa.PrivateK
 	blockchain := NewTestBlockChain(newTestTxPoolStateDb())
 
 	key, _ := crypto.GenerateKey()
-	pool := NewTxPool(testTxPoolConfig, config, blockchain)
+	pool := NewTxPool(testTxPoolConfig, config, blockchain, testSubsidiesCheckerFactory)
 
 	return pool, key
 }
@@ -456,7 +456,7 @@ func TestStateChangeDuringTransactionPoolReset(t *testing.T) {
 	tx0 := transaction(0, 100000, key)
 	tx1 := transaction(1, 100000, key)
 
-	pool := NewTxPool(testTxPoolConfig, params.TestChainConfig, blockchain)
+	pool := NewTxPool(testTxPoolConfig, params.TestChainConfig, blockchain, testSubsidiesCheckerFactory)
 	defer pool.Stop()
 
 	nonce := pool.Nonce(address)
@@ -930,7 +930,7 @@ func TestSetCodeTransactions(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 
 			// initialize the pool
-			pool := NewTxPool(testTxPoolConfig, pragueConfig, blockchain)
+			pool := NewTxPool(testTxPoolConfig, pragueConfig, blockchain, testSubsidiesCheckerFactory)
 			defer pool.Stop()
 
 			test.test(t, pool)
@@ -955,7 +955,7 @@ func TestSetCodeTransactionsReorg(t *testing.T) {
 	blockchain := NewTestBlockChain(db)
 
 	// initialize the pool
-	pool := NewTxPool(testTxPoolConfig, pragueConfig, blockchain)
+	pool := NewTxPool(testTxPoolConfig, pragueConfig, blockchain, testSubsidiesCheckerFactory)
 	defer pool.Stop()
 
 	// Create the test accounts
@@ -1011,7 +1011,7 @@ func TestSetCodeTransaction_RemoveAuthorityWhenSetCodeTxIsRemoved(t *testing.T) 
 	blockchain := NewTestBlockChain(db)
 
 	// initialize the pool
-	pool := NewTxPool(testTxPoolConfig, pragueConfig, blockchain)
+	pool := NewTxPool(testTxPoolConfig, pragueConfig, blockchain, testSubsidiesCheckerFactory)
 	defer pool.Stop()
 
 	// Create the test accounts
@@ -1446,7 +1446,7 @@ func TestTransactionPostponing(t *testing.T) {
 
 	// Create the pool to test the postponing with
 	blockchain := NewTestBlockChain(newTestTxPoolStateDb())
-	pool := NewTxPool(testTxPoolConfig, params.TestChainConfig, blockchain)
+	pool := NewTxPool(testTxPoolConfig, params.TestChainConfig, blockchain, testSubsidiesCheckerFactory)
 	defer pool.Stop()
 
 	// Create two test accounts to produce different gap profiles with
@@ -1662,7 +1662,7 @@ func testTransactionQueueGlobalLimiting(t *testing.T, nolocals bool) {
 	config.NoLocals = nolocals
 	config.GlobalQueue = config.AccountQueue*3 - 1 // reduce the queue limits to shorten test time (-1 to make it non divisible)
 
-	pool := NewTxPool(config, params.TestChainConfig, blockchain)
+	pool := NewTxPool(config, params.TestChainConfig, blockchain, testSubsidiesCheckerFactory)
 	defer pool.Stop()
 
 	// Create a number of test accounts and fund them (last one will be the local)
@@ -1754,7 +1754,7 @@ func testTransactionQueueTimeLimiting(t *testing.T, nolocals bool) {
 	config.Lifetime = time.Second
 	config.NoLocals = nolocals
 
-	pool := NewTxPool(config, params.TestChainConfig, blockchain)
+	pool := NewTxPool(config, params.TestChainConfig, blockchain, testSubsidiesCheckerFactory)
 	defer pool.Stop()
 
 	// Create two test accounts to ensure remotes expire but locals do not
@@ -1892,7 +1892,7 @@ func TestTransactionQueueTruncating(t *testing.T) {
 	config := testTxPoolConfig
 	config.GlobalQueue = 2
 
-	pool := NewTxPool(config, params.TestChainConfig, blockchain)
+	pool := NewTxPool(config, params.TestChainConfig, blockchain, testSubsidiesCheckerFactory)
 	defer pool.Stop()
 
 	active, _ := crypto.GenerateKey()
@@ -1997,7 +1997,7 @@ func TestTransactionPendingGlobalLimiting(t *testing.T) {
 	config := testTxPoolConfig
 	config.GlobalSlots = config.AccountSlots * 10
 
-	pool := NewTxPool(config, params.TestChainConfig, blockchain)
+	pool := NewTxPool(config, params.TestChainConfig, blockchain, testSubsidiesCheckerFactory)
 	defer pool.Stop()
 
 	// Create a number of test accounts and fund them
@@ -2101,7 +2101,7 @@ func TestTransactionCapClearsFromAll(t *testing.T) {
 	config.AccountQueue = 2
 	config.GlobalSlots = 8
 
-	pool := NewTxPool(config, params.TestChainConfig, blockchain)
+	pool := NewTxPool(config, params.TestChainConfig, blockchain, testSubsidiesCheckerFactory)
 	defer pool.Stop()
 
 	// Create a number of test accounts and fund them
@@ -2133,7 +2133,7 @@ func TestTransactionPendingMinimumAllowance(t *testing.T) {
 	config := testTxPoolConfig
 	config.GlobalSlots = 1
 
-	pool := NewTxPool(config, params.TestChainConfig, blockchain)
+	pool := NewTxPool(config, params.TestChainConfig, blockchain, testSubsidiesCheckerFactory)
 	defer pool.Stop()
 
 	// Create a number of test accounts and fund them
@@ -2173,7 +2173,7 @@ func TestTransactionPool_CanReadMinTipFromPool(t *testing.T) {
 	statedb := newTestTxPoolStateDb()
 	blockchain := NewTestBlockChain(statedb)
 
-	pool := NewTxPool(testTxPoolConfig, params.TestChainConfig, blockchain)
+	pool := NewTxPool(testTxPoolConfig, params.TestChainConfig, blockchain, testSubsidiesCheckerFactory)
 	defer pool.Stop()
 
 	require.Equal(t, testTxPoolConfig.MinimumTip, pool.MinTip().Uint64(),
@@ -2199,7 +2199,7 @@ func TestTransactionPool_RejectsUnderTippedTransactions(t *testing.T) {
 	// copy the config so we can modify it safely
 	config := testTxPoolConfig
 	config.MinimumTip = minTip.Uint64() + 1
-	pool := NewTxPool(config, params.TestChainConfig, blockchain)
+	pool := NewTxPool(config, params.TestChainConfig, blockchain, testSubsidiesCheckerFactory)
 	defer pool.Stop()
 
 	// Keep track of transaction events to ensure all executables get announced
@@ -2237,7 +2237,7 @@ func TestTransactionPool_AcceptsUnderTippedLocals(t *testing.T) {
 	// copy the config so we can modify it safely
 	config := testTxPoolConfig
 	config.MinimumTip = minTip.Uint64() + 1
-	pool := NewTxPool(config, params.TestChainConfig, blockchain)
+	pool := NewTxPool(config, params.TestChainConfig, blockchain, testSubsidiesCheckerFactory)
 	defer pool.Stop()
 
 	// Keep track of transaction events to ensure all executables get announced
@@ -2277,7 +2277,7 @@ func TestTransactionPool_DropUnderpricedTransactionsWhenPoolIsFull(t *testing.T)
 	config.GlobalSlots = 2
 	config.GlobalQueue = 2
 
-	pool := NewTxPool(config, params.TestChainConfig, blockchain)
+	pool := NewTxPool(config, params.TestChainConfig, blockchain, testSubsidiesCheckerFactory)
 	defer pool.Stop()
 
 	// Keep track of transaction events to ensure all executables get announced
@@ -2392,7 +2392,7 @@ func TestTransactionPool_DroppingUnderpricedTransactionsDoesNotCreateNonceGaps(t
 	config.GlobalSlots = 128
 	config.GlobalQueue = 0
 
-	pool := NewTxPool(config, params.TestChainConfig, blockchain)
+	pool := NewTxPool(config, params.TestChainConfig, blockchain, testSubsidiesCheckerFactory)
 	defer pool.Stop()
 
 	// Keep track of transaction events to ensure all executables get announced
@@ -2628,7 +2628,7 @@ func TestTransactionDeduplication(t *testing.T) {
 	statedb := newTestTxPoolStateDb()
 	blockchain := NewTestBlockChain(statedb)
 
-	pool := NewTxPool(testTxPoolConfig, params.TestChainConfig, blockchain)
+	pool := NewTxPool(testTxPoolConfig, params.TestChainConfig, blockchain, testSubsidiesCheckerFactory)
 	defer pool.Stop()
 
 	// Create a test account to add transactions with
@@ -2694,7 +2694,7 @@ func TestTransactionReplacement(t *testing.T) {
 	statedb := newTestTxPoolStateDb()
 	blockchain := NewTestBlockChain(statedb)
 
-	pool := NewTxPool(testTxPoolConfig, params.TestChainConfig, blockchain)
+	pool := NewTxPool(testTxPoolConfig, params.TestChainConfig, blockchain, testSubsidiesCheckerFactory)
 	defer pool.Stop()
 
 	// Keep track of transaction events to ensure all executables get announced
@@ -2886,7 +2886,7 @@ func testTransactionJournaling(t *testing.T, nolocals bool) {
 	config.Journal = journal
 	config.Rejournal = time.Second
 
-	pool := NewTxPool(config, params.TestChainConfig, blockchain)
+	pool := NewTxPool(config, params.TestChainConfig, blockchain, testSubsidiesCheckerFactory)
 
 	// Create two test accounts to ensure remotes expire but locals do not
 	local, _ := crypto.GenerateKey()
@@ -2923,7 +2923,7 @@ func testTransactionJournaling(t *testing.T, nolocals bool) {
 	statedb.nonces[crypto.PubkeyToAddress(local.PublicKey)] = 1
 	blockchain = NewTestBlockChain(statedb)
 
-	pool = NewTxPool(config, params.TestChainConfig, blockchain)
+	pool = NewTxPool(config, params.TestChainConfig, blockchain, testSubsidiesCheckerFactory)
 
 	pending, queued = pool.Stats()
 	if queued != 0 {
@@ -2949,7 +2949,7 @@ func testTransactionJournaling(t *testing.T, nolocals bool) {
 
 	statedb.nonces[crypto.PubkeyToAddress(local.PublicKey)] = 1
 	blockchain = NewTestBlockChain(statedb)
-	pool = NewTxPool(config, params.TestChainConfig, blockchain)
+	pool = NewTxPool(config, params.TestChainConfig, blockchain, testSubsidiesCheckerFactory)
 
 	pending, queued = pool.Stats()
 	if pending != 0 {
@@ -2979,7 +2979,7 @@ func TestTransactionStatusCheck(t *testing.T) {
 	statedb := newTestTxPoolStateDb()
 	blockchain := NewTestBlockChain(statedb)
 
-	pool := NewTxPool(testTxPoolConfig, params.TestChainConfig, blockchain)
+	pool := NewTxPool(testTxPoolConfig, params.TestChainConfig, blockchain, testSubsidiesCheckerFactory)
 	defer pool.Stop()
 
 	// Create the test accounts to check various transaction statuses with
@@ -3048,7 +3048,7 @@ func TestSampleHashes_AllExpectedTransactionsAreReturned(t *testing.T) {
 	statedb := newTestTxPoolStateDb()
 	blockchain := NewTestBlockChain(statedb)
 
-	pool := NewTxPool(testTxPoolConfig, params.TestChainConfig, blockchain)
+	pool := NewTxPool(testTxPoolConfig, params.TestChainConfig, blockchain, testSubsidiesCheckerFactory)
 	defer pool.Stop()
 
 	expectedPendingTxs := make(map[common.Hash]int)
@@ -3128,7 +3128,7 @@ func TestSampleHashesManySenders(t *testing.T) {
 	statedb := newTestTxPoolStateDb()
 	blockchain := NewTestBlockChain(statedb)
 
-	pool := NewTxPool(testTxPoolConfig, params.TestChainConfig, blockchain)
+	pool := NewTxPool(testTxPoolConfig, params.TestChainConfig, blockchain, testSubsidiesCheckerFactory)
 	defer pool.Stop()
 
 	expectedTxs := make(map[common.Hash]int)
@@ -3186,7 +3186,7 @@ func TestTxPool_ActivatingOsakaDropsTransactionsWithHighGas(t *testing.T) {
 	// set a very high gas limit
 	blockchain.SetGasLimit(params.MaxTxGas * 2)
 
-	pool := NewTxPool(testTxPoolConfig, params.TestChainConfig, blockchain)
+	pool := NewTxPool(testTxPoolConfig, params.TestChainConfig, blockchain, testSubsidiesCheckerFactory)
 	defer pool.Stop()
 
 	// make a transaction with over params.MaxTxGas gas and nonce 0
@@ -3387,4 +3387,13 @@ func BenchmarkTruncatePending(b *testing.B) {
 	for range b.N {
 		pool.truncatePending()
 	}
+}
+
+func testSubsidiesCheckerFactory(
+	rules opera.Rules,
+	chain StateReader,
+	state state.StateDB,
+	signer types.Signer,
+) SubsidiesChecker {
+	return nil
 }

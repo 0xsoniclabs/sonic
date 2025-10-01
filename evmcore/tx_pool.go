@@ -168,6 +168,15 @@ type StateReader interface {
 	GetHeader(common.Hash, uint64) *EvmHeader
 }
 
+// subsidiesCheckerFactory is a factory method to create a subsidies checker instance.
+// This facilitates testing of the TxPool by using injected mock implementations.
+type subsidiesCheckerFactory func(
+	rules opera.Rules,
+	chain StateReader,
+	state state.StateDB,
+	signer types.Signer,
+) SubsidiesChecker
+
 // TxPoolConfig are the configuration parameters of the transaction pool.
 type TxPoolConfig struct {
 	Locals    []common.Address // Addresses that should be treated by default as local
@@ -308,6 +317,8 @@ type TxPool struct {
 
 	waitForIdleReorgLoopRequestCh  chan struct{} // requests to wait for reorg completion
 	waitForIdleReorgLoopResponseCh chan struct{} // responses to waitForReorgDoneRequestCh
+
+	subsidiesCheckerFactory subsidiesCheckerFactory // Factory to create a subsidies checker instance
 }
 
 type txpoolResetRequest struct {
@@ -316,7 +327,12 @@ type txpoolResetRequest struct {
 
 // NewTxPool creates a new transaction pool to gather, sort and filter inbound
 // transactions from the network.
-func NewTxPool(config TxPoolConfig, chainconfig *params.ChainConfig, chain StateReader) *TxPool {
+func NewTxPool(
+	config TxPoolConfig,
+	chainconfig *params.ChainConfig,
+	chain StateReader,
+	subsidiesCheckerFactory subsidiesCheckerFactory,
+) *TxPool {
 	// Sanitize the input to ensure no vulnerable gas prices are set
 	config = (&config).sanitize()
 

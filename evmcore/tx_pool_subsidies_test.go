@@ -56,8 +56,18 @@ func TestTxPool_SponsoredTransactionsAreIncludedInThePendingSet(t *testing.T) {
 	// mock the external chain dependencies
 	chain := mockChain(ctrl, chainConfig, upgrades)
 
+	subsidiesCheckerMock := NewMockSubsidiesChecker(ctrl)
+	subsidiesCheckerMock.EXPECT().IsSponsored(gomock.Any()).Return(true).AnyTimes()
+
 	// Instantiate the pool
-	pool := NewTxPool(poolConfig, chainConfig, chain)
+	pool := NewTxPool(poolConfig, chainConfig, chain, func(
+		rules opera.Rules,
+		chain StateReader,
+		state state.StateDB,
+		signer types.Signer,
+	) SubsidiesChecker {
+		return subsidiesCheckerMock
+	})
 
 	// transactions per sender
 	const transactionsPerSender = 5
