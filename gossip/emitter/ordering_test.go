@@ -197,35 +197,87 @@ func TestTransactionTimeSort(t *testing.T) {
 	}
 }
 
-func TestTransactionsOrdering_ZeroGasTip(t *testing.T) {
-	t.Parallel()
+func TestTransactionsOrdering_MinerFeesCanBeComputedWithAllTransactions(t *testing.T) {
+
+	baseFee := uint256.NewInt(50)
 
 	// This test ensures that transactions with zero gas tip do not overflow
 	// when calculating the miner fee for sorting purposes.
 
-	tx := types.NewTx(&types.DynamicFeeTx{
-		Nonce:     uint64(0),
-		To:        &common.Address{},
-		Value:     big.NewInt(100),
-		Gas:       100,
-		GasFeeCap: big.NewInt(50),
-		GasTipCap: big.NewInt(0),
-		Data:      nil,
-	})
-
-	lazy := &txpool.LazyTransaction{
-		Hash:      tx.Hash(),
-		Tx:        tx,
-		Time:      tx.Time(),
-		GasFeeCap: utils.BigIntToUint256(tx.GasFeeCap()),
-		GasTipCap: utils.BigIntToUint256(tx.GasTipCap()),
-		Gas:       tx.Gas(),
-		BlobGas:   tx.BlobGas(),
+	tests := map[string]struct {
+		tx               *types.Transaction
+		expectedError    error
+		expectedMinerFee uint64
+	}{
+		"sponsored transaction": {
+			tx: types.NewTx(&types.DynamicFeeTx{
+				To:        &common.Address{}, // not a contract creation
+				Value:     big.NewInt(100),
+				GasFeeCap: big.NewInt(0),
+				GasTipCap: big.NewInt(0),
+				V:         big.NewInt(27), // non-internal transaction cannot be sponsored
+			}),
+			expectedMinerFee: 0,
+		},
+		"non sponsored transaction": {
+			tx: types.NewTx(&types.DynamicFeeTx{
+				To:        &common.Address{}, // not a contract creation
+				Value:     big.NewInt(100),
+				Gas:       100,
+				GasFeeCap: big.NewInt(0),
+				GasTipCap: big.NewInt(0),
+			}),
+			expectedError: types.ErrGasFeeCapTooLow,
+		},
+		"non sponsored transaction enough fee cap and zero tip": {
+			tx: types.NewTx(&types.DynamicFeeTx{
+				To:        &common.Address{}, // not a contract creation
+				Gas:       100,
+				GasFeeCap: big.NewInt(100),
+				GasTipCap: big.NewInt(0),
+			}),
+			expectedMinerFee: 0,
+		},
+		"non sponsored transaction with enough fee cap and tip": {
+			tx: types.NewTx(&types.DynamicFeeTx{
+				To:        &common.Address{}, // not a contract creation
+				Gas:       100,
+				GasFeeCap: big.NewInt(100),
+				GasTipCap: big.NewInt(10),
+			}),
+			expectedMinerFee: 10,
+		},
+		"non sponsored legacy transaction": {
+			// legacy transactions have a default tip equal to the gas price
+			tx: types.NewTx(&types.LegacyTx{
+				Nonce:    uint64(0),
+				To:       &common.Address{},
+				Value:    big.NewInt(100),
+				Gas:      100,
+				GasPrice: big.NewInt(100),
+			}),
+			expectedMinerFee: 50, // gas price - base fee
+		},
 	}
-	from := common.Address{1}
-	baseFee := uint256.NewInt(10)
 
-	withFee, err := newTxWithMinerFee(lazy, from, baseFee)
-	require.NoError(t, err)
-	require.Equal(t, withFee.fees.Uint64(), uint64(0), "expected zero miner fee")
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			lazy := &txpool.LazyTransaction{
+				Hash:      test.tx.Hash(),
+				Tx:        test.tx,
+				Time:      test.tx.Time(),
+				GasFeeCap: utils.BigIntToUint256(test.tx.GasFeeCap()),
+				GasTipCap: utils.BigIntToUint256(test.tx.GasTipCap()),
+				Gas:       test.tx.Gas(),
+				BlobGas:   test.tx.BlobGas(),
+			}
+			from := common.Address{1}
+
+			withFee, err := newTxWithMinerFee(lazy, from, baseFee)
+			require.ErrorIs(t, err, test.expectedError)
+			if test.expectedError == nil {
+				require.EqualValues(t, withFee.fees.Uint64(), test.expectedMinerFee)
+			}
+		})
+	}
 }
