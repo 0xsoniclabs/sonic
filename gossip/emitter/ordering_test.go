@@ -23,11 +23,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/holiman/uint256"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTransactionPriceNonceSortLegacy(t *testing.T) {
@@ -64,8 +66,8 @@ func testTransactionPriceNonceSort(t *testing.T, baseFee *big.Int) {
 			gasFeeCap := rand.IntN(50)
 			if baseFee == nil {
 				tx = types.NewTx(&types.LegacyTx{
-					Nonce:    uint64(start + i),
-					To:       &common.Address{},
+					Nonce: uint64(start + i),
+					// no to, cannot be a sponsored tx
 					Value:    big.NewInt(100),
 					Gas:      100,
 					GasPrice: big.NewInt(int64(gasFeeCap)),
@@ -73,8 +75,8 @@ func testTransactionPriceNonceSort(t *testing.T, baseFee *big.Int) {
 				})
 			} else {
 				tx = types.NewTx(&types.DynamicFeeTx{
-					Nonce:     uint64(start + i),
-					To:        &common.Address{},
+					Nonce: uint64(start + i),
+					// no to, cannot be a sponsored tx
 					Value:     big.NewInt(100),
 					Gas:       100,
 					GasFeeCap: big.NewInt(int64(gasFeeCap)),
@@ -192,5 +194,90 @@ func TestTransactionTimeSort(t *testing.T) {
 				t.Errorf("invalid received time ordering: tx #%d (A=%x T=%v) > tx #%d (A=%x T=%v)", i, fromi[:4], txi.Time(), i+1, fromNext[:4], next.Time())
 			}
 		}
+	}
+}
+
+func TestTransactionsOrdering_MinerFeesCanBeComputedWithAllTransactions(t *testing.T) {
+
+	baseFee := uint256.NewInt(50)
+
+	// This test ensures that transactions with zero gas tip do not overflow
+	// when calculating the miner fee for sorting purposes.
+
+	tests := map[string]struct {
+		tx               *types.Transaction
+		expectedError    error
+		expectedMinerFee uint64
+	}{
+		"sponsored transaction": {
+			tx: types.NewTx(&types.DynamicFeeTx{
+				To:        &common.Address{}, // not a contract creation
+				Value:     big.NewInt(100),
+				GasFeeCap: big.NewInt(0),
+				GasTipCap: big.NewInt(0),
+				V:         big.NewInt(27), // non-internal, since internal transaction cannot be sponsored
+			}),
+			expectedMinerFee: 0,
+		},
+		"non sponsored transaction": {
+			tx: types.NewTx(&types.DynamicFeeTx{
+				To:        &common.Address{}, // not a contract creation
+				Value:     big.NewInt(100),
+				Gas:       100,
+				GasFeeCap: big.NewInt(0),
+				GasTipCap: big.NewInt(0),
+			}),
+			expectedError: types.ErrGasFeeCapTooLow,
+		},
+		"non sponsored transaction enough fee cap and zero tip": {
+			tx: types.NewTx(&types.DynamicFeeTx{
+				To:        &common.Address{}, // not a contract creation
+				Gas:       100,
+				GasFeeCap: big.NewInt(100),
+				GasTipCap: big.NewInt(0),
+			}),
+			expectedMinerFee: 0,
+		},
+		"non sponsored transaction with enough fee cap and tip": {
+			tx: types.NewTx(&types.DynamicFeeTx{
+				To:        &common.Address{}, // not a contract creation
+				Gas:       100,
+				GasFeeCap: big.NewInt(100),
+				GasTipCap: big.NewInt(10),
+			}),
+			expectedMinerFee: 10,
+		},
+		"non sponsored legacy transaction": {
+			// legacy transactions have a default tip equal to the gas price
+			tx: types.NewTx(&types.LegacyTx{
+				Nonce:    uint64(0),
+				To:       &common.Address{},
+				Value:    big.NewInt(100),
+				Gas:      100,
+				GasPrice: big.NewInt(100),
+			}),
+			expectedMinerFee: 50, // gas price - base fee
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			lazy := &txpool.LazyTransaction{
+				Hash:      test.tx.Hash(),
+				Tx:        test.tx,
+				Time:      test.tx.Time(),
+				GasFeeCap: utils.BigIntToUint256(test.tx.GasFeeCap()),
+				GasTipCap: utils.BigIntToUint256(test.tx.GasTipCap()),
+				Gas:       test.tx.Gas(),
+				BlobGas:   test.tx.BlobGas(),
+			}
+			from := common.Address{1}
+
+			withFee, err := newTxWithMinerFee(lazy, from, baseFee)
+			require.ErrorIs(t, err, test.expectedError)
+			if test.expectedError == nil {
+				require.EqualValues(t, withFee.fees.Uint64(), test.expectedMinerFee)
+			}
+		})
 	}
 }
