@@ -22,6 +22,7 @@ import (
 	"math/big"
 	"slices"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -42,7 +43,9 @@ func newTxWithMinerFee(tx *txpool.LazyTransaction, from common.Address, baseFee 
 	tip := new(uint256.Int).Set(tx.GasTipCap)
 	if baseFee != nil {
 		if tx.GasFeeCap.Cmp(baseFee) < 0 {
-			return nil, types.ErrGasFeeCapTooLow
+			if !subsidies.IsSponsorshipRequest(tx.Tx) {
+				return nil, types.ErrGasFeeCapTooLow
+			}
 		}
 		tip = new(uint256.Int).Sub(tx.GasFeeCap, baseFee)
 		if tip.Gt(tx.GasTipCap) {
