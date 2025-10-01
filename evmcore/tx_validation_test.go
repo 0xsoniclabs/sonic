@@ -1209,6 +1209,70 @@ func TestValidateTx_AcceptsZeroGasPriceTransactions_WhenSubsidiesAreEnabled(t *t
 	}
 }
 
+func Test_validateSponsoredTransactions_RejectsSponsoredTransactions(t *testing.T) {
+
+	tests := map[string]struct {
+		subsidiesEnabled bool
+		tx               types.TxData
+		configure        func(SubsidiesChecker *MockSubsidiesChecker)
+		expectedError    error
+	}{
+		"ignore sponsored tx when subsidies are disabled": {
+			subsidiesEnabled: false,
+			tx: &types.LegacyTx{
+				To:       &common.Address{42}, // not a contract creation
+				Gas:      100_000,
+				GasPrice: big.NewInt(0),
+				V:        big.NewInt(27), // not an internal tx
+			},
+		},
+		"ignore tx when it is not a sponsor request": {
+			subsidiesEnabled: true,
+			tx: &types.LegacyTx{
+				// contract creation
+				Gas:      100_000,
+				GasPrice: big.NewInt(0),
+				V:        big.NewInt(27), // not an internal tx
+			},
+		},
+		"reject tx when soponsorship is not approved": {
+			subsidiesEnabled: true,
+			tx: &types.LegacyTx{
+				To:       &common.Address{42}, // not a contract creation
+				Gas:      100_000,
+				GasPrice: big.NewInt(0),
+				V:        big.NewInt(27), // not an internal tx
+			},
+			configure: func(subsidiesChecker *MockSubsidiesChecker) {
+				subsidiesChecker.EXPECT().IsSponsored(gomock.Any()).Return(false)
+			},
+			expectedError: ErrSponsorshipRejected,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+
+			ctrl := gomock.NewController(t)
+			subsidiesChecker := NewMockSubsidiesChecker(ctrl)
+			if test.configure != nil {
+				test.configure(subsidiesChecker)
+			}
+
+			netRules := NetworkRules{
+				eip2718:      true,
+				eip1559:      true,
+				eip4844:      true,
+				eip7702:      true,
+				gasSubsidies: test.subsidiesEnabled,
+			}
+
+			err := validateSponsoredTransactions(types.NewTx(test.tx), netRules, subsidiesChecker)
+			require.ErrorIs(t, err, test.expectedError)
+		})
+	}
+}
+
 func TestValidateTx_AllowsSponsoredZeroGasPriceTransactions_WhenSubsidiesAreFunded(t *testing.T) {
 
 	tests := map[string]struct {
