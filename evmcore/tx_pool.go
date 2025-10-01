@@ -165,6 +165,7 @@ type StateReader interface {
 	SubscribeNewBlock(ch chan<- ChainHeadNotify) notify.Subscription
 	Config() *params.ChainConfig
 	GetCurrentRules() opera.Rules
+	GetHeader(common.Hash, uint64) *EvmHeader
 }
 
 // TxPoolConfig are the configuration parameters of the transaction pool.
