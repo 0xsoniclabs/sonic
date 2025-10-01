@@ -17,10 +17,10 @@
 package gas_subsidies
 
 import (
-	"crypto/ecdsa"
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
@@ -37,10 +37,10 @@ import (
 func Fund(
 	t *testing.T,
 	session tests.IntegrationTestNetSession,
-	sponsor, sponsee common.Address,
+	sponsee common.Address,
 	donation *big.Int,
 ) *registry.Registry {
-
+	t.Helper()
 	client, err := session.GetClient()
 	require.NoError(t, err)
 	defer client.Close()
@@ -48,12 +48,8 @@ func Fund(
 	registry, err := registry.NewRegistry(registry.GetAddress(), client)
 	require.NoError(t, err)
 
-	receipt, err := session.EndowAccount(sponsor, donation)
-	require.NoError(t, err)
-	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
-
 	ok, fundId, err := registry.AccountSponsorshipFundId(nil, sponsee)
-	receipt, err = session.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
+	receipt, err := session.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
 		opts.Value = donation
 		require.NoError(t, err)
 		require.True(t, ok, "registry should have a fund ID")
@@ -73,12 +69,11 @@ func Fund(
 // validateSponsoredTxInBlock checks that the sponsored transaction with the
 // given hash is included in a block and that it is immediately followed by a
 // successful internal transaction that pays for its gas fees.
-//
-// nolint // unused function until subsidies are fully implemented
 func validateSponsoredTxInBlock(
 	t *testing.T,
 	session tests.IntegrationTestNetSession,
 	txHash common.Hash) {
+	t.Helper()
 
 	require := require.New(t)
 
@@ -98,9 +93,9 @@ func validateSponsoredTxInBlock(
 	found := false
 	for i, tx := range block.Transactions() {
 		if tx.Hash() == receipt.TxHash {
-			require.Less(i+1, len(block.Transactions()))
+			require.Less(i+1, len(block.Transactions()), "sponsored transaction must not be last, it is last")
 			payment := block.Transactions()[i+1]
-			require.True(internaltx.IsInternal(payment), "payment transaction should be internal")
+			require.True(internaltx.IsInternal(payment), "payment transaction must be internal, but it is not")
 			receipt, err := session.GetReceipt(payment.Hash())
 			require.NoError(err)
 			require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
@@ -115,22 +110,29 @@ func validateSponsoredTxInBlock(
 // makeSponsoredTransactionWithNonce creates a sponsored transaction (with
 // gas price zero) from the given sender to the given receiver with the given
 // nonce.
-func makeSponsorRequestTransaction(t *testing.T, tx types.TxData, chainId *big.Int, senderKey *ecdsa.PrivateKey) *types.Transaction {
+func makeSponsorRequestTransaction(t *testing.T, tx types.TxData, chainId *big.Int, sender *tests.Account) *types.Transaction {
+	t.Helper()
 	signer := types.LatestSignerForChainID(chainId)
 	switch tx := tx.(type) {
 	case *types.LegacyTx:
 		tx.GasPrice = big.NewInt(0)
+	case *types.AccessListTx:
+		tx.GasPrice = big.NewInt(0)
 	case *types.DynamicFeeTx:
 		tx.GasFeeCap = big.NewInt(0)
+		tx.GasTipCap = big.NewInt(0)
 	case *types.BlobTx:
 		tx.GasFeeCap = uint256.NewInt(0)
+		tx.GasTipCap = uint256.NewInt(0)
 	case *types.SetCodeTx:
 		tx.GasFeeCap = uint256.NewInt(0)
+		tx.GasTipCap = uint256.NewInt(0)
 	default:
 		t.Fatalf("unexpected transaction type: %T", tx)
 	}
-	sponsoredTx, err := types.SignNewTx(senderKey, signer, tx)
+	sponsoredTx, err := types.SignNewTx(sender.PrivateKey, signer, tx)
 	require.NoError(t, err)
+	require.True(t, subsidies.IsSponsorshipRequest(sponsoredTx))
 	return sponsoredTx
 }
 
@@ -141,6 +143,7 @@ func getTransactionIndexInBlock(
 	client *tests.PooledEhtClient,
 	receipt *types.Receipt,
 ) (int, *types.Block) {
+	t.Helper()
 	require := require.New(t)
 
 	block, err := client.BlockByNumber(t.Context(), receipt.BlockNumber)

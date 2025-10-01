@@ -17,13 +17,17 @@
 package gas_subsidies
 
 import (
+	"fmt"
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
 
@@ -35,7 +39,6 @@ func TestGasSubsidies_HelperFunctions(t *testing.T) {
 		Upgrades: &upgrades,
 	})
 
-	sponsor := tests.MakeAccountWithBalance(t, net, big.NewInt(1<<20))
 	sponsee := tests.NewAccount()
 	receiver := tests.NewAccount()
 	receiverAddress := receiver.Address()
@@ -46,7 +49,8 @@ func TestGasSubsidies_HelperFunctions(t *testing.T) {
 	require.NoError(t, err)
 	defer client.Close()
 
-	registry := Fund(t, net, sponsor.Address(), sponsee.Address(), donation)
+	// Donate some money into a fund for a specific account
+	registry := Fund(t, net, sponsee.Address(), donation)
 
 	tx := types.LegacyTx{
 		To:       &receiverAddress,
@@ -54,7 +58,8 @@ func TestGasSubsidies_HelperFunctions(t *testing.T) {
 		GasPrice: big.NewInt(1e9),
 	}
 
-	sponsoredTx := makeSponsorRequestTransaction(t, &tx, net.GetChainId(), sponsee.PrivateKey)
+	// make a sponsorship request transaction from the sponsee account
+	sponsoredTx := makeSponsorRequestTransaction(t, &tx, net.GetChainId(), sponsee)
 	require.Equal(t, sponsoredTx.GasPrice(), big.NewInt(0))
 
 	// need to wait for subsidies to be implemented.
@@ -72,8 +77,29 @@ func TestGasSubsidies_HelperFunctions(t *testing.T) {
 	require.NoError(t, err)
 	require.Less(t, sponsorship.Funds.Uint64(), donation.Uint64())
 
+	// check that the transaction after the sponsored one is the payment internal tx
 	txIndex, block := getTransactionIndexInBlock(t, client, receipt)
 	require.GreaterOrEqual(t, len(block.Transactions()), txIndex+1)
 	require.Equal(t, receipt.TxHash, block.Transactions()[txIndex].Hash())
 	require.True(t, internaltx.IsInternal(block.Transactions()[txIndex+1])) // this check is only for subsidized transactions
+}
+
+func TestMakeSponsorRequestTransaction_CanHandleAllTransactionTypes(t *testing.T) {
+
+	txs := []types.TxData{
+		&types.LegacyTx{GasPrice: big.NewInt(1), To: &common.Address{42}},
+		&types.AccessListTx{GasPrice: big.NewInt(1), To: &common.Address{42}},
+		&types.DynamicFeeTx{GasFeeCap: big.NewInt(1), GasTipCap: big.NewInt(1), To: &common.Address{42}},
+		&types.BlobTx{GasFeeCap: uint256.NewInt(1), GasTipCap: uint256.NewInt(1)},
+		&types.SetCodeTx{GasFeeCap: uint256.NewInt(1), GasTipCap: uint256.NewInt(1)},
+	}
+
+	for _, tx := range txs {
+		t.Run(fmt.Sprintf("%T", tx), func(t *testing.T) {
+			sponsoredTx := makeSponsorRequestTransaction(t, tx, big.NewInt(1), tests.NewAccount())
+			require.Equal(t, sponsoredTx.GasPrice(), big.NewInt(0))
+			require.Equal(t, sponsoredTx.GasTipCap(), big.NewInt(0))
+			require.True(t, subsidies.IsSponsorshipRequest(sponsoredTx))
+		})
+	}
 }
