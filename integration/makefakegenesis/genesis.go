@@ -115,13 +115,9 @@ func FakeGenesisStoreWithRulesAndStart(
 	// set non-zero code for pre-compiled contracts
 	builder.SetCode(evmwriter.ContractAddress, []byte{0})
 	builder.SetNonce(evmwriter.ContractAddress, 1)
-
 	// deploy Subsidies Registry
-	builder.SetCode(subsidiesreg.ContractImplAddress, subsidiesreg.GetContractImplBin())
-	builder.SetNonce(subsidiesreg.ContractImplAddress, 1)
-	builder.SetCode(subsidiesreg.ContractAddress, subsidiesreg.GetContractProxyBin())
+	builder.SetCode(subsidiesreg.ContractAddress, subsidiesreg.GetContractBin())
 	builder.SetNonce(subsidiesreg.ContractAddress, 1)
-	builder.SetStorage(subsidiesreg.ContractAddress, subsidiesreg.ImplSlotId, common.BytesToHash(subsidiesreg.ContractImplAddress.Bytes()))
 
 	// Configure pre-deployed contracts, according to the hardfork of the fake-net
 	if rules.Upgrades.Allegro {
