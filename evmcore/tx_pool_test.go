@@ -187,6 +187,10 @@ func (bc *testBlockChain) GetBlock(hash common.Hash, number uint64) *EvmBlock {
 	return bc.CurrentBlock()
 }
 
+func (bc *testBlockChain) GetHeader(common.Hash, uint64) *EvmHeader {
+	return bc.CurrentBlock().Header()
+}
+
 func (bc *testBlockChain) GetTxPoolStateDB() (state.StateDB, error) {
 	bc.mu.Lock()
 	defer bc.mu.Unlock()

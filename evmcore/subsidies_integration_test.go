@@ -124,7 +124,8 @@ func makeHappyStateDb(
 	chain := NewMockStateReader(ctrl)
 	chain.EXPECT().CurrentBlock().Return(&EvmBlock{
 		EvmHeader: EvmHeader{
-			Number: big.NewInt(1),
+			Number:     big.NewInt(1),
+			PrevRandao: common.Hash{1},
 		},
 	}).AnyTimes()
 	chain.EXPECT().GetCurrentBaseFee().Return(big.NewInt(1)).AnyTimes()

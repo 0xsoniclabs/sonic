@@ -18,14 +18,10 @@ package evmcore
 
 import (
 	"log/slog"
-	"math"
-	"math/big"
-	"time"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 )
@@ -72,24 +68,8 @@ func NewSubsidiesChecker(
 func (s *SubsidiesIntegrationImplementation) isSponsored(tx *types.Transaction) bool {
 	currentBlock := s.chain.CurrentBlock()
 	baseFee := s.chain.GetCurrentBaseFee()
-	blockContext := vm.BlockContext{
-		CanTransfer: CanTransfer,
-		Transfer:    Transfer,
-		GetHash: func(number uint64) common.Hash {
-			block := s.chain.GetBlock(common.Hash{}, number)
-			if block != nil {
-				return block.Hash
-			}
-			return common.Hash{}
-		},
-		BlockNumber: new(big.Int).Add(currentBlock.Number, common.Big1),
-		Time:        uint64(time.Now().Unix()),
-		Difficulty:  big.NewInt(0),
-		BaseFee:     baseFee,
-		GasLimit:    math.MaxInt64,
-		Random:      &common.Hash{}, // < signals Revision >= Merge
-		BlobBaseFee: big.NewInt(1),  // TODO issue #147
-	}
+
+	blockContext := NewEVMBlockContext(currentBlock.Header(), s.chain, nil)
 
 	// Create a EVM processor instance to run the IsCovered query.
 	vmConfig := opera.GetVmConfig(s.rules)
