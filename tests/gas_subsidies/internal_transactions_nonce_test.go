@@ -116,6 +116,11 @@ func TestGasSubsidies_InternalTransaction_HaveConsistentNonces(t *testing.T) {
 			scenario: func(t *testing.T, net *tests.IntegrationTestNet) {
 				// This test issues both a sponsored transaction and an epoch change transaction
 				// asynchronously and attempts to have them included in the same block.
+				//
+				// Note: this test is somewhat flaky as it depends on fitting
+				// two transactions in the same block, congested machines may make it fail.
+				// Nevertheless, this test is necessary to ensure that internal transactions
+				// nonces are correctly handled even in this edge case.
 
 				// repeat until the sponsored transaction is included in an epoch change block
 				var inSameBlock bool
