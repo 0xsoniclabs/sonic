@@ -34,9 +34,8 @@ func TestGasSubsidies_SupportAllTxTypes(t *testing.T) {
 			To:  &common.Address{0x42},
 		},
 		"AccessListTx": &types.AccessListTx{
-			Gas:        21000 + 2400,
-			To:         &common.Address{0x42},
-			AccessList: []types.AccessTuple{{}},
+			Gas: 21000,
+			To:  &common.Address{0x42},
 		},
 		"DynFeeTx": &types.DynamicFeeTx{
 			Gas: 21000,
@@ -72,7 +71,7 @@ func TestGasSubsidies_SupportAllTxTypes(t *testing.T) {
 			// The sponsorship donation needs to be high enough to cover the gas
 			// fees of the sponsored tx and the fees of the internal payment tx.
 			donation := big.NewInt(1e16)
-			Fund(t, &net.Session, sponsee.Address(), donation)
+			Fund(t, net, sponsee.Address(), donation)
 
 			signedTx := makeSponsorRequestTransaction(t, tx, net.GetChainId(), sponsee)
 			require.NoError(t, client.SendTransaction(t.Context(), signedTx))
