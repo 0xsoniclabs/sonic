@@ -132,7 +132,16 @@ func makeSponsorRequestTransaction(t *testing.T, tx types.TxData, chainId *big.I
 	}
 	sponsoredTx, err := types.SignNewTx(sender.PrivateKey, signer, tx)
 	require.NoError(t, err)
-	require.True(t, subsidies.IsSponsorshipRequest(sponsoredTx))
+
+	// This function checks that the final transaction can indeed be a sponsorship request
+	// to early detect issues while creating tests.
+	// This function sets signature and gas price to 0, the only reason for it to fail
+	// is if the tx.To() is nil (contract creation cannot be sponsored).
+	require.True(t,
+		subsidies.IsSponsorshipRequest(sponsoredTx),
+		"transaction cannot be sponsor, To:%v",
+		sponsoredTx.To(),
+	)
 	return sponsoredTx
 }
 
