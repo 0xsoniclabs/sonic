@@ -20,7 +20,6 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -48,28 +47,38 @@ func TestGasSubsidies_RequestIsRejectedInCaseOfInsufficientFunds(t *testing.T) {
 	sponsee := tests.NewAccount()
 	signedTx := makeSponsorRequestTransaction(t, tx, net.GetChainId(), sponsee)
 
+	// Create a sponsorship fund with 0 initial funds
+	sponsorRegistry := Fund(t, net, sponsee.Address(), big.NewInt(0))
+	gasConfig, err := sponsorRegistry.GetGasConfig(nil)
+	require.NoError(t, err)
+
 	// The cost of the sponsored transaction is the gas used by the tx
 	// plus the overhead of the sponsorship itself
-	cost := tx.Gas + subsidies.SponsorshipOverheadGasCost
+	cost := tx.Gas + gasConfig.OverheadCharge.Uint64()
 
 	// Get the current baseFee to calculate the required funds
-	header, err := client.HeaderByNumber(t.Context(), nil)
+	header, err := client.HeaderByNumber(t.Context(), big.NewInt(0))
 	require.NoError(t, err)
 	baseFee := header.BaseFee
 
 	// Only add half the required funds
 	sponsorshipAmount := big.NewInt(int64(cost) * baseFee.Int64() / 2)
-	sponsorRegistry := Fund(t, net, sponsee.Address(), sponsorshipAmount)
+	ok, fundId, err := sponsorRegistry.AccountSponsorshipFundId(nil, sponsee.Address())
+	require.NoError(t, err)
+	require.True(t, ok, "registry should have a fund ID")
+	receipt, err := net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
+		opts.Value = sponsorshipAmount
+		return sponsorRegistry.Sponsor(opts, fundId)
+	})
+	require.NoError(t, err)
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
 	// Try to send the sponsored transaction
 	require.ErrorContains(t, client.SendTransaction(t.Context(), signedTx),
 		"transaction sponsorship rejected")
 
 	// Add the second half of the required funds
-	ok, fundId, err := sponsorRegistry.AccountSponsorshipFundId(nil, sponsee.Address())
-	require.NoError(t, err)
-	require.True(t, ok, "registry should have a fund ID")
-	receipt, err := net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
+	receipt, err = net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
 		opts.Value = sponsorshipAmount
 		return sponsorRegistry.Sponsor(opts, fundId)
 	})
@@ -88,8 +97,7 @@ func TestGasSubsidies_RequestIsRejectedInCaseOfInsufficientFunds(t *testing.T) {
 	require.Equal(t, fundsBefore, uint64(sponsorshipAmount.Uint64()*2))
 
 	// Send the sponsored transaction
-	require.NoError(t, client.SendTransaction(t.Context(), signedTx))
-	receipt, err = net.GetReceipt(signedTx.Hash())
+	receipt, err = net.Run(signedTx)
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
