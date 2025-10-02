@@ -17,6 +17,7 @@
 package evmcore
 
 import (
+	"encoding/binary"
 	"fmt"
 	"math"
 	"math/big"
@@ -689,6 +690,8 @@ func TestRunTransactions_GasSubsidiesEnabled_RunsSponsorshipRequestWithSponsorsh
 }
 
 func TestRunSponsoredTransaction_InsufficientGas_SkipsTransaction(t *testing.T) {
+	const overhead = 123_456 // overhead to be charged for sponsored transactions
+
 	tests := map[string]struct {
 		availableGas uint64
 		shouldSkip   bool
@@ -706,11 +709,11 @@ func TestRunSponsoredTransaction_InsufficientGas_SkipsTransaction(t *testing.T) 
 			shouldSkip:   true,
 		},
 		"just not enough for both": {
-			availableGas: 21_000 + subsidies.SponsorshipOverheadGasCost - 1,
+			availableGas: 21_000 + overhead - 1,
 			shouldSkip:   true,
 		},
 		"enough for both": {
-			availableGas: 21_000 + subsidies.SponsorshipOverheadGasCost,
+			availableGas: 21_000 + overhead,
 			shouldSkip:   false,
 		},
 	}
@@ -732,19 +735,25 @@ func TestRunSponsoredTransaction_InsufficientGas_SkipsTransaction(t *testing.T) 
 				upgrades: opera.Upgrades{GasSubsidies: true},
 			}
 
-			if !test.shouldSkip {
+			// Snapshot for the IsCovered call
+			state.EXPECT().Snapshot().Return(1)
+			state.EXPECT().RevertToSnapshot(1)
 
-				// Snapshot for the IsCovered call
-				state.EXPECT().Snapshot().Return(1)
-				state.EXPECT().RevertToSnapshot(1)
+			// Call to getConfig contract and return the expected overhead.
+			any := gomock.Any()
+			result := make([]byte, 3*32)
+			binary.BigEndian.PutUint64(result[88:], overhead)
+			evm.EXPECT().Call(any, any, any, any, any).
+				Return(result, uint64(0), nil)
+
+			// Call made by IsCovered
+			evm.EXPECT().Call(any, any, any, any, any).
+				Return([]byte{31: 1}, uint64(0), nil) // indicates "covered"
+
+			if !test.shouldSkip {
 
 				// Request for the nonce of the internal fee-deduction.
 				state.EXPECT().GetNonce(common.Address{}).Return(uint64(123))
-
-				// Call made by IsCovered
-				any := gomock.Any()
-				evm.EXPECT().Call(any, any, any, any, any).
-					Return([]byte{31: 1}, uint64(0), nil) // indicates "covered"
 
 				evm.EXPECT().runWithoutBaseFeeCheck(any, tx, any).Return(ProcessedTransaction{
 					Transaction: tx,
@@ -759,7 +768,7 @@ func TestRunSponsoredTransaction_InsufficientGas_SkipsTransaction(t *testing.T) 
 					Transaction: &types.Transaction{},
 					Receipt: &types.Receipt{
 						Status:  types.ReceiptStatusSuccessful,
-						GasUsed: subsidies.SponsorshipOverheadGasCost,
+						GasUsed: 321, // arbitrary
 					},
 				})
 			}
@@ -860,6 +869,8 @@ func TestRunSponsoredTransaction_SponsoredTransactionIsSkipped_NoFeeDeductionTxI
 	// Let the IsCovered call indicate that the transaction is covered,
 	any := gomock.Any()
 	evm.EXPECT().Call(any, any, any, any, any).
+		Return([]byte{95: 0}, uint64(0), nil) // results of getGasConfig
+	evm.EXPECT().Call(any, any, any, any, any).
 		Return([]byte{31: 1}, uint64(0), nil) // indicates "covered"
 
 	// Let the sponsored transaction be processed, but result in a skipped
@@ -888,6 +899,8 @@ func TestRunSponsoredTransaction_SponsoredTransactionIsSkipped_NoFeeDeductionTxI
 }
 
 func TestRunSponsoredTransaction_FailingCreationOfFeeDeduction_TransactionIsAcceptedWithoutFeeDeduction(t *testing.T) {
+	const overhead = 255
+
 	ctrl := gomock.NewController(t)
 	state := state.NewMockStateDB(ctrl)
 	evm := NewMock_evm(ctrl)
@@ -904,6 +917,8 @@ func TestRunSponsoredTransaction_FailingCreationOfFeeDeduction_TransactionIsAcce
 	// Let the IsCovered call indicate that the transaction is covered,
 	any := gomock.Any()
 	evm.EXPECT().Call(any, any, any, any, any).
+		Return([]byte{95: overhead}, uint64(0), nil) // results of getGasConfig
+	evm.EXPECT().Call(any, any, any, any, any).
 		Return([]byte{31: 1}, uint64(0), nil) // indicates "covered"
 
 	// Simulate huge gas prices, that are still ok for the sponsored transaction
@@ -914,7 +929,7 @@ func TestRunSponsoredTransaction_FailingCreationOfFeeDeduction_TransactionIsAcce
 	_, overflow := uint256.FromBig(
 		new(big.Int).Mul(
 			gasPrice,
-			new(big.Int).SetUint64(tx.Gas()+subsidies.SponsorshipOverheadGasCost),
+			new(big.Int).SetUint64(tx.Gas()+overhead),
 		),
 	)
 	require.False(t, overflow, "test setup invalid: gas price overflows maximum fees for sponsored transaction")
@@ -964,6 +979,8 @@ func TestRunSponsoredTransaction_FeeDeductionTxIsSkipped_TransactionIsAcceptedWi
 
 	// Let the IsCovered call indicate that the transaction is covered,
 	any := gomock.Any()
+	evm.EXPECT().Call(any, any, any, any, any).
+		Return([]byte{95: 0}, uint64(0), nil) // results of getGasConfig
 	evm.EXPECT().Call(any, any, any, any, any).
 		Return([]byte{31: 1}, uint64(0), nil) // indicates "covered"
 
@@ -1019,6 +1036,8 @@ func TestRunSponsoredTransaction_FeeDeductionTxFails_TransactionIsAcceptedWithou
 	// Let the IsCovered call indicate that the transaction is covered,
 	any := gomock.Any()
 	evm.EXPECT().Call(any, any, any, any, any).
+		Return([]byte{95: 0}, uint64(0), nil) // results of getGasConfig
+	evm.EXPECT().Call(any, any, any, any, any).
 		Return([]byte{31: 1}, uint64(0), nil) // indicates "covered"
 
 	// Expect the sponsored transaction to be processed successfully.
@@ -1073,6 +1092,8 @@ func TestRunSponsoredTransaction_TxIndexIsIncrementedForFeeDeductionTx(t *testin
 	state.EXPECT().GetNonce(common.Address{}).Return(uint64(123))
 
 	any := gomock.Any()
+	evm.EXPECT().Call(any, any, any, any, any).
+		Return([]byte{95: 0}, uint64(0), nil) // results of getGasConfig
 	evm.EXPECT().Call(any, any, any, any, any).
 		Return([]byte{31: 1}, uint64(0), nil) // indicates "covered"
 
@@ -1148,7 +1169,8 @@ func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSucc
 	gomock.InOrder(
 		// --- The effects of the IsCovered call ---
 		state.EXPECT().Snapshot().Return(1), // < added by runSponsoredTransaction
-		state.EXPECT().Snapshot().Return(2), // < added for the chooseFund call by the EVM (not reverted)
+		state.EXPECT().Snapshot().Return(2), // < added for the getGasConfig call by the EVM (not reverted)
+		state.EXPECT().Snapshot().Return(3), // < added for the chooseFund call by the EVM (not reverted)
 		state.EXPECT().GetCode(registryAddress).Return(registry.GetCode()),
 		// the effects of the IsCovered call in runSponsoredTransaction must be
 		// reverted to avoid spilling side-effects into the actual transaction
@@ -1157,7 +1179,7 @@ func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSucc
 		// --- The effects of the sponsored transaction itself ---
 		state.EXPECT().SetTxContext(tx.Hash(), txIndex),
 		state.EXPECT().SetNonce(sender, uint64(1), tracing.NonceChangeEoACall),
-		state.EXPECT().Snapshot().Return(3), // < for the transaction processing
+		state.EXPECT().Snapshot().Return(4), // < for the transaction processing
 		state.EXPECT().EndTransaction(),
 		state.EXPECT().TxIndex().Return(txIndex),
 
@@ -1167,10 +1189,10 @@ func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSucc
 		// --- The effects of the fee deduction transaction ---
 		state.EXPECT().SetTxContext(any, txIndex+1),
 		state.EXPECT().SetNonce(zeroAddress, uint64(124), tracing.NonceChangeEoACall),
-		state.EXPECT().Snapshot().Return(4),                           // < for the deductFees call
-		state.EXPECT().Snapshot().Return(5),                           // < for the nested burnNativeToken call to SFC
+		state.EXPECT().Snapshot().Return(5),                           // < for the deductFees call
+		state.EXPECT().Snapshot().Return(6),                           // < for the nested burnNativeToken call to SFC
 		state.EXPECT().SetState(sfcAddress, any, any).AnyTimes(),      // < update of the total token supply
-		state.EXPECT().Snapshot().Return(6),                           // < transfer to account 0
+		state.EXPECT().Snapshot().Return(7),                           // < transfer to account 0
 		state.EXPECT().SetState(registryAddress, any, any).AnyTimes(), // < update of the fund
 		state.EXPECT().EndTransaction(),
 		state.EXPECT().TxIndex().Return(txIndex+1),
@@ -1281,9 +1303,13 @@ func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSucc
 
 	fundId := subsidies.FundId(callData[4:])
 	gasUsed := processedTransactions[0].Receipt.GasUsed
-	gasPrice := baseFee // gas price is base fee for sponsored tx - TODO: should tip be added?
+	gasPrice := baseFee // gas price is base fee for sponsored tx
 
-	feeDeductionTx, err := subsidies.GetFeeChargeTransaction(state, fundId, gasUsed, gasPrice)
+	gasConfig := subsidies.GasConfig{ // < values hard-coded in dev version of the registry
+		SponsorshipOverheadGasCost: 210_000,
+		DeductFeesGasCost:          60_000,
+	}
+	feeDeductionTx, err := subsidies.GetFeeChargeTransaction(state, fundId, gasConfig, gasUsed, gasPrice)
 	require.NoError(err)
 	got := processedTransactions[1].Transaction
 	require.Equal(feeDeductionTx.Hash(), got.Hash())
