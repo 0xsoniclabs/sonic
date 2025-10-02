@@ -372,6 +372,24 @@ func consensusCallbackBeginBlockFn(
 						WithGasLimit(maxBlockGas).
 						WithDuration(blockDuration)
 
+					// With the transition from v2.0 to v2.1, the handling of
+					// block-gas-limit updates has changed. In v2.0, epoch
+					// sealing blocks used to already adapt the new gas limit,
+					// while in v2.1 the old gas limit is kept and only the
+					// first block after the sealing block is adapting the new
+					// gas limit. As the list of transactions for the sealing
+					// block is assembled by validators using the rules of the
+					// current epoch, using the ending epoch's gas limit is
+					// matching the assumptions made by the validators.
+					//
+					// However, in the past, there was one epoch-sealing block
+					// (8054923) in which the gas limit was adapted. To support
+					// this one-time exception, we add a special case for
+					// this block here to ensure backward compatibility.
+					if es.Rules.NetworkID == 146 && number == 8054923 {
+						blockBuilder.WithGasLimit(es.Rules.Blocks.MaxBlockGas)
+					}
+
 					for _, cur := range preInternalProcessedTxs {
 						if cur.Receipt != nil {
 							blockBuilder.AddTransaction(
