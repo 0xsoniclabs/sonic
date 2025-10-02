@@ -83,9 +83,14 @@ func validateSponsoredTxInBlock(
 
 	receipt, err := session.GetReceipt(txHash)
 	require.NoError(err)
-	require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
 
 	block, err := client.BlockByNumber(t.Context(), receipt.BlockNumber)
+	require.NoError(err)
+
+	registry, err := registry.NewRegistry(registry.GetAddress(), client)
+	require.NoError(err)
+
+	config, err := registry.GetGasConfig(nil)
 	require.NoError(err)
 
 	// Check that the payment transaction is included right after the sponsored
@@ -93,18 +98,28 @@ func validateSponsoredTxInBlock(
 	found := false
 	for i, tx := range block.Transactions() {
 		if tx.Hash() == receipt.TxHash {
+			// check that the next transaction is an internal payment transaction
 			require.Less(i+1, len(block.Transactions()), "sponsored transaction must not be last, it is last")
 			payment := block.Transactions()[i+1]
 			require.True(internaltx.IsInternal(payment), "payment transaction must be internal, but it is not")
-			receipt, err := session.GetReceipt(payment.Hash())
+			substractReceipt, err := session.GetReceipt(payment.Hash())
 			require.NoError(err)
-			require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
+			require.Equal(types.ReceiptStatusSuccessful, substractReceipt.Status)
+
+			// check that the deduced amount matches the (gas used + overhead) * market price
+			feeCharged := (receipt.GasUsed + config.OverheadCharge.Uint64()) * block.BaseFee().Uint64()
+			require.Len(substractReceipt.Logs, 1, "no logs found in the payment transaction receipt")
+			log := substractReceipt.Logs[0]
+			reportedCharge := new(big.Int).SetBytes(log.Data)
+			require.EqualValues(feeCharged, reportedCharge.Uint64(),
+				"the fee charged does not match the expected value",
+			)
+
 			found = true
 			break
 		}
 	}
 	require.True(found, "sponsored transaction not found in the block")
-
 }
 
 // makeSponsoredTransactionWithNonce creates a sponsored transaction (with
