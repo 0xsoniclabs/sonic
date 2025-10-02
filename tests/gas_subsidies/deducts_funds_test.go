@@ -79,6 +79,19 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 	cases := map[string]struct {
 		runTransactions func(t *testing.T, net *tests.IntegrationTestNet, sender *tests.Account)
 	}{
+		"contract creation sponsorship request is rejected": {
+			runTransactions: func(t *testing.T, net *tests.IntegrationTestNet, sender *tests.Account) {
+				nonce, err := client.PendingNonceAt(t.Context(), sender.Address())
+				require.NoError(t, err)
+				tx := tests.SignTransaction(t, net.GetChainId(), &types.LegacyTx{
+					Nonce: nonce,
+					// contract creation cannot be sponsored
+					Gas: 21000,
+				}, sender)
+				err = client.SendTransaction(t.Context(), tx)
+				require.Error(t, err)
+			},
+		},
 		"sponsored transaction calls contract": {
 			runTransactions: func(t *testing.T, net *tests.IntegrationTestNet, sender *tests.Account) {
 				opts, err := net.GetTransactOptions(sender)
@@ -138,25 +151,25 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 			runTransactions: func(t *testing.T, net *tests.IntegrationTestNet, sender *tests.Account) {
 				nonce, err := client.PendingNonceAt(t.Context(), sender.Address())
 				require.NoError(t, err)
-				sponsoredTx := tests.SignTransaction(t, net.GetChainId(), &types.LegacyTx{
+				tx1 := tests.SignTransaction(t, net.GetChainId(), &types.LegacyTx{
 					Nonce: nonce,
 					To:    &common.Address{},
 					Gas:   21000,
 				}, sender)
 
 				require.NoError(t, err)
-				normalTx := tests.SignTransaction(t, net.GetChainId(), &types.LegacyTx{
+				tx2 := tests.SignTransaction(t, net.GetChainId(), &types.LegacyTx{
 					Nonce: nonce + 1,
 					To:    &common.Address{},
 					Gas:   21000,
 				}, sender)
 
-				err = client.SendTransaction(t.Context(), sponsoredTx)
+				err = client.SendTransaction(t.Context(), tx1)
 				require.NoError(t, err)
-				err = client.SendTransaction(t.Context(), normalTx)
+				err = client.SendTransaction(t.Context(), tx2)
 				require.NoError(t, err)
 
-				receipts, err := net.GetReceipts([]common.Hash{sponsoredTx.Hash(), normalTx.Hash()})
+				receipts, err := net.GetReceipts([]common.Hash{tx1.Hash(), tx2.Hash()})
 				require.NoError(t, err)
 				require.Equal(t, types.ReceiptStatusSuccessful, receipts[0].Status)
 				require.Equal(t, types.ReceiptStatusSuccessful, receipts[1].Status)
@@ -293,6 +306,8 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 						require.NoError(t, err)
 						require.Equal(t, types.ReceiptStatusSuccessful, deduceFundsReceipt.Status)
 
+						validateSponsoredTxInBlock(t, net, tx.Hash())
+
 					}
 
 				}
@@ -322,7 +337,7 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 	}
 }
 
-func TestGasSubsidies_SubsidizedTransaction_FailsTransactionIfDeduceFundsDoesNotFit(t *testing.T) {
+func TestGasSubsidies_SubsidizedTransaction_SkipTransactionIfDeduceFundsDoesNotFit(t *testing.T) {
 
 	upgrades := opera.GetSonicUpgrades()
 	upgrades.GasSubsidies = true
