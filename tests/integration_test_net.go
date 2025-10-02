@@ -180,6 +180,7 @@ type IntegrationTestNetOptions struct {
 // regression tests for client code.
 type IntegrationTestNet struct {
 	options IntegrationTestNetOptions
+	genesis *makefakegenesis.GenesisJson
 	nodes   []integrationTestNode
 
 	sessionsMutex sync.Mutex
@@ -353,6 +354,7 @@ func StartIntegrationTestNetWithJsonGenesis(
 	)
 	require.NoError(t, err, "failed to start integration test network with json genesis")
 
+	net.genesis = jsonGenesis
 	return net
 }
 
@@ -594,6 +596,13 @@ func (n *IntegrationTestNet) Stop() {
 func (n *IntegrationTestNet) Restart() error {
 	n.Stop()
 	return n.start()
+}
+
+// GetJsonGenesis returns the JSON genesis used to start the network, if it was
+// started with JSON genesis. If the network was started with fake genesis,
+// this method will return nil.
+func (n *IntegrationTestNet) GetJsonGenesis() *makefakegenesis.GenesisJson {
+	return n.genesis
 }
 
 // NumNodes returns the number of nodes on the network.
