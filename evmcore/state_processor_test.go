@@ -1306,8 +1306,8 @@ func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSucc
 	gasPrice := baseFee // gas price is base fee for sponsored tx
 
 	gasConfig := subsidies.GasConfig{ // < values hard-coded in dev version of the registry
-		SponsorshipOverheadGasCost: 200_000,
-		DeductFeesGasCost:          50_000,
+		SponsorshipOverheadGasCost: 210_000,
+		DeductFeesGasCost:          60_000,
 	}
 	feeDeductionTx, err := subsidies.GetFeeChargeTransaction(state, fundId, gasConfig, gasUsed, gasPrice)
 	require.NoError(err)

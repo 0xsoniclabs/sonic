@@ -63,7 +63,7 @@ contract SubsidiesRegistry {
     ) {
         uint256 getGasConfigCosts = 50_000;
         chooseFundLimit = 100_000;
-        deductFeesLimit = 50_000;
+        deductFeesLimit = 60_000;
         overheadCharge = chooseFundLimit + deductFeesLimit + getGasConfigCosts;
         return (chooseFundLimit, deductFeesLimit, overheadCharge);
     }

@@ -259,8 +259,8 @@ func TestIsCovered_ConsultsSubsidiesRegistry(t *testing.T) {
 			if test.expectCovered {
 				require.NotEmpty(fundId)
 				// These values are hard-coded in the dev-version of the registry.
-				require.Equal(uint64(50_000), config.DeductFeesGasCost)
-				require.Equal(uint64(200_000), config.SponsorshipOverheadGasCost)
+				require.Equal(uint64(60_000), config.DeductFeesGasCost)
+				require.Equal(uint64(210_000), config.SponsorshipOverheadGasCost)
 			} else {
 				require.Empty(fundId)
 			}
