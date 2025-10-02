@@ -1,0 +1,159 @@
+// Copyright 2025 Sonic Operations Ltd
+// This file is part of the Sonic Client
+//
+// Sonic is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Sonic is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with Sonic. If not, see <http://www.gnu.org/licenses/>.
+
+package gas_subsidies
+
+import (
+	"math/big"
+	"testing"
+
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
+	"github.com/0xsoniclabs/sonic/tests"
+	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/holiman/uint256"
+	"github.com/stretchr/testify/require"
+)
+
+// Fund creates a sponsorship fund for the given sponsee account and
+// donates the given amount of wei to it from the sponsor account. It returns
+// the registry instance for further queries.
+func Fund(
+	t *testing.T,
+	session tests.IntegrationTestNetSession,
+	sponsee common.Address,
+	donation *big.Int,
+) *registry.Registry {
+	t.Helper()
+	client, err := session.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	registry, err := registry.NewRegistry(registry.GetAddress(), client)
+	require.NoError(t, err)
+
+	ok, fundId, err := registry.AccountSponsorshipFundId(nil, sponsee)
+	receipt, err := session.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
+		opts.Value = donation
+		require.NoError(t, err)
+		require.True(t, ok, "registry should have a fund ID")
+		return registry.Sponsor(opts, fundId)
+	})
+	require.NoError(t, err)
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+
+	// check that the sponsorship funds got deposited
+	sponsorship, err := registry.Sponsorships(nil, fundId)
+	require.NoError(t, err)
+	require.Equal(t, donation, sponsorship.Funds)
+
+	return registry
+}
+
+// validateSponsoredTxInBlock checks that the sponsored transaction with the
+// given hash is included in a block and that it is immediately followed by a
+// successful internal transaction that pays for its gas fees.
+func validateSponsoredTxInBlock(
+	t *testing.T,
+	session tests.IntegrationTestNetSession,
+	txHash common.Hash) {
+	t.Helper()
+
+	require := require.New(t)
+
+	client, err := session.GetClient()
+	require.NoError(err)
+	defer client.Close()
+
+	receipt, err := session.GetReceipt(txHash)
+	require.NoError(err)
+	require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
+
+	block, err := client.BlockByNumber(t.Context(), receipt.BlockNumber)
+	require.NoError(err)
+
+	// Check that the payment transaction is included right after the sponsored
+	// transaction and that it was successful and has a non-zero value.
+	found := false
+	for i, tx := range block.Transactions() {
+		if tx.Hash() == receipt.TxHash {
+			require.Less(i+1, len(block.Transactions()), "sponsored transaction must not be last, it is last")
+			payment := block.Transactions()[i+1]
+			require.True(internaltx.IsInternal(payment), "payment transaction must be internal, but it is not")
+			receipt, err := session.GetReceipt(payment.Hash())
+			require.NoError(err)
+			require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
+			found = true
+			break
+		}
+	}
+	require.True(found, "sponsored transaction not found in the block")
+
+}
+
+// makeSponsoredTransactionWithNonce creates a sponsored transaction (with
+// gas price zero) from the given sender to the given receiver with the given
+// nonce.
+func makeSponsorRequestTransaction(t *testing.T, tx types.TxData, chainId *big.Int, sender *tests.Account) *types.Transaction {
+	t.Helper()
+	signer := types.LatestSignerForChainID(chainId)
+	switch tx := tx.(type) {
+	case *types.LegacyTx:
+		tx.GasPrice = big.NewInt(0)
+	case *types.AccessListTx:
+		tx.GasPrice = big.NewInt(0)
+	case *types.DynamicFeeTx:
+		tx.GasFeeCap = big.NewInt(0)
+		tx.GasTipCap = big.NewInt(0)
+	case *types.BlobTx:
+		tx.GasFeeCap = uint256.NewInt(0)
+		tx.GasTipCap = uint256.NewInt(0)
+	case *types.SetCodeTx:
+		tx.GasFeeCap = uint256.NewInt(0)
+		tx.GasTipCap = uint256.NewInt(0)
+	default:
+		t.Fatalf("unexpected transaction type: %T", tx)
+	}
+	sponsoredTx, err := types.SignNewTx(sender.PrivateKey, signer, tx)
+	require.NoError(t, err)
+	require.True(t, subsidies.IsSponsorshipRequest(sponsoredTx))
+	return sponsoredTx
+}
+
+// getTransactionIndexInBlock returns the index of the given transaction
+// receipt in its block, along with the block itself.
+func getTransactionIndexInBlock(
+	t *testing.T,
+	client *tests.PooledEhtClient,
+	receipt *types.Receipt,
+) (int, *types.Block) {
+	t.Helper()
+	require := require.New(t)
+
+	block, err := client.BlockByNumber(t.Context(), receipt.BlockNumber)
+	require.NoError(err)
+
+	for i, tx := range block.Transactions() {
+		if tx.Hash() == receipt.TxHash {
+			return i, block
+		}
+	}
+	require.Fail("transaction not found in block")
+	return -1, nil
+}
