@@ -56,6 +56,18 @@ contract SubsidiesRegistry {
 
     // --- Funding infrastructure used by the Sonic client ---
 
+    function getGasConfig() public pure returns (
+        uint256 chooseFundLimit, 
+        uint256 deductFeesLimit, 
+        uint256 overheadCharge
+    ) {
+        uint256 getGasConfigCosts = 50_000;
+        chooseFundLimit = 100_000;
+        deductFeesLimit = 60_000;
+        overheadCharge = chooseFundLimit + deductFeesLimit + getGasConfigCosts;
+        return (chooseFundLimit, deductFeesLimit, overheadCharge);
+    }
+
     function chooseFund(
         address from,
         address to,

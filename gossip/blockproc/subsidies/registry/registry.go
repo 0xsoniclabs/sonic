@@ -39,23 +39,21 @@ func GetCode() []byte {
 	return bytes.Clone(registryCode)
 }
 
+// GetGasConfigFunctionSelector is the function selector of the `getGasConfig`
+// function in the SubsidiesRegistry contract.
+const GetGasConfigFunctionSelector = 0x4b5c54c0
+
 // ChooseFundFunctionSelector is the function selector of the `chooseFund`
 // function in the SubsidiesRegistry contract.
 const ChooseFundFunctionSelector = 0x399f59ca
 
-// DeductFeesFunctionSelector is the function selector of the `deductFees` function
-// in the SubsidiesRegistry contract.
+// DeductFeesFunctionSelector is the function selector of the `deductFees`
+// function in the SubsidiesRegistry contract.
 const DeductFeesFunctionSelector = 0xb9ed9f26
 
-// GasLimitForChooseFundCall is the gas limit to be used when calling the
-// `chooseFund` function in the SubsidiesRegistry contract.
-// TODO: reevaluate this value once contract is settled.
-const GasLimitForChooseFundCall = 100_000
-
-// GasLimitForDeductFeesCall is the gas limit to be used when calling the
-// `deductFees` function in the SubsidiesRegistry contract.
-// TODO: reevaluate this value once contract is settled.
-const GasLimitForDeductFeesCall = 100_000
+// GasLimitForGetGasConfig is the gas limit to be used when calling the
+// `getGasConfig` function in the SubsidiesRegistry contract.
+const GasLimitForGetGasConfig = 50_000
 
 // ------------------------------ Internals ------------------------------------
 
