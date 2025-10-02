@@ -70,8 +70,9 @@ func TestGasSubsidies_InternalTransaction_HaveConsistentNonces(t *testing.T) {
 					Gas:   21_000,
 				}
 				sponsoredTx := makeSponsorRequestTransaction(t, txData, net.GetChainId(), sponsoredSender)
-				_, err = net.Run(sponsoredTx)
+				receipt, err := net.Run(sponsoredTx)
 				require.NoError(t, err)
+				require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
 				validateSponsoredTxInBlock(t, net, sponsoredTx.Hash())
 			},
@@ -131,6 +132,9 @@ func TestGasSubsidies_InternalTransaction_HaveConsistentNonces(t *testing.T) {
 					err = client.SendTransaction(t.Context(), tx)
 					require.NoError(t, err)
 
+					// This test interacts directly with the drive contract to avoid
+					// overheads of the usual testing tools which make it difficult
+					// to schedule the previous sponsored transaction within the same block
 					receipt, err := net.Apply(func(ops *bind.TransactOpts) (*types.Transaction, error) {
 						return contract.AdvanceEpochs(ops, big.NewInt(1))
 					})
