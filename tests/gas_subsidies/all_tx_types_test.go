@@ -52,19 +52,20 @@ func TestGasSubsidies_SupportAllTxTypes(t *testing.T) {
 		},
 	}
 
+	// Enable allegro to support setCode transactions.
+	upgrades := opera.GetAllegroUpgrades()
+	upgrades.GasSubsidies = true
+
+	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+		Upgrades: &upgrades,
+	})
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
 	for name, tx := range transactions {
 		t.Run(name, func(t *testing.T) {
-			// Enable allegro to support setCode transactions.
-			upgrades := opera.GetAllegroUpgrades()
-			upgrades.GasSubsidies = true
-
-			net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
-				Upgrades: &upgrades,
-			})
-
-			client, err := net.GetClient()
-			require.NoError(t, err)
-			defer client.Close()
 
 			sponsee := tests.NewAccount()
 
