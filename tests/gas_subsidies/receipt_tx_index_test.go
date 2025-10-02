@@ -234,57 +234,31 @@ func TestGasSubsidies_Receipts_HaveConsistentTransactionIndices(t *testing.T) {
 						receipts, err := net.GetReceipts(txHashes)
 						require.NoError(t, err)
 
-						// get the block with all the executed transactions.
-						block, err := client.BlockByNumber(t.Context(), receipts[0].BlockNumber)
-						require.NoError(t, err)
+						for i, receipt := range receipts {
 
-						// get the receipts for all transactions in the block
-						blockReceipts := []*types.Receipt{}
-						err = client.Client().Call(&blockReceipts, "eth_getBlockReceipts", fmt.Sprintf("0x%v", block.Number().String()))
-						require.NoError(t, err)
+							// get the block with all the executed transactions.
+							block, err := client.BlockByNumber(t.Context(), receipt.BlockNumber)
+							require.NoError(t, err)
+							tx := block.Transactions()[receipt.TransactionIndex]
 
-						for i, tx := range block.Transactions() {
-
-							receipt, err := client.TransactionReceipt(t.Context(), tx.Hash())
-							require.NoError(t, err, "failed to get receipt for tx %d", i)
-							require.Equal(t, uint(i), receipt.TransactionIndex,
-								"receipt index does not match transaction index for tx %d", i,
+							// verify that the transaction hash matches the one in the block
+							require.Equal(t, tx.Hash(), receipt.TxHash,
+								"receipt tx hash does not match block transaction hash for tx %d", i,
 							)
 
-							require.Equal(t, receipt, blockReceipts[i],
+							// get the receipts for all transactions in the block
+							blockReceipts := []*types.Receipt{}
+							err = client.Client().Call(&blockReceipts, "eth_getBlockReceipts", fmt.Sprintf("0x%v", block.Number().String()))
+							require.NoError(t, err)
+
+							require.Equal(t, receipt, blockReceipts[receipt.TransactionIndex],
 								"receipt does not match eth_getBlockReceipts for tx %d", i,
 							)
 
-							// verify that transaction index in the block is the one reported by the receipt
-							// for internal payment as well as for non-sponsored transactionsn
-							require.EqualValues(t, i, receipt.TransactionIndex)
-							require.Equal(t, receipt.TxHash, tx.Hash(),
-								"receipt tx hash does not match transaction hash for tx %d", i,
-							)
-
-							// verify that the receipt obtained from eth_getBlockReceipts matches
-							// the one obtained from eth_getTransactionReceipt
-							require.Equal(t, blockReceipts[i].TxHash, receipt.TxHash,
-								"receipt tx hash does not match eth_getBlockReceipts for tx %d", i,
-							)
-							require.Equal(t, blockReceipts[i].TransactionIndex, receipt.TransactionIndex,
-								"receipt index does not match eth_getBlockReceipts for tx %d", i,
-							)
-
-							// if this is a payment transaction, the one before must be the sponsored tx
-							// if it is index 0, then it is a seal epoch transaction and not a sponsored one.
-							sealEpochAddress := common.HexToAddress("0xd100A01E00000000000000000000000000000000")
-							if internaltx.IsInternal(tx) && *tx.To() != sealEpochAddress {
-								require.False(t, internaltx.IsInternal(block.Transactions()[i-1]),
-									"payment transaction at index %d must be preceded by a sponsored transaction", i,
-								)
-								require.True(t, subsidies.IsSponsorshipRequest(block.Transactions()[i-1]),
-									"transaction at index %d must be a sponsored transaction", i-1,
-								)
+							if subsidies.IsSponsorshipRequest(tx) {
+								validateSponsoredTxInBlock(t, net, tx.Hash())
 							}
-
 						}
-
 					})
 				}
 			})
