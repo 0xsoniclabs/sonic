@@ -268,11 +268,16 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 				block, err := client.BlockByNumber(t.Context(), big.NewInt(int64(blockNumber)))
 				require.NoError(t, err)
 
-				for i, tx := range block.Transactions() {
-					if subsidies.IsSponsorshipRequest(tx) {
-						receipt, err := net.GetReceipt(tx.Hash())
-						require.NoError(t, err)
+				var totalGasUsed uint64
 
+				for i, tx := range block.Transactions() {
+					receipt, err := net.GetReceipt(tx.Hash())
+					require.NoError(t, err)
+
+					totalGasUsed += receipt.GasUsed
+					require.EqualValues(t, totalGasUsed, receipt.CumulativeGasUsed)
+
+					if subsidies.IsSponsorshipRequest(tx) {
 						fundsUsed := (receipt.GasUsed +
 							config.OverheadCharge.Uint64()) * block.BaseFee().Uint64()
 						require.Greater(t, fundsUsed, uint64(0),
@@ -289,6 +294,7 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 						require.Equal(t, types.ReceiptStatusSuccessful, deduceFundsReceipt.Status)
 
 					}
+
 				}
 			}
 
