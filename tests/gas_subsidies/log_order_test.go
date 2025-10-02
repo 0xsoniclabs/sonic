@@ -83,15 +83,20 @@ func TestGasSubsidies_ProperlyLogsSubsidizedTransaction(t *testing.T) {
 		}
 	}
 
-	seenLogs := 0
 	// Ensure that the logs are in the correct order
 	for blockNumber := firstBlockNumber.Uint64(); blockNumber <= lastBlockNumber.Uint64(); blockNumber++ {
 		block, err := client.BlockByNumber(t.Context(), big.NewInt(int64(blockNumber)))
 		require.NoError(err)
 
+		seenLogs := 0
+		var totalGasUsed uint64
+
 		for i, tx := range block.Transactions() {
 			receipt, err := client.TransactionReceipt(t.Context(), tx.Hash())
 			require.NoError(err)
+
+			totalGasUsed += receipt.GasUsed
+			require.EqualValues(totalGasUsed, receipt.CumulativeGasUsed)
 
 			require.EqualValues(i, receipt.TransactionIndex, "transaction index should match")
 			for _, log := range receipt.Logs {
@@ -101,6 +106,7 @@ func TestGasSubsidies_ProperlyLogsSubsidizedTransaction(t *testing.T) {
 				seenLogs++
 			}
 		}
+
+		require.Greater(seenLogs, 0, "should have seen some logs")
 	}
-	require.Greater(seenLogs, 0, "should have seen some logs")
 }
