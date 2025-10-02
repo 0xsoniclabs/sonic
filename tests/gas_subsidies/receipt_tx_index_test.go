@@ -226,12 +226,12 @@ func TestGasSubsidies_Receipts_HaveConsistentTransactionIndices(t *testing.T) {
 					t.Run(name, func(t *testing.T) {
 
 						// send all transactions asynchronously
-						hashes := test.scenario(t, net)
+						txHashes := test.scenario(t, net)
 
 						// wait for all of them to be processed
 						// note that this list of receipts does not contain the receipts for the
 						// internal payment transactions
-						receipts, err := net.GetReceipts(hashes)
+						receipts, err := net.GetReceipts(txHashes)
 						require.NoError(t, err)
 
 						// get the block with all the executed transactions.
