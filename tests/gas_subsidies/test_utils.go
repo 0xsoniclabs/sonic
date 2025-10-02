@@ -61,7 +61,7 @@ func Fund(
 	// check that the sponsorship funds got deposited
 	sponsorship, err := registry.Sponsorships(nil, fundId)
 	require.NoError(t, err)
-	require.Equal(t, donation, sponsorship.Funds)
+	require.Equal(t, donation.Uint64(), sponsorship.Funds.Uint64())
 
 	return registry
 }
