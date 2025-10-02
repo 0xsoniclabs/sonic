@@ -17,6 +17,7 @@
 package tests
 
 import (
+	"math"
 	"math/big"
 	"slices"
 	"testing"
@@ -79,11 +80,20 @@ func TestGasSubsidies_CumulativeGasUsageOfSponsoredTransactions(t *testing.T) {
 	cumulativeGasCost := uint64(0)
 
 	var receipt *types.Receipt
+	firstBlockNumber := uint64(math.MaxUint64)
+	lastBlockNumber := uint64(0)
 	for _, tx := range transactions {
 		// Wait for the sponsored transaction to be executed.
 		receipt, err = net.GetReceipt(tx.Hash())
 		require.NoError(t, err)
 		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+
+		if receipt.BlockNumber.Uint64() < firstBlockNumber {
+			firstBlockNumber = receipt.BlockNumber.Uint64()
+		}
+		if receipt.BlockNumber.Uint64() > lastBlockNumber {
+			lastBlockNumber = receipt.BlockNumber.Uint64()
+		}
 
 		block, err := client.BlockByNumber(t.Context(), receipt.BlockNumber)
 		require.NoError(t, err)
@@ -100,6 +110,19 @@ func TestGasSubsidies_CumulativeGasUsageOfSponsoredTransactions(t *testing.T) {
 
 		// Accumulate the gas used by the sponsored transaction.
 		cumulativeGasCost += receipt.GasUsed + paymentReceipt.GasUsed
+	}
+
+	for i := firstBlockNumber; i <= lastBlockNumber; i++ {
+		cumulativeGas := uint64(0)
+		block, err := client.BlockByNumber(t.Context(), big.NewInt(int64(i)))
+		require.NoError(t, err)
+		for _, tx := range block.Transactions() {
+			receipt, err := net.GetReceipt(tx.Hash())
+			require.NoError(t, err)
+			cumulativeGas += receipt.GasUsed
+			require.Equal(t, cumulativeGas, receipt.CumulativeGasUsed,
+				"cumulative gas used in the block should equal the sum of the gas used by the sponsored transactions")
+		}
 	}
 
 	header, err := client.HeaderByHash(t.Context(), receipt.BlockHash)
