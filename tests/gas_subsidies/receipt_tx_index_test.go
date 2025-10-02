@@ -23,16 +23,19 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
+	"github.com/0xsoniclabs/sonic/gossip/contract/driverauth100"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 )
 
 func TestGasSubsidies_Receipts_HaveConsistentTransactionIndices(t *testing.T) {
-	require := require.New(t)
+
 	upgrades := []struct {
 		name    string
 		upgrade opera.Upgrades
@@ -58,100 +61,231 @@ func TestGasSubsidies_Receipts_HaveConsistentTransactionIndices(t *testing.T) {
 				})
 
 				client, err := net.GetClient()
-				require.NoError(err)
+				require.NoError(t, err)
 				defer client.Close()
 
-				sponsee := tests.NewAccount()
-				receiverAddress := tests.NewAccount().Address()
-				donation := big.NewInt(math.MaxInt64)
+				contract, err := driverauth100.NewContract(driverauth.ContractAddress, client)
+				require.NoError(t, err, "failed to create contract instance")
 
-				nonSponsoredAccount := tests.MakeAccountWithBalance(t, net, big.NewInt(math.MaxInt64))
+				sponsee := tests.NewAccount()
+				donation := big.NewInt(math.MaxInt64)
 
 				// set up sponsorship, but drop the returned registry since it is not needed
 				_ = Fund(t, net, sponsee.Address(), donation)
-				suggestedGasPrice, err := client.SuggestGasPrice(t.Context())
-				require.NoError(err)
 
-				numTxs := uint64(5)
-				hashes := []common.Hash{}
+				transactionsLoad := map[string]struct {
+					scenario func(t *testing.T, net *tests.IntegrationTestNet) []common.Hash
+				}{
+					"single sponsored transaction": {
+						scenario: func(t *testing.T, net *tests.IntegrationTestNet) []common.Hash {
+							nonce, err := client.PendingNonceAt(t.Context(), sponsee.Address())
+							require.NoError(t, err)
+							txData := &types.LegacyTx{
+								Nonce: nonce,
+								To:    &common.Address{0x1}, // not a contract creation, contract creation cannot be sponsored
+								Gas:   21_000,
+							}
+							sponsoredTx := makeSponsorRequestTransaction(t, txData, net.GetChainId(), sponsee)
+							hashes := []common.Hash{sponsoredTx.Hash()}
 
-				// send interleaved non-sponsored and sponsored transactions
-				// so that the effect on index of both kinds of transactions
-				// can be verified
-				for i := range numTxs {
-					tx := &types.LegacyTx{
-						To:       &receiverAddress,
-						Gas:      21000,
-						GasPrice: suggestedGasPrice,
-						Nonce:    i,
-					}
-					// send a non-sponsored transaction
-					signedTx := tests.CreateTransaction(t, net, tx, nonSponsoredAccount)
-					hashes = append(hashes, signedTx.Hash())
-					require.NoError(client.SendTransaction(t.Context(), signedTx), "failed to send  transaction %v", i)
+							client, err := net.GetClient()
+							require.NoError(t, err)
+							defer client.Close()
 
-					// send a sponsored transaction
-					sponsoredTx := makeSponsorRequestTransaction(t, tx, net.GetChainId(), sponsee)
-					hashes = append(hashes, sponsoredTx.Hash())
-					require.NoError(client.SendTransaction(t.Context(), sponsoredTx), "failed to send sponsored transaction %v", i)
+							require.NoError(t, client.SendTransaction(t.Context(), sponsoredTx), "failed to send single sponsored transaction %v")
+
+							return hashes
+						},
+					},
+					"multiple sponsored transactions are executed within the same block": {
+						scenario: func(t *testing.T, net *tests.IntegrationTestNet) []common.Hash {
+							// This scenario issues multiple sponsored transactions asynchronously
+							// to facilitate their inclusion in the same block.
+
+							const numTxs = 10
+							txHashes := make([]common.Hash, 0, numTxs)
+
+							StartingNonce, err := client.PendingNonceAt(t.Context(), sponsee.Address())
+							require.NoError(t, err)
+
+							for i := 0; i < numTxs; i++ {
+
+								txData := &types.LegacyTx{
+									Nonce: StartingNonce + uint64(i),
+									To:    &common.Address{0x1}, // not a contract creation, contract creation cannot be sponsored
+									Gas:   21_000,
+								}
+								sponsoredTx := makeSponsorRequestTransaction(t, txData, net.GetChainId(), sponsee)
+
+								require.NoError(t, client.SendTransaction(t.Context(), sponsoredTx), "failed to send sponsored transaction %v", i)
+								txHashes = append(txHashes, sponsoredTx.Hash())
+							}
+							return txHashes
+						},
+					},
+					"multiple sponsored and non-sponsored transactions are executed within the same block": {
+						scenario: func(t *testing.T, net *tests.IntegrationTestNet) []common.Hash {
+							// This scenario issues multiple sponsored transactions asynchronously
+							// to facilitate their inclusion in the same block.
+
+							const numTxs = 10
+							txHashes := make([]common.Hash, 0, numTxs*2)
+
+							StartingNonce, err := client.PendingNonceAt(t.Context(), sponsee.Address())
+							require.NoError(t, err)
+
+							nonSponsoredAccount := tests.MakeAccountWithBalance(t, net, big.NewInt(math.MaxInt64))
+							suggestedGasPrice, err := client.SuggestGasPrice(t.Context())
+							require.NoError(t, err)
+
+							for i := 0; i < numTxs; i++ {
+
+								// sponsored transaction
+								sponsoredTxData := &types.LegacyTx{
+									Nonce: StartingNonce + uint64(i),
+									To:    &common.Address{0x1}, // not a contract creation, contract creation cannot be sponsored
+									Gas:   21_000,
+								}
+								sponsoredTx := makeSponsorRequestTransaction(t, sponsoredTxData, net.GetChainId(), sponsee)
+
+								require.NoError(t, client.SendTransaction(t.Context(), sponsoredTx), "failed to send sponsored transaction %v", i)
+								txHashes = append(txHashes, sponsoredTx.Hash())
+
+								// non-sponsored transaction
+								nonSponsoredTxData := &types.LegacyTx{
+									Nonce:    uint64(i),            // nonce is ignored for non-sponsored transactions
+									To:       &common.Address{0x1}, // not a contract creation, contract creation cannot be sponsored
+									Gas:      21_000,
+									GasPrice: suggestedGasPrice,
+								}
+								nonSponsoredTx := tests.SignTransaction(t, net.GetChainId(), nonSponsoredTxData, nonSponsoredAccount)
+
+								require.NoError(t, client.SendTransaction(t.Context(), nonSponsoredTx), "failed to send non-sponsored transaction %v", i)
+								txHashes = append(txHashes, nonSponsoredTx.Hash())
+							}
+							return txHashes
+						},
+					},
+					"an sponsored transaction right at epoch change": {
+						scenario: func(t *testing.T, net *tests.IntegrationTestNet) []common.Hash {
+							// This test issues both a sponsored transaction and an epoch change transaction
+							// asynchronously and attempts to have them included in the same block.
+							//
+							// Note: this test is somewhat flaky as it depends on fitting
+							// two transactions in the same block, congested machines may make it fail.
+							// Nevertheless, this test is necessary to ensure that internal transactions
+							// nonces are correctly handled even in this edge case.
+
+							// repeat until the sponsored transaction is included in an epoch change block
+							var inSameBlock bool
+							const retries = 10
+							lastHash := common.Hash{}
+							for i := 0; !inSameBlock && i < retries; i++ {
+								nonce, err := client.PendingNonceAt(t.Context(), sponsee.Address())
+								require.NoError(t, err)
+								txData := &types.LegacyTx{
+									Nonce: nonce,
+									To:    &common.Address{0x1}, // not a contract creation, contract creation cannot be sponsored
+									Gas:   21_000,
+								}
+								tx := makeSponsorRequestTransaction(t, txData, net.GetChainId(), sponsee)
+
+								err = client.SendTransaction(t.Context(), tx)
+								require.NoError(t, err)
+
+								// This test interacts directly with the drive contract to avoid
+								// overheads of the usual testing tools which make it difficult
+								// to schedule the previous sponsored transaction within the same block
+								receipt, err := net.Apply(func(ops *bind.TransactOpts) (*types.Transaction, error) {
+									return contract.AdvanceEpochs(ops, big.NewInt(1))
+								})
+
+								require.NoError(t, err, "failed to advance epoch")
+								require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+
+								// wait for the transaction to be executed
+								receipt, err = net.GetReceipt(tx.Hash())
+								require.NoError(t, err)
+								require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+
+								// the sponsored transaction is in an epoch change block iff there are
+								// internal transactions at the beginning of the block transactions list
+								block, err := client.BlockByNumber(t.Context(), receipt.BlockNumber)
+								require.NoError(t, err)
+								inSameBlock = internaltx.IsInternal(block.Transactions()[0])
+								if inSameBlock {
+									lastHash = tx.Hash()
+								}
+							}
+
+							return []common.Hash{lastHash}
+						},
+					},
 				}
+				for name, test := range transactionsLoad {
+					t.Run(name, func(t *testing.T) {
 
-				// wait for all of them to be processed
-				// note that this list of receipts does not contain the receipts for the
-				// internal payment transactions
-				receipts, err := net.GetReceipts(hashes)
-				require.NoError(err)
+						// send all transactions asynchronously
+						hashes := test.scenario(t, net)
 
-				// get the block with all the executed transactions.
-				block, err := client.BlockByNumber(t.Context(), receipts[0].BlockNumber)
-				require.NoError(err)
-				require.Equal(len(block.Transactions()), len(receipts)+int(numTxs),
-					"number of transactions in the block does not match number of receipts",
-				)
+						// wait for all of them to be processed
+						// note that this list of receipts does not contain the receipts for the
+						// internal payment transactions
+						receipts, err := net.GetReceipts(hashes)
+						require.NoError(t, err)
 
-				// get the receipts for all transactions in the block
-				blockReceipts := []*types.Receipt{}
-				err = client.Client().Call(&blockReceipts, "eth_getBlockReceipts", fmt.Sprintf("0x%v", block.Number().String()))
-				require.NoError(err)
+						// get the block with all the executed transactions.
+						block, err := client.BlockByNumber(t.Context(), receipts[0].BlockNumber)
+						require.NoError(t, err)
 
-				for i, tx := range block.Transactions() {
+						// get the receipts for all transactions in the block
+						blockReceipts := []*types.Receipt{}
+						err = client.Client().Call(&blockReceipts, "eth_getBlockReceipts", fmt.Sprintf("0x%v", block.Number().String()))
+						require.NoError(t, err)
 
-					receipt, err := client.TransactionReceipt(t.Context(), tx.Hash())
-					require.NoError(err, "failed to get receipt for tx %d", i)
-					require.Equal(uint(i), receipt.TransactionIndex,
-						"receipt index does not match transaction index for tx %d", i,
-					)
+						for i, tx := range block.Transactions() {
 
-					require.Equal(receipt, blockReceipts[i],
-						"receipt does not match eth_getBlockReceipts for tx %d", i,
-					)
+							receipt, err := client.TransactionReceipt(t.Context(), tx.Hash())
+							require.NoError(t, err, "failed to get receipt for tx %d", i)
+							require.Equal(t, uint(i), receipt.TransactionIndex,
+								"receipt index does not match transaction index for tx %d", i,
+							)
 
-					// verify that transaction index in the block is the one reported by the receipt
-					// for internal payment as well as for non-sponsored transactionsn
-					require.EqualValues(i, receipt.TransactionIndex)
-					require.Equal(receipt.TxHash, tx.Hash(),
-						"receipt tx hash does not match transaction hash for tx %d", i,
-					)
+							require.Equal(t, receipt, blockReceipts[i],
+								"receipt does not match eth_getBlockReceipts for tx %d", i,
+							)
 
-					// verify that the receipt obtained from eth_getBlockReceipts matches
-					// the one obtained from eth_getTransactionReceipt
-					require.Equal(blockReceipts[i].TxHash, receipt.TxHash,
-						"receipt tx hash does not match eth_getBlockReceipts for tx %d", i,
-					)
-					require.Equal(blockReceipts[i].TransactionIndex, receipt.TransactionIndex,
-						"receipt index does not match eth_getBlockReceipts for tx %d", i,
-					)
+							// verify that transaction index in the block is the one reported by the receipt
+							// for internal payment as well as for non-sponsored transactionsn
+							require.EqualValues(t, i, receipt.TransactionIndex)
+							require.Equal(t, receipt.TxHash, tx.Hash(),
+								"receipt tx hash does not match transaction hash for tx %d", i,
+							)
 
-					// if this is a payment transaction, the one before must be the sponsored tx
-					if internaltx.IsInternal(tx) {
-						require.False(internaltx.IsInternal(block.Transactions()[i-1]),
-							"payment transaction at index %d must be preceded by a sponsored transaction", i,
-						)
-						require.True(subsidies.IsSponsorshipRequest(block.Transactions()[i-1]),
-							"transaction at index %d must be a sponsored transaction", i-1,
-						)
-					}
+							// verify that the receipt obtained from eth_getBlockReceipts matches
+							// the one obtained from eth_getTransactionReceipt
+							require.Equal(t, blockReceipts[i].TxHash, receipt.TxHash,
+								"receipt tx hash does not match eth_getBlockReceipts for tx %d", i,
+							)
+							require.Equal(t, blockReceipts[i].TransactionIndex, receipt.TransactionIndex,
+								"receipt index does not match eth_getBlockReceipts for tx %d", i,
+							)
 
+							// if this is a payment transaction, the one before must be the sponsored tx
+							// if it is index 0, then it is a seal epoch transaction and not a sponsored one.
+							sealEpochAddress := common.HexToAddress("0xd100A01E00000000000000000000000000000000")
+							if internaltx.IsInternal(tx) && *tx.To() != sealEpochAddress {
+								require.False(t, internaltx.IsInternal(block.Transactions()[i-1]),
+									"payment transaction at index %d must be preceded by a sponsored transaction", i,
+								)
+								require.True(t, subsidies.IsSponsorshipRequest(block.Transactions()[i-1]),
+									"transaction at index %d must be a sponsored transaction", i-1,
+								)
+							}
+
+						}
+
+					})
 				}
 			})
 		}
