@@ -374,7 +374,7 @@ func TestGasSubsidies_SubsidizedTransaction_SkipTransactionIfDeduceFundsDoesNotF
 	require.ErrorContains(t, err, "not found")
 }
 
-func TestGasSubsidies_ContractCreationSponsorshipRequest_IsRejected(t *testing.T) {
+func TestGasSubsidies_NonSponsoredTransactionsAreRejected(t *testing.T) {
 
 	upgrades := opera.GetSonicUpgrades()
 	upgrades.GasSubsidies = true
