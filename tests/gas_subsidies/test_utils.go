@@ -49,6 +49,11 @@ func Fund(
 	require.NoError(t, err)
 
 	ok, fundId, err := registry.AccountSponsorshipFundId(nil, sponsee)
+	require.NoError(t, err)
+
+	sponsorshipBefore, err := registry.Sponsorships(nil, fundId)
+	require.NoError(t, err)
+
 	receipt, err := session.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
 		opts.Value = donation
 		require.NoError(t, err)
@@ -58,10 +63,10 @@ func Fund(
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
-	// check that the sponsorship funds got deposited
-	sponsorship, err := registry.Sponsorships(nil, fundId)
+	// check that the sponsorshipAfter funds got deposited
+	sponsorshipAfter, err := registry.Sponsorships(nil, fundId)
 	require.NoError(t, err)
-	require.Equal(t, donation.Uint64(), sponsorship.Funds.Uint64())
+	require.Equal(t, sponsorshipBefore.Funds.Uint64()+donation.Uint64(), sponsorshipAfter.Funds.Uint64())
 
 	return registry
 }
