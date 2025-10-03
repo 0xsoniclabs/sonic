@@ -179,7 +179,7 @@ func TestGasSubsidies_Receipts_HaveConsistentTransactionIndices(t *testing.T) {
 							// repeat until the sponsored transaction is included in an epoch change block
 							var inSameBlock bool
 							const retries = 10
-							lastHash := common.Hash{}
+							txHashes := []common.Hash{}
 							for i := 0; !inSameBlock && i < retries; i++ {
 								nonce, err := client.PendingNonceAt(t.Context(), sponsee.Address())
 								require.NoError(t, err)
@@ -214,11 +214,13 @@ func TestGasSubsidies_Receipts_HaveConsistentTransactionIndices(t *testing.T) {
 								require.NoError(t, err)
 								inSameBlock = internaltx.IsInternal(block.Transactions()[0])
 								if inSameBlock {
-									lastHash = tx.Hash()
+									txHashes = []common.Hash{block.Transactions()[0].Hash(), tx.Hash()}
+									break
 								}
 							}
 
-							return []common.Hash{lastHash}
+							require.True(t, inSameBlock, "could not include the sponsored transaction in an epoch change block after %d retries", retries)
+							return txHashes
 						},
 					},
 				}
@@ -239,6 +241,9 @@ func TestGasSubsidies_Receipts_HaveConsistentTransactionIndices(t *testing.T) {
 							// get the block with all the executed transactions.
 							block, err := client.BlockByNumber(t.Context(), receipt.BlockNumber)
 							require.NoError(t, err)
+							require.Greater(t, len(block.Transactions()), int(receipt.TransactionIndex),
+								"block does not have enough transactions for tx %d", i,
+							)
 							tx := block.Transactions()[receipt.TransactionIndex]
 
 							// verify that the transaction hash matches the one in the block
@@ -248,8 +253,15 @@ func TestGasSubsidies_Receipts_HaveConsistentTransactionIndices(t *testing.T) {
 
 							// get the receipts for all transactions in the block
 							blockReceipts := []*types.Receipt{}
-							err = client.Client().Call(&blockReceipts, "eth_getBlockReceipts", fmt.Sprintf("0x%v", block.Number().String()))
+							err = client.Client().Call(&blockReceipts, "eth_getBlockReceipts", fmt.Sprintf("0x%x", block.Number().Uint64()))
 							require.NoError(t, err)
+
+							require.Greater(t, len(blockReceipts), int(receipt.TransactionIndex),
+								"eth_getBlockReceipts returned too few receipts for tx %d", i,
+							)
+							require.Equal(t, len(block.Transactions()), len(blockReceipts),
+								"eth_getBlockReceipts returned different number of receipts than block transactions for tx %d", i,
+							)
 
 							require.Equal(t, receipt, blockReceipts[receipt.TransactionIndex],
 								"receipt does not match eth_getBlockReceipts for tx %d", i,
