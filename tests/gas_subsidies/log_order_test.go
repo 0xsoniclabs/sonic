@@ -28,7 +28,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestGasSubsidies_ProperlyLogsSubsidizedTransaction(t *testing.T) {
+func TestGasSubsidies_ProperlyAssignTxIndexToLogsInThePresenceOfSponsoredTransactions(t *testing.T) {
 	require := require.New(t)
 
 	upgrade := opera.GetAllegroUpgrades()
@@ -48,10 +48,6 @@ func TestGasSubsidies_ProperlyLogsSubsidizedTransaction(t *testing.T) {
 	contract, receipt, err := tests.DeployContract(net, indexed_logs.DeployIndexedLogs)
 	require.NoError(err)
 	require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
-
-	// Run indexed logs contract to emit logs
-	_, err = net.Apply(contract.EmitEvents)
-	require.NoError(err)
 
 	numTxs := 5
 	hashes := make([]common.Hash, 0, numTxs)
