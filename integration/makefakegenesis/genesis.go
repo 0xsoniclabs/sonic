@@ -31,6 +31,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/integration/makegenesis"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/drivertype"
@@ -114,6 +115,9 @@ func FakeGenesisStoreWithRulesAndStart(
 	// set non-zero code for pre-compiled contracts
 	builder.SetCode(evmwriter.ContractAddress, []byte{0})
 	builder.SetNonce(evmwriter.ContractAddress, 1)
+	// pre deploy SubsidyRegistry by default
+	builder.SetCode(registry.GetAddress(), registry.GetCode())
+	builder.SetNonce(registry.GetAddress(), 1)
 
 	// Configure pre-deployed contracts, according to the hardfork of the fake-net
 	if rules.Upgrades.Allegro {

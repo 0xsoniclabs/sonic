@@ -176,6 +176,9 @@ func fakeGenesisImport(ctx *cli.Context) (err error) {
 		return fmt.Errorf("invalid profile %v - must be 'sonic' or 'allegro'", upgradesString)
 	}
 
+	// Fake net has subsidies enabled by default
+	upgrades.GasSubsidies = true
+
 	genesisStore := makefakegenesis.FakeGenesisStore(
 		idx.Validator(validatorsNumber),
 		futils.ToFtm(1_000_000_000),
