@@ -709,12 +709,7 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 		gasSubsidies: pool.chain.GetCurrentRules().Upgrades.GasSubsidies,
 	}
 
-	subsidiesChecker := pool.subsidiesCheckerFactory(
-		pool.chain.GetCurrentRules(),
-		pool.chain,
-		pool.currentState,
-		pool.signer,
-	)
+	subsidiesChecker := pool.createSubsidiesChecker()
 
 	err := validateTx(
 		tx,
@@ -1481,12 +1476,23 @@ func (pool *TxPool) reset(oldHead, newHead *EvmHeader) {
 	pool.eip7702 = pool.chainconfig.IsPrague(next, uint64(newHead.Time.Unix()))
 }
 
+func (pool *TxPool) createSubsidiesChecker() subsidiesChecker {
+	return pool.subsidiesCheckerFactory(
+		pool.chain.GetCurrentRules(),
+		pool.chain,
+		pool.currentState,
+		pool.signer,
+	)
+}
+
 // promoteExecutables moves transactions that have become processable from the
 // future queue to the set of pending transactions. During this process, all
 // invalidated transactions (low nonce, low balance) are deleted.
 func (pool *TxPool) promoteExecutables(accounts []common.Address) []*types.Transaction {
 	// Track the promoted transactions to broadcast them at once
 	var promoted []*types.Transaction
+
+	subsidiesChecker := pool.createSubsidiesChecker()
 
 	// Iterate over all accounts and promote any executable transactions
 	for _, addr := range accounts {
@@ -1502,7 +1508,7 @@ func (pool *TxPool) promoteExecutables(accounts []common.Address) []*types.Trans
 		}
 		log.Trace("Removed old queued transactions", "count", len(forwards))
 		// Drop all transactions that are too costly (low balance or out of gas)
-		drops, _ := list.Filter(utils.Uint256ToBigInt(pool.currentState.GetBalance(addr)), pool.currentMaxGas)
+		drops, _ := list.Filter(utils.Uint256ToBigInt(pool.currentState.GetBalance(addr)), pool.currentMaxGas, subsidiesChecker)
 		for _, tx := range drops {
 			hash := tx.Hash()
 			pool.all.Remove(hash)
@@ -1686,6 +1692,9 @@ func (pool *TxPool) truncateQueue() {
 // is always explicitly triggered by SetBaseFee and it would be unnecessary and wasteful
 // to trigger a re-heap is this function
 func (pool *TxPool) demoteUnexecutables() {
+
+	subsidiesChecker := pool.createSubsidiesChecker()
+
 	// Iterate over all accounts and demote any non-executable transactions
 	for addr, list := range pool.pending {
 		nonce := pool.currentState.GetNonce(addr)
@@ -1698,7 +1707,7 @@ func (pool *TxPool) demoteUnexecutables() {
 			log.Trace("Removed old pending transaction", "hash", hash)
 		}
 		// Drop all transactions that are too costly (low balance or out of gas), and queue any invalids back for later
-		drops, invalids := list.Filter(utils.Uint256ToBigInt(pool.currentState.GetBalance(addr)), pool.currentMaxGas)
+		drops, invalids := list.Filter(utils.Uint256ToBigInt(pool.currentState.GetBalance(addr)), pool.currentMaxGas, subsidiesChecker)
 		for _, tx := range drops {
 			hash := tx.Hash()
 			log.Trace("Removed unpayable pending transaction", "hash", hash)

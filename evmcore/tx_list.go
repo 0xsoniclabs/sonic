@@ -23,6 +23,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 )
@@ -136,6 +137,16 @@ func (m *txSortedMap) filter(filter func(*types.Transaction) bool) types.Transac
 		m.cache = nil
 	}
 	return removed
+}
+
+// Contains tests whether any transaction in the map satisfies the given predicate.
+func (m *txSortedMap) containsFunc(predicate func(*types.Transaction) bool) bool {
+	for _, tx := range m.items {
+		if predicate(tx) {
+			return true
+		}
+	}
+	return false
 }
 
 // Cap places a hard limit on the number of items, returning all transactions
@@ -345,9 +356,11 @@ func (l *txList) Forward(threshold uint64) types.Transactions {
 // a point in calculating all the costs or if the balance covers all. If the threshold
 // is lower than the costgas cap, the caps will be reset to a new high after removing
 // the newly invalidated transactions.
-func (l *txList) Filter(costLimit *big.Int, gasLimit uint64) (types.Transactions, types.Transactions) {
+func (l *txList) Filter(costLimit *big.Int, gasLimit uint64, subsidiesChecker subsidiesChecker) (types.Transactions, types.Transactions) {
+	hasSponsored := l.txs.containsFunc(subsidies.IsSponsorshipRequest)
+
 	// If all transactions are below the threshold, short circuit
-	if l.costcap.Cmp(costLimit) <= 0 && l.gascap <= gasLimit {
+	if !hasSponsored && l.costcap.Cmp(costLimit) <= 0 && l.gascap <= gasLimit {
 		return nil, nil
 	}
 	l.costcap = new(big.Int).Set(costLimit) // Lower the caps to the thresholds
@@ -355,6 +368,9 @@ func (l *txList) Filter(costLimit *big.Int, gasLimit uint64) (types.Transactions
 
 	// Filter out all the transactions above the account's funds
 	removed := l.txs.Filter(func(tx *types.Transaction) bool {
+		if subsidies.IsSponsorshipRequest(tx) {
+			return !subsidiesChecker.isSponsored(tx)
+		}
 		return tx.Gas() > gasLimit || tx.Cost().Cmp(costLimit) > 0
 	})
 

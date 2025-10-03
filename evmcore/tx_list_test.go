@@ -21,9 +21,12 @@ import (
 	"math/rand/v2"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 // Tests that transactions can be added to strict lists and list contents and
@@ -52,6 +55,63 @@ func TestStrictTxListAdd(t *testing.T) {
 	}
 }
 
+func TestTxSortedMap_ContainsFunc_LocatesMatchingTransactions(t *testing.T) {
+	const N = 10
+	require := require.New(t)
+	key, err := crypto.GenerateKey()
+	require.NoError(err)
+
+	m := newTxSortedMap()
+
+	for i := range N {
+		m.Put(transaction(uint64(i), 0, key))
+	}
+
+	for i := range N {
+		require.True(m.containsFunc(func(tx *types.Transaction) bool {
+			return tx.Nonce() == uint64(i)
+		}))
+	}
+
+	require.False(m.containsFunc(func(tx *types.Transaction) bool {
+		return tx.Nonce() == N+1
+	}))
+}
+
+func TestTxList_Filter_WithSponsoredTransactions_RetainsCovered(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	checker := NewMocksubsidiesChecker(ctrl)
+
+	key, err := crypto.GenerateKey()
+	require.NoError(err)
+
+	txs := []*types.Transaction{}
+	for i := range 10 {
+		tx := pricedTransaction(uint64(i), 0, common.Big0, key)
+		require.True(subsidies.IsSponsorshipRequest(tx))
+		txs = append(txs, tx)
+	}
+
+	list := newTxList(true)
+	for _, tx := range txs {
+		list.Add(tx, DefaultTxPoolConfig.PriceBump)
+	}
+
+	// Each sponsored transaction should be checked.
+	for _, tx := range txs {
+		checker.EXPECT().isSponsored(tx).Return(tx.Nonce()%2 == 0)
+	}
+
+	removed, _ := list.Filter(big.NewInt(1e18), 1_000_000, checker)
+
+	// All non-sponsored transactions should be removed.
+	require.Len(removed, 5)
+	for _, tx := range removed {
+		require.True(tx.Nonce()%2 == 1, "removed tx with nonce %d", tx.Nonce())
+	}
+}
+
 func BenchmarkTxListAdd(t *testing.B) {
 	// Generate a list of transactions to insert
 	key, _ := crypto.GenerateKey()
@@ -66,7 +126,7 @@ func BenchmarkTxListAdd(t *testing.B) {
 	t.ResetTimer()
 	for _, v := range rand.Perm(len(txs)) {
 		list.Add(txs[v], DefaultTxPoolConfig.PriceBump)
-		list.Filter(minimumTip, DefaultTxPoolConfig.MinimumTip)
+		list.Filter(minimumTip, DefaultTxPoolConfig.MinimumTip, nil)
 	}
 }
 
