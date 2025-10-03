@@ -91,7 +91,7 @@ func processFiles(dir, ext, prefix, license string, checkOnly bool) error {
 			return nil
 		}
 		// build files should not be checked
-		if shouldIgnore(path, []string{"/build/", "_mock.go", ".pb.go"}) {
+		if shouldIgnore(path, []string{"/build/", "_mock.go", ".pb.go", "flaky_stress"}) {
 			return nil
 		}
 		if matchPattern(path, ext) {
