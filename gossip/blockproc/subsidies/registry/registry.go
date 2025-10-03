@@ -59,8 +59,8 @@ const GasLimitForGetGasConfig = 50_000
 
 // contractAddress is the address of the deployed SubsidiesRegistry contract.
 // On the Sonic mainnet, a proxy contract for the registry was deployed by
-// https://sonicscan.org/tx/0xef62408baae42d01e9ef0a44fcb0dffbbd5531f48bc47c1e411e15d6719c7229
-var contractAddress = hexutil.MustDecode("0x000DE63B7f02E16DF54F1Bf2147729591b296F77")
+// https://sonicscan.org//address/0x7d0E23398b6CA0eC7Cdb5b5Aad7F1b11215012d2
+var contractAddress = hexutil.MustDecode("0x7d0E23398b6CA0eC7Cdb5b5Aad7F1b11215012d2")
 
 //go:embed subsidies_contract.bin
 var registryCodeInHex string
