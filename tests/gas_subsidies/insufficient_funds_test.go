@@ -85,6 +85,8 @@ func TestGasSubsidies_RequestIsRejectedInCaseOfInsufficientFunds(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
+	tests.WaitForProofOf(t, client, int(receipt.BlockNumber.Int64()))
+
 	// Get the funds before resending the transaction
 	ops := &bind.CallOpts{
 		BlockNumber: receipt.BlockNumber,
@@ -105,6 +107,8 @@ func TestGasSubsidies_RequestIsRejectedInCaseOfInsufficientFunds(t *testing.T) {
 	header, err = client.HeaderByHash(t.Context(), receipt.BlockHash)
 	require.NoError(t, err)
 	baseFee = header.BaseFee
+
+	tests.WaitForProofOf(t, client, int(receipt.BlockNumber.Int64()))
 
 	ops = &bind.CallOpts{
 		BlockNumber: receipt.BlockNumber,

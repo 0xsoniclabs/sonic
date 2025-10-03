@@ -91,11 +91,14 @@ func testBlockVerifiability(t *testing.T, upgrades opera.Upgrades) {
 	_, id, err := reg.GlobalSponsorshipFundId(nil)
 	require.NoError(err)
 
-	_, err = net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
+	receipt, err := net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
 		opts.Value = big.NewInt(1e18)
 		return reg.Sponsor(opts, id)
 	})
 	require.NoError(err)
+	require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
+
+	tests.WaitForProofOf(t, client, int(receipt.BlockNumber.Int64()))
 
 	// Check sponsorship balance.
 	state, err := reg.Sponsorships(nil, id)
