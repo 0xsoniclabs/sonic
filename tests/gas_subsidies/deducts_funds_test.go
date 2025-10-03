@@ -79,19 +79,6 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 	cases := map[string]struct {
 		runTransactions func(t *testing.T, net *tests.IntegrationTestNet, sender *tests.Account)
 	}{
-		"contract creation sponsorship request is rejected": {
-			runTransactions: func(t *testing.T, net *tests.IntegrationTestNet, sender *tests.Account) {
-				nonce, err := client.PendingNonceAt(t.Context(), sender.Address())
-				require.NoError(t, err)
-				tx := tests.SignTransaction(t, net.GetChainId(), &types.LegacyTx{
-					Nonce: nonce,
-					// contract creation cannot be sponsored
-					Gas: 21000,
-				}, sender)
-				err = client.SendTransaction(t.Context(), tx)
-				require.Error(t, err)
-			},
-		},
 		"sponsored transaction calls contract": {
 			runTransactions: func(t *testing.T, net *tests.IntegrationTestNet, sender *tests.Account) {
 				opts, err := net.GetTransactOptions(sender)
@@ -384,4 +371,57 @@ func TestGasSubsidies_SubsidizedTransaction_SkipTransactionIfDeduceFundsDoesNotF
 	// transaction was skipped
 	_, err = client.TransactionReceipt(t.Context(), tx.Hash())
 	require.ErrorContains(t, err, "not found")
+}
+
+func TestGasSubsidies_ContractCreationSponsorshipRequest_IsRejected(t *testing.T) {
+
+	upgrades := opera.GetSonicUpgrades()
+	upgrades.GasSubsidies = true
+	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+		Upgrades: &upgrades,
+	})
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	sponsoredSender := tests.NewAccount()
+
+	_ = Fund(t, net, sponsoredSender.Address(), big.NewInt(1e18))
+
+	nonce, err := client.PendingNonceAt(t.Context(), sponsoredSender.Address())
+	require.NoError(t, err)
+	tx := tests.SignTransaction(t, net.GetChainId(), &types.LegacyTx{
+		Nonce: nonce,
+		// contract creation cannot be sponsored
+		Gas: 60000,
+	}, sponsoredSender)
+	err = client.SendTransaction(t.Context(), tx)
+	// contract creation is not considered a valid sponsorship request
+	require.ErrorContains(t, err, "transaction underpriced")
+	t.Logf("expected error: %v", err)
+
+	suggestedGasPrice, err := client.SuggestGasPrice(t.Context())
+	require.NoError(t, err)
+
+	tx = tests.SignTransaction(t, net.GetChainId(), &types.LegacyTx{
+		Nonce: nonce,
+		// contract creation cannot be sponsored
+		Gas:      60000,
+		GasPrice: suggestedGasPrice,
+	}, sponsoredSender)
+
+	err = client.SendTransaction(t.Context(), tx)
+	// check for insufficient balance.
+	require.ErrorContains(t, err, "insufficient funds")
+
+	// sponsored sender can send valid sponsorship requests
+	tx = tests.SignTransaction(t, net.GetChainId(), &types.LegacyTx{
+		Nonce: nonce,
+		To:    &common.Address{0x1},
+		Gas:   60000,
+	}, sponsoredSender)
+	err = client.SendTransaction(t.Context(), tx)
+	require.NoError(t, err)
+
 }
