@@ -1350,7 +1350,3 @@ func TestTransactionGenerationUtilities(t *testing.T) {
 	require.False(t, subsidies.IsSponsorshipRequest(regular))
 	require.True(t, subsidies.IsSponsorshipRequest(request))
 }
-
-// TODO:
-//  - test progression of txIndex in sponsored transactions
-//  - test that EVM is progressing txIndex by processed transactions
