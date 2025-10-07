@@ -131,6 +131,9 @@ func testBlockVerifiability(t *testing.T, upgrades opera.Upgrades) {
 		// Make sure that the to address (parameter 2) is not zero.
 		data[4+32+31] = 1
 
+		// Request some fees (parameter 5).
+		data[4+5*32+31] = 123
+
 		tx := types.MustSignNewTx(account.PrivateKey, signer, &types.LegacyTx{
 			To:       &receiver,
 			Nonce:    uint64(i),
@@ -158,6 +161,10 @@ func testBlockVerifiability(t *testing.T, upgrades opera.Upgrades) {
 	receipts, err := net.RunAll(txs)
 	require.NoError(err)
 	require.Equal(N, len(receipts))
+
+	for i, receipt := range receipts {
+		require.Equal(types.ReceiptStatusSuccessful, receipt.Status, "tx %d failed", i)
+	}
 
 	wg.Wait()
 
@@ -215,7 +222,7 @@ func verifyBlocks(
 	require.Equal(blocks[0].Root(), state.GetStateRoot())
 
 	// Verify all blocks by replaying them on the state-DB.
-	for _, block := range blocks {
+	for i, block := range blocks {
 		receipts, err := state.ApplyBlock(
 			genesis.Rules.NetworkID,
 			genesis.Rules.Upgrades,
@@ -235,13 +242,13 @@ func verifyBlocks(
 			usedGas += r.GasUsed
 		}
 		require.Equal(block.GasUsed(), usedGas,
-			"block %d: gas used mismatch", block.NumberU64(),
+			"block %d, tx %d: gas used mismatch", block.NumberU64(), i,
 		)
 
 		// Check the receipts hash.
 		receiptsHash := types.DeriveSha(receipts, trie.NewStackTrie(nil))
 		require.Equal(block.ReceiptHash(), receiptsHash,
-			"block %d: receipts hash mismatch", block.NumberU64(),
+			"block %d, tx %d: receipts hash mismatch", block.NumberU64(), i,
 		)
 
 		// Check the full block hash.
