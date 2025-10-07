@@ -23,7 +23,7 @@ import (
 )
 
 var (
-	globalCache, _ = lru.New(40000)
+	globalCache, _ = lru.New(100_000) // ~40 bytes per entry => ~4MB
 )
 
 type WlruCache struct {
