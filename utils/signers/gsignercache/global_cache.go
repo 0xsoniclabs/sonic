@@ -23,54 +23,54 @@ import (
 )
 
 var (
-	globalCache, _ = lru.New(40000)
+	globalCache, _ = lru.New(100_000) // ~40 bytes per entry => ~4MB
 )
 
-type WlruCache struct {
-	Cache *lru.Cache
+type lruCache struct {
+	cache *lru.Cache
 }
 
-func (w *WlruCache) Add(txid common.Hash, c CachedSender) {
-	w.Cache.Add(txid, c)
+func (w *lruCache) add(txid common.Hash, c cachedSender) {
+	w.cache.Add(txid, c)
 }
 
-func (w *WlruCache) Get(txid common.Hash) *CachedSender {
-	ic, ok := w.Cache.Get(txid)
+func (w *lruCache) get(txid common.Hash) *cachedSender {
+	ic, ok := w.cache.Get(txid)
 	if !ok {
 		return nil
 	}
-	c := ic.(CachedSender)
+	c := ic.(cachedSender)
 	return &c
 }
 
 func Wrap(signer types.Signer) types.Signer {
-	return WrapWithCachedSigner(signer, &WlruCache{globalCache})
+	return WrapWithCachedSigner(signer, &lruCache{globalCache})
 }
 
-type CachedSender struct {
-	From   common.Address
-	Signer types.Signer
+type cachedSender struct {
+	from   common.Address
+	signer types.Signer
 }
 
-type SenderCache interface {
-	Add(txid common.Hash, c CachedSender)
-	Get(txid common.Hash) *CachedSender
+type senderCache interface {
+	add(txid common.Hash, c cachedSender)
+	get(txid common.Hash) *cachedSender
 }
 
-type CachedSigner struct {
+type cachedSigner struct {
 	types.Signer
-	cache SenderCache
+	cache senderCache
 }
 
-func WrapWithCachedSigner(signer types.Signer, cache SenderCache) CachedSigner {
-	return CachedSigner{
+func WrapWithCachedSigner(signer types.Signer, cache senderCache) cachedSigner {
+	return cachedSigner{
 		Signer: signer,
 		cache:  cache,
 	}
 }
 
-func (cs CachedSigner) Equal(s2 types.Signer) bool {
-	cs2, ok := s2.(CachedSigner)
+func (cs cachedSigner) Equal(s2 types.Signer) bool {
+	cs2, ok := s2.(cachedSigner)
 	if ok {
 		// unwrap the signer
 		return cs.Signer.Equal(cs2.Signer)
@@ -78,19 +78,19 @@ func (cs CachedSigner) Equal(s2 types.Signer) bool {
 	return cs.Signer.Equal(s2)
 }
 
-func (cs CachedSigner) Sender(tx *types.Transaction) (common.Address, error) {
+func (cs cachedSigner) Sender(tx *types.Transaction) (common.Address, error) {
 	// try to load the sender from the global cache
-	cached := cs.cache.Get(tx.Hash())
-	if cached != nil && cached.Signer.Equal(cs.Signer) {
-		return cached.From, nil
+	cached := cs.cache.get(tx.Hash())
+	if cached != nil && cached.signer.Equal(cs.Signer) {
+		return cached.from, nil
 	}
 	from, err := cs.Signer.Sender(tx)
 	if err != nil {
 		return common.Address{}, err
 	}
-	cs.cache.Add(tx.Hash(), CachedSender{
-		From:   from,
-		Signer: cs.Signer,
+	cs.cache.add(tx.Hash(), cachedSender{
+		from:   from,
+		signer: cs.Signer,
 	})
 	return from, nil
 }
