@@ -177,6 +177,9 @@ type signer interface {
 	types.Signer
 }
 
+// Added to avoid unused warning
+var _ signer
+
 // --- utility functions ---
 
 // getGasConfig queries the subsidies registry contract for the current gas
