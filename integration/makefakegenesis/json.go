@@ -25,6 +25,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/proxy"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/integration/makegenesis"
 	"github.com/0xsoniclabs/sonic/inter"
@@ -151,9 +152,23 @@ func GenerateFakeJsonGenesis(
 
 	// Deploy the gas subsidies registry contract if enabled.
 	if upgrades.GasSubsidies {
+		implementationAddress := common.Address{1, 2, 3, 4, 5, 6, 7}
+		addressAsStorageValue := common.Hash{}
+		copy(addressAsStorageValue[12:], implementationAddress[:])
 		jsonGenesis.Accounts = append(jsonGenesis.Accounts, Account{
-			Name:    "GasSubsidiesRegistry",
+			Name:    "GasSubsidiesRegistryProxy",
 			Address: registry.GetAddress(),
+			Code:    proxy.GetCode(),
+			Nonce:   1,
+			Storage: map[common.Hash]common.Hash{
+				// Set the implementation address in the proxy contract.
+				proxy.GetSlotForImplementation(): addressAsStorageValue,
+			},
+		})
+
+		jsonGenesis.Accounts = append(jsonGenesis.Accounts, Account{
+			Name:    "GasSubsidiesRegistryImplementation",
+			Address: implementationAddress,
 			Code:    registry.GetCode(),
 			Nonce:   1,
 		})
