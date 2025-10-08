@@ -436,7 +436,7 @@ func TestIsCovered_NotCoveredByFunds_ReturnsFalse(t *testing.T) {
 func TestIsCovered_SenderReaderFails_ReturnsError(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
-	reader := NewMockSenderReader(ctrl)
+	signerMock := NewMocksigner(ctrl)
 
 	upgrades := opera.Upgrades{
 		GasSubsidies: true,
@@ -451,9 +451,9 @@ func TestIsCovered_SenderReaderFails_ReturnsError(t *testing.T) {
 	})
 
 	issue := fmt.Errorf("injected issue")
-	reader.EXPECT().Sender(tx).Return(common.Address{}, issue)
+	signerMock.EXPECT().Sender(tx).Return(common.Address{}, issue)
 
-	_, _, _, err = IsCovered(upgrades, nil, reader, tx, big.NewInt(1))
+	_, _, _, err = IsCovered(upgrades, nil, signerMock, tx, big.NewInt(1))
 	require.ErrorContains(err, "failed to derive sender")
 	require.ErrorIs(err, issue)
 }
@@ -462,7 +462,7 @@ func TestIsCovered_createChooseFundInputFails_ReturnsError(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	vm := NewMockVirtualMachine(ctrl)
-	reader := NewMockSenderReader(ctrl)
+	signerMock := NewMocksigner(ctrl)
 
 	upgrades := opera.Upgrades{
 		GasSubsidies: true,
@@ -477,7 +477,7 @@ func TestIsCovered_createChooseFundInputFails_ReturnsError(t *testing.T) {
 		Gas: 21000,
 	})
 
-	reader.EXPECT().Sender(tx).Return(common.Address{}, nil)
+	signerMock.EXPECT().Sender(tx).Return(common.Address{}, nil)
 
 	// Allow the getGasConfig EVM call to succeed.
 	any := gomock.Any()
@@ -486,7 +486,7 @@ func TestIsCovered_createChooseFundInputFails_ReturnsError(t *testing.T) {
 
 	// A huge base fee causes createChooseFundInput to fail.
 	baseFee := new(big.Int).Lsh(big.NewInt(1), 256) // 2^256
-	_, _, _, err = IsCovered(upgrades, vm, reader, tx, baseFee)
+	_, _, _, err = IsCovered(upgrades, vm, signerMock, tx, baseFee)
 	require.ErrorContains(err, "fee does not fit into 32 bytes")
 }
 

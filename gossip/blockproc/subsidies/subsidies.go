@@ -29,7 +29,7 @@ import (
 	"github.com/holiman/uint256"
 )
 
-//go:generate mockgen -source=subsidies.go -destination=subsidies_mock.go -package=subsidies
+//go:generate mockgen -destination subsidies_mock.go -package subsidies . VirtualMachine,NonceSource,signer
 
 // IsSponsorshipRequest checks if a transaction is requesting sponsorship from
 // a pre-allocated sponsorship pool. A sponsorship request is defined as a
@@ -54,7 +54,7 @@ func (id FundId) String() string {
 func IsCovered(
 	upgrades opera.Upgrades,
 	vm VirtualMachine,
-	reader SenderReader,
+	signer types.Signer,
 	tx *types.Transaction,
 	baseFee *big.Int,
 ) (bool, FundId, GasConfig, error) {
@@ -66,7 +66,8 @@ func IsCovered(
 	}
 
 	// Derive the sender of the transaction before interacting with the EVM.
-	sender, err := reader.Sender(tx)
+
+	sender, err := types.Sender(signer, tx)
 	if err != nil {
 		return false, FundId{}, GasConfig{}, fmt.Errorf("failed to derive sender: %w", err)
 	}
@@ -172,11 +173,8 @@ type NonceSource interface {
 	GetNonce(addr common.Address) uint64
 }
 
-// SenderReader is an interface for types that can extract the sender
-// address from a transaction. Typically, this is an implementation of
-// types.Signer.
-type SenderReader interface {
-	Sender(*types.Transaction) (common.Address, error)
+type signer interface {
+	types.Signer
 }
 
 // --- utility functions ---
