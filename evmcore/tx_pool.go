@@ -326,6 +326,7 @@ type TxPool struct {
 	waitForIdleReorgLoopResponseCh chan struct{} // responses to waitForReorgDoneRequestCh
 
 	subsidiesCheckerFactory subsidiesCheckerFactory // Factory to create a subsidies checker instance
+	subsidiesCheckerCache   *subsidiesCheckerCache  // Cache for subsidies check results
 }
 
 type txpoolResetRequest struct {
@@ -372,6 +373,7 @@ func newTxPool(
 		waitForIdleReorgLoopResponseCh: make(chan struct{}),
 
 		subsidiesCheckerFactory: subsidiesCheckerFactory,
+		subsidiesCheckerCache:   newSubsidiesCheckerCache(-1), // use default size
 	}
 	pool.locals = newAccountSet(pool.signer)
 	for _, addr := range config.Locals {
@@ -1485,6 +1487,10 @@ func (pool *TxPool) createSubsidiesChecker() subsidiesChecker {
 	)
 }
 
+func (pool *TxPool) createCachedSubsidiesChecker() subsidiesChecker {
+	return pool.subsidiesCheckerCache.wrap(pool.createSubsidiesChecker())
+}
+
 // promoteExecutables moves transactions that have become processable from the
 // future queue to the set of pending transactions. During this process, all
 // invalidated transactions (low nonce, low balance) are deleted.
@@ -1492,7 +1498,7 @@ func (pool *TxPool) promoteExecutables(accounts []common.Address) []*types.Trans
 	// Track the promoted transactions to broadcast them at once
 	var promoted []*types.Transaction
 
-	subsidiesChecker := pool.createSubsidiesChecker()
+	subsidiesChecker := pool.createCachedSubsidiesChecker()
 
 	// Iterate over all accounts and promote any executable transactions
 	for _, addr := range accounts {
@@ -1693,7 +1699,7 @@ func (pool *TxPool) truncateQueue() {
 // to trigger a re-heap is this function
 func (pool *TxPool) demoteUnexecutables() {
 
-	subsidiesChecker := pool.createSubsidiesChecker()
+	subsidiesChecker := pool.createCachedSubsidiesChecker()
 
 	// Iterate over all accounts and demote any non-executable transactions
 	for addr, list := range pool.pending {
