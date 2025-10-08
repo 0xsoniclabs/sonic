@@ -40,7 +40,6 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
-	"github.com/0xsoniclabs/sonic/utils/signers/gsignercache"
 	"github.com/0xsoniclabs/sonic/utils/txtime"
 )
 
@@ -357,7 +356,7 @@ func newTxPool(
 		config:          config,
 		chainconfig:     chainconfig,
 		chain:           chain,
-		signer:          gsignercache.Wrap(types.LatestSignerForChainID(chainconfig.ChainID)),
+		signer:          types.LatestSignerForChainID(chainconfig.ChainID),
 		pending:         make(map[common.Address]*txList),
 		queue:           make(map[common.Address]*txList),
 		beats:           make(map[common.Address]time.Time),

@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"cmp"
 	"fmt"
-	"math/big"
 	"slices"
 	"sort"
 	"sync"
@@ -30,7 +29,6 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	scc_node "github.com/0xsoniclabs/sonic/scc/node"
-	"github.com/0xsoniclabs/sonic/utils/signers/gsignercache"
 
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/dag"
@@ -248,7 +246,7 @@ func consensusCallbackBeginBlockFn(
 						unorderedTxs = append(unorderedTxs, e.Transactions()...)
 					}
 
-					signer := gsignercache.Wrap(types.MakeSigner(chainCfg, new(big.Int).SetUint64(number), uint64(atroposTime)))
+					signer := types.LatestSignerForChainID(chainCfg.ChainID)
 					proposal.Transactions = scrambler.GetExecutionOrder(unorderedTxs, signer, es.Rules.Upgrades.Sonic)
 				}
 

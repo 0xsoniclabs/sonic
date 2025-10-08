@@ -37,7 +37,6 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
-	"github.com/0xsoniclabs/sonic/utils/signers/gsignercache"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/davecgh/go-spew/spew"
@@ -1354,9 +1353,9 @@ func newRPCTransaction(tx *types.Transaction, blockHash common.Hash, blockNumber
 	// because the return value of ChainId is zero for those transactions.
 	var signer types.Signer
 	if tx.Protected() {
-		signer = gsignercache.Wrap(types.LatestSignerForChainID(tx.ChainId()))
+		signer = types.LatestSignerForChainID(tx.ChainId())
 	} else {
-		signer = gsignercache.Wrap(types.HomesteadSigner{})
+		signer = types.HomesteadSigner{}
 	}
 	from, _ := internaltx.Sender(signer, tx)
 
@@ -1601,7 +1600,7 @@ func NewPublicTransactionPoolAPI(b Backend, nonceLock *AddrLocker) *PublicTransa
 	// The signer used by the API should always be the 'latest' known one because we expect
 	// signers to be backwards-compatible with old transactions.
 	chainID := b.ChainID()
-	signer := gsignercache.Wrap(types.LatestSignerForChainID(chainID))
+	signer := types.LatestSignerForChainID(chainID)
 	return &PublicTransactionPoolAPI{b, nonceLock, signer}
 }
 
@@ -1734,7 +1733,7 @@ func (s *PublicTransactionPoolAPI) formatTxReceipt(header *evmcore.EvmHeader, tx
 	}
 
 	// Derive the sender.
-	signer := gsignercache.Wrap(types.MakeSigner(s.b.ChainConfig(idx.Block(header.Number.Uint64())), header.Number, uint64(header.Time.Unix())))
+	signer := types.LatestSignerForChainID(s.b.ChainConfig(idx.Block(header.Number.Uint64())).ChainID)
 	from, _ := internaltx.Sender(signer, tx)
 
 	fields := map[string]interface{}{
@@ -1865,8 +1864,8 @@ func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction) (c
 	if err := b.SendTx(ctx, tx); err != nil {
 		return common.Hash{}, err
 	} // Print a log with full tx details for manual investigations and interventions
-	chainConfig := b.ChainConfig(idx.Block(b.CurrentBlock().Number.Uint64()))
-	signer := gsignercache.Wrap(types.MakeSigner(chainConfig, b.CurrentBlock().Number, uint64(b.CurrentBlock().Time.Unix())))
+
+	signer := types.LatestSignerForChainID(b.ChainID())
 	from, err := types.Sender(signer, tx)
 	if err != nil {
 		return common.Hash{}, err
@@ -2351,7 +2350,7 @@ func (api *PublicDebugAPI) traceBlock(ctx context.Context, block *evmcore.EvmBlo
 	var (
 		chainConfig   = api.b.ChainConfig(idx.Block(block.Header().Number.Uint64()))
 		txs           = block.Transactions
-		signer        = gsignercache.Wrap(types.MakeSigner(chainConfig, block.Number, uint64(block.Time.Unix())))
+		signer        = types.LatestSignerForChainID(chainConfig.ChainID)
 		results       = make([]*txTraceResult, len(txs))
 		resultsLength int
 	)
@@ -2423,7 +2422,7 @@ func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex in
 
 	// Recompute transactions up to the target index.
 	chainConfig := b.ChainConfig(idx.Block(block.NumberU64()))
-	signer := gsignercache.Wrap(types.MakeSigner(chainConfig, block.Number, uint64(block.Time.Unix())))
+	signer := types.LatestSignerForChainID(chainConfig.ChainID)
 	for idx, tx := range block.Transactions {
 		// Assemble the transaction call message and return if the requested offset
 		msg, err := evmcore.TxAsMessage(tx, signer, block.BaseFee)
