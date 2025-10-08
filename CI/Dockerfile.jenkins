@@ -1,4 +1,4 @@
-FROM golang:1.24
+FROM golang:1.25
 
 # Install dependencies and keep image small as described in best practices
 # https://docs.docker.com/build/building/best-practices/
