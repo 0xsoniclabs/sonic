@@ -38,6 +38,8 @@ import (
 	gomock "go.uber.org/mock/gomock"
 )
 
+//go:generate mockgen -source=subsidies_test.go -destination=subsidies_test_mock.go -package=subsidies
+
 func TestIsSponsorshipRequest_DetectsSponsorshipRequest(t *testing.T) {
 	require := require.New(t)
 
@@ -1040,3 +1042,11 @@ func fillRandom(t *testing.T, b []byte) {
 	_, err := byte_rand.Read(b)
 	require.NoError(t, err)
 }
+
+// signer is an alias for types.Signer to allow mocking it.
+type signer interface {
+	types.Signer
+}
+
+// Added to avoid unused warning
+var _ signer

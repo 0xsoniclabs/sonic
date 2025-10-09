@@ -29,7 +29,7 @@ import (
 	"github.com/holiman/uint256"
 )
 
-//go:generate mockgen -destination subsidies_mock.go -package subsidies . VirtualMachine,NonceSource,signer
+//go:generate mockgen -source=subsidies.go -destination=subsidies_mock.go -package=subsidies
 
 // IsSponsorshipRequest checks if a transaction is requesting sponsorship from
 // a pre-allocated sponsorship pool. A sponsorship request is defined as a
@@ -171,14 +171,6 @@ func GetFeeChargeTransaction(
 type NonceSource interface {
 	GetNonce(addr common.Address) uint64
 }
-
-// signer is an alias for types.Signer to allow mocking it.
-type signer interface {
-	types.Signer
-}
-
-// Added to avoid unused warning
-var _ signer
 
 // --- utility functions ---
 
