@@ -172,6 +172,7 @@ type NonceSource interface {
 	GetNonce(addr common.Address) uint64
 }
 
+// signer is an alias for types.Signer to allow mocking it.
 type signer interface {
 	types.Signer
 }
