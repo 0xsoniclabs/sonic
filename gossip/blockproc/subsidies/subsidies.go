@@ -66,7 +66,6 @@ func IsCovered(
 	}
 
 	// Derive the sender of the transaction before interacting with the EVM.
-
 	sender, err := types.Sender(signer, tx)
 	if err != nil {
 		return false, FundId{}, GasConfig{}, fmt.Errorf("failed to derive sender: %w", err)
