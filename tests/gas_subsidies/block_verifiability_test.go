@@ -45,6 +45,7 @@ import (
 )
 
 func TestBlockVerifiability(t *testing.T) {
+	t.Parallel()
 	tests := map[string]opera.Upgrades{
 		"sonic":   opera.GetSonicUpgrades(),
 		"allegro": opera.GetAllegroUpgrades(),
@@ -52,14 +53,17 @@ func TestBlockVerifiability(t *testing.T) {
 
 	for name, upgrades := range tests {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			single := upgrades
 			single.SingleProposerBlockFormation = true
 			distributed := upgrades
 			distributed.SingleProposerBlockFormation = false
 			t.Run("single", func(t *testing.T) {
+				t.Parallel()
 				testBlockVerifiability(t, single)
 			})
 			t.Run("distributed", func(t *testing.T) {
+				t.Parallel()
 				testBlockVerifiability(t, distributed)
 			})
 		})
