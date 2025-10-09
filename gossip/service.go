@@ -65,7 +65,6 @@ import (
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/logger"
 	scc_node "github.com/0xsoniclabs/sonic/scc/node"
-	"github.com/0xsoniclabs/sonic/utils/signers/gsignercache"
 	"github.com/0xsoniclabs/sonic/utils/txtime"
 	"github.com/0xsoniclabs/sonic/utils/wgmutex"
 	"github.com/0xsoniclabs/sonic/valkeystore"
@@ -330,7 +329,7 @@ func newService(config Config, store *Store, blockProc BlockProc, engine lachesi
 
 	// create checkers
 	net := store.GetRules()
-	txSigner := gsignercache.Wrap(types.LatestSignerForChainID(new(big.Int).SetUint64(net.NetworkID)))
+	txSigner := types.LatestSignerForChainID(new(big.Int).SetUint64(net.NetworkID))
 	svc.heavyCheckReader.Store = store
 	svc.heavyCheckReader.Pubkeys.Store(readEpochPubKeys(svc.store, svc.store.GetEpoch()))                                          // read pub keys of current epoch from DB
 	svc.gasPowerCheckReader.Ctx.Store(NewGasPowerContext(svc.store, svc.store.GetValidators(), svc.store.GetEpoch(), net.Economy)) // read gaspower check data from DB

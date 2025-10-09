@@ -37,7 +37,6 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/txtrace"
-	"github.com/0xsoniclabs/sonic/utils/signers/gsignercache"
 )
 
 const (
@@ -195,7 +194,7 @@ func (s *PublicTxTraceAPI) replayBlock(ctx context.Context, block *evmcore.EvmBl
 	}
 
 	chainConfig := s.b.ChainConfig(idx.Block(block.NumberU64()))
-	signer := gsignercache.Wrap(types.MakeSigner(chainConfig, block.Number, uint64(block.Time.Unix())))
+	signer := types.LatestSignerForChainID(chainConfig.ChainID)
 
 	state, _, err := s.b.StateAndHeaderByNumberOrHash(ctx, rpc.BlockNumberOrHash{BlockNumber: &parentBlockNr})
 	if err != nil {

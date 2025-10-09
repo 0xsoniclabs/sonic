@@ -35,7 +35,6 @@ import (
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
-	"github.com/0xsoniclabs/sonic/utils/signers/gsignercache"
 )
 
 func FuzzGossipHandler(f *testing.F) {
@@ -106,7 +105,7 @@ func makeFuzzedHandler(t *testing.T) (*handler, error) {
 	mu := new(sync.RWMutex)
 
 	chainId := big.NewInt(1234)
-	txSigner := gsignercache.Wrap(types.LatestSignerForChainID(chainId))
+	txSigner := types.LatestSignerForChainID(chainId)
 	config := DefaultConfig(cachescale.Identity)
 	checkers := makeCheckers(config.HeavyCheck, txSigner, &heavyCheckReader, &gasPowerCheckReader, &proposalChecker, store)
 

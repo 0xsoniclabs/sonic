@@ -13,7 +13,6 @@ import (
 	reflect "reflect"
 
 	common "github.com/ethereum/go-ethereum/common"
-	types "github.com/ethereum/go-ethereum/core/types"
 	uint256 "github.com/holiman/uint256"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -94,43 +93,4 @@ func (m *MockNonceSource) GetNonce(addr common.Address) uint64 {
 func (mr *MockNonceSourceMockRecorder) GetNonce(addr any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNonce", reflect.TypeOf((*MockNonceSource)(nil).GetNonce), addr)
-}
-
-// MockSenderReader is a mock of SenderReader interface.
-type MockSenderReader struct {
-	ctrl     *gomock.Controller
-	recorder *MockSenderReaderMockRecorder
-	isgomock struct{}
-}
-
-// MockSenderReaderMockRecorder is the mock recorder for MockSenderReader.
-type MockSenderReaderMockRecorder struct {
-	mock *MockSenderReader
-}
-
-// NewMockSenderReader creates a new mock instance.
-func NewMockSenderReader(ctrl *gomock.Controller) *MockSenderReader {
-	mock := &MockSenderReader{ctrl: ctrl}
-	mock.recorder = &MockSenderReaderMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockSenderReader) EXPECT() *MockSenderReaderMockRecorder {
-	return m.recorder
-}
-
-// Sender mocks base method.
-func (m *MockSenderReader) Sender(arg0 *types.Transaction) (common.Address, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Sender", arg0)
-	ret0, _ := ret[0].(common.Address)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// Sender indicates an expected call of Sender.
-func (mr *MockSenderReaderMockRecorder) Sender(arg0 any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Sender", reflect.TypeOf((*MockSenderReader)(nil).Sender), arg0)
 }
