@@ -18,7 +18,7 @@ pipeline {
     agent {
         dockerfile {
             filename 'CI/Dockerfile.jenkins'
-            label 'pr'
+            label 'kvm-docker'
         }
     }
 
