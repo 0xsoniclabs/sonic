@@ -815,6 +815,20 @@ func (h *handler) handleMsg(p *peer) (err error) {
 		if err := checkLenLimits(len(events), events); err != nil {
 			return err
 		}
+
+		// Replace transactions in event with the instances found in the pool
+		// This allows to reuse instances of already known transactions, which
+		// already have cached the sender. Saving the cost of resolving the
+		// the signature again.
+		for i := range events {
+			txs := events[i].Transactions()
+			for i := range txs {
+				if tx := h.txpool.Get(txs[i].Hash()); tx != nil {
+					txs[i] = tx
+				}
+			}
+		}
+
 		_ = h.dagFetcher.NotifyReceived(eventIDsToInterfaces(events.IDs()))
 		h.handleEvents(p, events.Bases(), events.Len() > 1)
 

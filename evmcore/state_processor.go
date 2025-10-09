@@ -31,7 +31,6 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/0xsoniclabs/sonic/utils/signers/gsignercache"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
 )
 
@@ -102,7 +101,7 @@ func (p *StateProcessor) Process(
 		blockContext = NewEVMBlockContext(header, p.bc, nil)
 		vmenv        = vm.NewEVM(blockContext, statedb, p.config, cfg)
 		blockNumber  = block.Number
-		signer       = gsignercache.Wrap(types.MakeSigner(p.config, header.Number, time))
+		signer       = types.LatestSignerForChainID(p.config.ChainID)
 	)
 
 	// execute EIP-2935 HistoryStorage contract.
@@ -346,7 +345,7 @@ func (p *StateProcessor) BeginBlock(
 		blockContext  = NewEVMBlockContext(header, p.bc, nil)
 		vmEnvironment = vm.NewEVM(blockContext, stateDb, p.config, cfg)
 		blockNumber   = block.Number
-		signer        = gsignercache.Wrap(types.MakeSigner(p.config, header.Number, time))
+		signer        = types.LatestSignerForChainID(p.config.ChainID)
 	)
 
 	// execute EIP-2935 HistoryStorage contract.

@@ -54,7 +54,7 @@ func (id FundId) String() string {
 func IsCovered(
 	upgrades opera.Upgrades,
 	vm VirtualMachine,
-	reader SenderReader,
+	signer types.Signer,
 	tx *types.Transaction,
 	baseFee *big.Int,
 ) (bool, FundId, GasConfig, error) {
@@ -66,7 +66,7 @@ func IsCovered(
 	}
 
 	// Derive the sender of the transaction before interacting with the EVM.
-	sender, err := reader.Sender(tx)
+	sender, err := types.Sender(signer, tx)
 	if err != nil {
 		return false, FundId{}, GasConfig{}, fmt.Errorf("failed to derive sender: %w", err)
 	}
@@ -170,13 +170,6 @@ func GetFeeChargeTransaction(
 // correct nonce for the fee deduction transaction.
 type NonceSource interface {
 	GetNonce(addr common.Address) uint64
-}
-
-// SenderReader is an interface for types that can extract the sender
-// address from a transaction. Typically, this is an implementation of
-// types.Signer.
-type SenderReader interface {
-	Sender(*types.Transaction) (common.Address, error)
 }
 
 // --- utility functions ---
