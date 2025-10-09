@@ -144,6 +144,7 @@ func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) []e
 	txsOffset := uint(len(p.processedTxs))
 
 	vmConfig := opera.GetVmConfig(p.rules)
+	vmConfig.MaxTxGas = p.rules.Economy.Gas.MaxEventGas
 
 	// Process txs
 	evmBlock := p.evmBlockWith(txs)
