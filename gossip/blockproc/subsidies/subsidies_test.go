@@ -436,24 +436,21 @@ func TestIsCovered_NotCoveredByFunds_ReturnsFalse(t *testing.T) {
 func TestIsCovered_SenderReaderFails_ReturnsError(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
-	signerMock := NewMocksigner(ctrl)
+	signer := NewMocksigner(ctrl)
 
 	upgrades := opera.Upgrades{
 		GasSubsidies: true,
 	}
 
-	key, err := crypto.GenerateKey()
-	require.NoError(err)
-	signer := types.LatestSignerForChainID(nil)
-
-	tx := types.MustSignNewTx(key, signer, &types.LegacyTx{
+	tx := types.NewTx(&types.LegacyTx{
 		To: &common.Address{},
+		V:  big.NewInt(1), // < non-zero signature: transaction is not internal
 	})
 
 	issue := fmt.Errorf("injected issue")
-	signerMock.EXPECT().Sender(tx).Return(common.Address{}, issue)
+	signer.EXPECT().Sender(tx).Return(common.Address{}, issue)
 
-	_, _, _, err = IsCovered(upgrades, nil, signerMock, tx, big.NewInt(1))
+	_, _, _, err := IsCovered(upgrades, nil, signer, tx, big.NewInt(1))
 	require.ErrorContains(err, "failed to derive sender")
 	require.ErrorIs(err, issue)
 }
@@ -462,22 +459,19 @@ func TestIsCovered_createChooseFundInputFails_ReturnsError(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	vm := NewMockVirtualMachine(ctrl)
-	signerMock := NewMocksigner(ctrl)
+	signer := NewMocksigner(ctrl)
 
 	upgrades := opera.Upgrades{
 		GasSubsidies: true,
 	}
 
-	key, err := crypto.GenerateKey()
-	require.NoError(err)
-	signer := types.LatestSignerForChainID(nil)
-
-	tx := types.MustSignNewTx(key, signer, &types.LegacyTx{
+	tx := types.NewTx(&types.LegacyTx{
 		To:  &common.Address{},
 		Gas: 21000,
+		V:   big.NewInt(1), // < non-zero signature: transaction is not internal
 	})
 
-	signerMock.EXPECT().Sender(tx).Return(common.Address{}, nil)
+	signer.EXPECT().Sender(tx).Return(common.Address{}, nil)
 
 	// Allow the getGasConfig EVM call to succeed.
 	any := gomock.Any()
@@ -486,7 +480,7 @@ func TestIsCovered_createChooseFundInputFails_ReturnsError(t *testing.T) {
 
 	// A huge base fee causes createChooseFundInput to fail.
 	baseFee := new(big.Int).Lsh(big.NewInt(1), 256) // 2^256
-	_, _, _, err = IsCovered(upgrades, vm, signerMock, tx, baseFee)
+	_, _, _, err := IsCovered(upgrades, vm, signer, tx, baseFee)
 	require.ErrorContains(err, "fee does not fit into 32 bytes")
 }
 
