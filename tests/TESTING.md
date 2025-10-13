@@ -63,11 +63,11 @@ Here are some considerations to keep in mind when adding new integration tests:
 
 	Otherwise we highly encourage you to use `session := getIntegrationTestNetSession(t, Upgrade)`
 
-	`Upgrades` indicates which hard fork options the network uses. `opera.Sonic` hard fork is used as a default.
+	`Upgrades` indicates which hard fork options the network uses. `sonic.Sonic` hard fork is used as a default.
 
 	```Go
 	func TestMultipleSessions_CanSendLegacyTransactionsInBulk(t *testing.T) {
-		session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+		session := getIntegrationTestNetSession(t, sonic.GetAllegroUpgrades())
 
 		chainId := session.GetChainId()
 		txs := types.Transaction[]{}
@@ -88,7 +88,7 @@ Here are some considerations to keep in mind when adding new integration tests:
 
 	```Go
 	func TestType_ManyProperties(t *testing.T){
-		session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+		session := getIntegrationTestNetSession(t, sonic.GetSonicUpgrades())
 
 		t.Run("someProperty", func (t *testing.T){
 			subSession := session.SpawnSession(t)
@@ -114,7 +114,7 @@ Networks or sessions can produce `Client`s connected to the different nodes. The
 
 ```Go
 func TestSendTransaction_Asynchronously(t *testing.T){
-	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	session := getIntegrationTestNetSession(t, sonic.GetSonicUpgrades())
 	chainId := session.GetChainId()
 
 	client, err := session.GetClient()
@@ -177,7 +177,7 @@ The following commands can be used to install the needed dependencies are needed
 ```Go
 func TestCounter_CanIncrementAndReadCounterFromHead(t *testing.T) {
 
-	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	session := getIntegrationTestNetSession(t, sonic.GetSonicUpgrades())
 	t.Parallel()
 
 	// Deploy the counter contract.
