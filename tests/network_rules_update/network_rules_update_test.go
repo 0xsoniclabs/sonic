@@ -25,7 +25,7 @@ import (
 	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/contract/driverauth100"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum"
@@ -42,7 +42,7 @@ func TestNetworkRule_Update_RulesChangeIsDelayedUntilNextEpochStart(t *testing.T
 	require := require.New(t)
 	net := tests.StartIntegrationTestNetWithFakeGenesis(t,
 		tests.IntegrationTestNetOptions{
-			Upgrades: tests.AsPointer(opera.GetAllegroUpgrades()),
+			Upgrades: tests.AsPointer(sonic.GetAllegroUpgrades()),
 		})
 
 	client, err := net.GetClient()
@@ -106,7 +106,7 @@ func TestNetworkRule_Update_RulesChangeDuringEpoch_PreAllegro(t *testing.T) {
 	require := require.New(t)
 	net := tests.StartIntegrationTestNetWithFakeGenesis(t,
 		tests.IntegrationTestNetOptions{
-			Upgrades: tests.AsPointer(opera.GetSonicUpgrades()),
+			Upgrades: tests.AsPointer(sonic.GetSonicUpgrades()),
 		})
 
 	client, err := net.GetClient()
@@ -155,7 +155,7 @@ func TestNetworkRule_Update_Restart_Recovers_Original_Value(t *testing.T) {
 	require := require.New(t)
 	net := tests.StartIntegrationTestNetWithFakeGenesis(t,
 		tests.IntegrationTestNetOptions{
-			Upgrades: tests.AsPointer(opera.GetAllegroUpgrades()),
+			Upgrades: tests.AsPointer(sonic.GetAllegroUpgrades()),
 		})
 
 	client, err := net.GetClient()
@@ -228,7 +228,7 @@ func TestNetworkRules_UpdateMaxEventGas_DropsLargeGasTxs(t *testing.T) {
 	require := require.New(t)
 	net := tests.StartIntegrationTestNetWithFakeGenesis(t,
 		tests.IntegrationTestNetOptions{
-			Upgrades: tests.AsPointer(opera.GetAllegroUpgrades()),
+			Upgrades: tests.AsPointer(sonic.GetAllegroUpgrades()),
 		})
 
 	client, err := net.GetClient()
@@ -253,7 +253,7 @@ func TestNetworkRules_UpdateMaxEventGas_DropsLargeGasTxs(t *testing.T) {
 	require.Equal(1, len(content["queued"]), "expected the high gas tx to be in the queued section of the tx pool")
 
 	type rulesType struct {
-		Economy  struct{ Gas opera.GasRules }
+		Economy  struct{ Gas sonic.GasRules }
 		Upgrades struct{ Brio bool }
 	}
 
@@ -264,7 +264,7 @@ func TestNetworkRules_UpdateMaxEventGas_DropsLargeGasTxs(t *testing.T) {
 	require.NotEqual(0, originalRules.Economy.Gas.MaxEventGas, "GasRules should be filled")
 
 	updatedRules := originalRules
-	defaultGasRules := opera.DefaultGasRules()
+	defaultGasRules := sonic.DefaultGasRules()
 	defaultGasRules.MaxEventGas = 16_777_216 // inspired by params.MaxTxGas
 	updatedRules.Economy.Gas = defaultGasRules
 
@@ -289,14 +289,14 @@ func TestNetworkRule_MinEventGas_AllowsChangingRules(t *testing.T) {
 	require := require.New(t)
 	net := tests.StartIntegrationTestNetWithFakeGenesis(t,
 		tests.IntegrationTestNetOptions{
-			Upgrades: tests.AsPointer(opera.GetSonicUpgrades()),
+			Upgrades: tests.AsPointer(sonic.GetSonicUpgrades()),
 		})
 
 	client, err := net.GetClient()
 	require.NoError(err)
 	defer client.Close()
 
-	var rules opera.Rules
+	var rules sonic.Rules
 	data, err := json.Marshal(rules)
 	require.NoError(err)
 
@@ -319,15 +319,15 @@ func TestNetworkRule_MinEventGas_AllowsChangingRules(t *testing.T) {
 	gas, err := client.EstimateGas(t.Context(), msg)
 	require.NoError(err)
 
-	defaultGasRules := opera.DefaultGasRules()
+	defaultGasRules := sonic.DefaultGasRules()
 
 	require.Less(gas, defaultGasRules.MaxEventGas, "Gas should be less than MaxEventGas")
-	require.Less(gas, opera.UpperBoundForRuleChangeGasCosts(), "Gas should be less than upper bound for rule change gas costs")
+	require.Less(gas, sonic.UpperBoundForRuleChangeGasCosts(), "Gas should be less than upper bound for rule change gas costs")
 
-	require.Less(gas, opera.UpperBoundForRuleChangeGasCosts()/10, "There should be a factor of 10 head room for gas costs")
+	require.Less(gas, sonic.UpperBoundForRuleChangeGasCosts()/10, "There should be a factor of 10 head room for gas costs")
 
 	// Check that these two properties do not contradict each other
-	require.Less(opera.UpperBoundForRuleChangeGasCosts(), defaultGasRules.MaxEventGas, "Upper bound for rule change gas costs should be less than MaxEventGas")
+	require.Less(sonic.UpperBoundForRuleChangeGasCosts(), defaultGasRules.MaxEventGas, "Upper bound for rule change gas costs should be less than MaxEventGas")
 }
 
 func TestNetworkRules_PragueFeaturesBecomeAvailableWithAllegroUpgrade(t *testing.T) {
@@ -336,7 +336,7 @@ func TestNetworkRules_PragueFeaturesBecomeAvailableWithAllegroUpgrade(t *testing
 	net := tests.StartIntegrationTestNetWithFakeGenesis(t,
 		tests.IntegrationTestNetOptions{
 			// Explicitly set the network to use the Sonic Hard Fork
-			Upgrades: tests.AsPointer(opera.GetSonicUpgrades()),
+			Upgrades: tests.AsPointer(sonic.GetSonicUpgrades()),
 			// Use 2 nodes to test the rules update propagation
 			NumNodes: 2,
 		},

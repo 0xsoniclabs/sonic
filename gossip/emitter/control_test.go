@@ -21,12 +21,12 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/sonic/inter"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 )
 
 func TestGetEmitterIntervalLimit_ZeroIsAValidInterval(t *testing.T) {
 	ms := time.Microsecond
-	rules := opera.EmitterRules{
+	rules := sonic.EmitterRules{
 		Interval:       0,
 		StallThreshold: inter.Timestamp(200 * ms),
 	}
@@ -44,7 +44,7 @@ func TestGetEmitterIntervalLimit_SwitchesToStallIfDelayed(t *testing.T) {
 	stallThreshold := 200 * ms
 	stalled := 300 * ms
 
-	rules := opera.EmitterRules{
+	rules := sonic.EmitterRules{
 		Interval:        inter.Timestamp(regular),
 		StallThreshold:  inter.Timestamp(stallThreshold),
 		StalledInterval: inter.Timestamp(stalled),

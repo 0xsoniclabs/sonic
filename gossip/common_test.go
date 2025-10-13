@@ -56,7 +56,7 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/inter/validatorpk"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/sonic/utils/adapters/vecmt2dagidx"
 	"github.com/0xsoniclabs/sonic/valkeystore"
@@ -154,13 +154,13 @@ func (m testConfirmedEventsModule) Start(bs iblockproc.BlockState, es iblockproc
 }
 
 func newTestEnv(firstEpoch idx.Epoch, validatorsNum idx.Validator, tb testing.TB) *testEnv {
-	return newTestEnvWithUpgrades(firstEpoch, validatorsNum, opera.GetSonicUpgrades(), tb)
+	return newTestEnvWithUpgrades(firstEpoch, validatorsNum, sonic.GetSonicUpgrades(), tb)
 }
 
 func newTestEnvWithUpgrades(
 	firstEpoch idx.Epoch,
 	validatorsNum idx.Validator,
-	upgrades opera.Upgrades,
+	upgrades sonic.Upgrades,
 	tb testing.TB,
 ) *testEnv {
 	store := newInMemoryStoreWithGenesisData(tb, upgrades, validatorsNum, firstEpoch)
@@ -225,13 +225,13 @@ func newTestEnvWithUpgrades(
 
 func newInMemoryStoreWithGenesisData(
 	tb testing.TB,
-	upgrades opera.Upgrades,
+	upgrades sonic.Upgrades,
 	numValidators idx.Validator,
 	firstEpoch idx.Epoch,
 ) *Store {
 	tb.Helper()
 	require := require.New(tb)
-	rules := opera.FakeNetRules(upgrades)
+	rules := sonic.FakeNetRules(upgrades)
 	rules.Epochs.MaxEpochDuration = inter.Timestamp(maxEpochDuration)
 	rules.Emitter.Interval = 0
 
@@ -494,7 +494,7 @@ func (env *testEnv) callContract(
 	// Create a new environment which holds all relevant information
 	// about the transaction and calling mechanisms.
 	context := evmcore.NewEVMBlockContext(block.Header(), env.GetEvmStateReader(), nil)
-	vmConfig := opera.GetVmConfig(env.store.GetRules())
+	vmConfig := sonic.GetVmConfig(env.store.GetRules())
 	vmenv := vm.NewEVM(context, state, env.store.GetEvmChainConfig(idx.Block(block.Number.Uint64())), vmConfig)
 	gaspool := new(core.GasPool).AddGas(math.MaxUint64)
 	res, err := core.ApplyMessage(vmenv, msg, gaspool)

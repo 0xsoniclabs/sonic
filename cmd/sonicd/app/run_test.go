@@ -27,7 +27,7 @@ import (
 	"github.com/0xsoniclabs/sonic/cmd/sonictool/genesis"
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	futils "github.com/0xsoniclabs/sonic/utils"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/docker/docker/pkg/reexec"
@@ -45,7 +45,7 @@ func initFakenetDatadir(dataDir string, validatorsNum idx.Validator) {
 		validatorsNum,
 		futils.ToFtm(1000000000),
 		futils.ToFtm(5000000),
-		opera.GetSonicUpgrades(),
+		sonic.GetSonicUpgrades(),
 	)
 	defer func() {
 		if err := genesisStore.Close(); err != nil {

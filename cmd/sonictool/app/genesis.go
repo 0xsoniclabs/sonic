@@ -26,7 +26,7 @@ import (
 	"github.com/0xsoniclabs/sonic/cmd/sonictool/genesis"
 	"github.com/0xsoniclabs/sonic/config/flags"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/genesisstore"
 	futils "github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/sonic/utils/caution"
@@ -165,13 +165,13 @@ func fakeGenesisImport(ctx *cli.Context) (err error) {
 		return err
 	}
 
-	var upgrades opera.Upgrades
+	var upgrades sonic.Upgrades
 	upgradesString := ctx.String(FakeUpgrades.Name)
 	switch upgradesString {
 	case "sonic":
-		upgrades = opera.GetSonicUpgrades()
+		upgrades = sonic.GetSonicUpgrades()
 	case "allegro":
-		upgrades = opera.GetAllegroUpgrades()
+		upgrades = sonic.GetAllegroUpgrades()
 	default:
 		return fmt.Errorf("invalid profile %v - must be 'sonic' or 'allegro'", upgradesString)
 	}

@@ -17,7 +17,7 @@
 package genesis
 
 import (
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/genesis"
 	"github.com/0xsoniclabs/sonic/opera/genesisstore"
 	"github.com/Fantom-foundation/lachesis-base/hash"
@@ -37,13 +37,13 @@ var (
 
 	mainnetHeader = genesis.Header{
 		GenesisID:   hash.HexToHash("0x4a53c5445584b3bfc20dbfb2ec18ae20037c716f3ba2d9e1da768a9deca17cb4"),
-		NetworkID:   opera.MainNetworkID,
+		NetworkID:   sonic.MainNetworkID,
 		NetworkName: "main",
 	}
 
 	testnetHeader = genesis.Header{
 		GenesisID:   hash.HexToHash("0xc4a5fc96e575a16a9a0c7349d44dc4d0f602a54e0a8543360c2fee4c3937b49e"),
-		NetworkID:   opera.TestNetworkID,
+		NetworkID:   sonic.TestNetworkID,
 		NetworkName: "test",
 	}
 

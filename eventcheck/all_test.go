@@ -29,7 +29,7 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/validatorpk"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	parentscheckbase "github.com/Fantom-foundation/lachesis-base/eventcheck/parentscheck"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
@@ -143,9 +143,9 @@ func TestCheckers_Validate_ValidEventPassesValidation(t *testing.T) {
 
 			event := eventBuilder.Build()
 
-			rules := opera.Rules{
-				Economy: opera.EconomyRules{
-					Gas: opera.GasRules{
+			rules := sonic.Rules{
+				Economy: sonic.EconomyRules{
+					Gas: sonic.GasRules{
 						MaxEventGas: 30_000,
 					},
 				},

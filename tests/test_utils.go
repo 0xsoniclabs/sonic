@@ -28,7 +28,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/gossip/contract/driverauth100"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -193,7 +193,7 @@ func computeMinimumGas(t *testing.T, session IntegrationTestNetSession, tx types
 	require.NoError(t, err)
 	defer client.Close()
 
-	var currentRules opera.Rules
+	var currentRules sonic.Rules
 	err = client.Client().Call(&currentRules, "eth_getRules", "latest")
 	require.NoError(t, err)
 
@@ -284,7 +284,7 @@ func UpdateNetworkRules(t *testing.T, net *IntegrationTestNet, rulesChange any) 
 }
 
 // GetNetworkRules retrieves the current network rules from the node.
-func GetNetworkRules(t *testing.T, net IntegrationTestNetSession) opera.Rules {
+func GetNetworkRules(t *testing.T, net IntegrationTestNetSession) sonic.Rules {
 	t.Helper()
 	require := require.New(t)
 
@@ -292,7 +292,7 @@ func GetNetworkRules(t *testing.T, net IntegrationTestNetSession) opera.Rules {
 	require.NoError(err)
 	defer client.Close()
 
-	var rules opera.Rules
+	var rules sonic.Rules
 	err = WaitFor(t.Context(), func(ctx context.Context) (bool, error) {
 		err = client.Client().Call(&rules, "eth_getRules", "latest")
 		if err != nil {

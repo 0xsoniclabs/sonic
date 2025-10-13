@@ -29,6 +29,7 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	scc_node "github.com/0xsoniclabs/sonic/scc/node"
+	"github.com/0xsoniclabs/sonic/opera"
 
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/dag"
@@ -49,7 +50,6 @@ import (
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/validatorpk"
-	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
 )
 
@@ -192,7 +192,7 @@ func consensusCallbackBeginBlockFn(
 				lastBlockHeader := evmStateReader.GetHeaderByNumber(number - 1)
 
 				randao := computePrevRandao(confirmedEvents)
-				chainCfg := opera.CreateTransientEvmChainConfig(
+				chainCfg := sonic.CreateTransientEvmChainConfig(
 					es.Rules.NetworkID,
 					store.GetUpgradeHeights(),
 					idx.Block(number),
@@ -346,7 +346,7 @@ func consensusCallbackBeginBlockFn(
 					prevUpg := es.Rules.Upgrades
 					bs, es = sealer.SealEpoch() // TODO: refactor to not mutate the bs, it is unclear
 					if es.Rules.Upgrades != prevUpg {
-						store.AddUpgradeHeight(opera.UpgradeHeight{
+						store.AddUpgradeHeight(sonic.UpgradeHeight{
 							Upgrades: es.Rules.Upgrades,
 							Height:   blockCtx.Idx + 1,
 							Time:     blockCtx.Time + 1,
@@ -763,7 +763,7 @@ func extractProposalForNextBlock(
 // the provided metric counter.
 func filterNonPermissibleTransactions(
 	transactions []*types.Transaction,
-	rules *opera.Rules,
+	rules *sonic.Rules,
 	log log.Logger,
 	counter metricCounter,
 ) []*types.Transaction {
@@ -798,7 +798,7 @@ func filterNonPermissibleTransactions(
 // avoided.
 func isPermissible(
 	tx *types.Transaction,
-	rules *opera.Rules,
+	rules *sonic.Rules,
 ) error {
 
 	if tx == nil {

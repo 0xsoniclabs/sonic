@@ -29,7 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	lru "github.com/hashicorp/golang-lru"
 
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
 
 	"github.com/ethereum/go-ethereum/log"
@@ -56,8 +56,8 @@ type Config struct {
 type Reader interface {
 	GetLatestBlockIndex() idx.Block
 	TotalGasPowerLeft() uint64
-	GetRules() opera.Rules
-	GetPendingRules() opera.Rules
+	GetRules() sonic.Rules
+	GetPendingRules() sonic.Rules
 	PendingTxs() map[common.Address]types.Transactions
 	MinGasTip() *big.Int
 }

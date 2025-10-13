@@ -34,7 +34,7 @@ func TestLogSubscription_CanGetCallBacksForLogEvents(t *testing.T) {
 
 	const NumEvents = 10
 	require := require.New(t)
-	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	session := getIntegrationTestNetSession(t, sonic.GetSonicUpgrades())
 
 	contract, _, err := DeployContract(session, counter_event_emitter.DeployCounterEventEmitter)
 	require.NoError(err)
@@ -77,7 +77,7 @@ func TestLogBloom_query(t *testing.T) {
 	// This test can reuse an existing blockchain history, but should not
 	// run concurrently to other tests. It requires logs to exist in at least one
 	// transaction per block while testFunction is running.
-	net := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	net := getIntegrationTestNetSession(t, sonic.GetSonicUpgrades())
 
 	contract, _, err := DeployContract(net, counter_event_emitter.DeployCounterEventEmitter)
 	require.NoError(err)

@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/stretchr/testify/require"
@@ -34,7 +34,7 @@ func TestGetVmConfig_RetrievesVmConfigFromRules(t *testing.T) {
 	ctx := t.Context()
 	height := idx.Block(12)
 
-	rules := opera.Rules{}
+	rules := sonic.Rules{}
 	backend.EXPECT().GetNetworkRules(ctx, height).Return(&rules, nil).AnyTimes()
 
 	config, err := GetVmConfig(ctx, backend, 12)
@@ -42,7 +42,7 @@ func TestGetVmConfig_RetrievesVmConfigFromRules(t *testing.T) {
 
 	// The config contains functions that can not be compared with require.Equal,
 	// so we compare a debug print of the config instead.
-	want := fmt.Sprintf("%+v", opera.GetVmConfig(rules))
+	want := fmt.Sprintf("%+v", sonic.GetVmConfig(rules))
 	got := fmt.Sprintf("%+v", config)
 	require.Equal(t, want, got)
 }

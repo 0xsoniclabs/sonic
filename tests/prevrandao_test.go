@@ -27,7 +27,7 @@ import (
 )
 
 func TestPrevRandao(t *testing.T) {
-	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	session := getIntegrationTestNetSession(t, sonic.GetSonicUpgrades())
 	t.Parallel()
 
 	// Deploy the contract.

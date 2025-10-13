@@ -21,7 +21,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/tests/contracts/revert"
 	"github.com/ethereum/go-ethereum"
@@ -38,7 +38,7 @@ func TestGasSubsidies_TooLargeForBlock(t *testing.T) {
 	}
 
 	for name, enabled := range singleProposerOption {
-		upgrades := opera.GetSonicUpgrades()
+		upgrades := sonic.GetSonicUpgrades()
 		upgrades.SingleProposerBlockFormation = enabled
 		t.Run(name, func(t *testing.T) {
 			testGasSubsidies_tooLargeForBlock(t, upgrades)
@@ -46,7 +46,7 @@ func TestGasSubsidies_TooLargeForBlock(t *testing.T) {
 	}
 }
 
-func testGasSubsidies_tooLargeForBlock(t *testing.T, upgrades opera.Upgrades) {
+func testGasSubsidies_tooLargeForBlock(t *testing.T, upgrades sonic.Upgrades) {
 	// Step 1: Create a network with a single block proposer
 	upgrades.GasSubsidies = true
 	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{

@@ -19,18 +19,18 @@ package makefakegenesis
 import (
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/stretchr/testify/require"
 )
 
 func TestJsonGenesis_CanApplyGeneratedFakeJsonGensis(t *testing.T) {
-	genesis := GenerateFakeJsonGenesis(1, opera.GetSonicUpgrades())
+	genesis := GenerateFakeJsonGenesis(1, sonic.GetSonicUpgrades())
 	_, err := ApplyGenesisJson(genesis)
 	require.NoError(t, err)
 }
 
 func TestJsonGenesis_AcceptsGenesisWithoutCommittee(t *testing.T) {
-	genesis := GenerateFakeJsonGenesis(1, opera.GetSonicUpgrades())
+	genesis := GenerateFakeJsonGenesis(1, sonic.GetSonicUpgrades())
 	genesis.GenesisCommittee = nil
 	_, err := ApplyGenesisJson(genesis)
 	require.NoError(t, err)
@@ -38,17 +38,17 @@ func TestJsonGenesis_AcceptsGenesisWithoutCommittee(t *testing.T) {
 
 func TestJsonGenesis_Network_Rules_Validated_Allegro_Only(t *testing.T) {
 	tests := map[string]struct {
-		featureSet opera.Upgrades
+		featureSet sonic.Upgrades
 		assert     func(t *testing.T, err error)
 	}{
 		"sonic": {
-			featureSet: opera.GetSonicUpgrades(),
+			featureSet: sonic.GetSonicUpgrades(),
 			assert: func(t *testing.T, err error) {
 				require.NoError(t, err)
 			},
 		},
 		"allegro": {
-			featureSet: opera.GetAllegroUpgrades(),
+			featureSet: sonic.GetAllegroUpgrades(),
 			assert: func(t *testing.T, err error) {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), "LLR upgrade is not supported")

@@ -24,7 +24,7 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
 	"github.com/0xsoniclabs/sonic/tests/contracts/revert"
@@ -36,10 +36,10 @@ import (
 func TestGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T) {
 	upgrades := []struct {
 		name    string
-		upgrade opera.Upgrades
+		upgrade sonic.Upgrades
 	}{
-		{name: "sonic", upgrade: opera.GetSonicUpgrades()},
-		{name: "allegro", upgrade: opera.GetAllegroUpgrades()},
+		{name: "sonic", upgrade: sonic.GetSonicUpgrades()},
+		{name: "allegro", upgrade: sonic.GetAllegroUpgrades()},
 		// TODO: add brio once it supports internal transactions
 	}
 	singleProposerOption := map[string]bool{
@@ -331,7 +331,7 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 
 func TestGasSubsidies_SubsidizedTransaction_SkipTransactionIfDeduceFundsDoesNotFit(t *testing.T) {
 
-	upgrades := opera.GetSonicUpgrades()
+	upgrades := sonic.GetSonicUpgrades()
 	upgrades.GasSubsidies = true
 	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
 		Upgrades: &upgrades,
@@ -380,7 +380,7 @@ func TestGasSubsidies_SubsidizedTransaction_SkipTransactionIfDeduceFundsDoesNotF
 
 func TestGasSubsidies_NonSponsoredTransactionsAreRejected(t *testing.T) {
 
-	upgrades := opera.GetSonicUpgrades()
+	upgrades := sonic.GetSonicUpgrades()
 	upgrades.GasSubsidies = true
 	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
 		Upgrades: &upgrades,

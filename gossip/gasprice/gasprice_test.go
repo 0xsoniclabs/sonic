@@ -26,7 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 )
 
 type fakeTx struct {
@@ -38,8 +38,8 @@ type fakeTx struct {
 type TestBackend struct {
 	block             idx.Block
 	totalGasPowerLeft uint64
-	rules             opera.Rules
-	pendingRules      opera.Rules
+	rules             sonic.Rules
+	pendingRules      sonic.Rules
 	pendingTxs        []fakeTx
 }
 
@@ -51,11 +51,11 @@ func (t TestBackend) TotalGasPowerLeft() uint64 {
 	return t.totalGasPowerLeft
 }
 
-func (t TestBackend) GetRules() opera.Rules {
+func (t TestBackend) GetRules() sonic.Rules {
 	return t.rules
 }
 
-func (t TestBackend) GetPendingRules() opera.Rules {
+func (t TestBackend) GetPendingRules() sonic.Rules {
 	return t.pendingRules
 }
 
@@ -81,8 +81,8 @@ func (t TestBackend) MinGasTip() *big.Int {
 func TestOracle_constructiveGasPrice(t *testing.T) {
 	backend := &TestBackend{
 		totalGasPowerLeft: 0,
-		rules:             opera.FakeNetRules(opera.GetSonicUpgrades()),
-		pendingRules:      opera.FakeNetRules(opera.GetSonicUpgrades()),
+		rules:             sonic.FakeNetRules(sonic.GetSonicUpgrades()),
+		pendingRules:      sonic.FakeNetRules(sonic.GetSonicUpgrades()),
 	}
 
 	gpo := NewOracle(Config{}, backend)
@@ -122,8 +122,8 @@ func TestOracle_constructiveGasPrice(t *testing.T) {
 func TestOracle_reactiveGasPrice(t *testing.T) {
 	backend := &TestBackend{
 		totalGasPowerLeft: 0,
-		rules:             opera.FakeNetRules(opera.GetSonicUpgrades()),
-		pendingRules:      opera.FakeNetRules(opera.GetSonicUpgrades()),
+		rules:             sonic.FakeNetRules(sonic.GetSonicUpgrades()),
+		pendingRules:      sonic.FakeNetRules(sonic.GetSonicUpgrades()),
 	}
 
 	gpo := NewOracle(Config{}, backend)

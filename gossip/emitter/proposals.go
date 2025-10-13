@@ -26,7 +26,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/gossip/randao"
 	"github.com/0xsoniclabs/sonic/inter"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
@@ -179,7 +179,7 @@ type proposalTracker interface {
 type worldReader interface {
 	inter.EventReader
 	GetLatestBlock() *inter.Block
-	GetRules() opera.Rules
+	GetRules() sonic.Rules
 }
 
 // worldAdapter is an adapter of the External interface to the worldReader
@@ -192,12 +192,12 @@ func (w worldAdapter) GetEventPayload(event hash.Event) inter.Payload {
 	return *w.External.GetEventPayload(event).Payload()
 }
 
-func (w worldAdapter) GetCurrentNetworkRules() opera.Rules {
+func (w worldAdapter) GetCurrentNetworkRules() sonic.Rules {
 	return w.GetRules()
 }
 
 func (w worldAdapter) GetEvmChainConfig(blockHeight idx.Block) *params.ChainConfig {
-	return opera.CreateTransientEvmChainConfig(
+	return sonic.CreateTransientEvmChainConfig(
 		w.GetRules().NetworkID,
 		w.GetUpgradeHeights(),
 		blockHeight,
@@ -211,7 +211,7 @@ func (w worldAdapter) GetEvmChainConfig(blockHeight idx.Block) *params.ChainConf
 // making a new proposal are not met (e.g., if no time has passed since the
 // last block).
 func makeProposal(
-	rules opera.Rules,
+	rules sonic.Rules,
 	incomingSyncState inter.ProposalSyncState,
 	latestBlock *inter.Block,
 	newBlockTime inter.Timestamp,

@@ -29,7 +29,7 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/valkeystore"
 	"github.com/0xsoniclabs/sonic/vecmt"
 )
@@ -57,7 +57,7 @@ type (
 		PeersNum() int
 
 		StateDB() state.StateDB
-		GetUpgradeHeights() []opera.UpgradeHeight
+		GetUpgradeHeights() []sonic.UpgradeHeight
 		GetHeader(common.Hash, uint64) *evmcore.EvmHeader
 	}
 
@@ -86,7 +86,7 @@ type Reader interface {
 	GetLastEvent(epoch idx.Epoch, from idx.ValidatorID) *hash.Event
 	GetHeads(idx.Epoch) hash.Events
 	GetGenesisTime() inter.Timestamp
-	GetRules() opera.Rules
+	GetRules() sonic.Rules
 }
 
 type TxPool interface {

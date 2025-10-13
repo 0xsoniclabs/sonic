@@ -32,7 +32,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/emitter/scheduler"
 	"github.com/0xsoniclabs/sonic/gossip/randao"
 	"github.com/0xsoniclabs/sonic/inter"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
@@ -491,8 +491,8 @@ func (w *fakeWorld) GetLatestBlock() *inter.Block {
 		Build()
 }
 
-func (w *fakeWorld) GetRules() opera.Rules {
-	return opera.Rules{}
+func (w *fakeWorld) GetRules() sonic.Rules {
+	return sonic.Rules{}
 }
 
 // fakeRandaoMixer is producing fake RANDAO reveals for the tests.

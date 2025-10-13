@@ -38,7 +38,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/inter/state"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/sonic/utils/txtime"
 )
@@ -171,14 +171,14 @@ type StateReader interface {
 	MaxGasLimit() uint64
 	SubscribeNewBlock(ch chan<- ChainHeadNotify) notify.Subscription
 	Config() *params.ChainConfig
-	GetCurrentRules() opera.Rules
+	GetCurrentRules() sonic.Rules
 	GetHeader(common.Hash, uint64) *EvmHeader
 }
 
 // subsidiesCheckerFactory is a factory method to create a subsidies checker instance.
 // This facilitates testing of the TxPool by using injected mock implementations.
 type subsidiesCheckerFactory func(
-	rules opera.Rules,
+	rules sonic.Rules,
 	chain StateReader,
 	state state.StateDB,
 	signer types.Signer,

@@ -23,7 +23,7 @@ import (
 	"github.com/0xsoniclabs/sonic/version"
 
 	"github.com/0xsoniclabs/sonic/inter/validatorpk"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 )
 
@@ -87,9 +87,9 @@ func DefaultConfig() Config {
 
 		MaxParents: 0,
 
-		LimitedTpsThreshold: opera.DefaultEventGas * 120,
-		NoTxsThreshold:      opera.DefaultEventGas * 30,
-		EmergencyThreshold:  opera.DefaultEventGas * 5,
+		LimitedTpsThreshold: sonic.DefaultEventGas * 120,
+		NoTxsThreshold:      sonic.DefaultEventGas * 30,
+		EmergencyThreshold:  sonic.DefaultEventGas * 5,
 
 		TxsCacheInvalidation: 200 * time.Millisecond,
 	}

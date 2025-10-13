@@ -22,7 +22,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/inter/state"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -38,14 +38,14 @@ var _ subsidiesChecker = &SubsidiesIntegrationImplementation{}
 func TestSubsidiesIntegration_SubsidiesCheckerCanExecuteContracts(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
-	rules := opera.Rules{
-		Upgrades: opera.Upgrades{
+	rules := sonic.Rules{
+		Upgrades: sonic.Upgrades{
 			GasSubsidies: true,
 		},
 	}
 
-	chainConfig := opera.CreateTransientEvmChainConfig(1,
-		[]opera.UpgradeHeight{
+	chainConfig := sonic.CreateTransientEvmChainConfig(1,
+		[]sonic.UpgradeHeight{
 			{Upgrades: rules.Upgrades, Height: 0},
 		}, 1)
 
@@ -80,14 +80,14 @@ func TestSubsidiesIntegration_SubsidiesCheckerCanExecuteContracts(t *testing.T) 
 func TestSubsidiesIntegration_SubsidiesCheckerReturnsFalseIfContractIsNotDeployed(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
-	rules := opera.Rules{
-		Upgrades: opera.Upgrades{
+	rules := sonic.Rules{
+		Upgrades: sonic.Upgrades{
 			GasSubsidies: true,
 		},
 	}
 
-	chainConfig := opera.CreateTransientEvmChainConfig(1,
-		[]opera.UpgradeHeight{
+	chainConfig := sonic.CreateTransientEvmChainConfig(1,
+		[]sonic.UpgradeHeight{
 			{Upgrades: rules.Upgrades, Height: 0},
 		}, 1)
 

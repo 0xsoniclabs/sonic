@@ -22,7 +22,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -33,7 +33,7 @@ import (
 func TestLargeTransactions_CanHandleLargeTransactions(t *testing.T) {
 	require := require.New(t)
 	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
-		Upgrades: tests.AsPointer(opera.GetAllegroUpgrades()),
+		Upgrades: tests.AsPointer(sonic.GetAllegroUpgrades()),
 	})
 
 	account := tests.NewAccount()
@@ -103,9 +103,9 @@ func TestLargeTransactions_LargeTransactionLoadTest(t *testing.T) {
 		it becomes unstable when running with enabled data race detection.`)
 	}
 
-	hardForks := map[string]opera.Upgrades{
-		"Sonic":   opera.GetSonicUpgrades(),
-		"Allegro": opera.GetAllegroUpgrades(),
+	hardForks := map[string]sonic.Upgrades{
+		"Sonic":   sonic.GetSonicUpgrades(),
+		"Allegro": sonic.GetAllegroUpgrades(),
 	}
 
 	modes := map[string]bool{
@@ -126,7 +126,7 @@ func TestLargeTransactions_LargeTransactionLoadTest(t *testing.T) {
 
 func testLargeTransactionLoadTest(
 	t *testing.T,
-	upgrades *opera.Upgrades,
+	upgrades *sonic.Upgrades,
 ) {
 	// The aim of this test is to flood the network with large transactions to
 	// trigger the production of messages exceeding the maximum limit of 10 MB.

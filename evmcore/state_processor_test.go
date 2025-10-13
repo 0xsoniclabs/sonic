@@ -26,7 +26,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/inter/state"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/sfc"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
@@ -90,7 +90,7 @@ func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
 
 	chainConfig := params.ChainConfig{}
 	chain := NewMockDummyChain(ctrl)
-	processor := NewStateProcessor(&chainConfig, chain, opera.Upgrades{})
+	processor := NewStateProcessor(&chainConfig, chain, sonic.Upgrades{})
 
 	tests := map[string]processFunction{
 		"bulk":        processor.Process,
@@ -195,7 +195,7 @@ func TestProcess_DetectsTransactionThatCanNotBeConvertedIntoAMessage(t *testing.
 	}
 
 	state := getStateDbMockForTransactions(ctrl, transactions)
-	processor := NewStateProcessor(&chainConfig, chain, opera.Upgrades{})
+	processor := NewStateProcessor(&chainConfig, chain, sonic.Upgrades{})
 	tests := map[string]processFunction{
 		"bulk":        processor.Process,
 		"incremental": processor.process_iteratively,
@@ -253,7 +253,7 @@ func TestProcess_TracksParentBlockHashIfPragueIsEnabled(t *testing.T) {
 		}
 		chain := NewMockDummyChain(ctrl)
 
-		processor := NewStateProcessor(&chainConfig, chain, opera.Upgrades{})
+		processor := NewStateProcessor(&chainConfig, chain, sonic.Upgrades{})
 
 		tests := map[string]processFunction{
 			"bulk":        processor.Process,
@@ -303,7 +303,7 @@ func TestProcess_FailingTransactionAreSkippedButTheBlockIsNotTerminated(t *testi
 
 	chainConfig := params.ChainConfig{}
 	chain := NewMockDummyChain(ctrl)
-	processor := NewStateProcessor(&chainConfig, chain, opera.Upgrades{})
+	processor := NewStateProcessor(&chainConfig, chain, sonic.Upgrades{})
 
 	block := &EvmBlock{
 		EvmHeader: EvmHeader{
@@ -362,7 +362,7 @@ func TestProcess_EnforcesGasLimitBySkippingExcessiveTransactions(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	chainConfig := params.ChainConfig{}
 	chain := NewMockDummyChain(ctrl)
-	processor := NewStateProcessor(&chainConfig, chain, opera.Upgrades{})
+	processor := NewStateProcessor(&chainConfig, chain, sonic.Upgrades{})
 
 	tests := map[string]processFunction{
 		"bulk":        processor.Process,
@@ -643,7 +643,7 @@ func TestRunTransactions_GasSubsidiesDisabled_ProcessesRegularTransaction(t *tes
 			runner := NewMock_transactionRunner(ctrl)
 			context := &runContext{
 				runner:   runner,
-				upgrades: opera.Upgrades{GasSubsidies: false},
+				upgrades: sonic.Upgrades{GasSubsidies: false},
 			}
 			runner.EXPECT().runRegularTransaction(context, tx, 0)
 			runTransactions(context, []*types.Transaction{tx}, 0)
@@ -662,7 +662,7 @@ func TestRunTransactions_GasSubsidiesEnabled_RunsRegularTransactionWithoutSponso
 
 	context := &runContext{
 		runner:   runner,
-		upgrades: opera.Upgrades{GasSubsidies: true},
+		upgrades: sonic.Upgrades{GasSubsidies: true},
 	}
 	runner.EXPECT().runRegularTransaction(context, tx, 0).Return(processed)
 	got := runTransactions(context, []*types.Transaction{tx}, 0)
@@ -677,7 +677,7 @@ func TestRunTransactions_GasSubsidiesEnabled_RunsSponsorshipRequestWithSponsorsh
 
 	context := &runContext{
 		runner:   runner,
-		upgrades: opera.Upgrades{GasSubsidies: true},
+		upgrades: sonic.Upgrades{GasSubsidies: true},
 	}
 	runner.EXPECT().runSponsoredTransaction(context, tx, 0).Return([]ProcessedTransaction{{
 		Transaction: tx,
@@ -732,7 +732,7 @@ func TestRunSponsoredTransaction_InsufficientGas_SkipsTransaction(t *testing.T) 
 				statedb:  state,
 				signer:   types.LatestSignerForChainID(nil),
 				baseFee:  big.NewInt(1),
-				upgrades: opera.Upgrades{GasSubsidies: true},
+				upgrades: sonic.Upgrades{GasSubsidies: true},
 			}
 
 			// Snapshot for the IsCovered call
@@ -809,7 +809,7 @@ func TestRunSponsoredTransaction_SponsorshipNotCovered_ReturnsASkippedTransactio
 	context := &runContext{
 		statedb:  state,
 		gasPool:  gasPool,
-		upgrades: opera.Upgrades{GasSubsidies: false}, // < nothing is covered
+		upgrades: sonic.Upgrades{GasSubsidies: false}, // < nothing is covered
 	}
 
 	runner := &transactionRunner{}
@@ -843,7 +843,7 @@ func TestRunSponsoredTransaction_SponsorshipCoverageCheckFails_ReturnsASkippedTr
 		signer:   types.LatestSignerForChainID(nil),
 		baseFee:  big.NewInt(1),
 		gasPool:  gasPool,
-		upgrades: opera.Upgrades{GasSubsidies: true},
+		upgrades: sonic.Upgrades{GasSubsidies: true},
 	}
 
 	runner := &transactionRunner{evm: evm}
@@ -886,7 +886,7 @@ func TestRunSponsoredTransaction_SponsoredTransactionIsSkipped_NoFeeDeductionTxI
 		signer:   types.LatestSignerForChainID(nil),
 		baseFee:  big.NewInt(1),
 		gasPool:  gasPool,
-		upgrades: opera.Upgrades{GasSubsidies: true},
+		upgrades: sonic.Upgrades{GasSubsidies: true},
 	}
 
 	runner := &transactionRunner{evm: evm}
@@ -954,7 +954,7 @@ func TestRunSponsoredTransaction_FailingCreationOfFeeDeduction_TransactionIsAcce
 		signer:   types.LatestSignerForChainID(nil),
 		baseFee:  gasPrice,
 		gasPool:  gasPool,
-		upgrades: opera.Upgrades{GasSubsidies: true},
+		upgrades: sonic.Upgrades{GasSubsidies: true},
 	}
 
 	runner := &transactionRunner{evm: evm}
@@ -1007,7 +1007,7 @@ func TestRunSponsoredTransaction_FeeDeductionTxIsSkipped_TransactionIsAcceptedWi
 		signer:   types.LatestSignerForChainID(nil),
 		baseFee:  big.NewInt(1),
 		gasPool:  gasPool,
-		upgrades: opera.Upgrades{GasSubsidies: true},
+		upgrades: sonic.Upgrades{GasSubsidies: true},
 	}
 
 	runner := &transactionRunner{evm: evm}
@@ -1065,7 +1065,7 @@ func TestRunSponsoredTransaction_FeeDeductionTxFails_TransactionIsAcceptedWithou
 		signer:   types.LatestSignerForChainID(nil),
 		baseFee:  big.NewInt(1),
 		gasPool:  gasPool,
-		upgrades: opera.Upgrades{GasSubsidies: true},
+		upgrades: sonic.Upgrades{GasSubsidies: true},
 	}
 
 	runner := &transactionRunner{evm: evm}
@@ -1116,7 +1116,7 @@ func TestRunSponsoredTransaction_TxIndexIsIncrementedForFeeDeductionTx(t *testin
 		signer:   types.LatestSignerForChainID(nil),
 		baseFee:  big.NewInt(1),
 		gasPool:  gasPool,
-		upgrades: opera.Upgrades{GasSubsidies: true},
+		upgrades: sonic.Upgrades{GasSubsidies: true},
 	}
 
 	runner := &transactionRunner{evm: evm}
@@ -1250,11 +1250,11 @@ func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSucc
 
 	// --- Create an EVM instance capable of processing code ---
 
-	rules := opera.FakeNetRules(opera.GetSonicUpgrades())
-	vmConfig := opera.GetVmConfig(rules)
+	rules := sonic.FakeNetRules(sonic.GetSonicUpgrades())
+	vmConfig := sonic.GetVmConfig(rules)
 
-	var updateHeights []opera.UpgradeHeight
-	chainConfig := opera.CreateTransientEvmChainConfig(
+	var updateHeights []sonic.UpgradeHeight
+	chainConfig := sonic.CreateTransientEvmChainConfig(
 		rules.NetworkID,
 		updateHeights,
 		1,
@@ -1284,7 +1284,7 @@ func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSucc
 		gasPool:  gasPool,
 		usedGas:  usedGas,
 		runner:   runner,
-		upgrades: opera.Upgrades{GasSubsidies: true},
+		upgrades: sonic.Upgrades{GasSubsidies: true},
 	}
 
 	// --- start of actual test ---

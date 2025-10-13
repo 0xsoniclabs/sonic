@@ -24,7 +24,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 )
 
 func TestBaseFee_ExamplePriceAdjustments(t *testing.T) {
@@ -114,8 +114,8 @@ func TestBaseFee_ExamplePriceAdjustments(t *testing.T) {
 				Duration: test.parentDuration,
 			}
 
-			rules := opera.EconomyRules{
-				ShortGasPower: opera.GasPowerRules{
+			rules := sonic.EconomyRules{
+				ShortGasPower: sonic.GasPowerRules{
 					AllocPerSec: 2 * test.targetRate,
 				},
 			}
@@ -145,8 +145,8 @@ func TestBaseFee_PriceCanRecoverFromPriceZero(t *testing.T) {
 		Duration: time.Second,
 	}
 
-	rules := opera.EconomyRules{
-		ShortGasPower: opera.GasPowerRules{
+	rules := sonic.EconomyRules{
+		ShortGasPower: sonic.GasPowerRules{
 			AllocPerSec: 2 * target,
 		},
 	}
@@ -159,8 +159,8 @@ func TestBaseFee_PriceCanRecoverFromPriceZero(t *testing.T) {
 
 func TestBaseFee_GrowsAtMostTwelveAndAHalfPercentPer15Seconds(t *testing.T) {
 	const targetRate = 1e6
-	rules := opera.EconomyRules{
-		ShortGasPower: opera.GasPowerRules{
+	rules := sonic.EconomyRules{
+		ShortGasPower: sonic.GasPowerRules{
 			AllocPerSec: targetRate * 2,
 		},
 	}
@@ -207,8 +207,8 @@ func TestBaseFee_GrowsAtMostTwelveAndAHalfPercentPer15Seconds(t *testing.T) {
 
 func TestBaseFee_ShrinksAtMostTwelveAndAHalfPercentPer15Seconds(t *testing.T) {
 	const targetRate = 1e6
-	rules := opera.EconomyRules{
-		ShortGasPower: opera.GasPowerRules{
+	rules := sonic.EconomyRules{
+		ShortGasPower: sonic.GasPowerRules{
 			AllocPerSec: targetRate * 2,
 		},
 	}
@@ -254,8 +254,8 @@ func TestBaseFee_ShrinksAtMostTwelveAndAHalfPercentPer15Seconds(t *testing.T) {
 }
 
 func TestBaseFee_DecayTimeFromInitialToZeroIsApproximately40Minutes(t *testing.T) {
-	rules := opera.EconomyRules{
-		ShortGasPower: opera.GasPowerRules{
+	rules := sonic.EconomyRules{
+		ShortGasPower: sonic.GasPowerRules{
 			AllocPerSec: 1e6,
 		},
 	}
@@ -271,7 +271,7 @@ func TestBaseFee_DecayTimeFromInitialToZeroIsApproximately40Minutes(t *testing.T
 	for _, blockTime := range blockTimes {
 		t.Run(fmt.Sprintf("blockTime=%s", blockTime.String()), func(t *testing.T) {
 			header := ParentBlockInfo{
-				BaseFee:  GetInitialBaseFee(opera.EconomyRules{}),
+				BaseFee:  GetInitialBaseFee(sonic.EconomyRules{}),
 				GasUsed:  0,
 				Duration: blockTime,
 			}
@@ -293,7 +293,7 @@ func TestBaseFee_DecayTimeFromInitialToZeroIsApproximately40Minutes(t *testing.T
 
 func TestBaseFee_InitialPriceIsAtLeastMinBaseFee(t *testing.T) {
 	for _, minPrice := range []int64{-1, 0, 1, 1e8, 1e9, 1e10, 1e12} {
-		rules := opera.EconomyRules{MinBaseFee: big.NewInt(int64(minPrice))}
+		rules := sonic.EconomyRules{MinBaseFee: big.NewInt(int64(minPrice))}
 		got := GetInitialBaseFee(rules).Int64()
 		if got < minPrice {
 			t.Errorf("initial price is below min gas price; got %d, min %d", got, minPrice)
@@ -305,9 +305,9 @@ func TestBaseFee_DoesNotSinkBelowMinBaseFee(t *testing.T) {
 	for _, minPrice := range []int64{-1, 0, 1, 1e8, 1e9, 1e10} {
 		t.Run(fmt.Sprintf("minPrice=%d", minPrice), func(t *testing.T) {
 			minPrice := big.NewInt(minPrice)
-			rules := opera.EconomyRules{
+			rules := sonic.EconomyRules{
 				MinBaseFee: minPrice,
-				ShortGasPower: opera.GasPowerRules{
+				ShortGasPower: sonic.GasPowerRules{
 					AllocPerSec: 1e6,
 				},
 			}
@@ -439,8 +439,8 @@ func BenchmarkBaseFeeComputation(b *testing.B) {
 		GasUsed:  1e6,
 		Duration: time.Second,
 	}
-	rules := opera.EconomyRules{
-		ShortGasPower: opera.GasPowerRules{
+	rules := sonic.EconomyRules{
+		ShortGasPower: sonic.GasPowerRules{
 			AllocPerSec: 1e6,
 		},
 	}

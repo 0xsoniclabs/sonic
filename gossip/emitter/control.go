@@ -24,7 +24,7 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 	"github.com/Fantom-foundation/lachesis-base/utils/piecefunc"
 
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 )
 
 func scalarUpdMetric(diff idx.Event, weight pos.Weight, totalWeight pos.Weight) ancestor.Metric {
@@ -81,7 +81,7 @@ func (em *Emitter) getEmitterIntervalLimit() time.Duration {
 }
 
 func getEmitterIntervalLimit(
-	rules opera.EmitterRules,
+	rules sonic.EmitterRules,
 	delayOfLastConfirmedEvent time.Duration,
 ) time.Duration {
 	// Check for a network-stall situation in which events emitting should be slowed down.

@@ -33,7 +33,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/inter"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
@@ -46,9 +46,9 @@ import (
 
 func TestBlockVerifiability(t *testing.T) {
 	t.Parallel()
-	tests := map[string]opera.Upgrades{
-		"sonic":   opera.GetSonicUpgrades(),
-		"allegro": opera.GetAllegroUpgrades(),
+	tests := map[string]sonic.Upgrades{
+		"sonic":   sonic.GetSonicUpgrades(),
+		"allegro": sonic.GetAllegroUpgrades(),
 	}
 
 	for name, upgrades := range tests {
@@ -70,10 +70,10 @@ func TestBlockVerifiability(t *testing.T) {
 	}
 }
 
-func testBlockVerifiability(t *testing.T, upgrades opera.Upgrades) {
+func testBlockVerifiability(t *testing.T, upgrades sonic.Upgrades) {
 	const N = 250
 	require := require.New(t)
-	updates := opera.GetSonicUpgrades()
+	updates := sonic.GetSonicUpgrades()
 	updates.GasSubsidies = true
 
 	net := tests.StartIntegrationTestNetWithJsonGenesis(t, tests.IntegrationTestNetOptions{
@@ -374,11 +374,11 @@ func (s *State) ApplyGenesis(genesis *makefakegenesis.GenesisJson) error {
 // in the block, or an error if the block could not be processed.
 func (s *State) ApplyBlock(
 	chainId uint64,
-	upgrades opera.Upgrades,
+	upgrades sonic.Upgrades,
 	block *types.Block,
 ) (types.Receipts, error) {
 
-	chainConfig := opera.CreateTransientEvmChainConfig(
+	chainConfig := sonic.CreateTransientEvmChainConfig(
 		chainId,
 		nil,
 		idx.Block(block.NumberU64()),
@@ -409,7 +409,7 @@ func (s *State) ApplyBlock(
 
 	stateDb := evmstore.CreateCarmenStateDb(s.db)
 
-	vmConfig := opera.GetVmConfig(opera.Rules{})
+	vmConfig := sonic.GetVmConfig(sonic.Rules{})
 	gasLimit := block.GasLimit()
 
 	s.blockHashHistory.SetBlockHash(block.NumberU64()-1, block.ParentHash())

@@ -19,7 +19,7 @@ package gossip
 import (
 	"fmt"
 
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 
 	"github.com/0xsoniclabs/sonic/utils/migration"
@@ -65,7 +65,7 @@ func unsupportedMigration() error {
 }
 
 type legacyUpgradeHeight struct {
-	Upgrades opera.Upgrades
+	Upgrades sonic.Upgrades
 	Height   idx.Block
 }
 
@@ -74,13 +74,13 @@ func (s *Store) addTimeIntoUpgradeHeights() error {
 	if !ok {
 		return fmt.Errorf("failed to decode old UpgradeHeights, please restart from scratch")
 	}
-	newHeights := make([]opera.UpgradeHeight, 0, len(*oldHeights))
+	newHeights := make([]sonic.UpgradeHeight, 0, len(*oldHeights))
 	for _, height := range *oldHeights {
 		block := s.GetBlock(height.Height - 1)
 		if block == nil {
 			return fmt.Errorf("failed to get block by UpgradeHeights, please restart from scratch")
 		}
-		newHeights = append(newHeights, opera.UpgradeHeight{
+		newHeights = append(newHeights, sonic.UpgradeHeight{
 			Upgrades: height.Upgrades,
 			Height:   height.Height,
 			Time:     block.Time + 1,

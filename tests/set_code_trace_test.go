@@ -38,7 +38,7 @@ import (
 // assign fees for a dApp also in this delegate scenario and dApp
 // address will be visible in the trace
 func TestTrace7702Transaction(t *testing.T) {
-	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	session := getIntegrationTestNetSession(t, sonic.GetAllegroUpgrades())
 	t.Parallel()
 
 	sponsor := MakeAccountWithBalance(t, session, big.NewInt(1e18))

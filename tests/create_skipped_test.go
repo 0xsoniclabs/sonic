@@ -30,9 +30,9 @@ import (
 )
 
 func TestAccountCreation_CreateCallsWithInitCodesTooLargeDoNotAlterBalance(t *testing.T) {
-	versions := map[string]opera.Upgrades{
-		"sonic":   opera.GetSonicUpgrades(),
-		"allegro": opera.GetAllegroUpgrades(),
+	versions := map[string]sonic.Upgrades{
+		"sonic":   sonic.GetSonicUpgrades(),
+		"allegro": sonic.GetAllegroUpgrades(),
 	}
 
 	for name, version := range versions {
@@ -95,10 +95,10 @@ func TestAccountCreation_CreateCallsWithInitCodesTooLargeDoNotAlterBalance(t *te
 			postBalance, err := client.BalanceAt(t.Context(), sender.Address(), receipt.BlockNumber)
 			require.NoError(t, err)
 
-			if version == opera.GetSonicUpgrades() {
+			if version == sonic.GetSonicUpgrades() {
 				require.Less(t, postBalance.Uint64(), preBalance.Uint64(), "balance should decrease after failed contract creation")
 			}
-			if version == opera.GetAllegroUpgrades() {
+			if version == sonic.GetAllegroUpgrades() {
 				require.Equal(t, preBalance, postBalance, "balance should not change after failed contract creation")
 			}
 		})
@@ -114,7 +114,7 @@ func TestAccountCreation_CreateCallsProducingCodesTooLargeProduceAUnsuccessfulRe
 		byte(vm.RETURN),
 	}...)
 
-	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	session := getIntegrationTestNetSession(t, sonic.GetSonicUpgrades())
 	t.Parallel()
 
 	client, err := session.GetClient()

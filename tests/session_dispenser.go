@@ -22,7 +22,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -66,7 +66,7 @@ func TestMain(m *testing.M) {
 //
 // This function uses a global state that is cleaned up after the execution of
 // the tests in `tests` package.
-func getIntegrationTestNetSession(t *testing.T, upgrades opera.Upgrades) IntegrationTestNetSession {
+func getIntegrationTestNetSession(t *testing.T, upgrades sonic.Upgrades) IntegrationTestNetSession {
 	if activeTestNetInstances == nil {
 		activeTestNetInstances = make(map[common.Hash]*IntegrationTestNet)
 	}
@@ -86,7 +86,7 @@ func getIntegrationTestNetSession(t *testing.T, upgrades opera.Upgrades) Integra
 	return myNet.SpawnSession(t)
 }
 
-func hashUpgrades(upgrades opera.Upgrades) common.Hash {
+func hashUpgrades(upgrades sonic.Upgrades) common.Hash {
 	hash := sha256.New()
 
 	// in the unlikely case of an error it is safe to ignore it since the

@@ -29,7 +29,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/gossip/randao"
 	"github.com/0xsoniclabs/sonic/inter"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
@@ -138,15 +138,15 @@ func TestWorldAdapter_GetEvmChainConfig_ForwardsCallToGetRulesAndGetUpgradeHeigh
 	ctrl := gomock.NewController(t)
 	world := NewMockExternal(ctrl)
 
-	rules := opera.Rules{}
-	var updateHeights []opera.UpgradeHeight
+	rules := sonic.Rules{}
+	var updateHeights []sonic.UpgradeHeight
 
 	world.EXPECT().GetRules().Return(rules)
 	world.EXPECT().GetUpgradeHeights().Return(updateHeights)
 
 	adapter := worldAdapter{world}
 	got := adapter.GetEvmChainConfig(idx.Block(1))
-	want := opera.CreateTransientEvmChainConfig(rules.NetworkID, updateHeights, 1)
+	want := sonic.CreateTransientEvmChainConfig(rules.NetworkID, updateHeights, 1)
 	require.Equal(want, got)
 }
 
@@ -209,7 +209,7 @@ func TestCreatePayload_UnableToCreateProposalDueToLackOfTimeProgress_CreatesPayl
 			WithTime(lastBlockTime).
 			Build(),
 	)
-	world.EXPECT().GetRules().Return(opera.Rules{})
+	world.EXPECT().GetRules().Return(sonic.Rules{})
 
 	event.EXPECT().Parents().Return(hash.Events{p1, p2})
 	event.EXPECT().Epoch().Return(idx.Epoch(0x12))
@@ -297,7 +297,7 @@ func TestCreatePayload_ValidTurn_ProducesExpectedPayload(t *testing.T) {
 			Build(),
 	)
 
-	world.EXPECT().GetRules().Return(opera.Rules{})
+	world.EXPECT().GetRules().Return(sonic.Rules{})
 
 	event.EXPECT().Parents().Return(hash.Events{p1, p2})
 	event.EXPECT().Epoch().Return(idx.Epoch(3)).AnyTimes()
@@ -349,7 +349,7 @@ func TestMakeProposal_ValidArguments_CreatesValidProposal(t *testing.T) {
 	durationMetric := NewMocktimerMetric(ctrl)
 	timeoutMetric := NewMockcounterMetric(ctrl)
 
-	rules := opera.Rules{}
+	rules := sonic.Rules{}
 	state := inter.ProposalSyncState{
 		LastSeenProposalTurn:  inter.Turn(5),
 		LastSeenProposalFrame: idx.Frame(12),
@@ -433,7 +433,7 @@ func TestMakeProposal_InvalidBlockTime_ReturnsNil(t *testing.T) {
 	for _, delta := range []time.Duration{-1 * time.Nanosecond, 0} {
 		newTime := inter.Timestamp(1234) + inter.Timestamp(delta)
 		payload, err := makeProposal(
-			opera.Rules{}, state, latestBlock, newTime, 0, nil, nil, nil, nil, nil,
+			sonic.Rules{}, state, latestBlock, newTime, 0, nil, nil, nil, nil, nil,
 		)
 		require.NoError(t, err, "not error but no-proposal expected")
 		require.Nil(t, payload)
@@ -473,7 +473,7 @@ func TestMakeProposal_IfSchedulerTimesOut_SignalTimeoutToMonitor(t *testing.T) {
 	randaoMixer.EXPECT().MixRandao(any)
 
 	_, err := makeProposal(
-		opera.Rules{},
+		sonic.Rules{},
 		inter.ProposalSyncState{},
 		inter.NewBlockBuilder().
 			WithBaseFee(big.NewInt(100)).
@@ -534,7 +534,7 @@ func TestMakeProposal_SkipsProposalOnRandaoRevealError(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 
-	rules := opera.Rules{}
+	rules := sonic.Rules{}
 	state := inter.ProposalSyncState{
 		LastSeenProposalTurn:  inter.Turn(5),
 		LastSeenProposalFrame: idx.Frame(12),
@@ -573,9 +573,9 @@ func TestMakeProposal_SkipsProposalIfBaseFeeIsGettingTooHeigh(t *testing.T) {
 
 	targetRate := uint64(50_000_000) // 50M gas/sec
 
-	rules := opera.Rules{
-		Economy: opera.EconomyRules{
-			ShortGasPower: opera.GasPowerRules{
+	rules := sonic.Rules{
+		Economy: sonic.EconomyRules{
+			ShortGasPower: sonic.GasPowerRules{
 				AllocPerSec: targetRate,
 			},
 		},
@@ -616,9 +616,9 @@ func TestMakeProposal_SchedulerIsRunWithCorrectBaseFee(t *testing.T) {
 
 	targetRate := uint64(50_000_000) // 50M gas/sec
 
-	rules := opera.Rules{
-		Economy: opera.EconomyRules{
-			ShortGasPower: opera.GasPowerRules{
+	rules := sonic.Rules{
+		Economy: sonic.EconomyRules{
+			ShortGasPower: sonic.GasPowerRules{
 				AllocPerSec: targetRate,
 			},
 		},
@@ -692,7 +692,7 @@ func TestCreatePayload_ReturnsErrorOnRandaoGenerationFailure(t *testing.T) {
 	world.EXPECT().GetLatestBlock().Return(
 		inter.NewBlockBuilder().WithNumber(4).Build(), // next expected block number is 5
 	)
-	world.EXPECT().GetRules().Return(opera.Rules{})
+	world.EXPECT().GetRules().Return(sonic.Rules{})
 
 	event := inter.NewMockEventI(ctrl)
 	event.EXPECT().Parents().Return(hash.Events{})

@@ -30,7 +30,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/inter/state"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
 )
 
@@ -43,14 +43,14 @@ import (
 type StateProcessor struct {
 	config   *params.ChainConfig // Chain configuration options
 	bc       DummyChain          // Canonical block chain
-	upgrades opera.Upgrades      // Enabled network upgrades
+	upgrades sonic.Upgrades      // Enabled network upgrades
 }
 
 // NewStateProcessor initializes a new StateProcessor.
 func NewStateProcessor(
 	config *params.ChainConfig,
 	bc DummyChain,
-	upgrades opera.Upgrades,
+	upgrades sonic.Upgrades,
 ) *StateProcessor {
 	return &StateProcessor{
 		config:   config,
@@ -127,7 +127,7 @@ type runContext struct {
 	blockNumber *big.Int
 	usedGas     *uint64
 	onNewLog    func(*types.Log)
-	upgrades    opera.Upgrades
+	upgrades    sonic.Upgrades
 	runner      _transactionRunner
 }
 
@@ -143,7 +143,7 @@ func newRunContext(
 	blockNumber *big.Int,
 	usedGas *uint64,
 	onNewLog func(*types.Log),
-	upgrades opera.Upgrades,
+	upgrades sonic.Upgrades,
 	runner _transactionRunner,
 ) *runContext {
 	return &runContext{
@@ -376,7 +376,7 @@ type TransactionProcessor struct {
 	stateDb       state.StateDB
 	usedGas       uint64
 	vmEnvironment *vm.EVM
-	upgrades      opera.Upgrades
+	upgrades      sonic.Upgrades
 }
 
 // Run processes a single transaction in the block, where i is the index of

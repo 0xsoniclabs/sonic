@@ -26,7 +26,7 @@ import (
 	"github.com/0xsoniclabs/carmen/go/carmen"
 	"github.com/0xsoniclabs/carmen/go/common/immutable"
 	"github.com/0xsoniclabs/carmen/go/database/mpt"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driver"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
 	"github.com/0xsoniclabs/sonic/opera/contracts/evmwriter"
@@ -52,9 +52,9 @@ func TestBlockHeader_FakeGenesis_SatisfiesInvariants(t *testing.T) {
 
 func TestBlockHeader_JsonGenesis_SatisfiesInvariants(t *testing.T) {
 
-	upgrades := map[string]opera.Upgrades{
-		"Sonic":   opera.GetSonicUpgrades(),
-		"Allegro": opera.GetAllegroUpgrades(),
+	upgrades := map[string]sonic.Upgrades{
+		"Sonic":   sonic.GetSonicUpgrades(),
+		"Allegro": sonic.GetAllegroUpgrades(),
 	}
 	modes := map[string]bool{
 		"DistributedProposer": false,

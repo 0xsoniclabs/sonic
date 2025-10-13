@@ -29,7 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/trie"
 
 	"github.com/0xsoniclabs/sonic/inter"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 )
 
@@ -91,7 +91,7 @@ func NewEvmBlock(h *EvmHeader, txs types.Transactions) *EvmBlock {
 }
 
 // ToEvmHeader converts inter.Block to EvmHeader.
-func ToEvmHeader(block *inter.Block, prevHash common.Hash, rules opera.Rules) *EvmHeader {
+func ToEvmHeader(block *inter.Block, prevHash common.Hash, rules sonic.Rules) *EvmHeader {
 	baseFee := rules.Economy.MinGasPrice
 	if !rules.Upgrades.London {
 		baseFee = nil

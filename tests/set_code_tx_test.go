@@ -50,7 +50,7 @@ import (
 // and do not implement ERC-20 as described in the EIP use case examples.
 func TestSetCodeTransaction(t *testing.T) {
 
-	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	session := getIntegrationTestNetSession(t, sonic.GetAllegroUpgrades())
 
 	t.Run("Operation", func(t *testing.T) {
 		t.Parallel()

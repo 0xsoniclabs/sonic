@@ -21,7 +21,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/inter"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	base "github.com/Fantom-foundation/lachesis-base/eventcheck/epochcheck"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	pos "github.com/Fantom-foundation/lachesis-base/inter/pos"
@@ -60,7 +60,7 @@ func TestChecker_Validate_SingleProposerIntroducesNewFormat(t *testing.T) {
 			validators := builder.Build()
 			reader.EXPECT().GetEpochValidators().Return(validators, idx.Epoch(0)).AnyTimes()
 
-			rules := opera.Rules{Upgrades: opera.Upgrades{
+			rules := sonic.Rules{Upgrades: sonic.Upgrades{
 				Sonic:                        true,
 				SingleProposerBlockFormation: enabled,
 			}}

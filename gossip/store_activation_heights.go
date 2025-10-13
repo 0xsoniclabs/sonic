@@ -16,27 +16,25 @@
 
 package gossip
 
-import (
-	"github.com/0xsoniclabs/sonic/opera"
-)
+import "github.com/0xsoniclabs/sonic/opera"
 
-func (s *Store) AddUpgradeHeight(h opera.UpgradeHeight) {
+func (s *Store) AddUpgradeHeight(h sonic.UpgradeHeight) {
 	orig := s.GetUpgradeHeights()
 	// allocate new memory to avoid race condition in cache
-	cp := make([]opera.UpgradeHeight, 0, len(orig)+1)
+	cp := make([]sonic.UpgradeHeight, 0, len(orig)+1)
 	cp = append(append(cp, orig...), h)
 
 	s.rlp.Set(s.table.UpgradeHeights, []byte{}, cp)
 	s.cache.UpgradeHeights.Store(cp)
 }
 
-func (s *Store) GetUpgradeHeights() []opera.UpgradeHeight {
+func (s *Store) GetUpgradeHeights() []sonic.UpgradeHeight {
 	if v := s.cache.UpgradeHeights.Load(); v != nil {
-		return v.([]opera.UpgradeHeight)
+		return v.([]sonic.UpgradeHeight)
 	}
-	hh, ok := s.rlp.Get(s.table.UpgradeHeights, []byte{}, &[]opera.UpgradeHeight{}).(*[]opera.UpgradeHeight)
+	hh, ok := s.rlp.Get(s.table.UpgradeHeights, []byte{}, &[]sonic.UpgradeHeight{}).(*[]sonic.UpgradeHeight)
 	if !ok {
-		return []opera.UpgradeHeight{}
+		return []sonic.UpgradeHeight{}
 	}
 	s.cache.UpgradeHeights.Store(*hh)
 	return *hh

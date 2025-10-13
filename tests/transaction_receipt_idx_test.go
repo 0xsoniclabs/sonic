@@ -22,15 +22,15 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/contract/driverauth100"
-	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 )
 
 func TestReceipt_InternalTransactionsDoNotChangeReceiptIndex(t *testing.T) {
-	upgrades := opera.GetSonicUpgrades()
+	upgrades := sonic.GetSonicUpgrades()
 	net := StartIntegrationTestNetWithJsonGenesis(t, IntegrationTestNetOptions{
 		Upgrades: &upgrades,
 	})
@@ -135,7 +135,7 @@ func getSenderOfTransaction(
 }
 
 func TestReceipt_SkippedTransactionsDoNotChangeReceiptIndexOrCumulativeGasUsed(t *testing.T) {
-	upgrades := opera.GetSonicUpgrades()
+	upgrades := sonic.GetSonicUpgrades()
 	net := StartIntegrationTestNetWithJsonGenesis(t, IntegrationTestNetOptions{
 		Upgrades: &upgrades,
 		ClientExtraArguments: []string{

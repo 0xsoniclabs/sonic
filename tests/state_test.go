@@ -24,7 +24,7 @@ import (
 
 	carmen "github.com/0xsoniclabs/carmen/go/state"
 	"github.com/0xsoniclabs/carmen/go/state/gostate"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/tests"
 	"github.com/stretchr/testify/require"
 )
@@ -92,7 +92,7 @@ func execStateTest(t *testing.T, st *tests.TestMatcher, test *tests.StateTest) {
 
 			factory := createCarmenFactory(t)
 
-			config := opera.GetVmConfig(opera.Rules{})
+			config := sonic.GetVmConfig(sonic.Rules{})
 			config.ChargeExcessGas = false
 			config.IgnoreGasFeeCap = false
 			config.InsufficientBalanceIsNotAnError = false

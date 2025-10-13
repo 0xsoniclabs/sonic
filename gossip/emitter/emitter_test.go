@@ -33,7 +33,7 @@ import (
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/logger"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils/txtime"
 	"github.com/0xsoniclabs/sonic/valkeystore"
 	"github.com/0xsoniclabs/sonic/vecmt"
@@ -81,7 +81,7 @@ func TestEmitter(t *testing.T) {
 
 	t.Run("init", func(t *testing.T) {
 		external.EXPECT().GetRules().
-			Return(opera.FakeNetRules(opera.GetSonicUpgrades())).
+			Return(sonic.FakeNetRules(sonic.GetSonicUpgrades())).
 			AnyTimes()
 
 		external.EXPECT().GetEpochValidators().
@@ -141,7 +141,7 @@ func (fixedPriceBaseFeeSource) GetCurrentBaseFee() *big.Int {
 
 func TestEmitter_CreateEvent_CreatesCorrectEventVersion(t *testing.T) {
 
-	tests := map[string]opera.Upgrades{
+	tests := map[string]sonic.Upgrades{
 		"sonic": {
 			Sonic:   true,
 			Allegro: false,
@@ -170,7 +170,7 @@ func TestEmitter_CreateEvent_CreatesCorrectEventVersion(t *testing.T) {
 					world := NewMockExternal(ctrl)
 					signer := valkeystore.NewMockSignerAuthority(ctrl)
 
-					rules := opera.Rules{
+					rules := sonic.Rules{
 						Upgrades: upgrades,
 					}
 					rules.Upgrades.SingleProposerBlockFormation = singleProposer
@@ -216,8 +216,8 @@ func TestEmitter_CreateEvent_InvalidValidatorSetIsDetected(t *testing.T) {
 	validator := idx.ValidatorID(1)
 	validators := pos.NewBuilder().Build() // invalid empty validator set
 
-	rules := opera.Rules{
-		Upgrades: opera.Upgrades{
+	rules := sonic.Rules{
+		Upgrades: sonic.Upgrades{
 			SingleProposerBlockFormation: true,
 		},
 	}

@@ -28,7 +28,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/inter"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/sonic/vecmt"
 	"github.com/Fantom-foundation/lachesis-base/abft"
@@ -90,7 +90,7 @@ func getNodeService(t *testing.T) *gossip.Service {
 	store, err := gossip.NewMemStore(&testing.B{})
 	require.NoError(t, err)
 
-	rules := opera.FakeNetRules(opera.GetSonicUpgrades())
+	rules := sonic.FakeNetRules(sonic.GetSonicUpgrades())
 	rules.Epochs.MaxEpochDuration = inter.Timestamp(maxEpochDuration)
 	rules.Emitter.Interval = 0
 

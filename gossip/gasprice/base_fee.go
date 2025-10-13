@@ -20,11 +20,11 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 )
 
 // GetInitialBaseFee returns the initial base fee to be used in the genesis block.
-func GetInitialBaseFee(rules opera.EconomyRules) *big.Int {
+func GetInitialBaseFee(rules sonic.EconomyRules) *big.Int {
 	// The default initial base fee is set to 10 Gwei. While a value of 0 would
 	// also be valid, this value was chosen to have non-zero prices in low-load
 	// test networks at least for the first several minutes. In case of no load
@@ -39,7 +39,7 @@ func GetInitialBaseFee(rules opera.EconomyRules) *big.Int {
 }
 
 // GetBaseFeeForNextBlock computes the base fee for the next block based on the parent block.
-func GetBaseFeeForNextBlock(parent ParentBlockInfo, rules opera.EconomyRules) *big.Int {
+func GetBaseFeeForNextBlock(parent ParentBlockInfo, rules sonic.EconomyRules) *big.Int {
 	newPrice := getBaseFeeForNextBlock(parent, rules)
 	if rules.MinBaseFee != nil && newPrice.Cmp(rules.MinBaseFee) < 0 {
 		newPrice.Set(rules.MinBaseFee)
@@ -59,7 +59,7 @@ type ParentBlockInfo struct {
 	GasUsed uint64
 }
 
-func getBaseFeeForNextBlock(parent ParentBlockInfo, rules opera.EconomyRules) *big.Int {
+func getBaseFeeForNextBlock(parent ParentBlockInfo, rules sonic.EconomyRules) *big.Int {
 	// In general, this function computes the new base fee based on the following formula:
 	//
 	//     newPrice := oldPrice * e^(((rate-targetRate)/targetRate)*duration/128)

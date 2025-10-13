@@ -21,7 +21,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/tests/block_header"
 	"github.com/ethereum/go-ethereum/common"
@@ -33,9 +33,9 @@ import (
 
 func TestSingleProposerProtocol_CanProcessTransactions(t *testing.T) {
 
-	upgrades := map[string]opera.Upgrades{
-		"Sonic":   opera.GetSonicUpgrades(),
-		"Allegro": opera.GetAllegroUpgrades(),
+	upgrades := map[string]sonic.Upgrades{
+		"Sonic":   sonic.GetSonicUpgrades(),
+		"Allegro": sonic.GetAllegroUpgrades(),
 	}
 
 	for name, upgrades := range upgrades {
@@ -52,7 +52,7 @@ func TestSingleProposerProtocol_CanProcessTransactions(t *testing.T) {
 func testSingleProposerProtocol_CanProcessTransactions(
 	t *testing.T,
 	numNodes int,
-	upgrades opera.Upgrades,
+	upgrades sonic.Upgrades,
 ) {
 	// This test is a general smoke test for the single-proposer protocol. It
 	// checks that transactions can be processed and that the network is not
@@ -146,9 +146,9 @@ func testSingleProposerProtocol_CanProcessTransactions(
 }
 
 func TestSingleProposerProtocol_CanBeEnabledAndDisabled(t *testing.T) {
-	upgrades := map[string]opera.Upgrades{
-		"Sonic":   opera.GetSonicUpgrades(),
-		"Allegro": opera.GetAllegroUpgrades(),
+	upgrades := map[string]sonic.Upgrades{
+		"Sonic":   sonic.GetSonicUpgrades(),
+		"Allegro": sonic.GetAllegroUpgrades(),
 	}
 
 	for name, upgrades := range upgrades {
@@ -166,7 +166,7 @@ func TestSingleProposerProtocol_CanBeEnabledAndDisabled(t *testing.T) {
 func testSingleProposerProtocol_CanBeEnabledAndDisabled(
 	t *testing.T,
 	numNodes int,
-	mode opera.Upgrades,
+	mode sonic.Upgrades,
 ) {
 	require := require.New(t)
 

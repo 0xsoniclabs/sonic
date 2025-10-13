@@ -22,15 +22,15 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/sonic/inter"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/stretchr/testify/require"
 )
 
 func TestPacingOfEmptyBlocks(t *testing.T) {
-	hardFork := map[string]opera.Upgrades{
-		"sonic":   opera.GetSonicUpgrades(),
-		"allegro": opera.GetAllegroUpgrades(),
+	hardFork := map[string]sonic.Upgrades{
+		"sonic":   sonic.GetSonicUpgrades(),
+		"allegro": sonic.GetAllegroUpgrades(),
 	}
 	modes := map[string]bool{
 		"single proposer":      true,
@@ -54,7 +54,7 @@ func TestPacingOfEmptyBlocks(t *testing.T) {
 
 func testPacingOfEmptyBlocks(
 	t *testing.T,
-	upgrades opera.Upgrades,
+	upgrades sonic.Upgrades,
 ) {
 	require := require.New(t)
 	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{

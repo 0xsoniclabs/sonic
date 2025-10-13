@@ -19,7 +19,7 @@ package evmcore
 import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/inter/state"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/log"
@@ -41,7 +41,7 @@ type subsidiesChecker interface {
 // SubsidiesIntegrationImplementation uses the subsidies contract to determine
 // if a transaction is sponsored.
 type SubsidiesIntegrationImplementation struct {
-	rules  opera.Rules
+	rules  sonic.Rules
 	chain  StateReader
 	state  state.StateDB
 	signer types.Signer
@@ -51,7 +51,7 @@ type SubsidiesIntegrationImplementation struct {
 // This instance is capable of executing the subsidies contract to determine
 // if a transaction is sponsored.
 func newSubsidiesChecker(
-	rules opera.Rules,
+	rules sonic.Rules,
 	chain StateReader,
 	state state.StateDB,
 	signer types.Signer,
@@ -70,7 +70,7 @@ func (s *SubsidiesIntegrationImplementation) isSponsored(tx *types.Transaction) 
 
 	// Create a EVM processor instance to run the IsCovered query.
 	blockContext := NewEVMBlockContext(currentBlock.Header(), s.chain, nil)
-	vmConfig := opera.GetVmConfig(s.rules)
+	vmConfig := sonic.GetVmConfig(s.rules)
 	vm := vm.NewEVM(blockContext, s.state, s.chain.Config(), vmConfig)
 
 	// Query the subsidies registry contract to determine if the transaction is sponsored.

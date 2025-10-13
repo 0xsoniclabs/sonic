@@ -49,7 +49,7 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/ibr"
 	"github.com/0xsoniclabs/sonic/inter/ier"
 	"github.com/0xsoniclabs/sonic/inter/state"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/genesis"
 	"github.com/0xsoniclabs/sonic/opera/genesisstore"
 	"github.com/0xsoniclabs/sonic/utils"
@@ -181,7 +181,7 @@ func (d dummyHeaderReturner) GetHeader(_ common.Hash, position uint64) *evmcore.
 // the initial block and filling in other block header information. This function must
 // be called before ExecuteGenesisTxs.
 func (b *GenesisBuilder) FinalizeBlockZero(
-	rules opera.Rules,
+	rules sonic.Rules,
 	genesisTime inter.Timestamp,
 ) (
 	blockHash common.Hash,
@@ -193,7 +193,7 @@ func (b *GenesisBuilder) FinalizeBlockZero(
 	}
 
 	if rules.Upgrades.Allegro {
-		if err := rules.Validate(opera.Rules{}); err != nil {
+		if err := rules.Validate(sonic.Rules{}); err != nil {
 			return common.Hash{}, common.Hash{}, fmt.Errorf("invalid rules: %w", err)
 		}
 	}
@@ -249,10 +249,10 @@ func (b *GenesisBuilder) ExecuteGenesisTxs(blockProc BlockProc, genesisTxs types
 
 	sealer := blockProc.SealerModule.Start(blockCtx, bs, es)
 	txListener := blockProc.TxListenerModule.Start(blockCtx, bs, es, b.tmpStateDB)
-	chainConfig := opera.CreateTransientEvmChainConfig(
+	chainConfig := sonic.CreateTransientEvmChainConfig(
 		es.Rules.NetworkID,
 		// apply upgrades described in genesis rules, effect immediately
-		[]opera.UpgradeHeight{{
+		[]sonic.UpgradeHeight{{
 			Upgrades: es.Rules.Upgrades,
 			Height:   blockCtx.Idx,
 		}},

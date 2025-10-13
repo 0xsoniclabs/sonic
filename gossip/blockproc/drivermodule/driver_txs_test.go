@@ -17,10 +17,13 @@
 package drivermodule_test
 
 import (
+	"math/big"
+	"testing"
+
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/drivermodule"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/state"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 	"github.com/ethereum/go-ethereum/common"
@@ -28,8 +31,6 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 	"go.uber.org/mock/gomock"
-	"math/big"
-	"testing"
 )
 
 const OrigOriginated = 10_000
@@ -56,7 +57,7 @@ func TestReceiptRewardWithoutFixEnabled(t *testing.T) {
 	valsBuilder := pos.NewBuilder()
 	valsBuilder.Set(1, 100)
 
-	rules := opera.MainNetRules()
+	rules := sonic.MainNetRules()
 	rules.Upgrades.Allegro = false // disable fix
 
 	es := iblockproc.EpochState{
@@ -97,7 +98,7 @@ func TestReceiptRewardWithFixEnabled(t *testing.T) {
 	valsBuilder := pos.NewBuilder()
 	valsBuilder.Set(1, 100)
 
-	rules := opera.MainNetRules()
+	rules := sonic.MainNetRules()
 	rules.Upgrades.Allegro = true // enable fix
 
 	es := iblockproc.EpochState{
@@ -138,7 +139,7 @@ func TestReceiptRewardWithBlobsAndFixEnabled(t *testing.T) {
 	valsBuilder := pos.NewBuilder()
 	valsBuilder.Set(1, 100)
 
-	rules := opera.MainNetRules()
+	rules := sonic.MainNetRules()
 	rules.Upgrades.Allegro = true // enable fix
 
 	es := iblockproc.EpochState{

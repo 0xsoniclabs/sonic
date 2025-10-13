@@ -22,7 +22,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -68,7 +68,7 @@ func TestGasCostTest_Sonic(t *testing.T) {
 }
 
 func testGasCosts_Sonic(t *testing.T, singleProposer bool) {
-	upgrades := opera.GetSonicUpgrades()
+	upgrades := sonic.GetSonicUpgrades()
 	upgrades.SingleProposerBlockFormation = singleProposer
 	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
 		Upgrades: &upgrades,
@@ -176,7 +176,7 @@ func TestGasCostTest_Allegro(t *testing.T) {
 }
 
 func testGasCosts_Allegro(t *testing.T, singleProposer bool) {
-	upgrades := opera.GetAllegroUpgrades()
+	upgrades := sonic.GetAllegroUpgrades()
 	upgrades.SingleProposerBlockFormation = singleProposer
 	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
 		Upgrades: &upgrades,
@@ -480,7 +480,7 @@ func TestExcessGasCharges_DisabledInSingleProposerModeInNewAndHistoricRuns(t *te
 
 	require := require.New(t)
 
-	upgrades := opera.GetAllegroUpgrades()
+	upgrades := sonic.GetAllegroUpgrades()
 	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
 		Upgrades: &upgrades,
 	})

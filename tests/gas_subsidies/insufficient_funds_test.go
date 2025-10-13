@@ -20,7 +20,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -29,7 +29,7 @@ import (
 )
 
 func TestGasSubsidies_RequestIsRejectedInCaseOfInsufficientFunds(t *testing.T) {
-	upgrades := opera.GetSonicUpgrades()
+	upgrades := sonic.GetSonicUpgrades()
 	upgrades.GasSubsidies = true
 
 	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{

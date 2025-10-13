@@ -22,7 +22,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/inter"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
@@ -107,7 +107,7 @@ func testHeaders_BaseFeeEvolutionFollowsPricingRules(t *testing.T, headers []*ty
 	require := require.New(t)
 
 	// The genesis block must use the initial base fee.
-	rules := opera.FakeEconomyRules()
+	rules := sonic.FakeEconomyRules()
 	require.Equal(
 		gasprice.GetInitialBaseFee(rules),
 		headers[0].BaseFee,

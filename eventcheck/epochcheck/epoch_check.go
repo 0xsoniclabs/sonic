@@ -24,7 +24,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 
 	"github.com/0xsoniclabs/sonic/inter"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 )
 
 //go:generate mockgen -source=epoch_check.go -destination=epoch_check_mock.go -package=epochcheck
@@ -44,7 +44,7 @@ var (
 // Reader returns currents epoch and its validators group.
 type Reader interface {
 	base.Reader
-	GetEpochRules() (opera.Rules, idx.Epoch)
+	GetEpochRules() (sonic.Rules, idx.Epoch)
 }
 
 // Checker which require only current epoch info
@@ -60,7 +60,7 @@ func New(reader Reader) *Checker {
 	}
 }
 
-func CalcGasPowerUsed(e inter.EventPayloadI, rules opera.Rules) uint64 {
+func CalcGasPowerUsed(e inter.EventPayloadI, rules sonic.Rules) uint64 {
 	txsGas := uint64(0)
 	// In the single-proposer protocol, the gas usage of individual transactions
 	// is not attributed to the individual proposer, since each proposer needs
@@ -93,7 +93,7 @@ func CalcGasPowerUsed(e inter.EventPayloadI, rules opera.Rules) uint64 {
 	return txsGas + parentsGas + extraGas + gasCfg.EventGas + mpsGas + bvsGas + ersGas
 }
 
-func (v *Checker) checkGas(e inter.EventPayloadI, rules opera.Rules) error {
+func (v *Checker) checkGas(e inter.EventPayloadI, rules sonic.Rules) error {
 	if e.GasPowerUsed() > rules.Economy.Gas.MaxEventGas {
 		return ErrTooBigGasUsed
 	}
@@ -103,7 +103,7 @@ func (v *Checker) checkGas(e inter.EventPayloadI, rules opera.Rules) error {
 	return nil
 }
 
-func CheckTxs(txs types.Transactions, rules opera.Rules) error {
+func CheckTxs(txs types.Transactions, rules sonic.Rules) error {
 	maxType := uint8(types.LegacyTxType)
 	if rules.Upgrades.Berlin {
 		maxType = types.AccessListTxType

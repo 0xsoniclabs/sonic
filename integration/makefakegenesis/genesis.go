@@ -37,7 +37,7 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/ier"
 	"github.com/0xsoniclabs/sonic/inter/validatorpk"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driver"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driver/drivercall"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
@@ -62,18 +62,18 @@ func FakeKey(n idx.ValidatorID) *ecdsa.PrivateKey {
 	return evmcore.FakeKey(uint32(n))
 }
 
-func FakeGenesisStore(num idx.Validator, balance, stake *big.Int, upgrades opera.Upgrades) *genesisstore.Store {
-	return FakeGenesisStoreWithRules(num, balance, stake, opera.FakeNetRules(upgrades))
+func FakeGenesisStore(num idx.Validator, balance, stake *big.Int, upgrades sonic.Upgrades) *genesisstore.Store {
+	return FakeGenesisStoreWithRules(num, balance, stake, sonic.FakeNetRules(upgrades))
 }
 
-func FakeGenesisStoreWithRules(num idx.Validator, balance, stake *big.Int, rules opera.Rules) *genesisstore.Store {
+func FakeGenesisStoreWithRules(num idx.Validator, balance, stake *big.Int, rules sonic.Rules) *genesisstore.Store {
 	return FakeGenesisStoreWithRulesAndStart(num, balance, stake, rules, 2, 1)
 }
 
 func FakeGenesisStoreWithRulesAndStart(
 	num idx.Validator,
 	balance, stake *big.Int,
-	rules opera.Rules,
+	rules sonic.Rules,
 	epoch idx.Epoch,
 	block idx.Block,
 ) *genesisstore.Store {

@@ -25,7 +25,7 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/state"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	tracing "github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -71,14 +71,14 @@ func TestEvm_IgnoresGasPriceOfInternalTransactions(t *testing.T) {
 		stateDb,
 		nil,
 		nil,
-		opera.Rules{
-			Economy: opera.EconomyRules{
+		sonic.Rules{
+			Economy: sonic.EconomyRules{
 				MinGasPrice: big.NewInt(12), // > than 0 offered by the internal transactions
 			},
-			Upgrades: opera.Upgrades{
+			Upgrades: sonic.Upgrades{
 				London: true,
 			},
-			Blocks: opera.BlocksRules{
+			Blocks: sonic.BlocksRules{
 				MaxBlockGas: 1e12,
 			},
 		},
@@ -157,7 +157,7 @@ func TestOperaEVMProcessor_Execute_ProducesContinuousTxIndexesInLogsAndReceipts(
 	evmModule := New()
 	processor := evmModule.Start(
 		iblockproc.BlockCtx{}, stateDb, nil, logConsumer.OnNewLog,
-		opera.Rules{}, &params.ChainConfig{}, common.Hash{},
+		sonic.Rules{}, &params.ChainConfig{}, common.Hash{},
 	)
 
 	key, err := crypto.GenerateKey()
@@ -263,7 +263,7 @@ func TestOperaEVMProcessor_Finalize_ReportsAggregatedNumberOfSkippedTransactions
 	evmModule := New()
 	processor := evmModule.Start(
 		iblockproc.BlockCtx{}, stateDb, nil, logConsumer.OnNewLog,
-		opera.Rules{}, &params.ChainConfig{}, common.Hash{},
+		sonic.Rules{}, &params.ChainConfig{}, common.Hash{},
 	)
 
 	key, err := crypto.GenerateKey()

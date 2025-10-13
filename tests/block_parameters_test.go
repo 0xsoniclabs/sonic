@@ -30,7 +30,7 @@ import (
 )
 
 func TestBlockParameters_BlockHeaderMatchesObservableBlockParameters(t *testing.T) {
-	hardForks := map[string]opera.Upgrades{
+	hardForks := map[string]sonic.Upgrades{
 		"sonic": {
 			Berlin:  true,
 			London:  true,

@@ -25,7 +25,7 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/drivertype"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/ier"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
@@ -38,7 +38,7 @@ import (
 )
 
 func TestGenesisBuilder_ExecuteGenesisTxs_ExecutesTransactionsAccordingToUpgrades(t *testing.T) {
-	rules := opera.FakeNetRules(opera.GetAllegroUpgrades())
+	rules := sonic.FakeNetRules(sonic.GetAllegroUpgrades())
 	builder := NewGenesisBuilder()
 
 	key, err := crypto.GenerateKey()
@@ -58,7 +58,7 @@ func TestGenesisBuilder_ExecuteGenesisTxs_ExecutesTransactionsAccordingToUpgrade
 	require.NoError(t, err)
 }
 
-func finalizeBlockZero(t *testing.T, builder *GenesisBuilder, rules opera.Rules) {
+func finalizeBlockZero(t *testing.T, builder *GenesisBuilder, rules sonic.Rules) {
 	t.Helper()
 
 	genesisTime := inter.Timestamp(1234)

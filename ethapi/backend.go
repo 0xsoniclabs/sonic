@@ -37,7 +37,7 @@ import (
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/state"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 )
 
 // PeerProgress is synchronization status of a peer
@@ -94,7 +94,7 @@ type Backend interface {
 	ChainID() *big.Int
 	CurrentBlock() *evmcore.EvmBlock
 
-	GetNetworkRules(ctx context.Context, blockHeight idx.Block) (*opera.Rules, error)
+	GetNetworkRules(ctx context.Context, blockHeight idx.Block) (*sonic.Rules, error)
 
 	// Lachesis DAG API
 	GetEventPayload(ctx context.Context, shortEventID string) (*inter.EventPayload, error)
@@ -182,5 +182,5 @@ func GetVmConfig(
 	if rules == nil {
 		return vm.Config{}, fmt.Errorf("no network rules found for block height %d", blockHeight)
 	}
-	return opera.GetVmConfig(*rules), nil
+	return sonic.GetVmConfig(*rules), nil
 }

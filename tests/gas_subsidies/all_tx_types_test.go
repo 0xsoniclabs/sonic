@@ -20,7 +20,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -53,7 +53,7 @@ func TestGasSubsidies_SupportAllTxTypes(t *testing.T) {
 	}
 
 	// Enable allegro to support setCode transactions.
-	upgrades := opera.GetAllegroUpgrades()
+	upgrades := sonic.GetAllegroUpgrades()
 	upgrades.GasSubsidies = true
 
 	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{

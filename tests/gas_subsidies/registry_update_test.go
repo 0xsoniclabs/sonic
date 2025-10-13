@@ -23,7 +23,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/proxy"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/tests/contracts/sponsor_everything"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
@@ -36,7 +36,7 @@ import (
 func TestRegistryUpdate_UpdateContract_SponsoredTransactionsCanBePerformed(t *testing.T) {
 
 	// Enable allegro to support setCode transactions.
-	upgrades := opera.GetAllegroUpgrades()
+	upgrades := sonic.GetAllegroUpgrades()
 	upgrades.GasSubsidies = true
 
 	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
@@ -95,7 +95,7 @@ func TestRegistryUpdate_UpdatesAreEffectiveImmediately(t *testing.T) {
 	require := require.New(t)
 
 	// Enable allegro to support setCode transactions.
-	upgrades := opera.GetAllegroUpgrades()
+	upgrades := sonic.GetAllegroUpgrades()
 	upgrades.GasSubsidies = true
 
 	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{

@@ -31,7 +31,7 @@ import (
 	"github.com/0xsoniclabs/carmen/go/common/immutable"
 	"github.com/0xsoniclabs/carmen/go/common/witness"
 	"github.com/0xsoniclabs/sonic/inter/state"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	geth_math "github.com/ethereum/go-ethereum/common/math"
@@ -280,7 +280,7 @@ func TestEstimateGas(t *testing.T) {
 	blkNr := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
 
 	any := gomock.Any()
-	mockBackend.EXPECT().GetNetworkRules(any, idx.Block(1)).Return(&opera.Rules{}, nil).AnyTimes()
+	mockBackend.EXPECT().GetNetworkRules(any, idx.Block(1)).Return(&sonic.Rules{}, nil).AnyTimes()
 	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, blkNr).Return(mockState, mockHeader, nil).AnyTimes()
 	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000))
 	mockBackend.EXPECT().MaxGasLimit().Return(uint64(10000000))
@@ -304,7 +304,7 @@ func TestReplayTransactionOnEmptyBlock(t *testing.T) {
 	block := &evmcore.EvmBlock{}
 	block.Number = big.NewInt(5)
 	any := gomock.Any()
-	mockBackend.EXPECT().GetNetworkRules(any, any).Return(&opera.Rules{}, nil).AnyTimes()
+	mockBackend.EXPECT().GetNetworkRules(any, any).Return(&sonic.Rules{}, nil).AnyTimes()
 	mockBackend.EXPECT().BlockByNumber(any, any).Return(block, nil)
 	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, any).Return(mockState, nil, nil).AnyTimes()
 	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000)).AnyTimes()
@@ -372,12 +372,12 @@ func TestReplayInternalTransaction(t *testing.T) {
 		CanTransfer: vm.CanTransferFunc(func(sd vm.StateDB, a1 common.Address, i *uint256.Int) bool { return true }),
 	}
 
-	vmConfig := opera.GetVmConfig(opera.Rules{})
+	vmConfig := sonic.GetVmConfig(sonic.Rules{})
 	vmConfig.NoBaseFee = true
 
 	any := gomock.Any()
 	mockBackend.EXPECT().BlockByNumber(any, any).Return(block, nil)
-	mockBackend.EXPECT().GetNetworkRules(any, any).Return(&opera.Rules{}, nil).AnyTimes()
+	mockBackend.EXPECT().GetNetworkRules(any, any).Return(&sonic.Rules{}, nil).AnyTimes()
 	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, any).Return(mockState, nil, nil).AnyTimes()
 	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000)).AnyTimes()
 	mockBackend.EXPECT().GetTransaction(any, any).Return(types.NewTx(internalTx), block.NumberU64(), txIndex, nil).AnyTimes()
@@ -404,7 +404,7 @@ func TestBlockOverrides(t *testing.T) {
 
 	any := gomock.Any()
 	mockBackend.EXPECT().BlockByNumber(any, any).Return(block, nil).AnyTimes()
-	mockBackend.EXPECT().GetNetworkRules(any, any).Return(&opera.Rules{}, nil).AnyTimes()
+	mockBackend.EXPECT().GetNetworkRules(any, any).Return(&sonic.Rules{}, nil).AnyTimes()
 	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, any).Return(mockState, &evmcore.EvmHeader{Number: big.NewInt(int64(blockNr))}, nil).AnyTimes()
 	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000)).AnyTimes()
 	mockBackend.EXPECT().ChainConfig(gomock.Any()).Return(&params.ChainConfig{}).AnyTimes()
@@ -543,7 +543,7 @@ func runEstimateGasOverrideTest(t *testing.T, test stateOverrideEstimateGasTest)
 
 	any := gomock.Any()
 	mockBackend.EXPECT().BlockByNumber(any, any).Return(block, nil).AnyTimes()
-	mockBackend.EXPECT().GetNetworkRules(any, any).Return(&opera.Rules{}, nil).AnyTimes()
+	mockBackend.EXPECT().GetNetworkRules(any, any).Return(&sonic.Rules{}, nil).AnyTimes()
 	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, any).Return(mockState, &evmcore.EvmHeader{Number: big.NewInt(int64(blockNr))}, nil).AnyTimes()
 	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000)).AnyTimes()
 	mockBackend.EXPECT().ChainConfig(any).Return(&params.ChainConfig{}).AnyTimes()
@@ -641,8 +641,8 @@ func getEvmFunc(mockState *state.MockStateDB) func(any, any, any, any, any) (*vm
 		blockCtx := vm.BlockContext{
 			Transfer: vm.TransferFunc(func(sd vm.StateDB, a1, a2 common.Address, i *uint256.Int) {}),
 		}
-		config := opera.CreateTransientEvmChainConfig(1, nil, 0)
-		vmConfig := opera.GetVmConfig(opera.Rules{})
+		config := sonic.CreateTransientEvmChainConfig(1, nil, 0)
+		vmConfig := sonic.GetVmConfig(sonic.Rules{})
 		return vm.NewEVM(blockCtx, mockState, config, vmConfig),
 			func() error { return nil }, nil
 	}
@@ -1017,18 +1017,18 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 	}
 
 	tests := map[string]struct {
-		upgrades          opera.Upgrades
+		upgrades          sonic.Upgrades
 		extraSetupBackend func(*MockBackend)
 		setupStateDb      func(*state.MockStateDB)
 		call              func(*testing.T, Backend, TransactionArgs, rpc.BlockNumberOrHash)
 	}{
 		"DoCall sonic": {
-			upgrades:     opera.GetSonicUpgrades(),
+			upgrades:     sonic.GetSonicUpgrades(),
 			setupStateDb: expectedCallsFromTxCall,
 			call:         executeDoCall,
 		},
 		"DoCall allegro": {
-			upgrades: opera.GetAllegroUpgrades(),
+			upgrades: sonic.GetAllegroUpgrades(),
 			setupStateDb: func(mockState *state.MockStateDB) {
 				expectedCallsFromHistoryStorageContract(mockState)
 				expectedCallsFromTxCall(mockState)
@@ -1036,7 +1036,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 			call: executeDoCall,
 		},
 		"StateAtTransaction sonic": {
-			upgrades: opera.GetSonicUpgrades(),
+			upgrades: sonic.GetSonicUpgrades(),
 			setupStateDb: func(mockState *state.MockStateDB) {
 				mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any())
 				mockState.EXPECT().GetCode(sender).Return([]byte{})
@@ -1048,7 +1048,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 			call: executeStateAtTransaction,
 		},
 		"StateAtTransaction allegro": {
-			upgrades: opera.GetAllegroUpgrades(),
+			upgrades: sonic.GetAllegroUpgrades(),
 			setupStateDb: func(mockState *state.MockStateDB) {
 				mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any())
 				mockState.EXPECT().GetCode(sender).Return([]byte{})
@@ -1061,7 +1061,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 			call: executeStateAtTransaction,
 		},
 		"trace_replayBlock sonic": {
-			upgrades: opera.GetSonicUpgrades(),
+			upgrades: sonic.GetSonicUpgrades(),
 			extraSetupBackend: func(mockBackend *MockBackend) {
 				mockBackend.EXPECT().GetReceiptsByNumber(gomock.Any(), gomock.Any()).
 					Return(types.Receipts{
@@ -1078,7 +1078,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 			call: executeTraceReplayBlock,
 		},
 		"trace_replayBlock allegro": {
-			upgrades: opera.GetAllegroUpgrades(),
+			upgrades: sonic.GetAllegroUpgrades(),
 			extraSetupBackend: func(mockBackend *MockBackend) {
 				mockBackend.EXPECT().GetReceiptsByNumber(gomock.Any(), gomock.Any()).
 					Return(types.Receipts{
@@ -1115,7 +1115,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 
 			backend := NewMockBackend(ctrl)
 			backend.EXPECT().GetNetworkRules(gomock.Any(), gomock.Any()).
-				Return(&opera.Rules{}, nil).AnyTimes()
+				Return(&sonic.Rules{}, nil).AnyTimes()
 			backend.EXPECT().StateAndHeaderByNumberOrHash(gomock.Any(), blockOrHash).
 				Return(mockState, &header, nil).AnyTimes()
 			backend.EXPECT().GetEVM(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
@@ -1150,16 +1150,16 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 }
 
 // makeChainConfig allows to create a chain config with a given set of features
-func makeChainConfig(upgrades opera.Upgrades) *params.ChainConfig {
-	return opera.CreateTransientEvmChainConfig(
+func makeChainConfig(upgrades sonic.Upgrades) *params.ChainConfig {
+	return sonic.CreateTransientEvmChainConfig(
 		250,
-		[]opera.UpgradeHeight{{Upgrades: upgrades, Height: 0}},
+		[]sonic.UpgradeHeight{{Upgrades: upgrades, Height: 0}},
 		0,
 	)
 }
 
 // makeTestEVM allows to create an evm instance to use in tests with a given set of features
-func makeTestEVM(features opera.Upgrades) func(
+func makeTestEVM(features sonic.Upgrades) func(
 	ctx context.Context,
 	statedb vm.StateDB,
 	header *evmcore.EvmHeader,
@@ -1345,7 +1345,7 @@ func TestDebugTraceWithBlobTx(t *testing.T) {
 			CanTransfer: vm.CanTransferFunc(func(sd vm.StateDB, a1 common.Address, i *uint256.Int) bool { return true }),
 		}
 
-		vmConfig := opera.GetVmConfig(opera.Rules{})
+		vmConfig := sonic.GetVmConfig(sonic.Rules{})
 		vmConfig.NoBaseFee = true
 
 		// transaction index is 1 for obtaining state after transaction 0
@@ -1357,7 +1357,7 @@ func TestDebugTraceWithBlobTx(t *testing.T) {
 		mockBackend.EXPECT().GetTransaction(any, any).Return(block.Transactions[txIndex], block.NumberU64(), txIndex, nil)
 		mockBackend.EXPECT().BlockByNumber(any, any).Return(block, nil).AnyTimes()
 		mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, any).Return(mockState, nil, nil).AnyTimes()
-		mockBackend.EXPECT().GetNetworkRules(any, any).Return(&opera.Rules{}, nil).AnyTimes()
+		mockBackend.EXPECT().GetNetworkRules(any, any).Return(&sonic.Rules{}, nil).AnyTimes()
 		mockBackend.EXPECT().ChainConfig(gomock.Any()).Return(chainConfig).AnyTimes()
 		mockBackend.EXPECT().GetEVM(any, any, any, noBaseFeeMatcher{expected: true}, any).DoAndReturn(getEvmFuncWithParameters(mockState, chainConfig, &blockCtx, vmConfig)).AnyTimes()
 		mockState.EXPECT().GetBalance(any).Return(uint256.NewInt(21_000_000_000_000_000)).AnyTimes()

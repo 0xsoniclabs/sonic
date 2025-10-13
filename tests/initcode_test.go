@@ -36,7 +36,7 @@ const sufficientGas = uint64(150_000)
 func TestInitCodeSizeLimitAndMetered(t *testing.T) {
 	requireBase := require.New(t)
 
-	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	session := getIntegrationTestNetSession(t, sonic.GetSonicUpgrades())
 	t.Parallel()
 
 	contract, receipt, err := DeployContract(session, contractcreator.DeployContractcreator)

@@ -29,7 +29,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/state"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 )
 
 //go:generate mockgen -source=evm.go -destination=evm_mock.go -package=evmmodule
@@ -45,7 +45,7 @@ func (p *EVMModule) Start(
 	statedb state.StateDB,
 	reader evmcore.DummyChain,
 	onNewLog func(*types.Log),
-	rules opera.Rules,
+	rules sonic.Rules,
 	evmCfg *params.ChainConfig,
 	prevrandao common.Hash,
 ) blockproc.EVMProcessor {
@@ -86,7 +86,7 @@ type OperaEVMProcessor struct {
 	reader   evmcore.DummyChain
 	statedb  state.StateDB
 	onNewLog func(*types.Log)
-	rules    opera.Rules
+	rules    sonic.Rules
 	evmCfg   *params.ChainConfig
 
 	blockIdx      uint64
@@ -143,7 +143,7 @@ func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) []e
 	evmProcessor := p.processorFactory.NewStateProcessor(p.evmCfg, p.reader, p.rules.Upgrades)
 	txsOffset := uint(len(p.processedTxs))
 
-	vmConfig := opera.GetVmConfig(p.rules)
+	vmConfig := sonic.GetVmConfig(p.rules)
 
 	// Process txs
 	evmBlock := p.evmBlockWith(txs)
@@ -195,7 +195,7 @@ type _stateProcessorFactory interface {
 	NewStateProcessor(
 		evmCfg *params.ChainConfig,
 		reader evmcore.DummyChain,
-		upgrades opera.Upgrades,
+		upgrades sonic.Upgrades,
 	) _stateProcessor
 }
 
@@ -219,7 +219,7 @@ type stateProcessorFactory struct{}
 func (stateProcessorFactory) NewStateProcessor(
 	evmCfg *params.ChainConfig,
 	reader evmcore.DummyChain,
-	upgrades opera.Upgrades,
+	upgrades sonic.Upgrades,
 ) _stateProcessor {
 	return evmcore.NewStateProcessor(evmCfg, reader, upgrades)
 }

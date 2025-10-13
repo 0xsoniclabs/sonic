@@ -84,7 +84,7 @@ func (ew *emitterWorldProc) StateDB() state.StateDB {
 	return statedb
 }
 
-func (ew *emitterWorldProc) GetUpgradeHeights() []opera.UpgradeHeight {
+func (ew *emitterWorldProc) GetUpgradeHeights() []sonic.UpgradeHeight {
 	return ew.s.store.GetUpgradeHeights()
 }
 

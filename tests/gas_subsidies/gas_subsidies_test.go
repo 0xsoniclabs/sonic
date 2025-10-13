@@ -20,7 +20,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/stretchr/testify/require"
@@ -36,10 +36,10 @@ func TestGasSubsidies_CanBeEnabledAndDisabled(
 	// a sliced is used here to ensure the forks get updated in an acceptable order.
 	upgrades := []struct {
 		name    string
-		upgrade opera.Upgrades
+		upgrade sonic.Upgrades
 	}{
-		{name: "sonic", upgrade: opera.GetSonicUpgrades()},
-		{name: "allegro", upgrade: opera.GetAllegroUpgrades()},
+		{name: "sonic", upgrade: sonic.GetSonicUpgrades()},
+		{name: "allegro", upgrade: sonic.GetAllegroUpgrades()},
 		// Brio is commented out until the gas cap is properly handled for internal transactions.
 		//{name: "brio", upgrade: opera.GetBrioUpgrades()},
 	}
@@ -99,9 +99,9 @@ func TestGasSubsidies_CanBeEnabledAndDisabled(
 }
 
 func TestGasSubsidies_CallingRegistryBeforeDeploy_FailsTransaction(t *testing.T) {
-	upgrades := map[string]opera.Upgrades{
-		"sonic":   opera.GetSonicUpgrades(),
-		"allegro": opera.GetAllegroUpgrades(),
+	upgrades := map[string]sonic.Upgrades{
+		"sonic":   sonic.GetSonicUpgrades(),
+		"allegro": sonic.GetAllegroUpgrades(),
 		// Brio is commented out until the gas cap is properly handled for internal transactions.
 		//"brio":opera.GetBrioUpgrades(),
 	}

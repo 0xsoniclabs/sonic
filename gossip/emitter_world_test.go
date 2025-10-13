@@ -63,7 +63,7 @@ func initStoreForTests(t *testing.T) *Store {
 		2,
 		utils.ToFtm(genesisBalance),
 		utils.ToFtm(genesisStake),
-		opera.FakeNetRules(opera.GetSonicUpgrades()),
+		sonic.FakeNetRules(sonic.GetSonicUpgrades()),
 		2,
 		2,
 	)

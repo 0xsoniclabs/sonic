@@ -41,5 +41,5 @@ type EpochStateV0 struct {
 	ValidatorStates   []ValidatorEpochStateV0
 	ValidatorProfiles ValidatorProfiles
 
-	Rules opera.Rules
+	Rules sonic.Rules
 }

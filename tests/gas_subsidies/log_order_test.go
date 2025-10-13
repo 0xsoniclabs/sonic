@@ -20,7 +20,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/tests/contracts/indexed_logs"
 	"github.com/ethereum/go-ethereum/common"
@@ -31,7 +31,7 @@ import (
 func TestGasSubsidies_ProperlyAssignTxIndexToLogsInThePresenceOfSponsoredTransactions(t *testing.T) {
 	require := require.New(t)
 
-	upgrade := opera.GetAllegroUpgrades()
+	upgrade := sonic.GetAllegroUpgrades()
 	upgrade.GasSubsidies = true
 	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
 		Upgrades: &upgrade,

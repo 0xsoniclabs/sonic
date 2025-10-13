@@ -22,7 +22,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/stretchr/testify/require"
 )
@@ -45,7 +45,7 @@ func TestEthApiBackend_GetNetworkRules_LoadsRulesFromEpoch(t *testing.T) {
 	)
 	require.True(store.HasBlock(blockNumber))
 
-	rules := opera.FakeNetRules(opera.Upgrades{})
+	rules := sonic.FakeNetRules(sonic.Upgrades{})
 	rules.Name = "test-rules"
 
 	store.SetHistoryBlockEpochState(

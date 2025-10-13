@@ -46,7 +46,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/contract/driverauth100"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/inter"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -64,7 +64,7 @@ import (
 // Additionally, it provides the methods to endow accounts with funds.
 type IntegrationTestNetSession interface {
 	// GetUpgrades returns the upgrades the network has been started with.
-	GetUpgrades() opera.Upgrades
+	GetUpgrades() sonic.Upgrades
 
 	// EndowAccount sends a requested amount of tokens to the given account. This is
 	// mainly intended to provide funds to accounts for testing purposes.
@@ -138,7 +138,7 @@ func AsPointer[T any](v T) *T {
 type IntegrationTestNetOptions struct {
 	// Upgrades specifies the upgrades to be used for the integration test network.
 	// nil value will initialize network using SonicUpgrades.
-	Upgrades *opera.Upgrades
+	Upgrades *sonic.Upgrades
 	// NumNodes specifies the number of nodes to be started on the integration
 	// test network. A value of 0 is interpreted as 1.
 	NumNodes int
@@ -294,9 +294,9 @@ func StartIntegrationTestNetWithFakeGenesis(
 		"fake genesis does not support custom accounts")
 
 	var upgrades string
-	if *effectiveOptions.Upgrades == opera.GetSonicUpgrades() {
+	if *effectiveOptions.Upgrades == sonic.GetSonicUpgrades() {
 		upgrades = "sonic"
-	} else if *effectiveOptions.Upgrades == opera.GetAllegroUpgrades() {
+	} else if *effectiveOptions.Upgrades == sonic.GetAllegroUpgrades() {
 		upgrades = "allegro"
 	} else {
 		t.Fatal("fake genesis only supports sonic and allegro feature sets")
@@ -618,7 +618,7 @@ func (n *IntegrationTestNet) GetClient() (*PooledEhtClient, error) {
 
 // GetChainId returns the chain ID of the network.
 func (n *IntegrationTestNet) GetChainId() *big.Int {
-	return big.NewInt(int64(opera.FakeNetworkID))
+	return big.NewInt(int64(sonic.FakeNetworkID))
 }
 
 // GetClientConnectedToNode provides raw access to a fresh connection to a selected node on
@@ -837,7 +837,7 @@ func (s *Session) SpawnSession(t *testing.T) IntegrationTestNetSession {
 	return s.net.SpawnSession(t)
 }
 
-func (s *Session) GetUpgrades() opera.Upgrades {
+func (s *Session) GetUpgrades() sonic.Upgrades {
 	return *s.net.options.Upgrades
 }
 
@@ -1109,7 +1109,7 @@ func validateAndSanitizeOptions(options ...IntegrationTestNetOptions) (Integrati
 
 	if len(options) == 0 {
 		return IntegrationTestNetOptions{
-			Upgrades: AsPointer(opera.GetSonicUpgrades()),
+			Upgrades: AsPointer(sonic.GetSonicUpgrades()),
 			NumNodes: 1,
 		}, nil
 	}
@@ -1117,7 +1117,7 @@ func validateAndSanitizeOptions(options ...IntegrationTestNetOptions) (Integrati
 		options[0].NumNodes = 1
 	}
 	if options[0].Upgrades == nil {
-		options[0].Upgrades = AsPointer(opera.GetSonicUpgrades())
+		options[0].Upgrades = AsPointer(sonic.GetSonicUpgrades())
 	}
 
 	return options[0], nil

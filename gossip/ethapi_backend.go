@@ -45,7 +45,7 @@ import (
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/state"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/0xsoniclabs/sonic/topicsdb"
@@ -68,7 +68,7 @@ func (b *EthAPIBackend) SetExtRPCEnabled(v bool) {
 
 // GetNetworkRules returns the network rules that have been active at the given
 // block height. If the block height is in the future, nil is returned.
-func (b *EthAPIBackend) GetNetworkRules(ctx context.Context, blockHeight idx.Block) (*opera.Rules, error) {
+func (b *EthAPIBackend) GetNetworkRules(ctx context.Context, blockHeight idx.Block) (*sonic.Rules, error) {
 	header, err := b.HeaderByNumber(ctx, rpc.BlockNumber(blockHeight))
 	if header == nil || err != nil {
 		return nil, err
@@ -399,7 +399,7 @@ func (b *EthAPIBackend) GetEVM(ctx context.Context, state vm.StateDB, header *ev
 		if rules == nil {
 			return nil, nil, fmt.Errorf("network rules for block %d are not found", block)
 		}
-		config := opera.GetVmConfig(*rules)
+		config := sonic.GetVmConfig(*rules)
 		vmConfig = &config
 	}
 	var context vm.BlockContext

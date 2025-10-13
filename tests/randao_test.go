@@ -29,8 +29,8 @@ import (
 func TestRandao_randaoIntegrationTest(t *testing.T) {
 	const NumNodes = 3
 
-	tests := map[string]opera.Upgrades{
-		"dag proposal": opera.GetSonicUpgrades(),
+	tests := map[string]sonic.Upgrades{
+		"dag proposal": sonic.GetSonicUpgrades(),
 		"single proposal": {
 			Berlin:                       true,
 			London:                       true,

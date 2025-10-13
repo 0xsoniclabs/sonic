@@ -187,7 +187,7 @@ func testChainId_AcceptsLegacyTxSignedWithHomestead(
 
 func TestChainId_InternalTransactionHasCorrectChainId(t *testing.T) {
 
-	net := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	net := getIntegrationTestNetSession(t, sonic.GetSonicUpgrades())
 	t.Parallel()
 
 	client, err := net.GetClient()

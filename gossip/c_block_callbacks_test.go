@@ -46,7 +46,7 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/validatorpk"
 	"github.com/0xsoniclabs/sonic/logger"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/sonic/valkeystore"
 	"github.com/0xsoniclabs/sonic/valkeystore/encryption"
@@ -54,12 +54,12 @@ import (
 
 func TestConsensusCallback(t *testing.T) {
 
-	withSingleProposer := opera.GetAllegroUpgrades()
+	withSingleProposer := sonic.GetAllegroUpgrades()
 	withSingleProposer.SingleProposerBlockFormation = true
 
-	features := map[string]opera.Upgrades{
-		"sonic":           opera.GetSonicUpgrades(),
-		"allegro":         opera.GetAllegroUpgrades(),
+	features := map[string]sonic.Upgrades{
+		"sonic":           sonic.GetSonicUpgrades(),
+		"allegro":         sonic.GetAllegroUpgrades(),
 		"single proposer": withSingleProposer,
 	}
 
@@ -70,7 +70,7 @@ func TestConsensusCallback(t *testing.T) {
 	}
 }
 
-func testConsensusCallback(t *testing.T, upgrades opera.Upgrades) {
+func testConsensusCallback(t *testing.T, upgrades sonic.Upgrades) {
 	logger.SetTestMode(t)
 	require := require.New(t)
 
@@ -193,7 +193,7 @@ func TestConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testi
 			// proposal given in the test, the other being the atropos.
 
 			// Create a store with an applied genesis.
-			upgrades := opera.GetAllegroUpgrades()
+			upgrades := sonic.GetAllegroUpgrades()
 			upgrades.SingleProposerBlockFormation = true
 			store := newInMemoryStoreWithGenesisData(t, upgrades, 1, 2)
 
@@ -624,9 +624,9 @@ func generateKeyPair(t testing.TB) (*encryption.PrivateKey, validatorpk.PubKey) 
 func TestFilterNonPermissibleTransactions_InactiveWithoutAllegro(t *testing.T) {
 	require := require.New(t)
 
-	withoutAllegro := opera.Rules{}
-	withAllegro := opera.Rules{
-		Upgrades: opera.Upgrades{
+	withoutAllegro := sonic.Rules{}
+	withAllegro := sonic.Rules{
+		Upgrades: sonic.Upgrades{
 			Allegro: true,
 		},
 	}
@@ -644,8 +644,8 @@ func TestFilterNonPermissibleTransactions_InactiveWithoutAllegro(t *testing.T) {
 }
 
 func TestFilterNonPermissibleTransactions_FiltersNonPermissibleTransactions(t *testing.T) {
-	rules := opera.Rules{
-		Upgrades: opera.Upgrades{
+	rules := sonic.Rules{
+		Upgrades: sonic.Upgrades{
 			Allegro: true,
 		},
 	}
@@ -665,8 +665,8 @@ func TestFilterNonPermissibleTransactions_LogsIssuesOfNonPermissibleTransactions
 	ctrl := gomock.NewController(t)
 	log := logger.NewMockLogger(ctrl)
 
-	rules := opera.Rules{
-		Upgrades: opera.Upgrades{
+	rules := sonic.Rules{
+		Upgrades: sonic.Upgrades{
 			Allegro: true,
 		},
 	}
@@ -700,8 +700,8 @@ func TestFilterNonPermissibleTransactions_ReportsNonPermissibleTransactionsToMon
 	ctrl := gomock.NewController(t)
 	counter := NewMockmetricCounter(ctrl)
 
-	rules := opera.Rules{
-		Upgrades: opera.Upgrades{
+	rules := sonic.Rules{
+		Upgrades: sonic.Upgrades{
 			Allegro: true,
 		},
 	}
@@ -732,8 +732,8 @@ func TestIsPermissible_AcceptsPermissibleTransactions(t *testing.T) {
 		}),
 	}
 
-	rules := opera.Rules{
-		Upgrades: opera.Upgrades{
+	rules := sonic.Rules{
+		Upgrades: sonic.Upgrades{
 			Allegro: true,
 		},
 	}
@@ -751,8 +751,8 @@ func TestIsPermissible_AcceptsSetCodeTransactionsOnlyInAllegro(t *testing.T) {
 
 	for _, enabled := range []bool{false, true} {
 		t.Run(fmt.Sprintf("allegro=%t", enabled), func(t *testing.T) {
-			rules := opera.Rules{
-				Upgrades: opera.Upgrades{
+			rules := sonic.Rules{
+				Upgrades: sonic.Upgrades{
 					Allegro: enabled,
 				},
 			}
@@ -851,8 +851,8 @@ func TestIsPermissible_DetectsNonPermissibleTransactions(t *testing.T) {
 		},
 	}
 
-	rules := opera.Rules{
-		Upgrades: opera.Upgrades{
+	rules := sonic.Rules{
+		Upgrades: sonic.Upgrades{
 			Allegro: true,
 		},
 	}

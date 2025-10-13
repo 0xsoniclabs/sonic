@@ -21,7 +21,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/inter/state"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -43,13 +43,13 @@ func TestTxPool_SponsoredTransactionsAreIncludedInThePendingSet(t *testing.T) {
 	chainId := big.NewInt(1)
 	blockNumber := idx.Block(1)
 	poolConfig := TxPoolConfig{MinimumTip: 15}
-	upgrades := opera.Upgrades{GasSubsidies: true}
+	upgrades := sonic.Upgrades{GasSubsidies: true}
 
 	// Create a ChainConfig instance with the expected features enabled
 	// at the block height.
-	chainConfig := opera.CreateTransientEvmChainConfig(
+	chainConfig := sonic.CreateTransientEvmChainConfig(
 		chainId.Uint64(),
-		[]opera.UpgradeHeight{{Upgrades: upgrades, Height: 0}},
+		[]sonic.UpgradeHeight{{Upgrades: upgrades, Height: 0}},
 		blockNumber,
 	)
 
@@ -60,7 +60,7 @@ func TestTxPool_SponsoredTransactionsAreIncludedInThePendingSet(t *testing.T) {
 	subsidiesCheckerMock.EXPECT().isSponsored(gomock.Any()).Return(true).AnyTimes()
 
 	// Instantiate the pool
-	factory := func(opera.Rules, StateReader, state.StateDB, types.Signer) subsidiesChecker {
+	factory := func(sonic.Rules, StateReader, state.StateDB, types.Signer) subsidiesChecker {
 		return subsidiesCheckerMock
 	}
 	pool := newTxPool(poolConfig, chainConfig, chain, factory)
@@ -148,7 +148,7 @@ func TestTxPool_SponsoredTransactionsAreIncludedInThePendingSet(t *testing.T) {
 
 // mockChain creates a mock chain with basic expectations which allow to accept
 // any transaction in the pool.
-func mockChain(ctrl *gomock.Controller, chainConfig *params.ChainConfig, upgrades opera.Upgrades) *MockStateReader {
+func mockChain(ctrl *gomock.Controller, chainConfig *params.ChainConfig, upgrades sonic.Upgrades) *MockStateReader {
 	state := state.NewMockStateDB(ctrl)
 	state.EXPECT().GetNonce(gomock.Any()).Return(uint64(0)).AnyTimes()
 	state.EXPECT().GetBalance(gomock.Any()).Return(uint256.NewInt(1e18)).AnyTimes()
@@ -171,7 +171,7 @@ func mockChain(ctrl *gomock.Controller, chainConfig *params.ChainConfig, upgrade
 
 	chain.EXPECT().SubscribeNewBlock(gomock.Any()).Return(sub).AnyTimes()
 	chain.EXPECT().GetCurrentRules().
-		Return(opera.Rules{Upgrades: upgrades}).AnyTimes()
+		Return(sonic.Rules{Upgrades: upgrades}).AnyTimes()
 	return chain
 }
 

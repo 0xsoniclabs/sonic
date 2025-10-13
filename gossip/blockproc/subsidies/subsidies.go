@@ -22,7 +22,7 @@ import (
 	"math/big"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -52,7 +52,7 @@ func (id FundId) String() string {
 // If preconditions are met, it queries the subsidies registry contract. If
 // there are sufficient funds, it returns true, otherwise false.
 func IsCovered(
-	upgrades opera.Upgrades,
+	upgrades sonic.Upgrades,
 	vm VirtualMachine,
 	signer types.Signer,
 	tx *types.Transaction,

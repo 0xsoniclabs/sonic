@@ -27,7 +27,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/inter/state"
-	"github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -219,12 +219,12 @@ func TestIsCovered_ConsultsSubsidiesRegistry(t *testing.T) {
 			big.NewInt(int64(test.availableFunds)).FillBytes(funds[:])
 			state.EXPECT().GetState(any, any).Return(funds).AnyTimes()
 
-			upgrades := opera.GetSonicUpgrades()
+			upgrades := sonic.GetSonicUpgrades()
 			upgrades.GasSubsidies = true
-			rules := opera.FakeNetRules(upgrades)
+			rules := sonic.FakeNetRules(upgrades)
 
-			var updateHeights []opera.UpgradeHeight
-			chainConfig := opera.CreateTransientEvmChainConfig(
+			var updateHeights []sonic.UpgradeHeight
+			chainConfig := sonic.CreateTransientEvmChainConfig(
 				rules.NetworkID,
 				updateHeights,
 				1,
@@ -252,7 +252,7 @@ func TestIsCovered_ConsultsSubsidiesRegistry(t *testing.T) {
 				Random: &common.Hash{}, // < signals Revision >= Merge
 			}
 
-			vmConfig := opera.GetVmConfig(rules)
+			vmConfig := sonic.GetVmConfig(rules)
 			vm := vm.NewEVM(blockContext, state, chainConfig, vmConfig)
 
 			covered, fundId, config, err := IsCovered(upgrades, vm, signer, tx, baseFee)
@@ -281,12 +281,12 @@ func TestIsCovered_RegistryNotAvailable_ReturnsError(t *testing.T) {
 	state.EXPECT().Snapshot().Return(1).AnyTimes()
 	state.EXPECT().Exist(registryAddress).Return(false).AnyTimes()
 
-	upgrades := opera.GetSonicUpgrades()
+	upgrades := sonic.GetSonicUpgrades()
 	upgrades.GasSubsidies = true
-	rules := opera.FakeNetRules(upgrades)
+	rules := sonic.FakeNetRules(upgrades)
 
-	var updateHeights []opera.UpgradeHeight
-	chainConfig := opera.CreateTransientEvmChainConfig(
+	var updateHeights []sonic.UpgradeHeight
+	chainConfig := sonic.CreateTransientEvmChainConfig(
 		rules.NetworkID,
 		updateHeights,
 		1,
@@ -314,7 +314,7 @@ func TestIsCovered_RegistryNotAvailable_ReturnsError(t *testing.T) {
 		Random: &common.Hash{}, // < signals Revision >= Merge
 	}
 
-	vmConfig := opera.GetVmConfig(rules)
+	vmConfig := sonic.GetVmConfig(rules)
 	vm := vm.NewEVM(blockContext, state, chainConfig, vmConfig)
 
 	_, _, _, err = IsCovered(upgrades, vm, signer, tx, baseFee)
@@ -337,7 +337,7 @@ func TestIsCovered_GasSubsidiesDisabled_ReturnsFalse(t *testing.T) {
 	vm.EXPECT().Call(any, any, any, any, any).
 		Return(selectedFundId[:], uint64(0), nil)
 
-	upgrades := opera.Upgrades{}
+	upgrades := sonic.Upgrades{}
 
 	key, err := crypto.GenerateKey()
 	require.NoError(err)
@@ -371,7 +371,7 @@ func TestIsCovered_NotASponsorshipRequest_ReturnsFalse(t *testing.T) {
 	vm.EXPECT().Call(any, any, any, any, any).
 		Return(selectedFundId[:], uint64(0), nil)
 
-	upgrades := opera.Upgrades{
+	upgrades := sonic.Upgrades{
 		GasSubsidies: true,
 	}
 
@@ -403,7 +403,7 @@ func TestIsCovered_NotCoveredByFunds_ReturnsFalse(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	vm := NewMockVirtualMachine(ctrl)
 
-	upgrades := opera.Upgrades{
+	upgrades := sonic.Upgrades{
 		GasSubsidies: true,
 	}
 
@@ -440,7 +440,7 @@ func TestIsCovered_SenderReaderFails_ReturnsError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	signer := NewMocksigner(ctrl)
 
-	upgrades := opera.Upgrades{
+	upgrades := sonic.Upgrades{
 		GasSubsidies: true,
 	}
 
@@ -463,7 +463,7 @@ func TestIsCovered_createChooseFundInputFails_ReturnsError(t *testing.T) {
 	vm := NewMockVirtualMachine(ctrl)
 	signer := NewMocksigner(ctrl)
 
-	upgrades := opera.Upgrades{
+	upgrades := sonic.Upgrades{
 		GasSubsidies: true,
 	}
 
@@ -491,7 +491,7 @@ func TestIsCovered_EvmCallFails_ReturnsError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	vm := NewMockVirtualMachine(ctrl)
 
-	upgrades := opera.Upgrades{
+	upgrades := sonic.Upgrades{
 		GasSubsidies: true,
 	}
 
@@ -525,7 +525,7 @@ func TestIsCovered_EmptyResultFromChooseFund_ReportsMissingContract(t *testing.T
 	ctrl := gomock.NewController(t)
 	vm := NewMockVirtualMachine(ctrl)
 
-	upgrades := opera.Upgrades{
+	upgrades := sonic.Upgrades{
 		GasSubsidies: true,
 	}
 
@@ -550,7 +550,7 @@ func TestIsCovered_InvalidReturnFromEvm_ReturnsError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	vm := NewMockVirtualMachine(ctrl)
 
-	upgrades := opera.Upgrades{
+	upgrades := sonic.Upgrades{
 		GasSubsidies: true,
 	}
 
