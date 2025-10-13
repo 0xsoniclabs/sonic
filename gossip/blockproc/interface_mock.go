@@ -17,7 +17,7 @@ import (
 	inter "github.com/0xsoniclabs/sonic/inter"
 	iblockproc "github.com/0xsoniclabs/sonic/inter/iblockproc"
 	state "github.com/0xsoniclabs/sonic/inter/state"
-	opera "github.com/0xsoniclabs/sonic/sonic"
+	sonic "github.com/0xsoniclabs/sonic/sonic"
 	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
 	common "github.com/ethereum/go-ethereum/common"
 	types "github.com/ethereum/go-ethereum/core/types"
@@ -445,7 +445,7 @@ func (m *MockEVM) EXPECT() *MockEVMMockRecorder {
 }
 
 // Start mocks base method.
-func (m *MockEVM) Start(block iblockproc.BlockCtx, statedb state.StateDB, reader evmcore.DummyChain, onNewLog func(*types.Log), net opera.Rules, evmCfg *params.ChainConfig, prevrandao common.Hash) EVMProcessor {
+func (m *MockEVM) Start(block iblockproc.BlockCtx, statedb state.StateDB, reader evmcore.DummyChain, onNewLog func(*types.Log), net sonic.Rules, evmCfg *params.ChainConfig, prevrandao common.Hash) EVMProcessor {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Start", block, statedb, reader, onNewLog, net, evmCfg, prevrandao)
 	ret0, _ := ret[0].(EVMProcessor)

@@ -14,7 +14,7 @@ import (
 
 	evmcore "github.com/0xsoniclabs/sonic/evmcore"
 	state "github.com/0xsoniclabs/sonic/inter/state"
-	opera "github.com/0xsoniclabs/sonic/sonic"
+	sonic "github.com/0xsoniclabs/sonic/sonic"
 	types "github.com/ethereum/go-ethereum/core/types"
 	vm "github.com/ethereum/go-ethereum/core/vm"
 	params "github.com/ethereum/go-ethereum/params"
@@ -46,7 +46,7 @@ func (m *Mock_stateProcessorFactory) EXPECT() *Mock_stateProcessorFactoryMockRec
 }
 
 // NewStateProcessor mocks base method.
-func (m *Mock_stateProcessorFactory) NewStateProcessor(evmCfg *params.ChainConfig, reader evmcore.DummyChain, upgrades opera.Upgrades) _stateProcessor {
+func (m *Mock_stateProcessorFactory) NewStateProcessor(evmCfg *params.ChainConfig, reader evmcore.DummyChain, upgrades sonic.Upgrades) _stateProcessor {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "NewStateProcessor", evmCfg, reader, upgrades)
 	ret0, _ := ret[0].(_stateProcessor)

@@ -14,7 +14,7 @@ import (
 
 	evmcore "github.com/0xsoniclabs/sonic/evmcore"
 	state "github.com/0xsoniclabs/sonic/inter/state"
-	opera "github.com/0xsoniclabs/sonic/sonic"
+	sonic "github.com/0xsoniclabs/sonic/sonic"
 	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
 	common "github.com/ethereum/go-ethereum/common"
 	types "github.com/ethereum/go-ethereum/core/types"
@@ -136,10 +136,10 @@ func (m *MockChain) EXPECT() *MockChainMockRecorder {
 }
 
 // GetCurrentNetworkRules mocks base method.
-func (m *MockChain) GetCurrentNetworkRules() opera.Rules {
+func (m *MockChain) GetCurrentNetworkRules() sonic.Rules {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetCurrentNetworkRules")
-	ret0, _ := ret[0].(opera.Rules)
+	ret0, _ := ret[0].(sonic.Rules)
 	return ret0
 }
 

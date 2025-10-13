@@ -14,7 +14,7 @@ import (
 	reflect "reflect"
 
 	state "github.com/0xsoniclabs/sonic/inter/state"
-	opera "github.com/0xsoniclabs/sonic/sonic"
+	sonic "github.com/0xsoniclabs/sonic/sonic"
 	common "github.com/ethereum/go-ethereum/common"
 	event "github.com/ethereum/go-ethereum/event"
 	params "github.com/ethereum/go-ethereum/params"
@@ -102,10 +102,10 @@ func (mr *MockStateReaderMockRecorder) GetCurrentBaseFee() *gomock.Call {
 }
 
 // GetCurrentRules mocks base method.
-func (m *MockStateReader) GetCurrentRules() opera.Rules {
+func (m *MockStateReader) GetCurrentRules() sonic.Rules {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetCurrentRules")
-	ret0, _ := ret[0].(opera.Rules)
+	ret0, _ := ret[0].(sonic.Rules)
 	return ret0
 }
 
