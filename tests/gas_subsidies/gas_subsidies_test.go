@@ -41,7 +41,7 @@ func TestGasSubsidies_CanBeEnabledAndDisabled(
 		{name: "sonic", upgrade: sonic.GetSonicUpgrades()},
 		{name: "allegro", upgrade: sonic.GetAllegroUpgrades()},
 		// Brio is commented out until the gas cap is properly handled for internal transactions.
-		//{name: "brio", upgrade: opera.GetBrioUpgrades()},
+		//{name: "brio", upgrade: sonic.GetBrioUpgrades()},
 	}
 	for _, test := range upgrades {
 		t.Run(test.name, func(t *testing.T) {
@@ -103,7 +103,7 @@ func TestGasSubsidies_CallingRegistryBeforeDeploy_FailsTransaction(t *testing.T)
 		"sonic":   sonic.GetSonicUpgrades(),
 		"allegro": sonic.GetAllegroUpgrades(),
 		// Brio is commented out until the gas cap is properly handled for internal transactions.
-		//"brio":opera.GetBrioUpgrades(),
+		//"brio": sonic.GetBrioUpgrades(),
 	}
 
 	for name, upgrade := range upgrades {

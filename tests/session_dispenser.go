@@ -59,7 +59,7 @@ func TestMain(m *testing.M) {
 // A typical use case would look as follows:
 //
 //	t.Run("test_case", func(t *testing.T) {
-//		session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+//		session := getIntegrationTestNetSession(t, sonic.GetSonicUpgrades())
 //		t.Parallel()
 //		< use session instead of net of the rest of the test >
 //	})
