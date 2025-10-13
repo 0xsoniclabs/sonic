@@ -25,8 +25,8 @@ import (
 
 	"github.com/0xsoniclabs/sonic/inter/ibr"
 	"github.com/0xsoniclabs/sonic/inter/ier"
-	"github.com/0xsoniclabs/sonic/sonic/genesis"
 	"github.com/0xsoniclabs/sonic/scc/cert"
+	"github.com/0xsoniclabs/sonic/sonic/genesis"
 	"github.com/0xsoniclabs/sonic/utils/iodb"
 	"github.com/0xsoniclabs/sonic/utils/objstream"
 )

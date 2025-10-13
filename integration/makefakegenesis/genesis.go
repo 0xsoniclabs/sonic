@@ -37,6 +37,9 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/ier"
 	"github.com/0xsoniclabs/sonic/inter/validatorpk"
+	"github.com/0xsoniclabs/sonic/scc"
+	"github.com/0xsoniclabs/sonic/scc/bls"
+	"github.com/0xsoniclabs/sonic/scc/cert"
 	sonic "github.com/0xsoniclabs/sonic/sonic"
 	"github.com/0xsoniclabs/sonic/sonic/contracts/driver"
 	"github.com/0xsoniclabs/sonic/sonic/contracts/driver/drivercall"
@@ -48,9 +51,6 @@ import (
 	"github.com/0xsoniclabs/sonic/sonic/genesis"
 	"github.com/0xsoniclabs/sonic/sonic/genesis/gpos"
 	"github.com/0xsoniclabs/sonic/sonic/genesisstore"
-	"github.com/0xsoniclabs/sonic/scc"
-	"github.com/0xsoniclabs/sonic/scc/bls"
-	"github.com/0xsoniclabs/sonic/scc/cert"
 )
 
 var (
