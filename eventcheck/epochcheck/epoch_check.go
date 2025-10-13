@@ -24,7 +24,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 
 	"github.com/0xsoniclabs/sonic/inter"
-	sonic "github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/sonic"
 )
 
 //go:generate mockgen -source=epoch_check.go -destination=epoch_check_mock.go -package=epochcheck

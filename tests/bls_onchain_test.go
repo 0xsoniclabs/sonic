@@ -20,7 +20,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/scc/bls"
-	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/sonic"
 	"github.com/0xsoniclabs/sonic/tests/contracts/blsContracts"
 	gnark "github.com/consensys/gnark-crypto/ecc/bls12-381"
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/fp"

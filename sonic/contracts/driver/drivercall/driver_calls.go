@@ -26,8 +26,8 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 
 	"github.com/0xsoniclabs/sonic/inter"
-	sonic "github.com/0xsoniclabs/sonic/opera"
-	"github.com/0xsoniclabs/sonic/opera/genesis/gpos"
+	sonic "github.com/0xsoniclabs/sonic/sonic"
+	"github.com/0xsoniclabs/sonic/sonic/genesis/gpos"
 	"github.com/0xsoniclabs/sonic/utils"
 )
 

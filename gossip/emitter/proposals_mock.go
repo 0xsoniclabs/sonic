@@ -32,7 +32,7 @@ import (
 
 	scheduler "github.com/0xsoniclabs/sonic/gossip/emitter/scheduler"
 	inter "github.com/0xsoniclabs/sonic/inter"
-	opera "github.com/0xsoniclabs/sonic/opera"
+	opera "github.com/0xsoniclabs/sonic/sonic"
 	hash "github.com/Fantom-foundation/lachesis-base/hash"
 	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
 	txpool "github.com/ethereum/go-ethereum/core/txpool"

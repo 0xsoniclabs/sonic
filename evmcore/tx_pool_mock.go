@@ -14,7 +14,7 @@ import (
 	reflect "reflect"
 
 	state "github.com/0xsoniclabs/sonic/inter/state"
-	opera "github.com/0xsoniclabs/sonic/opera"
+	opera "github.com/0xsoniclabs/sonic/sonic"
 	common "github.com/ethereum/go-ethereum/common"
 	event "github.com/ethereum/go-ethereum/event"
 	params "github.com/ethereum/go-ethereum/params"

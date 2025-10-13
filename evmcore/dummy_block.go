@@ -29,7 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/trie"
 
 	"github.com/0xsoniclabs/sonic/inter"
-	sonic "github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/sonic"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 )
 

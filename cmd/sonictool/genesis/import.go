@@ -21,8 +21,8 @@ import (
 	"path/filepath"
 
 	"github.com/0xsoniclabs/sonic/cmd/sonictool/db"
-	"github.com/0xsoniclabs/sonic/opera/genesis"
-	"github.com/0xsoniclabs/sonic/opera/genesisstore"
+	"github.com/0xsoniclabs/sonic/sonic/genesis"
+	"github.com/0xsoniclabs/sonic/sonic/genesisstore"
 	"github.com/0xsoniclabs/sonic/utils/caution"
 	"github.com/Fantom-foundation/lachesis-base/abft"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"

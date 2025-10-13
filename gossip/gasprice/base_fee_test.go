@@ -24,7 +24,7 @@ import (
 	"testing"
 	"time"
 
-	sonic "github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/sonic"
 )
 
 func TestBaseFee_ExamplePriceAdjustments(t *testing.T) {

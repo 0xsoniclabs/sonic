@@ -24,7 +24,7 @@ import (
 
 	carmen "github.com/0xsoniclabs/carmen/go/state"
 	"github.com/0xsoniclabs/carmen/go/state/gostate"
-	sonic "github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/sonic"
 	"github.com/ethereum/go-ethereum/tests"
 	"github.com/stretchr/testify/require"
 )

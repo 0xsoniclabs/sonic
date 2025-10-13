@@ -28,7 +28,7 @@ package epochcheck
 import (
 	reflect "reflect"
 
-	opera "github.com/0xsoniclabs/sonic/opera"
+	opera "github.com/0xsoniclabs/sonic/sonic"
 	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
 	pos "github.com/Fantom-foundation/lachesis-base/inter/pos"
 	gomock "go.uber.org/mock/gomock"

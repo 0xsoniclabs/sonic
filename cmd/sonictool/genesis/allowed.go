@@ -17,9 +17,9 @@
 package genesis
 
 import (
-	sonic "github.com/0xsoniclabs/sonic/opera"
-	"github.com/0xsoniclabs/sonic/opera/genesis"
-	"github.com/0xsoniclabs/sonic/opera/genesisstore"
+	sonic "github.com/0xsoniclabs/sonic/sonic"
+	"github.com/0xsoniclabs/sonic/sonic/genesis"
+	"github.com/0xsoniclabs/sonic/sonic/genesisstore"
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/ethereum/go-ethereum/common"
 )

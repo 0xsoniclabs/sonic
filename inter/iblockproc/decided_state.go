@@ -27,7 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 
 	"github.com/0xsoniclabs/sonic/inter"
-	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/sonic"
 )
 
 type ValidatorBlockState struct {

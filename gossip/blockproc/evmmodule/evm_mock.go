@@ -14,7 +14,7 @@ import (
 
 	evmcore "github.com/0xsoniclabs/sonic/evmcore"
 	state "github.com/0xsoniclabs/sonic/inter/state"
-	opera "github.com/0xsoniclabs/sonic/opera"
+	opera "github.com/0xsoniclabs/sonic/sonic"
 	types "github.com/ethereum/go-ethereum/core/types"
 	vm "github.com/ethereum/go-ethereum/core/vm"
 	params "github.com/ethereum/go-ethereum/params"

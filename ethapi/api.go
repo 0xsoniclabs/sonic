@@ -30,7 +30,7 @@ import (
 	"github.com/0xsoniclabs/carmen/go/common/immutable"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice/gaspricelimits"
-	sonic "github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/sonic"
 	bip39 "github.com/tyler-smith/go-bip39"
 
 	"github.com/0xsoniclabs/sonic/evmcore"

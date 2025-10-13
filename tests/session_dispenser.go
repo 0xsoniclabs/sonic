@@ -22,7 +22,7 @@ import (
 	"os"
 	"testing"
 
-	sonic "github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/sonic"
 	"github.com/ethereum/go-ethereum/common"
 )
 

@@ -30,7 +30,7 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/sonic/inter/state"
-	sonic "github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/sonic"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/ethereum/go-ethereum/common"
 

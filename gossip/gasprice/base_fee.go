@@ -20,7 +20,7 @@ import (
 	"math/big"
 	"time"
 
-	sonic "github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/sonic"
 )
 
 // GetInitialBaseFee returns the initial base fee to be used in the genesis block.

@@ -20,7 +20,7 @@ import (
 	inter "github.com/0xsoniclabs/sonic/inter"
 	iblockproc "github.com/0xsoniclabs/sonic/inter/iblockproc"
 	state "github.com/0xsoniclabs/sonic/inter/state"
-	opera "github.com/0xsoniclabs/sonic/opera"
+	opera "github.com/0xsoniclabs/sonic/sonic"
 	scc "github.com/0xsoniclabs/sonic/scc"
 	cert "github.com/0xsoniclabs/sonic/scc/cert"
 	result "github.com/0xsoniclabs/sonic/utils/result"

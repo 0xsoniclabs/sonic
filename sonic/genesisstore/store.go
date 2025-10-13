@@ -20,7 +20,7 @@ import (
 	"io"
 
 	"github.com/0xsoniclabs/sonic/logger"
-	"github.com/0xsoniclabs/sonic/opera/genesis"
+	"github.com/0xsoniclabs/sonic/sonic/genesis"
 )
 
 func BlocksSection(i int) string {

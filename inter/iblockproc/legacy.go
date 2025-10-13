@@ -22,7 +22,7 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 
 	"github.com/0xsoniclabs/sonic/inter"
-	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/sonic"
 )
 
 type ValidatorEpochStateV0 struct {

@@ -23,7 +23,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/ethapi"
-	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/sonic"
 	block_override "github.com/0xsoniclabs/sonic/tests/contracts/blockoverride"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"

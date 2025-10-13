@@ -19,7 +19,7 @@ package gossip
 import (
 	"fmt"
 
-	sonic "github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/sonic"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 
 	"github.com/0xsoniclabs/sonic/utils/migration"

@@ -16,7 +16,7 @@
 
 package gossip
 
-import "github.com/0xsoniclabs/sonic/opera"
+import "github.com/0xsoniclabs/sonic/sonic"
 
 func (s *Store) AddUpgradeHeight(h sonic.UpgradeHeight) {
 	orig := s.GetUpgradeHeights()

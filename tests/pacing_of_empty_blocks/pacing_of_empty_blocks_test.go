@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/sonic/inter"
-	sonic "github.com/0xsoniclabs/sonic/opera"
+	sonic "github.com/0xsoniclabs/sonic/sonic"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/stretchr/testify/require"
 )

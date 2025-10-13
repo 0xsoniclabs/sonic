@@ -25,8 +25,8 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 
 	"github.com/0xsoniclabs/sonic/logger"
-	"github.com/0xsoniclabs/sonic/opera/contracts/driver"
-	"github.com/0xsoniclabs/sonic/opera/contracts/driver/driverpos"
+	"github.com/0xsoniclabs/sonic/sonic/contracts/driver"
+	"github.com/0xsoniclabs/sonic/sonic/contracts/driver/driverpos"
 )
 
 type VersionWatcher struct {
