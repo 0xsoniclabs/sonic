@@ -21,7 +21,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/config"
-	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/sonic"
 	"github.com/0xsoniclabs/sonic/tests/contracts/block_hash"
 	"github.com/0xsoniclabs/sonic/tests/contracts/read_history_storage"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -172,13 +172,13 @@ func TestBlockHash_EIP2935_IsAutomaticallyDeployedWithFakeNet(t *testing.T) {
 		"json genesis": func(t *testing.T) *IntegrationTestNet {
 			return StartIntegrationTestNetWithJsonGenesis(t,
 				IntegrationTestNetOptions{
-					Upgrades: AsPointer(opera.GetAllegroUpgrades()),
+					Upgrades: AsPointer(sonic.GetAllegroUpgrades()),
 				})
 		},
 		"fake genesis": func(t *testing.T) *IntegrationTestNet {
 			return StartIntegrationTestNetWithFakeGenesis(t,
 				IntegrationTestNetOptions{
-					Upgrades: AsPointer(opera.GetAllegroUpgrades()),
+					Upgrades: AsPointer(sonic.GetAllegroUpgrades()),
 				})
 		},
 	}
@@ -241,7 +241,7 @@ func TestBlockHash_EIP2935_DeployContract(t *testing.T) {
 		IntegrationTestNetOptions{
 			// < Allegro automatically deploys the history storage contract
 			// < To test deployment, we need to use a feature set that does not already have the contract
-			Upgrades: AsPointer(opera.GetSonicUpgrades()),
+			Upgrades: AsPointer(sonic.GetSonicUpgrades()),
 			ModifyConfig: func(config *config.Config) {
 				// the transaction to deploy the contract is not replay protected
 				// This has the benefit that the same tx will work in both ethereum and sonic.
@@ -343,7 +343,7 @@ func TestBlockHash_EIP2935_HistoryContractAccumulatesBlockHashes(t *testing.T) {
 
 	require := req.New(t)
 
-	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	session := getIntegrationTestNetSession(t, sonic.GetAllegroUpgrades())
 	t.Parallel()
 
 	client, err := session.GetClient()

@@ -21,7 +21,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
-	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/sonic"
 	"github.com/0xsoniclabs/tosca/go/tosca/vm"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -35,15 +35,15 @@ func TestTransaction_DelegationDesignationAddressAccessIsConsideredInAllegro(t *
 	gas += 10             // gas in recursive call (is fully consumed due to failed execution)
 
 	tests := map[string]struct {
-		upgrades opera.Upgrades
+		upgrades sonic.Upgrades
 		gas      uint64
 	}{
 		"Sonic": {
-			upgrades: opera.GetSonicUpgrades(),
+			upgrades: sonic.GetSonicUpgrades(),
 			gas:      gas, // delegate designator ignored, no address access.
 		},
 		"Allegro": {
-			upgrades: opera.GetAllegroUpgrades(),
+			upgrades: sonic.GetAllegroUpgrades(),
 			gas:      gas + 2_600, // cold access to delegate billed in interpreter.
 		},
 	}

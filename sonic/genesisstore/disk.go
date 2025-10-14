@@ -31,10 +31,10 @@ import (
 	"github.com/status-im/keycard-go/hexutils"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 
-	"github.com/0xsoniclabs/sonic/opera/genesis"
-	"github.com/0xsoniclabs/sonic/opera/genesisstore/filelog"
-	"github.com/0xsoniclabs/sonic/opera/genesisstore/fileshash"
-	"github.com/0xsoniclabs/sonic/opera/genesisstore/readersmap"
+	"github.com/0xsoniclabs/sonic/sonic/genesis"
+	"github.com/0xsoniclabs/sonic/sonic/genesisstore/filelog"
+	"github.com/0xsoniclabs/sonic/sonic/genesisstore/fileshash"
+	"github.com/0xsoniclabs/sonic/sonic/genesisstore/readersmap"
 	"github.com/0xsoniclabs/sonic/utils/ioread"
 )
 

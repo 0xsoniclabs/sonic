@@ -37,20 +37,20 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/ier"
 	"github.com/0xsoniclabs/sonic/inter/validatorpk"
-	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/0xsoniclabs/sonic/opera/contracts/driver"
-	"github.com/0xsoniclabs/sonic/opera/contracts/driver/drivercall"
-	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
-	"github.com/0xsoniclabs/sonic/opera/contracts/evmwriter"
-	"github.com/0xsoniclabs/sonic/opera/contracts/netinit"
-	netinitcall "github.com/0xsoniclabs/sonic/opera/contracts/netinit/netinitcalls"
-	"github.com/0xsoniclabs/sonic/opera/contracts/sfc"
-	"github.com/0xsoniclabs/sonic/opera/genesis"
-	"github.com/0xsoniclabs/sonic/opera/genesis/gpos"
-	"github.com/0xsoniclabs/sonic/opera/genesisstore"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/bls"
 	"github.com/0xsoniclabs/sonic/scc/cert"
+	sonic "github.com/0xsoniclabs/sonic/sonic"
+	"github.com/0xsoniclabs/sonic/sonic/contracts/driver"
+	"github.com/0xsoniclabs/sonic/sonic/contracts/driver/drivercall"
+	"github.com/0xsoniclabs/sonic/sonic/contracts/driverauth"
+	"github.com/0xsoniclabs/sonic/sonic/contracts/evmwriter"
+	"github.com/0xsoniclabs/sonic/sonic/contracts/netinit"
+	netinitcall "github.com/0xsoniclabs/sonic/sonic/contracts/netinit/netinitcalls"
+	"github.com/0xsoniclabs/sonic/sonic/contracts/sfc"
+	"github.com/0xsoniclabs/sonic/sonic/genesis"
+	"github.com/0xsoniclabs/sonic/sonic/genesis/gpos"
+	"github.com/0xsoniclabs/sonic/sonic/genesisstore"
 )
 
 var (
@@ -62,18 +62,18 @@ func FakeKey(n idx.ValidatorID) *ecdsa.PrivateKey {
 	return evmcore.FakeKey(uint32(n))
 }
 
-func FakeGenesisStore(num idx.Validator, balance, stake *big.Int, upgrades opera.Upgrades) *genesisstore.Store {
-	return FakeGenesisStoreWithRules(num, balance, stake, opera.FakeNetRules(upgrades))
+func FakeGenesisStore(num idx.Validator, balance, stake *big.Int, upgrades sonic.Upgrades) *genesisstore.Store {
+	return FakeGenesisStoreWithRules(num, balance, stake, sonic.FakeNetRules(upgrades))
 }
 
-func FakeGenesisStoreWithRules(num idx.Validator, balance, stake *big.Int, rules opera.Rules) *genesisstore.Store {
+func FakeGenesisStoreWithRules(num idx.Validator, balance, stake *big.Int, rules sonic.Rules) *genesisstore.Store {
 	return FakeGenesisStoreWithRulesAndStart(num, balance, stake, rules, 2, 1)
 }
 
 func FakeGenesisStoreWithRulesAndStart(
 	num idx.Validator,
 	balance, stake *big.Int,
-	rules opera.Rules,
+	rules sonic.Rules,
 	epoch idx.Epoch,
 	block idx.Block,
 ) *genesisstore.Store {

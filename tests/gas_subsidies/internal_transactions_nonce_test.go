@@ -21,8 +21,8 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/contract/driverauth100"
-	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
+	sonic "github.com/0xsoniclabs/sonic/sonic"
+	"github.com/0xsoniclabs/sonic/sonic/contracts/driverauth"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -34,7 +34,7 @@ import (
 func TestGasSubsidies_InternalTransaction_HaveConsistentNonces(t *testing.T) {
 	// internal transactions shall respect the incrementing nonce order without gaps
 
-	upgrades := opera.GetAllegroUpgrades()
+	upgrades := sonic.GetAllegroUpgrades()
 	upgrades.GasSubsidies = true
 	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
 		Upgrades: &upgrades,

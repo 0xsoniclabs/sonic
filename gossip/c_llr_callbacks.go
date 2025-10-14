@@ -32,7 +32,7 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/ibr"
 	"github.com/0xsoniclabs/sonic/inter/ier"
-	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/sonic"
 )
 
 // defaultBlobGasPrice Sonic does not support blobs, so this price is constant
@@ -116,7 +116,7 @@ func (s *Store) WriteFullEpochRecord(er ier.LlrIdxFullEpochRecord) {
 
 func (s *Store) WriteUpgradeHeight(bs iblockproc.BlockState, es iblockproc.EpochState, prevEs *iblockproc.EpochState) {
 	if prevEs == nil || es.Rules.Upgrades != prevEs.Rules.Upgrades {
-		s.AddUpgradeHeight(opera.UpgradeHeight{
+		s.AddUpgradeHeight(sonic.UpgradeHeight{
 			Upgrades: es.Rules.Upgrades,
 			Height:   bs.LastBlock.Idx + 1,
 			Time:     bs.LastBlock.Time + 1,

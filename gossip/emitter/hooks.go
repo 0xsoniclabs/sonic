@@ -28,7 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 
 	"github.com/0xsoniclabs/sonic/inter"
-	"github.com/0xsoniclabs/sonic/opera/contracts/emitterdriver"
+	"github.com/0xsoniclabs/sonic/sonic/contracts/emitterdriver"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/sonic/utils/adapters/vecmt2dagidx"
 )

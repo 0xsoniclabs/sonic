@@ -24,8 +24,8 @@ import (
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/contract/driverauth100"
-	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
+	sonic "github.com/0xsoniclabs/sonic/sonic"
+	"github.com/0xsoniclabs/sonic/sonic/contracts/driverauth"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -38,12 +38,12 @@ func TestGasSubsidies_Receipts_HaveConsistentTransactionIndices(t *testing.T) {
 
 	upgrades := []struct {
 		name    string
-		upgrade opera.Upgrades
+		upgrade sonic.Upgrades
 	}{
-		{name: "sonic", upgrade: opera.GetSonicUpgrades()},
-		{name: "allegro", upgrade: opera.GetAllegroUpgrades()},
+		{name: "sonic", upgrade: sonic.GetSonicUpgrades()},
+		{name: "allegro", upgrade: sonic.GetAllegroUpgrades()},
 		// Brio is commented out until the gas cap is properly handled for internal transactions.
-		//{name: "brio", upgrade: opera.GetBrioUpgrades()},
+		//{name: "brio", upgrade: sonic.GetBrioUpgrades()},
 	}
 	singleProposerOption := map[string]bool{
 		"singleProposer": true,

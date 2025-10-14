@@ -20,7 +20,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/sonic"
 	"github.com/0xsoniclabs/sonic/tests/contracts/data_reader"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -34,7 +34,7 @@ import (
 
 func TestEstimateGas(t *testing.T) {
 	t.Run("Sonic", func(t *testing.T) {
-		session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+		session := getIntegrationTestNetSession(t, sonic.GetSonicUpgrades())
 		t.Parallel()
 
 		dataContract, receipt, err := DeployContract(session, data_reader.DeployDataReader)
@@ -45,7 +45,7 @@ func TestEstimateGas(t *testing.T) {
 		doTestEstimate(t, session, makeTestCases(t, session, dataContract, dataContractAddress))
 	})
 	t.Run("Allegro", func(t *testing.T) {
-		session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+		session := getIntegrationTestNetSession(t, sonic.GetAllegroUpgrades())
 		t.Parallel()
 
 		dataContract, receipt, err := DeployContract(session, data_reader.DeployDataReader)

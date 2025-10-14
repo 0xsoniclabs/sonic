@@ -25,7 +25,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
-	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/sonic"
 )
 
 const sKey = "s"
@@ -174,13 +174,13 @@ func (s *Store) GetLatestBlock() *inter.Block {
 }
 
 // GetRules retrieves current network rules
-func (s *Store) GetRules() opera.Rules {
+func (s *Store) GetRules() sonic.Rules {
 	return s.GetEpochState().Rules
 }
 
 // GetEvmChainConfig retrieves current EVM chain config
 func (s *Store) GetEvmChainConfig(blockHeight idx.Block) *ethparams.ChainConfig {
-	return opera.CreateTransientEvmChainConfig(
+	return sonic.CreateTransientEvmChainConfig(
 		s.GetRules().NetworkID,
 		s.GetUpgradeHeights(),
 		blockHeight,
@@ -188,7 +188,7 @@ func (s *Store) GetEvmChainConfig(blockHeight idx.Block) *ethparams.ChainConfig 
 }
 
 // GetEpochRules retrieves current network rules and epoch atomically
-func (s *Store) GetEpochRules() (opera.Rules, idx.Epoch) {
+func (s *Store) GetEpochRules() (sonic.Rules, idx.Epoch) {
 	es := s.GetEpochState()
 	return es.Rules, es.Epoch
 }

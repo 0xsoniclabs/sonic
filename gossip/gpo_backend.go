@@ -26,7 +26,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/eventcheck/gaspowercheck"
 	"github.com/0xsoniclabs/sonic/inter"
-	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/sonic"
 	"github.com/0xsoniclabs/sonic/utils/concurrent"
 )
 
@@ -39,11 +39,11 @@ func (b *GPOBackend) GetLatestBlockIndex() idx.Block {
 	return b.store.GetLatestBlockIndex()
 }
 
-func (b *GPOBackend) GetRules() opera.Rules {
+func (b *GPOBackend) GetRules() sonic.Rules {
 	return b.store.GetRules()
 }
 
-func (b *GPOBackend) GetPendingRules() opera.Rules {
+func (b *GPOBackend) GetPendingRules() sonic.Rules {
 	bs, es := b.store.GetBlockEpochState()
 	if bs.DirtyRules != nil {
 		return *bs.DirtyRules

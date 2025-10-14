@@ -14,10 +14,10 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
-package opera
+package sonic
 
 import (
-	"github.com/0xsoniclabs/sonic/opera/contracts/evmwriter"
+	"github.com/0xsoniclabs/sonic/sonic/contracts/evmwriter"
 	"github.com/0xsoniclabs/tosca/go/geth_adapter"
 	"github.com/0xsoniclabs/tosca/go/interpreter/lfvm"
 	"github.com/ethereum/go-ethereum/common"
