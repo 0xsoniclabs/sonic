@@ -23,6 +23,7 @@ import (
 	"io"
 	"math/big"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -51,13 +52,18 @@ func TestSonicTool_check_ExecutesWithoutErrors(t *testing.T) {
 
 	_, err := executeSonicTool(t,
 		"--datadir", net.GetDirectory()+"/state",
-		"check", "live")
+		"check", "archive")
 	require.NoError(t, err)
+
+	// To check the Live DB, the archive DB directory must not exist.
+	archiveDir := filepath.Join(net.GetDirectory(), "state", "carmen", "archive")
+	require.NoError(t, os.RemoveAll(archiveDir))
 
 	_, err = executeSonicTool(t,
 		"--datadir", net.GetDirectory()+"/state",
-		"check", "archive")
+		"check", "live")
 	require.NoError(t, err)
+
 }
 
 func TestSonicTool_compact_ExecutesWithoutErrors(t *testing.T) {
