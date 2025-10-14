@@ -1,5 +1,5 @@
-github.com/0xsoniclabs/carmen/go v0.0.0-20250708101910-3666ec34654c h1:xWV02BKxkNrFZhqrHHXYdAOzabJlY5dR9BLPvd5Yrpc=
-github.com/0xsoniclabs/carmen/go v0.0.0-20250708101910-3666ec34654c/go.mod h1:pOYoZnXK6Dacga5Yoh7/38ibbOJ57/B3Q54zMxWtqG8=
+github.com/0xsoniclabs/carmen/go v0.0.0-20251014092906-75df60dc78cb h1:5fhxc/Ztq3f1+h7iBjxTyVA7qsLKVeXA1NedtBqWnD0=
+github.com/0xsoniclabs/carmen/go v0.0.0-20251014092906-75df60dc78cb/go.mod h1:EyfPnCDA/2Q45D9icCSj4MDhbkWbpkUNLSNE7ThjbGM=
 github.com/0xsoniclabs/go-ethereum v0.0.0-20250827114033-a49cee8740d2 h1:OHaJBUO/R6SOHCDNMskfnakEz59bo1fl7Tmz73GCUnA=
 github.com/0xsoniclabs/go-ethereum v0.0.0-20250827114033-a49cee8740d2/go.mod h1:pm9P/VM1zE+1AQPGpoCEaA/0sbu7GFNex/nyjjPRcrU=
 github.com/0xsoniclabs/tosca v0.0.0-20250905062239-b2db1e70e826 h1:oTvp7bBOzh0H43tMfYuaak0naAMZvulAAXYakA3Yhh8=
@@ -250,8 +250,8 @@ github.com/rivo/uniseg v0.2.0/go.mod h1:J6wj4VEh+S6ZtnVlnTBMWIodfgj8LQOQFoIToxlJ
 github.com/rivo/uniseg v0.4.7 h1:WUdvkW8uEhrYfLC4ZzdpI2ztxP1I582+49Oc5Mq64VQ=
 github.com/rivo/uniseg v0.4.7/go.mod h1:FN3SvrM+Zdj16jyLfmOkMNblXMcoc8DfTHruCPUcx88=
 github.com/rogpeppe/go-internal v1.9.0/go.mod h1:WtVeX8xhTBvf0smdhujwtBcq4Qrzq/fJaraNFVN+nFs=
-github.com/rogpeppe/go-internal v1.13.1 h1:KvO1DLK/DRN07sQ1LQKScxyZJuNnedQ5/wKSR38lUII=
-github.com/rogpeppe/go-internal v1.13.1/go.mod h1:uMEvuHeurkdAXX61udpOXGD/AzZDWNMNyH2VO9fmH0o=
+github.com/rogpeppe/go-internal v1.14.1 h1:UQB4HGPB6osV0SQTLymcB4TgvyWu6ZyliaW0tI/otEQ=
+github.com/rogpeppe/go-internal v1.14.1/go.mod h1:MaRKkUm5W0goXpeCfT7UZI6fk/L7L7so1lCWt35ZSgc=
 github.com/rs/cors v1.11.1 h1:eU3gRzXLRK57F5rKMGMZURNdIG4EoAmX8k94r9wXWHA=
 github.com/rs/cors v1.11.1/go.mod h1:XyqrcTp5zjWr1wsJ8PIRZssZ8b/WMcMf71DJnit4EMU=
 github.com/russross/blackfriday/v2 v2.1.0 h1:JIOH55/0cWyOuilr9/qlrm0BSXldqnqwMsf35Ld67mk=
