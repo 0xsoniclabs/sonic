@@ -1278,13 +1278,14 @@ func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSucc
 	gasPool := new(core.GasPool).AddGas(1_000_000)
 	usedGas := new(uint64)
 	context := &runContext{
-		signer:   signer,
-		baseFee:  baseFee,
-		statedb:  state,
-		gasPool:  gasPool,
-		usedGas:  usedGas,
-		runner:   runner,
-		upgrades: opera.Upgrades{GasSubsidies: true},
+		signer:      signer,
+		baseFee:     baseFee,
+		statedb:     state,
+		gasPool:     gasPool,
+		usedGas:     usedGas,
+		runner:      runner,
+		upgrades:    opera.Upgrades{GasSubsidies: true},
+		blockNumber: new(big.Int).SetInt64(0),
 	}
 
 	// --- start of actual test ---

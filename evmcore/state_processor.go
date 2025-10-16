@@ -17,9 +17,13 @@
 package evmcore
 
 import (
+	"errors"
 	"fmt"
 	"math/big"
 
+	innerSubstate "github.com/0xsoniclabs/sonic/substate"
+	recordSubstate "github.com/0xsoniclabs/substate"
+	"github.com/0xsoniclabs/substate/substate"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -35,6 +39,12 @@ import (
 )
 
 //go:generate mockgen -source=state_processor.go -destination=state_processor_mock.go -package=evmcore
+
+var (
+	// record-replay - global variables tracking current block and context
+	blockEvm *EvmBlock
+	blockCtx vm.BlockContext
+)
 
 // StateProcessor is a basic Processor, which takes care of transitioning
 // state from one point to another.
@@ -103,6 +113,8 @@ func (p *StateProcessor) Process(
 		blockNumber  = block.Number
 		signer       = types.LatestSignerForChainID(p.config.ChainID)
 	)
+	blockEvm = block
+	blockCtx = blockContext
 
 	// execute EIP-2935 HistoryStorage contract.
 	if p.config.IsPrague(blockNumber, time) {
@@ -310,6 +322,17 @@ func (e evm) _runTransaction(
 	txIndex int,
 	checkBaseFee bool,
 ) ProcessedTransaction {
+	// record-replay
+	if innerSubstate.OldBlockNumber != ctxt.blockNumber.Uint64() {
+		err := innerSubstate.WriteUnprocessedSkippedTxToDatabase()
+		if err != nil {
+			panic(fmt.Errorf("could not write skipped tx states to file %d [%v]: %w", blockEvm.NumberU64(), innerSubstate.TxLastIndex, err))
+		}
+
+		innerSubstate.TxLastIndex = 0
+		innerSubstate.OldBlockNumber = ctxt.blockNumber.Uint64()
+	}
+
 	msg, err := TxAsMessage(tx, ctxt.signer, ctxt.baseFee)
 	if err != nil {
 		log.Info("Failed to convert transaction to message", "tx", tx.Hash().Hex(), "err", err)
@@ -324,8 +347,44 @@ func (e evm) _runTransaction(
 	)
 	if err != nil {
 		log.Debug("Failed to apply transaction", "tx", tx.Hash().Hex(), "err", err)
+
+		if recordSubstate.RecordReplay && errors.Is(err, core.ErrMaxInitCodeSizeExceeded) {
+			//max initcode size exceeded: code size
+			// Finalize didn't happen load preAlloc and postAlloc without calling it
+			dirtyAddresses := ctxt.statedb.RecordPreEndTransaction()
+			ctxt.statedb.RecordPostEndTransaction(dirtyAddresses)
+
+			post := ctxt.statedb.GetSubstatePostAlloc()
+
+			// write block, txIndex, pre, post to txt file
+			err = innerSubstate.RegisterSkippedTx(ctxt.blockNumber.Uint64(), innerSubstate.TxLastIndex, post)
+			if err != nil {
+				panic(fmt.Errorf("could not write skipped tx state to file %d [%v]: %w", txIndex, tx.Hash().Hex(), err))
+			}
+		}
 		return ProcessedTransaction{Transaction: tx}
 	}
+
+	if recordSubstate.RecordReplay {
+		// save tx substate into db, merge block hashes to env
+		etherBlock := blockEvm.RecordingEthBlock()
+		env := innerSubstate.NewEnv(etherBlock, innerSubstate.HashGethToSubstate(blockEvm.SubstateBlockHashes), blockCtx)
+		recording := substate.NewSubstate(
+			ctxt.statedb.GetSubstatePreAlloc(),
+			ctxt.statedb.GetSubstatePostAlloc(),
+			env,
+			innerSubstate.NewMessage(msg, tx.Type()),
+			innerSubstate.NewResult(receipt),
+			ctxt.blockNumber.Uint64(),
+			innerSubstate.TxLastIndex,
+		)
+		err = innerSubstate.PutSubstate(recording)
+		if err != nil {
+			panic(fmt.Errorf("could not put substate %d [%v]: %w", txIndex, tx.Hash().Hex(), err))
+		}
+	}
+
+	innerSubstate.TxLastIndex++
 	return ProcessedTransaction{Transaction: tx, Receipt: receipt}
 }
 
@@ -347,6 +406,8 @@ func (p *StateProcessor) BeginBlock(
 		blockNumber   = block.Number
 		signer        = types.LatestSignerForChainID(p.config.ChainID)
 	)
+	blockEvm = block
+	blockCtx = blockContext
 
 	// execute EIP-2935 HistoryStorage contract.
 	if p.config.IsPrague(blockNumber, time) {
