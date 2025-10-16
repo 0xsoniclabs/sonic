@@ -29,6 +29,9 @@ import (
 
 	"github.com/0xsoniclabs/sonic/cmd/sonictool/chain"
 	"github.com/0xsoniclabs/sonic/config/flags"
+	"github.com/0xsoniclabs/sonic/substate"
+	recordSubstate "github.com/0xsoniclabs/substate"
+
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/log"
 	"gopkg.in/urfave/cli.v1"
@@ -96,6 +99,16 @@ func exportEvents(ctx *cli.Context) (err error) {
 func importEvents(ctx *cli.Context) error {
 	if len(ctx.Args()) < 1 {
 		return fmt.Errorf("this command requires an argument - the input file")
+	}
+
+	if ctx.Bool(flags.RecordingFlag.Name) {
+		// OpenSubstateDB
+		recordSubstate.RecordReplay = true
+		err := substate.NewSubstateDB(ctx.String(flags.SubstateDbFlag.Name))
+		if err != nil {
+			return err
+		}
+		defer substate.CloseSubstateDB()
 	}
 
 	err := chain.EventsImport(ctx, ctx.Args()...)

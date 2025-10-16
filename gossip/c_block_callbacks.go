@@ -29,6 +29,8 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	scc_node "github.com/0xsoniclabs/sonic/scc/node"
+	innerSubstate "github.com/0xsoniclabs/sonic/substate"
+	recordSubstate "github.com/0xsoniclabs/substate"
 
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/dag"
@@ -437,6 +439,14 @@ func consensusCallbackBeginBlockFn(
 					block := blockBuilder.Build()
 					evmBlock.Hash = block.Hash()
 					evmBlock.Duration = blockDuration
+
+					// record-replay
+					if recordSubstate.RecordReplay {
+						err = innerSubstate.PutBlockHash(evmBlock.NumberU64(), evmBlock.Hash.Bytes())
+						if err != nil {
+							panic("unable to put block hash: " + err.Error())
+						}
+					}
 
 					// Update block-hash and -time values in receipts and logs.
 					for i := range allReceipts {

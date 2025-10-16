@@ -55,6 +55,9 @@ type (
 		PrevRandao common.Hash // == mixHash/mixDigest
 
 		Epoch idx.Epoch
+
+		// record-replay
+		SubstateBlockHashes map[uint64]common.Hash
 	}
 
 	EvmBlock struct {
@@ -142,6 +145,28 @@ func ConvertFromEthHeader(h *types.Header) *EvmHeader {
 		PrevRandao:      h.MixDigest,
 		WithdrawalsHash: h.WithdrawalsHash,
 	}
+}
+
+// record-replay
+// EthHeader returns header in ETH format
+func (h *EvmHeader) RecordingEthHeader() *types.Header {
+	if h == nil {
+		return nil
+	}
+	ethHeader := &types.Header{
+		Number:     h.Number,
+		Coinbase:   h.Coinbase,
+		GasLimit:   h.GasLimit,
+		GasUsed:    h.GasUsed,
+		Root:       h.Root,
+		TxHash:     h.TxHash,
+		ParentHash: h.ParentHash,
+		Time:       uint64(h.Time.Unix()),
+		Extra:      h.Hash.Bytes(),
+		BaseFee:    h.BaseFee,
+		Difficulty: big.NewInt(0),
+	}
+	return ethHeader
 }
 
 // EthHeader returns header in ETH format
@@ -267,6 +292,15 @@ func (b *EvmBlock) EthBlock() *types.Block {
 	}
 	body := types.Body{Transactions: b.Transactions}
 	return types.NewBlock(b.EthHeader(), &body, nil, trie.NewStackTrie(nil))
+}
+
+// record-replay
+func (b *EvmBlock) RecordingEthBlock() *types.Block {
+	if b == nil {
+		return nil
+	}
+	body := types.Body{Transactions: b.Transactions}
+	return types.NewBlock(b.EvmHeader.RecordingEthHeader(), &body, nil, trie.NewStackTrie(nil))
 }
 
 func (b *EvmBlock) EstimateSize() int {
