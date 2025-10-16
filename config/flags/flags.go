@@ -394,4 +394,24 @@ var (
 		Name:  "disable-txPool-validation",
 		Usage: "Disable transaction pool validation",
 	}
+
+	// record-replay
+	SubstateDbFlag = cli.StringFlag{
+		Name:  "substate-db",
+		Usage: "Data directory for substate recorder/replayer",
+		Value: "./substate.fantom",
+	}
+
+	// record-replay
+	RecordingFlag = cli.BoolFlag{
+		Name:  "recording",
+		Usage: "Enable recording for record/replay mechanism.",
+	}
+
+	// record-replay
+	SubstateEncodingFlag = cli.StringFlag{
+		Name:  "substate-encoding",
+		Usage: "select encoding when reading substate from disk: rlp (default) or protobuf",
+		Value: "pb",
+	}
 )

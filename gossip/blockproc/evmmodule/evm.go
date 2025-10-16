@@ -19,6 +19,7 @@ package evmmodule
 import (
 	"math/big"
 
+	innerSubstate "github.com/0xsoniclabs/sonic/substate"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -122,18 +123,19 @@ func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlo
 
 	blobBaseFee := evmcore.GetBlobBaseFee()
 	h := &evmcore.EvmHeader{
-		Number:          new(big.Int).SetUint64(p.blockIdx),
-		ParentHash:      p.prevBlockHash,
-		Root:            common.Hash{}, // state root is added later
-		Time:            p.block.Time,
-		Coinbase:        evmcore.GetCoinbase(),
-		GasLimit:        p.rules.Blocks.MaxBlockGas,
-		GasUsed:         p.gasUsed,
-		BaseFee:         baseFee,
-		BlobBaseFee:     blobBaseFee.ToBig(),
-		PrevRandao:      prevRandao,
-		WithdrawalsHash: withdrawalsHash,
-		Epoch:           p.block.Atropos.Epoch(),
+		Number:              new(big.Int).SetUint64(p.blockIdx),
+		ParentHash:          p.prevBlockHash,
+		Root:                common.Hash{}, // state root is added later
+		Time:                p.block.Time,
+		Coinbase:            evmcore.GetCoinbase(),
+		GasLimit:            p.rules.Blocks.MaxBlockGas,
+		GasUsed:             p.gasUsed,
+		BaseFee:             baseFee,
+		BlobBaseFee:         blobBaseFee.ToBig(),
+		PrevRandao:          prevRandao,
+		WithdrawalsHash:     withdrawalsHash,
+		Epoch:               p.block.Atropos.Epoch(),
+		SubstateBlockHashes: make(map[uint64]common.Hash),
 	}
 
 	return evmcore.NewEvmBlock(h, txs)
@@ -181,11 +183,17 @@ func (p *OperaEVMProcessor) Finalize() (evmBlock *evmcore.EvmBlock, numSkipped i
 	evmBlock = p.evmBlockWith(transactions)
 
 	// Commit block
-	p.statedb.EndBlock(evmBlock.Number.Uint64())
+	blockInt := evmBlock.Number.Uint64()
+	p.statedb.EndBlock(blockInt)
 
 	// Get state root
 	evmBlock.Root = p.statedb.GetStateHash()
 
+	// record-replay
+	err := innerSubstate.PutStateHash(blockInt, evmBlock.Root.Bytes())
+	if err != nil {
+		panic("unable to put state hash: " + err.Error())
+	}
 	return
 }
 

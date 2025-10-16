@@ -30,7 +30,9 @@ import (
 	"github.com/0xsoniclabs/sonic/cmd/sonicd/metrics"
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/config/flags"
+	"github.com/0xsoniclabs/sonic/substate"
 	"github.com/0xsoniclabs/sonic/version"
+	recordSubstate "github.com/0xsoniclabs/substate"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/console/prompt"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -127,6 +129,9 @@ func initFlags() {
 		flags.ValidatorPubkeyFlag,
 		flags.ValidatorPasswordFlag,
 		flags.ModeFlag,
+		flags.SubstateDbFlag,
+		flags.RecordingFlag,
+		flags.SubstateEncodingFlag,
 	}
 
 	rpcFlags = []cli.Flag{
@@ -253,6 +258,15 @@ func lachesisMainInternal(
 ) error {
 	if args := ctx.Args(); len(args) > 0 {
 		return fmt.Errorf("invalid command: %q", args[0])
+	}
+
+	if ctx.Bool(flags.RecordingFlag.Name) {
+		recordSubstate.RecordReplay = true
+		err := substate.NewSubstateDB(ctx.String(flags.SubstateDbFlag.Name))
+		if err != nil {
+			return err
+		}
+		defer substate.CloseSubstateDB()
 	}
 
 	cfg, err := config.MakeAllConfigs(ctx)
