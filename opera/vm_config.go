@@ -65,5 +65,10 @@ func GetVmConfig(rules Rules) vm.Config {
 		res.ChargeExcessGas = false
 	}
 
+	if rules.Upgrades.Brio {
+		// res.OverrideMaxTxGas = true
+		res.MaxTxGas = rules.Economy.Gas.MaxEventGas
+	}
+
 	return res
 }

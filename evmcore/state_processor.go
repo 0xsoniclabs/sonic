@@ -317,6 +317,12 @@ func (e evm) _runTransaction(
 	}
 
 	e.Config.NoBaseFee = !checkBaseFee
+	// for internal transactions we need to set the max gas cap to the gas limit of the tx
+	if ctxt.upgrades.Brio && internaltx.IsInternal(tx) {
+		// e.Config.OverrideMaxTxGas = true
+		e.Config.MaxTxGas = msg.GasLimit
+	}
+
 	ctxt.statedb.SetTxContext(tx.Hash(), txIndex)
 	receipt, _, err := applyTransaction(
 		msg, ctxt.gasPool, ctxt.statedb, ctxt.blockNumber, tx,
