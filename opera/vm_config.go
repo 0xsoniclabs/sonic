@@ -66,8 +66,9 @@ func GetVmConfig(rules Rules) vm.Config {
 	}
 
 	if rules.Upgrades.Brio {
-		// res.OverrideMaxTxGas = true
-		res.MaxTxGas = rules.Economy.Gas.MaxEventGas
+		// make a copy of the rules value to avoid changing the original
+		rulesMaxTxGas := rules.Economy.Gas.MaxEventGas
+		res.MaxTxGas = &rulesMaxTxGas
 	}
 
 	return res

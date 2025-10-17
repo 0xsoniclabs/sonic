@@ -319,8 +319,9 @@ func (e evm) _runTransaction(
 	e.Config.NoBaseFee = !checkBaseFee
 	// for internal transactions we need to set the max gas cap to the gas limit of the tx
 	if ctxt.upgrades.Brio && internaltx.IsInternal(tx) {
-		// e.Config.OverrideMaxTxGas = true
-		e.Config.MaxTxGas = msg.GasLimit
+		// make a copy of the rules value to avoid changing the original
+		internalTxMasGas := msg.GasLimit
+		e.Config.MaxTxGas = &internalTxMasGas
 	}
 
 	ctxt.statedb.SetTxContext(tx.Hash(), txIndex)
