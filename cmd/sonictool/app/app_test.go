@@ -23,7 +23,6 @@ import (
 	"io"
 	"math/big"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -46,24 +45,40 @@ import (
 
 func TestSonicTool_check_ExecutesWithoutErrors(t *testing.T) {
 
-	net := tests.StartIntegrationTestNet(t)
-	generateNBlocks(t, net, 2)
-	net.Stop()
+	tests := map[string]struct {
+		mode      string
+		checkMode string
+	}{
+		"rpc db live state can be checked": {
+			mode:      "rpc",
+			checkMode: "live",
+		},
+		"rpc db archive state can be checked": {
+			mode:      "validator",
+			checkMode: "archive",
+		},
+		"validator db live state can be checked": {
+			mode:      "validator",
+			checkMode: "live",
+		},
+		"validator db archive state can be checked": {
+			mode:      "validator",
+			checkMode: "archive",
+		},
+	}
 
-	_, err := executeSonicTool(t,
-		"--datadir", net.GetDirectory()+"/state",
-		"check", "archive")
-	require.NoError(t, err)
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
 
-	// To check the Live DB, the archive DB directory must not exist.
-	archiveDir := filepath.Join(net.GetDirectory(), "state", "carmen", "archive")
-	require.NoError(t, os.RemoveAll(archiveDir))
+			tmp := t.TempDir()
+			_, err := executeSonicTool(t,
+				"--datadir", tmp, "genesis", "--mode", test.mode, "fake", "15")
+			require.NoError(t, err)
 
-	_, err = executeSonicTool(t,
-		"--datadir", net.GetDirectory()+"/state",
-		"check", "live")
-	require.NoError(t, err)
-
+			_, err = executeSonicTool(t, "--datadir", tmp, "check", test.checkMode)
+			require.NoError(t, err)
+		})
+	}
 }
 
 func TestSonicTool_compact_ExecutesWithoutErrors(t *testing.T) {

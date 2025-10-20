@@ -50,7 +50,7 @@ func CheckLiveStateDb(ctx context.Context, dataDir string, cacheRatio cachescale
 }
 
 func checkLiveBlockRoot(dataDir string, cacheRatio cachescale.Func) (err error) {
-	gdb, dbs, err := createGdb(dataDir, cacheRatio, carmen.NoArchive, true)
+	gdb, dbs, err := createGdb(dataDir, cacheRatio, carmen.S5Archive, true)
 	if err != nil {
 		return fmt.Errorf("failed to create gdb and db producer: %w", err)
 	}
