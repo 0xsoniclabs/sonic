@@ -69,7 +69,12 @@ const (
 )
 
 var (
+	// broadcastedTxsCounter tracks the number of transactions broadcasted over p2p.
 	broadcastedTxsCounter = metrics.GetOrRegisterCounter("p2p_txs_broadcasted", nil)
+
+	// incompleteEventsSpilled counts events that could not be added to the DAG and were dropped from the incomplete events buffer.
+	// Note: Despite the name, these events are not moved to another storage; they are simply discarded.
+	incompleteEventsSpilled = metrics.GetOrRegisterCounter("p2p_incomplete_events_spilled", nil)
 )
 
 func errResp(code errCode, format string, v ...interface{}) error {
@@ -317,6 +322,10 @@ func (h *handler) makeDagProcessor(checkers *eventcheck.Checkers) *dagprocessor.
 				if eventcheck.IsBan(err) {
 					log.Warn("Incoming event rejected", "event", e.ID().String(), "creator", e.Creator(), "err", err)
 					h.removePeer(peer)
+				}
+
+				if errors.Is(err, eventcheck.ErrSpilledEvent) {
+					incompleteEventsSpilled.Inc(1)
 				}
 			},
 
@@ -711,7 +720,19 @@ func (h *handler) handleEvents(peer *peer, events dag.Events, ordered bool) {
 	notifyAnnounces := func(ids hash.Events) {
 		_ = h.dagFetcher.NotifyAnnounces(peer.id, eventIDsToInterfaces(ids), now, requestEvents)
 	}
-	_ = h.dagProcessor.Enqueue(peer.id, notTooHigh, ordered, notifyAnnounces, nil)
+	err := h.dagProcessor.Enqueue(peer.id, notTooHigh, ordered, notifyAnnounces, nil)
+	if err != nil {
+		// This error typically occurs when the number of events exceeds the EventsSemaphoreLimit
+		// or if the dagProcessor has been stopped. Since the specific error is internal to the package,
+		// we cannot distinguish between these cases here.
+		// The current shutdown process stops the handler after the dagProcessor, so this warning should not
+		// appear during normal de-initialization.
+		//
+		// The EventsSemaphoreLimit should be at least twice the maximum number of allowed incomplete buffered events.
+		// This ensures that the queue can handle a full load plus additional incoming events.
+		// If this warning appears, it likely indicates a misconfiguration.
+		log.Warn("Unable to enqueue events", "from", peer.id, "events count", len(notTooHigh), "error", err)
+	}
 }
 
 // handleMsg is invoked whenever an inbound message is received from a remote
