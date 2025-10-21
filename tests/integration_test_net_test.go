@@ -22,8 +22,11 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/config"
+	"github.com/0xsoniclabs/sonic/gossip/contract/sfc100"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
+	"github.com/0xsoniclabs/sonic/opera/contracts/sfc"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
+	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/tosca/go/tosca/vm"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -43,7 +46,7 @@ func TestIntegrationTestNet_CanRestartWithGenesisExportAndImport(t *testing.T) {
 	for _, numNodes := range []int{1, 2} {
 		t.Run(fmt.Sprintf("NumNodes=%d", numNodes), func(t *testing.T) {
 			net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
-				NumNodes: numNodes,
+				ValidatorsStake: MakeDefaultValidatorStake(numNodes),
 			})
 			require.NoError(t, net.RestartWithExportImport(),
 				"Failed to restart the test network with export and import")
@@ -193,7 +196,7 @@ func TestIntegrationTestNet_CanRunMultipleNodes(t *testing.T) {
 	for _, numNodes := range []int{1, 2, 3} {
 		t.Run(fmt.Sprintf("NumNodes%d", numNodes), func(t *testing.T) {
 			net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
-				NumNodes: numNodes,
+				ValidatorsStake: MakeDefaultValidatorStake(numNodes),
 			})
 			require.Equal(t, numNodes, net.NumNodes())
 
@@ -325,5 +328,66 @@ func TestIntegrationTestNet_AccountsToBeDeployedWithGenesisCanBeCalled(t *testin
 	require.NoError(t, err)
 
 	require.Equal(t, topic, receipt.Logs[0].Topics[0])
+}
 
+func TestIntegrationTestNet_CanDefineValidatorsStakes(t *testing.T) {
+
+	tests := map[string]struct {
+		stakes         []uint64
+		expectedStakes []uint64
+	}{
+		"default unspecified stakes": {
+			stakes:         nil,
+			expectedStakes: []uint64{5_000_000},
+		},
+		"multiple validators with different stakes": {
+			stakes:         []uint64{50, 20, 11, 1},
+			expectedStakes: []uint64{50, 20, 11, 1},
+		},
+		"multiple validators with equal stakes": {
+			stakes:         makefakegenesis.CreateEqualValidatorStake(3),
+			expectedStakes: []uint64{5_000_000, 5_000_000, 5_000_000},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
+				ValidatorsStake: test.stakes,
+			})
+
+			client, err := net.GetClient()
+			require.NoError(t, err)
+			defer client.Close()
+
+			require.Equal(t, len(test.expectedStakes), net.NumNodes(),
+				"The number of nodes in the network does not match the expected number of validators")
+
+			sfc, err := sfc100.NewContract(sfc.ContractAddress, client)
+			require.NoError(t, err)
+
+			epoch, err := sfc.CurrentEpoch(nil)
+			require.NoError(t, err)
+
+			validatorIDs, err := sfc.GetEpochValidatorIDs(nil, epoch)
+			require.NoError(t, err)
+			require.Len(t, validatorIDs, len(test.expectedStakes),
+				"The number of validators with stakes in the SFC does not match the expected number of validators")
+			for i, validatorID := range validatorIDs {
+				stake, err := sfc.GetSelfStake(nil, validatorID)
+				require.NoError(t, err)
+
+				expectedStake := utils.ToFtm(test.expectedStakes[i])
+				require.Conditionf(t,
+					func() bool {
+						return expectedStake.Cmp(stake) == 0
+					},
+					"unexpected stake for validator %d: expected %v, got %v",
+					i,
+					expectedStake,
+					stake,
+				)
+			}
+		})
+	}
 }
