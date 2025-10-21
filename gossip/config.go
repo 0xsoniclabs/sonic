@@ -223,9 +223,21 @@ func DefaultConfig(scale cachescale.Func) Config {
 		StructLogLimit:  2000,
 	}
 	sessionCfg := cfg.Protocol.DagStreamLeecher.Session
-	cfg.Protocol.DagProcessor.EventsBufferLimit.Num = idx.Event(sessionCfg.ParallelChunksDownload)*
-		idx.Event(sessionCfg.DefaultChunkItemsNum) + softLimitItems
-	cfg.Protocol.DagProcessor.EventsBufferLimit.Size = uint64(sessionCfg.ParallelChunksDownload)*sessionCfg.DefaultChunkItemsSize + 8*opt.MiB
+
+	// Increase the events buffer limits to create a window time where events can be
+	// received and buffered until all the parents are known, too low values lead to
+	// stalls, where events are dropped before their parents arrive.
+	const dagBufferNumLimitCoefficient = 5
+	const dagBufferSizeLimitCoefficient = 10
+	cfg.Protocol.DagProcessor.EventsBufferLimit.Num =
+		idx.Event(sessionCfg.ParallelChunksDownload)*idx.Event(sessionCfg.DefaultChunkItemsNum)*dagBufferNumLimitCoefficient + softLimitItems
+	cfg.Protocol.DagProcessor.EventsBufferLimit.Size =
+		uint64(sessionCfg.ParallelChunksDownload)*sessionCfg.DefaultChunkItemsSize*dagBufferSizeLimitCoefficient + 8*opt.MiB
+
+	// events semaphore should be at least 2 times greater than events buffer
+	cfg.Protocol.EventsSemaphoreLimit.Num = 2 * cfg.Protocol.DagProcessor.EventsBufferLimit.Num
+	cfg.Protocol.EventsSemaphoreLimit.Size = 2 * cfg.Protocol.DagProcessor.EventsBufferLimit.Size
+
 	cfg.Protocol.DagStreamLeecher.MaxSessionRestart = 4 * time.Minute
 	cfg.Protocol.DagFetcher.ArriveTimeout = 4 * time.Second
 	cfg.Protocol.DagFetcher.HashLimit = 10000
