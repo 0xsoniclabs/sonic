@@ -31,7 +31,7 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 )
 
-//go:generate mockgen -source=interface.go -package=blockproc -destination=interface_mock.go
+//go:generate go tool mockgen -source=interface.go -package=blockproc -destination=interface_mock.go
 
 type TxListener interface {
 	OnNewLog(*types.Log)

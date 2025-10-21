@@ -17,4 +17,4 @@
 package sponsor_everything
 
 //go:generate solc --bin registry.sol --abi registry.sol -o build --overwrite
-//go:generate abigen --bin=build/SubsidiesRegistry.bin --abi=build/SubsidiesRegistry.abi --pkg=sponsor_everything --out=registry.go
+//go:generate go tool abigen --bin=build/SubsidiesRegistry.bin --abi=build/SubsidiesRegistry.abi --pkg=sponsor_everything --out=registry.go

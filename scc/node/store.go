@@ -22,7 +22,7 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 )
 
-//go:generate mockgen -source=store.go -destination=store_mock.go -package=node
+//go:generate go tool mockgen -source=store.go -destination=store_mock.go -package=node
 
 // Store is an interface for a persistent store of certificates. A store is
 // required to facilitate the creation of certificates and the gradual

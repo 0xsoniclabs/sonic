@@ -29,7 +29,7 @@ import (
 	"github.com/holiman/uint256"
 )
 
-//go:generate mockgen -source=subsidies.go -destination=subsidies_mock.go -package=subsidies
+//go:generate go tool mockgen -source=subsidies.go -destination=subsidies_mock.go -package=subsidies
 
 // IsSponsorshipRequest checks if a transaction is requesting sponsorship from
 // a pre-allocated sponsorship pool. A sponsorship request is defined as a

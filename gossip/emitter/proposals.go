@@ -36,7 +36,7 @@ import (
 	"github.com/holiman/uint256"
 )
 
-//go:generate mockgen -source=proposals.go -destination=proposals_mock.go -package=emitter
+//go:generate go tool mockgen -source=proposals.go -destination=proposals_mock.go -package=emitter
 
 // createPayload creates payload to be attached to the given event. The result
 // may include a new block proposal if the current validator is allowed to make

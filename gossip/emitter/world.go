@@ -34,7 +34,7 @@ import (
 	"github.com/0xsoniclabs/sonic/vecmt"
 )
 
-//go:generate mockgen -source=world.go -destination=world_mock.go -package=emitter External,TxPool,TxSigner,Signer
+//go:generate go tool mockgen -source=world.go -destination=world_mock.go -package=emitter External,TxPool,TxSigner,Signer
 
 var (
 	ErrNotEnoughGasPower = errors.New("not enough gas power")

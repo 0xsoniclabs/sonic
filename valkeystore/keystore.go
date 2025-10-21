@@ -21,7 +21,7 @@ import (
 	"github.com/0xsoniclabs/sonic/valkeystore/encryption"
 )
 
-//go:generate mockgen -source=keystore.go -destination=keystore_mock.go -package=valkeystore
+//go:generate go tool mockgen -source=keystore.go -destination=keystore_mock.go -package=valkeystore
 
 type RawKeystoreI interface {
 	Has(pubkey validatorpk.PubKey) bool

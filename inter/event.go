@@ -28,7 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/trie"
 )
 
-//go:generate mockgen -source=event.go -destination=event_mock.go -package=inter
+//go:generate go tool mockgen -source=event.go -destination=event_mock.go -package=inter
 
 type EventI interface {
 	dag.Event

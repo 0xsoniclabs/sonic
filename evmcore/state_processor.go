@@ -34,7 +34,7 @@ import (
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
 )
 
-//go:generate mockgen -source=state_processor.go -destination=state_processor_mock.go -package=evmcore
+//go:generate go tool mockgen -source=state_processor.go -destination=state_processor_mock.go -package=evmcore
 
 // StateProcessor is a basic Processor, which takes care of transitioning
 // state from one point to another.

@@ -38,7 +38,7 @@ import (
 	gomock "go.uber.org/mock/gomock"
 )
 
-//go:generate mockgen -source=subsidies_test.go -destination=subsidies_test_mock.go -package=subsidies
+//go:generate go tool mockgen -source=subsidies_test.go -destination=subsidies_test_mock.go -package=subsidies
 
 func TestIsSponsorshipRequest_DetectsSponsorshipRequest(t *testing.T) {
 	require := require.New(t)

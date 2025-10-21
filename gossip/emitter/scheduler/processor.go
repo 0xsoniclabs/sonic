@@ -27,7 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 )
 
-//go:generate mockgen -source=processor.go -destination=processor_mock.go -package=scheduler
+//go:generate go tool mockgen -source=processor.go -destination=processor_mock.go -package=scheduler
 
 // processorFactory is an internal interface for a component that creates a
 // transaction processor capable of test-running transactions in a block to

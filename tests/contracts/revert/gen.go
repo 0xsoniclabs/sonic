@@ -17,4 +17,4 @@
 package revert
 
 //go:generate solc --bin revert.sol --abi revert.sol -o build --overwrite
-//go:generate abigen --bin=build/RevertContract.bin --abi=build/RevertContract.abi --pkg=revert --out=revert.go
+//go:generate go tool abigen --bin=build/RevertContract.bin --abi=build/RevertContract.abi --pkg=revert --out=revert.go

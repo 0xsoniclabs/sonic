@@ -32,7 +32,7 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 )
 
-//go:generate mockgen -source=evm.go -destination=evm_mock.go -package=evmmodule
+//go:generate go tool mockgen -source=evm.go -destination=evm_mock.go -package=evmmodule
 
 type EVMModule struct{}
 

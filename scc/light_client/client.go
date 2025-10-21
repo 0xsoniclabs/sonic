@@ -16,7 +16,7 @@
 
 package light_client
 
-//go:generate mockgen -source=client.go -package=light_client -destination=client_mock.go
+//go:generate go tool mockgen -source=client.go -package=light_client -destination=client_mock.go
 
 // rpcClient is an interface for making RPC calls.
 type rpcClient interface {

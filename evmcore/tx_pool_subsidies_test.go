@@ -192,7 +192,7 @@ func createTransactions(t *testing.T, txData types.TxData, chainId *big.Int, n i
 	return res
 }
 
-//go:generate mockgen -source=tx_pool_subsidies_test.go -destination=tx_pool_subsidies_test_mock.go -package=evmcore
+//go:generate go tool mockgen -source=tx_pool_subsidies_test.go -destination=tx_pool_subsidies_test_mock.go -package=evmcore
 
 func SetNonce(tx types.TxData, nonce uint64) {
 	switch d := (tx).(type) {

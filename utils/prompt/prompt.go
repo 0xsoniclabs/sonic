@@ -18,7 +18,7 @@ package prompt
 
 import geth_prompt "github.com/ethereum/go-ethereum/console/prompt"
 
-//go:generate mockgen -source prompt.go -destination prompt_mock.go -package prompt
+//go:generate go tool mockgen -source prompt.go -destination prompt_mock.go -package prompt
 
 // UserPrompt is the default prompter used by the console to prompt the user for
 // various types of inputs.

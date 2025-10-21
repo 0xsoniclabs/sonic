@@ -36,7 +36,7 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-//go:generate mockgen -source=evm_test.go -destination=evm_test_mock.go -package=evmmodule
+//go:generate go tool mockgen -source=evm_test.go -destination=evm_test_mock.go -package=evmmodule
 
 func TestEvm_IgnoresGasPriceOfInternalTransactions(t *testing.T) {
 	ctrl := gomock.NewController(t)

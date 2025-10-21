@@ -25,7 +25,7 @@ import (
 )
 
 //go:generate solc --optimize --optimize-runs 200 --bin --bin-runtime proxy.sol --abi proxy.sol -o build --overwrite
-//go:generate abigen --bin=build/Proxy.bin --abi=build/Proxy.abi --pkg=proxy --out=proxy_abigen.go
+//go:generate go tool abigen --bin=build/Proxy.bin --abi=build/Proxy.abi --pkg=proxy --out=proxy_abigen.go
 //go:generate cp build/Proxy.bin-runtime proxy_contract.bin
 
 // GetSlotForImplementation returns the storage slot used by the Proxy contract

@@ -43,7 +43,7 @@ import (
 	"github.com/0xsoniclabs/sonic/utils/txtime"
 )
 
-//go:generate mockgen -source=tx_pool.go -destination=tx_pool_mock.go -package=evmcore
+//go:generate go tool mockgen -source=tx_pool.go -destination=tx_pool_mock.go -package=evmcore
 
 const (
 	// chainHeadChanSize is the size of channel listening to ChainHeadNotify.

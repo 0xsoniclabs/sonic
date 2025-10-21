@@ -30,7 +30,7 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 )
 
-//go:generate mockgen -source=gas_power_check.go -destination=gas_power_check_mock.go -package=gaspowercheck
+//go:generate go tool mockgen -source=gas_power_check.go -destination=gas_power_check_mock.go -package=gaspowercheck
 
 var (
 	// ErrWrongGasPowerLeft indicates that event's GasPowerLeft is miscalculated.

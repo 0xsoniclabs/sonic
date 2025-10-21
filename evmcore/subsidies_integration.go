@@ -25,7 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 )
 
-//go:generate mockgen -source=subsidies_integration.go -destination=subsidies_integration_mock.go -package=evmcore
+//go:generate go tool mockgen -source=subsidies_integration.go -destination=subsidies_integration_mock.go -package=evmcore
 
 // subsidiesChecker is an interface for checking if a transaction is sponsored
 // by the subsidies contract.

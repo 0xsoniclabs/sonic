@@ -27,7 +27,7 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 )
 
-//go:generate mockgen -source=epoch_check.go -destination=epoch_check_mock.go -package=epochcheck
+//go:generate go tool mockgen -source=epoch_check.go -destination=epoch_check_mock.go -package=epochcheck
 
 var (
 	ErrTooManyParents    = errors.New("event has too many parents")

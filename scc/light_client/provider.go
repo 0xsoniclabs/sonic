@@ -26,7 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-//go:generate mockgen -source=provider.go -package=light_client -destination=provider_mock.go
+//go:generate go tool mockgen -source=provider.go -package=light_client -destination=provider_mock.go
 
 // provider is an interface to access certificates of the Sonic Certification Chain.
 type provider interface {

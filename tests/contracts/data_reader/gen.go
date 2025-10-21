@@ -17,4 +17,4 @@
 package data_reader
 
 //go:generate solc --bin data_reader.sol --abi data_reader.sol -o build --overwrite
-//go:generate abigen --bin=build/DataReader.bin --abi=build/DataReader.abi --pkg=data_reader --out=data_reader.go
+//go:generate go tool abigen --bin=build/DataReader.bin --abi=build/DataReader.abi --pkg=data_reader --out=data_reader.go

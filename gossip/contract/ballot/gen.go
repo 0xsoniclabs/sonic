@@ -17,4 +17,4 @@
 package ballot
 
 //go:generate solc --bin Ballot.sol --abi Ballot.sol -o build --overwrite
-//go:generate abigen --bin=build/Ballot.bin --abi=build/Ballot.abi --pkg=ballot --out=contract.go
+//go:generate go tool abigen --bin=build/Ballot.bin --abi=build/Ballot.abi --pkg=ballot --out=contract.go

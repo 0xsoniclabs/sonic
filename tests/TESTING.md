@@ -165,7 +165,7 @@ the file `gen.go` must comply to the following pattern:
 package mycontract
 
 //go:generate solc --bin mycontract.sol --abi mycontract.sol -o build --overwrite
-//go:generate abigen --bin=build/MyContract.bin --abi=build/MyContract.abi --pkg=mycontract --out=mycontract.go
+//go:generate go tool abigen --bin=build/MyContract.bin --abi=build/MyContract.abi --pkg=mycontract --out=mycontract.go
 ```
 
 where abigen `--bin` and `--abi` follow the casing of the contract name, while the other parameters are lower case.

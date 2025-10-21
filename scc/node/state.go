@@ -18,7 +18,7 @@ package node
 
 import "github.com/0xsoniclabs/sonic/scc"
 
-//go:generate mockgen -source=state.go -destination=state_mock.go -package=node
+//go:generate go tool mockgen -source=state.go -destination=state_mock.go -package=node
 
 // State is an interface for the current state of an SCC node. The state's main
 // responsibility is to track the composition of the current committee.

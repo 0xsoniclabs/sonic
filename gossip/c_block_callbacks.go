@@ -53,7 +53,7 @@ import (
 	"github.com/0xsoniclabs/sonic/utils"
 )
 
-//go:generate mockgen -source=c_block_callbacks.go -package=gossip -destination=c_block_callbacks_mock.go
+//go:generate go tool mockgen -source=c_block_callbacks.go -package=gossip -destination=c_block_callbacks_mock.go
 
 var (
 	// Ethereum compatible metrics set (see go-ethereum/core)

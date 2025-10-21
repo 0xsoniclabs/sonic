@@ -30,7 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 )
 
-//go:generate mockgen -source=tx_validation.go -destination=tx_validation_mock.go -package=evmcore
+//go:generate go tool mockgen -source=tx_validation.go -destination=tx_validation_mock.go -package=evmcore
 
 // poolOptions is a set of options to adjust the validation of transactions
 // according to the current state of the transaction pool.

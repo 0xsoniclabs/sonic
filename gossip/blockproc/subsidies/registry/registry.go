@@ -26,7 +26,7 @@ import (
 )
 
 //go:generate solc --optimize --optimize-runs 200 --bin --bin-runtime subsidies_registry.sol --abi subsidies_registry.sol -o build --overwrite
-//go:generate abigen --bin=build/SubsidiesRegistry.bin --abi=build/SubsidiesRegistry.abi --pkg=registry --out=subsidies_registry_abigen.go
+//go:generate go tool abigen --bin=build/SubsidiesRegistry.bin --abi=build/SubsidiesRegistry.abi --pkg=registry --out=subsidies_registry_abigen.go
 //go:generate cp build/SubsidiesRegistry.bin-runtime subsidies_contract.bin
 
 // GetAddress returns the address of the deployed SubsidiesRegistry.
