@@ -43,7 +43,7 @@ func TestIntegrationTestNet_CanRestartWithGenesisExportAndImport(t *testing.T) {
 	for _, numNodes := range []int{1, 2} {
 		t.Run(fmt.Sprintf("NumNodes=%d", numNodes), func(t *testing.T) {
 			net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
-				NumNodes: numNodes,
+				ValidatorsStake: MakeDefaultValidatorStake(numNodes),
 			})
 			require.NoError(t, net.RestartWithExportImport(),
 				"Failed to restart the test network with export and import")
@@ -193,7 +193,7 @@ func TestIntegrationTestNet_CanRunMultipleNodes(t *testing.T) {
 	for _, numNodes := range []int{1, 2, 3} {
 		t.Run(fmt.Sprintf("NumNodes%d", numNodes), func(t *testing.T) {
 			net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
-				NumNodes: numNodes,
+				ValidatorsStake: MakeDefaultValidatorStake(numNodes),
 			})
 			require.Equal(t, numNodes, net.NumNodes())
 
