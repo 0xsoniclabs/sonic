@@ -381,20 +381,27 @@ func startIntegrationTestNet(
 	}
 
 	// start the integration test nodes
+	var wg sync.WaitGroup
+	wg.Add(len(net.nodes))
 	for i := range net.nodes {
-		net.nodes[i].directory = filepath.Join(directory, fmt.Sprintf("node%d", i))
 
-		// initialize the data directory for the single node on the test network
-		// using the configuration arguments provided by the caller
-		args := append([]string{
-			"sonictool",
-			"--datadir", net.nodes[i].getStateDir(),
-			"--statedb.livecache", "1",
-			"--statedb.archivecache", "1",
-			"--statedb.cache", "1024",
-		}, sonicToolArguments...)
-		require.NoError(t, sonictool.RunWithArgs(args), "failed to initialize the test network")
+		go func() {
+			defer wg.Done()
+			net.nodes[i].directory = filepath.Join(directory, fmt.Sprintf("node%d", i))
+
+			// initialize the data directory for the single node on the test network
+			// using the configuration arguments provided by the caller
+			args := append([]string{
+				"sonictool",
+				"--datadir", net.nodes[i].getStateDir(),
+				"--statedb.livecache", "1",
+				"--statedb.archivecache", "1",
+				"--statedb.cache", "1024",
+			}, sonicToolArguments...)
+			require.NoError(t, sonictool.RunWithArgs(args), "failed to initialize the test network")
+		}()
 	}
+	wg.Wait()
 
 	require.NoError(t, net.start(), "failed to start the integration test network")
 
@@ -471,6 +478,8 @@ func (n *IntegrationTestNet) start() error {
 				"--statedb.cache", "1024",
 
 				"--ipcpath", fmt.Sprintf("%s/sonic.ipc", tmp),
+
+				"--maxpeers", fmt.Sprintf("%d", len(n.nodes)-1),
 			},
 				// append extra arguments
 				n.options.ClientExtraArguments...,
@@ -541,26 +550,36 @@ func (n *IntegrationTestNet) start() error {
 		}
 	}
 
-	// connect to blockchain network
-	client, err := n.GetClient()
-	if err != nil {
-		return fmt.Errorf("failed to connect to the Ethereum client: %w", err)
-	}
-	defer client.Close()
-
-	// wait for the node to be ready to serve requests
-	err = WaitFor(context.Background(), func(ctx context.Context) (bool, error) {
-		_, err := client.ChainID(ctx)
-		return err == nil, nil
-	})
-	if err != nil {
-		return fmt.Errorf("failed to connect to the Ethereum client: %w", err)
+	clients := make([]*PooledEhtClient, len(n.nodes))
+	for j := range n.nodes {
+		client, err := n.GetClientConnectedToNode(j)
+		if err != nil {
+			return fmt.Errorf("failed to connect to the Ethereum client: %w", err)
+		}
+		defer client.Close()
+		clients[j] = client
 	}
 
-	// Connect the nodes with each other.
-	for i, enode := range nodeEnodes {
-		if err := client.Client().Call(nil, "admin_addPeer", enode); err != nil {
-			return fmt.Errorf("failed to connect to node %d: %v", i, err)
+	// wait for all nodes to be ready to serve requests
+	for j := range n.nodes {
+		err := WaitFor(context.Background(), func(ctx context.Context) (bool, error) {
+			_, err := clients[j].ChainID(ctx)
+			return err == nil, nil
+		})
+		if err != nil {
+			return fmt.Errorf("error waiting for node to be ready: %w", err)
+		}
+	}
+
+	// Connect all nodes with each other.
+	for i := range n.nodes {
+		for j, enode := range nodeEnodes {
+			if j == i {
+				continue
+			}
+			if err := clients[i].Client().Call(nil, "admin_addPeer", enode); err != nil {
+				return fmt.Errorf("failed to connect to node %d: %v", i, err)
+			}
 		}
 	}
 
