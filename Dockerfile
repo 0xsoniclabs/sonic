@@ -7,7 +7,7 @@
 
 FROM golang:1.24 AS builder
 
-RUN apt-get update && apt-get install -y git musl-dev make
+RUN apt-get update && apt-get install -y git musl-dev make neofetch
 
 WORKDIR /go/Sonic
 COPY . .

@@ -29,6 +29,12 @@ pipeline {
     }
 
     stages {
+        stage('hello') {
+            steps {
+                sh 'fastfetch'
+            }
+        }
+
         stage('Validate commit') {
             steps {
                 script {
