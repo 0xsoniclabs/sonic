@@ -24,13 +24,13 @@ import (
 )
 
 func TestJsonGenesis_CanApplyGeneratedFakeJsonGensis(t *testing.T) {
-	genesis := GenerateFakeJsonGenesis(1, opera.GetSonicUpgrades())
+	genesis := GenerateFakeJsonGenesis(opera.GetSonicUpgrades(), CreateEqualValidatorStake(1))
 	_, err := ApplyGenesisJson(genesis)
 	require.NoError(t, err)
 }
 
 func TestJsonGenesis_AcceptsGenesisWithoutCommittee(t *testing.T) {
-	genesis := GenerateFakeJsonGenesis(1, opera.GetSonicUpgrades())
+	genesis := GenerateFakeJsonGenesis(opera.GetSonicUpgrades(), CreateEqualValidatorStake(1))
 	genesis.GenesisCommittee = nil
 	_, err := ApplyGenesisJson(genesis)
 	require.NoError(t, err)
@@ -58,7 +58,7 @@ func TestJsonGenesis_Network_Rules_Validated_Allegro_Only(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			genesis := GenerateFakeJsonGenesis(1, test.featureSet)
+			genesis := GenerateFakeJsonGenesis(test.featureSet, CreateEqualValidatorStake(1))
 			genesis.Rules.Upgrades.Llr = true // LLR is not supported in Allegro and Sonic
 			_, err := ApplyGenesisJson(genesis)
 			test.assert(t, err)
