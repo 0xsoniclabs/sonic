@@ -21,7 +21,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/ethapi"
-	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/sonic"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
 	"github.com/0xsoniclabs/sonic/tests/contracts/sponsoring"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -38,7 +38,7 @@ import (
 // assign fees for a dApp also in this delegate scenario and dApp
 // address will be visible in the trace
 func TestTrace7702Transaction(t *testing.T) {
-	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	session := getIntegrationTestNetSession(t, sonic.GetAllegroUpgrades())
 	t.Parallel()
 
 	sponsor := MakeAccountWithBalance(t, session, big.NewInt(1e18))

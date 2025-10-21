@@ -19,14 +19,14 @@ package tests
 import (
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/sonic"
 	"github.com/0xsoniclabs/sonic/tests/contracts/basefee"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/stretchr/testify/require"
 )
 
 func TestBaseFee_CanReadBaseFeeFromHeadAndBlockAndHistory(t *testing.T) {
-	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	session := getIntegrationTestNetSession(t, sonic.GetSonicUpgrades())
 	t.Parallel()
 
 	// Deploy the base fee contract.

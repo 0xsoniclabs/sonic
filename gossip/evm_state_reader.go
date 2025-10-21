@@ -28,7 +28,7 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/inter/state"
-	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/sonic"
 )
 
 type EvmStateReader struct {
@@ -60,7 +60,7 @@ func (r *EvmStateReader) Config() *params.ChainConfig {
 	return r.store.GetEvmChainConfig(idx.Block(blockNumber.Uint64()))
 }
 
-func (r *EvmStateReader) GetCurrentRules() opera.Rules {
+func (r *EvmStateReader) GetCurrentRules() sonic.Rules {
 	return r.store.GetRules()
 }
 
@@ -127,7 +127,7 @@ func (r *EvmStateReader) getBlock(h common.Hash, n idx.Block, readTxs bool) *evm
 	// find block rules
 	epoch := block.Epoch
 	es := r.store.GetHistoryEpochState(epoch)
-	var rules opera.Rules
+	var rules sonic.Rules
 	if es != nil {
 		rules = es.Rules
 	}

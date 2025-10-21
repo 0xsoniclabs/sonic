@@ -29,9 +29,9 @@ import (
 
 	sonictool "github.com/0xsoniclabs/sonic/cmd/sonictool/app"
 	"github.com/0xsoniclabs/sonic/cmd/sonictool/genesis"
-	"github.com/0xsoniclabs/sonic/opera"
-	ogenesis "github.com/0xsoniclabs/sonic/opera/genesis"
-	"github.com/0xsoniclabs/sonic/opera/genesisstore"
+	sonic "github.com/0xsoniclabs/sonic/sonic"
+	ogenesis "github.com/0xsoniclabs/sonic/sonic/genesis"
+	"github.com/0xsoniclabs/sonic/sonic/genesisstore"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/utils/caution"
 	"github.com/0xsoniclabs/sonic/utils/prompt"
@@ -203,7 +203,7 @@ func TestSonicTool_heal_ExecutesWithoutErrors(t *testing.T) {
 	net := tests.StartIntegrationTestNet(
 		t,
 		tests.IntegrationTestNetOptions{
-			Upgrades:             tests.AsPointer(opera.GetSonicUpgrades()),
+			Upgrades:             tests.AsPointer(sonic.GetSonicUpgrades()),
 			ClientExtraArguments: []string{"--statedb.checkpointinterval", "1"},
 		},
 	)

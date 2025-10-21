@@ -56,11 +56,11 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/contract/netinit100"
 	"github.com/0xsoniclabs/sonic/gossip/contract/sfc100"
 	"github.com/0xsoniclabs/sonic/logger"
-	"github.com/0xsoniclabs/sonic/opera/contracts/driver"
-	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
-	"github.com/0xsoniclabs/sonic/opera/contracts/evmwriter"
-	"github.com/0xsoniclabs/sonic/opera/contracts/netinit"
-	"github.com/0xsoniclabs/sonic/opera/contracts/sfc"
+	"github.com/0xsoniclabs/sonic/sonic/contracts/driver"
+	"github.com/0xsoniclabs/sonic/sonic/contracts/driverauth"
+	"github.com/0xsoniclabs/sonic/sonic/contracts/evmwriter"
+	"github.com/0xsoniclabs/sonic/sonic/contracts/netinit"
+	"github.com/0xsoniclabs/sonic/sonic/contracts/sfc"
 	"github.com/0xsoniclabs/sonic/utils"
 )
 

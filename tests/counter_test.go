@@ -21,7 +21,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/sonic"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -30,7 +30,7 @@ import (
 
 func TestCounter_CanIncrementAndReadCounterFromHead(t *testing.T) {
 
-	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	session := getIntegrationTestNetSession(t, sonic.GetSonicUpgrades())
 	t.Parallel()
 
 	// Deploy the counter contract.
@@ -51,7 +51,7 @@ func TestCounter_CanIncrementAndReadCounterFromHead(t *testing.T) {
 
 func TestCounter_CanReadHistoricCounterValues(t *testing.T) {
 
-	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	session := getIntegrationTestNetSession(t, sonic.GetSonicUpgrades())
 	t.Parallel()
 	// Deploy the counter contract.
 	contract, receipt, err := DeployContract(session, counter.DeployCounter)

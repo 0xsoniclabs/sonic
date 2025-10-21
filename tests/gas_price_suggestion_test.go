@@ -21,7 +21,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/sonic"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/holiman/uint256"
@@ -31,7 +31,7 @@ import (
 func TestGasPrice_SuggestedGasPricesApproximateActualBaseFees(t *testing.T) {
 	require := require.New(t)
 
-	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	session := getIntegrationTestNetSession(t, sonic.GetAllegroUpgrades())
 
 	client, err := session.GetClient()
 	require.NoError(err, "failed to get client")
@@ -67,7 +67,7 @@ func TestGasPrice_SuggestedGasPricesApproximateActualBaseFees(t *testing.T) {
 func TestGasPrice_UnderpricedTransactionsAreRejected(t *testing.T) {
 	require := require.New(t)
 
-	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	session := getIntegrationTestNetSession(t, sonic.GetAllegroUpgrades())
 
 	client, err := session.GetClient()
 	require.NoError(err, "failed to get client")

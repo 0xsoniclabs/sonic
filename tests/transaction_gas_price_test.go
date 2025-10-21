@@ -20,7 +20,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/sonic"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
@@ -32,7 +32,7 @@ const enoughGasPrice = 150_000_000_000
 
 func TestTransactionGasPrice(t *testing.T) {
 
-	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	session := getIntegrationTestNetSession(t, sonic.GetSonicUpgrades())
 	t.Parallel()
 
 	client, err := session.GetClient()

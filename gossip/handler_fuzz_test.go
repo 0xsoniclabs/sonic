@@ -33,7 +33,7 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/inter"
-	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/sonic"
 	"github.com/0xsoniclabs/sonic/utils"
 )
 
@@ -76,7 +76,7 @@ func makeFuzzedHandler(t *testing.T) (*handler, error) {
 		genesisStake   = 2 * 4e6
 	)
 
-	upgrades := opera.GetSonicUpgrades()
+	upgrades := sonic.GetSonicUpgrades()
 
 	genStore := makefakegenesis.FakeGenesisStore(
 		genesisStakers,
@@ -110,9 +110,9 @@ func makeFuzzedHandler(t *testing.T) (*handler, error) {
 	checkers := makeCheckers(config.HeavyCheck, txSigner, &heavyCheckReader, &gasPowerCheckReader, &proposalChecker, store)
 
 	feed := new(ServiceFeed)
-	chainconfig := opera.CreateTransientEvmChainConfig(
+	chainconfig := sonic.CreateTransientEvmChainConfig(
 		1234,
-		[]opera.UpgradeHeight{{
+		[]sonic.UpgradeHeight{{
 			Upgrades: upgrades,
 			Height:   idx.Block(0),
 		}},

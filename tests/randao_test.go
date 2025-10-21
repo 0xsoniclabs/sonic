@@ -20,7 +20,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/sonic"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
@@ -29,8 +29,8 @@ import (
 func TestRandao_randaoIntegrationTest(t *testing.T) {
 	const NumNodes = 3
 
-	tests := map[string]opera.Upgrades{
-		"dag proposal": opera.GetSonicUpgrades(),
+	tests := map[string]sonic.Upgrades{
+		"dag proposal": sonic.GetSonicUpgrades(),
 		"single proposal": {
 			Berlin:                       true,
 			London:                       true,

@@ -28,7 +28,7 @@ import (
 	"github.com/0xsoniclabs/carmen/go/common/amount"
 	mptio "github.com/0xsoniclabs/carmen/go/database/mpt/io"
 	carmen "github.com/0xsoniclabs/carmen/go/state"
-	"github.com/0xsoniclabs/sonic/opera/genesis"
+	"github.com/0xsoniclabs/sonic/sonic/genesis"
 	"github.com/0xsoniclabs/sonic/utils/adapters/kvdb2ethdb"
 	"github.com/0xsoniclabs/sonic/utils/caution"
 	"github.com/Fantom-foundation/lachesis-base/kvdb/nokeyiserr"

@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
-	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/sonic"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/holiman/uint256"
@@ -32,7 +32,7 @@ import (
 func TestRejectedTx_TransactionsAreRejectedBecauseOfAccountState(t *testing.T) {
 
 	// start network
-	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	session := getIntegrationTestNetSession(t, sonic.GetAllegroUpgrades())
 	t.Parallel()
 
 	// create a client

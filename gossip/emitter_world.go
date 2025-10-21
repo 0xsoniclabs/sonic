@@ -27,7 +27,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
-	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/sonic"
 	"github.com/0xsoniclabs/sonic/utils/wgmutex"
 	"github.com/0xsoniclabs/sonic/vecmt"
 )
@@ -84,7 +84,7 @@ func (ew *emitterWorldProc) StateDB() state.StateDB {
 	return statedb
 }
 
-func (ew *emitterWorldProc) GetUpgradeHeights() []opera.UpgradeHeight {
+func (ew *emitterWorldProc) GetUpgradeHeights() []sonic.UpgradeHeight {
 	return ew.s.store.GetUpgradeHeights()
 }
 

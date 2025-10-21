@@ -32,18 +32,18 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/drivertype"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/ier"
-	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/0xsoniclabs/sonic/opera/contracts/driver"
-	"github.com/0xsoniclabs/sonic/opera/contracts/driver/drivercall"
-	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
-	"github.com/0xsoniclabs/sonic/opera/contracts/evmwriter"
-	"github.com/0xsoniclabs/sonic/opera/contracts/netinit"
-	"github.com/0xsoniclabs/sonic/opera/contracts/sfc"
-	"github.com/0xsoniclabs/sonic/opera/genesis"
-	"github.com/0xsoniclabs/sonic/opera/genesisstore"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/bls"
 	"github.com/0xsoniclabs/sonic/scc/cert"
+	sonic "github.com/0xsoniclabs/sonic/sonic"
+	"github.com/0xsoniclabs/sonic/sonic/contracts/driver"
+	"github.com/0xsoniclabs/sonic/sonic/contracts/driver/drivercall"
+	"github.com/0xsoniclabs/sonic/sonic/contracts/driverauth"
+	"github.com/0xsoniclabs/sonic/sonic/contracts/evmwriter"
+	"github.com/0xsoniclabs/sonic/sonic/contracts/netinit"
+	"github.com/0xsoniclabs/sonic/sonic/contracts/sfc"
+	"github.com/0xsoniclabs/sonic/sonic/genesis"
+	"github.com/0xsoniclabs/sonic/sonic/genesisstore"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
@@ -55,7 +55,7 @@ import (
 )
 
 type GenesisJson struct {
-	Rules            opera.Rules
+	Rules            sonic.Rules
 	BlockZeroTime    time.Time
 	Accounts         []Account      `json:",omitempty"`
 	Txs              []Transaction  `json:",omitempty"`
@@ -83,8 +83,8 @@ func LoadGenesisJson(filename string) (*GenesisJson, error) {
 		return nil, fmt.Errorf("failed to read genesis json file; %v", err)
 	}
 	var decoded GenesisJson
-	upgrades := opera.GetSonicUpgrades()
-	decoded.Rules = opera.FakeNetRules(upgrades) // use fakenet rules as defaults
+	upgrades := sonic.GetSonicUpgrades()
+	decoded.Rules = sonic.FakeNetRules(upgrades) // use fakenet rules as defaults
 	err = json.Unmarshal(data, &decoded)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal genesis json file; %v", err)
@@ -97,10 +97,10 @@ func LoadGenesisJson(filename string) (*GenesisJson, error) {
 // number of validators with some initial tokens.
 func GenerateFakeJsonGenesis(
 	numValidators int,
-	upgrades opera.Upgrades,
+	upgrades sonic.Upgrades,
 ) *GenesisJson {
 	jsonGenesis := &GenesisJson{
-		Rules:         opera.FakeNetRules(upgrades),
+		Rules:         sonic.FakeNetRules(upgrades),
 		BlockZeroTime: time.Now(),
 	}
 

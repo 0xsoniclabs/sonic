@@ -19,14 +19,14 @@ package tests
 import (
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/sonic"
 	"github.com/0xsoniclabs/sonic/tests/contracts/transientstorage"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/stretchr/testify/require"
 )
 
 func TestTransientStorage_TransientStorageIsValidInTransaction(t *testing.T) {
-	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	session := getIntegrationTestNetSession(t, sonic.GetSonicUpgrades())
 	t.Parallel()
 
 	// Deploy the transient storage contract
