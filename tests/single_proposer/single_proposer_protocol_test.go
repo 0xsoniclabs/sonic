@@ -65,8 +65,8 @@ func testSingleProposerProtocol_CanProcessTransactions(
 
 	require := require.New(t)
 	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
-		Upgrades: &upgrades,
-		NumNodes: numNodes,
+		Upgrades:        &upgrades,
+		ValidatorsStake: tests.MakeDefaultValidatorStake(numNodes),
 	})
 
 	client, err := net.GetClient()
@@ -173,8 +173,8 @@ func testSingleProposerProtocol_CanBeEnabledAndDisabled(
 	// The network is initially started using the distributed protocol.
 	mode.SingleProposerBlockFormation = false
 	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
-		NumNodes: numNodes,
-		Upgrades: &mode,
+		ValidatorsStake: tests.MakeDefaultValidatorStake(numNodes),
+		Upgrades:        &mode,
 	})
 
 	// Test that before the switch transactions can be processed.

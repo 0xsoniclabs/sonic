@@ -45,8 +45,8 @@ func TestRandao_randaoIntegrationTest(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			net := StartIntegrationTestNet(t,
 				IntegrationTestNetOptions{
-					NumNodes: NumNodes,
-					Upgrades: &test,
+					ValidatorsStake: MakeDefaultValidatorStake(NumNodes),
+					Upgrades:        &test,
 				},
 			)
 			defer net.Stop()
