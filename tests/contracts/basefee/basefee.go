@@ -1,19 +1,3 @@
-// Copyright 2025 Sonic Operations Ltd
-// This file is part of the Sonic Client
-//
-// Sonic is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Lesser General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// Sonic is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU Lesser General Public License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with Sonic. If not, see <http://www.gnu.org/licenses/>.
-
 // Code generated - DO NOT EDIT.
 // This file is a generated binding and any manual changes will be lost.
 
@@ -48,7 +32,7 @@ var (
 // BasefeeMetaData contains all meta data concerning the Basefee contract.
 var BasefeeMetaData = &bind.MetaData{
 	ABI: "[{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"fee\",\"type\":\"uint256\"}],\"name\":\"CurrentFee\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"getBaseFee\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"logCurrentBaseFee\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}]",
-	Bin: "0x6080604052348015600e575f5ffd5b5060f78061001b5f395ff3fe6080604052348015600e575f5ffd5b50600436106030575f3560e01c806315e812ad146034578063414783bf14604e575b5f5ffd5b603a6056565b6040516045919060aa565b60405180910390f35b6054605d565b005b5f48905090565b7fd25c41149a2ac969bcb91bf41383d6aa5f5246c7586901cc546e7e2361cfb66748604051608a919060aa565b60405180910390a1565b5f819050919050565b60a4816094565b82525050565b5f60208201905060bb5f830184609d565b9291505056fea26469706673582212207dfeb95863c41353dcf607a8bb67de573b96800ebd8f41e03fe85245a0b051bb64736f6c634300081c0033",
+	Bin: "0x6080604052348015600e575f5ffd5b5060f78061001b5f395ff3fe6080604052348015600e575f5ffd5b50600436106030575f3560e01c806315e812ad146034578063414783bf14604e575b5f5ffd5b603a6056565b6040516045919060aa565b60405180910390f35b6054605d565b005b5f48905090565b7fd25c41149a2ac969bcb91bf41383d6aa5f5246c7586901cc546e7e2361cfb66748604051608a919060aa565b60405180910390a1565b5f819050919050565b60a4816094565b82525050565b5f60208201905060bb5f830184609d565b9291505056fea26469706673582212209fe671480b2ab02479243b0af12a228ad2df4424b8544c0232b676a8a7ec661564736f6c634300081e0033",
 }
 
 // BasefeeABI is the input ABI used to generate the binding from.

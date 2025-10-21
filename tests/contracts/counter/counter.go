@@ -1,19 +1,3 @@
-// Copyright 2025 Sonic Operations Ltd
-// This file is part of the Sonic Client
-//
-// Sonic is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Lesser General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// Sonic is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU Lesser General Public License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with Sonic. If not, see <http://www.gnu.org/licenses/>.
-
 // Code generated - DO NOT EDIT.
 // This file is a generated binding and any manual changes will be lost.
 
@@ -48,7 +32,7 @@ var (
 // CounterMetaData contains all meta data concerning the Counter contract.
 var CounterMetaData = &bind.MetaData{
 	ABI: "[{\"inputs\":[],\"name\":\"getCount\",\"outputs\":[{\"internalType\":\"int256\",\"name\":\"\",\"type\":\"int256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"incrementCounter\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}]",
-	Bin: "0x60806040525f5f553480156011575f5ffd5b506101578061001f5f395ff3fe608060405234801561000f575f5ffd5b5060043610610034575f3560e01c80635b34b96614610038578063a87d942c14610042575b5f5ffd5b610040610060565b005b61004a61007a565b604051610057919061009a565b60405180910390f35b60015f5f82825461007191906100e0565b92505081905550565b5f5f54905090565b5f819050919050565b61009481610082565b82525050565b5f6020820190506100ad5f83018461008b565b92915050565b7f4e487b71000000000000000000000000000000000000000000000000000000005f52601160045260245ffd5b5f6100ea82610082565b91506100f583610082565b92508282019050828112155f8312168382125f84121516171561011b5761011a6100b3565b5b9291505056fea26469706673582212204ccca5a02d768655ac67a7ea6d0fdd2b8d709a47d085b024971af368723bed4d64736f6c634300081c0033",
+	Bin: "0x60806040525f5f553480156011575f5ffd5b506101578061001f5f395ff3fe608060405234801561000f575f5ffd5b5060043610610034575f3560e01c80635b34b96614610038578063a87d942c14610042575b5f5ffd5b610040610060565b005b61004a61007a565b604051610057919061009a565b60405180910390f35b60015f5f82825461007191906100e0565b92505081905550565b5f5f54905090565b5f819050919050565b61009481610082565b82525050565b5f6020820190506100ad5f83018461008b565b92915050565b7f4e487b71000000000000000000000000000000000000000000000000000000005f52601160045260245ffd5b5f6100ea82610082565b91506100f583610082565b92508282019050828112155f8312168382125f84121516171561011b5761011a6100b3565b5b9291505056fea264697066735822122045102b35e788557662295df6d0dd5ca30f1d9825f85db5ffa07716c6d834904064736f6c634300081e0033",
 }
 
 // CounterABI is the input ABI used to generate the binding from.

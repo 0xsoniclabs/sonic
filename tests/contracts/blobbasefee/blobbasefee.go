@@ -1,19 +1,3 @@
-// Copyright 2025 Sonic Operations Ltd
-// This file is part of the Sonic Client
-//
-// Sonic is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Lesser General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// Sonic is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU Lesser General Public License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with Sonic. If not, see <http://www.gnu.org/licenses/>.
-
 // Code generated - DO NOT EDIT.
 // This file is a generated binding and any manual changes will be lost.
 
@@ -48,7 +32,7 @@ var (
 // BlobbasefeeMetaData contains all meta data concerning the Blobbasefee contract.
 var BlobbasefeeMetaData = &bind.MetaData{
 	ABI: "[{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"fee\",\"type\":\"uint256\"}],\"name\":\"CurrentBlobBaseFee\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"getBlobBaseFee\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"logCurrentBlobBaseFee\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}]",
-	Bin: "0x6080604052348015600e575f5ffd5b5060f78061001b5f395ff3fe6080604052348015600e575f5ffd5b50600436106030575f3560e01c80631f6d6ef7146034578063f7505d4014604e575b5f5ffd5b603a6056565b6040516045919060aa565b60405180910390f35b6054605d565b005b5f4a905090565b7ffb393adc5f0cf6fbe93314b17d3f3345d5d076fa952b76c3b3ef84768f2df5424a604051608a919060aa565b60405180910390a1565b5f819050919050565b60a4816094565b82525050565b5f60208201905060bb5f830184609d565b9291505056fea26469706673582212200e7832ad20e251a217456d6839aba478780bf836f8b4a6c1a793d76d4a4df51364736f6c634300081c0033",
+	Bin: "0x6080604052348015600e575f5ffd5b5060f78061001b5f395ff3fe6080604052348015600e575f5ffd5b50600436106030575f3560e01c80631f6d6ef7146034578063f7505d4014604e575b5f5ffd5b603a6056565b6040516045919060aa565b60405180910390f35b6054605d565b005b5f4a905090565b7ffb393adc5f0cf6fbe93314b17d3f3345d5d076fa952b76c3b3ef84768f2df5424a604051608a919060aa565b60405180910390a1565b5f819050919050565b60a4816094565b82525050565b5f60208201905060bb5f830184609d565b9291505056fea264697066735822122076b435eb3485204ab5049bf65b305a23bcaafd8aa125e5469b336e8371482bb564736f6c634300081e0033",
 }
 
 // BlobbasefeeABI is the input ABI used to generate the binding from.
