@@ -32,7 +32,7 @@ pipeline {
         stage('hello') {
             steps {
                 sh 'fastfetch'
-                sh 'echo $GOMAXPROCS'
+                sh 'nproc'
             }
         }
 
