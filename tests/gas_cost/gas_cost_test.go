@@ -53,15 +53,15 @@ func (tc *TestCase) String() string {
 }
 
 func TestGasCostTest_Sonic(t *testing.T) {
-	t.Parallel()
+	//t.Parallel()()
 
 	t.Run("with distributed proposers", func(t *testing.T) {
-		t.Parallel()
+		//t.Parallel()()
 
 		testGasCosts_Sonic(t, false)
 	})
 	t.Run("with single proposer", func(t *testing.T) {
-		t.Parallel()
+		//t.Parallel()()
 
 		testGasCosts_Sonic(t, true)
 	})
@@ -91,7 +91,7 @@ func testGasCosts_Sonic(t *testing.T, singleProposer bool) {
 	// > )
 
 	t.Run("reject transactions with insufficient gas", func(t *testing.T) {
-		t.Parallel()
+		//t.Parallel()()
 		session := net.SpawnSession(t)
 		for test := range makeGasCostTestInputs(t, session) {
 			t.Run(test.String(), func(t *testing.T) {
@@ -111,7 +111,7 @@ func testGasCosts_Sonic(t *testing.T, singleProposer bool) {
 	})
 
 	t.Run("transactions with exact gas succeed", func(t *testing.T) {
-		t.Parallel()
+		//t.Parallel()()
 		session := net.SpawnSession(t)
 		for test := range makeGasCostTestInputs(t, session) {
 			t.Run(test.String(), func(t *testing.T) {
@@ -132,7 +132,7 @@ func testGasCosts_Sonic(t *testing.T, singleProposer bool) {
 	})
 
 	t.Run("Sonic processor charges 10% of unused gas", func(t *testing.T) {
-		t.Parallel()
+		//t.Parallel()()
 		session := net.SpawnSession(t)
 		for test := range makeGasCostTestInputs(t, session) {
 			t.Run(test.String(), func(t *testing.T) {
@@ -161,15 +161,15 @@ func testGasCosts_Sonic(t *testing.T, singleProposer bool) {
 }
 
 func TestGasCostTest_Allegro(t *testing.T) {
-	t.Parallel()
+	//t.Parallel()()
 
 	t.Run("with distributed proposers", func(t *testing.T) {
-		t.Parallel()
+		//t.Parallel()()
 
 		testGasCosts_Allegro(t, false)
 	})
 	t.Run("with single proposer", func(t *testing.T) {
-		t.Parallel()
+		//t.Parallel()()
 
 		testGasCosts_Allegro(t, true)
 	})
@@ -214,7 +214,7 @@ func testGasCosts_Allegro(t *testing.T, singleProposer bool) {
 	}
 
 	t.Run("reject transactions with insufficient gas", func(t *testing.T) {
-		t.Parallel()
+		//t.Parallel()()
 		session := net.SpawnSession(t)
 		for test := range makeGasCostTestInputs(t, session) {
 			t.Run(test.String(), func(t *testing.T) {
@@ -236,7 +236,7 @@ func testGasCosts_Allegro(t *testing.T, singleProposer bool) {
 	})
 
 	t.Run("transactions with exact gas succeed", func(t *testing.T) {
-		t.Parallel()
+		//t.Parallel()()
 		session := net.SpawnSession(t)
 
 		var corrections int
@@ -265,7 +265,7 @@ func testGasCosts_Allegro(t *testing.T, singleProposer bool) {
 	})
 
 	t.Run("Sonic processor charges 10% of unused gas", func(t *testing.T) {
-		t.Parallel()
+		//t.Parallel()()
 		session := net.SpawnSession(t)
 
 		var floorGreaterThan20Percent int
@@ -476,7 +476,7 @@ func makeGasCostTestInputs(
 }
 
 func TestExcessGasCharges_DisabledInSingleProposerModeInNewAndHistoricRuns(t *testing.T) {
-	t.Parallel()
+	//t.Parallel()()
 
 	require := require.New(t)
 
