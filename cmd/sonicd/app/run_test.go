@@ -133,7 +133,7 @@ func exec(t *testing.T, args ...string) *testcli {
 	}
 
 	// Boot "sonic". This actually runs the test binary but the TestMain
-	// function will prevent any tests from running.
+	// function will prevent any atests from running.
 	tt.Run("sonic-test", args...)
 
 	// Read the generated key

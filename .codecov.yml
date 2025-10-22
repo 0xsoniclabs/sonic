@@ -25,7 +25,7 @@ coverage:
         target: 80% # coverage of the changes
         threshold: 1% # allow the coverage to drop by <threshold>%
 ignore:
-  - "tests/"
+  - "atests/"
   - "**/*_mock.go"
   - "**/*_test.go"
   - "**/*_abigen.go"

@@ -838,7 +838,7 @@ func isPermissible(
 }
 
 // metricCounter is an abstraction of the *metrics.Meter type to facilitate
-// mocking in tests.
+// mocking in atests.
 type metricCounter interface {
 	Mark(int64)
 }

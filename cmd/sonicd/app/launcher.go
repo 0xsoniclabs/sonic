@@ -182,7 +182,7 @@ func initFlags() {
 }
 
 // initFilterAndFlags initializes the discovery filter and the application flags
-// exactly once, in a thread-safe manner. Since in integration tests multiple
+// exactly once, in a thread-safe manner. Since in integration atests multiple
 // node instances may be created in parallel, this function is used to ensure
 // that the flag initialization is done only once, in a thread-safe manner.
 var initFilterAndFlags = sync.OnceFunc(func() {

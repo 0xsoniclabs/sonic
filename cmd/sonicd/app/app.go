@@ -57,7 +57,7 @@ func RunWithArgs(
 
 	// If present, take ownership and inject the control struct into the action.
 	if control != nil {
-		// Disable txPool validation, only to be used in tests.
+		// Disable txPool validation, only to be used in atests.
 		app.Flags = append(app.Flags, &flags.TEST_ONLY_DisableTransactionPoolValidation)
 		if control.NodeIdAnnouncement != nil {
 			defer close(control.NodeIdAnnouncement)

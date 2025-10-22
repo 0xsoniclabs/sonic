@@ -77,7 +77,7 @@ func DefaultConfig(scale cachescale.Func) IndexConfig {
 	}
 }
 
-// LiteConfig returns default index config for tests
+// LiteConfig returns default index config for atests
 func LiteConfig() IndexConfig {
 	return IndexConfig{
 		Fc: vecfc.LiteConfig(),

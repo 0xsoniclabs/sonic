@@ -48,7 +48,7 @@ func DefaultConfig() Config {
 	}
 }
 
-// LiteConfig returns default leecher config for tests
+// LiteConfig returns default leecher config for atests
 func LiteConfig() Config {
 	cfg := DefaultConfig()
 	cfg.Session.DefaultChunkItemsSize /= 10

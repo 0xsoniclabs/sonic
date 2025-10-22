@@ -60,7 +60,7 @@ type NetworkRules struct {
 	gasSubsidies bool // Indicator whether gas subsidies are active.
 }
 
-// Signer wraps types.Signer to allow mocking it in tests.
+// Signer wraps types.Signer to allow mocking it in atests.
 type Signer interface {
 	types.Signer
 }

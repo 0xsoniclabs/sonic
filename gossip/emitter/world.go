@@ -62,7 +62,7 @@ type (
 	}
 
 	// TxSigner is a re-export of the types.Signer interface to allow
-	// mocking it in tests.
+	// mocking it in atests.
 	TxSigner interface {
 		types.Signer
 	}

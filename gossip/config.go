@@ -298,7 +298,7 @@ func DefaultStoreConfig(scale cachescale.Func) StoreConfig {
 	}
 }
 
-// MemTestStoreConfig is for tests or inmemory.
+// MemTestStoreConfig is for atests or inmemory.
 func MemTestStoreConfig(tmpDir string) StoreConfig {
 	cfg := DefaultStoreConfig(cachescale.Ratio{Base: 10, Target: 1})
 	cfg.EVM.StateDb.Directory = filepath.Join(tmpDir, "carmen")

@@ -105,7 +105,7 @@ func (tt *TestCmd) Expect(tplsource string) {
 	if err := tpl.Execute(wantbuf, tt.Data); err != nil {
 		panic(err)
 	}
-	// Trim exactly one newline at the beginning. This makes tests look
+	// Trim exactly one newline at the beginning. This makes atests look
 	// much nicer because all expect strings are at column 0.
 	want := bytes.TrimPrefix(wantbuf.Bytes(), []byte("\n"))
 	if err := tt.matchExactOutput(want); err != nil {

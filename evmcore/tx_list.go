@@ -139,7 +139,7 @@ func (m *txSortedMap) filter(filter func(*types.Transaction) bool) types.Transac
 	return removed
 }
 
-// Contains tests whether any transaction in the map satisfies the given predicate.
+// Contains atests whether any transaction in the map satisfies the given predicate.
 func (m *txSortedMap) containsFunc(predicate func(*types.Transaction) bool) bool {
 	for _, tx := range m.items {
 		if predicate(tx) {

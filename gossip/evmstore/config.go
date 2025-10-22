@@ -72,7 +72,7 @@ func DefaultStoreConfig(scale cachescale.Func) StoreConfig {
 	}
 }
 
-// LiteStoreConfig is for tests or inmemory.
+// LiteStoreConfig is for atests or inmemory.
 func LiteStoreConfig() StoreConfig {
 	return DefaultStoreConfig(cachescale.Ratio{Base: 10, Target: 1})
 }
