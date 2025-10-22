@@ -37,7 +37,7 @@ var sonicVmConfig = func() vm.Config {
 
 	// For tracing, Geth's EVM is used.
 	gethFactory := func(evm *vm.EVM) vm.Interpreter {
-		return vm.NewEVMInterpreter(evm)
+		return vm.NewEvmInterpreter(evm)
 	}
 
 	return vm.Config{

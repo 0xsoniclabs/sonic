@@ -34,6 +34,7 @@ import (
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/ethereum/go-ethereum/common"
 
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -118,7 +119,7 @@ func (t testTxPoolStateDb) GetCodeHash(addr common.Address) common.Hash {
 	return hash
 }
 
-func (t testTxPoolStateDb) SetCode(addr common.Address, code []byte) []byte {
+func (t testTxPoolStateDb) SetCode(addr common.Address, code []byte, _ tracing.CodeChangeReason) []byte {
 	if len(code) == 0 {
 		delete(t.codeHashes, addr)
 	} else {
@@ -652,8 +653,8 @@ func TestSetCodeTransactions(t *testing.T) {
 			pending: 1,
 			test: func(t *testing.T, pool *TxPool) {
 				aa := common.Address{0xaa, 0xaa}
-				db.SetCode(addrA, append(types.DelegationPrefix, aa.Bytes()...))
-				db.SetCode(aa, []byte{byte(vm.ADDRESS), byte(vm.PUSH0), byte(vm.SSTORE)})
+				db.SetCode(addrA, append(types.DelegationPrefix, aa.Bytes()...), tracing.CodeChangeUnspecified)
+				db.SetCode(aa, []byte{byte(vm.ADDRESS), byte(vm.PUSH0), byte(vm.SSTORE)}, tracing.CodeChangeUnspecified)
 
 				// Send gapped transaction, it should be rejected.
 				if err := pool.addRemoteSync(pricedTransaction(2, 100000, big.NewInt(1), keyA)); !errors.Is(err, ErrOutOfOrderTxFromDelegated) {
@@ -677,7 +678,7 @@ func TestSetCodeTransactions(t *testing.T) {
 				}
 
 				// Reset the delegation, avoid leaking state into the other tests
-				db.SetCode(addrA, nil)
+				db.SetCode(addrA, nil, tracing.CodeChangeUnspecified)
 			},
 		},
 		"only one transaction from delegating account in flight": {

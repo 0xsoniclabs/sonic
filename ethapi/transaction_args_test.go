@@ -209,8 +209,8 @@ func TestTransactionArgs_ToMessage_TrivialFieldsAreCopied(t *testing.T) {
 		},
 
 		// Hardcoded values
-		SkipNonceChecks:  true,
-		SkipFromEOACheck: true,
+		SkipNonceChecks:       true,
+		SkipTransactionChecks: true,
 	}, *msg)
 }
 
@@ -233,8 +233,8 @@ func TestTransactionArgs_ToMessage_GasPriceFollowsEIP1559Rules(t *testing.T) {
 				GasTipCap: big.NewInt(0),
 
 				// Hardcoded values
-				SkipNonceChecks:  true,
-				SkipFromEOACheck: true,
+				SkipNonceChecks:       true,
+				SkipTransactionChecks: true,
 			},
 		},
 		"zero initialized and basefee uses eip1559 rules": {
@@ -248,8 +248,8 @@ func TestTransactionArgs_ToMessage_GasPriceFollowsEIP1559Rules(t *testing.T) {
 				GasTipCap: big.NewInt(0),
 
 				// Hardcoded values
-				SkipNonceChecks:  true,
-				SkipFromEOACheck: true,
+				SkipNonceChecks:       true,
+				SkipTransactionChecks: true,
 			},
 			baseFee: big.NewInt(77),
 		},
@@ -265,8 +265,8 @@ func TestTransactionArgs_ToMessage_GasPriceFollowsEIP1559Rules(t *testing.T) {
 				GasFeeCap: big.NewInt(10000000),
 				GasTipCap: big.NewInt(10000000),
 				// Hardcoded values
-				SkipNonceChecks:  true,
-				SkipFromEOACheck: true,
+				SkipNonceChecks:       true,
+				SkipTransactionChecks: true,
 			},
 			baseFee: big.NewInt(77),
 		},
@@ -282,8 +282,8 @@ func TestTransactionArgs_ToMessage_GasPriceFollowsEIP1559Rules(t *testing.T) {
 				GasFeeCap: big.NewInt(10000000),
 				GasTipCap: big.NewInt(10000000),
 				// Hardcoded values
-				SkipNonceChecks:  true,
-				SkipFromEOACheck: true,
+				SkipNonceChecks:       true,
+				SkipTransactionChecks: true,
 			},
 		},
 		"maxFeePerGas and no basefee uses pre-eip1559 rules": {
@@ -299,8 +299,8 @@ func TestTransactionArgs_ToMessage_GasPriceFollowsEIP1559Rules(t *testing.T) {
 				GasTipCap: big.NewInt(0),
 
 				// Hardcoded values
-				SkipNonceChecks:  true,
-				SkipFromEOACheck: true,
+				SkipNonceChecks:       true,
+				SkipTransactionChecks: true,
 			},
 		},
 		"maxFeePerGas and basefee uses eip1559 rules": {
@@ -316,8 +316,8 @@ func TestTransactionArgs_ToMessage_GasPriceFollowsEIP1559Rules(t *testing.T) {
 				GasTipCap: big.NewInt(0),
 
 				// Hardcoded values
-				SkipNonceChecks:  true,
-				SkipFromEOACheck: true,
+				SkipNonceChecks:       true,
+				SkipTransactionChecks: true,
 			},
 			baseFee: big.NewInt(77),
 		},
@@ -334,8 +334,8 @@ func TestTransactionArgs_ToMessage_GasPriceFollowsEIP1559Rules(t *testing.T) {
 				GasTipCap: big.NewInt(0),
 
 				// Hardcoded values
-				SkipNonceChecks:  true,
-				SkipFromEOACheck: true,
+				SkipNonceChecks:       true,
+				SkipTransactionChecks: true,
 			},
 		},
 		"maxPriorityFeePerGas and basefee uses eip1559 rules": {
@@ -351,8 +351,8 @@ func TestTransactionArgs_ToMessage_GasPriceFollowsEIP1559Rules(t *testing.T) {
 				GasTipCap: big.NewInt(1234),
 
 				// Hardcoded values
-				SkipNonceChecks:  true,
-				SkipFromEOACheck: true,
+				SkipNonceChecks:       true,
+				SkipTransactionChecks: true,
 			},
 			baseFee: big.NewInt(77),
 		},
@@ -370,8 +370,8 @@ func TestTransactionArgs_ToMessage_GasPriceFollowsEIP1559Rules(t *testing.T) {
 				GasTipCap: big.NewInt(0),
 
 				// Hardcoded values
-				SkipNonceChecks:  true,
-				SkipFromEOACheck: true,
+				SkipNonceChecks:       true,
+				SkipTransactionChecks: true,
 			},
 		},
 		"maxFeePerGas, maxPriorityFeePerGas and basefee uses eip1559 rules": {
@@ -388,8 +388,8 @@ func TestTransactionArgs_ToMessage_GasPriceFollowsEIP1559Rules(t *testing.T) {
 				GasTipCap: big.NewInt(5678),
 
 				// Hardcoded values
-				SkipNonceChecks:  true,
-				SkipFromEOACheck: true,
+				SkipNonceChecks:       true,
+				SkipTransactionChecks: true,
 			},
 			baseFee: big.NewInt(77),
 		},

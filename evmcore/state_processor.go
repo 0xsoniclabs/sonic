@@ -575,20 +575,20 @@ func TxAsMessage(tx *types.Transaction, signer types.Signer, baseFee *big.Int) (
 		return core.TransactionToMessage(tx, signer, baseFee)
 	} else {
 		return &core.Message{ // internal tx - no signature checking
-			From:             internaltx.InternalSender(tx),
-			To:               tx.To(),
-			Nonce:            tx.Nonce(),
-			Value:            tx.Value(),
-			GasLimit:         tx.Gas(),
-			GasPrice:         tx.GasPrice(),
-			GasFeeCap:        tx.GasFeeCap(),
-			GasTipCap:        tx.GasTipCap(),
-			Data:             tx.Data(),
-			AccessList:       tx.AccessList(),
-			BlobGasFeeCap:    tx.BlobGasFeeCap(),
-			BlobHashes:       tx.BlobHashes(),
-			SkipNonceChecks:  true, // don't check sender nonce and being EOA
-			SkipFromEOACheck: true,
+			From:                  internaltx.InternalSender(tx),
+			To:                    tx.To(),
+			Nonce:                 tx.Nonce(),
+			Value:                 tx.Value(),
+			GasLimit:              tx.Gas(),
+			GasPrice:              tx.GasPrice(),
+			GasFeeCap:             tx.GasFeeCap(),
+			GasTipCap:             tx.GasTipCap(),
+			Data:                  tx.Data(),
+			AccessList:            tx.AccessList(),
+			BlobGasFeeCap:         tx.BlobGasFeeCap(),
+			BlobHashes:            tx.BlobHashes(),
+			SkipNonceChecks:       true, // don't check sender nonce and being EOA
+			SkipTransactionChecks: true,
 		}, nil
 	}
 }

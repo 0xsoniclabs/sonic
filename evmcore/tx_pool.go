@@ -601,13 +601,15 @@ func (pool *TxPool) Pending(enforceTips bool) (map[common.Address]types.Transact
 	defer pool.mu.Unlock()
 
 	pending := make(map[common.Address]types.Transactions)
+	minTip := utils.BigIntToUint256Clamped(pool.minTip)
+	baseFee := utils.BigIntToUint256Clamped(pool.priced.urgent.baseFee)
 	for addr, list := range pool.pending {
 		txs := list.Flatten()
 
 		// If the miner requests tip enforcement, cap the lists now
 		if enforceTips && !pool.locals.contains(addr) {
 			for i, tx := range txs {
-				if tx.EffectiveGasTipIntCmp(pool.minTip, pool.priced.urgent.baseFee) < 0 && !subsidies.IsSponsorshipRequest(tx) {
+				if tx.EffectiveGasTipIntCmp(minTip, baseFee) < 0 && !subsidies.IsSponsorshipRequest(tx) {
 					txs = txs[:i]
 					break
 				}

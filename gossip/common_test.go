@@ -573,17 +573,17 @@ func (env *testEnv) SubscribeFilterLogs(ctx context.Context, query ethereum.Filt
 // CallMsgToMessage converts the given CallMsg to an evmcore.Message to allow passing it as a transaction simulator.
 func CallMsgToMessage(msg ethereum.CallMsg) *core.Message {
 	return &core.Message{
-		From:             msg.From,
-		To:               msg.To,
-		GasPrice:         msg.GasPrice,
-		GasTipCap:        msg.GasTipCap,
-		GasFeeCap:        msg.GasFeeCap,
-		GasLimit:         msg.Gas,
-		Value:            msg.Value,
-		Nonce:            0,
-		SkipNonceChecks:  true,
-		SkipFromEOACheck: true,
-		Data:             msg.Data,
-		AccessList:       msg.AccessList,
+		From:                  msg.From,
+		To:                    msg.To,
+		GasPrice:              msg.GasPrice,
+		GasTipCap:             msg.GasTipCap,
+		GasFeeCap:             msg.GasFeeCap,
+		GasLimit:              msg.Gas,
+		Value:                 msg.Value,
+		Nonce:                 0,
+		SkipNonceChecks:       true,
+		SkipTransactionChecks: true,
+		Data:                  msg.Data,
+		AccessList:            msg.AccessList,
 	}
 }

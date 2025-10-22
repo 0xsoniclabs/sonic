@@ -235,7 +235,7 @@ func (c *CarmenStateDB) SetNonce(addr common.Address, nonce uint64, _ tracing.No
 	c.db.SetNonce(cc.Address(addr), nonce)
 }
 
-func (c *CarmenStateDB) SetCode(addr common.Address, code []byte) []byte {
+func (c *CarmenStateDB) SetCode(addr common.Address, code []byte, _ tracing.CodeChangeReason) []byte {
 	old := bytes.Clone(c.db.GetCode(cc.Address(addr)))
 	c.db.SetCode(cc.Address(addr), code)
 	return old
