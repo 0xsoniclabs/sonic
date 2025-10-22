@@ -33,6 +33,7 @@ pipeline {
             steps {
                 sh 'fastfetch'
                 sh 'nproc'
+                sh 'go run ./cmd/debugCI/main.go'
             }
         }
 
