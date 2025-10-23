@@ -33,6 +33,23 @@ func BigIntToUint256(value *big.Int) *uint256.Int {
 	return new(uint256.Int).SetBytes(bytes)
 }
 
+// BigIntToUint256Clamped converts a big.Int to a uint256.Int. If the value is
+// negative, zero is returned. If the value is too large to fit
+// into a uint256.Int, the maximum uint256.Int value is returned.
+func BigIntToUint256Clamped(value *big.Int) *uint256.Int {
+	if value == nil {
+		return nil
+	}
+	if value.Sign() <= 0 {
+		return uint256.NewInt(0)
+	}
+	res, overflow := uint256.FromBig(value)
+	if overflow {
+		res.SetAllOne()
+	}
+	return res
+}
+
 func Uint256ToBigInt(value *uint256.Int) *big.Int {
 	return new(big.Int).SetBytes(value.Bytes())
 }

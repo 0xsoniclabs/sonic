@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
+	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 )
@@ -485,7 +486,7 @@ func (h *priceHeap) Less(i, j int) bool {
 func (h *priceHeap) cmp(a, b *types.Transaction) int {
 	if h.baseFee != nil {
 		// Compare effective tips if baseFee is specified
-		if c := a.EffectiveGasTipCmp(b, h.baseFee); c != 0 {
+		if c := a.EffectiveGasTipCmp(b, utils.BigIntToUint256Clamped(h.baseFee)); c != 0 {
 			return c
 		}
 	}

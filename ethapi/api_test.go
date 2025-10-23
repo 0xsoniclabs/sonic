@@ -556,7 +556,7 @@ func runEstimateGasOverrideTest(t *testing.T, test stateOverrideEstimateGasTest)
 	mockBackend.EXPECT().GetPoolNonce(any, any).Return(uint64(0), nil).AnyTimes()
 
 	mockState.EXPECT().GetBalance(any).Return(uint256.NewInt(12345678901234567890)).AnyTimes()
-	mockState.EXPECT().SetCode(any, any).AnyTimes()
+	mockState.EXPECT().SetCode(any, any, any).AnyTimes()
 	mockState.EXPECT().SetBalance(any, any).AnyTimes()
 	mockState.EXPECT().SetStorage(any, any).AnyTimes()
 	mockState.EXPECT().SetState(any, any, any).AnyTimes()
@@ -1299,7 +1299,19 @@ func (fcc *FakeChainContext) Engine() consensus.Engine {
 	return nil
 }
 
+func (fcc *FakeChainContext) CurrentHeader() *types.Header {
+	return fcc.header
+}
+
 func (fcc *FakeChainContext) GetHeader(common.Hash, uint64) *types.Header {
+	return fcc.header
+}
+
+func (fcc *FakeChainContext) GetHeaderByNumber(uint64) *types.Header {
+	return fcc.header
+}
+
+func (fcc *FakeChainContext) GetHeaderByHash(common.Hash) *types.Header {
 	return fcc.header
 }
 
