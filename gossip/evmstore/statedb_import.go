@@ -26,6 +26,7 @@ import (
 
 	cc "github.com/0xsoniclabs/carmen/go/common"
 	"github.com/0xsoniclabs/carmen/go/common/amount"
+	"github.com/0xsoniclabs/carmen/go/database/mpt"
 	mptio "github.com/0xsoniclabs/carmen/go/database/mpt/io"
 	carmen "github.com/0xsoniclabs/carmen/go/state"
 	"github.com/0xsoniclabs/sonic/opera/genesis"
@@ -69,7 +70,12 @@ func (s *Store) ImportArchiveWorldState(archiveReader io.Reader) error {
 		if err := os.MkdirAll(archiveDir, 0700); err != nil {
 			return fmt.Errorf("failed to create carmen archive dir during FWS import; %v", err)
 		}
-		if err := mptio.ImportArchive(mptio.NewLog(), archiveDir, archiveReader); err != nil {
+		if err := mptio.ImportArchiveWithConfig(
+			mptio.NewLog(),
+			archiveDir, archiveReader,
+			mpt.NodeCacheConfig{Capacity: s.cfg.Cache.StateDbCapacity},
+			mpt.ArchiveConfig{},
+		); err != nil {
 			return fmt.Errorf("failed to initialize Archive; %v", err)
 		}
 		return nil
@@ -110,7 +116,14 @@ func (s *Store) ExportLiveWorldState(ctx context.Context, out io.Writer) error {
 // The Store must be closed during the call.
 func (s *Store) ExportArchiveWorldState(ctx context.Context, out io.Writer) error {
 	archiveDir := filepath.Join(s.parameters.Directory, "archive")
-	if err := mptio.ExportArchive(ctx, mptio.NewLog(), archiveDir, out); err != nil {
+	if err := mptio.ExportArchiveWithConfig(
+		ctx,
+		mptio.NewLog(),
+		archiveDir,
+		out,
+		mpt.NodeCacheConfig{Capacity: s.cfg.Cache.StateDbCapacity},
+		mpt.ArchiveConfig{},
+	); err != nil {
 		return fmt.Errorf("failed to export Archive StateDB; %v", err)
 	}
 	return nil
