@@ -38,6 +38,7 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 
 	"github.com/0xsoniclabs/sonic/gossip/emitter/originatedtxs"
+	"github.com/0xsoniclabs/sonic/gossip/emitter/throttling"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice/gaspricelimits"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/logger"
@@ -270,17 +271,22 @@ func (em *Emitter) getSortedTxs(baseFee *big.Int) *transactionsByPriceAndNonce {
 		return em.cache.sortedTxs.Copy()
 	}
 	// Build the cache
+
+	// Fetch pending Txs from any sender
 	pendingTxs, err := em.world.TxPool.Pending(true)
 	if err != nil {
 		em.Log.Error("Tx pool transactions fetching error", "err", err)
 		return nil
 	}
+
+	// Limit number of transactions per sender
 	for from, txs := range pendingTxs {
 		// Filter the excessive transactions from each sender
 		if len(txs) > em.config.MaxTxsPerAddress {
 			pendingTxs[from] = txs[:em.config.MaxTxsPerAddress]
 		}
 	}
+
 	// Convert to lists of LazyTransactions
 	txs := make(map[common.Address][]*txpool.LazyTransaction, len(pendingTxs))
 	for from, list := range pendingTxs {
@@ -334,6 +340,15 @@ func (em *Emitter) EmitEvent() (*inter.EventPayload, error) {
 	if e == nil || err != nil {
 		return nil, err
 	}
+
+	// suppress event if it has no transactions and this validator is not in dominant set
+	// TODO: add a heartbeat event from time to time: find location where non-emitting validators
+	// tracked and indetify a valid fallback frequency. This would prevent this validator from being
+	// considered offline by others or flagged as a cheater
+	if e.Transactions().Len() == 0 && em.suppressIfNotDominant() {
+		return nil, nil
+	}
+
 	em.syncStatus.prevLocalEmittedID = e.ID()
 
 	err = em.world.Process(e)
@@ -356,6 +371,33 @@ func (em *Emitter) EmitEvent() (*inter.EventPayload, error) {
 	em.prevEmittedAtBlock = em.world.GetLatestBlockIndex()
 
 	return e, nil
+}
+
+func (em *Emitter) suppressIfNotDominant() bool {
+
+	validators := em.validators.Load()
+
+	stakes := make([]throttling.ValidatorStake, 0, validators.Len())
+	var totalStake uint64
+	for _, id := range validators.IDs() {
+		stake := validators.Get(id)
+		stakes = append(stakes, throttling.ValidatorStake{
+			Id:    id,
+			Stake: stake,
+		})
+		totalStake += uint64(stake)
+	}
+
+	// TODO: how do we configure the threshold? we cannot change the rules atm
+	thresshold := uint64(float64(totalStake) * 0.75)
+
+	dominantSet, dominated := throttling.ComputeDominantSet(stakes, thresshold)
+	if !dominated {
+		return false
+	}
+
+	_, isInDominantSet := dominantSet[em.config.Validator.ID]
+	return !isInDominantSet
 }
 
 func (em *Emitter) loadPrevEmitTime() time.Time {
