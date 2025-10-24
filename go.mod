@@ -44,6 +44,7 @@ require (
 	go.uber.org/mock v0.4.0
 	golang.org/x/exp v0.0.0-20241204233417-43b7b7cde48d
 	golang.org/x/sys v0.36.0
+	gonum.org/v1/gonum v0.16.0
 	google.golang.org/protobuf v1.34.2
 	gopkg.in/urfave/cli.v1 v1.20.0
 )

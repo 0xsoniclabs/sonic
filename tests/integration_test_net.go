@@ -385,27 +385,20 @@ func startIntegrationTestNet(
 	}
 
 	// start the integration test nodes
-	var wg sync.WaitGroup
-	wg.Add(len(net.nodes))
 	for i := range net.nodes {
+		net.nodes[i].directory = filepath.Join(directory, fmt.Sprintf("node%d", i))
 
-		go func() {
-			defer wg.Done()
-			net.nodes[i].directory = filepath.Join(directory, fmt.Sprintf("node%d", i))
-
-			// initialize the data directory for the single node on the test network
-			// using the configuration arguments provided by the caller
-			args := append([]string{
-				"sonictool",
-				"--datadir", net.nodes[i].getStateDir(),
-				"--statedb.livecache", "1",
-				"--statedb.archivecache", "1",
-				"--statedb.cache", "1024",
-			}, sonicToolArguments...)
-			require.NoError(t, sonictool.RunWithArgs(args), "failed to initialize the test network")
-		}()
+		// initialize the data directory for the single node on the test network
+		// using the configuration arguments provided by the caller
+		args := append([]string{
+			"sonictool",
+			"--datadir", net.nodes[i].getStateDir(),
+			"--statedb.livecache", "1",
+			"--statedb.archivecache", "1",
+			"--statedb.cache", "1024",
+		}, sonicToolArguments...)
+		require.NoError(t, sonictool.RunWithArgs(args), "failed to initialize the test network")
 	}
-	wg.Wait()
 
 	require.NoError(t, net.start(), "failed to start the integration test network")
 
