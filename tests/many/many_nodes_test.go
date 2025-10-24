@@ -4,7 +4,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/stretchr/testify/require"
@@ -33,8 +32,8 @@ func TestManyNodes(t *testing.T) {
 	_ = validatorsStake
 
 	tests.StartIntegrationTestNetWithJsonGenesis(t, tests.IntegrationTestNetOptions{
-		// ValidatorsStake: validatorsStake,
-		ValidatorsStake: makefakegenesis.CreateEqualValidatorStake(35),
+		ValidatorsStake: validatorsStake,
+		// ValidatorsStake: makefakegenesis.CreateEqualValidatorStake(35),
 	})
 
 	// stop := make(chan struct{})
