@@ -18,6 +18,7 @@ package tests
 
 import (
 	"math/big"
+	"slices"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/opera"
@@ -231,4 +232,65 @@ func doTestEstimate(
 				"Gas used shall be less than or equal to gas estimation")
 		})
 	}
+}
+
+func TestEstimateGas_Brio_ConsidersMaxGasCap(t *testing.T) {
+
+	net := StartIntegrationTestNet(t,
+		IntegrationTestNetOptions{
+			Upgrades: AsPointer(opera.GetBrioUpgrades()),
+		})
+
+	var rules struct {
+		Economy struct {
+			Gas struct {
+				MaxEventGas int64
+			}
+		}
+	}
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	err = client.Client().Call(&rules, "eth_getRules", "latest")
+	require.NoError(t, err)
+
+	originalCap := rules.Economy.Gas.MaxEventGas
+	bigData := slices.Repeat([]byte{0xFF}, int(MAX_INIT_CODE_SIZE)-1)
+	// make a transaction that would exceed the max gas cap
+	txData := &types.LegacyTx{
+		To:   &common.Address{0x42},
+		Data: bigData,
+		Gas:  uint64(originalCap + 1),
+	}
+	tx := types.NewTx(txData)
+
+	estimatedGas, err := client.EstimateGas(t.Context(),
+		ethereum.CallMsg{
+			From: net.GetSessionSponsor().Address(),
+			To:   tx.To(),
+			Data: tx.Data(),
+			Gas:  uint64(originalCap + 1),
+		})
+	require.NoError(t, err, "unexpected error during gas estimation")
+	require.Greater(t, uint64(originalCap), estimatedGas, "estimated gas should be below max gas cap")
+
+	// + 30_000 to account for event gas.
+	rules.Economy.Gas.MaxEventGas = int64(opera.UpperBoundForRuleChangeGasCosts() + 30_000)
+	UpdateNetworkRules(t, net, rules)
+	AdvanceEpochAndWaitForBlocks(t, net)
+
+	err = client.Client().Call(&rules, "eth_getRules", "latest")
+	require.NoError(t, err)
+	require.Greater(t, originalCap, rules.Economy.Gas.MaxEventGas, "MaxEventGas should be updated")
+
+	_, err = client.EstimateGas(t.Context(),
+		ethereum.CallMsg{
+			From: net.GetSessionSponsor().Address(),
+			To:   tx.To(),
+			Data: tx.Data(),
+			Gas:  estimatedGas,
+		})
+	require.ErrorContains(t, err, "gas required exceeds allowance")
 }
