@@ -17,10 +17,14 @@
 package tests
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"os"
+	"runtime"
 	"testing"
+	"time"
 
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
@@ -31,6 +35,12 @@ import (
 // for each test, we keep a map of active networks keyed by the hash of their
 // Upgrade.
 var activeTestNetInstances map[common.Hash]*IntegrationTestNet
+
+func init() {
+	// Disable logging for tests by default
+	ctx := context.Background()
+	trackGoroutines(ctx)
+}
 
 // TestMain is a functionality offered by the testing package that allows
 // us to run some code before and after all tests in the package.
@@ -95,4 +105,40 @@ func hashUpgrades(upgrades opera.Upgrades) common.Hash {
 	// random write does not return error
 	_, _ = hash.Write(jsonData)
 	return common.BytesToHash(hash.Sum(nil))
+}
+
+// trackGoroutines is a helper function that can be used to track goroutine
+// it should print the number of goroutines at the start and end of each test
+// in order to help detect goroutine leaks.
+func trackGoroutines(ctx context.Context) {
+	fmt.Println("-- Ticker started for goroutine tracking")
+	// buffer := bytes.NewBuffer(nil)
+	lastKnown := runtime.NumGoroutine()
+	highest := lastKnown
+
+	go func() {
+		measure := time.NewTicker(100 * time.Millisecond)
+		defer measure.Stop()
+		printer := time.NewTicker(20 * time.Second)
+		defer printer.Stop()
+
+		for {
+			select {
+
+			case <-measure.C:
+				newActive := runtime.NumGoroutine()
+				if newActive != lastKnown {
+					lastKnown = newActive
+				}
+				if newActive > highest {
+					highest = newActive
+				}
+			case <-printer.C:
+				fmt.Printf(" -------- highest: %v - current %v at %v\n", highest, lastKnown, time.Now())
+
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
 }
