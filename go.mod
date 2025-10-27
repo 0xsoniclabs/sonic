@@ -16,7 +16,7 @@
 
 module github.com/0xsoniclabs/sonic
 
-go 1.24.0
+go 1.25.0
 
 require (
 	github.com/0xsoniclabs/carmen/go v0.0.0-20251024091706-e1c5a32d4310
