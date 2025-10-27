@@ -317,10 +317,6 @@ func (e evm) _runTransaction(
 	}
 
 	e.Config.NoBaseFee = !checkBaseFee
-	// internal transactions shall can safely skip transaction checks
-	if ctxt.upgrades.Brio && internaltx.IsInternal(tx) {
-		msg.SkipTransactionChecks = true
-	}
 
 	ctxt.statedb.SetTxContext(tx.Hash(), txIndex)
 	receipt, _, err := applyTransaction(
