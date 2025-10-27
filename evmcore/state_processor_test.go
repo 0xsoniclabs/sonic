@@ -28,6 +28,7 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/sfc"
+	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/tracing"
@@ -1321,6 +1322,151 @@ func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSucc
 		processedTransactions[0].Receipt.GasUsed+processedTransactions[1].Receipt.GasUsed,
 		*usedGas,
 	)
+}
+
+func TestRunTransaction_InternalTransactions_SkipsTransactionChecksTrue(t *testing.T) {
+
+	maxTxGas := uint64(1_500_000)
+
+	// -- setup --
+	ctrl := gomock.NewController(t)
+	state := state.NewMockStateDB(ctrl)
+	any := gomock.Any()
+	state.EXPECT().SetTxContext(any, any)
+	state.EXPECT().GetBalance(any).Return(uint256.NewInt(math.MaxInt64))
+	state.EXPECT().EndTransaction()
+	state.EXPECT().SubBalance(any, any, any)
+	state.EXPECT().Prepare(any, any, any, any, any, any)
+	state.EXPECT().GetNonce(any).Return(uint64(0))
+	state.EXPECT().SetNonce(any, any, any)
+	state.EXPECT().GetCode(any).Return([]byte{}).Times(2)
+	state.EXPECT().Snapshot().Return(1)
+	state.EXPECT().Exist(any).Return(true)
+	state.EXPECT().GetRefund().Return(uint64(0)).Times(2)
+	state.EXPECT().AddBalance(any, any, any)
+	state.EXPECT().GetLogs(any, any)
+	state.EXPECT().TxIndex().Return(0)
+
+	rules := opera.FakeNetRules(opera.GetBrioUpgrades())
+	vmConfig := opera.GetVmConfig(rules)
+	updateHeights := []opera.UpgradeHeight{
+		{Upgrades: rules.Upgrades, Height: 0, Time: 0},
+	}
+	chainConfig := opera.CreateTransientEvmChainConfig(
+		rules.NetworkID,
+		updateHeights,
+		1,
+	)
+	baseFee := big.NewInt(1)
+	blockContext := vm.BlockContext{
+		BlockNumber: big.NewInt(123),
+		BaseFee:     baseFee,
+		Transfer: func(_ vm.StateDB, _ common.Address, _ common.Address, amount *uint256.Int) {
+			// do nothing
+		},
+		CanTransfer: func(_ vm.StateDB, _ common.Address, amount *uint256.Int) bool {
+			return true
+		},
+		Random: &common.Hash{}, // < signals Revision >= Merge
+	}
+
+	vm := vm.NewEVM(blockContext, state, chainConfig, vmConfig)
+	runner := &transactionRunner{evm{vm}}
+	// enough max gas per block to accommodate for the internal transaction.
+	gasPool := new(core.GasPool).AddGas(maxTxGas * 3)
+	usedGas := new(uint64)
+	context := &runContext{
+		signer:   types.LatestSignerForChainID(nil),
+		baseFee:  baseFee,
+		statedb:  state,
+		gasPool:  gasPool,
+		usedGas:  usedGas,
+		runner:   runner,
+		upgrades: opera.Upgrades{Brio: true},
+	}
+
+	// -- end of setup --
+
+	rules.Economy.Gas.MaxEventGas = maxTxGas
+	unsignedTx := types.NewTx(&types.LegacyTx{
+		Nonce: 0, To: &common.Address{1}, Gas: maxTxGas * 2, GasPrice: big.NewInt(1),
+	})
+	require.True(t, internaltx.IsInternal(unsignedTx))
+
+	// run an internal transaction with gas over the max tx gas limit.
+	got := runner.runRegularTransaction(context, unsignedTx, 0)
+
+	require.Equal(t, unsignedTx, got.Transaction)
+	require.NotNil(t, got.Receipt)
+	require.Equal(t, types.ReceiptStatusSuccessful, got.Receipt.Status)
+}
+
+func TestRunTransaction_RegularTransaction_IsRejectedForTooHighGas(t *testing.T) {
+
+	maxTxGas := uint64(1_500_000)
+	rules := opera.FakeNetRules(opera.GetBrioUpgrades())
+	rules.Economy.Gas.MaxEventGas = maxTxGas
+
+	// -- setup --
+	ctrl := gomock.NewController(t)
+	state := state.NewMockStateDB(ctrl)
+	any := gomock.Any()
+	state.EXPECT().SetTxContext(any, any)
+	state.EXPECT().EndTransaction()
+	state.EXPECT().GetNonce(any).Return(uint64(0)).Times(1)
+
+	vmConfig := opera.GetVmConfig(rules)
+	updateHeights := []opera.UpgradeHeight{
+		{Upgrades: rules.Upgrades, Height: 0, Time: 0},
+	}
+	chainConfig := opera.CreateTransientEvmChainConfig(
+		rules.NetworkID,
+		updateHeights,
+		1,
+	)
+	baseFee := big.NewInt(1)
+	blockContext := vm.BlockContext{
+		BlockNumber: big.NewInt(123),
+		BaseFee:     baseFee,
+		Transfer: func(_ vm.StateDB, _ common.Address, _ common.Address, amount *uint256.Int) {
+			// do nothing
+		},
+		CanTransfer: func(_ vm.StateDB, _ common.Address, amount *uint256.Int) bool {
+			return true
+		},
+		Random: &common.Hash{}, // < signals Revision >= Merge
+	}
+
+	vm := vm.NewEVM(blockContext, state, chainConfig, vmConfig)
+	runner := &transactionRunner{evm{vm}}
+	// enough max gas per block to accommodate for the internal transaction.
+	gasPool := new(core.GasPool).AddGas(maxTxGas * 3)
+	usedGas := new(uint64)
+	context := &runContext{
+		signer:   types.LatestSignerForChainID(nil),
+		baseFee:  baseFee,
+		statedb:  state,
+		gasPool:  gasPool,
+		usedGas:  usedGas,
+		runner:   runner,
+		upgrades: opera.Upgrades{Brio: true},
+	}
+
+	// -- end of setup --
+
+	rules.Economy.Gas.MaxEventGas = maxTxGas
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	signer := types.LatestSignerForChainID(nil)
+	regularTx := types.MustSignNewTx(key, signer, &types.LegacyTx{
+		Nonce: 0, To: &common.Address{1}, Gas: maxTxGas + 1, GasPrice: big.NewInt(1),
+	})
+
+	// fail to run a regular transaction with gas over the max tx gas limit.
+	got := runner.runRegularTransaction(context, regularTx, 0)
+
+	require.Equal(t, regularTx, got.Transaction)
+	require.Nil(t, got.Receipt)
 }
 
 // --- Utility functions for creating test transactions ---
