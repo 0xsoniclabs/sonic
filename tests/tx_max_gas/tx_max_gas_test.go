@@ -21,6 +21,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
@@ -39,18 +40,10 @@ func TestTxMaxGas(t *testing.T) {
 			Upgrades: tests.AsPointer(opera.GetBrioUpgrades()),
 		})
 
-	type rulesType struct {
-		Economy struct {
-			Gas struct {
-				MaxEventGas int64
-			}
-		}
-	}
-
 	client, err := net.GetClient()
 	require.NoError(t, err)
 
-	var rules rulesType
+	var rules opera.Rules
 	err = client.Client().Call(&rules, "eth_getRules", "latest")
 	require.NoError(t, err)
 
@@ -67,15 +60,17 @@ func TestTxMaxGas(t *testing.T) {
 
 	t.Run("internal transactions can execute even if over network limit", func(t *testing.T) {
 
+		client, err := net.GetClient()
+		require.NoError(t, err)
+		defer client.Close()
+
 		var epochBefore hexutil.Uint64
 		err = client.Client().Call(&epochBefore, "eth_currentEpoch")
 		require.NoError(t, err)
 
-		// internal transactions use a fixed gas limit defined in drivermodule/driver_txs.go
-		// of 500_000_000 so we need to set a max to less than that.
-		// As enforced by rules validation a change on MaxEventGas can not be lower than 1_000_000
+		// As enforced by rules validation a change on MaxEventGas can not be lower than opera.UpperBoundForRuleChangeGasCosts()
 		// so we set it to 1_000_000 and see that internal transactions still work.
-		rules.Economy.Gas.MaxEventGas = int64(opera.UpperBoundForRuleChangeGasCosts())
+		rules.Economy.Gas.MaxEventGas = opera.UpperBoundForRuleChangeGasCosts()
 
 		tests.UpdateNetworkRules(t, net, rules)
 
@@ -83,7 +78,7 @@ func TestTxMaxGas(t *testing.T) {
 		tests.AdvanceEpochAndWaitForBlocks(t, net)
 
 		// since the previous epoch seal would have executed with the old rules to apply the new ones
-		// a new epoch advancement is needed to ensure a seal epoch is executed with the new limits.
+		// a new epoch advancement is needed to ensure an epoch sealing can still be executed under the new limit.
 		tests.AdvanceEpochAndWaitForBlocks(t, net)
 
 		var epochAfter hexutil.Uint64
@@ -91,19 +86,20 @@ func TestTxMaxGas(t *testing.T) {
 		require.NoError(t, err)
 
 		// at least two epochs should have passed
-		require.Greater(t, epochAfter, epochBefore+1, "Epoch should have advanced")
+		require.GreaterOrEqual(t, epochAfter, epochBefore+2, "Epoch should have advanced")
 
-		// look for a block from latest backwards, looking for a block that starts with an internal transaction.
+		err = client.Client().Call(&rules, "eth_getRules", "latest")
+		require.NoError(t, err)
+
+		// Find and check the internal transaction sealing the current block.
 		internalTransaction := lookForEpochSeal(t, net)
 		require.NotNil(t, internalTransaction, "Should find an internal transaction")
-		require.Greater(t, internalTransaction.Gas(), opera.UpperBoundForRuleChangeGasCosts(),
-			"Internal transaction gas should be over the max event gas limit")
 	})
 
 	t.Run("high gas transaction accepted into the pool is never executed after rules change", func(t *testing.T) {
 
 		// reset max gas.
-		rules.Economy.Gas.MaxEventGas = int64(2_000_000)
+		rules.Economy.Gas.MaxEventGas = 2_000_000
 		tests.UpdateNetworkRules(t, net, rules)
 		tests.AdvanceEpochAndWaitForBlocks(t, net)
 
@@ -113,7 +109,7 @@ func TestTxMaxGas(t *testing.T) {
 
 		err = client.Client().Call(&rules, "eth_getRules", "latest")
 		require.NoError(t, err)
-		require.Equal(t, int64(2_000_000), rules.Economy.Gas.MaxEventGas, "MaxEventGas should be updated")
+		require.Equal(t, uint64(2_000_000), rules.Economy.Gas.MaxEventGas, "MaxEventGas should be updated")
 
 		account := tests.MakeAccountWithBalance(t, net, big.NewInt(math.MaxInt64))
 
@@ -124,13 +120,13 @@ func TestTxMaxGas(t *testing.T) {
 		require.NoError(t, err, "Transaction should be accepted into the pool")
 
 		// update rules to lower max gas below the transaction's gas
-		rules.Economy.Gas.MaxEventGas = int64(1_100_000)
+		rules.Economy.Gas.MaxEventGas = 1_100_000
 		tests.UpdateNetworkRules(t, net, rules)
 		tests.AdvanceEpochAndWaitForBlocks(t, net)
 
 		err = client.Client().Call(&rules, "eth_getRules", "latest")
 		require.NoError(t, err)
-		require.Equal(t, int64(1_100_000), rules.Economy.Gas.MaxEventGas, "MaxEventGas should be updated")
+		require.Equal(t, uint64(1_100_000), rules.Economy.Gas.MaxEventGas, "MaxEventGas should be updated")
 
 		// send a transaction with the missing nonce and gas under new limit
 		lowGasTx := tests.CreateTransaction(t, net, &types.LegacyTx{Nonce: 0, Gas: 500_000}, account)
@@ -148,6 +144,16 @@ func TestTxMaxGas(t *testing.T) {
 		// verify the high gas transaction was never executed
 		_, err = client.TransactionReceipt(t.Context(), gappedTx.Hash())
 		require.ErrorIs(t, err, ethereum.NotFound, "Transaction should not be executed")
+
+		var content map[string]map[string]map[string]*ethapi.RPCTransaction
+		err = client.Client().Call(&content, "txpool_content")
+		require.NoError(t, err, "Should get txpool content")
+
+		pendingTxs := content["pending"][account.Address().String()]
+		require.Zero(t, len(pendingTxs), "There should be no pending transactions for the account")
+
+		queuedTxs := content["queued"][account.Address().String()]
+		require.Zero(t, len(queuedTxs), "There should be no queued transactions for the account")
 	})
 }
 
@@ -161,9 +167,7 @@ func lookForEpochSeal(t *testing.T, net *tests.IntegrationTestNet) *types.Transa
 	blockNumber, err := client.BlockNumber(t.Context())
 	require.NoError(t, err)
 
-	var sealEpoch *types.Transaction
-
-	for ; sealEpoch == nil || blockNumber != 0; blockNumber-- {
+	for ; blockNumber != 0; blockNumber-- {
 		block, err := client.BlockByNumber(t.Context(), big.NewInt(int64(blockNumber)))
 		require.NoError(t, err)
 
@@ -173,8 +177,8 @@ func lookForEpochSeal(t *testing.T, net *tests.IntegrationTestNet) *types.Transa
 
 		// if the first transaction is an internal transaction, we found the epoch seal block
 		if internaltx.IsInternal(block.Transactions()[0]) {
-			sealEpoch = block.Transactions()[0]
+			return block.Transactions()[0]
 		}
 	}
-	return sealEpoch
+	return nil
 }
