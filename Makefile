@@ -39,7 +39,7 @@ test:
 .PHONY: coverage
 coverage:
 	@mkdir -p build ;\
-	go test -coverpkg=./... --timeout=30m -v  -coverprofile=build/coverage.cov ./tests/ && \
+	go test -coverpkg=./... --timeout=30m -v -p 4 -coverprofile=build/coverage.cov ./tests/ && \
 	go tool cover -html build/coverage.cov -o build/coverage.html &&\
 	echo "Coverage report generated in build/coverage.html"
 
