@@ -34,12 +34,12 @@ sonic-image:
 
 .PHONY: test
 test:
-	go test --timeout 30m ./...
+	go test --timeout 30m ./... -v 
 
 .PHONY: coverage
 coverage:
 	@mkdir -p build ;\
-	go test -coverpkg=./... --timeout=30m -coverprofile=build/coverage.cov ./... && \
+	go test -coverpkg=./... --timeout=30m -v  -coverprofile=build/coverage.cov ./tests/ && \
 	go tool cover -html build/coverage.cov -o build/coverage.html &&\
 	echo "Coverage report generated in build/coverage.html"
 
