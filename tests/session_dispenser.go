@@ -117,7 +117,7 @@ func trackGoroutines(ctx context.Context) {
 	highest := lastKnown
 
 	go func() {
-		measure := time.NewTicker(100 * time.Millisecond)
+		measure := time.NewTicker(50 * time.Millisecond)
 		defer measure.Stop()
 		printer := time.NewTicker(20 * time.Second)
 		defer printer.Stop()
