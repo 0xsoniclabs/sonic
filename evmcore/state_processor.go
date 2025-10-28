@@ -317,7 +317,6 @@ func (e evm) _runTransaction(
 	}
 
 	e.Config.NoBaseFee = !checkBaseFee
-
 	ctxt.statedb.SetTxContext(tx.Hash(), txIndex)
 	receipt, _, err := applyTransaction(
 		msg, ctxt.gasPool, ctxt.statedb, ctxt.blockNumber, tx,

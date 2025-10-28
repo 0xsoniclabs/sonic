@@ -1401,7 +1401,7 @@ func TestRunTransaction_InternalTransactions_SkipsTransactionChecksTrue(t *testi
 	require.Equal(t, types.ReceiptStatusSuccessful, got.Receipt.Status)
 }
 
-func TestRunTransaction_RegularTransaction_IsRejectedForTooHighGas(t *testing.T) {
+func TestRunTransaction_RegularTransaction(t *testing.T) {
 
 	tests := map[string]struct {
 		rules      opera.Rules
