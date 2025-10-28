@@ -1332,22 +1332,22 @@ func TestRunTransaction_InternalTransactions_SkipsTransactionChecksTrue(t *testi
 	ctrl := gomock.NewController(t)
 	state := state.NewMockStateDB(ctrl)
 	any := gomock.Any()
-	state.EXPECT().SetTxContext(any, any)
+	state.EXPECT().SetTxContext(any, any).Times(2)
 	state.EXPECT().GetBalance(any).Return(uint256.NewInt(math.MaxInt64))
-	state.EXPECT().EndTransaction()
+	state.EXPECT().EndTransaction().Times(2)
 	state.EXPECT().SubBalance(any, any, any)
 	state.EXPECT().Prepare(any, any, any, any, any, any)
-	state.EXPECT().GetNonce(any).Return(uint64(0))
+	state.EXPECT().GetNonce(any).Return(uint64(0)).Times(2)
 	state.EXPECT().SetNonce(any, any, any)
-	state.EXPECT().GetCode(any).Return([]byte{}).Times(2)
+	state.EXPECT().GetCode(any).Return([]byte{}).AnyTimes()
 	state.EXPECT().Snapshot().Return(1)
 	state.EXPECT().Exist(any).Return(true)
 	state.EXPECT().GetRefund().Return(uint64(0)).Times(2)
 	state.EXPECT().AddBalance(any, any, any)
 	state.EXPECT().GetLogs(any, any)
 	state.EXPECT().TxIndex().Return(0)
-
 	rules := opera.FakeNetRules(opera.GetBrioUpgrades())
+	rules.Economy.Gas.MaxEventGas = maxTxGas
 	vmConfig := opera.GetVmConfig(rules)
 	updateHeights := []opera.UpgradeHeight{
 		{Upgrades: rules.Upgrades, Height: 0, Time: 0},
@@ -1387,7 +1387,6 @@ func TestRunTransaction_InternalTransactions_SkipsTransactionChecksTrue(t *testi
 
 	// -- end of setup --
 
-	rules.Economy.Gas.MaxEventGas = maxTxGas
 	unsignedTx := types.NewTx(&types.LegacyTx{
 		Nonce: 0, To: &common.Address{1}, Gas: maxTxGas * 2, GasPrice: big.NewInt(1),
 	})
@@ -1399,6 +1398,17 @@ func TestRunTransaction_InternalTransactions_SkipsTransactionChecksTrue(t *testi
 	require.Equal(t, unsignedTx, got.Transaction)
 	require.NotNil(t, got.Receipt)
 	require.Equal(t, types.ReceiptStatusSuccessful, got.Receipt.Status)
+
+	// non internal transaction with the same gas limit is rejected.
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	signer := types.LatestSignerForChainID(nil)
+	regularTx := types.MustSignNewTx(key, signer, &types.LegacyTx{
+		Nonce: 0, To: &common.Address{1}, Gas: maxTxGas * 2, GasPrice: big.NewInt(1),
+	})
+	got = runner.runRegularTransaction(context, regularTx, 0)
+	require.Equal(t, regularTx, got.Transaction)
+	require.Nil(t, got.Receipt)
 }
 
 func TestRunTransaction_RegularTransaction(t *testing.T) {
@@ -1408,7 +1418,7 @@ func TestRunTransaction_RegularTransaction(t *testing.T) {
 		stateSetup func(state *state.MockStateDB)
 		validation func(t *testing.T, got ProcessedTransaction)
 	}{
-		"Brio/Rejected": {
+		"Brio/Skipped": {
 			rules: opera.FakeNetRules(opera.GetBrioUpgrades()),
 			stateSetup: func(state *state.MockStateDB) {
 				any := gomock.Any()
@@ -1505,7 +1515,6 @@ func TestRunTransaction_RegularTransaction(t *testing.T) {
 				Nonce: 0, To: &common.Address{1}, Gas: maxTxGas + 1, GasPrice: big.NewInt(1),
 			})
 
-			// fail to run a regular transaction with gas over the max tx gas limit.
 			got := runner.runRegularTransaction(context, regularTx, 0)
 
 			require.Equal(t, regularTx, got.Transaction)

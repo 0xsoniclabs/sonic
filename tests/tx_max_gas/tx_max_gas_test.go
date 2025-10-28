@@ -102,7 +102,7 @@ func testInternalTxOverLimit(t *testing.T, net *tests.IntegrationTestNet) {
 		}
 	}
 	// As enforced by rules validation a change on MaxEventGas can not be lower than opera.UpperBoundForRuleChangeGasCosts()
-	// so we set it to 1_000_000 and see that internal transactions still work.
+	// so we set it to the limit and see that internal transactions still work.
 	rules.Economy.Gas.MaxEventGas = int64(opera.UpperBoundForRuleChangeGasCosts())
 
 	tests.UpdateNetworkRules(t, net, rules)
@@ -120,9 +120,6 @@ func testInternalTxOverLimit(t *testing.T, net *tests.IntegrationTestNet) {
 
 	// at least two epochs should have passed
 	require.GreaterOrEqual(t, epochAfter, epochBefore+2, "Epoch should have advanced")
-
-	err = client.Client().Call(&rules, "eth_getRules", "latest")
-	require.NoError(t, err)
 
 	// Find and check the internal transaction sealing the current block.
 	internalTransaction := lookForEpochSeal(t, net)
