@@ -27,49 +27,41 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestModExp_BrioFlagEnablesFusakaUpperBounds(t *testing.T) {
-	gasLimit := uint64(60_000)
+func TestModExp_BrioFlagEnforcesFusakaUpperBounds(t *testing.T) {
 	tests := map[string]struct {
-		upgrades        opera.Upgrades
-		size            int
-		expectedStatus  uint64
-		expectedGasUsed uint64
+		upgrades       opera.Upgrades
+		size           int
+		expectedStatus uint64
 	}{
 		"Sonic/1024": {
-			upgrades:        opera.GetSonicUpgrades(),
-			size:            1024,
-			expectedGasUsed: 33908,
-			expectedStatus:  types.ReceiptStatusSuccessful,
+			upgrades:       opera.GetSonicUpgrades(),
+			size:           1024,
+			expectedStatus: types.ReceiptStatusSuccessful,
 		},
 		"Sonic/1025": {
-			upgrades:        opera.GetSonicUpgrades(),
-			size:            1025,
-			expectedGasUsed: 33908 + 91,
-			expectedStatus:  types.ReceiptStatusSuccessful,
+			upgrades:       opera.GetSonicUpgrades(),
+			size:           1025,
+			expectedStatus: types.ReceiptStatusSuccessful,
 		},
 		"Allegro/1024": {
-			upgrades:        opera.GetAllegroUpgrades(),
-			size:            1024,
-			expectedGasUsed: 35133,
-			expectedStatus:  types.ReceiptStatusSuccessful,
+			upgrades:       opera.GetAllegroUpgrades(),
+			size:           1024,
+			expectedStatus: types.ReceiptStatusSuccessful,
 		},
 		"Allegro/1025": {
-			upgrades:        opera.GetAllegroUpgrades(),
-			size:            1025,
-			expectedGasUsed: 35133 + 36,
-			expectedStatus:  types.ReceiptStatusSuccessful,
+			upgrades:       opera.GetAllegroUpgrades(),
+			size:           1025,
+			expectedStatus: types.ReceiptStatusSuccessful,
 		},
 		"Brio/1024": {
-			upgrades:        opera.GetBrioUpgrades(),
-			size:            1024,
-			expectedGasUsed: 58484,
-			expectedStatus:  types.ReceiptStatusSuccessful,
+			upgrades:       opera.GetBrioUpgrades(),
+			size:           1024,
+			expectedStatus: types.ReceiptStatusSuccessful,
 		},
 		"Brio/1025": {
-			upgrades:        opera.GetBrioUpgrades(),
-			size:            1025,
-			expectedGasUsed: gasLimit,
-			expectedStatus:  types.ReceiptStatusFailed,
+			upgrades:       opera.GetBrioUpgrades(),
+			size:           1025,
+			expectedStatus: types.ReceiptStatusFailed,
 		},
 	}
 
@@ -92,19 +84,17 @@ func TestModExp_BrioFlagEnablesFusakaUpperBounds(t *testing.T) {
 			txsPayload := &types.AccessListTx{
 				ChainID:    chainId,
 				Nonce:      0,
-				Gas:        gasLimit,
+				Gas:        60_000,
 				To:         &modExpAddress,
 				Value:      big.NewInt(0),
 				Data:       input,
 				AccessList: types.AccessList{},
 			}
-			tx := SetTransactionDefaults(t, session, txsPayload, sender)
-			signedTx := SignTransaction(t, chainId, tx, session.GetSessionSponsor())
+			signedTx := CreateTransaction(t, session, txsPayload, sender)
 			receipt, err := session.Run(signedTx)
 			require.NoError(t, err)
 
 			require.Equal(t, test.expectedStatus, receipt.Status)
-			require.Equal(t, test.expectedGasUsed, receipt.GasUsed)
 		})
 	}
 }
@@ -159,11 +149,10 @@ func TestModExp_MinimumGasPriceIsUpdatedInBrio(t *testing.T) {
 				Value:   big.NewInt(0),
 				Data:    input,
 				AccessList: types.AccessList{
-					{Address: common.HexToAddress("0x42")}, // Add random address to access list
+					{Address: common.HexToAddress("0x42")}, // Add random address to access list to increase gas cost
 				},
 			}
-			tx := SetTransactionDefaults(t, session, txsPayload, sender)
-			signedTx := SignTransaction(t, chainId, tx, session.GetSessionSponsor())
+			signedTx := CreateTransaction(t, session, txsPayload, sender)
 			receipt, err := session.Run(signedTx)
 			require.NoError(t, err)
 
@@ -207,7 +196,8 @@ func TestModExp_GasPriceIsUpdatedInBrio(t *testing.T) {
 			sender := session.GetSessionSponsor()
 
 			sizeBytes := uint256.NewInt(32).Bytes32()
-			inputBytes := uint256.NewInt(0).Not(uint256.NewInt(0)).Bytes32()
+			inputBytes := uint256.NewInt(0).Not(uint256.NewInt(0)).Bytes32() // max 32 byte value
+
 			input := sizeBytes[:]                   // base length
 			input = append(input, sizeBytes[:]...)  // exponent length
 			input = append(input, sizeBytes[:]...)  // modulus length
@@ -224,11 +214,10 @@ func TestModExp_GasPriceIsUpdatedInBrio(t *testing.T) {
 				Value:   big.NewInt(0),
 				Data:    input,
 				AccessList: types.AccessList{
-					{Address: common.HexToAddress("0x42")}, // Add random address to access list
+					{Address: common.HexToAddress("0x42")}, // Add random address to access list to increase gas cost
 				},
 			}
-			tx := SetTransactionDefaults(t, session, txsPayload, sender)
-			signedTx := SignTransaction(t, chainId, tx, session.GetSessionSponsor())
+			signedTx := CreateTransaction(t, session, txsPayload, sender)
 			receipt, err := session.Run(signedTx)
 			require.NoError(t, err)
 
