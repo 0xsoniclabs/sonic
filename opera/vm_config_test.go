@@ -70,4 +70,5 @@ func TestGetVmConfig_BrioUpgrade_CopiesMaxEventGasValue(t *testing.T) {
 
 	require.NotNil(t, vmConfig.MaxTxGas)
 	require.Equal(t, want, *vmConfig.MaxTxGas)
+	require.Equal(t, &rules.Economy.Gas.MaxEventGas, vmConfig.MaxTxGas)
 }
