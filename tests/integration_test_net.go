@@ -471,8 +471,6 @@ func (n *IntegrationTestNet) start() error {
 				"--statedb.cache", "1024",
 
 				"--ipcpath", fmt.Sprintf("%s/sonic.ipc", tmp),
-
-				"--maxpeers", fmt.Sprintf("%d", len(n.nodes)-1),
 			},
 				// append extra arguments
 				n.options.ClientExtraArguments...,
