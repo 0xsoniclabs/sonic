@@ -29,9 +29,6 @@ import (
 )
 
 func TestSECP256r1_NewPrecompileHasCorrectGasCost(t *testing.T) {
-	// Prague added a floor data gas cost which depends on the size of the input data,
-	// in order to test the secp256r1 gas cost, a random address is added to the access
-	// list to increase the gas cost.
 	gasLimit := uint64(21_000)
 	gasLimit += 160 * 4 // input intrinsic cost
 	gasLimit += 2400    // access list cost
@@ -59,20 +56,23 @@ func TestSECP256r1_NewPrecompileHasCorrectGasCost(t *testing.T) {
 			chainId := session.GetChainId()
 			sender := session.GetSessionSponsor()
 
-			precompileAddress := common.BytesToAddress([]byte{0x1, 0x00})
+			precompileAddress := common.BytesToAddress([]byte{0x01, 0x00})
 			txsPayload := &types.AccessListTx{
 				ChainID: chainId,
 				Nonce:   0,
-				Gas:     test.gas + 1,
+				Gas:     test.gas + 1, // add 1 to ensure all the gas is not just consumed by an error
 				To:      &precompileAddress,
-				Value:   big.NewInt(0),
 				Data:    make([]byte, 160),
+
+				// Prague added a floor data gas cost which depends on the size of the input data,
+				// in order to test the secp256r1 gas cost, a random address is added to the access
+				// list to increase the gas cost.
 				AccessList: types.AccessList{
 					{Address: common.Address{0x42}},
 				},
 			}
-			tx := SetTransactionDefaults(t, session, txsPayload, sender)
-			signedTx := SignTransaction(t, chainId, tx, session.GetSessionSponsor())
+
+			signedTx := CreateTransaction(t, session, txsPayload, sender)
 			receipt, err := session.Run(signedTx)
 			require.NoError(t, err)
 
@@ -83,9 +83,10 @@ func TestSECP256r1_NewPrecompileHasCorrectGasCost(t *testing.T) {
 }
 
 func TestSECP256r1_VerifySignatureInBrio(t *testing.T) {
-	// This test uses a contract that calls the secp256r1 precompile at address 0x100.
+	// This test uses a contract that calls the secp256r1 precompile.
 	// The precompile returns 1 if the signature is valid, and 0 if the signature is invalid.
-	// The calling contract reverts if the precompile call returns 0.
+	// In case the precompile does not exist, the call returns no return data.
+	// The calling contract stops if the return value is 1, and reverts if the return value is 0 or empty.
 
 	// validInput is a valid secp256r1 signature verification input.
 	validInput := []byte{187, 90, 82, 244, 47, 156, 146, 97, 237, 67, 97, 245, 148, 34, 161, 227,
@@ -117,15 +118,15 @@ func TestSECP256r1_VerifySignatureInBrio(t *testing.T) {
 			// precompile doesn't exist yet, a call to an empty contract returns no return data.
 			expectedStatus: types.ReceiptStatusFailed,
 		},
-		"Brio/Valid": {
-			upgrades:       opera.GetBrioUpgrades(),
-			input:          validInput,
-			expectedStatus: types.ReceiptStatusSuccessful,
-		},
 		"Brio/Invalid": {
 			upgrades:       opera.GetBrioUpgrades(),
 			input:          invalidInput,
 			expectedStatus: types.ReceiptStatusFailed,
+		},
+		"Brio/Valid": {
+			upgrades:       opera.GetBrioUpgrades(),
+			input:          validInput,
+			expectedStatus: types.ReceiptStatusSuccessful,
 		},
 	}
 
@@ -135,7 +136,10 @@ func TestSECP256r1_VerifySignatureInBrio(t *testing.T) {
 			net := StartIntegrationTestNetWithJsonGenesis(t, IntegrationTestNetOptions{
 				Upgrades: &test.upgrades,
 				Accounts: []makefakegenesis.Account{
-					secp256r1TestAccount(recipient),
+					{
+						Address: recipient,
+						Code:    secp256r1TestCode(),
+					},
 				},
 			})
 
@@ -168,7 +172,7 @@ func TestSECP256r1_VerifySignatureInBrio(t *testing.T) {
 	}
 }
 
-func secp256r1TestAccount(address common.Address) makefakegenesis.Account {
+func secp256r1TestCode() []byte {
 	// handle input data
 	code := []byte{
 		byte(vm.CALLDATASIZE), // input data size
@@ -177,7 +181,7 @@ func secp256r1TestAccount(address common.Address) makefakegenesis.Account {
 		byte(vm.CALLDATACOPY), // copy the input data to memory
 	}
 
-	// set up call
+	// set up Call
 	code = append(code, []byte{
 		byte(vm.PUSH1), 0x01, // return data size
 		byte(vm.PUSH1), 0x00, // return data offset
@@ -213,8 +217,5 @@ func secp256r1TestAccount(address common.Address) makefakegenesis.Account {
 		byte(vm.STOP),     // stop execution
 	}...)
 
-	return makefakegenesis.Account{
-		Address: address,
-		Code:    code,
-	}
+	return code
 }
