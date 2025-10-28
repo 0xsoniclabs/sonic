@@ -56,7 +56,8 @@ pipeline {
 
         stage('Run tests') {
             steps {
-                sh 'make coverage'
+                // sh 'make coverage'
+                sh './parallel_test.sh'
             }
         }
 
