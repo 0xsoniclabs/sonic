@@ -17,6 +17,7 @@
 package tests
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/opera"
@@ -48,16 +49,7 @@ func TestRpc_GetLogs_BlockTimeStampHexEncoded(t *testing.T) {
 	// https://github.com/ethereum/go-ethereum/pull/32129/badae50d0316f299665bc2dae3daf6349f5abe44fe141ac9eeda0eaacf040c55R25
 	// from go-ethereum v1.16.1 onwards
 	var result []struct {
-		Address        common.Address
-		Topics         []common.Hash
-		Data           hexutil.Bytes
-		BlockNumber    hexutil.Uint64
-		TxHash         common.Hash
-		TxIndex        hexutil.Uint
-		BlockHash      common.Hash
-		BlockTimestamp hexutil.Uint64
-		Index          hexutil.Uint
-		Removed        bool
+		BlockTimestamp any
 	}
 
 	arg := map[string]interface{}{
@@ -76,6 +68,8 @@ func TestRpc_GetLogs_BlockTimeStampHexEncoded(t *testing.T) {
 
 	require.Greater(t, len(result), 0)
 	require.NotNil(t, result[0].BlockTimestamp)
-	require.True(t, result[0].BlockTimestamp > 0)
 
+	genericTimeStamp, ok := result[0].BlockTimestamp.(string)
+	require.True(t, ok)
+	require.True(t, strings.HasPrefix(genericTimeStamp, "0x"))
 }
