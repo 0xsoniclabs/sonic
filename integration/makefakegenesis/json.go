@@ -95,7 +95,7 @@ func LoadGenesisJson(filename string) (*GenesisJson, error) {
 // GenerateFakeJsonGenesis creates a JSON genesis file with fake-net rules for
 // the given feature set.
 // It includes the infrastructure contracts and a creates a set of validators with
-// the given stake amounts and funds them with 1 billion FTM each.
+// the given stake amounts and funds them with 1 billion native tokens each.
 func GenerateFakeJsonGenesis(
 	upgrades opera.Upgrades,
 	validatorsStake []uint64,
