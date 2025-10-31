@@ -1174,6 +1174,49 @@ func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNr
 	} else {
 		hi = b.MaxGasLimit()
 	}
+
+	// Cap the maximum gas allowance according to EIP-7825. In sonic the max gas limit
+	// for a transaction is limited by MaxGasLimit.
+	if hi > b.MaxGasLimit() {
+
+		var header *evmcore.EvmHeader
+		var err error
+
+		// get header
+		rpcBlockNumber, ok := blockNrOrHash.Number()
+		if ok {
+			header, err = b.HeaderByNumber(ctx, rpcBlockNumber)
+		} else {
+			hash, ok := blockNrOrHash.Hash()
+			if !ok {
+				return 0, errors.New("invalid block number or hash")
+			}
+			header, err = b.HeaderByHash(ctx, hash)
+		}
+		if err != nil {
+			return 0, err
+		}
+
+		// get block number and time
+		blockNumber := header.Number.Int64()
+		blockTime := uint64(header.Time.Unix())
+
+		// check overrides
+		if blockOverrides != nil {
+			if blockOverrides.Number != nil {
+				blockNumber = blockOverrides.Number.ToInt().Int64()
+			}
+			if blockOverrides.Time != nil {
+				blockTime = uint64((*blockOverrides.Time))
+			}
+		}
+
+		// use Osaka gas limit rule
+		if b.ChainConfig(idx.Block(blockNumber)).IsOsaka(big.NewInt(int64(blockNumber)), blockTime) {
+			hi = b.MaxGasLimit()
+		}
+	}
+
 	// Normalize the max fee per gas the call is willing to spend.
 	var feeCap *big.Int
 	if args.GasPrice != nil && (args.MaxFeePerGas != nil || args.MaxPriorityFeePerGas != nil) {
@@ -1232,6 +1275,9 @@ func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNr
 			if errors.Is(err, core.ErrIntrinsicGas) ||
 				errors.Is(err, core.ErrFloorDataGas) {
 				return true, nil, nil // Special case, raise gas limit
+			}
+			if errors.Is(err, core.ErrGasLimitTooHigh) {
+				return true, nil, nil // Special case, lower gas limit
 			}
 			return true, nil, err // Bail out
 		}
