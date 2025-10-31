@@ -22,8 +22,12 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/config"
+	"github.com/0xsoniclabs/sonic/gossip/contract/sfc100"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
+	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/opera/contracts/sfc"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
+	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/tosca/go/tosca/vm"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -325,5 +329,150 @@ func TestIntegrationTestNet_AccountsToBeDeployedWithGenesisCanBeCalled(t *testin
 	require.NoError(t, err)
 
 	require.Equal(t, topic, receipt.Logs[0].Topics[0])
+}
+
+func TestIntegrationTestNet_CanDefineValidatorsStakes(t *testing.T) {
+
+	tests := map[string]struct {
+		stakes         []uint64
+		expectedStakes []uint64
+	}{
+		"default unspecified stakes": {
+			stakes:         nil,
+			expectedStakes: []uint64{5_000_000},
+		},
+		"multiple validators with different stakes": {
+			stakes:         []uint64{50, 20, 11, 1},
+			expectedStakes: []uint64{50, 20, 11, 1},
+		},
+		"multiple validators with equal stakes": {
+			stakes:         makefakegenesis.CreateEqualValidatorStake(3),
+			expectedStakes: []uint64{5_000_000, 5_000_000, 5_000_000},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
+				ValidatorsStake: test.stakes,
+			})
+
+			client, err := net.GetClient()
+			require.NoError(t, err)
+			defer client.Close()
+
+			require.Equal(t, len(test.expectedStakes), net.NumNodes(),
+				"The number of nodes in the network does not match the expected number of validators")
+
+			sfc, err := sfc100.NewContract(sfc.ContractAddress, client)
+			require.NoError(t, err)
+
+			epoch, err := sfc.CurrentEpoch(nil)
+			require.NoError(t, err)
+
+			validatorIDs, err := sfc.GetEpochValidatorIDs(nil, epoch)
+			require.NoError(t, err)
+			require.Len(t, validatorIDs, len(test.expectedStakes),
+				"The number of validators with stakes in the SFC does not match the expected number of validators")
+			for i, validatorID := range validatorIDs {
+				stake, err := sfc.GetSelfStake(nil, validatorID)
+				require.NoError(t, err)
+
+				expectedStake := utils.ToFtm(test.expectedStakes[i])
+				require.Conditionf(t,
+					func() bool {
+						return expectedStake.Cmp(stake) == 0
+					},
+					"unexpected stake for validator %d: expected %v, got %v",
+					i,
+					expectedStake,
+					stake,
+				)
+			}
+		})
+	}
+}
+
+func TestIntegrationTestNet_ValidateAndSanitizeOptions(t *testing.T) {
+
+	tests := map[string]struct {
+		options         []IntegrationTestNetOptions
+		expectedOptions IntegrationTestNetOptions
+		expectError     string
+	}{
+		"when multiple options are provided, error is returned": {
+			options: []IntegrationTestNetOptions{
+				{},
+				{},
+			},
+			expectError: "expected at most one option, got 2",
+		},
+		"if upgrades is defined, it is preserved": {
+			options: []IntegrationTestNetOptions{
+				{
+					Upgrades: AsPointer(opera.GetAllegroUpgrades()),
+				},
+			},
+			expectedOptions: IntegrationTestNetOptions{
+				Upgrades:        AsPointer(opera.GetAllegroUpgrades()),
+				NumNodes:        1,
+				ValidatorsStake: []uint64{5_000_000},
+			},
+		},
+		"when left empty, it defaults to the default options": {
+			options: []IntegrationTestNetOptions{},
+			expectedOptions: IntegrationTestNetOptions{
+				Upgrades:        AsPointer(opera.GetSonicUpgrades()),
+				NumNodes:        1,
+				ValidatorsStake: []uint64{5_000_000},
+			},
+		},
+		"when NumNodes is defined, ValidatorsStake is initialized to be uniform": {
+			options: []IntegrationTestNetOptions{
+				{
+					NumNodes: 3,
+				},
+			},
+			expectedOptions: IntegrationTestNetOptions{
+				Upgrades:        AsPointer(opera.GetSonicUpgrades()),
+				NumNodes:        3,
+				ValidatorsStake: []uint64{5_000_000, 5_000_000, 5_000_000},
+			},
+		},
+		"when ValidatorsStake length does not match NumNodes, an error is returned": {
+			options: []IntegrationTestNetOptions{
+				{
+					NumNodes:        2,
+					ValidatorsStake: []uint64{5_000_000},
+				},
+			},
+			expectError: "number of nodes (2) does not match number of validator stakes (1)",
+		},
+		"when only ValidatorsStake is defined, NumNodes is set accordingly": {
+			options: []IntegrationTestNetOptions{
+				{
+					ValidatorsStake: []uint64{10, 20, 30},
+				},
+			},
+			expectedOptions: IntegrationTestNetOptions{
+				Upgrades:        AsPointer(opera.GetSonicUpgrades()),
+				NumNodes:        3,
+				ValidatorsStake: []uint64{10, 20, 30},
+			},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			options, err := validateAndSanitizeOptions(test.options...)
+			if len(test.expectError) > 0 {
+				require.ErrorContains(t, err, test.expectError)
+				return
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, test.expectedOptions, options)
+		})
+	}
 
 }

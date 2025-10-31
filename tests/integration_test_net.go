@@ -142,6 +142,12 @@ type IntegrationTestNetOptions struct {
 	// NumNodes specifies the number of nodes to be started on the integration
 	// test network. A value of 0 is interpreted as 1.
 	NumNodes int
+	// ValidatorsStake specifies the stake of each validator in the network in sonics.
+	// If left empty, a single validator with 5,000,000 sonics stake will be created.
+	// This setting is only used by the JSON genesis procedure, fake genesis will ignore it
+	// and execute a single node network.
+	// If NumNodes is defined, ValidatorsStake must have the same length as NumNodes.
+	ValidatorsStake []uint64
 	// ClientExtraArguments specifies additional arguments to be passed to the client.
 	ClientExtraArguments []string
 	// ModifyConfig allows the caller to modify the configuration of the nodes
@@ -327,8 +333,8 @@ func StartIntegrationTestNetWithJsonGenesis(
 	require.NoError(t, err, "failed to validate and sanitize options")
 
 	jsonGenesis := makefakegenesis.GenerateFakeJsonGenesis(
-		effectiveOptions.NumNodes,
 		*effectiveOptions.Upgrades,
+		effectiveOptions.ValidatorsStake,
 	)
 
 	jsonGenesis.Accounts = append(jsonGenesis.Accounts, effectiveOptions.Accounts...)
@@ -369,7 +375,7 @@ func startIntegrationTestNet(
 		Session: Session{
 			account: Account{evmcore.FakeKey(1)},
 		},
-		nodes: make([]integrationTestNode, options.NumNodes),
+		nodes: make([]integrationTestNode, len(options.ValidatorsStake)),
 	}
 	// the network's session needs to know about the network itself
 	net.net = net
@@ -1135,13 +1141,26 @@ func validateAndSanitizeOptions(options ...IntegrationTestNetOptions) (Integrati
 
 	if len(options) == 0 {
 		return IntegrationTestNetOptions{
-			Upgrades: AsPointer(opera.GetSonicUpgrades()),
-			NumNodes: 1,
+			Upgrades:        AsPointer(opera.GetSonicUpgrades()),
+			NumNodes:        1,
+			ValidatorsStake: makefakegenesis.CreateEqualValidatorStake(1),
 		}, nil
 	}
+
 	if options[0].NumNodes <= 0 {
-		options[0].NumNodes = 1
+		options[0].NumNodes = max(1, len(options[0].ValidatorsStake))
 	}
+
+	if len(options[0].ValidatorsStake) == 0 {
+		options[0].ValidatorsStake =
+			makefakegenesis.CreateEqualValidatorStake(options[0].NumNodes)
+	}
+
+	if options[0].NumNodes != len(options[0].ValidatorsStake) {
+		return IntegrationTestNetOptions{}, fmt.Errorf("number of nodes (%d) does not match number of validator stakes (%d)",
+			options[0].NumNodes, len(options[0].ValidatorsStake))
+	}
+
 	if options[0].Upgrades == nil {
 		options[0].Upgrades = AsPointer(opera.GetSonicUpgrades())
 	}

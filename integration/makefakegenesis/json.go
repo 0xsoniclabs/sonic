@@ -93,11 +93,12 @@ func LoadGenesisJson(filename string) (*GenesisJson, error) {
 }
 
 // GenerateFakeJsonGenesis creates a JSON genesis file with fake-net rules for
-// the given feature set. It includes the infrastructure contracts and a given
-// number of validators with some initial tokens.
+// the given feature set.
+// It includes the infrastructure contracts and a creates a set of validators with
+// the given stake amounts and funds them with 1 billion native tokens each.
 func GenerateFakeJsonGenesis(
-	numValidators int,
 	upgrades opera.Upgrades,
+	validatorsStake []uint64,
 ) *GenesisJson {
 	jsonGenesis := &GenesisJson{
 		Rules:         opera.FakeNetRules(upgrades),
@@ -175,22 +176,23 @@ func GenerateFakeJsonGenesis(
 	}
 
 	// Create the validator accounts and provide some tokens.
-	tokensPerValidator := utils.ToFtm(1000000000)
-	validators := GetFakeValidators(idx.Validator(numValidators))
-	for _, validator := range validators {
+	tokensPerValidator := utils.ToFtm(1_000_000_000)
+	totalSupply := big.NewInt(0)
+	validatorParameters := GetFakeValidators(idx.Validator(len(validatorsStake)))
+	for _, validator := range validatorParameters {
 		jsonGenesis.Accounts = append(jsonGenesis.Accounts, Account{
 			Address: validator.Address,
 			Balance: tokensPerValidator,
 		})
+		totalSupply.Add(totalSupply, tokensPerValidator)
 	}
-	totalSupply := new(big.Int).Mul(tokensPerValidator, big.NewInt(int64(numValidators)))
 
 	var delegations []drivercall.Delegation
-	for _, val := range validators {
+	for i, val := range validatorParameters {
 		delegations = append(delegations, drivercall.Delegation{
 			Address:            val.Address,
 			ValidatorID:        val.ID,
-			Stake:              utils.ToFtm(5000000),
+			Stake:              utils.ToFtm(validatorsStake[i]),
 			LockedStake:        new(big.Int),
 			LockupFromEpoch:    0,
 			LockupEndTime:      0,
@@ -201,7 +203,7 @@ func GenerateFakeJsonGenesis(
 	}
 
 	// Create the genesis transactions.
-	genesisTxs := GetGenesisTxs(0, validators, totalSupply, delegations, validators[0].Address)
+	genesisTxs := GetGenesisTxs(0, validatorParameters, totalSupply, delegations, validatorParameters[0].Address)
 	for _, tx := range genesisTxs {
 		jsonGenesis.Txs = append(jsonGenesis.Txs, Transaction{
 			To:   *tx.To(),
