@@ -18,6 +18,7 @@ package tests
 
 import (
 	"math/big"
+	"slices"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/opera"
@@ -231,4 +232,60 @@ func doTestEstimate(
 				"Gas used shall be less than or equal to gas estimation")
 		})
 	}
+}
+
+func TestEstimateGas_Brio_ConsidersMaxGasCap(t *testing.T) {
+
+	net := StartIntegrationTestNet(t,
+		IntegrationTestNetOptions{
+			Upgrades: AsPointer(opera.GetBrioUpgrades()),
+		})
+
+	var rules struct {
+		Economy struct {
+			Gas struct {
+				MaxEventGas int64
+			}
+		}
+	}
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	err = client.Client().Call(&rules, "eth_getRules", "latest")
+	require.NoError(t, err)
+
+	originalCap := rules.Economy.Gas.MaxEventGas
+	bigData := slices.Repeat([]byte{0xFF}, int(MAX_INIT_CODE_SIZE)-1)
+
+	// make a transaction whose estimation should be under the current rules gas cap.
+	msg := ethereum.CallMsg{
+		From: net.GetSessionSponsor().Address(),
+		To:   &common.Address{0x42},
+		Data: bigData,
+		Gas:  uint64(originalCap + 100_000),
+	}
+
+	estimatedGas, err := client.EstimateGas(t.Context(), msg)
+	require.NoError(t, err, "unexpected error during gas estimation")
+	require.Greater(t, uint64(originalCap), estimatedGas, "estimated gas should be below max gas cap")
+
+	// the extra 30_000 gas are to account for rules.EventGas during rules change validation
+	newCap := opera.UpperBoundForRuleChangeGasCosts() + 30_000
+
+	// update rules gas limit to be lower than the estimation.
+	require.Less(t, newCap, estimatedGas)
+	rules.Economy.Gas.MaxEventGas = int64(opera.UpperBoundForRuleChangeGasCosts() + 30_000)
+	UpdateNetworkRules(t, net, rules)
+	AdvanceEpochAndWaitForBlocks(t, net)
+
+	err = client.Client().Call(&rules, "eth_getRules", "latest")
+	require.NoError(t, err)
+	// verify the rules limit has been updated to a lower value than the original
+	require.Greater(t, originalCap, rules.Economy.Gas.MaxEventGas, "MaxEventGas should be updated")
+
+	_, err = client.EstimateGas(t.Context(), msg)
+	// as gas cap is used as higher bound, this is considered the "allowance" during estimation
+	require.ErrorContains(t, err, "gas required exceeds allowance")
 }
