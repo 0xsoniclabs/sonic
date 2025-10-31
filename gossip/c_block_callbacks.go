@@ -513,8 +513,8 @@ func consensusCallbackBeginBlockFn(
 						store.evm.SetTx(tx.Hash(), tx)
 					}
 
-					store.SetBlock(blockCtx.Idx, block)
 					store.SetBlockIndex(block.Hash(), blockCtx.Idx)
+					store.SetBlock(blockCtx.Idx, block)
 					store.SetBlockEpochState(bs, es)
 					store.EvmStore().SetCachedEvmBlock(blockCtx.Idx, evmBlock)
 
