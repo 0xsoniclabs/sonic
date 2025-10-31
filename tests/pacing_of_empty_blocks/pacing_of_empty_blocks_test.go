@@ -39,12 +39,10 @@ func TestPacingOfEmptyBlocks(t *testing.T) {
 
 	for name, upgrades := range hardFork {
 		t.Run(name, func(t *testing.T) {
-			t.Parallel()
 			for mode, singleProposer := range modes {
 				upgrades := upgrades
 				upgrades.SingleProposerBlockFormation = singleProposer
 				t.Run(mode, func(t *testing.T) {
-					t.Parallel()
 					testPacingOfEmptyBlocks(t, upgrades)
 				})
 			}
