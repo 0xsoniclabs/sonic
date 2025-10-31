@@ -134,20 +134,19 @@ func AsPointer[T any](v T) *T {
 	return &v
 }
 
-// MakeDefaultValidatorStake creates a slice of validator stakes with equal stakes.
-func MakeDefaultValidatorStake(numValidators int) []uint64 {
-	return makefakegenesis.CreateEqualValidatorStake(numValidators)
-}
-
 // IntegrationTestNetOptions are configuration options for the integration test network.
 type IntegrationTestNetOptions struct {
 	// Upgrades specifies the upgrades to be used for the integration test network.
 	// nil value will initialize network using SonicUpgrades.
 	Upgrades *opera.Upgrades
+	// NumNodes specifies the number of nodes to be started on the integration
+	// test network. A value of 0 is interpreted as 1.
+	NumNodes int
 	// ValidatorsStake specifies the stake of each validator in the network in sonics.
 	// If left empty, a single validator with 5,000,000 sonics stake will be created.
 	// This setting is only used by the JSON genesis procedure, fake genesis will ignore it
 	// and execute a single node network.
+	// If NumNodes is defined, ValidatorsStake must have the same length as NumNodes.
 	ValidatorsStake []uint64
 	// ClientExtraArguments specifies additional arguments to be passed to the client.
 	ClientExtraArguments []string
@@ -1143,12 +1142,23 @@ func validateAndSanitizeOptions(options ...IntegrationTestNetOptions) (Integrati
 	if len(options) == 0 {
 		return IntegrationTestNetOptions{
 			Upgrades:        AsPointer(opera.GetSonicUpgrades()),
-			ValidatorsStake: MakeDefaultValidatorStake(1),
+			NumNodes:        1,
+			ValidatorsStake: makefakegenesis.CreateEqualValidatorStake(1),
 		}, nil
 	}
 
+	if options[0].NumNodes <= 0 {
+		options[0].NumNodes = max(1, len(options[0].ValidatorsStake))
+	}
+
 	if len(options[0].ValidatorsStake) == 0 {
-		options[0].ValidatorsStake = MakeDefaultValidatorStake(1)
+		options[0].ValidatorsStake =
+			makefakegenesis.CreateEqualValidatorStake(options[0].NumNodes)
+	}
+
+	if options[0].NumNodes != len(options[0].ValidatorsStake) {
+		return IntegrationTestNetOptions{}, fmt.Errorf("number of nodes (%d) does not match number of validator stakes (%d)",
+			options[0].NumNodes, len(options[0].ValidatorsStake))
 	}
 
 	if options[0].Upgrades == nil {

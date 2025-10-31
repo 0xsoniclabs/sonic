@@ -327,7 +327,7 @@ func TestNetworkRules_PragueFeaturesBecomeAvailableWithAllegroUpgrade(t *testing
 			// Explicitly set the network to use the Sonic Hard Fork
 			Upgrades: tests.AsPointer(opera.GetSonicUpgrades()),
 			// Use 2 nodes to test the rules update propagation
-			ValidatorsStake: tests.MakeDefaultValidatorStake(2),
+			NumNodes: 2,
 		},
 	)
 

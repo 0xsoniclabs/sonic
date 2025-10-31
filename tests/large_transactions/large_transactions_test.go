@@ -140,8 +140,8 @@ func testLargeTransactionLoadTest(
 	)
 	require := require.New(t)
 	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
-		Upgrades:        upgrades,
-		ValidatorsStake: tests.MakeDefaultValidatorStake(3),
+		Upgrades: upgrades,
+		NumNodes: 3,
 	})
 
 	// Increase the gas limit to allow for larger transactions in blocks. These

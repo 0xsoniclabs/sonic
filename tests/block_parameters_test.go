@@ -21,7 +21,6 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/block_parameters"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -57,8 +56,8 @@ func TestBlockParameters_BlockHeaderMatchesObservableBlockParameters(t *testing.
 
 					net := StartIntegrationTestNetWithJsonGenesis(t,
 						IntegrationTestNetOptions{
-							Upgrades:        &upgrades,
-							ValidatorsStake: makefakegenesis.CreateEqualValidatorStake(2),
+							Upgrades: &upgrades,
+							NumNodes: 2,
 						},
 					)
 					testBlockHeaderMatchesObservableBlockParameters(t, net)
