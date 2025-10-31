@@ -24,6 +24,7 @@ import (
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/gossip/contract/sfc100"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/sfc"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
 	"github.com/0xsoniclabs/sonic/utils"
@@ -46,7 +47,7 @@ func TestIntegrationTestNet_CanRestartWithGenesisExportAndImport(t *testing.T) {
 	for _, numNodes := range []int{1, 2} {
 		t.Run(fmt.Sprintf("NumNodes=%d", numNodes), func(t *testing.T) {
 			net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
-				ValidatorsStake: MakeDefaultValidatorStake(numNodes),
+				NumNodes: numNodes,
 			})
 			require.NoError(t, net.RestartWithExportImport(),
 				"Failed to restart the test network with export and import")
@@ -196,7 +197,7 @@ func TestIntegrationTestNet_CanRunMultipleNodes(t *testing.T) {
 	for _, numNodes := range []int{1, 2, 3} {
 		t.Run(fmt.Sprintf("NumNodes%d", numNodes), func(t *testing.T) {
 			net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
-				ValidatorsStake: MakeDefaultValidatorStake(numNodes),
+				NumNodes: numNodes,
 			})
 			require.Equal(t, numNodes, net.NumNodes())
 
@@ -390,4 +391,88 @@ func TestIntegrationTestNet_CanDefineValidatorsStakes(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestIntegrationTestNet_ValidateAndSanitizeOptions(t *testing.T) {
+
+	tests := map[string]struct {
+		options         []IntegrationTestNetOptions
+		expectedOptions IntegrationTestNetOptions
+		expectError     string
+	}{
+		"when multiple options are provided, error is returned": {
+			options: []IntegrationTestNetOptions{
+				{},
+				{},
+			},
+			expectError: "expected at most one option, got 2",
+		},
+		"if upgrades is defined, it is preserved": {
+			options: []IntegrationTestNetOptions{
+				{
+					Upgrades: AsPointer(opera.GetAllegroUpgrades()),
+				},
+			},
+			expectedOptions: IntegrationTestNetOptions{
+				Upgrades:        AsPointer(opera.GetAllegroUpgrades()),
+				NumNodes:        1,
+				ValidatorsStake: []uint64{5_000_000},
+			},
+		},
+		"when left empty, it defaults to the default options": {
+			options: []IntegrationTestNetOptions{},
+			expectedOptions: IntegrationTestNetOptions{
+				Upgrades:        AsPointer(opera.GetSonicUpgrades()),
+				NumNodes:        1,
+				ValidatorsStake: []uint64{5_000_000},
+			},
+		},
+		"when NumNodes is defined, ValidatorsStake is initialized to be uniform": {
+			options: []IntegrationTestNetOptions{
+				{
+					NumNodes: 3,
+				},
+			},
+			expectedOptions: IntegrationTestNetOptions{
+				Upgrades:        AsPointer(opera.GetSonicUpgrades()),
+				NumNodes:        3,
+				ValidatorsStake: []uint64{5_000_000, 5_000_000, 5_000_000},
+			},
+		},
+		"when ValidatorsStake length does not match NumNodes, an error is returned": {
+			options: []IntegrationTestNetOptions{
+				{
+					NumNodes:        2,
+					ValidatorsStake: []uint64{5_000_000},
+				},
+			},
+			expectError: "number of nodes (2) does not match number of validator stakes (1)",
+		},
+		"when only ValidatorsStake is defined, NumNodes is set accordingly": {
+			options: []IntegrationTestNetOptions{
+				{
+					ValidatorsStake: []uint64{10, 20, 30},
+				},
+			},
+			expectedOptions: IntegrationTestNetOptions{
+				Upgrades:        AsPointer(opera.GetSonicUpgrades()),
+				NumNodes:        3,
+				ValidatorsStake: []uint64{10, 20, 30},
+			},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			options, err := validateAndSanitizeOptions(test.options...)
+			if len(test.expectError) > 0 {
+				require.ErrorContains(t, err, test.expectError)
+				return
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, test.expectedOptions, options)
+		})
+	}
+
 }
