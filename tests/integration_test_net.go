@@ -541,26 +541,51 @@ func (n *IntegrationTestNet) start() error {
 		}
 	}
 
-	// connect to blockchain network
-	client, err := n.GetClient()
-	if err != nil {
-		return fmt.Errorf("failed to connect to the Ethereum client: %w", err)
-	}
-	defer client.Close()
+	// Connect the nodes P2P network together
+	for i := range n.nodes {
+		client, err := n.GetClientConnectedToNode(i)
+		if err != nil {
+			return fmt.Errorf("failed to connect to the Ethereum client: %w", err)
+		}
+		defer client.Close()
 
-	// wait for the node to be ready to serve requests
-	err = WaitFor(context.Background(), func(ctx context.Context) (bool, error) {
-		_, err := client.ChainID(ctx)
-		return err == nil, nil
-	})
-	if err != nil {
-		return fmt.Errorf("failed to connect to the Ethereum client: %w", err)
+		// Connect to each node to all other nodes
+		for j, enode := range nodeEnodes {
+			if i == j {
+				continue
+			}
+			if err := client.Client().Call(nil, "admin_addPeer", enode); err != nil {
+				return fmt.Errorf("failed to connect to node %d: %v", i, err)
+			}
+		}
+
+		// Wait until connections are established
+		err = WaitFor(context.Background(), func(ctx context.Context) (bool, error) {
+			var res []map[string]any
+			if err := client.Client().Call(&res, "admin_peers"); err != nil {
+				return false, fmt.Errorf("failed to connect to node %d: %v", i, err)
+			}
+			return len(res) == len(n.nodes)-1, nil
+		})
+		if err != nil {
+			return fmt.Errorf("failed to wait for node %d to be fully connected: %v", i, err)
+		}
 	}
 
-	// Connect the nodes with each other.
-	for i, enode := range nodeEnodes {
-		if err := client.Client().Call(nil, "admin_addPeer", enode); err != nil {
-			return fmt.Errorf("failed to connect to node %d: %v", i, err)
+	// Wait for all nodes to be ready to serve requests
+	for i := range n.nodes {
+		err := WaitFor(context.Background(), func(ctx context.Context) (bool, error) {
+			client, err := n.GetClientConnectedToNode(i)
+			if err != nil {
+				return false, fmt.Errorf("failed to connect to the Ethereum client: %w", err)
+			}
+			defer client.Close()
+
+			_, err = client.ChainID(ctx)
+			return err == nil, nil
+		})
+		if err != nil {
+			return fmt.Errorf("failed to connect to the Ethereum client: %w", err)
 		}
 	}
 
@@ -761,6 +786,7 @@ func (n *IntegrationTestNet) AdvanceEpoch(t testing.TB, epochs int) {
 	t.Helper()
 	client, err := n.GetClient()
 	require.NoError(t, err, "failed to connect to the Ethereum client")
+	defer client.Close()
 
 	var currentEpoch hexutil.Uint64
 	err = client.Client().Call(&currentEpoch, "eth_currentEpoch")
