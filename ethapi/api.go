@@ -1292,6 +1292,9 @@ func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNr
 	return hexutil.Uint64(hi), nil
 }
 
+// getNumberAndTime returns the block number and time for the given block number or hash,
+// applying any overrides specified in blockOverrides.
+// if the number or hash is invalid or does not exist, an error is returned.
 func getNumberAndTime(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrHash, overrides *BlockOverrides) (uint64, uint64, error) {
 
 	var header *evmcore.EvmHeader
