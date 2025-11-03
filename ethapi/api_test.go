@@ -33,6 +33,7 @@ import (
 	"github.com/0xsoniclabs/carmen/go/common/amount"
 	"github.com/0xsoniclabs/carmen/go/common/immutable"
 	"github.com/0xsoniclabs/carmen/go/common/witness"
+	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
@@ -286,7 +287,7 @@ func TestEstimateGas(t *testing.T) {
 	mockBackend.EXPECT().GetNetworkRules(any, idx.Block(1)).Return(&opera.Rules{}, nil).AnyTimes()
 	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, blkNr).Return(mockState, mockHeader, nil).AnyTimes()
 	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000))
-	mockBackend.EXPECT().MaxGasLimit().Return(uint64(10000000))
+	mockBackend.EXPECT().MaxGasLimit().Return(uint64(10000000)).Times(2)
 	mockBackend.EXPECT().GetEVM(any, any, any, any, any).DoAndReturn(getEvmFunc(mockState)).AnyTimes()
 	setExpectedStateCalls(mockState)
 
@@ -1492,6 +1493,48 @@ func TestGetNumberAndTime_ReportsErrors(t *testing.T) {
 	}
 }
 
+func TestGetNumberAndTime_CorrectlyRetrievesValues(t *testing.T) {
+
+	expectedHeader := &evmcore.EvmHeader{
+		Number: big.NewInt(42),
+		Time:   inter.Timestamp(time.Second * 42),
+	}
+
+	tests := map[string]struct {
+		blockNumberOrHash rpc.BlockNumberOrHash
+		backendSetup      func(*MockBackend)
+	}{
+		"by number": {
+			blockNumberOrHash: rpc.BlockNumberOrHashWithNumber(42),
+			backendSetup: func(mockBackend *MockBackend) {
+				mockBackend.EXPECT().HeaderByNumber(gomock.Any(), rpc.BlockNumber(42)).Return(expectedHeader, nil)
+			},
+		},
+		"by hash": {
+			blockNumberOrHash: rpc.BlockNumberOrHashWithHash(common.HexToHash("0xabcdef"), false),
+			backendSetup: func(mockBackend *MockBackend) {
+				mockBackend.EXPECT().HeaderByHash(gomock.Any(), common.HexToHash("0xabcdef")).Return(expectedHeader, nil)
+			},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockBackend := NewMockBackend(ctrl)
+			test.backendSetup(mockBackend)
+
+			number, timestamp, err := getNumberAndTime(context.Background(), mockBackend, test.blockNumberOrHash, nil)
+			require.NoError(t, err)
+			require.Equal(t, uint64(42), number)
+			require.Equal(t, uint64(42), timestamp)
+		})
+	}
+}
+
 func TestGetNumberAndTime_AppliesOverrides(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -1510,7 +1553,7 @@ func TestGetNumberAndTime_AppliesOverrides(t *testing.T) {
 		Time: &overrideTime,
 	})
 	require.NoError(t, err)
-	require.Equal(t, int64(42), number)
+	require.Equal(t, uint64(42), number)
 	require.Equal(t, uint64(overrideTime), timestamp)
 }
 
@@ -1543,7 +1586,7 @@ func TestDoEstimate_IsMaxGasAware(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 
 			ctrl := gomock.NewController(t)
-			// defer ctrl.Finish()
+			defer ctrl.Finish()
 
 			mockBackend := NewMockBackend(ctrl)
 			mockState := state.NewMockStateDB(ctrl)
