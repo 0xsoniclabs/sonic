@@ -1178,37 +1178,9 @@ func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNr
 	// Cap the maximum gas allowance according to EIP-7825. In sonic the max gas limit
 	// for a transaction is limited by MaxGasLimit.
 	if hi > b.MaxGasLimit() {
-
-		var header *evmcore.EvmHeader
-		var err error
-
-		// get header
-		rpcBlockNumber, ok := blockNrOrHash.Number()
-		if ok {
-			header, err = b.HeaderByNumber(ctx, rpcBlockNumber)
-		} else {
-			hash, ok := blockNrOrHash.Hash()
-			if !ok {
-				return 0, errors.New("invalid block number or hash")
-			}
-			header, err = b.HeaderByHash(ctx, hash)
-		}
+		blockNumber, blockTime, err := getNumberAndTime(ctx, b, blockNrOrHash, blockOverrides)
 		if err != nil {
 			return 0, err
-		}
-
-		// get block number and time
-		blockNumber := header.Number.Int64()
-		blockTime := uint64(header.Time.Unix())
-
-		// check overrides
-		if blockOverrides != nil {
-			if blockOverrides.Number != nil {
-				blockNumber = blockOverrides.Number.ToInt().Int64()
-			}
-			if blockOverrides.Time != nil {
-				blockTime = uint64((*blockOverrides.Time))
-			}
 		}
 
 		// use Osaka gas limit rule
@@ -1318,6 +1290,43 @@ func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNr
 		}
 	}
 	return hexutil.Uint64(hi), nil
+}
+
+func getNumberAndTime(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrHash, overrides *BlockOverrides) (uint64, uint64, error) {
+
+	var header *evmcore.EvmHeader
+	var err error
+
+	// get header
+	rpcBlockNumber, ok := blockNrOrHash.Number()
+	if ok {
+		header, err = b.HeaderByNumber(ctx, rpcBlockNumber)
+	} else {
+		hash, ok := blockNrOrHash.Hash()
+		if !ok {
+			return 0, 0, errors.New("invalid block number or hash")
+		}
+		header, err = b.HeaderByHash(ctx, hash)
+	}
+	if err != nil {
+		return 0, 0, err
+	}
+
+	// get block number and time
+	blockNumber := header.Number.Uint64()
+	blockTime := uint64(header.Time.Unix())
+
+	// check overrides
+	if overrides != nil {
+		if overrides.Number != nil {
+			blockNumber = overrides.Number.ToInt().Uint64()
+		}
+		if overrides.Time != nil {
+			blockTime = uint64((*overrides.Time))
+		}
+	}
+
+	return blockNumber, blockTime, nil
 }
 
 // EstimateGas returns an estimate of the amount of gas needed to execute the
