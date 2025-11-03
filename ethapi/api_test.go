@@ -20,9 +20,12 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	reflect "reflect"
+	"slices"
 	"testing"
 	"time"
 
@@ -1444,4 +1447,177 @@ func TestFeeHistory_BlockNotFound(t *testing.T) {
 	ethAPI := NewPublicEthereumAPI(mockBackend)
 	_, err := ethAPI.FeeHistory(context.Background(), geth_math.HexOrDecimal64(5), requestedBlock, nil)
 	require.Error(t, err, "expected error when block is not found")
+}
+
+func TestGetNumberAndTime_ReportsErrors(t *testing.T) {
+
+	tests := map[string]struct {
+		blockNumberOrHash rpc.BlockNumberOrHash
+		setupBackend      func(*MockBackend)
+		expectedError     string
+	}{
+		"block not found": {
+			blockNumberOrHash: rpc.BlockNumberOrHashWithNumber(42),
+			setupBackend: func(mockBackend *MockBackend) {
+				mockBackend.EXPECT().HeaderByNumber(gomock.Any(), rpc.BlockNumber(42)).Return(nil, errors.New("block not found"))
+			},
+			expectedError: "block not found",
+		},
+		"header retrieval error": {
+			blockNumberOrHash: rpc.BlockNumberOrHashWithHash(common.Hash{1, 2, 3}, false),
+			setupBackend: func(mockBackend *MockBackend) {
+				mockBackend.EXPECT().HeaderByHash(gomock.Any(), common.Hash{1, 2, 3}).Return(nil, errors.New("header retrieval error"))
+			},
+			expectedError: "header retrieval error",
+		},
+		"invalid block number or hash": {
+			blockNumberOrHash: rpc.BlockNumberOrHash{},
+			setupBackend:      func(mockBackend *MockBackend) {},
+			expectedError:     "invalid block number or hash",
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockBackend := NewMockBackend(ctrl)
+			test.setupBackend(mockBackend)
+
+			_, _, err := getNumberAndTime(context.Background(), mockBackend, test.blockNumberOrHash, nil)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), test.expectedError)
+		})
+	}
+}
+
+func TestGetNumberAndTime_AppliesOverrides(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockBackend := NewMockBackend(ctrl)
+
+	blockNumberOrHash := rpc.BlockNumberOrHashWithNumber(42)
+	overrideTime := hexutil.Uint64(1234567890)
+
+	mockBackend.EXPECT().HeaderByNumber(gomock.Any(), rpc.BlockNumber(42)).Return(&evmcore.EvmHeader{
+		Number: big.NewInt(42),
+		Time:   987654321,
+	}, nil)
+
+	number, timestamp, err := getNumberAndTime(context.Background(), mockBackend, blockNumberOrHash, &BlockOverrides{
+		Time: &overrideTime,
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(42), number)
+	require.Equal(t, uint64(overrideTime), timestamp)
+}
+
+func TestDoEstimate_IsMaxGasAware(t *testing.T) {
+
+	tests := map[string]struct {
+		upgrades       opera.Upgrades
+		txGas          hexutil.Uint64
+		maxGas         uint64
+		wantEstimation hexutil.Uint64
+		wantError      string
+	}{
+		"max gas ignored before brio": {
+			upgrades:       opera.GetSonicUpgrades(),
+			txGas:          2_000_000,
+			maxGas:         500_000,
+			wantEstimation: 807_416,
+			wantError:      "", // no error expected
+		},
+		"transaction over max gas after brio returns error": {
+			upgrades:       opera.GetBrioUpgrades(),
+			txGas:          2_000_000,
+			maxGas:         500_000,
+			wantEstimation: 0,
+			wantError:      string("gas required exceeds allowance (500000)"),
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+
+			ctrl := gomock.NewController(t)
+			// defer ctrl.Finish()
+
+			mockBackend := NewMockBackend(ctrl)
+			mockState := state.NewMockStateDB(ctrl)
+
+			header := evmcore.EvmHeader{
+				Number:  big.NewInt(1),
+				Time:    1234,
+				BaseFee: big.NewInt(2),
+			}
+			blockIndex := idx.Block(1)
+			blockCtx := vm.BlockContext{
+				BlockNumber: header.Number,
+				BaseFee:     big.NewInt(1),
+				Transfer:    vm.TransferFunc(func(sd vm.StateDB, a1, a2 common.Address, i *uint256.Int) {}),
+				CanTransfer: vm.CanTransferFunc(func(sd vm.StateDB, a1 common.Address, i *uint256.Int) bool { return true }),
+				Random:      &common.Hash{0x42},
+			}
+
+			// use test upgrades to create vm and chain configs
+			rules := opera.Rules{
+				Upgrades: test.upgrades,
+				Economy: opera.EconomyRules{
+					Gas: opera.GasRules{MaxEventGas: test.maxGas},
+				},
+			}
+			vmConfig := opera.GetVmConfig(rules)
+			if rules.Upgrades.Brio {
+				require.Equal(t, test.maxGas, *vmConfig.MaxTxGas, "wrong value in vmConfig")
+			}
+			chainConfig := makeChainConfig(test.upgrades)
+
+			any := gomock.Any()
+
+			// test related calls
+			mockBackend.EXPECT().MaxGasLimit().Return(test.maxGas).AnyTimes()
+			mockBackend.EXPECT().HeaderByNumber(any, rpc.BlockNumber(1)).Return(&header, nil).AnyTimes()
+			mockBackend.EXPECT().ChainConfig(blockIndex).Return(chainConfig).AnyTimes()
+			mockBackend.EXPECT().GetNetworkRules(any, blockIndex).Return(&rules, nil).AnyTimes()
+			// ---
+
+			// non test related calls
+			mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, any).Return(mockState, &header, nil).AnyTimes()
+			mockBackend.EXPECT().GetEVM(any, any, any, any, any).
+				DoAndReturn(getEvmFuncWithParameters(mockState, chainConfig, &blockCtx, vmConfig)).AnyTimes()
+
+			setExpectedStateCalls(mockState)
+			mockState.EXPECT().AddAddressToAccessList(any).AnyTimes()
+			mockState.EXPECT().GetCodeHash(any).Return(common.Hash{0x42}).AnyTimes()
+			mockState.EXPECT().GetStorageRoot(any).Return(common.Hash{0x43}).AnyTimes()
+			mockState.EXPECT().Finalise(any).AnyTimes()
+			// ---
+
+			// these values are the maximum allowed by the protocol, only relevant
+			// to create a large payload so that the gas estimation is high enough.
+			const MAX_CODE_SIZE uint64 = 24576
+			const MAX_INIT_CODE_SIZE uint64 = 2 * MAX_CODE_SIZE
+			bigData := hexutil.Bytes(slices.Repeat([]byte{0xFF}, int(MAX_INIT_CODE_SIZE)-1))
+
+			got, err := DoEstimateGas(
+				t.Context(),
+				mockBackend,
+				TransactionArgs{Gas: &test.txGas, To: &common.Address{1}, Data: &bigData},
+				rpc.BlockNumberOrHashWithNumber(1),
+				nil,
+				nil,
+				math.MaxUint64)
+
+			if len(test.wantError) > 0 {
+				require.ErrorContains(t, err, test.wantError, "unexpected error")
+			} else {
+				require.NoError(t, err, "unexpected error")
+				require.Equal(t, test.wantEstimation, got, "unexpected gas estimation")
+			}
+
+		})
+	}
 }
