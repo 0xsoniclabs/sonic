@@ -1178,9 +1178,19 @@ func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNr
 	// Cap the maximum gas allowance according to EIP-7825. In sonic the max gas limit
 	// for a transaction is limited by MaxGasLimit.
 	if hi > b.MaxGasLimit() {
-		blockNumber, blockTime, err := getNumberAndTime(ctx, b, blockNrOrHash, blockOverrides)
+		blockNumber, blockTime, err := getNumberAndTime(ctx, b, blockNrOrHash)
 		if err != nil {
 			return 0, err
+		}
+
+		// check overrides
+		if blockOverrides != nil {
+			if blockOverrides.Number != nil {
+				blockNumber = blockOverrides.Number.ToInt().Uint64()
+			}
+			if blockOverrides.Time != nil {
+				blockTime = uint64((*blockOverrides.Time))
+			}
 		}
 
 		// use Osaka gas limit rule
@@ -1295,7 +1305,7 @@ func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNr
 // getNumberAndTime returns the block number and time for the given block number or hash,
 // applying any overrides specified in blockOverrides.
 // if the number or hash is invalid or does not exist, an error is returned.
-func getNumberAndTime(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrHash, overrides *BlockOverrides) (uint64, uint64, error) {
+func getNumberAndTime(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrHash) (uint64, uint64, error) {
 
 	var header *evmcore.EvmHeader
 	var err error
@@ -1318,16 +1328,6 @@ func getNumberAndTime(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNum
 	// get block number and time
 	blockNumber := header.Number.Uint64()
 	blockTime := uint64(header.Time.Unix())
-
-	// check overrides
-	if overrides != nil {
-		if overrides.Number != nil {
-			blockNumber = overrides.Number.ToInt().Uint64()
-		}
-		if overrides.Time != nil {
-			blockTime = uint64((*overrides.Time))
-		}
-	}
 
 	return blockNumber, blockTime, nil
 }
