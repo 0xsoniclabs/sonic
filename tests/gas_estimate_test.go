@@ -54,6 +54,7 @@ func TestEstimateGas(t *testing.T) {
 		dataContractAddress := receipt.ContractAddress
 
 		doTestEstimate(t, session, makeAllegroCases(t, session, dataContract, dataContractAddress))
+
 	})
 }
 
