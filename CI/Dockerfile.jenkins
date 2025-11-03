@@ -1,0 +1,21 @@
+FROM golang:1.25
+
+# Install dependencies and keep image small as described in best practices
+# https://docs.docker.com/build/building/best-practices/
+RUN apt-get update && apt-get install -y \
+  git \
+  curl \
+  make \
+  && rm -rf /var/lib/apt/lists/*
+
+# Patch golang cache directory:
+# Because of user id forwarding, the home directory may not exist in the container
+# Go would fall back to / (root) in this case, which is not writable,
+# create a cache directory and make it writable for everyone
+RUN mkdir -p /.cache && chmod 777 /.cache 
+
+# Install coverage reports upload tool
+# https://docs.codecov.com/docs/codecov-uploader
+RUN curl -Os https://cli.codecov.io/latest/linux/codecov && \
+  chmod +x codecov && \
+  mv codecov /usr/local/bin
