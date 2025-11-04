@@ -140,13 +140,17 @@ type IntegrationTestNetOptions struct {
 	// nil value will initialize network using SonicUpgrades.
 	Upgrades *opera.Upgrades
 	// NumNodes specifies the number of nodes to be started on the integration
-	// test network. A value of 0 is interpreted as 1.
+	// test network.
+	// This setting is only used by the JSON genesis procedure, fake genesis will ignore it
+	// and execute a single node network.
+	// If NumNodes is not defined, it will be set to the length of ValidatorsStake if that is defined
+	// otherwise it will be set to 1.
 	NumNodes int
 	// ValidatorsStake specifies the stake of each validator in the network in sonics.
-	// If left empty, a single validator with 5,000,000 sonics stake will be created.
 	// This setting is only used by the JSON genesis procedure, fake genesis will ignore it
 	// and execute a single node network.
 	// If NumNodes is defined, ValidatorsStake must have the same length as NumNodes.
+	// If ValidatorsStake is not defined, NumNodes validators will be created with equal stake.
 	ValidatorsStake []uint64
 	// ClientExtraArguments specifies additional arguments to be passed to the client.
 	ClientExtraArguments []string
