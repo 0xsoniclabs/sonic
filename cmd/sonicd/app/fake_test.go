@@ -93,6 +93,29 @@ func TestFakeNetFlag_Validator(t *testing.T) {
 	}
 }
 
+func TestFakeNEtFlag_ValidatorID_NotPresentInGenesis_FailsToStart(t *testing.T) {
+	// Start a sonic console, make sure it's cleaned up and terminate the console
+	dataDir := tmpdir(t)
+	// initialize with a single validator
+	initFakenetDatadir(dataDir, 1)
+	cli := exec(t,
+		"--fakenet", "3/3",
+		"--port", "0", "--maxpeers", "0", "--nodiscover", "--nat", "none", "--datadir", dataDir,
+		"--exitwhensynced.epoch", "1")
+
+	// Gather all the infos the welcome message needs to contain
+	cli.ExpectExit()
+
+	wantMessages := []string{
+		"failed to initialize the node: validator ID 3 is not in the validator set",
+	}
+	for _, m := range wantMessages {
+		if !strings.Contains(cli.StderrText(), m) {
+			t.Errorf("stderr text does not contain %q", m)
+		}
+	}
+}
+
 func readFakeValidator(fakenet string) *validatorpk.PubKey {
 	n, _, err := config.ParseFakeGen(fakenet)
 	if err != nil {
