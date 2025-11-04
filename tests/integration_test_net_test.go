@@ -476,3 +476,37 @@ func TestIntegrationTestNet_ValidateAndSanitizeOptions(t *testing.T) {
 	}
 
 }
+
+func TestIntegrationTestNet_FakeGenesis_MultiNode(t *testing.T) {
+	for _, i := range []int{1, 3} {
+		t.Run(fmt.Sprintf("NumNodes%d", i), func(t *testing.T) {
+
+			net := StartIntegrationTestNetWithFakeGenesis(t,
+				IntegrationTestNetOptions{
+					NumNodes: i,
+				},
+			)
+
+			client, err := net.GetClient()
+			require.NoError(t, err)
+			defer client.Close()
+
+			sfc, err := sfc100.NewContract(sfc.ContractAddress, client)
+			require.NoError(t, err)
+
+			epoch, err := sfc.CurrentEpoch(nil)
+			require.NoError(t, err)
+
+			validatorIDs, err := sfc.GetEpochValidatorIDs(nil, epoch)
+			require.NoError(t, err)
+
+			require.Len(t, validatorIDs, i,
+				"The number of validators with stakes in the SFC does not match the expected number of validators")
+			for i, validatorID := range validatorIDs {
+				stake, err := sfc.GetSelfStake(nil, validatorID)
+				require.NoError(t, err, "unexpected error when fetching stake for validator %v (ID %v)", i, validatorID.Uint64())
+				require.NotZero(t, stake.Uint64(), "Validator %v (ID %v) has zero stake", i, validatorID.Uint64())
+			}
+		})
+	}
+}

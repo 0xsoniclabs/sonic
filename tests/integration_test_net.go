@@ -312,10 +312,12 @@ func StartIntegrationTestNetWithFakeGenesis(
 		t.Fatal("fake genesis only supports sonic and allegro feature sets")
 	}
 
+	numNodesString := fmt.Sprintf("%d", effectiveOptions.NumNodes)
+
 	net, err := startIntegrationTestNet(
 		t,
 		t.TempDir(),
-		[]string{"genesis", "fake", "1", "--upgrades", upgrades},
+		[]string{"genesis", "fake", numNodesString, "--upgrades", upgrades},
 		effectiveOptions,
 	)
 	require.NoError(t, err, "failed to start integration test network with fake genesis")

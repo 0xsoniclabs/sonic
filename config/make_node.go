@@ -111,6 +111,13 @@ func MakeNode(ctx *cli.Context, cfg *Config) (*node.Node, *gossip.Service, func(
 	valKeystore := valkeystore.NewDefaultFileKeystore(path.Join(keystoreDir, "validator"))
 	valPubkey := cfg.Emitter.Validator.PubKey
 	if key := getFakeValidatorKey(ctx); key != nil && cfg.Emitter.Validator.ID != 0 {
+		validators := gdb.GetValidators()
+		if !validators.Exists(cfg.Emitter.Validator.ID) {
+			// This error indicates the client tried to initialize as a fake validator
+			// with an ID greater than the number of validators in the genesis.
+			return nil, nil, nil, fmt.Errorf("validator ID %d is not in the validator set", cfg.Emitter.Validator.ID)
+		}
+
 		if err := addFakeValidatorKey(ctx, key, valPubkey, valKeystore); err != nil {
 			return nil, nil, nil, err
 		}
