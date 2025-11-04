@@ -298,6 +298,87 @@ func TestProcess_TracksParentBlockHashIfPragueIsEnabled(t *testing.T) {
 	}
 }
 
+func TestProcess_OsakaLimitsBlockSize(t *testing.T) {
+	for _, isOsaka := range []bool{false, true} {
+		t.Run(fmt.Sprintf("isOsaka=%v", isOsaka), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			chainConfig := params.ChainConfig{}
+			if isOsaka {
+				chainConfig = params.ChainConfig{
+					ChainID:     big.NewInt(12),
+					LondonBlock: new(big.Int).SetUint64(0),
+					PragueTime:  new(uint64),
+					OsakaTime:   new(uint64),
+				}
+			}
+
+			chain := NewMockDummyChain(ctrl)
+			processor := NewStateProcessor(&chainConfig, chain, opera.Upgrades{})
+			state := state.NewMockStateDB(ctrl)
+
+			any := gomock.Any()
+			if isOsaka {
+				gomock.InOrder(
+					// History Contract
+					state.EXPECT().AddAddressToAccessList(any),
+					state.EXPECT().Snapshot().Return(0),
+					state.EXPECT().Exist(any).Return(true),
+					state.EXPECT().SubBalance(any, any, any),
+					state.EXPECT().AddBalance(any, any, any),
+					state.EXPECT().GetCode(any),
+					state.EXPECT().Finalise(any),
+					state.EXPECT().EndTransaction(),
+
+					// First Transaction
+					state.EXPECT().SetTxContext(any, any),
+					state.EXPECT().Snapshot().Return(0),
+					state.EXPECT().GetBalance(any).Return(uint256.NewInt(1e18)),
+					state.EXPECT().SubBalance(any, any, any),
+					state.EXPECT().RevertToSnapshot(any),
+					state.EXPECT().EndTransaction(),
+				)
+			} else {
+				gomock.InOrder(
+					// Both Transactions
+					state.EXPECT().SetTxContext(any, any),
+					state.EXPECT().GetBalance(any).Return(uint256.NewInt(1e18)),
+					state.EXPECT().SubBalance(any, any, any),
+					state.EXPECT().EndTransaction(),
+					state.EXPECT().SetTxContext(any, any),
+					state.EXPECT().GetBalance(any).Return(uint256.NewInt(1e18)),
+					state.EXPECT().SubBalance(any, any, any),
+					state.EXPECT().EndTransaction(),
+				)
+			}
+
+			block := &EvmBlock{
+				EvmHeader: EvmHeader{
+					Number: big.NewInt(1),
+				},
+				// Transactions with large data payloads to exceed block size limit
+				Transactions: []*types.Transaction{
+					types.NewTx(&types.LegacyTx{Data: make([]byte, 5_000_000)}),
+					types.NewTx(&types.LegacyTx{Data: make([]byte, 5_000_000)}),
+				},
+			}
+			require.Equal(t, isOsaka, chainConfig.IsOsaka(block.Number, uint64(block.Time)))
+
+			vmConfig := vm.Config{}
+			gasLimit := uint64(math.MaxUint64)
+			usedGas := new(uint64)
+			processed := processor.Process(block, state, vmConfig, gasLimit, usedGas, nil)
+			if isOsaka {
+				// Only one transaction should be processed to keep the block size
+				// within limits.
+				require.Len(t, processed, 1)
+			} else {
+				// Both transactions are processed when Osaka is not active.
+				require.Len(t, processed, 2)
+			}
+		})
+	}
+}
+
 func TestProcess_FailingTransactionAreSkippedButTheBlockIsNotTerminated(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	state := state.NewMockStateDB(ctrl)

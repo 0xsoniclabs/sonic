@@ -308,7 +308,54 @@ func TestScheduler_Schedule_SizeLimitIsEnforced(t *testing.T) {
 			require.Equal(t, want, got)
 		}
 	}
+}
 
+func TestScheduler_Schedule_EIP7938BlockSizeLimitIsEnforced(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	factory := NewMockprocessorFactory(ctrl)
+	processor := NewMockprocessor(ctrl)
+	factory.EXPECT().beginBlock(gomock.Any()).Return(processor).AnyTimes()
+	processor.EXPECT().run(gomock.Any()).Return(true, uint64(0)).AnyTimes()
+	processor.EXPECT().release().AnyTimes()
+	scheduler := newScheduler(factory)
+
+	txs := []*types.Transaction{
+		types.NewTx(&types.LegacyTx{Nonce: 1, Data: make([]byte, 200_000)}),
+		types.NewTx(&types.LegacyTx{Nonce: 2, Data: make([]byte, 200_000)}),
+		types.NewTx(&types.LegacyTx{Nonce: 3, Data: make([]byte, 200_000)}),
+		types.NewTx(&types.LegacyTx{Nonce: 4, Data: make([]byte, 200_000)}),
+		types.NewTx(&types.LegacyTx{Nonce: 5, Data: make([]byte, 200_000)}),
+	}
+
+	// Calculate the maximum size for transactions considering the block header size.
+	maxSizeForTxs := params.MaxBlockSize - evmcore.HeaderSize
+	for _, limit := range []uint64{1_000, 1_000_000, maxSizeForTxs - 1, 10_000_000, math.MaxUint64} {
+		result := scheduler.Schedule(
+			t.Context(),
+			&BlockInfo{},
+			&fakeTxCollection{transactions: txs},
+			Limits{
+				Gas:  math.MaxUint64, // no gas limit
+				Size: limit,
+			},
+		)
+
+		maxSize := min(params.MaxBlockSize-evmcore.HeaderSize, limit)
+
+		want := uint64(0)
+		for _, tx := range txs {
+			size := tx.Size()
+			if want+size <= maxSize {
+				want += size
+			}
+		}
+		got := uint64(0)
+		for _, tx := range result {
+			got += tx.Size()
+		}
+		require.LessOrEqual(t, got, maxSize)
+		require.Equal(t, want, got)
+	}
 }
 
 func TestScheduler_Schedule_StopsWhenContextIsCancelled(t *testing.T) {

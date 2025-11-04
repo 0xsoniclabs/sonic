@@ -19,6 +19,7 @@ package evmcore
 import (
 	"fmt"
 	"math/big"
+	"reflect"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
@@ -109,11 +110,32 @@ func (p *StateProcessor) Process(
 		ProcessParentBlockHash(block.ParentHash, vmenv, statedb)
 	}
 
+	transactions := block.Transactions
+	if p.config.IsOsaka(blockNumber, time) {
+		transactions = enforceBlockSizeLimit(transactions, header)
+	}
+
 	// Iterate over and process the individual transactions
 	return runTransactions(newRunContext(
 		signer, header.BaseFee, statedb, gp, blockNumber, usedGas,
 		onNewLog, p.upgrades, &transactionRunner{evm{vmenv}},
-	), block.Transactions, 0)
+	), transactions, 0)
+}
+
+// HeaderSize is an upper bound of the EVM block header size used for block size calculations.
+var HeaderSize = uint64(float64(reflect.TypeFor[EvmHeader]().Size()) + 3*32) // add size for 3 big.Int fields
+
+// enforceBlockSizeLimit ensures that the size of the block does not exceed the
+// maximum allowed block size introduced by EIP-7934.
+func enforceBlockSizeLimit(txs types.Transactions, header *EvmHeader) types.Transactions {
+	size := HeaderSize
+	for i, tx := range txs {
+		if size+tx.Size() > params.MaxBlockSize {
+			return txs[:i]
+		}
+		size += tx.Size()
+	}
+	return txs
 }
 
 // runContext bundles the parameters required for processing transactions in a

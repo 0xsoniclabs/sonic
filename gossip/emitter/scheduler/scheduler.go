@@ -79,7 +79,9 @@ func (s *Scheduler) Schedule(
 	defer processor.release()
 
 	remainingGas := limits.Gas
-	remainingSize := limits.Size
+
+	// To stay compliant with EIP-7934 the maximum block size is limited.
+	remainingSize := min(params.MaxBlockSize-evmcore.HeaderSize, limits.Size)
 	var res []*types.Transaction
 	for context.Err() == nil {
 		candidate := candidates.Current()
