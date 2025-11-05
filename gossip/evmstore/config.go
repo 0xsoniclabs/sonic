@@ -46,7 +46,7 @@ type (
 		// Skip running with a different archive mode prevention
 		SkipArchiveCheck bool
 		// Disables EVM logs indexing
-		DisableLogsIndexing bool
+		// DisableLogsIndexing bool
 		// Disables storing of txs positions
 		DisableTxHashesIndexing bool
 	}

@@ -496,9 +496,9 @@ func consensusCallbackBeginBlockFn(
 						// Note: it's possible for receipts to get indexed twice by BR and block processing
 						if allReceipts.Len() != 0 {
 							store.evm.SetReceipts(blockCtx.Idx, allReceipts)
-							for _, r := range allReceipts {
-								store.evm.IndexLogs(r.Logs...)
-							}
+							// for _, r := range allReceipts {
+							// 	store.evm.IndexLogs(r.Logs...)
+							// }
 						}
 					}
 

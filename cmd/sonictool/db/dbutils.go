@@ -92,7 +92,7 @@ func MakeGossipDb(params GossipDbParameters) (*gossip.Store, error) {
 	gdbConfig := gossip.DefaultStoreConfig(params.CacheRatio)
 	if params.ValidatorMode {
 		gdbConfig.EVM.StateDb.Archive = carmen.NoArchive
-		gdbConfig.EVM.DisableLogsIndexing = true
+		// gdbConfig.EVM.DisableLogsIndexing = true
 		gdbConfig.EVM.DisableTxHashesIndexing = true
 	}
 

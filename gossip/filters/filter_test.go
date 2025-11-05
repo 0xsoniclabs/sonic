@@ -27,12 +27,9 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/inter"
-	"github.com/0xsoniclabs/sonic/utils/adapters/ethdb2kvdb"
-	"github.com/Fantom-foundation/lachesis-base/kvdb/table"
 	"github.com/stretchr/testify/require"
 	gomock "go.uber.org/mock/gomock"
 
-	"github.com/0xsoniclabs/sonic/topicsdb"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core"
@@ -76,7 +73,7 @@ func BenchmarkFilters(b *testing.B) {
 		b.Fatal(err)
 	}
 	backend.db = rawdb.NewTable(ldb, "a")
-	backend.logIndex = topicsdb.NewWithThreadPool(table.New(ethdb2kvdb.Wrap(ldb), []byte("b")))
+	// backend.logIndex = topicsdb.NewWithThreadPool(table.New(ethdb2kvdb.Wrap(ldb), []byte("b")))
 
 	var (
 		key1, _ = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
@@ -148,7 +145,7 @@ func TestFilters(t *testing.T) {
 			}
 			gen.AddUncheckedReceipt(receipt)
 			gen.AddUncheckedTx(types.NewTransaction(1, common.HexToAddress("0x1"), big.NewInt(1), 1, big.NewInt(1), nil))
-			backend.MustPushLogs(receipt.Logs...)
+			// backend.MustPushLogs(receipt.Logs...)
 
 		case 2:
 			receipt := types.NewReceipt(nil, false, 0)
@@ -161,7 +158,7 @@ func TestFilters(t *testing.T) {
 			}
 			gen.AddUncheckedReceipt(receipt)
 			gen.AddUncheckedTx(types.NewTransaction(2, common.HexToAddress("0x2"), big.NewInt(2), 2, big.NewInt(2), nil))
-			backend.MustPushLogs(receipt.Logs...)
+			// backend.MustPushLogs(receipt.Logs...)
 
 		case 998:
 			receipt := types.NewReceipt(nil, false, 0)
@@ -174,7 +171,7 @@ func TestFilters(t *testing.T) {
 			}
 			gen.AddUncheckedReceipt(receipt)
 			gen.AddUncheckedTx(types.NewTransaction(998, common.HexToAddress("0x998"), big.NewInt(998), 998, big.NewInt(998), nil))
-			backend.MustPushLogs(receipt.Logs...)
+			// backend.MustPushLogs(receipt.Logs...)
 
 		case 999:
 			receipt := types.NewReceipt(nil, false, 0)
@@ -186,7 +183,7 @@ func TestFilters(t *testing.T) {
 			}
 			gen.AddUncheckedReceipt(receipt)
 			gen.AddUncheckedTx(types.NewTransaction(999, common.HexToAddress("0x999"), big.NewInt(999), 999, big.NewInt(999), nil))
-			backend.MustPushLogs(receipt.Logs...)
+			// backend.MustPushLogs(receipt.Logs...)
 		}
 	})
 	for i, block := range chain {

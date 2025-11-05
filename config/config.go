@@ -272,7 +272,7 @@ func setEvmStore(ctx *cli.Context, datadir string, src evmstore.StoreConfig) (ev
 		}
 		if mode == "validator" {
 			cfg.StateDb.Archive = carmen.NoArchive
-			cfg.DisableLogsIndexing = true
+			// cfg.DisableLogsIndexing = true
 			cfg.DisableTxHashesIndexing = true
 		}
 	}

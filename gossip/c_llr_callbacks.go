@@ -46,9 +46,9 @@ func indexRawReceipts(s *Store, receiptsForStorage []*types.ReceiptForStorage, t
 		return nil, err
 	}
 
-	for _, r := range receipts {
-		s.evm.IndexLogs(r.Logs...)
-	}
+	// for _, r := range receipts {
+	// 	s.evm.IndexLogs(r.Logs...)
+	// }
 	return receipts, nil
 }
 

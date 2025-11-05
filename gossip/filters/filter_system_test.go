@@ -23,7 +23,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Fantom-foundation/lachesis-base/kvdb/memorydb"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -34,12 +33,11 @@ import (
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
-	"github.com/0xsoniclabs/sonic/topicsdb"
 )
 
 type testBackend struct {
-	db         ethdb.Database
-	logIndex   topicsdb.Index
+	db ethdb.Database
+	// logIndex   topicsdb.Index
 	blocksFeed *notify.Feed
 	txsFeed    *notify.Feed
 	logsFeed   *notify.Feed
@@ -47,8 +45,8 @@ type testBackend struct {
 
 func newTestBackend() *testBackend {
 	return &testBackend{
-		db:         rawdb.NewMemoryDatabase(),
-		logIndex:   topicsdb.NewWithThreadPool(memorydb.New()),
+		db: rawdb.NewMemoryDatabase(),
+		// logIndex:   topicsdb.NewWithThreadPool(memorydb.New()),
 		blocksFeed: new(notify.Feed),
 		txsFeed:    new(notify.Feed),
 		logsFeed:   new(notify.Feed),
@@ -133,16 +131,16 @@ func (b *testBackend) SubscribeNewBlockNotify(ch chan<- evmcore.ChainHeadNotify)
 	return b.blocksFeed.Subscribe(ch)
 }
 
-func (b *testBackend) EvmLogIndex() topicsdb.Index {
-	return b.logIndex
-}
+// func (b *testBackend) EvmLogIndex() topicsdb.Index {
+// 	return b.logIndex
+// }
 
-func (b *testBackend) MustPushLogs(recs ...*types.Log) {
-	err := b.logIndex.Push(recs...)
-	if err != nil {
-		panic(err)
-	}
-}
+// func (b *testBackend) MustPushLogs(recs ...*types.Log) {
+// 	err := b.logIndex.Push(recs...)
+// 	if err != nil {
+// 		panic(err)
+// 	}
+// }
 
 func (b *testBackend) GetTxPosition(txid common.Hash) *evmstore.TxPosition {
 	return nil

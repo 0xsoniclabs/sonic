@@ -23,12 +23,10 @@ import (
 
 	carmen "github.com/0xsoniclabs/carmen/go/state"
 	"github.com/0xsoniclabs/sonic/logger"
-	"github.com/0xsoniclabs/sonic/topicsdb"
 	"github.com/0xsoniclabs/sonic/utils/rlpstore"
 	"github.com/Fantom-foundation/lachesis-base/kvdb"
 	"github.com/Fantom-foundation/lachesis-base/kvdb/table"
 	"github.com/Fantom-foundation/lachesis-base/utils/wlru"
-	"github.com/ethereum/go-ethereum/core/types"
 )
 
 const nominalSize uint = 1
@@ -45,7 +43,7 @@ type Store struct {
 		Txs         kvdb.Store `table:"X"`
 	}
 
-	EvmLogs topicsdb.Index
+	// EvmLogs topicsdb.Index
 
 	cache struct {
 		TxPositions *wlru.Cache `cache:"-"` // store by pointer
@@ -74,11 +72,11 @@ func NewStore(mainDB kvdb.Store, cfg StoreConfig) *Store {
 
 	table.MigrateTables(&s.table, s.mainDB)
 
-	if cfg.DisableLogsIndexing {
-		s.EvmLogs = topicsdb.NewDummy()
-	} else {
-		s.EvmLogs = topicsdb.NewWithThreadPool(mainDB)
-	}
+	// if cfg.DisableLogsIndexing {
+	// 	s.EvmLogs = topicsdb.NewDummy()
+	// } else {
+	// 	s.EvmLogs = topicsdb.NewWithThreadPool(mainDB)
+	// }
 	s.initCache()
 
 	return s
@@ -105,7 +103,7 @@ func (s *Store) Close() error {
 	table.MigrateCaches(&s.cache, func() interface{} {
 		return nil
 	})
-	s.EvmLogs.Close()
+	// s.EvmLogs.Close()
 
 	if s.liveStateDb != nil {
 		s.Log.Info("Closing State DB...")
@@ -127,12 +125,12 @@ func (s *Store) initCache() {
 }
 
 // IndexLogs indexes EVM logs
-func (s *Store) IndexLogs(recs ...*types.Log) {
-	err := s.EvmLogs.Push(recs...)
-	if err != nil {
-		s.Log.Crit("DB logs index error", "err", err)
-	}
-}
+// func (s *Store) IndexLogs(recs ...*types.Log) {
+// 	err := s.EvmLogs.Push(recs...)
+// 	if err != nil {
+// 		s.Log.Crit("DB logs index error", "err", err)
+// 	}
+// }
 
 /*
  * Utils:

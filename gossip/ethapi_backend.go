@@ -48,7 +48,6 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/cert"
-	"github.com/0xsoniclabs/sonic/topicsdb"
 	"github.com/0xsoniclabs/sonic/utils/result"
 )
 
@@ -537,9 +536,9 @@ func (b *EthAPIBackend) RPCTxFeeCap() float64 {
 	return b.svc.config.RPCTxFeeCap
 }
 
-func (b *EthAPIBackend) EvmLogIndex() topicsdb.Index {
-	return b.svc.store.evm.EvmLogs
-}
+// func (b *EthAPIBackend) EvmLogIndex() topicsdb.Index {
+// 	return b.svc.store.evm.EvmLogs
+// }
 
 // CurrentEpoch returns current epoch number.
 func (b *EthAPIBackend) CurrentEpoch(ctx context.Context) idx.Epoch {
