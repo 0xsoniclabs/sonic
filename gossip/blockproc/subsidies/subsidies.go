@@ -31,6 +31,10 @@ import (
 
 //go:generate mockgen -source=subsidies.go -destination=subsidies_mock.go -package=subsidies
 
+// RlpEncodedFeeChargingTxSizeInBytes is an upper bound for the size of the RLP-encoded
+// fee-charging transaction introduced for gas subsidies.
+const RlpEncodedFeeChargingTxSizeInBytes = 128
+
 // IsSponsorshipRequest checks if a transaction is requesting sponsorship from
 // a pre-allocated sponsorship pool. A sponsorship request is defined as a
 // transaction with a maximum gas price of zero.

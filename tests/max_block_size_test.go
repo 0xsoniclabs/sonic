@@ -110,7 +110,7 @@ func TestMaxBlockSizeIsEnforced(t *testing.T) {
 						greaterThanMaxBlockSize = true
 					}
 
-					if modeName == "DistributedProposer" && (upgradeName == "sonic" || upgradeName == "allegro") {
+					if modeName == "DistributedProposer" && upgradeName == "preBrio" {
 						// Ensure that the test produces at least one block exceeding MaxBlockSize
 						require.True(t, greaterThanMaxBlockSize, "expected at least one block to exceed MaxBlockSize")
 					} else {
