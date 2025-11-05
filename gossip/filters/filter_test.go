@@ -361,8 +361,9 @@ func TestFilter_IndexedLogsReturnsCorrectedTransactionIndexes_AndTimestamps(t *t
 				{
 					Logs: []*types.Log{
 						{
-							TxHash: common.HexToHash("0x1"),
-							Index:  777, // incorrect index
+							TxHash:  common.HexToHash("0x1"),
+							Index:   777, // incorrect index
+							Address: common.HexToAddress("0x42"),
 						},
 					},
 				},
@@ -374,16 +375,18 @@ func TestFilter_IndexedLogsReturnsCorrectedTransactionIndexes_AndTimestamps(t *t
 				{
 					Logs: []*types.Log{
 						{
-							TxHash: common.HexToHash("0x0"),
-							Index:  777, // incorrect index
+							TxHash:  common.HexToHash("0x0"),
+							Index:   777, // incorrect index
+							Address: common.HexToAddress("0x42"),
 						},
 					},
 				},
 				{
 					Logs: []*types.Log{
 						{
-							TxHash: common.HexToHash("0x1"),
-							Index:  777, // incorrect index
+							TxHash:  common.HexToHash("0x1"),
+							Index:   777, // incorrect index
+							Address: common.HexToAddress("0x42"),
 						},
 					},
 				},
@@ -395,8 +398,9 @@ func TestFilter_IndexedLogsReturnsCorrectedTransactionIndexes_AndTimestamps(t *t
 				{
 					Logs: []*types.Log{
 						{
-							TxHash: common.HexToHash("0x0"),
-							Index:  777, // incorrect index
+							TxHash:  common.HexToHash("0x0"),
+							Index:   777, // incorrect index
+							Address: common.HexToAddress("0x42"),
 						},
 					},
 				},
@@ -404,8 +408,9 @@ func TestFilter_IndexedLogsReturnsCorrectedTransactionIndexes_AndTimestamps(t *t
 				{
 					Logs: []*types.Log{
 						{
-							TxHash: common.HexToHash("0x2"),
-							Index:  777, // incorrect index
+							TxHash:  common.HexToHash("0x2"),
+							Index:   777, // incorrect index
+							Address: common.HexToAddress("0x42"),
 						},
 					},
 				},
@@ -427,7 +432,6 @@ func TestFilter_IndexedLogsReturnsCorrectedTransactionIndexes_AndTimestamps(t *t
 			begin:  0,
 			end:    2,
 			addresses: []common.Address{
-				// some address, this test does not really index, just visits the code path
 				common.HexToAddress("0x42"),
 			},
 		},
