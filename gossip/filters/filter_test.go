@@ -22,6 +22,7 @@ import (
 	"math/big"
 	"path"
 	"testing"
+	"time"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
@@ -41,6 +42,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/ethdb/leveldb"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethereum/go-ethereum/triedb"
 )
 
@@ -330,157 +332,154 @@ func TestSortLogsByBlockNumberAndLogIndex(t *testing.T) {
 	}
 }
 
-func TestFilter_IndexedLogsReturnsLogsWithTimestampOrError(t *testing.T) {
-	timestamp := inter.Timestamp(55)
+func TestFilter_IndexedLogsReturnsCorrectedTransactionIndexes_AndTimestamps(t *testing.T) {
+
+	// use transaction hashes to identify their expected positions
+	expectedPositions := map[common.Hash]*evmstore.TxPosition{
+		common.HexToHash("0x0"): {BlockOffset: 0},
+		common.HexToHash("0x1"): {BlockOffset: 1},
+		common.HexToHash("0x2"): {BlockOffset: 2},
+	}
+
 	tests := map[string]struct {
-		primeMock     func(*MockBackend)
-		expectedError error
+		receipts     []*types.Receipt
+		expectedLogs int
 	}{
-		"no error": {
-			primeMock: func(backend *MockBackend) {
-				backend.EXPECT().HeaderByNumber(gomock.Any(), gomock.Any()).Return(&evmcore.EvmHeader{Time: timestamp}, nil)
+
+		"no receipts": {},
+		"no logs": {
+			receipts: []*types.Receipt{
+				// receipt without logs
 			},
-			expectedError: nil,
+			expectedLogs: 0,
 		},
-		"error on header retrieval": {
-			primeMock: func(backend *MockBackend) {
-				backend.EXPECT().HeaderByNumber(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("error"))
+		"offset transaction": {
+			receipts: []*types.Receipt{
+				{
+					// receipt without logs
+				},
+				{
+					Logs: []*types.Log{
+						{
+							TxHash: common.HexToHash("0x1"),
+							Index:  777, // incorrect index
+						},
+					},
+				},
 			},
-			expectedError: fmt.Errorf("failed to get header for block 1 containing relevant log entry"),
+			expectedLogs: 1,
 		},
-		"nil header": {
-			primeMock: func(backend *MockBackend) {
-				backend.EXPECT().HeaderByNumber(gomock.Any(), gomock.Any()).Return(nil, nil)
+		"multiple transactions": {
+			receipts: []*types.Receipt{
+				{
+					Logs: []*types.Log{
+						{
+							TxHash: common.HexToHash("0x0"),
+							Index:  777, // incorrect index
+						},
+					},
+				},
+				{
+					Logs: []*types.Log{
+						{
+							TxHash: common.HexToHash("0x1"),
+							Index:  777, // incorrect index
+						},
+					},
+				},
 			},
-			expectedError: fmt.Errorf("header for block 1 containing relevant log entry not found"),
+			expectedLogs: 2,
+		},
+		"gapped transactions": {
+			receipts: []*types.Receipt{
+				{
+					Logs: []*types.Log{
+						{
+							TxHash: common.HexToHash("0x0"),
+							Index:  777, // incorrect index
+						},
+					},
+				},
+				{},
+				{
+					Logs: []*types.Log{
+						{
+							TxHash: common.HexToHash("0x2"),
+							Index:  777, // incorrect index
+						},
+					},
+				},
+			},
+			expectedLogs: 2,
 		},
 	}
 
-	logs := []*types.Log{
-		{
-			BlockNumber: 1,
-			Address:     common.HexToAddress("0x42"),
-			Topics:      []common.Hash{common.HexToHash("0x01")},
-		},
-	}
+	any := gomock.Any()
 
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			backend := NewMockBackend(ctrl)
-			index := topicsdb.NewMockIndex(ctrl)
-
-			backend.EXPECT().EvmLogIndex().Return(index)
-			index.EXPECT().FindInBlocks(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(logs, nil)
-			backend.EXPECT().GetTxPosition(gomock.Any()).Return(&evmstore.TxPosition{})
-
-			test.primeMock(backend)
-
-			filter := &Filter{
-				backend:   backend,
-				config:    testConfig(),
-				addresses: []common.Address{{0x42}},
-				topics:    [][]common.Hash{},
-				block:     common.Hash{0x00},
-				begin:     0,
-				end:       2,
-			}
-
-			logs, err := filter.indexedLogs(t.Context(), 0, 2)
-			if test.expectedError != nil {
-				require.Error(t, err)
-				require.ErrorContains(t, err, test.expectedError.Error())
-			} else {
-				require.Equal(t, uint64(timestamp.Unix()), logs[0].BlockTimestamp)
-				require.NoError(t, err)
-			}
-		})
-	}
-}
-
-func TestFilter_IndexedLogsReturnsCorrectedTransactionIndexes(t *testing.T) {
-
-	ctrl := gomock.NewController(t)
-	backend := NewMockBackend(ctrl)
-	index := topicsdb.NewMockIndex(ctrl)
-
-	logs := []*types.Log{
-		{
-			BlockNumber: 1,
-			TxHash:      common.HexToHash("0xabc"),
-			Index:       777, // incorrect index
-		},
-		{
-			BlockNumber: 2,
-			TxHash:      common.HexToHash("0x123"),
-			Index:       123, // incorrect index
-		},
-		{
-			BlockNumber: 2,
-			TxHash:      common.Hash{}, // empty hash
-			Index:       123,           // incorrect index
-		},
-	}
-	txs := map[common.Hash]*evmstore.TxPosition{
-		common.HexToHash("0xabc"): {BlockOffset: 7},
-		common.HexToHash("0x123"): {BlockOffset: 1},
-	}
-
-	backend.EXPECT().EvmLogIndex().Return(index).AnyTimes()
-	backend.EXPECT().GetTxPosition(gomock.Any()).
-		DoAndReturn(func(f common.Hash) *evmstore.TxPosition {
-			return txs[f]
-		}).AnyTimes()
-
-	backend.EXPECT().HeaderByNumber(gomock.Any(), gomock.Any()).
-		Return(&evmcore.EvmHeader{
-			Number: big.NewInt(1),
-		}, nil,
-		).AnyTimes()
-	backend.EXPECT().HeaderByHash(gomock.Any(), gomock.Any()).
-		Return(&evmcore.EvmHeader{
-			Number: big.NewInt(1),
-		}, nil,
-		).AnyTimes()
-	backend.EXPECT().GetLogs(gomock.Any(), gomock.Any()).Return([][]*types.Log{logs}, nil).AnyTimes()
-	index.EXPECT().FindInBlocks(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(logs, nil).AnyTimes()
-
-	cases := map[string]*Filter{
+	filters := map[string]*Filter{
 		"filter by block range (unindexed)": {
-			backend: backend,
-			config:  testConfig(),
-			begin:   0,
-			end:     2,
+			config: testConfig(),
+			begin:  0,
+			end:    2,
 		},
 		"filter by block range (indexed)": {
-			backend: backend,
-			config:  testConfig(),
-			begin:   0,
-			end:     2,
+			config: testConfig(),
+			begin:  0,
+			end:    2,
 			addresses: []common.Address{
 				// some address, this test does not really index, just visits the code path
 				common.HexToAddress("0x42"),
 			},
 		},
 		"filter by block hash": {
-			backend: backend,
-			config:  testConfig(),
-			block:   common.Hash{0x001},
+			config: testConfig(),
+			block:  common.Hash{0x001},
 		},
 	}
 
-	for name, filter := range cases {
-		t.Run(name, func(t *testing.T) {
-			logs, err := filter.Logs(t.Context())
-			require.NoError(t, err)
+	for testName, test := range tests {
+		for filterName, filter := range filters {
+			t.Run(fmt.Sprintf("%v/%v", testName, filterName), func(t *testing.T) {
 
-			for log := range logs {
-				txHash := logs[log].TxHash
-				expectedPosition, ok := txs[txHash]
-				if ok {
-					require.EqualValues(t, expectedPosition.BlockOffset, logs[log].TxIndex, "log tx index not corrected")
+				ctrl := gomock.NewController(t)
+				backend := NewMockBackend(ctrl)
+				filter.backend = backend
+				timestamp := inter.Timestamp(time.Now().UnixNano())
+
+				numBlocks := 1
+				if filter.block == (common.Hash{}) {
+					numBlocks = int(filter.end) - int(filter.begin) + 1
+					backend.EXPECT().HeaderByNumber(any, any).DoAndReturn(func(ctx context.Context, number rpc.BlockNumber) (*evmcore.EvmHeader, error) {
+						return &evmcore.EvmHeader{
+							Number: big.NewInt(int64(number)),
+							Time:   timestamp,
+						}, nil
+					}).Times(numBlocks)
+				} else {
+					backend.EXPECT().HeaderByHash(any, any).DoAndReturn(func(ctx context.Context, hash common.Hash) (*evmcore.EvmHeader, error) {
+						return &evmcore.EvmHeader{
+							Number: big.NewInt(1),
+						}, nil
+					}).Times(numBlocks)
+
 				}
-			}
-		})
+
+				backend.EXPECT().GetReceiptsByNumber(any, any).DoAndReturn(func(ctx context.Context, number rpc.BlockNumber) (types.Receipts, error) {
+					return test.receipts, nil
+				}).Times(numBlocks)
+
+				logs, err := filter.Logs(t.Context())
+				require.NoError(t, err)
+
+				// each block returns the same list of receipts, they are aggregated
+				require.Equal(t, test.expectedLogs*numBlocks, len(logs), "number of logs returned mismatch")
+				for _, log := range logs {
+					expectedPosition, ok := expectedPositions[log.TxHash]
+					if ok {
+						require.EqualValues(t, expectedPosition.BlockOffset, log.TxIndex, "log tx index not corrected")
+					}
+				}
+			})
+		}
 	}
 }
