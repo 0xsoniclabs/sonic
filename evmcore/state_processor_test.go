@@ -22,9 +22,11 @@ import (
 	"math"
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
+	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/sfc"
@@ -36,6 +38,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -298,81 +301,95 @@ func TestProcess_TracksParentBlockHashIfPragueIsEnabled(t *testing.T) {
 	}
 }
 
-func TestProcess_OsakaLimitsBlockSize(t *testing.T) {
-	for _, isOsaka := range []bool{false, true} {
-		t.Run(fmt.Sprintf("isOsaka=%v", isOsaka), func(t *testing.T) {
+func TestRlpEncodedMaxHeaderSizeInBytes_IsAnUpperBound(t *testing.T) {
+	setToMax := func(b []byte) []byte {
+		for i := range b {
+			b[i] = 0xFF
+		}
+		return b
+	}
+
+	maxHash := common.Hash(setToMax(make([]byte, 32)))
+	maxAddress := common.Address(setToMax(make([]byte, 20)))
+	maxBloom := types.Bloom(setToMax(make([]byte, 2048)))
+	maxBlock := types.BlockNonce(setToMax(make([]byte, 8)))
+	maxUint64 := uint64(math.MaxUint64)
+
+	// Geth sanity check for extra defines an upper bound of 100 * 1024 bytes.
+	// Sonic uses the extra field to save time and duration.
+	extra := inter.EncodeExtraData(
+		time.Unix(math.MaxInt64, math.MaxInt64),
+		time.Duration(math.MaxInt64)*time.Nanosecond,
+	)
+
+	header := &types.Header{
+		ParentHash:       maxHash,
+		UncleHash:        maxHash,
+		Coinbase:         maxAddress,
+		Root:             maxHash,
+		TxHash:           maxHash,
+		ReceiptHash:      maxHash,
+		Bloom:            maxBloom,
+		Difficulty:       big.NewInt(math.MaxInt64),
+		Number:           big.NewInt(math.MaxInt64),
+		GasLimit:         math.MaxUint64,
+		GasUsed:          math.MaxUint64,
+		Time:             math.MaxUint64,
+		Extra:            extra,
+		MixDigest:        maxHash,
+		Nonce:            maxBlock,
+		BaseFee:          big.NewInt(math.MaxInt64),
+		WithdrawalsHash:  &maxHash,
+		BlobGasUsed:      &maxUint64,
+		ExcessBlobGas:    &maxUint64,
+		ParentBeaconRoot: &maxHash,
+		RequestsHash:     &maxHash,
+	}
+
+	data, err := rlp.EncodeToBytes(header)
+	require.NoError(t, err)
+	require.LessOrEqual(t, uint64(len(data)), RlpEncodedMaxHeaderSizeInBytes, "header exceeds maximum size")
+}
+
+func TestProcess_BrioLimitsBlockSize(t *testing.T) {
+	for _, isBrio := range []bool{false, true} {
+		t.Run(fmt.Sprintf("isBrio=%v", isBrio), func(t *testing.T) {
 			ctrl := gomock.NewController(t)
-			chainConfig := params.ChainConfig{}
-			if isOsaka {
-				chainConfig = params.ChainConfig{
-					ChainID:     big.NewInt(12),
-					LondonBlock: new(big.Int).SetUint64(0),
-					PragueTime:  new(uint64),
-					OsakaTime:   new(uint64),
-				}
+			runner := NewMock_transactionRunner(ctrl)
+
+			transactions := []*types.Transaction{
+				types.NewTx(&types.LegacyTx{Data: make([]byte, params.MaxBlockSize/2)}),
+				types.NewTx(&types.LegacyTx{Data: make([]byte, params.MaxBlockSize/2)}),
 			}
 
-			chain := NewMockDummyChain(ctrl)
-			processor := NewStateProcessor(&chainConfig, chain, opera.Upgrades{})
-			state := state.NewMockStateDB(ctrl)
+			context := &runContext{
+				runner:   runner,
+				upgrades: opera.Upgrades{Brio: isBrio},
+			}
 
-			any := gomock.Any()
-			if isOsaka {
-				gomock.InOrder(
-					// History Contract
-					state.EXPECT().AddAddressToAccessList(any),
-					state.EXPECT().Snapshot().Return(0),
-					state.EXPECT().Exist(any).Return(true),
-					state.EXPECT().SubBalance(any, any, any),
-					state.EXPECT().AddBalance(any, any, any),
-					state.EXPECT().GetCode(any),
-					state.EXPECT().Finalise(any),
-					state.EXPECT().EndTransaction(),
-
-					// First Transaction
-					state.EXPECT().SetTxContext(any, any),
-					state.EXPECT().Snapshot().Return(0),
-					state.EXPECT().GetBalance(any).Return(uint256.NewInt(1e18)),
-					state.EXPECT().SubBalance(any, any, any),
-					state.EXPECT().RevertToSnapshot(any),
-					state.EXPECT().EndTransaction(),
-				)
+			if isBrio {
+				runner.EXPECT().runRegularTransaction(context, transactions[0], 0).Return(ProcessedTransaction{
+					Transaction: transactions[0],
+					Receipt:     &types.Receipt{},
+				})
 			} else {
-				gomock.InOrder(
-					// Both Transactions
-					state.EXPECT().SetTxContext(any, any),
-					state.EXPECT().GetBalance(any).Return(uint256.NewInt(1e18)),
-					state.EXPECT().SubBalance(any, any, any),
-					state.EXPECT().EndTransaction(),
-					state.EXPECT().SetTxContext(any, any),
-					state.EXPECT().GetBalance(any).Return(uint256.NewInt(1e18)),
-					state.EXPECT().SubBalance(any, any, any),
-					state.EXPECT().EndTransaction(),
-				)
+				runner.EXPECT().runRegularTransaction(context, transactions[0], 0).Return(ProcessedTransaction{
+					Transaction: transactions[0],
+					Receipt:     &types.Receipt{},
+				})
+				runner.EXPECT().runRegularTransaction(context, transactions[1], 1).Return(ProcessedTransaction{
+					Transaction: transactions[1],
+					Receipt:     &types.Receipt{},
+				})
 			}
 
-			block := &EvmBlock{
-				EvmHeader: EvmHeader{
-					Number: big.NewInt(1),
-				},
-				// Transactions with large data payloads to exceed block size limit
-				Transactions: []*types.Transaction{
-					types.NewTx(&types.LegacyTx{Data: make([]byte, 5_000_000)}),
-					types.NewTx(&types.LegacyTx{Data: make([]byte, 5_000_000)}),
-				},
-			}
-			require.Equal(t, isOsaka, chainConfig.IsOsaka(block.Number, uint64(block.Time)))
-
-			vmConfig := vm.Config{}
-			gasLimit := uint64(math.MaxUint64)
-			usedGas := new(uint64)
-			processed := processor.Process(block, state, vmConfig, gasLimit, usedGas, nil)
-			if isOsaka {
+			processed := runTransactions(context, transactions, 0)
+			if isBrio {
 				// Only one transaction should be processed to keep the block size
 				// within limits.
 				require.Len(t, processed, 1)
 			} else {
-				// Both transactions are processed when Osaka is not active.
+				// Both transactions are processed when Brio is not active.
 				require.Len(t, processed, 2)
 			}
 		})
