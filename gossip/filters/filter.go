@@ -29,8 +29,6 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
-	"github.com/0xsoniclabs/sonic/gossip/evmstore"
-	"github.com/0xsoniclabs/sonic/topicsdb"
 )
 
 //go:generate mockgen -source=filter.go -package=filters -destination=filter_mock.go
@@ -40,16 +38,10 @@ type Backend interface {
 	HeaderByHash(ctx context.Context, blockHash common.Hash) (*evmcore.EvmHeader, error)
 	GetReceipts(ctx context.Context, blockHash common.Hash) (types.Receipts, error)
 	GetReceiptsByNumber(ctx context.Context, number rpc.BlockNumber) (types.Receipts, error)
-	GetLogs(ctx context.Context, blockHash common.Hash) ([][]*types.Log, error)
-	GetTxPosition(txid common.Hash) *evmstore.TxPosition
 
 	SubscribeNewBlockNotify(ch chan<- evmcore.ChainHeadNotify) notify.Subscription
 	SubscribeNewTxsNotify(chan<- evmcore.NewTxsNotify) notify.Subscription
 	SubscribeLogsNotify(ch chan<- []*types.Log) notify.Subscription
-
-	EvmLogIndex() topicsdb.Index
-
-	CalcBlockExtApi() bool
 }
 
 // Filter can be used to retrieve and filter logs.
