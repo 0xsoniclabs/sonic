@@ -163,12 +163,7 @@ func (f *Filter) indexedLogs(ctx context.Context, begin, end idx.Block) ([]*type
 	sortLogsByBlockNumberAndLogIndex(logs)
 
 	for _, l := range logs {
-		pos := f.backend.GetTxPosition(l.TxHash)
-		if pos != nil {
-			l.TxIndex = uint(pos.BlockOffset)
-		} else {
-			log.Warn("tx index empty", "hash", l.TxHash)
-		}
+		f.indexLogTransaction(l)
 
 		// Fetch timestamp for the log from the header.
 		header, err := f.backend.HeaderByNumber(ctx, rpc.BlockNumber(l.BlockNumber))
@@ -182,6 +177,17 @@ func (f *Filter) indexedLogs(ctx context.Context, begin, end idx.Block) ([]*type
 	}
 
 	return logs, nil
+}
+
+// indexLogTransaction re-indexes the transaction for a log entry based on the
+// position of the transaction in the block, fetched by hash.
+func (f *Filter) indexLogTransaction(l *types.Log) {
+	pos := f.backend.GetTxPosition(l.TxHash)
+	if pos != nil {
+		l.TxIndex = uint(pos.BlockOffset)
+	} else {
+		log.Warn("tx index empty", "hash", l.TxHash)
+	}
 }
 
 func sortLogsByBlockNumberAndLogIndex(logs []*types.Log) {
@@ -220,6 +226,10 @@ func (f *Filter) unindexedLogs(ctx context.Context, begin, end idx.Block) (logs 
 		}
 		logs = append(logs, found...)
 	}
+
+	for _, log := range logs {
+		f.indexLogTransaction(log)
+	}
 	return
 }
 
@@ -250,6 +260,11 @@ func (f *Filter) blockLogs(ctx context.Context, header common.Hash) ([]*types.Lo
 			}
 			logs = filterLogs(unfiltered, nil, nil, f.addresses, f.topics)
 		}
+
+		for _, log := range logs {
+			f.indexLogTransaction(log)
+		}
+
 		return logs, nil
 	}
 	return nil, nil
