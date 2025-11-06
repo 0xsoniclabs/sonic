@@ -787,7 +787,28 @@ func TestValidateTxForState_HasNonDelegationCode_RejectsWithInvalidSender(t *tes
 			require.ErrorIs(t, err, ErrSenderNoEOA)
 		})
 	}
+}
 
+func TestValidateTxForState_AcceptsSetCodeTx_AddressWithValidDelegation(t *testing.T) {
+
+	senderAddress := common.Address{42}
+
+	ctrl := gomock.NewController(t)
+	state := state.NewMockStateDB(ctrl)
+	state.EXPECT().GetNonce(gomock.Any()).Return(uint64(0))
+	state.EXPECT().GetBalance(gomock.Any()).Return(uint256.NewInt(101))
+	// simulate a contract with delegation code
+	state.EXPECT().GetCode(senderAddress).Return(append(types.DelegationPrefix, make([]byte, 20)...))
+
+	signer := NewMockSigner(ctrl)
+	signer.EXPECT().Sender(gomock.Any()).Return(senderAddress, nil)
+
+	err := ValidateTxForState(types.NewTx(&types.SetCodeTx{
+		Gas:       100,
+		GasFeeCap: uint256.NewInt(1),
+		AuthList:  []types.SetCodeAuthorization{{}},
+	}), state, signer)
+	require.NoError(t, err)
 }
 
 func TestValidateTxForState_AcceptsTransactions(t *testing.T) {
