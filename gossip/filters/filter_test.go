@@ -372,7 +372,6 @@ func TestFilter_IndexedLogsReturnsLogsWithTimestampOrError(t *testing.T) {
 
 			backend.EXPECT().EvmLogIndex().Return(index)
 			index.EXPECT().FindInBlocks(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(logs, nil)
-			backend.EXPECT().GetTxPosition(gomock.Any()).Return(&evmstore.TxPosition{})
 
 			test.primeMock(backend)
 
