@@ -769,46 +769,51 @@ func TestValidateTxForState_HasNonDelegationCode_RejectsWithInvalidSender(t *tes
 			AuthList:  []types.SetCodeAuthorization{{}},
 		},
 	}
+
+	codeCases := map[string]struct {
+		code    []byte
+		success bool
+	}{
+		"empty code": {
+			code:    []byte{},
+			success: true,
+		},
+		"delegation code": {
+			code:    append(types.DelegationPrefix, make([]byte, 20)...),
+			success: true,
+		},
+		"some other code": {
+			code:    []byte("other code"),
+			success: false,
+		},
+	}
+
 	for _, tx := range tests {
 		t.Run(transactionTypeName(tx), func(t *testing.T) {
+			for name, cc := range codeCases {
+				t.Run(name, func(t *testing.T) {
 
-			senderAddress := common.Address{42}
+					senderAddress := common.Address{42}
 
-			ctrl := gomock.NewController(t)
-			state := state.NewMockStateDB(ctrl)
-			state.EXPECT().GetNonce(gomock.Any()).Return(uint64(0))
-			state.EXPECT().GetBalance(gomock.Any()).Return(uint256.NewInt(101))
-			signer := NewMockSigner(ctrl)
-			signer.EXPECT().Sender(gomock.Any()).Return(senderAddress, nil)
+					ctrl := gomock.NewController(t)
+					state := state.NewMockStateDB(ctrl)
+					state.EXPECT().GetNonce(gomock.Any()).Return(uint64(0))
+					state.EXPECT().GetBalance(gomock.Any()).Return(uint256.NewInt(101))
+					signer := NewMockSigner(ctrl)
+					signer.EXPECT().Sender(gomock.Any()).Return(senderAddress, nil)
 
-			state.EXPECT().GetCode(senderAddress).Return([]byte("some invalid code"))
+					state.EXPECT().GetCode(senderAddress).Return(cc.code)
 
-			err := ValidateTxForState(types.NewTx(tx), state, signer)
-			require.ErrorIs(t, err, ErrSenderNoEOA)
+					err := ValidateTxForState(types.NewTx(tx), state, signer)
+					if cc.success {
+						require.NoError(t, err)
+					} else {
+						require.ErrorIs(t, err, ErrSenderNoEOA)
+					}
+				})
+			}
 		})
 	}
-}
-
-func TestValidateTxForState_AcceptsSetCodeTx_AddressWithValidDelegation(t *testing.T) {
-
-	senderAddress := common.Address{42}
-
-	ctrl := gomock.NewController(t)
-	state := state.NewMockStateDB(ctrl)
-	state.EXPECT().GetNonce(gomock.Any()).Return(uint64(0))
-	state.EXPECT().GetBalance(gomock.Any()).Return(uint256.NewInt(101))
-	// simulate a contract with delegation code
-	state.EXPECT().GetCode(senderAddress).Return(append(types.DelegationPrefix, make([]byte, 20)...))
-
-	signer := NewMockSigner(ctrl)
-	signer.EXPECT().Sender(gomock.Any()).Return(senderAddress, nil)
-
-	err := ValidateTxForState(types.NewTx(&types.SetCodeTx{
-		Gas:       100,
-		GasFeeCap: uint256.NewInt(1),
-		AuthList:  []types.SetCodeAuthorization{{}},
-	}), state, signer)
-	require.NoError(t, err)
 }
 
 func TestValidateTxForState_AcceptsTransactions(t *testing.T) {
