@@ -38,6 +38,16 @@ type DummyChain interface {
 
 // NewEVMBlockContext creates a new context for use in the EVM.
 func NewEVMBlockContext(header *EvmHeader, chain DummyChain, author *common.Address) vm.BlockContext {
+	// For legacy Sonic network, the difficulty is always 1 and random nil
+	return NewEVMBlockContextWithDifficulty(header, chain, author, big.NewInt(1))
+}
+
+func NewEVMBlockContextWithDifficulty(
+	header *EvmHeader,
+	chain DummyChain,
+	author *common.Address,
+	difficulty *big.Int,
+) vm.BlockContext {
 	var (
 		beneficiary common.Address
 		baseFee     *big.Int
@@ -53,13 +63,12 @@ func NewEVMBlockContext(header *EvmHeader, chain DummyChain, author *common.Addr
 		baseFee = new(big.Int).Set(header.BaseFee)
 	}
 
-	// For legacy Sonic network, the difficulty is always 1 and random nil
-	difficulty := big.NewInt(1)
 	if header.PrevRandao.Cmp(common.Hash{}) != 0 {
 		// Difficulty must be set to 0 when PREVRANDAO is enabled.
 		random = &header.PrevRandao
 		difficulty.SetUint64(0)
 	}
+
 	return vm.BlockContext{
 		CanTransfer: CanTransfer,
 		Transfer:    Transfer,
