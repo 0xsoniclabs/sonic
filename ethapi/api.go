@@ -1324,6 +1324,9 @@ func getNumberAndTime(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNum
 	if err != nil {
 		return 0, 0, err
 	}
+	if header == nil {
+		return 0, 0, errors.New("block does not exists")
+	}
 
 	// get block number and time
 	blockNumber := header.Number.Uint64()
