@@ -18,6 +18,7 @@ package evmcore
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
@@ -227,6 +228,10 @@ func ValidateTxStatic(tx *types.Transaction) error {
 		return ErrEmptyAuthorizations
 	}
 
+	if tx.Nonce() == math.MaxUint64 {
+		return ErrNonceTooHigh
+	}
+
 	return nil
 }
 
@@ -279,6 +284,13 @@ func ValidateTxForState(tx *types.Transaction, state state.StateDB, signer types
 	if utils.Uint256ToBigInt(state.GetBalance(from)).Cmp(tx.Cost()) < 0 {
 		return ErrInsufficientFunds
 	}
+
+	senderCode := state.GetCode(from)
+	_, ok := types.ParseDelegation(senderCode)
+	if len(senderCode) > 0 && !ok {
+		return ErrSenderNoEOA
+	}
+
 	return nil
 }
 

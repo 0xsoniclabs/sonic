@@ -119,6 +119,11 @@ func (t testTxPoolStateDb) GetCodeHash(addr common.Address) common.Hash {
 	return hash
 }
 
+func (t testTxPoolStateDb) GetCode(addr common.Address) []byte {
+	// this method should not be needed for any test, but is here for completeness
+	return nil
+}
+
 func (t testTxPoolStateDb) SetCode(addr common.Address, code []byte, _ tracing.CodeChangeReason) []byte {
 	if len(code) == 0 {
 		delete(t.codeHashes, addr)

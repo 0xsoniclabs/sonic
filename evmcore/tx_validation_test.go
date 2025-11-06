@@ -18,6 +18,7 @@ package evmcore
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 	"testing"
 
@@ -129,6 +130,25 @@ func TestValidateTxStatic_GasPriceAndTip_RejectsTxWith(t *testing.T) {
 func TestValidateTxStatic_AuthorizationList_RejectsTxWithEmptyAuthorization(t *testing.T) {
 	err := ValidateTxStatic(types.NewTx(&types.SetCodeTx{}))
 	require.ErrorIs(t, err, ErrEmptyAuthorizations)
+}
+
+func TestValidateTxStatic_RejectsTx_NonceMaxUint64(t *testing.T) {
+	tests := []types.TxData{
+		&types.LegacyTx{Nonce: math.MaxUint64},
+		&types.AccessListTx{Nonce: math.MaxUint64},
+		&types.DynamicFeeTx{Nonce: math.MaxUint64},
+		&types.BlobTx{Nonce: math.MaxUint64},
+		&types.SetCodeTx{
+			Nonce:    math.MaxUint64,
+			AuthList: []types.SetCodeAuthorization{{}},
+		},
+	}
+	for _, tx := range tests {
+		t.Run(transactionTypeName(tx), func(t *testing.T) {
+			err := ValidateTxStatic(types.NewTx(tx))
+			require.ErrorIs(t, err, ErrNonceTooHigh)
+		})
+	}
 }
 
 func TestValidateTxStatic_AcceptsValidTransactions(t *testing.T) {
@@ -725,6 +745,51 @@ func TestValidateTxForState_Balance_RejectsTxWhenInsufficientBalance(t *testing.
 	}
 }
 
+func TestValidateTxForState_HasNonDelegationCode_RejectsWithInvalidSender(t *testing.T) {
+	tests := []types.TxData{
+		&types.LegacyTx{
+			Gas:      100,
+			GasPrice: big.NewInt(1),
+		},
+		&types.AccessListTx{
+			Gas:      100,
+			GasPrice: big.NewInt(1),
+		},
+		&types.DynamicFeeTx{
+			Gas:       100,
+			GasFeeCap: big.NewInt(1),
+		},
+		&types.BlobTx{
+			Gas:       100,
+			GasFeeCap: uint256.NewInt(1),
+		},
+		&types.SetCodeTx{
+			Gas:       100,
+			GasFeeCap: uint256.NewInt(1),
+			AuthList:  []types.SetCodeAuthorization{{}},
+		},
+	}
+	for _, tx := range tests {
+		t.Run(transactionTypeName(tx), func(t *testing.T) {
+
+			senderAddress := common.Address{42}
+
+			ctrl := gomock.NewController(t)
+			state := state.NewMockStateDB(ctrl)
+			state.EXPECT().GetNonce(gomock.Any()).Return(uint64(0))
+			state.EXPECT().GetBalance(gomock.Any()).Return(uint256.NewInt(101))
+			signer := NewMockSigner(ctrl)
+			signer.EXPECT().Sender(gomock.Any()).Return(senderAddress, nil)
+
+			state.EXPECT().GetCode(senderAddress).Return([]byte("some invalid code"))
+
+			err := ValidateTxForState(types.NewTx(tx), state, signer)
+			require.ErrorIs(t, err, ErrSenderNoEOA)
+		})
+	}
+
+}
+
 func TestValidateTxForState_AcceptsTransactions(t *testing.T) {
 
 	tests := []types.TxData{
@@ -756,6 +821,7 @@ func TestValidateTxForState_AcceptsTransactions(t *testing.T) {
 			state := state.NewMockStateDB(ctrl)
 			state.EXPECT().GetNonce(gomock.Any()).Return(uint64(0))
 			state.EXPECT().GetBalance(gomock.Any()).Return(uint256.NewInt(100))
+			state.EXPECT().GetCode(gomock.Any()).Return(nil)
 			signer := NewMockSigner(ctrl)
 			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{42}, nil)
 
@@ -1188,6 +1254,7 @@ func TestValidateTx_AcceptsZeroGasPriceTransactions_WhenSubsidiesAreEnabled(t *t
 			state := state.NewMockStateDB(ctrl)
 			state.EXPECT().GetNonce(gomock.Any()).Return(uint64(0)).AnyTimes()
 			state.EXPECT().GetBalance(gomock.Any()).Return(uint256.NewInt(0)).AnyTimes()
+			state.EXPECT().GetCode(gomock.Any()).Return(nil)
 
 			SubsidiesChecker := NewMocksubsidiesChecker(ctrl)
 			SubsidiesChecker.EXPECT().isSponsored(gomock.Any()).Return(true).AnyTimes()
@@ -1330,6 +1397,8 @@ func TestValidateTx_AllowsSponsoredZeroGasPriceTransactions_WhenSubsidiesAreFund
 			state.EXPECT().GetNonce(gomock.Any()).Return(uint64(0)).AnyTimes()
 			state.EXPECT().GetBalance(gomock.Any()).Return(uint256.NewInt(0)).AnyTimes()
 
+			state.EXPECT().GetCode(gomock.Any()).Return(nil)
+
 			SubsidiesChecker := NewMocksubsidiesChecker(ctrl)
 			SubsidiesChecker.EXPECT().isSponsored(gomock.Any()).Return(test.isSponsored)
 
@@ -1398,6 +1467,7 @@ func TestValidateTx_Success(t *testing.T) {
 			state := state.NewMockStateDB(ctrl)
 			state.EXPECT().GetNonce(gomock.Any()).Return(uint64(0)).AnyTimes()
 			state.EXPECT().GetBalance(gomock.Any()).Return(uint256.NewInt(1_000_000)).AnyTimes()
+			state.EXPECT().GetCode(gomock.Any()).Return(nil)
 
 			SubsidiesChecker := NewMocksubsidiesChecker(ctrl)
 
