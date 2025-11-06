@@ -135,7 +135,7 @@ func increaseLimits(t *testing.T, net *IntegrationTestNet) {
 	modified.Economy.ShortGasPower.AllocPerSec = 50_000_000_000
 	modified.Economy.ShortGasPower.MaxAllocPeriod = 50_000_000_000
 	modified.Economy.LongGasPower = modified.Economy.ShortGasPower
-	modified.Emitter.Interval = 200_000_000
+	modified.Emitter.Interval = 1_000_000_000
 	UpdateNetworkRules(t, net, modified)
 	net.AdvanceEpoch(t, 1)
 
