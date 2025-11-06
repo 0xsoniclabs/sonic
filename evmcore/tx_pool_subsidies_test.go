@@ -153,6 +153,7 @@ func mockChain(ctrl *gomock.Controller, chainConfig *params.ChainConfig, upgrade
 	state.EXPECT().GetNonce(gomock.Any()).Return(uint64(0)).AnyTimes()
 	state.EXPECT().GetBalance(gomock.Any()).Return(uint256.NewInt(1e18)).AnyTimes()
 	state.EXPECT().GetCodeHash(gomock.Any()).Return(types.EmptyCodeHash).AnyTimes()
+	state.EXPECT().GetCode(gomock.Any()).Return([]byte{}).AnyTimes()
 
 	chain := NewMockStateReader(ctrl)
 	chain.EXPECT().CurrentBlock().Return(&EvmBlock{
