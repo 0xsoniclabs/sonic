@@ -239,7 +239,6 @@ func (f *Filter) unindexedLogs(ctx context.Context, begin, end idx.Block) (logs 
 		}
 		logs = append(logs, found...)
 	}
-
 	return
 }
 
@@ -270,7 +269,6 @@ func (f *Filter) blockLogs(ctx context.Context, header common.Hash) ([]*types.Lo
 			}
 			logs = filterLogs(unfiltered, nil, nil, f.addresses, f.topics)
 		}
-
 		return logs, nil
 	}
 	return nil, nil
