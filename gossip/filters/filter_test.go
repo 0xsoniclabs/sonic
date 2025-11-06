@@ -24,7 +24,6 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
-	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/utils/adapters/ethdb2kvdb"
 	"github.com/Fantom-foundation/lachesis-base/kvdb/table"
@@ -372,7 +371,6 @@ func TestFilter_IndexedLogsReturnsLogsWithTimestampOrError(t *testing.T) {
 
 			backend.EXPECT().EvmLogIndex().Return(index)
 			index.EXPECT().FindInBlocks(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(logs, nil)
-			backend.EXPECT().GetTxPosition(gomock.Any()).Return(&evmstore.TxPosition{})
 
 			test.primeMock(backend)
 

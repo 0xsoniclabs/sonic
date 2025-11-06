@@ -172,7 +172,16 @@ func runTransactions(
 ) []ProcessedTransaction {
 	processed := make([]ProcessedTransaction, 0, len(transactions))
 	for _, tx := range transactions {
-		nextId := len(processed) + txIndexOffset
+
+		// transaction index only accounts for non-skipped transactions
+		nextId := txIndexOffset
+		for _, p := range processed {
+			if p.Receipt != nil {
+				nextId++
+			}
+		}
+
+		// differentiate sponsored vs regular transactions
 		if context.upgrades.GasSubsidies && subsidies.IsSponsorshipRequest(tx) {
 			processed = append(processed,
 				context.runner.runSponsoredTransaction(context, tx, nextId)...,

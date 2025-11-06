@@ -148,8 +148,6 @@ func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) []e
 	// Process txs
 	evmBlock := p.evmBlockWith(txs)
 	processed := evmProcessor.Process(evmBlock, p.statedb, vmConfig, gasLimit, &p.gasUsed, func(l *types.Log) {
-		// Note: l.Index is properly set before
-		l.TxIndex += txsOffset
 		p.onNewLog(l)
 	})
 

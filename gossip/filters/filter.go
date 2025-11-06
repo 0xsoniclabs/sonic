@@ -28,7 +28,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	notify "github.com/ethereum/go-ethereum/event"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rpc"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
@@ -163,12 +162,6 @@ func (f *Filter) indexedLogs(ctx context.Context, begin, end idx.Block) ([]*type
 	sortLogsByBlockNumberAndLogIndex(logs)
 
 	for _, l := range logs {
-		pos := f.backend.GetTxPosition(l.TxHash)
-		if pos != nil {
-			l.TxIndex = uint(pos.BlockOffset)
-		} else {
-			log.Warn("tx index empty", "hash", l.TxHash)
-		}
 
 		// Fetch timestamp for the log from the header.
 		header, err := f.backend.HeaderByNumber(ctx, rpc.BlockNumber(l.BlockNumber))
