@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
-package tests
+package max_block_size
 
 import (
 	"fmt"
@@ -23,6 +23,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
@@ -48,9 +49,9 @@ func TestMaxBlockSizeIsEnforced(t *testing.T) {
 	transactionsPerAccount := 10
 	numAccounts := 10
 	genesisAccounts := make([]makefakegenesis.Account, 0, numAccounts)
-	accounts := make([]*Account, 0, numAccounts)
+	accounts := make([]*tests.Account, 0, numAccounts)
 	for range numAccounts {
-		account := NewAccount()
+		account := tests.NewAccount()
 		accounts = append(accounts, account)
 
 		genesisAccount := makefakegenesis.Account{
@@ -66,7 +67,7 @@ func TestMaxBlockSizeIsEnforced(t *testing.T) {
 			t.Run(fmt.Sprintf("%s_%s", modeName, upgradeName), func(t *testing.T) {
 
 				upgrade.SingleProposerBlockFormation = singleProposer
-				net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
+				net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
 					Upgrades: &upgrade,
 					Accounts: genesisAccounts,
 					NumNodes: 3,
@@ -89,7 +90,7 @@ func TestMaxBlockSizeIsEnforced(t *testing.T) {
 							Value: big.NewInt(0),
 							Data:  input,
 						}
-						signedTx := CreateTransaction(t, net, txsPayload, account)
+						signedTx := tests.CreateTransaction(t, net, txsPayload, account)
 						transactions[i*numAccounts+accountIdx] = signedTx // save txs with the same nonce next to each other
 					}
 				}
@@ -123,10 +124,10 @@ func TestMaxBlockSizeIsEnforced(t *testing.T) {
 	}
 }
 
-func increaseLimits(t *testing.T, net *IntegrationTestNet) {
+func increaseLimits(t *testing.T, net *tests.IntegrationTestNet) {
 	// Increase the gas limit to allow for larger transactions in blocks. These
 	// limits are beyond safe limits acceptable for production.
-	current := GetNetworkRules(t, net)
+	current := tests.GetNetworkRules(t, net)
 
 	modified := current.Copy()
 
@@ -136,10 +137,10 @@ func increaseLimits(t *testing.T, net *IntegrationTestNet) {
 	modified.Economy.ShortGasPower.MaxAllocPeriod = 50_000_000_000
 	modified.Economy.LongGasPower = modified.Economy.ShortGasPower
 	modified.Emitter.Interval = 1_000_000_000
-	UpdateNetworkRules(t, net, modified)
+	tests.UpdateNetworkRules(t, net, modified)
 	net.AdvanceEpoch(t, 1)
 
 	// Check that the modification was applied.
-	current = GetNetworkRules(t, net)
+	current = tests.GetNetworkRules(t, net)
 	require.Equal(t, modified, current)
 }
