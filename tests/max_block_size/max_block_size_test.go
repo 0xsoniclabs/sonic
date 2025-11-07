@@ -111,13 +111,14 @@ func TestMaxBlockSizeIsEnforced(t *testing.T) {
 						greaterThanMaxBlockSize = true
 					}
 
-					if modeName == "DistributedProposer" && upgradeName == "preBrio" {
-						// Ensure that the test produces at least one block exceeding MaxBlockSize
-						require.True(t, greaterThanMaxBlockSize, "expected at least one block to exceed MaxBlockSize")
-					} else {
+					if upgradeName == "brio" {
 						// Starting with Brio both proposer modes enforce MaxBlockSize
 						require.LessOrEqual(t, block.Size(), uint64(params.MaxBlockSize), "block size is below MaxBlockSize")
 					}
+				}
+				if modeName == "DistributedProposer" && upgradeName == "preBrio" {
+					// Ensure that the test produces at least one block exceeding MaxBlockSize
+					require.True(t, greaterThanMaxBlockSize, "expected at least one block to exceed MaxBlockSize")
 				}
 			})
 		}
