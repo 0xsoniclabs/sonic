@@ -17,6 +17,7 @@
 package evmcore
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"math"
@@ -303,9 +304,7 @@ func TestProcess_TracksParentBlockHashIfPragueIsEnabled(t *testing.T) {
 
 func TestRlpEncodedMaxHeaderSizeInBytes_IsAnUpperBound(t *testing.T) {
 	setToMax := func(b []byte) []byte {
-		for i := range b {
-			b[i] = 0xFF
-		}
+		b = bytes.Repeat([]byte{0xFF}, len(b))
 		return b
 	}
 
@@ -348,7 +347,7 @@ func TestRlpEncodedMaxHeaderSizeInBytes_IsAnUpperBound(t *testing.T) {
 
 	data, err := rlp.EncodeToBytes(header)
 	require.NoError(t, err)
-	require.LessOrEqual(t, uint64(len(data)), RlpEncodedMaxHeaderSizeInBytes, "header exceeds maximum size")
+	require.Less(t, uint64(len(data)), RlpEncodedMaxHeaderSizeInBytes, "header exceeds maximum size")
 }
 
 func TestProcess_BrioLimitsBlockSize(t *testing.T) {
@@ -361,6 +360,8 @@ func TestProcess_BrioLimitsBlockSize(t *testing.T) {
 				types.NewTx(&types.LegacyTx{Data: make([]byte, params.MaxBlockSize/2)}),
 				types.NewTx(&types.LegacyTx{Data: make([]byte, params.MaxBlockSize/2)}),
 			}
+
+			require.Greater(t, transactions[0].Size()+transactions[1].Size(), uint64(params.MaxBlockSize))
 
 			context := &runContext{
 				runner:   runner,

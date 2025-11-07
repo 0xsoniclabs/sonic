@@ -583,7 +583,7 @@ func TestRlpEncodedFeeChargingTxSizeInBytes_IsUpperBound(t *testing.T) {
 	require.NoError(t, err)
 	data, err := rlp.EncodeToBytes(tx)
 	require.NoError(t, err)
-	require.LessOrEqual(t, len(data), RlpEncodedFeeChargingTxSizeInBytes)
+	require.Less(t, len(data), RlpEncodedFeeChargingTxSizeInBytes)
 }
 
 func TestGetFeeChargeTransaction_ValidInputs_ProducesCorrectInternalTransaction(t *testing.T) {

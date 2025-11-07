@@ -203,7 +203,7 @@ const (
 	// Cheating validator transactions have a size of around 112 bytes.
 	// Epoch Seal internal transaction have a size of around 10808 bytes.
 	// Epoch Seal Validator internal transaction have a size of around 2744 bytes.
-	RlpEncodedInternalTransactionSizeInBytes = 16384
+	RlpEncodedInternalTransactionSizeInBytes = uint64(16384)
 )
 
 // filterTransactionsExceedingMaxBlockSize ensures that the size of the block does not exceed the
