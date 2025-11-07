@@ -1649,3 +1649,79 @@ func TestTransactionGenerationUtilities(t *testing.T) {
 	require.False(t, subsidies.IsSponsorshipRequest(regular))
 	require.True(t, subsidies.IsSponsorshipRequest(request))
 }
+
+func TestFilterTransactionsExceedingMaxBlockSize_ConsidersSponsoredTransactions(t *testing.T) {
+	// leaves no more space in the block for the gas charging transaction
+	hugeTxPayload := params.MaxBlockSize -
+		(RlpEncodedMaxHeaderSizeInBytes +
+			RlpEncodedInternalTransactionSizeInBytes +
+			subsidies.RlpEncodedFeeChargingTxSizeInBytes)
+
+	tests := map[string]struct {
+		transactions []*types.Transaction
+		shouldPass   bool
+	}{
+		"basicTransaction": {
+			transactions: []*types.Transaction{
+				types.NewTx(&types.LegacyTx{
+					To:       &common.Address{1},
+					GasPrice: big.NewInt(1),
+					Data:     make([]byte, 100),
+					V:        big.NewInt(1),
+				}),
+			},
+			shouldPass: true,
+		},
+		"sponsoredTransaction": {
+			transactions: []*types.Transaction{
+				types.NewTx(&types.LegacyTx{
+					To:       &common.Address{1},
+					GasPrice: big.NewInt(0),
+					Data:     make([]byte, 100),
+					V:        big.NewInt(1),
+				}),
+			},
+			shouldPass: true,
+		},
+		"hugeTransaction": {
+			transactions: []*types.Transaction{
+				types.NewTx(&types.LegacyTx{
+					To:       &common.Address{1},
+					GasPrice: big.NewInt(1),
+					Data:     make([]byte, hugeTxPayload),
+					V:        big.NewInt(1),
+				}),
+			},
+			shouldPass: true,
+		},
+		"hugeSponsoredTransaction": {
+			transactions: []*types.Transaction{
+				types.NewTx(&types.LegacyTx{
+					To:       &common.Address{1},
+					GasPrice: big.NewInt(0),
+					Data:     make([]byte, hugeTxPayload),
+					V:        big.NewInt(1),
+				}),
+			},
+			shouldPass: false,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			upgrades := opera.Upgrades{
+				GasSubsidies: true,
+			}
+			filtered := filterTransactionsExceedingMaxBlockSize(
+				test.transactions,
+				upgrades,
+			)
+
+			if test.shouldPass {
+				require.Len(t, filtered, 1, "expected transaction to be accepted")
+			} else {
+				require.Len(t, filtered, 0, "expected transaction to be rejected")
+			}
+		})
+	}
+}
