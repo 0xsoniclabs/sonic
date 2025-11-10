@@ -331,7 +331,7 @@ func TestSortLogsByBlockNumberAndLogIndex(t *testing.T) {
 	}
 }
 
-func TestFilter_IndexedLogsReturnsLogsWithTimestampOrError(t *testing.T) {
+func TestFilter_FilterLogs_IndexedLogsReturnsLogsWithTimestampOrError(t *testing.T) {
 	timestamp := inter.Timestamp(55)
 	tests := map[string]struct {
 		primeMock     func(*MockBackend)
@@ -398,7 +398,7 @@ func TestFilter_IndexedLogsReturnsLogsWithTimestampOrError(t *testing.T) {
 	}
 }
 
-func TestFilter_LogsReturnsCorrectedTransactionIndexes(t *testing.T) {
+func TestFilter_FilterLogs_ReturnsCorrectedTransactionIndexes(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	backend := NewMockBackend(ctrl)
@@ -567,7 +567,7 @@ func TestFilter_LogsReturnsErrorWithWrongQueries(t *testing.T) {
 	}
 }
 
-func TestFilter_LogsByHashReturnsError_WhenGetLogsCallReturnError(t *testing.T) {
+func TestFilter_FilterLogs_WhenGetLogsCallReturnError_LogsByHashReturnsError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	backend := NewMockBackend(ctrl)
 
