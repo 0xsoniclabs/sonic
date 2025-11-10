@@ -41,6 +41,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/ethdb/leveldb"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethereum/go-ethereum/triedb"
 )
 
@@ -330,7 +331,7 @@ func TestSortLogsByBlockNumberAndLogIndex(t *testing.T) {
 	}
 }
 
-func TestFilter_IndexedLogsReturnsLogsWithTimestampOrError(t *testing.T) {
+func TestFilter_FilterLogs_IndexedLogsReturnsLogsWithTimestampOrError(t *testing.T) {
 	timestamp := inter.Timestamp(55)
 	tests := map[string]struct {
 		primeMock     func(*MockBackend)
@@ -372,7 +373,6 @@ func TestFilter_IndexedLogsReturnsLogsWithTimestampOrError(t *testing.T) {
 
 			backend.EXPECT().EvmLogIndex().Return(index)
 			index.EXPECT().FindInBlocks(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(logs, nil)
-			backend.EXPECT().GetTxPosition(gomock.Any()).Return(&evmstore.TxPosition{})
 
 			test.primeMock(backend)
 
@@ -396,4 +396,227 @@ func TestFilter_IndexedLogsReturnsLogsWithTimestampOrError(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestFilter_FilterLogs_ReturnsCorrectedTransactionIndexes(t *testing.T) {
+
+	ctrl := gomock.NewController(t)
+	backend := NewMockBackend(ctrl)
+	index := topicsdb.NewMockIndex(ctrl)
+
+	logs := []*types.Log{
+		{
+			BlockNumber: 1,
+			TxHash:      common.HexToHash("0xabc"),
+			Index:       777, // incorrect index
+		},
+		{
+			BlockNumber: 2,
+			TxHash:      common.HexToHash("0x123"),
+			Index:       123, // incorrect index
+		},
+		{
+			BlockNumber: 2,
+			TxHash:      common.Hash{}, // empty hash
+			Index:       123,           // incorrect index
+		},
+	}
+	txs := map[common.Hash]*evmstore.TxPosition{
+		common.HexToHash("0xabc"): {BlockOffset: 7},
+		common.HexToHash("0x123"): {BlockOffset: 1},
+	}
+
+	backend.EXPECT().EvmLogIndex().Return(index).AnyTimes()
+	backend.EXPECT().GetTxPosition(gomock.Any()).
+		DoAndReturn(func(f common.Hash) *evmstore.TxPosition {
+			return txs[f]
+		}).AnyTimes()
+
+	backend.EXPECT().HeaderByNumber(gomock.Any(), gomock.Any()).
+		Return(&evmcore.EvmHeader{
+			Number: big.NewInt(1),
+		}, nil,
+		).AnyTimes()
+	backend.EXPECT().HeaderByHash(gomock.Any(), gomock.Any()).
+		Return(&evmcore.EvmHeader{
+			Number: big.NewInt(1),
+		}, nil,
+		).AnyTimes()
+	backend.EXPECT().GetLogs(gomock.Any(), gomock.Any()).Return([][]*types.Log{logs}, nil).AnyTimes()
+	index.EXPECT().FindInBlocks(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(logs, nil).AnyTimes()
+
+	cases := map[string]*Filter{
+		"filter by block range (unindexed)": {
+			backend: backend,
+			config:  testConfig(),
+			begin:   0,
+			end:     2,
+		},
+		"filter by block range (indexed)": {
+			backend: backend,
+			config:  testConfig(),
+			begin:   0,
+			end:     2,
+			addresses: []common.Address{
+				// some address, this test does not really index, just visits the code path
+				common.HexToAddress("0x42"),
+			},
+		},
+		"filter by block hash": {
+			backend: backend,
+			config:  testConfig(),
+			block:   common.Hash{0x001},
+		},
+	}
+
+	for name, filter := range cases {
+		t.Run(name, func(t *testing.T) {
+			logs, err := filter.Logs(t.Context())
+			require.NoError(t, err)
+
+			for log := range logs {
+				txHash := logs[log].TxHash
+				expectedPosition, ok := txs[txHash]
+				if ok {
+					require.EqualValues(t, expectedPosition.BlockOffset, logs[log].TxIndex, "log tx index not corrected")
+				}
+			}
+		})
+	}
+}
+
+func TestFilter_FilterLogs_QueriedHashDoesNotExist_ReturnsError(t *testing.T) {
+
+	tests := map[string]struct {
+		primeMock     func(*MockBackend)
+		expectedError string
+	}{
+		"HeaderByHash returns error": {
+			primeMock: func(backend *MockBackend) {
+				backend.EXPECT().HeaderByHash(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("not found"))
+			},
+			expectedError: "not found",
+		},
+		"HeaderByHash returns nil header": {
+			primeMock: func(backend *MockBackend) {
+				backend.EXPECT().HeaderByHash(gomock.Any(), gomock.Any()).Return(nil, nil)
+			},
+			expectedError: "unknown block",
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			backend := NewMockBackend(ctrl)
+			test.primeMock(backend)
+
+			filter := &Filter{
+				backend: backend,
+				config:  testConfig(),
+				block:   common.Hash{0x001},
+			}
+
+			logs, err := filter.Logs(t.Context())
+			require.Error(t, err)
+			require.ErrorContains(t, err, test.expectedError)
+			require.Nil(t, logs)
+		})
+	}
+}
+
+func TestFilter_FilterLogs_UnableToFetchLastBlockHeader_ReturnsEmptyLogs(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	backend := NewMockBackend(ctrl)
+
+	backend.EXPECT().HeaderByNumber(gomock.Any(), rpc.LatestBlockNumber).Return(nil, fmt.Errorf("unable to fetch latest block"))
+
+	filter := &Filter{
+		backend: backend,
+		config:  testConfig(),
+		begin:   0,
+		end:     -1,
+	}
+	logs, err := filter.Logs(t.Context())
+	require.NoError(t, err)
+	require.Nil(t, logs)
+}
+
+func TestFilter_FilterLogs_HandlesMalformedQueries(t *testing.T) {
+
+	tests := map[string]struct {
+		begin         int64
+		end           int64
+		expectedError error
+	}{
+		"invalid block range, begin > end": {
+			begin: 2,
+			end:   1,
+		},
+		"invalid block range, begin < 0": {
+			begin:         -2,
+			end:           1,
+			expectedError: fmt.Errorf("invalid block range: begin block (-2) less than 0"),
+		},
+		"block index not found": {
+			begin: 0,
+			end:   0,
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			backend := NewMockBackend(ctrl)
+
+			var err error
+			if test.expectedError != nil {
+				err = test.expectedError
+			}
+
+			latestHeader := &evmcore.EvmHeader{Number: big.NewInt(1)}
+			backend.EXPECT().HeaderByNumber(gomock.Any(), rpc.LatestBlockNumber).Return(latestHeader, err)
+			backend.EXPECT().HeaderByNumber(gomock.Any(), gomock.Any()).Return(nil, err).AnyTimes()
+
+			expectedLogs := []*types.Log{{
+				TxHash: common.Hash{1},
+			}}
+			backend.EXPECT().GetLogs(gomock.Any(), gomock.Any()).Return([][]*types.Log{expectedLogs}, nil).AnyTimes()
+
+			filter := &Filter{
+				backend: backend,
+				config:  testConfig(),
+				begin:   test.begin,
+				end:     test.end,
+			}
+
+			logs, err := filter.Logs(t.Context())
+			if test.expectedError != nil {
+				require.Error(t, err)
+				require.ErrorContains(t, err, test.expectedError.Error())
+			} else {
+				require.NoError(t, err)
+				require.Len(t, logs, 0)
+			}
+		})
+	}
+}
+
+func TestFilter_FilterLogs_WhenGetLogsCallReturnError_LogsByHashReturnsError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	backend := NewMockBackend(ctrl)
+
+	expectedError := fmt.Errorf("some error")
+	backend.EXPECT().HeaderByHash(gomock.Any(), gomock.Any()).Return(&evmcore.EvmHeader{Number: big.NewInt(1)}, nil)
+	backend.EXPECT().GetLogs(gomock.Any(), gomock.Any()).Return(nil, expectedError)
+
+	filter := &Filter{
+		backend: backend,
+		config:  testConfig(),
+		block:   common.Hash{0x001},
+	}
+
+	logs, err := filter.Logs(t.Context())
+	require.Error(t, err)
+	require.ErrorContains(t, err, expectedError.Error())
+	require.Nil(t, logs)
 }
