@@ -104,18 +104,48 @@ func newFilter(backend Backend, cfg Config, addresses []common.Address, topics [
 // Logs searches the blockchain for matching log entries, returning all from the
 // first block that contains matches, updating the start of the filter accordingly.
 func (f *Filter) Logs(ctx context.Context) ([]*types.Log, error) {
-	// If we're doing singleton block filtering, execute and return
+
+	var logs []*types.Log
+	var err error
+
 	if f.block != common.Hash(hash.Zero) {
-		header, err := f.backend.HeaderByHash(ctx, f.block)
+		logs, err = f.fetchLogsFromBlockByHash(ctx, logs)
 		if err != nil {
 			return nil, err
 		}
-		if header == nil {
-			return nil, errors.New("unknown block")
+	} else {
+		logs, err = f.fetchLogsFromBlockRange(ctx, logs)
+		if err != nil {
+			return nil, err
 		}
-		return f.blockLogs(ctx, header.Hash)
 	}
-	// Figure out the limits of the filter range
+
+	// Update TxIndex for each log
+	for _, l := range logs {
+		pos := f.backend.GetTxPosition(l.TxHash)
+
+		if pos != nil {
+			l.TxIndex = uint(pos.BlockOffset)
+		} else {
+			log.Warn("tx index empty", "hash", l.TxHash)
+		}
+	}
+
+	return logs, nil
+}
+
+func (f *Filter) fetchLogsFromBlockByHash(ctx context.Context, logs []*types.Log) ([]*types.Log, error) {
+	header, err := f.backend.HeaderByHash(ctx, f.block)
+	if err != nil {
+		return nil, err
+	}
+	if header == nil {
+		return nil, errors.New("unknown block")
+	}
+	return f.blockLogs(ctx, header.Hash)
+}
+
+func (f *Filter) fetchLogsFromBlockRange(ctx context.Context, logs []*types.Log) ([]*types.Log, error) {
 	header, _ := f.backend.HeaderByNumber(ctx, rpc.LatestBlockNumber)
 	if header == nil {
 		return nil, nil
@@ -131,7 +161,7 @@ func (f *Filter) Logs(ctx context.Context) ([]*types.Log, error) {
 		end = head
 	}
 	if begin > end {
-		return []*types.Log{}, nil
+		return nil, nil
 	}
 
 	if isEmpty(f.topics) && len(f.addresses) == 0 {
@@ -163,12 +193,6 @@ func (f *Filter) indexedLogs(ctx context.Context, begin, end idx.Block) ([]*type
 	sortLogsByBlockNumberAndLogIndex(logs)
 
 	for _, l := range logs {
-		pos := f.backend.GetTxPosition(l.TxHash)
-		if pos != nil {
-			l.TxIndex = uint(pos.BlockOffset)
-		} else {
-			log.Warn("tx index empty", "hash", l.TxHash)
-		}
 
 		// Fetch timestamp for the log from the header.
 		header, err := f.backend.HeaderByNumber(ctx, rpc.BlockNumber(l.BlockNumber))
