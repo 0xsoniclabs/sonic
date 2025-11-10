@@ -106,47 +106,15 @@ func newFilter(backend Backend, cfg Config, addresses []common.Address, topics [
 func (f *Filter) Logs(ctx context.Context) ([]*types.Log, error) {
 
 	var logs []*types.Log
+	var err error
 
 	if f.block != common.Hash(hash.Zero) {
-		// The query is for a single block, described by hash.
-		header, err := f.backend.HeaderByHash(ctx, f.block)
-		if err != nil {
-			return nil, err
-		}
-		if header == nil {
-			return nil, errors.New("unknown block")
-		}
-		logs, err = f.blockLogs(ctx, header.Hash)
+		logs, err = f.fetchLogsFromBlockByHash(ctx, logs)
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		// The query is for a range of blocks.
-		header, _ := f.backend.HeaderByNumber(ctx, rpc.LatestBlockNumber)
-		if header == nil {
-			return nil, nil
-		}
-		head := idx.Block(header.Number.Uint64())
-
-		begin := idx.Block(f.begin)
-		if f.begin < 0 {
-			begin = head
-		}
-		end := idx.Block(f.end)
-		if f.end < 0 {
-			end = head
-		}
-		if begin > end {
-			return []*types.Log{}, nil
-		}
-
-		var err error
-		if isEmpty(f.topics) && len(f.addresses) == 0 {
-			logs, err = f.unindexedLogs(ctx, begin, end)
-
-		} else {
-			logs, err = f.indexedLogs(ctx, begin, end)
-		}
+		logs, err = f.fetchLogsFromBlockRange(ctx, logs)
 		if err != nil {
 			return nil, err
 		}
@@ -164,6 +132,43 @@ func (f *Filter) Logs(ctx context.Context) ([]*types.Log, error) {
 	}
 
 	return logs, nil
+}
+
+func (f *Filter) fetchLogsFromBlockByHash(ctx context.Context, logs []*types.Log) ([]*types.Log, error) {
+	header, err := f.backend.HeaderByHash(ctx, f.block)
+	if err != nil {
+		return nil, err
+	}
+	if header == nil {
+		return nil, errors.New("unknown block")
+	}
+	return f.blockLogs(ctx, header.Hash)
+}
+
+func (f *Filter) fetchLogsFromBlockRange(ctx context.Context, logs []*types.Log) ([]*types.Log, error) {
+	header, _ := f.backend.HeaderByNumber(ctx, rpc.LatestBlockNumber)
+	if header == nil {
+		return nil, nil
+	}
+	head := idx.Block(header.Number.Uint64())
+
+	begin := idx.Block(f.begin)
+	if f.begin < 0 {
+		begin = head
+	}
+	end := idx.Block(f.end)
+	if f.end < 0 {
+		end = head
+	}
+	if begin > end {
+		return nil, nil
+	}
+
+	if isEmpty(f.topics) && len(f.addresses) == 0 {
+		return f.unindexedLogs(ctx, begin, end)
+	} else {
+		return f.indexedLogs(ctx, begin, end)
+	}
 }
 
 // indexedLogs returns the logs matching the filter criteria based on topics index.
