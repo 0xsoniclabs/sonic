@@ -518,13 +518,13 @@ func (n *IntegrationTestNet) start() error {
 
 	// Collect all enode IDs and HTTP ports.
 	endPointPattern := regexp.MustCompile(`^http://.*:(\d+)$`)
-	nodeEnodes := make([]string, len(n.nodes))
+	enodes := make([]string, len(n.nodes))
 	for i := range n.nodes {
 		id, ok := <-nodeIds[i]
 		if !ok {
 			return fmt.Errorf("failed to start the network, no ID announced for node %d", i)
 		}
-		nodeEnodes[i] = id
+		enodes[i] = id
 		endpoint, ok := <-httpPorts[i]
 		if !ok {
 			return fmt.Errorf("failed to start the network, no HTTP port announced for node %d", i)
@@ -553,37 +553,6 @@ func (n *IntegrationTestNet) start() error {
 		}
 	}
 
-	// Connect the nodes P2P network together
-	for i := range n.nodes {
-		client, err := n.GetClientConnectedToNode(i)
-		if err != nil {
-			return fmt.Errorf("failed to connect to the Ethereum client: %w", err)
-		}
-		defer client.Close()
-
-		// Connect to each node to all other nodes
-		for j, enode := range nodeEnodes {
-			if i == j {
-				continue
-			}
-			if err := client.Client().Call(nil, "admin_addPeer", enode); err != nil {
-				return fmt.Errorf("failed to connect to node %d: %v", i, err)
-			}
-		}
-
-		// Wait until connections are established
-		err = WaitFor(context.Background(), func(ctx context.Context) (bool, error) {
-			var res []map[string]any
-			if err := client.Client().Call(&res, "admin_peers"); err != nil {
-				return false, fmt.Errorf("failed to connect to node %d: %v", i, err)
-			}
-			return len(res) == len(n.nodes)-1, nil
-		})
-		if err != nil {
-			return fmt.Errorf("failed to wait for node %d to be fully connected: %v", i, err)
-		}
-	}
-
 	// Wait for all nodes to be ready to serve requests
 	for i := range n.nodes {
 		err := WaitFor(context.Background(), func(ctx context.Context) (bool, error) {
@@ -601,6 +570,50 @@ func (n *IntegrationTestNet) start() error {
 		}
 	}
 
+	// Connect the nodes P2P network together
+	if err := n.connectP2PNetwork(enodes); err != nil {
+		return fmt.Errorf("failed to connect P2P network: %w", err)
+	}
+
+	return nil
+}
+
+// connectP2PNetwork connects all nodes in the network to each other.
+// The current implementation aims to keep the arity of the network low,
+// by connecting each node to the next one in the list, and the last one to the first.
+// This reduces the amount of duplicated messages generated and improves test stability.
+// Regarding latencies, the net is small enough and the local loop is fast enough
+// to have latency not be a concern.
+func (n *IntegrationTestNet) connectP2PNetwork(enodes []string) error {
+	if len(n.nodes) == 1 {
+		return nil
+	}
+
+	for i := 0; i < len(n.nodes); i++ {
+		client, err := n.GetClientConnectedToNode(i)
+		if err != nil {
+			return fmt.Errorf("failed to connect to the Ethereum client: %w", err)
+		}
+		defer client.Close()
+
+		// connect to the next node in the list, wrap around at the end
+		enode := enodes[(i+1)%len(n.nodes)]
+		if err := client.Client().Call(nil, "admin_addPeer", enode); err != nil {
+			return fmt.Errorf("failed to connect to node %d: %v", i, err)
+		}
+
+		// Wait until connection is established
+		err = WaitFor(context.Background(), func(ctx context.Context) (bool, error) {
+			var res []map[string]any
+			if err := client.Client().Call(&res, "admin_peers"); err != nil {
+				return false, fmt.Errorf("failed to connect to node %d: %v", i, err)
+			}
+			return len(res) >= 1, nil
+		})
+		if err != nil {
+			return fmt.Errorf("failed to wait for node %d to be connected: %v", i, err)
+		}
+	}
 	return nil
 }
 
