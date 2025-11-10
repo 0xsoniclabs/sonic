@@ -485,41 +485,82 @@ func TestFilter_FilterLogs_ReturnsCorrectedTransactionIndexes(t *testing.T) {
 	}
 }
 
-func TestFilter_LogsReturnsErrorWithWrongQueries(t *testing.T) {
+func TestFilter_FilterLogs_QueriedHashDoesNotExist_ReturnsError(t *testing.T) {
 
 	tests := map[string]struct {
-		blockHash             common.Hash
-		begin                 int64
-		end                   int64
-		latestHeader          *evmcore.EvmHeader
-		expectedError         error
-		expectedEmptyResponse bool
+		primeMock     func(*MockBackend)
+		expectedError string
+	}{
+		"HeaderByHash returns error": {
+			primeMock: func(backend *MockBackend) {
+				backend.EXPECT().HeaderByHash(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("not found"))
+			},
+			expectedError: "not found",
+		},
+		"HeaderByHash returns nil header": {
+			primeMock: func(backend *MockBackend) {
+				backend.EXPECT().HeaderByHash(gomock.Any(), gomock.Any()).Return(nil, nil)
+			},
+			expectedError: "unknown block",
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			backend := NewMockBackend(ctrl)
+			test.primeMock(backend)
+
+			filter := &Filter{
+				backend: backend,
+				config:  testConfig(),
+				block:   common.Hash{0x001},
+			}
+
+			logs, err := filter.Logs(t.Context())
+			require.Error(t, err)
+			require.ErrorContains(t, err, test.expectedError)
+			require.Nil(t, logs)
+		})
+	}
+}
+
+func TestFilter_FilterLogs_UnableToFetchLastBlockHeader_ReturnsEmptyLogs(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	backend := NewMockBackend(ctrl)
+
+	backend.EXPECT().HeaderByNumber(gomock.Any(), rpc.LatestBlockNumber).Return(nil, fmt.Errorf("unable to fetch latest block"))
+
+	filter := &Filter{
+		backend: backend,
+		config:  testConfig(),
+		begin:   0,
+		end:     -1,
+	}
+	logs, err := filter.Logs(t.Context())
+	require.NoError(t, err)
+	require.Nil(t, logs)
+}
+
+func TestFilter_FilterLogs_HandlesMalformedQueries(t *testing.T) {
+
+	tests := map[string]struct {
+		begin         int64
+		end           int64
+		expectedError error
 	}{
 		"invalid block range, begin > end": {
-			begin:                 2,
-			end:                   1,
-			latestHeader:          &evmcore.EvmHeader{Number: big.NewInt(1)},
-			expectedEmptyResponse: true,
-		},
-		"latest header not available": {
-			expectedEmptyResponse: true,
+			begin: 2,
+			end:   1,
 		},
 		"invalid block range, begin < 0": {
 			begin:         -2,
 			end:           1,
 			expectedError: fmt.Errorf("invalid block range: begin block (-2) less than 0"),
-			latestHeader:  &evmcore.EvmHeader{Number: big.NewInt(1)},
-		},
-		"block hash does not exist": {
-			blockHash:     common.HexToHash("0xdeadbeef"),
-			expectedError: fmt.Errorf("block with hash 0xdeadbeef not found"),
-			latestHeader:  &evmcore.EvmHeader{Number: big.NewInt(1)},
 		},
 		"block index not found": {
-			begin:                 0,
-			end:                   0,
-			expectedEmptyResponse: true,
-			latestHeader:          &evmcore.EvmHeader{Number: big.NewInt(1)},
+			begin: 0,
+			end:   0,
 		},
 	}
 	for name, test := range tests {
@@ -532,12 +573,9 @@ func TestFilter_LogsReturnsErrorWithWrongQueries(t *testing.T) {
 				err = test.expectedError
 			}
 
-			if test.blockHash != (common.Hash{}) {
-				backend.EXPECT().HeaderByHash(gomock.Any(), test.blockHash).Return(nil, err)
-			} else {
-				backend.EXPECT().HeaderByNumber(gomock.Any(), rpc.LatestBlockNumber).Return(test.latestHeader, err)
-				backend.EXPECT().HeaderByNumber(gomock.Any(), gomock.Any()).Return(nil, err).AnyTimes()
-			}
+			latestHeader := &evmcore.EvmHeader{Number: big.NewInt(1)}
+			backend.EXPECT().HeaderByNumber(gomock.Any(), rpc.LatestBlockNumber).Return(latestHeader, err)
+			backend.EXPECT().HeaderByNumber(gomock.Any(), gomock.Any()).Return(nil, err).AnyTimes()
 
 			expectedLogs := []*types.Log{{
 				TxHash: common.Hash{1},
@@ -547,7 +585,6 @@ func TestFilter_LogsReturnsErrorWithWrongQueries(t *testing.T) {
 			filter := &Filter{
 				backend: backend,
 				config:  testConfig(),
-				block:   test.blockHash,
 				begin:   test.begin,
 				end:     test.end,
 			}
@@ -556,12 +593,9 @@ func TestFilter_LogsReturnsErrorWithWrongQueries(t *testing.T) {
 			if test.expectedError != nil {
 				require.Error(t, err)
 				require.ErrorContains(t, err, test.expectedError.Error())
-			} else if test.expectedEmptyResponse {
+			} else {
 				require.NoError(t, err)
 				require.Len(t, logs, 0)
-			} else {
-				require.NotEmpty(t, logs)
-				require.NoError(t, err)
 			}
 		})
 	}
