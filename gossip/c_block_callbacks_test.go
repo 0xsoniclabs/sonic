@@ -22,10 +22,12 @@ import (
 	"crypto/ecdsa"
 	"crypto/rand"
 	"fmt"
+	"math"
 	"math/big"
 	"slices"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
@@ -34,12 +36,15 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
 	"github.com/0xsoniclabs/sonic/gossip/randao"
 	"github.com/0xsoniclabs/sonic/inter"
@@ -860,6 +865,181 @@ func TestIsPermissible_DetectsNonPermissibleTransactions(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			err := isPermissible(test.transaction, &rules)
 			require.ErrorContains(t, err, test.issue)
+		})
+	}
+}
+
+func TestRlpEncodedMaxHeaderSizeInBytes_IsAnUpperBound(t *testing.T) {
+	setToMax := func(b []byte) []byte {
+		b = bytes.Repeat([]byte{0xFF}, len(b))
+		return b
+	}
+
+	maxHash := common.Hash(setToMax(make([]byte, 32)))
+	maxAddress := common.Address(setToMax(make([]byte, 20)))
+	maxBloom := types.Bloom(setToMax(make([]byte, 2048)))
+	maxBlock := types.BlockNonce(setToMax(make([]byte, 8)))
+	maxUint64 := uint64(math.MaxUint64)
+
+	// Geth sanity check for extra defines an upper bound of 100 * 1024 bytes.
+	// Sonic uses the extra field to save time and duration.
+	extra := inter.EncodeExtraData(
+		time.Unix(math.MaxInt64, math.MaxInt64),
+		time.Duration(math.MaxInt64)*time.Nanosecond,
+	)
+
+	header := &types.Header{
+		ParentHash:       maxHash,
+		UncleHash:        maxHash,
+		Coinbase:         maxAddress,
+		Root:             maxHash,
+		TxHash:           maxHash,
+		ReceiptHash:      maxHash,
+		Bloom:            maxBloom,
+		Difficulty:       big.NewInt(math.MaxInt64),
+		Number:           big.NewInt(math.MaxInt64),
+		GasLimit:         math.MaxUint64,
+		GasUsed:          math.MaxUint64,
+		Time:             math.MaxUint64,
+		Extra:            extra,
+		MixDigest:        maxHash,
+		Nonce:            maxBlock,
+		BaseFee:          big.NewInt(math.MaxInt64),
+		WithdrawalsHash:  &maxHash,
+		BlobGasUsed:      &maxUint64,
+		ExcessBlobGas:    &maxUint64,
+		ParentBeaconRoot: &maxHash,
+		RequestsHash:     &maxHash,
+	}
+
+	data, err := rlp.EncodeToBytes(header)
+	require.NoError(t, err)
+	require.Less(t, len(data), rlpEncodedMaxHeaderSizeInBytes, "header exceeds maximum size")
+}
+
+func TestProcessUserTransactions_RespectsGasLimit(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
+	blockBuilder := inter.NewBlockBuilder()
+
+	// Create some dummy transactions with different sizes and gas usage
+	tx1 := types.NewTx(&types.LegacyTx{Nonce: 1, Gas: 1000})
+	tx2 := types.NewTx(&types.LegacyTx{Nonce: 2, Gas: 1000})
+	tx3 := types.NewTx(&types.LegacyTx{Nonce: 3, Gas: 1000})
+
+	// Set up receipts for each transaction
+	receipt1 := &types.Receipt{CumulativeGasUsed: 1000}
+	receipt2 := &types.Receipt{CumulativeGasUsed: 2000}
+
+	// Mock EVMProcessor.Execute to return receipts for each tx
+	evmProcessor.EXPECT().
+		Execute([]*types.Transaction{tx1}, gomock.Any()).
+		Return([]evmcore.ProcessedTransaction{{Transaction: tx1, Receipt: receipt1}})
+	evmProcessor.EXPECT().
+		Execute([]*types.Transaction{tx2}, gomock.Any()).
+		Return([]evmcore.ProcessedTransaction{{Transaction: tx2, Receipt: receipt2}})
+
+	// Set limits so only tx1 and tx2 fit, tx3 should be skipped due to size
+	userTransactionGasLimit := uint64(2500)
+
+	orderedTxs := []*types.Transaction{tx1, tx2, tx3}
+
+	processUserTransactions(evmProcessor, blockBuilder, orderedTxs, userTransactionGasLimit)
+
+	// Only tx1 and tx2 should be included
+	gotTxs := blockBuilder.GetTransactions()
+	require.Equal(t, types.Transactions{tx1, tx2}, gotTxs)
+}
+
+func TestProcessUserTransactions_TransactionsWithNoReceiptAreNotIncluded(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
+	blockBuilder := inter.NewBlockBuilder()
+
+	tx := types.NewTx(&types.LegacyTx{Nonce: 1})
+
+	// Simulate skipped transaction (no receipt)
+	evmProcessor.EXPECT().
+		Execute([]*types.Transaction{tx}, gomock.Any()).
+		Return([]evmcore.ProcessedTransaction{{Transaction: tx, Receipt: nil}})
+
+	processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{tx}, 10000)
+
+	// Should not be added to blockBuilder
+	gotTxs := blockBuilder.GetTransactions()
+	require.Empty(t, gotTxs)
+}
+
+func TestProcessUserTransactions_AccountsForInternalTxSize(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
+	blockBuilder := inter.NewBlockBuilder()
+
+	// Add an internal tx to blockBuilder
+	internalTx := types.NewTx(&types.LegacyTx{Gas: 500_000_000})
+	blockBuilder.AddTransaction(internalTx, &types.Receipt{CumulativeGasUsed: 0})
+
+	// Create a user tx that would fit only if internal tx size is subtracted
+	userTx := types.NewTx(&types.LegacyTx{})
+	receipt := &types.Receipt{CumulativeGasUsed: 100}
+
+	evmProcessor.EXPECT().
+		Execute([]*types.Transaction{userTx}, gomock.Any()).
+		Return([]evmcore.ProcessedTransaction{{Transaction: userTx, Receipt: receipt}})
+
+	processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{userTx}, 10000)
+
+	// Both internal and user tx should be present
+	gotTxs := blockBuilder.GetTransactions()
+	require.Equal(t, types.Transactions{internalTx, userTx}, gotTxs)
+}
+
+func TestProcessUserTransactions_SkipsTxsExceedingSizeLimit(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
+	blockBuilder := inter.NewBlockBuilder()
+
+	// Create a tx that exceeds the size limit
+	largeTx := types.NewTx(&types.LegacyTx{Data: make([]byte, params.MaxBlockSize)})
+
+	processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{largeTx}, 10000)
+
+	// Should not be added
+	gotTxs := blockBuilder.GetTransactions()
+	require.Empty(t, gotTxs)
+}
+
+func TestTransactionSize_ConsidersSponsoredTxs(t *testing.T) {
+	basicTx := types.NewTx(&types.LegacyTx{
+		To:       &common.Address{0x42},
+		GasPrice: big.NewInt(100),
+		V:        big.NewInt(1),
+	})
+
+	sponsoredTx := types.NewTx(&types.LegacyTx{
+		To:       &common.Address{0x42},
+		GasPrice: big.NewInt(0),
+		V:        big.NewInt(1),
+	})
+
+	tests := map[string]struct {
+		tx           *types.Transaction
+		expectedSize uint64
+	}{
+		"regular tx": {
+			tx:           basicTx,
+			expectedSize: basicTx.Size(),
+		},
+		"sponsored tx": {
+			tx:           sponsoredTx,
+			expectedSize: sponsoredTx.Size() + subsidies.RlpEncodedFeeChargingTxSizeInBytes,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			size := txSizeIncSubsidies(test.tx)
+			require.Equal(t, test.expectedSize, size)
 		})
 	}
 }

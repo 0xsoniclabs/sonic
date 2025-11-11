@@ -80,7 +80,6 @@ func (s *Scheduler) Schedule(
 
 	remainingGas := limits.Gas
 
-	// To stay compliant with EIP-7934 the maximum block size is limited.
 	remainingSize := limits.Size
 	var res []*types.Transaction
 	for context.Err() == nil {

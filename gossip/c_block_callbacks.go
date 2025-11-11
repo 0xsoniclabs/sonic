@@ -40,7 +40,10 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
+	"github.com/ethereum/go-ethereum/params"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/verwatcher"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
@@ -416,12 +419,17 @@ func consensusCallbackBeginBlockFn(
 					}
 
 					orderedTxs := proposal.Transactions
-					for _, processed := range evmProcessor.Execute(orderedTxs, userTransactionGasLimit) {
-						if processed.Receipt != nil { // < nil if skipped
-							blockBuilder.AddTransaction(
-								processed.Transaction,
-								processed.Receipt,
-							)
+					if es.Rules.Upgrades.Brio {
+						// Limit block size and gas while adding user transactions
+						processUserTransactions(evmProcessor, blockBuilder, orderedTxs, userTransactionGasLimit)
+					} else {
+						for _, processed := range evmProcessor.Execute(orderedTxs, userTransactionGasLimit) {
+							if processed.Receipt != nil { // < nil if skipped
+								blockBuilder.AddTransaction(
+									processed.Transaction,
+									processed.Receipt,
+								)
+							}
 						}
 					}
 
@@ -587,6 +595,47 @@ func consensusCallbackBeginBlockFn(
 			},
 		}
 	}
+}
+
+// rlpEncodedMaxHeaderSizeInBytes is an upper bound of the EVM block header size
+// used for block size calculations.
+const rlpEncodedMaxHeaderSizeInBytes = 1024
+
+// processUserTransactions executes user transactions in order, adding them to the block
+// until all transactions are processed or the gas/block size limit is reached.
+func processUserTransactions(evmProcessor blockproc.EVMProcessor, blockBuilder *inter.BlockBuilder, orderedTxs []*types.Transaction, userTransactionGasLimit uint64) {
+	remainingGas := userTransactionGasLimit
+	remainingSize := uint64(params.MaxBlockSize - rlpEncodedMaxHeaderSizeInBytes)
+	internalTxs := blockBuilder.GetTransactions()
+	for _, tx := range internalTxs {
+		remainingSize -= tx.Size()
+	}
+	for _, tx := range orderedTxs {
+		neededSpace := txSizeIncSubsidies(tx)
+		if neededSpace < remainingSize && tx.Gas() < remainingGas {
+			for _, processed := range evmProcessor.Execute([]*types.Transaction{tx}, remainingGas) {
+				if processed.Receipt != nil { // < nil if skipped
+					blockBuilder.AddTransaction(
+						processed.Transaction,
+						processed.Receipt,
+					)
+					remainingGas = userTransactionGasLimit - processed.Receipt.CumulativeGasUsed
+					remainingSize -= txSizeIncSubsidies(tx)
+				}
+			}
+		}
+	}
+}
+
+// txSizeIncSubsidies returns the size of the transaction,
+// including any overhead introduced by sponsorship requests.
+func txSizeIncSubsidies(tx *types.Transaction) uint64 {
+	size := tx.Size()
+	if subsidies.IsSponsorshipRequest(tx) {
+		size += subsidies.RlpEncodedFeeChargingTxSizeInBytes
+	}
+
+	return size
 }
 
 // resolveRandaoMix computes the randao mix to be used by the block processor

@@ -280,13 +280,8 @@ func makeProposal(
 		},
 		candidates,
 		scheduler.Limits{
-			Gas: effectiveGasLimit,
-			// Use the minimum to not ignore changes of the event size limit.
-			Size: min(params.MaxBlockSize-
-				evmcore.RlpEncodedMaxHeaderSizeInBytes-
-				evmcore.RlpEncodedInternalTransactionSizeInBytes,
-				maxTotalTransactionsSizeInEventInBytes,
-			),
+			Gas:  effectiveGasLimit,
+			Size: maxTotalTransactionsSizeInEventInBytes,
 		},
 	)
 

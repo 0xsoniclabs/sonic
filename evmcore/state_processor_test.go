@@ -17,17 +17,14 @@
 package evmcore
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"math"
 	"math/big"
 	"testing"
-	"time"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
-	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/sfc"
@@ -39,7 +36,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -299,101 +295,6 @@ func TestProcess_TracksParentBlockHashIfPragueIsEnabled(t *testing.T) {
 				require.Empty(processed)
 			})
 		}
-	}
-}
-
-func TestRlpEncodedMaxHeaderSizeInBytes_IsAnUpperBound(t *testing.T) {
-	setToMax := func(b []byte) []byte {
-		b = bytes.Repeat([]byte{0xFF}, len(b))
-		return b
-	}
-
-	maxHash := common.Hash(setToMax(make([]byte, 32)))
-	maxAddress := common.Address(setToMax(make([]byte, 20)))
-	maxBloom := types.Bloom(setToMax(make([]byte, 2048)))
-	maxBlock := types.BlockNonce(setToMax(make([]byte, 8)))
-	maxUint64 := uint64(math.MaxUint64)
-
-	// Geth sanity check for extra defines an upper bound of 100 * 1024 bytes.
-	// Sonic uses the extra field to save time and duration.
-	extra := inter.EncodeExtraData(
-		time.Unix(math.MaxInt64, math.MaxInt64),
-		time.Duration(math.MaxInt64)*time.Nanosecond,
-	)
-
-	header := &types.Header{
-		ParentHash:       maxHash,
-		UncleHash:        maxHash,
-		Coinbase:         maxAddress,
-		Root:             maxHash,
-		TxHash:           maxHash,
-		ReceiptHash:      maxHash,
-		Bloom:            maxBloom,
-		Difficulty:       big.NewInt(math.MaxInt64),
-		Number:           big.NewInt(math.MaxInt64),
-		GasLimit:         math.MaxUint64,
-		GasUsed:          math.MaxUint64,
-		Time:             math.MaxUint64,
-		Extra:            extra,
-		MixDigest:        maxHash,
-		Nonce:            maxBlock,
-		BaseFee:          big.NewInt(math.MaxInt64),
-		WithdrawalsHash:  &maxHash,
-		BlobGasUsed:      &maxUint64,
-		ExcessBlobGas:    &maxUint64,
-		ParentBeaconRoot: &maxHash,
-		RequestsHash:     &maxHash,
-	}
-
-	data, err := rlp.EncodeToBytes(header)
-	require.NoError(t, err)
-	require.Less(t, uint64(len(data)), RlpEncodedMaxHeaderSizeInBytes, "header exceeds maximum size")
-}
-
-func TestProcess_BrioLimitsBlockSize(t *testing.T) {
-	for _, isBrio := range []bool{false, true} {
-		t.Run(fmt.Sprintf("isBrio=%v", isBrio), func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			runner := NewMock_transactionRunner(ctrl)
-
-			transactions := []*types.Transaction{
-				types.NewTx(&types.LegacyTx{Data: make([]byte, params.MaxBlockSize/2)}),
-				types.NewTx(&types.LegacyTx{Data: make([]byte, params.MaxBlockSize/2)}),
-			}
-
-			require.Greater(t, transactions[0].Size()+transactions[1].Size(), uint64(params.MaxBlockSize))
-
-			context := &runContext{
-				runner:   runner,
-				upgrades: opera.Upgrades{Brio: isBrio},
-			}
-
-			if isBrio {
-				runner.EXPECT().runRegularTransaction(context, transactions[0], 0).Return(ProcessedTransaction{
-					Transaction: transactions[0],
-					Receipt:     &types.Receipt{},
-				})
-			} else {
-				runner.EXPECT().runRegularTransaction(context, transactions[0], 0).Return(ProcessedTransaction{
-					Transaction: transactions[0],
-					Receipt:     &types.Receipt{},
-				})
-				runner.EXPECT().runRegularTransaction(context, transactions[1], 1).Return(ProcessedTransaction{
-					Transaction: transactions[1],
-					Receipt:     &types.Receipt{},
-				})
-			}
-
-			processed := runTransactions(context, transactions, 0)
-			if isBrio {
-				// Only one transaction should be processed to keep the block size
-				// within limits.
-				require.Len(t, processed, 1)
-			} else {
-				// Both transactions are processed when Brio is not active.
-				require.Len(t, processed, 2)
-			}
-		})
 	}
 }
 
@@ -1648,80 +1549,4 @@ func TestTransactionGenerationUtilities(t *testing.T) {
 
 	require.False(t, subsidies.IsSponsorshipRequest(regular))
 	require.True(t, subsidies.IsSponsorshipRequest(request))
-}
-
-func TestFilterTransactionsExceedingMaxBlockSize_ConsidersSponsoredTransactions(t *testing.T) {
-	// leaves no more space in the block for the gas charging transaction
-	hugeTxPayload := params.MaxBlockSize -
-		(RlpEncodedMaxHeaderSizeInBytes +
-			RlpEncodedInternalTransactionSizeInBytes +
-			subsidies.RlpEncodedFeeChargingTxSizeInBytes)
-
-	tests := map[string]struct {
-		transactions []*types.Transaction
-		shouldPass   bool
-	}{
-		"basicTransaction": {
-			transactions: []*types.Transaction{
-				types.NewTx(&types.LegacyTx{
-					To:       &common.Address{1},
-					GasPrice: big.NewInt(1),
-					Data:     make([]byte, 100),
-					V:        big.NewInt(1),
-				}),
-			},
-			shouldPass: true,
-		},
-		"sponsoredTransaction": {
-			transactions: []*types.Transaction{
-				types.NewTx(&types.LegacyTx{
-					To:       &common.Address{1},
-					GasPrice: big.NewInt(0),
-					Data:     make([]byte, 100),
-					V:        big.NewInt(1),
-				}),
-			},
-			shouldPass: true,
-		},
-		"hugeTransaction": {
-			transactions: []*types.Transaction{
-				types.NewTx(&types.LegacyTx{
-					To:       &common.Address{1},
-					GasPrice: big.NewInt(1),
-					Data:     make([]byte, hugeTxPayload),
-					V:        big.NewInt(1),
-				}),
-			},
-			shouldPass: true,
-		},
-		"hugeSponsoredTransaction": {
-			transactions: []*types.Transaction{
-				types.NewTx(&types.LegacyTx{
-					To:       &common.Address{1},
-					GasPrice: big.NewInt(0),
-					Data:     make([]byte, hugeTxPayload),
-					V:        big.NewInt(1),
-				}),
-			},
-			shouldPass: false,
-		},
-	}
-
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			upgrades := opera.Upgrades{
-				GasSubsidies: true,
-			}
-			filtered := filterTransactionsExceedingMaxBlockSize(
-				test.transactions,
-				upgrades,
-			)
-
-			if test.shouldPass {
-				require.Len(t, filtered, 1, "expected transaction to be accepted")
-			} else {
-				require.Len(t, filtered, 0, "expected transaction to be rejected")
-			}
-		})
-	}
 }

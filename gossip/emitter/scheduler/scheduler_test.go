@@ -308,6 +308,7 @@ func TestScheduler_Schedule_SizeLimitIsEnforced(t *testing.T) {
 			require.Equal(t, want, got)
 		}
 	}
+
 }
 
 func TestScheduler_Schedule_StopsWhenContextIsCancelled(t *testing.T) {

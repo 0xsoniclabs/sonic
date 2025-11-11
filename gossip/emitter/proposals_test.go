@@ -36,7 +36,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -392,9 +391,7 @@ func TestMakeProposal_ValidArguments_CreatesValidProposal(t *testing.T) {
 				rules.Economy.ShortGasPower.AllocPerSec,
 				rules.Blocks.MaxBlockGas,
 			),
-			Size: params.MaxBlockSize -
-				evmcore.RlpEncodedMaxHeaderSizeInBytes -
-				evmcore.RlpEncodedInternalTransactionSizeInBytes,
+			Size: maxTotalTransactionsSizeInEventInBytes,
 		},
 	).Return(transactions)
 
