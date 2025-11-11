@@ -589,26 +589,37 @@ func (n *IntegrationTestNet) connectP2PNetwork(enodes []string) error {
 		return nil
 	}
 
-	for i := 0; i < len(n.nodes); i++ {
+	for i := range n.nodes {
 		client, err := n.GetClientConnectedToNode(i)
 		if err != nil {
 			return fmt.Errorf("failed to connect to the Ethereum client: %w", err)
 		}
 		defer client.Close()
 
-		// connect to the next node in the list, wrap around at the end
-		enode := enodes[(i+1)%len(n.nodes)]
-		if err := client.Client().Call(nil, "admin_addPeer", enode); err != nil {
-			return fmt.Errorf("failed to connect to node %d: %v", i, err)
-		}
-
 		// Wait until connection is established
 		err = WaitFor(context.Background(), func(ctx context.Context) (bool, error) {
+
+			// Connect each node to the next one, and the last one to the first.
+			enode := enodes[(i+1)%len(n.nodes)]
+			if err := client.Client().Call(nil, "admin_addPeer", enode); err != nil {
+				return false, fmt.Errorf("failed to connect to node %d: %v", i, err)
+			}
+
+			// Fetch the list of connected peers
 			var res []map[string]any
 			if err := client.Client().Call(&res, "admin_peers"); err != nil {
 				return false, fmt.Errorf("failed to connect to node %d: %v", i, err)
 			}
-			return len(res) >= 1, nil
+
+			// Expect each node to be connected to each other, except for the first node
+			// which will only be connected to the second node at this point in time,
+			// and both nodes in a 2-nodes network which will be connected to each other.
+			expectedConnections := 1
+			if i > 0 {
+				// min is for the 2-nodes network special case
+				expectedConnections = min(len(n.nodes)-1, 2)
+			}
+			return len(res) >= expectedConnections, nil
 		})
 		if err != nil {
 			return fmt.Errorf("failed to wait for node %d to be connected: %v", i, err)
