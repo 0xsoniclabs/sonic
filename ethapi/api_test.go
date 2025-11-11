@@ -1476,6 +1476,20 @@ func TestGetNumberAndTime_ReportsErrors(t *testing.T) {
 			setupBackend:      func(mockBackend *MockBackend) {},
 			expectedError:     "invalid block number or hash",
 		},
+		"nil header returned from number": {
+			blockNumberOrHash: rpc.BlockNumberOrHashWithNumber(100),
+			setupBackend: func(mockBackend *MockBackend) {
+				mockBackend.EXPECT().HeaderByNumber(gomock.Any(), rpc.BlockNumber(100)).Return(nil, nil)
+			},
+			expectedError: "block does not exists",
+		},
+		"nil header returned from hash`": {
+			blockNumberOrHash: rpc.BlockNumberOrHashWithHash(common.Hash{1, 2, 3}, false),
+			setupBackend: func(mockBackend *MockBackend) {
+				mockBackend.EXPECT().HeaderByHash(gomock.Any(), common.Hash{1, 2, 3}).Return(nil, nil)
+			},
+			expectedError: "block does not exists",
+		},
 	}
 
 	for name, test := range tests {
