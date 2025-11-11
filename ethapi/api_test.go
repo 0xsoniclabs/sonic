@@ -1547,27 +1547,42 @@ func TestGetNumberAndTime_ReturnsBlockNumberAndTimestamp_ForExistingBlock(t *tes
 	}
 }
 
-func TestDoEstimate_EnforcesBlockOverrides_ForCheckingChainConfig(t *testing.T) {
+func TestCapMaxGasAllowance_ForwardsErrors(t *testing.T) {
+
+	ctrl := gomock.NewController(t)
+	mockBackend := NewMockBackend(ctrl)
+
+	want := errors.New("max gas limit retrieval error")
+
+	any := gomock.Any()
+	mockBackend.EXPECT().MaxGasLimit().Return(uint64(0))
+	mockBackend.EXPECT().HeaderByNumber(any, rpc.BlockNumber(1)).Return(nil, want)
+
+	_, err := capMaxGasAllowance(
+		t.Context(),
+		mockBackend,
+		rpc.BlockNumberOrHashWithNumber(1),
+		nil,
+		uint64(1),
+	)
+
+	require.ErrorIs(t, err, want, "expected error to be forwarded")
+}
+
+func TestCapMaxGasAllowance_EnforcesBlockOverrides(t *testing.T) {
 
 	osakaTime := uint64(2000)
+	maxTxGas := uint64(500_000)
+
+	// header from before osaka
 	header := evmcore.EvmHeader{
 		Number: big.NewInt(1),
 		// time earlier than osaka time
 		Time:    1234,
 		BaseFee: big.NewInt(2),
 	}
-	blockIndex := idx.Block(1)
 
-	maxTxGas := hexutil.Uint64(500_000)
-	// use test upgrades to create vm and chain configs
-	rules := opera.Rules{
-		Upgrades: opera.GetBrioUpgrades(),
-		Economy: opera.EconomyRules{
-			Gas: opera.GasRules{MaxEventGas: uint64(maxTxGas)},
-		},
-	}
-
-	// these block overrides will set the chain config to the block being estimated
+	// override block number and time to be after osaka
 	blockOverrides := &BlockOverrides{
 		Number: (*hexutil.Big)(big.NewInt(42)),
 		Time:   (*hexutil.Uint64)(&osakaTime),
@@ -1579,55 +1594,25 @@ func TestDoEstimate_EnforcesBlockOverrides_ForCheckingChainConfig(t *testing.T) 
 
 	ctrl := gomock.NewController(t)
 	mockBackend := NewMockBackend(ctrl)
-	mockState := state.NewMockStateDB(ctrl)
-	any := gomock.Any()
 
-	// test related calls
-	// return header for block 1
-	mockBackend.EXPECT().HeaderByNumber(any, rpc.BlockNumber(1)).Return(&header, nil).AnyTimes()
+	any := gomock.Any()
+	mockBackend.EXPECT().MaxGasLimit().Return(uint64(maxTxGas))
+	mockBackend.EXPECT().HeaderByNumber(any, rpc.BlockNumber(1)).Return(&header, nil)
 	// expect call for chainconfig for block from overrides
 	mockBackend.EXPECT().ChainConfig(idx.Block(blockOverrides.Number.ToInt().Uint64())).
-		Return(osakaConfig).AnyTimes()
-	mockBackend.EXPECT().GetNetworkRules(any, blockIndex).Return(&rules, nil).AnyTimes()
-	mockBackend.EXPECT().MaxGasLimit().Return(uint64(maxTxGas)).AnyTimes()
-	// ---
+		Return(osakaConfig)
 
-	// non test related calls
-	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, any).Return(mockState, &header, nil).AnyTimes()
-	mockBackend.EXPECT().GetEVM(any, any, any, any, any).
-		DoAndReturn(getEvmFuncWithParameters(mockState, osakaConfig, &vm.BlockContext{
-			BlockNumber: blockOverrides.Number.ToInt(),
-			BaseFee:     big.NewInt(1),
-			Transfer:    vm.TransferFunc(func(sd vm.StateDB, a1, a2 common.Address, i *uint256.Int) {}),
-			CanTransfer: vm.CanTransferFunc(func(sd vm.StateDB, a1 common.Address, i *uint256.Int) bool { return true }),
-			Random:      &common.Hash{0x42},
-		}, opera.GetVmConfig(rules))).AnyTimes()
-
-	setExpectedStateCalls(mockState)
-	mockState.EXPECT().AddAddressToAccessList(any).AnyTimes()
-	mockState.EXPECT().GetCodeHash(any).Return(common.Hash{0x42}).AnyTimes()
-	mockState.EXPECT().GetStorageRoot(any).Return(common.Hash{0x43}).AnyTimes()
-	mockState.EXPECT().Finalise(any).AnyTimes()
-	// ---
-
-	// these values are the maximum allowed by the protocol, only relevant
-	// to create a large payload so that the gas estimation is high enough.
-	const MAX_CODE_SIZE uint64 = 24576
-	const MAX_INIT_CODE_SIZE uint64 = 2 * MAX_CODE_SIZE
-	bigData := hexutil.Bytes(slices.Repeat([]byte{0xFF}, int(MAX_INIT_CODE_SIZE)-1))
-
-	txGas := hexutil.Uint64(2_000_000)
-	_, err := DoEstimateGas(
+	originalHi := uint64(2_000_000)
+	got, err := capMaxGasAllowance(
 		t.Context(),
 		mockBackend,
-		TransactionArgs{Gas: &txGas, To: &common.Address{1}, Data: &bigData},
 		rpc.BlockNumberOrHashWithNumber(1),
-		nil,
 		blockOverrides,
-		math.MaxUint64)
+		originalHi,
+	)
 
-	require.ErrorContains(t, err, "gas required exceeds allowance (500000)", "expected error due to max gas being enforced from osaka onwards")
-
+	require.NoError(t, err, "unexpected error")
+	require.Equal(t, maxTxGas, got, "unexpected max gas cap")
 }
 
 func TestDoEstimate_IsMaxGasAware(t *testing.T) {

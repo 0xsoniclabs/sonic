@@ -1177,26 +1177,9 @@ func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNr
 
 	// Cap the maximum gas allowance according to EIP-7825. In sonic the max gas limit
 	// for a transaction is limited by MaxGasLimit.
-	if hi > b.MaxGasLimit() {
-		blockNumber, blockTime, err := getNumberAndTime(ctx, b, blockNrOrHash)
-		if err != nil {
-			return 0, err
-		}
-
-		// check overrides
-		if blockOverrides != nil {
-			if blockOverrides.Number != nil {
-				blockNumber = blockOverrides.Number.ToInt().Uint64()
-			}
-			if blockOverrides.Time != nil {
-				blockTime = uint64((*blockOverrides.Time))
-			}
-		}
-
-		// use Osaka gas limit rule
-		if b.ChainConfig(idx.Block(blockNumber)).IsOsaka(big.NewInt(int64(blockNumber)), blockTime) {
-			hi = b.MaxGasLimit()
-		}
+	hi, err := capMaxGasAllowance(ctx, b, blockNrOrHash, blockOverrides, hi)
+	if err != nil {
+		return 0, err
 	}
 
 	// Normalize the max fee per gas the call is willing to spend.
@@ -1300,6 +1283,38 @@ func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNr
 		}
 	}
 	return hexutil.Uint64(hi), nil
+}
+
+// capMaxGasAllowance caps the maximum gas allowance according to EIP-7825.
+// In sonic the max gas limit for a transaction is limited by backend.MaxGasLimit().
+// if the block from the number or hash is not found, an error is returned.
+// if the blockOverrides is not nil, the overrides are applied to the block number and time.
+func capMaxGasAllowance(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrHash, blockOverrides *BlockOverrides, hi uint64) (uint64, error) {
+	// Cap the maximum gas allowance according to EIP-7825. In sonic the max gas limit
+	// for a transaction is limited by MaxGasLimit.
+	maxGasLimit := b.MaxGasLimit()
+	if hi > maxGasLimit {
+		blockNumber, blockTime, err := getNumberAndTime(ctx, b, blockNrOrHash)
+		if err != nil {
+			return 0, err
+		}
+
+		// check overrides
+		if blockOverrides != nil {
+			if blockOverrides.Number != nil {
+				blockNumber = blockOverrides.Number.ToInt().Uint64()
+			}
+			if blockOverrides.Time != nil {
+				blockTime = uint64((*blockOverrides.Time))
+			}
+		}
+
+		// use Osaka gas limit rule
+		if b.ChainConfig(idx.Block(blockNumber)).IsOsaka(big.NewInt(int64(blockNumber)), blockTime) {
+			hi = maxGasLimit
+		}
+	}
+	return hi, nil
 }
 
 // getNumberAndTime returns the block number and time for the given block number or hash,
