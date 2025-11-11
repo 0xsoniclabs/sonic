@@ -170,10 +170,6 @@ func runTransactions(
 	transactions types.Transactions,
 	txIndexOffset int,
 ) []ProcessedTransaction {
-	if context.upgrades.Brio {
-		transactions = filterTransactionsExceedingMaxBlockSize(transactions, context.upgrades)
-	}
-
 	processed := make([]ProcessedTransaction, 0, len(transactions))
 	for _, tx := range transactions {
 		nextId := len(processed) + txIndexOffset
@@ -188,42 +184,6 @@ func runTransactions(
 		}
 	}
 	return processed
-}
-
-const (
-	// RlpEncodedMaxHeaderSizeInBytes is an upper bound of the EVM block header size
-	// used for block size calculations.
-	RlpEncodedMaxHeaderSizeInBytes = uint64(1024)
-
-	// RlpEncodedInternalTransactionSizeInBytes is an upper bound for the size of
-	// RLP-encoded internal transactions included in the block for block size
-	// calculations.
-	// Transactions during the setup of the chain are not considered,
-	// it is unlikely to have a lot of payload transactions during the setup phase.
-	// Cheating validator transactions have a size of around 112 bytes.
-	// Epoch Seal internal transaction have a size of around 10808 bytes.
-	// Epoch Seal Validator internal transaction have a size of around 2744 bytes.
-	RlpEncodedInternalTransactionSizeInBytes = uint64(16384)
-)
-
-// filterTransactionsExceedingMaxBlockSize ensures that the size of the block does not exceed the
-// maximum allowed block size introduced by EIP-7934.
-func filterTransactionsExceedingMaxBlockSize(txs types.Transactions, upgrades opera.Upgrades) types.Transactions {
-	size := RlpEncodedMaxHeaderSizeInBytes + RlpEncodedInternalTransactionSizeInBytes
-	for i, tx := range txs {
-		txSize := tx.Size()
-
-		// Sponsored transactions have an overhead in the block size due to the fee charging
-		// transaction that is added for each sponsored transaction.
-		if upgrades.GasSubsidies && subsidies.IsSponsorshipRequest(tx) {
-			txSize += subsidies.RlpEncodedFeeChargingTxSizeInBytes
-		}
-		if size+txSize > params.MaxBlockSize {
-			return txs[:i]
-		}
-		size += txSize
-	}
-	return txs
 }
 
 // _transactionRunner is an interface for components implementing the logic
