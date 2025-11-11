@@ -92,8 +92,8 @@ type GasRulesRLPV1 struct {
 	// MaxEventGas defines the upper bound for gas usage in a single event.
 	//
 	// Starting from Brio and later upgrades, this value is also used to calculate
-	// the maximum gas allowed for a single transaction. The actual transaction gas limit
-	// will be less than MaxEventGas.
+	// the maximum gas allowed for a single transaction in EvmStateReader.MaxGasLimit()
+	// https://github.com/0xsoniclabs/sonic/blob/main/gossip/evm_state_reader.go#L47
 	//
 	// This mechanism in Sonic serves as an equivalent to the limit described in EIP-7825.
 	MaxEventGas  uint64
