@@ -611,9 +611,10 @@ func (n *IntegrationTestNet) connectP2PNetwork(enodes []string) error {
 				return false, fmt.Errorf("failed to connect to node %d: %v", i, err)
 			}
 
-			// Expect each node to be connected to each other, except for the first node
-			// which will only be connected to the second node at this point in time,
-			// and both nodes in a 2-nodes network which will be connected to each other.
+			// Expect each node to be connected to the previous and next nodes,
+			// except for the first node which will only be connected to the
+			// next at this point in time, and each node in a 2-nodes
+			// network which can only have one connection each.
 			expectedConnections := 1
 			if i > 0 {
 				// min is for the 2-nodes network special case
