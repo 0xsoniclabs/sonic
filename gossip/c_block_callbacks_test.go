@@ -870,19 +870,19 @@ func TestIsPermissible_DetectsNonPermissibleTransactions(t *testing.T) {
 }
 
 func TestRlpEncodedMaxHeaderSizeInBytes_IsAnUpperBound(t *testing.T) {
-	setToMax := func(b []byte) []byte {
-		b = bytes.Repeat([]byte{0xFF}, len(b))
+	setToMax := func(size int) []byte {
+		b := bytes.Repeat([]byte{0xFF}, size)
 		return b
 	}
 
-	maxHash := common.Hash(setToMax(make([]byte, 32)))
-	maxAddress := common.Address(setToMax(make([]byte, 20)))
-	maxBloom := types.Bloom(setToMax(make([]byte, 2048)))
-	maxBlock := types.BlockNonce(setToMax(make([]byte, 8)))
+	maxHash := common.Hash(setToMax(32))
+	maxAddress := common.Address(setToMax(20))
+	maxBloom := types.Bloom(setToMax(2048))
+	maxBlock := types.BlockNonce(setToMax(8))
 	maxUint64 := uint64(math.MaxUint64)
 
 	// Geth sanity check for extra defines an upper bound of 100 * 1024 bytes.
-	// Sonic uses the extra field to save time and duration.
+	// Sonic uses the extra field to store time and duration.
 	extra := inter.EncodeExtraData(
 		time.Unix(math.MaxInt64, math.MaxInt64),
 		time.Duration(math.MaxInt64)*time.Nanosecond,
@@ -970,28 +970,22 @@ func TestProcessUserTransactions_TransactionsWithNoReceiptAreNotIncluded(t *test
 	require.Empty(t, gotTxs)
 }
 
-func TestProcessUserTransactions_AccountsForInternalTxSize(t *testing.T) {
+func TestProcessUserTransactions_DeducesInternalTxsSize(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
 	blockBuilder := inter.NewBlockBuilder()
 
 	// Add an internal tx to blockBuilder
-	internalTx := types.NewTx(&types.LegacyTx{Gas: 500_000_000})
-	blockBuilder.AddTransaction(internalTx, &types.Receipt{CumulativeGasUsed: 0})
+	internalTx := types.NewTx(&types.LegacyTx{Data: make([]byte, params.MaxBlockSize/2)})
+	blockBuilder.AddTransaction(internalTx, &types.Receipt{})
 
-	// Create a user tx that would fit only if internal tx size is subtracted
-	userTx := types.NewTx(&types.LegacyTx{})
-	receipt := &types.Receipt{CumulativeGasUsed: 100}
-
-	evmProcessor.EXPECT().
-		Execute([]*types.Transaction{userTx}, gomock.Any()).
-		Return([]evmcore.ProcessedTransaction{{Transaction: userTx, Receipt: receipt}})
-
+	// Create a user tx that would only fit without the internal tx
+	userTx := types.NewTx(&types.LegacyTx{Data: make([]byte, params.MaxBlockSize/2)})
 	processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{userTx}, 10000)
 
 	// Both internal and user tx should be present
 	gotTxs := blockBuilder.GetTransactions()
-	require.Equal(t, types.Transactions{internalTx, userTx}, gotTxs)
+	require.Equal(t, types.Transactions{internalTx}, gotTxs)
 }
 
 func TestProcessUserTransactions_SkipsTxsExceedingSizeLimit(t *testing.T) {
@@ -1002,11 +996,22 @@ func TestProcessUserTransactions_SkipsTxsExceedingSizeLimit(t *testing.T) {
 	// Create a tx that exceeds the size limit
 	largeTx := types.NewTx(&types.LegacyTx{Data: make([]byte, params.MaxBlockSize)})
 
-	processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{largeTx}, 10000)
+	// Following txs are not skipped
+	tx0 := types.NewTx(&types.LegacyTx{Data: []byte{0x01}})
+	tx1 := types.NewTx(&types.LegacyTx{Data: []byte{0x01}})
+
+	evmProcessor.EXPECT().
+		Execute([]*types.Transaction{tx0}, gomock.Any()).
+		Return([]evmcore.ProcessedTransaction{{Transaction: tx0, Receipt: &types.Receipt{}}})
+	evmProcessor.EXPECT().
+		Execute([]*types.Transaction{tx1}, gomock.Any()).
+		Return([]evmcore.ProcessedTransaction{{Transaction: tx1, Receipt: &types.Receipt{}}})
+
+	processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{largeTx, tx0, tx1}, 10000)
 
 	// Should not be added
 	gotTxs := blockBuilder.GetTransactions()
-	require.Empty(t, gotTxs)
+	require.Equal(t, types.Transactions{tx0, tx1}, gotTxs)
 }
 
 func TestTransactionSize_ConsidersSponsoredTxs(t *testing.T) {
@@ -1038,7 +1043,7 @@ func TestTransactionSize_ConsidersSponsoredTxs(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			size := txSizeIncSubsidies(test.tx)
+			size := txSizeIncludingSubsidies(test.tx)
 			require.Equal(t, test.expectedSize, size)
 		})
 	}

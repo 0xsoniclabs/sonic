@@ -79,7 +79,6 @@ func (s *Scheduler) Schedule(
 	defer processor.release()
 
 	remainingGas := limits.Gas
-
 	remainingSize := limits.Size
 	var res []*types.Transaction
 	for context.Err() == nil {

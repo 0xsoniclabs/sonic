@@ -575,7 +575,7 @@ func TestRlpEncodedFeeChargingTxSizeInBytes_IsUpperBound(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	nonceSource := NewMockNonceSource(ctrl)
 	nonceSource.EXPECT().GetNonce(common.Address{}).Return(uint64(math.MaxUint64))
-	id := FundId{}
+	id := FundId(make([]byte, 32))
 	gasConfig := GasConfig{math.MaxUint64, math.MaxUint64}
 	gasPrice := big.NewInt(math.MaxInt64)
 
