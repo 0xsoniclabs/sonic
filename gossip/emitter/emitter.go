@@ -38,6 +38,7 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 
 	"github.com/0xsoniclabs/sonic/gossip/emitter/originatedtxs"
+	"github.com/0xsoniclabs/sonic/gossip/emitter/throttling"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice/gaspricelimits"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/logger"
@@ -144,6 +145,8 @@ type Emitter struct {
 	lastTimeAnEventWasConfirmed atomic.Pointer[time.Time]
 
 	proposalTracker inter.ProposalTracker
+
+	eventEmissionThrottler *throttling.ThrottlingState
 }
 
 type BaseFeeSource interface {
@@ -170,14 +173,13 @@ func NewEmitter(
 		baseFeeSource: baseFeeSource,
 		errorLock:     errorLock,
 	}
-	// TODO: uncomment after event throttler is added.
-	// if config.ThrottleEvents {
-	// 	res.eventEmissionThrottler = throttling.NewThrottlingState(
-	// 		config.Validator.ID,
-	// 		config.ThrottleDominantThreshold,
-	// 		config.ThrottleSkipInSameFrame,
-	// 		world)
-	// }
+	if config.ThrottleEvents {
+		res.eventEmissionThrottler = throttling.NewThrottlingState(
+			config.Validator.ID,
+			config.ThrottlerDominantThreshold,
+			config.ThrottlerSkipInSameFrame,
+			world)
+	}
 
 	res.globalConfirmingInterval.Store(uint64(config.EmitIntervals.Confirming))
 	return res
@@ -351,10 +353,10 @@ func (em *Emitter) EmitEvent() (*inter.EventPayload, error) {
 	// Right after creating the event, check whether to skip its emission
 	// this location allows to take into account the event creation time
 	// and frame in throttling decision.
-	// TODO: uncomment after emitter throttler is merged.
-	// if em.eventEmissionThrottler != nil && em.eventEmissionThrottler.SkipEventEmission(e) {
-	// 	return nil, nil
-	// }
+	if em.eventEmissionThrottler != nil &&
+		em.eventEmissionThrottler.SkipEventEmission(e) {
+		return nil, nil
+	}
 
 	em.syncStatus.prevLocalEmittedID = e.ID()
 
