@@ -635,3 +635,7 @@ func (b *EthAPIBackend) GetLatestBlockCertificate() (cert.BlockCertificate, erro
 func (b *EthAPIBackend) EnumerateBlockCertificates(first idx.Block) iter.Seq[result.T[cert.BlockCertificate]] {
 	return b.svc.store.EnumerateBlockCertificates(first)
 }
+
+func (b *EthAPIBackend) GetUpgradeHeights() []opera.UpgradeHeight {
+	return b.svc.store.GetUpgradeHeights()
+}
