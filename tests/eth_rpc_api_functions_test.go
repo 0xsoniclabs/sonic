@@ -33,6 +33,8 @@ import (
 	"github.com/0xsoniclabs/sonic/vecmt"
 	"github.com/Fantom-foundation/lachesis-base/abft"
 	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -46,7 +48,6 @@ var (
 	knownMissingAPIs = namespaceMap{
 		"eth": {
 			"SimulateV1": struct{}{},
-			"Config":     struct{}{}, // TODO: issue (https://github.com/0xsoniclabs/sonic-admin/issues/355)
 		},
 		"debug": {
 			"DbAncient":                   struct{}{},
@@ -195,4 +196,37 @@ func makeTestEngine(gdb *gossip.Store) (*abft.Lachesis, *vecmt.Index) {
 	vecClock := vecmt.NewIndex(nil, vecmt.LiteConfig())
 	engine := abft.NewLachesis(cdb, nil, nil, nil, abft.LiteConfig())
 	return engine, vecClock
+}
+
+func TestEthConfig_ProducesReadableConfig(t *testing.T) {
+
+	session := getIntegrationTestNetSession(t, opera.GetBrioUpgrades())
+
+	client, err := session.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	type config struct {
+		ChainId         *hexutil.Big              `json:"chainId"`
+		ForkId          hexutil.Bytes             `json:"forkId"`
+		Precompiles     map[string]common.Address `json:"precompiles"`
+		SystemContracts map[string]common.Address `json:"systemContracts"`
+	}
+
+	type configResponse struct {
+		Current *config `json:"current"`
+		Next    *config `json:"next"`
+		Last    *config `json:"last"`
+	}
+
+	var gotConfig configResponse
+	err = client.Client().Call(&gotConfig, "eth_config")
+	require.NoError(t, err, "eth_config failed")
+
+	require.Nil(t, gotConfig.Next, "next config should always be nil for Sonic")
+	require.NotNil(t, gotConfig.Current, "current config should not be nil")
+	require.Equal(t,
+		session.GetChainId().Uint64(),
+		gotConfig.Current.ChainId.ToInt().Uint64(),
+		"chain ID mismatch")
 }
