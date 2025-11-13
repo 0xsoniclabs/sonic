@@ -423,14 +423,8 @@ func consensusCallbackBeginBlockFn(
 						// Limit block size and gas while adding user transactions
 						processUserTransactions(evmProcessor, blockBuilder, orderedTxs, userTransactionGasLimit)
 					} else {
-						for _, processed := range evmProcessor.Execute(orderedTxs, userTransactionGasLimit) {
-							if processed.Receipt != nil { // < nil if skipped
-								blockBuilder.AddTransaction(
-									processed.Transaction,
-									processed.Receipt,
-								)
-							}
-						}
+						// Pre brio there were no limits on user transactions
+						processUserTransactionsNoLimit(evmProcessor, blockBuilder, orderedTxs, userTransactionGasLimit)
 					}
 
 					evmBlock, numSkippedTxs, allReceipts := evmProcessor.Finalize()
@@ -597,6 +591,18 @@ func consensusCallbackBeginBlockFn(
 	}
 }
 
+// processUserTransactionsNoLimit executes user transactions in order, adding them to the block.
+func processUserTransactionsNoLimit(evmProcessor blockproc.EVMProcessor, blockBuilder *inter.BlockBuilder, orderedTxs []*types.Transaction, userTransactionGasLimit uint64) {
+	for _, processed := range evmProcessor.Execute(orderedTxs, userTransactionGasLimit) {
+		if processed.Receipt != nil { // < nil if skipped
+			blockBuilder.AddTransaction(
+				processed.Transaction,
+				processed.Receipt,
+			)
+		}
+	}
+}
+
 // rlpEncodedMaxHeaderSizeInBytes is an upper bound of the EVM block header size
 // used for block size calculations.
 const rlpEncodedMaxHeaderSizeInBytes = 1024
@@ -611,7 +617,7 @@ func processUserTransactions(evmProcessor blockproc.EVMProcessor, blockBuilder *
 		remainingSize -= tx.Size()
 	}
 	for _, tx := range orderedTxs {
-		neededSpace := txSizeIncSubsidies(tx)
+		neededSpace := txSizeIncludingSubsidies(tx)
 		if neededSpace < remainingSize && tx.Gas() < remainingGas {
 			for _, processed := range evmProcessor.Execute([]*types.Transaction{tx}, remainingGas) {
 				if processed.Receipt != nil { // < nil if skipped
@@ -620,16 +626,16 @@ func processUserTransactions(evmProcessor blockproc.EVMProcessor, blockBuilder *
 						processed.Receipt,
 					)
 					remainingGas = userTransactionGasLimit - processed.Receipt.CumulativeGasUsed
-					remainingSize -= txSizeIncSubsidies(tx)
+					remainingSize -= neededSpace
 				}
 			}
 		}
 	}
 }
 
-// txSizeIncSubsidies returns the size of the transaction,
+// txSizeIncludingSubsidies returns the size of the transaction,
 // including any overhead introduced by sponsorship requests.
-func txSizeIncSubsidies(tx *types.Transaction) uint64 {
+func txSizeIncludingSubsidies(tx *types.Transaction) uint64 {
 	size := tx.Size()
 	if subsidies.IsSponsorshipRequest(tx) {
 		size += subsidies.RlpEncodedFeeChargingTxSizeInBytes
