@@ -85,6 +85,9 @@ func (em *Emitter) OnNewEpoch(newValidators *pos.Validators, newEpoch idx.Epoch)
 		extConfirmingInterval = em.config.EmitIntervals.Confirming
 	}
 
+	// update state for throttling
+	em.eventEmissionThrottler.OnNewEpoch(newValidators, rules)
+
 	// sanity check to ensure that durations aren't too small/large
 	em.intervalsMinLock.Lock()
 	em.intervals.Min = maxDuration(minDuration(em.config.EmitIntervals.Min*20, extMinInterval), em.config.EmitIntervals.Min/4)
