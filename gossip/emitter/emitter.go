@@ -38,6 +38,7 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 
 	"github.com/0xsoniclabs/sonic/gossip/emitter/originatedtxs"
+	"github.com/0xsoniclabs/sonic/gossip/emitter/throttling"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice/gaspricelimits"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/logger"
@@ -140,6 +141,8 @@ type Emitter struct {
 	lastTimeAnEventWasConfirmed atomic.Pointer[time.Time]
 
 	proposalTracker inter.ProposalTracker
+
+	eventEmissionThrottler throttling.ThrottlingState
 }
 
 type BaseFeeSource interface {
@@ -158,13 +161,14 @@ func NewEmitter(
 	rand := rand.New(rand.NewPCG(uint64(os.Getpid()), uint64(time.Now().UnixNano())))
 	config.EmitIntervals = config.EmitIntervals.RandomizeEmitTime(rand)
 	res := &Emitter{
-		config:        config,
-		world:         world,
-		originatedTxs: originatedtxs.New(SenderCountBufferSize),
-		intervals:     config.EmitIntervals,
-		Periodic:      logger.Periodic{Instance: logger.New()},
-		baseFeeSource: baseFeeSource,
-		errorLock:     errorLock,
+		config:                 config,
+		world:                  world,
+		originatedTxs:          originatedtxs.New(SenderCountBufferSize),
+		intervals:              config.EmitIntervals,
+		Periodic:               logger.Periodic{Instance: logger.New()},
+		baseFeeSource:          baseFeeSource,
+		errorLock:              errorLock,
+		eventEmissionThrottler: *throttling.NewThrottlingState(config.Validator.ID, 0.75),
 	}
 	res.globalConfirmingInterval.Store(uint64(config.EmitIntervals.Confirming))
 	return res
@@ -334,6 +338,14 @@ func (em *Emitter) EmitEvent() (*inter.EventPayload, error) {
 	if e == nil || err != nil {
 		return nil, err
 	}
+
+	// Right after creating the event, check whether to skip its emission
+	// this location allows to take into account the event creation time
+	// and frame in throttling decision.
+	if em.eventEmissionThrottler.SkipEventEmission(e) {
+		return nil, nil
+	}
+
 	em.syncStatus.prevLocalEmittedID = e.ID()
 
 	err = em.world.Process(e)
