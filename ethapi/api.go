@@ -17,10 +17,13 @@
 package ethapi
 
 import (
+	"cmp"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"math"
 	"math/big"
 	"slices"
@@ -28,6 +31,7 @@ import (
 
 	cc "github.com/0xsoniclabs/carmen/go/common"
 	"github.com/0xsoniclabs/carmen/go/common/immutable"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice/gaspricelimits"
 	bip39 "github.com/tyler-smith/go-bip39"
@@ -711,6 +715,171 @@ func (s *PublicBlockChainAPI) GetBalance(ctx context.Context, address common.Add
 	}
 	defer state.Release()
 	return (*hexutil.U256)(state.GetBalance(address)), state.Error()
+}
+
+// Config as described by https://eips.ethereum.org/EIPS/eip-7910
+type config struct {
+	// ActivationTime will remain 0 because in Sonic this is not relevant
+	ActivationTime uint64 `json:"activationTime"`
+	// BlobSchedule will remain nil because in Sonic this is not relevant
+	BlobSchedule *params.BlobConfig `json:"blobSchedule"`
+
+	ChainId *hexutil.Big `json:"chainId"`
+
+	// ForkId in sonic is a checksum derived from the json marshall of the corresponding upgrade
+	ForkId hexutil.Bytes `json:"forkId"`
+
+	Precompiles     contractRegistry `json:"precompiles"`
+	SystemContracts contractRegistry `json:"systemContracts"`
+}
+
+// helper types to improve readability of the returned structure.
+type contractRegistry map[string]common.Address
+type ForkId [4]byte
+
+// configResponse is the response structure for the Config method as
+// described by https://eips.ethereum.org/EIPS/eip-7910
+type configResponse struct {
+	Current *config `json:"current"`
+	// Next will remain nil since Sonic config activation does not depend on time.
+	Next *config `json:"next"`
+	// Last could be nill if only one upgrades heights exists.
+	Last *config `json:"last"`
+}
+
+// Config returns the current and previous (if any) network configs following the structure
+// described in EIP-7910.
+//
+// In Sonic, config changes are based on block heights (upgrade heights) rather than
+// activation times. Therefore, the "Next" config is always nil, as there is no time-based
+// activation. The "Current" config corresponds to the config active at the current block,
+// and the "Last" config (if available) corresponds to the config active before the current one.
+//
+// ActivationTime and BlobSchedule fields are not relevant in Sonic, hence are always nil.
+// ForkId is derived from the JSON representation of the active upgrade.
+func (s *PublicBlockChainAPI) Config(ctx context.Context) (*configResponse, error) {
+
+	currentHeader := s.b.CurrentBlock().Header()
+	if currentHeader == nil {
+		return nil, errors.New("current block header not found")
+	}
+
+	updateHeights := s.b.GetUpgradeHeights()
+	isEmpty := len(updateHeights) == 0
+	if isEmpty {
+		return nil, errors.New("no configs found")
+	}
+
+	current, err := makeConfigFromUpgrade(ctx, s.b, updateHeights, currentHeader.Number)
+	if err != nil {
+		// this can only fail if json.Marshal fails, which is unexpected
+		return nil, fmt.Errorf("failed to get current config, %w", err)
+	}
+
+	// if there is an older config, make it too
+	var last *config
+	lenHeights := len(updateHeights)
+	if lenHeights > 1 {
+		last, err = makeConfigFromUpgrade(ctx, s.b, updateHeights[:lenHeights-1], currentHeader.Number)
+		if err != nil {
+			// this can only fail if json.Marshal fails, which is unexpected
+			return nil, fmt.Errorf("failed to get previous config, %w", err)
+		}
+	}
+
+	return &configResponse{
+		Current: current,
+		Last:    last,
+	}, nil
+}
+
+// makeConfigFromUpgrade constructs the config that was active for the
+// given block number based on the upgrade heights.
+func makeConfigFromUpgrade(
+	ctx context.Context,
+	b Backend,
+	upgradeHeights []opera.UpgradeHeight,
+	blockNumber *big.Int,
+) (*config, error) {
+
+	chainID := b.ChainID()
+	chainCfg := opera.CreateTransientEvmChainConfig(
+		chainID.Uint64(),
+		upgradeHeights,
+		idx.Block(blockNumber.Uint64()),
+	)
+
+	precompiled := make(contractRegistry)
+	for addr, c := range vm.ActivePrecompiledContracts(chainCfg.Rules(blockNumber, true, uint64(0))) {
+		precompiled[c.Name()] = addr
+	}
+
+	activeUpgrades := getUpgradeForBlock(upgradeHeights, blockNumber)
+
+	forkId, err := makeForkId(activeUpgrades)
+	if err != nil {
+		// this can only fail if json.Marshal fails, which is unexpected
+		return nil, fmt.Errorf("could not make fork id, %v", err)
+	}
+
+	return &config{
+		ChainId:         (*hexutil.Big)(chainID),
+		ForkId:          forkId[:],
+		Precompiles:     precompiled,
+		SystemContracts: activeSystemContracts(activeUpgrades),
+	}, nil
+}
+
+// getUpgradeForBlock returns the upgrade height that is active for
+// the given block number based on the upgrade heights.
+func getUpgradeForBlock(upgradeHeights []opera.UpgradeHeight, blockNumber *big.Int) opera.Upgrades {
+
+	sortedUpgradeHeights := make([]opera.UpgradeHeight, len(upgradeHeights))
+	copy(sortedUpgradeHeights, upgradeHeights)
+
+	slices.SortFunc(sortedUpgradeHeights, func(a, b opera.UpgradeHeight) int {
+		return cmp.Compare(a.Height, b.Height)
+	})
+
+	var currentUpgradeHeight opera.UpgradeHeight
+	// reverse iterate through the upgrade heights
+	for i := len(upgradeHeights) - 1; i >= 0; i-- {
+		if uint64(upgradeHeights[i].Height) <= blockNumber.Uint64() {
+			currentUpgradeHeight = upgradeHeights[i]
+			break
+		}
+	}
+	return currentUpgradeHeight.Upgrades
+}
+
+// activeSystemContracts returns a map of system contract names to their addresses
+// based on the active upgrade.
+func activeSystemContracts(upgrade opera.Upgrades) contractRegistry {
+	sysContracts := make(contractRegistry)
+	if upgrade.Allegro {
+		sysContracts["HISTORY_STORAGE"] = params.HistoryStorageAddress
+	}
+	if upgrade.GasSubsidies {
+		sysContracts["GAS_SUBSIDY_REGISTRY"] = registry.GetAddress()
+	}
+	return sysContracts
+}
+
+// makeForkId creates a fork ID from the given upgrade.
+func makeForkId(upgrade opera.Upgrades) (ForkId, error) {
+	buffer, err := json.Marshal(upgrade)
+	if err != nil {
+		return ForkId{}, fmt.Errorf("could not encode upgrade to json, %v", err)
+	}
+	forkId := crc32.ChecksumIEEE(buffer)
+	return checksumToBytes(forkId), nil
+}
+
+// checksumToBytes converts a uint32 checksum into a [4]byte array.
+func checksumToBytes(hash uint32) [4]byte {
+	var blob [4]byte
+	binary.BigEndian.PutUint32(blob[:], hash)
+	return blob
 }
 
 // GetAccountResult is result struct for GetAccount.
