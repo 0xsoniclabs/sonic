@@ -713,6 +713,54 @@ func (s *PublicBlockChainAPI) GetBalance(ctx context.Context, address common.Add
 	return (*hexutil.U256)(state.GetBalance(address)), state.Error()
 }
 
+// Config returns the current and previous (if any) network configs following the structure
+// described in EIP-7910.
+//
+// In Sonic, config changes are based on block heights (upgrade heights) rather than
+// activation times. Therefore, the "Next" config is always nil, as there is no time-based
+// activation. The "Current" config corresponds to the config active at the current block,
+// and the "Last" config (if available) corresponds to the config active before the current one.
+//
+// ActivationTime and BlobSchedule fields are not relevant in Sonic, hence are always nil.
+// ForkId is derived from the JSON representation of the active upgrade.
+func (s *PublicBlockChainAPI) Config(ctx context.Context) (*configResponse, error) {
+
+	currentHeader := s.b.CurrentBlock().Header()
+	if currentHeader == nil {
+		return nil, errors.New("current block header not found")
+	}
+
+	updateHeights := s.b.GetUpgradeHeights()
+	isEmpty := len(updateHeights) == 0
+	if isEmpty {
+		return nil, errors.New("no configs found")
+	}
+
+	currentUpgradeHeight := updateHeights[len(updateHeights)-1]
+	current, err := makeConfigFromUpgrade(ctx, s.b, currentUpgradeHeight)
+	if err != nil {
+		// this can only fail if json.Marshal fails, which is unexpected
+		return nil, fmt.Errorf("failed to get current config, %w", err)
+	}
+
+	// if there is an older config, make it too
+	var last *config
+	lenHeights := len(updateHeights)
+	if lenHeights > 1 {
+		lastUpgradeHeight := updateHeights[lenHeights-2]
+		last, err = makeConfigFromUpgrade(ctx, s.b, lastUpgradeHeight)
+		if err != nil {
+			// this can only fail if json.Marshal fails, which is unexpected
+			return nil, fmt.Errorf("failed to get previous config, %w", err)
+		}
+	}
+
+	return &configResponse{
+		Current: current,
+		Last:    last,
+	}, nil
+}
+
 // GetAccountResult is result struct for GetAccount.
 // The result contains:
 // 1) CodeHash - hash of the code for the given address
