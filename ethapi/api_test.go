@@ -20,6 +20,7 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	reflect "reflect"
@@ -30,6 +31,7 @@ import (
 	"github.com/0xsoniclabs/carmen/go/common/amount"
 	"github.com/0xsoniclabs/carmen/go/common/immutable"
 	"github.com/0xsoniclabs/carmen/go/common/witness"
+	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
@@ -284,6 +286,8 @@ func TestEstimateGas(t *testing.T) {
 	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, blkNr).Return(mockState, mockHeader, nil).AnyTimes()
 	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000))
 	mockBackend.EXPECT().MaxGasLimit().Return(uint64(10000000))
+	mockBackend.EXPECT().HeaderByNumber(any, any).Return(mockHeader, nil)
+	mockBackend.EXPECT().ChainConfig(gomock.Any()).Return(&params.ChainConfig{})
 	mockBackend.EXPECT().GetEVM(any, any, any, any, any).DoAndReturn(getEvmFunc(mockState)).AnyTimes()
 	setExpectedStateCalls(mockState)
 
@@ -410,6 +414,7 @@ func TestBlockOverrides(t *testing.T) {
 	mockBackend.EXPECT().ChainConfig(gomock.Any()).Return(&params.ChainConfig{}).AnyTimes()
 	mockBackend.EXPECT().RPCEVMTimeout().Return(time.Duration(0)).AnyTimes()
 	mockBackend.EXPECT().MaxGasLimit().Return(uint64(10000000)).AnyTimes()
+	mockBackend.EXPECT().HeaderByNumber(any, any).Return(&block.EvmHeader, nil)
 	setExpectedStateCalls(mockState)
 
 	expectedBlockCtx := &vm.BlockContext{
@@ -543,6 +548,7 @@ func runEstimateGasOverrideTest(t *testing.T, test stateOverrideEstimateGasTest)
 
 	any := gomock.Any()
 	mockBackend.EXPECT().BlockByNumber(any, any).Return(block, nil).AnyTimes()
+	mockBackend.EXPECT().HeaderByNumber(any, any).Return(&block.EvmHeader, nil).Times(2)
 	mockBackend.EXPECT().GetNetworkRules(any, any).Return(&opera.Rules{}, nil).AnyTimes()
 	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, any).Return(mockState, &evmcore.EvmHeader{Number: big.NewInt(int64(blockNr))}, nil).AnyTimes()
 	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000)).AnyTimes()
@@ -1444,4 +1450,228 @@ func TestFeeHistory_BlockNotFound(t *testing.T) {
 	ethAPI := NewPublicEthereumAPI(mockBackend)
 	_, err := ethAPI.FeeHistory(context.Background(), geth_math.HexOrDecimal64(5), requestedBlock, nil)
 	require.Error(t, err, "expected error when block is not found")
+}
+
+func TestGetNumberAndTime_ReportsErrors(t *testing.T) {
+
+	tests := map[string]struct {
+		blockNumberOrHash rpc.BlockNumberOrHash
+		setupBackend      func(*MockBackend)
+		expectedError     string
+	}{
+		"block not found": {
+			blockNumberOrHash: rpc.BlockNumberOrHashWithNumber(42),
+			setupBackend: func(mockBackend *MockBackend) {
+				mockBackend.EXPECT().HeaderByNumber(gomock.Any(), rpc.BlockNumber(42)).Return(nil, errors.New("block not found"))
+			},
+			expectedError: "block not found",
+		},
+		"header retrieval error": {
+			blockNumberOrHash: rpc.BlockNumberOrHashWithHash(common.Hash{1, 2, 3}, false),
+			setupBackend: func(mockBackend *MockBackend) {
+				mockBackend.EXPECT().HeaderByHash(gomock.Any(), common.Hash{1, 2, 3}).Return(nil, errors.New("header retrieval error"))
+			},
+			expectedError: "header retrieval error",
+		},
+		"invalid block number or hash": {
+			blockNumberOrHash: rpc.BlockNumberOrHash{},
+			setupBackend:      func(mockBackend *MockBackend) {},
+			expectedError:     "invalid block number or hash",
+		},
+		"nil header returned from number": {
+			blockNumberOrHash: rpc.BlockNumberOrHashWithNumber(100),
+			setupBackend: func(mockBackend *MockBackend) {
+				mockBackend.EXPECT().HeaderByNumber(gomock.Any(), rpc.BlockNumber(100)).Return(nil, nil)
+			},
+			expectedError: "block does not exists",
+		},
+		"nil header returned from hash`": {
+			blockNumberOrHash: rpc.BlockNumberOrHashWithHash(common.Hash{1, 2, 3}, false),
+			setupBackend: func(mockBackend *MockBackend) {
+				mockBackend.EXPECT().HeaderByHash(gomock.Any(), common.Hash{1, 2, 3}).Return(nil, nil)
+			},
+			expectedError: "block does not exists",
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+
+			mockBackend := NewMockBackend(ctrl)
+			test.setupBackend(mockBackend)
+
+			_, _, err := getNumberAndTime(context.Background(), mockBackend, test.blockNumberOrHash)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), test.expectedError)
+		})
+	}
+}
+
+func TestGetNumberAndTime_ReturnsBlockNumberAndTimestamp_ForExistingBlock(t *testing.T) {
+
+	expectedHeader := &evmcore.EvmHeader{
+		Number: big.NewInt(42),
+		Time:   inter.Timestamp(time.Second * 42),
+	}
+
+	tests := map[string]struct {
+		blockNumberOrHash rpc.BlockNumberOrHash
+		backendSetup      func(*MockBackend)
+	}{
+		"by number": {
+			blockNumberOrHash: rpc.BlockNumberOrHashWithNumber(42),
+			backendSetup: func(mockBackend *MockBackend) {
+				mockBackend.EXPECT().HeaderByNumber(gomock.Any(), rpc.BlockNumber(42)).Return(expectedHeader, nil)
+			},
+		},
+		"by hash": {
+			blockNumberOrHash: rpc.BlockNumberOrHashWithHash(common.HexToHash("0xabcdef"), false),
+			backendSetup: func(mockBackend *MockBackend) {
+				mockBackend.EXPECT().HeaderByHash(gomock.Any(), common.HexToHash("0xabcdef")).Return(expectedHeader, nil)
+			},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+
+			ctrl := gomock.NewController(t)
+
+			mockBackend := NewMockBackend(ctrl)
+			test.backendSetup(mockBackend)
+
+			number, timestamp, err := getNumberAndTime(context.Background(), mockBackend, test.blockNumberOrHash)
+			require.NoError(t, err)
+			require.Equal(t, uint64(42), number)
+			require.Equal(t, uint64(42), timestamp)
+		})
+	}
+}
+
+func TestIsOsaka_ForwardsErrors(t *testing.T) {
+
+	ctrl := gomock.NewController(t)
+	mockBackend := NewMockBackend(ctrl)
+
+	want := errors.New("max gas limit retrieval error")
+
+	any := gomock.Any()
+	mockBackend.EXPECT().HeaderByNumber(any, rpc.BlockNumber(1)).Return(nil, want)
+
+	_, err := isOsaka(
+		t.Context(),
+		mockBackend,
+		rpc.BlockNumberOrHashWithNumber(1),
+		nil,
+	)
+
+	require.ErrorIs(t, err, want, "expected error to be forwarded")
+}
+
+func TestIsOsaka_OverridesAreUsedForDeterminingWhetherOsakaIsEnabled(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	osakaTime := uint64(2000)
+	beforeOsakaTime := osakaTime - 1
+	afterOsakaTime := osakaTime + 1
+
+	tests := map[string]struct {
+		override BlockOverrides
+		want     bool
+	}{
+		"time before Osaka": {
+			override: BlockOverrides{
+				Time: (*hexutil.Uint64)(&beforeOsakaTime),
+			},
+			want: false,
+		},
+		"time after Osaka": {
+			override: BlockOverrides{
+				Time: (*hexutil.Uint64)(&afterOsakaTime),
+			},
+			want: true,
+		},
+	}
+
+	config := params.ChainConfig{
+		LondonBlock: big.NewInt(0), // < precondition for Osaka
+		OsakaTime:   &osakaTime,
+	}
+	nr := rpc.BlockNumberOrHashWithNumber(1)
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+
+			header := &evmcore.EvmHeader{Number: big.NewInt(1)}
+			backend := NewMockBackend(ctrl)
+
+			backend.EXPECT().HeaderByNumber(gomock.Any(), gomock.Any()).Return(header, nil)
+			backend.EXPECT().ChainConfig(gomock.Any()).Return(&config)
+
+			got, err := isOsaka(t.Context(), backend, nr, &test.override)
+			require.NoError(t, err)
+			require.Equal(t, test.want, got)
+		})
+	}
+}
+
+func TestCapMaxGas_IsUpgradesAware(t *testing.T) {
+
+	txGas := uint64(2_000_000)
+	maxGas := uint64(500_000)
+
+	tests := map[string]struct {
+		upgrades       opera.Upgrades
+		wantEstimation hexutil.Uint64
+	}{
+		"max gas ignored before brio": {
+			upgrades:       opera.GetSonicUpgrades(),
+			wantEstimation: hexutil.Uint64(txGas),
+		},
+		"max gas enforced for brio": {
+			upgrades:       opera.GetBrioUpgrades(),
+			wantEstimation: hexutil.Uint64(maxGas),
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+
+			header := evmcore.EvmHeader{
+				Number:  big.NewInt(1),
+				Time:    1234,
+				BaseFee: big.NewInt(2),
+			}
+			blockIndex := idx.Block(header.Number.Uint64())
+
+			// use test upgrades to create vm and chain configs
+			rules := opera.Rules{
+				Upgrades: test.upgrades,
+				Economy: opera.EconomyRules{
+					// always set max event gas
+					Gas: opera.GasRules{MaxEventGas: maxGas},
+				},
+			}
+			chainConfig := makeChainConfig(test.upgrades)
+
+			ctrl := gomock.NewController(t)
+			mockBackend := NewMockBackend(ctrl)
+			any := gomock.Any()
+			mockBackend.EXPECT().MaxGasLimit().Return(maxGas).AnyTimes()
+			mockBackend.EXPECT().HeaderByNumber(any, rpc.BlockNumber(1)).Return(&header, nil).AnyTimes()
+			mockBackend.EXPECT().ChainConfig(blockIndex).Return(chainConfig).AnyTimes()
+			mockBackend.EXPECT().GetNetworkRules(any, blockIndex).Return(&rules, nil).AnyTimes()
+
+			got, err := capMaxGas(
+				t.Context(),
+				mockBackend,
+				rpc.BlockNumberOrHashWithNumber(1),
+				nil,
+				txGas)
+
+			require.NoError(t, err, "unexpected error")
+			require.Equal(t, uint64(test.wantEstimation), got)
+		})
+	}
 }

@@ -1174,6 +1174,14 @@ func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNr
 	} else {
 		hi = b.MaxGasLimit()
 	}
+
+	// Cap the maximum gas allowance according to EIP-7825. In Sonic the max gas
+	// limit for a transaction is limited by MaxGasLimit starting with Osaka.
+	hi, err := capMaxGas(ctx, b, blockNrOrHash, blockOverrides, hi)
+	if err != nil {
+		return 0, err
+	}
+
 	// Normalize the max fee per gas the call is willing to spend.
 	var feeCap *big.Int
 	if args.GasPrice != nil && (args.MaxFeePerGas != nil || args.MaxPriorityFeePerGas != nil) {
@@ -1233,6 +1241,9 @@ func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNr
 				errors.Is(err, core.ErrFloorDataGas) {
 				return true, nil, nil // Special case, raise gas limit
 			}
+			if errors.Is(err, core.ErrGasLimitTooHigh) {
+				return true, nil, nil // Special case, lower gas limit
+			}
 			return true, nil, err // Bail out
 		}
 		return result.Failed(), result, nil
@@ -1272,6 +1283,81 @@ func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNr
 		}
 	}
 	return hexutil.Uint64(hi), nil
+}
+
+// capMaxGas determines the maximum gas limit that can be used for a transaction,
+// applying the Osaka gas limit rule if applicable. It checks if the given block
+// (by number or hash) is subject to the Osaka rule, and if so, caps the gas limit
+// to the backend's maximum allowed gas limit.
+// Returns the capped gas limit and any error encountered.
+func capMaxGas(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrHash, blockOverrides *BlockOverrides, hi uint64) (uint64, error) {
+	if osaka, err := isOsaka(ctx, b, blockNrOrHash, blockOverrides); err != nil {
+		return 0, err
+	} else if osaka {
+		hi = min(hi, b.MaxGasLimit())
+	}
+	return hi, nil
+}
+
+// isOsaka checks if the given block number or hash corresponds to a block that
+// uses the Osaka gas limit rule. The block number or its timestamp may be
+// overridden by the given block overrides.
+func isOsaka(
+	ctx context.Context,
+	b Backend,
+	blockNrOrHash rpc.BlockNumberOrHash,
+	blockOverrides *BlockOverrides,
+) (bool, error) {
+	blockNumber, blockTime, err := getNumberAndTime(ctx, b, blockNrOrHash)
+	if err != nil {
+		return false, err
+	}
+
+	// check overrides
+	if blockOverrides != nil {
+		if blockOverrides.Number != nil {
+			blockNumber = blockOverrides.Number.ToInt().Uint64()
+		}
+		if blockOverrides.Time != nil {
+			blockTime = uint64((*blockOverrides.Time))
+		}
+	}
+
+	// use Osaka gas limit rule
+	return b.ChainConfig(idx.Block(blockNumber)).IsOsaka(big.NewInt(int64(blockNumber)), blockTime), nil
+}
+
+// getNumberAndTime returns the block number and time for the given block number or hash,
+// applying any overrides specified in blockOverrides.
+// if the number or hash is invalid or does not exist, an error is returned.
+func getNumberAndTime(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrHash) (uint64, uint64, error) {
+
+	var header *evmcore.EvmHeader
+	var err error
+
+	// get header
+	rpcBlockNumber, ok := blockNrOrHash.Number()
+	if ok {
+		header, err = b.HeaderByNumber(ctx, rpcBlockNumber)
+	} else {
+		hash, ok := blockNrOrHash.Hash()
+		if !ok {
+			return 0, 0, errors.New("invalid block number or hash")
+		}
+		header, err = b.HeaderByHash(ctx, hash)
+	}
+	if err != nil {
+		return 0, 0, err
+	}
+	if header == nil {
+		return 0, 0, errors.New("block does not exists")
+	}
+
+	// get block number and time
+	blockNumber := header.Number.Uint64()
+	blockTime := uint64(header.Time.Unix())
+
+	return blockNumber, blockTime, nil
 }
 
 // EstimateGas returns an estimate of the amount of gas needed to execute the
