@@ -57,6 +57,10 @@ const (
 	// This constant is local to the emitter and does not affect consensus. It
 	// may be altered without the need of a hard fork if need to improve the
 	// performance of the block formation process.
+	//
+	// By limiting the size of transactions, this constant also limits the maximum
+	// block size (the header size can be treated as constant).
+	// To stay compliant with EIP-7934, the maximum block size must not exceed 10 MiB.
 	maxTotalTransactionsSizeInEventInBytes = 8 * 1024 * 1024 // 8 MiB
 )
 

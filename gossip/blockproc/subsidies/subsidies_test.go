@@ -33,6 +33,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 	gomock "go.uber.org/mock/gomock"
@@ -568,6 +569,21 @@ func TestIsCovered_InvalidReturnFromEvm_ReturnsError(t *testing.T) {
 	vm.EXPECT().Call(any, any, any, any, any).Return([]byte{0x01}, uint64(0), nil)
 	_, _, _, err = IsCovered(upgrades, vm, signer, tx, big.NewInt(1))
 	require.ErrorContains(err, "failed to parse result of subsidies registry call")
+}
+
+func TestRlpEncodedFeeChargingTxSizeInBytes_IsUpperBound(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	nonceSource := NewMockNonceSource(ctrl)
+	nonceSource.EXPECT().GetNonce(common.Address{}).Return(uint64(math.MaxUint64))
+	id := FundId(make([]byte, 32))
+	gasConfig := GasConfig{math.MaxUint64, math.MaxUint64}
+	gasPrice := big.NewInt(math.MaxInt64)
+
+	tx, err := GetFeeChargeTransaction(nonceSource, FundId(id), gasConfig, math.MaxUint64, gasPrice)
+	require.NoError(t, err)
+	data, err := rlp.EncodeToBytes(tx)
+	require.NoError(t, err)
+	require.Less(t, len(data), RlpEncodedFeeChargingTxSizeInBytes)
 }
 
 func TestGetFeeChargeTransaction_ValidInputs_ProducesCorrectInternalTransaction(t *testing.T) {
