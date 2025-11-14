@@ -1177,10 +1177,9 @@ func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNr
 
 	// Cap the maximum gas allowance according to EIP-7825. In Sonic the max gas
 	// limit for a transaction is limited by MaxGasLimit starting with Osaka.
-	if osaka, err := isOsaka(ctx, b, blockNrOrHash, blockOverrides); err != nil {
+	hi, err := capMaxGas(ctx, b, blockNrOrHash, blockOverrides, hi)
+	if err != nil {
 		return 0, err
-	} else if osaka {
-		hi = min(hi, b.MaxGasLimit())
 	}
 
 	// Normalize the max fee per gas the call is willing to spend.
@@ -1284,6 +1283,20 @@ func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNr
 		}
 	}
 	return hexutil.Uint64(hi), nil
+}
+
+// capMaxGas determines the maximum gas limit that can be used for a transaction,
+// applying the Osaka gas limit rule if applicable. It checks if the given block
+// (by number or hash) is subject to the Osaka rule, and if so, caps the gas limit
+// to the backend's maximum allowed gas limit.
+// Returns the capped gas limit and any error encountered.
+func capMaxGas(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrHash, blockOverrides *BlockOverrides, hi uint64) (uint64, error) {
+	if osaka, err := isOsaka(ctx, b, blockNrOrHash, blockOverrides); err != nil {
+		return 0, err
+	} else if osaka {
+		hi = min(hi, b.MaxGasLimit())
+	}
+	return hi, nil
 }
 
 // isOsaka checks if the given block number or hash corresponds to a block that
