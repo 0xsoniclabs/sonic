@@ -287,7 +287,9 @@ func TestEstimateGas(t *testing.T) {
 	mockBackend.EXPECT().GetNetworkRules(any, idx.Block(1)).Return(&opera.Rules{}, nil).AnyTimes()
 	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, blkNr).Return(mockState, mockHeader, nil).AnyTimes()
 	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000))
-	mockBackend.EXPECT().MaxGasLimit().Return(uint64(10000000)).Times(2)
+	mockBackend.EXPECT().MaxGasLimit().Return(uint64(10000000))
+	mockBackend.EXPECT().HeaderByNumber(any, any).Return(mockHeader, nil)
+	mockBackend.EXPECT().ChainConfig(gomock.Any()).Return(&params.ChainConfig{})
 	mockBackend.EXPECT().GetEVM(any, any, any, any, any).DoAndReturn(getEvmFunc(mockState)).AnyTimes()
 	setExpectedStateCalls(mockState)
 
@@ -414,6 +416,7 @@ func TestBlockOverrides(t *testing.T) {
 	mockBackend.EXPECT().ChainConfig(gomock.Any()).Return(&params.ChainConfig{}).AnyTimes()
 	mockBackend.EXPECT().RPCEVMTimeout().Return(time.Duration(0)).AnyTimes()
 	mockBackend.EXPECT().MaxGasLimit().Return(uint64(10000000)).AnyTimes()
+	mockBackend.EXPECT().HeaderByNumber(any, any).Return(&block.EvmHeader, nil)
 	setExpectedStateCalls(mockState)
 
 	expectedBlockCtx := &vm.BlockContext{
@@ -547,6 +550,7 @@ func runEstimateGasOverrideTest(t *testing.T, test stateOverrideEstimateGasTest)
 
 	any := gomock.Any()
 	mockBackend.EXPECT().BlockByNumber(any, any).Return(block, nil).AnyTimes()
+	mockBackend.EXPECT().HeaderByNumber(any, any).Return(&block.EvmHeader, nil).Times(2)
 	mockBackend.EXPECT().GetNetworkRules(any, any).Return(&opera.Rules{}, nil).AnyTimes()
 	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, any).Return(mockState, &evmcore.EvmHeader{Number: big.NewInt(int64(blockNr))}, nil).AnyTimes()
 	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000)).AnyTimes()
@@ -1547,7 +1551,7 @@ func TestGetNumberAndTime_ReturnsBlockNumberAndTimestamp_ForExistingBlock(t *tes
 	}
 }
 
-func TestCapMaxGasAllowance_ForwardsErrors(t *testing.T) {
+func TestIsOsaka_ForwardsErrors(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	mockBackend := NewMockBackend(ctrl)
@@ -1555,64 +1559,63 @@ func TestCapMaxGasAllowance_ForwardsErrors(t *testing.T) {
 	want := errors.New("max gas limit retrieval error")
 
 	any := gomock.Any()
-	mockBackend.EXPECT().MaxGasLimit().Return(uint64(0))
 	mockBackend.EXPECT().HeaderByNumber(any, rpc.BlockNumber(1)).Return(nil, want)
 
-	_, err := capMaxGasAllowance(
+	_, err := isOsaka(
 		t.Context(),
 		mockBackend,
 		rpc.BlockNumberOrHashWithNumber(1),
 		nil,
-		uint64(1),
 	)
 
 	require.ErrorIs(t, err, want, "expected error to be forwarded")
 }
 
-func TestCapMaxGasAllowance_EnforcesBlockOverrides(t *testing.T) {
+func TestIsOsaka_OverridesAreUsedForDeterminingWhetherOsakaIsEnabled(t *testing.T) {
+	ctrl := gomock.NewController(t)
 
 	osakaTime := uint64(2000)
-	maxTxGas := uint64(500_000)
+	beforeOsakaTime := osakaTime - 1
+	afterOsakaTime := osakaTime + 1
 
-	// header from before osaka
-	header := evmcore.EvmHeader{
-		Number: big.NewInt(1),
-		// time earlier than osaka time
-		Time:    1234,
-		BaseFee: big.NewInt(2),
+	tests := map[string]struct {
+		override BlockOverrides
+		want     bool
+	}{
+		"time before Osaka": {
+			override: BlockOverrides{
+				Time: (*hexutil.Uint64)(&beforeOsakaTime),
+			},
+			want: false,
+		},
+		"time after Osaka": {
+			override: BlockOverrides{
+				Time: (*hexutil.Uint64)(&afterOsakaTime),
+			},
+			want: true,
+		},
 	}
 
-	// override block number and time to be after osaka
-	blockOverrides := &BlockOverrides{
-		Number: (*hexutil.Big)(big.NewInt(42)),
-		Time:   (*hexutil.Uint64)(&osakaTime),
+	config := params.ChainConfig{
+		LondonBlock: big.NewInt(0), // < precondition for Osaka
+		OsakaTime:   &osakaTime,
 	}
+	nr := rpc.BlockNumberOrHashWithNumber(1)
 
-	osakaConfig := makeChainConfig(opera.GetBrioUpgrades())
-	timeJustBeforeOsaka := osakaTime - 1
-	osakaConfig.OsakaTime = &timeJustBeforeOsaka
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
 
-	ctrl := gomock.NewController(t)
-	mockBackend := NewMockBackend(ctrl)
+			header := &evmcore.EvmHeader{Number: big.NewInt(1)}
+			backend := NewMockBackend(ctrl)
 
-	any := gomock.Any()
-	mockBackend.EXPECT().MaxGasLimit().Return(uint64(maxTxGas))
-	mockBackend.EXPECT().HeaderByNumber(any, rpc.BlockNumber(1)).Return(&header, nil)
-	// expect call for chainconfig for block from overrides
-	mockBackend.EXPECT().ChainConfig(idx.Block(blockOverrides.Number.ToInt().Uint64())).
-		Return(osakaConfig)
+			backend.EXPECT().HeaderByNumber(gomock.Any(), gomock.Any()).Return(header, nil)
+			backend.EXPECT().ChainConfig(gomock.Any()).Return(&config)
 
-	originalHi := uint64(2_000_000)
-	got, err := capMaxGasAllowance(
-		t.Context(),
-		mockBackend,
-		rpc.BlockNumberOrHashWithNumber(1),
-		blockOverrides,
-		originalHi,
-	)
-
-	require.NoError(t, err, "unexpected error")
-	require.Equal(t, maxTxGas, got, "unexpected max gas cap")
+			got, err := isOsaka(t.Context(), backend, nr, &test.override)
+			require.NoError(t, err)
+			require.Equal(t, test.want, got)
+		})
+	}
 }
 
 func TestDoEstimate_IsMaxGasAware(t *testing.T) {
