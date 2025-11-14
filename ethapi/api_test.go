@@ -1616,7 +1616,7 @@ func TestIsOsaka_OverridesAreUsedForDeterminingWhetherOsakaIsEnabled(t *testing.
 	}
 }
 
-func TestCapMaxGas_IsMaxGasAware(t *testing.T) {
+func TestCapMaxGas_IsUpgradesAware(t *testing.T) {
 
 	txGas := uint64(2_000_000)
 	maxGas := uint64(500_000)
@@ -1629,7 +1629,7 @@ func TestCapMaxGas_IsMaxGasAware(t *testing.T) {
 			upgrades:       opera.GetSonicUpgrades(),
 			wantEstimation: hexutil.Uint64(txGas),
 		},
-		"transaction over max gas after brio returns error": {
+		"max gas enforced for brio": {
 			upgrades:       opera.GetBrioUpgrades(),
 			wantEstimation: hexutil.Uint64(maxGas),
 		},
@@ -1649,6 +1649,7 @@ func TestCapMaxGas_IsMaxGasAware(t *testing.T) {
 			rules := opera.Rules{
 				Upgrades: test.upgrades,
 				Economy: opera.EconomyRules{
+					// always set max event gas
 					Gas: opera.GasRules{MaxEventGas: maxGas},
 				},
 			}
@@ -1670,7 +1671,7 @@ func TestCapMaxGas_IsMaxGasAware(t *testing.T) {
 				txGas)
 
 			require.NoError(t, err, "unexpected error")
-			require.Equal(t, uint64(test.wantEstimation), got, "unexpected gas estimation")
+			require.Equal(t, uint64(test.wantEstimation), got)
 		})
 	}
 }
