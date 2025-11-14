@@ -18,6 +18,7 @@ package tests
 
 import (
 	"fmt"
+	"math/big"
 	"reflect"
 	"strings"
 	"testing"
@@ -35,6 +36,7 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/node"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethereum/go-ethereum/rpc/rpc_test_utils"
 	"github.com/stretchr/testify/require"
@@ -205,24 +207,25 @@ func TestEthConfig_ProducesReadableConfig(t *testing.T) {
 	defer client.Close()
 
 	response := map[string]map[string]any{}
+	// var response configResponse
 	err = client.Client().Call(&response, "eth_config")
 	require.NoError(t, err, "eth_config failed")
+	response["current"]["activationTime"] = uint64(response["current"]["activationTime"].(float64))
+
+	// get time from block one because genesis block has time zero
+	// and upgrades gets updated in block 1
+	block1, err := client.BlockByNumber(t.Context(), big.NewInt(1))
+	require.NoError(t, err, "could not get block 1 to determine expected ActivationTime")
+	activationTime := block1.Header().Time
 
 	want := map[string]map[string]any{
 		"current": {
-			"activationTime": float64(0),
+			"activationTime": activationTime,
 			"blobSchedule":   nil,
 			"chainId":        "0xfa3",
 			"forkId":         "0xcb291288",
 			"precompiles": map[string]any{
 				"BLAKE2F":              "0x0000000000000000000000000000000000000009",
-				"BLS12_G1ADD":          "0x000000000000000000000000000000000000000b",
-				"BLS12_G1MSM":          "0x000000000000000000000000000000000000000c",
-				"BLS12_G2ADD":          "0x000000000000000000000000000000000000000d",
-				"BLS12_G2MSM":          "0x000000000000000000000000000000000000000e",
-				"BLS12_MAP_FP2_TO_G2":  "0x0000000000000000000000000000000000000011",
-				"BLS12_MAP_FP_TO_G1":   "0x0000000000000000000000000000000000000010",
-				"BLS12_PAIRING_CHECK":  "0x000000000000000000000000000000000000000f",
 				"BN254_ADD":            "0x0000000000000000000000000000000000000006",
 				"BN254_MUL":            "0x0000000000000000000000000000000000000007",
 				"BN254_PAIRING":        "0x0000000000000000000000000000000000000008",
@@ -230,10 +233,18 @@ func TestEthConfig_ProducesReadableConfig(t *testing.T) {
 				"ID":                   "0x0000000000000000000000000000000000000004",
 				"KZG_POINT_EVALUATION": "0x000000000000000000000000000000000000000a",
 				"MODEXP":               "0x0000000000000000000000000000000000000005",
-				"P256VERIFY":           "0x0000000000000000000000000000000000000100",
 				"RIPEMD160":            "0x0000000000000000000000000000000000000003",
-				"SHA256":               "0x0000000000000000000000000000000000000002"},
-			"systemContracts": map[string]any{"HISTORY_STORAGE": "0x0000f90827f1c53a10cb7a02335b175320002935"},
+				"SHA256":               "0x0000000000000000000000000000000000000002",
+				"BLS12_G1ADD":          "0x000000000000000000000000000000000000000b",
+				"BLS12_G1MSM":          "0x000000000000000000000000000000000000000c",
+				"BLS12_G2ADD":          "0x000000000000000000000000000000000000000d",
+				"BLS12_G2MSM":          "0x000000000000000000000000000000000000000e",
+				"BLS12_MAP_FP2_TO_G2":  "0x0000000000000000000000000000000000000011",
+				"BLS12_MAP_FP_TO_G1":   "0x0000000000000000000000000000000000000010",
+				"BLS12_PAIRING_CHECK":  "0x000000000000000000000000000000000000000f",
+				"P256VERIFY":           "0x0000000000000000000000000000000000000100",
+			},
+			"systemContracts": map[string]any{"HISTORY_STORAGE": strings.ToLower(fmt.Sprintf("%s", params.HistoryStorageAddress))},
 		},
 		"next": nil,
 		"last": nil,
