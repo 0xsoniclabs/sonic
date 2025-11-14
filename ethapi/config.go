@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rpc"
 )
 
 // config as described by https://eips.ethereum.org/EIPS/eip-7910
@@ -90,7 +91,15 @@ func makeConfigFromUpgrade(
 		return nil, fmt.Errorf("could not make fork id, %v", err)
 	}
 
+	block, err := b.BlockByNumber(ctx, (rpc.BlockNumber(int64(upgradeHeight.Height))))
+	if err != nil {
+		return nil, fmt.Errorf("could not get block %d to determine activation time, %v", upgradeHeight.Height, err)
+	}
+
 	return &config{
+		// block time needs to be converted to unix timestamp as it is done in
+		// evmcore/dummy_block.go in method EvmHeader.EthHeader()
+		ActivationTime:  uint64(block.Time.Unix()),
 		ChainId:         (*hexutil.Big)(chainID),
 		ForkId:          forkId[:],
 		Precompiles:     precompiled,
