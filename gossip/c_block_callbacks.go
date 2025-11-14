@@ -419,15 +419,18 @@ func consensusCallbackBeginBlockFn(
 					}
 
 					orderedTxs := proposal.Transactions
+					numSkippedUserTxs := 0
 					if es.Rules.Upgrades.Brio {
 						// Limit block size and gas while adding user transactions
-						processUserTransactions(evmProcessor, blockBuilder, orderedTxs, userTransactionGasLimit)
+						numSkippedUserTxs =
+							processUserTransactions(evmProcessor, blockBuilder, orderedTxs, userTransactionGasLimit)
 					} else {
 						// Pre brio there were no limits on user transactions
-						processUserTransactionsNoLimit(evmProcessor, blockBuilder, orderedTxs, userTransactionGasLimit)
+						processUserTransactionsNoLimits(evmProcessor, blockBuilder, orderedTxs, userTransactionGasLimit)
 					}
 
 					evmBlock, numSkippedTxs, allReceipts := evmProcessor.Finalize()
+					numSkippedTxs += numSkippedUserTxs
 
 					// Add results of the transaction processing to the block.
 					blockBuilder.
@@ -591,8 +594,12 @@ func consensusCallbackBeginBlockFn(
 	}
 }
 
-// processUserTransactionsNoLimit executes user transactions in order, adding them to the block.
-func processUserTransactionsNoLimit(evmProcessor blockproc.EVMProcessor, blockBuilder *inter.BlockBuilder, orderedTxs []*types.Transaction, userTransactionGasLimit uint64) {
+// processUserTransactionsNoLimits executes user transactions in order, adding them to the block.
+func processUserTransactionsNoLimits(
+	evmProcessor blockproc.EVMProcessor,
+	blockBuilder *inter.BlockBuilder,
+	orderedTxs []*types.Transaction,
+	userTransactionGasLimit uint64) {
 	for _, processed := range evmProcessor.Execute(orderedTxs, userTransactionGasLimit) {
 		if processed.Receipt != nil { // < nil if skipped
 			blockBuilder.AddTransaction(
@@ -609,13 +616,19 @@ const rlpEncodedMaxHeaderSizeInBytes = 1024
 
 // processUserTransactions executes user transactions in order, adding them to the block
 // until all transactions are processed or the gas/block size limit is reached.
-func processUserTransactions(evmProcessor blockproc.EVMProcessor, blockBuilder *inter.BlockBuilder, orderedTxs []*types.Transaction, userTransactionGasLimit uint64) {
+func processUserTransactions(
+	evmProcessor blockproc.EVMProcessor,
+	blockBuilder *inter.BlockBuilder,
+	orderedTxs []*types.Transaction,
+	userTransactionGasLimit uint64) int {
 	remainingGas := userTransactionGasLimit
 	remainingSize := uint64(params.MaxBlockSize - rlpEncodedMaxHeaderSizeInBytes)
 	internalTxs := blockBuilder.GetTransactions()
 	for _, tx := range internalTxs {
 		remainingSize -= tx.Size()
 	}
+
+	skippedCounter := 0
 	for _, tx := range orderedTxs {
 		neededSpace := txSizeIncludingSubsidies(tx)
 		if neededSpace < remainingSize && tx.Gas() < remainingGas {
@@ -626,11 +639,14 @@ func processUserTransactions(evmProcessor blockproc.EVMProcessor, blockBuilder *
 						processed.Receipt,
 					)
 					remainingGas = userTransactionGasLimit - processed.Receipt.CumulativeGasUsed
-					remainingSize -= neededSpace
+					remainingSize -= processed.Transaction.Size()
 				}
 			}
+		} else {
+			skippedCounter++
 		}
 	}
+	return skippedCounter
 }
 
 // txSizeIncludingSubsidies returns the size of the transaction,

@@ -944,7 +944,10 @@ func TestProcessUserTransactions_RespectsGasLimit(t *testing.T) {
 
 	orderedTxs := []*types.Transaction{tx1, tx2, tx3}
 
-	processUserTransactions(evmProcessor, blockBuilder, orderedTxs, userTransactionGasLimit)
+	skippedCount :=
+		processUserTransactions(evmProcessor, blockBuilder, orderedTxs, userTransactionGasLimit)
+
+	require.Equal(t, 1, skippedCount, "one transaction should be skipped")
 
 	// Only tx1 and tx2 should be included
 	gotTxs := blockBuilder.GetTransactions()
@@ -963,7 +966,11 @@ func TestProcessUserTransactions_TransactionsWithNoReceiptAreNotIncluded(t *test
 		Execute([]*types.Transaction{tx}, gomock.Any()).
 		Return([]evmcore.ProcessedTransaction{{Transaction: tx, Receipt: nil}})
 
-	processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{tx}, 10000)
+	skippedCount :=
+		processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{tx}, 10000)
+
+	require.Equal(t, 0, skippedCount,
+		"transactions with no receipt should be taking into account be the evm processor")
 
 	// Should not be added to blockBuilder
 	gotTxs := blockBuilder.GetTransactions()
@@ -981,11 +988,12 @@ func TestProcessUserTransactions_DeducesInternalTxsSize(t *testing.T) {
 
 	// Create a user tx that would only fit without the internal tx
 	userTx := types.NewTx(&types.LegacyTx{Data: make([]byte, params.MaxBlockSize/2)})
-	processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{userTx}, 10000)
+	skippedCount := processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{userTx}, 10000)
 
 	// Both internal and user tx should be present
 	gotTxs := blockBuilder.GetTransactions()
 	require.Equal(t, types.Transactions{internalTx}, gotTxs)
+	require.Equal(t, 1, skippedCount)
 }
 
 func TestProcessUserTransactions_SkipsTxsExceedingSizeLimit(t *testing.T) {
@@ -1007,9 +1015,12 @@ func TestProcessUserTransactions_SkipsTxsExceedingSizeLimit(t *testing.T) {
 		Execute([]*types.Transaction{tx1}, gomock.Any()).
 		Return([]evmcore.ProcessedTransaction{{Transaction: tx1, Receipt: &types.Receipt{}}})
 
-	processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{largeTx, tx0, tx1}, 10000)
+	skippedCount :=
+		processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{largeTx, tx0, tx1}, 10000)
 
-	// Should not be added
+	require.Equal(t, 1, skippedCount)
+
+	// Huge transactions should not be added
 	gotTxs := blockBuilder.GetTransactions()
 	require.Equal(t, types.Transactions{tx0, tx1}, gotTxs)
 }
@@ -1045,6 +1056,82 @@ func TestTransactionSize_ConsidersSponsoredTxs(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			size := txSizeIncludingSubsidies(test.tx)
 			require.Equal(t, test.expectedSize, size)
+		})
+	}
+}
+
+func TestProcessUserTransactions_SponsoredTxSizeIsAccountedCorrectly(t *testing.T) {
+	tests := map[string]struct {
+		gasPrice         int64
+		followingTxAdded bool
+	}{
+		"normal tx": {
+			gasPrice:         10,
+			followingTxAdded: true,
+		},
+		"sponsored tx": {
+			gasPrice:         0,
+			followingTxAdded: false,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
+			blockBuilder := inter.NewBlockBuilder()
+
+			// Following txs are not skipped
+			tx0 := types.NewTx(&types.LegacyTx{
+				Data: make([]byte, params.MaxBlockSize-5000),
+			})
+			tx1 := types.NewTx(&types.LegacyTx{
+				To:       &common.Address{0x42},
+				GasPrice: big.NewInt(test.gasPrice),
+				V:        big.NewInt(1),
+			})
+			remainingSize := params.MaxBlockSize - tx0.Size() - tx1.Size() - rlpEncodedMaxHeaderSizeInBytes
+			tx2 := types.NewTx(&types.LegacyTx{
+				Data: make([]byte, remainingSize-100), // leave some room for other fields in tx
+			})
+
+			var processedTxs evmcore.ProcessedTransaction
+			if test.gasPrice == 0 {
+				processedTxs = evmcore.ProcessedTransaction{
+					Transaction: types.NewTx(&types.LegacyTx{
+						// Fill the tx to simulate the size of a fee charging tx
+						Data: make([]byte, subsidies.RlpEncodedFeeChargingTxSizeInBytes),
+					}),
+					Receipt: &types.Receipt{},
+				}
+			}
+
+			evmProcessor.EXPECT().
+				Execute([]*types.Transaction{tx0}, gomock.Any()).
+				Return([]evmcore.ProcessedTransaction{{Transaction: tx0, Receipt: &types.Receipt{}}})
+			evmProcessor.EXPECT().
+				Execute([]*types.Transaction{tx1}, gomock.Any()).
+				Return([]evmcore.ProcessedTransaction{
+					{Transaction: tx1, Receipt: &types.Receipt{}},
+					processedTxs,
+				})
+			evmProcessor.EXPECT().
+				Execute([]*types.Transaction{tx2}, gomock.Any()).
+				Return([]evmcore.ProcessedTransaction{{Transaction: tx2, Receipt: &types.Receipt{}}}).AnyTimes()
+
+			skippedCount := processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{tx0, tx1, tx2}, 10000)
+
+			gotTxs := blockBuilder.GetTransactions()
+			require.Contains(t, gotTxs, tx0)
+			require.Contains(t, gotTxs, tx1)
+
+			if test.followingTxAdded {
+				require.Contains(t, gotTxs, tx2)
+				require.Equal(t, 0, skippedCount)
+			} else {
+				require.NotContains(t, gotTxs, tx2)
+				require.Equal(t, 1, skippedCount)
+			}
 		})
 	}
 }
