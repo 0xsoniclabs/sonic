@@ -24,11 +24,13 @@ import (
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
+	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -153,6 +155,8 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			backend := NewMockBackend(ctrl)
 			backend.EXPECT().ChainID().Return(chainId)
+			backend.EXPECT().BlockByNumber(gomock.Any(), rpc.BlockNumber(int64(test.upgradeHeight.Height))).
+				Return(&evmcore.EvmBlock{EvmHeader: evmcore.EvmHeader{Time: inter.Timestamp(1)}}, nil)
 
 			result, err := makeConfigFromUpgrade(context.Background(), backend, test.upgradeHeight)
 			require.NoError(t, err, "unexpected error from makeConfigFromUpgrade")
@@ -307,6 +311,8 @@ func TestEIP7910_Config_ReturnsConfigs(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			backend := NewMockBackend(ctrl)
 			backend.EXPECT().ChainID().Return(chainId).AnyTimes()
+			backend.EXPECT().BlockByNumber(gomock.Any(), gomock.Any()).
+				Return(&evmcore.EvmBlock{EvmHeader: evmcore.EvmHeader{Time: inter.Timestamp(1)}}, nil).AnyTimes()
 
 			test.backendSetup(backend)
 
