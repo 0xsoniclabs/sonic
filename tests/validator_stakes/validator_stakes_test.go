@@ -53,6 +53,7 @@ func TestValidatorsStakes_BlocksAreProduced_WithChangesInStakeDistribution(t *te
 	t.Run("first epoch is dominated by two validators",
 		func(t *testing.T) {
 			requireValidatorStakesEqualTo(t, validators, []uint64{750, 750, 125, 125, 125, 125})
+			requireAllNodesReachSameBlockHeight(t, net)
 		})
 
 	t.Run("second epoch has equal stake for all validators",
@@ -65,10 +66,8 @@ func TestValidatorsStakes_BlocksAreProduced_WithChangesInStakeDistribution(t *te
 
 			// Test new stake distribution
 			validators, secondEpoch := getValidatorsInCurrentEpoch(t, sfcContract)
-			require.Condition(t, func() bool {
-				next := new(big.Int).Add(firstEpoch, big.NewInt(1))
-				return secondEpoch.Cmp(next) == 0
-			}, "epoch did not advance as expected")
+			require.Equal(t, firstEpoch.Uint64()+1, secondEpoch.Uint64(),
+				"epoch did not advance as expected")
 			requireValidatorStakesEqualTo(t, validators, []uint64{750, 750, 750, 750, 750, 750})
 			requireAllNodesReachSameBlockHeight(t, net)
 		})
@@ -127,9 +126,8 @@ func requireValidatorStakesEqualTo(t *testing.T, validators map[idx.ValidatorID]
 	for id, expectedStake := range expectedStakes {
 		stake, ok := validators[idx.ValidatorID(id+1)]
 		require.True(t, ok, "validator %d not found", id+1)
-		expectedBig := utils.ToFtm(expectedStake)
-		require.Equal(t, 0, stake.Cmp(expectedBig),
-			"validator %d stake mismatch: expected %s, got %s", id+1, expectedBig.String(), stake.String())
+		expectedStakeInTokens := utils.ToFtm(expectedStake)
+		require.Equal(t, expectedStakeInTokens.Uint64(), stake.Uint64(), "validator %d has incorrect stake", id+1)
 	}
 }
 
