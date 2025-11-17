@@ -70,6 +70,7 @@ func TestValidatorsStakes_BlocksAreProduced_WithChangesInStakeDistribution(t *te
 				return secondEpoch.Cmp(next) == 0
 			}, "epoch did not advance as expected")
 			requireValidatorStakesEqualTo(t, validators, []uint64{750, 750, 750, 750, 750, 750})
+			requireAllNodesReachSameBlockHeight(t, net)
 		})
 
 	t.Run("third epoch is dominated by two validators again",
@@ -87,6 +88,7 @@ func TestValidatorsStakes_BlocksAreProduced_WithChangesInStakeDistribution(t *te
 				return secondEpoch.Cmp(next) == 0
 			}, "epoch did not advance as expected")
 			requireValidatorStakesEqualTo(t, validators, []uint64{750, 750, 750, 750, 1000750, 1000750})
+			requireAllNodesReachSameBlockHeight(t, net)
 		})
 }
 
@@ -154,4 +156,28 @@ func getValidatorsInCurrentEpoch(t *testing.T, sfcContract *sfc100.Contract) (ma
 	}
 
 	return validators, epoch
+}
+
+func requireAllNodesReachSameBlockHeight(t *testing.T, net *tests.IntegrationTestNet) {
+	t.Helper()
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	number, err := client.BlockNumber(t.Context())
+	require.NoError(t, err)
+
+	for i := 1; i < net.NumNodes(); i++ {
+		nodeClient, err := net.GetClientConnectedToNode(i)
+		require.NoError(t, err)
+		defer nodeClient.Close()
+
+		tests.WaitForProofOf(t, nodeClient, int(number))
+
+		nodeNumber, err := nodeClient.BlockNumber(t.Context())
+		require.NoError(t, err)
+
+		require.Equal(t, number, nodeNumber, "node %d has different block number", i)
+	}
 }
