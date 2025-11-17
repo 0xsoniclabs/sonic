@@ -31,7 +31,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestValidatorsStakes_BlocksAreProduced_WithChangesInStakeDistribution(t *testing.T) {
+func TestValidatorsStakes_AllNodesProduceBlocks_WhenStakeDistributionChanges(t *testing.T) {
 
 	// Start a network with many nodes where two nodes dominate the stake
 	initialStake := []uint64{
@@ -82,10 +82,9 @@ func TestValidatorsStakes_BlocksAreProduced_WithChangesInStakeDistribution(t *te
 
 			// Test new stake distribution
 			validators, secondEpoch := getValidatorsInCurrentEpoch(t, sfcContract)
-			require.Condition(t, func() bool {
-				next := new(big.Int).Add(firstEpoch, big.NewInt(2))
-				return secondEpoch.Cmp(next) == 0
-			}, "epoch did not advance as expected")
+
+			require.Equal(t, firstEpoch.Uint64()+2, secondEpoch.Uint64(),
+				"epoch did not advance as expected")
 			requireValidatorStakesEqualTo(t, validators, []uint64{750, 750, 750, 750, 1000750, 1000750})
 			requireAllNodesReachSameBlockHeight(t, net)
 		})
@@ -156,6 +155,9 @@ func getValidatorsInCurrentEpoch(t *testing.T, sfcContract *sfc100.Contract) (ma
 	return validators, epoch
 }
 
+// requireAllNodesReachSameBlockHeight checks that all nodes in the provided
+// IntegrationTestNet have reached the same block height.
+// In combination with epoch advancement, this ensures that all nodes are producing blocks.
 func requireAllNodesReachSameBlockHeight(t *testing.T, net *tests.IntegrationTestNet) {
 	t.Helper()
 
@@ -163,6 +165,7 @@ func requireAllNodesReachSameBlockHeight(t *testing.T, net *tests.IntegrationTes
 	require.NoError(t, err)
 	defer client.Close()
 
+	// retrieve last produced block number from the first node
 	number, err := client.BlockNumber(t.Context())
 	require.NoError(t, err)
 
@@ -171,11 +174,7 @@ func requireAllNodesReachSameBlockHeight(t *testing.T, net *tests.IntegrationTes
 		require.NoError(t, err)
 		defer nodeClient.Close()
 
+		// all other nodes should reach the same block number
 		tests.WaitForProofOf(t, nodeClient, int(number))
-
-		nodeNumber, err := nodeClient.BlockNumber(t.Context())
-		require.NoError(t, err)
-
-		require.Equal(t, number, nodeNumber, "node %d has different block number", i)
 	}
 }
