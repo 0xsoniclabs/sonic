@@ -419,10 +419,10 @@ func consensusCallbackBeginBlockFn(
 					}
 
 					orderedTxs := proposal.Transactions
-					numSkippedUserTxs := 0
+					numSkippedDueToBlockLimits := 0
 					if es.Rules.Upgrades.Brio {
 						// Limit block size and gas while adding user transactions
-						numSkippedUserTxs =
+						numSkippedDueToBlockLimits =
 							processUserTransactions(evmProcessor, blockBuilder, orderedTxs, userTransactionGasLimit)
 					} else {
 						// Pre brio there were no limits on user transactions
@@ -430,7 +430,7 @@ func consensusCallbackBeginBlockFn(
 					}
 
 					evmBlock, numSkippedTxs, allReceipts := evmProcessor.Finalize()
-					numSkippedTxs += numSkippedUserTxs
+					numSkippedTxs += numSkippedDueToBlockLimits
 
 					// Add results of the transaction processing to the block.
 					blockBuilder.

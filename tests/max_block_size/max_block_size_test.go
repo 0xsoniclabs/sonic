@@ -81,8 +81,8 @@ func TestMaxBlockSizeIsEnforced(t *testing.T) {
 				input := make([]byte, 125_000) // large payload to exceed block size
 				cost := uint64(len(input))*params.TxCostFloorPerToken + params.TxGas
 
-				for accountIdx, account := range accounts {
-					for i := range transactionsPerAccount {
+				for i := range transactionsPerAccount {
+					for accountIdx, account := range accounts {
 						txsPayload := &types.LegacyTx{
 							Nonce: uint64(i),
 							Gas:   cost,
@@ -137,7 +137,7 @@ func increaseLimits(t *testing.T, net *tests.IntegrationTestNet) {
 	modified.Economy.ShortGasPower.AllocPerSec = 50_000_000_000
 	modified.Economy.ShortGasPower.MaxAllocPeriod = 50_000_000_000
 	modified.Economy.LongGasPower = modified.Economy.ShortGasPower
-	modified.Emitter.Interval = 1_000_000_000
+	modified.Emitter.Interval = 1_250_000_000
 	tests.UpdateNetworkRules(t, net, modified)
 	net.AdvanceEpoch(t, 1)
 
