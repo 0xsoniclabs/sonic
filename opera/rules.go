@@ -371,6 +371,16 @@ func GetBrioUpgrades() Upgrades {
 	}
 }
 
+// MakeUpgradeHeight constructs an UpgradeHeight instance from the given
+// Upgrades and block height.
+func MakeUpgradeHeight(upgrades Upgrades, height idx.Block) UpgradeHeight {
+	return UpgradeHeight{
+		Upgrades: upgrades,
+		Height:   height,
+		Time:     0, // ignored in Sonic
+	}
+}
+
 func MainNetRules() Rules {
 	return Rules{
 		Name:      "main",

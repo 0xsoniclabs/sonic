@@ -19,7 +19,6 @@ package ethapi
 import (
 	"context"
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"hash/crc32"
 	"math/big"
@@ -30,6 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
@@ -74,7 +74,7 @@ func makeConfigFromUpgrade(
 		precompiled[c.Name()] = addr
 	}
 
-	forkId, err := makeForkId(upgradeHeight.Upgrades)
+	forkId, err := MakeForkId(upgradeHeight, b.GetGenesisID())
 	if err != nil {
 		// this can only fail if json.Marshal fails, which is unexpected
 		return nil, fmt.Errorf("could not make fork id, %v", err)
@@ -83,6 +83,10 @@ func makeConfigFromUpgrade(
 	block, err := b.BlockByNumber(ctx, (rpc.BlockNumber(int64(upgradeHeight.Height))))
 	if err != nil {
 		return nil, fmt.Errorf("could not get block %d to determine activation time, %v", upgradeHeight.Height, err)
+	}
+
+	if block == nil {
+		return nil, fmt.Errorf("block %d not found to determine activation time", upgradeHeight.Height)
 	}
 
 	return &config{
@@ -109,14 +113,32 @@ func activeSystemContracts(upgrade opera.Upgrades) contractRegistry {
 	return sysContracts
 }
 
-// makeForkId creates a fork ID from the given upgrade.
-func makeForkId(upgrade opera.Upgrades) (forkId, error) {
-	buffer, err := json.Marshal(upgrade)
+// MakeForkId creates a fork ID from the given upgrade.
+func MakeForkId(upgrade opera.UpgradeHeight, genesisId *common.Hash) (forkId, error) {
+
+	upgradeRlp, err := rlp.EncodeToBytes(upgrade.Upgrades)
 	if err != nil {
 		return forkId{}, fmt.Errorf("could not encode upgrade to json, %v", err)
 	}
-	forkId := crc32.ChecksumIEEE(buffer)
+	upgradeHash := crc32.ChecksumIEEE(upgradeRlp)
+	// update hash with block number of last change in upgrade.
+	BlockNumberHash := uint64(upgrade.Height)
+	forkId := checksumUpdate(upgradeHash, BlockNumberHash)
+	// update with genesis ID
+	genesisHash := crc32.ChecksumIEEE(genesisId.Bytes())
+	forkId = checksumUpdate(forkId, genesisHash)
+
 	return checksumToBytes(forkId), nil
+}
+
+type u32u64 interface{ ~uint32 | ~uint64 }
+
+// checksumUpdate calculates the next IEEE CRC32 checksum based on the previous
+// one and a fork block number (equivalent to CRC32(original-blob || fork)).
+func checksumUpdate[U u32u64](hash uint32, fork U) uint32 {
+	var blob [8]byte
+	binary.BigEndian.PutUint64(blob[:], uint64(fork))
+	return crc32.Update(hash, crc32.IEEETable, blob[:])
 }
 
 // checksumToBytes converts a uint32 checksum into a [4]byte array.

@@ -37,45 +37,74 @@ import (
 
 func TestForkId_UpgradesProduceDifferentIds(t *testing.T) {
 	tests := map[string]struct {
-		upgrades opera.Upgrades
-		want     forkId
+		upgradesHeight opera.UpgradeHeight
+		want           forkId
 	}{
 		"Sonic": {
-			upgrades: opera.GetSonicUpgrades(),
-			want:     forkId{0x66, 0x42, 0x1a, 0x82},
+			upgradesHeight: opera.MakeUpgradeHeight(opera.GetSonicUpgrades(), 1),
+			want:           forkId{0xb7, 0x41, 0x84, 0x5b},
 		},
 		"Allegro": {
-			upgrades: opera.GetAllegroUpgrades(),
-			want:     forkId{0x79, 0x36, 0x28, 0x9c},
+			upgradesHeight: opera.MakeUpgradeHeight(opera.GetAllegroUpgrades(), 5),
+			want:           forkId{0xf2, 0x47, 0x39, 0x5b},
 		},
 		"Brio": {
-			upgrades: opera.GetBrioUpgrades(),
-			want:     forkId{0xcb, 0x29, 0x12, 0x88},
+			upgradesHeight: opera.MakeUpgradeHeight(opera.GetBrioUpgrades(), 10),
+			want:           forkId{0xfd, 0x5, 0x24, 0xf6},
 		},
 		// In a real case scenario, SingleProposer and GasSubsidies would be
 		// turned on while another upgrade is activated, so we check that the
 		// ForkId reflects these changes.
 		"Sonic+SingleProposer": {
-			upgrades: func() opera.Upgrades {
+			upgradesHeight: func() opera.UpgradeHeight {
 				upgrades := opera.GetSonicUpgrades()
 				upgrades.SingleProposerBlockFormation = true
-				return upgrades
+				return opera.MakeUpgradeHeight(upgrades, 1)
 			}(),
-			want: forkId{0xc4, 0x7a, 0x72, 0x20},
+			want: forkId{0xc5, 0x5f, 0xfd, 0xba},
 		},
 		"Allegro+GasSubsidies": {
-			upgrades: func() opera.Upgrades {
+			upgradesHeight: func() opera.UpgradeHeight {
 				upgrades := opera.GetAllegroUpgrades()
 				upgrades.GasSubsidies = true
-				return upgrades
+				return opera.MakeUpgradeHeight(upgrades, 5)
 			}(),
-			want: forkId{0xa1, 0x75, 0xc1, 0xbf},
+			want: forkId{0x16, 0x46, 0xef, 0x9e},
+		},
+	}
+
+	genesisHash := &common.Hash{0x42}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			got, err := MakeForkId(test.upgradesHeight, genesisHash)
+			require.NoError(t, err, "makeForkHash failed")
+			require.Equal(t, test.want, got, "unexpected fork hash")
+		})
+	}
+}
+
+func TestForkId_ProducesDifferentIds_ForDifferentGenesis(t *testing.T) {
+
+	sonicUpgrades := opera.MakeUpgradeHeight(opera.GetSonicUpgrades(), 1)
+
+	tests := map[string]struct {
+		genesisId *common.Hash
+		want      forkId
+	}{
+		"GenesisA": {
+			genesisId: &common.Hash{0x42},
+			want:      forkId{0xb7, 0x41, 0x84, 0x5b},
+		},
+		"GenesisB": {
+			genesisId: &common.Hash{0x43},
+			want:      forkId{0x42, 0xf1, 0xfb, 0xcc},
 		},
 	}
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			got, err := makeForkId(test.upgrades)
+			got, err := MakeForkId(sonicUpgrades, test.genesisId)
 			require.NoError(t, err, "makeForkHash failed")
 			require.Equal(t, test.want, got, "unexpected fork hash")
 		})
@@ -99,7 +128,7 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 				Height:   sonicHeight,
 			},
 			wantSysContracts: contractRegistry{},
-			wantForkId:       hexutil.Bytes{0x66, 0x42, 0x1a, 0x82},
+			wantForkId:       hexutil.Bytes{0xb7, 0x41, 0x84, 0x5b},
 		},
 		"Allegro": {
 			upgradeHeight: opera.UpgradeHeight{
@@ -107,7 +136,7 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 				Height:   allegroHeight,
 			},
 			wantSysContracts: contractRegistry{"HISTORY_STORAGE": params.HistoryStorageAddress},
-			wantForkId:       hexutil.Bytes{0x79, 0x36, 0x28, 0x9c},
+			wantForkId:       hexutil.Bytes{0xf2, 0x47, 0x39, 0x5b},
 		},
 		"GasSubsidies": {
 			upgradeHeight: opera.UpgradeHeight{
@@ -117,7 +146,7 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 				Height: gasSubsidiesHeight,
 			},
 			wantSysContracts: contractRegistry{"GAS_SUBSIDY_REGISTRY": registry.GetAddress()},
-			wantForkId:       hexutil.Bytes{0xbd, 0xa1, 0xab, 0x6d},
+			wantForkId:       hexutil.Bytes{0x86, 0x35, 0x24, 0x1},
 		},
 		"Sonic+GasSubsidies": {
 			upgradeHeight: opera.UpgradeHeight{
@@ -129,7 +158,7 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 				Height: gasSubsidiesHeight,
 			},
 			wantSysContracts: contractRegistry{"GAS_SUBSIDY_REGISTRY": registry.GetAddress()},
-			wantForkId:       hexutil.Bytes{0xf, 0xc4, 0xb1, 0x6c},
+			wantForkId:       hexutil.Bytes{0x2c, 0xc2, 0xbf, 0x2d},
 		},
 		"Allegro+GasSubsidies": {
 			upgradeHeight: opera.UpgradeHeight{
@@ -144,7 +173,7 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 				"HISTORY_STORAGE":      params.HistoryStorageAddress,
 				"GAS_SUBSIDY_REGISTRY": registry.GetAddress(),
 			},
-			wantForkId: hexutil.Bytes{0xa1, 0x75, 0xc1, 0xbf},
+			wantForkId: hexutil.Bytes{0x3f, 0x80, 0x84, 0x27},
 		},
 	}
 
@@ -155,6 +184,7 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			backend := NewMockBackend(ctrl)
 			backend.EXPECT().ChainID().Return(chainId)
+			backend.EXPECT().GetGenesisID().Return(&common.Hash{0x42})
 			backend.EXPECT().BlockByNumber(gomock.Any(), rpc.BlockNumber(int64(test.upgradeHeight.Height))).
 				Return(&evmcore.EvmBlock{EvmHeader: evmcore.EvmHeader{Time: inter.Timestamp(1)}}, nil)
 
@@ -255,7 +285,7 @@ func TestEIP7910_Config_ReturnsConfigs(t *testing.T) {
 						Height:   idx.Block(1)}})
 			},
 			wantConfig: func() configResponse {
-				sonicId, err := makeForkId(opera.GetSonicUpgrades())
+				sonicId, err := MakeForkId(opera.MakeUpgradeHeight(opera.GetSonicUpgrades(), 1), &common.Hash{0x42})
 				require.NoError(t, err, "makeForkId failed for sonic upgrades")
 				return configResponse{Current: &config{
 					ChainId:         (*hexutil.Big)(chainId),
@@ -282,10 +312,10 @@ func TestEIP7910_Config_ReturnsConfigs(t *testing.T) {
 					})
 			},
 			wantConfig: func() configResponse {
-				sonicId, err := makeForkId(opera.GetSonicUpgrades())
+				sonicId, err := MakeForkId(opera.MakeUpgradeHeight(opera.GetSonicUpgrades(), 1), &common.Hash{0x42})
 				require.NoError(t, err, "makeForkId failed for sonic upgrades")
 
-				allegroId, err := makeForkId(opera.GetAllegroUpgrades())
+				allegroId, err := MakeForkId(opera.MakeUpgradeHeight(opera.GetAllegroUpgrades(), 5), &common.Hash{0x42})
 				require.NoError(t, err, "makeForkId failed for allegro upgrades")
 
 				return configResponse{
@@ -311,6 +341,8 @@ func TestEIP7910_Config_ReturnsConfigs(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			backend := NewMockBackend(ctrl)
 			backend.EXPECT().ChainID().Return(chainId).AnyTimes()
+			// could be called once or twice depending on the test case.
+			backend.EXPECT().GetGenesisID().Return(&common.Hash{0x42}).AnyTimes()
 			backend.EXPECT().BlockByNumber(gomock.Any(), gomock.Any()).
 				Return(&evmcore.EvmBlock{EvmHeader: evmcore.EvmHeader{Time: inter.Timestamp(1)}}, nil).AnyTimes()
 
