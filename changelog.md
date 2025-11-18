@@ -37,19 +37,18 @@ For optimal compatibility and stability, it is recommended to use the most recen
 ### Changed
 - Transaction Pool rejects transactions from non-EOA accounts.
 
-
-## [2.1.3] - 5 November 2025
+## [2.1.3] - 5 Nov 2025
 
 - Reduce overhead produced by handling of sponsored transactions by the transaction pool under heavy load.
 - Reuse transactions sender to reduce transactions signature overheads.
 - Implement mitigation measures regarding P2P events broadcasting lag which stalls block processing.
 
-## [2.1.2] - 2 October 2025
+## [2.1.2] - 2 Oct 2025
 
 - Added Gas Subsidy support
 - Fixed backward compatibility of gas limit updates
 
-## [2.1.1] - 23 September 2025
+## [2.1.1] - 23 Sep 2025
 
 -  RPC api: Fix empty logs bloom
 -  Add CreateTransaction helper function
@@ -57,7 +56,7 @@ For optimal compatibility and stability, it is recommended to use the most recen
 -  Remove deprecated default command arguments
 -  Improve unit tests and integration tests
 
-## [2.1.0] - 20 August 2025
+## [2.1.0] - 20 Aug 2025
 
 - Fix error handling in debug_traceBlock
 
@@ -67,24 +66,24 @@ For optimal compatibility and stability, it is recommended to use the most recen
 - Check NoArchiveError when sending block notifications
 - Update Tosca dependency
 
-## [2.0.5] - 28 April 2025
+## [2.0.5] - 28 Apr 2025
 
 - Check archive block height before sending subscribers notification
 - Use GETH for eth_call simulation with large code in state override
 
-## [2.0.4] - 26 March 2025
+## [2.0.4] - 26 Mar 2025
 
 - Replay transaction on empty blocks
 - Add block overrides for RPC calls
 - Change the NoBaseFee VM configuration parameter for replaying transactions
 
-## [2.0.3] - 20 February 2025
+## [2.0.3] - 20 Feb 2025
 
 - Security fix of the CVE-2025-24883 (public key validity check on P2P).
 - Storage override for eth_call RPC interface.
 - Various fixes and improvements.
 
-## [2.0.2] - 10 February 2025
+## [2.0.2] - 10 Feb 2025
 
 - Implements eth_getAccount RPC method (Fantom-foundation/Sonic#370)
 - Handle "finalized" and "safe" block number tags (Fantom-foundation/Sonic#388)
@@ -92,7 +91,7 @@ For optimal compatibility and stability, it is recommended to use the most recen
 - Fixes gas capping in RPC calls (Fantom-foundation/Sonic#391)
 
 
-## [2.0.1] - 10 February 2025
+## [2.0.1] - 10 Feb 2025
 -  Adds the new Sonic VM for faster contract code processing.
 -  Improves upon the Sonic DB performance with additional optimizations, especially for the new features.
 -  Adds support for Cancun/Deneb including transient storage and new VM opcodes.
@@ -103,6 +102,6 @@ For optimal compatibility and stability, it is recommended to use the most recen
 - We also included number of smaller bug fixes and improvements across different parts of the system.
 
 
-## [2.0.0] - 10 February 2025
+## [2.0.0] - 10 Feb 2025
 
 Initial release of the Sonic client for the Sonic network.
