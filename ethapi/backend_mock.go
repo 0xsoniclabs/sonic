@@ -294,6 +294,20 @@ func (mr *MockBackendMockRecorder) GetEventPayload(ctx, shortEventID any) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEventPayload", reflect.TypeOf((*MockBackend)(nil).GetEventPayload), ctx, shortEventID)
 }
 
+// GetGenesisID mocks base method.
+func (m *MockBackend) GetGenesisID() *common.Hash {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetGenesisID")
+	ret0, _ := ret[0].(*common.Hash)
+	return ret0
+}
+
+// GetGenesisID indicates an expected call of GetGenesisID.
+func (mr *MockBackendMockRecorder) GetGenesisID() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGenesisID", reflect.TypeOf((*MockBackend)(nil).GetGenesisID))
+}
+
 // GetHeads mocks base method.
 func (m *MockBackend) GetHeads(ctx context.Context, epoch rpc.BlockNumber) (hash.Events, error) {
 	m.ctrl.T.Helper()
