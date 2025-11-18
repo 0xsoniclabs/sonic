@@ -53,17 +53,6 @@ type config struct {
 type contractRegistry map[string]common.Address
 type forkId [4]byte
 
-// configResponse is the response structure for the Config method as
-// described by https://eips.ethereum.org/EIPS/eip-7910
-type configResponse struct {
-	// current is the config active at the latest block number.
-	Current *config `json:"current"`
-	// Next will remain nil since Sonic config activation does not depend on time.
-	Next *config `json:"next"`
-	// Last could be nill if only one upgrades heights exists.
-	Last *config `json:"last"`
-}
-
 // makeConfigFromUpgrade constructs the config that was active for the
 // given block number based on the upgrade heights.
 func makeConfigFromUpgrade(

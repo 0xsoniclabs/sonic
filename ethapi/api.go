@@ -713,6 +713,17 @@ func (s *PublicBlockChainAPI) GetBalance(ctx context.Context, address common.Add
 	return (*hexutil.U256)(state.GetBalance(address)), state.Error()
 }
 
+// configResponse is the response structure for the Config method as
+// described by https://eips.ethereum.org/EIPS/eip-7910
+type configResponse struct {
+	// current is the config active at the latest block number.
+	Current *config `json:"current"`
+	// Next will remain nil since Sonic config activation does not depend on time.
+	Next *config `json:"next"`
+	// Last could be nill if only one upgrades heights exists.
+	Last *config `json:"last"`
+}
+
 // Config returns the current and previous (if any) network configs following the structure
 // described in EIP-7910.
 //
