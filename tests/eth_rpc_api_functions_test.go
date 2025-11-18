@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/sonic/config"
+	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
@@ -200,14 +201,16 @@ func makeTestEngine(gdb *gossip.Store) (*abft.Lachesis, *vecmt.Index) {
 
 func TestEthConfig_ProducesReadableConfig(t *testing.T) {
 
-	session := getIntegrationTestNetSession(t, opera.GetBrioUpgrades())
+	net := StartIntegrationTestNet(t,
+		IntegrationTestNetOptions{
+			Upgrades: AsPointer(opera.GetBrioUpgrades()),
+		})
 
-	client, err := session.GetClient()
+	client, err := net.GetClient()
 	require.NoError(t, err)
 	defer client.Close()
 
 	response := map[string]map[string]any{}
-	// var response configResponse
 	err = client.Client().Call(&response, "eth_config")
 	require.NoError(t, err, "eth_config failed")
 	response["current"]["activationTime"] = uint64(response["current"]["activationTime"].(float64))
@@ -218,12 +221,20 @@ func TestEthConfig_ProducesReadableConfig(t *testing.T) {
 	require.NoError(t, err, "could not get block 1 to determine expected ActivationTime")
 	activationTime := block1.Header().Time
 
+	upgradeHeight := opera.UpgradeHeight{
+		Upgrades: opera.GetBrioUpgrades(),
+		Height:   1,
+	}
+	genesisId := net.GetGenesisId()
+	expectedForkId, err := ethapi.MakeForkId(upgradeHeight, &genesisId)
+	require.NoError(t, err, "could not make expected fork ID")
+
 	want := map[string]map[string]any{
 		"current": {
 			"activationTime": activationTime,
 			"blobSchedule":   nil,
 			"chainId":        "0xfa3",
-			"forkId":         "0xcb291288",
+			"forkId":         fmt.Sprintf("0x%x", expectedForkId),
 			"precompiles": map[string]any{
 				"BLAKE2F":              "0x0000000000000000000000000000000000000009",
 				"BN254_ADD":            "0x0000000000000000000000000000000000000006",
@@ -251,4 +262,42 @@ func TestEthConfig_ProducesReadableConfig(t *testing.T) {
 	}
 
 	require.Equal(t, want, response, "eth_config returned unexpected result")
+
+	originalForkId := response["current"]["forkId"]
+	require.NotZero(t, originalForkId, "forkId should not be zero")
+
+	// get current rules and change to single proposer mode
+	var rules opera.Rules
+	err = client.Client().Call(&rules, "eth_getRules", "latest")
+	require.NoError(t, err, "eth_getRules failed")
+
+	rules.Upgrades.SingleProposerBlockFormation = true
+	UpdateNetworkRules(t, net, rules)
+	AdvanceEpochAndWaitForBlocks(t, net)
+
+	// get current block to confirm epoch advancement
+	currentBlock, err := client.BlockByNumber(t.Context(), nil)
+	require.NoError(t, err, "could not get current block after epoch advancement")
+	require.Greater(t, currentBlock.NumberU64(), block1.NumberU64(), "block number did not advance after epoch advancement")
+
+	WaitForProofOf(t, client, int(currentBlock.NumberU64()))
+
+	// get previous block to determine expected activation time
+	previousBlockNumber := new(big.Int).Sub(currentBlock.Number(), big.NewInt(1))
+	previousBlock, err := client.BlockByNumber(t.Context(), previousBlockNumber)
+	require.NoError(t, err, "could not get previous block after epoch advancement")
+
+	// get new config
+	err = client.Client().Call(&response, "eth_config")
+	require.NoError(t, err, "eth_config failed")
+
+	// again, activation time needs to be reinterpreted as a uint64
+	response["last"]["activationTime"] = uint64(response["last"]["activationTime"].(float64))
+	require.Equal(t, want["current"], response["last"],
+		"original config should be in 'last' field")
+
+	require.Equal(t,
+		previousBlock.Header().Time,
+		uint64(response["current"]["activationTime"].(float64)),
+		"new config should have activation time of the block where it was activated")
 }
