@@ -917,12 +917,12 @@ func TestRlpEncodedMaxHeaderSizeInBytes_IsAnUpperBound(t *testing.T) {
 	require.Less(t, len(data), rlpEncodedMaxHeaderSizeInBytes, "header exceeds maximum size")
 }
 
-func TestProcessUserTransactions_RespectsGasLimit(t *testing.T) {
+func TestProcessUserTransactions_ForwardsBlockGasLimitToEVMProcessor(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
 	blockBuilder := inter.NewBlockBuilder()
 
-	// Create some dummy transactions with different sizes and gas usage
+	// Create some dummy transactions with gas usage
 	tx1 := types.NewTx(&types.LegacyTx{Nonce: 1, Gas: 1000})
 	tx2 := types.NewTx(&types.LegacyTx{Nonce: 2, Gas: 1000})
 	tx3 := types.NewTx(&types.LegacyTx{Nonce: 3, Gas: 1000})
@@ -930,28 +930,27 @@ func TestProcessUserTransactions_RespectsGasLimit(t *testing.T) {
 	// Set up receipts for each transaction
 	receipt1 := &types.Receipt{CumulativeGasUsed: 1000}
 	receipt2 := &types.Receipt{CumulativeGasUsed: 2000}
+	receipt3 := &types.Receipt{CumulativeGasUsed: 3000}
+
+	userTransactionGasLimit := uint64(3000)
 
 	// Mock EVMProcessor.Execute to return receipts for each tx
 	evmProcessor.EXPECT().
-		Execute([]*types.Transaction{tx1}, gomock.Any()).
+		Execute([]*types.Transaction{tx1}, userTransactionGasLimit).
 		Return([]evmcore.ProcessedTransaction{{Transaction: tx1, Receipt: receipt1}})
 	evmProcessor.EXPECT().
-		Execute([]*types.Transaction{tx2}, gomock.Any()).
+		Execute([]*types.Transaction{tx2}, userTransactionGasLimit-receipt1.CumulativeGasUsed).
 		Return([]evmcore.ProcessedTransaction{{Transaction: tx2, Receipt: receipt2}})
-
-	// Set limits so only tx1 and tx2 fit, tx3 should be skipped due to size
-	userTransactionGasLimit := uint64(2500)
+	evmProcessor.EXPECT().
+		Execute([]*types.Transaction{tx3}, userTransactionGasLimit-receipt2.CumulativeGasUsed).
+		Return([]evmcore.ProcessedTransaction{{Transaction: tx3, Receipt: receipt3}})
 
 	orderedTxs := []*types.Transaction{tx1, tx2, tx3}
+	processUserTransactions(evmProcessor, blockBuilder, orderedTxs, userTransactionGasLimit)
 
-	skippedCount :=
-		processUserTransactions(evmProcessor, blockBuilder, orderedTxs, userTransactionGasLimit)
-
-	require.Equal(t, 1, skippedCount, "one transaction should be skipped")
-
-	// Only tx1 and tx2 should be included
+	// Only tx1, tx2 and tx3 should be included
 	gotTxs := blockBuilder.GetTransactions()
-	require.Equal(t, types.Transactions{tx1, tx2}, gotTxs)
+	require.Equal(t, types.Transactions{tx1, tx2, tx3}, gotTxs)
 }
 
 func TestProcessUserTransactions_TransactionsWithNoReceiptAreNotIncluded(t *testing.T) {

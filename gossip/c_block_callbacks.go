@@ -631,7 +631,7 @@ func processUserTransactions(
 	skippedCounter := 0
 	for _, tx := range orderedTxs {
 		neededSpace := txSizeIncludingSubsidies(tx)
-		if neededSpace < remainingSize && tx.Gas() < remainingGas {
+		if neededSpace <= remainingSize {
 			for _, processed := range evmProcessor.Execute([]*types.Transaction{tx}, remainingGas) {
 				if processed.Receipt != nil { // < nil if skipped
 					blockBuilder.AddTransaction(
