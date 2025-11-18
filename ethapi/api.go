@@ -742,8 +742,7 @@ func (s *PublicBlockChainAPI) Config(ctx context.Context) (*configResponse, erro
 	}
 
 	updateHeights := s.b.GetUpgradeHeights()
-	isEmpty := len(updateHeights) == 0
-	if isEmpty {
+	if len(updateHeights) == 0 {
 		return nil, errors.New("no configs found")
 	}
 

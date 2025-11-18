@@ -80,7 +80,7 @@ func makeConfigFromUpgrade(
 		return nil, fmt.Errorf("could not make fork id, %v", err)
 	}
 
-	block, err := b.BlockByNumber(ctx, (rpc.BlockNumber(int64(upgradeHeight.Height))))
+	block, err := b.BlockByNumber(ctx, rpc.BlockNumber(int64(upgradeHeight.Height)))
 	if err != nil {
 		return nil, fmt.Errorf("could not get block %d to determine activation time, %v", upgradeHeight.Height, err)
 	}
