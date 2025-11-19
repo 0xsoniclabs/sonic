@@ -94,36 +94,23 @@ func activeSystemContracts(upgrade opera.Upgrades) contractRegistry {
 }
 
 // MakeForkId creates a fork ID from the given upgrade.
+// The Fork ID is calculated as the CRC32 checksum of the RLP encoding of the upgrade,
+// the block number, and the genesis ID.
+//
+// CRC32(Rlp(upgrade) || bigEndian(upgrade.Height) || genesisId)
 func MakeForkId(upgrade opera.UpgradeHeight, genesisId *common.Hash) (forkId, error) {
+	if genesisId == nil {
+		return forkId{}, fmt.Errorf("genesis ID is nil")
+	}
 
 	upgradeRlp, err := rlp.EncodeToBytes(upgrade.Upgrades)
 	if err != nil {
 		return forkId{}, fmt.Errorf("could not encode upgrade to RLP, %v", err)
 	}
 	upgradeHash := crc32.ChecksumIEEE(upgradeRlp)
-	// update hash with block number of last change in upgrade.
-	BlockNumberHash := uint64(upgrade.Height)
-	forkId := checksumUpdate(upgradeHash, BlockNumberHash)
-	// update with genesis ID
-	genesisHash := crc32.ChecksumIEEE(genesisId.Bytes())
-	forkId = checksumUpdate(forkId, genesisHash)
+	blockNumberBytes := binary.BigEndian.AppendUint64(nil, uint64(upgrade.Height))
+	forkId := crc32.Update(upgradeHash, crc32.IEEETable, blockNumberBytes)
+	forkId = crc32.Update(forkId, crc32.IEEETable, genesisId.Bytes())
 
-	return checksumToBytes(forkId), nil
-}
-
-type u32u64 interface{ ~uint32 | ~uint64 }
-
-// checksumUpdate calculates the next IEEE CRC32 checksum based on the previous
-// one and a fork block number (equivalent to CRC32(original-blob || fork)).
-func checksumUpdate[U u32u64](hash uint32, fork U) uint32 {
-	var blob [8]byte
-	binary.BigEndian.PutUint64(blob[:], uint64(fork))
-	return crc32.Update(hash, crc32.IEEETable, blob[:])
-}
-
-// checksumToBytes converts a uint32 checksum into a [4]byte array.
-func checksumToBytes(hash uint32) [4]byte {
-	var blob [4]byte
-	binary.BigEndian.PutUint32(blob[:], hash)
-	return blob
+	return [4]byte(binary.BigEndian.AppendUint32(nil, forkId)), nil
 }

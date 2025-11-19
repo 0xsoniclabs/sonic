@@ -18,6 +18,9 @@ package ethapi
 
 import (
 	"context"
+	"encoding/binary"
+	"fmt"
+	"hash/crc32"
 	"maps"
 	"math/big"
 	"testing"
@@ -30,10 +33,55 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
+
+// CRC32(Rlp(upgrade) || bigEndian(upgrade.Height) || genesisId)
+func TestForkId_FollowsFormula(t *testing.T) {
+
+	upgradeHeights := map[string]opera.Upgrades{
+		"sonic":   opera.GetSonicUpgrades(),
+		"allegro": opera.GetAllegroUpgrades(),
+		"brio":    opera.GetBrioUpgrades(),
+	}
+	blockHeights := []idx.Block{1, 5, 10}
+	genesisHashes := []common.Hash{{0x42}, {0x43}, {0x44}}
+	for name, upgrades := range upgradeHeights {
+		for _, blockHeight := range blockHeights {
+			for _, genesisHash := range genesisHashes {
+				t.Run(fmt.Sprintf("%s-%v-%s", name, blockHeight, genesisHash.String()),
+					func(t *testing.T) {
+
+						// Calculate expected ForkId
+						updateRlp, err := rlp.EncodeToBytes(upgrades)
+						require.NoError(t, err, "rlp encoding failed")
+						var blockNumberBytes [8]byte
+						binary.BigEndian.PutUint64(blockNumberBytes[:], uint64(blockHeight))
+
+						checkSum := crc32.ChecksumIEEE(updateRlp)
+						checkSum = crc32.Update(checkSum, crc32.IEEETable, blockNumberBytes[:])
+						checkSum = crc32.Update(checkSum, crc32.IEEETable, genesisHash.Bytes())
+
+						var expectedForkId forkId
+						binary.BigEndian.PutUint32(expectedForkId[:], checkSum)
+
+						// Get ForkId from MakeForkId.
+						gotForkId, err := MakeForkId(
+							opera.MakeUpgradeHeight(upgrades, blockHeight),
+							&genesisHash)
+						require.NoError(t, err, "makeForkId failed")
+
+						require.Equal(t, expectedForkId, gotForkId,
+							"fork ID does not follow the expected formula")
+					},
+				)
+			}
+		}
+	}
+}
 
 func TestForkId_UpgradesProduceDifferentIds(t *testing.T) {
 	tests := map[string]struct {
@@ -42,15 +90,15 @@ func TestForkId_UpgradesProduceDifferentIds(t *testing.T) {
 	}{
 		"Sonic": {
 			upgradesHeight: opera.MakeUpgradeHeight(opera.GetSonicUpgrades(), 1),
-			want:           forkId{0xcf, 0x8c, 0x53, 0x37},
+			want:           forkId{0x25, 0x5f, 0x4f, 0x31},
 		},
 		"Allegro": {
 			upgradesHeight: opera.MakeUpgradeHeight(opera.GetAllegroUpgrades(), 5),
-			want:           forkId{0x85, 0x31, 0x9b, 0x46},
+			want:           forkId{0xa4, 0x64, 0x34, 0xe5},
 		},
 		"Brio": {
 			upgradesHeight: opera.MakeUpgradeHeight(opera.GetBrioUpgrades(), 10),
-			want:           forkId{0x74, 0x2b, 0x66, 0x6d},
+			want:           forkId{0xfd, 0xbe, 0x37, 0xd5},
 		},
 		// In a real case scenario, SingleProposer and GasSubsidies would be
 		// turned on while another upgrade is activated, so we check that the
@@ -61,7 +109,7 @@ func TestForkId_UpgradesProduceDifferentIds(t *testing.T) {
 				upgrades.SingleProposerBlockFormation = true
 				return opera.MakeUpgradeHeight(upgrades, 1)
 			}(),
-			want: forkId{0x14, 0x7c, 0x71, 0x29},
+			want: forkId{0xa0, 0xe6, 0x72, 0x32},
 		},
 		"Allegro+GasSubsidies": {
 			upgradesHeight: func() opera.UpgradeHeight {
@@ -69,7 +117,7 @@ func TestForkId_UpgradesProduceDifferentIds(t *testing.T) {
 				upgrades.GasSubsidies = true
 				return opera.MakeUpgradeHeight(upgrades, 5)
 			}(),
-			want: forkId{0x35, 0xa4, 0xb6, 0x87},
+			want: forkId{0x94, 0x5b, 0xc, 0x3d},
 		},
 	}
 
@@ -94,11 +142,11 @@ func TestForkId_ProducesDifferentIds_ForDifferentGenesis(t *testing.T) {
 	}{
 		"GenesisA": {
 			genesisId: &common.Hash{0x42},
-			want:      forkId{0xcf, 0x8c, 0x53, 0x37},
+			want:      forkId{0x25, 0x5f, 0x4f, 0x31},
 		},
 		"GenesisB": {
 			genesisId: &common.Hash{0x43},
-			want:      forkId{0x3a, 0x3c, 0x2c, 0xa0},
+			want:      forkId{0xd4, 0x85, 0x4a, 0x9b},
 		},
 	}
 
@@ -111,6 +159,14 @@ func TestForkId_ProducesDifferentIds_ForDifferentGenesis(t *testing.T) {
 	}
 }
 
+func TestMakeConfigFromUpgrade_ReturnsError_OnNilGenesisID(t *testing.T) {
+	upgradeHeight := opera.MakeUpgradeHeight(opera.GetSonicUpgrades(), 1)
+
+	_, err := MakeForkId(upgradeHeight, nil)
+	require.ErrorContains(t, err, "genesis ID is nil",
+		"expected error from makeConfigFromUpgrade with nil genesis ID")
+}
+
 func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 
 	sonicHeight := idx.Block(1)
@@ -120,7 +176,6 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 	tests := map[string]struct {
 		upgradeHeight    opera.UpgradeHeight
 		wantSysContracts contractRegistry
-		wantForkId       hexutil.Bytes
 	}{
 		"Sonic": {
 			upgradeHeight: opera.UpgradeHeight{
@@ -128,7 +183,6 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 				Height:   sonicHeight,
 			},
 			wantSysContracts: contractRegistry{},
-			wantForkId:       hexutil.Bytes{0xcf, 0x8c, 0x53, 0x37},
 		},
 		"Allegro": {
 			upgradeHeight: opera.UpgradeHeight{
@@ -136,7 +190,6 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 				Height:   allegroHeight,
 			},
 			wantSysContracts: contractRegistry{"HISTORY_STORAGE": params.HistoryStorageAddress},
-			wantForkId:       hexutil.Bytes{0x85, 0x31, 0x9b, 0x46},
 		},
 		"GasSubsidies": {
 			upgradeHeight: opera.UpgradeHeight{
@@ -146,7 +199,6 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 				Height: gasSubsidiesHeight,
 			},
 			wantSysContracts: contractRegistry{"GAS_SUBSIDY_REGISTRY": registry.GetAddress()},
-			wantForkId:       hexutil.Bytes{0x48, 0xc6, 0xf4, 0x31},
 		},
 		"Sonic+GasSubsidies": {
 			upgradeHeight: opera.UpgradeHeight{
@@ -158,7 +210,6 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 				Height: gasSubsidiesHeight,
 			},
 			wantSysContracts: contractRegistry{"GAS_SUBSIDY_REGISTRY": registry.GetAddress()},
-			wantForkId:       hexutil.Bytes{0xfd, 0x4c, 0xe0, 0x2b},
 		},
 		"Allegro+GasSubsidies": {
 			upgradeHeight: opera.UpgradeHeight{
@@ -173,7 +224,6 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 				"HISTORY_STORAGE":      params.HistoryStorageAddress,
 				"GAS_SUBSIDY_REGISTRY": registry.GetAddress(),
 			},
-			wantForkId: hexutil.Bytes{0xea, 0x1d, 0x79, 0x56},
 		},
 	}
 
@@ -193,10 +243,45 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 
 			require.Equal(t, test.wantSysContracts, result.SystemContracts,
 				"unexpected system contracts")
-			require.Equal(t, test.wantForkId, result.ForkId,
-				"unexpected fork id")
 		})
 	}
+}
+
+func TestMakeConfigFromUpgrade_ReportsErrors_WhenMakeForkIdFails(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	backend := NewMockBackend(ctrl)
+	backend.EXPECT().ChainID().Return(big.NewInt(250))
+
+	backend.EXPECT().GetGenesisID().Return(nil)
+
+	_, err := makeConfigFromUpgrade(t.Context(), backend, opera.UpgradeHeight{})
+	require.ErrorContains(t, err, "could not make fork id")
+}
+
+func TestMakeConfigFromUpgrade_ReportsErrors_WhenBlockByNumberReturnsAnError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	backend := NewMockBackend(ctrl)
+	backend.EXPECT().ChainID().Return(big.NewInt(250))
+	backend.EXPECT().GetGenesisID().Return(&common.Hash{0x42})
+
+	backend.EXPECT().BlockByNumber(gomock.Any(), rpc.BlockNumber(int64(0))).
+		Return(nil, fmt.Errorf("some error"))
+
+	_, err := makeConfigFromUpgrade(t.Context(), backend, opera.UpgradeHeight{})
+	require.ErrorContains(t, err, "could not get block")
+}
+
+func TestMakeConfigFromUpgrade_ReportsError_WhenBlockByNumberReturnsNilBlock(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	backend := NewMockBackend(ctrl)
+	backend.EXPECT().ChainID().Return(big.NewInt(250))
+	backend.EXPECT().GetGenesisID().Return(&common.Hash{0x42})
+
+	backend.EXPECT().BlockByNumber(gomock.Any(), rpc.BlockNumber(int64(0))).
+		Return(nil, nil)
+
+	_, err := makeConfigFromUpgrade(t.Context(), backend, opera.UpgradeHeight{})
+	require.ErrorContains(t, err, "block 0 not found")
 }
 
 func TestEIP7910_Config_ReportsErrors(t *testing.T) {
