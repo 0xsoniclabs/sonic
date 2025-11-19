@@ -638,7 +638,7 @@ func processUserTransactions(
 						processed.Transaction,
 						processed.Receipt,
 					)
-					remainingGas = userTransactionGasLimit - processed.Receipt.CumulativeGasUsed
+					remainingGas -= processed.Receipt.GasUsed
 					remainingSize -= processed.Transaction.Size()
 				}
 			}

@@ -44,11 +44,13 @@ import (
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/evmmodule"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
 	"github.com/0xsoniclabs/sonic/gossip/randao"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
+	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/inter/validatorpk"
 	"github.com/0xsoniclabs/sonic/logger"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -881,8 +883,8 @@ func TestRlpEncodedMaxHeaderSizeInBytes_IsAnUpperBound(t *testing.T) {
 	maxBlock := types.BlockNonce(setToMax(8))
 	maxUint64 := uint64(math.MaxUint64)
 
-	// Geth sanity check for extra defines an upper bound of 100 * 1024 bytes.
-	// Sonic uses the extra field to store time and duration.
+	// The sanity checks for the extra field inside of geth define an upper bound
+	// of 100 * 1024 bytes. Sonic uses the extra field to store time and duration.
 	extra := inter.EncodeExtraData(
 		time.Unix(math.MaxInt64, math.MaxInt64),
 		time.Duration(math.MaxInt64)*time.Nanosecond,
@@ -1022,6 +1024,63 @@ func TestProcessUserTransactions_SkipsTxsExceedingSizeLimit(t *testing.T) {
 	// Huge transactions should not be added
 	gotTxs := blockBuilder.GetTransactions()
 	require.Equal(t, types.Transactions{tx0, tx1}, gotTxs)
+}
+
+func TestProcessUserTransactions_InternalTransactionsHaveNoImpactOnTheUserTransactionGas(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	statedb := state.NewMockStateDB(ctrl)
+
+	statedb.EXPECT().BeginBlock(gomock.Any())
+	statedb.EXPECT().SetTxContext(gomock.Any(), gomock.Any()).AnyTimes()
+	statedb.EXPECT().GetBalance(gomock.Any()).Return(uint256.NewInt(0)).AnyTimes()
+	statedb.EXPECT().SubBalance(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+	statedb.EXPECT().Prepare(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+	statedb.EXPECT().GetNonce(gomock.Any()).Return(uint64(0)).AnyTimes()
+	statedb.EXPECT().SetNonce(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+	statedb.EXPECT().GetCode(gomock.Any()).AnyTimes()
+	statedb.EXPECT().Snapshot().AnyTimes()
+	statedb.EXPECT().Exist(gomock.Any()).Return(true).AnyTimes()
+	statedb.EXPECT().SubBalance(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+	statedb.EXPECT().AddBalance(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+	statedb.EXPECT().GetCode(gomock.Any()).AnyTimes()
+	statedb.EXPECT().GetRefund().AnyTimes()
+	statedb.EXPECT().GetRefund().AnyTimes()
+	statedb.EXPECT().AddBalance(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+	statedb.EXPECT().GetLogs(gomock.Any(), gomock.Any()).AnyTimes()
+	statedb.EXPECT().EndTransaction().AnyTimes()
+	statedb.EXPECT().TxIndex().AnyTimes()
+
+	evmModule := evmmodule.New()
+	evmProcessor := evmModule.Start(
+		iblockproc.BlockCtx{},
+		statedb,
+		&EvmStateReader{},
+		func(l *types.Log) {},
+		opera.Rules{},
+		&params.ChainConfig{},
+		common.Hash{},
+	)
+	blockBuilder := inter.NewBlockBuilder()
+
+	internalTx := types.NewTx(&types.LegacyTx{To: &common.Address{0x41}, Gas: 21_000})
+	internalTxGasLimit := uint64(30_000)
+	internalProcessedTxs := evmProcessor.Execute([]*types.Transaction{internalTx}, internalTxGasLimit)
+	require.Len(t, internalProcessedTxs, 1)
+
+	userTx0 := types.NewTx(&types.LegacyTx{To: &common.Address{0x42}, Gas: 21_000})
+	skippedTx := types.NewTx(&types.LegacyTx{To: &common.Address{0x44}, Gas: 21_000})
+
+	// the user transaction only fits into the user transaction gas limit if
+	// the internal transaction gas is not counted towards it
+	userTransactionGasLimit := uint64(30_000)
+	skippedCount :=
+		processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{userTx0, skippedTx}, userTransactionGasLimit)
+
+	// the skipped transaction is counted by the evm processor
+	require.Equal(t, 0, skippedCount)
+
+	gotTxs := blockBuilder.GetTransactions()
+	require.Equal(t, types.Transactions{userTx0}, gotTxs)
 }
 
 func TestProcessUserTransactions_SponsoredTxSizeIsAccountedCorrectly(t *testing.T) {
