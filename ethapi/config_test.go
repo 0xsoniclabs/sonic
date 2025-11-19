@@ -42,15 +42,15 @@ func TestForkId_UpgradesProduceDifferentIds(t *testing.T) {
 	}{
 		"Sonic": {
 			upgradesHeight: opera.MakeUpgradeHeight(opera.GetSonicUpgrades(), 1),
-			want:           forkId{0xb7, 0x41, 0x84, 0x5b},
+			want:           forkId{0xcf, 0x8c, 0x53, 0x37},
 		},
 		"Allegro": {
 			upgradesHeight: opera.MakeUpgradeHeight(opera.GetAllegroUpgrades(), 5),
-			want:           forkId{0xf2, 0x47, 0x39, 0x5b},
+			want:           forkId{0x85, 0x31, 0x9b, 0x46},
 		},
 		"Brio": {
 			upgradesHeight: opera.MakeUpgradeHeight(opera.GetBrioUpgrades(), 10),
-			want:           forkId{0xfd, 0x5, 0x24, 0xf6},
+			want:           forkId{0x74, 0x2b, 0x66, 0x6d},
 		},
 		// In a real case scenario, SingleProposer and GasSubsidies would be
 		// turned on while another upgrade is activated, so we check that the
@@ -61,7 +61,7 @@ func TestForkId_UpgradesProduceDifferentIds(t *testing.T) {
 				upgrades.SingleProposerBlockFormation = true
 				return opera.MakeUpgradeHeight(upgrades, 1)
 			}(),
-			want: forkId{0xc5, 0x5f, 0xfd, 0xba},
+			want: forkId{0x14, 0x7c, 0x71, 0x29},
 		},
 		"Allegro+GasSubsidies": {
 			upgradesHeight: func() opera.UpgradeHeight {
@@ -69,7 +69,7 @@ func TestForkId_UpgradesProduceDifferentIds(t *testing.T) {
 				upgrades.GasSubsidies = true
 				return opera.MakeUpgradeHeight(upgrades, 5)
 			}(),
-			want: forkId{0x16, 0x46, 0xef, 0x9e},
+			want: forkId{0x35, 0xa4, 0xb6, 0x87},
 		},
 	}
 
@@ -94,11 +94,11 @@ func TestForkId_ProducesDifferentIds_ForDifferentGenesis(t *testing.T) {
 	}{
 		"GenesisA": {
 			genesisId: &common.Hash{0x42},
-			want:      forkId{0xb7, 0x41, 0x84, 0x5b},
+			want:      forkId{0xcf, 0x8c, 0x53, 0x37},
 		},
 		"GenesisB": {
 			genesisId: &common.Hash{0x43},
-			want:      forkId{0x42, 0xf1, 0xfb, 0xcc},
+			want:      forkId{0x3a, 0x3c, 0x2c, 0xa0},
 		},
 	}
 
@@ -128,7 +128,7 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 				Height:   sonicHeight,
 			},
 			wantSysContracts: contractRegistry{},
-			wantForkId:       hexutil.Bytes{0xb7, 0x41, 0x84, 0x5b},
+			wantForkId:       hexutil.Bytes{0xcf, 0x8c, 0x53, 0x37},
 		},
 		"Allegro": {
 			upgradeHeight: opera.UpgradeHeight{
@@ -136,7 +136,7 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 				Height:   allegroHeight,
 			},
 			wantSysContracts: contractRegistry{"HISTORY_STORAGE": params.HistoryStorageAddress},
-			wantForkId:       hexutil.Bytes{0xf2, 0x47, 0x39, 0x5b},
+			wantForkId:       hexutil.Bytes{0x85, 0x31, 0x9b, 0x46},
 		},
 		"GasSubsidies": {
 			upgradeHeight: opera.UpgradeHeight{
@@ -146,7 +146,7 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 				Height: gasSubsidiesHeight,
 			},
 			wantSysContracts: contractRegistry{"GAS_SUBSIDY_REGISTRY": registry.GetAddress()},
-			wantForkId:       hexutil.Bytes{0x86, 0x35, 0x24, 0x1},
+			wantForkId:       hexutil.Bytes{0x48, 0xc6, 0xf4, 0x31},
 		},
 		"Sonic+GasSubsidies": {
 			upgradeHeight: opera.UpgradeHeight{
@@ -158,7 +158,7 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 				Height: gasSubsidiesHeight,
 			},
 			wantSysContracts: contractRegistry{"GAS_SUBSIDY_REGISTRY": registry.GetAddress()},
-			wantForkId:       hexutil.Bytes{0x2c, 0xc2, 0xbf, 0x2d},
+			wantForkId:       hexutil.Bytes{0xfd, 0x4c, 0xe0, 0x2b},
 		},
 		"Allegro+GasSubsidies": {
 			upgradeHeight: opera.UpgradeHeight{
@@ -173,7 +173,7 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 				"HISTORY_STORAGE":      params.HistoryStorageAddress,
 				"GAS_SUBSIDY_REGISTRY": registry.GetAddress(),
 			},
-			wantForkId: hexutil.Bytes{0x3f, 0x80, 0x84, 0x27},
+			wantForkId: hexutil.Bytes{0xea, 0x1d, 0x79, 0x56},
 		},
 	}
 
