@@ -28,7 +28,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestTransaction_DelegationDesignationAddressAccessIsConsideredInAllegro(t *testing.T) {
+func TestRevisionIsForwardedCorrectly_DelegationDesignationAddressAccessIsConsideredInAllegro(t *testing.T) {
 	gas := uint64(21_000) // transaction base
 	gas += 7 * 3          // 7 push instructions
 	gas += 2_600          // cold access to recipient
@@ -131,4 +131,76 @@ func accountsToDeploy() []makefakegenesis.Account {
 	}
 
 	return []makefakegenesis.Account{account42, account43, account44}
+}
+
+func TestRevisionIsForwardedCorrectly_BrioEnablesOsakaInBlockProcessing(t *testing.T) {
+	code := []byte{
+		byte(vm.PUSH1), 0x00, // offset
+		byte(vm.CALLDATALOAD), // load input data
+		byte(vm.CLZ),          // count leading zeros
+		byte(vm.PUSH1), 0x00,  // size of log
+		byte(vm.PUSH1), 0x00, // offset of log
+		byte(vm.LOG1), // log the CLZ result as topic
+		byte(vm.STOP), // stop
+	}
+	account := makefakegenesis.Account{
+		Name:    "account",
+		Address: common.HexToAddress("0x42"),
+		Code:    code,
+	}
+
+	tests := map[string]struct {
+		upgrades       opera.Upgrades
+		expectedReturn []byte
+	}{
+		"Sonic": {
+			upgrades: opera.GetSonicUpgrades(),
+		},
+		"Allegro": {
+			upgrades: opera.GetAllegroUpgrades(),
+		},
+		"Brio": {
+			upgrades: opera.GetBrioUpgrades(),
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			net := StartIntegrationTestNetWithJsonGenesis(t, IntegrationTestNetOptions{
+				Upgrades: &test.upgrades,
+				Accounts: []makefakegenesis.Account{account},
+			})
+			client, err := net.GetClient()
+			require.NoError(t, err)
+			defer client.Close()
+			sender := MakeAccountWithBalance(t, net, big.NewInt(1e18))
+
+			txData := &types.LegacyTx{
+				Gas: 100_000,
+				To:  &account.Address,
+				Data: []byte{
+					0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 8 leading zero bytes
+					0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+					0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+					0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+				},
+			}
+			tx := CreateTransaction(t, net, txData, sender)
+			receipt, err := net.Run(tx)
+			require.NoError(t, err)
+
+			if !test.upgrades.Brio {
+				require.Equal(t, types.ReceiptStatusFailed, receipt.Status)
+			} else {
+				require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+
+				logs := receipt.Logs
+				require.Len(t, logs, 1)
+				topics := logs[0].Topics
+				require.Len(t, topics, 1)
+				expected := common.Hash(append(make([]byte, 31), 64)) // 64 leading zero bits
+				require.Equal(t, expected, topics[0])
+			}
+		})
+	}
 }
