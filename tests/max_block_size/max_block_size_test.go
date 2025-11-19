@@ -40,10 +40,12 @@ func TestMaxBlockSizeIsEnforced(t *testing.T) {
 	}
 
 	upgrades := map[string]opera.Upgrades{
-		// To reduce the resource requirements of this test, we only check
-		// one hardfork prior to Brio.
-		"preBrio": opera.GetAllegroUpgrades(),
-		"brio":    opera.GetBrioUpgrades(),
+		// Although this test increases the network rules way beyond safe limits,
+		// it is not possible to guarantee that blocks exceeding the block size limit
+		// will be created on every hardware. The tests purpose, of failing in case
+		// of an exceeded limit is still served by running it with the limiting enabled.
+		// "preBrio": opera.GetAllegroUpgrades(),
+		"brio": opera.GetBrioUpgrades(),
 	}
 
 	transactionsPerAccount := 10
@@ -137,7 +139,7 @@ func increaseLimits(t *testing.T, net *tests.IntegrationTestNet) {
 	modified.Economy.ShortGasPower.AllocPerSec = 50_000_000_000
 	modified.Economy.ShortGasPower.MaxAllocPeriod = 50_000_000_000
 	modified.Economy.LongGasPower = modified.Economy.ShortGasPower
-	modified.Emitter.Interval = 1_250_000_000
+	modified.Emitter.Interval = 1_00_000_000
 	tests.UpdateNetworkRules(t, net, modified)
 	net.AdvanceEpoch(t, 1)
 

@@ -930,9 +930,9 @@ func TestProcessUserTransactions_ForwardsBlockGasLimitToEVMProcessor(t *testing.
 	tx3 := types.NewTx(&types.LegacyTx{Nonce: 3, Gas: 1000})
 
 	// Set up receipts for each transaction
-	receipt1 := &types.Receipt{CumulativeGasUsed: 1000}
-	receipt2 := &types.Receipt{CumulativeGasUsed: 2000}
-	receipt3 := &types.Receipt{CumulativeGasUsed: 3000}
+	receipt1 := &types.Receipt{GasUsed: 1000}
+	receipt2 := &types.Receipt{GasUsed: 1000}
+	receipt3 := &types.Receipt{GasUsed: 1000}
 
 	userTransactionGasLimit := uint64(3000)
 
@@ -941,10 +941,10 @@ func TestProcessUserTransactions_ForwardsBlockGasLimitToEVMProcessor(t *testing.
 		Execute([]*types.Transaction{tx1}, userTransactionGasLimit).
 		Return([]evmcore.ProcessedTransaction{{Transaction: tx1, Receipt: receipt1}})
 	evmProcessor.EXPECT().
-		Execute([]*types.Transaction{tx2}, userTransactionGasLimit-receipt1.CumulativeGasUsed).
+		Execute([]*types.Transaction{tx2}, userTransactionGasLimit-receipt1.GasUsed).
 		Return([]evmcore.ProcessedTransaction{{Transaction: tx2, Receipt: receipt2}})
 	evmProcessor.EXPECT().
-		Execute([]*types.Transaction{tx3}, userTransactionGasLimit-receipt2.CumulativeGasUsed).
+		Execute([]*types.Transaction{tx3}, userTransactionGasLimit-receipt1.GasUsed-receipt2.GasUsed).
 		Return([]evmcore.ProcessedTransaction{{Transaction: tx3, Receipt: receipt3}})
 
 	orderedTxs := []*types.Transaction{tx1, tx2, tx3}
@@ -1085,16 +1085,16 @@ func TestProcessUserTransactions_InternalTransactionsHaveNoImpactOnTheUserTransa
 
 func TestProcessUserTransactions_SponsoredTxSizeIsAccountedCorrectly(t *testing.T) {
 	tests := map[string]struct {
-		gasPrice         int64
-		followingTxAdded bool
+		gasPrice      int64
+		isSponsoredTx bool
 	}{
 		"normal tx": {
-			gasPrice:         10,
-			followingTxAdded: true,
+			gasPrice:      10,
+			isSponsoredTx: false,
 		},
 		"sponsored tx": {
-			gasPrice:         0,
-			followingTxAdded: false,
+			gasPrice:      0,
+			isSponsoredTx: true,
 		},
 	}
 
@@ -1118,13 +1118,15 @@ func TestProcessUserTransactions_SponsoredTxSizeIsAccountedCorrectly(t *testing.
 			})
 
 			processedTx1 := []evmcore.ProcessedTransaction{{Transaction: tx1, Receipt: &types.Receipt{}}}
+			var sponsoredTransaction *types.Transaction
 			if test.gasPrice == 0 {
+				sponsoredTransaction = types.NewTx(&types.LegacyTx{
+					// Fill the tx to simulate the size of a fee charging tx
+					Data: make([]byte, subsidies.RlpEncodedFeeChargingTxSizeInBytes),
+				})
 				processedTx1 = append(processedTx1, evmcore.ProcessedTransaction{
-					Transaction: types.NewTx(&types.LegacyTx{
-						// Fill the tx to simulate the size of a fee charging tx
-						Data: make([]byte, subsidies.RlpEncodedFeeChargingTxSizeInBytes),
-					}),
-					Receipt: &types.Receipt{},
+					Transaction: sponsoredTransaction,
+					Receipt:     &types.Receipt{},
 				})
 			}
 
@@ -1144,12 +1146,16 @@ func TestProcessUserTransactions_SponsoredTxSizeIsAccountedCorrectly(t *testing.
 			require.Contains(t, gotTxs, tx0)
 			require.Contains(t, gotTxs, tx1)
 
-			if test.followingTxAdded {
-				require.Contains(t, gotTxs, tx2)
-				require.Equal(t, 0, skippedCount)
-			} else {
+			if test.isSponsoredTx {
+				// ensure the sponsored transaction is followed by the gas paying transaction
+				require.Equal(t, tx1, gotTxs[1])
+				require.Equal(t, sponsoredTransaction, gotTxs[2])
+
 				require.NotContains(t, gotTxs, tx2)
 				require.Equal(t, 1, skippedCount)
+			} else {
+				require.Contains(t, gotTxs, tx2)
+				require.Equal(t, 0, skippedCount)
 			}
 		})
 	}
