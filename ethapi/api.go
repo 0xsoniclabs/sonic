@@ -720,7 +720,7 @@ type configResponse struct {
 	Current *config `json:"current"`
 	// Next will remain nil since Sonic config activation does not depend on time.
 	Next *config `json:"next"`
-	// Last could be nill if only one upgrades heights exists.
+	// Last could be nil if only one upgrades heights exists.
 	Last *config `json:"last"`
 }
 
@@ -732,8 +732,7 @@ type configResponse struct {
 // activation. The "Current" config corresponds to the config active at the current block,
 // and the "Last" config (if available) corresponds to the config active before the current one.
 //
-// ActivationTime and BlobSchedule fields are not relevant in Sonic, hence are always nil.
-// ForkId is derived from the JSON representation of the active upgrade.
+// BlobSchedule field is not relevant in Sonic, hence is always nil.
 func (s *PublicBlockChainAPI) Config(ctx context.Context) (*configResponse, error) {
 
 	currentHeader := s.b.CurrentBlock().Header()
@@ -749,7 +748,6 @@ func (s *PublicBlockChainAPI) Config(ctx context.Context) (*configResponse, erro
 	currentUpgradeHeight := updateHeights[len(updateHeights)-1]
 	current, err := makeConfigFromUpgrade(ctx, s.b, currentUpgradeHeight)
 	if err != nil {
-		// this can only fail if json.Marshal fails, which is unexpected
 		return nil, fmt.Errorf("failed to get current config, %w", err)
 	}
 
@@ -760,7 +758,6 @@ func (s *PublicBlockChainAPI) Config(ctx context.Context) (*configResponse, erro
 		lastUpgradeHeight := updateHeights[lenHeights-2]
 		last, err = makeConfigFromUpgrade(ctx, s.b, lastUpgradeHeight)
 		if err != nil {
-			// this can only fail if json.Marshal fails, which is unexpected
 			return nil, fmt.Errorf("failed to get previous config, %w", err)
 		}
 	}

@@ -118,7 +118,7 @@ func MakeForkId(upgrade opera.UpgradeHeight, genesisId *common.Hash) (forkId, er
 
 	upgradeRlp, err := rlp.EncodeToBytes(upgrade.Upgrades)
 	if err != nil {
-		return forkId{}, fmt.Errorf("could not encode upgrade to json, %v", err)
+		return forkId{}, fmt.Errorf("could not encode upgrade to RLP, %v", err)
 	}
 	upgradeHash := crc32.ChecksumIEEE(upgradeRlp)
 	// update hash with block number of last change in upgrade.
