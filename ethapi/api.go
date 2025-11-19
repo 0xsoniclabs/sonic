@@ -724,6 +724,28 @@ type configResponse struct {
 	Last *config `json:"last"`
 }
 
+// config as described by https://eips.ethereum.org/EIPS/eip-7910
+type config struct {
+	// ActivationTime will remain 0 because in Sonic this is not relevant
+	ActivationTime uint64 `json:"activationTime"`
+	// BlobSchedule will remain nil because in Sonic this is not relevant
+	BlobSchedule *params.BlobConfig `json:"blobSchedule"`
+
+	ChainId *hexutil.Big `json:"chainId"`
+
+	// ForkId in sonic is a checksum derived from the json marshall of the corresponding upgrade
+	// ForkId is derived with this formula
+	// CRC32(Rlp(upgrade) || bigEndian(upgrade.Height) || genesisId)
+	ForkId hexutil.Bytes `json:"forkId"`
+
+	Precompiles     contractRegistry `json:"precompiles"`
+	SystemContracts contractRegistry `json:"systemContracts"`
+}
+
+// helper types to improve readability of the returned structure.
+type contractRegistry map[string]common.Address
+type forkId [4]byte
+
 // Config returns the current and previous (if any) network configs following the structure
 // described in EIP-7910.
 //
