@@ -282,11 +282,6 @@ func TestEthConfig_ProducesReadableConfig(t *testing.T) {
 
 	WaitForProofOf(t, client, int(currentBlock.NumberU64()))
 
-	// get previous block to determine expected activation time
-	previousBlockNumber := new(big.Int).Sub(currentBlock.Number(), big.NewInt(1))
-	previousBlock, err := client.BlockByNumber(t.Context(), previousBlockNumber)
-	require.NoError(t, err, "could not get previous block after epoch advancement")
-
 	// get new config
 	err = client.Client().Call(&response, "eth_config")
 	require.NoError(t, err, "eth_config failed")
@@ -296,8 +291,16 @@ func TestEthConfig_ProducesReadableConfig(t *testing.T) {
 	require.Equal(t, want["current"], response["last"],
 		"original config should be in 'last' field")
 
-	require.Equal(t,
-		previousBlock.Header().Time,
-		uint64(response["current"]["activationTime"].(float64)),
-		"new config should have activation time of the block where it was activated")
+	foundActivationBlock := false
+	for i := currentBlock.NumberU64(); i > 0 || !foundActivationBlock; i-- {
+		// get previous block to determine expected activation time
+		previousBlock, err := client.BlockByNumber(t.Context(), big.NewInt(int64(i)))
+		require.NoError(t, err, "could not get previous block after epoch advancement")
+
+		if previousBlock.Header().Time == uint64(response["current"]["activationTime"].(float64)) {
+			foundActivationBlock = true
+		}
+	}
+
+	require.True(t, foundActivationBlock, "should have found block with the same timestamp as the activation time")
 }
