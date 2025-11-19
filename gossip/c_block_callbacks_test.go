@@ -950,7 +950,7 @@ func TestProcessUserTransactions_ForwardsBlockGasLimitToEVMProcessor(t *testing.
 	orderedTxs := []*types.Transaction{tx1, tx2, tx3}
 	processUserTransactions(evmProcessor, blockBuilder, orderedTxs, userTransactionGasLimit)
 
-	// Only tx1, tx2 and tx3 should be included
+	// All transactions should be included
 	gotTxs := blockBuilder.GetTransactions()
 	require.Equal(t, types.Transactions{tx1, tx2, tx3}, gotTxs)
 }
