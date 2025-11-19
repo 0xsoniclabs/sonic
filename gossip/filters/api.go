@@ -33,9 +33,7 @@ import (
 	ethereum "github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
@@ -195,7 +193,6 @@ func (api *PublicFilterAPI) NewPendingTransactions(ctx context.Context, fullTx *
 				chainConfig := api.backend.ChainConfig(idx.Block(latest.Number.Uint64()))
 				for _, tx := range txs {
 					if fullTx != nil && *fullTx {
-						// rpcTx := ethapi.NewRPCPendingTransaction(tx, latest, chainConfig)
 						rpcTx := ethapi.NewRPCPendingTransaction(tx, latest.BaseFee, chainConfig.ChainID)
 						_ = notifier.Notify(rpcSub.ID, rpcTx)
 					} else {
@@ -472,7 +469,7 @@ func (api *PublicFilterAPI) GetFilterChanges(id rpc.ID) (interface{}, error) {
 				chainConfig := api.backend.ChainConfig(idx.Block(0))
 				txs := make([]*ethapi.RPCTransaction, 0, len(f.txs))
 				for _, tx := range f.txs {
-					txs = append(txs, ethapi.NewRPCPendingTransaction(tx, eip1559.CalcBaseFee(chainConfig, latest.EthHeader()), chainConfig.ChainID))
+					txs = append(txs, ethapi.NewRPCPendingTransaction(tx, latest.BaseFee, chainConfig.ChainID))
 				}
 				f.txs = nil
 				return txs, nil
@@ -515,21 +512,6 @@ func returnLogs(logs []*types.Log) []*types.Log {
 		}
 	}
 	return logs
-}
-
-// NewRPCPendingTransaction returns a pending transaction that will serialize to the RPC representation
-func NewRPCPendingTransaction(tx *types.Transaction, current *types.Header, config *params.ChainConfig) *ethapi.RPCTransaction {
-	var (
-		baseFee     *big.Int
-		blockNumber = uint64(0)
-		blockTime   = uint64(0)
-	)
-	if current != nil {
-		baseFee = eip1559.CalcBaseFee(config, current)
-		blockNumber = current.Number.Uint64()
-		blockTime = current.Time
-	}
-	return ethapi.NewRPCTransaction(tx, common.Hash{}, blockNumber, blockTime, baseFee, config.ChainID)
 }
 
 // UnmarshalJSON sets *args fields with given data.
