@@ -20,6 +20,7 @@ import (
 	"math/big"
 
 	innerSubstate "github.com/0xsoniclabs/sonic/substate"
+	recordSubstate "github.com/0xsoniclabs/substate"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -190,9 +191,11 @@ func (p *OperaEVMProcessor) Finalize() (evmBlock *evmcore.EvmBlock, numSkipped i
 	evmBlock.Root = p.statedb.GetStateHash()
 
 	// record-replay
-	err := innerSubstate.PutStateHash(blockInt, evmBlock.Root.Bytes())
-	if err != nil {
-		panic("unable to put state hash: " + err.Error())
+	if recordSubstate.RecordReplay {
+		err := innerSubstate.PutStateHash(blockInt, evmBlock.Root.Bytes())
+		if err != nil {
+			panic("unable to put state hash: " + err.Error())
+		}
 	}
 	return
 }
