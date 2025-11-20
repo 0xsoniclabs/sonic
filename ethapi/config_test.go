@@ -190,7 +190,7 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 				}(),
 				Height: gasSubsidiesHeight,
 			},
-			wantSysContracts: contractRegistry{"GAS_SUBSIDY_REGISTRY": registry.GetAddress()},
+			wantSysContracts: contractRegistry{"GAS_SUBSIDY_REGISTRY_ADDRESS": registry.GetAddress()},
 		},
 		"Sonic+GasSubsidies": {
 			upgradeHeight: opera.UpgradeHeight{
@@ -201,7 +201,7 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 				}(),
 				Height: gasSubsidiesHeight,
 			},
-			wantSysContracts: contractRegistry{"GAS_SUBSIDY_REGISTRY": registry.GetAddress()},
+			wantSysContracts: contractRegistry{"GAS_SUBSIDY_REGISTRY_ADDRESS": registry.GetAddress()},
 		},
 		"Allegro+GasSubsidies": {
 			upgradeHeight: opera.UpgradeHeight{
@@ -213,8 +213,8 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 				Height: gasSubsidiesHeight,
 			},
 			wantSysContracts: contractRegistry{
-				"HISTORY_STORAGE_ADDRESS": params.HistoryStorageAddress,
-				"GAS_SUBSIDY_REGISTRY":    registry.GetAddress(),
+				"HISTORY_STORAGE_ADDRESS":      params.HistoryStorageAddress,
+				"GAS_SUBSIDY_REGISTRY_ADDRESS": registry.GetAddress(),
 			},
 		},
 	}
@@ -222,10 +222,16 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			chainId := big.NewInt(250)
+			chainCfg := opera.CreateTransientEvmChainConfig(
+				chainId.Uint64(),
+				[]opera.UpgradeHeight{test.upgradeHeight},
+				test.upgradeHeight.Height,
+			)
 
 			ctrl := gomock.NewController(t)
 			backend := NewMockBackend(ctrl)
 			backend.EXPECT().ChainID().Return(chainId)
+			backend.EXPECT().ChainConfig(gomock.Any()).Return(chainCfg)
 			backend.EXPECT().GetGenesisID().Return(common.Hash{0x42})
 			backend.EXPECT().BlockByNumber(gomock.Any(), rpc.BlockNumber(int64(test.upgradeHeight.Height))).
 				Return(&evmcore.EvmBlock{EvmHeader: evmcore.EvmHeader{Time: inter.Timestamp(1)}}, nil)
@@ -242,7 +248,15 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 func TestMakeConfigFromUpgrade_ReportsErrors_WhenBlockByNumberReturnsAnError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	backend := NewMockBackend(ctrl)
-	backend.EXPECT().ChainID().Return(big.NewInt(250))
+
+	chainId := big.NewInt(250)
+	backend.EXPECT().ChainID().Return(chainId)
+	chainCfg := opera.CreateTransientEvmChainConfig(
+		chainId.Uint64(),
+		[]opera.UpgradeHeight{{}},
+		0,
+	)
+	backend.EXPECT().ChainConfig(gomock.Any()).Return(chainCfg)
 	backend.EXPECT().GetGenesisID().Return(common.Hash{0x42})
 
 	backend.EXPECT().BlockByNumber(gomock.Any(), rpc.BlockNumber(int64(0))).
@@ -255,7 +269,15 @@ func TestMakeConfigFromUpgrade_ReportsErrors_WhenBlockByNumberReturnsAnError(t *
 func TestMakeConfigFromUpgrade_ReportsError_WhenBlockByNumberReturnsNilBlock(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	backend := NewMockBackend(ctrl)
-	backend.EXPECT().ChainID().Return(big.NewInt(250))
+
+	chainId := big.NewInt(250)
+	backend.EXPECT().ChainID().Return(chainId)
+	chainCfg := opera.CreateTransientEvmChainConfig(
+		chainId.Uint64(),
+		[]opera.UpgradeHeight{{}},
+		0,
+	)
+	backend.EXPECT().ChainConfig(gomock.Any()).Return(chainCfg)
 	backend.EXPECT().GetGenesisID().Return(common.Hash{0x42})
 
 	backend.EXPECT().BlockByNumber(gomock.Any(), rpc.BlockNumber(int64(0))).
@@ -345,10 +367,20 @@ func TestEIP7910_Config_ReturnsConfigs(t *testing.T) {
 		"only current block config": {
 			backendSetup: func(mockBackend *MockBackend) {
 				mockBackend.EXPECT().CurrentBlock().Return(&currentBlock)
-				mockBackend.EXPECT().GetUpgradeHeights().
-					Return([]opera.UpgradeHeight{{
+				upgradeHeights := []opera.UpgradeHeight{
+					{
 						Upgrades: opera.GetSonicUpgrades(),
-						Height:   idx.Block(1)}})
+						Height:   idx.Block(1),
+					},
+				}
+				mockBackend.EXPECT().GetUpgradeHeights().Return(upgradeHeights)
+				chainConfig := opera.CreateTransientEvmChainConfig(
+					chainId.Uint64(),
+					upgradeHeights,
+					idx.Block(currentBlock.Number.Uint64()),
+				)
+				mockBackend.EXPECT().ChainConfig(gomock.Any()).Return(chainConfig)
+
 			},
 			wantConfig: func() configResponse {
 				sonicId, err := MakeForkId(opera.MakeUpgradeHeight(opera.GetSonicUpgrades(), 1), common.Hash{0x42})
@@ -365,17 +397,30 @@ func TestEIP7910_Config_ReturnsConfigs(t *testing.T) {
 		"current and last block configs": {
 			backendSetup: func(mockBackend *MockBackend) {
 				mockBackend.EXPECT().CurrentBlock().Return(&currentBlock)
-				mockBackend.EXPECT().GetUpgradeHeights().
-					Return([]opera.UpgradeHeight{
-						{
-							Upgrades: opera.GetSonicUpgrades(),
-							Height:   idx.Block(1),
-						},
-						{
-							Upgrades: opera.GetAllegroUpgrades(),
-							Height:   idx.Block(5),
-						},
-					})
+				upgradeHeights := []opera.UpgradeHeight{
+					{
+						Upgrades: opera.GetSonicUpgrades(),
+						Height:   idx.Block(1),
+					},
+					{
+						Upgrades: opera.GetAllegroUpgrades(),
+						Height:   idx.Block(5),
+					},
+				}
+				mockBackend.EXPECT().GetUpgradeHeights().Return(upgradeHeights)
+				currentChainConfig := opera.CreateTransientEvmChainConfig(
+					chainId.Uint64(),
+					upgradeHeights,
+					idx.Block(5),
+				)
+				mockBackend.EXPECT().ChainConfig(idx.Block(5)).Return(currentChainConfig)
+				lastChainConfig := opera.CreateTransientEvmChainConfig(
+					chainId.Uint64(),
+					upgradeHeights,
+					idx.Block(1),
+				)
+				mockBackend.EXPECT().ChainConfig(idx.Block(1)).Return(lastChainConfig)
+
 			},
 			wantConfig: func() configResponse {
 				sonicId, err := MakeForkId(opera.MakeUpgradeHeight(opera.GetSonicUpgrades(), 1), common.Hash{0x42})

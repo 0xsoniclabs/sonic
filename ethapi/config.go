@@ -42,11 +42,7 @@ func makeConfigFromUpgrade(
 ) (*config, error) {
 
 	chainID := b.ChainID()
-	chainCfg := opera.CreateTransientEvmChainConfig(
-		chainID.Uint64(),
-		[]opera.UpgradeHeight{upgradeHeight},
-		upgradeHeight.Height,
-	)
+	chainCfg := b.ChainConfig(upgradeHeight.Height)
 
 	precompiled := make(contractRegistry)
 	chainCfgRules := chainCfg.Rules(big.NewInt(int64(upgradeHeight.Height)), true, uint64(0))
@@ -88,7 +84,7 @@ func activeSystemContracts(upgrade opera.Upgrades) contractRegistry {
 		sysContracts["HISTORY_STORAGE_ADDRESS"] = params.HistoryStorageAddress
 	}
 	if upgrade.GasSubsidies {
-		sysContracts["GAS_SUBSIDY_REGISTRY"] = registry.GetAddress()
+		sysContracts["GAS_SUBSIDY_REGISTRY_ADDRESS"] = registry.GetAddress()
 	}
 	return sysContracts
 }
