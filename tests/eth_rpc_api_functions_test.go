@@ -37,7 +37,6 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/node"
-	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethereum/go-ethereum/rpc/rpc_test_utils"
 	"github.com/stretchr/testify/require"
@@ -255,7 +254,7 @@ func TestEthConfig_ProducesReadableConfig(t *testing.T) {
 				"BLS12_PAIRING_CHECK":  "0x000000000000000000000000000000000000000f",
 				"P256VERIFY":           "0x0000000000000000000000000000000000000100",
 			},
-			"systemContracts": map[string]any{"HISTORY_STORAGE": strings.ToLower(fmt.Sprintf("%s", params.HistoryStorageAddress))},
+			"systemContracts": map[string]any{"HISTORY_STORAGE_ADDRESS": "0x0000f90827f1c53a10cb7a02335b175320002935"},
 		},
 		"next": nil,
 		"last": nil,

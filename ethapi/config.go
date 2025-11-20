@@ -85,7 +85,7 @@ func makeConfigFromUpgrade(
 func activeSystemContracts(upgrade opera.Upgrades) contractRegistry {
 	sysContracts := make(contractRegistry)
 	if upgrade.Allegro {
-		sysContracts["HISTORY_STORAGE"] = params.HistoryStorageAddress
+		sysContracts["HISTORY_STORAGE_ADDRESS"] = params.HistoryStorageAddress
 	}
 	if upgrade.GasSubsidies {
 		sysContracts["GAS_SUBSIDY_REGISTRY"] = registry.GetAddress()
