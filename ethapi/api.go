@@ -720,7 +720,7 @@ type configResponse struct {
 	Current *config `json:"current"`
 	// Next will remain nil since Sonic config activation does not depend on time.
 	Next *config `json:"next"`
-	// Last could be nil if only one upgrades heights exists.
+	// Last is the config active before the current one and could be nil if only one upgrades heights exists.
 	Last *config `json:"last"`
 }
 
@@ -747,7 +747,7 @@ type contractRegistry map[string]common.Address
 type forkId [4]byte
 
 // Config returns the current and previous (if any) network configs following the structure
-// described in EIP-7910.
+// described in https://eips.ethereum.org/EIPS/eip-7910.
 //
 // In Sonic, config changes are based on block heights (upgrade heights) rather than
 // activation times. Therefore, the "Next" config is always nil, as there is no time-based
