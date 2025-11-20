@@ -29,6 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	notify "github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
@@ -45,6 +46,8 @@ type Backend interface {
 	GetReceiptsByNumber(ctx context.Context, number rpc.BlockNumber) (types.Receipts, error)
 	GetLogs(ctx context.Context, blockHash common.Hash) ([][]*types.Log, error)
 	GetTxPosition(txid common.Hash) *evmstore.TxPosition
+	CurrentBlock() *evmcore.EvmBlock
+	ChainConfig(blockHeight idx.Block) *params.ChainConfig
 
 	SubscribeNewBlockNotify(ch chan<- evmcore.ChainHeadNotify) notify.Subscription
 	SubscribeNewTxsNotify(chan<- evmcore.NewTxsNotify) notify.Subscription
