@@ -71,7 +71,7 @@ func TestForkId_FollowsFormula(t *testing.T) {
 						// Get ForkId from MakeForkId.
 						gotForkId, err := MakeForkId(
 							opera.MakeUpgradeHeight(upgrades, blockHeight),
-							&genesisHash)
+							genesisHash)
 						require.NoError(t, err, "makeForkId failed")
 
 						require.Equal(t, expectedForkId, gotForkId,
@@ -121,7 +121,7 @@ func TestForkId_UpgradesProduceDifferentIds(t *testing.T) {
 		},
 	}
 
-	genesisHash := &common.Hash{0x42}
+	genesisHash := common.Hash{0x42}
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -137,15 +137,15 @@ func TestForkId_ProducesDifferentIds_ForDifferentGenesis(t *testing.T) {
 	sonicUpgrades := opera.MakeUpgradeHeight(opera.GetSonicUpgrades(), 1)
 
 	tests := map[string]struct {
-		genesisId *common.Hash
+		genesisId common.Hash
 		want      forkId
 	}{
 		"GenesisA": {
-			genesisId: &common.Hash{0x42},
+			genesisId: common.Hash{0x42},
 			want:      forkId{0x25, 0x5f, 0x4f, 0x31},
 		},
 		"GenesisB": {
-			genesisId: &common.Hash{0x43},
+			genesisId: common.Hash{0x43},
 			want:      forkId{0xd4, 0x85, 0x4a, 0x9b},
 		},
 	}
@@ -157,14 +157,6 @@ func TestForkId_ProducesDifferentIds_ForDifferentGenesis(t *testing.T) {
 			require.Equal(t, test.want, got, "unexpected fork hash")
 		})
 	}
-}
-
-func TestMakeConfigFromUpgrade_ReturnsError_OnNilGenesisID(t *testing.T) {
-	upgradeHeight := opera.MakeUpgradeHeight(opera.GetSonicUpgrades(), 1)
-
-	_, err := MakeForkId(upgradeHeight, nil)
-	require.ErrorContains(t, err, "genesis ID is nil",
-		"expected error from makeConfigFromUpgrade with nil genesis ID")
 }
 
 func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
@@ -370,7 +362,7 @@ func TestEIP7910_Config_ReturnsConfigs(t *testing.T) {
 						Height:   idx.Block(1)}})
 			},
 			wantConfig: func() configResponse {
-				sonicId, err := MakeForkId(opera.MakeUpgradeHeight(opera.GetSonicUpgrades(), 1), &common.Hash{0x42})
+				sonicId, err := MakeForkId(opera.MakeUpgradeHeight(opera.GetSonicUpgrades(), 1), common.Hash{0x42})
 				require.NoError(t, err, "makeForkId failed for sonic upgrades")
 				return configResponse{Current: &config{
 					ChainId:         (*hexutil.Big)(chainId),
@@ -397,10 +389,10 @@ func TestEIP7910_Config_ReturnsConfigs(t *testing.T) {
 					})
 			},
 			wantConfig: func() configResponse {
-				sonicId, err := MakeForkId(opera.MakeUpgradeHeight(opera.GetSonicUpgrades(), 1), &common.Hash{0x42})
+				sonicId, err := MakeForkId(opera.MakeUpgradeHeight(opera.GetSonicUpgrades(), 1), common.Hash{0x42})
 				require.NoError(t, err, "makeForkId failed for sonic upgrades")
 
-				allegroId, err := MakeForkId(opera.MakeUpgradeHeight(opera.GetAllegroUpgrades(), 5), &common.Hash{0x42})
+				allegroId, err := MakeForkId(opera.MakeUpgradeHeight(opera.GetAllegroUpgrades(), 5), common.Hash{0x42})
 				require.NoError(t, err, "makeForkId failed for allegro upgrades")
 
 				return configResponse{

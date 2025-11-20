@@ -92,8 +92,8 @@ func (b *EthAPIBackend) CurrentBlock() *evmcore.EvmBlock {
 	return b.state.CurrentBlock()
 }
 
-func (b *EthAPIBackend) GetGenesisID() *common.Hash {
-	return (*common.Hash)(b.svc.store.GetGenesisID())
+func (b *EthAPIBackend) GetGenesisID() common.Hash {
+	return (common.Hash)(b.svc.store.GetGenesisID())
 }
 
 // HistoryPruningCutoff returns the block height at which pruning was done.

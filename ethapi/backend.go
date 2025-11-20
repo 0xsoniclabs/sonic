@@ -94,7 +94,7 @@ type Backend interface {
 	ChainID() *big.Int
 	CurrentBlock() *evmcore.EvmBlock
 	GetUpgradeHeights() []opera.UpgradeHeight
-	GetGenesisID() *common.Hash
+	GetGenesisID() common.Hash
 
 	GetNetworkRules(ctx context.Context, blockHeight idx.Block) (*opera.Rules, error)
 

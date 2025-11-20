@@ -295,10 +295,10 @@ func (mr *MockBackendMockRecorder) GetEventPayload(ctx, shortEventID any) *gomoc
 }
 
 // GetGenesisID mocks base method.
-func (m *MockBackend) GetGenesisID() *common.Hash {
+func (m *MockBackend) GetGenesisID() common.Hash {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetGenesisID")
-	ret0, _ := ret[0].(*common.Hash)
+	ret0, _ := ret[0].(common.Hash)
 	return ret0
 }
 

@@ -98,11 +98,7 @@ func activeSystemContracts(upgrade opera.Upgrades) contractRegistry {
 // the block number, and the genesis ID.
 //
 // CRC32(Rlp(upgrade) || bigEndian(upgrade.Height) || genesisId)
-func MakeForkId(upgrade opera.UpgradeHeight, genesisId *common.Hash) (forkId, error) {
-	if genesisId == nil {
-		return forkId{}, fmt.Errorf("genesis ID is nil")
-	}
-
+func MakeForkId(upgrade opera.UpgradeHeight, genesisId common.Hash) (forkId, error) {
 	upgradeRlp, err := rlp.EncodeToBytes(upgrade.Upgrades)
 	if err != nil {
 		return forkId{}, fmt.Errorf("could not encode upgrade to RLP, %v", err)

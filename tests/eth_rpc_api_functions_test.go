@@ -225,7 +225,7 @@ func TestEthConfig_ProducesReadableConfig(t *testing.T) {
 		Height:   1,
 	}
 	genesisId := net.GetGenesisId()
-	expectedForkId, err := ethapi.MakeForkId(upgradeHeight, &genesisId)
+	expectedForkId, err := ethapi.MakeForkId(upgradeHeight, genesisId)
 	require.NoError(t, err, "could not make expected fork ID")
 
 	want := map[string]map[string]any{
