@@ -29,25 +29,25 @@ import (
 	"github.com/0xsoniclabs/sonic/inter"
 )
 
-func (s *Store) GetGenesisID() *hash.Hash {
+func (s *Store) GetGenesisID() hash.Hash {
 	if v := s.cache.Genesis.Load(); v != nil {
 		val := v.(hash.Hash)
-		return &val
+		return val
 	}
 	valBytes, err := s.table.Genesis.Get([]byte("g"))
 	if err != nil {
 		s.Log.Crit("Failed to get key-value", "err", err)
 	}
 	if len(valBytes) == 0 {
-		return nil
+		return hash.Hash{}
 	}
 	val := hash.BytesToHash(valBytes)
 	s.cache.Genesis.Store(val)
-	return &val
+	return val
 }
 
 func (s *Store) fakeGenesisHash() hash.Event {
-	fakeGenesisHash := hash.Event(*s.GetGenesisID())
+	fakeGenesisHash := hash.Event(s.GetGenesisID())
 	for i := range fakeGenesisHash[:8] {
 		fakeGenesisHash[i] = 0
 	}
