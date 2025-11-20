@@ -18,6 +18,7 @@ package makefakegenesis
 
 import (
 	"testing"
+	"time"
 
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
@@ -79,4 +80,14 @@ func TestJsonGenesis_GetGenesisIdFromJson(t *testing.T) {
 	require.NotZero(t, got)
 
 	require.Equal(t, want, got, "unexpected genesis ID")
+}
+
+func TestJsonGenesis_GetGenesisIdFromJson_ReportsErrorsFromApplyGenesis(t *testing.T) {
+
+	genesis := GenerateFakeJsonGenesis(opera.GetSonicUpgrades(), CreateEqualValidatorStake(1))
+	genesis.BlockZeroTime = time.Time{} // invalid time
+
+	_, err := GetGenesisIdFromJson(genesis)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "failed to apply genesis json")
 }
