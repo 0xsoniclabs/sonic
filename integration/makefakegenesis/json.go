@@ -45,6 +45,7 @@ import (
 	"github.com/0xsoniclabs/sonic/scc/bls"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/0xsoniclabs/sonic/utils"
+	"github.com/0xsoniclabs/sonic/utils/caution"
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
@@ -221,6 +222,15 @@ func GenerateFakeJsonGenesis(
 
 	jsonGenesis.GenesisCommittee = &committee
 	return jsonGenesis
+}
+
+func GetGenesisIdFromJson(json *GenesisJson) (common.Hash, error) {
+	store, err := ApplyGenesisJson(json)
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("failed to apply genesis json; %v", err)
+	}
+	defer caution.CloseAndReportError(nil, store, "failed to close the genesis store")
+	return common.Hash(store.Genesis().GenesisID), nil
 }
 
 func ApplyGenesisJson(json *GenesisJson) (*genesisstore.Store, error) {
