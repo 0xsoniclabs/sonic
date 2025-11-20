@@ -47,7 +47,7 @@ func ExportGenesis(ctx context.Context, gdb *gossip.Store, includeArchive bool, 
 	}
 
 	header := genesis.Header{
-		GenesisID:   *gdb.GetGenesisID(),
+		GenesisID:   gdb.GetGenesisID(),
 		NetworkID:   gdb.GetEpochState().Rules.NetworkID,
 		NetworkName: gdb.GetEpochState().Rules.Name,
 	}
