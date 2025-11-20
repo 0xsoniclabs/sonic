@@ -226,7 +226,7 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			backend := NewMockBackend(ctrl)
 			backend.EXPECT().ChainID().Return(chainId)
-			backend.EXPECT().GetGenesisID().Return(&common.Hash{0x42})
+			backend.EXPECT().GetGenesisID().Return(common.Hash{0x42})
 			backend.EXPECT().BlockByNumber(gomock.Any(), rpc.BlockNumber(int64(test.upgradeHeight.Height))).
 				Return(&evmcore.EvmBlock{EvmHeader: evmcore.EvmHeader{Time: inter.Timestamp(1)}}, nil)
 
@@ -239,22 +239,11 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 	}
 }
 
-func TestMakeConfigFromUpgrade_ReportsErrors_WhenMakeForkIdFails(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	backend := NewMockBackend(ctrl)
-	backend.EXPECT().ChainID().Return(big.NewInt(250))
-
-	backend.EXPECT().GetGenesisID().Return(nil)
-
-	_, err := makeConfigFromUpgrade(t.Context(), backend, opera.UpgradeHeight{})
-	require.ErrorContains(t, err, "could not make fork id")
-}
-
 func TestMakeConfigFromUpgrade_ReportsErrors_WhenBlockByNumberReturnsAnError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	backend := NewMockBackend(ctrl)
 	backend.EXPECT().ChainID().Return(big.NewInt(250))
-	backend.EXPECT().GetGenesisID().Return(&common.Hash{0x42})
+	backend.EXPECT().GetGenesisID().Return(common.Hash{0x42})
 
 	backend.EXPECT().BlockByNumber(gomock.Any(), rpc.BlockNumber(int64(0))).
 		Return(nil, fmt.Errorf("some error"))
@@ -267,7 +256,7 @@ func TestMakeConfigFromUpgrade_ReportsError_WhenBlockByNumberReturnsNilBlock(t *
 	ctrl := gomock.NewController(t)
 	backend := NewMockBackend(ctrl)
 	backend.EXPECT().ChainID().Return(big.NewInt(250))
-	backend.EXPECT().GetGenesisID().Return(&common.Hash{0x42})
+	backend.EXPECT().GetGenesisID().Return(common.Hash{0x42})
 
 	backend.EXPECT().BlockByNumber(gomock.Any(), rpc.BlockNumber(int64(0))).
 		Return(nil, nil)
@@ -419,7 +408,7 @@ func TestEIP7910_Config_ReturnsConfigs(t *testing.T) {
 			backend := NewMockBackend(ctrl)
 			backend.EXPECT().ChainID().Return(chainId).AnyTimes()
 			// could be called once or twice depending on the test case.
-			backend.EXPECT().GetGenesisID().Return(&common.Hash{0x42}).AnyTimes()
+			backend.EXPECT().GetGenesisID().Return(common.Hash{0x42}).AnyTimes()
 			backend.EXPECT().BlockByNumber(gomock.Any(), gomock.Any()).
 				Return(&evmcore.EvmBlock{EvmHeader: evmcore.EvmHeader{Time: inter.Timestamp(1)}}, nil).AnyTimes()
 

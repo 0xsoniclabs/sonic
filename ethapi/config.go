@@ -56,7 +56,7 @@ func makeConfigFromUpgrade(
 
 	forkId, err := MakeForkId(upgradeHeight, b.GetGenesisID())
 	if err != nil {
-		// this can only fail if json.Marshal fails, which is unexpected
+		// this can only fail if RLP encoding fails, which is unexpected
 		return nil, fmt.Errorf("could not make fork id, %v", err)
 	}
 
