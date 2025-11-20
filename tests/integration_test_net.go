@@ -285,7 +285,7 @@ func startHeapProfiler(tb testing.TB) {
 // The network start procedure will create a temporary directory and populate with
 // a network genesis block. To retrieve the directory path, use the GetDirectory.
 func StartIntegrationTestNet(
-	t *testing.T,
+	t testing.TB,
 	options ...IntegrationTestNetOptions,
 ) *IntegrationTestNet {
 	t.Helper()
@@ -297,7 +297,7 @@ func StartIntegrationTestNet(
 // is mainly intended for demo and small scale test networks used for development
 // and integration testing in Norma.
 func StartIntegrationTestNetWithFakeGenesis(
-	t *testing.T,
+	t testing.TB,
 	options ...IntegrationTestNetOptions,
 ) *IntegrationTestNet {
 	t.Helper()
@@ -334,7 +334,7 @@ func StartIntegrationTestNetWithFakeGenesis(
 // is the genesis procedure used in long-running production networks like the
 // Sonic mainnet and the testnet.
 func StartIntegrationTestNetWithJsonGenesis(
-	t *testing.T,
+	t testing.TB,
 	options ...IntegrationTestNetOptions,
 ) *IntegrationTestNet {
 	t.Helper()
@@ -378,7 +378,7 @@ func StartIntegrationTestNetWithJsonGenesis(
 }
 
 func startIntegrationTestNet(
-	t *testing.T,
+	t testing.TB,
 	directory string,
 	sonicToolArguments []string,
 	options IntegrationTestNetOptions,
