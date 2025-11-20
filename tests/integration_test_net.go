@@ -125,6 +125,9 @@ type IntegrationTestNetSession interface {
 	// GetClientConnectedToNode returns a client connected to the specified node
 	// in the test network.
 	GetClientConnectedToNode(node int) (*PooledEhtClient, error)
+
+	// GetGenesisJson returns the genesis JSON used to start the network.
+	GetGenesisId() common.Hash
 }
 
 // AsPointer is a utility function that returns a pointer to the given value.
@@ -189,9 +192,10 @@ type IntegrationTestNetOptions struct {
 // integration test networks can also be used for automated integration and
 // regression tests for client code.
 type IntegrationTestNet struct {
-	options IntegrationTestNetOptions
-	genesis *makefakegenesis.GenesisJson
-	nodes   []integrationTestNode
+	options   IntegrationTestNetOptions
+	genesis   *makefakegenesis.GenesisJson
+	genesisId common.Hash
+	nodes     []integrationTestNode
 
 	sessionsMutex sync.Mutex
 	Session
@@ -367,6 +371,9 @@ func StartIntegrationTestNetWithJsonGenesis(
 	require.NoError(t, err, "failed to start integration test network with json genesis")
 
 	net.genesis = jsonGenesis
+	net.genesisId, err = makefakegenesis.GetGenesisIdFromJson(jsonGenesis)
+	require.NoError(t, err, "failed to get genesis ID from json genesis")
+
 	return net
 }
 
@@ -1161,6 +1168,10 @@ func (s *Session) GetWebSocketClient() (*ethClient, error) {
 
 func (s *Session) NumNodes() int {
 	return s.net.NumNodes()
+}
+
+func (s *Session) GetGenesisId() common.Hash {
+	return s.net.genesisId
 }
 
 // validateAndSanitizeOptions ensures that the options are valid and sets the default values.
