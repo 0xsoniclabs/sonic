@@ -189,7 +189,7 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 				Upgrades: opera.GetAllegroUpgrades(),
 				Height:   allegroHeight,
 			},
-			wantSysContracts: contractRegistry{"HISTORY_STORAGE": params.HistoryStorageAddress},
+			wantSysContracts: contractRegistry{"HISTORY_STORAGE_ADDRESS": params.HistoryStorageAddress},
 		},
 		"GasSubsidies": {
 			upgradeHeight: opera.UpgradeHeight{
@@ -221,8 +221,8 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 				Height: gasSubsidiesHeight,
 			},
 			wantSysContracts: contractRegistry{
-				"HISTORY_STORAGE":      params.HistoryStorageAddress,
-				"GAS_SUBSIDY_REGISTRY": registry.GetAddress(),
+				"HISTORY_STORAGE_ADDRESS": params.HistoryStorageAddress,
+				"GAS_SUBSIDY_REGISTRY":    registry.GetAddress(),
 			},
 		},
 	}
