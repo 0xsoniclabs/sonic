@@ -1118,14 +1118,14 @@ func TestProcessUserTransactions_SponsoredTxSizeIsAccountedCorrectly(t *testing.
 			})
 
 			processedTx1 := []evmcore.ProcessedTransaction{{Transaction: tx1, Receipt: &types.Receipt{}}}
-			var sponsoredTransaction *types.Transaction
+			var feeChargingTransaction *types.Transaction
 			if test.gasPrice == 0 {
-				sponsoredTransaction = types.NewTx(&types.LegacyTx{
+				feeChargingTransaction = types.NewTx(&types.LegacyTx{
 					// Fill the tx to simulate the size of a fee charging tx
 					Data: make([]byte, subsidies.RlpEncodedFeeChargingTxSizeInBytes),
 				})
 				processedTx1 = append(processedTx1, evmcore.ProcessedTransaction{
-					Transaction: sponsoredTransaction,
+					Transaction: feeChargingTransaction,
 					Receipt:     &types.Receipt{},
 				})
 			}
@@ -1149,7 +1149,7 @@ func TestProcessUserTransactions_SponsoredTxSizeIsAccountedCorrectly(t *testing.
 			if test.isSponsoredTx {
 				// ensure the sponsored transaction is followed by the gas paying transaction
 				require.Equal(t, tx1, gotTxs[1])
-				require.Equal(t, sponsoredTransaction, gotTxs[2])
+				require.Equal(t, feeChargingTransaction, gotTxs[2])
 
 				require.NotContains(t, gotTxs, tx2)
 				require.Equal(t, 1, skippedCount)

@@ -20,8 +20,10 @@ import (
 	"fmt"
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
+	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum/common"
@@ -139,7 +141,7 @@ func increaseLimits(t *testing.T, net *tests.IntegrationTestNet) {
 	modified.Economy.ShortGasPower.AllocPerSec = 50_000_000_000
 	modified.Economy.ShortGasPower.MaxAllocPeriod = 50_000_000_000
 	modified.Economy.LongGasPower = modified.Economy.ShortGasPower
-	modified.Emitter.Interval = 1_00_000_000
+	modified.Emitter.Interval = inter.Timestamp(1 * time.Second)
 	tests.UpdateNetworkRules(t, net, modified)
 	net.AdvanceEpoch(t, 1)
 
