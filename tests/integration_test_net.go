@@ -189,9 +189,10 @@ type IntegrationTestNetOptions struct {
 // integration test networks can also be used for automated integration and
 // regression tests for client code.
 type IntegrationTestNet struct {
-	options IntegrationTestNetOptions
-	genesis *makefakegenesis.GenesisJson
-	nodes   []integrationTestNode
+	options   IntegrationTestNetOptions
+	genesis   *makefakegenesis.GenesisJson
+	genesisId common.Hash
+	nodes     []integrationTestNode
 
 	sessionsMutex sync.Mutex
 	Session
@@ -427,9 +428,11 @@ func (n *IntegrationTestNet) start() error {
 
 	nodeIds := make([]chan string, len(n.nodes))
 	httpPorts := make([]chan string, len(n.nodes))
+	genesisIds := make([]chan common.Hash, len(n.nodes))
 	for i := range nodeIds {
 		nodeIds[i] = make(chan string, 1)
 		httpPorts[i] = make(chan string, 1)
+		genesisIds[i] = make(chan common.Hash, 1)
 	}
 
 	for i := range n.nodes {
@@ -505,15 +508,29 @@ func (n *IntegrationTestNet) start() error {
 			}
 
 			control := &sonicd.AppControl{
-				NodeIdAnnouncement:   nodeIds[i],
-				HttpPortAnnouncement: httpPorts[i],
-				Shutdown:             stop,
+				NodeIdAnnouncement:    nodeIds[i],
+				HttpPortAnnouncement:  httpPorts[i],
+				GenesisIdAnnouncement: genesisIds[i],
+				Shutdown:              stop,
 			}
 
 			if err := sonicd.RunWithArgs(args, control); err != nil {
 				panic(fmt.Sprint("Failed to start the fake network:", err))
 			}
 		}()
+	}
+
+	// validate genesis IDs
+	for i := range n.nodes {
+		genesisId, ok := <-genesisIds[i]
+		if !ok {
+			return fmt.Errorf("failed to start the network, no genesis ID announced for node %d", i)
+		}
+		if i == 0 {
+			n.genesisId = genesisId
+		} else if n.genesisId != genesisId {
+			return fmt.Errorf("failed to start the network, mismatched genesis ID for node %d", i)
+		}
 	}
 
 	// Collect all enode IDs and HTTP ports.
@@ -1161,6 +1178,11 @@ func (s *Session) GetWebSocketClient() (*ethClient, error) {
 
 func (s *Session) NumNodes() int {
 	return s.net.NumNodes()
+}
+
+// GetGenesisId returns the genesis ID of the network.
+func (s *Session) GetGenesisId() common.Hash {
+	return s.net.genesisId
 }
 
 // validateAndSanitizeOptions ensures that the options are valid and sets the default values.

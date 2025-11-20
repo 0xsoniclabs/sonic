@@ -286,7 +286,7 @@ func lachesisMainInternal(
 		cfg.OperaStore.EVM.StateDb.ArchiveCache = archiveCache
 	}
 
-	node, _, nodeClose, err := config.MakeNode(ctx, cfg)
+	node, gossip, nodeClose, err := config.MakeNode(ctx, cfg)
 	if err != nil {
 		return fmt.Errorf("failed to initialize the node: %w", err)
 	}
@@ -311,6 +311,10 @@ func lachesisMainInternal(
 
 		if control.HttpPortAnnouncement != nil {
 			control.HttpPortAnnouncement <- node.HTTPEndpoint()
+		}
+
+		if control.GenesisIdAnnouncement != nil {
+			control.GenesisIdAnnouncement <- gossip.GetGenesisId()
 		}
 
 		if control.Shutdown != nil {

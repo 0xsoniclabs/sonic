@@ -20,6 +20,7 @@ import (
 	"os"
 
 	"github.com/0xsoniclabs/sonic/config/flags"
+	"github.com/ethereum/go-ethereum/common"
 	"gopkg.in/urfave/cli.v1"
 )
 
@@ -37,6 +38,9 @@ type AppControl struct {
 	// Upon a successful start of the sonicd node, the HTTP port used by the HTTP
 	// server is sent to this channel. The channel is closed when the process
 	HttpPortAnnouncement chan<- string
+	// GenesisIdAnnouncement is a channel which communicates the genesis ID of the opened
+	// database once on successful start.
+	GenesisIdAnnouncement chan<- common.Hash
 	// The process is stopped by sending a message through this channel, or by
 	// closing it.
 	Shutdown <-chan struct{}

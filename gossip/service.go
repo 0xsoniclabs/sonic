@@ -32,6 +32,7 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/lachesis"
 	"github.com/Fantom-foundation/lachesis-base/utils/workers"
 	"github.com/ethereum/go-ethereum/accounts"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	notify "github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
@@ -619,6 +620,11 @@ func (s *Service) Start() error {
 	}
 
 	return nil
+}
+
+// GetGenesisId returns the Id from the genesis used to start the chain.
+func (s *Service) GetGenesisId() common.Hash {
+	return common.Hash(s.store.GetGenesisID())
 }
 
 // WaitBlockEnd waits until parallel block processing is complete (if any)

@@ -474,5 +474,41 @@ func TestIntegrationTestNet_ValidateAndSanitizeOptions(t *testing.T) {
 			require.Equal(t, test.expectedOptions, options)
 		})
 	}
+}
 
+func TestIntegrationTestNet_GenesisID_CanBeQueried_ForDifferentNetworks(t *testing.T) {
+	// The following test starts three different integration test networks using
+	// different genesis. Hashes produced shall be different.
+	// This test uses two nodes per network to verify that genesis ID is consistent
+	// across multiple nodes.
+
+	net := StartIntegrationTestNetWithFakeGenesis(t,
+		IntegrationTestNetOptions{NumNodes: 2})
+	id1 := net.GetGenesisId()
+	require.NotZero(t, id1)
+	net.Stop()
+
+	net = StartIntegrationTestNetWithJsonGenesis(t,
+		IntegrationTestNetOptions{NumNodes: 2})
+	id2 := net.GetGenesisId()
+	require.NotZero(t, id2)
+	net.Stop()
+
+	net = StartIntegrationTestNetWithJsonGenesis(t,
+		IntegrationTestNetOptions{
+			NumNodes: 2,
+			Accounts: []makefakegenesis.Account{
+				{
+					Name:    "account",
+					Address: common.HexToAddress("0x42"),
+				},
+			},
+		})
+	id3 := net.GetGenesisId()
+	require.NotZero(t, id3)
+	net.Stop()
+
+	require.NotEqual(t, id1, id2)
+	require.NotEqual(t, id1, id3)
+	require.NotEqual(t, id2, id3)
 }
