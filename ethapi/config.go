@@ -101,10 +101,11 @@ func MakeForkId(upgrade opera.UpgradeHeight, genesisId common.Hash) (forkId, err
 	if err != nil {
 		return forkId{}, fmt.Errorf("could not encode upgrade to RLP, %v", err)
 	}
-	upgradeHash := crc32.ChecksumIEEE(upgradeRlp)
+
+	forkId := crc32.ChecksumIEEE(genesisId.Bytes())
 	blockNumberBytes := binary.BigEndian.AppendUint64(nil, uint64(upgrade.Height))
-	forkId := crc32.Update(upgradeHash, crc32.IEEETable, blockNumberBytes)
-	forkId = crc32.Update(forkId, crc32.IEEETable, genesisId.Bytes())
+	forkId = crc32.Update(forkId, crc32.IEEETable, blockNumberBytes)
+	forkId = crc32.Update(forkId, crc32.IEEETable, upgradeRlp)
 
 	return [4]byte(binary.BigEndian.AppendUint32(nil, forkId)), nil
 }
