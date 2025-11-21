@@ -1162,22 +1162,39 @@ func TestProcessUserTransactions_SponsoredTxSizeIsAccountedCorrectly(t *testing.
 }
 
 func TestProcessUserTransactions_SkipUserTransactionIfInternalTransactionsExceedBlockSizeLimit(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
-	blockBuilder := inter.NewBlockBuilder()
+	tests := map[string][]*types.Transaction{
+		"single huge internal tx": {
+			types.NewTx(&types.LegacyTx{Data: make([]byte, params.MaxBlockSize)}),
+		},
+		"multiple internal txs exceeding block size": {
+			types.NewTx(&types.LegacyTx{Data: make([]byte, params.MaxBlockSize/4)}),
+			types.NewTx(&types.LegacyTx{Data: make([]byte, params.MaxBlockSize/4)}),
+			types.NewTx(&types.LegacyTx{Data: make([]byte, params.MaxBlockSize/4)}),
+			types.NewTx(&types.LegacyTx{Data: make([]byte, params.MaxBlockSize/4)}),
+		},
+	}
 
-	// Add an internal transaction that exceeds the block size limit
-	internalTx := types.NewTx(&types.LegacyTx{Data: make([]byte, params.MaxBlockSize+1)})
-	blockBuilder.AddTransaction(internalTx, &types.Receipt{})
+	for name, internalTxs := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
+			blockBuilder := inter.NewBlockBuilder()
 
-	// Create a user tx that would only fit without the internal tx
-	userTx := types.NewTx(&types.LegacyTx{})
-	skippedCount := processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{userTx}, 10000)
+			for _, internalTx := range internalTxs {
+				// Add internal txs to blockBuilder
+				blockBuilder.AddTransaction(internalTx, &types.Receipt{})
+			}
 
-	// Only internal tx should be present
-	gotTxs := blockBuilder.GetTransactions()
-	require.Equal(t, types.Transactions{internalTx}, gotTxs)
-	require.Equal(t, 1, skippedCount)
+			// Create a user tx that would only fit without the internal tx
+			userTx := types.NewTx(&types.LegacyTx{})
+			skippedCount := processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{userTx}, 10000)
+
+			// Only internal tx should be present
+			gotTxs := blockBuilder.GetTransactions()
+			require.Equal(t, types.Transactions(internalTxs), gotTxs)
+			require.Equal(t, 1, skippedCount)
+		})
+	}
 }
 
 func TestTransactionSize_ConsidersSponsoredTxs(t *testing.T) {
