@@ -89,6 +89,8 @@ func activeSystemContracts(upgrade opera.Upgrades) contractRegistry {
 	return sysContracts
 }
 
+type forkId [4]byte
+
 // MakeForkId creates a fork ID from the given upgrade.
 // The Fork ID is calculated as the CRC32 checksum of the RLP encoding of the upgrade,
 // the block number, and the genesis ID.

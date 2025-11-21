@@ -746,7 +746,6 @@ type config struct {
 
 // helper types to improve readability of the returned structure.
 type contractRegistry map[string]common.Address
-type forkId [4]byte
 
 // Config returns the current and previous (if any) network configs following the structure
 // described in https://eips.ethereum.org/EIPS/eip-7910.
