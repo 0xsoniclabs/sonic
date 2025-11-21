@@ -476,3 +476,11 @@ func TestIntegrationTestNet_ValidateAndSanitizeOptions(t *testing.T) {
 	}
 
 }
+
+func BenchmarkIntegrationTestNet_StartAndStop(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		net := StartIntegrationTestNet(b)
+		b.StopTimer()
+		net.Stop()
+	}
+}
