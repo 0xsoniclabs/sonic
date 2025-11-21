@@ -34,6 +34,7 @@ import (
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/sonic/vecmt"
 	"github.com/Fantom-foundation/lachesis-base/abft"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/node"
@@ -270,7 +271,7 @@ func TestEthConfig_ProducesReadableConfig(t *testing.T) {
 	err = client.Client().Call(&rules, "eth_getRules", "latest")
 	require.NoError(t, err, "eth_getRules failed")
 
-	rules.Upgrades.SingleProposerBlockFormation = true
+	rules.Upgrades.GasSubsidies = true
 	UpdateNetworkRules(t, net, rules)
 	AdvanceEpochAndWaitForBlocks(t, net)
 
@@ -290,7 +291,11 @@ func TestEthConfig_ProducesReadableConfig(t *testing.T) {
 	require.Equal(t, want["current"], response["last"],
 		"original config should be in 'last' field")
 
+	require.Contains(t, response["current"], "systemContracts")
+	require.Contains(t, response["current"]["systemContracts"], "GAS_SUBSIDY_REGISTRY_ADDRESS")
+
 	foundActivationBlock := false
+	activationBlockNumber := idx.Block(0)
 	for i := currentBlock.NumberU64(); i > 0 || !foundActivationBlock; i-- {
 		// get previous block to determine expected activation time
 		previousBlock, err := client.BlockByNumber(t.Context(), big.NewInt(int64(i)))
@@ -298,8 +303,19 @@ func TestEthConfig_ProducesReadableConfig(t *testing.T) {
 
 		if previousBlock.Header().Time == uint64(response["current"]["activationTime"].(float64)) {
 			foundActivationBlock = true
+			activationBlockNumber = idx.Block(previousBlock.NumberU64())
+			break
 		}
 	}
 
+	upgradeHeight = opera.UpgradeHeight{
+		Upgrades: rules.Upgrades,
+		Height:   activationBlockNumber,
+	}
+	expectedForkId, err = ethapi.MakeForkId(upgradeHeight, genesisId)
+	require.NoError(t, err, "could not make expected fork ID after upgrade")
+
+	require.Equal(t, fmt.Sprintf("0x%x", expectedForkId), response["current"]["forkId"],
+		"fork ID after upgrade is incorrect")
 	require.True(t, foundActivationBlock, "should have found block with the same timestamp as the activation time")
 }
