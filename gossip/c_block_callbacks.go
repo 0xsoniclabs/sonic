@@ -625,7 +625,12 @@ func processUserTransactions(
 	remainingSize := uint64(params.MaxBlockSize - rlpEncodedMaxHeaderSizeInBytes)
 	internalTxs := blockBuilder.GetTransactions()
 	for _, tx := range internalTxs {
-		remainingSize -= tx.Size()
+		txSize := tx.Size()
+		if txSize > remainingSize {
+			log.Warn("block filled with only internal transactions")
+			return len(orderedTxs)
+		}
+		remainingSize -= txSize
 	}
 
 	skippedCounter := 0

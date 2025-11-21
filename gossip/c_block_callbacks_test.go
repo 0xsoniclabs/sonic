@@ -1161,6 +1161,25 @@ func TestProcessUserTransactions_SponsoredTxSizeIsAccountedCorrectly(t *testing.
 	}
 }
 
+func TestProcessUserTransactions_SkipUserTransactionIfInternalTransactionsExceedBlockSizeLimit(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
+	blockBuilder := inter.NewBlockBuilder()
+
+	// Add an internal transaction that exceeds the block size limit
+	internalTx := types.NewTx(&types.LegacyTx{Data: make([]byte, params.MaxBlockSize+1)})
+	blockBuilder.AddTransaction(internalTx, &types.Receipt{})
+
+	// Create a user tx that would only fit without the internal tx
+	userTx := types.NewTx(&types.LegacyTx{})
+	skippedCount := processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{userTx}, 10000)
+
+	// Only internal tx should be present
+	gotTxs := blockBuilder.GetTransactions()
+	require.Equal(t, types.Transactions{internalTx}, gotTxs)
+	require.Equal(t, 1, skippedCount)
+}
+
 func TestTransactionSize_ConsidersSponsoredTxs(t *testing.T) {
 	basicTx := types.NewTx(&types.LegacyTx{
 		To:       &common.Address{0x42},
