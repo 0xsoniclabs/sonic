@@ -613,18 +613,20 @@ func TestEIP7702Transactions_InvalidTransactionsReturnAnError(t *testing.T) {
 	}
 
 	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
+		for nonce, isLocal := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/isLocal=%v", name, isLocal), func(t *testing.T) {
 
-			testConfig.PragueTime = test.pragueTime
-			pool.reset(nil, nil)
+				testConfig.PragueTime = test.pragueTime
+				pool.reset(nil, nil)
 
-			tx := pricedSetCodeTxWithAuth(0, 250000, uint256.NewInt(1000), uint256.NewInt(1), key, test.authorizations)
+				tx := pricedSetCodeTxWithAuth(uint64(nonce), 250000, uint256.NewInt(1000), uint256.NewInt(1), key, test.authorizations)
 
-			_, err := pool.add(tx, false)
-			if err != test.expectedErr {
-				t.Fatalf("expected error %v, got %v", test.expectedErr, err)
-			}
-		})
+				_, err := pool.add(tx, isLocal)
+				if err != test.expectedErr {
+					t.Fatalf("expected error %v, got %v", test.expectedErr, err)
+				}
+			})
+		}
 	}
 }
 
@@ -1070,10 +1072,16 @@ func TestInvalidTransactions(t *testing.T) {
 	if err := pool.AddRemote(tx); !errors.Is(err, ErrIntrinsicGas) {
 		t.Error("expected", ErrIntrinsicGas, "got", err)
 	}
+	if err := pool.AddLocal(tx); !errors.Is(err, ErrIntrinsicGas) {
+		t.Error("expected", ErrIntrinsicGas, "got", err)
+	}
 
 	tx = transaction(0, 100000, key)
 	testAddBalance(pool, from, big.NewInt(1))
 	if err := pool.AddRemote(tx); !errors.Is(err, ErrInsufficientFunds) {
+		t.Errorf("expected %v, but got: %v", ErrInsufficientFunds, err)
+	}
+	if err := pool.AddLocal(tx); !errors.Is(err, ErrInsufficientFunds) {
 		t.Errorf("expected %v, but got: %v", ErrInsufficientFunds, err)
 	}
 
@@ -1081,6 +1089,9 @@ func TestInvalidTransactions(t *testing.T) {
 	testAddBalance(pool, from, big.NewInt(0xffffffffffffff))
 
 	if err := pool.AddRemote(tx); !errors.Is(err, ErrNonceTooLow) {
+		t.Error("expected", ErrNonceTooLow)
+	}
+	if err := pool.AddLocal(tx); !errors.Is(err, ErrNonceTooLow) {
 		t.Error("expected", ErrNonceTooLow)
 	}
 
