@@ -93,7 +93,7 @@ func activeSystemContracts(upgrade opera.Upgrades) contractRegistry {
 // The Fork ID is calculated as the CRC32 checksum of the RLP encoding of the upgrade,
 // the block number, and the genesis ID.
 //
-// CRC32(Rlp(upgrade) || bigEndian(upgrade.Height) || genesisId)
+// CRC32(genesisId || bigEndian(upgrade.Height) || Rlp(upgrade))
 func MakeForkId(upgrade opera.UpgradeHeight, genesisId common.Hash) (forkId, error) {
 	upgradeRlp, err := rlp.EncodeToBytes(upgrade.Upgrades)
 	if err != nil {

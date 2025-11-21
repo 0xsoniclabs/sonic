@@ -737,7 +737,7 @@ type config struct {
 	// summarize the chain's current status. Both regarding its genesis
 	// configuration and the last upgrade in use.
 	// ForkId is derived with this formula
-	// CRC32(Rlp(upgrade) || bigEndian(upgrade.Height) || genesisId)
+	// CRC32(genesisId || bigEndian(upgrade.Height) || Rlp(upgrade))
 	ForkId hexutil.Bytes `json:"forkId"`
 
 	Precompiles     contractRegistry `json:"precompiles"`
