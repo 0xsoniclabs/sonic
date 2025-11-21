@@ -733,7 +733,9 @@ type config struct {
 
 	ChainId *hexutil.Big `json:"chainId"`
 
-	// ForkId in sonic is a checksum derived from the json marshall of the corresponding upgrade
+	// ForkId provides an identity scheme to both precisely and concisely
+	// summarize the chain's current status. Both regarding its genesis
+	// configuration and the last upgrade in use.
 	// ForkId is derived with this formula
 	// CRC32(Rlp(upgrade) || bigEndian(upgrade.Height) || genesisId)
 	ForkId hexutil.Bytes `json:"forkId"`
