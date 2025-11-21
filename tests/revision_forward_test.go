@@ -17,6 +17,7 @@
 package tests
 
 import (
+	"fmt"
 	"math/big"
 	"testing"
 
@@ -195,12 +196,130 @@ func TestRevisionIsForwardedCorrectly_BrioEnablesOsakaInBlockProcessing(t *testi
 				require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
 				logs := receipt.Logs
-				require.Len(t, logs, 1)
+				require.Len(t, logs, 1, "expected exactly one log from CLZ contract")
 				topics := logs[0].Topics
 				require.Len(t, topics, 1)
 				expected := common.Hash(append(make([]byte, 31), 64)) // 64 leading zero bits
-				require.Equal(t, expected, topics[0])
+				require.Equal(t, expected, topics[0], "CLZ log topic mismatch")
 			}
 		})
 	}
+}
+
+func TestRevisionIsForwardedCorrectly_RPCCall_BrioEnablesOsaka(t *testing.T) {
+
+	// This test verifies that RPC configuration of block processing correctly
+	// forwards the revision to the EVM interpreter.
+	// This test uses a smart contract that uses the CLZ opcode,
+	// which is only available starting from the Brio upgrade.
+
+	code := []byte{
+		byte(vm.PUSH1), 0x00, // offset
+		byte(vm.CALLDATALOAD), // load input data
+		byte(vm.CLZ),          // count leading zeros
+
+		// if execution reaches here, Brio is enabled.
+		// do a call to produce tracer output.
+		byte(vm.PUSH1), 0x00, // retSize
+		byte(vm.PUSH1), 0x00, // retOffset
+		byte(vm.PUSH1), 0x00, // argSize
+		byte(vm.PUSH1), 0x00, // argOffset
+		byte(vm.PUSH1), 0x00, // value
+		byte(vm.PUSH1), 0x01, // address
+		byte(vm.PUSH1), 0x0a, // gas
+		byte(vm.CALL), // call
+		byte(vm.STOP), // stop
+	}
+	brioOnlyContract := makefakegenesis.Account{
+		Name:    "account",
+		Address: common.HexToAddress("0x42"),
+		Code:    code,
+		Nonce:   1,
+	}
+
+	// 1)  start net with Allegro
+
+	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
+		Upgrades: AsPointer(opera.GetAllegroUpgrades()),
+		Accounts: []makefakegenesis.Account{brioOnlyContract},
+	})
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	blockBeforeUpgrade, err := client.BlockByNumber(t.Context(), nil)
+	require.NoError(t, err)
+
+	// 1.1)  contract cannot be executed before Brio
+
+	err = doRpcCall(client, brioOnlyContract.Address, []byte{0x00, 0xFF}, blockBeforeUpgrade.Hash())
+	require.ErrorContains(t, err, "execution unsuccessful", "expected eth_call to fail before Brio upgrade")
+	trace, err := doTraceCall(client, brioOnlyContract.Address, []byte{0x00, 0xFF}, blockBeforeUpgrade.Hash())
+	require.NoError(t, err, "expected trace_call to succeed even if execution fails")
+	require.Contains(t, trace["error"].(string), "invalid opcode", "expected invalid opcode error in trace_call before Brio upgrade")
+
+	// 2)  upgrade to Brio
+
+	type rulesType struct {
+		Upgrades struct{ Brio bool }
+	}
+	rulesDiff := rulesType{
+		Upgrades: struct{ Brio bool }{Brio: true},
+	}
+
+	UpdateNetworkRules(t, net, rulesDiff)
+	AdvanceEpochAndWaitForBlocks(t, net)
+
+	blockAfterUpgrade, err := client.BlockByNumber(t.Context(), nil)
+	require.NoError(t, err)
+
+	// 2.1)  contract can be executed after Brio
+
+	err = doRpcCall(client, brioOnlyContract.Address, []byte{0x00, 0xFF}, blockAfterUpgrade.Hash())
+	require.NoError(t, err, "expected eth_call to execute with Brio upgrade")
+	trace, err = doTraceCall(client, brioOnlyContract.Address, []byte{0x00, 0xFF}, blockAfterUpgrade.Hash())
+	require.NoError(t, err, "expected trace_call to execute with Brio upgrade")
+	_, failed := trace["error"]
+	require.False(t, failed, "did not expect error in trace_call after Brio upgrade")
+	require.Len(t, trace["calls"].([]any), 1, "expected one traced call entry from CLZ contract after Brio upgrade")
+
+	// 2.2)  expect rcp calls failing if using older than fork block
+
+	err = doRpcCall(client, brioOnlyContract.Address, []byte{0x00, 0xFF}, blockBeforeUpgrade.Hash())
+	require.ErrorContains(t, err, "execution unsuccessful", "expected eth_call to fail before Brio upgrade")
+	trace, err = doTraceCall(client, brioOnlyContract.Address, []byte{0x00, 0xFF}, blockBeforeUpgrade.Hash())
+	require.NoError(t, err, "expected trace_call to succeed even if execution fails")
+	require.Contains(t, trace["error"].(string), "invalid opcode", "expected invalid opcode error in trace_call before Brio upgrade")
+}
+
+func doTraceCall(client *PooledEhtClient, contractAddress common.Address, callData []byte, blockHash common.Hash) (map[string]any, error) {
+	// debug_traceCall serves to test functions using StateTransition RPC method
+	config := map[string]any{
+		"tracer": "callTracer",
+	}
+	return InvokeRpcCallMethod[map[string]any]("debug_traceCall", contractAddress, client, blockHash, config)
+}
+
+func doRpcCall(client *PooledEhtClient, contractAddress common.Address, callData []byte, blockHash common.Hash) error {
+	// eth_call servers to test functions using the DoCall RPC method
+	_, err := InvokeRpcCallMethod[any]("eth_call", contractAddress, client, blockHash, nil, nil)
+	return err
+}
+
+func InvokeRpcCallMethod[result any](
+	method string, contractAddress common.Address, client *PooledEhtClient, blockHash common.Hash, args ...any) (result, error) {
+	data := []byte{
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 8 leading zero bytes
+		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+	}
+	txArguments := map[string]string{
+		"to":   contractAddress.Hex(),
+		"data": fmt.Sprintf("0x%s", common.Bytes2Hex(data)),
+	}
+	var res result
+	err := client.Client().Call(&res, method, append([]any{txArguments, blockHash}, args...)...)
+	return res, err
 }
