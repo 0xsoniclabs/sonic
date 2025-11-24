@@ -25,9 +25,11 @@ import (
 	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/contract/driverauth100"
+	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
 	"github.com/0xsoniclabs/sonic/tests"
+	"github.com/0xsoniclabs/tosca/go/tosca/vm"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -421,4 +423,82 @@ func makeSetCodeTx(
 		AuthList: []types.SetCodeAuthorization{authorization},
 	}
 	return tests.CreateTransaction(t, net, txData, account)
+}
+
+func TestNetworkRulesUpdate_BrioFeaturesBecomeAvailable_WhenBrioUpgradesEnabled(t *testing.T) {
+	// This Test verifies that the Brio upgrade features (namely CLZ opcode)
+	// become available when the Brio upgrade is enabled via network rules update.
+
+	code := []byte{
+		byte(vm.PUSH1), 0x00, // offset
+		byte(vm.CALLDATALOAD), // load input data
+		byte(vm.CLZ),          // count leading zeros
+		byte(vm.STOP),         // stop
+	}
+
+	address := common.HexToAddress("0x42")
+	net := tests.StartIntegrationTestNet(t,
+		tests.IntegrationTestNetOptions{
+			// Explicitly set the network to use the Allegro Hard Fork
+			Upgrades: tests.AsPointer(opera.GetSonicUpgrades()),
+			Accounts: []makefakegenesis.Account{{
+				Name:    "account",
+				Address: address,
+				Code:    code,
+			}},
+		},
+	)
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	// get current network rules
+	// Update network rules to enable the Allegro Hard Fork
+	var rules opera.Rules
+	err = client.Client().Call(&rules, "eth_getRules", "latest")
+	require.NoError(t, err)
+	require.False(t, rules.Upgrades.Brio, "Brio upgrade should be disabled initially")
+
+	// needs to be a slice to ensure the order of tests cases since upgrade updating is stateful
+	upgrades := []struct {
+		name    string
+		upgrade opera.Upgrades
+	}{
+		{"Sonic", opera.GetSonicUpgrades()},
+		{"Allegro", opera.GetAllegroUpgrades()},
+		{"Brio", opera.GetBrioUpgrades()},
+	}
+
+	for _, test := range upgrades {
+		t.Run(test.name, func(t *testing.T) {
+
+			// update network
+			rules.Upgrades = test.upgrade
+			// Update network rules to enable the Brio Hard Fork
+			tests.UpdateNetworkRules(t, net, rules)
+			// reach epoch ceiling to apply the new rules
+			tests.AdvanceEpochAndWaitForBlocks(t, net)
+
+			// make a transaction with gas over the rules limit
+			txData := &types.LegacyTx{
+				Gas: 58_000,
+				To:  &address,
+				Data: []byte{
+					0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 8 leading zero bytes
+					0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+					0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+					0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+				},
+			}
+			tx := tests.CreateTransaction(t, net, txData, net.GetSessionSponsor())
+			receipt, err := net.Run(tx)
+			require.NoError(t, err)
+			if !test.upgrade.Brio {
+				require.Equal(t, types.ReceiptStatusFailed, receipt.Status)
+			} else {
+				require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+			}
+		})
+	}
 }
