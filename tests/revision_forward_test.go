@@ -253,9 +253,9 @@ func TestRevisionIsForwardedCorrectly_RPCCall_BrioEnablesOsaka(t *testing.T) {
 
 	// 1.1)  contract cannot be executed before Brio
 
-	err = doRpcCall(client, brioOnlyContract.Address, []byte{0x00, 0xFF}, blockBeforeUpgrade.Hash())
+	err = doRpcCall(client, brioOnlyContract.Address, blockBeforeUpgrade.Hash())
 	require.ErrorContains(t, err, "execution unsuccessful", "expected eth_call to fail before Brio upgrade")
-	trace, err := doTraceCall(client, brioOnlyContract.Address, []byte{0x00, 0xFF}, blockBeforeUpgrade.Hash())
+	trace, err := doTraceCall(client, brioOnlyContract.Address, blockBeforeUpgrade.Hash())
 	require.NoError(t, err, "expected trace_call to succeed even if execution fails")
 	require.Contains(t, trace["error"].(string), "invalid opcode", "expected invalid opcode error in trace_call before Brio upgrade")
 
@@ -276,9 +276,9 @@ func TestRevisionIsForwardedCorrectly_RPCCall_BrioEnablesOsaka(t *testing.T) {
 
 	// 2.1)  contract can be executed after Brio
 
-	err = doRpcCall(client, brioOnlyContract.Address, []byte{0x00, 0xFF}, blockAfterUpgrade.Hash())
+	err = doRpcCall(client, brioOnlyContract.Address, blockAfterUpgrade.Hash())
 	require.NoError(t, err, "expected eth_call to execute with Brio upgrade")
-	trace, err = doTraceCall(client, brioOnlyContract.Address, []byte{0x00, 0xFF}, blockAfterUpgrade.Hash())
+	trace, err = doTraceCall(client, brioOnlyContract.Address, blockAfterUpgrade.Hash())
 	require.NoError(t, err, "expected trace_call to execute with Brio upgrade")
 	_, failed := trace["error"]
 	require.False(t, failed, "did not expect error in trace_call after Brio upgrade")
@@ -286,29 +286,40 @@ func TestRevisionIsForwardedCorrectly_RPCCall_BrioEnablesOsaka(t *testing.T) {
 
 	// 2.2)  expect rcp calls failing if using older than fork block
 
-	err = doRpcCall(client, brioOnlyContract.Address, []byte{0x00, 0xFF}, blockBeforeUpgrade.Hash())
+	err = doRpcCall(client, brioOnlyContract.Address, blockBeforeUpgrade.Hash())
 	require.ErrorContains(t, err, "execution unsuccessful", "expected eth_call to fail before Brio upgrade")
-	trace, err = doTraceCall(client, brioOnlyContract.Address, []byte{0x00, 0xFF}, blockBeforeUpgrade.Hash())
+	trace, err = doTraceCall(client, brioOnlyContract.Address, blockBeforeUpgrade.Hash())
 	require.NoError(t, err, "expected trace_call to succeed even if execution fails")
 	require.Contains(t, trace["error"].(string), "invalid opcode", "expected invalid opcode error in trace_call before Brio upgrade")
 }
 
-func doTraceCall(client *PooledEhtClient, contractAddress common.Address, callData []byte, blockHash common.Hash) (map[string]any, error) {
+// doTraceCall invokes debug_traceCall on the given contract at the given block hash
+// it returns a map with the entries of the json response, or an error
+func doTraceCall(client *PooledEhtClient, contractAddress common.Address, blockHash common.Hash) (map[string]any, error) {
 	// debug_traceCall serves to test functions using StateTransition RPC method
 	config := map[string]any{
 		"tracer": "callTracer",
 	}
-	return InvokeRpcCallMethod[map[string]any]("debug_traceCall", contractAddress, client, blockHash, config)
+	result, err := InvokeRpcCallMethod("debug_traceCall", contractAddress, client, blockHash, config)
+	return result.(map[string]any), err
+
 }
 
-func doRpcCall(client *PooledEhtClient, contractAddress common.Address, callData []byte, blockHash common.Hash) error {
+// doRpcCall invokes eth_call on the given contract at the given block hash
+// it returns a map with the entries of the json response, or an error
+func doRpcCall(client *PooledEhtClient, contractAddress common.Address, blockHash common.Hash) error {
 	// eth_call servers to test functions using the DoCall RPC method
-	_, err := InvokeRpcCallMethod[any]("eth_call", contractAddress, client, blockHash, nil, nil)
+	_, err := InvokeRpcCallMethod("eth_call", contractAddress, client, blockHash, nil, nil)
 	return err
 }
 
-func InvokeRpcCallMethod[result any](
-	method string, contractAddress common.Address, client *PooledEhtClient, blockHash common.Hash, args ...any) (result, error) {
+func InvokeRpcCallMethod(
+	method string,
+	contractAddress common.Address,
+	client *PooledEhtClient,
+	blockHash common.Hash,
+	args ...any,
+) (any, error) {
 	data := []byte{
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 8 leading zero bytes
 		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
@@ -319,7 +330,7 @@ func InvokeRpcCallMethod[result any](
 		"to":   contractAddress.Hex(),
 		"data": fmt.Sprintf("0x%s", common.Bytes2Hex(data)),
 	}
-	var res result
+	var res any
 	err := client.Client().Call(&res, method, append([]any{txArguments, blockHash}, args...)...)
 	return res, err
 }
