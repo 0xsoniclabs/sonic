@@ -430,16 +430,14 @@ func TestNetworkRulesUpdate_BrioFeaturesBecomeAvailable_WhenBrioUpgradesEnabled(
 	// become available when the Brio upgrade is enabled via network rules update.
 
 	code := []byte{
-		byte(vm.PUSH1), 0x00, // offset
-		byte(vm.CALLDATALOAD), // load input data
-		byte(vm.CLZ),          // count leading zeros
-		byte(vm.STOP),         // stop
+		byte(vm.PUSH1), 0x00, // constant input for CLZ
+		byte(vm.CLZ),  // count leading zeros
+		byte(vm.STOP), // stop
 	}
 
 	address := common.HexToAddress("0x42")
 	net := tests.StartIntegrationTestNet(t,
 		tests.IntegrationTestNetOptions{
-			// Explicitly set the network to use the Allegro Hard Fork
 			Upgrades: tests.AsPointer(opera.GetSonicUpgrades()),
 			Accounts: []makefakegenesis.Account{{
 				Name:    "account",
@@ -454,51 +452,36 @@ func TestNetworkRulesUpdate_BrioFeaturesBecomeAvailable_WhenBrioUpgradesEnabled(
 	defer client.Close()
 
 	// get current network rules
-	// Update network rules to enable the Allegro Hard Fork
 	var rules opera.Rules
 	err = client.Client().Call(&rules, "eth_getRules", "latest")
 	require.NoError(t, err)
 	require.False(t, rules.Upgrades.Brio, "Brio upgrade should be disabled initially")
 
 	// needs to be a slice to ensure the order of tests cases since upgrade updating is stateful
-	upgrades := []struct {
-		name    string
-		upgrade opera.Upgrades
-	}{
-		{"Sonic", opera.GetSonicUpgrades()},
-		{"Allegro", opera.GetAllegroUpgrades()},
-		{"Brio", opera.GetBrioUpgrades()},
+	upgrades := []opera.Upgrades{
+		opera.GetSonicUpgrades(),
+		opera.GetAllegroUpgrades(),
+		opera.GetBrioUpgrades(),
 	}
 
-	for _, test := range upgrades {
-		t.Run(test.name, func(t *testing.T) {
+	for _, upgrade := range upgrades {
+		// update network
+		rules.Upgrades = upgrade
+		tests.UpdateNetworkRules(t, net, rules)
+		// reach epoch ceiling to apply the new rules
+		tests.AdvanceEpochAndWaitForBlocks(t, net)
 
-			// update network
-			rules.Upgrades = test.upgrade
-			// Update network rules to enable the Brio Hard Fork
-			tests.UpdateNetworkRules(t, net, rules)
-			// reach epoch ceiling to apply the new rules
-			tests.AdvanceEpochAndWaitForBlocks(t, net)
-
-			// make a transaction with gas over the rules limit
-			txData := &types.LegacyTx{
-				Gas: 58_000,
-				To:  &address,
-				Data: []byte{
-					0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 8 leading zero bytes
-					0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-					0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-					0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-				},
-			}
-			tx := tests.CreateTransaction(t, net, txData, net.GetSessionSponsor())
-			receipt, err := net.Run(tx)
-			require.NoError(t, err)
-			if !test.upgrade.Brio {
-				require.Equal(t, types.ReceiptStatusFailed, receipt.Status)
-			} else {
-				require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
-			}
-		})
+		txData := &types.LegacyTx{
+			Gas: 58_000,
+			To:  &address,
+		}
+		tx := tests.CreateTransaction(t, net, txData, net.GetSessionSponsor())
+		receipt, err := net.Run(tx)
+		require.NoError(t, err)
+		if !upgrade.Brio {
+			require.Equal(t, types.ReceiptStatusFailed, receipt.Status)
+		} else {
+			require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+		}
 	}
 }
