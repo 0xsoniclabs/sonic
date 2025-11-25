@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+This changelog documents updates relevant to users and downstream integrations. The scope of each version includes changes to the following interfaces:
+- Interactions with other nodes in the Sonic network.
+- Command-line interface and configuration files.
+- Execution support for Ethereum transactions and Ethereum-compatible contracts.
+- RPC interfaces, including JSON-RPC, WebSockets, and Unix sockets.
 
 ## [Unreleased]
 
@@ -15,21 +20,21 @@ For optimal compatibility and stability, it is recommended to use the most recen
 
 ### Added
 - Introduce support for the Brio hard-fork upgrade.
-- Implement CLZ VM instruction (EIP-7939) when Brio upgrade is enabled.
-- Add precompiled contract for secp256r1 Curve Support (EIP-7951) when Brio upgrade is enabled.
+- Implement CLZ VM instruction [EIP-7939](https://eips.ethereum.org/EIPS/eip-7939) when Brio upgrade is enabled.
+- Add precompiled contract for secp256r1 Curve Support [EIP-7951](https://eips.ethereum.org/EIPS/eip-7951)  when Brio upgrade is enabled.
 - Introduce eth_Config RPC method tailored for the Sonic network.
 
 ### Fixed
 
 ### Changed
-- Increase gas cost for precompiled contract ModExp (EIP-7883) when Brio upgrade is enabled.
-- Restrict maximum input length for ModExp precompiled contract (EIP-7823) when Brio upgrade is enabled.
-- Introduce protocol-level upper bound gas usage per transaction (à la EIP-7825) when Brio upgrade is enabled.
-- Introduce protocol level maximum RLP encoded block size of 10 MiB (EIP-7934) when Brio upgrade us enabled.
+- Increase gas cost for precompiled contract ModExp [EIP-7883](https://eips.ethereum.org/EIPS/eip-7883) when Brio upgrade is enabled.
+- Restrict maximum input length for ModExp precompiled contract [EIP-7823](https://eips.ethereum.org/EIPS/eip-7823) when Brio upgrade is enabled.
+- Introduce protocol-level upper bound gas usage per transaction (à la [EIP-7825](https://eips.ethereum.org/EIPS/eip-7825)) when Brio upgrade is enabled.
+- Introduce protocol level maximum RLP encoded block size of 10 MiB [EIP-7934](https://eips.ethereum.org/EIPS/eip-7934) when Brio upgrade us enabled.
 
 ### Removed
 
-## [2.1.4] - TBD
+## [2.1.4] - 25 Nov 2025
 
 ### Fixed
 - Fix issue affecting log timestamps serialization (RPC)
