@@ -160,6 +160,17 @@ func (b *testBackend) ChainID() *big.Int {
 // TestPendingTxFilter tests whether pending tx filters retrieve all pending transactions that are posted to the event mux.
 func TestPendingTxFilter(t *testing.T) {
 	t.Parallel()
+	verifyTxSubscription(t, nil)
+}
+
+func TestPendingTxFilterFullTx(t *testing.T) {
+	t.Parallel()
+	fullTx := true
+	verifyTxSubscription(t, &fullTx)
+}
+
+func verifyTxSubscription(t *testing.T, fullTx *bool) {
+	t.Helper()
 
 	var (
 		backend = newTestBackend()
@@ -172,15 +183,14 @@ func TestPendingTxFilter(t *testing.T) {
 			types.NewTransaction(3, common.HexToAddress("0xb794f5ea0ba39494ce83a213fffba74279579268"), new(big.Int), 0, new(big.Int), nil),
 			types.NewTransaction(4, common.HexToAddress("0xb794f5ea0ba39494ce83a213fffba74279579268"), new(big.Int), 0, new(big.Int), nil),
 		}
-
-		hashes []common.Hash
 	)
 
-	fid0 := api.NewPendingTransactionFilter(nil)
+	fid0 := api.NewPendingTransactionFilter(fullTx)
 
 	time.Sleep(1 * time.Second)
 	backend.txsFeed.Send(evmcore.NewTxsNotify{Txs: transactions})
 
+	var receivedHashes []common.Hash
 	timeout := time.Now().Add(1 * time.Second)
 	for {
 		results, err := api.GetFilterChanges(fid0)
@@ -188,9 +198,16 @@ func TestPendingTxFilter(t *testing.T) {
 			t.Fatalf("Unable to retrieve logs: %v", err)
 		}
 
-		h := results.([]common.Hash)
-		hashes = append(hashes, h...)
-		if len(hashes) >= len(transactions) {
+		if fullTx == nil || !(*fullTx) {
+			h := results.([]common.Hash)
+			receivedHashes = append(receivedHashes, h...)
+		} else {
+			txs := results.([]*ethapi.RPCTransaction)
+			for _, rpcTx := range txs {
+				receivedHashes = append(receivedHashes, rpcTx.Hash)
+			}
+		}
+		if len(receivedHashes) >= len(transactions) {
 			break
 		}
 		// check timeout
@@ -201,69 +218,13 @@ func TestPendingTxFilter(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	if len(hashes) != len(transactions) {
-		t.Errorf("invalid number of transactions, want %d transactions(s), got %d", len(transactions), len(hashes))
+	if len(receivedHashes) != len(transactions) {
+		t.Errorf("invalid number of transactions, want %d transactions(s), got %d", len(transactions), len(receivedHashes))
 		return
 	}
-	for i := range hashes {
-		if hashes[i] != transactions[i].Hash() {
-			t.Errorf("hashes[%d] invalid, want %x, got %x", i, transactions[i].Hash(), hashes[i])
-		}
-	}
-}
-
-// TestPendingTxFilterFullTx tests whether pending tx filters retrieve all pending transactions that are posted to the event mux.
-func TestPendingTxFilterFullTx(t *testing.T) {
-	t.Parallel()
-
-	var (
-		backend = newTestBackend()
-		api     = NewPublicFilterAPI(backend, testConfig())
-
-		expectedTransactions = []*types.Transaction{
-			types.NewTransaction(0, common.HexToAddress("0xb794f5ea0ba39494ce83a213fffba74279579268"), new(big.Int), 0, new(big.Int), nil),
-			types.NewTransaction(1, common.HexToAddress("0xb794f5ea0ba39494ce83a213fffba74279579268"), new(big.Int), 0, new(big.Int), nil),
-			types.NewTransaction(2, common.HexToAddress("0xb794f5ea0ba39494ce83a213fffba74279579268"), new(big.Int), 0, new(big.Int), nil),
-			types.NewTransaction(3, common.HexToAddress("0xb794f5ea0ba39494ce83a213fffba74279579268"), new(big.Int), 0, new(big.Int), nil),
-			types.NewTransaction(4, common.HexToAddress("0xb794f5ea0ba39494ce83a213fffba74279579268"), new(big.Int), 0, new(big.Int), nil),
-		}
-
-		receivedTransactions []*ethapi.RPCTransaction
-	)
-
-	fullTx := true
-	fid0 := api.NewPendingTransactionFilter(&fullTx)
-
-	time.Sleep(1 * time.Second)
-	backend.txsFeed.Send(evmcore.NewTxsNotify{Txs: expectedTransactions})
-
-	timeout := time.Now().Add(10 * time.Second)
-	for {
-		results, err := api.GetFilterChanges(fid0)
-		if err != nil {
-			t.Fatalf("Unable to retrieve logs: %v", err)
-		}
-
-		tx := results.([]*ethapi.RPCTransaction)
-		receivedTransactions = append(receivedTransactions, tx...)
-		if len(receivedTransactions) >= len(expectedTransactions) {
-			break
-		}
-		// check timeout
-		if time.Now().After(timeout) {
-			break
-		}
-
-		time.Sleep(100 * time.Millisecond)
-	}
-
-	if len(receivedTransactions) != len(expectedTransactions) {
-		t.Errorf("invalid number of transactions, want %d transactions(s), got %d", len(expectedTransactions), len(receivedTransactions))
-		return
-	}
-	for i := range receivedTransactions {
-		if receivedTransactions[i].Hash != expectedTransactions[i].Hash() {
-			t.Errorf("hashes[%d] invalid, want %x, got %x", i, expectedTransactions[i].Hash(), receivedTransactions[i].Hash)
+	for i := range receivedHashes {
+		if receivedHashes[i] != transactions[i].Hash() {
+			t.Errorf("hashes[%d] invalid, want %x, got %x", i, transactions[i].Hash(), receivedHashes[i])
 		}
 	}
 }
