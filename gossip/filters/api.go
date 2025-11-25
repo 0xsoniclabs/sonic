@@ -463,11 +463,8 @@ func (api *PublicFilterAPI) GetFilterChanges(id rpc.ID) (interface{}, error) {
 		case PendingTransactionsSubscription:
 			if f.fullTxs {
 				txs := make([]*ethapi.RPCTransaction, 0, len(f.txs))
-				fmt.Printf("Getting %d pending full txs\n", len(f.txs))
-				for i, tx := range f.txs {
-					fmt.Printf("tx %d: %s\n", i, tx.Hash().Hex())
+				for _, tx := range f.txs {
 					rpcTx := ethapi.NewRPCPendingTransaction(tx, tx.GasPrice(), api.backend.ChainID())
-					fmt.Printf("tx %d: %v\n", i, rpcTx)
 					txs = append(txs, rpcTx)
 				}
 				f.txs = nil

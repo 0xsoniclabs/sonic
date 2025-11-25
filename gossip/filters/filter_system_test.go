@@ -184,7 +184,6 @@ func TestPendingTxFilter(t *testing.T) {
 	timeout := time.Now().Add(1 * time.Second)
 	for {
 		results, err := api.GetFilterChanges(fid0)
-		t.Logf("results: %v", results)
 		if err != nil {
 			t.Fatalf("Unable to retrieve logs: %v", err)
 		}
@@ -241,7 +240,6 @@ func TestPendingTxFilterFullTx(t *testing.T) {
 	timeout := time.Now().Add(10 * time.Second)
 	for {
 		results, err := api.GetFilterChanges(fid0)
-		t.Logf("results: %v", results)
 		if err != nil {
 			t.Fatalf("Unable to retrieve logs: %v", err)
 		}
