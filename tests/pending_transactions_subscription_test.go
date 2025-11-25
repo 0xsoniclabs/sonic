@@ -34,16 +34,31 @@ func TestPendingTransactionSubscription_ReturnsFullTransaction(t *testing.T) {
 	client, err := session.GetWebSocketClient()
 	require.NoError(t, err, "failed to get client ", err)
 	defer client.Close()
-	wsClient := client.Client()
 
-	pendingTxs := make(chan *types.Transaction)
+	tx := CreateTransaction(t, session, &types.LegacyTx{To: &common.Address{0x42}, Value: big.NewInt(2)}, session.GetSessionSponsor())
+	subscribeAndVerifyPendingTx(t, client, tx, true)
+}
+
+func TestPendingTransactionSubscription_ReturnsHashes(t *testing.T) {
+
+	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	t.Parallel()
+
+	client, err := session.GetWebSocketClient()
+	require.NoError(t, err, "failed to get client ", err)
+	defer client.Close()
+
+	tx := CreateTransaction(t, session, &types.LegacyTx{To: &common.Address{0x42}, Value: big.NewInt(2)}, session.GetSessionSponsor())
+	subscribeAndVerifyPendingTx(t, client, tx, false)
+}
+
+func subscribeAndVerifyPendingTx(t *testing.T, client *ethClient, originalTx *types.Transaction, expectFullTx bool) {
+	pendingTxs := make(chan any)
 	defer close(pendingTxs)
 
-	subs, err := wsClient.EthSubscribe(t.Context(), pendingTxs, "newPendingTransactions", true)
+	subs, err := client.Client().EthSubscribe(t.Context(), pendingTxs, "newPendingTransactions", expectFullTx)
 	require.NoError(t, err, "failed to subscribe to pending transactions ", err)
 	defer subs.Unsubscribe()
-
-	originalTx := CreateTransaction(t, session, &types.LegacyTx{To: &common.Address{0x42}, Value: big.NewInt(2)}, session.GetSessionSponsor())
 
 	err = client.SendTransaction(t.Context(), originalTx)
 	require.NoError(t, err, "failed to send transaction ", err)
@@ -51,7 +66,15 @@ func TestPendingTransactionSubscription_ReturnsFullTransaction(t *testing.T) {
 	// wait for a pending transaction
 	select {
 	case got := <-pendingTxs:
-		require.Equal(t, originalTx.Hash(), got.Hash(), "transaction from address does not match")
+		if expectFullTx {
+			tx, ok := got.(*types.Transaction)
+			require.True(t, ok, "expected full transaction but got different type")
+			require.Equal(t, originalTx.Hash(), tx.Hash(), "transaction from address does not match")
+		} else {
+			hash, ok := got.(common.Hash)
+			require.True(t, ok, "expected transaction hash but got different type")
+			require.Equal(t, originalTx.Hash(), hash, "transaction hash does not match")
+		}
 	case err := <-subs.Err():
 		// Err returns the subscription error channel. The intended use of Err is to schedule
 		// resubscription when the client connection is closed unexpectedly.
