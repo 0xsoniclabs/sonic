@@ -42,7 +42,8 @@ const (
 	// hard-forks
 	sonicBit   = 1 << 3
 	allegroBit = 1 << 4
-	brioBit    = 1 << 5
+	_unused    = 1 << 5 // reserved, do not use
+	brioBit    = 1 << 6
 
 	// optional features
 	singleProposerBlockFormationBit = 1 << 63

@@ -99,7 +99,7 @@ func TestForkId_UpgradesProduceDifferentIds(t *testing.T) {
 		},
 		"Brio": {
 			upgradesHeight: opera.MakeUpgradeHeight(opera.GetBrioUpgrades(), 10),
-			want:           forkId{0x5f, 0xc9, 0x8, 0x23},
+			want:           forkId{0x12, 0x7b, 0x69, 0x7b},
 		},
 		// In a real case scenario, SingleProposer and GasSubsidies would be
 		// turned on while another upgrade is activated, so we check that the
