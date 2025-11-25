@@ -28,8 +28,8 @@ func UpdateRules(src Rules, diff []byte) (Rules, error) {
 	changed.NetworkID = src.NetworkID
 	changed.Name = src.Name
 
-	// check validity of the new rules
-	if changed.Upgrades.Allegro {
+	// check validity of the new rules for all hardforks starting from Allegro
+	if changed.Upgrades.Allegro || changed.Upgrades.Brio {
 		if err := changed.Validate(src); err != nil {
 			return Rules{}, err
 		}
