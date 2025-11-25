@@ -17,6 +17,7 @@
 package tests
 
 import (
+	"context"
 	"fmt"
 	"math/big"
 	"reflect"
@@ -36,6 +37,8 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/abft"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -318,4 +321,33 @@ func TestEthConfig_ProducesReadableConfig(t *testing.T) {
 	require.Equal(t, fmt.Sprintf("0x%x", expectedForkId), response["current"]["forkId"],
 		"fork ID after upgrade is incorrect")
 	require.True(t, foundActivationBlock, "should have found block with the same timestamp as the activation time")
+}
+
+func TestPendingTransactionSubscription_ReturnsFullTransaction(t *testing.T) {
+	net := StartIntegrationTestNet(t)
+	client, err := net.GetWebSocketClient()
+	require.NoError(t, err, "failed to get client ", err)
+	defer client.Close()
+	rpcClient := client.Client()
+
+	pendingTxs := make(chan *types.Transaction)
+	defer close(pendingTxs)
+
+	subs, err := rpcClient.EthSubscribe(context.Background(), pendingTxs, "newPendingTransactions", true)
+	require.NoError(t, err, "failed to subscribe to pending transactions ", err)
+	defer subs.Unsubscribe()
+
+	originalTx := CreateTransaction(t, net, &types.LegacyTx{To: &common.Address{0x42}, Value: big.NewInt(2)}, net.GetSessionSponsor())
+
+	err = client.SendTransaction(t.Context(), originalTx)
+	require.NoError(t, err, "failed to send transaction ", err)
+
+	// wait for a pending transaction
+	select {
+	case got := <-pendingTxs:
+		require.Equal(t, originalTx.Hash(), got.Hash(), "transaction from address does not match")
+
+	case err := <-subs.Err():
+		require.NoError(t, err, "subscription error %v", err)
+	}
 }
