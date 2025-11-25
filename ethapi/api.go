@@ -1603,6 +1603,11 @@ func newRPCTransaction(tx *types.Transaction, blockHash common.Hash, blockNumber
 	return result
 }
 
+// NewRPCPendingTransaction returns a transaction that will serialize to the RPC representation.
+func NewRPCPendingTransaction(tx *types.Transaction, baseFee *big.Int, chainId *big.Int) *RPCTransaction {
+	return newRPCPendingTransaction(tx, baseFee, chainId)
+}
+
 // newRPCPendingTransaction returns a pending transaction that will serialize to the RPC representation
 func newRPCPendingTransaction(tx *types.Transaction, baseFee *big.Int, chainId *big.Int) *RPCTransaction {
 	return newRPCTransaction(tx, common.Hash{}, 0, 0, baseFee, chainId)
