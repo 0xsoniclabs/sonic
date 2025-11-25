@@ -17,7 +17,9 @@
 package tests
 
 import (
+	"fmt"
 	"math/big"
+	"strings"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/opera"
@@ -29,62 +31,74 @@ import (
 func TestPendingTransactionSubscription_ReturnsFullTransaction(t *testing.T) {
 
 	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
-	t.Parallel()
+	// This test cannot be parallel because it expects only the specific transaction it sends
 
 	client, err := session.GetWebSocketClient()
 	require.NoError(t, err, "failed to get client ", err)
 	defer client.Close()
 
 	tx := CreateTransaction(t, session, &types.LegacyTx{To: &common.Address{0x42}, Value: big.NewInt(2)}, session.GetSessionSponsor())
-	subscribeAndVerifyPendingTx(t, client, tx, true)
+
+	v, r, s := tx.RawSignatureValues()
+
+	expectedTx := map[string]any{
+		"blockHash":           nil,
+		"gas":                 fmt.Sprintf("0x%x", tx.Gas()),
+		"gasPrice":            fmt.Sprintf("0x%x", tx.GasPrice()),
+		"input":               "0x",
+		"to":                  "0x4200000000000000000000000000000000000000",
+		"transactionIndex":    nil,
+		"chainId":             "0xfa3",
+		"v":                   fmt.Sprintf("0x%x", v),
+		"nonce":               "0x0",
+		"value":               "0x2",
+		"r":                   fmt.Sprintf("0x%x", r),
+		"blobVersionedHashes": nil,
+		"blockNumber":         nil,
+		"from":                strings.ToLower(session.GetSessionSponsor().Address().Hex()),
+		"hash":                tx.Hash().Hex(),
+		"type":                "0x0",
+		"s":                   fmt.Sprintf("0x%x", s),
+		"maxFeePerBlobGas":    nil,
+	}
+
+	subscribeAndVerifyPendingTx(t, client, tx, expectedTx)
 }
 
 func TestPendingTransactionSubscription_ReturnsHashes(t *testing.T) {
 
 	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
-	t.Parallel()
+	// This test cannot be parallel because it expects only the specific transaction it sends
 
 	client, err := session.GetWebSocketClient()
 	require.NoError(t, err, "failed to get client ", err)
 	defer client.Close()
 
 	tx := CreateTransaction(t, session, &types.LegacyTx{To: &common.Address{0x42}, Value: big.NewInt(2)}, session.GetSessionSponsor())
-	subscribeAndVerifyPendingTx(t, client, tx, false)
+	subscribeAndVerifyPendingTx(t, client, tx, nil)
 }
 
-func subscribeAndVerifyPendingTx(t *testing.T, client *ethClient, originalTx *types.Transaction, expectFullTx bool) {
+func subscribeAndVerifyPendingTx(t *testing.T, client *ethClient, originalTx *types.Transaction, expectedTx map[string]any) {
 	pendingTxs := make(chan any)
 	defer close(pendingTxs)
 
-	subs, err := client.Client().EthSubscribe(t.Context(), pendingTxs, "newPendingTransactions", expectFullTx)
+	subs, err := client.Client().EthSubscribe(t.Context(), pendingTxs, "newPendingTransactions", expectedTx != nil)
 	require.NoError(t, err, "failed to subscribe to pending transactions ", err)
 	defer subs.Unsubscribe()
 
 	err = client.SendTransaction(t.Context(), originalTx)
 	require.NoError(t, err, "failed to send transaction ", err)
 
-	// wait for a pending transaction
-	select {
-	case got := <-pendingTxs:
-		if expectFullTx {
-			tx, ok := got.(*types.Transaction)
-			require.True(t, ok, "expected full transaction but got different type")
-			require.Equal(t, originalTx.Hash(), tx.Hash(), "transaction from address does not match")
-		} else {
-			hash, ok := got.(common.Hash)
-			require.True(t, ok, "expected transaction hash but got different type")
-			require.Equal(t, originalTx.Hash(), hash, "transaction hash does not match")
-		}
-	case err := <-subs.Err():
-		// Err returns the subscription error channel. The intended use of Err is to schedule
-		// resubscription when the client connection is closed unexpectedly.
-		//
-		// The error channel receives a value when the subscription has ended due to an error. The
-		// received error is nil if Close has been called on the underlying client and no other
-		// error has occurred.
-		//
-		// During this test this channel should not receive any value, so if either the connection is closed
-		// or an error is received, this test should fail.
-		require.Fail(t, "unexpected subscription error: %v", err)
+	got := <-pendingTxs
+	if expectedTx != nil {
+		tx, ok := got.(map[string]any)
+		require.True(t, ok, "expected full transaction but got different type")
+		require.Equal(t, expectedTx, tx, "transaction from address does not match")
+	} else {
+		hashStr, ok := got.(string)
+		require.True(t, ok, "expected transaction hash string but got different type")
+		hash := common.HexToHash(hashStr)
+		require.Equal(t, originalTx.Hash(), hash, "transaction hash does not match")
 	}
+
 }
