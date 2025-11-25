@@ -220,7 +220,7 @@ func TestPendingTxFilterFullTx(t *testing.T) {
 		backend = newTestBackend()
 		api     = NewPublicFilterAPI(backend, testConfig())
 
-		transactions = []*types.Transaction{
+		expectedTransactions = []*types.Transaction{
 			types.NewTransaction(0, common.HexToAddress("0xb794f5ea0ba39494ce83a213fffba74279579268"), new(big.Int), 0, new(big.Int), nil),
 			types.NewTransaction(1, common.HexToAddress("0xb794f5ea0ba39494ce83a213fffba74279579268"), new(big.Int), 0, new(big.Int), nil),
 			types.NewTransaction(2, common.HexToAddress("0xb794f5ea0ba39494ce83a213fffba74279579268"), new(big.Int), 0, new(big.Int), nil),
@@ -228,14 +228,14 @@ func TestPendingTxFilterFullTx(t *testing.T) {
 			types.NewTransaction(4, common.HexToAddress("0xb794f5ea0ba39494ce83a213fffba74279579268"), new(big.Int), 0, new(big.Int), nil),
 		}
 
-		txs []*ethapi.RPCTransaction
+		receivedTransactions []*ethapi.RPCTransaction
 	)
 
 	fullTx := true
 	fid0 := api.NewPendingTransactionFilter(&fullTx)
 
 	time.Sleep(1 * time.Second)
-	backend.txsFeed.Send(evmcore.NewTxsNotify{Txs: transactions})
+	backend.txsFeed.Send(evmcore.NewTxsNotify{Txs: expectedTransactions})
 
 	timeout := time.Now().Add(10 * time.Second)
 	for {
@@ -245,8 +245,8 @@ func TestPendingTxFilterFullTx(t *testing.T) {
 		}
 
 		tx := results.([]*ethapi.RPCTransaction)
-		txs = append(txs, tx...)
-		if len(txs) >= len(transactions) {
+		receivedTransactions = append(receivedTransactions, tx...)
+		if len(receivedTransactions) >= len(expectedTransactions) {
 			break
 		}
 		// check timeout
@@ -257,13 +257,13 @@ func TestPendingTxFilterFullTx(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	if len(txs) != len(transactions) {
-		t.Errorf("invalid number of transactions, want %d transactions(s), got %d", len(transactions), len(txs))
+	if len(receivedTransactions) != len(expectedTransactions) {
+		t.Errorf("invalid number of transactions, want %d transactions(s), got %d", len(expectedTransactions), len(receivedTransactions))
 		return
 	}
-	for i := range txs {
-		if txs[i].Hash != transactions[i].Hash() {
-			t.Errorf("hashes[%d] invalid, want %x, got %x", i, transactions[i].Hash(), txs[i].Hash)
+	for i := range receivedTransactions {
+		if receivedTransactions[i].Hash != expectedTransactions[i].Hash() {
+			t.Errorf("hashes[%d] invalid, want %x, got %x", i, expectedTransactions[i].Hash(), receivedTransactions[i].Hash)
 		}
 	}
 }
