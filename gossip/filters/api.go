@@ -44,15 +44,14 @@ var (
 // filter is a helper struct that holds meta information over the filter type
 // and associated subscription in the event system.
 type filter struct {
-	typ      Type
-	deadline *time.Timer // filter is inactiv when deadline triggers
-	hashes   []common.Hash
-	crit     FilterCriteria
-	logs     []*types.Log
-	s        *Subscription // associated subscription in event system
-
-	txs     []*types.Transaction
-	fullTxs bool
+	typ                   Type
+	deadline              *time.Timer // filter is inactive when deadline triggers
+	hashes                []common.Hash
+	crit                  FilterCriteria
+	logs                  []*types.Log
+	s                     *Subscription // associated subscription in event system
+	pendingTransactions   []*types.Transaction
+	serveFullTransactions bool
 }
 
 // Config is a provided API params.
@@ -144,7 +143,12 @@ func (api *PublicFilterAPI) NewPendingTransactionFilter(fullTxs *bool) rpc.ID {
 
 	fullTxsBool := fullTxs != nil && *fullTxs
 	api.filtersMu.Lock()
-	api.filters[pendingTxSub.ID] = &filter{typ: PendingTransactionsSubscription, fullTxs: fullTxsBool, deadline: time.NewTimer(deadline), hashes: make([]common.Hash, 0), s: pendingTxSub}
+	api.filters[pendingTxSub.ID] = &filter{
+		typ:                   PendingTransactionsSubscription,
+		serveFullTransactions: fullTxsBool,
+		deadline:              time.NewTimer(deadline),
+		hashes:                make([]common.Hash, 0),
+		s:                     pendingTxSub}
 	api.filtersMu.Unlock()
 
 	go func() {
@@ -153,7 +157,7 @@ func (api *PublicFilterAPI) NewPendingTransactionFilter(fullTxs *bool) rpc.ID {
 			case ptx := <-pendingTxs:
 				api.filtersMu.Lock()
 				if f, found := api.filters[pendingTxSub.ID]; found {
-					f.txs = append(f.txs, ptx...)
+					f.pendingTransactions = append(f.pendingTransactions, ptx...)
 				}
 				api.filtersMu.Unlock()
 			case <-pendingTxSub.Err():
@@ -461,22 +465,7 @@ func (api *PublicFilterAPI) GetFilterChanges(id rpc.ID) (interface{}, error) {
 			f.hashes = nil
 			return returnHashes(hashes), nil
 		case PendingTransactionsSubscription:
-			if f.fullTxs {
-				txs := make([]*ethapi.RPCTransaction, 0, len(f.txs))
-				for _, tx := range f.txs {
-					rpcTx := ethapi.NewRPCPendingTransaction(tx, tx.GasPrice(), api.backend.ChainID())
-					txs = append(txs, rpcTx)
-				}
-				f.txs = nil
-				return txs, nil
-			} else {
-				hashes := make([]common.Hash, 0, len(f.txs))
-				for _, tx := range f.txs {
-					hashes = append(hashes, tx.Hash())
-				}
-				f.txs = nil
-				return hashes, nil
-			}
+			return processPendingTransactionSubscription(api, f)
 		case LogsSubscription:
 			logs := f.logs
 			f.logs = nil
@@ -485,6 +474,25 @@ func (api *PublicFilterAPI) GetFilterChanges(id rpc.ID) (interface{}, error) {
 	}
 
 	return []interface{}{}, fmt.Errorf("filter not found")
+}
+
+func processPendingTransactionSubscription(api *PublicFilterAPI, f *filter) (interface{}, error) {
+	if f.serveFullTransactions {
+		txs := make([]*ethapi.RPCTransaction, 0, len(f.pendingTransactions))
+		for _, tx := range f.pendingTransactions {
+			rpcTx := ethapi.NewRPCPendingTransaction(tx, tx.GasPrice(), api.backend.ChainID())
+			txs = append(txs, rpcTx)
+		}
+		f.pendingTransactions = nil
+		return txs, nil
+	} else {
+		hashes := make([]common.Hash, 0, len(f.pendingTransactions))
+		for _, tx := range f.pendingTransactions {
+			hashes = append(hashes, tx.Hash())
+		}
+		f.pendingTransactions = nil
+		return hashes, nil
+	}
 }
 
 // returnHashes is a helper that will return an empty hash array case the given hash array is nil,
