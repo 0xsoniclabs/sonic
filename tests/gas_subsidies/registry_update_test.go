@@ -35,7 +35,7 @@ import (
 
 func TestRegistryUpdate_UpdateContract_SponsoredTransactionsCanBePerformed(t *testing.T) {
 
-	// Enable allegro to support setCode transactions.
+	// Enable a revision with allegro to support setCode transactions.
 	upgrades := opera.GetBrioUpgrades()
 	upgrades.GasSubsidies = true
 
@@ -94,7 +94,7 @@ func TestRegistryUpdate_UpdateContract_SponsoredTransactionsCanBePerformed(t *te
 func TestRegistryUpdate_UpdatesAreEffectiveImmediately(t *testing.T) {
 	require := require.New(t)
 
-	// Enable allegro to support setCode transactions.
+	// Enable a revision with allegro to support setCode transactions.
 	upgrades := opera.GetBrioUpgrades()
 	upgrades.GasSubsidies = true
 
