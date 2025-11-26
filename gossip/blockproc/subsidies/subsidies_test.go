@@ -220,7 +220,7 @@ func TestIsCovered_ConsultsSubsidiesRegistry(t *testing.T) {
 			big.NewInt(int64(test.availableFunds)).FillBytes(funds[:])
 			state.EXPECT().GetState(any, any).Return(funds).AnyTimes()
 
-			upgrades := opera.GetSonicUpgrades()
+			upgrades := opera.GetBrioUpgrades()
 			upgrades.GasSubsidies = true
 			rules := opera.FakeNetRules(upgrades)
 
@@ -282,7 +282,7 @@ func TestIsCovered_RegistryNotAvailable_ReturnsError(t *testing.T) {
 	state.EXPECT().Snapshot().Return(1).AnyTimes()
 	state.EXPECT().Exist(registryAddress).Return(false).AnyTimes()
 
-	upgrades := opera.GetSonicUpgrades()
+	upgrades := opera.GetBrioUpgrades()
 	upgrades.GasSubsidies = true
 	rules := opera.FakeNetRules(upgrades)
 

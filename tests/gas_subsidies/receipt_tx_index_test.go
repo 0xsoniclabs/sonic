@@ -42,8 +42,7 @@ func TestGasSubsidies_Receipts_HaveConsistentTransactionIndices(t *testing.T) {
 	}{
 		{name: "sonic", upgrade: opera.GetSonicUpgrades()},
 		{name: "allegro", upgrade: opera.GetAllegroUpgrades()},
-		// Brio is commented out until the gas cap is properly handled for internal transactions.
-		//{name: "brio", upgrade: opera.GetBrioUpgrades()},
+		{name: "brio", upgrade: opera.GetBrioUpgrades()},
 	}
 	singleProposerOption := map[string]bool{
 		"singleProposer": true,

@@ -48,6 +48,7 @@ func TestBlockVerifiability(t *testing.T) {
 	tests := map[string]opera.Upgrades{
 		"sonic":   opera.GetSonicUpgrades(),
 		"allegro": opera.GetAllegroUpgrades(),
+		"brio":    opera.GetBrioUpgrades(),
 	}
 
 	for name, upgrades := range tests {

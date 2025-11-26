@@ -31,7 +31,7 @@ import (
 func TestGasSubsidies_ProperlyAssignTxIndexToLogsInThePresenceOfSponsoredTransactions(t *testing.T) {
 	require := require.New(t)
 
-	upgrade := opera.GetAllegroUpgrades()
+	upgrade := opera.GetBrioUpgrades()
 	upgrade.GasSubsidies = true
 	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
 		Upgrades: &upgrade,

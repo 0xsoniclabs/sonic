@@ -83,6 +83,8 @@ func testGasSubsidies_tooLargeForBlock(t *testing.T, upgrades opera.Upgrades) {
 	modified.Blocks.MaxBlockGas = 3_000_000
 	tests.UpdateNetworkRules(t, net, modified)
 	net.AdvanceEpoch(t, 1)
+	updatedRules := tests.GetNetworkRules(t, net)
+	require.Equal(t, uint64(3_000_000), updatedRules.Blocks.MaxBlockGas)
 
 	// Step 4: Send a sponsored transaction that uses almost all the gas in the block
 

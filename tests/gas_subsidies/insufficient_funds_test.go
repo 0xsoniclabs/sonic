@@ -29,7 +29,7 @@ import (
 )
 
 func TestGasSubsidies_RequestIsRejectedInCaseOfInsufficientFunds(t *testing.T) {
-	upgrades := opera.GetSonicUpgrades()
+	upgrades := opera.GetBrioUpgrades()
 	upgrades.GasSubsidies = true
 
 	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{

@@ -33,7 +33,7 @@ import (
 
 func TestGasSubsidies_HelperFunctions(t *testing.T) {
 
-	upgrades := opera.GetAllegroUpgrades()
+	upgrades := opera.GetBrioUpgrades()
 	upgrades.GasSubsidies = true
 	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
 		Upgrades: &upgrades,

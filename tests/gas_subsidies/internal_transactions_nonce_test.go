@@ -34,7 +34,7 @@ import (
 func TestGasSubsidies_InternalTransaction_HaveConsistentNonces(t *testing.T) {
 	// internal transactions shall respect the incrementing nonce order without gaps
 
-	upgrades := opera.GetAllegroUpgrades()
+	upgrades := opera.GetBrioUpgrades()
 	upgrades.GasSubsidies = true
 	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
 		Upgrades: &upgrades,

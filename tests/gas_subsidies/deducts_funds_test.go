@@ -40,7 +40,7 @@ func TestGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T) {
 	}{
 		{name: "sonic", upgrade: opera.GetSonicUpgrades()},
 		{name: "allegro", upgrade: opera.GetAllegroUpgrades()},
-		// TODO: add brio once it supports internal transactions
+		{name: "brio", upgrade: opera.GetBrioUpgrades()},
 	}
 	singleProposerOption := map[string]bool{
 		"singleProposer": true,
@@ -380,7 +380,7 @@ func TestGasSubsidies_SubsidizedTransaction_SkipTransactionIfDeduceFundsDoesNotF
 
 func TestGasSubsidies_NonSponsoredTransactionsAreRejected(t *testing.T) {
 
-	upgrades := opera.GetSonicUpgrades()
+	upgrades := opera.GetBrioUpgrades()
 	upgrades.GasSubsidies = true
 	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
 		Upgrades: &upgrades,
