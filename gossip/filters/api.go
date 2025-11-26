@@ -195,12 +195,12 @@ func (api *PublicFilterAPI) NewPendingTransactions(ctx context.Context, fullTx *
 				// To keep the original behaviour, send a single tx hash in one notification.
 				// TODO(rjl493456442) Send a batch of tx hashes in one notification
 				for _, tx := range txs {
+					var payload any
+					payload = tx.Hash()
 					if fullTx != nil && *fullTx {
-						rpcTx := ethapi.NewRPCPendingTransaction(tx, tx.GasPrice(), api.backend.ChainID())
-						_ = notifier.Notify(rpcSub.ID, rpcTx)
-					} else {
-						_ = notifier.Notify(rpcSub.ID, tx.Hash())
+						payload = ethapi.NewRPCPendingTransaction(tx, tx.GasPrice(), api.backend.ChainID())
 					}
+					_ = notifier.Notify(rpcSub.ID, payload)
 				}
 			case <-rpcSub.Err():
 				pendingTxSub.Unsubscribe()
@@ -449,7 +449,7 @@ func (api *PublicFilterAPI) GetFilterLogs(ctx context.Context, id rpc.ID) ([]*ty
 // (pending)Log filters return []Log.
 //
 // https://github.com/ethereum/wiki/wiki/JSON-RPC#eth_getfilterchanges
-func (api *PublicFilterAPI) GetFilterChanges(id rpc.ID) (interface{}, error) {
+func (api *PublicFilterAPI) GetFilterChanges(id rpc.ID) (any, error) {
 	api.filtersMu.Lock()
 	defer api.filtersMu.Unlock()
 
@@ -475,26 +475,21 @@ func (api *PublicFilterAPI) GetFilterChanges(id rpc.ID) (interface{}, error) {
 		}
 	}
 
-	return []interface{}{}, fmt.Errorf("filter not found")
+	return []any{}, fmt.Errorf("filter not found")
 }
 
-func processPendingTransactionSubscription(api *PublicFilterAPI, f *filter) (interface{}, error) {
-	if f.serveFullTransactions {
-		txs := make([]*ethapi.RPCTransaction, 0, len(f.pendingTransactions))
-		for _, tx := range f.pendingTransactions {
+func processPendingTransactionSubscription(api *PublicFilterAPI, f *filter) (any, error) {
+	var result []any
+	for _, tx := range f.pendingTransactions {
+		if f.serveFullTransactions {
 			rpcTx := ethapi.NewRPCPendingTransaction(tx, tx.GasPrice(), api.backend.ChainID())
-			txs = append(txs, rpcTx)
+			result = append(result, rpcTx)
+		} else {
+			result = append(result, tx.Hash())
 		}
-		f.pendingTransactions = nil
-		return txs, nil
-	} else {
-		hashes := make([]common.Hash, 0, len(f.pendingTransactions))
-		for _, tx := range f.pendingTransactions {
-			hashes = append(hashes, tx.Hash())
-		}
-		f.pendingTransactions = nil
-		return hashes, nil
 	}
+	f.pendingTransactions = nil
+	return result, nil
 }
 
 // returnHashes is a helper that will return an empty hash array case the given hash array is nil,
