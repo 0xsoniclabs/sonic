@@ -137,6 +137,20 @@ func (s *Store) ForEachEventRLP(start []byte, onEvent func(key hash.Event, event
 	}
 }
 
+// FirstEventFromEpoch returns the first event from the given epoch.
+// Note that from NewIterator behavior, if there is no event in that epoch,
+// it will return the first event from the next epoch.
+// if the iterator is exhausted, it returns nil.
+func (s *Store) FirstEventFromEpoch(epoch idx.Epoch) *hash.Event {
+	it := s.table.Events.NewIterator(nil, epoch.Bytes())
+	defer it.Release()
+	if it.Next() {
+		id := hash.BytesToEvent(it.Key())
+		return &id
+	}
+	return nil
+}
+
 func (s *Store) FindEventHashes(epoch idx.Epoch, lamport idx.Lamport, hashPrefix []byte) hash.Events {
 	prefix := bytes.NewBuffer(epoch.Bytes())
 	prefix.Write(lamport.Bytes())
