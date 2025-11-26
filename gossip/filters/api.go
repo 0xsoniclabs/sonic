@@ -134,7 +134,7 @@ func timeoutLoop(
 // It is part of the filter package because this filter can be used through the
 // `eth_getFilterChanges` polling method that is also used for log filters.
 //
-// fullTxs is a pointer to keep as an optional parameter.
+// If fullTx is true the full tx is sent to the client, otherwise the hash is sent.
 // For more info look to: https://github.com/ethereum/go-ethereum/pull/25186#discussion_r908323028
 func (api *PublicFilterAPI) NewPendingTransactionFilter(fullTxs *bool) rpc.ID {
 	var (
@@ -175,7 +175,7 @@ func (api *PublicFilterAPI) NewPendingTransactionFilter(fullTxs *bool) rpc.ID {
 
 // NewPendingTransactions creates a subscription that is triggered each time a transaction
 // enters the transaction pool and was signed from one of the transactions this nodes manages.
-// fullTxs is a pointer to keep as an optional parameter.
+// If fullTx is true the full tx is sent to the client, otherwise the hash is sent.
 // For more info look to: https://github.com/ethereum/go-ethereum/pull/25186#discussion_r908323028
 func (api *PublicFilterAPI) NewPendingTransactions(ctx context.Context, fullTx *bool) (*rpc.Subscription, error) {
 	notifier, supported := rpc.NotifierFromContext(ctx)
