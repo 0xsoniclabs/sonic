@@ -17,11 +17,10 @@
 package tests
 
 import (
-	"fmt"
 	"math/big"
-	"strings"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -37,36 +36,33 @@ func TestPendingTransactionSubscription_ReturnsFullTransaction(t *testing.T) {
 	require.NoError(t, err, "failed to get client ", err)
 	defer client.Close()
 
-	tx := CreateTransaction(t, session, &types.LegacyTx{To: &common.Address{0x42}, Value: big.NewInt(2)}, session.GetSessionSponsor())
+	tx := CreateTransaction(t, session,
+		&types.LegacyTx{
+			To:    &common.Address{0x42},
+			Value: big.NewInt(2),
+			// needed because the tx from the channel comes with an empty Data field instead of nil
+			Data: []byte{},
+		},
+		session.GetSessionSponsor())
 
-	v, r, s := tx.RawSignatureValues()
+	pendingTxs := make(chan *ethapi.RPCTransaction)
+	defer close(pendingTxs)
 
-	expectedTx := map[string]any{
-		"blockHash":           nil,
-		"gas":                 fmt.Sprintf("0x%x", tx.Gas()),
-		"gasPrice":            fmt.Sprintf("0x%x", tx.GasPrice()),
-		"input":               "0x",
-		"to":                  "0x4200000000000000000000000000000000000000",
-		"transactionIndex":    nil,
-		"chainId":             "0xfa3",
-		"v":                   fmt.Sprintf("0x%x", v),
-		"nonce":               "0x0",
-		"value":               "0x2",
-		"r":                   fmt.Sprintf("0x%x", r),
-		"blobVersionedHashes": nil,
-		"blockNumber":         nil,
-		"from":                strings.ToLower(session.GetSessionSponsor().Address().Hex()),
-		"hash":                tx.Hash().Hex(),
-		"type":                "0x0",
-		"s":                   fmt.Sprintf("0x%x", s),
-		"maxFeePerBlobGas":    nil,
-	}
+	trueBool := true
+	subs, err := client.Client().EthSubscribe(t.Context(), pendingTxs, "newPendingTransactions", &trueBool)
+	require.NoError(t, err, "failed to subscribe to pending transactions ", err)
+	defer subs.Unsubscribe()
 
-	subscribeAndVerifyPendingTx(t, client, tx, expectedTx)
+	err = client.SendTransaction(t.Context(), tx)
+	require.NoError(t, err, "failed to send transaction ", err)
+
+	got := <-pendingTxs
+	want := ethapi.NewRPCPendingTransaction(tx, tx.GasPrice(), session.GetChainId())
+	require.Equal(t, want, got, "transaction from address does not match")
+
 }
 
 func TestPendingTransactionSubscription_ReturnsHashes(t *testing.T) {
-
 	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 	// This test cannot be parallel because it expects only the specific transaction it sends
 
@@ -75,30 +71,17 @@ func TestPendingTransactionSubscription_ReturnsHashes(t *testing.T) {
 	defer client.Close()
 
 	tx := CreateTransaction(t, session, &types.LegacyTx{To: &common.Address{0x42}, Value: big.NewInt(2)}, session.GetSessionSponsor())
-	subscribeAndVerifyPendingTx(t, client, tx, nil)
-}
 
-func subscribeAndVerifyPendingTx(t *testing.T, client *ethClient, originalTx *types.Transaction, expectedTx map[string]any) {
-	pendingTxs := make(chan any)
+	pendingTxs := make(chan common.Hash)
 	defer close(pendingTxs)
 
-	subs, err := client.Client().EthSubscribe(t.Context(), pendingTxs, "newPendingTransactions", expectedTx != nil)
+	subs, err := client.Client().EthSubscribe(t.Context(), pendingTxs, "newPendingTransactions", nil)
 	require.NoError(t, err, "failed to subscribe to pending transactions ", err)
 	defer subs.Unsubscribe()
 
-	err = client.SendTransaction(t.Context(), originalTx)
+	err = client.SendTransaction(t.Context(), tx)
 	require.NoError(t, err, "failed to send transaction ", err)
 
 	got := <-pendingTxs
-	if expectedTx != nil {
-		tx, ok := got.(map[string]any)
-		require.True(t, ok, "expected full transaction but got different type")
-		require.Equal(t, expectedTx, tx, "transaction from address does not match")
-	} else {
-		hashStr, ok := got.(string)
-		require.True(t, ok, "expected transaction hash string but got different type")
-		hash := common.HexToHash(hashStr)
-		require.Equal(t, originalTx.Hash(), hash, "transaction hash does not match")
-	}
-
+	require.Equal(t, tx.Hash(), got, "transaction hash does not match")
 }
