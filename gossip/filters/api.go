@@ -188,7 +188,6 @@ func (api *PublicFilterAPI) NewPendingTransactions(ctx context.Context, fullTx *
 	go func() {
 		txs := make(chan []*types.Transaction, 128)
 		pendingTxSub := api.events.SubscribePendingTxs(txs)
-		defer pendingTxSub.Unsubscribe()
 
 		for {
 			select {
