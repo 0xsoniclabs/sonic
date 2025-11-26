@@ -31,7 +31,7 @@ import (
 func TestGasPrice_SuggestedGasPricesApproximateActualBaseFees(t *testing.T) {
 	require := require.New(t)
 
-	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	session := getIntegrationTestNetSession(t, opera.GetBrioUpgrades())
 
 	client, err := session.GetClient()
 	require.NoError(err, "failed to get client")
@@ -67,7 +67,7 @@ func TestGasPrice_SuggestedGasPricesApproximateActualBaseFees(t *testing.T) {
 func TestGasPrice_UnderpricedTransactionsAreRejected(t *testing.T) {
 	require := require.New(t)
 
-	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	session := getIntegrationTestNetSession(t, opera.GetBrioUpgrades())
 
 	client, err := session.GetClient()
 	require.NoError(err, "failed to get client")

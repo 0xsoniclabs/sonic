@@ -154,9 +154,6 @@ func TestRevisionIsForwardedCorrectly_BrioEnablesOsakaInBlockProcessing(t *testi
 		upgrades       opera.Upgrades
 		expectedReturn []byte
 	}{
-		"Sonic": {
-			upgrades: opera.GetSonicUpgrades(),
-		},
 		"Allegro": {
 			upgrades: opera.GetAllegroUpgrades(),
 		},

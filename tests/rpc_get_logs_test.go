@@ -30,7 +30,7 @@ import (
 
 func TestRpc_GetLogs_BlockTimeStampHexEncoded(t *testing.T) {
 
-	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	session := getIntegrationTestNetSession(t, opera.GetBrioUpgrades())
 
 	// deploy a contract
 	contract, receipt, err := DeployContract(session, indexed_logs.DeployIndexedLogs)

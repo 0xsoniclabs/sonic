@@ -31,6 +31,7 @@ func TestPacingOfEmptyBlocks(t *testing.T) {
 	hardFork := map[string]opera.Upgrades{
 		"sonic":   opera.GetSonicUpgrades(),
 		"allegro": opera.GetAllegroUpgrades(),
+		"brio":    opera.GetBrioUpgrades(),
 	}
 	modes := map[string]bool{
 		"single proposer":      true,

@@ -55,6 +55,7 @@ func TestBlockHeader_JsonGenesis_SatisfiesInvariants(t *testing.T) {
 	upgrades := map[string]opera.Upgrades{
 		"Sonic":   opera.GetSonicUpgrades(),
 		"Allegro": opera.GetAllegroUpgrades(),
+		"Brio":    opera.GetBrioUpgrades(),
 	}
 	modes := map[string]bool{
 		"DistributedProposer": false,

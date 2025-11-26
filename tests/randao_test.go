@@ -30,13 +30,14 @@ func TestRandao_randaoIntegrationTest(t *testing.T) {
 	const NumNodes = 3
 
 	tests := map[string]opera.Upgrades{
-		"dag proposal": opera.GetSonicUpgrades(),
+		"dag proposal": opera.GetBrioUpgrades(),
 		"single proposal": {
 			Berlin:                       true,
 			London:                       true,
 			Llr:                          false,
-			Allegro:                      true,
 			Sonic:                        true,
+			Allegro:                      true,
+			Brio:                         true,
 			SingleProposerBlockFormation: true,
 		},
 	}

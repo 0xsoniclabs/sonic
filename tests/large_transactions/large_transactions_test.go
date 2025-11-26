@@ -33,7 +33,7 @@ import (
 func TestLargeTransactions_CanHandleLargeTransactions(t *testing.T) {
 	require := require.New(t)
 	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
-		Upgrades: tests.AsPointer(opera.GetAllegroUpgrades()),
+		Upgrades: tests.AsPointer(opera.GetBrioUpgrades()),
 	})
 
 	account := tests.NewAccount()
@@ -106,6 +106,7 @@ func TestLargeTransactions_LargeTransactionLoadTest(t *testing.T) {
 	hardForks := map[string]opera.Upgrades{
 		"Sonic":   opera.GetSonicUpgrades(),
 		"Allegro": opera.GetAllegroUpgrades(),
+		"Brio":    opera.GetBrioUpgrades(),
 	}
 
 	modes := map[string]bool{

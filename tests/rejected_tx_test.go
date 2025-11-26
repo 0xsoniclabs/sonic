@@ -32,7 +32,7 @@ import (
 func TestRejectedTx_TransactionsAreRejectedBecauseOfAccountState(t *testing.T) {
 
 	// start network
-	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	session := getIntegrationTestNetSession(t, opera.GetBrioUpgrades())
 	t.Parallel()
 
 	// create a client

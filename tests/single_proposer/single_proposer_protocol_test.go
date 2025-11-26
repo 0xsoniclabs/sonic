@@ -34,8 +34,9 @@ import (
 func TestSingleProposerProtocol_CanProcessTransactions(t *testing.T) {
 
 	upgrades := map[string]opera.Upgrades{
-		"Sonic":   opera.GetSonicUpgrades(),
+		// Single-proposer protocol has been rolled out with Allegro.
 		"Allegro": opera.GetAllegroUpgrades(),
+		"Brio":    opera.GetBrioUpgrades(),
 	}
 
 	for name, upgrades := range upgrades {
@@ -149,6 +150,7 @@ func TestSingleProposerProtocol_CanBeEnabledAndDisabled(t *testing.T) {
 	upgrades := map[string]opera.Upgrades{
 		"Sonic":   opera.GetSonicUpgrades(),
 		"Allegro": opera.GetAllegroUpgrades(),
+		"Brio":    opera.GetBrioUpgrades(),
 	}
 
 	for name, upgrades := range upgrades {

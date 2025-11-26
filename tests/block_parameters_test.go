@@ -45,6 +45,14 @@ func TestBlockParameters_BlockHeaderMatchesObservableBlockParameters(t *testing.
 			Sonic:   true,
 			Allegro: true,
 		},
+		"brio": {
+			Berlin:  true,
+			London:  true,
+			Llr:     false,
+			Sonic:   true,
+			Allegro: true,
+			Brio:    true,
+		},
 	}
 
 	for name, upgrades := range hardForks {

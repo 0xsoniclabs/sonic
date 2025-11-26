@@ -31,7 +31,7 @@ import (
 )
 
 func TestSetStorage_PreExisting_Contract_Storage_Temporarily_Overridden(t *testing.T) {
-	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	session := getIntegrationTestNetSession(t, opera.GetBrioUpgrades())
 	t.Parallel()
 
 	// Deploy the contract.
@@ -103,7 +103,7 @@ func TestSetStorage_Contract_Not_On_Blockchain_Executed_With_Extra_Storage(t *te
 	require := require.New(t)
 
 	// start network
-	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	session := getIntegrationTestNetSession(t, opera.GetBrioUpgrades())
 
 	// create a client
 	client, err := session.GetClient()

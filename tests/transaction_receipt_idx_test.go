@@ -30,7 +30,7 @@ import (
 )
 
 func TestReceipt_InternalTransactionsDoNotChangeReceiptIndex(t *testing.T) {
-	upgrades := opera.GetSonicUpgrades()
+	upgrades := opera.GetBrioUpgrades()
 	net := StartIntegrationTestNetWithJsonGenesis(t, IntegrationTestNetOptions{
 		Upgrades: &upgrades,
 	})

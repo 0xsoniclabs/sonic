@@ -32,7 +32,7 @@ const enoughGasPrice = 150_000_000_000
 
 func TestTransactionGasPrice(t *testing.T) {
 
-	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	session := getIntegrationTestNetSession(t, opera.GetBrioUpgrades())
 	t.Parallel()
 
 	client, err := session.GetClient()

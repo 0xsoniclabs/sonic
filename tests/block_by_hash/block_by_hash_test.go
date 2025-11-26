@@ -31,7 +31,7 @@ import (
 func TestRPCGetLogs_BlockWithSkippedTransaction_HasCorrectTxIndexes(t *testing.T) {
 
 	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
-		Upgrades: tests.AsPointer(opera.GetAllegroUpgrades()),
+		Upgrades: tests.AsPointer(opera.GetBrioUpgrades()),
 		ClientExtraArguments: []string{
 			"--disable-txPool-validation",
 		},

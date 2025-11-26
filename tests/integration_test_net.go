@@ -312,8 +312,10 @@ func StartIntegrationTestNetWithFakeGenesis(
 		upgrades = "sonic"
 	} else if *effectiveOptions.Upgrades == opera.GetAllegroUpgrades() {
 		upgrades = "allegro"
+	} else if *effectiveOptions.Upgrades == opera.GetBrioUpgrades() {
+		upgrades = "brio"
 	} else {
-		t.Fatal("fake genesis only supports sonic and allegro feature sets")
+		t.Fatal("fake genesis only supports sonic, allegro and brio feature sets")
 	}
 
 	numNodesString := fmt.Sprintf("%d", effectiveOptions.NumNodes)
