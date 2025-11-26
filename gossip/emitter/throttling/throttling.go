@@ -17,6 +17,7 @@
 package throttling
 
 import (
+	"math"
 	"time"
 
 	"github.com/0xsoniclabs/sonic/inter"
@@ -28,7 +29,7 @@ import (
 //go:generate mockgen -source=throttling.go -destination=throttling_mock.go -package=throttling
 
 // ThrottlingState manages the state for event emission throttling based on
-// dominant set of validators.
+// the set of dominant validators.
 // This type contains the state needed to decide whether to skip event emission
 // for a given validator, based on its stake and the stake distribution among
 // all validators, and properties of the events to be emitted.
@@ -78,8 +79,6 @@ func NewThrottlingState(
 // SkipEventEmission determines whether to skip the emission of the given event.
 //
 // It returns true if the event emission should be skipped, false otherwise.
-// If the event is not skipped, the internal state is updated to reflect the
-// last emitted event's frame and creation time.
 func (ts *ThrottlingState) SkipEventEmission(event inter.EventPayloadI) bool {
 	skip := ts.skipEvent(event)
 	if !skip {
@@ -108,7 +107,11 @@ func (ts *ThrottlingState) skipEvent(event inter.EventPayloadI) bool {
 		return false
 	}
 
-	// TODO: consider BlockMissedSlack
+	// Do not skip emission if too many blocks have been missed since the last emission.
+	// This prevents this node from being flagged as inactive, and its stake being slashed.
+	//
+	// TODO: provide some guarantees about boundary conditions here: what happens when
+	// the slack and other intervals alias each other, what with different emission rates?
 	blockMissedSlack := rules.Economy.BlockMissedSlack
 	currentBlockNumber := ts.world.GetLatestBlockIndex()
 	if currentBlockNumber-ts.lastEmissionBlockNumber > blockMissedSlack/2 {
@@ -118,7 +121,7 @@ func (ts *ThrottlingState) skipEvent(event inter.EventPayloadI) bool {
 	// Compute dominant set and check if this validator belongs to it.
 	validators, _ := ts.world.GetEpochValidators()
 	totalStake := validators.TotalWeight()
-	threshold := pos.Weight(float64(totalStake) * ts.dominatingPercentile)
+	threshold := pos.Weight(math.Ceil(float64(totalStake) * ts.dominatingPercentile))
 	dominantSet, dominated := ComputeDominantSet(validators, threshold)
 	if !dominated {
 		return false

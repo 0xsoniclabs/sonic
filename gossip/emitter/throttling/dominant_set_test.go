@@ -17,6 +17,7 @@
 package throttling
 
 import (
+	"maps"
 	"math/rand"
 	"slices"
 	"testing"
@@ -27,6 +28,7 @@ import (
 )
 
 func TestComputeDominantSet_CanIdentifyWhenStakeDistributionIsDominated(t *testing.T) {
+	const testThreshold = 100
 
 	tests := map[string]struct {
 		stakes            []int64
@@ -50,12 +52,12 @@ func TestComputeDominantSet_CanIdentifyWhenStakeDistributionIsDominated(t *testi
 			expectedDominated: false,
 		},
 		"multiple validators summing threshold": {
-			stakes:            append(slices.Repeat([]int64{10}, 9), []int64{9, 1}...),
+			stakes:            append(slices.Repeat([]int64{10}, 9), 10),
 			expectedDominated: true,
 			// all 11 elements are included
-			expectedSet: []idx.ValidatorID{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
+			expectedSet: []idx.ValidatorID{1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
 		},
-		"multiple validators just avobe threshold": {
+		"multiple validators just above threshold": {
 			stakes:            append(slices.Repeat([]int64{10}, 9), []int64{9, 1, 1}...),
 			expectedDominated: true,
 			//  11 elements out of 12 are included
@@ -76,7 +78,7 @@ func TestComputeDominantSet_CanIdentifyWhenStakeDistributionIsDominated(t *testi
 			expectedDominated: true,
 			expectedSet:       []idx.ValidatorID{1, 2},
 		},
-		"two validators at threshold out of three": {
+		"two validators out of three sum threshold": {
 			stakes:            []int64{50, 50, 50},
 			expectedDominated: true,
 			expectedSet:       []idx.ValidatorID{1, 2},
@@ -85,14 +87,9 @@ func TestComputeDominantSet_CanIdentifyWhenStakeDistributionIsDominated(t *testi
 
 	for _, test := range tests {
 		stakes := makeValidators(test.stakes...)
-		set, exist := ComputeDominantSet(stakes, 100)
+		set, exist := ComputeDominantSet(stakes, testThreshold)
 		require.Equal(t, test.expectedDominated, exist)
-
-		ids := make([]idx.ValidatorID, 0, len(set))
-		for id := range set {
-			ids = append(ids, id)
-		}
-		require.ElementsMatch(t, test.expectedSet, ids)
+		require.ElementsMatch(t, test.expectedSet, slices.Collect(maps.Keys(set)))
 	}
 }
 
@@ -132,14 +129,7 @@ func TestComputeDominantSet_IsIndependentFromStakeOrder(t *testing.T) {
 			set, exists := ComputeDominantSet(validators, pos.Weight(threshold))
 
 			require.True(t, exists)
-
-			// Create validators in descending order
-			ids := make([]idx.ValidatorID, 0, len(set))
-			for id := range set {
-				ids = append(ids, id)
-			}
-
-			require.ElementsMatch(t, test.expectedSet, ids)
+			require.ElementsMatch(t, test.expectedSet, slices.Collect(maps.Keys(set)))
 		})
 	}
 }
