@@ -27,7 +27,8 @@ For optimal compatibility and stability, it is recommended to use the most recen
 ### Fixed
 
 ### Changed
-- Increase gas cost for precompiled contract ModExp [EIP-7883](https://eips.ethereum.org/EIPS/eip-7883) when Brio upgrade is enabled.
+- Bump minimum required Go version to 1.25.0.
+- Increase gas cost for the ModExp precompiled contract in accordance with [EIP-7883](https://eips.ethereum.org/EIPS/eip-7883) when the Brio upgrade is enabled.
 - Restrict maximum input length for ModExp precompiled contract [EIP-7823](https://eips.ethereum.org/EIPS/eip-7823) when Brio upgrade is enabled.
 - Introduce protocol-level upper bound gas usage per transaction (à la [EIP-7825](https://eips.ethereum.org/EIPS/eip-7825)) when Brio upgrade is enabled.
 - Introduce protocol level maximum RLP encoded block size of 10 MiB [EIP-7934](https://eips.ethereum.org/EIPS/eip-7934) when Brio upgrade us enabled.
