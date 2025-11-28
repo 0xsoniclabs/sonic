@@ -17,11 +17,13 @@
 package chain
 
 import (
+	"fmt"
 	"io"
 	"path/filepath"
 	"time"
 
 	"github.com/0xsoniclabs/sonic/cmd/sonictool/db"
+	"github.com/0xsoniclabs/sonic/gossip"
 	"github.com/0xsoniclabs/sonic/utils/caution"
 	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
 
@@ -42,7 +44,7 @@ var (
 // always print out progress. This avoids the user wondering what's going on.
 const statsReportLimit = 8 * time.Second
 
-func ExportEvents(gdbParams db.GossipDbParameters, w io.Writer, from, to idx.Epoch) (err error) {
+func ExportEvents(gdbParams db.GossipDbParameters, w io.Writer, importAll bool, from, to idx.Epoch) (err error) {
 	chaindataDir := filepath.Join(gdbParams.DataDir, "chaindata")
 	dbs, err := db.MakeDbProducer(chaindataDir, cachescale.Identity)
 	if err != nil {
@@ -59,6 +61,13 @@ func ExportEvents(gdbParams db.GossipDbParameters, w io.Writer, from, to idx.Epo
 		return err
 	}
 	defer caution.CloseAndReportError(&err, gdb, "failed to close gossip db")
+
+	if !importAll {
+		err = validateRange(gdb, from, to)
+		if err != nil {
+			return err
+		}
+	}
 
 	// Write header and version
 	_, err = w.Write(append(eventsFileHeader, eventsFileVersion...))
@@ -89,5 +98,47 @@ func ExportEvents(gdbParams db.GossipDbParameters, w io.Writer, from, to idx.Epo
 		return true
 	})
 	log.Info("Exported events", "last", last.String(), "exported", counter, "elapsed", common.PrettyDuration(time.Since(start)))
+	return nil
+}
+
+// validateRange checks that the first and last epoch of the requested
+// range are older than the current epoch and have events in the database.
+// If either condition does not hold, it returns an error.
+// Note that if not epoch range was given from the commandline, the check is skipped.
+func validateRange(gdb *gossip.Store, from, to idx.Epoch) error {
+
+	if from > to {
+		err := fmt.Errorf("invalid requested range, initial epoch %v older than last %v", from, to)
+		log.Error(err.Error())
+		return err
+	}
+
+	currentEpoch := gdb.GetEpoch()
+	if to > currentEpoch || from > currentEpoch {
+		err := fmt.Errorf("requested to export events from %d to %d, but last known event is %d", from, to, currentEpoch)
+		log.Error(err.Error())
+		return err
+	}
+
+	verifyHasEventFromEpoch := func(epoch idx.Epoch) error {
+		event := gdb.FirstEventFromEpoch(epoch)
+		if event == nil || event.Epoch() != epoch {
+			err := fmt.Errorf("could not find events for epoch %d", epoch)
+			log.Error(err.Error())
+			return err
+		}
+		return nil
+	}
+
+	err := verifyHasEventFromEpoch(from)
+	if err != nil {
+		return err
+	}
+
+	err = verifyHasEventFromEpoch(to)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
