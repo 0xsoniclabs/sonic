@@ -338,6 +338,19 @@ func TestSonicTool_EventsExport_ReturnsError_ForEpochOutOfRange(t *testing.T) {
 	require.ErrorContains(t, err, "but last known event is 2")
 }
 
+func TestSonicTool_EventExport_ReturnsError_ForInvalidRange(t *testing.T) {
+	net := tests.StartIntegrationTestNet(t)
+	generateNBlocks(t, net, 3)
+	net.Stop()
+
+	eventsExportFile := t.TempDir() + "/events.json"
+
+	_, err := executeSonicTool(t,
+		"--datadir", net.GetDirectory()+"/state",
+		"events", "export", eventsExportFile, "2", "1")
+	require.ErrorContains(t, err, "invalid requested range")
+}
+
 func TestSonicTool_EventsExport_ReturnsError_ForEpochsWithNoEvents(t *testing.T) {
 	net := tests.StartIntegrationTestNet(t)
 	generateNBlocks(t, net, 1)
@@ -350,6 +363,20 @@ func TestSonicTool_EventsExport_ReturnsError_ForEpochsWithNoEvents(t *testing.T)
 		"--datadir", net.GetDirectory()+"/state",
 		"events", "export", eventsExportFile, "0", "1")
 	require.ErrorContains(t, err, "could not find events")
+}
+
+func TestSonicTool_EventsExport_ReturnsError_ForWrongNumberOfArguments(t *testing.T) {
+
+	net := tests.StartIntegrationTestNet(t)
+	generateNBlocks(t, net, 3)
+	net.Stop()
+
+	eventsExportFile := t.TempDir() + "/events.json"
+
+	_, err := executeSonicTool(t,
+		"--datadir", net.GetDirectory()+"/state",
+		"events", "export", eventsExportFile, "2")
+	require.ErrorContains(t, err, "specify both from and to epochs")
 }
 
 func TestSonicTool_validator_ExecutesWithoutErrors(t *testing.T) {

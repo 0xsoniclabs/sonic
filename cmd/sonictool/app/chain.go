@@ -61,6 +61,7 @@ func exportEvents(ctx *cli.Context) (err error) {
 			fmt.Sprintf("failed to close gzip writer for file %v", filename))
 	}
 
+	importAll := true
 	from := idx.Epoch(1)
 	if len(ctx.Args()) > 1 {
 		n, err := strconv.ParseUint(ctx.Args().Get(1), 10, 32)
@@ -68,6 +69,10 @@ func exportEvents(ctx *cli.Context) (err error) {
 			return err
 		}
 		from = idx.Epoch(n)
+		importAll = false
+	}
+	if len(ctx.Args()) == 2 {
+		return fmt.Errorf("please specify both from and to epochs, or neither to export all")
 	}
 	to := idx.Epoch(0)
 	if len(ctx.Args()) > 2 {
@@ -85,7 +90,7 @@ func exportEvents(ctx *cli.Context) (err error) {
 	}
 
 	log.Info("Exporting events to file", "file", filename)
-	err = chain.ExportEvents(gdbParams, writer, from, to)
+	err = chain.ExportEvents(gdbParams, writer, importAll, from, to)
 	if err != nil {
 		return fmt.Errorf("export error: %w", err)
 	}
