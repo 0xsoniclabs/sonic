@@ -17,6 +17,7 @@
 package emitter
 
 import (
+	"fmt"
 	"math/rand/v2"
 	"time"
 
@@ -68,6 +69,18 @@ type Config struct {
 	PrevEmittedEventFile FileConfig
 	PrevBlockVotesFile   FileConfig
 	PrevEpochVoteFile    FileConfig
+
+	ThrottleEvents            bool
+	ThrottleSkipInSameFrame   uint
+	ThrottleDominantThreshold float64
+}
+
+func (cfg *Config) Validate() error {
+	if cfg.ThrottleDominantThreshold < 0 || 1 < cfg.ThrottleDominantThreshold {
+		return fmt.Errorf("invalid Event Throttle dominating threshold option. It must be between 0 and 1, but is %v",
+			cfg.ThrottleDominantThreshold)
+	}
+	return nil
 }
 
 // DefaultConfig returns the default configurations for the events emitter.
@@ -92,6 +105,10 @@ func DefaultConfig() Config {
 		EmergencyThreshold:  opera.DefaultEventGas * 5,
 
 		TxsCacheInvalidation: 200 * time.Millisecond,
+
+		ThrottleEvents:            false,
+		ThrottleSkipInSameFrame:   3,
+		ThrottleDominantThreshold: 0.75,
 	}
 }
 

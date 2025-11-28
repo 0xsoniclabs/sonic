@@ -146,7 +146,7 @@ type Emitter struct {
 
 	proposalTracker inter.ProposalTracker
 
-	eventEmissionThrottler throttling.ThrottlingState
+	eventEmissionThrottler *throttling.ThrottlingState
 }
 
 type BaseFeeSource interface {
@@ -172,9 +172,15 @@ func NewEmitter(
 		Periodic:      logger.Periodic{Instance: logger.New()},
 		baseFeeSource: baseFeeSource,
 		errorLock:     errorLock,
-		eventEmissionThrottler: *throttling.NewThrottlingState(
-			config.Validator.ID, 0.75, 3, world),
 	}
+	if config.ThrottleEvents {
+		res.eventEmissionThrottler = throttling.NewThrottlingState(
+			config.Validator.ID,
+			config.ThrottleDominantThreshold,
+			config.ThrottleSkipInSameFrame,
+			world)
+	}
+
 	res.globalConfirmingInterval.Store(uint64(config.EmitIntervals.Confirming))
 	return res
 }

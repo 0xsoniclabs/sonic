@@ -411,6 +411,10 @@ func MakeAllConfigsFromFile(ctx *cli.Context, configFile string) (*Config, error
 		return nil, err
 	}
 
+	if err := cfg.Emitter.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid emitter config: %w", err)
+	}
+
 	if ctx.IsSet(flags.SuppressFramePanicFlag.Name) {
 		cfg.Lachesis.SuppressFramePanic = true
 	}
