@@ -44,7 +44,7 @@ var (
 // always print out progress. This avoids the user wondering what's going on.
 const statsReportLimit = 8 * time.Second
 
-func ExportEvents(gdbParams db.GossipDbParameters, w io.Writer, from, to idx.Epoch) (err error) {
+func ExportEvents(gdbParams db.GossipDbParameters, w io.Writer, importAll bool, from, to idx.Epoch) (err error) {
 	chaindataDir := filepath.Join(gdbParams.DataDir, "chaindata")
 	dbs, err := db.MakeDbProducer(chaindataDir, cachescale.Identity)
 	if err != nil {
@@ -62,9 +62,11 @@ func ExportEvents(gdbParams db.GossipDbParameters, w io.Writer, from, to idx.Epo
 	}
 	defer caution.CloseAndReportError(&err, gdb, "failed to close gossip db")
 
-	err = validateRange(gdb, from, to)
-	if err != nil {
-		return err
+	if !importAll {
+		err = validateRange(gdb, from, to)
+		if err != nil {
+			return err
+		}
 	}
 
 	// Write header and version
@@ -105,11 +107,10 @@ func ExportEvents(gdbParams db.GossipDbParameters, w io.Writer, from, to idx.Epo
 // Note that if not epoch range was given from the commandline, the check is skipped.
 func validateRange(gdb *gossip.Store, from, to idx.Epoch) error {
 
-	// Do not check for default values. Default values are used in case the range
-	// is not specified in the command line.
-	// For more info look to cmd/sonictool/app/chain.go
-	if from == 1 && to == 0 {
-		return nil
+	if from > to {
+		err := fmt.Errorf("invalid requested range, initial epoch %v older than last %v", from, to)
+		log.Error(err.Error())
+		return err
 	}
 
 	currentEpoch := gdb.GetEpoch()
