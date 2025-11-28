@@ -411,6 +411,12 @@ func MakeAllConfigsFromFile(ctx *cli.Context, configFile string) (*Config, error
 		return nil, err
 	}
 
+	if ctx.IsSet(flags.EnableThrottlingFlag.Name) && ctx.GlobalBool(flags.EnableThrottlingFlag.Name) {
+		cfg.Emitter.ThrottleEvents = true
+		cfg.Emitter.ThrottleDominantThreshold = ctx.GlobalFloat64(flags.ThrottlingDominantThresholdFlag.Name)
+		cfg.Emitter.ThrottleSkipInSameFrame = uint(ctx.GlobalInt(flags.ThrottlingSkipInSameFrameFlag.Name))
+	}
+
 	if err := cfg.Emitter.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid emitter config: %w", err)
 	}
