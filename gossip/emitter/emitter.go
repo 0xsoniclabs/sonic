@@ -170,6 +170,15 @@ func NewEmitter(
 		baseFeeSource: baseFeeSource,
 		errorLock:     errorLock,
 	}
+	// TODO: uncomment after event throttler is added.
+	// if config.ThrottleEvents {
+	// 	res.eventEmissionThrottler = throttling.NewThrottlingState(
+	// 		config.Validator.ID,
+	// 		config.ThrottleDominantThreshold,
+	// 		config.ThrottleSkipInSameFrame,
+	// 		world)
+	// }
+
 	res.globalConfirmingInterval.Store(uint64(config.EmitIntervals.Confirming))
 	return res
 }
@@ -338,6 +347,15 @@ func (em *Emitter) EmitEvent() (*inter.EventPayload, error) {
 	if e == nil || err != nil {
 		return nil, err
 	}
+
+	// Right after creating the event, check whether to skip its emission
+	// this location allows to take into account the event creation time
+	// and frame in throttling decision.
+	// TODO: uncomment after emitter throttler is merged.
+	// if em.eventEmissionThrottler != nil && em.eventEmissionThrottler.SkipEventEmission(e) {
+	// 	return nil, nil
+	// }
+
 	em.syncStatus.prevLocalEmittedID = e.ID()
 
 	err = em.world.Process(e)

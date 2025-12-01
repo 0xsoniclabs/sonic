@@ -353,6 +353,22 @@ var (
 		Value: "",
 	}
 
+	// Event Emission Throttling
+	EnableThrottlingFlag = cli.BoolFlag{
+		Name:  "emitter.throttle-events",
+		Usage: "Enable event emission throttling based on network conditions",
+	}
+	ThrottlingDominantThresholdFlag = cli.Float64Flag{
+		Name:  "emitter.throttle-dominant-threshold",
+		Usage: "Dominant threshold for event emission throttling (between 0 and 1)",
+		Value: 0.75,
+	}
+	ThrottlingSkipInSameFrameFlag = cli.UintFlag{
+		Name:  "emitter.throttle-skip-in-same-frame",
+		Usage: "Number of events to skip emitting in the same frame when throttling is active",
+		Value: 3,
+	}
+
 	// Consensus
 	SuppressFramePanicFlag = cli.BoolFlag{
 		Name:  "lachesis.suppress-frame-panic",
