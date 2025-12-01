@@ -63,12 +63,11 @@ func TestThrottling_SkippEventEmission_DoNotSkipIfBelongingToDominantSet(t *test
 			world.EXPECT().GetRules().Return(opera.Rules{})
 			world.EXPECT().GetLatestBlockIndex().Return(idx.Block(0)).AnyTimes()
 
-			state := NewThrottlingState(test.validatorID, 0.75, 0, world)
+			state := NewThrottlingState(test.validatorID, 0.75, 3, world)
 
 			event := inter.NewMockEventPayloadI(ctrl)
 			event.EXPECT().Transactions().Return(types.Transactions{}).AnyTimes()
 			event.EXPECT().Frame().Return(idx.Frame(1)).AnyTimes()
-			event.EXPECT().CreationTime().Return(inter.Timestamp(1000)).AnyTimes()
 
 			skip := state.SkipEventEmission(event)
 			require.False(t, skip)
@@ -89,14 +88,13 @@ func TestThrottling_SkipEventEmission_SkipIfNotBelongingToDominantSet(t *testing
 	world.EXPECT().GetRules().Return(opera.Rules{})
 	world.EXPECT().GetLatestBlockIndex().Return(idx.Block(0))
 
-	state := NewThrottlingState(3, 0.75, 0, world)
+	state := NewThrottlingState(3, 0.75, 1, world)
 
 	event := inter.NewMockEventPayloadI(ctrl)
 	event.EXPECT().Transactions().Return(types.Transactions{})
 	event.EXPECT().Frame().Return(idx.Frame(1)).AnyTimes()
 
 	skip := state.SkipEventEmission(event)
-
 	require.True(t, skip)
 }
 
@@ -112,7 +110,6 @@ func TestThrottling_DoNotSkip_WhenEventCarriesTransactions(t *testing.T) {
 	event.EXPECT().Transactions().Return(
 		types.Transactions{types.NewTx(&types.LegacyTx{})})
 	event.EXPECT().Frame()
-	event.EXPECT().CreationTime()
 
 	skip := state.SkipEventEmission(event)
 	require.False(t, skip)
@@ -120,6 +117,8 @@ func TestThrottling_DoNotSkip_WhenEventCarriesTransactions(t *testing.T) {
 
 func TestThrottling_DoNotSkip_WhenEventBelongsToTheSameFrame(t *testing.T) {
 	ctrl := gomock.NewController(t)
+	// stakes are dominated by validators 1 and 2,
+	// this allows validator 3 to be throttled for this test
 	stakes := makeValidators(
 		500, 300, 200,
 	)
@@ -133,19 +132,26 @@ func TestThrottling_DoNotSkip_WhenEventBelongsToTheSameFrame(t *testing.T) {
 	}).AnyTimes()
 	world.EXPECT().GetLatestBlockIndex().Return(idx.Block(0)).AnyTimes()
 
-	state := NewThrottlingState(3, 0.75, 3, world)
-	sameFrame := idx.Frame(1)
-	state.lastEventFrame = sameFrame
-	state.lastEventTime = inter.Timestamp(1000)
+	// repeat test for a variety of maxRepeatedFrames settings
+	for _, maxRepeatedFrames := range []uint{1, 2, 3, 4, 80} {
 
-	// Second event in the same frame
-	event2 := inter.NewMockEventPayloadI(ctrl)
-	event2.EXPECT().Transactions()
-	event2.EXPECT().Frame().Return(sameFrame).Times(2)
-	event2.EXPECT().CreationTime().Return(inter.Timestamp(170*3 + 1000))
+		state := NewThrottlingState(3, 0.75, maxRepeatedFrames, world)
+		repeatedFrame := idx.Frame(7) // any frame number, repeatedly used
 
-	skip := state.SkipEventEmission(event2)
-	require.False(t, skip)
+		for range maxRepeatedFrames {
+			repeatedFrameEvent := inter.NewMockEventPayloadI(ctrl)
+			repeatedFrameEvent.EXPECT().Transactions()
+			repeatedFrameEvent.EXPECT().Frame().Return(repeatedFrame).Times(2)
+			skip := state.SkipEventEmission(repeatedFrameEvent)
+			require.True(t, skip)
+		}
+
+		oneTooManyEvent := inter.NewMockEventPayloadI(ctrl)
+		oneTooManyEvent.EXPECT().Transactions()
+		oneTooManyEvent.EXPECT().Frame().Return(repeatedFrame).Times(2)
+		skip := state.SkipEventEmission(oneTooManyEvent)
+		require.False(t, skip)
+	}
 }
 
 func TestThrottling_DoNotSkip_IfTooManyBlocksAreSkipped(t *testing.T) {
@@ -167,7 +173,6 @@ func TestThrottling_DoNotSkip_IfTooManyBlocksAreSkipped(t *testing.T) {
 	event := inter.NewMockEventPayloadI(ctrl)
 	event.EXPECT().Transactions()
 	event.EXPECT().Frame().Return(idx.Frame(2)).AnyTimes()
-	event.EXPECT().CreationTime().AnyTimes()
 
 	skip := throttler.SkipEventEmission(event)
 	require.False(t, skip)
