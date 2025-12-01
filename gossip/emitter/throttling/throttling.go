@@ -17,8 +17,6 @@
 package throttling
 
 import (
-	"time"
-
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
@@ -33,16 +31,18 @@ import (
 // for a given validator, based on its stake and the stake distribution among
 // all validators, and properties of the events to be emitted.
 type ThrottlingState struct {
-	thisValidatorID      idx.ValidatorID
-	dominatingPercentile float64
-
+	// throttler configuration parameters
+	thisValidatorID                     idx.ValidatorID
+	dominatingPercentile                float64
 	maxSkippedEventsWithSameFrameNumber uint
 
+	// means to access the world state
 	world WorldReader
 
-	lastEventFrame          idx.Frame
-	lastEventTime           inter.Timestamp
-	lastEmissionBlockNumber idx.Block
+	// accumulated state
+	lastUsedFrame             idx.Frame
+	lastEmissionBlockNumber   idx.Block
+	currentSkippedEventsCount uint
 }
 
 type WorldReader interface {
@@ -69,7 +69,7 @@ func NewThrottlingState(
 ) *ThrottlingState {
 	return &ThrottlingState{
 		thisValidatorID:                     validatorID,
-		dominatingPercentile:                dominatingPercentile,
+		dominatingPercentile:                min(max(dominatingPercentile, 0.7), 1),
 		maxSkippedEventsWithSameFrameNumber: maxSkippedEventsWithSameFrameNumber,
 		world:                               stateReader,
 	}
@@ -80,10 +80,13 @@ func NewThrottlingState(
 // It returns true if the event emission should be skipped, false otherwise.
 func (ts *ThrottlingState) SkipEventEmission(event inter.EventPayloadI) bool {
 	skip := ts.skipEvent(event)
-	if !skip {
-		ts.lastEventFrame = event.Frame()
-		ts.lastEventTime = event.CreationTime()
+	ts.lastUsedFrame = event.Frame()
+
+	if skip {
+		ts.currentSkippedEventsCount++
+	} else {
 		ts.lastEmissionBlockNumber = ts.world.GetLatestBlockIndex()
+		ts.currentSkippedEventsCount = 0
 	}
 	return skip
 }
@@ -100,9 +103,8 @@ func (ts *ThrottlingState) skipEvent(event inter.EventPayloadI) bool {
 	// for a given period of time.
 	// This means that there no progress in the network can be observed. The stake of this
 	// validator stake may be needed to reach quorum in the current frame.
-	maxSameFrameDuration := time.Duration(ts.maxSkippedEventsWithSameFrameNumber) * time.Duration(rules.Emitter.Interval)
-	if ts.lastEventFrame == event.Frame() &&
-		time.Since(ts.lastEventTime.Time()) >= maxSameFrameDuration {
+	if ts.lastUsedFrame == event.Frame() &&
+		ts.currentSkippedEventsCount >= ts.maxSkippedEventsWithSameFrameNumber {
 		return false
 	}
 
