@@ -355,6 +355,8 @@ func (em *Emitter) EmitEvent() (*inter.EventPayload, error) {
 	// and frame in throttling decision.
 	if em.eventEmissionThrottler != nil &&
 		em.eventEmissionThrottler.SkipEventEmission(e) {
+		// TODO: metrics for skipped events
+		// https://github.com/0xsoniclabs/sonic-admin/issues/531
 		return nil, nil
 	}
 
