@@ -17,7 +17,6 @@
 package throttling
 
 import (
-	"math"
 	"time"
 
 	"github.com/0xsoniclabs/sonic/inter"
@@ -120,9 +119,7 @@ func (ts *ThrottlingState) skipEvent(event inter.EventPayloadI) bool {
 
 	// Compute dominant set and check if this validator belongs to it.
 	validators, _ := ts.world.GetEpochValidators()
-	totalStake := validators.TotalWeight()
-	threshold := pos.Weight(math.Ceil(float64(totalStake) * ts.dominatingPercentile))
-	dominantSet, dominated := ComputeDominantSet(validators, threshold)
+	dominantSet, dominated := ComputeDominantSet(validators, ts.dominatingPercentile)
 	if !dominated {
 		return false
 	}

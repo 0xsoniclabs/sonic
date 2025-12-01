@@ -28,69 +28,83 @@ import (
 )
 
 func TestComputeDominantSet_CanIdentifyWhenStakeDistributionIsDominated(t *testing.T) {
-	const testThreshold = 100
+	const testThreshold = 0.75
 
 	tests := map[string]struct {
-		stakes            []int64
-		expectedDominated bool
-		expectedSet       []idx.ValidatorID
+		stakes      []int64
+		expectedSet []idx.ValidatorID
 	}{
 		"no validators": {
-			stakes:            nil,
-			expectedDominated: false,
+			stakes: nil,
 		},
-		"single validator below threshold": {
-			stakes:            []int64{50},
-			expectedDominated: false,
+		"single validator": {
+			stakes:      []int64{100},
+			expectedSet: []idx.ValidatorID{1},
 		},
-		"single validator just below threshold": {
-			stakes:            []int64{99},
-			expectedDominated: false,
+		"two equal validators": {
+			stakes:      []int64{50, 50},
+			expectedSet: []idx.ValidatorID{1, 2},
 		},
-		"multiple validators below threshold": {
-			stakes:            append(slices.Repeat([]int64{10}, 9), 9),
-			expectedDominated: false,
+		"two validators one dominant": {
+			stakes:      []int64{80, 20},
+			expectedSet: []idx.ValidatorID{1},
 		},
-		"multiple validators summing threshold": {
-			stakes:            append(slices.Repeat([]int64{10}, 9), 10),
-			expectedDominated: true,
-			// all 11 elements are included
-			expectedSet: []idx.ValidatorID{1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
+		"three validators one dominant": {
+			stakes:      []int64{80, 10, 10},
+			expectedSet: []idx.ValidatorID{1},
 		},
-		"multiple validators just above threshold": {
-			stakes:            append(slices.Repeat([]int64{10}, 9), []int64{9, 1, 1}...),
-			expectedDominated: true,
-			//  11 elements out of 12 are included
-			expectedSet: []idx.ValidatorID{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
-		},
-		"single validator at threshold": {
-			stakes:            []int64{100},
-			expectedDominated: true,
-			expectedSet:       []idx.ValidatorID{1},
-		},
-		"single validator just above threshold": {
-			stakes:            []int64{101},
-			expectedDominated: true,
-			expectedSet:       []idx.ValidatorID{1},
-		},
-		"two validators at threshold": {
-			stakes:            []int64{50, 50},
-			expectedDominated: true,
-			expectedSet:       []idx.ValidatorID{1, 2},
-		},
-		"two validators out of three sum threshold": {
-			stakes:            []int64{50, 50, 50},
-			expectedDominated: true,
-			expectedSet:       []idx.ValidatorID{1, 2},
+		"three validators two dominant": {
+			stakes:      []int64{40, 40, 20},
+			expectedSet: []idx.ValidatorID{1, 2},
 		},
 	}
 
-	for _, test := range tests {
-		stakes := makeValidators(test.stakes...)
-		set, exist := ComputeDominantSet(stakes, testThreshold)
-		require.Equal(t, test.expectedDominated, exist)
-		require.ElementsMatch(t, test.expectedSet, slices.Collect(maps.Keys(set)))
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			stakes := makeValidators(test.stakes...)
+			set, exist := ComputeDominantSet(stakes, testThreshold)
+
+			if len(test.expectedSet) == 0 {
+				require.False(t, exist)
+				return
+			}
+
+			require.ElementsMatch(t, test.expectedSet, slices.Collect(maps.Keys(set)))
+		})
 	}
+}
+
+func TestComputeDominantSet_DominatingSet_HoldsSuperMajority(t *testing.T) {
+	stakes := slices.Repeat([]int64{100}, 100)
+	validators := makeValidators(stakes...)
+
+	// For thresholds from 67% to 99%, the dominant set should include
+	// the top N validators where N is ceiling(threshold * total_validators)
+	for threshold := float64(0.67); threshold <= 1.0; threshold += 0.01 {
+		set, ok := ComputeDominantSet(validators, threshold)
+		require.True(t, ok)
+
+		cutoff := 100.0 * threshold
+		for i := 1; i <= int(cutoff); i++ {
+			_, exists := set[idx.ValidatorID(i)]
+			require.True(t, exists)
+		}
+	}
+
+	// For thresholds below 67%, there should be no dominant set with super-majority
+	for threshold := float64(0.0); threshold <= 0.66; threshold += 0.01 {
+		_, ok := ComputeDominantSet(validators, threshold)
+		require.False(t, ok)
+	}
+}
+
+func TestComputeDominantSet_DoesNotExistWhenThresholdNotMet(t *testing.T) {
+	stakes := slices.Repeat([]int64{42}, 11)
+	validators := makeValidators(stakes...)
+
+	threshold := 1.01
+	_, ok := ComputeDominantSet(validators, threshold)
+	require.False(t, ok, "any threshold >1.0 cannot be met")
 }
 
 func TestComputeDominantSet_IsIndependentFromStakeOrder(t *testing.T) {
@@ -122,11 +136,11 @@ func TestComputeDominantSet_IsIndependentFromStakeOrder(t *testing.T) {
 			for _, stake := range test.stakes {
 				sum += stake
 			}
-			threshold := float32(sum) * 0.75
+			threshold := 0.75
 
 			// Create validators in ascending order
 			validators := makeValidators(test.stakes...)
-			set, exists := ComputeDominantSet(validators, pos.Weight(threshold))
+			set, exists := ComputeDominantSet(validators, threshold)
 
 			require.True(t, exists)
 			require.ElementsMatch(t, test.expectedSet, slices.Collect(maps.Keys(set)))
@@ -169,15 +183,15 @@ func TestComputeDominantSet_EquivalentStakes_IsDeterministic(t *testing.T) {
 		}
 		validators := builder.Build()
 
-		set, exists := ComputeDominantSet(validators, 60)
-		require.True(t, exists, "total stake is 100, 60 threshold should be found")
+		set, exists := ComputeDominantSet(validators, 0.7)
+		require.True(t, exists, "total stake is 100, 70% threshold should be found")
 
 		ids := make([]idx.ValidatorID, 0, len(set))
 		for id := range set {
 			ids = append(ids, id)
 		}
 
-		require.ElementsMatch(t, []idx.ValidatorID{1, 2, 3, 4, 5, 6}, ids)
+		require.ElementsMatch(t, []idx.ValidatorID{1, 2, 3, 4, 5, 6, 7}, ids)
 	}
 }
 
