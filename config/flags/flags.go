@@ -22,6 +22,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip"
+	"github.com/0xsoniclabs/sonic/gossip/emitter"
 	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
 	pcsclite "github.com/gballet/go-libpcsclite"
 	"gopkg.in/urfave/cli.v1"
@@ -360,13 +361,13 @@ var (
 	}
 	ThrottlingDominantThresholdFlag = cli.Float64Flag{
 		Name:  "emitter.throttle-dominant-threshold",
-		Usage: "Dominant threshold for event emission throttling (between 0 and 1)",
-		Value: 0.75,
+		Usage: "Dominant set stake threshold, driving event emission throttling.(percentage between 0 and 1)",
+		Value: emitter.DefaultConfig().ThrottlerDominantThreshold,
 	}
 	ThrottlingSkipInSameFrameFlag = cli.UintFlag{
 		Name:  "emitter.throttle-skip-in-same-frame",
-		Usage: "Number of events to skip emitting in the same frame when throttling is active",
-		Value: 3,
+		Usage: "Maximum number of skipped events within the same frame to force event emission",
+		Value: emitter.DefaultConfig().ThrottlerSkipInSameFrame,
 	}
 
 	// Consensus
