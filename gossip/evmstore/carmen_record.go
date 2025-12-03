@@ -282,7 +282,7 @@ func (c *RecordCarmenStateDB) RecordPostEndTransaction(dirtyAddresses map[cc.Add
 		}
 	}
 
-	c.AccessedStorage = nil
+	c.AccessedStorage = make(map[common.Address]map[common.Hash]common.Hash)
 
 	toDelete := make([]stypes.Address, 0)
 	for address, acc := range c.SubstatePostAlloc {
