@@ -78,7 +78,7 @@ func TestComputeDominantSet_DominatingSet_HoldsSuperMajority(t *testing.T) {
 	stakes := slices.Repeat([]int64{100}, 100)
 	validators := makeValidators(stakes...)
 
-	// For thresholds from 67% to 99%, the dominant set should include
+	// For thresholds from 67% to 100%, the dominant set should include
 	// the top N validators where N is ceiling(threshold * total_validators)
 	for threshold := float64(0.67); threshold <= 1.0; threshold += 0.01 {
 		set, ok := ComputeDominantSet(validators, threshold)

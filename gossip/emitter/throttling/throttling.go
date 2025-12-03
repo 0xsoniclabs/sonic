@@ -33,7 +33,7 @@ import (
 type ThrottlingState struct {
 	// throttler configuration parameters
 	thisValidatorID                     idx.ValidatorID
-	dominatingPercentile                float64
+	dominatorsThreshold                 float64
 	maxSkippedEventsWithSameFrameNumber uint
 
 	// means to access the world state
@@ -69,7 +69,7 @@ func NewThrottlingState(
 ) *ThrottlingState {
 	return &ThrottlingState{
 		thisValidatorID:                     validatorID,
-		dominatingPercentile:                min(max(dominatingPercentile, 0.7), 1),
+		dominatorsThreshold:                 min(max(dominatingPercentile, 0.7), 1),
 		maxSkippedEventsWithSameFrameNumber: maxSkippedEventsWithSameFrameNumber,
 		world:                               stateReader,
 	}
@@ -115,13 +115,14 @@ func (ts *ThrottlingState) skipEvent(event inter.EventPayloadI) bool {
 	// the slack and other intervals alias each other, what with different emission rates?
 	blockMissedSlack := rules.Economy.BlockMissedSlack
 	currentBlockNumber := ts.world.GetLatestBlockIndex()
-	if currentBlockNumber-ts.lastEmissionBlockNumber > blockMissedSlack/2 {
+	if currentBlockNumber > ts.lastEmissionBlockNumber &&
+		currentBlockNumber-ts.lastEmissionBlockNumber > blockMissedSlack/2 {
 		return false
 	}
 
 	// Compute dominant set and check if this validator belongs to it.
 	validators, _ := ts.world.GetEpochValidators()
-	dominantSet, dominated := ComputeDominantSet(validators, ts.dominatingPercentile)
+	dominantSet, dominated := ComputeDominantSet(validators, ts.dominatorsThreshold)
 	if !dominated {
 		return false
 	}
