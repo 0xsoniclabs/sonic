@@ -83,7 +83,10 @@ func NewThrottlingState(
 // It returns true if the event emission should be skipped, false otherwise.
 func (ts *ThrottlingState) SkipEventEmission(event inter.EventPayloadI) bool {
 	skip := ts.skipEvent(event)
-	ts.lastUsedFrame = event.Frame()
+	if ts.lastUsedFrame < event.Frame() {
+		ts.currentSkippedEventsCount = 0
+		ts.lastUsedFrame = event.Frame()
+	}
 
 	if skip {
 		ts.currentSkippedEventsCount++
