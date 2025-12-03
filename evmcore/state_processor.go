@@ -94,11 +94,18 @@ func (p *StateProcessor) Process(
 	block *EvmBlock, statedb state.StateDB, cfg vm.Config, gasLimit uint64,
 	usedGas *uint64, onNewLog func(*types.Log),
 ) []ProcessedTransaction {
+	return p.ProcessWithDifficulty(block, statedb, cfg, gasLimit, usedGas, onNewLog, big.NewInt(1))
+}
+
+func (p *StateProcessor) ProcessWithDifficulty(
+	block *EvmBlock, statedb state.StateDB, cfg vm.Config, gasLimit uint64,
+	usedGas *uint64, onNewLog func(*types.Log), difficulty *big.Int,
+) []ProcessedTransaction {
 	var (
 		gp           = new(core.GasPool).AddGas(gasLimit)
 		header       = block.Header()
 		time         = uint64(block.Time.Unix())
-		blockContext = NewEVMBlockContext(header, p.bc, nil)
+		blockContext = NewEVMBlockContextWithDifficulty(header, p.bc, nil, difficulty)
 		vmenv        = vm.NewEVM(blockContext, statedb, p.config, cfg)
 		blockNumber  = block.Number
 		signer       = types.LatestSignerForChainID(p.config.ChainID)
@@ -310,11 +317,34 @@ func (e evm) _runTransaction(
 	txIndex int,
 	checkBaseFee bool,
 ) ProcessedTransaction {
+	/*
+		blockNumber := ctxt.blockNumber.Uint64()
+		if blockNumber >= 1178593 {
+			fmt.Printf("Block %d\n", ctxt.blockNumber.Uint64())
+			fmt.Printf("Processing transaction %s ...\n", tx.Hash().Hex())
+
+			v, r, s := tx.RawSignatureValues()
+			fmt.Printf("\tV: %x\n", v.Bytes())
+			fmt.Printf("\tR: %x\n", r.Bytes())
+			fmt.Printf("\tS: %x\n", s.Bytes())
+		}
+	*/
 	msg, err := TxAsMessage(tx, ctxt.signer, ctxt.baseFee)
 	if err != nil {
 		log.Info("Failed to convert transaction to message", "tx", tx.Hash().Hex(), "err", err)
 		return ProcessedTransaction{Transaction: tx}
 	}
+	/*
+		if blockNumber >= 1178593 {
+			fmt.Printf("Sender: %s\n", msg.From.Hex())
+			fmt.Printf("To: %s\n", func() string {
+				if msg.To == nil {
+					return "<contract creation>"
+				}
+				return msg.To.Hex()
+			}())
+		}
+	*/
 
 	e.Config.NoBaseFee = !checkBaseFee
 	ctxt.statedb.SetTxContext(tx.Hash(), txIndex)
