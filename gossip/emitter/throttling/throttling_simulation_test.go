@@ -256,7 +256,6 @@ type node struct {
 	lastEventPerPeer map[idx.ValidatorID]inter.EventPayloadI
 
 	lastSequenceNumber idx.Event
-	lastFrame          idx.Frame
 	currentEpoch       idx.Epoch
 }
 
@@ -286,7 +285,6 @@ func (node *node) reset() {
 	node.ownEvents = make(map[hash.Event]inter.EventPayloadI)
 	node.lastEventPerPeer = make(map[idx.ValidatorID]inter.EventPayloadI)
 	node.lastSequenceNumber = 0
-	node.lastFrame = 1
 }
 
 // createEvent creates a new event for the node. It uses the last known
@@ -300,16 +298,18 @@ func (node *node) createEvent() *inter.EventPayload {
 	builder.SetEpoch(node.currentEpoch)
 
 	maxLamport := idx.Lamport(0)
-	parents := hash.Events{}
+	parents := []inter.EventPayloadI{}
+	parentIds := hash.Events{}
 	var selfParent inter.EventPayloadI
 	for id, parent := range node.lastEventPerPeer {
-		parents = append(parents, parent.ID())
+		parents = append(parents, parent)
+		parentIds = append(parentIds, parent.ID())
 		maxLamport = idx.MaxLamport(maxLamport, parent.Lamport())
 		if id == builder.Creator() {
 			selfParent = parent
 		}
 	}
-	builder.SetParents(parents)
+	builder.SetParents(parentIds)
 
 	// set extra data: latest block index, to check that nodes with stake
 	// do emit and are not flagged as inactive
@@ -321,40 +321,42 @@ func (node *node) createEvent() *inter.EventPayload {
 		builder.SetCreationTime(inter.MaxTimestamp(inter.Timestamp(time.Now().UnixNano()), selfParent.CreationTime()+1))
 	}
 
-	builder.SetFrame(node.getNextFrameNumber())
+	validators, _ := node.world.GetEpochValidators()
+	builder.SetFrame(getFrameNumber(validators, parents))
 	event := builder.Build()
 	node.ownEvents[event.ID()] = event
 	return event
 }
 
-// getNextFrameNumber computes the next frame number for the node's own event.
-// The node checks the last known events from other
-// nodes and computes the accumulated stake of the validators that have emitted
-// events in each frame. To advance to the next frame, the node requires that
-// the accumulated stake in a frame exceeds 2/3+1 of the total stake.
-func (node *node) getNextFrameNumber() idx.Frame {
-	validators, _ := node.world.GetEpochValidators()
-
-	stakeSeen := make(map[idx.Frame]pos.Weight)
-	for creator, event := range node.lastEventPerPeer {
-		require.Equal(node.t, creator, event.Creator())
-		validatorStake := validators.Get(creator)
-		stakeSeen[event.Frame()] += validatorStake
+// getFrameNumber computes the frame number for an event with the given parents.
+func getFrameNumber(
+	validators *pos.Validators,
+	parents []inter.EventPayloadI,
+) idx.Frame {
+	// The frame of the new event is at least the frame number of the parents.
+	frame := idx.Frame(1)
+	for _, parent := range parents {
+		frame = max(frame, parent.Frame())
 	}
 
-	totalStake := validators.TotalWeight()
-	nextFrame := node.lastFrame
-	for frame, stake := range stakeSeen {
-		if stake > (totalStake*2)/3+1 && frame >= nextFrame {
-			nextFrame = max(nextFrame, frame+1)
+	// If the total stake seen in the parents' frames exceeds 2/3 of
+	// the total stake, we can advance to the next frame.
+	for {
+		stakeSeen := pos.Weight(0)
+		for _, parent := range parents {
+			creator := parent.Creator()
+			if frame <= parent.Frame() {
+				stakeSeen += validators.Get(creator)
+			}
+		}
+		if stakeSeen > (validators.TotalWeight()*2)/3 {
+			frame++
+		} else {
+			break
 		}
 	}
-	node.lastFrame = nextFrame
 
-	require.GreaterOrEqual(node.t, nextFrame, node.lastFrame,
-		"frame counter must be monotonic for own events")
-
-	return nextFrame
+	return frame
 }
 
 // receiveEvent simulates receiving an event from the network.
