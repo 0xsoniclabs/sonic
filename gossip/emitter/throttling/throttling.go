@@ -59,8 +59,9 @@ type WorldReader interface {
 // means that the dominant set is the smallest set of validators whose combined
 // stake is at least 75% of the total stake.
 //
-// stalledFrameTimeout parameter specifies the duration to consider an event
-// as stalled in the current frame.
+// maxSkippedEventsWithSameFrameNumber parameter specifies the maximum of consecutive
+// skipped events with the same frame number before forcing an emission. This brings
+// the stake of this node online when no progress can be observed in the network.
 func NewThrottlingState(
 	validatorID idx.ValidatorID,
 	dominatingPercentile float64,
@@ -68,7 +69,9 @@ func NewThrottlingState(
 	stateReader WorldReader,
 ) *ThrottlingState {
 	return &ThrottlingState{
-		thisValidatorID:                     validatorID,
+		thisValidatorID: validatorID,
+		// Clamp the threshold between 0.7 and 1 to avoid extreme values.
+		// 0.7 is a conservative approximation of the Byzantine fault tolerance limit (2/3+1).
 		dominatorsThreshold:                 min(max(dominatingPercentile, 0.7), 1),
 		maxSkippedEventsWithSameFrameNumber: maxSkippedEventsWithSameFrameNumber,
 		world:                               stateReader,
@@ -101,7 +104,7 @@ func (ts *ThrottlingState) skipEvent(event inter.EventPayloadI) bool {
 
 	// Do not skip emission if the event is in the same frame as the last emitted event
 	// for a given period of time.
-	// This means that there no progress in the network can be observed. The stake of this
+	// This means that no progress in the network can be observed. The stake of this
 	// validator stake may be needed to reach quorum in the current frame.
 	if ts.lastUsedFrame == event.Frame() &&
 		ts.currentSkippedEventsCount >= ts.maxSkippedEventsWithSameFrameNumber {
@@ -110,9 +113,6 @@ func (ts *ThrottlingState) skipEvent(event inter.EventPayloadI) bool {
 
 	// Do not skip emission if too many blocks have been missed since the last emission.
 	// This prevents this node from being flagged as inactive, and its stake being slashed.
-	//
-	// TODO: provide some guarantees about boundary conditions here: what happens when
-	// the slack and other intervals alias each other, what with different emission rates?
 	blockMissedSlack := rules.Economy.BlockMissedSlack
 	currentBlockNumber := ts.world.GetLatestBlockIndex()
 	if currentBlockNumber > ts.lastEmissionBlockNumber &&
@@ -124,6 +124,8 @@ func (ts *ThrottlingState) skipEvent(event inter.EventPayloadI) bool {
 	validators, _ := ts.world.GetEpochValidators()
 	dominantSet, dominated := ComputeDominantSet(validators, ts.dominatorsThreshold)
 	if !dominated {
+		// If no dominant set exists, do not skip emission.
+		// Every stake contribution is meaningful in this case.
 		return false
 	}
 
