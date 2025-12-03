@@ -22,6 +22,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip"
+	"github.com/0xsoniclabs/sonic/gossip/emitter"
 	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
 	pcsclite "github.com/gballet/go-libpcsclite"
 	"gopkg.in/urfave/cli.v1"
@@ -351,6 +352,22 @@ var (
 		Name:  "validator.password",
 		Usage: "Password to unlock validator private key",
 		Value: "",
+	}
+
+	// Event Emission Throttling
+	EnableThrottlingFlag = cli.BoolFlag{
+		Name:  "emitter.throttle-events",
+		Usage: "Enable event emission throttling based on network conditions",
+	}
+	ThrottlingDominantThresholdFlag = cli.Float64Flag{
+		Name:  "emitter.throttle-dominant-threshold",
+		Usage: "Dominant set stake threshold, driving event emission throttling.(percentage between 0 and 1)",
+		Value: emitter.DefaultConfig().ThrottlerDominantThreshold,
+	}
+	ThrottlingSkipInSameFrameFlag = cli.UintFlag{
+		Name:  "emitter.throttle-skip-in-same-frame",
+		Usage: "Maximum number of skipped events within the same frame to force event emission",
+		Value: emitter.DefaultConfig().ThrottlerSkipInSameFrame,
 	}
 
 	// Consensus
