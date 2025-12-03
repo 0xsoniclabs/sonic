@@ -18,8 +18,6 @@ package throttling
 
 import (
 	"fmt"
-	"maps"
-	"math/rand"
 	"slices"
 	"testing"
 	"time"
@@ -30,271 +28,420 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func Test_SkipEvents_SimulateFrameCounting(t *testing.T) {
-
-	// This test simulates a network of nodes using the throttling mechanism.
-	// The test consist of several epochs, each with a different stake distribution
-	// among validators. In each epoch, nodes create and exchange events, applying
-	// the throttling logic to decide whether to emit events based on their stake
-	// and the dominant set of validators.
-	//
-	// To verify the resiliency of the throttling mechanism, the test drops events
-	// randomly to simulate blackouts or misbehaving nodes.
-
-	const epochEmissions = 50
-	const maxNumNodes = 10
-
-	testRules := opera.Rules{
-		Economy: opera.EconomyRules{
-			BlockMissedSlack: 4,
-		},
+func Test_SkipEvents_FrameProgressionWhenAllNodesAreOnline(t *testing.T) {
+	stakes := map[string][]int64{
+		"single":           {1},
+		"uniform_5":        slices.Repeat([]int64{100}, 5),
+		"uniform_10":       slices.Repeat([]int64{42}, 10),
+		"uniform_100":      slices.Repeat([]int64{21}, 100),
+		"two dominating":   {50, 20, 10, 10, 10},
+		"three dominating": {40, 30, 20, 5, 5},
 	}
-	fakeWorld := &fakeWorld{
-		rules: testRules,
+	threshold := []float64{
+		0.70, 0.75, 0.80, 0.90, 0.95, 1.00,
 	}
 
-	for dominantThreshold := 0.67; dominantThreshold <= 0.95; dominantThreshold += 0.05 {
-
-		net := newNetwork(t, maxNumNodes, fakeWorld, dominantThreshold, 3)
-		for testName, stakes := range map[string][]int64{
-			"single validator":            {1000},
-			"single dominant validator":   makeTestStakeDistribution(t, 10, 1, dominantThreshold),
-			"two dominant validators":     makeTestStakeDistribution(t, 10, 2, dominantThreshold),
-			"three dominant validators":   makeTestStakeDistribution(t, 10, 3, dominantThreshold),
-			"uniform stake":               makeTestStakeDistribution(t, 10, 0, dominantThreshold),
-			"non dominated uniform stake": makeTestStakeDistribution(t, 3, 0, dominantThreshold),
-		} {
-
-			t.Run(fmt.Sprintf("%v/threshold=%f", testName, dominantThreshold),
+	for name, stakeDist := range stakes {
+		for _, th := range threshold {
+			t.Run(
+				fmt.Sprintf("%s/threshold=%.2f", name, th),
 				func(t *testing.T) {
-
-					require.GreaterOrEqual(t, maxNumNodes, len(stakes),
-						"not enough initial nodes for this distribution")
-					fakeWorld.validators = makeValidators(stakes...)
-
-					// =========================================================
-					// Run n emissions
-					// =========================================================
-
-					for i := range epochEmissions {
-
-						events := make([]*inter.EventPayload, 0)
-						for id, node := range net.nodes {
-
-							// only validators with stake do emit
-							if !fakeWorld.validators.Exists(id) {
-								continue
-							}
-
-							event := node.createEvent()
-							skip := node.throttler.SkipEventEmission(event)
-							if !skip {
-								events = append(events, event)
-							}
-						}
-
-						// shuffle events
-						rand.Shuffle(len(events), func(i, j int) {
-							events[i], events[j] = events[j], events[i]
-						})
-						// drop first element with a probability. This simulates validators
-						// being offline or misbehaving.
-						if rand.Intn(100) < 40 {
-							events = events[1:]
-						}
-
-						for _, event := range events {
-							for _, node := range net.nodes {
-								node.receiveEvent(event)
-							}
-						}
-
-						// Simulate block progression, this tests a mechanism which forces
-						// suppressed nodes to emit eventually. So that they are not
-						// considered inactive.
-						fakeWorld.lastBlock = idx.Block(i / 3)
-					}
-
-					dominantSet, _ := ComputeDominantSet(fakeWorld.validators, dominantThreshold)
-
-					// =========================================================
-					// Check expectations
-					// =========================================================
-
-					t.Log("epoch stakes:", stakes)
-					t.Log("dominant set:", slices.Collect(maps.Keys(dominantSet)))
-					for _, node := range net.nodes {
-						seenPeers := slices.Collect(maps.Keys(node.lastEventPerPeer))
-						t.Log("  - node", node.selfId,
-							"has seen peers", seenPeers,
-							"reached frame", node.lastSeenFrameNumber())
-					}
-
-					for _, node := range net.nodes {
-
-						eventsInEpoch := slices.Collect(maps.Values(node.confirmedEvents))
-						lastFrame := idx.Frame(0)
-						stakeInFrames := make(map[idx.Frame]pos.Weight)
-						for _, event := range eventsInEpoch {
-							validatorStake := fakeWorld.validators.Get(event.Creator())
-							stakeInFrames[event.Frame()] += validatorStake
-							lastFrame = max(lastFrame, event.Frame())
-						}
-
-						// All events collected must belong to the current epoch
-						for _, event := range eventsInEpoch {
-							require.Equal(t, node.currentEpoch, event.Epoch(),
-								"all events must belong to the current epoch")
-						}
-
-						// Each node must have seen events in every frame
-						for frame := idx.Frame(1); frame <= lastFrame; frame++ {
-							_, ok := stakeInFrames[frame]
-							require.True(t, ok,
-								"node %d has not seen any events for frame %d",
-								node.selfId, frame)
-						}
-
-						// Each node must have seen events on each frame emitted
-						// from validators with a super-majority of stake
-						totalStake := fakeWorld.validators.TotalWeight()
-						superMajorityStake := (totalStake*2)/3 + 1
-						for frame, stakeForFrame := range stakeInFrames {
-							if frame == lastFrame {
-								// last frame may be incomplete
-								continue
-							}
-							require.GreaterOrEqual(t, stakeForFrame, superMajorityStake,
-								"node %d: frame %d does not have super-majority stake %d < (%d / %d)",
-								node.selfId, frame, stakeForFrame, superMajorityStake, totalStake)
-						}
-
-						// Verify that each node with stake in this epoch takes part
-						// in the formation of blocks, within the slack defined.
-						// This is verified by checking that the node has seen events
-						// carrying latest block indexes at least every BlockMissedSlack/2
-						// emissions.
-						if fakeWorld.validators.Exists(node.selfId) {
-							blocksSeen := make([]idx.Block, 0)
-							for _, event := range eventsInEpoch {
-								blockInEvent := bigendian.BytesToUint64(event.Extra())
-								blocksSeen = append(blocksSeen, idx.Block(blockInEvent))
-							}
-							maximumMissedBlockInterval := 0
-							slices.Sort(blocksSeen)
-							for i := 1; i < len(blocksSeen)-1; i++ {
-								maximumMissedBlockInterval = max(maximumMissedBlockInterval,
-									int(blocksSeen[i]-blocksSeen[i-1]))
-							}
-
-							assert.LessOrEqual(t, maximumMissedBlockInterval,
-								int(testRules.Economy.BlockMissedSlack),
-								"node %d has missed too many blocks (%d) between emissions",
-								node.selfId, maximumMissedBlockInterval)
-						}
-
-						// Each node must reach a frame number of at least 1/3 of
-						// the total emissions in the epoch. If no events were dropped,
-						// this could be set to 100%.
-						require.GreaterOrEqual(t, node.lastSeenFrameNumber(),
-							idx.Frame(epochEmissions/3),
-							"node %d did not reach expected frame", node.selfId)
-					}
-
-					// prepare for next epoch
-					for _, node := range net.nodes {
-						node.reset()
-						node.currentEpoch++
-					}
-				})
+					testAllNodesOnline(t, th, stakeDist)
+				},
+			)
 		}
 	}
 }
 
-// network simulates a set of nodes communicating with each other.
-type network struct {
-	t     testing.TB
-	nodes map[idx.ValidatorID]*node
+// testAllNodesOnline runs a simulation where all nodes are online and checks
+// that they all make progress. Furthermore, it checks that nodes in the
+// dominant set produce events at every round, while others produce less
+// frequently.
+func testAllNodesOnline(
+	t *testing.T,
+	threshold float64,
+	stakes []int64,
+) {
+	const numRounds = 100
+	require := require.New(t)
+	numNodes := len(stakes)
+
+	world := &fakeWorld{
+		rules: opera.Rules{
+			Economy: opera.EconomyRules{
+				BlockMissedSlack: 4,
+			},
+		},
+		validators: makeValidators(stakes...),
+	}
+
+	// Run the network for a few rounds, checking that all nodes make progress.
+	network := newNetwork(numNodes, world, threshold, 10)
+	for cur := range numRounds {
+		network.runRound(nil)
+
+		// Each node should progress one frame per round.
+		for _, node := range network.nodes {
+			require.EqualValues(cur+1, node.lastSeenFrameNumber())
+		}
+	}
+
+	// Count the number of events produced by each node.
+	totalEventsPerNode := make(map[idx.ValidatorID]int)
+	for _, event := range network.allEvents {
+		totalEventsPerNode[event.Creator()]++
+	}
+
+	// Validators of the dominating set must have produced one event per round,
+	// while others should have produced less.
+	dominantSet, _ := ComputeDominantSet(world.validators, threshold)
+	for i, count := range totalEventsPerNode {
+		if _, included := dominantSet[i]; included {
+			require.Equal(numRounds, count)
+		} else {
+			require.Less(count, numRounds)
+		}
+	}
 }
 
-func newNetwork(t testing.TB,
+func Test_SkipEvents_NodesBeingOffline(t *testing.T) {
+	const threshold = 0.75
+	cases := map[string]struct {
+		stakes      []int64
+		offlineMask offlineMask
+	}{
+		"single dominating node is offline": {
+			// 5 nodes, each 20% stake; threshold 75% => the last node could throttle
+			stakes:      []int64{20, 20, 20, 20, 20},
+			offlineMask: offlineMask{true}, // < first node is offline
+		},
+
+		"two dominating nodes are offline": {
+			// 10 nodes, each 10% stake; threshold 75%; last 2 nodes could throttle
+			stakes:      slices.Repeat([]int64{10}, 10),
+			offlineMask: offlineMask{true, true}, // < first two nodes are offline
+		},
+
+		"second-most dominating nodes is offline": {
+			// 10 nodes, each 10% stake; threshold 75%; last 2 nodes could throttle
+			stakes:      slices.Repeat([]int64{10}, 10),
+			offlineMask: offlineMask{1: true}, // < second node is offline
+		},
+	}
+
+	for name, test := range cases {
+		t.Run(name, func(t *testing.T) {
+			testPartiallyOnlineNodes(
+				t,
+				threshold,
+				test.stakes,
+				test.offlineMask,
+			)
+		})
+	}
+}
+
+// testAllNodesOnline runs a simulation where all nodes are online and checks
+// that they all make progress. Furthermore, it checks that nodes in the
+// dominant set produce events at every round, while others produce less
+// frequently.
+func testPartiallyOnlineNodes(
+	t *testing.T,
+	threshold float64,
+	stakes []int64,
+	offlineMask offlineMask,
+) {
+	const numRounds = 100
+	const repeatedFramesMaxCount = 10
+	require := require.New(t)
+	numNodes := len(stakes)
+
+	world := &fakeWorld{
+		rules: opera.Rules{
+			Economy: opera.EconomyRules{
+				BlockMissedSlack: 4,
+			},
+		},
+		validators: makeValidators(stakes...),
+	}
+
+	// Run the network for a few rounds, checking that all nodes make progress.
+	network := newNetwork(numNodes, world, threshold, repeatedFramesMaxCount)
+	for range numRounds {
+		network.runRound(offlineMask)
+	}
+
+	// Check whether progress was made by nodes. Since some nodes were offline,
+	// others non-dominant nodes should have started emitting frames as well,
+	// preserving progress. However, progress may be slower by the number of
+	// allowed repeated frames.
+	wantedFrames := idx.Frame(numRounds / repeatedFramesMaxCount)
+	for i, node := range network.nodes {
+		require.LessOrEqual(
+			wantedFrames, node.lastSeenFrameNumber(),
+			"node %d did not make expected progress", i+1,
+		)
+	}
+
+	// Count the number of events produced by each node.
+	totalEventsPerNode := make(map[idx.ValidatorID]int)
+	for _, event := range network.allEvents {
+		totalEventsPerNode[event.Creator()]++
+	}
+
+	// Offline nodes must not have produced any events.
+	for i, count := range totalEventsPerNode {
+		if offlineMask.isOffline(int(i - 1)) {
+			require.Zero(count, "offline node %d emitted events", i)
+		}
+	}
+}
+
+func Test_SkipEvents_NetworkStallsWhenOneThirdOfStakesIsOffline(t *testing.T) {
+	const threshold = 0.75
+	const numNodes = 10
+	const repeatedFramesMaxCount = 4
+	require := require.New(t)
+
+	stakes := slices.Repeat([]int64{10}, numNodes)
+
+	world := &fakeWorld{
+		rules: opera.Rules{
+			Economy: opera.EconomyRules{
+				BlockMissedSlack: 4,
+			},
+		},
+		validators: makeValidators(stakes...),
+	}
+
+	// Run the network for a few rounds, checking that all nodes make progress.
+	network := newNetwork(numNodes, world, threshold, repeatedFramesMaxCount)
+
+	// -- All Online --
+
+	// In the first round, everyone is online, and all nodes should make progress.
+	network.runRound(nil)
+	for _, node := range network.nodes {
+		require.EqualValues(1, node.lastSeenFrameNumber())
+	}
+
+	// -- Drop 40% Stake --
+
+	// In the second round, 4 nodes go offline (40% of stake).
+	offline := offlineMask{true, true, true, true}
+	network.runRound(offline)
+
+	// Nodes still see new frames based on the results of round 1.
+	for _, node := range network.nodes {
+		require.EqualValues(2, node.lastSeenFrameNumber())
+	}
+
+	// But after this, the network stalls.
+	for range 10 {
+		network.runRound(offline)
+		for _, node := range network.nodes {
+			require.EqualValues(2, node.lastSeenFrameNumber())
+		}
+	}
+
+	// -- Bring back 8/10 nodes --
+
+	// Bringing back some nodes (80% of stake) should allow progress again.
+	offline = offlineMask{true, true} // only 2 nodes offline now
+	network.runRound(offline)
+
+	// In the first round after recovery, nodes should still be at frame 2,
+	// since only after this round enough events for frame 2 enabling the
+	// progression to frame 3 have been signed and distributed.
+	for _, node := range network.nodes {
+		require.EqualValues(2, node.lastSeenFrameNumber())
+	}
+
+	network.runRound(offline)
+
+	// In the second round after recovery, nodes should have progressed to frame 3.
+	for _, node := range network.nodes {
+		require.EqualValues(3, node.lastSeenFrameNumber())
+	}
+}
+
+func Test_SkipEvents_OfflineNodes_GradualIncreaseInEmittedEvents(t *testing.T) {
+	const threshold = 0.75
+	const numNodes = 10
+	const repeatedFramesMaxCount = 4
+	require := require.New(t)
+
+	stakes := slices.Repeat([]int64{10}, numNodes)
+
+	world := &fakeWorld{
+		rules: opera.Rules{
+			Economy: opera.EconomyRules{
+				BlockMissedSlack: 4,
+			},
+		},
+		validators: makeValidators(stakes...),
+	}
+
+	// Run the network for a few rounds, checking that all nodes make progress.
+	network := newNetwork(numNodes, world, threshold, repeatedFramesMaxCount)
+
+	// -- All Online --
+
+	// In the first round, everyone is online, and all nodes should make progress.
+	events := network.runRound(nil)
+	require.Len(events, 8) // 2 least dominant nodes throttle
+
+	// If one node goes offline (10% of stake), throttling nodes are kicking in.
+	offline := offlineMask{true}
+	events = network.runRound(offline)
+	require.Len(events, 7) // 1 offline + 2 throttling nodes
+
+	// This is a steady state, since progress is made.
+	for range 5 {
+		events = network.runRound(offline)
+		require.Len(events, 7) // 1 offline + 2 throttling nodes
+	}
+
+	// If another node goes offline (20% of stake), extra nodes remain throttled.
+	offline = offlineMask{true, true}
+	events = network.runRound(offline)
+	require.Len(events, 6) // 2 offline + 2 throttling node
+
+	// 6/10 is to low for progress, so network stalls until we reach the max
+	// repeated frames.
+	for range repeatedFramesMaxCount - 1 {
+		events = network.runRound(offline)
+		require.Len(events, 6) // 2 offline + 2 throttling node
+	}
+
+	// After reaching the max repeated frames, throttling nodes emit again,
+	// allowing progress.
+	events = network.runRound(offline)
+	require.Len(events, 8) // 2 offline, nobody throttled
+
+	// This was a one-time thing. Now that there is progress, nodes are throttling again.
+	for range repeatedFramesMaxCount {
+		events = network.runRound(offline)
+		require.Len(events, 6) // 2 offline + 2 throttling node
+	}
+
+	// And this repeats indefinitely.
+	// TODO: decide whether this is fine, or whether we want this to be smoother.
+	for range 100 {
+		events = network.runRound(offline)
+		require.Len(events, 8) // 2 offline, nobody throttled
+
+		for range repeatedFramesMaxCount {
+			events = network.runRound(offline)
+			require.Len(events, 6) // 2 offline + 2 throttling node
+		}
+	}
+
+	// -- Bring back all nodes --
+	
+	// Bringing back all nodes should restore full emission.
+	offline = offlineMask{}
+	events = network.runRound(offline)
+	require.Len(events, 10) // all nodes emit
+
+	// After this, nodes throttle again.
+	for range 100 {
+		events = network.runRound(offline)
+		require.Len(events, 8) // 2 throttling nodes
+	}
+}
+
+// --- Simulation Infrastructure ---
+
+// network simulates a set of nodes communicating with each other.
+type network struct {
+	nodes     []*node
+	allEvents []*inter.EventPayload
+}
+
+func newNetwork(
 	numNodes int,
 	world WorldReader,
 	dominantSetThreshold float64,
 	repeatedFramesMaxCount uint,
 ) *network {
-	nodes := make(map[idx.ValidatorID]*node)
+	nodes := make([]*node, 0, numNodes)
 	for i := range numNodes {
 		id := idx.ValidatorID(i + 1)
-		nodes[id] = newNode(t, id, world,
+		nodes = append(nodes, newNode(id, world,
 			dominantSetThreshold,
 			repeatedFramesMaxCount,
-		)
+		))
 	}
 	return &network{
-		t:     t,
 		nodes: nodes,
 	}
 }
 
+func (n *network) runRound(
+	offlineMask offlineMask,
+) []*inter.EventPayload {
+	// Collect events from all nodes.
+	events := make([]*inter.EventPayload, 0)
+	for i, node := range n.nodes {
+		if offlineMask.isOffline(i) {
+			continue
+		}
+		if event := node.createEvent(); event != nil {
+			events = append(events, event)
+		}
+	}
+
+	// Collect all events in the network history.
+	n.allEvents = append(n.allEvents, events...)
+
+	// Distribute events to all nodes.
+	for _, event := range events {
+		for _, node := range n.nodes {
+			node.receiveEvent(event)
+		}
+	}
+	return events
+}
+
 // node simulates a node in the network.
 type node struct {
-	t         testing.TB
 	throttler ThrottlingState
 	world     WorldReader
 
 	// mini Lachesis implementation:
 	// does not find closures in dag, just tracks frames and parents
 	selfId           idx.ValidatorID
-	parentlessEvents []inter.EventPayloadI
-	confirmedEvents  map[hash.Event]inter.EventPayloadI
-	ownEvents        map[hash.Event]inter.EventPayloadI
 	lastEventPerPeer map[idx.ValidatorID]inter.EventPayloadI
 
-	lastSequenceNumber idx.Event
-	currentEpoch       idx.Epoch
+	currentEpoch idx.Epoch
 }
 
 // newNode creates a new node in the network.
 func newNode(
-	t testing.TB,
 	selfId idx.ValidatorID,
 	world WorldReader,
 	dominantSetThreshold float64,
 	repeatedFramesMaxCount uint,
 ) *node {
-	node := &node{
-		t:         t,
-		throttler: *NewThrottlingState(selfId, dominantSetThreshold, repeatedFramesMaxCount, world),
-		world:     world,
-
-		selfId: selfId,
+	return &node{
+		throttler:        *NewThrottlingState(selfId, dominantSetThreshold, repeatedFramesMaxCount, world),
+		world:            world,
+		selfId:           selfId,
+		lastEventPerPeer: map[idx.ValidatorID]inter.EventPayloadI{},
 	}
-	node.reset()
-	return node
 }
 
-// reset clears the node state for a new epoch.
-func (node *node) reset() {
-	node.parentlessEvents = make([]inter.EventPayloadI, 0)
-	node.confirmedEvents = make(map[hash.Event]inter.EventPayloadI)
-	node.ownEvents = make(map[hash.Event]inter.EventPayloadI)
-	node.lastEventPerPeer = make(map[idx.ValidatorID]inter.EventPayloadI)
-	node.lastSequenceNumber = 0
-}
-
-// createEvent creates a new event for the node. It uses the last known
-// events from other nodes as parents.
+// createEvent creates a new event for the node. The result may be nil if this
+// node's throttler decides to skip emission.
 func (node *node) createEvent() *inter.EventPayload {
 
 	builder := &inter.MutableEventPayload{}
 	builder.SetVersion(2)
 	builder.SetCreator(node.selfId)
-	builder.SetSeq(node.lastSequenceNumber + 1)
 	builder.SetEpoch(node.currentEpoch)
 
 	maxLamport := idx.Lamport(0)
@@ -324,7 +471,10 @@ func (node *node) createEvent() *inter.EventPayload {
 	validators, _ := node.world.GetEpochValidators()
 	builder.SetFrame(getFrameNumber(validators, parents))
 	event := builder.Build()
-	node.ownEvents[event.ID()] = event
+
+	if node.throttler.SkipEventEmission(event) {
+		return nil
+	}
 	return event
 }
 
@@ -361,60 +511,7 @@ func getFrameNumber(
 
 // receiveEvent simulates receiving an event from the network.
 func (node *node) receiveEvent(event *inter.EventPayload) {
-
-	if event.Creator() == node.selfId {
-		node.confirmedEvents[event.ID()] = event
-		node.lastEventPerPeer[event.Creator()] = event
-		node.lastSequenceNumber = event.Seq()
-		return
-	}
-
-	require := require.New(node.t)
-	require.NotNil(event, "event must not be nil")
-	require.NotZero(event.ID(), "event ID must be set")
-	require.NotZero(event.Creator(), "event creator must be set")
-	require.NotZero(event.Frame(), "frame must be at least 1")
-	lastPeerEvent, ok := node.lastEventPerPeer[event.Creator()]
-	if ok {
-		require.Less(lastPeerEvent.Seq(), event.Seq(), "sequence number must be monotonic per creator")
-		require.LessOrEqual(lastPeerEvent.Frame(), event.Frame(), "frame counter must be monotonic per creator")
-	}
-
-	allParentsKnown := node.resolveEvent(event)
-	if allParentsKnown {
-
-		// can we resolve more parentless events now?
-		for _, pe := range node.parentlessEvents {
-			node.resolveEvent(pe.(*inter.EventPayload))
-		}
-
-	} else {
-		node.parentlessEvents = append(node.parentlessEvents, event)
-	}
-}
-
-// resolveEvent tries to resolve the given event by checking if all its parents
-// are known to the node. If all parents are known, the event is marked as
-// confirmed and added to the node's state.
-func (node *node) resolveEvent(event *inter.EventPayload) bool {
-	allParentsKnown := true
-	for _, parentID := range event.Parents() {
-		if _, ok := node.confirmedEvents[parentID]; !ok {
-			allParentsKnown = false
-			break
-		}
-	}
-
-	if allParentsKnown {
-		// mark event as confirmed
-		node.confirmedEvents[event.ID()] = event
-		node.lastEventPerPeer[event.Creator()] = event
-		if event.Creator() == node.selfId {
-			node.lastSequenceNumber = event.Seq()
-		}
-	}
-
-	return allParentsKnown
+	node.lastEventPerPeer[event.Creator()] = event
 }
 
 // lastSeenFrameNumber returns the highest frame number seen among confirmed events
@@ -444,48 +541,8 @@ func (f *fakeWorld) GetRules() opera.Rules {
 	return f.rules
 }
 
-// makeTestStakeDistribution creates a stake distribution for testing purposes.
-// It creates a list of stakes for 'length' validators, where the first
-// 'dominators' validators hold enough stake to exceed the 'threshold' fraction
-// of the total stake. The remaining validators share the rest of the stake
-// equally. The stakes are then shuffled randomly.
-func makeTestStakeDistribution(t *testing.T, length int, dominators int, threshold float64) []int64 {
-	t.Helper()
+type offlineMask []bool
 
-	const totalStake = 1_000
-
-	require.LessOrEqual(t, dominators, length)
-	require.Greater(t, threshold, 0.667)
-	require.LessOrEqual(t, threshold, 1.0)
-
-	stakes := make([]int64, length)
-
-	dominatorStake := int64(float64(totalStake) * threshold)
-	remainingStake := totalStake - dominatorStake
-
-	for i := range dominators {
-		stakes[i] = dominatorStake / int64(dominators)
-	}
-	for i := dominators; i < length; i++ {
-		stakes[i] = remainingStake / int64(length-dominators)
-	}
-
-	rand.Shuffle(len(stakes), func(i, j int) {
-		stakes[i], stakes[j] = stakes[j], stakes[i]
-	})
-
-	return stakes
-}
-
-func TestMakeTestStakeDistribution(t *testing.T) {
-
-	for dominantCount := range 10 {
-		for length := dominantCount; length <= 10; length++ {
-			stakes := makeTestStakeDistribution(t, length, dominantCount, 0.75)
-
-			for _, stake := range stakes {
-				require.GreaterOrEqual(t, stake, int64(0))
-			}
-		}
-	}
+func (m offlineMask) isOffline(i int) bool {
+	return i < len(m) && m[i]
 }
