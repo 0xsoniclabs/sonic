@@ -255,45 +255,44 @@ func TestEmitter_CreateEvent_InvalidValidatorSetIsDetected(t *testing.T) {
 	require.ErrorContains(t, err, "no validators")
 }
 
-// TODO: uncomment after event throttler is added.
-// func TestNewEmitter_InitializesThrottler_WhenThrottlerConfigPresent(t *testing.T) {
-// 	ctrl := gomock.NewController(t)
-// 	external := NewMockExternal(ctrl)
-// 	txPool := NewMockTxPool(ctrl)
-// 	signer := valkeystore.NewMockSignerAuthority(ctrl)
-// 	txSigner := NewMockTxSigner(ctrl)
+func TestNewEmitter_InitializesThrottler_WhenThrottlerConfigPresent(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	external := NewMockExternal(ctrl)
+	txPool := NewMockTxPool(ctrl)
+	signer := valkeystore.NewMockSignerAuthority(ctrl)
+	txSigner := NewMockTxSigner(ctrl)
 
-// 	cfg := DefaultConfig()
-// 	cfg.ThrottleEvents = true
-// 	cfg.ThrottleDominantThreshold = 0.6
-// 	cfg.ThrottleSkipInSameFrame = 5
+	cfg := DefaultConfig()
+	cfg.ThrottleEvents = true
+	cfg.ThrottlerDominantThreshold = 0.6
+	cfg.ThrottlerSkipInSameFrame = 5
 
-// 	em := NewEmitter(cfg, World{
-// 		External:          external,
-// 		TxPool:            txPool,
-// 		EventsSigner:      signer,
-// 		TransactionSigner: txSigner,
-// 	}, fixedPriceBaseFeeSource{}, nil)
+	em := NewEmitter(cfg, World{
+		External:          external,
+		TxPool:            txPool,
+		EventsSigner:      signer,
+		TransactionSigner: txSigner,
+	}, fixedPriceBaseFeeSource{}, nil)
 
-// 	require.NotNil(t, em.eventEmissionThrottler)
-// }
+	require.NotNil(t, em.eventEmissionThrottler)
+}
 
-// func TestNewEmitter_KeepsThrottlerNil_WhenThrottlerConfigNotPresent(t *testing.T) {
-// 	ctrl := gomock.NewController(t)
-// 	external := NewMockExternal(ctrl)
-// 	txPool := NewMockTxPool(ctrl)
-// 	signer := valkeystore.NewMockSignerAuthority(ctrl)
-// 	txSigner := NewMockTxSigner(ctrl)
+func TestNewEmitter_KeepsThrottlerNil_WhenThrottlerConfigNotPresent(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	external := NewMockExternal(ctrl)
+	txPool := NewMockTxPool(ctrl)
+	signer := valkeystore.NewMockSignerAuthority(ctrl)
+	txSigner := NewMockTxSigner(ctrl)
 
-// 	cfg := DefaultConfig()
-// 	cfg.ThrottleEvents = false // throttler disabled
+	cfg := DefaultConfig()
+	cfg.ThrottleEvents = false // throttler disabled
 
-// 	em := NewEmitter(cfg, World{
-// 		External:          external,
-// 		TxPool:            txPool,
-// 		EventsSigner:      signer,
-// 		TransactionSigner: txSigner,
-// 	}, fixedPriceBaseFeeSource{}, nil)
+	em := NewEmitter(cfg, World{
+		External:          external,
+		TxPool:            txPool,
+		EventsSigner:      signer,
+		TransactionSigner: txSigner,
+	}, fixedPriceBaseFeeSource{}, nil)
 
-// 	require.Nil(t, em.eventEmissionThrottler)
-// }
+	require.Nil(t, em.eventEmissionThrottler)
+}
