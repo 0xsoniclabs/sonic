@@ -28,7 +28,7 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func TestThrottling_SkippEventEmission_DoNotSkipIfBelongingToDominantSet(t *testing.T) {
+func TestThrottling_SkipEventEmission_DoNotSkipIfBelongingToDominantSet(t *testing.T) {
 
 	tests := map[string]struct {
 		validatorID idx.ValidatorID
@@ -163,17 +163,24 @@ func TestThrottling_DoNotSkip_IfTooManyBlocksAreSkipped(t *testing.T) {
 			Economy: opera.EconomyRules{
 				BlockMissedSlack: 50,
 			},
-		})
-	world.EXPECT().GetLatestBlockIndex().Return(idx.Block(17 + 50)).AnyTimes()
+		}).AnyTimes()
+	world.EXPECT().GetEpochValidators().Return(makeValidators(
+		500, 300, 200,
+	), idx.Epoch(0)).AnyTimes()
 
-	throttler := NewThrottlingState(3, 0.75, 0, world)
+	throttler := NewThrottlingState(3, 0.75, 10, world)
 	throttler.lastEmissionBlockNumber = idx.Block(17)
 
-	// Second event after many blocks
 	event := inter.NewMockEventPayloadI(ctrl)
-	event.EXPECT().Transactions()
+	event.EXPECT().Transactions().AnyTimes()
 	event.EXPECT().Frame().Return(idx.Frame(2)).AnyTimes()
 
+	world.EXPECT().GetLatestBlockIndex().Return(idx.Block(17 + 50)).Times(2)
 	skip := throttler.SkipEventEmission(event)
-	require.False(t, skip)
+	require.False(t, skip, "Event missing so many blocks should NOT be skipped")
+
+	// one more than the last time
+	world.EXPECT().GetLatestBlockIndex().Return(idx.Block(17 + 50 + 1)).MinTimes(1)
+	skip = throttler.SkipEventEmission(event)
+	require.True(t, skip, "Event missing less than max allowed blocks should be skipped")
 }
