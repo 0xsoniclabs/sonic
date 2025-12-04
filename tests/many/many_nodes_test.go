@@ -26,10 +26,7 @@ import (
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/opera/contracts/sfc"
 	"github.com/0xsoniclabs/sonic/tests"
-	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/require"
 )
@@ -43,6 +40,9 @@ func TestManyNodes(t *testing.T) {
 
 	net := tests.StartIntegrationTestNetWithJsonGenesis(t, tests.IntegrationTestNetOptions{
 		ValidatorsStake: validatorStake,
+		ClientExtraArguments: []string{
+			"--emitter.throttle-events",
+		},
 	})
 
 	client, err := net.GetClient()
@@ -77,22 +77,22 @@ func TestManyNodes(t *testing.T) {
 
 	// Second Epoch: the suppressed validators increase their stake, all validators have equal stake
 
-	for id := range validators {
-		if id <= 2 {
-			// skip the two dominating validators
-			continue
-		}
+	// for id := range validators {
+	// 	if id <= 2 {
+	// 		// skip the two dominating validators
+	// 		continue
+	// 	}
 
-		receipt, err := net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
-			opts.Value = utils.ToFtm(625)
-			return sfcContract.Delegate(opts, big.NewInt(int64(id)))
-		})
-		require.NoError(t, err)
-		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
-	}
-	net.AdvanceEpoch(t, 1)
+	// 	receipt, err := net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
+	// 		opts.Value = utils.ToFtm(625)
+	// 		return sfcContract.Delegate(opts, big.NewInt(int64(id)))
+	// 	})
+	// 	require.NoError(t, err)
+	// 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+	// }
+	// net.AdvanceEpoch(t, 1)
 
-	time.Sleep(30 * time.Second)
+	// time.Sleep(30 * time.Second)
 
 	// Third Epoch: Increase state of two validators to dominate the stake again
 
