@@ -357,6 +357,12 @@ func (em *Emitter) EmitEvent() (*inter.EventPayload, error) {
 		em.eventEmissionThrottler.SkipEventEmission(e) {
 		// TODO: metrics for skipped events
 		// https://github.com/0xsoniclabs/sonic-admin/issues/531
+
+		// This event was intentionally not emitted, the last emission
+		// timestamp  is not updated to avoid retry in 11 ms tick.
+		now := time.Now()
+		em.prevEmittedAtTime.Store(&now)
+
 		return nil, nil
 	}
 
