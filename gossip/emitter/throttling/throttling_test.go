@@ -21,6 +21,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -56,12 +57,16 @@ func TestThrottling_SkipEventEmission_DoNotSkipIfBelongingToDominantSet(t *testi
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-
 			ctrl := gomock.NewController(t)
+
+			lastEventHash, lastEvent := createTestEventWithFrame(idx.Frame(1))
+
 			world := NewMockWorldReader(ctrl)
 			world.EXPECT().GetEpochValidators().Return(test.validators, idx.Epoch(0))
 			world.EXPECT().GetRules().Return(opera.Rules{})
 			world.EXPECT().GetLatestBlockIndex().Return(idx.Block(0)).AnyTimes()
+			world.EXPECT().GetLastEvent(gomock.Any(), gomock.Any()).Return(&lastEventHash).AnyTimes()
+			world.EXPECT().GetEvent(gomock.Any()).Return(&lastEvent).AnyTimes()
 
 			state := NewThrottlingState(test.validatorID, 0.75, 3, world)
 
@@ -70,7 +75,7 @@ func TestThrottling_SkipEventEmission_DoNotSkipIfBelongingToDominantSet(t *testi
 			event.EXPECT().Frame().Return(idx.Frame(1)).AnyTimes()
 
 			skip := state.SkipEventEmission(event)
-			require.False(t, skip)
+			require.Equal(t, DoNotSkipEvent_DominantStake, skip)
 		})
 	}
 }
@@ -86,7 +91,10 @@ func TestThrottling_SkipEventEmission_SkipIfNotBelongingToDominantSet(t *testing
 	world := NewMockWorldReader(ctrl)
 	world.EXPECT().GetEpochValidators().Return(stakes, idx.Epoch(0))
 	world.EXPECT().GetRules().Return(opera.Rules{})
-	world.EXPECT().GetLatestBlockIndex().Return(idx.Block(0))
+	world.EXPECT().GetLatestBlockIndex().Return(idx.Block(0)).AnyTimes()
+	lastEventHash, lastEvent := createTestEventWithFrame(idx.Frame(1))
+	world.EXPECT().GetLastEvent(gomock.Any(), gomock.Any()).Return(&lastEventHash).AnyTimes()
+	world.EXPECT().GetEvent(gomock.Any()).Return(&lastEvent).AnyTimes()
 
 	state := NewThrottlingState(3, 0.75, 1, world)
 
@@ -95,7 +103,7 @@ func TestThrottling_SkipEventEmission_SkipIfNotBelongingToDominantSet(t *testing
 	event.EXPECT().Frame().Return(idx.Frame(1)).AnyTimes()
 
 	skip := state.SkipEventEmission(event)
-	require.True(t, skip)
+	require.Equal(t, SkipEventEmission, skip)
 }
 
 func TestThrottling_DoNotSkip_WhenEventCarriesTransactions(t *testing.T) {
@@ -112,7 +120,7 @@ func TestThrottling_DoNotSkip_WhenEventCarriesTransactions(t *testing.T) {
 	event.EXPECT().Frame()
 
 	skip := state.SkipEventEmission(event)
-	require.False(t, skip)
+	require.Equal(t, DoNotSkipEvent_CarriesTransactions, skip)
 }
 
 func TestThrottling_DoNotSkip_WhenEventBelongsToTheSameFrame(t *testing.T) {
@@ -139,18 +147,24 @@ func TestThrottling_DoNotSkip_WhenEventBelongsToTheSameFrame(t *testing.T) {
 		repeatedFrame := idx.Frame(7) // any frame number, repeatedly used
 
 		for range maxRepeatedFrames {
+
+			lastSeenEventHash, lastSeenEvent := createTestEventWithFrame(repeatedFrame - 1)
+
+			world.EXPECT().GetLastEvent(gomock.Any(), gomock.Any()).Return(&lastSeenEventHash).Times(3)
+			world.EXPECT().GetEvent(gomock.Any()).Return(&lastSeenEvent).Times(3)
+
 			repeatedFrameEvent := inter.NewMockEventPayloadI(ctrl)
 			repeatedFrameEvent.EXPECT().Transactions()
-			repeatedFrameEvent.EXPECT().Frame().Return(repeatedFrame).Times(2)
+			repeatedFrameEvent.EXPECT().Frame().Return(repeatedFrame).MinTimes(1)
 			skip := state.SkipEventEmission(repeatedFrameEvent)
-			require.True(t, skip)
+			require.Equal(t, SkipEventEmission, skip)
 		}
 
 		oneTooManyEvent := inter.NewMockEventPayloadI(ctrl)
 		oneTooManyEvent.EXPECT().Transactions()
 		oneTooManyEvent.EXPECT().Frame().Return(repeatedFrame).Times(2)
 		skip := state.SkipEventEmission(oneTooManyEvent)
-		require.False(t, skip)
+		require.Equal(t, DoNotSkipEvent_SameFrameExceeded, skip)
 	}
 }
 
@@ -164,9 +178,13 @@ func TestThrottling_DoNotSkip_IfTooManyBlocksAreSkipped(t *testing.T) {
 				BlockMissedSlack: 50,
 			},
 		}).AnyTimes()
-	world.EXPECT().GetEpochValidators().Return(makeValidators(
-		500, 300, 200,
-	), idx.Epoch(0)).AnyTimes()
+	world.EXPECT().GetEpochValidators().
+		Return(makeValidators(500, 300, 200),
+			idx.Epoch(0)).AnyTimes()
+
+	lastEventHash, lastEvent := createTestEventWithFrame(idx.Frame(1))
+	world.EXPECT().GetLastEvent(gomock.Any(), gomock.Any()).Return(&lastEventHash).AnyTimes()
+	world.EXPECT().GetEvent(gomock.Any()).Return(&lastEvent).AnyTimes()
 
 	throttler := NewThrottlingState(3, 0.75, 10, world)
 	throttler.lastEmissionBlockNumber = idx.Block(17)
@@ -177,10 +195,20 @@ func TestThrottling_DoNotSkip_IfTooManyBlocksAreSkipped(t *testing.T) {
 
 	world.EXPECT().GetLatestBlockIndex().Return(idx.Block(17 + 50)).Times(2)
 	skip := throttler.SkipEventEmission(event)
-	require.False(t, skip, "Event missing so many blocks should NOT be skipped")
+	require.Equal(t, DoNotSkipEvent_TooManyBlocksMissed, skip,
+		"Event missing so many blocks should NOT be skipped")
 
 	// one more than the last time
 	world.EXPECT().GetLatestBlockIndex().Return(idx.Block(17 + 50 + 1)).MinTimes(1)
 	skip = throttler.SkipEventEmission(event)
-	require.True(t, skip, "Event missing less than max allowed blocks should be skipped")
+	require.Equal(t, SkipEventEmission, skip,
+		"Event missing less than max allowed blocks should be skipped")
+}
+
+func createTestEventWithFrame(frame idx.Frame) (hash.Event, inter.Event) {
+	lastEventHash := hash.Event{1}
+	lastEventBuilder := &inter.MutableEventPayload{}
+	lastEventBuilder.SetFrame(idx.Frame(frame))
+	lastEvent := lastEventBuilder.Build().Event
+	return lastEventHash, lastEvent
 }
