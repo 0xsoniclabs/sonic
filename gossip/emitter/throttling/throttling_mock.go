@@ -12,7 +12,9 @@ package throttling
 import (
 	reflect "reflect"
 
+	inter "github.com/0xsoniclabs/sonic/inter"
 	opera "github.com/0xsoniclabs/sonic/opera"
+	hash "github.com/Fantom-foundation/lachesis-base/hash"
 	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
 	pos "github.com/Fantom-foundation/lachesis-base/inter/pos"
 	gomock "go.uber.org/mock/gomock"
@@ -55,6 +57,34 @@ func (m *MockWorldReader) GetEpochValidators() (*pos.Validators, idx.Epoch) {
 func (mr *MockWorldReaderMockRecorder) GetEpochValidators() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEpochValidators", reflect.TypeOf((*MockWorldReader)(nil).GetEpochValidators))
+}
+
+// GetEvent mocks base method.
+func (m *MockWorldReader) GetEvent(arg0 hash.Event) *inter.Event {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetEvent", arg0)
+	ret0, _ := ret[0].(*inter.Event)
+	return ret0
+}
+
+// GetEvent indicates an expected call of GetEvent.
+func (mr *MockWorldReaderMockRecorder) GetEvent(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEvent", reflect.TypeOf((*MockWorldReader)(nil).GetEvent), arg0)
+}
+
+// GetLastEvent mocks base method.
+func (m *MockWorldReader) GetLastEvent(epoch idx.Epoch, from idx.ValidatorID) *hash.Event {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetLastEvent", epoch, from)
+	ret0, _ := ret[0].(*hash.Event)
+	return ret0
+}
+
+// GetLastEvent indicates an expected call of GetLastEvent.
+func (mr *MockWorldReaderMockRecorder) GetLastEvent(epoch, from any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLastEvent", reflect.TypeOf((*MockWorldReader)(nil).GetLastEvent), epoch, from)
 }
 
 // GetLatestBlockIndex mocks base method.

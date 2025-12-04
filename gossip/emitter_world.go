@@ -73,6 +73,7 @@ func (ew *emitterWorldProc) DagIndex() *vecmt.Index {
 }
 
 func (ew *emitterWorldProc) IsBusy() bool {
+
 	return atomic.LoadUint32(&ew.s.eventBusyFlag) != 0 || atomic.LoadUint32(&ew.s.blockBusyFlag) != 0
 }
 

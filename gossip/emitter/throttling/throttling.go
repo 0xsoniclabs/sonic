@@ -17,10 +17,14 @@
 package throttling
 
 import (
+	"time"
+
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 //go:generate mockgen -source=throttling.go -destination=throttling_mock.go -package=throttling
@@ -40,15 +44,16 @@ type ThrottlingState struct {
 	world WorldReader
 
 	// accumulated state
-	lastUsedFrame             idx.Frame
-	lastEmissionBlockNumber   idx.Block
-	currentSkippedEventsCount uint
+	lastEmissionBlockNumber idx.Block
+	lastAttemptedFrame      idx.Frame
 }
 
 type WorldReader interface {
 	GetRules() opera.Rules
 	GetLatestBlockIndex() idx.Block
 	GetEpochValidators() (*pos.Validators, idx.Epoch)
+	GetLastEvent(epoch idx.Epoch, from idx.ValidatorID) *hash.Event
+	GetEvent(hash.Event) *inter.Event
 }
 
 // NewThrottlingState creates a new ThrottlingState for a given validator ID
@@ -81,23 +86,18 @@ func NewThrottlingState(
 // SkipEventEmission determines whether to skip the emission of the given event.
 //
 // It returns true if the event emission should be skipped, false otherwise.
-func (ts *ThrottlingState) SkipEventEmission(event inter.EventPayloadI) bool {
-	skip := ts.skipEvent(event)
-	if ts.lastUsedFrame < event.Frame() {
-		ts.currentSkippedEventsCount = 0
-		ts.lastUsedFrame = event.Frame()
-	}
+func (ts *ThrottlingState) SkipEventEmission(event inter.EventPayloadI, currentEmissionInterval time.Duration) bool {
 
-	if skip {
-		ts.currentSkippedEventsCount++
-	} else {
+	skip := ts.skipEvent(event, currentEmissionInterval)
+	ts.lastAttemptedFrame = event.Frame()
+
+	if !skip {
 		ts.lastEmissionBlockNumber = ts.world.GetLatestBlockIndex()
-		ts.currentSkippedEventsCount = 0
 	}
 	return skip
 }
 
-func (ts *ThrottlingState) skipEvent(event inter.EventPayloadI) bool {
+func (ts *ThrottlingState) skipEvent(event inter.EventPayloadI, currentEmissionInterval time.Duration) bool {
 	// Do not skip emission if the event carries transactions
 	if len(event.Transactions()) > 0 {
 		return false
@@ -109,8 +109,9 @@ func (ts *ThrottlingState) skipEvent(event inter.EventPayloadI) bool {
 	// for a given period of time.
 	// This means that no progress in the network can be observed. The stake of this
 	// validator stake may be needed to reach quorum in the current frame.
-	if ts.lastUsedFrame == event.Frame() &&
-		ts.currentSkippedEventsCount >= ts.maxSkippedEventsWithSameFrameNumber {
+	if ts.lastAttemptedFrame == event.Frame() &&
+		time.Since(event.CreationTime().Time()) >
+			time.Duration(ts.maxSkippedEventsWithSameFrameNumber)*currentEmissionInterval {
 		return false
 	}
 
@@ -123,9 +124,29 @@ func (ts *ThrottlingState) skipEvent(event inter.EventPayloadI) bool {
 		return false
 	}
 
+	// compute online stake:
+	latestEpochValidators, epoch := ts.world.GetEpochValidators()
+	onlineValidatorsBuilder := pos.NewBuilder()
+	for _, validatorId := range latestEpochValidators.IDs() {
+		eventId := ts.world.GetLastEvent(epoch, validatorId)
+		if eventId == nil {
+			// validator did not emit any event in this epoch
+			// ignore stake for dominant set computation
+			continue
+		}
+
+		event := ts.world.GetEvent(*eventId)
+		if event == nil {
+			log.Error("last event recorded not found", "validator", validatorId, "event", eventId)
+			continue
+		}
+
+		if time.Since(event.CreationTime().Time()) < time.Second {
+			onlineValidatorsBuilder.Set(validatorId, latestEpochValidators.Get(validatorId))
+		}
+	}
 	// Compute dominant set and check if this validator belongs to it.
-	validators, _ := ts.world.GetEpochValidators()
-	dominantSet, dominated := ComputeDominantSet(validators, ts.dominatorsThreshold)
+	dominantSet, dominated := ComputeDominantSet(onlineValidatorsBuilder.Build(), ts.dominatorsThreshold)
 	if !dominated {
 		// If no dominant set exists, do not skip emission.
 		// Every stake contribution is meaningful in this case.

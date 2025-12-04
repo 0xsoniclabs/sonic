@@ -341,7 +341,7 @@ func Test_SkipEvents_OfflineNodes_GradualIncreaseInEmittedEvents(t *testing.T) {
 	}
 
 	// -- Bring back all nodes --
-	
+
 	// Bringing back all nodes should restore full emission.
 	offline = offlineMask{}
 	events = network.runRound(offline)
@@ -539,6 +539,13 @@ func (f *fakeWorld) GetLatestBlockIndex() idx.Block {
 
 func (f *fakeWorld) GetRules() opera.Rules {
 	return f.rules
+}
+
+func (f *fakeWorld) GetLastEvent(epoch idx.Epoch, from idx.ValidatorID) *hash.Event {
+	return nil
+}
+func (f *fakeWorld) GetEvent(hash.Event) *inter.Event {
+	return nil
 }
 
 type offlineMask []bool

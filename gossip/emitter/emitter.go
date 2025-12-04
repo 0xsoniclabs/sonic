@@ -329,7 +329,9 @@ func (em *Emitter) EmitEvent() (*inter.EventPayload, error) {
 	}
 
 	// Check if it's time to emit.
-	if !em.isAllowedToEmit() {
+	allowed, interval := em.isAllowedToEmit()
+	if !allowed {
+		// it is not time yet, try again later
 		return nil, nil
 	}
 
@@ -354,14 +356,9 @@ func (em *Emitter) EmitEvent() (*inter.EventPayload, error) {
 	// this location allows to take into account the event creation time
 	// and frame in throttling decision.
 	if em.eventEmissionThrottler != nil &&
-		em.eventEmissionThrottler.SkipEventEmission(e) {
+		em.eventEmissionThrottler.SkipEventEmission(e, interval) {
 		// TODO: metrics for skipped events
 		// https://github.com/0xsoniclabs/sonic-admin/issues/531
-
-		// This event was intentionally not emitted, the last emission
-		// timestamp  is not updated to avoid retry in 11 ms tick.
-		now := time.Now()
-		em.prevEmittedAtTime.Store(&now)
 
 		return nil, nil
 	}

@@ -50,7 +50,7 @@ func (em *Emitter) timeSinceLastEmit() time.Duration {
 	return time.Since(lastTime)
 }
 
-func (em *Emitter) isAllowedToEmit() bool {
+func (em *Emitter) isAllowedToEmit() (bool, time.Duration) {
 	passedTime := em.timeSinceLastEmit()
 	if passedTime < 0 {
 		passedTime = 0
@@ -58,7 +58,7 @@ func (em *Emitter) isAllowedToEmit() bool {
 
 	// If a emitter interval is defined, all other heuristics are ignored.
 	interval := em.getEmitterIntervalLimit()
-	return passedTime >= interval
+	return passedTime >= interval, interval
 }
 
 func (em *Emitter) getEmitterIntervalLimit() time.Duration {
