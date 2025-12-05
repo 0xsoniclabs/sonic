@@ -45,6 +45,8 @@ func TestManyNodes(t *testing.T) {
 		ValidatorsStake: validatorStake,
 		ClientExtraArguments: []string{
 			"--emitter.throttle-events",
+			"--emitter.throttle-skip-in-same-frame=10000",
+			"--emitter.throttle-heartbeat-frames=10000",
 		},
 	})
 
@@ -97,17 +99,15 @@ func TestManyNodes(t *testing.T) {
 
 	time.Sleep(30 * time.Second)
 
-	//  Third Epoch: Increase state of two validators to dominate the stake again
+	//  Third Epoch: Increase state of one validators to dominate the stake again
 
-	for i := len(validators) - 2; i < len(validators); i++ {
-		id := idx.ValidatorID(i + 1)
-		receipt, err := net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
-			opts.Value = utils.ToFtm(625)
-			return sfcContract.Delegate(opts, big.NewInt(int64(id)))
-		})
-		require.NoError(t, err)
-		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
-	}
+	id := idx.ValidatorID(6)
+	receipt, err := net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
+		opts.Value = utils.ToFtm(625)
+		return sfcContract.Delegate(opts, big.NewInt(int64(id)))
+	})
+	require.NoError(t, err)
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 	net.AdvanceEpoch(t, 1)
 
 	time.Sleep(30 * time.Second)
