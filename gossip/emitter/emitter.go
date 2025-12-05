@@ -178,6 +178,7 @@ func NewEmitter(
 			config.Validator.ID,
 			config.ThrottlerDominantThreshold,
 			config.ThrottlerSkipInSameFrame,
+			config.ThrottlerHeartbeatFrames,
 			world)
 	}
 

@@ -86,6 +86,7 @@ func initFlags() {
 		flags.EnableThrottlingFlag,
 		flags.ThrottlingDominantThresholdFlag,
 		flags.ThrottlingSkipInSameFrameFlag,
+		flags.ThrottlingHeartbeatFramesFlag,
 	}
 	networkingFlags = []cli.Flag{
 		flags.BootnodesFlag,

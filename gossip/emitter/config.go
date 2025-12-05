@@ -73,6 +73,7 @@ type Config struct {
 	ThrottleEvents             bool
 	ThrottlerSkipInSameFrame   uint
 	ThrottlerDominantThreshold float64
+	ThrottlerHeartbeatFrames   uint
 }
 
 func (cfg *Config) Validate() error {

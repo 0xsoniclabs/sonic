@@ -411,10 +411,11 @@ func MakeAllConfigsFromFile(ctx *cli.Context, configFile string) (*Config, error
 		return nil, err
 	}
 
-	if ctx.IsSet(flags.EnableThrottlingFlag.Name) && ctx.GlobalBool(flags.EnableThrottlingFlag.Name) {
+	if ctx.GlobalBool(flags.EnableThrottlingFlag.Name) {
 		cfg.Emitter.ThrottleEvents = true
 		cfg.Emitter.ThrottlerDominantThreshold = ctx.GlobalFloat64(flags.ThrottlingDominantThresholdFlag.Name)
 		cfg.Emitter.ThrottlerSkipInSameFrame = uint(ctx.GlobalInt(flags.ThrottlingSkipInSameFrameFlag.Name))
+		cfg.Emitter.ThrottlerHeartbeatFrames = uint(ctx.GlobalInt(flags.ThrottlingHeartbeatFramesFlag.Name))
 	}
 
 	if err := cfg.Emitter.Validate(); err != nil {

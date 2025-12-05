@@ -356,18 +356,28 @@ var (
 
 	// Event Emission Throttling
 	EnableThrottlingFlag = cli.BoolFlag{
-		Name:  "emitter.throttle-events",
-		Usage: "Enable event emission throttling based on network conditions",
+		Name: "emitter.throttle-events",
+		Usage: `Enable event emission throttling based on network conditions. 
+Enabling this flag will reduce the number of emitted events based on relative validator stake
+respect to the total stake of online validators.`,
 	}
 	ThrottlingDominantThresholdFlag = cli.Float64Flag{
-		Name:  "emitter.throttle-dominant-threshold",
-		Usage: "Dominant set stake threshold, driving event emission throttling.(percentage between 0 and 1)",
+		Name: "emitter.throttle-dominant-threshold",
+		Usage: `Dominant set stake threshold (percentage between 0 and 1)
+Validators with a stake below this threshold will have their event emission rate reduced.`,
 		Value: emitter.DefaultConfig().ThrottlerDominantThreshold,
 	}
 	ThrottlingSkipInSameFrameFlag = cli.UintFlag{
-		Name:  "emitter.throttle-skip-in-same-frame",
-		Usage: "Maximum number of skipped events within the same frame to force event emission",
+		Name: "emitter.throttle-skip-in-same-frame",
+		Usage: `Maximum number of skipped events within the same frame to force event emission.
+This value overrides the throttling mechanism when lack of consensus progress is detected.`,
 		Value: emitter.DefaultConfig().ThrottlerSkipInSameFrame,
+	}
+	ThrottlingHeartbeatFramesFlag = cli.UintFlag{
+		Name: "emitter.throttle-heartbeat-frames",
+		Usage: `Number of frames after which an event must be emitted regardless of throttling.
+This ensures that even low-stake validators eventually emit events to keep visibility in the network.`,
+		Value: emitter.DefaultConfig().ThrottlerHeartbeatFrames,
 	}
 
 	// Consensus
