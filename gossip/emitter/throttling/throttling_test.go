@@ -68,13 +68,13 @@ func TestThrottling_SkipEventEmission_DoNotSkipIfBelongingToDominantSet(t *testi
 			world.EXPECT().GetLastEvent(gomock.Any(), gomock.Any()).Return(&lastEventHash).AnyTimes()
 			world.EXPECT().GetEvent(gomock.Any()).Return(&lastEvent).AnyTimes()
 
-			state := NewThrottlingState(test.validatorID, 0.75, 3, world)
+			state := NewThrottlingState(test.validatorID, 0.75, 3, 10, world)
 
 			event := inter.NewMockEventPayloadI(ctrl)
 			event.EXPECT().Transactions().Return(types.Transactions{}).AnyTimes()
 			event.EXPECT().Frame().Return(idx.Frame(1)).AnyTimes()
 
-			skip := state.SkipEventEmission(event)
+			skip := state.CanSkipEventEmission(event)
 			require.Equal(t, DoNotSkipEvent_DominantStake, skip)
 		})
 	}
@@ -96,13 +96,13 @@ func TestThrottling_SkipEventEmission_SkipIfNotBelongingToDominantSet(t *testing
 	world.EXPECT().GetLastEvent(gomock.Any(), gomock.Any()).Return(&lastEventHash).AnyTimes()
 	world.EXPECT().GetEvent(gomock.Any()).Return(&lastEvent).AnyTimes()
 
-	state := NewThrottlingState(3, 0.75, 1, world)
+	state := NewThrottlingState(3, 0.75, 1, 10, world)
 
 	event := inter.NewMockEventPayloadI(ctrl)
 	event.EXPECT().Transactions().Return(types.Transactions{})
 	event.EXPECT().Frame().Return(idx.Frame(1)).AnyTimes()
 
-	skip := state.SkipEventEmission(event)
+	skip := state.CanSkipEventEmission(event)
 	require.Equal(t, SkipEventEmission, skip)
 }
 
@@ -112,14 +112,14 @@ func TestThrottling_DoNotSkip_WhenEventCarriesTransactions(t *testing.T) {
 	world := NewMockWorldReader(ctrl)
 	world.EXPECT().GetLatestBlockIndex().Return(idx.Block(0))
 
-	state := NewThrottlingState(3, 0.75, 0, world)
+	state := NewThrottlingState(3, 0.75, 0, 10, world)
 
 	event := inter.NewMockEventPayloadI(ctrl)
 	event.EXPECT().Transactions().Return(
 		types.Transactions{types.NewTx(&types.LegacyTx{})})
-	event.EXPECT().Frame()
+	event.EXPECT().Frame().MinTimes(1)
 
-	skip := state.SkipEventEmission(event)
+	skip := state.CanSkipEventEmission(event)
 	require.Equal(t, DoNotSkipEvent_CarriesTransactions, skip)
 }
 
@@ -143,7 +143,7 @@ func TestThrottling_DoNotSkip_WhenEventBelongsToTheSameFrame(t *testing.T) {
 	// repeat test for a variety of maxRepeatedFrames settings
 	for _, maxRepeatedFrames := range []uint{1, 2, 3, 4, 80} {
 
-		state := NewThrottlingState(3, 0.75, maxRepeatedFrames, world)
+		state := NewThrottlingState(3, 0.75, maxRepeatedFrames, 10, world)
 		repeatedFrame := idx.Frame(7) // any frame number, repeatedly used
 
 		for range maxRepeatedFrames {
@@ -156,14 +156,14 @@ func TestThrottling_DoNotSkip_WhenEventBelongsToTheSameFrame(t *testing.T) {
 			repeatedFrameEvent := inter.NewMockEventPayloadI(ctrl)
 			repeatedFrameEvent.EXPECT().Transactions()
 			repeatedFrameEvent.EXPECT().Frame().Return(repeatedFrame).MinTimes(1)
-			skip := state.SkipEventEmission(repeatedFrameEvent)
+			skip := state.CanSkipEventEmission(repeatedFrameEvent)
 			require.Equal(t, SkipEventEmission, skip)
 		}
 
 		oneTooManyEvent := inter.NewMockEventPayloadI(ctrl)
 		oneTooManyEvent.EXPECT().Transactions()
-		oneTooManyEvent.EXPECT().Frame().Return(repeatedFrame).Times(2)
-		skip := state.SkipEventEmission(oneTooManyEvent)
+		oneTooManyEvent.EXPECT().Frame().Return(repeatedFrame).MinTimes(1)
+		skip := state.CanSkipEventEmission(oneTooManyEvent)
 		require.Equal(t, DoNotSkipEvent_SameFrameExceeded, skip)
 	}
 }
@@ -186,7 +186,7 @@ func TestThrottling_DoNotSkip_IfTooManyBlocksAreSkipped(t *testing.T) {
 	world.EXPECT().GetLastEvent(gomock.Any(), gomock.Any()).Return(&lastEventHash).AnyTimes()
 	world.EXPECT().GetEvent(gomock.Any()).Return(&lastEvent).AnyTimes()
 
-	throttler := NewThrottlingState(3, 0.75, 10, world)
+	throttler := NewThrottlingState(3, 0.75, 10, 10, world)
 	throttler.lastEmissionBlockNumber = idx.Block(17)
 
 	event := inter.NewMockEventPayloadI(ctrl)
@@ -194,13 +194,13 @@ func TestThrottling_DoNotSkip_IfTooManyBlocksAreSkipped(t *testing.T) {
 	event.EXPECT().Frame().Return(idx.Frame(2)).AnyTimes()
 
 	world.EXPECT().GetLatestBlockIndex().Return(idx.Block(17 + 50)).Times(2)
-	skip := throttler.SkipEventEmission(event)
+	skip := throttler.CanSkipEventEmission(event)
 	require.Equal(t, DoNotSkipEvent_TooManyBlocksMissed, skip,
 		"Event missing so many blocks should NOT be skipped")
 
 	// one more than the last time
 	world.EXPECT().GetLatestBlockIndex().Return(idx.Block(17 + 50 + 1)).MinTimes(1)
-	skip = throttler.SkipEventEmission(event)
+	skip = throttler.CanSkipEventEmission(event)
 	require.Equal(t, SkipEventEmission, skip,
 		"Event missing less than max allowed blocks should be skipped")
 }

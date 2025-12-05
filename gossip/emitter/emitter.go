@@ -355,7 +355,7 @@ func (em *Emitter) EmitEvent() (*inter.EventPayload, error) {
 	// this location allows to take into account the event creation time
 	// and frame in throttling decision.
 	if em.eventEmissionThrottler != nil &&
-		em.eventEmissionThrottler.SkipEventEmission(e) == throttling.SkipEventEmission {
+		em.eventEmissionThrottler.CanSkipEventEmission(e) == throttling.SkipEventEmission {
 		// TODO: metrics for skipped events
 		// https://github.com/0xsoniclabs/sonic-admin/issues/531
 

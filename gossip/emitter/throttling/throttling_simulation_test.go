@@ -33,15 +33,15 @@ import (
 
 func Test_SkipEvents_FrameProgressionWhenAllNodesAreOnline(t *testing.T) {
 	stakes := map[string][]int64{
-		// "single":    {1},
-		"uniform_5": slices.Repeat([]int64{100}, 5),
-		// "uniform_10":       slices.Repeat([]int64{42}, 10),
-		// "uniform_100":      slices.Repeat([]int64{21}, 100),
-		// "two dominating":   {50, 20, 10, 10, 10},
-		// "three dominating": {40, 30, 20, 5, 5},
+		"single":           {1},
+		"uniform_5":        slices.Repeat([]int64{100}, 5),
+		"uniform_10":       slices.Repeat([]int64{42}, 10),
+		"uniform_100":      slices.Repeat([]int64{21}, 100),
+		"two dominating":   {50, 20, 10, 10, 10},
+		"three dominating": {40, 30, 20, 5, 5},
 	}
 	threshold := []float64{
-		0.70, // 0.75, 0.80, 0.90, 0.95, 1.00,
+		0.70, 0.75, 0.80, 0.90, 0.95, 1.00,
 	}
 
 	for name, stakeDist := range stakes {
@@ -79,7 +79,11 @@ func testAllNodesOnline(
 	}
 
 	// Run the network for a few rounds, checking that all nodes make progress.
-	network := newNetwork(numNodes, world, threshold, 10)
+	network := newNetwork(numNodes, world,
+		threshold,
+		10,   // repeatedFramesMaxCount: use a large value to disable repeated-frame-based emissions
+		1000, // heartbeatFrames: use a larger than repetitions value to disable heartbeat-based emissions
+	)
 	for cur := range numRounds {
 		network.runRound(nil)
 
@@ -97,7 +101,7 @@ func testAllNodesOnline(
 
 	// Validators of the dominating set must have produced one event per round,
 	// while others should have produced less.
-	dominantSet, _ := ComputeDominantSet(world.validators, threshold)
+	dominantSet, _ := ComputeDominantSet(world.validators, world.validators.TotalWeight(), threshold)
 	for i, count := range totalEventsPerNode {
 		if _, included := dominantSet[i]; included {
 			require.Equal(numRounds, count,
@@ -157,6 +161,7 @@ func testPartiallyOnlineNodes(
 ) {
 	const numRounds = 100
 	const repeatedFramesMaxCount = 10
+	const heartbeatFrames = 1000
 	require := require.New(t)
 	numNodes := len(stakes)
 
@@ -170,7 +175,7 @@ func testPartiallyOnlineNodes(
 	}
 
 	// Run the network for a few rounds, checking that all nodes make progress.
-	network := newNetwork(numNodes, world, threshold, repeatedFramesMaxCount)
+	network := newNetwork(numNodes, world, threshold, repeatedFramesMaxCount, heartbeatFrames)
 	for range numRounds {
 		network.runRound(offlineMask)
 	}
@@ -205,6 +210,7 @@ func Test_SkipEvents_NetworkStallsWhenOneThirdOfStakesIsOffline(t *testing.T) {
 	const threshold = 0.75
 	const numNodes = 10
 	const repeatedFramesMaxCount = 4
+	const heartbeatFrames = 1000
 	require := require.New(t)
 
 	stakes := slices.Repeat([]int64{10}, numNodes)
@@ -219,7 +225,7 @@ func Test_SkipEvents_NetworkStallsWhenOneThirdOfStakesIsOffline(t *testing.T) {
 	}
 
 	// Run the network for a few rounds, checking that all nodes make progress.
-	network := newNetwork(numNodes, world, threshold, repeatedFramesMaxCount)
+	network := newNetwork(numNodes, world, threshold, repeatedFramesMaxCount, heartbeatFrames)
 
 	// -- All Online --
 
@@ -273,6 +279,7 @@ func Test_SkipEvents_OfflineNodes_GradualIncreaseInEmittedEvents(t *testing.T) {
 	const threshold = 0.75
 	const numNodes = 10
 	const repeatedFramesMaxCount = 4
+	const heartbeatFrames = 1000
 	require := require.New(t)
 
 	stakes := slices.Repeat([]int64{10}, numNodes)
@@ -287,7 +294,7 @@ func Test_SkipEvents_OfflineNodes_GradualIncreaseInEmittedEvents(t *testing.T) {
 	}
 
 	// Run the network for a few rounds, checking that all nodes make progress.
-	network := newNetwork(numNodes, world, threshold, repeatedFramesMaxCount)
+	network := newNetwork(numNodes, world, threshold, repeatedFramesMaxCount, heartbeatFrames)
 
 	// -- All Online --
 
@@ -372,6 +379,7 @@ func newNetwork(
 	world WorldReader,
 	dominantSetThreshold float64,
 	repeatedFramesMaxCount uint,
+	heartbeatFrames uint,
 ) *network {
 	nodes := make([]*node, 0, numNodes)
 	for i := range numNodes {
@@ -379,6 +387,7 @@ func newNetwork(
 		nodes = append(nodes, newNode(id, world,
 			dominantSetThreshold,
 			repeatedFramesMaxCount,
+			heartbeatFrames,
 		))
 	}
 	net := &network{
@@ -434,9 +443,15 @@ func newNode(
 	world WorldReader,
 	dominantSetThreshold float64,
 	repeatedFramesMaxCount uint,
+	heartbeatFrames uint,
 ) *node {
 	return &node{
-		throttler:        *NewThrottlingState(selfId, dominantSetThreshold, repeatedFramesMaxCount, world),
+		throttler: *NewThrottlingState(
+			selfId,
+			dominantSetThreshold,
+			repeatedFramesMaxCount,
+			heartbeatFrames,
+			world),
 		world:            world,
 		selfId:           selfId,
 		lastEventPerPeer: map[idx.ValidatorID]inter.EventPayloadI{},
@@ -482,7 +497,7 @@ func (node *node) createEvent() *inter.EventPayload {
 	builder.SetFrame(getFrameNumber(validators, parents))
 	event := builder.Build()
 
-	if node.throttler.SkipEventEmission(event) == SkipEventEmission {
+	if node.throttler.CanSkipEventEmission(event) == SkipEventEmission {
 		return nil
 	}
 	return event

@@ -30,12 +30,11 @@ import (
 //
 // This function uses the [pos.Validators] object methods to have a deterministic order
 // of validators with equal stakes.
-func ComputeDominantSet(validators *pos.Validators, threshold float64) (map[idx.ValidatorID]struct{}, bool) {
+func ComputeDominantSet(validators *pos.Validators, totalStake pos.Weight, threshold float64) (map[idx.ValidatorID]struct{}, bool) {
 
 	res := make(map[idx.ValidatorID]struct{})
 	accumulated := pos.Weight(0)
 
-	totalStake := validators.TotalWeight()
 	thresholdStake := pos.Weight(math.Ceil(float64(totalStake) * threshold))
 
 	// Compute prefix sum of stakes until the threshold stake is reached,

@@ -62,7 +62,7 @@ func TestComputeDominantSet_CanIdentifyWhenStakeDistributionIsDominated(t *testi
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			stakes := makeValidators(test.stakes...)
-			set, exist := ComputeDominantSet(stakes, testThreshold)
+			set, exist := ComputeDominantSet(stakes, pos.Weight(100), testThreshold)
 
 			if len(test.expectedSet) == 0 {
 				require.False(t, exist)
@@ -81,7 +81,7 @@ func TestComputeDominantSet_DominatingSet_HoldsSuperMajority(t *testing.T) {
 	// For thresholds from 67% to 100%, the dominant set should include
 	// the top N validators where N is ceiling(threshold * total_validators)
 	for threshold := float64(0.67); threshold <= 1.0; threshold += 0.01 {
-		set, ok := ComputeDominantSet(validators, threshold)
+		set, ok := ComputeDominantSet(validators, validators.TotalWeight(), threshold)
 		require.True(t, ok)
 
 		cutoff := 100.0 * threshold
@@ -93,7 +93,7 @@ func TestComputeDominantSet_DominatingSet_HoldsSuperMajority(t *testing.T) {
 
 	// For thresholds below 67%, there should be no dominant set with super-majority
 	for threshold := float64(0.0); threshold <= 0.66; threshold += 0.01 {
-		_, ok := ComputeDominantSet(validators, threshold)
+		_, ok := ComputeDominantSet(validators, validators.TotalWeight(), threshold)
 		require.False(t, ok)
 	}
 }
@@ -103,7 +103,7 @@ func TestComputeDominantSet_DoesNotExistWhenThresholdNotMet(t *testing.T) {
 	validators := makeValidators(stakes...)
 
 	threshold := 1.01
-	_, ok := ComputeDominantSet(validators, threshold)
+	_, ok := ComputeDominantSet(validators, validators.TotalWeight(), threshold)
 	require.False(t, ok, "any threshold >1.0 cannot be met")
 }
 
@@ -140,7 +140,7 @@ func TestComputeDominantSet_IsIndependentFromStakeOrder(t *testing.T) {
 
 			// Create validators in ascending order
 			validators := makeValidators(test.stakes...)
-			set, exists := ComputeDominantSet(validators, threshold)
+			set, exists := ComputeDominantSet(validators, validators.TotalWeight(), threshold)
 
 			require.True(t, exists)
 			require.ElementsMatch(t, test.expectedSet, slices.Collect(maps.Keys(set)))
@@ -183,7 +183,7 @@ func TestComputeDominantSet_EquivalentStakes_IsDeterministic(t *testing.T) {
 		}
 		validators := builder.Build()
 
-		set, exists := ComputeDominantSet(validators, 0.7)
+		set, exists := ComputeDominantSet(validators, validators.TotalWeight(), 0.7)
 		require.True(t, exists, "total stake is 100, 70% threshold should be found")
 
 		ids := make([]idx.ValidatorID, 0, len(set))

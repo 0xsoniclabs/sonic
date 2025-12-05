@@ -17,8 +17,6 @@
 package throttling
 
 import (
-	"fmt"
-
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/hash"
@@ -39,15 +37,18 @@ type ThrottlingState struct {
 	thisValidatorID                     idx.ValidatorID
 	dominatorsThreshold                 float64
 	maxSkippedEventsWithSameFrameNumber uint
+	heartbeatFramesCount                uint
 
 	// means to access the world state
 	world WorldReader
 
 	// accumulated state
+	currentSkippedEventsCount uint
 	lastFrame                 idx.Frame
 	lastEmissionBlockNumber   idx.Block
-	lastEmittedEventNumber    idx.Event
-	currentSkippedEventsCount uint
+	// NOTE: I would love to read this from the store, but
+	// the store returns Events and not payloads, which do not have frame info.
+	lastEmittedEvent inter.EventPayloadI
 }
 
 type WorldReader interface {
@@ -73,6 +74,7 @@ func NewThrottlingState(
 	validatorID idx.ValidatorID,
 	dominatingPercentile float64,
 	maxSkippedEventsWithSameFrameNumber uint,
+	heartbeatFramesCount uint,
 	stateReader WorldReader,
 ) *ThrottlingState {
 	return &ThrottlingState{
@@ -81,6 +83,7 @@ func NewThrottlingState(
 		// 0.7 is a conservative approximation of the Byzantine fault tolerance limit (2/3+1).
 		dominatorsThreshold:                 min(max(dominatingPercentile, 0.7), 1),
 		maxSkippedEventsWithSameFrameNumber: maxSkippedEventsWithSameFrameNumber,
+		heartbeatFramesCount:                heartbeatFramesCount,
 		world:                               stateReader,
 	}
 }
@@ -91,28 +94,30 @@ const (
 	DoNotSkipEvent_SameFrameExceeded
 	DoNotSkipEvent_TooManyBlocksMissed
 	DoNotSkipEvent_DominantStake
+	DoNotSkipEvent_Heartbeat
 )
 
-// SkipEventEmission determines whether to skip the emission of the given event.
+// CanSkipEventEmission determines whether to skip the emission of the given event.
 //
 // It returns true if the event emission should be skipped, false otherwise.
-func (ts *ThrottlingState) SkipEventEmission(event inter.EventPayloadI) int {
-	skip := ts.skipEvent(event)
+func (ts *ThrottlingState) CanSkipEventEmission(event inter.EventPayloadI) int {
+	skip := ts.canSkipEvent(event)
 	if ts.lastFrame < event.Frame() {
 		ts.currentSkippedEventsCount = 0
+		ts.lastFrame = event.Frame()
 	}
-	ts.lastFrame = event.Frame()
 
 	if skip == SkipEventEmission {
 		ts.currentSkippedEventsCount++
 	} else {
 		ts.lastEmissionBlockNumber = ts.world.GetLatestBlockIndex()
 		ts.currentSkippedEventsCount = 0
+		ts.lastEmittedEvent = event
 	}
 	return skip
 }
 
-func (ts *ThrottlingState) skipEvent(event inter.EventPayloadI) int {
+func (ts *ThrottlingState) canSkipEvent(event inter.EventPayloadI) int {
 	// Do not skip emission if the event carries transactions
 	if len(event.Transactions()) > 0 {
 		return DoNotSkipEvent_CarriesTransactions
@@ -121,7 +126,12 @@ func (ts *ThrottlingState) skipEvent(event inter.EventPayloadI) int {
 	rules := ts.world.GetRules()
 	currentEpochValidators, epoch := ts.world.GetEpochValidators()
 
-	myLastEvent := ts.world.GetLastEvent(epoch, ts.thisValidatorID)
+	// The system requires to keep a heartbeat emission every N frames, this
+	// ensures that suppressed validators are seen as online by other validators.
+	if ts.lastEmittedEvent != nil &&
+		event.Frame()-ts.lastEmittedEvent.Frame() > idx.Frame(ts.heartbeatFramesCount)*2 {
+		return DoNotSkipEvent_Heartbeat
+	}
 
 	// Do not skip emission if the event is in the same frame as the last emitted event
 	// for a given period of time.
@@ -141,12 +151,14 @@ func (ts *ThrottlingState) skipEvent(event inter.EventPayloadI) int {
 		return DoNotSkipEvent_TooManyBlocksMissed
 	}
 
-	// compute online stake:
+	// Evaluate whether this validator is in the dominant set of validators.
+	// The dominant set is computed considering only online stake, i.e. stake
+	// of validators that have emitted an event recently enough.
 	onlineValidatorsBuilder := pos.NewBuilder()
 	for _, validatorId := range currentEpochValidators.IDs() {
 		eventId := ts.world.GetLastEvent(epoch, validatorId)
 		if eventId == nil {
-			// validator did not emit any event in this epoch
+			// Validator did not emit any event in this epoch
 			// ignore stake for dominant set computation
 			continue
 		}
@@ -157,23 +169,14 @@ func (ts *ThrottlingState) skipEvent(event inter.EventPayloadI) int {
 			continue
 		}
 
-		// after 5 we emit, after 10 if we do not see it, we declare it dead
-
-		// consider validator online if it has emitted an event
-		// recently enough: the last frame they participated in
-		// is within maxSkippedEventsWithSameFrameNumber from
-		// the current event's frame.
-		if event.Frame()-lastEventSeen.Frame() <= idx.Frame(ts.maxSkippedEventsWithSameFrameNumber) {
+		// Consider validator online if it has emitted within 2 * heartbeat frames,
+		// validator stake will be ignored for dominant set computation otherwise.
+		if event.Frame()-lastEventSeen.Frame() <= idx.Frame(ts.heartbeatFramesCount)*2 {
 			onlineValidatorsBuilder.Set(validatorId, currentEpochValidators.Get(validatorId))
-		} else {
-			fmt.Println("node", ts.thisValidatorID, "sees validator", validatorId, "offline")
-			fmt.Println("  ", event.Frame(), "-", lastEventSeen.Frame(), "<=", idx.Frame(ts.maxSkippedEventsWithSameFrameNumber))
 		}
 	}
 
-	// Compute dominant set and check if this validator belongs to it.
-	validators, _ := ts.world.GetEpochValidators()
-	dominantSet, dominated := ComputeDominantSet(validators, ts.dominatorsThreshold)
+	dominantSet, dominated := ComputeDominantSet(onlineValidatorsBuilder.Build(), currentEpochValidators.TotalWeight(), ts.dominatorsThreshold)
 	if !dominated {
 		// If no dominant set exists, do not skip emission.
 		// Every stake contribution is meaningful in this case.
