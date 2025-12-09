@@ -17,6 +17,8 @@
 package throttling
 
 import (
+	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/inter"
@@ -73,7 +75,7 @@ func TestThrottling_SkipEventEmission_DoNotSkipIfBelongingToDominantSet(t *testi
 			event := inter.NewMockEventPayloadI(ctrl)
 			event.EXPECT().Transactions().Return(types.Transactions{}).AnyTimes()
 			event.EXPECT().Frame().Return(idx.Frame(1)).AnyTimes()
-			event.EXPECT().SelfParent().AnyTimes()
+			event.EXPECT().SelfParent().Return(&hash.Event{1})
 
 			skip := state.CanSkipEventEmission(event)
 			require.Equal(t, DoNotSkipEvent_DominantStake, skip)
@@ -102,7 +104,7 @@ func TestThrottling_SkipEventEmission_SkipIfNotBelongingToDominantSet(t *testing
 	event := inter.NewMockEventPayloadI(ctrl)
 	event.EXPECT().Transactions().Return(types.Transactions{})
 	event.EXPECT().Frame().Return(idx.Frame(1)).AnyTimes()
-	event.EXPECT().SelfParent()
+	event.EXPECT().SelfParent().Return(&hash.Event{1})
 
 	skip := state.CanSkipEventEmission(event)
 	require.Equal(t, SkipEventEmission, skip)
@@ -129,18 +131,13 @@ func TestThrottling_DoNotSkip_WhenEventBelongsToTheSameFrame(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	// stakes are dominated by validators 1 and 2,
 	// this allows validator 3 to be throttled for this test
-	stakes := makeValidators(
-		500, 300, 200,
-	)
+	stakes := makeValidators(500, 300, 200)
 
 	world := NewMockWorldReader(ctrl)
 	world.EXPECT().GetEpochValidators().Return(stakes, idx.Epoch(0)).AnyTimes()
-	world.EXPECT().GetRules().Return(opera.Rules{
-		Emitter: opera.EmitterRules{
-			Interval: 170,
-		},
-	}).AnyTimes()
+	world.EXPECT().GetRules().AnyTimes()
 	world.EXPECT().GetLatestBlockIndex().Return(idx.Block(0)).AnyTimes()
+	world.EXPECT().GetLastEvent(gomock.Any(), gomock.Any()).AnyTimes()
 
 	// repeat test for a variety of maxRepeatedFrames settings
 	for _, maxRepeatedFrames := range []uint{1, 2, 3, 4, 80} {
@@ -149,6 +146,7 @@ func TestThrottling_DoNotSkip_WhenEventBelongsToTheSameFrame(t *testing.T) {
 		repeatedFrame := idx.Frame(7) // any frame number, repeatedly used
 
 		for range maxRepeatedFrames {
+
 			repeatedFrameEvent := inter.NewMockEventPayloadI(ctrl)
 			repeatedFrameEvent.EXPECT().Transactions()
 			repeatedFrameEvent.EXPECT().Frame().Return(repeatedFrame).MinTimes(1)
@@ -214,9 +212,7 @@ func TestThrottling_DoNotSkip_RespectHeartbeatEvents(t *testing.T) {
 	world.EXPECT().GetEpochValidators().
 		Return(validators, idx.Epoch(0)).AnyTimes()
 	world.EXPECT().GetLatestBlockIndex().Return(idx.Block(0)).AnyTimes()
-	lastEventHash, lastEvent := createTestEventWithFrame(idx.Frame(1))
-	world.EXPECT().GetLastEvent(gomock.Any(), gomock.Any()).Return(&lastEventHash).AnyTimes()
-	world.EXPECT().GetEvent(gomock.Any()).Return(&lastEvent).AnyTimes()
+	world.EXPECT().GetLastEvent(gomock.Any(), gomock.Any())
 
 	throttler := NewThrottlingState(
 		4,
@@ -225,10 +221,11 @@ func TestThrottling_DoNotSkip_RespectHeartbeatEvents(t *testing.T) {
 		3,    // number for frames to emit heartbeats
 		world)
 
-	// Event 2 has too larger frame number and should be considered a heartbeat
+	// Event 2 should be considered a heartbeat
 	event1 := inter.NewMockEventPayloadI(ctrl)
 	event1.EXPECT().Transactions().Return(types.Transactions{})
 	event1.EXPECT().Frame().Return(idx.Frame(4)).AnyTimes()
+	event1.EXPECT().SelfParent()
 
 	skip := throttler.CanSkipEventEmission(event1)
 	require.Equal(t, DoNotSkipEvent_Heartbeat, skip,
@@ -239,7 +236,7 @@ func TestThrottling_DoNotSkip_RespectHeartbeatEvents(t *testing.T) {
 	event2 := inter.NewMockEventPayloadI(ctrl)
 	event2.EXPECT().Transactions().Return(types.Transactions{})
 	event2.EXPECT().Frame().Return(idx.Frame(5)).AnyTimes()
-	event2.EXPECT().SelfParent().AnyTimes()
+	event2.EXPECT().SelfParent().Return(&hash.Event{42})
 
 	skip = throttler.CanSkipEventEmission(event2)
 	require.Equal(t, SkipEventEmission, skip)
@@ -251,4 +248,74 @@ func createTestEventWithFrame(frame idx.Frame) (hash.Event, inter.Event) {
 	lastEventBuilder.SetFrame(idx.Frame(frame))
 	lastEvent := lastEventBuilder.Build().Event
 	return lastEventHash, lastEvent
+}
+
+func TestThrottler_filterOfflineValidators_preservesStakesAndIdsOfOnlineValidators(t *testing.T) {
+
+	tests := map[string]struct {
+		validators         *pos.Validators
+		onlineValidatorIDs []idx.ValidatorID
+	}{}
+
+	for i := range 10 {
+		for j := range i {
+
+			name := fmt.Sprintf("%d validators, %d online", i, j)
+			validators := makeValidators(slices.Repeat([]int64{100}, i)...)
+			onlineIDs := make([]idx.ValidatorID, 0, j)
+			for k := 0; k < j; k++ {
+				onlineIDs = append(onlineIDs, idx.ValidatorID(k+1))
+			}
+			tests[name] = struct {
+				validators         *pos.Validators
+				onlineValidatorIDs []idx.ValidatorID
+			}{
+				validators:         validators,
+				onlineValidatorIDs: onlineIDs,
+			}
+		}
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+
+			epoch := idx.Epoch(0)
+
+			world := NewMockWorldReader(ctrl)
+
+			for _, id := range test.validators.IDs() {
+				if slices.Contains(test.onlineValidatorIDs, id) {
+					eventHash, event := createTestEventWithFrame(idx.Frame(10))
+					world.EXPECT().GetLastEvent(epoch, id).Return(&eventHash)
+					world.EXPECT().GetEvent(eventHash).Return(&event)
+				} else {
+					world.EXPECT().GetLastEvent(epoch, id)
+				}
+			}
+
+			event := inter.NewMockEventPayloadI(ctrl)
+			event.EXPECT().SelfParent().Return(&hash.Event{1})
+			event.EXPECT().Frame().Return(idx.Frame(11)).AnyTimes()
+
+			throttler := NewThrottlingState(0, 0.8, 0, 6, world)
+
+			onlineSet := throttler.filterOfflineValidators(
+				test.validators, event, epoch)
+
+			require.ElementsMatch(t, test.onlineValidatorIDs, onlineSet.IDs())
+
+			accumulatedStake := pos.Weight(0)
+			for _, id := range test.onlineValidatorIDs {
+				require.Equal(t,
+					test.validators.Get(id),
+					onlineSet.Get(id),
+					"stake for online validator %d should match",
+					id)
+				accumulatedStake += onlineSet.Get(id)
+			}
+			require.Equal(t, accumulatedStake, onlineSet.TotalWeight(),
+				"total stake of online set should match sum of individual stakes")
+		})
+	}
 }
