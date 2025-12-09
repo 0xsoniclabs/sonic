@@ -44,11 +44,9 @@ type ThrottlingState struct {
 
 	// accumulated state
 	currentSkippedEventsCount uint
-	lastFrame                 idx.Frame
+	lastTestedFrame           idx.Frame
+	lastEmittedFrame          idx.Frame
 	lastEmissionBlockNumber   idx.Block
-	// NOTE: I would love to read this from the store, but
-	// the store returns Events and not payloads, which do not have frame info.
-	lastEmittedEvent inter.EventPayloadI
 }
 
 type WorldReader interface {
@@ -102,9 +100,9 @@ const (
 // It returns true if the event emission should be skipped, false otherwise.
 func (ts *ThrottlingState) CanSkipEventEmission(event inter.EventPayloadI) int {
 	skip := ts.canSkipEvent(event)
-	if ts.lastFrame < event.Frame() {
+	if ts.lastTestedFrame < event.Frame() {
 		ts.currentSkippedEventsCount = 0
-		ts.lastFrame = event.Frame()
+		ts.lastTestedFrame = event.Frame()
 	}
 
 	if skip == SkipEventEmission {
@@ -112,7 +110,7 @@ func (ts *ThrottlingState) CanSkipEventEmission(event inter.EventPayloadI) int {
 	} else {
 		ts.lastEmissionBlockNumber = ts.world.GetLatestBlockIndex()
 		ts.currentSkippedEventsCount = 0
-		ts.lastEmittedEvent = event
+		ts.lastEmittedFrame = event.Frame()
 	}
 	return skip
 }
@@ -128,8 +126,7 @@ func (ts *ThrottlingState) canSkipEvent(event inter.EventPayloadI) int {
 
 	// The system requires to keep a heartbeat emission every N frames, this
 	// ensures that suppressed validators are seen as online by other validators.
-	if ts.lastEmittedEvent != nil &&
-		event.Frame()-ts.lastEmittedEvent.Frame() > idx.Frame(ts.heartbeatFramesCount)*2 {
+	if event.Frame()-ts.lastEmittedFrame >= idx.Frame(ts.heartbeatFramesCount) {
 		return DoNotSkipEvent_Heartbeat
 	}
 
@@ -137,7 +134,7 @@ func (ts *ThrottlingState) canSkipEvent(event inter.EventPayloadI) int {
 	// for a given period of time.
 	// This means that no progress in the network can be observed. The stake of this
 	// validator stake may be needed to reach quorum in the current frame.
-	if ts.lastFrame == event.Frame() &&
+	if ts.lastTestedFrame == event.Frame() &&
 		ts.currentSkippedEventsCount >= ts.maxSkippedEventsWithSameFrameNumber {
 		return DoNotSkipEvent_SameFrameExceeded
 	}
@@ -176,17 +173,10 @@ func (ts *ThrottlingState) canSkipEvent(event inter.EventPayloadI) int {
 		}
 	}
 
-	dominantSet, dominated := ComputeDominantSet(onlineValidatorsBuilder.Build(), currentEpochValidators.TotalWeight(), ts.dominatorsThreshold)
-	if !dominated {
-		// If no dominant set exists, do not skip emission.
-		// Every stake contribution is meaningful in this case.
+	dominantSet := ComputeDominantSet(onlineValidatorsBuilder.Build(), currentEpochValidators.TotalWeight(), ts.dominatorsThreshold)
+	if _, found := dominantSet[ts.thisValidatorID]; found {
 		return DoNotSkipEvent_DominantStake
 	}
 
-	_, isInDominantSet := dominantSet[ts.thisValidatorID]
-	if isInDominantSet {
-		return DoNotSkipEvent_DominantStake
-	} else {
-		return SkipEventEmission
-	}
+	return SkipEventEmission
 }

@@ -205,6 +205,47 @@ func TestThrottling_DoNotSkip_IfTooManyBlocksAreSkipped(t *testing.T) {
 		"Event missing less than max allowed blocks should be skipped")
 }
 
+func TestThrottling_DoNotSkip_RespectHeartbeatEvents(t *testing.T) {
+
+	validators := makeValidators(10, 10, 10, 10) // one suppressed validator
+
+	ctrl := gomock.NewController(t)
+
+	world := NewMockWorldReader(ctrl)
+	world.EXPECT().GetRules().Return(opera.Rules{}).AnyTimes()
+	world.EXPECT().GetEpochValidators().
+		Return(validators, idx.Epoch(0)).AnyTimes()
+	world.EXPECT().GetLatestBlockIndex().Return(idx.Block(0)).AnyTimes()
+	lastEventHash, lastEvent := createTestEventWithFrame(idx.Frame(1))
+	world.EXPECT().GetLastEvent(gomock.Any(), gomock.Any()).Return(&lastEventHash).AnyTimes()
+	world.EXPECT().GetEvent(gomock.Any()).Return(&lastEvent).AnyTimes()
+
+	throttler := NewThrottlingState(
+		4,
+		0.75, // first three validators dominate stake
+		1000, // large enough to not interfere with this test
+		3,    // number for frames to emit heartbeats
+		world)
+
+	// Event 2 has too larger frame number and should be considered a heartbeat
+	event1 := inter.NewMockEventPayloadI(ctrl)
+	event1.EXPECT().Transactions().Return(types.Transactions{})
+	event1.EXPECT().Frame().Return(idx.Frame(4)).AnyTimes()
+
+	skip := throttler.CanSkipEventEmission(event1)
+	require.Equal(t, DoNotSkipEvent_Heartbeat, skip,
+		"Heartbeat event should NOT be skipped")
+
+	// Event 3 is created shortly after Event 2 with the next frame number.
+	// It can be skipped.
+	event2 := inter.NewMockEventPayloadI(ctrl)
+	event2.EXPECT().Transactions().Return(types.Transactions{})
+	event2.EXPECT().Frame().Return(idx.Frame(5)).AnyTimes()
+
+	skip = throttler.CanSkipEventEmission(event2)
+	require.Equal(t, SkipEventEmission, skip)
+}
+
 func createTestEventWithFrame(frame idx.Frame) (hash.Event, inter.Event) {
 	lastEventHash := hash.Event{1}
 	lastEventBuilder := &inter.MutableEventPayload{}

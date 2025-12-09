@@ -23,14 +23,11 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 )
 
-// ComputeDominantSet computes the dominant set of validators whose cumulative stake
-// meets or exceeds the given threshold, and is larger than 2/3+1 of the total
-// stake. It returns the set of validator IDs that make up the dominant set and
-// a boolean indicating whether such a set exists.
+// TODO: docstring
 //
 // This function uses the [pos.Validators] object methods to have a deterministic order
 // of validators with equal stakes.
-func ComputeDominantSet(validators *pos.Validators, totalStake pos.Weight, threshold float64) (map[idx.ValidatorID]struct{}, bool) {
+func ComputeDominantSet(validators *pos.Validators, totalStake pos.Weight, threshold float64) map[idx.ValidatorID]struct{} {
 
 	res := make(map[idx.ValidatorID]struct{})
 	accumulated := pos.Weight(0)
@@ -43,10 +40,10 @@ func ComputeDominantSet(validators *pos.Validators, totalStake pos.Weight, thres
 		accumulated += validators.Get(id)
 		res[id] = struct{}{}
 		if accumulated >= pos.Weight(thresholdStake) {
-			return res, accumulated >= (totalStake*2)/3+1
+			return res
 		}
 	}
 
 	// If threshold not reached, return that there is no dominant set.
-	return nil, false
+	return nil
 }
