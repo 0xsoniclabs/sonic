@@ -212,7 +212,10 @@ func TestThrottling_DoNotSkip_RespectHeartbeatEvents(t *testing.T) {
 	world.EXPECT().GetEpochValidators().
 		Return(validators, idx.Epoch(0)).AnyTimes()
 	world.EXPECT().GetLatestBlockIndex().Return(idx.Block(0)).AnyTimes()
-	world.EXPECT().GetLastEvent(gomock.Any(), gomock.Any())
+
+	eventHash, event := createTestEventWithFrame(idx.Frame(1))
+	world.EXPECT().GetLastEvent(gomock.Any(), gomock.Any()).Return(&eventHash)
+	world.EXPECT().GetEvent(gomock.Any()).Return(&event)
 
 	throttler := NewThrottlingState(
 		4,
@@ -221,18 +224,20 @@ func TestThrottling_DoNotSkip_RespectHeartbeatEvents(t *testing.T) {
 		3,    // number for frames to emit heartbeats
 		world)
 
-	// Event 2 should be considered a heartbeat
+	// Event 1 should be considered a heartbeat
 	event1 := inter.NewMockEventPayloadI(ctrl)
 	event1.EXPECT().Transactions().Return(types.Transactions{})
 	event1.EXPECT().Frame().Return(idx.Frame(4)).AnyTimes()
-	event1.EXPECT().SelfParent()
 
 	skip := throttler.CanSkipEventEmission(event1)
 	require.Equal(t, DoNotSkipEvent_Heartbeat, skip,
 		"Heartbeat event should NOT be skipped")
 
-	// Event 3 is created shortly after Event 2 with the next frame number.
+	// Event 2 is created shortly after Event 2 with the next frame number.
 	// It can be skipped.
+	eventHash, event = createTestEventWithFrame(idx.Frame(4))
+	world.EXPECT().GetLastEvent(gomock.Any(), gomock.Any()).Return(&eventHash).AnyTimes()
+	world.EXPECT().GetEvent(gomock.Any()).Return(&event).AnyTimes()
 	event2 := inter.NewMockEventPayloadI(ctrl)
 	event2.EXPECT().Transactions().Return(types.Transactions{})
 	event2.EXPECT().Frame().Return(idx.Frame(5)).AnyTimes()

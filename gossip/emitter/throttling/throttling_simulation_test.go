@@ -70,11 +70,7 @@ func testAllNodesOnline(
 	numNodes := len(stakes)
 
 	world := &fakeWorld{
-		rules: opera.Rules{
-			Economy: opera.EconomyRules{
-				BlockMissedSlack: 4,
-			},
-		},
+		rules:      opera.Rules{},
 		validators: makeValidators(stakes...),
 	}
 
@@ -298,7 +294,7 @@ func Test_SkipEvents_OfflineNodes_GradualIncreaseInEmittedEvents(t *testing.T) {
 
 	// -- All Online --
 
-	// In the first round, everyone is online, and all nodes should make progress.
+	// In the first round, everyone is online, and dominant nodes should make progress.
 	events := network.runRound(nil)
 	require.Len(events, 8) // 2 least dominant nodes throttle
 
@@ -467,6 +463,7 @@ func (node *node) createEvent() *inter.EventPayload {
 	parents := []inter.EventPayloadI{}
 	parentIds := hash.Events{}
 	var selfParent inter.EventPayloadI
+	var selfParentPos int
 	for id, parent := range node.lastEventPerPeer {
 		parents = append(parents, parent)
 		parentIds = append(parentIds, parent.ID())
@@ -474,6 +471,11 @@ func (node *node) createEvent() *inter.EventPayload {
 		if id == builder.Creator() {
 			selfParent = parent
 		}
+	}
+
+	// set self-parent as first parent
+	if selfParent != nil {
+		parents[0], parents[selfParentPos] = parents[selfParentPos], parents[0]
 	}
 	builder.SetParents(parentIds)
 
@@ -485,6 +487,7 @@ func (node *node) createEvent() *inter.EventPayload {
 	builder.SetLamport(maxLamport + 1)
 	if selfParent != nil {
 		builder.SetCreationTime(inter.MaxTimestamp(inter.Timestamp(time.Now().UnixNano()), selfParent.CreationTime()+1))
+		builder.SetSeq(selfParent.Seq() + 1)
 	} else {
 		builder.SetCreationTime(inter.Timestamp(time.Now().UnixNano()))
 	}
