@@ -122,7 +122,6 @@ func (ts *ThrottlingState) canSkipEvent(event inter.EventPayloadI) int {
 	}
 
 	rules := ts.world.GetRules()
-	currentEpochValidators, epoch := ts.world.GetEpochValidators()
 
 	// The system requires to keep a heartbeat emission every N frames, this
 	// ensures that suppressed validators are seen as online by other validators.
@@ -151,29 +150,35 @@ func (ts *ThrottlingState) canSkipEvent(event inter.EventPayloadI) int {
 	// Evaluate whether this validator is in the dominant set of validators.
 	// The dominant set is computed considering only online stake, i.e. stake
 	// of validators that have emitted an event recently enough.
-	onlineValidatorsBuilder := pos.NewBuilder()
-	for _, validatorId := range currentEpochValidators.IDs() {
-		eventId := ts.world.GetLastEvent(epoch, validatorId)
-		if eventId == nil {
-			// Validator did not emit any event in this epoch
-			// ignore stake for dominant set computation
-			continue
-		}
+	currentEpochValidators, epoch := ts.world.GetEpochValidators()
+	onlineValidators := currentEpochValidators
+	if event.SelfParent() != nil {
+		onlineValidatorsBuilder := pos.NewBuilder()
 
-		lastEventSeen := ts.world.GetEvent(*eventId)
-		if lastEventSeen == nil {
-			log.Error("last event recorded not found", "validator", validatorId, "event", eventId)
-			continue
-		}
+		for _, validatorId := range currentEpochValidators.IDs() {
+			eventId := ts.world.GetLastEvent(epoch, validatorId)
+			if eventId == nil {
+				// Validator did not emit any event in this epoch
+				// ignore stake for dominant set computation
+				continue
+			}
 
-		// Consider validator online if it has emitted within 2 * heartbeat frames,
-		// validator stake will be ignored for dominant set computation otherwise.
-		if event.Frame()-lastEventSeen.Frame() <= idx.Frame(ts.heartbeatFramesCount)*2 {
-			onlineValidatorsBuilder.Set(validatorId, currentEpochValidators.Get(validatorId))
+			lastEventSeen := ts.world.GetEvent(*eventId)
+			if lastEventSeen == nil {
+				log.Error("last event recorded not found", "validator", validatorId, "event", eventId)
+				continue
+			}
+
+			// Consider validator online if it has emitted within 2 * heartbeat frames,
+			// validator stake will be ignored for dominant set computation otherwise.
+			if event.Frame()-lastEventSeen.Frame() <= idx.Frame(ts.heartbeatFramesCount)*2 {
+				onlineValidatorsBuilder.Set(validatorId, currentEpochValidators.Get(validatorId))
+			}
 		}
+		onlineValidators = onlineValidatorsBuilder.Build()
 	}
 
-	dominantSet := ComputeDominantSet(onlineValidatorsBuilder.Build(), currentEpochValidators.TotalWeight(), ts.dominatorsThreshold)
+	dominantSet := ComputeDominantSet(onlineValidators, currentEpochValidators.TotalWeight(), ts.dominatorsThreshold)
 	if _, found := dominantSet[ts.thisValidatorID]; found {
 		return DoNotSkipEvent_DominantStake
 	}

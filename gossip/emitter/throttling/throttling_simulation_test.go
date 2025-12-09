@@ -101,7 +101,7 @@ func testAllNodesOnline(
 
 	// Validators of the dominating set must have produced one event per round,
 	// while others should have produced less.
-	dominantSet, _ := ComputeDominantSet(world.validators, world.validators.TotalWeight(), threshold)
+	dominantSet := ComputeDominantSet(world.validators, world.validators.TotalWeight(), threshold)
 	for i, count := range totalEventsPerNode {
 		if _, included := dominantSet[i]; included {
 			require.Equal(numRounds, count,
@@ -298,12 +298,8 @@ func Test_SkipEvents_OfflineNodes_GradualIncreaseInEmittedEvents(t *testing.T) {
 
 	// -- All Online --
 
-	// warmup round, this is used to populate last events
-	events := network.runRound(nil)
-	require.Len(events, 10) // all nodes emit the very first time
-
 	// In the first round, everyone is online, and all nodes should make progress.
-	events = network.runRound(nil)
+	events := network.runRound(nil)
 	require.Len(events, 8) // 2 least dominant nodes throttle
 
 	// If one node goes offline (10% of stake), throttling nodes are kicking in.

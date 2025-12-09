@@ -73,6 +73,7 @@ func TestThrottling_SkipEventEmission_DoNotSkipIfBelongingToDominantSet(t *testi
 			event := inter.NewMockEventPayloadI(ctrl)
 			event.EXPECT().Transactions().Return(types.Transactions{}).AnyTimes()
 			event.EXPECT().Frame().Return(idx.Frame(1)).AnyTimes()
+			event.EXPECT().SelfParent().AnyTimes()
 
 			skip := state.CanSkipEventEmission(event)
 			require.Equal(t, DoNotSkipEvent_DominantStake, skip)
@@ -101,6 +102,7 @@ func TestThrottling_SkipEventEmission_SkipIfNotBelongingToDominantSet(t *testing
 	event := inter.NewMockEventPayloadI(ctrl)
 	event.EXPECT().Transactions().Return(types.Transactions{})
 	event.EXPECT().Frame().Return(idx.Frame(1)).AnyTimes()
+	event.EXPECT().SelfParent()
 
 	skip := state.CanSkipEventEmission(event)
 	require.Equal(t, SkipEventEmission, skip)
@@ -147,15 +149,10 @@ func TestThrottling_DoNotSkip_WhenEventBelongsToTheSameFrame(t *testing.T) {
 		repeatedFrame := idx.Frame(7) // any frame number, repeatedly used
 
 		for range maxRepeatedFrames {
-
-			lastSeenEventHash, lastSeenEvent := createTestEventWithFrame(repeatedFrame - 1)
-
-			world.EXPECT().GetLastEvent(gomock.Any(), gomock.Any()).Return(&lastSeenEventHash).Times(3)
-			world.EXPECT().GetEvent(gomock.Any()).Return(&lastSeenEvent).Times(3)
-
 			repeatedFrameEvent := inter.NewMockEventPayloadI(ctrl)
 			repeatedFrameEvent.EXPECT().Transactions()
 			repeatedFrameEvent.EXPECT().Frame().Return(repeatedFrame).MinTimes(1)
+			repeatedFrameEvent.EXPECT().SelfParent()
 			skip := state.CanSkipEventEmission(repeatedFrameEvent)
 			require.Equal(t, SkipEventEmission, skip)
 		}
@@ -192,6 +189,7 @@ func TestThrottling_DoNotSkip_IfTooManyBlocksAreSkipped(t *testing.T) {
 	event := inter.NewMockEventPayloadI(ctrl)
 	event.EXPECT().Transactions().AnyTimes()
 	event.EXPECT().Frame().Return(idx.Frame(2)).AnyTimes()
+	event.EXPECT().SelfParent().AnyTimes()
 
 	world.EXPECT().GetLatestBlockIndex().Return(idx.Block(17 + 50)).Times(2)
 	skip := throttler.CanSkipEventEmission(event)
@@ -241,6 +239,7 @@ func TestThrottling_DoNotSkip_RespectHeartbeatEvents(t *testing.T) {
 	event2 := inter.NewMockEventPayloadI(ctrl)
 	event2.EXPECT().Transactions().Return(types.Transactions{})
 	event2.EXPECT().Frame().Return(idx.Frame(5)).AnyTimes()
+	event2.EXPECT().SelfParent().AnyTimes()
 
 	skip = throttler.CanSkipEventEmission(event2)
 	require.Equal(t, SkipEventEmission, skip)
