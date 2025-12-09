@@ -36,6 +36,7 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
@@ -490,4 +491,26 @@ func WaitForProofOf(t *testing.T, client *PooledEhtClient, blockNumber int) {
 		return true, nil
 	})
 	require.NoError(t, err, "failed to get witness proof")
+}
+
+func GetLatestEvents(t *testing.T, client *PooledEhtClient) []hexutil.Bytes {
+
+	// Get the current epoch.
+	block := struct {
+		Epoch hexutil.Uint64
+	}{}
+	err := client.Client().Call(&block, "eth_getBlockByNumber", rpc.BlockNumber(-1), false)
+	require.NoError(t, err)
+
+	return GetEventsFromEpoch(t, client, int(block.Epoch))
+}
+
+func GetEventsFromEpoch(t *testing.T, client *PooledEhtClient, epoch int) []hexutil.Bytes {
+
+	// Get the head events of the given epoch.
+	heads := []hexutil.Bytes{}
+	err := client.Client().Call(&heads, "dag_getHeads", rpc.BlockNumber(epoch))
+	require.NoError(t, err)
+
+	return heads
 }
