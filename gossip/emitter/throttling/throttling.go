@@ -163,6 +163,9 @@ func (ts *ThrottlingState) canSkipEvent(event inter.EventPayloadI) int {
 	return SkipEventEmission
 }
 
+// getLastEmittedEvent retrieves the last event emitted by the given validator
+// in the specified epoch.
+// If no event is found, it returns nil.
 func (ts *ThrottlingState) getLastEmittedEvent(epoch idx.Epoch, validatorId idx.ValidatorID) *inter.Event {
 	eventId := ts.world.GetLastEvent(epoch, validatorId)
 	if eventId == nil {
@@ -176,26 +179,29 @@ func (ts *ThrottlingState) getLastEmittedEvent(epoch idx.Epoch, validatorId idx.
 	return lastEventSeen
 }
 
+// filterOfflineValidators returns a new Validators object containing only
+// the validators from currentEpochValidators that have emitted an event
+// recently enough to be considered online.
 func (ts *ThrottlingState) filterOfflineValidators(
 	currentEpochValidators *pos.Validators,
 	event inter.EventPayloadI,
 	epoch idx.Epoch,
 ) *pos.Validators {
-	onlineValidators := currentEpochValidators
-	if event.SelfParent() != nil {
-		onlineValidatorsBuilder := pos.NewBuilder()
 
-		for _, validatorId := range currentEpochValidators.IDs() {
-			lastEventSeen := ts.getLastEmittedEvent(epoch, validatorId)
-			if lastEventSeen == nil {
-				continue
-			}
-
-			if event.Frame()-lastEventSeen.Frame() <= idx.Frame(ts.heartbeatFramesCount)*2 {
-				onlineValidatorsBuilder.Set(validatorId, currentEpochValidators.Get(validatorId))
-			}
-		}
-		onlineValidators = onlineValidatorsBuilder.Build()
+	if event.SelfParent() == nil {
+		return currentEpochValidators
 	}
-	return onlineValidators
+
+	builder := pos.NewBuilder()
+	for _, validatorId := range currentEpochValidators.IDs() {
+		lastEventSeen := ts.getLastEmittedEvent(epoch, validatorId)
+		if lastEventSeen == nil {
+			continue
+		}
+
+		if event.Frame()-lastEventSeen.Frame() <= idx.Frame(ts.heartbeatFramesCount)*2 {
+			builder.Set(validatorId, currentEpochValidators.Get(validatorId))
+		}
+	}
+	return builder.Build()
 }
