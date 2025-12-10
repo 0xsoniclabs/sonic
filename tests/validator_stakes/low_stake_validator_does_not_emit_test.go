@@ -33,69 +33,72 @@ type eventMap map[string]map[string]any
 type jsonEvent map[string]any
 
 func TestLowStakeValidator_DoesNotEmitMoreThanStakeProportion(t *testing.T) {
-	// Start a network with many nodes where one node has very low stake
-	initialStake := []uint64{
-		1600, // 80% of stake
-		400,  // 20% of stake
+
+	for _, emitterEnabled := range []bool{true, false} {
+		t.Run(fmt.Sprintf("emitter_throttle_events=%v", emitterEnabled), func(t *testing.T) {
+
+			// Start a network with many nodes where one node has very low stake
+			initialStake := []uint64{
+				1600, // 80% of stake
+				400,  // 20% of stake
+			}
+
+			clientExtraArgs := []string{}
+			if emitterEnabled {
+				clientExtraArgs = []string{"--emitter.throttle-events"}
+			}
+
+			net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+				ValidatorsStake:      initialStake,
+				ClientExtraArguments: clientExtraArgs,
+			})
+
+			client, err := net.GetClient()
+			require.NoError(t, err)
+			defer client.Close()
+
+			var currentRules opera.Rules
+			err = client.Client().Call(&currentRules, "eth_getRules", "latest")
+			require.NoError(t, err)
+
+			tests.AdvanceEpochAndWaitForBlocks(t, net)
+			currentEpoch := getCurrentEpoch(t, client)
+			epochEvents := eventMap{}
+			heads := eventIdSet{}
+
+			// wait until some events are generated
+			time.Sleep(10 * time.Second)
+
+			getEventIdsForCurrentEpoch(t, net, currentEpoch, heads)
+			for eventID := range heads {
+				event := fetchEvent(t, client, eventID)
+				epochEvents[eventID] = event
+			}
+
+			for _, event := range epochEvents {
+				fetchAncestry(t, client, event["id"].(string), currentEpoch, epochEvents)
+			}
+
+			eventCreatorCount := make(map[string]int)
+			for _, event := range epochEvents {
+				creator := event["creator"].(string)
+				eventCreatorCount[creator]++
+			}
+
+			percentages, stakePercentages := calculatePercentages(t, eventCreatorCount, initialStake)
+
+			if emitterEnabled {
+				require.GreaterOrEqual(t, percentages[0], stakePercentages[0],
+					"High stake validator should create at least its stake proportion of events")
+				require.LessOrEqual(t, percentages[1], stakePercentages[1],
+					"Low stake validator should not create more than its stake proportion of events")
+			} else {
+				// Without emitter throttling, both validators should create events roughly in proportion to their stake
+				require.InDelta(t, percentages[0], percentages[1], 0.05,
+					"Both validators should create events roughly in proportion to their stake")
+			}
+		})
 	}
-	totalStake := uint64(0)
-	for _, stake := range initialStake {
-		totalStake += stake
-	}
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
-		ValidatorsStake:      initialStake,
-		ClientExtraArguments: []string{"--emitter.throttle-events"},
-	})
-
-	client, err := net.GetClient()
-	require.NoError(t, err)
-	defer client.Close()
-
-	var currentRules opera.Rules
-	err = client.Client().Call(&currentRules, "eth_getRules", "latest")
-	require.NoError(t, err)
-
-	tests.AdvanceEpochAndWaitForBlocks(t, net)
-	currentEpoch := getCurrentEpoch(t, client)
-	epochEvents := eventMap{}
-	heads := eventIdSet{}
-
-	// wait until some events are generated
-	time.Sleep(10 * time.Second)
-
-	getEventIdsForCurrentEpoch(t, net, currentEpoch, heads)
-	for eventID := range heads {
-		event := fetchEvent(t, client, eventID)
-		epochEvents[eventID] = event
-	}
-
-	for _, event := range epochEvents {
-		fetchAncestry(t, client, event["id"].(string), currentEpoch, epochEvents)
-	}
-
-	eventCreatorCount := make(map[string]int)
-	for _, event := range epochEvents {
-		creator := event["creator"].(string)
-		eventCreatorCount[creator]++
-	}
-
-	// check percentage of events created by each validator
-	totalEvents := len(epochEvents)
-	percentages := make([]float64, 0, len(initialStake))
-	stakePercentages := make([]float64, 0, len(initialStake))
-
-	for i, stake := range initialStake {
-		creator := fmt.Sprintf("0x%v", i+1)
-		count := eventCreatorCount[creator]
-		percentage := float64(count) / float64(totalEvents)
-		stakePercentage := float64(stake) / float64(totalStake)
-
-		percentages = append(percentages, percentage)
-		stakePercentages = append(stakePercentages, stakePercentage)
-	}
-
-	require.GreaterOrEqual(t, percentages[0], stakePercentages[0], "High stake validator should create at least its stake proportion of events")
-	require.LessOrEqual(t, percentages[1], stakePercentages[1], "Low stake validator should not create more than its stake proportion of events")
 }
 
 // getEventIdsForCurrentEpoch populates the provided eventIdSet with event IDs from the target epoch.
@@ -170,4 +173,35 @@ func fetchEvent(t *testing.T, client *tests.PooledEhtClient, eventID string) jso
 	err := client.Client().Call(&event, "dag_getEvent", eventID)
 	require.NoError(t, err)
 	return event
+}
+
+// calculatePercentages computes the percentage of events created by each validator.
+func calculatePercentages(
+	t *testing.T,
+	eventCreatorCount map[string]int,
+	initialStake []uint64,
+) ([]float64, []float64) {
+	t.Helper()
+
+	percentages := make([]float64, 0)
+	stakePercentages := make([]float64, 0)
+	totalEvents := 0
+	for _, count := range eventCreatorCount {
+		totalEvents += count
+	}
+	totalStake := uint64(0)
+	for _, stake := range initialStake {
+		totalStake += stake
+	}
+
+	for i, stake := range initialStake {
+		creator := fmt.Sprintf("0x%v", i+1)
+		count := eventCreatorCount[creator]
+		percentage := float64(count) / float64(totalEvents)
+		stakePercentage := float64(stake) / float64(totalStake)
+
+		percentages = append(percentages, percentage)
+		stakePercentages = append(stakePercentages, stakePercentage)
+	}
+	return percentages, stakePercentages
 }
