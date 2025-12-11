@@ -18,13 +18,13 @@ package throttling
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"testing"
 	"time"
 
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/Fantom-foundation/lachesis-base/common/bigendian"
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
@@ -32,6 +32,7 @@ import (
 )
 
 func Test_SkipEvents_FrameProgressionWhenAllNodesAreOnline(t *testing.T) {
+	t.Parallel()
 	stakes := map[string][]int64{
 		"single":           {1},
 		"uniform_5":        slices.Repeat([]int64{100}, 5),
@@ -46,9 +47,9 @@ func Test_SkipEvents_FrameProgressionWhenAllNodesAreOnline(t *testing.T) {
 
 	for name, stakeDist := range stakes {
 		for _, th := range threshold {
-			t.Run(
-				fmt.Sprintf("%s/threshold=%.2f", name, th),
+			t.Run(fmt.Sprintf("%s/threshold=%.2f", name, th),
 				func(t *testing.T) {
+					t.Parallel()
 					testAllNodesOnline(t, th, stakeDist)
 				},
 			)
@@ -67,15 +68,18 @@ func testAllNodesOnline(
 ) {
 	const numRounds = 100
 	require := require.New(t)
-	numNodes := len(stakes)
 
 	world := &fakeWorld{
-		rules:      opera.Rules{},
+		rules: opera.Rules{
+			Economy: opera.EconomyRules{
+				BlockMissedSlack: 100,
+			},
+		},
 		validators: makeValidators(stakes...),
 	}
 
 	// Run the network for a few rounds, checking that all nodes make progress.
-	network := newNetwork(numNodes, world,
+	network := newNetwork(world,
 		threshold,
 		10,   // repeatedFramesMaxCount: use a large value to disable repeated-frame-based emissions
 		1000, // heartbeatFrames: use a larger than repetitions value to disable heartbeat-based emissions
@@ -103,38 +107,40 @@ func testAllNodesOnline(
 			require.Equal(numRounds, count,
 				"dominant node %d did not emit in every round", i)
 		} else {
-			require.Less(count, numRounds)
+			require.Less(count, numRounds, "suppressed node %d emitted in more rounds than needed", i)
 		}
 	}
 }
 
 func Test_SkipEvents_NodesBeingOffline(t *testing.T) {
+	t.Parallel()
 	const threshold = 0.75
 	cases := map[string]struct {
 		stakes      []int64
-		offlineMask offlineMask
+		offlineMask offlineValidators
 	}{
 		"single dominating node is offline": {
 			// 5 nodes, each 20% stake; threshold 75% => the last node could throttle
 			stakes:      []int64{20, 20, 20, 20, 20},
-			offlineMask: offlineMask{true}, // < first node is offline
+			offlineMask: offlineValidators{1}, // < first node is offline
 		},
 
 		"two dominating nodes are offline": {
 			// 10 nodes, each 10% stake; threshold 75%; last 2 nodes could throttle
 			stakes:      slices.Repeat([]int64{10}, 10),
-			offlineMask: offlineMask{true, true}, // < first two nodes are offline
+			offlineMask: offlineValidators{1, 2}, // < first two nodes are offline
 		},
 
 		"second-most dominating nodes is offline": {
 			// 10 nodes, each 10% stake; threshold 75%; last 2 nodes could throttle
 			stakes:      slices.Repeat([]int64{10}, 10),
-			offlineMask: offlineMask{1: true}, // < second node is offline
+			offlineMask: offlineValidators{2}, // < second node is offline
 		},
 	}
 
 	for name, test := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			testPartiallyOnlineNodes(
 				t,
 				threshold,
@@ -153,27 +159,26 @@ func testPartiallyOnlineNodes(
 	t *testing.T,
 	threshold float64,
 	stakes []int64,
-	offlineMask offlineMask,
+	offline offlineValidators,
 ) {
 	const numRounds = 100
 	const repeatedFramesMaxCount = 10
 	const heartbeatFrames = 1000
 	require := require.New(t)
-	numNodes := len(stakes)
 
 	world := &fakeWorld{
 		rules: opera.Rules{
 			Economy: opera.EconomyRules{
-				BlockMissedSlack: 4,
+				BlockMissedSlack: 100,
 			},
 		},
 		validators: makeValidators(stakes...),
 	}
 
 	// Run the network for a few rounds, checking that all nodes make progress.
-	network := newNetwork(numNodes, world, threshold, repeatedFramesMaxCount, heartbeatFrames)
+	network := newNetwork(world, threshold, repeatedFramesMaxCount, heartbeatFrames)
 	for range numRounds {
-		network.runRound(offlineMask)
+		network.runRound(offline)
 	}
 
 	// Check whether progress was made by nodes. Since some nodes were offline,
@@ -195,14 +200,13 @@ func testPartiallyOnlineNodes(
 	}
 
 	// Offline nodes must not have produced any events.
-	for i, count := range totalEventsPerNode {
-		if offlineMask.isOffline(int(i - 1)) {
-			require.Zero(count, "offline node %d emitted events", i)
+	for id, count := range totalEventsPerNode {
+		if offline.isOffline(id) {
+			require.Zero(count, "offline node %d emitted events", id)
 		}
 	}
 }
-
-func Test_SkipEvents_NetworkStallsWhenOneThirdOfStakesIsOffline(t *testing.T) {
+func TestThrottler_CanSkipEvent_NetworkStallsWhenOneThirdOfStakesIsOffline(t *testing.T) {
 	const threshold = 0.75
 	const numNodes = 10
 	const repeatedFramesMaxCount = 4
@@ -221,7 +225,7 @@ func Test_SkipEvents_NetworkStallsWhenOneThirdOfStakesIsOffline(t *testing.T) {
 	}
 
 	// Run the network for a few rounds, checking that all nodes make progress.
-	network := newNetwork(numNodes, world, threshold, repeatedFramesMaxCount, heartbeatFrames)
+	network := newNetwork(world, threshold, repeatedFramesMaxCount, heartbeatFrames)
 
 	// -- All Online --
 
@@ -234,7 +238,7 @@ func Test_SkipEvents_NetworkStallsWhenOneThirdOfStakesIsOffline(t *testing.T) {
 	// -- Drop 40% Stake --
 
 	// In the second round, 4 nodes go offline (40% of stake).
-	offline := offlineMask{true, true, true, true}
+	offline := offlineValidators{1, 2, 3, 4}
 	network.runRound(offline)
 
 	// Nodes still see new frames based on the results of round 1.
@@ -253,7 +257,7 @@ func Test_SkipEvents_NetworkStallsWhenOneThirdOfStakesIsOffline(t *testing.T) {
 	// -- Bring back 8/10 nodes --
 
 	// Bringing back some nodes (80% of stake) should allow progress again.
-	offline = offlineMask{true, true} // only 2 nodes offline now
+	offline = offlineValidators{1, 2} // only 2 nodes offline now
 	network.runRound(offline)
 
 	// In the first round after recovery, nodes should still be at frame 2,
@@ -271,91 +275,198 @@ func Test_SkipEvents_NetworkStallsWhenOneThirdOfStakesIsOffline(t *testing.T) {
 	}
 }
 
-func Test_SkipEvents_OfflineNodes_GradualIncreaseInEmittedEvents(t *testing.T) {
-	const threshold = 0.75
-	const numNodes = 10
-	const repeatedFramesMaxCount = 4
-	const heartbeatFrames = 1000
-	require := require.New(t)
+func TestThrottler_CanSkipEvent_SuppressedValidatorsEmit_WhenDominatingValidatorsAreAbsent(t *testing.T) {
+	t.Parallel()
 
-	stakes := slices.Repeat([]int64{10}, numNodes)
+	for _, dominantTimeout := range []uint{1, 2, 5, 10} {
+		t.Run(fmt.Sprintf("dominantTimeout=%d", dominantTimeout), func(t *testing.T) {
+			t.Parallel()
+
+			world := &fakeWorld{
+				rules: opera.Rules{
+					Economy: opera.EconomyRules{
+						BlockMissedSlack: 1000,
+					},
+				},
+				validators: makeValidators(80, 20),
+			}
+			net := newNetwork(world,
+				0.75,
+				uint64(dominantTimeout),
+				1000, // heartbeatFrames: use a larger than repetitions value to disable heartbeat-based emissions
+			)
+
+			events := net.runRound(nil)
+			require.ElementsMatch(t,
+				world.validators.IDs(),
+				slices.Collect(maps.Keys(events)),
+				"all nodes emit genesis")
+
+			events = net.runRound(nil)
+			require.ElementsMatch(t,
+				[]idx.ValidatorID{1},
+				slices.Collect(maps.Keys(events)),
+				"only dominant node emits")
+
+			for range dominantTimeout {
+				events = net.runRound(offlineValidators{1})
+				require.ElementsMatch(t,
+					[]idx.ValidatorID{},
+					slices.Collect(maps.Keys(events)),
+					"dominant node is offline but timeout is not reached yet, nobody emits")
+			}
+
+			events = net.runRound(offlineValidators{1})
+			require.ElementsMatch(t,
+				[]idx.ValidatorID{2},
+				slices.Collect(maps.Keys(events)),
+				"after dominant timeout attempts, non-dominant node emits")
+
+			events = net.runRound(nil)
+			require.ElementsMatch(t,
+				[]idx.ValidatorID{1, 2},
+				slices.Collect(maps.Keys(events)),
+				"node comes online again, both emit because 2 does not known yet")
+
+			events = net.runRound(nil)
+			require.ElementsMatch(t,
+				[]idx.ValidatorID{1},
+				slices.Collect(maps.Keys(events)),
+				"one round after, only dominant emits again")
+		})
+	}
+}
+
+func TestThrottler_CanSkipEvent_SuppressedValidatorsEmitHeartbeat(t *testing.T) {
+	t.Parallel()
+
+	for _, dominantTimeout := range []uint64{1, 2, 3, 7, 11} {
+		for _, heartbeatAttempts := range []uint64{7, 11, 15, 25, 100} {
+			t.Run(fmt.Sprintf("dominantTimeout=%d/heartbeatAttempts=%d",
+				dominantTimeout, heartbeatAttempts),
+				func(t *testing.T) {
+					t.Parallel()
+
+					world := &fakeWorld{
+						rules: opera.Rules{
+							Economy: opera.EconomyRules{
+								BlockMissedSlack: 100,
+							},
+						},
+						validators: makeValidators(80, 20),
+					}
+
+					net := newNetwork(world,
+						0.75,
+						dominantTimeout,
+						heartbeatAttempts,
+					)
+
+					events := net.runRound(nil)
+					require.ElementsMatch(t,
+						world.validators.IDs(),
+						slices.Collect(maps.Keys(events)),
+						"all nodes emit genesis")
+
+					for i := range heartbeatAttempts/2 - 1 {
+						events = net.runRound(nil)
+						require.ElementsMatch(t,
+							[]idx.ValidatorID{1},
+							slices.Collect(maps.Keys(events)),
+							"only dominant node emits, try %d", i)
+					}
+
+					events = net.runRound(offlineValidators{1})
+					require.ElementsMatch(t,
+						[]idx.ValidatorID{2},
+						slices.Collect(maps.Keys(events)),
+						"this is a heartbeat emission, and 1 is offline, so only 2 emits")
+
+					// validator 2 will take some time to figure out that
+					// validator 1 is offline and start emitting on its own,
+					// this is the first happening of two possible conditions:
+					// - heartbeat-based emission
+					// - dominant-timeout-based emission
+					for i := range min(dominantTimeout-1, heartbeatAttempts/2-1) {
+						events = net.runRound(offlineValidators{1})
+						require.ElementsMatch(t,
+							[]idx.ValidatorID{},
+							slices.Collect(maps.Keys(events)),
+							"offline dominant node, but not yet heartbeat emission, try %d", i)
+					}
+
+					events = net.runRound(offlineValidators{1})
+					require.ElementsMatch(t,
+						[]idx.ValidatorID{2},
+						slices.Collect(maps.Keys(events)),
+						"validator 2 must emit due to heartbeat or dominant timeout being reached")
+				})
+		}
+	}
+}
+
+func TestThrottler_CanSkipEvent_SuppressedValidatorsFillOfflineProgressively(t *testing.T) {
+	t.Parallel()
 
 	world := &fakeWorld{
 		rules: opera.Rules{
 			Economy: opera.EconomyRules{
-				BlockMissedSlack: 4,
+				BlockMissedSlack: 100,
 			},
 		},
-		validators: makeValidators(stakes...),
+		validators: makeValidators(slices.Repeat([]int64{10}, 10)...),
 	}
+	net := newNetwork(world,
+		0.70,
+		1,    // suppressed validators will emit one round after dominant validators go offline
+		1000, // heartbeatFrames: use a larger than repetitions value to disable heartbeat-based emissions
+	)
 
-	// Run the network for a few rounds, checking that all nodes make progress.
-	network := newNetwork(numNodes, world, threshold, repeatedFramesMaxCount, heartbeatFrames)
+	events := net.runRound(nil)
+	require.ElementsMatch(t,
+		world.validators.IDs(),
+		slices.Collect(maps.Keys(events)),
+		"all nodes emit genesis")
 
-	// -- All Online --
+	events = net.runRound(offlineValidators{1})
+	require.ElementsMatch(t,
+		[]idx.ValidatorID{2, 3, 4, 5, 6, 7},
+		slices.Collect(maps.Keys(events)))
 
-	// In the first round, everyone is online, and dominant nodes should make progress.
-	events := network.runRound(nil)
-	require.Len(events, 8) // 2 least dominant nodes throttle
+	events = net.runRound(offlineValidators{1})
+	require.ElementsMatch(t,
+		[]idx.ValidatorID{2, 3, 4, 5, 6, 7, 8},
+		slices.Collect(maps.Keys(events)))
 
-	// If one node goes offline (10% of stake), throttling nodes are kicking in.
-	offline := offlineMask{true}
-	events = network.runRound(offline)
-	require.Len(events, 7) // 1 offline + 2 throttling nodes
+	events = net.runRound(offlineValidators{1, 2})
+	require.ElementsMatch(t,
+		[]idx.ValidatorID{3, 4, 5, 6, 7, 8},
+		slices.Collect(maps.Keys(events)))
 
-	// This is a steady state, since progress is made.
-	for range 5 {
-		events = network.runRound(offline)
-		require.Len(events, 7) // 1 offline + 2 throttling nodes
-	}
+	events = net.runRound(offlineValidators{1, 2})
+	require.ElementsMatch(t,
+		[]idx.ValidatorID{3, 4, 5, 6, 7, 8, 9},
+		slices.Collect(maps.Keys(events)))
 
-	// If another node goes offline (20% of stake), extra nodes remain throttled.
-	offline = offlineMask{true, true}
-	events = network.runRound(offline)
-	require.Len(events, 6) // 2 offline + 2 throttling node
+	events = net.runRound(offlineValidators{1, 2, 3})
+	require.ElementsMatch(t,
+		[]idx.ValidatorID{4, 5, 6, 7, 8, 9},
+		slices.Collect(maps.Keys(events)))
 
-	// 6/10 is to low for progress, so network stalls until we reach the max
-	// repeated frames.
-	for range repeatedFramesMaxCount - 1 {
-		events = network.runRound(offline)
-		require.Len(events, 6) // 2 offline + 2 throttling node
-	}
+	events = net.runRound(offlineValidators{1, 2, 3})
+	require.ElementsMatch(t,
+		[]idx.ValidatorID{4, 5, 6, 7, 8, 9, 10},
+		slices.Collect(maps.Keys(events)))
 
-	// After reaching the max repeated frames, throttling nodes emit again,
-	// allowing progress.
-	events = network.runRound(offline)
-	require.Len(events, 8) // 2 offline, nobody throttled
+	events = net.runRound(nil)
+	require.ElementsMatch(t,
+		world.validators.IDs(),
+		slices.Collect(maps.Keys(events)))
 
-	// This was a one-time thing. Now that there is progress, nodes are throttling again.
-	for range repeatedFramesMaxCount {
-		events = network.runRound(offline)
-		require.Len(events, 6) // 2 offline + 2 throttling node
-	}
-
-	// And this repeats indefinitely.
-	// TODO: decide whether this is fine, or whether we want this to be smoother.
-	for range 100 {
-		events = network.runRound(offline)
-		require.Len(events, 8) // 2 offline, nobody throttled
-
-		for range repeatedFramesMaxCount {
-			events = network.runRound(offline)
-			require.Len(events, 6) // 2 offline + 2 throttling node
-		}
-	}
-
-	// -- Bring back all nodes --
-
-	// Bringing back all nodes should restore full emission.
-	offline = offlineMask{}
-	events = network.runRound(offline)
-	require.Len(events, 10) // all nodes emit
-
-	// After this, nodes throttle again.
-	for range 100 {
-		events = network.runRound(offline)
-		require.Len(events, 8) // 2 throttling nodes
-	}
+	events = net.runRound(nil)
+	require.ElementsMatch(t,
+		[]idx.ValidatorID{1, 2, 3, 4, 5, 6, 7},
+		slices.Collect(maps.Keys(events)))
 }
 
 // --- Simulation Infrastructure ---
@@ -367,12 +478,13 @@ type network struct {
 }
 
 func newNetwork(
-	numNodes int,
 	world WorldReader,
 	dominantSetThreshold float64,
-	repeatedFramesMaxCount uint,
-	heartbeatFrames uint,
+	repeatedFramesMaxCount uint64,
+	heartbeatFrames uint64,
 ) *network {
+	validators, _ := world.GetEpochValidators()
+	numNodes := validators.Len()
 	nodes := make([]*node, 0, numNodes)
 	for i := range numNodes {
 		id := idx.ValidatorID(i + 1)
@@ -391,12 +503,13 @@ func newNetwork(
 }
 
 func (n *network) runRound(
-	offlineMask offlineMask,
-) []*inter.EventPayload {
+	offlineMask offlineValidators,
+) map[idx.ValidatorID]*inter.EventPayload {
 	// Collect events from all nodes.
 	events := make([]*inter.EventPayload, 0)
 	for i, node := range n.nodes {
-		if offlineMask.isOffline(i) {
+		_ = i
+		if offlineMask.isOffline(node.selfId) {
 			continue
 		}
 		if event := node.createEvent(); event != nil {
@@ -413,7 +526,12 @@ func (n *network) runRound(
 			node.receiveEvent(event)
 		}
 	}
-	return events
+
+	res := make(map[idx.ValidatorID]*inter.EventPayload)
+	for _, event := range events {
+		res[event.Creator()] = event
+	}
+	return res
 }
 
 // node simulates a node in the network.
@@ -434,8 +552,8 @@ func newNode(
 	selfId idx.ValidatorID,
 	world WorldReader,
 	dominantSetThreshold float64,
-	repeatedFramesMaxCount uint,
-	heartbeatFrames uint,
+	repeatedFramesMaxCount uint64,
+	heartbeatFrames uint64,
 ) *node {
 	return &node{
 		throttler: *NewThrottlingState(
@@ -479,17 +597,13 @@ func (node *node) createEvent() *inter.EventPayload {
 	}
 	builder.SetParents(parentIds)
 
-	// set extra data: latest block index, to check that nodes with stake
-	// do emit and are not flagged as inactive
-	latestBlock := bigendian.Uint64ToBytes(uint64(node.world.GetLatestBlockIndex()))
-	builder.SetExtra(latestBlock)
-
 	builder.SetLamport(maxLamport + 1)
 	if selfParent != nil {
 		builder.SetCreationTime(inter.MaxTimestamp(inter.Timestamp(time.Now().UnixNano()), selfParent.CreationTime()+1))
 		builder.SetSeq(selfParent.Seq() + 1)
 	} else {
 		builder.SetCreationTime(inter.Timestamp(time.Now().UnixNano()))
+		builder.SetSeq(1) // genesis event has seq 1
 	}
 
 	validators, _ := node.world.GetEpochValidators()
@@ -551,59 +665,35 @@ type fakeWorld struct {
 	network    *network
 	validators *pos.Validators
 	rules      opera.Rules
-	lastBlock  idx.Block
 }
 
 func (f *fakeWorld) GetEpochValidators() (*pos.Validators, idx.Epoch) {
 	return f.validators, 0
 }
 
-func (f *fakeWorld) GetLatestBlockIndex() idx.Block {
-	return f.lastBlock
-}
-
 func (f *fakeWorld) GetRules() opera.Rules {
 	return f.rules
 }
 
-func (f *fakeWorld) GetLastEvent(epoch idx.Epoch, from idx.ValidatorID) *hash.Event {
+func (f *fakeWorld) GetLastEvent(from idx.ValidatorID) *inter.Event {
 	if f.network == nil {
 		// for this test to function correctly, the world must have access to the network
 		panic("ill-formed test: world has no network")
 	}
 
-	var lastEvent inter.EventPayloadI
+	var lastEvent *inter.Event
 	for _, event := range f.network.allEvents {
 		if event.Creator() == from {
 			if lastEvent == nil || event.CreationTime() > lastEvent.CreationTime() {
-				lastEvent = event
+				lastEvent = &event.Event
 			}
 		}
 	}
-	if lastEvent == nil {
-		return nil
-	}
-	hash := lastEvent.ID()
-	return &hash
+	return lastEvent
 }
 
-func (f *fakeWorld) GetEvent(hash hash.Event) *inter.Event {
-	if f.network == nil {
-		// for this test to function correctly, the world must have access to the network
-		panic("ill-formed test: world has no network")
-	}
+type offlineValidators []idx.ValidatorID
 
-	for _, event := range f.network.allEvents {
-		if event.ID() == hash {
-			return &event.Event
-		}
-	}
-
-	return nil
-}
-
-type offlineMask []bool
-
-func (m offlineMask) isOffline(i int) bool {
-	return i < len(m) && m[i]
+func (m offlineValidators) isOffline(id idx.ValidatorID) bool {
+	return slices.Contains(m, id)
 }

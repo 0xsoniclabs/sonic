@@ -19,189 +19,157 @@ package throttling
 import (
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 )
 
 //go:generate mockgen -source=throttling.go -destination=throttling_mock.go -package=throttling
 
-// ThrottlingState manages the state for event emission throttling based on
-// the set of dominant validators.
-// This type contains the state needed to decide whether to skip event emission
-// for a given validator, based on its stake and the stake distribution among
-// all validators, and properties of the events to be emitted.
+type ValidatorAttendance struct {
+	LastSeenEvent idx.Event
+	Attempt       uint64
+}
+
 type ThrottlingState struct {
 	// throttler configuration parameters
-	thisValidatorID                     idx.ValidatorID
-	dominatorsThreshold                 float64
-	maxSkippedEventsWithSameFrameNumber uint
-	heartbeatFramesCount                uint
+	thisValidatorID            idx.ValidatorID
+	dominatorsThreshold        float64
+	dominatingValidatorTimeout uint64
+	heartbeatFramesCount       uint64
 
 	// means to access the world state
 	world WorldReader
 
-	// accumulated state
-	currentSkippedEventsCount uint
-	lastTestedFrame           idx.Frame
-	lastEmissionBlockNumber   idx.Block
+	// internal state
+	attempt             uint64
+	lastEmissionAttempt uint64
+	attendanceList      map[idx.ValidatorID]ValidatorAttendance
 }
 
 type WorldReader interface {
 	GetRules() opera.Rules
-	GetLatestBlockIndex() idx.Block
 	GetEpochValidators() (*pos.Validators, idx.Epoch)
-	GetLastEvent(epoch idx.Epoch, from idx.ValidatorID) *hash.Event
-	GetEvent(hash.Event) *inter.Event
+	GetLastEvent(idx.ValidatorID) *inter.Event
 }
 
-// NewThrottlingState creates a new ThrottlingState for a given validator ID
-// and dominating percentile threshold.
-//
-// dominatingPercentile parameter specifies the fraction of total stake
-// that defines the dominant set of validators. For example, a value of 0.75
-// means that the dominant set is the smallest set of validators whose combined
-// stake is at least 75% of the total stake.
-//
-// maxSkippedEventsWithSameFrameNumber parameter specifies the maximum of consecutive
-// skipped events with the same frame number before forcing an emission. This brings
-// the stake of this node online when no progress can be observed in the network.
 func NewThrottlingState(
 	validatorID idx.ValidatorID,
 	dominatingPercentile float64,
-	maxSkippedEventsWithSameFrameNumber uint,
-	heartbeatFramesCount uint,
+	maxSkippedEventsWithSameFrameNumber uint64,
+	heartbeatFramesCount uint64,
 	stateReader WorldReader,
 ) *ThrottlingState {
 	return &ThrottlingState{
 		thisValidatorID: validatorID,
 		// Clamp the threshold between 0.7 and 1 to avoid extreme values.
 		// 0.7 is a conservative approximation of the Byzantine fault tolerance limit (2/3+1).
-		dominatorsThreshold:                 min(max(dominatingPercentile, 0.7), 1),
-		maxSkippedEventsWithSameFrameNumber: maxSkippedEventsWithSameFrameNumber,
-		heartbeatFramesCount:                heartbeatFramesCount,
-		world:                               stateReader,
+		dominatorsThreshold:        min(max(dominatingPercentile, 0.7), 1),
+		dominatingValidatorTimeout: maxSkippedEventsWithSameFrameNumber,
+		heartbeatFramesCount:       heartbeatFramesCount,
+		world:                      stateReader,
+
+		attendanceList: make(map[idx.ValidatorID]ValidatorAttendance),
 	}
 }
 
+type SkipEventEmissionReason int
+
 const (
-	SkipEventEmission = iota
+	SkipEventEmission SkipEventEmissionReason = iota
 	DoNotSkipEvent_CarriesTransactions
-	DoNotSkipEvent_SameFrameExceeded
-	DoNotSkipEvent_TooManyBlocksMissed
 	DoNotSkipEvent_DominantStake
+	DoNotSkipEvent_StakeNotDominated
 	DoNotSkipEvent_Heartbeat
+	DoNotSkipEvent_Genesis
 )
 
 // CanSkipEventEmission determines whether to skip the emission of the given event.
 //
 // It returns true if the event emission should be skipped, false otherwise.
-func (ts *ThrottlingState) CanSkipEventEmission(event inter.EventPayloadI) int {
-	skip := ts.canSkipEvent(event)
-	if ts.lastTestedFrame < event.Frame() {
-		ts.currentSkippedEventsCount = 0
-		ts.lastTestedFrame = event.Frame()
+func (ts *ThrottlingState) CanSkipEventEmission(event inter.EventPayloadI) SkipEventEmissionReason {
+	ts.attempt++
+
+	// reset state on epoch start
+	if event.SelfParent() == nil {
+		ts.resetState()
 	}
 
-	if skip == SkipEventEmission {
-		ts.currentSkippedEventsCount++
-	} else {
-		ts.lastEmissionBlockNumber = ts.world.GetLatestBlockIndex()
-		ts.currentSkippedEventsCount = 0
+	// update attendance list, which validators have emitted new events
+	validators, _ := ts.world.GetEpochValidators()
+	for _, id := range validators.IDs() {
+		lastEvent := ts.world.GetLastEvent(id)
+		if lastEvent == nil {
+			continue
+		}
+		attendance, exists := ts.attendanceList[id]
+		if !exists || attendance.LastSeenEvent != lastEvent.Seq() {
+			attendance = ValidatorAttendance{
+				LastSeenEvent: lastEvent.Seq(),
+				Attempt:       ts.attempt,
+			}
+			ts.attendanceList[id] = attendance
+		}
 	}
+
+	skip := ts.canSkip(event)
+
+	if skip != SkipEventEmission {
+		ts.lastEmissionAttempt = ts.attempt
+	}
+
 	return skip
 }
 
-func (ts *ThrottlingState) canSkipEvent(event inter.EventPayloadI) int {
-	// Do not skip emission if the event carries transactions
+func (ts *ThrottlingState) canSkip(event inter.EventPayloadI) SkipEventEmissionReason {
+
 	if len(event.Transactions()) > 0 {
 		return DoNotSkipEvent_CarriesTransactions
 	}
 
-	rules := ts.world.GetRules()
-	currentEpochValidators, epoch := ts.world.GetEpochValidators()
+	if event.SelfParent() == nil {
+		return DoNotSkipEvent_Genesis
+	}
 
-	// The system requires to keep a heartbeat emission every N frames, this
-	// ensures that suppressed validators are seen as online by other validators.
-	lastEmittedEvent := ts.getLastEmittedEvent(epoch, ts.thisValidatorID)
-	if lastEmittedEvent != nil &&
-		event.Frame()-lastEmittedEvent.Frame() >= idx.Frame(ts.heartbeatFramesCount) {
+	rules := ts.world.GetRules()
+	heartbeatTimeout := min(ts.heartbeatFramesCount/2, uint64(rules.Economy.BlockMissedSlack/2))
+	if ts.lastEmissionAttempt+heartbeatTimeout <= ts.attempt {
 		return DoNotSkipEvent_Heartbeat
 	}
 
-	// Do not skip emission if the event is in the same frame as the last emitted event
-	// for a given period of time.
-	// This means that no progress in the network can be observed. The stake of this
-	// validator stake may be needed to reach quorum in the current frame.
-	if ts.lastTestedFrame == event.Frame() &&
-		ts.currentSkippedEventsCount >= ts.maxSkippedEventsWithSameFrameNumber {
-		return DoNotSkipEvent_SameFrameExceeded
+	// Filter offline validators based on their attendance
+	allValidators, _ := ts.world.GetEpochValidators()
+	nominalDominatingSet := ComputeDominantSet(allValidators, allValidators.TotalWeight(), ts.dominatorsThreshold)
+	builder := pos.NewBuilder()
+	for id, attendance := range ts.attendanceList {
+
+		// different tolerance for being online for dominant vs non-dominant validators
+		onlineThreshold := ts.heartbeatFramesCount
+		if _, wasDominant := nominalDominatingSet[id]; wasDominant {
+			onlineThreshold = ts.dominatingValidatorTimeout
+		}
+
+		// Filter out validators that have been offline for too long
+		if ts.attempt-attendance.Attempt >= onlineThreshold {
+			continue
+		}
+
+		builder.Set(id, allValidators.Get(id))
 	}
 
-	// Do not skip emission if too many blocks have been missed since the last emission.
-	// This prevents this node from being flagged as inactive, and its stake being slashed.
-	//
-	// Although it could be argued that a block is produced by a frame when there is
-	// load in the system, and therefore this measure could be computed based on frames
-	// instead of blocks, using blocks is preserved as a redundant safety measure.
-	blockMissedSlack := rules.Economy.BlockMissedSlack
-	currentBlockNumber := ts.world.GetLatestBlockIndex()
-	if currentBlockNumber > ts.lastEmissionBlockNumber &&
-		currentBlockNumber-ts.lastEmissionBlockNumber > blockMissedSlack/2 {
-		return DoNotSkipEvent_TooManyBlocksMissed
+	// Compute dominant set among online validators
+	onlineDominatingSet := ComputeDominantSet(builder.Build(), allValidators.TotalWeight(), ts.dominatorsThreshold)
+	if len(onlineDominatingSet) == 0 {
+		return DoNotSkipEvent_StakeNotDominated
 	}
-
-	// Evaluate whether this validator is in the dominant set of validators.
-	// The dominant set is computed considering only online stake, i.e. stake
-	// of validators that have emitted an event recently enough.
-	onlineValidators := ts.filterOfflineValidators(currentEpochValidators, event, epoch)
-	dominantSet := ComputeDominantSet(onlineValidators, currentEpochValidators.TotalWeight(), ts.dominatorsThreshold)
-	if _, found := dominantSet[ts.thisValidatorID]; found {
+	if _, isDominant := onlineDominatingSet[ts.thisValidatorID]; isDominant {
 		return DoNotSkipEvent_DominantStake
 	}
 
 	return SkipEventEmission
 }
 
-// getLastEmittedEvent retrieves the last event emitted by the given validator
-// in the specified epoch.
-// If no event is found, it returns nil.
-func (ts *ThrottlingState) getLastEmittedEvent(epoch idx.Epoch, validatorId idx.ValidatorID) *inter.Event {
-	eventId := ts.world.GetLastEvent(epoch, validatorId)
-	if eventId == nil {
-		return nil
-	}
-
-	lastEventSeen := ts.world.GetEvent(*eventId)
-	if lastEventSeen == nil {
-		return nil
-	}
-	return lastEventSeen
-}
-
-// filterOfflineValidators returns a new Validators object containing only
-// the validators from currentEpochValidators that have emitted an event
-// recently enough to be considered online.
-func (ts *ThrottlingState) filterOfflineValidators(
-	currentEpochValidators *pos.Validators,
-	event inter.EventPayloadI,
-	epoch idx.Epoch,
-) *pos.Validators {
-
-	if event.SelfParent() == nil {
-		return currentEpochValidators
-	}
-
-	builder := pos.NewBuilder()
-	for _, validatorId := range currentEpochValidators.IDs() {
-		lastEventSeen := ts.getLastEmittedEvent(epoch, validatorId)
-		if lastEventSeen == nil {
-			continue
-		}
-
-		if event.Frame()-lastEventSeen.Frame() <= idx.Frame(ts.heartbeatFramesCount)*2 {
-			builder.Set(validatorId, currentEpochValidators.Get(validatorId))
-		}
-	}
-	return builder.Build()
+func (ts *ThrottlingState) resetState() {
+	ts.attempt = 0
+	ts.lastEmissionAttempt = 0
+	ts.attendanceList = make(map[idx.ValidatorID]ValidatorAttendance)
 }

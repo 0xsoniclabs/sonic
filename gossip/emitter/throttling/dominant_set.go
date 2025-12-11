@@ -23,13 +23,15 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 )
 
+type DominantSet map[idx.ValidatorID]struct{}
+
 // TODO: docstring
 //
 // This function uses the [pos.Validators] object methods to have a deterministic order
 // of validators with equal stakes.
-func ComputeDominantSet(validators *pos.Validators, totalStake pos.Weight, threshold float64) map[idx.ValidatorID]struct{} {
+func ComputeDominantSet(validators *pos.Validators, totalStake pos.Weight, threshold float64) DominantSet {
 
-	res := make(map[idx.ValidatorID]struct{})
+	res := make(DominantSet)
 	accumulated := pos.Weight(0)
 
 	thresholdStake := pos.Weight(math.Ceil(float64(totalStake) * threshold))

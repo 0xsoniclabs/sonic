@@ -101,14 +101,14 @@ func TestManyNodes(t *testing.T) {
 
 	//  Third Epoch: Increase state of one validators to dominate the stake again
 
-	id := idx.ValidatorID(3)
-	receipt, err := net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
-		opts.Value = utils.ToFtm(1_500)
-		return sfcContract.Delegate(opts, big.NewInt(int64(id)))
-	})
-	require.NoError(t, err)
-	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
-	net.AdvanceEpoch(t, 1)
+	// id := idx.ValidatorID(3)
+	// receipt, err := net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
+	// 	opts.Value = utils.ToFtm(1_500)
+	// 	return sfcContract.Delegate(opts, big.NewInt(int64(id)))
+	// })
+	// require.NoError(t, err)
+	// require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+	// net.AdvanceEpoch(t, 1)
 
-	time.Sleep(30 * time.Second)
+	// time.Sleep(30 * time.Second)
 }

@@ -14,7 +14,6 @@ import (
 
 	inter "github.com/0xsoniclabs/sonic/inter"
 	opera "github.com/0xsoniclabs/sonic/opera"
-	hash "github.com/Fantom-foundation/lachesis-base/hash"
 	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
 	pos "github.com/Fantom-foundation/lachesis-base/inter/pos"
 	gomock "go.uber.org/mock/gomock"
@@ -59,46 +58,18 @@ func (mr *MockWorldReaderMockRecorder) GetEpochValidators() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEpochValidators", reflect.TypeOf((*MockWorldReader)(nil).GetEpochValidators))
 }
 
-// GetEvent mocks base method.
-func (m *MockWorldReader) GetEvent(arg0 hash.Event) *inter.Event {
+// GetLastEvent mocks base method.
+func (m *MockWorldReader) GetLastEvent(arg0 idx.ValidatorID) *inter.Event {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetEvent", arg0)
+	ret := m.ctrl.Call(m, "GetLastEvent", arg0)
 	ret0, _ := ret[0].(*inter.Event)
 	return ret0
 }
 
-// GetEvent indicates an expected call of GetEvent.
-func (mr *MockWorldReaderMockRecorder) GetEvent(arg0 any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEvent", reflect.TypeOf((*MockWorldReader)(nil).GetEvent), arg0)
-}
-
-// GetLastEvent mocks base method.
-func (m *MockWorldReader) GetLastEvent(epoch idx.Epoch, from idx.ValidatorID) *hash.Event {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetLastEvent", epoch, from)
-	ret0, _ := ret[0].(*hash.Event)
-	return ret0
-}
-
 // GetLastEvent indicates an expected call of GetLastEvent.
-func (mr *MockWorldReaderMockRecorder) GetLastEvent(epoch, from any) *gomock.Call {
+func (mr *MockWorldReaderMockRecorder) GetLastEvent(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLastEvent", reflect.TypeOf((*MockWorldReader)(nil).GetLastEvent), epoch, from)
-}
-
-// GetLatestBlockIndex mocks base method.
-func (m *MockWorldReader) GetLatestBlockIndex() idx.Block {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetLatestBlockIndex")
-	ret0, _ := ret[0].(idx.Block)
-	return ret0
-}
-
-// GetLatestBlockIndex indicates an expected call of GetLatestBlockIndex.
-func (mr *MockWorldReaderMockRecorder) GetLatestBlockIndex() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLatestBlockIndex", reflect.TypeOf((*MockWorldReader)(nil).GetLatestBlockIndex))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLastEvent", reflect.TypeOf((*MockWorldReader)(nil).GetLastEvent), arg0)
 }
 
 // GetRules mocks base method.

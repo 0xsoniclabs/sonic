@@ -35,6 +35,7 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/txpool"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 
 	"github.com/0xsoniclabs/sonic/gossip/emitter/originatedtxs"
@@ -153,6 +154,25 @@ type BaseFeeSource interface {
 	GetCurrentBaseFee() *big.Int
 }
 
+type ThrottlerWorldAdapter struct {
+	World
+}
+
+func (wa *ThrottlerWorldAdapter) GetLastEvent(from idx.ValidatorID) *inter.Event {
+	_, epoch := wa.GetEpochValidators()
+	hash := wa.World.GetLastEvent(epoch, from)
+	if hash == nil {
+		return nil
+	}
+
+	event := wa.GetEvent(*hash)
+	if event == nil {
+		log.Error("event not found", "eventHash", hash, "from validator ID", from)
+		return nil
+	}
+	return event
+}
+
 // NewEmitter creation.
 func NewEmitter(
 	config Config,
@@ -177,9 +197,9 @@ func NewEmitter(
 		res.eventEmissionThrottler = throttling.NewThrottlingState(
 			config.Validator.ID,
 			config.ThrottlerDominantThreshold,
-			config.ThrottlerSkipInSameFrame,
-			config.ThrottlerHeartbeatFrames,
-			world)
+			uint64(config.ThrottlerSkipInSameFrame),
+			uint64(config.ThrottlerHeartbeatFrames),
+			&ThrottlerWorldAdapter{world})
 	}
 
 	res.globalConfirmingInterval.Store(uint64(config.EmitIntervals.Confirming))
