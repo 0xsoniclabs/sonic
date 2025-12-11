@@ -17,13 +17,20 @@
 package tests
 
 import (
+	"context"
 	"os"
 	"testing"
+
+	"github.com/0xsoniclabs/sonic/test_tracer"
 )
 
 // TestMain is a functionality offered by the testing package that allows
 // us to run some code before and after all tests in the package.
 func TestMain(m *testing.M) {
+
+	tracerCtx, span := test_tracer.Tracer.Start(context.Background(), "TestMain")
+	defer span.End()
+	test_tracer.Context = tracerCtx
 
 	m.Run()
 

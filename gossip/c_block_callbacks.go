@@ -29,6 +29,9 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	scc_node "github.com/0xsoniclabs/sonic/scc/node"
+	"github.com/0xsoniclabs/sonic/test_tracer"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/dag"
@@ -172,6 +175,10 @@ func consensusCallbackBeginBlockFn(
 				confirmedEventsMeter.Mark(1)
 			},
 			EndBlock: func() (newValidators *pos.Validators) {
+				number := uint64(bs.LastBlock.Idx + 1)
+
+				trace.SpanFromContext(test_tracer.Context).AddEvent("Start EndBlock", trace.WithAttributes(
+					attribute.Int64("block.number", int64(number))))
 
 				// sort events by Lamport time
 				sort.Sort(confirmedEvents)
@@ -191,7 +198,6 @@ func consensusCallbackBeginBlockFn(
 				)
 
 				// Start assembling the resulting block.
-				number := uint64(bs.LastBlock.Idx + 1)
 				lastBlockHeader := evmStateReader.GetHeaderByNumber(number - 1)
 
 				randao := computePrevRandao(confirmedEvents)
@@ -359,6 +365,8 @@ func consensusCallbackBeginBlockFn(
 					newValidators = es.Validators
 					txListener.Update(bs, es)
 				}
+				trace.SpanFromContext(test_tracer.Context).AddEvent("End EndBlock", trace.WithAttributes(
+					attribute.Int64("block.number", int64(number))))
 
 				// At this point, newValidators may be returned and the rest of the code may be executed in a parallel thread
 				blockFn := func() {

@@ -38,6 +38,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/trace"
 
 	sonicd "github.com/0xsoniclabs/sonic/cmd/sonicd/app"
 	sonictool "github.com/0xsoniclabs/sonic/cmd/sonictool/app"
@@ -48,6 +49,7 @@ import (
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
+	stt "github.com/0xsoniclabs/sonic/test_tracer"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -199,6 +201,8 @@ type IntegrationTestNet struct {
 
 	sessionsMutex sync.Mutex
 	Session
+
+	TracerCtx context.Context
 }
 
 // per-node state for the integration test network
@@ -289,6 +293,8 @@ func StartIntegrationTestNet(
 	options ...IntegrationTestNetOptions,
 ) *IntegrationTestNet {
 	t.Helper()
+	_, span := stt.Tracer.Start(stt.Context, "Start Test Net", trace.WithAttributes())
+	defer span.End()
 	return StartIntegrationTestNetWithJsonGenesis(t, options...)
 }
 
@@ -418,6 +424,7 @@ func startIntegrationTestNet(
 	}
 
 	require.NoError(t, net.start(), "failed to start the integration test network")
+	net.TracerCtx = stt.Context
 
 	if !options.SkipCleanUp {
 		t.Cleanup(net.Stop)
@@ -985,9 +992,11 @@ func (s *Session) Run(tx *types.Transaction) (*types.Receipt, error) {
 }
 
 func (s *Session) RunAll(tx []*types.Transaction) ([]*types.Receipt, error) {
+	trace.SpanFromContext(s.net.TracerCtx).AddEvent("RunAll Transactions")
+
 	hashes := make([]common.Hash, len(tx))
 	err := runParallelWithClient(s.net, len(tx), func(client *PooledEhtClient, i int) error {
-		err := client.SendTransaction(context.Background(), tx[i])
+		err := client.SendTransaction(s.net.TracerCtx, tx[i])
 		if err != nil {
 			return fmt.Errorf("failed to send transaction %d: %w", i, err)
 		}
@@ -999,6 +1008,7 @@ func (s *Session) RunAll(tx []*types.Transaction) ([]*types.Receipt, error) {
 	for i, t := range tx {
 		hashes[i] = t.Hash()
 	}
+	trace.SpanFromContext(s.net.TracerCtx).AddEvent("All sent, next GetReceipts")
 	return s.GetReceipts(hashes)
 }
 
@@ -1014,15 +1024,18 @@ func (s *Session) GetReceipt(txHash common.Hash) (*types.Receipt, error) {
 }
 
 func (s *Session) GetReceipts(txHash []common.Hash) ([]*types.Receipt, error) {
+
 	res := make([]*types.Receipt, len(txHash))
 	err := runParallelWithClient(
 		s.net,
 		len(txHash),
 		func(client *PooledEhtClient, i int) error {
 			hash := txHash[i]
+			waitForCtx, span := stt.Tracer.Start(s.net.TracerCtx, "WaitFor")
 
-			err := WaitFor(context.Background(), func(ctx context.Context) (bool, error) {
-				receipt, err := client.TransactionReceipt(ctx, hash)
+			defer span.End()
+			err := WaitFor(waitForCtx, func(ctx context.Context) (bool, error) {
+				receipt, err := client.TransactionReceipt(waitForCtx, hash)
 				if errors.Is(err, ethereum.NotFound) {
 					return false, nil // receipt not yet available, keep waiting
 				}
