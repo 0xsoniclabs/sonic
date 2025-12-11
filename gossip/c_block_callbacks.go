@@ -19,6 +19,7 @@ package gossip
 import (
 	"bytes"
 	"cmp"
+	"context"
 	"fmt"
 	"slices"
 	"sort"
@@ -54,6 +55,8 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/validatorpk"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
+
+	"github.com/kamilsk/tracer"
 )
 
 //go:generate mockgen -source=c_block_callbacks.go -package=gossip -destination=c_block_callbacks_mock.go
@@ -172,6 +175,8 @@ func consensusCallbackBeginBlockFn(
 				confirmedEventsMeter.Mark(1)
 			},
 			EndBlock: func() (newValidators *pos.Validators) {
+				tracerCall := tracer.Fetch(context.Background()).Start("EndBlock")
+				defer tracerCall.Stop()
 
 				// sort events by Lamport time
 				sort.Sort(confirmedEvents)
@@ -295,6 +300,7 @@ func consensusCallbackBeginBlockFn(
 				}
 				skipBlock = skipBlock || (emptyBlock && blockCtx.Time < bs.LastBlock.Time+es.Rules.Blocks.MaxEmptyBlockSkipPeriod)
 				// Finalize the progress of eventProcessor
+				tracerCall.Checkpoint("Finalize")
 				bs = eventProcessor.Finalize(blockCtx, skipBlock) // TODO: refactor to not mutate the bs, it is unclear
 				if skipBlock {
 					// save the latest block state even if block is skipped
@@ -342,6 +348,7 @@ func consensusCallbackBeginBlockFn(
 						log.Warn("Pre-internal transaction skipped or reverted", "txid", tx.Transaction.Hash().String())
 					}
 				}
+				tracerCall.Checkpoint("Pre-internal txs executed")
 
 				// Seal epoch if requested
 				if sealing {

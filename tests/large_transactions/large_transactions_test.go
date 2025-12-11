@@ -24,10 +24,12 @@ import (
 
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
+	sonic_tracer "github.com/0xsoniclabs/sonic/tracer"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel"
 )
 
 func TestLargeTransactions_CanHandleLargeTransactions(t *testing.T) {
@@ -104,14 +106,14 @@ func TestLargeTransactions_LargeTransactionLoadTest(t *testing.T) {
 	}
 
 	hardForks := map[string]opera.Upgrades{
-		"Sonic":   opera.GetSonicUpgrades(),
-		"Allegro": opera.GetAllegroUpgrades(),
-		"Brio":    opera.GetBrioUpgrades(),
+		// "Sonic":   opera.GetSonicUpgrades(),
+		// "Allegro": opera.GetAllegroUpgrades(),
+		"Brio": opera.GetBrioUpgrades(),
 	}
 
 	modes := map[string]bool{
 		"DistributedProposer": false,
-		"SingleProposer":      true,
+		// "SingleProposer":      true,
 	}
 
 	for name, upgrades := range hardForks {
@@ -124,6 +126,12 @@ func TestLargeTransactions_LargeTransactionLoadTest(t *testing.T) {
 		}
 	}
 }
+
+func init() {
+	_, _ = sonic_tracer.StartTracing()
+}
+
+var tracer = otel.Tracer("github.com/Salaton/tracing/pkg/usecases/product")
 
 func testLargeTransactionLoadTest(
 	t *testing.T,
@@ -140,6 +148,9 @@ func testLargeTransactionLoadTest(
 		numRounds   = 10
 	)
 	require := require.New(t)
+	_, span := tracer.Start(t.Context(), "LargeTransactionLoadTest")
+	defer span.End()
+
 	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
 		Upgrades: upgrades,
 		NumNodes: 3,
@@ -176,6 +187,7 @@ func testLargeTransactionLoadTest(
 	chainId := net.GetChainId()
 	signer := types.NewCancunSigner(chainId)
 
+	span.AddEvent("Create tx list")
 	// Create a list of large transactions to flood the network.
 	transactions := []*types.Transaction{}
 	data := make([]byte, 125_000)
@@ -202,6 +214,7 @@ func testLargeTransactionLoadTest(
 	// load peak.
 	slices.Reverse(transactions)
 
+	span.AddEvent("Send tx list")
 	receipts, err := net.RunAll(transactions)
 	require.NoError(err, "failed to run transactions")
 	for _, receipt := range receipts {

@@ -38,6 +38,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel"
 
 	sonicd "github.com/0xsoniclabs/sonic/cmd/sonicd/app"
 	sonictool "github.com/0xsoniclabs/sonic/cmd/sonictool/app"
@@ -48,6 +49,7 @@ import (
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
+	sonic_tracer "github.com/0xsoniclabs/sonic/tracer"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -57,6 +59,12 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
 )
+
+func init() {
+	_, _ = sonic_tracer.StartTracing()
+}
+
+var tracer = otel.Tracer("github.com/Salaton/tracing/pkg/usecases/product")
 
 // IntegrationTestNetSession a collection of methods to run tests against the
 // integration test network.
@@ -289,6 +297,8 @@ func StartIntegrationTestNet(
 	options ...IntegrationTestNetOptions,
 ) *IntegrationTestNet {
 	t.Helper()
+	_, span := tracer.Start(t.Context(), "Start Integration Test Net")
+	defer span.End()
 	return StartIntegrationTestNetWithJsonGenesis(t, options...)
 }
 
@@ -985,6 +995,9 @@ func (s *Session) Run(tx *types.Transaction) (*types.Receipt, error) {
 }
 
 func (s *Session) RunAll(tx []*types.Transaction) ([]*types.Receipt, error) {
+	_, span := tracer.Start(context.Background(), "RunAll Transactions")
+	defer span.End()
+
 	hashes := make([]common.Hash, len(tx))
 	err := runParallelWithClient(s.net, len(tx), func(client *PooledEhtClient, i int) error {
 		err := client.SendTransaction(context.Background(), tx[i])
@@ -999,6 +1012,7 @@ func (s *Session) RunAll(tx []*types.Transaction) ([]*types.Receipt, error) {
 	for i, t := range tx {
 		hashes[i] = t.Hash()
 	}
+	span.AddEvent("All sent, next GetReceipts")
 	return s.GetReceipts(hashes)
 }
 
@@ -1014,6 +1028,9 @@ func (s *Session) GetReceipt(txHash common.Hash) (*types.Receipt, error) {
 }
 
 func (s *Session) GetReceipts(txHash []common.Hash) ([]*types.Receipt, error) {
+	_, span := tracer.Start(context.Background(), "GetReceipts")
+	defer span.End()
+
 	res := make([]*types.Receipt, len(txHash))
 	err := runParallelWithClient(
 		s.net,
