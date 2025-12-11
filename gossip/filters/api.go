@@ -28,6 +28,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 
+	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	ethereum "github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
@@ -43,12 +44,14 @@ var (
 // filter is a helper struct that holds meta information over the filter type
 // and associated subscription in the event system.
 type filter struct {
-	typ      Type
-	deadline *time.Timer // filter is inactiv when deadline triggers
-	hashes   []common.Hash
-	crit     FilterCriteria
-	logs     []*types.Log
-	s        *Subscription // associated subscription in event system
+	typ                   Type
+	deadline              *time.Timer // filter is inactive when deadline triggers
+	hashes                []common.Hash
+	crit                  FilterCriteria
+	logs                  []*types.Log
+	s                     *Subscription // associated subscription in event system
+	pendingTransactions   []*types.Transaction
+	serveFullTransactions bool
 }
 
 // Config is a provided API params.
@@ -131,24 +134,31 @@ func timeoutLoop(
 // It is part of the filter package because this filter can be used through the
 // `eth_getFilterChanges` polling method that is also used for log filters.
 //
-// https://github.com/ethereum/wiki/wiki/JSON-RPC#eth_newpendingtransactionfilter
-func (api *PublicFilterAPI) NewPendingTransactionFilter() rpc.ID {
+// If fullTx is true the full tx is sent to the client, otherwise the hash is sent.
+// For more info look to: https://github.com/ethereum/go-ethereum/pull/25186#discussion_r908323028
+func (api *PublicFilterAPI) NewPendingTransactionFilter(fullTxs *bool) rpc.ID {
 	var (
-		pendingTxs   = make(chan []common.Hash)
+		pendingTxs   = make(chan []*types.Transaction)
 		pendingTxSub = api.events.SubscribePendingTxs(pendingTxs)
 	)
 
+	fullTxsBool := fullTxs != nil && *fullTxs
 	api.filtersMu.Lock()
-	api.filters[pendingTxSub.ID] = &filter{typ: PendingTransactionsSubscription, deadline: time.NewTimer(deadline), hashes: make([]common.Hash, 0), s: pendingTxSub}
+	api.filters[pendingTxSub.ID] = &filter{
+		typ:                   PendingTransactionsSubscription,
+		serveFullTransactions: fullTxsBool,
+		deadline:              time.NewTimer(deadline),
+		hashes:                make([]common.Hash, 0),
+		s:                     pendingTxSub}
 	api.filtersMu.Unlock()
 
 	go func() {
 		for {
 			select {
-			case ph := <-pendingTxs:
+			case ptx := <-pendingTxs:
 				api.filtersMu.Lock()
 				if f, found := api.filters[pendingTxSub.ID]; found {
-					f.hashes = append(f.hashes, ph...)
+					f.pendingTransactions = append(f.pendingTransactions, ptx...)
 				}
 				api.filtersMu.Unlock()
 			case <-pendingTxSub.Err():
@@ -165,7 +175,9 @@ func (api *PublicFilterAPI) NewPendingTransactionFilter() rpc.ID {
 
 // NewPendingTransactions creates a subscription that is triggered each time a transaction
 // enters the transaction pool and was signed from one of the transactions this nodes manages.
-func (api *PublicFilterAPI) NewPendingTransactions(ctx context.Context) (*rpc.Subscription, error) {
+// If fullTx is true the full tx is sent to the client, otherwise the hash is sent.
+// For more info look to: https://github.com/ethereum/go-ethereum/pull/25186#discussion_r908323028
+func (api *PublicFilterAPI) NewPendingTransactions(ctx context.Context, fullTx *bool) (*rpc.Subscription, error) {
 	notifier, supported := rpc.NotifierFromContext(ctx)
 	if !supported {
 		return &rpc.Subscription{}, rpc.ErrNotificationsUnsupported
@@ -174,16 +186,21 @@ func (api *PublicFilterAPI) NewPendingTransactions(ctx context.Context) (*rpc.Su
 	rpcSub := notifier.CreateSubscription()
 
 	go func() {
-		txHashes := make(chan []common.Hash, 128)
-		pendingTxSub := api.events.SubscribePendingTxs(txHashes)
+		incomingTxs := make(chan []*types.Transaction, 128)
+		pendingTxSub := api.events.SubscribePendingTxs(incomingTxs)
 
 		for {
 			select {
-			case hashes := <-txHashes:
+			case txs := <-incomingTxs:
 				// To keep the original behaviour, send a single tx hash in one notification.
 				// TODO(rjl493456442) Send a batch of tx hashes in one notification
-				for _, h := range hashes {
-					_ = notifier.Notify(rpcSub.ID, h)
+				for _, tx := range txs {
+					var payload any
+					payload = tx.Hash()
+					if fullTx != nil && *fullTx {
+						payload = ethapi.NewRPCPendingTransaction(tx, tx.GasPrice(), api.backend.ChainID())
+					}
+					_ = notifier.Notify(rpcSub.ID, payload)
 				}
 			case <-rpcSub.Err():
 				pendingTxSub.Unsubscribe()
@@ -432,7 +449,7 @@ func (api *PublicFilterAPI) GetFilterLogs(ctx context.Context, id rpc.ID) ([]*ty
 // (pending)Log filters return []Log.
 //
 // https://github.com/ethereum/wiki/wiki/JSON-RPC#eth_getfilterchanges
-func (api *PublicFilterAPI) GetFilterChanges(id rpc.ID) (interface{}, error) {
+func (api *PublicFilterAPI) GetFilterChanges(id rpc.ID) (any, error) {
 	api.filtersMu.Lock()
 	defer api.filtersMu.Unlock()
 
@@ -445,10 +462,12 @@ func (api *PublicFilterAPI) GetFilterChanges(id rpc.ID) (interface{}, error) {
 		f.deadline.Reset(deadline)
 
 		switch f.typ {
-		case PendingTransactionsSubscription, BlocksSubscription:
+		case BlocksSubscription:
 			hashes := f.hashes
 			f.hashes = nil
 			return returnHashes(hashes), nil
+		case PendingTransactionsSubscription:
+			return processPendingTransactionSubscription(api, f)
 		case LogsSubscription:
 			logs := f.logs
 			f.logs = nil
@@ -456,7 +475,21 @@ func (api *PublicFilterAPI) GetFilterChanges(id rpc.ID) (interface{}, error) {
 		}
 	}
 
-	return []interface{}{}, fmt.Errorf("filter not found")
+	return []any{}, fmt.Errorf("filter not found")
+}
+
+func processPendingTransactionSubscription(api *PublicFilterAPI, f *filter) (any, error) {
+	var result []any
+	for _, tx := range f.pendingTransactions {
+		if f.serveFullTransactions {
+			rpcTx := ethapi.NewRPCPendingTransaction(tx, tx.GasPrice(), api.backend.ChainID())
+			result = append(result, rpcTx)
+		} else {
+			result = append(result, tx.Hash())
+		}
+	}
+	f.pendingTransactions = nil
+	return result, nil
 }
 
 // returnHashes is a helper that will return an empty hash array case the given hash array is nil,
