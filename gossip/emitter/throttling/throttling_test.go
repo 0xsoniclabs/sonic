@@ -16,6 +16,161 @@
 
 package throttling
 
+import (
+	"fmt"
+	"testing"
+
+	"github.com/0xsoniclabs/sonic/inter"
+	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/Fantom-foundation/lachesis-base/inter/pos"
+	"github.com/stretchr/testify/require"
+)
+
+func TestThrottler_updateAttendance_DominatingValidatorsAreOffline_AfterShortTimeout(t *testing.T) {
+	t.Parallel()
+
+	const currentAttempt = 15
+
+	type testCase struct {
+		shortTimeout   attempt
+		lastAttendance validatorAttendance
+		expectedOnline bool
+	}
+	tests := make(map[string]testCase)
+	for lastSeenAt := attempt(1); lastSeenAt <= currentAttempt; lastSeenAt++ {
+		for _, shortTimeout := range []attempt{1, 2, 3, 4, 5} {
+			tests[fmt.Sprintf(
+				"lastSeenAt=%d shortTimeout=%d",
+				lastSeenAt,
+				shortTimeout,
+			)] = testCase{
+				shortTimeout: shortTimeout,
+				lastAttendance: validatorAttendance{
+					lastSeenSeq: 123,
+					lastSeenAt:  lastSeenAt,
+					online:      true,
+				},
+				expectedOnline: lastSeenAt+shortTimeout > currentAttempt,
+			}
+		}
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			world := testFakeWorld{
+				1: makeTestEvent(123),
+			}
+
+			state := NewThrottlingState(
+				13,   // non-existing validator ID, this test does not depend on it
+				0.75, // this test is stake agnostic
+				uint64(test.shortTimeout),
+				100,
+				world,
+			)
+			state.attempt = currentAttempt
+			state.attendanceList[1] = test.lastAttendance
+			state.lastDominatingSet = makeSet(1)
+
+			state.updateAttendance()
+
+			attendance, found := state.attendanceList[1]
+			online := found && attendance.online
+			require.Equal(t, test.expectedOnline, online)
+		})
+	}
+}
+
+func TestThrottler_updateAttendance_SuppressedValidatorsAreOffline_AfterLongTimeout(t *testing.T) {
+	t.Parallel()
+
+	const currentAttempt = 600
+
+	type testCase struct {
+		longTimeout    attempt
+		lastAttendance validatorAttendance
+		expectedOnline bool
+	}
+	tests := make(map[string]testCase)
+	for lastSeenAt := attempt(1); lastSeenAt <= currentAttempt; lastSeenAt++ {
+		for _, shortTimeout := range []attempt{1, 2, 3, 8, 10, 20, 50, 100, 500} {
+
+			tests[fmt.Sprintf(
+				"lastSeenAt=%d longTimeout=%d",
+				lastSeenAt,
+				shortTimeout,
+			)] = testCase{
+				longTimeout: shortTimeout,
+				lastAttendance: validatorAttendance{
+					lastSeenSeq: 123,
+					lastSeenAt:  lastSeenAt,
+					online:      true,
+				},
+				expectedOnline: lastSeenAt+shortTimeout > currentAttempt,
+			}
+		}
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			world := testFakeWorld{
+				1: makeTestEvent(123),
+			}
+
+			state := NewThrottlingState(
+				13,   // non-existing validator ID, this test does not depend on it
+				0.75, // this test is stake agnostic
+				3,
+				uint64(test.longTimeout),
+				world,
+			)
+			state.attempt = currentAttempt
+			state.attendanceList[1] = test.lastAttendance
+
+			state.updateAttendance()
+
+			attendance, found := state.attendanceList[1]
+			online := found && attendance.online
+			require.Equal(t, test.expectedOnline, online)
+		})
+	}
+}
+
+func makeTestEvent(seq idx.Event) inter.Event {
+	builder := &inter.MutableEventPayload{}
+	builder.SetSeq(seq)
+	return builder.Build().Event
+}
+
+// testFakeWorld is a simple implementation of WorldReader for testing purposes.
+// Is is a collection of last events per validator.
+type testFakeWorld map[idx.ValidatorID]inter.Event
+
+func (fw testFakeWorld) GetEpochValidators() (*pos.Validators, idx.Epoch) {
+	builder := pos.NewBuilder()
+	for id := range fw {
+		builder.Set(id, 100)
+	}
+	return builder.Build(), idx.Epoch(0)
+}
+
+func (fw testFakeWorld) GetLastEvent(validatorID idx.ValidatorID) *inter.Event {
+	event, found := fw[validatorID]
+	if !found {
+		return nil
+	}
+	return &event
+}
+
+func (fw testFakeWorld) GetRules() opera.Rules {
+	return opera.Rules{}
+}
+
 // func TestThrottling_SkipEventEmission_DoNotSkipIfBelongingToDominantSet(t *testing.T) {
 
 // 	tests := map[string]struct {
@@ -309,3 +464,11 @@ package throttling
 // 		})
 // 	}
 // }
+
+func makeSet(ids ...idx.ValidatorID) dominantSet {
+	res := make(dominantSet)
+	for _, id := range ids {
+		res[id] = struct{}{}
+	}
+	return res
+}

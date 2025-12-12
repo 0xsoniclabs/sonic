@@ -25,25 +25,31 @@ import (
 
 //go:generate mockgen -source=throttling.go -destination=throttling_mock.go -package=throttling
 
-type ValidatorAttendance struct {
-	LastSeenEvent idx.Event
-	Attempt       uint64
+type attempt uint64
+
+type validatorAttendance struct {
+	lastSeenSeq idx.Event
+	lastSeenAt  attempt
+
+	online bool
 }
+type attendanceList map[idx.ValidatorID]validatorAttendance
 
 type ThrottlingState struct {
 	// throttler configuration parameters
-	thisValidatorID            idx.ValidatorID
-	dominatorsThreshold        float64
-	dominatingValidatorTimeout uint64
-	heartbeatFramesCount       uint64
+	thisValidatorID     idx.ValidatorID
+	dominatorsThreshold float64
+	shortTimeout        attempt
+	longTimeout         attempt
 
 	// means to access the world state
 	world WorldReader
 
 	// internal state
-	attempt             uint64
-	lastEmissionAttempt uint64
-	attendanceList      map[idx.ValidatorID]ValidatorAttendance
+	attempt             attempt
+	lastEmissionAttempt attempt
+	attendanceList      attendanceList
+	lastDominatingSet   dominantSet
 }
 
 type WorldReader interface {
@@ -55,20 +61,20 @@ type WorldReader interface {
 func NewThrottlingState(
 	validatorID idx.ValidatorID,
 	dominatingPercentile float64,
-	maxSkippedEventsWithSameFrameNumber uint64,
-	heartbeatFramesCount uint64,
+	shortTimeout uint64,
+	longTimeout uint64,
 	stateReader WorldReader,
 ) *ThrottlingState {
 	return &ThrottlingState{
 		thisValidatorID: validatorID,
 		// Clamp the threshold between 0.7 and 1 to avoid extreme values.
 		// 0.7 is a conservative approximation of the Byzantine fault tolerance limit (2/3+1).
-		dominatorsThreshold:        min(max(dominatingPercentile, 0.7), 1),
-		dominatingValidatorTimeout: maxSkippedEventsWithSameFrameNumber,
-		heartbeatFramesCount:       heartbeatFramesCount,
-		world:                      stateReader,
+		dominatorsThreshold: min(max(dominatingPercentile, 0.7), 1),
+		shortTimeout:        attempt(shortTimeout),
+		longTimeout:         attempt(longTimeout),
+		world:               stateReader,
 
-		attendanceList: make(map[idx.ValidatorID]ValidatorAttendance),
+		attendanceList: make(attendanceList),
 	}
 }
 
@@ -94,22 +100,7 @@ func (ts *ThrottlingState) CanSkipEventEmission(event inter.EventPayloadI) SkipE
 		ts.resetState()
 	}
 
-	// update attendance list, which validators have emitted new events
-	validators, _ := ts.world.GetEpochValidators()
-	for _, id := range validators.IDs() {
-		lastEvent := ts.world.GetLastEvent(id)
-		if lastEvent == nil {
-			continue
-		}
-		attendance, exists := ts.attendanceList[id]
-		if !exists || attendance.LastSeenEvent != lastEvent.Seq() {
-			attendance = ValidatorAttendance{
-				LastSeenEvent: lastEvent.Seq(),
-				Attempt:       ts.attempt,
-			}
-			ts.attendanceList[id] = attendance
-		}
-	}
+	ts.updateAttendance()
 
 	skip := ts.canSkip(event)
 
@@ -131,45 +122,78 @@ func (ts *ThrottlingState) canSkip(event inter.EventPayloadI) SkipEventEmissionR
 	}
 
 	rules := ts.world.GetRules()
-	heartbeatTimeout := min(ts.heartbeatFramesCount/2, uint64(rules.Economy.BlockMissedSlack/2))
+	heartbeatTimeout := min(
+		ts.longTimeout/2,
+		attempt(rules.Economy.BlockMissedSlack/2))
 	if ts.lastEmissionAttempt+heartbeatTimeout <= ts.attempt {
 		return DoNotSkipEvent_Heartbeat
 	}
 
 	// Filter offline validators based on their attendance
 	allValidators, _ := ts.world.GetEpochValidators()
-	nominalDominatingSet := ComputeDominantSet(allValidators, allValidators.TotalWeight(), ts.dominatorsThreshold)
-	builder := pos.NewBuilder()
-	for id, attendance := range ts.attendanceList {
-
-		// different tolerance for being online for dominant vs non-dominant validators
-		onlineThreshold := ts.heartbeatFramesCount
-		if _, wasDominant := nominalDominatingSet[id]; wasDominant {
-			onlineThreshold = ts.dominatingValidatorTimeout
-		}
-
-		// Filter out validators that have been offline for too long
-		if ts.attempt-attendance.Attempt >= onlineThreshold {
-			continue
-		}
-
-		builder.Set(id, allValidators.Get(id))
-	}
+	onlineValidators := ts.computeOnlineValidators(allValidators)
 
 	// Compute dominant set among online validators
-	onlineDominatingSet := ComputeDominantSet(builder.Build(), allValidators.TotalWeight(), ts.dominatorsThreshold)
-	if len(onlineDominatingSet) == 0 {
+	ts.lastDominatingSet = ComputeDominantSet(
+		onlineValidators,
+		allValidators.TotalWeight(),
+		ts.dominatorsThreshold,
+	)
+
+	if len(ts.lastDominatingSet) == 0 {
 		return DoNotSkipEvent_StakeNotDominated
 	}
-	if _, isDominant := onlineDominatingSet[ts.thisValidatorID]; isDominant {
+	if _, isDominant := ts.lastDominatingSet[ts.thisValidatorID]; isDominant {
 		return DoNotSkipEvent_DominantStake
 	}
 
 	return SkipEventEmission
 }
 
+func (ts *ThrottlingState) updateAttendance() {
+	validators, _ := ts.world.GetEpochValidators()
+	for _, id := range validators.IDs() {
+
+		lastEvent := ts.world.GetLastEvent(id)
+		if lastEvent == nil {
+			continue
+		}
+
+		attendance, exists := ts.attendanceList[id]
+
+		// different tolerance for being online for dominant vs non-dominant validators
+		onlineThreshold := ts.shortTimeout
+		if exists && attendance.online {
+			if _, wasDominant := ts.lastDominatingSet[id]; !wasDominant {
+				onlineThreshold = ts.longTimeout
+			}
+		}
+
+		if attendance.lastSeenSeq == lastEvent.Seq() {
+			attendance.online = attendance.lastSeenAt+onlineThreshold > ts.attempt
+			ts.attendanceList[id] = attendance
+		} else {
+			ts.attendanceList[id] = validatorAttendance{
+				lastSeenSeq: lastEvent.Seq(),
+				lastSeenAt:  ts.attempt,
+				online:      true,
+			}
+		}
+	}
+}
+
+func (ts *ThrottlingState) computeOnlineValidators(allValidators *pos.Validators) *pos.Validators {
+	builder := pos.NewBuilder()
+	for id, attendance := range ts.attendanceList {
+		if attendance.online {
+			builder.Set(id, allValidators.Get(id))
+		}
+	}
+	return builder.Build()
+}
+
 func (ts *ThrottlingState) resetState() {
 	ts.attempt = 0
 	ts.lastEmissionAttempt = 0
-	ts.attendanceList = make(map[idx.ValidatorID]ValidatorAttendance)
+	ts.attendanceList = make(map[idx.ValidatorID]validatorAttendance)
 }

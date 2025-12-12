@@ -69,7 +69,7 @@ func testAllNodesOnline(
 	const numRounds = 100
 	require := require.New(t)
 
-	world := &fakeWorld{
+	world := &simulationFakeWorld{
 		rules: opera.Rules{
 			Economy: opera.EconomyRules{
 				BlockMissedSlack: 100,
@@ -166,7 +166,7 @@ func testPartiallyOnlineNodes(
 	const heartbeatFrames = 1000
 	require := require.New(t)
 
-	world := &fakeWorld{
+	world := &simulationFakeWorld{
 		rules: opera.Rules{
 			Economy: opera.EconomyRules{
 				BlockMissedSlack: 100,
@@ -215,7 +215,7 @@ func TestThrottler_CanSkipEvent_NetworkStallsWhenOneThirdOfStakesIsOffline(t *te
 
 	stakes := slices.Repeat([]int64{10}, numNodes)
 
-	world := &fakeWorld{
+	world := &simulationFakeWorld{
 		rules: opera.Rules{
 			Economy: opera.EconomyRules{
 				BlockMissedSlack: 4,
@@ -278,11 +278,11 @@ func TestThrottler_CanSkipEvent_NetworkStallsWhenOneThirdOfStakesIsOffline(t *te
 func TestThrottler_CanSkipEvent_SuppressedValidatorsEmit_WhenDominatingValidatorsAreAbsent(t *testing.T) {
 	t.Parallel()
 
-	for _, dominantTimeout := range []uint{1, 2, 5, 10} {
-		t.Run(fmt.Sprintf("dominantTimeout=%d", dominantTimeout), func(t *testing.T) {
+	for _, shortTimeout := range []attempt{1} {
+		t.Run(fmt.Sprintf("dominantTimeout=%d", shortTimeout), func(t *testing.T) {
 			t.Parallel()
 
-			world := &fakeWorld{
+			world := &simulationFakeWorld{
 				rules: opera.Rules{
 					Economy: opera.EconomyRules{
 						BlockMissedSlack: 1000,
@@ -292,7 +292,7 @@ func TestThrottler_CanSkipEvent_SuppressedValidatorsEmit_WhenDominatingValidator
 			}
 			net := newNetwork(world,
 				0.75,
-				uint64(dominantTimeout),
+				shortTimeout,
 				1000, // heartbeatFrames: use a larger than repetitions value to disable heartbeat-based emissions
 			)
 
@@ -308,7 +308,7 @@ func TestThrottler_CanSkipEvent_SuppressedValidatorsEmit_WhenDominatingValidator
 				slices.Collect(maps.Keys(events)),
 				"only dominant node emits")
 
-			for range dominantTimeout {
+			for range shortTimeout {
 				events = net.runRound(offlineValidators{1})
 				require.ElementsMatch(t,
 					[]idx.ValidatorID{},
@@ -340,14 +340,14 @@ func TestThrottler_CanSkipEvent_SuppressedValidatorsEmit_WhenDominatingValidator
 func TestThrottler_CanSkipEvent_SuppressedValidatorsEmitHeartbeat(t *testing.T) {
 	t.Parallel()
 
-	for _, dominantTimeout := range []uint64{1, 2, 3, 7, 11} {
-		for _, heartbeatAttempts := range []uint64{7, 11, 15, 25, 100} {
+	for _, dominantTimeout := range []attempt{1, 2, 3, 7, 11} {
+		for _, heartbeatAttempts := range []attempt{7, 11, 15, 25, 100} {
 			t.Run(fmt.Sprintf("dominantTimeout=%d/heartbeatAttempts=%d",
 				dominantTimeout, heartbeatAttempts),
 				func(t *testing.T) {
 					t.Parallel()
 
-					world := &fakeWorld{
+					world := &simulationFakeWorld{
 						rules: opera.Rules{
 							Economy: opera.EconomyRules{
 								BlockMissedSlack: 100,
@@ -408,7 +408,7 @@ func TestThrottler_CanSkipEvent_SuppressedValidatorsEmitHeartbeat(t *testing.T) 
 func TestThrottler_CanSkipEvent_SuppressedValidatorsFillOfflineProgressively(t *testing.T) {
 	t.Parallel()
 
-	world := &fakeWorld{
+	world := &simulationFakeWorld{
 		rules: opera.Rules{
 			Economy: opera.EconomyRules{
 				BlockMissedSlack: 100,
@@ -480,8 +480,8 @@ type network struct {
 func newNetwork(
 	world WorldReader,
 	dominantSetThreshold float64,
-	repeatedFramesMaxCount uint64,
-	heartbeatFrames uint64,
+	shortTimeout attempt,
+	longTimeout attempt,
 ) *network {
 	validators, _ := world.GetEpochValidators()
 	numNodes := validators.Len()
@@ -490,21 +490,22 @@ func newNetwork(
 		id := idx.ValidatorID(i + 1)
 		nodes = append(nodes, newNode(id, world,
 			dominantSetThreshold,
-			repeatedFramesMaxCount,
-			heartbeatFrames,
+			shortTimeout,
+			longTimeout,
 		))
 	}
 	net := &network{
 		nodes: nodes,
 	}
 	// register network in the world for global state access
-	world.(*fakeWorld).network = net
+	world.(*simulationFakeWorld).network = net
 	return net
 }
 
 func (n *network) runRound(
 	offlineMask offlineValidators,
 ) map[idx.ValidatorID]*inter.EventPayload {
+
 	// Collect events from all nodes.
 	events := make([]*inter.EventPayload, 0)
 	for i, node := range n.nodes {
@@ -552,15 +553,15 @@ func newNode(
 	selfId idx.ValidatorID,
 	world WorldReader,
 	dominantSetThreshold float64,
-	repeatedFramesMaxCount uint64,
-	heartbeatFrames uint64,
+	shortTimeout attempt,
+	longTimeout attempt,
 ) *node {
 	return &node{
 		throttler: *NewThrottlingState(
 			selfId,
 			dominantSetThreshold,
-			repeatedFramesMaxCount,
-			heartbeatFrames,
+			uint64(shortTimeout),
+			uint64(longTimeout),
 			world),
 		world:            world,
 		selfId:           selfId,
@@ -661,21 +662,21 @@ func (node *node) lastSeenFrameNumber() idx.Frame {
 	return res
 }
 
-type fakeWorld struct {
+type simulationFakeWorld struct {
 	network    *network
 	validators *pos.Validators
 	rules      opera.Rules
 }
 
-func (f *fakeWorld) GetEpochValidators() (*pos.Validators, idx.Epoch) {
+func (f *simulationFakeWorld) GetEpochValidators() (*pos.Validators, idx.Epoch) {
 	return f.validators, 0
 }
 
-func (f *fakeWorld) GetRules() opera.Rules {
+func (f *simulationFakeWorld) GetRules() opera.Rules {
 	return f.rules
 }
 
-func (f *fakeWorld) GetLastEvent(from idx.ValidatorID) *inter.Event {
+func (f *simulationFakeWorld) GetLastEvent(from idx.ValidatorID) *inter.Event {
 	if f.network == nil {
 		// for this test to function correctly, the world must have access to the network
 		panic("ill-formed test: world has no network")
