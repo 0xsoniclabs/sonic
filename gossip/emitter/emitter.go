@@ -39,7 +39,7 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 
 	"github.com/0xsoniclabs/sonic/gossip/emitter/originatedtxs"
-	"github.com/0xsoniclabs/sonic/gossip/emitter/throttling"
+	"github.com/0xsoniclabs/sonic/gossip/emitter/throttler"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice/gaspricelimits"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/logger"
@@ -147,7 +147,7 @@ type Emitter struct {
 
 	proposalTracker inter.ProposalTracker
 
-	eventEmissionThrottler *throttling.ThrottlingState
+	eventEmissionThrottler *throttler.ThrottlingState
 }
 
 type BaseFeeSource interface {
@@ -194,7 +194,7 @@ func NewEmitter(
 		errorLock:     errorLock,
 	}
 	if config.ThrottleEvents {
-		res.eventEmissionThrottler = throttling.NewThrottlingState(
+		res.eventEmissionThrottler = throttler.NewThrottlingState(
 			config.Validator.ID,
 			config.ThrottlerDominantThreshold,
 			uint64(config.ThrottlerSkipInSameFrame),
@@ -375,7 +375,7 @@ func (em *Emitter) EmitEvent() (*inter.EventPayload, error) {
 	// this location allows to take into account the event creation time
 	// and frame in throttling decision.
 	if em.eventEmissionThrottler != nil &&
-		em.eventEmissionThrottler.CanSkipEventEmission(e) == throttling.SkipEventEmission {
+		em.eventEmissionThrottler.CanSkipEventEmission(e) == throttler.SkipEventEmission {
 		// TODO: metrics for skipped events
 		// https://github.com/0xsoniclabs/sonic-admin/issues/531
 

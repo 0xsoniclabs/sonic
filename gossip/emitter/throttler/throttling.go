@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
-package throttling
+package throttler
 
 import (
 	"github.com/0xsoniclabs/sonic/inter"

@@ -7,7 +7,7 @@
 //
 
 // Package throttling is a generated GoMock package.
-package throttling
+package throttler
 
 import (
 	reflect "reflect"
