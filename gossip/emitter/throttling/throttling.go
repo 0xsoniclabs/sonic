@@ -71,8 +71,11 @@ func NewThrottlingState(
 		// 0.7 is a conservative approximation of the Byzantine fault tolerance limit (2/3+1).
 		dominatorsThreshold: min(max(dominatingPercentile, 0.7), 1),
 		shortTimeout:        attempt(shortTimeout),
-		longTimeout:         attempt(longTimeout),
-		world:               stateReader,
+		// longTimeout dictates heartbeat of suppressed validators, these nodes
+		// will emit heartbeat twice per longTimeout attempts.
+		// note: longTimeout smaller than 4 will trigger heartbeats every attempt.
+		longTimeout: attempt(longTimeout),
+		world:       stateReader,
 
 		attendanceList: make(attendanceList),
 	}

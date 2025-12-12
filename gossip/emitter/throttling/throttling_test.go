@@ -22,9 +22,12 @@ import (
 
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
+	gomock "go.uber.org/mock/gomock"
 )
 
 func TestThrottler_updateAttendance_DominatingValidatorsAreOffline_AfterShortTimeout(t *testing.T) {
@@ -68,7 +71,7 @@ func TestThrottler_updateAttendance_DominatingValidatorsAreOffline_AfterShortTim
 				13,   // non-existing validator ID, this test does not depend on it
 				0.75, // this test is stake agnostic
 				uint64(test.shortTimeout),
-				100,
+				100, // fix long timeout
 				world,
 			)
 			state.attempt = currentAttempt
@@ -87,7 +90,7 @@ func TestThrottler_updateAttendance_DominatingValidatorsAreOffline_AfterShortTim
 func TestThrottler_updateAttendance_SuppressedValidatorsAreOffline_AfterLongTimeout(t *testing.T) {
 	t.Parallel()
 
-	const currentAttempt = 600
+	const currentAttempt = 101
 
 	type testCase struct {
 		longTimeout    attempt
@@ -96,20 +99,78 @@ func TestThrottler_updateAttendance_SuppressedValidatorsAreOffline_AfterLongTime
 	}
 	tests := make(map[string]testCase)
 	for lastSeenAt := attempt(1); lastSeenAt <= currentAttempt; lastSeenAt++ {
-		for _, shortTimeout := range []attempt{1, 2, 3, 8, 10, 20, 50, 100, 500} {
+		for _, longTimeout := range []attempt{1, 2, 3, 8, 10, 20, 50, 100} {
 
 			tests[fmt.Sprintf(
 				"lastSeenAt=%d longTimeout=%d",
 				lastSeenAt,
-				shortTimeout,
+				longTimeout,
 			)] = testCase{
-				longTimeout: shortTimeout,
+				longTimeout: longTimeout,
 				lastAttendance: validatorAttendance{
 					lastSeenSeq: 123,
 					lastSeenAt:  lastSeenAt,
 					online:      true,
 				},
-				expectedOnline: lastSeenAt+shortTimeout > currentAttempt,
+				expectedOnline: lastSeenAt+longTimeout > currentAttempt,
+			}
+		}
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			world := testFakeWorld{
+				1: makeTestEvent(123),
+			}
+
+			state := NewThrottlingState(
+				13,   // non-existing validator ID, this test does not depend on it
+				0.75, // this test is stake agnostic
+				3,    // fix short timeout
+				uint64(test.longTimeout),
+				world,
+			)
+			state.attempt = currentAttempt
+			state.attendanceList[1] = test.lastAttendance
+
+			state.updateAttendance()
+
+			attendance, found := state.attendanceList[1]
+			online := found && attendance.online
+			require.Equal(t, test.expectedOnline, online)
+		})
+	}
+}
+
+func TestThrottler_updateAttendance_OfflineValidatorsComeBackOnlineWithAnyNewSeqNumber(t *testing.T) {
+	t.Parallel()
+
+	const currentAttempt = 100
+
+	type testCase struct {
+		longTimeout    attempt
+		lastAttendance validatorAttendance
+	}
+	tests := make(map[string]testCase)
+	for lastSeenAt := attempt(1); lastSeenAt <= currentAttempt; lastSeenAt++ {
+		for _, shortTimeout := range []attempt{1, 2, 3, 8, 10} {
+			for _, longTimeout := range []attempt{1, 2, 3, 8, 10} {
+
+				tests[fmt.Sprintf(
+					"lastSeenAt=%d longTimeout=%d shortTimeout=%d",
+					lastSeenAt,
+					longTimeout,
+					shortTimeout,
+				)] = testCase{
+					longTimeout: shortTimeout,
+					lastAttendance: validatorAttendance{
+						lastSeenSeq: 122, // one less the event about to be seen
+						lastSeenAt:  lastSeenAt,
+						online:      false,
+					},
+				}
 			}
 		}
 	}
@@ -136,9 +197,10 @@ func TestThrottler_updateAttendance_SuppressedValidatorsAreOffline_AfterLongTime
 
 			attendance, found := state.attendanceList[1]
 			online := found && attendance.online
-			require.Equal(t, test.expectedOnline, online)
+			require.True(t, online)
 		})
 	}
+
 }
 
 func makeTestEvent(seq idx.Event) inter.Event {
@@ -171,229 +233,180 @@ func (fw testFakeWorld) GetRules() opera.Rules {
 	return opera.Rules{}
 }
 
-// func TestThrottling_SkipEventEmission_DoNotSkipIfBelongingToDominantSet(t *testing.T) {
+func TestThrottling_CanSkipEventEmission_DoNotSkipIfBelongingToDominantSet(t *testing.T) {
+	t.Parallel()
 
-// 	tests := map[string]struct {
-// 		validatorID idx.ValidatorID
-// 		validators  *pos.Validators
-// 	}{
-// 		"validator is equivalent to dominant cutoff": {
-// 			validatorID: 1,
-// 			validators:  makeValidators(75, 25),
-// 		},
-// 		"validator belongs to dominant set": {
-// 			validatorID: 2,
-// 			validators: makeValidators(
-// 				750, 750, // 75% owned by first two validators
-// 				125, 125, 125, 125,
-// 			),
-// 		},
-// 		"non-first validator belongs to dominant set": {
-// 			validatorID: 2,
-// 			validators: makeValidators(
-// 				750, 750, // 75% owned by first two validators
-// 				125, 125, 125, 125,
-// 			),
-// 		},
-// 	}
+	tests := map[string]struct {
+		validatorID idx.ValidatorID
+		validators  *pos.Validators
+	}{
+		"validator is equivalent to dominant cutoff": {
+			validatorID: 1,
+			validators:  makeValidators(75, 25),
+		},
+		"validator belongs to dominant set": {
+			validatorID: 2,
+			validators: makeValidators(
+				750, 750, // 75% owned by first two validators
+				125, 125, 125, 125,
+			),
+		},
+		"non-first validator belongs to dominant set": {
+			validatorID: 2,
+			validators: makeValidators(
+				750, 750, // 75% owned by first two validators
+				125, 125, 125, 125,
+			),
+		},
+	}
 
-// 	for name, test := range tests {
-// 		t.Run(name, func(t *testing.T) {
-// 			ctrl := gomock.NewController(t)
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			ctrl := gomock.NewController(t)
 
-// 			lastEventHash, lastEvent := createTestEventWithFrame(idx.Frame(1))
+			lastEvent := makeTestEvent(123)
 
-// 			world := NewMockWorldReader(ctrl)
-// 			world.EXPECT().GetEpochValidators().Return(test.validators, idx.Epoch(0))
-// 			world.EXPECT().GetRules().Return(opera.Rules{})
-// 			world.EXPECT().GetLatestBlockIndex().Return(idx.Block(0)).AnyTimes()
-// 			world.EXPECT().GetLastEvent(gomock.Any(), gomock.Any()).Return(&lastEventHash).AnyTimes()
-// 			world.EXPECT().GetEvent(gomock.Any()).Return(&lastEvent).AnyTimes()
+			world := NewMockWorldReader(ctrl)
+			world.EXPECT().GetEpochValidators().Return(test.validators, idx.Epoch(0)).MinTimes(1)
+			world.EXPECT().GetRules().Return(opera.Rules{
+				Economy: opera.EconomyRules{
+					BlockMissedSlack: 50,
+				},
+			})
+			world.EXPECT().GetLastEvent(gomock.Any()).Return(&lastEvent).MinTimes(1)
 
-// 			state := NewThrottlingState(test.validatorID, 0.75, 3, 10, world)
+			state := NewThrottlingState(test.validatorID, 0.75, 3, 10, world)
 
-// 			event := inter.NewMockEventPayloadI(ctrl)
-// 			event.EXPECT().Transactions().Return(types.Transactions{}).AnyTimes()
-// 			event.EXPECT().Frame().Return(idx.Frame(1)).AnyTimes()
-// 			event.EXPECT().SelfParent().Return(&hash.Event{1})
+			event := inter.NewMockEventPayloadI(ctrl)
+			event.EXPECT().Transactions().Return(types.Transactions{})
+			event.EXPECT().SelfParent().Return(&hash.Event{1}).MinTimes(1)
 
-// 			skip := state.CanSkipEventEmission(event)
-// 			require.Equal(t, DoNotSkipEvent_DominantStake, skip)
-// 		})
-// 	}
-// }
+			skip := state.CanSkipEventEmission(event)
+			require.Equal(t, DoNotSkipEvent_DominantStake, skip)
+		})
+	}
+}
 
-// func TestThrottling_SkipEventEmission_SkipIfNotBelongingToDominantSet(t *testing.T) {
+func TestThrottling_SkipEventEmission_SkipIfNotBelongingToDominantSet(t *testing.T) {
+	t.Parallel()
 
-// 	stakes := makeValidators(
-// 		750, 750, // 75% owned by first two validators
-// 		125, 125, 125, 125,
-// 	)
+	stakes := makeValidators(
+		750, 750, // 75% owned by first two validators
+		125, 125, 125, 125,
+	)
 
-// 	ctrl := gomock.NewController(t)
-// 	world := NewMockWorldReader(ctrl)
-// 	world.EXPECT().GetEpochValidators().Return(stakes, idx.Epoch(0))
-// 	world.EXPECT().GetRules().Return(opera.Rules{})
-// 	world.EXPECT().GetLatestBlockIndex().Return(idx.Block(0)).AnyTimes()
-// 	lastEventHash, lastEvent := createTestEventWithFrame(idx.Frame(1))
-// 	world.EXPECT().GetLastEvent(gomock.Any(), gomock.Any()).Return(&lastEventHash).AnyTimes()
-// 	world.EXPECT().GetEvent(gomock.Any()).Return(&lastEvent).AnyTimes()
+	ctrl := gomock.NewController(t)
+	world := NewMockWorldReader(ctrl)
+	world.EXPECT().GetEpochValidators().Return(stakes, idx.Epoch(0)).AnyTimes()
+	world.EXPECT().GetRules().Return(opera.Rules{
+		Economy: opera.EconomyRules{
+			BlockMissedSlack: 50,
+		},
+	})
+	lastEvent := makeTestEvent(123)
+	world.EXPECT().GetLastEvent(gomock.Any()).Return(&lastEvent).AnyTimes()
 
-// 	state := NewThrottlingState(3, 0.75, 1, 10, world)
+	state := NewThrottlingState(3, 0.75, 1, 10, world)
 
-// 	event := inter.NewMockEventPayloadI(ctrl)
-// 	event.EXPECT().Transactions().Return(types.Transactions{})
-// 	event.EXPECT().Frame().Return(idx.Frame(1)).AnyTimes()
-// 	event.EXPECT().SelfParent().Return(&hash.Event{1})
+	event := inter.NewMockEventPayloadI(ctrl)
+	event.EXPECT().Transactions().Return(types.Transactions{})
+	event.EXPECT().SelfParent().Return(&hash.Event{1}).MinTimes(1)
 
-// 	skip := state.CanSkipEventEmission(event)
-// 	require.Equal(t, SkipEventEmission, skip)
-// }
+	skip := state.CanSkipEventEmission(event)
+	require.Equal(t, SkipEventEmission, skip)
+}
 
-// func TestThrottling_DoNotSkip_WhenEventCarriesTransactions(t *testing.T) {
+func TestThrottling_DoNotSkip_WhenEventCarriesTransactions(t *testing.T) {
+	t.Parallel()
 
-// 	ctrl := gomock.NewController(t)
-// 	world := NewMockWorldReader(ctrl)
-// 	world.EXPECT().GetLatestBlockIndex().Return(idx.Block(0))
+	ctrl := gomock.NewController(t)
+	world := NewMockWorldReader(ctrl)
+	world.EXPECT().GetEpochValidators().Return(makeValidators(500, 300, 200), idx.Epoch(0)).AnyTimes()
+	world.EXPECT().GetRules().Return(opera.Rules{}).AnyTimes()
+	lastEvent := makeTestEvent(123)
+	world.EXPECT().GetLastEvent(gomock.Any()).Return(&lastEvent).AnyTimes()
 
-// 	state := NewThrottlingState(3, 0.75, 0, 10, world)
+	state := NewThrottlingState(3, 0.75, 0, 10, world)
 
-// 	event := inter.NewMockEventPayloadI(ctrl)
-// 	event.EXPECT().Transactions().Return(
-// 		types.Transactions{types.NewTx(&types.LegacyTx{})})
-// 	event.EXPECT().Frame().MinTimes(1)
+	event := inter.NewMockEventPayloadI(ctrl)
+	event.EXPECT().Transactions().Return(
+		types.Transactions{types.NewTx(&types.LegacyTx{})})
+	event.EXPECT().SelfParent().Return(&hash.Event{42}).AnyTimes()
 
-// 	skip := state.CanSkipEventEmission(event)
-// 	require.Equal(t, DoNotSkipEvent_CarriesTransactions, skip)
-// }
+	skip := state.CanSkipEventEmission(event)
+	require.Equal(t, DoNotSkipEvent_CarriesTransactions, skip)
+}
 
-// func TestThrottling_DoNotSkip_WhenEventBelongsToTheSameFrame(t *testing.T) {
-// 	ctrl := gomock.NewController(t)
-// 	// stakes are dominated by validators 1 and 2,
-// 	// this allows validator 3 to be throttled for this test
-// 	stakes := makeValidators(500, 300, 200)
+func TestThrottling_DoNotSkip_GenesisEvents(t *testing.T) {
+	t.Parallel()
 
-// 	world := NewMockWorldReader(ctrl)
-// 	world.EXPECT().GetEpochValidators().Return(stakes, idx.Epoch(0)).AnyTimes()
-// 	world.EXPECT().GetRules().AnyTimes()
-// 	world.EXPECT().GetLatestBlockIndex().Return(idx.Block(0)).AnyTimes()
-// 	world.EXPECT().GetLastEvent(gomock.Any(), gomock.Any()).AnyTimes()
+	ctrl := gomock.NewController(t)
+	world := NewMockWorldReader(ctrl)
+	world.EXPECT().GetEpochValidators().Return(makeValidators(500, 300, 200), idx.Epoch(0)).AnyTimes()
+	world.EXPECT().GetRules().Return(opera.Rules{}).AnyTimes()
+	lastEvent := makeTestEvent(123)
+	world.EXPECT().GetLastEvent(gomock.Any()).Return(&lastEvent).AnyTimes()
 
-// 	// repeat test for a variety of maxRepeatedFrames settings
-// 	for _, maxRepeatedFrames := range []uint{1, 2, 3, 4, 80} {
+	state := NewThrottlingState(3, 0.75, 0, 10, world)
 
-// 		state := NewThrottlingState(3, 0.75, maxRepeatedFrames, 10, world)
-// 		repeatedFrame := idx.Frame(7) // any frame number, repeatedly used
+	event := inter.NewMockEventPayloadI(ctrl)
+	event.EXPECT().Transactions()
+	event.EXPECT().SelfParent().MinTimes(1)
 
-// 		for range maxRepeatedFrames {
+	skip := state.CanSkipEventEmission(event)
+	require.Equal(t, DoNotSkipEvent_Genesis, skip)
+}
 
-// 			repeatedFrameEvent := inter.NewMockEventPayloadI(ctrl)
-// 			repeatedFrameEvent.EXPECT().Transactions()
-// 			repeatedFrameEvent.EXPECT().Frame().Return(repeatedFrame).MinTimes(1)
-// 			repeatedFrameEvent.EXPECT().SelfParent()
-// 			skip := state.CanSkipEventEmission(repeatedFrameEvent)
-// 			require.Equal(t, SkipEventEmission, skip)
-// 		}
+func TestThrottling_DoNotSkip_RespectHeartbeatEvents(t *testing.T) {
+	t.Parallel()
 
-// 		oneTooManyEvent := inter.NewMockEventPayloadI(ctrl)
-// 		oneTooManyEvent.EXPECT().Transactions()
-// 		oneTooManyEvent.EXPECT().Frame().Return(repeatedFrame).MinTimes(1)
-// 		skip := state.CanSkipEventEmission(oneTooManyEvent)
-// 		require.Equal(t, DoNotSkipEvent_SameFrameExceeded, skip)
-// 	}
-// }
+	for _, longTimeout := range []uint64{4, 5, 10} {
+		t.Run(fmt.Sprintf("longTimeout=%d", longTimeout),
+			func(t *testing.T) {
+				t.Parallel()
 
-// func TestThrottling_DoNotSkip_IfTooManyBlocksAreSkipped(t *testing.T) {
-// 	ctrl := gomock.NewController(t)
+				validators := makeValidators(10, 10, 10, 10) // one suppressed validator
 
-// 	world := NewMockWorldReader(ctrl)
-// 	world.EXPECT().GetRules().Return(
-// 		opera.Rules{
-// 			Economy: opera.EconomyRules{
-// 				BlockMissedSlack: 50,
-// 			},
-// 		}).AnyTimes()
-// 	world.EXPECT().GetEpochValidators().
-// 		Return(makeValidators(500, 300, 200),
-// 			idx.Epoch(0)).AnyTimes()
+				ctrl := gomock.NewController(t)
 
-// 	lastEventHash, lastEvent := createTestEventWithFrame(idx.Frame(1))
-// 	world.EXPECT().GetLastEvent(gomock.Any(), gomock.Any()).Return(&lastEventHash).AnyTimes()
-// 	world.EXPECT().GetEvent(gomock.Any()).Return(&lastEvent).AnyTimes()
+				world := NewMockWorldReader(ctrl)
+				world.EXPECT().GetRules().Return(opera.Rules{
+					Economy: opera.EconomyRules{
+						BlockMissedSlack: 1000, // large enough to not interfere with this test
+					},
+				}).AnyTimes()
+				world.EXPECT().GetEpochValidators().
+					Return(validators, idx.Epoch(0)).AnyTimes()
+				otherPeersEvents := makeTestEvent(1)
+				world.EXPECT().GetLastEvent(gomock.Any()).Return(&otherPeersEvents).Times(int(validators.Len())).AnyTimes()
 
-// 	throttler := NewThrottlingState(3, 0.75, 10, 10, world)
-// 	throttler.lastEmissionBlockNumber = idx.Block(17)
+				throttler := NewThrottlingState(
+					4,    // last validator, suppressed
+					0.75, // first three validators dominate stake
+					1000, // large enough to not interfere with this test
+					longTimeout,
+					world)
 
-// 	event := inter.NewMockEventPayloadI(ctrl)
-// 	event.EXPECT().Transactions().AnyTimes()
-// 	event.EXPECT().Frame().Return(idx.Frame(2)).AnyTimes()
-// 	event.EXPECT().SelfParent().AnyTimes()
+				// Event 1 should be considered a heartbeat
+				event := inter.NewMockEventPayloadI(ctrl)
+				event.EXPECT().Transactions().Return(types.Transactions{}).AnyTimes()
+				event.EXPECT().SelfParent().Return(&hash.Event{42}).AnyTimes()
 
-// 	world.EXPECT().GetLatestBlockIndex().Return(idx.Block(17 + 50)).Times(2)
-// 	skip := throttler.CanSkipEventEmission(event)
-// 	require.Equal(t, DoNotSkipEvent_TooManyBlocksMissed, skip,
-// 		"Event missing so many blocks should NOT be skipped")
+				for range int(longTimeout)/2 - 1 {
+					skip := throttler.CanSkipEventEmission(event)
+					require.Equal(t, SkipEventEmission, skip)
+				}
 
-// 	// one more than the last time
-// 	world.EXPECT().GetLatestBlockIndex().Return(idx.Block(17 + 50 + 1)).MinTimes(1)
-// 	skip = throttler.CanSkipEventEmission(event)
-// 	require.Equal(t, SkipEventEmission, skip,
-// 		"Event missing less than max allowed blocks should be skipped")
-// }
+				skip := throttler.CanSkipEventEmission(event)
+				require.Equal(t, DoNotSkipEvent_Heartbeat, skip)
 
-// func TestThrottling_DoNotSkip_RespectHeartbeatEvents(t *testing.T) {
-
-// 	validators := makeValidators(10, 10, 10, 10) // one suppressed validator
-
-// 	ctrl := gomock.NewController(t)
-
-// 	world := NewMockWorldReader(ctrl)
-// 	world.EXPECT().GetRules().Return(opera.Rules{}).AnyTimes()
-// 	world.EXPECT().GetEpochValidators().
-// 		Return(validators, idx.Epoch(0)).AnyTimes()
-// 	world.EXPECT().GetLatestBlockIndex().Return(idx.Block(0)).AnyTimes()
-
-// 	eventHash, event := createTestEventWithFrame(idx.Frame(1))
-// 	world.EXPECT().GetLastEvent(gomock.Any(), gomock.Any()).Return(&eventHash)
-// 	world.EXPECT().GetEvent(gomock.Any()).Return(&event)
-
-// 	throttler := NewThrottlingState(
-// 		4,
-// 		0.75, // first three validators dominate stake
-// 		1000, // large enough to not interfere with this test
-// 		3,    // number for frames to emit heartbeats
-// 		world)
-
-// 	// Event 1 should be considered a heartbeat
-// 	event1 := inter.NewMockEventPayloadI(ctrl)
-// 	event1.EXPECT().Transactions().Return(types.Transactions{})
-// 	event1.EXPECT().Frame().Return(idx.Frame(4)).AnyTimes()
-
-// 	skip := throttler.CanSkipEventEmission(event1)
-// 	require.Equal(t, DoNotSkipEvent_Heartbeat, skip,
-// 		"Heartbeat event should NOT be skipped")
-
-// 	// Event 2 is created shortly after Event 2 with the next frame number.
-// 	// It can be skipped.
-// 	eventHash, event = createTestEventWithFrame(idx.Frame(4))
-// 	world.EXPECT().GetLastEvent(gomock.Any(), gomock.Any()).Return(&eventHash).AnyTimes()
-// 	world.EXPECT().GetEvent(gomock.Any()).Return(&event).AnyTimes()
-// 	event2 := inter.NewMockEventPayloadI(ctrl)
-// 	event2.EXPECT().Transactions().Return(types.Transactions{})
-// 	event2.EXPECT().Frame().Return(idx.Frame(5)).AnyTimes()
-// 	event2.EXPECT().SelfParent().Return(&hash.Event{42})
-
-// 	skip = throttler.CanSkipEventEmission(event2)
-// 	require.Equal(t, SkipEventEmission, skip)
-// }
-
-// func createTestEventWithFrame(frame idx.Frame) (hash.Event, inter.Event) {
-// 	lastEventHash := hash.Event{1}
-// 	lastEventBuilder := &inter.MutableEventPayload{}
-// 	lastEventBuilder.SetFrame(idx.Frame(frame))
-// 	lastEvent := lastEventBuilder.Build().Event
-// 	return lastEventHash, lastEvent
-// }
+				// one more attempt, should be skipped again
+				skip = throttler.CanSkipEventEmission(event)
+				require.Equal(t, SkipEventEmission, skip)
+			})
+	}
+}
 
 // func TestThrottler_filterOfflineValidators_preservesStakesAndIdsOfOnlineValidators(t *testing.T) {
 
