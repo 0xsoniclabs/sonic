@@ -6,6 +6,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/tests"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 )
 
@@ -30,15 +31,19 @@ func TestLongWebSocket_DoesNotHang(t *testing.T) {
 	newBlockInLastMinute := false
 	timeSinceLastBlock := time.Now()
 	ticker := time.NewTicker(1 * time.Minute)
-	for time.Since(startTime) < 2*time.Hour+5*time.Minute {
+	sendTxTicker := time.NewTicker(1 * time.Second)
+	for time.Since(startTime) < 24*time.Hour+5*time.Minute {
 		select {
 		case <-newBlocks:
 			newBlockCounter++
 			newBlockInLastMinute = true
-			t.Logf("Received new block after %v via WebSocket",
-				time.Since(timeSinceLastBlock))
+			t.Logf("Received block %v after %v.",
+				newBlockCounter, time.Since(timeSinceLastBlock))
 			timeSinceLastBlock = time.Now()
-
+		case <-sendTxTicker.C:
+			basicTx := tests.CreateTransaction(t, net, &types.LegacyTx{}, net.GetSessionSponsor())
+			err := client.SendTransaction(t.Context(), basicTx)
+			require.NoError(t, err, "failed to send transaction to keep blocks coming")
 		case <-ticker.C:
 			if newBlockInLastMinute {
 				newBlockInLastMinute = false
