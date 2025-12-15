@@ -37,6 +37,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/metrics"
 
+	"github.com/0xsoniclabs/sonic/gossip/emitter/config"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/originatedtxs"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice/gaspricelimits"
 	"github.com/0xsoniclabs/sonic/inter"
@@ -86,7 +87,7 @@ var (
 )
 
 type Emitter struct {
-	config Config
+	config config.Config
 
 	world World
 
@@ -116,7 +117,7 @@ type Emitter struct {
 	fcIndexer      *ancestor.FCIndexer
 	payloadIndexer *ancestor.PayloadIndexer
 
-	intervals                EmitIntervals
+	intervals                config.EmitIntervals
 	globalConfirmingInterval atomic.Uint64
 	intervalsMinLock         sync.Mutex // lock for intervals.Min
 
@@ -152,7 +153,7 @@ type BaseFeeSource interface {
 
 // NewEmitter creation.
 func NewEmitter(
-	config Config,
+	config config.Config,
 	world World,
 	baseFeeSource BaseFeeSource,
 	errorLock *errlock.ErrorLock,

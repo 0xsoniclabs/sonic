@@ -30,6 +30,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/0xsoniclabs/sonic/gossip/emitter/config"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/logger"
@@ -40,7 +41,7 @@ import (
 )
 
 func TestEmitter(t *testing.T) {
-	cfg := DefaultConfig()
+	cfg := config.DefaultConfig()
 	gValidators := makefakegenesis.GetFakeValidators(3)
 	vv := pos.NewBuilder()
 	for _, v := range gValidators {
@@ -176,8 +177,8 @@ func TestEmitter_CreateEvent_CreatesCorrectEventVersion(t *testing.T) {
 					rules.Upgrades.SingleProposerBlockFormation = singleProposer
 
 					em := &Emitter{
-						config: Config{
-							Validator: ValidatorConfig{
+						config: config.Config{
+							Validator: config.ValidatorConfig{
 								ID: validator,
 							},
 						},
@@ -228,8 +229,8 @@ func TestEmitter_CreateEvent_InvalidValidatorSetIsDetected(t *testing.T) {
 				Log: log,
 			},
 		},
-		config: Config{
-			Validator: ValidatorConfig{
+		config: config.Config{
+			Validator: config.ValidatorConfig{
 				ID: validator,
 			},
 		},
