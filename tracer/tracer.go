@@ -17,7 +17,7 @@ func init() {
 	_, _ = StartTracing()
 }
 
-var tracer = otel.Tracer("github.com/Salaton/tracing/pkg/usecases/product")
+var Tracer = otel.Tracer("SonicTestingTracer")
 
 func StartTracing() (*trace.TracerProvider, error) {
 	headers := map[string]string{
@@ -30,6 +30,12 @@ func StartTracing() (*trace.TracerProvider, error) {
 			otlptracehttp.WithEndpoint("localhost:4318"),
 			otlptracehttp.WithHeaders(headers),
 			otlptracehttp.WithInsecure(),
+			otlptracehttp.WithRetry(otlptracehttp.RetryConfig{
+				Enabled:         true,
+				InitialInterval: 100 * time.Millisecond,
+				MaxInterval:     5 * time.Second,
+				MaxElapsedTime:  30 * time.Second,
+			}),
 		),
 	)
 	if err != nil {
@@ -40,15 +46,15 @@ func StartTracing() (*trace.TracerProvider, error) {
 		trace.WithBatcher(
 			exporter,
 			trace.WithMaxExportBatchSize(trace.DefaultMaxExportBatchSize),
-			trace.WithBatchTimeout(trace.DefaultScheduleDelay*time.Millisecond),
-			trace.WithMaxExportBatchSize(trace.DefaultMaxExportBatchSize),
+			trace.WithBatchTimeout(200*time.Millisecond), //trace.DefaultScheduleDelay*time.Millisecond),
 		),
 		trace.WithResource(
 			resource.NewWithAttributes(
 				semconv.SchemaURL,
-				semconv.ServiceNameKey.String("product-app"),
+				semconv.ServiceNameKey.String("sonic-test"),
 			),
 		),
+		// trace.WithSyncer(exporter),
 	)
 
 	otel.SetTracerProvider(tracerprovider)

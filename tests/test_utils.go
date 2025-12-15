@@ -435,8 +435,8 @@ func AdvanceEpochAndWaitForBlocks(t *testing.T, net *IntegrationTestNet) {
 
 	// wait the next two blocks as some rules (such as min base fee) are applied
 	// to the next block after the epoch change becomes effective
-	err = WaitFor(t.Context(), func(ctx context.Context) (bool, error) {
-		newBlock, err := client.BlockByNumber(t.Context(), nil)
+	err = WaitFor(net.TracerCtx, func(ctx context.Context) (bool, error) {
+		newBlock, err := client.BlockByNumber(net.TracerCtx, nil)
 		if err != nil {
 			return false, err
 		}

@@ -17,6 +17,7 @@
 package tests
 
 import (
+	"context"
 	"fmt"
 	"math/big"
 	"slices"
@@ -29,7 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func TestLargeTransactions_CanHandleLargeTransactions(t *testing.T) {
@@ -119,23 +120,20 @@ func TestLargeTransactions_LargeTransactionLoadTest(t *testing.T) {
 	for name, upgrades := range hardForks {
 		for mode, singleProposer := range modes {
 			t.Run(fmt.Sprintf("%s/%s", name, mode), func(t *testing.T) {
+				tracerCtx, span := sonic_tracer.Tracer.Start(t.Context(), t.Name())
+				defer span.End()
 				effectiveUpgrades := upgrades
 				effectiveUpgrades.SingleProposerBlockFormation = singleProposer
-				testLargeTransactionLoadTest(t, &effectiveUpgrades)
+				testLargeTransactionLoadTest(t, &effectiveUpgrades, tracerCtx)
 			})
 		}
 	}
 }
 
-func init() {
-	_, _ = sonic_tracer.StartTracing()
-}
-
-var tracer = otel.Tracer("github.com/Salaton/tracing/pkg/usecases/product")
-
 func testLargeTransactionLoadTest(
 	t *testing.T,
 	upgrades *opera.Upgrades,
+	tracerContext context.Context,
 ) {
 	// The aim of this test is to flood the network with large transactions to
 	// trigger the production of messages exceeding the maximum limit of 10 MB.
@@ -148,31 +146,22 @@ func testLargeTransactionLoadTest(
 		numRounds   = 10
 	)
 	require := require.New(t)
-	_, span := tracer.Start(t.Context(), "LargeTransactionLoadTest")
+
+	span := trace.SpanFromContext(tracerContext)
 	defer span.End()
 
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+	span.AddEvent("Initializing Network")
+
+	net := tests.StartIntegrationTestNetWithTracer(t, tracerContext, tests.IntegrationTestNetOptions{
 		Upgrades: upgrades,
 		NumNodes: 3,
 	})
 
-	// Increase the gas limit to allow for larger transactions in blocks. These
-	// limits are beyond safe limits acceptable for production.
-	current := tests.GetNetworkRules(t, net)
+	net.TracerCtx = tracerContext
 
-	modified := current.Copy()
-	modified.Economy.Gas.MaxEventGas = 1_000_000_000
-	modified.Economy.ShortGasPower.AllocPerSec = 20_000_000_000
-	modified.Economy.ShortGasPower.MaxAllocPeriod = 50_000_000_000
-	modified.Economy.LongGasPower = modified.Economy.ShortGasPower
-	modified.Emitter.Interval = 200_000_000 // low a bit down to provoke larger events
-	tests.UpdateNetworkRules(t, net, modified)
-	net.AdvanceEpoch(t, 1)
+	ModifyNetworkRules(t, net, tracerContext)
 
-	// Check that the modification was applied.
-	current = tests.GetNetworkRules(t, net)
-	require.Equal(modified, current)
-
+	span.AddEvent("Preparing Accounts")
 	// Create accounts and provide them with funds to run the load test.
 	accounts := make([]*tests.Account, numAccounts)
 	addresses := make([]common.Address, len(accounts))
@@ -183,6 +172,8 @@ func testLargeTransactionLoadTest(
 	endowment := new(big.Int).Mul(big.NewInt(100), big.NewInt(1e18))
 	_, err := net.EndowAccounts(addresses, endowment)
 	require.NoError(err)
+
+	span.AddEvent("Done with Endowments")
 
 	chainId := net.GetChainId()
 	signer := types.NewCancunSigner(chainId)
@@ -220,4 +211,32 @@ func testLargeTransactionLoadTest(
 	for _, receipt := range receipts {
 		require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
 	}
+	span.AddEvent("All transactions processed successfully")
+}
+
+func ModifyNetworkRules(t *testing.T, net *tests.IntegrationTestNet, tracerContext context.Context) {
+	_, subSpan := sonic_tracer.Tracer.Start(tracerContext, "Modify Network Rules")
+	defer subSpan.End()
+
+	subSpan.AddEvent("Get Network Rules")
+	// Increase the gas limit to allow for larger transactions in blocks. These
+	// limits are beyond safe limits acceptable for production.
+	current := tests.GetNetworkRules(t, net)
+
+	modified := current.Copy()
+	modified.Economy.Gas.MaxEventGas = 1_000_000_000
+	modified.Economy.ShortGasPower.AllocPerSec = 20_000_000_000
+	modified.Economy.ShortGasPower.MaxAllocPeriod = 50_000_000_000
+	modified.Economy.LongGasPower = modified.Economy.ShortGasPower
+	modified.Emitter.Interval = 200_000_000 // low a bit down to provoke larger events
+	subSpan.AddEvent("Update Network Rules")
+	tests.UpdateNetworkRules(t, net, modified)
+	subSpan.AddEvent("Advance Epoch")
+	net.AdvanceEpoch(t, 1)
+
+	subSpan.AddEvent("Verify Network Rules")
+	// Check that the modification was applied.
+	current = tests.GetNetworkRules(t, net)
+	require.Equal(t, modified, current)
+	subSpan.AddEvent("Done with rules update")
 }

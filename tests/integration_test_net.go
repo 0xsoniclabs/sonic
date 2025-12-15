@@ -38,7 +38,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 
 	sonicd "github.com/0xsoniclabs/sonic/cmd/sonicd/app"
 	sonictool "github.com/0xsoniclabs/sonic/cmd/sonictool/app"
@@ -59,12 +59,6 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
 )
-
-func init() {
-	_, _ = sonic_tracer.StartTracing()
-}
-
-var tracer = otel.Tracer("github.com/Salaton/tracing/pkg/usecases/product")
 
 // IntegrationTestNetSession a collection of methods to run tests against the
 // integration test network.
@@ -207,6 +201,8 @@ type IntegrationTestNet struct {
 
 	sessionsMutex sync.Mutex
 	Session
+
+	TracerCtx context.Context
 }
 
 // per-node state for the integration test network
@@ -297,7 +293,16 @@ func StartIntegrationTestNet(
 	options ...IntegrationTestNetOptions,
 ) *IntegrationTestNet {
 	t.Helper()
-	_, span := tracer.Start(t.Context(), "Start Integration Test Net")
+	return StartIntegrationTestNetWithTracer(t, context.Background(), options...)
+}
+
+func StartIntegrationTestNetWithTracer(
+	t testing.TB,
+	tracerCtx context.Context,
+	options ...IntegrationTestNetOptions,
+) *IntegrationTestNet {
+	t.Helper()
+	_, span := sonic_tracer.Tracer.Start(tracerCtx, "Start Test Net", trace.WithAttributes())
 	defer span.End()
 	return StartIntegrationTestNetWithJsonGenesis(t, options...)
 }
@@ -995,12 +1000,12 @@ func (s *Session) Run(tx *types.Transaction) (*types.Receipt, error) {
 }
 
 func (s *Session) RunAll(tx []*types.Transaction) ([]*types.Receipt, error) {
-	_, span := tracer.Start(context.Background(), "RunAll Transactions")
+	runAllCtx, span := sonic_tracer.Tracer.Start(s.net.TracerCtx, "RunAll Transactions")
 	defer span.End()
 
 	hashes := make([]common.Hash, len(tx))
 	err := runParallelWithClient(s.net, len(tx), func(client *PooledEhtClient, i int) error {
-		err := client.SendTransaction(context.Background(), tx[i])
+		err := client.SendTransaction(runAllCtx, tx[i])
 		if err != nil {
 			return fmt.Errorf("failed to send transaction %d: %w", i, err)
 		}
@@ -1028,7 +1033,7 @@ func (s *Session) GetReceipt(txHash common.Hash) (*types.Receipt, error) {
 }
 
 func (s *Session) GetReceipts(txHash []common.Hash) ([]*types.Receipt, error) {
-	_, span := tracer.Start(context.Background(), "GetReceipts")
+	getReceiptsCtx, span := sonic_tracer.Tracer.Start(s.net.TracerCtx, "GetReceipts")
 	defer span.End()
 
 	res := make([]*types.Receipt, len(txHash))
@@ -1038,8 +1043,8 @@ func (s *Session) GetReceipts(txHash []common.Hash) ([]*types.Receipt, error) {
 		func(client *PooledEhtClient, i int) error {
 			hash := txHash[i]
 
-			err := WaitFor(context.Background(), func(ctx context.Context) (bool, error) {
-				receipt, err := client.TransactionReceipt(ctx, hash)
+			err := WaitFor(getReceiptsCtx, func(ctx context.Context) (bool, error) {
+				receipt, err := client.TransactionReceipt(getReceiptsCtx, hash)
 				if errors.Is(err, ethereum.NotFound) {
 					return false, nil // receipt not yet available, keep waiting
 				}
