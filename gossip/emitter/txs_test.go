@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/emitter/config"
+	"github.com/stretchr/testify/require"
 )
 
 func Test_DefaultMaxTxsPerAddress_Equals_txTurnNonces(t *testing.T) {
@@ -30,7 +31,5 @@ func Test_DefaultMaxTxsPerAddress_Equals_txTurnNonces(t *testing.T) {
 	// emission of transactions. Default value for this parameter should be exactly txTurnNonces.
 
 	defaultConfig := config.DefaultConfig()
-	if defaultConfig.MaxTxsPerAddress == txTurnNonces {
-		t.Errorf("Default MaxTxsPerAddress %d not equal to txTurnNonces %d", defaultConfig.MaxTxsPerAddress, txTurnNonces)
-	}
+	require.EqualValues(t, txTurnNonces, defaultConfig.MaxTxsPerAddress, "Default MaxTxsPerAddress should equal txTurnNonces")
 }
