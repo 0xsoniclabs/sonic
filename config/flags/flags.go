@@ -356,24 +356,29 @@ var (
 
 	// Event Emission Throttling
 	EnableThrottlingFlag = cli.BoolFlag{
-		Name:  "emitter.throttle-events",
-		Usage: "Enable event emission throttling based on network conditions",
+		Name:  "emitter.event-throttling",
+		Usage: "Enable event emission throttling based on network conditions.",
 	}
 	ThrottlingDominantThresholdFlag = cli.Float64Flag{
-		Name:  "emitter.throttle-dominant-threshold",
-		Usage: "Dominant set stake threshold, driving event emission throttling.(percentage between 0 and 1)",
-		Value: emitter_config.DefaultConfig().ThrottlerDominantThreshold,
+		Name:  "emitter.throttler-dominant-threshold",
+		Usage: "The percentage of total stake which defines the dominating validator set. This value must be between 0.7 and 1.0.",
+		Value: emitter_config.DefaultConfig().ThrottlerConfig.DominantSetThreshold,
 	}
-	ThrottlingSkipInSameFrameFlag = cli.UintFlag{
-		Name:  "emitter.throttle-skip-in-same-frame",
-		Usage: "Maximum number of skipped events within the same frame to force event emission",
-		Value: emitter_config.DefaultConfig().ThrottlerSkipInSameFrame,
+	ThrottlingStalledFrameTimeout = cli.Uint64Flag{
+		Name:  "emitter.dominating-emission-timeout",
+		Usage: "Timeout in number of emission attempts after which another dominating validator is considered offline.",
+		Value: uint64(emitter_config.DefaultConfig().ThrottlerConfig.DominatingEmissionTimeout),
+	}
+	ThrottlingHeartbeatTimeout = cli.Uint64Flag{
+		Name:  "emitter.heartbeat-timeout",
+		Usage: "Maximum number of emission attempts that a suppressed validator can skip before being forced to emit.",
+		Value: uint64(emitter_config.DefaultConfig().ThrottlerConfig.HeartbeatTimeout),
 	}
 
 	// Consensus
 	SuppressFramePanicFlag = cli.BoolFlag{
 		Name:  "lachesis.suppress-frame-panic",
-		Usage: "Suppress frame missmatch error (when testing on historical imported/synced events)",
+		Usage: "Suppress frame mismatch error (when testing on historical imported/synced events)",
 	}
 
 	// StateDb
