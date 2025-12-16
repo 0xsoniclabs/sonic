@@ -46,7 +46,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip"
-	"github.com/0xsoniclabs/sonic/gossip/emitter"
+	emitter_config "github.com/0xsoniclabs/sonic/gossip/emitter/config"
 	"github.com/0xsoniclabs/sonic/integration"
 	"github.com/0xsoniclabs/sonic/utils/caution"
 	"github.com/0xsoniclabs/sonic/utils/memory"
@@ -74,7 +74,7 @@ var TomlSettings = toml.Config{
 type Config struct {
 	Node          node.Config
 	Opera         gossip.Config
-	Emitter       emitter.Config
+	Emitter       emitter_config.Config
 	TxPool        evmcore.TxPoolConfig
 	OperaStore    gossip.StoreConfig
 	Lachesis      abft.Config
@@ -347,7 +347,7 @@ func MakeAllConfigsFromFile(ctx *cli.Context, configFile string) (*Config, error
 	cfg := Config{
 		Node:          DefaultNodeConfig(),
 		Opera:         gossip.DefaultConfig(cacheRatio),
-		Emitter:       emitter.DefaultConfig(),
+		Emitter:       emitter_config.DefaultConfig(),
 		TxPool:        evmcore.DefaultTxPoolConfig,
 		OperaStore:    gossip.DefaultStoreConfig(cacheRatio),
 		Lachesis:      abft.DefaultConfig(),
@@ -360,7 +360,7 @@ func MakeAllConfigsFromFile(ctx *cli.Context, configFile string) (*Config, error
 		if err != nil {
 			return nil, fmt.Errorf("invalid fakenet flag")
 		}
-		cfg.Emitter = emitter.FakeConfig(num)
+		cfg.Emitter = emitter_config.FakeConfig(num)
 		setBootnodes(ctx, []string{}, &cfg.Node)
 	} else {
 		// "asDefault" means set network defaults

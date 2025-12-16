@@ -18,19 +18,19 @@ package config
 
 import (
 	"github.com/0xsoniclabs/sonic/config/flags"
+	emitter_config "github.com/0xsoniclabs/sonic/gossip/emitter/config"
 	"github.com/pkg/errors"
 	cli "gopkg.in/urfave/cli.v1"
 
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 
-	"github.com/0xsoniclabs/sonic/gossip/emitter"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/inter/validatorpk"
 )
 
 // setValidatorID retrieves the validator ID either from the directly specified
 // command line flags or from the keystore if CLI indexed.
-func setValidator(ctx *cli.Context, cfg *emitter.Config) error {
+func setValidator(ctx *cli.Context, cfg *emitter_config.Config) error {
 	// Extract the current validator address, new flag overriding legacy one
 	if ctx.GlobalIsSet(FakeNetFlag.Name) {
 		id, num, err := ParseFakeGen(ctx.GlobalString(FakeNetFlag.Name))
