@@ -35,9 +35,9 @@ import (
 )
 
 const (
-	TxTurnPeriod        = 8 * time.Second
-	TxTurnPeriodLatency = 1 * time.Second
-	TxTurnNonces        = 32
+	txTurnPeriod        = 8 * time.Second
+	txTurnPeriodLatency = 1 * time.Second
+	txTurnNonces        = 32
 )
 
 func max64(a, b uint64) uint64 {
@@ -124,7 +124,7 @@ func getTxRoundIndex(now, txTime time.Time, validatorsNum idx.Validator) int {
 	if passed < 0 {
 		passed = 0
 	}
-	return int((passed / TxTurnPeriod) % time.Duration(validatorsNum))
+	return int((passed / txTurnPeriod) % time.Duration(validatorsNum))
 }
 
 // safe for concurrent use
@@ -132,13 +132,13 @@ func (em *Emitter) isMyTxTurn(txHash common.Hash, sender common.Address, account
 	txTime := txtime.Of(txHash)
 
 	roundIndex := getTxRoundIndex(now, txTime, validators.Len())
-	if roundIndex != getTxRoundIndex(now.Add(TxTurnPeriodLatency), txTime, validators.Len()) {
+	if roundIndex != getTxRoundIndex(now.Add(txTurnPeriodLatency), txTime, validators.Len()) {
 		// round is about to change, avoid originating the transaction to avoid racing with another validator
 		return false
 	}
 
 	// generate seed for generating the validators sequence for the tx
-	roundsHash := hash.Of(sender.Bytes(), bigendian.Uint64ToBytes(accountNonce/TxTurnNonces), epoch.Bytes())
+	roundsHash := hash.Of(sender.Bytes(), bigendian.Uint64ToBytes(accountNonce/txTurnNonces), epoch.Bytes())
 
 	// generate the validators sequence for the tx
 	rounds := utils.WeightedPermutation(int(validators.Len()), validators.SortedWeights(), roundsHash)
