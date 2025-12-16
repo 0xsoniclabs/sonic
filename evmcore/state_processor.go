@@ -97,6 +97,10 @@ func (p *StateProcessor) Process(
 	return p.ProcessWithDifficulty(block, statedb, cfg, gasLimit, usedGas, onNewLog, big.NewInt(1))
 }
 
+// ProcessWithDifficulty is the same as Process, but allows specifying a custom
+// difficulty for the block context. This is mainly intended for testing
+// purposes, when processing blocks from non-Sonic networks exhibiting different
+// difficulty values than Sonic's constant difficulty of 1.
 func (p *StateProcessor) ProcessWithDifficulty(
 	block *EvmBlock, statedb state.StateDB, cfg vm.Config, gasLimit uint64,
 	usedGas *uint64, onNewLog func(*types.Log), difficulty *big.Int,

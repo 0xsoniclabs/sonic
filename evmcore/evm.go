@@ -43,6 +43,10 @@ func NewEVMBlockContext(header *EvmHeader, chain DummyChain, author *common.Addr
 	return NewEVMBlockContextWithDifficulty(header, chain, author, difficulty)
 }
 
+// NewEVMBlockContextWithDifficulty creates a new context for use in the EVM
+// with a specified difficulty. In Sonic networks, difficulty is always 1.
+// However, to facilitate testing and compatibility with other networks, this
+// function allows setting a custom difficulty.
 func NewEVMBlockContextWithDifficulty(
 	header *EvmHeader,
 	chain DummyChain,
