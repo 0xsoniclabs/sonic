@@ -24,8 +24,8 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/opera"
+	stt "github.com/0xsoniclabs/sonic/test_tracer"
 	"github.com/0xsoniclabs/sonic/tests"
-	sonic_tracer "github.com/0xsoniclabs/sonic/tracer"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
@@ -99,6 +99,16 @@ func TestLargeTransactions_CanHandleLargeTransactions(t *testing.T) {
 	require.ErrorContains(err, "oversized data")
 }
 
+func TestMain(m *testing.M) {
+	if stt.Tracer == nil {
+		tracerCtx, span := stt.Tracer.Start(context.Background(), "TestMain")
+		stt.Context = tracerCtx
+		defer span.End()
+	}
+
+	m.Run()
+}
+
 func TestLargeTransactions_LargeTransactionLoadTest(t *testing.T) {
 
 	if tests.IsDataRaceDetectionEnabled() {
@@ -120,8 +130,9 @@ func TestLargeTransactions_LargeTransactionLoadTest(t *testing.T) {
 	for name, upgrades := range hardForks {
 		for mode, singleProposer := range modes {
 			t.Run(fmt.Sprintf("%s/%s", name, mode), func(t *testing.T) {
-				tracerCtx, span := sonic_tracer.Tracer.Start(t.Context(), t.Name())
+				tracerCtx, span := stt.Tracer.Start(stt.Context, t.Name())
 				defer span.End()
+				stt.Context = tracerCtx
 				effectiveUpgrades := upgrades
 				effectiveUpgrades.SingleProposerBlockFormation = singleProposer
 				testLargeTransactionLoadTest(t, &effectiveUpgrades, tracerCtx)
@@ -146,6 +157,8 @@ func testLargeTransactionLoadTest(
 		numRounds   = 10
 	)
 	require := require.New(t)
+
+	// defer gossip.EndTracerSpan()
 
 	span := trace.SpanFromContext(tracerContext)
 	defer span.End()
@@ -215,7 +228,7 @@ func testLargeTransactionLoadTest(
 }
 
 func ModifyNetworkRules(t *testing.T, net *tests.IntegrationTestNet, tracerContext context.Context) {
-	_, subSpan := sonic_tracer.Tracer.Start(tracerContext, "Modify Network Rules")
+	_, subSpan := stt.Tracer.Start(tracerContext, "Modify Network Rules")
 	defer subSpan.End()
 
 	subSpan.AddEvent("Get Network Rules")

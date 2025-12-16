@@ -49,7 +49,7 @@ import (
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
-	sonic_tracer "github.com/0xsoniclabs/sonic/tracer"
+	stt "github.com/0xsoniclabs/sonic/test_tracer"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -302,7 +302,7 @@ func StartIntegrationTestNetWithTracer(
 	options ...IntegrationTestNetOptions,
 ) *IntegrationTestNet {
 	t.Helper()
-	_, span := sonic_tracer.Tracer.Start(tracerCtx, "Start Test Net", trace.WithAttributes())
+	_, span := stt.Tracer.Start(tracerCtx, "Start Test Net", trace.WithAttributes())
 	defer span.End()
 	return StartIntegrationTestNetWithJsonGenesis(t, options...)
 }
@@ -1000,7 +1000,7 @@ func (s *Session) Run(tx *types.Transaction) (*types.Receipt, error) {
 }
 
 func (s *Session) RunAll(tx []*types.Transaction) ([]*types.Receipt, error) {
-	runAllCtx, span := sonic_tracer.Tracer.Start(s.net.TracerCtx, "RunAll Transactions")
+	runAllCtx, span := stt.Tracer.Start(s.net.TracerCtx, "RunAll Transactions")
 	defer span.End()
 
 	hashes := make([]common.Hash, len(tx))
@@ -1033,7 +1033,7 @@ func (s *Session) GetReceipt(txHash common.Hash) (*types.Receipt, error) {
 }
 
 func (s *Session) GetReceipts(txHash []common.Hash) ([]*types.Receipt, error) {
-	getReceiptsCtx, span := sonic_tracer.Tracer.Start(s.net.TracerCtx, "GetReceipts")
+	getReceiptsCtx, span := stt.Tracer.Start(s.net.TracerCtx, "GetReceipts")
 	defer span.End()
 
 	res := make([]*types.Receipt, len(txHash))
@@ -1042,7 +1042,11 @@ func (s *Session) GetReceipts(txHash []common.Hash) ([]*types.Receipt, error) {
 		len(txHash),
 		func(client *PooledEhtClient, i int) error {
 			hash := txHash[i]
+			_, span := stt.Tracer.Start(getReceiptsCtx, "WaitFor") //, trace.WithAttributes(
+			// 	attribute.String("tx.hash", hash.Hex()),
+			// )
 
+			defer span.End()
 			err := WaitFor(getReceiptsCtx, func(ctx context.Context) (bool, error) {
 				receipt, err := client.TransactionReceipt(getReceiptsCtx, hash)
 				if errors.Is(err, ethereum.NotFound) {

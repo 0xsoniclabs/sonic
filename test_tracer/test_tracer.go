@@ -1,4 +1,4 @@
-package tracer
+package test_tracer
 
 import (
 	"context"
@@ -14,12 +14,13 @@ import (
 )
 
 func init() {
-	_, _ = StartTracing()
+	_, _ = StartTracer("SonicTestTracer")
 }
 
+var Context = context.Background()
 var Tracer = otel.Tracer("SonicTestingTracer")
 
-func StartTracing() (*trace.TracerProvider, error) {
+func StartTracer(name string) (*trace.TracerProvider, error) {
 	headers := map[string]string{
 		"content-type": "application/json",
 	}
@@ -46,15 +47,14 @@ func StartTracing() (*trace.TracerProvider, error) {
 		trace.WithBatcher(
 			exporter,
 			trace.WithMaxExportBatchSize(trace.DefaultMaxExportBatchSize),
-			trace.WithBatchTimeout(200*time.Millisecond), //trace.DefaultScheduleDelay*time.Millisecond),
+			trace.WithBatchTimeout(200*time.Millisecond),
 		),
 		trace.WithResource(
 			resource.NewWithAttributes(
 				semconv.SchemaURL,
-				semconv.ServiceNameKey.String("sonic-test"),
+				semconv.ServiceNameKey.String(name),
 			),
 		),
-		// trace.WithSyncer(exporter),
 	)
 
 	otel.SetTracerProvider(tracerprovider)

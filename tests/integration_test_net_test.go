@@ -17,8 +17,10 @@
 package tests
 
 import (
+	"context"
 	"fmt"
 	"math/big"
+	"os"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/config"
@@ -26,6 +28,7 @@ import (
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/sfc"
+	"github.com/0xsoniclabs/sonic/test_tracer"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/tosca/go/tosca/vm"
@@ -483,4 +486,30 @@ func BenchmarkIntegrationTestNet_StartAndStop(b *testing.B) {
 		b.StopTimer()
 		net.Stop()
 	}
+}
+
+// TestMain is a functionality offered by the testing package that allows
+// us to run some code before and after all tests in the package.
+func TestMain(m *testing.M) {
+
+	fmt.Printf("Starting tests in package %s\n", "tests")
+
+	tracerCtx, span := test_tracer.Tracer.Start(context.Background(), "TestMain")
+	defer span.End()
+	test_tracer.Context = tracerCtx
+
+	m.Run()
+
+	fmt.Printf("Finished tests in package %s\n", "tests")
+	// Stop all active networks after tests are done
+	for _, net := range activeTestNetInstances {
+		net.Stop()
+		for i := range net.nodes {
+			fmt.Printf("Removing node directory %s\n", net.nodes[i].directory)
+			// it is safe to ignore this error since the tests have ended and
+			// the directories are not needed anymore.
+			_ = os.RemoveAll(net.nodes[i].directory)
+		}
+	}
+	activeTestNetInstances = nil
 }

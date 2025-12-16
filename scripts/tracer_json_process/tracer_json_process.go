@@ -63,26 +63,23 @@ func main() {
 
 	// 5. Calculate Statistics
 
-	// -- Average (Mean) --
-	var sum float64
-	for _, d := range durations {
-		sum += d
-	}
-	mean := sum / float64(len(durations))
+	// -- Average  --
+	avg := average(durations)
 
 	// -- Standard Deviation --
 	// Formula: sqrt( sum((x - mean)^2) / N )
 	var varianceSum float64
 	for _, d := range durations {
-		varianceSum += math.Pow(d-mean, 2)
+		variance := (d - avg)
+		varianceSum += variance * variance
 	}
 	stdDev := math.Sqrt(varianceSum / float64(len(durations)))
 
 	// -- 95th Percentile --
 	// We must sort the data to find the percentile
 	sort.Float64s(durations)
-	// Calculate index: 0.95 * N
-	p95Index := int(math.Ceil(0.95*float64(len(durations)))) - 1
+	// Calculate index: 0.10 * N
+	p95Index := int(math.Ceil(0.41*float64(len(durations)))) - 1
 	// Safety check for index boundaries
 	if p95Index >= len(durations) {
 		p95Index = len(durations) - 1
@@ -91,10 +88,23 @@ func main() {
 	}
 	p95 := durations[p95Index]
 
+	// -- average from percentile onwards --
+	averagePercentile := average(durations[p95Index:])
+
 	// 6. Output Results
 	fmt.Println("--- Statistics ---")
 	fmt.Printf("Count:   %d\n", len(durations))
-	fmt.Printf("Average: %.2f\n", mean)
-	fmt.Printf("P95:     %.2f\n", p95)
+	fmt.Printf("Average: %.2f\n", avg)
+	fmt.Printf("P10:     %.2f\n", p95)
 	fmt.Printf("StdDev:  %.2f\n", stdDev)
+	fmt.Printf("Average Percentile: %.2f\n", averagePercentile)
+}
+
+func average(data []float64) float64 {
+	var sum float64
+	for _, d := range data {
+		sum += d
+	}
+	average := sum / float64(len(data))
+	return average
 }

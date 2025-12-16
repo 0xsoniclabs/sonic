@@ -19,7 +19,6 @@ package gossip
 import (
 	"bytes"
 	"cmp"
-	"context"
 	"fmt"
 	"slices"
 	"sort"
@@ -30,6 +29,9 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	scc_node "github.com/0xsoniclabs/sonic/scc/node"
+	"github.com/0xsoniclabs/sonic/test_tracer"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/dag"
@@ -55,8 +57,6 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/validatorpk"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
-
-	"github.com/kamilsk/tracer"
 )
 
 //go:generate mockgen -source=c_block_callbacks.go -package=gossip -destination=c_block_callbacks_mock.go
@@ -84,6 +84,16 @@ type ExtendedTxPosition struct {
 	evmstore.TxPosition
 	EventCreator idx.ValidatorID
 }
+
+// var tracerContext context.Context
+
+// func init() {
+// 	tracerContext, _ = stt.Tracer.Start(stt.Context, "BeginBlock")
+// }
+
+// func EndTracerSpan() {
+// 	trace.SpanFromContext(tracerContext).End()
+// }
 
 // GetConsensusCallbacks returns single (for Service) callback instance.
 func (s *Service) GetConsensusCallbacks() lachesis.ConsensusCallbacks {
@@ -158,6 +168,9 @@ func consensusCallbackBeginBlockFn(
 		// events with txs
 		confirmedEvents := make(hash.OrderedEvents, 0, 3*es.Validators.Len())
 
+		// callbackContext, _ := stt.Tracer.Start(stt.Context, "callbackBeginBlock")
+		// trace.SpanFromContext(test_tracer.Context).AddEvent("CallbackBeginBlockFn")
+
 		return lachesis.BlockCallbacks{
 			ApplyEvent: func(_e dag.Event) {
 				e := _e.(inter.EventI)
@@ -175,8 +188,10 @@ func consensusCallbackBeginBlockFn(
 				confirmedEventsMeter.Mark(1)
 			},
 			EndBlock: func() (newValidators *pos.Validators) {
-				tracerCall := tracer.Fetch(context.Background()).Start("EndBlock")
-				defer tracerCall.Stop()
+				number := uint64(bs.LastBlock.Idx + 1)
+
+				trace.SpanFromContext(test_tracer.Context).AddEvent("Start EndBlock", trace.WithAttributes(
+					attribute.Int64("block.number", int64(number))))
 
 				// sort events by Lamport time
 				sort.Sort(confirmedEvents)
@@ -196,7 +211,6 @@ func consensusCallbackBeginBlockFn(
 				)
 
 				// Start assembling the resulting block.
-				number := uint64(bs.LastBlock.Idx + 1)
 				lastBlockHeader := evmStateReader.GetHeaderByNumber(number - 1)
 
 				randao := computePrevRandao(confirmedEvents)
@@ -300,7 +314,6 @@ func consensusCallbackBeginBlockFn(
 				}
 				skipBlock = skipBlock || (emptyBlock && blockCtx.Time < bs.LastBlock.Time+es.Rules.Blocks.MaxEmptyBlockSkipPeriod)
 				// Finalize the progress of eventProcessor
-				tracerCall.Checkpoint("Finalize")
 				bs = eventProcessor.Finalize(blockCtx, skipBlock) // TODO: refactor to not mutate the bs, it is unclear
 				if skipBlock {
 					// save the latest block state even if block is skipped
@@ -348,7 +361,6 @@ func consensusCallbackBeginBlockFn(
 						log.Warn("Pre-internal transaction skipped or reverted", "txid", tx.Transaction.Hash().String())
 					}
 				}
-				tracerCall.Checkpoint("Pre-internal txs executed")
 
 				// Seal epoch if requested
 				if sealing {
@@ -366,9 +378,17 @@ func consensusCallbackBeginBlockFn(
 					newValidators = es.Validators
 					txListener.Update(bs, es)
 				}
+				trace.SpanFromContext(test_tracer.Context).AddEvent("End EndBlock", trace.WithAttributes(
+					attribute.Int64("block.number", int64(number))))
 
 				// At this point, newValidators may be returned and the rest of the code may be executed in a parallel thread
 				blockFn := func() {
+					// _, endSpan := stt.Tracer.Start(stt.Context, "BlockFn", trace.WithAttributes(
+					// 	attribute.Int64("block.number", int64(number)),
+					// ))
+					// defer endSpan.End()
+					// trace.SpanFromContext(test_tracer.Context).AddEvent("Start BlockFn", trace.WithAttributes(
+					// 	attribute.Int64("block.number", int64(number))))
 
 					blockDuration := time.Duration(blockCtx.Time - bs.LastBlock.Time)
 					blockBuilder := inter.NewBlockBuilder().
@@ -525,6 +545,11 @@ func consensusCallbackBeginBlockFn(
 						store.evm.SetTx(tx.Hash(), tx)
 					}
 
+					// trace.SpanFromContext(tracerContext).AddEvent("BlockFn", trace.WithAttributes(
+					// 	attribute.Int64("block.number", int64(number))))
+					// trace.SpanFromContext(test_tracer.Context).AddEvent("BlockFn - Block finished.", trace.WithAttributes(
+					// 	attribute.Int64("block.number", int64(number))))
+
 					store.SetBlock(blockCtx.Idx, block)
 					store.SetBlockIndex(block.Hash(), blockCtx.Idx)
 					store.SetBlockEpochState(bs, es)
@@ -594,6 +619,8 @@ func consensusCallbackBeginBlockFn(
 				} else {
 					blockFn()
 				}
+				// trace.SpanFromContext(test_tracer.Context).AddEvent("End BlockFn", trace.WithAttributes(
+				// 	attribute.Int64("block.number", int64(number))))
 
 				return newValidators
 			},

@@ -30,9 +30,7 @@ import (
 	"github.com/0xsoniclabs/carmen/go/common/immutable"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice/gaspricelimits"
-	"github.com/0xsoniclabs/sonic/tracer"
 	bip39 "github.com/tyler-smith/go-bip39"
-	"go.opentelemetry.io/otel/trace"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
@@ -1949,28 +1947,16 @@ func (s *PublicTransactionPoolAPI) formatTxReceipt(header *evmcore.EvmHeader, tx
 
 // GetTransactionReceipt returns the transaction receipt for the given transaction hash.
 func (s *PublicTransactionPoolAPI) GetTransactionReceipt(ctx context.Context, hash common.Hash) (map[string]interface{}, error) {
-	hasSpan := trace.SpanFromContext(ctx).SpanContext().HasSpanID()
-	if hasSpan {
-		fmt.Printf("GetTransactionReceipt called with span: %s\n", trace.SpanFromContext(ctx).SpanContext().SpanID())
-	}
-	ctx, span := tracer.Tracer.Start(ctx, "GetTransactionReceipt")
-	defer span.End()
-
-	_, subSpan := tracer.Tracer.Start(ctx, "Backend.GetTransaction")
 	tx, blockNumber, index, err := s.b.GetTransaction(ctx, hash)
-	subSpan.End()
 	if tx == nil || err != nil {
 		return nil, err
 	}
-	_, subSpan = tracer.Tracer.Start(ctx, "Backend.HeaderByNumber")
 	header, err := s.b.HeaderByNumber(ctx, rpc.BlockNumber(blockNumber)) // retrieve header to get block hash
-	subSpan.End()
 	if header == nil || err != nil {
 		return nil, err
 	}
-	_, subSpan = tracer.Tracer.Start(ctx, "Backend.GetReceiptsByNumber")
 	receipts, err := s.b.GetReceiptsByNumber(ctx, rpc.BlockNumber(blockNumber))
-	subSpan.End()
+
 	if receipts == nil || err != nil {
 		return nil, err
 	}
