@@ -449,32 +449,13 @@ func TestProcess_EnforcesGasLimitBySkippingExcessiveTransactions(t *testing.T) {
 }
 
 func TestProcess_UsesDifficultyOfOne(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	chainConfig := params.ChainConfig{}
-	chain := NewMockDummyChain(ctrl)
-	processor := NewStateProcessor(&chainConfig, chain, opera.Upgrades{})
 
+	processor := createTestProcessor(t)
 	// Unfortunately, there is no interface to be intercepted to directly check
 	// the difficulty used in the block context. Therefore, we need to process
 	// a transaction running actual code checking the correct difficulty.
-	state := createStateWithCodeCheckingForDifficulty(ctrl, big.NewInt(1))
-
-	transactions := []*types.Transaction{
-		types.NewTx(&types.LegacyTx{
-			To:  &common.Address{1, 2, 3},
-			Gas: 100_000,
-		}),
-	}
-
-	block := &EvmBlock{
-		EvmHeader: EvmHeader{
-			Number: big.NewInt(1),
-		},
-		Transactions: transactions,
-	}
-
-	vmConfig := vm.Config{}
-	usedGas := new(uint64)
+	state := createStateWithCodeCheckingForDifficulty(t, big.NewInt(1))
+	block, vmConfig, usedGas := createStructsForDifficultyTestProcessor()
 
 	// Check that the difficulty of 1 is used.
 	results := processor.Process(block, state, vmConfig, math.MaxUint64, usedGas, nil)
@@ -484,44 +465,23 @@ func TestProcess_UsesDifficultyOfOne(t *testing.T) {
 
 	// Check that an unexpected difficulty causes a revert.
 	wrongDifficulty := big.NewInt(2)
-	state = createStateWithCodeCheckingForDifficulty(ctrl, wrongDifficulty)
+	state = createStateWithCodeCheckingForDifficulty(t, wrongDifficulty)
 	results = processor.Process(block, state, vmConfig, math.MaxUint64, usedGas, nil)
 	require.Len(t, results, 1)
 	require.NotNil(t, results[0].Receipt)
 	require.Equal(t, types.ReceiptStatusFailed, results[0].Receipt.Status)
-
 }
 
 func TestProcessWithDifficulty_UsesProvidedDifficulty(t *testing.T) {
 	for _, difficulty := range []*big.Int{big.NewInt(0), big.NewInt(2), big.NewInt(42)} {
 		t.Run(fmt.Sprintf("difficulty=%s", difficulty.String()), func(t *testing.T) {
 
-			ctrl := gomock.NewController(t)
-			chainConfig := params.ChainConfig{}
-			chain := NewMockDummyChain(ctrl)
-			processor := NewStateProcessor(&chainConfig, chain, opera.Upgrades{})
-
+			processor := createTestProcessor(t)
 			// Unfortunately, there is no interface to be intercepted to directly check
 			// the difficulty used in the block context. Therefore, we need to process
 			// a transaction running actual code checking the correct difficulty.
-			state := createStateWithCodeCheckingForDifficulty(ctrl, difficulty)
-
-			transactions := []*types.Transaction{
-				types.NewTx(&types.LegacyTx{
-					To:  &common.Address{1, 2, 3},
-					Gas: 100_000,
-				}),
-			}
-
-			block := &EvmBlock{
-				EvmHeader: EvmHeader{
-					Number: big.NewInt(1),
-				},
-				Transactions: transactions,
-			}
-
-			vmConfig := vm.Config{}
-			usedGas := new(uint64)
+			state := createStateWithCodeCheckingForDifficulty(t, difficulty)
+			block, vmConfig, usedGas := createStructsForDifficultyTestProcessor()
 
 			results := processor.ProcessWithDifficulty(
 				block, state, vmConfig, math.MaxUint64,
@@ -534,9 +494,17 @@ func TestProcessWithDifficulty_UsesProvidedDifficulty(t *testing.T) {
 	}
 }
 
-func createStateWithCodeCheckingForDifficulty(
-	ctrl *gomock.Controller, expectedDifficulty *big.Int,
-) *state.MockStateDB {
+func createTestProcessor(t *testing.T) *StateProcessor {
+	ctrl := gomock.NewController(t)
+	chain := NewMockDummyChain(ctrl)
+	chainConfig := params.ChainConfig{}
+	return NewStateProcessor(&chainConfig, chain, opera.Upgrades{})
+}
+
+func createStateWithCodeCheckingForDifficulty(t *testing.T, expectedDifficulty *big.Int) *state.MockStateDB {
+
+	ctrl := gomock.NewController(t)
+
 	// Prepare code that checks for the expected difficulty.
 	code := []byte{
 		byte(vm.DIFFICULTY),                              // fetch the difficulty
@@ -571,6 +539,27 @@ func createStateWithCodeCheckingForDifficulty(
 	state.EXPECT().EndTransaction().AnyTimes()
 	state.EXPECT().TxIndex().AnyTimes()
 	return state
+}
+
+func createStructsForDifficultyTestProcessor() (*EvmBlock, vm.Config, *uint64) {
+	transactions := []*types.Transaction{
+		types.NewTx(&types.LegacyTx{
+			To:  &common.Address{1, 2, 3},
+			Gas: 100_000,
+		}),
+	}
+
+	block := &EvmBlock{
+		EvmHeader: EvmHeader{
+			Number: big.NewInt(1),
+		},
+		Transactions: transactions,
+	}
+
+	vmConfig := vm.Config{}
+	usedGas := new(uint64)
+
+	return block, vmConfig, usedGas
 }
 
 func TestApplyTransaction_InternalTransactionsSkipBaseFeeCharges(t *testing.T) {
