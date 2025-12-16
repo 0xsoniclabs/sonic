@@ -94,7 +94,8 @@ func (p *StateProcessor) Process(
 	block *EvmBlock, statedb state.StateDB, cfg vm.Config, gasLimit uint64,
 	usedGas *uint64, onNewLog func(*types.Log),
 ) []ProcessedTransaction {
-	return p.ProcessWithDifficulty(block, statedb, cfg, gasLimit, usedGas, onNewLog, big.NewInt(1))
+	sonicDifficulty := big.NewInt(1)
+	return p.ProcessWithDifficulty(block, statedb, cfg, gasLimit, usedGas, onNewLog, sonicDifficulty)
 }
 
 // ProcessWithDifficulty is the same as Process, but allows specifying a custom

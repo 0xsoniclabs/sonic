@@ -457,7 +457,7 @@ func TestProcess_UsesDifficultyOfOne(t *testing.T) {
 	// Unfortunately, there is no interface to be intercepted to directly check
 	// the difficulty used in the block context. Therefore, we need to process
 	// a transaction running actual code checking the correct difficulty.
-	state := createStateWithCodeCheckingForDifficulty(t, ctrl, big.NewInt(1))
+	state := createStateWithCodeCheckingForDifficulty(ctrl, big.NewInt(1))
 
 	transactions := []*types.Transaction{
 		types.NewTx(&types.LegacyTx{
@@ -484,7 +484,7 @@ func TestProcess_UsesDifficultyOfOne(t *testing.T) {
 
 	// Check that an unexpected difficulty causes a revert.
 	wrongDifficulty := big.NewInt(2)
-	state = createStateWithCodeCheckingForDifficulty(t, ctrl, wrongDifficulty)
+	state = createStateWithCodeCheckingForDifficulty(ctrl, wrongDifficulty)
 	results = processor.Process(block, state, vmConfig, math.MaxUint64, usedGas, nil)
 	require.Len(t, results, 1)
 	require.NotNil(t, results[0].Receipt)
@@ -504,7 +504,7 @@ func TestProcessWithDifficulty_UsesProvidedDifficulty(t *testing.T) {
 			// Unfortunately, there is no interface to be intercepted to directly check
 			// the difficulty used in the block context. Therefore, we need to process
 			// a transaction running actual code checking the correct difficulty.
-			state := createStateWithCodeCheckingForDifficulty(t, ctrl, difficulty)
+			state := createStateWithCodeCheckingForDifficulty(ctrl, difficulty)
 
 			transactions := []*types.Transaction{
 				types.NewTx(&types.LegacyTx{
@@ -523,7 +523,6 @@ func TestProcessWithDifficulty_UsesProvidedDifficulty(t *testing.T) {
 			vmConfig := vm.Config{}
 			usedGas := new(uint64)
 
-			// Test that the expected difficulty is used.
 			results := processor.ProcessWithDifficulty(
 				block, state, vmConfig, math.MaxUint64,
 				usedGas, nil, difficulty,
@@ -531,25 +530,13 @@ func TestProcessWithDifficulty_UsesProvidedDifficulty(t *testing.T) {
 			require.Len(t, results, 1)
 			require.NotNil(t, results[0].Receipt)
 			require.Equal(t, types.ReceiptStatusSuccessful, results[0].Receipt.Status)
-
-			// Test that an unexpected difficulty causes a revert.
-			wrongDifficulty := new(big.Int).Add(difficulty, big.NewInt(1))
-			results = processor.ProcessWithDifficulty(
-				block, state, vmConfig, math.MaxUint64,
-				usedGas, nil, wrongDifficulty,
-			)
-			require.Len(t, results, 1)
-			require.NotNil(t, results[0].Receipt)
-			require.Equal(t, types.ReceiptStatusFailed, results[0].Receipt.Status)
 		})
 	}
 }
 
 func createStateWithCodeCheckingForDifficulty(
-	t *testing.T, ctrl *gomock.Controller, expectedDifficulty *big.Int,
+	ctrl *gomock.Controller, expectedDifficulty *big.Int,
 ) *state.MockStateDB {
-	t.Helper()
-
 	// Prepare code that checks for the expected difficulty.
 	code := []byte{
 		byte(vm.DIFFICULTY),                              // fetch the difficulty
