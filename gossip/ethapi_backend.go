@@ -355,18 +355,22 @@ func (b *EthAPIBackend) GetReceiptsByNumber(ctx context.Context, number rpc.Bloc
 	number = rpc.BlockNumber(blockNumber)
 
 	block := b.state.GetBlock(common.Hash{}, uint64(number))
+	return b.MakeReceiptsFromBlock(block), nil
+}
+
+func (b *EthAPIBackend) MakeReceiptsFromBlock(block *evmcore.EvmBlock) types.Receipts {
 	time := uint64(block.Time.Unix())
 	baseFee := block.BaseFee
 	blobGasPrice := new(big.Int) // TODO issue #147
-	receipts := b.svc.store.evm.GetReceipts(idx.Block(number),
-		b.ChainConfig(idx.Block(number)),
+	receipts := b.svc.store.evm.GetReceipts(idx.Block(block.NumberU64()),
+		b.ChainConfig(idx.Block(block.NumberU64())),
 		block.Hash,
 		time,
 		baseFee,
 		blobGasPrice,
 		block.Transactions,
 	)
-	return receipts, nil
+	return receipts
 }
 
 // GetReceipts retrieves the receipts for all transactions in a given block.

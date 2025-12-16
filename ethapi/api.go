@@ -1951,18 +1951,18 @@ func (s *PublicTransactionPoolAPI) GetTransactionReceipt(ctx context.Context, ha
 	if tx == nil || err != nil {
 		return nil, err
 	}
-	header, err := s.b.HeaderByNumber(ctx, rpc.BlockNumber(blockNumber)) // retrieve header to get block hash
-	if header == nil || err != nil {
+	block, err := s.b.BlockByNumber(ctx, rpc.BlockNumber(blockNumber))
+	if block == nil || err != nil {
 		return nil, err
 	}
-	receipts, err := s.b.GetReceiptsByNumber(ctx, rpc.BlockNumber(blockNumber))
+	receipts := s.b.MakeReceiptsFromBlock(block)
 	if receipts == nil || err != nil {
 		return nil, err
 	}
 	if receipts.Len() <= int(index) {
 		return nil, nil
 	}
-	return s.formatTxReceipt(header, tx, index, receipts[index]), nil
+	return s.formatTxReceipt(block.Header(), tx, index, receipts[index]), nil
 }
 
 // GetBlockReceipts returns a set of transaction receipts for the given block by the extended block number.

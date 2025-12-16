@@ -75,6 +75,7 @@ type Backend interface {
 	ResolveRpcBlockNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (idx.Block, error)
 	BlockByHash(ctx context.Context, hash common.Hash) (*evmcore.EvmBlock, error)
 	GetReceiptsByNumber(ctx context.Context, number rpc.BlockNumber) (types.Receipts, error)
+	MakeReceiptsFromBlock(block *evmcore.EvmBlock) types.Receipts
 	GetEVM(ctx context.Context, state vm.StateDB, header *evmcore.EvmHeader, vmConfig *vm.Config, blockContext *vm.BlockContext) (*vm.EVM, func() error, error)
 	MinGasPrice() *big.Int
 	MaxGasLimit() uint64
