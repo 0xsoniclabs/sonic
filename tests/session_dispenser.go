@@ -19,7 +19,6 @@ package tests
 import (
 	"crypto/sha256"
 	"encoding/json"
-	"os"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/opera"
@@ -31,24 +30,6 @@ import (
 // for each test, we keep a map of active networks keyed by the hash of their
 // Upgrade.
 var activeTestNetInstances map[common.Hash]*IntegrationTestNet
-
-// TestMain is a functionality offered by the testing package that allows
-// us to run some code before and after all tests in the package.
-func TestMain(m *testing.M) {
-
-	m.Run()
-
-	// Stop all active networks after tests are done
-	for _, net := range activeTestNetInstances {
-		net.Stop()
-		for i := range net.nodes {
-			// it is safe to ignore this error since the tests have ended and
-			// the directories are not needed anymore.
-			_ = os.RemoveAll(net.nodes[i].directory)
-		}
-	}
-	activeTestNetInstances = nil
-}
 
 // getIntegrationTestNetSession creates a new session for network running on the
 // given Upgrade. If there is no network running with this Upgrade, a new one
