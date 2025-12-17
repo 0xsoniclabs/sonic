@@ -364,15 +364,15 @@ var (
 		Usage: "The percentage of total stake which defines the dominating validator set. This value must be between 0.7 and 1.0.",
 		Value: emitter_config.DefaultConfig().ThrottlerConfig.DominantSetThreshold,
 	}
-	ThrottlingStalledFrameTimeout = cli.Uint64Flag{
-		Name:  "event-throttler.dominating-emission-timeout",
-		Usage: "Timeout in number of emission attempts after which another dominating validator is considered offline.",
-		Value: uint64(emitter_config.DefaultConfig().ThrottlerConfig.DominatingEmissionTimeout),
+	ThrottlingDominatingTimeout = cli.Uint64Flag{
+		Name:  "event-throttler.dominating-timeout",
+		Usage: "Timeout in number of emission attempts after which a dominating validator is considered offline.",
+		Value: uint64(emitter_config.DefaultConfig().ThrottlerConfig.DominatingTimeout),
 	}
-	ThrottlingHeartbeatTimeout = cli.Uint64Flag{
-		Name:  "event-throttler.heartbeat-timeout",
-		Usage: "Maximum number of emission attempts that a suppressed validator can skip before being forced to emit.",
-		Value: uint64(emitter_config.DefaultConfig().ThrottlerConfig.HeartbeatTimeout),
+	ThrottlingNonDominatingTimeout = cli.Uint64Flag{
+		Name:  "event-throttler.non-dominating-timeout",
+		Usage: "Maximum number of emission attempts that a non-dominating validator can skip before being considered offline.",
+		Value: uint64(emitter_config.DefaultConfig().ThrottlerConfig.NonDominatingTimeout),
 	}
 
 	// Consensus
