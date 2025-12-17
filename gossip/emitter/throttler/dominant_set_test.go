@@ -75,7 +75,8 @@ func TestComputeDominantSet_IdentifiesDominantSet_WhenStakeDistributionIsDominat
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			stakes := makeValidatorsFromStakes(test.stakes...)
-			set := ComputeDominantSet(stakes, pos.Weight(100), testThreshold)
+			threshold := computeNeededStake(pos.Weight(100), testThreshold)
+			set := computeDominantSet(stakes, threshold)
 			require.ElementsMatch(t, test.expectedSet, slices.Collect(maps.Keys(set)))
 		})
 	}
@@ -150,7 +151,7 @@ func TestComputeDominantSet_IsIndependentFromStakeOrder(t *testing.T) {
 
 			// Create validators in ascending order
 			validators := makeValidatorsFromStakes(test.stakes...)
-			set := ComputeDominantSet(validators, validators.TotalWeight(), threshold)
+			set := computeDominantSet(validators, computeNeededStake(validators.TotalWeight(), threshold))
 			require.ElementsMatch(t, test.expectedSet, slices.Collect(maps.Keys(set)))
 		})
 	}
@@ -191,7 +192,7 @@ func TestComputeDominantSet_IsDeterministic(t *testing.T) {
 		}
 		validators := builder.Build()
 
-		set := ComputeDominantSet(validators, validators.TotalWeight(), 0.7)
+		set := computeDominantSet(validators, computeNeededStake(validators.TotalWeight(), 0.7))
 		ids := make([]idx.ValidatorID, 0, len(set))
 		for id := range set {
 			ids = append(ids, id)
@@ -256,4 +257,45 @@ func sumStake(set dominantSet, validators *pos.Validators) pos.Weight {
 		dominantStake += validators.Get(id)
 	}
 	return dominantStake
+}
+
+func TestComputeNeededStake_isRoundedUp(t *testing.T) {
+	tests := map[string]struct {
+		stake     pos.Weight
+		threshold float64
+		expected  pos.Weight
+	}{
+		"exact": {
+			stake:     100,
+			threshold: 0.5,
+			expected:  50,
+		},
+		"zero threshold": {
+			stake:     100,
+			threshold: 0.0,
+			expected:  0,
+		},
+		"full threshold": {
+			stake:     100,
+			threshold: 1.0,
+			expected:  100,
+		},
+		"round up prime": {
+			stake:     7,
+			threshold: 0.50,
+			expected:  4,
+		},
+		"round up with insufficient precision": {
+			stake:     100,
+			threshold: 0.3333333,
+			expected:  34,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			needed := computeNeededStake(test.stake, test.threshold)
+			require.Equal(t, int(test.expected), int(needed))
+		})
+	}
 }

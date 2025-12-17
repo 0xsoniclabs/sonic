@@ -35,19 +35,17 @@ type dominantSet map[idx.ValidatorID]struct{}
 //
 // This function uses the [pos.Validators] object methods to have a deterministic order
 // of validators with equal stakes.
-func ComputeDominantSet(validators *pos.Validators, nominalStake pos.Weight, threshold float64) dominantSet {
+func computeDominantSet(validators *pos.Validators, neededStake pos.Weight) dominantSet {
 
 	res := make(dominantSet)
 	accumulated := pos.Weight(0)
-
-	thresholdStake := pos.Weight(math.Ceil(float64(nominalStake) * threshold))
 
 	// Compute prefix sum of stakes until the threshold stake is reached,
 	// once reached, return the set of validators that contributed to it.
 	for _, id := range validators.SortedIDs() {
 		accumulated += validators.Get(id)
 		res[id] = struct{}{}
-		if accumulated >= pos.Weight(thresholdStake) {
+		if accumulated >= neededStake {
 			return res
 		}
 	}
@@ -58,4 +56,10 @@ func ComputeDominantSet(validators *pos.Validators, nominalStake pos.Weight, thr
 		fullSet[id] = struct{}{}
 	}
 	return fullSet
+}
+
+// computeNeededStake computes the stake needed to meet the given threshold.
+// It can be used to compute the needed stake for dominant set calculation.
+func computeNeededStake(stake pos.Weight, threshold float64) pos.Weight {
+	return pos.Weight(math.Ceil(float64(stake) * threshold))
 }
