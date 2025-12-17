@@ -29,7 +29,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestComputeDominantSet_CanIdentifyWhenStakeDistributionIsDominated(t *testing.T) {
+func TestComputeDominantSet_IdentifiesDominantSet_WhenStakeDistributionIsDominated(t *testing.T) {
 
 	// This test covers various basic cases for ease of development
 
