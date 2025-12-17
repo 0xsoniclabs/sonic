@@ -355,10 +355,10 @@ func (b *EthAPIBackend) GetReceiptsByNumber(ctx context.Context, number rpc.Bloc
 	number = rpc.BlockNumber(blockNumber)
 
 	block := b.state.GetBlock(common.Hash{}, uint64(number))
-	return b.GetReceiptsFromBlock(block), nil
+	return b.FetchReceiptsForBlock(block), nil
 }
 
-func (b *EthAPIBackend) GetReceiptsFromBlock(block *evmcore.EvmBlock) types.Receipts {
+func (b *EthAPIBackend) FetchReceiptsForBlock(block *evmcore.EvmBlock) types.Receipts {
 	time := uint64(block.Time.Unix())
 	baseFee := block.BaseFee
 	blobGasPrice := new(big.Int) // TODO issue #147
