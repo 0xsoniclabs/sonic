@@ -66,6 +66,10 @@ func TestComputeDominantSet_IdentifiesDominantSet_WhenStakeDistributionIsDominat
 			stakes:      []int64{25, 25, 25, 25},
 			expectedSet: []idx.ValidatorID{1, 2, 3},
 		},
+		"one unit below threshold": {
+			stakes:      []int64{25, 25, 24, 24, 2},
+			expectedSet: []idx.ValidatorID{1, 2, 3, 4},
+		},
 	}
 
 	for name, test := range tests {
