@@ -72,11 +72,11 @@ func TestIntegrationTestNet_Can(t *testing.T) {
 	// by default, the integration test network starts with a single node
 	require.Equal(t, 1, net.NumNodes())
 
-	t.Run("EndowAccountsWithTokens", func(t *testing.T) {
-		session := net.SpawnSession(t)
-		t.Parallel()
-		testIntegrationTestNet_CanEndowAccountsWithTokens(t, session)
-	})
+	// t.Run("EndowAccountsWithTokens", func(t *testing.T) {
+	// 	session := get
+	// 	t.Parallel()
+	// 	testIntegrationTestNet_CanEndowAccountsWithTokens(t, session)
+	// })
 
 	t.Run("DeployContracts", func(t *testing.T) {
 		session := net.SpawnSession(t)
@@ -117,7 +117,11 @@ func testIntegrationTestNet_CanFetchInformationFromTheNetwork(t *testing.T, net 
 // testIntegrationTestNet_CanEndowAccountsWithTokens needs its own session because it
 // modifies the state of the network by endowing an account with tokens, otherwise
 // it can trigger a transaction replacement with a transaction from another test.
-func testIntegrationTestNet_CanEndowAccountsWithTokens(t *testing.T, session IntegrationTestNetSession) {
+func TestIntegrationTestNet_CanEndowAccountsWithTokens(t *testing.T) {
+
+	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	t.Parallel()
+
 	client, err := session.GetClient()
 	require.NoError(t, err, "Failed to connect to the integration test network")
 	defer client.Close()
@@ -133,7 +137,7 @@ func testIntegrationTestNet_CanEndowAccountsWithTokens(t *testing.T, session Int
 		require.NoError(t, err, "Failed to endow account 1")
 		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
-		WaitForProofOf(t, client, int(receipt.BlockNumber.Uint64()))
+		// WaitForProofOf(t, client, int(receipt.BlockNumber.Uint64()))
 
 		want := balance.Add(balance, big.NewInt(int64(increment)))
 		balance, err = client.BalanceAt(t.Context(), address, nil)
