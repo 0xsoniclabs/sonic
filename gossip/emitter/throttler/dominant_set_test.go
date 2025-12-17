@@ -213,26 +213,41 @@ func makeValidatorsFromStakes(stakes ...int64) *pos.Validators {
 func FuzzDominantSet(f *testing.F) {
 
 	for threshold := float64(0.0); threshold <= 1.0; threshold += 0.05 {
+		f.Add([]byte{255}, threshold)
+		f.Add([]byte{1}, threshold)
 		f.Add([]byte{255, 255, 0, 0}, threshold)
 		f.Add([]byte{10, 20, 30, 40}, threshold)
 	}
 
-	f.Fuzz(func(t *testing.T, bitStakes []byte, threshold float64) {
+	f.Fuzz(func(t *testing.T, byteStakes []byte, threshold float64) {
 		if threshold < 0.0 || threshold > 1.0 {
 			return
 		}
 
-		stakes := make([]int64, len(bitStakes))
-		for i, b := range bitStakes {
-			stakes[i] = int64(b) * 1000
+		// pos.Validator imposes a limit on the maximum total stake value
+		if len(byteStakes)*255 > math.MaxUint32/2 {
+			return
+		}
+
+		stakes := make([]int64, len(byteStakes))
+		for i, b := range byteStakes {
+			stakes[i] = int64(b)
 		}
 		validators := makeValidatorsFromStakes(stakes...)
-		set := ComputeDominantSet(validators, validators.TotalWeight(), threshold)
+
+		if validators.Len() == 0 {
+			// if seed produces empty validators set, skip
+			return
+		}
+
+		set := computeDominantSet(validators, computeNeededStake(validators.TotalWeight(), threshold))
+		require.NotEmpty(t, set, "dominating set cannot be empty")
 
 		// sum the stakes in the dominant set
 		dominantStake := sumStake(set, validators)
-
-		require.GreaterOrEqual(t, dominantStake, validators.TotalWeight()*pos.Weight(threshold))
+		dominantThreshold := pos.Weight(math.Ceil(
+			float64(validators.TotalWeight()) * threshold))
+		require.GreaterOrEqual(t, dominantStake, dominantThreshold)
 	})
 }
 
