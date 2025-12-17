@@ -1955,7 +1955,7 @@ func (s *PublicTransactionPoolAPI) GetTransactionReceipt(ctx context.Context, ha
 	if block == nil || err != nil {
 		return nil, err
 	}
-	receipts := s.b.MakeReceiptsFromBlock(block)
+	receipts := s.b.GetReceiptsFromBlock(block)
 	if receipts == nil || err != nil {
 		return nil, err
 	}

@@ -442,6 +442,20 @@ func (mr *MockBackendMockRecorder) GetReceiptsByNumber(ctx, number any) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetReceiptsByNumber", reflect.TypeOf((*MockBackend)(nil).GetReceiptsByNumber), ctx, number)
 }
 
+// GetReceiptsFromBlock mocks base method.
+func (m *MockBackend) GetReceiptsFromBlock(block *evmcore.EvmBlock) types.Receipts {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetReceiptsFromBlock", block)
+	ret0, _ := ret[0].(types.Receipts)
+	return ret0
+}
+
+// GetReceiptsFromBlock indicates an expected call of GetReceiptsFromBlock.
+func (mr *MockBackendMockRecorder) GetReceiptsFromBlock(block any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetReceiptsFromBlock", reflect.TypeOf((*MockBackend)(nil).GetReceiptsFromBlock), block)
+}
+
 // GetTransaction mocks base method.
 func (m *MockBackend) GetTransaction(ctx context.Context, txHash common.Hash) (*types.Transaction, uint64, uint64, error) {
 	m.ctrl.T.Helper()
@@ -530,20 +544,6 @@ func (m *MockBackend) HistoryPruningCutoff() uint64 {
 func (mr *MockBackendMockRecorder) HistoryPruningCutoff() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HistoryPruningCutoff", reflect.TypeOf((*MockBackend)(nil).HistoryPruningCutoff))
-}
-
-// MakeReceiptsFromBlock mocks base method.
-func (m *MockBackend) MakeReceiptsFromBlock(block *evmcore.EvmBlock) types.Receipts {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "MakeReceiptsFromBlock", block)
-	ret0, _ := ret[0].(types.Receipts)
-	return ret0
-}
-
-// MakeReceiptsFromBlock indicates an expected call of MakeReceiptsFromBlock.
-func (mr *MockBackendMockRecorder) MakeReceiptsFromBlock(block any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MakeReceiptsFromBlock", reflect.TypeOf((*MockBackend)(nil).MakeReceiptsFromBlock), block)
 }
 
 // MaxGasLimit mocks base method.
