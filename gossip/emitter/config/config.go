@@ -78,10 +78,10 @@ type Attempt uint64
 
 // ThrottlerConfig is the configuration of event emission throttler.
 type ThrottlerConfig struct {
-	Enabled                   bool
-	DominantSetThreshold      float64 // The aggregated stake threshold to consider the dominant set of validators
-	DominatingEmissionTimeout Attempt // Number of attempts to wait before considering a dominant validator as offline
-	HeartbeatTimeout          Attempt // Maximum number of emission attempts that a suppressed validator can skip before being forced to emit
+	Enabled                bool
+	DominantStakeThreshold float64 // The aggregated stake threshold to consider the dominant set of validators
+	DominatingTimeout      Attempt // Number of attempts to wait before considering a dominant validator as offline
+	NonDominatingTimeout   Attempt // Maximum number of emission attempts that a suppressed validator can skip before being forced to emit
 }
 
 func (cfg *Config) Validate() error {
@@ -89,13 +89,13 @@ func (cfg *Config) Validate() error {
 }
 
 func (cfg *ThrottlerConfig) Validate() error {
-	if cfg.DominantSetThreshold < 0.7 || 1 < cfg.DominantSetThreshold {
-		return fmt.Errorf("invalid Event Throttle dominating threshold option. It must be between 0 and 1, but is %v",
+	if cfg.DominantStakeThreshold < 0.7 || 1 < cfg.DominantStakeThreshold {
+		return fmt.Errorf("invalid Event Throttle dominating threshold option. It must be between 0.7 and 1, but is %v",
 			cfg)
 	}
-	if cfg.DominatingEmissionTimeout < 2 {
-		return fmt.Errorf("invalid Event Throttle skip in same frame option. It must be more than or equal to 2, but is %v",
-			cfg.DominatingEmissionTimeout)
+	if cfg.DominatingTimeout < 2 {
+		return fmt.Errorf("invalid dominating emission timeout. It must be more than or equal to 2, but is %v",
+			cfg.DominatingTimeout)
 	}
 	return nil
 }
@@ -129,10 +129,10 @@ func DefaultConfig() Config {
 
 func DefaultThrottlerConfig() ThrottlerConfig {
 	return ThrottlerConfig{
-		Enabled:                   false,
-		DominantSetThreshold:      0.75,
-		DominatingEmissionTimeout: 3,
-		HeartbeatTimeout:          10,
+		Enabled:                false,
+		DominantStakeThreshold: 0.75,
+		DominatingTimeout:      3,
+		NonDominatingTimeout:   10,
 	}
 }
 

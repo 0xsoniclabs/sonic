@@ -17,6 +17,7 @@
 package flags
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -47,9 +48,9 @@ func TestSonicTool_DefaultConfig_HasDefaultValues(t *testing.T) {
 
 	require.Contains(t, string(configFromFile), `[Emitter.ThrottlerConfig]
 Enabled = false
-DominantSetThreshold = 7.5e-01
-DominatingEmissionTimeout = 3
-HeartbeatTimeout = 10`)
+DominantStakeThreshold = 7.5e-01
+DominatingTimeout = 3
+NonDominatingTimeout = 10`)
 }
 
 func TestSonicTool_CustomThrottlerConfig_AreApplied(t *testing.T) {
@@ -64,8 +65,8 @@ func TestSonicTool_CustomThrottlerConfig_AreApplied(t *testing.T) {
 			"--dump-config", configFile,
 			"--event-throttler.enable",
 			"--event-throttler.dominant-threshold", "0.85",
-			"--event-throttler.dominating-emission-timeout", "5",
-			"--event-throttler.heartbeat-timeout", "10",
+			"--event-throttler.dominating-timeout", "5",
+			"--event-throttler.non-dominating-timeout", "111",
 		}, nil))
 
 	f, err := os.Open(configFile)
@@ -73,11 +74,12 @@ func TestSonicTool_CustomThrottlerConfig_AreApplied(t *testing.T) {
 	configFromFile, err := io.ReadAll(f)
 	require.NoError(t, err)
 	require.NoError(t, f.Close())
+	fmt.Println(string(configFromFile))
 
 	require.Contains(t, string(configFromFile), `[Emitter.ThrottlerConfig]
 Enabled = true
-DominantSetThreshold = 8.5e-01
-DominatingEmissionTimeout = 5
-HeartbeatTimeout = 10`)
+DominantStakeThreshold = 8.5e-01
+DominatingTimeout = 5
+NonDominatingTimeout = 111`)
 
 }

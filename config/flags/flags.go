@@ -362,7 +362,7 @@ var (
 	ThrottlingDominantThresholdFlag = cli.Float64Flag{
 		Name:  "event-throttler.dominant-threshold",
 		Usage: "The percentage of total stake which defines the dominating validator set. This value must be between 0.7 and 1.0.",
-		Value: emitter_config.DefaultConfig().ThrottlerConfig.DominantSetThreshold,
+		Value: emitter_config.DefaultConfig().ThrottlerConfig.DominantStakeThreshold,
 	}
 	ThrottlingDominatingTimeout = cli.Uint64Flag{
 		Name:  "event-throttler.dominating-timeout",
