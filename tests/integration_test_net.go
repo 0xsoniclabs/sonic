@@ -38,6 +38,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
 	sonicd "github.com/0xsoniclabs/sonic/cmd/sonicd/app"
@@ -130,6 +131,9 @@ type IntegrationTestNetSession interface {
 
 	// GetGenesisJson returns the genesis JSON used to start the network.
 	GetGenesisId() common.Hash
+
+	GetTracerContext() context.Context
+	SetTracerContext(ctx context.Context)
 }
 
 // AsPointer is a utility function that returns a pointer to the given value.
@@ -948,6 +952,10 @@ func (s *Session) EndowAccounts(
 	addresses []common.Address,
 	value *big.Int,
 ) ([]*types.Receipt, error) {
+
+	_, span := stt.Tracer.Start(s.net.TracerCtx, "EndowAccounts")
+	defer span.End()
+
 	client, err := s.GetClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to the network: %w", err)
@@ -1000,12 +1008,13 @@ func (s *Session) Run(tx *types.Transaction) (*types.Receipt, error) {
 }
 
 func (s *Session) RunAll(tx []*types.Transaction) ([]*types.Receipt, error) {
-	runAllCtx, span := stt.Tracer.Start(s.net.TracerCtx, "RunAll Transactions")
-	defer span.End()
+	// runAllCtx, span := stt.Tracer.Start(s.net.TracerCtx, "RunAll Transactions")
+	// defer span.End()
+	trace.SpanFromContext(s.net.TracerCtx).AddEvent("RunAll Transactions")
 
 	hashes := make([]common.Hash, len(tx))
 	err := runParallelWithClient(s.net, len(tx), func(client *PooledEhtClient, i int) error {
-		err := client.SendTransaction(runAllCtx, tx[i])
+		err := client.SendTransaction(s.net.TracerCtx, tx[i])
 		if err != nil {
 			return fmt.Errorf("failed to send transaction %d: %w", i, err)
 		}
@@ -1017,7 +1026,7 @@ func (s *Session) RunAll(tx []*types.Transaction) ([]*types.Receipt, error) {
 	for i, t := range tx {
 		hashes[i] = t.Hash()
 	}
-	span.AddEvent("All sent, next GetReceipts")
+	trace.SpanFromContext(s.net.TracerCtx).AddEvent("All sent, next GetReceipts")
 	return s.GetReceipts(hashes)
 }
 
@@ -1033,8 +1042,8 @@ func (s *Session) GetReceipt(txHash common.Hash) (*types.Receipt, error) {
 }
 
 func (s *Session) GetReceipts(txHash []common.Hash) ([]*types.Receipt, error) {
-	getReceiptsCtx, span := stt.Tracer.Start(s.net.TracerCtx, "GetReceipts")
-	defer span.End()
+	// getReceiptsCtx, span := stt.Tracer.Start(s.net.TracerCtx, "GetReceipts")
+	// defer span.End()
 
 	res := make([]*types.Receipt, len(txHash))
 	err := runParallelWithClient(
@@ -1042,13 +1051,21 @@ func (s *Session) GetReceipts(txHash []common.Hash) ([]*types.Receipt, error) {
 		len(txHash),
 		func(client *PooledEhtClient, i int) error {
 			hash := txHash[i]
-			_, span := stt.Tracer.Start(getReceiptsCtx, "WaitFor") //, trace.WithAttributes(
+			// trace.SpanFromContext(s.net.TracerCtx).AddEvent("Getting receipt", trace.WithAttributes(
+			// 	attribute.String("tx.hash", hash.Hex()),
+			// ))
+			waitForCtx, span := stt.Tracer.Start(s.net.TracerCtx, "WaitFor") //, trace.WithAttributes(
 			// 	attribute.String("tx.hash", hash.Hex()),
 			// )
 
 			defer span.End()
-			err := WaitFor(getReceiptsCtx, func(ctx context.Context) (bool, error) {
-				receipt, err := client.TransactionReceipt(getReceiptsCtx, hash)
+			err := WaitFor(waitForCtx, func(ctx context.Context) (bool, error) {
+				trace.SpanFromContext(waitForCtx).AddEvent("request", trace.WithAttributes(
+					attribute.String("tx.hash", hash.Hex()),
+				))
+				// _, span := stt.Tracer.Start(waitForCtx, "WaitFor")
+				// defer span.End()
+				receipt, err := client.TransactionReceipt(s.net.TracerCtx, hash)
 				if errors.Is(err, ethereum.NotFound) {
 					return false, nil // receipt not yet available, keep waiting
 				}
@@ -1200,6 +1217,14 @@ func (s *Session) NumNodes() int {
 
 func (s *Session) GetGenesisId() common.Hash {
 	return s.net.genesisId
+}
+
+func (s *Session) GetTracerContext() context.Context {
+	return s.net.TracerCtx
+}
+
+func (s *Session) SetTracerContext(ctx context.Context) {
+	s.net.TracerCtx = ctx
 }
 
 // validateAndSanitizeOptions ensures that the options are valid and sets the default values.

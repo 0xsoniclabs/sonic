@@ -51,10 +51,10 @@ func Fund(
 	ok, fundId, err := registry.AccountSponsorshipFundId(nil, sponsee)
 	require.NoError(t, err)
 
-	latestBlock, err := client.BlockByNumber(t.Context(), nil)
-	require.NoError(t, err)
+	// latestBlock, err := client.BlockByNumber(t.Context(), nil)
+	// require.NoError(t, err)
 
-	tests.WaitForProofOf(t, client, int(latestBlock.NumberU64()))
+	// tests.WaitForProofOf(t, client, int(latestBlock.NumberU64()))
 
 	sponsorshipBefore, err := registry.Sponsorships(nil, fundId)
 	require.NoError(t, err)
@@ -68,7 +68,7 @@ func Fund(
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
-	tests.WaitForProofOf(t, client, int(receipt.BlockNumber.Int64()))
+	// tests.WaitForProofOf(t, client, int(receipt.BlockNumber.Int64()))
 
 	// check that the sponsorshipAfter funds got deposited
 	sponsorshipAfter, err := registry.Sponsorships(nil, fundId)

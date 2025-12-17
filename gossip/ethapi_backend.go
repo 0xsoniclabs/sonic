@@ -144,6 +144,13 @@ func (b *EthAPIBackend) HeaderByHash(ctx context.Context, h common.Hash) (*evmco
 
 // BlockByNumber returns evm block by its number, or nil if not exists.
 func (b *EthAPIBackend) BlockByNumber(ctx context.Context, number rpc.BlockNumber) (*evmcore.EvmBlock, error) {
+	state, _, err := b.StateAndHeaderByNumberOrHash(ctx, rpc.BlockNumberOrHash{BlockNumber: &number})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get block by number: %w", err)
+	}
+	if proof, err := state.GetProof(common.Address{}, []common.Hash{}); err != nil || proof == nil {
+		return nil, errors.New("block state proof is not available")
+	}
 	// Otherwise, resolve and return the block
 	var blk *evmcore.EvmBlock
 	if isLatestBlockNumber(number) {

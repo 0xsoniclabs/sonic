@@ -266,7 +266,7 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 			// For every block created during test scenario
 			for blockNumber := blockBefore.NumberU64() + 1; blockNumber <= blockAfter.NumberU64(); blockNumber++ {
 
-				tests.WaitForProofOf(t, client, int(blockNumber))
+				// tests.WaitForProofOf(t, client, int(blockNumber))
 
 				block, err := client.BlockByNumber(t.Context(), big.NewInt(int64(blockNumber)))
 				require.NoError(t, err)
@@ -303,7 +303,7 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 				}
 			}
 
-			tests.WaitForProofOf(t, client, int(blockAfter.NumberU64()))
+			// tests.WaitForProofOf(t, client, int(blockAfter.NumberU64()))
 
 			_, fundId, err := sponsorshipRegistry.AccountSponsorshipFundId(nil, sponsoredSender.Address())
 			require.NoError(t, err)

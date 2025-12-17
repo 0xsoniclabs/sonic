@@ -73,7 +73,7 @@ func TestGasSubsidies_HelperFunctions(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, ok, "registry should have a fund ID")
 
-	tests.WaitForProofOf(t, client, int(receipt.BlockNumber.Int64()))
+	// tests.WaitForProofOf(t, client, int(receipt.BlockNumber.Int64()))
 
 	sponsorship, err := registry.Sponsorships(nil, fundId)
 	require.NoError(t, err)

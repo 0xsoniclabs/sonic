@@ -395,7 +395,7 @@ func testHeaders_LastBlockOfEpochContainsSealingTransaction(t *testing.T, header
 func testHeaders_StateRootsMatchActualStateRoots(t *testing.T, headers []*types.Header, client *tests.PooledEhtClient) {
 	require := require.New(t)
 	// wait until last block is received.
-	tests.WaitForProofOf(t, client, len(headers)-1)
+	// tests.WaitForProofOf(t, client, len(headers)-1)
 
 	for i, header := range headers {
 		// The direct way to get the state root of a block would be to request the

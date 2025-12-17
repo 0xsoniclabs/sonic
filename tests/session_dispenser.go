@@ -17,6 +17,7 @@
 package tests
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"testing"
@@ -48,6 +49,10 @@ var activeTestNetInstances map[common.Hash]*IntegrationTestNet
 // This function uses a global state that is cleaned up after the execution of
 // the tests in `tests` package.
 func getIntegrationTestNetSession(t *testing.T, upgrades opera.Upgrades) IntegrationTestNetSession {
+	return getIntegrationTestNetSessionWithTracer(t, upgrades, context.Background())
+}
+
+func getIntegrationTestNetSessionWithTracer(t *testing.T, upgrades opera.Upgrades, tracerCtx context.Context) IntegrationTestNetSession {
 	if activeTestNetInstances == nil {
 		activeTestNetInstances = make(map[common.Hash]*IntegrationTestNet)
 	}
@@ -57,12 +62,13 @@ func getIntegrationTestNetSession(t *testing.T, upgrades opera.Upgrades) Integra
 		return net.SpawnSession(t)
 	}
 
-	myNet := StartIntegrationTestNet(t, IntegrationTestNetOptions{
+	myNet := StartIntegrationTestNetWithTracer(t, tracerCtx, IntegrationTestNetOptions{
 		Upgrades: AsPointer(upgrades),
 		// Networks started by here will survive the test calling it, so they
 		// will be stopped after all tests in the package have finished.
 		SkipCleanUp: true,
 	})
+	myNet.SetTracerContext(tracerCtx)
 	activeTestNetInstances[hashUpgrades(upgrades)] = myNet
 	return myNet.SpawnSession(t)
 }

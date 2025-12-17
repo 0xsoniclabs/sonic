@@ -174,7 +174,14 @@ func requireAllNodesReachSameBlockHeight(t *testing.T, net *tests.IntegrationTes
 		require.NoError(t, err)
 		defer nodeClient.Close()
 
+		nodeBlockNumber, err := nodeClient.BlockNumber(t.Context())
+		require.NoError(t, err)
+		require.Equal(t, number, nodeBlockNumber,
+			"node %d has block number %d, expected %d",
+			i, nodeBlockNumber, number,
+		)
+
 		// all other nodes should reach the same block number
-		tests.WaitForProofOf(t, nodeClient, int(number))
+		// tests.WaitForProofOf(t, nodeClient, int(number))
 	}
 }

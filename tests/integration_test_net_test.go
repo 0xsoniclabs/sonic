@@ -17,10 +17,8 @@
 package tests
 
 import (
-	"context"
 	"fmt"
 	"math/big"
-	"os"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/config"
@@ -28,7 +26,7 @@ import (
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/sfc"
-	"github.com/0xsoniclabs/sonic/test_tracer"
+	stt "github.com/0xsoniclabs/sonic/test_tracer"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/tosca/go/tosca/vm"
@@ -37,6 +35,8 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func TestIntegrationTestNet_CanStartRestartAndStopIntegrationTestNet(t *testing.T) {
@@ -119,8 +119,12 @@ func testIntegrationTestNet_CanFetchInformationFromTheNetwork(t *testing.T, net 
 // it can trigger a transaction replacement with a transaction from another test.
 func TestIntegrationTestNet_CanEndowAccountsWithTokens(t *testing.T) {
 
-	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
-	t.Parallel()
+	tracerCtx, span := stt.Tracer.Start(stt.Context, t.Name())
+	defer span.End()
+	stt.Context = tracerCtx
+
+	session := getIntegrationTestNetSessionWithTracer(t, opera.GetSonicUpgrades(), tracerCtx)
+	// t.Parallel()
 
 	client, err := session.GetClient()
 	require.NoError(t, err, "Failed to connect to the integration test network")
@@ -131,6 +135,11 @@ func TestIntegrationTestNet_CanEndowAccountsWithTokens(t *testing.T) {
 	require.NoError(t, err, "Failed to get balance for account")
 
 	for i := 0; i < 10; i++ {
+		// _, span := stt.Tracer.Start(tracerCtx, fmt.Sprintf("EndowIteration%d", i))
+		span.AddEvent("Endowing account", trace.WithAttributes(
+			attribute.String("account.address", address.Hex()),
+			attribute.Int("iteration", i),
+		))
 		increment := int64(1000)
 
 		receipt, err := session.EndowAccount(address, big.NewInt(increment))
@@ -145,6 +154,7 @@ func TestIntegrationTestNet_CanEndowAccountsWithTokens(t *testing.T) {
 		require.Equal(t, want.Uint64(), balance.Uint64(), "Unexpected balance for account after endowment")
 
 		balance = want
+		// span.End()
 	}
 }
 
@@ -490,30 +500,4 @@ func BenchmarkIntegrationTestNet_StartAndStop(b *testing.B) {
 		b.StopTimer()
 		net.Stop()
 	}
-}
-
-// TestMain is a functionality offered by the testing package that allows
-// us to run some code before and after all tests in the package.
-func TestMain(m *testing.M) {
-
-	fmt.Printf("Starting tests in package %s\n", "tests")
-
-	tracerCtx, span := test_tracer.Tracer.Start(context.Background(), "TestMain")
-	defer span.End()
-	test_tracer.Context = tracerCtx
-
-	m.Run()
-
-	fmt.Printf("Finished tests in package %s\n", "tests")
-	// Stop all active networks after tests are done
-	for _, net := range activeTestNetInstances {
-		net.Stop()
-		for i := range net.nodes {
-			fmt.Printf("Removing node directory %s\n", net.nodes[i].directory)
-			// it is safe to ignore this error since the tests have ended and
-			// the directories are not needed anymore.
-			_ = os.RemoveAll(net.nodes[i].directory)
-		}
-	}
-	activeTestNetInstances = nil
 }
