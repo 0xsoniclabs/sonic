@@ -52,6 +52,10 @@ func ComputeDominantSet(validators *pos.Validators, nominalStake pos.Weight, thr
 		}
 	}
 
-	// If threshold not reached, return that there is no dominant set.
-	return nil
+	// If the threshold stake is not reached, return all validators.
+	fullSet := make(dominantSet)
+	for _, id := range validators.IDs() {
+		fullSet[id] = struct{}{}
+	}
+	return fullSet
 }

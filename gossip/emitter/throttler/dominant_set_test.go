@@ -102,28 +102,19 @@ func TestComputeDominantSet_UniformDistributionsAreDominated(t *testing.T) {
 	}
 }
 
-func TestComputeDominantSet_CanBeEmpty(t *testing.T) {
+func TestComputeDominantSet_ReturnsInputValidatorsSet_WhenStakeCannotBeMet(t *testing.T) {
 
-	t.Run(
-		"nominal stake > than online stake * threshold",
-		func(t *testing.T) {
-			oneValidator := makeValidatorsFromStakes(100)
-			for threshold := float64(0.67); threshold <= 1.; threshold += 0.05 {
-				nominalWeight := float64(oneValidator.TotalWeight())/threshold + 1
-				x := ComputeDominantSet(oneValidator, pos.Weight(nominalWeight), threshold)
-				require.Empty(t, x,
-					"if nominalStake * threshold > sum of validator stakes, the dominant set cannot exist")
-			}
-		})
+	for validatorCount := 1; validatorCount <= 10; validatorCount++ {
+		validators := makeValidatorsFromStakes(slices.Repeat([]int64{10}, validatorCount)...)
+		neededStake := 10*validatorCount + 1
 
-	t.Run("threshold > 1.0", func(t *testing.T) {
-		stakes := slices.Repeat([]int64{42}, 11)
-		validators := makeValidatorsFromStakes(stakes...)
-
-		threshold := 1.01
-		set := ComputeDominantSet(validators, validators.TotalWeight(), threshold)
-		require.Empty(t, set)
-	})
+		set := computeDominantSet(validators, pos.Weight(neededStake))
+		require.ElementsMatch(t,
+			validators.IDs(),
+			slices.Collect(maps.Keys(set)),
+			"nominal stake > than online stake * threshold",
+		)
+	}
 }
 
 func TestComputeDominantSet_IsIndependentFromStakeOrder(t *testing.T) {
