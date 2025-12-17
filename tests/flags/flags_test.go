@@ -50,7 +50,7 @@ func TestSonicTool_DefaultConfig_HasDefaultValues(t *testing.T) {
 Enabled = false
 DominantStakeThreshold = 7.5e-01
 DominatingTimeout = 3
-NonDominatingTimeout = 10`)
+NonDominatingTimeout = 100`)
 }
 
 func TestSonicTool_CustomThrottlerConfig_AreApplied(t *testing.T) {

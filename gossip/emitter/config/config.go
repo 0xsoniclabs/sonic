@@ -132,7 +132,7 @@ func DefaultThrottlerConfig() ThrottlerConfig {
 		Enabled:                false,
 		DominantStakeThreshold: 0.75,
 		DominatingTimeout:      3,
-		NonDominatingTimeout:   10,
+		NonDominatingTimeout:   100,
 	}
 }
 
