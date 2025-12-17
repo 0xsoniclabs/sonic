@@ -366,7 +366,7 @@ var (
 	}
 	ThrottlingDominatingTimeout = cli.Uint64Flag{
 		Name:  "event-throttler.dominating-timeout",
-		Usage: "Timeout in number of emission attempts after which a dominating validator is considered offline.",
+		Usage: "Timeout in number of emission attempts after which a dominating validator is considered offline. This value must be greater or equal to 2.",
 		Value: uint64(emitter_config.DefaultConfig().ThrottlerConfig.DominatingTimeout),
 	}
 	ThrottlingNonDominatingTimeout = cli.Uint64Flag{
