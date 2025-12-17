@@ -356,21 +356,21 @@ var (
 
 	// Event Emission Throttling
 	EnableThrottlingFlag = cli.BoolFlag{
-		Name:  "emitter.event-throttling",
+		Name:  "event-throttler.enable",
 		Usage: "Enable event emission throttling based on network conditions.",
 	}
 	ThrottlingDominantThresholdFlag = cli.Float64Flag{
-		Name:  "emitter.throttler-dominant-threshold",
+		Name:  "event-throttler.dominant-threshold",
 		Usage: "The percentage of total stake which defines the dominating validator set. This value must be between 0.7 and 1.0.",
 		Value: emitter_config.DefaultConfig().ThrottlerConfig.DominantSetThreshold,
 	}
 	ThrottlingStalledFrameTimeout = cli.Uint64Flag{
-		Name:  "emitter.dominating-emission-timeout",
+		Name:  "event-throttler.dominating-emission-timeout",
 		Usage: "Timeout in number of emission attempts after which another dominating validator is considered offline.",
 		Value: uint64(emitter_config.DefaultConfig().ThrottlerConfig.DominatingEmissionTimeout),
 	}
 	ThrottlingHeartbeatTimeout = cli.Uint64Flag{
-		Name:  "emitter.heartbeat-timeout",
+		Name:  "event-throttler.heartbeat-timeout",
 		Usage: "Maximum number of emission attempts that a suppressed validator can skip before being forced to emit.",
 		Value: uint64(emitter_config.DefaultConfig().ThrottlerConfig.HeartbeatTimeout),
 	}

@@ -45,9 +45,11 @@ func TestSonicTool_DefaultConfig_HasDefaultValues(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, f.Close())
 
-	require.Contains(t, string(configFromFile), "ThrottleEvents = false")
-	require.Contains(t, string(configFromFile), "ThrottlerDominantThreshold = 7.5e-01")
-	require.Contains(t, string(configFromFile), "ThrottlerSkipInSameFrame = 3")
+	require.Contains(t, string(configFromFile), `[Emitter.ThrottlerConfig]
+Enabled = false
+DominantSetThreshold = 7.5e-01
+DominatingEmissionTimeout = 3
+HeartbeatTimeout = 10`)
 }
 
 func TestSonicTool_CustomThrottlerConfig_AreApplied(t *testing.T) {
@@ -60,9 +62,11 @@ func TestSonicTool_CustomThrottlerConfig_AreApplied(t *testing.T) {
 		[]string{"sonicd",
 			"--datadir", net.GetDirectory() + "/state",
 			"--dump-config", configFile,
-			"--emitter.throttle-events",
-			"--emitter.throttle-dominant-threshold", "0.85",
-			"--emitter.throttle-skip-in-same-frame", "5"}, nil))
+			"--event-throttler.enable",
+			"--event-throttler.dominant-threshold", "0.85",
+			"--event-throttler.dominating-emission-timeout", "5",
+			"--event-throttler.heartbeat-timeout", "10",
+		}, nil))
 
 	f, err := os.Open(configFile)
 	require.NoError(t, err)
@@ -70,7 +74,10 @@ func TestSonicTool_CustomThrottlerConfig_AreApplied(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, f.Close())
 
-	require.Contains(t, string(configFromFile), "ThrottleEvents = true")
-	require.Contains(t, string(configFromFile), "ThrottlerDominantThreshold = 8.5e-01")
-	require.Contains(t, string(configFromFile), "ThrottlerSkipInSameFrame = 5")
+	require.Contains(t, string(configFromFile), `[Emitter.ThrottlerConfig]
+Enabled = true
+DominantSetThreshold = 8.5e-01
+DominatingEmissionTimeout = 5
+HeartbeatTimeout = 10`)
+
 }
