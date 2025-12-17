@@ -23,7 +23,7 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 )
 
-// dominantSet represents a set of validator IDs cannot skip event emission.
+// dominantSet represents a set of validator IDs which cannot skip event emission.
 type dominantSet map[idx.ValidatorID]struct{}
 
 // computeDominantSet computes the dominant set of validators whose cumulative stake
