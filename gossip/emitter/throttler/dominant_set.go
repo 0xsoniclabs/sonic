@@ -23,17 +23,15 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 )
 
+// dominantSet represents a set of validator IDs cannot skip event emission.
 type dominantSet map[idx.ValidatorID]struct{}
 
-// ComputeDominantSet computes the dominant set of validators whose cumulative stake
-// meets or exceeds the given threshold of the provided nominal stake.
+// computeDominantSet computes the dominant set of validators whose cumulative stake
+// meets or exceeds the given stake threshold.
 //
-// nominalStake is typically the total stake of all validators in the epoch.
-// For outage resilience purposes, this function is to be called with the online validators
-// but the nominal stake (the epoch validators stake).
-//
-// threshold is a real number (between 0 and 1) representing the fraction of the nominal stake
-// that the dominant set's cumulative stake must meet or exceed.
+// In case that the threshold cannot be met, it returns the full set of validators.
+// In this case, the sum of all validators' stakes is less than the threshold, the
+// set is returned nevertheless because these validators cannot skip event emission.
 //
 // This function uses the [pos.Validators] object methods to have a deterministic order
 // of validators with equal stakes.
