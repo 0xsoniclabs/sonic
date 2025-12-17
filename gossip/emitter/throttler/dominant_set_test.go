@@ -83,16 +83,20 @@ func TestComputeDominantSet_IdentifiesDominantSet_WhenStakeDistributionIsDominat
 
 func TestComputeDominantSet_UniformDistributionsAreDominated(t *testing.T) {
 	// A set of n validators with equal stake shall have a dominant set
-	// of size ceil(n * threshold)
+	// of size ceil(n * threshold). Because rounding of float, the set may
+	// may be exceeded by one validator.
 
-	for threshold := float64(0.67); threshold <= 1.; threshold += 0.05 {
+	for threshold := float64(0.0); threshold <= 1.; threshold += 0.01 {
 		for n := 1; n <= 100; n++ {
 			t.Run(fmt.Sprintf("n=%d,threshold=%.2f", n, threshold), func(t *testing.T) {
 				validators := makeValidatorsFromStakes(slices.Repeat([]int64{10}, n)...)
-				set := ComputeDominantSet(validators, validators.TotalWeight(), threshold)
-				expectedCount := int(math.Ceil(float64(n) * threshold))
-				require.Len(t, set, expectedCount, "n=%d, threshold=%.2f", n, threshold)
-				require.GreaterOrEqual(t, sumStake(set, validators), validators.TotalWeight()*pos.Weight(threshold))
+				StakeThreshold := computeNeededStake(validators.TotalWeight(), threshold)
+				set := computeDominantSet(validators, StakeThreshold)
+
+				expectedCount := int(float64(n) * threshold)
+				require.NotEmpty(t, set, "dominating set cannot be empty")
+				require.GreaterOrEqual(t, len(set), expectedCount)
+				require.GreaterOrEqual(t, sumStake(set, validators), StakeThreshold)
 			})
 		}
 	}
