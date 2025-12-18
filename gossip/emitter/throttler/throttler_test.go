@@ -202,7 +202,30 @@ func TestThrottler_updateAttendance_OfflineValidatorsComeBackOnlineWithAnyNewSeq
 			require.True(t, found && attendance.online)
 		})
 	}
+}
 
+func TestThrottler_updateAttendance_ValidatorsRemainOffline_IfNoEventIsReceived(t *testing.T) {
+
+	ctrl := gomock.NewController(t)
+	validators := makeValidatorsFromStakes(100)
+	world := NewMockWorldReader(ctrl)
+	world.EXPECT().GetEpochValidators().Return(validators, idx.Epoch(0))
+	world.EXPECT().GetLastEvent(idx.ValidatorID(1))
+
+	config := config.ThrottlerConfig{
+		Enabled:                true,
+		DominantStakeThreshold: 0.75,
+		DominatingTimeout:      3,
+		NonDominatingTimeout:   100,
+	}
+
+	attendanceList := make(attendanceList)
+
+	// notice empty lastDominantSet - offline validator can not have dominant stake
+	attendanceList.updateAttendance(world, config, nil, 15)
+
+	_, found := attendanceList[1]
+	require.False(t, found)
 }
 
 func makeEventWithSeq(seq idx.Event) *inter.Event {
