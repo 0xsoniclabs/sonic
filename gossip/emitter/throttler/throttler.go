@@ -40,11 +40,19 @@ type validatorAttendance struct {
 	online bool
 }
 
-// dominantSet is a helper tool to compute the set of online validators.
-type attendanceList map[idx.ValidatorID]validatorAttendance
+// attendanceList is a helper tool to track validators' online status.
+type attendanceList struct {
+	attendance map[idx.ValidatorID]validatorAttendance
+}
+
+func newAttendanceList() attendanceList {
+	return attendanceList{
+		attendance: make(map[idx.ValidatorID]validatorAttendance),
+	}
+}
 
 // updateAttendance updates the attendance list based on the current world state and configuration.
-func (al attendanceList) updateAttendance(
+func (al *attendanceList) updateAttendance(
 	world WorldReader, config config.ThrottlerConfig,
 	lastDominantSet dominantSet, attempt config.Attempt) {
 
@@ -57,7 +65,7 @@ func (al attendanceList) updateAttendance(
 			continue
 		}
 
-		attendance, exists := al[id]
+		attendance, exists := al.attendance[id]
 
 		// Different tolerance for being online for dominant vs non-dominant validators.
 		// Relaxed tolerance can only be used if the validator was online previously.
@@ -71,14 +79,19 @@ func (al attendanceList) updateAttendance(
 		if attendance.lastSeenSeq == lastEvent.Seq() {
 			// if no progress has been made, re-evaluate online status
 			attendance.online = attendance.lastSeenAt+onlineThreshold > attempt
-			al[id] = attendance
+			al.attendance[id] = attendance
 		} else {
 			// if any progress has been made, mark as online
-			al[id] = validatorAttendance{
+			al.attendance[id] = validatorAttendance{
 				lastSeenSeq: lastEvent.Seq(),
 				lastSeenAt:  attempt,
 				online:      true,
 			}
 		}
 	}
+}
+
+func (al *attendanceList) isOnline(id idx.ValidatorID) bool {
+	attendance, exists := al.attendance[id]
+	return exists && attendance.online
 }

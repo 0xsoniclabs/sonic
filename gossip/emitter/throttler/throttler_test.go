@@ -73,14 +73,13 @@ func TestThrottler_updateAttendance_DominatingValidatorsAreOffline_AfterDominati
 				NonDominatingTimeout:   100, // fix long timeout
 			}
 
-			attendanceList := make(attendanceList)
-			attendanceList[1] = test.lastAttendance
+			attendanceList := newAttendanceList()
+			attendanceList.attendance[1] = test.lastAttendance
 			lastDominantSet := makeSet(1)
 
 			attendanceList.updateAttendance(world, config, lastDominantSet, currentAttempt)
 
-			attendance, found := attendanceList[1]
-			require.Equal(t, test.expectedOnline, found && attendance.online)
+			require.Equal(t, test.expectedOnline, attendanceList.isOnline(1))
 		})
 	}
 }
@@ -132,14 +131,13 @@ func TestThrottler_updateAttendance_SuppressedValidatorsAreOffline_AfterNonDomin
 				NonDominatingTimeout:   test.NonDominatingTimeout,
 			}
 
-			attendanceList := make(attendanceList)
-			attendanceList[1] = test.lastAttendance
+			attendanceList := newAttendanceList()
+			attendanceList.attendance[1] = test.lastAttendance
 
 			// notice empty lastDominantSet - validator is suppressed
 			attendanceList.updateAttendance(world, config, nil, currentAttempt)
 
-			attendance, found := attendanceList[1]
-			require.Equal(t, test.expectedOnline, found && attendance.online)
+			require.Equal(t, test.expectedOnline, attendanceList.isOnline(1))
 		})
 	}
 }
@@ -192,14 +190,13 @@ func TestThrottler_updateAttendance_OfflineValidatorsComeBackOnlineWithAnyNewSeq
 				NonDominatingTimeout:   test.NonDominatingTimeout,
 			}
 
-			attendanceList := make(attendanceList)
-			attendanceList[1] = test.lastAttendance
+			attendanceList := newAttendanceList()
+			attendanceList.attendance[1] = test.lastAttendance
 
 			// notice empty lastDominantSet - offline validator can not have dominant stake
 			attendanceList.updateAttendance(world, config, nil, currentAttempt)
 
-			attendance, found := attendanceList[1]
-			require.True(t, found && attendance.online)
+			require.True(t, attendanceList.isOnline(1))
 		})
 	}
 }
@@ -219,13 +216,12 @@ func TestThrottler_updateAttendance_ValidatorsRemainOffline_IfNoEventIsReceived(
 		NonDominatingTimeout:   100,
 	}
 
-	attendanceList := make(attendanceList)
+	attendanceList := newAttendanceList()
 
 	// notice empty lastDominantSet - offline validator can not have dominant stake
 	attendanceList.updateAttendance(world, config, nil, 15)
 
-	_, found := attendanceList[1]
-	require.False(t, found)
+	require.False(t, attendanceList.isOnline(1))
 }
 
 func makeEventWithSeq(seq idx.Event) *inter.Event {
