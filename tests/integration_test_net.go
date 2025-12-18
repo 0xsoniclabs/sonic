@@ -437,6 +437,7 @@ func startIntegrationTestNet(
 	}
 
 	require.NoError(t, net.start(), "failed to start the integration test network")
+	net.TracerCtx = t.Context()
 
 	if !options.SkipCleanUp {
 		t.Cleanup(net.Stop)
