@@ -280,8 +280,6 @@ func TestEthConfig_ProducesReadableConfig(t *testing.T) {
 	require.NoError(t, err, "could not get current block after epoch advancement")
 	require.Greater(t, currentBlock.NumberU64(), block1.NumberU64(), "block number did not advance after epoch advancement")
 
-	WaitForProofOf(t, client, int(currentBlock.NumberU64()))
-
 	// get new config
 	err = client.Client().Call(&response, "eth_config")
 	require.NoError(t, err, "eth_config failed")
