@@ -113,7 +113,6 @@ func TestComputeDominantSet_ReturnsInputValidatorsSet_WhenStakeCannotBeMet(t *te
 		require.ElementsMatch(t,
 			validators.IDs(),
 			slices.Collect(maps.Keys(set)),
-			"nominal stake > than online stake * threshold",
 		)
 	}
 }
