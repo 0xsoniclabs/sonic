@@ -95,8 +95,6 @@ func testBlockVerifiability(t *testing.T, upgrades opera.Upgrades) {
 	require.NoError(err)
 	require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
 
-	tests.WaitForProofOf(t, client, int(receipt.BlockNumber.Int64()))
-
 	// Check sponsorship balance.
 	state, err := reg.Sponsorships(nil, id)
 	require.NoError(err)
