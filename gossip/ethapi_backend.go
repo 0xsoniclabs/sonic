@@ -147,6 +147,10 @@ func (b *EthAPIBackend) BlockByNumber(ctx context.Context, number rpc.BlockNumbe
 	// Otherwise, resolve and return the block
 	var blk *evmcore.EvmBlock
 	if isLatestBlockNumber(number) {
+		isReady := b.hasProof(ctx, number)
+		if !isReady {
+			return nil, nil
+		}
 		blk = b.state.CurrentBlock()
 	} else if number == rpc.EarliestBlockNumber {
 		blk = b.state.Block(common.Hash{}, b.HistoryPruningCutoff())
@@ -155,6 +159,17 @@ func (b *EthAPIBackend) BlockByNumber(ctx context.Context, number rpc.BlockNumbe
 		blk = b.state.Block(common.Hash{}, n)
 	}
 	return blk, nil
+}
+
+func (b *EthAPIBackend) hasProof(ctx context.Context, blockNumber rpc.BlockNumber) bool {
+	state, _, err := b.StateAndHeaderByNumberOrHash(ctx, rpc.BlockNumberOrHash{BlockNumber: &blockNumber})
+	if err != nil {
+		return false
+	}
+	if proof, err := state.GetProof(common.Address{}, []common.Hash{}); err != nil || proof == nil {
+		return false
+	}
+	return true
 }
 
 // isLatestBlockNumber returns true if the block number is latest, pending, finalized or safe
