@@ -22,10 +22,9 @@ import (
 
 	"github.com/0xsoniclabs/sonic/gossip/emitter/config"
 	"github.com/0xsoniclabs/sonic/inter"
-	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 func TestThrottler_updateAttendance_DominatingValidatorsAreOffline_AfterDominatingTimeout(t *testing.T) {
@@ -61,9 +60,11 @@ func TestThrottler_updateAttendance_DominatingValidatorsAreOffline_AfterDominati
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			world := testFakeWorld{
-				1: makeTestEvent(123),
-			}
+			ctrl := gomock.NewController(t)
+			validators := makeValidatorsFromStakes(100)
+			world := NewMockWorldReader(ctrl)
+			world.EXPECT().GetEpochValidators().Return(validators, idx.Epoch(0))
+			world.EXPECT().GetLastEvent(idx.ValidatorID(1)).Return(makeEventWithSeq(123))
 
 			config := config.ThrottlerConfig{
 				Enabled:                true,
@@ -79,8 +80,7 @@ func TestThrottler_updateAttendance_DominatingValidatorsAreOffline_AfterDominati
 			attendanceList.updateAttendance(world, config, lastDominantSet, currentAttempt)
 
 			attendance, found := attendanceList[1]
-			online := found && attendance.online
-			require.Equal(t, test.expectedOnline, online)
+			require.Equal(t, test.expectedOnline, found && attendance.online)
 		})
 	}
 }
@@ -119,9 +119,11 @@ func TestThrottler_updateAttendance_SuppressedValidatorsAreOffline_AfterNonDomin
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			world := testFakeWorld{
-				1: makeTestEvent(123),
-			}
+			ctrl := gomock.NewController(t)
+			validators := makeValidatorsFromStakes(100)
+			world := NewMockWorldReader(ctrl)
+			world.EXPECT().GetEpochValidators().Return(validators, idx.Epoch(0))
+			world.EXPECT().GetLastEvent(idx.ValidatorID(1)).Return(makeEventWithSeq(123))
 
 			config := config.ThrottlerConfig{
 				Enabled:                true,
@@ -133,11 +135,11 @@ func TestThrottler_updateAttendance_SuppressedValidatorsAreOffline_AfterNonDomin
 			attendanceList := make(attendanceList)
 			attendanceList[1] = test.lastAttendance
 
+			// notice empty lastDominantSet - validator is suppressed
 			attendanceList.updateAttendance(world, config, nil, currentAttempt)
 
 			attendance, found := attendanceList[1]
-			online := found && attendance.online
-			require.Equal(t, test.expectedOnline, online)
+			require.Equal(t, test.expectedOnline, found && attendance.online)
 		})
 	}
 }
@@ -177,9 +179,11 @@ func TestThrottler_updateAttendance_OfflineValidatorsComeBackOnlineWithAnyNewSeq
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			world := testFakeWorld{
-				1: makeTestEvent(123),
-			}
+			ctrl := gomock.NewController(t)
+			validators := makeValidatorsFromStakes(100)
+			world := NewMockWorldReader(ctrl)
+			world.EXPECT().GetEpochValidators().Return(validators, idx.Epoch(0))
+			world.EXPECT().GetLastEvent(idx.ValidatorID(1)).Return(makeEventWithSeq(123))
 
 			config := config.ThrottlerConfig{
 				Enabled:                true,
@@ -191,46 +195,23 @@ func TestThrottler_updateAttendance_OfflineValidatorsComeBackOnlineWithAnyNewSeq
 			attendanceList := make(attendanceList)
 			attendanceList[1] = test.lastAttendance
 
+			// notice empty lastDominantSet - offline validator can not have dominant stake
 			attendanceList.updateAttendance(world, config, nil, currentAttempt)
 
 			attendance, found := attendanceList[1]
-			online := found && attendance.online
-			require.True(t, online)
+			require.True(t, found && attendance.online)
 		})
 	}
 
 }
 
-func makeTestEvent(seq idx.Event) inter.Event {
+func makeEventWithSeq(seq idx.Event) *inter.Event {
 	builder := &inter.MutableEventPayload{}
 	builder.SetSeq(seq)
-	return builder.Build().Event
+	return &builder.Build().Event
 }
 
-// testFakeWorld is a simple implementation of WorldReader for testing purposes.
-// Is is a collection of last events per validator.
-type testFakeWorld map[idx.ValidatorID]inter.Event
-
-func (fw testFakeWorld) GetEpochValidators() (*pos.Validators, idx.Epoch) {
-	builder := pos.NewBuilder()
-	for id := range fw {
-		builder.Set(id, 100)
-	}
-	return builder.Build(), idx.Epoch(0)
-}
-
-func (fw testFakeWorld) GetLastEvent(validatorID idx.ValidatorID) *inter.Event {
-	event, found := fw[validatorID]
-	if !found {
-		return nil
-	}
-	return &event
-}
-
-func (fw testFakeWorld) GetRules() opera.Rules {
-	return opera.Rules{}
-}
-
+// makeSet is a helper to create a dominantSet from a list of validator IDs.
 func makeSet(ids ...idx.ValidatorID) dominantSet {
 	res := make(dominantSet)
 	for _, id := range ids {
