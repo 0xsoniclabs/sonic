@@ -33,9 +33,9 @@ func TestThrottler_updateAttendance_DominatingValidatorsAreOffline_AfterDominati
 	const currentAttempt = 15
 
 	type testCase struct {
-		stalledTimeout config.Attempt
-		lastAttendance validatorAttendance
-		expectedOnline bool
+		dominatingTimeout config.Attempt
+		lastAttendance    validatorAttendance
+		expectedOnline    bool
 	}
 	tests := make(map[string]testCase)
 	for lastSeenAt := config.Attempt(1); lastSeenAt <= currentAttempt; lastSeenAt++ {
@@ -45,7 +45,7 @@ func TestThrottler_updateAttendance_DominatingValidatorsAreOffline_AfterDominati
 				lastSeenAt,
 				DominatingTimeout,
 			)] = testCase{
-				stalledTimeout: DominatingTimeout,
+				dominatingTimeout: DominatingTimeout,
 				lastAttendance: validatorAttendance{
 					lastSeenSeq: 123,
 					lastSeenAt:  lastSeenAt,
@@ -69,7 +69,7 @@ func TestThrottler_updateAttendance_DominatingValidatorsAreOffline_AfterDominati
 			config := config.ThrottlerConfig{
 				Enabled:                true,
 				DominantStakeThreshold: 0.75,
-				DominatingTimeout:      test.stalledTimeout,
+				DominatingTimeout:      test.dominatingTimeout,
 				NonDominatingTimeout:   100, // fix long timeout
 			}
 
