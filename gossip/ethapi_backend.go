@@ -283,10 +283,10 @@ func (b *EthAPIBackend) GetHeads(ctx context.Context, epoch rpc.BlockNumber) (he
 	}
 
 	if heads == nil {
-		return nil, errors.New("heads not found")
+		heads = hash.Events{}
 	}
 
-	return heads, nil
+	return
 }
 
 func (b *EthAPIBackend) epochWithDefault(ctx context.Context, epoch rpc.BlockNumber) (requested idx.Epoch, err error) {
