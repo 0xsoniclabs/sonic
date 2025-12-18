@@ -43,18 +43,24 @@ type validatorAttendance struct {
 // dominantSet is a helper tool to compute the set of online validators.
 type attendanceList map[idx.ValidatorID]validatorAttendance
 
-func (al attendanceList) updateAttendance(world WorldReader, config config.ThrottlerConfig, lastDominantSet dominantSet, attempt config.Attempt) {
+// updateAttendance updates the attendance list based on the current world state and configuration.
+func (al attendanceList) updateAttendance(
+	world WorldReader, config config.ThrottlerConfig,
+	lastDominantSet dominantSet, attempt config.Attempt) {
+
 	validators, _ := world.GetEpochValidators()
 	for _, id := range validators.IDs() {
 
 		lastEvent := world.GetLastEvent(id)
 		if lastEvent == nil {
+			// No event has been seen from this validator yet
 			continue
 		}
 
 		attendance, exists := al[id]
 
-		// different tolerance for being online for dominant vs non-dominant validators
+		// Different tolerance for being online for dominant vs non-dominant validators.
+		// Relaxed tolerance can only be used if the validator was online previously.
 		onlineThreshold := config.DominatingTimeout
 		if exists && attendance.online {
 			if _, wasDominant := lastDominantSet[id]; !wasDominant {
@@ -63,9 +69,11 @@ func (al attendanceList) updateAttendance(world WorldReader, config config.Throt
 		}
 
 		if attendance.lastSeenSeq == lastEvent.Seq() {
+			// if no progress has been made, re-evaluate online status
 			attendance.online = attendance.lastSeenAt+onlineThreshold > attempt
 			al[id] = attendance
 		} else {
+			// if any progress has been made, mark as online
 			al[id] = validatorAttendance{
 				lastSeenSeq: lastEvent.Seq(),
 				lastSeenAt:  attempt,
