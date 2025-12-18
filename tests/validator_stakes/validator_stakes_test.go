@@ -53,7 +53,7 @@ func TestValidatorsStakes_AllNodesProduceBlocks_WhenStakeDistributionChanges(t *
 	t.Run("first epoch is dominated by two validators",
 		func(t *testing.T) {
 			requireValidatorStakesEqualTo(t, validators, []uint64{750, 750, 125, 125, 125, 125})
-			requireAllNodesReachSameBlockHeight(t, net)
+			requireAllNodesReachLastBlock(t, net)
 		})
 
 	t.Run("second epoch has equal stake for all validators",
@@ -69,7 +69,7 @@ func TestValidatorsStakes_AllNodesProduceBlocks_WhenStakeDistributionChanges(t *
 			require.Equal(t, firstEpoch.Uint64()+1, secondEpoch.Uint64(),
 				"epoch did not advance as expected")
 			requireValidatorStakesEqualTo(t, validators, []uint64{750, 750, 750, 750, 750, 750})
-			requireAllNodesReachSameBlockHeight(t, net)
+			requireAllNodesReachLastBlock(t, net)
 		})
 
 	t.Run("third epoch is dominated by two validators again",
@@ -86,7 +86,7 @@ func TestValidatorsStakes_AllNodesProduceBlocks_WhenStakeDistributionChanges(t *
 			require.Equal(t, firstEpoch.Uint64()+2, secondEpoch.Uint64(),
 				"epoch did not advance as expected")
 			requireValidatorStakesEqualTo(t, validators, []uint64{750, 750, 750, 750, 1000750, 1000750})
-			requireAllNodesReachSameBlockHeight(t, net)
+			requireAllNodesReachLastBlock(t, net)
 		})
 }
 
@@ -155,10 +155,10 @@ func getValidatorsInCurrentEpoch(t *testing.T, sfcContract *sfc100.Contract) (ma
 	return validators, epoch
 }
 
-// requireAllNodesReachSameBlockHeight checks that all nodes in the provided
+// requireAllNodesReachLastBlock checks that all nodes in the provided
 // IntegrationTestNet have reached the same block height.
 // In combination with epoch advancement, this ensures that all nodes are producing blocks.
-func requireAllNodesReachSameBlockHeight(t *testing.T, net *tests.IntegrationTestNet) {
+func requireAllNodesReachLastBlock(t *testing.T, net *tests.IntegrationTestNet) {
 	t.Helper()
 
 	client, err := net.GetClient()
@@ -169,12 +169,22 @@ func requireAllNodesReachSameBlockHeight(t *testing.T, net *tests.IntegrationTes
 	number, err := client.BlockNumber(t.Context())
 	require.NoError(t, err)
 
+	requireAllNodesReachSameBlock(t, net, number)
+}
+
+func requireAllNodesReachSameBlock(t *testing.T, net *tests.IntegrationTestNet, blockNumber uint64) {
+	t.Helper()
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
 	for i := 1; i < net.NumNodes(); i++ {
 		nodeClient, err := net.GetClientConnectedToNode(i)
 		require.NoError(t, err)
 		defer nodeClient.Close()
 
 		// all other nodes should reach the same block number
-		tests.WaitForProofOf(t, nodeClient, int(number))
+		tests.WaitForProofOf(t, nodeClient, int(blockNumber))
 	}
 }

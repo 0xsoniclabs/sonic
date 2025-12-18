@@ -68,11 +68,11 @@ pipeline {
                 sh("codecov upload-process -r 0xsoniclabs/sonic -f ./build/coverage.cov -t $CODECOV_TOKEN")
             }
         }
+    }
 
-        stage('Clean up') {
-            steps {
-                sh 'make clean'
-            }
+    post {
+        always {
+            sh 'make clean'
         }
     }
 }
