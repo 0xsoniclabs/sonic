@@ -70,19 +70,32 @@ type Config struct {
 	PrevBlockVotesFile   FileConfig
 	PrevEpochVoteFile    FileConfig
 
-	ThrottleEvents             bool
-	ThrottlerSkipInSameFrame   uint
-	ThrottlerDominantThreshold float64
+	ThrottlerConfig ThrottlerConfig
+}
+
+// Attempt measures event emission attempts, it is used to define timeouts.
+type Attempt uint64
+
+// ThrottlerConfig is the configuration of event emission throttler.
+type ThrottlerConfig struct {
+	Enabled                bool
+	DominantStakeThreshold float64 // The aggregated stake threshold to consider the dominant set of validators
+	DominatingTimeout      Attempt // Number of attempts to wait before considering a dominant validator as offline
+	NonDominatingTimeout   Attempt // Maximum number of emission attempts that a suppressed validator can skip before being forced to emit
 }
 
 func (cfg *Config) Validate() error {
-	if cfg.ThrottlerDominantThreshold < 0.7 || 1 < cfg.ThrottlerDominantThreshold {
-		return fmt.Errorf("invalid Event Throttle dominating threshold option. It must be between 0 and 1, but is %v",
-			cfg.ThrottlerDominantThreshold)
+	return cfg.ThrottlerConfig.Validate()
+}
+
+func (cfg *ThrottlerConfig) Validate() error {
+	if cfg.DominantStakeThreshold < 0.7 || 1 < cfg.DominantStakeThreshold {
+		return fmt.Errorf("invalid Event Throttle dominating threshold option. It must be between 0.7 and 1, but is %v",
+			cfg)
 	}
-	if cfg.ThrottlerSkipInSameFrame < 2 {
-		return fmt.Errorf("invalid Event Throttle skip in same frame option. It must be more than or equal to 2, but is %v",
-			cfg.ThrottlerSkipInSameFrame)
+	if cfg.DominatingTimeout < 2 {
+		return fmt.Errorf("invalid dominating emission timeout. It must be more than or equal to 2, but is %v",
+			cfg.DominatingTimeout)
 	}
 	return nil
 }
@@ -110,9 +123,16 @@ func DefaultConfig() Config {
 
 		TxsCacheInvalidation: 200 * time.Millisecond,
 
-		ThrottleEvents:             false,
-		ThrottlerSkipInSameFrame:   3,
-		ThrottlerDominantThreshold: 0.75,
+		ThrottlerConfig: DefaultThrottlerConfig(),
+	}
+}
+
+func DefaultThrottlerConfig() ThrottlerConfig {
+	return ThrottlerConfig{
+		Enabled:                false,
+		DominantStakeThreshold: 0.75,
+		DominatingTimeout:      3,
+		NonDominatingTimeout:   100,
 	}
 }
 
