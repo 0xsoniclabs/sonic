@@ -23,30 +23,30 @@ import (
 )
 
 func TestEmitterConfig_ValidateConfig_ReportsError_ForInvalidDominatingThreshold(t *testing.T) {
-	cfg := DefaultConfig()
+	cfg := DefaultThrottlerConfig()
 	for _, value := range []float64{-0.1, -1, 0.69, 1.1, 2} {
-		cfg.ThrottlerDominantThreshold = value
+		cfg.DominantStakeThreshold = value
 		require.Error(t, cfg.Validate())
 	}
 }
 
 func TestEmitterConfig_ValidateConfig_ReportsError_ForInvalidSkipInSameFrame(t *testing.T) {
-	cfg := DefaultConfig()
-	for _, value := range []uint{0, 1} {
-		cfg.ThrottlerSkipInSameFrame = value
+	cfg := DefaultThrottlerConfig()
+	for _, value := range []Attempt{0, 1} {
+		cfg.DominatingTimeout = value
 		require.Error(t, cfg.Validate())
 	}
 }
 
 func TestEmitterConfig_ValidateConfig_ReturnsNil_ForValidConfig(t *testing.T) {
-	cfg := DefaultConfig()
+	cfg := DefaultThrottlerConfig()
 	validDominatingThresholds := []float64{0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1.0}
-	validSkipInSameFrame := []uint{2, 3, 4, 5, 10, 20}
+	validSkipInSameFrame := []Attempt{2, 3, 4, 5, 10, 20}
 
 	for _, domThreshold := range validDominatingThresholds {
 		for _, skipInSameFrame := range validSkipInSameFrame {
-			cfg.ThrottlerDominantThreshold = domThreshold
-			cfg.ThrottlerSkipInSameFrame = skipInSameFrame
+			cfg.DominantStakeThreshold = domThreshold
+			cfg.DominatingTimeout = skipInSameFrame
 			require.Nil(t, cfg.Validate())
 		}
 	}

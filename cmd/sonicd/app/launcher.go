@@ -85,7 +85,8 @@ func initFlags() {
 		flags.StateDbCheckPointInterval,
 		flags.EnableThrottlingFlag,
 		flags.ThrottlingDominantThresholdFlag,
-		flags.ThrottlingSkipInSameFrameFlag,
+		flags.ThrottlingDominatingTimeout,
+		flags.ThrottlingNonDominatingTimeout,
 	}
 	networkingFlags = []cli.Flag{
 		flags.BootnodesFlag,
