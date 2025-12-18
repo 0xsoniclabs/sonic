@@ -147,28 +147,10 @@ func (b *EthAPIBackend) BlockByNumber(ctx context.Context, number rpc.BlockNumbe
 	// Otherwise, resolve and return the block
 	var blk *evmcore.EvmBlock
 	if isLatestBlockNumber(number) {
-
-		state, _, err := b.StateAndHeaderByNumberOrHash(ctx, rpc.BlockNumberOrHash{BlockNumber: &number})
+		err := b.waitForProof(ctx, number)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get block by number: %w", err)
+			return nil, err
 		}
-		start := time.Now()
-		for {
-			if proof, err := state.GetProof(common.Address{}, []common.Hash{}); err == nil || proof != nil {
-				break
-			}
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			default:
-				if time.Since(start) > 1*time.Second {
-					// block not found within time limit
-					return nil, nil
-				}
-				time.Sleep(5 * time.Millisecond)
-			}
-		}
-
 		blk = b.state.CurrentBlock()
 	} else if number == rpc.EarliestBlockNumber {
 		blk = b.state.GetBlock(common.Hash{}, b.HistoryPruningCutoff())
@@ -177,6 +159,30 @@ func (b *EthAPIBackend) BlockByNumber(ctx context.Context, number rpc.BlockNumbe
 		blk = b.state.GetBlock(common.Hash{}, n)
 	}
 	return blk, nil
+}
+
+func (b *EthAPIBackend) waitForProof(ctx context.Context, blockNumber rpc.BlockNumber) error {
+	state, _, err := b.StateAndHeaderByNumberOrHash(ctx, rpc.BlockNumberOrHash{BlockNumber: &blockNumber})
+	if err != nil {
+		return fmt.Errorf("failed to get block by number: %w", err)
+	}
+	start := time.Now()
+	for {
+		if proof, err := state.GetProof(common.Address{}, []common.Hash{}); err == nil || proof != nil {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			if time.Since(start) > 1*time.Second {
+				// block not found within time limit
+				return nil
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+	return nil
 }
 
 // isLatestBlockNumber returns true if the block number is latest, pending, finalized or safe
