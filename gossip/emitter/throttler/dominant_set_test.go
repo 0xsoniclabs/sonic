@@ -87,7 +87,7 @@ func TestComputeDominantSet_UniformDistributionsAreDominated(t *testing.T) {
 	// of size ceil(n * threshold). Because rounding of float, the set may
 	// may be exceeded by one validator.
 
-	for threshold := float64(0.0); threshold <= 1.; threshold += 0.01 {
+	for threshold := float64(0.01); threshold <= 1.; threshold += 0.01 {
 		for n := 1; n <= 100; n++ {
 			t.Run(fmt.Sprintf("n=%d,threshold=%.2f", n, threshold), func(t *testing.T) {
 				validators := makeValidatorsFromStakes(slices.Repeat([]int64{10}, n)...)
@@ -116,6 +116,12 @@ func TestComputeDominantSet_ReturnsInputValidatorsSet_WhenStakeCannotBeMet(t *te
 			"nominal stake > than online stake * threshold",
 		)
 	}
+}
+
+func TestComputeDominantSet_ZeroThresholdResultsInEmptyDominantSet(t *testing.T) {
+	validators := makeValidatorsFromStakes(10, 20, 30)
+	set := computeDominantSet(validators, 0)
+	require.Empty(t, set, "dominant set shall be empty for zero threshold")
 }
 
 func TestComputeDominantSet_IsIndependentFromStakeOrder(t *testing.T) {
@@ -220,7 +226,7 @@ func FuzzDominantSet(f *testing.F) {
 	}
 
 	f.Fuzz(func(t *testing.T, byteStakes []byte, threshold float64) {
-		if threshold < 0.0 || threshold > 1.0 {
+		if threshold < 0.01 || threshold > 1.0 {
 			return
 		}
 
@@ -239,6 +245,8 @@ func FuzzDominantSet(f *testing.F) {
 			// if seed produces empty validators set, skip
 			return
 		}
+
+		fmt.Println("stakes", validators.SortedWeights())
 
 		set := computeDominantSet(validators, computeNeededStake(validators.TotalWeight(), threshold))
 		require.NotEmpty(t, set, "dominating set cannot be empty")

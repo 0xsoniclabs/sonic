@@ -43,19 +43,15 @@ func computeDominantSet(validators *pos.Validators, neededStake pos.Weight) domi
 	// Compute prefix sum of stakes until the threshold stake is reached,
 	// once reached, return the set of validators that contributed to it.
 	for _, id := range validators.SortedIDs() {
-		accumulated += validators.Get(id)
-		res[id] = struct{}{}
 		if accumulated >= neededStake {
 			return res
 		}
+		accumulated += validators.Get(id)
+		res[id] = struct{}{}
 	}
 
 	// If the threshold stake is not reached, return all validators.
-	fullSet := make(dominantSet)
-	for _, id := range validators.IDs() {
-		fullSet[id] = struct{}{}
-	}
-	return fullSet
+	return res
 }
 
 // computeNeededStake computes the stake needed to meet the given threshold.
