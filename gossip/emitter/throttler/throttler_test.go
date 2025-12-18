@@ -146,6 +146,7 @@ func TestThrottler_updateAttendance_OfflineValidatorsComeBackOnlineWithAnyNewSeq
 	t.Parallel()
 
 	const currentAttempt = 100
+	const lastSeenSeq = 122
 
 	type testCase struct {
 		NonDominatingTimeout config.Attempt
@@ -164,9 +165,8 @@ func TestThrottler_updateAttendance_OfflineValidatorsComeBackOnlineWithAnyNewSeq
 				)] = testCase{
 					NonDominatingTimeout: DominatingTimeout,
 					lastAttendance: validatorAttendance{
-						lastSeenSeq: 122, // one less the event about to be seen
+						lastSeenSeq: lastSeenSeq,
 						lastSeenAt:  lastSeenAt,
-						online:      false,
 					},
 				}
 			}
@@ -181,7 +181,8 @@ func TestThrottler_updateAttendance_OfflineValidatorsComeBackOnlineWithAnyNewSeq
 			validators := makeValidatorsFromStakes(100)
 			world := NewMockWorldReader(ctrl)
 			world.EXPECT().GetEpochValidators().Return(validators, idx.Epoch(0))
-			world.EXPECT().GetLastEvent(idx.ValidatorID(1)).Return(makeEventWithSeq(123))
+			world.EXPECT().GetLastEvent(idx.ValidatorID(1)).
+				Return(makeEventWithSeq(lastSeenSeq + 1))
 
 			config := config.ThrottlerConfig{
 				Enabled:                true,
