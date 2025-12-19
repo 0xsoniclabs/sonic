@@ -149,6 +149,7 @@ func TestThrottler_updateAttendance_OfflineValidatorsComeBackOnlineWithAnyNewSeq
 	const lastSeenSeq = 122
 
 	type testCase struct {
+		DominatingTimeout    config.Attempt
 		NonDominatingTimeout config.Attempt
 		lastAttendance       validatorAttendance
 	}
@@ -163,7 +164,8 @@ func TestThrottler_updateAttendance_OfflineValidatorsComeBackOnlineWithAnyNewSeq
 					NonDominatingTimeout,
 					DominatingTimeout,
 				)] = testCase{
-					NonDominatingTimeout: DominatingTimeout,
+					DominatingTimeout:    DominatingTimeout,
+					NonDominatingTimeout: NonDominatingTimeout,
 					lastAttendance: validatorAttendance{
 						lastSeenSeq: lastSeenSeq,
 						lastSeenAt:  lastSeenAt,
@@ -187,12 +189,13 @@ func TestThrottler_updateAttendance_OfflineValidatorsComeBackOnlineWithAnyNewSeq
 			config := config.ThrottlerConfig{
 				Enabled:                true,
 				DominantStakeThreshold: 0.75,
-				DominatingTimeout:      3,
+				DominatingTimeout:      test.DominatingTimeout,
 				NonDominatingTimeout:   test.NonDominatingTimeout,
 			}
 
 			attendanceList := newAttendanceList()
 			attendanceList.attendance[1] = test.lastAttendance
+			require.False(t, attendanceList.isOnline(1))
 
 			// notice empty lastDominantSet - offline validator can not have dominant stake
 			attendanceList.updateAttendance(world, config, nil, currentAttempt)
@@ -223,6 +226,55 @@ func TestThrottler_updateAttendance_ValidatorsRemainOffline_IfNoEventIsReceived(
 	attendanceList.updateAttendance(world, config, nil, 15)
 
 	require.False(t, attendanceList.isOnline(1))
+}
+
+func Test_AttendanceList_DoesNotFlipFlop(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	world := NewMockWorldReader(ctrl)
+
+	validators := makeValidatorsFromStakes(1)
+	world.EXPECT().GetEpochValidators().Return(validators, idx.Epoch(0)).AnyTimes()
+	world.EXPECT().GetLastEvent(gomock.Any()).Return(makeEventWithSeq(1)).Times(5)
+
+	config := config.ThrottlerConfig{
+		DominatingTimeout:    3,
+		NonDominatingTimeout: 10,
+	}
+
+	list := newAttendanceList()
+	list.attendance = map[idx.ValidatorID]validatorAttendance{
+		1: {
+			lastSeenSeq: 1,
+			lastSeenAt:  0,
+			online:      true,
+		},
+	}
+
+	dominantSet := makeSet(1)
+
+	// Initially the dominant validator is online.
+	list.updateAttendance(world, config, dominantSet, 1)
+	require.True(t, list.isOnline(1))
+	list.updateAttendance(world, config, dominantSet, 2)
+	require.True(t, list.isOnline(1))
+
+	// After 3 attempts, the dominant validator is considered offline.
+	list.updateAttendance(world, config, dominantSet, 3)
+	require.False(t, list.isOnline(1))
+
+	// The validator is no longer dominating.
+	dominantSet = makeSet()
+
+	// But it should stay offline until it makes progress.
+	list.updateAttendance(world, config, dominantSet, 4)
+	require.False(t, list.isOnline(1))
+	list.updateAttendance(world, config, dominantSet, 5)
+	require.False(t, list.isOnline(1))
+
+	// It is considered back online as a new event shows up.
+	world.EXPECT().GetLastEvent(gomock.Any()).Return(makeEventWithSeq(2))
+	list.updateAttendance(world, config, dominantSet, 6)
+	require.True(t, list.isOnline(1))
 }
 
 func makeEventWithSeq(seq idx.Event) *inter.Event {
