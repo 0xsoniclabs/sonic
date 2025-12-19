@@ -65,20 +65,19 @@ func (al *attendanceList) updateAttendance(
 			continue
 		}
 
-		attendance, exists := al.attendance[id]
+		// zero value defaults to offline
+		attendance := al.attendance[id]
 
 		// Different tolerance for being online for dominant vs non-dominant validators.
-		// Relaxed tolerance can only be used if the validator was online previously.
 		onlineThreshold := config.DominatingTimeout
-		if exists && attendance.online {
-			if _, wasDominant := lastDominantSet[id]; !wasDominant {
-				onlineThreshold = config.NonDominatingTimeout
-			}
+		if _, wasDominant := lastDominantSet[id]; !wasDominant {
+			onlineThreshold = config.NonDominatingTimeout
 		}
 
-		if attendance.lastSeenSeq == lastEvent.Seq() {
+		if attendance.lastSeenSeq >= lastEvent.Seq() {
 			// if no progress has been made, re-evaluate online status
-			attendance.online = attendance.lastSeenAt+onlineThreshold > attempt
+			// once a validator is marked offline, it stays offline until a new event is seen
+			attendance.online = attendance.online && attendance.lastSeenAt+onlineThreshold > attempt
 			al.attendance[id] = attendance
 		} else {
 			// if any progress has been made, mark as online
