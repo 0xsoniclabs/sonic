@@ -26,10 +26,135 @@ import (
 
 //go:generate mockgen -source=throttler.go -destination=throttler_mock.go -package=throttler
 
-type WorldReader interface {
-	GetRules() opera.Rules
-	GetEpochValidators() (*pos.Validators, idx.Epoch)
-	GetLastEvent(idx.ValidatorID) *inter.Event
+// ThrottlingState holds the state required to decide if an event can be safely skipped,
+// or if the validator must emit it to bring the stake online.
+type ThrottlingState struct {
+	// throttler configuration parameters
+	thisValidatorID idx.ValidatorID
+	config          config.ThrottlerConfig
+
+	// means to access the world state
+	world WorldReader
+
+	// internal state
+	attempt             config.Attempt
+	lastEmissionAttempt config.Attempt
+	attendanceList      attendanceList
+	lastDominatingSet   dominantSet
+}
+
+func NewThrottlingState(
+	validatorID idx.ValidatorID,
+	config config.ThrottlerConfig,
+	stateReader WorldReader,
+) ThrottlingState {
+
+	return ThrottlingState{
+		thisValidatorID: validatorID,
+		world:           stateReader,
+		config:          config,
+		attendanceList:  newAttendanceList(),
+	}
+}
+
+// SkipEventEmissionReason represents the reason for skipping or not skipping event emission.
+// it used to have specific testing of the different reasons to avoid skipping emission.
+type SkipEventEmissionReason int
+
+const (
+	SkipEventEmission SkipEventEmissionReason = iota
+	DoNotSkipEvent_ThrottlerDisabled
+	DoNotSkipEvent_CarriesTransactions
+	DoNotSkipEvent_DominantStake
+	DoNotSkipEvent_StakeNotDominated
+	DoNotSkipEvent_Heartbeat
+	DoNotSkipEvent_Genesis
+)
+
+// CanSkipEventEmission determines whether to skip the emission of the given event.
+//
+// It returns true if the event emission should be skipped, false otherwise.
+func (ts *ThrottlingState) CanSkipEventEmission(event inter.EventPayloadI) SkipEventEmissionReason {
+
+	if !ts.config.Enabled {
+		return DoNotSkipEvent_ThrottlerDisabled
+	}
+
+	ts.attempt++
+
+	// reset state on epoch start
+	if event.SelfParent() == nil {
+		ts.resetState()
+	}
+
+	ts.attendanceList.updateAttendance(ts.world, ts.config, ts.lastDominatingSet, ts.attempt)
+
+	skip := ts.canSkip(event)
+
+	if skip != SkipEventEmission {
+		ts.lastEmissionAttempt = ts.attempt
+	}
+
+	return skip
+}
+
+// canSkip determines if the event emission can be skipped based on the current throttling state.
+// When it is safe to skip emission, the function returns SkipEventEmission.
+// any other case, it return a reason to not skipping emission for this event.
+func (ts *ThrottlingState) canSkip(event inter.EventPayloadI) SkipEventEmissionReason {
+
+	if len(event.Transactions()) > 0 {
+		return DoNotSkipEvent_CarriesTransactions
+	}
+
+	if event.SelfParent() == nil {
+		return DoNotSkipEvent_Genesis
+	}
+
+	rules := ts.world.GetRules()
+	NonDominatingTimeout := min(
+		ts.config.NonDominatingTimeout/2,
+		config.Attempt(rules.Economy.BlockMissedSlack)/2)
+	if ts.lastEmissionAttempt+NonDominatingTimeout <= ts.attempt {
+		return DoNotSkipEvent_Heartbeat
+	}
+
+	// Filter offline validators based on their attendance
+	allValidators, _ := ts.world.GetEpochValidators()
+	onlineValidators := ts.getOnlineValidators(allValidators)
+
+	// Compute dominant set among online validators
+	ts.lastDominatingSet = computeDominantSet(
+		onlineValidators,
+		computeNeededStake(
+			allValidators.TotalWeight(),
+			ts.config.DominantStakeThreshold,
+		),
+	)
+
+	if _, isDominant := ts.lastDominatingSet[ts.thisValidatorID]; isDominant {
+		return DoNotSkipEvent_DominantStake
+	}
+
+	return SkipEventEmission
+}
+
+// getOnlineValidators returns a subset of validators in epoch which are currently considered online.
+func (ts *ThrottlingState) getOnlineValidators(allValidators *pos.Validators) *pos.Validators {
+	builder := pos.NewBuilder()
+	for _, id := range allValidators.IDs() {
+		if ts.attendanceList.isOnline(id) {
+			builder.Set(id, allValidators.Get(id))
+		}
+	}
+	return builder.Build()
+}
+
+// resetState clears the internal state of the throttler, to be called on epoch start.
+func (ts *ThrottlingState) resetState() {
+	ts.attempt = 0
+	ts.lastEmissionAttempt = 0
+	ts.attendanceList = newAttendanceList()
 }
 
 // validatorAttendance holds information about a validator's online status.
@@ -61,7 +186,6 @@ func (al *attendanceList) updateAttendance(
 
 		lastEvent := world.GetLastEvent(id)
 		if lastEvent == nil {
-			// No event has been seen from this validator yet
 			continue
 		}
 
@@ -93,4 +217,12 @@ func (al *attendanceList) updateAttendance(
 func (al *attendanceList) isOnline(id idx.ValidatorID) bool {
 	attendance, exists := al.attendance[id]
 	return exists && attendance.online
+}
+
+// WorldReader of the event throttler is an abstraction over the world state needed
+// to make throttling decisions.
+type WorldReader interface {
+	GetRules() opera.Rules
+	GetEpochValidators() (*pos.Validators, idx.Epoch)
+	GetLastEvent(idx.ValidatorID) *inter.Event
 }
