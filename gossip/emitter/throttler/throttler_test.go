@@ -171,6 +171,77 @@ func TestThrottling_canSkipEventEmission_DoNotSkip_WhenValidatorBelongsToDominan
 	}
 }
 
+func TestThrottling_canSkipEventEmission_DoNotSkip_WhenValidatorHasNotParticipatedInBlocksForTooLong(t *testing.T) {
+	t.Parallel()
+
+	// this test assumes local validator is non-dominant, use id 4
+	validatorId := idx.ValidatorID(4)
+	validators := makeValidatorsFromStakes(10, 10, 10, 10)
+
+	for nonDominatingTimeout := config.Attempt(0); nonDominatingTimeout <= 100; nonDominatingTimeout += 5 {
+		for blockMissedSlack := idx.Block(0); blockMissedSlack <= 100; blockMissedSlack += 10 {
+			t.Run(fmt.Sprintf("nonDominatingTimeout=%d,blockMissedSlack=%d",
+				nonDominatingTimeout, blockMissedSlack), func(t *testing.T) {
+				t.Parallel()
+
+				rules := opera.Rules{
+					Economy: opera.EconomyRules{
+						BlockMissedSlack: blockMissedSlack,
+					},
+				}
+				throttlerConfig := config.ThrottlerConfig{
+					Enabled:                true,
+					DominantStakeThreshold: 0.75,
+					DominatingTimeout:      0,
+					NonDominatingTimeout:   nonDominatingTimeout,
+				}
+
+				ctrl := gomock.NewController(t)
+				world := NewMockWorldReader(ctrl)
+				world.EXPECT().GetEpochValidators().Return(validators, idx.Epoch(0)).AnyTimes()
+				world.EXPECT().GetRules().Return(rules).AnyTimes()
+
+				state := NewThrottlingState(validatorId, throttlerConfig, world)
+
+				event := inter.NewMockEventPayloadI(ctrl)
+				event.EXPECT().Transactions().Return(types.Transactions{}).AnyTimes()
+				event.EXPECT().SelfParent().Return(&hash.Event{42}).AnyTimes()
+
+				// heartbeat timeout is the minimum between
+				// half of NonDominatingTimeout and half of BlockMissedSlack
+				timeout := min(
+					config.Attempt(rules.Economy.BlockMissedSlack)/2,
+					state.config.NonDominatingTimeout/2,
+				)
+
+				attempt := 0
+				for range int(timeout) - 1 {
+
+					for _, id := range validators.IDs() {
+						// all validators return next event, to be considered online
+						lastEvent := makeEventWithSeq(1 + idx.Event(attempt))
+						world.EXPECT().GetLastEvent(id).Return(lastEvent)
+					}
+
+					skip := state.CanSkipEventEmission(event)
+					require.Equal(t, SkipEventEmission, skip)
+					attempt++
+				}
+
+				for _, id := range validators.IDs() {
+					// all validators return next event, to be considered online
+					lastEvent := makeEventWithSeq(1 + idx.Event(attempt))
+					world.EXPECT().GetLastEvent(id).Return(lastEvent)
+				}
+
+				// after timeout attempts, heartbeat should be respected
+				skip := state.CanSkipEventEmission(event)
+				require.Equal(t, DoNotSkipEvent_Heartbeat, skip)
+			})
+		}
+	}
+}
+
 func TestThrottling_canSkipEventEmission_DoNotSkip_WhenEventCarriesTransactions(t *testing.T) {
 	t.Parallel()
 

@@ -111,6 +111,11 @@ func (ts *ThrottlingState) canSkip(event inter.EventPayloadI) SkipEventEmissionR
 		return DoNotSkipEvent_Genesis
 	}
 
+	// Evaluate heartbeat condition,
+	// - Has this validator not participated in blocks for too long?
+	//   This prevents suppressed validators from being slashed for inactivity
+	// - Has this validator not emitted for too long?
+	//   This prevents other validators from flagging suppressed validators as offline.
 	rules := ts.world.GetRules()
 	NonDominatingTimeout := min(
 		ts.config.NonDominatingTimeout/2,
