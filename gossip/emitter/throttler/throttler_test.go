@@ -149,6 +149,7 @@ func TestThrottler_updateAttendance_OfflineValidatorsComeBackOnlineWithAnyNewSeq
 	const lastSeenSeq = 122
 
 	type testCase struct {
+		DominatingTimeout    config.Attempt
 		NonDominatingTimeout config.Attempt
 		lastAttendance       validatorAttendance
 	}
@@ -163,7 +164,8 @@ func TestThrottler_updateAttendance_OfflineValidatorsComeBackOnlineWithAnyNewSeq
 					NonDominatingTimeout,
 					DominatingTimeout,
 				)] = testCase{
-					NonDominatingTimeout: DominatingTimeout,
+					DominatingTimeout:    DominatingTimeout,
+					NonDominatingTimeout: NonDominatingTimeout,
 					lastAttendance: validatorAttendance{
 						lastSeenSeq: lastSeenSeq,
 						lastSeenAt:  lastSeenAt,
@@ -187,7 +189,7 @@ func TestThrottler_updateAttendance_OfflineValidatorsComeBackOnlineWithAnyNewSeq
 			config := config.ThrottlerConfig{
 				Enabled:                true,
 				DominantStakeThreshold: 0.75,
-				DominatingTimeout:      3,
+				DominatingTimeout:      test.DominatingTimeout,
 				NonDominatingTimeout:   test.NonDominatingTimeout,
 			}
 
