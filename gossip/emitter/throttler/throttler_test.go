@@ -195,6 +195,7 @@ func TestThrottler_updateAttendance_OfflineValidatorsComeBackOnlineWithAnyNewSeq
 
 			attendanceList := newAttendanceList()
 			attendanceList.attendance[1] = test.lastAttendance
+			require.False(t, attendanceList.isOnline(1))
 
 			// notice empty lastDominantSet - offline validator can not have dominant stake
 			attendanceList.updateAttendance(world, config, nil, currentAttempt)
