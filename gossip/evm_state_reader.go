@@ -76,7 +76,7 @@ func (r *EvmStateReader) CurrentHeader() *evmcore.EvmHeader {
 	return r.getBlock(common.Hash{}, n, false).Header()
 }
 
-func (r *EvmStateReader) LastHeaderWithArchiveState() (*evmcore.EvmHeader, error) {
+func (r *EvmStateReader) LastBlockWithArchiveState() (*evmcore.EvmBlock, error) {
 	latestBlock := r.store.GetLatestBlockIndex()
 
 	// make sure the block is present in the archive
@@ -88,7 +88,7 @@ func (r *EvmStateReader) LastHeaderWithArchiveState() (*evmcore.EvmHeader, error
 		latestBlock = idx.Block(latestArchiveBlock)
 	}
 
-	return r.getBlock(common.Hash{}, latestBlock, false).Header(), nil
+	return r.getBlock(common.Hash{}, latestBlock, false), nil
 }
 
 func (r *EvmStateReader) GetHeaderByNumber(n uint64) *evmcore.EvmHeader {

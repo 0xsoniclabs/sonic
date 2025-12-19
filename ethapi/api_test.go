@@ -124,10 +124,11 @@ func TestAPI_GetProof(t *testing.T) {
 	mockState := state.NewMockStateDB(ctrl)
 	mockProof := witness.NewMockProof(ctrl)
 	mockHeader := &evmcore.EvmHeader{Root: headerRoot}
+	mockBlock := &evmcore.EvmBlock{EvmHeader: *mockHeader}
 
 	blkNr := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
 
-	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(gomock.Any(), blkNr).Return(mockState, mockHeader, nil)
+	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(gomock.Any(), blkNr).Return(mockState, mockBlock, nil)
 	mockState.EXPECT().GetProof(common.Address(addr), hexKeys).Return(mockProof, nil)
 	mockProof.EXPECT().GetState(cc.Hash(headerRoot), addr, cc.Key(hexKeys[0])).Return(value, true, nil)
 	mockProof.EXPECT().GetStorageElements(cc.Hash(headerRoot), addr, cc.Key(hexKeys[0])).Return(storageElements, true)
@@ -168,10 +169,11 @@ func TestAPI_GetAccount(t *testing.T) {
 	mockState := state.NewMockStateDB(ctrl)
 	mockProof := witness.NewMockProof(ctrl)
 	mockHeader := &evmcore.EvmHeader{Root: headerRoot}
+	mockBlock := &evmcore.EvmBlock{EvmHeader: *mockHeader}
 
 	blkNr := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
 
-	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(gomock.Any(), blkNr).Return(mockState, mockHeader, nil)
+	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(gomock.Any(), blkNr).Return(mockState, mockBlock, nil)
 	mockState.EXPECT().GetProof(common.Address(addr), nil).Return(mockProof, nil)
 	mockProof.EXPECT().GetCodeHash(cc.Hash(headerRoot), addr).Return(codeHash, true, nil)
 	mockProof.EXPECT().GetAccountElements(cc.Hash(headerRoot), addr).Return(nil, storageRoot, true)
@@ -278,12 +280,13 @@ func TestEstimateGas(t *testing.T) {
 		Number: big.NewInt(1),
 		Root:   headerRoot,
 	}
+	mockBlock := &evmcore.EvmBlock{EvmHeader: *mockHeader}
 
 	blkNr := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
 
 	any := gomock.Any()
 	mockBackend.EXPECT().GetNetworkRules(any, idx.Block(1)).Return(&opera.Rules{}, nil).AnyTimes()
-	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, blkNr).Return(mockState, mockHeader, nil).AnyTimes()
+	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, blkNr).Return(mockState, mockBlock, nil).AnyTimes()
 	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000))
 	mockBackend.EXPECT().MaxGasLimit().Return(uint64(10000000))
 	mockBackend.EXPECT().HeaderByNumber(any, any).Return(mockHeader, nil)
@@ -406,10 +409,13 @@ func TestBlockOverrides(t *testing.T) {
 	block := &evmcore.EvmBlock{}
 	block.Number = big.NewInt(int64(blockNr))
 
+	mockHeader := &evmcore.EvmHeader{Number: big.NewInt(int64(blockNr))}
+	mockBlock := &evmcore.EvmBlock{EvmHeader: *mockHeader}
+
 	any := gomock.Any()
 	mockBackend.EXPECT().BlockByNumber(any, any).Return(block, nil).AnyTimes()
 	mockBackend.EXPECT().GetNetworkRules(any, any).Return(&opera.Rules{}, nil).AnyTimes()
-	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, any).Return(mockState, &evmcore.EvmHeader{Number: big.NewInt(int64(blockNr))}, nil).AnyTimes()
+	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, any).Return(mockState, mockBlock, nil).AnyTimes()
 	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000)).AnyTimes()
 	mockBackend.EXPECT().ChainConfig(gomock.Any()).Return(&params.ChainConfig{}).AnyTimes()
 	mockBackend.EXPECT().RPCEVMTimeout().Return(time.Duration(0)).AnyTimes()
@@ -546,11 +552,14 @@ func runEstimateGasOverrideTest(t *testing.T, test stateOverrideEstimateGasTest)
 	block.Number = big.NewInt(int64(blockNr))
 	rpcBlkNr := rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(blockNr))
 
+	mockHeader := &evmcore.EvmHeader{Number: big.NewInt(int64(blockNr))}
+	mockBlock := &evmcore.EvmBlock{EvmHeader: *mockHeader}
+
 	any := gomock.Any()
 	mockBackend.EXPECT().BlockByNumber(any, any).Return(block, nil).AnyTimes()
 	mockBackend.EXPECT().HeaderByNumber(any, any).Return(&block.EvmHeader, nil).Times(2)
 	mockBackend.EXPECT().GetNetworkRules(any, any).Return(&opera.Rules{}, nil).AnyTimes()
-	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, any).Return(mockState, &evmcore.EvmHeader{Number: big.NewInt(int64(blockNr))}, nil).AnyTimes()
+	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, any).Return(mockState, mockBlock, nil).AnyTimes()
 	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000)).AnyTimes()
 	mockBackend.EXPECT().ChainConfig(any).Return(&params.ChainConfig{}).AnyTimes()
 	mockBackend.EXPECT().RPCEVMTimeout().Return(time.Duration(0)).AnyTimes()
@@ -1114,6 +1123,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 				Number:  big.NewInt(1),
 				BaseFee: big.NewInt(10000000),
 			}
+			mockBlock := &evmcore.EvmBlock{EvmHeader: header}
 
 			mockState := state.NewMockStateDB(ctrl)
 			require.NotNil(t, test.setupStateDb, "setupStateDb must be defined")
@@ -1123,17 +1133,17 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 			backend.EXPECT().GetNetworkRules(gomock.Any(), gomock.Any()).
 				Return(&opera.Rules{}, nil).AnyTimes()
 			backend.EXPECT().StateAndHeaderByNumberOrHash(gomock.Any(), blockOrHash).
-				Return(mockState, &header, nil).AnyTimes()
+				Return(mockState, mockBlock, nil).AnyTimes()
 			backend.EXPECT().GetEVM(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 				DoAndReturn(makeTestEVM(test.upgrades)).AnyTimes()
-			backend.EXPECT().CurrentBlock().AnyTimes().Return(&evmcore.EvmBlock{EvmHeader: header})
+			backend.EXPECT().CurrentBlock().AnyTimes().Return(mockBlock)
 			backend.EXPECT().ChainConfig(gomock.Any()).AnyTimes().Return(makeChainConfig(test.upgrades))
 			backend.EXPECT().SuggestGasTipCap(gomock.Any(), gomock.Any()).AnyTimes().Return(big.NewInt(1))
 			backend.EXPECT().MinGasPrice().AnyTimes().Return(big.NewInt(1))
 			backend.EXPECT().RPCGasCap().AnyTimes().Return(uint64(10000000))
 			backend.EXPECT().MaxGasLimit().AnyTimes().Return(uint64(10000000))
 			backend.EXPECT().StateAndHeaderByNumberOrHash(gomock.Any(), gomock.Any()).
-				Return(mockState, &header, nil).AnyTimes()
+				Return(mockState, mockBlock, nil).AnyTimes()
 			if test.extraSetupBackend != nil {
 				test.extraSetupBackend(backend)
 			}

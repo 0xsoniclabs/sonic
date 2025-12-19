@@ -675,11 +675,11 @@ func (mr *MockBackendMockRecorder) SendTx(ctx, signedTx any) *gomock.Call {
 }
 
 // StateAndHeaderByNumberOrHash mocks base method.
-func (m *MockBackend) StateAndHeaderByNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (state.StateDB, *evmcore.EvmHeader, error) {
+func (m *MockBackend) StateAndHeaderByNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (state.StateDB, *evmcore.EvmBlock, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "StateAndHeaderByNumberOrHash", ctx, blockNrOrHash)
 	ret0, _ := ret[0].(state.StateDB)
-	ret1, _ := ret[1].(*evmcore.EvmHeader)
+	ret1, _ := ret[1].(*evmcore.EvmBlock)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
 }
