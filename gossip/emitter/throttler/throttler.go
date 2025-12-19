@@ -74,7 +74,7 @@ func (al *attendanceList) updateAttendance(
 			onlineThreshold = config.NonDominatingTimeout
 		}
 
-		if attendance.lastSeenSeq == lastEvent.Seq() {
+		if attendance.lastSeenSeq >= lastEvent.Seq() {
 			// if no progress has been made, re-evaluate online status
 			// once a validator is marked offline, it stays offline until a new event is seen
 			attendance.online = attendance.online && attendance.lastSeenAt+onlineThreshold > attempt
