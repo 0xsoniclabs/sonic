@@ -27,7 +27,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/require"
 )
 
@@ -252,23 +251,13 @@ func getUsedEventVersion(
 	t.Helper()
 	require := require.New(t)
 
-	// Get the current epoch.
-	block := struct {
-		Epoch hexutil.Uint64
-	}{}
-	err := client.Client().Call(&block, "eth_getBlockByNumber", rpc.BlockNumber(-1), false)
-	require.NoError(err)
-
-	// Get the head events of the current epoch.
-	heads := []hexutil.Bytes{}
-	err = client.Client().Call(&heads, "dag_getHeads", rpc.BlockNumber(block.Epoch))
-	require.NoError(err)
+	heads := tests.GetLatestEvents(t, client)
 
 	// Download one of the head events and fetch the version.
 	event := struct {
 		Version hexutil.Uint64
 	}{}
-	err = client.Client().Call(&event, "dag_getEvent", heads[0].String())
+	err := client.Client().Call(&event, "dag_getEvent", heads[0].String())
 	require.NoError(err)
 
 	return int(event.Version)
