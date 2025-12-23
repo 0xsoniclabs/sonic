@@ -98,6 +98,22 @@ func (ts *ThrottlingState) CanSkipEventEmission(event inter.EventPayloadI) SkipE
 	return skip
 }
 
+// computeOnlineDominantSet computes the dominant accounting only for validators
+// considered online.
+func (ts *ThrottlingState) computeOnlineDominantSet() dominantSet {
+	allValidators, _ := ts.world.GetEpochValidators()
+	onlineValidators := ts.getOnlineValidators(allValidators)
+
+	// Compute dominant set among online validators
+	return computeDominantSet(
+		onlineValidators,
+		computeNeededStake(
+			allValidators.TotalWeight(),
+			ts.config.DominantStakeThreshold,
+		),
+	)
+}
+
 // canSkip determines if the event emission can be skipped based on the current throttling state.
 // When it is safe to skip emission, the function returns SkipEventEmission.
 // any other case, it return a reason to not skipping emission for this event.
@@ -124,19 +140,7 @@ func (ts *ThrottlingState) canSkip(event inter.EventPayloadI) SkipEventEmissionR
 		return DoNotSkipEvent_Heartbeat
 	}
 
-	// Filter offline validators based on their attendance
-	allValidators, _ := ts.world.GetEpochValidators()
-	onlineValidators := ts.getOnlineValidators(allValidators)
-
-	// Compute dominant set among online validators
-	ts.lastDominatingSet = computeDominantSet(
-		onlineValidators,
-		computeNeededStake(
-			allValidators.TotalWeight(),
-			ts.config.DominantStakeThreshold,
-		),
-	)
-
+	ts.lastDominatingSet = ts.computeOnlineDominantSet()
 	if _, isDominant := ts.lastDominatingSet[ts.thisValidatorID]; isDominant {
 		return DoNotSkipEvent_DominantStake
 	}
