@@ -245,8 +245,6 @@ func FuzzDominantSet(f *testing.F) {
 			return
 		}
 
-		fmt.Println("stakes", validators.SortedWeights())
-
 		set := computeDominantSet(validators, computeNeededStake(validators.TotalWeight(), threshold))
 		require.NotEmpty(t, set, "dominating set cannot be empty")
 
