@@ -217,32 +217,45 @@ func TestThrottling_canSkipEventEmission_DoNotSkip_WhenValidatorHasNotParticipat
 				attempt := 0
 				for range int(timeout) - 1 {
 
-					for _, id := range validators.IDs() {
-						// all validators return next event, to be considered online
-						lastEvent := makeEventWithSeq(1 + idx.Event(attempt))
-						world.EXPECT().GetLastEvent(id).Return(lastEvent)
-					}
+					keepNodesOnline(validators, attempt, world)
 
 					skip := state.CanSkipEventEmission(event)
 					require.Equal(t, SkipEventEmission, skip)
 					attempt++
 				}
 
-				for _, id := range validators.IDs() {
-					// all validators return next event, to be considered online
-					lastEvent := makeEventWithSeq(1 + idx.Event(attempt))
-					world.EXPECT().GetLastEvent(id).Return(lastEvent)
-				}
+				keepNodesOnline(validators, attempt, world)
 
 				// after timeout attempts, heartbeat should be respected
 				skip := state.CanSkipEventEmission(event)
 				require.Equal(t, DoNotSkipEvent_Heartbeat, skip)
+				attempt++
+
+				// for all block slack which is larger than 1 attempt,
+				// the next attempt should be skipped again
+				if timeout > 1 {
+
+					keepNodesOnline(validators, attempt, world)
+
+					skip = state.CanSkipEventEmission(event)
+					require.Equal(t, SkipEventEmission, skip)
+				}
 			})
 		}
 	}
 }
 
-func TestThrottling_canSkipEventEmission_DoNotSkip_WhenEventCarriesTransactions(t *testing.T) {
+// keepNodesOnline makes all validators appear online, this helps to isolate
+// the heartbeat logic in tests.
+func keepNodesOnline(validators *pos.Validators, attempt int, world *MockWorldReader) {
+	for _, id := range validators.IDs() {
+		// all validators return next event, to be considered online
+		lastEvent := makeEventWithSeq(1 + idx.Event(attempt+1))
+		world.EXPECT().GetLastEvent(id).Return(lastEvent)
+	}
+}
+
+func TestThrottling_CanSkipEventEmission_DoNotSkip_WhenEventCarriesTransactions(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
