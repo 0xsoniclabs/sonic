@@ -270,34 +270,63 @@ func TestThrottling_canSkipEventEmission_DoNotSkip_WhenEventCarriesTransactions(
 	require.Equal(t, DoNotSkipEvent_CarriesTransactions, skip)
 }
 
-func TestThrottling_canSkipEventEmission_DoNotSkip_GenesisEvents(t *testing.T) {
+func TestThrottling_CanSkipEventEmission_DoNotSkip_GenesisEvents(t *testing.T) {
 	t.Parallel()
+
+	// All validators shall emit, including non-dominant ones
+	validators := makeValidatorsFromStakes(500, 300, 200)
 
 	ctrl := gomock.NewController(t)
 	world := NewMockWorldReader(ctrl)
-	world.EXPECT().GetEpochValidators().Return(makeValidatorsFromStakes(500, 300, 200), idx.Epoch(0)).AnyTimes()
+	world.EXPECT().GetEpochValidators().Return(validators, idx.Epoch(0)).AnyTimes()
 	world.EXPECT().GetRules().Return(opera.Rules{}).AnyTimes()
 	lastEvent := makeEventWithSeq(123)
 	world.EXPECT().GetLastEvent(gomock.Any()).Return(lastEvent).AnyTimes()
 
-	state := NewThrottlingState(3,
-		config.ThrottlerConfig{
-			Enabled:                true,
-			DominantStakeThreshold: 0.75,
-			DominatingTimeout:      0,
-			NonDominatingTimeout:   10,
-		},
-		world)
+	for id := idx.ValidatorID(1); id <= idx.ValidatorID(validators.Len()); id++ {
 
-	event := inter.NewMockEventPayloadI(ctrl)
-	event.EXPECT().Transactions()
-	event.EXPECT().SelfParent().MinTimes(1)
+		state := NewThrottlingState(id,
+			config.ThrottlerConfig{
+				Enabled:                true,
+				DominantStakeThreshold: 0.75,
+				DominatingTimeout:      0,
+				NonDominatingTimeout:   10,
+			},
+			world)
 
-	skip := state.CanSkipEventEmission(event)
-	require.Equal(t, DoNotSkipEvent_Genesis, skip)
+		event := inter.NewMockEventPayloadI(ctrl)
+		event.EXPECT().Transactions()
+		event.EXPECT().SelfParent().MinTimes(1)
+
+		skip := state.CanSkipEventEmission(event)
+		require.Equal(t, DoNotSkipEvent_Genesis, skip)
+	}
 }
 
-func TestThrottling_canSkipEventEmission_DoNotSkip_RespectHeartbeatEvents(t *testing.T) {
+func TestThrottling_ResetsState(t *testing.T) {
+	t.Parallel()
+
+	state := NewThrottlingState(1, config.ThrottlerConfig{}, nil)
+
+	state.attempt = 100
+	state.lastEmissionAttempt = 100
+	state.attendanceList = attendanceList{
+		attendance: map[idx.ValidatorID]validatorAttendance{
+			1: {},
+			2: {},
+			3: {},
+		},
+	}
+
+	state.resetState()
+
+	require.Zero(t, state.attempt)
+	require.Zero(t, state.lastEmissionAttempt)
+	require.Empty(t, state.attendanceList.attendance)
+	require.Empty(t, state.lastDominatingSet)
+}
+
+func TestThrottling_CanSkipEventEmission_DoNotSkip_RespectHeartbeatEvents(t *testing.T) {
 	t.Parallel()
 
 	for _, NonDominatingTimeout := range []config.Attempt{4, 5, 10, 25} {

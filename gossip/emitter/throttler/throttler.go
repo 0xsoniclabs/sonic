@@ -160,6 +160,7 @@ func (ts *ThrottlingState) resetState() {
 	ts.attempt = 0
 	ts.lastEmissionAttempt = 0
 	ts.attendanceList = newAttendanceList()
+	ts.lastDominatingSet = nil
 }
 
 // validatorAttendance holds information about a validator's online status.
