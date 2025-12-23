@@ -31,7 +31,7 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func TestThrottling_canSkipEventEmission_SkipEmission_WhenValidatorIsNonDominant(t *testing.T) {
+func TestThrottling_CanSkipEventEmission_SkipEmission_WhenValidatorIsNonDominant(t *testing.T) {
 	t.Parallel()
 
 	stakes := makeValidatorsFromStakes(
@@ -39,6 +39,7 @@ func TestThrottling_canSkipEventEmission_SkipEmission_WhenValidatorIsNonDominant
 		125, 125, 125, 125,
 	)
 
+	// iterate over non-dominant validator IDs
 	for _, id := range []idx.ValidatorID{3, 4, 5, 6} {
 		t.Run(fmt.Sprintf("validatorID=%d", id), func(t *testing.T) {
 			t.Parallel()
@@ -74,10 +75,9 @@ func TestThrottling_canSkipEventEmission_SkipEmission_WhenValidatorIsNonDominant
 	}
 }
 
-func TestThrottling_canSkipEventEmission_DoNotSkip_WhenDominantSetDoesNotExist(t *testing.T) {
+func TestThrottling_CanSkipEventEmission_DoNotSkip_WhenValidatorIsPartOfTheDominantSet(t *testing.T) {
 	t.Parallel()
 
-	// 3 validators with equal stake cannot be dominated by 75% threshold
 	stakes := makeValidatorsFromStakes(10, 10, 10)
 
 	ctrl := gomock.NewController(t)
@@ -108,7 +108,7 @@ func TestThrottling_canSkipEventEmission_DoNotSkip_WhenDominantSetDoesNotExist(t
 	require.Equal(t, DoNotSkipEvent_DominantStake, skip)
 }
 
-func TestThrottling_canSkipEventEmission_DoNotSkip_WhenValidatorBelongsToDominantSet(t *testing.T) {
+func TestThrottling_CanSkipEventEmission_DoNotSkip_WhenValidatorBelongsToDominantSet(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
@@ -171,7 +171,7 @@ func TestThrottling_canSkipEventEmission_DoNotSkip_WhenValidatorBelongsToDominan
 	}
 }
 
-func TestThrottling_canSkipEventEmission_DoNotSkip_WhenValidatorHasNotParticipatedInBlocksForTooLong(t *testing.T) {
+func TestThrottling_CanSkipEventEmission_DoNotSkip_WhenValidatorHasNotParticipatedInBlocksForTooLong(t *testing.T) {
 	t.Parallel()
 
 	// this test assumes local validator is non-dominant, use id 4
