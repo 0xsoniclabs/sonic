@@ -145,12 +145,12 @@ func (b *EthAPIBackend) HeaderByHash(ctx context.Context, h common.Hash) (*evmco
 // BlockByNumber returns evm block by its number, or nil if not exists.
 func (b *EthAPIBackend) BlockByNumber(ctx context.Context, number rpc.BlockNumber) (*evmcore.EvmBlock, error) {
 	// Otherwise, resolve and return the block
+	isReady := b.hasProof(ctx, number)
+	if !isReady {
+		return nil, nil
+	}
 	var blk *evmcore.EvmBlock
 	if isLatestBlockNumber(number) {
-		isReady := b.hasProof(ctx, number)
-		if !isReady {
-			return nil, nil
-		}
 		blk = b.state.CurrentBlock()
 	} else if number == rpc.EarliestBlockNumber {
 		blk = b.state.Block(common.Hash{}, b.HistoryPruningCutoff())
