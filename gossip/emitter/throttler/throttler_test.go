@@ -316,7 +316,7 @@ func TestThrottling_CanSkipEventEmission_DoNotSkip_GenesisEvents(t *testing.T) {
 	}
 }
 
-func TestThrottling_ResetsState(t *testing.T) {
+func TestThrottling_ResetState_ZeroesStateValues(t *testing.T) {
 	t.Parallel()
 
 	state := NewThrottlingState(1, config.ThrottlerConfig{}, nil)
