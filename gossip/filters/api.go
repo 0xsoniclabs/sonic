@@ -176,15 +176,8 @@ func (api *PublicFilterAPI) NewPendingTransactionFilter(fullTxs *bool) rpc.ID {
 
 	go func() {
 
-		updateMetric := func(int64) {}
-		if api.config.EnableMetrics {
-			newPendingTxFilterSubs.Inc(1)
-			defer newPendingTxFilterSubs.Dec(1)
-
-			updateMetric = func(n int64) {
-				sentPendingTxFilters.Mark(n)
-			}
-		}
+		updateMetric, decrement := api.setMetrics(newPendingTxFilterSubs, sentPendingTxFilters)
+		defer decrement()
 
 		for {
 			select {
@@ -221,14 +214,8 @@ func (api *PublicFilterAPI) NewPendingTransactions(ctx context.Context, fullTx *
 
 	go func() {
 
-		updateMetric := func(int64) {}
-		if api.config.EnableMetrics {
-			newPendingTxSubs.Inc(1)
-			defer newPendingTxSubs.Dec(1)
-			updateMetric = func(n int64) {
-				sentPendingTxs.Mark(n)
-			}
-		}
+		updateMetric, decrement := api.setMetrics(newPendingTxSubs, sentPendingTxs)
+		defer decrement()
 
 		incomingTxs := make(chan []*types.Transaction, 128)
 		pendingTxSub := api.events.SubscribePendingTxs(incomingTxs)
@@ -273,21 +260,15 @@ func (api *PublicFilterAPI) NewBlockFilter() rpc.ID {
 
 	go func() {
 
-		updateMetric := func() {}
-		if api.config.EnableMetrics {
-			newBlockFilterSubs.Inc(1)
-			defer newBlockFilterSubs.Dec(1)
-			updateMetric = func() {
-				sentBlockFilters.Mark(1)
-			}
-		}
+		updateMetric, decrement := api.setMetrics(newBlockFilterSubs, sentBlockFilters)
+		defer decrement()
 
 		for {
 			select {
 			case h := <-headers:
 				api.filtersMu.Lock()
 				if f, found := api.filters[headerSub.ID]; found {
-					updateMetric()
+					updateMetric(1)
 					f.hashes = append(f.hashes, *h.Hash)
 				}
 				api.filtersMu.Unlock()
@@ -314,14 +295,8 @@ func (api *PublicFilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, er
 
 	go func() {
 
-		updateMetric := func() {}
-		if api.config.EnableMetrics {
-			newHeadSubs.Inc(1)
-			defer newHeadSubs.Dec(1)
-			updateMetric = func() {
-				sentHeads.Mark(1)
-			}
-		}
+		updateMetric, decrement := api.setMetrics(newHeadSubs, sentHeads)
+		defer decrement()
 
 		headers := make(chan *evmcore.EvmHeaderJson)
 		headersSub := api.events.SubscribeNewHeads(headers)
@@ -329,7 +304,7 @@ func (api *PublicFilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, er
 		for {
 			select {
 			case h := <-headers:
-				updateMetric()
+				updateMetric(1)
 				_ = notifier.Notify(rpcSub.ID, h)
 			case <-rpcSub.Err():
 				headersSub.Unsubscribe()
@@ -360,20 +335,14 @@ func (api *PublicFilterAPI) Logs(ctx context.Context, crit FilterCriteria) (*rpc
 
 	go func() {
 
-		updateMetric := func() {}
-		if api.config.EnableMetrics {
-			newLogsSubs.Inc(1)
-			defer newLogsSubs.Dec(1)
-			updateMetric = func() {
-				sentLogs.Mark(1)
-			}
-		}
+		updateMetric, decrement := api.setMetrics(newLogsSubs, sentLogs)
+		defer decrement()
 
 		for {
 			select {
 			case logs := <-matchedLogs:
 				for _, log := range logs {
-					updateMetric()
+					updateMetric(1)
 					_ = notifier.Notify(rpcSub.ID, &log)
 				}
 			case <-rpcSub.Err(): // client send an unsubscribe request
@@ -416,14 +385,8 @@ func (api *PublicFilterAPI) NewFilter(crit FilterCriteria) (rpc.ID, error) {
 
 	go func() {
 
-		updateMetric := func(int64) {}
-		if api.config.EnableMetrics {
-			newLogsFilterSubs.Inc(1)
-			defer newLogsFilterSubs.Dec(1)
-			updateMetric = func(n int64) {
-				sentLogsFilters.Mark(n)
-			}
-		}
+		updateMetric, decrement := api.setMetrics(newLogsFilterSubs, sentLogsFilters)
+		defer decrement()
 
 		for {
 			select {
@@ -564,6 +527,23 @@ func (api *PublicFilterAPI) GetFilterChanges(id rpc.ID) (any, error) {
 	}
 
 	return []any{}, fmt.Errorf("filter not found")
+}
+
+func (api *PublicFilterAPI) setMetrics(subsMetric *metrics.Gauge, sentMetric *metrics.Meter) (updateMetric func(int64), decrement func()) {
+	updateMetric = func(n int64) {}
+	decrement = func() {}
+	if api.config.EnableMetrics {
+		subsMetric.Inc(1)
+
+		updateMetric = func(n int64) {
+			sentMetric.Mark(n)
+		}
+		decrement = func() {
+			subsMetric.Dec(1)
+		}
+
+	}
+	return updateMetric, decrement
 }
 
 func processPendingTransactionSubscription(api *PublicFilterAPI, f *filter) (any, error) {
