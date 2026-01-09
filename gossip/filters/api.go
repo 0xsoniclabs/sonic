@@ -34,11 +34,30 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
 var (
 	deadline = 5 * time.Minute // consider a filter inactive if it has not been polled for within deadline
+
+	newHeadSubs = metrics.GetOrRegisterGauge("subscriptions/newHeads/goroutines", nil)
+	sentHeads   = metrics.GetOrRegisterMeter("subscriptions/newHeads/sent", nil)
+
+	newBlockFilterSubs = metrics.GetOrRegisterGauge("subscriptions/newHeads/filters/goroutines", nil)
+	sentBlockFilters   = metrics.GetOrRegisterMeter("subscriptions/newHeads/filters/sent", nil)
+
+	newPendingTxSubs = metrics.GetOrRegisterGauge("subscriptions/pendingTxs/goroutines", nil)
+	sentPendingTxs   = metrics.GetOrRegisterMeter("subscriptions/pendingTxs/sent", nil)
+
+	newPendingTxFilterSubs = metrics.GetOrRegisterGauge("subscriptions/pendingTxs/filters/goroutines", nil)
+	sentPendingTxFilters   = metrics.GetOrRegisterMeter("subscriptions/pendingTxs/filters/sent", nil)
+
+	newLogsSubs = metrics.GetOrRegisterGauge("subscriptions/logs/goroutines", nil)
+	sentLogs    = metrics.GetOrRegisterMeter("subscriptions/logs/sent", nil)
+
+	newLogsFilterSubs = metrics.GetOrRegisterGauge("subscriptions/logs/filters/goroutines", nil)
+	sentLogsFilters   = metrics.GetOrRegisterMeter("subscriptions/logs/filters/sent", nil)
 )
 
 // filter is a helper struct that holds meta information over the filter type
@@ -60,6 +79,9 @@ type Config struct {
 	IndexedLogsBlockRangeLimit idx.Block
 	// Block range limit for logs search (unindexed).
 	UnindexedLogsBlockRangeLimit idx.Block
+	// EnableMetrics indicates whether to enable metrics collection for filters.
+	// Turned off by default to reduce overhead.
+	EnableMetrics bool
 }
 
 func DefaultConfig() Config {
@@ -153,11 +175,23 @@ func (api *PublicFilterAPI) NewPendingTransactionFilter(fullTxs *bool) rpc.ID {
 	api.filtersMu.Unlock()
 
 	go func() {
+
+		updateMetric := func(int64) {}
+		if api.config.EnableMetrics {
+			newPendingTxFilterSubs.Inc(1)
+			defer newPendingTxFilterSubs.Dec(1)
+
+			updateMetric = func(n int64) {
+				sentPendingTxFilters.Mark(n)
+			}
+		}
+
 		for {
 			select {
 			case ptx := <-pendingTxs:
 				api.filtersMu.Lock()
 				if f, found := api.filters[pendingTxSub.ID]; found {
+					updateMetric(int64(len(ptx)))
 					f.pendingTransactions = append(f.pendingTransactions, ptx...)
 				}
 				api.filtersMu.Unlock()
@@ -186,6 +220,16 @@ func (api *PublicFilterAPI) NewPendingTransactions(ctx context.Context, fullTx *
 	rpcSub := notifier.CreateSubscription()
 
 	go func() {
+
+		updateMetric := func(int64) {}
+		if api.config.EnableMetrics {
+			newPendingTxSubs.Inc(1)
+			defer newPendingTxSubs.Dec(1)
+			updateMetric = func(n int64) {
+				sentPendingTxs.Mark(n)
+			}
+		}
+
 		incomingTxs := make(chan []*types.Transaction, 128)
 		pendingTxSub := api.events.SubscribePendingTxs(incomingTxs)
 
@@ -200,6 +244,7 @@ func (api *PublicFilterAPI) NewPendingTransactions(ctx context.Context, fullTx *
 					if fullTx != nil && *fullTx {
 						payload = ethapi.NewRPCPendingTransaction(tx, tx.GasPrice(), api.backend.ChainID())
 					}
+					updateMetric(int64(len(txs)))
 					_ = notifier.Notify(rpcSub.ID, payload)
 				}
 			case <-rpcSub.Err():
@@ -227,11 +272,22 @@ func (api *PublicFilterAPI) NewBlockFilter() rpc.ID {
 	api.filtersMu.Unlock()
 
 	go func() {
+
+		updateMetric := func() {}
+		if api.config.EnableMetrics {
+			newBlockFilterSubs.Inc(1)
+			defer newBlockFilterSubs.Dec(1)
+			updateMetric = func() {
+				sentBlockFilters.Mark(1)
+			}
+		}
+
 		for {
 			select {
 			case h := <-headers:
 				api.filtersMu.Lock()
 				if f, found := api.filters[headerSub.ID]; found {
+					updateMetric()
 					f.hashes = append(f.hashes, *h.Hash)
 				}
 				api.filtersMu.Unlock()
@@ -257,12 +313,23 @@ func (api *PublicFilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, er
 	rpcSub := notifier.CreateSubscription()
 
 	go func() {
+
+		updateMetric := func() {}
+		if api.config.EnableMetrics {
+			newHeadSubs.Inc(1)
+			defer newHeadSubs.Dec(1)
+			updateMetric = func() {
+				sentHeads.Mark(1)
+			}
+		}
+
 		headers := make(chan *evmcore.EvmHeaderJson)
 		headersSub := api.events.SubscribeNewHeads(headers)
 
 		for {
 			select {
 			case h := <-headers:
+				updateMetric()
 				_ = notifier.Notify(rpcSub.ID, h)
 			case <-rpcSub.Err():
 				headersSub.Unsubscribe()
@@ -293,10 +360,20 @@ func (api *PublicFilterAPI) Logs(ctx context.Context, crit FilterCriteria) (*rpc
 
 	go func() {
 
+		updateMetric := func() {}
+		if api.config.EnableMetrics {
+			newLogsSubs.Inc(1)
+			defer newLogsSubs.Dec(1)
+			updateMetric = func() {
+				sentLogs.Mark(1)
+			}
+		}
+
 		for {
 			select {
 			case logs := <-matchedLogs:
 				for _, log := range logs {
+					updateMetric()
 					_ = notifier.Notify(rpcSub.ID, &log)
 				}
 			case <-rpcSub.Err(): // client send an unsubscribe request
@@ -338,11 +415,22 @@ func (api *PublicFilterAPI) NewFilter(crit FilterCriteria) (rpc.ID, error) {
 	api.filtersMu.Unlock()
 
 	go func() {
+
+		updateMetric := func(int64) {}
+		if api.config.EnableMetrics {
+			newLogsFilterSubs.Inc(1)
+			defer newLogsFilterSubs.Dec(1)
+			updateMetric = func(n int64) {
+				sentLogsFilters.Mark(n)
+			}
+		}
+
 		for {
 			select {
 			case l := <-logs:
 				api.filtersMu.Lock()
 				if f, found := api.filters[logsSub.ID]; found {
+					updateMetric(int64(len(l)))
 					f.logs = append(f.logs, l...)
 				}
 				api.filtersMu.Unlock()

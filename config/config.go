@@ -29,6 +29,7 @@ import (
 	"strings"
 
 	carmen "github.com/0xsoniclabs/carmen/go/state"
+	"github.com/0xsoniclabs/sonic/cmd/sonicd/metrics"
 	"github.com/0xsoniclabs/sonic/config/flags"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/version"
@@ -253,6 +254,11 @@ func gossipConfigWithFlags(ctx *cli.Context, src gossip.Config) gossip.Config {
 	if ctx.IsSet(flags.StructLogLimitFlag.Name) {
 		cfg.StructLogLimit = ctx.GlobalInt(flags.StructLogLimitFlag.Name)
 	}
+
+	if ctx.GlobalIsSet(metrics.MetricsEnabledFlag.Name) && ctx.GlobalBool(metrics.MetricsEnabledExpensiveFlag.Name) {
+		cfg.FilterAPI.EnableMetrics = true
+	}
+
 	return cfg
 }
 
