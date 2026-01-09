@@ -165,40 +165,40 @@ func isLatestBlockNumber(number rpc.BlockNumber) bool {
 		number == rpc.SafeBlockNumber
 }
 
-// StateAndHeaderByNumberOrHash returns evm state and block header by block number or block hash, err if not exists.
-func (b *EthAPIBackend) StateAndHeaderByNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (state.StateDB, *evmcore.EvmHeader, error) {
+// StateAndBlockByNumberOrHash returns evm state and block header by block number or block hash, err if not exists.
+func (b *EthAPIBackend) StateAndBlockByNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (state.StateDB, *evmcore.EvmBlock, error) {
 
-	var header *evmcore.EvmHeader
+	var block *evmcore.EvmBlock
 	if number, ok := blockNrOrHash.Number(); ok {
 		if isLatestBlockNumber(number) {
 			var err error
-			header, err = b.state.LastHeaderWithArchiveState()
+			block, err = b.state.LastBlockWithArchiveState()
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to get latest block number; %v", err)
 			}
 		} else if number == rpc.EarliestBlockNumber {
-			header = b.state.GetHeader(common.Hash{}, b.HistoryPruningCutoff())
+			block = b.state.GetBlock(common.Hash{}, b.HistoryPruningCutoff())
 		} else {
-			header = b.state.GetHeader(common.Hash{}, uint64(number))
+			block = b.state.GetBlock(common.Hash{}, uint64(number))
 		}
 	} else if h, ok := blockNrOrHash.Hash(); ok {
 		index := b.svc.store.GetBlockIndex(hash.Event(h))
 		if index == nil {
 			return nil, nil, errors.New("header not found")
 		}
-		header = b.state.GetHeader(common.Hash{}, uint64(*index))
+		block = b.state.GetBlock(common.Hash{}, uint64(*index))
 	} else {
 		return nil, nil, errors.New("unknown header selector")
 	}
 
-	if header == nil {
+	if block == nil {
 		return nil, nil, errors.New("header not found")
 	}
-	stateDb, err := b.state.GetRpcStateDB(header.Number, header.Root)
+	stateDb, err := b.state.GetRpcStateDB(block.Number, block.Root)
 	if err != nil {
 		return nil, nil, err
 	}
-	return stateDb, header, nil
+	return stateDb, block, nil
 }
 
 // decodeShortEventID decodes ShortID
