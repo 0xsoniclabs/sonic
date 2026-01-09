@@ -21,6 +21,7 @@ import (
 	"math/big"
 	"testing"
 
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/blobbasefee"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -37,7 +38,7 @@ import (
 
 func TestBlobTransaction(t *testing.T) {
 
-	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	session := testnet.GetIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 	t.Parallel()
 
 	t.Run("blob tx with non-empty blobs is rejected", func(t *testing.T) {
@@ -65,7 +66,7 @@ func TestBlobTransaction(t *testing.T) {
 	})
 }
 
-func testBlobTx_WithBlobsIsRejected(t *testing.T, session IntegrationTestNetSession) {
+func testBlobTx_WithBlobsIsRejected(t *testing.T, session testnet.IntegrationTestNetSession) {
 	require := require.New(t)
 	nonZeroNumberOfBlobs := 2
 
@@ -88,7 +89,7 @@ func testBlobTx_WithBlobsIsRejected(t *testing.T, session IntegrationTestNetSess
 	require.ErrorContains(err, "non-empty blob transaction are not supported")
 }
 
-func testBlobTx_WithEmptyBlobsIsExecuted(t *testing.T, session IntegrationTestNetSession) {
+func testBlobTx_WithEmptyBlobsIsExecuted(t *testing.T, session testnet.IntegrationTestNetSession) {
 	require := require.New(t)
 
 	tx, err := createTestBlobTransaction(t, session)
@@ -104,7 +105,7 @@ func testBlobTx_WithEmptyBlobsIsExecuted(t *testing.T, session IntegrationTestNe
 	)
 }
 
-func testBlobTx_WithNilSidecarIsExecuted(t *testing.T, session IntegrationTestNetSession) {
+func testBlobTx_WithNilSidecarIsExecuted(t *testing.T, session testnet.IntegrationTestNetSession) {
 	require := require.New(t)
 
 	tx, err := createTestBlobTransactionWithNilSidecar(t, session)
@@ -120,11 +121,11 @@ func testBlobTx_WithNilSidecarIsExecuted(t *testing.T, session IntegrationTestNe
 	)
 }
 
-func testBlobBaseFee_CanReadBlobBaseFeeFromHeadAndBlockAndHistory(t *testing.T, session IntegrationTestNetSession) {
+func testBlobBaseFee_CanReadBlobBaseFeeFromHeadAndBlockAndHistory(t *testing.T, session testnet.IntegrationTestNetSession) {
 	require := require.New(t)
 
 	// Deploy the blob base fee contract.
-	contract, _, err := DeployContract(session, blobbasefee.DeployBlobbasefee)
+	contract, _, err := testnet.DeployContract(session, blobbasefee.DeployBlobbasefee)
 	require.NoError(err, "failed to deploy contract; ", err)
 
 	// Collect the current blob base fee from the head state.
@@ -161,7 +162,7 @@ func testBlobBaseFee_CanReadBlobBaseFeeFromHeadAndBlockAndHistory(t *testing.T, 
 	require.Equal(fromLog, uint64(*fromRpc), "blob base fee mismatch; from log %v, from rpc %v", fromLog, fromRpc)
 }
 
-func testBlobBaseFee_CanReadBlobGasUsed(t *testing.T, session IntegrationTestNetSession) {
+func testBlobBaseFee_CanReadBlobGasUsed(t *testing.T, session testnet.IntegrationTestNetSession) {
 	require := require.New(t)
 
 	client, err := session.GetClient()
@@ -193,7 +194,7 @@ func testBlobBaseFee_CanReadBlobGasUsed(t *testing.T, session IntegrationTestNet
 // Helper Functions
 ////////////////////////////////////////////////////////////////////////////////
 
-func createTestBlobTransaction(t *testing.T, session IntegrationTestNetSession, data ...[]byte) (*types.Transaction, error) {
+func createTestBlobTransaction(t *testing.T, session testnet.IntegrationTestNetSession, data ...[]byte) (*types.Transaction, error) {
 	require := require.New(t)
 
 	client, err := session.GetClient()
@@ -250,7 +251,7 @@ func createTestBlobTransaction(t *testing.T, session IntegrationTestNetSession, 
 	return types.SignTx(tx, types.NewCancunSigner(chainId), session.GetSessionSponsor().PrivateKey)
 }
 
-func createTestBlobTransactionWithNilSidecar(t *testing.T, session IntegrationTestNetSession) (*types.Transaction, error) {
+func createTestBlobTransactionWithNilSidecar(t *testing.T, session testnet.IntegrationTestNetSession) (*types.Transaction, error) {
 	require := require.New(t)
 
 	client, err := session.GetClient()
@@ -280,7 +281,7 @@ func createTestBlobTransactionWithNilSidecar(t *testing.T, session IntegrationTe
 	return types.SignTx(tx, types.NewCancunSigner(chainId), session.GetSessionSponsor().PrivateKey)
 }
 
-func checkBlocksSanity(t *testing.T, session IntegrationTestNetSession) {
+func checkBlocksSanity(t *testing.T, session testnet.IntegrationTestNetSession) {
 	// This check is a regression from an issue found while fetching a block by
 	// number where the last block was not correctly serialized
 	require := require.New(t)

@@ -22,8 +22,8 @@ import (
 
 	"github.com/0xsoniclabs/sonic/gossip/contract/sfc100"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera/contracts/sfc"
-	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -38,7 +38,7 @@ func TestValidatorsStakes_AllNodesProduceBlocks_WhenStakeDistributionChanges(t *
 		750, 750, // 75% of stake
 		125, 125, 125, 125, // 25% of stake
 	}
-	net := tests.StartIntegrationTestNetWithJsonGenesis(t, tests.IntegrationTestNetOptions{
+	net := testnet.StartIntegrationTestNetWithJsonGenesis(t, testnet.IntegrationTestNetOptions{
 		ValidatorsStake: initialStake,
 	})
 
@@ -90,14 +90,14 @@ func TestValidatorsStakes_AllNodesProduceBlocks_WhenStakeDistributionChanges(t *
 		})
 }
 
-func increaseValidatorStake(t *testing.T, net *tests.IntegrationTestNet, sfcContract *sfc100.Contract, id idx.ValidatorID, amount *big.Int) {
+func increaseValidatorStake(t *testing.T, net *testnet.IntegrationTestNet, sfcContract *sfc100.Contract, id idx.ValidatorID, amount *big.Int) {
 	t.Helper()
 
 	// First endow the validator account with enough FTM to stake.
 	// If this step is not done, the account calling sfc.Delegate will be
 	// delegating into the stake. The interaction with the sfc is simpler
 	// if there is only one delegator, which is the validator account itself.
-	account := tests.Account{
+	account := testnet.Account{
 		PrivateKey: makefakegenesis.FakeKey(id),
 	}
 	receipt, err := net.EndowAccount(account.Address(), amount)
@@ -158,7 +158,7 @@ func getValidatorsInCurrentEpoch(t *testing.T, sfcContract *sfc100.Contract) (ma
 // requireAllNodesReachSameBlockHeight checks that all nodes in the provided
 // IntegrationTestNet have reached the same block height.
 // In combination with epoch advancement, this ensures that all nodes are producing blocks.
-func requireAllNodesReachSameBlockHeight(t *testing.T, net *tests.IntegrationTestNet) {
+func requireAllNodesReachSameBlockHeight(t *testing.T, net *testnet.IntegrationTestNet) {
 	t.Helper()
 
 	client, err := net.GetClient()
@@ -175,6 +175,6 @@ func requireAllNodesReachSameBlockHeight(t *testing.T, net *tests.IntegrationTes
 		defer nodeClient.Close()
 
 		// all other nodes should reach the same block number
-		tests.WaitForProofOf(t, nodeClient, int(number))
+		testnet.WaitForProofOf(t, nodeClient, int(number))
 	}
 }

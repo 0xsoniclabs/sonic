@@ -21,9 +21,9 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/contract/driverauth100"
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
-	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -36,7 +36,7 @@ func TestGasSubsidies_InternalTransaction_HaveConsistentNonces(t *testing.T) {
 
 	upgrades := opera.GetBrioUpgrades()
 	upgrades.GasSubsidies = true
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+	net := testnet.StartIntegrationTestNet(t, testnet.IntegrationTestNetOptions{
 		Upgrades: &upgrades,
 	})
 
@@ -44,7 +44,7 @@ func TestGasSubsidies_InternalTransaction_HaveConsistentNonces(t *testing.T) {
 	require.NoError(t, err)
 	defer client.Close()
 
-	sponsoredSender := tests.NewAccount()
+	sponsoredSender := testnet.NewAccount()
 	totalValueForSponsorships := new(big.Int).Mul(
 		big.NewInt(1e18),
 		big.NewInt(100),
@@ -58,10 +58,10 @@ func TestGasSubsidies_InternalTransaction_HaveConsistentNonces(t *testing.T) {
 	require.NoError(t, err, "failed to create contract instance")
 
 	tests := map[string]struct {
-		scenario func(t *testing.T, net *tests.IntegrationTestNet)
+		scenario func(t *testing.T, net *testnet.IntegrationTestNet)
 	}{
 		"single sponsored transaction": {
-			scenario: func(t *testing.T, net *tests.IntegrationTestNet) {
+			scenario: func(t *testing.T, net *testnet.IntegrationTestNet) {
 				nonce, err := client.PendingNonceAt(t.Context(), sponsoredSender.Address())
 				require.NoError(t, err)
 				txData := &types.LegacyTx{
@@ -78,7 +78,7 @@ func TestGasSubsidies_InternalTransaction_HaveConsistentNonces(t *testing.T) {
 			},
 		},
 		"multiple sponsored transactions are executed within the same block": {
-			scenario: func(t *testing.T, net *tests.IntegrationTestNet) {
+			scenario: func(t *testing.T, net *testnet.IntegrationTestNet) {
 				// This scenario issues multiple sponsored transactions asynchronously
 				// to facilitate their inclusion in the same block.
 
@@ -113,7 +113,7 @@ func TestGasSubsidies_InternalTransaction_HaveConsistentNonces(t *testing.T) {
 			},
 		},
 		"an sponsored transaction right at epoch change": {
-			scenario: func(t *testing.T, net *tests.IntegrationTestNet) {
+			scenario: func(t *testing.T, net *testnet.IntegrationTestNet) {
 				// This test issues both a sponsored transaction and an epoch change transaction
 				// asynchronously and attempts to have them included in the same block.
 				//

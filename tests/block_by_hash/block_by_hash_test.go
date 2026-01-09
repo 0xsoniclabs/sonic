@@ -21,8 +21,8 @@ import (
 	"strconv"
 	"testing"
 
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter_event_emitter"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
@@ -30,14 +30,14 @@ import (
 
 func TestRPCGetLogs_BlockWithSkippedTransaction_HasCorrectTxIndexes(t *testing.T) {
 
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
-		Upgrades: tests.AsPointer(opera.GetBrioUpgrades()),
+	net := testnet.StartIntegrationTestNet(t, testnet.IntegrationTestNetOptions{
+		Upgrades: testnet.AsPointer(opera.GetBrioUpgrades()),
 		ClientExtraArguments: []string{
 			"--disable-txPool-validation",
 		},
 	})
 
-	contract, receipt, err := tests.DeployContract(net, counter_event_emitter.DeployCounterEventEmitter)
+	contract, receipt, err := testnet.DeployContract(net, counter_event_emitter.DeployCounterEventEmitter)
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
@@ -51,9 +51,9 @@ func TestRPCGetLogs_BlockWithSkippedTransaction_HasCorrectTxIndexes(t *testing.T
 	for range 5 {
 
 		// Make a transaction to be skipped.
-		accountSkipped := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
+		accountSkipped := testnet.MakeAccountWithBalance(t, net, big.NewInt(1e18))
 		initCode := make([]byte, 50000)
-		txSkip := tests.CreateTransaction(t, net, &types.LegacyTx{
+		txSkip := testnet.CreateTransaction(t, net, &types.LegacyTx{
 			Gas:  10_000_000,
 			To:   nil, // address 0x00 for contract creation
 			Data: initCode,

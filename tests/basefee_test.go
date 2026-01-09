@@ -19,6 +19,7 @@ package tests
 import (
 	"testing"
 
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/basefee"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -26,11 +27,11 @@ import (
 )
 
 func TestBaseFee_CanReadBaseFeeFromHeadAndBlockAndHistory(t *testing.T) {
-	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	session := testnet.GetIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 	t.Parallel()
 
 	// Deploy the base fee contract.
-	contract, _, err := DeployContract(session, basefee.DeployBasefee)
+	contract, _, err := testnet.DeployContract(session, basefee.DeployBasefee)
 	require.NoError(t, err)
 
 	// Collect the current base fee from the head state.

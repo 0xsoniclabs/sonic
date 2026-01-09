@@ -21,6 +21,7 @@ import (
 	"math/rand/v2"
 	"testing"
 
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter_event_emitter"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -34,20 +35,20 @@ func TestTransactionOrder(t *testing.T) {
 		numBlocks   = uint64(3)
 		numTxs      = numAccounts * numPerAcc
 	)
-	net := StartIntegrationTestNet(t)
+	net := testnet.StartIntegrationTestNet(t)
 
-	contract, _, err := DeployContract(net, counter_event_emitter.DeployCounterEventEmitter)
+	contract, _, err := testnet.DeployContract(net, counter_event_emitter.DeployCounterEventEmitter)
 	require.NoError(t, err)
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
 	defer client.Close()
 
-	accounts := make([]*Account, 0, numAccounts)
+	accounts := make([]*testnet.Account, 0, numAccounts)
 
 	// Only transactions from different accounts can change order.
 	for range numAccounts {
-		accounts = append(accounts, MakeAccountWithBalance(t, net, big.NewInt(1e18)))
+		accounts = append(accounts, testnet.MakeAccountWithBalance(t, net, big.NewInt(1e18)))
 	}
 
 	// Repeat the test for X number of blocks

@@ -32,9 +32,9 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
@@ -73,7 +73,7 @@ func testBlockVerifiability(t *testing.T, upgrades opera.Upgrades) {
 	updates := opera.GetSonicUpgrades()
 	updates.GasSubsidies = true
 
-	net := tests.StartIntegrationTestNetWithJsonGenesis(t, tests.IntegrationTestNetOptions{
+	net := testnet.StartIntegrationTestNetWithJsonGenesis(t, testnet.IntegrationTestNetOptions{
 		Upgrades: &updates,
 	})
 
@@ -95,7 +95,7 @@ func testBlockVerifiability(t *testing.T, upgrades opera.Upgrades) {
 	require.NoError(err)
 	require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
 
-	tests.WaitForProofOf(t, client, int(receipt.BlockNumber.Int64()))
+	testnet.WaitForProofOf(t, client, int(receipt.BlockNumber.Int64()))
 
 	// Check sponsorship balance.
 	state, err := reg.Sponsorships(nil, id)
@@ -103,7 +103,7 @@ func testBlockVerifiability(t *testing.T, upgrades opera.Upgrades) {
 	require.Equal(big.NewInt(1e18), state.Funds)
 
 	// Run some sponsored transactions interacting with the registry.
-	account := tests.NewAccount()
+	account := testnet.NewAccount()
 	signer := types.LatestSignerForChainID(net.GetChainId())
 	txs := []*types.Transaction{}
 	for i := range N {

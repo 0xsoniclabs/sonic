@@ -21,6 +21,7 @@ import (
 	"math/big"
 	"testing"
 
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/batch"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
@@ -50,7 +51,7 @@ import (
 // and do not implement ERC-20 as described in the EIP use case examples.
 func TestSetCodeTransaction(t *testing.T) {
 
-	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	session := testnet.GetIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 
 	t.Run("Operation", func(t *testing.T) {
 		t.Parallel()
@@ -134,21 +135,21 @@ func TestSetCodeTransaction(t *testing.T) {
 // - The sponsor account pays for the gas for the transaction
 // - The sponsored account is the context of the transaction, and its state is modified
 // - The delegate account is the contract that will be executed
-func testSponsoring(t *testing.T, net IntegrationTestNetSession) {
+func testSponsoring(t *testing.T, net testnet.IntegrationTestNetSession) {
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
 	defer client.Close()
 
 	// sponsor issues the SetCode transaction and pays for it
-	sponsor := MakeAccountWithBalance(t, net, big.NewInt(1e18))
+	sponsor := testnet.MakeAccountWithBalance(t, net, big.NewInt(1e18))
 	// sponsored is used as context for the call, its state will be modified
 	// without paying for the transaction
-	sponsored := MakeAccountWithBalance(t, net, big.NewInt(10))
-	receiver := MakeAccountWithBalance(t, net, new(big.Int))
+	sponsored := testnet.MakeAccountWithBalance(t, net, big.NewInt(10))
+	receiver := testnet.MakeAccountWithBalance(t, net, new(big.Int))
 
 	// Deploy the contract to forward the call
-	sponsoringDelegate, receipt, err := DeployContract(net, sponsoring.DeploySponsoring)
+	sponsoringDelegate, receipt, err := testnet.DeployContract(net, sponsoring.DeploySponsoring)
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 	delegateAddress := receipt.ContractAddress
@@ -198,7 +199,7 @@ func testSponsoring(t *testing.T, net IntegrationTestNetSession) {
 // - The sponsor and sponsored accounts are the same, this is a self-sponsored transaction.
 // - The delegate account is the contract that will be executed, which implements the batch of calls
 // - Multiple receiver accounts will receive the funds
-func testBatching(t *testing.T, net IntegrationTestNetSession) {
+func testBatching(t *testing.T, net testnet.IntegrationTestNetSession) {
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
@@ -206,11 +207,11 @@ func testBatching(t *testing.T, net IntegrationTestNetSession) {
 
 	// sender account batches multiple transfers of funds in a single transaction
 	// receivers will receive the funds
-	sender := MakeAccountWithBalance(t, net, big.NewInt(1e18)) // < pays transaction and transfers funds
-	receiver1 := NewAccount()
-	receiver2 := NewAccount()
+	sender := testnet.MakeAccountWithBalance(t, net, big.NewInt(1e18)) // < pays transaction and transfers funds
+	receiver1 := testnet.NewAccount()
+	receiver2 := testnet.NewAccount()
 
-	batchContract, deployReceipt, err := DeployContract(net, batch.DeployBatch)
+	batchContract, deployReceipt, err := testnet.DeployContract(net, batch.DeployBatch)
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusSuccessful, deployReceipt.Status)
 	batchContractAddress := deployReceipt.ContractAddress
@@ -262,22 +263,22 @@ func testBatching(t *testing.T, net IntegrationTestNetSession) {
 
 // testPrivilegeDeescalation executes a transaction where an account allows restricted access
 // to its internal state to a second account.
-func testPrivilegeDeescalation(t *testing.T, session IntegrationTestNetSession) {
+func testPrivilegeDeescalation(t *testing.T, session testnet.IntegrationTestNetSession) {
 
 	client, err := session.GetClient()
 	require.NoError(t, err)
 	defer client.Close()
 
-	// - Account A allows account B to execute certain operations on its behalf
-	// - Account A (account) is the context of the transaction, and its state is modified
-	// - Account B (userAccount) pays for the gas for the transaction
+	// - testnet.Account A allows account B to execute certain operations on its behalf
+	// - testnet.Account A (account) is the context of the transaction, and its state is modified
+	// - testnet.Account B (userAccount) pays for the gas for the transaction
 	// - Some part of the contract interface (DoPayment) is executable from account B
-	account := MakeAccountWithBalance(t, session, big.NewInt(1e18))     // < will transfer funds
-	userAccount := MakeAccountWithBalance(t, session, big.NewInt(1e18)) // < will pay for gas
-	receiver := NewAccount()                                            // < will receive funds
+	account := testnet.MakeAccountWithBalance(t, session, big.NewInt(1e18))     // < will transfer funds
+	userAccount := testnet.MakeAccountWithBalance(t, session, big.NewInt(1e18)) // < will pay for gas
+	receiver := testnet.NewAccount()                                            // < will receive funds
 
 	// Deploy the a contract to use as delegate
-	contract, receipt, err := DeployContract(session, privilege_deescalation.DeployPrivilegeDeescalation)
+	contract, receipt, err := testnet.DeployContract(session, privilege_deescalation.DeployPrivilegeDeescalation)
 	require.NoError(t, err)
 	delegate := receipt.ContractAddress
 
@@ -325,7 +326,7 @@ func testPrivilegeDeescalation(t *testing.T, session IntegrationTestNetSession) 
 	assert.Equal(t, big.NewInt(1234), receivedBalance)
 
 	// issue a transaction from and unauthorized account
-	unauthorizedAccount := MakeAccountWithBalance(t, session, big.NewInt(1e18))
+	unauthorizedAccount := testnet.MakeAccountWithBalance(t, session, big.NewInt(1e18))
 	txOpts, err = session.GetTransactOptions(unauthorizedAccount)
 	require.NoError(t, err)
 	txOpts.NoSend = true
@@ -348,16 +349,16 @@ func testPrivilegeDeescalation(t *testing.T, session IntegrationTestNetSession) 
 // testDelegateCanBeSetAndUnset checks that a delegate can be set and unset
 // The EIP-7702 specification describes the method to restore an EOA code to
 // its original state by setting the delegate to the zero address.
-func testDelegateCanBeSetAndUnset(t *testing.T, session IntegrationTestNetSession) {
+func testDelegateCanBeSetAndUnset(t *testing.T, session testnet.IntegrationTestNetSession) {
 
 	client, err := session.GetClient()
 	require.NoError(t, err)
 	defer client.Close()
 
-	account := MakeAccountWithBalance(t, session, big.NewInt(1e18))
+	account := testnet.MakeAccountWithBalance(t, session, big.NewInt(1e18))
 
 	// Deploy the a contract to use as delegate
-	counter, receipt, err := DeployContract(session, counter.DeployCounter)
+	counter, receipt, err := testnet.DeployContract(session, counter.DeployCounter)
 	require.NoError(t, err)
 	delegateAddress := receipt.ContractAddress
 
@@ -377,7 +378,7 @@ func testDelegateCanBeSetAndUnset(t *testing.T, session IntegrationTestNetSessio
 	require.Equal(t, expectedCode, codeSet, "code in account is expected to be delegation designation")
 
 	// wait until previous transaction has been
-	err = WaitUntilTransactionIsRetiredFromPool(t, client, setCodeTx)
+	err = testnet.WaitUntilTransactionIsRetiredFromPool(t, client, setCodeTx)
 	require.NoError(t, err, "transaction should be retired from the pool")
 
 	// unset by delegating to an empty address
@@ -394,7 +395,7 @@ func testDelegateCanBeSetAndUnset(t *testing.T, session IntegrationTestNetSessio
 
 // testInvalidAuthorizationsAreIgnored checks that invalid authorizations are ignored
 // whilst the transaction is still executed.
-func testInvalidAuthorizationsAreIgnored(t *testing.T, session IntegrationTestNetSession) {
+func testInvalidAuthorizationsAreIgnored(t *testing.T, session testnet.IntegrationTestNetSession) {
 
 	client, err := session.GetClient()
 	require.NoError(t, err)
@@ -405,11 +406,11 @@ func testInvalidAuthorizationsAreIgnored(t *testing.T, session IntegrationTestNe
 
 	// list invalid authorizations
 	wrongAuthorizations := map[string]struct {
-		makeAuthorization func(authority *Account, nonce uint64) (types.SetCodeAuthorization, error)
+		makeAuthorization func(authority *testnet.Account, nonce uint64) (types.SetCodeAuthorization, error)
 	}{
 		"authorization nonce too low": {
-			makeAuthorization: func(authority *Account, nonce uint64) (types.SetCodeAuthorization, error) {
-				return types.SignSetCode(NewAccount().PrivateKey, types.SetCodeAuthorization{
+			makeAuthorization: func(authority *testnet.Account, nonce uint64) (types.SetCodeAuthorization, error) {
+				return types.SignSetCode(testnet.NewAccount().PrivateKey, types.SetCodeAuthorization{
 					ChainID: *uint256.MustFromBig(chainId),
 					Address: common.Address{42},
 					// for self-sponsored transactions,
@@ -419,8 +420,8 @@ func testInvalidAuthorizationsAreIgnored(t *testing.T, session IntegrationTestNe
 			},
 		},
 		"authorization nonce too high": {
-			makeAuthorization: func(authority *Account, nonce uint64) (types.SetCodeAuthorization, error) {
-				return types.SignSetCode(NewAccount().PrivateKey, types.SetCodeAuthorization{
+			makeAuthorization: func(authority *testnet.Account, nonce uint64) (types.SetCodeAuthorization, error) {
+				return types.SignSetCode(testnet.NewAccount().PrivateKey, types.SetCodeAuthorization{
 					ChainID: *uint256.MustFromBig(chainId),
 					Address: common.Address{42},
 					// for self-sponsored transactions,
@@ -430,8 +431,8 @@ func testInvalidAuthorizationsAreIgnored(t *testing.T, session IntegrationTestNe
 			},
 		},
 		"wrong chain id": {
-			makeAuthorization: func(authority *Account, nonce uint64) (types.SetCodeAuthorization, error) {
-				return types.SignSetCode(NewAccount().PrivateKey, types.SetCodeAuthorization{
+			makeAuthorization: func(authority *testnet.Account, nonce uint64) (types.SetCodeAuthorization, error) {
+				return types.SignSetCode(testnet.NewAccount().PrivateKey, types.SetCodeAuthorization{
 					ChainID: *uint256.NewInt(0xDeffec8),
 					Address: common.Address{42},
 					Nonce:   nonce + 1,
@@ -439,7 +440,7 @@ func testInvalidAuthorizationsAreIgnored(t *testing.T, session IntegrationTestNe
 			},
 		},
 		"invalid signature": {
-			makeAuthorization: func(authority *Account, nonce uint64) (types.SetCodeAuthorization, error) {
+			makeAuthorization: func(authority *testnet.Account, nonce uint64) (types.SetCodeAuthorization, error) {
 				return types.SetCodeAuthorization{
 					ChainID: *uint256.MustFromBig(chainId),
 					Address: common.Address{42},
@@ -452,21 +453,21 @@ func testInvalidAuthorizationsAreIgnored(t *testing.T, session IntegrationTestNe
 
 	// for each of the invalid authorization, the following scenarios are tested:
 	scenarios := map[string]struct {
-		makeAuthorizations func(t *testing.T, wrong types.SetCodeAuthorization, rightAccount *Account) []types.SetCodeAuthorization
-		check              func(t *testing.T, wrongAccount, rightAccount *Account)
+		makeAuthorizations func(t *testing.T, wrong types.SetCodeAuthorization, rightAccount *testnet.Account) []types.SetCodeAuthorization
+		check              func(t *testing.T, wrongAccount, rightAccount *testnet.Account)
 	}{
 		"single wrong authorization": {
-			makeAuthorizations: func(t *testing.T, wrong types.SetCodeAuthorization, rightAccount *Account) []types.SetCodeAuthorization {
+			makeAuthorizations: func(t *testing.T, wrong types.SetCodeAuthorization, rightAccount *testnet.Account) []types.SetCodeAuthorization {
 				return []types.SetCodeAuthorization{wrong}
 			},
-			check: func(t *testing.T, wrongAccount, _ *Account) {
+			check: func(t *testing.T, wrongAccount, _ *testnet.Account) {
 				code, err := client.CodeAt(t.Context(), wrongAccount.Address(), nil)
 				require.NoError(t, err)
 				require.Equal(t, []byte{}, code, "code in account is expected to be unmodified")
 			},
 		},
 		"before correct authorization": {
-			makeAuthorizations: func(t *testing.T, wrong types.SetCodeAuthorization, rightAccount *Account) []types.SetCodeAuthorization {
+			makeAuthorizations: func(t *testing.T, wrong types.SetCodeAuthorization, rightAccount *testnet.Account) []types.SetCodeAuthorization {
 				nonce, err := client.NonceAt(t.Context(), rightAccount.Address(), nil)
 				require.NoError(t, err, "failed to get nonce for account", rightAccount.Address())
 
@@ -479,7 +480,7 @@ func testInvalidAuthorizationsAreIgnored(t *testing.T, session IntegrationTestNe
 				require.NoError(t, err, "failed to sign SetCode authorization")
 				return []types.SetCodeAuthorization{wrong, valid}
 			},
-			check: func(t *testing.T, wrongAccount, rightAccount *Account) {
+			check: func(t *testing.T, wrongAccount, rightAccount *testnet.Account) {
 				code, err := client.CodeAt(t.Context(), wrongAccount.Address(), nil)
 				require.NoError(t, err)
 				require.Equal(t, []byte{}, code, "code in account is expected to be unmodified")
@@ -491,7 +492,7 @@ func testInvalidAuthorizationsAreIgnored(t *testing.T, session IntegrationTestNe
 			},
 		},
 		"after correct authorization": {
-			makeAuthorizations: func(t *testing.T, wrong types.SetCodeAuthorization, rightAccount *Account) []types.SetCodeAuthorization {
+			makeAuthorizations: func(t *testing.T, wrong types.SetCodeAuthorization, rightAccount *testnet.Account) []types.SetCodeAuthorization {
 				nonce, err := client.NonceAt(t.Context(), rightAccount.Address(), nil)
 				require.NoError(t, err, "failed to get nonce for account", rightAccount.Address())
 
@@ -504,7 +505,7 @@ func testInvalidAuthorizationsAreIgnored(t *testing.T, session IntegrationTestNe
 				require.NoError(t, err, "failed to sign SetCode authorization")
 				return []types.SetCodeAuthorization{valid, wrong}
 			},
-			check: func(t *testing.T, wrongAccount, rightAccount *Account) {
+			check: func(t *testing.T, wrongAccount, rightAccount *testnet.Account) {
 				code, err := client.CodeAt(t.Context(), wrongAccount.Address(), nil)
 				require.NoError(t, err)
 				require.Equal(t, []byte{}, code, "code in account is expected to be unmodified")
@@ -523,14 +524,14 @@ func testInvalidAuthorizationsAreIgnored(t *testing.T, session IntegrationTestNe
 				session := session.SpawnSession(t)
 				t.Parallel()
 
-				wrongAuthAccount := MakeAccountWithBalance(t, session, big.NewInt(1e18)) // < will transfer funds
+				wrongAuthAccount := testnet.MakeAccountWithBalance(t, session, big.NewInt(1e18)) // < will transfer funds
 				nonce, err := client.NonceAt(t.Context(), wrongAuthAccount.Address(), nil)
 				require.NoError(t, err, "failed to get nonce for account", wrongAuthAccount.Address())
 
 				wrongAuthorization, err := test.makeAuthorization(wrongAuthAccount, nonce)
 				require.NoError(t, err, "failed to sign SetCode authorization")
 
-				rightAuthAccount := MakeAccountWithBalance(t, session, big.NewInt(1e18)) // < will transfer funds
+				rightAuthAccount := testnet.MakeAccountWithBalance(t, session, big.NewInt(1e18)) // < will transfer funds
 				authorizations := scenario.makeAuthorizations(t, wrongAuthorization, rightAuthAccount)
 
 				tx, err := types.SignTx(
@@ -561,7 +562,7 @@ func testInvalidAuthorizationsAreIgnored(t *testing.T, session IntegrationTestNe
 }
 
 // testAuthorizationsAreExecutedInOrder checks that authorizations are executed in order
-func testAuthorizationsAreExecutedInOrder(t *testing.T, session IntegrationTestNetSession) {
+func testAuthorizationsAreExecutedInOrder(t *testing.T, session testnet.IntegrationTestNetSession) {
 
 	client, err := session.GetClient()
 	require.NoError(t, err)
@@ -570,7 +571,7 @@ func testAuthorizationsAreExecutedInOrder(t *testing.T, session IntegrationTestN
 	chainId, err := client.ChainID(t.Context())
 	require.NoError(t, err, "failed to get chain ID")
 
-	account := MakeAccountWithBalance(t, session, big.NewInt(1e18)) // < will transfer funds
+	account := testnet.MakeAccountWithBalance(t, session, big.NewInt(1e18)) // < will transfer funds
 
 	nonce, err := client.NonceAt(t.Context(), account.Address(), nil)
 	require.NoError(t, err, "failed to get nonce for account", account.Address())
@@ -614,7 +615,7 @@ func testAuthorizationsAreExecutedInOrder(t *testing.T, session IntegrationTestN
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 	// CodeAt looks a the archive state, so we need to wait until
 	// the most recent block is saved in archive.
-	WaitForProofOf(t, client, int(receipt.BlockNumber.Int64()))
+	testnet.WaitForProofOf(t, client, int(receipt.BlockNumber.Int64()))
 
 	// last delegation is set
 	code, err := client.CodeAt(t.Context(), account.Address(), nil)
@@ -625,7 +626,7 @@ func testAuthorizationsAreExecutedInOrder(t *testing.T, session IntegrationTestN
 
 // testMultipleAccountsCanSubmitAuthorizations checks that multiple accounts can submit authorizations
 // and those accounts may be unrelated to the account receiver of the transaction.
-func testMultipleAccountsCanSubmitAuthorizations(t *testing.T, session IntegrationTestNetSession) {
+func testMultipleAccountsCanSubmitAuthorizations(t *testing.T, session testnet.IntegrationTestNetSession) {
 
 	client, err := session.GetClient()
 	require.NoError(t, err)
@@ -634,15 +635,15 @@ func testMultipleAccountsCanSubmitAuthorizations(t *testing.T, session Integrati
 	chainId, err := client.ChainID(t.Context())
 	require.NoError(t, err, "failed to get chain ID")
 
-	account := MakeAccountWithBalance(t, session, big.NewInt(1e18)) // < Pays for the transaction
+	account := testnet.MakeAccountWithBalance(t, session, big.NewInt(1e18)) // < Pays for the transaction
 	nonce, err := client.NonceAt(t.Context(), account.Address(), nil)
 	require.NoError(t, err, "failed to get nonce for account", account.Address())
 
-	authorizerA := NewAccount() // < no cost
+	authorizerA := testnet.NewAccount() // < no cost
 	authorizerANonce, err := client.NonceAt(t.Context(), authorizerA.Address(), nil)
 	require.NoError(t, err, "failed to get nonce for account", authorizerA.Address())
 
-	authorizerB := NewAccount() // < no cost
+	authorizerB := testnet.NewAccount() // < no cost
 	authorizerBNonce, err := client.NonceAt(t.Context(), authorizerB.Address(), nil)
 	require.NoError(t, err, "failed to get nonce for account", authorizerB.Address())
 
@@ -699,15 +700,15 @@ func testMultipleAccountsCanSubmitAuthorizations(t *testing.T, session Integrati
 
 // testAuthorizationSucceedsWithFailingTx checks that an authorization is executed
 // even if the transaction fails
-func testAuthorizationSucceedsWithFailingTx(t *testing.T, session IntegrationTestNetSession) {
+func testAuthorizationSucceedsWithFailingTx(t *testing.T, session testnet.IntegrationTestNetSession) {
 
 	client, err := session.GetClient()
 	require.NoError(t, err)
 	defer client.Close()
 
-	account := MakeAccountWithBalance(t, session, big.NewInt(1e18)) // < Pays for the transaction
+	account := testnet.MakeAccountWithBalance(t, session, big.NewInt(1e18)) // < Pays for the transaction
 
-	_, receipt, err := DeployContract(session, counter.DeployCounter)
+	_, receipt, err := testnet.DeployContract(session, counter.DeployCounter)
 	require.NoError(t, err)
 	delegateAddress := receipt.ContractAddress
 
@@ -726,17 +727,17 @@ func testAuthorizationSucceedsWithFailingTx(t *testing.T, session IntegrationTes
 
 // testAuthorizationFromNonExistingAccount checks that an authorization can signed by
 // a non exiting account, creating the account on the fly.
-func testAuthorizationFromNonExistingAccount(t *testing.T, session IntegrationTestNetSession) {
+func testAuthorizationFromNonExistingAccount(t *testing.T, session testnet.IntegrationTestNetSession) {
 
 	client, err := session.GetClient()
 	require.NoError(t, err)
 	defer client.Close()
 
-	sponsor := MakeAccountWithBalance(t, session, big.NewInt(1e18)) // < Pays for the transaction
+	sponsor := testnet.MakeAccountWithBalance(t, session, big.NewInt(1e18)) // < Pays for the transaction
 
 	// create an account from a key without endowing it
 	key, _ := crypto.GenerateKey()
-	nonExistingAccount := Account{
+	nonExistingAccount := testnet.Account{
 		PrivateKey: key,
 	}
 
@@ -757,7 +758,7 @@ func testAuthorizationFromNonExistingAccount(t *testing.T, session IntegrationTe
 // > In case a delegation designator points to another designator, creating a
 // > potential  chain or loop of designators, clients must retrieve only the
 // > first code and then stop following the designator chain.
-func testNoDelegateToDelegated(t *testing.T, session IntegrationTestNetSession) {
+func testNoDelegateToDelegated(t *testing.T, session testnet.IntegrationTestNetSession) {
 
 	client, err := session.GetClient()
 	require.NoError(t, err)
@@ -766,12 +767,12 @@ func testNoDelegateToDelegated(t *testing.T, session IntegrationTestNetSession) 
 	chainId, err := client.ChainID(t.Context())
 	require.NoError(t, err, "failed to get chain ID")
 
-	sponsor := MakeAccountWithBalance(t, session, big.NewInt(1e18))
-	account1 := NewAccount()
-	account2 := NewAccount()
+	sponsor := testnet.MakeAccountWithBalance(t, session, big.NewInt(1e18))
+	account1 := testnet.NewAccount()
+	account2 := testnet.NewAccount()
 
 	// deploy the batch counterContract
-	_, deployReceipt, err := DeployContract(session, counter.DeployCounter)
+	_, deployReceipt, err := testnet.DeployContract(session, counter.DeployCounter)
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusSuccessful, deployReceipt.Status)
 	counterContractAddress := deployReceipt.ContractAddress
@@ -836,7 +837,7 @@ func testNoDelegateToDelegated(t *testing.T, session IntegrationTestNetSession) 
 }
 
 // testChainOfCalls checks that delegations can used over transitive calls between contracts.
-func testChainOfCalls(t *testing.T, session IntegrationTestNetSession) {
+func testChainOfCalls(t *testing.T, session testnet.IntegrationTestNetSession) {
 
 	client, err := session.GetClient()
 	require.NoError(t, err)
@@ -845,12 +846,12 @@ func testChainOfCalls(t *testing.T, session IntegrationTestNetSession) {
 	chainId, err := client.ChainID(t.Context())
 	require.NoError(t, err, "failed to get chain ID")
 
-	sponsor := MakeAccountWithBalance(t, session, big.NewInt(1e18)) // < Pays for the transaction gas, originates the call-chain
-	account1 := NewAccount()
-	account2 := NewAccount()
+	sponsor := testnet.MakeAccountWithBalance(t, session, big.NewInt(1e18)) // < Pays for the transaction gas, originates the call-chain
+	account1 := testnet.NewAccount()
+	account2 := testnet.NewAccount()
 
 	// deploy the batch contract
-	contract, deployReceipt, err := DeployContract(session, transitive_call.DeployTransitiveCall)
+	contract, deployReceipt, err := testnet.DeployContract(session, transitive_call.DeployTransitiveCall)
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusSuccessful, deployReceipt.Status)
 	transitiveContractAddress := deployReceipt.ContractAddress
@@ -940,9 +941,9 @@ func testChainOfCalls(t *testing.T, session IntegrationTestNetSession) {
 // - delegate account is the contract address installed in the delegator code
 // - callData is used to pass the encoded use of the delegate's called method ABI
 func makeEip7702Transaction(t *testing.T,
-	client *PooledEhtClient,
-	sponsor *Account,
-	sponsored *Account,
+	client *testnet.PooledEhtClient,
+	sponsor *testnet.Account,
+	sponsored *testnet.Account,
 	delegate common.Address,
 	callData []byte,
 ) *types.Transaction {
@@ -994,7 +995,7 @@ func makeEip7702Transaction(t *testing.T,
 // getCallData creates a transaction and returns the data field of the transaction.
 // This function can be used to retrieve the ABI encoding of a the call data, and
 // use such encoding to create a SetCode transaction.
-func getCallData(t *testing.T, session IntegrationTestNetSession,
+func getCallData(t *testing.T, session testnet.IntegrationTestNetSession,
 	transactionConstructor func(*bind.TransactOpts) (*types.Transaction, error)) []byte {
 	txOpts, err := session.GetTransactOptions(session.GetSessionSponsor())
 	require.NoError(t, err)
@@ -1005,7 +1006,7 @@ func getCallData(t *testing.T, session IntegrationTestNetSession,
 }
 
 func TestSetCodeTransaction_IsRejectBeforeAllegro(t *testing.T) {
-	net := StartIntegrationTestNet(t)
+	net := testnet.StartIntegrationTestNet(t)
 	client, err := net.GetClient()
 	require.NoError(t, err)
 	defer client.Close()
@@ -1013,7 +1014,7 @@ func TestSetCodeTransaction_IsRejectBeforeAllegro(t *testing.T) {
 	chainId, err := client.ChainID(t.Context())
 	require.NoError(t, err, "failed to get chain ID")
 
-	tx := SignTransaction(t, chainId, &types.SetCodeTx{}, net.GetSessionSponsor())
+	tx := testnet.SignTransaction(t, chainId, &types.SetCodeTx{}, net.GetSessionSponsor())
 
 	err = client.SendTransaction(t.Context(), tx)
 	require.ErrorContains(t, err, "transaction type not supported")

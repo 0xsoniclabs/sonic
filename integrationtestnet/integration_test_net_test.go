@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
-package tests
+package testnet
 
 import (
 	"fmt"
@@ -112,7 +112,7 @@ func testIntegrationTestNet_CanFetchInformationFromTheNetwork(t *testing.T, net 
 }
 
 // testIntegrationTestNet_CanEndowAccountsWithTokens needs its own session because it
-// modifies the state of the network by endowing an account with tokens, otherwise
+// modifies the state of the network by endowing an Account with tokens, otherwise
 // it can trigger a transaction replacement with a transaction from another test.
 func testIntegrationTestNet_CanEndowAccountsWithTokens(t *testing.T, session IntegrationTestNetSession) {
 	client, err := session.GetClient()
@@ -121,21 +121,21 @@ func testIntegrationTestNet_CanEndowAccountsWithTokens(t *testing.T, session Int
 
 	address := common.Address{0x01}
 	balance, err := client.BalanceAt(t.Context(), address, nil)
-	require.NoError(t, err, "Failed to get balance for account")
+	require.NoError(t, err, "Failed to get balance for Account")
 
 	for i := 0; i < 10; i++ {
 		increment := int64(1000)
 
 		receipt, err := session.EndowAccount(address, big.NewInt(increment))
-		require.NoError(t, err, "Failed to endow account 1")
+		require.NoError(t, err, "Failed to endow Account 1")
 		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
 		WaitForProofOf(t, client, int(receipt.BlockNumber.Uint64()))
 
 		want := balance.Add(balance, big.NewInt(int64(increment)))
 		balance, err = client.BalanceAt(t.Context(), address, nil)
-		require.NoError(t, err, "Failed to get balance for account")
-		require.Equal(t, want.Uint64(), balance.Uint64(), "Unexpected balance for account after endowment")
+		require.NoError(t, err, "Failed to get balance for Account")
+		require.Equal(t, want.Uint64(), balance.Uint64(), "Unexpected balance for Account after endowment")
 
 		balance = want
 	}
@@ -222,11 +222,11 @@ func TestIntegrationTestNet_CanRunMultipleNodes(t *testing.T) {
 
 			// check that all accounts are different
 			seen := make(map[string]struct{})
-			for _, account := range accounts {
-				if _, found := seen[account]; found {
-					t.Fatalf("Duplicate account %v", account)
+			for _, Account := range accounts {
+				if _, found := seen[Account]; found {
+					t.Fatalf("Duplicate Account %v", Account)
 				}
-				seen[account] = struct{}{}
+				seen[Account] = struct{}{}
 			}
 		})
 	}
@@ -293,7 +293,7 @@ func TestIntegrationTestNet_AccountsToBeDeployedWithGenesisCanBeCalled(t *testin
 	}...)
 	accounts := []makefakegenesis.Account{
 		{
-			Name:    "account",
+			Name:    "Account",
 			Address: address,
 			Code:    code,
 			Nonce:   1,

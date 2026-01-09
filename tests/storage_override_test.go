@@ -21,6 +21,7 @@ import (
 	"strings"
 	"testing"
 
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/storage"
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -31,11 +32,11 @@ import (
 )
 
 func TestSetStorage_PreExisting_Contract_Storage_Temporarily_Overridden(t *testing.T) {
-	session := getIntegrationTestNetSession(t, opera.GetBrioUpgrades())
+	session := testnet.GetIntegrationTestNetSession(t, opera.GetBrioUpgrades())
 	t.Parallel()
 
 	// Deploy the contract.
-	contract, receipt, err := DeployContract(session, storage.DeployStorage)
+	contract, receipt, err := testnet.DeployContract(session, storage.DeployStorage)
 	require.NoError(t, err, "failed to deploy contract; %v", err)
 
 	checkStorage := func(t *testing.T) {
@@ -103,7 +104,7 @@ func TestSetStorage_Contract_Not_On_Blockchain_Executed_With_Extra_Storage(t *te
 	require := require.New(t)
 
 	// start network
-	session := getIntegrationTestNetSession(t, opera.GetBrioUpgrades())
+	session := testnet.GetIntegrationTestNetSession(t, opera.GetBrioUpgrades())
 
 	// create a client
 	client, err := session.GetClient()

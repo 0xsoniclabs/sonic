@@ -20,6 +20,7 @@ import (
 	"math/big"
 	"testing"
 
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/data_reader"
 	"github.com/ethereum/go-ethereum"
@@ -34,10 +35,10 @@ import (
 
 func TestEstimateGas(t *testing.T) {
 	t.Run("Sonic", func(t *testing.T) {
-		session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+		session := testnet.GetIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 		t.Parallel()
 
-		dataContract, receipt, err := DeployContract(session, data_reader.DeployDataReader)
+		dataContract, receipt, err := testnet.DeployContract(session, data_reader.DeployDataReader)
 		require.NoError(t, err, "failed to deploy contract; %v", err)
 		require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
 		dataContractAddress := receipt.ContractAddress
@@ -45,10 +46,10 @@ func TestEstimateGas(t *testing.T) {
 		doTestEstimate(t, session, makeTestCases(t, session, dataContract, dataContractAddress))
 	})
 	t.Run("Allegro", func(t *testing.T) {
-		session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+		session := testnet.GetIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 		t.Parallel()
 
-		dataContract, receipt, err := DeployContract(session, data_reader.DeployDataReader)
+		dataContract, receipt, err := testnet.DeployContract(session, data_reader.DeployDataReader)
 		require.NoError(t, err, "failed to deploy contract; %v", err)
 		require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
 		dataContractAddress := receipt.ContractAddress
@@ -59,7 +60,7 @@ func TestEstimateGas(t *testing.T) {
 
 func makeTestCases(
 	t *testing.T,
-	session IntegrationTestNetSession,
+	session testnet.IntegrationTestNetSession,
 	contract *data_reader.DataReader,
 	contractAddress common.Address,
 ) map[string]types.TxData {
@@ -119,7 +120,7 @@ func makeTestCases(
 
 func makeAllegroCases(
 	t *testing.T,
-	session IntegrationTestNetSession,
+	session testnet.IntegrationTestNetSession,
 	contract *data_reader.DataReader,
 	contractAddress common.Address,
 ) map[string]types.TxData {
@@ -128,7 +129,7 @@ func makeAllegroCases(
 	cases := makeTestCases(t, session, contract, contractAddress)
 
 	// create authorization, use new account to avoid altering session sponsor state
-	account := MakeAccountWithBalance(t, session, big.NewInt(1e18))
+	account := testnet.MakeAccountWithBalance(t, session, big.NewInt(1e18))
 	auth, err := types.SignSetCode(account.PrivateKey,
 		types.SetCodeAuthorization{
 			ChainID: *uint256.MustFromBig(session.GetChainId()),
@@ -156,10 +157,10 @@ func makeAllegroCases(
 
 func doTestEstimate(
 	t *testing.T,
-	session IntegrationTestNetSession,
+	session testnet.IntegrationTestNetSession,
 	tests map[string]types.TxData) {
 
-	account := MakeAccountWithBalance(t, session, big.NewInt(1e18))
+	account := testnet.MakeAccountWithBalance(t, session, big.NewInt(1e18))
 	netUpgrades := session.GetUpgrades()
 
 	client, err := session.GetClient()

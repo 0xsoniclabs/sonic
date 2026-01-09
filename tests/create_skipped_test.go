@@ -21,6 +21,7 @@ import (
 	"slices"
 	"testing"
 
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -37,7 +38,7 @@ func TestAccountCreation_CreateCallsWithInitCodesTooLargeDoNotAlterBalance(t *te
 
 	for name, version := range versions {
 		t.Run(name, func(t *testing.T) {
-			net := StartIntegrationTestNetWithJsonGenesis(t, IntegrationTestNetOptions{
+			net := testnet.StartIntegrationTestNetWithJsonGenesis(t, testnet.IntegrationTestNetOptions{
 				Upgrades: &version,
 				ClientExtraArguments: []string{
 					"--disable-txPool-validation",
@@ -48,7 +49,7 @@ func TestAccountCreation_CreateCallsWithInitCodesTooLargeDoNotAlterBalance(t *te
 			require.NoError(t, err)
 			defer client.Close()
 
-			sender := MakeAccountWithBalance(t, net, big.NewInt(1e18))
+			sender := testnet.MakeAccountWithBalance(t, net, big.NewInt(1e18))
 
 			gasPrice, err := client.SuggestGasPrice(t.Context())
 			require.NoError(t, err)
@@ -65,7 +66,7 @@ func TestAccountCreation_CreateCallsWithInitCodesTooLargeDoNotAlterBalance(t *te
 				Value:    big.NewInt(0),
 				Data:     initCode,
 			}
-			tx := SignTransaction(t, chainId, txData, sender)
+			tx := testnet.SignTransaction(t, chainId, txData, sender)
 
 			// Check balance before sending the transaction
 			preBalance, err := client.BalanceAt(t.Context(), sender.Address(), nil)
@@ -114,14 +115,14 @@ func TestAccountCreation_CreateCallsProducingCodesTooLargeProduceAUnsuccessfulRe
 		byte(vm.RETURN),
 	}...)
 
-	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	session := testnet.GetIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 	t.Parallel()
 
 	client, err := session.GetClient()
 	require.NoError(t, err)
 	defer client.Close()
 
-	sender := MakeAccountWithBalance(t, session, big.NewInt(1e18))
+	sender := testnet.MakeAccountWithBalance(t, session, big.NewInt(1e18))
 
 	gasPrice, err := client.SuggestGasPrice(t.Context())
 	require.NoError(t, err)
@@ -137,7 +138,7 @@ func TestAccountCreation_CreateCallsProducingCodesTooLargeProduceAUnsuccessfulRe
 		Value:    big.NewInt(0),
 		Data:     initCode,
 	}
-	tx := SignTransaction(t, chainId, txData, sender)
+	tx := testnet.SignTransaction(t, chainId, txData, sender)
 
 	receipt, err := session.Run(tx)
 	require.NoError(t, err)

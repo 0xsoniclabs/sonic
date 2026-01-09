@@ -20,6 +20,7 @@ import (
 	"math/big"
 	"testing"
 
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
@@ -30,7 +31,7 @@ func TestNodeRestart_CanRestartAndRestoreItsState(t *testing.T) {
 	const numRestarts = 2
 	require := require.New(t)
 
-	net := StartIntegrationTestNet(t)
+	net := testnet.StartIntegrationTestNet(t)
 
 	// All transaction hashes indexed by their blocks.
 	receipts := map[int]types.Receipts{}

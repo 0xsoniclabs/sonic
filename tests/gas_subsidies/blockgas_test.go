@@ -21,8 +21,8 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/tests/contracts/revert"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
@@ -49,7 +49,7 @@ func TestGasSubsidies_TooLargeForBlock(t *testing.T) {
 func testGasSubsidies_tooLargeForBlock(t *testing.T, upgrades opera.Upgrades) {
 	// Step 1: Create a network with a single block proposer
 	upgrades.GasSubsidies = true
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+	net := testnet.StartIntegrationTestNet(t, testnet.IntegrationTestNetOptions{
 		Upgrades: &upgrades,
 	})
 
@@ -57,11 +57,11 @@ func testGasSubsidies_tooLargeForBlock(t *testing.T, upgrades opera.Upgrades) {
 	require.NoError(t, err)
 	defer client.Close()
 
-	revertContract, receipt, err := tests.DeployContract(net, revert.DeployRevert)
+	revertContract, receipt, err := testnet.DeployContract(net, revert.DeployRevert)
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
-	sender := tests.NewAccount()
+	sender := testnet.NewAccount()
 
 	reg, err := registry.NewRegistry(registry.GetAddress(), client)
 	require.NoError(t, err)
@@ -78,12 +78,12 @@ func testGasSubsidies_tooLargeForBlock(t *testing.T, upgrades opera.Upgrades) {
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
 	// Step 3: Update rules to have maximum block gas limit of 3 million
-	current := tests.GetNetworkRules(t, net)
+	current := testnet.GetNetworkRules(t, net)
 	modified := current.Copy()
 	modified.Blocks.MaxBlockGas = 3_000_000
-	tests.UpdateNetworkRules(t, net, modified)
+	testnet.UpdateNetworkRules(t, net, modified)
 	net.AdvanceEpoch(t, 1)
-	updatedRules := tests.GetNetworkRules(t, net)
+	updatedRules := testnet.GetNetworkRules(t, net)
 	require.Equal(t, uint64(3_000_000), updatedRules.Blocks.MaxBlockGas)
 
 	// Step 4: Send a sponsored transaction that uses almost all the gas in the block

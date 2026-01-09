@@ -19,6 +19,7 @@ package tests
 import (
 	"testing"
 
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/scc/bls"
 	"github.com/0xsoniclabs/sonic/tests/contracts/blsContracts"
@@ -30,11 +31,11 @@ import (
 )
 
 func TestBlsVerificationOnChain(t *testing.T) {
-	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	session := testnet.GetIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 	t.Parallel()
 
 	// Deploy contract with transaction options
-	blsContract, _, err := DeployContract(session, blsContracts.DeployBLS)
+	blsContract, _, err := testnet.DeployContract(session, blsContracts.DeployBLS)
 	require.NoError(t, err, "failed to deploy contract; %v", err)
 
 	testVariants := []struct {

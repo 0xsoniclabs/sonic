@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/tosca/go/tosca/vm"
 	"github.com/ethereum/go-ethereum/common"
@@ -52,7 +53,7 @@ func TestSECP256r1_NewPrecompileHasCorrectGasCost(t *testing.T) {
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			session := getIntegrationTestNetSession(t, test.upgrades)
+			session := testnet.GetIntegrationTestNetSession(t, test.upgrades)
 			chainId := session.GetChainId()
 			sender := session.GetSessionSponsor()
 
@@ -72,7 +73,7 @@ func TestSECP256r1_NewPrecompileHasCorrectGasCost(t *testing.T) {
 				},
 			}
 
-			signedTx := CreateTransaction(t, session, txsPayload, sender)
+			signedTx := testnet.CreateTransaction(t, session, txsPayload, sender)
 			receipt, err := session.Run(signedTx)
 			require.NoError(t, err)
 
@@ -133,7 +134,7 @@ func TestSECP256r1_VerifySignatureInBrio(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			recipient := common.BytesToAddress([]byte{0x42})
-			net := StartIntegrationTestNetWithJsonGenesis(t, IntegrationTestNetOptions{
+			net := testnet.StartIntegrationTestNetWithJsonGenesis(t, testnet.IntegrationTestNetOptions{
 				Upgrades: &test.upgrades,
 				Accounts: []makefakegenesis.Account{
 					{
@@ -147,7 +148,7 @@ func TestSECP256r1_VerifySignatureInBrio(t *testing.T) {
 			require.NoError(t, err)
 			defer client.Close()
 
-			sender := MakeAccountWithBalance(t, net, big.NewInt(1e18))
+			sender := testnet.MakeAccountWithBalance(t, net, big.NewInt(1e18))
 			gasPrice, err := client.SuggestGasPrice(t.Context())
 			require.NoError(t, err)
 
@@ -162,7 +163,7 @@ func TestSECP256r1_VerifySignatureInBrio(t *testing.T) {
 				To:       &recipient,
 				Data:     test.input,
 			}
-			tx := SignTransaction(t, chainId, txData, sender)
+			tx := testnet.SignTransaction(t, chainId, txData, sender)
 
 			receipt, err := net.Run(tx)
 			require.NoError(t, err)

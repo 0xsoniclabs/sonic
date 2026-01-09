@@ -20,6 +20,7 @@ import (
 	"math/big"
 	"testing"
 
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -32,7 +33,7 @@ const enoughGasPrice = 150_000_000_000
 
 func TestTransactionGasPrice(t *testing.T) {
 
-	session := getIntegrationTestNetSession(t, opera.GetBrioUpgrades())
+	session := testnet.GetIntegrationTestNetSession(t, opera.GetBrioUpgrades())
 	t.Parallel()
 
 	client, err := session.GetClient()
@@ -40,7 +41,7 @@ func TestTransactionGasPrice(t *testing.T) {
 	defer client.Close()
 
 	// use a fresh account to send transactions from
-	account := MakeAccountWithBalance(t, session, big.NewInt(1e18))
+	account := testnet.MakeAccountWithBalance(t, session, big.NewInt(1e18))
 
 	t.Run("Legacy transaction, effectivePrice is equal to requested price", func(t *testing.T) {
 
@@ -277,7 +278,7 @@ func TestTransactionGasPrice(t *testing.T) {
 	})
 }
 
-func getBaseFeeAt(t *testing.T, blockNumber *big.Int, client *PooledEhtClient) int64 {
+func getBaseFeeAt(t *testing.T, blockNumber *big.Int, client *testnet.PooledEhtClient) int64 {
 	t.Helper()
 	block, err := client.BlockByNumber(t.Context(), blockNumber)
 	require.NoError(t, err)
@@ -285,7 +286,7 @@ func getBaseFeeAt(t *testing.T, blockNumber *big.Int, client *PooledEhtClient) i
 	return basefee.Int64()
 }
 
-func getBalance(t *testing.T, client *PooledEhtClient, account common.Address) int64 {
+func getBalance(t *testing.T, client *testnet.PooledEhtClient, account common.Address) int64 {
 	t.Helper()
 	balance, err := client.BalanceAt(t.Context(), account, nil)
 	require.NoError(t, err)
@@ -295,9 +296,9 @@ func getBalance(t *testing.T, client *PooledEhtClient, account common.Address) i
 // makeLegacyTx creates a legacy transaction from a CallMsg, filling in the nonce
 // and gas limit.
 func makeLegacyTx(t *testing.T,
-	client *PooledEhtClient,
+	client *testnet.PooledEhtClient,
 	gasPrice int64,
-	sender *Account,
+	sender *testnet.Account,
 	to *common.Address,
 	data []byte,
 ) *types.Transaction {
@@ -327,10 +328,10 @@ func makeLegacyTx(t *testing.T,
 // makeLegacyTx creates a legacy transaction from a CallMsg, filling in the nonce
 // and gas limit.
 func makeEip1559Transaction(t *testing.T,
-	client *PooledEhtClient,
+	client *testnet.PooledEhtClient,
 	maxFeeCap int64,
 	maxGasTip int64,
-	sender *Account,
+	sender *testnet.Account,
 	to *common.Address,
 	data []byte,
 ) *types.Transaction {

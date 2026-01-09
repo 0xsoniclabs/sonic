@@ -23,8 +23,8 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/proxy"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/tests/contracts/sponsor_everything"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
@@ -39,7 +39,7 @@ func TestRegistryUpdate_UpdateContract_SponsoredTransactionsCanBePerformed(t *te
 	upgrades := opera.GetBrioUpgrades()
 	upgrades.GasSubsidies = true
 
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+	net := testnet.StartIntegrationTestNet(t, testnet.IntegrationTestNetOptions{
 		Upgrades: &upgrades,
 	})
 
@@ -48,7 +48,7 @@ func TestRegistryUpdate_UpdateContract_SponsoredTransactionsCanBePerformed(t *te
 	defer client.Close()
 
 	// Install the replacement contract for the default registry.
-	_, receipt, err := tests.DeployContract(net, sponsor_everything.DeploySponsorEverything)
+	_, receipt, err := testnet.DeployContract(net, sponsor_everything.DeploySponsorEverything)
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
@@ -79,7 +79,7 @@ func TestRegistryUpdate_UpdateContract_SponsoredTransactionsCanBePerformed(t *te
 
 	// Run an example sponsored transaction to verify that the new registry
 	// works as expected.
-	sponsee := tests.NewAccount()
+	sponsee := testnet.NewAccount()
 	Fund(t, net, sponsee.Address(), big.NewInt(1e18))
 
 	tx := &types.LegacyTx{Gas: 21000, To: &common.Address{0x42}}
@@ -98,7 +98,7 @@ func TestRegistryUpdate_UpdatesAreEffectiveImmediately(t *testing.T) {
 	upgrades := opera.GetBrioUpgrades()
 	upgrades.GasSubsidies = true
 
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+	net := testnet.StartIntegrationTestNet(t, testnet.IntegrationTestNetOptions{
 		Upgrades: &upgrades,
 	})
 
@@ -107,7 +107,7 @@ func TestRegistryUpdate_UpdatesAreEffectiveImmediately(t *testing.T) {
 	defer client.Close()
 
 	// Install the replacement contract for the default registry.
-	_, receipt, err := tests.DeployContract(net, sponsor_everything.DeploySponsorEverything)
+	_, receipt, err := testnet.DeployContract(net, sponsor_everything.DeploySponsorEverything)
 	require.NoError(err)
 	require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
 	replacementAddress := receipt.ContractAddress
@@ -121,7 +121,7 @@ func TestRegistryUpdate_UpdatesAreEffectiveImmediately(t *testing.T) {
 	// for this test, and not verified). The first is charged for according to
 	// the old rules, the last according to the new rules.
 
-	sponsee := tests.NewAccount()
+	sponsee := testnet.NewAccount()
 
 	// provide some funds to the sponsee for transaction 1 and 3
 	Fund(t, net, sponsee.Address(), big.NewInt(1e18))

@@ -19,6 +19,7 @@ package tests
 import (
 	"testing"
 
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/transientstorage"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -26,11 +27,11 @@ import (
 )
 
 func TestTransientStorage_TransientStorageIsValidInTransaction(t *testing.T) {
-	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	session := testnet.GetIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 	t.Parallel()
 
 	// Deploy the transient storage contract
-	contract, _, err := DeployContract(session, transientstorage.DeployTransientstorage)
+	contract, _, err := testnet.DeployContract(session, transientstorage.DeployTransientstorage)
 	require.NoError(t, err, "failed to deploy contract")
 
 	// Get the value from the contract before changing it

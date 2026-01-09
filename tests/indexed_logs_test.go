@@ -19,6 +19,7 @@ package tests
 import (
 	"testing"
 
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/tests/contracts/indexed_logs"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
@@ -26,24 +27,24 @@ import (
 )
 
 func TestClient_IndexedLogsAreInOrder(t *testing.T) {
-	net := StartIntegrationTestNetWithFakeGenesis(t)
+	net := testnet.StartIntegrationTestNetWithFakeGenesis(t)
 
-	contract, receipt, err := DeployContract(net, indexed_logs.DeployIndexedLogs)
+	contract, receipt, err := testnet.DeployContract(net, indexed_logs.DeployIndexedLogs)
 	require.NoError(t, err)
 	contractAddress := receipt.ContractAddress
 
 	// Create logs
-	txReceiptBlock1, err := net.net.Apply(contract.EmitEvents)
+	txReceiptBlock1, err := net.Apply(contract.EmitEvents)
 	require.NoError(t, err)
 	logs := txReceiptBlock1.Logs
 
 	// Create logs in another block
-	txReceiptBlock2, err := net.net.Apply(contract.EmitEvents)
+	txReceiptBlock2, err := net.Apply(contract.EmitEvents)
 	require.NoError(t, err)
 
 	require.NotEqual(t, txReceiptBlock1.BlockNumber, txReceiptBlock2.BlockNumber, "Logs should be in different blocks")
 
-	client, err := net.net.GetClient()
+	client, err := net.GetClient()
 	require.NoError(t, err)
 	defer client.Close()
 

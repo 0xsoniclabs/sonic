@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -32,7 +33,7 @@ import (
 func TestRejectedTx_TransactionsAreRejectedBecauseOfAccountState(t *testing.T) {
 
 	// start network
-	session := getIntegrationTestNetSession(t, opera.GetBrioUpgrades())
+	session := testnet.GetIntegrationTestNetSession(t, opera.GetBrioUpgrades())
 	t.Parallel()
 
 	// create a client
@@ -43,27 +44,27 @@ func TestRejectedTx_TransactionsAreRejectedBecauseOfAccountState(t *testing.T) {
 	chainId, err := client.ChainID(t.Context())
 	require.NoError(t, err, "failed to get chain ID::")
 
-	testTransactions := map[string]func(testing.TB, *Account) types.TxData{
-		"legacy tx": func(testing.TB, *Account) types.TxData {
+	testTransactions := map[string]func(testing.TB, *testnet.Account) types.TxData{
+		"legacy tx": func(testing.TB, *testnet.Account) types.TxData {
 			return &types.LegacyTx{}
 		},
-		"access list no entries ": func(testing.TB, *Account) types.TxData {
+		"access list no entries ": func(testing.TB, *testnet.Account) types.TxData {
 			return &types.AccessListTx{}
 		},
-		"access list tx with one entry": func(testing.TB, *Account) types.TxData {
+		"access list tx with one entry": func(testing.TB, *testnet.Account) types.TxData {
 			return &types.AccessListTx{
 				AccessList: []types.AccessTuple{
 					{Address: common.Address{0x42}, StorageKeys: []common.Hash{{0x42}}},
 				},
 			}
 		},
-		"dynamic fee tx": func(testing.TB, *Account) types.TxData {
+		"dynamic fee tx": func(testing.TB, *testnet.Account) types.TxData {
 			return &types.DynamicFeeTx{}
 		},
-		"blob tx": func(testing.TB, *Account) types.TxData {
+		"blob tx": func(testing.TB, *testnet.Account) types.TxData {
 			return &types.BlobTx{}
 		},
-		"set code tx": func(t testing.TB, account *Account) types.TxData {
+		"set code tx": func(t testing.TB, account *testnet.Account) types.TxData {
 
 			// One authorization is required for SetCodeTx
 			auth, err := types.SignSetCode(account.PrivateKey,
@@ -84,10 +85,10 @@ func TestRejectedTx_TransactionsAreRejectedBecauseOfAccountState(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 
 			t.Run("is rejected with insufficient balance", func(t *testing.T) {
-				account := NewAccount()
+				account := testnet.NewAccount()
 
 				txData := txFactory(t, account)
-				tx := CreateTransaction(t, session, txData, account)
+				tx := testnet.CreateTransaction(t, session, txData, account)
 				cost := tx.Cost()
 
 				//  endow account with less than the cost of the transaction
@@ -100,10 +101,10 @@ func TestRejectedTx_TransactionsAreRejectedBecauseOfAccountState(t *testing.T) {
 			})
 
 			t.Run("is rejected with nonce too low", func(t *testing.T) {
-				account := NewAccount()
+				account := testnet.NewAccount()
 
 				txData := txFactory(t, account)
-				tx := CreateTransaction(t, session, txData, account)
+				tx := testnet.CreateTransaction(t, session, txData, account)
 
 				// provide enough funds for successful execution
 				receipt, err := session.EndowAccount(account.Address(), big.NewInt(1e18))

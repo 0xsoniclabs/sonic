@@ -21,9 +21,9 @@ import (
 	"testing"
 	"time"
 
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/stretchr/testify/require"
 )
 
@@ -56,17 +56,17 @@ func testPacingOfEmptyBlocks(
 	upgrades opera.Upgrades,
 ) {
 	require := require.New(t)
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+	net := testnet.StartIntegrationTestNet(t, testnet.IntegrationTestNetOptions{
 		Upgrades: &upgrades,
 	})
 
 	maxEmptyInterval := 4 * time.Second
 
-	rules := tests.GetNetworkRules(t, net)
+	rules := testnet.GetNetworkRules(t, net)
 	rules.Blocks.MaxEmptyBlockSkipPeriod = inter.Timestamp(maxEmptyInterval)
-	tests.UpdateNetworkRules(t, net, rules)
+	testnet.UpdateNetworkRules(t, net, rules)
 
-	rules = tests.GetNetworkRules(t, net)
+	rules = testnet.GetNetworkRules(t, net)
 	require.Equal(inter.Timestamp(maxEmptyInterval), rules.Blocks.MaxEmptyBlockSkipPeriod)
 
 	client, err := net.GetClient()

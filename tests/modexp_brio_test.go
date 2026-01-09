@@ -20,6 +20,7 @@ import (
 	"math/big"
 	"testing"
 
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -67,7 +68,7 @@ func TestModExp_BrioFlagEnforcesFusakaUpperBounds(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			session := getIntegrationTestNetSession(t, test.upgrades)
+			session := testnet.GetIntegrationTestNetSession(t, test.upgrades)
 			chainId := session.GetChainId()
 			sender := session.GetSessionSponsor()
 
@@ -90,7 +91,7 @@ func TestModExp_BrioFlagEnforcesFusakaUpperBounds(t *testing.T) {
 				Data:       input,
 				AccessList: types.AccessList{},
 			}
-			signedTx := CreateTransaction(t, session, txsPayload, sender)
+			signedTx := testnet.CreateTransaction(t, session, txsPayload, sender)
 			receipt, err := session.Run(signedTx)
 			require.NoError(t, err)
 
@@ -128,7 +129,7 @@ func TestModExp_MinimumGasPriceIsUpdatedInBrio(t *testing.T) {
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			session := getIntegrationTestNetSession(t, test.upgrades)
+			session := testnet.GetIntegrationTestNetSession(t, test.upgrades)
 			chainId := session.GetChainId()
 			sender := session.GetSessionSponsor()
 
@@ -152,7 +153,7 @@ func TestModExp_MinimumGasPriceIsUpdatedInBrio(t *testing.T) {
 					{Address: common.HexToAddress("0x42")}, // Add random address to access list to increase gas cost
 				},
 			}
-			signedTx := CreateTransaction(t, session, txsPayload, sender)
+			signedTx := testnet.CreateTransaction(t, session, txsPayload, sender)
 			receipt, err := session.Run(signedTx)
 			require.NoError(t, err)
 
@@ -191,7 +192,7 @@ func TestModExp_GasPriceIsUpdatedInBrio(t *testing.T) {
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			session := getIntegrationTestNetSession(t, test.upgrades)
+			session := testnet.GetIntegrationTestNetSession(t, test.upgrades)
 			chainId := session.GetChainId()
 			sender := session.GetSessionSponsor()
 
@@ -217,7 +218,7 @@ func TestModExp_GasPriceIsUpdatedInBrio(t *testing.T) {
 					{Address: common.HexToAddress("0x42")}, // Add random address to access list to increase gas cost
 				},
 			}
-			signedTx := CreateTransaction(t, session, txsPayload, sender)
+			signedTx := testnet.CreateTransaction(t, session, txsPayload, sender)
 			receipt, err := session.Run(signedTx)
 			require.NoError(t, err)
 

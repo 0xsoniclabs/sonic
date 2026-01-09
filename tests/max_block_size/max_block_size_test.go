@@ -23,9 +23,9 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
@@ -53,9 +53,9 @@ func TestMaxBlockSizeIsEnforced(t *testing.T) {
 	transactionsPerAccount := 10
 	numAccounts := 10
 	genesisAccounts := make([]makefakegenesis.Account, 0, numAccounts)
-	accounts := make([]*tests.Account, 0, numAccounts)
+	accounts := make([]*testnet.Account, 0, numAccounts)
 	for range numAccounts {
-		account := tests.NewAccount()
+		account := testnet.NewAccount()
 		accounts = append(accounts, account)
 
 		genesisAccount := makefakegenesis.Account{
@@ -71,7 +71,7 @@ func TestMaxBlockSizeIsEnforced(t *testing.T) {
 			t.Run(fmt.Sprintf("%s_%s", modeName, upgradeName), func(t *testing.T) {
 
 				upgrade.SingleProposerBlockFormation = singleProposer
-				net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+				net := testnet.StartIntegrationTestNet(t, testnet.IntegrationTestNetOptions{
 					Upgrades: &upgrade,
 					Accounts: genesisAccounts,
 					NumNodes: 3,
@@ -94,7 +94,7 @@ func TestMaxBlockSizeIsEnforced(t *testing.T) {
 							Value: big.NewInt(0),
 							Data:  input,
 						}
-						signedTx := tests.CreateTransaction(t, net, txsPayload, account)
+						signedTx := testnet.CreateTransaction(t, net, txsPayload, account)
 						transactions[i*numAccounts+accountIdx] = signedTx // save txs with the same nonce next to each other
 					}
 				}
@@ -129,10 +129,10 @@ func TestMaxBlockSizeIsEnforced(t *testing.T) {
 	}
 }
 
-func increaseLimits(t *testing.T, net *tests.IntegrationTestNet) {
+func increaseLimits(t *testing.T, net *testnet.IntegrationTestNet) {
 	// Increase the gas limit to allow for larger transactions in blocks. These
 	// limits are beyond safe limits acceptable for production.
-	current := tests.GetNetworkRules(t, net)
+	current := testnet.GetNetworkRules(t, net)
 
 	modified := current.Copy()
 
@@ -142,10 +142,10 @@ func increaseLimits(t *testing.T, net *tests.IntegrationTestNet) {
 	modified.Economy.ShortGasPower.MaxAllocPeriod = 50_000_000_000
 	modified.Economy.LongGasPower = modified.Economy.ShortGasPower
 	modified.Emitter.Interval = inter.Timestamp(1 * time.Second)
-	tests.UpdateNetworkRules(t, net, modified)
+	testnet.UpdateNetworkRules(t, net, modified)
 	net.AdvanceEpoch(t, 1)
 
 	// Check that the modification was applied.
-	current = tests.GetNetworkRules(t, net)
+	current = testnet.GetNetworkRules(t, net)
 	require.Equal(t, modified, current)
 }

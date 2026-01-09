@@ -24,6 +24,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/ethapi"
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -32,8 +33,8 @@ import (
 )
 
 func TestChainId(t *testing.T) {
-	net := StartIntegrationTestNet(t,
-		IntegrationTestNetOptions{
+	net := testnet.StartIntegrationTestNet(t,
+		testnet.IntegrationTestNetOptions{
 			ModifyConfig: func(config *config.Config) {
 				// The transactions signed with the Homestead are not replay protected.
 				// The default configuration rejects this sort of transaction,
@@ -42,7 +43,7 @@ func TestChainId(t *testing.T) {
 			},
 		})
 
-	account := MakeAccountWithBalance(t, net, big.NewInt(1e18))
+	account := testnet.MakeAccountWithBalance(t, net, big.NewInt(1e18))
 
 	t.Run("RejectsAllTxsSignedWithWrongChainId", func(t *testing.T) {
 		t.Parallel()
@@ -57,8 +58,8 @@ func TestChainId(t *testing.T) {
 
 func testChainId_RejectsAllTxSignedWithWrongChainId(
 	t *testing.T,
-	net *IntegrationTestNet,
-	account *Account,
+	net *testnet.IntegrationTestNet,
+	account *testnet.Account,
 ) {
 
 	client, err := net.GetClient()
@@ -139,8 +140,8 @@ func testChainId_RejectsAllTxSignedWithWrongChainId(
 
 func testChainId_AcceptsLegacyTxSignedWithHomestead(
 	t *testing.T,
-	net *IntegrationTestNet,
-	account *Account) {
+	net *testnet.IntegrationTestNet,
+	account *testnet.Account) {
 
 	client, err := net.GetClient()
 	require.NoError(t, err, "failed to get client")
@@ -187,7 +188,7 @@ func testChainId_AcceptsLegacyTxSignedWithHomestead(
 
 func TestChainId_InternalTransactionHasCorrectChainId(t *testing.T) {
 
-	net := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	net := testnet.GetIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 	t.Parallel()
 
 	client, err := net.GetClient()

@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/ethapi"
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -29,14 +30,14 @@ import (
 
 func TestPendingTransactionSubscription_ReturnsFullTransaction(t *testing.T) {
 
-	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	session := testnet.GetIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 	// This test cannot be parallel because it expects only the specific transaction it sends
 
 	client, err := session.GetWebSocketClient()
 	require.NoError(t, err, "failed to get client ", err)
 	defer client.Close()
 
-	tx := CreateTransaction(t, session,
+	tx := testnet.CreateTransaction(t, session,
 		&types.LegacyTx{
 			To:    &common.Address{0x42},
 			Value: big.NewInt(2),
@@ -63,14 +64,14 @@ func TestPendingTransactionSubscription_ReturnsFullTransaction(t *testing.T) {
 }
 
 func TestPendingTransactionSubscription_ReturnsHashes(t *testing.T) {
-	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	session := testnet.GetIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 	// This test cannot be parallel because it expects only the specific transaction it sends
 
 	client, err := session.GetWebSocketClient()
 	require.NoError(t, err, "failed to get client ", err)
 	defer client.Close()
 
-	tx := CreateTransaction(t, session, &types.LegacyTx{To: &common.Address{0x42}, Value: big.NewInt(2)}, session.GetSessionSponsor())
+	tx := testnet.CreateTransaction(t, session, &types.LegacyTx{To: &common.Address{0x42}, Value: big.NewInt(2)}, session.GetSessionSponsor())
 
 	pendingTxs := make(chan common.Hash)
 	defer close(pendingTxs)

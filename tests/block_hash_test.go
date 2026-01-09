@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/config"
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/block_hash"
 	"github.com/0xsoniclabs/sonic/tests/contracts/read_history_storage"
@@ -33,10 +34,10 @@ import (
 
 func TestBlockHash_CorrectBlockHashesAreAccessibleInContracts(t *testing.T) {
 	require := req.New(t)
-	net := StartIntegrationTestNet(t)
+	net := testnet.StartIntegrationTestNet(t)
 
 	// Deploy the block hash observer contract.
-	_, receipt, err := DeployContract(net, block_hash.DeployBlockHash)
+	_, receipt, err := testnet.DeployContract(net, block_hash.DeployBlockHash)
 	require.NoError(err, "failed to deploy contract; %v", err)
 	contractAddress := receipt.ContractAddress
 	contractCreationBlock := receipt.BlockNumber.Uint64()
@@ -61,7 +62,7 @@ func TestBlockHash_CorrectBlockHashesAreAccessibleInContracts(t *testing.T) {
 
 func testVisibleBlockHashOnHead(
 	t *testing.T,
-	net *IntegrationTestNet,
+	net *testnet.IntegrationTestNet,
 	observerContractAddress common.Address,
 ) {
 	require := req.New(t)
@@ -111,7 +112,7 @@ func testVisibleBlockHashOnHead(
 
 func testVisibleBlockHashesInArchive(
 	t *testing.T,
-	net *IntegrationTestNet,
+	net *testnet.IntegrationTestNet,
 	observerContractAddress common.Address,
 	observerCreationBlock uint64,
 ) {
@@ -168,17 +169,17 @@ var (
 
 func TestBlockHash_EIP2935_IsAutomaticallyDeployedWithFakeNet(t *testing.T) {
 
-	tests := map[string]func(t *testing.T) *IntegrationTestNet{
-		"json genesis": func(t *testing.T) *IntegrationTestNet {
-			return StartIntegrationTestNetWithJsonGenesis(t,
-				IntegrationTestNetOptions{
-					Upgrades: AsPointer(opera.GetAllegroUpgrades()),
+	tests := map[string]func(t *testing.T) *testnet.IntegrationTestNet{
+		"json genesis": func(t *testing.T) *testnet.IntegrationTestNet {
+			return testnet.StartIntegrationTestNetWithJsonGenesis(t,
+				testnet.IntegrationTestNetOptions{
+					Upgrades: testnet.AsPointer(opera.GetAllegroUpgrades()),
 				})
 		},
-		"fake genesis": func(t *testing.T) *IntegrationTestNet {
-			return StartIntegrationTestNetWithFakeGenesis(t,
-				IntegrationTestNetOptions{
-					Upgrades: AsPointer(opera.GetAllegroUpgrades()),
+		"fake genesis": func(t *testing.T) *testnet.IntegrationTestNet {
+			return testnet.StartIntegrationTestNetWithFakeGenesis(t,
+				testnet.IntegrationTestNetOptions{
+					Upgrades: testnet.AsPointer(opera.GetAllegroUpgrades()),
 				})
 		},
 	}
@@ -205,12 +206,12 @@ func TestBlockHash_EIP2935_IsAutomaticallyDeployedWithFakeNet(t *testing.T) {
 
 func TestBlockHash_EIP2935_HistoryContractIsNotDeployedBeforePrague(t *testing.T) {
 
-	tests := map[string]func(t *testing.T) *IntegrationTestNet{
-		"json genesis": func(t *testing.T) *IntegrationTestNet {
-			return StartIntegrationTestNetWithJsonGenesis(t)
+	tests := map[string]func(t *testing.T) *testnet.IntegrationTestNet{
+		"json genesis": func(t *testing.T) *testnet.IntegrationTestNet {
+			return testnet.StartIntegrationTestNetWithJsonGenesis(t)
 		},
-		"fake genesis": func(t *testing.T) *IntegrationTestNet {
-			return StartIntegrationTestNetWithFakeGenesis(t)
+		"fake genesis": func(t *testing.T) *testnet.IntegrationTestNet {
+			return testnet.StartIntegrationTestNetWithFakeGenesis(t)
 		},
 	}
 
@@ -237,11 +238,11 @@ func TestBlockHash_EIP2935_HistoryContractIsNotDeployedBeforePrague(t *testing.T
 func TestBlockHash_EIP2935_DeployContract(t *testing.T) {
 	require := req.New(t)
 
-	net := StartIntegrationTestNet(t,
-		IntegrationTestNetOptions{
+	net := testnet.StartIntegrationTestNet(t,
+		testnet.IntegrationTestNetOptions{
 			// < Allegro automatically deploys the history storage contract
 			// < To test deployment, we need to use a feature set that does not already have the contract
-			Upgrades: AsPointer(opera.GetSonicUpgrades()),
+			Upgrades: testnet.AsPointer(opera.GetSonicUpgrades()),
 			ModifyConfig: func(config *config.Config) {
 				// the transaction to deploy the contract is not replay protected
 				// This has the benefit that the same tx will work in both ethereum and sonic.
@@ -313,13 +314,13 @@ func TestBlockHash_EIP2935_DeployContract(t *testing.T) {
 	require.NoError(err)
 	require.Equal(uint64(1), nonce)
 
-	readHistoryStorageContract, receipt, err := DeployContract(net, read_history_storage.DeployReadHistoryStorage)
+	readHistoryStorageContract, receipt, err := testnet.DeployContract(net, read_history_storage.DeployReadHistoryStorage)
 	require.NoError(err)
 	require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
 
 	// Create one block and use the contract to read the block hash. because this
 	// network is running in Sonic, no block hashes are stored in the history storage contract.
-	receipt, err = net.EndowAccount(NewAccount().Address(), big.NewInt(1e18))
+	receipt, err = net.EndowAccount(testnet.NewAccount().Address(), big.NewInt(1e18))
 	require.NoError(err)
 	blockNumber := receipt.BlockNumber
 
@@ -343,14 +344,14 @@ func TestBlockHash_EIP2935_HistoryContractAccumulatesBlockHashes(t *testing.T) {
 
 	require := req.New(t)
 
-	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	session := testnet.GetIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 	t.Parallel()
 
 	client, err := session.GetClient()
 	require.NoError(err)
 	defer client.Close()
 
-	readHistoryStorageContract, receipt, err := DeployContract(session, read_history_storage.DeployReadHistoryStorage)
+	readHistoryStorageContract, receipt, err := testnet.DeployContract(session, read_history_storage.DeployReadHistoryStorage)
 	require.NoError(err)
 	require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
 
@@ -362,7 +363,7 @@ func TestBlockHash_EIP2935_HistoryContractAccumulatesBlockHashes(t *testing.T) {
 	// Fist loop just issues synchronous transactions to create blocks
 	hashes := make(map[uint64]common.Hash)
 	for range testIterations {
-		receipt, err := session.EndowAccount(NewAccount().Address(), big.NewInt(1e18))
+		receipt, err := session.EndowAccount(testnet.NewAccount().Address(), big.NewInt(1e18))
 		require.NoError(err)
 		require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
 		hashes[receipt.BlockNumber.Uint64()] = receipt.BlockHash

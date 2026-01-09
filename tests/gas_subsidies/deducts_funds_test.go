@@ -24,8 +24,8 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
 	"github.com/0xsoniclabs/sonic/tests/contracts/revert"
 	"github.com/ethereum/go-ethereum/common"
@@ -53,7 +53,7 @@ func TestGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T) {
 
 				test.upgrade.GasSubsidies = true
 				test.upgrade.SingleProposerBlockFormation = enabled
-				net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+				net := testnet.StartIntegrationTestNet(t, testnet.IntegrationTestNetOptions{
 					Upgrades: &test.upgrade,
 				})
 
@@ -63,25 +63,25 @@ func TestGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T) {
 	}
 }
 
-func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, net *tests.IntegrationTestNet) {
+func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, net *testnet.IntegrationTestNet) {
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
 	defer client.Close()
 
-	revertContract, receipt, err := tests.DeployContract(net, revert.DeployRevert)
+	revertContract, receipt, err := testnet.DeployContract(net, revert.DeployRevert)
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
-	counterContract, receipt, err := tests.DeployContract(net, counter.DeployCounter)
+	counterContract, receipt, err := testnet.DeployContract(net, counter.DeployCounter)
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
 	cases := map[string]struct {
-		runTransactions func(t *testing.T, net *tests.IntegrationTestNet, sender *tests.Account)
+		runTransactions func(t *testing.T, net *testnet.IntegrationTestNet, sender *testnet.Account)
 	}{
 		"sponsored transaction calls contract": {
-			runTransactions: func(t *testing.T, net *tests.IntegrationTestNet, sender *tests.Account) {
+			runTransactions: func(t *testing.T, net *testnet.IntegrationTestNet, sender *testnet.Account) {
 				opts, err := net.GetTransactOptions(sender)
 				require.NoError(t, err)
 
@@ -94,10 +94,10 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 			},
 		},
 		"sponsored transaction transfers balance (gas is paid by subsidies, value by sender)": {
-			runTransactions: func(t *testing.T, net *tests.IntegrationTestNet, sender *tests.Account) {
+			runTransactions: func(t *testing.T, net *testnet.IntegrationTestNet, sender *testnet.Account) {
 				nonce, err := client.PendingNonceAt(t.Context(), sender.Address())
 				require.NoError(t, err)
-				tx := tests.SignTransaction(t, net.GetChainId(), &types.LegacyTx{
+				tx := testnet.SignTransaction(t, net.GetChainId(), &types.LegacyTx{
 					Nonce: nonce,
 					To:    &common.Address{},
 					Gas:   21000,
@@ -109,10 +109,10 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 			},
 		},
 		"sponsored transaction does nothing": {
-			runTransactions: func(t *testing.T, net *tests.IntegrationTestNet, sender *tests.Account) {
+			runTransactions: func(t *testing.T, net *testnet.IntegrationTestNet, sender *testnet.Account) {
 				nonce, err := client.PendingNonceAt(t.Context(), sender.Address())
 				require.NoError(t, err)
-				tx := tests.SignTransaction(t, net.GetChainId(), &types.LegacyTx{
+				tx := testnet.SignTransaction(t, net.GetChainId(), &types.LegacyTx{
 					Nonce: nonce,
 					To:    &common.Address{},
 					Gas:   21000,
@@ -123,7 +123,7 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 			},
 		},
 		"sponsored transaction calls contract which reverts": {
-			runTransactions: func(t *testing.T, net *tests.IntegrationTestNet, sender *tests.Account) {
+			runTransactions: func(t *testing.T, net *testnet.IntegrationTestNet, sender *testnet.Account) {
 				opts, err := net.GetTransactOptions(sender)
 				require.NoError(t, err)
 
@@ -136,17 +136,17 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 			},
 		},
 		"multiple sponsored transactions": {
-			runTransactions: func(t *testing.T, net *tests.IntegrationTestNet, sender *tests.Account) {
+			runTransactions: func(t *testing.T, net *testnet.IntegrationTestNet, sender *testnet.Account) {
 				nonce, err := client.PendingNonceAt(t.Context(), sender.Address())
 				require.NoError(t, err)
-				tx1 := tests.SignTransaction(t, net.GetChainId(), &types.LegacyTx{
+				tx1 := testnet.SignTransaction(t, net.GetChainId(), &types.LegacyTx{
 					Nonce: nonce,
 					To:    &common.Address{},
 					Gas:   21000,
 				}, sender)
 
 				require.NoError(t, err)
-				tx2 := tests.SignTransaction(t, net.GetChainId(), &types.LegacyTx{
+				tx2 := testnet.SignTransaction(t, net.GetChainId(), &types.LegacyTx{
 					Nonce: nonce + 1,
 					To:    &common.Address{},
 					Gas:   21000,
@@ -164,10 +164,10 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 			},
 		},
 		"multiple mixed transactions, sponsored first": {
-			runTransactions: func(t *testing.T, net *tests.IntegrationTestNet, sender *tests.Account) {
+			runTransactions: func(t *testing.T, net *testnet.IntegrationTestNet, sender *testnet.Account) {
 				nonce, err := client.PendingNonceAt(t.Context(), sender.Address())
 				require.NoError(t, err)
-				sponsoredTx := tests.SignTransaction(t, net.GetChainId(),
+				sponsoredTx := testnet.SignTransaction(t, net.GetChainId(),
 					&types.LegacyTx{
 						Nonce: nonce,
 						To:    &common.Address{},
@@ -175,7 +175,7 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 					}, sender)
 
 				require.NoError(t, err)
-				normalTx := tests.CreateTransaction(t, net,
+				normalTx := testnet.CreateTransaction(t, net,
 					&types.LegacyTx{
 						To: &common.Address{},
 					}, net.GetSessionSponsor())
@@ -192,10 +192,10 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 			},
 		},
 		"multiple mixed transactions, sponsored last": {
-			runTransactions: func(t *testing.T, net *tests.IntegrationTestNet, sender *tests.Account) {
+			runTransactions: func(t *testing.T, net *testnet.IntegrationTestNet, sender *testnet.Account) {
 				nonce, err := client.PendingNonceAt(t.Context(), sender.Address())
 				require.NoError(t, err)
-				sponsoredTx := tests.SignTransaction(t, net.GetChainId(),
+				sponsoredTx := testnet.SignTransaction(t, net.GetChainId(),
 					&types.LegacyTx{
 						Nonce: nonce,
 						To:    &common.Address{},
@@ -203,7 +203,7 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 					}, sender)
 
 				require.NoError(t, err)
-				normalTx := tests.CreateTransaction(t, net,
+				normalTx := testnet.CreateTransaction(t, net,
 					&types.LegacyTx{
 						To: &common.Address{},
 					}, net.GetSessionSponsor())
@@ -220,7 +220,7 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 			},
 		},
 		"sponsored transaction calling a contract which aborts": {
-			runTransactions: func(t *testing.T, net *tests.IntegrationTestNet, sender *tests.Account) {
+			runTransactions: func(t *testing.T, net *testnet.IntegrationTestNet, sender *testnet.Account) {
 
 				opts, err := net.GetTransactOptions(sender)
 				require.NoError(t, err)
@@ -241,7 +241,7 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 
 			donation := big.NewInt(1e18)
 
-			sponsoredSender := tests.MakeAccountWithBalance(t, net, big.NewInt(1))
+			sponsoredSender := testnet.MakeAccountWithBalance(t, net, big.NewInt(1))
 			sponsorshipRegistry := Fund(t, net, sponsoredSender.Address(), donation)
 
 			subsidiesRegistryBalanceBefore, err := client.BalanceAt(t.Context(), registry.GetAddress(), nil)
@@ -266,7 +266,7 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 			// For every block created during test scenario
 			for blockNumber := blockBefore.NumberU64() + 1; blockNumber <= blockAfter.NumberU64(); blockNumber++ {
 
-				tests.WaitForProofOf(t, client, int(blockNumber))
+				testnet.WaitForProofOf(t, client, int(blockNumber))
 
 				block, err := client.BlockByNumber(t.Context(), big.NewInt(int64(blockNumber)))
 				require.NoError(t, err)
@@ -303,7 +303,7 @@ func testGasSubsidies_SubsidizedTransaction_DeductsSubsidyFunds(t *testing.T, ne
 				}
 			}
 
-			tests.WaitForProofOf(t, client, int(blockAfter.NumberU64()))
+			testnet.WaitForProofOf(t, client, int(blockAfter.NumberU64()))
 
 			_, fundId, err := sponsorshipRegistry.AccountSponsorshipFundId(nil, sponsoredSender.Address())
 			require.NoError(t, err)
@@ -333,7 +333,7 @@ func TestGasSubsidies_SubsidizedTransaction_SkipTransactionIfDeduceFundsDoesNotF
 
 	upgrades := opera.GetSonicUpgrades()
 	upgrades.GasSubsidies = true
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+	net := testnet.StartIntegrationTestNet(t, testnet.IntegrationTestNetOptions{
 		Upgrades: &upgrades,
 	})
 
@@ -341,21 +341,21 @@ func TestGasSubsidies_SubsidizedTransaction_SkipTransactionIfDeduceFundsDoesNotF
 	require.NoError(t, err)
 	defer client.Close()
 
-	revertContract, receipt, err := tests.DeployContract(net, revert.DeployRevert)
+	revertContract, receipt, err := testnet.DeployContract(net, revert.DeployRevert)
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
 	donation := big.NewInt(1e18)
 
-	sponsoredSender := tests.NewAccount()
+	sponsoredSender := testnet.NewAccount()
 	registry := Fund(t, net, sponsoredSender.Address(), donation)
 
 	config, err := registry.GetGasConfig(nil)
 	require.NoError(t, err)
 
-	rules := tests.GetNetworkRules(t, net)
+	rules := testnet.GetNetworkRules(t, net)
 	rules.Blocks.MaxBlockGas = 3_000_000
-	tests.UpdateNetworkRules(t, net, rules)
+	testnet.UpdateNetworkRules(t, net, rules)
 
 	net.AdvanceEpoch(t, 1)
 
@@ -382,7 +382,7 @@ func TestGasSubsidies_NonSponsoredTransactionsAreRejected(t *testing.T) {
 
 	upgrades := opera.GetBrioUpgrades()
 	upgrades.GasSubsidies = true
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+	net := testnet.StartIntegrationTestNet(t, testnet.IntegrationTestNetOptions{
 		Upgrades: &upgrades,
 	})
 
@@ -441,7 +441,7 @@ func TestGasSubsidies_NonSponsoredTransactionsAreRejected(t *testing.T) {
 	for name, test := range cases {
 		t.Run(name, func(t *testing.T) {
 
-			sponsoredSender := tests.NewAccount()
+			sponsoredSender := testnet.NewAccount()
 			Fund(t, net, sponsoredSender.Address(), big.NewInt(int64(test.funds)))
 
 			signer := types.LatestSignerForChainID(net.GetChainId())

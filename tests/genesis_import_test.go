@@ -20,6 +20,7 @@ import (
 	"math/big"
 	"testing"
 
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
@@ -28,7 +29,7 @@ func TestGenesis_NetworkCanCreateNewBlocksAfterExportImport(t *testing.T) {
 	const numBlocks = 3
 	require := require.New(t)
 
-	net := StartIntegrationTestNet(t)
+	net := testnet.StartIntegrationTestNet(t)
 
 	// Produce a few blocks on the network.
 	for range numBlocks {

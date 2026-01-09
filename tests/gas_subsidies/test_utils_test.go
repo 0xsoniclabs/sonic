@@ -22,8 +22,8 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -35,12 +35,12 @@ func TestGasSubsidies_HelperFunctions(t *testing.T) {
 
 	upgrades := opera.GetBrioUpgrades()
 	upgrades.GasSubsidies = true
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+	net := testnet.StartIntegrationTestNet(t, testnet.IntegrationTestNetOptions{
 		Upgrades: &upgrades,
 	})
 
-	sponsee := tests.NewAccount()
-	receiver := tests.NewAccount()
+	sponsee := testnet.NewAccount()
+	receiver := testnet.NewAccount()
 	receiverAddress := receiver.Address()
 
 	donation := big.NewInt(1e18)
@@ -73,7 +73,7 @@ func TestGasSubsidies_HelperFunctions(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, ok, "registry should have a fund ID")
 
-	tests.WaitForProofOf(t, client, int(receipt.BlockNumber.Int64()))
+	testnet.WaitForProofOf(t, client, int(receipt.BlockNumber.Int64()))
 
 	sponsorship, err := registry.Sponsorships(nil, fundId)
 	require.NoError(t, err)
@@ -98,7 +98,7 @@ func TestMakeSponsorRequestTransaction_CanHandleAllTransactionTypes(t *testing.T
 
 	for _, tx := range txs {
 		t.Run(fmt.Sprintf("%T", tx), func(t *testing.T) {
-			sponsoredTx := makeSponsorRequestTransaction(t, tx, big.NewInt(1), tests.NewAccount())
+			sponsoredTx := makeSponsorRequestTransaction(t, tx, big.NewInt(1), testnet.NewAccount())
 			require.Equal(t, sponsoredTx.GasPrice(), big.NewInt(0))
 			require.Equal(t, sponsoredTx.GasTipCap(), big.NewInt(0))
 			require.True(t, subsidies.IsSponsorshipRequest(sponsoredTx))

@@ -20,8 +20,8 @@ import (
 	"math/big"
 	"testing"
 
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/tests/contracts/indexed_logs"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -33,7 +33,7 @@ func TestGasSubsidies_ProperlyAssignTxIndexToLogsInThePresenceOfSponsoredTransac
 
 	upgrade := opera.GetBrioUpgrades()
 	upgrade.GasSubsidies = true
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+	net := testnet.StartIntegrationTestNet(t, testnet.IntegrationTestNetOptions{
 		Upgrades: &upgrade,
 	})
 
@@ -41,11 +41,11 @@ func TestGasSubsidies_ProperlyAssignTxIndexToLogsInThePresenceOfSponsoredTransac
 	require.NoError(err)
 	defer client.Close()
 
-	sponsee := tests.NewAccount()
+	sponsee := testnet.NewAccount()
 	donation := big.NewInt(1e18)
 	Fund(t, net, sponsee.Address(), donation)
 
-	contract, receipt, err := tests.DeployContract(net, indexed_logs.DeployIndexedLogs)
+	contract, receipt, err := testnet.DeployContract(net, indexed_logs.DeployIndexedLogs)
 	require.NoError(err)
 	require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
 

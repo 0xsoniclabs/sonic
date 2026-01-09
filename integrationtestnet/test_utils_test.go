@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
-package tests
+package testnet
 
 import (
 	"context"
@@ -30,7 +30,7 @@ import (
 )
 
 func TestSetTransactionDefaults_CanInitializeAllTransactionTypes(t *testing.T) {
-	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	session := GetIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 	t.Parallel()
 
 	client, err := session.GetClient()
@@ -137,9 +137,9 @@ func TestSetTransactionDefaults_CanInitializeAllTransactionTypes(t *testing.T) {
 		makeAuthList := func(t *testing.T, chainId *big.Int, accounts int) []types.SetCodeAuthorization {
 			authList := make([]types.SetCodeAuthorization, accounts)
 			for i := range authList {
-				account := NewAccount()
+				Account := NewAccount()
 
-				auth, err := types.SignSetCode(account.PrivateKey,
+				auth, err := types.SignSetCode(Account.PrivateKey,
 					types.SetCodeAuthorization{
 						ChainID: *uint256.MustFromBig(chainId),
 						Address: common.BigToAddress(big.NewInt(int64(i))),
@@ -278,7 +278,7 @@ func TestSetTransactionDefaults_CanInitializeAllTransactionTypes(t *testing.T) {
 		// utilizes manual nonce setting to issue multiple transactions asynchronously
 		session := session.SpawnSession(t)
 		t.Parallel()
-		// account has a non-zero nonce
+		// Account has a non-zero nonce
 		receipt, err := session.EndowAccount(common.Address{}, big.NewInt(1))
 		require.NoError(t, err)
 		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
@@ -295,7 +295,7 @@ func TestSetTransactionDefaults_CanInitializeAllTransactionTypes(t *testing.T) {
 		session := session.SpawnSession(t)
 		t.Parallel()
 
-		// endowments modify the account nonce
+		// endowments modify the Account nonce
 		var receipt *types.Receipt
 		var err error
 		for range 2 {
@@ -393,7 +393,7 @@ func TestSetTransactionDefaults_IsCorrectAfterUpgradesChange(t *testing.T) {
 }
 
 func TestWaitUntilTransactionIsRetiredFromPool_waitsFromCompletion(t *testing.T) {
-	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	session := GetIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 	t.Parallel()
 
 	// TODO: this test can benefit from using synctest once it is available
@@ -403,14 +403,14 @@ func TestWaitUntilTransactionIsRetiredFromPool_waitsFromCompletion(t *testing.T)
 	require.NoError(t, err)
 	defer client.Close()
 
-	account := MakeAccountWithBalance(t, session, big.NewInt(1e18))
+	Account := MakeAccountWithBalance(t, session, big.NewInt(1e18))
 
 	chainId, err := client.ChainID(t.Context())
 	require.NoError(t, err)
 
-	txData := SetTransactionDefaults(t, session, &types.LegacyTx{}, account)
+	txData := SetTransactionDefaults(t, session, &types.LegacyTx{}, Account)
 	txData.Nonce = 1
-	txInvalidNonce := SignTransaction(t, chainId, txData, account)
+	txInvalidNonce := SignTransaction(t, chainId, txData, Account)
 
 	err = client.SendTransaction(t.Context(), txInvalidNonce)
 	require.NoError(t, err)
@@ -421,7 +421,7 @@ func TestWaitUntilTransactionIsRetiredFromPool_waitsFromCompletion(t *testing.T)
 	require.ErrorContains(t, err, "wait timeout")
 
 	txData.Nonce = 0
-	txCorrectNonce := SignTransaction(t, chainId, txData, account)
+	txCorrectNonce := SignTransaction(t, chainId, txData, Account)
 
 	err = client.SendTransaction(t.Context(), txCorrectNonce)
 	require.NoError(t, err)

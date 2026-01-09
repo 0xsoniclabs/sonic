@@ -21,6 +21,7 @@ import (
 	"math/big"
 	"testing"
 
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -31,7 +32,7 @@ import (
 func TestGasPrice_SuggestedGasPricesApproximateActualBaseFees(t *testing.T) {
 	require := require.New(t)
 
-	session := getIntegrationTestNetSession(t, opera.GetBrioUpgrades())
+	session := testnet.GetIntegrationTestNetSession(t, opera.GetBrioUpgrades())
 
 	client, err := session.GetClient()
 	require.NoError(err, "failed to get client")
@@ -67,7 +68,7 @@ func TestGasPrice_SuggestedGasPricesApproximateActualBaseFees(t *testing.T) {
 func TestGasPrice_UnderpricedTransactionsAreRejected(t *testing.T) {
 	require := require.New(t)
 
-	session := getIntegrationTestNetSession(t, opera.GetBrioUpgrades())
+	session := testnet.GetIntegrationTestNetSession(t, opera.GetBrioUpgrades())
 
 	client, err := session.GetClient()
 	require.NoError(err, "failed to get client")
@@ -82,7 +83,7 @@ func TestGasPrice_UnderpricedTransactionsAreRejected(t *testing.T) {
 
 	// SetCode transactions are restricted to a max of one in-flight transaction
 	// per address, so we need to use a different account.
-	setCodeAccount := MakeAccountWithBalance(t, session, big.NewInt(1e18))
+	setCodeAccount := testnet.MakeAccountWithBalance(t, session, big.NewInt(1e18))
 	setCodeFactory := &txFactory{
 		senderKey: setCodeAccount.PrivateKey,
 		chainId:   chainId,

@@ -29,10 +29,10 @@ import (
 
 	sonictool "github.com/0xsoniclabs/sonic/cmd/sonictool/app"
 	"github.com/0xsoniclabs/sonic/cmd/sonictool/genesis"
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
 	ogenesis "github.com/0xsoniclabs/sonic/opera/genesis"
 	"github.com/0xsoniclabs/sonic/opera/genesisstore"
-	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/utils/caution"
 	"github.com/0xsoniclabs/sonic/utils/prompt"
 	"github.com/ethereum/go-ethereum/common"
@@ -83,7 +83,7 @@ func TestSonicTool_check_ExecutesWithoutErrors(t *testing.T) {
 
 func TestSonicTool_compact_ExecutesWithoutErrors(t *testing.T) {
 
-	net := tests.StartIntegrationTestNet(t)
+	net := testnet.StartIntegrationTestNet(t)
 	generateNBlocks(t, net, 2)
 	net.Stop()
 
@@ -191,7 +191,7 @@ func TestSonicTool_genesis_ReturnsErrorIfHardforkIsInvalid(t *testing.T) {
 func TestSonicTool_genesis_ExportsAndSigns_WithoutErrors(t *testing.T) {
 
 	// Create a history by running some transactions
-	net := tests.StartIntegrationTestNetWithFakeGenesis(t)
+	net := testnet.StartIntegrationTestNetWithFakeGenesis(t)
 	generateNBlocks(t, net, 2)
 	net.Stop()
 
@@ -231,10 +231,10 @@ func TestSonicTool_genesis_ExportsAndSigns_WithoutErrors(t *testing.T) {
 }
 
 func TestSonicTool_heal_ExecutesWithoutErrors(t *testing.T) {
-	net := tests.StartIntegrationTestNet(
+	net := testnet.StartIntegrationTestNet(
 		t,
-		tests.IntegrationTestNetOptions{
-			Upgrades:             tests.AsPointer(opera.GetSonicUpgrades()),
+		testnet.IntegrationTestNetOptions{
+			Upgrades:             testnet.AsPointer(opera.GetSonicUpgrades()),
 			ClientExtraArguments: []string{"--statedb.checkpointinterval", "1"},
 		},
 	)
@@ -247,7 +247,7 @@ func TestSonicTool_heal_ExecutesWithoutErrors(t *testing.T) {
 
 func TestSonicTool_config_ExecutesWithoutErrors(t *testing.T) {
 
-	net := tests.StartIntegrationTestNet(t)
+	net := testnet.StartIntegrationTestNet(t)
 	generateNBlocks(t, net, 2)
 	net.Stop()
 
@@ -279,7 +279,7 @@ func TestSonicTool_config_ExecutesWithoutErrors(t *testing.T) {
 }
 
 func TestSonicTool_events_ExecutesWithoutErrors(t *testing.T) {
-	net := tests.StartIntegrationTestNet(t)
+	net := testnet.StartIntegrationTestNet(t)
 	generateNBlocks(t, net, 2)
 	net.Stop()
 
@@ -298,11 +298,11 @@ func TestSonicTool_events_ExecutesWithoutErrors(t *testing.T) {
 }
 
 func TestSonicTool_EventsExport_ExecutesWithoutErrors_ForEpochRange(t *testing.T) {
-	net := tests.StartIntegrationTestNet(t)
+	net := testnet.StartIntegrationTestNet(t)
 	numEpochs := 5
 	for range numEpochs {
 		generateNBlocks(t, net, 3)
-		tests.AdvanceEpochAndWaitForBlocks(t, net)
+		testnet.AdvanceEpochAndWaitForBlocks(t, net)
 	}
 
 	net.Stop()
@@ -317,7 +317,7 @@ func TestSonicTool_EventsExport_ExecutesWithoutErrors_ForEpochRange(t *testing.T
 }
 
 func TestSonicTool_EventsExport_ReturnsError_ForEpochOutOfRange(t *testing.T) {
-	net := tests.StartIntegrationTestNet(t)
+	net := testnet.StartIntegrationTestNet(t)
 	generateNBlocks(t, net, 3)
 
 	client, err := net.GetClient()
@@ -326,7 +326,7 @@ func TestSonicTool_EventsExport_ReturnsError_ForEpochOutOfRange(t *testing.T) {
 
 	current, err := client.BlockNumber(t.Context())
 	require.NoError(t, err)
-	currentEpoch := tests.GetEpochOfBlock(t, client, int(current))
+	currentEpoch := testnet.GetEpochOfBlock(t, client, int(current))
 
 	net.Stop()
 
@@ -339,7 +339,7 @@ func TestSonicTool_EventsExport_ReturnsError_ForEpochOutOfRange(t *testing.T) {
 }
 
 func TestSonicTool_EventExport_ReturnsError_ForInvalidRange(t *testing.T) {
-	net := tests.StartIntegrationTestNet(t)
+	net := testnet.StartIntegrationTestNet(t)
 	generateNBlocks(t, net, 3)
 	net.Stop()
 
@@ -352,7 +352,7 @@ func TestSonicTool_EventExport_ReturnsError_ForInvalidRange(t *testing.T) {
 }
 
 func TestSonicTool_EventsExport_ReturnsError_ForEpochsWithNoEvents(t *testing.T) {
-	net := tests.StartIntegrationTestNet(t)
+	net := testnet.StartIntegrationTestNet(t)
 	generateNBlocks(t, net, 1)
 	net.Stop()
 
@@ -367,7 +367,7 @@ func TestSonicTool_EventsExport_ReturnsError_ForEpochsWithNoEvents(t *testing.T)
 
 func TestSonicTool_EventsExport_ReturnsError_ForWrongNumberOfArguments(t *testing.T) {
 
-	net := tests.StartIntegrationTestNet(t)
+	net := testnet.StartIntegrationTestNet(t)
 	generateNBlocks(t, net, 3)
 	net.Stop()
 
@@ -494,14 +494,14 @@ func generatePrivateKeyFile(file string) (*ecdsa.PrivateKey, error) {
 // generateNBlocks generates n blocks in the blockchain.
 // The transactions executed are not important, only the fact that they are
 // executed synchronously and n blocks exist after the function returns.
-func generateNBlocks(t *testing.T, net *tests.IntegrationTestNet, n int) {
+func generateNBlocks(t *testing.T, net *testnet.IntegrationTestNet, n int) {
 	t.Helper()
 	for i := 0; i < n; i++ {
 		createAccount(t, net)
 	}
 }
 
-func createAccount(t *testing.T, net *tests.IntegrationTestNet) {
+func createAccount(t *testing.T, net *testnet.IntegrationTestNet) {
 	t.Helper()
 
 	var addr common.Address

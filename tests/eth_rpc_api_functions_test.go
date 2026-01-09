@@ -29,6 +29,7 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
@@ -201,9 +202,9 @@ func makeTestEngine(gdb *gossip.Store) (*abft.Lachesis, *vecmt.Index) {
 
 func TestEthConfig_ProducesReadableConfig(t *testing.T) {
 
-	net := StartIntegrationTestNet(t,
-		IntegrationTestNetOptions{
-			Upgrades: AsPointer(opera.GetBrioUpgrades()),
+	net := testnet.StartIntegrationTestNet(t,
+		testnet.IntegrationTestNetOptions{
+			Upgrades: testnet.AsPointer(opera.GetBrioUpgrades()),
 		})
 
 	client, err := net.GetClient()
@@ -272,15 +273,15 @@ func TestEthConfig_ProducesReadableConfig(t *testing.T) {
 	require.NoError(t, err, "eth_getRules failed")
 
 	rules.Upgrades.GasSubsidies = true
-	UpdateNetworkRules(t, net, rules)
-	AdvanceEpochAndWaitForBlocks(t, net)
+	testnet.UpdateNetworkRules(t, net, rules)
+	testnet.AdvanceEpochAndWaitForBlocks(t, net)
 
 	// get current block to confirm epoch advancement
 	currentBlock, err := client.BlockByNumber(t.Context(), nil)
 	require.NoError(t, err, "could not get current block after epoch advancement")
 	require.Greater(t, currentBlock.NumberU64(), block1.NumberU64(), "block number did not advance after epoch advancement")
 
-	WaitForProofOf(t, client, int(currentBlock.NumberU64()))
+	testnet.WaitForProofOf(t, client, int(currentBlock.NumberU64()))
 
 	// get new config
 	err = client.Client().Call(&response, "eth_config")

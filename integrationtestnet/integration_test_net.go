@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
-package tests
+package testnet
 
 import (
 	"bytes"
@@ -66,12 +66,12 @@ type IntegrationTestNetSession interface {
 	// GetUpgrades returns the upgrades the network has been started with.
 	GetUpgrades() opera.Upgrades
 
-	// EndowAccount sends a requested amount of tokens to the given account. This is
+	// EndowAccount sends a requested amount of tokens to the given Account. This is
 	// mainly intended to provide funds to accounts for testing purposes.
 	EndowAccount(address common.Address, value *big.Int) (*types.Receipt, error)
 
 	// EndowAccounts sends the requested amount of tokens to each of the given
-	// accounts. This is a faster than calling EndowAccount for each account since
+	// accounts. This is a faster than calling EndowAccount for each Account since
 	// multiple endowments may get bundled in the same block.
 	EndowAccounts(addresses []common.Address, value *big.Int) ([]*types.Receipt, error)
 
@@ -90,14 +90,14 @@ type IntegrationTestNetSession interface {
 	GetReceipts(txHash []common.Hash) ([]*types.Receipt, error)
 
 	// GetTransactOptions provides transaction options to be used to send a transaction
-	// from the given account.
-	GetTransactOptions(account *Account) (*bind.TransactOpts, error)
+	// from the given Account.
+	GetTransactOptions(Account *Account) (*bind.TransactOpts, error)
 
-	// Apply sends a transaction to the network using the session account.
+	// Apply sends a transaction to the network using the session Account.
 	// and waits for the transaction to be processed. The resulting receipt is returned.
 	Apply(issue func(*bind.TransactOpts) (*types.Transaction, error)) (*types.Receipt, error)
 
-	// GetSessionSponsor returns the default account of the session. This account is used
+	// GetSessionSponsor returns the default Account of the session. This Account is used
 	// to sign transactions and pay for gas when using the Apply and EndowAccount methods.
 	GetSessionSponsor() *Account
 
@@ -109,7 +109,7 @@ type IntegrationTestNetSession interface {
 	GetChainId() *big.Int
 
 	// SpawnSession creates a new test session on the network based from the
-	// network's sponsor account. This should be done before entering a new
+	// network's sponsor Account. This should be done before entering a new
 	// parallel context to prevent conflicting nonces inside.
 	SpawnSession(t *testing.T) IntegrationTestNetSession
 
@@ -171,13 +171,13 @@ type IntegrationTestNetOptions struct {
 	SkipCleanUp bool
 }
 
-// IntegrationTestNet is a in-process test network for integration tests. When
+// IntegrationTestNet is a in-process test network for integration  When
 // started, it runs full Sonic nodes maintaining a chain within the process
 // containing this object. The network can be used to run transactions on and
 // to perform queries against.
 //
 // The main purpose of this network is to facilitate end-to-end debugging of
-// client code in the controlled scope of individual unit tests. When running
+// client code in the controlled scope of individual unit  When running
 // tests against an integration test network instance, break-points can be set
 // in the client code, thereby facilitating debugging.
 //
@@ -277,7 +277,7 @@ func startHeapProfiler(tb testing.TB) {
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
-// StartIntegrationTestNet starts a single-node test network for integration tests.
+// StartIntegrationTestNet starts a single-node test network for integration
 // The node serving the network is started in the same process as the caller. This
 // is intended to facilitate debugging of client code in the context of a running
 // node.
@@ -334,7 +334,7 @@ func StartIntegrationTestNetWithFakeGenesis(
 // StartIntegrationTestNetWithJsonGenesis starts a single-node test network for
 // integration tests using the JSON-Genesis procedure. The JSON genesis procedure
 // is the genesis procedure used in long-running production networks like the
-// Sonic mainnet and the testnet.
+// Sonic mainnet and the
 func StartIntegrationTestNetWithJsonGenesis(
 	t testing.TB,
 	options ...IntegrationTestNetOptions,
@@ -388,7 +388,7 @@ func startIntegrationTestNet(
 	net := &IntegrationTestNet{
 		options: options,
 		Session: Session{
-			account: Account{evmcore.FakeKey(1)},
+			Account: Account{evmcore.FakeKey(1)},
 		},
 		nodes: make([]integrationTestNode, len(options.ValidatorsStake)),
 	}
@@ -793,7 +793,7 @@ func (n *IntegrationTestNet) GetHeaders() ([]*types.Header, error) {
 }
 
 // SpawnSession creates a new test session on the network.
-// The session is backed by an account which will be used to sign and pay for
+// The session is backed by an Account which will be used to sign and pay for
 // transactions. By using this function, multiple test sessions can be run in
 // parallel on the same network, without conflicting nonce issues, since the
 // accounts are isolated.
@@ -816,18 +816,18 @@ func (n *IntegrationTestNet) SpawnSession(t *testing.T) IntegrationTestNetSessio
 		PrivateKey: key,
 	}
 	receipt, err := n.EndowAccount(nextSessionAccount.Address(), new(big.Int).SetUint64(math.MaxUint64))
-	require.NoError(t, err, "Failed to endow account")
-	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "Failed to endow account")
+	require.NoError(t, err, "Failed to endow Account")
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "Failed to endow Account")
 
 	return &Session{
 		net:     n,
-		account: nextSessionAccount,
+		Account: nextSessionAccount,
 	}
 }
 
 // AdvanceEpoch trigger the sealing of an epoch and the epoch number to progress by the given number.
 // The function blocks until the final epoch has been reached. This method can only be called
-// on a validator account.
+// on a validator Account.
 func (n *IntegrationTestNet) AdvanceEpoch(t testing.TB, epochs int) {
 	t.Helper()
 	client, err := n.GetClient()
@@ -859,7 +859,7 @@ func (n *IntegrationTestNet) AdvanceEpoch(t testing.TB, epochs int) {
 }
 
 // DeployContract is a utility function handling the deployment of a contract on the network.
-// The contract is deployed with by the network's validator account. The function returns the
+// The contract is deployed with by the network's validator Account. The function returns the
 // deployed contract instance and the transaction receipt.
 func DeployContract[T any](n IntegrationTestNetSession, deploy contractDeployer[T]) (*T, *types.Receipt, error) {
 	client, err := n.GetClient()
@@ -896,13 +896,13 @@ func DeployContract[T any](n IntegrationTestNetSession, deploy contractDeployer[
 // contractDeployer is the type of the deployment functions generated by abigen.
 type contractDeployer[T any] func(*bind.TransactOpts, bind.ContractBackend) (common.Address, *types.Transaction, *T, error)
 
-// Session is a test session on the network. It is backed by an account which
+// Session is a test session on the network. It is backed by an Account which
 // will be used to sign and pay for transactions.
 // Its purpose is to isolate transaction issuing accounts, so that multiple test
 // sessions can be run in parallel on the same network without conflicting nonce issues.
 type Session struct {
 	net     *IntegrationTestNet
-	account Account
+	Account Account
 }
 
 func (s *Session) SpawnSession(t *testing.T) IntegrationTestNetSession {
@@ -913,7 +913,7 @@ func (s *Session) GetUpgrades() opera.Upgrades {
 	return *s.net.options.Upgrades
 }
 
-// EndowAccount sends a requested amount of tokens to the given account. This is
+// EndowAccount sends a requested amount of tokens to the given Account. This is
 // mainly intended to provide funds to accounts for testing purposes.
 func (s *Session) EndowAccount(
 	address common.Address,
@@ -927,7 +927,7 @@ func (s *Session) EndowAccount(
 }
 
 // EndowAccounts sends the requested amount of tokens to each of the given
-// accounts. This is a faster than calling EndowAccount for each account since
+// accounts. This is a faster than calling EndowAccount for each Account since
 // multiple endowments may get bundled in the same block.
 func (s *Session) EndowAccounts(
 	addresses []common.Address,
@@ -944,8 +944,8 @@ func (s *Session) EndowAccounts(
 		return nil, fmt.Errorf("failed to get chain ID: %w", err)
 	}
 
-	// The requested funds are moved from the validator account to the target account.
-	nonce, err := client.PendingNonceAt(context.Background(), s.account.Address())
+	// The requested funds are moved from the validator Account to the target Account.
+	nonce, err := client.PendingNonceAt(context.Background(), s.Account.Address())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get nonce: %w", err)
 	}
@@ -964,7 +964,7 @@ func (s *Session) EndowAccounts(
 			To:       &address,
 			Value:    value,
 			Nonce:    nonce,
-		}), types.NewLondonSigner(chainId), s.account.PrivateKey)
+		}), types.NewLondonSigner(chainId), s.Account.PrivateKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to sign transaction: %w", err)
 		}
@@ -1087,12 +1087,12 @@ func runParallelWithClient(
 	)
 }
 
-// Apply sends a transaction to the network using the session account
+// Apply sends a transaction to the network using the session Account
 // and waits for the transaction to be processed. The resulting receipt is returned.
 func (s *Session) Apply(
 	issue func(*bind.TransactOpts) (*types.Transaction, error),
 ) (*types.Receipt, error) {
-	txOpts, err := s.GetTransactOptions(&s.account)
+	txOpts, err := s.GetTransactOptions(&s.Account)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get transaction options: %w", err)
 	}
@@ -1104,11 +1104,11 @@ func (s *Session) Apply(
 }
 
 // GetTransactOptions provides transaction options to be used to send a transaction
-// with the given account. The options include the chain ID, a suggested gas price,
-// the next free nonce of the given account, and a hard-coded gas limit of 1e6.
+// with the given Account. The options include the chain ID, a suggested gas price,
+// the next free nonce of the given Account, and a hard-coded gas limit of 1e6.
 // The main purpose of this function is to provide a convenient way to collect all
 // the necessary information required to create a transaction in one place.
-func (s *Session) GetTransactOptions(account *Account) (*bind.TransactOpts, error) {
+func (s *Session) GetTransactOptions(Account *Account) (*bind.TransactOpts, error) {
 	client, err := s.GetClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to the Ethereum client: %w", err)
@@ -1126,12 +1126,12 @@ func (s *Session) GetTransactOptions(account *Account) (*bind.TransactOpts, erro
 		return nil, fmt.Errorf("failed to get gas price suggestion: %w", err)
 	}
 
-	nonce, err := client.PendingNonceAt(ctxt, account.Address())
+	nonce, err := client.PendingNonceAt(ctxt, Account.Address())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get nonce: %w", err)
 	}
 
-	txOpts, err := bind.NewKeyedTransactorWithChainID(account.PrivateKey, chainId)
+	txOpts, err := bind.NewKeyedTransactorWithChainID(Account.PrivateKey, chainId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create transaction options: %w", err)
 	}
@@ -1142,7 +1142,7 @@ func (s *Session) GetTransactOptions(account *Account) (*bind.TransactOpts, erro
 }
 
 func (s *Session) GetSessionSponsor() *Account {
-	return &s.account
+	return &s.Account
 }
 
 // GetChainId returns the chain ID of the network.

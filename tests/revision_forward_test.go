@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/tosca/go/tosca/vm"
 	"github.com/ethereum/go-ethereum/common"
@@ -51,7 +52,7 @@ func TestRevisionIsForwardedCorrectly_DelegationDesignationAddressAccessIsConsid
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			net := StartIntegrationTestNetWithJsonGenesis(t, IntegrationTestNetOptions{
+			net := testnet.StartIntegrationTestNetWithJsonGenesis(t, testnet.IntegrationTestNetOptions{
 				Upgrades: &test.upgrades,
 				Accounts: accountsToDeploy(),
 			})
@@ -60,7 +61,7 @@ func TestRevisionIsForwardedCorrectly_DelegationDesignationAddressAccessIsConsid
 			require.NoError(t, err)
 			defer client.Close()
 
-			sender := MakeAccountWithBalance(t, net, big.NewInt(1e18))
+			sender := testnet.MakeAccountWithBalance(t, net, big.NewInt(1e18))
 
 			gasPrice, err := client.SuggestGasPrice(t.Context())
 			require.NoError(t, err)
@@ -79,7 +80,7 @@ func TestRevisionIsForwardedCorrectly_DelegationDesignationAddressAccessIsConsid
 				Data:       []byte{},
 				AccessList: types.AccessList{},
 			}
-			tx := SignTransaction(t, chainId, txData, sender)
+			tx := testnet.SignTransaction(t, chainId, txData, sender)
 
 			receipt, err := net.Run(tx)
 			require.NoError(t, err)
@@ -164,14 +165,14 @@ func TestRevisionIsForwardedCorrectly_BrioEnablesOsakaInBlockProcessing(t *testi
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			net := StartIntegrationTestNetWithJsonGenesis(t, IntegrationTestNetOptions{
+			net := testnet.StartIntegrationTestNetWithJsonGenesis(t, testnet.IntegrationTestNetOptions{
 				Upgrades: &test.upgrades,
 				Accounts: []makefakegenesis.Account{account},
 			})
 			client, err := net.GetClient()
 			require.NoError(t, err)
 			defer client.Close()
-			sender := MakeAccountWithBalance(t, net, big.NewInt(1e18))
+			sender := testnet.MakeAccountWithBalance(t, net, big.NewInt(1e18))
 
 			txData := &types.LegacyTx{
 				Gas: 100_000,
@@ -183,7 +184,7 @@ func TestRevisionIsForwardedCorrectly_BrioEnablesOsakaInBlockProcessing(t *testi
 					0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 				},
 			}
-			tx := CreateTransaction(t, net, txData, sender)
+			tx := testnet.CreateTransaction(t, net, txData, sender)
 			receipt, err := net.Run(tx)
 			require.NoError(t, err)
 
@@ -236,8 +237,8 @@ func TestRevisionIsForwardedCorrectly_RPCCall_BrioEnablesOsaka(t *testing.T) {
 
 	// 1)  start net with Allegro
 
-	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
-		Upgrades: AsPointer(opera.GetAllegroUpgrades()),
+	net := testnet.StartIntegrationTestNet(t, testnet.IntegrationTestNetOptions{
+		Upgrades: testnet.AsPointer(opera.GetAllegroUpgrades()),
 		Accounts: []makefakegenesis.Account{brioOnlyContract},
 	})
 
@@ -265,8 +266,8 @@ func TestRevisionIsForwardedCorrectly_RPCCall_BrioEnablesOsaka(t *testing.T) {
 		Upgrades: struct{ Brio bool }{Brio: true},
 	}
 
-	UpdateNetworkRules(t, net, rulesDiff)
-	AdvanceEpochAndWaitForBlocks(t, net)
+	testnet.UpdateNetworkRules(t, net, rulesDiff)
+	testnet.AdvanceEpochAndWaitForBlocks(t, net)
 
 	blockAfterUpgrade, err := client.BlockByNumber(t.Context(), nil)
 	require.NoError(t, err)
@@ -292,7 +293,7 @@ func TestRevisionIsForwardedCorrectly_RPCCall_BrioEnablesOsaka(t *testing.T) {
 
 // doTraceCall invokes debug_traceCall on the given contract at the given block hash
 // it returns a map with the entries of the json response, or an error
-func doTraceCall(client *PooledEhtClient, contractAddress common.Address, blockHash common.Hash) (map[string]any, error) {
+func doTraceCall(client *testnet.PooledEhtClient, contractAddress common.Address, blockHash common.Hash) (map[string]any, error) {
 	// debug_traceCall serves to test functions using StateTransition RPC method
 	config := map[string]any{
 		"tracer": "callTracer",
@@ -304,7 +305,7 @@ func doTraceCall(client *PooledEhtClient, contractAddress common.Address, blockH
 
 // doRpcCall invokes eth_call on the given contract at the given block hash
 // it returns a map with the entries of the json response, or an error
-func doRpcCall(client *PooledEhtClient, contractAddress common.Address, blockHash common.Hash) error {
+func doRpcCall(client *testnet.PooledEhtClient, contractAddress common.Address, blockHash common.Hash) error {
 	// eth_call servers to test functions using the DoCall RPC method
 	_, err := InvokeRpcCallMethod("eth_call", contractAddress, client, blockHash, nil, nil)
 	return err
@@ -313,7 +314,7 @@ func doRpcCall(client *PooledEhtClient, contractAddress common.Address, blockHas
 func InvokeRpcCallMethod(
 	method string,
 	contractAddress common.Address,
-	client *PooledEhtClient,
+	client *testnet.PooledEhtClient,
 	blockHash common.Hash,
 	args ...any,
 ) (any, error) {

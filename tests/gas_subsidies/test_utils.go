@@ -22,7 +22,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
-	"github.com/0xsoniclabs/sonic/tests"
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -36,7 +36,7 @@ import (
 // the registry instance for further queries.
 func Fund(
 	t *testing.T,
-	session tests.IntegrationTestNetSession,
+	session testnet.IntegrationTestNetSession,
 	sponsee common.Address,
 	donation *big.Int,
 ) *registry.Registry {
@@ -54,7 +54,7 @@ func Fund(
 	latestBlock, err := client.BlockByNumber(t.Context(), nil)
 	require.NoError(t, err)
 
-	tests.WaitForProofOf(t, client, int(latestBlock.NumberU64()))
+	testnet.WaitForProofOf(t, client, int(latestBlock.NumberU64()))
 
 	sponsorshipBefore, err := registry.Sponsorships(nil, fundId)
 	require.NoError(t, err)
@@ -68,7 +68,7 @@ func Fund(
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
-	tests.WaitForProofOf(t, client, int(receipt.BlockNumber.Int64()))
+	testnet.WaitForProofOf(t, client, int(receipt.BlockNumber.Int64()))
 
 	// check that the sponsorshipAfter funds got deposited
 	sponsorshipAfter, err := registry.Sponsorships(nil, fundId)
@@ -83,7 +83,7 @@ func Fund(
 // successful internal transaction that pays for its gas fees.
 func validateSponsoredTxInBlock(
 	t *testing.T,
-	session tests.IntegrationTestNetSession,
+	session testnet.IntegrationTestNetSession,
 	txHash common.Hash) {
 	t.Helper()
 
@@ -137,7 +137,7 @@ func validateSponsoredTxInBlock(
 // makeSponsoredTransactionWithNonce creates a sponsored transaction (with
 // gas price zero) from the given sender to the given receiver with the given
 // nonce.
-func makeSponsorRequestTransaction(t *testing.T, tx types.TxData, chainId *big.Int, sender *tests.Account) *types.Transaction {
+func makeSponsorRequestTransaction(t *testing.T, tx types.TxData, chainId *big.Int, sender *testnet.Account) *types.Transaction {
 	t.Helper()
 	signer := types.LatestSignerForChainID(chainId)
 	switch tx := tx.(type) {
@@ -176,7 +176,7 @@ func makeSponsorRequestTransaction(t *testing.T, tx types.TxData, chainId *big.I
 // receipt in its block, along with the block itself.
 func getTransactionIndexInBlock(
 	t *testing.T,
-	client *tests.PooledEhtClient,
+	client *testnet.PooledEhtClient,
 	receipt *types.Receipt,
 ) (int, *types.Block) {
 	t.Helper()

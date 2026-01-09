@@ -32,14 +32,23 @@ sonic-image:
 		--network=host \
 		-f ./Dockerfile -t "sonic:$(TAG)" .
 
+# Define the specific path to your slow integration tests
+SLOW_PKG := ./tests/...
+
+# Find all other packages by listing everything and filtering out the slow package
+# We use 'shell' to execute the go list command
+FAST_PKGS := $(shell go list ./... | grep -v $(SLOW_PKG))
+
+TEST_PACKAGES := $(SLOW_PKG) $(FAST_PKGS)
+
 .PHONY: test
 test:
-	go test --timeout 30m ./...
+	go test --timeout 30m $(TEST_PACKAGES)
 
 .PHONY: coverage
 coverage:
 	@mkdir -p build ;\
-	go test -coverpkg=./... --timeout=30m -coverprofile=build/coverage.cov ./... && \
+	go test -coverpkg=./... --timeout=30m -coverprofile=build/coverage.cov $(TEST_PACKAGES) && \
 	go tool cover -html build/coverage.cov -o build/coverage.html &&\
 	echo "Coverage report generated in build/coverage.html"
 

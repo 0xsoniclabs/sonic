@@ -21,6 +21,7 @@ import (
 	"math/big"
 	"testing"
 
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -30,11 +31,11 @@ import (
 
 func TestCounter_CanIncrementAndReadCounterFromHead(t *testing.T) {
 
-	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	session := testnet.GetIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 	t.Parallel()
 
 	// Deploy the counter contract.
-	contract, receipt, err := DeployContract(session, counter.DeployCounter)
+	contract, receipt, err := testnet.DeployContract(session, counter.DeployCounter)
 	require.NoError(t, err, "failed to deploy contract; %v", err)
 	require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
 
@@ -51,10 +52,10 @@ func TestCounter_CanIncrementAndReadCounterFromHead(t *testing.T) {
 
 func TestCounter_CanReadHistoricCounterValues(t *testing.T) {
 
-	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	session := testnet.GetIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 	t.Parallel()
 	// Deploy the counter contract.
-	contract, receipt, err := DeployContract(session, counter.DeployCounter)
+	contract, receipt, err := testnet.DeployContract(session, counter.DeployCounter)
 	require.NoError(t, err, "failed to deploy contract; %v", err)
 	require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
 

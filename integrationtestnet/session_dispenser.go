@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
-package tests
+package testnet
 
 import (
 	"crypto/sha256"
@@ -31,7 +31,7 @@ import (
 // Upgrade.
 var activeTestNetInstances map[common.Hash]*IntegrationTestNet
 
-// getIntegrationTestNetSession creates a new session for network running on the
+// GetIntegrationTestNetSession creates a new session for network running on the
 // given Upgrade. If there is no network running with this Upgrade, a new one
 // will be initialized.
 // If a tests can run in parallel, the call to t.Parallel() should be done
@@ -40,14 +40,14 @@ var activeTestNetInstances map[common.Hash]*IntegrationTestNet
 // A typical use case would look as follows:
 //
 //	t.Run("test_case", func(t *testing.T) {
-//		session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+//		session := GetIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 //		t.Parallel()
 //		< use session instead of net of the rest of the test >
 //	})
 //
 // This function uses a global state that is cleaned up after the execution of
 // the tests in `tests` package.
-func getIntegrationTestNetSession(t *testing.T, upgrades opera.Upgrades) IntegrationTestNetSession {
+func GetIntegrationTestNetSession(t *testing.T, upgrades opera.Upgrades) IntegrationTestNetSession {
 	if activeTestNetInstances == nil {
 		activeTestNetInstances = make(map[common.Hash]*IntegrationTestNet)
 	}

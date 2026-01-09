@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/contract/driverauth100"
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
 	"github.com/ethereum/go-ethereum/common"
@@ -31,7 +32,7 @@ import (
 
 func TestReceipt_InternalTransactionsDoNotChangeReceiptIndex(t *testing.T) {
 	upgrades := opera.GetBrioUpgrades()
-	net := StartIntegrationTestNetWithJsonGenesis(t, IntegrationTestNetOptions{
+	net := testnet.StartIntegrationTestNetWithJsonGenesis(t, testnet.IntegrationTestNetOptions{
 		Upgrades: &upgrades,
 	})
 
@@ -44,12 +45,12 @@ func TestReceipt_InternalTransactionsDoNotChangeReceiptIndex(t *testing.T) {
 	require.NoError(t, err)
 	before := receipt.BlockNumber.Uint64()
 
-	initialEpoch := GetEpochOfBlock(t, client, int(before))
+	initialEpoch := testnet.GetEpochOfBlock(t, client, int(before))
 
 	// Send transaction instructing the network to advance one epoch.
 	contract, err := driverauth100.NewContract(driverauth.ContractAddress, client)
 	require.NoError(t, err)
-	txOpts, err := net.GetTransactOptions(&net.account)
+	txOpts, err := net.GetTransactOptions(net.GetSessionSponsor())
 	require.NoError(t, err)
 	tx, err := contract.AdvanceEpochs(txOpts, big.NewInt(int64(1)))
 	require.NoError(t, err)
@@ -61,7 +62,7 @@ func TestReceipt_InternalTransactionsDoNotChangeReceiptIndex(t *testing.T) {
 		current, err := client.BlockNumber(t.Context())
 		require.NoError(t, err)
 
-		currentEpoch := GetEpochOfBlock(t, client, int(current))
+		currentEpoch := testnet.GetEpochOfBlock(t, client, int(current))
 		if currentEpoch > initialEpoch {
 			break
 		}
@@ -121,7 +122,7 @@ func TestReceipt_InternalTransactionsDoNotChangeReceiptIndex(t *testing.T) {
 }
 
 func getSenderOfTransaction(
-	client *PooledEhtClient,
+	client *testnet.PooledEhtClient,
 	txHash common.Hash,
 ) (common.Address, error) {
 	details := struct {
@@ -136,7 +137,7 @@ func getSenderOfTransaction(
 
 func TestReceipt_SkippedTransactionsDoNotChangeReceiptIndexOrCumulativeGasUsed(t *testing.T) {
 	upgrades := opera.GetSonicUpgrades()
-	net := StartIntegrationTestNetWithJsonGenesis(t, IntegrationTestNetOptions{
+	net := testnet.StartIntegrationTestNetWithJsonGenesis(t, testnet.IntegrationTestNetOptions{
 		Upgrades: &upgrades,
 		ClientExtraArguments: []string{
 			"--disable-txPool-validation",
@@ -150,8 +151,8 @@ func TestReceipt_SkippedTransactionsDoNotChangeReceiptIndexOrCumulativeGasUsed(t
 	chainId := net.GetChainId()
 	gasPrice, err := client.SuggestGasPrice(t.Context())
 	require.NoError(t, err)
-	sender := MakeAccountWithBalance(t, net, big.NewInt(1e18))
-	senderSkipped := MakeAccountWithBalance(t, net, big.NewInt(1e18))
+	sender := testnet.MakeAccountWithBalance(t, net, big.NewInt(1e18))
+	senderSkipped := testnet.MakeAccountWithBalance(t, net, big.NewInt(1e18))
 
 	numSimpleTxs := 10
 	// Create simple transactions
@@ -165,7 +166,7 @@ func TestReceipt_SkippedTransactionsDoNotChangeReceiptIndexOrCumulativeGasUsed(t
 			Value:    big.NewInt(1),
 		}
 
-		tx := SignTransaction(t, chainId, txData, sender)
+		tx := testnet.SignTransaction(t, chainId, txData, sender)
 		transactions[nonce] = tx
 	}
 
@@ -179,7 +180,7 @@ func TestReceipt_SkippedTransactionsDoNotChangeReceiptIndexOrCumulativeGasUsed(t
 		Value:    big.NewInt(0),
 		Data:     initCode,
 	}
-	skippedTx := SignTransaction(t, chainId, txData, senderSkipped)
+	skippedTx := testnet.SignTransaction(t, chainId, txData, senderSkipped)
 
 	// Run one transaction to not interfere with any still pending transactions.
 	receipt, err := net.EndowAccount(common.Address{}, big.NewInt(1e18))

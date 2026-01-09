@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/ethapi"
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
 	block_override "github.com/0xsoniclabs/sonic/tests/contracts/blockoverride"
 	"github.com/ethereum/go-ethereum/common"
@@ -38,11 +39,11 @@ const (
 
 func TestBlockOverride(t *testing.T) {
 	require := req.New(t)
-	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	session := testnet.GetIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 	t.Parallel()
 
 	// Deploy the block override observer contract.
-	contract, receipt, err := DeployContract(session, block_override.DeployBlockOverride)
+	contract, receipt, err := testnet.DeployContract(session, block_override.DeployBlockOverride)
 	require.NoError(err, "failed to deploy contract; %v", err)
 	require.Equal(types.ReceiptStatusSuccessful, receipt.Status, "Deployment Unsuccessful")
 	contractAddress := receipt.ContractAddress

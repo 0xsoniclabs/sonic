@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"testing"
 
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/tests/contracts/transientstorage"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -33,7 +34,7 @@ import (
 func TestBlockInArchive(t *testing.T) {
 
 	require := require.New(t)
-	net := StartIntegrationTestNet(t)
+	net := testnet.StartIntegrationTestNet(t)
 
 	client, err := net.GetWebSocketClient()
 	require.NoError(err, "failed to get client ", err)
@@ -75,7 +76,7 @@ func TestBlockInArchive(t *testing.T) {
 		}
 	}()
 
-	contract, _, err := DeployContract(net, transientstorage.DeployTransientstorage)
+	contract, _, err := testnet.DeployContract(net, transientstorage.DeployTransientstorage)
 	require.NoError(err, "failed to deploy contract %v", err)
 
 	for {

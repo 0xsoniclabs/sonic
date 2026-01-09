@@ -26,9 +26,9 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/contract/driverauth100"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
-	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/tosca/go/tosca/vm"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
@@ -40,9 +40,9 @@ import (
 
 func TestNetworkRule_Update_RulesChangeIsDelayedUntilNextEpochStart(t *testing.T) {
 	require := require.New(t)
-	net := tests.StartIntegrationTestNetWithFakeGenesis(t,
-		tests.IntegrationTestNetOptions{
-			Upgrades: tests.AsPointer(opera.GetAllegroUpgrades()),
+	net := testnet.StartIntegrationTestNetWithFakeGenesis(t,
+		testnet.IntegrationTestNetOptions{
+			Upgrades: testnet.AsPointer(opera.GetAllegroUpgrades()),
 		})
 
 	client, err := net.GetClient()
@@ -65,7 +65,7 @@ func TestNetworkRule_Update_RulesChangeIsDelayedUntilNextEpochStart(t *testing.T
 	updateRequest.Economy.MinBaseFee = new(big.Int).SetInt64(newMinBaseFee)
 
 	// Update network rules
-	tests.UpdateNetworkRules(t, net, updateRequest)
+	testnet.UpdateNetworkRules(t, net, updateRequest)
 
 	// Network rule should not change - it must be an epoch bound
 	var updatedRules rulesType
@@ -85,7 +85,7 @@ func TestNetworkRule_Update_RulesChangeIsDelayedUntilNextEpochStart(t *testing.T
 	require.Less(blockBefore.BaseFee().Int64(), newMinBaseFee, "BaseFee should not reflect new MinBaseFee")
 
 	// apply epoch change
-	tests.AdvanceEpochAndWaitForBlocks(t, net)
+	testnet.AdvanceEpochAndWaitForBlocks(t, net)
 
 	// rule should be effective
 	err = client.Client().Call(&updatedRules, "eth_getRules", "latest")
@@ -102,9 +102,9 @@ func TestNetworkRule_Update_RulesChangeIsDelayedUntilNextEpochStart(t *testing.T
 
 func TestNetworkRule_Update_RulesChangeDuringEpoch_PreAllegro(t *testing.T) {
 	require := require.New(t)
-	net := tests.StartIntegrationTestNetWithFakeGenesis(t,
-		tests.IntegrationTestNetOptions{
-			Upgrades: tests.AsPointer(opera.GetSonicUpgrades()),
+	net := testnet.StartIntegrationTestNetWithFakeGenesis(t,
+		testnet.IntegrationTestNetOptions{
+			Upgrades: testnet.AsPointer(opera.GetSonicUpgrades()),
 		})
 
 	client, err := net.GetClient()
@@ -127,7 +127,7 @@ func TestNetworkRule_Update_RulesChangeDuringEpoch_PreAllegro(t *testing.T) {
 	updateRequest.Economy.MinBaseFee = new(big.Int).SetInt64(newMinBaseFee)
 
 	// Update network rules
-	tests.UpdateNetworkRules(t, net, updateRequest)
+	testnet.UpdateNetworkRules(t, net, updateRequest)
 
 	// Network rule applied immediately - only for pre-Allegro versions
 	var updatedRules rulesType
@@ -149,9 +149,9 @@ func TestNetworkRule_Update_RulesChangeDuringEpoch_PreAllegro(t *testing.T) {
 
 func TestNetworkRule_Update_Restart_Recovers_Original_Value(t *testing.T) {
 	require := require.New(t)
-	net := tests.StartIntegrationTestNetWithFakeGenesis(t,
-		tests.IntegrationTestNetOptions{
-			Upgrades: tests.AsPointer(opera.GetAllegroUpgrades()),
+	net := testnet.StartIntegrationTestNetWithFakeGenesis(t,
+		testnet.IntegrationTestNetOptions{
+			Upgrades: testnet.AsPointer(opera.GetAllegroUpgrades()),
 		})
 
 	client, err := net.GetClient()
@@ -174,7 +174,7 @@ func TestNetworkRule_Update_Restart_Recovers_Original_Value(t *testing.T) {
 	updateRequest.Economy.MinBaseFee = new(big.Int).SetInt64(newMinBaseFee)
 
 	// Update network rules
-	tests.UpdateNetworkRules(t, net, updateRequest)
+	testnet.UpdateNetworkRules(t, net, updateRequest)
 
 	// Restart the network, since the rules happened within a current epoch
 	// it should not be applied immediately but persisted to be applied at the end of the epoch.
@@ -203,7 +203,7 @@ func TestNetworkRule_Update_Restart_Recovers_Original_Value(t *testing.T) {
 		"Network rules should not change - it must be an epoch bound")
 
 	// apply epoch change
-	tests.AdvanceEpochAndWaitForBlocks(t, net)
+	testnet.AdvanceEpochAndWaitForBlocks(t, net)
 
 	// rule change should be effective
 	err = client2.Client().Call(&updatedRules, "eth_getRules", "latest")
@@ -220,19 +220,19 @@ func TestNetworkRule_Update_Restart_Recovers_Original_Value(t *testing.T) {
 
 func TestNetworkRules_UpdateMaxEventGas_DropsLargeGasTxs(t *testing.T) {
 	require := require.New(t)
-	net := tests.StartIntegrationTestNetWithFakeGenesis(t,
-		tests.IntegrationTestNetOptions{
-			Upgrades: tests.AsPointer(opera.GetAllegroUpgrades()),
+	net := testnet.StartIntegrationTestNetWithFakeGenesis(t,
+		testnet.IntegrationTestNetOptions{
+			Upgrades: testnet.AsPointer(opera.GetAllegroUpgrades()),
 		})
 
 	client, err := net.GetClient()
 	require.NoError(err)
 	defer client.Close()
 
-	newAccount := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
+	newAccount := testnet.MakeAccountWithBalance(t, net, big.NewInt(1e18))
 
 	// make a transaction with over 20M gas
-	tx := tests.CreateTransaction(t, net, &types.LegacyTx{
+	tx := testnet.CreateTransaction(t, net, &types.LegacyTx{
 		To:    &common.Address{1},
 		Gas:   21_000_000,
 		Nonce: 1, // High nonce that cannot be executed yet but will not be dropped from the txpool
@@ -263,14 +263,14 @@ func TestNetworkRules_UpdateMaxEventGas_DropsLargeGasTxs(t *testing.T) {
 	updatedRules.Economy.Gas = defaultGasRules
 
 	// Update network rules
-	tests.UpdateNetworkRules(t, net, updatedRules)
+	testnet.UpdateNetworkRules(t, net, updatedRules)
 
 	err = client.Client().Call(&content, "txpool_content")
 	require.NoError(err, "failed to get tx pool status")
 	require.Equal(1, len(content["queued"]), "expected the high gas tx to be in the queued section of the tx pool")
 
 	// reach epoch ceiling to apply the new rules
-	tests.AdvanceEpochAndWaitForBlocks(t, net)
+	testnet.AdvanceEpochAndWaitForBlocks(t, net)
 
 	err = client.Client().Call(&content, "txpool_content")
 	require.NoError(err, "failed to get tx pool status")
@@ -280,9 +280,9 @@ func TestNetworkRules_UpdateMaxEventGas_DropsLargeGasTxs(t *testing.T) {
 func TestNetworkRule_MinEventGas_AllowsChangingRules(t *testing.T) {
 
 	require := require.New(t)
-	net := tests.StartIntegrationTestNetWithFakeGenesis(t,
-		tests.IntegrationTestNetOptions{
-			Upgrades: tests.AsPointer(opera.GetSonicUpgrades()),
+	net := testnet.StartIntegrationTestNetWithFakeGenesis(t,
+		testnet.IntegrationTestNetOptions{
+			Upgrades: testnet.AsPointer(opera.GetSonicUpgrades()),
 		})
 
 	client, err := net.GetClient()
@@ -324,19 +324,19 @@ func TestNetworkRule_MinEventGas_AllowsChangingRules(t *testing.T) {
 }
 
 func TestNetworkRules_PragueFeaturesBecomeAvailableWithAllegroUpgrade(t *testing.T) {
-	net := tests.StartIntegrationTestNetWithFakeGenesis(t,
-		tests.IntegrationTestNetOptions{
+	net := testnet.StartIntegrationTestNetWithFakeGenesis(t,
+		testnet.IntegrationTestNetOptions{
 			// Explicitly set the network to use the Sonic Hard Fork
-			Upgrades: tests.AsPointer(opera.GetSonicUpgrades()),
+			Upgrades: testnet.AsPointer(opera.GetSonicUpgrades()),
 			// Use 2 nodes to test the rules update propagation
 			NumNodes: 2,
 		},
 	)
 
-	account := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
+	account := testnet.MakeAccountWithBalance(t, net, big.NewInt(1e18))
 
 	t.Run("expectations before sonic-allegro hardfork", func(t *testing.T) {
-		forEachClientInNet(t, net, func(t *testing.T, client *tests.PooledEhtClient) {
+		forEachClientInNet(t, net, func(t *testing.T, client *testnet.PooledEhtClient) {
 			tx := makeSetCodeTx(t, net, account)
 			err := client.SendTransaction(t.Context(), tx)
 			require.ErrorContains(t,
@@ -352,10 +352,10 @@ func TestNetworkRules_PragueFeaturesBecomeAvailableWithAllegroUpgrade(t *testing
 	rulesDiff := rulesType{
 		Upgrades: struct{ Allegro bool }{Allegro: true},
 	}
-	tests.UpdateNetworkRules(t, net, rulesDiff)
+	testnet.UpdateNetworkRules(t, net, rulesDiff)
 
 	// reach epoch ceiling to apply the new rules
-	tests.AdvanceEpochAndWaitForBlocks(t, net)
+	testnet.AdvanceEpochAndWaitForBlocks(t, net)
 
 	// Wait for another block, this is time for the tx_pool to tick, run reorg,
 	// and implement the new rules.
@@ -374,7 +374,7 @@ func TestNetworkRules_PragueFeaturesBecomeAvailableWithAllegroUpgrade(t *testing
 		delegationIndicator :=
 			hexutil.MustDecode("0xEF01002A00000000000000000000000000000000000000")
 
-		forEachClientInNet(t, net, func(t *testing.T, client *tests.PooledEhtClient) {
+		forEachClientInNet(t, net, func(t *testing.T, client *testnet.PooledEhtClient) {
 
 			// make sure that this client has already processed the transaction
 			_, err := net.GetReceipt(tx.Hash())
@@ -389,8 +389,8 @@ func TestNetworkRules_PragueFeaturesBecomeAvailableWithAllegroUpgrade(t *testing
 
 func forEachClientInNet(
 	t *testing.T,
-	net *tests.IntegrationTestNet,
-	fn func(t *testing.T, client *tests.PooledEhtClient),
+	net *testnet.IntegrationTestNet,
+	fn func(t *testing.T, client *testnet.PooledEhtClient),
 ) {
 	for i := 0; i < net.NumNodes(); i++ {
 		t.Run(fmt.Sprintf("client%d", i), func(t *testing.T) {
@@ -404,8 +404,8 @@ func forEachClientInNet(
 
 func makeSetCodeTx(
 	t *testing.T,
-	net *tests.IntegrationTestNet,
-	account *tests.Account,
+	net *testnet.IntegrationTestNet,
+	account *testnet.Account,
 ) *types.Transaction {
 	chainID := net.GetChainId()
 	client, err := net.GetClient()
@@ -422,7 +422,7 @@ func makeSetCodeTx(
 	txData := &types.SetCodeTx{
 		AuthList: []types.SetCodeAuthorization{authorization},
 	}
-	return tests.CreateTransaction(t, net, txData, account)
+	return testnet.CreateTransaction(t, net, txData, account)
 }
 
 func TestNetworkRulesUpdate_BrioFeaturesBecomeAvailable_WhenBrioUpgradesEnabled(t *testing.T) {
@@ -436,9 +436,9 @@ func TestNetworkRulesUpdate_BrioFeaturesBecomeAvailable_WhenBrioUpgradesEnabled(
 	}
 
 	address := common.HexToAddress("0x42")
-	net := tests.StartIntegrationTestNet(t,
-		tests.IntegrationTestNetOptions{
-			Upgrades: tests.AsPointer(opera.GetSonicUpgrades()),
+	net := testnet.StartIntegrationTestNet(t,
+		testnet.IntegrationTestNetOptions{
+			Upgrades: testnet.AsPointer(opera.GetSonicUpgrades()),
 			Accounts: []makefakegenesis.Account{{
 				Name:    "account",
 				Address: address,
@@ -467,15 +467,15 @@ func TestNetworkRulesUpdate_BrioFeaturesBecomeAvailable_WhenBrioUpgradesEnabled(
 	for _, upgrade := range upgrades {
 		// update network
 		rules.Upgrades = upgrade
-		tests.UpdateNetworkRules(t, net, rules)
+		testnet.UpdateNetworkRules(t, net, rules)
 		// reach epoch ceiling to apply the new rules
-		tests.AdvanceEpochAndWaitForBlocks(t, net)
+		testnet.AdvanceEpochAndWaitForBlocks(t, net)
 
 		txData := &types.LegacyTx{
 			Gas: 58_000,
 			To:  &address,
 		}
-		tx := tests.CreateTransaction(t, net, txData, net.GetSessionSponsor())
+		tx := testnet.CreateTransaction(t, net, txData, net.GetSessionSponsor())
 		receipt, err := net.Run(tx)
 		require.NoError(t, err)
 		if !upgrade.Brio {

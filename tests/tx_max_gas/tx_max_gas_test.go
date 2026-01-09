@@ -23,8 +23,8 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/ethapi"
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
@@ -48,8 +48,8 @@ func TestTxMaxGas(t *testing.T) {
 				upgrades := opera.GetBrioUpgrades()
 				upgrades.SingleProposerBlockFormation = singleProposer
 
-				net := tests.StartIntegrationTestNet(t,
-					tests.IntegrationTestNetOptions{
+				net := testnet.StartIntegrationTestNet(t,
+					testnet.IntegrationTestNetOptions{
 						Upgrades: &upgrades,
 						NumNodes: nodes,
 					})
@@ -66,7 +66,7 @@ func TestTxMaxGas(t *testing.T) {
 				originalMaxCap := rules.Economy.Gas.MaxEventGas
 
 				t.Run("transaction with gas limit over network gas limit is rejected", func(t *testing.T) {
-					tx := tests.CreateTransaction(t, net, &types.LegacyTx{Gas: uint64(originalMaxCap + 1)}, net.GetSessionSponsor())
+					tx := testnet.CreateTransaction(t, net, &types.LegacyTx{Gas: uint64(originalMaxCap + 1)}, net.GetSessionSponsor())
 					receipt, err := net.Run(tx)
 					require.ErrorContains(t, err, "gas limit too high")
 					require.Nil(t, receipt)
@@ -84,7 +84,7 @@ func TestTxMaxGas(t *testing.T) {
 	}
 }
 
-func testInternalTxOverLimit(t *testing.T, net *tests.IntegrationTestNet) {
+func testInternalTxOverLimit(t *testing.T, net *testnet.IntegrationTestNet) {
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
@@ -105,14 +105,14 @@ func testInternalTxOverLimit(t *testing.T, net *tests.IntegrationTestNet) {
 	// so we set it to the limit and see that internal transactions still work.
 	rules.Economy.Gas.MaxEventGas = int64(opera.UpperBoundForRuleChangeGasCosts())
 
-	tests.UpdateNetworkRules(t, net, rules)
+	testnet.UpdateNetworkRules(t, net, rules)
 
 	// internal transactions are executed as part of epoch sealing
-	tests.AdvanceEpochAndWaitForBlocks(t, net)
+	testnet.AdvanceEpochAndWaitForBlocks(t, net)
 
 	// since the previous epoch seal would have executed with the old rules to apply the new ones
 	// a new epoch advancement is needed to ensure an epoch sealing can still be executed under the new limit.
-	tests.AdvanceEpochAndWaitForBlocks(t, net)
+	testnet.AdvanceEpochAndWaitForBlocks(t, net)
 
 	var epochAfter hexutil.Uint64
 	err = client.Client().Call(&epochAfter, "eth_currentEpoch")
@@ -126,7 +126,7 @@ func testInternalTxOverLimit(t *testing.T, net *tests.IntegrationTestNet) {
 	require.NotNil(t, internalTransaction, "Should find an internal transaction")
 }
 
-func testHighGasTxIsNeverExecuted(t *testing.T, net *tests.IntegrationTestNet) {
+func testHighGasTxIsNeverExecuted(t *testing.T, net *testnet.IntegrationTestNet) {
 
 	// reset max gas.
 	var rules struct {
@@ -137,8 +137,8 @@ func testHighGasTxIsNeverExecuted(t *testing.T, net *tests.IntegrationTestNet) {
 		}
 	}
 	rules.Economy.Gas.MaxEventGas = 2_000_000
-	tests.UpdateNetworkRules(t, net, rules)
-	tests.AdvanceEpochAndWaitForBlocks(t, net)
+	testnet.UpdateNetworkRules(t, net, rules)
+	testnet.AdvanceEpochAndWaitForBlocks(t, net)
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
@@ -148,25 +148,25 @@ func testHighGasTxIsNeverExecuted(t *testing.T, net *tests.IntegrationTestNet) {
 	require.NoError(t, err)
 	require.Equal(t, int64(2_000_000), rules.Economy.Gas.MaxEventGas, "MaxEventGas should be updated")
 
-	account := tests.MakeAccountWithBalance(t, net, big.NewInt(math.MaxInt64))
+	account := testnet.MakeAccountWithBalance(t, net, big.NewInt(math.MaxInt64))
 
 	// create a transaction with high gas which is accepted into the pool
 	// but cannot be executed because of gapped nonce.
-	gappedTx := tests.CreateTransaction(t, net, &types.LegacyTx{Nonce: 1, Gas: 1_500_000}, account)
+	gappedTx := testnet.CreateTransaction(t, net, &types.LegacyTx{Nonce: 1, Gas: 1_500_000}, account)
 	err = client.SendTransaction(t.Context(), gappedTx)
 	require.NoError(t, err, "Transaction should be accepted into the pool")
 
 	// update rules to lower max gas below the transaction's gas
 	rules.Economy.Gas.MaxEventGas = 1_100_000
-	tests.UpdateNetworkRules(t, net, rules)
-	tests.AdvanceEpochAndWaitForBlocks(t, net)
+	testnet.UpdateNetworkRules(t, net, rules)
+	testnet.AdvanceEpochAndWaitForBlocks(t, net)
 
 	err = client.Client().Call(&rules, "eth_getRules", "latest")
 	require.NoError(t, err)
 	require.Equal(t, int64(1_100_000), rules.Economy.Gas.MaxEventGas, "MaxEventGas should be updated")
 
 	// send a transaction with the missing nonce and gas under new limit
-	lowGasTx := tests.CreateTransaction(t, net, &types.LegacyTx{Nonce: 0, Gas: 500_000}, account)
+	lowGasTx := testnet.CreateTransaction(t, net, &types.LegacyTx{Nonce: 0, Gas: 500_000}, account)
 	receipt, err := net.Run(lowGasTx)
 	require.NoError(t, err, "Transaction should be executed")
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "Transaction should be successful")
@@ -194,7 +194,7 @@ func testHighGasTxIsNeverExecuted(t *testing.T, net *tests.IntegrationTestNet) {
 }
 
 // lookForEpochSeal looks for the most recent epoch seal transaction by scanning blocks backwards
-func lookForEpochSeal(t *testing.T, net *tests.IntegrationTestNet) *types.Transaction {
+func lookForEpochSeal(t *testing.T, net *testnet.IntegrationTestNet) *types.Transaction {
 
 	client, err := net.GetClient()
 	require.NoError(t, err)

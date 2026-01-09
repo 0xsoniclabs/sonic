@@ -20,6 +20,7 @@ import (
 	"math/big"
 	"testing"
 
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/prevrandao"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -27,11 +28,11 @@ import (
 )
 
 func TestPrevRandao(t *testing.T) {
-	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	session := testnet.GetIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 	t.Parallel()
 
 	// Deploy the contract.
-	contract, _, err := DeployContract(session, prevrandao.DeployPrevrandao)
+	contract, _, err := testnet.DeployContract(session, prevrandao.DeployPrevrandao)
 	require.NoError(t, err)
 	// Collect the current PrevRandao fee from the head state.
 	receipt, err := session.Apply(contract.LogCurrentPrevRandao)

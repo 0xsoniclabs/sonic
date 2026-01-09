@@ -22,7 +22,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/tests"
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -136,11 +136,11 @@ func TestServer_CanRequestMaxNumberOfResults(t *testing.T) {
 // helper functions
 ////////////////////////////////////////
 
-func startNetAndGetClient(t *testing.T) (*tests.IntegrationTestNet, *rpc.Client) {
+func startNetAndGetClient(t *testing.T) (*testnet.IntegrationTestNet, *rpc.Client) {
 	t.Helper()
 	require := require.New(t)
 	// start network
-	net := tests.StartIntegrationTestNet(t)
+	net := testnet.StartIntegrationTestNet(t)
 
 	client, err := net.GetClient()
 	require.NoError(err)

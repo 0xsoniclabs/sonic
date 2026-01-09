@@ -22,8 +22,8 @@ import (
 	"slices"
 	"testing"
 
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
@@ -32,11 +32,11 @@ import (
 
 func TestLargeTransactions_CanHandleLargeTransactions(t *testing.T) {
 	require := require.New(t)
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
-		Upgrades: tests.AsPointer(opera.GetBrioUpgrades()),
+	net := testnet.StartIntegrationTestNet(t, testnet.IntegrationTestNetOptions{
+		Upgrades: testnet.AsPointer(opera.GetBrioUpgrades()),
 	})
 
-	account := tests.NewAccount()
+	account := testnet.NewAccount()
 	_, err := net.EndowAccount(account.Address(), big.NewInt(1e18))
 	require.NoError(err)
 
@@ -98,7 +98,7 @@ func TestLargeTransactions_CanHandleLargeTransactions(t *testing.T) {
 
 func TestLargeTransactions_LargeTransactionLoadTest(t *testing.T) {
 
-	if tests.IsDataRaceDetectionEnabled() {
+	if testnet.IsDataRaceDetectionEnabled() {
 		t.Skip(`Due to the concurrency requirements of this test, 
 		it becomes unstable when running with enabled data race detection.`)
 	}
@@ -140,14 +140,14 @@ func testLargeTransactionLoadTest(
 		numRounds   = 10
 	)
 	require := require.New(t)
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+	net := testnet.StartIntegrationTestNet(t, testnet.IntegrationTestNetOptions{
 		Upgrades: upgrades,
 		NumNodes: 3,
 	})
 
 	// Increase the gas limit to allow for larger transactions in blocks. These
 	// limits are beyond safe limits acceptable for production.
-	current := tests.GetNetworkRules(t, net)
+	current := testnet.GetNetworkRules(t, net)
 
 	modified := current.Copy()
 	modified.Economy.Gas.MaxEventGas = 1_000_000_000
@@ -155,18 +155,18 @@ func testLargeTransactionLoadTest(
 	modified.Economy.ShortGasPower.MaxAllocPeriod = 50_000_000_000
 	modified.Economy.LongGasPower = modified.Economy.ShortGasPower
 	modified.Emitter.Interval = 200_000_000 // low a bit down to provoke larger events
-	tests.UpdateNetworkRules(t, net, modified)
+	testnet.UpdateNetworkRules(t, net, modified)
 	net.AdvanceEpoch(t, 1)
 
 	// Check that the modification was applied.
-	current = tests.GetNetworkRules(t, net)
+	current = testnet.GetNetworkRules(t, net)
 	require.Equal(modified, current)
 
 	// Create accounts and provide them with funds to run the load test.
-	accounts := make([]*tests.Account, numAccounts)
+	accounts := make([]*testnet.Account, numAccounts)
 	addresses := make([]common.Address, len(accounts))
 	for i := range accounts {
-		accounts[i] = tests.NewAccount()
+		accounts[i] = testnet.NewAccount()
 		addresses[i] = accounts[i].Address()
 	}
 	endowment := new(big.Int).Mul(big.NewInt(100), big.NewInt(1e18))

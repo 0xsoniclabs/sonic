@@ -21,6 +21,7 @@ import (
 	"math/big"
 	"testing"
 
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/block_parameters"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -62,8 +63,8 @@ func TestBlockParameters_BlockHeaderMatchesObservableBlockParameters(t *testing.
 					upgrades := upgrades
 					upgrades.SingleProposerBlockFormation = singleProposer
 
-					net := StartIntegrationTestNetWithJsonGenesis(t,
-						IntegrationTestNetOptions{
+					net := testnet.StartIntegrationTestNetWithJsonGenesis(t,
+						testnet.IntegrationTestNetOptions{
 							Upgrades: &upgrades,
 							NumNodes: 2,
 						},
@@ -78,10 +79,10 @@ func TestBlockParameters_BlockHeaderMatchesObservableBlockParameters(t *testing.
 
 func testBlockHeaderMatchesObservableBlockParameters(
 	t *testing.T,
-	net *IntegrationTestNet,
+	net *testnet.IntegrationTestNet,
 ) {
 	require := require.New(t)
-	contract, receipt, err := DeployContract(net, block_parameters.DeployBlockParameters)
+	contract, receipt, err := testnet.DeployContract(net, block_parameters.DeployBlockParameters)
 	require.NoError(err, "Failed to deploy BlockParameters contract")
 
 	// Collect a few samples of block parameters from within transactions.

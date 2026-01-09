@@ -22,8 +22,8 @@ import (
 	"strings"
 	"testing"
 
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
@@ -64,7 +64,7 @@ func TestGasCostTest_Sonic(t *testing.T) {
 func testGasCosts_Sonic(t *testing.T, singleProposer bool) {
 	upgrades := opera.GetSonicUpgrades()
 	upgrades.SingleProposerBlockFormation = singleProposer
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+	net := testnet.StartIntegrationTestNet(t, testnet.IntegrationTestNetOptions{
 		Upgrades: &upgrades,
 	})
 
@@ -89,9 +89,9 @@ func testGasCosts_Sonic(t *testing.T, singleProposer bool) {
 		for test := range makeGasCostTestInputs(t, session) {
 			t.Run(test.String(), func(t *testing.T) {
 				test.txPayload.Gas = test.txPayload.Gas - 1
-				test.txPayload = tests.SetTransactionDefaults(t, session, test.txPayload, session.GetSessionSponsor())
+				test.txPayload = testnet.SetTransactionDefaults(t, session, test.txPayload, session.GetSessionSponsor())
 
-				tx := tests.SignTransaction(t, chainId, test.txPayload, session.GetSessionSponsor())
+				tx := testnet.SignTransaction(t, chainId, test.txPayload, session.GetSessionSponsor())
 				require.NoError(t, err)
 
 				err := client.SendTransaction(t.Context(), tx)
@@ -107,8 +107,8 @@ func testGasCosts_Sonic(t *testing.T, singleProposer bool) {
 		session := net.SpawnSession(t)
 		for test := range makeGasCostTestInputs(t, session) {
 			t.Run(test.String(), func(t *testing.T) {
-				test.txPayload = tests.SetTransactionDefaults(t, session, test.txPayload, session.GetSessionSponsor())
-				tx := tests.SignTransaction(t, chainId, test.txPayload, session.GetSessionSponsor())
+				test.txPayload = testnet.SetTransactionDefaults(t, session, test.txPayload, session.GetSessionSponsor())
+				tx := testnet.SignTransaction(t, chainId, test.txPayload, session.GetSessionSponsor())
 				require.NoError(t, err)
 
 				expectedCost, err := core.IntrinsicGas(tx.Data(), tx.AccessList(), tx.SetCodeAuthorizations(), tx.To() == nil, true, true, true)
@@ -130,9 +130,9 @@ func testGasCosts_Sonic(t *testing.T, singleProposer bool) {
 
 				// Increase gas by 20% to make sure we have some unused gas
 				test.txPayload.Gas = uint64(float32(test.txPayload.Gas) * 1.2)
-				test.txPayload = tests.SetTransactionDefaults(t, session, test.txPayload, session.GetSessionSponsor())
+				test.txPayload = testnet.SetTransactionDefaults(t, session, test.txPayload, session.GetSessionSponsor())
 
-				tx := tests.SignTransaction(t, chainId, test.txPayload, session.GetSessionSponsor())
+				tx := testnet.SignTransaction(t, chainId, test.txPayload, session.GetSessionSponsor())
 				require.NoError(t, err)
 
 				expectedCost, err := core.IntrinsicGas(tx.Data(), tx.AccessList(), tx.SetCodeAuthorizations(), tx.To() == nil, true, true, true)
@@ -163,7 +163,7 @@ func TestGasCostTest_Allegro(t *testing.T) {
 func testGasCosts_Allegro(t *testing.T, singleProposer bool) {
 	upgrades := opera.GetAllegroUpgrades()
 	upgrades.SingleProposerBlockFormation = singleProposer
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+	net := testnet.StartIntegrationTestNet(t, testnet.IntegrationTestNetOptions{
 		Upgrades: &upgrades,
 	})
 
@@ -204,9 +204,9 @@ func testGasCosts_Allegro(t *testing.T, singleProposer bool) {
 			t.Run(test.String(), func(t *testing.T) {
 
 				test.txPayload.Gas = computeEIP7623GasCost(t, test.txPayload) - 1
-				test.txPayload = tests.SetTransactionDefaults(t, session, test.txPayload, session.GetSessionSponsor())
+				test.txPayload = testnet.SetTransactionDefaults(t, session, test.txPayload, session.GetSessionSponsor())
 
-				tx := tests.SignTransaction(t, chainId, test.txPayload, session.GetSessionSponsor())
+				tx := testnet.SignTransaction(t, chainId, test.txPayload, session.GetSessionSponsor())
 				require.NoError(t, err)
 
 				err := client.SendTransaction(t.Context(), tx)
@@ -231,9 +231,9 @@ func testGasCosts_Allegro(t *testing.T, singleProposer bool) {
 					corrections++
 				}
 				test.txPayload.Gas = correctedGasCost
-				test.txPayload = tests.SetTransactionDefaults(t, session, test.txPayload, session.GetSessionSponsor())
+				test.txPayload = testnet.SetTransactionDefaults(t, session, test.txPayload, session.GetSessionSponsor())
 
-				tx := tests.SignTransaction(t, chainId, test.txPayload, session.GetSessionSponsor())
+				tx := testnet.SignTransaction(t, chainId, test.txPayload, session.GetSessionSponsor())
 				require.NoError(t, err)
 
 				receipt, err := session.Run(tx)
@@ -268,9 +268,9 @@ func testGasCosts_Allegro(t *testing.T, singleProposer bool) {
 				}
 
 				test.txPayload.Gas = incremented
-				test.txPayload = tests.SetTransactionDefaults(t, session, test.txPayload, session.GetSessionSponsor())
+				test.txPayload = testnet.SetTransactionDefaults(t, session, test.txPayload, session.GetSessionSponsor())
 
-				tx := tests.SignTransaction(t, chainId, test.txPayload, session.GetSessionSponsor())
+				tx := testnet.SignTransaction(t, chainId, test.txPayload, session.GetSessionSponsor())
 				require.NoError(t, err)
 
 				expectedCost, err := core.IntrinsicGas(tx.Data(), tx.AccessList(), tx.SetCodeAuthorizations(), tx.To() == nil, true, true, true)
@@ -301,7 +301,7 @@ func testGasCosts_Allegro(t *testing.T, singleProposer bool) {
 
 func makeGasCostTestInputs(
 	t *testing.T,
-	session tests.IntegrationTestNetSession,
+	session testnet.IntegrationTestNetSession,
 ) iter.Seq[TestCase] {
 	t.Helper()
 
@@ -313,7 +313,7 @@ func makeGasCostTestInputs(
 	require.NoError(t, err)
 
 	existingAccountAddress := session.GetSessionSponsor().Address()
-	nonExistingAccountAddress := tests.NewAccount().Address()
+	nonExistingAccountAddress := testnet.NewAccount().Address()
 
 	withCallData := func(size, zeroes int) txModification {
 		return func(tx *types.AccessListTx) {
@@ -342,7 +342,7 @@ func makeGasCostTestInputs(
 		return func(tx *types.AccessListTx) {
 			tx.AccessList = make([]types.AccessTuple, accounts)
 			for i := 0; i < accounts; i++ {
-				tx.AccessList[i].Address = tests.NewAccount().Address()
+				tx.AccessList[i].Address = testnet.NewAccount().Address()
 				tx.AccessList[i].StorageKeys = make([]common.Hash, storageKeysPerAccount)
 				for j := 0; j < storageKeysPerAccount; j++ {
 					tx.AccessList[i].StorageKeys[j] = common.Hash{0x42}
@@ -351,7 +351,7 @@ func makeGasCostTestInputs(
 		}
 	}
 
-	return tests.GenerateTestDataBasedOnModificationCombinations(
+	return testnet.GenerateTestDataBasedOnModificationCombinations(
 		func() TestCase {
 			t.Helper()
 
@@ -461,11 +461,11 @@ func TestExcessGasCharges_DisabledInSingleProposerModeInNewAndHistoricRuns(t *te
 	require := require.New(t)
 
 	upgrades := opera.GetAllegroUpgrades()
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+	net := testnet.StartIntegrationTestNet(t, testnet.IntegrationTestNetOptions{
 		Upgrades: &upgrades,
 	})
 
-	account := tests.NewAccount()
+	account := testnet.NewAccount()
 	_, err := net.EndowAccount(account.Address(), big.NewInt(1e18))
 	require.NoError(err)
 
@@ -499,7 +499,7 @@ func TestExcessGasCharges_DisabledInSingleProposerModeInNewAndHistoricRuns(t *te
 	receipts = append(receipts, receipt)
 
 	// Switch to single proposer mode.
-	tests.UpdateNetworkRules(t, net, map[string]map[string]bool{
+	testnet.UpdateNetworkRules(t, net, map[string]map[string]bool{
 		"Upgrades": {
 			"SingleProposerBlockFormation": true,
 		},

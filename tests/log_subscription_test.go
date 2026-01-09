@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter_event_emitter"
 	"github.com/ethereum/go-ethereum"
@@ -34,9 +35,9 @@ func TestLogSubscription_CanGetCallBacksForLogEvents(t *testing.T) {
 
 	const NumEvents = 10
 	require := require.New(t)
-	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	session := testnet.GetIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 
-	contract, _, err := DeployContract(session, counter_event_emitter.DeployCounterEventEmitter)
+	contract, _, err := testnet.DeployContract(session, counter_event_emitter.DeployCounterEventEmitter)
 	require.NoError(err)
 
 	client, err := session.GetWebSocketClient()
@@ -77,9 +78,9 @@ func TestLogBloom_query(t *testing.T) {
 	// This test can reuse an existing blockchain history, but should not
 	// run concurrently to other tests. It requires logs to exist in at least one
 	// transaction per block while testFunction is running.
-	net := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	net := testnet.GetIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 
-	contract, _, err := DeployContract(net, counter_event_emitter.DeployCounterEventEmitter)
+	contract, _, err := testnet.DeployContract(net, counter_event_emitter.DeployCounterEventEmitter)
 	require.NoError(err)
 
 	stopTest := make(chan struct{})

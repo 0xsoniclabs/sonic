@@ -24,14 +24,14 @@ import (
 	"testing"
 
 	sonicd "github.com/0xsoniclabs/sonic/cmd/sonicd/app"
-	"github.com/0xsoniclabs/sonic/tests"
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 
 	"github.com/stretchr/testify/require"
 )
 
 func TestSonicTool_DefaultConfig_HasDefaultValues(t *testing.T) {
 
-	net := tests.StartIntegrationTestNet(t)
+	net := testnet.StartIntegrationTestNet(t)
 	net.Stop()
 
 	configFile := filepath.Join(net.GetDirectory(), "config.toml")
@@ -55,7 +55,7 @@ NonDominatingTimeout = 100`)
 
 func TestSonicTool_CustomThrottlerConfig_AreApplied(t *testing.T) {
 
-	net := tests.StartIntegrationTestNet(t)
+	net := testnet.StartIntegrationTestNet(t)
 	net.Stop()
 
 	configFile := filepath.Join(net.GetDirectory(), "config.toml")

@@ -19,6 +19,7 @@ package tests
 import (
 	"testing"
 
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -36,7 +37,7 @@ func TestCartesianProduct_CountInstantiations(t *testing.T) {
 	countInstances := func(pieces [][]int, modifier func(int, []int) int) int {
 		var count int
 		makeZero := func() int { return 0 }
-		for range GenerateTestDataBasedOnModificationCombinations(makeZero, pieces, modifier) {
+		for range testnet.GenerateTestDataBasedOnModificationCombinations(makeZero, pieces, modifier) {
 			count++
 		}
 		return count
@@ -53,7 +54,7 @@ func TestCartesianProduct_CountInstantiations(t *testing.T) {
 
 func TestCartesianProduct_noPiecesReturnOriginalObject(t *testing.T) {
 	makeOriginal := func() int { return 36 }
-	it := GenerateTestDataBasedOnModificationCombinations(
+	it := testnet.GenerateTestDataBasedOnModificationCombinations(
 		makeOriginal,
 		nil,
 		func(v int, pieces []int) int {
@@ -91,7 +92,7 @@ func TestCartesianProduct_AcceptsFunctionsAsPieces(t *testing.T) {
 	}
 
 	instances := make([]TestType, 0)
-	for v := range GenerateTestDataBasedOnModificationCombinations(
+	for v := range testnet.GenerateTestDataBasedOnModificationCombinations(
 		func() TestType { return TestType{} },
 		[][]modFunc{
 			{setA(1), setA(2)},

@@ -20,8 +20,8 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/stretchr/testify/require"
 )
@@ -32,7 +32,7 @@ func TestGasSubsidies_CanBeEnabledAndDisabled(
 	require := require.New(t)
 
 	// The network is initially started using the distributed protocol.
-	net := tests.StartIntegrationTestNet(t)
+	net := testnet.StartIntegrationTestNet(t)
 	// a sliced is used here to ensure the forks get updated in an acceptable order.
 	upgrades := []struct {
 		name    string
@@ -49,11 +49,11 @@ func TestGasSubsidies_CanBeEnabledAndDisabled(
 			defer client.Close()
 
 			// enforce the current upgrade
-			testRules := tests.GetNetworkRules(t, net)
+			testRules := testnet.GetNetworkRules(t, net)
 			testRules.Upgrades = test.upgrade
-			tests.UpdateNetworkRules(t, net, testRules)
+			testnet.UpdateNetworkRules(t, net, testRules)
 			// Advance the epoch by one to apply the change.
-			tests.AdvanceEpochAndWaitForBlocks(t, net)
+			testnet.AdvanceEpochAndWaitForBlocks(t, net)
 
 			// check original state
 			type upgrades struct {
@@ -72,7 +72,7 @@ func TestGasSubsidies_CanBeEnabledAndDisabled(
 			rulesDiff := rulesType{
 				Upgrades: upgrades{GasSubsidies: true},
 			}
-			tests.UpdateNetworkRules(t, net, rulesDiff)
+			testnet.UpdateNetworkRules(t, net, rulesDiff)
 
 			// Advance the epoch by one to apply the change.
 			net.AdvanceEpoch(t, 1)
@@ -85,7 +85,7 @@ func TestGasSubsidies_CanBeEnabledAndDisabled(
 			rulesDiff = rulesType{
 				Upgrades: upgrades{GasSubsidies: false},
 			}
-			tests.UpdateNetworkRules(t, net, rulesDiff)
+			testnet.UpdateNetworkRules(t, net, rulesDiff)
 
 			// Advance the epoch by one to apply the change.
 			net.AdvanceEpoch(t, 1)
@@ -107,15 +107,15 @@ func TestGasSubsidies_CallingRegistryBeforeDeploy_FailsTransaction(t *testing.T)
 	for name, upgrade := range upgrades {
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
-			net := tests.StartIntegrationTestNetWithJsonGenesis(t, tests.IntegrationTestNetOptions{
+			net := testnet.StartIntegrationTestNetWithJsonGenesis(t, testnet.IntegrationTestNetOptions{
 				Upgrades: &upgrade,
 			})
 
 			client, err := net.GetClient()
 			require.NoError(err)
 
-			sponsor := tests.NewAccount()
-			sponsee := tests.NewAccount()
+			sponsor := testnet.NewAccount()
+			sponsee := testnet.NewAccount()
 
 			code, err := client.CodeAt(t.Context(), registry.GetAddress(), nil)
 			require.NoError(err)

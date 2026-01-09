@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/ethapi"
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -39,16 +40,16 @@ func TestRpcReplay_IsConsistentWithUpgradesAtBlockHeight(t *testing.T) {
 	// floor data cost (EIP-7623) increases the minimum gas cost of a transaction
 	// with large input buffers.
 
-	net := StartIntegrationTestNetWithJsonGenesis(t)
+	net := testnet.StartIntegrationTestNetWithJsonGenesis(t)
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
 	defer client.Close()
 
-	sender := MakeAccountWithBalance(t, net, big.NewInt(1e18))
+	sender := testnet.MakeAccountWithBalance(t, net, big.NewInt(1e18))
 
-	tx := SignTransaction(t, net.GetChainId(),
-		SetTransactionDefaults(
+	tx := testnet.SignTransaction(t, net.GetChainId(),
+		testnet.SetTransactionDefaults(
 			t, net,
 			&types.LegacyTx{
 				To:    &common.Address{0x42},
@@ -71,11 +72,11 @@ func TestRpcReplay_IsConsistentWithUpgradesAtBlockHeight(t *testing.T) {
 	rulesDiff := rulesType{
 		Upgrades: struct{ Allegro bool }{Allegro: true},
 	}
-	UpdateNetworkRules(t, net, rulesDiff)
-	AdvanceEpochAndWaitForBlocks(t, net)
+	testnet.UpdateNetworkRules(t, net, rulesDiff)
+	testnet.AdvanceEpochAndWaitForBlocks(t, net)
 
-	tx2 := SignTransaction(t, net.GetChainId(),
-		SetTransactionDefaults(
+	tx2 := testnet.SignTransaction(t, net.GetChainId(),
+		testnet.SetTransactionDefaults(
 			t, net,
 			&types.LegacyTx{
 				To:    &common.Address{0x42},
@@ -94,22 +95,22 @@ func TestRpcReplay_IsConsistentWithUpgradesAtBlockHeight(t *testing.T) {
 	lastBlockNumber := receiptAfterUpgrade.BlockNumber
 
 	rpcTx := ethapi.TransactionArgs{
-		From:     (*common.Address)(AsPointer(sender.Address())),
+		From:     (*common.Address)(testnet.AsPointer(sender.Address())),
 		To:       (*common.Address)(tx.To()),
-		Gas:      AsPointer(hexutil.Uint64(tx2.Gas())),
+		Gas:      testnet.AsPointer(hexutil.Uint64(tx2.Gas())),
 		GasPrice: (*hexutil.Big)(tx.GasPrice()),
 		Value:    (*hexutil.Big)(tx.Value()),
-		Data:     AsPointer(hexutil.Bytes(tx2.Data())),
+		Data:     testnet.AsPointer(hexutil.Bytes(tx2.Data())),
 	}
 	t.Run("eth_createAccessList", func(t *testing.T) {
 
 		rpcTx := ethapi.TransactionArgs{
-			From:     (*common.Address)(AsPointer(sender.Address())),
+			From:     (*common.Address)(testnet.AsPointer(sender.Address())),
 			To:       (*common.Address)(tx.To()),
-			Gas:      AsPointer(hexutil.Uint64(tx2.Gas())),
+			Gas:      testnet.AsPointer(hexutil.Uint64(tx2.Gas())),
 			GasPrice: (*hexutil.Big)(tx.GasPrice()),
 			Value:    (*hexutil.Big)(tx.Value()),
-			Data:     AsPointer(hexutil.Bytes(tx2.Data())),
+			Data:     testnet.AsPointer(hexutil.Bytes(tx2.Data())),
 		}
 
 		type accessListResult struct {

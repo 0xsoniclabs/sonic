@@ -21,6 +21,7 @@ import (
 	"math/big"
 	"testing"
 
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/tests/contracts/selfdestruct"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -30,7 +31,7 @@ import (
 
 func TestSelfDestruct(t *testing.T) {
 
-	net := StartIntegrationTestNet(t)
+	net := testnet.StartIntegrationTestNet(t)
 
 	t.Run("constructor", func(t *testing.T) {
 		t.Parallel()
@@ -43,7 +44,7 @@ func TestSelfDestruct(t *testing.T) {
 	})
 }
 
-func testSelfDestruct_Constructor(t *testing.T, net *IntegrationTestNet) {
+func testSelfDestruct_Constructor(t *testing.T, net *testnet.IntegrationTestNet) {
 	contractInitialBalance := int64(1234)
 
 	tests := map[string]struct {
@@ -150,7 +151,7 @@ func testSelfDestruct_Constructor(t *testing.T, net *IntegrationTestNet) {
 			require.NoError(err)
 
 			// First transaction deploys contract
-			contract, deployReceipt, err := DeployContract(session,
+			contract, deployReceipt, err := testnet.DeployContract(session,
 				func(to *bind.TransactOpts, cb bind.ContractBackend) (common.Address, *types.Transaction, *selfdestruct.SelfDestruct, error) {
 					return test.deployTx(to, cb, beneficiaryAddress)
 				})
@@ -201,7 +202,7 @@ func testSelfDestruct_Constructor(t *testing.T, net *IntegrationTestNet) {
 	}
 }
 
-func testSelfDestruct_NestedCall(t *testing.T, net *IntegrationTestNet) {
+func testSelfDestruct_NestedCall(t *testing.T, net *testnet.IntegrationTestNet) {
 	contractInitialBalance := int64(1234)
 
 	tests := map[string]struct {
@@ -303,7 +304,7 @@ func testSelfDestruct_NestedCall(t *testing.T, net *IntegrationTestNet) {
 			require.NoError(err)
 
 			// deploy factory contract
-			factory, receipt, err := DeployContract(session, selfdestruct.DeploySelfDestructFactory)
+			factory, receipt, err := testnet.DeployContract(session, selfdestruct.DeploySelfDestructFactory)
 			require.NoError(err)
 			require.Equal(
 				types.ReceiptStatusSuccessful,
@@ -366,7 +367,7 @@ func testSelfDestruct_NestedCall(t *testing.T, net *IntegrationTestNet) {
 // avoid clashes between tests. This struct will be filled with the results of
 // the each test setup.
 type effectContext struct {
-	client             *PooledEhtClient                  //< client to interact with the network
+	client             *testnet.PooledEhtClient          //< client to interact with the network
 	contract           *selfdestruct.SelfDestruct        //< contract to test (may have selfdestructed)
 	factory            *selfdestruct.SelfDestructFactory //< factory contract to deploy new contracts
 	executionReceipt   *types.Receipt                    //< receipt of the execution transaction for constructor tests

@@ -20,6 +20,7 @@ import (
 	"math/big"
 	"testing"
 
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -44,8 +45,8 @@ func TestRandao_randaoIntegrationTest(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			net := StartIntegrationTestNet(t,
-				IntegrationTestNetOptions{
+			net := testnet.StartIntegrationTestNet(t,
+				testnet.IntegrationTestNetOptions{
 					NumNodes: NumNodes,
 					Upgrades: &test,
 				},

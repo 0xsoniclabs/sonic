@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
-package tests
+package testnet
 
 import (
 	"context"
@@ -41,31 +41,31 @@ import (
 )
 
 // CreateTransaction fills the given tx with acceptable values for the given
-// session, signs it with the given account, and returns the signed transaction.
+// session, signs it with the given Account, and returns the signed transaction.
 // The values modified if defaults are:
 //   - ChainID: It replaces the ChainID of the transaction with the chainID of
 //     the given session.
 //   - If nonce is zeroed: It configures the nonce of the transaction to be the
-//     current nonce of the sender account
+//     current nonce of the sender Account
 //   - If gas price or gas fee cap is zeroed: It configures the gas price of the
 //     transaction to be the suggested gas price
 //   - If gas is zeroed: It configures the gas of the transaction to be the
 //     minimum gas required to execute the transaction
-//     Filled gas is a static minimum value, it does not account for the gas
+//     Filled gas is a static minimum value, it does not Account for the gas
 //     costs of the contract opcodes.
-func CreateTransaction(t *testing.T, session IntegrationTestNetSession, tx types.TxData, account *Account) *types.Transaction {
+func CreateTransaction(t *testing.T, session IntegrationTestNetSession, tx types.TxData, Account *Account) *types.Transaction {
 	t.Helper()
 	signedTx := SignTransaction(
 		t,
 		session.GetChainId(),
-		SetTransactionDefaults(t, session, tx, account),
-		account,
+		SetTransactionDefaults(t, session, tx, Account),
+		Account,
 	)
 	return signedTx
 }
 
 // SignTransaction is a testing helper that signs a transaction with the
-// key from the provided account
+// key from the provided Account
 func SignTransaction(
 	t *testing.T,
 	chainId *big.Int,
@@ -84,12 +84,12 @@ func SignTransaction(
 // SetTransactionDefaults defaults the transaction common fields to meaningful values
 //
 //   - If nonce is zeroed: It configures the nonce of the transaction to be the
-//     current nonce of the sender account
+//     current nonce of the sender Account
 //   - If gas price or gas fee cap is zeroed: It configures the gas price of the
 //     transaction to be the suggested gas price
 //   - If gas is zeroed: It configures the gas of the transaction to be the
 //     minimum gas required to execute the transaction
-//     Filled gas is a static minimum value, it does not account for the gas
+//     Filled gas is a static minimum value, it does not Account for the gas
 //     costs of the contract opcodes.
 //
 // Notice that this function is generic, returning the same type as the input, this
@@ -319,17 +319,17 @@ func GetEpochOfBlock(t *testing.T, client *PooledEhtClient, blockNumber int) int
 	return int(result.Epoch)
 }
 
-// MakeAccountWithBalance creates a new account and endows it with the given balance.
-// Creating the account this way allows to get access to the private key to sign transactions.
+// MakeAccountWithBalance creates a new Account and endows it with the given balance.
+// Creating the Account this way allows to get access to the private key to sign transactions.
 func MakeAccountWithBalance(t *testing.T, net IntegrationTestNetSession, balance *big.Int) *Account {
 	t.Helper()
-	account := NewAccount()
-	receipt, err := net.EndowAccount(account.Address(), balance)
+	Account := NewAccount()
+	receipt, err := net.EndowAccount(Account.Address(), balance)
 	require.NoError(t, err)
 	require.Equal(t,
 		receipt.Status, types.ReceiptStatusSuccessful,
-		"endowing account failed")
-	return account
+		"endowing Account failed")
+	return Account
 }
 
 // GenerateTestDataBasedOnModificationCombinations generates all possible versions of a
@@ -445,7 +445,7 @@ func AdvanceEpochAndWaitForBlocks(t *testing.T, net *IntegrationTestNet) {
 	require.NoError(err, "failed to wait for the next two blocks after epoch change")
 }
 
-// getProofFor retrieves the account proof for the given block number.
+// getProofFor retrieves the Account proof for the given block number.
 // This is meant to be a testing only function, hence having a *testing.T
 // unused parameter.
 func getProofFor(_ *testing.T, client *PooledEhtClient, blockNumber int) ([]string, error) {
@@ -465,13 +465,13 @@ func getProofFor(_ *testing.T, client *PooledEhtClient, blockNumber int) ([]stri
 func GetStateRoot(t *testing.T, client *PooledEhtClient, blockNumber int) common.Hash {
 
 	accountProof, err := getProofFor(t, client, blockNumber)
-	require.NoError(t, err, "failed to get account proof for block %d", blockNumber)
+	require.NoError(t, err, "failed to get Account proof for block %d", blockNumber)
 
-	// The hash of the first element of the account proof is the state root.
-	require.NotEqual(t, 0, len(accountProof), "no account proof found")
+	// The hash of the first element of the Account proof is the state root.
+	require.NotEqual(t, 0, len(accountProof), "no Account proof found")
 
 	data, err := hexutil.Decode(accountProof[0])
-	require.NoError(t, err, "failed to decode account proof element")
+	require.NoError(t, err, "failed to decode Account proof element")
 
 	return common.BytesToHash(crypto.Keccak256(data))
 }

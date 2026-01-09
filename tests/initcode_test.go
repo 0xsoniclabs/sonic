@@ -20,6 +20,7 @@ import (
 	"math/big"
 	"testing"
 
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/contractcreator"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -36,10 +37,10 @@ const sufficientGas = uint64(150_000)
 func TestInitCodeSizeLimitAndMetered(t *testing.T) {
 	requireBase := require.New(t)
 
-	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	session := testnet.GetIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 	t.Parallel()
 
-	contract, receipt, err := DeployContract(session, contractcreator.DeployContractcreator)
+	contract, receipt, err := testnet.DeployContract(session, contractcreator.DeployContractcreator)
 	requireBase.NoError(err)
 	requireBase.Equal(types.ReceiptStatusSuccessful, receipt.Status, "failed to deploy contract")
 
@@ -73,7 +74,7 @@ func TestInitCodeSizeLimitAndMetered(t *testing.T) {
 	})
 }
 
-func testForVariant(t *testing.T, session IntegrationTestNetSession,
+func testForVariant(t *testing.T, session testnet.IntegrationTestNetSession,
 	contract *contractcreator.Contractcreator, variant variant,
 	gasForContract, wordCost uint64) {
 
@@ -136,7 +137,7 @@ func testForVariant(t *testing.T, session IntegrationTestNetSession,
 	})
 }
 
-func testForTransaction(t *testing.T, session IntegrationTestNetSession) {
+func testForTransaction(t *testing.T, session testnet.IntegrationTestNetSession) {
 	t.Run("charges depending on the init code size", func(t *testing.T) {
 		require := require.New(t)
 		session := session.SpawnSession(t)
@@ -177,7 +178,7 @@ func testForTransaction(t *testing.T, session IntegrationTestNetSession) {
 	})
 }
 
-func createContractSuccessfully(t *testing.T, session IntegrationTestNetSession,
+func createContractSuccessfully(t *testing.T, session testnet.IntegrationTestNetSession,
 	variant variant, codeLen, gasLimit uint64) *types.Receipt {
 
 	receipt, err := createContractWithCodeLenAndGas(session, variant, codeLen, gasLimit)
@@ -187,7 +188,7 @@ func createContractSuccessfully(t *testing.T, session IntegrationTestNetSession,
 	return receipt
 }
 
-func createContractWithCodeLenAndGas(session IntegrationTestNetSession,
+func createContractWithCodeLenAndGas(session testnet.IntegrationTestNetSession,
 	variant variant, codeLen, gasLimit uint64) (*types.Receipt, error) {
 	return session.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
 		opts.GasLimit = gasLimit
@@ -199,7 +200,7 @@ type variant func(opts *bind.TransactOpts, codeSize *big.Int) (*types.Transactio
 
 func runTransactionWithCodeSizeAndGas(
 	t *testing.T,
-	session IntegrationTestNetSession,
+	session testnet.IntegrationTestNetSession,
 	codeSize, gas uint64,
 ) (*types.Receipt, error) {
 	require := require.New(t)

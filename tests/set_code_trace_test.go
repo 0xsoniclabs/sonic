@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/ethapi"
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
 	"github.com/0xsoniclabs/sonic/tests/contracts/sponsoring"
@@ -38,20 +39,20 @@ import (
 // assign fees for a dApp also in this delegate scenario and dApp
 // address will be visible in the trace
 func TestTrace7702Transaction(t *testing.T) {
-	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	session := testnet.GetIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 	t.Parallel()
 
-	sponsor := MakeAccountWithBalance(t, session, big.NewInt(1e18))
-	sponsored := MakeAccountWithBalance(t, session, big.NewInt(10))
+	sponsor := testnet.MakeAccountWithBalance(t, session, big.NewInt(1e18))
+	sponsored := testnet.MakeAccountWithBalance(t, session, big.NewInt(10))
 
 	// Deploy the contract to forward the call
-	sponsoringDelegate, receipt, err := DeployContract(session, sponsoring.DeploySponsoring)
+	sponsoringDelegate, receipt, err := testnet.DeployContract(session, sponsoring.DeploySponsoring)
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 	delegateAddress := receipt.ContractAddress
 
 	// Deploy simple contract to increment the counter
-	counterContract, receipt, err := DeployContract(session, counter.DeployCounter)
+	counterContract, receipt, err := testnet.DeployContract(session, counter.DeployCounter)
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 	counterAddress := receipt.ContractAddress

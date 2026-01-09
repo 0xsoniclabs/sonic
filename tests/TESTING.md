@@ -36,7 +36,7 @@ Here are some considerations to keep in mind when adding new integration tests:
 	- The network is going to have more than one node.
 	- The network is going to have have a specified config file, or a specific non-default configuration parameter.
 	
-	Then use an exclusive new network `net := StartIntegrationTestNet(t)`.
+	Then use an exclusive new network `net :=testnet.StartIntegrationTestNet(t)`.
 	For example:
 	```Go
 	import (
@@ -48,26 +48,26 @@ Here are some considerations to keep in mind when adding new integration tests:
 	func TestNetworkRule_Update(t *testing.T){
 
 		require := require.New(t)
-		net := tests.StartIntegrationTestNet(t)
+		net := testnet.StartIntegrationTestNet(t)
 
-		current := tests.GetNetworkRules(t, net)
+		current := testnet.GetNetworkRules(t, net)
 		modified := myRuleModifications(current)
-		tests.UpdateNetworkRules(t, net, modified)
+		testnet.UpdateNetworkRules(t, net, modified)
 		AdvanceEpochAndWaitForBlocks(t, net)
 
 		net.Restart()
-		newConfig := tests.GetNetworkRules(t, net)
+		newConfig := testnet.GetNetworkRules(t, net)
 		require.Equal(modified, newConfig)
 	}	
 	```
 
-	Otherwise we highly encourage you to use `session := getIntegrationTestNetSession(t, Upgrade)`
+	Otherwise we highly encourage you to use `session := testnet.GetIntegrationTestNetSession(t, Upgrade)`
 
 	`Upgrades` indicates which hard fork options the network uses. `opera.Sonic` hard fork is used as a default.
 
 	```Go
 	func TestMultipleSessions_CanSendLegacyTransactionsInBulk(t *testing.T) {
-		session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+		session := testnet.GetIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 
 		chainId := session.GetChainId()
 		txs := types.Transaction[]{}
@@ -88,7 +88,7 @@ Here are some considerations to keep in mind when adding new integration tests:
 
 	```Go
 	func TestType_ManyProperties(t *testing.T){
-		session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+		session := testnet.GetIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 
 		t.Run("someProperty", func (t *testing.T){
 			subSession := session.SpawnSession(t)
@@ -114,7 +114,7 @@ Networks or sessions can produce `Client`s connected to the different nodes. The
 
 ```Go
 func TestSendTransaction_Asynchronously(t *testing.T){
-	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	session := testnet.GetIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 	chainId := session.GetChainId()
 
 	client, err := session.GetClient()
@@ -177,11 +177,11 @@ The following commands can be used to install the needed dependencies are needed
 ```Go
 func TestCounter_CanIncrementAndReadCounterFromHead(t *testing.T) {
 
-	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	session := testnet.GetIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 	t.Parallel()
 
 	// Deploy the counter contract.
-	contract, receipt, err := DeployContract(session, counter.DeployCounter)
+	contract, receipt, err := testnet.DeployContract(session, counter.DeployCounter)
 	require.NoError(t, err, "failed to deploy contract; %v", err)
 	require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
 

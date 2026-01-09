@@ -20,6 +20,7 @@ import (
 	"strings"
 	"testing"
 
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/indexed_logs"
 	"github.com/ethereum/go-ethereum/common"
@@ -30,10 +31,10 @@ import (
 
 func TestRpc_GetLogs_BlockTimeStampHexEncoded(t *testing.T) {
 
-	session := getIntegrationTestNetSession(t, opera.GetBrioUpgrades())
+	session := testnet.GetIntegrationTestNetSession(t, opera.GetBrioUpgrades())
 
 	// deploy a contract
-	contract, receipt, err := DeployContract(session, indexed_logs.DeployIndexedLogs)
+	contract, receipt, err := testnet.DeployContract(session, indexed_logs.DeployIndexedLogs)
 	require.NoError(t, err)
 	require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
 	contractAddress := receipt.ContractAddress

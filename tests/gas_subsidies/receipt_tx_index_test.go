@@ -24,9 +24,9 @@ import (
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/contract/driverauth100"
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
-	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -55,7 +55,7 @@ func TestGasSubsidies_Receipts_HaveConsistentTransactionIndices(t *testing.T) {
 
 				test.upgrade.GasSubsidies = true
 				test.upgrade.SingleProposerBlockFormation = enabled
-				net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+				net := testnet.StartIntegrationTestNet(t, testnet.IntegrationTestNetOptions{
 					Upgrades: &test.upgrade,
 				})
 
@@ -66,17 +66,17 @@ func TestGasSubsidies_Receipts_HaveConsistentTransactionIndices(t *testing.T) {
 				contract, err := driverauth100.NewContract(driverauth.ContractAddress, client)
 				require.NoError(t, err, "failed to create contract instance")
 
-				sponsee := tests.NewAccount()
+				sponsee := testnet.NewAccount()
 				donation := big.NewInt(math.MaxInt64)
 
 				// set up sponsorship, but drop the returned registry since it is not needed
 				_ = Fund(t, net, sponsee.Address(), donation)
 
 				transactionsLoad := map[string]struct {
-					scenario func(t *testing.T, net *tests.IntegrationTestNet) []common.Hash
+					scenario func(t *testing.T, net *testnet.IntegrationTestNet) []common.Hash
 				}{
 					"single sponsored transaction": {
-						scenario: func(t *testing.T, net *tests.IntegrationTestNet) []common.Hash {
+						scenario: func(t *testing.T, net *testnet.IntegrationTestNet) []common.Hash {
 							nonce, err := client.PendingNonceAt(t.Context(), sponsee.Address())
 							require.NoError(t, err)
 							txData := &types.LegacyTx{
@@ -97,7 +97,7 @@ func TestGasSubsidies_Receipts_HaveConsistentTransactionIndices(t *testing.T) {
 						},
 					},
 					"multiple sponsored transactions are executed within the same block": {
-						scenario: func(t *testing.T, net *tests.IntegrationTestNet) []common.Hash {
+						scenario: func(t *testing.T, net *testnet.IntegrationTestNet) []common.Hash {
 							// This scenario issues multiple sponsored transactions asynchronously
 							// to facilitate their inclusion in the same block.
 
@@ -123,7 +123,7 @@ func TestGasSubsidies_Receipts_HaveConsistentTransactionIndices(t *testing.T) {
 						},
 					},
 					"multiple sponsored and non-sponsored transactions are executed within the same block": {
-						scenario: func(t *testing.T, net *tests.IntegrationTestNet) []common.Hash {
+						scenario: func(t *testing.T, net *testnet.IntegrationTestNet) []common.Hash {
 							// This scenario issues multiple sponsored transactions asynchronously
 							// to facilitate their inclusion in the same block.
 
@@ -133,7 +133,7 @@ func TestGasSubsidies_Receipts_HaveConsistentTransactionIndices(t *testing.T) {
 							StartingNonce, err := client.PendingNonceAt(t.Context(), sponsee.Address())
 							require.NoError(t, err)
 
-							nonSponsoredAccount := tests.MakeAccountWithBalance(t, net, big.NewInt(math.MaxInt64))
+							nonSponsoredAccount := testnet.MakeAccountWithBalance(t, net, big.NewInt(math.MaxInt64))
 							suggestedGasPrice, err := client.SuggestGasPrice(t.Context())
 							require.NoError(t, err)
 
@@ -157,7 +157,7 @@ func TestGasSubsidies_Receipts_HaveConsistentTransactionIndices(t *testing.T) {
 									Gas:      21_000,
 									GasPrice: suggestedGasPrice,
 								}
-								nonSponsoredTx := tests.SignTransaction(t, net.GetChainId(), nonSponsoredTxData, nonSponsoredAccount)
+								nonSponsoredTx := testnet.SignTransaction(t, net.GetChainId(), nonSponsoredTxData, nonSponsoredAccount)
 
 								require.NoError(t, client.SendTransaction(t.Context(), nonSponsoredTx), "failed to send non-sponsored transaction %v", i)
 								txHashes = append(txHashes, nonSponsoredTx.Hash())
@@ -166,7 +166,7 @@ func TestGasSubsidies_Receipts_HaveConsistentTransactionIndices(t *testing.T) {
 						},
 					},
 					"an sponsored transaction right at epoch change": {
-						scenario: func(t *testing.T, net *tests.IntegrationTestNet) []common.Hash {
+						scenario: func(t *testing.T, net *testnet.IntegrationTestNet) []common.Hash {
 							// This test issues both a sponsored transaction and an epoch change transaction
 							// asynchronously and attempts to have them included in the same block.
 							//

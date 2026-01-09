@@ -20,8 +20,8 @@ import (
 	"math/big"
 	"testing"
 
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
@@ -56,7 +56,7 @@ func TestGasSubsidies_SupportAllTxTypes(t *testing.T) {
 	upgrades := opera.GetAllegroUpgrades()
 	upgrades.GasSubsidies = true
 
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+	net := testnet.StartIntegrationTestNet(t, testnet.IntegrationTestNetOptions{
 		Upgrades: &upgrades,
 	})
 
@@ -67,7 +67,7 @@ func TestGasSubsidies_SupportAllTxTypes(t *testing.T) {
 	for name, tx := range transactions {
 		t.Run(name, func(t *testing.T) {
 
-			sponsee := tests.NewAccount()
+			sponsee := testnet.NewAccount()
 
 			// The sponsorship donation needs to be high enough to cover the gas
 			// fees of the sponsored tx and the fees of the internal payment tx.

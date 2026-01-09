@@ -20,8 +20,8 @@ import (
 	"math/big"
 	"testing"
 
+	testnet "github.com/0xsoniclabs/sonic/integrationtestnet"
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -32,7 +32,7 @@ func TestGasSubsidies_RequestIsRejectedInCaseOfInsufficientFunds(t *testing.T) {
 	upgrades := opera.GetBrioUpgrades()
 	upgrades.GasSubsidies = true
 
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+	net := testnet.StartIntegrationTestNet(t, testnet.IntegrationTestNetOptions{
 		Upgrades: &upgrades,
 	})
 
@@ -44,7 +44,7 @@ func TestGasSubsidies_RequestIsRejectedInCaseOfInsufficientFunds(t *testing.T) {
 		To:  &common.Address{0x42},
 		Gas: 21000,
 	}
-	sponsee := tests.NewAccount()
+	sponsee := testnet.NewAccount()
 	signedTx := makeSponsorRequestTransaction(t, tx, net.GetChainId(), sponsee)
 
 	// Create a sponsorship fund with 0 initial funds
@@ -85,7 +85,7 @@ func TestGasSubsidies_RequestIsRejectedInCaseOfInsufficientFunds(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
-	tests.WaitForProofOf(t, client, int(receipt.BlockNumber.Int64()))
+	testnet.WaitForProofOf(t, client, int(receipt.BlockNumber.Int64()))
 
 	// Get the funds before resending the transaction
 	ops := &bind.CallOpts{
@@ -108,7 +108,7 @@ func TestGasSubsidies_RequestIsRejectedInCaseOfInsufficientFunds(t *testing.T) {
 	require.NoError(t, err)
 	baseFee = header.BaseFee
 
-	tests.WaitForProofOf(t, client, int(receipt.BlockNumber.Int64()))
+	testnet.WaitForProofOf(t, client, int(receipt.BlockNumber.Int64()))
 
 	ops = &bind.CallOpts{
 		BlockNumber: receipt.BlockNumber,
