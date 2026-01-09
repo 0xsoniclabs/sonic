@@ -674,20 +674,20 @@ func (mr *MockBackendMockRecorder) SendTx(ctx, signedTx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SendTx", reflect.TypeOf((*MockBackend)(nil).SendTx), ctx, signedTx)
 }
 
-// StateAndHeaderByNumberOrHash mocks base method.
-func (m *MockBackend) StateAndHeaderByNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (state.StateDB, *evmcore.EvmHeader, error) {
+// StateAndBlockByNumberOrHash mocks base method.
+func (m *MockBackend) StateAndBlockByNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (state.StateDB, *evmcore.EvmBlock, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "StateAndHeaderByNumberOrHash", ctx, blockNrOrHash)
+	ret := m.ctrl.Call(m, "StateAndBlockByNumberOrHash", ctx, blockNrOrHash)
 	ret0, _ := ret[0].(state.StateDB)
-	ret1, _ := ret[1].(*evmcore.EvmHeader)
+	ret1, _ := ret[1].(*evmcore.EvmBlock)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
 }
 
-// StateAndHeaderByNumberOrHash indicates an expected call of StateAndHeaderByNumberOrHash.
-func (mr *MockBackendMockRecorder) StateAndHeaderByNumberOrHash(ctx, blockNrOrHash any) *gomock.Call {
+// StateAndBlockByNumberOrHash indicates an expected call of StateAndBlockByNumberOrHash.
+func (mr *MockBackendMockRecorder) StateAndBlockByNumberOrHash(ctx, blockNrOrHash any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StateAndHeaderByNumberOrHash", reflect.TypeOf((*MockBackend)(nil).StateAndHeaderByNumberOrHash), ctx, blockNrOrHash)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StateAndBlockByNumberOrHash", reflect.TypeOf((*MockBackend)(nil).StateAndBlockByNumberOrHash), ctx, blockNrOrHash)
 }
 
 // Stats mocks base method.
