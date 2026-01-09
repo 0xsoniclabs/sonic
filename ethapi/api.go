@@ -1147,11 +1147,11 @@ func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash 
 
 	var blockCtx *vm.BlockContext
 	if blockOverrides != nil {
-		bctx := getBlockContext(ctx, b, header)
+		bctx := getBlockContext(ctx, b, block.Header())
 		blockOverrides.apply(&bctx)
 		blockCtx = &bctx
 	}
-	evm, vmError, err := b.GetEVM(ctx, state, header, &vmConfig, blockCtx)
+	evm, vmError, err := b.GetEVM(ctx, state, block.Header(), &vmConfig, blockCtx)
 	if err != nil {
 		return nil, err
 	}
@@ -1740,7 +1740,7 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 		}
 		config.Tracer = tracer.Hooks()
 		config.NoBaseFee = true
-		vmenv, _, err := b.GetEVM(ctx, statedb, header, &config, nil)
+		vmenv, _, err := b.GetEVM(ctx, statedb, block.Header(), &config, nil)
 		if err != nil {
 			statedb.Release()
 			return nil, 0, nil, err
