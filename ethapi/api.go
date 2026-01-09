@@ -705,7 +705,7 @@ func (s *PublicBlockChainAPI) BlockNumber() hexutil.Uint64 {
 // given block number. The rpc.LatestBlockNumber and rpc.PendingBlockNumber meta
 // block numbers are also allowed.
 func (s *PublicBlockChainAPI) GetBalance(ctx context.Context, address common.Address, blockNrOrHash rpc.BlockNumberOrHash) (*hexutil.U256, error) {
-	state, _, err := s.b.StateAndHeaderByNumberOrHash(ctx, blockNrOrHash)
+	state, _, err := s.b.StateAndBlockByNumberOrHash(ctx, blockNrOrHash)
 	if state == nil || err != nil {
 		return nil, err
 	}
@@ -807,7 +807,7 @@ type GetAccountResult struct {
 // GetAccount returns the information about account with given address in the state of the given block number.
 // The rpc.LatestBlockNumber and rpc.PendingBlockNumber meta block numbers are also allowed.
 func (s *PublicBlockChainAPI) GetAccount(ctx context.Context, address common.Address, blockNrOrHash rpc.BlockNumberOrHash) (*GetAccountResult, error) {
-	state, header, err := s.b.StateAndHeaderByNumberOrHash(ctx, blockNrOrHash)
+	state, block, err := s.b.StateAndBlockByNumberOrHash(ctx, blockNrOrHash)
 	if err != nil {
 		return nil, err
 	}
@@ -816,16 +816,16 @@ func (s *PublicBlockChainAPI) GetAccount(ctx context.Context, address common.Add
 	if err != nil {
 		return nil, err
 	}
-	codeHash, _, err := proof.GetCodeHash(cc.Hash(header.Root), cc.Address(address))
+	codeHash, _, err := proof.GetCodeHash(cc.Hash(block.Root), cc.Address(address))
 	if err != nil {
 		return nil, err
 	}
-	_, storageRoot, _ := proof.GetAccountElements(cc.Hash(header.Root), cc.Address(address))
-	balance, _, err := proof.GetBalance(cc.Hash(header.Root), cc.Address(address))
+	_, storageRoot, _ := proof.GetAccountElements(cc.Hash(block.Root), cc.Address(address))
+	balance, _, err := proof.GetBalance(cc.Hash(block.Root), cc.Address(address))
 	if err != nil {
 		return nil, err
 	}
-	nonce, _, err := proof.GetNonce(cc.Hash(header.Root), cc.Address(address))
+	nonce, _, err := proof.GetNonce(cc.Hash(block.Root), cc.Address(address))
 	if err != nil {
 		return nil, err
 	}
@@ -858,7 +858,7 @@ type StorageResult struct {
 
 // GetProof returns the Merkle-proof for a given account and optionally some storage keys.
 func (s *PublicBlockChainAPI) GetProof(ctx context.Context, address common.Address, storageKeys []string, blockNrOrHash rpc.BlockNumberOrHash) (*AccountResult, error) {
-	state, header, err := s.b.StateAndHeaderByNumberOrHash(ctx, blockNrOrHash)
+	state, block, err := s.b.StateAndBlockByNumberOrHash(ctx, blockNrOrHash)
 	if state == nil || err != nil {
 		return nil, err
 	}
@@ -875,11 +875,11 @@ func (s *PublicBlockChainAPI) GetProof(ctx context.Context, address common.Addre
 
 	storageProof := make([]StorageResult, len(keys))
 	for i, key := range keys {
-		value, _, err := proof.GetState(cc.Hash(header.Root), cc.Address(address), cc.Key(key))
+		value, _, err := proof.GetState(cc.Hash(block.Root), cc.Address(address), cc.Key(key))
 		if err != nil {
 			return nil, err
 		}
-		elements, _ := proof.GetStorageElements(cc.Hash(header.Root), cc.Address(address), cc.Key(keys[i]))
+		elements, _ := proof.GetStorageElements(cc.Hash(block.Root), cc.Address(address), cc.Key(keys[i]))
 		storageProof[i] = StorageResult{
 			Key:   key.Hex(),
 			Value: (*hexutil.Big)(new(big.Int).SetBytes(value[:])),
@@ -887,17 +887,17 @@ func (s *PublicBlockChainAPI) GetProof(ctx context.Context, address common.Addre
 		}
 	}
 
-	accountProof, storageHash, _ := proof.GetAccountElements(cc.Hash(header.Root), cc.Address(address))
+	accountProof, storageHash, _ := proof.GetAccountElements(cc.Hash(block.Root), cc.Address(address))
 
-	codeHash, _, err := proof.GetCodeHash(cc.Hash(header.Root), cc.Address(address))
+	codeHash, _, err := proof.GetCodeHash(cc.Hash(block.Root), cc.Address(address))
 	if err != nil {
 		return nil, err
 	}
-	balance, _, err := proof.GetBalance(cc.Hash(header.Root), cc.Address(address))
+	balance, _, err := proof.GetBalance(cc.Hash(block.Root), cc.Address(address))
 	if err != nil {
 		return nil, err
 	}
-	nonce, _, err := proof.GetNonce(cc.Hash(header.Root), cc.Address(address))
+	nonce, _, err := proof.GetNonce(cc.Hash(block.Root), cc.Address(address))
 	if err != nil {
 		return nil, err
 	}
@@ -1021,7 +1021,7 @@ func (s *PublicBlockChainAPI) GetUncleCountByBlockHash(ctx context.Context, bloc
 
 // GetCode returns the code stored at the given address in the state for the given block number.
 func (s *PublicBlockChainAPI) GetCode(ctx context.Context, address common.Address, blockNrOrHash rpc.BlockNumberOrHash) (hexutil.Bytes, error) {
-	state, _, err := s.b.StateAndHeaderByNumberOrHash(ctx, blockNrOrHash)
+	state, _, err := s.b.StateAndBlockByNumberOrHash(ctx, blockNrOrHash)
 	if state == nil || err != nil {
 		return nil, err
 	}
@@ -1034,7 +1034,7 @@ func (s *PublicBlockChainAPI) GetCode(ctx context.Context, address common.Addres
 // block number. The rpc.LatestBlockNumber and rpc.PendingBlockNumber meta block
 // numbers are also allowed.
 func (s *PublicBlockChainAPI) GetStorageAt(ctx context.Context, address common.Address, key string, blockNr rpc.BlockNumberOrHash) (hexutil.Bytes, error) {
-	state, _, err := s.b.StateAndHeaderByNumberOrHash(ctx, blockNr)
+	state, _, err := s.b.StateAndBlockByNumberOrHash(ctx, blockNr)
 	if state == nil || err != nil {
 		return nil, err
 	}
@@ -1111,7 +1111,7 @@ func (diff *StateOverride) HasCodesExceedingOnChainLimit() bool {
 func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, overrides *StateOverride, blockOverrides *BlockOverrides, timeout time.Duration, globalGasCap uint64) (*core.ExecutionResult, error) {
 	defer func(start time.Time) { log.Debug("Executing EVM call finished", "runtime", time.Since(start)) }(time.Now())
 
-	state, header, err := b.StateAndHeaderByNumberOrHash(ctx, blockNrOrHash)
+	state, block, err := b.StateAndBlockByNumberOrHash(ctx, blockNrOrHash)
 	if state == nil || err != nil {
 		return nil, err
 	}
@@ -1132,11 +1132,11 @@ func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash 
 	defer cancel()
 
 	// Get a new instance of the EVM.
-	msg, err := args.ToMessage(globalGasCap, header.BaseFee, log.Root())
+	msg, err := args.ToMessage(globalGasCap, block.BaseFee, log.Root())
 	if err != nil {
 		return nil, err
 	}
-	vmConfig, err := GetVmConfig(ctx, b, idx.Block(header.Number.Uint64()))
+	vmConfig, err := GetVmConfig(ctx, b, idx.Block(block.Number.Uint64()))
 	if err != nil {
 		return nil, err
 	}
@@ -1165,8 +1165,8 @@ func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash 
 	}()
 
 	// execute EIP-2935 HistoryStorage contract.
-	if evm.ChainConfig().IsPrague(header.Number, uint64(header.Time.Unix())) {
-		evmcore.ProcessParentBlockHash(header.ParentHash, evm, state)
+	if evm.ChainConfig().IsPrague(block.Number, uint64(block.Time.Unix())) {
+		evmcore.ProcessParentBlockHash(block.ParentHash, evm, state)
 	}
 
 	// Execute the message.
@@ -1273,7 +1273,7 @@ func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNr
 	}
 	// Recap the highest gas limit with account's available balance.
 	if feeCap.BitLen() != 0 {
-		state, _, err := b.StateAndHeaderByNumberOrHash(ctx, blockNrOrHash)
+		state, _, err := b.StateAndBlockByNumberOrHash(ctx, blockNrOrHash)
 		if state == nil || err != nil {
 			return 0, err
 		}
@@ -1674,7 +1674,7 @@ func (s *PublicBlockChainAPI) CreateAccessList(ctx context.Context, args Transac
 // If the transaction itself fails, an vmErr is returned.
 func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrHash, args TransactionArgs) (acl types.AccessList, gasUsed uint64, vmErr error, err error) {
 	// Retrieve the execution context
-	db, header, err := b.StateAndHeaderByNumberOrHash(ctx, blockNrOrHash)
+	db, block, err := b.StateAndBlockByNumberOrHash(ctx, blockNrOrHash)
 	if db == nil || err != nil {
 		return nil, 0, nil, err
 	}
@@ -1694,8 +1694,8 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 		to = crypto.CreateAddress(args.from(), uint64(*args.Nonce))
 	}
 	// Retrieve the precompiles since they don't need to be added to the access list
-	chainConfig := b.ChainConfig(idx.Block(header.Number.Uint64()))
-	precompiles := vm.ActivePrecompiles(chainConfig.Rules(header.Number, false, uint64(header.Time.Unix())))
+	chainConfig := b.ChainConfig(idx.Block(block.Number.Uint64()))
+	precompiles := vm.ActivePrecompiles(chainConfig.Rules(block.Number, false, uint64(block.Time.Unix())))
 
 	// addressesToExclude contains sender, receiver and precompiles
 	addressesToExclude := map[common.Address]struct{}{args.from(): {}, to: {}}
@@ -1726,7 +1726,7 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 		statedb := db.Copy()
 		// Set the accesslist to the last al
 		args.AccessList = &accessList
-		msg, err := args.ToMessage(b.RPCGasCap(), header.BaseFee, log.Root())
+		msg, err := args.ToMessage(b.RPCGasCap(), block.BaseFee, log.Root())
 		if err != nil {
 			statedb.Release()
 			return nil, 0, nil, err
@@ -1734,7 +1734,7 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 
 		// Apply the transaction with the access list tracer
 		tracer := logger.NewAccessListTracer(accessList, addressesToExclude)
-		config, err := GetVmConfig(ctx, b, idx.Block(header.Number.Uint64()))
+		config, err := GetVmConfig(ctx, b, idx.Block(block.Number.Uint64()))
 		if err != nil {
 			return nil, 0, nil, err
 		}
@@ -1834,7 +1834,7 @@ func (s *PublicTransactionPoolAPI) GetTransactionCount(ctx context.Context, addr
 		return (*hexutil.Uint64)(&nonce), nil
 	}
 	// Resolve block number and use its state to ask for the nonce
-	state, _, err := s.b.StateAndHeaderByNumberOrHash(ctx, blockNrOrHash)
+	state, _, err := s.b.StateAndBlockByNumberOrHash(ctx, blockNrOrHash)
 	if state == nil || err != nil {
 		return nil, err
 	}
@@ -2510,7 +2510,7 @@ func (api *PublicDebugAPI) traceBlock(ctx context.Context, block *evmcore.EvmBlo
 	if block.NumberU64() == 0 {
 		return nil, errors.New("genesis is not traceable")
 	}
-	statedb, _, err := api.b.StateAndHeaderByNumberOrHash(ctx, rpc.BlockNumberOrHashWithHash(block.ParentHash, false))
+	statedb, _, err := api.b.StateAndBlockByNumberOrHash(ctx, rpc.BlockNumberOrHashWithHash(block.ParentHash, false))
 	if err != nil {
 		return nil, err
 	}
@@ -2563,7 +2563,7 @@ func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex in
 
 	// Lookup the statedb of parent block from the live database,
 	// otherwise regenerate it on the flight.
-	statedb, _, err := b.StateAndHeaderByNumberOrHash(ctx, rpc.BlockNumberOrHashWithHash(block.ParentHash, false))
+	statedb, _, err := b.StateAndBlockByNumberOrHash(ctx, rpc.BlockNumberOrHashWithHash(block.ParentHash, false))
 	if err != nil {
 		return nil, nil, err
 	}
