@@ -255,3 +255,210 @@ func TestEmitter_CreateEvent_InvalidValidatorSetIsDetected(t *testing.T) {
 	_, err := em.createEvent(nil)
 	require.ErrorContains(t, err, "no validators")
 }
+
+func TestEmitter_EmitEvent_DoesNotEmit_IfNodeIsNotValidator(t *testing.T) {
+
+	builder := pos.NewBuilder()
+	builder.Set(idx.ValidatorID(1), pos.Weight(1))
+	validators := builder.Build()
+
+	tests := map[string]idx.ValidatorID{
+		"zero code is never a validator": 0,
+		"validator id with no stake":     999,
+	}
+
+	for name, validatorID := range tests {
+		t.Run(name, func(t *testing.T) {
+
+			ctrl := gomock.NewController(t)
+			world := NewMockExternal(ctrl)
+
+			em := &Emitter{
+				config: config.Config{
+					Validator: config.ValidatorConfig{
+						ID: validatorID,
+					},
+				},
+				world: World{
+					External: world,
+				},
+			}
+			em.validators.Store(validators)
+
+			e, err := em.EmitEvent()
+			require.NoError(t, err)
+			require.Nil(t, e)
+
+		})
+	}
+}
+
+func TestEmitter_EmitEvent_DoesNotEmit_WhenLastEmissionIsTooRecent(t *testing.T) {
+
+	validator := idx.ValidatorID(1)
+	builder := pos.NewBuilder()
+	builder.Set(validator, pos.Weight(1))
+	validators := builder.Build()
+
+	ctrl := gomock.NewController(t)
+	world := NewMockExternal(ctrl)
+
+	em := &Emitter{
+		config: config.Config{
+			Validator: config.ValidatorConfig{
+				ID: validator,
+			},
+		},
+		world: World{
+			External: world,
+		},
+	}
+
+	em.validators.Store(validators)
+
+	now := time.Now()
+	em.prevEmittedAtTime.Store(&now)
+	em.lastTimeAnEventWasConfirmed.Store(&now)
+
+	rules := opera.Rules{
+		Emitter: opera.EmitterRules{
+			StallThreshold: inter.Timestamp(time.Minute),
+			Interval:       inter.Timestamp(time.Minute),
+		},
+	}
+	world.EXPECT().GetRules().Return(rules)
+
+	e, err := em.EmitEvent()
+	require.NoError(t, err)
+	require.Nil(t, e)
+}
+
+func TestEmitter_EmitEvent_DoesNotEmit_IfWorldIsBusy(t *testing.T) {
+	any := gomock.Any()
+
+	ctrl := gomock.NewController(t)
+	world := NewMockExternal(ctrl)
+	world.EXPECT().GetLatestBlockIndex().Return(idx.Block(1)).AnyTimes()
+	world.EXPECT().IsBusy().Return(true)
+
+	signer := valkeystore.NewMockSignerAuthority(ctrl)
+
+	validator := idx.ValidatorID(1)
+	builder := pos.NewBuilder()
+	builder.Set(validator, pos.Weight(1))
+	validators := builder.Build()
+
+	txPool := NewMockTxPool(ctrl)
+	txPool.EXPECT().Count()
+	txPool.EXPECT().Pending(any)
+
+	em := &Emitter{
+		config: config.Config{
+			Validator: config.ValidatorConfig{
+				ID: validator,
+			},
+		},
+		world: World{
+			External:     world,
+			EventsSigner: signer,
+			TxPool:       txPool,
+		},
+	}
+	em.validators.Store(validators)
+
+	baseFeeSource := NewMockBaseFeeSource(ctrl)
+	baseFeeSource.EXPECT().GetCurrentBaseFee()
+	em.baseFeeSource = baseFeeSource
+
+	world.EXPECT().GetRules()
+
+	e, err := em.EmitEvent()
+	require.NoError(t, err)
+	require.Nil(t, e)
+}
+
+func TestEmitter_EmitEvent(t *testing.T) {
+
+	any := gomock.Any()
+
+	ctrl := gomock.NewController(t)
+	world := NewMockExternal(ctrl)
+	world.EXPECT().GetLatestBlockIndex().Return(idx.Block(1)).AnyTimes()
+	world.EXPECT().IsBusy().Return(false)
+	world.EXPECT().Lock()
+	world.EXPECT().Process(any)
+	world.EXPECT().Broadcast(any)
+	world.EXPECT().Unlock()
+
+	signer := valkeystore.NewMockSignerAuthority(ctrl)
+
+	validator := idx.ValidatorID(1)
+	builder := pos.NewBuilder()
+	builder.Set(validator, pos.Weight(1))
+	validators := builder.Build()
+
+	txPool := NewMockTxPool(ctrl)
+	txPool.EXPECT().Count()
+	txPool.EXPECT().Pending(any)
+
+	em := &Emitter{
+		config: config.Config{
+			Validator: config.ValidatorConfig{
+				ID: validator,
+			},
+		},
+		world: World{
+			External:     world,
+			EventsSigner: signer,
+			TxPool:       txPool,
+		},
+	}
+	em.validators.Store(validators)
+
+	baseFeeSource := NewMockBaseFeeSource(ctrl)
+	baseFeeSource.EXPECT().GetCurrentBaseFee()
+	em.baseFeeSource = baseFeeSource
+
+	world.EXPECT().GetRules().AnyTimes()
+	world.EXPECT().GetLastEvent(any, any).AnyTimes()
+	world.EXPECT().Build(any, any).AnyTimes()
+	world.EXPECT().Check(any, any).Return(nil).AnyTimes()
+	world.EXPECT().GetLatestBlock().Return(&inter.Block{}).AnyTimes()
+
+	signer.EXPECT().Sign(any).AnyTimes()
+
+	e, err := em.EmitEvent()
+	require.NoError(t, err)
+	require.NotNil(t, e)
+}
+
+func TestEmitter_ThrottlerWorldAdapter_ReturnsNilIfNoEventIsFound(t *testing.T) {
+	validator := idx.ValidatorID(1)
+
+	builder := pos.NewBuilder()
+	builder.Set(validator, pos.Weight(1))
+	validators := builder.Build()
+
+	ctrl := gomock.NewController(t)
+	world := NewMockExternal(ctrl)
+	world.EXPECT().GetEpochValidators().Return(validators, idx.Epoch(1)).AnyTimes()
+
+	t.Run("no event has been received from this validator", func(t *testing.T) {
+		world.EXPECT().GetLastEvent(idx.Epoch(1), validator)
+
+		wa := ThrottlerWorldAdapter{World: World{External: world}}
+		e := wa.GetLastEvent(validator)
+		require.Nil(t, e)
+	})
+
+	t.Run("event is known but not found in the store", func(t *testing.T) {
+		hash := hash.Event{1, 2, 3}
+
+		world.EXPECT().GetLastEvent(idx.Epoch(1), validator).Return(&hash)
+		world.EXPECT().GetEvent(hash)
+
+		wa := ThrottlerWorldAdapter{World: World{External: world}}
+		e := wa.GetLastEvent(validator)
+		require.Nil(t, e)
+	})
+}
