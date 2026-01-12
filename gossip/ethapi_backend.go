@@ -145,31 +145,11 @@ func (b *EthAPIBackend) HeaderByHash(ctx context.Context, h common.Hash) (*evmco
 // BlockByNumber returns evm block by its number, or nil if not exists.
 func (b *EthAPIBackend) BlockByNumber(ctx context.Context, number rpc.BlockNumber) (*evmcore.EvmBlock, error) {
 	// Otherwise, resolve and return the block
-	isReady := b.hasProof(ctx, number)
-	if !isReady {
+	_, blk, err := b.StateAndBlockByNumberOrHash(ctx, rpc.BlockNumberOrHash{BlockNumber: &number})
+	if blk == nil || err != nil {
 		return nil, nil
 	}
-	var blk *evmcore.EvmBlock
-	if isLatestBlockNumber(number) {
-		blk = b.state.CurrentBlock()
-	} else if number == rpc.EarliestBlockNumber {
-		blk = b.state.Block(common.Hash{}, b.HistoryPruningCutoff())
-	} else {
-		n := uint64(number.Int64())
-		blk = b.state.Block(common.Hash{}, n)
-	}
 	return blk, nil
-}
-
-func (b *EthAPIBackend) hasProof(ctx context.Context, blockNumber rpc.BlockNumber) bool {
-	state, _, err := b.StateAndHeaderByNumberOrHash(ctx, rpc.BlockNumberOrHash{BlockNumber: &blockNumber})
-	if err != nil {
-		return false
-	}
-	if proof, err := state.GetProof(common.Address{}, []common.Hash{}); err != nil || proof == nil {
-		return false
-	}
-	return true
 }
 
 // isLatestBlockNumber returns true if the block number is latest, pending, finalized or safe
@@ -199,15 +179,15 @@ func (b *EthAPIBackend) StateAndBlockByNumberOrHash(ctx context.Context, blockNr
 	} else if h, ok := blockNrOrHash.Hash(); ok {
 		index := b.svc.store.GetBlockIndex(hash.Event(h))
 		if index == nil {
-			return nil, nil, errors.New("header not found")
+			return nil, nil, errors.New("block not found")
 		}
 		block = b.state.Block(common.Hash{}, uint64(*index))
 	} else {
-		return nil, nil, errors.New("unknown header selector")
+		return nil, nil, errors.New("unknown block selector")
 	}
 
 	if block == nil {
-		return nil, nil, errors.New("header not found")
+		return nil, nil, errors.New("block not found")
 	}
 	stateDb, err := b.state.BlockStateDB(block.Number, block.Root)
 	if err != nil {

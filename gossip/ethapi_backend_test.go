@@ -31,20 +31,8 @@ import (
 func TestEthApiBackend_GetNetworkRules_LoadsRulesFromEpoch(t *testing.T) {
 	require := require.New(t)
 
-	blockNumber := idx.Block(12)
-	epoch := idx.Epoch(3)
-
-	store, err := NewMemStore(t)
-	require.NoError(err)
-
-	store.SetBlock(
-		blockNumber,
-		inter.NewBlockBuilder().
-			WithNumber(uint64(blockNumber)).
-			WithEpoch(epoch).
-			Build(),
-	)
-	require.True(store.HasBlock(blockNumber))
+	epoch := idx.Epoch(1)
+	store := newInMemoryStoreWithGenesisData(t, opera.GetAllegroUpgrades(), 1, epoch)
 
 	rules := opera.FakeNetRules(opera.Upgrades{})
 	rules.Name = "test-rules"
@@ -67,7 +55,7 @@ func TestEthApiBackend_GetNetworkRules_LoadsRulesFromEpoch(t *testing.T) {
 		},
 	}
 
-	got, err := backend.GetNetworkRules(t.Context(), blockNumber)
+	got, err := backend.GetNetworkRules(t.Context(), idx.Block(2))
 	require.NoError(err)
 
 	// Rules contain functions that cannot be compared directly,
@@ -82,8 +70,7 @@ func TestEthApiBackend_GetNetworkRules_MissingBlockReturnsNilRules(t *testing.T)
 
 	blockNumber := idx.Block(12)
 
-	store, err := NewMemStore(t)
-	require.NoError(err)
+	store := newInMemoryStoreWithGenesisData(t, opera.GetAllegroUpgrades(), 1, idx.Epoch(1))
 	require.False(store.HasBlock(blockNumber))
 
 	backend := &EthAPIBackend{
