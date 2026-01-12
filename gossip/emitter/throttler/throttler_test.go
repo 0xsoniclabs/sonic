@@ -664,6 +664,39 @@ func Test_AttendanceList_DoesNotFlipFlop(t *testing.T) {
 	require.True(t, list.isOnline(1))
 }
 
+func TestThrottling_getOnlineValidators_InitiallyAllValidatorsAreOfflineExceptLocal(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	world := NewMockWorldReader(ctrl)
+
+	validators := makeValidatorsFromStakes(100, 200, 300)
+
+	localValidator := idx.ValidatorID(1)
+	state := NewThrottlingState(localValidator, config.ThrottlerConfig{}, world)
+	onlineValidators := state.getOnlineValidators(validators)
+	require.Len(t, onlineValidators.IDs(), 1)
+	require.Contains(t, onlineValidators.IDs(), localValidator)
+}
+
+func TestThrottling_computeOnlineDominantSet_InitiallyAllValidatorsAreConsideredOfflineExceptLocal(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	world := NewMockWorldReader(ctrl)
+
+	validators := makeValidatorsFromStakes(100, 200, 300)
+	world.EXPECT().GetEpochValidators().Return(validators, idx.Epoch(0)).AnyTimes()
+
+	localValidator := idx.ValidatorID(1)
+	state := NewThrottlingState(localValidator,
+		config.ThrottlerConfig{
+			DominantStakeThreshold: 0.8,
+		}, world)
+	onlineValidators := state.computeOnlineDominantSet()
+	require.Len(t, onlineValidators, 1)
+	require.Contains(t, onlineValidators, localValidator)
+}
+
 func makeEventWithSeq(seq idx.Event) *inter.Event {
 	builder := &inter.MutableEventPayload{}
 	builder.SetSeq(seq)

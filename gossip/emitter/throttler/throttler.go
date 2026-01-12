@@ -158,7 +158,7 @@ func (ts *ThrottlingState) canSkip(
 func (ts *ThrottlingState) getOnlineValidators(allValidators *pos.Validators) *pos.Validators {
 	builder := pos.NewBuilder()
 	for _, id := range allValidators.IDs() {
-		if ts.attendanceList.isOnline(id) {
+		if ts.thisValidatorID == id || ts.attendanceList.isOnline(id) {
 			builder.Set(id, allValidators.Get(id))
 		}
 	}
