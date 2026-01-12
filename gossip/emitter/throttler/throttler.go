@@ -37,10 +37,10 @@ type ThrottlingState struct {
 	world WorldReader
 
 	// internal state
-	attempt             config.Attempt
-	lastEmissionAttempt config.Attempt
-	attendanceList      attendanceList
-	lastDominatingSet   dominantSet
+	attempt           config.Attempt
+	lastEmission      config.Attempt
+	attendanceList    attendanceList
+	lastDominatingSet dominantSet
 }
 
 func NewThrottlingState(
@@ -92,7 +92,7 @@ func (ts *ThrottlingState) CanSkipEventEmission(event inter.EventPayloadI) SkipE
 	skip := ts.canSkip(event)
 
 	if skip != SkipEventEmission {
-		ts.lastEmissionAttempt = ts.attempt
+		ts.lastEmission = ts.attempt
 	}
 
 	return skip
@@ -136,7 +136,7 @@ func (ts *ThrottlingState) canSkip(event inter.EventPayloadI) SkipEventEmissionR
 	NonDominatingTimeout := min(
 		ts.config.NonDominatingTimeout/2,
 		config.Attempt(rules.Economy.BlockMissedSlack)/2)
-	if ts.lastEmissionAttempt+NonDominatingTimeout <= ts.attempt {
+	if ts.lastEmission+NonDominatingTimeout <= ts.attempt {
 		return DoNotSkipEvent_Heartbeat
 	}
 
@@ -162,9 +162,8 @@ func (ts *ThrottlingState) getOnlineValidators(allValidators *pos.Validators) *p
 // resetState clears the internal state of the throttler, to be called on epoch start.
 func (ts *ThrottlingState) resetState() {
 	ts.attempt = 0
-	ts.lastEmissionAttempt = 0
+	ts.lastEmission = 0
 	ts.attendanceList = newAttendanceList()
-	ts.lastDominatingSet = nil
 }
 
 // validatorAttendance holds information about a validator's online status.

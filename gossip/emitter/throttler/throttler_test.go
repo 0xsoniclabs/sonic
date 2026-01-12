@@ -322,7 +322,7 @@ func TestThrottling_ResetState_ZeroesStateValues(t *testing.T) {
 	state := NewThrottlingState(1, config.ThrottlerConfig{}, nil)
 
 	state.attempt = 100
-	state.lastEmissionAttempt = 100
+	state.lastEmission = 100
 	state.attendanceList = attendanceList{
 		attendance: map[idx.ValidatorID]validatorAttendance{
 			1: {},
@@ -334,7 +334,7 @@ func TestThrottling_ResetState_ZeroesStateValues(t *testing.T) {
 	state.resetState()
 
 	require.Zero(t, state.attempt)
-	require.Zero(t, state.lastEmissionAttempt)
+	require.Zero(t, state.lastEmission)
 	require.Empty(t, state.attendanceList.attendance)
 	require.Empty(t, state.lastDominatingSet)
 }
