@@ -24,6 +24,7 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/require"
 )
 
@@ -94,4 +95,138 @@ func TestEthApiBackend_GetNetworkRules_MissingBlockReturnsNilRules(t *testing.T)
 	rules, err := backend.GetNetworkRules(t.Context(), blockNumber)
 	require.NoError(err)
 	require.Nil(rules)
+}
+
+func TestEthApiBackend_BlockByNumber_ReturnsBlockWhenRequesting(t *testing.T) {
+	require := require.New(t)
+
+	cases := map[string]struct {
+		requestedBlock rpc.BlockNumber
+	}{
+
+		"latest block in store greater than archive": {
+			requestedBlock: rpc.LatestBlockNumber,
+		},
+		"safe block": {
+			requestedBlock: rpc.SafeBlockNumber,
+		},
+		"finalized block": {
+			requestedBlock: rpc.FinalizedBlockNumber,
+		},
+		"pending block": {
+			requestedBlock: rpc.PendingBlockNumber,
+		},
+	}
+
+	for name, test := range cases {
+		t.Run(name, func(t *testing.T) {
+			// Genesis generates archive with block 2
+			store := newInMemoryStoreWithGenesisData(t, opera.GetAllegroUpgrades(), 1, idx.Epoch(1))
+			// Add an extra block in store which is not in archive
+			newStoreBlock := idx.Block(3)
+			store.SetBlock(
+				newStoreBlock,
+				inter.NewBlockBuilder().
+					WithNumber(uint64(newStoreBlock)).
+					Build(),
+			)
+			require.True(store.HasBlock(newStoreBlock))
+
+			backend := &EthAPIBackend{
+				state: &EvmStateReader{
+					store: store,
+				},
+			}
+
+			block, err := backend.BlockByNumber(t.Context(), test.requestedBlock)
+			require.NoError(err)
+			require.NotNil(block, "Expected non-nil block for requested number %v", test.requestedBlock)
+			require.Equal(uint64(2), block.NumberU64(), "Returned block number mismatch")
+		})
+	}
+}
+
+func TestEthApiBackend_BlockByNumber_ReturnsBlockZero_WhenRequestingEarliest(t *testing.T) {
+	require := require.New(t)
+
+	backend := &EthAPIBackend{
+		state: &EvmStateReader{
+			store: newInMemoryStoreWithGenesisData(t,
+				opera.GetAllegroUpgrades(),
+				1,
+				idx.Epoch(1)),
+		},
+	}
+
+	block, err := backend.BlockByNumber(t.Context(), rpc.EarliestBlockNumber)
+	require.NoError(err)
+	require.NotNil(block, "Expected non-nil block for earliest block request")
+	require.Equal(uint64(0), block.NumberU64(), "Returned block number mismatch for earliest block request")
+}
+
+func TestEthApiBackend_BlockByNumber_ReturnsNil_WhenRequestedBlockDiffersInArchiveAndStore(t *testing.T) {
+	require := require.New(t)
+
+	store := newInMemoryStoreWithGenesisData(t, opera.GetAllegroUpgrades(), 1, idx.Epoch(1))
+	// Add an extra block in store which is not in archive
+	newStoreBlock := idx.Block(2)
+	store.SetBlock(
+		newStoreBlock,
+		inter.NewBlockBuilder().
+			WithNumber(uint64(newStoreBlock)).
+			Build(),
+	)
+	require.True(store.HasBlock(newStoreBlock))
+
+	backend := &EthAPIBackend{
+		state: &EvmStateReader{
+			store: store,
+		},
+	}
+	block, err := backend.BlockByNumber(t.Context(), rpc.BlockNumber(2))
+	// since the same block is different in archive than in store, we expect nil
+	require.NoError(err)
+	require.Nil(block, "Expected nil block for requested number 2 as it differs in archive")
+}
+
+func TestEthApiBackend_BlockByNumber_ReturnsNil_WhenRequestedBlockInStoreButNotInArchive(t *testing.T) {
+	require := require.New(t)
+
+	store := newInMemoryStoreWithGenesisData(t, opera.GetAllegroUpgrades(), 1, idx.Epoch(1))
+	// Add an extra block in store which is not in archive
+	newStoreBlock := idx.Block(3)
+	store.SetBlock(
+		newStoreBlock,
+		inter.NewBlockBuilder().
+			WithNumber(uint64(newStoreBlock)).
+			Build(),
+	)
+	require.True(store.HasBlock(newStoreBlock))
+
+	backend := &EthAPIBackend{
+		state: &EvmStateReader{
+			store: store,
+		},
+	}
+	block, err := backend.BlockByNumber(t.Context(), rpc.BlockNumber(3))
+	// since the requested block is not in archive, we expect nil
+	require.NoError(err)
+	require.Nil(block, "Expected nil block for requested number 3 as it is not in archive")
+}
+
+func TestEthApiBackend_BlockByNumber_ReturnsBlock_WhenRequestedBlockInArchiveAndStoreAreSame(t *testing.T) {
+	require := require.New(t)
+
+	store := newInMemoryStoreWithGenesisData(t, opera.GetAllegroUpgrades(), 1, idx.Epoch(1))
+
+	backend := &EthAPIBackend{
+		state: &EvmStateReader{
+			store: store,
+		},
+	}
+	block, err := backend.BlockByNumber(t.Context(), rpc.BlockNumber(2))
+	// since the requested block is the same in archive and store, we expect the block
+	require.NoError(err)
+	require.NotNil(block, "Expected non-nil block for requested number 2 as it is same in archive and store")
+	require.Equal(uint64(2), block.NumberU64(), "Returned block number mismatch for requested number 2")
 }
