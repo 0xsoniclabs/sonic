@@ -58,7 +58,7 @@ func NewThrottlingState(
 }
 
 // SkipEventEmissionReason represents the reason for skipping or not skipping event emission.
-// it used to have specific testing of the different reasons to avoid skipping emission.
+// This type is used for the testing of the different reasons to avoid skipping emission.
 type SkipEventEmissionReason int
 
 const (
