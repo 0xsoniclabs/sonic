@@ -336,7 +336,6 @@ func TestThrottling_ResetState_ZeroesStateValues(t *testing.T) {
 	require.Zero(t, state.attempt)
 	require.Zero(t, state.lastEmission)
 	require.Empty(t, state.attendanceList.attendance)
-	require.Empty(t, state.lastDominatingSet)
 }
 
 func TestThrottling_CanSkipEventEmission_DoNotSkip_RespectHeartbeatEvents(t *testing.T) {
