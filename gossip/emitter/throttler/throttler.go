@@ -40,7 +40,6 @@ type ThrottlingState struct {
 	attempt             config.Attempt
 	lastEmissionAttempt config.Attempt
 	attendanceList      attendanceList
-	lastDominatingSet   dominantSet
 }
 
 func NewThrottlingState(
@@ -75,7 +74,6 @@ const (
 //
 // It returns true if the event emission should be skipped, false otherwise.
 func (ts *ThrottlingState) CanSkipEventEmission(event inter.EventPayloadI) SkipEventEmissionReason {
-
 	if !ts.config.Enabled {
 		return DoNotSkipEvent_ThrottlerDisabled
 	}
@@ -87,14 +85,19 @@ func (ts *ThrottlingState) CanSkipEventEmission(event inter.EventPayloadI) SkipE
 		ts.resetState()
 	}
 
-	ts.attendanceList.updateAttendance(ts.world, ts.config, ts.lastDominatingSet, ts.attempt)
+	// Update attendance list based on the observed events.
+	oldDominatingSet := ts.computeOnlineDominantSet()
+	ts.attendanceList.updateAttendance(ts.world, ts.config, oldDominatingSet, ts.attempt)
 
-	skip := ts.canSkip(event)
+	// Determine whether this event can be skipped.
+	newDominatingSet := ts.computeOnlineDominantSet()
+	_, isDominant := newDominatingSet[ts.thisValidatorID]
+	skip := ts.canSkip(event, isDominant)
 
+	// Track last attempt number when an event was indeed emitted.
 	if skip != SkipEventEmission {
 		ts.lastEmissionAttempt = ts.attempt
 	}
-
 	return skip
 }
 
@@ -117,7 +120,10 @@ func (ts *ThrottlingState) computeOnlineDominantSet() dominantSet {
 // canSkip determines if the event emission can be skipped based on the current throttling state.
 // When it is safe to skip emission, the function returns SkipEventEmission.
 // any other case, it return a reason to not skipping emission for this event.
-func (ts *ThrottlingState) canSkip(event inter.EventPayloadI) SkipEventEmissionReason {
+func (ts *ThrottlingState) canSkip(
+	event inter.EventPayloadI,
+	isPartOfDominatingSet bool,
+) SkipEventEmissionReason {
 
 	if len(event.Transactions()) > 0 {
 		return DoNotSkipEvent_CarriesTransactions
@@ -140,8 +146,7 @@ func (ts *ThrottlingState) canSkip(event inter.EventPayloadI) SkipEventEmissionR
 		return DoNotSkipEvent_Heartbeat
 	}
 
-	ts.lastDominatingSet = ts.computeOnlineDominantSet()
-	if _, isDominant := ts.lastDominatingSet[ts.thisValidatorID]; isDominant {
+	if isPartOfDominatingSet {
 		return DoNotSkipEvent_DominantStake
 	}
 
@@ -164,7 +169,6 @@ func (ts *ThrottlingState) resetState() {
 	ts.attempt = 0
 	ts.lastEmissionAttempt = 0
 	ts.attendanceList = newAttendanceList()
-	ts.lastDominatingSet = nil
 }
 
 // validatorAttendance holds information about a validator's online status.
@@ -189,7 +193,7 @@ func newAttendanceList() attendanceList {
 // updateAttendance updates the attendance list based on the current world state and configuration.
 func (al *attendanceList) updateAttendance(
 	world WorldReader, config config.ThrottlerConfig,
-	lastDominantSet dominantSet, attempt config.Attempt) {
+	dominantSet dominantSet, attempt config.Attempt) {
 
 	validators, _ := world.GetEpochValidators()
 	for _, id := range validators.IDs() {
@@ -204,7 +208,7 @@ func (al *attendanceList) updateAttendance(
 
 		// Different tolerance for being online for dominant vs non-dominant validators.
 		onlineThreshold := config.DominatingTimeout
-		if _, wasDominant := lastDominantSet[id]; !wasDominant {
+		if _, isPartOfDominantSet := dominantSet[id]; !isPartOfDominantSet {
 			onlineThreshold = config.NonDominatingTimeout
 		}
 
