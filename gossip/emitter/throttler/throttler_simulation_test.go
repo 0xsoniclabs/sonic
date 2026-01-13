@@ -51,74 +51,14 @@ func TestThrottler_Simulation_FrameProgressionWhenAllNodesAreOnline(t *testing.T
 			t.Run(fmt.Sprintf("%s/threshold=%.2f", name, th),
 				func(t *testing.T) {
 					t.Parallel()
-					testAllNodesOnline(t, th, stakeDist)
+					runSimulation(t, th, stakeDist, nil)
 				},
 			)
 		}
 	}
 }
 
-// testAllNodesOnline runs a simulation where all nodes are online and checks
-// that they all make progress. Furthermore, it checks that nodes in the
-// dominant set produce events at every round, while others produce less
-// frequently.
-func testAllNodesOnline(
-	t *testing.T,
-	threshold float64,
-	stakes []int64,
-) {
-	const numRounds = 100
-	require := require.New(t)
-
-	world := &simulationFakeWorld{
-		rules: opera.Rules{
-			Economy: opera.EconomyRules{
-				BlockMissedSlack: 100,
-			},
-		},
-		validators: makeValidatorsFromStakes(stakes...),
-	}
-
-	// Run the network for a few rounds, checking that all nodes make progress.
-	network := newNetwork(world,
-		threshold,
-		10,   // repeatedFramesMaxCount: use a large value to disable repeated-frame-based emissions
-		1000, // heartbeatFrames: use a larger than repetitions value to disable heartbeat-based emissions
-	)
-	for cur := range numRounds {
-		network.runRound(nil)
-
-		// Each node should progress one frame per round.
-		for _, node := range network.nodes {
-			require.EqualValues(cur+1, node.lastSeenFrameNumber())
-		}
-	}
-
-	// Count the number of events produced by each node.
-	totalEventsPerNode := make(map[idx.ValidatorID]int)
-	for _, event := range network.allEvents {
-		totalEventsPerNode[event.Creator()]++
-	}
-
-	// Validators of the dominating set must have produced one event per round,
-	// while others should have produced less.
-	dominantSet := computeDominantSet(
-		world.validators,
-		computeNeededStake(
-			world.validators.TotalWeight(),
-			threshold))
-
-	for i, count := range totalEventsPerNode {
-		if _, included := dominantSet[i]; included {
-			require.Equal(numRounds, count,
-				"dominant node %d did not emit in every round", i)
-		} else {
-			require.Less(count, numRounds, "suppressed node %d emitted in more rounds than needed", i)
-		}
-	}
-}
-
-func Test_SkipEvents_NodesBeingOffline(t *testing.T) {
+func TestThrottler_Simulation_FrameProgressionWhenSomeNodesAreOffline(t *testing.T) {
 	t.Parallel()
 	const threshold = 0.75
 	cases := map[string]struct {
@@ -147,7 +87,7 @@ func Test_SkipEvents_NodesBeingOffline(t *testing.T) {
 	for name, test := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			testPartiallyOnlineNodes(
+			runSimulation(
 				t,
 				threshold,
 				test.stakes,
@@ -157,62 +97,7 @@ func Test_SkipEvents_NodesBeingOffline(t *testing.T) {
 	}
 }
 
-// testPartiallyOnlineNodes runs a simulation where all nodes are online and checks
-// that they all make progress. Furthermore, it checks that nodes in the
-// dominant set produce events at every round, while others produce less
-// frequently.
-func testPartiallyOnlineNodes(
-	t *testing.T,
-	threshold float64,
-	stakes []int64,
-	offline offlineValidators,
-) {
-	const numRounds = 100
-	const repeatedFramesMaxCount = 10
-	const heartbeatFrames = 1000
-	require := require.New(t)
-
-	world := &simulationFakeWorld{
-		rules: opera.Rules{
-			Economy: opera.EconomyRules{
-				BlockMissedSlack: 100,
-			},
-		},
-		validators: makeValidatorsFromStakes(stakes...),
-	}
-
-	// Run the network for a few rounds, checking that all nodes make progress.
-	network := newNetwork(world, threshold, repeatedFramesMaxCount, heartbeatFrames)
-	for range numRounds {
-		network.runRound(offline)
-	}
-
-	// Check whether progress was made by nodes. Since some nodes were offline,
-	// others non-dominant nodes should have started emitting frames as well,
-	// preserving progress. However, progress may be slower by the number of
-	// allowed repeated frames.
-	wantedFrames := idx.Frame(numRounds / repeatedFramesMaxCount)
-	for i, node := range network.nodes {
-		require.LessOrEqual(
-			wantedFrames, node.lastSeenFrameNumber(),
-			"node %d did not make expected progress", i+1,
-		)
-	}
-
-	// Count the number of events produced by each node.
-	totalEventsPerNode := make(map[idx.ValidatorID]int)
-	for _, event := range network.allEvents {
-		totalEventsPerNode[event.Creator()]++
-	}
-
-	// Offline nodes must not have produced any events.
-	for id, count := range totalEventsPerNode {
-		if offline.isOffline(id) {
-			require.Zero(count, "offline node %d emitted events", id)
-		}
-	}
-}
-func TestThrottler_CanSkipEvent_NetworkStallsWhenOneThirdOfStakesIsOffline(t *testing.T) {
+func TestThrottler_Simulation_OnlineSetChangesOverTime(t *testing.T) {
 	const threshold = 0.75
 	const numNodes = 10
 	const repeatedFramesMaxCount = 4
@@ -706,4 +591,80 @@ type offlineValidators []idx.ValidatorID
 
 func (m offlineValidators) isOffline(id idx.ValidatorID) bool {
 	return slices.Contains(m, id)
+}
+
+// runSimulation runs a simulation where all nodes are online and checks
+// that they all make progress. Furthermore, it checks that nodes in the
+// dominant set produce events at every round, while others produce less
+// frequently.
+func runSimulation(
+	t *testing.T,
+	threshold float64,
+	stakes []int64,
+	offline offlineValidators,
+) {
+	const numRounds = 100
+	require := require.New(t)
+
+	world := &simulationFakeWorld{
+		rules: opera.Rules{
+			Economy: opera.EconomyRules{
+				BlockMissedSlack: 100,
+			},
+		},
+		validators: makeValidatorsFromStakes(stakes...),
+	}
+
+	// Run the network for a few rounds, checking that all nodes make progress.
+	network := newNetwork(world,
+		threshold,
+		10,   // repeatedFramesMaxCount: use a large value to disable repeated-frame-based emissions
+		1000, // heartbeatFrames: use a larger than repetitions value to disable heartbeat-based emissions
+	)
+	for cur := range numRounds {
+		network.runRound(offline)
+
+		// Each node should progress one frame per round.
+		for _, node := range network.nodes {
+			require.EqualValues(cur+1, node.lastSeenFrameNumber())
+		}
+	}
+
+	// Count the number of events produced by each node.
+	totalEventsPerNode := make(map[idx.ValidatorID]int)
+	for _, event := range network.allEvents {
+		totalEventsPerNode[event.Creator()]++
+	}
+
+	// Validators of the dominating set must have produced one event per round,
+	// while others should have produced less.
+	onlineValidators := computeOnlineValidators(world, offline)
+	dominantSet := computeDominantSet(onlineValidators,
+		computeNeededStake(world.validators.TotalWeight(), threshold))
+
+	for id, count := range totalEventsPerNode {
+
+		if offline.isOffline(id) {
+			require.Zero(count, "offline node %d emitted events", id)
+			continue
+		}
+
+		if _, included := dominantSet[id]; included {
+			require.Equal(numRounds, count,
+				"dominant node %d did not emit in every round", id)
+		} else {
+			require.Less(count, numRounds,
+				"suppressed node %d emitted in more rounds than needed", id)
+		}
+	}
+}
+
+func computeOnlineValidators(world *simulationFakeWorld, offline offlineValidators) *pos.Validators {
+	builder := pos.NewBuilder()
+	for _, id := range world.validators.IDs() {
+		if !offline.isOffline(id) {
+			builder.Set(id, world.validators.Get(id))
+		}
+	}
+	return builder.Build()
 }
