@@ -409,13 +409,10 @@ func TestBlockOverrides(t *testing.T) {
 	block := &evmcore.EvmBlock{}
 	block.Number = big.NewInt(int64(blockNr))
 
-	mockHeader := &evmcore.EvmHeader{Number: big.NewInt(int64(blockNr))}
-	mockBlock := &evmcore.EvmBlock{EvmHeader: *mockHeader}
-
 	any := gomock.Any()
 	mockBackend.EXPECT().BlockByNumber(any, any).Return(block, nil).AnyTimes()
 	mockBackend.EXPECT().GetNetworkRules(any, any).Return(&opera.Rules{}, nil).AnyTimes()
-	mockBackend.EXPECT().StateAndBlockByNumberOrHash(any, any).Return(mockState, mockBlock, nil).AnyTimes()
+	mockBackend.EXPECT().StateAndBlockByNumberOrHash(any, any).Return(mockState, block, nil).AnyTimes()
 	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000)).AnyTimes()
 	mockBackend.EXPECT().ChainConfig(gomock.Any()).Return(&params.ChainConfig{}).AnyTimes()
 	mockBackend.EXPECT().RPCEVMTimeout().Return(time.Duration(0)).AnyTimes()
@@ -552,14 +549,11 @@ func runEstimateGasOverrideTest(t *testing.T, test stateOverrideEstimateGasTest)
 	block.Number = big.NewInt(int64(blockNr))
 	rpcBlkNr := rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(blockNr))
 
-	mockHeader := &evmcore.EvmHeader{Number: big.NewInt(int64(blockNr))}
-	mockBlock := &evmcore.EvmBlock{EvmHeader: *mockHeader}
-
 	any := gomock.Any()
 	mockBackend.EXPECT().BlockByNumber(any, any).Return(block, nil).AnyTimes()
 	mockBackend.EXPECT().HeaderByNumber(any, any).Return(&block.EvmHeader, nil).Times(2)
 	mockBackend.EXPECT().GetNetworkRules(any, any).Return(&opera.Rules{}, nil).AnyTimes()
-	mockBackend.EXPECT().StateAndBlockByNumberOrHash(any, any).Return(mockState, mockBlock, nil).AnyTimes()
+	mockBackend.EXPECT().StateAndBlockByNumberOrHash(any, any).Return(mockState, block, nil).AnyTimes()
 	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000)).AnyTimes()
 	mockBackend.EXPECT().ChainConfig(any).Return(&params.ChainConfig{}).AnyTimes()
 	mockBackend.EXPECT().RPCEVMTimeout().Return(time.Duration(0)).AnyTimes()
@@ -1123,7 +1117,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 				Number:  big.NewInt(1),
 				BaseFee: big.NewInt(10000000),
 			}
-			mockBlock := &evmcore.EvmBlock{EvmHeader: header}
+			block := &evmcore.EvmBlock{EvmHeader: header}
 
 			mockState := state.NewMockStateDB(ctrl)
 			require.NotNil(t, test.setupStateDb, "setupStateDb must be defined")
@@ -1133,17 +1127,17 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 			backend.EXPECT().GetNetworkRules(gomock.Any(), gomock.Any()).
 				Return(&opera.Rules{}, nil).AnyTimes()
 			backend.EXPECT().StateAndBlockByNumberOrHash(gomock.Any(), blockOrHash).
-				Return(mockState, mockBlock, nil).AnyTimes()
+				Return(mockState, block, nil).AnyTimes()
 			backend.EXPECT().GetEVM(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 				DoAndReturn(makeTestEVM(test.upgrades)).AnyTimes()
-			backend.EXPECT().CurrentBlock().AnyTimes().Return(mockBlock)
+			backend.EXPECT().CurrentBlock().AnyTimes().Return(block)
 			backend.EXPECT().ChainConfig(gomock.Any()).AnyTimes().Return(makeChainConfig(test.upgrades))
 			backend.EXPECT().SuggestGasTipCap(gomock.Any(), gomock.Any()).AnyTimes().Return(big.NewInt(1))
 			backend.EXPECT().MinGasPrice().AnyTimes().Return(big.NewInt(1))
 			backend.EXPECT().RPCGasCap().AnyTimes().Return(uint64(10000000))
 			backend.EXPECT().MaxGasLimit().AnyTimes().Return(uint64(10000000))
 			backend.EXPECT().StateAndBlockByNumberOrHash(gomock.Any(), gomock.Any()).
-				Return(mockState, mockBlock, nil).AnyTimes()
+				Return(mockState, block, nil).AnyTimes()
 			if test.extraSetupBackend != nil {
 				test.extraSetupBackend(backend)
 			}
