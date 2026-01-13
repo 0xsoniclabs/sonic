@@ -369,7 +369,7 @@ type network struct {
 }
 
 func newNetwork(
-	world WorldReader,
+	world *simulationFakeWorld,
 	DominantStakeThreshold float64,
 	DominatingTimeout config.Attempt,
 	NonDominatingTimeout config.Attempt,
@@ -389,7 +389,7 @@ func newNetwork(
 		nodes: nodes,
 	}
 	// register network in the world for global state access
-	world.(*simulationFakeWorld).network = net
+	world.network = net
 	return net
 }
 
