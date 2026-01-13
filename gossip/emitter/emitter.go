@@ -88,6 +88,10 @@ var (
 
 	proposalSchedulingTimer          = metrics.GetOrRegisterTimer("emitter/proposal/scheduling", nil)
 	proposalSchedulingTimeoutCounter = metrics.GetOrRegisterCounter("emitter/proposal/scheduling_timeout", nil)
+
+	skipEmissionNotAllowed = metrics.GetOrRegisterCounter("emitter/skip_emission/not_allowed", nil)
+	skipEmissionBusy       = metrics.GetOrRegisterCounter("emitter/skip_emission/busy", nil)
+	skipEmissionThrottle   = metrics.GetOrRegisterCounter("emitter/skip_emission/throttle", nil)
 )
 
 type Emitter struct {
@@ -350,6 +354,7 @@ func (em *Emitter) EmitEvent() (*inter.EventPayload, error) {
 
 	// Check if it's time to emit.
 	if !em.isAllowedToEmit() {
+		skipEmissionNotAllowed.Inc(1)
 		return nil, nil
 	}
 
@@ -359,6 +364,7 @@ func (em *Emitter) EmitEvent() (*inter.EventPayload, error) {
 	sortedTxs := em.getSortedTxs(minimFeeCap)
 
 	if em.world.IsBusy() {
+		skipEmissionBusy.Inc(1)
 		return nil, nil
 	}
 
@@ -374,8 +380,7 @@ func (em *Emitter) EmitEvent() (*inter.EventPayload, error) {
 	// this location allows to take into account the event creation time
 	// and frame in throttling decision.
 	if em.eventEmissionThrottler.CanSkipEventEmission(e) == throttler.SkipEventEmission {
-		// TODO: metrics for skipped events
-		// https://github.com/0xsoniclabs/sonic-admin/issues/531
+		skipEmissionThrottle.Inc(1)
 
 		// This event was intentionally not emitted, nevertheless the
 		// last emission timestamp is updated to avoid retry in 11 ms.
