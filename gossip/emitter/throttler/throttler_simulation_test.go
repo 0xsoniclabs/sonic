@@ -28,6 +28,7 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -359,6 +360,90 @@ func TestThrottler_Simulation_SuppressedValidatorsFillOfflineProgressively(t *te
 		slices.Collect(maps.Keys(events)))
 }
 
+func TestThrottler_Simulation_NetworkRecoversFromFullStall(t *testing.T) {
+	t.Parallel()
+
+	const dominantTimeout = 2
+
+	world := &simulationFakeWorld{
+		rules: opera.Rules{
+			Economy: opera.EconomyRules{
+				BlockMissedSlack: 100,
+			},
+		},
+		validators: makeValidatorsFromStakes(32, 32, 32, 3, 1),
+	}
+	net := newNetwork(world,
+		0.70,
+		dominantTimeout,
+		1000, // heartbeatFrames: a large value to disable the feature during this test
+	)
+
+	events := net.runRound(nil)
+	require.ElementsMatch(t,
+		world.validators.IDs(),
+		slices.Collect(maps.Keys(events)),
+		"all nodes emit genesis")
+	assertAllNodesReachFrame(t, net, 1)
+
+	// execute some rounds with all nodes online
+	// only 1,2,3 should emit after genesis
+	for i := range 5 {
+		events = net.runRound(nil)
+		require.ElementsMatch(t,
+			[]idx.ValidatorID{1, 2, 3},
+			slices.Collect(maps.Keys(events)),
+		)
+		assertAllNodesReachFrame(t, net, i+2)
+	}
+
+	// first node goes offline, suppressed nodes will not emit yet until
+	// timeout is reached, network stalls
+	for range dominantTimeout {
+
+		events = net.runRound(offlineValidators{1})
+		require.ElementsMatch(t,
+			[]idx.ValidatorID{2, 3},
+			slices.Collect(maps.Keys(events)),
+		)
+		// frames do not progress because lack of super-majority
+		assertAllNodesReachFrame(t, net, 7)
+	}
+
+	// after timeout, suppressed nodes start emitting, frame hasn't changed yet
+	events = net.runRound(offlineValidators{1})
+	require.ElementsMatch(t,
+		[]idx.ValidatorID{2, 3, 4, 5},
+		slices.Collect(maps.Keys(events)),
+	)
+	assertAllNodesReachFrame(t, net, 7)
+
+	// with super-majority restored, frames start progressing again
+	events = net.runRound(offlineValidators{1})
+	require.ElementsMatch(t,
+		[]idx.ValidatorID{2, 3, 4, 5},
+		slices.Collect(maps.Keys(events)),
+	)
+	assertAllNodesReachFrame(t, net, 8)
+
+	// bring back the first node, all should emit again
+	events = net.runRound(nil)
+	require.ElementsMatch(t,
+		[]idx.ValidatorID{1, 2, 3, 4, 5},
+		slices.Collect(maps.Keys(events)),
+	)
+	assertAllNodesReachFrame(t, net, 9)
+
+	// once nodes see the full dominant set online, non-dominant nodes
+	// can stop emitting again
+	events = net.runRound(nil)
+	require.ElementsMatch(t,
+		[]idx.ValidatorID{1, 2, 3},
+		slices.Collect(maps.Keys(events)),
+	)
+	assertAllNodesReachFrame(t, net, 10)
+}
+
 // --- Simulation Infrastructure ---
 
 // network simulates a set of nodes communicating with each other.
@@ -619,9 +704,7 @@ func runSimulation(
 		network.runRound(offline)
 
 		// Each node should progress one frame per round.
-		for _, node := range network.nodes {
-			require.EqualValues(cur+1, node.lastSeenFrameNumber())
-		}
+		assertAllNodesReachFrame(t, network, cur+1)
 	}
 
 	// Count the number of events produced by each node.
@@ -650,6 +733,14 @@ func runSimulation(
 			require.Less(count, numRounds,
 				"suppressed node %d emitted in more rounds than needed", id)
 		}
+	}
+}
+
+func assertAllNodesReachFrame(t testing.TB, network *network, expectedFrame int) {
+	t.Helper()
+	for _, node := range network.nodes {
+		assert.EqualValues(t, expectedFrame, node.lastSeenFrameNumber(),
+			"node %d did not reach expected frame %d", node.selfId, expectedFrame)
 	}
 }
 
