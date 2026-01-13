@@ -42,8 +42,8 @@ type testEvent struct {
 
 func TestEventThrottler_NonDominantValidatorsProduceLessEvents_WhenEventThrottlerIsEnabled(t *testing.T) {
 
-	for _, emitterEnabled := range []bool{true, false} {
-		t.Run(fmt.Sprintf("emitter_throttle_events=%v", emitterEnabled), func(t *testing.T) {
+	for _, emitterDisabled := range []bool{true, false} {
+		t.Run(fmt.Sprintf("emitter_throttle_events=%v", emitterDisabled), func(t *testing.T) {
 
 			// Start a network with many nodes where one node has very low stake
 			initialStake := []uint64{
@@ -52,8 +52,8 @@ func TestEventThrottler_NonDominantValidatorsProduceLessEvents_WhenEventThrottle
 			}
 
 			clientExtraArgs := []string{}
-			if emitterEnabled {
-				clientExtraArgs = []string{"--event-throttler.enable"}
+			if emitterDisabled {
+				clientExtraArgs = []string{"--event-throttler.disable"}
 			}
 
 			net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
@@ -88,7 +88,7 @@ func TestEventThrottler_NonDominantValidatorsProduceLessEvents_WhenEventThrottle
 
 			percentages := calculatePercentages(t, eventsInEpoch)
 
-			if emitterEnabled {
+			if emitterDisabled {
 				require.GreaterOrEqual(t, percentages[1], 0.9,
 					"High stake validator should create at least its stake proportion of events")
 				require.LessOrEqual(t, percentages[2], 0.1,

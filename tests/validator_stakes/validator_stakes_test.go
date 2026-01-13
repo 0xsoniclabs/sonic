@@ -39,8 +39,7 @@ func TestValidatorsStakes_AllNodesProduceBlocks_WhenStakeDistributionChanges(t *
 		125, 125, 125, 125, // 25% of stake
 	}
 	net := tests.StartIntegrationTestNetWithJsonGenesis(t, tests.IntegrationTestNetOptions{
-		ValidatorsStake:      initialStake,
-		ClientExtraArguments: []string{"--event-throttler.enable"},
+		ValidatorsStake: initialStake,
 	})
 
 	client, err := net.GetClient()

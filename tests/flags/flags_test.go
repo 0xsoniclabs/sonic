@@ -38,6 +38,7 @@ func TestSonicTool_DefaultConfig_HasDefaultValues(t *testing.T) {
 	require.NoError(t, sonicd.RunWithArgs(
 		[]string{"sonicd",
 			"--datadir", net.GetDirectory() + "/state",
+			"--event-throttler.disable",
 			"--dump-config", configFile}, nil))
 
 	f, err := os.Open(configFile)
@@ -63,7 +64,6 @@ func TestSonicTool_CustomThrottlerConfig_AreApplied(t *testing.T) {
 		[]string{"sonicd",
 			"--datadir", net.GetDirectory() + "/state",
 			"--dump-config", configFile,
-			"--event-throttler.enable",
 			"--event-throttler.dominant-threshold", "0.85",
 			"--event-throttler.dominating-timeout", "5",
 			"--event-throttler.non-dominating-timeout", "111",
