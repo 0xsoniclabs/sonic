@@ -284,8 +284,8 @@ func TestThrottler_CanSkipEvent_NetworkStallsWhenOneThirdOfStakesIsOffline(t *te
 func TestThrottler_Simulation_SuppressedValidatorsEmitWhenDominatingValidatorsAreAbsent(t *testing.T) {
 	t.Parallel()
 
-	for _, DominatingTimeout := range []config.Attempt{1, 2, 10, 100} {
-		t.Run(fmt.Sprintf("dominantTimeout=%d", DominatingTimeout), func(t *testing.T) {
+	for _, dominatingTimeout := range []config.Attempt{1, 2, 10, 100} {
+		t.Run(fmt.Sprintf("dominantTimeout=%d", dominatingTimeout), func(t *testing.T) {
 			t.Parallel()
 
 			world := &simulationFakeWorld{
@@ -298,7 +298,7 @@ func TestThrottler_Simulation_SuppressedValidatorsEmitWhenDominatingValidatorsAr
 			}
 			net := newNetwork(world,
 				0.75,
-				DominatingTimeout,
+				dominatingTimeout,
 				1000, // heartbeatFrames: use a larger than repetitions value to disable heartbeat-based emissions
 			)
 
@@ -314,7 +314,7 @@ func TestThrottler_Simulation_SuppressedValidatorsEmitWhenDominatingValidatorsAr
 				slices.Collect(maps.Keys(events)),
 				"only dominant node emits")
 
-			for range DominatingTimeout {
+			for range dominatingTimeout {
 				events = net.runRound(offlineValidators{1})
 				require.ElementsMatch(t,
 					[]idx.ValidatorID{},
