@@ -32,7 +32,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func Test_SkipEvents_FrameProgressionWhenAllNodesAreOnline(t *testing.T) {
+func TestThrottler_Simulation_FrameProgressionWhenAllNodesAreOnline(t *testing.T) {
 	t.Parallel()
 	stakes := map[string][]int64{
 		"single":           {1},
@@ -281,7 +281,7 @@ func TestThrottler_CanSkipEvent_NetworkStallsWhenOneThirdOfStakesIsOffline(t *te
 	}
 }
 
-func TestThrottler_CanSkipEvent_SuppressedValidatorsEmit_WhenDominatingValidatorsAreAbsent(t *testing.T) {
+func TestThrottler_Simulation_SuppressedValidatorsEmitWhenDominatingValidatorsAreAbsent(t *testing.T) {
 	t.Parallel()
 
 	for _, DominatingTimeout := range []config.Attempt{1} {
@@ -343,7 +343,7 @@ func TestThrottler_CanSkipEvent_SuppressedValidatorsEmit_WhenDominatingValidator
 	}
 }
 
-func TestThrottler_CanSkipEvent_SuppressedValidatorsEmitHeartbeat(t *testing.T) {
+func TestThrottler_Simulation_SuppressedValidatorsEmitAHeartbeat(t *testing.T) {
 	t.Parallel()
 
 	for _, dominantTimeout := range []config.Attempt{1, 2, 3, 7, 11} {
@@ -411,7 +411,7 @@ func TestThrottler_CanSkipEvent_SuppressedValidatorsEmitHeartbeat(t *testing.T) 
 	}
 }
 
-func TestThrottler_CanSkipEvent_SuppressedValidatorsFillOfflineProgressively(t *testing.T) {
+func TestThrottler_Simulation_SuppressedValidatorsFillOfflineProgressively(t *testing.T) {
 	t.Parallel()
 
 	world := &simulationFakeWorld{
