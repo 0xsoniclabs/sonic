@@ -21,7 +21,6 @@ import (
 	"maps"
 	"slices"
 	"testing"
-	"time"
 
 	"github.com/0xsoniclabs/sonic/gossip/emitter/config"
 	"github.com/0xsoniclabs/sonic/inter"
@@ -472,7 +471,6 @@ func (node *node) createEvent() *inter.EventPayload {
 	builder.SetCreator(node.selfId)
 	builder.SetEpoch(node.currentEpoch)
 
-	maxLamport := idx.Lamport(0)
 	parents := []inter.EventPayloadI{}
 	parentIds := hash.Events{}
 	var selfParent inter.EventPayloadI
@@ -480,7 +478,6 @@ func (node *node) createEvent() *inter.EventPayload {
 	for id, parent := range node.lastEventPerPeer {
 		parents = append(parents, parent)
 		parentIds = append(parentIds, parent.ID())
-		maxLamport = idx.MaxLamport(maxLamport, parent.Lamport())
 		if id == builder.Creator() {
 			selfParent = parent
 		}
@@ -492,12 +489,9 @@ func (node *node) createEvent() *inter.EventPayload {
 	}
 	builder.SetParents(parentIds)
 
-	builder.SetLamport(maxLamport + 1)
 	if selfParent != nil {
-		builder.SetCreationTime(inter.MaxTimestamp(inter.Timestamp(time.Now().UnixNano()), selfParent.CreationTime()+1))
 		builder.SetSeq(selfParent.Seq() + 1)
 	} else {
-		builder.SetCreationTime(inter.Timestamp(time.Now().UnixNano()))
 		builder.SetSeq(1) // genesis event has seq 1
 	}
 
@@ -579,7 +573,7 @@ func (f *simulationFakeWorld) GetLastEvent(from idx.ValidatorID) *inter.Event {
 	var lastEvent *inter.Event
 	for _, event := range f.network.allEvents {
 		if event.Creator() == from {
-			if lastEvent == nil || event.CreationTime() > lastEvent.CreationTime() {
+			if lastEvent == nil || event.Seq() > lastEvent.Seq() {
 				lastEvent = &event.Event
 			}
 		}
