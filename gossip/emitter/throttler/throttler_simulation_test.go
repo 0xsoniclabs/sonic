@@ -284,7 +284,7 @@ func TestThrottler_CanSkipEvent_NetworkStallsWhenOneThirdOfStakesIsOffline(t *te
 func TestThrottler_Simulation_SuppressedValidatorsEmitWhenDominatingValidatorsAreAbsent(t *testing.T) {
 	t.Parallel()
 
-	for _, DominatingTimeout := range []config.Attempt{1} {
+	for _, DominatingTimeout := range []config.Attempt{1, 2, 10, 100} {
 		t.Run(fmt.Sprintf("dominantTimeout=%d", DominatingTimeout), func(t *testing.T) {
 			t.Parallel()
 
