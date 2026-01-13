@@ -17,6 +17,7 @@
 package many
 
 import (
+	"fmt"
 	"math/big"
 	"testing"
 
@@ -33,61 +34,72 @@ import (
 
 func TestValidatorsStakes_AllNodesProduceBlocks_WhenStakeDistributionChanges(t *testing.T) {
 
-	// Start a network with many nodes where two nodes dominate the stake
-	initialStake := []uint64{
-		750, 750, // 75% of stake
-		125, 125, 125, 125, // 25% of stake
+	for _, throttlerEnabled := range []bool{true, false} {
+		t.Run(fmt.Sprintf("emitter_throttle_events=%v", throttlerEnabled), func(t *testing.T) {
+
+			initialStake := []uint64{
+				750, 750, // 75% of stake
+				125, 125, 125, 125, // 25% of stake
+			}
+
+			extraArguments := []string{}
+			if throttlerEnabled {
+				extraArguments = []string{"--event-throttler.enable"}
+			}
+
+			net := tests.StartIntegrationTestNetWithJsonGenesis(t, tests.IntegrationTestNetOptions{
+				ValidatorsStake:      initialStake,
+				ClientExtraArguments: extraArguments,
+			})
+
+			client, err := net.GetClient()
+			require.NoError(t, err)
+			defer client.Close()
+
+			sfcContract, err := sfc100.NewContract(sfc.ContractAddress, client)
+			require.NoError(t, err)
+
+			validators, firstEpoch := getValidatorsInCurrentEpoch(t, sfcContract)
+			t.Run("first epoch is dominated by two validators",
+				func(t *testing.T) {
+					requireValidatorStakesEqualTo(t, validators, []uint64{750, 750, 125, 125, 125, 125})
+					requireAllNodesReachSameBlockHeight(t, net)
+				})
+
+			t.Run("second epoch has equal stake for all validators",
+				func(t *testing.T) {
+					// Prepare new stake distribution
+					for _, id := range []idx.ValidatorID{3, 4, 5, 6} {
+						increaseValidatorStake(t, net, sfcContract, id, utils.ToFtm(625))
+					}
+					net.AdvanceEpoch(t, 1)
+
+					// Test new stake distribution
+					validators, secondEpoch := getValidatorsInCurrentEpoch(t, sfcContract)
+					require.Equal(t, firstEpoch.Uint64()+1, secondEpoch.Uint64(),
+						"epoch did not advance as expected")
+					requireValidatorStakesEqualTo(t, validators, []uint64{750, 750, 750, 750, 750, 750})
+					requireAllNodesReachSameBlockHeight(t, net)
+				})
+
+			t.Run("third epoch is dominated by two validators again",
+				func(t *testing.T) {
+					// Prepare new stake distribution
+					for _, id := range []idx.ValidatorID{5, 6} {
+						increaseValidatorStake(t, net, sfcContract, id, utils.ToFtm(1_000_000))
+					}
+					net.AdvanceEpoch(t, 1)
+
+					// Test new stake distribution
+					validators, secondEpoch := getValidatorsInCurrentEpoch(t, sfcContract)
+
+					require.Equal(t, firstEpoch.Uint64()+2, secondEpoch.Uint64(),
+						"epoch did not advance as expected")
+					requireValidatorStakesEqualTo(t, validators, []uint64{750, 750, 750, 750, 1000750, 1000750})
+					requireAllNodesReachSameBlockHeight(t, net)
+				})
+		})
 	}
-	net := tests.StartIntegrationTestNetWithJsonGenesis(t, tests.IntegrationTestNetOptions{
-		ValidatorsStake: initialStake,
-	})
-
-	client, err := net.GetClient()
-	require.NoError(t, err)
-	defer client.Close()
-
-	sfcContract, err := sfc100.NewContract(sfc.ContractAddress, client)
-	require.NoError(t, err)
-
-	validators, firstEpoch := getValidatorsInCurrentEpoch(t, sfcContract)
-	t.Run("first epoch is dominated by two validators",
-		func(t *testing.T) {
-			requireValidatorStakesEqualTo(t, validators, []uint64{750, 750, 125, 125, 125, 125})
-			requireAllNodesReachSameBlockHeight(t, net)
-		})
-
-	t.Run("second epoch has equal stake for all validators",
-		func(t *testing.T) {
-			// Prepare new stake distribution
-			for _, id := range []idx.ValidatorID{3, 4, 5, 6} {
-				increaseValidatorStake(t, net, sfcContract, id, utils.ToFtm(625))
-			}
-			net.AdvanceEpoch(t, 1)
-
-			// Test new stake distribution
-			validators, secondEpoch := getValidatorsInCurrentEpoch(t, sfcContract)
-			require.Equal(t, firstEpoch.Uint64()+1, secondEpoch.Uint64(),
-				"epoch did not advance as expected")
-			requireValidatorStakesEqualTo(t, validators, []uint64{750, 750, 750, 750, 750, 750})
-			requireAllNodesReachSameBlockHeight(t, net)
-		})
-
-	t.Run("third epoch is dominated by two validators again",
-		func(t *testing.T) {
-			// Prepare new stake distribution
-			for _, id := range []idx.ValidatorID{5, 6} {
-				increaseValidatorStake(t, net, sfcContract, id, utils.ToFtm(1_000_000))
-			}
-			net.AdvanceEpoch(t, 1)
-
-			// Test new stake distribution
-			validators, secondEpoch := getValidatorsInCurrentEpoch(t, sfcContract)
-
-			require.Equal(t, firstEpoch.Uint64()+2, secondEpoch.Uint64(),
-				"epoch did not advance as expected")
-			requireValidatorStakesEqualTo(t, validators, []uint64{750, 750, 750, 750, 1000750, 1000750})
-			requireAllNodesReachSameBlockHeight(t, net)
-		})
 }
 
 func increaseValidatorStake(t *testing.T, net *tests.IntegrationTestNet, sfcContract *sfc100.Contract, id idx.ValidatorID, amount *big.Int) {
