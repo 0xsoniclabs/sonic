@@ -35,15 +35,19 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/txpool"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 
 	"github.com/0xsoniclabs/sonic/gossip/emitter/config"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/originatedtxs"
+	"github.com/0xsoniclabs/sonic/gossip/emitter/throttler"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice/gaspricelimits"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/logger"
 	"github.com/0xsoniclabs/sonic/utils/errlock"
 )
+
+//go:generate mockgen -source=emitter.go -destination=emitter_mock.go -package=emitter
 
 const (
 	SenderCountBufferSize = 20000
@@ -145,10 +149,31 @@ type Emitter struct {
 	lastTimeAnEventWasConfirmed atomic.Pointer[time.Time]
 
 	proposalTracker inter.ProposalTracker
+
+	eventEmissionThrottler throttler.ThrottlingState
 }
 
 type BaseFeeSource interface {
 	GetCurrentBaseFee() *big.Int
+}
+
+type ThrottlerWorldAdapter struct {
+	World
+}
+
+func (wa *ThrottlerWorldAdapter) GetLastEvent(from idx.ValidatorID) *inter.Event {
+	_, epoch := wa.GetEpochValidators()
+	hash := wa.World.GetLastEvent(epoch, from)
+	if hash == nil {
+		return nil
+	}
+
+	event := wa.GetEvent(*hash)
+	if event == nil {
+		log.Error("event not found", "eventHash", hash, "from validator ID", from)
+		return nil
+	}
+	return event
 }
 
 // NewEmitter creation.
@@ -171,14 +196,10 @@ func NewEmitter(
 		baseFeeSource: baseFeeSource,
 		errorLock:     errorLock,
 	}
-	// TODO: uncomment after event throttler is added.
-	// if config.ThrottleEvents {
-	// 	res.eventEmissionThrottler = throttling.NewThrottlingState(
-	// 		config.Validator.ID,
-	// 		config.ThrottleDominantThreshold,
-	// 		config.ThrottleSkipInSameFrame,
-	// 		world)
-	// }
+	res.eventEmissionThrottler = throttler.NewThrottlingState(
+		config.Validator.ID,
+		config.ThrottlerConfig,
+		&ThrottlerWorldAdapter{world})
 
 	res.globalConfirmingInterval.Store(uint64(config.EmitIntervals.Confirming))
 	return res
@@ -352,10 +373,17 @@ func (em *Emitter) EmitEvent() (*inter.EventPayload, error) {
 	// Right after creating the event, check whether to skip its emission
 	// this location allows to take into account the event creation time
 	// and frame in throttling decision.
-	// TODO: uncomment after emitter throttler is merged.
-	// if em.eventEmissionThrottler != nil && em.eventEmissionThrottler.SkipEventEmission(e) {
-	// 	return nil, nil
-	// }
+	if em.eventEmissionThrottler.CanSkipEventEmission(e) == throttler.SkipEventEmission {
+		// TODO: metrics for skipped events
+		// https://github.com/0xsoniclabs/sonic-admin/issues/531
+
+		// This event was intentionally not emitted, nevertheless the
+		// last emission timestamp is updated to avoid retry in 11 ms.
+		now := time.Now()
+		em.prevEmittedAtTime.Store(&now)
+
+		return nil, nil
+	}
 
 	em.syncStatus.prevLocalEmittedID = e.ID()
 
