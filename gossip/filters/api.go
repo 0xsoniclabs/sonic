@@ -42,22 +42,6 @@ var (
 	deadline = 5 * time.Minute // consider a filter inactive if it has not been polled for within deadline
 
 	newHeadSubs = metrics.GetOrRegisterGauge("subscriptions/newHeads/goroutines", nil)
-	sentHeads   = metrics.GetOrRegisterMeter("subscriptions/newHeads/sent", nil)
-
-	newBlockFilterSubs = metrics.GetOrRegisterGauge("subscriptions/newHeads/filters/goroutines", nil)
-	sentBlockFilters   = metrics.GetOrRegisterMeter("subscriptions/newHeads/filters/sent", nil)
-
-	newPendingTxSubs = metrics.GetOrRegisterGauge("subscriptions/pendingTxs/goroutines", nil)
-	sentPendingTxs   = metrics.GetOrRegisterMeter("subscriptions/pendingTxs/sent", nil)
-
-	newPendingTxFilterSubs = metrics.GetOrRegisterGauge("subscriptions/pendingTxs/filters/goroutines", nil)
-	sentPendingTxFilters   = metrics.GetOrRegisterMeter("subscriptions/pendingTxs/filters/sent", nil)
-
-	newLogsSubs = metrics.GetOrRegisterGauge("subscriptions/logs/goroutines", nil)
-	sentLogs    = metrics.GetOrRegisterMeter("subscriptions/logs/sent", nil)
-
-	newLogsFilterSubs = metrics.GetOrRegisterGauge("subscriptions/logs/filters/goroutines", nil)
-	sentLogsFilters   = metrics.GetOrRegisterMeter("subscriptions/logs/filters/sent", nil)
 )
 
 // filter is a helper struct that holds meta information over the filter type
@@ -175,16 +159,11 @@ func (api *PublicFilterAPI) NewPendingTransactionFilter(fullTxs *bool) rpc.ID {
 	api.filtersMu.Unlock()
 
 	go func() {
-
-		updateMetric, decrement := api.setMetrics(newPendingTxFilterSubs, sentPendingTxFilters)
-		defer decrement()
-
 		for {
 			select {
 			case ptx := <-pendingTxs:
 				api.filtersMu.Lock()
 				if f, found := api.filters[pendingTxSub.ID]; found {
-					updateMetric(int64(len(ptx)))
 					f.pendingTransactions = append(f.pendingTransactions, ptx...)
 				}
 				api.filtersMu.Unlock()
@@ -213,10 +192,6 @@ func (api *PublicFilterAPI) NewPendingTransactions(ctx context.Context, fullTx *
 	rpcSub := notifier.CreateSubscription()
 
 	go func() {
-
-		updateMetric, decrement := api.setMetrics(newPendingTxSubs, sentPendingTxs)
-		defer decrement()
-
 		incomingTxs := make(chan []*types.Transaction, 128)
 		pendingTxSub := api.events.SubscribePendingTxs(incomingTxs)
 
@@ -231,7 +206,6 @@ func (api *PublicFilterAPI) NewPendingTransactions(ctx context.Context, fullTx *
 					if fullTx != nil && *fullTx {
 						payload = ethapi.NewRPCPendingTransaction(tx, tx.GasPrice(), api.backend.ChainID())
 					}
-					updateMetric(int64(len(txs)))
 					_ = notifier.Notify(rpcSub.ID, payload)
 				}
 			case <-rpcSub.Err():
@@ -259,16 +233,11 @@ func (api *PublicFilterAPI) NewBlockFilter() rpc.ID {
 	api.filtersMu.Unlock()
 
 	go func() {
-
-		updateMetric, decrement := api.setMetrics(newBlockFilterSubs, sentBlockFilters)
-		defer decrement()
-
 		for {
 			select {
 			case h := <-headers:
 				api.filtersMu.Lock()
 				if f, found := api.filters[headerSub.ID]; found {
-					updateMetric(1)
 					f.hashes = append(f.hashes, *h.Hash)
 				}
 				api.filtersMu.Unlock()
@@ -294,9 +263,8 @@ func (api *PublicFilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, er
 	rpcSub := notifier.CreateSubscription()
 
 	go func() {
-
-		updateMetric, decrement := api.setMetrics(newHeadSubs, sentHeads)
-		defer decrement()
+		newHeadSubs.Inc(1)
+		defer newHeadSubs.Dec(1)
 
 		headers := make(chan *evmcore.EvmHeaderJson)
 		headersSub := api.events.SubscribeNewHeads(headers)
@@ -304,7 +272,6 @@ func (api *PublicFilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, er
 		for {
 			select {
 			case h := <-headers:
-				updateMetric(1)
 				_ = notifier.Notify(rpcSub.ID, h)
 			case <-rpcSub.Err():
 				headersSub.Unsubscribe()
@@ -335,14 +302,10 @@ func (api *PublicFilterAPI) Logs(ctx context.Context, crit FilterCriteria) (*rpc
 
 	go func() {
 
-		updateMetric, decrement := api.setMetrics(newLogsSubs, sentLogs)
-		defer decrement()
-
 		for {
 			select {
 			case logs := <-matchedLogs:
 				for _, log := range logs {
-					updateMetric(1)
 					_ = notifier.Notify(rpcSub.ID, &log)
 				}
 			case <-rpcSub.Err(): // client send an unsubscribe request
@@ -384,16 +347,11 @@ func (api *PublicFilterAPI) NewFilter(crit FilterCriteria) (rpc.ID, error) {
 	api.filtersMu.Unlock()
 
 	go func() {
-
-		updateMetric, decrement := api.setMetrics(newLogsFilterSubs, sentLogsFilters)
-		defer decrement()
-
 		for {
 			select {
 			case l := <-logs:
 				api.filtersMu.Lock()
 				if f, found := api.filters[logsSub.ID]; found {
-					updateMetric(int64(len(l)))
 					f.logs = append(f.logs, l...)
 				}
 				api.filtersMu.Unlock()
@@ -527,23 +485,6 @@ func (api *PublicFilterAPI) GetFilterChanges(id rpc.ID) (any, error) {
 	}
 
 	return []any{}, fmt.Errorf("filter not found")
-}
-
-func (api *PublicFilterAPI) setMetrics(subsMetric *metrics.Gauge, sentMetric *metrics.Meter) (updateMetric func(int64), decrement func()) {
-	updateMetric = func(n int64) {}
-	decrement = func() {}
-	if api.config.EnableMetrics {
-		subsMetric.Inc(1)
-
-		updateMetric = func(n int64) {
-			sentMetric.Mark(n)
-		}
-		decrement = func() {
-			subsMetric.Dec(1)
-		}
-
-	}
-	return updateMetric, decrement
 }
 
 func processPendingTransactionSubscription(api *PublicFilterAPI, f *filter) (any, error) {

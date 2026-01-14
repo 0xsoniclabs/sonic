@@ -255,7 +255,7 @@ func gossipConfigWithFlags(ctx *cli.Context, src gossip.Config) gossip.Config {
 		cfg.StructLogLimit = ctx.GlobalInt(flags.StructLogLimitFlag.Name)
 	}
 
-	if ctx.GlobalIsSet(metrics.MetricsEnabledFlag.Name) && ctx.GlobalBool(metrics.MetricsEnabledExpensiveFlag.Name) {
+	if ctx.GlobalIsSet(metrics.MetricsEnabledFlag.Name) {
 		cfg.FilterAPI.EnableMetrics = true
 	}
 
