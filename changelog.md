@@ -24,9 +24,8 @@ For optimal compatibility and stability, it is recommended to use the most recen
 - Add precompiled contract for secp256r1 Curve Support [EIP-7951](https://eips.ethereum.org/EIPS/eip-7951)  when Brio upgrade is enabled.
 - Introduce eth_Config RPC method tailored for the Sonic network.
 
-### Fixed
-
 ### Changed
+
 - Bump minimum required Go version to 1.25.0.
 - Increase gas cost for the ModExp precompiled contract in accordance with [EIP-7883](https://eips.ethereum.org/EIPS/eip-7883) when the Brio upgrade is enabled.
 - Restrict maximum input length for ModExp precompiled contract [EIP-7823](https://eips.ethereum.org/EIPS/eip-7823) when Brio upgrade is enabled.
@@ -34,6 +33,13 @@ For optimal compatibility and stability, it is recommended to use the most recen
 - Introduce protocol level maximum RLP encoded block size of 10 MiB [EIP-7934](https://eips.ethereum.org/EIPS/eip-7934) when Brio upgrade us enabled.
 
 ### Removed
+
+## [2.1.5] - TBD
+
+### Added
+
+- Added optional event throttling feature for validator nodes with low stake to reduce network resource usage.
+- Extended `eth_subscribe` RPC to optionally return full transaction details.
 
 ## [2.1.4] - 25 Nov 2025
 
