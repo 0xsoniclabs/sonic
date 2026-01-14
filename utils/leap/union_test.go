@@ -18,22 +18,11 @@ package leap
 
 import (
 	"container/heap"
-	"iter"
 	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
-
-func (it *unionIterator[T]) All() iter.Seq[T] {
-	return func(yield func(T) bool) {
-		for it.Next() {
-			if !yield(it.Cur()) {
-				return
-			}
-		}
-	}
-}
 
 func TestUnion_Next_DefaultHasNoNext(t *testing.T) {
 	unionIter := Union[int]()
@@ -103,7 +92,7 @@ func TestUnion_ComputesUnionOfInputLists(t *testing.T) {
 			for _, input := range tc.inputs {
 				iterators = append(iterators, newIter(input...))
 			}
-			result := slices.Collect(Union(iterators...).All())
+			result := slices.Collect(All(Union(iterators...)))
 			require.Equal(t, tc.expected, result)
 		})
 	}

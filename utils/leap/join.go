@@ -85,21 +85,3 @@ func Join[T cmp.Ordered](
 		}
 	}
 }
-
-// Iterator defines a generic iterator over ordered unique elements of type T.
-type Iterator[T any] interface {
-	// Next advances the iterator to the next element. Initially, the iterator
-	// is positioned before the first element, so Next must be called to advance
-	// it to the first element. Next returns true if the iterator was advanced
-	// to a valid element, and false if the iterator is exhausted.
-	Next() bool
-
-	// Cur returns the current element. It must only be called after Next or
-	// Seek has returned true.
-	Cur() T
-
-	// Seek advances the iterator to the smallest element greater than or equal
-	// to the target. It returns true if such an element was found, and false if
-	// the iterator is exhausted.
-	Seek(T) bool
-}
