@@ -31,7 +31,7 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 )
 
-//go:generate mockgen -source=evm_state_reader.go -destination=mock_evm_state_reader.go -package=gossip
+//go:generate mockgen -source=evm_state_reader.go -destination=evm_state_reader_mock.go -package=gossip
 
 type StateReader interface {
 	GetCurrentBaseFee() *big.Int
