@@ -31,6 +31,23 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 )
 
+//go:generate mockgen -source=evm_state_reader.go -destination=mock_evm_state_reader.go -package=gossip
+
+type StateReader interface {
+	GetCurrentBaseFee() *big.Int
+	MaxGasLimit() uint64
+	Config() *params.ChainConfig
+	GetCurrentRules() opera.Rules
+	CurrentBlock() *evmcore.EvmBlock
+	CurrentHeader() *evmcore.EvmHeader
+	LastBlockWithArchiveState(withTxs bool) (*evmcore.EvmBlock, error)
+	GetHeaderByNumber(n uint64) *evmcore.EvmHeader
+	GetHeader(h common.Hash, n uint64) *evmcore.EvmHeader
+	GetBlock(common.Hash, uint64) *evmcore.EvmBlock
+	GetTxPoolStateDB() (state.StateDB, error)
+	GetRpcStateDB(*big.Int, common.Hash) (state.StateDB, error)
+}
+
 type EvmStateReader struct {
 	*ServiceFeed
 
@@ -76,7 +93,7 @@ func (r *EvmStateReader) CurrentHeader() *evmcore.EvmHeader {
 	return r.getBlock(common.Hash{}, n, false).Header()
 }
 
-func (r *EvmStateReader) LastBlockWithArchiveState() (*evmcore.EvmBlock, error) {
+func (r *EvmStateReader) LastBlockWithArchiveState(withTxs bool) (*evmcore.EvmBlock, error) {
 	latestBlock := r.store.GetLatestBlockIndex()
 
 	// make sure the block is present in the archive
@@ -88,7 +105,7 @@ func (r *EvmStateReader) LastBlockWithArchiveState() (*evmcore.EvmBlock, error) 
 		latestBlock = idx.Block(latestArchiveBlock)
 	}
 
-	return r.getBlock(common.Hash{}, latestBlock, false), nil
+	return r.getBlock(common.Hash{}, latestBlock, withTxs), nil
 }
 
 func (r *EvmStateReader) GetHeaderByNumber(n uint64) *evmcore.EvmHeader {

@@ -56,7 +56,7 @@ import (
 type EthAPIBackend struct {
 	extRPCEnabled       bool
 	svc                 *Service
-	state               *EvmStateReader
+	state               StateReader
 	signer              types.Signer
 	allowUnprotectedTxs bool
 }
@@ -172,7 +172,7 @@ func (b *EthAPIBackend) StateAndBlockByNumberOrHash(ctx context.Context, blockNr
 	if number, ok := blockNrOrHash.Number(); ok {
 		if isLatestBlockNumber(number) {
 			var err error
-			block, err = b.state.LastBlockWithArchiveState()
+			block, err = b.state.LastBlockWithArchiveState(false)
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to get latest block number; %v", err)
 			}
