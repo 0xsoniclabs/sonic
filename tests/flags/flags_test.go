@@ -17,7 +17,6 @@
 package flags
 
 import (
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -38,6 +37,7 @@ func TestSonicTool_DefaultConfig_HasDefaultValues(t *testing.T) {
 	require.NoError(t, sonicd.RunWithArgs(
 		[]string{"sonicd",
 			"--datadir", net.GetDirectory() + "/state",
+			"--event-throttler=false",
 			"--dump-config", configFile}, nil))
 
 	f, err := os.Open(configFile)
@@ -58,28 +58,43 @@ func TestSonicTool_CustomThrottlerConfig_AreApplied(t *testing.T) {
 	net := tests.StartIntegrationTestNet(t)
 	net.Stop()
 
-	configFile := filepath.Join(net.GetDirectory(), "config.toml")
-	flags := []string{"sonicd",
-		"--datadir", net.GetDirectory() + "/state",
-		"--dump-config", configFile,
-		"--event-throttler",
-		"--event-throttler.dominant-threshold", "0.85",
-		"--event-throttler.dominating-timeout", "5",
-		"--event-throttler.non-dominating-timeout", "111",
+	tests := map[string]string{
+		"default":           "",
+		"default value":     "--event-throttler",
+		"explicit argument": "--event-throttler=true",
 	}
-	require.NoError(t, sonicd.RunWithArgs(flags, nil))
 
-	f, err := os.Open(configFile)
-	require.NoError(t, err)
-	configFromFile, err := io.ReadAll(f)
-	require.NoError(t, err)
-	require.NoError(t, f.Close())
-	fmt.Println(string(configFromFile))
+	for name, flag := range tests {
+		t.Run(name, func(t *testing.T) {
 
-	require.Contains(t, string(configFromFile), `[Emitter.ThrottlerConfig]
+			configFile := filepath.Join(net.GetDirectory(), "config.toml")
+
+			arguments := []string{"sonicd",
+				"--datadir", net.GetDirectory() + "/state",
+				"--dump-config", configFile,
+				"--event-throttler.dominant-threshold", "0.85",
+				"--event-throttler.dominating-timeout", "5",
+				"--event-throttler.non-dominating-timeout", "111",
+			}
+			if flag != "" {
+				arguments = append(arguments, flag)
+			}
+
+			require.NoError(t, sonicd.RunWithArgs(arguments, nil))
+
+			f, err := os.Open(configFile)
+			require.NoError(t, err)
+			configFromFile, err := io.ReadAll(f)
+			require.NoError(t, err)
+			require.NoError(t, f.Close())
+			// fmt.Println(string(configFromFile))
+
+			require.Contains(t, string(configFromFile), `[Emitter.ThrottlerConfig]
 Enabled = true
 DominantStakeThreshold = 8.5e-01
 DominatingTimeout = 5
 NonDominatingTimeout = 111`)
+		})
+	}
 
 }
