@@ -36,8 +36,8 @@ func TestEventThrottler_NonDominantValidatorsProduceLessEvents_WhenEventThrottle
 	// compared to the dominant validator if the feature is enabled, equally when disabled.
 	// This test only queries the first node's DAG, as it is sufficient to verify the behavior.
 
-	for _, eventThrottler := range []bool{true, false} {
-		t.Run(fmt.Sprintf("emitter_throttle_events=%v", eventThrottler), func(t *testing.T) {
+	for _, throttlerEnabled := range []bool{true, false} {
+		t.Run(fmt.Sprintf("emitter_throttle_events=%v", throttlerEnabled), func(t *testing.T) {
 
 			// Start a network with many nodes where one node has very low stake
 			initialStake := []uint64{
@@ -45,14 +45,13 @@ func TestEventThrottler_NonDominantValidatorsProduceLessEvents_WhenEventThrottle
 				400,  // 20% of stake: validatorId 2
 			}
 
-			clientExtraArgs := []string{}
-			if eventThrottler {
-				clientExtraArgs = []string{"--event-throttler.enable"}
+			extraArguments := []string{
+				fmt.Sprintf("--event-throttler=%t", throttlerEnabled),
 			}
 
 			net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
 				ValidatorsStake:      initialStake,
-				ClientExtraArguments: clientExtraArgs,
+				ClientExtraArguments: extraArguments,
 			})
 
 			client, err := net.GetClient()
@@ -68,7 +67,7 @@ func TestEventThrottler_NonDominantValidatorsProduceLessEvents_WhenEventThrottle
 
 			percentages := calculateValidatorEmissionPercentages(t, eventsInEpoch)
 
-			if eventThrottler {
+			if throttlerEnabled {
 				require.GreaterOrEqual(t, percentages[1], 0.9,
 					"High stake validator should dominate event creation")
 				require.LessOrEqual(t, percentages[2], 0.1,

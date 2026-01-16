@@ -59,15 +59,15 @@ func TestSonicTool_CustomThrottlerConfig_AreApplied(t *testing.T) {
 	net.Stop()
 
 	configFile := filepath.Join(net.GetDirectory(), "config.toml")
-	require.NoError(t, sonicd.RunWithArgs(
-		[]string{"sonicd",
-			"--datadir", net.GetDirectory() + "/state",
-			"--dump-config", configFile,
-			"--event-throttler.enable",
-			"--event-throttler.dominant-threshold", "0.85",
-			"--event-throttler.dominating-timeout", "5",
-			"--event-throttler.non-dominating-timeout", "111",
-		}, nil))
+	flags := []string{"sonicd",
+		"--datadir", net.GetDirectory() + "/state",
+		"--dump-config", configFile,
+		"--event-throttler",
+		"--event-throttler.dominant-threshold", "0.85",
+		"--event-throttler.dominating-timeout", "5",
+		"--event-throttler.non-dominating-timeout", "111",
+	}
+	require.NoError(t, sonicd.RunWithArgs(flags, nil))
 
 	f, err := os.Open(configFile)
 	require.NoError(t, err)
