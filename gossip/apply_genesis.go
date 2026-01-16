@@ -90,31 +90,34 @@ func (s *Store) ApplyGenesis(g genesis.Genesis) (err error) {
 	}
 
 	if liveReader != nil { // has S5 section - import S5 data
-		s.Log.Info("Importing Sonic World State Live data from genesis")
-		err = s.evm.ImportLiveWorldState(liveReader)
-		if err != nil {
-			return fmt.Errorf("failed to import Sonic World State data from genesis; %v", err)
-		}
-
-		// import S5 archive
-		archiveReader, _ := g.FwsArchiveSection.GetReader()
-		if archiveReader != nil { // has archive section
-			s.Log.Info("Importing Sonic World State Archive data from genesis")
-			err = s.evm.ImportArchiveWorldState(archiveReader)
-			if err != nil {
-				return fmt.Errorf("failed to import Sonic World State Archive data from genesis; %v", err)
-			}
-		} else { // no archive section - initialize archive from the live section
-			s.Log.Info("No archive in the genesis file - initializing the archive from the live state", "blockNum", lastBlock.Idx)
-			liveToArchiveReader, err := g.FwsLiveSection.GetReader() // second reader of the same section for the archive import
-			if err != nil {
-				return fmt.Errorf("failed to get second FWS section reader; %v", err)
-			}
-			err = s.evm.InitializeArchiveWorldState(liveToArchiveReader, uint64(lastBlock.Idx))
+		s.Log.Warn("Skipping Live and Archive DB import")
+		/*
+			s.Log.Info("Importing Sonic World State Live data from genesis")
+			err = s.evm.ImportLiveWorldState(liveReader)
 			if err != nil {
 				return fmt.Errorf("failed to import Sonic World State data from genesis; %v", err)
 			}
-		}
+
+			// import S5 archive
+			archiveReader, _ := g.FwsArchiveSection.GetReader()
+			if archiveReader != nil { // has archive section
+				s.Log.Info("Importing Sonic World State Archive data from genesis")
+				err = s.evm.ImportArchiveWorldState(archiveReader)
+				if err != nil {
+					return fmt.Errorf("failed to import Sonic World State Archive data from genesis; %v", err)
+				}
+			} else { // no archive section - initialize archive from the live section
+				s.Log.Info("No archive in the genesis file - initializing the archive from the live state", "blockNum", lastBlock.Idx)
+				liveToArchiveReader, err := g.FwsLiveSection.GetReader() // second reader of the same section for the archive import
+				if err != nil {
+					return fmt.Errorf("failed to get second FWS section reader; %v", err)
+				}
+				err = s.evm.InitializeArchiveWorldState(liveToArchiveReader, uint64(lastBlock.Idx))
+				if err != nil {
+					return fmt.Errorf("failed to import Sonic World State data from genesis; %v", err)
+				}
+			}
+		*/
 	} else { // no S5 section in the genesis file
 		// Import legacy EVM genesis section
 		err = s.evm.ImportLegacyEvmData(g.RawEvmItems, uint64(lastBlock.Idx), common.Hash(lastBlock.StateRoot))
