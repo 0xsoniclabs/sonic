@@ -42,9 +42,8 @@ func TestValidatorsStakes_AllNodesProduceBlocks_WhenStakeDistributionChanges(t *
 				125, 125, 125, 125, // 25% of stake
 			}
 
-			extraArguments := []string{}
-			if throttlerEnabled {
-				extraArguments = []string{"--event-throttler.enable"}
+			extraArguments := []string{
+				fmt.Sprintf("--event-throttler=%t", throttlerEnabled),
 			}
 
 			net := tests.StartIntegrationTestNetWithJsonGenesis(t, tests.IntegrationTestNetOptions{
