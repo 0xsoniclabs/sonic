@@ -188,18 +188,18 @@ func (mr *MockStateReaderMockRecorder) GetTxPoolStateDB() *gomock.Call {
 }
 
 // LastBlockWithArchiveState mocks base method.
-func (m *MockStateReader) LastBlockWithArchiveState() (*evmcore.EvmBlock, error) {
+func (m *MockStateReader) LastBlockWithArchiveState(withTxs bool) (*evmcore.EvmBlock, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "LastBlockWithArchiveState")
+	ret := m.ctrl.Call(m, "LastBlockWithArchiveState", withTxs)
 	ret0, _ := ret[0].(*evmcore.EvmBlock)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // LastBlockWithArchiveState indicates an expected call of LastBlockWithArchiveState.
-func (mr *MockStateReaderMockRecorder) LastBlockWithArchiveState() *gomock.Call {
+func (mr *MockStateReaderMockRecorder) LastBlockWithArchiveState(withTxs any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LastBlockWithArchiveState", reflect.TypeOf((*MockStateReader)(nil).LastBlockWithArchiveState))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LastBlockWithArchiveState", reflect.TypeOf((*MockStateReader)(nil).LastBlockWithArchiveState), withTxs)
 }
 
 // MaxGasLimit mocks base method.

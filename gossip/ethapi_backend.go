@@ -145,8 +145,8 @@ func (b *EthAPIBackend) HeaderByHash(ctx context.Context, h common.Hash) (*evmco
 // BlockByNumber returns evm block by its number, or nil if not exists.
 func (b *EthAPIBackend) BlockByNumber(ctx context.Context, number rpc.BlockNumber) (*evmcore.EvmBlock, error) {
 	// Otherwise, resolve and return the block
-	_, blk, err := b.StateAndBlockByNumberOrHash(ctx, rpc.BlockNumberOrHash{BlockNumber: &number})
-	if blk == nil || err != nil {
+	state, blk, err := b.stateAndBlockByNumberOrHash(ctx, rpc.BlockNumberOrHash{BlockNumber: &number}, true)
+	if state == nil || blk == nil || err != nil {
 		return nil, nil
 	}
 	return blk, nil
@@ -162,12 +162,18 @@ func isLatestBlockNumber(number rpc.BlockNumber) bool {
 
 // StateAndBlockByNumberOrHash returns evm state and block header by block number or block hash, err if not exists.
 func (b *EthAPIBackend) StateAndBlockByNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (state.StateDB, *evmcore.EvmBlock, error) {
+	return b.stateAndBlockByNumberOrHash(ctx, blockNrOrHash, false)
+}
 
+func (b *EthAPIBackend) stateAndBlockByNumberOrHash(
+	ctx context.Context,
+	blockNrOrHash rpc.BlockNumberOrHash,
+	withTx bool) (state.StateDB, *evmcore.EvmBlock, error) {
 	var block *evmcore.EvmBlock
 	if number, ok := blockNrOrHash.Number(); ok {
 		if isLatestBlockNumber(number) {
 			var err error
-			block, err = b.state.LastBlockWithArchiveState(false)
+			block, err = b.state.LastBlockWithArchiveState(withTx)
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to get latest block number; %v", err)
 			}

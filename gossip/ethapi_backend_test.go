@@ -121,7 +121,7 @@ func TestEthApiBackend_BlockByNumber_ReturnsBlockWhenRequesting(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			state := NewMockStateReader(ctrl)
-			state.EXPECT().LastBlockWithArchiveState().Return(&block, nil).AnyTimes()
+			state.EXPECT().LastBlockWithArchiveState(true).Return(&block, nil).AnyTimes()
 			state.EXPECT().GetBlock(common.Hash{}, uint64(5)).Return(&block).AnyTimes()
 			state.EXPECT().GetRpcStateDB(lastArchiveBlockNumber, gomock.Any()).
 				Return(nil, nil)
