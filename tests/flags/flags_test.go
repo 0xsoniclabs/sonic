@@ -87,7 +87,6 @@ func TestSonicTool_CustomThrottlerConfig_AreApplied(t *testing.T) {
 			configFromFile, err := io.ReadAll(f)
 			require.NoError(t, err)
 			require.NoError(t, f.Close())
-			// fmt.Println(string(configFromFile))
 
 			require.Contains(t, string(configFromFile), `[Emitter.ThrottlerConfig]
 Enabled = true
