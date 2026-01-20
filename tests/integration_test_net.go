@@ -605,19 +605,33 @@ func (n *IntegrationTestNet) connectP2PNetwork(enodes []string) error {
 		}
 		defer client.Close()
 
+		// Connect each node to the next one, and the last one to the first.
+		enode := enodes[(i+1)%len(n.nodes)]
+		if err := client.Client().Call(nil, "admin_addPeer", enode); err != nil {
+			return fmt.Errorf("failed to connect to node %d: %v", i, err)
+		}
+		if err := client.Client().Call(nil, "admin_addTrustedPeer", enode); err != nil {
+			return fmt.Errorf("failed to set peer as trusted in node %d: %v", i, err)
+		}
+
+		fmt.Println("")
+		nodeInfo := map[string]any{}
+		if err := client.Client().Call(&nodeInfo, "admin_nodeInfo"); err != nil {
+			return fmt.Errorf("failed get nodeInfo %d: %v", i, err)
+		}
+		fmt.Printf("Node %d enode: %s\n", i, nodeInfo["enode"])
+
 		// Wait until connection is established
 		err = WaitFor(context.Background(), func(ctx context.Context) (bool, error) {
-
-			// Connect each node to the next one, and the last one to the first.
-			enode := enodes[(i+1)%len(n.nodes)]
-			if err := client.Client().Call(nil, "admin_addPeer", enode); err != nil {
-				return false, fmt.Errorf("failed to connect to node %d: %v", i, err)
-			}
+			fmt.Println("==============")
 
 			// Fetch the list of connected peers
 			var res []map[string]any
 			if err := client.Client().Call(&res, "admin_peers"); err != nil {
 				return false, fmt.Errorf("failed to connect to node %d: %v", i, err)
+			}
+			for _, peer := range res {
+				fmt.Println("peer", i, "connected to", peer["enode"])
 			}
 
 			// Expect each node to be connected to the previous and next nodes,
@@ -629,12 +643,16 @@ func (n *IntegrationTestNet) connectP2PNetwork(enodes []string) error {
 				// min is for the 2-nodes network special case
 				expectedConnections = min(len(n.nodes)-1, 2)
 			}
-			return len(res) >= expectedConnections, nil
+			return len(res) == expectedConnections, nil
 		})
 		if err != nil {
 			return fmt.Errorf("failed to wait for node %d to be connected: %v", i, err)
 		}
+		fmt.Println("")
 	}
+
+	fmt.Println("p2p connected")
+
 	return nil
 }
 
