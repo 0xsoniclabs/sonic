@@ -390,7 +390,7 @@ func (env *testEnv) Payer(n idx.ValidatorID, amounts ...*big.Int) *bind.Transact
 	for _, amount := range amounts {
 		t.Value.Add(t.Value, amount)
 	}
-	t.GasLimit = env.GetEvmStateReader().MaxGasLimit()
+	t.GasLimit = env.GetEvmStateReader().CurrentMaxGasLimit()
 	t.GasPrice = new(big.Int).SetUint64(1e12)
 
 	return t
@@ -408,7 +408,7 @@ func (env *testEnv) ReadOnly() *bind.CallOpts {
 }
 
 func (env *testEnv) State() state.StateDB {
-	statedb, err := env.store.evm.GetTxPoolStateDB()
+	statedb, err := env.store.evm.GetReadOnlyStateDB()
 	if err != nil {
 		panic(err)
 	}
@@ -445,7 +445,7 @@ func (env *testEnv) CallContract(ctx context.Context, call ethereum.CallMsg, blo
 		return nil, errBlockNumberUnsupported
 	}
 
-	h := env.GetEvmStateReader().GetHeader(common.Hash{}, uint64(env.store.GetLatestBlockIndex()))
+	h := env.GetEvmStateReader().Header(common.Hash{}, uint64(env.store.GetLatestBlockIndex()))
 	block := &evmcore.EvmBlock{
 		EvmHeader: *h,
 	}
@@ -461,7 +461,7 @@ func (env *testEnv) HeaderByNumber(ctx context.Context, number *big.Int) (*types
 	} else {
 		num64 = number.Uint64()
 	}
-	return env.GetEvmStateReader().GetHeader(common.Hash{}, num64).EthHeader(), nil
+	return env.GetEvmStateReader().Header(common.Hash{}, num64).EthHeader(), nil
 }
 
 // callContract implements common code between normal and pending contract calls.

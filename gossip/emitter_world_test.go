@@ -43,7 +43,7 @@ func TestEmitterWorldProc_GetHeader_UsesStateReaderToResolveHeader(t *testing.T)
 	store := initStoreForTests(t)
 	world := &emitterWorldProc{s: &Service{store: store}}
 
-	got := world.GetHeader(common.Hash{}, 0)
+	got := world.Header(common.Hash{}, 0)
 	require.NotNil(t, got)
 	want := store.GetBlock(0)
 	require.Equal(t, big.NewInt(0), got.Number)

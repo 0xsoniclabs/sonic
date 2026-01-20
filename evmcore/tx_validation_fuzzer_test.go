@@ -253,8 +253,8 @@ func FuzzValidateTransaction(f *testing.F) {
 		stateExpectCalls(state)
 
 		chain := NewMockStateReader(ctrl)
-		chain.EXPECT().GetCurrentBaseFee().Return(big.NewInt(int64(baseFee))).AnyTimes()
-		chain.EXPECT().MaxGasLimit().Return(maxGas).AnyTimes()
+		chain.EXPECT().CurrentBaseFee().Return(big.NewInt(int64(baseFee))).AnyTimes()
+		chain.EXPECT().CurrentMaxGasLimit().Return(maxGas).AnyTimes()
 
 		opt, netRules := getTestTransactionsOptionFromRevision(revision, int64(minTip))
 

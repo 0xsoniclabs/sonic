@@ -45,18 +45,32 @@ func (m *MockStateReader) EXPECT() *MockStateReaderMockRecorder {
 	return m.recorder
 }
 
-// Config mocks base method.
-func (m *MockStateReader) Config() *params.ChainConfig {
+// Block mocks base method.
+func (m *MockStateReader) Block(arg0 common.Hash, arg1 uint64) *evmcore.EvmBlock {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Config")
-	ret0, _ := ret[0].(*params.ChainConfig)
+	ret := m.ctrl.Call(m, "Block", arg0, arg1)
+	ret0, _ := ret[0].(*evmcore.EvmBlock)
 	return ret0
 }
 
-// Config indicates an expected call of Config.
-func (mr *MockStateReaderMockRecorder) Config() *gomock.Call {
+// Block indicates an expected call of Block.
+func (mr *MockStateReaderMockRecorder) Block(arg0, arg1 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Config", reflect.TypeOf((*MockStateReader)(nil).Config))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Block", reflect.TypeOf((*MockStateReader)(nil).Block), arg0, arg1)
+}
+
+// CurrentBaseFee mocks base method.
+func (m *MockStateReader) CurrentBaseFee() *big.Int {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CurrentBaseFee")
+	ret0, _ := ret[0].(*big.Int)
+	return ret0
+}
+
+// CurrentBaseFee indicates an expected call of CurrentBaseFee.
+func (mr *MockStateReaderMockRecorder) CurrentBaseFee() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CurrentBaseFee", reflect.TypeOf((*MockStateReader)(nil).CurrentBaseFee))
 }
 
 // CurrentBlock mocks base method.
@@ -73,6 +87,20 @@ func (mr *MockStateReaderMockRecorder) CurrentBlock() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CurrentBlock", reflect.TypeOf((*MockStateReader)(nil).CurrentBlock))
 }
 
+// CurrentConfig mocks base method.
+func (m *MockStateReader) CurrentConfig() *params.ChainConfig {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CurrentConfig")
+	ret0, _ := ret[0].(*params.ChainConfig)
+	return ret0
+}
+
+// CurrentConfig indicates an expected call of CurrentConfig.
+func (mr *MockStateReaderMockRecorder) CurrentConfig() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CurrentConfig", reflect.TypeOf((*MockStateReader)(nil).CurrentConfig))
+}
+
 // CurrentHeader mocks base method.
 func (m *MockStateReader) CurrentHeader() *evmcore.EvmHeader {
 	m.ctrl.T.Helper()
@@ -87,60 +115,32 @@ func (mr *MockStateReaderMockRecorder) CurrentHeader() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CurrentHeader", reflect.TypeOf((*MockStateReader)(nil).CurrentHeader))
 }
 
-// GetBlock mocks base method.
-func (m *MockStateReader) GetBlock(arg0 common.Hash, arg1 uint64) *evmcore.EvmBlock {
+// CurrentMaxGasLimit mocks base method.
+func (m *MockStateReader) CurrentMaxGasLimit() uint64 {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetBlock", arg0, arg1)
-	ret0, _ := ret[0].(*evmcore.EvmBlock)
+	ret := m.ctrl.Call(m, "CurrentMaxGasLimit")
+	ret0, _ := ret[0].(uint64)
 	return ret0
 }
 
-// GetBlock indicates an expected call of GetBlock.
-func (mr *MockStateReaderMockRecorder) GetBlock(arg0, arg1 any) *gomock.Call {
+// CurrentMaxGasLimit indicates an expected call of CurrentMaxGasLimit.
+func (mr *MockStateReaderMockRecorder) CurrentMaxGasLimit() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBlock", reflect.TypeOf((*MockStateReader)(nil).GetBlock), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CurrentMaxGasLimit", reflect.TypeOf((*MockStateReader)(nil).CurrentMaxGasLimit))
 }
 
-// GetCurrentBaseFee mocks base method.
-func (m *MockStateReader) GetCurrentBaseFee() *big.Int {
+// CurrentRules mocks base method.
+func (m *MockStateReader) CurrentRules() opera.Rules {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetCurrentBaseFee")
-	ret0, _ := ret[0].(*big.Int)
-	return ret0
-}
-
-// GetCurrentBaseFee indicates an expected call of GetCurrentBaseFee.
-func (mr *MockStateReaderMockRecorder) GetCurrentBaseFee() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCurrentBaseFee", reflect.TypeOf((*MockStateReader)(nil).GetCurrentBaseFee))
-}
-
-// GetCurrentRules mocks base method.
-func (m *MockStateReader) GetCurrentRules() opera.Rules {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetCurrentRules")
+	ret := m.ctrl.Call(m, "CurrentRules")
 	ret0, _ := ret[0].(opera.Rules)
 	return ret0
 }
 
-// GetCurrentRules indicates an expected call of GetCurrentRules.
-func (mr *MockStateReaderMockRecorder) GetCurrentRules() *gomock.Call {
+// CurrentRules indicates an expected call of CurrentRules.
+func (mr *MockStateReaderMockRecorder) CurrentRules() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCurrentRules", reflect.TypeOf((*MockStateReader)(nil).GetCurrentRules))
-}
-
-// GetHeader mocks base method.
-func (m *MockStateReader) GetHeader(h common.Hash, n uint64) *evmcore.EvmHeader {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetHeader", h, n)
-	ret0, _ := ret[0].(*evmcore.EvmHeader)
-	return ret0
-}
-
-// GetHeader indicates an expected call of GetHeader.
-func (mr *MockStateReaderMockRecorder) GetHeader(h, n any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHeader", reflect.TypeOf((*MockStateReader)(nil).GetHeader), h, n)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CurrentRules", reflect.TypeOf((*MockStateReader)(nil).CurrentRules))
 }
 
 // GetHeaderByNumber mocks base method.
@@ -157,34 +157,18 @@ func (mr *MockStateReaderMockRecorder) GetHeaderByNumber(n any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHeaderByNumber", reflect.TypeOf((*MockStateReader)(nil).GetHeaderByNumber), n)
 }
 
-// GetRpcStateDB mocks base method.
-func (m *MockStateReader) GetRpcStateDB(arg0 *big.Int, arg1 common.Hash) (state.StateDB, error) {
+// Header mocks base method.
+func (m *MockStateReader) Header(h common.Hash, n uint64) *evmcore.EvmHeader {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetRpcStateDB", arg0, arg1)
-	ret0, _ := ret[0].(state.StateDB)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret := m.ctrl.Call(m, "Header", h, n)
+	ret0, _ := ret[0].(*evmcore.EvmHeader)
+	return ret0
 }
 
-// GetRpcStateDB indicates an expected call of GetRpcStateDB.
-func (mr *MockStateReaderMockRecorder) GetRpcStateDB(arg0, arg1 any) *gomock.Call {
+// Header indicates an expected call of Header.
+func (mr *MockStateReaderMockRecorder) Header(h, n any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRpcStateDB", reflect.TypeOf((*MockStateReader)(nil).GetRpcStateDB), arg0, arg1)
-}
-
-// GetTxPoolStateDB mocks base method.
-func (m *MockStateReader) GetTxPoolStateDB() (state.StateDB, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetTxPoolStateDB")
-	ret0, _ := ret[0].(state.StateDB)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetTxPoolStateDB indicates an expected call of GetTxPoolStateDB.
-func (mr *MockStateReaderMockRecorder) GetTxPoolStateDB() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTxPoolStateDB", reflect.TypeOf((*MockStateReader)(nil).GetTxPoolStateDB))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Header", reflect.TypeOf((*MockStateReader)(nil).Header), h, n)
 }
 
 // LastBlockWithArchiveState mocks base method.
@@ -202,16 +186,32 @@ func (mr *MockStateReaderMockRecorder) LastBlockWithArchiveState(withTxs any) *g
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LastBlockWithArchiveState", reflect.TypeOf((*MockStateReader)(nil).LastBlockWithArchiveState), withTxs)
 }
 
-// MaxGasLimit mocks base method.
-func (m *MockStateReader) MaxGasLimit() uint64 {
+// ReadOnlyStateDB mocks base method.
+func (m *MockStateReader) ReadOnlyStateDB() (state.StateDB, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "MaxGasLimit")
-	ret0, _ := ret[0].(uint64)
-	return ret0
+	ret := m.ctrl.Call(m, "ReadOnlyStateDB")
+	ret0, _ := ret[0].(state.StateDB)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
-// MaxGasLimit indicates an expected call of MaxGasLimit.
-func (mr *MockStateReaderMockRecorder) MaxGasLimit() *gomock.Call {
+// ReadOnlyStateDB indicates an expected call of ReadOnlyStateDB.
+func (mr *MockStateReaderMockRecorder) ReadOnlyStateDB() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MaxGasLimit", reflect.TypeOf((*MockStateReader)(nil).MaxGasLimit))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadOnlyStateDB", reflect.TypeOf((*MockStateReader)(nil).ReadOnlyStateDB))
+}
+
+// RpcStateDB mocks base method.
+func (m *MockStateReader) RpcStateDB(arg0 *big.Int, arg1 common.Hash) (state.StateDB, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RpcStateDB", arg0, arg1)
+	ret0, _ := ret[0].(state.StateDB)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RpcStateDB indicates an expected call of RpcStateDB.
+func (mr *MockStateReaderMockRecorder) RpcStateDB(arg0, arg1 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RpcStateDB", reflect.TypeOf((*MockStateReader)(nil).RpcStateDB), arg0, arg1)
 }

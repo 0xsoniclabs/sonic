@@ -77,7 +77,7 @@ func (ew *emitterWorldProc) IsBusy() bool {
 }
 
 func (ew *emitterWorldProc) StateDB() state.StateDB {
-	statedb, err := ew.s.store.evm.GetTxPoolStateDB()
+	statedb, err := ew.s.store.evm.GetReadOnlyStateDB()
 	if err != nil {
 		return nil
 	}
@@ -88,11 +88,11 @@ func (ew *emitterWorldProc) GetUpgradeHeights() []opera.UpgradeHeight {
 	return ew.s.store.GetUpgradeHeights()
 }
 
-func (ew *emitterWorldProc) GetHeader(h common.Hash, number uint64) *evmcore.EvmHeader {
+func (ew *emitterWorldProc) Header(h common.Hash, number uint64) *evmcore.EvmHeader {
 	reader := &EvmStateReader{
 		store: ew.s.store,
 	}
-	return reader.GetHeader(h, number)
+	return reader.Header(h, number)
 }
 
 func (ew *emitterWorldProc) IsSynced() bool {

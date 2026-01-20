@@ -45,9 +45,9 @@ func (s *Store) GetLiveStateDb(stateRoot hash.Hash) (state.StateDB, error) {
 	return CreateCarmenStateDb(s.liveStateDb), nil
 }
 
-// GetTxPoolStateDB obtains StateDB for TxPool evaluation - the latest finalized, read-only.
+// GetReadOnlyStateDB obtains StateDB for TxPool evaluation - the latest finalized, read-only.
 // It is also used in emitter for emitterdriver contract reading at the start of an epoch.
-func (s *Store) GetTxPoolStateDB() (state.StateDB, error) {
+func (s *Store) GetReadOnlyStateDB() (state.StateDB, error) {
 	// for TxPool and emitter it is ok to provide the newest state (and ignore the expected hash)
 	if s.carmenState == nil {
 		return nil, fmt.Errorf("unable to get TxPool StateDb - EvmStore is not open")

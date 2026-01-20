@@ -90,7 +90,7 @@ type chainContext struct {
 	ctx context.Context
 }
 
-func (context *chainContext) GetHeader(hash common.Hash, number uint64) *evmcore.EvmHeader {
+func (context *chainContext) Header(hash common.Hash, number uint64) *evmcore.EvmHeader {
 	// This method is called to get the hash for a block number when executing the BLOCKHASH
 	// opcode. Hence no need to search for non-canonical blocks.
 	header, err := context.b.HeaderByNumber(context.ctx, rpc.BlockNumber(number))

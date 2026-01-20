@@ -149,10 +149,10 @@ func (b *EthAPIBackend) BlockByNumber(ctx context.Context, number rpc.BlockNumbe
 	if isLatestBlockNumber(number) {
 		blk = b.state.CurrentBlock()
 	} else if number == rpc.EarliestBlockNumber {
-		blk = b.state.GetBlock(common.Hash{}, b.HistoryPruningCutoff())
+		blk = b.state.Block(common.Hash{}, b.HistoryPruningCutoff())
 	} else {
 		n := uint64(number.Int64())
-		blk = b.state.GetBlock(common.Hash{}, n)
+		blk = b.state.Block(common.Hash{}, n)
 	}
 	return blk, nil
 }
@@ -177,16 +177,16 @@ func (b *EthAPIBackend) StateAndBlockByNumberOrHash(ctx context.Context, blockNr
 				return nil, nil, fmt.Errorf("failed to get latest block number; %v", err)
 			}
 		} else if number == rpc.EarliestBlockNumber {
-			block = b.state.GetBlock(common.Hash{}, b.HistoryPruningCutoff())
+			block = b.state.Block(common.Hash{}, b.HistoryPruningCutoff())
 		} else {
-			block = b.state.GetBlock(common.Hash{}, uint64(number))
+			block = b.state.Block(common.Hash{}, uint64(number))
 		}
 	} else if h, ok := blockNrOrHash.Hash(); ok {
 		index := b.svc.store.GetBlockIndex(hash.Event(h))
 		if index == nil {
 			return nil, nil, errors.New("header not found")
 		}
-		block = b.state.GetBlock(common.Hash{}, uint64(*index))
+		block = b.state.Block(common.Hash{}, uint64(*index))
 	} else {
 		return nil, nil, errors.New("unknown header selector")
 	}
@@ -194,7 +194,7 @@ func (b *EthAPIBackend) StateAndBlockByNumberOrHash(ctx context.Context, blockNr
 	if block == nil {
 		return nil, nil, errors.New("header not found")
 	}
-	stateDb, err := b.state.GetRpcStateDB(block.Number, block.Root)
+	stateDb, err := b.state.RpcStateDB(block.Number, block.Root)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -335,7 +335,7 @@ func (b *EthAPIBackend) BlockByHash(ctx context.Context, h common.Hash) (*evmcor
 		blk = b.state.CurrentBlock()
 	} else {
 		n := uint64(*index)
-		blk = b.state.GetBlock(common.Hash{}, n)
+		blk = b.state.Block(common.Hash{}, n)
 	}
 
 	return blk, nil
@@ -354,7 +354,7 @@ func (b *EthAPIBackend) GetReceiptsByNumber(ctx context.Context, number rpc.Bloc
 	}
 	number = rpc.BlockNumber(blockNumber)
 
-	block := b.state.GetBlock(common.Hash{}, uint64(number))
+	block := b.state.Block(common.Hash{}, uint64(number))
 	return b.FetchReceiptsForBlock(block), nil
 }
 
@@ -555,11 +555,11 @@ func (b *EthAPIBackend) CurrentEpoch(ctx context.Context) idx.Epoch {
 }
 
 func (b *EthAPIBackend) MinGasPrice() *big.Int {
-	current := b.state.GetCurrentBaseFee()
+	current := b.state.CurrentBaseFee()
 	return gaspricelimits.GetSuggestedGasPriceForNewTransactions(current)
 }
 func (b *EthAPIBackend) MaxGasLimit() uint64 {
-	return b.state.MaxGasLimit()
+	return b.state.CurrentMaxGasLimit()
 }
 
 func (b *EthAPIBackend) GetUptime(ctx context.Context, vid idx.ValidatorID) (*big.Int, error) {

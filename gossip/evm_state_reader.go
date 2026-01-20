@@ -34,18 +34,18 @@ import (
 //go:generate mockgen -source=evm_state_reader.go -destination=evm_state_reader_mock.go -package=gossip
 
 type StateReader interface {
-	GetCurrentBaseFee() *big.Int
-	MaxGasLimit() uint64
-	Config() *params.ChainConfig
-	GetCurrentRules() opera.Rules
+	CurrentBaseFee() *big.Int
+	CurrentMaxGasLimit() uint64
+	CurrentConfig() *params.ChainConfig
+	CurrentRules() opera.Rules
 	CurrentBlock() *evmcore.EvmBlock
 	CurrentHeader() *evmcore.EvmHeader
 	LastBlockWithArchiveState(withTxs bool) (*evmcore.EvmBlock, error)
 	GetHeaderByNumber(n uint64) *evmcore.EvmHeader
-	GetHeader(h common.Hash, n uint64) *evmcore.EvmHeader
-	GetBlock(common.Hash, uint64) *evmcore.EvmBlock
-	GetTxPoolStateDB() (state.StateDB, error)
-	GetRpcStateDB(*big.Int, common.Hash) (state.StateDB, error)
+	Header(h common.Hash, n uint64) *evmcore.EvmHeader
+	Block(common.Hash, uint64) *evmcore.EvmBlock
+	ReadOnlyStateDB() (state.StateDB, error)
+	RpcStateDB(*big.Int, common.Hash) (state.StateDB, error)
 }
 
 type EvmStateReader struct {
@@ -55,13 +55,13 @@ type EvmStateReader struct {
 	gpo   *gasprice.Oracle
 }
 
-// GetCurrentBaseFee returns the base fee charged in the most recent block.
-func (r *EvmStateReader) GetCurrentBaseFee() *big.Int {
+// CurrentBaseFee returns the base fee charged in the most recent block.
+func (r *EvmStateReader) CurrentBaseFee() *big.Int {
 	res := r.store.GetBlock(r.store.GetLatestBlockIndex()).BaseFee
 	return new(big.Int).Set(res)
 }
 
-func (r *EvmStateReader) MaxGasLimit() uint64 {
+func (r *EvmStateReader) CurrentMaxGasLimit() uint64 {
 	rules := r.store.GetRules()
 	maxEmptyEventGas := rules.Economy.Gas.EventGas +
 		uint64(rules.Dag.MaxParents-rules.Dag.MaxFreeParents)*rules.Economy.Gas.ParentGas +
@@ -72,12 +72,12 @@ func (r *EvmStateReader) MaxGasLimit() uint64 {
 	return rules.Economy.Gas.MaxEventGas - maxEmptyEventGas
 }
 
-func (r *EvmStateReader) Config() *params.ChainConfig {
+func (r *EvmStateReader) CurrentConfig() *params.ChainConfig {
 	blockNumber := r.CurrentBlock().Number
 	return r.store.GetEvmChainConfig(idx.Block(blockNumber.Uint64()))
 }
 
-func (r *EvmStateReader) GetCurrentRules() opera.Rules {
+func (r *EvmStateReader) CurrentRules() opera.Rules {
 	return r.store.GetRules()
 }
 
@@ -109,14 +109,14 @@ func (r *EvmStateReader) LastBlockWithArchiveState(withTxs bool) (*evmcore.EvmBl
 }
 
 func (r *EvmStateReader) GetHeaderByNumber(n uint64) *evmcore.EvmHeader {
-	return r.GetHeader(common.Hash{}, n)
+	return r.Header(common.Hash{}, n)
 }
 
-func (r *EvmStateReader) GetHeader(h common.Hash, n uint64) *evmcore.EvmHeader {
+func (r *EvmStateReader) Header(h common.Hash, n uint64) *evmcore.EvmHeader {
 	return r.getBlock(h, idx.Block(n), false).Header()
 }
 
-func (r *EvmStateReader) GetBlock(h common.Hash, n uint64) *evmcore.EvmBlock {
+func (r *EvmStateReader) Block(h common.Hash, n uint64) *evmcore.EvmBlock {
 	return r.getBlock(h, idx.Block(n), true)
 }
 
@@ -182,12 +182,12 @@ func (r *EvmStateReader) getBlock(h common.Hash, n idx.Block, readTxs bool) *evm
 	return evmBlock
 }
 
-// GetTxPoolStateDB obtains StateDB for TxPool
-func (r *EvmStateReader) GetTxPoolStateDB() (state.StateDB, error) {
-	return r.store.evm.GetTxPoolStateDB()
+// ReadOnlyStateDB obtains StateDB for TxPool
+func (r *EvmStateReader) ReadOnlyStateDB() (state.StateDB, error) {
+	return r.store.evm.GetReadOnlyStateDB()
 }
 
-// GetRpcStateDB obtains archive StateDB for RPC requests evaluation
-func (r *EvmStateReader) GetRpcStateDB(blockNum *big.Int, stateRoot common.Hash) (state.StateDB, error) {
+// RpcStateDB obtains archive StateDB for RPC requests evaluation
+func (r *EvmStateReader) RpcStateDB(blockNum *big.Int, stateRoot common.Hash) (state.StateDB, error) {
 	return r.store.evm.GetRpcStateDb(blockNum, stateRoot)
 }

@@ -131,8 +131,8 @@ func makeHappyStateDb(
 			PrevRandao: common.Hash{1}, // revision >= merge
 		},
 	}).AnyTimes()
-	chain.EXPECT().GetCurrentBaseFee().Return(big.NewInt(1)).AnyTimes()
-	chain.EXPECT().Config().Return(chainConfig).AnyTimes()
+	chain.EXPECT().CurrentBaseFee().Return(big.NewInt(1)).AnyTimes()
+	chain.EXPECT().CurrentConfig().Return(chainConfig).AnyTimes()
 
 	state := state.NewMockStateDB(ctrl)
 	state.EXPECT().GetNonce(any).Return(uint64(0)).AnyTimes()

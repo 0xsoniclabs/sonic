@@ -363,7 +363,7 @@ func TestValidateTxForNetwork_GasLimitIsCheckedAfterOsaka(t *testing.T) {
 		t.Run(transactionTypeName(tx), func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			chain := NewMockStateReader(ctrl)
-			chain.EXPECT().MaxGasLimit().Return(gasLimit).AnyTimes()
+			chain.EXPECT().CurrentMaxGasLimit().Return(gasLimit).AnyTimes()
 			signer := NewMockSigner(ctrl)
 			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{42}, nil).AnyTimes()
 
@@ -566,8 +566,8 @@ func TestValidateTxForBlock_MaxGas_RejectsTxWithGasOverMaxGas(t *testing.T) {
 		t.Run(transactionTypeName(tx), func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			chain := NewMockStateReader(ctrl)
-			chain.EXPECT().MaxGasLimit().Return(uint64(99_999))
-			chain.EXPECT().GetCurrentBaseFee().Return(big.NewInt(1)).AnyTimes()
+			chain.EXPECT().CurrentMaxGasLimit().Return(uint64(99_999))
+			chain.EXPECT().CurrentBaseFee().Return(big.NewInt(1)).AnyTimes()
 
 			err := ValidateTxForBlock(types.NewTx(tx), NetworkRules{}, chain)
 			require.ErrorIs(t, err, ErrGasLimit)
@@ -607,7 +607,7 @@ func TestValidateTxForBlock_BaseFee_RejectsTxWithGasPriceLowerThanBaseFee(t *tes
 		t.Run(transactionTypeName(tx), func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			chain := NewMockStateReader(ctrl)
-			chain.EXPECT().GetCurrentBaseFee().Return(big.NewInt(2))
+			chain.EXPECT().CurrentBaseFee().Return(big.NewInt(2))
 
 			err := ValidateTxForBlock(types.NewTx(tx), NetworkRules{}, chain)
 			require.ErrorIs(t, err, ErrUnderpriced)
@@ -648,8 +648,8 @@ func TestValidateTxForBlock_AcceptsTransactions(t *testing.T) {
 		t.Run(transactionTypeName(tx), func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			chain := NewMockStateReader(ctrl)
-			chain.EXPECT().MaxGasLimit().Return(uint64(100_000))
-			chain.EXPECT().GetCurrentBaseFee().Return(big.NewInt(1))
+			chain.EXPECT().CurrentMaxGasLimit().Return(uint64(100_000))
+			chain.EXPECT().CurrentBaseFee().Return(big.NewInt(1))
 
 			err := ValidateTxForBlock(types.NewTx(tx), NetworkRules{}, chain)
 			require.NoError(t, err)
@@ -1045,7 +1045,7 @@ func TestValidateTx_RejectsTx_WhenStaticValidationFails(t *testing.T) {
 			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{42}, nil).AnyTimes()
 
 			chain := NewMockStateReader(ctrl)
-			chain.EXPECT().GetCurrentBaseFee().Return(big.NewInt(5)).AnyTimes()
+			chain.EXPECT().CurrentBaseFee().Return(big.NewInt(5)).AnyTimes()
 			state := state.NewMockStateDB(ctrl)
 			subsidiesChecker := NewMocksubsidiesChecker(ctrl)
 
@@ -1096,8 +1096,8 @@ func TestValidateTx_RejectsTx_WhenBlockValidationFails(t *testing.T) {
 			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{42}, nil).AnyTimes()
 
 			chain := NewMockStateReader(ctrl)
-			chain.EXPECT().GetCurrentBaseFee().Return(big.NewInt(5)).AnyTimes()
-			chain.EXPECT().MaxGasLimit().Return(uint64(50_000)).AnyTimes() // lower than tx gas
+			chain.EXPECT().CurrentBaseFee().Return(big.NewInt(5)).AnyTimes()
+			chain.EXPECT().CurrentMaxGasLimit().Return(uint64(50_000)).AnyTimes() // lower than tx gas
 			state := state.NewMockStateDB(ctrl)
 			SubsidiesChecker := NewMocksubsidiesChecker(ctrl)
 
@@ -1148,8 +1148,8 @@ func TestValidateTx_RejectsTx_WhenPoolValidationFails(t *testing.T) {
 			signer.EXPECT().Equal(gomock.Any()).Return(false).AnyTimes()
 
 			chain := NewMockStateReader(ctrl)
-			chain.EXPECT().GetCurrentBaseFee().Return(big.NewInt(5)).AnyTimes()
-			chain.EXPECT().MaxGasLimit().Return(uint64(100_000)).AnyTimes()
+			chain.EXPECT().CurrentBaseFee().Return(big.NewInt(5)).AnyTimes()
+			chain.EXPECT().CurrentMaxGasLimit().Return(uint64(100_000)).AnyTimes()
 			state := state.NewMockStateDB(ctrl)
 
 			opts := poolOptions{
@@ -1205,8 +1205,8 @@ func TestValidateTx_RejectsTx_WhenStateValidationFails(t *testing.T) {
 			signer.EXPECT().Equal(gomock.Any()).Return(false).AnyTimes()
 
 			chain := NewMockStateReader(ctrl)
-			chain.EXPECT().GetCurrentBaseFee().Return(big.NewInt(5)).AnyTimes()
-			chain.EXPECT().MaxGasLimit().Return(uint64(100_000)).AnyTimes()
+			chain.EXPECT().CurrentBaseFee().Return(big.NewInt(5)).AnyTimes()
+			chain.EXPECT().CurrentMaxGasLimit().Return(uint64(100_000)).AnyTimes()
 			state := state.NewMockStateDB(ctrl)
 			state.EXPECT().GetNonce(gomock.Any()).Return(uint64(1)).AnyTimes() // higher than tx nonce 0
 
@@ -1275,8 +1275,8 @@ func TestValidateTx_AcceptsZeroGasPriceTransactions_WhenSubsidiesAreEnabled(t *t
 			signer.EXPECT().Equal(gomock.Any()).Return(false).AnyTimes()
 
 			chain := NewMockStateReader(ctrl)
-			chain.EXPECT().GetCurrentBaseFee().Return(big.NewInt(5)).AnyTimes()
-			chain.EXPECT().MaxGasLimit().Return(uint64(100_000)).AnyTimes()
+			chain.EXPECT().CurrentBaseFee().Return(big.NewInt(5)).AnyTimes()
+			chain.EXPECT().CurrentMaxGasLimit().Return(uint64(100_000)).AnyTimes()
 			state := state.NewMockStateDB(ctrl)
 			state.EXPECT().GetNonce(gomock.Any()).Return(uint64(0)).AnyTimes()
 			state.EXPECT().GetBalance(gomock.Any()).Return(uint256.NewInt(0)).AnyTimes()
@@ -1417,8 +1417,8 @@ func TestValidateTx_AllowsSponsoredZeroGasPriceTransactions_WhenSubsidiesAreFund
 			signer.EXPECT().Equal(gomock.Any()).Return(false).AnyTimes()
 
 			chain := NewMockStateReader(ctrl)
-			chain.EXPECT().GetCurrentBaseFee().Return(big.NewInt(5))
-			chain.EXPECT().MaxGasLimit().Return(uint64(100_000))
+			chain.EXPECT().CurrentBaseFee().Return(big.NewInt(5))
+			chain.EXPECT().CurrentMaxGasLimit().Return(uint64(100_000))
 			state := state.NewMockStateDB(ctrl)
 			state.EXPECT().GetNonce(gomock.Any()).Return(uint64(0)).AnyTimes()
 			state.EXPECT().GetBalance(gomock.Any()).Return(uint256.NewInt(0)).AnyTimes()
@@ -1488,8 +1488,8 @@ func TestValidateTx_Success(t *testing.T) {
 			signer.EXPECT().Equal(gomock.Any()).Return(false).AnyTimes()
 
 			chain := NewMockStateReader(ctrl)
-			chain.EXPECT().GetCurrentBaseFee().Return(big.NewInt(5)).AnyTimes()
-			chain.EXPECT().MaxGasLimit().Return(uint64(100_000)).AnyTimes()
+			chain.EXPECT().CurrentBaseFee().Return(big.NewInt(5)).AnyTimes()
+			chain.EXPECT().CurrentMaxGasLimit().Return(uint64(100_000)).AnyTimes()
 			state := state.NewMockStateDB(ctrl)
 			state.EXPECT().GetNonce(gomock.Any()).Return(uint64(0)).AnyTimes()
 			state.EXPECT().GetBalance(gomock.Any()).Return(uint256.NewInt(1_000_000)).AnyTimes()

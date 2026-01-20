@@ -66,12 +66,12 @@ func newSubsidiesChecker(
 
 func (s *SubsidiesIntegrationImplementation) isSponsored(tx *types.Transaction) bool {
 	currentBlock := s.chain.CurrentBlock()
-	baseFee := s.chain.GetCurrentBaseFee()
+	baseFee := s.chain.CurrentBaseFee()
 
 	// Create a EVM processor instance to run the IsCovered query.
 	blockContext := NewEVMBlockContext(currentBlock.Header(), s.chain, nil)
 	vmConfig := opera.GetVmConfig(s.rules)
-	vm := vm.NewEVM(blockContext, s.state, s.chain.Config(), vmConfig)
+	vm := vm.NewEVM(blockContext, s.state, s.chain.CurrentConfig(), vmConfig)
 
 	// Query the subsidies registry contract to determine if the transaction is sponsored.
 	isSponsored, _, _, err := subsidies.IsCovered(s.rules.Upgrades, vm, s.signer, tx, baseFee)

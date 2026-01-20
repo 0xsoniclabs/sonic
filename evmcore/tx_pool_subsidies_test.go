@@ -161,17 +161,17 @@ func mockChain(ctrl *gomock.Controller, chainConfig *params.ChainConfig, upgrade
 			Number: big.NewInt(1),
 		},
 	}).AnyTimes()
-	chain.EXPECT().Config().Return(chainConfig).AnyTimes()
+	chain.EXPECT().CurrentConfig().Return(chainConfig).AnyTimes()
 	chain.EXPECT().GetTxPoolStateDB().Return(state, nil).AnyTimes()
-	chain.EXPECT().MaxGasLimit().Return(uint64(30_000_000)).AnyTimes()
-	chain.EXPECT().GetCurrentBaseFee().Return(big.NewInt(1)).AnyTimes()
+	chain.EXPECT().CurrentMaxGasLimit().Return(uint64(30_000_000)).AnyTimes()
+	chain.EXPECT().CurrentBaseFee().Return(big.NewInt(1)).AnyTimes()
 
 	sub := NewMocksubscriber(ctrl)
 	sub.EXPECT().Err().Return(make(chan error)).AnyTimes()
 	sub.EXPECT().Unsubscribe().AnyTimes()
 
 	chain.EXPECT().SubscribeNewBlock(gomock.Any()).Return(sub).AnyTimes()
-	chain.EXPECT().GetCurrentRules().
+	chain.EXPECT().CurrentRules().
 		Return(opera.Rules{Upgrades: upgrades}).AnyTimes()
 	return chain
 }

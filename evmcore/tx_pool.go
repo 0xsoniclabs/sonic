@@ -165,14 +165,14 @@ const (
 // some pre checks in tx pool and event subscribers.
 type StateReader interface {
 	CurrentBlock() *EvmBlock
-	GetBlock(hash common.Hash, number uint64) *EvmBlock
-	GetTxPoolStateDB() (state.StateDB, error)
-	GetCurrentBaseFee() *big.Int
-	MaxGasLimit() uint64
+	Block(hash common.Hash, number uint64) *EvmBlock
+	ReadOnlyStateDB() (state.StateDB, error)
+	CurrentBaseFee() *big.Int
+	CurrentMaxGasLimit() uint64
 	SubscribeNewBlock(ch chan<- ChainHeadNotify) notify.Subscription
-	Config() *params.ChainConfig
-	GetCurrentRules() opera.Rules
-	GetHeader(common.Hash, uint64) *EvmHeader
+	CurrentConfig() *params.ChainConfig
+	CurrentRules() opera.Rules
+	Header(common.Hash, uint64) *EvmHeader
 }
 
 // subsidiesCheckerFactory is a factory method to create a subsidies checker instance.
@@ -711,7 +711,7 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 		eip7623:  pool.eip7623,
 		eip7702:  pool.eip7702,
 
-		gasSubsidies: pool.chain.GetCurrentRules().Upgrades.GasSubsidies,
+		gasSubsidies: pool.chain.CurrentRules().Upgrades.GasSubsidies,
 	}
 
 	subsidiesChecker := pool.createSubsidiesChecker()
@@ -1338,7 +1338,7 @@ func (pool *TxPool) runReorg(done chan struct{}, reset *txpoolResetRequest, dirt
 	// because of another transaction (e.g. higher gas price).
 	if reset != nil {
 		pool.demoteUnexecutables()
-		if baseFee := pool.chain.GetCurrentBaseFee(); baseFee != nil {
+		if baseFee := pool.chain.CurrentBaseFee(); baseFee != nil {
 			// Sonic-specific base fee
 			pool.priced.SetBaseFee(baseFee)
 		} else {
@@ -1382,7 +1382,7 @@ func (pool *TxPool) runReorg(done chan struct{}, reset *txpoolResetRequest, dirt
 // of the transaction pool is valid with regard to the chain state.
 func (pool *TxPool) reset(oldHead, newHead *EvmHeader) {
 	// update chain config (Sonic-specific)
-	if newConfig := pool.chain.Config(); newConfig != nil {
+	if newConfig := pool.chain.CurrentConfig(); newConfig != nil {
 		pool.chainconfig = newConfig
 	}
 
@@ -1400,8 +1400,8 @@ func (pool *TxPool) reset(oldHead, newHead *EvmHeader) {
 			// Reorg seems shallow enough to pull in all transactions into memory
 			var discarded, included types.Transactions
 			var (
-				rem = pool.chain.GetBlock(oldHead.Hash, oldHead.Number.Uint64())
-				add = pool.chain.GetBlock(newHead.Hash, newHead.Number.Uint64())
+				rem = pool.chain.Block(oldHead.Hash, oldHead.Number.Uint64())
+				add = pool.chain.Block(newHead.Hash, newHead.Number.Uint64())
 			)
 			if rem == nil {
 				// This can happen if a setHead is performed, where we simply discard the old
@@ -1421,26 +1421,26 @@ func (pool *TxPool) reset(oldHead, newHead *EvmHeader) {
 			} else {
 				for rem.NumberU64() > add.NumberU64() {
 					discarded = append(discarded, rem.Transactions...)
-					if rem = pool.chain.GetBlock(rem.ParentHash, rem.NumberU64()-1); rem == nil {
+					if rem = pool.chain.Block(rem.ParentHash, rem.NumberU64()-1); rem == nil {
 						log.Error("Unrooted old chain seen by tx pool", "block", oldHead.Number, "hash", oldHead.Hash)
 						return
 					}
 				}
 				for add.NumberU64() > rem.NumberU64() {
 					included = append(included, add.Transactions...)
-					if add = pool.chain.GetBlock(add.ParentHash, add.NumberU64()-1); add == nil {
+					if add = pool.chain.Block(add.ParentHash, add.NumberU64()-1); add == nil {
 						log.Error("Unrooted new chain seen by tx pool", "block", newHead.Number, "hash", newHead.Hash)
 						return
 					}
 				}
 				for rem.Hash != add.Hash {
 					discarded = append(discarded, rem.Transactions...)
-					if rem = pool.chain.GetBlock(rem.ParentHash, rem.NumberU64()-1); rem == nil {
+					if rem = pool.chain.Block(rem.ParentHash, rem.NumberU64()-1); rem == nil {
 						log.Error("Unrooted old chain seen by tx pool", "block", oldHead.Number, "hash", oldHead.Hash)
 						return
 					}
 					included = append(included, add.Transactions...)
-					if add = pool.chain.GetBlock(add.ParentHash, add.NumberU64()-1); add == nil {
+					if add = pool.chain.Block(add.ParentHash, add.NumberU64()-1); add == nil {
 						log.Error("Unrooted new chain seen by tx pool", "block", newHead.Number, "hash", newHead.Hash)
 						return
 					}
@@ -1453,7 +1453,7 @@ func (pool *TxPool) reset(oldHead, newHead *EvmHeader) {
 	if newHead == nil {
 		newHead = pool.chain.CurrentBlock().Header() // Special case during testing
 	}
-	statedb, err := pool.chain.GetTxPoolStateDB()
+	statedb, err := pool.chain.ReadOnlyStateDB()
 	if err != nil {
 		log.Error("Failed to get TxPool StateDB", "block", newHead.Number, "root", newHead.Root, "err", err)
 		return
@@ -1463,7 +1463,7 @@ func (pool *TxPool) reset(oldHead, newHead *EvmHeader) {
 	}
 	pool.currentState = statedb
 	pool.pendingNonces = newTxNoncer(statedb)
-	pool.currentMaxGas = pool.chain.MaxGasLimit()
+	pool.currentMaxGas = pool.chain.CurrentMaxGasLimit()
 
 	// Inject any transactions discarded due to reorgs
 	log.Debug("Reinjecting stale transactions", "count", len(reinject))
@@ -1484,7 +1484,7 @@ func (pool *TxPool) reset(oldHead, newHead *EvmHeader) {
 
 func (pool *TxPool) createSubsidiesChecker() subsidiesChecker {
 	return pool.subsidiesCheckerFactory(
-		pool.chain.GetCurrentRules(),
+		pool.chain.CurrentRules(),
 		pool.chain,
 		pool.currentState,
 		pool.signer,

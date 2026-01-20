@@ -183,8 +183,8 @@ func ValidateTxForNetwork(tx *types.Transaction, rules NetworkRules, chain State
 		}
 	}
 
-	if rules.osaka && tx.Gas() > chain.MaxGasLimit() {
-		return fmt.Errorf("%w: tx gas %v, should be under %v", ErrGasLimitTooHigh, tx.Gas(), chain.MaxGasLimit())
+	if rules.osaka && tx.Gas() > chain.CurrentMaxGasLimit() {
+		return fmt.Errorf("%w: tx gas %v, should be under %v", ErrGasLimitTooHigh, tx.Gas(), chain.CurrentMaxGasLimit())
 	}
 
 	if _, err := types.Sender(signer, tx); err != nil {
@@ -243,7 +243,7 @@ func ValidateTxForBlock(tx *types.Transaction, netRules NetworkRules, chain Stat
 
 	// Ensure Sonic-specific hard bounds
 	isSponsorRequest := netRules.gasSubsidies && subsidies.IsSponsorshipRequest(tx)
-	if baseFee := chain.GetCurrentBaseFee(); !isSponsorRequest && baseFee != nil {
+	if baseFee := chain.CurrentBaseFee(); !isSponsorRequest && baseFee != nil {
 		limit := gaspricelimits.GetMinimumFeeCapForTransactionPool(baseFee)
 		if tx.GasFeeCapIntCmp(limit) < 0 {
 			log.Trace("Rejecting underpriced tx: minimumBaseFee", "minimumBaseFee", baseFee, "limit", limit, "tx.GasFeeCap", tx.GasFeeCap())
@@ -252,7 +252,7 @@ func ValidateTxForBlock(tx *types.Transaction, netRules NetworkRules, chain Stat
 	}
 
 	// Ensure the transaction doesn't exceed the current block limit gas.
-	if chain.MaxGasLimit() < tx.Gas() {
+	if chain.CurrentMaxGasLimit() < tx.Gas() {
 		return ErrGasLimit
 	}
 

@@ -163,18 +163,18 @@ func (mr *MockChainMockRecorder) GetEvmChainConfig(blockHeight any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEvmChainConfig", reflect.TypeOf((*MockChain)(nil).GetEvmChainConfig), blockHeight)
 }
 
-// GetHeader mocks base method.
-func (m *MockChain) GetHeader(arg0 common.Hash, arg1 uint64) *evmcore.EvmHeader {
+// Header mocks base method.
+func (m *MockChain) Header(arg0 common.Hash, arg1 uint64) *evmcore.EvmHeader {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetHeader", arg0, arg1)
+	ret := m.ctrl.Call(m, "Header", arg0, arg1)
 	ret0, _ := ret[0].(*evmcore.EvmHeader)
 	return ret0
 }
 
-// GetHeader indicates an expected call of GetHeader.
-func (mr *MockChainMockRecorder) GetHeader(arg0, arg1 any) *gomock.Call {
+// Header indicates an expected call of Header.
+func (mr *MockChainMockRecorder) Header(arg0, arg1 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHeader", reflect.TypeOf((*MockChain)(nil).GetHeader), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Header", reflect.TypeOf((*MockChain)(nil).Header), arg0, arg1)
 }
 
 // StateDB mocks base method.

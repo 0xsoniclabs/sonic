@@ -175,29 +175,29 @@ func (bc *testBlockChain) CurrentBlock() *EvmBlock {
 	}
 }
 
-func (bc *testBlockChain) GetCurrentBaseFee() *big.Int {
+func (bc *testBlockChain) CurrentBaseFee() *big.Int {
 	return nil
 }
-func (bc *testBlockChain) MaxGasLimit() uint64 {
+func (bc *testBlockChain) CurrentMaxGasLimit() uint64 {
 	return bc.CurrentBlock().GasLimit
 }
-func (bc *testBlockChain) Config() *params.ChainConfig {
+func (bc *testBlockChain) CurrentConfig() *params.ChainConfig {
 	return nil
 }
 
-func (bc *testBlockChain) GetCurrentRules() opera.Rules {
+func (bc *testBlockChain) CurrentRules() opera.Rules {
 	return opera.Rules{}
 }
 
-func (bc *testBlockChain) GetBlock(hash common.Hash, number uint64) *EvmBlock {
+func (bc *testBlockChain) Block(hash common.Hash, number uint64) *EvmBlock {
 	return bc.CurrentBlock()
 }
 
-func (bc *testBlockChain) GetHeader(common.Hash, uint64) *EvmHeader {
+func (bc *testBlockChain) Header(common.Hash, uint64) *EvmHeader {
 	return bc.CurrentBlock().Header()
 }
 
-func (bc *testBlockChain) GetTxPoolStateDB() (state.StateDB, error) {
+func (bc *testBlockChain) ReadOnlyStateDB() (state.StateDB, error) {
 	bc.mu.Lock()
 	defer bc.mu.Unlock()
 	return bc.statedb, nil
