@@ -41,11 +41,10 @@ type StateReader interface {
 	CurrentBlock() *evmcore.EvmBlock
 	CurrentHeader() *evmcore.EvmHeader
 	LastBlockWithArchiveState(withTxs bool) (*evmcore.EvmBlock, error)
-	GetHeaderByNumber(n uint64) *evmcore.EvmHeader
-	Header(h common.Hash, n uint64) *evmcore.EvmHeader
-	Block(common.Hash, uint64) *evmcore.EvmBlock
+	Header(hash common.Hash, number uint64) *evmcore.EvmHeader
+	Block(hash common.Hash, number uint64) *evmcore.EvmBlock
 	ReadOnlyStateDB() (state.StateDB, error)
-	RpcStateDB(*big.Int, common.Hash) (state.StateDB, error)
+	RpcStateDB(blockNum *big.Int, stateRoot common.Hash) (state.StateDB, error)
 }
 
 type EvmStateReader struct {
@@ -57,8 +56,7 @@ type EvmStateReader struct {
 
 // CurrentBaseFee returns the base fee charged in the most recent block.
 func (r *EvmStateReader) CurrentBaseFee() *big.Int {
-	res := r.store.GetBlock(r.store.GetLatestBlockIndex()).BaseFee
-	return new(big.Int).Set(res)
+	return new(big.Int).Set(r.CurrentBlock().BaseFee)
 }
 
 func (r *EvmStateReader) CurrentMaxGasLimit() uint64 {
@@ -73,8 +71,8 @@ func (r *EvmStateReader) CurrentMaxGasLimit() uint64 {
 }
 
 func (r *EvmStateReader) CurrentConfig() *params.ChainConfig {
-	blockNumber := r.CurrentBlock().Number
-	return r.store.GetEvmChainConfig(idx.Block(blockNumber.Uint64()))
+	blockNumber := idx.Block(r.CurrentBlock().Number.Uint64())
+	return r.store.GetEvmChainConfig(blockNumber)
 }
 
 func (r *EvmStateReader) CurrentRules() opera.Rules {
@@ -88,9 +86,7 @@ func (r *EvmStateReader) CurrentBlock() *evmcore.EvmBlock {
 }
 
 func (r *EvmStateReader) CurrentHeader() *evmcore.EvmHeader {
-	n := r.store.GetLatestBlockIndex()
-
-	return r.getBlock(common.Hash{}, n, false).Header()
+	return r.CurrentBlock().Header()
 }
 
 func (r *EvmStateReader) LastBlockWithArchiveState(withTxs bool) (*evmcore.EvmBlock, error) {
@@ -108,16 +104,12 @@ func (r *EvmStateReader) LastBlockWithArchiveState(withTxs bool) (*evmcore.EvmBl
 	return r.getBlock(common.Hash{}, latestBlock, withTxs), nil
 }
 
-func (r *EvmStateReader) GetHeaderByNumber(n uint64) *evmcore.EvmHeader {
-	return r.Header(common.Hash{}, n)
+func (r *EvmStateReader) Header(hash common.Hash, number uint64) *evmcore.EvmHeader {
+	return r.Block(hash, number).Header()
 }
 
-func (r *EvmStateReader) Header(h common.Hash, n uint64) *evmcore.EvmHeader {
-	return r.getBlock(h, idx.Block(n), false).Header()
-}
-
-func (r *EvmStateReader) Block(h common.Hash, n uint64) *evmcore.EvmBlock {
-	return r.getBlock(h, idx.Block(n), true)
+func (r *EvmStateReader) Block(hash common.Hash, number uint64) *evmcore.EvmBlock {
+	return r.getBlock(hash, idx.Block(number), true)
 }
 
 func (r *EvmStateReader) getBlock(h common.Hash, n idx.Block, readTxs bool) *evmcore.EvmBlock {

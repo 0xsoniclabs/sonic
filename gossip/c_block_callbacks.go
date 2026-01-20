@@ -192,7 +192,7 @@ func consensusCallbackBeginBlockFn(
 
 				// Start assembling the resulting block.
 				number := uint64(bs.LastBlock.Idx + 1)
-				lastBlockHeader := evmStateReader.GetHeaderByNumber(number - 1)
+				lastBlockHeader := evmStateReader.Header(common.Hash{}, number-1)
 
 				randao := computePrevRandao(confirmedEvents)
 				chainCfg := opera.CreateTransientEvmChainConfig(
