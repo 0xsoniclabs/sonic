@@ -46,7 +46,7 @@ type DBCacheConfig struct {
 
 func GetRawDbProducer(chaindataDir string, cfg DBCacheConfig) kvdb.IterableDBProducer {
 	if chaindataDir == "inmemory" || chaindataDir == "" {
-		chaindataDir, _ = os.MkdirTemp("", "opera-tmp")
+		chaindataDir, _ = os.MkdirTemp("", "sonic-tmp")
 	}
 	cacher := func(name string) (int, int) {
 		return int(cfg.Cache), int(cfg.Fdlimit)

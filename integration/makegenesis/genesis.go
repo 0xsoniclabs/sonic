@@ -136,7 +136,7 @@ func (b *GenesisBuilder) CurrentHash() hash.Hash {
 }
 
 func NewGenesisBuilder() *GenesisBuilder {
-	carmenDir, err := os.MkdirTemp("", "opera-tmp-genesis")
+	carmenDir, err := os.MkdirTemp("", "sonic-tmp-genesis")
 	if err != nil {
 		panic(fmt.Errorf("failed to create temporary dir for GenesisBuilder: %v", err))
 	}

@@ -135,7 +135,7 @@ func (s *Store) ImportLegacyEvmData(evmItems genesis.EvmItems, blockNum uint64, 
 	}
 	defer caution.CloseAndReportError(&err, s, "failed to close EvmStore after legacy EVM data import")
 
-	carmenDir, err := os.MkdirTemp(s.parameters.Directory, "opera-tmp-import-legacy-genesis")
+	carmenDir, err := os.MkdirTemp(s.parameters.Directory, "sonic-tmp-import-legacy-genesis")
 	if err != nil {
 		panic(fmt.Errorf("failed to create temporary dir for legacy EVM data import: %w", err))
 	}
