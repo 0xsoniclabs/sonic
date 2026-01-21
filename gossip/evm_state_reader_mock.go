@@ -101,20 +101,6 @@ func (mr *MockStateReaderMockRecorder) CurrentConfig() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CurrentConfig", reflect.TypeOf((*MockStateReader)(nil).CurrentConfig))
 }
 
-// CurrentHeader mocks base method.
-func (m *MockStateReader) CurrentHeader() *evmcore.EvmHeader {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CurrentHeader")
-	ret0, _ := ret[0].(*evmcore.EvmHeader)
-	return ret0
-}
-
-// CurrentHeader indicates an expected call of CurrentHeader.
-func (mr *MockStateReaderMockRecorder) CurrentHeader() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CurrentHeader", reflect.TypeOf((*MockStateReader)(nil).CurrentHeader))
-}
-
 // CurrentMaxGasLimit mocks base method.
 func (m *MockStateReader) CurrentMaxGasLimit() uint64 {
 	m.ctrl.T.Helper()

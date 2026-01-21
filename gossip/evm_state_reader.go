@@ -46,8 +46,6 @@ type StateReader interface {
 	// CurrentBlock returns the most recent block in cache.
 	// This method is the recommended option for fast access to the latest block
 	CurrentBlock() *evmcore.EvmBlock
-	// CurrentHeader returns the header of the most recent block in cache.
-	CurrentHeader() *evmcore.EvmHeader
 	// LastBlockWithArchiveState returns the most recent block with archive.
 	// This method shall be the preferable way to get the latest block for
 	// operations that require access to the full state (e.g., RPC calls),
@@ -109,11 +107,6 @@ func (r *EvmStateReader) CurrentBlock() *evmcore.EvmBlock {
 	n := r.store.GetLatestBlockIndex()
 
 	return r.getBlock(common.Hash{}, n, true)
-}
-
-// CurrentHeader returns the header of the most recent block in cache.
-func (r *EvmStateReader) CurrentHeader() *evmcore.EvmHeader {
-	return r.CurrentBlock().Header()
 }
 
 // LastBlockWithArchiveState returns the most recent block with archive.
