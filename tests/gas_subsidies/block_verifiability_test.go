@@ -472,12 +472,14 @@ type historyAdapter struct {
 	history *blockHashHistory
 }
 
-func (h historyAdapter) Header(_ common.Hash, number uint64) *evmcore.EvmHeader {
+func (h historyAdapter) Block(_ common.Hash, number uint64) *evmcore.EvmBlock {
 	// The only information required from the header is the block number, the
 	// block's hash, and the parent hash. Everything else is ignored by the EVM.
-	return &evmcore.EvmHeader{
-		Number:     big.NewInt(int64(number)),
-		Hash:       h.history.GetBlockHash(number),
-		ParentHash: h.history.GetBlockHash(number - 1),
+	return &evmcore.EvmBlock{
+		EvmHeader: evmcore.EvmHeader{
+			Number:     big.NewInt(int64(number)),
+			Hash:       h.history.GetBlockHash(number),
+			ParentHash: h.history.GetBlockHash(number - 1),
+		},
 	}
 }

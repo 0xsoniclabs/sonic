@@ -80,7 +80,7 @@ func getBlockContext(ctx context.Context, backend Backend, header *evmcore.EvmHe
 
 // chainContextBackend provides methods required to implement ChainContext.
 type chainContextBackend interface {
-	HeaderByNumber(context.Context, rpc.BlockNumber) (*evmcore.EvmHeader, error)
+	BlockByNumber(context.Context, rpc.BlockNumber) (*evmcore.EvmBlock, error)
 }
 
 // chainContext is an implementation of core.chainContext. It's main use-case
@@ -90,15 +90,15 @@ type chainContext struct {
 	ctx context.Context
 }
 
-func (context *chainContext) Header(hash common.Hash, number uint64) *evmcore.EvmHeader {
+func (context *chainContext) Block(hash common.Hash, number uint64) *evmcore.EvmBlock {
 	// This method is called to get the hash for a block number when executing the BLOCKHASH
 	// opcode. Hence no need to search for non-canonical blocks.
-	header, err := context.b.HeaderByNumber(context.ctx, rpc.BlockNumber(number))
-	if header == nil || err != nil {
+	block, err := context.b.BlockByNumber(context.ctx, rpc.BlockNumber(number))
+	if block == nil || err != nil {
 		return nil
 	}
-	if header.Hash != hash {
+	if block.Hash != hash {
 		return nil
 	}
-	return header
+	return block
 }

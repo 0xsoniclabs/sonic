@@ -32,8 +32,9 @@ import (
 // DummyChain supports retrieving headers and consensus parameters from the
 // current blockchain to be used during transaction processing.
 type DummyChain interface {
-	// Header returns the hash corresponding to their hash.
-	Header(common.Hash, uint64) *EvmHeader
+	// Block returns the block with the given hash and number.
+	// If the block is not found, nil is returned.
+	Block(hash common.Hash, number uint64) *EvmBlock
 }
 
 // NewEVMBlockContext creates a new context for use in the EVM.
@@ -115,13 +116,13 @@ func GetHashFn(ref *EvmHeader, chain DummyChain) func(n uint64) common.Hash {
 		lastKnownNumber := ref.Number.Uint64() - uint64(len(cache))
 
 		for {
-			header := chain.Header(lastKnownHash, lastKnownNumber)
-			if header == nil {
+			block := chain.Block(lastKnownHash, lastKnownNumber)
+			if block == nil {
 				break
 			}
-			cache = append(cache, header.ParentHash)
-			lastKnownHash = header.ParentHash
-			lastKnownNumber = header.Number.Uint64() - 1
+			cache = append(cache, block.ParentHash)
+			lastKnownHash = block.ParentHash
+			lastKnownNumber = block.Number.Uint64() - 1
 			if n == lastKnownNumber {
 				return lastKnownHash
 			}

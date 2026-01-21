@@ -40,16 +40,16 @@ func (m *MockDummyChain) EXPECT() *MockDummyChainMockRecorder {
 	return m.recorder
 }
 
-// Header mocks base method.
-func (m *MockDummyChain) Header(arg0 common.Hash, arg1 uint64) *EvmHeader {
+// Block mocks base method.
+func (m *MockDummyChain) Block(hash common.Hash, number uint64) *EvmBlock {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Header", arg0, arg1)
-	ret0, _ := ret[0].(*EvmHeader)
+	ret := m.ctrl.Call(m, "Block", hash, number)
+	ret0, _ := ret[0].(*EvmBlock)
 	return ret0
 }
 
-// Header indicates an expected call of Header.
-func (mr *MockDummyChainMockRecorder) Header(arg0, arg1 any) *gomock.Call {
+// Block indicates an expected call of Block.
+func (mr *MockDummyChainMockRecorder) Block(hash, number any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Header", reflect.TypeOf((*MockDummyChain)(nil).Header), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Block", reflect.TypeOf((*MockDummyChain)(nil).Block), hash, number)
 }

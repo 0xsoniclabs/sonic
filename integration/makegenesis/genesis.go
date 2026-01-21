@@ -166,14 +166,18 @@ type dummyHeaderReturner struct {
 	blocks []ibr.LlrIdxFullBlockRecord
 }
 
-func (d dummyHeaderReturner) Header(_ common.Hash, position uint64) *evmcore.EvmHeader {
+func (d dummyHeaderReturner) Block(_ common.Hash, position uint64) *evmcore.EvmBlock {
 	if position < uint64(len(d.blocks)) {
-		return &evmcore.EvmHeader{
-			BaseFee: d.blocks[position].BaseFee,
+		return &evmcore.EvmBlock{
+			EvmHeader: evmcore.EvmHeader{
+				BaseFee: d.blocks[position].BaseFee,
+			},
 		}
 	}
-	return &evmcore.EvmHeader{
-		BaseFee: big.NewInt(0),
+	return &evmcore.EvmBlock{
+		EvmHeader: evmcore.EvmHeader{
+			BaseFee: big.NewInt(0),
+		},
 	}
 }
 
