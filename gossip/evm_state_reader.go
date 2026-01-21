@@ -35,20 +35,20 @@ import (
 
 // StateReader defines methods to access EVM state.
 type StateReader interface {
-	// CurrentBaseFee returns the base fee charged in the most recent block in cache.
+	// CurrentBaseFee returns the base fee charged in the most recent block.
 	CurrentBaseFee() *big.Int
-	// CurrentMaxGasLimit returns the maximum gas limit of the most recent epoch in cache.
+	// CurrentMaxGasLimit returns the maximum gas limit of the most recent epoch.
 	CurrentMaxGasLimit() uint64
-	// CurrentConfig returns the chain config applicable to the most recent block in cache.
+	// CurrentConfig returns the chain config applicable to the most recent block.
 	CurrentConfig() *params.ChainConfig
-	// CurrentRules returns the rules applicable to the most recent epoch in cache.
+	// CurrentRules returns the rules applicable to the most recent epoch.
 	CurrentRules() opera.Rules
-	// CurrentBlock returns the most recent block in cache.
+	// CurrentBlock returns the most recent block.
 	// This method is the recommended option for fast access to the latest block
 	CurrentBlock() *evmcore.EvmBlock
-	// LastBlockWithArchiveState returns the most recent block with archive.
+	// LastBlockWithArchiveState returns the most recent block with archive state.
 	// This method shall be the preferable way to get the latest block for
-	// operations that require access to the full state (e.g., RPC calls),
+	// operations that require access to the full block (e.g., RPC calls),
 	LastBlockWithArchiveState(withTxs bool) (*evmcore.EvmBlock, error)
 	// Header returns the header of the block with the given hash and number.
 	// If the block is not found, nil is returned.
@@ -73,12 +73,12 @@ type EvmStateReader struct {
 	gpo   *gasprice.Oracle
 }
 
-// CurrentBaseFee returns the base fee of the most recent block in cache.
+// CurrentBaseFee returns the base fee of the most recent block.
 func (r *EvmStateReader) CurrentBaseFee() *big.Int {
 	return new(big.Int).Set(r.CurrentBlock().BaseFee)
 }
 
-// CurrentMaxGasLimit returns the maximum gas limit of the most recent epoch in cache.
+// CurrentMaxGasLimit returns the maximum gas limit of the most recent epoch.
 func (r *EvmStateReader) CurrentMaxGasLimit() uint64 {
 	rules := r.store.GetRules()
 	maxEmptyEventGas := rules.Economy.Gas.EventGas +
@@ -90,18 +90,18 @@ func (r *EvmStateReader) CurrentMaxGasLimit() uint64 {
 	return rules.Economy.Gas.MaxEventGas - maxEmptyEventGas
 }
 
-// CurrentConfig returns the chain config applicable to the most recent block in cache.
+// CurrentConfig returns the chain config applicable to the most recent block.
 func (r *EvmStateReader) CurrentConfig() *params.ChainConfig {
 	blockNumber := idx.Block(r.CurrentBlock().Number.Uint64())
 	return r.store.GetEvmChainConfig(blockNumber)
 }
 
-// CurrentRules returns the rules applicable to the most recent epoch in cache.
+// CurrentRules returns the rules applicable to the most recent epoch.
 func (r *EvmStateReader) CurrentRules() opera.Rules {
 	return r.store.GetRules()
 }
 
-// CurrentBlock returns the most recent block in cache.
+// CurrentBlock returns the most recent block.
 // This method is the recommended option for fast access to the latest block.
 func (r *EvmStateReader) CurrentBlock() *evmcore.EvmBlock {
 	n := r.store.GetLatestBlockIndex()
