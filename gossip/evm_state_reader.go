@@ -130,7 +130,7 @@ func (r *EvmStateReader) LastBlockWithArchiveState(withTxs bool) (*evmcore.EvmBl
 // Header returns the header of the block with the given hash and number.
 // If the block is not found, nil is returned.
 func (r *EvmStateReader) Header(hash common.Hash, number uint64) *evmcore.EvmHeader {
-	return r.Block(hash, number).Header()
+	return r.getBlock(hash, idx.Block(number), false).Header()
 }
 
 // Block returns the block with the given hash and number.
