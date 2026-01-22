@@ -50,11 +50,13 @@ type StateReader interface {
 	// This method shall be the preferable way to get the latest block for
 	// operations that require access to the full block (e.g., RPC calls),
 	LastBlockWithArchiveState(withTxs bool) (*evmcore.EvmBlock, error)
-	// Header returns the header of the block with the given hash and number.
+	// Header returns the header of the block with the given number.
 	// If the block is not found, nil is returned.
+	// If the hash provided is not zero and does not match, nil is returned.
 	Header(hash common.Hash, number uint64) *evmcore.EvmHeader
-	// Block returns the block with the given hash and number.
+	// Block returns the block with the given number.
 	// If the block is not found, nil is returned.
+	// If the hash provided is not zero and does not match, nil is returned.
 	Block(hash common.Hash, number uint64) *evmcore.EvmBlock
 	// ReadOnlyStateDB returns a read-only access to stateDB.
 	ReadOnlyStateDB() (state.StateDB, error)
@@ -127,18 +129,22 @@ func (r *EvmStateReader) LastBlockWithArchiveState(withTxs bool) (*evmcore.EvmBl
 	return r.getBlock(common.Hash{}, latestBlock, withTxs), nil
 }
 
-// Header returns the header of the block with the given hash and number.
+// Header returns the header of the block with the given number.
 // If the block is not found, nil is returned.
+// If the hash provided is not zero and does not match, nil is returned.
 func (r *EvmStateReader) Header(hash common.Hash, number uint64) *evmcore.EvmHeader {
 	return r.getBlock(hash, idx.Block(number), false).Header()
 }
 
-// Block returns the block with the given hash and number.
+// Block returns the block with the given number.
 // If the block is not found, nil is returned.
+// If the hash provided is not zero and does not match, nil is returned.
 func (r *EvmStateReader) Block(hash common.Hash, number uint64) *evmcore.EvmBlock {
 	return r.getBlock(hash, idx.Block(number), true)
 }
 
+// getBlock is an internal method to get block by number.
+// If the hash provided is not zero and does not match, nil is returned.
 func (r *EvmStateReader) getBlock(h common.Hash, n idx.Block, readTxs bool) *evmcore.EvmBlock {
 	block := r.store.GetBlock(n)
 	if block == nil {

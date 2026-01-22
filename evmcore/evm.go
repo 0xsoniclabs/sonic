@@ -32,8 +32,10 @@ import (
 // DummyChain supports retrieving headers and consensus parameters from the
 // current blockchain to be used during transaction processing.
 type DummyChain interface {
-	// Header returns the hash corresponding to their hash.
-	Header(common.Hash, uint64) *EvmHeader
+	// Header returns the header of the block with the given number.
+	// If the block is not found, nil is returned.
+	// If the hash provided is not zero and does not match, nil is returned.
+	Header(hash common.Hash, number uint64) *EvmHeader
 }
 
 // NewEVMBlockContext creates a new context for use in the EVM.
