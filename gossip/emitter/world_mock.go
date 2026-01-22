@@ -246,17 +246,17 @@ func (mr *MockExternalMockRecorder) GetUpgradeHeights() *gomock.Call {
 }
 
 // Header mocks base method.
-func (m *MockExternal) Header(arg0 common.Hash, arg1 uint64) *evmcore.EvmHeader {
+func (m *MockExternal) Header(arg0 common.Hash, number uint64) *evmcore.EvmHeader {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Header", arg0, arg1)
+	ret := m.ctrl.Call(m, "Header", arg0, number)
 	ret0, _ := ret[0].(*evmcore.EvmHeader)
 	return ret0
 }
 
 // Header indicates an expected call of Header.
-func (mr *MockExternalMockRecorder) Header(arg0, arg1 any) *gomock.Call {
+func (mr *MockExternalMockRecorder) Header(arg0, number any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Header", reflect.TypeOf((*MockExternal)(nil).Header), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Header", reflect.TypeOf((*MockExternal)(nil).Header), arg0, number)
 }
 
 // IsBusy mocks base method.
@@ -641,17 +641,17 @@ func (mr *MockTxPoolMockRecorder) Count() *gomock.Call {
 }
 
 // Has mocks base method.
-func (m *MockTxPool) Has(hash common.Hash) bool {
+func (m *MockTxPool) Has(arg0 common.Hash) bool {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Has", hash)
+	ret := m.ctrl.Call(m, "Has", arg0)
 	ret0, _ := ret[0].(bool)
 	return ret0
 }
 
 // Has indicates an expected call of Has.
-func (mr *MockTxPoolMockRecorder) Has(hash any) *gomock.Call {
+func (mr *MockTxPoolMockRecorder) Has(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Has", reflect.TypeOf((*MockTxPool)(nil).Has), hash)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Has", reflect.TypeOf((*MockTxPool)(nil).Has), arg0)
 }
 
 // Pending mocks base method.

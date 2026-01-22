@@ -172,7 +172,7 @@ type StateReader interface {
 	SubscribeNewBlock(ch chan<- ChainHeadNotify) notify.Subscription
 	CurrentConfig() *params.ChainConfig
 	CurrentRules() opera.Rules
-	Header(common.Hash, uint64) *EvmHeader
+	Header(hash common.Hash, number uint64) *EvmHeader
 }
 
 // subsidiesCheckerFactory is a factory method to create a subsidies checker instance.
