@@ -135,20 +135,6 @@ func (m *MockChain) EXPECT() *MockChainMockRecorder {
 	return m.recorder
 }
 
-// Block mocks base method.
-func (m *MockChain) Block(hash common.Hash, number uint64) *evmcore.EvmBlock {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Block", hash, number)
-	ret0, _ := ret[0].(*evmcore.EvmBlock)
-	return ret0
-}
-
-// Block indicates an expected call of Block.
-func (mr *MockChainMockRecorder) Block(hash, number any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Block", reflect.TypeOf((*MockChain)(nil).Block), hash, number)
-}
-
 // GetCurrentNetworkRules mocks base method.
 func (m *MockChain) GetCurrentNetworkRules() opera.Rules {
 	m.ctrl.T.Helper()
@@ -175,6 +161,20 @@ func (m *MockChain) GetEvmChainConfig(blockHeight idx.Block) *params.ChainConfig
 func (mr *MockChainMockRecorder) GetEvmChainConfig(blockHeight any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEvmChainConfig", reflect.TypeOf((*MockChain)(nil).GetEvmChainConfig), blockHeight)
+}
+
+// Header mocks base method.
+func (m *MockChain) Header(arg0 common.Hash, arg1 uint64) *evmcore.EvmHeader {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Header", arg0, arg1)
+	ret0, _ := ret[0].(*evmcore.EvmHeader)
+	return ret0
+}
+
+// Header indicates an expected call of Header.
+func (mr *MockChainMockRecorder) Header(arg0, arg1 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Header", reflect.TypeOf((*MockChain)(nil).Header), arg0, arg1)
 }
 
 // StateDB mocks base method.

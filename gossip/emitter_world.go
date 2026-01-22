@@ -88,11 +88,11 @@ func (ew *emitterWorldProc) GetUpgradeHeights() []opera.UpgradeHeight {
 	return ew.s.store.GetUpgradeHeights()
 }
 
-func (ew *emitterWorldProc) Block(h common.Hash, number uint64) *evmcore.EvmBlock {
+func (ew *emitterWorldProc) Header(h common.Hash, number uint64) *evmcore.EvmHeader {
 	reader := &EvmStateReader{
 		store: ew.s.store,
 	}
-	return reader.Block(h, number)
+	return reader.Header(h, number)
 }
 
 func (ew *emitterWorldProc) IsSynced() bool {

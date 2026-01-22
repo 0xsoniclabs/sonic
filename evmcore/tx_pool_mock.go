@@ -129,6 +129,20 @@ func (mr *MockStateReaderMockRecorder) CurrentRules() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CurrentRules", reflect.TypeOf((*MockStateReader)(nil).CurrentRules))
 }
 
+// Header mocks base method.
+func (m *MockStateReader) Header(arg0 common.Hash, arg1 uint64) *EvmHeader {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Header", arg0, arg1)
+	ret0, _ := ret[0].(*EvmHeader)
+	return ret0
+}
+
+// Header indicates an expected call of Header.
+func (mr *MockStateReaderMockRecorder) Header(arg0, arg1 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Header", reflect.TypeOf((*MockStateReader)(nil).Header), arg0, arg1)
+}
+
 // ReadOnlyStateDB mocks base method.
 func (m *MockStateReader) ReadOnlyStateDB() (state.StateDB, error) {
 	m.ctrl.T.Helper()

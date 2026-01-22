@@ -54,12 +54,12 @@ func (p *EVMModule) Start(
 	if block.Idx == 0 {
 		baseFee = gasprice.GetInitialBaseFee(rules.Economy)
 	} else {
-		block := reader.Block(common.Hash{}, uint64(block.Idx-1))
-		prevBlockHash = block.Hash
+		header := reader.Header(common.Hash{}, uint64(block.Idx-1))
+		prevBlockHash = header.Hash
 		baseFee = gasprice.GetBaseFeeForNextBlock(gasprice.ParentBlockInfo{
-			BaseFee:  block.BaseFee,
-			Duration: block.Duration,
-			GasUsed:  block.GasUsed,
+			BaseFee:  header.BaseFee,
+			Duration: header.Duration,
+			GasUsed:  header.GasUsed,
 		}, rules.Economy)
 	}
 
