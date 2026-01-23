@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/gossip/contract/sfc100"
@@ -481,4 +482,55 @@ func BenchmarkIntegrationTestNet_StartAndStop(b *testing.B) {
 		b.StopTimer()
 		net.Stop()
 	}
+}
+
+func TestIntegration_BlockByNumber_WithTransactions(t *testing.T) {
+	// This is a placeholder for a test that ensures long WebSocket connections
+	// do not hang indefinitely. The actual implementation would depend on the
+	// specifics of the long WebSocket functionality being tested.
+
+	net := StartIntegrationTestNet(t)
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	startTime := time.Now()
+	newBlockCounter := 0
+	timeAccumulator := time.Duration(0)
+	skippedFirstBlock := false
+
+	sendTxTicker := time.NewTicker(500 * time.Millisecond)
+	queryBlockTicker := time.NewTicker(1 * time.Second)
+	for time.Since(startTime) < 1*time.Minute {
+		select {
+		case <-queryBlockTicker.C:
+			if !skippedFirstBlock {
+				// we skip the first block to avoid measuring initial delays
+				skippedFirstBlock = true
+				_, _ = client.BlockByNumber(t.Context(), nil)
+				continue
+			}
+			newBlockCounter++
+
+			start := time.Now()
+			block, err := client.BlockByNumber(t.Context(), nil)
+			end := time.Since(start)
+			require.NoError(t, err, "failed to query latest block")
+			require.NotNil(t, block, "latest block should not be nil")
+			timeAccumulator += end
+
+			averageTime := timeAccumulator / time.Duration(newBlockCounter)
+			t.Logf("Queried block %v (txs: %v) in %v (average: %v).",
+				block.NumberU64(), len(block.Transactions()), end, averageTime)
+
+		case <-sendTxTicker.C:
+			basicTx := CreateTransaction(t, net, &types.LegacyTx{}, net.GetSessionSponsor())
+			err := client.SendTransaction(t.Context(), basicTx)
+			require.NoError(t, err, "failed to send transaction to keep blocks coming")
+		}
+	}
+	t.Logf("Received a total of %v new blocks average response time %v.", newBlockCounter, timeAccumulator/time.Duration(newBlockCounter))
+	require.Less(t, timeAccumulator/time.Duration(newBlockCounter), 1*time.Second+500*time.Millisecond,
+		"average block query time should be less than 1.5 seconds")
 }
