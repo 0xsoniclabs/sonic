@@ -1214,14 +1214,14 @@ func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSucc
 	state.EXPECT().GetNonce(sfcAddress).Return(uint64(0)).AnyTimes()
 	state.EXPECT().GetBalance(sfcAddress).Return(uint256.NewInt(1e18)).AnyTimes()
 	state.EXPECT().GetState(sfcAddress, any).Return(common.Hash{1}).AnyTimes()
-	state.EXPECT().GetCommittedState(sfcAddress, any).Return(common.Hash{1}).AnyTimes()
+	state.EXPECT().GetStateAndCommittedState(sfcAddress, any).Return(common.Hash{}, common.Hash{1}).AnyTimes()
 
 	state.EXPECT().Exist(registryAddress).Return(true).AnyTimes()
 	state.EXPECT().GetCode(registryAddress).Return(registry.GetCode()).AnyTimes()
 	state.EXPECT().GetCodeHash(registryAddress).Return(registryCodeHash).AnyTimes()
 	state.EXPECT().GetBalance(registryAddress).Return(uint256.NewInt(1e18)).AnyTimes()
 	state.EXPECT().GetState(registryAddress, any).Return(common.Hash{1}).AnyTimes()
-	state.EXPECT().GetCommittedState(registryAddress, any).Return(common.Hash{1}).AnyTimes()
+	state.EXPECT().GetStateAndCommittedState(registryAddress, any).Return(common.Hash{}, common.Hash{1}).AnyTimes()
 
 	state.EXPECT().Exist(target).Return(false).AnyTimes()
 	state.EXPECT().GetCode(target).Return(nil).AnyTimes()
