@@ -41,15 +41,15 @@ func (m *MockDummyChain) EXPECT() *MockDummyChainMockRecorder {
 }
 
 // Header mocks base method.
-func (m *MockDummyChain) Header(arg0 common.Hash, arg1 uint64) *EvmHeader {
+func (m *MockDummyChain) Header(hash common.Hash, number uint64) *EvmHeader {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Header", arg0, arg1)
+	ret := m.ctrl.Call(m, "Header", hash, number)
 	ret0, _ := ret[0].(*EvmHeader)
 	return ret0
 }
 
 // Header indicates an expected call of Header.
-func (mr *MockDummyChainMockRecorder) Header(arg0, arg1 any) *gomock.Call {
+func (mr *MockDummyChainMockRecorder) Header(hash, number any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Header", reflect.TypeOf((*MockDummyChain)(nil).Header), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Header", reflect.TypeOf((*MockDummyChain)(nil).Header), hash, number)
 }

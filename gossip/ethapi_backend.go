@@ -194,7 +194,7 @@ func (b *EthAPIBackend) StateAndBlockByNumberOrHash(ctx context.Context, blockNr
 	if block == nil {
 		return nil, nil, errors.New("header not found")
 	}
-	stateDb, err := b.state.RpcStateDB(block.Number, block.Root)
+	stateDb, err := b.state.BlockStateDB(block.Number, block.Root)
 	if err != nil {
 		return nil, nil, err
 	}

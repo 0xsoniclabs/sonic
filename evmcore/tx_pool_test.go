@@ -197,7 +197,7 @@ func (bc *testBlockChain) Header(common.Hash, uint64) *EvmHeader {
 	return bc.CurrentBlock().Header()
 }
 
-func (bc *testBlockChain) ReadOnlyStateDB() (state.StateDB, error) {
+func (bc *testBlockChain) CurrentStateDB() (state.StateDB, error) {
 	bc.mu.Lock()
 	defer bc.mu.Unlock()
 	return bc.statedb, nil

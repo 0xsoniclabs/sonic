@@ -162,7 +162,7 @@ func mockChain(ctrl *gomock.Controller, chainConfig *params.ChainConfig, upgrade
 		},
 	}).AnyTimes()
 	chain.EXPECT().CurrentConfig().Return(chainConfig).AnyTimes()
-	chain.EXPECT().ReadOnlyStateDB().Return(state, nil).AnyTimes()
+	chain.EXPECT().CurrentStateDB().Return(state, nil).AnyTimes()
 	chain.EXPECT().CurrentMaxGasLimit().Return(uint64(30_000_000)).AnyTimes()
 	chain.EXPECT().CurrentBaseFee().Return(big.NewInt(1)).AnyTimes()
 

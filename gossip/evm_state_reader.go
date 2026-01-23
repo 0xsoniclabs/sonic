@@ -60,13 +60,13 @@ type StateReader interface {
 	// If the hash provided is not zero and does not match the hash of the
 	// block found, nil is returned.
 	Block(verificationHash common.Hash, number uint64) *evmcore.EvmBlock
-	// ReadOnlyStateDB returns a read-only access to stateDB.
-	ReadOnlyStateDB() (state.StateDB, error)
-	// RpcStateDB returns stateDB for the given block number and state root.
+	// CurrentStateDB returns a read-only access to stateDB.
+	CurrentStateDB() (state.StateDB, error)
+	// BlockStateDB returns stateDB for the given block number.
 	// An error is returned if the live state is not initialized, it failed to
 	// find the block in the archive, or the state root of the block found
 	// does not match the given state root.
-	RpcStateDB(blockNum *big.Int, stateRoot common.Hash) (state.StateDB, error)
+	BlockStateDB(blockNum *big.Int, stateRoot common.Hash) (state.StateDB, error)
 }
 
 // EvmStateReader implements StateReader interface.
@@ -212,15 +212,15 @@ func (r *EvmStateReader) getBlock(verificationHash common.Hash, n idx.Block, rea
 	return evmBlock
 }
 
-// ReadOnlyStateDB returns a read-only StateDB for the current state.
-func (r *EvmStateReader) ReadOnlyStateDB() (state.StateDB, error) {
-	return r.store.evm.GetReadOnlyStateDB()
+// CurrentStateDB returns a read-only StateDB for the current state.
+func (r *EvmStateReader) CurrentStateDB() (state.StateDB, error) {
+	return r.store.evm.GetCurrentStateDb()
 }
 
-// RpcStateDB returns stateDB for the given block number and state root.
+// BlockStateDB returns stateDB for the given block number and state root.
 // An error is returned if the live state is not initialized, it failed to
 // find the block in the archive, or the state root of the block found
 // does not match the given state root.
-func (r *EvmStateReader) RpcStateDB(blockNum *big.Int, stateRoot common.Hash) (state.StateDB, error) {
-	return r.store.evm.GetRpcStateDb(blockNum, stateRoot)
+func (r *EvmStateReader) BlockStateDB(blockNum *big.Int, stateRoot common.Hash) (state.StateDB, error) {
+	return r.store.evm.GetBlockStateDb(blockNum, stateRoot)
 }

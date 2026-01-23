@@ -166,7 +166,7 @@ const (
 type StateReader interface {
 	CurrentBlock() *EvmBlock
 	Block(hash common.Hash, number uint64) *EvmBlock
-	ReadOnlyStateDB() (state.StateDB, error)
+	CurrentStateDB() (state.StateDB, error)
 	CurrentBaseFee() *big.Int
 	CurrentMaxGasLimit() uint64
 	SubscribeNewBlock(ch chan<- ChainHeadNotify) notify.Subscription
@@ -1453,7 +1453,7 @@ func (pool *TxPool) reset(oldHead, newHead *EvmHeader) {
 	if newHead == nil {
 		newHead = pool.chain.CurrentBlock().Header() // Special case during testing
 	}
-	statedb, err := pool.chain.ReadOnlyStateDB()
+	statedb, err := pool.chain.CurrentStateDB()
 	if err != nil {
 		log.Error("Failed to get TxPool StateDB", "block", newHead.Number, "root", newHead.Root, "err", err)
 		return

@@ -77,7 +77,7 @@ func (ew *emitterWorldProc) IsBusy() bool {
 }
 
 func (ew *emitterWorldProc) StateDB() state.StateDB {
-	statedb, err := ew.s.store.evm.GetReadOnlyStateDB()
+	statedb, err := ew.s.store.evm.GetCurrentStateDb()
 	if err != nil {
 		return nil
 	}

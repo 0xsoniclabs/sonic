@@ -45,9 +45,9 @@ func (s *Store) GetLiveStateDb(stateRoot hash.Hash) (state.StateDB, error) {
 	return CreateCarmenStateDb(s.liveStateDb), nil
 }
 
-// GetReadOnlyStateDB obtains StateDB for TxPool evaluation - the latest finalized, read-only.
+// GetCurrentStateDb obtains a read only StateDB for TxPool evaluation - the latest finalized.
 // It is also used in emitter for emitterdriver contract reading at the start of an epoch.
-func (s *Store) GetReadOnlyStateDB() (state.StateDB, error) {
+func (s *Store) GetCurrentStateDb() (state.StateDB, error) {
 	// for TxPool and emitter it is ok to provide the newest state (and ignore the expected hash)
 	if s.carmenState == nil {
 		return nil, fmt.Errorf("unable to get TxPool StateDb - EvmStore is not open")
@@ -64,8 +64,8 @@ func (s *Store) GetArchiveBlockHeight() (height uint64, empty bool, err error) {
 	return s.liveStateDb.GetArchiveBlockHeight()
 }
 
-// GetRpcStateDb obtains archive StateDB for RPC requests evaluation
-func (s *Store) GetRpcStateDb(blockNum *big.Int, stateRoot common.Hash) (state.StateDB, error) {
+// GetBlockStateDb returns archived StateDB for the given block and verifies the state root.
+func (s *Store) GetBlockStateDb(blockNum *big.Int, stateRoot common.Hash) (state.StateDB, error) {
 	// always use archive state (live state may mix data from various block heights)
 	if s.liveStateDb == nil {
 		return nil, fmt.Errorf("unable to get RPC StateDb - EvmStore is not open")

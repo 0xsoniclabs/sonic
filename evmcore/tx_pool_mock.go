@@ -129,6 +129,21 @@ func (mr *MockStateReaderMockRecorder) CurrentRules() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CurrentRules", reflect.TypeOf((*MockStateReader)(nil).CurrentRules))
 }
 
+// CurrentStateDB mocks base method.
+func (m *MockStateReader) CurrentStateDB() (state.StateDB, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CurrentStateDB")
+	ret0, _ := ret[0].(state.StateDB)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CurrentStateDB indicates an expected call of CurrentStateDB.
+func (mr *MockStateReaderMockRecorder) CurrentStateDB() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CurrentStateDB", reflect.TypeOf((*MockStateReader)(nil).CurrentStateDB))
+}
+
 // Header mocks base method.
 func (m *MockStateReader) Header(hash common.Hash, number uint64) *EvmHeader {
 	m.ctrl.T.Helper()
@@ -141,21 +156,6 @@ func (m *MockStateReader) Header(hash common.Hash, number uint64) *EvmHeader {
 func (mr *MockStateReaderMockRecorder) Header(hash, number any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Header", reflect.TypeOf((*MockStateReader)(nil).Header), hash, number)
-}
-
-// ReadOnlyStateDB mocks base method.
-func (m *MockStateReader) ReadOnlyStateDB() (state.StateDB, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReadOnlyStateDB")
-	ret0, _ := ret[0].(state.StateDB)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ReadOnlyStateDB indicates an expected call of ReadOnlyStateDB.
-func (mr *MockStateReaderMockRecorder) ReadOnlyStateDB() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadOnlyStateDB", reflect.TypeOf((*MockStateReader)(nil).ReadOnlyStateDB))
 }
 
 // SubscribeNewBlock mocks base method.
