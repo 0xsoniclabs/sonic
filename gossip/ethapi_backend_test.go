@@ -24,6 +24,7 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
+	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
@@ -88,7 +89,7 @@ func TestEthApiBackend_GetNetworkRules_MissingBlockReturnsNilRules(t *testing.T)
 	require.Nil(rules)
 }
 
-func TestEthApiBackend_BlockByNumber_ReturnsBlockWhenRequesting(t *testing.T) {
+func TestEthApiBackend_BlockByNumber_ReturnsLatestBlockWhenRequesting(t *testing.T) {
 	require := require.New(t)
 
 	lastArchiveBlockNumber := big.NewInt(5)
@@ -96,7 +97,6 @@ func TestEthApiBackend_BlockByNumber_ReturnsBlockWhenRequesting(t *testing.T) {
 	cases := map[string]struct {
 		requestedBlock rpc.BlockNumber
 	}{
-
 		"latest block in store greater than archive": {
 			requestedBlock: rpc.LatestBlockNumber,
 		},
@@ -120,13 +120,13 @@ func TestEthApiBackend_BlockByNumber_ReturnsBlockWhenRequesting(t *testing.T) {
 	for name, test := range cases {
 		t.Run(name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
-			state := NewMockStateReader(ctrl)
-			state.EXPECT().LastBlockWithArchiveState(true).Return(&block, nil).AnyTimes()
-			state.EXPECT().GetBlock(common.Hash{}, uint64(5)).Return(&block).AnyTimes()
-			state.EXPECT().GetRpcStateDB(lastArchiveBlockNumber, gomock.Any()).
-				Return(nil, nil)
+			stateReader := NewMockStateReader(ctrl)
+			stateReader.EXPECT().LastBlockWithArchiveState(true).Return(&block, nil).AnyTimes()
+			stateReader.EXPECT().Block(common.Hash{}, uint64(5)).Return(&block).AnyTimes()
+			stateReader.EXPECT().BlockStateDB(lastArchiveBlockNumber, gomock.Any()).
+				Return(state.NewMockStateDB(ctrl), nil)
 
-			backend := &EthAPIBackend{state: state}
+			backend := &EthAPIBackend{state: stateReader}
 
 			block, err := backend.BlockByNumber(t.Context(), test.requestedBlock)
 			require.NoError(err)
@@ -143,12 +143,12 @@ func TestEthApiBackend_BlockByNumber_ReturnsBlockZero_WhenRequestingEarliest(t *
 	block := evmcore.EvmBlock{EvmHeader: evmcore.EvmHeader{Number: firstBlockNumber}}
 
 	ctrl := gomock.NewController(t)
-	state := NewMockStateReader(ctrl)
-	state.EXPECT().GetBlock(common.Hash{}, uint64(0)).Return(&block)
-	state.EXPECT().GetRpcStateDB(firstBlockNumber, gomock.Any()).Return(nil, nil)
+	stateReader := NewMockStateReader(ctrl)
+	stateReader.EXPECT().Block(common.Hash{}, uint64(0)).Return(&block)
+	stateReader.EXPECT().BlockStateDB(firstBlockNumber, gomock.Any()).Return(state.NewMockStateDB(ctrl), nil)
 
 	backend := &EthAPIBackend{
-		state: state,
+		state: stateReader,
 	}
 
 	gotBlock, err := backend.BlockByNumber(t.Context(), rpc.EarliestBlockNumber)
@@ -165,14 +165,14 @@ func TestEthApiBackend_BlockByNumber_ReturnsNil_WhenRequestedBlockIsNotInArchive
 		EvmHeader: evmcore.EvmHeader{Number: lastArchiveBlockNumber}}
 
 	ctrl := gomock.NewController(t)
-	state := NewMockStateReader(ctrl)
+	stateReader := NewMockStateReader(ctrl)
 	// store returns block 5
-	state.EXPECT().GetBlock(common.Hash{}, uint64(5)).Return(&lastStoreBlock)
+	stateReader.EXPECT().Block(common.Hash{}, uint64(5)).Return(&lastStoreBlock)
 	// archive returns error for block 5
-	state.EXPECT().GetRpcStateDB(lastArchiveBlockNumber, gomock.Any()).
+	stateReader.EXPECT().BlockStateDB(lastArchiveBlockNumber, gomock.Any()).
 		Return(nil, fmt.Errorf("block does not exists in archive"))
 
-	backend := &EthAPIBackend{state: state}
+	backend := &EthAPIBackend{state: stateReader}
 
 	block, err := backend.BlockByNumber(t.Context(), rpc.BlockNumber(5))
 	// since the requested block is not in archive, we expect nil
