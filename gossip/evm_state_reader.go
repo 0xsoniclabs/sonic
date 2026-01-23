@@ -52,12 +52,14 @@ type StateReader interface {
 	LastBlockWithArchiveState(withTxs bool) (*evmcore.EvmBlock, error)
 	// Header returns the header of the block with the given number.
 	// If the block is not found, nil is returned.
-	// If the hash provided is not zero and does not match, nil is returned.
-	Header(hash common.Hash, number uint64) *evmcore.EvmHeader
+	// If the hash provided is not zero and does not match the hash of the
+	// block found, nil is returned.
+	Header(verificationHash common.Hash, number uint64) *evmcore.EvmHeader
 	// Block returns the block with the given number.
 	// If the block is not found, nil is returned.
-	// If the hash provided is not zero and does not match, nil is returned.
-	Block(hash common.Hash, number uint64) *evmcore.EvmBlock
+	// If the hash provided is not zero and does not match the hash of the
+	// block found, nil is returned.
+	Block(verificationHash common.Hash, number uint64) *evmcore.EvmBlock
 	// ReadOnlyStateDB returns a read-only access to stateDB.
 	ReadOnlyStateDB() (state.StateDB, error)
 	// RpcStateDB returns stateDB for the given block number and state root.
@@ -131,26 +133,29 @@ func (r *EvmStateReader) LastBlockWithArchiveState(withTxs bool) (*evmcore.EvmBl
 
 // Header returns the header of the block with the given number.
 // If the block is not found, nil is returned.
-// If the hash provided is not zero and does not match, nil is returned.
-func (r *EvmStateReader) Header(hash common.Hash, number uint64) *evmcore.EvmHeader {
-	return r.getBlock(hash, idx.Block(number), false).Header()
+// If the hash provided is not zero and does not match the hash of the
+// block found, nil is returned.
+func (r *EvmStateReader) Header(verificationHash common.Hash, number uint64) *evmcore.EvmHeader {
+	return r.getBlock(verificationHash, idx.Block(number), false).Header()
 }
 
 // Block returns the block with the given number.
 // If the block is not found, nil is returned.
-// If the hash provided is not zero and does not match, nil is returned.
-func (r *EvmStateReader) Block(hash common.Hash, number uint64) *evmcore.EvmBlock {
-	return r.getBlock(hash, idx.Block(number), true)
+// If the hash provided is not zero and does not match the hash of the block
+// found, nil is returned.
+func (r *EvmStateReader) Block(verificationHash common.Hash, number uint64) *evmcore.EvmBlock {
+	return r.getBlock(verificationHash, idx.Block(number), true)
 }
 
-// getBlock is an internal method to get block by number.
-// If the hash provided is not zero and does not match, nil is returned.
-func (r *EvmStateReader) getBlock(h common.Hash, n idx.Block, readTxs bool) *evmcore.EvmBlock {
+// getBlock is an internal method to get a block by number.
+// If the hash provided is not zero and does not match the hash of the block
+// found, nil is returned.
+func (r *EvmStateReader) getBlock(verificationHash common.Hash, n idx.Block, readTxs bool) *evmcore.EvmBlock {
 	block := r.store.GetBlock(n)
 	if block == nil {
 		return nil
 	}
-	if (h != common.Hash{}) && (h != block.Hash()) {
+	if (verificationHash != common.Hash{}) && (verificationHash != block.Hash()) {
 		return nil
 	}
 	if readTxs {
