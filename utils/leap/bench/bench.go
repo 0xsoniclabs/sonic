@@ -18,7 +18,61 @@ import (
 	"github.com/syndtr/goleveldb/leveldb/opt"
 )
 
+// Creation of a usable Sonic DB directory:
+//
+// > go run ./cmd/sonictool --datadir /media/herbert/WorkData/sonic/chain_data_with_fake_logs genesis fake 1
+//
+// Copy in the tables 't' and 'r' from a full sonic DB with logs using the code
+// in this file (with the copyTable function and the adjusted file paths).
+//
+// > go run ./utils/leap/bench
+//
+// Run the Sonic client without network:
+//
+// > go run ./cmd/sonicd --datadir /media/herbert/WorkData/sonic/chain_data_with_fake_logs --maxpeers 0 --http --http.api eth --pprof
+
 func main() {
+
+	src := "/media/herbert/WorkData/fantom/datadir-logs-59-63M-only"
+	dst := "/media/herbert/WorkData/sonic/chain_data_with_fake_logs"
+
+	err := copyTables(
+		filepath.Join(src, "chaindata", "gossip"),
+		filepath.Join(dst, "chaindata", "gossip"),
+		't',
+		func(key []byte) bool {
+			if len(key) != 82 {
+				return false
+			}
+			// prefix+topic+topicN+(blockN+TxHash+logIndex)
+			block := binary.BigEndian.Uint64(key[1+32+1 : 1+32+1+8])
+			return 59_000_000 <= block && block <= 63_000_000
+		},
+	)
+	if err != nil {
+		fmt.Printf("Failed to copy 't' table: %v\n", err)
+		return
+	}
+
+	err = copyTables(
+		filepath.Join(src, "chaindata", "gossip"),
+		filepath.Join(dst, "chaindata", "gossip"),
+		'r',
+		func(key []byte) bool {
+			if len(key) != 49 {
+				return false
+			}
+			// (blockN+TxHash+logIndex)
+			block := binary.BigEndian.Uint64(key[1 : 1+8])
+			return 59_000_000 <= block && block <= 63_000_000
+		},
+	)
+	if err != nil {
+		fmt.Printf("Failed to copy 'r' table: %v\n", err)
+		return
+	}
+
+	return
 
 	path := "/media/herbert/WorkData/chaindata/sonic_main_net/sonic-new-filter-datadir"
 	listKeys(filepath.Join(path, "chaindata", "gossip"))
@@ -176,11 +230,69 @@ func listKeys(
 	// Look for key entries with 't' or 'r' prefix.
 }
 
-// TODO:
-//
-// Import full sonic DB with logs:
-// go run ./cmd/sonictool --datadir /media/herbert/WorkData/chaindata/sonic_main_net/sonic-new-filter-full-datadir --cache 16000 genesis /media/herbert/WorkData/chaindata/sonic_main_net/sonic-60000-full.g
-//
-// Use Aida code to extract log queries from rpc log
-//
-// Benchmark log processing;
+func copyTables(
+	src, dst string,
+	prefix byte,
+	keyFilter func([]byte) bool,
+) error {
+
+	// topic+topicN+(blockN+TxHash+logIndex) -> topic_count (where topicN=0 is for address)
+	//		Topic kvdb.Store `table:"t"`
+	// (blockN+TxHash+logIndex) -> ordered topic_count topics, blockHash, address, data
+	//		Logrec kvdb.Store `table:"r"`
+
+	in, err := pebble.Open(src, &pebble.Options{
+		ErrorIfNotExists: true,
+		ReadOnly:         true,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to open DB: %v", err)
+	}
+	defer in.Close()
+
+	out, err := pebble.Open(dst, &pebble.Options{})
+	if err != nil {
+		return fmt.Errorf("failed to open DB: %v", err)
+	}
+	defer out.Close()
+
+	iter, err := in.NewIter(&pebble.IterOptions{
+		LowerBound: []byte{prefix},
+		UpperBound: []byte{prefix + 1},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create iterator: %v", err)
+	}
+
+	count := 0
+	batch := out.NewBatch()
+	for iter.First(); iter.Valid(); iter.Next() {
+		key := iter.Key()
+		if !keyFilter(key) {
+			continue
+		}
+		batch.Set(iter.Key(), iter.Value(), nil)
+
+		count++
+		if count%100_000 == 0 {
+			fmt.Printf("Copied %d entries\n", count)
+			if err := batch.Commit(nil); err != nil {
+				return fmt.Errorf("failed to commit batch: %v", err)
+			}
+			batch = out.NewBatch()
+		}
+	}
+	if err := batch.Commit(nil); err != nil {
+		return fmt.Errorf("failed to commit batch: %v", err)
+	}
+	if err := iter.Close(); err != nil {
+		return fmt.Errorf("failed to close iterator: %v", err)
+	}
+
+	fmt.Printf("Copied total %d entries with prefix %c\n", count, prefix)
+
+	// Copied total 14417849414 entries with prefix t (284 GiB)
+	// Copied total 4204029363 entries with prefix r (649 GiB total)
+
+	return nil
+}
