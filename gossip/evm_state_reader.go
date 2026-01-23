@@ -79,7 +79,8 @@ type EvmStateReader struct {
 
 // CurrentBaseFee returns the base fee of the most recent block.
 func (r *EvmStateReader) CurrentBaseFee() *big.Int {
-	return new(big.Int).Set(r.CurrentBlock().BaseFee)
+	res := r.store.GetBlock(r.store.GetLatestBlockIndex()).BaseFee
+	return new(big.Int).Set(res)
 }
 
 // CurrentMaxGasLimit returns the maximum gas limit of the most recent epoch.
@@ -96,8 +97,7 @@ func (r *EvmStateReader) CurrentMaxGasLimit() uint64 {
 
 // CurrentConfig returns the chain config applicable to the most recent block.
 func (r *EvmStateReader) CurrentConfig() *params.ChainConfig {
-	blockNumber := idx.Block(r.CurrentBlock().Number.Uint64())
-	return r.store.GetEvmChainConfig(blockNumber)
+	return r.store.GetEvmChainConfig(r.store.GetLatestBlockIndex())
 }
 
 // CurrentRules returns the rules applicable to the most recent epoch.
