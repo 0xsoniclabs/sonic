@@ -17,6 +17,7 @@
 package leap
 
 import (
+	"cmp"
 	"container/heap"
 	"slices"
 	"testing"
@@ -155,23 +156,25 @@ func TestIteratorHeap_CanBeUsedAsAHeap(t *testing.T) {
 	iterA.Next() // Cur() == 1
 	iterB.Next() // Cur() == 2
 
-	h := iteratorHeap[int]{}
+	h := iteratorHeap[int]{
+		less: cmp.Less[int],
+	}
 
 	// Pushing iterA places it at the top of the heap.
 	heap.Push(&h, iterA)
-	require.Equal(1, h[0].Cur())
+	require.Equal(1, h.iters[0].Cur())
 
 	// Pushing iterB keeps iterA at the top of the heap.
 	heap.Push(&h, iterB)
-	require.Equal(1, h[0].Cur())
+	require.Equal(1, h.iters[0].Cur())
 
 	// Advancing iterA moves iterB to the top of the heap.
-	h[0].Next()
+	h.iters[0].Next()
 	heap.Fix(&h, 0)
-	require.Equal(2, h[0].Cur())
+	require.Equal(2, h.iters[0].Cur())
 
 	// Popping removes iterB, leaving iterA at the top of the heap.
 	heap.Pop(&h)
-	require.Equal(3, h[0].Cur())
+	require.Equal(3, h.iters[0].Cur())
 
 }

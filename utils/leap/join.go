@@ -36,6 +36,13 @@ import (
 func Join[T cmp.Ordered](
 	iterators ...Iterator[T],
 ) iter.Seq[T] {
+	return JoinFunc(cmp.Less[T], iterators...)
+}
+
+func JoinFunc[T comparable](
+	less func(a, b T) bool,
+	iterators ...Iterator[T],
+) iter.Seq[T] {
 	return func(yield func(T) bool) {
 		if len(iterators) == 0 {
 			return
@@ -50,7 +57,7 @@ func Join[T cmp.Ordered](
 
 		// Sort iterators by their current elements, smallest first.
 		sort.Slice(iterators, func(a, b int) bool {
-			return iterators[a].Cur() < iterators[b].Cur()
+			return less(iterators[a].Cur(), iterators[b].Cur())
 		})
 
 		// We cycle through the iterators, always advancing the one with the

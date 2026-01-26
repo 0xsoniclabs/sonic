@@ -24,67 +24,83 @@ import (
 func Union[T cmp.Ordered](
 	iterators ...Iterator[T],
 ) *unionIterator[T] {
+	return UnionFunc(cmp.Less[T], iterators...)
+}
+
+func UnionFunc[T any](
+	less func(a, b T) bool,
+	iterators ...Iterator[T],
+) *unionIterator[T] {
+	for _, it := range iterators {
+		if it == nil {
+			panic("nil iterator passed to Union")
+		}
+	}
+
 	return &unionIterator[T]{
-		iterators: iterators,
+		heap: iteratorHeap[T]{
+			iters: iterators,
+			less:  less,
+		},
 	}
 }
 
-type unionIterator[T cmp.Ordered] struct {
-	iterators   iteratorHeap[T]
+type unionIterator[T any] struct {
+	heap        iteratorHeap[T]
 	initialized bool
 }
 
 func (it *unionIterator[T]) Next() bool {
-	if len(it.iterators) == 0 {
+	if len(it.heap.iters) == 0 {
 		return false
 	}
 
 	// The first time Next is called, we need to call Next on all iterators and
 	// create the heap sorting them by their current value.
 	if !it.initialized {
-		iters := make([]Iterator[T], 0, len(it.iterators))
-		for _, iter := range it.iterators {
+		iters := make([]Iterator[T], 0, len(it.heap.iters))
+		for _, iter := range it.heap.iters {
 			if iter.Next() {
 				iters = append(iters, iter)
 			}
 		}
-		it.iterators = iteratorHeap[T](iters)
-		heap.Init(&it.iterators)
+		it.heap = iteratorHeap[T]{iters: iters, less: it.heap.less}
+		heap.Init(&it.heap)
 		it.initialized = true
-		return len(it.iterators) > 0
+		return len(it.heap.iters) > 0
 	}
 
 	// In all other cases, Next is called on the smallest iterator. If it is
 	// exhausted, we remove it from the heap, and the next iterator becomes
 	// active. If not, it is re-inserted into the heap to maintain order.
-	smallest := it.iterators[0]
+	smallest := it.heap.iters[0]
 	if smallest.Next() {
-		heap.Fix(&it.iterators, 0)
+		heap.Fix(&it.heap, 0)
 	} else {
-		heap.Pop(&it.iterators)
+		heap.Pop(&it.heap)
 	}
-	return len(it.iterators) > 0
+	return len(it.heap.iters) > 0
 }
 
 func (it *unionIterator[T]) Cur() T {
-	if len(it.iterators) == 0 {
+	if len(it.heap.iters) == 0 {
 		var zero T
 		return zero
 	}
-	return it.iterators[0].Cur()
+	return it.heap.iters[0].Cur()
 }
 
 func (it *unionIterator[T]) Seek(value T) bool {
-	remaining := make([]Iterator[T], 0, len(it.iterators))
+	remaining := make([]Iterator[T], 0, len(it.heap.iters))
 	hasNext := false
-	for _, iter := range it.iterators {
+	for _, iter := range it.heap.iters {
 		if iter.Seek(value) {
 			remaining = append(remaining, iter)
 			hasNext = true
 		}
 	}
-	it.iterators = iteratorHeap[T](remaining)
-	heap.Init(&it.iterators)
+	it.heap = iteratorHeap[T]{iters: remaining, less: it.heap.less}
+	heap.Init(&it.heap)
 	it.initialized = true
 	return hasNext
 }
@@ -93,28 +109,29 @@ func (it *unionIterator[T]) Seek(value T) bool {
 
 // iteratorHeap is a min-heap of iterators based on their current value. It
 // implements heap.Interface to be used with container/heap.
-type iteratorHeap[T cmp.Ordered] []Iterator[T]
-
-func (h iteratorHeap[T]) Len() int {
-	return len(h)
+type iteratorHeap[T any] struct {
+	iters []Iterator[T]
+	less  func(a, b T) bool
 }
 
-func (h iteratorHeap[T]) Less(i, j int) bool {
-	return h[i].Cur() < h[j].Cur()
+func (h *iteratorHeap[T]) Len() int {
+	return len(h.iters)
 }
 
-func (h iteratorHeap[T]) Swap(i, j int) {
-	h[i], h[j] = h[j], h[i]
+func (h *iteratorHeap[T]) Less(i, j int) bool {
+	return h.less(h.iters[i].Cur(), h.iters[j].Cur())
+}
+
+func (h *iteratorHeap[T]) Swap(i, j int) {
+	h.iters[i], h.iters[j] = h.iters[j], h.iters[i]
 }
 
 func (h *iteratorHeap[T]) Push(x any) {
-	*h = append(*h, x.(Iterator[T]))
+	h.iters = append(h.iters, x.(Iterator[T]))
 }
 
 func (h *iteratorHeap[T]) Pop() any {
-	old := *h
-	n := len(old)
-	x := old[n-1]
-	*h = old[0 : n-1]
-	return x
+	last := h.iters[len(h.iters)-1]
+	h.iters = h.iters[:len(h.iters)-1]
+	return last
 }
