@@ -36,6 +36,10 @@ type Iterator[T any] interface {
 	// to the target. It returns true if such an element was found, and false if
 	// the iterator is exhausted.
 	Seek(T) bool
+
+	// Release releases any resources held by the iterator. It must be called
+	// when the iterator is no longer needed.
+	Release()
 }
 
 // All converts an Iterator into an iter.Seq, allowing iteration using

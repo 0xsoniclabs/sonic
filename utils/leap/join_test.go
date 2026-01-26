@@ -170,6 +170,7 @@ func TestJoin_IterationCanBeAborted(t *testing.T) {
 // listIterator is a simple iterator over a list of integers for testing.
 type listIterator struct {
 	values []int
+	pos    int
 }
 
 // newIter creates a new listIterator over the given values.
@@ -177,23 +178,26 @@ func newIter(values ...int) *listIterator {
 	elements := []int{0} // < ignored dummy to simplify Next/Cur logic
 	elements = append(elements, values...)
 	slices.Sort(elements[1:]) // ensure sorted input
-	return &listIterator{values: elements}
+	return &listIterator{values: elements, pos: 0}
 }
 
 func (it *listIterator) Next() bool {
-	if len(it.values) == 0 {
+	if len(it.values) == it.pos+1 {
 		return false
 	}
-	it.values = it.values[1:]
-	return len(it.values) > 0
+	it.pos++
+	return it.pos < len(it.values)
 }
 
 func (it *listIterator) Seek(value int) bool {
-	pos, _ := slices.BinarySearch(it.values, value)
-	it.values = it.values[pos:]
-	return len(it.values) > 0
+	it.pos, _ = slices.BinarySearch(it.values, value)
+	return it.pos < len(it.values)
 }
 
 func (it *listIterator) Cur() int {
-	return it.values[0]
+	return it.values[it.pos]
+}
+
+func (it *listIterator) Release() {
+	// noop
 }

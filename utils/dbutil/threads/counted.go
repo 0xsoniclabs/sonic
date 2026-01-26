@@ -44,7 +44,8 @@ func CountedFullDBProducer(dbs kvdb.FullDBProducer) kvdb.FullDBProducer {
 
 func (p *countedFullDbProducer) OpenDB(name string) (kvdb.Store, error) {
 	s, err := p.FullDBProducer.OpenDB(name)
-	return &countedStore{s}, err
+	return s, err
+	//return &countedStore{s}, err
 }
 
 var notifier = logger.New("threads-pool")

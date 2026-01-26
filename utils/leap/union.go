@@ -19,6 +19,7 @@ package leap
 import (
 	"cmp"
 	"container/heap"
+	"sync"
 )
 
 func Union[T cmp.Ordered](
@@ -31,12 +32,6 @@ func UnionFunc[T any](
 	less func(a, b T) bool,
 	iterators ...Iterator[T],
 ) *unionIterator[T] {
-	for _, it := range iterators {
-		if it == nil {
-			panic("nil iterator passed to Union")
-		}
-	}
-
 	return &unionIterator[T]{
 		heap: iteratorHeap[T]{
 			iters: iterators,
@@ -58,14 +53,7 @@ func (it *unionIterator[T]) Next() bool {
 	// The first time Next is called, we need to call Next on all iterators and
 	// create the heap sorting them by their current value.
 	if !it.initialized {
-		iters := make([]Iterator[T], 0, len(it.heap.iters))
-		for _, iter := range it.heap.iters {
-			if iter.Next() {
-				iters = append(iters, iter)
-			}
-		}
-		it.heap = iteratorHeap[T]{iters: iters, less: it.heap.less}
-		heap.Init(&it.heap)
+		it.progressAllIterators(Iterator[T].Next)
 		it.initialized = true
 		return len(it.heap.iters) > 0
 	}
@@ -78,6 +66,7 @@ func (it *unionIterator[T]) Next() bool {
 		heap.Fix(&it.heap, 0)
 	} else {
 		heap.Pop(&it.heap)
+		smallest.Release()
 	}
 	return len(it.heap.iters) > 0
 }
@@ -91,18 +80,58 @@ func (it *unionIterator[T]) Cur() T {
 }
 
 func (it *unionIterator[T]) Seek(value T) bool {
-	remaining := make([]Iterator[T], 0, len(it.heap.iters))
-	hasNext := false
+	return it.progressAllIterators(func(iter Iterator[T]) bool {
+		return iter.Seek(value)
+	})
+}
+
+func (it *unionIterator[T]) Release() {
 	for _, iter := range it.heap.iters {
-		if iter.Seek(value) {
-			remaining = append(remaining, iter)
-			hasNext = true
+		iter.Release()
+	}
+	it.heap.iters = nil
+}
+
+func (it *unionIterator[T]) progressAllIterators(
+	progress func(Iterator[T]) bool,
+) bool {
+	var wg sync.WaitGroup
+	wg.Add(len(it.heap.iters))
+	remaining := make([]Iterator[T], len(it.heap.iters))
+	for i, iter := range it.heap.iters {
+		go func() {
+			defer wg.Done()
+			if progress(iter) {
+				remaining[i] = iter
+			} else {
+				iter.Release()
+			}
+		}()
+	}
+	wg.Wait()
+
+	iters := make([]Iterator[T], 0, len(remaining))
+	for _, iter := range remaining {
+		if iter != nil {
+			iters = append(iters, iter)
 		}
 	}
-	it.heap = iteratorHeap[T]{iters: remaining, less: it.heap.less}
+
+	/*
+		iters := make([]Iterator[T], 0, len(it.heap.iters))
+		for _, iter := range it.heap.iters {
+			if iter.Next() {
+				iters = append(iters, iter)
+			} else {
+				iter.Release()
+			}
+		}
+	*/
+
+	it.heap = iteratorHeap[T]{iters: iters, less: it.heap.less}
 	heap.Init(&it.heap)
 	it.initialized = true
-	return hasNext
+	return len(iters) > 0
 }
 
 // -- Heap Implementation --

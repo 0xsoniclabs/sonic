@@ -2,7 +2,6 @@ package topicsdb
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/0xsoniclabs/sonic/utils/leap"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
@@ -85,48 +84,33 @@ func (i *withLeapJoin) FindInBlocks(
 	return logs, nil
 }
 
-type topicIterator struct {
-	leap.Iterator[logrec]
-	iters []*topicIndexIterator
-}
-
 func newTopicIterator(
 	topics []common.Hash,
 	position int,
 	from, to idx.Block,
 	table kvdb.Store,
-) *topicIterator {
+) leap.Iterator[logrec] {
 	if len(topics) == 0 {
 		return nil
 	}
 
-	iters := make([]*topicIndexIterator, 0, len(topics))
+	iters := make([]leap.Iterator[logrec], 0, len(topics))
 	for _, topic := range topics {
 		iters = append(iters, newIndexIterator(topic, position, from, to, table))
 	}
-	casted := make([]leap.Iterator[logrec], len(iters))
-	for i, it := range iters {
-		casted[i] = it
+	if len(iters) == 1 {
+		return iters[0]
 	}
-	return &topicIterator{
-		Iterator: leap.UnionFunc(logRecLess, casted...),
-		iters:    iters,
-	}
-}
-
-func (it *topicIterator) Release() {
-	for _, subit := range it.iters {
-		subit.Release()
-	}
+	return leap.UnionFunc(logRecLess, iters...)
 }
 
 var _ leap.Iterator[logrec] = (*topicIndexIterator)(nil)
 
 type topicIndexIterator struct {
-	prefix []byte
-	table  kvdb.Store
-	to     idx.Block
-	iter   kvdb.Iterator
+	prefix   []byte
+	table    kvdb.Store
+	from, to idx.Block
+	iter     kvdb.Iterator
 }
 
 func newIndexIterator(
@@ -134,35 +118,30 @@ func newIndexIterator(
 	position int,
 	from, to idx.Block,
 	table kvdb.Store,
-) *topicIndexIterator {
-	if false {
-		prefix2 := append(topic.Bytes(), posToBytes(uint8(position))...)
-		iter2 := table.NewIterator(prefix2, uintToBytes(uint64(from)))
-		defer iter2.Release()
-		fmt.Printf("Opening iterator for topic %x at position %d from block %d to %d\n", topic, position, from, to)
-		empty := true
-		for iter2.Next() {
-			id := extractLogrecID(iter2.Key())
-			fmt.Printf("  Found logrec ID %v at block %d\n", id, id.BlockNumber())
-			empty = false
-		}
-		if empty {
-			fmt.Printf("  No entries found for topic %x at position %d\n", topic, position)
-			return nil
-		}
-	}
-
+) leap.Iterator[logrec] {
 	prefix := append(topic.Bytes(), posToBytes(uint8(position))...)
-	iter := table.NewIterator(prefix, uintToBytes(uint64(from)))
+	/*
+		return leap.Prefetch(&topicIndexIterator{
+			prefix: prefix,
+			table:  table,
+			from:   from,
+			to:     to,
+		})
+	*/
 	return &topicIndexIterator{
 		prefix: prefix,
 		table:  table,
+		from:   from,
 		to:     to,
-		iter:   iter,
 	}
 }
 
 func (it *topicIndexIterator) Next() bool {
+	// The actual DB iterator is lazy-initialized to perform this only when
+	// needed and in potentially in parallel to other iterators.
+	if it.iter == nil {
+		it.iter = it.table.NewIterator(it.prefix, uintToBytes(uint64(it.from)))
+	}
 	res := it.next()
 	//fmt.Printf("  Called Next() on iterator for position %d - result: %t\n", bytesToPos(it.prefix[len(it.prefix)-1:]), res)
 	return res

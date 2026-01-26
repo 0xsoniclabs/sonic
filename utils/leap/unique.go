@@ -50,3 +50,7 @@ func (it *unique[T]) Seek(value T) bool {
 	it.last = it.iterator.Cur()
 	return true
 }
+
+func (it *unique[T]) Release() {
+	it.iterator.Release()
+}
