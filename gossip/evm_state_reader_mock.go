@@ -187,3 +187,18 @@ func (mr *MockStateReaderMockRecorder) LastBlockWithArchiveState(withTxs any) *g
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LastBlockWithArchiveState", reflect.TypeOf((*MockStateReader)(nil).LastBlockWithArchiveState), withTxs)
 }
+
+// RootHash mocks base method.
+func (m *MockStateReader) RootHash(blockNum uint64) (common.Hash, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RootHash", blockNum)
+	ret0, _ := ret[0].(common.Hash)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RootHash indicates an expected call of RootHash.
+func (mr *MockStateReaderMockRecorder) RootHash(blockNum any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RootHash", reflect.TypeOf((*MockStateReader)(nil).RootHash), blockNum)
+}

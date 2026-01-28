@@ -67,6 +67,8 @@ type StateReader interface {
 	// find the block in the archive, or the state root of the block found
 	// does not match the given state root.
 	BlockStateDB(blockNum *big.Int, stateRoot common.Hash) (state.StateDB, error)
+	// RootHash provides the state root hash for the given block number.
+	RootHash(blockNum uint64) (common.Hash, error)
 }
 
 // EvmStateReader implements StateReader interface.
@@ -117,18 +119,21 @@ func (r *EvmStateReader) CurrentBlock() *evmcore.EvmBlock {
 // This method shall be the preferable way to get the latest block for
 // operations that require access to the full state (e.g., RPC calls).
 func (r *EvmStateReader) LastBlockWithArchiveState(withTxs bool) (*evmcore.EvmBlock, error) {
-	latestBlock := r.store.GetLatestBlockIndex()
+	// latestBlock := r.store.GetLatestBlockIndex()
 
 	// make sure the block is present in the archive
 	latestArchiveBlock, empty, err := r.store.evm.GetArchiveBlockHeight()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest archive block; %v", err)
 	}
-	if !empty && idx.Block(latestArchiveBlock) < latestBlock {
-		latestBlock = idx.Block(latestArchiveBlock)
+	if empty {
+		return nil, fmt.Errorf("archive state is empty")
 	}
+	// if !empty && idx.Block(latestArchiveBlock) < latestBlock {
+	// 	latestBlock = idx.Block(latestArchiveBlock)
+	// }
 
-	return r.getBlock(common.Hash{}, latestBlock, withTxs), nil
+	return r.getBlock(common.Hash{}, idx.Block(latestArchiveBlock), withTxs), nil
 }
 
 // Header returns the header of the block with the given number.
@@ -223,4 +228,8 @@ func (r *EvmStateReader) CurrentStateDB() (state.StateDB, error) {
 // does not match the given state root.
 func (r *EvmStateReader) BlockStateDB(blockNum *big.Int, stateRoot common.Hash) (state.StateDB, error) {
 	return r.store.evm.GetBlockStateDb(blockNum, stateRoot)
+}
+
+func (r *EvmStateReader) RootHash(blockNum uint64) (common.Hash, error) {
+	return r.store.evm.RootHash(blockNum)
 }

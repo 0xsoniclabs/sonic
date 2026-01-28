@@ -144,12 +144,20 @@ func (b *EthAPIBackend) HeaderByHash(ctx context.Context, h common.Hash) (*evmco
 
 // BlockByNumber returns evm block by its number, or nil if not exists.
 func (b *EthAPIBackend) BlockByNumber(ctx context.Context, number rpc.BlockNumber) (*evmcore.EvmBlock, error) {
-	// Otherwise, resolve and return the block
-	state, blk, err := b.stateAndBlockByNumberOrHash(ctx, rpc.BlockNumberOrHash{BlockNumber: &number}, true)
-	if state == nil || blk == nil || err != nil {
-		return nil, nil
+	block, err := b.block(ctx, rpc.BlockNumberOrHashWithNumber(number), true)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get block: %w", err)
 	}
-	return blk, nil
+	rootHash, err := b.state.RootHash(block.NumberU64())
+	if err != nil {
+		return nil, fmt.Errorf("failed to get block state root: %w", err)
+	}
+	if block.Root != rootHash {
+		return nil,
+			fmt.Errorf("block state root mismatch for block %d: expected %x, got %x",
+				block.NumberU64(), block.Root, rootHash)
+	}
+	return block, err
 }
 
 // isLatestBlockNumber returns true if the block number is latest, pending, finalized or safe
@@ -169,29 +177,11 @@ func (b *EthAPIBackend) stateAndBlockByNumberOrHash(
 	ctx context.Context,
 	blockNrOrHash rpc.BlockNumberOrHash,
 	withTx bool) (state.StateDB, *evmcore.EvmBlock, error) {
-	var block *evmcore.EvmBlock
-	if number, ok := blockNrOrHash.Number(); ok {
-		if isLatestBlockNumber(number) {
-			var err error
-			block, err = b.state.LastBlockWithArchiveState(withTx)
-			if err != nil {
-				return nil, nil, fmt.Errorf("failed to get latest block number; %v", err)
-			}
-		} else if number == rpc.EarliestBlockNumber {
-			block = b.state.Block(common.Hash{}, b.HistoryPruningCutoff())
-		} else {
-			block = b.state.Block(common.Hash{}, uint64(number))
-		}
-	} else if h, ok := blockNrOrHash.Hash(); ok {
-		index := b.svc.store.GetBlockIndex(hash.Event(h))
-		if index == nil {
-			return nil, nil, errors.New("block not found")
-		}
-		block = b.state.Block(common.Hash{}, uint64(*index))
-	} else {
-		return nil, nil, errors.New("unknown block selector")
-	}
 
+	block, err := b.block(ctx, blockNrOrHash, withTx)
+	if err != nil {
+		return nil, nil, err
+	}
 	if block == nil {
 		return nil, nil, errors.New("block not found")
 	}
@@ -200,6 +190,35 @@ func (b *EthAPIBackend) stateAndBlockByNumberOrHash(
 		return nil, nil, err
 	}
 	return stateDb, block, nil
+}
+
+// block retrieves a block by number or hash, with optional transaction inclusion.
+// It returns an error if the block is not found in the archive or hash is unknown.
+// It returns nil if the block does not exists in the store.
+func (b *EthAPIBackend) block(ctx context.Context, numberOrHash rpc.BlockNumberOrHash, withTx bool) (*evmcore.EvmBlock, error) {
+	var block *evmcore.EvmBlock
+	if number, ok := numberOrHash.Number(); ok {
+		if isLatestBlockNumber(number) {
+			var err error
+			block, err = b.state.LastBlockWithArchiveState(withTx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get latest block number; %v", err)
+			}
+		} else if number == rpc.EarliestBlockNumber {
+			block = b.state.Block(common.Hash{}, b.HistoryPruningCutoff())
+		} else {
+			block = b.state.Block(common.Hash{}, uint64(number))
+		}
+	} else if h, ok := numberOrHash.Hash(); ok {
+		index := b.svc.store.GetBlockIndex(hash.Event(h))
+		if index == nil {
+			return nil, errors.New("block not found")
+		}
+		block = b.state.Block(common.Hash{}, uint64(*index))
+	} else {
+		return nil, errors.New("unknown block selector")
+	}
+	return block, nil
 }
 
 // decodeShortEventID decodes ShortID

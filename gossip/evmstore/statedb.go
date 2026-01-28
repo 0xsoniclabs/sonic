@@ -112,3 +112,14 @@ func (s *Store) CheckArchiveStateHash(blockNum idx.Block, root hash.Hash) (err e
 	}
 	return nil
 }
+
+func (s *Store) RootHash(blockNum uint64) (common.Hash, error) {
+	if s.carmenState == nil {
+		return common.Hash{}, fmt.Errorf("unable to get archive state - EvmStore is not open")
+	}
+	rootHash, err := s.carmenState.RootHash(blockNum)
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("unable to get archive state root hash for block %d: %w", blockNum, err)
+	}
+	return common.Hash(rootHash), nil
+}
