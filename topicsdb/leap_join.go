@@ -53,13 +53,10 @@ func (i *withLeapJoin) FindInBlocks(
 	// Build the leap join plan.
 	iterators := make([]leap.Iterator[logrec], 0, len(pattern))
 	for position, topics := range pattern {
-		//fmt.Printf("Building iterator for position %d topics %v\n", position, topics)
 		it := newTopicIterator(topics, position, from, to, i.table.Topic)
 		if it != nil {
 			iterators = append(iterators, it)
 			defer it.Release()
-		} else {
-			//fmt.Printf("No iterator for position %d topics %v\n", position, topics)
 		}
 	}
 
