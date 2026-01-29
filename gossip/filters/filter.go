@@ -28,7 +28,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	notify "github.com/ethereum/go-ethereum/event"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rpc"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
@@ -121,16 +120,18 @@ func (f *Filter) Logs(ctx context.Context) ([]*types.Log, error) {
 		}
 	}
 
-	// Update TxIndex for each log
-	for _, l := range logs {
-		pos := f.backend.GetTxPosition(l.TxHash)
+	/*
+		// Update TxIndex for each log
+		for _, l := range logs {
+			pos := f.backend.GetTxPosition(l.TxHash)
 
-		if pos != nil {
-			l.TxIndex = uint(pos.BlockOffset)
-		} else {
-			log.Warn("tx index empty", "hash", l.TxHash)
+			if pos != nil {
+				l.TxIndex = uint(pos.BlockOffset)
+			} else {
+				log.Warn("tx index empty", "hash", l.TxHash)
+			}
 		}
-	}
+	*/
 
 	return logs, nil
 }
@@ -152,6 +153,7 @@ func (f *Filter) fetchLogsFromBlockRange(ctx context.Context, logs []*types.Log)
 		return nil, nil
 	}
 	head := idx.Block(header.Number.Uint64())
+	head = 64_000_000 // TEMPORARY HACK
 
 	begin := idx.Block(f.begin)
 	if f.begin < 0 {
@@ -193,18 +195,20 @@ func (f *Filter) indexedLogs(ctx context.Context, begin, end idx.Block) ([]*type
 	}
 	sortLogsByBlockNumberAndLogIndex(logs)
 
-	for _, l := range logs {
+	/*
+		for _, l := range logs {
 
-		// Fetch timestamp for the log from the header.
-		header, err := f.backend.HeaderByNumber(ctx, rpc.BlockNumber(l.BlockNumber))
-		if err != nil {
-			return nil, fmt.Errorf("failed to get header for block %d containing relevant log entry: %w", l.BlockNumber, err)
+			// Fetch timestamp for the log from the header.
+			header, err := f.backend.HeaderByNumber(ctx, rpc.BlockNumber(l.BlockNumber))
+			if err != nil {
+				return nil, fmt.Errorf("failed to get header for block %d containing relevant log entry: %w", l.BlockNumber, err)
+			}
+			if header == nil {
+				return nil, fmt.Errorf("header for block %d containing relevant log entry not found", l.BlockNumber)
+			}
+			l.BlockTimestamp = uint64(header.Time.Unix())
 		}
-		if header == nil {
-			return nil, fmt.Errorf("header for block %d containing relevant log entry not found", l.BlockNumber)
-		}
-		l.BlockTimestamp = uint64(header.Time.Unix())
-	}
+	*/
 
 	return logs, nil
 }
@@ -230,10 +234,12 @@ func (f *Filter) unindexedLogs(ctx context.Context, begin, end idx.Block) (logs 
 		found  []*types.Log
 	)
 	for n := begin; n <= end; n++ {
-		err = ctx.Err()
-		if err != nil {
-			return
-		}
+		/*
+			err = ctx.Err()
+			if err != nil {
+				return
+			}
+		*/
 
 		header, err = f.backend.HeaderByNumber(ctx, rpc.BlockNumber(n))
 		if header == nil || err != nil {
