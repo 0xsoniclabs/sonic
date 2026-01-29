@@ -605,18 +605,21 @@ func (n *IntegrationTestNet) connectP2PNetwork(enodes []string) error {
 		}
 		defer client.Close()
 
-		// Wait until connection is established
-		err = WaitFor(context.Background(), func(ctx context.Context) (bool, error) {
+		// Connect each node to the next one, and the last one to the first.
+		enode := enodes[(i+1)%len(n.nodes)]
+		if err := client.Client().Call(nil, "admin_addPeer", enode); err != nil {
+			return fmt.Errorf("failed to connect to node %d: %v", i, err)
+		}
 
-			// Connect each node to the next one, and the last one to the first.
-			enode := enodes[(i+1)%len(n.nodes)]
-			if err := client.Client().Call(nil, "admin_addPeer", enode); err != nil {
-				return false, fmt.Errorf("failed to connect to node %d: %v", i, err)
-			}
+		// Wait until connection is established
+		attempt := 0
+		err = WaitFor(context.Background(), func(ctx context.Context) (bool, error) {
+			attempt++
+			fmt.Println("node", i, "connect attempt ", attempt)
 
 			// Fetch the list of connected peers
 			var res []map[string]any
-			if err := client.Client().Call(&res, "admin_peers"); err != nil {
+			if err := client.Client().CallContext(ctx, &res, "admin_peers"); err != nil {
 				return false, fmt.Errorf("failed to connect to node %d: %v", i, err)
 			}
 
@@ -629,7 +632,7 @@ func (n *IntegrationTestNet) connectP2PNetwork(enodes []string) error {
 				// min is for the 2-nodes network special case
 				expectedConnections = min(len(n.nodes)-1, 2)
 			}
-			return len(res) >= expectedConnections, nil
+			return len(res) == expectedConnections, nil
 		})
 		if err != nil {
 			return fmt.Errorf("failed to wait for node %d to be connected: %v", i, err)
