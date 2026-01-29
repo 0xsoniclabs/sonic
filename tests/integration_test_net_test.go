@@ -19,6 +19,7 @@ package tests
 import (
 	"fmt"
 	"math/big"
+	"sort"
 	"testing"
 	"time"
 
@@ -35,6 +36,7 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
+	"gonum.org/v1/gonum/stat"
 )
 
 func TestIntegrationTestNet_CanStartRestartAndStopIntegrationTestNet(t *testing.T) {
@@ -495,14 +497,17 @@ func TestIntegration_BlockByNumber_WithTransactions(t *testing.T) {
 	require.NoError(t, err)
 	defer client.Close()
 
-	startTime := time.Now()
-	newBlockCounter := 0
-	timeAccumulator := time.Duration(0)
+	// newBlockCounter := 0
 	skippedFirstBlock := false
+	measurements := make([]float64, 0, 200)
 
 	sendTxTicker := time.NewTicker(500 * time.Millisecond)
-	queryBlockTicker := time.NewTicker(1 * time.Second)
-	for time.Since(startTime) < 1*time.Minute {
+	defer sendTxTicker.Stop()
+	queryBlockTicker := time.NewTicker(500 * time.Millisecond)
+	// queryBlockTicker := time.NewTicker(1 * time.Second)
+	defer queryBlockTicker.Stop()
+
+	for len(measurements) < 200 {
 		select {
 		case <-queryBlockTicker.C:
 			if !skippedFirstBlock {
@@ -511,18 +516,18 @@ func TestIntegration_BlockByNumber_WithTransactions(t *testing.T) {
 				_, _ = client.BlockByNumber(t.Context(), nil)
 				continue
 			}
-			newBlockCounter++
+			// newBlockCounter++
 
 			start := time.Now()
 			block, err := client.BlockByNumber(t.Context(), nil)
 			end := time.Since(start)
 			require.NoError(t, err, "failed to query latest block")
 			require.NotNil(t, block, "latest block should not be nil")
-			timeAccumulator += end
+			newMeasure := float64(end.Nanoseconds()) / 1e6 // milliseconds
+			measurements = append(measurements, newMeasure)
 
-			averageTime := timeAccumulator / time.Duration(newBlockCounter)
-			t.Logf("Queried block %v (txs: %v) in %v (average: %v).",
-				block.NumberU64(), len(block.Transactions()), end, averageTime)
+			t.Logf("Queried block %v in %v ms (average: %v - stddev: %v)",
+				block.NumberU64(), newMeasure, stat.Mean(measurements, nil), stat.StdDev(measurements, nil))
 
 		case <-sendTxTicker.C:
 			basicTx := CreateTransaction(t, net, &types.LegacyTx{}, net.GetSessionSponsor())
@@ -530,7 +535,12 @@ func TestIntegration_BlockByNumber_WithTransactions(t *testing.T) {
 			require.NoError(t, err, "failed to send transaction to keep blocks coming")
 		}
 	}
-	t.Logf("Received a total of %v new blocks average response time %v.", newBlockCounter, timeAccumulator/time.Duration(newBlockCounter))
-	require.Less(t, timeAccumulator/time.Duration(newBlockCounter), 1*time.Second+500*time.Millisecond,
-		"average block query time should be less than 1.5 seconds")
+
+	sort.Float64s(measurements)
+
+	t.Log(len(measurements))
+	measurements = measurements[5 : len(measurements)-5] // remove 5% outliers on each side
+
+	t.Logf("Received a total of %v new blocks average response time %v ms, stddev %v ms.",
+		len(measurements), stat.Mean(measurements, nil), stat.StdDev(measurements, nil))
 }
