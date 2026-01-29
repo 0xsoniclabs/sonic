@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 func TestUnique_FiltersDuplicates(t *testing.T) {
@@ -47,6 +48,10 @@ func TestUnique_FiltersDuplicates(t *testing.T) {
 		"empty input": {
 			input:    []int{},
 			expected: nil,
+		},
+		"zero values": {
+			input:    []int{0, 0, 0, 1, 1, 2, 2},
+			expected: []int{0, 1, 2},
 		},
 	}
 
@@ -89,6 +94,24 @@ func TestUnique_Seek_SkipsElements(t *testing.T) {
 			expectedCur: 5,
 			expectedOk:  true,
 		},
+		"seek beyond last value": {
+			input:       []int{1, 2, 3},
+			seekValue:   4,
+			expectedCur: 0,
+			expectedOk:  false,
+		},
+		"seek before first value": {
+			input:       []int{1, 1, 2, 3},
+			seekValue:   0,
+			expectedCur: 1,
+			expectedOk:  true,
+		},
+		"seek to zero value": {
+			input:       []int{0, 0, 1, 1, 2, 2},
+			seekValue:   0,
+			expectedCur: 0,
+			expectedOk:  true,
+		},
 	}
 
 	for name, tc := range tests {
@@ -98,14 +121,24 @@ func TestUnique_Seek_SkipsElements(t *testing.T) {
 			require.Equal(t, tc.expectedOk, ok)
 
 			if ok {
-				cur := uniqueIter.Cur()
+				cur := uniqueIter.Current()
 				require.Equal(t, tc.expectedCur, cur)
 			}
 
+			// After the seek, ensure that Next continues to yield strictly
+			// increasing values.
 			if uniqueIter.Next() {
-				cur := uniqueIter.Cur()
+				cur := uniqueIter.Current()
 				require.Greater(t, cur, tc.expectedCur)
 			}
 		})
 	}
+}
+
+func TestUnique_Release_ReleasesUnderlyingIterator(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	iter := NewMockIterator[int](ctrl)
+
+	iter.EXPECT().Release()
+	Unique(iter).Release()
 }

@@ -16,11 +16,11 @@
 
 package leap
 
-import "iter"
-
 //go:generate mockgen -source=iterator.go -package=leap -destination=iterator_mock.go
 
-// Iterator defines a generic iterator over ordered unique elements of type T.
+// Iterator defines a generic iterator over a sequence of ordered elements of
+// type T. It is a general abstraction of a data source that can be utilized
+// by the algorithms in this package.
 type Iterator[T any] interface {
 	// Next advances the iterator to the next element. Initially, the iterator
 	// is positioned before the first element, so Next must be called to advance
@@ -28,28 +28,20 @@ type Iterator[T any] interface {
 	// to a valid element, and false if the iterator is exhausted.
 	Next() bool
 
-	// Cur returns the current element. It must only be called after Next or
-	// Seek has returned true.
-	Cur() T
-
 	// Seek advances the iterator to the smallest element greater than or equal
-	// to the target. It returns true if such an element was found, and false if
-	// the iterator is exhausted.
+	// to the given target value. It returns true if such an element was found,
+	// and false if the iterator is exhausted.
+	//
+	// Backward seeks are not supported. If the seek target is less than the
+	// current element, the iterator is not moved (i.e., Seek is a no-op in
+	// that case).
 	Seek(T) bool
+
+	// Current returns the current element. It must only be called after Next or
+	// Seek has returned true.
+	Current() T
 
 	// Release releases any resources held by the iterator. It must be called
 	// when the iterator is no longer needed.
 	Release()
-}
-
-// All converts an Iterator into an iter.Seq, allowing iteration using
-// the iter package's conventions.
-func All[T any](iter Iterator[T]) iter.Seq[T] {
-	return func(yield func(T) bool) {
-		for iter.Next() {
-			if !yield(iter.Cur()) {
-				return
-			}
-		}
-	}
 }

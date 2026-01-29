@@ -22,14 +22,17 @@ import (
 	"sort"
 )
 
-//go:generate mockgen -source=join.go -package=leap -destination=join_mock.go
-
 // Join implements the Leapfrog Triejoin algorithm to compute the intersection
-// of multiple ordered iterators over comparable elements of type T.
+// of multiple ordered iterators over unique elements of type T.
 //
 // The returned iterator yields all elements that are present in all input
-// iterators, in sorted order. If any input iterator is empty, the result is
-// empty.
+// iterators, in sorted order. Consequently, if any input iterator is empty,
+// the result is empty.
+//
+// Note: elements in the incoming iterators must be ordered according to the
+// natural ordering of type T (i.e., the ordering defined by the < operator).
+// Also, there must be no duplicate elements within each input iterator. These
+// preconditions are not checked by Join and must be ensured by the caller.
 //
 // Paper: Leapfrog Triejoin: A Simple, Worst-Case Optimal Join Algorithm
 // https://arxiv.org/pdf/1210.0481
@@ -39,6 +42,10 @@ func Join[T cmp.Ordered](
 	return JoinFunc(cmp.Less[T], iterators...)
 }
 
+// JoinFunc is a generalization of Join that accepts a custom less function to
+// compare elements of type T that have no natural ordering or for which a
+// custom ordering is desired. The less function must be consistent with the
+// ordering of the input iterators.
 func JoinFunc[T comparable](
 	less func(a, b T) bool,
 	iterators ...Iterator[T],
@@ -57,7 +64,7 @@ func JoinFunc[T comparable](
 
 		// Sort iterators by their current elements, smallest first.
 		sort.Slice(iterators, func(a, b int) bool {
-			return less(iterators[a].Cur(), iterators[b].Cur())
+			return less(iterators[a].Current(), iterators[b].Current())
 		})
 
 		// We cycle through the iterators, always advancing the one with the
@@ -67,14 +74,16 @@ func JoinFunc[T comparable](
 		// until any iterator is exhausted.
 		//
 		// Note: the following loop retains all iterators sorted by the current
-		// key they are pointing to when reading the list of iterators circularly
-		// starting from p.
+		// key they are pointing to when reading the list of iterators like a
+		// ring buffer starting at position p. The iterator at position p is
+		// always the one with the smallest current key, and the one at
+		// position (p-1) mod len(iterators) is the one with the largest key.
 
-		largest := iterators[len(iterators)-1].Cur()
+		largest := iterators[len(iterators)-1].Current()
 		for p := 0; ; p = (p + 1) % len(iterators) {
 			// The iterator at position p points to the smallest element.
 			iter := iterators[p]
-			smallest := iter.Cur()
+			smallest := iter.Current()
 			if smallest == largest { // All iterators are aligned.
 				if !yield(largest) {
 					return
@@ -88,7 +97,7 @@ func JoinFunc[T comparable](
 					return
 				}
 			}
-			largest = iter.Cur()
+			largest = iter.Current()
 		}
 	}
 }

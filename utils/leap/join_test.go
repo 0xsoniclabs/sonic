@@ -103,7 +103,8 @@ func TestJoin_ListOfValues_FindsCommonElementsInOrder(t *testing.T) {
 
 func TestJoin_ExhaustiveCombinations(t *testing.T) {
 
-	toIter := func(mask uint32) *listIterator {
+	// Converts a bitmask to an iterator over the corresponding set bits.
+	toIter := func(mask uint32) Iterator[int] {
 		var values []int
 		for i := range 32 {
 			if (mask & (1 << i)) != 0 {
@@ -112,6 +113,11 @@ func TestJoin_ExhaustiveCombinations(t *testing.T) {
 		}
 		return newIter(values...)
 	}
+
+	// Sanity-Check of toIter function.
+	require.Empty(t, slices.Collect(All(toIter(0))))
+	require.Equal(t, []int{1, 3, 6}, slices.Collect(All(toIter(0b01001010))))
+	require.Equal(t, []int{0, 1, 2, 3, 4, 5, 6, 7}, slices.Collect(All(toIter(0xff))))
 
 	N := uint32(1 << 6)
 
@@ -155,7 +161,7 @@ func TestJoin_IterationCanBeAborted(t *testing.T) {
 
 	gomock.InOrder(
 		iter.EXPECT().Next().Return(true),
-		iter.EXPECT().Cur().Return(5).AnyTimes(),
+		iter.EXPECT().Current().Return(5).AnyTimes(),
 	)
 	// No more next call after abort.
 
@@ -163,41 +169,4 @@ func TestJoin_IterationCanBeAborted(t *testing.T) {
 		require.Equal(x, 5)
 		break
 	}
-}
-
-// -- Test Utilities --
-
-// listIterator is a simple iterator over a list of integers for testing.
-type listIterator struct {
-	values []int
-	pos    int
-}
-
-// newIter creates a new listIterator over the given values.
-func newIter(values ...int) *listIterator {
-	elements := []int{0} // < ignored dummy to simplify Next/Cur logic
-	elements = append(elements, values...)
-	slices.Sort(elements[1:]) // ensure sorted input
-	return &listIterator{values: elements, pos: 0}
-}
-
-func (it *listIterator) Next() bool {
-	if len(it.values) == it.pos+1 {
-		return false
-	}
-	it.pos++
-	return it.pos < len(it.values)
-}
-
-func (it *listIterator) Seek(value int) bool {
-	it.pos, _ = slices.BinarySearch(it.values, value)
-	return it.pos < len(it.values)
-}
-
-func (it *listIterator) Cur() int {
-	return it.values[it.pos]
-}
-
-func (it *listIterator) Release() {
-	// noop
 }

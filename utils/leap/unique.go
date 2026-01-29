@@ -16,7 +16,11 @@
 
 package leap
 
-// Unique wraps an iterator and filters out duplicate consecutive values.
+// Unique wraps an iterator and filters out duplicate consecutive values. The
+// input iterator must yield values in sorted order for Unique to function
+// correctly. The resulting iterator also takes ownership of the input iterator
+// and will call Release on it when Release is called on the unique iterator
+// itself.
 func Unique[T comparable](iterator Iterator[T]) *unique[T] {
 	return &unique[T]{
 		iterator: iterator,
@@ -24,13 +28,19 @@ func Unique[T comparable](iterator Iterator[T]) *unique[T] {
 }
 
 type unique[T comparable] struct {
-	iterator Iterator[T]
-	last     T
+	iterator  Iterator[T]
+	last      T
+	lastValid bool
 }
 
 func (it *unique[T]) Next() bool {
 	for it.iterator.Next() {
-		cur := it.iterator.Cur()
+		cur := it.iterator.Current()
+		if !it.lastValid {
+			it.last = cur
+			it.lastValid = true
+			return true
+		}
 		if cur != it.last {
 			it.last = cur
 			return true
@@ -39,15 +49,16 @@ func (it *unique[T]) Next() bool {
 	return false
 }
 
-func (it *unique[T]) Cur() T {
-	return it.iterator.Cur()
+func (it *unique[T]) Current() T {
+	return it.iterator.Current()
 }
 
 func (it *unique[T]) Seek(value T) bool {
 	if !it.iterator.Seek(value) {
 		return false
 	}
-	it.last = it.iterator.Cur()
+	it.last = it.iterator.Current()
+	it.lastValid = true
 	return true
 }
 

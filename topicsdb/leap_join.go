@@ -161,7 +161,7 @@ func (it *topicIndexIterator) next() bool {
 	return false
 }
 
-func (it *topicIndexIterator) Cur() logrec {
+func (it *topicIndexIterator) Current() logrec {
 	if it.iter == nil {
 		return logrec{}
 	}

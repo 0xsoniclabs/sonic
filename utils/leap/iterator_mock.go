@@ -39,18 +39,18 @@ func (m *MockIterator[T]) EXPECT() *MockIteratorMockRecorder[T] {
 	return m.recorder
 }
 
-// Cur mocks base method.
-func (m *MockIterator[T]) Cur() T {
+// Current mocks base method.
+func (m *MockIterator[T]) Current() T {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Cur")
+	ret := m.ctrl.Call(m, "Current")
 	ret0, _ := ret[0].(T)
 	return ret0
 }
 
-// Cur indicates an expected call of Cur.
-func (mr *MockIteratorMockRecorder[T]) Cur() *gomock.Call {
+// Current indicates an expected call of Current.
+func (mr *MockIteratorMockRecorder[T]) Current() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Cur", reflect.TypeOf((*MockIterator[T])(nil).Cur))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Current", reflect.TypeOf((*MockIterator[T])(nil).Current))
 }
 
 // Next mocks base method.

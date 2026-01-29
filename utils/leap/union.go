@@ -22,12 +22,30 @@ import (
 	"sync"
 )
 
+// Union merges multiple ordered iterators over unique elements of type T into a
+// single iterator that yields all elements present in any of the input
+// iterators, in sorted order. The implementation assumes that the input
+// iterators yield distinct elements in the natural ordering of type T (i.e., the
+// ordering defined by the < operator).
+//
+// Duplicates yielded by different input iterators or by the same iterator are
+// forwarded to the output iterator. If a lack of duplicates is desired, but
+// can not be guaranteed by the input iterators, consider wrapping the result of
+// Union with Unique.
+//
+// The resulting iterator takes ownership of the input iterators and will call
+// Release on each of them when as they are exhausted or when Release is called
+// on the union iterator itself.
 func Union[T cmp.Ordered](
 	iterators ...Iterator[T],
 ) *unionIterator[T] {
 	return UnionFunc(cmp.Less[T], iterators...)
 }
 
+// UnionFunc is a generalization of Union that accepts a custom less function to
+// compare elements of type T that have no natural ordering or for which a
+// custom ordering is desired. The less function must be consistent with the
+// ordering of the input iterators, which is not checked by the implementation.
 func UnionFunc[T any](
 	less func(a, b T) bool,
 	iterators ...Iterator[T],
@@ -40,6 +58,10 @@ func UnionFunc[T any](
 	}
 }
 
+// unionIterator implements an iterator that yields the union of multiple input
+// iterators. It maintains a min-heap of the input iterators based on their
+// current value to efficiently retrieve the smallest current element across all
+// iterators.
 type unionIterator[T any] struct {
 	heap        iteratorHeap[T]
 	initialized bool
@@ -71,12 +93,12 @@ func (it *unionIterator[T]) Next() bool {
 	return len(it.heap.iters) > 0
 }
 
-func (it *unionIterator[T]) Cur() T {
+func (it *unionIterator[T]) Current() T {
 	if len(it.heap.iters) == 0 {
 		var zero T
 		return zero
 	}
-	return it.heap.iters[0].Cur()
+	return it.heap.iters[0].Current()
 }
 
 func (it *unionIterator[T]) Seek(value T) bool {
@@ -92,9 +114,15 @@ func (it *unionIterator[T]) Release() {
 	it.heap.iters = nil
 }
 
+// progressAllIterators advances all iterators using the provided progress
+// function (either Next or Seek). It removes any iterators that are exhausted
+// after the operation. It returns true if there is at least one iterator
+// remaining after the operation.
 func (it *unionIterator[T]) progressAllIterators(
 	progress func(Iterator[T]) bool,
 ) bool {
+	// Advance all iterators in parallel. This is particularly beneficial if
+	// there are many iterators that are I/O bound.
 	var wg sync.WaitGroup
 	wg.Add(len(it.heap.iters))
 	remaining := make([]Iterator[T], len(it.heap.iters))
@@ -110,6 +138,7 @@ func (it *unionIterator[T]) progressAllIterators(
 	}
 	wg.Wait()
 
+	// Collect the iterators that are still valid.
 	iters := make([]Iterator[T], 0, len(remaining))
 	for _, iter := range remaining {
 		if iter != nil {
@@ -117,17 +146,7 @@ func (it *unionIterator[T]) progressAllIterators(
 		}
 	}
 
-	/*
-		iters := make([]Iterator[T], 0, len(it.heap.iters))
-		for _, iter := range it.heap.iters {
-			if iter.Next() {
-				iters = append(iters, iter)
-			} else {
-				iter.Release()
-			}
-		}
-	*/
-
+	// Rebuild the heap with the remaining iterators.
 	it.heap = iteratorHeap[T]{iters: iters, less: it.heap.less}
 	heap.Init(&it.heap)
 	it.initialized = true
@@ -148,7 +167,7 @@ func (h *iteratorHeap[T]) Len() int {
 }
 
 func (h *iteratorHeap[T]) Less(i, j int) bool {
-	return h.less(h.iters[i].Cur(), h.iters[j].Cur())
+	return h.less(h.iters[i].Current(), h.iters[j].Current())
 }
 
 func (h *iteratorHeap[T]) Swap(i, j int) {
