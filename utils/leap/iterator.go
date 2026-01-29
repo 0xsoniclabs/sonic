@@ -30,7 +30,8 @@ type Iterator[T any] interface {
 
 	// Seek advances the iterator to the smallest element greater than or equal
 	// to the given target value. It returns true if such an element was found,
-	// and false if the iterator is exhausted.
+	// and false if the iterator is exhausted. If exhausted, the iterator
+	// points to the position after the last element, invalid for Current.
 	//
 	// Backward seeks are not supported. If the seek target is less than the
 	// current element, the iterator is not moved (i.e., Seek is a no-op in
