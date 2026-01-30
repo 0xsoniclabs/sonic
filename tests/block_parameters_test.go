@@ -152,6 +152,7 @@ func testBlockHeaderMatchesObservableBlockParameters(
 	// after a restart. The restart is included to make sure the information is
 	// not just cached in memory.
 	checkParameters()
+	// I believe the issue happens here, peer 0 unable to connect
 	require.NoError(net.Restart())
 	checkParameters()
 }

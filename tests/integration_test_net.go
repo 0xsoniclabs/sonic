@@ -597,46 +597,48 @@ func (n *IntegrationTestNet) connectP2PNetwork(enodes []string) error {
 	if len(n.nodes) == 1 {
 		return nil
 	}
+	firstNodeClient, err := n.GetClientConnectedToNode(0)
+	if err != nil {
+		return fmt.Errorf("failed to connect to the Ethereum client: %w", err)
+	}
+	defer firstNodeClient.Close()
+	firstNode := enodes[0]
 
-	for i := range n.nodes {
+	for i := 1; i < len(n.nodes); i++ {
 		client, err := n.GetClientConnectedToNode(i)
 		if err != nil {
 			return fmt.Errorf("failed to connect to the Ethereum client: %w", err)
 		}
 		defer client.Close()
 
-		// Connect each node to the next one, and the last one to the first.
-		enode := enodes[(i+1)%len(n.nodes)]
-		if err := client.Client().Call(nil, "admin_addPeer", enode); err != nil {
+		nextNode := enodes[i]
+		if err := firstNodeClient.Client().Call(nil, "admin_addPeer", nextNode); err != nil {
 			return fmt.Errorf("failed to connect to node %d: %v", i, err)
 		}
-
-		// Wait until connection is established
-		attempt := 0
-		err = WaitFor(context.Background(), func(ctx context.Context) (bool, error) {
-			attempt++
-			fmt.Println("node", i, "connect attempt ", attempt)
-
-			// Fetch the list of connected peers
-			var res []map[string]any
-			if err := client.Client().CallContext(ctx, &res, "admin_peers"); err != nil {
-				return false, fmt.Errorf("failed to connect to node %d: %v", i, err)
-			}
-
-			// Expect each node to be connected to the previous and next nodes,
-			// except for the first node which will only be connected to the
-			// next at this point in time, and each node in a 2-nodes
-			// network which can only have one connection each.
-			expectedConnections := 1
-			if i > 0 {
-				// min is for the 2-nodes network special case
-				expectedConnections = min(len(n.nodes)-1, 2)
-			}
-			return len(res) == expectedConnections, nil
-		})
-		if err != nil {
-			return fmt.Errorf("failed to wait for node %d to be connected: %v", i, err)
+		if err := client.Client().Call(nil, "admin_addPeer", firstNode); err != nil {
+			return fmt.Errorf("failed to connect to node 0 from node %d: %v", i, err)
 		}
+	}
+
+	attempt := 0
+	err = WaitFor(context.Background(), func(ctx context.Context) (bool, error) {
+		attempt++
+		fmt.Println("connect attempt ", attempt)
+
+		// Fetch the list of connected peers
+		var res []map[string]any
+		if err := firstNodeClient.Client().CallContext(ctx, &res, "admin_peers"); err != nil {
+			return false, err
+		}
+		fmt.Println("node 0 has", len(res), "peers connected")
+		for _, peer := range res {
+			fmt.Println("  peer:", peer["id"])
+		}
+
+		return len(res) == len(n.nodes)-1, nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed connect p2p: %v", err)
 	}
 	return nil
 }
@@ -663,10 +665,9 @@ func (n *IntegrationTestNet) Stop() {
 	for i := range n.nodes {
 		n.nodes[i].clients = nil
 	}
-
 }
 
-// Restart stops and restarts the single node on the test network.
+// Restart stops and restarts every node in the network.
 func (n *IntegrationTestNet) Restart() error {
 	n.Stop()
 	return n.start()
