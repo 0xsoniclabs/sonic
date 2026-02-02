@@ -226,6 +226,18 @@ func (mr *MockStateDBMockRecorder) EndBlock(number any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EndBlock", reflect.TypeOf((*MockStateDB)(nil).EndBlock), number)
 }
 
+// EndBlockSync mocks base method.
+func (m *MockStateDB) EndBlockSync(number uint64) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "EndBlockSync", number)
+}
+
+// EndBlockSync indicates an expected call of EndBlockSync.
+func (mr *MockStateDBMockRecorder) EndBlockSync(number any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EndBlockSync", reflect.TypeOf((*MockStateDB)(nil).EndBlockSync), number)
+}
+
 // EndTransaction mocks base method.
 func (m *MockStateDB) EndTransaction() {
 	m.ctrl.T.Helper()

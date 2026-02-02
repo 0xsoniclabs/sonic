@@ -18,6 +18,7 @@ package evmmodule
 
 import (
 	"math/big"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -181,7 +182,12 @@ func (p *OperaEVMProcessor) Finalize() (evmBlock *evmcore.EvmBlock, numSkipped i
 	evmBlock = p.evmBlockWith(transactions)
 
 	// Commit block
-	p.statedb.EndBlock(evmBlock.Number.Uint64())
+	if time.Since(evmBlock.Time.Time()) > 1*time.Minute {
+		// if the block is older than 1 minute, then use async function
+		p.statedb.EndBlock(evmBlock.Number.Uint64())
+	} else {
+		p.statedb.EndBlockSync(evmBlock.Number.Uint64())
+	}
 
 	// Get state root
 	evmBlock.Root = p.statedb.GetStateHash()

@@ -341,6 +341,12 @@ func (c *CarmenStateDB) EndBlock(number uint64) {
 	}
 }
 
+func (c *CarmenStateDB) EndBlockSync(number uint64) {
+	if db, ok := c.db.(carmen.StateDB); ok {
+		db.EndBlockSync(number)
+	}
+}
+
 func (c *CarmenStateDB) GetStateHash() common.Hash {
 	return common.Hash(c.db.GetHash())
 }

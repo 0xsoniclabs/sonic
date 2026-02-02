@@ -41,6 +41,7 @@ type StateDB interface {
 
 	BeginBlock(number uint64)
 	EndBlock(number uint64)
+	EndBlockSync(number uint64)
 	EndTransaction()
 	Release()
 }

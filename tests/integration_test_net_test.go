@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/sonic/config"
+	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/contract/sfc100"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -518,11 +519,18 @@ func TestIntegration_BlockByNumber_WithTransactions(t *testing.T) {
 			}
 			// newBlockCounter++
 
+			account := MakeAccountWithBalance(t, net, big.NewInt(2))
 			start := time.Now()
 			block, err := client.BlockByNumber(t.Context(), nil)
 			end := time.Since(start)
+
 			require.NoError(t, err, "failed to query latest block")
 			require.NotNil(t, block, "latest block should not be nil")
+
+			balance, err := client.BalanceAt(t.Context(), account.Address(), block.Number())
+			require.NoError(t, err, "failed to get balance at block")
+			require.Equal(t, uint64(2), balance.Uint64(), "unexpected balance at block")
+
 			newMeasure := float64(end.Nanoseconds()) / 1e6 // milliseconds
 			measurements = append(measurements, newMeasure)
 
@@ -537,10 +545,53 @@ func TestIntegration_BlockByNumber_WithTransactions(t *testing.T) {
 	}
 
 	sort.Float64s(measurements)
-
-	t.Log(len(measurements))
 	measurements = measurements[5 : len(measurements)-5] // remove 5% outliers on each side
-
 	t.Logf("Received a total of %v new blocks average response time %v ms, stddev %v ms.",
 		len(measurements), stat.Mean(measurements, nil), stat.StdDev(measurements, nil))
+}
+
+func TestLongWebSocket_DoesNotHang(t *testing.T) {
+	// This is a placeholder for a test that ensures long WebSocket connections
+	// do not hang indefinitely. The actual implementation would depend on the
+	// specifics of the long WebSocket functionality being tested.
+
+	net := StartIntegrationTestNet(t)
+
+	client, err := net.GetWebSocketClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	newBlocks := make(chan *evmcore.EvmBlockJson)
+	subs, err := client.Client().EthSubscribe(t.Context(), newBlocks, "newHeads")
+	require.NoError(t, err)
+	defer subs.Unsubscribe()
+
+	startTime := time.Now()
+	newBlockCounter := 0
+	newBlockInLastMinute := false
+	timeSinceLastBlock := time.Now()
+	ticker := time.NewTicker(1 * time.Minute)
+	sendTxTicker := time.NewTicker(1 * time.Second)
+	for time.Since(startTime) < 1*time.Minute {
+		select {
+		case block := <-newBlocks:
+			newBlockCounter++
+			newBlockInLastMinute = true
+			t.Logf("Received block %v  after %v.",
+				block.Number.ToInt().Uint64(), time.Since(timeSinceLastBlock))
+			timeSinceLastBlock = time.Now()
+		case <-sendTxTicker.C:
+			basicTx := CreateTransaction(t, net, &types.LegacyTx{}, net.GetSessionSponsor())
+			err := client.SendTransaction(t.Context(), basicTx)
+			require.NoError(t, err, "failed to send transaction to keep blocks coming")
+		case <-ticker.C:
+			if newBlockInLastMinute {
+				newBlockInLastMinute = false
+			} else {
+				t.Fatalf("No new blocks received in the last minute, WebSocket might be hanging")
+			}
+		case err := <-subs.Err():
+			require.NoError(t, err, "subscription error")
+		}
+	}
 }
