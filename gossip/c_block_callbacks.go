@@ -43,6 +43,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/verwatcher"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
@@ -908,6 +909,13 @@ func isPermissible(
 				"set code transaction without authorizations is not supported",
 			)
 		}
+	}
+
+	// TODO: add feature guard, implement in system contract
+	if rules.Upgrades.Brio && bundle.IsBundleOnly(tx) {
+		return fmt.Errorf(
+			"bundle-only transactions are not supported",
+		)
 	}
 
 	return nil
