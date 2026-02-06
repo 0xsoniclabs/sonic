@@ -28,6 +28,8 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 
+	transactional_state "github.com/0xsoniclabs/sonic/evmcore/transactional_state"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -125,6 +127,7 @@ func (p *StateProcessor) ProcessWithDifficulty(
 	return runTransactions(newRunContext(
 		signer, header.BaseFee, statedb, gp, blockNumber, usedGas,
 		onNewLog, p.upgrades, &transactionRunner{evm{vmenv}},
+		blockContext, p.config, cfg,
 	), block.Transactions, 0)
 }
 
@@ -132,15 +135,18 @@ func (p *StateProcessor) ProcessWithDifficulty(
 // block. It is used as input to the runTransactions helper function and passed
 // along the processing layers to make the parameters available where needed.
 type runContext struct {
-	signer      types.Signer
-	baseFee     *big.Int
-	statedb     state.StateDB
-	gasPool     *core.GasPool
-	blockNumber *big.Int
-	usedGas     *uint64
-	onNewLog    func(*types.Log)
-	upgrades    opera.Upgrades
-	runner      _transactionRunner
+	signer       types.Signer
+	baseFee      *big.Int
+	statedb      state.StateDB
+	gasPool      *core.GasPool
+	blockNumber  *big.Int
+	usedGas      *uint64
+	onNewLog     func(*types.Log)
+	upgrades     opera.Upgrades
+	runner       _transactionRunner
+	blockContext vm.BlockContext
+	chainConfig  *params.ChainConfig
+	vmConfig     vm.Config
 }
 
 // newRunContext creates a new runContext instance bundling the given parameters
@@ -157,17 +163,23 @@ func newRunContext(
 	onNewLog func(*types.Log),
 	upgrades opera.Upgrades,
 	runner _transactionRunner,
+	blockContext vm.BlockContext,
+	chainConfig *params.ChainConfig,
+	vmConfig vm.Config,
 ) *runContext {
 	return &runContext{
-		signer:      signer,
-		baseFee:     baseFee,
-		statedb:     statedb,
-		gasPool:     gasPool,
-		blockNumber: blockNumber,
-		usedGas:     usedGas,
-		onNewLog:    onNewLog,
-		upgrades:    upgrades,
-		runner:      runner,
+		signer:       signer,
+		baseFee:      baseFee,
+		statedb:      statedb,
+		gasPool:      gasPool,
+		blockNumber:  blockNumber,
+		usedGas:      usedGas,
+		onNewLog:     onNewLog,
+		upgrades:     upgrades,
+		runner:       runner,
+		blockContext: blockContext,
+		chainConfig:  chainConfig,
+		vmConfig:     vmConfig,
 	}
 }
 
@@ -189,6 +201,13 @@ func runTransactions(
 			processed = append(processed,
 				context.runner.runSponsoredTransaction(context, tx, nextId)...,
 			)
+			// TODO: Find a better location for this, so that sponsorship and nested
+			// bundles are supported
+			// TODO: guard by own feature guard and not just brio
+		} else if context.upgrades.Brio && bundle.IsTransactionBundle(tx) {
+			processed = append(processed,
+				context.runner.runTransactionBundle(context, tx, nextId)...,
+			)
 		} else {
 			processed = append(processed,
 				context.runner.runRegularTransaction(context, tx, nextId),
@@ -204,6 +223,7 @@ func runTransactions(
 type _transactionRunner interface {
 	runRegularTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) ProcessedTransaction
 	runSponsoredTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) []ProcessedTransaction
+	runTransactionBundle(ctxt *runContext, tx *types.Transaction, txIndex int) []ProcessedTransaction
 }
 
 // transactionRunner implements the _transactionRunner interface by using an
@@ -285,6 +305,64 @@ func (r *transactionRunner) runSponsoredTransaction(
 		log.Warn("Fee charging transaction failed", "sponsored-tx", tx.Hash().Hex())
 	}
 	return []ProcessedTransaction{processed, processedDeduction}
+}
+
+func (r *transactionRunner) runTransactionBundle(
+	ctxt *runContext,
+	tx *types.Transaction,
+	txIndex int,
+) []ProcessedTransaction {
+
+	bundle, err := bundle.UnpackTransactionBundle(tx)
+	if err != nil {
+		log.Warn("Transaction bundle execution failed:", "tx", tx.Hash().Hex(), "error", err)
+		return nil
+	}
+
+	if err := bundle.Validate(ctxt.signer); err != nil {
+		log.Warn("Transaction bundle is invalid, skip", "tx", tx.Hash().Hex(), "error", err)
+		return nil
+	}
+
+	// Execute the payment transaction first
+	payment := r.evm.runWithBaseFeeCheck(ctxt, bundle.Payment, txIndex)
+
+	dbTransaction := transactional_state.NewTransactionalState(ctxt.statedb)
+	transactionalVm := evm{vm.NewEVM(ctxt.blockContext, dbTransaction, ctxt.chainConfig, ctxt.vmConfig)}
+
+	transactionalContext := *ctxt
+	transactionalContext.statedb = dbTransaction
+
+	res := make([]ProcessedTransaction, 0, len(bundle.Bundle))
+
+	for i, btx := range bundle.Bundle {
+		txResult := transactionalVm.runWithBaseFeeCheck(&transactionalContext, btx, txIndex+1+i)
+
+		if bundle.RevertOnInvalidTransaction() && txResult.Receipt == nil {
+			log.Info("Bundled transaction skipped, revert all", "tx", btx.Hash().Hex())
+			return []ProcessedTransaction{
+				payment,
+			}
+		}
+
+		if bundle.RevertOnFailedTransaction() && txResult.Receipt != nil && txResult.Receipt.Status != types.ReceiptStatusSuccessful {
+			log.Info("Bundled transaction failed, revert all", "tx", btx.Hash().Hex())
+			return []ProcessedTransaction{
+				payment,
+			}
+		}
+
+		res = append(res, txResult)
+
+		if bundle.StopAfterFirstSuccessfulTransaction() && txResult.Receipt != nil && txResult.Receipt.Status == types.ReceiptStatusSuccessful {
+			log.Info("Bundled transaction succeeded, stop after first", "tx", btx.Hash().Hex())
+			break
+		}
+	}
+
+	dbTransaction.Commit()
+
+	return append([]ProcessedTransaction{payment}, res...)
 }
 
 // _evm is an interface to an EVM instance that can be used to run a single
@@ -399,6 +477,7 @@ func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) []ProcessedTra
 	return runTransactions(newRunContext(
 		tp.signer, tp.header.BaseFee, tp.stateDb, tp.gp, tp.blockNumber,
 		&tp.usedGas, tp.onNewLog, tp.upgrades, &transactionRunner{evm{tp.vmEnvironment}},
+		tp.vmEnvironment.Context, tp.vmEnvironment.ChainConfig(), tp.vmEnvironment.Config,
 	), []*types.Transaction{tx}, i)
 }
 
