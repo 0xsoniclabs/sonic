@@ -145,3 +145,57 @@ func (mr *Mock_iteratorMockRecorder) Value() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Value", reflect.TypeOf((*Mock_iterator)(nil).Value))
 }
+
+// Mock_reader is a mock of _reader interface.
+type Mock_reader struct {
+	ctrl     *gomock.Controller
+	recorder *Mock_readerMockRecorder
+	isgomock struct{}
+}
+
+// Mock_readerMockRecorder is the mock recorder for Mock_reader.
+type Mock_readerMockRecorder struct {
+	mock *Mock_reader
+}
+
+// NewMock_reader creates a new mock instance.
+func NewMock_reader(ctrl *gomock.Controller) *Mock_reader {
+	mock := &Mock_reader{ctrl: ctrl}
+	mock.recorder = &Mock_readerMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *Mock_reader) EXPECT() *Mock_readerMockRecorder {
+	return m.recorder
+}
+
+// Get mocks base method.
+func (m *Mock_reader) Get(key []byte) ([]byte, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Get", key)
+	ret0, _ := ret[0].([]byte)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Get indicates an expected call of Get.
+func (mr *Mock_readerMockRecorder) Get(key any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*Mock_reader)(nil).Get), key)
+}
+
+// Has mocks base method.
+func (m *Mock_reader) Has(key []byte) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Has", key)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Has indicates an expected call of Has.
+func (mr *Mock_readerMockRecorder) Has(key any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Has", reflect.TypeOf((*Mock_reader)(nil).Has), key)
+}
