@@ -71,10 +71,6 @@ var sfvmFactory = func() vm.InterpreterFactory {
 func GetVmConfig(rules Rules) vm.Config {
 	res := sonicVmConfig
 
-	if rules.Upgrades.Brio {
-		res.Interpreter = sfvmFactory
-	}
-
 	// don't charge excess gas in single proposer mode
 	if rules.Upgrades.SingleProposerBlockFormation {
 		res.ChargeExcessGas = false
@@ -84,6 +80,9 @@ func GetVmConfig(rules Rules) vm.Config {
 		// make a copy of the rules value to avoid changing the original
 		rulesMaxTxGas := rules.Economy.Gas.MaxEventGas
 		res.MaxTxGas = &rulesMaxTxGas
+
+		// use the SFVM interpreter starting from the Brio upgrade
+		res.Interpreter = sfvmFactory
 	}
 
 	return res
