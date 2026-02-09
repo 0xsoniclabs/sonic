@@ -20,6 +20,7 @@ import (
 	"github.com/0xsoniclabs/sonic/opera/contracts/evmwriter"
 	"github.com/0xsoniclabs/tosca/go/geth_adapter"
 	"github.com/0xsoniclabs/tosca/go/interpreter/lfvm"
+	"github.com/0xsoniclabs/tosca/go/interpreter/sfvm"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/vm"
 )
@@ -55,6 +56,16 @@ var sonicVmConfig = func() vm.Config {
 	}
 }()
 
+// sfvmFactory is a factory for creating a SFVM interpreter,
+// starting from the Brio upgrade it is used as the default interpreter.
+var sfvmFactory = func() vm.InterpreterFactory {
+	interpreter, err := sfvm.NewInterpreter(sfvm.Config{})
+	if err != nil {
+		panic(err)
+	}
+	return geth_adapter.NewGethInterpreterFactory(interpreter)
+}()
+
 // GetVmConfig returns the VM configuration to be used for processing
 // transactions under the given network rules.
 func GetVmConfig(rules Rules) vm.Config {
@@ -69,6 +80,9 @@ func GetVmConfig(rules Rules) vm.Config {
 		// make a copy of the rules value to avoid changing the original
 		rulesMaxTxGas := rules.Economy.Gas.MaxEventGas
 		res.MaxTxGas = &rulesMaxTxGas
+
+		// use the SFVM interpreter starting from the Brio upgrade
+		res.Interpreter = sfvmFactory
 	}
 
 	return res
