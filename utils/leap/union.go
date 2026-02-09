@@ -34,8 +34,8 @@ import (
 // Union with Unique.
 //
 // The resulting iterator takes ownership of the input iterators and will call
-// Release on each of them when as they are exhausted or when Release is called
-// on the union iterator itself.
+// Release on each of them as they are exhausted or when Release is called on
+// the union iterator itself.
 func Union[T cmp.Ordered](
 	iterators ...Iterator[T],
 ) *unionIterator[T] {
@@ -76,7 +76,6 @@ func (it *unionIterator[T]) Next() bool {
 	// create the heap sorting them by their current value.
 	if !it.initialized {
 		it.progressAllIterators(Iterator[T].Next)
-		it.initialized = true
 		return len(it.heap.iters) > 0
 	}
 
@@ -124,17 +123,15 @@ func (it *unionIterator[T]) progressAllIterators(
 	// Advance all iterators in parallel. This is particularly beneficial if
 	// there are many iterators that are I/O bound.
 	var wg sync.WaitGroup
-	wg.Add(len(it.heap.iters))
 	remaining := make([]Iterator[T], len(it.heap.iters))
 	for i, iter := range it.heap.iters {
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			if progress(iter) {
 				remaining[i] = iter
 			} else {
 				iter.Release()
 			}
-		}()
+		})
 	}
 	wg.Wait()
 
