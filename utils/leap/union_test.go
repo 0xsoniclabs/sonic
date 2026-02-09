@@ -34,6 +34,14 @@ func TestUnion_Next_DefaultHasNoNext(t *testing.T) {
 	require.False(t, unionIter.Next())
 }
 
+func TestUnion_Next_WhenExhaustedReturnsFalse(t *testing.T) {
+	unionIter := Union(newIter(1, 2, 3))
+	for unionIter.Next() {
+		// Consume all elements.
+	}
+	require.False(t, unionIter.Next())
+}
+
 func TestUnion_Cur_DefaultReturnsZero(t *testing.T) {
 	unionIter := Union[int]()
 	require.Zero(t, unionIter.Current())
@@ -265,5 +273,4 @@ func TestIteratorHeap_CanBeUsedAsAHeap(t *testing.T) {
 	// Popping removes iterB, leaving iterA at the top of the heap.
 	heap.Pop(&h)
 	require.Equal(3, h.iters[0].Current())
-
 }
