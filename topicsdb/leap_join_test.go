@@ -17,6 +17,7 @@
 package topicsdb
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"testing"
@@ -24,12 +25,336 @@ import (
 	"github.com/0xsoniclabs/sonic/utils/leap"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/kvdb"
+	"github.com/Fantom-foundation/lachesis-base/kvdb/memorydb"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
 
 //go:generate mockgen -source=leap_join_test.go -destination=leap_join_test_mock.go -package=topicsdb
+
+func TestFindInBlocks_FindsLogsUsingPattern(t *testing.T) {
+	require := require.New(t)
+
+	// Index some logs
+	index := NewWithLeapJoin(memorydb.New())
+
+	// Define query parameters.
+	from := idx.Block(10)
+	to := idx.Block(20)
+	pattern := [][]common.Hash{
+		{{12: 1}, {12: 2}}, // topic 0: two options for the address
+		{{3}},              // topic 1: one option
+	}
+
+	// Add some matching log records.
+	matching1 := &types.Log{
+		BlockNumber: 10,
+		Address:     common.Address{1},
+		Topics:      []common.Hash{{3}},
+		TxHash:      common.Hash{0, 1}, // < needed to be indexed
+		Data:        []byte{1, 2, 3},
+	}
+	matching2 := &types.Log{
+		BlockNumber: 15,
+		Address:     common.Address{2},
+		Topics:      []common.Hash{{3}},
+		TxHash:      common.Hash{0, 2},
+		Data:        []byte{4, 5},
+	}
+	matching3 := &types.Log{
+		BlockNumber: 12,
+		Address:     common.Address{2},
+		Topics:      []common.Hash{{3}, {4}}, // more topics are accepted
+		TxHash:      common.Hash{0, 3},
+		Data:        []byte{6},
+	}
+	require.NoError(index.Push(matching1, matching2, matching3))
+
+	// also add some non-matching log messages
+	require.NoError(index.Push(
+		&types.Log{
+			BlockNumber: 8, // too early
+			Address:     common.Address{1},
+			Topics:      []common.Hash{{3}},
+			TxHash:      common.Hash{1, 1},
+		},
+		&types.Log{
+			BlockNumber: 21, // too late
+			Address:     common.Address{1},
+			Topics:      []common.Hash{{3}},
+			TxHash:      common.Hash{1, 2},
+		},
+		&types.Log{
+			BlockNumber: 12,
+			Address:     common.Address{3}, // non-matching address
+			Topics:      []common.Hash{{3}},
+			TxHash:      common.Hash{1, 3},
+		},
+		&types.Log{
+			BlockNumber: 12,
+			Address:     common.Address{2},
+			Topics:      []common.Hash{{4}}, // non-matching topic
+			TxHash:      common.Hash{1, 4},
+		},
+		&types.Log{
+			BlockNumber: 12,
+			Address:     common.Address{2},
+			Topics:      []common.Hash{}, // too few topics
+			TxHash:      common.Hash{1, 5},
+		},
+	))
+
+	logs, err := index.FindInBlocks(
+		t.Context(), from, to, pattern,
+	)
+	require.NoError(err)
+	require.Len(logs, 3)
+
+	require.Equal(
+		[]*types.Log{matching1, matching3, matching2}, // in block order
+		logs,
+	)
+}
+
+func TestFindInBlocksUsingLeapJoin_ReleasesAllIterators(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	index := NewMock_table(ctrl)
+
+	// A pattern causing 3 iterators to be created.
+	pattern := [][]common.Hash{
+		{{1}, {2}, {3}},
+	}
+
+	iter1 := NewMock_iterator(ctrl)
+	iter2 := NewMock_iterator(ctrl)
+	iter3 := NewMock_iterator(ctrl)
+
+	index.EXPECT().NewIterator(gomock.Any(), gomock.Any()).Return(iter1)
+	index.EXPECT().NewIterator(gomock.Any(), gomock.Any()).Return(iter2)
+	index.EXPECT().NewIterator(gomock.Any(), gomock.Any()).Return(iter3)
+
+	// All iterators are empty, and need to be released.
+	iter1.EXPECT().Next().Return(false)
+	iter1.EXPECT().Error().Return(nil)
+	iter1.EXPECT().Release()
+
+	iter2.EXPECT().Next().Return(false)
+	iter2.EXPECT().Error().Return(nil)
+	iter2.EXPECT().Release()
+
+	iter3.EXPECT().Next().Return(false)
+	iter3.EXPECT().Error().Return(nil)
+	iter3.EXPECT().Release()
+
+	res, err := findInBlocksUsingLeapJoin(
+		t.Context(), 0, 10, pattern, index, nil,
+	)
+
+	require.NoError(err)
+	require.Nil(res)
+}
+
+func TestFindInBlocksUsingLeapJoin_ReturnsEmptyIfBlockRangeIsEmpty(t *testing.T) {
+	tests := map[string]struct {
+		from, to idx.Block
+		skipped  bool
+	}{
+		"from less than to":        {from: 5, to: 10, skipped: false},
+		"from equals to":           {from: 10, to: 10, skipped: false},
+		"from one greater than to": {from: 11, to: 10, skipped: true},
+		"from greater than to":     {from: 15, to: 10, skipped: true},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			// We use a cancelled context to catch those filter calls that pass
+			// the range test before any filter processing is happening. This
+			// way, we do not need to set up the indices for the join.
+			ctx, cancel := context.WithCancel(t.Context())
+			cancel()
+
+			logs, err := findInBlocksUsingLeapJoin(
+				ctx, tc.from, tc.to, nil, nil, nil,
+			)
+			require.Empty(t, logs)
+
+			if tc.skipped {
+				require.NoError(t, err)
+			} else {
+				require.ErrorIs(t, err, ctx.Err())
+			}
+		})
+	}
+}
+
+func TestFindInBLocksUsingLeapJoin_FailsIfNoPatternsAreProvided(t *testing.T) {
+	logs, err := findInBlocksUsingLeapJoin(
+		context.Background(), 0, 10, nil, nil, nil,
+	)
+	require.Empty(t, logs)
+	require.ErrorContains(t, err, "empty topics")
+}
+
+func TestFindInBlocksUsingLeapJoin_CanBeCancelledViaContext(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	index := NewMock_table(ctrl)
+	iter := NewMock_iterator(ctrl)
+	logs := NewMock_reader(ctrl)
+
+	// A simple query with a single topic, iterating over the result of a single
+	// topic iterator.
+	index.EXPECT().NewIterator(gomock.Any(), gomock.Any()).Return(iter)
+
+	// The iterator produces arbitrary many results.
+	iter.EXPECT().Next().Return(true).AnyTimes()
+	iter.EXPECT().Key().Return(make([]byte, topicKeySize)).AnyTimes()
+	iter.EXPECT().Value().Return(make([]byte, 1)).AnyTimes()
+	iter.EXPECT().Error().Return(nil).AnyTimes()
+	iter.EXPECT().Release()
+
+	// Those keys are resolved to logs.
+	dummySerializedLog := make([]byte, 200)
+	ctx, cancel := context.WithCancel(t.Context())
+	gomock.InOrder(
+		logs.EXPECT().Get(gomock.Any()).Return(dummySerializedLog, nil),
+		logs.EXPECT().Get(gomock.Any()).DoAndReturn(func([]byte) ([]byte, error) {
+			// cancel the context while the second log is resolved, to test
+			// cancellation during the join processing, not just before.
+			cancel()
+			return dummySerializedLog, nil
+		}),
+	)
+
+	res, err := findInBlocksUsingLeapJoin(
+		ctx, 0, 10, [][]common.Hash{nil, {{1}}}, index, logs,
+	)
+
+	require.Nil(res)
+	require.ErrorIs(err, context.Canceled)
+}
+
+func TestFindInBlocksUsingLeapJoin_FailingLogFetchStopsJoin(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	index := NewMock_table(ctrl)
+	iter := NewMock_iterator(ctrl)
+	logs := NewMock_reader(ctrl)
+
+	// A simple query with a single topic, iterating over the result of a single
+	// topic iterator.
+	index.EXPECT().NewIterator(gomock.Any(), gomock.Any()).Return(iter)
+
+	// The iterator produces arbitrary many results.
+	iter.EXPECT().Next().Return(true).AnyTimes()
+	iter.EXPECT().Key().Return(make([]byte, topicKeySize)).AnyTimes()
+	iter.EXPECT().Value().Return(make([]byte, 1)).AnyTimes()
+	iter.EXPECT().Error().Return(nil).AnyTimes()
+	iter.EXPECT().Release()
+
+	// Those keys are resolved to logs.
+	dummySerializedLog := make([]byte, 200)
+	issue := errors.New("injected log fetch error")
+	gomock.InOrder(
+		logs.EXPECT().Get(gomock.Any()).Return(dummySerializedLog, nil),
+		logs.EXPECT().Get(gomock.Any()).DoAndReturn(func([]byte) ([]byte, error) {
+			// return an error while fetching the second log, to test that
+			// errors during the join processing stop the join.
+			return nil, issue
+		}),
+	)
+
+	res, err := findInBlocksUsingLeapJoin(
+		t.Context(), 0, 10, [][]common.Hash{nil, {{1}}}, index, logs,
+	)
+
+	require.Nil(res)
+	require.ErrorIs(err, issue)
+}
+
+func TestFindInBlocksUsingLeapJoin_ErrorsDuringIndexIterationsAreReported(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	index := NewMock_table(ctrl)
+	iter := NewMock_iterator(ctrl)
+	logs := NewMock_reader(ctrl)
+
+	// A simple query with a single topic, iterating over the result of a single
+	// topic iterator.
+	index.EXPECT().NewIterator(gomock.Any(), gomock.Any()).Return(iter)
+
+	// The iterator fails with an error.
+	issue := errors.New("injected index access error")
+	iter.EXPECT().Next().Return(false).AnyTimes()
+	iter.EXPECT().Error().Return(issue).AnyTimes()
+	iter.EXPECT().Release()
+
+	res, err := findInBlocksUsingLeapJoin(
+		t.Context(), 0, 10, [][]common.Hash{nil, {{1}}}, index, logs,
+	)
+
+	require.Nil(res)
+	require.ErrorIs(err, issue)
+}
+
+func TestNewTopicIterator_ReturnsNilIteratorForEmptyTopics(t *testing.T) {
+	it, raw := newTopicIterator(nil, nil, 0, 0, 0)
+	require.Nil(t, it)
+	require.Nil(t, raw)
+}
+
+func TestNewTopicIterator_CreatesOneIteratorPerTopicOption(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	table := NewMock_table(ctrl)
+
+	topics := []common.Hash{{1}, {2}, {3}}
+	position := uint8(5)
+	from := idx.Block(10)
+	to := idx.Block(20)
+
+	// Expect an iterator to be created for each topic option.
+	it, raw := newTopicIterator(table, topics, int(position), from, to)
+	require.Len(raw, len(topics))
+
+	// The actual DB iterators are lazy-initialized on the first Next call.
+	for _, topic := range topics {
+		prefix := append(topic[:], byte(position))
+		start := binary.BigEndian.AppendUint64(nil, uint64(from))
+
+		iter := NewMock_iterator(ctrl)
+		table.EXPECT().NewIterator(prefix, start).Return(iter)
+
+		// We simulate all-empty iterators.
+		gomock.InOrder(
+			iter.EXPECT().Next().Return(false),
+			iter.EXPECT().Error().Return(nil),
+			iter.EXPECT().Release(),
+		)
+	}
+
+	require.False(it.Next())
+}
+
+func TestNewTopicIterator_SkipsUnionWrapperIfOnlyOneTopicOption(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	table := NewMock_table(ctrl)
+
+	topics := []common.Hash{{1}} // only one topic option
+	position := uint8(5)
+	from := idx.Block(10)
+	to := idx.Block(20)
+
+	it, raw := newTopicIterator(table, topics, int(position), from, to)
+	require.Len(raw, 1)
+	require.Equal(it, raw[0])
+}
+
+// --- IndexIterator tests ---
 
 var _ leap.Iterator[logrec] = (*indexIterator)(nil)
 
@@ -423,3 +748,9 @@ type _iterator interface {
 }
 
 var _ _iterator = (*Mock_iterator)(nil) // to avoid an unused warning for the _iterator interface
+
+type _reader interface {
+	kvdb.Reader
+}
+
+var _ _reader = (*Mock_reader)(nil) // to avoid an unused warning for the _reader interface
