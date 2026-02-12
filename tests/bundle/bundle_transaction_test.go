@@ -176,7 +176,7 @@ func testIgnoreInvalidTransactions(t *testing.T, net *tests.IntegrationTestNet) 
 	// This test causes an invalid transaction because lack of funds to cover the value transfer
 	// Note: two senders are used to avoid having to manually set the nonces correctly
 	sender1 := tests.MakeAccountWithBalance(t, net, big.NewInt(10_000_000))
-	sender2 := tests.MakeAccountWithBalance(t, net, big.NewInt(10_000_000))
+	sender2 := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
 	expectedTransfer := big.NewInt(1000)
 
 	plan := bundle.ExecutionPlan{
@@ -210,7 +210,7 @@ func testIgnoreInvalidTransactions(t *testing.T, net *tests.IntegrationTestNet) 
 	// verify that the first transaction was executed and the second was not
 	balance0, err := client.BalanceAt(t.Context(), common.Address{0x42}, nil)
 	require.NoError(t, err, "failed to get balance at address 0x42")
-	require.Equal(t, expectedTransfer, balance0, "balance at address 0x42 should be 10_000_000")
+	require.Equal(t, expectedTransfer, balance0, "balance at address 0x42 should be the expected transfer amount")
 }
 
 func testAtMostOneBundle(t *testing.T, net *tests.IntegrationTestNet) {

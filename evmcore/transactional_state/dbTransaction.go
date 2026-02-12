@@ -301,6 +301,9 @@ func (t *TransactionalState) CreateContract(addr common.Address) {
 
 func (t *TransactionalState) SubBalance(addr common.Address, sub *uint256.Int, _ tracing.BalanceChangeReason) uint256.Int {
 	prev := t.GetBalance(addr)
+	if prev == nil {
+		prev = uint256.NewInt(0)
+	}
 	newBalance := uint256.NewInt(0).Sub(prev, sub)
 	t.SetBalance(addr, newBalance)
 	return *prev
@@ -308,6 +311,9 @@ func (t *TransactionalState) SubBalance(addr common.Address, sub *uint256.Int, _
 
 func (t *TransactionalState) AddBalance(addr common.Address, add *uint256.Int, _ tracing.BalanceChangeReason) uint256.Int {
 	prev := t.GetBalance(addr)
+	if prev == nil {
+		prev = uint256.NewInt(0)
+	}
 	newBalance := uint256.NewInt(0).Add(prev, add)
 	t.SetBalance(addr, newBalance)
 	return *prev
@@ -315,6 +321,9 @@ func (t *TransactionalState) AddBalance(addr common.Address, add *uint256.Int, _
 
 func (t *TransactionalState) GetBalance(addr common.Address) *uint256.Int {
 	acc := t.fetchAccount(addr)
+	if acc.balance == nil {
+		return uint256.NewInt(0)
+	}
 	return acc.balance
 }
 
