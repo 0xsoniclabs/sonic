@@ -121,11 +121,13 @@ func makeBundleTransaction(t *testing.T,
 	sameNonceForBundleAndPayment, err := client.PendingNonceAt(t.Context(), bundler.Address())
 	require.NoError(t, err, "failed to get nonce for bundler; %v", err)
 
+	cost := big.NewInt(bundle.BundleTxGasCostOverhead)
+
 	// make payment transaction
 	paymentTx := tests.CreateTransaction(t, net,
 		&types.AccessListTx{Nonce: sameNonceForBundleAndPayment,
 			To:    &common.Address{0x01},
-			Value: plan.GetCost(),
+			Value: cost,
 			AccessList: types.AccessList{
 				{Address: bundle.BundleOnly, StorageKeys: []common.Hash{plan.Hash()}},
 			}}, bundler)
