@@ -17,12 +17,134 @@
 package topicsdb
 
 import (
+	"context"
 	"errors"
 
+	"github.com/0xsoniclabs/sonic/utils/leap"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/kvdb"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 )
+
+// NewWithLeapJoin creates an Index instance using the leap join algorithm for
+// log filtering.
+func NewWithLeapJoin(db kvdb.Store) Index {
+	return &withLeapJoin{newIndex(db)}
+}
+
+type withLeapJoin struct {
+	*index
+}
+
+// FindInBlocks returns all log records of block range by pattern.
+// 1st pattern element is an address. Results are listed in the order of the
+// log topic index, which is BlockNumber > TxHash > LogIndex.
+func (i *withLeapJoin) FindInBlocks(
+	ctx context.Context,
+	from, to idx.Block,
+	pattern [][]common.Hash,
+) ([]*types.Log, error) {
+	return findInBlocksUsingLeapJoin(
+		ctx, from, to, pattern, i.table.Topic, i.table.Logrec,
+	)
+}
+
+// findInBlocksUsingLeapJoin is the implementation of FindInBlocks using the
+// leap join algorithm. It is extracted into a separate function to be easily
+// testable in isolation.
+func findInBlocksUsingLeapJoin(
+	ctx context.Context,
+	from, to idx.Block,
+	pattern [][]common.Hash,
+	index kvdb.Iteratee,
+	logTable kvdb.Reader,
+) ([]*types.Log, error) {
+	// Skip empty ranges.
+	if from > to {
+		return nil, nil
+	}
+
+	// Check the context, stop if already cancelled
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	// Clean up the pattern. This restricts the pattern to cover at most 5 topics,
+	// and removes duplicates within each topic set. If in the end the pattern is
+	// empty, an error is returned.
+	pattern, err := limitPattern(pattern)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build the leap join iterators.
+	iterators := make([]leap.Iterator[logrec], 0, len(pattern))
+	rawIterators := make([]*indexIterator, 0, len(pattern))
+	for position, topics := range pattern {
+		it, raw := newTopicIterator(index, topics, position, from, to)
+		if it != nil {
+			iterators = append(iterators, it)
+			defer it.Release()
+		}
+		rawIterators = append(rawIterators, raw...)
+	}
+
+	// Execute the leap join.
+	var logs []*types.Log
+	for logrec := range leap.JoinFunc(logRecLess, iterators...) {
+		// Stop if the context is cancelled
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		// Resolve the log record.
+		logrec.fetch(logTable)
+		if logrec.err != nil {
+			return nil, logrec.err
+		}
+		logs = append(logs, logrec.result)
+	}
+
+	// Collect errors from the iterators, if any. The kvdb.Iterator interface
+	// does not return errors during iteration, but instead provides an Error()
+	// method to be called after to check if any error occurred at any time.
+	// So we need to check all iterators for errors after the join is done.
+	for _, it := range rawIterators {
+		err = errors.Join(err, it.Error())
+	}
+	if err != nil {
+		return nil, err
+	}
+	return logs, nil
+}
+
+func newTopicIterator(
+	table kvdb.Iteratee,
+	topics []common.Hash,
+	position int,
+	from, to idx.Block,
+) (
+	leap.Iterator[logrec],
+	[]*indexIterator,
+) {
+	if len(topics) == 0 {
+		return nil, nil
+	}
+
+	iters := make([]leap.Iterator[logrec], 0, len(topics))
+	raw := make([]*indexIterator, 0, len(topics))
+	for _, topic := range topics {
+		it := newIndexIterator(table, topic, position, from, to)
+		iters = append(iters, it)
+		raw = append(raw, it)
+	}
+	if len(iters) == 1 {
+		return iters[0], raw
+	}
+	return leap.UnionFunc(logRecLess, iters...), raw
+}
+
+// -- Adapter of kvdb.Iterator to leap.Iterator[logrec] --
 
 // newIndexIterator creates a new index iterator for the given topic, topic
 // position and block range. The resulting iterator returns log records with the
