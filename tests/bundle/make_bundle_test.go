@@ -18,7 +18,6 @@ package bundle
 
 import (
 	"math/big"
-	"slices"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
@@ -50,38 +49,61 @@ func Test_MakeBundle(t *testing.T) {
 	_, counterAbi, counterAddress := prepareContract(t, net, counter.CounterMetaData.GetAbi, counter.DeployCounter)
 	input := generateCallData(t, counterAbi, "incrementCounter")
 
-	// 1) Define execution pan
+	signer := types.NewCancunSigner(net.GetChainId())
+
+	// 1)  make transactions
+	tx1 := types.NewTx(tests.SetTransactionDefaults(t, net, &types.AccessListTx{
+		To:   &counterAddress,
+		Gas:  300_000,
+		Data: input,
+	}, sender1))
+	tx2 := types.NewTx(tests.SetTransactionDefaults(t, net, &types.AccessListTx{
+		To:   &counterAddress,
+		Gas:  300_000,
+		Data: input,
+	}, sender2))
+
 	plan := bundle.ExecutionPlan{
 		Flags: 0,
-		Transactions: []bundle.MetaTransaction{
-			{
-				To:    &counterAddress,
-				From:  sender1.Address(),
-				Value: big.NewInt(0),
-				Data:  input,
-			},
-			{
-				To:    &counterAddress,
-				From:  sender2.Address(),
-				Value: big.NewInt(0),
-				Data:  input,
-			},
+		Transactions: []bundle.ExecutionStep{
+			{From: sender1.Address(), Hash: signer.Hash(tx1)},
+			{From: sender2.Address(), Hash: signer.Hash(tx2)},
 		},
 	}
 
-	// 2) Get transactions in execution plan signed by their senders
-	transactions := makeTransactionsFromPlan(t, net, plan, sender1, sender2)
+	// 2) redo transactions, now with bundle-only access list item, and sign them with the corresponding sender account
+	tx1 = tests.SignTransaction(t, net.GetChainId(), &types.AccessListTx{
+		Nonce:    tx1.Nonce(),
+		GasPrice: tx1.GasPrice(),
+		Gas:      tx1.Gas(),
+		To:       tx1.To(),
+		Value:    tx1.Value(),
+		Data:     tx1.Data(),
+		AccessList: append(tx1.AccessList(),
+			types.AccessTuple{Address: bundle.BundleOnly, StorageKeys: []common.Hash{plan.Hash()}},
+		),
+	}, sender1)
+	tx2 = tests.SignTransaction(t, net.GetChainId(), &types.AccessListTx{
+		Nonce:    tx2.Nonce(),
+		GasPrice: tx2.GasPrice(),
+		Gas:      tx2.Gas(),
+		To:       tx2.To(),
+		Value:    tx2.Value(),
+		Data:     tx2.Data(),
+		AccessList: append(tx2.AccessList(),
+			types.AccessTuple{Address: bundle.BundleOnly, StorageKeys: []common.Hash{plan.Hash()}},
+		),
+	}, sender2)
 
-	// 3) Create bundle transaction with the signed transactions
+	transactions := types.Transactions{tx1, tx2}
+
 	bundleTx, paymentTxHash := makeBundleTransaction(t, net, transactions, plan, bundler)
 	require.NotNil(t, bundleTx)
 	require.NotZero(t, paymentTxHash)
 
-	// 4) Send bundle transaction to mempool
 	err = client.SendTransaction(t.Context(), bundleTx)
 	require.NoError(t, err)
 
-	// 5) Wait for receipt of payment transaction to ensure bundle has been processed
 	receipt, err := net.GetReceipt(paymentTxHash)
 	require.NoError(t, err, "failed to get payment tx receipt; %v", err)
 	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "payment transaction failed")
@@ -161,56 +183,56 @@ func makeBundleTransaction(t *testing.T,
 
 // makeTransactionsFromPlan creates transactions from the given execution plan,
 // and signs them with the corresponding sender account.
-func makeTransactionsFromPlan(
-	t *testing.T,
-	net *tests.IntegrationTestNet,
-	plan bundle.ExecutionPlan,
-	senders ...*tests.Account,
-) []*types.Transaction {
-	t.Helper()
+// func makeTransactionsFromPlan(
+// 	t *testing.T,
+// 	net *tests.IntegrationTestNet,
+// 	plan bundle.ExecutionPlan,
+// 	senders ...*tests.Account,
+// ) []*types.Transaction {
+// 	t.Helper()
 
-	client, err := net.GetClient()
-	require.NoError(t, err, "failed to get client; %v", err)
-	defer client.Close()
+// 	client, err := net.GetClient()
+// 	require.NoError(t, err, "failed to get client; %v", err)
+// 	defer client.Close()
 
-	executionPlanHash := plan.Hash()
-	transactions := make([]*types.Transaction, len(plan.Transactions))
-	lastNonce := make(map[common.Address]uint64)
+// 	executionPlanHash := plan.Hash()
+// 	transactions := make([]*types.Transaction, len(plan.Transactions))
+// 	lastNonce := make(map[common.Address]uint64)
 
-	for i, tx := range plan.Transactions {
+// 	for i, tx := range plan.Transactions {
 
-		idx := slices.IndexFunc(senders, func(a *tests.Account) bool {
-			return a.Address() == tx.From
-		})
-		require.GreaterOrEqual(t, idx, 0)
-		if _, ok := lastNonce[tx.From]; !ok {
-			nonce, err := client.PendingNonceAt(t.Context(), tx.From)
-			require.NoError(t, err, "failed to get nonce for sender %s; %v", tx.From.Hex(), err)
-			lastNonce[tx.From] = nonce
-		}
-		sender := senders[idx]
+// 		idx := slices.IndexFunc(senders, func(a *tests.Account) bool {
+// 			return a.Address() == tx.From
+// 		})
+// 		require.GreaterOrEqual(t, idx, 0)
+// 		if _, ok := lastNonce[tx.From]; !ok {
+// 			nonce, err := client.PendingNonceAt(t.Context(), tx.From)
+// 			require.NoError(t, err, "failed to get nonce for sender %s; %v", tx.From.Hex(), err)
+// 			lastNonce[tx.From] = nonce
+// 		}
+// 		sender := senders[idx]
 
-		metaTx := tests.SetTransactionDefaults(t, net, &types.AccessListTx{
-			Nonce: lastNonce[tx.From],
-			To:    tx.To,
-			Value: tx.Value,
-			Data:  tx.Data,
-			// TODO: estimate gas for execution, more complex transactions may fail
-			Gas: 300000,
-			AccessList: types.AccessList{
-				{
-					Address:     bundle.BundleOnly,
-					StorageKeys: []common.Hash{executionPlanHash},
-				},
-			},
-		}, sender)
+// 		metaTx := tests.SetTransactionDefaults(t, net, &types.AccessListTx{
+// 			Nonce: lastNonce[tx.From],
+// 			To:    tx.To,
+// 			Value: tx.Value,
+// 			Data:  tx.Data,
+// 			// TODO: estimate gas for execution, more complex transactions may fail
+// 			Gas: 300000,
+// 			AccessList: types.AccessList{
+// 				{
+// 					Address:     bundle.BundleOnly,
+// 					StorageKeys: []common.Hash{executionPlanHash},
+// 				},
+// 			},
+// 		}, sender)
 
-		signedTx := tests.SignTransaction(t, net.GetChainId(), metaTx, sender)
-		transactions[i] = signedTx
-		lastNonce[tx.From]++
-	}
-	return transactions
-}
+// 		signedTx := tests.SignTransaction(t, net.GetChainId(), metaTx, sender)
+// 		transactions[i] = signedTx
+// 		lastNonce[tx.From]++
+// 	}
+// 	return transactions
+// }
 
 func prepareContract[T any](
 	t testing.TB, net *tests.IntegrationTestNet,
