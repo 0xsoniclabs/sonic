@@ -47,6 +47,7 @@ func TestGetLogFilters(t *testing.T) {
 	for range N {
 		source, receipt, err := tests.DeployContract(net, indexed_logs.DeployIndexedLogs)
 		require.NoError(t, err)
+		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 		sources = append(sources, source)
 		sourceAddrs = append(sourceAddrs, receipt.ContractAddress)
 	}
@@ -65,6 +66,7 @@ func TestGetLogFilters(t *testing.T) {
 			return source.EmitCartesianProduct(opts, big.NewInt(N))
 		})
 		require.NoError(t, err)
+		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 		blockHashes = append(blockHashes, receipt.BlockHash)
 	}
 
@@ -286,28 +288,30 @@ func TestGetLogFilters(t *testing.T) {
 }
 
 func filterLogs(logs []types.Log, query ethereum.FilterQuery) []types.Log {
+	filter := filter{query}
 	return slices.DeleteFunc(slices.Clone(logs), func(log types.Log) bool {
-		return !matches(query, log)
+		return !filter.matches(log)
 	})
 }
 
-func matches(
-	query ethereum.FilterQuery,
-	log types.Log,
-) bool {
-	if query.BlockHash != nil && log.BlockHash != *query.BlockHash {
+type filter struct {
+	ethereum.FilterQuery
+}
+
+func (f *filter) matches(log types.Log) bool {
+	if f.BlockHash != nil && log.BlockHash != *f.BlockHash {
 		return false
 	}
-	if query.FromBlock != nil && log.BlockNumber < query.FromBlock.Uint64() {
+	if f.FromBlock != nil && log.BlockNumber < f.FromBlock.Uint64() {
 		return false
 	}
-	if query.ToBlock != nil && log.BlockNumber > query.ToBlock.Uint64() {
+	if f.ToBlock != nil && log.BlockNumber > f.ToBlock.Uint64() {
 		return false
 	}
 	// Check address match, if any addresses are specified in the query.
-	if len(query.Addresses) > 0 {
+	if len(f.Addresses) > 0 {
 		match := false
-		for _, addr := range query.Addresses {
+		for _, addr := range f.Addresses {
 			if log.Address == addr {
 				match = true
 				break
@@ -318,7 +322,7 @@ func matches(
 		}
 	}
 	// Check topic match, if any topics are specified in the query.
-	for i, topicGroup := range query.Topics {
+	for i, topicGroup := range f.Topics {
 		if len(topicGroup) == 0 {
 			continue
 		}
