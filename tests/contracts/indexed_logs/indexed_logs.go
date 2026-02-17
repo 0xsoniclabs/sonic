@@ -1,19 +1,3 @@
-// Copyright 2025 Sonic Operations Ltd
-// This file is part of the Sonic Client
-//
-// Sonic is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Lesser General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// Sonic is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU Lesser General Public License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with Sonic. If not, see <http://www.gnu.org/licenses/>.
-
 // Code generated - DO NOT EDIT.
 // This file is a generated binding and any manual changes will be lost.
 
@@ -47,8 +31,8 @@ var (
 
 // IndexedLogsMetaData contains all meta data concerning the IndexedLogs contract.
 var IndexedLogsMetaData = &bind.MetaData{
-	ABI: "[{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"id\",\"type\":\"uint256\"}],\"name\":\"Event1\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"id\",\"type\":\"uint256\"}],\"name\":\"Event2\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"id\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"string\",\"name\":\"text\",\"type\":\"string\"}],\"name\":\"Event3\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"emitEvents\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}]",
-	Bin: "0x6080604052348015600e575f5ffd5b506101e78061001c5f395ff3fe608060405234801561000f575f5ffd5b5060043610610029575f3560e01c80636c8893d31461002d575b5f5ffd5b610035610037565b005b5f5f90505b60058110156100f7577f04474795f5b996ff80cb47c148d4c5ccdbe09ef27551820caa9c2f8ed149cce3816040516100749190610112565b60405180910390a17f06df6fb2d6d0b17a870decb858cc46bf7b69142ab7b9318f7603ed3fd4ad240e816040516100ab9190610112565b60405180910390a17f93af88a66c9681ed3b0530b95b3723732fc309c0c3f7dde9cb86168f64495628816040516100e29190610185565b60405180910390a1808060010191505061003c565b50565b5f819050919050565b61010c816100fa565b82525050565b5f6020820190506101255f830184610103565b92915050565b5f82825260208201905092915050565b7f7465737420737472696e670000000000000000000000000000000000000000005f82015250565b5f61016f600b8361012b565b915061017a8261013b565b602082019050919050565b5f6040820190506101985f830184610103565b81810360208301526101a981610163565b90509291505056fea264697066735822122053735f313534f800915ed04e21d7acb11fff334f304ba0f04bcd13ae70988a5964736f6c634300081c0033",
+	ABI: "[{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"id\",\"type\":\"uint256\"}],\"name\":\"Event1\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"id\",\"type\":\"uint256\"}],\"name\":\"Event2\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"id\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"string\",\"name\":\"text\",\"type\":\"string\"}],\"name\":\"Event3\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[],\"name\":\"Log1\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"uint256\",\"name\":\"a\",\"type\":\"uint256\"}],\"name\":\"Log2\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"uint256\",\"name\":\"a\",\"type\":\"uint256\"},{\"indexed\":true,\"internalType\":\"uint256\",\"name\":\"b\",\"type\":\"uint256\"}],\"name\":\"Log3\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"uint256\",\"name\":\"a\",\"type\":\"uint256\"},{\"indexed\":true,\"internalType\":\"uint256\",\"name\":\"b\",\"type\":\"uint256\"},{\"indexed\":true,\"internalType\":\"uint256\",\"name\":\"c\",\"type\":\"uint256\"}],\"name\":\"Log4\",\"type\":\"event\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"n\",\"type\":\"uint256\"}],\"name\":\"emitCartesianProduct\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"emitEvents\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}]",
+	Bin: "0x6080604052348015600e575f5ffd5b506103748061001c5f395ff3fe608060405234801561000f575f5ffd5b5060043610610034575f3560e01c806345f301e8146100385780636c8893d314610054575b5f5ffd5b610052600480360381019061004d9190610265565b61005e565b005b61005c61016b565b005b5f5fa07f1732d0c17008d342618e7f03069177d8d39391d79811bb4e706d7c6c84108c0f60405160405180910390a15f5f90505b8181101561016757807f624fb00c2ce79f34cb543884c3af64816dce0f4cec3d32661959e49d488a7a9360405160405180910390a25f5f90505b828110156101595780827febe57242c74e694c7ec0f2fe9302812f324576f94a505b0de3f0ecb473d149bb60405160405180910390a35f5f90505b8381101561014b578082847f8540fe9d62711b26f5d55a228125ce553737daafbb466fb5c89ffef0b5907d1460405160405180910390a48080600101915050610107565b5080806001019150506100cc565b508080600101915050610092565b5050565b5f5f90505b600581101561022b577f04474795f5b996ff80cb47c148d4c5ccdbe09ef27551820caa9c2f8ed149cce3816040516101a8919061029f565b60405180910390a17f06df6fb2d6d0b17a870decb858cc46bf7b69142ab7b9318f7603ed3fd4ad240e816040516101df919061029f565b60405180910390a17f93af88a66c9681ed3b0530b95b3723732fc309c0c3f7dde9cb86168f64495628816040516102169190610312565b60405180910390a18080600101915050610170565b50565b5f5ffd5b5f819050919050565b61024481610232565b811461024e575f5ffd5b50565b5f8135905061025f8161023b565b92915050565b5f6020828403121561027a5761027961022e565b5b5f61028784828501610251565b91505092915050565b61029981610232565b82525050565b5f6020820190506102b25f830184610290565b92915050565b5f82825260208201905092915050565b7f7465737420737472696e670000000000000000000000000000000000000000005f82015250565b5f6102fc600b836102b8565b9150610307826102c8565b602082019050919050565b5f6040820190506103255f830184610290565b8181036020830152610336816102f0565b90509291505056fea26469706673582212206e9cd41739525d29f2b5816c010edda6fdca0c92c427e1ce0310c0e35cebdb1964736f6c634300081b0033",
 }
 
 // IndexedLogsABI is the input ABI used to generate the binding from.
@@ -216,6 +200,27 @@ func (_IndexedLogs *IndexedLogsTransactorRaw) Transfer(opts *bind.TransactOpts) 
 // Transact invokes the (paid) contract method with params as input values.
 func (_IndexedLogs *IndexedLogsTransactorRaw) Transact(opts *bind.TransactOpts, method string, params ...interface{}) (*types.Transaction, error) {
 	return _IndexedLogs.Contract.contract.Transact(opts, method, params...)
+}
+
+// EmitCartesianProduct is a paid mutator transaction binding the contract method 0x45f301e8.
+//
+// Solidity: function emitCartesianProduct(uint256 n) returns()
+func (_IndexedLogs *IndexedLogsTransactor) EmitCartesianProduct(opts *bind.TransactOpts, n *big.Int) (*types.Transaction, error) {
+	return _IndexedLogs.contract.Transact(opts, "emitCartesianProduct", n)
+}
+
+// EmitCartesianProduct is a paid mutator transaction binding the contract method 0x45f301e8.
+//
+// Solidity: function emitCartesianProduct(uint256 n) returns()
+func (_IndexedLogs *IndexedLogsSession) EmitCartesianProduct(n *big.Int) (*types.Transaction, error) {
+	return _IndexedLogs.Contract.EmitCartesianProduct(&_IndexedLogs.TransactOpts, n)
+}
+
+// EmitCartesianProduct is a paid mutator transaction binding the contract method 0x45f301e8.
+//
+// Solidity: function emitCartesianProduct(uint256 n) returns()
+func (_IndexedLogs *IndexedLogsTransactorSession) EmitCartesianProduct(n *big.Int) (*types.Transaction, error) {
+	return _IndexedLogs.Contract.EmitCartesianProduct(&_IndexedLogs.TransactOpts, n)
 }
 
 // EmitEvents is a paid mutator transaction binding the contract method 0x6c8893d3.
@@ -636,6 +641,598 @@ func (_IndexedLogs *IndexedLogsFilterer) WatchEvent3(opts *bind.WatchOpts, sink 
 func (_IndexedLogs *IndexedLogsFilterer) ParseEvent3(log types.Log) (*IndexedLogsEvent3, error) {
 	event := new(IndexedLogsEvent3)
 	if err := _IndexedLogs.contract.UnpackLog(event, "Event3", log); err != nil {
+		return nil, err
+	}
+	event.Raw = log
+	return event, nil
+}
+
+// IndexedLogsLog1Iterator is returned from FilterLog1 and is used to iterate over the raw logs and unpacked data for Log1 events raised by the IndexedLogs contract.
+type IndexedLogsLog1Iterator struct {
+	Event *IndexedLogsLog1 // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *IndexedLogsLog1Iterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(IndexedLogsLog1)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(IndexedLogsLog1)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *IndexedLogsLog1Iterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *IndexedLogsLog1Iterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// IndexedLogsLog1 represents a Log1 event raised by the IndexedLogs contract.
+type IndexedLogsLog1 struct {
+	Raw types.Log // Blockchain specific contextual infos
+}
+
+// FilterLog1 is a free log retrieval operation binding the contract event 0x1732d0c17008d342618e7f03069177d8d39391d79811bb4e706d7c6c84108c0f.
+//
+// Solidity: event Log1()
+func (_IndexedLogs *IndexedLogsFilterer) FilterLog1(opts *bind.FilterOpts) (*IndexedLogsLog1Iterator, error) {
+
+	logs, sub, err := _IndexedLogs.contract.FilterLogs(opts, "Log1")
+	if err != nil {
+		return nil, err
+	}
+	return &IndexedLogsLog1Iterator{contract: _IndexedLogs.contract, event: "Log1", logs: logs, sub: sub}, nil
+}
+
+// WatchLog1 is a free log subscription operation binding the contract event 0x1732d0c17008d342618e7f03069177d8d39391d79811bb4e706d7c6c84108c0f.
+//
+// Solidity: event Log1()
+func (_IndexedLogs *IndexedLogsFilterer) WatchLog1(opts *bind.WatchOpts, sink chan<- *IndexedLogsLog1) (event.Subscription, error) {
+
+	logs, sub, err := _IndexedLogs.contract.WatchLogs(opts, "Log1")
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(IndexedLogsLog1)
+				if err := _IndexedLogs.contract.UnpackLog(event, "Log1", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
+// ParseLog1 is a log parse operation binding the contract event 0x1732d0c17008d342618e7f03069177d8d39391d79811bb4e706d7c6c84108c0f.
+//
+// Solidity: event Log1()
+func (_IndexedLogs *IndexedLogsFilterer) ParseLog1(log types.Log) (*IndexedLogsLog1, error) {
+	event := new(IndexedLogsLog1)
+	if err := _IndexedLogs.contract.UnpackLog(event, "Log1", log); err != nil {
+		return nil, err
+	}
+	event.Raw = log
+	return event, nil
+}
+
+// IndexedLogsLog2Iterator is returned from FilterLog2 and is used to iterate over the raw logs and unpacked data for Log2 events raised by the IndexedLogs contract.
+type IndexedLogsLog2Iterator struct {
+	Event *IndexedLogsLog2 // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *IndexedLogsLog2Iterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(IndexedLogsLog2)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(IndexedLogsLog2)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *IndexedLogsLog2Iterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *IndexedLogsLog2Iterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// IndexedLogsLog2 represents a Log2 event raised by the IndexedLogs contract.
+type IndexedLogsLog2 struct {
+	A   *big.Int
+	Raw types.Log // Blockchain specific contextual infos
+}
+
+// FilterLog2 is a free log retrieval operation binding the contract event 0x624fb00c2ce79f34cb543884c3af64816dce0f4cec3d32661959e49d488a7a93.
+//
+// Solidity: event Log2(uint256 indexed a)
+func (_IndexedLogs *IndexedLogsFilterer) FilterLog2(opts *bind.FilterOpts, a []*big.Int) (*IndexedLogsLog2Iterator, error) {
+
+	var aRule []interface{}
+	for _, aItem := range a {
+		aRule = append(aRule, aItem)
+	}
+
+	logs, sub, err := _IndexedLogs.contract.FilterLogs(opts, "Log2", aRule)
+	if err != nil {
+		return nil, err
+	}
+	return &IndexedLogsLog2Iterator{contract: _IndexedLogs.contract, event: "Log2", logs: logs, sub: sub}, nil
+}
+
+// WatchLog2 is a free log subscription operation binding the contract event 0x624fb00c2ce79f34cb543884c3af64816dce0f4cec3d32661959e49d488a7a93.
+//
+// Solidity: event Log2(uint256 indexed a)
+func (_IndexedLogs *IndexedLogsFilterer) WatchLog2(opts *bind.WatchOpts, sink chan<- *IndexedLogsLog2, a []*big.Int) (event.Subscription, error) {
+
+	var aRule []interface{}
+	for _, aItem := range a {
+		aRule = append(aRule, aItem)
+	}
+
+	logs, sub, err := _IndexedLogs.contract.WatchLogs(opts, "Log2", aRule)
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(IndexedLogsLog2)
+				if err := _IndexedLogs.contract.UnpackLog(event, "Log2", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
+// ParseLog2 is a log parse operation binding the contract event 0x624fb00c2ce79f34cb543884c3af64816dce0f4cec3d32661959e49d488a7a93.
+//
+// Solidity: event Log2(uint256 indexed a)
+func (_IndexedLogs *IndexedLogsFilterer) ParseLog2(log types.Log) (*IndexedLogsLog2, error) {
+	event := new(IndexedLogsLog2)
+	if err := _IndexedLogs.contract.UnpackLog(event, "Log2", log); err != nil {
+		return nil, err
+	}
+	event.Raw = log
+	return event, nil
+}
+
+// IndexedLogsLog3Iterator is returned from FilterLog3 and is used to iterate over the raw logs and unpacked data for Log3 events raised by the IndexedLogs contract.
+type IndexedLogsLog3Iterator struct {
+	Event *IndexedLogsLog3 // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *IndexedLogsLog3Iterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(IndexedLogsLog3)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(IndexedLogsLog3)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *IndexedLogsLog3Iterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *IndexedLogsLog3Iterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// IndexedLogsLog3 represents a Log3 event raised by the IndexedLogs contract.
+type IndexedLogsLog3 struct {
+	A   *big.Int
+	B   *big.Int
+	Raw types.Log // Blockchain specific contextual infos
+}
+
+// FilterLog3 is a free log retrieval operation binding the contract event 0xebe57242c74e694c7ec0f2fe9302812f324576f94a505b0de3f0ecb473d149bb.
+//
+// Solidity: event Log3(uint256 indexed a, uint256 indexed b)
+func (_IndexedLogs *IndexedLogsFilterer) FilterLog3(opts *bind.FilterOpts, a []*big.Int, b []*big.Int) (*IndexedLogsLog3Iterator, error) {
+
+	var aRule []interface{}
+	for _, aItem := range a {
+		aRule = append(aRule, aItem)
+	}
+	var bRule []interface{}
+	for _, bItem := range b {
+		bRule = append(bRule, bItem)
+	}
+
+	logs, sub, err := _IndexedLogs.contract.FilterLogs(opts, "Log3", aRule, bRule)
+	if err != nil {
+		return nil, err
+	}
+	return &IndexedLogsLog3Iterator{contract: _IndexedLogs.contract, event: "Log3", logs: logs, sub: sub}, nil
+}
+
+// WatchLog3 is a free log subscription operation binding the contract event 0xebe57242c74e694c7ec0f2fe9302812f324576f94a505b0de3f0ecb473d149bb.
+//
+// Solidity: event Log3(uint256 indexed a, uint256 indexed b)
+func (_IndexedLogs *IndexedLogsFilterer) WatchLog3(opts *bind.WatchOpts, sink chan<- *IndexedLogsLog3, a []*big.Int, b []*big.Int) (event.Subscription, error) {
+
+	var aRule []interface{}
+	for _, aItem := range a {
+		aRule = append(aRule, aItem)
+	}
+	var bRule []interface{}
+	for _, bItem := range b {
+		bRule = append(bRule, bItem)
+	}
+
+	logs, sub, err := _IndexedLogs.contract.WatchLogs(opts, "Log3", aRule, bRule)
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(IndexedLogsLog3)
+				if err := _IndexedLogs.contract.UnpackLog(event, "Log3", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
+// ParseLog3 is a log parse operation binding the contract event 0xebe57242c74e694c7ec0f2fe9302812f324576f94a505b0de3f0ecb473d149bb.
+//
+// Solidity: event Log3(uint256 indexed a, uint256 indexed b)
+func (_IndexedLogs *IndexedLogsFilterer) ParseLog3(log types.Log) (*IndexedLogsLog3, error) {
+	event := new(IndexedLogsLog3)
+	if err := _IndexedLogs.contract.UnpackLog(event, "Log3", log); err != nil {
+		return nil, err
+	}
+	event.Raw = log
+	return event, nil
+}
+
+// IndexedLogsLog4Iterator is returned from FilterLog4 and is used to iterate over the raw logs and unpacked data for Log4 events raised by the IndexedLogs contract.
+type IndexedLogsLog4Iterator struct {
+	Event *IndexedLogsLog4 // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *IndexedLogsLog4Iterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(IndexedLogsLog4)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(IndexedLogsLog4)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *IndexedLogsLog4Iterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *IndexedLogsLog4Iterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// IndexedLogsLog4 represents a Log4 event raised by the IndexedLogs contract.
+type IndexedLogsLog4 struct {
+	A   *big.Int
+	B   *big.Int
+	C   *big.Int
+	Raw types.Log // Blockchain specific contextual infos
+}
+
+// FilterLog4 is a free log retrieval operation binding the contract event 0x8540fe9d62711b26f5d55a228125ce553737daafbb466fb5c89ffef0b5907d14.
+//
+// Solidity: event Log4(uint256 indexed a, uint256 indexed b, uint256 indexed c)
+func (_IndexedLogs *IndexedLogsFilterer) FilterLog4(opts *bind.FilterOpts, a []*big.Int, b []*big.Int, c []*big.Int) (*IndexedLogsLog4Iterator, error) {
+
+	var aRule []interface{}
+	for _, aItem := range a {
+		aRule = append(aRule, aItem)
+	}
+	var bRule []interface{}
+	for _, bItem := range b {
+		bRule = append(bRule, bItem)
+	}
+	var cRule []interface{}
+	for _, cItem := range c {
+		cRule = append(cRule, cItem)
+	}
+
+	logs, sub, err := _IndexedLogs.contract.FilterLogs(opts, "Log4", aRule, bRule, cRule)
+	if err != nil {
+		return nil, err
+	}
+	return &IndexedLogsLog4Iterator{contract: _IndexedLogs.contract, event: "Log4", logs: logs, sub: sub}, nil
+}
+
+// WatchLog4 is a free log subscription operation binding the contract event 0x8540fe9d62711b26f5d55a228125ce553737daafbb466fb5c89ffef0b5907d14.
+//
+// Solidity: event Log4(uint256 indexed a, uint256 indexed b, uint256 indexed c)
+func (_IndexedLogs *IndexedLogsFilterer) WatchLog4(opts *bind.WatchOpts, sink chan<- *IndexedLogsLog4, a []*big.Int, b []*big.Int, c []*big.Int) (event.Subscription, error) {
+
+	var aRule []interface{}
+	for _, aItem := range a {
+		aRule = append(aRule, aItem)
+	}
+	var bRule []interface{}
+	for _, bItem := range b {
+		bRule = append(bRule, bItem)
+	}
+	var cRule []interface{}
+	for _, cItem := range c {
+		cRule = append(cRule, cItem)
+	}
+
+	logs, sub, err := _IndexedLogs.contract.WatchLogs(opts, "Log4", aRule, bRule, cRule)
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(IndexedLogsLog4)
+				if err := _IndexedLogs.contract.UnpackLog(event, "Log4", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
+// ParseLog4 is a log parse operation binding the contract event 0x8540fe9d62711b26f5d55a228125ce553737daafbb466fb5c89ffef0b5907d14.
+//
+// Solidity: event Log4(uint256 indexed a, uint256 indexed b, uint256 indexed c)
+func (_IndexedLogs *IndexedLogsFilterer) ParseLog4(log types.Log) (*IndexedLogsLog4, error) {
+	event := new(IndexedLogsLog4)
+	if err := _IndexedLogs.contract.UnpackLog(event, "Log4", log); err != nil {
 		return nil, err
 	}
 	event.Raw = log
