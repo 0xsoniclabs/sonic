@@ -39,8 +39,7 @@ func TestWithLeapJoin_IntegrationTest_FindLogs(t *testing.T) {
 	}
 
 	algorithms := map[string]func(kvdb.Store) topicsdb.Index{
-		"leap-join":   topicsdb.NewWithLeapJoin,
-		"thread-pool": topicsdb.NewWithThreadPool,
+		"leap-join": topicsdb.NewWithLeapJoin,
 	}
 
 	logs := []*types.Log{}

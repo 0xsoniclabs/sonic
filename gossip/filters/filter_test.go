@@ -75,7 +75,7 @@ func BenchmarkFilters(b *testing.B) {
 		b.Fatal(err)
 	}
 	backend.db = rawdb.NewTable(ldb, "a")
-	backend.logIndex = topicsdb.NewWithThreadPool(table.New(ethdb2kvdb.Wrap(ldb), []byte("b")))
+	backend.logIndex = topicsdb.NewWithLeapJoin(table.New(ethdb2kvdb.Wrap(ldb), []byte("b")))
 
 	var (
 		key1, _ = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")

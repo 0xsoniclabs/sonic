@@ -49,7 +49,7 @@ type testBackend struct {
 func newTestBackend() *testBackend {
 	return &testBackend{
 		db:         rawdb.NewMemoryDatabase(),
-		logIndex:   topicsdb.NewWithThreadPool(memorydb.New()),
+		logIndex:   topicsdb.NewWithLeapJoin(memorydb.New()),
 		blocksFeed: new(notify.Feed),
 		txsFeed:    new(notify.Feed),
 		logsFeed:   new(notify.Feed),
