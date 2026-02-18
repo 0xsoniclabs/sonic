@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	BundleV1 uint16 = 1
+	BundleV1 byte = 1
 )
 
 var (
@@ -81,7 +81,7 @@ func (e *ExecutionPlan) Hash() common.Hash {
 // consuming the payment and nonce, and preventing this transaction from being
 // included in future blocks.
 type TransactionBundle struct {
-	Version uint16
+	Version byte
 	Payment *types.Transaction
 	Bundle  types.Transactions
 	Flags   ExecutionFlag
