@@ -32,50 +32,35 @@ import (
 
 func TestExecutionPlan_Hash_ComputesDeterministicHash(t *testing.T) {
 
+	step1 := ExecutionStep{
+		From: common.HexToAddress("0x0000000000000000000000000000000000000001"),
+		Hash: common.Hash{0x01},
+	}
+	step2 := ExecutionStep{
+		From: common.HexToAddress("0x0000000000000000000000000000000000000002"),
+		Hash: common.Hash{0x02},
+	}
+
 	tests := map[string]ExecutionPlan{
 		"empty plan": {},
 		"plan with transactions": {
-			Steps: []ExecutionStep{
-				{
-					From: common.HexToAddress("0x0000000000000000000000000000000000000001"),
-					Hash: common.Hash{0x01},
-				},
-				{
-					From: common.HexToAddress("0x0000000000000000000000000000000000000002"),
-					Hash: common.Hash{0x02},
-				},
-			},
+			Steps: []ExecutionStep{step1, step2},
 		},
 		"plan with flag 1": {
-			Steps: []ExecutionStep{
-				{
-					From: common.HexToAddress("0x0000000000000000000000000000000000000001"),
-					Hash: common.Hash{0x01},
-				},
-			},
+			Steps: []ExecutionStep{step1},
 			Flags: 0x1,
 		},
 		"plan with flag 2": {
-			Steps: []ExecutionStep{
-				{
-					From: common.HexToAddress("0x0000000000000000000000000000000000000001"),
-					Hash: common.Hash{0x01},
-				},
-			},
+			Steps: []ExecutionStep{step1},
 			Flags: 0x2,
 		},
 		"plan with flag 3": {
-			Steps: []ExecutionStep{
-				{
-					From: common.HexToAddress("0x0000000000000000000000000000000000000001"),
-					Hash: common.Hash{0x01},
-				},
-			},
+			Steps: []ExecutionStep{step1},
 			Flags: 0x3,
 		},
 	}
 
-	lastHash := common.Hash{}
+	seenHashes := make(map[common.Hash]struct{})
 	for name, executionPlan := range tests {
 		t.Run(name, func(t *testing.T) {
 
@@ -90,8 +75,8 @@ func TestExecutionPlan_Hash_ComputesDeterministicHash(t *testing.T) {
 			computed := common.BytesToHash(hasher.Sum(nil))
 
 			require.Equal(t, executionPlan.Hash(), computed)
-			require.NotEqual(t, lastHash, computed, "hash should differ between different plans")
-			lastHash = computed
+			require.NotContains(t, seenHashes, computed, "hash should be unique for different plans")
+			seenHashes[computed] = struct{}{}
 		})
 	}
 }
