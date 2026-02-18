@@ -21,6 +21,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/batch"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
@@ -1017,4 +1018,65 @@ func TestSetCodeTransaction_IsRejectBeforeAllegro(t *testing.T) {
 
 	err = client.SendTransaction(t.Context(), tx)
 	require.ErrorContains(t, err, "transaction type not supported")
+}
+
+func TestSetCode_CannotChangeCode_OfEOA(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	codeAccount := NewAccount()
+	codeAccountAddress := codeAccount.Address()
+
+	originalCode := []byte{0x01}
+
+	upgrades := opera.GetAllegroUpgrades()
+	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
+		Upgrades: &upgrades,
+		Accounts: []makefakegenesis.Account{
+			{
+				Address: codeAccountAddress,
+				Balance: big.NewInt(1e18),
+				Code:    originalCode,
+			},
+		},
+		NumNodes: 1,
+	})
+
+	client, err := net.GetClient()
+	require.NoError(err)
+	defer client.Close()
+
+	block, err := client.BlockNumber(t.Context())
+	require.NoError(err)
+
+	code, err := client.CodeAt(t.Context(), codeAccountAddress, big.NewInt(int64(block)))
+	require.NoError(err)
+	require.NotEmpty(code)
+
+	chainId := net.GetChainId()
+	authorization, err := types.SignSetCode(codeAccount.PrivateKey, types.SetCodeAuthorization{
+		ChainID: *uint256.MustFromBig(chainId),
+		Nonce:   0,
+	})
+	require.NoError(err, "failed to sign SetCode authorization")
+
+	tx := CreateTransaction(t, net, &types.SetCodeTx{
+		ChainID:   uint256.MustFromBig(chainId),
+		Nonce:     0,
+		To:        codeAccount.Address(),
+		Gas:       150_000,
+		GasFeeCap: uint256.NewInt(10e10),
+		AuthList: []types.SetCodeAuthorization{
+			authorization,
+		}}, net.GetSessionSponsor())
+
+	receipt, err := net.Run(tx)
+	require.NoError(err)
+	require.EqualValues(types.ReceiptStatusFailed, receipt.Status)
+
+	WaitForProofOf(t, client, int(receipt.BlockNumber.Int64()))
+
+	code, err = client.CodeAt(t.Context(), codeAccountAddress, big.NewInt(receipt.BlockNumber.Int64()))
+	require.NoError(err)
+	require.Equal(originalCode, code)
 }
