@@ -17,6 +17,7 @@
 package bundle
 
 import (
+	"fmt"
 	"math/big"
 	"testing"
 
@@ -24,10 +25,10 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/stretchr/testify/require"
 )
 
@@ -51,21 +52,39 @@ func Test_MakeBundle(t *testing.T) {
 
 	signer := types.NewCancunSigner(net.GetChainId())
 
+	gasPrice, err := client.SuggestGasPrice(t.Context())
+	require.NoError(t, err, "failed to suggest gas price; %v", err)
+
+	gasLimit, err := client.EstimateGas(t.Context(), ethereum.CallMsg{
+		From:     sender1.Address(),
+		To:       &counterAddress,
+		Data:     input,
+		GasPrice: gasPrice,
+		AccessList: types.AccessList{
+			// add one entry to the estimation, to allocate gas for the bundle-only marker
+			{Address: bundle.BundleOnly, StorageKeys: []common.Hash{{}}},
+		},
+	})
+	require.NoError(t, err, "failed to estimate gas")
+	fmt.Printf("gasLimit: %d (%x)\n", gasLimit, gasLimit)
+
 	// 1)  make transactions
 	tx1 := types.NewTx(tests.SetTransactionDefaults(t, net, &types.AccessListTx{
-		To:   &counterAddress,
-		Gas:  300_000,
-		Data: input,
+		To:       &counterAddress,
+		Gas:      gasLimit,
+		Data:     input,
+		GasPrice: gasPrice,
 	}, sender1))
 	tx2 := types.NewTx(tests.SetTransactionDefaults(t, net, &types.AccessListTx{
-		To:   &counterAddress,
-		Gas:  300_000,
-		Data: input,
+		To:       &counterAddress,
+		Gas:      gasLimit,
+		Data:     input,
+		GasPrice: gasPrice,
 	}, sender2))
 
 	plan := bundle.ExecutionPlan{
 		Flags: 0,
-		Transactions: []bundle.ExecutionStep{
+		Steps: []bundle.ExecutionStep{
 			{From: sender1.Address(), Hash: signer.Hash(tx1)},
 			{From: sender2.Address(), Hash: signer.Hash(tx2)},
 		},
@@ -111,11 +130,11 @@ func Test_MakeBundle(t *testing.T) {
 	// Check all transactions have been executed and the order is correct
 	receipt, err = net.GetReceipt(transactions[0].Hash())
 	require.NoError(t, err, "failed to get transaction tx 0 receipt; %v", err)
-	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "transaction 0 failed")
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "tx1 failed")
 
 	receipt, err = net.GetReceipt(transactions[1].Hash())
 	require.NoError(t, err, "failed to get transaction tx 1 receipt; %v", err)
-	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "transaction 1 failed")
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "tx2 failed")
 
 	transactionHashes := getTransactionsInBlock(t, net, receipt.BlockNumber)
 	require.ElementsMatch(t, transactionHashes, []common.Hash{
@@ -143,7 +162,11 @@ func makeBundleTransaction(t *testing.T,
 	sameNonceForBundleAndPayment, err := client.PendingNonceAt(t.Context(), bundler.Address())
 	require.NoError(t, err, "failed to get nonce for bundler; %v", err)
 
-	cost := big.NewInt(bundle.BundleTxGasCostOverhead)
+	cost := big.NewInt(0)
+	for _, tx := range transactions {
+		txCost := new(big.Int).Mul(new(big.Int).SetUint64(tx.Gas()), tx.GasPrice())
+		cost = new(big.Int).Add(cost, txCost)
+	}
 
 	// make payment transaction
 	paymentTx := tests.CreateTransaction(t, net,
@@ -160,79 +183,30 @@ func makeBundleTransaction(t *testing.T,
 	}
 
 	bundlePayload := bundle.TransactionBundle{
+		Version: bundle.BundleV1,
 		Bundle:  transactions,
 		Payment: paymentTx,
 		Flags:   plan.Flags,
 	}
-	// Sanity check the bundle before sending it to the mempool, if fails to validate before making
-	// a bundle transaction, it will fail to be included in a block and waiting for payment receipt will timeout
-	require.NoError(t, bundlePayload.Validate(types.NewCancunSigner(net.GetChainId())))
-
-	binaryBundle, err := rlp.EncodeToBytes(bundlePayload)
-	require.NoError(t, err, "failed to RLP encode bundle")
 
 	// create the bundle transaction with the same nonce as the payment transaction
 	bundleTx := tests.CreateTransaction(t, net,
 		&types.LegacyTx{Nonce: sameNonceForBundleAndPayment,
 			To:   &bundle.BundleAddress,
 			Gas:  gas,
-			Data: binaryBundle,
+			Data: bundle.Encode(bundlePayload),
 		}, bundler)
+
+	// Sanity check the bundle before sending it to the mempool, if fails to validate before making
+	// a bundle transaction, it will fail to be included in a block and waiting for payment receipt will timeout
+	upgrades := net.GetUpgrades()
+	signer := types.NewCancunSigner(net.GetChainId())
+	gasPrice, err := client.SuggestGasPrice(t.Context())
+	require.NoError(t, err, "failed to suggest gas price; %v", err)
+	require.NoError(t, bundle.ValidateTransactionBundle(bundleTx, bundlePayload, signer, gasPrice, upgrades))
+
 	return bundleTx, paymentTx.Hash()
 }
-
-// makeTransactionsFromPlan creates transactions from the given execution plan,
-// and signs them with the corresponding sender account.
-// func makeTransactionsFromPlan(
-// 	t *testing.T,
-// 	net *tests.IntegrationTestNet,
-// 	plan bundle.ExecutionPlan,
-// 	senders ...*tests.Account,
-// ) []*types.Transaction {
-// 	t.Helper()
-
-// 	client, err := net.GetClient()
-// 	require.NoError(t, err, "failed to get client; %v", err)
-// 	defer client.Close()
-
-// 	executionPlanHash := plan.Hash()
-// 	transactions := make([]*types.Transaction, len(plan.Transactions))
-// 	lastNonce := make(map[common.Address]uint64)
-
-// 	for i, tx := range plan.Transactions {
-
-// 		idx := slices.IndexFunc(senders, func(a *tests.Account) bool {
-// 			return a.Address() == tx.From
-// 		})
-// 		require.GreaterOrEqual(t, idx, 0)
-// 		if _, ok := lastNonce[tx.From]; !ok {
-// 			nonce, err := client.PendingNonceAt(t.Context(), tx.From)
-// 			require.NoError(t, err, "failed to get nonce for sender %s; %v", tx.From.Hex(), err)
-// 			lastNonce[tx.From] = nonce
-// 		}
-// 		sender := senders[idx]
-
-// 		metaTx := tests.SetTransactionDefaults(t, net, &types.AccessListTx{
-// 			Nonce: lastNonce[tx.From],
-// 			To:    tx.To,
-// 			Value: tx.Value,
-// 			Data:  tx.Data,
-// 			// TODO: estimate gas for execution, more complex transactions may fail
-// 			Gas: 300000,
-// 			AccessList: types.AccessList{
-// 				{
-// 					Address:     bundle.BundleOnly,
-// 					StorageKeys: []common.Hash{executionPlanHash},
-// 				},
-// 			},
-// 		}, sender)
-
-// 		signedTx := tests.SignTransaction(t, net.GetChainId(), metaTx, sender)
-// 		transactions[i] = signedTx
-// 		lastNonce[tx.From]++
-// 	}
-// 	return transactions
-// }
 
 func prepareContract[T any](
 	t testing.TB, net *tests.IntegrationTestNet,
