@@ -469,7 +469,7 @@ func TestExtractExecutionPlan_ReturnsErrorWithMalformedSignature(t *testing.T) {
 	require.ErrorContains(t, err, "failed to derive sender: invalid signature")
 }
 
-func TestRemoveBundleMark_ReturnsErrorWithUnsupportedTransactionType(t *testing.T) {
+func TestRemoveBundleOnlyMark_ReturnsErrorWithUnsupportedTransactionType(t *testing.T) {
 	tests := []types.TxData{
 		&types.LegacyTx{},
 		&types.BlobTx{},
@@ -484,7 +484,7 @@ func TestRemoveBundleMark_ReturnsErrorWithUnsupportedTransactionType(t *testing.
 	}
 }
 
-func TestRemoveBundleMark_PreservesOriginalData(t *testing.T) {
+func TestRemoveBundleOnlyMark_PreservesOriginalData(t *testing.T) {
 
 	type msg struct {
 		Nonce      uint64
