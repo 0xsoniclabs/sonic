@@ -332,7 +332,7 @@ func TestDecode_SuccessfullyUnpacksValidBundle(t *testing.T) {
 func TestEncoding_IsVersioned(t *testing.T) {
 
 	tests := map[string]struct {
-		version       uint16
+		version       byte
 		expectedError string
 	}{
 		"zero version": {
