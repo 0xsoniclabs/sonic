@@ -113,39 +113,26 @@ func TestIsTransactionBundle_IdentifiesBundles(t *testing.T) {
 	}
 }
 
-func TestIsBundledOnly_IdentifiesBundleOnlyTransactions(t *testing.T) {
+func TestIsBundledOnly_IdentifiesBundleOnlyTransactions_OfAllTypes(t *testing.T) {
+	bundleOnlyMarker := types.AccessList{{Address: BundleOnly}}
 	require.False(t, IsBundleOnly(types.NewTx(&types.LegacyTx{})))
 	require.True(t, IsBundleOnly(types.NewTx(&types.AccessListTx{
-		AccessList: types.AccessList{
-			{
-				Address: BundleOnly,
-			},
-		},
+		AccessList: bundleOnlyMarker,
 	})))
 	require.True(t, IsBundleOnly(types.NewTx(&types.DynamicFeeTx{
-		AccessList: types.AccessList{
-			{
-				Address: BundleOnly,
-			},
-		},
+		AccessList: bundleOnlyMarker,
 	})))
 	require.True(t, IsBundleOnly(types.NewTx(&types.BlobTx{
-		AccessList: types.AccessList{
-			{
-				Address: BundleOnly,
-			},
-		},
+		AccessList: bundleOnlyMarker,
 	})))
 	require.True(t, IsBundleOnly(types.NewTx(&types.SetCodeTx{
-		AccessList: types.AccessList{
-			{
-				Address: BundleOnly,
-			},
-		},
+		AccessList: bundleOnlyMarker,
 	})))
 }
 
 func TestBelongsToExecutionPlan_IdentifiesTransactionsWhichSignTheExecutionPlan(t *testing.T) {
+
+	executionPlanHash := common.Hash{0x01, 0x02, 0x03}
 
 	tests := map[string]struct {
 		tx                types.TxData
@@ -156,7 +143,7 @@ func TestBelongsToExecutionPlan_IdentifiesTransactionsWhichSignTheExecutionPlan(
 			tx:       &types.LegacyTx{},
 			expected: false,
 		},
-		"transaction with bundle-only but no pan hash": {
+		"transaction with bundle-only but no plan hash": {
 			tx: &types.AccessListTx{
 				AccessList: types.AccessList{
 					{
@@ -164,7 +151,7 @@ func TestBelongsToExecutionPlan_IdentifiesTransactionsWhichSignTheExecutionPlan(
 					},
 				},
 			},
-			executionPlanHash: common.Hash{0x01, 0x02, 0x03},
+			executionPlanHash: executionPlanHash,
 			expected:          false,
 		},
 		"fragmented access list": {
@@ -175,11 +162,11 @@ func TestBelongsToExecutionPlan_IdentifiesTransactionsWhichSignTheExecutionPlan(
 					},
 					{
 						Address:     common.HexToAddress("0x0000000000000000000000000000000000000001"),
-						StorageKeys: []common.Hash{{0x01, 0x02, 0x03}},
+						StorageKeys: []common.Hash{executionPlanHash},
 					},
 				},
 			},
-			executionPlanHash: common.Hash{0x01, 0x02, 0x03},
+			executionPlanHash: executionPlanHash,
 			expected:          false,
 		},
 		"transaction with bundle-only and matching plan hash": {
@@ -187,11 +174,43 @@ func TestBelongsToExecutionPlan_IdentifiesTransactionsWhichSignTheExecutionPlan(
 				AccessList: types.AccessList{
 					{
 						Address:     BundleOnly,
-						StorageKeys: []common.Hash{{0x01, 0x02, 0x03}},
+						StorageKeys: []common.Hash{executionPlanHash},
 					},
 				},
 			},
-			executionPlanHash: common.Hash{0x01, 0x02, 0x03},
+			executionPlanHash: executionPlanHash,
+			expected:          true,
+		},
+		"transaction with multiple accepted plans": {
+			tx: &types.AccessListTx{
+				AccessList: types.AccessList{
+					{
+						Address:     BundleOnly,
+						StorageKeys: []common.Hash{{0x0A}},
+					},
+					{
+						Address:     BundleOnly,
+						StorageKeys: []common.Hash{executionPlanHash},
+					},
+					{
+						Address:     BundleOnly,
+						StorageKeys: []common.Hash{{0x0B}},
+					},
+				},
+			},
+			executionPlanHash: executionPlanHash,
+			expected:          true,
+		},
+		"transaction with multiple accepted plans compact": {
+			tx: &types.AccessListTx{
+				AccessList: types.AccessList{
+					{
+						Address:     BundleOnly,
+						StorageKeys: []common.Hash{{0x0A}, executionPlanHash, {0x0B}},
+					},
+				},
+			},
+			executionPlanHash: executionPlanHash,
 			expected:          true,
 		},
 	}
@@ -204,74 +223,6 @@ func TestBelongsToExecutionPlan_IdentifiesTransactionsWhichSignTheExecutionPlan(
 		})
 	}
 
-}
-
-func TestBelongsToExecutionPlan_IdentifiesMarkedTransactions(t *testing.T) {
-
-	executionPlanHash := common.Hash{0x01, 0x02, 0x03} // dummy hash
-
-	tests := map[string]struct {
-		tx       types.TxData
-		expected bool
-	}{
-		"without access list ": {
-			tx:       &types.AccessListTx{},
-			expected: false,
-		},
-		"without bundle-only": {
-			tx: &types.AccessListTx{
-				AccessList: types.AccessList{
-					{
-						Address: common.HexToAddress("0x0000000000000000000000000000000000000001"),
-					},
-				},
-			},
-			expected: false,
-		},
-		"with bundle-only, no execution plan hash": {
-			tx: &types.AccessListTx{
-				AccessList: types.AccessList{
-					{
-						Address: BundleOnly,
-					},
-				},
-			},
-			expected: false,
-		},
-		"with bundle-only, and execution plan hash": {
-			tx: &types.AccessListTx{
-				AccessList: types.AccessList{
-					{
-						Address:     BundleOnly,
-						StorageKeys: []common.Hash{executionPlanHash},
-					},
-				},
-			},
-			expected: true,
-		},
-		"with bundle only and others": {
-			tx: &types.AccessListTx{
-				AccessList: types.AccessList{
-					{
-						Address: common.HexToAddress("0x0000000000000000000000000000000000000001"),
-					},
-					{
-						Address:     BundleOnly,
-						StorageKeys: []common.Hash{executionPlanHash},
-					},
-				},
-			},
-			expected: true,
-		},
-	}
-
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			tx := types.NewTx(test.tx)
-			result := BelongsToExecutionPlan(tx, executionPlanHash)
-			require.Equal(t, test.expected, result)
-		})
-	}
 }
 
 func TestDecode_SuccessfullyUnpacksValidBundle(t *testing.T) {
@@ -449,49 +400,6 @@ func TestExtractExecutionPlan_ComputesHashOfUnmarkedBundledTransactions(t *testi
 	require.NoError(t, err)
 	signer := types.LatestSignerForChainID(big.NewInt(1))
 
-	removeBundleMark := func(tx types.TxData) (types.TxData, error) {
-
-		switch tx := tx.(type) {
-		case *types.AccessListTx:
-			var accessList types.AccessList
-			for _, entry := range tx.AccessList {
-				if entry.Address == BundleOnly {
-					continue
-				}
-				accessList = append(accessList, entry)
-			}
-			return &types.AccessListTx{
-				Nonce:      tx.Nonce,
-				GasPrice:   tx.GasPrice,
-				Gas:        tx.Gas,
-				To:         tx.To,
-				Value:      tx.Value,
-				Data:       tx.Data,
-				AccessList: accessList,
-			}, nil
-		case *types.DynamicFeeTx:
-			var accessList types.AccessList
-			for _, entry := range tx.AccessList {
-				if entry.Address == BundleOnly {
-					continue
-				}
-				accessList = append(accessList, entry)
-			}
-			return &types.DynamicFeeTx{
-				Nonce:      tx.Nonce,
-				GasTipCap:  tx.GasTipCap,
-				GasFeeCap:  tx.GasFeeCap,
-				Gas:        tx.Gas,
-				To:         tx.To,
-				Value:      tx.Value,
-				Data:       tx.Data,
-				AccessList: accessList,
-			}, nil
-		}
-		return nil, errors.New("unsupported transaction type")
-
-	}
-
 	for _, txData := range txs {
 
 		tx, err := types.SignNewTx(key, signer, txData)
@@ -569,4 +477,94 @@ func TestExtractExecutionPlan_ReturnsErrorWithMalformedSignature(t *testing.T) {
 
 	_, err := bundle.ExtractExecutionPlan(mockSigner)
 	require.ErrorContains(t, err, "failed to derive sender: invalid signature")
+}
+
+func removeBundleMark(tx types.TxData) (types.TxData, error) {
+
+	switch tx := tx.(type) {
+	case *types.AccessListTx:
+		var accessList types.AccessList
+		for _, entry := range tx.AccessList {
+			if entry.Address == BundleOnly {
+				continue
+			}
+			accessList = append(accessList, entry)
+		}
+		return &types.AccessListTx{
+			Nonce:      tx.Nonce,
+			GasPrice:   tx.GasPrice,
+			Gas:        tx.Gas,
+			To:         tx.To,
+			Value:      tx.Value,
+			Data:       tx.Data,
+			AccessList: accessList,
+		}, nil
+	case *types.DynamicFeeTx:
+		var accessList types.AccessList
+		for _, entry := range tx.AccessList {
+			if entry.Address == BundleOnly {
+				continue
+			}
+			accessList = append(accessList, entry)
+		}
+		return &types.DynamicFeeTx{
+			Nonce:      tx.Nonce,
+			GasTipCap:  tx.GasTipCap,
+			GasFeeCap:  tx.GasFeeCap,
+			Gas:        tx.Gas,
+			To:         tx.To,
+			Value:      tx.Value,
+			Data:       tx.Data,
+			AccessList: accessList,
+		}, nil
+	}
+	return nil, errors.New("unsupported transaction type")
+}
+
+func TestRemoveBundleMark_RemovesBundleOnlyMarker(t *testing.T) {
+	_, err := removeBundleMark(&types.LegacyTx{})
+	require.Error(t, err)
+	_, err = removeBundleMark(&types.BlobTx{})
+	require.Error(t, err)
+	_, err = removeBundleMark(&types.SetCodeTx{})
+	require.Error(t, err)
+
+	accessList := types.AccessList{
+		{
+			Address:     BundleOnly,
+			StorageKeys: []common.Hash{{0x01}},
+		},
+		{
+			Address: common.HexToAddress("0x0000000000000000000000000000000000000001"),
+		},
+	}
+	accessListTx := &types.AccessListTx{
+		Nonce:      1,
+		GasPrice:   big.NewInt(100),
+		Gas:        21000,
+		To:         &common.Address{0x01},
+		Value:      big.NewInt(100),
+		Data:       []byte{0x01, 0x02},
+		AccessList: accessList,
+	}
+	result, err := removeBundleMark(accessListTx)
+	require.NoError(t, err)
+
+	tx := types.NewTx(result)
+	require.Len(t, tx.AccessList(), 1)
+	require.Equal(t, common.HexToAddress("0x0000000000000000000000000000000000000001"), tx.AccessList()[0].Address)
+
+	dynamicFeeTx := &types.DynamicFeeTx{
+		Nonce:      1,
+		Gas:        21000,
+		To:         &common.Address{0x01},
+		Value:      big.NewInt(100),
+		Data:       []byte{0x01, 0x02},
+		AccessList: accessList,
+	}
+	result, err = removeBundleMark(dynamicFeeTx)
+	require.NoError(t, err)
+	tx = types.NewTx(result)
+	require.Len(t, tx.AccessList(), 1)
+	require.Equal(t, common.HexToAddress("0x0000000000000000000000000000000000000001"), tx.AccessList()[0].Address)
 }
