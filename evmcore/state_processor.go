@@ -313,19 +313,19 @@ func (r *transactionRunner) runTransactionBundle(
 	txIndex int,
 ) []ProcessedTransaction {
 
-	bundle, err := bundle.UnpackTransactionBundle(tx)
+	txBundle, err := bundle.Decode(tx.Data())
 	if err != nil {
 		log.Warn("Transaction bundle execution failed:", "tx", tx.Hash().Hex(), "error", err)
 		return nil
 	}
 
-	if err := bundle.Validate(ctxt.signer); err != nil {
+	if err := bundle.ValidateTransactionBundle(tx, txBundle, ctxt.signer, ctxt.baseFee, ctxt.upgrades); err != nil {
 		log.Warn("Transaction bundle is invalid, skip", "tx", tx.Hash().Hex(), "error", err)
 		return nil
 	}
 
 	// Execute the payment transaction first
-	payment := r.evm.runWithBaseFeeCheck(ctxt, bundle.Payment, txIndex)
+	payment := r.evm.runWithBaseFeeCheck(ctxt, txBundle.Payment, txIndex)
 
 	dbTransaction := transactional_state.NewTransactionalState(ctxt.statedb)
 	transactionalVm := evm{vm.NewEVM(ctxt.blockContext, dbTransaction, ctxt.chainConfig, ctxt.vmConfig)}
@@ -333,31 +333,34 @@ func (r *transactionRunner) runTransactionBundle(
 	transactionalContext := *ctxt
 	transactionalContext.statedb = dbTransaction
 
-	res := make([]ProcessedTransaction, 0, len(bundle.Bundle))
+	res := make([]ProcessedTransaction, 0, len(txBundle.Bundle))
 
-	for i, btx := range bundle.Bundle {
+	for i, btx := range txBundle.Bundle {
+
+		fmt.Printf("gas %d (%x)\n", btx.Gas(), btx.Gas())
+
 		txResult := transactionalVm.runWithBaseFeeCheck(&transactionalContext, btx, txIndex+1+i)
 
-		if bundle.RevertOnInvalidTransaction() && txResult.Receipt == nil {
-			log.Info("Bundled transaction skipped, revert all", "tx", btx.Hash().Hex())
-			return []ProcessedTransaction{
-				payment,
-			}
-		}
+		// if bundle.RevertOnInvalidTransaction() && txResult.Receipt == nil {
+		// 	log.Info("Bundled transaction skipped, revert all", "tx", btx.Hash().Hex())
+		// 	return []ProcessedTransaction{
+		// 		payment,
+		// 	}
+		// }
 
-		if bundle.RevertOnFailedTransaction() && txResult.Receipt != nil && txResult.Receipt.Status != types.ReceiptStatusSuccessful {
-			log.Info("Bundled transaction failed, revert all", "tx", btx.Hash().Hex())
-			return []ProcessedTransaction{
-				payment,
-			}
-		}
+		// if bundle.RevertOnFailedTransaction() && txResult.Receipt != nil && txResult.Receipt.Status != types.ReceiptStatusSuccessful {
+		// 	log.Info("Bundled transaction failed, revert all", "tx", btx.Hash().Hex())
+		// 	return []ProcessedTransaction{
+		// 		payment,
+		// 	}
+		// }
 
 		res = append(res, txResult)
 
-		if bundle.StopAfterFirstSuccessfulTransaction() && txResult.Receipt != nil && txResult.Receipt.Status == types.ReceiptStatusSuccessful {
-			log.Info("Bundled transaction succeeded, stop after first", "tx", btx.Hash().Hex())
-			break
-		}
+		// if bundle.StopAfterFirstSuccessfulTransaction() && txResult.Receipt != nil && txResult.Receipt.Status == types.ReceiptStatusSuccessful {
+		// 	log.Info("Bundled transaction succeeded, stop after first", "tx", btx.Hash().Hex())
+		// 	break
+		// }
 	}
 
 	dbTransaction.Commit()
