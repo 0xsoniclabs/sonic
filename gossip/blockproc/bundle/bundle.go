@@ -164,7 +164,7 @@ func IsBundleOnly(tx *types.Transaction) bool {
 	return false
 }
 
-// BelongsToExecutionPlan  correspond to one step in the execution plan,
+// BelongsToExecutionPlan checks if the given transaction correspond to one step in the execution plan.
 func BelongsToExecutionPlan(tx *types.Transaction, executionPlanHash common.Hash) bool {
 	for _, entry := range tx.AccessList() {
 		if entry.Address == BundleOnly &&
