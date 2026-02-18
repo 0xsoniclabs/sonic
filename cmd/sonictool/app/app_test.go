@@ -17,15 +17,18 @@
 package app_test
 
 import (
+	"fmt"
+
 	"crypto/ecdsa"
 	"crypto/rand"
-	"fmt"
 	"io"
 	"math/big"
 	"os"
 	"regexp"
 	"strings"
 	"testing"
+
+	// Or your specific pebble/pebblesdb import
 
 	sonictool "github.com/0xsoniclabs/sonic/cmd/sonictool/app"
 	"github.com/0xsoniclabs/sonic/cmd/sonictool/genesis"
@@ -430,6 +433,16 @@ func TestSonicTool_validator_ExecutesWithoutErrors(t *testing.T) {
 	require.NotEqual(t, newValidatorKeyFile, convertedValidatorKeyFile, "new and converted validator keys should be different")
 
 	revertPrompt()
+}
+
+func TestSonicTool_analyze_ExecutesWithoutErrors(t *testing.T) {
+	net := tests.StartIntegrationTestNet(t)
+	generateNBlocks(t, net, 2)
+	net.Stop()
+
+	output, err := executeSonicTool(t, "--datadir", net.GetDirectory()+"/state", "analyze")
+	require.NoError(t, err)
+	require.True(t, strings.HasPrefix(output, "DB: "), "expected output to start with 'DB: ', got: %q", output)
 }
 
 // =============================================================================
