@@ -413,10 +413,10 @@ func TestExtractExecutionPlan_ComputesHashOfUnmarkedBundledTransactions(t *testi
 
 		require.Equal(t, 1, len(executionPlan.Steps))
 
-		withoutBundleOnlyMark, err := removeBundleMark(txData)
+		withoutBundleOnlyMark, err := removeBundleOnlyMark(types.NewTx(txData))
 		require.NoError(t, err)
 
-		hash := signer.Hash(types.NewTx(withoutBundleOnlyMark))
+		hash := signer.Hash(withoutBundleOnlyMark)
 		require.Equal(t, hash, executionPlan.Steps[0].Hash)
 	}
 }
@@ -431,28 +431,18 @@ func TestExtractExecutionPlan_ReturnsErrorWithUnsupportedTransactionType(t *test
 
 	for _, txData := range tests {
 
+		tx := types.NewTx(txData)
 		bundle := TransactionBundle{
-			Bundle: types.Transactions{
-				types.NewTx(txData),
-			},
+			Bundle: types.Transactions{tx},
 		}
 
 		ctrl := gomock.NewController(t)
 		mockSigner := NewMockSigner(ctrl)
-
-		var txType byte
-		switch txData.(type) {
-		case *types.LegacyTx:
-			txType = types.LegacyTxType
-		case *types.BlobTx:
-			txType = types.BlobTxType
-		case *types.SetCodeTx:
-			txType = types.SetCodeTxType
-		}
+		mockSigner.EXPECT().Sender(gomock.Any()).Return(common.Address{}, nil)
 
 		_, err := bundle.ExtractExecutionPlan(mockSigner)
 		require.ErrorContains(t, err,
-			fmt.Sprintf("invalid bundle: unsupported transaction type %d", txType))
+			fmt.Sprintf("invalid bundle: unsupported transaction type %d", tx.Type()))
 	}
 }
 
@@ -479,92 +469,190 @@ func TestExtractExecutionPlan_ReturnsErrorWithMalformedSignature(t *testing.T) {
 	require.ErrorContains(t, err, "failed to derive sender: invalid signature")
 }
 
-func removeBundleMark(tx types.TxData) (types.TxData, error) {
-
-	switch tx := tx.(type) {
-	case *types.AccessListTx:
-		var accessList types.AccessList
-		for _, entry := range tx.AccessList {
-			if entry.Address == BundleOnly {
-				continue
-			}
-			accessList = append(accessList, entry)
-		}
-		return &types.AccessListTx{
-			Nonce:      tx.Nonce,
-			GasPrice:   tx.GasPrice,
-			Gas:        tx.Gas,
-			To:         tx.To,
-			Value:      tx.Value,
-			Data:       tx.Data,
-			AccessList: accessList,
-		}, nil
-	case *types.DynamicFeeTx:
-		var accessList types.AccessList
-		for _, entry := range tx.AccessList {
-			if entry.Address == BundleOnly {
-				continue
-			}
-			accessList = append(accessList, entry)
-		}
-		return &types.DynamicFeeTx{
-			Nonce:      tx.Nonce,
-			GasTipCap:  tx.GasTipCap,
-			GasFeeCap:  tx.GasFeeCap,
-			Gas:        tx.Gas,
-			To:         tx.To,
-			Value:      tx.Value,
-			Data:       tx.Data,
-			AccessList: accessList,
-		}, nil
+func TestRemoveBundleMark_ReturnsErrorWithUnsupportedTransactionType(t *testing.T) {
+	tests := []types.TxData{
+		&types.LegacyTx{},
+		&types.BlobTx{},
+		&types.SetCodeTx{},
 	}
-	return nil, errors.New("unsupported transaction type")
+
+	for _, txData := range tests {
+		tx := types.NewTx(txData)
+		_, err := removeBundleOnlyMark(tx)
+		require.ErrorContains(t, err,
+			fmt.Sprintf("invalid bundle: unsupported transaction type %d", tx.Type()))
+	}
 }
 
-func TestRemoveBundleMark_RemovesBundleOnlyMarker(t *testing.T) {
-	_, err := removeBundleMark(&types.LegacyTx{})
-	require.Error(t, err)
-	_, err = removeBundleMark(&types.BlobTx{})
-	require.Error(t, err)
-	_, err = removeBundleMark(&types.SetCodeTx{})
-	require.Error(t, err)
+func TestRemoveBundleMark_PreservesOriginalData(t *testing.T) {
 
-	accessList := types.AccessList{
+	type msg struct {
+		Nonce      uint64
+		GasPrice   *big.Int
+		Gas        uint64
+		To         *common.Address
+		Value      *big.Int
+		Data       []byte
+		AccessList types.AccessList
+	}
+
+	normalAccessListEntry := types.AccessList{
+		{
+			Address:     common.HexToAddress("0x0000000000000000000000000000000000000001"),
+			StorageKeys: []common.Hash{{0x01}, {0x02}},
+		},
+	}
+	bundleOnlyMark := types.AccessList{
 		{
 			Address:     BundleOnly,
 			StorageKeys: []common.Hash{{0x01}},
 		},
-		{
-			Address: common.HexToAddress("0x0000000000000000000000000000000000000001"),
-		},
 	}
-	accessListTx := &types.AccessListTx{
-		Nonce:      1,
-		GasPrice:   big.NewInt(100),
-		Gas:        21000,
-		To:         &common.Address{0x01},
-		Value:      big.NewInt(100),
-		Data:       []byte{0x01, 0x02},
-		AccessList: accessList,
-	}
-	result, err := removeBundleMark(accessListTx)
-	require.NoError(t, err)
 
-	tx := types.NewTx(result)
-	require.Len(t, tx.AccessList(), 1)
-	require.Equal(t, common.HexToAddress("0x0000000000000000000000000000000000000001"), tx.AccessList()[0].Address)
+	tests := make([]msg, 0)
+	for _, gasPrice := range []*big.Int{nil, big.NewInt(0), big.NewInt(200)} {
+		for _, gas := range []uint64{0, 21000} {
+			for _, to := range []*common.Address{nil, {0x01}} {
+				for _, value := range []*big.Int{nil, big.NewInt(0), big.NewInt(100)} {
+					for _, accessList := range []types.AccessList{
+						nil,
+						normalAccessListEntry,
+					} {
 
-	dynamicFeeTx := &types.DynamicFeeTx{
-		Nonce:      1,
-		Gas:        21000,
-		To:         &common.Address{0x01},
-		Value:      big.NewInt(100),
-		Data:       []byte{0x01, 0x02},
-		AccessList: accessList,
+						tests = append(tests, msg{
+							Nonce:      1,
+							GasPrice:   gasPrice,
+							Gas:        gas,
+							To:         to,
+							Value:      value,
+							Data:       []byte{0x01, 0x02},
+							AccessList: accessList,
+						})
+					}
+				}
+			}
+		}
 	}
-	result, err = removeBundleMark(dynamicFeeTx)
-	require.NoError(t, err)
-	tx = types.NewTx(result)
-	require.Len(t, tx.AccessList(), 1)
-	require.Equal(t, common.HexToAddress("0x0000000000000000000000000000000000000001"), tx.AccessList()[0].Address)
+
+	for _, test := range tests {
+
+		t.Run("preserves original members of the access list transaction", func(t *testing.T) {
+
+			txData := &types.AccessListTx{
+				Nonce:      test.Nonce,
+				GasPrice:   test.GasPrice,
+				Gas:        test.Gas,
+				To:         test.To,
+				Value:      test.Value,
+				Data:       test.Data,
+				AccessList: test.AccessList,
+			}
+
+			tx := types.NewTx(txData)
+			modified, err := removeBundleOnlyMark(tx)
+			require.NoError(t, err)
+
+			if test.GasPrice == nil {
+				test.GasPrice = big.NewInt(0)
+			}
+			if test.Value == nil {
+				test.Value = big.NewInt(0)
+			}
+			if test.AccessList == nil {
+				test.AccessList = types.AccessList{}
+			}
+
+			require.Equal(t, test.Nonce, modified.Nonce())
+			require.Equal(t, test.GasPrice, modified.GasPrice())
+			require.Equal(t, test.Gas, modified.Gas())
+			require.Equal(t, test.To, modified.To())
+			require.Equal(t, test.Value, modified.Value())
+			require.Equal(t, test.Data, modified.Data())
+			require.Equal(t, test.AccessList, modified.AccessList())
+		})
+
+		t.Run("removes bundle marker from the access list transaction", func(t *testing.T) {
+
+			txData := &types.AccessListTx{
+				Nonce:      test.Nonce,
+				GasPrice:   test.GasPrice,
+				Gas:        test.Gas,
+				To:         test.To,
+				Value:      test.Value,
+				Data:       test.Data,
+				AccessList: append(test.AccessList, bundleOnlyMark...),
+			}
+
+			tx := types.NewTx(txData)
+			modified, err := removeBundleOnlyMark(tx)
+			require.NoError(t, err)
+
+			if test.AccessList == nil {
+				test.AccessList = types.AccessList{}
+			}
+
+			require.Equal(t, test.AccessList, modified.AccessList())
+		})
+
+		t.Run("preserves original members of the dynamic fees transaction", func(t *testing.T) {
+
+			txData := &types.DynamicFeeTx{
+				Nonce:      test.Nonce,
+				GasFeeCap:  test.GasPrice,
+				GasTipCap:  test.GasPrice,
+				Gas:        test.Gas,
+				To:         test.To,
+				Value:      test.Value,
+				Data:       test.Data,
+				AccessList: test.AccessList,
+			}
+
+			tx := types.NewTx(txData)
+			modified, err := removeBundleOnlyMark(tx)
+			require.NoError(t, err)
+
+			if test.GasPrice == nil {
+				test.GasPrice = big.NewInt(0)
+			}
+			if test.Value == nil {
+				test.Value = big.NewInt(0)
+			}
+			if test.AccessList == nil {
+				test.AccessList = types.AccessList{}
+			}
+
+			require.Equal(t, test.Nonce, modified.Nonce())
+			require.Equal(t, test.GasPrice, modified.GasFeeCap())
+			require.Equal(t, test.GasPrice, modified.GasTipCap())
+			require.Equal(t, test.Gas, modified.Gas())
+			require.Equal(t, test.To, modified.To())
+			require.Equal(t, test.Value, modified.Value())
+			require.Equal(t, test.Data, modified.Data())
+			require.Equal(t, test.AccessList, modified.AccessList())
+		})
+
+		t.Run("removes bundle marker from the dynamic fee transaction", func(t *testing.T) {
+
+			txData := &types.DynamicFeeTx{
+				Nonce:      test.Nonce,
+				GasFeeCap:  test.GasPrice,
+				GasTipCap:  test.GasPrice,
+				Gas:        test.Gas,
+				To:         test.To,
+				Value:      test.Value,
+				Data:       test.Data,
+				AccessList: append(test.AccessList, bundleOnlyMark...),
+			}
+
+			tx := types.NewTx(txData)
+			modified, err := removeBundleOnlyMark(tx)
+			require.NoError(t, err)
+
+			if test.AccessList == nil {
+				test.AccessList = types.AccessList{}
+			}
+
+			require.Equal(t, test.AccessList, modified.AccessList())
+		})
+	}
 }
