@@ -20,8 +20,6 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
-	"os"
-	"runtime/debug"
 	"testing"
 
 	"github.com/Fantom-foundation/lachesis-base/hash"
@@ -32,14 +30,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/0xsoniclabs/sonic/logger"
-	"github.com/0xsoniclabs/sonic/utils/dbutil/threads"
 )
-
-func TestMain(m *testing.M) {
-	debug.SetMaxThreads(20)
-
-	os.Exit(m.Run())
-}
 
 func newTestIndex() *index {
 	return newIndex(memorydb.New())
@@ -98,17 +89,16 @@ func TestIndexSearchMultyVariants(t *testing.T) {
 		}
 	}
 
-	pooled := withThreadPool{index}
+	wrapped := withLeapJoin{index}
 
 	for dsc, method := range map[string]func(context.Context, idx.Block, idx.Block, [][]common.Hash) ([]*types.Log, error){
-		"index":  index.FindInBlocks,
-		"pooled": pooled.FindInBlocks,
+		"leapJoin": wrapped.FindInBlocks,
 	} {
 		t.Run(dsc, func(t *testing.T) {
 
 			t.Run("With no addresses", func(t *testing.T) {
 				require := require.New(t)
-				got, err := method(nil, 0, 1000, [][]common.Hash{
+				got, err := method(t.Context(), 0, 1000, [][]common.Hash{
 					{},
 					{hash1, hash2, hash3, hash4},
 					{},
@@ -121,7 +111,7 @@ func TestIndexSearchMultyVariants(t *testing.T) {
 
 			t.Run("With addresses", func(t *testing.T) {
 				require := require.New(t)
-				got, err := method(nil, 0, 1000, [][]common.Hash{
+				got, err := method(t.Context(), 0, 1000, [][]common.Hash{
 					{common.BytesToHash(addr1[:]), common.BytesToHash(addr2[:]), common.BytesToHash(addr3[:]), common.BytesToHash(addr4[:])},
 					{hash1, hash2, hash3, hash4},
 					{},
@@ -134,7 +124,7 @@ func TestIndexSearchMultyVariants(t *testing.T) {
 
 			t.Run("With block range", func(t *testing.T) {
 				require := require.New(t)
-				got, err := method(nil, 2, 998, [][]common.Hash{
+				got, err := method(t.Context(), 2, 998, [][]common.Hash{
 					{common.BytesToHash(addr1[:]), common.BytesToHash(addr2[:]), common.BytesToHash(addr3[:]), common.BytesToHash(addr4[:])},
 					{hash1, hash2, hash3, hash4},
 					{},
@@ -148,7 +138,7 @@ func TestIndexSearchMultyVariants(t *testing.T) {
 			t.Run("With addresses and blocks", func(t *testing.T) {
 				require := require.New(t)
 
-				got1, err := method(nil, 2, 998, [][]common.Hash{
+				got1, err := method(t.Context(), 2, 998, [][]common.Hash{
 					{common.BytesToHash(addr1[:]), common.BytesToHash(addr2[:]), common.BytesToHash(addr3[:]), common.BytesToHash(addr4[:])},
 					{hash1, hash2, hash3, hash4},
 					{},
@@ -158,7 +148,7 @@ func TestIndexSearchMultyVariants(t *testing.T) {
 				require.Equal(2, len(got1))
 				check(require, got1)
 
-				got2, err := method(nil, 2, 998, [][]common.Hash{
+				got2, err := method(t.Context(), 2, 998, [][]common.Hash{
 					{common.BytesToHash(addr1[:]), common.BytesToHash(addr2[:]), common.BytesToHash(addr3[:]), common.BytesToHash(addr4[:])},
 					{hash1, hash2, hash3, hash4},
 					{},
@@ -208,17 +198,16 @@ func TestIndexSearchShortCircuits(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	pooled := withThreadPool{index}
+	wrapped := withLeapJoin{index}
 
 	for dsc, method := range map[string]func(context.Context, idx.Block, idx.Block, [][]common.Hash) ([]*types.Log, error){
-		"index":  index.FindInBlocks,
-		"pooled": pooled.FindInBlocks,
+		"leapJoin": wrapped.FindInBlocks,
 	} {
 		t.Run(dsc, func(t *testing.T) {
 
 			t.Run("topics count 1", func(t *testing.T) {
 				require := require.New(t)
-				got, err := method(nil, 0, 1000, [][]common.Hash{
+				got, err := method(t.Context(), 0, 1000, [][]common.Hash{
 					{common.BytesToHash(addr1[:])},
 					{},
 					{},
@@ -230,7 +219,7 @@ func TestIndexSearchShortCircuits(t *testing.T) {
 
 			t.Run("topics count 2", func(t *testing.T) {
 				require := require.New(t)
-				got, err := method(nil, 0, 1000, [][]common.Hash{
+				got, err := method(t.Context(), 0, 1000, [][]common.Hash{
 					{common.BytesToHash(addr1[:])},
 					{},
 					{},
@@ -242,7 +231,7 @@ func TestIndexSearchShortCircuits(t *testing.T) {
 
 			t.Run("block range", func(t *testing.T) {
 				require := require.New(t)
-				got, err := method(nil, 3, 998, [][]common.Hash{
+				got, err := method(t.Context(), 3, 998, [][]common.Hash{
 					{common.BytesToHash(addr1[:])},
 					{},
 					{},
@@ -268,11 +257,10 @@ func TestIndexSearchSingleVariant(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	pooled := withThreadPool{index}
+	wrapped := withLeapJoin{index}
 
 	for dsc, method := range map[string]func(context.Context, idx.Block, idx.Block, [][]common.Hash) ([]*types.Log, error){
-		"index":  index.FindInBlocks,
-		"pooled": pooled.FindInBlocks,
+		"leapJoin": wrapped.FindInBlocks,
 	} {
 		t.Run(dsc, func(t *testing.T) {
 			require := require.New(t)
@@ -286,7 +274,7 @@ func TestIndexSearchSingleVariant(t *testing.T) {
 					qq[pos+1] = []common.Hash{t}
 				}
 
-				got, err := method(nil, 0, 1000, qq)
+				got, err := method(t.Context(), 0, 1000, qq)
 				require.NoError(err)
 
 				var expect []*types.Log
@@ -345,30 +333,29 @@ func TestIndexSearchSimple(t *testing.T) {
 		err error
 	)
 
-	pooled := withThreadPool{index}
+	wrapped := withLeapJoin{index}
 
 	for dsc, method := range map[string]func(context.Context, idx.Block, idx.Block, [][]common.Hash) ([]*types.Log, error){
-		"index":  index.FindInBlocks,
-		"pooled": pooled.FindInBlocks,
+		"leapJoin": wrapped.FindInBlocks,
 	} {
 		t.Run(dsc, func(t *testing.T) {
 			require := require.New(t)
 
-			got, err = method(nil, 0, 0xffffffff, [][]common.Hash{
+			got, err = method(t.Context(), 0, 0xffffffff, [][]common.Hash{
 				{common.BytesToHash(addr[:])},
 				{hash1},
 			})
 			require.NoError(err)
 			require.Equal(1, len(got))
 
-			got, err = method(nil, 0, 0xffffffff, [][]common.Hash{
+			got, err = method(t.Context(), 0, 0xffffffff, [][]common.Hash{
 				{common.BytesToHash(addr[:])},
 				{hash2},
 			})
 			require.NoError(err)
 			require.Equal(1, len(got))
 
-			got, err = method(nil, 0, 0xffffffff, [][]common.Hash{
+			got, err = method(t.Context(), 0, 0xffffffff, [][]common.Hash{
 				{common.BytesToHash(addr[:])},
 				{hash3},
 			})
@@ -399,16 +386,15 @@ func TestMaxTopicsCount(t *testing.T) {
 	err := index.Push(testdata)
 	require.NoError(t, err)
 
-	pooled := withThreadPool{index}
+	wrapped := withLeapJoin{index}
 
 	for dsc, method := range map[string]func(context.Context, idx.Block, idx.Block, [][]common.Hash) ([]*types.Log, error){
-		"index":  index.FindInBlocks,
-		"pooled": pooled.FindInBlocks,
+		"leapJoin": wrapped.FindInBlocks,
 	} {
 		t.Run(dsc, func(t *testing.T) {
 			require := require.New(t)
 
-			got, err := method(nil, 0, 0xffffffff, pattern)
+			got, err := method(t.Context(), 0, 0xffffffff, pattern)
 			require.NoError(err)
 			require.Equal(1, len(got))
 			require.Equal(maxTopicsCount, len(got[0].Topics))
@@ -466,57 +452,6 @@ func TestPatternLimit(t *testing.T) {
 			require.ElementsMatch(x.exp[j], got[j], i, j)
 		}
 		require.Equal(x.err, err, i)
-	}
-}
-
-func TestKvdbThreadsPoolLimit(t *testing.T) {
-	logger.SetTestMode(t)
-
-	const N = 100
-
-	_, recs, _ := genTestData(N)
-	index := newTestIndex()
-	for _, rec := range recs {
-		err := index.Push(rec)
-		require.NoError(t, err)
-	}
-
-	pooled := withThreadPool{index}
-
-	for dsc, method := range map[string]func(context.Context, idx.Block, idx.Block, [][]common.Hash) ([]*types.Log, error){
-		"index":  index.FindInBlocks,
-		"pooled": pooled.FindInBlocks,
-	} {
-		t.Run(dsc, func(t *testing.T) {
-			require := require.New(t)
-
-			topics := make([]common.Hash, threads.GlobalPool.Cap()+1)
-			for i := range topics {
-				topics[i] = hash.FakeHash(int64(i))
-			}
-			require.Less(threads.GlobalPool.Cap(), len(topics))
-			qq := make([][]common.Hash, 3)
-
-			// one big pattern
-			qq[1] = topics
-			got, err := method(nil, 0, 1000, qq)
-			require.NoError(err)
-			require.Equal(N, len(got))
-
-			// more than one big pattern
-			qq[1], qq[2] = topics, topics
-			got, err = method(nil, 0, 1000, qq)
-			switch dsc {
-			case "index":
-				require.NoError(err)
-				require.Equal(N, len(got))
-			case "pooled":
-				require.Equal(ErrTooBigTopics, err)
-				require.Equal(0, len(got))
-
-			}
-
-		})
 	}
 }
 

@@ -77,7 +77,7 @@ func NewStore(mainDB kvdb.Store, cfg StoreConfig) *Store {
 	if cfg.DisableLogsIndexing {
 		s.EvmLogs = topicsdb.NewDummy()
 	} else {
-		s.EvmLogs = topicsdb.NewWithThreadPool(mainDB)
+		s.EvmLogs = topicsdb.NewWithLeapJoin(mainDB)
 	}
 	s.initCache()
 

@@ -17,9 +17,6 @@
 package topicsdb
 
 import (
-	"context"
-
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/kvdb"
 	"github.com/Fantom-foundation/lachesis-base/kvdb/batched"
 	"github.com/Fantom-foundation/lachesis-base/kvdb/table"
@@ -55,46 +52,6 @@ func (tt *index) WrapTablesAsBatched() (unwrap func()) {
 		tt.table = origTables
 	}
 }
-
-// FindInBlocks returns all log records of block range by pattern. 1st pattern element is an address.
-func (tt *index) FindInBlocks(ctx context.Context, from, to idx.Block, pattern [][]common.Hash) (logs []*types.Log, err error) {
-	err = tt.ForEachInBlocks(
-		ctx,
-		from, to,
-		pattern,
-		func(l *types.Log) bool {
-			logs = append(logs, l)
-			return true
-		})
-
-	return
-}
-
-// ForEachInBlocks matches log records of block range by pattern. 1st pattern element is an address.
-func (tt *index) ForEachInBlocks(ctx context.Context, from, to idx.Block, pattern [][]common.Hash, onLog func(*types.Log) (gonext bool)) error {
-	if 0 < to && to < from {
-		return nil
-	}
-
-	pattern, err := limitPattern(pattern)
-	if err != nil {
-		return err
-	}
-
-	onMatched := func(rec *logrec) (gonext bool, err error) {
-		rec.fetch(tt.table.Logrec)
-		if rec.err != nil {
-			err = rec.err
-			return
-		}
-		gonext = onLog(rec.result)
-		return
-	}
-
-	return tt.searchParallel(ctx, pattern, uint64(from), uint64(to), onMatched, doNothing)
-}
-
-func doNothing() {}
 
 // Push log record to database batch
 func (tt *index) Push(recs ...*types.Log) error {

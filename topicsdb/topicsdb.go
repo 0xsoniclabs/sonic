@@ -21,7 +21,6 @@ import (
 	"fmt"
 
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/Fantom-foundation/lachesis-base/kvdb"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 )
@@ -42,12 +41,6 @@ type Index interface {
 	Close()
 
 	WrapTablesAsBatched() (unwrap func())
-}
-
-// NewWithThreadPool creates an Index instance consuming a limited number of threads.
-func NewWithThreadPool(db kvdb.Store) Index {
-	tt := newIndex(db)
-	return &withThreadPool{tt}
 }
 
 func NewDummy() Index {
