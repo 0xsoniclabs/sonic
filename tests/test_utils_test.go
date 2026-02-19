@@ -295,45 +295,53 @@ func TestSetTransactionDefaults_CanInitializeAllTransactionTypes(t *testing.T) {
 		session := session.SpawnSession(t)
 		t.Parallel()
 
-		// endowments modify the account nonce
-		var receipt *types.Receipt
-		var err error
-		for range 2 {
-			receipt, err = session.EndowAccount(common.Address{}, big.NewInt(1))
-			require.NoError(t, err)
-			require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
-		}
+		client, err := session.GetClient()
+		require.NoError(t, err)
+		defer client.Close()
 
-		err = waitUntilTransactionIsRetiredFromPoolByHash(t, client, receipt.TxHash, session.GetSessionSponsor().Address())
+		sender := MakeAccountWithBalance(t, session, big.NewInt(1e18))
+		nonce, err := client.NonceAt(t.Context(), sender.Address(), nil)
 		require.NoError(t, err)
 
-		tx := CreateTransaction(t, session, &types.LegacyTx{Nonce: 1}, session.GetSessionSponsor())
+		tx := CreateTransaction(t, session, &types.LegacyTx{Nonce: nonce + 1}, sender)
 
-		// the filled values suffice to get the transaction accepted and executed
-		_, err = session.Run(tx)
-		require.ErrorContains(t, err, "nonce too low")
+		// the filled values suffice to get the transaction accepted but it wont be executed
+		// because of the gapped nonce
+		err = client.SendTransaction(t.Context(), tx)
+		require.NoError(t, err)
 	})
 
 	t.Run("non-zero gas is not defaulted ", func(t *testing.T) {
 		session := session.SpawnSession(t)
 		t.Parallel()
 
+		client, err := session.GetClient()
+		require.NoError(t, err)
+		defer client.Close()
+
 		tx := CreateTransaction(t, session, &types.LegacyTx{Gas: 1}, session.GetSessionSponsor())
 
-		// the filled values suffice to get the transaction accepted and executed
-		_, err := session.Run(tx)
-		require.ErrorContains(t, err, " intrinsic gas too low")
+		err = client.SendTransaction(t.Context(), tx)
+		require.ErrorContains(t, err, "intrinsic gas too low")
 	})
 
 	t.Run("non-zero gas-price is not defaulted ", func(t *testing.T) {
 		session := session.SpawnSession(t)
 		t.Parallel()
 
-		tx := CreateTransaction(t, session, &types.LegacyTx{GasPrice: big.NewInt(1)}, session.GetSessionSponsor())
+		client, err := session.GetClient()
+		require.NoError(t, err)
+		defer client.Close()
+
+		price, err := client.SuggestGasPrice(t.Context())
+		require.NoError(t, err)
+
+		tx := CreateTransaction(t, session, &types.LegacyTx{GasPrice: price}, session.GetSessionSponsor())
 
 		// the filled values suffice to get the transaction accepted and executed
-		_, err := session.Run(tx)
-		require.ErrorContains(t, err, "underpriced")
+		receipt, err := session.Run(tx)
+		require.NoError(t, err)
+		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 	})
 }
 
