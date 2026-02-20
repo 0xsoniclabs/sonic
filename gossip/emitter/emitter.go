@@ -22,6 +22,7 @@ import (
 	"math/big"
 	"math/rand/v2"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -35,9 +36,11 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/txpool"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/config"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/originatedtxs"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/throttler"
@@ -314,6 +317,9 @@ func (em *Emitter) getSortedTxs(baseFee *big.Int) *transactionsByPriceAndNonce {
 		em.Log.Error("Tx pool transactions fetching error", "err", err)
 		return nil
 	}
+
+	removeBundleOnlyTxs(pendingTxs)
+
 	for from, txs := range pendingTxs {
 		// Filter the excessive transactions from each sender
 		if len(txs) > em.config.MaxTxsPerAddress {
@@ -344,6 +350,20 @@ func (em *Emitter) getSortedTxs(baseFee *big.Int) *transactionsByPriceAndNonce {
 	em.cache.poolBlock = em.world.GetLatestBlockIndex()
 	em.cache.poolTime = time.Now()
 	return sortedTxs.Copy()
+}
+
+func removeBundleOnlyTxs(pendingTxs map[common.Address]types.Transactions) {
+	for addr, txs := range pendingTxs {
+		// if a bundle-only transaction is found, remove it and all subsequent transactions
+		// since the nonce will be non-sequential after that
+		index := slices.IndexFunc(txs, bundle.IsBundleOnly)
+		if index != -1 {
+			pendingTxs[addr] = pendingTxs[addr][:index]
+			if len(pendingTxs[addr]) == 0 {
+				delete(pendingTxs, addr)
+			}
+		}
+	}
 }
 
 func (em *Emitter) EmitEvent() (*inter.EventPayload, error) {

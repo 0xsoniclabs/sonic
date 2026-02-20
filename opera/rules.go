@@ -249,6 +249,8 @@ type Upgrades struct {
 	// It can be enabled or disabled at any time. Changes in the feature state
 	// become effective at the start of the next epoch.
 	GasSubsidies bool
+
+	TransactionBundles bool
 }
 
 // UpgradeHeight contains the information about the block height at which

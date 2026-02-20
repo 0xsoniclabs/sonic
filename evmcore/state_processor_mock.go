@@ -70,6 +70,20 @@ func (mr *Mock_transactionRunnerMockRecorder) runSponsoredTransaction(ctxt, tx, 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "runSponsoredTransaction", reflect.TypeOf((*Mock_transactionRunner)(nil).runSponsoredTransaction), ctxt, tx, txIndex)
 }
 
+// runTransactionBundle mocks base method.
+func (m *Mock_transactionRunner) runTransactionBundle(ctxt *runContext, tx *types.Transaction, txIndex int) []ProcessedTransaction {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "runTransactionBundle", ctxt, tx, txIndex)
+	ret0, _ := ret[0].([]ProcessedTransaction)
+	return ret0
+}
+
+// runTransactionBundle indicates an expected call of runTransactionBundle.
+func (mr *Mock_transactionRunnerMockRecorder) runTransactionBundle(ctxt, tx, txIndex any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "runTransactionBundle", reflect.TypeOf((*Mock_transactionRunner)(nil).runTransactionBundle), ctxt, tx, txIndex)
+}
+
 // Mock_evm is a mock of _evm interface.
 type Mock_evm struct {
 	ctrl     *gomock.Controller

@@ -21,8 +21,9 @@ import (
 	"math"
 	"math/big"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
-	"github.com/0xsoniclabs/sonic/gossip/gasprice/gaspricelimits"
+	gasPriceLimits "github.com/0xsoniclabs/sonic/gossip/gasprice/gaspricelimits"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/ethereum/go-ethereum/core"
@@ -103,6 +104,49 @@ func validateTx(
 
 	if err := validateSponsoredTransactions(tx, netRules, subsidiesChecker); err != nil {
 		return err
+	}
+
+	err := validateTransactionBundles(tx, chain, state, signer)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func validateTransactionBundles(tx *types.Transaction, chain StateReader, state state.StateDB, signer types.Signer) error {
+	upgrades := chain.CurrentRules().Upgrades
+	if !upgrades.Brio || !upgrades.TransactionBundles {
+		// Transaction bundles are not active, skip validation
+		return nil
+	}
+
+	txBundle, err := bundle.Decode(tx.Data())
+	if err != nil {
+		return fmt.Errorf("failed to decode transaction bundle: %w", err)
+	}
+
+	baseFee := chain.CurrentBaseFee()
+	limit := gasPriceLimits.GetMinimumFeeCapForTransactionPool(baseFee)
+	if err := bundle.ValidateTransactionBundle(tx, txBundle,
+		signer, limit, upgrades); err != nil {
+		return fmt.Errorf("invalid transaction bundle: %w", err)
+	}
+
+	bundler, err := signer.Sender(tx)
+	if err != nil {
+		return fmt.Errorf("failed to derive sender of the bundle transaction: %w", err)
+	}
+
+	balance := state.GetBalance(bundler).ToBig()
+
+	cost := new(big.Int).Mul(
+		big.NewInt(
+			int64(txBundle.Payment.Gas())), txBundle.Payment.GasPrice())
+	cost.Add(cost, txBundle.Payment.Value())
+
+	if balance.Cmp(cost) < 0 {
+		return fmt.Errorf("insufficient funds for the payment transaction: have %s, want at least %s", balance.String(), cost.String())
 	}
 
 	return nil
@@ -244,7 +288,7 @@ func ValidateTxForBlock(tx *types.Transaction, netRules NetworkRules, chain Stat
 	// Ensure Sonic-specific hard bounds
 	isSponsorRequest := netRules.gasSubsidies && subsidies.IsSponsorshipRequest(tx)
 	if baseFee := chain.CurrentBaseFee(); !isSponsorRequest && baseFee != nil {
-		limit := gaspricelimits.GetMinimumFeeCapForTransactionPool(baseFee)
+		limit := gasPriceLimits.GetMinimumFeeCapForTransactionPool(baseFee)
 		if tx.GasFeeCapIntCmp(limit) < 0 {
 			log.Trace("Rejecting underpriced tx: minimumBaseFee", "minimumBaseFee", baseFee, "limit", limit, "tx.GasFeeCap", tx.GasFeeCap())
 			return ErrUnderpriced
