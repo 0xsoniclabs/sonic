@@ -45,23 +45,32 @@ func TestRejectedTx_TransactionsAreRejectedBecauseOfAccountState(t *testing.T) {
 
 	testTransactions := map[string]func(testing.TB, *Account) types.TxData{
 		"legacy tx": func(testing.TB, *Account) types.TxData {
-			return &types.LegacyTx{}
+			return &types.LegacyTx{
+				Gas: 1000_000,
+			}
 		},
 		"access list no entries ": func(testing.TB, *Account) types.TxData {
-			return &types.AccessListTx{}
+			return &types.AccessListTx{
+				Gas: 1000_000,
+			}
 		},
 		"access list tx with one entry": func(testing.TB, *Account) types.TxData {
 			return &types.AccessListTx{
+				Gas: 1000_000,
 				AccessList: []types.AccessTuple{
 					{Address: common.Address{0x42}, StorageKeys: []common.Hash{{0x42}}},
 				},
 			}
 		},
 		"dynamic fee tx": func(testing.TB, *Account) types.TxData {
-			return &types.DynamicFeeTx{}
+			return &types.DynamicFeeTx{
+				Gas: 1000_000,
+			}
 		},
 		"blob tx": func(testing.TB, *Account) types.TxData {
-			return &types.BlobTx{}
+			return &types.BlobTx{
+				Gas: 1000_000,
+			}
 		},
 		"set code tx": func(t testing.TB, account *Account) types.TxData {
 
@@ -75,6 +84,7 @@ func TestRejectedTx_TransactionsAreRejectedBecauseOfAccountState(t *testing.T) {
 			require.NoError(t, err)
 
 			return &types.SetCodeTx{
+				Gas:      1000_000,
 				AuthList: []types.SetCodeAuthorization{auth},
 			}
 		},
@@ -100,18 +110,13 @@ func TestRejectedTx_TransactionsAreRejectedBecauseOfAccountState(t *testing.T) {
 			})
 
 			t.Run("is rejected with nonce too low", func(t *testing.T) {
-				account := NewAccount()
+				account := MakeAccountWithBalance(t, session, big.NewInt(1e18))
 
 				txData := txFactory(t, account)
 				tx := CreateTransaction(t, session, txData, account)
 
-				// provide enough funds for successful execution
-				receipt, err := session.EndowAccount(account.Address(), big.NewInt(1e18))
-				require.NoError(t, err)
-				require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
-
 				// submit transaction once
-				receipt, err = session.Run(tx)
+				receipt, err := session.Run(tx)
 				require.NoError(t, err)
 				require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 

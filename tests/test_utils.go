@@ -31,10 +31,10 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
 	"github.com/Fantom-foundation/lachesis-base/hash"
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -124,7 +124,20 @@ func SetTransactionDefaults[T types.TxData](
 
 	gas := tmpTx.Gas()
 	if gas == 0 {
-		gas = computeMinimumGas(t, net, txPayload)
+		gas, err = client.EstimateGas(t.Context(), ethereum.CallMsg{
+			From:          sender.Address(),
+			To:            tmpTx.To(),
+			GasPrice:      gasPrice,
+			Value:         tmpTx.Value(),
+			Data:          tmpTx.Data(),
+			AccessList:    tmpTx.AccessList(),
+			BlobGasFeeCap: tmpTx.BlobGasFeeCap(),
+			// NOTE: blob hashes are intentionally not included, as
+			// the sonic network rejects transactions with blob hashes.
+			// And therefore estimation returns an error.
+			AuthorizationList: tmpTx.SetCodeAuthorizations(),
+		})
+		require.NoError(t, err, "failed to estimate gas for transaction")
 	}
 
 	switch tx := types.TxData(txPayload).(type) {
@@ -153,59 +166,6 @@ func SetTransactionDefaults[T types.TxData](
 	}
 
 	return txPayload
-}
-
-// ComputeMinimumGas computes the minimum gas required to execute a transaction,
-// this accounts for all gas costs except for the contract opcodes gas costs.
-func computeMinimumGas(t *testing.T, session IntegrationTestNetSession, tx types.TxData) uint64 {
-
-	var data []byte
-	var accessList []types.AccessTuple
-	var authorizations []types.SetCodeAuthorization
-	var isCreate bool
-	switch tx := tx.(type) {
-	case *types.LegacyTx:
-		data = tx.Data
-		isCreate = tx.To == nil
-	case *types.AccessListTx:
-		data = tx.Data
-		accessList = tx.AccessList
-		isCreate = tx.To == nil
-	case *types.DynamicFeeTx:
-		data = tx.Data
-		accessList = tx.AccessList
-		isCreate = tx.To == nil
-	case *types.BlobTx:
-		data = tx.Data
-		accessList = tx.AccessList
-		isCreate = false
-	case *types.SetCodeTx:
-		data = tx.Data
-		accessList = tx.AccessList
-		authorizations = tx.AuthList
-		isCreate = false
-	default:
-		t.Fatalf("unexpected transaction type: %T", tx)
-	}
-
-	minimumGas, err := core.IntrinsicGas(data, accessList, authorizations, isCreate, true, true, true)
-	require.NoError(t, err)
-
-	client, err := session.GetClient()
-	require.NoError(t, err)
-	defer client.Close()
-
-	var currentRules opera.Rules
-	err = client.Client().Call(&currentRules, "eth_getRules", "latest")
-	require.NoError(t, err)
-
-	if currentRules.Upgrades.Allegro {
-		floorDataGas, err := core.FloorDataGas(data)
-		require.NoError(t, err)
-		minimumGas = max(minimumGas, floorDataGas)
-	}
-
-	return minimumGas
 }
 
 // WaitUntilTransactionIsRetiredFromPool waits until the transaction no longer exists in the transaction pool.
