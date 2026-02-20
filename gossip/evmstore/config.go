@@ -29,8 +29,6 @@ type (
 		ReceiptsSize uint
 		// Cache size for Receipts (number of blocks).
 		ReceiptsBlocks int
-		// Cache size for TxPositions.
-		TxPositions int
 		// Cache size for EvmBlock (number of blocks).
 		EvmBlocksNum int
 		// Cache size for EvmBlock (size in bytes).
@@ -58,7 +56,6 @@ func DefaultStoreConfig(scale cachescale.Func) StoreConfig {
 		Cache: StoreCacheConfig{
 			ReceiptsSize:   scale.U(4 * opt.MiB),
 			ReceiptsBlocks: scale.I(4000),
-			TxPositions:    scale.I(20000),
 			EvmBlocksNum:   scale.I(5000),
 			EvmBlocksSize:  scale.U(6 * opt.MiB),
 		},

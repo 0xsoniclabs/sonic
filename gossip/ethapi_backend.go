@@ -40,7 +40,6 @@ import (
 
 	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/evmcore"
-	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice/gaspricelimits"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
@@ -452,37 +451,14 @@ func (b *EthAPIBackend) GetPoolTransaction(hash common.Hash) *types.Transaction 
 	return b.svc.txpool.Get(hash)
 }
 
-func (b *EthAPIBackend) GetTxPosition(txHash common.Hash) *evmstore.TxPosition {
-	return b.svc.store.evm.GetTxPosition(txHash)
-}
-
 func (b *EthAPIBackend) GetTransaction(ctx context.Context, txHash common.Hash) (*types.Transaction, uint64, uint64, error) {
 	if !b.svc.config.TxIndex {
 		return nil, 0, 0, errors.New("transactions index is disabled (enable TxIndex and re-process the DAG)")
 	}
 
-	position := b.svc.store.evm.GetTxPosition(txHash)
-	if position == nil {
-		return nil, 0, 0, nil
-	}
+	tx := b.svc.store.evm.GetTx(txHash)
 
-	var tx *types.Transaction
-	if position.Event.IsZero() {
-		tx = b.svc.store.evm.GetTx(txHash)
-	} else {
-		event := b.svc.store.GetEventPayload(position.Event)
-		if position.EventOffset > uint32(event.Transactions().Len()) {
-			return nil, 0, 0, fmt.Errorf("transactions index is corrupted (offset is larger than number of txs in event), event=%s, txid=%s, block=%d, offset=%d, txs_num=%d",
-				position.Event.String(),
-				txHash.String(),
-				position.Block,
-				position.EventOffset,
-				event.Transactions().Len())
-		}
-		tx = event.Transactions()[position.EventOffset]
-	}
-
-	return tx, uint64(position.Block), uint64(position.BlockOffset), nil
+	return tx, 0, 0, nil
 }
 
 func (b *EthAPIBackend) GetPoolNonce(ctx context.Context, addr common.Address) (uint64, error) {

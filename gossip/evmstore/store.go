@@ -31,8 +31,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
-const nominalSize uint = 1
-
 // Store is a node persistent storage working over physical key-value database.
 type Store struct {
 	cfg StoreConfig
@@ -40,17 +38,15 @@ type Store struct {
 	mainDB kvdb.Store
 	table  struct {
 		// API-only tables
-		Receipts    kvdb.Store `table:"r"`
-		TxPositions kvdb.Store `table:"x"`
-		Txs         kvdb.Store `table:"X"`
+		Receipts kvdb.Store `table:"r"`
+		Txs      kvdb.Store `table:"X"`
 	}
 
 	EvmLogs topicsdb.Index
 
 	cache struct {
-		TxPositions *wlru.Cache `cache:"-"` // store by pointer
-		Receipts    *wlru.Cache `cache:"-"` // store by value
-		EvmBlocks   *wlru.Cache `cache:"-"` // store by pointer
+		Receipts  *wlru.Cache `cache:"-"` // store by value
+		EvmBlocks *wlru.Cache `cache:"-"` // store by pointer
 	}
 
 	rlp rlpstore.Helper
@@ -122,7 +118,6 @@ func (s *Store) Close() error {
 
 func (s *Store) initCache() {
 	s.cache.Receipts = s.makeCache(s.cfg.Cache.ReceiptsSize, s.cfg.Cache.ReceiptsBlocks)
-	s.cache.TxPositions = s.makeCache(nominalSize*uint(s.cfg.Cache.TxPositions), s.cfg.Cache.TxPositions)
 	s.cache.EvmBlocks = s.makeCache(s.cfg.Cache.EvmBlocksSize, s.cfg.Cache.EvmBlocksNum)
 }
 
