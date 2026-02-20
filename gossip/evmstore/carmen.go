@@ -18,6 +18,7 @@ package evmstore
 
 import (
 	"bytes"
+	"slices"
 
 	cc "github.com/0xsoniclabs/carmen/go/common"
 	"github.com/0xsoniclabs/carmen/go/common/amount"
@@ -30,13 +31,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/trie/utils"
 	"github.com/holiman/uint256"
-)
-
-const (
-	// Number of address->curve point associations to keep.
-	pointCacheSize = 4096
 )
 
 func CreateCarmenStateDb(carmenStateDb carmen.VmStateDB) state.StateDB {
@@ -57,6 +52,8 @@ type CarmenStateDB struct {
 
 	// collecting all events accessing state information
 	accessEvents *geth_state.AccessEvents
+
+	createdContracts []common.Address
 }
 
 func (c *CarmenStateDB) Error() error {
@@ -271,15 +268,8 @@ func (c *CarmenStateDB) SetStorage(addr common.Address, storage map[common.Hash]
 	c.db.AddBalance(cc.Address(addr), origBalance)
 }
 
-func (c *CarmenStateDB) SelfDestruct(addr common.Address) uint256.Int {
-	prevBalance := *c.GetBalance(addr)
+func (c *CarmenStateDB) SelfDestruct(addr common.Address) {
 	c.db.Suicide(cc.Address(addr))
-	return prevBalance
-}
-
-func (c *CarmenStateDB) SelfDestruct6780(addr common.Address) (uint256.Int, bool) {
-	prevBalance := *c.GetBalance(addr)
-	return prevBalance, c.db.SuicideNewContract(cc.Address(addr))
 }
 
 func (c *CarmenStateDB) CreateAccount(addr common.Address) {
@@ -288,6 +278,11 @@ func (c *CarmenStateDB) CreateAccount(addr common.Address) {
 
 func (c *CarmenStateDB) CreateContract(addr common.Address) {
 	c.db.CreateContract(cc.Address(addr))
+	c.createdContracts = append(c.createdContracts, addr)
+}
+
+func (c *CarmenStateDB) IsNewContract(addr common.Address) bool {
+	return slices.Contains(c.createdContracts, addr)
 }
 
 func (c *CarmenStateDB) Copy() state.StateDB {
@@ -311,6 +306,7 @@ func (c *CarmenStateDB) GetRefund() uint64 {
 }
 
 func (c *CarmenStateDB) EndTransaction() {
+	c.createdContracts = nil
 	c.db.EndTransaction()
 }
 
@@ -327,8 +323,7 @@ func (c *CarmenStateDB) SetTxContext(txHash common.Hash, txIndex int) {
 }
 
 func (c *CarmenStateDB) BeginBlock(number uint64) {
-	utils.NewPointCache(pointCacheSize)
-	c.accessEvents = geth_state.NewAccessEvents(nil)
+	c.accessEvents = geth_state.NewAccessEvents()
 	c.blockNum = number
 	if db, ok := c.db.(carmen.StateDB); ok {
 		db.BeginBlock()
@@ -380,11 +375,6 @@ func (c *CarmenStateDB) AddressInAccessList(addr common.Address) bool {
 
 func (c *CarmenStateDB) SlotInAccessList(addr common.Address, slot common.Hash) (addressPresent bool, slotPresent bool) {
 	return c.db.IsSlotInAccessList(cc.Address(addr), cc.Key(slot))
-}
-
-// PointCache returns the point cache used in computations of verkle trees
-func (c *CarmenStateDB) PointCache() *utils.PointCache {
-	return nil // used only when IsEIP4762 (verkle trees) enabled
 }
 
 // Witness retrieves the current state witness being collected

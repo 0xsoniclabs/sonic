@@ -92,9 +92,8 @@ func NewEVMBlockContextWithDifficulty(
 // NewEVMTxContext creates a new transaction context for a single transaction.
 func NewEVMTxContext(msg *core.Message) vm.TxContext {
 	return vm.TxContext{
-		Origin:     msg.From,
-		GasPrice:   new(big.Int).Set(msg.GasPrice),
-		BlobFeeCap: msg.BlobGasFeeCap,
+		Origin:   msg.From,
+		GasPrice: uint256.NewInt(0).SetBytes(msg.GasPrice.Bytes()),
 	}
 }
 

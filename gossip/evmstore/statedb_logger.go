@@ -88,7 +88,7 @@ func (l *LoggingStateDB) AddLog(log *types.Log) {
 	l.StateDB.AddLog(log)
 }
 
-func (l *LoggingStateDB) SelfDestruct(addr common.Address) uint256.Int {
+func (l *LoggingStateDB) SelfDestruct(addr common.Address) {
 	if l.logger.OnBalanceChange != nil {
 		prev := l.GetBalance(addr)
 		if prev.Sign() > 0 {
@@ -96,7 +96,7 @@ func (l *LoggingStateDB) SelfDestruct(addr common.Address) uint256.Int {
 		}
 		l.selfDestructed[addr] = struct{}{}
 	}
-	return l.StateDB.SelfDestruct(addr)
+	l.StateDB.SelfDestruct(addr)
 }
 
 func (l *LoggingStateDB) EndTransaction() {

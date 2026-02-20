@@ -19,7 +19,6 @@ import (
 	tracing "github.com/ethereum/go-ethereum/core/tracing"
 	types "github.com/ethereum/go-ethereum/core/types"
 	params "github.com/ethereum/go-ethereum/params"
-	utils "github.com/ethereum/go-ethereum/trie/utils"
 	uint256 "github.com/holiman/uint256"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -476,18 +475,18 @@ func (mr *MockStateDBMockRecorder) HasSelfDestructed(arg0 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasSelfDestructed", reflect.TypeOf((*MockStateDB)(nil).HasSelfDestructed), arg0)
 }
 
-// PointCache mocks base method.
-func (m *MockStateDB) PointCache() *utils.PointCache {
+// IsNewContract mocks base method.
+func (m *MockStateDB) IsNewContract(addr common.Address) bool {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "PointCache")
-	ret0, _ := ret[0].(*utils.PointCache)
+	ret := m.ctrl.Call(m, "IsNewContract", addr)
+	ret0, _ := ret[0].(bool)
 	return ret0
 }
 
-// PointCache indicates an expected call of PointCache.
-func (mr *MockStateDBMockRecorder) PointCache() *gomock.Call {
+// IsNewContract indicates an expected call of IsNewContract.
+func (mr *MockStateDBMockRecorder) IsNewContract(addr any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PointCache", reflect.TypeOf((*MockStateDB)(nil).PointCache))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsNewContract", reflect.TypeOf((*MockStateDB)(nil).IsNewContract), addr)
 }
 
 // Prepare mocks base method.
@@ -527,32 +526,15 @@ func (mr *MockStateDBMockRecorder) RevertToSnapshot(arg0 any) *gomock.Call {
 }
 
 // SelfDestruct mocks base method.
-func (m *MockStateDB) SelfDestruct(arg0 common.Address) uint256.Int {
+func (m *MockStateDB) SelfDestruct(arg0 common.Address) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SelfDestruct", arg0)
-	ret0, _ := ret[0].(uint256.Int)
-	return ret0
+	m.ctrl.Call(m, "SelfDestruct", arg0)
 }
 
 // SelfDestruct indicates an expected call of SelfDestruct.
 func (mr *MockStateDBMockRecorder) SelfDestruct(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SelfDestruct", reflect.TypeOf((*MockStateDB)(nil).SelfDestruct), arg0)
-}
-
-// SelfDestruct6780 mocks base method.
-func (m *MockStateDB) SelfDestruct6780(arg0 common.Address) (uint256.Int, bool) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SelfDestruct6780", arg0)
-	ret0, _ := ret[0].(uint256.Int)
-	ret1, _ := ret[1].(bool)
-	return ret0, ret1
-}
-
-// SelfDestruct6780 indicates an expected call of SelfDestruct6780.
-func (mr *MockStateDBMockRecorder) SelfDestruct6780(arg0 any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SelfDestruct6780", reflect.TypeOf((*MockStateDB)(nil).SelfDestruct6780), arg0)
 }
 
 // SetBalance mocks base method.
