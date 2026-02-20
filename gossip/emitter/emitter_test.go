@@ -30,6 +30,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/config"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/inter"
@@ -370,7 +371,7 @@ func TestEmitter_EmitEvent_DoesNotEmit_IfWorldIsBusy(t *testing.T) {
 	baseFeeSource.EXPECT().GetCurrentBaseFee()
 	em.baseFeeSource = baseFeeSource
 
-	world.EXPECT().GetRules()
+	world.EXPECT().GetRules().AnyTimes()
 
 	e, err := em.EmitEvent()
 	require.NoError(t, err)
@@ -461,4 +462,121 @@ func TestEmitter_ThrottlerWorldAdapter_ReturnsNilIfNoEventIsFound(t *testing.T) 
 		e := wa.GetLastEvent(validator)
 		require.Nil(t, e)
 	})
+}
+
+func TestRemoveBundleOnlyTxs_OnlyFiltersTxIfFeatureIsEnabled(t *testing.T) {
+
+	test := map[string]struct {
+		upgrades          opera.Upgrades
+		expectedFiltering bool
+	}{
+		"brio enabled": {
+			upgrades: opera.Upgrades{
+				Brio: true,
+			},
+			expectedFiltering: false,
+		},
+		"transaction bundles enabled": {
+			upgrades: opera.Upgrades{
+				TransactionBundles: true,
+			},
+			expectedFiltering: false,
+		},
+		"both enabled": {
+			upgrades: opera.Upgrades{
+				Brio:               true,
+				TransactionBundles: true,
+			},
+			expectedFiltering: true,
+		},
+		"both disabled": {
+			upgrades: opera.Upgrades{
+				Brio:                         false,
+				TransactionBundles:           false,
+				SingleProposerBlockFormation: true, // irrelevant for bundle-only tx filtering
+			},
+			expectedFiltering: false,
+		},
+	}
+	sender := common.Address{1}
+
+	for name, test := range test {
+		t.Run(name, func(t *testing.T) {
+
+			bundleOnlyMark := types.AccessTuple{
+				Address:     bundle.BundleOnly,
+				StorageKeys: []common.Hash{{}},
+			}
+
+			pendingTxs := map[common.Address]types.Transactions{
+				sender: {
+					types.NewTx(&types.AccessListTx{
+						AccessList: []types.AccessTuple{bundleOnlyMark},
+					}),
+				},
+			}
+
+			removeBundleOnlyTxs(test.upgrades, pendingTxs)
+
+			if test.expectedFiltering {
+				require.Empty(t, pendingTxs)
+			} else {
+				require.Len(t, pendingTxs, 1)
+				require.Len(t, pendingTxs[sender], 1)
+			}
+		})
+	}
+}
+
+func TestRemoveBundleOnlyTxs_ErasesGapedNoncesAfterRemoval(t *testing.T) {
+	// And deletes sender transactions entry if list is empty
+
+	bundleOnlyMark := types.AccessTuple{
+		Address:     bundle.BundleOnly,
+		StorageKeys: []common.Hash{{}},
+	}
+	sender := common.Address{1}
+
+	for _, position := range []int{0, 1, 2} {
+
+		t.Run(fmt.Sprintf("bundle-only tx at position %d", position), func(t *testing.T) {
+
+			pendingTxs := map[common.Address]types.Transactions{}
+
+			for i := 0; i < position; i++ {
+				pendingTxs[sender] = append(pendingTxs[sender], types.NewTx(&types.AccessListTx{
+					Nonce: uint64(i),
+				}))
+			}
+
+			pendingTxs[sender] = append(pendingTxs[sender], types.NewTx(&types.AccessListTx{
+				Nonce:      uint64(position),
+				AccessList: []types.AccessTuple{bundleOnlyMark},
+			}))
+			for i := position + 1; i < 3; i++ {
+				pendingTxs[sender] = append(pendingTxs[sender], types.NewTx(&types.AccessListTx{
+					Nonce: uint64(i),
+				}))
+			}
+
+			removeBundleOnlyTxs(opera.Upgrades{
+				Brio:               true,
+				TransactionBundles: true,
+			}, pendingTxs)
+
+			switch position {
+			case 0:
+				// sender does not have any valid transaction, so entry should be deleted
+				require.Empty(t, pendingTxs)
+			case 1:
+				// second transaction was deleted, any nonce after that cannot be valid
+				require.Len(t, pendingTxs, 1)
+				require.Len(t, pendingTxs[sender], 1)
+			case 2:
+				// only the last transaction was deleted, the rest are valid
+				require.Len(t, pendingTxs, 1)
+				require.Len(t, pendingTxs[sender], 2)
+			}
+		})
+	}
 }
