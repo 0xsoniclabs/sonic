@@ -91,7 +91,7 @@ func TestIndexSearchMultyVariants(t *testing.T) {
 
 	wrapped := withLeapJoin{index}
 
-	for dsc, method := range map[string]func(context.Context, idx.Block, idx.Block, [][]common.Hash) ([]*types.Log, error){
+	for dsc, method := range map[string]func(context.Context, idx.Block, idx.Block, [][]common.Hash, int) ([]*types.Log, error){
 		"leapJoin": wrapped.FindInBlocks,
 	} {
 		t.Run(dsc, func(t *testing.T) {
@@ -103,7 +103,7 @@ func TestIndexSearchMultyVariants(t *testing.T) {
 					{hash1, hash2, hash3, hash4},
 					{},
 					{hash1, hash2, hash3, hash4},
-				})
+				}, 0)
 				require.NoError(err)
 				require.Equal(4, len(got))
 				check(require, got)
@@ -116,7 +116,7 @@ func TestIndexSearchMultyVariants(t *testing.T) {
 					{hash1, hash2, hash3, hash4},
 					{},
 					{hash1, hash2, hash3, hash4},
-				})
+				}, 0)
 				require.NoError(err)
 				require.Equal(4, len(got))
 				check(require, got)
@@ -129,7 +129,7 @@ func TestIndexSearchMultyVariants(t *testing.T) {
 					{hash1, hash2, hash3, hash4},
 					{},
 					{hash1, hash2, hash3, hash4},
-				})
+				}, 0)
 				require.NoError(err)
 				require.Equal(2, len(got))
 				check(require, got)
@@ -143,7 +143,7 @@ func TestIndexSearchMultyVariants(t *testing.T) {
 					{hash1, hash2, hash3, hash4},
 					{},
 					{hash1, hash2, hash3, hash4},
-				})
+				}, 0)
 				require.NoError(err)
 				require.Equal(2, len(got1))
 				check(require, got1)
@@ -153,7 +153,7 @@ func TestIndexSearchMultyVariants(t *testing.T) {
 					{hash1, hash2, hash3, hash4},
 					{},
 					{hash1, hash2, hash3, hash4},
-				})
+				}, 0)
 				require.NoError(err)
 				require.ElementsMatch(got1, got2)
 			})
@@ -200,7 +200,7 @@ func TestIndexSearchShortCircuits(t *testing.T) {
 
 	wrapped := withLeapJoin{index}
 
-	for dsc, method := range map[string]func(context.Context, idx.Block, idx.Block, [][]common.Hash) ([]*types.Log, error){
+	for dsc, method := range map[string]func(context.Context, idx.Block, idx.Block, [][]common.Hash, int) ([]*types.Log, error){
 		"leapJoin": wrapped.FindInBlocks,
 	} {
 		t.Run(dsc, func(t *testing.T) {
@@ -212,7 +212,7 @@ func TestIndexSearchShortCircuits(t *testing.T) {
 					{},
 					{},
 					{hash3},
-				})
+				}, 0)
 				require.NoError(err)
 				require.Equal(1, len(got))
 			})
@@ -224,7 +224,7 @@ func TestIndexSearchShortCircuits(t *testing.T) {
 					{},
 					{},
 					{hash3, hash4},
-				})
+				}, 0)
 				require.NoError(err)
 				require.Equal(2, len(got))
 			})
@@ -236,7 +236,7 @@ func TestIndexSearchShortCircuits(t *testing.T) {
 					{},
 					{},
 					{hash3, hash4},
-				})
+				}, 0)
 				require.NoError(err)
 				require.Equal(1, len(got))
 			})
@@ -259,7 +259,7 @@ func TestIndexSearchSingleVariant(t *testing.T) {
 
 	wrapped := withLeapJoin{index}
 
-	for dsc, method := range map[string]func(context.Context, idx.Block, idx.Block, [][]common.Hash) ([]*types.Log, error){
+	for dsc, method := range map[string]func(context.Context, idx.Block, idx.Block, [][]common.Hash, int) ([]*types.Log, error){
 		"leapJoin": wrapped.FindInBlocks,
 	} {
 		t.Run(dsc, func(t *testing.T) {
@@ -274,7 +274,7 @@ func TestIndexSearchSingleVariant(t *testing.T) {
 					qq[pos+1] = []common.Hash{t}
 				}
 
-				got, err := method(t.Context(), 0, 1000, qq)
+				got, err := method(t.Context(), 0, 1000, qq, 0)
 				require.NoError(err)
 
 				var expect []*types.Log
@@ -335,7 +335,7 @@ func TestIndexSearchSimple(t *testing.T) {
 
 	wrapped := withLeapJoin{index}
 
-	for dsc, method := range map[string]func(context.Context, idx.Block, idx.Block, [][]common.Hash) ([]*types.Log, error){
+	for dsc, method := range map[string]func(context.Context, idx.Block, idx.Block, [][]common.Hash, int) ([]*types.Log, error){
 		"leapJoin": wrapped.FindInBlocks,
 	} {
 		t.Run(dsc, func(t *testing.T) {
@@ -344,21 +344,21 @@ func TestIndexSearchSimple(t *testing.T) {
 			got, err = method(t.Context(), 0, 0xffffffff, [][]common.Hash{
 				{common.BytesToHash(addr[:])},
 				{hash1},
-			})
+			}, 0)
 			require.NoError(err)
 			require.Equal(1, len(got))
 
 			got, err = method(t.Context(), 0, 0xffffffff, [][]common.Hash{
 				{common.BytesToHash(addr[:])},
 				{hash2},
-			})
+			}, 0)
 			require.NoError(err)
 			require.Equal(1, len(got))
 
 			got, err = method(t.Context(), 0, 0xffffffff, [][]common.Hash{
 				{common.BytesToHash(addr[:])},
 				{hash3},
-			})
+			}, 0)
 			require.NoError(err)
 			require.Equal(1, len(got))
 		})
@@ -388,13 +388,13 @@ func TestMaxTopicsCount(t *testing.T) {
 
 	wrapped := withLeapJoin{index}
 
-	for dsc, method := range map[string]func(context.Context, idx.Block, idx.Block, [][]common.Hash) ([]*types.Log, error){
+	for dsc, method := range map[string]func(context.Context, idx.Block, idx.Block, [][]common.Hash, int) ([]*types.Log, error){
 		"leapJoin": wrapped.FindInBlocks,
 	} {
 		t.Run(dsc, func(t *testing.T) {
 			require := require.New(t)
 
-			got, err := method(t.Context(), 0, 0xffffffff, pattern)
+			got, err := method(t.Context(), 0, 0xffffffff, pattern, 0)
 			require.NoError(err)
 			require.Equal(1, len(got))
 			require.Equal(maxTopicsCount, len(got[0].Topics))

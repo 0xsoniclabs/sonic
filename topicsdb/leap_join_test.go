@@ -107,7 +107,7 @@ func TestFindInBlocks_FindsLogsUsingPattern(t *testing.T) {
 	))
 
 	logs, err := index.FindInBlocks(
-		t.Context(), from, to, pattern,
+		t.Context(), from, to, pattern, 0,
 	)
 	require.NoError(err)
 	require.Len(logs, 3)
@@ -150,7 +150,7 @@ func TestFindInBlocksUsingLeapJoin_ReleasesAllIterators(t *testing.T) {
 	iter3.EXPECT().Release()
 
 	res, err := findInBlocksUsingLeapJoin(
-		t.Context(), 0, 10, pattern, index, nil,
+		t.Context(), 0, 10, pattern, index, nil, 0,
 	)
 
 	require.NoError(err)
@@ -177,7 +177,7 @@ func TestFindInBlocksUsingLeapJoin_ReturnsEmptyIfBlockRangeIsEmpty(t *testing.T)
 			cancel()
 
 			logs, err := findInBlocksUsingLeapJoin(
-				ctx, tc.from, tc.to, nil, nil, nil,
+				ctx, tc.from, tc.to, nil, nil, nil, 0,
 			)
 			require.Empty(t, logs)
 
@@ -192,7 +192,7 @@ func TestFindInBlocksUsingLeapJoin_ReturnsEmptyIfBlockRangeIsEmpty(t *testing.T)
 
 func TestFindInBLocksUsingLeapJoin_FailsIfNoPatternsAreProvided(t *testing.T) {
 	logs, err := findInBlocksUsingLeapJoin(
-		context.Background(), 0, 10, nil, nil, nil,
+		context.Background(), 0, 10, nil, nil, nil, 0,
 	)
 	require.Empty(t, logs)
 	require.ErrorContains(t, err, "empty topics")
@@ -230,7 +230,7 @@ func TestFindInBlocksUsingLeapJoin_CanBeCancelledViaContext(t *testing.T) {
 	)
 
 	res, err := findInBlocksUsingLeapJoin(
-		ctx, 0, 10, [][]common.Hash{nil, {{1}}}, index, logs,
+		ctx, 0, 10, [][]common.Hash{nil, {{1}}}, index, logs, 0,
 	)
 
 	require.Nil(res)
@@ -268,7 +268,7 @@ func TestFindInBlocksUsingLeapJoin_FailingLogFetchStopsJoin(t *testing.T) {
 	)
 
 	res, err := findInBlocksUsingLeapJoin(
-		t.Context(), 0, 10, [][]common.Hash{nil, {{1}}}, index, logs,
+		t.Context(), 0, 10, [][]common.Hash{nil, {{1}}}, index, logs, 0,
 	)
 
 	require.Nil(res)
@@ -293,7 +293,7 @@ func TestFindInBlocksUsingLeapJoin_ErrorsDuringIndexIterationsAreReported(t *tes
 	iter.EXPECT().Release()
 
 	res, err := findInBlocksUsingLeapJoin(
-		t.Context(), 0, 10, [][]common.Hash{nil, {{1}}}, index, logs,
+		t.Context(), 0, 10, [][]common.Hash{nil, {{1}}}, index, logs, 0,
 	)
 
 	require.Nil(res)

@@ -17,6 +17,7 @@
 package rpcs
 
 import (
+	"fmt"
 	"math/big"
 	"slices"
 	"testing"
@@ -94,13 +95,11 @@ func TestGetLogFilters(t *testing.T) {
 	}
 
 	// Retrieve the ABI of the contract to identify the log event signatures.
-	abi, err := indexed_logs.IndexedLogsMetaData.GetAbi()
-	require.NoError(t, err)
 	eventIDs := []common.Hash{
-		abi.Events["Log1"].ID,
-		abi.Events["Log2"].ID,
-		abi.Events["Log3"].ID,
-		abi.Events["Log4"].ID,
+		getEventIDFor(t, "Log1"),
+		getEventIDFor(t, "Log2"),
+		getEventIDFor(t, "Log3"),
+		getEventIDFor(t, "Log4"),
 	}
 
 	toTopic := func(i int) common.Hash {
@@ -341,4 +340,354 @@ func (f *filter) matches(log types.Log) bool {
 		}
 	}
 	return true
+}
+
+func getEventIDFor(t *testing.T, name string) common.Hash {
+	abi, err := indexed_logs.IndexedLogsMetaData.GetAbi()
+	require.NoError(t, err)
+	return abi.Events[name].ID
+}
+
+func TestGetLogFilters_LogResultLimitIsEnforced(t *testing.T) {
+	limits := []int{10, 100}
+	for _, limit := range limits {
+		t.Run(fmt.Sprintf("limit_%d", limit), func(t *testing.T) {
+			testLogResultLimitEnforcement(t, limit)
+		})
+	}
+}
+
+func testLogResultLimitEnforcement(t *testing.T, limit int) {
+	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+		ClientExtraArguments: []string{"--rpc.logqueryresultlimit", fmt.Sprintf("%d", limit)},
+	})
+
+	source, receipt, err := tests.DeployContract(net, indexed_logs.DeployIndexedLogs)
+	require.NoError(t, err)
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+	sourceAddress := receipt.ContractAddress
+
+	createLogs := func(n int) *big.Int {
+		receipt, err := net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
+			return source.EmitLogs(opts, big.NewInt(int64(n)))
+		})
+		require.NoError(t, err)
+		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+		return receipt.BlockNumber
+	}
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	expectedErrMsg := fmt.Sprintf("too many results, consider narrowing your query criteria, the limit is %d", limit)
+
+	// Retrieve the ABI of the contract to identify the log event signature.
+	logId := getEventIDFor(t, "Log2")
+
+	t.Run("limit is ignored for a single block", func(t *testing.T) {
+
+		// Create more logs than the limit in a single block.
+		block := createLogs(limit * 2)
+
+		// A filter just asking for all logs of the block should ignore the
+		// limit, as there is only one block.
+		logs, err := client.FilterLogs(t.Context(), ethereum.FilterQuery{
+			FromBlock: block,
+			ToBlock:   block,
+		})
+		require.NoError(t, err)
+		require.Len(t, logs, limit*2)
+
+		// Also, a filter with additional criteria should ignore the limit.
+		logs, err = client.FilterLogs(t.Context(), ethereum.FilterQuery{
+			FromBlock: block,
+			ToBlock:   block,
+			Addresses: []common.Address{sourceAddress},
+		})
+		require.NoError(t, err)
+		require.Len(t, logs, limit*2)
+
+		logs, err = client.FilterLogs(t.Context(), ethereum.FilterQuery{
+			FromBlock: block,
+			ToBlock:   block,
+			Topics:    [][]common.Hash{{logId}},
+		})
+		require.NoError(t, err)
+		require.Len(t, logs, limit*2)
+	})
+
+	// Good cases.
+	tests := map[string]int{
+		"no logs":              0,
+		"far below the limit":  limit / 2,
+		"just below the limit": limit - 1,
+		"exactly the limit":    limit,
+	}
+
+	for name, logCount := range tests {
+		t.Run(name, func(t *testing.T) {
+
+			// Create logCount logs in two different blocks to make sure the
+			// limit result is enforced. For a single block, the limit is
+			// required to be ignored.
+			partA := logCount / 2
+			partB := logCount - partA
+			require.Equal(t, logCount, partA+partB)
+
+			from := createLogs(partA)
+			to := createLogs(partB)
+
+			// Filters with only a range should be fine.
+			logs, err := client.FilterLogs(t.Context(), ethereum.FilterQuery{
+				FromBlock: from,
+				ToBlock:   to,
+			})
+			require.NoError(t, err)
+			require.Len(t, logs, logCount)
+
+			// Also, a filter with additional criteria should be fine.
+			// Filters with criteria pass a different code path.
+			logs, err = client.FilterLogs(t.Context(), ethereum.FilterQuery{
+				FromBlock: from,
+				ToBlock:   to,
+				Addresses: []common.Address{sourceAddress},
+			})
+			require.NoError(t, err)
+			require.Len(t, logs, logCount)
+
+			logs, err = client.FilterLogs(t.Context(), ethereum.FilterQuery{
+				FromBlock: from,
+				ToBlock:   to,
+				Topics:    [][]common.Hash{{logId}},
+			})
+			require.NoError(t, err)
+			require.Len(t, logs, logCount)
+		})
+	}
+
+	// Bad cases.
+	tests = map[string]int{
+		"just one too many":   limit + 1,
+		"way above the limit": limit * 2,
+	}
+
+	for name, logCount := range tests {
+		t.Run(name, func(t *testing.T) {
+
+			// Create logCount logs in two different blocks to make sure the
+			// limit result is enforced. For a single block, the limit is
+			// required to be ignored.
+			partA := logCount / 2
+			partB := logCount - partA
+			require.Equal(t, logCount, partA+partB)
+
+			from := createLogs(partA)
+			to := createLogs(partB)
+
+			// A filter just asking for all logs of the blocks should be bound
+			// to the limit, as there are more logs than the limit.
+			_, err := client.FilterLogs(t.Context(), ethereum.FilterQuery{
+				FromBlock: from,
+				ToBlock:   to,
+			})
+			require.ErrorContains(t, err, expectedErrMsg)
+
+			// Also, a filter with additional criteria should be bound to the
+			// limit. Filters with criteria pass a different code path.
+			_, err = client.FilterLogs(t.Context(), ethereum.FilterQuery{
+				FromBlock: from,
+				ToBlock:   to,
+				Addresses: []common.Address{sourceAddress},
+			})
+			require.ErrorContains(t, err, expectedErrMsg)
+
+			_, err = client.FilterLogs(t.Context(), ethereum.FilterQuery{
+				FromBlock: from,
+				ToBlock:   to,
+				Topics:    [][]common.Hash{{logId}},
+			})
+			require.ErrorContains(t, err, expectedErrMsg)
+		})
+	}
+}
+
+func TestGetLogFilters_ALimitOfZeroDisablesTheResultLimit(t *testing.T) {
+	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+		ClientExtraArguments: []string{"--rpc.logqueryresultlimit", "0"},
+	})
+
+	source, receipt, err := tests.DeployContract(net, indexed_logs.DeployIndexedLogs)
+	require.NoError(t, err)
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+	sourceAddress := receipt.ContractAddress
+
+	createLogs := func(n int) *big.Int {
+		receipt, err := net.Apply(func(opts *bind.TransactOpts) (*types.Transaction, error) {
+			return source.EmitLogs(opts, big.NewInt(int64(n)))
+		})
+		require.NoError(t, err)
+		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+		return receipt.BlockNumber
+	}
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	for logCount := 10; logCount <= 10_000; logCount *= 10 {
+		t.Run(fmt.Sprintf("%d logs", logCount), func(t *testing.T) {
+
+			// A single transaction can not produce more than ~500 logs, so
+			// we need to create the logs across multiple blocks.
+			from := createLogs(1)
+			filler := logCount - 2
+			for filler > 0 {
+				part := min(filler, 500)
+				createLogs(part)
+				filler -= part
+			}
+			to := createLogs(1)
+
+			// Filters with only a range should be fine.
+			logs, err := client.FilterLogs(t.Context(), ethereum.FilterQuery{
+				FromBlock: from,
+				ToBlock:   to,
+			})
+			require.NoError(t, err)
+			require.Len(t, logs, logCount)
+
+			// Also, a filter with additional criteria should be fine.
+			// Filters with criteria pass a different code path.
+			logs, err = client.FilterLogs(t.Context(), ethereum.FilterQuery{
+				FromBlock: from,
+				ToBlock:   to,
+				Addresses: []common.Address{sourceAddress},
+			})
+			require.NoError(t, err)
+			require.Len(t, logs, logCount)
+
+			logs, err = client.FilterLogs(t.Context(), ethereum.FilterQuery{
+				FromBlock: from,
+				ToBlock:   to,
+				Topics:    [][]common.Hash{{getEventIDFor(t, "Log2")}},
+			})
+			require.NoError(t, err)
+			require.Len(t, logs, logCount)
+		})
+	}
+}
+
+func TestGetLogFilters_LimitOnNumberOfTopicsIsEnforced(t *testing.T) {
+	for _, limit := range []int{10, 100} {
+		t.Run(fmt.Sprintf("limit_%d", limit), func(t *testing.T) {
+			testLimitOfNumberOfTopicEnforcement(t, limit)
+		})
+	}
+}
+
+func testLimitOfNumberOfTopicEnforcement(t *testing.T, limit int) {
+	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+		ClientExtraArguments: []string{"--rpc.logquerylimit", fmt.Sprintf("%d", limit)},
+	})
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	createTopics := func(n int) []common.Hash {
+		topics := make([]common.Hash, n)
+		for i := 0; i < n; i++ {
+			topics[i] = common.BigToHash(big.NewInt(int64(i)))
+		}
+		return topics
+	}
+
+	createAddresses := func(n int) []common.Address {
+		addresses := make([]common.Address, n)
+		for i := 0; i < n; i++ {
+			addresses[i] = common.BigToAddress(big.NewInt(int64(i)))
+		}
+		return addresses
+	}
+
+	// good cases
+	tests := map[string]ethereum.FilterQuery{
+		"no addresses or topics": {
+			// Default accepts everything.
+		},
+		"just below the limit of addresses": {
+			Addresses: createAddresses(limit - 1),
+		},
+		"exactly the limit of addresses": {
+			Addresses: createAddresses(limit),
+		},
+		"just below the limit of topics": {
+			Topics: [][]common.Hash{createTopics(limit - 1)},
+		},
+		"exactly the limit of topics": {
+			Topics: [][]common.Hash{createTopics(limit)},
+		},
+		"at the limit for addresses and topics": {
+			Addresses: createAddresses(limit),
+			Topics:    [][]common.Hash{createTopics(limit)},
+		},
+		"at the limit of addresses and multiple topic groups": {
+			Addresses: createAddresses(limit),
+			Topics: [][]common.Hash{
+				createTopics(limit),
+				createTopics(limit),
+				createTopics(limit),
+				createTopics(limit),
+			},
+		},
+	}
+
+	for name, query := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, err := client.FilterLogs(t.Context(), query)
+			require.NoError(t, err)
+		})
+	}
+
+	// bad cases
+	tests = map[string]ethereum.FilterQuery{
+		"just above the limit of addresses": {
+			Addresses: createAddresses(limit + 1),
+		},
+		"far above the limit of addresses": {
+			Addresses: createAddresses(limit * 2),
+		},
+		"just above the limit of topics": {
+			Topics: [][]common.Hash{createTopics(limit + 1)},
+		},
+		"far above the limit of topics": {
+			Topics: [][]common.Hash{createTopics(limit * 2)},
+		},
+		"beyond the limit for addresses and topics": {
+			Addresses: createAddresses(limit + 1),
+			Topics:    [][]common.Hash{createTopics(limit + 1)},
+		},
+		"beyond the limit of addresses and multiple topic groups": {
+			Addresses: createAddresses(limit + 1),
+			Topics: [][]common.Hash{
+				createTopics(limit + 1),
+				createTopics(limit + 1),
+				createTopics(limit + 1),
+				createTopics(limit + 1),
+			},
+		},
+	}
+
+	for name, query := range tests {
+		t.Run(name, func(t *testing.T) {
+			logs, err := client.FilterLogs(t.Context(), query)
+			if len(query.Addresses) > 0 {
+				require.ErrorContains(t, err, fmt.Sprintf("too many addresses, the limit is %d", limit))
+			} else {
+				require.ErrorContains(t, err, fmt.Sprintf("too many topics in position 0, the limit is %d", limit))
+			}
+			require.Empty(t, logs)
+		})
+	}
 }

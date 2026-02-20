@@ -60,12 +60,25 @@ type Config struct {
 	IndexedLogsBlockRangeLimit idx.Block
 	// Block range limit for logs search (unindexed).
 	UnindexedLogsBlockRangeLimit idx.Block
+
+	// TopicsPerSearchPositionLimit is the maximum number of alternative
+	// addresses or topics allowed per search position in eth_getLogs filter
+	// criteria. A value of 0 means no cap.
+	TopicsPerSearchPositionLimit int
+
+	// LogQueryResultLimit is the maximum number of logs that can be returned in
+	// a single eth_getLogs query. The limit is only enforced if the query covers
+	// a range of more than one block. For a single block, there is no limit.
+	// A value of 0 means no cap.
+	LogQueryResultLimit int
 }
 
 func DefaultConfig() Config {
 	return Config{
 		IndexedLogsBlockRangeLimit:   999999999999999999,
 		UnindexedLogsBlockRangeLimit: 100,
+		TopicsPerSearchPositionLimit: 1000,
+		LogQueryResultLimit:          5000,
 	}
 }
 
@@ -377,7 +390,8 @@ func (api *PublicFilterAPI) GetLogs(ctx context.Context, crit FilterCriteria) ([
 			end = crit.ToBlock.Int64()
 		}
 		// Construct the range filter
-		filter = NewRangeFilter(api.backend, api.config, begin, end, crit.Addresses, crit.Topics)
+		resultLimit := api.config.LogQueryResultLimit
+		filter = NewRangeFilter(api.backend, api.config, begin, end, crit.Addresses, crit.Topics, resultLimit)
 	}
 	// Run the filter and return all the logs
 	logs, err := filter.Logs(ctx)
@@ -432,7 +446,8 @@ func (api *PublicFilterAPI) GetFilterLogs(ctx context.Context, id rpc.ID) ([]*ty
 			end = f.crit.ToBlock.Int64()
 		}
 		// Construct the range filter
-		filter = NewRangeFilter(api.backend, api.config, begin, end, f.crit.Addresses, f.crit.Topics)
+		resultLimit := api.config.LogQueryResultLimit
+		filter = NewRangeFilter(api.backend, api.config, begin, end, f.crit.Addresses, f.crit.Topics, resultLimit)
 	}
 	// Run the filter and return all the logs
 	logs, err := filter.Logs(ctx)
