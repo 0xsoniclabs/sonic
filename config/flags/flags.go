@@ -304,13 +304,13 @@ var (
 		Usage: "Time limit for RPC calls execution",
 		Value: gossip.DefaultConfig(cachescale.Identity).RPCTimeout,
 	}
-	RPCLogQueryLimit = &cli.IntFlag{
-		Name:  "rpc.logquerylimit",
-		Usage: "Maximum number of alternative addresses or topics allowed per search position in eth_getLogs filter criteria (0 = no cap)",
-		Value: filters.DefaultConfig().TopicsPerSearchPositionLimit,
+	RPCLogQueryParameterLimit = &cli.UintFlag{
+		Name:  "rpc.log-query-parameter-limit",
+		Usage: "Maximum total number of addresses or topics allowed in eth_getLogs filter criteria (0 = no cap)",
+		Value: filters.DefaultConfig().LogQueryParameterLimit,
 	}
-	RPCLogQueryResultLimit = &cli.IntFlag{
-		Name:  "rpc.logqueryresultlimit",
+	RPCLogQueryResultLimit = &cli.UintFlag{
+		Name:  "rpc.log-query-result-limit",
 		Usage: "Maximum number of logs that can be returned in a single eth_getLogs query if the query covers a range of more than one block. For a single block, there is no limit (0 = no cap)",
 		Value: filters.DefaultConfig().LogQueryResultLimit,
 	}

@@ -61,23 +61,23 @@ type Config struct {
 	// Block range limit for logs search (unindexed).
 	UnindexedLogsBlockRangeLimit idx.Block
 
-	// TopicsPerSearchPositionLimit is the maximum number of alternative
-	// addresses or topics allowed per search position in eth_getLogs filter
-	// criteria. A value of 0 means no cap.
-	TopicsPerSearchPositionLimit int
+	// LogQueryParameterLimit is the maximum number of parameters that can be
+	// specified in eth_getLogs filter criteria. A parameter is either an
+	// address or a topic. A value of 0 means no cap.
+	LogQueryParameterLimit uint
 
 	// LogQueryResultLimit is the maximum number of logs that can be returned in
 	// a single eth_getLogs query. The limit is only enforced if the query covers
 	// a range of more than one block. For a single block, there is no limit.
 	// A value of 0 means no cap.
-	LogQueryResultLimit int
+	LogQueryResultLimit uint
 }
 
 func DefaultConfig() Config {
 	return Config{
 		IndexedLogsBlockRangeLimit:   999999999999999999,
 		UnindexedLogsBlockRangeLimit: 100,
-		TopicsPerSearchPositionLimit: 1000,
+		LogQueryParameterLimit:       1000,
 		LogQueryResultLimit:          5000,
 	}
 }

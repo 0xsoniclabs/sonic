@@ -36,7 +36,7 @@ var (
 //go:generate mockgen -source=topicsdb.go -package=topicsdb -destination=topicsdb_mock.go
 
 type Index interface {
-	FindInBlocks(ctx context.Context, from, to idx.Block, pattern [][]common.Hash, limit int) (logs []*types.Log, err error)
+	FindInBlocks(ctx context.Context, from, to idx.Block, pattern [][]common.Hash, limit uint) (logs []*types.Log, err error)
 	Push(recs ...*types.Log) error
 	Close()
 
