@@ -372,7 +372,7 @@ func TestFilter_FilterLogs_IndexedLogsReturnsLogsWithTimestampOrError(t *testing
 			index := topicsdb.NewMockIndex(ctrl)
 
 			backend.EXPECT().EvmLogIndex().Return(index)
-			index.EXPECT().FindInBlocks(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(logs, nil)
+			index.EXPECT().FindInBlocks(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(logs, nil)
 
 			test.primeMock(backend)
 
@@ -443,7 +443,7 @@ func TestFilter_FilterLogs_ReturnsCorrectedTransactionIndexes(t *testing.T) {
 		}, nil,
 		).AnyTimes()
 	backend.EXPECT().GetLogs(gomock.Any(), gomock.Any()).Return([][]*types.Log{logs}, nil).AnyTimes()
-	index.EXPECT().FindInBlocks(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(logs, nil).AnyTimes()
+	index.EXPECT().FindInBlocks(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(logs, nil).AnyTimes()
 
 	cases := map[string]*Filter{
 		"filter by block range (unindexed)": {
@@ -619,4 +619,96 @@ func TestFilter_FilterLogs_WhenGetLogsCallReturnError_LogsByHashReturnsError(t *
 	require.Error(t, err)
 	require.ErrorContains(t, err, expectedError.Error())
 	require.Nil(t, logs)
+}
+
+func TestFilter_IndexedLogs_DetectsQueriesWithTooManyParameters(t *testing.T) {
+
+	for _, limit := range []uint{10, 20} {
+		config := Config{
+			IndexedLogsBlockRangeLimit: 100,
+			LogQueryParameterLimit:     limit,
+		}
+
+		tests := map[string]Filter{
+			"too many addresses": {
+				config:    config,
+				addresses: make([]common.Address, limit+1),
+			},
+			"too many topics in position 0": {
+				config: config,
+				topics: [][]common.Hash{make([]common.Hash, limit+1)},
+			},
+			"too many topics in position 0 and 1": {
+				config: config,
+				topics: [][]common.Hash{
+					make([]common.Hash, limit),
+					make([]common.Hash, limit+1),
+				},
+			},
+			"too many combined parameters": {
+				config:    config,
+				addresses: make([]common.Address, limit/2),
+				topics: [][]common.Hash{
+					make([]common.Hash, limit/2),
+					make([]common.Hash, 1),
+				},
+			},
+		}
+
+		for name, filter := range tests {
+			t.Run(name, func(t *testing.T) {
+				logs, err := filter.indexedLogs(t.Context(), 0, 1)
+				require.Error(t, err)
+				require.ErrorContains(t, err, fmt.Sprintf("the limit is %d", limit))
+				require.Nil(t, logs)
+			})
+		}
+	}
+}
+
+func TestFilter_IndexedLogs_AcceptsAnyQueryIfThereAreNoLimits(t *testing.T) {
+
+	config := Config{
+		IndexedLogsBlockRangeLimit: 100,
+		LogQueryParameterLimit:     0,
+	}
+
+	tests := map[string]Filter{
+		"lots of addresses": {
+			config:    config,
+			addresses: make([]common.Address, 10_000),
+		},
+		"lots of topics in position 0": {
+			config: config,
+			topics: [][]common.Hash{make([]common.Hash, 10_000)},
+		},
+		"lots of combined parameters": {
+			config:    config,
+			addresses: make([]common.Address, 5_000),
+			topics: [][]common.Hash{
+				make([]common.Hash, 5_000),
+				make([]common.Hash, 7_000),
+			},
+		},
+	}
+
+	for name, filter := range tests {
+		t.Run(name, func(t *testing.T) {
+
+			// Setup a backend to answer filter queries.
+			ctrl := gomock.NewController(t)
+			backend := NewMockBackend(ctrl)
+			index := topicsdb.NewMockIndex(ctrl)
+			backend.EXPECT().EvmLogIndex().Return(index).AnyTimes()
+			index.EXPECT().FindInBlocks(
+				gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(),
+			).Return(nil, nil).AnyTimes()
+
+			filter.backend = backend
+
+			// Running the large queries without restrictions should be fine.
+			_, err := filter.indexedLogs(t.Context(), 0, 1)
+			require.NoError(t, err)
+		})
+	}
 }

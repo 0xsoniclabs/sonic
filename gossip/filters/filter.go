@@ -67,12 +67,12 @@ type Filter struct {
 	block      common.Hash // Block hash if filtering a single block
 	begin, end int64       // Range interval if filtering multiple blocks
 
-	resultLimit int // Maximum number of log results. 0 means no limit.
+	resultLimit uint // Maximum number of log results. 0 means no limit.
 }
 
 // NewRangeFilter creates a new filter which inspects the blocks to
 // figure out whether a particular block is interesting or not.
-func NewRangeFilter(backend Backend, cfg Config, begin, end int64, addresses []common.Address, topics [][]common.Hash, resultLimit int) *Filter {
+func NewRangeFilter(backend Backend, cfg Config, begin, end int64, addresses []common.Address, topics [][]common.Hash, resultLimit uint) *Filter {
 	// Result limit is ignored if only a single block is queried.
 	if begin == end {
 		resultLimit = 0 // 0 means no limit
@@ -100,7 +100,7 @@ func NewBlockFilter(backend Backend, cfg Config, block common.Hash, addresses []
 
 // newFilter creates a generic filter that can either filter based on a block hash,
 // or based on range queries. The search criteria needs to be explicitly set.
-func newFilter(backend Backend, cfg Config, addresses []common.Address, topics [][]common.Hash, resultLimit int) *Filter {
+func newFilter(backend Backend, cfg Config, addresses []common.Address, topics [][]common.Hash, resultLimit uint) *Filter {
 	return &Filter{
 		backend:     backend,
 		config:      cfg,
@@ -185,15 +185,14 @@ func (f *Filter) indexedLogs(ctx context.Context, begin, end idx.Block) ([]*type
 	if end-begin > f.config.IndexedLogsBlockRangeLimit {
 		return nil, fmt.Errorf("too wide blocks range, the limit is %d", f.config.IndexedLogsBlockRangeLimit)
 	}
-	topicCountLimit := f.config.TopicsPerSearchPositionLimit
-	if topicCountLimit > 0 {
-		if len(f.addresses) > topicCountLimit {
-			return nil, fmt.Errorf("too many addresses, the limit is %d", topicCountLimit)
+	parameterLimit := f.config.LogQueryParameterLimit
+	if parameterLimit > 0 {
+		numParameters := len(f.addresses)
+		for _, topics := range f.topics {
+			numParameters += len(topics)
 		}
-		for i, topics := range f.topics {
-			if len(topics) > topicCountLimit {
-				return nil, fmt.Errorf("too many topics in position %d, the limit is %d", i, topicCountLimit)
-			}
+		if numParameters > int(parameterLimit) {
+			return nil, fmt.Errorf("too many query parameters, the limit is %d", parameterLimit)
 		}
 	}
 
@@ -267,7 +266,7 @@ func (f *Filter) unindexedLogs(ctx context.Context, begin, end idx.Block) (logs 
 			return
 		}
 		logs = append(logs, found...)
-		if f.resultLimit > 0 && len(logs) > f.resultLimit {
+		if f.resultLimit > 0 && uint(len(logs)) > f.resultLimit {
 			return nil, fmt.Errorf("too many results, consider narrowing your query criteria, the limit is %d", f.resultLimit)
 		}
 	}

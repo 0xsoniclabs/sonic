@@ -359,7 +359,7 @@ func TestGetLogFilters_LogResultLimitIsEnforced(t *testing.T) {
 
 func testLogResultLimitEnforcement(t *testing.T, limit int) {
 	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
-		ClientExtraArguments: []string{"--rpc.logqueryresultlimit", fmt.Sprintf("%d", limit)},
+		ClientExtraArguments: []string{"--rpc.log-query-result-limit", fmt.Sprintf("%d", limit)},
 	})
 
 	source, receipt, err := tests.DeployContract(net, indexed_logs.DeployIndexedLogs)
@@ -514,7 +514,7 @@ func testLogResultLimitEnforcement(t *testing.T, limit int) {
 
 func TestGetLogFilters_ALimitOfZeroDisablesTheResultLimit(t *testing.T) {
 	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
-		ClientExtraArguments: []string{"--rpc.logqueryresultlimit", "0"},
+		ClientExtraArguments: []string{"--rpc.log-query-result-limit", "0"},
 	})
 
 	source, receipt, err := tests.DeployContract(net, indexed_logs.DeployIndexedLogs)
@@ -578,17 +578,17 @@ func TestGetLogFilters_ALimitOfZeroDisablesTheResultLimit(t *testing.T) {
 	}
 }
 
-func TestGetLogFilters_LimitOnNumberOfTopicsIsEnforced(t *testing.T) {
+func TestGetLogFilters_LimitOnNumberParametersIsEnforced(t *testing.T) {
 	for _, limit := range []int{10, 100} {
 		t.Run(fmt.Sprintf("limit_%d", limit), func(t *testing.T) {
-			testLimitOfNumberOfTopicEnforcement(t, limit)
+			testLimitOfNumberParametersEnforcement(t, limit)
 		})
 	}
 }
 
-func testLimitOfNumberOfTopicEnforcement(t *testing.T, limit int) {
+func testLimitOfNumberParametersEnforcement(t *testing.T, limit int) {
 	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
-		ClientExtraArguments: []string{"--rpc.logquerylimit", fmt.Sprintf("%d", limit)},
+		ClientExtraArguments: []string{"--rpc.log-query-parameter-limit", fmt.Sprintf("%d", limit)},
 	})
 
 	client, err := net.GetClient()
@@ -628,17 +628,17 @@ func testLimitOfNumberOfTopicEnforcement(t *testing.T, limit int) {
 		"exactly the limit of topics": {
 			Topics: [][]common.Hash{createTopics(limit)},
 		},
-		"at the limit for addresses and topics": {
-			Addresses: createAddresses(limit),
-			Topics:    [][]common.Hash{createTopics(limit)},
+		"at limit with multiple dimensions": {
+			Addresses: createAddresses(limit / 2),
+			Topics:    [][]common.Hash{createTopics(limit / 2)},
 		},
 		"at the limit of addresses and multiple topic groups": {
-			Addresses: createAddresses(limit),
+			Addresses: createAddresses(limit / 5),
 			Topics: [][]common.Hash{
-				createTopics(limit),
-				createTopics(limit),
-				createTopics(limit),
-				createTopics(limit),
+				createTopics(limit / 5),
+				createTopics(limit / 5),
+				createTopics(limit / 5),
+				createTopics(limit / 5),
 			},
 		},
 	}
@@ -664,29 +664,20 @@ func testLimitOfNumberOfTopicEnforcement(t *testing.T, limit int) {
 		"far above the limit of topics": {
 			Topics: [][]common.Hash{createTopics(limit * 2)},
 		},
-		"beyond the limit for addresses and topics": {
-			Addresses: createAddresses(limit + 1),
-			Topics:    [][]common.Hash{createTopics(limit + 1)},
+		"beyond the limit for addresses and topics combined": {
+			Addresses: createAddresses(limit / 2),
+			Topics:    [][]common.Hash{createTopics(limit/2 + 1)},
 		},
-		"beyond the limit of addresses and multiple topic groups": {
-			Addresses: createAddresses(limit + 1),
-			Topics: [][]common.Hash{
-				createTopics(limit + 1),
-				createTopics(limit + 1),
-				createTopics(limit + 1),
-				createTopics(limit + 1),
-			},
+		"far beyond the limit for addresses and topics": {
+			Addresses: createAddresses(limit),
+			Topics:    [][]common.Hash{createTopics(limit)},
 		},
 	}
 
 	for name, query := range tests {
 		t.Run(name, func(t *testing.T) {
 			logs, err := client.FilterLogs(t.Context(), query)
-			if len(query.Addresses) > 0 {
-				require.ErrorContains(t, err, fmt.Sprintf("too many addresses, the limit is %d", limit))
-			} else {
-				require.ErrorContains(t, err, fmt.Sprintf("too many topics in position 0, the limit is %d", limit))
-			}
+			require.ErrorContains(t, err, fmt.Sprintf("too many query parameters, the limit is %d", limit))
 			require.Empty(t, logs)
 		})
 	}

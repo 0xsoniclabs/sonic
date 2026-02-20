@@ -45,7 +45,7 @@ func (i *withLeapJoin) FindInBlocks(
 	ctx context.Context,
 	from, to idx.Block,
 	pattern [][]common.Hash,
-	limit int,
+	limit uint,
 ) ([]*types.Log, error) {
 	return findInBlocksUsingLeapJoin(
 		ctx, from, to, pattern, i.table.Topic, i.table.Logrec, limit,
@@ -61,7 +61,7 @@ func findInBlocksUsingLeapJoin(
 	pattern [][]common.Hash,
 	index kvdb.Iteratee,
 	logTable kvdb.Reader,
-	limit int,
+	limit uint,
 ) ([]*types.Log, error) {
 	// Skip empty ranges.
 	if from > to {
@@ -106,7 +106,7 @@ func findInBlocksUsingLeapJoin(
 			return nil, logrec.err
 		}
 		logs = append(logs, logrec.result)
-		if limit > 0 && len(logs) > limit {
+		if limit > 0 && uint(len(logs)) > limit {
 			return nil, fmt.Errorf("too many results, consider narrowing your query criteria, the limit is %d", limit)
 		}
 	}

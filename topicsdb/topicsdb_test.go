@@ -91,7 +91,7 @@ func TestIndexSearchMultyVariants(t *testing.T) {
 
 	wrapped := withLeapJoin{index}
 
-	for dsc, method := range map[string]func(context.Context, idx.Block, idx.Block, [][]common.Hash, int) ([]*types.Log, error){
+	for dsc, method := range map[string]func(context.Context, idx.Block, idx.Block, [][]common.Hash, uint) ([]*types.Log, error){
 		"leapJoin": wrapped.FindInBlocks,
 	} {
 		t.Run(dsc, func(t *testing.T) {
@@ -200,7 +200,7 @@ func TestIndexSearchShortCircuits(t *testing.T) {
 
 	wrapped := withLeapJoin{index}
 
-	for dsc, method := range map[string]func(context.Context, idx.Block, idx.Block, [][]common.Hash, int) ([]*types.Log, error){
+	for dsc, method := range map[string]func(context.Context, idx.Block, idx.Block, [][]common.Hash, uint) ([]*types.Log, error){
 		"leapJoin": wrapped.FindInBlocks,
 	} {
 		t.Run(dsc, func(t *testing.T) {
@@ -259,7 +259,7 @@ func TestIndexSearchSingleVariant(t *testing.T) {
 
 	wrapped := withLeapJoin{index}
 
-	for dsc, method := range map[string]func(context.Context, idx.Block, idx.Block, [][]common.Hash, int) ([]*types.Log, error){
+	for dsc, method := range map[string]func(context.Context, idx.Block, idx.Block, [][]common.Hash, uint) ([]*types.Log, error){
 		"leapJoin": wrapped.FindInBlocks,
 	} {
 		t.Run(dsc, func(t *testing.T) {
@@ -335,7 +335,7 @@ func TestIndexSearchSimple(t *testing.T) {
 
 	wrapped := withLeapJoin{index}
 
-	for dsc, method := range map[string]func(context.Context, idx.Block, idx.Block, [][]common.Hash, int) ([]*types.Log, error){
+	for dsc, method := range map[string]func(context.Context, idx.Block, idx.Block, [][]common.Hash, uint) ([]*types.Log, error){
 		"leapJoin": wrapped.FindInBlocks,
 	} {
 		t.Run(dsc, func(t *testing.T) {
@@ -388,7 +388,7 @@ func TestMaxTopicsCount(t *testing.T) {
 
 	wrapped := withLeapJoin{index}
 
-	for dsc, method := range map[string]func(context.Context, idx.Block, idx.Block, [][]common.Hash, int) ([]*types.Log, error){
+	for dsc, method := range map[string]func(context.Context, idx.Block, idx.Block, [][]common.Hash, uint) ([]*types.Log, error){
 		"leapJoin": wrapped.FindInBlocks,
 	} {
 		t.Run(dsc, func(t *testing.T) {
