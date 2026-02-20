@@ -434,15 +434,29 @@ func TestSonicTool_validator_ExecutesWithoutErrors(t *testing.T) {
 }
 
 func TestSonicTool_analyze_ExecutesWithoutErrors(t *testing.T) {
-	net := tests.StartIntegrationTestNet(t)
-	generateNBlocks(t, net, 2)
+	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+		NumNodes: 1,
+	})
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	// The genesis has 2 blocks
+	txs := 0
+	for i := 0; i <= 1; i++ {
+		block, err := client.BlockByNumber(t.Context(), big.NewInt(int64(i)))
+		require.NoError(t, err)
+		txs += len(block.Transactions())
+	}
+
 	net.Stop()
 
 	output, err := executeSonicTool(t, "--datadir", net.GetDirectory()+"/state", "analyze")
 	require.NoError(t, err)
 	require.True(t, strings.HasPrefix(output, "DB: "), "expected output to start with 'DB: ', got: %q", output)
-	blocksLineRe := regexp.MustCompile(`(?m)^Blocks\s+\w\s+5\b`)
-	require.True(t, blocksLineRe.FindStringIndex(output) != nil, "expected 5 Blocks in output, got: %q", output)
+	blocksLineRe := regexp.MustCompile(fmt.Sprintf(`(?m)^Txs\s+\w\s+%d\b`, txs))
+	require.True(t, blocksLineRe.FindStringIndex(output) != nil, "expected %d Txs in output, got: %q", txs, output)
 }
 
 // =============================================================================
