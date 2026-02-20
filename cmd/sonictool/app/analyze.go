@@ -124,7 +124,6 @@ func getTableNames(dbName string) map[string]string {
 		"B": "BlockHashes",
 		// gossip/evmstore/store.go
 		// "r": "Receipts", // overloaded with Logrec
-		"x": "TxPositions",
 		"X": "Txs",
 		// topicsdb/index.go
 		"t": "Topic",

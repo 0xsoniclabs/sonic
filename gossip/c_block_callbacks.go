@@ -46,7 +46,6 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/verwatcher"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
-	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/gossip/randao"
 	"github.com/0xsoniclabs/sonic/gossip/scrambler"
 	"github.com/0xsoniclabs/sonic/inter"
@@ -76,11 +75,6 @@ var (
 	confirmedEventsMeter = metrics.GetOrRegisterMeter("chain/events/confirmed", nil) // events received from lachesis
 	spilledEventsMeter   = metrics.GetOrRegisterMeter("chain/events/spilled", nil)   // tx excluded because of MaxBlockGas
 )
-
-type ExtendedTxPosition struct {
-	evmstore.TxPosition
-	EventCreator idx.ValidatorID
-}
 
 // GetConsensusCallbacks returns single (for Service) callback instance.
 func (s *Service) GetConsensusCallbacks() lachesis.ConsensusCallbacks {
@@ -453,34 +447,20 @@ func consensusCallbackBeginBlockFn(
 					}
 
 					// memorize event position of each tx
-					txPositions := make(map[common.Hash]ExtendedTxPosition)
+					txCreators := make(map[common.Hash]idx.ValidatorID)
 					for _, e := range blockEvents {
-						for i, tx := range e.Transactions() {
+						for _, tx := range e.Transactions() {
 							// If tx was met in multiple events, then assign to first ordered event
-							if _, ok := txPositions[tx.Hash()]; ok {
+							if _, ok := txCreators[tx.Hash()]; ok {
 								continue
 							}
-							txPositions[tx.Hash()] = ExtendedTxPosition{
-								TxPosition: evmstore.TxPosition{
-									Event:       e.ID(),
-									EventOffset: uint32(i),
-								},
-								EventCreator: e.Creator(),
-							}
+							txCreators[tx.Hash()] = e.Creator()
 						}
-					}
-					// memorize block position of each tx
-					for i, tx := range evmBlock.Transactions {
-						// not skipped txs only
-						position := txPositions[tx.Hash()]
-						position.Block = blockCtx.Idx
-						position.BlockOffset = uint32(i)
-						txPositions[tx.Hash()] = position
 					}
 
 					// call OnNewReceipt
 					for i, r := range allReceipts {
-						creator := txPositions[r.TxHash].EventCreator
+						creator := txCreators[r.TxHash]
 						if creator != 0 && es.Validators.Get(creator) == 0 {
 							creator = 0
 						}
@@ -492,11 +472,6 @@ func consensusCallbackBeginBlockFn(
 
 					// Build index for not skipped txs
 					if txIndex {
-						for _, tx := range evmBlock.Transactions {
-							// not skipped txs only
-							store.evm.SetTxPosition(tx.Hash(), txPositions[tx.Hash()].TxPosition)
-						}
-
 						// Index receipts
 						// Note: it's possible for receipts to get indexed twice by BR and block processing
 						if allReceipts.Len() != 0 {

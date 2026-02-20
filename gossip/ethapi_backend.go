@@ -453,7 +453,7 @@ func (b *EthAPIBackend) GetPoolTransaction(hash common.Hash) *types.Transaction 
 }
 
 func (b *EthAPIBackend) GetTxPosition(txHash common.Hash) *evmstore.TxPosition {
-	return b.svc.store.evm.GetTxPosition(txHash)
+	return nil
 }
 
 func (b *EthAPIBackend) GetTransaction(ctx context.Context, txHash common.Hash) (*types.Transaction, uint64, uint64, error) {

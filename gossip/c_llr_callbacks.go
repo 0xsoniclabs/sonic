@@ -71,12 +71,8 @@ func (s *Store) WriteFullBlockRecord(br ibr.LlrIdxFullBlockRecord) (err error) {
 		}
 	}
 
-	for i, tx := range br.Txs {
+	for _, tx := range br.Txs {
 		s.EvmStore().SetTx(tx.Hash(), tx)
-		s.EvmStore().SetTxPosition(tx.Hash(), evmstore.TxPosition{
-			Block:       br.Idx,
-			BlockOffset: uint32(i),
-		})
 	}
 
 	builder := inter.NewBlockBuilder().
