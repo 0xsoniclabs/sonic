@@ -48,6 +48,7 @@ const (
 	// optional features
 	singleProposerBlockFormationBit = 1 << 63
 	gasSubsidiesBit                 = 1 << 62
+	transactionBundlesBit           = 1 << 61
 
 	MinimumMaxBlockGas          = 5_000_000_000 // < must be large enough to allow internal transactions to seal blocks
 	MaximumMaxBlockGas          = math.MaxInt64 // < should fit into 64-bit signed integers to avoid parsing errors in third-party libraries
@@ -249,6 +250,20 @@ type Upgrades struct {
 	// It can be enabled or disabled at any time. Changes in the feature state
 	// become effective at the start of the next epoch.
 	GasSubsidies bool
+
+	// TransactionBundles enables the transaction bundles feature, allowing
+	// users to submit bundles of transactions that are executed atomically.
+	// This feature is introduced by V2.2 of the Sonic client. It thus
+	//
+	//    MUST ONLY BE ENABLED WHEN ALL NODES ARE RUNNING V2.2 OR LATER
+	//
+	// Any node not running V2.2 or later will ignore this flag, and
+	// transaction bundles will not be accepted.
+	//
+	// Given the conditions stated above, the feature is considered optional.
+	// It can be enabled or disabled at any time. Changes in the feature state
+	// become effective at the start of the next epoch.
+	TransactionBundles bool
 }
 
 // UpgradeHeight contains the information about the block height at which
