@@ -421,6 +421,17 @@ Converts an account private key to a validator private key and saves in the vali
 				},
 			},
 		},
+		{
+			Name:   "analyze",
+			Usage:  "Analyze the disk usage of the chaindata databases",
+			Action: analyzeDbs,
+			Flags: []cli.Flag{
+				flags.DataDirFlag,
+			},
+			Description: `
+Analyzes the disk usage of the chaindata databases and prints for each table the number of entries and their accumulated size.
+`,
+		},
 	}
 
 	app.Before = func(ctx *cli.Context) error {
