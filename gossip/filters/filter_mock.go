@@ -15,7 +15,6 @@ import (
 	reflect "reflect"
 
 	evmcore "github.com/0xsoniclabs/sonic/evmcore"
-	evmstore "github.com/0xsoniclabs/sonic/gossip/evmstore"
 	topicsdb "github.com/0xsoniclabs/sonic/topicsdb"
 	common "github.com/ethereum/go-ethereum/common"
 	types "github.com/ethereum/go-ethereum/core/types"
@@ -133,20 +132,6 @@ func (m *MockBackend) GetReceiptsByNumber(ctx context.Context, number rpc.BlockN
 func (mr *MockBackendMockRecorder) GetReceiptsByNumber(ctx, number any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetReceiptsByNumber", reflect.TypeOf((*MockBackend)(nil).GetReceiptsByNumber), ctx, number)
-}
-
-// GetTxPosition mocks base method.
-func (m *MockBackend) GetTxPosition(txid common.Hash) *evmstore.TxPosition {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetTxPosition", txid)
-	ret0, _ := ret[0].(*evmstore.TxPosition)
-	return ret0
-}
-
-// GetTxPosition indicates an expected call of GetTxPosition.
-func (mr *MockBackendMockRecorder) GetTxPosition(txid any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTxPosition", reflect.TypeOf((*MockBackend)(nil).GetTxPosition), txid)
 }
 
 // HeaderByHash mocks base method.

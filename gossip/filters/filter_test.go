@@ -24,7 +24,6 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
-	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/utils/adapters/ethdb2kvdb"
 	"github.com/Fantom-foundation/lachesis-base/kvdb/table"
@@ -393,93 +392,6 @@ func TestFilter_FilterLogs_IndexedLogsReturnsLogsWithTimestampOrError(t *testing
 			} else {
 				require.Equal(t, uint64(timestamp.Unix()), logs[0].BlockTimestamp)
 				require.NoError(t, err)
-			}
-		})
-	}
-}
-
-func TestFilter_FilterLogs_ReturnsCorrectedTransactionIndexes(t *testing.T) {
-
-	ctrl := gomock.NewController(t)
-	backend := NewMockBackend(ctrl)
-	index := topicsdb.NewMockIndex(ctrl)
-
-	logs := []*types.Log{
-		{
-			BlockNumber: 1,
-			TxHash:      common.HexToHash("0xabc"),
-			Index:       777, // incorrect index
-		},
-		{
-			BlockNumber: 2,
-			TxHash:      common.HexToHash("0x123"),
-			Index:       123, // incorrect index
-		},
-		{
-			BlockNumber: 2,
-			TxHash:      common.Hash{}, // empty hash
-			Index:       123,           // incorrect index
-		},
-	}
-	txs := map[common.Hash]*evmstore.TxPosition{
-		common.HexToHash("0xabc"): {BlockOffset: 7},
-		common.HexToHash("0x123"): {BlockOffset: 1},
-	}
-
-	backend.EXPECT().EvmLogIndex().Return(index).AnyTimes()
-	backend.EXPECT().GetTxPosition(gomock.Any()).
-		DoAndReturn(func(f common.Hash) *evmstore.TxPosition {
-			return txs[f]
-		}).AnyTimes()
-
-	backend.EXPECT().HeaderByNumber(gomock.Any(), gomock.Any()).
-		Return(&evmcore.EvmHeader{
-			Number: big.NewInt(1),
-		}, nil,
-		).AnyTimes()
-	backend.EXPECT().HeaderByHash(gomock.Any(), gomock.Any()).
-		Return(&evmcore.EvmHeader{
-			Number: big.NewInt(1),
-		}, nil,
-		).AnyTimes()
-	backend.EXPECT().GetLogs(gomock.Any(), gomock.Any()).Return([][]*types.Log{logs}, nil).AnyTimes()
-	index.EXPECT().FindInBlocks(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(logs, nil).AnyTimes()
-
-	cases := map[string]*Filter{
-		"filter by block range (unindexed)": {
-			backend: backend,
-			config:  testConfig(),
-			begin:   0,
-			end:     2,
-		},
-		"filter by block range (indexed)": {
-			backend: backend,
-			config:  testConfig(),
-			begin:   0,
-			end:     2,
-			addresses: []common.Address{
-				// some address, this test does not really index, just visits the code path
-				common.HexToAddress("0x42"),
-			},
-		},
-		"filter by block hash": {
-			backend: backend,
-			config:  testConfig(),
-			block:   common.Hash{0x001},
-		},
-	}
-
-	for name, filter := range cases {
-		t.Run(name, func(t *testing.T) {
-			logs, err := filter.Logs(t.Context())
-			require.NoError(t, err)
-
-			for log := range logs {
-				txHash := logs[log].TxHash
-				expectedPosition, ok := txs[txHash]
-				if ok {
-					require.EqualValues(t, expectedPosition.BlockOffset, logs[log].TxIndex, "log tx index not corrected")
-				}
 			}
 		})
 	}

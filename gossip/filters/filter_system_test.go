@@ -34,7 +34,6 @@ import (
 
 	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/evmcore"
-	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/topicsdb"
 )
 
@@ -143,10 +142,6 @@ func (b *testBackend) MustPushLogs(recs ...*types.Log) {
 	if err != nil {
 		panic(err)
 	}
-}
-
-func (b *testBackend) GetTxPosition(txid common.Hash) *evmstore.TxPosition {
-	return nil
 }
 
 func (b *testBackend) CalcBlockExtApi() bool {
