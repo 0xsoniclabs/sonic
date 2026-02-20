@@ -28,11 +28,9 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	notify "github.com/ethereum/go-ethereum/event"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rpc"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
-	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/topicsdb"
 )
 
@@ -44,7 +42,6 @@ type Backend interface {
 	GetReceipts(ctx context.Context, blockHash common.Hash) (types.Receipts, error)
 	GetReceiptsByNumber(ctx context.Context, number rpc.BlockNumber) (types.Receipts, error)
 	GetLogs(ctx context.Context, blockHash common.Hash) ([][]*types.Log, error)
-	GetTxPosition(txid common.Hash) *evmstore.TxPosition // TODO remove
 	ChainID() *big.Int
 
 	SubscribeNewBlockNotify(ch chan<- evmcore.ChainHeadNotify) notify.Subscription
@@ -118,17 +115,6 @@ func (f *Filter) Logs(ctx context.Context) ([]*types.Log, error) {
 		logs, err = f.fetchLogsFromBlockRange(ctx, logs)
 		if err != nil {
 			return nil, err
-		}
-	}
-
-	// Update TxIndex for each log
-	for _, l := range logs {
-		pos := f.backend.GetTxPosition(l.TxHash)
-
-		if pos != nil {
-			l.TxIndex = uint(pos.BlockOffset)
-		} else {
-			log.Warn("tx index empty", "hash", l.TxHash)
 		}
 	}
 
