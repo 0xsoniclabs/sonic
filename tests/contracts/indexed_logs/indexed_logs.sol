@@ -35,4 +35,11 @@ contract IndexedLogs {
             }
         }
     }
+
+    // A simple function to emit a given number of log messages.
+    function emitLogs(uint256 n) public {
+        for (uint256 i = 0; i < n; i++) {
+            emit Log2(i);
+        }
+    }
 }

@@ -217,7 +217,7 @@ func TestWithLeapJoin_IntegrationTest_FindLogs(t *testing.T) {
 
 									// run the join algorithm
 									got, err := index.FindInBlocks(
-										t.Context(), from, to, p,
+										t.Context(), from, to, p, 0,
 									)
 									require.NoError(t, err)
 									require.Equal(t, expectedResults, len(got))

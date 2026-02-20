@@ -66,13 +66,20 @@ type Filter struct {
 
 	block      common.Hash // Block hash if filtering a single block
 	begin, end int64       // Range interval if filtering multiple blocks
+
+	resultLimit int // Maximum number of log results. 0 means no limit.
 }
 
 // NewRangeFilter creates a new filter which inspects the blocks to
 // figure out whether a particular block is interesting or not.
-func NewRangeFilter(backend Backend, cfg Config, begin, end int64, addresses []common.Address, topics [][]common.Hash) *Filter {
+func NewRangeFilter(backend Backend, cfg Config, begin, end int64, addresses []common.Address, topics [][]common.Hash, resultLimit int) *Filter {
+	// Result limit is ignored if only a single block is queried.
+	if begin == end {
+		resultLimit = 0 // 0 means no limit
+	}
+
 	// Create a generic filter and convert it into a range filter
-	filter := newFilter(backend, cfg, addresses, topics)
+	filter := newFilter(backend, cfg, addresses, topics, resultLimit)
 
 	filter.begin = begin
 	filter.end = end
@@ -84,7 +91,7 @@ func NewRangeFilter(backend Backend, cfg Config, begin, end int64, addresses []c
 // a block to figure out whether it is interesting or not.
 func NewBlockFilter(backend Backend, cfg Config, block common.Hash, addresses []common.Address, topics [][]common.Hash) *Filter {
 	// Create a generic filter and convert it into a block filter
-	filter := newFilter(backend, cfg, addresses, topics)
+	filter := newFilter(backend, cfg, addresses, topics, 0) // result limit is not enforced for a single block
 
 	filter.block = block
 
@@ -93,12 +100,13 @@ func NewBlockFilter(backend Backend, cfg Config, block common.Hash, addresses []
 
 // newFilter creates a generic filter that can either filter based on a block hash,
 // or based on range queries. The search criteria needs to be explicitly set.
-func newFilter(backend Backend, cfg Config, addresses []common.Address, topics [][]common.Hash) *Filter {
+func newFilter(backend Backend, cfg Config, addresses []common.Address, topics [][]common.Hash, resultLimit int) *Filter {
 	return &Filter{
-		backend:   backend,
-		config:    cfg,
-		addresses: addresses,
-		topics:    topics,
+		backend:     backend,
+		config:      cfg,
+		addresses:   addresses,
+		topics:      topics,
+		resultLimit: resultLimit,
 	}
 }
 
@@ -177,6 +185,17 @@ func (f *Filter) indexedLogs(ctx context.Context, begin, end idx.Block) ([]*type
 	if end-begin > f.config.IndexedLogsBlockRangeLimit {
 		return nil, fmt.Errorf("too wide blocks range, the limit is %d", f.config.IndexedLogsBlockRangeLimit)
 	}
+	topicCountLimit := f.config.TopicsPerSearchPositionLimit
+	if topicCountLimit > 0 {
+		if len(f.addresses) > topicCountLimit {
+			return nil, fmt.Errorf("too many addresses, the limit is %d", topicCountLimit)
+		}
+		for i, topics := range f.topics {
+			if len(topics) > topicCountLimit {
+				return nil, fmt.Errorf("too many topics in position %d, the limit is %d", i, topicCountLimit)
+			}
+		}
+	}
 
 	addresses := make([]common.Hash, len(f.addresses))
 	for i, addr := range f.addresses {
@@ -187,7 +206,11 @@ func (f *Filter) indexedLogs(ctx context.Context, begin, end idx.Block) ([]*type
 	pattern[0] = addresses
 	pattern = append(pattern, f.topics...)
 
-	logs, err := f.backend.EvmLogIndex().FindInBlocks(ctx, begin, end, pattern)
+	resultLimit := f.config.LogQueryResultLimit
+	if begin == end {
+		resultLimit = 0 // no limit for a single block
+	}
+	logs, err := f.backend.EvmLogIndex().FindInBlocks(ctx, begin, end, pattern, resultLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -244,6 +267,9 @@ func (f *Filter) unindexedLogs(ctx context.Context, begin, end idx.Block) (logs 
 			return
 		}
 		logs = append(logs, found...)
+		if f.resultLimit > 0 && len(logs) > f.resultLimit {
+			return nil, fmt.Errorf("too many results, consider narrowing your query criteria, the limit is %d", f.resultLimit)
+		}
 	}
 	return
 }

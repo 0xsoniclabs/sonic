@@ -110,7 +110,7 @@ func BenchmarkFilters(b *testing.B) {
 	}
 	b.ResetTimer()
 
-	filter := NewRangeFilter(backend, testConfig(), 0, -1, []common.Address{addr1, addr2, addr3, addr4}, nil)
+	filter := NewRangeFilter(backend, testConfig(), 0, -1, []common.Address{addr1, addr2, addr3, addr4}, nil, 0)
 
 	for i := 0; i < b.N; i++ {
 		logs, _ := filter.Logs(context.Background())
@@ -201,7 +201,7 @@ func TestFilters(t *testing.T) {
 		err    error
 	)
 
-	filter = NewRangeFilter(backend, testConfig(), 0, -1, []common.Address{addr}, [][]common.Hash{{hash1, hash2, hash3, hash4}})
+	filter = NewRangeFilter(backend, testConfig(), 0, -1, []common.Address{addr}, [][]common.Hash{{hash1, hash2, hash3, hash4}}, 0)
 	logs, err = filter.Logs(context.Background())
 	if err != nil {
 		t.Error(err)
@@ -210,7 +210,7 @@ func TestFilters(t *testing.T) {
 		t.Error("expected 4 log, got", len(logs))
 	}
 
-	filter = NewRangeFilter(backend, testConfig(), 900, 999, []common.Address{addr}, [][]common.Hash{{hash3}})
+	filter = NewRangeFilter(backend, testConfig(), 900, 999, []common.Address{addr}, [][]common.Hash{{hash3}}, 0)
 	logs, err = filter.Logs(context.Background())
 	if err != nil {
 		t.Error(err)
@@ -223,7 +223,7 @@ func TestFilters(t *testing.T) {
 		t.Errorf("expected log[0].Topics[0] to be %x, got %x", hash3, logs[0].Topics[0])
 	}
 
-	filter = NewRangeFilter(backend, testConfig(), 990, -1, []common.Address{addr}, [][]common.Hash{{hash3}})
+	filter = NewRangeFilter(backend, testConfig(), 990, -1, []common.Address{addr}, [][]common.Hash{{hash3}}, 0)
 	logs, err = filter.Logs(context.Background())
 	if err != nil {
 		t.Error(err)
@@ -235,7 +235,7 @@ func TestFilters(t *testing.T) {
 		t.Errorf("expected log[0].Topics[0] to be %x, got %x", hash3, logs[0].Topics[0])
 	}
 
-	filter = NewRangeFilter(backend, testConfig(), 1, 10, nil, [][]common.Hash{{hash1, hash2}})
+	filter = NewRangeFilter(backend, testConfig(), 1, 10, nil, [][]common.Hash{{hash1, hash2}}, 0)
 	logs, err = filter.Logs(context.Background())
 	if err != nil {
 		t.Error(err)
@@ -245,7 +245,7 @@ func TestFilters(t *testing.T) {
 	}
 
 	failHash := common.BytesToHash([]byte("fail"))
-	filter = NewRangeFilter(backend, testConfig(), 0, -1, nil, [][]common.Hash{{failHash}})
+	filter = NewRangeFilter(backend, testConfig(), 0, -1, nil, [][]common.Hash{{failHash}}, 0)
 	logs, err = filter.Logs(context.Background())
 	if err != nil {
 		t.Error(err)
@@ -255,7 +255,7 @@ func TestFilters(t *testing.T) {
 	}
 
 	failAddr := common.BytesToAddress([]byte("failmenow"))
-	filter = NewRangeFilter(backend, testConfig(), 0, -1, []common.Address{failAddr}, nil)
+	filter = NewRangeFilter(backend, testConfig(), 0, -1, []common.Address{failAddr}, nil, 0)
 	logs, err = filter.Logs(context.Background())
 	if err != nil {
 		t.Error(err)
@@ -264,7 +264,7 @@ func TestFilters(t *testing.T) {
 		t.Error("expected 0 log, got", len(logs))
 	}
 
-	filter = NewRangeFilter(backend, testConfig(), 0, -1, nil, [][]common.Hash{{failHash}, {hash1}})
+	filter = NewRangeFilter(backend, testConfig(), 0, -1, nil, [][]common.Hash{{failHash}, {hash1}}, 0)
 	logs, err = filter.Logs(context.Background())
 	if err != nil {
 		t.Error(err)
