@@ -153,6 +153,8 @@ func initFlags() {
 		flags.RPCGlobalEVMTimeoutFlag,
 		flags.RPCGlobalTxFeeCapFlag,
 		flags.RPCGlobalTimeoutFlag,
+		flags.RPCLogQueryParameterLimit,
+		flags.RPCLogQueryResultLimit,
 		flags.BatchRequestLimit,
 		flags.BatchResponseMaxSize,
 		flags.MaxResponseSizeFlag,
