@@ -423,13 +423,13 @@ Converts an account private key to a validator private key and saves in the vali
 		},
 		{
 			Name:   "analyze",
-			Usage:  "Analyze the disk usage of the database",
+			Usage:  "Analyze the disk usage of the gossip store",
 			Action: analyzeDbs,
 			Flags: []cli.Flag{
 				flags.DataDirFlag,
 			},
 			Description: `
-Analyzes the disk usage of the database and prints for each table the number of entries and their accumulated size.
+Analyzes the disk usage of the gossip store and prints for each table the number of entries and their accumulated size.
 `,
 		},
 	}

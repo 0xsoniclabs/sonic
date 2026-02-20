@@ -28,8 +28,6 @@ import (
 	"strings"
 	"testing"
 
-	// Or your specific pebble/pebblesdb import
-
 	sonictool "github.com/0xsoniclabs/sonic/cmd/sonictool/app"
 	"github.com/0xsoniclabs/sonic/cmd/sonictool/genesis"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -443,6 +441,8 @@ func TestSonicTool_analyze_ExecutesWithoutErrors(t *testing.T) {
 	output, err := executeSonicTool(t, "--datadir", net.GetDirectory()+"/state", "analyze")
 	require.NoError(t, err)
 	require.True(t, strings.HasPrefix(output, "DB: "), "expected output to start with 'DB: ', got: %q", output)
+	blocksLineRe := regexp.MustCompile(`(?m)^Blocks\s+\w\s+5\b`)
+	require.True(t, blocksLineRe.FindStringIndex(output) != nil, "expected 5 Blocks in output, got: %q", output)
 }
 
 // =============================================================================
