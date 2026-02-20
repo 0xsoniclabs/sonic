@@ -44,7 +44,7 @@ type Backend interface {
 	GetReceipts(ctx context.Context, blockHash common.Hash) (types.Receipts, error)
 	GetReceiptsByNumber(ctx context.Context, number rpc.BlockNumber) (types.Receipts, error)
 	GetLogs(ctx context.Context, blockHash common.Hash) ([][]*types.Log, error)
-	GetTxPosition(txid common.Hash) *evmstore.TxPosition
+	GetTxPosition(txid common.Hash) *evmstore.TxPosition // TODO remove
 	ChainID() *big.Int
 
 	SubscribeNewBlockNotify(ch chan<- evmcore.ChainHeadNotify) notify.Subscription
