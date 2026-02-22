@@ -200,6 +200,11 @@ func TestRules_Copy_CopiesAreDisjoint(t *testing.T) {
 				rule.Upgrades.GasSubsidies = !rule.Upgrades.GasSubsidies
 			},
 		},
+		"upgrade Upgrades.TransactionBundles": {
+			update: func(rule *Rules) {
+				rule.Upgrades.TransactionBundles = !rule.Upgrades.TransactionBundles
+			},
+		},
 	}
 
 	for name, test := range tests {
