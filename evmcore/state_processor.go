@@ -28,6 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -206,6 +207,8 @@ func runTransaction(
 ) ([]ProcessedTransaction, Status) {
 	if context.upgrades.GasSubsidies && subsidies.IsSponsorshipRequest(tx) {
 		return context.runner.runSponsoredTransaction(context, tx, txIndexOffset)
+	} else if context.upgrades.Brio && bundle.IsTransactionBundle(tx) {
+		return context.runner.runTransactionBundle(context, tx, txIndexOffset)
 	} else {
 		res, status := context.runner.runRegularTransaction(context, tx, txIndexOffset)
 		return []ProcessedTransaction{res}, status
@@ -218,6 +221,7 @@ func runTransaction(
 type _transactionRunner interface {
 	runRegularTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) (ProcessedTransaction, Status)
 	runSponsoredTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) ([]ProcessedTransaction, Status)
+	runTransactionBundle(ctxt *runContext, tx *types.Transaction, txIndex int) ([]ProcessedTransaction, Status)
 }
 
 // transactionRunner implements the _transactionRunner interface by using an
@@ -316,6 +320,78 @@ func (r *transactionRunner) runSponsoredTransaction(
 		log.Warn("Fee charging transaction failed", "sponsored-tx", tx.Hash().Hex())
 	}
 	return []ProcessedTransaction{processed, processedDeduction}, status
+}
+
+func (r *transactionRunner) runTransactionBundle(
+	ctxt *runContext,
+	tx *types.Transaction,
+	txIndex int,
+) ([]ProcessedTransaction, Status) {
+
+	txBundle, err := bundle.ValidateTransactionBundle(tx, ctxt.signer, ctxt.upgrades)
+	if err != nil {
+		log.Warn("Transaction bundle is invalid, skip", "tx", tx.Hash().Hex(), "error", err)
+		return nil, StatusSkipped
+	}
+
+	// Execute the payment transaction first
+	payment := r.evm.runWithBaseFeeCheck(ctxt, txBundle.Payment, txIndex)
+	if payment.Receipt == nil {
+		log.Info("Payment transaction in bundle skipped, skip entire bundle", "tx", tx.Hash().Hex())
+		return []ProcessedTransaction{}, StatusSkipped
+	} else if payment.Receipt.Status == types.ReceiptStatusFailed {
+		log.Info("Payment transaction in bundle failed, skip entire bundle", "tx", tx.Hash().Hex())
+		return []ProcessedTransaction{payment}, StatusSkipped
+	}
+
+	res := make([]ProcessedTransaction, 0, len(txBundle.Bundle))
+
+	paymentCheckpoint := ctxt.statedb.Checkpoint()
+	if !txBundle.Flags.TryUntil() {
+		for _, btx := range txBundle.Bundle {
+			txResults, status := runTransaction(ctxt, btx, txIndex+1+len(res)) // payment + included txs
+
+			if !isTolerated(status, txBundle.Flags) {
+				log.Info("Got non-tolerated transaction in bundle, reverting all", "tx", btx.Hash().Hex())
+				if err := ctxt.statedb.RevertToCheckpoint(paymentCheckpoint); err != nil {
+					log.Error("Failed to revert to checkpoint", "err", err)
+				}
+				return []ProcessedTransaction{payment}, StatusFailed
+			}
+			log.Info("Got tolerated transaction in bundle, continuing", "tx", btx.Hash().Hex())
+
+			if status != StatusSkipped {
+				res = append(res, txResults...)
+			}
+		}
+	} else {
+		for _, btx := range txBundle.Bundle {
+			txResults, status := runTransaction(ctxt, btx, txIndex+1+len(res)) // payment + included txs
+
+			if status != StatusSkipped {
+				res = append(res, txResults...)
+			}
+
+			if isTolerated(status, txBundle.Flags) {
+				log.Info("Got tolerated transaction, stopping", "tx", btx.Hash().Hex())
+				break
+			}
+			log.Info("Got non-tolerated transaction, continuing", "tx", btx.Hash().Hex())
+		}
+	}
+
+	return append([]ProcessedTransaction{payment}, res...), StatusSuccessful
+}
+
+func isTolerated(status Status, flags bundle.ExecutionFlag) bool {
+	switch status {
+	case StatusSkipped:
+		return flags.TolerateInvalid()
+	case StatusFailed:
+		return flags.TolerateFailed()
+	default:
+		return true
+	}
 }
 
 // _evm is an interface to an EVM instance that can be used to run a single
