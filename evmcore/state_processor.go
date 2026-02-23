@@ -28,7 +28,6 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 
-	transactional_state "github.com/0xsoniclabs/sonic/evmcore/transactional_state"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/inter/state"
@@ -327,43 +326,42 @@ func (r *transactionRunner) runTransactionBundle(
 	// Execute the payment transaction first
 	payment := r.evm.runWithBaseFeeCheck(ctxt, txBundle.Payment, txIndex)
 
-	dbTransaction := transactional_state.NewTransactionalState(ctxt.statedb)
-	transactionalVm := evm{vm.NewEVM(ctxt.blockContext, dbTransaction, ctxt.chainConfig, ctxt.vmConfig)}
-
-	transactionalContext := *ctxt
-	transactionalContext.statedb = dbTransaction
-
 	res := make([]ProcessedTransaction, 0, len(txBundle.Bundle))
 
+	paymentCheckpoint := ctxt.statedb.Checkpoint()
 	for i, btx := range txBundle.Bundle {
 
-		fmt.Printf("gas %d (%x)\n", btx.Gas(), btx.Gas())
+		txResult := r.evm.runWithBaseFeeCheck(ctxt, btx, txIndex+1+i)
 
-		txResult := transactionalVm.runWithBaseFeeCheck(&transactionalContext, btx, txIndex+1+i)
+		if txResult.Receipt == nil {
+			if txBundle.Flags.IgnoreInvalidTransactions() {
+				log.Info("Bundled transaction skipped, continue with next", "tx", btx.Hash().Hex())
+				continue
+			} else {
+				log.Info("Bundled transaction skipped, revert all", "tx", btx.Hash().Hex())
+				ctxt.statedb.RevertToCheckpoint(paymentCheckpoint)
+				return []ProcessedTransaction{payment}
+			}
+		}
 
-		// if bundle.RevertOnInvalidTransaction() && txResult.Receipt == nil {
-		// 	log.Info("Bundled transaction skipped, revert all", "tx", btx.Hash().Hex())
-		// 	return []ProcessedTransaction{
-		// 		payment,
-		// 	}
-		// }
-
-		// if bundle.RevertOnFailedTransaction() && txResult.Receipt != nil && txResult.Receipt.Status != types.ReceiptStatusSuccessful {
-		// 	log.Info("Bundled transaction failed, revert all", "tx", btx.Hash().Hex())
-		// 	return []ProcessedTransaction{
-		// 		payment,
-		// 	}
-		// }
+		if txResult.Receipt.Status != types.ReceiptStatusSuccessful {
+			if txBundle.Flags.IgnoreFailedTransactions() {
+				log.Info("Bundled transaction failed, continue with next", "tx", btx.Hash().Hex())
+				continue
+			} else {
+				log.Info("Bundled transaction failed, revert all", "tx", btx.Hash().Hex())
+				ctxt.statedb.RevertToCheckpoint(paymentCheckpoint)
+				return []ProcessedTransaction{payment}
+			}
+		}
 
 		res = append(res, txResult)
 
-		// if bundle.StopAfterFirstSuccessfulTransaction() && txResult.Receipt != nil && txResult.Receipt.Status == types.ReceiptStatusSuccessful {
-		// 	log.Info("Bundled transaction succeeded, stop after first", "tx", btx.Hash().Hex())
-		// 	break
-		// }
+		if txBundle.Flags.AtMostOneTransaction() {
+			log.Info("Bundled transaction succeeded, stop after first", "tx", btx.Hash().Hex())
+			break
+		}
 	}
-
-	dbTransaction.Commit()
 
 	return append([]ProcessedTransaction{payment}, res...)
 }
@@ -497,6 +495,7 @@ func ApplyTransactionWithEVM(msg *core.Message, config *params.ChainConfig, gp *
 		}
 	}
 	// Create a new context to be used in the EVM environment.
+	statedb.BeginTransaction()
 	txContext := NewEVMTxContext(msg)
 	evm.SetTxContext(txContext)
 
@@ -567,6 +566,7 @@ func ProcessParentBlockHash(prevHash common.Hash, evm *vm.EVM, stateDb state.Sta
 	}
 
 	txContext := NewEVMTxContext(msg)
+	stateDb.BeginTransaction()
 	evm.SetTxContext(txContext)
 
 	stateDb.AddAddressToAccessList(params.HistoryStorageAddress)
@@ -593,6 +593,7 @@ func applyTransaction(
 	uint64,
 	error,
 ) {
+	statedb.BeginTransaction()
 	// Create a new context to be used in the EVM environment.
 	txContext := NewEVMTxContext(msg)
 	evm.SetTxContext(txContext)

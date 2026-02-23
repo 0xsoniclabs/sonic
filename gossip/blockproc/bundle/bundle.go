@@ -41,6 +41,51 @@ var (
 // if any of the transactions is invalid or fails.
 type ExecutionFlag uint16
 
+const (
+	IgnoreInvalidTransactions ExecutionFlag = 0b001
+	IgnoreFailedTransactions  ExecutionFlag = 0b010
+	AtMostOneTransaction      ExecutionFlag = 0b100
+)
+
+// IgnoreInvalidTransactions returns true if the ExecutionFlag is set to ignore invalid transactions.
+func (e *ExecutionFlag) IgnoreInvalidTransactions() bool {
+	return e.getFlag(IgnoreInvalidTransactions)
+}
+
+// IgnoreFailedTransactions returns true if the ExecutionFlag is set to ignore failed (reverted) transactions, but skipping invalid ones.
+func (e *ExecutionFlag) IgnoreFailedTransactions() bool {
+	return e.getFlag(IgnoreFailedTransactions)
+}
+
+// AtMostOneTransaction returns true if the ExecutionFlag is set to stop after the first successful transaction.
+func (e *ExecutionFlag) AtMostOneTransaction() bool {
+	return e.getFlag(AtMostOneTransaction)
+}
+
+func (e *ExecutionFlag) SetIgnoreInvalidTransactions(ignoreInvalid bool) {
+	e.setFlag(IgnoreInvalidTransactions, ignoreInvalid)
+}
+
+func (e *ExecutionFlag) SetIgnoreFailedTransactions(ignoreFailed bool) {
+	e.setFlag(IgnoreFailedTransactions, ignoreFailed)
+}
+
+func (e *ExecutionFlag) SetAtMostOneTransaction(atMostOne bool) {
+	e.setFlag(AtMostOneTransaction, atMostOne)
+}
+
+func (e *ExecutionFlag) getFlag(flag ExecutionFlag) bool {
+	return *e&flag != 0
+}
+
+func (e *ExecutionFlag) setFlag(flag ExecutionFlag, value bool) {
+	if value {
+		*e = *e | flag
+	} else {
+		*e = *e &^ flag
+	}
+}
+
 // ExecutionStep represents a single step in the execution plan,
 // which corresponds to a transaction to be executed as part of the bundle.
 type ExecutionStep struct {

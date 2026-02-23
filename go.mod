@@ -49,6 +49,7 @@ require (
 )
 
 require (
+	github.com/0xsoniclabs/tracy v0.0.0-20251027125423-00a5ab7968fb // indirect
 	github.com/DataDog/zstd v1.5.6 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/VictoriaMetrics/fastcache v1.13.0 // indirect
@@ -146,3 +147,5 @@ require (
 replace github.com/ethereum/go-ethereum => github.com/0xsoniclabs/go-ethereum v0.0.0-20251022155730-949ae6d396a5
 
 replace github.com/Fantom-foundation/lachesis-base => github.com/Fantom-foundation/lachesis-base-sonic v0.0.0-20250701061954-44075d09185c
+
+replace github.com/0xsoniclabs/carmen/go => github.com/0xsoniclabs/carmen/go v0.0.0-20260224153110-5d3b0797eeaf

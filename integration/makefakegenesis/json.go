@@ -239,6 +239,8 @@ func ApplyGenesisJson(json *GenesisJson) (*genesisstore.Store, error) {
 	}
 
 	builder := makegenesis.NewGenesisBuilder()
+	sdb := builder.CarmenStateDb()
+	sdb.BeginTransaction()
 	for _, acc := range json.Accounts {
 		if acc.Balance != nil {
 			builder.AddBalance(acc.Address, acc.Balance)
@@ -255,6 +257,7 @@ func ApplyGenesisJson(json *GenesisJson) (*genesisstore.Store, error) {
 			}
 		}
 	}
+	sdb.EndTransaction()
 
 	genesisTime := inter.Timestamp(json.BlockZeroTime.UnixNano())
 
