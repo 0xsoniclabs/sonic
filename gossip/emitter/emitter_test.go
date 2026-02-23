@@ -466,42 +466,10 @@ func TestEmitter_ThrottlerWorldAdapter_ReturnsNilIfNoEventIsFound(t *testing.T) 
 
 func TestRemoveBundleOnlyTxs_OnlyFiltersTxIfFeatureIsEnabled(t *testing.T) {
 
-	test := map[string]struct {
-		upgrades          opera.Upgrades
-		expectedFiltering bool
-	}{
-		"brio enabled": {
-			upgrades: opera.Upgrades{
-				Brio: true,
-			},
-			expectedFiltering: false,
-		},
-		"transaction bundles enabled": {
-			upgrades: opera.Upgrades{
-				TransactionBundles: true,
-			},
-			expectedFiltering: false,
-		},
-		"both enabled": {
-			upgrades: opera.Upgrades{
-				Brio:               true,
-				TransactionBundles: true,
-			},
-			expectedFiltering: true,
-		},
-		"both disabled": {
-			upgrades: opera.Upgrades{
-				Brio:                         false,
-				TransactionBundles:           false,
-				SingleProposerBlockFormation: true, // irrelevant for bundle-only tx filtering
-			},
-			expectedFiltering: false,
-		},
-	}
 	sender := common.Address{1}
 
-	for name, test := range test {
-		t.Run(name, func(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		t.Run(fmt.Sprintf("enabled=%t", enabled), func(t *testing.T) {
 
 			bundleOnlyMark := types.AccessTuple{
 				Address:     bundle.BundleOnly,
@@ -516,9 +484,13 @@ func TestRemoveBundleOnlyTxs_OnlyFiltersTxIfFeatureIsEnabled(t *testing.T) {
 				},
 			}
 
-			removeBundleOnlyTxs(test.upgrades, pendingTxs)
+			upgrades := opera.Upgrades{
+				TransactionBundles: enabled,
+			}
 
-			if test.expectedFiltering {
+			removeBundleOnlyTxs(upgrades, pendingTxs)
+
+			if enabled {
 				require.Empty(t, pendingTxs)
 			} else {
 				require.Len(t, pendingTxs, 1)
@@ -528,7 +500,7 @@ func TestRemoveBundleOnlyTxs_OnlyFiltersTxIfFeatureIsEnabled(t *testing.T) {
 	}
 }
 
-func TestRemoveBundleOnlyTxs_ErasesGapedNoncesAfterRemoval(t *testing.T) {
+func TestRemoveBundleOnlyTxs_ErasesGappedNoncesAfterRemoval(t *testing.T) {
 	// And deletes sender transactions entry if list is empty
 
 	bundleOnlyMark := types.AccessTuple{
@@ -579,4 +551,37 @@ func TestRemoveBundleOnlyTxs_ErasesGapedNoncesAfterRemoval(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRemoveBundleOnlyTxs_LeavesNonMarkedTxsUnmodified(t *testing.T) {
+	upgrades := opera.Upgrades{
+		TransactionBundles: true,
+	}
+	sender1 := common.Address{1}
+	sender2 := common.Address{2}
+
+	pendingTxs := map[common.Address]types.Transactions{
+		sender1: {
+			types.NewTx(&types.AccessListTx{
+				Nonce: uint64(0),
+			}),
+			types.NewTx(&types.AccessListTx{
+				Nonce: uint64(1),
+			}),
+		},
+		sender2: {
+			types.NewTx(&types.AccessListTx{
+				Nonce: uint64(17),
+			}),
+		},
+	}
+
+	removeBundleOnlyTxs(upgrades, pendingTxs)
+
+	require.Len(t, pendingTxs, 2)
+	require.Len(t, pendingTxs[sender1], 2)
+	require.Equal(t, uint64(0), pendingTxs[sender1][0].Nonce())
+	require.Equal(t, uint64(1), pendingTxs[sender1][1].Nonce())
+	require.Len(t, pendingTxs[sender2], 1)
+	require.Equal(t, uint64(17), pendingTxs[sender2][0].Nonce())
 }

@@ -363,8 +363,7 @@ func removeBundleOnlyTxs(
 	upgrades opera.Upgrades,
 	pendingTxs map[common.Address]types.Transactions) {
 
-	// if neither Brio nor TransactionBundles upgrade is active, there is no need to check for bundle-only transactions
-	if !upgrades.Brio || !upgrades.TransactionBundles {
+	if !upgrades.TransactionBundles {
 		return
 	}
 
