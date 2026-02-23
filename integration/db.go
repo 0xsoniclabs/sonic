@@ -24,7 +24,6 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip"
 	"github.com/0xsoniclabs/sonic/utils/caution"
 	"github.com/0xsoniclabs/sonic/utils/dbutil/dbcounter"
-	"github.com/0xsoniclabs/sonic/utils/dbutil/threads"
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/dag"
 	"github.com/Fantom-foundation/lachesis-base/kvdb"
@@ -69,7 +68,7 @@ func GetDbProducer(chaindataDir string, cfg DBCacheConfig) (kvdb.FullDBProducer,
 	}
 	cachedProducer := cachedproducer.WrapAll(scopedProducer)
 	skippingProducer := skipkeys.WrapAllProducer(cachedProducer, MetadataPrefix)
-	return threads.CountedFullDBProducer(skippingProducer), nil
+	return skippingProducer, nil
 }
 
 func isEmpty(dir string) bool {
