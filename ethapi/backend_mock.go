@@ -457,14 +457,12 @@ func (mr *MockBackendMockRecorder) GetReceiptsByNumber(ctx, number any) *gomock.
 }
 
 // GetTransaction mocks base method.
-func (m *MockBackend) GetTransaction(ctx context.Context, txHash common.Hash) (*types.Transaction, uint64, uint64, error) {
+func (m *MockBackend) GetTransaction(ctx context.Context, txHash common.Hash) (*types.Transaction, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetTransaction", ctx, txHash)
 	ret0, _ := ret[0].(*types.Transaction)
-	ret1, _ := ret[1].(uint64)
-	ret2, _ := ret[2].(uint64)
-	ret3, _ := ret[3].(error)
-	return ret0, ret1, ret2, ret3
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // GetTransaction indicates an expected call of GetTransaction.

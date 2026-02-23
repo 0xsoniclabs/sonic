@@ -451,14 +451,8 @@ func (b *EthAPIBackend) GetPoolTransaction(hash common.Hash) *types.Transaction 
 	return b.svc.txpool.Get(hash)
 }
 
-func (b *EthAPIBackend) GetTransaction(ctx context.Context, txHash common.Hash) (*types.Transaction, uint64, uint64, error) {
-	if !b.svc.config.TxIndex {
-		return nil, 0, 0, errors.New("transactions index is disabled (enable TxIndex and re-process the DAG)")
-	}
-
-	tx := b.svc.store.evm.GetTx(txHash)
-
-	return tx, 0, 0, nil
+func (b *EthAPIBackend) GetTransaction(ctx context.Context, txHash common.Hash) (*types.Transaction, error) {
+	return b.svc.store.evm.GetTx(txHash), nil
 }
 
 func (b *EthAPIBackend) GetPoolNonce(ctx context.Context, addr common.Address) (uint64, error) {

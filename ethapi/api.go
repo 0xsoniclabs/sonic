@@ -1846,7 +1846,7 @@ func (s *PublicTransactionPoolAPI) GetTransactionCount(ctx context.Context, addr
 // GetTransactionByHash returns the transaction for the given hash
 func (s *PublicTransactionPoolAPI) GetTransactionByHash(ctx context.Context, hash common.Hash) (*RPCTransaction, error) {
 	// Try to return an already finalized transaction
-	tx, blockNumber, index, err := s.b.GetTransaction(ctx, hash)
+	tx, err := s.b.GetTransaction(ctx, hash)
 	if err != nil {
 		return nil, err
 	}
@@ -1869,7 +1869,7 @@ func (s *PublicTransactionPoolAPI) GetTransactionByHash(ctx context.Context, has
 // GetRawTransactionByHash returns the bytes of the transaction for the given hash.
 func (s *PublicTransactionPoolAPI) GetRawTransactionByHash(ctx context.Context, hash common.Hash) (hexutil.Bytes, error) {
 	// Retrieve a finalized transaction, or a pooled otherwise
-	tx, _, _, err := s.b.GetTransaction(ctx, hash)
+	tx, err := s.b.GetTransaction(ctx, hash)
 	if err != nil {
 		return nil, err
 	}
@@ -1947,7 +1947,7 @@ func (s *PublicTransactionPoolAPI) formatTxReceipt(header *evmcore.EvmHeader, tx
 
 // GetTransactionReceipt returns the transaction receipt for the given transaction hash.
 func (s *PublicTransactionPoolAPI) GetTransactionReceipt(ctx context.Context, hash common.Hash) (map[string]interface{}, error) {
-	tx, blockNumber, index, err := s.b.GetTransaction(ctx, hash)
+	tx, err := s.b.GetTransaction(ctx, hash)
 	if tx == nil || err != nil {
 		return nil, err
 	}
@@ -1995,7 +1995,7 @@ func (s *PublicTransactionPoolAPI) GetBlockReceipts(ctx context.Context, blockNr
 
 	blkReceipts := make([]map[string]interface{}, len(receipts))
 	for i, receipt := range receipts {
-		tx, _, index, err := s.b.GetTransaction(ctx, receipt.TxHash)
+		tx, err := s.b.GetTransaction(ctx, receipt.TxHash)
 		if err != nil {
 			return nil, err
 		}

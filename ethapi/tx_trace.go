@@ -154,7 +154,7 @@ func (s *PublicTxTraceAPI) Get(ctx context.Context, hash common.Hash, traceIndex
 
 // traceTxHash looks for a block of this transaction hash and trace it
 func (s *PublicTxTraceAPI) traceTxHash(ctx context.Context, hash common.Hash, traceIndex *[]hexutil.Uint) (*[]txtrace.ActionTrace, error) {
-	tx, blockNumber, _, err := s.b.GetTransaction(ctx, hash)
+	tx, err := s.b.GetTransaction(ctx, hash)
 	if err != nil {
 		return nil, fmt.Errorf("cannot get transaction %s: %v", hash.String(), err)
 	}
