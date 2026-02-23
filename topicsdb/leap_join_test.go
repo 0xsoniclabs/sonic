@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/utils/leap"
@@ -107,7 +108,7 @@ func TestFindInBlocks_FindsLogsUsingPattern(t *testing.T) {
 	))
 
 	logs, err := index.FindInBlocks(
-		t.Context(), from, to, pattern,
+		t.Context(), from, to, pattern, 0,
 	)
 	require.NoError(err)
 	require.Len(logs, 3)
@@ -116,6 +117,44 @@ func TestFindInBlocks_FindsLogsUsingPattern(t *testing.T) {
 		[]*types.Log{matching1, matching3, matching2}, // in block order
 		logs,
 	)
+}
+
+func TestFindInBlocksUsingLeapJoin_EnforcesResultLimit(t *testing.T) {
+	require := require.New(t)
+
+	// Index some logs
+	index := NewWithLeapJoin(memorydb.New())
+
+	numLogs := uint(100)
+	for i := range numLogs {
+		require.NoError(index.Push(&types.Log{
+			BlockNumber: uint64(i),
+			Address:     common.Address{1},
+			Topics:      []common.Hash{{1}},
+			TxHash:      common.Hash{byte(i)},
+		}))
+	}
+
+	// cases where the limit is exceeded
+	for _, limit := range []uint{1, 10, numLogs - 1} {
+		logs, err := index.FindInBlocks(
+			t.Context(), 0, 1000, [][]common.Hash{nil, {{1}}}, limit,
+		)
+		require.Empty(logs)
+		require.ErrorContains(
+			err,
+			fmt.Sprintf("too many results, consider narrowing your query criteria, the limit is %d", limit),
+		)
+	}
+
+	// cases where the limit is not exceeded (0 means no limit)
+	for _, limit := range []uint{0, numLogs, numLogs + 1} {
+		logs, err := index.FindInBlocks(
+			t.Context(), 0, 1000, [][]common.Hash{nil, {{1}}}, limit,
+		)
+		require.NoError(err)
+		require.Len(logs, int(numLogs))
+	}
 }
 
 func TestFindInBlocksUsingLeapJoin_ReleasesAllIterators(t *testing.T) {
@@ -150,7 +189,7 @@ func TestFindInBlocksUsingLeapJoin_ReleasesAllIterators(t *testing.T) {
 	iter3.EXPECT().Release()
 
 	res, err := findInBlocksUsingLeapJoin(
-		t.Context(), 0, 10, pattern, index, nil,
+		t.Context(), 0, 10, pattern, index, nil, 0,
 	)
 
 	require.NoError(err)
@@ -177,7 +216,7 @@ func TestFindInBlocksUsingLeapJoin_ReturnsEmptyIfBlockRangeIsEmpty(t *testing.T)
 			cancel()
 
 			logs, err := findInBlocksUsingLeapJoin(
-				ctx, tc.from, tc.to, nil, nil, nil,
+				ctx, tc.from, tc.to, nil, nil, nil, 0,
 			)
 			require.Empty(t, logs)
 
@@ -192,7 +231,7 @@ func TestFindInBlocksUsingLeapJoin_ReturnsEmptyIfBlockRangeIsEmpty(t *testing.T)
 
 func TestFindInBLocksUsingLeapJoin_FailsIfNoPatternsAreProvided(t *testing.T) {
 	logs, err := findInBlocksUsingLeapJoin(
-		context.Background(), 0, 10, nil, nil, nil,
+		context.Background(), 0, 10, nil, nil, nil, 0,
 	)
 	require.Empty(t, logs)
 	require.ErrorContains(t, err, "empty topics")
@@ -230,7 +269,7 @@ func TestFindInBlocksUsingLeapJoin_CanBeCancelledViaContext(t *testing.T) {
 	)
 
 	res, err := findInBlocksUsingLeapJoin(
-		ctx, 0, 10, [][]common.Hash{nil, {{1}}}, index, logs,
+		ctx, 0, 10, [][]common.Hash{nil, {{1}}}, index, logs, 0,
 	)
 
 	require.Nil(res)
@@ -268,7 +307,7 @@ func TestFindInBlocksUsingLeapJoin_FailingLogFetchStopsJoin(t *testing.T) {
 	)
 
 	res, err := findInBlocksUsingLeapJoin(
-		t.Context(), 0, 10, [][]common.Hash{nil, {{1}}}, index, logs,
+		t.Context(), 0, 10, [][]common.Hash{nil, {{1}}}, index, logs, 0,
 	)
 
 	require.Nil(res)
@@ -293,7 +332,7 @@ func TestFindInBlocksUsingLeapJoin_ErrorsDuringIndexIterationsAreReported(t *tes
 	iter.EXPECT().Release()
 
 	res, err := findInBlocksUsingLeapJoin(
-		t.Context(), 0, 10, [][]common.Hash{nil, {{1}}}, index, logs,
+		t.Context(), 0, 10, [][]common.Hash{nil, {{1}}}, index, logs, 0,
 	)
 
 	require.Nil(res)
