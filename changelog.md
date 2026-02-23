@@ -34,7 +34,12 @@ For optimal compatibility and stability, it is recommended to use the most recen
 
 ### Removed
 
-## [2.1.5] - TBD
+## [2.1.6] - TBD
+
+### Changed
+ - This is a security hot-fix release. Specifically, this release fixes CVE-2026-26314, CVE-2026-26315.
+
+## [2.1.5] - 5 Feb 2026
 
 ### Added
 
