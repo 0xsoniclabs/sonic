@@ -337,8 +337,6 @@ func (r *transactionRunner) runTransactionBundle(
 
 	for i, btx := range txBundle.Bundle {
 
-		fmt.Printf("gas %d (%x)\n", btx.Gas(), btx.Gas())
-
 		txResult := transactionalVm.runWithBaseFeeCheck(&transactionalContext, btx, txIndex+1+i)
 
 		// if bundle.RevertOnInvalidTransaction() && txResult.Receipt == nil {

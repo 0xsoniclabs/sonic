@@ -45,18 +45,18 @@ type ExecutionFlag uint16
 // which corresponds to a transaction to be executed as part of the bundle.
 type ExecutionStep struct {
 	// From is the sender of the transaction, derived from the signature of the transaction
-	From common.Address
+	From common.Address `json:"from"`
 	// Hash is the transaction hash to be signed (not the hash of the transaction including its signature)
 	// where the access list has been stripped from the bundle-only mark.
-	Hash common.Hash
+	Hash common.Hash `json:"hash"`
 }
 
 // ExecutionPlan represents the plan for executing a bundle of transactions,
 // to which every participant in the bundle shall agree on.
 // The execution plan includes the list of steps to be executed, in the order of execution
 type ExecutionPlan struct {
-	Steps []ExecutionStep
-	Flags ExecutionFlag
+	Steps []ExecutionStep `json:"steps"`
+	Flags ExecutionFlag   `json:"flags"`
 }
 
 // Hash computes the execution plan hash

@@ -167,6 +167,11 @@ func GetAPIs(apiBackend Backend) []rpc.API {
 			Version:   "1.0",
 			Service:   NewPublicSccApi(apiBackend),
 			Public:    true,
+		}, {
+			Namespace: "bundle",
+			Version:   "1.0",
+			Service:   NewPublicBundleAPI(apiBackend),
+			Public:    true,
 		},
 	}
 }

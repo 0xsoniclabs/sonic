@@ -447,8 +447,8 @@ func DefaultNodeConfig() node.Config {
 	cfg := NodeDefaultConfig
 	cfg.Name = ClientIdentifier
 	cfg.Version = version.StringWithCommit()
-	cfg.HTTPModules = append(cfg.HTTPModules, "eth", "dag", "abft", "web3")
-	cfg.WSModules = append(cfg.WSModules, "eth", "dag", "abft", "web3")
+	cfg.HTTPModules = append(cfg.HTTPModules, "eth", "dag", "abft", "web3", "bundle")
+	cfg.WSModules = append(cfg.WSModules, "eth", "dag", "abft", "web3", "bundle")
 	cfg.IPCPath = "sonic.ipc"
 	return cfg
 }
