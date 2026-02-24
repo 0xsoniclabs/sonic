@@ -515,7 +515,7 @@ func TestRemoveBundleOnlyTxs_ErasesGappedNoncesAfterRemoval(t *testing.T) {
 
 			pendingTxs := map[common.Address]types.Transactions{}
 
-			for i := 0; i < position; i++ {
+			for i := range position {
 				pendingTxs[sender] = append(pendingTxs[sender], types.NewTx(&types.AccessListTx{
 					Nonce: uint64(i),
 				}))
@@ -540,14 +540,15 @@ func TestRemoveBundleOnlyTxs_ErasesGappedNoncesAfterRemoval(t *testing.T) {
 			case 0:
 				// sender does not have any valid transaction, so entry should be deleted
 				require.Empty(t, pendingTxs)
-			case 1:
-				// second transaction was deleted, any nonce after that cannot be valid
+			case 1, 2:
+				// transactions until position are preserved, the nonces are sequential
 				require.Len(t, pendingTxs, 1)
-				require.Len(t, pendingTxs[sender], 1)
-			case 2:
-				// only the last transaction was deleted, the rest are valid
-				require.Len(t, pendingTxs, 1)
-				require.Len(t, pendingTxs[sender], 2)
+				require.Len(t, pendingTxs[sender], position)
+				for i := range position {
+					require.Equal(t, uint64(i), pendingTxs[sender][i].Nonce())
+				}
+			default:
+				t.Fatal("malformed test case", position)
 			}
 		})
 	}
@@ -584,4 +585,40 @@ func TestRemoveBundleOnlyTxs_LeavesNonMarkedTxsUnmodified(t *testing.T) {
 	require.Equal(t, uint64(1), pendingTxs[sender1][1].Nonce())
 	require.Len(t, pendingTxs[sender2], 1)
 	require.Equal(t, uint64(17), pendingTxs[sender2][0].Nonce())
+}
+
+func TestRemoveBundleOnlyTxs_ErasesMultipleBundleMarkedTransactions(t *testing.T) {
+
+	bundleOnlyMark := types.AccessTuple{
+		Address:     bundle.BundleOnly,
+		StorageKeys: []common.Hash{{}},
+	}
+	sender := common.Address{1}
+
+	pendingTxs := map[common.Address]types.Transactions{
+		sender: {
+			types.NewTx(&types.AccessListTx{
+				Nonce: uint64(0),
+			}),
+			types.NewTx(&types.AccessListTx{
+				Nonce:      uint64(1),
+				AccessList: []types.AccessTuple{bundleOnlyMark},
+			}),
+			types.NewTx(&types.AccessListTx{
+				Nonce: uint64(2),
+			}),
+			types.NewTx(&types.AccessListTx{
+				Nonce:      uint64(3),
+				AccessList: []types.AccessTuple{bundleOnlyMark},
+			}),
+		},
+	}
+
+	removeBundleOnlyTxs(opera.Upgrades{
+		TransactionBundles: true,
+	}, pendingTxs)
+
+	require.Len(t, pendingTxs, 1)
+	require.Len(t, pendingTxs[sender], 1)
+	require.Equal(t, uint64(0), pendingTxs[sender][0].Nonce())
 }
