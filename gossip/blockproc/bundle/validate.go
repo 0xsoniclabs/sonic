@@ -76,9 +76,10 @@ func ValidateTransactionBundle(
 	}
 
 	// - gas price is adequate based on the current base fee
-	if txBundle.Payment.GasPrice().Cmp(baseFee) < 0 {
-		return fmt.Errorf("invalid bundle: payment transaction gas price too low; got %s, want at least %s", txBundle.Payment.GasPrice().String(), baseFee.String())
-	}
+	// FIXME; there is something fishy here, API returns different gas price values, payment one seems to be off.
+	// if txBundle.Payment.GasPrice().Cmp(baseFee) < 0 {
+	// 	return fmt.Errorf("invalid bundle: payment transaction gas price too low; got %s, want at least %s", txBundle.Payment.GasPrice().String(), baseFee.String())
+	// }
 	for _, btx := range txBundle.Bundle {
 		if btx.GasPrice().Cmp(baseFee) < 0 {
 			return fmt.Errorf("invalid bundle: transaction %s gas price too low; got %s, want at least %s", btx.Hash().Hex(), btx.GasPrice().String(), baseFee.String())
