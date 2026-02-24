@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
-package tests
+package bundles
 
 import (
 	"math/big"
@@ -22,7 +22,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
-	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -37,20 +37,20 @@ import (
 func TestCreateAccessList_PreservesBundleOnlyMarker(t *testing.T) {
 	t.Parallel()
 
-	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	session := tests.StartIntegrationTestNet(t)
 
 	client, err := session.GetClient()
 	require.NoError(t, err)
 	defer client.Close()
 
-	sender := MakeAccountWithBalance(t, session, big.NewInt(1e18))
+	sender := tests.MakeAccountWithBalance(t, session, big.NewInt(1e18))
 
 	// callCreateAccessList is a helper that calls eth_createAccessList with the
 	// given access list and returns the resulting access list.
 	callCreateAccessList := func(t *testing.T, acl *types.AccessList) types.AccessList {
 		t.Helper()
 		rpcTx := ethapi.TransactionArgs{
-			From:       AsPointer(sender.Address()),
+			From:       tests.AsPointer(sender.Address()),
 			To:         &common.Address{0x42},
 			Value:      (*hexutil.Big)(big.NewInt(1)),
 			AccessList: acl,
