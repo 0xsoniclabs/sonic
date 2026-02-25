@@ -366,7 +366,7 @@ var (
 	}
 
 	// Event Emission Throttling
-	EnableThrottlingFlag = cli.BoolFlag{
+	EnableThrottlingFlag = cli.BoolTFlag{
 		Name:  "event-throttler",
 		Usage: "Enable event emission throttling based on network conditions.",
 	}

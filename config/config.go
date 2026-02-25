@@ -417,13 +417,15 @@ func MakeAllConfigsFromFile(ctx *cli.Context, configFile string) (*Config, error
 		return nil, err
 	}
 
-	if ctx.GlobalBool(flags.EnableThrottlingFlag.Name) {
-		cfg.Emitter.ThrottlerConfig = emitter_config.ThrottlerConfig{
-			Enabled:                true,
-			DominantStakeThreshold: ctx.GlobalFloat64(flags.ThrottlingDominantThresholdFlag.Name),
-			DominatingTimeout:      emitter_config.Attempt(ctx.GlobalUint64(flags.ThrottlingDominatingTimeout.Name)),
-			NonDominatingTimeout:   emitter_config.Attempt(ctx.GlobalUint64(flags.ThrottlingNonDominatingTimeout.Name)),
-		}
+	cfg.Emitter.ThrottlerConfig.Enabled = ctx.GlobalBoolT(flags.EnableThrottlingFlag.Name)
+	if ctx.GlobalIsSet(flags.ThrottlingDominantThresholdFlag.Name) {
+		cfg.Emitter.ThrottlerConfig.DominantStakeThreshold = ctx.GlobalFloat64(flags.ThrottlingDominantThresholdFlag.Name)
+	}
+	if ctx.GlobalIsSet(flags.ThrottlingDominatingTimeout.Name) {
+		cfg.Emitter.ThrottlerConfig.DominatingTimeout = emitter_config.Attempt(ctx.GlobalUint64(flags.ThrottlingDominatingTimeout.Name))
+	}
+	if ctx.GlobalIsSet(flags.ThrottlingNonDominatingTimeout.Name) {
+		cfg.Emitter.ThrottlerConfig.NonDominatingTimeout = emitter_config.Attempt(ctx.GlobalUint64(flags.ThrottlingNonDominatingTimeout.Name))
 	}
 
 	if err := cfg.Emitter.Validate(); err != nil {
