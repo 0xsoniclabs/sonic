@@ -830,9 +830,6 @@ func (sim *simulator) makeHeaders(blocks []simBlock) ([]*evmcore.EvmHeader, erro
 // Transactions are packed into simulated blocks; each block can override header
 // fields and apply state overrides before execution. The function never commits
 // anything to the blockchain.
-//
-// It implements eth_simulateV1 as specified by EIP-4337 / the Ethereum JSON-RPC
-// specification.
 func (s *PublicBlockChainAPI) SimulateV1(ctx context.Context, opts simOpts, blockNrOrHash *rpc.BlockNumberOrHash) ([]*simBlockResult, error) {
 	if len(opts.BlockStateCalls) == 0 {
 		return nil, &simInvalidParamsError{message: "empty input"}
