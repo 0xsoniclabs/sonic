@@ -35,7 +35,6 @@ import (
 // not standalone). The RPC must preserve it so the bundle constraint survives
 // access-list recreation by wallets or tooling.
 func TestCreateAccessList_PreservesBundleOnlyMarker(t *testing.T) {
-	t.Parallel()
 
 	session := tests.StartIntegrationTestNet(t)
 
