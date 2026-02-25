@@ -25,6 +25,11 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 )
 
+const (
+	SonicPostAllegroMaxCodeSize     = 1<<15 + 1<<14                   // 48 KiB
+	SonicPostAllegroMaxInitCodeSize = SonicPostAllegroMaxCodeSize * 2 // 96 KiB
+)
+
 // sonicVmConfig is the initial Ethereum VM configuration used for processing
 // transactions on a Sonic chain using the Sonic hard-fork.
 var sonicVmConfig = func() vm.Config {
@@ -59,7 +64,13 @@ var sonicVmConfig = func() vm.Config {
 // sfvmFactory is a factory for creating a SFVM interpreter,
 // starting from the Brio upgrade it is used as the default interpreter.
 var sfvmFactory = func() vm.InterpreterFactory {
-	interpreter, err := sfvm.NewInterpreter(sfvm.Config{})
+	config := sfvm.Config{
+		WithShaCache:      true,
+		WithAnalysisCache: true,
+		AnalysisCacheSize: 1 << 28, // 256 MiB
+		MaxCachedCodeSize: SonicPostAllegroMaxCodeSize,
+	}
+	interpreter, err := sfvm.NewInterpreter(config)
 	if err != nil {
 		panic(err)
 	}
@@ -83,6 +94,12 @@ func GetVmConfig(rules Rules) vm.Config {
 
 		// use the SFVM interpreter starting from the Brio upgrade
 		res.Interpreter = sfvmFactory
+
+		// Starting from Brio, sonic enforces its own code size limits.
+		maxCodeSize := SonicPostAllegroMaxCodeSize
+		maxInitCodeSize := SonicPostAllegroMaxInitCodeSize
+		res.MaxCodeSize = &maxCodeSize
+		res.MaxInitCodeSize = &maxInitCodeSize
 	}
 
 	return res
