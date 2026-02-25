@@ -29,7 +29,11 @@ import (
 
 	"github.com/0xsoniclabs/sonic/eventcheck/epochcheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/gaspowercheck"
+	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter"
+	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/sonic/utils/txtime"
 )
@@ -214,6 +218,12 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 			sorted.Pop()
 			continue
 		}
+		// check validity of bundled transactions
+		if bundle.IsEnvelope(resolvedTx) && !em.isValidBundleTx(resolvedTx) {
+			sorted.Pop()
+			continue
+		}
+
 		// add
 		e.SetGasPowerUsed(e.GasPowerUsed() + tx.Gas)
 		e.SetGasPowerLeft(e.GasPowerLeft().Sub(tx.Gas))
@@ -221,4 +231,78 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 		totalTxSizeInBytes += txSize
 		sorted.Shift()
 	}
+}
+
+// isValidBundleTx checks whether the given transaction is a valid bundle that
+// could be emitted by this emitter.
+func (em *Emitter) isValidBundleTx(tx *types.Transaction) bool {
+	return em.isValidBundleTxInternal(tx, evmcore.GetBundleState)
+}
+
+func (em *Emitter) isValidBundleTxInternal(
+	tx *types.Transaction,
+	getBundleState func(evmcore.ChainState, *types.Transaction) evmcore.BundleState,
+) bool {
+	// Ignore if bundled transactions are not enabled.
+	if !em.world.GetRules().Upgrades.TransactionBundles {
+		return false
+	}
+
+	// Ignore if not a bundle transaction.
+	if !bundle.IsEnvelope(tx) {
+		return false
+	}
+
+	// Ignore if it is not a valid bundle transaction.
+	_, plan, err := bundle.ValidateTransactionBundle(tx)
+	if err != nil {
+		return false
+	}
+
+	// Ignore if the next block is no longer in the range. If it is just the
+	// next block, it is likely anyway too late, since the DAG consensus is
+	// pipelined, but it is fine to error on the safe side here.
+	if !plan.IsInRange(uint64(em.world.GetLatestBlockIndex()) + 1) {
+		return false
+	}
+
+	// Ignore if the same bundle has already been processed.
+	if em.world.HasBundleRecentlyBeenProcessed(plan.Hash()) {
+		return false
+	}
+
+	// Skip bundles that are not runnable in the current state.
+	adapter := &precheckChainStateAdapter{external: em.world}
+	bundleState := getBundleState(adapter, tx)
+	return bundleState == evmcore.BundleStateRunnable
+}
+
+type precheckChainStateAdapter struct {
+	external External
+}
+
+func (a *precheckChainStateAdapter) GetCurrentNetworkRules() opera.Rules {
+	return a.external.GetRules()
+}
+
+func (a *precheckChainStateAdapter) StateDB() state.StateDB {
+	return a.external.StateDB()
+}
+
+func (a *precheckChainStateAdapter) Header(hash common.Hash, number uint64) *evmcore.EvmHeader {
+	return a.external.Header(hash, number)
+}
+
+func (a *precheckChainStateAdapter) GetEvmChainConfig(blockHeight idx.Block) *params.ChainConfig {
+	return opera.CreateTransientEvmChainConfig(
+		a.external.GetRules().NetworkID,
+		a.external.GetUpgradeHeights(),
+		blockHeight,
+	)
+}
+
+func (a *precheckChainStateAdapter) GetLatestHeader() *evmcore.EvmHeader {
+	lastBlockHash := a.external.GetLatestBlock().Hash()
+	lastBlockNumber := a.external.GetLatestBlockIndex()
+	return a.external.Header(lastBlockHash, uint64(lastBlockNumber))
 }

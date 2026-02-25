@@ -21,8 +21,12 @@ import (
 	"math"
 	"math/big"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -49,6 +53,7 @@ func TestEvm_IgnoresGasPriceOfInternalTransactions(t *testing.T) {
 
 	stateDb.EXPECT().BeginBlock(any)
 	stateDb.EXPECT().SetTxContext(any, any)
+	stateDb.EXPECT().BeginTransaction()
 	stateDb.EXPECT().GetBalance(zeroAddress).Return(zero)
 	stateDb.EXPECT().SubBalance(zeroAddress, zero, tracing.BalanceDecreaseGasBuy)
 	stateDb.EXPECT().Prepare(any, any, any, any, any, any).AnyTimes()
@@ -95,7 +100,8 @@ func TestEvm_IgnoresGasPriceOfInternalTransactions(t *testing.T) {
 	nonce := uint64(15)
 	inner := types.NewTransaction(nonce, targetAddress, common.Big0, 1e10, common.Big0, nil)
 
-	processed := processor.Execute([]*types.Transaction{inner}, math.MaxUint64)
+	summary := processor.Execute([]*types.Transaction{inner}, math.MaxUint64)
+	processed := summary.ProcessedTransactions
 
 	if len(processed) != 1 {
 		t.Fatalf("Expected 1 processed transaction, got %d", len(processed))
@@ -116,6 +122,7 @@ func TestOperaEVMProcessor_Execute_ProducesContinuousTxIndexesInLogsAndReceipts(
 
 	any := gomock.Any()
 	stateDb.EXPECT().BeginBlock(any).AnyTimes()
+	stateDb.EXPECT().BeginTransaction().AnyTimes()
 	stateDb.EXPECT().GetNonce(any).AnyTimes().Return(uint64(0))
 	stateDb.EXPECT().GetCode(any).AnyTimes().Return(nil)
 	stateDb.EXPECT().GetBalance(any).AnyTimes().Return(uint256.NewInt(1e18))
@@ -173,7 +180,8 @@ func TestOperaEVMProcessor_Execute_ProducesContinuousTxIndexesInLogsAndReceipts(
 	// transactions and some have just one.
 	txIndex := uint(0)
 	for range N {
-		processed := processor.Execute(types.Transactions{tx, tx}, math.MaxUint64)
+		summary := processor.Execute(types.Transactions{tx, tx}, math.MaxUint64)
+		processed := summary.ProcessedTransactions
 		require.Len(processed, 2)
 		require.NotNil(processed[0].Receipt)
 		require.NotNil(processed[1].Receipt)
@@ -182,7 +190,8 @@ func TestOperaEVMProcessor_Execute_ProducesContinuousTxIndexesInLogsAndReceipts(
 		require.Equal(txIndex, processed[1].Receipt.TransactionIndex)
 		txIndex++
 
-		processed = processor.Execute(types.Transactions{tx}, math.MaxUint64)
+		summary = processor.Execute(types.Transactions{tx}, math.MaxUint64)
+		processed = summary.ProcessedTransactions
 		require.Len(processed, 1)
 		require.NotNil(processed[0].Receipt)
 		require.Equal(txIndex, processed[0].Receipt.TransactionIndex)
@@ -201,13 +210,13 @@ func TestOperaEVMProcessor_Execute_StateProcessorIntroducesTransactions_Produces
 
 	stateProcessor.EXPECT().Process(
 		any, any, any, any, any, any,
-	).Return([]evmcore.ProcessedTransaction{
+	).Return(evmcore.ExecutionSummary{ProcessedTransactions: []evmcore.ProcessedTransaction{
 		{Receipt: &types.Receipt{TransactionIndex: 0}},
 		{Receipt: &types.Receipt{TransactionIndex: 1}},
 		{Receipt: &types.Receipt{TransactionIndex: 2}},
 		{Receipt: &types.Receipt{TransactionIndex: 3}},
 		{Receipt: &types.Receipt{TransactionIndex: 4}},
-	}).Times(2)
+	}}).Times(2)
 
 	processor := &OperaEVMProcessor{
 		processorFactory: factory,
@@ -218,7 +227,8 @@ func TestOperaEVMProcessor_Execute_StateProcessorIntroducesTransactions_Produces
 	})
 
 	// The first patch should index transactions as they are executed.
-	processed := processor.Execute([]*types.Transaction{tx, tx}, math.MaxUint64)
+	summary := processor.Execute([]*types.Transaction{tx, tx}, math.MaxUint64)
+	processed := summary.ProcessedTransactions
 	require.Len(processed, 5)
 	for i, p := range processed {
 		require.Equal(uint(i), p.Receipt.TransactionIndex)
@@ -230,6 +240,142 @@ func TestOperaEVMProcessor_Execute_StateProcessorIntroducesTransactions_Produces
 	for i, p := range processed {
 		require.Equal(uint(i+5), p.Receipt.TransactionIndex)
 	}
+}
+
+func TestOperaEVMProcessor_Execute_BundlePositionsAreProperlyOffset(t *testing.T) {
+	chainId := big.NewInt(1)
+	tx := types.NewTx(&types.LegacyTx{
+		To: &common.Address{0x42}, Nonce: 0, Gas: 21_0000,
+	})
+
+	ctrl := gomock.NewController(t)
+	factory := NewMock_stateProcessorFactory(ctrl)
+	chain := evmcore.NewMockDummyChain(ctrl)
+	stateDB := state.NewMockStateDB(ctrl)
+
+	mockAny := gomock.Any()
+	stateDB.EXPECT().SetTxContext(mockAny, mockAny).AnyTimes()
+	stateDB.EXPECT().BeginTransaction().AnyTimes()
+	stateDB.EXPECT().GetBalance(mockAny).AnyTimes().Return(uint256.NewInt(1e18))
+	stateDB.EXPECT().SubBalance(mockAny, mockAny, mockAny).AnyTimes()
+	stateDB.EXPECT().Prepare(mockAny, mockAny, mockAny, mockAny, mockAny, mockAny).AnyTimes()
+	stateDB.EXPECT().GetNonce(mockAny).AnyTimes().Return(uint64(0))
+	stateDB.EXPECT().SetNonce(mockAny, mockAny, mockAny).AnyTimes()
+	stateDB.EXPECT().GetCode(mockAny).AnyTimes().Return(nil)
+	stateDB.EXPECT().Snapshot().AnyTimes().Return(1)
+	stateDB.EXPECT().Exist(mockAny).AnyTimes().Return(true)
+	stateDB.EXPECT().AddBalance(mockAny, mockAny, mockAny).AnyTimes()
+	stateDB.EXPECT().GetRefund().AnyTimes().Return(uint64(0))
+	stateDB.EXPECT().GetLogs(mockAny, mockAny).AnyTimes()
+	stateDB.EXPECT().EndTransaction().AnyTimes()
+	// bundle specific
+	stateDB.EXPECT().InterTxSnapshot().AnyTimes()
+
+	chainConfig := &params.ChainConfig{ChainID: chainId}
+	upgrades := opera.GetBrioUpgrades()
+	upgrades.TransactionBundles = true
+	stateProcessor := stateProcessorFactory.NewStateProcessor(stateProcessorFactory{}, chainConfig, chain, upgrades)
+	factory.EXPECT().NewStateProcessor(mockAny, mockAny, mockAny).Return(stateProcessor).AnyTimes()
+
+	tests := map[string]struct {
+		lenProcessedTxs         int
+		bundleLength            int
+		transactionStructure    []string
+		expectedBundlePositions []uint32
+	}{
+		"no already processed txs": {
+			lenProcessedTxs:         0,
+			bundleLength:            2,
+			transactionStructure:    []string{"tx", "bundle"},
+			expectedBundlePositions: []uint32{1},
+		},
+		"some already processed txs": {
+			lenProcessedTxs:         3,
+			bundleLength:            2,
+			transactionStructure:    []string{"tx", "bundle"},
+			expectedBundlePositions: []uint32{4},
+		},
+		"only bundles": {
+			lenProcessedTxs:         0,
+			bundleLength:            3,
+			transactionStructure:    []string{"bundle", "bundle", "bundle"},
+			expectedBundlePositions: []uint32{0, 3, 6},
+		},
+		"interleaved bundles and txs": {
+			lenProcessedTxs:         2,
+			bundleLength:            2,
+			transactionStructure:    []string{"tx", "bundle", "tx", "bundle"},
+			expectedBundlePositions: []uint32{3, 6},
+		},
+		"bundle followed by txs": {
+			lenProcessedTxs:         2,
+			bundleLength:            2,
+			transactionStructure:    []string{"bundle", "tx", "tx"},
+			expectedBundlePositions: []uint32{2},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			processedTx := evmcore.ProcessedTransaction{
+				Transaction: nil,
+				Receipt:     &types.Receipt{},
+			}
+			alreadyProcessedTx := make([]evmcore.ProcessedTransaction, test.lenProcessedTxs)
+			for i := range alreadyProcessedTx {
+				alreadyProcessedTx[i] = processedTx
+			}
+
+			bundleTx := simpleBundleTx(t, chainId, test.bundleLength)
+
+			index := new(int)
+			*index = 0
+			next := func() int {
+				(*index)++
+				return int(*index) - 1
+			}
+			stateDB.EXPECT().TxIndex().DoAndReturn(next).AnyTimes()
+
+			processor := &OperaEVMProcessor{
+				processorFactory: factory,
+				statedb:          stateDB,
+				processedTxs:     alreadyProcessedTx,
+			}
+
+			transactions := make([]*types.Transaction, len(test.transactionStructure))
+			for i, txType := range test.transactionStructure {
+				switch txType {
+				case "tx":
+					transactions[i] = tx
+				case "bundle":
+					transactions[i] = bundleTx
+				default:
+					t.Fatalf("unknown transaction type: %s", txType)
+				}
+			}
+
+			summary := processor.Execute(transactions, math.MaxUint64)
+			require.Len(t, summary.ProcessedBundles, len(test.expectedBundlePositions))
+			for i, bundle := range summary.ProcessedBundles {
+				require.Equal(t, test.expectedBundlePositions[i], bundle.Position)
+			}
+		})
+	}
+}
+
+// simpleBundleTx creates a simple bundle with the given number of transactions in the bundle.
+func simpleBundleTx(t *testing.T, chainId *big.Int, numTransactions int) *types.Transaction {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	steps := make([]bundle.BundleStep, 0, numTransactions)
+	for range numTransactions {
+		steps = append(steps, bundle.Step(key, &types.AccessListTx{
+			To: &common.Address{0x42}, Nonce: 0, Gas: 21_0000,
+		}))
+	}
+
+	return bundle.AllOf(steps...)
 }
 
 func TestOperaEVMProcessor_Finalize_ReportsAggregatedNumberOfSkippedTransactions(t *testing.T) {
@@ -255,6 +401,7 @@ func TestOperaEVMProcessor_Finalize_ReportsAggregatedNumberOfSkippedTransactions
 	stateDb.EXPECT().GetRefund().AnyTimes().Return(uint64(0))
 	stateDb.EXPECT().EndTransaction().AnyTimes()
 	stateDb.EXPECT().SetTxContext(any, any).AnyTimes()
+	stateDb.EXPECT().BeginTransaction().AnyTimes()
 	stateDb.EXPECT().TxIndex().AnyTimes()
 	stateDb.EXPECT().GetLogs(any, any).AnyTimes()
 	stateDb.EXPECT().EndBlock(any).AnyTimes()
@@ -284,7 +431,8 @@ func TestOperaEVMProcessor_Finalize_ReportsAggregatedNumberOfSkippedTransactions
 		To: &common.Address{}, Nonce: 1, Gas: 21_0000,
 	})
 
-	processed := processor.Execute(types.Transactions{validTx}, math.MaxUint64)
+	summary := processor.Execute(types.Transactions{validTx}, math.MaxUint64)
+	processed := summary.ProcessedTransactions
 	require.Len(processed, 1)
 	require.Equal(validTx, processed[0].Transaction)
 	require.NotNil(processed[0].Receipt)
@@ -292,7 +440,8 @@ func TestOperaEVMProcessor_Finalize_ReportsAggregatedNumberOfSkippedTransactions
 	_, numSkipped, _ := processor.Finalize()
 	require.Equal(0, numSkipped)
 
-	processed = processor.Execute(types.Transactions{skippedTx}, math.MaxUint64)
+	summary = processor.Execute(types.Transactions{skippedTx}, math.MaxUint64)
+	processed = summary.ProcessedTransactions
 	require.Len(processed, 1)
 	require.Equal(skippedTx, processed[0].Transaction)
 	require.Nil(processed[0].Receipt)
@@ -300,7 +449,8 @@ func TestOperaEVMProcessor_Finalize_ReportsAggregatedNumberOfSkippedTransactions
 	_, numSkipped, _ = processor.Finalize()
 	require.Equal(1, numSkipped)
 
-	processed = processor.Execute(types.Transactions{skippedTx, validTx, skippedTx}, math.MaxUint64)
+	summary = processor.Execute(types.Transactions{skippedTx, validTx, skippedTx}, math.MaxUint64)
+	processed = summary.ProcessedTransactions
 	require.Len(processed, 3)
 	require.Equal(skippedTx, processed[0].Transaction)
 	require.Nil(processed[0].Receipt)
@@ -311,6 +461,106 @@ func TestOperaEVMProcessor_Finalize_ReportsAggregatedNumberOfSkippedTransactions
 
 	_, numSkipped, _ = processor.Finalize()
 	require.Equal(3, numSkipped)
+}
+
+func TestOperaEVMProcessor_Finalize_DoesNotBlockOnSyncChannel_WhenBlockIsOlderThanOneHour(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		stateDb := state.NewMockStateDB(ctrl)
+
+		stateDb.EXPECT().BeginBlock(gomock.Any())
+		stateDb.EXPECT().GetStateHash()
+		// EndBlock should return a channel,but this should be ignored for
+		// blocks older than one hour.
+		stateDb.EXPECT().EndBlock(gomock.Any()).Return(make(<-chan error))
+
+		evmModule := New()
+		blockTime := time.Now().Add(-1*time.Hour - time.Second)
+		processor := evmModule.Start(
+			iblockproc.BlockCtx{
+				Time: inter.FromUnix(blockTime.Unix()),
+			},
+			stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{},
+		)
+
+		finalizeDone := false
+		go func() {
+			_, _, _ = processor.Finalize()
+			finalizeDone = true
+		}()
+
+		synctest.Wait()
+		require.True(t, finalizeDone, "Finalize did not finish for blocks older than one hour")
+	})
+}
+
+func TestOperaEVMProcessor_Finalize_DoesNotBlockOnSyncChannel_WhenSyncChannelIsNil(t *testing.T) {
+	// Underlying db implementations may not implement the possibility to wait on
+	// an async finalize operation. The client must work correctly in these cases.
+
+	synctest.Test(t, func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		stateDb := state.NewMockStateDB(ctrl)
+
+		stateDb.EXPECT().BeginBlock(gomock.Any())
+		stateDb.EXPECT().GetStateHash()
+		// If the sync channel is nil, Finalize should not block even for recent blocks.
+		stateDb.EXPECT().EndBlock(gomock.Any()).Return(nil)
+		evmModule := New()
+		blockTime := time.Now().Add(-1*time.Hour + time.Second)
+		processor := evmModule.Start(
+			iblockproc.BlockCtx{
+				Time: inter.FromUnix(blockTime.Unix()),
+			},
+			stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{},
+		)
+
+		finalizeDone := false
+		go func() {
+			_, _, _ = processor.Finalize()
+			finalizeDone = true
+		}()
+
+		synctest.Wait()
+		require.True(t, finalizeDone, "Finalize did not finish when sync channel was nil")
+	})
+}
+
+func TestOperaEVMProcessor_Finalize_BlockOnSyncChannel_WhenBlockIsYoungerThanOneHour(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+
+		ctrl := gomock.NewController(t)
+		stateDb := state.NewMockStateDB(ctrl)
+
+		stateDb.EXPECT().BeginBlock(gomock.Any())
+		stateDb.EXPECT().GetStateHash()
+
+		syncChannel := make(chan error)
+		stateDb.EXPECT().EndBlock(gomock.Any()).Return(syncChannel)
+
+		evmModule := New()
+		blockTime := time.Now().Add(-1*time.Hour + time.Second)
+		processor := evmModule.Start(
+			iblockproc.BlockCtx{
+				Time: inter.FromUnix(blockTime.Unix()),
+			},
+			stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{},
+		)
+
+		finalizeDone := false
+		go func() {
+			_, _, _ = processor.Finalize()
+			finalizeDone = true
+		}()
+
+		synctest.Wait()
+		require.False(t, finalizeDone, "Finalize finished before sync channel was closed")
+
+		close(syncChannel)
+
+		synctest.Wait()
+		require.True(t, finalizeDone, "Finalize did not finish after sync channel was closed")
+	})
 }
 
 // onNewLog is a helper interface to allow mocking the onNewLog function

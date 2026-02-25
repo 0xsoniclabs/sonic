@@ -43,11 +43,12 @@ func (m *Mock_transactionRunner) EXPECT() *Mock_transactionRunnerMockRecorder {
 }
 
 // runRegularTransaction mocks base method.
-func (m *Mock_transactionRunner) runRegularTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) ProcessedTransaction {
+func (m *Mock_transactionRunner) runRegularTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) (ProcessedTransaction, Status) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "runRegularTransaction", ctxt, tx, txIndex)
 	ret0, _ := ret[0].(ProcessedTransaction)
-	return ret0
+	ret1, _ := ret[1].(Status)
+	return ret0, ret1
 }
 
 // runRegularTransaction indicates an expected call of runRegularTransaction.
@@ -57,17 +58,34 @@ func (mr *Mock_transactionRunnerMockRecorder) runRegularTransaction(ctxt, tx, tx
 }
 
 // runSponsoredTransaction mocks base method.
-func (m *Mock_transactionRunner) runSponsoredTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) []ProcessedTransaction {
+func (m *Mock_transactionRunner) runSponsoredTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) ([]ProcessedTransaction, Status) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "runSponsoredTransaction", ctxt, tx, txIndex)
 	ret0, _ := ret[0].([]ProcessedTransaction)
-	return ret0
+	ret1, _ := ret[1].(Status)
+	return ret0, ret1
 }
 
 // runSponsoredTransaction indicates an expected call of runSponsoredTransaction.
 func (mr *Mock_transactionRunnerMockRecorder) runSponsoredTransaction(ctxt, tx, txIndex any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "runSponsoredTransaction", reflect.TypeOf((*Mock_transactionRunner)(nil).runSponsoredTransaction), ctxt, tx, txIndex)
+}
+
+// runTransactionBundle mocks base method.
+func (m *Mock_transactionRunner) runTransactionBundle(ctxt *runContext, tx *types.Transaction, txIndex int) ([]ProcessedTransaction, *ProcessedBundle, Status) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "runTransactionBundle", ctxt, tx, txIndex)
+	ret0, _ := ret[0].([]ProcessedTransaction)
+	ret1, _ := ret[1].(*ProcessedBundle)
+	ret2, _ := ret[2].(Status)
+	return ret0, ret1, ret2
+}
+
+// runTransactionBundle indicates an expected call of runTransactionBundle.
+func (mr *Mock_transactionRunnerMockRecorder) runTransactionBundle(ctxt, tx, txIndex any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "runTransactionBundle", reflect.TypeOf((*Mock_transactionRunner)(nil).runTransactionBundle), ctxt, tx, txIndex)
 }
 
 // Mock_evm is a mock of _evm interface.

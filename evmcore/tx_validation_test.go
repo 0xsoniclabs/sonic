@@ -22,7 +22,9 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -1224,6 +1226,43 @@ func TestValidateTx_RejectsTx_WhenStateValidationFails(t *testing.T) {
 	}
 }
 
+func TestValidateTx_RejectsTx_WhenBundleTransactionValidationFails(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	signer := NewMockSigner(ctrl)
+	signer.EXPECT().Sender(gomock.Any()).AnyTimes()
+	signer.EXPECT().Equal(gomock.Any()).AnyTimes()
+
+	chain := NewMockStateReader(ctrl)
+	chain.EXPECT().CurrentBaseFee().Return(big.NewInt(5)).AnyTimes()
+	chain.EXPECT().CurrentMaxGasLimit().Return(uint64(100_000)).AnyTimes()
+
+	state := state.NewMockStateDB(ctrl)
+	state.EXPECT().GetNonce(gomock.Any()).Return(uint64(0)).AnyTimes()
+	state.EXPECT().GetBalance(gomock.Any()).Return(uint256.NewInt(0)).AnyTimes()
+	state.EXPECT().GetCode(gomock.Any()).Return(nil).AnyTimes()
+
+	invalidBundle := types.NewTx(&types.LegacyTx{
+		To:  &bundle.BundleProcessor,
+		Gas: 100_000,
+	})
+
+	require.True(bundle.IsEnvelope(invalidBundle))
+	require.ErrorIs(validateTx(
+		invalidBundle,
+		poolOptions{
+			isLocal: true,
+		},
+		NetworkRules{
+			transactionBundles: true,
+		},
+		chain,
+		state,
+		nil,
+		signer,
+	), ErrBundleTransactionInvalid)
+}
+
 func TestValidateTx_AcceptsZeroGasPriceTransactions_WhenSubsidiesAreEnabled(t *testing.T) {
 	tests := []types.TxData{
 		&types.LegacyTx{
@@ -1374,6 +1413,135 @@ func Test_validateSponsoredTransactions_RejectsSponsoredTransactions(t *testing.
 			require.ErrorIs(t, err, test.expectedError)
 		})
 	}
+}
+
+func Test_validateBundleTransactions_AcceptNonBundleTransactions(t *testing.T) {
+	tests := map[string]*types.Transaction{
+		"legacy tx":      types.NewTx(&types.LegacyTx{}),
+		"access list tx": types.NewTx(&types.AccessListTx{}),
+		"dynamic fee tx": types.NewTx(&types.DynamicFeeTx{}),
+		"blob tx":        types.NewTx(&types.BlobTx{}),
+	}
+
+	for name, tx := range tests {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+			require.False(bundle.IsEnvelope(tx))
+			require.NoError(validateBundleTransactions(tx, NetworkRules{}, nil, nil))
+		})
+	}
+}
+
+func Test_validateBundleTransactions_IfBundleStateIsNotRunning_RejectBundleTransaction(t *testing.T) {
+
+	tests := map[string]struct {
+		bundleState BundleState
+		valid       bool
+	}{
+		"runnable": {
+			bundleState: BundleStateRunnable,
+			valid:       true,
+		},
+		"temporary_blocked": {
+			bundleState: BundleStateTemporaryBlocked,
+			valid:       true,
+		},
+		"permanently_blocked": {
+			bundleState: BundleStatePermanentlyBlocked,
+			valid:       false,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+			tx := bundle.AllOf()
+			require.True(bundle.IsEnvelope(tx))
+
+			getBundleState := func(ChainState, *types.Transaction) BundleState {
+				return test.bundleState
+			}
+
+			rules := NetworkRules{}
+			rules.transactionBundles = true
+			err := validateBundleTransactionsInternal(tx, rules, nil, nil, getBundleState)
+			if test.valid {
+				require.NoError(err)
+			} else {
+				require.ErrorIs(err, ErrBundlePermanentlyBlocked)
+			}
+		})
+	}
+}
+
+func Test_validateBundleTransactions_IfBundledTransactionsAreEnabled_AcceptValidBundleTransaction(t *testing.T) {
+	require := require.New(t)
+	tx := bundle.AllOf()
+	require.True(bundle.IsEnvelope(tx))
+
+	getBundleState := func(ChainState, *types.Transaction) BundleState {
+		return BundleStateRunnable
+	}
+
+	rules := NetworkRules{}
+	rules.transactionBundles = false
+	err := validateBundleTransactionsInternal(tx, rules, nil, nil, getBundleState)
+	require.ErrorIs(err, ErrBundleTransactionsDisabled)
+	rules.transactionBundles = true
+	err = validateBundleTransactionsInternal(tx, rules, nil, nil, getBundleState)
+	require.NoError(err)
+}
+
+func Test_validateBundleTransactions_RejectsInvalidBundleTransactions(t *testing.T) {
+	require := require.New(t)
+	tx := types.NewTx(&types.LegacyTx{
+		To:   &bundle.BundleProcessor,
+		Data: []byte("invalid bundle data"),
+	})
+	require.True(bundle.IsEnvelope(tx))
+
+	rules := NetworkRules{transactionBundles: true}
+	require.ErrorIs(validateBundleTransactions(tx, rules, nil, nil),
+		ErrBundleTransactionInvalid)
+}
+
+func TestValidateBundleTransactions_RejectsBundleWhenPayloadTransactionIsInvalid(t *testing.T) {
+	require := require.New(t)
+
+	bundleTx := bundle.NewBuilder().Latest(0).Build() // bundle is outdated
+
+	rules, chain, state := makeValidateTxParameters(t)
+	chain.EXPECT().CurrentRules().Return(opera.Rules{NetworkID: 1}).AnyTimes()
+	nextBlock := &EvmBlock{
+		EvmHeader: EvmHeader{
+			Number: big.NewInt(1),
+		},
+	}
+	chain.EXPECT().CurrentBlock().Return(nextBlock).AnyTimes()
+
+	rules.transactionBundles = true
+	err := validateBundleTransactions(bundleTx, rules, chain, state)
+	require.ErrorContains(err, "bundle is permanently blocked")
+}
+
+func makeValidateTxParameters(t *testing.T) (NetworkRules, *MockStateReader, *state.MockStateDB) {
+	rules := NetworkRules{
+		eip2718: true,
+		eip1559: true,
+		eip4844: true,
+		eip7702: true,
+	}
+	ctrl := gomock.NewController(t)
+
+	chain := NewMockStateReader(ctrl)
+	chain.EXPECT().CurrentBaseFee().Return(big.NewInt(5)).AnyTimes()
+	chain.EXPECT().CurrentMaxGasLimit().Return(uint64(100_000)).AnyTimes()
+	state := state.NewMockStateDB(ctrl)
+	state.EXPECT().GetNonce(gomock.Any()).Return(uint64(0)).AnyTimes()
+	state.EXPECT().GetBalance(gomock.Any()).Return(uint256.NewInt(1_000_000)).AnyTimes()
+	state.EXPECT().GetCode(gomock.Any()).Return(nil).AnyTimes()
+
+	return rules, chain, state
 }
 
 func TestValidateTx_AllowsSponsoredZeroGasPriceTransactions_WhenSubsidiesAreFunded(t *testing.T) {

@@ -21,6 +21,7 @@ import (
 	"math"
 	"math/big"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice/gaspricelimits"
 	"github.com/0xsoniclabs/sonic/inter/state"
@@ -58,7 +59,8 @@ type NetworkRules struct {
 	eip7623 bool // Fork indicator whether we are using EIP-7623 floor gas validation.
 	eip7702 bool // Fork indicator whether we are using EIP-7702 set code transactions.
 
-	gasSubsidies bool // Indicator whether gas subsidies are active.
+	gasSubsidies       bool // Indicator whether gas subsidies are active.
+	transactionBundles bool // Indicator whether transaction bundles are active.
 }
 
 // Signer wraps types.Signer to allow mocking it in tests.
@@ -102,6 +104,10 @@ func validateTx(
 	}
 
 	if err := validateSponsoredTransactions(tx, netRules, subsidiesChecker); err != nil {
+		return err
+	}
+
+	if err := validateBundleTransactions(tx, netRules, chain, state); err != nil {
 		return err
 	}
 
@@ -243,7 +249,8 @@ func ValidateTxForBlock(tx *types.Transaction, netRules NetworkRules, chain Stat
 
 	// Ensure Sonic-specific hard bounds
 	isSponsorRequest := netRules.gasSubsidies && subsidies.IsSponsorshipRequest(tx)
-	if baseFee := chain.CurrentBaseFee(); !isSponsorRequest && baseFee != nil {
+	isBundle := netRules.transactionBundles && bundle.IsEnvelope(tx)
+	if baseFee := chain.CurrentBaseFee(); !isSponsorRequest && !isBundle && baseFee != nil {
 		limit := gaspricelimits.GetMinimumFeeCapForTransactionPool(baseFee)
 		if tx.GasFeeCapIntCmp(limit) < 0 {
 			log.Trace("Rejecting underpriced tx: minimumBaseFee", "minimumBaseFee", baseFee, "limit", limit, "tx.GasFeeCap", tx.GasFeeCap())
@@ -340,6 +347,11 @@ func validateSponsoredTransactions(
 	netRules NetworkRules,
 	SubsidiesChecker subsidiesChecker,
 ) error {
+	// Transaction Bundles are identified as sponsorship requests, but they are
+	// checked independently.
+	if bundle.IsEnvelope(tx) {
+		return nil
+	}
 
 	// No check is conducted if gas subsidies are not active.
 	if !netRules.gasSubsidies {
@@ -357,6 +369,65 @@ func validateSponsoredTransactions(
 	// Sponsored transactions are only valid if they are explicitly marked as sponsored by the subsidies checker.
 	if !SubsidiesChecker.isSponsored(tx) {
 		return ErrSponsorshipRejected
+	}
+
+	return nil
+}
+
+// validateBundleTransactions checks if a transaction is a bundle transaction and if so,
+// validates the bundle structure and the validity of each transaction in the bundle.
+// if the bundle is malformed or any bundle-only transactions is invalid,
+// it returns an error rejecting the transaction.
+func validateBundleTransactions(
+	tx *types.Transaction,
+	netRules NetworkRules,
+	chainState StateReader,
+	// Although state can be retrieved from chain, it is passed explicitly to avoid extra db-pool accesses
+	stateDb state.StateDB,
+) error {
+	return validateBundleTransactionsInternal(
+		tx,
+		netRules,
+		chainState,
+		stateDb,
+		GetBundleState,
+	)
+}
+
+func validateBundleTransactionsInternal(
+	tx *types.Transaction,
+	netRules NetworkRules,
+	chainState StateReader,
+	// Although state can be retrieved from chain, it is passed explicitly to avoid extra db-pool accesses
+	stateDb state.StateDB,
+	getBundleState func(ChainState, *types.Transaction) BundleState,
+) error {
+	// This check only covers bundle transactions, ignore the rest.
+	if !bundle.IsEnvelope(tx) {
+		return nil
+	}
+
+	// If transaction bundles are not active, reject the transaction.
+	if !netRules.transactionBundles {
+		return ErrBundleTransactionsDisabled
+	}
+
+	// If the transaction is a bundle, validate its structure and content.
+	_, _, err := bundle.ValidateTransactionBundle(tx)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrBundleTransactionInvalid, err)
+	}
+
+	// Check that the bundle is runnable.
+	chainAdapter := &preCheckChainAdapter{
+		chainState: chainState,
+		stateDB:    stateDb,
+	}
+	state := getBundleState(chainAdapter, tx)
+	if state == BundleStatePermanentlyBlocked {
+		// TODO: have `GetBundleState` provide more context on why the bundle is
+		// blocked and include that in the error message.
+		return ErrBundlePermanentlyBlocked
 	}
 
 	return nil

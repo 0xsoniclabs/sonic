@@ -18,10 +18,12 @@ package evmmodule
 
 import (
 	"math/big"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
@@ -139,31 +141,40 @@ func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlo
 	return evmcore.NewEvmBlock(h, txs)
 }
 
-func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) []evmcore.ProcessedTransaction {
+func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) evmcore.ExecutionSummary {
 	evmProcessor := p.processorFactory.NewStateProcessor(p.evmCfg, p.reader, p.rules.Upgrades)
-	txsOffset := uint(len(p.processedTxs))
+
+	txsOffset := uint(0)
+	for _, tx := range p.processedTxs {
+		if tx.Receipt != nil {
+			txsOffset++
+		}
+	}
 
 	vmConfig := opera.GetVmConfig(p.rules)
 
 	// Process txs
 	evmBlock := p.evmBlockWith(txs)
-	processed := evmProcessor.Process(evmBlock, p.statedb, vmConfig, gasLimit, &p.gasUsed, func(l *types.Log) {
+	summary := evmProcessor.Process(evmBlock, p.statedb, vmConfig, gasLimit, &p.gasUsed, func(l *types.Log) {
 		// Note: l.Index is properly set before
 		l.TxIndex += txsOffset
 		p.onNewLog(l)
 	})
 
 	if txsOffset > 0 {
-		for _, p := range processed {
+		for _, p := range summary.ProcessedTransactions {
 			if p.Receipt != nil {
 				p.Receipt.TransactionIndex += txsOffset
 			}
 		}
+		for i := range summary.ProcessedBundles {
+			summary.ProcessedBundles[i].Position += uint32(txsOffset)
+		}
 	}
 
-	p.processedTxs = append(p.processedTxs, processed...)
+	p.processedTxs = append(p.processedTxs, summary.ProcessedTransactions...)
 
-	return processed
+	return summary
 }
 
 func (p *OperaEVMProcessor) Finalize() (evmBlock *evmcore.EvmBlock, numSkipped int, receipts types.Receipts) {
@@ -181,7 +192,18 @@ func (p *OperaEVMProcessor) Finalize() (evmBlock *evmcore.EvmBlock, numSkipped i
 	evmBlock = p.evmBlockWith(transactions)
 
 	// Commit block
-	p.statedb.EndBlock(evmBlock.Number.Uint64())
+	done := p.statedb.EndBlock(evmBlock.Number.Uint64())
+	// Use asynchronous commit for blocks older than one hour to speed up catching up.
+	// For recent blocks (within the last hour), wait for the commit to complete
+	// to ensure the latest state is available for both live and archive databases.
+	if time.Since(evmBlock.Time.Time()) < 1*time.Hour && done != nil {
+		if err := <-done; err != nil {
+			// the underlying database has collected an error during finalize or
+			// a previous operation. State consistency and its persistence my
+			// have been compromised.
+			log.Error("Failed to finalize block %v: %v", evmBlock.Number, err)
+		}
+	}
 
 	// Get state root
 	evmBlock.Root = p.statedb.GetStateHash()
@@ -209,7 +231,7 @@ type _stateProcessor interface {
 		gasLimit uint64,
 		gasUsed *uint64,
 		onNewLog func(*types.Log),
-	) []evmcore.ProcessedTransaction
+	) evmcore.ExecutionSummary
 }
 
 // stateProcessorFactory is the production implementation of the

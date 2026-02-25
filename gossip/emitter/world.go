@@ -59,6 +59,11 @@ type (
 		StateDB() state.StateDB
 		GetUpgradeHeights() []opera.UpgradeHeight
 		Header(hash common.Hash, number uint64) *evmcore.EvmHeader
+
+		// HasBundleRecentlyBeenProcessed returns true if a bundle with the
+		// given execution plan hash has been processed recently, meaning within
+		// the last bundle.MaxBlockRange blocks.
+		HasBundleRecentlyBeenProcessed(execPlanHash common.Hash) bool
 	}
 
 	// TxSigner is a re-export of the types.Signer interface to allow
@@ -93,6 +98,11 @@ type TxPool interface {
 	// Has returns an indicator whether txpool has a transaction cached with the
 	// given hash.
 	Has(hash common.Hash) bool
+
+	// HasBundle returns an indicator whether txpool has a bundle cached with
+	// the given execution plan hash.
+	HasBundle(execPlanHash common.Hash) bool
+
 	// Pending should return pending transactions.
 	// The slice should be modifiable by the caller.
 	Pending(enforceTips bool) (map[common.Address]types.Transactions, error)

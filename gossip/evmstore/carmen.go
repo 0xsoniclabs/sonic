@@ -310,8 +310,20 @@ func (c *CarmenStateDB) GetRefund() uint64 {
 	return c.db.GetRefund()
 }
 
+func (c *CarmenStateDB) BeginTransaction() {
+	c.db.BeginTransaction()
+}
+
 func (c *CarmenStateDB) EndTransaction() {
 	c.db.EndTransaction()
+}
+
+func (c *CarmenStateDB) InterTxSnapshot() int {
+	return int(c.db.InterTxSnapshot())
+}
+
+func (c *CarmenStateDB) RevertToInterTxSnapshot(id int) error {
+	return c.db.RevertToInterTxSnapshot(carmen.InterTxSnapshotID(id))
 }
 
 func (c *CarmenStateDB) Finalise(bool) {
@@ -335,10 +347,11 @@ func (c *CarmenStateDB) BeginBlock(number uint64) {
 	}
 }
 
-func (c *CarmenStateDB) EndBlock(number uint64) {
+func (c *CarmenStateDB) EndBlock(number uint64) <-chan error {
 	if db, ok := c.db.(carmen.StateDB); ok {
-		db.EndBlock(number)
+		return db.EndBlock(number)
 	}
+	return nil
 }
 
 func (c *CarmenStateDB) GetStateHash() common.Hash {

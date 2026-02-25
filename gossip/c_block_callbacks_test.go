@@ -44,6 +44,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/evmmodule"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
@@ -277,7 +278,7 @@ func TestConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testi
 				txListenerModule.EXPECT().Start(_any, _any, _any, _any).Return(txListener)
 
 				evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
-				evmProcessor.EXPECT().Execute(_any, _any).Return(nil).MinTimes(1)
+				evmProcessor.EXPECT().Execute(_any, _any).MinTimes(1)
 				evmProcessor.EXPECT().Finalize().Return(&evmcore.EvmBlock{
 					EvmHeader: evmcore.EvmHeader{
 						BaseFee: big.NewInt(0),
@@ -650,6 +651,51 @@ func TestFilterNonPermissibleTransactions_InactiveWithoutAllegro(t *testing.T) {
 	require.Equal([]*types.Transaction{valid}, filterNonPermissibleTransactions(txs, &withAllegro, nil, nil))
 }
 
+func TestFilterNonPermissibleTransactions_RejectsBundleOnlyTransactions(t *testing.T) {
+	tests := map[string]struct {
+		tx             *types.Transaction
+		bundlesEnabled bool
+		reject         bool
+	}{
+		"do not reject if disabled": {
+			tx: types.NewTx(&types.AccessListTx{
+				AccessList: []types.AccessTuple{{Address: bundle.BundleOnly}},
+			}),
+			bundlesEnabled: false,
+			reject:         false,
+		},
+		"reject if enabled": {
+			tx: types.NewTx(&types.AccessListTx{
+				AccessList: []types.AccessTuple{{Address: bundle.BundleOnly}},
+			}),
+			bundlesEnabled: true,
+			reject:         true,
+		},
+		"accept non bundle-only": {
+			tx:             types.NewTx(&types.LegacyTx{}),
+			bundlesEnabled: true,
+			reject:         false,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			upgrades := opera.GetBrioUpgrades()
+			upgrades.TransactionBundles = test.bundlesEnabled
+			rules := opera.Rules{
+				Upgrades: upgrades,
+			}
+			txs := []*types.Transaction{test.tx}
+			filtered := filterNonPermissibleTransactions(txs, &rules, nil, nil)
+			if test.reject {
+				require.Empty(t, filtered, "transaction should be rejected")
+			} else {
+				require.Equal(t, txs, filtered, "transaction should be accepted")
+			}
+		})
+	}
+}
+
 func TestFilterNonPermissibleTransactions_FiltersNonPermissibleTransactions(t *testing.T) {
 	rules := opera.Rules{
 		Upgrades: opera.Upgrades{
@@ -939,13 +985,19 @@ func TestProcessUserTransactions_ForwardsBlockGasLimitToEVMProcessor(t *testing.
 	// Mock EVMProcessor.Execute to return receipts for each tx
 	evmProcessor.EXPECT().
 		Execute([]*types.Transaction{tx1}, userTransactionGasLimit).
-		Return([]evmcore.ProcessedTransaction{{Transaction: tx1, Receipt: receipt1}})
+		Return(evmcore.ExecutionSummary{
+			ProcessedTransactions: []evmcore.ProcessedTransaction{{Transaction: tx1, Receipt: receipt1}},
+		})
 	evmProcessor.EXPECT().
 		Execute([]*types.Transaction{tx2}, userTransactionGasLimit-receipt1.GasUsed).
-		Return([]evmcore.ProcessedTransaction{{Transaction: tx2, Receipt: receipt2}})
+		Return(evmcore.ExecutionSummary{
+			ProcessedTransactions: []evmcore.ProcessedTransaction{{Transaction: tx2, Receipt: receipt2}},
+		})
 	evmProcessor.EXPECT().
 		Execute([]*types.Transaction{tx3}, userTransactionGasLimit-receipt1.GasUsed-receipt2.GasUsed).
-		Return([]evmcore.ProcessedTransaction{{Transaction: tx3, Receipt: receipt3}})
+		Return(evmcore.ExecutionSummary{
+			ProcessedTransactions: []evmcore.ProcessedTransaction{{Transaction: tx3, Receipt: receipt3}},
+		})
 
 	orderedTxs := []*types.Transaction{tx1, tx2, tx3}
 	processUserTransactions(evmProcessor, blockBuilder, orderedTxs, userTransactionGasLimit)
@@ -965,9 +1017,11 @@ func TestProcessUserTransactions_TransactionsWithNoReceiptAreNotIncluded(t *test
 	// Simulate skipped transaction (no receipt)
 	evmProcessor.EXPECT().
 		Execute([]*types.Transaction{tx}, gomock.Any()).
-		Return([]evmcore.ProcessedTransaction{{Transaction: tx, Receipt: nil}})
+		Return(evmcore.ExecutionSummary{
+			ProcessedTransactions: []evmcore.ProcessedTransaction{{Transaction: tx, Receipt: nil}},
+		})
 
-	skippedCount :=
+	skippedCount, _ :=
 		processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{tx}, 10000)
 
 	require.Equal(t, 0, skippedCount,
@@ -989,7 +1043,7 @@ func TestProcessUserTransactions_DeductsInternalTxsSize(t *testing.T) {
 
 	// Create a user tx that would only fit without the internal tx
 	userTx := types.NewTx(&types.LegacyTx{Data: make([]byte, params.MaxBlockSize/2)})
-	skippedCount := processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{userTx}, 10000)
+	skippedCount, _ := processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{userTx}, 10000)
 
 	// Both internal and user tx should be present
 	gotTxs := blockBuilder.GetTransactions()
@@ -1011,12 +1065,16 @@ func TestProcessUserTransactions_SkipsTxsExceedingSizeLimit(t *testing.T) {
 
 	evmProcessor.EXPECT().
 		Execute([]*types.Transaction{tx0}, gomock.Any()).
-		Return([]evmcore.ProcessedTransaction{{Transaction: tx0, Receipt: &types.Receipt{}}})
+		Return(evmcore.ExecutionSummary{
+			ProcessedTransactions: []evmcore.ProcessedTransaction{{Transaction: tx0, Receipt: &types.Receipt{}}},
+		})
 	evmProcessor.EXPECT().
 		Execute([]*types.Transaction{tx1}, gomock.Any()).
-		Return([]evmcore.ProcessedTransaction{{Transaction: tx1, Receipt: &types.Receipt{}}})
+		Return(evmcore.ExecutionSummary{
+			ProcessedTransactions: []evmcore.ProcessedTransaction{{Transaction: tx1, Receipt: &types.Receipt{}}},
+		})
 
-	skippedCount :=
+	skippedCount, _ :=
 		processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{largeTx, tx0, tx1}, 10000)
 
 	require.Equal(t, 1, skippedCount)
@@ -1032,6 +1090,7 @@ func TestProcessUserTransactions_InternalTransactionsHaveNoImpactOnTheUserTransa
 
 	statedb.EXPECT().BeginBlock(gomock.Any())
 	statedb.EXPECT().SetTxContext(gomock.Any(), gomock.Any()).AnyTimes()
+	statedb.EXPECT().BeginTransaction().AnyTimes()
 	statedb.EXPECT().GetBalance(gomock.Any()).Return(uint256.NewInt(0)).AnyTimes()
 	statedb.EXPECT().SubBalance(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	statedb.EXPECT().Prepare(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
@@ -1064,7 +1123,7 @@ func TestProcessUserTransactions_InternalTransactionsHaveNoImpactOnTheUserTransa
 
 	internalTx := types.NewTx(&types.LegacyTx{To: &common.Address{0x41}, Gas: 21_000})
 	internalTxGasLimit := uint64(30_000)
-	internalProcessedTxs := evmProcessor.Execute([]*types.Transaction{internalTx}, internalTxGasLimit)
+	internalProcessedTxs := evmProcessor.Execute([]*types.Transaction{internalTx}, internalTxGasLimit).ProcessedTransactions
 	require.Len(t, internalProcessedTxs, 1)
 
 	userTx0 := types.NewTx(&types.LegacyTx{To: &common.Address{0x42}, Gas: 21_000})
@@ -1073,7 +1132,7 @@ func TestProcessUserTransactions_InternalTransactionsHaveNoImpactOnTheUserTransa
 	// the user transaction only fits into the user transaction gas limit if
 	// the internal transaction gas is not counted towards it
 	userTransactionGasLimit := uint64(30_000)
-	skippedCount :=
+	skippedCount, _ :=
 		processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{userTx0, skippedTx}, userTransactionGasLimit)
 
 	// the skipped transaction is counted by the evm processor
@@ -1132,15 +1191,19 @@ func TestProcessUserTransactions_SponsoredTxSizeIsAccountedCorrectly(t *testing.
 
 			evmProcessor.EXPECT().
 				Execute([]*types.Transaction{tx0}, gomock.Any()).
-				Return([]evmcore.ProcessedTransaction{{Transaction: tx0, Receipt: &types.Receipt{}}})
+				Return(evmcore.ExecutionSummary{
+					ProcessedTransactions: []evmcore.ProcessedTransaction{{Transaction: tx0, Receipt: &types.Receipt{}}},
+				})
 			evmProcessor.EXPECT().
 				Execute([]*types.Transaction{tx1}, gomock.Any()).
-				Return(processedTx1)
+				Return(evmcore.ExecutionSummary{ProcessedTransactions: processedTx1})
 			evmProcessor.EXPECT().
 				Execute([]*types.Transaction{tx2}, gomock.Any()).
-				Return([]evmcore.ProcessedTransaction{{Transaction: tx2, Receipt: &types.Receipt{}}}).AnyTimes()
+				Return(evmcore.ExecutionSummary{
+					ProcessedTransactions: []evmcore.ProcessedTransaction{{Transaction: tx2, Receipt: &types.Receipt{}}},
+				}).AnyTimes()
 
-			skippedCount := processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{tx0, tx1, tx2}, 10000)
+			skippedCount, _ := processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{tx0, tx1, tx2}, 10000)
 
 			gotTxs := blockBuilder.GetTransactions()
 			require.Contains(t, gotTxs, tx0)
@@ -1187,7 +1250,7 @@ func TestProcessUserTransactions_SkipUserTransactionIfInternalTransactionsExceed
 
 			// Create a user tx that would only fit without the internal tx
 			userTx := types.NewTx(&types.LegacyTx{})
-			skippedCount := processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{userTx}, 10000)
+			skippedCount, _ := processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{userTx}, 10000)
 
 			// Only internal tx should be present
 			gotTxs := blockBuilder.GetTransactions()

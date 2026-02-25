@@ -28,6 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -59,6 +60,14 @@ func NewStateProcessor(
 	}
 }
 
+// ExecutionSummary contains the result of processing a list of transactions,
+// including the list of processed transactions with their receipts and the list
+// of processed bundles.
+type ExecutionSummary struct {
+	ProcessedTransactions []ProcessedTransaction
+	ProcessedBundles      []ProcessedBundle
+}
+
 // ProcessedTransaction represents a transaction that was considered for
 // inclusion in a block by the state processor. It contains the transaction
 // itself and the receipt either confirming its execution, or nil if the
@@ -66,6 +75,13 @@ func NewStateProcessor(
 type ProcessedTransaction struct {
 	Transaction *types.Transaction
 	Receipt     *types.Receipt
+}
+
+// ProcessedBundle summarizes the result of a processed bundle.
+type ProcessedBundle struct {
+	ExecutionPlanHash common.Hash
+	Position          uint32 // < position in the block transaction list
+	Count             uint32 // < number of transactions from this bundle in the block transaction list
 }
 
 // Process processes the state changes according to the Ethereum rules by running
@@ -93,7 +109,7 @@ type ProcessedTransaction struct {
 func (p *StateProcessor) Process(
 	block *EvmBlock, statedb state.StateDB, cfg vm.Config, gasLimit uint64,
 	usedGas *uint64, onNewLog func(*types.Log),
-) []ProcessedTransaction {
+) ExecutionSummary {
 	sonicDifficulty := big.NewInt(1)
 	return p.ProcessWithDifficulty(block, statedb, cfg, gasLimit, usedGas, onNewLog, sonicDifficulty)
 }
@@ -105,7 +121,7 @@ func (p *StateProcessor) Process(
 func (p *StateProcessor) ProcessWithDifficulty(
 	block *EvmBlock, statedb state.StateDB, cfg vm.Config, gasLimit uint64,
 	usedGas *uint64, onNewLog func(*types.Log), difficulty *big.Int,
-) []ProcessedTransaction {
+) ExecutionSummary {
 	var (
 		gp           = new(core.GasPool).AddGas(gasLimit)
 		header       = block.Header()
@@ -171,9 +187,18 @@ func newRunContext(
 	}
 }
 
+type Status int
+
+const (
+	StatusSuccessful Status = 0
+	StatusFailed     Status = 1
+	StatusSkipped    Status = 2
+)
+
 // runTransaction is a helper function to process a list of transactions. It
-// returns a list of ProcessedTransaction, containing the transaction and its
-// receipt (or nil if the transaction was skipped).
+// returns an ExecutionSummary listing ProcessedTransactions, containing the
+// transaction and its receipt (or nil if the transaction was skipped) as well
+// as processed bundles.
 //
 // The function is intended to be used by both the Process function and the
 // incremental transaction processor (BeginBlock/TransactionProcessor).
@@ -181,29 +206,53 @@ func runTransactions(
 	context *runContext,
 	transactions types.Transactions,
 	txIndexOffset int,
-) []ProcessedTransaction {
+) ExecutionSummary {
 	processed := make([]ProcessedTransaction, 0, len(transactions))
+	var bundles []ProcessedBundle
 	for _, tx := range transactions {
-		nextId := len(processed) + txIndexOffset
-		if context.upgrades.GasSubsidies && subsidies.IsSponsorshipRequest(tx) {
-			processed = append(processed,
-				context.runner.runSponsoredTransaction(context, tx, nextId)...,
-			)
-		} else {
-			processed = append(processed,
-				context.runner.runRegularTransaction(context, tx, nextId),
-			)
+		nextId := txIndexOffset
+		for _, p := range processed {
+			if p.Receipt != nil {
+				nextId++
+			}
+		}
+		txs, processedBundle, _ := runTransaction(context, tx, nextId)
+		processed = append(processed, txs...)
+		if processedBundle != nil {
+			bundles = append(bundles, *processedBundle)
 		}
 	}
-	return processed
+	return ExecutionSummary{
+		ProcessedTransactions: processed,
+		ProcessedBundles:      bundles,
+	}
+}
+
+func runTransaction(
+	context *runContext,
+	tx *types.Transaction,
+	txIndexOffset int,
+) ([]ProcessedTransaction, *ProcessedBundle, Status) {
+	// Since a transaction bundle has a gas-price of 0 it would be considered a
+	// sponsorship request. Thus, we need to check for bundles first.
+	if context.upgrades.TransactionBundles && bundle.IsEnvelope(tx) {
+		return context.runner.runTransactionBundle(context, tx, txIndexOffset)
+	} else if context.upgrades.GasSubsidies && subsidies.IsSponsorshipRequest(tx) {
+		res, status := context.runner.runSponsoredTransaction(context, tx, txIndexOffset)
+		return res, nil, status
+	} else {
+		res, status := context.runner.runRegularTransaction(context, tx, txIndexOffset)
+		return []ProcessedTransaction{res}, nil, status
+	}
 }
 
 // _transactionRunner is an interface for components implementing the logic
 // required for running transactions with various rules, e.g. regular or
 // sponsored transactions.
 type _transactionRunner interface {
-	runRegularTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) ProcessedTransaction
-	runSponsoredTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) []ProcessedTransaction
+	runRegularTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) (ProcessedTransaction, Status)
+	runSponsoredTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) ([]ProcessedTransaction, Status)
+	runTransactionBundle(ctxt *runContext, tx *types.Transaction, txIndex int) ([]ProcessedTransaction, *ProcessedBundle, Status)
 }
 
 // transactionRunner implements the _transactionRunner interface by using an
@@ -216,29 +265,40 @@ func (r *transactionRunner) runRegularTransaction(
 	ctxt *runContext,
 	tx *types.Transaction,
 	txIndex int,
-) ProcessedTransaction {
-	return r.evm.runWithBaseFeeCheck(ctxt, tx, txIndex)
+) (ProcessedTransaction, Status) {
+	res := r.evm.runWithBaseFeeCheck(ctxt, tx, txIndex)
+	status := StatusSkipped
+	if res.Receipt != nil {
+		if res.Receipt.Status == types.ReceiptStatusSuccessful {
+			status = StatusSuccessful
+		} else {
+			status = StatusFailed
+		}
+	}
+	return res, status
 }
 
 func (r *transactionRunner) runSponsoredTransaction(
 	ctxt *runContext,
 	tx *types.Transaction,
 	txIndex int,
-) []ProcessedTransaction {
+) ([]ProcessedTransaction, Status) {
 	// Run the IsCovered query in a snapshot to avoid spilling any side-effects
 	// like warm storage slots or refunds into the actual transaction.
+	ctxt.statedb.BeginTransaction()
 	snapshot := ctxt.statedb.Snapshot()
 	covered, fundId, config, err := subsidies.IsCovered(
 		ctxt.upgrades, r.evm, ctxt.signer, tx, ctxt.baseFee,
 	)
 	ctxt.statedb.RevertToSnapshot(snapshot)
+	ctxt.statedb.EndTransaction()
 	if err != nil {
 		log.Warn("Failed to query subsidies registry", "tx", tx.Hash().Hex(), "err", err)
-		return []ProcessedTransaction{{Transaction: tx}}
+		return []ProcessedTransaction{{Transaction: tx}}, StatusSkipped
 	}
 	if !covered {
 		log.Debug("Transaction is not covered by a subsidy", "tx", tx.Hash().Hex())
-		return []ProcessedTransaction{{Transaction: tx}}
+		return []ProcessedTransaction{{Transaction: tx}}, StatusSkipped
 	}
 
 	// Check the remaining available gas to be used in this block.
@@ -248,14 +308,20 @@ func (r *transactionRunner) runSponsoredTransaction(
 		log.Debug("Not enough gas left in block for sponsored transaction",
 			"tx", tx.Hash().Hex(), "available", available, "needed", needed,
 		)
-		return []ProcessedTransaction{{Transaction: tx}}
+		return []ProcessedTransaction{{Transaction: tx}}, StatusSkipped
 	}
 
 	// Run the sponsored transaction.
 	processed := r.evm.runWithoutBaseFeeCheck(ctxt, tx, txIndex)
 	if processed.Receipt == nil {
 		log.Debug("Sponsored transaction skipped", "tx", tx.Hash().Hex())
-		return []ProcessedTransaction{processed}
+		return []ProcessedTransaction{processed}, StatusSkipped
+	}
+
+	status := StatusSuccessful
+	if processed.Receipt.Status == types.ReceiptStatusFailed {
+		log.Debug("Sponsored transaction failed", "tx", tx.Hash().Hex())
+		status = StatusFailed
 	}
 
 	// Charge the fee for the sponsored transaction to the subsidy fund.
@@ -270,7 +336,7 @@ func (r *transactionRunner) runSponsoredTransaction(
 		// block formation. So we have to let this go. This sponsored
 		// transaction was on the house (meaning on the network).
 		log.Warn("Failed to create fee charging transaction", "sponsored-tx", tx.Hash().Hex(), "err", err)
-		return []ProcessedTransaction{processed}
+		return []ProcessedTransaction{processed}, status
 	}
 	processedDeduction := r.evm.runWithoutBaseFeeCheck(ctxt, feeChargingTx, txIndex+1)
 	if processedDeduction.Receipt == nil {
@@ -284,7 +350,81 @@ func (r *transactionRunner) runSponsoredTransaction(
 		// subsidy fund was not charged.
 		log.Warn("Fee charging transaction failed", "sponsored-tx", tx.Hash().Hex())
 	}
-	return []ProcessedTransaction{processed, processedDeduction}
+	return []ProcessedTransaction{processed, processedDeduction}, status
+}
+
+func (r *transactionRunner) runTransactionBundle(
+	ctxt *runContext,
+	tx *types.Transaction,
+	txIndex int,
+) ([]ProcessedTransaction, *ProcessedBundle, Status) {
+
+	if !ctxt.upgrades.TransactionBundles {
+		log.Warn("Transaction bundles are not enabled, skipping bundle transaction", "tx", tx.Hash().Hex())
+		return []ProcessedTransaction{{Transaction: tx}}, nil, StatusSkipped
+	}
+
+	txBundle, plan, err := bundle.ValidateTransactionBundle(tx)
+	if err != nil {
+		log.Warn("Invalid bundle skip", "tx", tx.Hash().Hex(), "error", err)
+		return []ProcessedTransaction{{Transaction: tx}}, nil, StatusSkipped
+	}
+
+	if !plan.IsInRange(ctxt.blockNumber.Uint64()) {
+		log.Warn("Bundle skipped due to out-of-range execution plan", "tx", tx.Hash().Hex(), "planRange", fmt.Sprintf("[%d,%d]", plan.Earliest, plan.Latest), "blockNumber", ctxt.blockNumber.Uint64())
+		return []ProcessedTransaction{{Transaction: tx}}, nil, StatusSkipped
+	}
+
+	processedBundle := &ProcessedBundle{
+		ExecutionPlanHash: plan.Hash(),
+		Position:          uint32(txIndex),
+	}
+
+	// Run the bundle and collect the processed transactions.
+	runner := bundleTransactionRunner{ctxt: ctxt, txOffset: txIndex}
+	bundleCheckpoint := ctxt.statedb.InterTxSnapshot()
+	if success := bundle.RunBundle(txBundle, &runner); !success {
+		if err := ctxt.statedb.RevertToInterTxSnapshot(bundleCheckpoint); err != nil {
+			log.Error("Failed to revert to checkpoint", "err", err)
+		}
+		return []ProcessedTransaction{}, processedBundle, StatusFailed
+	}
+	for _, processedTx := range runner.processedTransactions {
+		if processedTx.Receipt != nil {
+			processedBundle.Count++
+		}
+	}
+	return runner.processedTransactions, processedBundle, StatusSuccessful
+}
+
+// bundleTransactionRunner is an adapter implementing the bundle.TransactionRunner
+// interface to run transactions within a bundle and collect their results.
+type bundleTransactionRunner struct {
+	ctxt                  *runContext
+	txOffset              int
+	processedTransactions []ProcessedTransaction
+}
+
+func (b *bundleTransactionRunner) Run(tx *types.Transaction) bundle.TransactionResult {
+	processed, _, status := runTransaction(b.ctxt, tx, b.txOffset)
+	b.processedTransactions = append(b.processedTransactions, processed...)
+	if status == StatusSkipped {
+		return bundle.TransactionResultInvalid
+	}
+
+	processedCount := 0
+	for _, p := range processed {
+		if p.Receipt != nil {
+			processedCount++
+		}
+	}
+	b.txOffset += processedCount
+
+	if status == StatusFailed {
+		return bundle.TransactionResultFailed
+	} else {
+		return bundle.TransactionResultSuccessful
+	}
 }
 
 // _evm is an interface to an EVM instance that can be used to run a single
@@ -334,6 +474,7 @@ func (e evm) _runTransaction(
 		msg, ctxt.gasPool, ctxt.statedb, ctxt.blockNumber, tx,
 		ctxt.usedGas, e.EVM, ctxt.onNewLog,
 	)
+
 	if err != nil {
 		log.Debug("Failed to apply transaction", "tx", tx.Hash().Hex(), "err", err)
 		return ProcessedTransaction{Transaction: tx}
@@ -395,7 +536,7 @@ type TransactionProcessor struct {
 // the transaction in the block. It returns the list of all transactions that
 // have been attempted to be processed to cover the given transaction as well as
 // their receipts if they did not get skipped.
-func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) []ProcessedTransaction {
+func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) ExecutionSummary {
 	return runTransactions(newRunContext(
 		tp.signer, tp.header.BaseFee, tp.stateDb, tp.gp, tp.blockNumber,
 		&tp.usedGas, tp.onNewLog, tp.upgrades, &transactionRunner{evm{tp.vmEnvironment}},
@@ -415,6 +556,7 @@ func ApplyTransactionWithEVM(msg *core.Message, config *params.ChainConfig, gp *
 		}
 	}
 	// Create a new context to be used in the EVM environment.
+	statedb.BeginTransaction()
 	txContext := NewEVMTxContext(msg)
 	evm.SetTxContext(txContext)
 
@@ -431,6 +573,7 @@ func ApplyTransactionWithEVM(msg *core.Message, config *params.ChainConfig, gp *
 	// Apply the transaction to the current state (included in the env).
 	result, err := core.ApplyMessage(evm, msg, gp)
 	if err != nil {
+		statedb.EndTransaction()
 		return nil, err
 	}
 
@@ -485,6 +628,7 @@ func ProcessParentBlockHash(prevHash common.Hash, evm *vm.EVM, stateDb state.Sta
 	}
 
 	txContext := NewEVMTxContext(msg)
+	stateDb.BeginTransaction()
 	evm.SetTxContext(txContext)
 
 	stateDb.AddAddressToAccessList(params.HistoryStorageAddress)
@@ -511,6 +655,7 @@ func applyTransaction(
 	uint64,
 	error,
 ) {
+	statedb.BeginTransaction()
 	// Create a new context to be used in the EVM environment.
 	txContext := NewEVMTxContext(msg)
 	evm.SetTxContext(txContext)

@@ -17,10 +17,17 @@
 package emitter
 
 import (
+	"fmt"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/config"
+	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 func Test_DefaultMaxTxsPerAddress_Equals_txTurnNonces(t *testing.T) {
@@ -32,4 +39,112 @@ func Test_DefaultMaxTxsPerAddress_Equals_txTurnNonces(t *testing.T) {
 
 	defaultConfig := config.DefaultConfig()
 	require.EqualValues(t, txTurnNonces, defaultConfig.MaxTxsPerAddress, "Default MaxTxsPerAddress should equal txTurnNonces")
+}
+
+func Test_Emitter_isValidBundleTx_AcceptsValidBundleIfBundlesAreEnabled(t *testing.T) {
+	for _, bundlesEnabled := range []bool{true, false} {
+		t.Run(fmt.Sprintf("enabled=%t", bundlesEnabled), func(t *testing.T) {
+			require := require.New(t)
+			ctrl := gomock.NewController(t)
+
+			rules := opera.Rules{
+				NetworkID: 12,
+				Upgrades: opera.Upgrades{
+					TransactionBundles: bundlesEnabled,
+				},
+			}
+
+			external := NewMockExternal(ctrl)
+			external.EXPECT().GetRules().Return(rules).AnyTimes()
+			external.EXPECT().GetLatestBlockIndex().Return(idx.Block(100)).AnyTimes()
+			external.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()).AnyTimes()
+
+			emitter := &Emitter{
+				world: World{External: external},
+			}
+
+			tx := bundle.NewBuilder().Earliest(50).Latest(150).Build()
+
+			_, _, err := bundle.ValidateTransactionBundle(tx)
+			require.NoError(err)
+
+			allBundlesRunnable := func(evmcore.ChainState, *types.Transaction) evmcore.BundleState {
+				return evmcore.BundleStateRunnable
+			}
+
+			require.Equal(bundlesEnabled, emitter.isValidBundleTxInternal(tx, allBundlesRunnable))
+		})
+	}
+}
+
+func Test_Emitter_isValidBundleTx_RejectsInvalidBundle(t *testing.T) {
+	tests := map[string]*types.Transaction{
+		"not a bundle": types.NewTx(&types.LegacyTx{}),
+		"invalid bundle data": types.NewTx(&types.LegacyTx{
+			To:   &bundle.BundleProcessor,
+			Data: []byte{0x01, 0x02, 0x03},
+		}),
+		"bundle with out-of-range block numbers": bundle.NewBuilder().
+			Earliest(150).
+			Latest(250).
+			Build(),
+	}
+
+	for name, tx := range tests {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+			ctrl := gomock.NewController(t)
+
+			rules := opera.Rules{
+				Upgrades: opera.Upgrades{
+					TransactionBundles: true,
+				},
+			}
+
+			external := NewMockExternal(ctrl)
+			external.EXPECT().GetRules().Return(rules).AnyTimes()
+			external.EXPECT().GetLatestBlockIndex().Return(idx.Block(100)).AnyTimes()
+			external.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()).AnyTimes()
+
+			emitter := &Emitter{
+				world: World{External: external},
+			}
+
+			require.False(emitter.isValidBundleTx(tx))
+		})
+	}
+}
+
+func Test_Emitter_isValidBundleTx_RejectsAlreadyProcessedBundle(t *testing.T) {
+	for _, processed := range []bool{true, false} {
+		t.Run(fmt.Sprintf("processed=%t", processed), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+
+			rules := opera.Rules{
+				Upgrades: opera.Upgrades{
+					TransactionBundles: true,
+				},
+			}
+
+			external := NewMockExternal(ctrl)
+			external.EXPECT().GetRules().Return(rules).AnyTimes()
+			external.EXPECT().GetLatestBlockIndex().Return(idx.Block(100)).AnyTimes()
+			external.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()).Return(processed).AnyTimes()
+
+			emitter := &Emitter{
+				world: World{External: external},
+			}
+
+			tx := bundle.NewBuilder().Earliest(50).Latest(150).Build()
+
+			_, _, err := bundle.ValidateTransactionBundle(tx)
+			require.NoError(t, err)
+
+			getBundleState := func(evmcore.ChainState, *types.Transaction) evmcore.BundleState {
+				return evmcore.BundleStateRunnable
+			}
+
+			require.Equal(t, !processed, emitter.isValidBundleTxInternal(tx, getBundleState))
+		})
+	}
 }

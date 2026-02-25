@@ -27,7 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
+	gomock "go.uber.org/mock/gomock"
 )
 
 func TestExecutionPlan_Hash_ComputesDeterministicHash(t *testing.T) {
@@ -68,7 +68,12 @@ func TestExecutionPlan_Hash_ComputesDeterministicHash(t *testing.T) {
 			for i, step := range executionPlan.Steps {
 				transactions[i] = []any{step.From, step.Hash}
 			}
-			manualSerialize := []any{transactions, executionPlan.Flags}
+			manualSerialize := []any{
+				transactions,
+				executionPlan.Flags,
+				executionPlan.Earliest,
+				executionPlan.Latest,
+			}
 
 			hasher := crypto.NewKeccakState()
 			require.NoError(t, rlp.Encode(hasher, manualSerialize))
@@ -81,7 +86,7 @@ func TestExecutionPlan_Hash_ComputesDeterministicHash(t *testing.T) {
 	}
 }
 
-func TestIsTransactionBundle_IdentifiesBundles(t *testing.T) {
+func TestIsEnvelope_IdentifiesEnvelops(t *testing.T) {
 	tests := map[string]struct {
 		tx       types.TxData
 		expected bool
@@ -92,7 +97,7 @@ func TestIsTransactionBundle_IdentifiesBundles(t *testing.T) {
 		},
 		"bundle tx": {
 			tx: &types.LegacyTx{
-				To: &BundleAddress,
+				To: &BundleProcessor,
 			},
 			expected: true,
 		},
@@ -107,7 +112,7 @@ func TestIsTransactionBundle_IdentifiesBundles(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			tx := types.NewTx(test.tx)
-			result := IsTransactionBundle(tx)
+			result := IsEnvelope(tx)
 			require.Equal(t, test.expected, result)
 		})
 	}
@@ -130,225 +135,42 @@ func TestIsBundledOnly_IdentifiesBundleOnlyTransactions_OfAllTypes(t *testing.T)
 	})))
 }
 
-func TestBelongsToExecutionPlan_IdentifiesTransactionsWhichSignTheExecutionPlan(t *testing.T) {
-
-	executionPlanHash := common.Hash{0x01, 0x02, 0x03}
-
-	tests := map[string]struct {
-		tx                types.TxData
-		executionPlanHash common.Hash
-		expected          bool
-	}{
-		"transaction without access list": {
-			tx:       &types.LegacyTx{},
-			expected: false,
-		},
-		"transaction with bundle-only but no plan hash": {
-			tx: &types.AccessListTx{
-				AccessList: types.AccessList{
-					{
-						Address: BundleOnly,
-					},
-				},
-			},
-			executionPlanHash: executionPlanHash,
-			expected:          false,
-		},
-		"fragmented access list": {
-			tx: &types.AccessListTx{
-				AccessList: types.AccessList{
-					{
-						Address: BundleOnly,
-					},
-					{
-						Address:     common.HexToAddress("0x0000000000000000000000000000000000000001"),
-						StorageKeys: []common.Hash{executionPlanHash},
-					},
-				},
-			},
-			executionPlanHash: executionPlanHash,
-			expected:          false,
-		},
-		"transaction with bundle-only and matching plan hash": {
-			tx: &types.AccessListTx{
-				AccessList: types.AccessList{
-					{
-						Address:     BundleOnly,
-						StorageKeys: []common.Hash{executionPlanHash},
-					},
-				},
-			},
-			executionPlanHash: executionPlanHash,
-			expected:          true,
-		},
-		"transaction with multiple accepted plans": {
-			tx: &types.AccessListTx{
-				AccessList: types.AccessList{
-					{
-						Address:     BundleOnly,
-						StorageKeys: []common.Hash{{0x0A}},
-					},
-					{
-						Address:     BundleOnly,
-						StorageKeys: []common.Hash{executionPlanHash},
-					},
-					{
-						Address:     BundleOnly,
-						StorageKeys: []common.Hash{{0x0B}},
-					},
-				},
-			},
-			executionPlanHash: executionPlanHash,
-			expected:          true,
-		},
-		"transaction with multiple accepted plans compact": {
-			tx: &types.AccessListTx{
-				AccessList: types.AccessList{
-					{
-						Address:     BundleOnly,
-						StorageKeys: []common.Hash{{0x0A}, executionPlanHash, {0x0B}},
-					},
-				},
-			},
-			executionPlanHash: executionPlanHash,
-			expected:          true,
-		},
-	}
-
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			tx := types.NewTx(test.tx)
-			require.Equal(t, test.expected,
-				BelongsToExecutionPlan(tx, test.executionPlanHash))
-		})
-	}
-
-}
-
-func TestDecode_SuccessfullyUnpacksValidBundle(t *testing.T) {
-
-	for _, flags := range []ExecutionFlag{0, 1, 2, 3} {
-
-		executionPlanHash := common.Hash{0x01, 0x02, 0x03} // dummy hash
-
-		bundle := TransactionBundle{
-			Version: 1,
-			Bundle: types.Transactions{
-				types.NewTx(&types.AccessListTx{
-					AccessList: types.AccessList{
-						{
-							Address:     BundleOnly,
-							StorageKeys: []common.Hash{executionPlanHash},
-						},
-					},
-				}),
-			},
-			Payment: types.NewTx(
-				&types.AccessListTx{
-					AccessList: types.AccessList{
-						{Address: BundleOnly},
-					},
-				},
-			),
-			Flags: flags,
-		}
-
-		unpacked, err := Decode(Encode(bundle))
-		require.NoError(t, err)
-		require.Equal(t, bundle.Version, unpacked.Version)
-
-		require.Equal(t, bundle.Payment.Hash(), unpacked.Payment.Hash())
-		for i, tx := range bundle.Bundle {
-			require.Equal(t, tx.Hash(), unpacked.Bundle[i].Hash())
-		}
-		require.Equal(t, bundle.Flags, unpacked.Flags)
-	}
-}
-
-func TestEncoding_IsVersioned(t *testing.T) {
-
-	tests := map[string]struct {
-		version       byte
-		expectedError string
-	}{
-		"zero version": {
-			version:       0,
-			expectedError: "failed to decode version",
-		},
-		"invalid version": {
-			version:       77,
-			expectedError: "unsupported bundle version: 77",
-		},
-	}
-
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			bundle := TransactionBundle{
-				Version: test.version,
-			}
-
-			_, err := Decode(Encode(bundle))
-			require.ErrorContains(t, err, test.expectedError)
-		})
-	}
-}
-
-func TestDecode_ReturnsErrorForInvalidData(t *testing.T) {
-	_, err := Decode([]byte{0x01, 0x02, 0x03})
-	require.ErrorContains(t, err, "failed to decode transaction bundle")
-
-	_, err = Decode(nil)
-	require.ErrorContains(t, err, "failed to decode transaction bundle")
-}
-
-//go:generate mockgen -source=bundle_test.go -destination=bundle_test_mock.go -package=bundle
-
-type Signer interface {
-	types.Signer
-}
-
 func TestExtractExecutionPlan_ExtractsStepsAndFlags(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
 
 	for _, flags := range []ExecutionFlag{0, 1, 2, 3} {
+		for _, earliest := range []uint64{1, 5, 20} {
+			for _, latest := range []uint64{50, 100, 200} {
+				bundle := NewBuilder().
+					WithFlags(flags).
+					Earliest(earliest).
+					Latest(latest).
+					With(
+						Step(key, &types.AccessListTx{}),
+						Step(key, &types.AccessListTx{}),
+					).BuildBundle()
 
-		bundle := TransactionBundle{
-			Bundle: types.Transactions{
-				types.NewTx(&types.AccessListTx{
-					AccessList: types.AccessList{
-						{
-							Address:     BundleOnly,
-							StorageKeys: []common.Hash{{0x01}},
-						},
-					},
-				}),
-				types.NewTx(&types.DynamicFeeTx{
-					AccessList: types.AccessList{
-						{
-							Address:     BundleOnly,
-							StorageKeys: []common.Hash{{0x01}},
-						},
-					},
-				}),
-			},
-			Flags: flags,
+				ctrl := gomock.NewController(t)
+				mockSigner := NewMockSigner(ctrl)
+				mockSigner.EXPECT().Sender(gomock.Any()).Return(common.Address{0x42}, nil)
+				mockSigner.EXPECT().Sender(gomock.Any()).Return(common.Address{0x43}, nil)
+				mockSigner.EXPECT().Hash(gomock.Any()).Return(common.Hash{0x01})
+				mockSigner.EXPECT().Hash(gomock.Any()).Return(common.Hash{0x02})
+
+				executionPlan, err := bundle.extractExecutionPlan(mockSigner)
+				require.NoError(t, err)
+
+				require.Equal(t, 2, len(executionPlan.Steps))
+				require.Equal(t, common.Address{0x42}, executionPlan.Steps[0].From)
+				require.Equal(t, common.Hash{0x01}, executionPlan.Steps[0].Hash)
+				require.Equal(t, common.Address{0x43}, executionPlan.Steps[1].From)
+				require.Equal(t, common.Hash{0x02}, executionPlan.Steps[1].Hash)
+				require.Equal(t, bundle.Flags, executionPlan.Flags)
+				require.Equal(t, bundle.Earliest, executionPlan.Earliest)
+				require.Equal(t, bundle.Latest, executionPlan.Latest)
+			}
 		}
-
-		ctrl := gomock.NewController(t)
-		mockSigner := NewMockSigner(ctrl)
-		mockSigner.EXPECT().Sender(gomock.Any()).Return(common.Address{0x42}, nil)
-		mockSigner.EXPECT().Sender(gomock.Any()).Return(common.Address{0x43}, nil)
-		mockSigner.EXPECT().Hash(gomock.Any()).Return(common.Hash{0x01})
-		mockSigner.EXPECT().Hash(gomock.Any()).Return(common.Hash{0x02})
-
-		executionPlan, err := bundle.ExtractExecutionPlan(mockSigner)
-		require.NoError(t, err)
-
-		require.Equal(t, 2, len(executionPlan.Steps))
-		require.Equal(t, common.Address{0x42}, executionPlan.Steps[0].From)
-		require.Equal(t, common.Hash{0x01}, executionPlan.Steps[0].Hash)
-		require.Equal(t, common.Address{0x43}, executionPlan.Steps[1].From)
-		require.Equal(t, common.Hash{0x02}, executionPlan.Steps[1].Hash)
-		require.Equal(t, bundle.Flags, executionPlan.Flags)
 	}
 }
 
@@ -406,9 +228,9 @@ func TestExtractExecutionPlan_ComputesHashOfUnmarkedBundledTransactions(t *testi
 		require.NoError(t, err)
 
 		bundle := TransactionBundle{
-			Bundle: types.Transactions{tx},
+			Transactions: types.Transactions{tx},
 		}
-		executionPlan, err := bundle.ExtractExecutionPlan(signer)
+		executionPlan, err := bundle.extractExecutionPlan(signer)
 		require.NoError(t, err)
 
 		require.Equal(t, 1, len(executionPlan.Steps))
@@ -433,14 +255,14 @@ func TestExtractExecutionPlan_ReturnsErrorWithUnsupportedTransactionType(t *test
 
 		tx := types.NewTx(txData)
 		bundle := TransactionBundle{
-			Bundle: types.Transactions{tx},
+			Transactions: types.Transactions{tx},
 		}
 
 		ctrl := gomock.NewController(t)
 		mockSigner := NewMockSigner(ctrl)
 		mockSigner.EXPECT().Sender(gomock.Any()).Return(common.Address{}, nil)
 
-		_, err := bundle.ExtractExecutionPlan(mockSigner)
+		_, err := bundle.extractExecutionPlan(mockSigner)
 		require.ErrorContains(t, err,
 			fmt.Sprintf("invalid bundle: unsupported transaction type %d", tx.Type()))
 	}
@@ -449,7 +271,7 @@ func TestExtractExecutionPlan_ReturnsErrorWithUnsupportedTransactionType(t *test
 func TestExtractExecutionPlan_ReturnsErrorWithMalformedSignature(t *testing.T) {
 
 	bundle := TransactionBundle{
-		Bundle: types.Transactions{
+		Transactions: types.Transactions{
 			types.NewTx(&types.AccessListTx{
 				AccessList: types.AccessList{
 					{
@@ -465,7 +287,7 @@ func TestExtractExecutionPlan_ReturnsErrorWithMalformedSignature(t *testing.T) {
 	mockSigner := NewMockSigner(ctrl)
 	mockSigner.EXPECT().Sender(gomock.Any()).Return(common.Address{}, errors.New("invalid signature"))
 
-	_, err := bundle.ExtractExecutionPlan(mockSigner)
+	_, err := bundle.extractExecutionPlan(mockSigner)
 	require.ErrorContains(t, err, "failed to derive sender: invalid signature")
 }
 
@@ -655,4 +477,78 @@ func TestRemoveBundleOnlyMark_PreservesOriginalData(t *testing.T) {
 			require.Equal(t, test.AccessList, modified.AccessList())
 		})
 	}
+}
+
+//go:generate mockgen -source=bundle_test.go -destination=bundle_test_mock.go -package=bundle
+
+type Signer interface {
+	types.Signer
+}
+
+func TestDecode_SuccessfullyUnpacksValidBundle(t *testing.T) {
+
+	for _, flags := range []ExecutionFlag{0, 1, 2, 3} {
+
+		executionPlanHash := common.Hash{0x01, 0x02, 0x03} // dummy hash
+
+		bundle := TransactionBundle{
+			Transactions: types.Transactions{
+				types.NewTx(&types.AccessListTx{
+					AccessList: types.AccessList{
+						{
+							Address:     BundleOnly,
+							StorageKeys: []common.Hash{executionPlanHash},
+						},
+					},
+				}),
+			},
+			Flags:    flags,
+			Earliest: 12,
+			Latest:   34,
+		}
+
+		unpacked, err := decode(bundle.Encode())
+		require.NoError(t, err)
+
+		for i, tx := range bundle.Transactions {
+			require.Equal(t, tx.Hash(), unpacked.Transactions[i].Hash())
+		}
+		require.Equal(t, bundle.Flags, unpacked.Flags)
+		require.Equal(t, bundle.Earliest, unpacked.Earliest)
+		require.Equal(t, bundle.Latest, unpacked.Latest)
+	}
+}
+
+func TestEncoding_IsVersioned(t *testing.T) {
+
+	tests := map[string]struct {
+		version       byte
+		expectedError string
+	}{
+		"zero version": {
+			version:       0,
+			expectedError: "failed to decode version",
+		},
+		"invalid version": {
+			version:       77,
+			expectedError: "unsupported bundle version: 77",
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			bundle := TransactionBundle{}
+
+			_, err := decode(encodeInternal(test.version, &bundle))
+			require.ErrorContains(t, err, test.expectedError)
+		})
+	}
+}
+
+func TestDecode_ReturnsErrorForInvalidData(t *testing.T) {
+	_, err := decode([]byte{0x01, 0x02, 0x03})
+	require.ErrorContains(t, err, "failed to decode transaction bundle")
+
+	_, err = decode(nil)
+	require.ErrorContains(t, err, "failed to decode transaction bundle")
 }
