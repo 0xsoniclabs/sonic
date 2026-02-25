@@ -30,6 +30,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/config"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/inter"
@@ -370,7 +371,7 @@ func TestEmitter_EmitEvent_DoesNotEmit_IfWorldIsBusy(t *testing.T) {
 	baseFeeSource.EXPECT().GetCurrentBaseFee()
 	em.baseFeeSource = baseFeeSource
 
-	world.EXPECT().GetRules()
+	world.EXPECT().GetRules().AnyTimes()
 
 	e, err := em.EmitEvent()
 	require.NoError(t, err)
@@ -461,4 +462,163 @@ func TestEmitter_ThrottlerWorldAdapter_ReturnsNilIfNoEventIsFound(t *testing.T) 
 		e := wa.GetLastEvent(validator)
 		require.Nil(t, e)
 	})
+}
+
+func TestRemoveBundleOnlyTxs_OnlyFiltersTxIfFeatureIsEnabled(t *testing.T) {
+
+	sender := common.Address{1}
+
+	for _, enabled := range []bool{false, true} {
+		t.Run(fmt.Sprintf("enabled=%t", enabled), func(t *testing.T) {
+
+			bundleOnlyMark := types.AccessTuple{
+				Address:     bundle.BundleOnly,
+				StorageKeys: []common.Hash{{}},
+			}
+
+			pendingTxs := map[common.Address]types.Transactions{
+				sender: {
+					types.NewTx(&types.AccessListTx{
+						AccessList: []types.AccessTuple{bundleOnlyMark},
+					}),
+				},
+			}
+
+			upgrades := opera.Upgrades{
+				TransactionBundles: enabled,
+			}
+
+			removeBundleOnlyTxs(upgrades, pendingTxs)
+
+			if enabled {
+				require.Empty(t, pendingTxs)
+			} else {
+				require.Len(t, pendingTxs, 1)
+				require.Len(t, pendingTxs[sender], 1)
+			}
+		})
+	}
+}
+
+func TestRemoveBundleOnlyTxs_ErasesGappedNoncesAfterRemoval(t *testing.T) {
+	// And deletes sender transactions entry if list is empty
+
+	bundleOnlyMark := types.AccessTuple{
+		Address:     bundle.BundleOnly,
+		StorageKeys: []common.Hash{{}},
+	}
+	sender := common.Address{1}
+
+	for _, position := range []int{0, 1, 2} {
+
+		t.Run(fmt.Sprintf("bundle-only tx at position %d", position), func(t *testing.T) {
+
+			pendingTxs := map[common.Address]types.Transactions{}
+
+			for i := range position {
+				pendingTxs[sender] = append(pendingTxs[sender], types.NewTx(&types.AccessListTx{
+					Nonce: uint64(i),
+				}))
+			}
+
+			pendingTxs[sender] = append(pendingTxs[sender], types.NewTx(&types.AccessListTx{
+				Nonce:      uint64(position),
+				AccessList: []types.AccessTuple{bundleOnlyMark},
+			}))
+			for i := position + 1; i < 3; i++ {
+				pendingTxs[sender] = append(pendingTxs[sender], types.NewTx(&types.AccessListTx{
+					Nonce: uint64(i),
+				}))
+			}
+
+			removeBundleOnlyTxs(opera.Upgrades{
+				Brio:               true,
+				TransactionBundles: true,
+			}, pendingTxs)
+
+			switch position {
+			case 0:
+				// sender does not have any valid transaction, so entry should be deleted
+				require.Empty(t, pendingTxs)
+			case 1, 2:
+				// transactions until position are preserved, the nonces are sequential
+				require.Len(t, pendingTxs, 1)
+				require.Len(t, pendingTxs[sender], position)
+				for i := range position {
+					require.Equal(t, uint64(i), pendingTxs[sender][i].Nonce())
+				}
+			default:
+				t.Fatal("malformed test case", position)
+			}
+		})
+	}
+}
+
+func TestRemoveBundleOnlyTxs_LeavesNonMarkedTxsUnmodified(t *testing.T) {
+	upgrades := opera.Upgrades{
+		TransactionBundles: true,
+	}
+	sender1 := common.Address{1}
+	sender2 := common.Address{2}
+
+	pendingTxs := map[common.Address]types.Transactions{
+		sender1: {
+			types.NewTx(&types.AccessListTx{
+				Nonce: uint64(0),
+			}),
+			types.NewTx(&types.AccessListTx{
+				Nonce: uint64(1),
+			}),
+		},
+		sender2: {
+			types.NewTx(&types.AccessListTx{
+				Nonce: uint64(17),
+			}),
+		},
+	}
+
+	removeBundleOnlyTxs(upgrades, pendingTxs)
+
+	require.Len(t, pendingTxs, 2)
+	require.Len(t, pendingTxs[sender1], 2)
+	require.Equal(t, uint64(0), pendingTxs[sender1][0].Nonce())
+	require.Equal(t, uint64(1), pendingTxs[sender1][1].Nonce())
+	require.Len(t, pendingTxs[sender2], 1)
+	require.Equal(t, uint64(17), pendingTxs[sender2][0].Nonce())
+}
+
+func TestRemoveBundleOnlyTxs_ErasesMultipleBundleMarkedTransactions(t *testing.T) {
+
+	bundleOnlyMark := types.AccessTuple{
+		Address:     bundle.BundleOnly,
+		StorageKeys: []common.Hash{{}},
+	}
+	sender := common.Address{1}
+
+	pendingTxs := map[common.Address]types.Transactions{
+		sender: {
+			types.NewTx(&types.AccessListTx{
+				Nonce: uint64(0),
+			}),
+			types.NewTx(&types.AccessListTx{
+				Nonce:      uint64(1),
+				AccessList: []types.AccessTuple{bundleOnlyMark},
+			}),
+			types.NewTx(&types.AccessListTx{
+				Nonce: uint64(2),
+			}),
+			types.NewTx(&types.AccessListTx{
+				Nonce:      uint64(3),
+				AccessList: []types.AccessTuple{bundleOnlyMark},
+			}),
+		},
+	}
+
+	removeBundleOnlyTxs(opera.Upgrades{
+		TransactionBundles: true,
+	}, pendingTxs)
+
+	require.Len(t, pendingTxs, 1)
+	require.Len(t, pendingTxs[sender], 1)
+	require.Equal(t, uint64(0), pendingTxs[sender][0].Nonce())
 }
