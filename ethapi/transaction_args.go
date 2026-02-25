@@ -285,7 +285,7 @@ func (args *TransactionArgs) ToMessage(globalGasCap uint64, baseFee *big.Int, lo
 		BlobHashes:            args.BlobHashes,
 		SetCodeAuthorizations: args.AuthorizationList,
 		SkipNonceChecks:       true,
-		SkipFromEOACheck:      true,
+		SkipTransactionChecks: true,
 	}, nil
 }
 

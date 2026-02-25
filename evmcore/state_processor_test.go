@@ -469,10 +469,10 @@ func TestApplyTransaction_InternalTransactionsSkipBaseFeeCharges(t *testing.T) {
 			// this is not relevant. We just want to check if the base fee
 			// configuration flag is updated to match the SkipAccountChecks flag.
 			_, _, err := applyTransaction(&core.Message{
-				SkipNonceChecks:  internal,
-				SkipFromEOACheck: internal,
-				GasPrice:         big.NewInt(0),
-				Value:            big.NewInt(0),
+				SkipNonceChecks:       internal,
+				SkipTransactionChecks: internal,
+				GasPrice:              big.NewInt(0),
+				Value:                 big.NewInt(0),
 			}, gp, state, nil, nil, nil, evm, nil)
 			if err == nil {
 				t.Errorf("expected transaction to fail")
@@ -541,16 +541,16 @@ func TestApplyTransaction_ApplyMessageError_RevertsSnapshotIfPrague(t *testing.T
 
 			initCode := make([]byte, 50000) // large init code to trigger error
 			msg := &core.Message{
-				From:             common.Address{1},
-				To:               nil, // contract creation
-				GasLimit:         1000000,
-				GasPrice:         big.NewInt(1),
-				GasFeeCap:        big.NewInt(0),
-				GasTipCap:        big.NewInt(0),
-				Value:            big.NewInt(0),
-				Data:             initCode,
-				SkipNonceChecks:  true,
-				SkipFromEOACheck: true,
+				From:                  common.Address{1},
+				To:                    nil, // contract creation
+				GasLimit:              1000000,
+				GasPrice:              big.NewInt(1),
+				GasFeeCap:             big.NewInt(0),
+				GasTipCap:             big.NewInt(0),
+				Value:                 big.NewInt(0),
+				Data:                  initCode,
+				SkipNonceChecks:       true,
+				SkipTransactionChecks: true,
 			}
 
 			gomock.InOrder(
@@ -1214,14 +1214,14 @@ func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSucc
 	state.EXPECT().GetNonce(sfcAddress).Return(uint64(0)).AnyTimes()
 	state.EXPECT().GetBalance(sfcAddress).Return(uint256.NewInt(1e18)).AnyTimes()
 	state.EXPECT().GetState(sfcAddress, any).Return(common.Hash{1}).AnyTimes()
-	state.EXPECT().GetCommittedState(sfcAddress, any).Return(common.Hash{1}).AnyTimes()
+	state.EXPECT().GetStateAndCommittedState(sfcAddress, any).Return(common.Hash{1}, common.Hash{1}).AnyTimes()
 
 	state.EXPECT().Exist(registryAddress).Return(true).AnyTimes()
 	state.EXPECT().GetCode(registryAddress).Return(registry.GetCode()).AnyTimes()
 	state.EXPECT().GetCodeHash(registryAddress).Return(registryCodeHash).AnyTimes()
 	state.EXPECT().GetBalance(registryAddress).Return(uint256.NewInt(1e18)).AnyTimes()
 	state.EXPECT().GetState(registryAddress, any).Return(common.Hash{1}).AnyTimes()
-	state.EXPECT().GetCommittedState(registryAddress, any).Return(common.Hash{1}).AnyTimes()
+	state.EXPECT().GetStateAndCommittedState(registryAddress, any).Return(common.Hash{1}, common.Hash{1}).AnyTimes()
 
 	state.EXPECT().Exist(target).Return(false).AnyTimes()
 	state.EXPECT().GetCode(target).Return(nil).AnyTimes()

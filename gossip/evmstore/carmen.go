@@ -200,8 +200,10 @@ func (c *CarmenStateDB) GetStorageRoot(addr common.Address) common.Hash {
 	return h
 }
 
-func (c *CarmenStateDB) GetCommittedState(addr common.Address, hash common.Hash) common.Hash {
-	return common.Hash(c.db.GetCommittedState(cc.Address(addr), cc.Key(hash)))
+func (c *CarmenStateDB) GetStateAndCommittedState(addr common.Address, hash common.Hash) (common.Hash, common.Hash) {
+	state := common.Hash(c.db.GetState(cc.Address(addr), cc.Key(hash)))
+	committed := common.Hash(c.db.GetCommittedState(cc.Address(addr), cc.Key(hash)))
+	return state, committed
 }
 
 func (c *CarmenStateDB) HasSelfDestructed(addr common.Address) bool {
@@ -233,7 +235,7 @@ func (c *CarmenStateDB) SetNonce(addr common.Address, nonce uint64, _ tracing.No
 	c.db.SetNonce(cc.Address(addr), nonce)
 }
 
-func (c *CarmenStateDB) SetCode(addr common.Address, code []byte) []byte {
+func (c *CarmenStateDB) SetCode(addr common.Address, code []byte, _ tracing.CodeChangeReason) []byte {
 	old := bytes.Clone(c.db.GetCode(cc.Address(addr)))
 	c.db.SetCode(cc.Address(addr), code)
 	return old

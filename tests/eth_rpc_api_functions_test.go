@@ -45,7 +45,9 @@ import (
 var (
 	knownMissingAPIs = namespaceMap{
 		"eth": {
-			"SimulateV1": struct{}{},
+			"SimulateV1":             struct{}{},
+			"SendRawTransactionSync": struct{}{},
+			"Config":                 struct{}{}, // TODO: issue (https://github.com/0xsoniclabs/sonic-admin/issues/355)
 		},
 		"debug": {
 			"DbAncient":                   struct{}{},
