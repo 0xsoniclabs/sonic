@@ -24,6 +24,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice/gaspricelimits"
 	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -150,8 +151,10 @@ func ValidateTxForNetwork(tx *types.Transaction, rules NetworkRules, chain State
 
 	// This check does not validate gas, but depends on active revision.
 	// Check whether the init code size has been exceeded, introduced in EIP-3860
-	if rules.shanghai && tx.To() == nil && len(tx.Data()) > params.MaxInitCodeSize {
+	if !rules.osaka && rules.shanghai && tx.To() == nil && len(tx.Data()) > params.MaxInitCodeSize {
 		return fmt.Errorf("%w: code size %v, limit %v", ErrMaxInitCodeSizeExceeded, len(tx.Data()), params.MaxInitCodeSize)
+	} else if rules.osaka && tx.To() == nil && len(tx.Data()) > opera.SonicPostAllegroMaxInitCodeSize {
+		return fmt.Errorf("%w: code size %v, limit %v", ErrMaxInitCodeSizeExceeded, len(tx.Data()), opera.SonicPostAllegroMaxInitCodeSize)
 	}
 
 	// Ensure the transaction has more gas than the basic tx fee.

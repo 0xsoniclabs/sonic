@@ -140,3 +140,34 @@ func TestGetVmConfig_BrioUpgradeFromLfvmToSfvmInterpreter(t *testing.T) {
 		})
 	}
 }
+
+func TestCodeSizeLimits_BrioSetsCustomCodeSizeLimits(t *testing.T) {
+	tests := map[string]bool{
+		"Allegro": false,
+		"Brio":    true,
+	}
+
+	for name, brioEnabled := range tests {
+		t.Run(name, func(t *testing.T) {
+			rules := Rules{
+				Upgrades: Upgrades{
+					Sonic:   true,
+					Allegro: true,
+					Brio:    brioEnabled,
+				},
+			}
+
+			vmConfig := GetVmConfig(rules)
+
+			if brioEnabled {
+				require.NotNil(t, vmConfig.MaxCodeSize)
+				require.NotNil(t, vmConfig.MaxInitCodeSize)
+				require.Equal(t, SonicPostAllegroMaxCodeSize, *vmConfig.MaxCodeSize)
+				require.Equal(t, SonicPostAllegroMaxInitCodeSize, *vmConfig.MaxInitCodeSize)
+			} else {
+				require.Nil(t, vmConfig.MaxCodeSize)
+				require.Nil(t, vmConfig.MaxInitCodeSize)
+			}
+		})
+	}
+}
