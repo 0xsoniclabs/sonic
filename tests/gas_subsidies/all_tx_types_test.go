@@ -74,7 +74,7 @@ func TestGasSubsidies_SupportAllTxTypes(t *testing.T) {
 			donation := big.NewInt(1e16)
 			Fund(t, net, sponsee.Address(), donation)
 
-			signedTx := makeSponsorRequestTransaction(t, tx, net.GetChainId(), sponsee)
+			signedTx := MakeSponsorRequestTransaction(t, tx, net.GetChainId(), sponsee)
 			require.NoError(t, client.SendTransaction(t.Context(), signedTx))
 
 			validateSponsoredTxInBlock(t, &net.Session, signedTx.Hash())

@@ -59,7 +59,7 @@ func TestGasSubsidies_HelperFunctions(t *testing.T) {
 	}
 
 	// make a sponsorship request transaction from the sponsee account
-	sponsoredTx := makeSponsorRequestTransaction(t, &tx, net.GetChainId(), sponsee)
+	sponsoredTx := MakeSponsorRequestTransaction(t, &tx, net.GetChainId(), sponsee)
 	require.Equal(t, sponsoredTx.GasPrice(), big.NewInt(0))
 
 	// need to wait for subsidies to be implemented.
@@ -98,7 +98,7 @@ func TestMakeSponsorRequestTransaction_CanHandleAllTransactionTypes(t *testing.T
 
 	for _, tx := range txs {
 		t.Run(fmt.Sprintf("%T", tx), func(t *testing.T) {
-			sponsoredTx := makeSponsorRequestTransaction(t, tx, big.NewInt(1), tests.NewAccount())
+			sponsoredTx := MakeSponsorRequestTransaction(t, tx, big.NewInt(1), tests.NewAccount())
 			require.Equal(t, sponsoredTx.GasPrice(), big.NewInt(0))
 			require.Equal(t, sponsoredTx.GasTipCap(), big.NewInt(0))
 			require.True(t, subsidies.IsSponsorshipRequest(sponsoredTx))

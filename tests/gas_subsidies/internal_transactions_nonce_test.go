@@ -69,7 +69,7 @@ func TestGasSubsidies_InternalTransaction_HaveConsistentNonces(t *testing.T) {
 					To:    &common.Address{0x1}, // not a contract creation, contract creation cannot be sponsored
 					Gas:   21_000,
 				}
-				sponsoredTx := makeSponsorRequestTransaction(t, txData, net.GetChainId(), sponsoredSender)
+				sponsoredTx := MakeSponsorRequestTransaction(t, txData, net.GetChainId(), sponsoredSender)
 				receipt, err := net.Run(sponsoredTx)
 				require.NoError(t, err)
 				require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
@@ -95,7 +95,7 @@ func TestGasSubsidies_InternalTransaction_HaveConsistentNonces(t *testing.T) {
 						To:    &common.Address{0x1}, // not a contract creation, contract creation cannot be sponsored
 						Gas:   21_000,
 					}
-					sponsoredTx := makeSponsorRequestTransaction(t, txData, net.GetChainId(), sponsoredSender)
+					sponsoredTx := MakeSponsorRequestTransaction(t, txData, net.GetChainId(), sponsoredSender)
 
 					err = client.SendTransaction(t.Context(), sponsoredTx)
 					require.NoError(t, err)
@@ -133,7 +133,7 @@ func TestGasSubsidies_InternalTransaction_HaveConsistentNonces(t *testing.T) {
 						To:    &common.Address{0x1}, // not a contract creation, contract creation cannot be sponsored
 						Gas:   21_000,
 					}
-					tx := makeSponsorRequestTransaction(t, txData, net.GetChainId(), sponsoredSender)
+					tx := MakeSponsorRequestTransaction(t, txData, net.GetChainId(), sponsoredSender)
 					err = client.SendTransaction(t.Context(), tx)
 					require.NoError(t, err)
 

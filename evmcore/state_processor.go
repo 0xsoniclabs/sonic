@@ -329,11 +329,19 @@ func (r *transactionRunner) runTransactionBundle(
 	res := make([]ProcessedTransaction, 0, len(txBundle.Bundle))
 
 	paymentCheckpoint := ctxt.statedb.Checkpoint()
-	for i, btx := range txBundle.Bundle {
+	for _, btx := range txBundle.Bundle {
+		if bundle.IsTransactionBundle(btx) {
+			log.Warn("Nested transaction bundles are not supported, skip bundled transaction", "tx", btx.Hash().Hex())
+			continue
+		}
 
-		txResult := r.evm.runWithBaseFeeCheck(ctxt, btx, txIndex+1+i)
+		txResults := runTransactions(ctxt, types.Transactions{btx}, txIndex+1+len(res)) // payment + included txs
 
-		if txResult.Receipt == nil {
+		// we only executed a single transaction, but sponsored transactions emit 2 receipts
+		// the first one is for the sponsored transaction
+		receipt := txResults[0].Receipt
+
+		if receipt == nil {
 			if txBundle.Flags.IgnoreInvalidTransactions() {
 				log.Info("Bundled transaction skipped, continue with next", "tx", btx.Hash().Hex())
 				continue
@@ -344,7 +352,7 @@ func (r *transactionRunner) runTransactionBundle(
 			}
 		}
 
-		if txResult.Receipt.Status != types.ReceiptStatusSuccessful {
+		if receipt.Status != types.ReceiptStatusSuccessful {
 			if txBundle.Flags.IgnoreFailedTransactions() {
 				log.Info("Bundled transaction failed, continue with next", "tx", btx.Hash().Hex())
 				continue
@@ -355,7 +363,7 @@ func (r *transactionRunner) runTransactionBundle(
 			}
 		}
 
-		res = append(res, txResult)
+		res = append(res, txResults...)
 
 		if txBundle.Flags.AtMostOneTransaction() {
 			log.Info("Bundled transaction succeeded, stop after first", "tx", btx.Hash().Hex())

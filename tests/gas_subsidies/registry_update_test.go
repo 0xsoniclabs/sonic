@@ -83,7 +83,7 @@ func TestRegistryUpdate_UpdateContract_SponsoredTransactionsCanBePerformed(t *te
 	Fund(t, net, sponsee.Address(), big.NewInt(1e18))
 
 	tx := &types.LegacyTx{Gas: 21000, To: &common.Address{0x42}}
-	signedTx := makeSponsorRequestTransaction(t, tx, net.GetChainId(), sponsee)
+	signedTx := MakeSponsorRequestTransaction(t, tx, net.GetChainId(), sponsee)
 	require.NoError(t, client.SendTransaction(t.Context(), signedTx))
 
 	// Check that the sponsored transaction was included and paid for according

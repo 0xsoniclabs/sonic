@@ -84,7 +84,7 @@ func TestGasSubsidies_Receipts_HaveConsistentTransactionIndices(t *testing.T) {
 								To:    &common.Address{0x1}, // not a contract creation, contract creation cannot be sponsored
 								Gas:   21_000,
 							}
-							sponsoredTx := makeSponsorRequestTransaction(t, txData, net.GetChainId(), sponsee)
+							sponsoredTx := MakeSponsorRequestTransaction(t, txData, net.GetChainId(), sponsee)
 							hashes := []common.Hash{sponsoredTx.Hash()}
 
 							client, err := net.GetClient()
@@ -114,7 +114,7 @@ func TestGasSubsidies_Receipts_HaveConsistentTransactionIndices(t *testing.T) {
 									To:    &common.Address{0x1}, // not a contract creation, contract creation cannot be sponsored
 									Gas:   21_000,
 								}
-								sponsoredTx := makeSponsorRequestTransaction(t, txData, net.GetChainId(), sponsee)
+								sponsoredTx := MakeSponsorRequestTransaction(t, txData, net.GetChainId(), sponsee)
 
 								require.NoError(t, client.SendTransaction(t.Context(), sponsoredTx), "failed to send sponsored transaction %v", i)
 								txHashes = append(txHashes, sponsoredTx.Hash())
@@ -145,7 +145,7 @@ func TestGasSubsidies_Receipts_HaveConsistentTransactionIndices(t *testing.T) {
 									To:    &common.Address{0x1}, // not a contract creation, contract creation cannot be sponsored
 									Gas:   21_000,
 								}
-								sponsoredTx := makeSponsorRequestTransaction(t, sponsoredTxData, net.GetChainId(), sponsee)
+								sponsoredTx := MakeSponsorRequestTransaction(t, sponsoredTxData, net.GetChainId(), sponsee)
 
 								require.NoError(t, client.SendTransaction(t.Context(), sponsoredTx), "failed to send sponsored transaction %v", i)
 								txHashes = append(txHashes, sponsoredTx.Hash())
@@ -187,7 +187,7 @@ func TestGasSubsidies_Receipts_HaveConsistentTransactionIndices(t *testing.T) {
 									To:    &common.Address{0x1}, // not a contract creation, contract creation cannot be sponsored
 									Gas:   21_000,
 								}
-								tx := makeSponsorRequestTransaction(t, txData, net.GetChainId(), sponsee)
+								tx := MakeSponsorRequestTransaction(t, txData, net.GetChainId(), sponsee)
 
 								err = client.SendTransaction(t.Context(), tx)
 								require.NoError(t, err)

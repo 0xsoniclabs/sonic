@@ -45,7 +45,7 @@ func TestGasSubsidies_RequestIsRejectedInCaseOfInsufficientFunds(t *testing.T) {
 		Gas: 21000,
 	}
 	sponsee := tests.NewAccount()
-	signedTx := makeSponsorRequestTransaction(t, tx, net.GetChainId(), sponsee)
+	signedTx := MakeSponsorRequestTransaction(t, tx, net.GetChainId(), sponsee)
 
 	// Create a sponsorship fund with 0 initial funds
 	sponsorRegistry := Fund(t, net, sponsee.Address(), big.NewInt(0))
