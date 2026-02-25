@@ -454,7 +454,7 @@ func TestSimulateV1(t *testing.T) {
 		require.NotNil(t, result[0].Calls[1].Error, "failed call must have an error")
 	})
 
-	t.Run("contains_emited_logs", func(t *testing.T) {
+	t.Run("contains_emitted_logs", func(t *testing.T) {
 		client, err := net.GetClient()
 		require.NoError(t, err)
 		defer client.Close()
