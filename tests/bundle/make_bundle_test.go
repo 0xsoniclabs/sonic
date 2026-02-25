@@ -33,7 +33,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func Test_MakeNormal(t *testing.T) {
+func Test_NonBundledTransaction_Works(t *testing.T) {
 	net := tests.StartIntegrationTestNet(t,
 		tests.IntegrationTestNetOptions{
 			Upgrades: tests.AsPointer(opera.GetBrioUpgrades()),
@@ -102,7 +102,107 @@ func Test_MakeNormal(t *testing.T) {
 	require.Equal(t, count.Int64(), int64(1))
 }
 
-func Test_BundleIgnoresAndAtMostOneWork(t *testing.T) {
+func counterAddressAndInput(t *testing.T, net *tests.IntegrationTestNet) (common.Address, []byte) {
+	_, counterAbi, counterAddress := prepareContract(t, net, counter.CounterMetaData.GetAbi, counter.DeployCounter)
+	counterInput := generateCallData(t, counterAbi, "incrementCounter")
+	return counterAddress, counterInput
+}
+
+func revertAddressAndInput(t *testing.T, net *tests.IntegrationTestNet) (common.Address, []byte) {
+	_, revertABI, revertAddress := prepareContract(t, net, revert.RevertMetaData.GetAbi, revert.DeployRevert)
+	revertInput := generateCallData(t, revertABI, "doCrash")
+	return revertAddress, revertInput
+}
+
+func getCounterValue(t *testing.T, client *tests.PooledEhtClient, counterAddress common.Address) int64 {
+	counterInstance, err := counter.NewCounter(counterAddress, client)
+	require.NoError(t, err, "failed to create counter instance; %v", err)
+	count, err := counterInstance.GetCount(nil)
+	require.NoError(t, err, "failed to get counter value; %v", err)
+	return count.Int64()
+}
+
+const (
+	invalidTx    = 1
+	failedTx     = 2
+	successfulTx = 0
+)
+
+func makeUnsignedBundleTxs(t *testing.T, net *tests.IntegrationTestNet, client *tests.PooledEhtClient, txTypes []int) ([]*types.Transaction, []*tests.Account, common.Address) {
+	senders := make([]*tests.Account, len(txTypes))
+	for i := range txTypes {
+		senders[i] = tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
+	}
+
+	counterAddress, counterInput := counterAddressAndInput(t, net)
+	revertAddress, revertInput := revertAddressAndInput(t, net)
+
+	gasPrice, err := client.SuggestGasPrice(t.Context())
+	require.NoError(t, err, "failed to suggest gas price; %v", err)
+
+	counterGasLimit, err := client.EstimateGas(t.Context(), ethereum.CallMsg{
+		From:     senders[0].Address(),
+		To:       &counterAddress,
+		Data:     counterInput,
+		GasPrice: gasPrice,
+		AccessList: types.AccessList{
+			// add one entry to the estimation, to allocate gas for the bundle-only marker
+			{Address: bundle.BundleOnly, StorageKeys: []common.Hash{{}}},
+		},
+	})
+	require.NoError(t, err, "failed to estimate gas")
+
+	revertGasLimit := uint64(1000000)
+
+	txs := make([]*types.Transaction, len(txTypes))
+	for i, txType := range txTypes {
+		tx := types.AccessListTx{}
+		switch txType {
+		case invalidTx:
+			tx = types.AccessListTx{
+				To:       &counterAddress,
+				Gas:      1, // invalid
+				Data:     counterInput,
+				GasPrice: gasPrice,
+			}
+		case failedTx:
+			tx = types.AccessListTx{
+				To:       &revertAddress,
+				Gas:      revertGasLimit,
+				Data:     revertInput,
+				GasPrice: gasPrice,
+			}
+		default:
+			tx = types.AccessListTx{
+				To:       &counterAddress,
+				Gas:      counterGasLimit,
+				Data:     counterInput,
+				GasPrice: gasPrice,
+			}
+		}
+		txs[i] = types.NewTx(tests.SetTransactionDefaults(t, net, &tx, senders[i]))
+	}
+
+	return txs, senders, counterAddress
+}
+
+func signBundleTxs(t *testing.T, net *tests.IntegrationTestNet, txs []*types.Transaction, senders []*tests.Account, plan bundle.ExecutionPlan) {
+	for i, tx := range txs {
+		txs[i] = tests.SignTransaction(t, net.GetChainId(), &types.AccessListTx{
+			Nonce:    tx.Nonce(),
+			GasPrice: tx.GasPrice(),
+			Gas:      tx.Gas(),
+			To:       tx.To(),
+			Value:    tx.Value(),
+			Data:     tx.Data(),
+			AccessList: append(tx.AccessList(),
+				types.AccessTuple{Address: bundle.BundleOnly, StorageKeys: []common.Hash{plan.Hash()}},
+			),
+		}, senders[i])
+	}
+}
+
+func Test_Bundle_Ignores_And_AtMostOne_Work(t *testing.T) {
 	// transactions = [
 	//     if ignoreInvalidTransactions: invalidTx,
 	//     if ignoreFailedTransactions: failedTx,
@@ -122,134 +222,39 @@ func Test_BundleIgnoresAndAtMostOneWork(t *testing.T) {
 		client *tests.PooledEhtClient,
 		flags bundle.ExecutionFlag,
 	) {
-		sender0 := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
-		sender1 := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
-		sender2 := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
-		sender3 := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
-		bundler := net.GetSessionSponsor()
 
-		_, counterAbi, counterAddress := prepareContract(t, net, counter.CounterMetaData.GetAbi, counter.DeployCounter)
-		counterInput := generateCallData(t, counterAbi, "incrementCounter")
-
-		_, revertABI, revertAddress := prepareContract(t, net, revert.RevertMetaData.GetAbi, revert.DeployRevert)
-		revertInput := generateCallData(t, revertABI, "doCrash")
+		txs, senders, counterAddress := makeUnsignedBundleTxs(t, net, client, []int{invalidTx, failedTx, successfulTx, successfulTx})
 
 		signer := types.NewCancunSigner(net.GetChainId())
 
-		gasPrice, err := client.SuggestGasPrice(t.Context())
-		require.NoError(t, err, "failed to suggest gas price; %v", err)
-
-		counterGasLimit, err := client.EstimateGas(t.Context(), ethereum.CallMsg{
-			From:     sender0.Address(),
-			To:       &counterAddress,
-			Data:     counterInput,
-			GasPrice: gasPrice,
-			AccessList: types.AccessList{
-				// add one entry to the estimation, to allocate gas for the bundle-only marker
-				{Address: bundle.BundleOnly, StorageKeys: []common.Hash{{}}},
-			},
-		})
-		require.NoError(t, err, "failed to estimate gas")
-
-		revertGasLimit := uint64(1000000)
-
-		// 1)  make transactions
-		tx0 := types.NewTx(tests.SetTransactionDefaults(t, net, &types.AccessListTx{
-			To:       &counterAddress,
-			Gas:      1, // invalid
-			Data:     counterInput,
-			GasPrice: gasPrice,
-		}, sender0))
-		tx1 := types.NewTx(tests.SetTransactionDefaults(t, net, &types.AccessListTx{
-			To:       &revertAddress,
-			Gas:      revertGasLimit, // revert
-			Data:     revertInput,
-			GasPrice: gasPrice,
-		}, sender1))
-		tx2 := types.NewTx(tests.SetTransactionDefaults(t, net, &types.AccessListTx{
-			To:       &counterAddress,
-			Gas:      counterGasLimit,
-			Data:     counterInput,
-			GasPrice: gasPrice,
-		}, sender2))
-		tx3 := types.NewTx(tests.SetTransactionDefaults(t, net, &types.AccessListTx{
-			To:       &counterAddress,
-			Gas:      counterGasLimit,
-			Data:     counterInput,
-			GasPrice: gasPrice,
-		}, sender3))
-
 		steps := []bundle.ExecutionStep{}
 		if flags.IgnoreInvalidTransactions() {
-			steps = append(steps, bundle.ExecutionStep{From: sender0.Address(), Hash: signer.Hash(tx0)})
+			steps = append(steps, bundle.ExecutionStep{From: senders[0].Address(), Hash: signer.Hash(txs[0])})
 		}
 		if flags.IgnoreFailedTransactions() {
-			steps = append(steps, bundle.ExecutionStep{From: sender1.Address(), Hash: signer.Hash(tx1)})
+			steps = append(steps, bundle.ExecutionStep{From: senders[1].Address(), Hash: signer.Hash(txs[1])})
 		}
-		steps = append(steps, bundle.ExecutionStep{From: sender2.Address(), Hash: signer.Hash(tx2)})
-		steps = append(steps, bundle.ExecutionStep{From: sender3.Address(), Hash: signer.Hash(tx3)})
+		steps = append(steps, bundle.ExecutionStep{From: senders[2].Address(), Hash: signer.Hash(txs[2])})
+		steps = append(steps, bundle.ExecutionStep{From: senders[3].Address(), Hash: signer.Hash(txs[3])})
 		plan := bundle.ExecutionPlan{Flags: flags, Steps: steps}
 
-		// 2) redo transactions, now with bundle-only access list item, and sign them with the corresponding sender account
-		tx0 = tests.SignTransaction(t, net.GetChainId(), &types.AccessListTx{
-			Nonce:    tx0.Nonce(),
-			GasPrice: tx0.GasPrice(),
-			Gas:      tx0.Gas(),
-			To:       tx0.To(),
-			Value:    tx0.Value(),
-			Data:     tx0.Data(),
-			AccessList: append(tx0.AccessList(),
-				types.AccessTuple{Address: bundle.BundleOnly, StorageKeys: []common.Hash{plan.Hash()}},
-			),
-		}, sender0)
-		tx1 = tests.SignTransaction(t, net.GetChainId(), &types.AccessListTx{
-			Nonce:    tx1.Nonce(),
-			GasPrice: tx1.GasPrice(),
-			Gas:      tx1.Gas(),
-			To:       tx1.To(),
-			Value:    tx1.Value(),
-			Data:     tx1.Data(),
-			AccessList: append(tx1.AccessList(),
-				types.AccessTuple{Address: bundle.BundleOnly, StorageKeys: []common.Hash{plan.Hash()}},
-			),
-		}, sender1)
-		tx2 = tests.SignTransaction(t, net.GetChainId(), &types.AccessListTx{
-			Nonce:    tx2.Nonce(),
-			GasPrice: tx2.GasPrice(),
-			Gas:      tx2.Gas(),
-			To:       tx2.To(),
-			Value:    tx2.Value(),
-			Data:     tx2.Data(),
-			AccessList: append(tx2.AccessList(),
-				types.AccessTuple{Address: bundle.BundleOnly, StorageKeys: []common.Hash{plan.Hash()}},
-			),
-		}, sender2)
-		tx3 = tests.SignTransaction(t, net.GetChainId(), &types.AccessListTx{
-			Nonce:    tx3.Nonce(),
-			GasPrice: tx3.GasPrice(),
-			Gas:      tx3.Gas(),
-			To:       tx3.To(),
-			Value:    tx3.Value(),
-			Data:     tx3.Data(),
-			AccessList: append(tx3.AccessList(),
-				types.AccessTuple{Address: bundle.BundleOnly, StorageKeys: []common.Hash{plan.Hash()}},
-			),
-		}, sender3)
+		signBundleTxs(t, net, txs, senders, plan)
 
-		transactions := types.Transactions{}
+		submittedTxs := types.Transactions{}
 		if flags.IgnoreInvalidTransactions() {
-			transactions = append(transactions, tx0)
+			submittedTxs = append(submittedTxs, txs[0])
 		}
 		if flags.IgnoreFailedTransactions() {
-			transactions = append(transactions, tx1)
+			submittedTxs = append(submittedTxs, txs[1])
 		}
-		transactions = append(transactions, tx2, tx3)
+		submittedTxs = append(submittedTxs, txs[2], txs[3])
 
-		bundleTx, paymentTxHash := makeBundleTransaction(t, net, transactions, plan, bundler)
+		bundler := net.GetSessionSponsor()
+		bundleTx, paymentTxHash := makeBundleTransaction(t, net, submittedTxs, plan, bundler)
 		require.NotNil(t, bundleTx)
 		require.NotZero(t, paymentTxHash)
 
-		err = client.SendTransaction(t.Context(), bundleTx)
+		err := client.SendTransaction(t.Context(), bundleTx)
 		require.NoError(t, err)
 
 		receipt, err := net.GetReceipt(paymentTxHash)
@@ -257,39 +262,39 @@ func Test_BundleIgnoresAndAtMostOneWork(t *testing.T) {
 		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "payment transaction failed")
 
 		// Check all transactions have been executed and the order is correct
-		expectedTransactionHashes := []common.Hash{}
-		if flags.AtMostOneTransaction() {
-			expectedTransactionHashes = []common.Hash{paymentTxHash, tx2.Hash()}
-		} else {
-			expectedTransactionHashes = []common.Hash{paymentTxHash, tx2.Hash(), tx3.Hash()}
-		}
 		transactionHashes := getTransactionsInBlock(t, net, receipt.BlockNumber)
-		require.Equal(t, expectedTransactionHashes, transactionHashes)
+		if flags.AtMostOneTransaction() {
+			require.Len(t, transactionHashes, 2)
+			require.Equal(t, paymentTxHash, transactionHashes[0])
+			require.Equal(t, txs[2].Hash(), transactionHashes[1])
+		} else {
+			require.Len(t, transactionHashes, 3)
+			require.Equal(t, paymentTxHash, transactionHashes[0])
+			require.Equal(t, txs[2].Hash(), transactionHashes[1])
+			require.Equal(t, txs[3].Hash(), transactionHashes[2])
+		}
 
 		// Check the transaction status
-		receipt, err = net.GetReceipt(tx2.Hash())
+		receipt, err = net.GetReceipt(txs[2].Hash())
 		require.NoError(t, err, "failed to get transaction tx 2 receipt; %v", err)
 		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "tx2 failed")
 		if !flags.AtMostOneTransaction() {
-			receipt, err = net.GetReceipt(tx3.Hash())
+			receipt, err = net.GetReceipt(txs[3].Hash())
 			require.NoError(t, err, "failed to get transaction tx 3 receipt; %v", err)
 			require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "tx3 failed")
 		}
 
 		// Check the counter value from the contract
-		counterInstance, err := counter.NewCounter(counterAddress, client)
-		require.NoError(t, err, "failed to create counter instance; %v", err)
-		count, err := counterInstance.GetCount(nil)
-		require.NoError(t, err, "failed to get counter value; %v", err)
+		count := getCounterValue(t, client, counterAddress)
 		if flags.AtMostOneTransaction() {
-			require.Equal(t, count.Int64(), int64(1))
+			require.Equal(t, count, int64(1))
 		} else {
-			require.Equal(t, count.Int64(), int64(2))
+			require.Equal(t, count, int64(2))
 		}
 	})
 }
 
-func Test_BundleResetIfFailedWorks(t *testing.T) {
+func Test_Bundle_ResetIfFailed_Works(t *testing.T) {
 	// transactions = [
 	//     validTx,
 	//     if ignoreInvalidTransactions: invalidTx,
@@ -307,115 +312,37 @@ func Test_BundleResetIfFailedWorks(t *testing.T) {
 		client *tests.PooledEhtClient,
 		flags bundle.ExecutionFlag,
 	) {
-		sender0 := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
-		sender1 := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
-		sender2 := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
-		bundler := net.GetSessionSponsor()
-
-		_, counterAbi, counterAddress := prepareContract(t, net, counter.CounterMetaData.GetAbi, counter.DeployCounter)
-		counterInput := generateCallData(t, counterAbi, "incrementCounter")
-
-		_, revertABI, revertAddress := prepareContract(t, net, revert.RevertMetaData.GetAbi, revert.DeployRevert)
-		revertInput := generateCallData(t, revertABI, "doCrash")
+		txs, senders, counterAddress := makeUnsignedBundleTxs(t, net, client, []int{successfulTx, invalidTx, failedTx})
 
 		signer := types.NewCancunSigner(net.GetChainId())
 
-		gasPrice, err := client.SuggestGasPrice(t.Context())
-		require.NoError(t, err, "failed to suggest gas price; %v", err)
-
-		counterGasLimit, err := client.EstimateGas(t.Context(), ethereum.CallMsg{
-			From:     sender0.Address(),
-			To:       &counterAddress,
-			Data:     counterInput,
-			GasPrice: gasPrice,
-			AccessList: types.AccessList{
-				// add one entry to the estimation, to allocate gas for the bundle-only marker
-				{Address: bundle.BundleOnly, StorageKeys: []common.Hash{{}}},
-			},
-		})
-		require.NoError(t, err, "failed to estimate gas")
-
-		revertGasLimit := uint64(1000000)
-
-		// 1)  make transactions
-		tx0 := types.NewTx(tests.SetTransactionDefaults(t, net, &types.AccessListTx{
-			To:       &counterAddress,
-			Gas:      counterGasLimit,
-			Data:     counterInput,
-			GasPrice: gasPrice,
-		}, sender0))
-		tx1 := types.NewTx(tests.SetTransactionDefaults(t, net, &types.AccessListTx{
-			To:       &counterAddress,
-			Gas:      1, // invalid
-			Data:     counterInput,
-			GasPrice: gasPrice,
-		}, sender1))
-		tx2 := types.NewTx(tests.SetTransactionDefaults(t, net, &types.AccessListTx{
-			To:       &revertAddress,
-			Gas:      revertGasLimit,
-			Data:     revertInput,
-			GasPrice: gasPrice,
-		}, sender2))
-
 		steps := []bundle.ExecutionStep{}
-		steps = append(steps, bundle.ExecutionStep{From: sender0.Address(), Hash: signer.Hash(tx0)})
+		steps = append(steps, bundle.ExecutionStep{From: senders[0].Address(), Hash: signer.Hash(txs[0])})
 		if !flags.IgnoreInvalidTransactions() {
-			steps = append(steps, bundle.ExecutionStep{From: sender1.Address(), Hash: signer.Hash(tx1)})
+			steps = append(steps, bundle.ExecutionStep{From: senders[1].Address(), Hash: signer.Hash(txs[1])})
 		}
 		if !flags.IgnoreFailedTransactions() {
-			steps = append(steps, bundle.ExecutionStep{From: sender2.Address(), Hash: signer.Hash(tx2)})
+			steps = append(steps, bundle.ExecutionStep{From: senders[2].Address(), Hash: signer.Hash(txs[2])})
 		}
 		plan := bundle.ExecutionPlan{Flags: flags, Steps: steps}
 
-		// 2) redo transactions, now with bundle-only access list item, and sign them with the corresponding sender account
-		tx0 = tests.SignTransaction(t, net.GetChainId(), &types.AccessListTx{
-			Nonce:    tx0.Nonce(),
-			GasPrice: tx0.GasPrice(),
-			Gas:      tx0.Gas(),
-			To:       tx0.To(),
-			Value:    tx0.Value(),
-			Data:     tx0.Data(),
-			AccessList: append(tx0.AccessList(),
-				types.AccessTuple{Address: bundle.BundleOnly, StorageKeys: []common.Hash{plan.Hash()}},
-			),
-		}, sender0)
-		tx1 = tests.SignTransaction(t, net.GetChainId(), &types.AccessListTx{
-			Nonce:    tx1.Nonce(),
-			GasPrice: tx1.GasPrice(),
-			Gas:      tx1.Gas(),
-			To:       tx1.To(),
-			Value:    tx1.Value(),
-			Data:     tx1.Data(),
-			AccessList: append(tx1.AccessList(),
-				types.AccessTuple{Address: bundle.BundleOnly, StorageKeys: []common.Hash{plan.Hash()}},
-			),
-		}, sender1)
-		tx2 = tests.SignTransaction(t, net.GetChainId(), &types.AccessListTx{
-			Nonce:    tx2.Nonce(),
-			GasPrice: tx2.GasPrice(),
-			Gas:      tx2.Gas(),
-			To:       tx2.To(),
-			Value:    tx2.Value(),
-			Data:     tx2.Data(),
-			AccessList: append(tx2.AccessList(),
-				types.AccessTuple{Address: bundle.BundleOnly, StorageKeys: []common.Hash{plan.Hash()}},
-			),
-		}, sender2)
+		signBundleTxs(t, net, txs, senders, plan)
 
-		transactions := types.Transactions{}
-		transactions = append(transactions, tx0)
+		submittedTxs := types.Transactions{}
+		submittedTxs = append(submittedTxs, txs[0])
 		if !flags.IgnoreInvalidTransactions() {
-			transactions = append(transactions, tx1)
+			submittedTxs = append(submittedTxs, txs[1])
 		}
 		if !flags.IgnoreFailedTransactions() {
-			transactions = append(transactions, tx2)
+			submittedTxs = append(submittedTxs, txs[2])
 		}
 
-		bundleTx, paymentTxHash := makeBundleTransaction(t, net, transactions, plan, bundler)
+		bundler := net.GetSessionSponsor()
+		bundleTx, paymentTxHash := makeBundleTransaction(t, net, submittedTxs, plan, bundler)
 		require.NotNil(t, bundleTx)
 		require.NotZero(t, paymentTxHash)
 
-		err = client.SendTransaction(t.Context(), bundleTx)
+		err := client.SendTransaction(t.Context(), bundleTx)
 		require.NoError(t, err)
 
 		receipt, err := net.GetReceipt(paymentTxHash)
@@ -423,31 +350,29 @@ func Test_BundleResetIfFailedWorks(t *testing.T) {
 		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "payment transaction failed")
 
 		// Check all transactions have been executed and the order is correct
-		expectedTransactionHashes := []common.Hash{}
-		if flags.AtMostOneTransaction() || (flags.IgnoreInvalidTransactions() && flags.IgnoreFailedTransactions()) {
-			expectedTransactionHashes = []common.Hash{paymentTxHash, tx0.Hash()}
-		} else {
-			expectedTransactionHashes = []common.Hash{paymentTxHash}
-		}
 		transactionHashes := getTransactionsInBlock(t, net, receipt.BlockNumber)
-		require.Equal(t, expectedTransactionHashes, transactionHashes)
+		if flags.AtMostOneTransaction() || (flags.IgnoreInvalidTransactions() && flags.IgnoreFailedTransactions()) {
+			require.Len(t, transactionHashes, 2)
+			require.Equal(t, paymentTxHash, transactionHashes[0])
+			require.Equal(t, txs[0].Hash(), transactionHashes[1])
+		} else {
+			require.Len(t, transactionHashes, 1)
+			require.Equal(t, paymentTxHash, transactionHashes[0])
+		}
 
 		// Check the transaction status
 		if flags.AtMostOneTransaction() || (flags.IgnoreInvalidTransactions() && flags.IgnoreFailedTransactions()) {
-			receipt, err = net.GetReceipt(tx0.Hash())
+			receipt, err = net.GetReceipt(txs[0].Hash())
 			require.NoError(t, err, "failed to get transaction tx 0 receipt; %v", err)
 			require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "tx0 failed")
 		}
 
 		// Check the counter value from the contract
-		counterInstance, err := counter.NewCounter(counterAddress, client)
-		require.NoError(t, err, "failed to create counter instance; %v", err)
-		count, err := counterInstance.GetCount(nil)
-		require.NoError(t, err, "failed to get counter value; %v", err)
+		count := getCounterValue(t, client, counterAddress)
 		if flags.AtMostOneTransaction() || (flags.IgnoreInvalidTransactions() && flags.IgnoreFailedTransactions()) {
-			require.Equal(t, count.Int64(), int64(1))
+			require.Equal(t, count, int64(1))
 		} else {
-			require.Equal(t, count.Int64(), int64(0))
+			require.Equal(t, count, int64(0))
 		}
 	})
 }
