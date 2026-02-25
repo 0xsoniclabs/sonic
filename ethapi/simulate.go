@@ -634,9 +634,8 @@ func (sim *simulator) applyStateOverrides(overrides *StateOverride, precompiles 
 	for addr, account := range *overrides {
 		// If this address is a precompile, remove it (the account override takes
 		// precedence and the code/state can be replaced below).
-		if _, isPrecompile := precompiles[addr]; isPrecompile {
-			delete(precompiles, addr)
-		}
+		delete(precompiles, addr)
+
 		if account.Nonce != nil {
 			state.SetNonce(addr, uint64(*account.Nonce), tracing.NonceChangeUnspecified)
 		}
