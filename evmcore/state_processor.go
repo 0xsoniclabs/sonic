@@ -270,11 +270,11 @@ func (r *transactionRunner) runSponsoredTransaction(
 	ctxt.statedb.RevertToSnapshot(snapshot)
 	if err != nil {
 		log.Warn("Failed to query subsidies registry", "tx", tx.Hash().Hex(), "err", err)
-		return []ProcessedTransaction{{Transaction: tx}}, StatusFailed
+		return []ProcessedTransaction{{Transaction: tx}}, StatusSkipped
 	}
 	if !covered {
 		log.Debug("Transaction is not covered by a subsidy", "tx", tx.Hash().Hex())
-		return []ProcessedTransaction{{Transaction: tx}}, StatusFailed
+		return []ProcessedTransaction{{Transaction: tx}}, StatusSkipped
 	}
 
 	// Check the remaining available gas to be used in this block.
@@ -284,14 +284,14 @@ func (r *transactionRunner) runSponsoredTransaction(
 		log.Debug("Not enough gas left in block for sponsored transaction",
 			"tx", tx.Hash().Hex(), "available", available, "needed", needed,
 		)
-		return []ProcessedTransaction{{Transaction: tx}}, StatusFailed
+		return []ProcessedTransaction{{Transaction: tx}}, StatusSkipped
 	}
 
 	// Run the sponsored transaction.
 	processed := r.evm.runWithoutBaseFeeCheck(ctxt, tx, txIndex)
 	if processed.Receipt == nil {
 		log.Debug("Sponsored transaction skipped", "tx", tx.Hash().Hex())
-		return []ProcessedTransaction{processed}, StatusFailed
+		return []ProcessedTransaction{processed}, StatusSkipped
 	}
 
 	// Charge the fee for the sponsored transaction to the subsidy fund.

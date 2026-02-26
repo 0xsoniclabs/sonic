@@ -268,6 +268,7 @@ func TestProcess_TracksParentBlockHashIfPragueIsEnabled(t *testing.T) {
 				if isPrague {
 					any := gomock.Any()
 					gomock.InOrder(
+						state.EXPECT().BeginTransaction(),
 						state.EXPECT().AddAddressToAccessList(params.HistoryStorageAddress),
 						state.EXPECT().Snapshot().Return(0),
 						state.EXPECT().Exist(params.HistoryStorageAddress).Return(true),
@@ -333,6 +334,7 @@ func TestProcess_FailingTransactionAreSkippedButTheBlockIsNotTerminated(t *testi
 	// Mock the state database interactions for passing transaction.
 	any := gomock.Any()
 	state.EXPECT().SetTxContext(any, any).Times(1)
+	state.EXPECT().BeginTransaction().Times(1)
 	state.EXPECT().GetBalance(any).Return(uint256.NewInt(1000000)).Times(1)
 	state.EXPECT().SubBalance(any, any, any).Times(2)
 	state.EXPECT().Prepare(any, any, any, any, any, any).Times(1)
@@ -512,6 +514,7 @@ func createScenarioWithTxCheckingDifficulty(
 	any := gomock.Any()
 	state := state.NewMockStateDB(ctrl)
 	state.EXPECT().SetTxContext(any, any).AnyTimes()
+	state.EXPECT().BeginTransaction().AnyTimes()
 	state.EXPECT().GetBalance(any).Return(uint256.NewInt(math.MaxInt64)).AnyTimes()
 	state.EXPECT().SubBalance(any, any, any).AnyTimes()
 	state.EXPECT().Prepare(any, any, any, any, any, any).AnyTimes()
@@ -556,6 +559,7 @@ func TestApplyTransaction_InternalTransactionsSkipBaseFeeCharges(t *testing.T) {
 			state := state.NewMockStateDB(ctxt)
 
 			any := gomock.Any()
+			state.EXPECT().BeginTransaction()
 			state.EXPECT().GetBalance(any).Return(uint256.NewInt(0))
 			state.EXPECT().SubBalance(any, any, any)
 			state.EXPECT().EndTransaction()
@@ -593,6 +597,7 @@ func TestApplyTransaction_BlobHashesNotSupportedAndSkipped(t *testing.T) {
 	evm := vm.NewEVM(vm.BlockContext{}, state, &params.ChainConfig{}, vm.Config{})
 	gp := new(core.GasPool).AddGas(1000000)
 
+	state.EXPECT().BeginTransaction()
 	state.EXPECT().EndTransaction()
 
 	msg := &core.Message{
@@ -656,6 +661,7 @@ func TestApplyTransaction_ApplyMessageError_RevertsSnapshotIfPrague(t *testing.T
 			}
 
 			gomock.InOrder(
+				state.EXPECT().BeginTransaction(),
 				state.EXPECT().Snapshot().Return(42).Times(callToSnapshot),
 				state.EXPECT().GetBalance(msg.From).Return(uint256.NewInt(1000000)),
 				state.EXPECT().SubBalance(any, any, any),
@@ -717,6 +723,7 @@ func getStateDbMockForTransactions(
 		},
 	).AnyTimes()
 
+	state.EXPECT().BeginTransaction().AnyTimes()
 	state.EXPECT().GetBalance(any).Return(uint256.NewInt(math.MaxInt64)).AnyTimes()
 	state.EXPECT().AddBalance(any, any, any).AnyTimes()
 	state.EXPECT().SubBalance(any, any, any).AnyTimes()
@@ -766,7 +773,7 @@ func TestRunTransactions_GasSubsidiesEnabled_RunsRegularTransactionWithoutSponso
 		runner:   runner,
 		upgrades: opera.Upgrades{GasSubsidies: true},
 	}
-	runner.EXPECT().runRegularTransaction(context, tx, 0).Return(processed)
+	runner.EXPECT().runRegularTransaction(context, tx, 0).Return(processed, StatusSuccessful)
 	got := runTransactions(context, []*types.Transaction{tx}, 0)
 	require.Equal(t, []ProcessedTransaction{processed}, got)
 }
@@ -784,7 +791,7 @@ func TestRunTransactions_GasSubsidiesEnabled_RunsSponsorshipRequestWithSponsorsh
 	runner.EXPECT().runSponsoredTransaction(context, tx, 0).Return([]ProcessedTransaction{{
 		Transaction: tx,
 		Receipt:     nil,
-	}})
+	}}, StatusSuccessful)
 	processed := runTransactions(context, []*types.Transaction{tx}, 0)
 	require.Len(t, processed, 1)
 	require.Equal(t, tx, processed[0].Transaction)
@@ -797,26 +804,32 @@ func TestRunSponsoredTransaction_InsufficientGas_SkipsTransaction(t *testing.T) 
 	tests := map[string]struct {
 		availableGas uint64
 		shouldSkip   bool
+		status       Status
 	}{
 		"no gas": {
 			availableGas: 0,
 			shouldSkip:   true,
+			status:       StatusSkipped,
 		},
 		"not enough for sponsored tx": {
 			availableGas: 20_999,
 			shouldSkip:   true,
+			status:       StatusSkipped,
 		},
 		"enough for sponsored tx, not enough for fee deduction": {
 			availableGas: 21_000,
 			shouldSkip:   true,
+			status:       StatusSkipped,
 		},
 		"just not enough for both": {
 			availableGas: 21_000 + overhead - 1,
 			shouldSkip:   true,
+			status:       StatusSkipped,
 		},
 		"enough for both": {
 			availableGas: 21_000 + overhead,
 			shouldSkip:   false,
+			status:       StatusSuccessful,
 		},
 	}
 
@@ -876,7 +889,8 @@ func TestRunSponsoredTransaction_InsufficientGas_SkipsTransaction(t *testing.T) 
 			}
 
 			runner := &transactionRunner{evm: evm}
-			got := runner.runSponsoredTransaction(context, tx, 0)
+			got, status := runner.runSponsoredTransaction(context, tx, 0)
+			require.Equal(t, test.status, status)
 
 			if test.shouldSkip {
 				want := []ProcessedTransaction{{
@@ -915,12 +929,13 @@ func TestRunSponsoredTransaction_SponsorshipNotCovered_ReturnsASkippedTransactio
 	}
 
 	runner := &transactionRunner{}
-	got := runner.runSponsoredTransaction(context, tx, 0)
+	got, status := runner.runSponsoredTransaction(context, tx, 0)
 	want := []ProcessedTransaction{{
 		Transaction: tx,
 		Receipt:     nil,
 	}}
 	require.Equal(t, want, got)
+	require.Equal(t, StatusSkipped, status)
 }
 
 func TestRunSponsoredTransaction_SponsorshipCoverageCheckFails_ReturnsASkippedTransaction(t *testing.T) {
@@ -949,12 +964,13 @@ func TestRunSponsoredTransaction_SponsorshipCoverageCheckFails_ReturnsASkippedTr
 	}
 
 	runner := &transactionRunner{evm: evm}
-	got := runner.runSponsoredTransaction(context, tx, 0)
+	got, status := runner.runSponsoredTransaction(context, tx, 0)
 	want := []ProcessedTransaction{{
 		Transaction: tx,
 		Receipt:     nil,
 	}}
 	require.Equal(t, want, got)
+	require.Equal(t, StatusSkipped, status)
 }
 
 func TestRunSponsoredTransaction_SponsoredTransactionIsSkipped_NoFeeDeductionTxIsIssued(t *testing.T) {
@@ -992,12 +1008,13 @@ func TestRunSponsoredTransaction_SponsoredTransactionIsSkipped_NoFeeDeductionTxI
 	}
 
 	runner := &transactionRunner{evm: evm}
-	got := runner.runSponsoredTransaction(context, tx, 0)
+	got, status := runner.runSponsoredTransaction(context, tx, 0)
 	want := []ProcessedTransaction{{
 		Transaction: tx,
 		Receipt:     nil,
 	}}
 	require.Equal(t, want, got)
+	require.Equal(t, StatusSkipped, status)
 }
 
 func TestRunSponsoredTransaction_FailingCreationOfFeeDeduction_TransactionIsAcceptedWithoutFeeDeduction(t *testing.T) {
@@ -1060,9 +1077,10 @@ func TestRunSponsoredTransaction_FailingCreationOfFeeDeduction_TransactionIsAcce
 	}
 
 	runner := &transactionRunner{evm: evm}
-	got := runner.runSponsoredTransaction(context, tx, 0)
+	got, status := runner.runSponsoredTransaction(context, tx, 0)
 	want := []ProcessedTransaction{processed}
 	require.Equal(t, want, got)
+	require.Equal(t, StatusFailed, status)
 }
 
 func TestRunSponsoredTransaction_FeeDeductionTxIsSkipped_TransactionIsAcceptedWithoutFeeDeduction(t *testing.T) {
@@ -1113,12 +1131,13 @@ func TestRunSponsoredTransaction_FeeDeductionTxIsSkipped_TransactionIsAcceptedWi
 	}
 
 	runner := &transactionRunner{evm: evm}
-	got := runner.runSponsoredTransaction(context, tx, 0)
+	got, status := runner.runSponsoredTransaction(context, tx, 0)
 	want := []ProcessedTransaction{
 		processedSponsoredTransaction,
 		skippedFeeDeductionTransaction,
 	}
 	require.Equal(t, want, got)
+	require.Equal(t, StatusSuccessful, status)
 }
 
 func TestRunSponsoredTransaction_FeeDeductionTxFails_TransactionIsAcceptedWithoutFeeDeduction(t *testing.T) {
@@ -1171,12 +1190,13 @@ func TestRunSponsoredTransaction_FeeDeductionTxFails_TransactionIsAcceptedWithou
 	}
 
 	runner := &transactionRunner{evm: evm}
-	got := runner.runSponsoredTransaction(context, tx, 0)
+	got, status := runner.runSponsoredTransaction(context, tx, 0)
 	want := []ProcessedTransaction{
 		processedSponsoredTransaction,
 		skippedFeeDeductionTransaction,
 	}
 	require.Equal(t, want, got)
+	require.Equal(t, StatusSuccessful, status)
 }
 
 func TestRunSponsoredTransaction_TxIndexIsIncrementedForFeeDeductionTx(t *testing.T) {
@@ -1222,12 +1242,13 @@ func TestRunSponsoredTransaction_TxIndexIsIncrementedForFeeDeductionTx(t *testin
 	}
 
 	runner := &transactionRunner{evm: evm}
-	got := runner.runSponsoredTransaction(context, tx, txIndex)
+	got, status := runner.runSponsoredTransaction(context, tx, txIndex)
 	require.Len(t, got, 2)
 	require.Equal(t, tx, got[0].Transaction)
 	require.NotNil(t, got[0].Receipt)
 	require.NotNil(t, got[1].Transaction)
 	require.NotNil(t, got[1].Receipt)
+	require.Equal(t, StatusSuccessful, status)
 }
 
 func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSuccessfully(t *testing.T) {
@@ -1280,6 +1301,7 @@ func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSucc
 
 		// --- The effects of the sponsored transaction itself ---
 		state.EXPECT().SetTxContext(tx.Hash(), txIndex),
+		state.EXPECT().BeginTransaction(),
 		state.EXPECT().SetNonce(sender, uint64(1), tracing.NonceChangeEoACall),
 		state.EXPECT().Snapshot().Return(4), // < for the transaction processing
 		state.EXPECT().EndTransaction(),
@@ -1290,6 +1312,7 @@ func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSucc
 
 		// --- The effects of the fee deduction transaction ---
 		state.EXPECT().SetTxContext(any, txIndex+1),
+		state.EXPECT().BeginTransaction(),
 		state.EXPECT().SetNonce(zeroAddress, uint64(124), tracing.NonceChangeEoACall),
 		state.EXPECT().Snapshot().Return(5),                           // < for the deductFees call
 		state.EXPECT().Snapshot().Return(6),                           // < for the nested burnNativeToken call to SFC
@@ -1391,7 +1414,8 @@ func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSucc
 
 	// --- start of actual test ---
 
-	processedTransactions := runner.runSponsoredTransaction(context, tx, txIndex)
+	processedTransactions, status := runner.runSponsoredTransaction(context, tx, txIndex)
+	require.Equal(StatusSuccessful, status)
 
 	// the transaction should be sponsored successfully
 	require.Len(processedTransactions, 2)
@@ -1434,6 +1458,7 @@ func TestRunTransaction_InternalTransactions_SkipsTransactionChecksTrue(t *testi
 	state := state.NewMockStateDB(ctrl)
 	any := gomock.Any()
 	state.EXPECT().SetTxContext(any, any).Times(2)
+	state.EXPECT().BeginTransaction().Times(2)
 	state.EXPECT().GetBalance(any).Return(uint256.NewInt(math.MaxInt64))
 	state.EXPECT().EndTransaction().Times(2)
 	state.EXPECT().SubBalance(any, any, any)
@@ -1494,11 +1519,12 @@ func TestRunTransaction_InternalTransactions_SkipsTransactionChecksTrue(t *testi
 	require.True(t, internaltx.IsInternal(unsignedTx))
 
 	// run an internal transaction with gas over the max tx gas limit.
-	got := runner.runRegularTransaction(context, unsignedTx, 0)
+	got, status := runner.runRegularTransaction(context, unsignedTx, 0)
 
 	require.Equal(t, unsignedTx, got.Transaction)
 	require.NotNil(t, got.Receipt)
 	require.Equal(t, types.ReceiptStatusSuccessful, got.Receipt.Status)
+	require.Equal(t, StatusSuccessful, status)
 
 	// non internal transaction with the same gas limit is rejected.
 	key, err := crypto.GenerateKey()
@@ -1507,23 +1533,27 @@ func TestRunTransaction_InternalTransactions_SkipsTransactionChecksTrue(t *testi
 	regularTx := types.MustSignNewTx(key, signer, &types.LegacyTx{
 		Nonce: 0, To: &common.Address{1}, Gas: maxTxGas * 2, GasPrice: big.NewInt(1),
 	})
-	got = runner.runRegularTransaction(context, regularTx, 0)
+	got, status = runner.runRegularTransaction(context, regularTx, 0)
 	require.Equal(t, regularTx, got.Transaction)
 	require.Nil(t, got.Receipt)
+	require.Equal(t, StatusSkipped, status)
 }
 
 func TestRunTransaction_RegularTransaction(t *testing.T) {
 
 	tests := map[string]struct {
+		status     Status
 		rules      opera.Rules
 		stateSetup func(state *state.MockStateDB)
 		validation func(t *testing.T, got ProcessedTransaction)
 	}{
 		"Brio/Skipped": {
-			rules: opera.FakeNetRules(opera.GetBrioUpgrades()),
+			status: StatusSkipped,
+			rules:  opera.FakeNetRules(opera.GetBrioUpgrades()),
 			stateSetup: func(state *state.MockStateDB) {
 				any := gomock.Any()
 				state.EXPECT().SetTxContext(any, any)
+				state.EXPECT().BeginTransaction()
 				state.EXPECT().EndTransaction()
 				state.EXPECT().GetNonce(any).Return(uint64(0)).Times(1)
 			},
@@ -1532,10 +1562,12 @@ func TestRunTransaction_RegularTransaction(t *testing.T) {
 			},
 		},
 		"Pre-Brio/Accepted": {
-			rules: opera.FakeNetRules(opera.GetAllegroUpgrades()),
+			status: StatusSuccessful,
+			rules:  opera.FakeNetRules(opera.GetAllegroUpgrades()),
 			stateSetup: func(state *state.MockStateDB) {
 				any := gomock.Any()
 				state.EXPECT().SetTxContext(any, any)
+				state.EXPECT().BeginTransaction()
 				state.EXPECT().GetBalance(any).Return(uint256.NewInt(math.MaxInt64))
 				state.EXPECT().EndTransaction()
 				state.EXPECT().SubBalance(any, any, any)
@@ -1616,9 +1648,10 @@ func TestRunTransaction_RegularTransaction(t *testing.T) {
 				Nonce: 0, To: &common.Address{1}, Gas: maxTxGas + 1, GasPrice: big.NewInt(1),
 			})
 
-			got := runner.runRegularTransaction(context, regularTx, 0)
+			got, status := runner.runRegularTransaction(context, regularTx, 0)
 
 			require.Equal(t, regularTx, got.Transaction)
+			require.Equal(t, test.status, status)
 			test.validation(t, got)
 		})
 	}
@@ -1650,4 +1683,10 @@ func TestTransactionGenerationUtilities(t *testing.T) {
 
 	require.False(t, subsidies.IsSponsorshipRequest(regular))
 	require.True(t, subsidies.IsSponsorshipRequest(request))
+}
+
+// Bundle tests
+
+func TestRunTransactionBundle_IncorrectBundlesAreSkipped(t *testing.T) {
+
 }
