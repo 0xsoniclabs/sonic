@@ -341,8 +341,8 @@ func (r *transactionRunner) runTransactionBundle(
 	}
 
 	// Execute the payment transaction first
-	payment := r.evm.runWithBaseFeeCheck(ctxt, txBundle.Payment, txIndex)
-	if payment.Receipt == nil {
+	payment, status := runTransaction(ctxt, txBundle.Payment, txIndex)
+	if status != StatusSuccessful {
 		log.Info("Payment transaction in bundle skipped, skip entire bundle", "tx", tx.Hash().Hex())
 		return []ProcessedTransaction{}, StatusSkipped
 	}
@@ -360,7 +360,7 @@ func (r *transactionRunner) runTransactionBundle(
 			} else {
 				log.Info("Bundled transaction skipped, revert all", "tx", btx.Hash().Hex())
 				ctxt.statedb.RevertToCheckpoint(paymentCheckpoint)
-				return []ProcessedTransaction{payment}, StatusFailed
+				return payment, StatusFailed
 			}
 		}
 
@@ -371,7 +371,7 @@ func (r *transactionRunner) runTransactionBundle(
 			} else {
 				log.Info("Bundled transaction failed, revert all", "tx", btx.Hash().Hex())
 				ctxt.statedb.RevertToCheckpoint(paymentCheckpoint)
-				return []ProcessedTransaction{payment}, StatusFailed
+				return payment, StatusFailed
 			}
 		}
 
@@ -383,7 +383,7 @@ func (r *transactionRunner) runTransactionBundle(
 		}
 	}
 
-	return append([]ProcessedTransaction{payment}, res...), StatusSuccessful
+	return append(payment, res...), StatusSuccessful
 }
 
 // _evm is an interface to an EVM instance that can be used to run a single
