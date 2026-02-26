@@ -78,22 +78,22 @@ func TestSimulateV1(t *testing.T) {
 
 		sender := common.HexToAddress("0x1111111111111111111111111111111111111111")
 		receiver := common.HexToAddress("0x2222222222222222222222222222222222222222")
-		hundredEth := hexutil.EncodeBig(new(big.Int).Mul(big.NewInt(1e18), big.NewInt(100)))
-		oneEth := hexutil.EncodeBig(new(big.Int).Mul(big.NewInt(1e18), big.NewInt(1)))
+		balance := hexutil.EncodeBig(new(big.Int).Mul(big.NewInt(1e18), big.NewInt(100)))
+		value := hexutil.EncodeBig(new(big.Int).Mul(big.NewInt(1e18), big.NewInt(1)))
 
 		opts := map[string]interface{}{
 			"blockStateCalls": []interface{}{
 				map[string]interface{}{
 					"stateOverrides": map[string]interface{}{
 						sender.Hex(): map[string]interface{}{
-							"balance": hundredEth,
+							"balance": balance,
 						},
 					},
 					"calls": []interface{}{
 						map[string]interface{}{
 							"from":  sender.Hex(),
 							"to":    receiver.Hex(),
-							"value": oneEth,
+							"value": value,
 						},
 					},
 				},
@@ -101,10 +101,10 @@ func TestSimulateV1(t *testing.T) {
 		}
 		var result []simulateV1BlockResult
 		err = client.Client().Call(&result, "eth_simulateV1", opts, "latest")
-		require.NoError(t, err, "eth_simulateV1 must succeed for a basic ETH transfer")
+		require.NoError(t, err, "eth_simulateV1 must succeed for a basic transfer")
 		require.Len(t, result, 1, "must return one block result")
 		require.Len(t, result[0].Calls, 1, "must return one call result")
-		require.Equal(t, "0x1", result[0].Calls[0].Status, "ETH transfer must succeed")
+		require.Equal(t, "0x1", result[0].Calls[0].Status, "transfer must succeed")
 		require.NotEmpty(t, result[0].Calls[0].GasUsed, "gasUsed must be non-empty")
 	})
 
@@ -269,17 +269,17 @@ func TestSimulateV1(t *testing.T) {
 		require.NoError(t, err)
 		defer client.Close()
 
-		// Block 1: fund `relay` by transferring 2 ETH from `sender`
+		// Block 1: fund `relay` by transferring 2 from `sender`
 		//           (sender gets a balance override so the transfer can proceed).
-		// Block 2: relay forwards 1 ETH to `receiver`.
+		// Block 2: relay forwards 1 to `receiver`.
 		//           No state override is applied to relay — its funds must come
 		//           from the state produced by block 1.
 		sender := common.HexToAddress("0x5555555555555555555555555555555555555555")
 		relay := common.HexToAddress("0x6666666666666666666666666666666666666666")
 		receiver := common.HexToAddress("0x7777777777777777777777777777777777777777")
-		hundredEth := hexutil.EncodeBig(new(big.Int).Mul(big.NewInt(1e18), big.NewInt(100)))
-		twoEth := hexutil.EncodeBig(new(big.Int).Mul(big.NewInt(1e18), big.NewInt(2)))
-		oneEth := hexutil.EncodeBig(new(big.Int).Mul(big.NewInt(1e18), big.NewInt(1)))
+		balance := hexutil.EncodeBig(new(big.Int).Mul(big.NewInt(1e18), big.NewInt(100)))
+		value1 := hexutil.EncodeBig(new(big.Int).Mul(big.NewInt(1e18), big.NewInt(2)))
+		value2 := hexutil.EncodeBig(new(big.Int).Mul(big.NewInt(1e18), big.NewInt(1)))
 
 		opts := map[string]interface{}{
 			"blockStateCalls": []interface{}{
@@ -287,14 +287,14 @@ func TestSimulateV1(t *testing.T) {
 				map[string]interface{}{
 					"stateOverrides": map[string]interface{}{
 						sender.Hex(): map[string]interface{}{
-							"balance": hundredEth,
+							"balance": balance,
 						},
 					},
 					"calls": []interface{}{
 						map[string]interface{}{
 							"from":  sender.Hex(),
 							"to":    relay.Hex(),
-							"value": twoEth,
+							"value": value1,
 						},
 					},
 				},
@@ -304,7 +304,7 @@ func TestSimulateV1(t *testing.T) {
 						map[string]interface{}{
 							"from":  relay.Hex(),
 							"to":    receiver.Hex(),
-							"value": oneEth,
+							"value": value2,
 						},
 					},
 				},
@@ -327,22 +327,22 @@ func TestSimulateV1(t *testing.T) {
 
 		sender := common.HexToAddress("0x8888888888888888888888888888888888888888")
 		receiver := common.HexToAddress("0x9999999999999999999999999999999999999999")
-		hundredEth := hexutil.EncodeBig(new(big.Int).Mul(big.NewInt(1e18), big.NewInt(100)))
-		oneEth := hexutil.EncodeBig(new(big.Int).Mul(big.NewInt(1e18), big.NewInt(1)))
+		balance := hexutil.EncodeBig(new(big.Int).Mul(big.NewInt(1e18), big.NewInt(100)))
+		value := hexutil.EncodeBig(new(big.Int).Mul(big.NewInt(1e18), big.NewInt(1)))
 
 		opts := map[string]interface{}{
 			"blockStateCalls": []interface{}{
 				map[string]interface{}{
 					"stateOverrides": map[string]interface{}{
 						sender.Hex(): map[string]interface{}{
-							"balance": hundredEth,
+							"balance": balance,
 						},
 					},
 					"calls": []interface{}{
 						map[string]interface{}{
 							"from":  sender.Hex(),
 							"to":    receiver.Hex(),
-							"value": oneEth,
+							"value": value,
 						},
 					},
 				},
@@ -361,19 +361,19 @@ func TestSimulateV1(t *testing.T) {
 		const transferEventTopic = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 
 		logs := result[0].Calls[0].Logs
-		require.NotEmpty(t, logs, "ETH transfer must emit at least one log when traceTransfers=true")
+		require.NotEmpty(t, logs, "transfer must emit at least one log when traceTransfers=true")
 
 		foundTransferLog := false
 		for _, l := range logs {
 			if strings.EqualFold(l.Address, ethPseudoAddress) {
-				require.NotEmpty(t, l.Topics, "ETH pseudo-log must have topics")
+				require.NotEmpty(t, l.Topics, "transfer pseudo-log must have topics")
 				require.Equal(t, transferEventTopic, l.Topics[0],
 					"first topic must be the ERC-20 Transfer event signature")
 				foundTransferLog = true
 			}
 		}
 		require.True(t, foundTransferLog,
-			"must find an ETH transfer pseudo-log at address %s", ethPseudoAddress)
+			"must find an native transfer pseudo-log at address %s", ethPseudoAddress)
 	})
 
 	t.Run("simulation_does_not_modify_chain_state", func(t *testing.T) {
@@ -390,13 +390,13 @@ func TestSimulateV1(t *testing.T) {
 		require.Equal(t, "0x0", balanceBefore, "fresh address must have zero balance before simulation")
 
 		// Simulate giving freshAddr a large balance — this must not affect the real chain.
-		hundredEth := hexutil.EncodeBig(new(big.Int).Mul(big.NewInt(1e18), big.NewInt(100)))
+		balance := hexutil.EncodeBig(new(big.Int).Mul(big.NewInt(1e18), big.NewInt(100)))
 		opts := map[string]interface{}{
 			"blockStateCalls": []interface{}{
 				map[string]interface{}{
 					"stateOverrides": map[string]interface{}{
 						freshAddr.Hex(): map[string]interface{}{
-							"balance": hundredEth,
+							"balance": balance,
 						},
 					},
 					"calls": []interface{}{},
