@@ -335,10 +335,11 @@ func (c *CarmenStateDB) BeginBlock(number uint64) {
 	}
 }
 
-func (c *CarmenStateDB) EndBlock(number uint64) {
+func (c *CarmenStateDB) EndBlock(number uint64) <-chan error {
 	if db, ok := c.db.(carmen.StateDB); ok {
-		db.EndBlock(number)
+		return db.EndBlock(number)
 	}
+	return nil
 }
 
 func (c *CarmenStateDB) GetStateHash() common.Hash {

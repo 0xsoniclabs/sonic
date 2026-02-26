@@ -21,8 +21,11 @@ import (
 	"math"
 	"math/big"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -311,6 +314,108 @@ func TestOperaEVMProcessor_Finalize_ReportsAggregatedNumberOfSkippedTransactions
 
 	_, numSkipped, _ = processor.Finalize()
 	require.Equal(3, numSkipped)
+}
+
+func TestOperaEVMProcessor_Finalize_DoesNotBlocksOnSyncChannel_WhenBlockIsOlderThanOneHour(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		stateDb := state.NewMockStateDB(ctrl)
+
+		any := gomock.Any()
+
+		stateDb.EXPECT().BeginBlock(any)
+		stateDb.EXPECT().GetStateHash()
+		// EndBlock should return a channel,but this should be ignored for
+		// blocks older than one hour.
+		stateDb.EXPECT().EndBlock(gomock.Any()).Return(make(<-chan error))
+		evmModule := New()
+		blockTime := time.Now().Add(-1*time.Hour - time.Second)
+		processor := evmModule.Start(
+			iblockproc.BlockCtx{
+				Time: inter.FromUnix(blockTime.Unix()),
+			},
+			stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{},
+		)
+
+		finalizeDone := false
+		go func() {
+			_, _, _ = processor.Finalize()
+			finalizeDone = true
+		}()
+
+		synctest.Wait()
+		require.True(t, finalizeDone, "Finalize did not finish for blocks older than one hour")
+	})
+}
+
+func TestOperaEVMProcessor_Finalize_DoesNotBlocksOnSyncChannel_WhenSyncChannelIsNil(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		stateDb := state.NewMockStateDB(ctrl)
+
+		any := gomock.Any()
+
+		stateDb.EXPECT().BeginBlock(any)
+		stateDb.EXPECT().GetStateHash()
+		// If the sync channel is nil, Finalize should not block even for recent blocks.
+		stateDb.EXPECT().EndBlock(gomock.Any()).Return(nil)
+		evmModule := New()
+		blockTime := time.Now().Add(-1*time.Hour + time.Second)
+		processor := evmModule.Start(
+			iblockproc.BlockCtx{
+				Time: inter.FromUnix(blockTime.Unix()),
+			},
+			stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{},
+		)
+
+		finalizeDone := false
+		go func() {
+			_, _, _ = processor.Finalize()
+			finalizeDone = true
+		}()
+
+		synctest.Wait()
+		require.True(t, finalizeDone, "Finalize did not finish when sync channel was nil")
+	})
+}
+
+func TestOperaEVMProcessor_Finalize_BlocksOnSyncChannel_WhenBlockIsYoungerThanOneHour(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+
+		ctrl := gomock.NewController(t)
+		stateDb := state.NewMockStateDB(ctrl)
+
+		any := gomock.Any()
+
+		stateDb.EXPECT().BeginBlock(any)
+		stateDb.EXPECT().GetStateHash()
+
+		syncChannel := make(chan error)
+		stateDb.EXPECT().EndBlock(gomock.Any()).Return(syncChannel)
+
+		evmModule := New()
+		blockTime := time.Now().Add(-1*time.Hour + time.Second)
+		processor := evmModule.Start(
+			iblockproc.BlockCtx{
+				Time: inter.FromUnix(blockTime.Unix()),
+			},
+			stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{},
+		)
+
+		finalizeDone := false
+		go func() {
+			_, _, _ = processor.Finalize()
+			finalizeDone = true
+		}()
+
+		synctest.Wait()
+		require.False(t, finalizeDone, "Finalize finished before sync channel was closed")
+
+		close(syncChannel)
+
+		synctest.Wait()
+		require.True(t, finalizeDone, "Finalize did not finish after sync channel was closed")
+	})
 }
 
 // onNewLog is a helper interface to allow mocking the onNewLog function
