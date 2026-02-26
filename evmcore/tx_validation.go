@@ -21,6 +21,8 @@ import (
 	"math"
 	"math/big"
 
+	"github.com/0xsoniclabs/sonic/evmcore/bundle_validate"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice/gaspricelimits"
 	"github.com/0xsoniclabs/sonic/inter/state"
@@ -58,7 +60,8 @@ type NetworkRules struct {
 	eip7623 bool // Fork indicator whether we are using EIP-7623 floor gas validation.
 	eip7702 bool // Fork indicator whether we are using EIP-7702 set code transactions.
 
-	gasSubsidies bool // Indicator whether gas subsidies are active.
+	gasSubsidies       bool // Indicator whether gas subsidies are active.
+	transactionBundles bool // Indicator whether bundle transactions are active.
 }
 
 // Signer wraps types.Signer to allow mocking it in tests.
@@ -102,6 +105,11 @@ func validateTx(
 	}
 
 	if err := validateSponsoredTransactions(tx, netRules, subsidiesChecker); err != nil {
+		return err
+	}
+
+	if err := validateBundledTransactions(tx, opt, netRules, chain, state,
+		subsidiesChecker, signer); err != nil {
 		return err
 	}
 
@@ -187,8 +195,12 @@ func ValidateTxForNetwork(tx *types.Transaction, rules NetworkRules, chain State
 		return fmt.Errorf("%w: tx gas %v, should be under %v", ErrGasLimitTooHigh, tx.Gas(), chain.CurrentMaxGasLimit())
 	}
 
-	if _, err := types.Sender(signer, tx); err != nil {
+	if _, err = types.Sender(signer, tx); err != nil {
 		return ErrInvalidSender
+	}
+
+	if (!rules.osaka || !rules.transactionBundles) && bundle.IsBundleOnly(tx) {
+		return ErrTxTypeNotSupported
 	}
 
 	return nil
@@ -357,6 +369,40 @@ func validateSponsoredTransactions(
 	// Sponsored transactions are only valid if they are explicitly marked as sponsored by the subsidies checker.
 	if !SubsidiesChecker.isSponsored(tx) {
 		return ErrSponsorshipRejected
+	}
+
+	return nil
+}
+
+// validateBundledTransactions checks if a transaction is a bundle transaction and if so,
+// it validates the transactions in the bundle and the payment transaction.
+// It returns an error if the validation fails.
+func validateBundledTransactions(
+	tx *types.Transaction,
+	opt poolOptions,
+	netRules NetworkRules,
+	chain StateReader,
+	state state.StateDB, // Although this can be retrieved from chain, it's passed explicitly to avoid extra db-pool accesses
+	subsidiesChecker subsidiesChecker,
+	signer types.Signer,
+) error {
+	if !netRules.osaka || !netRules.transactionBundles {
+		return nil
+	}
+
+	if !bundle.IsBundleOnly(tx) {
+		return nil
+	}
+	bundle, err := bundle_validate.ValidateTransactionBundle(tx, signer)
+	if err != nil {
+		return err
+	}
+
+	for _, innerTx := range bundle.Bundle {
+		if err := validateTx(innerTx, opt, netRules, chain, state,
+			subsidiesChecker, signer); err != nil {
+			return err
+		}
 	}
 
 	return nil
