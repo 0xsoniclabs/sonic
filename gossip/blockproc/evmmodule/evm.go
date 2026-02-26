@@ -18,10 +18,12 @@ package evmmodule
 
 import (
 	"math/big"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
@@ -181,7 +183,15 @@ func (p *OperaEVMProcessor) Finalize() (evmBlock *evmcore.EvmBlock, numSkipped i
 	evmBlock = p.evmBlockWith(transactions)
 
 	// Commit block
-	p.statedb.EndBlock(evmBlock.Number.Uint64())
+	done := p.statedb.EndBlock(evmBlock.Number.Uint64())
+	// Use asynchronous commit for blocks older than one hour to speed up catching up.
+	// For recent blocks (within the last hour), wait for the commit to complete
+	// to ensure the latest state is available for both live and archive databases.
+	if time.Since(evmBlock.Time.Time()) < 1*time.Hour && done != nil {
+		if err := <-done; err != nil {
+			log.Error("Failed to finalize block %v: %v", evmBlock.Number, err)
+		}
+	}
 
 	// Get state root
 	evmBlock.Root = p.statedb.GetStateHash()

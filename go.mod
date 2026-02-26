@@ -19,7 +19,7 @@ module github.com/0xsoniclabs/sonic
 go 1.25.0
 
 require (
-	github.com/0xsoniclabs/carmen/go v0.0.0-20251024091706-e1c5a32d4310
+	github.com/0xsoniclabs/carmen/go v0.0.0-20260226072032-4b363bf4aa48
 	github.com/0xsoniclabs/tosca v0.0.0-20260223084600-d2ea7c5c23ff
 	github.com/Fantom-foundation/lachesis-base v0.0.0-20240116072301-a75735c4ef00
 	github.com/cespare/cp v1.1.1
