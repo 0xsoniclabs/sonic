@@ -356,7 +356,7 @@ func (r *transactionRunner) runTransactionBundle(
 		if status == StatusSkipped {
 			if txBundle.Flags.IgnoreInvalidTransactions() {
 				log.Info("Bundled transaction skipped, continue with next", "tx", btx.Hash().Hex())
-				continue
+				continue // skipped transactions do not end up in the block
 			} else {
 				log.Info("Bundled transaction skipped, revert all", "tx", btx.Hash().Hex())
 				ctxt.statedb.RevertToCheckpoint(paymentCheckpoint)
@@ -367,7 +367,7 @@ func (r *transactionRunner) runTransactionBundle(
 		if status == StatusFailed {
 			if txBundle.Flags.IgnoreFailedTransactions() {
 				log.Info("Bundled transaction failed, continue with next", "tx", btx.Hash().Hex())
-				continue
+				// reverted transactions still end up in the block
 			} else {
 				log.Info("Bundled transaction failed, revert all", "tx", btx.Hash().Hex())
 				ctxt.statedb.RevertToCheckpoint(paymentCheckpoint)
