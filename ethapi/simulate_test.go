@@ -346,7 +346,7 @@ func TestSanitizeChain_FillsGapsWithEmptyBlocks(t *testing.T) {
 func TestSanitizeChain_RejectsNonIncreasingBlockNumbers(t *testing.T) {
 	sim := newSimulator()
 	n1 := hexutil.Big(*big.NewInt(baseBlockNumber + 1))
-	n2 := hexutil.Big(*big.NewInt(baseBlockNumber + 2)) // same as previous (non-increasing)
+	n2 := hexutil.Big(*big.NewInt(baseBlockNumber + 1)) // same as previous (non-increasing)
 	blocks := []simBlock{
 		{BlockOverrides: &simBlockOverrides{Number: &n1}},
 		{BlockOverrides: &simBlockOverrides{Number: &n2}},
