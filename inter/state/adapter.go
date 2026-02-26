@@ -40,7 +40,7 @@ type StateDB interface {
 	GetStateHash() common.Hash
 
 	BeginBlock(number uint64)
-	EndBlock(number uint64)
+	EndBlock(number uint64) <-chan error
 	EndTransaction()
 	Release()
 }
