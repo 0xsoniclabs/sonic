@@ -531,27 +531,27 @@ func TestValidateTxForNetwork_AcceptsTransactions(t *testing.T) {
 	}
 }
 
-func TestValidateTxForNetwork_SonicCodeSizeLimitStartingFromOsaka(t *testing.T) {
+func TestValidateTxForNetwork_CustomSonicCodeSizeLimitIsEnforced(t *testing.T) {
 	tests := map[string]struct {
-		osakaEnabled bool
+		customSize   bool
 		initCodeSize uint64
 		errorMessage string
 	}{
 		"Allegro below limit": {
-			osakaEnabled: false,
+			customSize:   false,
 			initCodeSize: params.MaxInitCodeSize,
 		},
 		"Allegro above limit": {
-			osakaEnabled: false,
+			customSize:   false,
 			initCodeSize: params.MaxInitCodeSize + 1,
 			errorMessage: "max initcode size exceeded: code size 49153, limit 49152",
 		},
 		"Brio below limit": {
-			osakaEnabled: true,
+			customSize:   true,
 			initCodeSize: opera.SonicPostAllegroMaxInitCodeSize,
 		},
 		"Brio above limit": {
-			osakaEnabled: true,
+			customSize:   true,
 			initCodeSize: opera.SonicPostAllegroMaxInitCodeSize + 1,
 			errorMessage: "max initcode size exceeded: code size 98305, limit 98304",
 		},
@@ -563,12 +563,12 @@ func TestValidateTxForNetwork_SonicCodeSizeLimitStartingFromOsaka(t *testing.T) 
 			signer := NewMockSigner(ctrl)
 			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{42}, nil).AnyTimes()
 			rules := NetworkRules{
-				eip2718:  true,
-				eip1559:  true,
-				eip4844:  true,
-				eip7702:  true,
-				shanghai: true,
-				osaka:    test.osakaEnabled,
+				eip2718:                 true,
+				eip1559:                 true,
+				eip4844:                 true,
+				eip7702:                 true,
+				shanghai:                true,
+				customInitCodeSizeLimit: test.customSize,
 			}
 
 			data := make([]byte, test.initCodeSize)
