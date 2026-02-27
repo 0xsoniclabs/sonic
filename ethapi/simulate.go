@@ -147,7 +147,7 @@ var (
 
 // simTracer collects logs
 type simTracer struct {
-	logs           [][]*types.Log
+	logs           []*types.Log
 	count          int
 	traceTransfers bool
 	blockNumber    uint64
@@ -179,7 +179,6 @@ func (t *simTracer) Hooks() *tracing.Hooks {
 }
 
 func (t *simTracer) onEnter(depth int, typ byte, from common.Address, to common.Address, input []byte, gas uint64, value *big.Int) {
-	t.logs = append(t.logs, make([]*types.Log, 0))
 	if t.traceTransfers &&
 		vm.OpCode(typ) != vm.DELEGATECALL &&
 		value != nil && value.Cmp(common.Big0) > 0 {
@@ -190,14 +189,14 @@ func (t *simTracer) onEnter(depth int, typ byte, from common.Address, to common.
 
 func (t *simTracer) onExit(depth int, output []byte, gasUsed uint64, err error, reverted bool) {
 	if depth == 0 && reverted {
-		t.logs[0] = nil
+		t.logs = nil
 		t.count = 0
 		return
 	}
 }
 
 func (t *simTracer) captureLog(address common.Address, topics []common.Hash, data []byte) {
-	t.logs[len(t.logs)-1] = append(t.logs[len(t.logs)-1], &types.Log{
+	t.logs = append(t.logs, &types.Log{
 		Address:        address,
 		Topics:         topics,
 		Data:           data,
@@ -230,7 +229,7 @@ func (t *simTracer) reset(txHash common.Hash, txIdx uint) {
 }
 
 func (t *simTracer) Logs() []*types.Log {
-	return t.logs[0]
+	return t.logs
 }
 
 // simBlockOverrides contains block header fields that can be overridden per

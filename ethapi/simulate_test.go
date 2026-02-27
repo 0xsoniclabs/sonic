@@ -154,13 +154,11 @@ func TestSimTracer_CaptureTransfer_CreatesExpectedLog(t *testing.T) {
 	txHash := common.Hash{4}
 
 	tracer := newSimTracer(true, blockNum, blockTs, blockHash, txHash, 0)
-	// Simulate onEnter allocating the per-call slice.
-	tracer.logs = append(tracer.logs, make([]*types.Log, 0))
 
 	tracer.captureTransfer(from, to, value)
 
-	require.Len(t, tracer.logs[0], 1)
-	log := tracer.logs[0][0]
+	require.Len(t, tracer.logs, 1)
+	log := tracer.logs[0]
 	require.Equal(t, simTransferAddress, log.Address)
 	require.Equal(t, simTransferTopic, log.Topics[0])
 	require.Equal(t, common.BytesToHash(from.Bytes()), log.Topics[1])
@@ -173,55 +171,54 @@ func TestSimTracer_CaptureTransfer_CreatesExpectedLog(t *testing.T) {
 
 func TestSimTracer_CaptureTransfer_NoOpWhenTracingDisabled(t *testing.T) {
 	tracer := newSimTracer(false, 1, 0, common.Hash{}, common.Hash{}, 0)
-	tracer.logs = append(tracer.logs, make([]*types.Log, 0))
 
 	tracer.captureTransfer(common.Address{1}, common.Address{2}, big.NewInt(1))
 
 	// No log should be appended because traceTransfers is false.
-	require.Empty(t, tracer.logs[0])
+	require.Empty(t, tracer.logs)
 }
 
 func TestSimTracer_OnExit_ClearsLogsOnTopLevelRevert(t *testing.T) {
 	tracer := newSimTracer(true, 1, 0, common.Hash{}, common.Hash{}, 0)
-	tracer.logs = [][]*types.Log{
-		{{Address: common.Address{1}}},
+	tracer.logs = []*types.Log{
+		{Address: common.Address{1}},
 	}
 	tracer.count = 1
 
 	tracer.onExit(0, nil, 0, nil, true) // depth=0, reverted=true
 
-	require.Nil(t, tracer.logs[0])
+	require.Nil(t, tracer.logs)
 	require.Equal(t, 0, tracer.count)
 }
 
 func TestSimTracer_OnExit_KeepsLogsOnSuccessfulTopLevelCall(t *testing.T) {
 	tracer := newSimTracer(true, 1, 0, common.Hash{}, common.Hash{}, 0)
 	log := &types.Log{Address: common.Address{1}}
-	tracer.logs = [][]*types.Log{{log}}
+	tracer.logs = []*types.Log{log}
 	tracer.count = 1
 
 	tracer.onExit(0, nil, 0, nil, false) // depth=0, reverted=false
 
-	require.NotNil(t, tracer.logs[0])
+	require.NotNil(t, tracer.logs)
 	require.Equal(t, 1, tracer.count)
 }
 
 func TestSimTracer_OnExit_KeepsLogsOnNestedRevert(t *testing.T) {
 	tracer := newSimTracer(true, 1, 0, common.Hash{}, common.Hash{}, 0)
 	log := &types.Log{Address: common.Address{1}}
-	tracer.logs = [][]*types.Log{{log}}
+	tracer.logs = []*types.Log{log}
 	tracer.count = 1
 
 	// Depth > 0 revert should not clear logs.
 	tracer.onExit(1, nil, 0, nil, true)
 
-	require.NotNil(t, tracer.logs[0])
+	require.NotNil(t, tracer.logs)
 	require.Equal(t, 1, tracer.count)
 }
 
 func TestSimTracer_Reset_ClearsLogsAndUpdatesContext(t *testing.T) {
 	tracer := newSimTracer(true, 1, 0, common.Hash{1}, common.Hash{2}, 0)
-	tracer.logs = [][]*types.Log{{{Address: common.Address{1}}}}
+	tracer.logs = []*types.Log{{Address: common.Address{1}}}
 
 	newHash := common.Hash{42}
 	newIdx := uint(3)
