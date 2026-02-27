@@ -210,10 +210,10 @@ func makeUnsignedBundleTxs(t *testing.T, net *tests.IntegrationTestNet, client *
 			signer := types.NewCancunSigner(net.GetChainId())
 
 			// steps := []bundle.ExecutionStep{}
-			// if flags.IgnoreInvalidTransactions() {
+			// if flags.TolerateInvalid() {
 			// 	steps = append(steps, bundle.ExecutionStep{From: senders[0].Address(), Hash: signer.Hash(txs[0])})
 			// }
-			// if flags.IgnoreFailedTransactions() {
+			// if flags.TolerateFailed() {
 			// 	steps = append(steps, bundle.ExecutionStep{From: senders[1].Address(), Hash: signer.Hash(txs[1])})
 			// }
 			// steps = append(steps, bundle.ExecutionStep{From: senders[2].Address(), Hash: signer.Hash(txs[2])})
@@ -227,10 +227,10 @@ func makeUnsignedBundleTxs(t *testing.T, net *tests.IntegrationTestNet, client *
 			signBundleTxs(t, net, btxs, bsenders, plan)
 
 			// submittedTxs := types.Transactions{}
-			// if flags.IgnoreInvalidTransactions() {
+			// if flags.TolerateInvalid() {
 			// 	submittedTxs = append(submittedTxs, txs[0])
 			// }
-			// if flags.IgnoreFailedTransactions() {
+			// if flags.TolerateFailed() {
 			// 	submittedTxs = append(submittedTxs, txs[1])
 			// }
 			// submittedTxs = append(submittedTxs, txs[2], txs[3])
@@ -294,15 +294,15 @@ func checkStatus(t *testing.T, net *tests.IntegrationTestNet, status uint64, txH
 
 func Test_Bundle_Ignores_And_AtMostOne_Work(t *testing.T) {
 	// transactions = [
-	//     if ignoreInvalidTransactions: invalidTx,
-	//     if ignoreFailedTransactions: failedTx,
+	//     if TolerateInvalid: invalidTx,
+	//     if TolerateFailed: failedTx,
 	//     validTx,
 	//     validTx,
 	// ]
 	// This test ensures that:
-	// - if ignoreInvalidTransactions is set, invalidTx will be ignored and the rest of the bundle will be executed
-	// - if ignoreFailedTransactions is set, failedTx will be ignored and the rest of the bundle will be executed
-	// - if atMostOneTransaction is set, only the first transaction (after ignoring invalid/failed transactions) will be executed
+	// - if TolerateInvalid is set, invalidTx will be ignored and the rest of the bundle will be executed
+	// - if TolerateFailed is set, failedTx will be ignored and the rest of the bundle will be executed
+	// - if TryUntil is set, only the first transaction (after ignoring invalid/failed transactions) will be executed
 	runWithAllFlags(t, func(
 		name string,
 		net *tests.IntegrationTestNet,
@@ -318,10 +318,10 @@ func Test_Bundle_Ignores_And_AtMostOne_Work(t *testing.T) {
 				signer := types.NewCancunSigner(net.GetChainId())
 
 				steps := []bundle.ExecutionStep{}
-				if flags.IgnoreInvalidTransactions() {
+				if flags.TolerateInvalid() {
 					steps = append(steps, bundle.ExecutionStep{From: senders[0].Address(), Hash: signer.Hash(txs[0])})
 				}
-				if flags.IgnoreFailedTransactions() {
+				if flags.TolerateFailed() {
 					steps = append(steps, bundle.ExecutionStep{From: senders[1].Address(), Hash: signer.Hash(txs[1])})
 				}
 				steps = append(steps, bundle.ExecutionStep{From: senders[2].Address(), Hash: signer.Hash(txs[2])})
@@ -331,10 +331,10 @@ func Test_Bundle_Ignores_And_AtMostOne_Work(t *testing.T) {
 				signBundleTxs(t, net, txs, senders, plan)
 
 				submittedTxs := types.Transactions{}
-				if flags.IgnoreInvalidTransactions() {
+				if flags.TolerateInvalid() {
 					submittedTxs = append(submittedTxs, txs[0])
 				}
-				if flags.IgnoreFailedTransactions() {
+				if flags.TolerateFailed() {
 					submittedTxs = append(submittedTxs, txs[1])
 				}
 				submittedTxs = append(submittedTxs, txs[2], txs[3])
@@ -356,9 +356,9 @@ func Test_Bundle_Ignores_And_AtMostOne_Work(t *testing.T) {
 				nextTxHash, stop := iter.Pull(slices.Values(transactionHashes))
 				defer stop()
 				if successfulTxType == successfulNormalTx {
-					if flags.AtMostOneTransaction() {
+					if flags.TryUntil() {
 						require.Len(t, transactionHashes, 2)
-					} else if flags.IgnoreFailedTransactions() {
+					} else if flags.TolerateFailed() {
 						require.Len(t, transactionHashes, 4)
 					} else {
 						require.Len(t, transactionHashes, 3)
@@ -366,25 +366,25 @@ func Test_Bundle_Ignores_And_AtMostOne_Work(t *testing.T) {
 
 					checkHashesEqAndStatus(t, net, paymentTxHash, types.ReceiptStatusSuccessful, nextTxHash) // paymentTx
 
-					if flags.IgnoreFailedTransactions() {
+					if flags.TolerateFailed() {
 						checkHashesEqAndStatus(t, net, txs[1].Hash(), types.ReceiptStatusFailed, nextTxHash) // failedTx
 					}
 
-					if !flags.IgnoreFailedTransactions() || !flags.AtMostOneTransaction() {
+					if !flags.TolerateFailed() || !flags.TryUntil() {
 						checkHashesEqAndStatus(t, net, txs[2].Hash(), types.ReceiptStatusSuccessful, nextTxHash) // successfulNormalTx
 					}
 
-					if !flags.AtMostOneTransaction() {
+					if !flags.TryUntil() {
 						checkHashesEqAndStatus(t, net, txs[3].Hash(), types.ReceiptStatusSuccessful, nextTxHash) // successfulNormalTx
 					}
 				} else if successfulTxType == successfulSponsoredTx {
-					if flags.AtMostOneTransaction() {
-						if flags.IgnoreFailedTransactions() {
+					if flags.TryUntil() {
+						if flags.TolerateFailed() {
 							require.Len(t, transactionHashes, 2) // paymentTx, failedTx
 						} else {
 							require.Len(t, transactionHashes, 3) // paymentTx, successfulSponsoredTx, payment for successfulSponsoredTx
 						}
-					} else if flags.IgnoreFailedTransactions() {
+					} else if flags.TolerateFailed() {
 						require.Len(t, transactionHashes, 6)
 					} else {
 						require.Len(t, transactionHashes, 5)
@@ -392,27 +392,27 @@ func Test_Bundle_Ignores_And_AtMostOne_Work(t *testing.T) {
 
 					checkHashesEqAndStatus(t, net, paymentTxHash, types.ReceiptStatusSuccessful, nextTxHash) // paymentTx
 
-					if flags.IgnoreFailedTransactions() {
+					if flags.TolerateFailed() {
 						checkHashesEqAndStatus(t, net, txs[1].Hash(), types.ReceiptStatusFailed, nextTxHash) // failedTx
 					}
 
-					if !flags.IgnoreFailedTransactions() || !flags.AtMostOneTransaction() {
+					if !flags.TolerateFailed() || !flags.TryUntil() {
 						checkHashesEqAndStatus(t, net, txs[2].Hash(), types.ReceiptStatusSuccessful, nextTxHash) // successfulSponsoredTx
 						checkStatus(t, net, types.ReceiptStatusSuccessful, nextTxHash)                           // txHash payment for successfulSponsoredTx
 					}
 
-					if !flags.AtMostOneTransaction() {
+					if !flags.TryUntil() {
 						checkHashesEqAndStatus(t, net, txs[3].Hash(), types.ReceiptStatusSuccessful, nextTxHash) // successfulSponsoredTx
 						checkStatus(t, net, types.ReceiptStatusSuccessful, nextTxHash)                           // txHash payment for successfulSponsoredTx
 					}
 				} else { // successfulTxType == successfulBundleTx
-					if flags.AtMostOneTransaction() {
-						if flags.IgnoreFailedTransactions() {
+					if flags.TryUntil() {
+						if flags.TolerateFailed() {
 							require.Len(t, transactionHashes, 2) // paymentTx, failedTx
 						} else {
 							require.Len(t, transactionHashes, 4) // paymentTx, inner paymentTx, inner successfulNormalTx, inner successfulNormalTx
 						}
-					} else if flags.IgnoreFailedTransactions() {
+					} else if flags.TolerateFailed() {
 						require.Len(t, transactionHashes, 8)
 					} else {
 						require.Len(t, transactionHashes, 7)
@@ -420,17 +420,17 @@ func Test_Bundle_Ignores_And_AtMostOne_Work(t *testing.T) {
 
 					checkHashesEqAndStatus(t, net, paymentTxHash, types.ReceiptStatusSuccessful, nextTxHash) // paymentTx
 
-					if flags.IgnoreFailedTransactions() {
+					if flags.TolerateFailed() {
 						checkHashesEqAndStatus(t, net, txs[1].Hash(), types.ReceiptStatusFailed, nextTxHash) // failedTx
 					}
 
-					if !flags.IgnoreFailedTransactions() || !flags.AtMostOneTransaction() {
+					if !flags.TolerateFailed() || !flags.TryUntil() {
 						checkStatus(t, net, types.ReceiptStatusSuccessful, nextTxHash) // txHash inner paymentTx
 						checkStatus(t, net, types.ReceiptStatusSuccessful, nextTxHash) // txHash inner successfulNormalTx
 						checkStatus(t, net, types.ReceiptStatusSuccessful, nextTxHash) // txHash inner successfulNormalTx
 					}
 
-					if !flags.AtMostOneTransaction() {
+					if !flags.TryUntil() {
 						checkStatus(t, net, types.ReceiptStatusSuccessful, nextTxHash) // txHash inner paymentTx
 						checkStatus(t, net, types.ReceiptStatusSuccessful, nextTxHash) // txHash inner successfulNormalTx
 						checkStatus(t, net, types.ReceiptStatusSuccessful, nextTxHash) // txHash inner successfulNormalTx
@@ -439,8 +439,8 @@ func Test_Bundle_Ignores_And_AtMostOne_Work(t *testing.T) {
 
 				// Check the counter value from the contract
 				count := getCounterValue(t, client, counterAddress)
-				if flags.AtMostOneTransaction() {
-					if flags.IgnoreFailedTransactions() {
+				if flags.TryUntil() {
+					if flags.TolerateFailed() {
 						require.Equal(t, count, int64(0))
 					} else {
 						if successfulTxType == successfulBundleTx {
@@ -464,11 +464,11 @@ func Test_Bundle_Ignores_And_AtMostOne_Work(t *testing.T) {
 func Test_Bundle_ResetIfFailed_Works(t *testing.T) {
 	// transactions = [
 	//     validTx,
-	//     if !ignoreInvalidTransactions: invalidTx,
-	//     if !ignoreFailedTransactions: failedTx,
+	//     if !TolerateInvalid: invalidTx,
+	//     if !TolerateFailed: failedTx,
 	// ]
 	// This test ensures that:
-	// - if atMostOneTransaction is set, only the first transaction is executed and the rest of the bundle is ignored
+	// - if TryUntil is set, only the first transaction is executed and the rest of the bundle is ignored
 	// - otherwise the successful transaction gets skipped if there is another transaction after it that skips or reverts and this is not ignored
 	runWithAllFlags(t, func(
 		name string,
@@ -485,10 +485,10 @@ func Test_Bundle_ResetIfFailed_Works(t *testing.T) {
 
 				steps := []bundle.ExecutionStep{}
 				steps = append(steps, bundle.ExecutionStep{From: senders[0].Address(), Hash: signer.Hash(txs[0])})
-				if !flags.IgnoreInvalidTransactions() {
+				if !flags.TolerateInvalid() {
 					steps = append(steps, bundle.ExecutionStep{From: senders[1].Address(), Hash: signer.Hash(txs[1])})
 				}
-				if !flags.IgnoreFailedTransactions() {
+				if !flags.TolerateFailed() {
 					steps = append(steps, bundle.ExecutionStep{From: senders[2].Address(), Hash: signer.Hash(txs[2])})
 				}
 				plan := bundle.ExecutionPlan{Flags: flags, Steps: steps}
@@ -497,10 +497,10 @@ func Test_Bundle_ResetIfFailed_Works(t *testing.T) {
 
 				submittedTxs := types.Transactions{}
 				submittedTxs = append(submittedTxs, txs[0])
-				if !flags.IgnoreInvalidTransactions() {
+				if !flags.TolerateInvalid() {
 					submittedTxs = append(submittedTxs, txs[1])
 				}
-				if !flags.IgnoreFailedTransactions() {
+				if !flags.TolerateFailed() {
 					submittedTxs = append(submittedTxs, txs[2])
 				}
 
@@ -520,7 +520,7 @@ func Test_Bundle_ResetIfFailed_Works(t *testing.T) {
 				transactionHashes := getTransactionsInBlock(t, net, receipt.BlockNumber)
 				nextTxHash, stop := iter.Pull(slices.Values(transactionHashes))
 				defer stop()
-				if flags.AtMostOneTransaction() || flags.IgnoreInvalidTransactions() && flags.IgnoreFailedTransactions() {
+				if flags.TryUntil() || flags.TolerateInvalid() && flags.TolerateFailed() {
 					if successfulTxType == successfulNormalTx {
 						require.Len(t, transactionHashes, 2)
 						checkHashesEqAndStatus(t, net, paymentTxHash, types.ReceiptStatusSuccessful, nextTxHash) // paymentTx
@@ -544,7 +544,7 @@ func Test_Bundle_ResetIfFailed_Works(t *testing.T) {
 
 				// Check the transaction status
 				if successfulTxType != successfulBundleTx {
-					if flags.AtMostOneTransaction() || (flags.IgnoreInvalidTransactions() && flags.IgnoreFailedTransactions()) {
+					if flags.TryUntil() || (flags.TolerateInvalid() && flags.TolerateFailed()) {
 						receipt, err = net.GetReceipt(txs[0].Hash())
 						require.NoError(t, err, "failed to get transaction tx 0 receipt; %v", err)
 						require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "tx0 failed")
@@ -553,7 +553,7 @@ func Test_Bundle_ResetIfFailed_Works(t *testing.T) {
 
 				// Check the counter value from the contract
 				count := getCounterValue(t, client, counterAddress)
-				if flags.AtMostOneTransaction() || (flags.IgnoreInvalidTransactions() && flags.IgnoreFailedTransactions()) {
+				if flags.TryUntil() || (flags.TolerateInvalid() && flags.TolerateFailed()) {
 					if successfulTxType == successfulBundleTx {
 						require.Equal(t, count, int64(2))
 					} else {
@@ -585,9 +585,9 @@ func runWithAllFlags(t *testing.T, f func(string, *tests.IntegrationTestNet, *te
 				name := fmt.Sprintf("ignoreInvalid=%v/ignoreFailed=%v/atMostOne=%v", ignoreInvalid, ignoreFailed, atMostOne)
 				t.Run(name, func(t *testing.T) {
 					flags := bundle.ExecutionFlag(0)
-					flags.SetIgnoreInvalidTransactions(ignoreInvalid)
-					flags.SetIgnoreFailedTransactions(ignoreFailed)
-					flags.SetAtMostOneTransaction(atMostOne)
+					flags.SetTolerateInvalid(ignoreInvalid)
+					flags.SetTolerateFailed(ignoreFailed)
+					flags.SetTryUntil(atMostOne)
 					f(name, net, client, flags)
 				})
 			}

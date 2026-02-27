@@ -342,48 +342,59 @@ func (r *transactionRunner) runTransactionBundle(
 
 	// Execute the payment transaction first
 	payment, status := runTransaction(ctxt, txBundle.Payment, txIndex)
-	if status != StatusSuccessful {
+	if status == StatusSkipped {
 		log.Info("Payment transaction in bundle skipped, skip entire bundle", "tx", tx.Hash().Hex())
 		return []ProcessedTransaction{}, StatusSkipped
+	} else if status == StatusFailed {
+		log.Info("Payment transaction in bundle failed, skip entire bundle", "tx", tx.Hash().Hex())
+		return payment, StatusSkipped
 	}
 
 	res := make([]ProcessedTransaction, 0, len(txBundle.Bundle))
 
 	paymentCheckpoint := ctxt.statedb.Checkpoint()
-	for _, btx := range txBundle.Bundle {
-		txResults, status := runTransaction(ctxt, btx, txIndex+1+len(res)) // payment + included txs
+	if !txBundle.Flags.TryUntil() {
+		for _, btx := range txBundle.Bundle {
+			txResults, status := runTransaction(ctxt, btx, txIndex+1+len(res)) // payment + included txs
 
-		if status == StatusSkipped {
-			if txBundle.Flags.IgnoreInvalidTransactions() {
-				log.Info("Bundled transaction skipped, continue with next", "tx", btx.Hash().Hex())
-				continue // skipped transactions do not end up in the block
-			} else {
-				log.Info("Bundled transaction skipped, revert all", "tx", btx.Hash().Hex())
+			if !isTolerated(status, txBundle.Flags) {
+				log.Info("Got non-tolerated transaction in bundle, reverting all", "tx", btx.Hash().Hex())
 				ctxt.statedb.RevertToCheckpoint(paymentCheckpoint)
 				return payment, StatusFailed
 			}
-		}
+			log.Info("Got tolerated transaction in bundle, continuing", "tx", btx.Hash().Hex())
 
-		if status == StatusFailed {
-			if txBundle.Flags.IgnoreFailedTransactions() {
-				log.Info("Bundled transaction failed, continue with next", "tx", btx.Hash().Hex())
-				// reverted transactions still end up in the block
-			} else {
-				log.Info("Bundled transaction failed, revert all", "tx", btx.Hash().Hex())
-				ctxt.statedb.RevertToCheckpoint(paymentCheckpoint)
-				return payment, StatusFailed
+			if status != StatusSkipped {
+				res = append(res, txResults...)
 			}
 		}
+	} else {
+		for _, btx := range txBundle.Bundle {
+			txResults, status := runTransaction(ctxt, btx, txIndex+1+len(res)) // payment + included txs
 
-		res = append(res, txResults...)
+			if status != StatusSkipped {
+				res = append(res, txResults...)
+			}
 
-		if txBundle.Flags.AtMostOneTransaction() {
-			log.Info("Bundled transaction succeeded, stop after first", "tx", btx.Hash().Hex())
-			break
+			if isTolerated(status, txBundle.Flags) {
+				log.Info("Got tolerated transaction, stopping", "tx", btx.Hash().Hex())
+				break
+			}
+			log.Info("Got non-tolerated transaction, continuing", "tx", btx.Hash().Hex())
 		}
 	}
 
 	return append(payment, res...), StatusSuccessful
+}
+
+func isTolerated(status Status, flags bundle.ExecutionFlag) bool {
+	if status == StatusSkipped {
+		return flags.TolerateInvalid()
+	} else if status == StatusFailed {
+		return flags.TolerateFailed()
+	} else {
+		return true
+	}
 }
 
 // _evm is an interface to an EVM instance that can be used to run a single

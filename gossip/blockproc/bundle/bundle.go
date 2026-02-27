@@ -42,36 +42,33 @@ var (
 type ExecutionFlag uint16
 
 const (
-	IgnoreInvalidTransactions ExecutionFlag = 0b001
-	IgnoreFailedTransactions  ExecutionFlag = 0b010
-	AtMostOneTransaction      ExecutionFlag = 0b100
+	TolarateInvalid ExecutionFlag = 0b001
+	TolerateFailed  ExecutionFlag = 0b010
+	TryUntil        ExecutionFlag = 0b100
 )
 
-// IgnoreInvalidTransactions returns true if the ExecutionFlag is set to ignore invalid transactions.
-func (e *ExecutionFlag) IgnoreInvalidTransactions() bool {
-	return e.getFlag(IgnoreInvalidTransactions)
+func (e *ExecutionFlag) TolerateInvalid() bool {
+	return e.getFlag(TolarateInvalid)
 }
 
-// IgnoreFailedTransactions returns true if the ExecutionFlag is set to ignore failed (reverted) transactions, but skipping invalid ones.
-func (e *ExecutionFlag) IgnoreFailedTransactions() bool {
-	return e.getFlag(IgnoreFailedTransactions)
+func (e *ExecutionFlag) TolerateFailed() bool {
+	return e.getFlag(TolerateFailed)
 }
 
-// AtMostOneTransaction returns true if the ExecutionFlag is set to stop after the first successful transaction.
-func (e *ExecutionFlag) AtMostOneTransaction() bool {
-	return e.getFlag(AtMostOneTransaction)
+func (e *ExecutionFlag) TryUntil() bool {
+	return e.getFlag(TryUntil)
 }
 
-func (e *ExecutionFlag) SetIgnoreInvalidTransactions(ignoreInvalid bool) {
-	e.setFlag(IgnoreInvalidTransactions, ignoreInvalid)
+func (e *ExecutionFlag) SetTolerateInvalid(tolerateInvalid bool) {
+	e.setFlag(TolarateInvalid, tolerateInvalid)
 }
 
-func (e *ExecutionFlag) SetIgnoreFailedTransactions(ignoreFailed bool) {
-	e.setFlag(IgnoreFailedTransactions, ignoreFailed)
+func (e *ExecutionFlag) SetTolerateFailed(tolerateFailed bool) {
+	e.setFlag(TolerateFailed, tolerateFailed)
 }
 
-func (e *ExecutionFlag) SetAtMostOneTransaction(atMostOne bool) {
-	e.setFlag(AtMostOneTransaction, atMostOne)
+func (e *ExecutionFlag) SetTryUntil(tryUntil bool) {
+	e.setFlag(TryUntil, tryUntil)
 }
 
 func (e *ExecutionFlag) getFlag(flag ExecutionFlag) bool {
