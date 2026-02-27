@@ -48,7 +48,6 @@ import (
 var (
 	knownMissingAPIs = namespaceMap{
 		"eth": {
-			"SimulateV1":             struct{}{},
 			"SendRawTransactionSync": struct{}{},
 		},
 		"debug": {
