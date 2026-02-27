@@ -270,11 +270,11 @@ func (r *transactionRunner) runSponsoredTransaction(
 	ctxt.statedb.RevertToSnapshot(snapshot)
 	if err != nil {
 		log.Warn("Failed to query subsidies registry", "tx", tx.Hash().Hex(), "err", err)
-		return []ProcessedTransaction{{Transaction: tx}}, StatusFailed
+		return []ProcessedTransaction{{Transaction: tx}}, StatusSkipped
 	}
 	if !covered {
 		log.Debug("Transaction is not covered by a subsidy", "tx", tx.Hash().Hex())
-		return []ProcessedTransaction{{Transaction: tx}}, StatusFailed
+		return []ProcessedTransaction{{Transaction: tx}}, StatusSkipped
 	}
 
 	// Check the remaining available gas to be used in this block.
@@ -284,14 +284,20 @@ func (r *transactionRunner) runSponsoredTransaction(
 		log.Debug("Not enough gas left in block for sponsored transaction",
 			"tx", tx.Hash().Hex(), "available", available, "needed", needed,
 		)
-		return []ProcessedTransaction{{Transaction: tx}}, StatusFailed
+		return []ProcessedTransaction{{Transaction: tx}}, StatusSkipped
 	}
 
 	// Run the sponsored transaction.
 	processed := r.evm.runWithoutBaseFeeCheck(ctxt, tx, txIndex)
 	if processed.Receipt == nil {
 		log.Debug("Sponsored transaction skipped", "tx", tx.Hash().Hex())
-		return []ProcessedTransaction{processed}, StatusFailed
+		return []ProcessedTransaction{processed}, StatusSkipped
+	}
+
+	status := StatusSuccessful
+	if processed.Receipt.Status == types.ReceiptStatusFailed {
+		log.Debug("Sponsored transaction failed", "tx", tx.Hash().Hex())
+		status = StatusFailed
 	}
 
 	// Charge the fee for the sponsored transaction to the subsidy fund.
@@ -306,7 +312,7 @@ func (r *transactionRunner) runSponsoredTransaction(
 		// block formation. So we have to let this go. This sponsored
 		// transaction was on the house (meaning on the network).
 		log.Warn("Failed to create fee charging transaction", "sponsored-tx", tx.Hash().Hex(), "err", err)
-		return []ProcessedTransaction{processed}, StatusFailed
+		return []ProcessedTransaction{processed}, status
 	}
 	processedDeduction := r.evm.runWithoutBaseFeeCheck(ctxt, feeChargingTx, txIndex+1)
 	if processedDeduction.Receipt == nil {
@@ -320,7 +326,7 @@ func (r *transactionRunner) runSponsoredTransaction(
 		// subsidy fund was not charged.
 		log.Warn("Fee charging transaction failed", "sponsored-tx", tx.Hash().Hex())
 	}
-	return []ProcessedTransaction{processed, processedDeduction}, StatusSuccessful
+	return []ProcessedTransaction{processed, processedDeduction}, status
 }
 
 func (r *transactionRunner) runTransactionBundle(

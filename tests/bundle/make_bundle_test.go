@@ -34,22 +34,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type Case struct {
-	tryUntil         bool
-	tolerateFailed   bool
-	tolerateInvalid  bool
-	submittedTxTypes []int
-	blockTxs         []int // index of tx hash of submitted transactions, -1 for paymentTx, -2 for unchecked transactions
-	blockTxStatuses  []uint64
-	counter          int64
-}
-
 const (
 	successfulNormalTx    = 0
-	successfulSponsoredTx = 1
-	successfulBundleTx    = 2
-	failedTx              = 3
-	invalidTx             = 4
+	failedNormalTx        = 1
+	invalidNormalTx       = 2
+	successfulSponsoredTx = 3
+	failedSponsoredTx     = 4
+	invalidSponsoredTx    = 5
 )
 
 const (
@@ -62,83 +53,215 @@ const (
 	failedStatus  = types.ReceiptStatusFailed
 )
 
+type Case struct {
+	tryUntil         bool
+	tolerateFailed   bool
+	tolerateInvalid  bool
+	submittedTxTypes []any
+	blockTxs         []int // index of tx hash of submitted transactions, -1 for paymentTx, -2 for unchecked transactions
+	blockTxStatuses  []uint64
+	counter          int64
+}
+
+type NamedCase struct {
+	name  string
+	case_ Case
+}
+
+type SubCaseVariant struct {
+	submittedTxTypes any
+	blockTxs         []int
+	blockTxStatuses  []uint64
+	counter          int64
+}
+
+type SubCase struct {
+	success SubCaseVariant
+	failed  SubCaseVariant
+	invalid SubCaseVariant
+}
+
+func getSubcases() map[string]SubCase {
+	return map[string]SubCase{
+		"normal": {
+			success: SubCaseVariant{
+				successfulNormalTx,
+				[]int{uncheckedTxIndex}, // relative 0
+				[]uint64{successStatus},
+				1,
+			},
+			failed: SubCaseVariant{
+				failedNormalTx,
+				[]int{uncheckedTxIndex}, // relative 0
+				[]uint64{failedStatus},
+				0,
+			},
+			invalid: SubCaseVariant{
+				invalidNormalTx,
+				[]int{},
+				[]uint64{},
+				0,
+			},
+		},
+		"sponsored": {
+			success: SubCaseVariant{
+				successfulSponsoredTx,
+				[]int{uncheckedTxIndex, uncheckedTxIndex}, // relative 0, uncheckedTxIndex
+				[]uint64{successStatus, successStatus},
+				1,
+			},
+			failed: SubCaseVariant{
+				failedSponsoredTx,
+				[]int{uncheckedTxIndex, uncheckedTxIndex}, // relative 0, uncheckedTxIndex
+				[]uint64{failedStatus, successStatus},
+				0,
+			},
+			invalid: SubCaseVariant{
+				invalidSponsoredTx,
+				[]int{},
+				[]uint64{},
+				0,
+			},
+		},
+		"bundled": {
+			success: SubCaseVariant{
+				[]any{successfulNormalTx, successfulNormalTx},
+				[]int{uncheckedTxIndex, uncheckedTxIndex, uncheckedTxIndex},
+				[]uint64{successStatus, successStatus, successStatus},
+				2,
+			},
+			failed: SubCaseVariant{
+				[]any{successfulNormalTx, failedNormalTx},
+				[]int{uncheckedTxIndex},
+				[]uint64{successStatus},
+				0,
+			},
+			invalid: SubCaseVariant{
+				[]any{}, // empty bundle will be converted to bundle with invalid payment transaction
+				[]int{uncheckedTxIndex},
+				[]uint64{failedStatus},
+				0,
+			},
+		},
+	}
+}
+
 func Test_RunAllUnlessNotTolerated_Works(t *testing.T) {
-	cases := []Case{
-		{false, false, false,
-			[]int{successfulNormalTx, successfulNormalTx, successfulNormalTx},
-			[]int{paymentTxIndex, 0, 1, 2},
-			[]uint64{successStatus, successStatus, successStatus, successStatus},
-			3,
-		},
-		{false, false, false,
-			[]int{successfulNormalTx, failedTx, successfulNormalTx},
-			[]int{paymentTxIndex},
-			[]uint64{successStatus},
-			0,
-		},
-		{false, false, false,
-			[]int{successfulNormalTx, invalidTx, successfulNormalTx},
-			[]int{paymentTxIndex},
-			[]uint64{successStatus},
-			0,
-		},
-		// TolerateInvalid
-		{false, false, true,
-			[]int{successfulNormalTx, successfulNormalTx, successfulNormalTx},
-			[]int{paymentTxIndex, 0, 1, 2},
-			[]uint64{successStatus, successStatus, successStatus, successStatus},
-			3,
-		},
-		{false, false, true,
-			[]int{successfulNormalTx, failedTx, successfulNormalTx},
-			[]int{paymentTxIndex},
-			[]uint64{successStatus},
-			0,
-		},
-		{false, false, true,
-			[]int{successfulNormalTx, invalidTx, successfulNormalTx},
-			[]int{paymentTxIndex, 0, 2},
-			[]uint64{successStatus, successStatus, successStatus},
-			2,
-		},
-		// TolerateFailed
-		{false, true, false,
-			[]int{successfulNormalTx, successfulNormalTx, successfulNormalTx},
-			[]int{paymentTxIndex, 0, 1, 2},
-			[]uint64{successStatus, successStatus, successStatus, successStatus},
-			3,
-		},
-		{false, true, false,
-			[]int{successfulNormalTx, failedTx, successfulNormalTx},
-			[]int{paymentTxIndex, 0, 1, 2},
-			[]uint64{successStatus, successStatus, failedStatus, successStatus},
-			2,
-		},
-		{false, true, false,
-			[]int{successfulNormalTx, invalidTx, successfulNormalTx},
-			[]int{paymentTxIndex},
-			[]uint64{successStatus},
-			0,
-		},
-		// TolerateFailed & TolerateInvalid
-		{false, true, true,
-			[]int{successfulNormalTx, successfulNormalTx, successfulNormalTx},
-			[]int{paymentTxIndex, 0, 1, 2},
-			[]uint64{successStatus, successStatus, successStatus, successStatus},
-			3,
-		},
-		{false, true, true,
-			[]int{successfulNormalTx, failedTx, successfulNormalTx},
-			[]int{paymentTxIndex, 0, 1, 2},
-			[]uint64{successStatus, successStatus, failedStatus, successStatus},
-			2,
-		},
-		{false, true, true,
-			[]int{successfulNormalTx, invalidTx, successfulNormalTx},
-			[]int{paymentTxIndex, 0, 2},
-			[]uint64{successStatus, successStatus, successStatus},
-			2,
-		},
+	cases := []NamedCase{}
+	for name, subcase := range getSubcases() {
+		cases = append(cases, []NamedCase{
+			NamedCase{
+				name + "/success",
+				Case{false, false, false,
+					Merge[any](successfulNormalTx, subcase.success.submittedTxTypes, successfulNormalTx),
+					Merge[int](paymentTxIndex, 0, subcase.success.blockTxs, 2),
+					Merge[uint64](successStatus, successStatus, subcase.success.blockTxStatuses, successStatus),
+					1 + subcase.success.counter + 1,
+				},
+			},
+			NamedCase{
+				name + "/failed",
+				Case{false, false, false,
+					Merge[any](successfulNormalTx, subcase.failed.submittedTxTypes, successfulNormalTx),
+					Merge[int](paymentTxIndex),
+					Merge[uint64](successStatus),
+					0,
+				},
+			},
+			NamedCase{
+				name + "/invalid",
+				Case{false, false, false,
+					Merge[any](successfulNormalTx, subcase.invalid.submittedTxTypes, successfulNormalTx),
+					Merge[int](paymentTxIndex),
+					Merge[uint64](successStatus),
+					0,
+				},
+			},
+			// TolerateInvalid
+			NamedCase{
+				name + "/success",
+				Case{false, false, true,
+					Merge[any](successfulNormalTx, subcase.success.submittedTxTypes, successfulNormalTx),
+					Merge[int](paymentTxIndex, 0, subcase.success.blockTxs, 2),
+					Merge[uint64](successStatus, successStatus, subcase.success.blockTxStatuses, successStatus),
+					1 + subcase.success.counter + 1,
+				},
+			},
+			NamedCase{
+				name + "/failed",
+				Case{false, false, true,
+					Merge[any](successfulNormalTx, subcase.failed.submittedTxTypes, successfulNormalTx),
+					Merge[int](paymentTxIndex),
+					Merge[uint64](successStatus),
+					0,
+				},
+			},
+			NamedCase{
+				name + "/invalid",
+				Case{false, false, true,
+					Merge[any](successfulNormalTx, subcase.invalid.submittedTxTypes, successfulNormalTx),
+					Merge[int](paymentTxIndex, 0, 2),
+					Merge[uint64](successStatus, successStatus, successStatus),
+					1 + 1,
+				},
+			},
+			// TolerateFailed
+			NamedCase{
+				name + "/success",
+				Case{false, true, false,
+					Merge[any](successfulNormalTx, subcase.success.submittedTxTypes, successfulNormalTx),
+					Merge[int](paymentTxIndex, 0, subcase.success.blockTxs, 2),
+					Merge[uint64](successStatus, successStatus, subcase.success.blockTxStatuses, successStatus),
+					1 + subcase.success.counter + 1,
+				},
+			},
+			NamedCase{
+				name + "/failed",
+				Case{false, true, false,
+					Merge[any](successfulNormalTx, subcase.failed.submittedTxTypes, successfulNormalTx),
+					Merge[int](paymentTxIndex, 0, subcase.failed.blockTxs, 2),
+					Merge[uint64](successStatus, successStatus, subcase.failed.blockTxStatuses, successStatus),
+					1 + subcase.failed.counter + 1,
+				},
+			},
+			NamedCase{
+				name + "/invalid",
+				Case{false, true, false,
+					Merge[any](successfulNormalTx, subcase.invalid.submittedTxTypes, successfulNormalTx),
+					Merge[int](paymentTxIndex),
+					Merge[uint64](successStatus),
+					0,
+				},
+			},
+			// TolerateFailed & TolerateInvalid
+			NamedCase{
+				name + "/success",
+				Case{false, true, true,
+					Merge[any](successfulNormalTx, subcase.success.submittedTxTypes, successfulNormalTx),
+					Merge[int](paymentTxIndex, 0, subcase.success.blockTxs, 2),
+					Merge[uint64](successStatus, successStatus, subcase.success.blockTxStatuses, successStatus),
+					1 + subcase.success.counter + 1,
+				},
+			},
+			NamedCase{
+				name + "/failed",
+				Case{false, true, true,
+					Merge[any](successfulNormalTx, subcase.failed.submittedTxTypes, successfulNormalTx),
+					Merge[int](paymentTxIndex, 0, subcase.failed.blockTxs, 2),
+					Merge[uint64](successStatus, successStatus, subcase.failed.blockTxStatuses, successStatus),
+					1 + subcase.failed.counter + 1,
+				},
+			},
+			NamedCase{
+				name + "/invalid",
+				Case{false, true, true,
+					Merge[any](successfulNormalTx, subcase.invalid.submittedTxTypes, successfulNormalTx),
+					Merge[int](paymentTxIndex, 0, 2),
+					Merge[uint64](successStatus, successStatus, successStatus),
+					1 + 1,
+				},
+			},
+		}...)
 	}
 	net, client := startTestnet(t)
 	defer client.Close()
@@ -148,82 +271,121 @@ func Test_RunAllUnlessNotTolerated_Works(t *testing.T) {
 }
 
 func Test_RunUntilTolerated_Works(t *testing.T) {
-	cases := []Case{
-		{true, false, false,
-			[]int{successfulNormalTx, successfulNormalTx, successfulNormalTx},
-			[]int{paymentTxIndex, 0},
-			[]uint64{successStatus, successStatus},
-			1,
-		},
-		{true, false, false,
-			[]int{failedTx, successfulNormalTx, successfulNormalTx},
-			[]int{paymentTxIndex, 0, 1},
-			[]uint64{successStatus, failedStatus, successStatus},
-			1,
-		},
-		{true, false, false,
-			[]int{invalidTx, successfulNormalTx, successfulNormalTx},
-			[]int{paymentTxIndex, 1},
-			[]uint64{successStatus, successStatus},
-			1,
-		},
-		// TolerateInvalid
-		{true, false, true,
-			[]int{successfulNormalTx, successfulNormalTx, successfulNormalTx},
-			[]int{paymentTxIndex, 0},
-			[]uint64{successStatus, successStatus},
-			1,
-		},
-		{true, false, true,
-			[]int{failedTx, successfulNormalTx, successfulNormalTx},
-			[]int{paymentTxIndex, 0, 1},
-			[]uint64{successStatus, failedStatus, successStatus},
-			1,
-		},
-		{true, false, true,
-			[]int{invalidTx, successfulNormalTx, successfulNormalTx},
-			[]int{paymentTxIndex},
-			[]uint64{successStatus},
-			0,
-		},
-		// TolerateFailed
-		{true, true, false,
-			[]int{successfulNormalTx, successfulNormalTx, successfulNormalTx},
-			[]int{paymentTxIndex, 0},
-			[]uint64{successStatus, successStatus},
-			1,
-		},
-		{true, true, false,
-			[]int{failedTx, successfulNormalTx, successfulNormalTx},
-			[]int{paymentTxIndex, 0},
-			[]uint64{successStatus, failedStatus},
-			0,
-		},
-		{true, true, false,
-			[]int{invalidTx, successfulNormalTx, successfulNormalTx},
-			[]int{paymentTxIndex, 1},
-			[]uint64{successStatus, successStatus},
-			1,
-		},
-		// TolerateFailed & TolerateInvalid
-		{true, true, true,
-			[]int{successfulNormalTx, successfulNormalTx, successfulNormalTx},
-			[]int{paymentTxIndex, 0},
-			[]uint64{successStatus, successStatus},
-			1,
-		},
-		{true, true, true,
-			[]int{failedTx, successfulNormalTx, successfulNormalTx},
-			[]int{paymentTxIndex, 0},
-			[]uint64{successStatus, failedStatus},
-			0,
-		},
-		{true, true, true,
-			[]int{invalidTx, successfulNormalTx, successfulNormalTx},
-			[]int{paymentTxIndex},
-			[]uint64{successStatus},
-			0,
-		},
+	cases := []NamedCase{}
+	for name, subcase := range getSubcases() {
+		cases = append(cases, []NamedCase{
+			NamedCase{
+				name + "/success",
+				Case{true, false, false,
+					Merge[any](subcase.success.submittedTxTypes, successfulNormalTx, successfulNormalTx),
+					Merge[int](paymentTxIndex, subcase.success.blockTxs),
+					Merge[uint64](successStatus, subcase.success.blockTxStatuses),
+					subcase.success.counter,
+				},
+			},
+			NamedCase{
+				name + "/failed",
+				Case{true, false, false,
+					Merge[any](subcase.failed.submittedTxTypes, successfulNormalTx, successfulNormalTx),
+					Merge[int](paymentTxIndex, subcase.failed.blockTxs, 1),
+					Merge[uint64](successStatus, subcase.failed.blockTxStatuses, successStatus),
+					subcase.failed.counter + 1,
+				},
+			},
+			NamedCase{
+				name + "/invalid",
+				Case{true, false, false,
+					Merge[any](subcase.invalid.submittedTxTypes, successfulNormalTx, successfulNormalTx),
+					Merge[int](paymentTxIndex, 1),
+					Merge[uint64](successStatus, successStatus),
+					1,
+				},
+			},
+			// TolerateInvalid
+			NamedCase{
+				name + "/success",
+				Case{true, false, true,
+					Merge[any](subcase.success.submittedTxTypes, successfulNormalTx, successfulNormalTx),
+					Merge[int](paymentTxIndex, subcase.success.blockTxs),
+					Merge[uint64](successStatus, subcase.success.blockTxStatuses),
+					subcase.success.counter,
+				},
+			},
+			NamedCase{
+				name + "/failed",
+				Case{true, false, true,
+					Merge[any](subcase.failed.submittedTxTypes, successfulNormalTx, successfulNormalTx),
+					Merge[int](paymentTxIndex, subcase.failed.blockTxs, 1),
+					Merge[uint64](successStatus, subcase.failed.blockTxStatuses, successStatus),
+					subcase.failed.counter + 1,
+				},
+			},
+			NamedCase{
+				name + "/invalid",
+				Case{true, false, true,
+					Merge[any](subcase.invalid.submittedTxTypes, successfulNormalTx, successfulNormalTx),
+					Merge[int](paymentTxIndex),
+					Merge[uint64](successStatus),
+					0,
+				},
+			},
+			// TolerateFailed
+			NamedCase{
+				name + "/success",
+				Case{true, true, false,
+					Merge[any](subcase.success.submittedTxTypes, successfulNormalTx, successfulNormalTx),
+					Merge[int](paymentTxIndex, subcase.success.blockTxs),
+					Merge[uint64](successStatus, subcase.success.blockTxStatuses),
+					subcase.success.counter,
+				},
+			},
+			NamedCase{
+				name + "/failed",
+				Case{true, true, false,
+					Merge[any](subcase.failed.submittedTxTypes, successfulNormalTx, successfulNormalTx),
+					Merge[int](paymentTxIndex, subcase.failed.blockTxs),
+					Merge[uint64](successStatus, subcase.failed.blockTxStatuses),
+					subcase.failed.counter,
+				},
+			},
+			NamedCase{
+				name + "/invalid",
+				Case{true, true, false,
+					Merge[any](subcase.invalid.submittedTxTypes, successfulNormalTx, successfulNormalTx),
+					Merge[int](paymentTxIndex, 1),
+					Merge[uint64](successStatus, successStatus),
+					1,
+				},
+			},
+			// TolerateFailed & TolerateInvalid
+			NamedCase{
+				name + "/success",
+				Case{true, true, true,
+					Merge[any](subcase.success.submittedTxTypes, successfulNormalTx, successfulNormalTx),
+					Merge[int](paymentTxIndex, subcase.success.blockTxs),
+					Merge[uint64](successStatus, subcase.success.blockTxStatuses),
+					subcase.success.counter,
+				},
+			},
+			NamedCase{
+				name + "/failed",
+				Case{true, true, true,
+					Merge[any](subcase.failed.submittedTxTypes, successfulNormalTx, successfulNormalTx),
+					Merge[int](paymentTxIndex, subcase.failed.blockTxs),
+					Merge[uint64](successStatus, subcase.failed.blockTxStatuses),
+					subcase.failed.counter,
+				},
+			},
+			NamedCase{
+				name + "/invalid",
+				Case{true, true, true,
+					Merge[any](subcase.invalid.submittedTxTypes, successfulNormalTx, successfulNormalTx),
+					Merge[int](paymentTxIndex),
+					Merge[uint64](successStatus),
+					0,
+				},
+			},
+		}...)
 	}
 	net, client := startTestnet(t)
 	defer client.Close()
@@ -232,8 +394,26 @@ func Test_RunUntilTolerated_Works(t *testing.T) {
 	}
 }
 
-func checkCase(t *testing.T, net *tests.IntegrationTestNet, client *tests.PooledEhtClient, c Case) {
-	name := fmt.Sprintf("TryUntil=%v/TolerateFailed=%v/TolerateInvalid=%v", c.tryUntil, c.tolerateFailed, c.tolerateInvalid)
+func Merge[T any](items ...any) []T {
+	var result []T
+
+	for _, item := range items {
+		switch v := item.(type) {
+		case T:
+			result = append(result, v)
+		case []T:
+			result = append(result, v...)
+		default:
+			panic(fmt.Sprintf("unexpected type %T in MergeFlexible", v))
+		}
+	}
+
+	return result
+}
+
+func checkCase(t *testing.T, net *tests.IntegrationTestNet, client *tests.PooledEhtClient, namedCase NamedCase) {
+	c := namedCase.case_
+	name := fmt.Sprintf("TryUntil=%v/TolerateFailed=%v/TolerateInvalid=%v/%s", c.tryUntil, c.tolerateFailed, c.tolerateInvalid, namedCase.name)
 	t.Run(name, func(t *testing.T) {
 		flags := bundle.ExecutionFlag(0)
 		flags.SetTolerateInvalid(c.tolerateInvalid)
@@ -315,7 +495,13 @@ func getCounterValue(t *testing.T, client *tests.PooledEhtClient, counterAddress
 	return count.Int64()
 }
 
-func makeUnsignedBundleTxs(t *testing.T, net *tests.IntegrationTestNet, client *tests.PooledEhtClient, txTypes []int, counterAddress *common.Address) ([]*types.Transaction, []*tests.Account, common.Address) {
+func makeUnsignedBundleTxs(
+	t *testing.T,
+	net *tests.IntegrationTestNet,
+	client *tests.PooledEhtClient,
+	txTypes []any,
+	counterAddress *common.Address,
+) ([]*types.Transaction, []*tests.Account, common.Address) {
 	senders := make([]*tests.Account, len(txTypes))
 	for i := range txTypes {
 		senders[i] = tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
@@ -331,7 +517,7 @@ func makeUnsignedBundleTxs(t *testing.T, net *tests.IntegrationTestNet, client *
 	require.NoError(t, err, "failed to suggest gas price; %v", err)
 
 	counterGasLimit, err := client.EstimateGas(t.Context(), ethereum.CallMsg{
-		From:     senders[0].Address(),
+		From:     tests.MakeAccountWithBalance(t, net, big.NewInt(1e18)).Address(),
 		To:       counterAddress,
 		Data:     counterInput,
 		GasPrice: gasPrice,
@@ -347,78 +533,83 @@ func makeUnsignedBundleTxs(t *testing.T, net *tests.IntegrationTestNet, client *
 	txs := make([]*types.Transaction, len(txTypes))
 	for i, txType := range txTypes {
 		tx := types.AccessListTx{}
-		switch txType {
-		case invalidTx:
-			tx = types.AccessListTx{
-				To:       counterAddress,
-				Gas:      1, // invalid
-				Data:     counterInput,
-				GasPrice: gasPrice,
+		switch v := txType.(type) {
+		case int:
+			switch txType {
+			case successfulNormalTx:
+				tx = types.AccessListTx{
+					To:       counterAddress,
+					Gas:      counterGasLimit,
+					Data:     counterInput,
+					GasPrice: gasPrice,
+				}
+				txs[i] = types.NewTx(&tx)
+			case failedNormalTx:
+				tx = types.AccessListTx{
+					To:       &revertAddress,
+					Gas:      revertGasLimit,
+					Data:     revertInput,
+					GasPrice: gasPrice,
+				}
+				txs[i] = types.NewTx(tests.SetTransactionDefaults(t, net, &tx, senders[i]))
+			case invalidNormalTx:
+				tx = types.AccessListTx{
+					To:       counterAddress,
+					Gas:      1, // invalid
+					Data:     counterInput,
+					GasPrice: gasPrice,
+				}
+				txs[i] = types.NewTx(tests.SetTransactionDefaults(t, net, &tx, senders[i]))
+			case successfulSponsoredTx:
+				tx = types.AccessListTx{
+					To:       counterAddress,
+					Gas:      counterGasLimit,
+					Data:     counterInput,
+					GasPrice: big.NewInt(0),
+				}
+				txs[i] = types.NewTx(&tx)
+			case failedSponsoredTx:
+				tx = types.AccessListTx{
+					To:       &revertAddress,
+					Gas:      revertGasLimit,
+					Data:     revertInput,
+					GasPrice: big.NewInt(0),
+				}
+				txs[i] = types.NewTx(&tx)
+			case invalidSponsoredTx:
+				tx = types.AccessListTx{
+					To:       counterAddress,
+					Gas:      counterGasLimit,
+					Data:     counterInput,
+					GasPrice: big.NewInt(1),
+				}
+				txs[i] = types.NewTx(&tx)
 			}
-			txs[i] = types.NewTx(tests.SetTransactionDefaults(t, net, &tx, senders[i]))
-		case failedTx:
-			tx = types.AccessListTx{
-				To:       &revertAddress,
-				Gas:      revertGasLimit,
-				Data:     revertInput,
-				GasPrice: gasPrice,
-			}
-			txs[i] = types.NewTx(tests.SetTransactionDefaults(t, net, &tx, senders[i]))
-		case successfulNormalTx:
-			tx = types.AccessListTx{
-				To:       counterAddress,
-				Gas:      counterGasLimit,
-				Data:     counterInput,
-				GasPrice: gasPrice,
-			}
-			txs[i] = types.NewTx(&tx)
-		case successfulSponsoredTx:
-			tx = types.AccessListTx{
-				To:       counterAddress,
-				Gas:      counterGasLimit,
-				Data:     counterInput,
-				GasPrice: big.NewInt(0),
-			}
-			txs[i] = types.NewTx(&tx)
-		case successfulBundleTx:
+		case []any:
 			flags := bundle.ExecutionFlag(0)
-			btxs, bsenders, _ := makeUnsignedBundleTxs(t, net, client, []int{ /*invalidTx, failedTx,*/ successfulNormalTx, successfulNormalTx}, counterAddress)
+			btxs, bsenders, _ := makeUnsignedBundleTxs(t, net, client, txType.([]any), counterAddress)
 
 			signer := types.NewCancunSigner(net.GetChainId())
 
-			// steps := []bundle.ExecutionStep{}
-			// if flags.TolerateInvalid() {
-			// 	steps = append(steps, bundle.ExecutionStep{From: senders[0].Address(), Hash: signer.Hash(txs[0])})
-			// }
-			// if flags.TolerateFailed() {
-			// 	steps = append(steps, bundle.ExecutionStep{From: senders[1].Address(), Hash: signer.Hash(txs[1])})
-			// }
-			// steps = append(steps, bundle.ExecutionStep{From: senders[2].Address(), Hash: signer.Hash(txs[2])})
-			// steps = append(steps, bundle.ExecutionStep{From: senders[3].Address(), Hash: signer.Hash(txs[3])})
-			steps := []bundle.ExecutionStep{
-				{From: bsenders[0].Address(), Hash: signer.Hash(btxs[0])},
-				{From: bsenders[1].Address(), Hash: signer.Hash(btxs[1])},
+			steps := []bundle.ExecutionStep{}
+			for i, tx := range btxs {
+				steps = append(steps, bundle.ExecutionStep{From: bsenders[i].Address(), Hash: signer.Hash(tx)})
 			}
 			plan := bundle.ExecutionPlan{Flags: flags, Steps: steps}
 
 			signBundleTxs(t, net, btxs, bsenders, plan)
 
-			// submittedTxs := types.Transactions{}
-			// if flags.TolerateInvalid() {
-			// 	submittedTxs = append(submittedTxs, txs[0])
-			// }
-			// if flags.TolerateFailed() {
-			// 	submittedTxs = append(submittedTxs, txs[1])
-			// }
-			// submittedTxs = append(submittedTxs, txs[2], txs[3])
-			submittedTxs := btxs
-
-			// bundler := net.GetSessionSponsor()
 			bundler := senders[i]
-			bundleTx, paymentTxHash := makeBundleTransaction(t, net, submittedTxs, plan, bundler)
+			if len(txType.([]any)) == 0 {
+				// make invalid paymentTx
+				bundler = net.GetSessionSponsor()
+			}
+			bundleTx, paymentTxHash := makeBundleTransaction(t, net, btxs, plan, bundler)
 			require.NotNil(t, bundleTx)
 			require.NotZero(t, paymentTxHash)
 			txs[i] = bundleTx
+		default:
+			panic(fmt.Sprintf("unexpected type %T in makeUnsignedBundleTxs", v))
 		}
 	}
 
@@ -441,6 +632,8 @@ func signBundleTxs(t *testing.T, net *tests.IntegrationTestNet, txs []*types.Tra
 		if tx.GasPrice().Cmp(big.NewInt(0)) == 0 {
 			donation := big.NewInt(1e16)
 			gas_subsidies.Fund(t, net, senders[i].Address(), donation)
+			txs[i] = gas_subsidies.MakeSponsorRequestTransaction(t, bundleOnlyTx, net.GetChainId(), senders[i])
+		} else if tx.GasPrice().Cmp(big.NewInt(1)) == 0 { // skipped sponsored tx
 			txs[i] = gas_subsidies.MakeSponsorRequestTransaction(t, bundleOnlyTx, net.GetChainId(), senders[i])
 		} else {
 			txs[i] = tests.SignTransaction(t, net.GetChainId(), bundleOnlyTx, senders[i])
