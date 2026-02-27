@@ -250,32 +250,23 @@ func makeUnsignedBundleTxs(t *testing.T, net *tests.IntegrationTestNet, client *
 
 func signBundleTxs(t *testing.T, net *tests.IntegrationTestNet, txs []*types.Transaction, senders []*tests.Account, plan bundle.ExecutionPlan) {
 	for i, tx := range txs {
+		txx := &types.AccessListTx{
+			Nonce:    tx.Nonce(),
+			GasPrice: tx.GasPrice(),
+			Gas:      tx.Gas(),
+			To:       tx.To(),
+			Value:    tx.Value(),
+			Data:     tx.Data(),
+			AccessList: append(tx.AccessList(),
+				types.AccessTuple{Address: bundle.BundleOnly, StorageKeys: []common.Hash{plan.Hash()}},
+			),
+		}
 		if tx.GasPrice().Cmp(big.NewInt(0)) == 0 {
 			donation := big.NewInt(1e16)
 			gas_subsidies.Fund(t, net, senders[i].Address(), donation)
-			txs[i] = gas_subsidies.MakeSponsorRequestTransaction(t, &types.AccessListTx{
-				Nonce:    tx.Nonce(),
-				GasPrice: tx.GasPrice(),
-				Gas:      tx.Gas(),
-				To:       tx.To(),
-				Value:    tx.Value(),
-				Data:     tx.Data(),
-				AccessList: append(tx.AccessList(),
-					types.AccessTuple{Address: bundle.BundleOnly, StorageKeys: []common.Hash{plan.Hash()}},
-				),
-			}, net.GetChainId(), senders[i])
+			txs[i] = gas_subsidies.MakeSponsorRequestTransaction(t, txx, net.GetChainId(), senders[i])
 		} else {
-			txs[i] = tests.SignTransaction(t, net.GetChainId(), &types.AccessListTx{
-				Nonce:    tx.Nonce(),
-				GasPrice: tx.GasPrice(),
-				Gas:      tx.Gas(),
-				To:       tx.To(),
-				Value:    tx.Value(),
-				Data:     tx.Data(),
-				AccessList: append(tx.AccessList(),
-					types.AccessTuple{Address: bundle.BundleOnly, StorageKeys: []common.Hash{plan.Hash()}},
-				),
-			}, senders[i])
+			txs[i] = tests.SignTransaction(t, net.GetChainId(), txx, senders[i])
 		}
 	}
 }
@@ -473,8 +464,8 @@ func Test_Bundle_Ignores_And_AtMostOne_Work(t *testing.T) {
 func Test_Bundle_ResetIfFailed_Works(t *testing.T) {
 	// transactions = [
 	//     validTx,
-	//     if ignoreInvalidTransactions: invalidTx,
-	//     if ignoreFailedTransactions: failedTx,
+	//     if !ignoreInvalidTransactions: invalidTx,
+	//     if !ignoreFailedTransactions: failedTx,
 	// ]
 	// This test ensures that:
 	// - if atMostOneTransaction is set, only the first transaction is executed and the rest of the bundle is ignored
