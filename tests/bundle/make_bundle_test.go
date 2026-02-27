@@ -18,9 +18,7 @@ package bundle
 
 import (
 	"fmt"
-	"iter"
 	"math/big"
-	"slices"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
@@ -36,78 +34,265 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func Test_NonBundledTransaction_Works(t *testing.T) {
-	rules := opera.GetBrioUpgrades()
-	rules.GasSubsidies = true
+type Case struct {
+	tryUntil         bool
+	tolerateFailed   bool
+	tolerateInvalid  bool
+	submittedTxTypes []int
+	blockTxs         []int // index of tx hash of submitted transactions, -1 for paymentTx, -2 for unchecked transactions
+	blockTxStatuses  []uint64
+	counter          int64
+}
+
+const (
+	successfulNormalTx    = 0
+	successfulSponsoredTx = 1
+	successfulBundleTx    = 2
+	failedTx              = 3
+	invalidTx             = 4
+)
+
+const (
+	paymentTxIndex   = -1
+	uncheckedTxIndex = -2
+)
+
+const (
+	successStatus = types.ReceiptStatusSuccessful
+	failedStatus  = types.ReceiptStatusFailed
+)
+
+func Test_RunAllUnlessNotTolerated_Works(t *testing.T) {
+	cases := []Case{
+		{false, false, false,
+			[]int{successfulNormalTx, successfulNormalTx, successfulNormalTx},
+			[]int{paymentTxIndex, 0, 1, 2},
+			[]uint64{successStatus, successStatus, successStatus, successStatus},
+			3,
+		},
+		{false, false, false,
+			[]int{successfulNormalTx, failedTx, successfulNormalTx},
+			[]int{paymentTxIndex},
+			[]uint64{successStatus},
+			0,
+		},
+		{false, false, false,
+			[]int{successfulNormalTx, invalidTx, successfulNormalTx},
+			[]int{paymentTxIndex},
+			[]uint64{successStatus},
+			0,
+		},
+		// TolerateInvalid
+		{false, false, true,
+			[]int{successfulNormalTx, successfulNormalTx, successfulNormalTx},
+			[]int{paymentTxIndex, 0, 1, 2},
+			[]uint64{successStatus, successStatus, successStatus, successStatus},
+			3,
+		},
+		{false, false, true,
+			[]int{successfulNormalTx, failedTx, successfulNormalTx},
+			[]int{paymentTxIndex},
+			[]uint64{successStatus},
+			0,
+		},
+		{false, false, true,
+			[]int{successfulNormalTx, invalidTx, successfulNormalTx},
+			[]int{paymentTxIndex, 0, 2},
+			[]uint64{successStatus, successStatus, successStatus},
+			2,
+		},
+		// TolerateFailed
+		{false, true, false,
+			[]int{successfulNormalTx, successfulNormalTx, successfulNormalTx},
+			[]int{paymentTxIndex, 0, 1, 2},
+			[]uint64{successStatus, successStatus, successStatus, successStatus},
+			3,
+		},
+		{false, true, false,
+			[]int{successfulNormalTx, failedTx, successfulNormalTx},
+			[]int{paymentTxIndex, 0, 1, 2},
+			[]uint64{successStatus, successStatus, failedStatus, successStatus},
+			2,
+		},
+		{false, true, false,
+			[]int{successfulNormalTx, invalidTx, successfulNormalTx},
+			[]int{paymentTxIndex},
+			[]uint64{successStatus},
+			0,
+		},
+		// TolerateFailed & TolerateInvalid
+		{false, true, true,
+			[]int{successfulNormalTx, successfulNormalTx, successfulNormalTx},
+			[]int{paymentTxIndex, 0, 1, 2},
+			[]uint64{successStatus, successStatus, successStatus, successStatus},
+			3,
+		},
+		{false, true, true,
+			[]int{successfulNormalTx, failedTx, successfulNormalTx},
+			[]int{paymentTxIndex, 0, 1, 2},
+			[]uint64{successStatus, successStatus, failedStatus, successStatus},
+			2,
+		},
+		{false, true, true,
+			[]int{successfulNormalTx, invalidTx, successfulNormalTx},
+			[]int{paymentTxIndex, 0, 2},
+			[]uint64{successStatus, successStatus, successStatus},
+			2,
+		},
+	}
+	net, client := startTestnet(t)
+	defer client.Close()
+	for _, c := range cases {
+		checkCase(t, net, client, c)
+	}
+}
+
+func Test_RunUntilTolerated_Works(t *testing.T) {
+	cases := []Case{
+		{true, false, false,
+			[]int{successfulNormalTx, successfulNormalTx, successfulNormalTx},
+			[]int{paymentTxIndex, 0},
+			[]uint64{successStatus, successStatus},
+			1,
+		},
+		{true, false, false,
+			[]int{failedTx, successfulNormalTx, successfulNormalTx},
+			[]int{paymentTxIndex, 0, 1},
+			[]uint64{successStatus, failedStatus, successStatus},
+			1,
+		},
+		{true, false, false,
+			[]int{invalidTx, successfulNormalTx, successfulNormalTx},
+			[]int{paymentTxIndex, 1},
+			[]uint64{successStatus, successStatus},
+			1,
+		},
+		// TolerateInvalid
+		{true, false, true,
+			[]int{successfulNormalTx, successfulNormalTx, successfulNormalTx},
+			[]int{paymentTxIndex, 0},
+			[]uint64{successStatus, successStatus},
+			1,
+		},
+		{true, false, true,
+			[]int{failedTx, successfulNormalTx, successfulNormalTx},
+			[]int{paymentTxIndex, 0, 1},
+			[]uint64{successStatus, failedStatus, successStatus},
+			1,
+		},
+		{true, false, true,
+			[]int{invalidTx, successfulNormalTx, successfulNormalTx},
+			[]int{paymentTxIndex},
+			[]uint64{successStatus},
+			0,
+		},
+		// TolerateFailed
+		{true, true, false,
+			[]int{successfulNormalTx, successfulNormalTx, successfulNormalTx},
+			[]int{paymentTxIndex, 0},
+			[]uint64{successStatus, successStatus},
+			1,
+		},
+		{true, true, false,
+			[]int{failedTx, successfulNormalTx, successfulNormalTx},
+			[]int{paymentTxIndex, 0},
+			[]uint64{successStatus, failedStatus},
+			0,
+		},
+		{true, true, false,
+			[]int{invalidTx, successfulNormalTx, successfulNormalTx},
+			[]int{paymentTxIndex, 1},
+			[]uint64{successStatus, successStatus},
+			1,
+		},
+		// TolerateFailed & TolerateInvalid
+		{true, true, true,
+			[]int{successfulNormalTx, successfulNormalTx, successfulNormalTx},
+			[]int{paymentTxIndex, 0},
+			[]uint64{successStatus, successStatus},
+			1,
+		},
+		{true, true, true,
+			[]int{failedTx, successfulNormalTx, successfulNormalTx},
+			[]int{paymentTxIndex, 0},
+			[]uint64{successStatus, failedStatus},
+			0,
+		},
+		{true, true, true,
+			[]int{invalidTx, successfulNormalTx, successfulNormalTx},
+			[]int{paymentTxIndex},
+			[]uint64{successStatus},
+			0,
+		},
+	}
+	net, client := startTestnet(t)
+	defer client.Close()
+	for _, c := range cases {
+		checkCase(t, net, client, c)
+	}
+}
+
+func checkCase(t *testing.T, net *tests.IntegrationTestNet, client *tests.PooledEhtClient, c Case) {
+	name := fmt.Sprintf("TryUntil=%v/TolerateFailed=%v/TolerateInvalid=%v", c.tryUntil, c.tolerateFailed, c.tolerateInvalid)
+	t.Run(name, func(t *testing.T) {
+		flags := bundle.ExecutionFlag(0)
+		flags.SetTolerateInvalid(c.tolerateInvalid)
+		flags.SetTolerateFailed(c.tolerateFailed)
+		flags.SetTryUntil(c.tryUntil)
+
+		txs, senders, counterAddress := makeUnsignedBundleTxs(t, net, client, c.submittedTxTypes, nil)
+
+		signer := types.NewCancunSigner(net.GetChainId())
+
+		steps := make([]bundle.ExecutionStep, len(txs))
+		for i, tx := range txs {
+			steps[i] = bundle.ExecutionStep{From: senders[i].Address(), Hash: signer.Hash(tx)}
+		}
+		plan := bundle.ExecutionPlan{Flags: flags, Steps: steps}
+
+		signBundleTxs(t, net, txs, senders, plan)
+
+		bundler := net.GetSessionSponsor()
+		bundleTx, paymentTxHash := makeBundleTransaction(t, net, txs, plan, bundler)
+		require.NotNil(t, bundleTx)
+		require.NotZero(t, paymentTxHash)
+
+		err := client.SendTransaction(t.Context(), bundleTx)
+		require.NoError(t, err)
+
+		receipt, err := net.GetReceipt(paymentTxHash)
+		require.NoError(t, err, "failed to get payment tx receipt; %v", err)
+		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "payment transaction failed")
+
+		// Check transactions hashes and statuses
+		transactionHashes := getTransactionsInBlock(t, net, receipt.BlockNumber)
+		require.Len(t, transactionHashes, len(c.blockTxs))
+		for i, _ := range c.blockTxs {
+			if c.blockTxs[i] == paymentTxIndex {
+				checkHashesEqAndStatus(t, net, paymentTxHash, c.blockTxStatuses[i], transactionHashes[i])
+			} else if c.blockTxs[i] == uncheckedTxIndex {
+				checkStatus(t, net, c.blockTxStatuses[i], transactionHashes[i])
+			} else {
+				checkHashesEqAndStatus(t, net, txs[c.blockTxs[i]].Hash(), c.blockTxStatuses[i], transactionHashes[i])
+			}
+		}
+
+		// Check the final state is correct
+		require.Equal(t, c.counter, getCounterValue(t, client, counterAddress))
+	})
+}
+
+func startTestnet(t *testing.T) (*tests.IntegrationTestNet, *tests.PooledEhtClient) {
+	updates := opera.GetBrioUpgrades()
+	updates.GasSubsidies = true
 	net := tests.StartIntegrationTestNet(t,
 		tests.IntegrationTestNetOptions{
-			Upgrades: tests.AsPointer(rules),
+			Upgrades: tests.AsPointer(updates),
 		},
 	)
 	client, err := net.GetClient()
 	require.NoError(t, err, "failed to get client; %v", err)
-	defer client.Close()
-
-	sender0 := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
-
-	_, counterAbi, counterAddress := prepareContract(t, net, counter.CounterMetaData.GetAbi, counter.DeployCounter)
-	input := generateCallData(t, counterAbi, "incrementCounter")
-
-	gasPrice, err := client.SuggestGasPrice(t.Context())
-	require.NoError(t, err, "failed to suggest gas price; %v", err)
-
-	gasLimit, err := client.EstimateGas(t.Context(), ethereum.CallMsg{
-		From:     sender0.Address(),
-		To:       &counterAddress,
-		Data:     input,
-		GasPrice: gasPrice,
-		AccessList: types.AccessList{
-			// add one entry to the estimation, to allocate gas for the bundle-only marker
-			{StorageKeys: []common.Hash{{}}},
-		},
-	})
-	require.NoError(t, err, "failed to estimate gas")
-	fmt.Printf("gasLimit: %d (%x)\n", gasLimit, gasLimit)
-
-	donation := big.NewInt(1e16)
-	gas_subsidies.Fund(t, net, sender0.Address(), donation)
-	tx0 := gas_subsidies.MakeSponsorRequestTransaction(t,
-		tests.SetTransactionDefaults(t, net,
-			&types.AccessListTx{
-				To:       &counterAddress,
-				Gas:      gasLimit,
-				Data:     input,
-				GasPrice: big.NewInt(0),
-			},
-			sender0,
-		),
-		net.GetChainId(),
-		sender0,
-	)
-
-	err = client.SendTransaction(t.Context(), tx0)
-	require.NoError(t, err)
-
-	receipt, err := net.GetReceipt(tx0.Hash())
-	require.NoError(t, err, "failed to get payment tx receipt; %v", err)
-	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "payment transaction failed")
-
-	// Check all transactions have been executed and the order is correct
-	expectedTranactionHashes := []common.Hash{tx0.Hash()}
-	transactionHashes := getTransactionsInBlock(t, net, receipt.BlockNumber)
-	require.Equal(t, expectedTranactionHashes, transactionHashes)
-
-	// Check the transaction status
-	receipt, err = net.GetReceipt(tx0.Hash())
-	require.NoError(t, err, "failed to get transaction tx 0 receipt; %v", err)
-	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "tx0 failed")
-
-	// Check the counter value from the contract
-	counterInstance, err := counter.NewCounter(counterAddress, client)
-	require.NoError(t, err, "failed to create counter instance; %v", err)
-	count, err := counterInstance.GetCount(nil)
-	require.NoError(t, err, "failed to get counter value; %v", err)
-	require.Equal(t, count.Int64(), int64(1))
+	return net, client
 }
 
 func counterAddressAndInput(t *testing.T, net *tests.IntegrationTestNet) (common.Address, []byte) {
@@ -129,14 +314,6 @@ func getCounterValue(t *testing.T, client *tests.PooledEhtClient, counterAddress
 	require.NoError(t, err, "failed to get counter value; %v", err)
 	return count.Int64()
 }
-
-const (
-	successfulNormalTx    = 0
-	successfulSponsoredTx = 1
-	successfulBundleTx    = 2
-	failedTx              = 3
-	invalidTx             = 4
-)
 
 func makeUnsignedBundleTxs(t *testing.T, net *tests.IntegrationTestNet, client *tests.PooledEhtClient, txTypes []int, counterAddress *common.Address) ([]*types.Transaction, []*tests.Account, common.Address) {
 	senders := make([]*tests.Account, len(txTypes))
@@ -250,7 +427,7 @@ func makeUnsignedBundleTxs(t *testing.T, net *tests.IntegrationTestNet, client *
 
 func signBundleTxs(t *testing.T, net *tests.IntegrationTestNet, txs []*types.Transaction, senders []*tests.Account, plan bundle.ExecutionPlan) {
 	for i, tx := range txs {
-		txx := &types.AccessListTx{
+		bundleOnlyTx := &types.AccessListTx{
 			Nonce:    tx.Nonce(),
 			GasPrice: tx.GasPrice(),
 			Gas:      tx.Gas(),
@@ -264,335 +441,24 @@ func signBundleTxs(t *testing.T, net *tests.IntegrationTestNet, txs []*types.Tra
 		if tx.GasPrice().Cmp(big.NewInt(0)) == 0 {
 			donation := big.NewInt(1e16)
 			gas_subsidies.Fund(t, net, senders[i].Address(), donation)
-			txs[i] = gas_subsidies.MakeSponsorRequestTransaction(t, txx, net.GetChainId(), senders[i])
+			txs[i] = gas_subsidies.MakeSponsorRequestTransaction(t, bundleOnlyTx, net.GetChainId(), senders[i])
 		} else {
-			txs[i] = tests.SignTransaction(t, net.GetChainId(), txx, senders[i])
+			txs[i] = tests.SignTransaction(t, net.GetChainId(), bundleOnlyTx, senders[i])
 		}
 	}
 }
 
-func checkHashesEqAndStatus(t *testing.T, net *tests.IntegrationTestNet, expectedHash common.Hash, expectedStatus uint64, txHash func() (common.Hash, bool)) {
+func checkHashesEqAndStatus(t *testing.T, net *tests.IntegrationTestNet, expectedHash common.Hash, expectedStatus uint64, txHash common.Hash) {
 	t.Helper()
-	hash, ok := txHash()
-	if !ok {
-		require.Fail(t, "iterator exhausted")
-	}
-	require.Equal(t, expectedHash, hash, "transaction hash does not match expected hash")
-	checkStatus(t, net, expectedStatus, func() (common.Hash, bool) { return hash, true })
+	require.Equal(t, expectedHash, txHash)
+	checkStatus(t, net, expectedStatus, txHash)
 }
 
-func checkStatus(t *testing.T, net *tests.IntegrationTestNet, status uint64, txHash func() (common.Hash, bool)) {
+func checkStatus(t *testing.T, net *tests.IntegrationTestNet, status uint64, txHash common.Hash) {
 	t.Helper()
-	hash, ok := txHash()
-	if !ok {
-		require.Fail(t, "iterator exhausted")
-	}
-	receipt, err := net.GetReceipt(hash)
+	receipt, err := net.GetReceipt(txHash)
 	require.NoError(t, err, "failed to get transaction receipt; %v", err)
 	require.Equal(t, status, receipt.Status)
-}
-
-func Test_Bundle_Ignores_And_AtMostOne_Work(t *testing.T) {
-	// transactions = [
-	//     if TolerateInvalid: invalidTx,
-	//     if TolerateFailed: failedTx,
-	//     validTx,
-	//     validTx,
-	// ]
-	// This test ensures that:
-	// - if TolerateInvalid is set, invalidTx will be ignored and the rest of the bundle will be executed
-	// - if TolerateFailed is set, failedTx will be ignored and the rest of the bundle will be executed
-	// - if TryUntil is set, only the first transaction (after ignoring invalid/failed transactions) will be executed
-	runWithAllFlags(t, func(
-		name string,
-		net *tests.IntegrationTestNet,
-		client *tests.PooledEhtClient,
-		flags bundle.ExecutionFlag,
-	) {
-		for _, successfulTxType := range []int{successfulNormalTx, successfulSponsoredTx, successfulBundleTx} {
-			name := fmt.Sprintf("%s/successfulTxType=%v", name, successfulTxType)
-			t.Run(name, func(t *testing.T) {
-
-				txs, senders, counterAddress := makeUnsignedBundleTxs(t, net, client, []int{invalidTx, failedTx, successfulTxType, successfulTxType}, nil)
-
-				signer := types.NewCancunSigner(net.GetChainId())
-
-				steps := []bundle.ExecutionStep{}
-				if flags.TolerateInvalid() {
-					steps = append(steps, bundle.ExecutionStep{From: senders[0].Address(), Hash: signer.Hash(txs[0])})
-				}
-				if flags.TolerateFailed() {
-					steps = append(steps, bundle.ExecutionStep{From: senders[1].Address(), Hash: signer.Hash(txs[1])})
-				}
-				steps = append(steps, bundle.ExecutionStep{From: senders[2].Address(), Hash: signer.Hash(txs[2])})
-				steps = append(steps, bundle.ExecutionStep{From: senders[3].Address(), Hash: signer.Hash(txs[3])})
-				plan := bundle.ExecutionPlan{Flags: flags, Steps: steps}
-
-				signBundleTxs(t, net, txs, senders, plan)
-
-				submittedTxs := types.Transactions{}
-				if flags.TolerateInvalid() {
-					submittedTxs = append(submittedTxs, txs[0])
-				}
-				if flags.TolerateFailed() {
-					submittedTxs = append(submittedTxs, txs[1])
-				}
-				submittedTxs = append(submittedTxs, txs[2], txs[3])
-
-				bundler := net.GetSessionSponsor()
-				bundleTx, paymentTxHash := makeBundleTransaction(t, net, submittedTxs, plan, bundler)
-				require.NotNil(t, bundleTx)
-				require.NotZero(t, paymentTxHash)
-
-				err := client.SendTransaction(t.Context(), bundleTx)
-				require.NoError(t, err)
-
-				receipt, err := net.GetReceipt(paymentTxHash)
-				require.NoError(t, err, "failed to get payment tx receipt; %v", err)
-				require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "payment transaction failed")
-
-				// Check all transactions have been executed and the order is correct
-				transactionHashes := getTransactionsInBlock(t, net, receipt.BlockNumber)
-				nextTxHash, stop := iter.Pull(slices.Values(transactionHashes))
-				defer stop()
-				if successfulTxType == successfulNormalTx {
-					if flags.TryUntil() {
-						require.Len(t, transactionHashes, 2)
-					} else if flags.TolerateFailed() {
-						require.Len(t, transactionHashes, 4)
-					} else {
-						require.Len(t, transactionHashes, 3)
-					}
-
-					checkHashesEqAndStatus(t, net, paymentTxHash, types.ReceiptStatusSuccessful, nextTxHash) // paymentTx
-
-					if flags.TolerateFailed() {
-						checkHashesEqAndStatus(t, net, txs[1].Hash(), types.ReceiptStatusFailed, nextTxHash) // failedTx
-					}
-
-					if !flags.TolerateFailed() || !flags.TryUntil() {
-						checkHashesEqAndStatus(t, net, txs[2].Hash(), types.ReceiptStatusSuccessful, nextTxHash) // successfulNormalTx
-					}
-
-					if !flags.TryUntil() {
-						checkHashesEqAndStatus(t, net, txs[3].Hash(), types.ReceiptStatusSuccessful, nextTxHash) // successfulNormalTx
-					}
-				} else if successfulTxType == successfulSponsoredTx {
-					if flags.TryUntil() {
-						if flags.TolerateFailed() {
-							require.Len(t, transactionHashes, 2) // paymentTx, failedTx
-						} else {
-							require.Len(t, transactionHashes, 3) // paymentTx, successfulSponsoredTx, payment for successfulSponsoredTx
-						}
-					} else if flags.TolerateFailed() {
-						require.Len(t, transactionHashes, 6)
-					} else {
-						require.Len(t, transactionHashes, 5)
-					}
-
-					checkHashesEqAndStatus(t, net, paymentTxHash, types.ReceiptStatusSuccessful, nextTxHash) // paymentTx
-
-					if flags.TolerateFailed() {
-						checkHashesEqAndStatus(t, net, txs[1].Hash(), types.ReceiptStatusFailed, nextTxHash) // failedTx
-					}
-
-					if !flags.TolerateFailed() || !flags.TryUntil() {
-						checkHashesEqAndStatus(t, net, txs[2].Hash(), types.ReceiptStatusSuccessful, nextTxHash) // successfulSponsoredTx
-						checkStatus(t, net, types.ReceiptStatusSuccessful, nextTxHash)                           // txHash payment for successfulSponsoredTx
-					}
-
-					if !flags.TryUntil() {
-						checkHashesEqAndStatus(t, net, txs[3].Hash(), types.ReceiptStatusSuccessful, nextTxHash) // successfulSponsoredTx
-						checkStatus(t, net, types.ReceiptStatusSuccessful, nextTxHash)                           // txHash payment for successfulSponsoredTx
-					}
-				} else { // successfulTxType == successfulBundleTx
-					if flags.TryUntil() {
-						if flags.TolerateFailed() {
-							require.Len(t, transactionHashes, 2) // paymentTx, failedTx
-						} else {
-							require.Len(t, transactionHashes, 4) // paymentTx, inner paymentTx, inner successfulNormalTx, inner successfulNormalTx
-						}
-					} else if flags.TolerateFailed() {
-						require.Len(t, transactionHashes, 8)
-					} else {
-						require.Len(t, transactionHashes, 7)
-					}
-
-					checkHashesEqAndStatus(t, net, paymentTxHash, types.ReceiptStatusSuccessful, nextTxHash) // paymentTx
-
-					if flags.TolerateFailed() {
-						checkHashesEqAndStatus(t, net, txs[1].Hash(), types.ReceiptStatusFailed, nextTxHash) // failedTx
-					}
-
-					if !flags.TolerateFailed() || !flags.TryUntil() {
-						checkStatus(t, net, types.ReceiptStatusSuccessful, nextTxHash) // txHash inner paymentTx
-						checkStatus(t, net, types.ReceiptStatusSuccessful, nextTxHash) // txHash inner successfulNormalTx
-						checkStatus(t, net, types.ReceiptStatusSuccessful, nextTxHash) // txHash inner successfulNormalTx
-					}
-
-					if !flags.TryUntil() {
-						checkStatus(t, net, types.ReceiptStatusSuccessful, nextTxHash) // txHash inner paymentTx
-						checkStatus(t, net, types.ReceiptStatusSuccessful, nextTxHash) // txHash inner successfulNormalTx
-						checkStatus(t, net, types.ReceiptStatusSuccessful, nextTxHash) // txHash inner successfulNormalTx
-					}
-				}
-
-				// Check the counter value from the contract
-				count := getCounterValue(t, client, counterAddress)
-				if flags.TryUntil() {
-					if flags.TolerateFailed() {
-						require.Equal(t, count, int64(0))
-					} else {
-						if successfulTxType == successfulBundleTx {
-							require.Equal(t, count, int64(2))
-						} else {
-							require.Equal(t, count, int64(1))
-						}
-					}
-				} else {
-					if successfulTxType == successfulBundleTx {
-						require.Equal(t, count, int64(4))
-					} else {
-						require.Equal(t, count, int64(2))
-					}
-				}
-			})
-		}
-	})
-}
-
-func Test_Bundle_ResetIfFailed_Works(t *testing.T) {
-	// transactions = [
-	//     validTx,
-	//     if !TolerateInvalid: invalidTx,
-	//     if !TolerateFailed: failedTx,
-	// ]
-	// This test ensures that:
-	// - if TryUntil is set, only the first transaction is executed and the rest of the bundle is ignored
-	// - otherwise the successful transaction gets skipped if there is another transaction after it that skips or reverts and this is not ignored
-	runWithAllFlags(t, func(
-		name string,
-		net *tests.IntegrationTestNet,
-		client *tests.PooledEhtClient,
-		flags bundle.ExecutionFlag,
-	) {
-		for _, successfulTxType := range []int{successfulNormalTx, successfulSponsoredTx, successfulBundleTx} {
-			name := fmt.Sprintf("%s/successfulTxType=%v", name, successfulTxType)
-			t.Run(name, func(t *testing.T) {
-				txs, senders, counterAddress := makeUnsignedBundleTxs(t, net, client, []int{successfulTxType, invalidTx, failedTx}, nil)
-
-				signer := types.NewCancunSigner(net.GetChainId())
-
-				steps := []bundle.ExecutionStep{}
-				steps = append(steps, bundle.ExecutionStep{From: senders[0].Address(), Hash: signer.Hash(txs[0])})
-				if !flags.TolerateInvalid() {
-					steps = append(steps, bundle.ExecutionStep{From: senders[1].Address(), Hash: signer.Hash(txs[1])})
-				}
-				if !flags.TolerateFailed() {
-					steps = append(steps, bundle.ExecutionStep{From: senders[2].Address(), Hash: signer.Hash(txs[2])})
-				}
-				plan := bundle.ExecutionPlan{Flags: flags, Steps: steps}
-
-				signBundleTxs(t, net, txs, senders, plan)
-
-				submittedTxs := types.Transactions{}
-				submittedTxs = append(submittedTxs, txs[0])
-				if !flags.TolerateInvalid() {
-					submittedTxs = append(submittedTxs, txs[1])
-				}
-				if !flags.TolerateFailed() {
-					submittedTxs = append(submittedTxs, txs[2])
-				}
-
-				bundler := net.GetSessionSponsor()
-				bundleTx, paymentTxHash := makeBundleTransaction(t, net, submittedTxs, plan, bundler)
-				require.NotNil(t, bundleTx)
-				require.NotZero(t, paymentTxHash)
-
-				err := client.SendTransaction(t.Context(), bundleTx)
-				require.NoError(t, err)
-
-				receipt, err := net.GetReceipt(paymentTxHash)
-				require.NoError(t, err, "failed to get payment tx receipt; %v", err)
-				require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "payment transaction failed")
-
-				// Check all transactions have been executed and the order is correct
-				transactionHashes := getTransactionsInBlock(t, net, receipt.BlockNumber)
-				nextTxHash, stop := iter.Pull(slices.Values(transactionHashes))
-				defer stop()
-				if flags.TryUntil() || flags.TolerateInvalid() && flags.TolerateFailed() {
-					if successfulTxType == successfulNormalTx {
-						require.Len(t, transactionHashes, 2)
-						checkHashesEqAndStatus(t, net, paymentTxHash, types.ReceiptStatusSuccessful, nextTxHash) // paymentTx
-						checkHashesEqAndStatus(t, net, txs[0].Hash(), types.ReceiptStatusSuccessful, nextTxHash) // successfulNormalTx
-					} else if successfulTxType == successfulSponsoredTx {
-						require.Len(t, transactionHashes, 3)
-						checkHashesEqAndStatus(t, net, paymentTxHash, types.ReceiptStatusSuccessful, nextTxHash) // paymentTx
-						checkHashesEqAndStatus(t, net, txs[0].Hash(), types.ReceiptStatusSuccessful, nextTxHash) // successfulSponsoredTx
-						checkStatus(t, net, types.ReceiptStatusSuccessful, nextTxHash)                           // payment for successfulSponsoredTx
-					} else { // successfulTxType == successfulBundleTx
-						require.Len(t, transactionHashes, 4)
-						checkHashesEqAndStatus(t, net, paymentTxHash, types.ReceiptStatusSuccessful, nextTxHash) // paymentTx
-						checkStatus(t, net, types.ReceiptStatusSuccessful, nextTxHash)                           // inner paymentTx
-						checkStatus(t, net, types.ReceiptStatusSuccessful, nextTxHash)                           // inner successfulNormalTx
-						checkStatus(t, net, types.ReceiptStatusSuccessful, nextTxHash)                           // inner successfulNormalTx
-					}
-				} else {
-					require.Len(t, transactionHashes, 1)
-					checkHashesEqAndStatus(t, net, paymentTxHash, types.ReceiptStatusSuccessful, nextTxHash) // paymentTx
-				}
-
-				// Check the transaction status
-				if successfulTxType != successfulBundleTx {
-					if flags.TryUntil() || (flags.TolerateInvalid() && flags.TolerateFailed()) {
-						receipt, err = net.GetReceipt(txs[0].Hash())
-						require.NoError(t, err, "failed to get transaction tx 0 receipt; %v", err)
-						require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "tx0 failed")
-					}
-				}
-
-				// Check the counter value from the contract
-				count := getCounterValue(t, client, counterAddress)
-				if flags.TryUntil() || (flags.TolerateInvalid() && flags.TolerateFailed()) {
-					if successfulTxType == successfulBundleTx {
-						require.Equal(t, count, int64(2))
-					} else {
-						require.Equal(t, count, int64(1))
-					}
-				} else {
-					require.Equal(t, count, int64(0))
-				}
-			})
-		}
-	})
-}
-
-func runWithAllFlags(t *testing.T, f func(string, *tests.IntegrationTestNet, *tests.PooledEhtClient, bundle.ExecutionFlag)) {
-	updates := opera.GetBrioUpgrades()
-	updates.GasSubsidies = true
-	net := tests.StartIntegrationTestNet(t,
-		tests.IntegrationTestNetOptions{
-			Upgrades: tests.AsPointer(updates),
-		},
-	)
-	client, err := net.GetClient()
-	require.NoError(t, err, "failed to get client; %v", err)
-	defer client.Close()
-
-	for _, ignoreInvalid := range []bool{true, false} {
-		for _, ignoreFailed := range []bool{true, false} {
-			for _, atMostOne := range []bool{true, false} {
-				name := fmt.Sprintf("ignoreInvalid=%v/ignoreFailed=%v/atMostOne=%v", ignoreInvalid, ignoreFailed, atMostOne)
-				t.Run(name, func(t *testing.T) {
-					flags := bundle.ExecutionFlag(0)
-					flags.SetTolerateInvalid(ignoreInvalid)
-					flags.SetTolerateFailed(ignoreFailed)
-					flags.SetTryUntil(atMostOne)
-					f(name, net, client, flags)
-				})
-			}
-		}
-	}
 }
 
 // makeBundleTransaction creates a bundle transaction with the given transactions and execution plan

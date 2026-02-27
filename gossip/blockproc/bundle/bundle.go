@@ -42,13 +42,13 @@ var (
 type ExecutionFlag uint16
 
 const (
-	TolarateInvalid ExecutionFlag = 0b001
+	TolerateInvalid ExecutionFlag = 0b001
 	TolerateFailed  ExecutionFlag = 0b010
 	TryUntil        ExecutionFlag = 0b100
 )
 
 func (e *ExecutionFlag) TolerateInvalid() bool {
-	return e.getFlag(TolarateInvalid)
+	return e.getFlag(TolerateInvalid)
 }
 
 func (e *ExecutionFlag) TolerateFailed() bool {
@@ -60,7 +60,7 @@ func (e *ExecutionFlag) TryUntil() bool {
 }
 
 func (e *ExecutionFlag) SetTolerateInvalid(tolerateInvalid bool) {
-	e.setFlag(TolarateInvalid, tolerateInvalid)
+	e.setFlag(TolerateInvalid, tolerateInvalid)
 }
 
 func (e *ExecutionFlag) SetTolerateFailed(tolerateFailed bool) {
