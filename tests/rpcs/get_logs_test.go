@@ -17,6 +17,7 @@
 package rpcs
 
 import (
+	"context"
 	"fmt"
 	"math/big"
 	"slices"
@@ -93,6 +94,41 @@ func TestGetLogFilters(t *testing.T) {
 	for _, log := range createdLogs {
 		require.Contains(t, allLogs, log)
 	}
+
+	// Test HTTP and WebSocket clients independently.
+
+	httpClient, err := net.GetClient()
+	require.NoError(t, err)
+	defer httpClient.Close()
+
+	wsClient, err := net.GetWebSocketClient()
+	require.NoError(t, err)
+	defer wsClient.Close()
+
+	clients := map[string]logSource{
+		"httpClient": httpClient,
+		"wsClient":   wsClient,
+	}
+
+	for clientType, client := range clients {
+		t.Run(clientType, func(t *testing.T) {
+			testGetLogFiltersWithClient(
+				t, allLogs, startBlock, endBlock,
+				blockHashes, sourceAddrs, client,
+			)
+		})
+	}
+}
+
+func testGetLogFiltersWithClient(
+	t *testing.T,
+	allLogs []types.Log,
+	startBlock uint64,
+	endBlock uint64,
+	blockHashes []common.Hash,
+	sourceAddrs []common.Address,
+	client logSource,
+) {
 
 	// Retrieve the ABI of the contract to identify the log event signatures.
 	eventIDs := []common.Hash{
@@ -286,6 +322,10 @@ func TestGetLogFilters(t *testing.T) {
 	require.Less(t, numEmpty, len(tests)-1, "at least one test case should return a true subset of logs")
 }
 
+type logSource interface {
+	FilterLogs(context.Context, ethereum.FilterQuery) ([]types.Log, error)
+}
+
 func filterLogs(logs []types.Log, query ethereum.FilterQuery) []types.Log {
 	filter := filter{query}
 	return slices.DeleteFunc(slices.Clone(logs), func(log types.Log) bool {
@@ -376,10 +416,33 @@ func testLogResultLimitEnforcement(t *testing.T, limit int) {
 		return receipt.BlockNumber
 	}
 
-	client, err := net.GetClient()
+	httpClient, err := net.GetClient()
 	require.NoError(t, err)
-	defer client.Close()
+	defer httpClient.Close()
 
+	wsClient, err := net.GetWebSocketClient()
+	require.NoError(t, err)
+	defer wsClient.Close()
+
+	clients := map[string]logSource{
+		"httpClient": httpClient,
+		"wsClient":   wsClient,
+	}
+
+	for clientType, client := range clients {
+		t.Run(clientType, func(t *testing.T) {
+			testLogResultLimitEnforcementWith(t, limit, client, createLogs, sourceAddress)
+		})
+	}
+}
+
+func testLogResultLimitEnforcementWith(
+	t *testing.T,
+	limit int,
+	client logSource,
+	createLogs func(n int) *big.Int,
+	sourceAddress common.Address,
+) {
 	expectedErrMsg := fmt.Sprintf("too many results, consider narrowing your query criteria, the limit is %d", limit)
 
 	// Retrieve the ABI of the contract to identify the log event signature.
@@ -531,10 +594,32 @@ func TestGetLogFilters_ALimitOfZeroDisablesTheResultLimit(t *testing.T) {
 		return receipt.BlockNumber
 	}
 
-	client, err := net.GetClient()
+	httpClient, err := net.GetClient()
 	require.NoError(t, err)
-	defer client.Close()
+	defer httpClient.Close()
 
+	wsClient, err := net.GetWebSocketClient()
+	require.NoError(t, err)
+	defer wsClient.Close()
+
+	clients := map[string]logSource{
+		"httpClient": httpClient,
+		"wsClient":   wsClient,
+	}
+
+	for clientType, client := range clients {
+		t.Run(clientType, func(t *testing.T) {
+			testLogResultLimitEnforcementWithALimitOfZero(t, client, createLogs, sourceAddress)
+		})
+	}
+}
+
+func testLogResultLimitEnforcementWithALimitOfZero(
+	t *testing.T,
+	client logSource,
+	createLogs func(n int) *big.Int,
+	sourceAddress common.Address,
+) {
 	for logCount := 10; logCount <= 10_000; logCount *= 10 {
 		t.Run(fmt.Sprintf("%d logs", logCount), func(t *testing.T) {
 
@@ -591,10 +676,31 @@ func testLimitOfNumberParametersEnforcement(t *testing.T, limit int) {
 		ClientExtraArguments: []string{"--rpc.log-query-parameter-limit", fmt.Sprintf("%d", limit)},
 	})
 
-	client, err := net.GetClient()
+	httpClient, err := net.GetClient()
 	require.NoError(t, err)
-	defer client.Close()
+	defer httpClient.Close()
 
+	wsClient, err := net.GetWebSocketClient()
+	require.NoError(t, err)
+	defer wsClient.Close()
+
+	clients := map[string]logSource{
+		"httpClient": httpClient,
+		"wsClient":   wsClient,
+	}
+
+	for clientType, client := range clients {
+		t.Run(clientType, func(t *testing.T) {
+			testLimitOfNumberParametersEnforcementWithClient(t, limit, client)
+		})
+	}
+}
+
+func testLimitOfNumberParametersEnforcementWithClient(
+	t *testing.T,
+	limit int,
+	client logSource,
+) {
 	createTopics := func(n int) []common.Hash {
 		topics := make([]common.Hash, n)
 		for i := 0; i < n; i++ {
