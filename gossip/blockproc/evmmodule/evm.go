@@ -139,7 +139,7 @@ func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlo
 	return evmcore.NewEvmBlock(h, txs)
 }
 
-func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) []evmcore.ProcessedTransaction {
+func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) evmcore.ExecutionSummary {
 	evmProcessor := p.processorFactory.NewStateProcessor(p.evmCfg, p.reader, p.rules.Upgrades)
 	txsOffset := uint(len(p.processedTxs))
 
@@ -147,23 +147,23 @@ func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) []e
 
 	// Process txs
 	evmBlock := p.evmBlockWith(txs)
-	processed := evmProcessor.Process(evmBlock, p.statedb, vmConfig, gasLimit, &p.gasUsed, func(l *types.Log) {
+	summary := evmProcessor.Process(evmBlock, p.statedb, vmConfig, gasLimit, &p.gasUsed, func(l *types.Log) {
 		// Note: l.Index is properly set before
 		l.TxIndex += txsOffset
 		p.onNewLog(l)
 	})
 
 	if txsOffset > 0 {
-		for _, p := range processed {
+		for _, p := range summary.ProcessedTransactions {
 			if p.Receipt != nil {
 				p.Receipt.TransactionIndex += txsOffset
 			}
 		}
 	}
 
-	p.processedTxs = append(p.processedTxs, processed...)
+	p.processedTxs = append(p.processedTxs, summary.ProcessedTransactions...)
 
-	return processed
+	return summary
 }
 
 func (p *OperaEVMProcessor) Finalize() (evmBlock *evmcore.EvmBlock, numSkipped int, receipts types.Receipts) {
@@ -209,7 +209,7 @@ type _stateProcessor interface {
 		gasLimit uint64,
 		gasUsed *uint64,
 		onNewLog func(*types.Log),
-	) []evmcore.ProcessedTransaction
+	) evmcore.ExecutionSummary
 }
 
 // stateProcessorFactory is the production implementation of the

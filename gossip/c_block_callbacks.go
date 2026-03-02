@@ -345,7 +345,8 @@ func consensusCallbackBeginBlockFn(
 
 				// Execute pre-internal transactions
 				preInternalTxs := blockProc.PreTxTransactor.PopInternalTxs(blockCtx, bs, es, sealing, statedb)
-				preInternalProcessedTxs := evmProcessor.Execute(preInternalTxs, maxBlockGas)
+				preInternalExecutionSummary := evmProcessor.Execute(preInternalTxs, maxBlockGas)
+				preInternalProcessedTxs := preInternalExecutionSummary.ProcessedTransactions
 				bs = txListener.Finalize()
 				for _, tx := range preInternalProcessedTxs {
 					if tx.Receipt == nil || tx.Receipt.Status == 0 {
@@ -412,7 +413,8 @@ func consensusCallbackBeginBlockFn(
 
 					// Execute post-internal transactions
 					internalTxs := blockProc.PostTxTransactor.PopInternalTxs(blockCtx, bs, es, sealing, statedb)
-					internalProcessedTxs := evmProcessor.Execute(internalTxs, maxBlockGas)
+					internalExecutionSummary := evmProcessor.Execute(internalTxs, maxBlockGas)
+					internalProcessedTxs := internalExecutionSummary.ProcessedTransactions
 					for _, tx := range internalProcessedTxs {
 						if tx.Receipt == nil || tx.Receipt.Status == 0 {
 							log.Warn("Internal transaction skipped or reverted", "txid", tx.Transaction.Hash().String())
@@ -430,13 +432,14 @@ func consensusCallbackBeginBlockFn(
 
 					orderedTxs := proposal.Transactions
 					numSkippedDueToBlockLimits := 0
+					var processedBundles []bundle.TransactionBundle
 					if es.Rules.Upgrades.Brio {
 						// Limit block size and gas while adding user transactions
-						numSkippedDueToBlockLimits =
+						numSkippedDueToBlockLimits, processedBundles =
 							processUserTransactions(evmProcessor, blockBuilder, orderedTxs, userTransactionGasLimit)
 					} else {
 						// Pre brio there were no limits on user transactions
-						processUserTransactionsNoLimits(evmProcessor, blockBuilder, orderedTxs, userTransactionGasLimit)
+						processedBundles = processUserTransactionsNoLimits(evmProcessor, blockBuilder, orderedTxs, userTransactionGasLimit)
 					}
 
 					evmBlock, numSkippedTxs, allReceipts := evmProcessor.Finalize()
@@ -534,8 +537,16 @@ func consensusCallbackBeginBlockFn(
 					store.EvmStore().SetCachedEvmBlock(blockCtx.Idx, evmBlock)
 
 					// Keep track of processed bundles.
-					processedBundles := []common.Hash{}
-					if err := store.AddProcessedBundles(uint64(blockCtx.Idx), processedBundles); err != nil {
+					signer := types.LatestSignerForChainID(chainCfg.ChainID)
+					processedBundleHashes := make([]common.Hash, len(processedBundles))
+					for i, b := range processedBundles {
+						plan, err := b.ExtractExecutionPlan(signer)
+						if err != nil {
+							log.Crit("Failed to extract execution plan from bundle", "err", err)
+						}
+						processedBundleHashes[i] = plan.Hash()
+					}
+					if err := store.AddProcessedBundles(uint64(blockCtx.Idx), processedBundleHashes); err != nil {
 						log.Crit("Failed to add processed bundles", "err", err)
 					}
 
@@ -615,8 +626,10 @@ func processUserTransactionsNoLimits(
 	evmProcessor blockproc.EVMProcessor,
 	blockBuilder *inter.BlockBuilder,
 	orderedTxs []*types.Transaction,
-	userTransactionGasLimit uint64) {
-	for _, processed := range evmProcessor.Execute(orderedTxs, userTransactionGasLimit) {
+	userTransactionGasLimit uint64,
+) []bundle.TransactionBundle {
+	summary := evmProcessor.Execute(orderedTxs, userTransactionGasLimit)
+	for _, processed := range summary.ProcessedTransactions {
 		if processed.Receipt != nil { // < nil if skipped
 			blockBuilder.AddTransaction(
 				processed.Transaction,
@@ -624,6 +637,7 @@ func processUserTransactionsNoLimits(
 			)
 		}
 	}
+	return summary.ProcessedBundles
 }
 
 // rlpEncodedMaxHeaderSizeInBytes is an upper bound of the EVM block header size
@@ -636,7 +650,8 @@ func processUserTransactions(
 	evmProcessor blockproc.EVMProcessor,
 	blockBuilder *inter.BlockBuilder,
 	orderedTxs []*types.Transaction,
-	userTransactionGasLimit uint64) int {
+	userTransactionGasLimit uint64,
+) (int, []bundle.TransactionBundle) {
 	remainingGas := userTransactionGasLimit
 	remainingSize := uint64(params.MaxBlockSize - rlpEncodedMaxHeaderSizeInBytes)
 	internalTxs := blockBuilder.GetTransactions()
@@ -644,16 +659,19 @@ func processUserTransactions(
 		txSize := tx.Size()
 		if txSize > remainingSize {
 			log.Warn("block filled with only internal transactions")
-			return len(orderedTxs)
+			return len(orderedTxs), nil
 		}
 		remainingSize -= txSize
 	}
 
 	skippedCounter := 0
+	var processedBundles []bundle.TransactionBundle
 	for _, tx := range orderedTxs {
 		neededSpace := txSizeIncludingSubsidies(tx)
 		if neededSpace <= remainingSize {
-			for _, processed := range evmProcessor.Execute([]*types.Transaction{tx}, remainingGas) {
+			summary := evmProcessor.Execute([]*types.Transaction{tx}, remainingGas)
+			processedBundles = append(processedBundles, summary.ProcessedBundles...)
+			for _, processed := range summary.ProcessedTransactions {
 				if processed.Receipt != nil { // < nil if skipped
 					blockBuilder.AddTransaction(
 						processed.Transaction,
@@ -667,7 +685,7 @@ func processUserTransactions(
 			skippedCounter++
 		}
 	}
-	return skippedCounter
+	return skippedCounter, processedBundles
 }
 
 // txSizeIncludingSubsidies returns the size of the transaction,
