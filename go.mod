@@ -19,7 +19,7 @@ module github.com/0xsoniclabs/sonic
 go 1.25.0
 
 require (
-	github.com/0xsoniclabs/carmen/go v0.0.0-20251024091706-e1c5a32d4310
+	github.com/0xsoniclabs/carmen/go v0.0.0-20260302110514-fcf18a690da3
 	github.com/0xsoniclabs/tosca v0.0.0-20260223084600-d2ea7c5c23ff
 	github.com/Fantom-foundation/lachesis-base v0.0.0-20240116072301-a75735c4ef00
 	github.com/cespare/cp v1.1.1
@@ -148,5 +148,3 @@ require (
 replace github.com/ethereum/go-ethereum => github.com/0xsoniclabs/go-ethereum v0.0.0-20260220094642-cad493048916
 
 replace github.com/Fantom-foundation/lachesis-base => github.com/Fantom-foundation/lachesis-base-sonic v0.0.0-20250701061954-44075d09185c
-
-replace github.com/0xsoniclabs/carmen/go => github.com/0xsoniclabs/carmen/go v0.0.0-20260302080456-72f93516f571

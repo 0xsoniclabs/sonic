@@ -45,5 +45,5 @@ type StateDB interface {
 	EndTransaction()
 	Release()
 	Checkpoint() int
-	RevertToCheckpoint(id int)
+	RevertToCheckpoint(id int) error
 }

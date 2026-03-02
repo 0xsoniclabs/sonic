@@ -541,9 +541,11 @@ func (mr *MockStateDBMockRecorder) Release() *gomock.Call {
 }
 
 // RevertToCheckpoint mocks base method.
-func (m *MockStateDB) RevertToCheckpoint(id int) {
+func (m *MockStateDB) RevertToCheckpoint(id int) error {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "RevertToCheckpoint", id)
+	ret := m.ctrl.Call(m, "RevertToCheckpoint", id)
+	ret0, _ := ret[0].(error)
+	return ret0
 }
 
 // RevertToCheckpoint indicates an expected call of RevertToCheckpoint.

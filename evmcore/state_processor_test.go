@@ -268,6 +268,7 @@ func TestProcess_TracksParentBlockHashIfPragueIsEnabled(t *testing.T) {
 				if isPrague {
 					any := gomock.Any()
 					gomock.InOrder(
+						state.EXPECT().BeginTransaction(),
 						state.EXPECT().AddAddressToAccessList(params.HistoryStorageAddress),
 						state.EXPECT().Snapshot().Return(0),
 						state.EXPECT().Exist(params.HistoryStorageAddress).Return(true),
@@ -333,6 +334,7 @@ func TestProcess_FailingTransactionAreSkippedButTheBlockIsNotTerminated(t *testi
 	// Mock the state database interactions for passing transaction.
 	any := gomock.Any()
 	state.EXPECT().SetTxContext(any, any).Times(1)
+	state.EXPECT().BeginTransaction().Times(1)
 	state.EXPECT().GetBalance(any).Return(uint256.NewInt(1000000)).Times(1)
 	state.EXPECT().SubBalance(any, any, any).Times(2)
 	state.EXPECT().Prepare(any, any, any, any, any, any).Times(1)
@@ -512,6 +514,7 @@ func createScenarioWithTxCheckingDifficulty(
 	any := gomock.Any()
 	state := state.NewMockStateDB(ctrl)
 	state.EXPECT().SetTxContext(any, any).AnyTimes()
+	state.EXPECT().BeginTransaction().AnyTimes()
 	state.EXPECT().GetBalance(any).Return(uint256.NewInt(math.MaxInt64)).AnyTimes()
 	state.EXPECT().SubBalance(any, any, any).AnyTimes()
 	state.EXPECT().Prepare(any, any, any, any, any, any).AnyTimes()
@@ -556,6 +559,7 @@ func TestApplyTransaction_InternalTransactionsSkipBaseFeeCharges(t *testing.T) {
 			state := state.NewMockStateDB(ctxt)
 
 			any := gomock.Any()
+			state.EXPECT().BeginTransaction()
 			state.EXPECT().GetBalance(any).Return(uint256.NewInt(0))
 			state.EXPECT().SubBalance(any, any, any)
 			state.EXPECT().EndTransaction()
@@ -593,6 +597,7 @@ func TestApplyTransaction_BlobHashesNotSupportedAndSkipped(t *testing.T) {
 	evm := vm.NewEVM(vm.BlockContext{}, state, &params.ChainConfig{}, vm.Config{})
 	gp := new(core.GasPool).AddGas(1000000)
 
+	state.EXPECT().BeginTransaction()
 	state.EXPECT().EndTransaction()
 
 	msg := &core.Message{
@@ -656,6 +661,7 @@ func TestApplyTransaction_ApplyMessageError_RevertsSnapshotIfPrague(t *testing.T
 			}
 
 			gomock.InOrder(
+				state.EXPECT().BeginTransaction(),
 				state.EXPECT().Snapshot().Return(42).Times(callToSnapshot),
 				state.EXPECT().GetBalance(msg.From).Return(uint256.NewInt(1000000)),
 				state.EXPECT().SubBalance(any, any, any),
@@ -717,6 +723,7 @@ func getStateDbMockForTransactions(
 		},
 	).AnyTimes()
 
+	state.EXPECT().BeginTransaction().AnyTimes()
 	state.EXPECT().GetBalance(any).Return(uint256.NewInt(math.MaxInt64)).AnyTimes()
 	state.EXPECT().AddBalance(any, any, any).AnyTimes()
 	state.EXPECT().SubBalance(any, any, any).AnyTimes()
@@ -1295,6 +1302,7 @@ func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSucc
 
 		// --- The effects of the sponsored transaction itself ---
 		state.EXPECT().SetTxContext(tx.Hash(), txIndex),
+		state.EXPECT().BeginTransaction(),
 		state.EXPECT().SetNonce(sender, uint64(1), tracing.NonceChangeEoACall),
 		state.EXPECT().Snapshot().Return(4), // < for the transaction processing
 		state.EXPECT().EndTransaction(),
@@ -1305,6 +1313,7 @@ func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSucc
 
 		// --- The effects of the fee deduction transaction ---
 		state.EXPECT().SetTxContext(any, txIndex+1),
+		state.EXPECT().BeginTransaction(),
 		state.EXPECT().SetNonce(zeroAddress, uint64(124), tracing.NonceChangeEoACall),
 		state.EXPECT().Snapshot().Return(5),                           // < for the deductFees call
 		state.EXPECT().Snapshot().Return(6),                           // < for the nested burnNativeToken call to SFC
@@ -1450,6 +1459,7 @@ func TestRunTransaction_InternalTransactions_SkipsTransactionChecksTrue(t *testi
 	state := state.NewMockStateDB(ctrl)
 	any := gomock.Any()
 	state.EXPECT().SetTxContext(any, any).Times(2)
+	state.EXPECT().BeginTransaction().Times(2)
 	state.EXPECT().GetBalance(any).Return(uint256.NewInt(math.MaxInt64))
 	state.EXPECT().EndTransaction().Times(2)
 	state.EXPECT().SubBalance(any, any, any)
@@ -1543,6 +1553,7 @@ func TestRunTransaction_RegularTransaction(t *testing.T) {
 			stateSetup: func(state *state.MockStateDB) {
 				any := gomock.Any()
 				state.EXPECT().SetTxContext(any, any)
+				state.EXPECT().BeginTransaction()
 				state.EXPECT().EndTransaction()
 				state.EXPECT().GetNonce(any).Return(uint64(0)).Times(1)
 			},
@@ -1556,6 +1567,7 @@ func TestRunTransaction_RegularTransaction(t *testing.T) {
 			stateSetup: func(state *state.MockStateDB) {
 				any := gomock.Any()
 				state.EXPECT().SetTxContext(any, any)
+				state.EXPECT().BeginTransaction()
 				state.EXPECT().GetBalance(any).Return(uint256.NewInt(math.MaxInt64))
 				state.EXPECT().EndTransaction()
 				state.EXPECT().SubBalance(any, any, any)

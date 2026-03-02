@@ -319,11 +319,11 @@ func (c *CarmenStateDB) EndTransaction() {
 }
 
 func (c *CarmenStateDB) Checkpoint() int {
-	return c.db.Checkpoint()
+	return int(c.db.InterTxSnapshot())
 }
 
-func (c *CarmenStateDB) RevertToCheckpoint(id int) {
-	c.db.RevertToCheckpoint(id)
+func (c *CarmenStateDB) RevertToCheckpoint(id int) error {
+	return c.db.RevertToInterTxSnapshot(carmen.InterTxSnapshotID(id))
 }
 
 func (c *CarmenStateDB) Finalise(bool) {
