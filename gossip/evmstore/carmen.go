@@ -310,8 +310,20 @@ func (c *CarmenStateDB) GetRefund() uint64 {
 	return c.db.GetRefund()
 }
 
+func (c *CarmenStateDB) BeginTransaction() {
+	c.db.BeginTransaction()
+}
+
 func (c *CarmenStateDB) EndTransaction() {
 	c.db.EndTransaction()
+}
+
+func (c *CarmenStateDB) Checkpoint() int {
+	return c.db.Checkpoint()
+}
+
+func (c *CarmenStateDB) RevertToCheckpoint(id int) {
+	c.db.RevertToCheckpoint(id)
 }
 
 func (c *CarmenStateDB) Finalise(bool) {

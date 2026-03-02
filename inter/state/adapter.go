@@ -41,6 +41,9 @@ type StateDB interface {
 
 	BeginBlock(number uint64)
 	EndBlock(number uint64)
+	BeginTransaction()
 	EndTransaction()
 	Release()
+	Checkpoint() int
+	RevertToCheckpoint(id int)
 }

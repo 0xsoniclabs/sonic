@@ -134,6 +134,9 @@ func (b *GenesisBuilder) CurrentHash() hash.Hash {
 	er := b.epochs[len(b.epochs)-1]
 	return er.Hash()
 }
+func (b *GenesisBuilder) CarmenStateDb() carmen.StateDB {
+	return b.carmenStateDb
+}
 
 func NewGenesisBuilder() *GenesisBuilder {
 	carmenDir, err := os.MkdirTemp("", "opera-tmp-genesis")

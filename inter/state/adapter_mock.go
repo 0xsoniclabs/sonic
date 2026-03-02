@@ -162,6 +162,32 @@ func (mr *MockStateDBMockRecorder) BeginBlock(number any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BeginBlock", reflect.TypeOf((*MockStateDB)(nil).BeginBlock), number)
 }
 
+// BeginTransaction mocks base method.
+func (m *MockStateDB) BeginTransaction() {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "BeginTransaction")
+}
+
+// BeginTransaction indicates an expected call of BeginTransaction.
+func (mr *MockStateDBMockRecorder) BeginTransaction() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BeginTransaction", reflect.TypeOf((*MockStateDB)(nil).BeginTransaction))
+}
+
+// Checkpoint mocks base method.
+func (m *MockStateDB) Checkpoint() int {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Checkpoint")
+	ret0, _ := ret[0].(int)
+	return ret0
+}
+
+// Checkpoint indicates an expected call of Checkpoint.
+func (mr *MockStateDBMockRecorder) Checkpoint() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Checkpoint", reflect.TypeOf((*MockStateDB)(nil).Checkpoint))
+}
+
 // Copy mocks base method.
 func (m *MockStateDB) Copy() StateDB {
 	m.ctrl.T.Helper()
@@ -512,6 +538,18 @@ func (m *MockStateDB) Release() {
 func (mr *MockStateDBMockRecorder) Release() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Release", reflect.TypeOf((*MockStateDB)(nil).Release))
+}
+
+// RevertToCheckpoint mocks base method.
+func (m *MockStateDB) RevertToCheckpoint(id int) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "RevertToCheckpoint", id)
+}
+
+// RevertToCheckpoint indicates an expected call of RevertToCheckpoint.
+func (mr *MockStateDBMockRecorder) RevertToCheckpoint(id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevertToCheckpoint", reflect.TypeOf((*MockStateDB)(nil).RevertToCheckpoint), id)
 }
 
 // RevertToSnapshot mocks base method.

@@ -36,6 +36,7 @@ type carmenFactory struct {
 func (f carmenFactory) NewTestStateDB(accounts types.GenesisAlloc) tests.StateTestState {
 	carmenstatedb := carmen.CreateCustomStateDBUsing(f.st, 1024)
 	statedb := evmstore.CreateCarmenStateDb(carmenstatedb)
+	statedb.BeginTransaction() // is this needed?
 	for addr, a := range accounts {
 		statedb.SetCode(addr, a.Code, tracing.CodeChangeGenesis)
 		statedb.SetNonce(addr, a.Nonce, tracing.NonceChangeGenesis)

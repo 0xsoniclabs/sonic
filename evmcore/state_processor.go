@@ -444,6 +444,7 @@ func ApplyTransactionWithEVM(msg *core.Message, config *params.ChainConfig, gp *
 		}
 	}
 	// Create a new context to be used in the EVM environment.
+	statedb.BeginTransaction()
 	txContext := NewEVMTxContext(msg)
 	evm.SetTxContext(txContext)
 
@@ -514,6 +515,7 @@ func ProcessParentBlockHash(prevHash common.Hash, evm *vm.EVM, stateDb state.Sta
 	}
 
 	txContext := NewEVMTxContext(msg)
+	stateDb.BeginTransaction()
 	evm.SetTxContext(txContext)
 
 	stateDb.AddAddressToAccessList(params.HistoryStorageAddress)
@@ -540,6 +542,7 @@ func applyTransaction(
 	uint64,
 	error,
 ) {
+	statedb.BeginTransaction()
 	// Create a new context to be used in the EVM environment.
 	txContext := NewEVMTxContext(msg)
 	evm.SetTxContext(txContext)
