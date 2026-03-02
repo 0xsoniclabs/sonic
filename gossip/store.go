@@ -57,6 +57,9 @@ type Store struct {
 		Genesis                kvdb.Store `table:"g"`
 		UpgradeHeights         kvdb.Store `table:"U"`
 
+		// Tables tracking processed bundles
+		ProcessedBundles kvdb.Store `table:"p"`
+
 		// Sonic Certification Chain tables
 		CommitteeCertificates kvdb.Store `table:"C"`
 		BlockCertificates     kvdb.Store `table:"c"`
