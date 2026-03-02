@@ -52,7 +52,7 @@ func TestSECP256r1_NewPrecompileHasCorrectGasCost(t *testing.T) {
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			session := getIntegrationTestNetSession(t, test.upgrades)
+			session := sharedNetwork.GetIntegrationTestNetSession(t, test.upgrades)
 			chainId := session.GetChainId()
 			sender := session.GetSessionSponsor()
 

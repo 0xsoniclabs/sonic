@@ -84,15 +84,15 @@ func (m *Mock_stateProcessor) EXPECT() *Mock_stateProcessorMockRecorder {
 }
 
 // Process mocks base method.
-func (m *Mock_stateProcessor) Process(block *evmcore.EvmBlock, statedb state.StateDB, vmCfg vm.Config, gasLimit uint64, gasUsed *uint64, onNewLog func(*types.Log)) evmcore.ProcessSummary {
+func (m *Mock_stateProcessor) Process(block *evmcore.EvmBlock, statedb state.StateDB, vmCfg vm.Config, gasLimit uint64, gasUsed *uint64, trueTxsOffset uint32, onNewLog func(*types.Log)) evmcore.ProcessSummary {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Process", block, statedb, vmCfg, gasLimit, gasUsed, onNewLog)
+	ret := m.ctrl.Call(m, "Process", block, statedb, vmCfg, gasLimit, gasUsed, trueTxsOffset, onNewLog)
 	ret0, _ := ret[0].(evmcore.ProcessSummary)
 	return ret0
 }
 
 // Process indicates an expected call of Process.
-func (mr *Mock_stateProcessorMockRecorder) Process(block, statedb, vmCfg, gasLimit, gasUsed, onNewLog any) *gomock.Call {
+func (mr *Mock_stateProcessorMockRecorder) Process(block, statedb, vmCfg, gasLimit, gasUsed, trueTxsOffset, onNewLog any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Process", reflect.TypeOf((*Mock_stateProcessor)(nil).Process), block, statedb, vmCfg, gasLimit, gasUsed, onNewLog)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Process", reflect.TypeOf((*Mock_stateProcessor)(nil).Process), block, statedb, vmCfg, gasLimit, gasUsed, trueTxsOffset, onNewLog)
 }

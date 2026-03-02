@@ -23,6 +23,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/ethereum/go-ethereum/common"
@@ -357,7 +358,7 @@ func (l *txList) Forward(threshold uint64) types.Transactions {
 // a point in calculating all the costs or if the balance covers all. If the threshold
 // is lower than the costgas cap, the caps will be reset to a new high after removing
 // the newly invalidated transactions.
-func (l *txList) Filter(costLimit *big.Int, gasLimit uint64, subsidiesChecker subsidiesChecker) (types.Transactions, types.Transactions) {
+func (l *txList) Filter(costLimit *big.Int, gasLimit uint64, subsidiesChecker subsidiesChecker, bundleChecker bundleChecker) (types.Transactions, types.Transactions) {
 	hasSponsored := l.txs.containsFunc(subsidies.IsSponsorshipRequest)
 
 	// If all transactions are below the threshold, short circuit
@@ -369,6 +370,11 @@ func (l *txList) Filter(costLimit *big.Int, gasLimit uint64, subsidiesChecker su
 
 	// Filter out all the transactions above the account's funds
 	removed := l.txs.Filter(func(tx *types.Transaction) bool {
+		// Bundle transactions need to be checked before sponsored transactions
+		// since bundles qualify as sponsored transactions.
+		if bundle.IsEnvelope(tx) {
+			return !bundleChecker.isPending(tx)
+		}
 		if subsidies.IsSponsorshipRequest(tx) {
 			return !subsidiesChecker.isSponsored(tx)
 		}

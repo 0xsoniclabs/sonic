@@ -413,19 +413,20 @@ func (s *State) ApplyBlock(
 
 	s.db.BeginBlock()
 	var usedGas uint64
-	processed := processor.Process(
+	summary := processor.Process(
 		evmBlock,
 		stateDb,
 		vmConfig,
 		gasLimit,
 		&usedGas,
+		0,
 		nil,
-	).ProcessedTransactions
+	)
 
 	if false { // Debug
 		fmt.Printf("block %d: used gas %d / %d\n", block.NumberU64(), usedGas, block.GasUsed())
 		signer := types.LatestSignerForChainID(big.NewInt(int64(chainId)))
-		for _, cur := range processed {
+		for _, cur := range summary.ProcessedTransactions {
 			from, _ := signer.Sender(cur.Transaction)
 			to := cur.Transaction.To()
 			if cur.Receipt != nil {
@@ -437,7 +438,7 @@ func (s *State) ApplyBlock(
 	}
 
 	receipts := types.Receipts{}
-	for i, cur := range processed {
+	for i, cur := range summary.ProcessedTransactions {
 		if cur.Receipt == nil {
 			return nil, fmt.Errorf("failed to process tx %d in block %d", i, block.NumberU64())
 		}

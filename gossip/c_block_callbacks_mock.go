@@ -12,6 +12,7 @@ package gossip
 import (
 	reflect "reflect"
 
+	common "github.com/ethereum/go-ethereum/common"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -49,4 +50,43 @@ func (m *MockmetricCounter) Mark(arg0 int64) {
 func (mr *MockmetricCounterMockRecorder) Mark(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Mark", reflect.TypeOf((*MockmetricCounter)(nil).Mark), arg0)
+}
+
+// MockbundleTracker is a mock of bundleTracker interface.
+type MockbundleTracker struct {
+	ctrl     *gomock.Controller
+	recorder *MockbundleTrackerMockRecorder
+	isgomock struct{}
+}
+
+// MockbundleTrackerMockRecorder is the mock recorder for MockbundleTracker.
+type MockbundleTrackerMockRecorder struct {
+	mock *MockbundleTracker
+}
+
+// NewMockbundleTracker creates a new mock instance.
+func NewMockbundleTracker(ctrl *gomock.Controller) *MockbundleTracker {
+	mock := &MockbundleTracker{ctrl: ctrl}
+	mock.recorder = &MockbundleTrackerMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockbundleTracker) EXPECT() *MockbundleTrackerMockRecorder {
+	return m.recorder
+}
+
+// HasRecentlyBeenProcessed mocks base method.
+func (m *MockbundleTracker) HasRecentlyBeenProcessed(execPlanHash common.Hash) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HasRecentlyBeenProcessed", execPlanHash)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// HasRecentlyBeenProcessed indicates an expected call of HasRecentlyBeenProcessed.
+func (mr *MockbundleTrackerMockRecorder) HasRecentlyBeenProcessed(execPlanHash any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasRecentlyBeenProcessed", reflect.TypeOf((*MockbundleTracker)(nil).HasRecentlyBeenProcessed), execPlanHash)
 }

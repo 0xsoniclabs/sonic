@@ -115,7 +115,7 @@ func (p *evmProcessor) run(tx *types.Transaction) (
 	// Note: the index can be set to 0 since code running inside the EVM can not
 	// obtain the position of a transaction in the block. It has thus no effect
 	// on the scheduling of the transactions.
-	processed := p.processor.Run(0, tx).ProcessedTransactions
+	summary := p.processor.Run(0, tx)
 
 	// A single input transaction can lead to multiple processed transactions.
 	// For instance, a sponsored transaction may be accompanied by a fee
@@ -124,7 +124,7 @@ func (p *evmProcessor) run(tx *types.Transaction) (
 	// non-skipped transactions, as this is the total gas cost of running the
 	// provided transaction.
 	txWasProcessed := false
-	for _, pt := range processed {
+	for _, pt := range summary.ProcessedTransactions {
 		if pt.Receipt != nil {
 			gasUsed += pt.Receipt.GasUsed
 			if pt.Transaction == tx {

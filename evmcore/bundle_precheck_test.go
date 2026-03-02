@@ -35,9 +35,6 @@ import (
 )
 
 func Test_GetBundleState_BundlesDisabled_ReturnsNonExecutable(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	chainState := NewMockChainState(ctrl)
-	chainState.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{
 		NetworkID: 1,
 		Upgrades:  opera.Upgrades{TransactionBundles: false},
 	}).AnyTimes()

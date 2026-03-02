@@ -143,22 +143,32 @@ func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlo
 
 func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) evmcore.ProcessSummary {
 	evmProcessor := p.processorFactory.NewStateProcessor(p.evmCfg, p.reader, p.rules.Upgrades)
-	txsOffset := uint(len(p.processedTxs))
+	legacyTxsOffset := uint(len(p.processedTxs))
+
+	trueTxsOffset := uint32(0)
+	for _, tx := range p.processedTxs {
+		if tx.Receipt != nil {
+			trueTxsOffset++
+		}
+	}
 
 	vmConfig := opera.GetVmConfig(p.rules)
 
 	// Process txs
 	evmBlock := p.evmBlockWith(txs)
-	summary := evmProcessor.Process(evmBlock, p.statedb, vmConfig, gasLimit, &p.gasUsed, func(l *types.Log) {
-		// Note: l.Index is properly set before
-		l.TxIndex += txsOffset
-		p.onNewLog(l)
-	})
+	summary := evmProcessor.Process(
+		evmBlock, p.statedb, vmConfig, gasLimit, &p.gasUsed, trueTxsOffset,
+		func(l *types.Log) {
+			// Note: l.Index is properly set before
+			l.TxIndex += legacyTxsOffset
+			p.onNewLog(l)
+		},
+	)
 
-	if txsOffset > 0 {
+	if legacyTxsOffset > 0 {
 		for _, p := range summary.ProcessedTransactions {
 			if p.Receipt != nil {
-				p.Receipt.TransactionIndex += txsOffset
+				p.Receipt.TransactionIndex += legacyTxsOffset
 			}
 		}
 	}
@@ -221,6 +231,7 @@ type _stateProcessor interface {
 		vmCfg vm.Config,
 		gasLimit uint64,
 		gasUsed *uint64,
+		trueTxsOffset uint32,
 		onNewLog func(*types.Log),
 	) evmcore.ProcessSummary
 }

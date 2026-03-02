@@ -147,18 +147,22 @@ func SetTransactionDefaults[T types.TxData](
 		tx.Gas = gas
 		tx.GasPrice = gasPrice
 	case *types.AccessListTx:
+		tx.ChainID = net.GetChainId()
 		tx.Nonce = nonce
 		tx.Gas = gas
 		tx.GasPrice = big.NewInt(500e9)
 	case *types.DynamicFeeTx:
+		tx.ChainID = net.GetChainId()
 		tx.Nonce = nonce
 		tx.Gas = gas
 		tx.GasFeeCap = gasPrice
 	case *types.BlobTx:
+		tx.ChainID = uint256.MustFromBig(net.GetChainId())
 		tx.Nonce = nonce
 		tx.Gas = gas
 		tx.GasFeeCap = uint256.MustFromBig(gasPrice)
 	case *types.SetCodeTx:
+		tx.ChainID = uint256.MustFromBig(net.GetChainId())
 		tx.Nonce = nonce
 		tx.Gas = gas
 		tx.GasFeeCap = uint256.MustFromBig(gasPrice)
@@ -393,7 +397,7 @@ func WaitFor(ctx context.Context, predicate func(context.Context) (bool, error))
 		}
 		select {
 		case <-timedContext.Done():
-			return fmt.Errorf("wait timeout")
+			return timedContext.Err()
 		case <-time.After(backoff):
 			// The predicate was not satisfied, backoff and try again.
 			backoff = min(maxWaitTime, backoff*2)

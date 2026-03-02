@@ -17,15 +17,20 @@
 package gossip
 
 import (
+	"fmt"
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
+	"github.com/Fantom-foundation/lachesis-base/kvdb"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
+
+//go:generate mockgen -source=emitter_world_test.go -destination=emitter_world_mock.go -package=gossip
 
 func TestEmitterWorldProc_GetUpgradeHeights_TakesResultOfUnderlyingStore(t *testing.T) {
 	world := &emitterWorldProc{
@@ -71,3 +76,31 @@ func initStoreForTests(t *testing.T) *Store {
 	require.NoError(store.ApplyGenesis(genesis))
 	return store
 }
+
+func TestEmitterWorldProc_HasBundleRecentlyBeenProcessed_ReturnsResultFromStore(t *testing.T) {
+	for _, hasBeenProcessed := range []bool{true, false} {
+		t.Run(fmt.Sprintf("hasBeenProcessed=%t", hasBeenProcessed), func(t *testing.T) {
+			store := initStoreForTests(t)
+			world := &emitterWorldProc{s: &Service{store: store}}
+
+			hash := common.Hash{1, 2, 3}
+			if hasBeenProcessed {
+				store.AddProcessedBundles(0,
+					map[common.Hash]bundle.PositionInBlock{
+						hash: {},
+					},
+				)
+			}
+
+			got := world.HasBundleRecentlyBeenProcessed(hash)
+			require.Equal(t, hasBeenProcessed, got)
+		})
+	}
+}
+
+// _table is an interface needed to generate a mock for a kvdb.Store.
+type _table interface {
+	kvdb.Store
+}
+
+var _ _table // to avoid _table unused warning.

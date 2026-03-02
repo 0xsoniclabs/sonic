@@ -30,7 +30,7 @@ import (
 )
 
 func TestSetTransactionDefaults_CanInitializeAllTransactionTypes(t *testing.T) {
-	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	session := sharedNetwork.GetIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 	t.Parallel()
 
 	client, err := session.GetClient()
@@ -401,7 +401,7 @@ func TestSetTransactionDefaults_IsCorrectAfterUpgradesChange(t *testing.T) {
 }
 
 func TestWaitUntilTransactionIsRetiredFromPool_waitsFromCompletion(t *testing.T) {
-	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	session := sharedNetwork.GetIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 	t.Parallel()
 
 	// TODO: this test can benefit from using synctest once it is available
@@ -426,7 +426,7 @@ func TestWaitUntilTransactionIsRetiredFromPool_waitsFromCompletion(t *testing.T)
 	// Because nonce is set to current nonce + 1, the transaction will not be executed
 	// waiting must time out
 	err = WaitUntilTransactionIsRetiredFromPool(t, client, txInvalidNonce)
-	require.ErrorContains(t, err, "wait timeout")
+	require.ErrorIs(t, err, context.DeadlineExceeded)
 
 	txData.Nonce = 0
 	txCorrectNonce := SignTransaction(t, chainId, txData, account)
@@ -470,7 +470,7 @@ func TestWaitFor_EventuallyTimesOut(t *testing.T) {
 	err := WaitFor(t.Context(), func(ctx context.Context) (bool, error) {
 		return false, nil
 	})
-	require.ErrorContains(t, err, "wait timeout")
+	require.ErrorIs(t, err, context.DeadlineExceeded)
 }
 
 func TestWaitFor_ForwardsErrors(t *testing.T) {
@@ -492,7 +492,7 @@ func TestWaitFor_ForwardsErrors(t *testing.T) {
 }
 
 func TestUtils_MakeAccountWithBalance_EndowsExpectedBalance(t *testing.T) {
-	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	session := sharedNetwork.GetIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 	t.Parallel()
 
 	client, err := session.GetClient()
@@ -509,7 +509,7 @@ func TestUtils_MakeAccountWithBalance_EndowsExpectedBalance(t *testing.T) {
 }
 
 func TestUtils_MakeAccountsWithBalance_EndowsExpectedBalance(t *testing.T) {
-	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	session := sharedNetwork.GetIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 	t.Parallel()
 
 	client, err := session.GetClient()

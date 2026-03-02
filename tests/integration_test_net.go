@@ -22,7 +22,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
+	"maps"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -30,6 +30,7 @@ import (
 	"runtime"
 	"runtime/debug"
 	"runtime/pprof"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -53,7 +54,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
-	geth_crypto "github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
 )
@@ -74,6 +75,21 @@ type IntegrationTestNetSession interface {
 	// accounts. This is a faster than calling EndowAccount for each account since
 	// multiple endowments may get bundled in the same block.
 	EndowAccounts(addresses []common.Address, value *big.Int) ([]*types.Receipt, error)
+
+	// Send sends the given transaction to the network without waiting for it to
+	// be processed. An error is returned if the submission failed.
+	Send(tx *types.Transaction) (common.Hash, error)
+
+	// SendAll sends the given transactions to the network without waiting for
+	// them to be processed. An error is returned if the submission of any
+	// transaction failed.
+	SendAll(txs []*types.Transaction) ([]common.Hash, error)
+
+	// TrySendAll transactions to the network without waiting for them to be
+	// processed. The method returns the list of hashes of accepted transactions,
+	// a map of hashes to error reasons for rejected transactions, and an error
+	// indicating if any other issue prevented the operation from being carried out.
+	TrySendAll(txs []*types.Transaction) (accepted []common.Hash, rejected map[common.Hash]error, error error)
 
 	// Run sends the given transaction to the network and waits for it to be processed.
 	// The resulting receipt is returned.
@@ -112,6 +128,9 @@ type IntegrationTestNetSession interface {
 	// network's sponsor account. This should be done before entering a new
 	// parallel context to prevent conflicting nonces inside.
 	SpawnSession(t *testing.T) IntegrationTestNetSession
+
+	// SpawnSessions creates a list of new test sessions on the network.
+	SpawnSessions(t *testing.T, num int) []IntegrationTestNetSession
 
 	// GetWebSocketClient provides raw access to a fresh connection to the network
 	// The resulting client must be closed after use.
@@ -351,6 +370,23 @@ func StartIntegrationTestNetWithJsonGenesis(
 
 	jsonGenesis.Accounts = append(jsonGenesis.Accounts, effectiveOptions.Accounts...)
 
+	// Give extra balance to the first validator, being the account used to
+	// sponsor transactions and endow accounts in tests.
+	sponsorAddress := crypto.PubkeyToAddress(evmcore.FakeKey(1).PublicKey)
+	found := false
+	for i := range jsonGenesis.Accounts {
+		cur := &jsonGenesis.Accounts[i]
+		if cur.Address == sponsorAddress {
+			// enough tokens to endow plenty of accounts
+			extraBalanceForSponsor := new(big.Int).Mul(big.NewInt(1e18), big.NewInt(1e9))
+			balance := cur.Balance
+			cur.Balance = new(big.Int).Add(balance, extraBalanceForSponsor)
+			found = true
+			break
+		}
+	}
+	require.True(t, found, "sponsor account not found in genesis accounts")
+
 	// Speed up the block generation time to reduce test time.
 	jsonGenesis.Rules.Emitter.Interval = inter.Timestamp(time.Millisecond)
 
@@ -480,7 +516,7 @@ func (n *IntegrationTestNet) start() error {
 
 				// websocket-client options
 				"--ws", "--ws.addr", "127.0.0.1", "--ws.port", "0",
-				"--ws.api", "admin,eth",
+				"--ws.api", "admin,eth,sonic",
 
 				//  net options
 				"--port", "0",
@@ -813,22 +849,34 @@ func (n *IntegrationTestNet) GetHeaders() ([]*types.Header, error) {
 //		        < use session instead of net of the rest of the test >
 //		})
 func (n *IntegrationTestNet) SpawnSession(t *testing.T) IntegrationTestNetSession {
+	return n.SpawnSessions(t, 1)[0]
+}
+
+func (n *IntegrationTestNet) SpawnSessions(t *testing.T, num int) []IntegrationTestNetSession {
 	t.Helper()
 	n.sessionsMutex.Lock()
 	defer n.sessionsMutex.Unlock()
 
-	key, _ := geth_crypto.GenerateKey()
-	nextSessionAccount := Account{
-		PrivateKey: key,
+	accounts := NewAccounts(num)
+	addresses := make([]common.Address, num)
+	for i := range addresses {
+		addresses[i] = accounts[i].Address()
 	}
-	receipt, err := n.EndowAccount(nextSessionAccount.Address(), new(big.Int).SetUint64(math.MaxUint64))
-	require.NoError(t, err, "Failed to endow account")
-	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "Failed to endow account")
 
-	return &Session{
-		net:     n,
-		account: nextSessionAccount,
+	receipts, err := n.EndowAccounts(addresses, new(big.Int).Mul(big.NewInt(1e18), big.NewInt(1e6)))
+	require.NoError(t, err, "Failed to endow accounts")
+	for _, receipt := range receipts {
+		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "Failed to endow account")
 	}
+
+	sessions := make([]IntegrationTestNetSession, num)
+	for i, account := range accounts {
+		sessions[i] = &Session{
+			net:     n,
+			account: *account,
+		}
+	}
+	return sessions
 }
 
 // AdvanceEpoch triggers the sealing of the current epoch and advances the epoch
@@ -890,7 +938,7 @@ func (n *IntegrationTestNet) AdvanceEpoch(t testing.TB, epochs int) {
 // DeployContract is a utility function handling the deployment of a contract on the network.
 // The contract is deployed with by the network's validator account. The function returns the
 // deployed contract instance and the transaction receipt.
-func DeployContract[T any](n IntegrationTestNetSession, deploy contractDeployer[T]) (*T, *types.Receipt, error) {
+func DeployContract[T any](n IntegrationTestNetSession, deploy ContractDeployer[T]) (*T, *types.Receipt, error) {
 	client, err := n.GetClient()
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to connect to the Ethereum client: %w", err)
@@ -922,8 +970,8 @@ func DeployContract[T any](n IntegrationTestNetSession, deploy contractDeployer[
 	return contract, receipt, nil
 }
 
-// contractDeployer is the type of the deployment functions generated by abigen.
-type contractDeployer[T any] func(*bind.TransactOpts, bind.ContractBackend) (common.Address, *types.Transaction, *T, error)
+// ContractDeployer is the type of the deployment functions generated by abigen.
+type ContractDeployer[T any] func(*bind.TransactOpts, bind.ContractBackend) (common.Address, *types.Transaction, *T, error)
 
 // Session is a test session on the network. It is backed by an account which
 // will be used to sign and pay for transactions.
@@ -936,6 +984,10 @@ type Session struct {
 
 func (s *Session) SpawnSession(t *testing.T) IntegrationTestNetSession {
 	return s.net.SpawnSession(t)
+}
+
+func (s *Session) SpawnSessions(t *testing.T, num int) []IntegrationTestNetSession {
+	return s.net.SpawnSessions(t, num)
 }
 
 func (s *Session) GetUpgrades() opera.Upgrades {
@@ -967,6 +1019,19 @@ func (s *Session) EndowAccounts(
 		return nil, fmt.Errorf("failed to connect to the network: %w", err)
 	}
 	defer client.Close()
+
+	// Check that there are enough funds in the account to endow the requested accounts.
+	balance, err := client.BalanceAt(context.Background(), s.account.Address(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get balance: %w", err)
+	}
+	totalValue := new(big.Int).Mul(value, big.NewInt(int64(len(addresses))))
+	if balance.Cmp(totalValue) < 0 {
+		return nil, fmt.Errorf("not enough funds to endow accounts: balance %s, required %s",
+			new(big.Float).SetInt(balance).String(), // scientific notation for large numbers
+			new(big.Float).SetInt(totalValue).String(),
+		)
+	}
 
 	chainId, err := client.ChainID(context.Background())
 	if err != nil {
@@ -1003,6 +1068,37 @@ func (s *Session) EndowAccounts(
 	return s.RunAll(transactions)
 }
 
+func (s *Session) Send(tx *types.Transaction) (common.Hash, error) {
+	hashes, err := s.SendAll([]*types.Transaction{tx})
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("failed to send transaction: %w", err)
+	}
+	return hashes[0], nil
+}
+
+func (s *Session) SendAll(tx []*types.Transaction) ([]common.Hash, error) {
+	accepted, rejected, err := s.TrySendAll(tx)
+	return accepted, errors.Join(err, errors.Join(slices.Collect(maps.Values(rejected))...))
+}
+
+func (s *Session) TrySendAll(tx []*types.Transaction) ([]common.Hash, map[common.Hash]error, error) {
+	accepted := make([]common.Hash, len(tx))
+	rejected := make(map[common.Hash]error)
+	rejectedMutex := sync.Mutex{}
+	err := RunParallelWithClient(s.net, len(tx), func(client *PooledEhtClient, i int) error {
+		err := client.SendTransaction(context.Background(), tx[i])
+		if err != nil {
+			rejectedMutex.Lock()
+			rejected[tx[i].Hash()] = fmt.Errorf("failed to send transaction %d: %w", i, err)
+			rejectedMutex.Unlock()
+		} else {
+			accepted[i] = tx[i].Hash()
+		}
+		return nil
+	})
+	return accepted, rejected, err
+}
+
 // Run sends the given transaction to the network and waits for it to be processed.
 // The resulting receipt is returned. This function times out after 10 seconds.
 func (s *Session) Run(tx *types.Transaction) (*types.Receipt, error) {
@@ -1014,19 +1110,9 @@ func (s *Session) Run(tx *types.Transaction) (*types.Receipt, error) {
 }
 
 func (s *Session) RunAll(tx []*types.Transaction) ([]*types.Receipt, error) {
-	hashes := make([]common.Hash, len(tx))
-	err := runParallelWithClient(s.net, len(tx), func(client *PooledEhtClient, i int) error {
-		err := client.SendTransaction(context.Background(), tx[i])
-		if err != nil {
-			return fmt.Errorf("failed to send transaction %d: %w", i, err)
-		}
-		return nil
-	})
+	hashes, err := s.SendAll(tx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to send transactions: %w", err)
-	}
-	for i, t := range tx {
-		hashes[i] = t.Hash()
+		return nil, err
 	}
 	return s.GetReceipts(hashes)
 }
@@ -1044,7 +1130,7 @@ func (s *Session) GetReceipt(txHash common.Hash) (*types.Receipt, error) {
 
 func (s *Session) GetReceipts(txHash []common.Hash) ([]*types.Receipt, error) {
 	res := make([]*types.Receipt, len(txHash))
-	err := runParallelWithClient(
+	err := RunParallelWithClient(
 		s.net,
 		len(txHash),
 		func(client *PooledEhtClient, i int) error {
@@ -1073,9 +1159,9 @@ func (s *Session) GetReceipts(txHash []common.Hash) ([]*types.Receipt, error) {
 	return res, nil
 }
 
-// runParallelWithClient as a helper function to run a number of jobs in parallel
+// RunParallelWithClient as a helper function to run a number of jobs in parallel
 // where each job requires access to the network through a client.
-func runParallelWithClient(
+func RunParallelWithClient(
 	net IntegrationTestNetSession,
 	numJobs int,
 	job func(*PooledEhtClient, int) error,
