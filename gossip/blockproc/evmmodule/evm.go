@@ -189,6 +189,9 @@ func (p *OperaEVMProcessor) Finalize() (evmBlock *evmcore.EvmBlock, numSkipped i
 	// to ensure the latest state is available for both live and archive databases.
 	if time.Since(evmBlock.Time.Time()) < 1*time.Hour && done != nil {
 		if err := <-done; err != nil {
+			// the underlying database has collected an error during finalize or
+			// a previous operation. State consistency and its persistence my
+			// have been compromised.
 			log.Error("Failed to finalize block %v: %v", evmBlock.Number, err)
 		}
 	}

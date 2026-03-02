@@ -349,6 +349,9 @@ func TestOperaEVMProcessor_Finalize_DoesNotBlocksOnSyncChannel_WhenBlockIsOlderT
 }
 
 func TestOperaEVMProcessor_Finalize_DoesNotBlocksOnSyncChannel_WhenSyncChannelIsNil(t *testing.T) {
+	// Underlying db implementations may not implement to possibility to wait on
+	// an async finalize operation. The client must work correctly in these cases.
+
 	synctest.Test(t, func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		stateDb := state.NewMockStateDB(ctrl)
