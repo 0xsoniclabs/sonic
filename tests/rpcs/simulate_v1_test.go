@@ -28,6 +28,7 @@ import (
 )
 
 // Local decode types for eth_simulateV1 responses.
+
 type simulateV1BlockResult struct {
 	Number   string                 `json:"number"`
 	GasLimit string                 `json:"gasLimit"`

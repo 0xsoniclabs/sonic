@@ -69,37 +69,8 @@ const (
 	errCodeClientLimitExceeded     = -38026
 )
 
-type callError struct {
-	Message string `json:"message"`
-	Code    int    `json:"code"`
-	Data    string `json:"data,omitempty"`
-}
-
-type simInvalidParamsError struct{ message string }
-
-func (e *simInvalidParamsError) Error() string  { return e.message }
-func (e *simInvalidParamsError) ErrorCode() int { return errCodeInvalidParams }
-
-type simClientLimitExceededError struct{ message string }
-
-func (e *simClientLimitExceededError) Error() string  { return e.message }
-func (e *simClientLimitExceededError) ErrorCode() int { return errCodeClientLimitExceeded }
-
-type simInvalidBlockNumberError struct{ message string }
-
-func (e *simInvalidBlockNumberError) Error() string  { return e.message }
-func (e *simInvalidBlockNumberError) ErrorCode() int { return errCodeBlockNumberInvalid }
-
-type simInvalidBlockTimestampError struct{ message string }
-
-func (e *simInvalidBlockTimestampError) Error() string  { return e.message }
-func (e *simInvalidBlockTimestampError) ErrorCode() int { return errCodeBlockTimestampInvalid }
-
-type simBlockGasLimitReachedError struct{ message string }
-
-func (e *simBlockGasLimitReachedError) Error() string  { return e.message }
-func (e *simBlockGasLimitReachedError) ErrorCode() int { return errCodeBlockGasLimitReached }
-
+// simInvalidTxError is an error type for invalid transactions
+// in simulation, with an associated error code for JSON-RPC responses.
 type simInvalidTxError struct {
 	Message string
 	Code    int
@@ -108,6 +79,24 @@ type simInvalidTxError struct {
 func (e *simInvalidTxError) Error() string  { return e.Message }
 func (e *simInvalidTxError) ErrorCode() int { return e.Code }
 
+func simInvalidParamsError() *simInvalidTxError {
+	return &simInvalidTxError{Message: "empty input", Code: errCodeInvalidParams}
+}
+func simClientLimitExceededError() *simInvalidTxError {
+	return &simInvalidTxError{Message: "too many blocks", Code: errCodeClientLimitExceeded}
+}
+func simInvalidBlockNumberError(message string) *simInvalidTxError {
+	return &simInvalidTxError{Message: message, Code: errCodeBlockNumberInvalid}
+}
+func simInvalidBlockTimestampError(message string) *simInvalidTxError {
+	return &simInvalidTxError{Message: message, Code: errCodeBlockTimestampInvalid}
+}
+func simBlockGasLimitReachedError(message string) *simInvalidTxError {
+	return &simInvalidTxError{Message: message, Code: errCodeBlockGasLimitReached}
+}
+
+// simTxValidationError maps core transaction validation errors
+// to simInvalidTxError with appropriate message and error codes.
 func simTxValidationError(err error) *simInvalidTxError {
 	switch {
 	case errors.Is(err, core.ErrNonceTooHigh):
@@ -145,7 +134,7 @@ var (
 	simTransferAddress = common.HexToAddress("0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE")
 )
 
-// simTracer collects logs
+// simTracer collects logs for simulated transactions.
 type simTracer struct {
 	logs           []*types.Log
 	count          int
@@ -168,6 +157,8 @@ func newSimTracer(traceTransfers bool, blockNumber, blockTimestamp uint64, block
 	}
 }
 
+// Hooks returns the tracing hooks for the simTracer.
+// They are triggered during EVM execution to capture logs.
 func (t *simTracer) Hooks() *tracing.Hooks {
 	if !t.traceTransfers {
 		return nil
@@ -178,7 +169,8 @@ func (t *simTracer) Hooks() *tracing.Hooks {
 	}
 }
 
-func (t *simTracer) onEnter(depth int, typ byte, from common.Address, to common.Address, input []byte, gas uint64, value *big.Int) {
+// onEnter is called when the EVM enters a new call frame. It captures transfer
+func (t *simTracer) onEnter(depth int, typ byte, from, to common.Address, input []byte, gas uint64, value *big.Int) {
 	if t.traceTransfers &&
 		vm.OpCode(typ) != vm.DELEGATECALL &&
 		value != nil && value.Cmp(common.Big0) > 0 {
@@ -187,6 +179,7 @@ func (t *simTracer) onEnter(depth int, typ byte, from common.Address, to common.
 	}
 }
 
+// onExit is called when the EVM exits a call frame.
 func (t *simTracer) onExit(depth int, output []byte, gasUsed uint64, err error, reverted bool) {
 	if depth == 0 && reverted {
 		t.logs = nil
@@ -228,6 +221,7 @@ func (t *simTracer) reset(txHash common.Hash, txIdx uint) {
 	t.txIdx = txIdx
 }
 
+// Logs returns the collected logs from the tracer.
 func (t *simTracer) Logs() []*types.Log {
 	return t.logs
 }
@@ -244,10 +238,10 @@ type simBlockOverrides struct {
 	Withdrawals   *types.Withdrawals `json:"withdrawals"`
 }
 
-// makeEvmHeader creates a new EvmHeader based on a template and applies the
-// overrides. Fields not provided in the overrides remain from the template.
-func (o *simBlockOverrides) makeEvmHeader(template *evmcore.EvmHeader) *evmcore.EvmHeader {
-	h := *template // copy
+// applyTo creates a new EvmHeader based on a given header and applies the
+// overrides. Fields not provided in the overrides remain from the original header.
+func (o *simBlockOverrides) applyTo(header *evmcore.EvmHeader) *evmcore.EvmHeader {
+	h := *header // copy
 	if o == nil {
 		return &h
 	}
@@ -277,6 +271,13 @@ type simBlock struct {
 	BlockOverrides *simBlockOverrides `json:"blockOverrides"`
 	StateOverrides *StateOverride     `json:"stateOverrides"`
 	Calls          []TransactionArgs  `json:"calls"`
+}
+
+// callError is the error returned by a single simulated call.
+type callError struct {
+	Message string `json:"message"`
+	Code    int    `json:"code"`
+	Data    string `json:"data,omitempty"`
 }
 
 // simCallResult is the result of a single simulated call.
@@ -358,10 +359,10 @@ type simOpts struct {
 // simDummyChain implements evmcore.DummyChain so the EVM's BLOCKHASH opcode
 // can look up headers from the real chain or from already-simulated blocks.
 type simDummyChain struct {
-	ctx     context.Context
-	backend Backend
-	base    *evmcore.EvmHeader
-	headers []*evmcore.EvmHeader // previously simulated headers in this request
+	ctx              context.Context
+	backend          Backend
+	base             *evmcore.EvmHeader
+	processedHeaders []*evmcore.EvmHeader // previously simulated headers in this request
 }
 
 func (c *simDummyChain) Header(hash common.Hash, number uint64) *evmcore.EvmHeader {
@@ -370,7 +371,7 @@ func (c *simDummyChain) Header(hash common.Hash, number uint64) *evmcore.EvmHead
 		return c.base
 	}
 	// Check already-assembled simulated headers.
-	for _, h := range c.headers {
+	for _, h := range c.processedHeaders {
 		if h != nil && h.Number.Uint64() == number && h.Hash == hash {
 			return h
 		}
@@ -457,6 +458,10 @@ func (sim *simulator) processBlock(
 	timeout time.Duration,
 ) (*evmcore.EvmBlock, []simCallResult, map[common.Hash]common.Address, error) {
 
+	if parent == nil {
+		return nil, nil, nil, errors.New("parent header is nil")
+	}
+
 	// Resolve base fee.
 	header.ParentHash = parent.Hash
 	if header.BaseFee == nil {
@@ -468,7 +473,7 @@ func (sim *simulator) processBlock(
 	}
 
 	// Build block context.
-	chain := &simDummyChain{ctx: ctx, backend: sim.b, base: sim.base, headers: prevHeaders}
+	chain := &simDummyChain{ctx: ctx, backend: sim.b, base: sim.base, processedHeaders: prevHeaders}
 	blockContext := evmcore.NewEVMBlockContext(header, chain, nil)
 
 	precompiles := sim.activePrecompiles(sim.base)
@@ -531,7 +536,8 @@ func (sim *simulator) processBlock(
 
 		result, applyErr := applySimMessage(ctx, evm, msg, timeout, sim.gp)
 		if applyErr != nil {
-			return nil, nil, nil, simTxValidationError(applyErr)
+			callResults[i] = skippedTransactionCallResult(simTxValidationError(applyErr))
+			continue
 		}
 
 		contractLogs := sim.state.GetLogs(txHash, common.Hash{})
@@ -591,6 +597,17 @@ func (sim *simulator) processBlock(
 	repairSimLogs(callResults, allContractLogs, blockHash)
 
 	return evmBlock, callResults, senders, nil
+}
+
+func skippedTransactionCallResult(err error) simCallResult {
+	return simCallResult{
+
+		Status: hexutil.Uint64(types.ReceiptStatusFailed),
+		Error: &callError{
+			Message: err.Error(),
+			Code:    errCodeInternalError,
+		},
+	}
 }
 
 // repairSimLogs updates the BlockHash field in all collected logs now that the
@@ -674,9 +691,9 @@ func (sim *simulator) sanitizeCall(call *TransactionArgs, state interState.State
 		call.Gas = (*hexutil.Uint64)(&remaining)
 	}
 	if *gasUsed+uint64(*call.Gas) > header.GasLimit {
-		return &simBlockGasLimitReachedError{
+		return simBlockGasLimitReachedError(
 			fmt.Sprintf("block gas limit reached: %d >= %d", *gasUsed+uint64(*call.Gas), header.GasLimit),
-		}
+		)
 	}
 	// Set price-related defaults (no-backend equivalent of setDefaults).
 	if err := sim.setCallPriceDefaults(call, header.BaseFee); err != nil {
@@ -739,13 +756,13 @@ func (sim *simulator) sanitizeChain(blocks []simBlock) ([]simBlock, error) {
 
 		diff := new(big.Int).Sub(block.BlockOverrides.Number.ToInt(), prevNumber)
 		if diff.Cmp(common.Big0) <= 0 {
-			return nil, &simInvalidBlockNumberError{
+			return nil, simInvalidBlockNumberError(
 				fmt.Sprintf("block numbers must be in order: %d <= %d",
 					block.BlockOverrides.Number.ToInt().Uint64(), prevNumber.Uint64()),
-			}
+			)
 		}
 		if total := new(big.Int).Sub(block.BlockOverrides.Number.ToInt(), base.Number); total.Cmp(big.NewInt(maxSimulateBlocks)) > 0 {
-			return nil, &simClientLimitExceededError{message: "too many blocks"}
+			return nil, simClientLimitExceededError()
 		}
 
 		// Fill any gap with empty blocks.
@@ -773,9 +790,9 @@ func (sim *simulator) sanitizeChain(blocks []simBlock) ([]simBlock, error) {
 		} else {
 			t := uint64(*block.BlockOverrides.Time)
 			if t <= prevTimestamp {
-				return nil, &simInvalidBlockTimestampError{
+				return nil, simInvalidBlockTimestampError(
 					fmt.Sprintf("block timestamps must be in order: %d <= %d", t, prevTimestamp),
-				}
+				)
 			}
 			prevTimestamp = t
 		}
@@ -802,12 +819,11 @@ func (sim *simulator) makeHeaders(blocks []simBlock) ([]*evmcore.EvmHeader, erro
 		// Determine whether to set a withdrawals hash (Shanghai+).
 		var withdrawalsHash *common.Hash
 		if sim.chainConfig.IsShanghai(number, timestamp) {
-			h := types.EmptyWithdrawalsHash
-			withdrawalsHash = &h
+			withdrawalsHash = &types.EmptyWithdrawalsHash
 		}
 
 		// Template header inheriting fields from the previous block.
-		template := &evmcore.EvmHeader{
+		templateHeader := &evmcore.EvmHeader{
 			Number:          number,
 			Time:            inter.FromUnix(int64(timestamp)),
 			Coinbase:        prev.Coinbase,
@@ -817,7 +833,7 @@ func (sim *simulator) makeHeaders(blocks []simBlock) ([]*evmcore.EvmHeader, erro
 			WithdrawalsHash: withdrawalsHash,
 		}
 		// Apply user overrides.
-		header := overrides.makeEvmHeader(template)
+		header := overrides.applyTo(templateHeader)
 		res[bi] = header
 		prev = header
 	}
@@ -830,10 +846,10 @@ func (sim *simulator) makeHeaders(blocks []simBlock) ([]*evmcore.EvmHeader, erro
 // anything to the blockchain.
 func (s *PublicBlockChainAPI) SimulateV1(ctx context.Context, opts simOpts, blockNrOrHash *rpc.BlockNumberOrHash) ([]*simBlockResult, error) {
 	if len(opts.BlockStateCalls) == 0 {
-		return nil, &simInvalidParamsError{message: "empty input"}
+		return nil, simInvalidParamsError()
 	}
 	if len(opts.BlockStateCalls) > maxSimulateBlocks {
-		return nil, &simClientLimitExceededError{message: "too many blocks"}
+		return nil, simClientLimitExceededError()
 	}
 
 	if blockNrOrHash == nil {

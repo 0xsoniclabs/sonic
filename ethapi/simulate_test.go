@@ -18,7 +18,6 @@ package ethapi
 
 import (
 	"context"
-	"errors"
 	"math/big"
 	"testing"
 	"time"
@@ -39,6 +38,56 @@ import (
 const (
 	baseBlockNumber = 10
 )
+
+func TestSimulateV1_EmptyBlock_ReturnsOneBlockWithNoCalls(t *testing.T) {
+	f := newSimulateV1Helper(t)
+	f.mockState.EXPECT().GetStateHash().Return(common.Hash{})
+	f.mockState.EXPECT().Release()
+
+	results, err := f.api.SimulateV1(context.Background(), simOpts{BlockStateCalls: []simBlock{{}}}, &f.blkNr)
+
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	require.Empty(t, results[0].calls)
+}
+
+func TestSimulateV1_SingleCall_ReturnsSuccessResult(t *testing.T) {
+	f := newSimulateV1Helper(t)
+	setExpectedStateCalls(f.mockState)
+	f.mockState.EXPECT().GetStateHash().Return(common.Hash{})
+
+	from := common.Address{1}
+	to := common.Address{2}
+	gas := hexutil.Uint64(21_000)
+	opts := simOpts{
+		BlockStateCalls: []simBlock{
+			{Calls: []TransactionArgs{{From: &from, To: &to, Gas: &gas}}},
+		},
+	}
+
+	results, err := f.api.SimulateV1(context.Background(), opts, &f.blkNr)
+
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	require.Len(t, results[0].calls, 1)
+	require.Equal(t, hexutil.Uint64(types.ReceiptStatusSuccessful), results[0].calls[0].Status)
+	require.Equal(t, hexutil.Uint64(21_000), results[0].calls[0].GasUsed)
+}
+
+func TestSimulateV1_MultipleBlocks_ReturnsResultsPerBlock(t *testing.T) {
+	f := newSimulateV1Helper(t)
+	// Two empty blocks: GetStateHash is called once per block.
+	f.mockState.EXPECT().GetStateHash().Return(common.Hash{}).Times(2)
+	f.mockState.EXPECT().Release()
+
+	results, err := f.api.SimulateV1(context.Background(), simOpts{BlockStateCalls: []simBlock{{}, {}}}, &f.blkNr)
+
+	require.NoError(t, err)
+	require.Len(t, results, 2)
+	// Block numbers should be base+1 and base+2.
+	require.Equal(t, big.NewInt(baseBlockNumber+1), results[0].block.Number)
+	require.Equal(t, big.NewInt(baseBlockNumber+2), results[1].block.Number)
+}
 
 // newSimTestBase constructs a minimal EvmBlock suitable as a simulation base block.
 func newSimTestBase() *evmcore.EvmBlock {
@@ -91,56 +140,6 @@ func newSimulateV1Helper(t *testing.T) *simulateV1Helper {
 		mockState: mockState,
 		blkNr:     blkNr,
 	}
-}
-
-func TestSimulateV1_EmptyBlock_ReturnsOneBlockWithNoCalls(t *testing.T) {
-	f := newSimulateV1Helper(t)
-	f.mockState.EXPECT().GetStateHash().Return(common.Hash{})
-	f.mockState.EXPECT().Release()
-
-	results, err := f.api.SimulateV1(context.Background(), simOpts{BlockStateCalls: []simBlock{{}}}, &f.blkNr)
-
-	require.NoError(t, err)
-	require.Len(t, results, 1)
-	require.Empty(t, results[0].calls)
-}
-
-func TestSimulateV1_SingleCall_ReturnsSuccessResult(t *testing.T) {
-	f := newSimulateV1Helper(t)
-	setExpectedStateCalls(f.mockState)
-	f.mockState.EXPECT().GetStateHash().Return(common.Hash{})
-
-	from := common.Address{1}
-	to := common.Address{2}
-	gas := hexutil.Uint64(21_000)
-	opts := simOpts{
-		BlockStateCalls: []simBlock{
-			{Calls: []TransactionArgs{{From: &from, To: &to, Gas: &gas}}},
-		},
-	}
-
-	results, err := f.api.SimulateV1(context.Background(), opts, &f.blkNr)
-
-	require.NoError(t, err)
-	require.Len(t, results, 1)
-	require.Len(t, results[0].calls, 1)
-	require.Equal(t, hexutil.Uint64(types.ReceiptStatusSuccessful), results[0].calls[0].Status)
-	require.Equal(t, hexutil.Uint64(21_000), results[0].calls[0].GasUsed)
-}
-
-func TestSimulateV1_MultipleBlocks_ReturnsResultsPerBlock(t *testing.T) {
-	f := newSimulateV1Helper(t)
-	// Two empty blocks: GetStateHash is called once per block.
-	f.mockState.EXPECT().GetStateHash().Return(common.Hash{}).Times(2)
-	f.mockState.EXPECT().Release()
-
-	results, err := f.api.SimulateV1(context.Background(), simOpts{BlockStateCalls: []simBlock{{}, {}}}, &f.blkNr)
-
-	require.NoError(t, err)
-	require.Len(t, results, 2)
-	// Block numbers should be base+1 and base+2.
-	require.Equal(t, big.NewInt(baseBlockNumber+1), results[0].block.Number)
-	require.Equal(t, big.NewInt(baseBlockNumber+2), results[1].block.Number)
 }
 
 func TestSimTracer_CaptureTransfer_CreatesExpectedLog(t *testing.T) {
@@ -246,7 +245,7 @@ func TestMakeEvmHeader_NilOverride_ReturnsCopyOfTemplate(t *testing.T) {
 		GasLimit: 500_000,
 	}
 
-	result := override.makeEvmHeader(template)
+	result := override.applyTo(template)
 
 	require.Equal(t, template.Number, result.Number)
 	require.Equal(t, template.GasLimit, result.GasLimit)
@@ -272,7 +271,7 @@ func TestMakeEvmHeader_AppliesAllOverrides(t *testing.T) {
 	}
 	template := &evmcore.EvmHeader{Number: big.NewInt(1)}
 
-	result := override.makeEvmHeader(template)
+	result := override.applyTo(template)
 
 	require.Equal(t, newNumber, result.Number)
 	require.Equal(t, inter.FromUnix(int64(newTime)), result.Time)
@@ -285,17 +284,23 @@ func TestMakeEvmHeader_AppliesAllOverrides(t *testing.T) {
 func TestMakeEvmHeader_UnsetFieldsRetainTemplateValues(t *testing.T) {
 	override := &simBlockOverrides{} // no fields set
 	template := &evmcore.EvmHeader{
-		Number:   big.NewInt(42),
-		GasLimit: 999_999,
-		Coinbase: common.Address{5},
+		Number:     big.NewInt(42),
+		GasLimit:   999_999,
+		Coinbase:   common.Address{5},
+		Time:       inter.FromUnix(1000),
+		PrevRandao: common.Hash{6},
+		BaseFee:    big.NewInt(123),
 	}
 
-	result := override.makeEvmHeader(template)
+	result := override.applyTo(template)
 
 	// Unset override fields should leave template values intact.
 	require.Equal(t, template.Number, result.Number)
 	require.Equal(t, template.GasLimit, result.GasLimit)
 	require.Equal(t, template.Coinbase, result.Coinbase)
+	require.Equal(t, template.Time, result.Time)
+	require.Equal(t, template.PrevRandao, result.PrevRandao)
+	require.Equal(t, template.BaseFee, result.BaseFee)
 }
 
 func TestSanitizeChain_AutoAssignsSequentialBlockNumbers(t *testing.T) {
@@ -350,9 +355,9 @@ func TestSanitizeChain_RejectsNonIncreasingBlockNumbers(t *testing.T) {
 	}
 
 	_, err := sim.sanitizeChain(blocks)
-
-	var target *simInvalidBlockNumberError
-	require.True(t, errors.As(err, &target))
+	simTxError, ok := err.(*simInvalidTxError)
+	require.True(t, ok)
+	require.Equal(t, errCodeBlockNumberInvalid, simTxError.ErrorCode())
 }
 
 func TestSanitizeChain_RejectsNonIncreasingTimestamps(t *testing.T) {
@@ -366,8 +371,9 @@ func TestSanitizeChain_RejectsNonIncreasingTimestamps(t *testing.T) {
 
 	_, err := sim.sanitizeChain(blocks)
 
-	var target *simInvalidBlockTimestampError
-	require.True(t, errors.As(err, &target))
+	simTxError, ok := err.(*simInvalidTxError)
+	require.True(t, ok)
+	require.Equal(t, errCodeBlockTimestampInvalid, simTxError.ErrorCode())
 }
 
 func TestSanitizeChain_RejectsBlockRangeExceedingLimit(t *testing.T) {
@@ -379,8 +385,9 @@ func TestSanitizeChain_RejectsBlockRangeExceedingLimit(t *testing.T) {
 
 	_, err := sim.sanitizeChain(blocks)
 
-	var target *simClientLimitExceededError
-	require.True(t, errors.As(err, &target))
+	simTxError, ok := err.(*simInvalidTxError)
+	require.True(t, ok)
+	require.Equal(t, errCodeClientLimitExceeded, simTxError.ErrorCode())
 }
 
 func TestSanitizeChain_SetsEmptyWithdrawalsOnEachBlock(t *testing.T) {
@@ -391,6 +398,54 @@ func TestSanitizeChain_SetsEmptyWithdrawalsOnEachBlock(t *testing.T) {
 
 	require.NoError(t, err)
 	require.NotNil(t, result[0].BlockOverrides.Withdrawals)
+}
+
+func TestSanitizeCall_SetsDefaultsForMissingFields(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockState := state.NewMockStateDB(ctrl)
+
+	gasUsed := uint64(0)
+	nonce := uint64(1)
+	gasLimit := uint64(10_000)
+	expectedGas := gasLimit - gasUsed
+	mockState.EXPECT().GetNonce(gomock.Any()).Return(nonce).AnyTimes()
+
+	header := &evmcore.EvmHeader{
+		Number:   big.NewInt(10),
+		GasLimit: gasLimit,
+	}
+	sim := newSimulator()
+	call := TransactionArgs{}
+
+	err := sim.sanitizeCall(&call, mockState, header, &gasUsed)
+
+	require.NoError(t, err)
+	require.NotNil(t, call.Nonce)
+	require.Equal(t, (*hexutil.Uint64)(&nonce), call.Nonce)
+	require.NotNil(t, call.Gas)
+	require.Equal(t, (*hexutil.Uint64)(&expectedGas), call.Gas)
+}
+
+func TestSanitizeCall_BlockGasLimitReachedError(t *testing.T) {
+	gasUsed := uint64(20_000)
+	nonce := uint64(1)
+	gasLimit := uint64(10_000)
+
+	header := &evmcore.EvmHeader{
+		Number:   big.NewInt(10),
+		GasLimit: gasLimit,
+	}
+	sim := newSimulator()
+	call := TransactionArgs{
+		Nonce: (*hexutil.Uint64)(&nonce),
+		Gas:   (*hexutil.Uint64)(&gasLimit),
+	}
+
+	err := sim.sanitizeCall(&call, nil, header, &gasUsed)
+	require.Error(t, err)
+	simTxError, ok := err.(*simInvalidTxError)
+	require.True(t, ok)
+	require.Equal(t, errCodeBlockGasLimitReached, simTxError.ErrorCode())
 }
 
 func TestRepairSimLogs_UpdatesBlockHashInContractLogs(t *testing.T) {
@@ -461,6 +516,7 @@ func TestSetCallPriceDefaults_SetsLegacyGasPriceWhenNoBaseFee(t *testing.T) {
 	require.NotNil(t, call.GasPrice)
 	require.Equal(t, big.NewInt(0), call.GasPrice.ToInt())
 	require.Nil(t, call.MaxFeePerGas)
+	require.Nil(t, call.MaxPriorityFeePerGas)
 }
 
 func TestSetCallPriceDefaults_SetsChainIDWhenMissing(t *testing.T) {
@@ -506,8 +562,9 @@ func TestSimulateV1_RejectsEmptyBlockStateCalls(t *testing.T) {
 
 	_, err := api.SimulateV1(context.Background(), simOpts{}, nil)
 
-	var target *simInvalidParamsError
-	require.True(t, errors.As(err, &target))
+	simTxError, ok := err.(*simInvalidTxError)
+	require.True(t, ok)
+	require.Equal(t, errCodeInvalidParams, simTxError.ErrorCode())
 }
 
 func TestSimulateV1_RejectsTooManyBlockStateCalls(t *testing.T) {
@@ -517,6 +574,7 @@ func TestSimulateV1_RejectsTooManyBlockStateCalls(t *testing.T) {
 	blocks := make([]simBlock, maxSimulateBlocks+1)
 	_, err := api.SimulateV1(context.Background(), simOpts{BlockStateCalls: blocks}, nil)
 
-	var target *simClientLimitExceededError
-	require.True(t, errors.As(err, &target))
+	simTxError, ok := err.(*simInvalidTxError)
+	require.True(t, ok)
+	require.Equal(t, errCodeClientLimitExceeded, simTxError.ErrorCode())
 }
