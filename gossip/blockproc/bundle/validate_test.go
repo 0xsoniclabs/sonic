@@ -48,7 +48,7 @@ func TestValidate_OnyValidatesWithFeatureEnabled(t *testing.T) {
 
 	for name, tx := range tests {
 		t.Run(name, func(t *testing.T) {
-			err := ValidateTransactionBundle(tx, generator.signer, upgrade)
+			_, err := ValidateTransactionBundle(tx, generator.signer, upgrade)
 			require.NoError(t, err)
 		})
 	}
@@ -63,16 +63,24 @@ func TestValidate_IdentifiesBundles(t *testing.T) {
 
 	generator := newTestBundleGenerator(t, 2)
 
-	tests := map[string]*types.Transaction{
-		"not a bundle": generator.makeNonBundleTx(),
-		"empty bundle": generator.makeEmptyBundleTx(),
-		"valid bundle": generator.makeValidBundleTx(t),
+	tests := map[string]struct {
+		tx           *types.Transaction
+		expectBundle bool
+	}{
+		"not a bundle": {tx: generator.makeNonBundleTx(), expectBundle: false},
+		"empty bundle": {tx: generator.makeEmptyBundleTx(), expectBundle: true},
+		"valid bundle": {tx: generator.makeValidBundleTx(t), expectBundle: true},
 	}
 
-	for name, tx := range tests {
+	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			err := ValidateTransactionBundle(tx, generator.signer, upgrade)
+			bundle, err := ValidateTransactionBundle(test.tx, generator.signer, upgrade)
 			require.NoError(t, err)
+			if test.expectBundle {
+				require.NotNil(t, bundle, "expected a bundle transaction")
+			} else {
+				require.Nil(t, bundle, "expected no bundle transaction")
+			}
 		})
 	}
 }
@@ -104,7 +112,7 @@ func TestValidate_ReturnsErrorsOnValidationFailure(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			err := ValidateTransactionBundle(test.tx, generator.signer, upgrade)
+			_, err := ValidateTransactionBundle(test.tx, generator.signer, upgrade)
 			require.ErrorContains(t, err, test.expectedError)
 		})
 	}

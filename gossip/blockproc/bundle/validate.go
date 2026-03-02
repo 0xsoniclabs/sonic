@@ -25,26 +25,26 @@ import (
 
 // ValidateTransactionBundle validates a transaction bundle transaction.
 // It checks that the transaction is a valid bundle transaction and that all transactions in the bundle belong to the same execution plan.
-// If the transaction is a valid transaction bundle, it returns nil.
-// If the transaction is not a bundle transaction, or if bundle transactions are not enabled, it returns nil (no error).
+// If the transaction is a valid transaction bundle, it returns the decoded transaction bundle and nil (no error).
+// If the transaction is not a bundle transaction, or if bundle transactions are not enabled, it returns nil,nil (no bundle, no error).
 func ValidateTransactionBundle(
 	tx *types.Transaction,
 	signer types.Signer,
-	upgrades opera.Upgrades) error {
+	upgrades opera.Upgrades) (*TransactionBundle, error) {
 
 	if !upgrades.TransactionBundles {
 		// feature not enabled, nothing to validate
-		return nil
+		return nil, nil
 	}
 
 	if !IsTransactionBundle(tx) {
 		// not a bundle transaction, nothing to validate
-		return nil
+		return nil, nil
 	}
 
 	txBundle, err := Decode(tx.Data())
 	if err != nil {
-		return fmt.Errorf("failed to decode transaction bundle: %v", err)
+		return nil, fmt.Errorf("failed to decode transaction bundle: %v", err)
 	}
 
 	// TODO: this function shall validate bundle correctness,
@@ -53,16 +53,16 @@ func ValidateTransactionBundle(
 
 	plan, err := txBundle.ExtractExecutionPlan(signer)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	planHash := plan.Hash()
 	for _, tx := range txBundle.Bundle {
 		// check that all transactions in the bundle belong to the same execution plan
 		if !BelongsToExecutionPlan(tx, planHash) {
-			return fmt.Errorf("transaction %s does not belong to the execution plan", tx.Hash().Hex())
+			return nil, fmt.Errorf("transaction %s does not belong to the execution plan", tx.Hash().Hex())
 		}
 	}
 
-	return nil
+	return &txBundle, nil
 }
