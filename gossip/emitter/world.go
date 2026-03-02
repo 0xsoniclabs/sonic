@@ -59,6 +59,8 @@ type (
 		StateDB() state.StateDB
 		GetUpgradeHeights() []opera.UpgradeHeight
 		Header(hash common.Hash, number uint64) *evmcore.EvmHeader
+
+		HasBundlePlanRecentlyBeenProcessed(execPlanHash common.Hash) bool
 	}
 
 	// TxSigner is a re-export of the types.Signer interface to allow

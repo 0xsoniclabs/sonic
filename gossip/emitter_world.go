@@ -95,6 +95,14 @@ func (ew *emitterWorldProc) Header(hash common.Hash, number uint64) *evmcore.Evm
 	return reader.Header(hash, number)
 }
 
+func (ew *emitterWorldProc) HasBundlePlanRecentlyBeenProcessed(execPlanHash common.Hash) bool {
+	has, err := ew.s.store.HasBundleRecentlyBeenProcessed(execPlanHash)
+	if err != nil {
+		return false
+	}
+	return has
+}
+
 func (ew *emitterWorldProc) IsSynced() bool {
 	return ew.s.handler.syncStatus.AcceptEvents()
 }

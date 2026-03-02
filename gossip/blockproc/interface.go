@@ -50,7 +50,7 @@ type TxTransactor interface {
 
 type SealerProcessor interface {
 	EpochSealing() bool
-	SealEpoch() (iblockproc.BlockState, iblockproc.EpochState)
+	SealEpoch(common.Hash) (iblockproc.BlockState, iblockproc.EpochState)
 	Update(bs iblockproc.BlockState, es iblockproc.EpochState)
 }
 

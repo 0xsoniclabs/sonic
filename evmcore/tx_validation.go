@@ -336,6 +336,23 @@ func validateTxForPool(
 			opt.minTip, "tx.GasTipCap", tx.GasTipCap())
 		return ErrUnderpriced
 	}
+
+	// Drop invalid or permanently blocked bundles.
+	if bundle.IsTransactionBundle(tx) {
+		// TODO: implement the validation of the bundle here
+		/*
+			bundle, _, err := bundle.ValidateTransactionBundle(tx, signer)
+			if err != nil {
+				return fmt.Errorf("invalid transaction bundle: %w", err)
+			}
+			// Also try-run the bundle to see whether it is already permanently
+			// blocked and will never be processable.
+			if evmcore.GetBundleState(bundle) == evmcore.BundleStatePermanentlyBlocked {
+				return fmt.Errorf("non-applicable bundle")
+			}
+		*/
+	}
+
 	return nil
 }
 
@@ -349,6 +366,11 @@ func validateSponsoredTransactions(
 ) error {
 	// Transaction Bundles are identified as sponsorship requests, but they are
 	// checked independently.
+	if bundle.IsTransactionBundle(tx) {
+		return nil
+	}
+
+	// Ignore bundles.
 	if bundle.IsTransactionBundle(tx) {
 		return nil
 	}
