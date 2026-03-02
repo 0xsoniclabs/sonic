@@ -171,6 +171,14 @@ func newRunContext(
 	}
 }
 
+type Status int
+
+const (
+	StatusSuccessful Status = 0
+	StatusFailed     Status = 1
+	StatusSkipped    Status = 2
+)
+
 // runTransaction is a helper function to process a list of transactions. It
 // returns a list of ProcessedTransaction, containing the transaction and its
 // receipt (or nil if the transaction was skipped).
@@ -185,25 +193,31 @@ func runTransactions(
 	processed := make([]ProcessedTransaction, 0, len(transactions))
 	for _, tx := range transactions {
 		nextId := len(processed) + txIndexOffset
-		if context.upgrades.GasSubsidies && subsidies.IsSponsorshipRequest(tx) {
-			processed = append(processed,
-				context.runner.runSponsoredTransaction(context, tx, nextId)...,
-			)
-		} else {
-			processed = append(processed,
-				context.runner.runRegularTransaction(context, tx, nextId),
-			)
-		}
+		txs, _ := runTransaction(context, tx, nextId)
+		processed = append(processed, txs...)
 	}
 	return processed
+}
+
+func runTransaction(
+	context *runContext,
+	tx *types.Transaction,
+	txIndexOffset int,
+) ([]ProcessedTransaction, Status) {
+	if context.upgrades.GasSubsidies && subsidies.IsSponsorshipRequest(tx) {
+		return context.runner.runSponsoredTransaction(context, tx, txIndexOffset)
+	} else {
+		res, status := context.runner.runRegularTransaction(context, tx, txIndexOffset)
+		return []ProcessedTransaction{res}, status
+	}
 }
 
 // _transactionRunner is an interface for components implementing the logic
 // required for running transactions with various rules, e.g. regular or
 // sponsored transactions.
 type _transactionRunner interface {
-	runRegularTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) ProcessedTransaction
-	runSponsoredTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) []ProcessedTransaction
+	runRegularTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) (ProcessedTransaction, Status)
+	runSponsoredTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) ([]ProcessedTransaction, Status)
 }
 
 // transactionRunner implements the _transactionRunner interface by using an
@@ -216,15 +230,24 @@ func (r *transactionRunner) runRegularTransaction(
 	ctxt *runContext,
 	tx *types.Transaction,
 	txIndex int,
-) ProcessedTransaction {
-	return r.evm.runWithBaseFeeCheck(ctxt, tx, txIndex)
+) (ProcessedTransaction, Status) {
+	res := r.evm.runWithBaseFeeCheck(ctxt, tx, txIndex)
+	status := StatusSkipped
+	if res.Receipt != nil {
+		if res.Receipt.Status == types.ReceiptStatusSuccessful {
+			status = StatusSuccessful
+		} else {
+			status = StatusFailed
+		}
+	}
+	return res, status
 }
 
 func (r *transactionRunner) runSponsoredTransaction(
 	ctxt *runContext,
 	tx *types.Transaction,
 	txIndex int,
-) []ProcessedTransaction {
+) ([]ProcessedTransaction, Status) {
 	// Run the IsCovered query in a snapshot to avoid spilling any side-effects
 	// like warm storage slots or refunds into the actual transaction.
 	snapshot := ctxt.statedb.Snapshot()
@@ -234,11 +257,11 @@ func (r *transactionRunner) runSponsoredTransaction(
 	ctxt.statedb.RevertToSnapshot(snapshot)
 	if err != nil {
 		log.Warn("Failed to query subsidies registry", "tx", tx.Hash().Hex(), "err", err)
-		return []ProcessedTransaction{{Transaction: tx}}
+		return []ProcessedTransaction{{Transaction: tx}}, StatusSkipped
 	}
 	if !covered {
 		log.Debug("Transaction is not covered by a subsidy", "tx", tx.Hash().Hex())
-		return []ProcessedTransaction{{Transaction: tx}}
+		return []ProcessedTransaction{{Transaction: tx}}, StatusSkipped
 	}
 
 	// Check the remaining available gas to be used in this block.
@@ -248,14 +271,20 @@ func (r *transactionRunner) runSponsoredTransaction(
 		log.Debug("Not enough gas left in block for sponsored transaction",
 			"tx", tx.Hash().Hex(), "available", available, "needed", needed,
 		)
-		return []ProcessedTransaction{{Transaction: tx}}
+		return []ProcessedTransaction{{Transaction: tx}}, StatusSkipped
 	}
 
 	// Run the sponsored transaction.
 	processed := r.evm.runWithoutBaseFeeCheck(ctxt, tx, txIndex)
 	if processed.Receipt == nil {
 		log.Debug("Sponsored transaction skipped", "tx", tx.Hash().Hex())
-		return []ProcessedTransaction{processed}
+		return []ProcessedTransaction{processed}, StatusSkipped
+	}
+
+	status := StatusSuccessful
+	if processed.Receipt.Status == types.ReceiptStatusFailed {
+		log.Debug("Sponsored transaction failed", "tx", tx.Hash().Hex())
+		status = StatusFailed
 	}
 
 	// Charge the fee for the sponsored transaction to the subsidy fund.
@@ -270,7 +299,7 @@ func (r *transactionRunner) runSponsoredTransaction(
 		// block formation. So we have to let this go. This sponsored
 		// transaction was on the house (meaning on the network).
 		log.Warn("Failed to create fee charging transaction", "sponsored-tx", tx.Hash().Hex(), "err", err)
-		return []ProcessedTransaction{processed}
+		return []ProcessedTransaction{processed}, status
 	}
 	processedDeduction := r.evm.runWithoutBaseFeeCheck(ctxt, feeChargingTx, txIndex+1)
 	if processedDeduction.Receipt == nil {
@@ -284,7 +313,7 @@ func (r *transactionRunner) runSponsoredTransaction(
 		// subsidy fund was not charged.
 		log.Warn("Fee charging transaction failed", "sponsored-tx", tx.Hash().Hex())
 	}
-	return []ProcessedTransaction{processed, processedDeduction}
+	return []ProcessedTransaction{processed, processedDeduction}, status
 }
 
 // _evm is an interface to an EVM instance that can be used to run a single
