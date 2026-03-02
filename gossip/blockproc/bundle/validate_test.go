@@ -30,7 +30,7 @@ import (
 
 var testChainID = big.NewInt(1)
 
-func TestValidate_OnyValidatesWithFeatureEnabled(t *testing.T) {
+func TestValidate_OnlyValidatesWithFeatureEnabled(t *testing.T) {
 
 	upgrade := opera.Upgrades{
 		TransactionBundles: false,

@@ -23,7 +23,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
-// ValidateTransactionBundle validates a transaction bundle transaction.
+// ValidateTransactionBundle validates a bundle transaction.
 // It checks that the transaction is a valid bundle transaction and that all transactions in the bundle belong to the same execution plan.
 // If the transaction is a valid transaction bundle, it returns the decoded transaction bundle and nil (no error).
 // If the transaction is not a bundle transaction, or if bundle transactions are not enabled, it returns nil,nil (no bundle, no error).
