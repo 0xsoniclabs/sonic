@@ -43,6 +43,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/verwatcher"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
@@ -257,6 +258,15 @@ func consensusCallbackBeginBlockFn(
 				proposal.Transactions = filterNonPermissibleTransactions(
 					proposal.Transactions, &es.Rules, log.Root(), invalidTxsMeter,
 				)
+
+				// Filter obsolete bundles from the proposal.
+				proposal.Transactions, err = filterObsoleteBundles(
+					proposal.Transactions, types.LatestSignerForChainID(chainCfg.ChainID), store,
+					uint64(proposal.Number), &es.Rules, log.Root(), skippedTxsMeter,
+				)
+				if err != nil {
+					log.Crit("failed to filter obsolete bundles", "err", err)
+				}
 
 				// Make sure the new block time is after the last block time.
 				if blockTime <= bs.LastBlock.Time {
@@ -522,6 +532,12 @@ func consensusCallbackBeginBlockFn(
 					store.SetBlockIndex(block.Hash(), blockCtx.Idx)
 					store.SetBlockEpochState(bs, es)
 					store.EvmStore().SetCachedEvmBlock(blockCtx.Idx, evmBlock)
+
+					// Keep track of processed bundles.
+					processedBundles := []common.Hash{}
+					if err := store.AddProcessedBundles(uint64(blockCtx.Idx), processedBundles); err != nil {
+						log.Crit("Failed to add processed bundles", "err", err)
+					}
 
 					// Inform the SCC about the new block
 					if sccNode != nil {
@@ -913,8 +929,88 @@ func isPermissible(
 	return nil
 }
 
+// filterObsoleteBundles filters bundles that were already included in the
+// chain or are outdated. This makes sure that bundles are processed at most
+// once. This is to defend against validators proposing the same bundle multiple
+// times for inclusion.
+func filterObsoleteBundles(
+	transactions []*types.Transaction,
+	signer types.Signer,
+	tracker bundleTracker,
+	blockNumber uint64,
+	rules *opera.Rules,
+	log log.Logger,
+	counter metricCounter,
+) ([]*types.Transaction, error) {
+	// This filter is only enabled with the Brio upgrade.
+	if !rules.Upgrades.Brio {
+		return transactions, nil
+	}
+
+	res := make([]*types.Transaction, 0, len(transactions))
+	for _, tx := range transactions {
+		if !bundle.IsTransactionBundle(tx) {
+			res = append(res, tx)
+			continue
+		}
+
+		// Check static properties of the bundle, to make sure it is not malformed.
+		_, execPlan, err := bundle.ValidateTransactionBundle(tx, signer, rules.Upgrades)
+		if err != nil {
+			if log != nil {
+				log.Warn("Invalid bundle transaction in the proposal", "tx", tx.Hash(), "issue", err)
+			}
+			if counter != nil {
+				counter.Mark(1)
+			}
+			continue // < filter out invalid bundled transactions
+		}
+
+		// Check that the block this bundle is to be included is within its
+		// valid range.
+		if !execPlan.IsInRange(blockNumber) {
+			if log != nil {
+				log.Warn(
+					"Bundle transaction in the proposal is out of range for execution",
+					"tx", tx.Hash(),
+					"block", blockNumber,
+					"earliest", execPlan.Earliest,
+					"latest", execPlan.Latest,
+				)
+			}
+			if counter != nil {
+				counter.Mark(1)
+			}
+			continue // < filter out outdated bundled transactions
+		}
+
+		// Check that the execution plan of this bundle has not been processed
+		// before at any other time during its valid range.
+		hash := execPlan.Hash()
+		seen, err := tracker.HasRecentlyBeenProcessed(hash)
+		if err != nil {
+			return nil, err
+		}
+		if seen {
+			if log != nil {
+				log.Warn("Bundle transaction in the proposal was recently processed", "tx", tx.Hash(), "exec_plan_hash", hash)
+			}
+			if counter != nil {
+				counter.Mark(1)
+			}
+			continue // < filter out recently processed bundled transactions
+		}
+		res = append(res, tx)
+	}
+	return res, nil
+}
+
 // metricCounter is an abstraction of the *metrics.Meter type to facilitate
 // mocking in tests.
 type metricCounter interface {
 	Mark(int64)
+}
+
+type bundleTracker interface {
+	HasRecentlyBeenProcessed(execPlanHash common.Hash) (bool, error)
 }

@@ -48,7 +48,7 @@ func TestValidate_OnlyValidatesWithFeatureEnabled(t *testing.T) {
 
 	for name, tx := range tests {
 		t.Run(name, func(t *testing.T) {
-			_, err := ValidateTransactionBundle(tx, generator.signer, upgrade)
+			_, _, err := ValidateTransactionBundle(tx, generator.signer, upgrade)
 			require.NoError(t, err)
 		})
 	}
@@ -74,12 +74,14 @@ func TestValidate_IdentifiesBundles(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			bundle, err := ValidateTransactionBundle(test.tx, generator.signer, upgrade)
+			bundle, plan, err := ValidateTransactionBundle(test.tx, generator.signer, upgrade)
 			require.NoError(t, err)
 			if test.expectBundle {
 				require.NotNil(t, bundle, "expected a bundle transaction")
+				require.NotNil(t, plan, "expected an execution plan")
 			} else {
 				require.Nil(t, bundle, "expected no bundle transaction")
+				require.Nil(t, plan, "expected no execution plan")
 			}
 		})
 	}
@@ -112,7 +114,7 @@ func TestValidate_ReturnsErrorsOnValidationFailure(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			_, err := ValidateTransactionBundle(test.tx, generator.signer, upgrade)
+			_, _, err := ValidateTransactionBundle(test.tx, generator.signer, upgrade)
 			require.ErrorContains(t, err, test.expectedError)
 		})
 	}
@@ -149,7 +151,6 @@ func (gen testBundleGenerator) makeEmptyBundleTx() *types.Transaction {
 	bundle := TransactionBundle{
 		Version: BundleV1,
 		Bundle:  types.Transactions{},
-		Payment: types.NewTx(&types.LegacyTx{}),
 		Flags:   0,
 	}
 
@@ -214,7 +215,6 @@ func (gen testBundleGenerator) makeValidBundleTx(t testing.TB) *types.Transactio
 	bundle := TransactionBundle{
 		Version: BundleV1,
 		Bundle:  signedTransactions,
-		Payment: types.NewTx(&types.LegacyTx{}),
 		Flags:   0,
 	}
 
@@ -256,7 +256,6 @@ func (gen testBundleGenerator) makeUnsoundBundleTx(t testing.TB) *types.Transact
 	bundle := TransactionBundle{
 		Version: BundleV1,
 		Bundle:  signedTransactions,
-		Payment: types.NewTx(&types.LegacyTx{}),
 		Flags:   0,
 	}
 
@@ -293,7 +292,6 @@ func (gen testBundleGenerator) makeBundleTxWithWronglySignedTx(t testing.TB) *ty
 	bundle := TransactionBundle{
 		Version: BundleV1,
 		Bundle:  []*types.Transaction{unsignedTransaction},
-		Payment: types.NewTx(&types.LegacyTx{}),
 		Flags:   0,
 	}
 
@@ -307,7 +305,6 @@ func (gen testBundleGenerator) makeWrongVersionBundleTx() *types.Transaction {
 	bundle := TransactionBundle{
 		Version: 99, // unsupported version
 		Bundle:  types.Transactions{},
-		Payment: types.NewTx(&types.LegacyTx{}),
 		Flags:   0,
 	}
 

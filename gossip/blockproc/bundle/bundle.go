@@ -62,6 +62,12 @@ type ExecutionPlan struct {
 	Latest   uint64 // Latest block this bundle can be included in.
 }
 
+// IsInRange checks if the given block number is within the range of the
+// execution plan.
+func (e *ExecutionPlan) IsInRange(blockNum uint64) bool {
+	return blockNum >= e.Earliest && blockNum <= e.Latest
+}
+
 // Hash computes the execution plan hash
 // The hash is computed with Keccak256, and is based on the RLP encoding of the type
 // rlp([Steps, Flags]), where Steps is of type [[{20 bytes}, {32 bytes}]...] where
