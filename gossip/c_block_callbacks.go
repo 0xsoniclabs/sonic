@@ -358,7 +358,11 @@ func consensusCallbackBeginBlockFn(
 				if sealing {
 					sealer.Update(bs, es)
 					prevUpg := es.Rules.Upgrades
-					bs, es = sealer.SealEpoch() // TODO: refactor to not mutate the bs, it is unclear
+					_, bundleHistoryHash, err := store.GetProcessedBundleHistoryHash()
+					if err != nil {
+						log.Crit("Failed to get processed bundle history hash", "err", err)
+					}
+					bs, es = sealer.SealEpoch(bundleHistoryHash) // TODO: refactor to not mutate the bs, it is unclear
 					if es.Rules.Upgrades != prevUpg {
 						store.AddUpgradeHeight(opera.UpgradeHeight{
 							Upgrades: es.Rules.Upgrades,
