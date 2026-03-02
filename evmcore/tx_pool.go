@@ -711,7 +711,8 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 		eip7623:  pool.eip7623,
 		eip7702:  pool.eip7702,
 
-		gasSubsidies: pool.chain.CurrentRules().Upgrades.GasSubsidies,
+		gasSubsidies:            pool.chain.CurrentRules().Upgrades.GasSubsidies,
+		customInitCodeSizeLimit: pool.chain.CurrentRules().Upgrades.Brio,
 	}
 
 	subsidiesChecker := pool.createSubsidiesChecker()

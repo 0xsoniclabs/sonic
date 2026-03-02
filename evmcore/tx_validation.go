@@ -24,6 +24,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice/gaspricelimits"
 	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -58,7 +59,8 @@ type NetworkRules struct {
 	eip7623 bool // Fork indicator whether we are using EIP-7623 floor gas validation.
 	eip7702 bool // Fork indicator whether we are using EIP-7702 set code transactions.
 
-	gasSubsidies bool // Indicator whether gas subsidies are active.
+	gasSubsidies            bool // Indicator whether gas subsidies are active.
+	customInitCodeSizeLimit bool // Indicator whether a custom init code size limit is active.
 }
 
 // Signer wraps types.Signer to allow mocking it in tests.
@@ -150,8 +152,14 @@ func ValidateTxForNetwork(tx *types.Transaction, rules NetworkRules, chain State
 
 	// This check does not validate gas, but depends on active revision.
 	// Check whether the init code size has been exceeded, introduced in EIP-3860
-	if rules.shanghai && tx.To() == nil && len(tx.Data()) > params.MaxInitCodeSize {
-		return fmt.Errorf("%w: code size %v, limit %v", ErrMaxInitCodeSizeExceeded, len(tx.Data()), params.MaxInitCodeSize)
+	if tx.To() == nil && rules.shanghai {
+		limit := params.MaxInitCodeSize
+		if rules.customInitCodeSizeLimit {
+			limit = opera.SonicPostAllegroMaxInitCodeSize
+		}
+		if len(tx.Data()) > limit {
+			return fmt.Errorf("%w: code size %v, limit %v", ErrMaxInitCodeSizeExceeded, len(tx.Data()), limit)
+		}
 	}
 
 	// Ensure the transaction has more gas than the basic tx fee.

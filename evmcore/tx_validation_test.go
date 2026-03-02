@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -526,6 +527,69 @@ func TestValidateTxForNetwork_AcceptsTransactions(t *testing.T) {
 
 			err := ValidateTxForNetwork(types.NewTx(tx), rules, chain, signer)
 			require.NoError(t, err)
+		})
+	}
+}
+
+func TestValidateTxForNetwork_CustomSonicCodeSizeLimitIsEnforced(t *testing.T) {
+	tests := map[string]struct {
+		customSize   bool
+		initCodeSize uint64
+		errorMessage string
+	}{
+		"Allegro below limit": {
+			customSize:   false,
+			initCodeSize: params.MaxInitCodeSize,
+		},
+		"Allegro above limit": {
+			customSize:   false,
+			initCodeSize: params.MaxInitCodeSize + 1,
+			errorMessage: "max initcode size exceeded: code size 49153, limit 49152",
+		},
+		"Brio below limit": {
+			customSize:   true,
+			initCodeSize: opera.SonicPostAllegroMaxInitCodeSize,
+		},
+		"Brio above limit": {
+			customSize:   true,
+			initCodeSize: opera.SonicPostAllegroMaxInitCodeSize + 1,
+			errorMessage: "max initcode size exceeded: code size 98305, limit 98304",
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			chain := NewMockStateReader(ctrl)
+			signer := NewMockSigner(ctrl)
+			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{42}, nil).AnyTimes()
+			rules := NetworkRules{
+				eip2718:                 true,
+				eip1559:                 true,
+				eip4844:                 true,
+				eip7702:                 true,
+				shanghai:                true,
+				customInitCodeSizeLimit: test.customSize,
+			}
+
+			data := make([]byte, test.initCodeSize)
+			gas, err := core.IntrinsicGas(data, nil, nil, true, true, true, true)
+			require.NoError(t, err)
+
+			chain.EXPECT().CurrentMaxGasLimit().Return(gas).AnyTimes()
+
+			tx := &types.LegacyTx{
+				To:   nil, // contract creation
+				Gas:  gas,
+				Data: data,
+			}
+
+			err = ValidateTxForNetwork(types.NewTx(tx), rules, chain, signer)
+			if test.errorMessage == "" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorIs(t, err, ErrMaxInitCodeSizeExceeded)
+				require.Contains(t, err.Error(), test.errorMessage)
+			}
 		})
 	}
 }
