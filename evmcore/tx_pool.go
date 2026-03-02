@@ -173,6 +173,7 @@ type StateReader interface {
 	CurrentConfig() *params.ChainConfig
 	CurrentRules() opera.Rules
 	Header(hash common.Hash, number uint64) *EvmHeader
+	HasBundleBeenProcessed(execPlanHash common.Hash) bool
 }
 
 // subsidiesCheckerFactory is a factory method to create a subsidies checker instance.
@@ -183,6 +184,15 @@ type subsidiesCheckerFactory func(
 	state state.StateDB,
 	signer types.Signer,
 ) subsidiesChecker
+
+// bundleCheckerFactory is a factory method to create a bundle checker instance.
+// This facilitates testing of the TxPool by using injected mock implementations.
+type bundleCheckerFactory func(
+	rules opera.Rules,
+	chain StateReader,
+	state state.StateDB,
+	signer types.Signer,
+) bundleChecker
 
 // TxPoolConfig are the configuration parameters of the transaction pool.
 type TxPoolConfig struct {
@@ -327,6 +337,8 @@ type TxPool struct {
 
 	subsidiesCheckerFactory subsidiesCheckerFactory // Factory to create a subsidies checker instance
 	subsidiesCheckerCache   *subsidiesCheckerCache  // Cache for subsidies check results
+
+	bundleCheckerFactory bundleCheckerFactory // Factory to create a bundle checker instance
 }
 
 type txpoolResetRequest struct {
@@ -339,7 +351,7 @@ func NewTxPool(
 	config TxPoolConfig,
 	chainconfig *params.ChainConfig,
 	chain StateReader) *TxPool {
-	return newTxPool(config, chainconfig, chain, newSubsidiesChecker)
+	return newTxPool(config, chainconfig, chain, newSubsidiesChecker, newBundleChecker)
 }
 
 func newTxPool(
@@ -347,6 +359,7 @@ func newTxPool(
 	chainconfig *params.ChainConfig,
 	chain StateReader,
 	subsidiesCheckerFactory subsidiesCheckerFactory,
+	bundleCheckerFactory bundleCheckerFactory,
 ) *TxPool {
 	// Sanitize the input to ensure no vulnerable gas prices are set
 	config = (&config).sanitize()
@@ -374,6 +387,8 @@ func newTxPool(
 
 		subsidiesCheckerFactory: subsidiesCheckerFactory,
 		subsidiesCheckerCache:   newSubsidiesCheckerCache(-1), // use default size
+
+		bundleCheckerFactory: bundleCheckerFactory,
 	}
 	pool.locals = newAccountSet(pool.signer)
 	for _, addr := range config.Locals {
@@ -1495,6 +1510,15 @@ func (pool *TxPool) createCachedSubsidiesChecker() subsidiesChecker {
 	return pool.subsidiesCheckerCache.wrap(pool.createSubsidiesChecker())
 }
 
+func (pool *TxPool) createBundleChecker() bundleChecker {
+	return pool.bundleCheckerFactory(
+		pool.chain.CurrentRules(),
+		pool.chain,
+		pool.currentState,
+		pool.signer,
+	)
+}
+
 // promoteExecutables moves transactions that have become processable from the
 // future queue to the set of pending transactions. During this process, all
 // invalidated transactions (low nonce, low balance) are deleted.
@@ -1503,6 +1527,7 @@ func (pool *TxPool) promoteExecutables(accounts []common.Address) []*types.Trans
 	var promoted []*types.Transaction
 
 	subsidiesChecker := pool.createCachedSubsidiesChecker()
+	bundleChecker := pool.createBundleChecker()
 
 	// Iterate over all accounts and promote any executable transactions
 	for _, addr := range accounts {
@@ -1518,7 +1543,12 @@ func (pool *TxPool) promoteExecutables(accounts []common.Address) []*types.Trans
 		}
 		log.Trace("Removed old queued transactions", "count", len(forwards))
 		// Drop all transactions that are too costly (low balance or out of gas)
-		drops, _ := list.Filter(utils.Uint256ToBigInt(pool.currentState.GetBalance(addr)), pool.currentMaxGas, subsidiesChecker)
+		drops, _ := list.Filter(
+			utils.Uint256ToBigInt(pool.currentState.GetBalance(addr)),
+			pool.currentMaxGas,
+			subsidiesChecker,
+			bundleChecker,
+		)
 		for _, tx := range drops {
 			hash := tx.Hash()
 			pool.all.Remove(hash)
@@ -1704,6 +1734,7 @@ func (pool *TxPool) truncateQueue() {
 func (pool *TxPool) demoteUnexecutables() {
 
 	subsidiesChecker := pool.createCachedSubsidiesChecker()
+	bundleChecker := pool.createBundleChecker()
 
 	// Iterate over all accounts and demote any non-executable transactions
 	for addr, list := range pool.pending {
@@ -1717,7 +1748,7 @@ func (pool *TxPool) demoteUnexecutables() {
 			log.Trace("Removed old pending transaction", "hash", hash)
 		}
 		// Drop all transactions that are too costly (low balance or out of gas), and queue any invalids back for later
-		drops, invalids := list.Filter(utils.Uint256ToBigInt(pool.currentState.GetBalance(addr)), pool.currentMaxGas, subsidiesChecker)
+		drops, invalids := list.Filter(utils.Uint256ToBigInt(pool.currentState.GetBalance(addr)), pool.currentMaxGas, subsidiesChecker, bundleChecker)
 		for _, tx := range drops {
 			hash := tx.Hash()
 			log.Trace("Removed unpayable pending transaction", "hash", hash)

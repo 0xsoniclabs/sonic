@@ -81,7 +81,8 @@ func TestTxSortedMap_ContainsFunc_LocatesMatchingTransactions(t *testing.T) {
 func TestTxList_Filter_WithSponsoredTransactions_RetainsCovered(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
-	checker := NewMocksubsidiesChecker(ctrl)
+	subsidyChecker := NewMocksubsidiesChecker(ctrl)
+	bundleChecker := NewMockbundleChecker(ctrl)
 
 	key, err := crypto.GenerateKey()
 	require.NoError(err)
@@ -100,10 +101,10 @@ func TestTxList_Filter_WithSponsoredTransactions_RetainsCovered(t *testing.T) {
 
 	// Each sponsored transaction should be checked.
 	for _, tx := range txs {
-		checker.EXPECT().isSponsored(tx).Return(tx.Nonce()%2 == 0)
+		subsidyChecker.EXPECT().isSponsored(tx).Return(tx.Nonce()%2 == 0)
 	}
 
-	removed, _ := list.Filter(big.NewInt(1e18), 1_000_000, checker)
+	removed, _ := list.Filter(big.NewInt(1e18), 1_000_000, subsidyChecker, bundleChecker)
 
 	// All non-sponsored transactions should be removed.
 	require.Len(removed, 5)
@@ -126,7 +127,7 @@ func BenchmarkTxListAdd(t *testing.B) {
 	t.ResetTimer()
 	for _, v := range rand.Perm(len(txs)) {
 		list.Add(txs[v], DefaultTxPoolConfig.PriceBump)
-		list.Filter(minimumTip, DefaultTxPoolConfig.MinimumTip, nil)
+		list.Filter(minimumTip, DefaultTxPoolConfig.MinimumTip, nil, nil)
 	}
 }
 

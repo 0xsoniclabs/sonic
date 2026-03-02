@@ -21,6 +21,7 @@ import (
 	"math"
 	"math/big"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice/gaspricelimits"
 	"github.com/0xsoniclabs/sonic/inter/state"
@@ -329,6 +330,23 @@ func validateTxForPool(
 			opt.minTip, "tx.GasTipCap", tx.GasTipCap())
 		return ErrUnderpriced
 	}
+
+	// Drop invalid or permanently blocked bundles.
+	if bundle.IsTransactionBundle(tx) {
+		// TODO: implement the validation of the bundle here
+		/*
+			bundle, _, err := bundle.ValidateTransactionBundle(tx, signer)
+			if err != nil {
+				return fmt.Errorf("invalid transaction bundle: %w", err)
+			}
+			// Also try-run the bundle to see whether it is already permanently
+			// blocked and will never be processable.
+			if evmcore.GetBundleState(bundle) == evmcore.BundleStatePermanentlyBlocked {
+				return fmt.Errorf("non-applicable bundle")
+			}
+		*/
+	}
+
 	return nil
 }
 

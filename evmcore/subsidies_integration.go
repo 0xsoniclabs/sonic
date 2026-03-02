@@ -38,6 +38,13 @@ type subsidiesChecker interface {
 	isSponsored(tx *types.Transaction) bool
 }
 
+// bundleChecker is an interface for checking if a transaction bundle is still
+// pending for execution. A bundle may lose the pending state if it expires or
+// it is permanently blocked due to invalidity.
+type bundleChecker interface {
+	isPending(tx *types.Transaction) bool
+}
+
 // SubsidiesIntegrationImplementation uses the subsidies contract to determine
 // if a transaction is sponsored.
 type SubsidiesIntegrationImplementation struct {

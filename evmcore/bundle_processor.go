@@ -19,6 +19,7 @@ package evmcore
 import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 )
@@ -95,4 +96,53 @@ func GetBundleState(
 func getNonceAndSender(tx *types.Transaction, signer types.Signer) (common.Address, uint64, error) {
 	sender, err := signer.Sender(tx)
 	return sender, tx.Nonce(), err
+}
+
+func newBundleChecker(
+	rules opera.Rules,
+	chain StateReader,
+	state state.StateDB,
+	signer types.Signer,
+) bundleChecker {
+	return &bundleCheckerImplementation{
+		rules:  rules,
+		chain:  chain,
+		state:  state,
+		signer: signer,
+	}
+}
+
+type bundleCheckerImplementation struct {
+	rules  opera.Rules
+	chain  StateReader
+	state  state.StateDB
+	signer types.Signer
+}
+
+func (b *bundleCheckerImplementation) isPending(tx *types.Transaction) bool {
+	// If bundling is disabled, purge all bundles from the pool.
+	if b.rules.Upgrades.TransactionBundles {
+		return false
+	}
+
+	// Decode the bundle.
+	bundle, plan, err := bundle.ValidateTransactionBundle(tx, b.signer, b.rules.Upgrades)
+	if err != nil {
+		return false
+	}
+
+	// Check the block number.
+	currentBlockNumber := b.chain.CurrentBlock().NumberU64()
+	if !plan.IsInRange(currentBlockNumber) {
+		return false
+	}
+
+	// Check whether the plan has already been processed.
+	if b.chain.HasBundleBeenProcessed(plan.Hash()) {
+		return false
+	}
+
+	// Remove permanently blocked bundles from the pool.
+	state := GetBundleState(*bundle, b.state, b.signer)
+	return state != BundleStatePermanentlyBlocked
 }
