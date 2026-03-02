@@ -674,6 +674,7 @@ func setExpectedStateCalls(mockState *state.MockStateDB) {
 	mockState.EXPECT().Snapshot().AnyTimes()
 	mockState.EXPECT().Exist(any).Return(true).AnyTimes()
 	mockState.EXPECT().SetTxContext(any, any).AnyTimes()
+	mockState.EXPECT().BeginTransaction().AnyTimes()
 	mockState.EXPECT().Release().AnyTimes()
 	mockState.EXPECT().GetCode(any).Return(nil).AnyTimes()
 	mockState.EXPECT().Witness().AnyTimes()
@@ -988,6 +989,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 
 	expectedCallsFromHistoryStorageContract := func(mockState *state.MockStateDB) {
 		mockState.EXPECT().Snapshot()
+		mockState.EXPECT().BeginTransaction()
 		mockState.EXPECT().AddAddressToAccessList(params.HistoryStorageAddress)
 		mockState.EXPECT().GetCode(params.HistoryStorageAddress).Return(params.HistoryStorageCode).Times(2)
 		mockState.EXPECT().GetCodeHash(params.HistoryStorageAddress).Return(common.Hash{})
@@ -1005,6 +1007,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 
 	expectedTraceReplayBlock := func(mockState *state.MockStateDB) {
 		mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any())
+		mockState.EXPECT().BeginTransaction()
 		mockState.EXPECT().GetCode(sender).Return([]byte{})
 		mockState.EXPECT().GetNonce(sender).Return(uint64(0))
 		mockState.EXPECT().EndTransaction()

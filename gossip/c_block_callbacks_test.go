@@ -1032,6 +1032,7 @@ func TestProcessUserTransactions_InternalTransactionsHaveNoImpactOnTheUserTransa
 
 	statedb.EXPECT().BeginBlock(gomock.Any())
 	statedb.EXPECT().SetTxContext(gomock.Any(), gomock.Any()).AnyTimes()
+	statedb.EXPECT().BeginTransaction().AnyTimes()
 	statedb.EXPECT().GetBalance(gomock.Any()).Return(uint256.NewInt(0)).AnyTimes()
 	statedb.EXPECT().SubBalance(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	statedb.EXPECT().Prepare(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()

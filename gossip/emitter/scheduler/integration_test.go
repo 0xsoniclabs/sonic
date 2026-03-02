@@ -73,6 +73,7 @@ func TestIntegration_OneTransactions_ProducesScheduleWithOneTransaction(t *testi
 	// execution to make it eligible to be included in the resulting schedule.
 	any := gomock.Any()
 	state.EXPECT().SetTxContext(any, any)
+	state.EXPECT().BeginTransaction()
 	state.EXPECT().GetBalance(any).Return(uint256.NewInt(math.MaxInt64)).AnyTimes()
 	state.EXPECT().AddBalance(any, any, any).AnyTimes()
 	state.EXPECT().SubBalance(any, any, any).AnyTimes()
