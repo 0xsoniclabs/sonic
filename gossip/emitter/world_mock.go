@@ -245,6 +245,20 @@ func (mr *MockExternalMockRecorder) GetUpgradeHeights() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUpgradeHeights", reflect.TypeOf((*MockExternal)(nil).GetUpgradeHeights))
 }
 
+// HasBundlePlanRecentlyBeenProcessed mocks base method.
+func (m *MockExternal) HasBundlePlanRecentlyBeenProcessed(execPlanHash common.Hash) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HasBundlePlanRecentlyBeenProcessed", execPlanHash)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// HasBundlePlanRecentlyBeenProcessed indicates an expected call of HasBundlePlanRecentlyBeenProcessed.
+func (mr *MockExternalMockRecorder) HasBundlePlanRecentlyBeenProcessed(execPlanHash any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasBundlePlanRecentlyBeenProcessed", reflect.TypeOf((*MockExternal)(nil).HasBundlePlanRecentlyBeenProcessed), execPlanHash)
+}
+
 // Header mocks base method.
 func (m *MockExternal) Header(arg0 common.Hash, number uint64) *evmcore.EvmHeader {
 	m.ctrl.T.Helper()
