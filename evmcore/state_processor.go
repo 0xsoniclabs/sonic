@@ -328,35 +328,35 @@ func (r *transactionRunner) runTransactionBundle(
 	txIndex int,
 ) ([]ProcessedTransaction, Status) {
 
-	txBundle, err := bundle.ValidateTransactionBundle(tx, ctxt.signer, ctxt.upgrades)
-	if err != nil {
-		log.Warn("Transaction bundle is invalid, skip", "tx", tx.Hash().Hex(), "error", err)
-		return nil, StatusSkipped
+	if !ctxt.upgrades.TransactionBundles {
+		log.Warn("Transaction bundles are not enabled, skipping bundle transaction", "tx", tx.Hash().Hex())
+		return []ProcessedTransaction{{Transaction: tx}}, StatusSkipped
 	}
 
-	// Execute the payment transaction first
-	payment := r.evm.runWithBaseFeeCheck(ctxt, txBundle.Payment, txIndex)
-	if payment.Receipt == nil {
-		log.Info("Payment transaction in bundle skipped, skip entire bundle", "tx", tx.Hash().Hex())
-		return []ProcessedTransaction{}, StatusSkipped
-	} else if payment.Receipt.Status == types.ReceiptStatusFailed {
-		log.Info("Payment transaction in bundle failed, skip entire bundle", "tx", tx.Hash().Hex())
-		return []ProcessedTransaction{payment}, StatusSkipped
+	txBundle, plan, err := bundle.ValidateTransactionBundle(tx, ctxt.signer)
+	if err != nil {
+		log.Warn("Invalid bundle skip", "tx", tx.Hash().Hex(), "error", err)
+		return []ProcessedTransaction{{Transaction: tx}}, StatusSkipped
+	}
+
+	if !plan.IsInRange(ctxt.blockNumber.Uint64()) {
+		log.Warn("Bundle skipped due to out-of-range execution plan", "tx", tx.Hash().Hex(), "planRange", fmt.Sprintf("[%d,%d]", plan.Earliest, plan.Latest), "blockNumber", ctxt.blockNumber.Uint64())
+		return []ProcessedTransaction{{Transaction: tx}}, StatusSkipped
 	}
 
 	res := make([]ProcessedTransaction, 0, len(txBundle.Bundle))
 
-	paymentCheckpoint := ctxt.statedb.InterTxSnapshot()
+	bundleCheckpoint := ctxt.statedb.InterTxSnapshot()
 	if !txBundle.Flags.TryUntil() {
 		for _, btx := range txBundle.Bundle {
 			txResults, status := runTransaction(ctxt, btx, txIndex+1+len(res)) // payment + included txs
 
 			if !isTolerated(status, txBundle.Flags) {
 				log.Info("Got non-tolerated transaction in bundle, reverting all", "tx", btx.Hash().Hex())
-				if err := ctxt.statedb.RevertToInterTxSnapshot(paymentCheckpoint); err != nil {
+				if err := ctxt.statedb.RevertToInterTxSnapshot(bundleCheckpoint); err != nil {
 					log.Error("Failed to revert to checkpoint", "err", err)
 				}
-				return []ProcessedTransaction{payment}, StatusFailed
+				return []ProcessedTransaction{}, StatusFailed
 			}
 			log.Info("Got tolerated transaction in bundle, continuing", "tx", btx.Hash().Hex())
 
@@ -364,7 +364,7 @@ func (r *transactionRunner) runTransactionBundle(
 				res = append(res, txResults...)
 			}
 		}
-		return append([]ProcessedTransaction{payment}, res...), StatusSuccessful
+		return res, StatusSuccessful
 	} else {
 		for _, btx := range txBundle.Bundle {
 			txResults, status := runTransaction(ctxt, btx, txIndex+1+len(res)) // payment + included txs
@@ -375,11 +375,11 @@ func (r *transactionRunner) runTransactionBundle(
 
 			if isTolerated(status, txBundle.Flags) {
 				log.Info("Got tolerated transaction, stopping", "tx", btx.Hash().Hex())
-				return append([]ProcessedTransaction{payment}, res...), StatusSuccessful
+				return res, StatusSuccessful
 			}
 			log.Info("Got non-tolerated transaction, continuing", "tx", btx.Hash().Hex())
 		}
-		return append([]ProcessedTransaction{payment}, res...), StatusFailed
+		return res, StatusFailed
 	}
 }
 
