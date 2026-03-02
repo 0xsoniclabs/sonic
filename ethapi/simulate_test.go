@@ -18,6 +18,7 @@ package ethapi
 
 import (
 	"context"
+	"errors"
 	"math/big"
 	"testing"
 	"time"
@@ -388,6 +389,90 @@ func TestSanitizeChain_RejectsBlockRangeExceedingLimit(t *testing.T) {
 	simTxError, ok := err.(*simInvalidTxError)
 	require.True(t, ok)
 	require.Equal(t, errCodeClientLimitExceeded, simTxError.ErrorCode())
+}
+
+func TestSimDummyChain_Header(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockBackend := NewMockBackend(ctrl)
+	ctx := context.Background()
+
+	baseHeader := &evmcore.EvmHeader{
+		Number: big.NewInt(100),
+		Hash:   common.Hash{0x01},
+	}
+
+	processedHeader1 := &evmcore.EvmHeader{
+		Number: big.NewInt(101),
+		Hash:   common.Hash{0x02},
+	}
+	processedHeader2 := &evmcore.EvmHeader{
+		Number: big.NewInt(102),
+		Hash:   common.Hash{0x03},
+	}
+
+	chain := &simDummyChain{
+		ctx:              ctx,
+		backend:          mockBackend,
+		base:             baseHeader,
+		processedHeaders: []*evmcore.EvmHeader{processedHeader1, processedHeader2},
+	}
+
+	t.Run("ReturnsBaseHeader", func(t *testing.T) {
+		h := chain.Header(baseHeader.Hash, baseHeader.Number.Uint64())
+		require.Equal(t, baseHeader, h)
+	})
+
+	t.Run("ReturnsProcessedHeader", func(t *testing.T) {
+		h := chain.Header(processedHeader1.Hash, processedHeader1.Number.Uint64())
+		require.Equal(t, processedHeader1, h)
+
+		h = chain.Header(processedHeader2.Hash, processedHeader2.Number.Uint64())
+		require.Equal(t, processedHeader2, h)
+	})
+
+	t.Run("ReturnsHeaderFromBackend", func(t *testing.T) {
+		backendHeader := &evmcore.EvmHeader{
+			Number: big.NewInt(99),
+			Hash:   common.Hash{0x99},
+		}
+		mockBackend.EXPECT().HeaderByNumber(ctx, rpc.BlockNumber(99)).Return(backendHeader, nil)
+
+		h := chain.Header(backendHeader.Hash, backendHeader.Number.Uint64())
+		require.Equal(t, backendHeader, h)
+	})
+
+	t.Run("ReturnsNilIfBackendFails", func(t *testing.T) {
+		mockBackend.EXPECT().HeaderByNumber(ctx, rpc.BlockNumber(98)).Return(nil, errors.New("backend error"))
+
+		h := chain.Header(common.Hash{0x98}, 98)
+		require.Nil(t, h)
+	})
+
+	t.Run("ReturnsNilIfBackendReturnsNil", func(t *testing.T) {
+		mockBackend.EXPECT().HeaderByNumber(ctx, rpc.BlockNumber(97)).Return(nil, nil)
+
+		h := chain.Header(common.Hash{0x97}, 97)
+		require.Nil(t, h)
+	})
+
+	t.Run("ReturnsNilIfHashMismatch", func(t *testing.T) {
+		backendHeader := &evmcore.EvmHeader{
+			Number: big.NewInt(96),
+			Hash:   common.Hash{0x96},
+		}
+		mockBackend.EXPECT().HeaderByNumber(ctx, rpc.BlockNumber(96)).Return(backendHeader, nil)
+
+		h := chain.Header(common.Hash{0xAA}, 96) // Mismatched hash
+		require.Nil(t, h)
+	})
+
+	t.Run("ReturnsNilIfHashMismatchWithProcessed", func(t *testing.T) {
+		// Even if number matches processed header, if hash doesn't match, it should fall through to backend
+		mockBackend.EXPECT().HeaderByNumber(ctx, rpc.BlockNumber(processedHeader1.Number.Uint64())).Return(nil, nil)
+
+		h := chain.Header(common.Hash{0xBB}, processedHeader1.Number.Uint64())
+		require.Nil(t, h)
+	})
 }
 
 func TestSanitizeChain_SetsEmptyWithdrawalsOnEachBlock(t *testing.T) {

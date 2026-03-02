@@ -365,6 +365,7 @@ type simDummyChain struct {
 	processedHeaders []*evmcore.EvmHeader // previously simulated headers in this request
 }
 
+// Header returns the header for a given hash and number, checking simulated headers first
 func (c *simDummyChain) Header(hash common.Hash, number uint64) *evmcore.EvmHeader {
 	// Check the base (real) block.
 	if c.base.Number.Uint64() == number && c.base.Hash == hash {
