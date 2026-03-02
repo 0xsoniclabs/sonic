@@ -44,6 +44,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/evmmodule"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
@@ -648,6 +649,51 @@ func TestFilterNonPermissibleTransactions_InactiveWithoutAllegro(t *testing.T) {
 
 	require.Equal(txs, filterNonPermissibleTransactions(txs, &withoutAllegro, nil, nil))
 	require.Equal([]*types.Transaction{valid}, filterNonPermissibleTransactions(txs, &withAllegro, nil, nil))
+}
+
+func TestFilterNonPermissibleTransactions_RejectsBundleOnlyTransactions(t *testing.T) {
+	tests := map[string]struct {
+		tx             *types.Transaction
+		bundlesEnabled bool
+		reject         bool
+	}{
+		"do not reject if disabled": {
+			tx: types.NewTx(&types.AccessListTx{
+				AccessList: []types.AccessTuple{{Address: bundle.BundleOnly}},
+			}),
+			bundlesEnabled: false,
+			reject:         false,
+		},
+		"reject if enabled": {
+			tx: types.NewTx(&types.AccessListTx{
+				AccessList: []types.AccessTuple{{Address: bundle.BundleOnly}},
+			}),
+			bundlesEnabled: true,
+			reject:         true,
+		},
+		"accept non bundle-only": {
+			tx:             types.NewTx(&types.LegacyTx{}),
+			bundlesEnabled: true,
+			reject:         false,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			upgrades := opera.GetBrioUpgrades()
+			upgrades.TransactionBundles = test.bundlesEnabled
+			rules := opera.Rules{
+				Upgrades: upgrades,
+			}
+			txs := []*types.Transaction{test.tx}
+			filtered := filterNonPermissibleTransactions(txs, &rules, nil, nil)
+			if test.reject {
+				require.Empty(t, filtered, "transaction should be rejected")
+			} else {
+				require.Equal(t, txs, filtered, "transaction should be accepted")
+			}
+		})
+	}
 }
 
 func TestFilterNonPermissibleTransactions_FiltersNonPermissibleTransactions(t *testing.T) {
