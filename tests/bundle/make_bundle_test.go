@@ -572,6 +572,7 @@ func Test_Bundle_ResetIfFailed_Works(t *testing.T) {
 func runWithAllFlags(t *testing.T, f func(string, *tests.IntegrationTestNet, *tests.PooledEhtClient, bundle.ExecutionFlag)) {
 	updates := opera.GetBrioUpgrades()
 	updates.GasSubsidies = true
+	updates.TransactionBundles = true
 	net := tests.StartIntegrationTestNet(t,
 		tests.IntegrationTestNetOptions{
 			Upgrades: tests.AsPointer(updates),

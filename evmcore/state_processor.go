@@ -216,7 +216,7 @@ func runTransaction(
 ) ([]ProcessedTransaction, Status) {
 	if context.upgrades.GasSubsidies && subsidies.IsSponsorshipRequest(tx) {
 		return context.runner.runSponsoredTransaction(context, tx, txIndexOffset)
-	} else if context.upgrades.Brio && bundle.IsTransactionBundle(tx) {
+	} else if context.upgrades.Brio && context.upgrades.TransactionBundles && bundle.IsTransactionBundle(tx) {
 		return context.runner.runTransactionBundle(context, tx, txIndexOffset)
 	} else {
 		res, status := context.runner.runRegularTransaction(context, tx, txIndexOffset)
@@ -341,12 +341,12 @@ func (r *transactionRunner) runTransactionBundle(
 	}
 
 	// Execute the payment transaction first
-	payment, status := runTransaction(ctxt, txBundle.Payment, txIndex)
+	paymentTx, status := r.runRegularTransaction(ctxt, txBundle.Payment, txIndex)
 	if status != StatusSuccessful {
 		log.Info("Payment transaction in bundle skipped, skip entire bundle", "tx", tx.Hash().Hex())
-		return []ProcessedTransaction{}, StatusSkipped
+		return nil, StatusSkipped
 	}
-
+	payment := []ProcessedTransaction{paymentTx}
 	res := make([]ProcessedTransaction, 0, len(txBundle.Bundle))
 
 	paymentCheckpoint := ctxt.statedb.Checkpoint()

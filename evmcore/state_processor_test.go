@@ -17,12 +17,14 @@
 package evmcore
 
 import (
+	"crypto/ecdsa"
 	"encoding/binary"
 	"fmt"
 	"math"
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/inter/state"
@@ -1686,7 +1688,151 @@ func TestTransactionGenerationUtilities(t *testing.T) {
 }
 
 // Bundle tests
+// ----------------------------------------------------------------------------
+//
 
 func TestRunTransactionBundle_IncorrectBundlesAreSkipped(t *testing.T) {
+	upgrades := opera.GetBrioUpgrades()
+	upgrades.TransactionBundles = true
+	chainId := big.NewInt(1)
+	signer := types.NewLondonSigner(chainId)
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
 
+	tests := map[string]struct {
+		tx *types.Transaction
+	}{
+		"regular transaction": {
+			tx: getRegularTransaction(t),
+		},
+		"sponsorship request": {
+			tx: getSponsorshipRequest(t),
+		},
+		"wrong payment transaction": {
+			tx: bundleInvalidPaymentTx(t, signer, key),
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			runner := &transactionRunner{}
+			context := newRunContext(signer, big.NewInt(0), nil, nil, big.NewInt(0), new(uint64), nil, upgrades, runner, vm.BlockContext{}, &params.ChainConfig{ChainID: chainId}, vm.Config{})
+			got, status := runner.runTransactionBundle(context, test.tx, 0)
+
+			require.Equal(t, StatusSkipped, status)
+			require.Equal(t, []ProcessedTransaction(nil), got)
+		})
+	}
+}
+
+func bundleInvalidPaymentTx(t *testing.T, signer types.Signer, key *ecdsa.PrivateKey) *types.Transaction {
+	bundlePayload := bundle.TransactionBundle{
+		Version: bundle.BundleV1,
+		Bundle:  types.Transactions{getRegularTransaction(t), getRegularTransaction(t)},
+		Payment: getRegularTransaction(t),
+		Flags:   bundle.ExecutionFlag(0),
+	}
+
+	bundle := &types.AccessListTx{
+		Gas:      uint64(100_000),
+		GasPrice: big.NewInt(1),
+		To:       &bundle.BundleAddress,
+		Value:    big.NewInt(100_000),
+		Data:     bundle.Encode(bundlePayload),
+	}
+
+	return types.MustSignNewTx(key, signer, bundle)
+}
+
+func TestRunTransactionBundle_BasicBundle(t *testing.T) {
+	chainId := big.NewInt(1)
+	unsignedTransactions := []*types.Transaction{
+		types.NewTx(&types.AccessListTx{
+			ChainID: chainId, Nonce: 0, To: &common.Address{1}, Gas: 21_000, GasPrice: big.NewInt(1),
+		}),
+		types.NewTx(&types.AccessListTx{
+			ChainID: chainId, Nonce: 1, To: &common.Address{1}, Gas: 21_000, GasPrice: big.NewInt(1),
+		}),
+	}
+
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	upgrades := opera.GetBrioUpgrades()
+	upgrades.TransactionBundles = true
+	signer := types.NewLondonSigner(chainId)
+
+	transactions := makeBundleTx(t, signer, key, unsignedTransactions...)
+
+	ctrl := gomock.NewController(t)
+	evm := NewMock_evm(ctrl)
+	stateDB := state.NewMockStateDB(ctrl)
+	successfullyProcessed := ProcessedTransaction{Receipt: &types.Receipt{Status: types.ReceiptStatusSuccessful}}
+
+	runner := &transactionRunner{
+		evm: evm,
+	}
+	context := newRunContext(signer, big.NewInt(0), stateDB, nil, big.NewInt(0), new(uint64), nil, upgrades, runner, vm.BlockContext{}, &params.ChainConfig{ChainID: chainId}, vm.Config{})
+	evm.EXPECT().runWithBaseFeeCheck(context, gomock.Any(), gomock.Any()).Return(successfullyProcessed).AnyTimes()
+	stateDB.EXPECT().Checkpoint()
+	got, status := runner.runTransactionBundle(context, transactions, 0)
+
+	require.Equal(t, StatusSuccessful, status)
+	require.Equal(t, []ProcessedTransaction{successfullyProcessed, successfullyProcessed, successfullyProcessed}, got)
+}
+
+func makeBundleTx(t *testing.T, signer types.Signer, key *ecdsa.PrivateKey, transactions ...*types.Transaction) *types.Transaction {
+
+	flags := bundle.ExecutionFlag(0)
+	gasCost := uint64(0)
+
+	steps := make([]bundle.ExecutionStep, len(transactions))
+	for i, tx := range transactions {
+		steps[i] = bundle.ExecutionStep{
+			From: crypto.PubkeyToAddress(key.PublicKey),
+			Hash: signer.Hash(tx),
+		}
+		gasCost += tx.Gas()
+	}
+	cost := new(big.Int).Mul(big.NewInt(int64(gasCost)), transactions[0].GasPrice())
+
+	plan := bundle.ExecutionPlan{Flags: flags, Steps: steps}
+	paymentTx := types.MustSignNewTx(key, signer, &types.AccessListTx{
+		To:    &bundle.BundleAddress,
+		Value: cost,
+		AccessList: types.AccessList{
+			{Address: bundle.BundleOnly, StorageKeys: []common.Hash{plan.Hash()}},
+		},
+	})
+
+	bundleOnlyTransactions := make([]*types.Transaction, len(transactions))
+	for i, tx := range transactions {
+		bundleOnlyTransactions[i] = types.MustSignNewTx(key, signer, &types.AccessListTx{
+			Nonce:    tx.Nonce(),
+			To:       tx.To(),
+			Gas:      tx.Gas(),
+			GasPrice: tx.GasPrice(),
+			AccessList: types.AccessList{
+				{Address: bundle.BundleOnly, StorageKeys: []common.Hash{plan.Hash()}},
+			},
+		})
+
+	}
+
+	bundlePayload := bundle.TransactionBundle{
+		Version: bundle.BundleV1,
+		Bundle:  bundleOnlyTransactions,
+		Payment: paymentTx,
+		Flags:   plan.Flags,
+	}
+
+	bundle := &types.AccessListTx{
+		Gas:      uint64(gasCost),
+		GasPrice: big.NewInt(1),
+		To:       &bundle.BundleAddress,
+		Value:    cost,
+		Data:     bundle.Encode(bundlePayload),
+	}
+
+	return types.MustSignNewTx(key, signer, bundle)
 }
