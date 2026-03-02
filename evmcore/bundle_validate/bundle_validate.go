@@ -10,19 +10,19 @@ import (
 )
 
 var (
-	ErrMissingBundleAddress              = errors.New("missing bundle address in access list")
-	ErrMissingBundleOnlyMarker           = errors.New("missing bundle-only marker")
-	ErrEmptyExecutionPlan                = errors.New("empty execution plan")
-	ErrInvalidExecutionPlan              = errors.New("invalid execution plan")
-	ErrFailedToExtractExecutionPlan      = errors.New("failed to extract execution plan from bundle")
-	ErrInvalidPaymentTransaction         = errors.New("invalid payment transaction")
-	ErrFailedToValidateTransaction       = errors.New("failed to validate transaction in bundle")
-	ErrPaymentDoesNotTargetBundleAddress = errors.New("payment transaction does not target bundle address")
-	ErrBundleGasLimitTooLow              = errors.New("bundle gas limit is too low to cover the gas of the bundle transactions and the payment transaction")
-	ErrBundleOverpriced                  = errors.New("bundle gas price is too high compared to the transactions in the bundle")
+	ErrMissingBundleAddress                  = errors.New("missing bundle address in access list")
+	ErrMissingBundleOnlyMarker               = errors.New("missing bundle-only marker")
+	ErrEmptyExecutionPlan                    = errors.New("empty execution plan")
+	ErrInvalidExecutionPlan                  = errors.New("invalid execution plan")
+	ErrFailedToExtractExecutionPlan          = errors.New("failed to extract execution plan from bundle")
+	ErrInvalidPaymentTransaction             = errors.New("invalid payment transaction")
+	ErrFailedToValidateBundleOnlyTransaction = errors.New("failed to validate transaction in bundle")
+	ErrPaymentDoesNotTargetBundleAddress     = errors.New("payment transaction does not target bundle address")
+	ErrBundleGasLimitTooLow                  = errors.New("bundle gas limit is too low to cover the gas of the bundle transactions and the payment transaction")
+	ErrBundleOverpriced                      = errors.New("bundle gas price is too high compared to the transactions in the bundle")
 
 	ErrPaymentSenderMismatch = errors.New("payment transaction sender does not match bundle transaction sender")
-	ErrPaymentGasTooLow      = errors.New("payment transaction gas limit is too low to cover the payment transaction itself")
+	ErrPaymentGasTooLow      = errors.New("payment transaction gas limit is too low to cover the bundle")
 )
 
 // ValidateTransactionBundle validates the transaction bundle by checking:
@@ -64,7 +64,7 @@ func ValidateTransactionBundle(tx *types.Transaction, signer types.Signer) (bund
 	for i, tx := range bundle.Bundle {
 		err := validateBundleOnlyTx(tx, signer)
 		if err != nil {
-			return res, fmt.Errorf("%w %d: %v", ErrFailedToValidateTransaction, i, err)
+			return res, fmt.Errorf("%w %d: %v", ErrFailedToValidateBundleOnlyTransaction, i, err)
 		}
 	}
 
@@ -91,6 +91,9 @@ func ValidateTransactionBundle(tx *types.Transaction, signer types.Signer) (bund
 			gasPrice = tx.GasPrice()
 		}
 	}
+
+	// TODO: validate sponsorships.
+
 	if tx.GasPrice().Cmp(gasPrice) > 0 {
 		return res, fmt.Errorf("%w: bundle gas price %d but lowest gas price in the bundle is %d", ErrBundleOverpriced, tx.GasPrice().Uint64(), gasPrice.Uint64())
 	}
@@ -111,7 +114,7 @@ func validatePaymentTx(
 	signer types.Signer,
 	bundleSender common.Address) error {
 
-	if paymentTx.To() == nil || *paymentTx.To() != bundle.BundleAddress {
+	if !bundle.IsPayment(paymentTx) {
 		return ErrPaymentDoesNotTargetBundleAddress
 	}
 
@@ -130,5 +133,6 @@ func validatePaymentTx(
 	if paymentTx.Value().Uint64() < txsGas {
 		return ErrPaymentGasTooLow
 	}
+
 	return nil
 }

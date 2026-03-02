@@ -242,3 +242,7 @@ func Decode(data []byte) (TransactionBundle, error) {
 	bundle.Flags = payload.Flags
 	return bundle, nil
 }
+
+func IsPayment(tx *types.Transaction) bool {
+	return tx.To() != nil && *tx.To() == BundleAddress
+}

@@ -54,7 +54,7 @@ func TestBundle_ValidateBundle_ReportsErrorWhen(t *testing.T) {
 				To:   &bp.BundleAddress,
 				Data: makeBundleWithTxWithoutBundleOnlyMarker(),
 			}),
-			err: ErrFailedToValidateTransaction,
+			err: ErrFailedToValidateBundleOnlyTransaction,
 		},
 		"bundle with invalid payment transaction": {
 			tx: types.NewTx(&types.AccessListTx{
@@ -78,8 +78,9 @@ func TestBundle_ValidateBundle_ReportsErrorWhen(t *testing.T) {
 						}),
 					},
 					Payment: types.NewTx(&types.AccessListTx{
-						Gas: 51, //	 gas of the payment transaction
-						To:  &bp.BundleAddress,
+						Gas:   51, //	 gas of the payment transaction
+						To:    &bp.BundleAddress,
+						Value: big.NewInt(100),
 					}),
 					Flags: 0,
 				}),
@@ -103,6 +104,7 @@ func TestBundle_ValidateBundle_ReportsErrorWhen(t *testing.T) {
 					Payment: types.NewTx(&types.AccessListTx{
 						GasPrice: big.NewInt(99), // payment price lower than bundle price
 						To:       &bp.BundleAddress,
+						Value:    big.NewInt(100),
 					}),
 					Flags: 0,
 				}),
@@ -243,6 +245,7 @@ func TestBundle_ValidateBundle_Succeeds(t *testing.T) {
 				GasPrice: big.NewInt(100),
 				Gas:      50,
 				To:       &bp.BundleAddress,
+				Value:    big.NewInt(100),
 			}),
 			Flags: 0,
 		}),
@@ -307,7 +310,7 @@ func TestBundle_ValidatePaymentTx_ReportsErrorWhen(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			mockSigner := bp.NewMockSigner(ctrl)
-			mockSigner.EXPECT().Sender(gomock.Any()).Return(common.Address{0x42}, nil)
+			mockSigner.EXPECT().Sender(gomock.Any()).Return(common.Address{0x42}, nil).AnyTimes()
 
 			err := validatePaymentTx(
 				test.bundle.Payment,

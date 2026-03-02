@@ -368,7 +368,13 @@ func validateSponsoredTransactions(
 
 	// Sponsored transactions are only valid if they are explicitly marked as sponsored by the subsidies checker.
 	if !SubsidiesChecker.isSponsored(tx) {
-		return ErrSponsorshipRejected
+		if bundle.IsPayment(tx) {
+			return fmt.Errorf("payment transaction cannot be sponsored")
+		}
+		// bundle only transaction subsidies must be checked within the bundle.
+		if !bundle.IsBundleOnly(tx) {
+			return ErrSponsorshipRejected
+		}
 	}
 
 	return nil
@@ -393,16 +399,25 @@ func validateBundledTransactions(
 	if !bundle.IsBundleOnly(tx) {
 		return nil
 	}
+
+	// if transaction is a bundle, validate the bundle and extract it.
 	bundle, err := bundle_validate.ValidateTransactionBundle(tx, signer)
 	if err != nil {
 		return err
 	}
 
+	// validate each transaction individually
 	for _, innerTx := range bundle.Bundle {
 		if err := validateTx(innerTx, opt, netRules, chain, state,
 			subsidiesChecker, signer); err != nil {
 			return err
 		}
+	}
+
+	// validate payment transaction.
+	if err := validateTx(bundle.Payment, opt, netRules, chain, state,
+		subsidiesChecker, signer); err != nil {
+		return err
 	}
 
 	return nil
