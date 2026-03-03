@@ -18,6 +18,7 @@ package rpcs
 
 import (
 	"bytes"
+	"encoding/json"
 	"math/big"
 	"strings"
 	"testing"
@@ -47,9 +48,10 @@ type simulateV1CallResult struct {
 }
 
 type simulateV1Log struct {
-	Address string   `json:"address"`
-	Topics  []string `json:"topics"`
-	Data    string   `json:"data"`
+	Address  string         `json:"address"`
+	Topics   []string       `json:"topics"`
+	Data     string         `json:"data"`
+	LogIndex hexutil.Uint64 `json:"logIndex"`
 }
 
 type simulateV1CallError struct {
@@ -323,6 +325,72 @@ func TestSimulateV1(t *testing.T) {
 			"block 2 transfer must succeed — state from block 1 must persist")
 	})
 
+	t.Run("logs_have_correct_log_index_in_multiple_blocks", func(t *testing.T) {
+		client, err := net.GetClient()
+		require.NoError(t, err)
+		defer client.Close()
+
+		sender := common.HexToAddress("0x5555555555555555555555555555555555555555")
+		sender2 := common.HexToAddress("0x3333333333333333333333333333333333333333")
+		relay := common.HexToAddress("0x6666666666666666666666666666666666666666")
+		receiver := common.HexToAddress("0x7777777777777777777777777777777777777777")
+		balance := hexutil.EncodeBig(new(big.Int).Mul(big.NewInt(1e18), big.NewInt(100)))
+		value1 := hexutil.EncodeBig(new(big.Int).Mul(big.NewInt(1e18), big.NewInt(2)))
+		value2 := hexutil.EncodeBig(new(big.Int).Mul(big.NewInt(1e18), big.NewInt(1)))
+
+		opts := map[string]any{
+			"blockStateCalls": []any{
+				// Block 1
+				map[string]any{
+					"stateOverrides": map[string]any{
+						sender.Hex(): map[string]any{
+							"balance": balance,
+						},
+						sender2.Hex(): map[string]any{
+							"balance": balance,
+						},
+					},
+					"calls": []any{
+						map[string]any{
+							"from":  sender.Hex(),
+							"to":    relay.Hex(),
+							"value": value1,
+						},
+						map[string]any{
+							"from":  sender2.Hex(),
+							"to":    relay.Hex(),
+							"value": value2,
+						},
+					},
+				},
+				// Block 2 — no state override for relay
+				map[string]any{
+					"calls": []any{
+						map[string]any{
+							"from":  relay.Hex(),
+							"to":    receiver.Hex(),
+							"value": value2,
+						},
+					},
+				},
+			},
+			"traceTransfers": true,
+		}
+		var result []simulateV1BlockResult
+		err = client.Client().Call(&result, "eth_simulateV1", opts, "latest")
+		require.NoError(t, err, "eth_simulateV1 must succeed")
+
+		require.Len(t, result[0].Calls[0].Logs, 1, "block 1 call 1 transfer must emit one log")
+		require.Len(t, result[0].Calls[1].Logs, 1, "block 1 call 2 transfer must emit one log")
+		require.Len(t, result[1].Calls[0].Logs, 1, "block 2 call 1 transfer must emit one log")
+		require.Equal(t, uint64(0), uint64(result[0].Calls[0].Logs[0].LogIndex),
+			"block 1 call 1 transfer log must have logIndex 0")
+		require.Equal(t, uint64(1), uint64(result[0].Calls[1].Logs[0].LogIndex),
+			"block 1 call 2 transfer log must have logIndex 1")
+		require.Equal(t, uint64(0), uint64(result[1].Calls[0].Logs[0].LogIndex),
+			"block 2 call 1 transfer log must have logIndex 0 — logIndex should reset for new blocks")
+	})
+
 	t.Run("trace_transfers_emits_pseudo_transfer_log", func(t *testing.T) {
 		client, err := net.GetClient()
 		require.NoError(t, err)
@@ -510,5 +578,76 @@ func TestSimulateV1(t *testing.T) {
 
 		emptyBloom := bytes.Equal(result[0].Bloom.Bytes(), make([]byte, len(result[0].Bloom)))
 		require.False(t, emptyBloom, "logsBloom must not be empty when logs are emitted")
+	})
+
+	t.Run("correct_log_indexes_across_multiple_blocks", func(t *testing.T) {
+
+		client, err := net.GetClient()
+		require.NoError(t, err)
+		defer client.Close()
+
+		sender := common.HexToAddress("0x5555555555555555555555555555555555555555")
+		balance := hexutil.EncodeBig(big.NewInt(1e18))
+
+		// Override a contract that emits an event log. The logs emitted by the overridden code must be included in the response.
+		contractAddr := common.HexToAddress("0x3333333333333333333333333333333333333333")
+		const contractBytecode = "0x608060405234801561000f575f80fd5b5060043610610029575f3560e01c8063a6f9dae11461002d575b5f80fd5b6100476004803603810190610042919061011e565b61005d565b6040516100549190610158565b60405180910390f35b5f8173ffffffffffffffffffffffffffffffffffffffff168273ffffffffffffffffffffffffffffffffffffffff167f342827c97908e5e2f71151c08502a66d44b6f758e3ac2f1de95f02eb95f0a73560405160405180910390a3819050919050565b5f80fd5b5f73ffffffffffffffffffffffffffffffffffffffff82169050919050565b5f6100ed826100c4565b9050919050565b6100fd816100e3565b8114610107575f80fd5b50565b5f81359050610118816100f4565b92915050565b5f60208284031215610133576101326100c0565b5b5f6101408482850161010a565b91505092915050565b610152816100e3565b82525050565b5f60208201905061016b5f830184610149565b9291505056fea264697066735822122096c65ce6729c0e854dd165928f5e47d45ace055648adf9592712a051b22e44e064736f6c63430008140033"
+
+		opts := map[string]any{
+			"blockStateCalls": []any{
+				map[string]any{
+					"stateOverrides": map[string]any{
+						contractAddr.Hex(): map[string]any{
+							"code": contractBytecode,
+						},
+						sender.Hex(): map[string]any{
+							"balance": balance,
+						},
+					},
+					"calls": []any{
+						map[string]any{
+							"from": sender.Hex(),
+							"to":   contractAddr.Hex(),
+							"data": "0xa6f9dae10000000000000000000000005B38Da6a701c568545dCfcB03FcB875f56beddC4",
+						},
+						map[string]any{
+							"to":   contractAddr.Hex(),
+							"data": "0xa6f9dae10000000000000000000000005B38Da6a701c568545dCfcB03FcB875f56beddC4",
+						},
+					},
+				},
+				map[string]any{
+					"stateOverrides": map[string]any{
+						contractAddr.Hex(): map[string]any{
+							"code": contractBytecode,
+						},
+						sender.Hex(): map[string]any{
+							"balance": balance,
+						},
+					},
+					"calls": []any{
+						map[string]any{
+							"from": sender.Hex(),
+							"to":   contractAddr.Hex(),
+							"data": "0xa6f9dae10000000000000000000000005B38Da6a701c568545dCfcB03FcB875f56beddC4",
+						},
+						map[string]any{
+							"to":   contractAddr.Hex(),
+							"data": "0xa6f9dae10000000000000000000000005B38Da6a701c568545dCfcB03FcB875f56beddC4",
+						},
+					},
+				},
+			},
+			"traceTransfers": true,
+			"validate":       false,
+		}
+		var result any
+		err = client.Client().Call(&result, "eth_simulateV1", opts, "latest")
+		require.NoError(t, err, "eth_simulateV1 must succeed")
+
+		//print the result for debugging
+		resultBytes, err := json.MarshalIndent(result, "", "  ")
+		require.NoError(t, err, "must marshal result to JSON")
+		t.Logf("eth_simulateV1 result: %s", string(resultBytes))
 	})
 }

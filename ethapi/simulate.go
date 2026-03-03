@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	interState "github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -328,25 +329,24 @@ func (sim *simulator) processBlock(
 	if hooks := tracer.Hooks(); hooks != nil {
 		vmConfig.Tracer = hooks
 	}
+	activeState := evmstore.WrapStateDbWithLogger(sim.state, tracer.Hooks())
 
-	evm := vm.NewEVM(blockContext, sim.state, sim.chainConfig, vmConfig)
+	evm := vm.NewEVM(blockContext, activeState, sim.chainConfig, vmConfig)
 	if precompiles != nil {
 		evm.SetPrecompiles(precompiles)
 	}
 
 	// EIP-2935: store parent block hash in history contract.
 	if sim.chainConfig.IsPrague(header.Number, uint64(header.Time.Unix())) {
-		evmcore.ProcessParentBlockHash(header.ParentHash, evm, sim.state)
+		evmcore.ProcessParentBlockHash(header.ParentHash, evm, activeState)
 	}
-
-	var allContractLogs []*types.Log
 
 	for i, call := range block.Calls {
 		if err := ctx.Err(); err != nil {
 			return nil, nil, nil, nil, err
 		}
 
-		if err := sim.sanitizeCall(&call, sim.state, header, &gasUsed); err != nil {
+		if err := sim.sanitizeCall(&call, activeState, header, &gasUsed); err != nil {
 			return nil, nil, nil, nil, err
 		}
 
@@ -356,7 +356,7 @@ func (sim *simulator) processBlock(
 		senders[txHash] = call.from()
 
 		tracer.reset(txHash, uint(i))
-		sim.state.SetTxContext(txHash, i)
+		activeState.SetTxContext(txHash, i)
 
 		msg, err := call.ToMessage(sim.gp.Gas(), header.BaseFee, log.Root())
 		if err != nil {
@@ -369,12 +369,6 @@ func (sim *simulator) processBlock(
 		if applyErr != nil {
 			return nil, nil, nil, nil, simTxValidationError(applyErr)
 		}
-
-		contractLogs := sim.state.GetLogs(txHash, common.Hash{})
-		allContractLogs = append(allContractLogs, contractLogs...)
-
-		sim.state.EndTransaction()
-
 		gasUsed += result.UsedGas
 
 		// Build the per-call result.
@@ -383,14 +377,7 @@ func (sim *simulator) processBlock(
 			ReturnValue: result.ReturnData,
 			GasUsed:     hexutil.Uint64(result.UsedGas),
 		}
-
-		// Combine contract logs with transfer pseudo-logs (if traceTransfers).
-		var txLogs []*types.Log
-		if sim.traceTransfers {
-			txLogs = append(txLogs, tracer.Logs()...)
-		}
-		txLogs = append(txLogs, contractLogs...)
-		callRes.Logs = txLogs
+		callRes.Logs = tracer.Logs()
 
 		if result.Failed() {
 			callRes.Status = hexutil.Uint64(types.ReceiptStatusFailed)
@@ -418,7 +405,7 @@ func (sim *simulator) processBlock(
 	}
 
 	header.GasUsed = gasUsed
-	header.Root = sim.state.GetStateHash()
+	header.Root = activeState.GetStateHash()
 
 	if len(txes) == 0 {
 		header.TxHash = types.EmptyRootHash
@@ -431,22 +418,16 @@ func (sim *simulator) processBlock(
 	evmBlock.Hash = blockHash
 
 	// Repair all log entries with the now-known block hash.
-	repairSimLogs(callResults, allContractLogs, evmBlock)
+	repairSimLogs(callResults, evmBlock)
 
 	return evmBlock, callResults, senders, receipts, nil
 }
 
-// repairSimLogs updates the BlockHash field in all collected logs now that the
-// block hash is known. It updates both the logs stored in callResults and the
-// shared allContractLogs slice (which shares pointers with callResults).
-func repairSimLogs(calls []simCallResult, allLogs []*types.Log, evmBlock *evmcore.EvmBlock) {
+// repairSimLogs updates the BlockHash, BlockNumber, and BlockTimestamp
+// fields in collected logs. These fields are not known until the block
+// is assembled.
+func repairSimLogs(calls []simCallResult, evmBlock *evmcore.EvmBlock) {
 	blockHash := evmBlock.Hash
-	for _, l := range allLogs {
-		l.BlockHash = blockHash
-		l.BlockNumber = evmBlock.NumberU64()
-		l.BlockTimestamp = uint64(evmBlock.Time.Unix())
-	}
-	// Also repair transfer pseudo-logs, which are only in callResults.
 	for i := range calls {
 		for j := range calls[i].Logs {
 			calls[i].Logs[j].BlockHash = blockHash
