@@ -75,6 +75,33 @@ func TestSimulateV1_SingleCall_ReturnsSuccessResult(t *testing.T) {
 	require.Equal(t, hexutil.Uint64(21_000), results[0].calls[0].GasUsed)
 }
 
+func TestSimulateV1_SingleCall_NonceValidationFailure(t *testing.T) {
+	f := newSimulateV1Helper(t)
+	setExpectedStateCalls(f.mockState)
+
+	from := common.Address{1}
+	to := common.Address{2}
+	nonce := uint64(10)
+	opts := simOpts{
+		BlockStateCalls: []simBlock{
+			{Calls: []TransactionArgs{
+				{
+					From:  &from,
+					To:    &to,
+					Nonce: (*hexutil.Uint64)(&nonce),
+				},
+			}},
+		},
+		Validation: true,
+	}
+
+	_, err := f.api.SimulateV1(context.Background(), opts, &f.blkNr)
+	require.Error(t, err)
+	simTxError, ok := err.(*simInvalidTxError)
+	require.True(t, ok)
+	require.Equal(t, errCodeNonceTooHigh, simTxError.ErrorCode())
+}
+
 func TestSimulateV1_MultipleBlocks_ReturnsResultsPerBlock(t *testing.T) {
 	f := newSimulateV1Helper(t)
 	// Two empty blocks: GetStateHash is called once per block.
