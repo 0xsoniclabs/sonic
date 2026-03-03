@@ -537,8 +537,7 @@ func (sim *simulator) processBlock(
 
 		result, applyErr := applySimMessage(ctx, evm, msg, timeout, sim.gp)
 		if applyErr != nil {
-			callResults[i] = skippedTransactionCallResult(simTxValidationError(applyErr))
-			continue
+			return nil, nil, nil, simTxValidationError(applyErr)
 		}
 
 		contractLogs := sim.state.GetLogs(txHash, common.Hash{})
@@ -598,17 +597,6 @@ func (sim *simulator) processBlock(
 	repairSimLogs(callResults, allContractLogs, blockHash)
 
 	return evmBlock, callResults, senders, nil
-}
-
-func skippedTransactionCallResult(err error) simCallResult {
-	return simCallResult{
-
-		Status: hexutil.Uint64(types.ReceiptStatusFailed),
-		Error: &callError{
-			Message: err.Error(),
-			Code:    errCodeInternalError,
-		},
-	}
 }
 
 // repairSimLogs updates the BlockHash field in all collected logs now that the
