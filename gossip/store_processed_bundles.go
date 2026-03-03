@@ -32,16 +32,16 @@ import (
 // hashes, up to a maximum block range defined by bundle.MaxBlockRange.
 //
 // In the underlying table, the following keys are used:
-//  - key: [] -> [uint64, hash]   // last block and hash for which the processed bundles have been stored
-//  - key: ['e']<bundleHash> -> []     // for a processed bundle
-//  - key: ['i']<blockNum, bundleHash> -> [] // for a processed bundle at a specific block number, to handle cleanups
+//  - key: [] -> [uint64, hash]                        // last block and hash for which the processed bundles have been stored
+//  - key: ['e']<execPlanHash> -> [block,position]     // for a processed bundle
+//  - key: ['i']<blockNum, execPlanHash> -> []         // for a processed bundle at a specific block number, to handle cleanups
 //
 // The hash of the processed bundle's history is computed as follows:
 //  - initially, the hash is zero
 //  - for every update, the hash is updated as follows:
-//      addedBundleHash = Xor(<hashes of newly added bundles>)
-//      deletedBundleHash = Xor(<hashes of deleted bundles>)
-//      newHash = Keccak256(oldHash || addedBundleHash || deletedBundleHash || blockNum)
+//      addedExecPlanHash = Xor(<hashes of newly added bundles>)
+//      deletedExecPlanHash = Xor(<hashes of deleted bundles>)
+//      newHash = Keccak256(oldHash || addedExecPlanHash || deletedExecPlanHash || blockNum)
 //
 // The hash can be used to verify that validators remain aligned on their bundle
 // processing history.
@@ -49,7 +49,7 @@ import (
 // AddProcessedBundles adds the given bundle hashes as processed for the given
 // block number. This should be called after every block, listing the bundles
 // that got accepted in the block.
-func (s *Store) AddProcessedBundles(blockNum uint64, execPlanHashes []common.Hash) error {
+func (s *Store) AddProcessedBundles(blockNum uint64, executedBundles []bundle.ExecutionInfo) error {
 
 	// TODO: add a mutex to avoid concurrent updates.
 
@@ -62,9 +62,15 @@ func (s *Store) AddProcessedBundles(blockNum uint64, execPlanHashes []common.Has
 	table := s.table.ProcessedBundles
 	batch := table.NewBatch()
 	addedHash := common.Hash{}
-	for _, hash := range execPlanHashes {
+	for _, info := range executedBundles {
+		hash := info.Hash
+
+		data := make([]byte, 12)
+		binary.BigEndian.PutUint64(data[:8], info.BlockNum)
+		binary.BigEndian.PutUint32(data[8:], info.Position)
+
 		err := errors.Join(
-			batch.Put(getEntryKey(hash), []byte{0}),
+			batch.Put(getEntryKey(hash), data),
 			batch.Put(getIndexKey(blockNum, hash), []byte{0}),
 		)
 		if err != nil {
@@ -137,6 +143,28 @@ func (s *Store) HasRecentlyBeenProcessed(execPlanHash common.Hash) (bool, error)
 		return false, fmt.Errorf("failed to check processed bundle: %v", err)
 	}
 	return res != nil, nil
+}
+
+// GetBundleExecutionInfo returns the execution info for a processed bundle hash, if
+// it is present in the store.
+func (s *Store) GetBundleExecutionInfo(execPlanHash common.Hash) (*bundle.ExecutionInfo, error) {
+	res, err := s.table.ProcessedBundles.Get(getEntryKey(execPlanHash))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get execution info for bundle: %v", err)
+	}
+	if res == nil {
+		return nil, nil
+	}
+	if len(res) != 12 {
+		return nil, fmt.Errorf("invalid data length for execution info: %d", len(res))
+	}
+	blockNum := binary.BigEndian.Uint64(res[:8])
+	position := binary.BigEndian.Uint32(res[8:])
+	return &bundle.ExecutionInfo{
+		Hash:     execPlanHash,
+		BlockNum: blockNum,
+		Position: position,
+	}, nil
 }
 
 // GetProcessedBundleHistoryHash returns the current hash of the processed

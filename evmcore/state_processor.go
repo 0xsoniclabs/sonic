@@ -217,8 +217,15 @@ func runTransaction(
 	tx *types.Transaction,
 	txIndexOffset int,
 ) ([]ProcessedTransaction, *bundle.TransactionBundle, Status) {
-	// TODO: if a bundle is processed, return it
-	if context.upgrades.GasSubsidies && subsidies.IsSponsorshipRequest(tx) {
+	if context.upgrades.TransactionBundles && bundle.IsTransactionBundle(tx) {
+		// TODO: implement proper logic; for now, just run bundled transactions
+		bundle, _, err := bundle.ValidateTransactionBundle(tx, context.signer)
+		if err != nil {
+			return []ProcessedTransaction{{Transaction: tx}}, nil, StatusSkipped
+		}
+		summary := runTransactions(context, bundle.Bundle, txIndexOffset)
+		return summary.ProcessedTransactions, bundle, StatusSuccessful
+	} else if context.upgrades.GasSubsidies && subsidies.IsSponsorshipRequest(tx) {
 		res, status := context.runner.runSponsoredTransaction(context, tx, txIndexOffset)
 		return res, nil, status
 	} else {

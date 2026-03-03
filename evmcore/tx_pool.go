@@ -36,6 +36,7 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -1149,6 +1150,21 @@ func (pool *TxPool) Get(hash common.Hash) *types.Transaction {
 // given hash.
 func (pool *TxPool) Has(hash common.Hash) bool {
 	return pool.all.Get(hash) != nil
+}
+
+func (pool *TxPool) HasBundle(execPlanHash common.Hash) bool {
+	// TODO: make this more efficient by keeping a separate index for bundles
+	pool.mu.RLock()
+	defer pool.mu.RUnlock()
+	for _, tx := range pool.all.txs() {
+		if bundle.IsTransactionBundle(tx) {
+			_, plan, _ := bundle.ValidateTransactionBundle(tx, pool.signer)
+			if plan.Hash() == execPlanHash {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (pool *TxPool) OnlyNotExisting(hashes []common.Hash) []common.Hash {

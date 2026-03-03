@@ -542,15 +542,19 @@ func consensusCallbackBeginBlockFn(
 
 					// Keep track of processed bundles.
 					signer := types.LatestSignerForChainID(chainCfg.ChainID)
-					processedBundleHashes := make([]common.Hash, len(processedBundles))
+					bundleInfos := make([]bundle.ExecutionInfo, len(processedBundles))
 					for i, b := range processedBundles {
 						plan, err := b.ExtractExecutionPlan(signer)
 						if err != nil {
 							log.Crit("Failed to extract execution plan from bundle", "err", err)
 						}
-						processedBundleHashes[i] = plan.Hash()
+						bundleInfos[i] = bundle.ExecutionInfo{
+							Hash:     plan.Hash(),
+							BlockNum: uint64(blockCtx.Idx),
+							// TODO: add position in block
+						}
 					}
-					if err := store.AddProcessedBundles(uint64(blockCtx.Idx), processedBundleHashes); err != nil {
+					if err := store.AddProcessedBundles(uint64(blockCtx.Idx), bundleInfos); err != nil {
 						log.Crit("Failed to add processed bundles", "err", err)
 					}
 

@@ -475,11 +475,11 @@ func (n *IntegrationTestNet) start() error {
 
 				// http-client option
 				"--http", "--http.addr", "127.0.0.1", "--http.port", "0",
-				"--http.api", "admin,eth,dag,web3,net,txpool,trace,debug,sonic",
+				"--http.api", "admin,eth,dag,web3,net,txpool,trace,debug,sonic,bundle",
 
 				// websocket-client options
 				"--ws", "--ws.addr", "127.0.0.1", "--ws.port", "0",
-				"--ws.api", "admin,eth",
+				"--ws.api", "admin,eth,bundle",
 
 				//  net options
 				"--port", "0",

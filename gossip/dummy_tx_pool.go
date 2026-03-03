@@ -27,6 +27,7 @@ import (
 	notify "github.com/ethereum/go-ethereum/event"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 )
 
 // dummyTxPool is a fake, helper transaction pool for testing purposes
@@ -108,7 +109,7 @@ func (p *dummyTxPool) Map() map[common.Hash]*types.Transaction {
 	for _, tx := range p.pool {
 		res[tx.Hash()] = tx
 	}
-	return nil
+	return res
 }
 
 func (p *dummyTxPool) Get(txid common.Hash) *types.Transaction {
@@ -128,6 +129,20 @@ func (p *dummyTxPool) Has(txid common.Hash) bool {
 	for _, tx := range p.pool {
 		if tx.Hash() == txid {
 			return true
+		}
+	}
+	return false
+}
+
+func (p *dummyTxPool) HasBundle(execPlanHash common.Hash) bool {
+	p.lock.RLock()
+	defer p.lock.RUnlock()
+	for _, tx := range p.pool {
+		if bundle.IsTransactionBundle(tx) {
+			_, plan, err := bundle.ValidateTransactionBundle(tx, p.signer)
+			if err == nil && plan.Hash() == execPlanHash {
+				return true
+			}
 		}
 	}
 	return false

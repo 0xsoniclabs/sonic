@@ -43,14 +43,14 @@ func TestStore_HasRecentlyBeenProcessed_TracksAddedBundleHashes(t *testing.T) {
 	require.False(recentlyProcessed(hash2))
 	require.False(recentlyProcessed(hash3))
 
-	err = store.AddProcessedBundles(1, []common.Hash{hash1})
+	err = store.AddProcessedBundles(1, []bundle.ExecutionInfo{wrapInfo(hash1)})
 	require.NoError(err)
 
 	require.True(recentlyProcessed(hash1))
 	require.False(recentlyProcessed(hash2))
 	require.False(recentlyProcessed(hash3))
 
-	err = store.AddProcessedBundles(2, []common.Hash{hash2, hash3})
+	err = store.AddProcessedBundles(2, []bundle.ExecutionInfo{wrapInfo(hash2), wrapInfo(hash3)})
 	require.NoError(err)
 
 	require.True(recentlyProcessed(hash1))
@@ -77,33 +77,71 @@ func TestStore_HasRecentlyBeenProcessed_CleansUpOldBundleHashes(t *testing.T) {
 	require.False(recentlyProcessed(hash2))
 	require.False(recentlyProcessed(hash3))
 
-	err = store.AddProcessedBundles(1, []common.Hash{hash1})
+	err = store.AddProcessedBundles(1, []bundle.ExecutionInfo{wrapInfo(hash1)})
 	require.NoError(err)
 
 	require.True(recentlyProcessed(hash1))
 	require.False(recentlyProcessed(hash2))
 	require.False(recentlyProcessed(hash3))
 
-	err = store.AddProcessedBundles(1+bundle.MaxBlockRange/2, []common.Hash{hash2})
+	err = store.AddProcessedBundles(1+bundle.MaxBlockRange/2, []bundle.ExecutionInfo{wrapInfo(hash2)})
 	require.NoError(err)
 
 	require.True(recentlyProcessed(hash1))
 	require.True(recentlyProcessed(hash2))
 	require.False(recentlyProcessed(hash3))
 
-	err = store.AddProcessedBundles(1+bundle.MaxBlockRange, []common.Hash{hash3})
+	err = store.AddProcessedBundles(1+bundle.MaxBlockRange, []bundle.ExecutionInfo{wrapInfo(hash3)})
 	require.NoError(err)
 
 	require.False(recentlyProcessed(hash1))
 	require.True(recentlyProcessed(hash2))
 	require.True(recentlyProcessed(hash3))
 
-	err = store.AddProcessedBundles(1+2*bundle.MaxBlockRange, []common.Hash{})
+	err = store.AddProcessedBundles(1+2*bundle.MaxBlockRange, []bundle.ExecutionInfo{})
 	require.NoError(err)
 
 	require.False(recentlyProcessed(hash1))
 	require.False(recentlyProcessed(hash2))
 	require.False(recentlyProcessed(hash3))
+}
+
+func TestStore_GetBundleExecutionInfo_ReturnsInfoForAddedBundleHashes(t *testing.T) {
+	require := require.New(t)
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	hash1 := common.Hash{1, 2, 3}
+	hash2 := common.Hash{4, 5, 6}
+
+	info1 := bundle.ExecutionInfo{
+		Hash:     hash1,
+		BlockNum: 1,
+		Position: 0,
+	}
+	info2 := bundle.ExecutionInfo{
+		Hash:     hash2,
+		BlockNum: 2,
+		Position: 1,
+	}
+
+	info, err := store.GetBundleExecutionInfo(hash1)
+	require.NoError(err)
+	require.Nil(info)
+	info, err = store.GetBundleExecutionInfo(hash2)
+	require.NoError(err)
+	require.Nil(info)
+
+	err = store.AddProcessedBundles(1, []bundle.ExecutionInfo{info1, info2})
+	require.NoError(err)
+
+	resInfo1, err := store.GetBundleExecutionInfo(hash1)
+	require.NoError(err)
+	require.Equal(info1, *resInfo1)
+
+	resInfo2, err := store.GetBundleExecutionInfo(hash2)
+	require.NoError(err)
+	require.Equal(info2, *resInfo2)
 }
 
 func TestStore_AddProcessedBundles_UpdatesHistoryHash(t *testing.T) {
@@ -117,14 +155,14 @@ func TestStore_AddProcessedBundles_UpdatesHistoryHash(t *testing.T) {
 	_, initialHash, err := store.GetProcessedBundleHistoryHash()
 	require.NoError(err)
 
-	err = store.AddProcessedBundles(1, []common.Hash{hash1})
+	err = store.AddProcessedBundles(1, []bundle.ExecutionInfo{wrapInfo(hash1)})
 	require.NoError(err)
 
 	_, hashAfterFirstAdd, err := store.GetProcessedBundleHistoryHash()
 	require.NoError(err)
 	require.NotEqual(initialHash, hashAfterFirstAdd)
 
-	err = store.AddProcessedBundles(2, []common.Hash{hash2})
+	err = store.AddProcessedBundles(2, []bundle.ExecutionInfo{wrapInfo(hash2)})
 	require.NoError(err)
 
 	_, hashAfterSecondAdd, err := store.GetProcessedBundleHistoryHash()
@@ -141,4 +179,12 @@ func TestStore_GetProcessedBundleHistoryHash_InitiallyZero(t *testing.T) {
 	require.NoError(err)
 	require.Zero(blockNum)
 	require.Zero(hash)
+}
+
+func wrapInfo(hash common.Hash) bundle.ExecutionInfo {
+	return bundle.ExecutionInfo{
+		Hash:     hash,
+		BlockNum: 1,
+		Position: 0,
+	}
 }
