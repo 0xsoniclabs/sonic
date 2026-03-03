@@ -419,17 +419,7 @@ func checkCase(t *testing.T, net *tests.IntegrationTestNet, client *tests.Pooled
 		flags.SetTolerateFailed(c.tolerateFailed)
 		flags.SetTryUntil(c.tryUntil)
 
-		txs, senders, counterAddress := makeUnsignedBundleTxs(t, net, client, c.submittedTxTypes, nil)
-
-		signer := types.NewCancunSigner(net.GetChainId())
-
-		steps := make([]bundle.ExecutionStep, len(txs))
-		for i, tx := range txs {
-			steps[i] = bundle.ExecutionStep{From: senders[i].Address(), Hash: signer.Hash(tx)}
-		}
-		plan := bundle.ExecutionPlan{Flags: flags, Steps: steps}
-
-		signBundleTxs(t, net, txs, senders, plan)
+		txs, plan, counterAddress := makeSignedBundleOnlyTxsAndPlan(t, net, client, c.submittedTxTypes, nil, flags)
 
 		bundler := net.GetSessionSponsor()
 		bundleTx, paymentTxHash := makeBundleTransaction(t, net, txs, plan, bundler)
@@ -592,24 +582,25 @@ func makeUnsignedBundleTxs(
 			}
 		case []any:
 			flags := bundle.ExecutionFlag(0)
-			btxs, bsenders, _ := makeUnsignedBundleTxs(t, net, client, txType.([]any), counterAddress)
-
-			signer := types.NewCancunSigner(net.GetChainId())
-
-			steps := []bundle.ExecutionStep{}
-			for i, tx := range btxs {
-				steps = append(steps, bundle.ExecutionStep{From: bsenders[i].Address(), Hash: signer.Hash(tx)})
-			}
-			plan := bundle.ExecutionPlan{Flags: flags, Steps: steps}
-
-			signBundleTxs(t, net, btxs, bsenders, plan)
+			btxs, bplan, _ := makeSignedBundleOnlyTxsAndPlan(t, net, client, txType.([]any), counterAddress, flags)
 
 			bundler := senders[i]
 			if len(txType.([]any)) == 0 {
 				// make invalid paymentTx
 				bundler = net.GetSessionSponsor()
 			}
-			bundleTx, paymentTxHash := makeBundleTransaction(t, net, btxs, plan, bundler)
+			bundleTx, paymentTxHash := makeBundleTransaction(t, net, btxs, bplan, bundler)
+			// remove signature
+			bundleTx = types.NewTx(&types.AccessListTx{
+				Nonce:      bundleTx.Nonce(),
+				GasPrice:   bundleTx.GasPrice(),
+				Gas:        bundleTx.Gas(),
+				To:         bundleTx.To(),
+				Value:      bundleTx.Value(),
+				Data:       bundleTx.Data(),
+				AccessList: bundleTx.AccessList(),
+			})
+
 			require.NotNil(t, bundleTx)
 			require.NotZero(t, paymentTxHash)
 			txs[i] = bundleTx
@@ -621,7 +612,7 @@ func makeUnsignedBundleTxs(
 	return txs, senders, *counterAddress
 }
 
-func signBundleTxs(t *testing.T, net *tests.IntegrationTestNet, txs []*types.Transaction, senders []*tests.Account, plan bundle.ExecutionPlan) {
+func signBundleOnlyTxs(t *testing.T, net *tests.IntegrationTestNet, txs []*types.Transaction, senders []*tests.Account, plan bundle.ExecutionPlan) {
 	for i, tx := range txs {
 		bundleOnlyTx := &types.AccessListTx{
 			Nonce:    tx.Nonce(),
@@ -636,6 +627,29 @@ func signBundleTxs(t *testing.T, net *tests.IntegrationTestNet, txs []*types.Tra
 		}
 		txs[i] = tests.SignTransaction(t, net.GetChainId(), bundleOnlyTx, senders[i])
 	}
+}
+
+func makeSignedBundleOnlyTxsAndPlan(
+	t *testing.T,
+	net *tests.IntegrationTestNet,
+	client *tests.PooledEhtClient,
+	txTypes []any,
+	counterAddressPtr *common.Address,
+	flags bundle.ExecutionFlag,
+) ([]*types.Transaction, bundle.ExecutionPlan, common.Address) {
+	txs, senders, counterAddress := makeUnsignedBundleTxs(t, net, client, txTypes, counterAddressPtr)
+
+	signer := types.NewCancunSigner(net.GetChainId())
+
+	steps := make([]bundle.ExecutionStep, len(txs))
+	for i, tx := range txs {
+		steps[i] = bundle.ExecutionStep{From: senders[i].Address(), Hash: signer.Hash(tx)}
+	}
+	plan := bundle.ExecutionPlan{Flags: flags, Steps: steps}
+
+	signBundleOnlyTxs(t, net, txs, senders, plan)
+
+	return txs, plan, counterAddress
 }
 
 func checkHashesEqAndStatus(t *testing.T, net *tests.IntegrationTestNet, expectedHash common.Hash, expectedStatus uint64, txHash common.Hash) {
