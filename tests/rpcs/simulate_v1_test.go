@@ -64,10 +64,10 @@ func TestSimulateV1(t *testing.T) {
 		require.NoError(t, err)
 		defer client.Close()
 
-		opts := map[string]interface{}{
-			"blockStateCalls": []interface{}{},
+		opts := map[string]any{
+			"blockStateCalls": []any{},
 		}
-		var result interface{}
+		var result any
 		err = client.Client().Call(&result, "eth_simulateV1", opts, "latest")
 		require.Error(t, err, "empty blockStateCalls must return an error")
 	})
@@ -82,16 +82,16 @@ func TestSimulateV1(t *testing.T) {
 		balance := hexutil.EncodeBig(new(big.Int).Mul(big.NewInt(1e18), big.NewInt(100)))
 		value := hexutil.EncodeBig(new(big.Int).Mul(big.NewInt(1e18), big.NewInt(1)))
 
-		opts := map[string]interface{}{
-			"blockStateCalls": []interface{}{
-				map[string]interface{}{
-					"stateOverrides": map[string]interface{}{
-						sender.Hex(): map[string]interface{}{
+		opts := map[string]any{
+			"blockStateCalls": []any{
+				map[string]any{
+					"stateOverrides": map[string]any{
+						sender.Hex(): map[string]any{
 							"balance": balance,
 						},
 					},
-					"calls": []interface{}{
-						map[string]interface{}{
+					"calls": []any{
+						map[string]any{
 							"from":  sender.Hex(),
 							"to":    receiver.Hex(),
 							"value": value,
@@ -119,16 +119,16 @@ func TestSimulateV1(t *testing.T) {
 		contractAddr := common.HexToAddress("0x3333333333333333333333333333333333333333")
 		const returnsFortyTwoCode = "0x604260005260206000f3"
 
-		opts := map[string]interface{}{
-			"blockStateCalls": []interface{}{
-				map[string]interface{}{
-					"stateOverrides": map[string]interface{}{
-						contractAddr.Hex(): map[string]interface{}{
+		opts := map[string]any{
+			"blockStateCalls": []any{
+				map[string]any{
+					"stateOverrides": map[string]any{
+						contractAddr.Hex(): map[string]any{
 							"code": returnsFortyTwoCode,
 						},
 					},
-					"calls": []interface{}{
-						map[string]interface{}{
+					"calls": []any{
+						map[string]any{
 							"to": contractAddr.Hex(),
 						},
 					},
@@ -157,16 +157,16 @@ func TestSimulateV1(t *testing.T) {
 		contractAddr := common.HexToAddress("0x4444444444444444444444444444444444444444")
 		const alwaysRevertCode = "0x600080fd"
 
-		opts := map[string]interface{}{
-			"blockStateCalls": []interface{}{
-				map[string]interface{}{
-					"stateOverrides": map[string]interface{}{
-						contractAddr.Hex(): map[string]interface{}{
+		opts := map[string]any{
+			"blockStateCalls": []any{
+				map[string]any{
+					"stateOverrides": map[string]any{
+						contractAddr.Hex(): map[string]any{
 							"code": alwaysRevertCode,
 						},
 					},
-					"calls": []interface{}{
-						map[string]interface{}{
+					"calls": []any{
+						map[string]any{
 							"to": contractAddr.Hex(),
 						},
 					},
@@ -204,16 +204,16 @@ func TestSimulateV1(t *testing.T) {
 		contractAddr := common.HexToAddress("0xDdDdDdDdDdDdDdDdDdDdDdDdDdDdDdDdDdDdDdDd")
 		const revertsWithReasonCode = "0x7f08c379a0000000000000000000000000000000000000000000000000000000006000527f00000020000000000000000000000000000000000000000000000000000000006020527f000000046661696c00000000000000000000000000000000000000000000000060405260646000fd"
 
-		opts := map[string]interface{}{
-			"blockStateCalls": []interface{}{
-				map[string]interface{}{
-					"stateOverrides": map[string]interface{}{
-						contractAddr.Hex(): map[string]interface{}{
+		opts := map[string]any{
+			"blockStateCalls": []any{
+				map[string]any{
+					"stateOverrides": map[string]any{
+						contractAddr.Hex(): map[string]any{
 							"code": revertsWithReasonCode,
 						},
 					},
-					"calls": []interface{}{
-						map[string]interface{}{
+					"calls": []any{
+						map[string]any{
 							"to": contractAddr.Hex(),
 						},
 					},
@@ -247,13 +247,13 @@ func TestSimulateV1(t *testing.T) {
 		defer client.Close()
 
 		const wantGasLimit = uint64(0x5F5E100) // 100,000,000
-		opts := map[string]interface{}{
-			"blockStateCalls": []interface{}{
-				map[string]interface{}{
-					"blockOverrides": map[string]interface{}{
+		opts := map[string]any{
+			"blockStateCalls": []any{
+				map[string]any{
+					"blockOverrides": map[string]any{
 						"gasLimit": hexutil.EncodeUint64(wantGasLimit),
 					},
-					"calls": []interface{}{},
+					"calls": []any{},
 				},
 			},
 		}
@@ -282,17 +282,17 @@ func TestSimulateV1(t *testing.T) {
 		value1 := hexutil.EncodeBig(new(big.Int).Mul(big.NewInt(1e18), big.NewInt(2)))
 		value2 := hexutil.EncodeBig(new(big.Int).Mul(big.NewInt(1e18), big.NewInt(1)))
 
-		opts := map[string]interface{}{
-			"blockStateCalls": []interface{}{
+		opts := map[string]any{
+			"blockStateCalls": []any{
 				// Block 1
-				map[string]interface{}{
-					"stateOverrides": map[string]interface{}{
-						sender.Hex(): map[string]interface{}{
+				map[string]any{
+					"stateOverrides": map[string]any{
+						sender.Hex(): map[string]any{
 							"balance": balance,
 						},
 					},
-					"calls": []interface{}{
-						map[string]interface{}{
+					"calls": []any{
+						map[string]any{
 							"from":  sender.Hex(),
 							"to":    relay.Hex(),
 							"value": value1,
@@ -300,9 +300,9 @@ func TestSimulateV1(t *testing.T) {
 					},
 				},
 				// Block 2 — no state override for relay
-				map[string]interface{}{
-					"calls": []interface{}{
-						map[string]interface{}{
+				map[string]any{
+					"calls": []any{
+						map[string]any{
 							"from":  relay.Hex(),
 							"to":    receiver.Hex(),
 							"value": value2,
@@ -331,16 +331,16 @@ func TestSimulateV1(t *testing.T) {
 		balance := hexutil.EncodeBig(new(big.Int).Mul(big.NewInt(1e18), big.NewInt(100)))
 		value := hexutil.EncodeBig(new(big.Int).Mul(big.NewInt(1e18), big.NewInt(1)))
 
-		opts := map[string]interface{}{
-			"blockStateCalls": []interface{}{
-				map[string]interface{}{
-					"stateOverrides": map[string]interface{}{
-						sender.Hex(): map[string]interface{}{
+		opts := map[string]any{
+			"blockStateCalls": []any{
+				map[string]any{
+					"stateOverrides": map[string]any{
+						sender.Hex(): map[string]any{
 							"balance": balance,
 						},
 					},
-					"calls": []interface{}{
-						map[string]interface{}{
+					"calls": []any{
+						map[string]any{
 							"from":  sender.Hex(),
 							"to":    receiver.Hex(),
 							"value": value,
@@ -392,15 +392,15 @@ func TestSimulateV1(t *testing.T) {
 
 		// Simulate giving freshAddr a large balance — this must not affect the real chain.
 		balance := hexutil.EncodeBig(new(big.Int).Mul(big.NewInt(1e18), big.NewInt(100)))
-		opts := map[string]interface{}{
-			"blockStateCalls": []interface{}{
-				map[string]interface{}{
-					"stateOverrides": map[string]interface{}{
-						freshAddr.Hex(): map[string]interface{}{
+		opts := map[string]any{
+			"blockStateCalls": []any{
+				map[string]any{
+					"stateOverrides": map[string]any{
+						freshAddr.Hex(): map[string]any{
 							"balance": balance,
 						},
 					},
-					"calls": []interface{}{},
+					"calls": []any{},
 				},
 			},
 		}
@@ -426,20 +426,20 @@ func TestSimulateV1(t *testing.T) {
 		const alwaysRevertCode = "0x600080fd"
 		revertAddr := common.HexToAddress("0xCcCcCcCcCcCcCcCcCcCcCcCcCcCcCcCcCcCcCcCc")
 
-		opts := map[string]interface{}{
-			"blockStateCalls": []interface{}{
-				map[string]interface{}{
-					"stateOverrides": map[string]interface{}{
-						contractAddr.Hex(): map[string]interface{}{
+		opts := map[string]any{
+			"blockStateCalls": []any{
+				map[string]any{
+					"stateOverrides": map[string]any{
+						contractAddr.Hex(): map[string]any{
 							"code": returnsFortyTwoCode,
 						},
-						revertAddr.Hex(): map[string]interface{}{
+						revertAddr.Hex(): map[string]any{
 							"code": alwaysRevertCode,
 						},
 					},
-					"calls": []interface{}{
-						map[string]interface{}{"to": contractAddr.Hex()},
-						map[string]interface{}{"to": revertAddr.Hex()},
+					"calls": []any{
+						map[string]any{"to": contractAddr.Hex()},
+						map[string]any{"to": revertAddr.Hex()},
 					},
 				},
 			},
@@ -464,16 +464,16 @@ func TestSimulateV1(t *testing.T) {
 		contractAddr := common.HexToAddress("0x3333333333333333333333333333333333333333")
 		const contractBytecode = "0x608060405234801561000f575f80fd5b5060043610610029575f3560e01c8063a6f9dae11461002d575b5f80fd5b6100476004803603810190610042919061011e565b61005d565b6040516100549190610158565b60405180910390f35b5f8173ffffffffffffffffffffffffffffffffffffffff168273ffffffffffffffffffffffffffffffffffffffff167f342827c97908e5e2f71151c08502a66d44b6f758e3ac2f1de95f02eb95f0a73560405160405180910390a3819050919050565b5f80fd5b5f73ffffffffffffffffffffffffffffffffffffffff82169050919050565b5f6100ed826100c4565b9050919050565b6100fd816100e3565b8114610107575f80fd5b50565b5f81359050610118816100f4565b92915050565b5f60208284031215610133576101326100c0565b5b5f6101408482850161010a565b91505092915050565b610152816100e3565b82525050565b5f60208201905061016b5f830184610149565b9291505056fea264697066735822122096c65ce6729c0e854dd165928f5e47d45ace055648adf9592712a051b22e44e064736f6c63430008140033"
 
-		opts := map[string]interface{}{
-			"blockStateCalls": []interface{}{
-				map[string]interface{}{
-					"stateOverrides": map[string]interface{}{
-						contractAddr.Hex(): map[string]interface{}{
+		opts := map[string]any{
+			"blockStateCalls": []any{
+				map[string]any{
+					"stateOverrides": map[string]any{
+						contractAddr.Hex(): map[string]any{
 							"code": contractBytecode,
 						},
 					},
-					"calls": []interface{}{
-						map[string]interface{}{
+					"calls": []any{
+						map[string]any{
 							"to":   contractAddr.Hex(),
 							"data": "0xa6f9dae10000000000000000000000005B38Da6a701c568545dCfcB03FcB875f56beddC4",
 						},
