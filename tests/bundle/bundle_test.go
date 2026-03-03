@@ -422,7 +422,8 @@ func checkCase(t *testing.T, net *tests.IntegrationTestNet, client *tests.Pooled
 		txs, plan, counterAddress := makeSignedBundleOnlyTxsAndPlan(t, net, client, c.submittedTxTypes, nil, flags)
 
 		bundler := net.GetSessionSponsor()
-		bundleTx, paymentTxHash := makeBundleTransaction(t, net, txs, plan, bundler)
+		bundleTxUnsigned, paymentTxHash := makeBundleTransaction(t, net, txs, plan, bundler)
+		bundleTx := tests.SignTransaction(t, net.GetChainId(), bundleTxUnsigned, bundler)
 		require.NotNil(t, bundleTx)
 		require.NotZero(t, paymentTxHash)
 
@@ -590,20 +591,10 @@ func makeUnsignedBundleTxs(
 				bundler = net.GetSessionSponsor()
 			}
 			bundleTx, paymentTxHash := makeBundleTransaction(t, net, btxs, bplan, bundler)
-			// remove signature
-			bundleTx = types.NewTx(&types.AccessListTx{
-				Nonce:      bundleTx.Nonce(),
-				GasPrice:   bundleTx.GasPrice(),
-				Gas:        bundleTx.Gas(),
-				To:         bundleTx.To(),
-				Value:      bundleTx.Value(),
-				Data:       bundleTx.Data(),
-				AccessList: bundleTx.AccessList(),
-			})
 
 			require.NotNil(t, bundleTx)
 			require.NotZero(t, paymentTxHash)
-			txs[i] = bundleTx
+			txs[i] = types.NewTx(bundleTx)
 		default:
 			panic(fmt.Sprintf("unexpected type %T in makeUnsignedBundleTxs", v))
 		}

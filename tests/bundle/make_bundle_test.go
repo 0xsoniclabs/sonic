@@ -29,8 +29,8 @@ import (
 )
 
 // makeBundleTransaction creates a bundle transaction with the given transactions and execution plan
-// This function will create the corresponding payment transaction. Both payment and the bundle transaction
-// are signed by the bundler account.
+// This function will create the corresponding payment transaction. The payment transaction
+// is signed by the bundler account.
 // It returns the bundle transaction and the hash of the payment transaction, the later is used
 // for waiting on the completion of the bundle execution, as the bundle transaction will not be included
 // in a block.
@@ -38,7 +38,7 @@ func makeBundleTransaction(t *testing.T,
 	net *tests.IntegrationTestNet,
 	transactions types.Transactions,
 	plan bundle.ExecutionPlan,
-	bundler *tests.Account) (*types.Transaction, common.Hash) {
+	bundler *tests.Account) (types.TxData, common.Hash) {
 	t.Helper()
 
 	client, err := net.GetClient()
@@ -76,21 +76,14 @@ func makeBundleTransaction(t *testing.T,
 	}
 
 	// create the bundle transaction with the same nonce as the payment transaction
-	bundleTx := tests.CreateTransaction(t, net,
-		&types.LegacyTx{Nonce: sameNonceForBundleAndPayment,
+	bundleTx :=
+		types.LegacyTx{Nonce: sameNonceForBundleAndPayment,
 			To:   &bundle.BundleAddress,
 			Gas:  gas,
 			Data: bundle.Encode(bundlePayload),
-		}, bundler)
+		}
 
-	// Sanity check the bundle before sending it to the mempool, if fails to validate before making
-	// a bundle transaction, it will fail to be included in a block and waiting for payment receipt will timeout
-	upgrades := net.GetUpgrades()
-	signer := types.NewCancunSigner(net.GetChainId())
-	_, err = bundle.ValidateTransactionBundle(bundleTx, signer, upgrades)
-	require.NoError(t, err, "failed to validate transaction bundle; %v", err)
-
-	return bundleTx, paymentTx.Hash()
+	return &bundleTx, paymentTx.Hash()
 }
 
 func prepareContract[T any](
