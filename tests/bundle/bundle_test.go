@@ -33,32 +33,38 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const (
-	successfulNormalTx    = 0
-	failedNormalTx        = 1
-	invalidNormalTx       = 2
-	successfulSponsoredTx = 3
-	failedSponsoredTx     = 4
-	invalidSponsoredTx    = 5
-)
+type txType int
 
 const (
-	paymentTxIndex   = -1
-	uncheckedTxIndex = -2
+	successfulNormalTx    txType = 0
+	failedNormalTx        txType = 1
+	invalidNormalTx       txType = 2
+	successfulSponsoredTx txType = 3
+	failedSponsoredTx     txType = 4
+	invalidSponsoredTx    txType = 5
 )
 
+type txIndex int
+
 const (
-	successStatus = types.ReceiptStatusSuccessful
-	failedStatus  = types.ReceiptStatusFailed
+	paymentTxIndex   txIndex = -1
+	uncheckedTxIndex txIndex = -2
+)
+
+type txStatus uint64
+
+const (
+	successStatus txStatus = txStatus(types.ReceiptStatusSuccessful)
+	failedStatus  txStatus = txStatus(types.ReceiptStatusFailed)
 )
 
 type Case struct {
 	tryUntil         bool
 	tolerateFailed   bool
 	tolerateInvalid  bool
-	submittedTxTypes []any
-	blockTxs         []int // index of tx hash of submitted transactions, -1 for paymentTx, -2 for unchecked transactions
-	blockTxStatuses  []uint64
+	submittedTxTypes []any // slice of txType or []txType (for sub-bundle)
+	blockTxIndices   []txIndex
+	blockTxStatuses  []txStatus
 	counter          int64
 }
 
@@ -68,9 +74,9 @@ type NamedCase struct {
 }
 
 type SubCaseVariant struct {
-	submittedTxTypes any
-	blockTxs         []int
-	blockTxStatuses  []uint64
+	submittedTxTypes any // txType or []txType (for sub-bundle)
+	blockTxIndices   []txIndex
+	blockTxStatuses  []txStatus
 	counter          int64
 }
 
@@ -85,60 +91,60 @@ func getSubcases() map[string]SubCase {
 		"normal": {
 			success: SubCaseVariant{
 				successfulNormalTx,
-				[]int{uncheckedTxIndex}, // relative 0
-				[]uint64{successStatus},
+				[]txIndex{uncheckedTxIndex}, // relative 0
+				[]txStatus{successStatus},
 				1,
 			},
 			failed: SubCaseVariant{
 				failedNormalTx,
-				[]int{uncheckedTxIndex}, // relative 0
-				[]uint64{failedStatus},
+				[]txIndex{uncheckedTxIndex}, // relative 0
+				[]txStatus{failedStatus},
 				0,
 			},
 			invalid: SubCaseVariant{
 				invalidNormalTx,
-				[]int{},
-				[]uint64{},
+				[]txIndex{},
+				[]txStatus{},
 				0,
 			},
 		},
 		"sponsored": {
 			success: SubCaseVariant{
 				successfulSponsoredTx,
-				[]int{uncheckedTxIndex, uncheckedTxIndex}, // relative 0, uncheckedTxIndex
-				[]uint64{successStatus, successStatus},
+				[]txIndex{uncheckedTxIndex, uncheckedTxIndex}, // relative 0, uncheckedTxIndex
+				[]txStatus{successStatus, successStatus},
 				1,
 			},
 			failed: SubCaseVariant{
 				failedSponsoredTx,
-				[]int{uncheckedTxIndex, uncheckedTxIndex}, // relative 0, uncheckedTxIndex
-				[]uint64{failedStatus, successStatus},
+				[]txIndex{uncheckedTxIndex, uncheckedTxIndex}, // relative 0, uncheckedTxIndex
+				[]txStatus{failedStatus, successStatus},
 				0,
 			},
 			invalid: SubCaseVariant{
 				invalidSponsoredTx,
-				[]int{},
-				[]uint64{},
+				[]txIndex{},
+				[]txStatus{},
 				0,
 			},
 		},
 		"bundled": {
 			success: SubCaseVariant{
 				[]any{successfulNormalTx, successfulNormalTx},
-				[]int{uncheckedTxIndex, uncheckedTxIndex, uncheckedTxIndex},
-				[]uint64{successStatus, successStatus, successStatus},
+				[]txIndex{uncheckedTxIndex, uncheckedTxIndex, uncheckedTxIndex},
+				[]txStatus{successStatus, successStatus, successStatus},
 				2,
 			},
 			failed: SubCaseVariant{
 				[]any{successfulNormalTx, failedNormalTx},
-				[]int{uncheckedTxIndex},
-				[]uint64{successStatus},
+				[]txIndex{uncheckedTxIndex},
+				[]txStatus{successStatus},
 				0,
 			},
 			invalid: SubCaseVariant{
 				[]any{}, // empty bundle will be converted to bundle with invalid payment transaction
-				[]int{uncheckedTxIndex},
-				[]uint64{failedStatus},
+				[]txIndex{uncheckedTxIndex},
+				[]txStatus{failedStatus},
 				0,
 			},
 		},
@@ -153,8 +159,8 @@ func Test_RunAllUnlessNotTolerated_Works(t *testing.T) {
 				name + "/success",
 				Case{false, false, false,
 					Merge[any](successfulNormalTx, subcase.success.submittedTxTypes, successfulNormalTx),
-					Merge[int](paymentTxIndex, 0, subcase.success.blockTxs, 2),
-					Merge[uint64](successStatus, successStatus, subcase.success.blockTxStatuses, successStatus),
+					Merge[txIndex](paymentTxIndex, txIndex(0), subcase.success.blockTxIndices, txIndex(2)),
+					Merge[txStatus](successStatus, successStatus, subcase.success.blockTxStatuses, successStatus),
 					1 + subcase.success.counter + 1,
 				},
 			},
@@ -162,8 +168,8 @@ func Test_RunAllUnlessNotTolerated_Works(t *testing.T) {
 				name + "/failed",
 				Case{false, false, false,
 					Merge[any](successfulNormalTx, subcase.failed.submittedTxTypes, successfulNormalTx),
-					Merge[int](paymentTxIndex),
-					Merge[uint64](successStatus),
+					Merge[txIndex](paymentTxIndex),
+					Merge[txStatus](successStatus),
 					0,
 				},
 			},
@@ -171,8 +177,8 @@ func Test_RunAllUnlessNotTolerated_Works(t *testing.T) {
 				name + "/invalid",
 				Case{false, false, false,
 					Merge[any](successfulNormalTx, subcase.invalid.submittedTxTypes, successfulNormalTx),
-					Merge[int](paymentTxIndex),
-					Merge[uint64](successStatus),
+					Merge[txIndex](paymentTxIndex),
+					Merge[txStatus](successStatus),
 					0,
 				},
 			},
@@ -181,8 +187,8 @@ func Test_RunAllUnlessNotTolerated_Works(t *testing.T) {
 				name + "/success",
 				Case{false, false, true,
 					Merge[any](successfulNormalTx, subcase.success.submittedTxTypes, successfulNormalTx),
-					Merge[int](paymentTxIndex, 0, subcase.success.blockTxs, 2),
-					Merge[uint64](successStatus, successStatus, subcase.success.blockTxStatuses, successStatus),
+					Merge[txIndex](paymentTxIndex, txIndex(0), subcase.success.blockTxIndices, txIndex(2)),
+					Merge[txStatus](successStatus, successStatus, subcase.success.blockTxStatuses, successStatus),
 					1 + subcase.success.counter + 1,
 				},
 			},
@@ -190,8 +196,8 @@ func Test_RunAllUnlessNotTolerated_Works(t *testing.T) {
 				name + "/failed",
 				Case{false, false, true,
 					Merge[any](successfulNormalTx, subcase.failed.submittedTxTypes, successfulNormalTx),
-					Merge[int](paymentTxIndex),
-					Merge[uint64](successStatus),
+					Merge[txIndex](paymentTxIndex),
+					Merge[txStatus](successStatus),
 					0,
 				},
 			},
@@ -199,8 +205,8 @@ func Test_RunAllUnlessNotTolerated_Works(t *testing.T) {
 				name + "/invalid",
 				Case{false, false, true,
 					Merge[any](successfulNormalTx, subcase.invalid.submittedTxTypes, successfulNormalTx),
-					Merge[int](paymentTxIndex, 0, 2),
-					Merge[uint64](successStatus, successStatus, successStatus),
+					Merge[txIndex](paymentTxIndex, txIndex(0), txIndex(2)),
+					Merge[txStatus](successStatus, successStatus, successStatus),
 					1 + 1,
 				},
 			},
@@ -209,8 +215,8 @@ func Test_RunAllUnlessNotTolerated_Works(t *testing.T) {
 				name + "/success",
 				Case{false, true, false,
 					Merge[any](successfulNormalTx, subcase.success.submittedTxTypes, successfulNormalTx),
-					Merge[int](paymentTxIndex, 0, subcase.success.blockTxs, 2),
-					Merge[uint64](successStatus, successStatus, subcase.success.blockTxStatuses, successStatus),
+					Merge[txIndex](paymentTxIndex, txIndex(0), subcase.success.blockTxIndices, txIndex(2)),
+					Merge[txStatus](successStatus, successStatus, subcase.success.blockTxStatuses, successStatus),
 					1 + subcase.success.counter + 1,
 				},
 			},
@@ -218,8 +224,8 @@ func Test_RunAllUnlessNotTolerated_Works(t *testing.T) {
 				name + "/failed",
 				Case{false, true, false,
 					Merge[any](successfulNormalTx, subcase.failed.submittedTxTypes, successfulNormalTx),
-					Merge[int](paymentTxIndex, 0, subcase.failed.blockTxs, 2),
-					Merge[uint64](successStatus, successStatus, subcase.failed.blockTxStatuses, successStatus),
+					Merge[txIndex](paymentTxIndex, txIndex(0), subcase.failed.blockTxIndices, txIndex(2)),
+					Merge[txStatus](successStatus, successStatus, subcase.failed.blockTxStatuses, successStatus),
 					1 + subcase.failed.counter + 1,
 				},
 			},
@@ -227,8 +233,8 @@ func Test_RunAllUnlessNotTolerated_Works(t *testing.T) {
 				name + "/invalid",
 				Case{false, true, false,
 					Merge[any](successfulNormalTx, subcase.invalid.submittedTxTypes, successfulNormalTx),
-					Merge[int](paymentTxIndex),
-					Merge[uint64](successStatus),
+					Merge[txIndex](paymentTxIndex),
+					Merge[txStatus](successStatus),
 					0,
 				},
 			},
@@ -237,8 +243,8 @@ func Test_RunAllUnlessNotTolerated_Works(t *testing.T) {
 				name + "/success",
 				Case{false, true, true,
 					Merge[any](successfulNormalTx, subcase.success.submittedTxTypes, successfulNormalTx),
-					Merge[int](paymentTxIndex, 0, subcase.success.blockTxs, 2),
-					Merge[uint64](successStatus, successStatus, subcase.success.blockTxStatuses, successStatus),
+					Merge[txIndex](paymentTxIndex, txIndex(0), subcase.success.blockTxIndices, txIndex(2)),
+					Merge[txStatus](successStatus, successStatus, subcase.success.blockTxStatuses, successStatus),
 					1 + subcase.success.counter + 1,
 				},
 			},
@@ -246,8 +252,8 @@ func Test_RunAllUnlessNotTolerated_Works(t *testing.T) {
 				name + "/failed",
 				Case{false, true, true,
 					Merge[any](successfulNormalTx, subcase.failed.submittedTxTypes, successfulNormalTx),
-					Merge[int](paymentTxIndex, 0, subcase.failed.blockTxs, 2),
-					Merge[uint64](successStatus, successStatus, subcase.failed.blockTxStatuses, successStatus),
+					Merge[txIndex](paymentTxIndex, txIndex(0), subcase.failed.blockTxIndices, txIndex(2)),
+					Merge[txStatus](successStatus, successStatus, subcase.failed.blockTxStatuses, successStatus),
 					1 + subcase.failed.counter + 1,
 				},
 			},
@@ -255,8 +261,8 @@ func Test_RunAllUnlessNotTolerated_Works(t *testing.T) {
 				name + "/invalid",
 				Case{false, true, true,
 					Merge[any](successfulNormalTx, subcase.invalid.submittedTxTypes, successfulNormalTx),
-					Merge[int](paymentTxIndex, 0, 2),
-					Merge[uint64](successStatus, successStatus, successStatus),
+					Merge[txIndex](paymentTxIndex, txIndex(0), txIndex(2)),
+					Merge[txStatus](successStatus, successStatus, successStatus),
 					1 + 1,
 				},
 			},
@@ -277,8 +283,8 @@ func Test_RunUntilTolerated_Works(t *testing.T) {
 				name + "/success",
 				Case{true, false, false,
 					Merge[any](subcase.success.submittedTxTypes, successfulNormalTx, successfulNormalTx),
-					Merge[int](paymentTxIndex, subcase.success.blockTxs),
-					Merge[uint64](successStatus, subcase.success.blockTxStatuses),
+					Merge[txIndex](paymentTxIndex, subcase.success.blockTxIndices),
+					Merge[txStatus](successStatus, subcase.success.blockTxStatuses),
 					subcase.success.counter,
 				},
 			},
@@ -286,8 +292,8 @@ func Test_RunUntilTolerated_Works(t *testing.T) {
 				name + "/failed",
 				Case{true, false, false,
 					Merge[any](subcase.failed.submittedTxTypes, successfulNormalTx, successfulNormalTx),
-					Merge[int](paymentTxIndex, subcase.failed.blockTxs, 1),
-					Merge[uint64](successStatus, subcase.failed.blockTxStatuses, successStatus),
+					Merge[txIndex](paymentTxIndex, subcase.failed.blockTxIndices, txIndex(1)),
+					Merge[txStatus](successStatus, subcase.failed.blockTxStatuses, successStatus),
 					subcase.failed.counter + 1,
 				},
 			},
@@ -295,8 +301,8 @@ func Test_RunUntilTolerated_Works(t *testing.T) {
 				name + "/invalid",
 				Case{true, false, false,
 					Merge[any](subcase.invalid.submittedTxTypes, successfulNormalTx, successfulNormalTx),
-					Merge[int](paymentTxIndex, 1),
-					Merge[uint64](successStatus, successStatus),
+					Merge[txIndex](paymentTxIndex, txIndex(1)),
+					Merge[txStatus](successStatus, successStatus),
 					1,
 				},
 			},
@@ -305,8 +311,8 @@ func Test_RunUntilTolerated_Works(t *testing.T) {
 				name + "/success",
 				Case{true, false, true,
 					Merge[any](subcase.success.submittedTxTypes, successfulNormalTx, successfulNormalTx),
-					Merge[int](paymentTxIndex, subcase.success.blockTxs),
-					Merge[uint64](successStatus, subcase.success.blockTxStatuses),
+					Merge[txIndex](paymentTxIndex, subcase.success.blockTxIndices),
+					Merge[txStatus](successStatus, subcase.success.blockTxStatuses),
 					subcase.success.counter,
 				},
 			},
@@ -314,8 +320,8 @@ func Test_RunUntilTolerated_Works(t *testing.T) {
 				name + "/failed",
 				Case{true, false, true,
 					Merge[any](subcase.failed.submittedTxTypes, successfulNormalTx, successfulNormalTx),
-					Merge[int](paymentTxIndex, subcase.failed.blockTxs, 1),
-					Merge[uint64](successStatus, subcase.failed.blockTxStatuses, successStatus),
+					Merge[txIndex](paymentTxIndex, subcase.failed.blockTxIndices, txIndex(1)),
+					Merge[txStatus](successStatus, subcase.failed.blockTxStatuses, successStatus),
 					subcase.failed.counter + 1,
 				},
 			},
@@ -323,8 +329,8 @@ func Test_RunUntilTolerated_Works(t *testing.T) {
 				name + "/invalid",
 				Case{true, false, true,
 					Merge[any](subcase.invalid.submittedTxTypes, successfulNormalTx, successfulNormalTx),
-					Merge[int](paymentTxIndex),
-					Merge[uint64](successStatus),
+					Merge[txIndex](paymentTxIndex),
+					Merge[txStatus](successStatus),
 					0,
 				},
 			},
@@ -333,8 +339,8 @@ func Test_RunUntilTolerated_Works(t *testing.T) {
 				name + "/success",
 				Case{true, true, false,
 					Merge[any](subcase.success.submittedTxTypes, successfulNormalTx, successfulNormalTx),
-					Merge[int](paymentTxIndex, subcase.success.blockTxs),
-					Merge[uint64](successStatus, subcase.success.blockTxStatuses),
+					Merge[txIndex](paymentTxIndex, subcase.success.blockTxIndices),
+					Merge[txStatus](successStatus, subcase.success.blockTxStatuses),
 					subcase.success.counter,
 				},
 			},
@@ -342,8 +348,8 @@ func Test_RunUntilTolerated_Works(t *testing.T) {
 				name + "/failed",
 				Case{true, true, false,
 					Merge[any](subcase.failed.submittedTxTypes, successfulNormalTx, successfulNormalTx),
-					Merge[int](paymentTxIndex, subcase.failed.blockTxs),
-					Merge[uint64](successStatus, subcase.failed.blockTxStatuses),
+					Merge[txIndex](paymentTxIndex, subcase.failed.blockTxIndices),
+					Merge[txStatus](successStatus, subcase.failed.blockTxStatuses),
 					subcase.failed.counter,
 				},
 			},
@@ -351,8 +357,8 @@ func Test_RunUntilTolerated_Works(t *testing.T) {
 				name + "/invalid",
 				Case{true, true, false,
 					Merge[any](subcase.invalid.submittedTxTypes, successfulNormalTx, successfulNormalTx),
-					Merge[int](paymentTxIndex, 1),
-					Merge[uint64](successStatus, successStatus),
+					Merge[txIndex](paymentTxIndex, txIndex(1)),
+					Merge[txStatus](successStatus, successStatus),
 					1,
 				},
 			},
@@ -361,8 +367,8 @@ func Test_RunUntilTolerated_Works(t *testing.T) {
 				name + "/success",
 				Case{true, true, true,
 					Merge[any](subcase.success.submittedTxTypes, successfulNormalTx, successfulNormalTx),
-					Merge[int](paymentTxIndex, subcase.success.blockTxs),
-					Merge[uint64](successStatus, subcase.success.blockTxStatuses),
+					Merge[txIndex](paymentTxIndex, subcase.success.blockTxIndices),
+					Merge[txStatus](successStatus, subcase.success.blockTxStatuses),
 					subcase.success.counter,
 				},
 			},
@@ -370,8 +376,8 @@ func Test_RunUntilTolerated_Works(t *testing.T) {
 				name + "/failed",
 				Case{true, true, true,
 					Merge[any](subcase.failed.submittedTxTypes, successfulNormalTx, successfulNormalTx),
-					Merge[int](paymentTxIndex, subcase.failed.blockTxs),
-					Merge[uint64](successStatus, subcase.failed.blockTxStatuses),
+					Merge[txIndex](paymentTxIndex, subcase.failed.blockTxIndices),
+					Merge[txStatus](successStatus, subcase.failed.blockTxStatuses),
 					subcase.failed.counter,
 				},
 			},
@@ -379,8 +385,8 @@ func Test_RunUntilTolerated_Works(t *testing.T) {
 				name + "/invalid",
 				Case{true, true, true,
 					Merge[any](subcase.invalid.submittedTxTypes, successfulNormalTx, successfulNormalTx),
-					Merge[int](paymentTxIndex),
-					Merge[uint64](successStatus),
+					Merge[txIndex](paymentTxIndex),
+					Merge[txStatus](successStatus),
 					0,
 				},
 			},
@@ -435,15 +441,15 @@ func checkCase(t *testing.T, net *tests.IntegrationTestNet, client *tests.Pooled
 
 		// Check transactions hashes and statuses
 		transactionHashes := getTransactionsInBlock(t, net, receipt.BlockNumber)
-		require.Len(t, transactionHashes, len(c.blockTxs))
-		for i := range c.blockTxs {
-			switch c.blockTxs[i] {
+		require.Len(t, transactionHashes, len(c.blockTxIndices))
+		for i := range c.blockTxIndices {
+			switch c.blockTxIndices[i] {
 			case paymentTxIndex:
 				checkHashesEqAndStatus(t, net, paymentTxHash, c.blockTxStatuses[i], transactionHashes[i])
 			case uncheckedTxIndex:
 				checkStatus(t, net, c.blockTxStatuses[i], transactionHashes[i])
 			default:
-				checkHashesEqAndStatus(t, net, txs[c.blockTxs[i]].Hash(), c.blockTxStatuses[i], transactionHashes[i])
+				checkHashesEqAndStatus(t, net, txs[c.blockTxIndices[i]].Hash(), c.blockTxStatuses[i], transactionHashes[i])
 			}
 		}
 
@@ -522,11 +528,11 @@ func makeUnsignedBundleTxs(
 	revertGasLimit := counterGasLimit
 
 	txs := make([]*types.Transaction, len(txTypes))
-	for i, txType := range txTypes {
+	for i, tType := range txTypes {
 		tx := types.AccessListTx{}
-		switch v := txType.(type) {
-		case int:
-			switch txType {
+		switch v := tType.(type) {
+		case txType:
+			switch tType {
 			case successfulNormalTx:
 				tx = types.AccessListTx{
 					To:       counterAddress,
@@ -580,16 +586,17 @@ func makeUnsignedBundleTxs(
 				}
 				txs[i] = types.NewTx(&tx)
 			}
-		case []any:
+		case []any: // subBundleTxs
+			bundleTTypes := tType.([]any)
 			flags := bundle.ExecutionFlag(0)
-			btxs, bplan, _ := makeSignedBundleOnlyTxsAndPlan(t, net, client, txType.([]any), counterAddress, flags)
+			bundleTxs, bundlePlan, _ := makeSignedBundleOnlyTxsAndPlan(t, net, client, bundleTTypes, counterAddress, flags)
 
 			bundler := senders[i]
-			if len(txType.([]any)) == 0 {
+			if len(bundleTTypes) == 0 {
 				// make invalid paymentTx
 				bundler = net.GetSessionSponsor()
 			}
-			bundleTx, paymentTxHash := makeBundleTransaction(t, net, btxs, bplan, bundler)
+			bundleTx, paymentTxHash := makeBundleTransaction(t, net, bundleTxs, bundlePlan, bundler)
 			// remove signature
 			bundleTx = types.NewTx(&types.AccessListTx{
 				Nonce:      bundleTx.Nonce(),
@@ -652,15 +659,15 @@ func makeSignedBundleOnlyTxsAndPlan(
 	return txs, plan, counterAddress
 }
 
-func checkHashesEqAndStatus(t *testing.T, net *tests.IntegrationTestNet, expectedHash common.Hash, expectedStatus uint64, txHash common.Hash) {
+func checkHashesEqAndStatus(t *testing.T, net *tests.IntegrationTestNet, expectedHash common.Hash, expectedStatus txStatus, txHash common.Hash) {
 	t.Helper()
 	require.Equal(t, expectedHash, txHash)
 	checkStatus(t, net, expectedStatus, txHash)
 }
 
-func checkStatus(t *testing.T, net *tests.IntegrationTestNet, status uint64, txHash common.Hash) {
+func checkStatus(t *testing.T, net *tests.IntegrationTestNet, status txStatus, txHash common.Hash) {
 	t.Helper()
 	receipt, err := net.GetReceipt(txHash)
 	require.NoError(t, err, "failed to get transaction receipt; %v", err)
-	require.Equal(t, status, receipt.Status)
+	require.Equal(t, status, txStatus(receipt.Status))
 }
