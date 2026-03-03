@@ -243,7 +243,7 @@ func (em *Emitter) isValidBundleTx(tx *types.Transaction) bool {
 	}
 
 	// Ignore if it is not a valid bundle transaction.
-	bundle, plan, err := bundle.ValidateTransactionBundle(tx, em.world.TransactionSigner, em.world.GetRules().Upgrades)
+	bundle, plan, err := bundle.ValidateTransactionBundle(tx, em.world.TransactionSigner)
 	if err != nil {
 		return false
 	}

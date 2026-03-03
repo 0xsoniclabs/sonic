@@ -976,8 +976,13 @@ func filterObsoleteBundles(
 			continue
 		}
 
+		// If bundles are disabled, all bundles are to be removed.
+		if !rules.Upgrades.TransactionBundles {
+			continue
+		}
+
 		// Check static properties of the bundle, to make sure it is not malformed.
-		_, execPlan, err := bundle.ValidateTransactionBundle(tx, signer, rules.Upgrades)
+		_, execPlan, err := bundle.ValidateTransactionBundle(tx, signer)
 		if err != nil {
 			if log != nil {
 				log.Warn("Invalid bundle transaction in the proposal", "tx", tx.Hash(), "issue", err)

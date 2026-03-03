@@ -19,7 +19,6 @@ package bundle
 import (
 	"fmt"
 
-	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
@@ -30,13 +29,7 @@ import (
 func ValidateTransactionBundle(
 	tx *types.Transaction,
 	signer types.Signer,
-	upgrades opera.Upgrades,
 ) (*TransactionBundle, *ExecutionPlan, error) {
-
-	if !upgrades.TransactionBundles {
-		// feature not enabled, nothing to validate
-		return nil, nil, nil
-	}
 
 	if !IsTransactionBundle(tx) {
 		// not a bundle transaction, nothing to validate

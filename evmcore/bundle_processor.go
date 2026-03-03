@@ -126,7 +126,7 @@ func (b *bundleCheckerImplementation) isPending(tx *types.Transaction) bool {
 	}
 
 	// Decode the bundle.
-	bundle, plan, err := bundle.ValidateTransactionBundle(tx, b.signer, b.rules.Upgrades)
+	bundle, plan, err := bundle.ValidateTransactionBundle(tx, b.signer)
 	if err != nil {
 		return false
 	}

@@ -21,7 +21,6 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -30,36 +29,7 @@ import (
 
 var testChainID = big.NewInt(1)
 
-func TestValidate_OnlyValidatesWithFeatureEnabled(t *testing.T) {
-
-	upgrade := opera.Upgrades{
-		TransactionBundles: false,
-	}
-
-	generator := newTestBundleGenerator(t, 2)
-
-	tests := map[string]*types.Transaction{
-		"not a bundle":   generator.makeNonBundleTx(),
-		"empty bundle":   generator.makeEmptyBundleTx(),
-		"valid bundle":   generator.makeValidBundleTx(t),
-		"invalid bundle": generator.makeWrongVersionBundleTx(),
-		"unsound bundle": generator.makeUnsoundBundleTx(t),
-	}
-
-	for name, tx := range tests {
-		t.Run(name, func(t *testing.T) {
-			_, _, err := ValidateTransactionBundle(tx, generator.signer, upgrade)
-			require.NoError(t, err)
-		})
-	}
-
-}
-
 func TestValidate_IdentifiesBundles(t *testing.T) {
-
-	upgrade := opera.Upgrades{
-		TransactionBundles: true,
-	}
 
 	generator := newTestBundleGenerator(t, 2)
 
@@ -74,7 +44,7 @@ func TestValidate_IdentifiesBundles(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			bundle, plan, err := ValidateTransactionBundle(test.tx, generator.signer, upgrade)
+			bundle, plan, err := ValidateTransactionBundle(test.tx, generator.signer)
 			require.NoError(t, err)
 			if test.expectBundle {
 				require.NotNil(t, bundle, "expected a bundle transaction")
@@ -88,9 +58,6 @@ func TestValidate_IdentifiesBundles(t *testing.T) {
 }
 
 func TestValidate_ReturnsErrorsOnValidationFailure(t *testing.T) {
-	upgrade := opera.Upgrades{
-		TransactionBundles: true,
-	}
 
 	generator := newTestBundleGenerator(t, 2)
 
@@ -114,7 +81,7 @@ func TestValidate_ReturnsErrorsOnValidationFailure(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			_, _, err := ValidateTransactionBundle(test.tx, generator.signer, upgrade)
+			_, _, err := ValidateTransactionBundle(test.tx, generator.signer)
 			require.ErrorContains(t, err, test.expectedError)
 		})
 	}
