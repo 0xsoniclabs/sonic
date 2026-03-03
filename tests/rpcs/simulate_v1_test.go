@@ -57,7 +57,6 @@ type simulateV1CallError struct {
 // TestSimulateV1 tests the eth_simulateV1 RPC endpoint.
 func TestSimulateV1(t *testing.T) {
 	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{})
-	t.Parallel()
 
 	t.Run("empty_block_state_calls_returns_error", func(t *testing.T) {
 		client, err := net.GetClient()
