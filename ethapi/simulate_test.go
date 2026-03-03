@@ -560,47 +560,52 @@ func TestSanitizeCall_BlockGasLimitReachedError(t *testing.T) {
 	require.Equal(t, errCodeBlockGasLimitReached, simTxError.ErrorCode())
 }
 
-func TestRepairSimLogs_UpdatesBlockHashInContractLogs(t *testing.T) {
-	blockHash := common.Hash{42}
-	log1 := &types.Log{BlockHash: common.Hash{}}
-	log2 := &types.Log{BlockHash: common.Hash{}}
+func TestRepairSimLogs(t *testing.T) {
 
-	calls := []simCallResult{}
-	allLogs := []*types.Log{log1, log2}
-
-	repairSimLogs(calls, allLogs, blockHash)
-
-	require.Equal(t, blockHash, log1.BlockHash)
-	require.Equal(t, blockHash, log2.BlockHash)
-}
-
-func TestRepairSimLogs_UpdatesBlockHashInTransferLogs(t *testing.T) {
-	blockHash := common.Hash{99}
-	transferLog := &types.Log{BlockHash: common.Hash{}}
-
-	calls := []simCallResult{
-		{Logs: []*types.Log{transferLog}},
+	evmHeader := &evmcore.EvmHeader{
+		Hash:   common.Hash{42},
+		Number: big.NewInt(10),
+		Time:   inter.FromUnix(1000),
 	}
+	t.Run("UpdatesBlockHashInContractLogs", func(t *testing.T) {
+		log1 := &types.Log{BlockHash: common.Hash{}}
+		log2 := &types.Log{BlockHash: common.Hash{}}
 
-	repairSimLogs(calls, nil, blockHash)
+		calls := []simCallResult{}
+		allLogs := []*types.Log{log1, log2}
 
-	require.Equal(t, blockHash, transferLog.BlockHash)
-}
+		repairSimLogs(calls, allLogs, &evmcore.EvmBlock{EvmHeader: *evmHeader})
 
-func TestRepairSimLogs_UpdatesBothContractAndTransferLogs(t *testing.T) {
-	blockHash := common.Hash{77}
-	contractLog := &types.Log{BlockHash: common.Hash{}}
-	transferLog := &types.Log{BlockHash: common.Hash{}}
+		require.Equal(t, evmHeader.Hash, log1.BlockHash)
+		require.Equal(t, evmHeader.Hash, log2.BlockHash)
+	})
 
-	calls := []simCallResult{
-		{Logs: []*types.Log{transferLog}},
-	}
-	allLogs := []*types.Log{contractLog}
+	t.Run("UpdatesBlockHashInTransferLogs", func(t *testing.T) {
+		transferLog := &types.Log{BlockHash: common.Hash{}}
 
-	repairSimLogs(calls, allLogs, blockHash)
+		calls := []simCallResult{
+			{Logs: []*types.Log{transferLog}},
+		}
 
-	require.Equal(t, blockHash, contractLog.BlockHash)
-	require.Equal(t, blockHash, transferLog.BlockHash)
+		repairSimLogs(calls, nil, &evmcore.EvmBlock{EvmHeader: *evmHeader})
+
+		require.Equal(t, evmHeader.Hash, transferLog.BlockHash)
+	})
+
+	t.Run("UpdatesBothContractAndTransferLogs", func(t *testing.T) {
+		contractLog := &types.Log{BlockHash: common.Hash{}}
+		transferLog := &types.Log{BlockHash: common.Hash{}}
+
+		calls := []simCallResult{
+			{Logs: []*types.Log{transferLog}},
+		}
+		allLogs := []*types.Log{contractLog}
+
+		repairSimLogs(calls, allLogs, &evmcore.EvmBlock{EvmHeader: *evmHeader})
+
+		require.Equal(t, evmHeader.Hash, contractLog.BlockHash)
+		require.Equal(t, evmHeader.Hash, transferLog.BlockHash)
+	})
 }
 
 func TestSetCallPriceDefaults_SetsEIP1559FieldsWhenBaseFeePresent(t *testing.T) {

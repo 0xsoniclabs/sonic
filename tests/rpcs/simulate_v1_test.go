@@ -17,6 +17,7 @@
 package rpcs
 
 import (
+	"bytes"
 	"math/big"
 	"strings"
 	"testing"
@@ -24,6 +25,7 @@ import (
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 )
 
@@ -33,6 +35,7 @@ type simulateV1BlockResult struct {
 	Number   string                 `json:"number"`
 	GasLimit string                 `json:"gasLimit"`
 	Calls    []simulateV1CallResult `json:"calls"`
+	Bloom    types.Bloom            `json:"logsBloom"`
 }
 
 type simulateV1CallResult struct {
@@ -504,5 +507,8 @@ func TestSimulateV1(t *testing.T) {
 		}
 		require.True(t, foundOwnerSetLog,
 			"must find an OwnerSet log from the overridden contract at address %s", contractAddr.Hex())
+
+		emptyBloom := bytes.Equal(result[0].Bloom.Bytes(), make([]byte, len(result[0].Bloom)))
+		require.False(t, emptyBloom, "logsBloom must not be empty when logs are emitted")
 	})
 }

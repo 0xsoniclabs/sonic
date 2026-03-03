@@ -127,15 +127,16 @@ func (r *simCallResult) MarshalJSON() ([]byte, error) {
 
 // simBlockResult is the result of a simulated block.
 type simBlockResult struct {
-	block   *evmcore.EvmBlock
-	calls   []simCallResult
-	chainId *big.Int
-	fullTx  bool
-	senders map[common.Hash]common.Address
+	block    *evmcore.EvmBlock
+	calls    []simCallResult
+	chainId  *big.Int
+	fullTx   bool
+	senders  map[common.Hash]common.Address
+	receipts []*types.Receipt
 }
 
 func (r *simBlockResult) MarshalJSON() ([]byte, error) {
-	blockJson, err := RPCMarshalBlock(r.block, nil, true, r.fullTx, r.chainId)
+	blockJson, err := RPCMarshalBlock(r.block, r.receipts, true, r.fullTx, r.chainId)
 	if err != nil {
 		return nil, err
 	}
@@ -257,18 +258,19 @@ func (sim *simulator) execute(ctx context.Context, blocks []simBlock) ([]*simBlo
 		parent  = sim.base
 	)
 	for bi, block := range blocks {
-		evmBlock, callResults, senders, err := sim.processBlock(ctx, &block, headers[bi], parent, headers[:bi], timeout)
+		evmBlock, callResults, senders, receipts, err := sim.processBlock(ctx, &block, headers[bi], parent, headers[:bi], timeout)
 		if err != nil {
 			return nil, err
 		}
 		// Update the header slot with the assembled block's header (including hash).
 		headers[bi] = evmBlock.Header()
 		results[bi] = &simBlockResult{
-			block:   evmBlock,
-			calls:   callResults,
-			chainId: sim.chainConfig.ChainID,
-			fullTx:  sim.fullTx,
-			senders: senders,
+			block:    evmBlock,
+			calls:    callResults,
+			chainId:  sim.chainConfig.ChainID,
+			fullTx:   sim.fullTx,
+			senders:  senders,
+			receipts: receipts,
 		}
 		parent = evmBlock.Header()
 	}
@@ -284,10 +286,10 @@ func (sim *simulator) processBlock(
 	parent *evmcore.EvmHeader,
 	prevHeaders []*evmcore.EvmHeader,
 	timeout time.Duration,
-) (*evmcore.EvmBlock, []simCallResult, map[common.Hash]common.Address, error) {
+) (*evmcore.EvmBlock, []simCallResult, map[common.Hash]common.Address, []*types.Receipt, error) {
 
 	if parent == nil {
-		return nil, nil, nil, errors.New("parent header is nil")
+		return nil, nil, nil, nil, errors.New("parent header is nil")
 	}
 
 	// Resolve base fee.
@@ -307,7 +309,7 @@ func (sim *simulator) processBlock(
 	precompiles := sim.activePrecompiles(sim.base)
 
 	if err := sim.applyStateOverrides(block.StateOverrides, precompiles, sim.state); err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 
 	var (
@@ -315,6 +317,7 @@ func (sim *simulator) processBlock(
 		txes        = make([]*types.Transaction, len(block.Calls))
 		callResults = make([]simCallResult, len(block.Calls))
 		senders     = make(map[common.Hash]common.Address)
+		receipts    = make([]*types.Receipt, len(block.Calls))
 		vmConfig    = vm.Config{
 			NoBaseFee: !sim.validate,
 		}
@@ -340,11 +343,11 @@ func (sim *simulator) processBlock(
 
 	for i, call := range block.Calls {
 		if err := ctx.Err(); err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 
 		if err := sim.sanitizeCall(&call, sim.state, header, &gasUsed); err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 
 		tx := call.ToTransaction()
@@ -357,14 +360,14 @@ func (sim *simulator) processBlock(
 
 		msg, err := call.ToMessage(sim.gp.Gas(), header.BaseFee, log.Root())
 		if err != nil {
-			return nil, nil, nil, simTxValidationError(err)
+			return nil, nil, nil, nil, simTxValidationError(err)
 		}
 		msg.SkipNonceChecks = !sim.validate
 		msg.SkipTransactionChecks = !sim.validate
 
 		result, applyErr := applySimMessage(ctx, evm, msg, timeout, sim.gp)
 		if applyErr != nil {
-			return nil, nil, nil, simTxValidationError(applyErr)
+			return nil, nil, nil, nil, simTxValidationError(applyErr)
 		}
 
 		contractLogs := sim.state.GetLogs(txHash, common.Hash{})
@@ -405,6 +408,13 @@ func (sim *simulator) processBlock(
 			callRes.Status = hexutil.Uint64(types.ReceiptStatusSuccessful)
 		}
 		callResults[i] = callRes
+
+		receipt := &types.Receipt{
+			Status: uint64(callRes.Status),
+			Logs:   callRes.Logs,
+		}
+		receipt.Bloom = types.CreateBloom(receipt)
+		receipts[i] = receipt
 	}
 
 	header.GasUsed = gasUsed
@@ -421,22 +431,27 @@ func (sim *simulator) processBlock(
 	evmBlock.Hash = blockHash
 
 	// Repair all log entries with the now-known block hash.
-	repairSimLogs(callResults, allContractLogs, blockHash)
+	repairSimLogs(callResults, allContractLogs, evmBlock)
 
-	return evmBlock, callResults, senders, nil
+	return evmBlock, callResults, senders, receipts, nil
 }
 
 // repairSimLogs updates the BlockHash field in all collected logs now that the
 // block hash is known. It updates both the logs stored in callResults and the
 // shared allContractLogs slice (which shares pointers with callResults).
-func repairSimLogs(calls []simCallResult, allLogs []*types.Log, blockHash common.Hash) {
+func repairSimLogs(calls []simCallResult, allLogs []*types.Log, evmBlock *evmcore.EvmBlock) {
+	blockHash := evmBlock.Hash
 	for _, l := range allLogs {
 		l.BlockHash = blockHash
+		l.BlockNumber = evmBlock.NumberU64()
+		l.BlockTimestamp = uint64(evmBlock.Time.Unix())
 	}
 	// Also repair transfer pseudo-logs, which are only in callResults.
 	for i := range calls {
 		for j := range calls[i].Logs {
 			calls[i].Logs[j].BlockHash = blockHash
+			calls[i].Logs[j].BlockNumber = evmBlock.NumberU64()
+			calls[i].Logs[j].BlockTimestamp = uint64(evmBlock.Time.Unix())
 		}
 	}
 }
