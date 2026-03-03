@@ -634,11 +634,7 @@ func signBundleTxs(t *testing.T, net *tests.IntegrationTestNet, txs []*types.Tra
 				types.AccessTuple{Address: bundle.BundleOnly, StorageKeys: []common.Hash{plan.Hash()}},
 			),
 		}
-		if tx.GasPrice().Cmp(big.NewInt(0)) == 0 {
-			txs[i] = gas_subsidies.MakeSponsorRequestTransaction(t, bundleOnlyTx, net.GetChainId(), senders[i])
-		} else {
-			txs[i] = tests.SignTransaction(t, net.GetChainId(), bundleOnlyTx, senders[i])
-		}
+		txs[i] = tests.SignTransaction(t, net.GetChainId(), bundleOnlyTx, senders[i])
 	}
 }
 

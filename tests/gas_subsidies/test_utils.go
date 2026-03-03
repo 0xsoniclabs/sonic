@@ -134,10 +134,10 @@ func validateSponsoredTxInBlock(
 	require.True(found, "sponsored transaction not found in the block")
 }
 
-// MakeSponsorRequestTransaction creates a sponsored transaction (with
+// makeSponsorRequestTransaction creates a sponsored transaction (with
 // gas price zero) from the given sender to the given receiver with the given
 // nonce.
-func MakeSponsorRequestTransaction(t *testing.T, tx types.TxData, chainId *big.Int, sender *tests.Account) *types.Transaction {
+func makeSponsorRequestTransaction(t *testing.T, tx types.TxData, chainId *big.Int, sender *tests.Account) *types.Transaction {
 	t.Helper()
 	signer := types.LatestSignerForChainID(chainId)
 	switch tx := tx.(type) {
