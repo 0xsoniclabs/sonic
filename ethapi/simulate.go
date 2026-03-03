@@ -29,7 +29,6 @@ import (
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	interState "github.com/0xsoniclabs/sonic/inter/state"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
@@ -655,47 +654,4 @@ func (sim *simulator) makeHeaders(blocks []simBlock) ([]*evmcore.EvmHeader, erro
 		prev = header
 	}
 	return res, nil
-}
-
-// SimulateV1 executes a series of transactions on top of a base state.
-// Transactions are packed into simulated blocks; each block can override header
-// fields and apply state overrides before execution. The function never commits
-// anything to the blockchain.
-func (s *PublicBlockChainAPI) SimulateV1(ctx context.Context, opts simOpts, blockNrOrHash *rpc.BlockNumberOrHash) ([]*simBlockResult, error) {
-	if len(opts.BlockStateCalls) == 0 {
-		return nil, simInvalidParamsError()
-	}
-	if len(opts.BlockStateCalls) > maxSimulateBlocks {
-		return nil, simClientLimitExceededError()
-	}
-
-	if blockNrOrHash == nil {
-		n := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
-		blockNrOrHash = &n
-	}
-
-	state, base, err := s.b.StateAndBlockByNumberOrHash(ctx, *blockNrOrHash)
-	if state == nil || err != nil {
-		return nil, err
-	}
-	defer state.Release()
-
-	gasCap := s.b.RPCGasCap()
-	if gasCap == 0 {
-		gasCap = ^uint64(0) // MaxUint64
-	}
-
-	chainConfig := s.b.ChainConfig(idx.Block(base.Number.Uint64()))
-
-	sim := &simulator{
-		b:              s.b,
-		state:          state,
-		base:           base.Header(),
-		chainConfig:    chainConfig,
-		gp:             new(core.GasPool).AddGas(gasCap),
-		traceTransfers: opts.TraceTransfers,
-		validate:       opts.Validation,
-		fullTx:         opts.ReturnFullTransactions,
-	}
-	return sim.execute(ctx, opts.BlockStateCalls)
 }
