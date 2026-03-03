@@ -316,18 +316,17 @@ func TestOperaEVMProcessor_Finalize_ReportsAggregatedNumberOfSkippedTransactions
 	require.Equal(3, numSkipped)
 }
 
-func TestOperaEVMProcessor_Finalize_DoesNotBlocksOnSyncChannel_WhenBlockIsOlderThanOneHour(t *testing.T) {
+func TestOperaEVMProcessor_Finalize_DoesNotBlockOnSyncChannel_WhenBlockIsOlderThanOneHour(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		stateDb := state.NewMockStateDB(ctrl)
 
-		any := gomock.Any()
-
-		stateDb.EXPECT().BeginBlock(any)
+		stateDb.EXPECT().BeginBlock(gomock.Any())
 		stateDb.EXPECT().GetStateHash()
 		// EndBlock should return a channel,but this should be ignored for
 		// blocks older than one hour.
 		stateDb.EXPECT().EndBlock(gomock.Any()).Return(make(<-chan error))
+
 		evmModule := New()
 		blockTime := time.Now().Add(-1*time.Hour - time.Second)
 		processor := evmModule.Start(
@@ -348,17 +347,15 @@ func TestOperaEVMProcessor_Finalize_DoesNotBlocksOnSyncChannel_WhenBlockIsOlderT
 	})
 }
 
-func TestOperaEVMProcessor_Finalize_DoesNotBlocksOnSyncChannel_WhenSyncChannelIsNil(t *testing.T) {
-	// Underlying db implementations may not implement to possibility to wait on
+func TestOperaEVMProcessor_Finalize_DoesNotBlockOnSyncChannel_WhenSyncChannelIsNil(t *testing.T) {
+	// Underlying db implementations may not implement the possibility to wait on
 	// an async finalize operation. The client must work correctly in these cases.
 
 	synctest.Test(t, func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		stateDb := state.NewMockStateDB(ctrl)
 
-		any := gomock.Any()
-
-		stateDb.EXPECT().BeginBlock(any)
+		stateDb.EXPECT().BeginBlock(gomock.Any())
 		stateDb.EXPECT().GetStateHash()
 		// If the sync channel is nil, Finalize should not block even for recent blocks.
 		stateDb.EXPECT().EndBlock(gomock.Any()).Return(nil)
@@ -382,15 +379,13 @@ func TestOperaEVMProcessor_Finalize_DoesNotBlocksOnSyncChannel_WhenSyncChannelIs
 	})
 }
 
-func TestOperaEVMProcessor_Finalize_BlocksOnSyncChannel_WhenBlockIsYoungerThanOneHour(t *testing.T) {
+func TestOperaEVMProcessor_Finalize_BlockOnSyncChannel_WhenBlockIsYoungerThanOneHour(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 
 		ctrl := gomock.NewController(t)
 		stateDb := state.NewMockStateDB(ctrl)
 
-		any := gomock.Any()
-
-		stateDb.EXPECT().BeginBlock(any)
+		stateDb.EXPECT().BeginBlock(gomock.Any())
 		stateDb.EXPECT().GetStateHash()
 
 		syncChannel := make(chan error)
