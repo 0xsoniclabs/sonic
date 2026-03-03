@@ -34,11 +34,13 @@ import (
 // It returns the bundle transaction and the hash of the payment transaction, the later is used
 // for waiting on the completion of the bundle execution, as the bundle transaction will not be included
 // in a block.
-func makeBundleTransaction(t *testing.T,
+func makeBundleTransaction(
+	t *testing.T,
 	net *tests.IntegrationTestNet,
 	transactions types.Transactions,
 	plan bundle.ExecutionPlan,
-	bundler *tests.Account) (*types.Transaction, common.Hash) {
+	bundler *tests.Account,
+) (*types.Transaction, common.Hash) {
 	t.Helper()
 
 	client, err := net.GetClient()
@@ -61,7 +63,10 @@ func makeBundleTransaction(t *testing.T,
 			Value: cost,
 			AccessList: types.AccessList{
 				{Address: bundle.BundleOnly, StorageKeys: []common.Hash{plan.Hash()}},
-			}}, bundler)
+			},
+		},
+		bundler,
+	)
 
 	var gas uint64
 	for _, tx := range append(transactions, paymentTx) {
@@ -81,7 +86,9 @@ func makeBundleTransaction(t *testing.T,
 			To:   &bundle.BundleAddress,
 			Gas:  gas,
 			Data: bundle.Encode(bundlePayload),
-		}, bundler)
+		},
+		bundler,
+	)
 
 	// Sanity check the bundle before sending it to the mempool, if fails to validate before making
 	// a bundle transaction, it will fail to be included in a block and waiting for payment receipt will timeout

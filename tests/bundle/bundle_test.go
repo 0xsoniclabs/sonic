@@ -619,7 +619,13 @@ func makeUnsignedBundleTxs(
 	return txs, senders, *counterAddress
 }
 
-func signBundleOnlyTxs(t *testing.T, net *tests.IntegrationTestNet, txs []*types.Transaction, senders []*tests.Account, plan bundle.ExecutionPlan) {
+func signBundleOnlyTxs(
+	t *testing.T,
+	net *tests.IntegrationTestNet,
+	txs []*types.Transaction,
+	senders []*tests.Account,
+	plan bundle.ExecutionPlan,
+) {
 	for i, tx := range txs {
 		bundleOnlyTx := &types.AccessListTx{
 			Nonce:    tx.Nonce(),
@@ -659,13 +665,24 @@ func makeSignedBundleOnlyTxsAndPlan(
 	return txs, plan, counterAddress
 }
 
-func checkHashesEqAndStatus(t *testing.T, net *tests.IntegrationTestNet, expectedHash common.Hash, expectedStatus txStatus, txHash common.Hash) {
+func checkHashesEqAndStatus(
+	t *testing.T,
+	net *tests.IntegrationTestNet,
+	expectedHash common.Hash,
+	expectedStatus txStatus,
+	txHash common.Hash,
+) {
 	t.Helper()
 	require.Equal(t, expectedHash, txHash)
 	checkStatus(t, net, expectedStatus, txHash)
 }
 
-func checkStatus(t *testing.T, net *tests.IntegrationTestNet, status txStatus, txHash common.Hash) {
+func checkStatus(
+	t *testing.T,
+	net *tests.IntegrationTestNet,
+	status txStatus,
+	txHash common.Hash,
+) {
 	t.Helper()
 	receipt, err := net.GetReceipt(txHash)
 	require.NoError(t, err, "failed to get transaction receipt; %v", err)
