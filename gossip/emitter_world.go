@@ -96,7 +96,7 @@ func (ew *emitterWorldProc) Header(hash common.Hash, number uint64) *evmcore.Evm
 }
 
 func (ew *emitterWorldProc) HasBundlePlanRecentlyBeenProcessed(execPlanHash common.Hash) bool {
-	has, err := ew.s.store.HasRecentlyBeenProcessed(execPlanHash)
+	has, err := ew.s.store.HasBundleRecentlyBeenProcessed(execPlanHash)
 	if err != nil {
 		return false
 	}

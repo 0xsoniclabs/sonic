@@ -26,10 +26,18 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
-// This file implements the storage and management of processed bundle hashes in
+// This file implements the storage and management of processed bundles in
 // the Store. Processed bundles are tracked to prevent re-processing the same
-// bundle multiple times. The store keeps track of recently processed bundle
-// hashes, up to a maximum block range defined by bundle.MaxBlockRange.
+// bundle multiple times. The store keeps track of recently processed bundles
+// by indexing the hashes of their execution plans, along with the block number
+// and position in which they were executed. The store also maintains a hash of
+// the history of processed bundles, which is updated after every block, in
+// to cross-validate that validators remain aligned on their bundle processing
+// history.
+//
+// Bundles need to be indexed by the execution plan hash instead of the hash of
+// the bundled transactions enclosing them, since otherwise the same plan may be
+// resubmitted multiple times using different envelop transactions.
 //
 // In the underlying table, the following keys are used:
 //  - key: [] -> [uint64, hash]                        // last block and hash for which the processed bundles have been stored
@@ -39,31 +47,27 @@ import (
 // The hash of the processed bundle's history is computed as follows:
 //  - initially, the hash is zero
 //  - for every update, the hash is updated as follows:
-//      addedExecPlanHash = Xor(<hashes of newly added bundles>)
-//      deletedExecPlanHash = Xor(<hashes of deleted bundles>)
+//      addedExecPlanHash = Xor(<hashes of newly added execution plans>)
+//      deletedExecPlanHash = Xor(<hashes of deleted execution plans>)
 //      newHash = Keccak256(oldHash || addedExecPlanHash || deletedExecPlanHash || blockNum)
 //
 // The hash can be used to verify that validators remain aligned on their bundle
 // processing history.
 
-// AddProcessedBundles adds the given bundle hashes as processed for the given
+// AddProcessedBundles adds the given bundle execution information for the given
 // block number. This should be called after every block, listing the bundles
 // that got accepted in the block.
 func (s *Store) AddProcessedBundles(blockNum uint64, executedBundles []bundle.ExecutionInfo) error {
-
-	// TODO: add a mutex to avoid concurrent updates.
-
-	// Steps to be conducted:
-	//  - add new hashes to the store
-	//  - remove old hashes from the store
-	//  - update the state hash
+	// Make sure there is only one update at any time.
+	s.processedBundleMutex.Lock()
+	defer s.processedBundleMutex.Unlock()
 
 	// Register and index new hashes.
 	table := s.table.ProcessedBundles
 	batch := table.NewBatch()
 	addedHash := common.Hash{}
 	for _, info := range executedBundles {
-		hash := info.Hash
+		hash := info.ExecutionPlanHash
 
 		data := make([]byte, 12)
 		binary.BigEndian.PutUint64(data[:8], info.BlockNum)
@@ -82,20 +86,20 @@ func (s *Store) AddProcessedBundles(blockNum uint64, executedBundles []bundle.Ex
 	// Delete out-dated hashes.
 	deletedHash := common.Hash{}
 	if blockNum > bundle.MaxBlockRange {
-		oldBlockNum := blockNum - bundle.MaxBlockRange
+		oldestValidBlockNum := blockNum - bundle.MaxBlockRange + 1
 		it := table.NewIterator([]byte{'i'}, nil)
 		for it.Next() {
 			key := it.Key()
 			if len(key) != 1+8+32 {
 				continue
 			}
-			num := binary.BigEndian.Uint64(key[1 : 1+8])
-			if num > oldBlockNum {
+			blockNumber := binary.BigEndian.Uint64(key[1 : 1+8])
+			if blockNumber >= oldestValidBlockNum {
 				break
 			}
 			hash := common.BytesToHash(key[1+8:])
 			err := errors.Join(
-				batch.Delete(getIndexKey(num, hash)),
+				batch.Delete(getIndexKey(blockNumber, hash)),
 				batch.Delete(getEntryKey(hash)),
 			)
 			if err != nil {
@@ -133,11 +137,15 @@ func (s *Store) AddProcessedBundles(blockNum uint64, executedBundles []bundle.Ex
 	return nil
 }
 
-// HasRecentlyBeenProcessed checks if the given bundle hash has been processed
-// recently, i.e., if it is present in the store. Note that this does not check
-// for bundles that have been processed too far in the past, as those are
-// removed from the store after bundle.MaxBlockRange blocks.
-func (s *Store) HasRecentlyBeenProcessed(execPlanHash common.Hash) (bool, error) {
+// HasBundleRecentlyBeenProcessed checks if a bundle execution plan with the
+// given hash has been processed recently. This is used to prevent re-processing
+// the same bundle multiple times.
+//
+// Note: the store only keeps track of the bundles being executed in the last
+// bundle.MaxBlockRange blocks, so this function returns false for bundles
+// that were processed too far in the past and have been cleaned up from the
+// store.
+func (s *Store) HasBundleRecentlyBeenProcessed(execPlanHash common.Hash) (bool, error) {
 	res, err := s.table.ProcessedBundles.Get(getEntryKey(execPlanHash))
 	if err != nil {
 		return false, fmt.Errorf("failed to check processed bundle: %v", err)
@@ -145,8 +153,11 @@ func (s *Store) HasRecentlyBeenProcessed(execPlanHash common.Hash) (bool, error)
 	return res != nil, nil
 }
 
-// GetBundleExecutionInfo returns the execution info for a processed bundle hash, if
-// it is present in the store.
+// GetBundleExecutionInfo returns the execution info for a processed execution
+// plan, if it is present in the store. Note that execution info is being
+// automatically removed from the store after bundle.MaxBlockRange blocks,
+// so this function returns nil for bundles that were processed too far in the
+// past.
 func (s *Store) GetBundleExecutionInfo(execPlanHash common.Hash) (*bundle.ExecutionInfo, error) {
 	res, err := s.table.ProcessedBundles.Get(getEntryKey(execPlanHash))
 	if err != nil {
@@ -161,9 +172,9 @@ func (s *Store) GetBundleExecutionInfo(execPlanHash common.Hash) (*bundle.Execut
 	blockNum := binary.BigEndian.Uint64(res[:8])
 	position := binary.BigEndian.Uint32(res[8:])
 	return &bundle.ExecutionInfo{
-		Hash:     execPlanHash,
-		BlockNum: blockNum,
-		Position: position,
+		ExecutionPlanHash: execPlanHash,
+		BlockNum:          blockNum,
+		Position:          position,
 	}, nil
 }
 

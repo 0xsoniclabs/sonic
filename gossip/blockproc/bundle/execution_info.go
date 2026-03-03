@@ -2,11 +2,11 @@ package bundle
 
 import "github.com/ethereum/go-ethereum/common"
 
-// ExecutionInfo contains information about a processed bundle that can be used
-// for tracking and querying purposes. It includes the bundle's hash, the block
-// number, and the position within the block.
+// ExecutionInfo contains information about a processed bundle. It connects an
+// execution plan's hash with the block number and position in which it got
+// executed.
 type ExecutionInfo struct {
-	Hash     common.Hash
-	BlockNum uint64
-	Position uint32
+	ExecutionPlanHash common.Hash
+	BlockNum          uint64
+	Position          uint32
 }

@@ -24,7 +24,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestStore_HasRecentlyBeenProcessed_TracksAddedBundleHashes(t *testing.T) {
+func TestStore_HasBundleRecentlyBeenProcessed_TracksAddedBundleHashes(t *testing.T) {
 	require := require.New(t)
 	store, err := NewMemStore(t)
 	require.NoError(err)
@@ -34,7 +34,7 @@ func TestStore_HasRecentlyBeenProcessed_TracksAddedBundleHashes(t *testing.T) {
 	hash3 := common.Hash{7, 8, 9}
 
 	recentlyProcessed := func(hash common.Hash) bool {
-		res, err := store.HasRecentlyBeenProcessed(hash)
+		res, err := store.HasBundleRecentlyBeenProcessed(hash)
 		require.NoError(err)
 		return res
 	}
@@ -68,7 +68,7 @@ func TestStore_HasRecentlyBeenProcessed_CleansUpOldBundleHashes(t *testing.T) {
 	hash3 := common.Hash{7, 8, 9}
 
 	recentlyProcessed := func(hash common.Hash) bool {
-		res, err := store.HasRecentlyBeenProcessed(hash)
+		res, err := store.HasBundleRecentlyBeenProcessed(hash)
 		require.NoError(err)
 		return res
 	}
@@ -115,14 +115,14 @@ func TestStore_GetBundleExecutionInfo_ReturnsInfoForAddedBundleHashes(t *testing
 	hash2 := common.Hash{4, 5, 6}
 
 	info1 := bundle.ExecutionInfo{
-		Hash:     hash1,
-		BlockNum: 1,
-		Position: 0,
+		ExecutionPlanHash: hash1,
+		BlockNum:          1,
+		Position:          0,
 	}
 	info2 := bundle.ExecutionInfo{
-		Hash:     hash2,
-		BlockNum: 2,
-		Position: 1,
+		ExecutionPlanHash: hash2,
+		BlockNum:          2,
+		Position:          1,
 	}
 
 	info, err := store.GetBundleExecutionInfo(hash1)
@@ -183,8 +183,8 @@ func TestStore_GetProcessedBundleHistoryHash_InitiallyZero(t *testing.T) {
 
 func wrapInfo(hash common.Hash) bundle.ExecutionInfo {
 	return bundle.ExecutionInfo{
-		Hash:     hash,
-		BlockNum: 1,
-		Position: 0,
+		ExecutionPlanHash: hash,
+		BlockNum:          1,
+		Position:          0,
 	}
 }

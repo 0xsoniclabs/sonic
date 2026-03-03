@@ -549,8 +549,8 @@ func consensusCallbackBeginBlockFn(
 							log.Crit("Failed to extract execution plan from bundle", "err", err)
 						}
 						bundleInfos[i] = bundle.ExecutionInfo{
-							Hash:     plan.Hash(),
-							BlockNum: uint64(blockCtx.Idx),
+							ExecutionPlanHash: plan.Hash(),
+							BlockNum:          uint64(blockCtx.Idx),
 							// TODO: add position in block
 						}
 					}
@@ -1018,7 +1018,7 @@ func filterObsoleteBundles(
 		// Check that the execution plan of this bundle has not been processed
 		// before at any other time during its valid range.
 		hash := execPlan.Hash()
-		seen, err := tracker.HasRecentlyBeenProcessed(hash)
+		seen, err := tracker.HasBundleRecentlyBeenProcessed(hash)
 		if err != nil {
 			return nil, err
 		}
@@ -1043,5 +1043,5 @@ type metricCounter interface {
 }
 
 type bundleTracker interface {
-	HasRecentlyBeenProcessed(execPlanHash common.Hash) (bool, error)
+	HasBundleRecentlyBeenProcessed(execPlanHash common.Hash) (bool, error)
 }
