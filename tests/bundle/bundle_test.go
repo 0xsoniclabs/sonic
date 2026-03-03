@@ -149,7 +149,7 @@ func Test_RunAllUnlessNotTolerated_Works(t *testing.T) {
 	cases := []NamedCase{}
 	for name, subcase := range getSubcases() {
 		cases = append(cases, []NamedCase{
-			NamedCase{
+			{
 				name + "/success",
 				Case{false, false, false,
 					Merge[any](successfulNormalTx, subcase.success.submittedTxTypes, successfulNormalTx),
@@ -158,7 +158,7 @@ func Test_RunAllUnlessNotTolerated_Works(t *testing.T) {
 					1 + subcase.success.counter + 1,
 				},
 			},
-			NamedCase{
+			{
 				name + "/failed",
 				Case{false, false, false,
 					Merge[any](successfulNormalTx, subcase.failed.submittedTxTypes, successfulNormalTx),
@@ -167,7 +167,7 @@ func Test_RunAllUnlessNotTolerated_Works(t *testing.T) {
 					0,
 				},
 			},
-			NamedCase{
+			{
 				name + "/invalid",
 				Case{false, false, false,
 					Merge[any](successfulNormalTx, subcase.invalid.submittedTxTypes, successfulNormalTx),
@@ -177,7 +177,7 @@ func Test_RunAllUnlessNotTolerated_Works(t *testing.T) {
 				},
 			},
 			// TolerateInvalid
-			NamedCase{
+			{
 				name + "/success",
 				Case{false, false, true,
 					Merge[any](successfulNormalTx, subcase.success.submittedTxTypes, successfulNormalTx),
@@ -186,7 +186,7 @@ func Test_RunAllUnlessNotTolerated_Works(t *testing.T) {
 					1 + subcase.success.counter + 1,
 				},
 			},
-			NamedCase{
+			{
 				name + "/failed",
 				Case{false, false, true,
 					Merge[any](successfulNormalTx, subcase.failed.submittedTxTypes, successfulNormalTx),
@@ -195,7 +195,7 @@ func Test_RunAllUnlessNotTolerated_Works(t *testing.T) {
 					0,
 				},
 			},
-			NamedCase{
+			{
 				name + "/invalid",
 				Case{false, false, true,
 					Merge[any](successfulNormalTx, subcase.invalid.submittedTxTypes, successfulNormalTx),
@@ -205,7 +205,7 @@ func Test_RunAllUnlessNotTolerated_Works(t *testing.T) {
 				},
 			},
 			// TolerateFailed
-			NamedCase{
+			{
 				name + "/success",
 				Case{false, true, false,
 					Merge[any](successfulNormalTx, subcase.success.submittedTxTypes, successfulNormalTx),
@@ -214,7 +214,7 @@ func Test_RunAllUnlessNotTolerated_Works(t *testing.T) {
 					1 + subcase.success.counter + 1,
 				},
 			},
-			NamedCase{
+			{
 				name + "/failed",
 				Case{false, true, false,
 					Merge[any](successfulNormalTx, subcase.failed.submittedTxTypes, successfulNormalTx),
@@ -223,7 +223,7 @@ func Test_RunAllUnlessNotTolerated_Works(t *testing.T) {
 					1 + subcase.failed.counter + 1,
 				},
 			},
-			NamedCase{
+			{
 				name + "/invalid",
 				Case{false, true, false,
 					Merge[any](successfulNormalTx, subcase.invalid.submittedTxTypes, successfulNormalTx),
@@ -233,7 +233,7 @@ func Test_RunAllUnlessNotTolerated_Works(t *testing.T) {
 				},
 			},
 			// TolerateFailed & TolerateInvalid
-			NamedCase{
+			{
 				name + "/success",
 				Case{false, true, true,
 					Merge[any](successfulNormalTx, subcase.success.submittedTxTypes, successfulNormalTx),
@@ -242,7 +242,7 @@ func Test_RunAllUnlessNotTolerated_Works(t *testing.T) {
 					1 + subcase.success.counter + 1,
 				},
 			},
-			NamedCase{
+			{
 				name + "/failed",
 				Case{false, true, true,
 					Merge[any](successfulNormalTx, subcase.failed.submittedTxTypes, successfulNormalTx),
@@ -251,7 +251,7 @@ func Test_RunAllUnlessNotTolerated_Works(t *testing.T) {
 					1 + subcase.failed.counter + 1,
 				},
 			},
-			NamedCase{
+			{
 				name + "/invalid",
 				Case{false, true, true,
 					Merge[any](successfulNormalTx, subcase.invalid.submittedTxTypes, successfulNormalTx),
@@ -273,7 +273,7 @@ func Test_RunUntilTolerated_Works(t *testing.T) {
 	cases := []NamedCase{}
 	for name, subcase := range getSubcases() {
 		cases = append(cases, []NamedCase{
-			NamedCase{
+			{
 				name + "/success",
 				Case{true, false, false,
 					Merge[any](subcase.success.submittedTxTypes, successfulNormalTx, successfulNormalTx),
@@ -282,7 +282,7 @@ func Test_RunUntilTolerated_Works(t *testing.T) {
 					subcase.success.counter,
 				},
 			},
-			NamedCase{
+			{
 				name + "/failed",
 				Case{true, false, false,
 					Merge[any](subcase.failed.submittedTxTypes, successfulNormalTx, successfulNormalTx),
@@ -291,7 +291,7 @@ func Test_RunUntilTolerated_Works(t *testing.T) {
 					subcase.failed.counter + 1,
 				},
 			},
-			NamedCase{
+			{
 				name + "/invalid",
 				Case{true, false, false,
 					Merge[any](subcase.invalid.submittedTxTypes, successfulNormalTx, successfulNormalTx),
@@ -301,7 +301,7 @@ func Test_RunUntilTolerated_Works(t *testing.T) {
 				},
 			},
 			// TolerateInvalid
-			NamedCase{
+			{
 				name + "/success",
 				Case{true, false, true,
 					Merge[any](subcase.success.submittedTxTypes, successfulNormalTx, successfulNormalTx),
@@ -310,7 +310,7 @@ func Test_RunUntilTolerated_Works(t *testing.T) {
 					subcase.success.counter,
 				},
 			},
-			NamedCase{
+			{
 				name + "/failed",
 				Case{true, false, true,
 					Merge[any](subcase.failed.submittedTxTypes, successfulNormalTx, successfulNormalTx),
@@ -319,7 +319,7 @@ func Test_RunUntilTolerated_Works(t *testing.T) {
 					subcase.failed.counter + 1,
 				},
 			},
-			NamedCase{
+			{
 				name + "/invalid",
 				Case{true, false, true,
 					Merge[any](subcase.invalid.submittedTxTypes, successfulNormalTx, successfulNormalTx),
@@ -329,7 +329,7 @@ func Test_RunUntilTolerated_Works(t *testing.T) {
 				},
 			},
 			// TolerateFailed
-			NamedCase{
+			{
 				name + "/success",
 				Case{true, true, false,
 					Merge[any](subcase.success.submittedTxTypes, successfulNormalTx, successfulNormalTx),
@@ -338,7 +338,7 @@ func Test_RunUntilTolerated_Works(t *testing.T) {
 					subcase.success.counter,
 				},
 			},
-			NamedCase{
+			{
 				name + "/failed",
 				Case{true, true, false,
 					Merge[any](subcase.failed.submittedTxTypes, successfulNormalTx, successfulNormalTx),
@@ -347,7 +347,7 @@ func Test_RunUntilTolerated_Works(t *testing.T) {
 					subcase.failed.counter,
 				},
 			},
-			NamedCase{
+			{
 				name + "/invalid",
 				Case{true, true, false,
 					Merge[any](subcase.invalid.submittedTxTypes, successfulNormalTx, successfulNormalTx),
@@ -357,7 +357,7 @@ func Test_RunUntilTolerated_Works(t *testing.T) {
 				},
 			},
 			// TolerateFailed & TolerateInvalid
-			NamedCase{
+			{
 				name + "/success",
 				Case{true, true, true,
 					Merge[any](subcase.success.submittedTxTypes, successfulNormalTx, successfulNormalTx),
@@ -366,7 +366,7 @@ func Test_RunUntilTolerated_Works(t *testing.T) {
 					subcase.success.counter,
 				},
 			},
-			NamedCase{
+			{
 				name + "/failed",
 				Case{true, true, true,
 					Merge[any](subcase.failed.submittedTxTypes, successfulNormalTx, successfulNormalTx),
@@ -375,7 +375,7 @@ func Test_RunUntilTolerated_Works(t *testing.T) {
 					subcase.failed.counter,
 				},
 			},
-			NamedCase{
+			{
 				name + "/invalid",
 				Case{true, true, true,
 					Merge[any](subcase.invalid.submittedTxTypes, successfulNormalTx, successfulNormalTx),
@@ -446,12 +446,13 @@ func checkCase(t *testing.T, net *tests.IntegrationTestNet, client *tests.Pooled
 		// Check transactions hashes and statuses
 		transactionHashes := getTransactionsInBlock(t, net, receipt.BlockNumber)
 		require.Len(t, transactionHashes, len(c.blockTxs))
-		for i, _ := range c.blockTxs {
-			if c.blockTxs[i] == paymentTxIndex {
+		for i := range c.blockTxs {
+			switch c.blockTxs[i] {
+			case paymentTxIndex:
 				checkHashesEqAndStatus(t, net, paymentTxHash, c.blockTxStatuses[i], transactionHashes[i])
-			} else if c.blockTxs[i] == uncheckedTxIndex {
+			case uncheckedTxIndex:
 				checkStatus(t, net, c.blockTxStatuses[i], transactionHashes[i])
-			} else {
+			default:
 				checkHashesEqAndStatus(t, net, txs[c.blockTxs[i]].Hash(), c.blockTxStatuses[i], transactionHashes[i])
 			}
 		}
