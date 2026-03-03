@@ -364,6 +364,7 @@ func (r *transactionRunner) runTransactionBundle(
 				res = append(res, txResults...)
 			}
 		}
+		return append([]ProcessedTransaction{payment}, res...), StatusSuccessful
 	} else {
 		for _, btx := range txBundle.Bundle {
 			txResults, status := runTransaction(ctxt, btx, txIndex+1+len(res)) // payment + included txs
@@ -374,13 +375,12 @@ func (r *transactionRunner) runTransactionBundle(
 
 			if isTolerated(status, txBundle.Flags) {
 				log.Info("Got tolerated transaction, stopping", "tx", btx.Hash().Hex())
-				break
+				return append([]ProcessedTransaction{payment}, res...), StatusSuccessful
 			}
 			log.Info("Got non-tolerated transaction, continuing", "tx", btx.Hash().Hex())
 		}
+		return append([]ProcessedTransaction{payment}, res...), StatusFailed
 	}
-
-	return append([]ProcessedTransaction{payment}, res...), StatusSuccessful
 }
 
 func isTolerated(status Status, flags bundle.ExecutionFlag) bool {
