@@ -121,7 +121,7 @@ type bundleCheckerImplementation struct {
 
 func (b *bundleCheckerImplementation) isPending(tx *types.Transaction) bool {
 	// If bundling is disabled, purge all bundles from the pool.
-	if b.rules.Upgrades.TransactionBundles {
+	if !b.rules.Upgrades.TransactionBundles {
 		return false
 	}
 
