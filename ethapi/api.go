@@ -1593,6 +1593,52 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 	}
 }
 
+// SimulateV1 executes series of transactions on top of a base state.
+// The transactions are packed into blocks. For each block, block header
+// fields can be overridden. The state can also be overridden prior to
+// execution of each block.
+//
+// Note, this function doesn't make any changes in the state/blockchain and is
+// useful to execute and retrieve values.
+func (s *PublicBlockChainAPI) SimulateV1(ctx context.Context, opts simOpts, blockNrOrHash *rpc.BlockNumberOrHash) ([]*simBlockResult, error) {
+	if len(opts.BlockStateCalls) == 0 {
+		return nil, simInvalidParamsError()
+	}
+	if len(opts.BlockStateCalls) > maxSimulateBlocks {
+		return nil, simClientLimitExceededError()
+	}
+
+	if blockNrOrHash == nil {
+		n := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
+		blockNrOrHash = &n
+	}
+
+	state, base, err := s.b.StateAndBlockByNumberOrHash(ctx, *blockNrOrHash)
+	if state == nil || err != nil {
+		return nil, err
+	}
+	defer state.Release()
+
+	gasCap := s.b.RPCGasCap()
+	if gasCap == 0 {
+		gasCap = ^uint64(0) // MaxUint64
+	}
+
+	chainConfig := s.b.ChainConfig(idx.Block(base.Number.Uint64()))
+
+	sim := &simulator{
+		b:              s.b,
+		state:          state,
+		base:           base.Header(),
+		chainConfig:    chainConfig,
+		gp:             new(core.GasPool).AddGas(gasCap),
+		traceTransfers: opts.TraceTransfers,
+		validate:       opts.Validation,
+		fullTx:         opts.ReturnFullTransactions,
+	}
+	return sim.execute(ctx, opts.BlockStateCalls)
+}
+
 // PublicTransactionPoolAPI exposes methods for the RPC interface
 type PublicTransactionPoolAPI struct {
 	b         Backend
