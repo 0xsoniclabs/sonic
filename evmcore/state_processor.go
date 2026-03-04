@@ -60,6 +60,14 @@ func NewStateProcessor(
 	}
 }
 
+// ExecutionSummary contains the result of processing a list of transactions,
+// including the list of processed transactions with their receipts and the list
+// of processed bundles.
+type ExecutionSummary struct {
+	ProcessedTransactions []ProcessedTransaction
+	ProcessedBundles      []ProcessedBundle
+}
+
 // ProcessedTransaction represents a transaction that was considered for
 // inclusion in a block by the state processor. It contains the transaction
 // itself and the receipt either confirming its execution, or nil if the
@@ -67,6 +75,12 @@ func NewStateProcessor(
 type ProcessedTransaction struct {
 	Transaction *types.Transaction
 	Receipt     *types.Receipt
+}
+
+// ProcessedBundle summarizes the result of a processed bundle.
+type ProcessedBundle struct {
+	Bundle   bundle.TransactionBundle
+	Position uint32 // < position in the block transaction list
 }
 
 // Process processes the state changes according to the Ethereum rules by running
@@ -94,7 +108,7 @@ type ProcessedTransaction struct {
 func (p *StateProcessor) Process(
 	block *EvmBlock, statedb state.StateDB, cfg vm.Config, gasLimit uint64,
 	usedGas *uint64, onNewLog func(*types.Log),
-) []ProcessedTransaction {
+) ExecutionSummary {
 	sonicDifficulty := big.NewInt(1)
 	return p.ProcessWithDifficulty(block, statedb, cfg, gasLimit, usedGas, onNewLog, sonicDifficulty)
 }
@@ -106,7 +120,7 @@ func (p *StateProcessor) Process(
 func (p *StateProcessor) ProcessWithDifficulty(
 	block *EvmBlock, statedb state.StateDB, cfg vm.Config, gasLimit uint64,
 	usedGas *uint64, onNewLog func(*types.Log), difficulty *big.Int,
-) []ProcessedTransaction {
+) ExecutionSummary {
 	var (
 		gp           = new(core.GasPool).AddGas(gasLimit)
 		header       = block.Header()
@@ -181,8 +195,9 @@ const (
 )
 
 // runTransaction is a helper function to process a list of transactions. It
-// returns a list of ProcessedTransaction, containing the transaction and its
-// receipt (or nil if the transaction was skipped).
+// returns an ExecutionSummary listing ProcessedTransactions, containing the
+// transaction and its receipt (or nil if the transaction was skipped) as well
+// as processed bundles.
 //
 // The function is intended to be used by both the Process function and the
 // incremental transaction processor (BeginBlock/TransactionProcessor).
@@ -190,28 +205,38 @@ func runTransactions(
 	context *runContext,
 	transactions types.Transactions,
 	txIndexOffset int,
-) []ProcessedTransaction {
+) ExecutionSummary {
 	processed := make([]ProcessedTransaction, 0, len(transactions))
+	var bundles []ProcessedBundle
 	for _, tx := range transactions {
 		nextId := len(processed) + txIndexOffset
-		txs, _ := runTransaction(context, tx, nextId)
+		txs, processedBundle, _ := runTransaction(context, tx, nextId)
 		processed = append(processed, txs...)
+		if processedBundle != nil {
+			bundles = append(bundles, *processedBundle)
+		}
 	}
-	return processed
+	return ExecutionSummary{
+		ProcessedTransactions: processed,
+		ProcessedBundles:      bundles,
+	}
 }
 
 func runTransaction(
 	context *runContext,
 	tx *types.Transaction,
 	txIndexOffset int,
-) ([]ProcessedTransaction, Status) {
-	if context.upgrades.GasSubsidies && subsidies.IsSponsorshipRequest(tx) {
-		return context.runner.runSponsoredTransaction(context, tx, txIndexOffset)
-	} else if context.upgrades.TransactionBundles && bundle.IsTransactionBundle(tx) {
+) ([]ProcessedTransaction, *ProcessedBundle, Status) {
+	// Since a transaction bundle has a gas-cap of 0 it would be considered a
+	// sponsorship request. Thus, we need to check for bundles first.
+	if context.upgrades.TransactionBundles && bundle.IsTransactionBundle(tx) {
 		return context.runner.runTransactionBundle(context, tx, txIndexOffset)
+	} else if context.upgrades.GasSubsidies && subsidies.IsSponsorshipRequest(tx) {
+		res, status := context.runner.runSponsoredTransaction(context, tx, txIndexOffset)
+		return res, nil, status
 	} else {
 		res, status := context.runner.runRegularTransaction(context, tx, txIndexOffset)
-		return []ProcessedTransaction{res}, status
+		return []ProcessedTransaction{res}, nil, status
 	}
 }
 
@@ -221,7 +246,7 @@ func runTransaction(
 type _transactionRunner interface {
 	runRegularTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) (ProcessedTransaction, Status)
 	runSponsoredTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) ([]ProcessedTransaction, Status)
-	runTransactionBundle(ctxt *runContext, tx *types.Transaction, txIndex int) ([]ProcessedTransaction, Status)
+	runTransactionBundle(ctxt *runContext, tx *types.Transaction, txIndex int) ([]ProcessedTransaction, *ProcessedBundle, Status)
 }
 
 // transactionRunner implements the _transactionRunner interface by using an
@@ -326,37 +351,42 @@ func (r *transactionRunner) runTransactionBundle(
 	ctxt *runContext,
 	tx *types.Transaction,
 	txIndex int,
-) ([]ProcessedTransaction, Status) {
+) ([]ProcessedTransaction, *ProcessedBundle, Status) {
 
 	if !ctxt.upgrades.TransactionBundles {
 		log.Warn("Transaction bundles are not enabled, skipping bundle transaction", "tx", tx.Hash().Hex())
-		return []ProcessedTransaction{{Transaction: tx}}, StatusSkipped
+		return []ProcessedTransaction{{Transaction: tx}}, nil, StatusSkipped
 	}
 
 	txBundle, plan, err := bundle.ValidateTransactionBundle(tx, ctxt.signer)
 	if err != nil {
 		log.Warn("Invalid bundle skip", "tx", tx.Hash().Hex(), "error", err)
-		return []ProcessedTransaction{{Transaction: tx}}, StatusSkipped
+		return []ProcessedTransaction{{Transaction: tx}}, nil, StatusSkipped
 	}
 
 	if !plan.IsInRange(ctxt.blockNumber.Uint64()) {
 		log.Warn("Bundle skipped due to out-of-range execution plan", "tx", tx.Hash().Hex(), "planRange", fmt.Sprintf("[%d,%d]", plan.Earliest, plan.Latest), "blockNumber", ctxt.blockNumber.Uint64())
-		return []ProcessedTransaction{{Transaction: tx}}, StatusSkipped
+		return []ProcessedTransaction{{Transaction: tx}}, nil, StatusSkipped
 	}
 
 	res := make([]ProcessedTransaction, 0, len(txBundle.Bundle))
 
+	processedBundle := &ProcessedBundle{
+		Bundle:   *txBundle,
+		Position: uint32(txIndex),
+	}
+
 	bundleCheckpoint := ctxt.statedb.InterTxSnapshot()
 	if !txBundle.Flags.TryUntil() {
 		for _, btx := range txBundle.Bundle {
-			txResults, status := runTransaction(ctxt, btx, txIndex+1+len(res)) // payment + included txs
+			txResults, _, status := runTransaction(ctxt, btx, txIndex+1+len(res)) // payment + included txs
 
 			if !isTolerated(status, txBundle.Flags) {
 				log.Info("Got non-tolerated transaction in bundle, reverting all", "tx", btx.Hash().Hex())
 				if err := ctxt.statedb.RevertToInterTxSnapshot(bundleCheckpoint); err != nil {
 					log.Error("Failed to revert to checkpoint", "err", err)
 				}
-				return []ProcessedTransaction{}, StatusFailed
+				return []ProcessedTransaction{}, processedBundle, StatusFailed
 			}
 			log.Info("Got tolerated transaction in bundle, continuing", "tx", btx.Hash().Hex())
 
@@ -364,10 +394,10 @@ func (r *transactionRunner) runTransactionBundle(
 				res = append(res, txResults...)
 			}
 		}
-		return res, StatusSuccessful
+		return res, processedBundle, StatusSuccessful
 	} else {
 		for _, btx := range txBundle.Bundle {
-			txResults, status := runTransaction(ctxt, btx, txIndex+1+len(res)) // payment + included txs
+			txResults, _, status := runTransaction(ctxt, btx, txIndex+1+len(res)) // payment + included txs
 
 			if status != StatusSkipped {
 				res = append(res, txResults...)
@@ -375,11 +405,11 @@ func (r *transactionRunner) runTransactionBundle(
 
 			if isTolerated(status, txBundle.Flags) {
 				log.Info("Got tolerated transaction, stopping", "tx", btx.Hash().Hex())
-				return res, StatusSuccessful
+				return res, processedBundle, StatusSuccessful
 			}
 			log.Info("Got non-tolerated transaction, continuing", "tx", btx.Hash().Hex())
 		}
-		return res, StatusFailed
+		return res, processedBundle, StatusFailed
 	}
 }
 
@@ -502,7 +532,7 @@ type TransactionProcessor struct {
 // the transaction in the block. It returns the list of all transactions that
 // have been attempted to be processed to cover the given transaction as well as
 // their receipts if they did not get skipped.
-func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) []ProcessedTransaction {
+func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) ExecutionSummary {
 	return runTransactions(newRunContext(
 		tp.signer, tp.header.BaseFee, tp.stateDb, tp.gp, tp.blockNumber,
 		&tp.usedGas, tp.onNewLog, tp.upgrades, &transactionRunner{evm{tp.vmEnvironment}},

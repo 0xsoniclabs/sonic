@@ -84,10 +84,10 @@ func (m *Mock_stateProcessor) EXPECT() *Mock_stateProcessorMockRecorder {
 }
 
 // Process mocks base method.
-func (m *Mock_stateProcessor) Process(block *evmcore.EvmBlock, statedb state.StateDB, vmCfg vm.Config, gasLimit uint64, gasUsed *uint64, onNewLog func(*types.Log)) []evmcore.ProcessedTransaction {
+func (m *Mock_stateProcessor) Process(block *evmcore.EvmBlock, statedb state.StateDB, vmCfg vm.Config, gasLimit uint64, gasUsed *uint64, onNewLog func(*types.Log)) evmcore.ExecutionSummary {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Process", block, statedb, vmCfg, gasLimit, gasUsed, onNewLog)
-	ret0, _ := ret[0].([]evmcore.ProcessedTransaction)
+	ret0, _ := ret[0].(evmcore.ExecutionSummary)
 	return ret0
 }
 
