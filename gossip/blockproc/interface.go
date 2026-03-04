@@ -50,7 +50,7 @@ type TxTransactor interface {
 
 type SealerProcessor interface {
 	EpochSealing() bool
-	SealEpoch() (iblockproc.BlockState, iblockproc.EpochState)
+	SealEpoch(common.Hash) (iblockproc.BlockState, iblockproc.EpochState)
 	Update(bs iblockproc.BlockState, es iblockproc.EpochState)
 }
 
@@ -68,7 +68,7 @@ type ConfirmedEventsModule interface {
 }
 
 type EVMProcessor interface {
-	Execute(txs types.Transactions, gasLimit uint64) []evmcore.ProcessedTransaction
+	Execute(txs types.Transactions, gasLimit uint64) evmcore.ExecutionSummary
 	Finalize() (evmBlock *evmcore.EvmBlock, numSkipped int, receipts types.Receipts)
 }
 

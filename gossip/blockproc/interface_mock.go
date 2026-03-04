@@ -214,18 +214,18 @@ func (mr *MockSealerProcessorMockRecorder) EpochSealing() *gomock.Call {
 }
 
 // SealEpoch mocks base method.
-func (m *MockSealerProcessor) SealEpoch() (iblockproc.BlockState, iblockproc.EpochState) {
+func (m *MockSealerProcessor) SealEpoch(arg0 common.Hash) (iblockproc.BlockState, iblockproc.EpochState) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SealEpoch")
+	ret := m.ctrl.Call(m, "SealEpoch", arg0)
 	ret0, _ := ret[0].(iblockproc.BlockState)
 	ret1, _ := ret[1].(iblockproc.EpochState)
 	return ret0, ret1
 }
 
 // SealEpoch indicates an expected call of SealEpoch.
-func (mr *MockSealerProcessorMockRecorder) SealEpoch() *gomock.Call {
+func (mr *MockSealerProcessorMockRecorder) SealEpoch(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SealEpoch", reflect.TypeOf((*MockSealerProcessor)(nil).SealEpoch))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SealEpoch", reflect.TypeOf((*MockSealerProcessor)(nil).SealEpoch), arg0)
 }
 
 // Update mocks base method.
@@ -391,10 +391,10 @@ func (m *MockEVMProcessor) EXPECT() *MockEVMProcessorMockRecorder {
 }
 
 // Execute mocks base method.
-func (m *MockEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) []evmcore.ProcessedTransaction {
+func (m *MockEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) evmcore.ExecutionSummary {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Execute", txs, gasLimit)
-	ret0, _ := ret[0].([]evmcore.ProcessedTransaction)
+	ret0, _ := ret[0].(evmcore.ExecutionSummary)
 	return ret0
 }
 

@@ -68,7 +68,12 @@ func TestExecutionPlan_Hash_ComputesDeterministicHash(t *testing.T) {
 			for i, step := range executionPlan.Steps {
 				transactions[i] = []any{step.From, step.Hash}
 			}
-			manualSerialize := []any{transactions, executionPlan.Flags}
+			manualSerialize := []any{
+				transactions,
+				executionPlan.Flags,
+				executionPlan.Earliest,
+				executionPlan.Latest,
+			}
 
 			hasher := crypto.NewKeccakState()
 			require.NoError(t, rlp.Encode(hasher, manualSerialize))
@@ -243,25 +248,21 @@ func TestDecode_SuccessfullyUnpacksValidBundle(t *testing.T) {
 					},
 				}),
 			},
-			Payment: types.NewTx(
-				&types.AccessListTx{
-					AccessList: types.AccessList{
-						{Address: BundleOnly},
-					},
-				},
-			),
-			Flags: flags,
+			Flags:    flags,
+			Earliest: 12,
+			Latest:   34,
 		}
 
 		unpacked, err := Decode(Encode(bundle))
 		require.NoError(t, err)
 		require.Equal(t, bundle.Version, unpacked.Version)
 
-		require.Equal(t, bundle.Payment.Hash(), unpacked.Payment.Hash())
 		for i, tx := range bundle.Bundle {
 			require.Equal(t, tx.Hash(), unpacked.Bundle[i].Hash())
 		}
 		require.Equal(t, bundle.Flags, unpacked.Flags)
+		require.Equal(t, bundle.Earliest, unpacked.Earliest)
+		require.Equal(t, bundle.Latest, unpacked.Latest)
 	}
 }
 

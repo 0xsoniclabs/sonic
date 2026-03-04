@@ -21,6 +21,7 @@ import (
 	"math"
 	"math/big"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice/gaspricelimits"
 	"github.com/0xsoniclabs/sonic/inter/state"
@@ -58,7 +59,8 @@ type NetworkRules struct {
 	eip7623 bool // Fork indicator whether we are using EIP-7623 floor gas validation.
 	eip7702 bool // Fork indicator whether we are using EIP-7702 set code transactions.
 
-	gasSubsidies bool // Indicator whether gas subsidies are active.
+	gasSubsidies       bool // Indicator whether gas subsidies are active.
+	transactionBundles bool // Indicator whether transaction bundles are active.
 }
 
 // Signer wraps types.Signer to allow mocking it in tests.
@@ -243,7 +245,8 @@ func ValidateTxForBlock(tx *types.Transaction, netRules NetworkRules, chain Stat
 
 	// Ensure Sonic-specific hard bounds
 	isSponsorRequest := netRules.gasSubsidies && subsidies.IsSponsorshipRequest(tx)
-	if baseFee := chain.CurrentBaseFee(); !isSponsorRequest && baseFee != nil {
+	isBundle := netRules.transactionBundles && bundle.IsTransactionBundle(tx)
+	if baseFee := chain.CurrentBaseFee(); !isSponsorRequest && !isBundle && baseFee != nil {
 		limit := gaspricelimits.GetMinimumFeeCapForTransactionPool(baseFee)
 		if tx.GasFeeCapIntCmp(limit) < 0 {
 			log.Trace("Rejecting underpriced tx: minimumBaseFee", "minimumBaseFee", baseFee, "limit", limit, "tx.GasFeeCap", tx.GasFeeCap())
@@ -329,6 +332,23 @@ func validateTxForPool(
 			opt.minTip, "tx.GasTipCap", tx.GasTipCap())
 		return ErrUnderpriced
 	}
+
+	// Drop invalid or permanently blocked bundles.
+	if bundle.IsTransactionBundle(tx) {
+		// TODO: implement the validation of the bundle here
+		/*
+			bundle, _, err := bundle.ValidateTransactionBundle(tx, signer)
+			if err != nil {
+				return fmt.Errorf("invalid transaction bundle: %w", err)
+			}
+			// Also try-run the bundle to see whether it is already permanently
+			// blocked and will never be processable.
+			if evmcore.GetBundleState(bundle) == evmcore.BundleStatePermanentlyBlocked {
+				return fmt.Errorf("non-applicable bundle")
+			}
+		*/
+	}
+
 	return nil
 }
 
@@ -340,6 +360,11 @@ func validateSponsoredTransactions(
 	netRules NetworkRules,
 	SubsidiesChecker subsidiesChecker,
 ) error {
+
+	// Ignore bundles.
+	if bundle.IsTransactionBundle(tx) {
+		return nil
+	}
 
 	// No check is conducted if gas subsidies are not active.
 	if !netRules.gasSubsidies {

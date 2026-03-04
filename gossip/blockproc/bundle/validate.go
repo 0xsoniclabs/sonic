@@ -19,7 +19,6 @@ package bundle
 import (
 	"fmt"
 
-	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
@@ -30,21 +29,16 @@ import (
 func ValidateTransactionBundle(
 	tx *types.Transaction,
 	signer types.Signer,
-	upgrades opera.Upgrades) (*TransactionBundle, error) {
-
-	if !upgrades.TransactionBundles {
-		// feature not enabled, nothing to validate
-		return nil, nil
-	}
+) (*TransactionBundle, *ExecutionPlan, error) {
 
 	if !IsTransactionBundle(tx) {
 		// not a bundle transaction, nothing to validate
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	txBundle, err := Decode(tx.Data())
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode transaction bundle: %v", err)
+		return nil, nil, fmt.Errorf("failed to decode transaction bundle: %v", err)
 	}
 
 	// TODO: this function shall validate bundle correctness,
@@ -53,16 +47,25 @@ func ValidateTransactionBundle(
 
 	plan, err := txBundle.ExtractExecutionPlan(signer)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+
+	if plan.Latest < plan.Earliest {
+		return nil, nil, fmt.Errorf("invalid block range in execution plan, latest %d is smaller than earliest %d", plan.Latest, plan.Earliest)
+	}
+	rangeSize := plan.Latest - plan.Earliest + 1
+
+	if rangeSize > MaxBlockRange {
+		return nil, nil, fmt.Errorf("invalid block range in execution plan, duration %d, limit %d", rangeSize, MaxBlockRange)
 	}
 
 	planHash := plan.Hash()
 	for _, tx := range txBundle.Bundle {
 		// check that all transactions in the bundle belong to the same execution plan
 		if !BelongsToExecutionPlan(tx, planHash) {
-			return nil, fmt.Errorf("transaction %s does not belong to the execution plan", tx.Hash().Hex())
+			return nil, nil, fmt.Errorf("transaction %s does not belong to the execution plan", tx.Hash().Hex())
 		}
 	}
 
-	return &txBundle, nil
+	return &txBundle, &plan, nil
 }

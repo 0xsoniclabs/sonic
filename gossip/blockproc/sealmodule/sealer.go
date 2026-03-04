@@ -25,6 +25,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 type OperaEpochsSealerModule struct{}
@@ -59,7 +60,7 @@ func (s *OperaEpochsSealer) Update(bs iblockproc.BlockState, es iblockproc.Epoch
 }
 
 // SealEpoch is called after pre-internal transactions are executed
-func (s *OperaEpochsSealer) SealEpoch() (iblockproc.BlockState, iblockproc.EpochState) {
+func (s *OperaEpochsSealer) SealEpoch(bundleHistoryHash common.Hash) (iblockproc.BlockState, iblockproc.EpochState) {
 	// Select new validators
 	oldValidators := s.es.Validators
 	builder := pos.NewBigBuilder()
@@ -105,6 +106,14 @@ func (s *OperaEpochsSealer) SealEpoch() (iblockproc.BlockState, iblockproc.Epoch
 		s.bs.DirtyRules = nil
 	}
 	s.es.EpochStateRoot = s.bs.FinalizedStateRoot
+	if s.es.Rules.Upgrades.Brio {
+		// Starting with Brio, the epoch state root is the combination of the
+		// chain's state root and the consensus' state root given by the hash
+		// of the history of processed bundles.
+		for i := range s.es.EpochStateRoot {
+			s.es.EpochStateRoot[i] ^= bundleHistoryHash[i]
+		}
+	}
 
 	s.bs.EpochGas = 0
 	s.bs.EpochCheaters = lachesis.Cheaters{}

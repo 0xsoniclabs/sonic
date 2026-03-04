@@ -30,6 +30,8 @@ import (
 	"github.com/0xsoniclabs/sonic/inter"
 )
 
+//go:generate mockgen -source=protocol.go -destination=protocol_mock.go -package=gossip
+
 // Constants to match up protocol versions and messages
 const (
 	_FTM62    = 62

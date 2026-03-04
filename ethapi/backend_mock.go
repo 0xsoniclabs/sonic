@@ -17,6 +17,7 @@ import (
 	time "time"
 
 	evmcore "github.com/0xsoniclabs/sonic/evmcore"
+	bundle "github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	inter "github.com/0xsoniclabs/sonic/inter"
 	iblockproc "github.com/0xsoniclabs/sonic/inter/iblockproc"
 	state "github.com/0xsoniclabs/sonic/inter/state"
@@ -228,6 +229,21 @@ func (m *MockBackend) FetchReceiptsForBlock(block *evmcore.EvmBlock) types.Recei
 func (mr *MockBackendMockRecorder) FetchReceiptsForBlock(block any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchReceiptsForBlock", reflect.TypeOf((*MockBackend)(nil).FetchReceiptsForBlock), block)
+}
+
+// GetBundleExecutionInfo mocks base method.
+func (m *MockBackend) GetBundleExecutionInfo(arg0 common.Hash) (*bundle.ExecutionInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetBundleExecutionInfo", arg0)
+	ret0, _ := ret[0].(*bundle.ExecutionInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetBundleExecutionInfo indicates an expected call of GetBundleExecutionInfo.
+func (mr *MockBackendMockRecorder) GetBundleExecutionInfo(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBundleExecutionInfo", reflect.TypeOf((*MockBackend)(nil).GetBundleExecutionInfo), arg0)
 }
 
 // GetDowntime mocks base method.
@@ -544,6 +560,20 @@ func (m *MockBackend) HistoryPruningCutoff() uint64 {
 func (mr *MockBackendMockRecorder) HistoryPruningCutoff() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HistoryPruningCutoff", reflect.TypeOf((*MockBackend)(nil).HistoryPruningCutoff))
+}
+
+// IsBundleInPool mocks base method.
+func (m *MockBackend) IsBundleInPool(arg0 common.Hash) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsBundleInPool", arg0)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// IsBundleInPool indicates an expected call of IsBundleInPool.
+func (mr *MockBackendMockRecorder) IsBundleInPool(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsBundleInPool", reflect.TypeOf((*MockBackend)(nil).IsBundleInPool), arg0)
 }
 
 // MaxGasLimit mocks base method.

@@ -288,7 +288,7 @@ func (b *GenesisBuilder) ExecuteGenesisTxs(blockProc BlockProc, genesisTxs types
 
 	// Seal epoch
 	sealer.Update(bs, es)
-	bs, es = sealer.SealEpoch()
+	bs, es = sealer.SealEpoch(common.Hash{})
 	txListener.Update(bs, es)
 
 	// Execute post-internal transactions

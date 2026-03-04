@@ -28,6 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -68,6 +69,11 @@ type ProcessedTransaction struct {
 	Receipt     *types.Receipt
 }
 
+type ExecutionSummary struct {
+	ProcessedTransactions []ProcessedTransaction
+	ProcessedBundles      []bundle.TransactionBundle
+}
+
 // Process processes the state changes according to the Ethereum rules by running
 // the transaction messages using the StateDB, collecting receipts for applied
 // transactions, nil-receipts for skipped transactions, and the used gas via an
@@ -93,7 +99,7 @@ type ProcessedTransaction struct {
 func (p *StateProcessor) Process(
 	block *EvmBlock, statedb state.StateDB, cfg vm.Config, gasLimit uint64,
 	usedGas *uint64, onNewLog func(*types.Log),
-) []ProcessedTransaction {
+) ExecutionSummary {
 	sonicDifficulty := big.NewInt(1)
 	return p.ProcessWithDifficulty(block, statedb, cfg, gasLimit, usedGas, onNewLog, sonicDifficulty)
 }
@@ -105,7 +111,7 @@ func (p *StateProcessor) Process(
 func (p *StateProcessor) ProcessWithDifficulty(
 	block *EvmBlock, statedb state.StateDB, cfg vm.Config, gasLimit uint64,
 	usedGas *uint64, onNewLog func(*types.Log), difficulty *big.Int,
-) []ProcessedTransaction {
+) ExecutionSummary {
 	var (
 		gp           = new(core.GasPool).AddGas(gasLimit)
 		header       = block.Header()
@@ -189,26 +195,42 @@ func runTransactions(
 	context *runContext,
 	transactions types.Transactions,
 	txIndexOffset int,
-) []ProcessedTransaction {
+) ExecutionSummary {
 	processed := make([]ProcessedTransaction, 0, len(transactions))
+	var bundles []bundle.TransactionBundle
 	for _, tx := range transactions {
 		nextId := len(processed) + txIndexOffset
-		txs, _ := runTransaction(context, tx, nextId)
+		txs, processedBundle, _ := runTransaction(context, tx, nextId)
 		processed = append(processed, txs...)
+		if processedBundle != nil {
+			bundles = append(bundles, *processedBundle)
+		}
 	}
-	return processed
+	return ExecutionSummary{
+		ProcessedTransactions: processed,
+		ProcessedBundles:      bundles,
+	}
 }
 
 func runTransaction(
 	context *runContext,
 	tx *types.Transaction,
 	txIndexOffset int,
-) ([]ProcessedTransaction, Status) {
-	if context.upgrades.GasSubsidies && subsidies.IsSponsorshipRequest(tx) {
-		return context.runner.runSponsoredTransaction(context, tx, txIndexOffset)
+) ([]ProcessedTransaction, *bundle.TransactionBundle, Status) {
+	if context.upgrades.TransactionBundles && bundle.IsTransactionBundle(tx) {
+		// TODO: implement proper logic; for now, just run bundled transactions
+		bundle, _, err := bundle.ValidateTransactionBundle(tx, context.signer)
+		if err != nil {
+			return []ProcessedTransaction{{Transaction: tx}}, nil, StatusSkipped
+		}
+		summary := runTransactions(context, bundle.Bundle, txIndexOffset)
+		return summary.ProcessedTransactions, bundle, StatusSuccessful
+	} else if context.upgrades.GasSubsidies && subsidies.IsSponsorshipRequest(tx) {
+		res, status := context.runner.runSponsoredTransaction(context, tx, txIndexOffset)
+		return res, nil, status
 	} else {
 		res, status := context.runner.runRegularTransaction(context, tx, txIndexOffset)
-		return []ProcessedTransaction{res}, status
+		return []ProcessedTransaction{res}, nil, status
 	}
 }
 
@@ -426,7 +448,7 @@ type TransactionProcessor struct {
 // the transaction in the block. It returns the list of all transactions that
 // have been attempted to be processed to cover the given transaction as well as
 // their receipts if they did not get skipped.
-func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) []ProcessedTransaction {
+func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) ExecutionSummary {
 	return runTransactions(newRunContext(
 		tp.signer, tp.header.BaseFee, tp.stateDb, tp.gp, tp.blockNumber,
 		&tp.usedGas, tp.onNewLog, tp.upgrades, &transactionRunner{evm{tp.vmEnvironment}},
