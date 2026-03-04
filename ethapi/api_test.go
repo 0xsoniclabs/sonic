@@ -974,6 +974,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 	}
 
 	expectedCallsFromTxCall := func(mockState *state.MockStateDB) {
+		mockState.EXPECT().BeginTransaction().AnyTimes()
 		mockState.EXPECT().Prepare(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any())
 		mockState.EXPECT().Release().AnyTimes()
 		mockState.EXPECT().Snapshot()
@@ -985,11 +986,11 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 		mockState.EXPECT().AddBalance(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 		mockState.EXPECT().SubBalance(sender, gomock.Any(), gomock.Any()).Times(2)
 		mockState.EXPECT().GetRefund().Return(uint64(0)).Times(2)
+		mockState.EXPECT().EndTransaction().AnyTimes()
 	}
 
 	expectedCallsFromHistoryStorageContract := func(mockState *state.MockStateDB) {
 		mockState.EXPECT().Snapshot()
-		mockState.EXPECT().BeginTransaction()
 		mockState.EXPECT().AddAddressToAccessList(params.HistoryStorageAddress)
 		mockState.EXPECT().GetCode(params.HistoryStorageAddress).Return(params.HistoryStorageCode).Times(2)
 		mockState.EXPECT().GetCodeHash(params.HistoryStorageAddress).Return(common.Hash{})
@@ -1002,15 +1003,12 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 		mockState.EXPECT().SubBalance(params.SystemAddress, uint256.NewInt(0), gomock.Any())
 		mockState.EXPECT().GetRefund().Return(uint64(0))
 		mockState.EXPECT().Finalise(true)
-		mockState.EXPECT().EndTransaction()
 	}
 
 	expectedTraceReplayBlock := func(mockState *state.MockStateDB) {
 		mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any())
-		mockState.EXPECT().BeginTransaction()
 		mockState.EXPECT().GetCode(sender).Return([]byte{})
 		mockState.EXPECT().GetNonce(sender).Return(uint64(0))
-		mockState.EXPECT().EndTransaction()
 
 		mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any())
 		mockState.EXPECT().GetNonce(sender).Return(uint64(1)).Times(2)
@@ -1024,7 +1022,6 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 		mockState.EXPECT().Snapshot()
 		mockState.EXPECT().Exist(recipient)
 		mockState.EXPECT().GetRefund().Times(2)
-		mockState.EXPECT().EndTransaction().Times(2)
 		mockState.EXPECT().TxIndex()
 	}
 

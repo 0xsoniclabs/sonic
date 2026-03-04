@@ -340,7 +340,6 @@ func (s *PublicTxTraceAPI) traceTx(
 	resultReceipt, err := evmcore.ApplyTransactionWithEVM(msg, chainConfig, gp, state, header.Number, block.Hash, tx, &index, vmenv)
 
 	traceActions := txTracer.GetResult()
-	state.EndTransaction()
 
 	// err is error occurred before EVM execution
 	if err != nil {
