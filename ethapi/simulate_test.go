@@ -18,6 +18,7 @@ package ethapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"math/big"
 	"testing"
@@ -115,6 +116,37 @@ func TestSimulateV1_MultipleBlocks_ReturnsResultsPerBlock(t *testing.T) {
 	// Block numbers should be base+1 and base+2.
 	require.Equal(t, big.NewInt(baseBlockNumber+1), results[0].block.Number)
 	require.Equal(t, big.NewInt(baseBlockNumber+2), results[1].block.Number)
+}
+
+func TestSimulateV1_SingleCall_ReturnsFullTxResult(t *testing.T) {
+	f := newSimulateV1Helper(t)
+	setExpectedStateCalls(f.mockState)
+	f.mockState.EXPECT().GetStateHash().Return(common.Hash{})
+
+	from := common.Address{1}
+	to := common.Address{2}
+	gas := hexutil.Uint64(21_000)
+	opts := simOpts{
+		BlockStateCalls: []simBlock{
+			{Calls: []TransactionArgs{{From: &from, To: &to, Gas: &gas}}},
+		},
+		ReturnFullTransactions: true,
+	}
+
+	results, err := f.api.SimulateV1(context.Background(), opts, &f.blkNr)
+
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	require.True(t, results[0].fullTx)
+
+	// This is happening automatically when marshaling the result to JSON
+	// with RPC api.
+	blockBytes, err := results[0].MarshalJSON()
+	require.NoError(t, err)
+
+	var blockJson map[string]interface{}
+	require.NoError(t, json.Unmarshal(blockBytes, &blockJson))
+	require.Equal(t, from, common.HexToAddress(blockJson["transactions"].([]interface{})[0].(map[string]interface{})["from"].(string)))
 }
 
 // newSimTestBase constructs a minimal EvmBlock suitable as a simulation base block.
