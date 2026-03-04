@@ -133,6 +133,7 @@ func getSubcases() map[string]SubCase {
 				[]txStatus{},
 				0,
 			},
+			// skipped bundles are no longer necessary, and all **/bundled/invalid tests are skipped
 		},
 	}
 }
