@@ -31,8 +31,8 @@ import (
 // bundle multiple times. The store keeps track of recently processed bundles
 // by indexing the hashes of their execution plans, along with the block number
 // and position in which they were executed. The store also maintains a hash of
-// the history of processed bundles, which is updated after every block, in
-// to cross-validate that validators remain aligned on their bundle processing
+// the history of processed bundles, which is updated after every block, to
+// cross-validate that validators remain aligned on their bundle processing
 // history.
 //
 // Bundles need to be indexed by the execution plan hash instead of the hash of
