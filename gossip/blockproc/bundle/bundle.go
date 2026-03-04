@@ -98,8 +98,16 @@ type ExecutionStep struct {
 // to which every participant in the bundle shall agree on.
 // The execution plan includes the list of steps to be executed, in the order of execution
 type ExecutionPlan struct {
-	Steps []ExecutionStep
-	Flags ExecutionFlag
+	Steps    []ExecutionStep
+	Flags    ExecutionFlag
+	Earliest uint64 // Earliest block this bundle can be included in.
+	Latest   uint64 // Latest block this bundle can be included in.
+}
+
+// IsInRange checks if the given block number is within the range of the
+// execution plan.
+func (e *ExecutionPlan) IsInRange(blockNum uint64) bool {
+	return blockNum >= e.Earliest && blockNum <= e.Latest
 }
 
 // Hash computes the execution plan hash
@@ -124,10 +132,11 @@ func (e *ExecutionPlan) Hash() common.Hash {
 // consuming the payment and nonce, and preventing this transaction from being
 // included in future blocks.
 type TransactionBundle struct {
-	Version byte
-	Payment *types.Transaction
-	Bundle  types.Transactions
-	Flags   ExecutionFlag
+	Version  byte
+	Bundle   types.Transactions
+	Flags    ExecutionFlag
+	Earliest uint64 // Earliest block this bundle can be included in.
+	Latest   uint64 // Latest block this bundle can be included in.
 }
 
 // ExtractExecutionPlan extracts the execution plan from the bundle, deriving
@@ -158,8 +167,10 @@ func (tb *TransactionBundle) ExtractExecutionPlan(signer types.Signer) (Executio
 	}
 
 	return ExecutionPlan{
-		Steps: txs,
-		Flags: tb.Flags,
+		Steps:    txs,
+		Flags:    tb.Flags,
+		Earliest: tb.Earliest,
+		Latest:   tb.Latest,
 	}, nil
 }
 
@@ -251,9 +262,10 @@ func Encode(bundle TransactionBundle) []byte {
 	// since we are encoding a struct with fixed fields, we can ignore the error
 	_ = rlp.Encode(&buffer, bundle.Version)
 	_ = rlp.Encode(&buffer, []any{
-		bundle.Payment,
 		bundle.Bundle,
 		bundle.Flags,
+		bundle.Earliest,
+		bundle.Latest,
 	})
 	return buffer.Bytes()
 }
@@ -273,15 +285,17 @@ func Decode(data []byte) (TransactionBundle, error) {
 	}
 
 	payload := struct {
-		Payment *types.Transaction
-		Bundle  types.Transactions
-		Flags   ExecutionFlag
+		Bundle   types.Transactions
+		Flags    ExecutionFlag
+		Earliest uint64
+		Latest   uint64
 	}{}
 	if err := rlp.DecodeBytes(rest, &payload); err != nil {
 		return bundle, fmt.Errorf("failed to decode transaction bundle: %v", err)
 	}
-	bundle.Payment = payload.Payment
 	bundle.Bundle = payload.Bundle
 	bundle.Flags = payload.Flags
+	bundle.Earliest = payload.Earliest
+	bundle.Latest = payload.Latest
 	return bundle, nil
 }

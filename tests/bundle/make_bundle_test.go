@@ -28,27 +28,27 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// makeBundleTransaction creates a bundle transaction with the given transactions and execution plan
-// This function will create the corresponding payment transaction. Both payment and the bundle transaction
-// are signed by the bundler account.
-// It returns the bundle transaction and the hash of the payment transaction, the later is used
-// for waiting on the completion of the bundle execution, as the bundle transaction will not be included
-// in a block.
+// makeBundleTransaction creates a bundle transaction with the given
+// transactions and execution plan. The bundle transaction is signed by the
+// bundler account.
 func makeBundleTransaction(
 	t *testing.T,
 	net *tests.IntegrationTestNet,
 	transactions types.Transactions,
 	plan bundle.ExecutionPlan,
-	bundler *tests.Account,
-) (*types.Transaction, common.Hash) {
+) *types.Transaction {
 	t.Helper()
 
 	client, err := net.GetClient()
 	require.NoError(t, err, "failed to get client; %v", err)
 	defer client.Close()
 
-	sameNonceForBundleAndPayment, err := client.PendingNonceAt(t.Context(), bundler.Address())
-	require.NoError(t, err, "failed to get nonce for bundler; %v", err)
+	// Create a dedicated coordinator for every bundle.
+	coordinator := tests.NewAccount()
+
+	// TODO: once bundles support 0-gas-prices, remove this endowment
+	_, err = net.EndowAccount(coordinator.Address(), big.NewInt(1e18))
+	require.NoError(t, err, "failed to endow coordinator account; %v", err)
 
 	cost := big.NewInt(0)
 	for _, tx := range transactions {
@@ -56,48 +56,37 @@ func makeBundleTransaction(
 		cost = new(big.Int).Add(cost, txCost)
 	}
 
-	// make payment transaction
-	paymentTx := tests.CreateTransaction(t, net,
-		&types.AccessListTx{Nonce: sameNonceForBundleAndPayment,
-			To:    &bundle.BundleAddress,
-			Value: cost,
-			AccessList: types.AccessList{
-				{Address: bundle.BundleOnly, StorageKeys: []common.Hash{plan.Hash()}},
-			},
-		},
-		bundler,
-	)
-
 	var gas uint64
-	for _, tx := range append(transactions, paymentTx) {
+	for _, tx := range transactions {
 		gas += tx.Gas()
 	}
 
 	bundlePayload := bundle.TransactionBundle{
-		Version: bundle.BundleV1,
-		Bundle:  transactions,
-		Payment: paymentTx,
-		Flags:   plan.Flags,
+		Version:  bundle.BundleV1,
+		Bundle:   transactions,
+		Flags:    plan.Flags,
+		Earliest: plan.Earliest,
+		Latest:   plan.Latest,
 	}
 
 	// create the bundle transaction with the same nonce as the payment transaction
 	bundleTx := tests.CreateTransaction(t, net,
-		&types.LegacyTx{Nonce: sameNonceForBundleAndPayment,
-			To:   &bundle.BundleAddress,
-			Gas:  gas,
-			Data: bundle.Encode(bundlePayload),
+		&types.LegacyTx{
+			Nonce: 0,
+			To:    &bundle.BundleAddress,
+			Gas:   gas,
+			Data:  bundle.Encode(bundlePayload),
 		},
-		bundler,
+		coordinator,
 	)
 
 	// Sanity check the bundle before sending it to the mempool, if fails to validate before making
 	// a bundle transaction, it will fail to be included in a block and waiting for payment receipt will timeout
-	upgrades := net.GetUpgrades()
 	signer := types.NewCancunSigner(net.GetChainId())
-	_, err = bundle.ValidateTransactionBundle(bundleTx, signer, upgrades)
+	_, _, err = bundle.ValidateTransactionBundle(bundleTx, signer)
 	require.NoError(t, err, "failed to validate transaction bundle; %v", err)
 
-	return bundleTx, paymentTx.Hash()
+	return bundleTx
 }
 
 func prepareContract[T any](
