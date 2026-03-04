@@ -49,6 +49,7 @@ func TestEvm_IgnoresGasPriceOfInternalTransactions(t *testing.T) {
 
 	stateDb.EXPECT().BeginBlock(any)
 	stateDb.EXPECT().SetTxContext(any, any)
+	stateDb.EXPECT().BeginTransaction()
 	stateDb.EXPECT().GetBalance(zeroAddress).Return(zero)
 	stateDb.EXPECT().SubBalance(zeroAddress, zero, tracing.BalanceDecreaseGasBuy)
 	stateDb.EXPECT().Prepare(any, any, any, any, any, any).AnyTimes()
@@ -116,6 +117,7 @@ func TestOperaEVMProcessor_Execute_ProducesContinuousTxIndexesInLogsAndReceipts(
 
 	any := gomock.Any()
 	stateDb.EXPECT().BeginBlock(any).AnyTimes()
+	stateDb.EXPECT().BeginTransaction().AnyTimes()
 	stateDb.EXPECT().GetNonce(any).AnyTimes().Return(uint64(0))
 	stateDb.EXPECT().GetCode(any).AnyTimes().Return(nil)
 	stateDb.EXPECT().GetBalance(any).AnyTimes().Return(uint256.NewInt(1e18))
@@ -255,6 +257,7 @@ func TestOperaEVMProcessor_Finalize_ReportsAggregatedNumberOfSkippedTransactions
 	stateDb.EXPECT().GetRefund().AnyTimes().Return(uint64(0))
 	stateDb.EXPECT().EndTransaction().AnyTimes()
 	stateDb.EXPECT().SetTxContext(any, any).AnyTimes()
+	stateDb.EXPECT().BeginTransaction().AnyTimes()
 	stateDb.EXPECT().TxIndex().AnyTimes()
 	stateDb.EXPECT().GetLogs(any, any).AnyTimes()
 	stateDb.EXPECT().EndBlock(any).AnyTimes()

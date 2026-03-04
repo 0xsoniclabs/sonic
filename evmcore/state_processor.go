@@ -250,11 +250,13 @@ func (r *transactionRunner) runSponsoredTransaction(
 ) ([]ProcessedTransaction, Status) {
 	// Run the IsCovered query in a snapshot to avoid spilling any side-effects
 	// like warm storage slots or refunds into the actual transaction.
+	ctxt.statedb.BeginTransaction()
 	snapshot := ctxt.statedb.Snapshot()
 	covered, fundId, config, err := subsidies.IsCovered(
 		ctxt.upgrades, r.evm, ctxt.signer, tx, ctxt.baseFee,
 	)
 	ctxt.statedb.RevertToSnapshot(snapshot)
+	ctxt.statedb.EndTransaction()
 	if err != nil {
 		log.Warn("Failed to query subsidies registry", "tx", tx.Hash().Hex(), "err", err)
 		return []ProcessedTransaction{{Transaction: tx}}, StatusSkipped
@@ -444,6 +446,7 @@ func ApplyTransactionWithEVM(msg *core.Message, config *params.ChainConfig, gp *
 		}
 	}
 	// Create a new context to be used in the EVM environment.
+	statedb.BeginTransaction()
 	txContext := NewEVMTxContext(msg)
 	evm.SetTxContext(txContext)
 
@@ -460,6 +463,7 @@ func ApplyTransactionWithEVM(msg *core.Message, config *params.ChainConfig, gp *
 	// Apply the transaction to the current state (included in the env).
 	result, err := core.ApplyMessage(evm, msg, gp)
 	if err != nil {
+		statedb.EndTransaction()
 		return nil, err
 	}
 
@@ -514,6 +518,7 @@ func ProcessParentBlockHash(prevHash common.Hash, evm *vm.EVM, stateDb state.Sta
 	}
 
 	txContext := NewEVMTxContext(msg)
+	stateDb.BeginTransaction()
 	evm.SetTxContext(txContext)
 
 	stateDb.AddAddressToAccessList(params.HistoryStorageAddress)
@@ -540,6 +545,7 @@ func applyTransaction(
 	uint64,
 	error,
 ) {
+	statedb.BeginTransaction()
 	// Create a new context to be used in the EVM environment.
 	txContext := NewEVMTxContext(msg)
 	evm.SetTxContext(txContext)

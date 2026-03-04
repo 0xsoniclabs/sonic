@@ -488,6 +488,7 @@ func (env *testEnv) callContract(
 		call.GasTipCap = big.NewInt(math.MaxInt)
 	}
 	// Set infinite balance to the fake caller account.
+	state.BeginTransaction()
 	state.AddBalance(call.From, uint256.NewInt(math.MaxInt64), tracing.BalanceIncreaseGenesisBalance)
 
 	msg := CallMsgToMessage(call)
@@ -499,6 +500,7 @@ func (env *testEnv) callContract(
 	vmenv := vm.NewEVM(context, state, env.store.GetEvmChainConfig(idx.Block(block.Number.Uint64())), vmConfig)
 	gaspool := new(core.GasPool).AddGas(math.MaxUint64)
 	res, err := core.ApplyMessage(vmenv, msg, gaspool)
+	state.EndTransaction()
 	if err != nil {
 		return nil, 0, false, err
 	}

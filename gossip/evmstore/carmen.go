@@ -310,8 +310,20 @@ func (c *CarmenStateDB) GetRefund() uint64 {
 	return c.db.GetRefund()
 }
 
+func (c *CarmenStateDB) BeginTransaction() {
+	c.db.BeginTransaction()
+}
+
 func (c *CarmenStateDB) EndTransaction() {
 	c.db.EndTransaction()
+}
+
+func (c *CarmenStateDB) InterTxSnapshot() int {
+	return int(c.db.InterTxSnapshot())
+}
+
+func (c *CarmenStateDB) RevertToInterTxSnapshot(id int) error {
+	return c.db.RevertToInterTxSnapshot(carmen.InterTxSnapshotID(id))
 }
 
 func (c *CarmenStateDB) Finalise(bool) {

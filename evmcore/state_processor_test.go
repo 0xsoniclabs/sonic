@@ -268,6 +268,7 @@ func TestProcess_TracksParentBlockHashIfPragueIsEnabled(t *testing.T) {
 				if isPrague {
 					any := gomock.Any()
 					gomock.InOrder(
+						state.EXPECT().BeginTransaction(),
 						state.EXPECT().AddAddressToAccessList(params.HistoryStorageAddress),
 						state.EXPECT().Snapshot().Return(0),
 						state.EXPECT().Exist(params.HistoryStorageAddress).Return(true),
@@ -333,6 +334,7 @@ func TestProcess_FailingTransactionAreSkippedButTheBlockIsNotTerminated(t *testi
 	// Mock the state database interactions for passing transaction.
 	any := gomock.Any()
 	state.EXPECT().SetTxContext(any, any).Times(1)
+	state.EXPECT().BeginTransaction().Times(1)
 	state.EXPECT().GetBalance(any).Return(uint256.NewInt(1000000)).Times(1)
 	state.EXPECT().SubBalance(any, any, any).Times(2)
 	state.EXPECT().Prepare(any, any, any, any, any, any).Times(1)
@@ -512,6 +514,7 @@ func createScenarioWithTxCheckingDifficulty(
 	any := gomock.Any()
 	state := state.NewMockStateDB(ctrl)
 	state.EXPECT().SetTxContext(any, any).AnyTimes()
+	state.EXPECT().BeginTransaction().AnyTimes()
 	state.EXPECT().GetBalance(any).Return(uint256.NewInt(math.MaxInt64)).AnyTimes()
 	state.EXPECT().SubBalance(any, any, any).AnyTimes()
 	state.EXPECT().Prepare(any, any, any, any, any, any).AnyTimes()
@@ -556,6 +559,7 @@ func TestApplyTransaction_InternalTransactionsSkipBaseFeeCharges(t *testing.T) {
 			state := state.NewMockStateDB(ctxt)
 
 			any := gomock.Any()
+			state.EXPECT().BeginTransaction()
 			state.EXPECT().GetBalance(any).Return(uint256.NewInt(0))
 			state.EXPECT().SubBalance(any, any, any)
 			state.EXPECT().EndTransaction()
@@ -593,6 +597,7 @@ func TestApplyTransaction_BlobHashesNotSupportedAndSkipped(t *testing.T) {
 	evm := vm.NewEVM(vm.BlockContext{}, state, &params.ChainConfig{}, vm.Config{})
 	gp := new(core.GasPool).AddGas(1000000)
 
+	state.EXPECT().BeginTransaction()
 	state.EXPECT().EndTransaction()
 
 	msg := &core.Message{
@@ -656,6 +661,7 @@ func TestApplyTransaction_ApplyMessageError_RevertsSnapshotIfPrague(t *testing.T
 			}
 
 			gomock.InOrder(
+				state.EXPECT().BeginTransaction(),
 				state.EXPECT().Snapshot().Return(42).Times(callToSnapshot),
 				state.EXPECT().GetBalance(msg.From).Return(uint256.NewInt(1000000)),
 				state.EXPECT().SubBalance(any, any, any),
@@ -717,6 +723,7 @@ func getStateDbMockForTransactions(
 		},
 	).AnyTimes()
 
+	state.EXPECT().BeginTransaction().AnyTimes()
 	state.EXPECT().GetBalance(any).Return(uint256.NewInt(math.MaxInt64)).AnyTimes()
 	state.EXPECT().AddBalance(any, any, any).AnyTimes()
 	state.EXPECT().SubBalance(any, any, any).AnyTimes()
@@ -840,6 +847,7 @@ func TestRunSponsoredTransaction_InsufficientGas_SkipsTransaction(t *testing.T) 
 				upgrades: opera.Upgrades{GasSubsidies: true},
 			}
 
+			state.EXPECT().BeginTransaction()
 			// Snapshot for the IsCovered call
 			state.EXPECT().Snapshot().Return(1)
 			state.EXPECT().RevertToSnapshot(1)
@@ -877,6 +885,7 @@ func TestRunSponsoredTransaction_InsufficientGas_SkipsTransaction(t *testing.T) 
 					},
 				})
 			}
+			state.EXPECT().EndTransaction()
 
 			runner := &transactionRunner{evm: evm}
 			got, status := runner.runSponsoredTransaction(context, tx, 0)
@@ -912,8 +921,10 @@ func TestRunSponsoredTransaction_SponsorshipNotCovered_ReturnsASkippedTransactio
 	})
 
 	// Snapshot for the IsCovered call
+	state.EXPECT().BeginTransaction()
 	state.EXPECT().Snapshot().Return(1)
 	state.EXPECT().RevertToSnapshot(1)
+	state.EXPECT().EndTransaction()
 
 	gasPool := new(core.GasPool).AddGas(1_000_000)
 	context := &runContext{
@@ -940,8 +951,10 @@ func TestRunSponsoredTransaction_SponsorshipCoverageCheckFails_ReturnsASkippedTr
 	tx := getSponsorshipRequest(t)
 
 	// Snapshot for the IsCovered call
+	state.EXPECT().BeginTransaction()
 	state.EXPECT().Snapshot().Return(1)
 	state.EXPECT().RevertToSnapshot(1)
+	state.EXPECT().EndTransaction()
 
 	// Call made by IsCovered fails.
 	any := gomock.Any()
@@ -975,8 +988,10 @@ func TestRunSponsoredTransaction_SponsoredTransactionIsSkipped_NoFeeDeductionTxI
 	tx := getSponsorshipRequest(t)
 
 	// Snapshot for the IsCovered call
+	state.EXPECT().BeginTransaction()
 	state.EXPECT().Snapshot().Return(1)
 	state.EXPECT().RevertToSnapshot(1)
+	state.EXPECT().EndTransaction()
 
 	// Let the IsCovered call indicate that the transaction is covered,
 	any := gomock.Any()
@@ -1021,8 +1036,10 @@ func TestRunSponsoredTransaction_FailingCreationOfFeeDeduction_TransactionIsAcce
 	tx := getSponsorshipRequest(t)
 
 	// Snapshot for the IsCovered call
+	state.EXPECT().BeginTransaction()
 	state.EXPECT().Snapshot().Return(1)
 	state.EXPECT().RevertToSnapshot(1)
+	state.EXPECT().EndTransaction()
 
 	// Nonce request for the fee deduction transaction
 	state.EXPECT().GetNonce(common.Address{}).Return(uint64(123))
@@ -1085,8 +1102,10 @@ func TestRunSponsoredTransaction_FeeDeductionTxIsSkipped_TransactionIsAcceptedWi
 	tx := getSponsorshipRequest(t)
 
 	// Snapshot for the IsCovered call
+	state.EXPECT().BeginTransaction()
 	state.EXPECT().Snapshot().Return(1)
 	state.EXPECT().RevertToSnapshot(1)
+	state.EXPECT().EndTransaction()
 
 	// Nonce request for the fee deduction transaction
 	state.EXPECT().GetNonce(common.Address{}).Return(uint64(123))
@@ -1142,8 +1161,10 @@ func TestRunSponsoredTransaction_FeeDeductionTxFails_TransactionIsAcceptedWithou
 	tx := getSponsorshipRequest(t)
 
 	// Snapshot for the IsCovered call
+	state.EXPECT().BeginTransaction()
 	state.EXPECT().Snapshot().Return(1)
 	state.EXPECT().RevertToSnapshot(1)
+	state.EXPECT().EndTransaction()
 
 	// Nonce request for the fee deduction transaction
 	state.EXPECT().GetNonce(common.Address{}).Return(uint64(123))
@@ -1201,8 +1222,10 @@ func TestRunSponsoredTransaction_TxIndexIsIncrementedForFeeDeductionTx(t *testin
 	tx := getSponsorshipRequest(t)
 
 	// Snapshot for the IsCovered call
+	state.EXPECT().BeginTransaction()
 	state.EXPECT().Snapshot().Return(1)
 	state.EXPECT().RevertToSnapshot(1)
+	state.EXPECT().EndTransaction()
 
 	// Nonce request for the fee deduction transaction
 	state.EXPECT().GetNonce(common.Address{}).Return(uint64(123))
@@ -1285,6 +1308,7 @@ func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSucc
 	// handling of snapshots and state modifications.
 	gomock.InOrder(
 		// --- The effects of the IsCovered call ---
+		state.EXPECT().BeginTransaction(),
 		state.EXPECT().Snapshot().Return(1), // < added by runSponsoredTransaction
 		state.EXPECT().Snapshot().Return(2), // < added for the getGasConfig call by the EVM (not reverted)
 		state.EXPECT().Snapshot().Return(3), // < added for the chooseFund call by the EVM (not reverted)
@@ -1292,9 +1316,11 @@ func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSucc
 		// the effects of the IsCovered call in runSponsoredTransaction must be
 		// reverted to avoid spilling side-effects into the actual transaction
 		state.EXPECT().RevertToSnapshot(1),
+		state.EXPECT().EndTransaction(),
 
 		// --- The effects of the sponsored transaction itself ---
 		state.EXPECT().SetTxContext(tx.Hash(), txIndex),
+		state.EXPECT().BeginTransaction(),
 		state.EXPECT().SetNonce(sender, uint64(1), tracing.NonceChangeEoACall),
 		state.EXPECT().Snapshot().Return(4), // < for the transaction processing
 		state.EXPECT().EndTransaction(),
@@ -1305,6 +1331,7 @@ func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSucc
 
 		// --- The effects of the fee deduction transaction ---
 		state.EXPECT().SetTxContext(any, txIndex+1),
+		state.EXPECT().BeginTransaction(),
 		state.EXPECT().SetNonce(zeroAddress, uint64(124), tracing.NonceChangeEoACall),
 		state.EXPECT().Snapshot().Return(5),                           // < for the deductFees call
 		state.EXPECT().Snapshot().Return(6),                           // < for the nested burnNativeToken call to SFC
@@ -1450,6 +1477,7 @@ func TestRunTransaction_InternalTransactions_SkipsTransactionChecksTrue(t *testi
 	state := state.NewMockStateDB(ctrl)
 	any := gomock.Any()
 	state.EXPECT().SetTxContext(any, any).Times(2)
+	state.EXPECT().BeginTransaction().Times(2)
 	state.EXPECT().GetBalance(any).Return(uint256.NewInt(math.MaxInt64))
 	state.EXPECT().EndTransaction().Times(2)
 	state.EXPECT().SubBalance(any, any, any)
@@ -1543,6 +1571,7 @@ func TestRunTransaction_RegularTransaction(t *testing.T) {
 			stateSetup: func(state *state.MockStateDB) {
 				any := gomock.Any()
 				state.EXPECT().SetTxContext(any, any)
+				state.EXPECT().BeginTransaction()
 				state.EXPECT().EndTransaction()
 				state.EXPECT().GetNonce(any).Return(uint64(0)).Times(1)
 			},
@@ -1556,6 +1585,7 @@ func TestRunTransaction_RegularTransaction(t *testing.T) {
 			stateSetup: func(state *state.MockStateDB) {
 				any := gomock.Any()
 				state.EXPECT().SetTxContext(any, any)
+				state.EXPECT().BeginTransaction()
 				state.EXPECT().GetBalance(any).Return(uint256.NewInt(math.MaxInt64))
 				state.EXPECT().EndTransaction()
 				state.EXPECT().SubBalance(any, any, any)

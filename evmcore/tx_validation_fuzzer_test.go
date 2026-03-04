@@ -401,6 +401,7 @@ func stateExpectCalls(state *state.MockStateDB) {
 
 	state.EXPECT().CreateAccount(any).AnyTimes()
 	state.EXPECT().CreateContract(any).AnyTimes()
+	state.EXPECT().BeginTransaction()
 	state.EXPECT().EndTransaction().AnyTimes()
 	state.EXPECT().TxIndex().Return(4).AnyTimes()
 
