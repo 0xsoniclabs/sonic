@@ -478,6 +478,20 @@ func (mr *MockStateDBMockRecorder) HasSelfDestructed(arg0 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasSelfDestructed", reflect.TypeOf((*MockStateDB)(nil).HasSelfDestructed), arg0)
 }
 
+// InterTxSnapshot mocks base method.
+func (m *MockStateDB) InterTxSnapshot() int {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InterTxSnapshot")
+	ret0, _ := ret[0].(int)
+	return ret0
+}
+
+// InterTxSnapshot indicates an expected call of InterTxSnapshot.
+func (mr *MockStateDBMockRecorder) InterTxSnapshot() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InterTxSnapshot", reflect.TypeOf((*MockStateDB)(nil).InterTxSnapshot))
+}
+
 // PointCache mocks base method.
 func (m *MockStateDB) PointCache() *utils.PointCache {
 	m.ctrl.T.Helper()
@@ -514,6 +528,18 @@ func (m *MockStateDB) Release() {
 func (mr *MockStateDBMockRecorder) Release() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Release", reflect.TypeOf((*MockStateDB)(nil).Release))
+}
+
+// RevertToInterTxSnapshot mocks base method.
+func (m *MockStateDB) RevertToInterTxSnapshot(id int) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "RevertToInterTxSnapshot", id)
+}
+
+// RevertToInterTxSnapshot indicates an expected call of RevertToInterTxSnapshot.
+func (mr *MockStateDBMockRecorder) RevertToInterTxSnapshot(id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevertToInterTxSnapshot", reflect.TypeOf((*MockStateDB)(nil).RevertToInterTxSnapshot), id)
 }
 
 // RevertToSnapshot mocks base method.

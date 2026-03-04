@@ -43,4 +43,6 @@ type StateDB interface {
 	EndBlock(number uint64) <-chan error
 	EndTransaction()
 	Release()
+	InterTxSnapshot() int
+	RevertToInterTxSnapshot(id int)
 }
