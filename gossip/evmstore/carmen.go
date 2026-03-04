@@ -318,11 +318,11 @@ func (c *CarmenStateDB) EndTransaction() {
 	c.db.EndTransaction()
 }
 
-func (c *CarmenStateDB) Checkpoint() int {
+func (c *CarmenStateDB) InterTxSnapshot() int {
 	return int(c.db.InterTxSnapshot())
 }
 
-func (c *CarmenStateDB) RevertToCheckpoint(id int) error {
+func (c *CarmenStateDB) RevertToInterTxSnapshot(id int) error {
 	return c.db.RevertToInterTxSnapshot(carmen.InterTxSnapshotID(id))
 }
 

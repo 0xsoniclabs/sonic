@@ -78,6 +78,7 @@ func (s *SubsidiesIntegrationImplementation) isSponsored(tx *types.Transaction) 
 	isSponsored, _, _, err := subsidies.IsCovered(s.rules.Upgrades, vm, s.signer, tx, baseFee)
 	if err != nil {
 		log.Warn("Error checking if tx is sponsored", "tx", tx.Hash(), "err", err)
+		s.state.EndTransaction()
 		return false
 	}
 	s.state.EndTransaction()

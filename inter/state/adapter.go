@@ -44,6 +44,6 @@ type StateDB interface {
 	BeginTransaction()
 	EndTransaction()
 	Release()
-	Checkpoint() int
-	RevertToCheckpoint(id int) error
+	InterTxSnapshot() int
+	RevertToInterTxSnapshot(id int) error
 }

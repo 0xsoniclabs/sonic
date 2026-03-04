@@ -174,20 +174,6 @@ func (mr *MockStateDBMockRecorder) BeginTransaction() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BeginTransaction", reflect.TypeOf((*MockStateDB)(nil).BeginTransaction))
 }
 
-// Checkpoint mocks base method.
-func (m *MockStateDB) Checkpoint() int {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Checkpoint")
-	ret0, _ := ret[0].(int)
-	return ret0
-}
-
-// Checkpoint indicates an expected call of Checkpoint.
-func (mr *MockStateDBMockRecorder) Checkpoint() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Checkpoint", reflect.TypeOf((*MockStateDB)(nil).Checkpoint))
-}
-
 // Copy mocks base method.
 func (m *MockStateDB) Copy() StateDB {
 	m.ctrl.T.Helper()
@@ -502,6 +488,20 @@ func (mr *MockStateDBMockRecorder) HasSelfDestructed(arg0 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasSelfDestructed", reflect.TypeOf((*MockStateDB)(nil).HasSelfDestructed), arg0)
 }
 
+// InterTxSnapshot mocks base method.
+func (m *MockStateDB) InterTxSnapshot() int {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InterTxSnapshot")
+	ret0, _ := ret[0].(int)
+	return ret0
+}
+
+// InterTxSnapshot indicates an expected call of InterTxSnapshot.
+func (mr *MockStateDBMockRecorder) InterTxSnapshot() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InterTxSnapshot", reflect.TypeOf((*MockStateDB)(nil).InterTxSnapshot))
+}
+
 // PointCache mocks base method.
 func (m *MockStateDB) PointCache() *utils.PointCache {
 	m.ctrl.T.Helper()
@@ -540,18 +540,18 @@ func (mr *MockStateDBMockRecorder) Release() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Release", reflect.TypeOf((*MockStateDB)(nil).Release))
 }
 
-// RevertToCheckpoint mocks base method.
-func (m *MockStateDB) RevertToCheckpoint(id int) error {
+// RevertToInterTxSnapshot mocks base method.
+func (m *MockStateDB) RevertToInterTxSnapshot(id int) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RevertToCheckpoint", id)
+	ret := m.ctrl.Call(m, "RevertToInterTxSnapshot", id)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// RevertToCheckpoint indicates an expected call of RevertToCheckpoint.
-func (mr *MockStateDBMockRecorder) RevertToCheckpoint(id any) *gomock.Call {
+// RevertToInterTxSnapshot indicates an expected call of RevertToInterTxSnapshot.
+func (mr *MockStateDBMockRecorder) RevertToInterTxSnapshot(id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevertToCheckpoint", reflect.TypeOf((*MockStateDB)(nil).RevertToCheckpoint), id)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevertToInterTxSnapshot", reflect.TypeOf((*MockStateDB)(nil).RevertToInterTxSnapshot), id)
 }
 
 // RevertToSnapshot mocks base method.
