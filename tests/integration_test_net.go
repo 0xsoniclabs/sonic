@@ -479,7 +479,7 @@ func (n *IntegrationTestNet) start() error {
 
 				// websocket-client options
 				"--ws", "--ws.addr", "127.0.0.1", "--ws.port", "0",
-				"--ws.api", "admin,eth",
+				"--ws.api", "admin,eth,sonic",
 
 				//  net options
 				"--port", "0",

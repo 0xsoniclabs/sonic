@@ -654,6 +654,20 @@ func (mr *MockTxPoolMockRecorder) Has(arg0 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Has", reflect.TypeOf((*MockTxPool)(nil).Has), arg0)
 }
 
+// HasBundle mocks base method.
+func (m *MockTxPool) HasBundle(execPlanHash common.Hash) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HasBundle", execPlanHash)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// HasBundle indicates an expected call of HasBundle.
+func (mr *MockTxPoolMockRecorder) HasBundle(execPlanHash any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasBundle", reflect.TypeOf((*MockTxPool)(nil).HasBundle), execPlanHash)
+}
+
 // Pending mocks base method.
 func (m *MockTxPool) Pending(enforceTips bool) (map[common.Address]types.Transactions, error) {
 	m.ctrl.T.Helper()
