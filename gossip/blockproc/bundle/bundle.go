@@ -34,6 +34,7 @@ const (
 var (
 	BundleOnly    = common.HexToAddress("0x00000000000000000000000000000000000B0D1E")
 	BundleAddress = common.HexToAddress("0x00000000000000000000000000000000B0D1EADD")
+	MaxBlockRange = uint64(1024)
 )
 
 // ExecutionFlag represents the execution flags that specify the behavior of the bundle execution.
