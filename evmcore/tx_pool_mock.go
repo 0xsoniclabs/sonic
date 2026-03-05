@@ -144,6 +144,20 @@ func (mr *MockStateReaderMockRecorder) CurrentStateDB() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CurrentStateDB", reflect.TypeOf((*MockStateReader)(nil).CurrentStateDB))
 }
 
+// HasBundleBeenProcessed mocks base method.
+func (m *MockStateReader) HasBundleBeenProcessed(execPlanHash common.Hash) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HasBundleBeenProcessed", execPlanHash)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// HasBundleBeenProcessed indicates an expected call of HasBundleBeenProcessed.
+func (mr *MockStateReaderMockRecorder) HasBundleBeenProcessed(execPlanHash any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasBundleBeenProcessed", reflect.TypeOf((*MockStateReader)(nil).HasBundleBeenProcessed), execPlanHash)
+}
+
 // Header mocks base method.
 func (m *MockStateReader) Header(hash common.Hash, number uint64) *EvmHeader {
 	m.ctrl.T.Helper()
