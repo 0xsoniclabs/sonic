@@ -107,7 +107,8 @@ func validateTx(
 		return err
 	}
 
-	if err := validateBundleTransactions(tx, netRules, signer, chain, state); err != nil {
+	if err := validateBundleTransactions(tx, opt, netRules, chain, state,
+		subsidiesChecker, signer); err != nil {
 		return err
 	}
 
@@ -374,29 +375,41 @@ func validateSponsoredTransactions(
 	return nil
 }
 
+// validateBundleTransactions checks if a transaction is a bundle transaction and if so,
+// validates the bundle structure and the validity of each transaction in the bundle.
+// if the bundle is malformed or any bundle-only transactions is invalid,
+// it returns an error rejecting the transaction.
 func validateBundleTransactions(
 	tx *types.Transaction,
+	opt poolOptions,
 	netRules NetworkRules,
+	chain StateReader,
+	// Although state can be retrieved from chain, it is passed explicitly to avoid extra db-pool accesses
+	state state.StateDB,
+	subsidiesChecker subsidiesChecker,
 	signer types.Signer,
-	chainState StateReader,
-	stateDb state.StateDB,
 ) error {
 	return validateBundleTransactionsInternal(
 		tx,
+		opt,
 		netRules,
+		chain,
+		state,
+		subsidiesChecker,
 		signer,
-		chainState,
-		stateDb,
 		GetBundleState,
 	)
 }
 
 func validateBundleTransactionsInternal(
 	tx *types.Transaction,
+	opt poolOptions,
 	netRules NetworkRules,
+	chain StateReader,
+	// Although state can be retrieved from chain, it is passed explicitly to avoid extra db-pool accesses
+	state state.StateDB,
+	subsidiesChecker subsidiesChecker,
 	signer types.Signer,
-	chainState StateReader,
-	stateDb state.StateDB,
 	getBundleState func(ChainState, *types.Transaction) BundleState,
 ) error {
 	// This check only covers bundle transactions, ignore the rest.
@@ -410,22 +423,32 @@ func validateBundleTransactionsInternal(
 	}
 
 	// If the transaction is a bundle, validate its structure and content.
-	_, _, err := bundle.ValidateTransactionBundle(tx, signer)
+	bundle, _, err := bundle.ValidateTransactionBundle(tx, signer)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrBundleTransactionInvalid, err)
 	}
 
 	// Check that the bundle is runnable.
 	chainAdapter := &preCheckChainAdapter{
-		chainState: chainState,
-		stateDB:    stateDb,
+		chainState: chain,
+		stateDB:    state,
 	}
-	state := getBundleState(chainAdapter, tx)
-	if state == BundleStatePermanentlyBlocked {
+	bundleStatus := getBundleState(chainAdapter, tx)
+	if bundleStatus == BundleStatePermanentlyBlocked {
 		// TODO: have `GetBundleState` provide more context on why the bundle is
 		// blocked and include that in the error message.
 		return ErrBundlePermanentlyBlocked
 	}
+
+	for _, innerTx := range bundle.Bundle {
+		if err := validateTx(innerTx, opt, netRules, chain, state,
+			subsidiesChecker, signer); err != nil {
+			return fmt.Errorf("%w: bundle-only transaction %v failed validation: %w",
+				ErrBundleTransactionInvalid, innerTx.Hash(), err)
+		}
+	}
+
+	// TODO: check that the bundle is runnable
 
 	return nil
 }
