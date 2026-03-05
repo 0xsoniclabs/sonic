@@ -160,7 +160,7 @@ func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) evm
 			}
 		}
 		for _, b := range summary.ProcessedBundles {
-			b.Position += uint32(txsOffset)
+			b.Position += uint32(txsOffset) // TODO: this is likely off, add unit tests!
 		}
 	}
 
