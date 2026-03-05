@@ -259,6 +259,15 @@ func consensusCallbackBeginBlockFn(
 					proposal.Transactions, &es.Rules, log.Root(), invalidTxsMeter,
 				)
 
+				// Filter obsolete bundles from the proposal.
+				proposal.Transactions, err = filterObsoleteBundles(
+					proposal.Transactions, types.LatestSignerForChainID(chainCfg.ChainID), store,
+					uint64(proposal.Number), &es.Rules, log.Root(), skippedTxsMeter,
+				)
+				if err != nil {
+					log.Crit("failed to filter obsolete bundles", "err", err)
+				}
+
 				// Make sure the new block time is after the last block time.
 				if blockTime <= bs.LastBlock.Time {
 					blockTime = bs.LastBlock.Time + 1
@@ -421,13 +430,14 @@ func consensusCallbackBeginBlockFn(
 
 					orderedTxs := proposal.Transactions
 					numSkippedDueToBlockLimits := 0
+					var processedBundles []evmcore.ProcessedBundle
 					if es.Rules.Upgrades.Brio {
 						// Limit block size and gas while adding user transactions
-						numSkippedDueToBlockLimits =
+						numSkippedDueToBlockLimits, processedBundles =
 							processUserTransactions(evmProcessor, blockBuilder, orderedTxs, userTransactionGasLimit)
 					} else {
 						// Pre brio there were no limits on user transactions
-						processUserTransactionsNoLimits(evmProcessor, blockBuilder, orderedTxs, userTransactionGasLimit)
+						processedBundles = processUserTransactionsNoLimits(evmProcessor, blockBuilder, orderedTxs, userTransactionGasLimit)
 					}
 
 					evmBlock, numSkippedTxs, allReceipts := evmProcessor.Finalize()
@@ -524,6 +534,24 @@ func consensusCallbackBeginBlockFn(
 					store.SetBlockEpochState(bs, es)
 					store.EvmStore().SetCachedEvmBlock(blockCtx.Idx, evmBlock)
 
+					// Keep track of processed bundles.
+					signer := types.LatestSignerForChainID(chainCfg.ChainID)
+					bundleInfos := make([]bundle.ExecutionInfo, len(processedBundles))
+					for i, pb := range processedBundles {
+						plan, err := pb.Bundle.ExtractExecutionPlan(signer)
+						if err != nil {
+							log.Crit("Failed to extract execution plan from bundle", "err", err)
+						}
+						bundleInfos[i] = bundle.ExecutionInfo{
+							ExecutionPlanHash: plan.Hash(),
+							BlockNum:          uint64(blockCtx.Idx),
+							Position:          pb.Position,
+						}
+					}
+					if err := store.AddProcessedBundles(uint64(blockCtx.Idx), bundleInfos); err != nil {
+						log.Crit("Failed to add processed bundles", "err", err)
+					}
+
 					// Inform the SCC about the new block
 					if sccNode != nil {
 						err := sccNode.NewBlock(cert.NewBlockStatement(
@@ -600,8 +628,10 @@ func processUserTransactionsNoLimits(
 	evmProcessor blockproc.EVMProcessor,
 	blockBuilder *inter.BlockBuilder,
 	orderedTxs []*types.Transaction,
-	userTransactionGasLimit uint64) {
-	for _, processed := range evmProcessor.Execute(orderedTxs, userTransactionGasLimit).ProcessedTransactions {
+	userTransactionGasLimit uint64,
+) []evmcore.ProcessedBundle {
+	summary := evmProcessor.Execute(orderedTxs, userTransactionGasLimit)
+	for _, processed := range summary.ProcessedTransactions {
 		if processed.Receipt != nil { // < nil if skipped
 			blockBuilder.AddTransaction(
 				processed.Transaction,
@@ -609,6 +639,7 @@ func processUserTransactionsNoLimits(
 			)
 		}
 	}
+	return summary.ProcessedBundles
 }
 
 // rlpEncodedMaxHeaderSizeInBytes is an upper bound of the EVM block header size
@@ -621,7 +652,8 @@ func processUserTransactions(
 	evmProcessor blockproc.EVMProcessor,
 	blockBuilder *inter.BlockBuilder,
 	orderedTxs []*types.Transaction,
-	userTransactionGasLimit uint64) int {
+	userTransactionGasLimit uint64,
+) (int, []evmcore.ProcessedBundle) {
 	remainingGas := userTransactionGasLimit
 	remainingSize := uint64(params.MaxBlockSize - rlpEncodedMaxHeaderSizeInBytes)
 	internalTxs := blockBuilder.GetTransactions()
@@ -629,16 +661,19 @@ func processUserTransactions(
 		txSize := tx.Size()
 		if txSize > remainingSize {
 			log.Warn("block filled with only internal transactions")
-			return len(orderedTxs)
+			return len(orderedTxs), nil
 		}
 		remainingSize -= txSize
 	}
 
 	skippedCounter := 0
+	var processedBundles []evmcore.ProcessedBundle
 	for _, tx := range orderedTxs {
 		neededSpace := txSizeIncludingSubsidies(tx)
 		if neededSpace <= remainingSize {
-			for _, processed := range evmProcessor.Execute([]*types.Transaction{tx}, remainingGas).ProcessedTransactions {
+			summary := evmProcessor.Execute([]*types.Transaction{tx}, remainingGas)
+			processedBundles = append(processedBundles, summary.ProcessedBundles...)
+			for _, processed := range summary.ProcessedTransactions {
 				if processed.Receipt != nil { // < nil if skipped
 					blockBuilder.AddTransaction(
 						processed.Transaction,
@@ -652,7 +687,7 @@ func processUserTransactions(
 			skippedCounter++
 		}
 	}
-	return skippedCounter
+	return skippedCounter, processedBundles
 }
 
 // txSizeIncludingSubsidies returns the size of the transaction,
@@ -920,8 +955,113 @@ func isPermissible(
 	return nil
 }
 
+// filterObsoleteBundles filters bundles that were already included in the
+// chain or are outdated. This makes sure that bundles are processed at most
+// once. This is to defend against validators proposing the same bundle multiple
+// times for inclusion.
+func filterObsoleteBundles(
+	transactions []*types.Transaction,
+	signer types.Signer,
+	tracker bundleTracker,
+	blockNumber uint64,
+	rules *opera.Rules,
+	log log.Logger,
+	skippedBundleCounter metricCounter,
+) ([]*types.Transaction, error) {
+
+	// How bundles are handled by this filter:
+	//
+	// Before Brio: there is no special treatment of bundles. They are
+	//  interpreted as regular transactions in order to be backward compatible
+	//  during the roll-out phase.
+	//
+	// After Brio: bundles are filtered out if the `TransactionBundles` feature
+	//  is disabled. In this case, bundles are filtered out (=skipped). If the
+	//  `TransactionBundles` feature is enabled, bundles are checked for
+	//  validity and obsolescence. Invalid or obsolete bundles are filtered out
+	//  (=skipped), while valid and non-obsolete bundles are kept for inclusion.
+
+	// This filter is only enabled with the Brio upgrade. This is for backward
+	// compatibility during the roll-out phase.
+	if !rules.Upgrades.Brio {
+		return transactions, nil
+	}
+
+	res := make([]*types.Transaction, 0, len(transactions))
+	for _, tx := range transactions {
+		if !bundle.IsTransactionBundle(tx) {
+			res = append(res, tx)
+			continue
+		}
+
+		// If bundles are disabled, all bundles are to be removed.
+		if !rules.Upgrades.TransactionBundles {
+			if log != nil {
+				log.Warn("Bundles are not enabled but a bundle transaction needed to be skipped", "tx", tx.Hash())
+			}
+			if skippedBundleCounter != nil {
+				skippedBundleCounter.Mark(1)
+			}
+			continue
+		}
+
+		// Check static properties of the bundle, to make sure it is not malformed.
+		_, execPlan, err := bundle.ValidateTransactionBundle(tx, signer)
+		if err != nil {
+			if log != nil {
+				log.Warn("Invalid bundle transaction in the proposal", "tx", tx.Hash(), "issue", err)
+			}
+			if skippedBundleCounter != nil {
+				skippedBundleCounter.Mark(1)
+			}
+			continue // < filter out invalid bundled transactions
+		}
+
+		// Check that the block this bundle is to be included is within its
+		// valid range.
+		if !execPlan.IsInRange(blockNumber) {
+			if log != nil {
+				log.Warn(
+					"Bundle transaction in the proposal is out of range for execution",
+					"tx", tx.Hash(),
+					"block", blockNumber,
+					"earliest", execPlan.Earliest,
+					"latest", execPlan.Latest,
+				)
+			}
+			if skippedBundleCounter != nil {
+				skippedBundleCounter.Mark(1)
+			}
+			continue // < filter out outdated bundled transactions
+		}
+
+		// Check that the execution plan of this bundle has not been processed
+		// before at any other time during its valid range.
+		hash := execPlan.Hash()
+		seen, err := tracker.HasBundleRecentlyBeenProcessed(hash)
+		if err != nil {
+			return nil, err
+		}
+		if seen {
+			if log != nil {
+				log.Warn("Bundle transaction in the proposal was recently processed", "tx", tx.Hash(), "exec_plan_hash", hash)
+			}
+			if skippedBundleCounter != nil {
+				skippedBundleCounter.Mark(1)
+			}
+			continue // < filter out recently processed bundled transactions
+		}
+		res = append(res, tx)
+	}
+	return res, nil
+}
+
 // metricCounter is an abstraction of the *metrics.Meter type to facilitate
 // mocking in tests.
 type metricCounter interface {
 	Mark(int64)
+}
+
+type bundleTracker interface {
+	HasBundleRecentlyBeenProcessed(execPlanHash common.Hash) (bool, error)
 }

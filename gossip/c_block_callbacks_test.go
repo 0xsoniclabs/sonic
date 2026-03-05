@@ -1021,7 +1021,7 @@ func TestProcessUserTransactions_TransactionsWithNoReceiptAreNotIncluded(t *test
 			ProcessedTransactions: []evmcore.ProcessedTransaction{{Transaction: tx, Receipt: nil}},
 		})
 
-	skippedCount :=
+	skippedCount, _ :=
 		processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{tx}, 10000)
 
 	require.Equal(t, 0, skippedCount,
@@ -1043,7 +1043,7 @@ func TestProcessUserTransactions_DeductsInternalTxsSize(t *testing.T) {
 
 	// Create a user tx that would only fit without the internal tx
 	userTx := types.NewTx(&types.LegacyTx{Data: make([]byte, params.MaxBlockSize/2)})
-	skippedCount := processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{userTx}, 10000)
+	skippedCount, _ := processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{userTx}, 10000)
 
 	// Both internal and user tx should be present
 	gotTxs := blockBuilder.GetTransactions()
@@ -1074,7 +1074,7 @@ func TestProcessUserTransactions_SkipsTxsExceedingSizeLimit(t *testing.T) {
 			ProcessedTransactions: []evmcore.ProcessedTransaction{{Transaction: tx1, Receipt: &types.Receipt{}}},
 		})
 
-	skippedCount :=
+	skippedCount, _ :=
 		processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{largeTx, tx0, tx1}, 10000)
 
 	require.Equal(t, 1, skippedCount)
@@ -1132,7 +1132,7 @@ func TestProcessUserTransactions_InternalTransactionsHaveNoImpactOnTheUserTransa
 	// the user transaction only fits into the user transaction gas limit if
 	// the internal transaction gas is not counted towards it
 	userTransactionGasLimit := uint64(30_000)
-	skippedCount :=
+	skippedCount, _ :=
 		processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{userTx0, skippedTx}, userTransactionGasLimit)
 
 	// the skipped transaction is counted by the evm processor
@@ -1203,7 +1203,7 @@ func TestProcessUserTransactions_SponsoredTxSizeIsAccountedCorrectly(t *testing.
 					ProcessedTransactions: []evmcore.ProcessedTransaction{{Transaction: tx2, Receipt: &types.Receipt{}}},
 				}).AnyTimes()
 
-			skippedCount := processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{tx0, tx1, tx2}, 10000)
+			skippedCount, _ := processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{tx0, tx1, tx2}, 10000)
 
 			gotTxs := blockBuilder.GetTransactions()
 			require.Contains(t, gotTxs, tx0)
@@ -1250,7 +1250,7 @@ func TestProcessUserTransactions_SkipUserTransactionIfInternalTransactionsExceed
 
 			// Create a user tx that would only fit without the internal tx
 			userTx := types.NewTx(&types.LegacyTx{})
-			skippedCount := processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{userTx}, 10000)
+			skippedCount, _ := processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{userTx}, 10000)
 
 			// Only internal tx should be present
 			gotTxs := blockBuilder.GetTransactions()
