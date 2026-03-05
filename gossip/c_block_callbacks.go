@@ -966,7 +966,7 @@ func filterObsoleteBundles(
 	blockNumber uint64,
 	rules *opera.Rules,
 	log log.Logger,
-	counter metricCounter,
+	skippedBundleCounter metricCounter,
 ) ([]*types.Transaction, error) {
 	// This filter is only enabled with the Brio upgrade.
 	if !rules.Upgrades.Brio {
@@ -991,8 +991,8 @@ func filterObsoleteBundles(
 			if log != nil {
 				log.Warn("Invalid bundle transaction in the proposal", "tx", tx.Hash(), "issue", err)
 			}
-			if counter != nil {
-				counter.Mark(1)
+			if skippedBundleCounter != nil {
+				skippedBundleCounter.Mark(1)
 			}
 			continue // < filter out invalid bundled transactions
 		}
@@ -1009,8 +1009,8 @@ func filterObsoleteBundles(
 					"latest", execPlan.Latest,
 				)
 			}
-			if counter != nil {
-				counter.Mark(1)
+			if skippedBundleCounter != nil {
+				skippedBundleCounter.Mark(1)
 			}
 			continue // < filter out outdated bundled transactions
 		}
@@ -1026,8 +1026,8 @@ func filterObsoleteBundles(
 			if log != nil {
 				log.Warn("Bundle transaction in the proposal was recently processed", "tx", tx.Hash(), "exec_plan_hash", hash)
 			}
-			if counter != nil {
-				counter.Mark(1)
+			if skippedBundleCounter != nil {
+				skippedBundleCounter.Mark(1)
 			}
 			continue // < filter out recently processed bundled transactions
 		}
