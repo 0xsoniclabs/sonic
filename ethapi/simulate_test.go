@@ -18,6 +18,7 @@ package ethapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"math/big"
 	"testing"
@@ -117,6 +118,37 @@ func TestSimulateV1_MultipleBlocks_ReturnsResultsPerBlock(t *testing.T) {
 	require.Equal(t, big.NewInt(baseBlockNumber+2), results[1].block.Number)
 }
 
+func TestSimulateV1_SingleCall_ReturnsFullTxResult(t *testing.T) {
+	f := newSimulateV1Helper(t)
+	setExpectedStateCalls(f.mockState)
+	f.mockState.EXPECT().GetStateHash().Return(common.Hash{})
+
+	from := common.Address{1}
+	to := common.Address{2}
+	gas := hexutil.Uint64(21_000)
+	opts := simOpts{
+		BlockStateCalls: []simBlock{
+			{Calls: []TransactionArgs{{From: &from, To: &to, Gas: &gas}}},
+		},
+		ReturnFullTransactions: true,
+	}
+
+	results, err := f.api.SimulateV1(context.Background(), opts, &f.blkNr)
+
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	require.True(t, results[0].fullTx)
+
+	// This is happening automatically when marshaling the result to JSON
+	// with RPC api.
+	blockBytes, err := results[0].MarshalJSON()
+	require.NoError(t, err)
+
+	var blockJson map[string]interface{}
+	require.NoError(t, json.Unmarshal(blockBytes, &blockJson))
+	require.Equal(t, from, common.HexToAddress(blockJson["transactions"].([]interface{})[0].(map[string]interface{})["from"].(string)))
+}
+
 // newSimTestBase constructs a minimal EvmBlock suitable as a simulation base block.
 func newSimTestBase() *evmcore.EvmBlock {
 	return &evmcore.EvmBlock{
@@ -182,10 +214,12 @@ func TestSimTracer_CaptureTransfer_CreatesExpectedLog(t *testing.T) {
 
 	tracer := newSimTracer(true, blockNum, blockTs, blockHash, txHash, 0)
 
+	tracer.calls = append(tracer.calls, &callLogs{})
 	tracer.captureTransfer(from, to, value)
 
-	require.Len(t, tracer.logs, 1)
-	log := tracer.logs[0]
+	require.Len(t, tracer.calls, 1)
+	require.Len(t, tracer.calls[0].logs, 1)
+	log := tracer.calls[0].logs[0]
 	require.Equal(t, simTransferAddress, log.Address)
 	require.Equal(t, simTransferTopic, log.Topics[0])
 	require.Equal(t, common.BytesToHash(from.Bytes()), log.Topics[1])
@@ -202,63 +236,57 @@ func TestSimTracer_CaptureTransfer_NoOpWhenTracingDisabled(t *testing.T) {
 	tracer.captureTransfer(common.Address{1}, common.Address{2}, big.NewInt(1))
 
 	// No log should be appended because traceTransfers is false.
-	require.Empty(t, tracer.logs)
+	require.Empty(t, tracer.calls)
 }
 
 func TestSimTracer_OnExit_ClearsLogsOnTopLevelRevert(t *testing.T) {
 	tracer := newSimTracer(true, 1, 0, common.Hash{}, common.Hash{}, 0)
-	tracer.logs = []*types.Log{
-		{Address: common.Address{1}},
+	tracer.calls = []*callLogs{
+		{logs: []*types.Log{{Address: common.Address{1}}}},
 	}
 	tracer.count = 1
 
 	tracer.onExit(0, nil, 0, nil, true) // depth=0, reverted=true
 
-	require.Nil(t, tracer.logs)
-	require.Equal(t, 0, tracer.count)
+	require.Len(t, tracer.calls, 0)
 }
 
 func TestSimTracer_OnExit_KeepsLogsOnSuccessfulTopLevelCall(t *testing.T) {
 	tracer := newSimTracer(true, 1, 0, common.Hash{}, common.Hash{}, 0)
 	log := &types.Log{Address: common.Address{1}}
-	tracer.logs = []*types.Log{log}
+	tracer.calls = []*callLogs{{logs: []*types.Log{log}}}
 	tracer.count = 1
 
 	tracer.onExit(0, nil, 0, nil, false) // depth=0, reverted=false
 
-	require.NotNil(t, tracer.logs)
+	require.NotNil(t, tracer.calls)
 	require.Equal(t, 1, tracer.count)
 }
 
 func TestSimTracer_OnExit_KeepsLogsOnNestedRevert(t *testing.T) {
 	tracer := newSimTracer(true, 1, 0, common.Hash{}, common.Hash{}, 0)
 	log := &types.Log{Address: common.Address{1}}
-	tracer.logs = []*types.Log{log}
+	tracer.calls = []*callLogs{{logs: []*types.Log{log}}}
 	tracer.count = 1
 
 	// Depth > 0 revert should not clear logs.
 	tracer.onExit(1, nil, 0, nil, true)
 
-	require.NotNil(t, tracer.logs)
+	require.NotNil(t, tracer.calls)
 	require.Equal(t, 1, tracer.count)
 }
 
 func TestSimTracer_Reset_ClearsLogsAndUpdatesContext(t *testing.T) {
 	tracer := newSimTracer(true, 1, 0, common.Hash{1}, common.Hash{2}, 0)
-	tracer.logs = []*types.Log{{Address: common.Address{1}}}
+	tracer.calls = []*callLogs{{logs: []*types.Log{{Address: common.Address{1}}}}}
 
 	newHash := common.Hash{42}
 	newIdx := uint(3)
 	tracer.reset(newHash, newIdx)
 
-	require.Nil(t, tracer.logs)
+	require.Nil(t, tracer.calls)
 	require.Equal(t, newHash, tracer.txHash)
 	require.Equal(t, newIdx, tracer.txIdx)
-}
-
-func TestSimTracer_Hooks_ReturnsNilWhenTracingDisabled(t *testing.T) {
-	tracer := newSimTracer(false, 1, 0, common.Hash{}, common.Hash{}, 0)
-	require.Nil(t, tracer.Hooks())
 }
 
 func TestSimTracer_Hooks_ReturnsNonNilWhenTracingEnabled(t *testing.T) {
@@ -560,47 +588,23 @@ func TestSanitizeCall_BlockGasLimitReachedError(t *testing.T) {
 	require.Equal(t, errCodeBlockGasLimitReached, simTxError.ErrorCode())
 }
 
-func TestRepairSimLogs_UpdatesBlockHashInContractLogs(t *testing.T) {
-	blockHash := common.Hash{42}
-	log1 := &types.Log{BlockHash: common.Hash{}}
-	log2 := &types.Log{BlockHash: common.Hash{}}
+func TestRepairSimLogs(t *testing.T) {
 
-	calls := []simCallResult{}
-	allLogs := []*types.Log{log1, log2}
-
-	repairSimLogs(calls, allLogs, blockHash)
-
-	require.Equal(t, blockHash, log1.BlockHash)
-	require.Equal(t, blockHash, log2.BlockHash)
-}
-
-func TestRepairSimLogs_UpdatesBlockHashInTransferLogs(t *testing.T) {
-	blockHash := common.Hash{99}
-	transferLog := &types.Log{BlockHash: common.Hash{}}
-
-	calls := []simCallResult{
-		{Logs: []*types.Log{transferLog}},
+	evmHeader := &evmcore.EvmHeader{
+		Hash:   common.Hash{42},
+		Number: big.NewInt(10),
+		Time:   inter.FromUnix(1000),
 	}
 
-	repairSimLogs(calls, nil, blockHash)
-
-	require.Equal(t, blockHash, transferLog.BlockHash)
-}
-
-func TestRepairSimLogs_UpdatesBothContractAndTransferLogs(t *testing.T) {
-	blockHash := common.Hash{77}
-	contractLog := &types.Log{BlockHash: common.Hash{}}
-	transferLog := &types.Log{BlockHash: common.Hash{}}
+	callLog := &types.Log{BlockHash: common.Hash{}}
 
 	calls := []simCallResult{
-		{Logs: []*types.Log{transferLog}},
+		{Logs: []*types.Log{callLog}},
 	}
-	allLogs := []*types.Log{contractLog}
 
-	repairSimLogs(calls, allLogs, blockHash)
+	repairSimLogs(calls, &evmcore.EvmBlock{EvmHeader: *evmHeader})
+	require.Equal(t, evmHeader.Hash, callLog.BlockHash)
 
-	require.Equal(t, blockHash, contractLog.BlockHash)
-	require.Equal(t, blockHash, transferLog.BlockHash)
 }
 
 func TestSetCallPriceDefaults_SetsEIP1559FieldsWhenBaseFeePresent(t *testing.T) {

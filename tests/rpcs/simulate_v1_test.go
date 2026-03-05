@@ -17,6 +17,7 @@
 package rpcs
 
 import (
+	"bytes"
 	"math/big"
 	"strings"
 	"testing"
@@ -24,6 +25,7 @@ import (
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 )
 
@@ -33,6 +35,7 @@ type simulateV1BlockResult struct {
 	Number   string                 `json:"number"`
 	GasLimit string                 `json:"gasLimit"`
 	Calls    []simulateV1CallResult `json:"calls"`
+	Bloom    types.Bloom            `json:"logsBloom"`
 }
 
 type simulateV1CallResult struct {
@@ -44,9 +47,10 @@ type simulateV1CallResult struct {
 }
 
 type simulateV1Log struct {
-	Address string   `json:"address"`
-	Topics  []string `json:"topics"`
-	Data    string   `json:"data"`
+	Address  string         `json:"address"`
+	Topics   []string       `json:"topics"`
+	Data     string         `json:"data"`
+	LogIndex hexutil.Uint64 `json:"logIndex"`
 }
 
 type simulateV1CallError struct {
@@ -320,6 +324,72 @@ func TestSimulateV1(t *testing.T) {
 			"block 2 transfer must succeed — state from block 1 must persist")
 	})
 
+	t.Run("logs_have_correct_log_index_in_multiple_blocks", func(t *testing.T) {
+		client, err := net.GetClient()
+		require.NoError(t, err)
+		defer client.Close()
+
+		sender := common.HexToAddress("0x5555555555555555555555555555555555555555")
+		sender2 := common.HexToAddress("0x3333333333333333333333333333333333333333")
+		relay := common.HexToAddress("0x6666666666666666666666666666666666666666")
+		receiver := common.HexToAddress("0x7777777777777777777777777777777777777777")
+		balance := hexutil.EncodeBig(new(big.Int).Mul(big.NewInt(1e18), big.NewInt(100)))
+		value1 := hexutil.EncodeBig(new(big.Int).Mul(big.NewInt(1e18), big.NewInt(2)))
+		value2 := hexutil.EncodeBig(new(big.Int).Mul(big.NewInt(1e18), big.NewInt(1)))
+
+		opts := map[string]any{
+			"blockStateCalls": []any{
+				// Block 1
+				map[string]any{
+					"stateOverrides": map[string]any{
+						sender.Hex(): map[string]any{
+							"balance": balance,
+						},
+						sender2.Hex(): map[string]any{
+							"balance": balance,
+						},
+					},
+					"calls": []any{
+						map[string]any{
+							"from":  sender.Hex(),
+							"to":    relay.Hex(),
+							"value": value1,
+						},
+						map[string]any{
+							"from":  sender2.Hex(),
+							"to":    relay.Hex(),
+							"value": value2,
+						},
+					},
+				},
+				// Block 2 — no state override for relay
+				map[string]any{
+					"calls": []any{
+						map[string]any{
+							"from":  relay.Hex(),
+							"to":    receiver.Hex(),
+							"value": value2,
+						},
+					},
+				},
+			},
+			"traceTransfers": true,
+		}
+		var result []simulateV1BlockResult
+		err = client.Client().Call(&result, "eth_simulateV1", opts, "latest")
+		require.NoError(t, err, "eth_simulateV1 must succeed")
+
+		require.Len(t, result[0].Calls[0].Logs, 1, "block 1 call 1 transfer must emit one log")
+		require.Len(t, result[0].Calls[1].Logs, 1, "block 1 call 2 transfer must emit one log")
+		require.Len(t, result[1].Calls[0].Logs, 1, "block 2 call 1 transfer must emit one log")
+		require.Equal(t, uint64(0), uint64(result[0].Calls[0].Logs[0].LogIndex),
+			"block 1 call 1 transfer log must have logIndex 0")
+		require.Equal(t, uint64(1), uint64(result[0].Calls[1].Logs[0].LogIndex),
+			"block 1 call 2 transfer log must have logIndex 1")
+		require.Equal(t, uint64(0), uint64(result[1].Calls[0].Logs[0].LogIndex),
+			"block 2 call 1 transfer log must have logIndex 0 — logIndex should reset for new blocks")
+	})
+
 	t.Run("trace_transfers_emits_pseudo_transfer_log", func(t *testing.T) {
 		client, err := net.GetClient()
 		require.NoError(t, err)
@@ -504,5 +574,8 @@ func TestSimulateV1(t *testing.T) {
 		}
 		require.True(t, foundOwnerSetLog,
 			"must find an OwnerSet log from the overridden contract at address %s", contractAddr.Hex())
+
+		emptyBloom := bytes.Equal(result[0].Bloom.Bytes(), make([]byte, len(result[0].Bloom)))
+		require.False(t, emptyBloom, "logsBloom must not be empty when logs are emitted")
 	})
 }
