@@ -77,8 +77,10 @@ func (a *PublicBundleAPI) GetBundleInfo(
 	return BundleInfo{}, nil
 }
 
+// BundleInfo is the JSON RPC message returned by the GetBundleInfo API, which
+// provides information about the status of a transaction bundle.
 type BundleInfo struct {
-	Status   BundleStatus
-	Block    *uint64
-	Position *uint32
+	Status   BundleStatus `json:"status"`
+	Block    *uint64      `json:"block,omitempty"`
+	Position *uint32      `json:"position,omitempty"`
 }
