@@ -384,7 +384,7 @@ func Test_RunUntilTolerated_Works(t *testing.T) {
 	net, client := startTestnet(t)
 	defer client.Close()
 	for _, c := range cases {
-		if c.name != "bundled/invalid" && /* TODO: re-enable when using bundle_GetBundleState*/ c.name != "bundled/success" {
+		if c.name != "bundled/invalid" {
 			checkCase(t, net, client, c)
 		}
 	}
@@ -431,34 +431,18 @@ func checkCase(t *testing.T, net *tests.IntegrationTestNet, client *tests.Pooled
 		require.NoError(t, err)
 
 		// Wait for the bundle to be processed.
-		// TODO: use the bundle_GetExecutionInfo RPC once it is available;
-		// < --- temporary solution to identify block running the bundle --- >
-		if len(c.blockTxIndices) == 0 {
-			t.Skip("Can not check for the processing of bundles without affects right now.")
-		}
-
-		blockNumberThatRunTheBundle := int64(0)
-		if len(c.blockTxIndices) > 0 {
-			// Search for a receipt of any of the included transactions.
-			found := false
-			for !found {
-				for _, tx := range txs {
-					receipt, err := client.TransactionReceipt(t.Context(), tx.Hash())
-					if err != ethereum.NotFound {
-						require.NoError(t, err, "failed to get receipt for transaction; %v", err)
-					}
-					if receipt != nil {
-						blockNumberThatRunTheBundle = receipt.BlockNumber.Int64()
-						found = true
-						break
-					}
-				}
-			}
-		}
-		// < --- end of temporary solution --- >
+		info, err := waitForBundleExecution(t.Context(), client.Client(), plan.Hash())
+		require.NoError(t, err)
+		require.NotNil(t, info.Block)
 
 		// Check transactions hashes and statuses
-		transactionHashes := getTransactionsInBlock(t, net, big.NewInt(blockNumberThatRunTheBundle))
+		transactionHashes := getTransactionsInBlock(t, net, big.NewInt(int64(*info.Block)))
+
+		// Truncate potential internal transactions at the beginning of the
+		// block. The rest should only be transactions from the bundle.
+		require.LessOrEqual(t, int(*info.Position), len(transactionHashes))
+		transactionHashes = transactionHashes[*info.Position:]
+
 		require.Len(t, transactionHashes, len(c.blockTxIndices))
 		for i := range c.blockTxIndices {
 			switch c.blockTxIndices[i] {
