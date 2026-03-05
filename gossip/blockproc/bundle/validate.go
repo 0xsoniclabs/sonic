@@ -94,8 +94,8 @@ func ValidateTransactionBundle(
 	for _, innerTx := range txBundle.Bundle {
 		gasLimit += innerTx.Gas()
 	}
-	if bundleGas < gasLimit {
-		return nil, nil, fmt.Errorf("%w: bundle gas limit %d but needs %d", ErrBundleGasLimitTooLow, tx.Gas(), gasLimit)
+	if bundleGas != max(gasLimit, intrGas) {
+		return nil, nil, fmt.Errorf("%w: bundle gas limit %d but needs %d", ErrBundleGasLimitTooLow, tx.Gas(), max(gasLimit, intrGas))
 	}
 
 	return &txBundle, &plan, nil

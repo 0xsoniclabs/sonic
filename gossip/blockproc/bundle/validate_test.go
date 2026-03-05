@@ -100,15 +100,16 @@ func TestValidate_AcceptsValidBlockRanges(t *testing.T) {
 	tests := map[string]struct {
 		From uint64
 		To   uint64
+		Gas  uint64
 	}{
 		"single-block range": {
-			From: 10, To: 10,
+			From: 10, To: 10, Gas: 21096,
 		},
 		"multi-block range": {
-			From: 7, To: 42,
+			From: 7, To: 42, Gas: 21096,
 		},
 		"max-size block range": {
-			From: 100, To: 100 + MaxBlockRange - 1,
+			From: 100, To: 100 + MaxBlockRange - 1, Gas: 21128,
 		},
 	}
 
@@ -122,7 +123,7 @@ func TestValidate_AcceptsValidBlockRanges(t *testing.T) {
 			tx := types.NewTx(&types.LegacyTx{
 				To:   &BundleAddress,
 				Data: data,
-				Gas:  25_000,
+				Gas:  test.Gas,
 			})
 			require.True(t, IsTransactionBundle(tx))
 
@@ -206,7 +207,7 @@ func (gen testBundleGenerator) makeEmptyBundleTx() *types.Transaction {
 	return types.NewTx(&types.LegacyTx{
 		To:   &BundleAddress,
 		Data: bytes,
-		Gas:  25_000,
+		Gas:  21096,
 	})
 }
 
@@ -314,7 +315,7 @@ func (gen testBundleGenerator) makeUnsoundBundleTx(t testing.TB) *types.Transact
 	return types.NewTx(&types.LegacyTx{
 		To:   &BundleAddress,
 		Data: Encode(bundle),
-		Gas:  25_000,
+		Gas:  21096,
 	})
 
 }
@@ -351,7 +352,7 @@ func (gen testBundleGenerator) makeBundleTxWithWronglySignedTx(t testing.TB) *ty
 	return types.NewTx(&types.LegacyTx{
 		To:   &BundleAddress,
 		Data: Encode(bundle),
-		Gas:  25_000,
+		Gas:  21096,
 	})
 }
 
@@ -366,7 +367,7 @@ func (gen testBundleGenerator) makeWrongVersionBundleTx() *types.Transaction {
 	return types.NewTx(&types.LegacyTx{
 		To:   &BundleAddress,
 		Data: bytes,
-		Gas:  25_000,
+		Gas:  21096,
 	})
 }
 
@@ -375,7 +376,7 @@ func (gen testBundleGenerator) makeNonBundleTx() *types.Transaction {
 	return types.NewTx(&types.LegacyTx{
 		To:   &someAddress,
 		Data: []byte("this is not a bundle"),
-		Gas:  25_000,
+		Gas:  21096,
 	})
 }
 
