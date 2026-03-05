@@ -32,9 +32,13 @@ var (
 	simTransferAddress = common.HexToAddress("0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE")
 )
 
+type callLogs struct {
+	logs []*types.Log
+}
+
 // simTracer collects logs for simulated transactions.
 type simTracer struct {
-	logs           [][]*types.Log
+	calls          []*callLogs
 	count          int
 	traceTransfers bool
 	blockNumber    uint64
@@ -67,7 +71,7 @@ func (t *simTracer) Hooks() *tracing.Hooks {
 
 // onEnter is called when the EVM enters a new call frame. It captures transfer
 func (t *simTracer) onEnter(depth int, typ byte, from, to common.Address, input []byte, gas uint64, value *big.Int) {
-	t.logs = append(t.logs, make([]*types.Log, 0))
+	t.calls = append(t.calls, &callLogs{})
 	if vm.OpCode(typ) != vm.DELEGATECALL && value != nil && value.Cmp(common.Big0) > 0 {
 
 		t.captureTransfer(from, to, value)
@@ -76,22 +80,8 @@ func (t *simTracer) onEnter(depth int, typ byte, from, to common.Address, input 
 
 // onExit is called when the EVM exits a call frame.
 func (t *simTracer) onExit(depth int, output []byte, gasUsed uint64, err error, reverted bool) {
-	if depth == 0 && reverted {
-		t.logs = nil
-		return
-	}
-	size := len(t.logs)
-	if size <= 1 {
-		return
-	}
-	// pop call
-	call := t.logs[size-1]
-	t.logs = t.logs[:size-1]
-	size--
-
-	// Clear logs if call failed.
-	if !reverted {
-		t.logs[size-1] = append(t.logs[size-1], call...)
+	if reverted {
+		t.calls = t.calls[:len(t.calls)-1]
 	}
 }
 
@@ -100,7 +90,7 @@ func (t *simTracer) onLog(log *types.Log) {
 }
 
 func (t *simTracer) captureLog(address common.Address, topics []common.Hash, data []byte) {
-	t.logs[len(t.logs)-1] = append(t.logs[len(t.logs)-1], &types.Log{
+	t.calls[len(t.calls)-1].logs = append(t.calls[len(t.calls)-1].logs, &types.Log{
 		Address:        address,
 		Topics:         topics,
 		Data:           data,
@@ -127,15 +117,16 @@ func (t *simTracer) captureTransfer(from, to common.Address, value *big.Int) {
 }
 
 func (t *simTracer) reset(txHash common.Hash, txIdx uint) {
-	t.logs = nil
+	t.calls = nil
 	t.txHash = txHash
 	t.txIdx = txIdx
 }
 
 // Logs returns the collected logs from the tracer.
 func (t *simTracer) Logs() []*types.Log {
-	if len(t.logs) == 0 {
-		return nil
+	logs := []*types.Log{}
+	for _, call := range t.calls {
+		logs = append(logs, call.logs...)
 	}
-	return t.logs[0]
+	return logs
 }
