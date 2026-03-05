@@ -379,7 +379,7 @@ func (r *transactionRunner) runTransactionBundle(
 	bundleCheckpoint := ctxt.statedb.InterTxSnapshot()
 	if !txBundle.Flags.TryUntil() {
 		for _, btx := range txBundle.Bundle {
-			txResults, _, status := runTransaction(ctxt, btx, txIndex+1+len(res)) // payment + included txs
+			txResults, _, status := runTransaction(ctxt, btx, txIndex+len(res)) // included txs
 
 			if !isTolerated(status, txBundle.Flags) {
 				log.Info("Got non-tolerated transaction in bundle, reverting all", "tx", btx.Hash().Hex())
@@ -397,7 +397,7 @@ func (r *transactionRunner) runTransactionBundle(
 		return res, processedBundle, StatusSuccessful
 	} else {
 		for _, btx := range txBundle.Bundle {
-			txResults, _, status := runTransaction(ctxt, btx, txIndex+1+len(res)) // payment + included txs
+			txResults, _, status := runTransaction(ctxt, btx, txIndex+len(res)) // included txs
 
 			if status != StatusSkipped {
 				res = append(res, txResults...)
