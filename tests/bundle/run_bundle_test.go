@@ -20,7 +20,6 @@ import (
 	"context"
 	"math/big"
 	"testing"
-	"time"
 
 	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
@@ -228,21 +227,18 @@ func getBundleInfo(
 }
 
 func waitForBundleExecution(
-	context context.Context,
+	ctxt context.Context,
 	client *rpc.Client,
 	executionPlanHash common.Hash,
 ) (ethapi.BundleInfo, error) {
-	for {
-		if err := context.Err(); err != nil {
-			return ethapi.BundleInfo{}, err
-		}
-		info, err := getBundleInfo(context, client, executionPlanHash)
+	var info ethapi.BundleInfo
+	var err error
+	err = tests.WaitFor(ctxt, func(innerCtx context.Context) (bool, error) {
+		info, err = getBundleInfo(innerCtx, client, executionPlanHash)
 		if err != nil {
-			return ethapi.BundleInfo{}, err
+			return false, err
 		}
-		if info.Status != ethapi.BundleStatusPending {
-			return info, nil
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+		return info.Status != ethapi.BundleStatusPending, nil
+	})
+	return info, err
 }
