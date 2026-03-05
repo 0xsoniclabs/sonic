@@ -22,6 +22,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
@@ -1224,6 +1225,43 @@ func TestValidateTx_RejectsTx_WhenStateValidationFails(t *testing.T) {
 	}
 }
 
+func TestValidateTx_RejectsTx_WhenBundleTransactionValidationFails(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	signer := NewMockSigner(ctrl)
+	signer.EXPECT().Sender(gomock.Any()).AnyTimes()
+	signer.EXPECT().Equal(gomock.Any()).AnyTimes()
+
+	chain := NewMockStateReader(ctrl)
+	chain.EXPECT().CurrentBaseFee().Return(big.NewInt(5)).AnyTimes()
+	chain.EXPECT().CurrentMaxGasLimit().Return(uint64(100_000)).AnyTimes()
+
+	state := state.NewMockStateDB(ctrl)
+	state.EXPECT().GetNonce(gomock.Any()).Return(uint64(0)).AnyTimes()
+	state.EXPECT().GetBalance(gomock.Any()).Return(uint256.NewInt(0)).AnyTimes()
+	state.EXPECT().GetCode(gomock.Any()).Return(nil).AnyTimes()
+
+	invalidBundle := types.NewTx(&types.LegacyTx{
+		To:  &bundle.BundleAddress,
+		Gas: 100_000,
+	})
+
+	require.True(bundle.IsTransactionBundle(invalidBundle))
+	require.ErrorIs(validateTx(
+		invalidBundle,
+		poolOptions{
+			isLocal: true,
+		},
+		NetworkRules{
+			transactionBundles: true,
+		},
+		chain,
+		state,
+		nil,
+		signer,
+	), ErrBundleTransactionInvalid)
+}
+
 func TestValidateTx_AcceptsZeroGasPriceTransactions_WhenSubsidiesAreEnabled(t *testing.T) {
 	tests := []types.TxData{
 		&types.LegacyTx{
@@ -1374,6 +1412,49 @@ func Test_validateSponsoredTransactions_RejectsSponsoredTransactions(t *testing.
 			require.ErrorIs(t, err, test.expectedError)
 		})
 	}
+}
+
+func Test_validateBundleTransactions_AcceptNonBundleTransactions(t *testing.T) {
+	tests := map[string]*types.Transaction{
+		"legacy tx":      types.NewTx(&types.LegacyTx{}),
+		"access list tx": types.NewTx(&types.AccessListTx{}),
+		"dynamic fee tx": types.NewTx(&types.DynamicFeeTx{}),
+		"blob tx":        types.NewTx(&types.BlobTx{}),
+	}
+
+	for name, tx := range tests {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+			require.False(bundle.IsTransactionBundle(tx))
+			require.NoError(validateBundleTransactions(tx, NetworkRules{}, nil))
+		})
+	}
+}
+
+func Test_validateBundleTransactions_IfBundledTransactionsAreEnabled_AcceptValidBundleTransaction(t *testing.T) {
+	require := require.New(t)
+	tx := types.NewTx(&types.LegacyTx{
+		To:   &bundle.BundleAddress,
+		Data: bundle.Encode(bundle.TransactionBundle{Version: 1}),
+	})
+	require.True(bundle.IsTransactionBundle(tx))
+
+	rules := NetworkRules{}
+	require.ErrorIs(validateBundleTransactions(tx, rules, nil), ErrBundleTransactionsDisabled)
+	rules.transactionBundles = true
+	require.NoError(validateBundleTransactions(tx, rules, nil))
+}
+
+func Test_validateBundleTransactions_RejectsInvalidBundleTransactions(t *testing.T) {
+	require := require.New(t)
+	tx := types.NewTx(&types.LegacyTx{
+		To:   &bundle.BundleAddress,
+		Data: []byte("invalid bundle data"),
+	})
+	require.True(bundle.IsTransactionBundle(tx))
+
+	rules := NetworkRules{transactionBundles: true}
+	require.ErrorIs(validateBundleTransactions(tx, rules, nil), ErrBundleTransactionInvalid)
 }
 
 func TestValidateTx_AllowsSponsoredZeroGasPriceTransactions_WhenSubsidiesAreFunded(t *testing.T) {

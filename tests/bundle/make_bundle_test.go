@@ -46,10 +46,6 @@ func makeBundleTransaction(
 	// Create a dedicated coordinator for every bundle.
 	coordinator := tests.NewAccount()
 
-	// TODO: once bundles support 0-gas-prices, remove this endowment
-	_, err = net.EndowAccount(coordinator.Address(), big.NewInt(1e18))
-	require.NoError(t, err, "failed to endow coordinator account; %v", err)
-
 	cost := big.NewInt(0)
 	for _, tx := range transactions {
 		txCost := new(big.Int).Mul(new(big.Int).SetUint64(tx.Gas()), tx.GasPrice())
@@ -70,19 +66,18 @@ func makeBundleTransaction(
 	}
 
 	// create the bundle transaction with the same nonce as the payment transaction
-	bundleTx := tests.CreateTransaction(t, net,
+	signer := types.LatestSignerForChainID(net.GetChainId())
+	bundleTx := types.MustSignNewTx(coordinator.PrivateKey, signer,
 		&types.LegacyTx{
 			Nonce: 0,
 			To:    &bundle.BundleAddress,
 			Gas:   gas,
 			Data:  bundle.Encode(bundlePayload),
 		},
-		coordinator,
 	)
 
 	// Sanity check the bundle before sending it to the mempool, if fails to validate before making
 	// a bundle transaction, it will fail to be included in a block and waiting for payment receipt will timeout
-	signer := types.NewCancunSigner(net.GetChainId())
 	_, _, err = bundle.ValidateTransactionBundle(bundleTx, signer)
 	require.NoError(t, err, "failed to validate transaction bundle; %v", err)
 

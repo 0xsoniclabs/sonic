@@ -107,7 +107,7 @@ func TestBundle_CanBeProcessedByTheNetwork(t *testing.T) {
 	require.NotNil(t, recoveredBundle)
 	require.NotNil(t, recoveredPlan)
 	require.Equal(t, plan, *recoveredPlan)
-	// require.EqualValues(t, 0, bundleTx.GasFeeCap().Uint64())  // TODO: remove when bundle is payment free
+	require.EqualValues(t, 0, bundleTx.GasFeeCap().Uint64())
 
 	// Check bundle status before submission.
 	info, err := getBundleInfo(t.Context(), client.Client(), plan.Hash())
@@ -204,10 +204,9 @@ func makeBundle(
 		Latest:   plan.Latest,
 	})
 	return &types.DynamicFeeTx{
-		To:        &bundle.BundleAddress,
-		Data:      data,
-		Gas:       1_000_000,
-		GasFeeCap: big.NewInt(1e12), // TODO: remove when bundle is payment free
+		To:   &bundle.BundleAddress,
+		Data: data,
+		Gas:  1_000_000,
 	}
 }
 
