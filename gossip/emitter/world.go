@@ -59,6 +59,11 @@ type (
 		StateDB() state.StateDB
 		GetUpgradeHeights() []opera.UpgradeHeight
 		Header(hash common.Hash, number uint64) *evmcore.EvmHeader
+
+		// HasBundleRecentlyBeenProcessed returns true if a bundle with the
+		// given execution plan hash has been processed recently, meaning within
+		// the last bundle.MaxBlockRange blocks.
+		HasBundleRecentlyBeenProcessed(execPlanHash common.Hash) bool
 	}
 
 	// TxSigner is a re-export of the types.Signer interface to allow
