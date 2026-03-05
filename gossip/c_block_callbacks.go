@@ -968,7 +968,21 @@ func filterObsoleteBundles(
 	log log.Logger,
 	skippedBundleCounter metricCounter,
 ) ([]*types.Transaction, error) {
-	// This filter is only enabled with the Brio upgrade.
+
+	// How bundles are handled by this filter:
+	//
+	// Before Brio: there is no special treatment of bundles. They are
+	//  interpreted as regular transactions in order to be backward compatible
+	//  during the roll-out phase.
+	//
+	// After Brio: bundles are filtered out if the `TransactionBundles` feature
+	//  is disabled. In this case, bundles are filtered out (=skipped). If the
+	//  `TransactionBundles` feature is enabled, bundles are checked for
+	//  validity and obsolescence. Invalid or obsolete bundles are filtered out
+	//  (=skipped), while valid and non-obsolete bundles are kept for inclusion.
+
+	// This filter is only enabled with the Brio upgrade. This is for backward
+	// compatibility during the roll-out phase.
 	if !rules.Upgrades.Brio {
 		return transactions, nil
 	}
@@ -982,6 +996,12 @@ func filterObsoleteBundles(
 
 		// If bundles are disabled, all bundles are to be removed.
 		if !rules.Upgrades.TransactionBundles {
+			if log != nil {
+				log.Warn("Bundles are not enabled but a bundle transaction needed to be skipped", "tx", tx.Hash())
+			}
+			if skippedBundleCounter != nil {
+				skippedBundleCounter.Mark(1)
+			}
 			continue
 		}
 
