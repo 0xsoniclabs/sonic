@@ -375,7 +375,7 @@ func validateSponsoredTransactions(
 	return nil
 }
 
-// validateBundleTransactions checks if a transaction is a bundle transaction and if so, 
+// validateBundleTransactions checks if a transaction is a bundle transaction and if so,
 // validates the bundle structure and the validity of each transaction in the bundle.
 // if the bundle is malformed or any bundle-only transactions is invalid,
 // it returns an error rejecting the transaction.
