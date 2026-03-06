@@ -140,14 +140,15 @@ func (a *PublicBundleAPI) PrepareBundle(
 			return nil, fmt.Errorf("failed to prepare bundle: transaction %d conversion error: %w", i, err)
 		}
 
-		// TODO: validate transactions?
-		// - allowed types
-		// - chain ID
+		tx := asTransaction(msg)
 
-		sanitizeMessage(msg, basefee)
+		switch tx.Type() {
+		case types.LegacyTxType, types.BlobTxType, types.SetCodeTxType:
+			return nil, fmt.Errorf("transaction %d has unsupported type %d: only AccessList and DynamicFee transactions are supported in bundles", i, tx.Type())
+		}
 
 		from[i] = msg.From
-		transactions[i] = asTransaction(msg)
+		transactions[i] = tx
 	}
 
 	// 2) Prepare execution plan
@@ -293,11 +294,5 @@ func asTransaction(msg *core.Message) *types.Transaction {
 			Data:       msg.Data,
 			AccessList: msg.AccessList,
 		})
-	}
-}
-
-func sanitizeMessage(msg *core.Message, defaultGasPrice *big.Int) {
-	if msg.GasPrice == nil && msg.GasFeeCap == nil && msg.GasTipCap == nil {
-		msg.GasPrice = defaultGasPrice
 	}
 }
