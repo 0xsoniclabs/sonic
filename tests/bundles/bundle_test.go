@@ -440,8 +440,8 @@ func checkCase(t *testing.T, net *tests.IntegrationTestNet, client *tests.Pooled
 
 		// Truncate potential internal transactions at the beginning of the
 		// block. The rest should only be transactions from the bundle.
-		require.LessOrEqual(t, int(*info.Position), len(transactionHashes))
-		transactionHashes = transactionHashes[*info.Position:]
+		require.LessOrEqual(t, int(*info.StartPosition), len(transactionHashes))
+		transactionHashes = transactionHashes[*info.StartPosition:]
 
 		require.Len(t, transactionHashes, len(c.blockTxIndices))
 		for i := range c.blockTxIndices {
