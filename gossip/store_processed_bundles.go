@@ -41,7 +41,7 @@ import (
 //
 // In the underlying table, the following keys are used:
 //  - key: [] -> [uint64, hash]                        // last block and hash for which the processed bundles have been stored
-//  - key: ['e']<execPlanHash> -> [block,position]     // for a processed bundle
+//  - key: ['e']<execPlanHash> -> [block,start_position,end_position]     // for a processed bundle
 //  - key: ['i']<blockNum, execPlanHash> -> []         // for a processed bundle at a specific block number, to handle cleanups
 //
 // The hash of the processed bundle's history is computed as follows:
@@ -69,9 +69,10 @@ func (s *Store) AddProcessedBundles(blockNum uint64, executedBundles []bundle.Ex
 	for _, info := range executedBundles {
 		hash := info.ExecutionPlanHash
 
-		data := make([]byte, 12)
+		data := make([]byte, 16)
 		binary.BigEndian.PutUint64(data[:8], info.BlockNum)
-		binary.BigEndian.PutUint32(data[8:], info.Position)
+		binary.BigEndian.PutUint32(data[8:12], info.StartPosition)
+		binary.BigEndian.PutUint32(data[12:], info.EndPosition)
 
 		err := errors.Join(
 			batch.Put(getEntryKey(hash), data),
@@ -166,15 +167,17 @@ func (s *Store) GetBundleExecutionInfo(execPlanHash common.Hash) (*bundle.Execut
 	if res == nil {
 		return nil, nil
 	}
-	if len(res) != 12 {
+	if len(res) != 16 {
 		return nil, fmt.Errorf("invalid data length for execution info: %d", len(res))
 	}
 	blockNum := binary.BigEndian.Uint64(res[:8])
-	position := binary.BigEndian.Uint32(res[8:])
+	startPosition := binary.BigEndian.Uint32(res[8:12])
+	endPosition := binary.BigEndian.Uint32(res[12:])
 	return &bundle.ExecutionInfo{
 		ExecutionPlanHash: execPlanHash,
 		BlockNum:          blockNum,
-		Position:          position,
+		StartPosition:     startPosition,
+		EndPosition:       endPosition,
 	}, nil
 }
 

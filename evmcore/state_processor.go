@@ -79,8 +79,9 @@ type ProcessedTransaction struct {
 
 // ProcessedBundle summarizes the result of a processed bundle.
 type ProcessedBundle struct {
-	Bundle   bundle.TransactionBundle
-	Position uint32 // < position in the block transaction list
+	Bundle        bundle.TransactionBundle
+	StartPosition uint32 // < start position in the block transaction list
+	EndPosition   uint32 // < end position in the block transaction list
 }
 
 // Process processes the state changes according to the Ethereum rules by running
@@ -370,8 +371,9 @@ func (r *transactionRunner) runTransactionBundle(
 	}
 
 	processedBundle := &ProcessedBundle{
-		Bundle:   *txBundle,
-		Position: uint32(txIndex),
+		Bundle:        *txBundle,
+		StartPosition: uint32(txIndex),
+		EndPosition:   uint32(txIndex),
 	}
 
 	// Run the bundle and collect the processed transactions.
@@ -381,8 +383,10 @@ func (r *transactionRunner) runTransactionBundle(
 		if err := ctxt.statedb.RevertToInterTxSnapshot(bundleCheckpoint); err != nil {
 			log.Error("Failed to revert to checkpoint", "err", err)
 		}
+		processedBundle.EndPosition = uint32(txIndex)
 		return []ProcessedTransaction{}, processedBundle, StatusFailed
 	}
+	processedBundle.EndPosition = uint32(txIndex + len(runner.processedTransactions))
 	return runner.processedTransactions, processedBundle, StatusSuccessful
 }
 
