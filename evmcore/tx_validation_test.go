@@ -1516,7 +1516,7 @@ func Test_validateBundleTransactions_RejectsInvalidBundleTransactions(t *testing
 	require.ErrorIs(err, ErrBundleTransactionInvalid)
 }
 
-func TestValidateBundleTransactions_RejectsBundleWhenBundleOnlyTransactionIsInvalid(t *testing.T) {
+func TestValidateBundleTransactions_RejectsBundleWhenPayloadTransactionIsInvalid(t *testing.T) {
 	require := require.New(t)
 	receiver := common.Address{0x42}
 
