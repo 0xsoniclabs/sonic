@@ -19,7 +19,6 @@ package ethapi
 import (
 	"context"
 	"fmt"
-	"math/big"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/ethereum/go-ethereum/common"
@@ -28,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/rpc"
 )
 
 type PublicBundleAPI struct {
@@ -124,8 +124,8 @@ func (a *PublicBundleAPI) PrepareBundle(
 	ctx context.Context,
 	transactionArgs []TransactionArgs,
 	executionFlags uint8,
-	earliestBlock hexutil.Uint64,
-	latestBlock hexutil.Uint64,
+	earliestBlock rpc.BlockNumber,
+	latestBlock rpc.BlockNumber,
 ) (*BundleArgs, error) {
 
 	gasCap := a.b.RPCGasCap()
@@ -198,15 +198,15 @@ func (a *PublicBundleAPI) PrepareBundle(
 // It validates the transactions against the execution plan and submits the bundle to the network for execution.
 func (a *PublicBundleAPI) SubmitBundle(
 	ctx context.Context,
-	rawTransactions []hexutil.Bytes,
+	signedTransactions []hexutil.Bytes,
 	executionFlags uint8,
-	earliestBlock hexutil.Uint64,
-	latestBlock hexutil.Uint64,
+	earliestBlock rpc.BlockNumber,
+	latestBlock rpc.BlockNumber,
 ) (common.Hash, error) {
 
 	txBundle := bundle.TransactionBundle{
 		Version:  bundle.BundleV1,
-		Bundle:   make(types.Transactions, len(rawTransactions)),
+		Bundle:   make(types.Transactions, len(signedTransactions)),
 		Flags:    bundle.ExecutionFlag(executionFlags),
 		Earliest: uint64(earliestBlock),
 		Latest:   uint64(latestBlock),
@@ -214,7 +214,7 @@ func (a *PublicBundleAPI) SubmitBundle(
 
 	// 1) Decode bundled transactions and compute total gas requirement
 	var totalGas uint64
-	for i, encodedTx := range rawTransactions {
+	for i, encodedTx := range signedTransactions {
 
 		tx := new(types.Transaction)
 		if err := tx.UnmarshalBinary(encodedTx); err != nil {
