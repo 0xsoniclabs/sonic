@@ -98,12 +98,12 @@ type BundleInfo struct {
 }
 
 // BundleArgs encapsulates the parameters required for constructing a transaction bundle.
-// It contains the prepared transactions, payment details, gas requirements, and the execution plan
+// It contains the prepared transactions and the execution plan
 // necessary for the bundle's integrity and proper execution.
 type BundleArgs struct {
 	// Transactions specifies the ordered list of transactions to be included in the bundle.
 	// These must be signed exactly as provided by the bundle_prepare RPC method; any modification
-	// may invalidate the execution plan and result in an ill-formed bundle.
+	// will invalidate the execution plan and result in an ill-formed bundle.
 	Transactions []TransactionArgs `json:"transactions"`
 	// Plan contains the execution plan that each bundled transaction references. This is provided
 	// for verification purposes; users may independently compute and validate the execution plan hash.

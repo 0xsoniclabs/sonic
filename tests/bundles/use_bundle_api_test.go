@@ -111,13 +111,12 @@ func Test_CreateBundlesWithRPC(t *testing.T) {
 	require.Equal(t, transferAmount.Uint64()*bundledTxCount, balance.Uint64(), "unexpected balance of target address")
 }
 
-func checkCompatWithMetamask(t *testing.T, client *tests.PooledEhtClient, txs []*types.Transaction) {
+// checkCompatWithMetaMask checks that the signed bundle-only transactions can be submitted to the network
+// and retrieved as binary blobs from the mempool. When using Metamask, transactions are automatically
+// signed and submitted to the network, users only receive the transaction hash. For bundles to
+// work correctly, the transactions have to be fetched from the mempool.
+func checkCompatWithMetaMask(t *testing.T, client *tests.PooledEhtClient, txs []*types.Transaction) {
 	t.Helper()
-
-	// This function checks that the signed bundle-only transactions can be submitted to the network
-	// and retrieved as binary blobs from the mempool. When using Metamask, transactions are automatically
-	// signed and submitted to the network, users only receive the transaction hash. For bundles to
-	// work correctly, the transactions have to be fetched from the mempool.
 
 	for _, tx := range txs {
 		err := client.SendTransaction(t.Context(), tx)
@@ -136,17 +135,25 @@ func checkCompatWithMetamask(t *testing.T, client *tests.PooledEhtClient, txs []
 	}
 }
 
+// Prepare bundle is a wrapper around the rpc method sonic_prepareBundle, which prepares a bundle
+// for execution by filling in all necessary fields and encoding them properly.
+//
+// It accepts transactions in the form of CallMsg to keep compatibility with standard go-ethereum
+// client methods like EstimateGas.
+// CallMsg is a more convenient type to prepare transactions,
+// it does not encode fields into hex and is compatible with standard
+// go-ethereum client methods like EstimateGas.
+// Unfortunately, it does not include nonce, therefore this function needs
+// to assign a fitting value.
+//
+// This function should be part of the go-ethereum client object, being the entry
+// point to the api from go programs.
 func PrepareBundle(
 	t *testing.T, client *tests.PooledEhtClient,
-	flags uint8, earliest uint64, latest uint64,
+	flags uint8, earliest, latest uint64,
 	txs []ethereum.CallMsg,
 ) (ethapi.BundleArgs, error) {
 
-	// Call message is a more convenient type to prepare transactions,
-	// it does not encode fields into hex and is compatible with standard
-	// go-ethereum client methods like EstimateGas.
-	// Unfortunately, it does not include nonce, therefore this function needs
-	// to assign a fitting value.
 	nonces := make(map[common.Address]uint64)
 	for _, tx := range txs {
 		if _, ok := nonces[tx.From]; !ok {
@@ -183,9 +190,13 @@ func PrepareBundle(
 	return preparedBundle, nil
 }
 
+// SubmitBundle is a wrapper around the rpc method sonic_submitBundle, which submits a prepared bundle for execution.
+// It uses types.Transaction just like the method SendTransaction.
+// This function should be part of the go-ethereum client object, being the entry
+// point to the api from go programs.
 func SubmitBundle(client *tests.PooledEhtClient,
 	txs []*types.Transaction,
-	flags uint8, earliest uint64, latest uint64,
+	flags uint8, earliest, latest uint64,
 ) (common.Hash, error) {
 	encodedTransactions := make([]string, len(txs))
 	for i, tx := range txs {

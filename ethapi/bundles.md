@@ -40,7 +40,7 @@ The transaction arguments in the same format as provided by in the parameters, r
 
 ## sonic_submitBundle
 
-The submit bundle method receives an array of signed transactions and submits the for execution in the network.
+The submit bundle method receives an array of signed transactions and submits them, as a bundle, for execution in the network.
 
 ### Parameters
 - array data __REQUIRED__: All the signed transactions returned from the call to prepare using the same executionFlags, earliestBlock, and latestBlock.
