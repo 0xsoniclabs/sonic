@@ -86,11 +86,11 @@ func Test_CreateBundlesWithRPC(t *testing.T) {
 	signer := types.LatestSignerForChainID(net.GetChainId())
 	txs := make([]*types.Transaction, len(preparedBundle.Transactions))
 	for i, txArgs := range preparedBundle.Transactions {
-		txs[i], err = types.SignTx(asTransaction(txArgs), signer, sender1.PrivateKey)
+		txs[i], err = types.SignTx(txArgs.ToTransaction(), signer, sender1.PrivateKey)
 		require.NoError(t, err, "failed to sign transaction")
 	}
 
-	checkCompatWithMetamask(t, client, txs)
+	checkCompatWithMetaMask(t, client, txs)
 
 	// 5) Submit the bundle to the network
 	bundleHash, err := SubmitBundle(client, txs, flags, earliest, latest)
@@ -227,54 +227,4 @@ func estimateGasForBundledTransaction(t *testing.T, client *tests.PooledEhtClien
 	gas, err := client.EstimateGas(t.Context(), tx)
 	require.NoError(t, err, "failed to estimate gas")
 	return gas
-}
-
-func asTransaction(txArgs ethapi.TransactionArgs) *types.Transaction {
-	if txArgs.MaxFeePerGas != nil {
-		res := types.DynamicFeeTx{}
-		if txArgs.Nonce != nil {
-			res.Nonce = uint64(*txArgs.Nonce)
-		}
-		if txArgs.MaxFeePerGas != nil {
-			res.GasFeeCap = txArgs.MaxFeePerGas.ToInt()
-		}
-		if txArgs.MaxPriorityFeePerGas != nil {
-			res.GasTipCap = txArgs.MaxPriorityFeePerGas.ToInt()
-		}
-		if txArgs.Gas != nil {
-			res.Gas = uint64(*txArgs.Gas)
-		}
-		res.To = txArgs.To
-		if txArgs.Value != nil {
-			res.Value = txArgs.Value.ToInt()
-		}
-		if txArgs.Data != nil {
-			res.Data = (*txArgs.Data)
-		}
-		if txArgs.AccessList != nil {
-			res.AccessList = *txArgs.AccessList
-		}
-		return types.NewTx(&res)
-	}
-	res := types.AccessListTx{}
-	if txArgs.Nonce != nil {
-		res.Nonce = uint64(*txArgs.Nonce)
-	}
-	if txArgs.GasPrice != nil {
-		res.GasPrice = txArgs.GasPrice.ToInt()
-	}
-	if txArgs.Gas != nil {
-		res.Gas = uint64(*txArgs.Gas)
-	}
-	res.To = txArgs.To
-	if txArgs.Value != nil {
-		res.Value = txArgs.Value.ToInt()
-	}
-	if txArgs.Data != nil {
-		res.Data = (*txArgs.Data)
-	}
-	if txArgs.AccessList != nil {
-		res.AccessList = *txArgs.AccessList
-	}
-	return types.NewTx(&res)
 }
