@@ -24,7 +24,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
-var ErrBundleGasLimitTooLow = errors.New("bundle gas limit is too low to cover the gas of the transactions in the execution plan")
+var ErrBundleGasLimitTooLow = errors.New("gas limit of bundle transaction does not match the sum of the gas limits of the transactions in the bundle")
 
 // ValidateTransactionBundle validates a bundle transaction.
 // It checks that the transaction is a valid bundle transaction and that all transactions in the bundle belong to the same execution plan.
@@ -88,8 +88,9 @@ func ValidateTransactionBundle(
 	if tx.Gas() < intrGas {
 		return nil, nil, fmt.Errorf("%w, gas should be more than %v", core.ErrIntrinsicGas, intrGas)
 	}
-	// gas limit of the bundle has to be at least the aggregated gas of
-	// all the transactions in the bundle plus the payment transaction.
+	// gas limit of the bundle has to be exactly the aggregated gas of all the
+	// transactions in the bundle or the intrinsic gas of the bundle
+	// transaction, whichever is higher.
 	gasLimit := uint64(0)
 	for _, innerTx := range txBundle.Bundle {
 		gasLimit += innerTx.Gas()
