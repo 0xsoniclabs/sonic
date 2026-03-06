@@ -19,6 +19,7 @@ package bundles
 import (
 	"fmt"
 	"math/big"
+	"strings"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
@@ -122,20 +123,120 @@ func getSubcases() map[string]SubCase {
 				0,
 			},
 		},
-		"bundled": {
+		"bundled/OneOf=false/TolerateFailed=false/TolerateInvalid=false": {
 			success: SubCaseVariant{
-				subBundleTx{txTypes: []txType{successfulNormalTx{}, successfulNormalTx{}}},
+				subBundleTx{flags: 0, txTypes: []txType{successfulNormalTx{}, successfulNormalTx{}}},
 				[]txIndex{uncheckedTxIndex, uncheckedTxIndex},
 				[]txStatus{successStatus, successStatus},
 				2,
 			},
 			failed: SubCaseVariant{
-				subBundleTx{txTypes: []txType{successfulNormalTx{}, failedNormalTx{}}},
+				subBundleTx{flags: 0, txTypes: []txType{successfulNormalTx{}, failedNormalTx{}}},
 				[]txIndex{},
 				[]txStatus{},
 				0,
 			},
-			// skipped bundles are no longer possible, and all **/bundled/invalid tests are skipped
+			// skipped bundles are no longer possible, and all **/bundled/**/invalid tests are skipped
+		},
+		"bundled/OneOf=false/TolerateFailed=false/TolerateInvalid=true": {
+			success: SubCaseVariant{
+				subBundleTx{flags: bundle.TolerateInvalid, txTypes: []txType{invalidNormalTx{}, successfulNormalTx{}}},
+				[]txIndex{uncheckedTxIndex},
+				[]txStatus{successStatus},
+				1,
+			},
+			failed: SubCaseVariant{
+				subBundleTx{flags: bundle.TolerateInvalid, txTypes: []txType{successfulNormalTx{}, failedNormalTx{}}},
+				[]txIndex{},
+				[]txStatus{},
+				0,
+			},
+			// skipped bundles are no longer possible, and all **/bundled/**/invalid tests are skipped
+		},
+		"bundled/OneOf=false/TolerateFailed=true/TolerateInvalid=false": {
+			success: SubCaseVariant{
+				subBundleTx{flags: bundle.TolerateFailed, txTypes: []txType{failedNormalTx{}, successfulNormalTx{}}},
+				[]txIndex{uncheckedTxIndex, uncheckedTxIndex},
+				[]txStatus{failedStatus, successStatus},
+				1,
+			},
+			failed: SubCaseVariant{
+				subBundleTx{flags: bundle.TolerateFailed, txTypes: []txType{successfulNormalTx{}, invalidNormalTx{}}},
+				[]txIndex{},
+				[]txStatus{},
+				0,
+			},
+			// skipped bundles are no longer possible, and all **/bundled/**/invalid tests are skipped
+		},
+		"bundled/OneOf=false/TolerateFailed=true/TolerateInvalid=true": {
+			success: SubCaseVariant{
+				subBundleTx{flags: bundle.TolerateFailed | bundle.TolerateInvalid, txTypes: []txType{invalidNormalTx{}, failedNormalTx{}, successfulNormalTx{}}},
+				[]txIndex{uncheckedTxIndex, uncheckedTxIndex},
+				[]txStatus{failedStatus, successStatus},
+				1,
+			},
+			// a bundle can not fail if OneOf is not set and both TolerateFailed and TolerateInvalid are set
+			// skipped bundles are no longer possible, and all **/bundled/**/invalid tests are skipped
+		},
+		"bundled/OneOf=true/TolerateFailed=false/TolerateInvalid=false": {
+			success: SubCaseVariant{
+				subBundleTx{flags: bundle.OneOf, txTypes: []txType{invalidNormalTx{}, failedNormalTx{}, successfulNormalTx{}}},
+				[]txIndex{uncheckedTxIndex, uncheckedTxIndex},
+				[]txStatus{failedStatus, successStatus},
+				1,
+			},
+			failed: SubCaseVariant{
+				subBundleTx{flags: bundle.OneOf, txTypes: []txType{failedNormalTx{}, invalidNormalTx{}}},
+				[]txIndex{},
+				[]txStatus{},
+				0,
+			},
+			// skipped bundles are no longer possible, and all **/bundled/**/invalid tests are skipped
+		},
+		"bundled/OneOf=true/TolerateFailed=false/TolerateInvalid=true": {
+			success: SubCaseVariant{
+				subBundleTx{flags: bundle.OneOf | bundle.TolerateInvalid, txTypes: []txType{failedNormalTx{}, invalidNormalTx{}}},
+				[]txIndex{uncheckedTxIndex},
+				[]txStatus{failedStatus},
+				0,
+			},
+			failed: SubCaseVariant{
+				subBundleTx{flags: bundle.OneOf | bundle.TolerateInvalid, txTypes: []txType{failedNormalTx{}, failedNormalTx{}}},
+				[]txIndex{},
+				[]txStatus{},
+				0,
+			},
+			// skipped bundles are no longer possible, and all **/bundled/**/invalid tests are skipped
+		},
+		"bundled/OneOf=true/TolerateFailed=true/TolerateInvalid=false": {
+			success: SubCaseVariant{
+				subBundleTx{flags: bundle.OneOf | bundle.TolerateFailed, txTypes: []txType{invalidNormalTx{}, failedNormalTx{}}},
+				[]txIndex{uncheckedTxIndex},
+				[]txStatus{failedStatus},
+				0,
+			},
+			failed: SubCaseVariant{
+				subBundleTx{flags: bundle.OneOf | bundle.TolerateFailed, txTypes: []txType{invalidNormalTx{}, invalidNormalTx{}}},
+				[]txIndex{},
+				[]txStatus{},
+				0,
+			},
+			// skipped bundles are no longer possible, and all **/bundled/**/invalid tests are skipped
+		},
+		"bundled/OneOf=true/TolerateFailed=true/TolerateInvalid=true": {
+			success: SubCaseVariant{
+				subBundleTx{flags: bundle.OneOf | bundle.TolerateFailed | bundle.TolerateInvalid, txTypes: []txType{invalidNormalTx{}, successfulNormalTx{}}},
+				[]txIndex{},
+				[]txStatus{},
+				0,
+			},
+			failed: SubCaseVariant{
+				subBundleTx{flags: bundle.OneOf | bundle.TolerateFailed | bundle.TolerateInvalid, txTypes: []txType{}},
+				[]txIndex{},
+				[]txStatus{},
+				0,
+			},
+			// skipped bundles are no longer possible, and all **/bundled/**/invalid tests are skipped
 		},
 	}
 }
@@ -264,9 +365,10 @@ func Test_RunAllOf_Works(t *testing.T) {
 	net, client := startTestnet(t)
 	defer client.Close()
 	for _, c := range cases {
-		if c.name != "bundled/invalid" {
-			checkCase(t, net, client, c)
+		if c.name == "bundled/OneOf=false/TolerateFailed=true/TolerateInvalid=true/failed" || (strings.HasPrefix(c.name, "bundled") && strings.HasSuffix(c.name, "invalid")) {
+			continue
 		}
+		checkCase(t, net, client, c)
 	}
 }
 
@@ -394,9 +496,10 @@ func Test_RunOneOf_Works(t *testing.T) {
 	net, client := startTestnet(t)
 	defer client.Close()
 	for _, c := range cases {
-		if c.name != "bundled/invalid" {
-			checkCase(t, net, client, c)
+		if c.name == "bundled/OneOf=false/TolerateFailed=true/TolerateInvalid=true/failed" || (strings.HasPrefix(c.name, "bundled") && strings.HasSuffix(c.name, "invalid")) {
+			continue
 		}
+		checkCase(t, net, client, c)
 	}
 }
 
