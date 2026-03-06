@@ -33,7 +33,7 @@ import (
 // bundler account.
 func makeBundleTransaction(
 	t *testing.T,
-	net *tests.IntegrationTestNet,
+	net tests.IntegrationTestNetSession,
 	transactions types.Transactions,
 	plan bundle.ExecutionPlan,
 ) *types.Transaction {
@@ -85,7 +85,7 @@ func makeBundleTransaction(
 }
 
 func prepareContract[T any](
-	t testing.TB, net *tests.IntegrationTestNet,
+	t testing.TB, net tests.IntegrationTestNetSession,
 	getABI func() (*abi.ABI, error),
 	deployFunc tests.ContractDeployer[T],
 ) (*T, *abi.ABI, common.Address) {
@@ -106,7 +106,7 @@ func generateCallData(t testing.TB, abi *abi.ABI, methodName string, params ...a
 	return input
 }
 
-func getTransactionsInBlock(t *testing.T, net *tests.IntegrationTestNet, blockNumber *big.Int) []common.Hash {
+func getTransactionsInBlock(t *testing.T, net tests.IntegrationTestNetSession, blockNumber *big.Int) []common.Hash {
 	t.Helper()
 
 	client, err := net.GetClient()
