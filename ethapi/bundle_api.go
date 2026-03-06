@@ -231,7 +231,11 @@ func (a *PublicBundleAPI) SubmitBundle(
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("failed to finalize bundle: could not calculate intrinsic gas: %w", err)
 	}
-	totalGas = max(totalGas, minGas)
+	floorDataGas, err := core.FloorDataGas(data)
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("failed to finalize bundle: could not calculate floor data gas: %w", err)
+	}
+	totalGas = max(totalGas, minGas, floorDataGas)
 
 	// 3) Make a one use key to sign the bundle
 	// TODO: key could be generated only once, but using a single key at the moment it would
