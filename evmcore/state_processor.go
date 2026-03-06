@@ -369,58 +369,42 @@ func (r *transactionRunner) runTransactionBundle(
 		return []ProcessedTransaction{{Transaction: tx}}, nil, StatusSkipped
 	}
 
-	res := make([]ProcessedTransaction, 0, len(txBundle.Bundle))
-
 	processedBundle := &ProcessedBundle{
 		Bundle:   *txBundle,
 		Position: uint32(txIndex),
 	}
 
+	// Run the bundle and collect the processed transactions.
+	runner := bundleTransactionRunner{ctxt: ctxt, txOffset: txIndex}
 	bundleCheckpoint := ctxt.statedb.InterTxSnapshot()
-	if !txBundle.Flags.TryUntil() {
-		for _, btx := range txBundle.Bundle {
-			txResults, _, status := runTransaction(ctxt, btx, txIndex+len(res)) // included txs
-
-			if !isTolerated(status, txBundle.Flags) {
-				log.Info("Got non-tolerated transaction in bundle, reverting all", "tx", btx.Hash().Hex())
-				if err := ctxt.statedb.RevertToInterTxSnapshot(bundleCheckpoint); err != nil {
-					log.Error("Failed to revert to checkpoint", "err", err)
-				}
-				return []ProcessedTransaction{}, processedBundle, StatusFailed
-			}
-			log.Info("Got tolerated transaction in bundle, continuing", "tx", btx.Hash().Hex())
-
-			if status != StatusSkipped {
-				res = append(res, txResults...)
-			}
+	if success := bundle.RunBundle(txBundle, &runner); !success {
+		if err := ctxt.statedb.RevertToInterTxSnapshot(bundleCheckpoint); err != nil {
+			log.Error("Failed to revert to checkpoint", "err", err)
 		}
-		return res, processedBundle, StatusSuccessful
-	} else {
-		for _, btx := range txBundle.Bundle {
-			txResults, _, status := runTransaction(ctxt, btx, txIndex+len(res)) // included txs
-
-			if status != StatusSkipped {
-				res = append(res, txResults...)
-			}
-
-			if isTolerated(status, txBundle.Flags) {
-				log.Info("Got tolerated transaction, stopping", "tx", btx.Hash().Hex())
-				return res, processedBundle, StatusSuccessful
-			}
-			log.Info("Got non-tolerated transaction, continuing", "tx", btx.Hash().Hex())
-		}
-		return res, processedBundle, StatusFailed
+		return []ProcessedTransaction{}, processedBundle, StatusFailed
 	}
+	return runner.processedTransactions, processedBundle, StatusSuccessful
 }
 
-func isTolerated(status Status, flags bundle.ExecutionFlag) bool {
-	switch status {
-	case StatusSkipped:
-		return flags.TolerateInvalid()
-	case StatusFailed:
-		return flags.TolerateFailed()
-	default:
-		return true
+// bundleTransactionRunner is an adapter implementing the bundle.TransactionRunner
+// interface to run transactions within a bundle and collect their results.
+type bundleTransactionRunner struct {
+	ctxt                  *runContext
+	txOffset              int
+	processedTransactions []ProcessedTransaction
+}
+
+func (b *bundleTransactionRunner) Run(tx *types.Transaction) bundle.TransactionResult {
+	processed, _, status := runTransaction(b.ctxt, tx, b.txOffset)
+	b.processedTransactions = append(b.processedTransactions, processed...)
+	if status == StatusSkipped {
+		return bundle.TransactionResultInvalid
+	}
+	b.txOffset++
+	if status == StatusFailed {
+		return bundle.TransactionResultFailed
+	} else {
+		return bundle.TransactionResultSuccessful
 	}
 }
 

@@ -51,7 +51,7 @@ const (
 )
 
 type Case struct {
-	tryUntil         bool
+	oneOf            bool
 	tolerateFailed   bool
 	tolerateInvalid  bool
 	submittedTxTypes []txType
@@ -138,7 +138,7 @@ func getSubcases() map[string]SubCase {
 	}
 }
 
-func Test_RunAllUnlessNotTolerated_Works(t *testing.T) {
+func Test_RunAllOf_Works(t *testing.T) {
 	cases := []NamedCase{}
 	for name, subcase := range getSubcases() {
 		cases = append(cases, []NamedCase{
@@ -264,7 +264,7 @@ func Test_RunAllUnlessNotTolerated_Works(t *testing.T) {
 	}
 }
 
-func Test_RunUntilTolerated_Works(t *testing.T) {
+func Test_RunOneOf_Works(t *testing.T) {
 	cases := []NamedCase{}
 	for name, subcase := range getSubcases() {
 		cases = append(cases, []NamedCase{
@@ -415,12 +415,12 @@ func Merge[T any](items ...any) []T {
 
 func checkCase(t *testing.T, net *tests.IntegrationTestNet, client *tests.PooledEhtClient, namedCase NamedCase) {
 	c := namedCase.case_
-	name := fmt.Sprintf("TryUntil=%v/TolerateFailed=%v/TolerateInvalid=%v/%s", c.tryUntil, c.tolerateFailed, c.tolerateInvalid, namedCase.name)
+	name := fmt.Sprintf("OneOf=%v/TolerateFailed=%v/TolerateInvalid=%v/%s", c.oneOf, c.tolerateFailed, c.tolerateInvalid, namedCase.name)
 	t.Run(name, func(t *testing.T) {
 		flags := bundle.ExecutionFlag(0)
 		flags.SetTolerateInvalid(c.tolerateInvalid)
 		flags.SetTolerateFailed(c.tolerateFailed)
-		flags.SetTryUntil(c.tryUntil)
+		flags.SetOneOf(c.oneOf)
 
 		txs, plan, counterAddress := makeSignedBundleOnlyTxsAndPlan(t, net, client, c.submittedTxTypes, nil, flags)
 
