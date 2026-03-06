@@ -89,20 +89,20 @@ func (e *ExecutionFlag) setFlag(flag ExecutionFlag, value bool) {
 // which corresponds to a transaction to be executed as part of the bundle.
 type ExecutionStep struct {
 	// From is the sender of the transaction, derived from the signature of the transaction
-	From common.Address
+	From common.Address `json:"from"`
 	// Hash is the transaction hash to be signed (not the hash of the transaction including its signature)
 	// where the access list has been stripped from the bundle-only mark.
-	Hash common.Hash
+	Hash common.Hash `json:"hash"`
 }
 
 // ExecutionPlan represents the plan for executing a bundle of transactions,
 // to which every participant in the bundle shall agree on.
 // The execution plan includes the list of steps to be executed, in the order of execution
 type ExecutionPlan struct {
-	Steps    []ExecutionStep
-	Flags    ExecutionFlag
-	Earliest uint64 // Earliest block this bundle can be included in.
-	Latest   uint64 // Latest block this bundle can be included in.
+	Steps    []ExecutionStep `json:"steps"`    // Steps to be executed in the bundle, in the order of execution
+	Flags    ExecutionFlag   `json:"flags"`    // Execution flags that specify the behavior of the bundle execution
+	Earliest uint64          `json:"earliest"` // Earliest block this bundle can be included in.
+	Latest   uint64          `json:"latest"`   // Latest block this bundle can be included in.
 }
 
 // IsInRange checks if the given block number is within the range of the
