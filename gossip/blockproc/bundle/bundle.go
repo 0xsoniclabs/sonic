@@ -45,7 +45,8 @@ type ExecutionFlag uint16
 const (
 	TolerateInvalid ExecutionFlag = 0b001
 	TolerateFailed  ExecutionFlag = 0b010
-	TryUntil        ExecutionFlag = 0b100
+	AllOf           ExecutionFlag = 0b000
+	OneOf           ExecutionFlag = 0b100
 )
 
 func (e *ExecutionFlag) TolerateInvalid() bool {
@@ -56,8 +57,8 @@ func (e *ExecutionFlag) TolerateFailed() bool {
 	return e.getFlag(TolerateFailed)
 }
 
-func (e *ExecutionFlag) TryUntil() bool {
-	return e.getFlag(TryUntil)
+func (e *ExecutionFlag) IsOneOf() bool {
+	return e.getFlag(OneOf)
 }
 
 func (e *ExecutionFlag) SetTolerateInvalid(tolerateInvalid bool) {
@@ -68,8 +69,8 @@ func (e *ExecutionFlag) SetTolerateFailed(tolerateFailed bool) {
 	e.setFlag(TolerateFailed, tolerateFailed)
 }
 
-func (e *ExecutionFlag) SetTryUntil(tryUntil bool) {
-	e.setFlag(TryUntil, tryUntil)
+func (e *ExecutionFlag) SetOneOf(oneOf bool) {
+	e.setFlag(OneOf, oneOf)
 }
 
 func (e *ExecutionFlag) getFlag(flag ExecutionFlag) bool {
