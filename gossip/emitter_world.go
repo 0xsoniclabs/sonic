@@ -22,6 +22,7 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/log"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
@@ -93,6 +94,24 @@ func (ew *emitterWorldProc) Header(hash common.Hash, number uint64) *evmcore.Evm
 		store: ew.s.store,
 	}
 	return reader.Header(hash, number)
+}
+
+func (ew *emitterWorldProc) HasBundleRecentlyBeenProcessed(execPlanHash common.Hash) bool {
+	has, err := ew.s.store.HasBundleRecentlyBeenProcessed(execPlanHash)
+	if err != nil {
+		log.Warn(
+			"internal DB error while fetching bundle status from store",
+			"execPlanHash", execPlanHash,
+			"err", err,
+		)
+		// The safe option here is to return that the bundle has indeed been
+		// processed in the past. This way, we avoid re-emitting bundles that
+		// have already been processed, at the cost of potentially not emitting
+		// some bundles that have not been processed. In the latter case, the
+		// bundle will eventually be emitted by another validator.
+		return true
+	}
+	return has
 }
 
 func (ew *emitterWorldProc) IsSynced() bool {
