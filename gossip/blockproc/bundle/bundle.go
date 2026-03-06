@@ -82,6 +82,49 @@ var (
 	MaxBlockRange = uint64(1024)
 )
 
+const (
+	TolerateInvalid ExecutionFlag = 0b001
+	TolerateFailed  ExecutionFlag = 0b010
+	AllOf           ExecutionFlag = 0b000
+	OneOf           ExecutionFlag = 0b100
+)
+
+func (e *ExecutionFlag) TolerateInvalid() bool {
+	return e.getFlag(TolerateInvalid)
+}
+
+func (e *ExecutionFlag) TolerateFailed() bool {
+	return e.getFlag(TolerateFailed)
+}
+
+func (e *ExecutionFlag) IsOneOf() bool {
+	return e.getFlag(OneOf)
+}
+
+func (e *ExecutionFlag) SetTolerateInvalid(tolerateInvalid bool) {
+	e.setFlag(TolerateInvalid, tolerateInvalid)
+}
+
+func (e *ExecutionFlag) SetTolerateFailed(tolerateFailed bool) {
+	e.setFlag(TolerateFailed, tolerateFailed)
+}
+
+func (e *ExecutionFlag) SetOneOf(oneOf bool) {
+	e.setFlag(OneOf, oneOf)
+}
+
+func (e *ExecutionFlag) getFlag(flag ExecutionFlag) bool {
+	return *e&flag != 0
+}
+
+func (e *ExecutionFlag) setFlag(flag ExecutionFlag, value bool) {
+	if value {
+		*e = *e | flag
+	} else {
+		*e = *e &^ flag
+	}
+}
+
 // ExecutionStep represents a single step in the execution plan,
 // which corresponds to a transaction to be executed as part of the bundle.
 type ExecutionStep struct {
