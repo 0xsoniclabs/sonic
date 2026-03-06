@@ -53,7 +53,7 @@ func Test_CreateBundlesWithRPC(t *testing.T) {
 	targetAddress := common.Address{0x42}
 	transferAmount := big.NewInt(2)
 
-	// 1) Create a list of transactions to be bundled together.
+	// 1) Create a list of transactions to be executed in order atomically.
 	const bundledTxCount = 15
 	txsToBeBundled := make([]ethereum.CallMsg, bundledTxCount)
 
@@ -69,7 +69,8 @@ func Test_CreateBundlesWithRPC(t *testing.T) {
 		txsToBeBundled[i] = tx
 	}
 
-	// 2) Define bundle execution parameters: when the bundle should be executed and what flags it should have.
+	// 2) Define bundle execution parameters: when the bundle should be executed
+	// and what flags it should have.
 	earliest, err := client.BlockNumber(t.Context())
 	require.NoError(t, err, "failed to get block number")
 	latest := earliest + 10
@@ -108,12 +109,14 @@ func Test_CreateBundlesWithRPC(t *testing.T) {
 
 	balance, err := client.BalanceAt(t.Context(), targetAddress, nil)
 	require.NoError(t, err, "failed to get balance")
-	require.Equal(t, transferAmount.Uint64()*bundledTxCount, balance.Uint64(), "unexpected balance of target address")
+	require.Equal(t, transferAmount.Uint64()*bundledTxCount, balance.Uint64(),
+		"unexpected balance of target address")
 }
 
-// checkCompatWithMetaMask checks that the signed bundle-only transactions can be submitted to the network
-// and retrieved as binary blobs from the mempool. When using Metamask, transactions are automatically
-// signed and submitted to the network, users only receive the transaction hash. For bundles to
+// checkCompatWithMetaMask checks that the signed bundle-only transactions can
+// be submitted to the network and retrieved as binary blobs from the mempool.
+// When using Metamask, transactions are automatically signed and submitted to
+// the network, users only receive the transaction hash. For bundles to
 // work correctly, the transactions have to be fetched from the mempool.
 func checkCompatWithMetaMask(t *testing.T, client *tests.PooledEhtClient, txs []*types.Transaction) {
 	t.Helper()
@@ -135,11 +138,12 @@ func checkCompatWithMetaMask(t *testing.T, client *tests.PooledEhtClient, txs []
 	}
 }
 
-// Prepare bundle is a wrapper around the rpc method sonic_prepareBundle, which prepares a bundle
-// for execution by filling in all necessary fields and encoding them properly.
+// Prepare bundle is a wrapper around the rpc method sonic_prepareBundle, which
+// prepares a bundle for execution by filling in all necessary fields and
+// encoding them properly.
 //
-// It accepts transactions in the form of CallMsg to keep compatibility with standard go-ethereum
-// client methods like EstimateGas.
+// It accepts transactions in the form of CallMsg to keep compatibility with
+// standard go-ethereum client methods like EstimateGas.
 // CallMsg is a more convenient type to prepare transactions,
 // it does not encode fields into hex and is compatible with standard
 // go-ethereum client methods like EstimateGas.
@@ -190,7 +194,8 @@ func PrepareBundle(
 	return preparedBundle, nil
 }
 
-// SubmitBundle is a wrapper around the rpc method sonic_submitBundle, which submits a prepared bundle for execution.
+// SubmitBundle is a wrapper around the rpc method sonic_submitBundle, which
+// submits a prepared bundle for execution.
 // It uses types.Transaction just like the method SendTransaction.
 // This function should be part of the go-ethereum client object, being the entry
 // point to the api from go programs.
