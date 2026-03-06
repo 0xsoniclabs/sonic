@@ -530,6 +530,9 @@ func checkCase(t *testing.T, net *tests.IntegrationTestNet, client *tests.Pooled
 	c := namedCase.case_
 	name := fmt.Sprintf("OneOf=%v/TolerateFailed=%v/TolerateInvalid=%v/%s", c.oneOf, c.tolerateFailed, c.tolerateInvalid, namedCase.name)
 	t.Run(name, func(t *testing.T) {
+		t.Parallel()
+		session := net.SpawnSession(t)
+
 		flags := bundle.ExecutionFlag(0)
 		flags.SetTolerateInvalid(c.tolerateInvalid)
 		flags.SetTolerateFailed(c.tolerateFailed)
@@ -537,7 +540,7 @@ func checkCase(t *testing.T, net *tests.IntegrationTestNet, client *tests.Pooled
 
 		bundleOnlyTxs, plan, counterAddress := makeSignedBundleOnlyTxsAndPlan(t, net, client, c.submittedTxTypes, nil, flags)
 
-		envelopeTx := makeBundleTransaction(t, net, bundleOnlyTxs, plan, false)
+		envelopeTx := makeBundleTransaction(t, session, bundleOnlyTxs, plan, false)
 		require.NotNil(t, envelopeTx)
 
 		err := client.SendTransaction(t.Context(), envelopeTx)
@@ -556,20 +559,18 @@ func checkCase(t *testing.T, net *tests.IntegrationTestNet, client *tests.Pooled
 		require.NotNil(t, info.Block)
 
 		// Check transactions hashes and statuses
-		transactionHashes := getTransactionsInBlock(t, net, big.NewInt(int64(*info.Block)))
+		transactionHashes := getTransactionsInBlock(t, session, big.NewInt(int64(*info.Block)))
 
-		// Truncate potential internal transactions at the beginning of the
-		// block. The rest should only be transactions from the bundle.
-		require.LessOrEqual(t, int(*info.Position), len(transactionHashes))
-		transactionHashes = transactionHashes[*info.Position:]
+		// Consider only transactions that are from this bundle.
+		require.LessOrEqual(t, int(*info.Position+*info.Count), len(transactionHashes))
+		transactionHashes = transactionHashes[*info.Position : *info.Position+*info.Count]
 
 		require.Len(t, transactionHashes, len(c.blockTxIndices))
-		for i := range c.blockTxIndices {
-			switch c.blockTxIndices[i] {
-			case uncheckedTxIndex:
-				checkStatus(t, net, c.blockTxStatuses[i], transactionHashes[i])
-			default:
-				checkHashesEqAndStatus(t, net, bundleOnlyTxs[c.blockTxIndices[i]].Hash(), c.blockTxStatuses[i], transactionHashes[i])
+		for i, txIndex := range c.blockTxIndices {
+			if txIndex == uncheckedTxIndex {
+				checkStatus(t, session, c.blockTxStatuses[i], transactionHashes[i])
+			} else {
+				checkHashesEqAndStatus(t, session, bundleOnlyTxs[txIndex].Hash(), c.blockTxStatuses[i], transactionHashes[i])
 			}
 		}
 
@@ -592,13 +593,13 @@ func startTestnet(t *testing.T) (*tests.IntegrationTestNet, *tests.PooledEhtClie
 	return net, client
 }
 
-func counterAddressAndInput(t *testing.T, net *tests.IntegrationTestNet) (common.Address, []byte) {
+func counterAddressAndInput(t *testing.T, net tests.IntegrationTestNetSession) (common.Address, []byte) {
 	_, counterAbi, counterAddress := prepareContract(t, net, counter.CounterMetaData.GetAbi, counter.DeployCounter)
 	counterInput := generateCallData(t, counterAbi, "incrementCounter")
 	return counterAddress, counterInput
 }
 
-func revertAddressAndInput(t *testing.T, net *tests.IntegrationTestNet) (common.Address, []byte) {
+func revertAddressAndInput(t *testing.T, net tests.IntegrationTestNetSession) (common.Address, []byte) {
 	_, revertABI, revertAddress := prepareContract(t, net, revert.RevertMetaData.GetAbi, revert.DeployRevert)
 	revertInput := generateCallData(t, revertABI, "doCrash")
 	return revertAddress, revertInput
@@ -614,7 +615,7 @@ func getCounterValue(t *testing.T, client *tests.PooledEhtClient, counterAddress
 
 type txMakeOptions struct {
 	t      *testing.T
-	net    *tests.IntegrationTestNet
+	net    tests.IntegrationTestNetSession
 	client *tests.PooledEhtClient
 
 	counterAddress  *common.Address
@@ -726,7 +727,7 @@ func (t subBundleTx) makeTx(opts txMakeOptions) *types.Transaction {
 
 func makeUnsignedBundleOnlyTxs(
 	t *testing.T,
-	net *tests.IntegrationTestNet,
+	net tests.IntegrationTestNetSession,
 	client *tests.PooledEhtClient,
 	txTypes []txType,
 	counterAddress *common.Address,
@@ -779,7 +780,7 @@ func makeUnsignedBundleOnlyTxs(
 
 func signBundleOnlyTxs(
 	t *testing.T,
-	net *tests.IntegrationTestNet,
+	net tests.IntegrationTestNetSession,
 	txs []*types.Transaction,
 	senders []*tests.Account,
 	plan bundle.ExecutionPlan,
@@ -802,7 +803,7 @@ func signBundleOnlyTxs(
 
 func makeSignedBundleOnlyTxsAndPlan(
 	t *testing.T,
-	net *tests.IntegrationTestNet,
+	net tests.IntegrationTestNetSession,
 	client *tests.PooledEhtClient,
 	txTypes []txType,
 	counterAddressPtr *common.Address,
@@ -832,7 +833,7 @@ func makeSignedBundleOnlyTxsAndPlan(
 
 func checkHashesEqAndStatus(
 	t *testing.T,
-	net *tests.IntegrationTestNet,
+	net tests.IntegrationTestNetSession,
 	expectedHash common.Hash,
 	expectedStatus txStatus,
 	txHash common.Hash,
@@ -844,7 +845,7 @@ func checkHashesEqAndStatus(
 
 func checkStatus(
 	t *testing.T,
-	net *tests.IntegrationTestNet,
+	net tests.IntegrationTestNetSession,
 	status txStatus,
 	txHash common.Hash,
 ) {
