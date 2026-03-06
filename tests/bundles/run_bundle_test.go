@@ -27,6 +27,7 @@ import (
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/require"
@@ -203,10 +204,26 @@ func makeBundle(
 		Earliest: plan.Earliest,
 		Latest:   plan.Latest,
 	})
+	neededGas := uint64(0)
+	for _, tx := range txs {
+		neededGas += tx.Gas()
+	}
+	intrGas, _ := core.IntrinsicGas(
+		data,
+		nil,   // access list is set in the individual transactions
+		nil,   // code auth is not used in the bundle transaction
+		false, // bundle transaction is not a contract creation
+		true,
+		true,
+		true,
+	)
+	if neededGas < intrGas {
+		neededGas = intrGas
+	}
 	return &types.DynamicFeeTx{
 		To:   &bundle.BundleAddress,
 		Data: data,
-		Gas:  1_000_000,
+		Gas:  neededGas,
 	}
 }
 

@@ -77,6 +77,14 @@ func TestValidate_ReturnsErrorsOnValidationFailure(t *testing.T) {
 			tx:            generator.makeBundleTxWithWronglySignedTx(t),
 			expectedError: "failed to derive sender",
 		},
+		"bundle without enough gas for intrinsic cost": {
+			tx:            generator.makeBundleTxWithoutEnoughIntrinsicGas(t),
+			expectedError: "gas should be more",
+		},
+		"bundle without enough gas for all transactions": {
+			tx:            generator.makeBundleTxWithoutEnoughGasForAllTransactions(t),
+			expectedError: "bundle gas limit",
+		},
 	}
 
 	for name, test := range tests {
@@ -92,15 +100,16 @@ func TestValidate_AcceptsValidBlockRanges(t *testing.T) {
 	tests := map[string]struct {
 		From uint64
 		To   uint64
+		Gas  uint64
 	}{
 		"single-block range": {
-			From: 10, To: 10,
+			From: 10, To: 10, Gas: 21096,
 		},
 		"multi-block range": {
-			From: 7, To: 42,
+			From: 7, To: 42, Gas: 21096,
 		},
 		"max-size block range": {
-			From: 100, To: 100 + MaxBlockRange - 1,
+			From: 100, To: 100 + MaxBlockRange - 1, Gas: 21128,
 		},
 	}
 
@@ -114,6 +123,7 @@ func TestValidate_AcceptsValidBlockRanges(t *testing.T) {
 			tx := types.NewTx(&types.LegacyTx{
 				To:   &BundleAddress,
 				Data: data,
+				Gas:  test.Gas,
 			})
 			require.True(t, IsTransactionBundle(tx))
 
@@ -197,12 +207,14 @@ func (gen testBundleGenerator) makeEmptyBundleTx() *types.Transaction {
 	return types.NewTx(&types.LegacyTx{
 		To:   &BundleAddress,
 		Data: bytes,
+		Gas:  21096,
 	})
 }
 
 func (gen testBundleGenerator) makeValidBundleTx(t testing.TB) *types.Transaction {
 	t.Helper()
 	receiver := common.Address{0x42}
+	gasPerTx := uint64(20_000)
 
 	//  Generate n metaTransactions from n different senders
 	metaTransactions := make([]types.AccessListTx, gen.n)
@@ -213,6 +225,7 @@ func (gen testBundleGenerator) makeValidBundleTx(t testing.TB) *types.Transactio
 			Nonce: uint64(1),
 			To:    &receiver,
 			Value: big.NewInt(1234),
+			Gas:   gasPerTx,
 		}
 
 		txHash[i] = gen.signer.Hash(types.NewTx(&tx))
@@ -260,6 +273,7 @@ func (gen testBundleGenerator) makeValidBundleTx(t testing.TB) *types.Transactio
 	return types.NewTx(&types.LegacyTx{
 		To:   &BundleAddress,
 		Data: Encode(bundle),
+		Gas:  gasPerTx * uint64(gen.n),
 	})
 }
 
@@ -301,6 +315,7 @@ func (gen testBundleGenerator) makeUnsoundBundleTx(t testing.TB) *types.Transact
 	return types.NewTx(&types.LegacyTx{
 		To:   &BundleAddress,
 		Data: Encode(bundle),
+		Gas:  21096,
 	})
 
 }
@@ -337,6 +352,7 @@ func (gen testBundleGenerator) makeBundleTxWithWronglySignedTx(t testing.TB) *ty
 	return types.NewTx(&types.LegacyTx{
 		To:   &BundleAddress,
 		Data: Encode(bundle),
+		Gas:  21096,
 	})
 }
 
@@ -351,6 +367,7 @@ func (gen testBundleGenerator) makeWrongVersionBundleTx() *types.Transaction {
 	return types.NewTx(&types.LegacyTx{
 		To:   &BundleAddress,
 		Data: bytes,
+		Gas:  21096,
 	})
 }
 
@@ -359,5 +376,28 @@ func (gen testBundleGenerator) makeNonBundleTx() *types.Transaction {
 	return types.NewTx(&types.LegacyTx{
 		To:   &someAddress,
 		Data: []byte("this is not a bundle"),
+		Gas:  21096,
 	})
+}
+
+func (gen testBundleGenerator) makeBundleTxWithoutEnoughIntrinsicGas(t testing.TB) *types.Transaction {
+	tx := gen.makeValidBundleTx(t)
+	// reduce the gas in tx
+	tx = types.NewTx(&types.LegacyTx{
+		To:   &BundleAddress,
+		Data: tx.Data(),
+		Gas:  10_000, // not enough gas for the bundle
+	})
+	return tx
+}
+
+func (gen testBundleGenerator) makeBundleTxWithoutEnoughGasForAllTransactions(t testing.TB) *types.Transaction {
+	tx := gen.makeValidBundleTx(t)
+	// reduce the gas in tx
+	tx = types.NewTx(&types.LegacyTx{
+		To:   &BundleAddress,
+		Data: tx.Data(),
+		Gas:  30_000, // not enough gas for all transactions in the bundle
+	})
+	return tx
 }

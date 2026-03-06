@@ -1436,6 +1436,7 @@ func Test_validateBundleTransactions_IfBundledTransactionsAreEnabled_AcceptValid
 	tx := types.NewTx(&types.LegacyTx{
 		To:   &bundle.BundleAddress,
 		Data: bundle.Encode(bundle.TransactionBundle{Version: 1}),
+		Gas:  21096,
 	})
 	require.True(bundle.IsTransactionBundle(tx))
 
