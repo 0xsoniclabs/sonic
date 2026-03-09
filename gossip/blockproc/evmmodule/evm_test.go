@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/state"
@@ -239,6 +240,167 @@ func TestOperaEVMProcessor_Execute_StateProcessorIntroducesTransactions_Produces
 	for i, p := range processed {
 		require.Equal(uint(i+5), p.Receipt.TransactionIndex)
 	}
+}
+
+func TestOperaEVMProcessor_Execute_BundlePositionsAreProperlyOffset(t *testing.T) {
+	chainId := big.NewInt(1)
+	tx := types.NewTx(&types.LegacyTx{
+		To: &common.Address{0x42}, Nonce: 0, Gas: 21_0000,
+	})
+
+	ctrl := gomock.NewController(t)
+	factory := NewMock_stateProcessorFactory(ctrl)
+	chain := evmcore.NewMockDummyChain(ctrl)
+	stateDB := state.NewMockStateDB(ctrl)
+
+	mockAny := gomock.Any()
+	stateDB.EXPECT().SetTxContext(mockAny, mockAny).AnyTimes()
+	stateDB.EXPECT().BeginTransaction().AnyTimes()
+	stateDB.EXPECT().GetBalance(mockAny).AnyTimes().Return(uint256.NewInt(1e18))
+	stateDB.EXPECT().SubBalance(mockAny, mockAny, mockAny).AnyTimes()
+	stateDB.EXPECT().Prepare(mockAny, mockAny, mockAny, mockAny, mockAny, mockAny).AnyTimes()
+	stateDB.EXPECT().GetNonce(mockAny).AnyTimes().Return(uint64(0))
+	stateDB.EXPECT().SetNonce(mockAny, mockAny, mockAny).AnyTimes()
+	stateDB.EXPECT().GetCode(mockAny).AnyTimes().Return(nil)
+	stateDB.EXPECT().Snapshot().AnyTimes().Return(1)
+	stateDB.EXPECT().Exist(mockAny).AnyTimes().Return(true)
+	stateDB.EXPECT().AddBalance(mockAny, mockAny, mockAny).AnyTimes()
+	stateDB.EXPECT().GetRefund().AnyTimes().Return(uint64(0))
+	stateDB.EXPECT().GetLogs(mockAny, mockAny).AnyTimes()
+	stateDB.EXPECT().EndTransaction().AnyTimes()
+	// bundle specific
+	stateDB.EXPECT().InterTxSnapshot().AnyTimes()
+
+	chainConfig := &params.ChainConfig{ChainID: chainId}
+	upgrades := opera.GetBrioUpgrades()
+	upgrades.TransactionBundles = true
+	stateProcessor := stateProcessorFactory.NewStateProcessor(stateProcessorFactory{}, chainConfig, chain, upgrades)
+	factory.EXPECT().NewStateProcessor(mockAny, mockAny, mockAny).Return(stateProcessor).AnyTimes()
+
+	tests := map[string]struct {
+		lenProcessedTxs         int
+		bundleLength            int
+		transactionStructure    []string
+		expectedBundlePositions []uint32
+	}{
+		"no already processed txs": {
+			lenProcessedTxs:         0,
+			bundleLength:            2,
+			transactionStructure:    []string{"tx", "bundle"},
+			expectedBundlePositions: []uint32{1},
+		},
+		"some already processed txs": {
+			lenProcessedTxs:         3,
+			bundleLength:            2,
+			transactionStructure:    []string{"tx", "bundle"},
+			expectedBundlePositions: []uint32{4},
+		},
+		"only bundles": {
+			lenProcessedTxs:         0,
+			bundleLength:            3,
+			transactionStructure:    []string{"bundle", "bundle", "bundle"},
+			expectedBundlePositions: []uint32{0, 3, 6},
+		},
+		"interleaved bundles and txs": {
+			lenProcessedTxs:         2,
+			bundleLength:            2,
+			transactionStructure:    []string{"tx", "bundle", "tx", "bundle"},
+			expectedBundlePositions: []uint32{3, 6},
+		},
+		"bundle followed by txs": {
+			lenProcessedTxs:         2,
+			bundleLength:            2,
+			transactionStructure:    []string{"bundle", "tx", "tx"},
+			expectedBundlePositions: []uint32{2},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			bundleTx := simpleBundleTx(t, chainId, test.bundleLength)
+			alreadyProcessedTx := make([]evmcore.ProcessedTransaction, test.lenProcessedTxs)
+
+			index := new(int)
+			*index = 0
+			next := func() int {
+				(*index)++
+				return int(*index) - 1
+			}
+			stateDB.EXPECT().TxIndex().DoAndReturn(next).AnyTimes()
+
+			processor := &OperaEVMProcessor{
+				processorFactory: factory,
+				statedb:          stateDB,
+				processedTxs:     alreadyProcessedTx,
+			}
+
+			transactions := make([]*types.Transaction, len(test.transactionStructure))
+			for i, txType := range test.transactionStructure {
+				switch txType {
+				case "tx":
+					transactions[i] = tx
+				case "bundle":
+					transactions[i] = bundleTx
+				default:
+					t.Fatalf("unknown transaction type: %s", txType)
+				}
+			}
+
+			summary := processor.Execute(transactions, math.MaxUint64)
+			require.Len(t, summary.ProcessedBundles, len(test.expectedBundlePositions))
+			for i, bundle := range summary.ProcessedBundles {
+				require.Equal(t, test.expectedBundlePositions[i], bundle.Position)
+			}
+		})
+	}
+}
+
+// simpleBundleTx creates a simple bundle with the given number of transactions in the bundle.
+func simpleBundleTx(t *testing.T, chainId *big.Int, numTransactions int) *types.Transaction {
+	bundleOnlyTx := types.NewTx(&types.AccessListTx{
+		To: &common.Address{0x42}, Nonce: 0, Gas: 21_0000,
+	})
+
+	signer := types.NewCancunSigner(chainId)
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	transactions := make([]*types.Transaction, numTransactions)
+	for i := range numTransactions {
+		transactions[i] = bundleOnlyTx
+	}
+	steps := make([]bundle.ExecutionStep, len(transactions))
+	for i, tx := range transactions {
+		steps[i] = bundle.ExecutionStep{
+			From: crypto.PubkeyToAddress(key.PublicKey),
+			Hash: signer.Hash(tx),
+		}
+	}
+	plan := bundle.ExecutionPlan{Flags: bundle.ExecutionFlag(0), Steps: steps}
+
+	payLoadTxs := make([]*types.Transaction, len(transactions))
+	for i, tx := range transactions {
+		payLoadTxs[i] = types.MustSignNewTx(key, signer, &types.AccessListTx{
+			Nonce:    tx.Nonce(),
+			To:       tx.To(),
+			Gas:      tx.Gas(),
+			GasPrice: tx.GasPrice(),
+			AccessList: types.AccessList{
+				{Address: bundle.BundleOnly, StorageKeys: []common.Hash{plan.Hash()}},
+			},
+		})
+	}
+
+	bundleTx := types.NewTx(&types.LegacyTx{
+		Gas: uint64(numTransactions * int(bundleOnlyTx.Gas())),
+		To:  &bundle.BundleAddress,
+		Data: bundle.Encode(bundle.TransactionBundle{
+			Version: 1,
+			Bundle:  payLoadTxs,
+		}),
+	})
+
+	return bundleTx
 }
 
 func TestOperaEVMProcessor_Finalize_ReportsAggregatedNumberOfSkippedTransactions(t *testing.T) {
