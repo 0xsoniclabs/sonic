@@ -156,7 +156,7 @@ func PrepareBundle(
 	t *testing.T, client *tests.PooledEhtClient,
 	flags uint8, earliest, latest uint64,
 	txs []ethereum.CallMsg,
-) (ethapi.BundleArgs, error) {
+) (ethapi.PreparedBundle, error) {
 
 	nonces := make(map[common.Address]uint64)
 	for _, tx := range txs {
@@ -185,7 +185,7 @@ func PrepareBundle(
 	}
 
 	// Call sonic_prepareBundle to get a bundle with all fields properly filled in and encoded
-	var preparedBundle ethapi.BundleArgs
+	var preparedBundle ethapi.PreparedBundle
 	err := client.Client().Call(&preparedBundle, "sonic_prepareBundle",
 		txsArgs,
 		uint16(0),
