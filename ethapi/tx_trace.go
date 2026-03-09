@@ -34,7 +34,11 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rpc"
 
+	"github.com/ethereum/go-ethereum/core/tracing"
+	"github.com/ethereum/go-ethereum/core/vm"
+
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/txtrace"
 )
@@ -60,6 +64,86 @@ func NewPublicTxTraceAPI(b Backend, maxResponseSize int) *PublicTxTraceAPI {
 	}
 }
 
+// evmSetup bundles an EVM instance with the tracing loggers and active state
+// prepared for a single traced transaction execution.
+type evmSetup struct {
+	vmenv           *vm.EVM
+	tracer          *tracing.Hooks // cfg.Tracer at time of EVM creation
+	txTracer        *txtrace.TraceStructLogger
+	stateDiffLogger *txtrace.StateDiffLogger
+	activeState     state.StateDB // may be wrapped with stateDiff hooks
+}
+
+// setupTracedEVM creates an EVM configured with the requested tracing hooks and
+// returns it together with the associated loggers and a cancel function.
+// The caller is responsible for calling cancel when execution is complete.
+// noBaseFee should be true for simulated calls, false for historical replay.
+func setupTracedEVM(
+	ctx context.Context,
+	b Backend,
+	block *evmcore.EvmBlock,
+	statedb state.StateDB,
+	index uint64,
+	wantTrace bool,
+	wantStateDiff bool,
+	noBaseFee bool,
+) (*evmSetup, context.CancelFunc, error) {
+	header := block.Header()
+	cfg, err := GetVmConfig(ctx, b, idx.Block(header.Number.Uint64()))
+	if err != nil {
+		return nil, func() {}, fmt.Errorf("cannot get vm config for block %d, error: %w", header.Number.Uint64(), err)
+	}
+	if noBaseFee {
+		cfg.NoBaseFee = true
+	}
+
+	setup := &evmSetup{activeState: statedb}
+
+	if wantTrace {
+		setup.txTracer = txtrace.NewTraceStructLogger(block, uint(index))
+		cfg.Tracer = setup.txTracer.Hooks()
+	}
+
+	if wantStateDiff {
+		setup.stateDiffLogger = txtrace.NewStateDiffLogger()
+		setup.activeState = evmstore.WrapStateDbWithLogger(statedb, setup.stateDiffLogger.Hooks())
+
+		sdOnEnter := setup.stateDiffLogger.OnEnter
+		if cfg.Tracer == nil {
+			cfg.Tracer = &tracing.Hooks{OnEnter: sdOnEnter}
+		} else {
+			existing := cfg.Tracer.OnEnter
+			cfg.Tracer.OnEnter = func(depth int, typ byte, from, to common.Address, input []byte, gas uint64, value *big.Int) {
+				if existing != nil {
+					existing(depth, typ, from, to, input, gas, value)
+				}
+				sdOnEnter(depth, typ, from, to, input, gas, value)
+			}
+		}
+	}
+	setup.tracer = cfg.Tracer
+
+	timeout := defaultTraceTimeout
+	if b.RPCEVMTimeout() > 0 {
+		timeout = b.RPCEVMTimeout()
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+
+	vmenv, _, err := b.GetEVM(ctx, setup.activeState, header, &cfg, nil)
+	if err != nil {
+		cancel()
+		return nil, func() {}, fmt.Errorf("cannot initialize vm for block %d, error: %s", header.Number.Uint64(), err.Error())
+	}
+
+	go func() {
+		<-ctx.Done()
+		vmenv.Cancel()
+	}()
+
+	setup.vmenv = vmenv
+	return setup, cancel, nil
+}
+
 // Transaction - trace_transaction function returns transaction inner traces
 func (s *PublicTxTraceAPI) Transaction(ctx context.Context, hash common.Hash) (*[]txtrace.ActionTrace, error) {
 	defer func(start time.Time) {
@@ -68,18 +152,22 @@ func (s *PublicTxTraceAPI) Transaction(ctx context.Context, hash common.Hash) (*
 	return s.traceTxHash(ctx, hash, nil)
 }
 
-// Call - trace_call function returns transaction inner traces for non historical transactions
-func (s *PublicTxTraceAPI) Call(ctx context.Context, args TransactionArgs, traceTypes []string, blockNrOrHash rpc.BlockNumberOrHash, config *TraceCallConfig) (*[]txtrace.ActionTrace, error) {
+// Call - trace_call function returns transaction inner traces for non historical transactions.
+// Supports "trace" and "stateDiff" trace types, compatible with go-ethereum trace_call format.
+func (s *PublicTxTraceAPI) Call(ctx context.Context, args TransactionArgs, traceTypes []string, blockNrOrHash rpc.BlockNumberOrHash, config *TraceCallConfig) (*txtrace.TraceCallResult, error) {
+
 	defer func(start time.Time) {
 		log.Debug("Executing trace_Call call finished", "txArgs", args, "runtime", time.Since(start))
 	}(time.Now())
 
+	wantTrace := false
+	wantStateDiff := false
 	for _, traceType := range traceTypes {
 		switch traceType {
 		case TraceTypeTrace:
-			continue
+			wantTrace = true
 		case TraceTypeStateDiff:
-			return nil, fmt.Errorf("stateDiff trace type is not supported")
+			wantStateDiff = true
 		case TraceTypeVmTrace:
 			return nil, fmt.Errorf("vmTrace trace type is not supported")
 		default:
@@ -115,7 +203,84 @@ func (s *PublicTxTraceAPI) Call(ctx context.Context, args TransactionArgs, trace
 		return nil, err
 	}
 
-	return s.traceTx(ctx, s.b, block.Header(), msg, statedb, block, tx, uint64(txIndex), 1)
+	return s.traceCallExec(ctx, block, msg, statedb, tx, uint64(txIndex), wantTrace, wantStateDiff)
+}
+
+// traceCallExec executes a simulated transaction and returns a TraceCallResult
+// containing optional trace actions and/or state diff based on the requested types.
+func (s *PublicTxTraceAPI) traceCallExec(
+	ctx context.Context,
+	block *evmcore.EvmBlock,
+	msg *core.Message,
+	statedb state.StateDB,
+	tx *types.Transaction,
+	index uint64,
+	wantTrace bool,
+	wantStateDiff bool,
+) (*txtrace.TraceCallResult, error) {
+	tracedEVM, cancel, err := setupTracedEVM(ctx, s.b, block, statedb, index, wantTrace, wantStateDiff, true)
+	if err != nil {
+		return nil, err
+	}
+	defer cancel()
+
+	tracedEVM.activeState.SetTxContext(tx.Hash(), int(index))
+
+	// Call OnTxStart manually before execution so the trace logger can initialize.
+	if tracedEVM.tracer != nil && tracedEVM.tracer.OnTxStart != nil {
+		tracedEVM.tracer.OnTxStart(tracedEVM.vmenv.GetVMContext(), tx, msg.From)
+	}
+
+	// Set tx context in EVM
+	tracedEVM.vmenv.SetTxContext(evmcore.NewEVMTxContext(msg))
+
+	// Execute the transaction using core.ApplyMessage to capture raw return data.
+	result, applyErr := core.ApplyMessage(tracedEVM.vmenv, msg, new(core.GasPool).AddGas(msg.GasLimit))
+
+	// Finalize the transaction state regardless of execution outcome.
+	tracedEVM.activeState.EndTransaction()
+
+	// Build a synthetic receipt and call OnTxEnd to finalize the trace.
+	var receipt *types.Receipt
+	if applyErr == nil && result != nil {
+		if result.Failed() {
+			receipt = &types.Receipt{Status: types.ReceiptStatusFailed, GasUsed: result.UsedGas}
+		} else {
+			receipt = &types.Receipt{Status: types.ReceiptStatusSuccessful, GasUsed: result.UsedGas}
+		}
+	}
+	if tracedEVM.tracer != nil && tracedEVM.tracer.OnTxEnd != nil {
+		tracedEVM.tracer.OnTxEnd(receipt, applyErr)
+	}
+
+	if tracedEVM.vmenv.Cancelled() {
+		return nil, fmt.Errorf("EVM was cancelled when tracing call")
+	}
+
+	callResult := &txtrace.TraceCallResult{VmTrace: nil}
+
+	if applyErr != nil {
+		// Pre-EVM error (e.g., insufficient gas for intrinsic cost, nonce mismatch).
+		errTrace := txtrace.GetErrorTraceFromMsg(msg, block.Hash, *block.Number, tx.Hash(), index, applyErr)
+		if wantTrace {
+			callResult.Trace = []txtrace.ActionTrace{*errTrace}
+		}
+		if wantStateDiff {
+			callResult.StateDiff = make(txtrace.StateDiff)
+		}
+		return callResult, nil
+	}
+
+	callResult.Output = hexutil.Bytes(result.ReturnData)
+
+	if wantTrace {
+		callResult.Trace = *tracedEVM.txTracer.GetResult()
+	}
+	if wantStateDiff {
+		callResult.StateDiff = tracedEVM.stateDiffLogger.GetResult()
+	}
+
+	return callResult, nil
 }
 
 // Block - trace_block function returns transaction traces in given block
@@ -222,7 +387,7 @@ func (s *PublicTxTraceAPI) replayBlock(ctx context.Context, block *evmcore.EvmBl
 				return nil, fmt.Errorf("no receipt found for transaction %s", tx.Hash().String())
 			}
 
-			txTraces, err := s.traceTx(ctx, s.b, block.Header(), msg, state, block, tx, uint64(receipts[i].TransactionIndex), receipts[i].Status)
+			txTraces, err := s.traceTx(ctx, msg, state, block, tx, uint64(receipts[i].TransactionIndex), receipts[i].Status)
 			if err != nil {
 				return nil, fmt.Errorf("cannot get transaction trace for transaction %s, error %s", tx.Hash().String(), err)
 			} else {
@@ -293,72 +458,43 @@ func (s *PublicTxTraceAPI) replayBlock(ctx context.Context, block *evmcore.EvmBl
 	return &callTrace.Actions, nil
 }
 
-// traceTx trace transaction with EVM replay and return processed result
+// traceTx replays a historical transaction with full tracing and returns the action traces.
+// It validates the replayed execution status against the on-chain receipt status.
 func (s *PublicTxTraceAPI) traceTx(
-	ctx context.Context, b Backend, header *evmcore.EvmHeader, msg *core.Message,
-	state state.StateDB, block *evmcore.EvmBlock, tx *types.Transaction, index uint64,
-	status uint64) (*[]txtrace.ActionTrace, error) {
-
-	// Providing default config with tracer
-	cfg, err := GetVmConfig(ctx, b, idx.Block(header.Number.Uint64()))
+	ctx context.Context,
+	msg *core.Message,
+	statedb state.StateDB,
+	block *evmcore.EvmBlock,
+	tx *types.Transaction,
+	index uint64,
+	status uint64,
+) (*[]txtrace.ActionTrace, error) {
+	tracedEVM, cancel, err := setupTracedEVM(ctx, s.b, block, statedb, index, true, false, false)
 	if err != nil {
-		return nil, fmt.Errorf("cannot get vm config for block %d, error: %w", header.Number.Uint64(), err)
+		return nil, err
 	}
-	txTracer := txtrace.NewTraceStructLogger(block, uint(index))
-	cfg.Tracer = txTracer.Hooks()
-	cfg.NoBaseFee = true
-
-	// Setup context so it may be cancelled the call has completed
-	// or, in case of unmetered gas, setup a context with a timeout.
-	var timeout time.Duration = 5 * time.Second
-	if s.b.RPCEVMTimeout() > 0 {
-		timeout = s.b.RPCEVMTimeout()
-	}
-	var cancel context.CancelFunc
-	ctx, cancel = context.WithTimeout(ctx, timeout)
-
-	// Make sure the context is cancelled when the call has completed
-	// this makes sure resources are cleaned up.
 	defer cancel()
 
-	vmenv, _, err := b.GetEVM(ctx, state, header, &cfg, nil)
-	if err != nil {
-		return nil, fmt.Errorf("cannot initialize vm for transaction %s, error: %s", tx.Hash().String(), err.Error())
-	}
+	statedb.SetTxContext(tx.Hash(), int(index))
+	chainConfig := s.b.ChainConfig(idx.Block(block.Number.Uint64()))
+	resultReceipt, err := evmcore.ApplyTransactionWithEVM(msg, chainConfig, new(core.GasPool).AddGas(msg.GasLimit), statedb, block.Number, block.Hash, tx, &index, tracedEVM.vmenv)
 
-	// Wait for the context to be done and cancel the evm. Even if the
-	// EVM has finished, cancelling may be done (repeatedly)
-	go func() {
-		<-ctx.Done()
-		vmenv.Cancel()
-	}()
+	traceActions := tracedEVM.txTracer.GetResult()
+	statedb.EndTransaction()
 
-	// Setup the gas pool and stateDB
-	gp := new(core.GasPool).AddGas(msg.GasLimit)
-	state.SetTxContext(tx.Hash(), int(index))
-	chainConfig := b.ChainConfig(idx.Block(header.Number.Uint64()))
-	resultReceipt, err := evmcore.ApplyTransactionWithEVM(msg, chainConfig, gp, state, header.Number, block.Hash, tx, &index, vmenv)
-
-	traceActions := txTracer.GetResult()
-	state.EndTransaction()
-
-	// err is error occurred before EVM execution
 	if err != nil {
 		errTrace := txtrace.GetErrorTraceFromMsg(msg, block.Hash, *block.Number, tx.Hash(), index, err)
-		at := make([]txtrace.ActionTrace, 0)
-		at = append(at, *errTrace)
-		// check correct replay state
+		at := []txtrace.ActionTrace{*errTrace}
 		if status == 1 {
 			return nil, fmt.Errorf("invalid transaction replay state at %s", tx.Hash().String())
 		}
 		return &at, nil
 	}
-	// If the timer caused an abort, return an appropriate error message
-	if vmenv.Cancelled() {
+
+	if tracedEVM.vmenv.Cancelled() {
 		return nil, fmt.Errorf("EVM was cancelled when replaying tx")
 	}
 
-	// check correct replay state
 	if status != resultReceipt.Status {
 		return nil, fmt.Errorf("invalid transaction replay state at %s, want %v but got %v", tx.Hash().String(), status, resultReceipt.Status)
 	}
