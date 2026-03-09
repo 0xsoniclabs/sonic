@@ -88,6 +88,14 @@ func ValidateTransactionBundle(
 	if tx.Gas() < intrGas {
 		return nil, nil, fmt.Errorf("%w, gas should be more than %v", core.ErrIntrinsicGas, intrGas)
 	}
+
+	// EIP-7623 part of Prague revision: Floor data gas
+	// see: https://eips.ethereum.org/EIPS/eip-7623
+	floorDataGas, err := core.FloorDataGas(tx.Data())
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to calculate floor data gas: %v", err)
+	}
+
 	// gas limit of the bundle has to be exactly the aggregated gas of all the
 	// transactions in the bundle or the intrinsic gas of the bundle
 	// transaction, whichever is higher.
@@ -96,8 +104,10 @@ func ValidateTransactionBundle(
 		gasLimit += innerTx.Gas()
 	}
 	bundleOnlyMarkerGas := uint64(2400 + 1900)
-	if bundleGas != max(gasLimit, intrGas) && bundleGas != max(gasLimit, intrGas)+bundleOnlyMarkerGas {
-		return nil, nil, fmt.Errorf("%w: bundle gas limit %d but needs %d", ErrBundleGasLimitTooLow, tx.Gas(), max(gasLimit, intrGas))
+	maxGas := max(gasLimit, intrGas, floorDataGas)
+	maxGasWithBundleOnlyMarker := max(gasLimit, intrGas+bundleOnlyMarkerGas, floorDataGas)
+	if bundleGas != maxGas && bundleGas != maxGasWithBundleOnlyMarker {
+		return nil, nil, fmt.Errorf("%w: bundle gas limit %d but needs %d", ErrBundleGasLimitTooLow, tx.Gas(), maxGas)
 	}
 
 	return &txBundle, &plan, nil
