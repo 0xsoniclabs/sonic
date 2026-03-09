@@ -156,8 +156,6 @@ func (s *PublicTxTraceAPI) Transaction(ctx context.Context, hash common.Hash) (*
 // Supports "trace" and "stateDiff" trace types, compatible with go-ethereum trace_call format.
 func (s *PublicTxTraceAPI) Call(ctx context.Context, args TransactionArgs, traceTypes []string, blockNrOrHash rpc.BlockNumberOrHash, config *TraceCallConfig) (*txtrace.TraceCallResult, error) {
 
-	// Call - trace_call function returns transaction inner traces for non historical transactions
-	//func (s *PublicTxTraceAPI) Call(ctx context.Context, args TransactionArgs, traceTypes []string, blockNrOrHash rpc.BlockNumberOrHash, config *TraceCallConfig) (*[]txtrace.ActionTrace, error) {
 	defer func(start time.Time) {
 		log.Debug("Executing trace_Call call finished", "txArgs", args, "runtime", time.Since(start))
 	}(time.Now())
