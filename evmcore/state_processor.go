@@ -383,10 +383,15 @@ func (r *transactionRunner) runTransactionBundle(
 		if err := ctxt.statedb.RevertToInterTxSnapshot(bundleCheckpoint); err != nil {
 			log.Error("Failed to revert to checkpoint", "err", err)
 		}
-		processedBundle.EndPosition = uint32(txIndex)
 		return []ProcessedTransaction{}, processedBundle, StatusFailed
 	}
-	processedBundle.EndPosition = uint32(txIndex + len(runner.processedTransactions))
+	withReceipt := 0
+	for _, processedTx := range runner.processedTransactions {
+		if processedTx.Receipt != nil {
+			withReceipt++
+		}
+	}
+	processedBundle.EndPosition = uint32(txIndex + withReceipt)
 	return runner.processedTransactions, processedBundle, StatusSuccessful
 }
 
