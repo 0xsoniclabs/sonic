@@ -29,6 +29,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/eventcheck/epochcheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/gaspowercheck"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/sonic/utils/txtime"
@@ -214,6 +215,12 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 			sorted.Pop()
 			continue
 		}
+		// check validity of bundled transactions
+		if bundle.IsTransactionBundle(resolvedTx) && !em.isValidBundleTx(resolvedTx) {
+			sorted.Pop()
+			continue
+		}
+
 		// add
 		e.SetGasPowerUsed(e.GasPowerUsed() + tx.Gas)
 		e.SetGasPowerLeft(e.GasPowerLeft().Sub(tx.Gas))
@@ -221,4 +228,40 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 		totalTxSizeInBytes += txSize
 		sorted.Shift()
 	}
+}
+
+// isValidBundleTx checks whether the given transaction is a valid bundle that
+// could be emitted by this emitter.
+func (em *Emitter) isValidBundleTx(tx *types.Transaction) bool {
+	// Ignore if bundled transactions are not enabled.
+	if !em.world.GetRules().Upgrades.TransactionBundles {
+		return false
+	}
+
+	// Ignore if not a bundle transaction.
+	if !bundle.IsTransactionBundle(tx) {
+		return false
+	}
+
+	// Ignore if it is not a valid bundle transaction.
+	_, plan, err := bundle.ValidateTransactionBundle(tx, em.world.TransactionSigner)
+	if err != nil {
+		return false
+	}
+
+	// Ignore if the next block is no longer in the range. If it is just the
+	// next block, it is likely anyway too late, since the DAG consensus is
+	// pipelined, but it is fine to error on the safe side here.
+	if !plan.IsInRange(uint64(em.world.GetLatestBlockIndex()) + 1) {
+		return false
+	}
+
+	// Ignore if the same bundle has already been processed.
+	if em.world.HasBundleRecentlyBeenProcessed(plan.Hash()) {
+		return false
+	}
+
+	// TODO: try-run the bundle and ignore if it is not runnable (follow-up).
+
+	return true
 }
