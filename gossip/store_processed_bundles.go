@@ -71,8 +71,8 @@ func (s *Store) AddProcessedBundles(blockNum uint64, executedBundles []bundle.Ex
 
 		data := make([]byte, 16)
 		binary.BigEndian.PutUint64(data[:8], info.BlockNum)
-		binary.BigEndian.PutUint32(data[8:12], info.StartPosition)
-		binary.BigEndian.PutUint32(data[12:], info.EndPosition)
+		binary.BigEndian.PutUint32(data[8:12], info.Position)
+		binary.BigEndian.PutUint32(data[12:], info.Count)
 
 		err := errors.Join(
 			batch.Put(getEntryKey(hash), data),
@@ -176,8 +176,8 @@ func (s *Store) GetBundleExecutionInfo(execPlanHash common.Hash) (*bundle.Execut
 	return &bundle.ExecutionInfo{
 		ExecutionPlanHash: execPlanHash,
 		BlockNum:          blockNum,
-		StartPosition:     startPosition,
-		EndPosition:       endPosition,
+		Position:          startPosition,
+		Count:             endPosition,
 	}, nil
 }
 

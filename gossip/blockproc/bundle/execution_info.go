@@ -24,6 +24,6 @@ import "github.com/ethereum/go-ethereum/common"
 type ExecutionInfo struct {
 	ExecutionPlanHash common.Hash
 	BlockNum          uint64
-	StartPosition     uint32
-	EndPosition       uint32
+	Position          uint32
+	Count             uint32
 }

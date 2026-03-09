@@ -125,8 +125,8 @@ func TestBundle_CanBeProcessedByTheNetwork(t *testing.T) {
 
 	// Check the block and position in which the bundle was included.
 	require.NotNil(t, info.Block)
-	require.NotNil(t, info.StartPosition)
-	require.NotNil(t, info.EndPosition)
+	require.NotNil(t, info.Position)
+	require.NotNil(t, info.Count)
 
 	// Check that the transactions are in the block as advertised.
 	receipts, err := net.GetReceipts([]common.Hash{signedTxs[0].Hash(), signedTxs[1].Hash()})
@@ -137,8 +137,8 @@ func TestBundle_CanBeProcessedByTheNetwork(t *testing.T) {
 		require.EqualValues(t, *info.Block, receipt.BlockNumber.Uint64())
 	}
 
-	require.EqualValues(t, *info.StartPosition, receipts[0].TransactionIndex)
-	require.EqualValues(t, *info.StartPosition+1, receipts[1].TransactionIndex)
+	require.EqualValues(t, *info.Position, receipts[0].TransactionIndex)
+	require.EqualValues(t, *info.Position+1, receipts[1].TransactionIndex)
 
 	// Verify that there is no receipt for the bundle transaction itself.
 	_, err = client.TransactionReceipt(t.Context(), bundleTx.Hash())
