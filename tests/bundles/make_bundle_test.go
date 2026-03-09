@@ -24,6 +24,7 @@ import (
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 )
@@ -65,14 +66,32 @@ func makeBundleTransaction(
 		Latest:   plan.Latest,
 	}
 
+	data := bundle.Encode(bundlePayload)
+
+	intrGas, err := core.IntrinsicGas(
+		data,
+		nil,   // access list is set in the individual transactions
+		nil,   // code auth is not used in the bundle transaction
+		false, // bundle transaction is not a contract creation
+		true,
+		true,
+		true,
+	)
+	require.NoError(t, err, "failed to calculate intrinsic gas; %v", err)
+
+	// EIP-7623 part of Prague revision: Floor data gas
+	// see: https://eips.ethereum.org/EIPS/eip-7623
+	floorDataGas, err := core.FloorDataGas(data)
+	require.NoError(t, err, "failed to calculate floor data gas; %v", err)
+
 	// create the bundle transaction with the same nonce as the payment transaction
 	signer := types.LatestSignerForChainID(net.GetChainId())
 	bundleTx := types.MustSignNewTx(coordinator.PrivateKey, signer,
 		&types.LegacyTx{
 			Nonce: 0,
 			To:    &bundle.BundleAddress,
-			Gas:   gas,
-			Data:  bundle.Encode(bundlePayload),
+			Gas:   max(gas, intrGas, floorDataGas), // set the gas limit to the maximum of intrinsic gas, transactions gas and floor data gas
+			Data:  data,
 		},
 	)
 
