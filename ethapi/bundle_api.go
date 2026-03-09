@@ -97,9 +97,23 @@ type BundleInfo struct {
 	Count    *uint32      `json:"count,omitempty"`
 }
 
-// PreparedBundle encapsulates the parameters required for constructing a transaction bundle.
-// It contains the prepared transactions and the execution plan, necessary for users of the
-// API to validated the execution plan hashes introduced into the bundled transactions.
+type PrepareBundleArgs struct {
+	// Transactions specifies the ordered list of transactions to be included in the bundle.
+	Transactions []TransactionArgs `json:"transactions"`
+	// ExecutionFlags defines the execution behavior of the bundle, such as whether it should be executed
+	// exclusively or if it can be executed alongside other bundles. This is represented as a bitmask,
+	// where specific bits correspond to different execution options.
+	ExecutionFlags hexutil.Uint `json:"executionFlags"`
+	// EarliestBlock specifies the earliest block number at which the bundle can be executed. This allows
+	// users to set a lower bound on when their bundle should be considered for execution, ensuring it is
+	// not included in blocks before a certain point in time.
+	EarliestBlock rpc.BlockNumber `json:"earliestBlock"`
+	// LatestBlock specifies the latest block number at which the bundle can be executed. This allows users
+	// to set an upper bound on when their bundle should be considered for execution, ensuring it is not included in blocks after a certain point in time. If the bundle is not executed by this block, it will be considered expired and will not be executed.
+	LatestBlock rpc.BlockNumber `json:"latestBlock"`
+}
+
+// PreparedBundle is the return type of the `sonic_prepareBundle` RPC method
 type PreparedBundle struct {
 	// Transactions specifies the ordered list of transactions to be included in the bundle.
 	// These must be signed exactly as provided by the bundle_prepare RPC method; any modification
@@ -122,19 +136,16 @@ type PreparedBundle struct {
 // invalidate the execution plan.
 func (a *PublicBundleAPI) PrepareBundle(
 	ctx context.Context,
-	transactionArgs []TransactionArgs,
-	executionFlags uint8,
-	earliestBlock rpc.BlockNumber,
-	latestBlock rpc.BlockNumber,
+	args PrepareBundleArgs,
 ) (*PreparedBundle, error) {
 
 	gasCap := a.b.RPCGasCap()
 	basefee := a.b.MinGasPrice()
 
 	// 1) Read transactions from arguments and prepare fields
-	from := make([]common.Address, len(transactionArgs))
-	transactions := make([]*types.Transaction, len(transactionArgs))
-	for i, txArgs := range transactionArgs {
+	from := make([]common.Address, len(args.Transactions))
+	transactions := make([]*types.Transaction, len(args.Transactions))
+	for i, txArgs := range args.Transactions {
 		msg, err := txArgs.ToMessage(gasCap, basefee, log.Root())
 		if err != nil {
 			return nil, fmt.Errorf("failed to prepare bundle: transaction %d conversion error: %w", i, err)
@@ -155,10 +166,10 @@ func (a *PublicBundleAPI) PrepareBundle(
 	chainID := a.b.ChainID()
 	signer := types.LatestSignerForChainID(chainID)
 	plan := bundle.ExecutionPlan{
-		Flags:    bundle.ExecutionFlag(executionFlags),
+		Flags:    bundle.ExecutionFlag(args.ExecutionFlags),
 		Steps:    make([]bundle.ExecutionStep, len(transactions)),
-		Earliest: uint64(earliestBlock),
-		Latest:   uint64(latestBlock),
+		Earliest: uint64(args.EarliestBlock),
+		Latest:   uint64(args.LatestBlock),
 	}
 	for i, tx := range transactions {
 		plan.Steps[i] = bundle.ExecutionStep{
@@ -170,7 +181,7 @@ func (a *PublicBundleAPI) PrepareBundle(
 	// 3) Update bundle transactions with execution plan hash
 	planHash := plan.Hash()
 	for i := range transactions {
-		tx := transactionArgs[i]
+		tx := args.Transactions[i]
 		var accessList types.AccessList
 		if tx.AccessList != nil {
 			accessList = *tx.AccessList
@@ -181,15 +192,32 @@ func (a *PublicBundleAPI) PrepareBundle(
 				planHash,
 			}})
 		tx.AccessList = &accessList
-		transactionArgs[i] = tx
+		args.Transactions[i] = tx
 	}
 
 	bundle := PreparedBundle{
-		Transactions: transactionArgs,
+		Transactions: args.Transactions,
 		Plan:         plan,
 	}
 
 	return &bundle, nil
+}
+
+type SubmitBundleArgs struct {
+	// SignedTransactions is the list of transactions that have been signed using the transaction arguments returned by the `sonic_prepareBundle` method.
+	// These transactions must be included in the bundle exactly as they were prepared; any modification will invalidate the execution plan and result in an ill-formed bundle.
+	SignedTransactions []hexutil.Bytes `json:"signedTransactions"`
+	// ExecutionFlags defines the execution behavior of the bundle, such as whether it should be executed
+	// exclusively or if it can be executed alongside other bundles. This is represented as a bitmask,
+	// where specific bits correspond to different execution options.
+	ExecutionFlags hexutil.Uint `json:"executionFlags"`
+	// EarliestBlock specifies the earliest block number at which the bundle can be executed. This allows
+	// users to set a lower bound on when their bundle should be considered for execution, ensuring it is
+	// not included in blocks before a certain point in time.
+	EarliestBlock rpc.BlockNumber `json:"earliestBlock"`
+	// LatestBlock specifies the latest block number at which the bundle can be executed. This allows users
+	// to set an upper bound on when their bundle should be considered for execution, ensuring it is not included in blocks after a certain point in time. If the bundle is not executed by this block, it will be considered expired and will not be executed.
+	LatestBlock rpc.BlockNumber `json:"latestBlock"`
 }
 
 // SubmitBundle implements the `sonic_submitBundle` RPC method, which allows users to submit a prepared transaction bundle for execution.
@@ -198,23 +226,20 @@ func (a *PublicBundleAPI) PrepareBundle(
 // It validates the transactions against the execution plan and submits the bundle to the network for execution.
 func (a *PublicBundleAPI) SubmitBundle(
 	ctx context.Context,
-	signedTransactions []hexutil.Bytes,
-	executionFlags uint8,
-	earliestBlock rpc.BlockNumber,
-	latestBlock rpc.BlockNumber,
+	args SubmitBundleArgs,
 ) (common.Hash, error) {
 
 	txBundle := bundle.TransactionBundle{
 		Version:  bundle.BundleV1,
-		Bundle:   make(types.Transactions, len(signedTransactions)),
-		Flags:    bundle.ExecutionFlag(executionFlags),
-		Earliest: uint64(earliestBlock),
-		Latest:   uint64(latestBlock),
+		Bundle:   make(types.Transactions, len(args.SignedTransactions)),
+		Flags:    bundle.ExecutionFlag(args.ExecutionFlags),
+		Earliest: uint64(args.EarliestBlock),
+		Latest:   uint64(args.LatestBlock),
 	}
 
 	// 1) Decode bundled transactions and compute total gas requirement
 	var totalGas uint64
-	for i, encodedTx := range signedTransactions {
+	for i, encodedTx := range args.SignedTransactions {
 
 		tx := new(types.Transaction)
 		if err := tx.UnmarshalBinary(encodedTx); err != nil {

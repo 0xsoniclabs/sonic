@@ -29,6 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/require"
 )
 
@@ -187,9 +188,12 @@ func PrepareBundle(
 	// Call sonic_prepareBundle to get a bundle with all fields properly filled in and encoded
 	var preparedBundle ethapi.PreparedBundle
 	err := client.Client().Call(&preparedBundle, "sonic_prepareBundle",
-		txsArgs,
-		uint16(0),
-		hexutil.Uint64(earliest), hexutil.Uint64(latest))
+		ethapi.PrepareBundleArgs{
+			Transactions:   txsArgs,
+			ExecutionFlags: hexutil.Uint(flags),
+			EarliestBlock:  rpc.BlockNumber(earliest),
+			LatestBlock:    rpc.BlockNumber(latest),
+		})
 	require.NoError(t, err, "failed to call sonic_prepareBundle")
 	return preparedBundle, nil
 }
@@ -203,20 +207,23 @@ func SubmitBundle(client *tests.PooledEhtClient,
 	txs []*types.Transaction,
 	flags uint8, earliest, latest uint64,
 ) (common.Hash, error) {
-	encodedTransactions := make([]string, len(txs))
+	encodedTransactions := make([]hexutil.Bytes, len(txs))
 	for i, tx := range txs {
 		data, err := tx.MarshalBinary()
 		if err != nil {
 			return common.Hash{}, fmt.Errorf("failed to marshal transaction: %w", err)
 		}
-		encodedTransactions[i] = hexutil.Encode(data)
+		encodedTransactions[i] = hexutil.Bytes(data)
 	}
 
 	var bundleHash common.Hash
 	err := client.Client().Call(&bundleHash, "sonic_submitBundle",
-		encodedTransactions,
-		flags,
-		hexutil.Uint64(earliest), hexutil.Uint64(latest))
+		ethapi.SubmitBundleArgs{
+			SignedTransactions: encodedTransactions,
+			ExecutionFlags:     hexutil.Uint(flags),
+			EarliestBlock:      rpc.BlockNumber(earliest),
+			LatestBlock:        rpc.BlockNumber(latest),
+		})
 	return bundleHash, err
 }
 
