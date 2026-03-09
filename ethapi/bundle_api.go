@@ -18,8 +18,16 @@ package ethapi
 
 import (
 	"context"
+	"fmt"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/rpc"
 )
 
 type PublicBundleAPI struct {
@@ -27,7 +35,9 @@ type PublicBundleAPI struct {
 }
 
 func NewPublicBundleAPI(b Backend) *PublicBundleAPI {
-	return &PublicBundleAPI{b: b}
+	return &PublicBundleAPI{
+		b: b,
+	}
 }
 
 //go:generate stringer -type=BundleStatus -output bundle_status_string.go -trimprefix BundleStatus
@@ -85,4 +95,226 @@ type BundleInfo struct {
 	Block    *uint64      `json:"block,omitempty"`
 	Position *uint32      `json:"position,omitempty"`
 	Count    *uint32      `json:"count,omitempty"`
+}
+
+type PrepareBundleArgs struct {
+	// Transactions specifies the ordered list of transactions to be included in the bundle.
+	Transactions []TransactionArgs `json:"transactions"`
+	// EarliestBlock specifies the earliest block number at which the bundle can be executed. This allows
+	// users to set a lower bound on when their bundle should be considered for execution, ensuring it is
+	// not included in blocks before a certain point in time.
+	EarliestBlock rpc.BlockNumber `json:"earliestBlock"`
+	// LatestBlock specifies the latest block number at which the bundle can be executed. This allows users
+	// to set an upper bound on when their bundle should be considered for execution, ensuring it is
+	// not included in blocks after a certain point in time. If the bundle is not executed by this block,
+	// it will be considered expired and will not be executed.
+	LatestBlock rpc.BlockNumber `json:"latestBlock"`
+}
+
+// PreparedBundle is the return type of the `sonic_prepareBundle` RPC method
+type PreparedBundle struct {
+	// Transactions specifies the ordered list of transactions to be included in the bundle.
+	// These must be signed exactly as provided by the bundle_prepare RPC method; any modification
+	// will invalidate the execution plan and result in an ill-formed bundle.
+	Transactions []TransactionArgs `json:"transactions"`
+	// Plan contains the execution plan that each bundled transaction references. This is provided
+	// for verification purposes; users may independently compute and validate the execution plan hash.
+	Plan bundle.ExecutionPlan `json:"plan,omitempty"`
+}
+
+// PrepareBundle implements the `sonic_prepareBundle` RPC method.
+// This function streamlines the creation of transaction bundles by preparing an execution plan
+// based on the provided transaction order, to be executed within a specified block range.
+//
+// It accepts a list of unsigned transactions, constructs the corresponding execution plan,
+// and updates each transaction to include the bundler-only marker, ensuring they are executed
+// exclusively as part of the specified plan.
+//
+// The returned transactions must be signed without altering any fields; any modification may
+// invalidate the execution plan and prevent the bundle from being executed.
+func (a *PublicBundleAPI) PrepareBundle(
+	ctx context.Context,
+	args PrepareBundleArgs,
+) (*PreparedBundle, error) {
+
+	gasCap := a.b.RPCGasCap()
+	basefee := a.b.MinGasPrice()
+
+	// 1) Read transactions from arguments and prepare fields
+	from := make([]common.Address, len(args.Transactions))
+	transactions := make([]*types.Transaction, len(args.Transactions))
+	for i, txArgs := range args.Transactions {
+		msg, err := txArgs.ToMessage(gasCap, basefee, log.Root())
+		if err != nil {
+			return nil, fmt.Errorf("failed to prepare bundle: transaction %d conversion error: %w", i, err)
+		}
+
+		tx, err := asTransaction(msg)
+		if err != nil {
+			return nil, fmt.Errorf("failed to prepare bundle: transaction %d conversion error: %w", i, err)
+		}
+
+		from[i] = msg.From
+		transactions[i] = tx
+	}
+
+	// 2) Prepare execution plan
+	chainID := a.b.ChainID()
+	signer := types.LatestSignerForChainID(chainID)
+	plan := bundle.ExecutionPlan{
+		// Current api do not expose flags to users, this can be introduced in the future if needed.
+		Flags:    bundle.ExecutionFlag(0),
+		Steps:    make([]bundle.ExecutionStep, len(transactions)),
+		Earliest: uint64(args.EarliestBlock),
+		Latest:   uint64(args.LatestBlock),
+	}
+	for i, tx := range transactions {
+		plan.Steps[i] = bundle.ExecutionStep{
+			From: from[i],
+			Hash: signer.Hash(tx),
+		}
+	}
+
+	// 3) Update bundle transactions with execution plan hash
+	planHash := plan.Hash()
+	for i := range transactions {
+		tx := args.Transactions[i]
+		var accessList types.AccessList
+		if tx.AccessList != nil {
+			accessList = *tx.AccessList
+		}
+		accessList = append(accessList, types.AccessTuple{
+			Address: bundle.BundleOnly,
+			StorageKeys: []common.Hash{
+				planHash,
+			}})
+		tx.AccessList = &accessList
+		args.Transactions[i] = tx
+	}
+
+	bundle := PreparedBundle{
+		Transactions: args.Transactions,
+		Plan:         plan,
+	}
+
+	return &bundle, nil
+}
+
+type SubmitBundleArgs struct {
+	// SignedTransactions is the list of transactions that have been signed using
+	// the transaction arguments returned by the `sonic_prepareBundle` method.
+	// These transactions must be included in the bundle exactly as they were prepared;
+	// any modification will invalidate the execution plan and result in an ill-formed bundle.
+	SignedTransactions []hexutil.Bytes `json:"signedTransactions"`
+	// ExecutionPlan contains the execution plan that each bundled transaction references.
+	// This value must be provided as returned by the `sonic_prepareBundle` method;
+	// any modification will invalidate the execution plan and result in an ill-formed bundle.
+	ExecutionPlan bundle.ExecutionPlan `json:"plan,omitempty"`
+}
+
+// SubmitBundle implements the `sonic_submitBundle` RPC method, which submits a prepared bundle for execution.
+func (a *PublicBundleAPI) SubmitBundle(
+	ctx context.Context,
+	args SubmitBundleArgs,
+) (common.Hash, error) {
+
+	txBundle := bundle.TransactionBundle{
+		Version:  bundle.BundleV1,
+		Bundle:   make(types.Transactions, len(args.SignedTransactions)),
+		Flags:    args.ExecutionPlan.Flags,
+		Earliest: args.ExecutionPlan.Earliest,
+		Latest:   args.ExecutionPlan.Latest,
+	}
+
+	// 1) Decode bundled transactions and compute total gas requirement
+	var totalGas uint64
+	for i, encodedTx := range args.SignedTransactions {
+
+		tx := new(types.Transaction)
+		if err := tx.UnmarshalBinary(encodedTx); err != nil {
+			return common.Hash{}, fmt.Errorf("failed to decode bundled transaction %d: %w", i, err)
+		}
+
+		txBundle.Bundle[i] = tx
+		totalGas += tx.Gas()
+	}
+
+	// 2)  Encode the bundle and compute if gas limits are sufficient to cover
+	// both the payload and the data-related gas costs.
+	data := bundle.Encode(txBundle)
+	minGas, err := core.IntrinsicGas(data, nil, nil, false, true, true, true)
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("failed to finalize bundle: could not calculate intrinsic gas: %w", err)
+	}
+	floorDataGas, err := core.FloorDataGas(data)
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("failed to finalize bundle: could not calculate floor data gas: %w", err)
+	}
+	totalGas = max(totalGas, minGas, floorDataGas)
+
+	// 3) Make a one use key to sign the bundle
+	// TODO: key could be generated only once, but using a single key at the moment it would
+	// generate a problem with nonces in the pool.
+	key, err := crypto.GenerateKey()
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("failed to generate signing key: %w", err)
+	}
+
+	// 4) Sign the bundle transaction with the one-use key and send it to the network
+	signer := types.LatestSignerForChainID(a.b.ChainID())
+	tx, err := types.SignNewTx(key, signer,
+		&types.DynamicFeeTx{
+			To:    &bundle.BundleAddress,
+			Nonce: 0,
+			Data:  data,
+			Gas:   totalGas,
+		})
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("failed to sign bundle transaction: %w", err)
+	}
+
+	// 5) Validate generated transaction
+	_, plan, err := bundle.ValidateTransactionBundle(tx, signer)
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("failed to validate bundle transaction: %w", err)
+	}
+
+	// 6) Submit the transaction to the network
+	_, err = SubmitTransaction(ctx, a.b, tx)
+	return plan.Hash(), err
+}
+
+func asTransaction(msg *core.Message) (*types.Transaction, error) {
+
+	if len(msg.BlobHashes) != 0 || msg.BlobGasFeeCap != nil {
+		return nil, fmt.Errorf("blob transactions are not supported in bundles")
+	}
+	if len(msg.SetCodeAuthorizations) != 0 {
+		return nil, fmt.Errorf("transactions with set code authorization are not supported in bundles")
+	}
+
+	if msg.GasPrice == nil || msg.GasPrice.Sign() == 0 {
+		// use dynamic fee transaction
+		return types.NewTx(&types.DynamicFeeTx{
+			To:         msg.To,
+			Nonce:      msg.Nonce,
+			Gas:        msg.GasLimit,
+			GasFeeCap:  msg.GasFeeCap,
+			GasTipCap:  msg.GasTipCap,
+			Value:      msg.Value,
+			Data:       msg.Data,
+			AccessList: msg.AccessList,
+		}), nil
+	} else {
+		// use access list transaction
+		return types.NewTx(&types.AccessListTx{
+			To:         msg.To,
+			Nonce:      msg.Nonce,
+			Gas:        msg.GasLimit,
+			GasPrice:   msg.GasPrice,
+			Value:      msg.Value,
+			Data:       msg.Data,
+			AccessList: msg.AccessList,
+		}), nil
+	}
 }
