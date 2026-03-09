@@ -37,6 +37,7 @@ func makeBundleTransaction(
 	net *tests.IntegrationTestNet,
 	transactions types.Transactions,
 	plan bundle.ExecutionPlan,
+	inner bool,
 ) *types.Transaction {
 	t.Helper()
 
@@ -68,9 +69,15 @@ func makeBundleTransaction(
 
 	data := bundle.Encode(bundlePayload)
 
+	accessList := []types.AccessTuple{}
+	if inner {
+		accessList = []types.AccessTuple{
+			{Address: bundle.BundleOnly, StorageKeys: []common.Hash{plan.Hash()}},
+		}
+	}
 	intrGas, err := core.IntrinsicGas(
 		data,
-		nil,   // access list is set in the individual transactions
+		accessList,
 		nil,   // code auth is not used in the bundle transaction
 		false, // bundle transaction is not a contract creation
 		true,
