@@ -105,7 +105,9 @@ type PrepareBundleArgs struct {
 	// not included in blocks before a certain point in time.
 	EarliestBlock rpc.BlockNumber `json:"earliestBlock"`
 	// LatestBlock specifies the latest block number at which the bundle can be executed. This allows users
-	// to set an upper bound on when their bundle should be considered for execution, ensuring it is not included in blocks after a certain point in time. If the bundle is not executed by this block, it will be considered expired and will not be executed.
+	// to set an upper bound on when their bundle should be considered for execution, ensuring it is
+	// not included in blocks after a certain point in time. If the bundle is not executed by this block,
+	// it will be considered expired and will not be executed.
 	LatestBlock rpc.BlockNumber `json:"latestBlock"`
 }
 
