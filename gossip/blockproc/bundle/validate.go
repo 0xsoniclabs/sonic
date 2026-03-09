@@ -95,7 +95,18 @@ func ValidateTransactionBundle(
 	for _, innerTx := range txBundle.Bundle {
 		gasLimit += innerTx.Gas()
 	}
-	if bundleGas != max(gasLimit, intrGas) {
+
+	// EIP-7623 part of Prague revision: Floor data gas
+	// see: https://eips.ethereum.org/EIPS/eip-7623
+	floorDataGas, err := core.FloorDataGas(tx.Data())
+	if err != nil {
+		return nil, nil, err
+	}
+	if tx.Gas() < floorDataGas {
+		return nil, nil, fmt.Errorf("%w: have %d, want %d", core.ErrFloorDataGas, tx.Gas(), floorDataGas)
+	}
+
+	if bundleGas != max(gasLimit, intrGas, floorDataGas) {
 		return nil, nil, fmt.Errorf("%w: bundle gas limit %d but needs %d", ErrBundleGasLimitTooLow, tx.Gas(), max(gasLimit, intrGas))
 	}
 

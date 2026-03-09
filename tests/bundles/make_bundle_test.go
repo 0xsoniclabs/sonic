@@ -67,7 +67,6 @@ func makeBundleTransaction(
 	}
 
 	data := bundle.Encode(bundlePayload)
-
 	intrGas, err := core.IntrinsicGas(
 		data,
 		nil,   // access list is set in the individual transactions
@@ -90,7 +89,7 @@ func makeBundleTransaction(
 		&types.LegacyTx{
 			Nonce: 0,
 			To:    &bundle.BundleAddress,
-			Gas:   max(gas, intrGas, floorDataGas), // set the gas limit to the maximum of intrinsic gas, transactions gas and floor data gas
+			Gas:   max(gas, intrGas, floorDataGas),
 			Data:  data,
 		},
 	)

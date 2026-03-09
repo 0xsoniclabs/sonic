@@ -103,13 +103,13 @@ func TestValidate_AcceptsValidBlockRanges(t *testing.T) {
 		Gas  uint64
 	}{
 		"single-block range": {
-			From: 10, To: 10, Gas: 21096,
+			From: 10, To: 10, Gas: 21240,
 		},
 		"multi-block range": {
-			From: 7, To: 42, Gas: 21096,
+			From: 7, To: 42, Gas: 21240,
 		},
 		"max-size block range": {
-			From: 100, To: 100 + MaxBlockRange - 1, Gas: 21128,
+			From: 100, To: 100 + MaxBlockRange - 1, Gas: 21320,
 		},
 	}
 
@@ -207,7 +207,7 @@ func (gen testBundleGenerator) makeEmptyBundleTx() *types.Transaction {
 	return types.NewTx(&types.LegacyTx{
 		To:   &BundleAddress,
 		Data: bytes,
-		Gas:  21096,
+		Gas:  21240,
 	})
 }
 
@@ -397,7 +397,7 @@ func (gen testBundleGenerator) makeBundleTxWithoutEnoughGasForAllTransactions(t 
 	tx = types.NewTx(&types.LegacyTx{
 		To:   &BundleAddress,
 		Data: tx.Data(),
-		Gas:  30_000, // not enough gas for all transactions in the bundle
+		Gas:  35_000, // not enough gas for all transactions in the bundle
 	})
 	return tx
 }
