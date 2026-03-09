@@ -122,14 +122,14 @@ type PreparedBundle struct {
 
 // PrepareBundle implements the `sonic_prepareBundle` RPC method.
 // This function streamlines the creation of transaction bundles by preparing an execution plan
-// based on the provided transaction order and execution flags.
+// based on the provided transaction order, to be executed within a specified block range.
 //
 // It accepts a list of unsigned transactions, constructs the corresponding execution plan,
 // and updates each transaction to include the bundler-only marker, ensuring they are executed
 // exclusively as part of the specified plan.
 //
 // The returned transactions must be signed without altering any fields; any modification may
-// invalidate the execution plan.
+// invalidate the execution plan and prevent the bundle from being executed.
 func (a *PublicBundleAPI) PrepareBundle(
 	ctx context.Context,
 	args PrepareBundleArgs,
@@ -201,8 +201,10 @@ func (a *PublicBundleAPI) PrepareBundle(
 }
 
 type SubmitBundleArgs struct {
-	// SignedTransactions is the list of transactions that have been signed using the transaction arguments returned by the `sonic_prepareBundle` method.
-	// These transactions must be included in the bundle exactly as they were prepared; any modification will invalidate the execution plan and result in an ill-formed bundle.
+	// SignedTransactions is the list of transactions that have been signed using
+	// the transaction arguments returned by the `sonic_prepareBundle` method.
+	// These transactions must be included in the bundle exactly as they were prepared;
+	// any modification will invalidate the execution plan and result in an ill-formed bundle.
 	SignedTransactions []hexutil.Bytes `json:"signedTransactions"`
 	// ExecutionPlan contains the execution plan that each bundled transaction references.
 	// This value must be provided as returned by the `sonic_prepareBundle` method;
@@ -210,10 +212,7 @@ type SubmitBundleArgs struct {
 	ExecutionPlan bundle.ExecutionPlan `json:"plan,omitempty"`
 }
 
-// SubmitBundle implements the `sonic_submitBundle` RPC method, which allows users to submit a prepared transaction bundle for execution.
-// This function accepts a list of transactions that have been signed using the transaction arguments returned by the `sonic_prepareBundle` method,
-// along with execution parameters such as flags and block range.
-// It validates the transactions against the execution plan and submits the bundle to the network for execution.
+// SubmitBundle implements the `sonic_submitBundle` RPC method, which submits a prepared bundle for execution.
 func (a *PublicBundleAPI) SubmitBundle(
 	ctx context.Context,
 	args SubmitBundleArgs,
