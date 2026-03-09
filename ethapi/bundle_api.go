@@ -100,10 +100,6 @@ type BundleInfo struct {
 type PrepareBundleArgs struct {
 	// Transactions specifies the ordered list of transactions to be included in the bundle.
 	Transactions []TransactionArgs `json:"transactions"`
-	// ExecutionFlags defines the execution behavior of the bundle, such as whether it should be executed
-	// exclusively or if it can be executed alongside other bundles. This is represented as a bitmask,
-	// where specific bits correspond to different execution options.
-	ExecutionFlags hexutil.Uint `json:"executionFlags"`
 	// EarliestBlock specifies the earliest block number at which the bundle can be executed. This allows
 	// users to set a lower bound on when their bundle should be considered for execution, ensuring it is
 	// not included in blocks before a certain point in time.
@@ -166,7 +162,8 @@ func (a *PublicBundleAPI) PrepareBundle(
 	chainID := a.b.ChainID()
 	signer := types.LatestSignerForChainID(chainID)
 	plan := bundle.ExecutionPlan{
-		Flags:    bundle.ExecutionFlag(args.ExecutionFlags),
+		// Current api do not expose flags to users, this can be introduced in the future if needed.
+		Flags:    bundle.ExecutionFlag(0),
 		Steps:    make([]bundle.ExecutionStep, len(transactions)),
 		Earliest: uint64(args.EarliestBlock),
 		Latest:   uint64(args.LatestBlock),

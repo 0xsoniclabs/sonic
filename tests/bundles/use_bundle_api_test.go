@@ -189,10 +189,9 @@ func PrepareBundle(
 	var preparedBundle ethapi.PreparedBundle
 	err := client.Client().Call(&preparedBundle, "sonic_prepareBundle",
 		ethapi.PrepareBundleArgs{
-			Transactions:   txsArgs,
-			ExecutionFlags: hexutil.Uint(flags),
-			EarliestBlock:  rpc.BlockNumber(earliest),
-			LatestBlock:    rpc.BlockNumber(latest),
+			Transactions:  txsArgs,
+			EarliestBlock: rpc.BlockNumber(earliest),
+			LatestBlock:   rpc.BlockNumber(latest),
 		})
 	require.NoError(t, err, "failed to call sonic_prepareBundle")
 	return preparedBundle, nil
