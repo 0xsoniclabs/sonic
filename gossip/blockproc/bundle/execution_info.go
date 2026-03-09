@@ -25,4 +25,5 @@ type ExecutionInfo struct {
 	ExecutionPlanHash common.Hash
 	BlockNum          uint64
 	Position          uint32
+	Count             uint32
 }

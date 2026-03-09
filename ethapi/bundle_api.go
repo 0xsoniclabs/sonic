@@ -61,6 +61,7 @@ func (a *PublicBundleAPI) GetBundleInfo(
 				Status:   BundleStatusExecuted,
 				Block:    &info.BlockNum,
 				Position: &info.Position,
+				Count:    &info.Count,
 			}, nil
 		}
 
@@ -83,4 +84,5 @@ type BundleInfo struct {
 	Status   BundleStatus `json:"status"`
 	Block    *uint64      `json:"block,omitempty"`
 	Position *uint32      `json:"position,omitempty"`
+	Count    *uint32      `json:"count,omitempty"`
 }

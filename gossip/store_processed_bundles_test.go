@@ -118,11 +118,13 @@ func TestStore_GetBundleExecutionInfo_ReturnsInfoForAddedBundleHashes(t *testing
 		ExecutionPlanHash: hash1,
 		BlockNum:          1,
 		Position:          0,
+		Count:             1,
 	}
 	info2 := bundle.ExecutionInfo{
 		ExecutionPlanHash: hash2,
 		BlockNum:          2,
 		Position:          1,
+		Count:             3,
 	}
 
 	info, err := store.GetBundleExecutionInfo(hash1)

@@ -81,6 +81,7 @@ type ProcessedTransaction struct {
 type ProcessedBundle struct {
 	Bundle   bundle.TransactionBundle
 	Position uint32 // < position in the block transaction list
+	Count    uint32 // < number of transactions from this bundle in the block transaction list
 }
 
 // Process processes the state changes according to the Ethereum rules by running
@@ -382,6 +383,11 @@ func (r *transactionRunner) runTransactionBundle(
 			log.Error("Failed to revert to checkpoint", "err", err)
 		}
 		return []ProcessedTransaction{}, processedBundle, StatusFailed
+	}
+	for _, processedTx := range runner.processedTransactions {
+		if processedTx.Receipt != nil {
+			processedBundle.Count++
+		}
 	}
 	return runner.processedTransactions, processedBundle, StatusSuccessful
 }

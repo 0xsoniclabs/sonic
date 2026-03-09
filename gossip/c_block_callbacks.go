@@ -546,6 +546,7 @@ func consensusCallbackBeginBlockFn(
 							ExecutionPlanHash: plan.Hash(),
 							BlockNum:          uint64(blockCtx.Idx),
 							Position:          pb.Position,
+							Count:             pb.Count,
 						}
 					}
 					if err := store.AddProcessedBundles(uint64(blockCtx.Idx), bundleInfos); err != nil {

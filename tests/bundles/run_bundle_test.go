@@ -126,6 +126,7 @@ func TestBundle_CanBeProcessedByTheNetwork(t *testing.T) {
 	// Check the block and position in which the bundle was included.
 	require.NotNil(t, info.Block)
 	require.NotNil(t, info.Position)
+	require.NotNil(t, info.Count)
 
 	// Check that the transactions are in the block as advertised.
 	receipts, err := net.GetReceipts([]common.Hash{signedTxs[0].Hash(), signedTxs[1].Hash()})
