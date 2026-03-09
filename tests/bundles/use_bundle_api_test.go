@@ -70,17 +70,15 @@ func Test_CreateBundlesWithRPC(t *testing.T) {
 		txsToBeBundled[i] = tx
 	}
 
-	// 2) Define bundle execution parameters: when the bundle should be executed
-	// and what flags it should have.
+	// 2) Define bundle execution parameters
 	earliest, err := client.BlockNumber(t.Context())
 	require.NoError(t, err, "failed to get block number")
 	latest := earliest + 10
-	flags := uint8(0)
 
 	// 3) Prepare bundle:
 	preparedBundle, err := PrepareBundle(
 		t, client,
-		flags, earliest, latest,
+		earliest, latest,
 		txsToBeBundled)
 	require.NoError(t, err, "failed to prepare bundle")
 
@@ -155,7 +153,7 @@ func checkCompatWithMetaMask(t *testing.T, client *tests.PooledEhtClient, txs []
 // point to the api from go programs.
 func PrepareBundle(
 	t *testing.T, client *tests.PooledEhtClient,
-	flags uint8, earliest, latest uint64,
+	earliest, latest uint64,
 	txs []ethereum.CallMsg,
 ) (ethapi.PreparedBundle, error) {
 
