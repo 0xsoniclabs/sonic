@@ -560,6 +560,48 @@ func TestGetResult_DiedAccountWithNoCodeRecorded(t *testing.T) {
 	})
 }
 
+func TestGetResult_DiedAccountStorageUsesStar(t *testing.T) {
+	// A self-destructed account that also had storage changes must show those
+	// storage slots with the "*" operator (from/to pair), not "+" or "-".
+	s := NewStateDiffLogger()
+	// Existing account (nonzero balance before) self-destructs.
+	s.onBalanceChange(addr1, big.NewInt(100), big.NewInt(0), tracing.BalanceDecreaseSelfdestruct)
+	slot := common.Hash{0x01}
+	s.onStorageChange(addr1, slot, common.Hash{0xAA}, common.Hash{0x00})
+
+	result := s.GetResult()
+	require.Contains(t, result, addr1)
+	storageEntry, ok := result[addr1].Storage[slot]
+	require.True(t, ok, "died account storage slot must be present")
+	m, ok := storageEntry.(map[string]any)
+	require.True(t, ok)
+	require.Contains(t, m, "*", "died account storage must use '*' operator")
+	require.NotContains(t, m, "+")
+	require.NotContains(t, m, "-")
+	sd, ok := m["*"].(*StateDiffStorage)
+	require.True(t, ok)
+	require.Equal(t, common.Hash{0xAA}, sd.From)
+	require.Equal(t, common.Hash{0x00}, sd.To)
+}
+
+func TestGetResult_DiedAccountWithCodeRecorded(t *testing.T) {
+	// diedCodeDiff must return the before-code with "-" operator when a code
+	// hook was observed for the account (exercises the `if cc, ok` branch).
+	s := NewStateDiffLogger()
+	s.onBalanceChange(addr1, big.NewInt(100), big.NewInt(0), tracing.BalanceDecreaseSelfdestruct)
+	s.onCodeChange(addr1, common.Hash{}, []byte{0x60, 0x00}, common.Hash{}, []byte{})
+
+	require.NotPanics(t, func() {
+		result := s.GetResult()
+		require.Contains(t, result, addr1)
+		codeM, ok := result[addr1].Code.(map[string]any)
+		require.True(t, ok)
+		require.Contains(t, codeM, "-")
+		code := codeM["-"].(hexutil.Bytes)
+		require.Equal(t, hexutil.Bytes{0x60, 0x00}, code, "died account code must contain before-value")
+	})
+}
+
 func TestGetResult_BornAccountWithNoBalanceRecorded(t *testing.T) {
 	// bornBalanceDiff must return a zero-valued diff without panicking.
 	s := NewStateDiffLogger()
