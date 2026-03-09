@@ -106,7 +106,6 @@ func validateTxWithoutSponsorship(
 	return _validateTx(tx, opt, netRules, chain, state, subsidiesChecker, signer, false)
 }
 
-
 func _validateTx(
 	tx *types.Transaction,
 	opt poolOptions,
@@ -141,7 +140,7 @@ func _validateTx(
 		return err
 	}
 
-	if sponsorshipCheck{
+	if sponsorshipCheck {
 		if err := validateSponsoredTransactions(tx, netRules, subsidiesChecker); err != nil {
 			return err
 		}
