@@ -41,7 +41,7 @@ import (
 //
 // In the underlying table, the following keys are used:
 //  - key: [] -> [uint64, hash]                        // last block and hash for which the processed bundles have been stored
-//  - key: ['e']<execPlanHash> -> [block,start_position,end_position]     // for a processed bundle
+//  - key: ['e']<execPlanHash> -> [block,position,count] // for a processed bundle
 //  - key: ['i']<blockNum, execPlanHash> -> []         // for a processed bundle at a specific block number, to handle cleanups
 //
 // The hash of the processed bundle's history is computed as follows:
