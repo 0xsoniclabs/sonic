@@ -95,7 +95,7 @@ func Test_CreateBundlesWithRPC(t *testing.T) {
 	checkCompatWithMetaMask(t, client, txs)
 
 	// 5) Submit the bundle to the network
-	bundleHash, err := SubmitBundle(client, txs, flags, earliest, latest)
+	bundleHash, err := SubmitBundle(client, txs, preparedBundle.Plan)
 	require.NoError(t, err, "failed to submit bundle")
 
 	info, err := waitForBundleExecution(t.Context(), client.Client(), bundleHash)
@@ -205,7 +205,7 @@ func PrepareBundle(
 // point to the api from go programs.
 func SubmitBundle(client *tests.PooledEhtClient,
 	txs []*types.Transaction,
-	flags uint8, earliest, latest uint64,
+	plan bundle.ExecutionPlan,
 ) (common.Hash, error) {
 	encodedTransactions := make([]hexutil.Bytes, len(txs))
 	for i, tx := range txs {
@@ -220,9 +220,7 @@ func SubmitBundle(client *tests.PooledEhtClient,
 	err := client.Client().Call(&bundleHash, "sonic_submitBundle",
 		ethapi.SubmitBundleArgs{
 			SignedTransactions: encodedTransactions,
-			ExecutionFlags:     hexutil.Uint(flags),
-			EarliestBlock:      rpc.BlockNumber(earliest),
-			LatestBlock:        rpc.BlockNumber(latest),
+			ExecutionPlan:      plan,
 		})
 	return bundleHash, err
 }

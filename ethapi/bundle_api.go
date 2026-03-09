@@ -207,17 +207,10 @@ type SubmitBundleArgs struct {
 	// SignedTransactions is the list of transactions that have been signed using the transaction arguments returned by the `sonic_prepareBundle` method.
 	// These transactions must be included in the bundle exactly as they were prepared; any modification will invalidate the execution plan and result in an ill-formed bundle.
 	SignedTransactions []hexutil.Bytes `json:"signedTransactions"`
-	// ExecutionFlags defines the execution behavior of the bundle, such as whether it should be executed
-	// exclusively or if it can be executed alongside other bundles. This is represented as a bitmask,
-	// where specific bits correspond to different execution options.
-	ExecutionFlags hexutil.Uint `json:"executionFlags"`
-	// EarliestBlock specifies the earliest block number at which the bundle can be executed. This allows
-	// users to set a lower bound on when their bundle should be considered for execution, ensuring it is
-	// not included in blocks before a certain point in time.
-	EarliestBlock rpc.BlockNumber `json:"earliestBlock"`
-	// LatestBlock specifies the latest block number at which the bundle can be executed. This allows users
-	// to set an upper bound on when their bundle should be considered for execution, ensuring it is not included in blocks after a certain point in time. If the bundle is not executed by this block, it will be considered expired and will not be executed.
-	LatestBlock rpc.BlockNumber `json:"latestBlock"`
+	// ExecutionPlan contains the execution plan that each bundled transaction references.
+	// This value must be provided as returned by the `sonic_prepareBundle` method;
+	// any modification will invalidate the execution plan and result in an ill-formed bundle.
+	ExecutionPlan bundle.ExecutionPlan `json:"plan,omitempty"`
 }
 
 // SubmitBundle implements the `sonic_submitBundle` RPC method, which allows users to submit a prepared transaction bundle for execution.
@@ -232,9 +225,9 @@ func (a *PublicBundleAPI) SubmitBundle(
 	txBundle := bundle.TransactionBundle{
 		Version:  bundle.BundleV1,
 		Bundle:   make(types.Transactions, len(args.SignedTransactions)),
-		Flags:    bundle.ExecutionFlag(args.ExecutionFlags),
-		Earliest: uint64(args.EarliestBlock),
-		Latest:   uint64(args.LatestBlock),
+		Flags:    args.ExecutionPlan.Flags,
+		Earliest: args.ExecutionPlan.Earliest,
+		Latest:   args.ExecutionPlan.Latest,
 	}
 
 	// 1) Decode bundled transactions and compute total gas requirement
