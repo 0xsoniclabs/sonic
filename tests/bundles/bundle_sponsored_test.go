@@ -85,8 +85,8 @@ func TestBundle_RejectsBundle_WithPayloadSponsorRequest_WithoutSponsorship(t *te
 	require.NoError(t, err)
 
 	// check that the bundle tx made it into the txpool, but the sponsored transaction did not.
-	checkAccountTxsInTxPool(t, client, sponsee, uint(0))
-	checkAccountTxsInTxPool(t, client, net.GetSessionSponsor(), uint(1))
+	checkAccountTxsInTxPool(t, client, sponsee, 0)
+	checkAccountTxsInTxPool(t, client, net.GetSessionSponsor(), 1)
 
 	info, err := waitForBundleExecution(t.Context(), client.Client(), plan.Hash())
 	require.NoError(t, err)
@@ -103,7 +103,7 @@ func TestBundle_RejectsBundle_WithPayloadSponsorRequest_WithoutSponsorship(t *te
 }
 
 // checkAccountTxsInTxPool checks that there are `want“ transactions for the given account in the txpool.
-func checkAccountTxsInTxPool(t *testing.T, client *tests.PooledEhtClient, account *tests.Account, want uint) {
+func checkAccountTxsInTxPool(t *testing.T, client *tests.PooledEhtClient, account *tests.Account, want int) {
 	var content map[string]map[string]map[string]*ethapi.RPCTransaction
 	err := client.Client().Call(&content, "txpool_content")
 	require.NoError(t, err, "Should get txpool content")
@@ -186,7 +186,7 @@ func TestBundle_CanRunSponsorshipAndSponsored(t *testing.T) {
 	// 3. the internal transaction that transfer the fee from the sponsee to the sponsor
 	txs := block.Transactions()
 	position := *info.Position
-	require.GreaterOrEqual(t, len(txs), position+3)
+	require.GreaterOrEqual(t, uint32(len(txs)), position+3)
 	require.Equal(t, txs[position].Hash(), signedSponsorTx.Hash())
 	require.Equal(t, txs[position+1].Hash(), signedTx.Hash())
 	require.True(t, internaltx.IsInternal(txs[position+2]))
