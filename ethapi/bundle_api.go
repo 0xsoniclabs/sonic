@@ -147,11 +147,9 @@ func (a *PublicBundleAPI) PrepareBundle(
 			return nil, fmt.Errorf("failed to prepare bundle: transaction %d conversion error: %w", i, err)
 		}
 
-		tx := asTransaction(msg)
-
-		switch tx.Type() {
-		case types.LegacyTxType, types.BlobTxType, types.SetCodeTxType:
-			return nil, fmt.Errorf("transaction %d has unsupported type %d: only AccessList and DynamicFee transactions are supported in bundles", i, tx.Type())
+		tx, err := asTransaction(msg)
+		if err != nil {
+			return nil, fmt.Errorf("failed to prepare bundle: transaction %d conversion error: %w", i, err)
 		}
 
 		from[i] = msg.From
@@ -284,7 +282,15 @@ func (a *PublicBundleAPI) SubmitBundle(
 	return plan.Hash(), err
 }
 
-func asTransaction(msg *core.Message) *types.Transaction {
+func asTransaction(msg *core.Message) (*types.Transaction, error) {
+
+	if len(msg.BlobHashes) != 0 || msg.BlobGasFeeCap != nil {
+		return nil, fmt.Errorf("blob transactions are not supported in bundles")
+	}
+	if len(msg.SetCodeAuthorizations) != 0 {
+		return nil, fmt.Errorf("transactions with set code authorization are not supported in bundles")
+	}
+
 	if msg.GasPrice == nil || msg.GasPrice.Sign() == 0 {
 		// use dynamic fee transaction
 		return types.NewTx(&types.DynamicFeeTx{
@@ -296,7 +302,7 @@ func asTransaction(msg *core.Message) *types.Transaction {
 			Value:      msg.Value,
 			Data:       msg.Data,
 			AccessList: msg.AccessList,
-		})
+		}), nil
 	} else {
 		// use access list transaction
 		return types.NewTx(&types.AccessListTx{
@@ -307,6 +313,6 @@ func asTransaction(msg *core.Message) *types.Transaction {
 			Value:      msg.Value,
 			Data:       msg.Data,
 			AccessList: msg.AccessList,
-		})
+		}), nil
 	}
 }
