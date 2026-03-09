@@ -79,11 +79,14 @@ func TestBundle_RejectsBundle_WithPayloadSponsorRequest_WithoutSponsorship(t *te
 	checkBundleIntegrity(t, signer, bundleTx, plan)
 
 	// send the bundle.
+	// NOTE: once bundle trial-run is implemented this submition will fail.
+	// which is what this test should verify.
 	err = client.SendTransaction(t.Context(), bundleTx)
 	require.NoError(t, err)
 
 	// check that the bundle tx made it into the txpool, but the sponsored transaction did not.
-	checkTxPool(t, client, net.GetSessionSponsor(), sponsee)
+	checkAccountTxsInTxPool(t, client, sponsee, uint(0))
+	checkAccountTxsInTxPool(t, client, net.GetSessionSponsor(), uint(1))
 
 	info, err := waitForBundleExecution(t.Context(), client.Client(), plan.Hash())
 	require.NoError(t, err)
@@ -99,20 +102,15 @@ func TestBundle_RejectsBundle_WithPayloadSponsorRequest_WithoutSponsorship(t *te
 	require.Empty(t, block.Transactions())
 }
 
-func checkTxPool(t *testing.T, client *tests.PooledEhtClient, sponsor, sponsee *tests.Account) {
-	// Check that the sponsored transaction is not in the txpool.
+// checkAccountTxsInTxPool checks that there are `want“ transactions for the given account in the txpool.
+func checkAccountTxsInTxPool(t *testing.T, client *tests.PooledEhtClient, account *tests.Account, want uint) {
 	var content map[string]map[string]map[string]*ethapi.RPCTransaction
 	err := client.Client().Call(&content, "txpool_content")
 	require.NoError(t, err, "Should get txpool content")
 
-	txPoolSponsee := len(content["pending"][sponsee.Address().String()]) +
-		len(content["queued"][sponsee.Address().String()])
-	require.Zero(t, txPoolSponsee, "There should be no transactions for the sponsee in the txpool")
-
-	txPoolCoordinator := len(content["pending"][sponsor.Address().String()]) +
-		len(content["queued"][sponsor.Address().String()])
-	require.Equal(t, 1, txPoolCoordinator, "There should be no transactions for the sponsee in the txpool")
-
+	txPoolSponsee := len(content["pending"][account.Address().String()]) +
+		len(content["queued"][account.Address().String()])
+	require.Equal(t, want, txPoolSponsee, "There should be %d transactions for the account in the txpool", want)
 }
 
 func TestBundle_CanRunSponsorshipAndSponsored(t *testing.T) {
@@ -174,10 +172,9 @@ func TestBundle_CanRunSponsorshipAndSponsored(t *testing.T) {
 	info, err := waitForBundleExecution(t.Context(), client.Client(), plan.Hash())
 	require.NoError(t, err)
 
-	// The bundle is expected to be executed because it reached the processor,
-	// regardless of the fact that the sponsored transaction was skipped.
 	require.Equal(t, ethapi.BundleStatusExecuted, info.Status)
 	require.NotNil(t, info.Block)
+	require.NotNil(t, info.Position)
 
 	block, err := client.BlockByNumber(t.Context(), big.NewInt(int64(*info.Block)))
 	require.NoError(t, err)
@@ -187,10 +184,12 @@ func TestBundle_CanRunSponsorshipAndSponsored(t *testing.T) {
 	// 1. the sponsorship transaction
 	// 2. the sponsored transaction
 	// 3. the internal transaction that transfer the fee from the sponsee to the sponsor
-	require.Equal(t, len(block.Transactions()), 3)
-	require.Equal(t, block.Transactions()[0].Hash(), signedSponsorTx.Hash())
-	require.Equal(t, block.Transactions()[1].Hash(), signedTx.Hash())
-	require.True(t, internaltx.IsInternal(block.Transactions()[2]))
+	txs := block.Transactions()
+	position := *info.Position
+	require.GreaterOrEqual(t, len(txs), position+3)
+	require.Equal(t, txs[position].Hash(), signedSponsorTx.Hash())
+	require.Equal(t, txs[position+1].Hash(), signedTx.Hash())
+	require.True(t, internaltx.IsInternal(txs[position+2]))
 }
 
 func makeSponsorshipRequestTx(t *testing.T, net *tests.IntegrationTestNet) (*tests.Account, *types.AccessListTx) {
