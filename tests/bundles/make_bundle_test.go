@@ -37,7 +37,7 @@ func makeBundleTransaction(
 	net *tests.IntegrationTestNet,
 	transactions types.Transactions,
 	plan bundle.ExecutionPlan,
-	inner bool,
+	nested bool,
 ) *types.Transaction {
 	t.Helper()
 
@@ -70,7 +70,7 @@ func makeBundleTransaction(
 	data := bundle.Encode(bundlePayload)
 
 	accessList := []types.AccessTuple{}
-	if inner {
+	if nested {
 		accessList = []types.AccessTuple{
 			{Address: bundle.BundleOnly, StorageKeys: []common.Hash{plan.Hash()}},
 		}
