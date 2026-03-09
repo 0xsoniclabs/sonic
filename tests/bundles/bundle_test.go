@@ -428,6 +428,14 @@ func checkCase(t *testing.T, net *tests.IntegrationTestNet, client *tests.Pooled
 		require.NotNil(t, bundleTx)
 
 		err := client.SendTransaction(t.Context(), bundleTx)
+		if err != nil {
+			// Check whether the bundle was rejected by the pre-check.
+			require.ErrorContains(t, err, "permanently blocked")
+			// This is only allowed for transactions that should fail.
+			require.Zero(t, c.counter)
+			require.Empty(t, c.blockTxIndices)
+			return
+		}
 		require.NoError(t, err)
 
 		// Wait for the bundle to be processed.

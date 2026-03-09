@@ -114,6 +114,9 @@ var (
 
 	// ErrBundleTransactionInvalid is returned when a bundle transaction is invalid.
 	ErrBundleTransactionInvalid = errors.New("invalid bundle transaction")
+
+	// ErrBundlePermanentlyBlocked is returned when a bundle is determined to be permanently blocked.
+	ErrBundlePermanentlyBlocked = errors.New("bundle is permanently blocked")
 )
 
 var (

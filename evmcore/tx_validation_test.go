@@ -1426,7 +1426,7 @@ func Test_validateBundleTransactions_AcceptNonBundleTransactions(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
 			require.False(bundle.IsTransactionBundle(tx))
-			require.NoError(validateBundleTransactions(tx, NetworkRules{}, nil))
+			require.NoError(validateBundleTransactions(tx, NetworkRules{}, nil, nil, nil))
 		})
 	}
 }
@@ -1441,9 +1441,9 @@ func Test_validateBundleTransactions_IfBundledTransactionsAreEnabled_AcceptValid
 	require.True(bundle.IsTransactionBundle(tx))
 
 	rules := NetworkRules{}
-	require.ErrorIs(validateBundleTransactions(tx, rules, nil), ErrBundleTransactionsDisabled)
+	require.ErrorIs(validateBundleTransactions(tx, rules, nil, nil, nil), ErrBundleTransactionsDisabled)
 	rules.transactionBundles = true
-	require.NoError(validateBundleTransactions(tx, rules, nil))
+	require.NoError(validateBundleTransactions(tx, rules, nil, nil, nil))
 }
 
 func Test_validateBundleTransactions_RejectsInvalidBundleTransactions(t *testing.T) {
@@ -1455,7 +1455,7 @@ func Test_validateBundleTransactions_RejectsInvalidBundleTransactions(t *testing
 	require.True(bundle.IsTransactionBundle(tx))
 
 	rules := NetworkRules{transactionBundles: true}
-	require.ErrorIs(validateBundleTransactions(tx, rules, nil), ErrBundleTransactionInvalid)
+	require.ErrorIs(validateBundleTransactions(tx, rules, nil, nil, nil), ErrBundleTransactionInvalid)
 }
 
 func TestValidateTx_AllowsSponsoredZeroGasPriceTransactions_WhenSubsidiesAreFunded(t *testing.T) {

@@ -20,7 +20,10 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	params "github.com/ethereum/go-ethereum/params"
 )
 
 //go:generate mockgen -source=bundle_integration.go -destination=bundle_integration_mock.go -package=evmcore
@@ -84,7 +87,36 @@ func (s *BundleIntegrationImplementation) isPending(tx *types.Transaction) bool 
 		return false
 	}
 
-	// TODO: check whether bundle is permanently blocked by trial-running it
+	// Remove permanently blocked bundles.
+	chain := preCheckChainAdapter{
+		chainState: s.chain,
+		stateDB:    s.state,
+	}
+	bundleState := GetBundleState(&chain, tx)
+	return bundleState != BundleStatePermanentlyBlocked
+}
 
-	return true
+type preCheckChainAdapter struct {
+	chainState StateReader
+	stateDB    state.StateDB
+}
+
+func (a *preCheckChainAdapter) GetCurrentNetworkRules() opera.Rules {
+	return a.chainState.CurrentRules()
+}
+
+func (a *preCheckChainAdapter) StateDB() state.StateDB {
+	return a.stateDB
+}
+
+func (a *preCheckChainAdapter) GetLatestHeader() *EvmHeader {
+	return &a.chainState.CurrentBlock().EvmHeader
+}
+
+func (a *preCheckChainAdapter) Header(hash common.Hash, number uint64) *EvmHeader {
+	return a.chainState.Header(hash, number)
+}
+
+func (a *preCheckChainAdapter) GetEvmChainConfig(blockHeight idx.Block) *params.ChainConfig {
+	return a.chainState.CurrentConfig()
 }
