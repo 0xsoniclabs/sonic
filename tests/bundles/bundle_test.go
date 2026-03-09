@@ -549,7 +549,7 @@ type invalidNormalTx struct{}
 func (t invalidNormalTx) makeTx(opts txMakeOptions) *types.Transaction {
 	return types.NewTx(&types.AccessListTx{
 		To:       opts.counterAddress,
-		Gas:      1,
+		Gas:      1, // invalid
 		Data:     opts.counterInput,
 		GasPrice: opts.gasPrice,
 	})
