@@ -98,7 +98,7 @@ type BundleInfo struct {
 }
 
 // PreparedBundle encapsulates the parameters required for constructing a transaction bundle.
-// It contains the prepared transactions and the execution plan, necesary for users of the
+// It contains the prepared transactions and the execution plan, necessary for users of the
 // API to validated the execution plan hashes introduced into the bundled transactions.
 type PreparedBundle struct {
 	// Transactions specifies the ordered list of transactions to be included in the bundle.
