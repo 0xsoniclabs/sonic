@@ -139,6 +139,14 @@ func (r *EvmStateReader) Header(verificationHash common.Hash, number uint64) *ev
 	return r.getBlock(verificationHash, idx.Block(number), false).Header()
 }
 
+// HasBundleBeenProcessed checks if the bundle with the given execution plan
+// hash has been processed recently (within the last bundle.MaxBlockRange blocks).
+func (r *EvmStateReader) HasBundleBeenProcessed(execPlanHash common.Hash) bool {
+	// Check if the bundle has been processed recently.
+	has, err := r.store.HasBundleRecentlyBeenProcessed(execPlanHash)
+	return err != nil || has // => error is considered as bundle being processed
+}
+
 // Block returns the block with the given number.
 // If the block is not found, nil is returned.
 // If the hash provided is not zero and does not match the hash of the block
