@@ -492,7 +492,7 @@ func (p pattern) _toTxData(
 		case int:
 			txs = append(txs, &types.AccessListTx{
 				Nonce: uint64(0xF & v),
-				Gas:   21_096,
+				Gas:   21_240,
 			})
 			key := keys[0xF&(v>>4)]
 			keysToSign = append(keysToSign, key)
@@ -559,12 +559,16 @@ func (p pattern) _toTxData(
 	if err != nil {
 		panic(err)
 	}
+	floorDataGas, err := core.FloorDataGas(data)
+	if err != nil {
+		panic(err)
+	}
 
 	// Wrap up bundle into an envelope transaction.
 	return &types.AccessListTx{
 		To:   &bundle.BundleAddress,
 		Data: data,
-		Gas:  max(gasLimit, intrGas),
+		Gas:  max(gasLimit, intrGas, floorDataGas),
 	}
 }
 
@@ -606,6 +610,6 @@ func wrap(txBundle *bundle.TransactionBundle) *types.Transaction {
 	return types.NewTx(&types.AccessListTx{
 		To:   &bundle.BundleAddress,
 		Data: data,
-		Gas:  gasLimit,
+		Gas:  max(gasLimit, 21240),
 	})
 }

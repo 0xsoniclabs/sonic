@@ -70,7 +70,7 @@ func Test_Emitter_isValidBundleTx_AcceptsValidBundleIfBundlesAreEnabled(t *testi
 					Earliest: 50,
 					Latest:   150,
 				}),
-				Gas: 21112,
+				Gas: 21_280,
 			})
 			_, _, err := bundle.ValidateTransactionBundle(tx, nil)
 			require.NoError(err)
@@ -153,7 +153,7 @@ func Test_Emitter_isValidBundleTx_RejectsAlreadyProcessedBundle(t *testing.T) {
 					Earliest: 50,
 					Latest:   150,
 				}),
-				Gas: 21112,
+				Gas: 21_280,
 			})
 			_, _, err := bundle.ValidateTransactionBundle(tx, nil)
 			require.NoError(t, err)
