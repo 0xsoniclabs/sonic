@@ -103,11 +103,12 @@ func ValidateTransactionBundle(
 		return nil, nil, err
 	}
 	if tx.Gas() < floorDataGas {
-		return nil, nil, fmt.Errorf("%w: have %d, want %d", core.ErrFloorDataGas, tx.Gas(), floorDataGas)
+		return nil, nil, fmt.Errorf("%w: gas should be more than %d", core.ErrFloorDataGas, floorDataGas)
 	}
 
-	if bundleGas != max(gasLimit, intrGas, floorDataGas) {
-		return nil, nil, fmt.Errorf("%w: bundle gas limit %d but needs %d", ErrBundleGasLimitTooLow, tx.Gas(), max(gasLimit, intrGas))
+	gasNeeded := max(gasLimit, intrGas, floorDataGas)
+	if bundleGas != gasNeeded {
+		return nil, nil, fmt.Errorf("%w: bundle gas limit %d but needs %d", ErrBundleGasLimitTooLow, tx.Gas(), gasNeeded)
 	}
 
 	return &txBundle, &plan, nil

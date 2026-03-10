@@ -1457,7 +1457,7 @@ func Test_validateBundleTransactions_IfBundleStateIsNotRunning_RejectBundleTrans
 			tx := types.NewTx(&types.LegacyTx{
 				To:   &bundle.BundleAddress,
 				Data: bundle.Encode(bundle.TransactionBundle{Version: 1}),
-				Gas:  21096,
+				Gas:  21240,
 			})
 			require.True(bundle.IsTransactionBundle(tx))
 

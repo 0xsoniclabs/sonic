@@ -610,6 +610,6 @@ func wrap(txBundle *bundle.TransactionBundle) *types.Transaction {
 	return types.NewTx(&types.AccessListTx{
 		To:   &bundle.BundleAddress,
 		Data: data,
-		Gas:  gasLimit,
+		Gas:  max(gasLimit, 21240),
 	})
 }
