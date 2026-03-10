@@ -31,16 +31,16 @@ var ErrBundleGasLimitTooLow = errors.New("gas limit of bundle transaction does n
 // If the transaction is a valid transaction bundle, it returns the decoded transaction bundle and nil (no error).
 // If the transaction is not a bundle transaction, or if bundle transactions are not enabled, it returns nil,nil (no bundle, no error).
 func ValidateTransactionBundle(
-	tx *types.Transaction,
+	envelopeTx *types.Transaction,
 	signer types.Signer,
 ) (*TransactionBundle, *ExecutionPlan, error) {
 
-	if !IsTransactionBundle(tx) {
+	if !IsTransactionBundle(envelopeTx) {
 		// not a bundle transaction, nothing to validate
 		return nil, nil, nil
 	}
 
-	txBundle, err := Decode(tx.Data())
+	txBundle, err := Decode(envelopeTx.Data())
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to decode transaction bundle: %v", err)
 	}
@@ -71,21 +71,21 @@ func ValidateTransactionBundle(
 		}
 	}
 
-	bundleGas := tx.Gas()
+	bundleGas := envelopeTx.Gas()
 	// Ensure the transaction has more gas than the basic tx fee.
 	intrGas, err := core.IntrinsicGas(
-		tx.Data(),
-		tx.AccessList(),
-		tx.SetCodeAuthorizations(),
-		tx.To() == nil, // is contract creation
-		true,           // is homestead
-		true,           // is istanbul
-		true,           // is shanghai
+		envelopeTx.Data(),
+		envelopeTx.AccessList(),
+		nil,   // code auth is not used in the bundle transaction
+		false, // bundle transaction is not a contract creation
+		true,  // is homestead
+		true,  // is istanbul
+		true,  // is shanghai
 	)
 	if err != nil {
 		return nil, nil, err
 	}
-	if tx.Gas() < intrGas {
+	if envelopeTx.Gas() < intrGas {
 		return nil, nil, fmt.Errorf("%w, gas should be more than %v", core.ErrIntrinsicGas, intrGas)
 	}
 	// gas limit of the bundle has to be exactly the aggregated gas of all the
@@ -98,17 +98,17 @@ func ValidateTransactionBundle(
 
 	// EIP-7623 part of Prague revision: Floor data gas
 	// see: https://eips.ethereum.org/EIPS/eip-7623
-	floorDataGas, err := core.FloorDataGas(tx.Data())
+	floorDataGas, err := core.FloorDataGas(envelopeTx.Data())
 	if err != nil {
 		return nil, nil, err
 	}
-	if tx.Gas() < floorDataGas {
+	if envelopeTx.Gas() < floorDataGas {
 		return nil, nil, fmt.Errorf("%w: gas should be more than %d", core.ErrFloorDataGas, floorDataGas)
 	}
 
 	gasNeeded := max(gasLimit, intrGas, floorDataGas)
 	if bundleGas != gasNeeded {
-		return nil, nil, fmt.Errorf("%w: bundle gas limit %d but needs %d", ErrBundleGasLimitTooLow, tx.Gas(), gasNeeded)
+		return nil, nil, fmt.Errorf("%w: bundle gas limit %d but needs %d", ErrBundleGasLimitTooLow, envelopeTx.Gas(), gasNeeded)
 	}
 
 	return &txBundle, &plan, nil

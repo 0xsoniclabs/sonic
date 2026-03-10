@@ -78,6 +78,8 @@ type SubCase struct {
 	invalid SubCaseVariant
 }
 
+// getSubcases returns a map from subcase names to subcases. Each subcase contains three variants: success, failed, and invalid, which specify the expected outcomes for each scenario.
+// The subcases are intended to be used as part of a bundle.
 func getSubcases() map[string]SubCase {
 	return map[string]SubCase{
 		"normal": {
@@ -133,11 +135,15 @@ func getSubcases() map[string]SubCase {
 				[]txStatus{},
 				0,
 			},
-			// skipped bundles are no longer necessary, and all **/bundled/invalid tests are skipped
+			// skipped bundles are no longer possible, and all **/bundled/invalid tests are skipped
 		},
 	}
 }
 
+// Test_RunAllOf_Works tests that if OneOf is not set, all transactions in the bundle are executed, unless they are not tolerated according to the flags.
+// If all transactions are tolerated, the bundle should succeed with the effect of all successful transactions applied. If some transactions are not tolerated, the bundle should not have any effect.
+// The submitted transactions are a successful transaction, depending on the subcase an successful, failed, or invalid transaction, and another successful transaction.
+// The second transaction might be a normal transaction, a sponsored transaction, or a sub-bundle, depending on the subcase.
 func Test_RunAllOf_Works(t *testing.T) {
 	cases := []NamedCase{}
 	for name, subcase := range getSubcases() {
@@ -264,6 +270,10 @@ func Test_RunAllOf_Works(t *testing.T) {
 	}
 }
 
+// Test_RunOneOf_Works tests that if OneOf is set, transactions in the bundle are executed until a transaction is tolerated according to the flags.
+// If a transaction is tolerated, the bundle should succeed with the effect of all successful transactions up to and including the tolerated transaction applied. If no transaction is tolerated, the bundle should not have any effect.
+// The submitted transactions are a successful, failed, or invalid transaction, depending on the subcase, and another two successful transactions.
+// The first transaction might be a normal transaction, a sponsored transaction, or a sub-bundle, depending on the subcase.
 func Test_RunOneOf_Works(t *testing.T) {
 	cases := []NamedCase{}
 	for name, subcase := range getSubcases() {
@@ -422,12 +432,12 @@ func checkCase(t *testing.T, net *tests.IntegrationTestNet, client *tests.Pooled
 		flags.SetTolerateFailed(c.tolerateFailed)
 		flags.SetOneOf(c.oneOf)
 
-		txs, plan, counterAddress := makeSignedBundleOnlyTxsAndPlan(t, net, client, c.submittedTxTypes, nil, flags)
+		bundleOnlyTxs, plan, counterAddress := makeSignedBundleOnlyTxsAndPlan(t, net, client, c.submittedTxTypes, nil, flags)
 
-		bundleTx := makeBundleTransaction(t, net, txs, plan, false)
-		require.NotNil(t, bundleTx)
+		envelopeTx := makeBundleTransaction(t, net, bundleOnlyTxs, plan, false)
+		require.NotNil(t, envelopeTx)
 
-		err := client.SendTransaction(t.Context(), bundleTx)
+		err := client.SendTransaction(t.Context(), envelopeTx)
 		if err != nil {
 			// Check whether the bundle was rejected by the pre-check.
 			require.ErrorContains(t, err, "permanently blocked")
@@ -436,7 +446,6 @@ func checkCase(t *testing.T, net *tests.IntegrationTestNet, client *tests.Pooled
 			require.Empty(t, c.blockTxIndices)
 			return
 		}
-		require.NoError(t, err)
 
 		// Wait for the bundle to be processed.
 		info, err := waitForBundleExecution(t.Context(), client.Client(), plan.Hash())
@@ -457,7 +466,7 @@ func checkCase(t *testing.T, net *tests.IntegrationTestNet, client *tests.Pooled
 			case uncheckedTxIndex:
 				checkStatus(t, net, c.blockTxStatuses[i], transactionHashes[i])
 			default:
-				checkHashesEqAndStatus(t, net, txs[c.blockTxIndices[i]].Hash(), c.blockTxStatuses[i], transactionHashes[i])
+				checkHashesEqAndStatus(t, net, bundleOnlyTxs[c.blockTxIndices[i]].Hash(), c.blockTxStatuses[i], transactionHashes[i])
 			}
 		}
 
@@ -594,25 +603,25 @@ type subBundleTx struct {
 }
 
 func (t subBundleTx) makeTx(opts txMakeOptions) *types.Transaction {
-	bundleTxs, bundlePlan, _ := makeSignedBundleOnlyTxsAndPlan(opts.t, opts.net, opts.client, t.txTypes, opts.counterAddress, t.flags)
+	bundleOnlyTxs, bundlePlan, _ := makeSignedBundleOnlyTxsAndPlan(opts.t, opts.net, opts.client, t.txTypes, opts.counterAddress, t.flags)
 
-	bundleTx := makeBundleTransaction(opts.t, opts.net, bundleTxs, bundlePlan, true)
+	envelopeTx := makeBundleTransaction(opts.t, opts.net, bundleOnlyTxs, bundlePlan, true)
+	require.NotNil(opts.t, envelopeTx)
 	// remove signature
-	bundleTx = types.NewTx(&types.AccessListTx{
-		Nonce:      bundleTx.Nonce(),
-		GasPrice:   bundleTx.GasPrice(),
-		Gas:        bundleTx.Gas(),
-		To:         bundleTx.To(),
-		Value:      bundleTx.Value(),
-		Data:       bundleTx.Data(),
-		AccessList: bundleTx.AccessList(),
+	envelopeTx = types.NewTx(&types.AccessListTx{
+		Nonce:      envelopeTx.Nonce(),
+		GasPrice:   envelopeTx.GasPrice(),
+		Gas:        envelopeTx.Gas(),
+		To:         envelopeTx.To(),
+		Value:      envelopeTx.Value(),
+		Data:       envelopeTx.Data(),
+		AccessList: envelopeTx.AccessList(),
 	})
 
-	require.NotNil(opts.t, bundleTx)
-	return bundleTx
+	return envelopeTx
 }
 
-func makeUnsignedBundleTxs(
+func makeUnsignedBundleOnlyTxs(
 	t *testing.T,
 	net *tests.IntegrationTestNet,
 	client *tests.PooledEhtClient,
@@ -647,9 +656,9 @@ func makeUnsignedBundleTxs(
 
 	revertGasLimit := counterGasLimit
 
-	txs := make([]*types.Transaction, len(txTypes))
+	bundleOnlyTxs := make([]*types.Transaction, len(txTypes))
 	for i, tType := range txTypes {
-		txs[i] = tType.makeTx(txMakeOptions{
+		bundleOnlyTxs[i] = tType.makeTx(txMakeOptions{
 			t, net, client,
 			counterAddress,
 			counterGasLimit,
@@ -662,7 +671,7 @@ func makeUnsignedBundleTxs(
 		})
 	}
 
-	return txs, senders, *counterAddress
+	return bundleOnlyTxs, senders, *counterAddress
 }
 
 func signBundleOnlyTxs(
@@ -696,14 +705,14 @@ func makeSignedBundleOnlyTxsAndPlan(
 	counterAddressPtr *common.Address,
 	flags bundle.ExecutionFlag,
 ) ([]*types.Transaction, bundle.ExecutionPlan, common.Address) {
-	txs, senders, counterAddress := makeUnsignedBundleTxs(t, net, client, txTypes, counterAddressPtr)
+	bundleOnlyTxs, senders, counterAddress := makeUnsignedBundleOnlyTxs(t, net, client, txTypes, counterAddressPtr)
 
 	signer := types.NewCancunSigner(net.GetChainId())
 	blockNumber, err := client.BlockNumber(t.Context())
 	require.NoError(t, err, "failed to get block number; %v", err)
 
-	steps := make([]bundle.ExecutionStep, len(txs))
-	for i, tx := range txs {
+	steps := make([]bundle.ExecutionStep, len(bundleOnlyTxs))
+	for i, tx := range bundleOnlyTxs {
 		steps[i] = bundle.ExecutionStep{From: senders[i].Address(), Hash: signer.Hash(tx)}
 	}
 	plan := bundle.ExecutionPlan{
@@ -713,9 +722,9 @@ func makeSignedBundleOnlyTxsAndPlan(
 		Latest:   blockNumber + 100,
 	}
 
-	signBundleOnlyTxs(t, net, txs, senders, plan)
+	signBundleOnlyTxs(t, net, bundleOnlyTxs, senders, plan)
 
-	return txs, plan, counterAddress
+	return bundleOnlyTxs, plan, counterAddress
 }
 
 func checkHashesEqAndStatus(
