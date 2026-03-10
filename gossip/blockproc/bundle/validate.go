@@ -19,6 +19,7 @@ package bundle
 import (
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -71,16 +72,22 @@ func ValidateTransactionBundle(
 		}
 	}
 
+	// if this is a nested bundle, remove the bundleOnly marker before calculating the intrinsic gas
+	accessList := slices.Clone(tx.AccessList())
+	accessList = slices.DeleteFunc(accessList, func(al types.AccessTuple) bool {
+		return al.Address == BundleOnly
+	})
+
 	bundleGas := tx.Gas()
 	// Ensure the transaction has more gas than the basic tx fee.
 	intrGas, err := core.IntrinsicGas(
 		tx.Data(),
-		tx.AccessList(),
-		tx.SetCodeAuthorizations(),
-		tx.To() == nil, // is contract creation
-		true,           // is homestead
-		true,           // is istanbul
-		true,           // is shanghai
+		accessList,
+		nil,   // code auth is not used in the bundle transaction
+		false, // bundle transaction is not a contract creation
+		true,  // is homestead
+		true,  // is istanbul
+		true,  // is shanghai
 	)
 	if err != nil {
 		return nil, nil, err
