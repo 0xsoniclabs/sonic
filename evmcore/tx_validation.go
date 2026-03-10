@@ -426,7 +426,6 @@ func validateBundleTransactionsInternal(
 		chainState: chainState,
 		stateDB:    stateDb,
 	}
-
 	state := getBundleState(chainAdapter, tx)
 	if state == BundleStatePermanentlyBlocked {
 		// TODO: have `GetBundleState` provide more context on why the bundle is
