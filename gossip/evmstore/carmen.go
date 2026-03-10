@@ -310,10 +310,6 @@ func (c *CarmenStateDB) GetRefund() uint64 {
 	return c.db.GetRefund()
 }
 
-func (c *CarmenStateDB) BeginTransaction() {
-	c.db.BeginTransaction()
-}
-
 func (c *CarmenStateDB) EndTransaction() {
 	c.db.EndTransaction()
 }

@@ -674,7 +674,6 @@ func setExpectedStateCalls(mockState *state.MockStateDB) {
 	mockState.EXPECT().Snapshot().AnyTimes()
 	mockState.EXPECT().Exist(any).Return(true).AnyTimes()
 	mockState.EXPECT().SetTxContext(any, any).AnyTimes()
-	mockState.EXPECT().BeginTransaction().AnyTimes()
 	mockState.EXPECT().Release().AnyTimes()
 	mockState.EXPECT().GetCode(any).Return(nil).AnyTimes()
 	mockState.EXPECT().Witness().AnyTimes()
@@ -974,7 +973,6 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 	}
 
 	expectedCallsFromTxCall := func(mockState *state.MockStateDB) {
-		mockState.EXPECT().BeginTransaction().AnyTimes()
 		mockState.EXPECT().Prepare(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any())
 		mockState.EXPECT().Release().AnyTimes()
 		mockState.EXPECT().Snapshot()
@@ -986,7 +984,6 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 		mockState.EXPECT().AddBalance(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 		mockState.EXPECT().SubBalance(sender, gomock.Any(), gomock.Any()).Times(2)
 		mockState.EXPECT().GetRefund().Return(uint64(0)).Times(2)
-		mockState.EXPECT().EndTransaction().AnyTimes()
 	}
 
 	expectedCallsFromHistoryStorageContract := func(mockState *state.MockStateDB) {
@@ -1003,12 +1000,14 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 		mockState.EXPECT().SubBalance(params.SystemAddress, uint256.NewInt(0), gomock.Any())
 		mockState.EXPECT().GetRefund().Return(uint64(0))
 		mockState.EXPECT().Finalise(true)
+		mockState.EXPECT().EndTransaction()
 	}
 
 	expectedTraceReplayBlock := func(mockState *state.MockStateDB) {
 		mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any())
 		mockState.EXPECT().GetCode(sender).Return([]byte{})
 		mockState.EXPECT().GetNonce(sender).Return(uint64(0))
+		mockState.EXPECT().EndTransaction()
 
 		mockState.EXPECT().SetTxContext(gomock.Any(), gomock.Any())
 		mockState.EXPECT().GetNonce(sender).Return(uint64(1)).Times(2)
@@ -1022,6 +1021,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 		mockState.EXPECT().Snapshot()
 		mockState.EXPECT().Exist(recipient)
 		mockState.EXPECT().GetRefund().Times(2)
+		mockState.EXPECT().EndTransaction().Times(2)
 		mockState.EXPECT().TxIndex()
 	}
 

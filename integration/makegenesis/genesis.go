@@ -97,9 +97,7 @@ func (b *GenesisBuilder) AddBalance(acc common.Address, balance *big.Int) {
 	if len(b.blocks) > 0 {
 		panic("cannot add balance after block zero is finalized")
 	}
-	b.tmpStateDB.BeginTransaction()
 	b.tmpStateDB.AddBalance(acc, utils.BigIntToUint256(balance), tracing.BalanceIncreaseGenesisBalance)
-	b.tmpStateDB.EndTransaction()
 	b.totalSupply.Add(b.totalSupply, balance)
 }
 
@@ -107,27 +105,21 @@ func (b *GenesisBuilder) SetCode(acc common.Address, code []byte) {
 	if len(b.blocks) > 0 {
 		panic("cannot add code after block zero is finalized")
 	}
-	b.tmpStateDB.BeginTransaction()
 	b.tmpStateDB.SetCode(acc, code, tracing.CodeChangeGenesis)
-	b.tmpStateDB.EndTransaction()
 }
 
 func (b *GenesisBuilder) SetNonce(acc common.Address, nonce uint64) {
 	if len(b.blocks) > 0 {
 		panic("cannot add nonce after block zero is finalized")
 	}
-	b.tmpStateDB.BeginTransaction()
 	b.tmpStateDB.SetNonce(acc, nonce, tracing.NonceChangeGenesis)
-	b.tmpStateDB.EndTransaction()
 }
 
 func (b *GenesisBuilder) SetStorage(acc common.Address, key, val common.Hash) {
 	if len(b.blocks) > 0 {
 		panic("cannot set storage after block zero is finalized")
 	}
-	b.tmpStateDB.BeginTransaction()
 	b.tmpStateDB.SetState(acc, key, val)
-	b.tmpStateDB.EndTransaction()
 }
 
 func (b *GenesisBuilder) SetCurrentEpoch(er ier.LlrIdxFullEpochRecord) {
@@ -141,9 +133,6 @@ func (b *GenesisBuilder) TotalSupply() *big.Int {
 func (b *GenesisBuilder) CurrentHash() hash.Hash {
 	er := b.epochs[len(b.epochs)-1]
 	return er.Hash()
-}
-func (b *GenesisBuilder) CarmenStateDb() carmen.StateDB {
-	return b.carmenStateDb
 }
 
 func NewGenesisBuilder() *GenesisBuilder {
