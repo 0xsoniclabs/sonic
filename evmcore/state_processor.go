@@ -461,6 +461,7 @@ func (e evm) _runTransaction(
 		msg, ctxt.gasPool, ctxt.statedb, ctxt.blockNumber, tx,
 		ctxt.usedGas, e.EVM, ctxt.onNewLog,
 	)
+
 	if err != nil {
 		log.Debug("Failed to apply transaction", "tx", tx.Hash().Hex(), "err", err)
 		return ProcessedTransaction{Transaction: tx}

@@ -14,15 +14,17 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
-package bundle
+package evmcore
 
 import (
 	"crypto/ecdsa"
-	big "math/big"
+	"math/big"
 	"slices"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -31,19 +33,45 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
+func Test_GetBundleState_ReturnsPermanentlyBlockedForInvalidBundle(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	chainState := NewMockChainState(ctrl)
+	chainState.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{
+		NetworkID: 1,
+	}).AnyTimes()
+
+	invalidBundle := types.NewTx(&types.LegacyTx{To: &bundle.BundleAddress})
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	_, _, err := bundle.ValidateTransactionBundle(invalidBundle, signer)
+	require.Error(t, err)
+
+	state := GetBundleState(chainState, invalidBundle)
+	require.Equal(t, BundleStatePermanentlyBlocked, state)
+}
+
 func Test_GetBundleState_ReturnsPermanentlyBlockedForOutdatedBundle(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	chainState := NewMockChainState(ctrl)
 
 	currentBlock := uint64(100)
-	chainState.EXPECT().GetCurrentBlockHeight().Return(currentBlock).AnyTimes()
+	currentHeader := &EvmHeader{
+		Number: big.NewInt(int64(currentBlock)),
+	}
+	chainState.EXPECT().GetLatestHeader().Return(currentHeader).AnyTimes()
+	chainState.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{
+		NetworkID: 1,
+	}).AnyTimes()
 
-	bundle := &TransactionBundle{
+	envelop := wrap(&bundle.TransactionBundle{
 		Earliest: 0,
 		Latest:   currentBlock - 1, // Bundle is outdated
-	}
+	})
 
-	state := GetBundleState(bundle, chainState)
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	_, _, err := bundle.ValidateTransactionBundle(envelop, signer)
+	require.NoError(t, err)
+
+	state := GetBundleState(chainState, envelop)
 	require.Equal(t, BundleStatePermanentlyBlocked, state)
 }
 
@@ -52,31 +80,54 @@ func Test_GetBundleState_ReturnsTemporaryBlockedForFutureBundle(t *testing.T) {
 	chainState := NewMockChainState(ctrl)
 
 	currentBlock := uint64(100)
-	chainState.EXPECT().GetCurrentBlockHeight().Return(currentBlock).AnyTimes()
-	bundle := &TransactionBundle{
+	currentHeader := &EvmHeader{
+		Number: big.NewInt(int64(currentBlock)),
+	}
+	chainState.EXPECT().GetLatestHeader().Return(currentHeader).AnyTimes()
+	chainState.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{
+		NetworkID: 1,
+	}).AnyTimes()
+
+	envelop := wrap(&bundle.TransactionBundle{
 		Earliest: currentBlock + 1, // Bundle is in the future
 		Latest:   currentBlock + 10,
-	}
+	})
 
-	state := GetBundleState(bundle, chainState)
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	_, _, err := bundle.ValidateTransactionBundle(envelop, signer)
+	require.NoError(t, err)
+
+	state := GetBundleState(chainState, envelop)
 	require.Equal(t, BundleStateTemporaryBlocked, state)
 }
 
 func Test_GetBundleState_ReturnsRunnableForCurrentBundle(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	chainState := NewMockChainState(ctrl)
+	stateDb := state.NewMockStateDB(ctrl)
+	stateDb.EXPECT().InterTxSnapshot().Return(12)
+	stateDb.EXPECT().RevertToInterTxSnapshot(12)
 
 	currentBlock := uint64(100)
-	chainState.EXPECT().GetCurrentBlockHeight().Return(currentBlock).AnyTimes()
-	chainState.EXPECT().GetChainID().Return(big.NewInt(1)).AnyTimes()
-	chainState.EXPECT().GetStateDB().AnyTimes()
+	currentHeader := &EvmHeader{
+		Number: big.NewInt(int64(currentBlock)),
+	}
+	chainState.EXPECT().GetLatestHeader().Return(currentHeader).AnyTimes()
+	chainState.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{
+		NetworkID: 1,
+	}).AnyTimes()
+	chainState.EXPECT().StateDB().Return(stateDb).AnyTimes()
 
-	bundle := &TransactionBundle{
+	envelop := wrap(&bundle.TransactionBundle{
 		Earliest: currentBlock - 5, // Bundle is valid for current block
 		Latest:   currentBlock + 5,
+	})
+
+	acceptEverything := func(*types.Transaction, ChainState, state.StateDB) bool {
+		return true
 	}
 
-	state := GetBundleState(bundle, chainState)
+	state := getBundleState(chainState, envelop, acceptEverything)
 	require.Equal(t, BundleStateRunnable, state)
 }
 
@@ -117,26 +168,36 @@ func Test_GetBundleState_ChecksForNonceConflicts(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 
-			state := state.NewMockStateDB(ctrl)
-			state.EXPECT().GetNonce(gomock.Any()).Return(uint64(initialNonce)).AnyTimes()
+			db := state.NewMockStateDB(ctrl)
+			db.EXPECT().GetNonce(gomock.Any()).Return(uint64(initialNonce)).AnyTimes()
+			db.EXPECT().InterTxSnapshot().AnyTimes()
+			db.EXPECT().RevertToInterTxSnapshot(gomock.Any()).AnyTimes()
 
+			currentHeader := &EvmHeader{
+				Number: big.NewInt(0),
+			}
 			chainState := NewMockChainState(ctrl)
-			chainState.EXPECT().GetCurrentBlockHeight().AnyTimes()
-			chainState.EXPECT().GetChainID().Return(big.NewInt(1)).AnyTimes()
-			chainState.EXPECT().GetStateDB().Return(state).AnyTimes()
+			chainState.EXPECT().GetLatestHeader().Return(currentHeader).AnyTimes()
+			chainState.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{
+				NetworkID: 1,
+			}).AnyTimes()
+			chainState.EXPECT().StateDB().Return(db).AnyTimes()
 
 			chainId := big.NewInt(1)
 			signer := types.LatestSignerForChainID(chainId)
 
 			envelop := test.bundle.toBundle(signer, keys)
-			bundle, _, err := ValidateTransactionBundle(envelop, signer)
+			_, _, err := bundle.ValidateTransactionBundle(envelop, signer)
 			require.NoError(t, err)
 
-			got := GetBundleState(bundle, chainState)
+			acceptEverything := func(*types.Transaction, ChainState, state.StateDB) bool {
+				return true
+			}
+
+			got := getBundleState(chainState, envelop, acceptEverything)
 			require.Equal(t, test.result, got)
 		})
 	}
-
 }
 
 func Test_checkForNonceConflicts_DetectsNonceUsage(t *testing.T) {
@@ -267,7 +328,7 @@ func Test_checkForNonceConflicts_DetectsNonceUsage(t *testing.T) {
 			}
 
 			envelop := test.bundle.toBundle(signer, keys)
-			bundle, _, err := ValidateTransactionBundle(envelop, signer)
+			bundle, _, err := bundle.ValidateTransactionBundle(envelop, signer)
 			require.NoError(t, err)
 
 			got := checkForNonceConflicts(bundle, signer, source)
@@ -278,7 +339,7 @@ func Test_checkForNonceConflicts_DetectsNonceUsage(t *testing.T) {
 
 func Test_checkForNonceConflicts_ReturnsPermanentlyBlockedIfLowestReferencedNoncesCannotBeDerived(t *testing.T) {
 	invalidTx := types.NewTx(&types.LegacyTx{})
-	bundle := &TransactionBundle{
+	bundle := &bundle.TransactionBundle{
 		Bundle: []*types.Transaction{invalidTx},
 	}
 	signer := types.LatestSignerForChainID(big.NewInt(1))
@@ -324,7 +385,7 @@ func Test_getLowestReferencedNonces_ReturnsLowestNoncesInBundle(t *testing.T) {
 			signer := types.LatestSignerForChainID(chainId)
 
 			envelop := test.bundle.toBundle(signer, keys)
-			bundle, _, err := ValidateTransactionBundle(envelop, signer)
+			bundle, _, err := bundle.ValidateTransactionBundle(envelop, signer)
 			require.NoError(t, err)
 
 			lowest, err := getLowestReferencedNonces(bundle, signer)
@@ -341,7 +402,7 @@ func Test_getLowestReferencedNonces_ReturnsLowestNoncesInBundle(t *testing.T) {
 
 func Test_getLowestReferencedNonces_ReturnsIfSenderCannotBeDerived(t *testing.T) {
 	signer := types.LatestSignerForChainID(big.NewInt(1))
-	bundle := TransactionBundle{
+	bundle := bundle.TransactionBundle{
 		// Add a transaction with a missing signature.
 		Bundle: []*types.Transaction{types.NewTx(&types.LegacyTx{})},
 	}
@@ -351,14 +412,14 @@ func Test_getLowestReferencedNonces_ReturnsIfSenderCannotBeDerived(t *testing.T)
 
 func Test_getLowestReferencedNonces_DetectsInvalidNestedBundle(t *testing.T) {
 	require := require.New(t)
-	invalidBundle := types.NewTx(&types.LegacyTx{To: &BundleAddress})
-	require.True(IsTransactionBundle(invalidBundle))
+	invalidBundle := types.NewTx(&types.LegacyTx{To: &bundle.BundleAddress})
+	require.True(bundle.IsTransactionBundle(invalidBundle))
 
 	signer := types.LatestSignerForChainID(big.NewInt(1))
-	_, _, err := ValidateTransactionBundle(invalidBundle, signer)
+	_, _, err := bundle.ValidateTransactionBundle(invalidBundle, signer)
 	require.Error(err)
 
-	bundle := TransactionBundle{
+	bundle := bundle.TransactionBundle{
 		Bundle: []*types.Transaction{invalidBundle},
 	}
 	_, err = getLowestReferencedNonces(&bundle, signer)
@@ -367,47 +428,47 @@ func Test_getLowestReferencedNonces_DetectsInvalidNestedBundle(t *testing.T) {
 
 func Test_runner_Run_ReturnsErrorForInvalidNestedBundle(t *testing.T) {
 	require := require.New(t)
-	invalidBundle := types.NewTx(&types.LegacyTx{To: &BundleAddress})
-	require.True(IsTransactionBundle(invalidBundle))
+	invalidBundle := types.NewTx(&types.LegacyTx{To: &bundle.BundleAddress})
+	require.True(bundle.IsTransactionBundle(invalidBundle))
 
-	runner := &_runner{
+	runner := &dryRunner{
 		signer:         types.LatestSignerForChainID(big.NewInt(1)),
 		acceptedSender: make(map[common.Address]struct{}),
 	}
 
 	result := runner.Run(invalidBundle)
-	require.Equal(TransactionResultInvalid, result)
+	require.Equal(bundle.TransactionResultInvalid, result)
 }
 
 func Test_runner_Run_ReturnsInvalidForTransactionsWithoutSignature(t *testing.T) {
 	tx := types.NewTx(&types.LegacyTx{})
-	runner := &_runner{
+	runner := &dryRunner{
 		signer:         types.LatestSignerForChainID(big.NewInt(1)),
 		acceptedSender: make(map[common.Address]struct{}),
 	}
 
 	result := runner.Run(tx)
-	require.Equal(t, TransactionResultInvalid, result)
+	require.Equal(t, bundle.TransactionResultInvalid, result)
 }
 
 // --- Utility functions to build test bundles ---
 
 func allOf(nested ...any) pattern {
 	return pattern{
-		flags:  AllOf,
+		flags:  bundle.AllOf,
 		nested: nested,
 	}
 }
 
 func oneOf(nested ...any) pattern {
 	return pattern{
-		flags:  OneOf,
+		flags:  bundle.OneOf,
 		nested: nested,
 	}
 }
 
 type pattern struct {
-	flags  ExecutionFlag
+	flags  bundle.ExecutionFlag
 	nested []any
 }
 
@@ -447,11 +508,11 @@ func (p pattern) _toTxData(
 	}
 
 	// create the execution plan for this bundle
-	plan := ExecutionPlan{
+	plan := bundle.ExecutionPlan{
 		Flags: p.flags,
 	}
 	for i, tx := range txs {
-		plan.Steps = append(plan.Steps, ExecutionStep{
+		plan.Steps = append(plan.Steps, bundle.ExecutionStep{
 			From: senders[i],
 			Hash: signer.Hash(types.NewTx(tx)),
 		})
@@ -461,7 +522,7 @@ func (p pattern) _toTxData(
 	execPlanHash := plan.Hash()
 	for _, tx := range txs {
 		tx.AccessList = append(tx.AccessList, types.AccessTuple{
-			Address: BundleOnly,
+			Address: bundle.BundleOnly,
 			StorageKeys: []common.Hash{
 				execPlanHash,
 			},
@@ -474,8 +535,8 @@ func (p pattern) _toTxData(
 		signedTxs = append(signedTxs, types.MustSignNewTx(keysToSign[i], signer, tx))
 	}
 
-	data := Encode(TransactionBundle{
-		Version: BundleV1,
+	data := bundle.Encode(bundle.TransactionBundle{
+		Version: bundle.BundleV1,
 		Bundle:  signedTxs,
 		Flags:   p.flags,
 	})
@@ -501,7 +562,7 @@ func (p pattern) _toTxData(
 
 	// Wrap up bundle into an envelope transaction.
 	return &types.AccessListTx{
-		To:   &BundleAddress,
+		To:   &bundle.BundleAddress,
 		Data: data,
 		Gas:  max(gasLimit, intrGas),
 	}
@@ -520,4 +581,31 @@ func createKeys(t *testing.T) ([]*ecdsa.PrivateKey, []common.Address) {
 		senders[i] = crypto.PubkeyToAddress(key.PublicKey)
 	}
 	return keys, senders
+}
+
+func wrap(txBundle *bundle.TransactionBundle) *types.Transaction {
+	// TODO: make this a general utility function in the bundle package.
+	if txBundle.Version == 0 {
+		txBundle.Version = bundle.BundleV1
+	}
+
+	data := bundle.Encode(*txBundle)
+
+	// TODO: this simple gas limit computation is only valid for the examples
+	// in this file. If a general utility function is needed, this should be
+	// improved to consider the intrinsic costs and floor gas of the envelop
+	// transaction, as well as the gas cost of the bundled transactions.
+	gasLimit := uint64(21096)
+	if len(txBundle.Bundle) > 0 {
+		gasLimit = 0
+		for _, tx := range txBundle.Bundle {
+			gasLimit += tx.Gas()
+		}
+	}
+
+	return types.NewTx(&types.AccessListTx{
+		To:   &bundle.BundleAddress,
+		Data: data,
+		Gas:  gasLimit,
+	})
 }

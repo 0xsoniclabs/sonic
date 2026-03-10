@@ -107,7 +107,7 @@ func validateTx(
 		return err
 	}
 
-	if err := validateBundleTransactions(tx, netRules, signer); err != nil {
+	if err := validateBundleTransactions(tx, netRules, signer, chain, state); err != nil {
 		return err
 	}
 
@@ -378,6 +378,26 @@ func validateBundleTransactions(
 	tx *types.Transaction,
 	netRules NetworkRules,
 	signer types.Signer,
+	chainState StateReader,
+	stateDb state.StateDB,
+) error {
+	return validateBundleTransactionsInternal(
+		tx,
+		netRules,
+		signer,
+		chainState,
+		stateDb,
+		GetBundleState,
+	)
+}
+
+func validateBundleTransactionsInternal(
+	tx *types.Transaction,
+	netRules NetworkRules,
+	signer types.Signer,
+	chainState StateReader,
+	stateDb state.StateDB,
+	getBundleState func(ChainState, *types.Transaction) BundleState,
 ) error {
 	// This check only covers bundle transactions, ignore the rest.
 	if !bundle.IsTransactionBundle(tx) {
@@ -395,7 +415,17 @@ func validateBundleTransactions(
 		return fmt.Errorf("%w: %w", ErrBundleTransactionInvalid, err)
 	}
 
-	// TODO: check that the bundle is runnable
+	// Check that the bundle is runnable.
+	chainAdapter := &preCheckChainAdapter{
+		chainState: chainState,
+		stateDB:    stateDb,
+	}
+	state := getBundleState(chainAdapter, tx)
+	if state == BundleStatePermanentlyBlocked {
+		// TODO: have `GetBundleState` provide more context on why the bundle is
+		// blocked and include that in the error message.
+		return ErrBundlePermanentlyBlocked
+	}
 
 	return nil
 }

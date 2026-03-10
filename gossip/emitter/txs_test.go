@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/config"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -47,13 +48,14 @@ func Test_Emitter_isValidBundleTx_AcceptsValidBundleIfBundlesAreEnabled(t *testi
 			ctrl := gomock.NewController(t)
 
 			rules := opera.Rules{
+				NetworkID: 12,
 				Upgrades: opera.Upgrades{
 					TransactionBundles: bundlesEnabled,
 				},
 			}
 
 			external := NewMockExternal(ctrl)
-			external.EXPECT().GetRules().Return(rules)
+			external.EXPECT().GetRules().Return(rules).AnyTimes()
 			external.EXPECT().GetLatestBlockIndex().Return(idx.Block(100)).AnyTimes()
 			external.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()).AnyTimes()
 
@@ -73,7 +75,11 @@ func Test_Emitter_isValidBundleTx_AcceptsValidBundleIfBundlesAreEnabled(t *testi
 			_, _, err := bundle.ValidateTransactionBundle(tx, nil)
 			require.NoError(err)
 
-			require.Equal(bundlesEnabled, emitter.isValidBundleTx(tx))
+			allBundlesRunnable := func(evmcore.ChainState, *types.Transaction) evmcore.BundleState {
+				return evmcore.BundleStateRunnable
+			}
+
+			require.Equal(bundlesEnabled, emitter.isValidBundleTxInternal(tx, allBundlesRunnable))
 		})
 	}
 }
@@ -152,7 +158,11 @@ func Test_Emitter_isValidBundleTx_RejectsAlreadyProcessedBundle(t *testing.T) {
 			_, _, err := bundle.ValidateTransactionBundle(tx, nil)
 			require.NoError(t, err)
 
-			require.Equal(t, !processed, emitter.isValidBundleTx(tx))
+			getBundleState := func(evmcore.ChainState, *types.Transaction) evmcore.BundleState {
+				return evmcore.BundleStateRunnable
+			}
+
+			require.Equal(t, !processed, emitter.isValidBundleTxInternal(tx, getBundleState))
 		})
 	}
 }
