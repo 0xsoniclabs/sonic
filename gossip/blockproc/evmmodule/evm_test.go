@@ -26,6 +26,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/state"
@@ -33,6 +34,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	tracing "github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
 	uint256 "github.com/holiman/uint256"
@@ -245,8 +247,40 @@ func TestOperaEVMProcessor_Execute_StateProcessorIntroducesTransactions_Produces
 func TestOperaEVMProcessor_Execute_BundlePositionsAreProperlyOffset(t *testing.T) {
 	chainId := big.NewInt(1)
 	tx := types.NewTx(&types.LegacyTx{
-		To: &common.Address{0x42}, Nonce: 0, Gas: 21_0000,
+		To: &common.Address{0x42}, Nonce: 0, Gas: 21_0000, GasPrice: big.NewInt(1),
 	})
+
+	returnCode := func(address common.Address) []byte {
+		if address != registry.GetAddress() {
+			return nil
+		}
+		return []byte{
+			byte(vm.CALLDATASIZE), // call data size
+			byte(vm.PUSH1), 10,    // value to distinguish getGasConfig and isCovered
+			byte(vm.LT),        // check that call data size is less than 10
+			byte(vm.PUSH1), 33, // jumpdest index
+			byte(vm.JUMPI),                   // jump if call data size is less than 10
+			byte(vm.PUSH3), 0xFF, 0xFF, 0xFF, // value
+			byte(vm.PUSH1), 0, // memory offset
+			byte(vm.MSTORE),                  // store
+			byte(vm.PUSH3), 0xFF, 0xFF, 0xFF, // value
+			byte(vm.PUSH1), 32, // memory offset
+			byte(vm.MSTORE),                  // store
+			byte(vm.PUSH3), 0xFF, 0xFF, 0xFF, // value
+			byte(vm.PUSH1), 64, // memory offset
+			byte(vm.MSTORE),    // store
+			byte(vm.PUSH1), 96, // size
+			byte(vm.PUSH1), 0x00, // memory offset
+			byte(vm.RETURN), // return
+			byte(vm.JUMPDEST),
+			byte(vm.PUSH1), 0xFF, // fund id
+			byte(vm.PUSH1), 0, // memory offset
+			byte(vm.MSTORE),    // store
+			byte(vm.PUSH1), 32, // size
+			byte(vm.PUSH1), 0x00, // memory offset
+			byte(vm.RETURN), // return
+		}
+	}
 
 	ctrl := gomock.NewController(t)
 	factory := NewMock_stateProcessorFactory(ctrl)
@@ -254,6 +288,11 @@ func TestOperaEVMProcessor_Execute_BundlePositionsAreProperlyOffset(t *testing.T
 	stateDB := state.NewMockStateDB(ctrl)
 
 	mockAny := gomock.Any()
+	stateDB.EXPECT().GetCode(mockAny).DoAndReturn(returnCode).AnyTimes()
+	stateDB.EXPECT().GetCodeHash(mockAny).AnyTimes().Return(common.Hash{0x42})
+	stateDB.EXPECT().AddRefund(mockAny).AnyTimes()
+	stateDB.EXPECT().SubRefund(mockAny).AnyTimes()
+
 	stateDB.EXPECT().SetTxContext(mockAny, mockAny).AnyTimes()
 	stateDB.EXPECT().BeginTransaction().AnyTimes()
 	stateDB.EXPECT().GetBalance(mockAny).AnyTimes().Return(uint256.NewInt(1e18))
@@ -261,7 +300,6 @@ func TestOperaEVMProcessor_Execute_BundlePositionsAreProperlyOffset(t *testing.T
 	stateDB.EXPECT().Prepare(mockAny, mockAny, mockAny, mockAny, mockAny, mockAny).AnyTimes()
 	stateDB.EXPECT().GetNonce(mockAny).AnyTimes().Return(uint64(0))
 	stateDB.EXPECT().SetNonce(mockAny, mockAny, mockAny).AnyTimes()
-	stateDB.EXPECT().GetCode(mockAny).AnyTimes().Return(nil)
 	stateDB.EXPECT().Snapshot().AnyTimes().Return(1)
 	stateDB.EXPECT().Exist(mockAny).AnyTimes().Return(true)
 	stateDB.EXPECT().AddBalance(mockAny, mockAny, mockAny).AnyTimes()
@@ -270,10 +308,13 @@ func TestOperaEVMProcessor_Execute_BundlePositionsAreProperlyOffset(t *testing.T
 	stateDB.EXPECT().EndTransaction().AnyTimes()
 	// bundle specific
 	stateDB.EXPECT().InterTxSnapshot().AnyTimes()
+	// sponsor specific
+	stateDB.EXPECT().RevertToSnapshot(mockAny).AnyTimes()
 
-	chainConfig := &params.ChainConfig{ChainID: chainId}
+	chainConfig := &params.ChainConfig{ChainID: chainId, IstanbulBlock: big.NewInt(0)}
 	upgrades := opera.GetBrioUpgrades()
 	upgrades.TransactionBundles = true
+	upgrades.GasSubsidies = true
 	stateProcessor := stateProcessorFactory.NewStateProcessor(stateProcessorFactory{}, chainConfig, chain, upgrades)
 	factory.EXPECT().NewStateProcessor(mockAny, mockAny, mockAny).Return(stateProcessor).AnyTimes()
 
@@ -313,11 +354,28 @@ func TestOperaEVMProcessor_Execute_BundlePositionsAreProperlyOffset(t *testing.T
 			transactionStructure:    []string{"bundle", "tx", "tx"},
 			expectedBundlePositions: []uint32{2},
 		},
+		"sponsored tx followed by bundle": {
+			lenProcessedTxs:         0,
+			bundleLength:            2,
+			transactionStructure:    []string{"sponsored", "bundle"},
+			expectedBundlePositions: []uint32{2},
+		},
+		"preprocessed and sponsored tx followed by bundle": {
+			lenProcessedTxs:         1,
+			bundleLength:            2,
+			transactionStructure:    []string{"sponsored", "bundle"},
+			expectedBundlePositions: []uint32{3},
+		},
+		"sponsored and bundle interleaved": {
+			lenProcessedTxs:         1,
+			bundleLength:            2,
+			transactionStructure:    []string{"sponsored", "bundle", "sponsored", "bundle"},
+			expectedBundlePositions: []uint32{3, 7},
+		},
 	}
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			bundleTx := simpleBundleTx(t, chainId, test.bundleLength)
 			alreadyProcessedTx := make([]evmcore.ProcessedTransaction, test.lenProcessedTxs)
 
 			index := new(int)
@@ -329,6 +387,7 @@ func TestOperaEVMProcessor_Execute_BundlePositionsAreProperlyOffset(t *testing.T
 			stateDB.EXPECT().TxIndex().DoAndReturn(next).AnyTimes()
 
 			processor := &OperaEVMProcessor{
+				blockIdx:         1,
 				processorFactory: factory,
 				statedb:          stateDB,
 				processedTxs:     alreadyProcessedTx,
@@ -340,7 +399,9 @@ func TestOperaEVMProcessor_Execute_BundlePositionsAreProperlyOffset(t *testing.T
 				case "tx":
 					transactions[i] = tx
 				case "bundle":
-					transactions[i] = bundleTx
+					transactions[i] = simpleBundleTx(t, chainId, test.bundleLength)
+				case "sponsored":
+					transactions[i] = simpleSponsoredTx(t, chainId)
 				default:
 					t.Fatalf("unknown transaction type: %s", txType)
 				}
@@ -355,10 +416,22 @@ func TestOperaEVMProcessor_Execute_BundlePositionsAreProperlyOffset(t *testing.T
 	}
 }
 
+func simpleSponsoredTx(t *testing.T, chainId *big.Int) *types.Transaction {
+	signer := types.NewCancunSigner(chainId)
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	return types.MustSignNewTx(key, signer, &types.AccessListTx{
+		Nonce:    0,
+		To:       &common.Address{0x42},
+		Gas:      21_000,
+		GasPrice: common.Big0,
+	})
+}
+
 // simpleBundleTx creates a simple bundle with the given number of transactions in the bundle.
 func simpleBundleTx(t *testing.T, chainId *big.Int, numTransactions int) *types.Transaction {
 	bundleOnlyTx := types.NewTx(&types.AccessListTx{
-		To: &common.Address{0x42}, Nonce: 0, Gas: 21_0000,
+		To: &common.Address{0x42}, Nonce: 0, Gas: 21_0000, GasPrice: big.NewInt(1),
 	})
 
 	signer := types.NewCancunSigner(chainId)
@@ -376,7 +449,7 @@ func simpleBundleTx(t *testing.T, chainId *big.Int, numTransactions int) *types.
 			Hash: signer.Hash(tx),
 		}
 	}
-	plan := bundle.ExecutionPlan{Flags: bundle.ExecutionFlag(0), Steps: steps}
+	plan := bundle.ExecutionPlan{Flags: bundle.ExecutionFlag(0), Steps: steps, Earliest: 1, Latest: 100}
 
 	payLoadTxs := make([]*types.Transaction, len(transactions))
 	for i, tx := range transactions {
@@ -395,9 +468,12 @@ func simpleBundleTx(t *testing.T, chainId *big.Int, numTransactions int) *types.
 		Gas: uint64(numTransactions * int(bundleOnlyTx.Gas())),
 		To:  &bundle.BundleAddress,
 		Data: bundle.Encode(bundle.TransactionBundle{
-			Version: 1,
-			Bundle:  payLoadTxs,
+			Version:  1,
+			Bundle:   payLoadTxs,
+			Earliest: 1,
+			Latest:   100,
 		}),
+		GasPrice: big.NewInt(1),
 	})
 
 	return bundleTx

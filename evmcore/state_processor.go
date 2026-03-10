@@ -210,7 +210,12 @@ func runTransactions(
 	processed := make([]ProcessedTransaction, 0, len(transactions))
 	var bundles []ProcessedBundle
 	for _, tx := range transactions {
-		nextId := len(processed) + txIndexOffset
+		nextId := txIndexOffset
+		for _, p := range processed {
+			if p.Receipt != nil {
+				nextId++
+			}
+		}
 		txs, processedBundle, _ := runTransaction(context, tx, nextId)
 		processed = append(processed, txs...)
 		if processedBundle != nil {
@@ -377,8 +382,10 @@ func (r *transactionRunner) runTransactionBundle(
 
 	// Run the bundle and collect the processed transactions.
 	runner := bundleTransactionRunner{ctxt: ctxt, txOffset: txIndex}
+	preTxIndex := txIndex
 	bundleCheckpoint := ctxt.statedb.InterTxSnapshot()
 	if success := bundle.RunBundle(txBundle, &runner); !success {
+		runner.txOffset = preTxIndex
 		if err := ctxt.statedb.RevertToInterTxSnapshot(bundleCheckpoint); err != nil {
 			log.Error("Failed to revert to checkpoint", "err", err)
 		}
@@ -406,7 +413,15 @@ func (b *bundleTransactionRunner) Run(tx *types.Transaction) bundle.TransactionR
 	if status == StatusSkipped {
 		return bundle.TransactionResultInvalid
 	}
-	b.txOffset++
+
+	processedCount := 0
+	for _, p := range processed {
+		if p.Receipt != nil {
+			processedCount++
+		}
+	}
+	b.txOffset += processedCount
+
 	if status == StatusFailed {
 		return bundle.TransactionResultFailed
 	} else {
