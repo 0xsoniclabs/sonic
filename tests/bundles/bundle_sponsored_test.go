@@ -82,35 +82,7 @@ func TestBundle_RejectsBundle_WithPayloadSponsorRequest_WithoutSponsorship(t *te
 	// NOTE: once bundle trial-run is implemented this submition will fail.
 	// which is what this test should verify.
 	err = client.SendTransaction(t.Context(), bundleTx)
-	require.NoError(t, err)
-
-	// check that the bundle tx made it into the txpool, but the sponsored transaction did not.
-	checkAccountTxsInTxPool(t, client, sponsee, 0)
-	checkAccountTxsInTxPool(t, client, net.GetSessionSponsor(), 1)
-
-	info, err := waitForBundleExecution(t.Context(), client.Client(), plan.Hash())
-	require.NoError(t, err)
-
-	// The bundle is expected to be executed because it reached the processor,
-	// regardless of the fact that the sponsored transaction was skipped.
-	require.Equal(t, ethapi.BundleStatusExecuted, info.Status)
-	require.NotNil(t, info.Block)
-
-	// verify the block where the bundle was executed has no transactions.
-	block, err := client.BlockByNumber(t.Context(), big.NewInt(int64(*info.Block)))
-	require.NoError(t, err)
-	require.Empty(t, block.Transactions())
-}
-
-// checkAccountTxsInTxPool checks that there are `want“ transactions for the given account in the txpool.
-func checkAccountTxsInTxPool(t *testing.T, client *tests.PooledEhtClient, account *tests.Account, want int) {
-	var content map[string]map[string]map[string]*ethapi.RPCTransaction
-	err := client.Client().Call(&content, "txpool_content")
-	require.NoError(t, err, "Should get txpool content")
-
-	txPoolSponsee := len(content["pending"][account.Address().String()]) +
-		len(content["queued"][account.Address().String()])
-	require.Equal(t, want, txPoolSponsee, "There should be %d transactions for the account in the txpool", want)
+	require.ErrorContains(t, err, "bundle is permanently blocked")
 }
 
 func TestBundle_CanRunSponsorshipAndSponsored(t *testing.T) {
