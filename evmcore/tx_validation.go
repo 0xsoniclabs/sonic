@@ -79,43 +79,6 @@ func validateTx(
 	subsidiesChecker subsidiesChecker,
 	signer types.Signer,
 ) error {
-	return validateTxWithSponsorship(tx, opt, netRules, chain, state, subsidiesChecker, signer)
-}
-
-func validateTxWithSponsorship(
-	tx *types.Transaction,
-	opt poolOptions,
-	netRules NetworkRules,
-	chain StateReader,
-	state state.StateDB, // Although this can be retrieved from chain, it's passed explicitly to avoid extra db-pool accesses
-	subsidiesChecker subsidiesChecker,
-	signer types.Signer,
-) error {
-	return _validateTx(tx, opt, netRules, chain, state, subsidiesChecker, signer, true)
-}
-
-func validateTxWithoutSponsorship(
-	tx *types.Transaction,
-	opt poolOptions,
-	netRules NetworkRules,
-	chain StateReader,
-	state state.StateDB, // Although this can be retrieved from chain, it's passed explicitly to avoid extra db-pool accesses
-	subsidiesChecker subsidiesChecker,
-	signer types.Signer,
-) error {
-	return _validateTx(tx, opt, netRules, chain, state, subsidiesChecker, signer, false)
-}
-
-func _validateTx(
-	tx *types.Transaction,
-	opt poolOptions,
-	netRules NetworkRules,
-	chain StateReader,
-	state state.StateDB, // Although this can be retrieved from chain, it's passed explicitly to avoid extra db-pool accesses
-	subsidiesChecker subsidiesChecker,
-	signer types.Signer,
-	sponsorshipCheck bool,
-) error {
 
 	// The transaction is checked against network rules to detect unsupported
 	// transaction types first, ensuring protocol compliance before performing
@@ -140,10 +103,8 @@ func _validateTx(
 		return err
 	}
 
-	if sponsorshipCheck {
-		if err := validateSponsoredTransactions(tx, netRules, subsidiesChecker); err != nil {
-			return err
-		}
+	if err := validateSponsoredTransactions(tx, netRules, subsidiesChecker); err != nil {
+		return err
 	}
 
 	if err := validateBundleTransactions(tx, opt, netRules, chain, state,
@@ -462,7 +423,7 @@ func validateBundleTransactionsInternal(
 	}
 
 	// If the transaction is a bundle, validate its structure and content.
-	bundle, _, err := bundle.ValidateTransactionBundle(tx, signer)
+	_, _, err := bundle.ValidateTransactionBundle(tx, signer)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrBundleTransactionInvalid, err)
 	}
@@ -472,22 +433,13 @@ func validateBundleTransactionsInternal(
 		chainState: chain,
 		stateDB:    state,
 	}
+
 	bundleStatus := getBundleState(chainAdapter, tx)
 	if bundleStatus == BundleStatePermanentlyBlocked {
 		// TODO: have `GetBundleState` provide more context on why the bundle is
 		// blocked and include that in the error message.
 		return ErrBundlePermanentlyBlocked
 	}
-
-	for _, innerTx := range bundle.Bundle {
-		if err := validateTxWithoutSponsorship(innerTx, opt, netRules, chain, state,
-			subsidiesChecker, signer); err != nil {
-			return fmt.Errorf("%w: bundle-only transaction %v failed validation: %w",
-				ErrBundleTransactionInvalid, innerTx.Hash(), err)
-		}
-	}
-
-	// TODO: check that the bundle is runnable
 
 	return nil
 }

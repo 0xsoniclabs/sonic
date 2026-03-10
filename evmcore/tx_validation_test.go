@@ -24,6 +24,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -1594,13 +1595,17 @@ func TestValidateBundleTransactions_RejectsBundleWhenPayloadTransactionIsInvalid
 
 	// make innerTx validation fail because nonce is too old
 	state.EXPECT().GetNonce(gomock.Any()).Return(uint64(10)).AnyTimes()
-	getBundleState := func(ChainState, *types.Transaction) BundleState {
-		return BundleStateRunnable
+	chain.EXPECT().CurrentRules().Return(opera.Rules{NetworkID: 1}).AnyTimes()
+	nextBlock := &EvmBlock{
+		EvmHeader: EvmHeader{
+			Number: big.NewInt(1),
+		},
 	}
+	chain.EXPECT().CurrentBlock().Return(nextBlock).AnyTimes()
 
 	rules.transactionBundles = true
-	err = validateBundleTransactionsInternal(bundleTx, opt, rules, chain, state, subsidiesChecker, signer, getBundleState)
-	require.ErrorContains(err, "bundle-only transaction")
+	err = validateBundleTransactions(bundleTx, opt, rules, chain, state, subsidiesChecker, signer)
+	require.ErrorContains(err, "bundle is permanently blocked")
 }
 
 func makeValidateTxParameters(t *testing.T) (poolOptions, NetworkRules, *MockStateReader, *state.MockStateDB, *MocksubsidiesChecker, *MockSigner) {
