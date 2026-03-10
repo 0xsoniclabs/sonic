@@ -34,12 +34,14 @@ import (
 )
 
 func TestBundle_CanBeProcessedByTheNetwork(t *testing.T) {
+	const NumNodes = 3
 
 	upgrades := opera.GetBrioUpgrades()
 	upgrades.TransactionBundles = true
 
 	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
 		Upgrades: &upgrades,
+		NumNodes: NumNodes,
 	})
 
 	client, err := net.GetClient()
@@ -148,6 +150,19 @@ func TestBundle_CanBeProcessedByTheNetwork(t *testing.T) {
 	nonce, err := client.NonceAt(t.Context(), coordinator.Address(), big.NewInt(int64(*info.Block)))
 	require.NoError(t, err)
 	require.Zero(t, nonce)
+
+	// Check that all nodes have the same block state.
+	latestBlock, err := client.BlockByNumber(t.Context(), nil)
+	require.NoError(t, err)
+	for i := range NumNodes {
+		client, err := net.GetClientConnectedToNode(i)
+		require.NoError(t, err)
+		defer client.Close()
+
+		block, err := client.BlockByNumber(t.Context(), latestBlock.Number())
+		require.NoError(t, err)
+		require.Equal(t, latestBlock.Hash(), block.Hash())
+	}
 }
 
 type UnsignedTransaction struct {
