@@ -64,6 +64,16 @@ func GetBundleState(
 	chain ChainState,
 	envelop *types.Transaction,
 ) BundleState {
+	return getBundleState(chain, envelop, trialRunBundle)
+}
+
+// getBundleState is the internal version of GetBundleState, allowing to inject
+// a custom trial-run function to simplify testing.
+func getBundleState(
+	chain ChainState,
+	envelop *types.Transaction,
+	trialRunner func(*types.Transaction, ChainState, state.StateDB) bool,
+) BundleState {
 
 	// Verify that the bundle is valid.
 	chainId := big.NewInt(int64(chain.GetCurrentNetworkRules().NetworkID))
@@ -107,7 +117,7 @@ func GetBundleState(
 		_ = stateDb.RevertToInterTxSnapshot(snapshot)
 	}()
 
-	if success := trialRunBundle(envelop, chain, stateDb); !success {
+	if success := trialRunner(envelop, chain, stateDb); !success {
 		return BundleStatePermanentlyBlocked
 	}
 	return BundleStateRunnable

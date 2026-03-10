@@ -381,6 +381,24 @@ func validateBundleTransactions(
 	chainState StateReader,
 	stateDb state.StateDB,
 ) error {
+	return validateBundleTransactionsInternal(
+		tx,
+		netRules,
+		signer,
+		chainState,
+		stateDb,
+		GetBundleState,
+	)
+}
+
+func validateBundleTransactionsInternal(
+	tx *types.Transaction,
+	netRules NetworkRules,
+	signer types.Signer,
+	chainState StateReader,
+	stateDb state.StateDB,
+	getBundleState func(ChainState, *types.Transaction) BundleState,
+) error {
 	// This check only covers bundle transactions, ignore the rest.
 	if !bundle.IsTransactionBundle(tx) {
 		return nil
@@ -402,7 +420,7 @@ func validateBundleTransactions(
 		chainState: chainState,
 		stateDB:    stateDb,
 	}
-	state := GetBundleState(chainAdapter, tx)
+	state := getBundleState(chainAdapter, tx)
 	if state == BundleStatePermanentlyBlocked {
 		// TODO: have `GetBundleState` provide more context on why the bundle is
 		// blocked and include that in the error message.

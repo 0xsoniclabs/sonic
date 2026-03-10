@@ -18,12 +18,12 @@ package evmcore
 
 import (
 	"crypto/ecdsa"
-	big "math/big"
+	"math/big"
 	"slices"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
-	state "github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
@@ -105,6 +105,8 @@ func Test_GetBundleState_ReturnsRunnableForCurrentBundle(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	chainState := NewMockChainState(ctrl)
 	stateDb := state.NewMockStateDB(ctrl)
+	stateDb.EXPECT().InterTxSnapshot().Return(12)
+	stateDb.EXPECT().RevertToInterTxSnapshot(12)
 
 	currentBlock := uint64(100)
 	currentHeader := &EvmHeader{
@@ -121,7 +123,11 @@ func Test_GetBundleState_ReturnsRunnableForCurrentBundle(t *testing.T) {
 		Latest:   currentBlock + 5,
 	})
 
-	state := GetBundleState(chainState, envelop)
+	acceptEverything := func(*types.Transaction, ChainState, state.StateDB) bool {
+		return true
+	}
+
+	state := getBundleState(chainState, envelop, acceptEverything)
 	require.Equal(t, BundleStateRunnable, state)
 }
 
@@ -162,8 +168,10 @@ func Test_GetBundleState_ChecksForNonceConflicts(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 
-			state := state.NewMockStateDB(ctrl)
-			state.EXPECT().GetNonce(gomock.Any()).Return(uint64(initialNonce)).AnyTimes()
+			db := state.NewMockStateDB(ctrl)
+			db.EXPECT().GetNonce(gomock.Any()).Return(uint64(initialNonce)).AnyTimes()
+			db.EXPECT().InterTxSnapshot().AnyTimes()
+			db.EXPECT().RevertToInterTxSnapshot(gomock.Any()).AnyTimes()
 
 			currentHeader := &EvmHeader{
 				Number: big.NewInt(0),
@@ -173,7 +181,7 @@ func Test_GetBundleState_ChecksForNonceConflicts(t *testing.T) {
 			chainState.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{
 				NetworkID: 1,
 			}).AnyTimes()
-			chainState.EXPECT().StateDB().Return(state).AnyTimes()
+			chainState.EXPECT().StateDB().Return(db).AnyTimes()
 
 			chainId := big.NewInt(1)
 			signer := types.LatestSignerForChainID(chainId)
@@ -182,7 +190,11 @@ func Test_GetBundleState_ChecksForNonceConflicts(t *testing.T) {
 			_, _, err := bundle.ValidateTransactionBundle(envelop, signer)
 			require.NoError(t, err)
 
-			got := GetBundleState(chainState, envelop)
+			acceptEverything := func(*types.Transaction, ChainState, state.StateDB) bool {
+				return true
+			}
+
+			got := getBundleState(chainState, envelop, acceptEverything)
 			require.Equal(t, test.result, got)
 		})
 	}
