@@ -258,9 +258,7 @@ func Test_RunAllOf_Works(t *testing.T) {
 	net, client := startTestnet(t)
 	defer client.Close()
 	for _, c := range cases {
-		// bundle-only transactions are validated when the bundle is submitted,
-		// if any of those are invalid, the whole bundle will be rejected
-		if c.name != "bundled/invalid" && c.name != "normal/invalid" {
+		if c.name != "bundled/invalid" {
 			checkCase(t, net, client, c)
 		}
 	}
@@ -386,9 +384,7 @@ func Test_RunOneOf_Works(t *testing.T) {
 	net, client := startTestnet(t)
 	defer client.Close()
 	for _, c := range cases {
-		// bundle-only transactions are validated when the bundle is submitted,
-		// if any of those are invalid, the whole bundle will be rejected
-		if c.name != "bundled/invalid" && c.name != "normal/invalid" {
+		if c.name != "bundled/invalid" {
 			checkCase(t, net, client, c)
 		}
 	}

@@ -107,8 +107,7 @@ func validateTx(
 		return err
 	}
 
-	if err := validateBundleTransactions(tx, opt, netRules, chain, state,
-		subsidiesChecker, signer); err != nil {
+	if err := validateBundleTransactions(tx, netRules, signer, chain, state); err != nil {
 		return err
 	}
 
@@ -381,35 +380,29 @@ func validateSponsoredTransactions(
 // it returns an error rejecting the transaction.
 func validateBundleTransactions(
 	tx *types.Transaction,
-	opt poolOptions,
 	netRules NetworkRules,
-	chain StateReader,
-	// Although state can be retrieved from chain, it is passed explicitly to avoid extra db-pool accesses
-	state state.StateDB,
-	subsidiesChecker subsidiesChecker,
 	signer types.Signer,
+	chainState StateReader,
+	// Although state can be retrieved from chain, it is passed explicitly to avoid extra db-pool accesses
+	stateDb state.StateDB,
 ) error {
 	return validateBundleTransactionsInternal(
 		tx,
-		opt,
 		netRules,
-		chain,
-		state,
-		subsidiesChecker,
 		signer,
+		chainState,
+		stateDb,
 		GetBundleState,
 	)
 }
 
 func validateBundleTransactionsInternal(
 	tx *types.Transaction,
-	opt poolOptions,
 	netRules NetworkRules,
-	chain StateReader,
-	// Although state can be retrieved from chain, it is passed explicitly to avoid extra db-pool accesses
-	state state.StateDB,
-	subsidiesChecker subsidiesChecker,
 	signer types.Signer,
+	chainState StateReader,
+	// Although state can be retrieved from chain, it is passed explicitly to avoid extra db-pool accesses
+	stateDb state.StateDB,
 	getBundleState func(ChainState, *types.Transaction) BundleState,
 ) error {
 	// This check only covers bundle transactions, ignore the rest.
@@ -430,12 +423,12 @@ func validateBundleTransactionsInternal(
 
 	// Check that the bundle is runnable.
 	chainAdapter := &preCheckChainAdapter{
-		chainState: chain,
-		stateDB:    state,
+		chainState: chainState,
+		stateDB:    stateDb,
 	}
 
-	bundleStatus := getBundleState(chainAdapter, tx)
-	if bundleStatus == BundleStatePermanentlyBlocked {
+	state := getBundleState(chainAdapter, tx)
+	if state == BundleStatePermanentlyBlocked {
 		// TODO: have `GetBundleState` provide more context on why the bundle is
 		// blocked and include that in the error message.
 		return ErrBundlePermanentlyBlocked
