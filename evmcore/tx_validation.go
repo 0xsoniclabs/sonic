@@ -374,11 +374,16 @@ func validateSponsoredTransactions(
 	return nil
 }
 
+// validateBundleTransactions checks if a transaction is a bundle transaction and if so,
+// validates the bundle structure and the validity of each transaction in the bundle.
+// if the bundle is malformed or any bundle-only transactions is invalid,
+// it returns an error rejecting the transaction.
 func validateBundleTransactions(
 	tx *types.Transaction,
 	netRules NetworkRules,
 	signer types.Signer,
 	chainState StateReader,
+	// Although state can be retrieved from chain, it is passed explicitly to avoid extra db-pool accesses
 	stateDb state.StateDB,
 ) error {
 	return validateBundleTransactionsInternal(
@@ -396,6 +401,7 @@ func validateBundleTransactionsInternal(
 	netRules NetworkRules,
 	signer types.Signer,
 	chainState StateReader,
+	// Although state can be retrieved from chain, it is passed explicitly to avoid extra db-pool accesses
 	stateDb state.StateDB,
 	getBundleState func(ChainState, *types.Transaction) BundleState,
 ) error {

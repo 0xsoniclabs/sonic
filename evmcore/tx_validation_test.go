@@ -24,9 +24,11 @@ import (
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
@@ -1486,14 +1488,17 @@ func Test_validateBundleTransactions_IfBundledTransactionsAreEnabled_AcceptValid
 	})
 	require.True(bundle.IsTransactionBundle(tx))
 
-	allBundlesRunnable := func(ChainState, *types.Transaction) BundleState {
+	getBundleState := func(ChainState, *types.Transaction) BundleState {
 		return BundleStateRunnable
 	}
 
 	rules := NetworkRules{}
-	require.ErrorIs(validateBundleTransactions(tx, rules, nil, nil, nil), ErrBundleTransactionsDisabled)
+	rules.transactionBundles = false
+	err := validateBundleTransactionsInternal(tx, rules, nil, nil, nil, getBundleState)
+	require.ErrorIs(err, ErrBundleTransactionsDisabled)
 	rules.transactionBundles = true
-	require.NoError(validateBundleTransactionsInternal(tx, rules, nil, nil, nil, allBundlesRunnable))
+	err = validateBundleTransactionsInternal(tx, rules, nil, nil, nil, getBundleState)
+	require.NoError(err)
 }
 
 func Test_validateBundleTransactions_RejectsInvalidBundleTransactions(t *testing.T) {
@@ -1505,7 +1510,123 @@ func Test_validateBundleTransactions_RejectsInvalidBundleTransactions(t *testing
 	require.True(bundle.IsTransactionBundle(tx))
 
 	rules := NetworkRules{transactionBundles: true}
-	require.ErrorIs(validateBundleTransactions(tx, rules, nil, nil, nil), ErrBundleTransactionInvalid)
+	require.ErrorIs(validateBundleTransactions(tx, rules, nil, nil, nil),
+		ErrBundleTransactionInvalid)
+}
+
+func TestValidateBundleTransactions_RejectsBundleWhenPayloadTransactionIsInvalid(t *testing.T) {
+	require := require.New(t)
+	receiver := common.Address{0x42}
+
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+
+	innerTx := types.AccessListTx{
+		Nonce: uint64(1),
+		To:    &receiver,
+		Value: big.NewInt(1234),
+	}
+
+	txHash := signer.Hash(types.NewTx(&innerTx))
+	key, err := crypto.GenerateKey()
+	require.NoError(err)
+	sender := crypto.PubkeyToAddress(key.PublicKey)
+
+	// prepare execution  plan
+	plan := bundle.ExecutionPlan{
+		Steps: make([]bundle.ExecutionStep, 1),
+		Flags: 0,
+	}
+	plan.Steps[0] = bundle.ExecutionStep{
+		From: sender,
+		Hash: txHash,
+	}
+
+	// amend transactions with the execution plan hash
+	// and sign them
+	planHash := plan.Hash()
+
+	innerTx.AccessList = types.AccessList{
+		types.AccessTuple{
+			Address: bundle.BundleOnly,
+			StorageKeys: []common.Hash{
+				planHash,
+			},
+		}}
+
+	signedTx, err := types.SignTx(types.NewTx(&innerTx), signer, key)
+	require.NoError(err)
+	signedTransactions := types.Transactions{signedTx}
+
+	// prepare the bundle
+	txBundle := bundle.TransactionBundle{
+		Version: bundle.BundleV1,
+		Bundle:  signedTransactions,
+		Flags:   0,
+	}
+
+	// Compute the gas limit for the envelop transaction.
+	gasLimit := uint64(0)
+	for _, tx := range signedTransactions {
+		gasLimit += tx.Gas()
+	}
+
+	data := bundle.Encode(txBundle)
+	intrGas, err := core.IntrinsicGas(
+		data,
+		nil,   // no access lis
+		nil,   // no set-code authorization
+		false, // is contract creation
+		true,  // is homestead
+		true,  // is istanbul
+		true,  // is shanghai
+	)
+	require.NoError(err)
+
+	floorDataGas, err := core.FloorDataGas(data)
+	require.NoError(err)
+
+	gas := max(intrGas, gasLimit, floorDataGas)
+
+	bundleTx := types.NewTx(&types.LegacyTx{
+		To:   &bundle.BundleAddress,
+		Data: data,
+		Gas:  gas,
+	})
+
+	rules, chain, state := makeValidateTxParameters(t)
+	// make innerTx validation fail because nonce is too old
+	state.EXPECT().GetNonce(gomock.Any()).Return(uint64(10)).AnyTimes()
+	chain.EXPECT().CurrentRules().Return(opera.Rules{NetworkID: 1}).AnyTimes()
+	nextBlock := &EvmBlock{
+		EvmHeader: EvmHeader{
+			Number: big.NewInt(1),
+		},
+	}
+	chain.EXPECT().CurrentBlock().Return(nextBlock).AnyTimes()
+
+	rules.transactionBundles = true
+	err = validateBundleTransactions(bundleTx, rules, signer, chain, state)
+	require.ErrorContains(err, "bundle is permanently blocked")
+}
+
+func makeValidateTxParameters(t *testing.T) (NetworkRules, *MockStateReader, *state.MockStateDB) {
+	rules := NetworkRules{
+		eip2718: true,
+		eip1559: true,
+		eip4844: true,
+		eip7702: true,
+	}
+	ctrl := gomock.NewController(t)
+
+	chain := NewMockStateReader(ctrl)
+	chain.EXPECT().CurrentBaseFee().Return(big.NewInt(5)).AnyTimes()
+	chain.EXPECT().CurrentMaxGasLimit().Return(uint64(100_000)).AnyTimes()
+	state := state.NewMockStateDB(ctrl)
+	state.EXPECT().GetNonce(gomock.Any()).Return(uint64(0)).AnyTimes()
+	state.EXPECT().GetBalance(gomock.Any()).Return(uint256.NewInt(1_000_000)).AnyTimes()
+	state.EXPECT().GetCode(gomock.Any()).Return(nil).AnyTimes()
+
+	return rules, chain, state
 }
 
 func TestValidateTx_AllowsSponsoredZeroGasPriceTransactions_WhenSubsidiesAreFunded(t *testing.T) {
