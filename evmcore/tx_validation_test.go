@@ -1433,7 +1433,7 @@ func Test_validateBundleTransactions_AcceptNonBundleTransactions(t *testing.T) {
 	}
 }
 
-func Test_validateBundleTransactions_IfBundleStateIsNotRunning_RejectBundleTransaction(t *testing.T) {
+func Test_validateBundleTransactions_IfBundleStateIsNotRunnable_RejectBundleTransaction(t *testing.T) {
 
 	tests := map[string]struct {
 		bundleState BundleState
@@ -1447,8 +1447,8 @@ func Test_validateBundleTransactions_IfBundleStateIsNotRunning_RejectBundleTrans
 			bundleState: BundleStateTemporaryBlocked,
 			valid:       true,
 		},
-		"permanently_blocked": {
-			bundleState: BundleStatePermanentlyBlocked,
+		"non_executable": {
+			bundleState: BundleStateNonExecutable,
 			valid:       false,
 		},
 	}
@@ -1463,8 +1463,8 @@ func Test_validateBundleTransactions_IfBundleStateIsNotRunning_RejectBundleTrans
 			})
 			require.True(bundle.IsTransactionBundle(tx))
 
-			getBundleState := func(ChainState, *types.Transaction) BundleState {
-				return test.bundleState
+			getBundleState := func(ChainState, *types.Transaction) (BundleState, error) {
+				return test.bundleState, nil
 			}
 
 			rules := NetworkRules{}
@@ -1473,7 +1473,7 @@ func Test_validateBundleTransactions_IfBundleStateIsNotRunning_RejectBundleTrans
 			if test.valid {
 				require.NoError(err)
 			} else {
-				require.ErrorIs(err, ErrBundlePermanentlyBlocked)
+				require.ErrorIs(err, ErrBundleNonExecutable)
 			}
 		})
 	}
@@ -1488,8 +1488,8 @@ func Test_validateBundleTransactions_IfBundledTransactionsAreEnabled_AcceptValid
 	})
 	require.True(bundle.IsTransactionBundle(tx))
 
-	getBundleState := func(ChainState, *types.Transaction) BundleState {
-		return BundleStateRunnable
+	getBundleState := func(ChainState, *types.Transaction) (BundleState, error) {
+		return BundleStateRunnable, nil
 	}
 
 	rules := NetworkRules{}
@@ -1606,7 +1606,7 @@ func TestValidateBundleTransactions_RejectsBundleWhenPayloadTransactionIsInvalid
 
 	rules.transactionBundles = true
 	err = validateBundleTransactions(bundleTx, rules, signer, chain, state)
-	require.ErrorContains(err, "bundle is permanently blocked")
+	require.ErrorIs(err, ErrBundleNonExecutable)
 }
 
 func makeValidateTxParameters(t *testing.T) (NetworkRules, *MockStateReader, *state.MockStateDB) {
