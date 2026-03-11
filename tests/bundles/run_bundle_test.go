@@ -163,9 +163,9 @@ func prepareBundle(
 
 	signer := types.LatestSignerForChainID(chainId)
 
-	var steps []bundle.ExecutionStep
+	var steps []bundle.ExecutionUnit
 	for _, unsignedTx := range txs {
-		steps = append(steps, bundle.ExecutionStep{
+		steps = append(steps, &bundle.ExecutionStep{
 			From: unsignedTx.Sender,
 			Hash: signer.Hash(types.NewTx(unsignedTx.Transaction)),
 		})
@@ -173,7 +173,9 @@ func prepareBundle(
 
 	// build execution plan
 	plan := bundle.ExecutionPlan{
-		Steps:    steps,
+		Layer: bundle.ExecutionLayer{
+			Units: steps,
+		},
 		Earliest: targetBlock,
 		Latest:   targetBlock + 10,
 	}
@@ -198,10 +200,16 @@ func makeBundle(
 	txs []*types.Transaction,
 	plan bundle.ExecutionPlan,
 ) types.TxData {
+	units := make([]bundle.BundleUnit, len(txs))
+	for i, tx := range txs {
+		units[i] = &bundle.BundleTransaction{Tx: tx}
+	}
 	data := bundle.Encode(bundle.TransactionBundle{
-		Version:  bundle.BundleV1,
-		Bundle:   txs,
-		Flags:    plan.Flags,
+		Version: bundle.BundleV1,
+		Layer: bundle.BundleLayer{
+			Units: units,
+			Flags: plan.Layer.Flags,
+		},
 		Earliest: plan.Earliest,
 		Latest:   plan.Latest,
 	})

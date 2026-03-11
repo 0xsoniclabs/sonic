@@ -158,7 +158,7 @@ func checkForNonceConflicts(
 ) BundleState {
 	// We start by collecting the lowest nonces referenced for each sender in
 	// the bundle.
-	lowest, err := getLowestReferencedNonces(txBundle, signer)
+	lowest, err := getLowestReferencedNonces(&txBundle.Layer, signer)
 	if err != nil {
 		// If we fail to derive the lowest referenced nonces, it means that the
 		// bundle is malformed (e.g., contains invalid transactions) and we can
@@ -180,7 +180,7 @@ func checkForNonceConflicts(
 	}
 
 	// If this execution failed, the bundle is permanently blocked.
-	if success := bundle.RunBundle(txBundle, runner); !success {
+	if success := bundle.RunBundle(&txBundle.Layer, runner); !success {
 		return BundleStatePermanentlyBlocked
 	}
 
@@ -198,32 +198,45 @@ func checkForNonceConflicts(
 // in the bundle. If the bundle is malformed (e.g., contains invalid signatures)
 // an error is returned.
 func getLowestReferencedNonces(
-	txBundle *bundle.TransactionBundle,
+	txBundle *bundle.BundleLayer,
 	signer types.Signer,
 ) (map[common.Address]uint64, error) {
 	res := make(map[common.Address]uint64)
-	for _, tx := range txBundle.Bundle {
-		if bundle.IsTransactionBundle(tx) {
-			bundle, _, err := bundle.ValidateTransactionBundle(tx, signer)
-			if err != nil {
-				return nil, fmt.Errorf("invalid nested bundle: %w", err)
+	for _, unit := range txBundle.Units {
+		if tx := unit.AsTransaction(); tx != nil {
+			if bundle.IsTransactionBundle(tx.Tx) {
+				bundle, _, err := bundle.ValidateTransactionBundle(tx.Tx, signer)
+				if err != nil {
+					return nil, fmt.Errorf("invalid nested bundle: %w", err)
+				}
+				innerRes, err := getLowestReferencedNonces(&bundle.Layer, signer)
+				if err != nil {
+					return nil, err
+				}
+				for addr, nonce := range innerRes {
+					if existingNonce, ok := res[addr]; !ok || nonce < existingNonce {
+						res[addr] = nonce
+					}
+				}
+			} else {
+				sender, err := types.Sender(signer, tx.Tx)
+				if err != nil {
+					return nil, fmt.Errorf("failed to derive sender: %w", err)
+				}
+				if nonce, ok := res[sender]; !ok || tx.Tx.Nonce() < nonce {
+					res[sender] = tx.Tx.Nonce()
+				}
 			}
-			innerRes, err := getLowestReferencedNonces(bundle, signer)
+		} else {
+			innerRes, err := getLowestReferencedNonces(unit.AsBundleLayer(), signer)
 			if err != nil {
 				return nil, err
 			}
+			// TODO pass map into function instead
 			for addr, nonce := range innerRes {
 				if existingNonce, ok := res[addr]; !ok || nonce < existingNonce {
 					res[addr] = nonce
 				}
-			}
-		} else {
-			sender, err := types.Sender(signer, tx)
-			if err != nil {
-				return nil, fmt.Errorf("failed to derive sender: %w", err)
-			}
-			if nonce, ok := res[sender]; !ok || tx.Nonce() < nonce {
-				res[sender] = tx.Nonce()
 			}
 		}
 	}
@@ -253,7 +266,7 @@ func (r *dryRunner) Run(tx *types.Transaction) bundle.TransactionResult {
 		}
 		acceptedBackup := maps.Clone(r.acceptedSender)
 		backup := r.nonceTracker.backup()
-		if bundle.RunBundle(txBundle, r) {
+		if bundle.RunBundle(&txBundle.Layer, r) {
 			return bundle.TransactionResultSuccessful
 		}
 		r.nonceTracker.restore(backup)

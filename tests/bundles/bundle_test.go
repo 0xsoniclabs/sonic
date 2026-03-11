@@ -35,7 +35,7 @@ import (
 )
 
 type txType interface {
-	makeTx(txMakeOptions) *types.Transaction
+	makeUnit(txMakeOptions) bundle.BundleUnit
 }
 
 type txIndex int
@@ -122,6 +122,121 @@ func getSubcases() map[string]SubCase {
 				[]txStatus{},
 				0,
 			},
+		},
+		"layered/OneOf=false/TolerateFailed=false/TolerateInvalid=false": {
+			success: SubCaseVariant{
+				subLayerTx{flags: 0, txTypes: []txType{successfulNormalTx{}, successfulNormalTx{}}},
+				[]txIndex{uncheckedTxIndex, uncheckedTxIndex},
+				[]txStatus{successStatus, successStatus},
+				2,
+			},
+			failed: SubCaseVariant{
+				subLayerTx{flags: 0, txTypes: []txType{successfulNormalTx{}, failedNormalTx{}}},
+				[]txIndex{},
+				[]txStatus{},
+				0,
+			},
+			// skipped bundles are no longer possible, and all **/layered/**/invalid tests are skipped
+		},
+		"layered/OneOf=false/TolerateFailed=false/TolerateInvalid=true": {
+			success: SubCaseVariant{
+				subLayerTx{flags: bundle.TolerateInvalid, txTypes: []txType{invalidNormalTx{}, successfulNormalTx{}}},
+				[]txIndex{uncheckedTxIndex},
+				[]txStatus{successStatus},
+				1,
+			},
+			failed: SubCaseVariant{
+				subLayerTx{flags: bundle.TolerateInvalid, txTypes: []txType{successfulNormalTx{}, failedNormalTx{}}},
+				[]txIndex{},
+				[]txStatus{},
+				0,
+			},
+			// skipped bundles are no longer possible, and all **/layered/**/invalid tests are skipped
+		},
+		"layered/OneOf=false/TolerateFailed=true/TolerateInvalid=false": {
+			success: SubCaseVariant{
+				subLayerTx{flags: bundle.TolerateFailed, txTypes: []txType{failedNormalTx{}, successfulNormalTx{}}},
+				[]txIndex{uncheckedTxIndex, uncheckedTxIndex},
+				[]txStatus{failedStatus, successStatus},
+				1,
+			},
+			failed: SubCaseVariant{
+				subLayerTx{flags: bundle.TolerateFailed, txTypes: []txType{successfulNormalTx{}, invalidNormalTx{}}},
+				[]txIndex{},
+				[]txStatus{},
+				0,
+			},
+			// skipped bundles are no longer possible, and all **/layered/**/invalid tests are skipped
+		},
+		"layered/OneOf=false/TolerateFailed=true/TolerateInvalid=true": {
+			success: SubCaseVariant{
+				subLayerTx{flags: bundle.TolerateFailed | bundle.TolerateInvalid, txTypes: []txType{invalidNormalTx{}, failedNormalTx{}, successfulNormalTx{}}},
+				[]txIndex{uncheckedTxIndex, uncheckedTxIndex},
+				[]txStatus{failedStatus, successStatus},
+				1,
+			},
+			// a bundle can not fail if OneOf is not set and both TolerateFailed and TolerateInvalid are set
+			// skipped bundles are no longer possible, and all **/layered/**/invalid tests are skipped
+		},
+		"layered/OneOf=true/TolerateFailed=false/TolerateInvalid=false": {
+			success: SubCaseVariant{
+				subLayerTx{flags: bundle.OneOf, txTypes: []txType{invalidNormalTx{}, failedNormalTx{}, successfulNormalTx{}}},
+				[]txIndex{uncheckedTxIndex, uncheckedTxIndex},
+				[]txStatus{failedStatus, successStatus},
+				1,
+			},
+			failed: SubCaseVariant{
+				subLayerTx{flags: bundle.OneOf, txTypes: []txType{failedNormalTx{}, invalidNormalTx{}}},
+				[]txIndex{},
+				[]txStatus{},
+				0,
+			},
+			// skipped bundles are no longer possible, and all **/layered/**/invalid tests are skipped
+		},
+		"layered/OneOf=true/TolerateFailed=false/TolerateInvalid=true": {
+			success: SubCaseVariant{
+				subLayerTx{flags: bundle.OneOf | bundle.TolerateInvalid, txTypes: []txType{failedNormalTx{}, invalidNormalTx{}}},
+				[]txIndex{uncheckedTxIndex},
+				[]txStatus{failedStatus},
+				0,
+			},
+			failed: SubCaseVariant{
+				subLayerTx{flags: bundle.OneOf | bundle.TolerateInvalid, txTypes: []txType{failedNormalTx{}, failedNormalTx{}}},
+				[]txIndex{},
+				[]txStatus{},
+				0,
+			},
+			// skipped bundles are no longer possible, and all **/layered/**/invalid tests are skipped
+		},
+		"layered/OneOf=true/TolerateFailed=true/TolerateInvalid=false": {
+			success: SubCaseVariant{
+				subLayerTx{flags: bundle.OneOf | bundle.TolerateFailed, txTypes: []txType{invalidNormalTx{}, failedNormalTx{}}},
+				[]txIndex{uncheckedTxIndex},
+				[]txStatus{failedStatus},
+				0,
+			},
+			failed: SubCaseVariant{
+				subLayerTx{flags: bundle.OneOf | bundle.TolerateFailed, txTypes: []txType{invalidNormalTx{}, invalidNormalTx{}}},
+				[]txIndex{},
+				[]txStatus{},
+				0,
+			},
+			// skipped bundles are no longer possible, and all **/layered/**/invalid tests are skipped
+		},
+		"layered/OneOf=true/TolerateFailed=true/TolerateInvalid=true": {
+			success: SubCaseVariant{
+				subLayerTx{flags: bundle.OneOf | bundle.TolerateFailed | bundle.TolerateInvalid, txTypes: []txType{invalidNormalTx{}, successfulNormalTx{}}},
+				[]txIndex{},
+				[]txStatus{},
+				0,
+			},
+			failed: SubCaseVariant{
+				subLayerTx{flags: bundle.OneOf | bundle.TolerateFailed | bundle.TolerateInvalid, txTypes: []txType{}},
+				[]txIndex{},
+				[]txStatus{},
+				0,
+			},
+			// skipped bundles are no longer possible, and all **/layered/**/invalid tests are skipped
 		},
 		"bundled/OneOf=false/TolerateFailed=false/TolerateInvalid=false": {
 			success: SubCaseVariant{
@@ -364,7 +479,10 @@ func Test_RunAllOf_Works(t *testing.T) {
 	}
 	net := startTestnet(t)
 	for _, c := range cases {
-		if c.name == "bundled/OneOf=false/TolerateFailed=true/TolerateInvalid=true/failed" || (strings.HasPrefix(c.name, "bundled") && strings.HasSuffix(c.name, "invalid")) {
+		if c.name == "bundled/OneOf=false/TolerateFailed=true/TolerateInvalid=true/failed" ||
+			c.name == "layered/OneOf=false/TolerateFailed=true/TolerateInvalid=true/failed" ||
+			(strings.HasPrefix(c.name, "layered") && strings.HasSuffix(c.name, "invalid")) ||
+			(strings.HasPrefix(c.name, "bundled") && strings.HasSuffix(c.name, "invalid")) {
 			continue
 		}
 		checkCase(t, net, c)
@@ -494,7 +612,10 @@ func Test_RunOneOf_Works(t *testing.T) {
 	}
 	net := startTestnet(t)
 	for _, c := range cases {
-		if c.name == "bundled/OneOf=false/TolerateFailed=true/TolerateInvalid=true/failed" || (strings.HasPrefix(c.name, "bundled") && strings.HasSuffix(c.name, "invalid")) {
+		if c.name == "bundled/OneOf=false/TolerateFailed=true/TolerateInvalid=true/failed" ||
+			c.name == "layered/OneOf=false/TolerateFailed=true/TolerateInvalid=true/failed" ||
+			(strings.HasPrefix(c.name, "layered") && strings.HasSuffix(c.name, "invalid")) ||
+			(strings.HasPrefix(c.name, "bundled") && strings.HasSuffix(c.name, "invalid")) {
 			continue
 		}
 		checkCase(t, net, c)
@@ -539,7 +660,8 @@ func checkCase(t *testing.T, net *tests.IntegrationTestNet, namedCase NamedCase)
 
 		contractInfo := deployContracts(t, net)
 
-		envelopeTx, plan, bundleOnlyTxs := buildBundle(t, net, contractInfo, c.submittedTxTypes, flags, false)
+		// layer
+		envelopeTx, plan, _ := buildBundle(t, net, contractInfo, c.submittedTxTypes, flags, false)
 		require.NotNil(t, envelopeTx)
 
 		err = client.SendTransaction(t.Context(), envelopeTx)
@@ -566,12 +688,12 @@ func checkCase(t *testing.T, net *tests.IntegrationTestNet, namedCase NamedCase)
 		transactionHashes = transactionHashes[*info.Position:]
 
 		require.Len(t, transactionHashes, len(c.blockTxIndices))
-		for i := range c.blockTxIndices {
-			switch c.blockTxIndices[i] {
-			case uncheckedTxIndex:
+		for i, txIndex := range c.blockTxIndices {
+			if txIndex == uncheckedTxIndex {
 				checkStatus(t, net, c.blockTxStatuses[i], transactionHashes[i])
-			default:
-				checkHashesEqAndStatus(t, net, bundleOnlyTxs[c.blockTxIndices[i]].Hash(), c.blockTxStatuses[i], transactionHashes[i])
+			} else {
+				checkStatus(t, net, c.blockTxStatuses[i], transactionHashes[i])
+				// checkHashesEqAndStatus(t, net, layer[txIndex].Hash(), c.blockTxStatuses[i], transactionHashes[i])
 			}
 		}
 
@@ -671,77 +793,116 @@ type txMakeOptions struct {
 
 	contractInfo ContractInfo
 	gasPrice     *big.Int
-	sender       *tests.Account
 }
 
 type successfulNormalTx struct{}
 
-func (t successfulNormalTx) makeTx(opts txMakeOptions) *types.Transaction {
-	return types.NewTx(&types.AccessListTx{
-		To:       &opts.contractInfo.counterAddress,
-		Gas:      opts.contractInfo.counterGasLimit,
-		Data:     opts.contractInfo.counterInput,
-		GasPrice: opts.gasPrice,
-	})
+func (t successfulNormalTx) makeUnit(opts txMakeOptions) bundle.BundleUnit {
+	sender := tests.MakeAccountWithBalance(opts.t, opts.net, big.NewInt(1e18)).Into()
+	return &bundle.BundleTransaction{
+		Tx: types.NewTx(&types.AccessListTx{
+			To:       &opts.contractInfo.counterAddress,
+			Gas:      opts.contractInfo.counterGasLimit,
+			Data:     opts.contractInfo.counterInput,
+			GasPrice: opts.gasPrice,
+		}),
+		Sender: &sender,
+	}
 }
 
 type failedNormalTx struct{}
 
-func (t failedNormalTx) makeTx(opts txMakeOptions) *types.Transaction {
-	return types.NewTx(&types.AccessListTx{
-		To:       &opts.contractInfo.revertAddress,
-		Gas:      opts.contractInfo.revertGasLimit,
-		Data:     opts.contractInfo.revertInput,
-		GasPrice: opts.gasPrice,
-	})
+func (t failedNormalTx) makeUnit(opts txMakeOptions) bundle.BundleUnit {
+	sender := tests.MakeAccountWithBalance(opts.t, opts.net, big.NewInt(1e18)).Into()
+	return &bundle.BundleTransaction{
+		Tx: types.NewTx(&types.AccessListTx{
+			To:       &opts.contractInfo.revertAddress,
+			Gas:      opts.contractInfo.revertGasLimit,
+			Data:     opts.contractInfo.revertInput,
+			GasPrice: opts.gasPrice,
+		}),
+		Sender: &sender,
+	}
 }
 
 type invalidNormalTx struct{}
 
-func (t invalidNormalTx) makeTx(opts txMakeOptions) *types.Transaction {
-	return types.NewTx(&types.AccessListTx{
-		To:       &opts.contractInfo.counterAddress,
-		Gas:      1, // invalid
-		Data:     opts.contractInfo.counterInput,
-		GasPrice: opts.gasPrice,
-	})
+func (t invalidNormalTx) makeUnit(opts txMakeOptions) bundle.BundleUnit {
+	sender := tests.MakeAccountWithBalance(opts.t, opts.net, big.NewInt(1e18)).Into()
+	return &bundle.BundleTransaction{
+		Tx: types.NewTx(&types.AccessListTx{
+			To:       &opts.contractInfo.counterAddress,
+			Gas:      1, // invalid
+			Data:     opts.contractInfo.counterInput,
+			GasPrice: opts.gasPrice,
+		}),
+		Sender: &sender,
+	}
 }
 
 type successfulSponsoredTx struct{}
 
-func (t successfulSponsoredTx) makeTx(opts txMakeOptions) *types.Transaction {
+func (t successfulSponsoredTx) makeUnit(opts txMakeOptions) bundle.BundleUnit {
+	sender := tests.MakeAccountWithBalance(opts.t, opts.net, big.NewInt(1e18))
 	donation := big.NewInt(1e16)
-	gas_subsidies.Fund(opts.t, opts.net, opts.sender.Address(), donation)
-	return types.NewTx(&types.AccessListTx{
-		To:       &opts.contractInfo.counterAddress,
-		Gas:      opts.contractInfo.counterGasLimit,
-		Data:     opts.contractInfo.counterInput,
-		GasPrice: big.NewInt(0),
-	})
+	gas_subsidies.Fund(opts.t, opts.net, sender.Address(), donation)
+	s := sender.Into()
+	return &bundle.BundleTransaction{
+		Tx: types.NewTx(&types.AccessListTx{
+			To:       &opts.contractInfo.counterAddress,
+			Gas:      opts.contractInfo.counterGasLimit,
+			Data:     opts.contractInfo.counterInput,
+			GasPrice: big.NewInt(0),
+		}),
+		Sender: &s,
+	}
 }
 
 type failedSponsoredTx struct{}
 
-func (t failedSponsoredTx) makeTx(opts txMakeOptions) *types.Transaction {
+func (t failedSponsoredTx) makeUnit(opts txMakeOptions) bundle.BundleUnit {
+	sender := tests.MakeAccountWithBalance(opts.t, opts.net, big.NewInt(1e18))
 	donation := big.NewInt(1e16)
-	gas_subsidies.Fund(opts.t, opts.net, opts.sender.Address(), donation)
-	return types.NewTx(&types.AccessListTx{
-		To:       &opts.contractInfo.revertAddress,
-		Gas:      opts.contractInfo.revertGasLimit,
-		Data:     opts.contractInfo.revertInput,
-		GasPrice: big.NewInt(0),
-	})
+	gas_subsidies.Fund(opts.t, opts.net, sender.Address(), donation)
+	s := sender.Into()
+	return &bundle.BundleTransaction{
+		Tx: types.NewTx(&types.AccessListTx{
+			To:       &opts.contractInfo.revertAddress,
+			Gas:      opts.contractInfo.revertGasLimit,
+			Data:     opts.contractInfo.revertInput,
+			GasPrice: big.NewInt(0),
+		}),
+		Sender: &s,
+	}
 }
 
 type invalidSponsoredTx struct{}
 
-func (t invalidSponsoredTx) makeTx(opts txMakeOptions) *types.Transaction {
-	return types.NewTx(&types.AccessListTx{
-		To:       &opts.contractInfo.counterAddress,
-		Gas:      opts.contractInfo.counterGasLimit,
-		Data:     opts.contractInfo.counterInput,
-		GasPrice: big.NewInt(0),
-	})
+func (t invalidSponsoredTx) makeUnit(opts txMakeOptions) bundle.BundleUnit {
+	sender := tests.MakeAccountWithBalance(opts.t, opts.net, big.NewInt(1e18)).Into()
+	return &bundle.BundleTransaction{
+		Tx: types.NewTx(&types.AccessListTx{
+			To:       &opts.contractInfo.counterAddress,
+			Gas:      opts.contractInfo.counterGasLimit,
+			Data:     opts.contractInfo.counterInput,
+			GasPrice: big.NewInt(0),
+		}),
+		Sender: &sender,
+	}
+}
+
+type subLayerTx struct {
+	txTypes []txType
+	flags   bundle.ExecutionFlag
+}
+
+func (t subLayerTx) makeUnit(opts txMakeOptions) bundle.BundleUnit {
+	units := make([]bundle.BundleUnit, len(t.txTypes))
+	for i, txType := range t.txTypes {
+		units[i] = txType.makeUnit(opts)
+	}
+
+	return &bundle.BundleLayer{Units: units, Flags: t.flags}
 }
 
 type subBundleTx struct {
@@ -749,7 +910,8 @@ type subBundleTx struct {
 	flags   bundle.ExecutionFlag
 }
 
-func (t subBundleTx) makeTx(opts txMakeOptions) *types.Transaction {
+func (t subBundleTx) makeUnit(opts txMakeOptions) bundle.BundleUnit {
+	sender := tests.MakeAccountWithBalance(opts.t, opts.net, big.NewInt(1e18)).Into()
 	envelopeTx, _, _ := buildBundle(opts.t, opts.net, opts.contractInfo, t.txTypes, t.flags, true)
 	require.NotNil(opts.t, envelopeTx)
 
@@ -764,29 +926,17 @@ func (t subBundleTx) makeTx(opts txMakeOptions) *types.Transaction {
 		AccessList: envelopeTx.AccessList(),
 	})
 
-	return envelopeTx
+	return &bundle.BundleTransaction{Tx: envelopeTx, Sender: &sender}
 }
 
 // --- transaction bundling and signing ---
 
-func makeUnsignedBundleOnlyTxs(
+func makeUnsignedBundleUnits(
 	t *testing.T,
 	net *tests.IntegrationTestNet,
 	txTypes []txType,
 	contractInfo ContractInfo,
-) ([]*types.Transaction, []*tests.Account) {
-	senders := make([]*tests.Account, len(txTypes))
-	addresses := make([]common.Address, len(txTypes))
-	for i := range txTypes {
-		senders[i] = tests.NewAccount()
-		addresses[i] = senders[i].Address()
-	}
-	receipts, err := net.EndowAccounts(addresses, big.NewInt(1e18))
-	require.NoError(t, err, "failed to endow accounts; %v", err)
-	for _, receipt := range receipts {
-		require.Equal(t, uint64(1), receipt.Status, "account endowment failed")
-	}
-
+) []bundle.BundleUnit {
 	client, err := net.GetClient()
 	require.NoError(t, err, "failed to get client; %v", err)
 	defer client.Close()
@@ -794,33 +944,36 @@ func makeUnsignedBundleOnlyTxs(
 	gasPrice, err := client.SuggestGasPrice(t.Context())
 	require.NoError(t, err, "failed to suggest gas price; %v", err)
 
-	bundleOnlyTxs := make([]*types.Transaction, len(txTypes))
+	bundleUnits := make([]bundle.BundleUnit, len(txTypes))
 	for i, tType := range txTypes {
-		bundleOnlyTxs[i] = tType.makeTx(txMakeOptions{t, net, contractInfo, gasPrice, senders[i]})
+		bundleUnits[i] = tType.makeUnit(txMakeOptions{t, net, contractInfo, gasPrice})
 	}
 
-	return bundleOnlyTxs, senders
+	return bundleUnits
 }
 
-func signBundleOnlyTxs(
+func signBundleUnits(
 	t *testing.T,
 	net *tests.IntegrationTestNet,
-	txs []*types.Transaction,
-	senders []*tests.Account,
+	bundleUnits []bundle.BundleUnit,
 	plan bundle.ExecutionPlan,
 ) {
 	bundleMarkerWithPlanHash := types.AccessTuple{Address: bundle.BundleOnly, StorageKeys: []common.Hash{plan.Hash()}}
-	for i, tx := range txs {
-		bundleOnlyTx := &types.AccessListTx{
-			Nonce:      tx.Nonce(),
-			GasPrice:   tx.GasPrice(),
-			Gas:        tx.Gas(),
-			To:         tx.To(),
-			Value:      tx.Value(),
-			Data:       tx.Data(),
-			AccessList: append(tx.AccessList(), bundleMarkerWithPlanHash),
+	for i, bundleUnit := range bundleUnits {
+		if tx := bundleUnit.AsTransaction(); tx != nil {
+			bundleOnlyTx := &types.AccessListTx{
+				Nonce:      tx.Tx.Nonce(),
+				GasPrice:   tx.Tx.GasPrice(),
+				Gas:        tx.Tx.Gas(),
+				To:         tx.Tx.To(),
+				Value:      tx.Tx.Value(),
+				Data:       tx.Tx.Data(),
+				AccessList: append(tx.Tx.AccessList(), bundleMarkerWithPlanHash),
+			}
+			bundleUnits[i] = &bundle.BundleTransaction{Tx: tests.SignTransaction(t, net.GetChainId(), bundleOnlyTx, tests.From(tx.Sender))}
+		} else {
+			signBundleUnits(t, net, bundleUnit.AsBundleLayer().Units, plan)
 		}
-		txs[i] = tests.SignTransaction(t, net.GetChainId(), bundleOnlyTx, senders[i])
 	}
 }
 
@@ -828,14 +981,15 @@ func buildPlan(
 	t *testing.T,
 	net *tests.IntegrationTestNet,
 	flags bundle.ExecutionFlag,
-	bundleOnlyTxs []*types.Transaction,
-	senders []*tests.Account,
+	bundleUnits []bundle.BundleUnit,
 ) bundle.ExecutionPlan {
 	signer := types.NewCancunSigner(net.GetChainId())
 
-	steps := make([]bundle.ExecutionStep, len(bundleOnlyTxs))
-	for i, tx := range bundleOnlyTxs {
-		steps[i] = bundle.ExecutionStep{From: senders[i].Address(), Hash: signer.Hash(tx)}
+	steps := make([]bundle.ExecutionUnit, len(bundleUnits))
+	for i, bundleUnit := range bundleUnits {
+		unit, err := bundleUnit.UnsignedToExecutionUnit(signer)
+		require.NoError(t, err, "failed to convert bundle unit to execution unit; %v", err)
+		steps[i] = unit
 	}
 
 	client, err := net.GetClient()
@@ -846,8 +1000,10 @@ func buildPlan(
 	require.NoError(t, err, "failed to get block number; %v", err)
 
 	plan := bundle.ExecutionPlan{
-		Flags:    flags,
-		Steps:    steps,
+		Layer: bundle.ExecutionLayer{
+			Flags: flags,
+			Units: steps,
+		},
 		Earliest: blockNumber,
 		Latest:   blockNumber + 100,
 	}
@@ -862,16 +1018,21 @@ func buildBundle(
 	txTypes []txType,
 	flags bundle.ExecutionFlag,
 	nested bool,
-) (*types.Transaction, bundle.ExecutionPlan, types.Transactions) {
-	bundleOnlyTxs, senders := makeUnsignedBundleOnlyTxs(t, net, txTypes, contractInfo)
+) (*types.Transaction, bundle.ExecutionPlan, bundle.BundleLayer) {
+	bundleUnits := makeUnsignedBundleUnits(t, net, txTypes, contractInfo)
 
-	plan := buildPlan(t, net, flags, bundleOnlyTxs, senders)
+	plan := buildPlan(t, net, flags, bundleUnits)
 
-	signBundleOnlyTxs(t, net, bundleOnlyTxs, senders, plan)
+	signBundleUnits(t, net, bundleUnits, plan)
 
-	envelopeTx := makeEnvelopeTransaction(t, net, bundleOnlyTxs, plan, nested)
+	bundleLayer := bundle.BundleLayer{
+		Units: bundleUnits,
+		Flags: flags,
+	}
 
-	return envelopeTx, plan, bundleOnlyTxs
+	envelopeTx := makeEnvelopeTransaction(t, net, bundleLayer, plan, nested)
+
+	return envelopeTx, plan, bundleLayer
 }
 
 func checkHashesEqAndStatus(

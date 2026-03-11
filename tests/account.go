@@ -19,6 +19,7 @@ package tests
 import (
 	"crypto/ecdsa"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 )
@@ -36,4 +37,14 @@ func NewAccount() *Account {
 
 func (a *Account) Address() common.Address {
 	return crypto.PubkeyToAddress(a.PrivateKey.PublicKey)
+}
+
+func (a *Account) Into() bundle.Account {
+	return bundle.Account{PrivateKey: a.PrivateKey}
+}
+
+func From(account *bundle.Account) *Account {
+	return &Account{
+		PrivateKey: account.PrivateKey,
+	}
 }

@@ -29,7 +29,7 @@ import (
 // This is the canonical implementation of the bundle execution logic, which
 // defines the semantic of the execution flags.
 func RunBundle(
-	bundle *TransactionBundle,
+	bundle *BundleLayer,
 	runner TransactionRunner,
 ) bool {
 	if bundle.Flags.IsOneOf() {
@@ -61,11 +61,21 @@ type TransactionRunner interface {
 // runAllOfBundle executes all transactions in the bundle and returns true if
 // all transactions are considered successful, false otherwise.
 func runAllOfBundle(
-	bundle *TransactionBundle,
+	bundle *BundleLayer,
 	runner TransactionRunner,
 ) bool {
-	for _, tx := range bundle.Bundle {
-		result := runner.Run(tx)
+	for _, unit := range bundle.Units {
+		var result TransactionResult
+		if tx := unit.AsTransaction(); tx != nil {
+			result = runner.Run(tx.Tx)
+		} else {
+			r := RunBundle(unit.AsBundleLayer(), runner)
+			if r {
+				result = TransactionResultSuccessful
+			} else {
+				result = TransactionResultFailed
+			}
+		}
 		if !isTolerated(result, bundle.Flags) {
 			return false
 		}
@@ -77,11 +87,21 @@ func runAllOfBundle(
 // successful transaction. It returns true if at least one transaction is
 // considered successful, false otherwise.
 func runOneOfBundle(
-	bundle *TransactionBundle,
+	bundle *BundleLayer,
 	runner TransactionRunner,
 ) bool {
-	for _, tx := range bundle.Bundle {
-		result := runner.Run(tx)
+	for _, unit := range bundle.Units {
+		var result TransactionResult
+		if tx := unit.AsTransaction(); tx != nil {
+			result = runner.Run(tx.Tx)
+		} else {
+			r := RunBundle(unit.AsBundleLayer(), runner)
+			if r {
+				result = TransactionResultSuccessful
+			} else {
+				result = TransactionResultFailed
+			}
+		}
 		if isTolerated(result, bundle.Flags) {
 			return true
 		}

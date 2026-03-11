@@ -20,11 +20,27 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
 var ErrBundleGasLimitTooLow = errors.New("gas limit of bundle transaction does not match the sum of the gas limits of the transactions in the bundle")
+
+func belongsAllToExecutionPlan(bundleLayer BundleLayer, planHash common.Hash) error {
+	for _, unit := range bundleLayer.Units {
+		if tx := unit.AsTransaction(); tx != nil {
+			if !BelongsToExecutionPlan(tx.Tx, planHash) {
+				return fmt.Errorf("transaction %s does not belong to execution plan %s", tx.Tx.Hash(), planHash)
+			}
+		} else {
+			if err := belongsAllToExecutionPlan(*unit.AsBundleLayer(), planHash); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
 
 // ValidateTransactionBundle validates a bundle transaction.
 // It checks that the transaction is a valid bundle transaction and that all transactions in the bundle belong to the same execution plan.
@@ -64,11 +80,8 @@ func ValidateTransactionBundle(
 	}
 
 	planHash := plan.Hash()
-	for _, tx := range txBundle.Bundle {
-		// check that all transactions in the bundle belong to the same execution plan
-		if !BelongsToExecutionPlan(tx, planHash) {
-			return nil, nil, fmt.Errorf("transaction %s does not belong to the execution plan", tx.Hash().Hex())
-		}
+	if err := belongsAllToExecutionPlan(txBundle.Layer, planHash); err != nil {
+		return nil, nil, err
 	}
 
 	bundleGas := envelopeTx.Gas()
@@ -91,10 +104,7 @@ func ValidateTransactionBundle(
 	// gas limit of the bundle has to be exactly the aggregated gas of all the
 	// transactions in the bundle or the intrinsic gas of the bundle
 	// transaction, whichever is higher.
-	gasLimit := uint64(0)
-	for _, innerTx := range txBundle.Bundle {
-		gasLimit += innerTx.Gas()
-	}
+	gasLimit := TotalGas(&txBundle.Layer)
 
 	// EIP-7623 part of Prague revision: Floor data gas
 	// see: https://eips.ethereum.org/EIPS/eip-7623
