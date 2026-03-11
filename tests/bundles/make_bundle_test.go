@@ -37,6 +37,7 @@ func makeBundleTransaction(
 	net *tests.IntegrationTestNet,
 	transactions types.Transactions,
 	plan bundle.ExecutionPlan,
+	nested bool,
 ) *types.Transaction {
 	t.Helper()
 
@@ -67,9 +68,20 @@ func makeBundleTransaction(
 	}
 
 	data := bundle.Encode(bundlePayload)
+
+	// If this envelope is nested, meaning it is part of a super/parent bundle,
+	// its gas cost shall include enough intrinsics gas for one extra access list entry
+	// (the bundleOnly marker) because the parent bundle will add the marker
+	// to the access list of the bundle transaction.
+	accessList := []types.AccessTuple{}
+	if nested {
+		accessList = []types.AccessTuple{
+			{Address: bundle.BundleOnly, StorageKeys: []common.Hash{{}}},
+		}
+	}
 	intrGas, err := core.IntrinsicGas(
 		data,
-		nil,   // access list is set in the individual transactions
+		accessList,
 		nil,   // code auth is not used in the bundle transaction
 		false, // bundle transaction is not a contract creation
 		true,
@@ -86,7 +98,7 @@ func makeBundleTransaction(
 	// create the bundle transaction with the same nonce as the payment transaction
 	signer := types.LatestSignerForChainID(net.GetChainId())
 	bundleTx := types.MustSignNewTx(coordinator.PrivateKey, signer,
-		&types.LegacyTx{
+		&types.AccessListTx{
 			Nonce: 0,
 			To:    &bundle.BundleAddress,
 			Gas:   max(gas, intrGas, floorDataGas),
@@ -94,10 +106,17 @@ func makeBundleTransaction(
 		},
 	)
 
-	// Sanity check the bundle before sending it to the mempool, if fails to validate before making
-	// a bundle transaction, it will fail to be included in a block and waiting for payment receipt will timeout
-	_, _, err = bundle.ValidateTransactionBundle(bundleTx, signer)
-	require.NoError(t, err, "failed to validate transaction bundle; %v", err)
+	// If the bundle transaction is nested, it does not pass validation at this point
+	// because its gas already accounts for the presence of the bundleOnly marker,
+	// but the marker is not yet added to the access list.
+	// This is because we need the transaction without the marker to compute the
+	// execution plan of the super/parent bundle.
+	if !nested {
+		// Sanity check the bundle before sending it to the mempool, if fails to validate before making
+		// a bundle transaction, it will fail to be included in a block and waiting for payment receipt will timeout
+		_, _, err = bundle.ValidateTransactionBundle(bundleTx, signer)
+		require.NoError(t, err, "failed to validate transaction bundle; %v", err)
+	}
 
 	return bundleTx
 }
