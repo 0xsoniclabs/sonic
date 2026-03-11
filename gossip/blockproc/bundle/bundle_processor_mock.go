@@ -41,6 +41,58 @@ func (m *MockTransactionRunner) EXPECT() *MockTransactionRunnerMockRecorder {
 	return m.recorder
 }
 
+// CreateInterTxSnapshot mocks base method.
+func (m *MockTransactionRunner) CreateInterTxSnapshot() int {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateInterTxSnapshot")
+	ret0, _ := ret[0].(int)
+	return ret0
+}
+
+// CreateInterTxSnapshot indicates an expected call of CreateInterTxSnapshot.
+func (mr *MockTransactionRunnerMockRecorder) CreateInterTxSnapshot() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateInterTxSnapshot", reflect.TypeOf((*MockTransactionRunner)(nil).CreateInterTxSnapshot))
+}
+
+// CreateTxSnapshot mocks base method.
+func (m *MockTransactionRunner) CreateTxSnapshot() int {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateTxSnapshot")
+	ret0, _ := ret[0].(int)
+	return ret0
+}
+
+// CreateTxSnapshot indicates an expected call of CreateTxSnapshot.
+func (mr *MockTransactionRunnerMockRecorder) CreateTxSnapshot() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateTxSnapshot", reflect.TypeOf((*MockTransactionRunner)(nil).CreateTxSnapshot))
+}
+
+// RevertToInterTxSnapshot mocks base method.
+func (m *MockTransactionRunner) RevertToInterTxSnapshot(id int) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "RevertToInterTxSnapshot", id)
+}
+
+// RevertToInterTxSnapshot indicates an expected call of RevertToInterTxSnapshot.
+func (mr *MockTransactionRunnerMockRecorder) RevertToInterTxSnapshot(id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevertToInterTxSnapshot", reflect.TypeOf((*MockTransactionRunner)(nil).RevertToInterTxSnapshot), id)
+}
+
+// RevertToTxSnapshot mocks base method.
+func (m *MockTransactionRunner) RevertToTxSnapshot(id int) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "RevertToTxSnapshot", id)
+}
+
+// RevertToTxSnapshot indicates an expected call of RevertToTxSnapshot.
+func (mr *MockTransactionRunnerMockRecorder) RevertToTxSnapshot(id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevertToTxSnapshot", reflect.TypeOf((*MockTransactionRunner)(nil).RevertToTxSnapshot), id)
+}
+
 // Run mocks base method.
 func (m *MockTransactionRunner) Run(tx *types.Transaction) core_types.TransactionResult {
 	m.ctrl.T.Helper()

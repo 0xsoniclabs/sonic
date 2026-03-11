@@ -179,13 +179,15 @@ func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 	signer := types.LatestSignerForChainID(chainId)
 
 	plan := ExecutionPlan{
-		Steps:    make([]ExecutionStep, len(b.steps)),
-		Flags:    flags,
+		Layer: ExecutionLayer{
+			Units: make([]ExecutionUnit, len(b.steps)),
+			Flags: flags,
+		},
 		Earliest: earliest,
 		Latest:   latest,
 	}
 	for i, step := range b.steps {
-		plan.Steps[i] = ExecutionStep{
+		plan.Layer.Units[i] = &ExecutionStep{
 			From: crypto.PubkeyToAddress(step.key.PublicKey),
 			Hash: signer.Hash(types.NewTx(step.tx)),
 		}
@@ -207,16 +209,18 @@ func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 	}
 
 	// Sign the modified TxData instances.
-	txs := make([]*types.Transaction, len(b.steps))
+	txs := make([]BundleUnit, len(b.steps))
 	for i, step := range b.steps {
-		txs[i] = types.MustSignNewTx(step.key, signer, step.tx)
+		txs[i] = &BundleTransaction{Tx: types.MustSignNewTx(step.key, signer, step.tx)}
 	}
 
 	return &TransactionBundle{
-		Transactions: txs,
-		Flags:        flags,
-		Earliest:     earliest,
-		Latest:       latest,
+		Layer: BundleLayer{
+			Units: txs,
+			Flags: flags,
+		},
+		Earliest: earliest,
+		Latest:   latest,
 	}, plan
 }
 
@@ -292,15 +296,17 @@ func newEnvelope(
 	}
 
 	txGasSum := uint64(0)
-	for _, tx := range bundle.Transactions {
-		txGasSum += tx.Gas()
+	for _, tx := range bundle.Layer.Units {
+		if tx := tx.AsTransaction(); tx != nil {
+			txGasSum += tx.Tx.Gas()
+		}
 	}
 
 	gasLimit := max(intrinsic, floorDataGas, txGasSum)
 
 	chainId := big.NewInt(1)
-	if len(bundle.Transactions) > 0 {
-		chainId = bundle.Transactions[0].ChainId()
+	if len(bundle.Layer.Units) > 0 {
+		// chainId = bundle.Layer.Units[0].ChainId()
 	}
 
 	signer := types.LatestSignerForChainID(chainId)

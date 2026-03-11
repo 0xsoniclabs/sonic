@@ -378,17 +378,13 @@ func (r *transactionRunner) runTransactionBundle(
 
 	// Run the bundle and collect the processed transactions.
 	runner := bundleTransactionRunner{ctxt: ctxt, legacyTxOffset: legacyTxOffset, trueTxOffset: trueTxOffset}
-	bundleCheckpoint := ctxt.statedb.InterTxSnapshot()
-	if success := bundle.RunBundle(txBundle, &runner); !success {
-		ctxt.statedb.RevertToInterTxSnapshot(bundleCheckpoint)
-		return []ProcessedTransaction{}, processedBundle, core_types.TransactionResultFailed
-	}
+	result := bundle.RunBundle(&txBundle.Layer, &runner)
 	for _, processedTx := range runner.processedTransactions {
 		if processedTx.Receipt != nil {
 			processedBundle.Count++
 		}
 	}
-	return runner.processedTransactions, processedBundle, core_types.TransactionResultSuccessful
+	return runner.processedTransactions, processedBundle, result
 }
 
 // bundleTransactionRunner is an adapter implementing the bundle.TransactionRunner
@@ -420,6 +416,22 @@ func (b *bundleTransactionRunner) Run(tx *types.Transaction) core_types.Transact
 	} else {
 		return core_types.TransactionResultSuccessful
 	}
+}
+
+func (b *bundleTransactionRunner) CreateInterTxSnapshot() int {
+	return b.ctxt.statedb.InterTxSnapshot()
+}
+
+func (b *bundleTransactionRunner) RevertToInterTxSnapshot(id int) {
+	b.ctxt.statedb.RevertToInterTxSnapshot(id)
+}
+
+func (b *bundleTransactionRunner) CreateTxSnapshot() int {
+	return len(b.processedTransactions)
+}
+
+func (b *bundleTransactionRunner) RevertToTxSnapshot(id int) {
+	b.processedTransactions = b.processedTransactions[:id]
 }
 
 // _evm is an interface to an EVM instance that can be used to run a single

@@ -18,6 +18,7 @@ package bundle
 
 import (
 	"bytes"
+	"crypto/ecdsa"
 	"fmt"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -61,7 +62,7 @@ func ExtractExecutionPlan(tx *types.Transaction) (*ExecutionPlan, error) {
 		return nil, err
 	}
 	signer := getSignerForBundle(tx, bundle)
-	plan, err := bundle.extractExecutionPlan(signer)
+	plan, err := bundle.ExtractExecutionPlan(signer)
 	if err != nil {
 		return nil, err
 	}
@@ -131,6 +132,12 @@ func (e *ExecutionFlag) setFlag(flag ExecutionFlag, value bool) {
 	}
 }
 
+// ExecutionUnit represents either a single execution step or a nested execution layer.
+type ExecutionUnit interface {
+	asExecutionStep() *ExecutionStep
+	asExecutionLayer() *ExecutionLayer
+}
+
 // ExecutionStep represents a single step in the execution plan,
 // which corresponds to a transaction to be executed as part of the bundle.
 type ExecutionStep struct {
@@ -141,14 +148,34 @@ type ExecutionStep struct {
 	Hash common.Hash `json:"hash"`
 }
 
+func (es *ExecutionStep) asExecutionStep() *ExecutionStep {
+	return es
+}
+
+func (es *ExecutionStep) asExecutionLayer() *ExecutionLayer {
+	return nil
+}
+
+type ExecutionLayer struct {
+	Units []ExecutionUnit `json:"units"` // Steps to be executed in the bundle, in the order of execution
+	Flags ExecutionFlag   `json:"flags"` // Execution flags that specify the behavior of the bundle execution
+}
+
+func (el *ExecutionLayer) asExecutionStep() *ExecutionStep {
+	return nil
+}
+
+func (el *ExecutionLayer) asExecutionLayer() *ExecutionLayer {
+	return el
+}
+
 // ExecutionPlan represents the plan for executing a bundle of transactions,
 // to which every participant in the bundle shall agree on.
 // The execution plan includes the list of steps to be executed, in the order of execution
 type ExecutionPlan struct {
-	Steps    []ExecutionStep `json:"steps"`    // Steps to be executed in the bundle, in the order of execution
-	Flags    ExecutionFlag   `json:"flags"`    // Execution flags that specify the behavior of the bundle execution
-	Earliest uint64          `json:"earliest"` // Earliest block this bundle can be included in.
-	Latest   uint64          `json:"latest"`   // Latest block this bundle can be included in.
+	Layer    ExecutionLayer `json:"layer"`    // Steps to be executed in the bundle, in the order of execution
+	Earliest uint64         `json:"earliest"` // Earliest block this bundle can be included in.
+	Latest   uint64         `json:"latest"`   // Latest block this bundle can be included in.
 }
 
 // IsInRange checks if the given block number is within the range of the
@@ -165,6 +192,111 @@ func (e *ExecutionPlan) Hash() common.Hash {
 	hasher := crypto.NewKeccakState()
 	_ = rlp.Encode(hasher, e)
 	return common.BytesToHash(hasher.Sum(nil))
+
+}
+
+type BundleUnit interface {
+	AsTransaction() *BundleTransaction
+	AsBundleLayer() *BundleLayer
+	SignedToExecutionUnit(signer types.Signer) (ExecutionUnit, error)
+	UnsignedToExecutionUnit(signer types.Signer) (ExecutionUnit, error)
+}
+
+type BundleTransaction struct {
+	Tx     *types.Transaction
+	Sender *Account `rlp:"-"` // If Tx is not signed yet, Sender can be used to derive the sender address for the execution plan. The Sender is not included in the RLP encoding because at that point Tx should be signed, and the sender can be derived from the signature of the transaction.
+}
+
+type Account struct {
+	PrivateKey *ecdsa.PrivateKey
+}
+
+func NewAccount() *Account {
+	key, _ := crypto.GenerateKey()
+	return &Account{PrivateKey: key}
+}
+
+func (a *Account) Address() common.Address {
+	return crypto.PubkeyToAddress(a.PrivateKey.PublicKey)
+}
+
+func (bt *BundleTransaction) AsTransaction() *BundleTransaction {
+	return bt
+}
+
+func (bt *BundleTransaction) AsBundleLayer() *BundleLayer {
+	return nil
+}
+
+func (bt *BundleTransaction) SignedToExecutionUnit(signer types.Signer) (ExecutionUnit, error) {
+	sender, err := signer.Sender(bt.Tx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to derive sender: %v", err)
+	}
+
+	// hash the transaction after removing the bundle-only mark from the access list
+	tx, err := removeBundleOnlyMark(bt.Tx)
+	if err != nil {
+		return nil, err
+	}
+	hash := signer.Hash(tx)
+
+	return &ExecutionStep{From: sender, Hash: hash}, nil
+}
+
+func (bt *BundleTransaction) UnsignedToExecutionUnit(signer types.Signer) (ExecutionUnit, error) {
+	hash := signer.Hash(bt.Tx)
+
+	return &ExecutionStep{From: bt.Sender.Address(), Hash: hash}, nil
+}
+
+type BundleLayer struct {
+	Units []BundleUnit
+	Flags ExecutionFlag
+}
+
+func (bl *BundleLayer) AsTransaction() *BundleTransaction {
+	return nil
+}
+
+func (bl *BundleLayer) AsBundleLayer() *BundleLayer {
+	return bl
+}
+
+func (bl *BundleLayer) SignedToExecutionUnit(signer types.Signer) (ExecutionUnit, error) {
+	units := make([]ExecutionUnit, len(bl.Units))
+	for i, u := range bl.Units {
+		unit, err := u.SignedToExecutionUnit(signer)
+		if err != nil {
+			return nil, err
+		}
+		units[i] = unit
+	}
+	return &ExecutionLayer{Units: units, Flags: bl.Flags}, nil
+}
+
+func (bl *BundleLayer) UnsignedToExecutionUnit(signer types.Signer) (ExecutionUnit, error) {
+	units := make([]ExecutionUnit, len(bl.Units))
+	for i, u := range bl.Units {
+		unit, err := u.UnsignedToExecutionUnit(signer)
+		if err != nil {
+			return nil, err
+		}
+		units[i] = unit
+	}
+	return &ExecutionLayer{Units: units, Flags: bl.Flags}, nil
+}
+
+func TotalGas(layer *BundleLayer) uint64 {
+	gas := uint64(0)
+	for _, unit := range layer.Units {
+		if t := unit.AsTransaction(); t != nil {
+			gas += t.Tx.Gas()
+		} else {
+			gas += TotalGas(unit.AsBundleLayer())
+		}
+	}
+	return gas
 }
 
 // TransactionBundle represents a bundle of transactions, which are to be executed
@@ -179,51 +311,34 @@ func (e *ExecutionPlan) Hash() common.Hash {
 // consuming the payment and nonce, and preventing this transaction from being
 // included in future blocks.
 type TransactionBundle struct {
-	Transactions types.Transactions
-	Flags        ExecutionFlag
-	Earliest     uint64 // Earliest block this bundle can be included in.
-	Latest       uint64 // Latest block this bundle can be included in.
+	Layer    BundleLayer
+	Earliest uint64 // Earliest block this bundle can be included in.
+	Latest   uint64 // Latest block this bundle can be included in.
 }
 
-func (tb *TransactionBundle) Encode() []byte {
-	return encodeInternal(bundleEncodingVersion, tb)
+func (bl *BundleLayer) toExecutionLayer(signer types.Signer) (ExecutionLayer, error) {
+	units := make([]ExecutionUnit, len(bl.Units))
+	for i, u := range bl.Units {
+		unit, err := u.SignedToExecutionUnit(signer)
+		if err != nil {
+			return ExecutionLayer{}, err
+		}
+		units[i] = unit
+	}
+	return ExecutionLayer{Units: units, Flags: bl.Flags}, nil
 }
 
 // --- internal utilities ---
 
-// extractExecutionPlan extracts the execution plan from the bundle, deriving
+// ExtractExecutionPlan extracts the execution plan from the bundle, deriving
 // the sender of each transaction using the provided signer.
-func (tb *TransactionBundle) extractExecutionPlan(signer types.Signer) (ExecutionPlan, error) {
-
-	txs := make([]ExecutionStep, 0, len(tb.Transactions))
-	for _, tx := range tb.Transactions {
-
-		// derive the sender before stripping the bundle-only mark from the access list
-		// as this operation erases the original signature
-		sender, err := signer.Sender(tx)
-		if err != nil {
-			return ExecutionPlan{}, fmt.Errorf("failed to derive sender: %v", err)
-		}
-
-		// hash the transaction after removing the bundle-only mark from the access list
-		tx, err := removeBundleOnlyMark(tx)
-		if err != nil {
-			return ExecutionPlan{}, err
-		}
-		hash := signer.Hash(tx)
-
-		txs = append(txs, ExecutionStep{
-			From: sender,
-			Hash: hash,
-		})
+func (tb *TransactionBundle) ExtractExecutionPlan(signer types.Signer) (ExecutionPlan, error) {
+	layer, err := tb.Layer.toExecutionLayer(signer)
+	if err != nil {
+		return ExecutionPlan{}, err
 	}
 
-	return ExecutionPlan{
-		Steps:    txs,
-		Flags:    tb.Flags,
-		Earliest: tb.Earliest,
-		Latest:   tb.Latest,
-	}, nil
+	return ExecutionPlan{Layer: layer, Earliest: tb.Earliest, Latest: tb.Latest}, nil
 }
 
 // removeBundleOnlyMark is an utility function that removes the bundle-only mark
@@ -282,20 +397,19 @@ const (
 	bundleEncodingVersion byte = 1
 )
 
-func encodeInternal(
-	version byte,
-	bundle *TransactionBundle,
-) []byte {
+func (tb *TransactionBundle) Encode() []byte {
+	return encodeInternal(bundleEncodingVersion, tb)
+}
 
+func encodeInternal(version byte, bundle *TransactionBundle) []byte {
 	buffer := bytes.Buffer{}
 	// encode into a buffer can only fail due to OOM
 	// since we are encoding a struct with fixed fields, we can ignore the error
 	_ = rlp.Encode(&buffer, version)
-	_ = rlp.Encode(&buffer, []any{
-		bundle.Transactions,
-		bundle.Flags,
-		bundle.Earliest,
-		bundle.Latest,
+	_ = rlp.Encode(&buffer, TransactionBundleRlp{
+		Layer:    BundleLayerRlp{Units: wrapAll(bundle.Layer.Units), Flags: bundle.Layer.Flags},
+		Earliest: bundle.Earliest,
+		Latest:   bundle.Latest,
 	})
 	return buffer.Bytes()
 }
@@ -315,19 +429,13 @@ func decode(data []byte) (TransactionBundle, error) {
 		return bundle, fmt.Errorf("unsupported bundle version: %d", version)
 	}
 
-	payload := struct {
-		Bundle   types.Transactions
-		Flags    ExecutionFlag
-		Earliest uint64
-		Latest   uint64
-	}{}
-	if err := rlp.DecodeBytes(rest, &payload); err != nil {
+	bundleRlp := TransactionBundleRlp{}
+	if err := rlp.DecodeBytes(rest, &bundleRlp); err != nil {
 		return bundle, fmt.Errorf("failed to decode transaction bundle: %v", err)
 	}
-	bundle.Transactions = payload.Bundle
-	bundle.Flags = payload.Flags
-	bundle.Earliest = payload.Earliest
-	bundle.Latest = payload.Latest
+	bundle.Layer = BundleLayer{Units: unwrapAll(bundleRlp.Layer.Units), Flags: bundleRlp.Layer.Flags}
+	bundle.Earliest = bundleRlp.Earliest
+	bundle.Latest = bundleRlp.Latest
 	return bundle, nil
 }
 
@@ -338,12 +446,14 @@ func getSignerForBundle(
 
 	chainId := envelope.ChainId()
 	if envelope.Type() == types.LegacyTxType {
-		for _, tx := range bundle.Transactions {
-			if tx.Type() != types.LegacyTxType {
-				cur := tx.ChainId()
-				if cur != nil && cur.Sign() != 0 {
-					chainId = cur
-					break
+		for _, unit := range bundle.Layer.Units {
+			if tx := unit.AsTransaction(); tx != nil {
+				if tx.Tx.Type() != types.LegacyTxType {
+					cur := tx.Tx.ChainId()
+					if cur != nil && cur.Sign() != 0 {
+						chainId = cur
+						break
+					}
 				}
 			}
 		}

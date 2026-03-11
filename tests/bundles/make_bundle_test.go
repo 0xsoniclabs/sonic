@@ -35,7 +35,7 @@ import (
 func makeEnvelopeTransaction(
 	t *testing.T,
 	session tests.IntegrationTestNetSession,
-	transactions types.Transactions,
+	layer bundle.BundleLayer,
 	plan bundle.ExecutionPlan,
 	nested bool,
 ) *types.Transaction {
@@ -48,25 +48,15 @@ func makeEnvelopeTransaction(
 	// Create a dedicated coordinator for every bundle.
 	coordinator := tests.NewAccount()
 
-	cost := big.NewInt(0)
-	for _, tx := range transactions {
-		txCost := new(big.Int).Mul(new(big.Int).SetUint64(tx.Gas()), tx.GasPrice())
-		cost = new(big.Int).Add(cost, txCost)
-	}
-
-	var gas uint64
-	for _, tx := range transactions {
-		gas += tx.Gas()
-	}
-
 	bundlePayload := bundle.TransactionBundle{
-		Transactions: transactions,
-		Flags:        plan.Flags,
-		Earliest:     plan.Earliest,
-		Latest:       plan.Latest,
+		Layer:    layer,
+		Earliest: plan.Earliest,
+		Latest:   plan.Latest,
 	}
 
 	data := bundlePayload.Encode()
+
+	gas := bundle.TotalGas(&layer)
 
 	// If this envelope is nested, meaning it is part of a super/parent bundle,
 	// its gas cost shall include enough intrinsics gas for one extra access list entry

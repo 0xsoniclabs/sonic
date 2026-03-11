@@ -163,13 +163,15 @@ func (a *PublicBundleAPI) PrepareBundle(
 	signer := types.LatestSignerForChainID(chainID)
 	plan := bundle.ExecutionPlan{
 		// Current api do not expose flags to users, this can be introduced in the future if needed.
-		Flags:    bundle.ExecutionFlag(0),
-		Steps:    make([]bundle.ExecutionStep, len(transactions)),
+		Layer: bundle.ExecutionLayer{
+			Flags: bundle.ExecutionFlag(0),
+			Units: make([]bundle.ExecutionUnit, len(transactions)),
+		},
 		Earliest: uint64(args.EarliestBlock),
 		Latest:   uint64(args.LatestBlock),
 	}
 	for i, tx := range transactions {
-		plan.Steps[i] = bundle.ExecutionStep{
+		plan.Layer.Units[i] = &bundle.ExecutionStep{
 			From: from[i],
 			Hash: signer.Hash(tx),
 		}
@@ -219,10 +221,12 @@ func (a *PublicBundleAPI) SubmitBundle(
 ) (common.Hash, error) {
 
 	txBundle := bundle.TransactionBundle{
-		Transactions: make(types.Transactions, len(args.SignedTransactions)),
-		Flags:        args.ExecutionPlan.Flags,
-		Earliest:     args.ExecutionPlan.Earliest,
-		Latest:       args.ExecutionPlan.Latest,
+		Layer: bundle.BundleLayer{
+			Units: make([]bundle.BundleUnit, len(args.SignedTransactions)),
+			Flags: args.ExecutionPlan.Layer.Flags,
+		},
+		Earliest: args.ExecutionPlan.Earliest,
+		Latest:   args.ExecutionPlan.Latest,
 	}
 
 	// 1) Decode bundled transactions and compute total gas requirement
@@ -234,7 +238,7 @@ func (a *PublicBundleAPI) SubmitBundle(
 			return common.Hash{}, fmt.Errorf("failed to decode bundled transaction %d: %w", i, err)
 		}
 
-		txBundle.Transactions[i] = tx
+		txBundle.Layer.Units[i] = &bundle.BundleTransaction{Tx: tx}
 		totalGas += tx.Gas()
 	}
 

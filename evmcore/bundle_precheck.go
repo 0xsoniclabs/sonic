@@ -159,7 +159,7 @@ func checkForNonceConflicts(
 ) BundleState {
 	// We start by collecting the lowest nonces referenced for each sender in
 	// the bundle.
-	lowest, err := getLowestReferencedNonces(txBundle, signer)
+	lowest, err := getLowestReferencedNonces(&txBundle.Layer, signer)
 	if err != nil {
 		// If we fail to derive the lowest referenced nonces, it means that the
 		// bundle is malformed (e.g., contains invalid transactions) and we can
@@ -181,7 +181,7 @@ func checkForNonceConflicts(
 	}
 
 	// If this execution failed, the bundle is permanently blocked.
-	if success := bundle.RunBundle(txBundle, runner); !success {
+	if result := bundle.RunBundle(&txBundle.Layer, runner); result != core_types.TransactionResultSuccessful {
 		return BundleStatePermanentlyBlocked
 	}
 
@@ -199,32 +199,45 @@ func checkForNonceConflicts(
 // in the bundle. If the bundle is malformed (e.g., contains invalid signatures)
 // an error is returned.
 func getLowestReferencedNonces(
-	txBundle *bundle.TransactionBundle,
+	txBundle *bundle.BundleLayer,
 	signer types.Signer,
 ) (map[common.Address]uint64, error) {
 	res := make(map[common.Address]uint64)
-	for _, tx := range txBundle.Transactions {
-		if bundle.IsEnvelope(tx) {
-			bundle, err := bundle.OpenEnvelope(tx)
-			if err != nil {
-				return nil, fmt.Errorf("invalid nested bundle: %w", err)
+	for _, unit := range txBundle.Units {
+		if tx := unit.AsTransaction(); tx != nil {
+			if bundle.IsEnvelope(tx.Tx) {
+				bundle, err := bundle.OpenEnvelope(tx.Tx)
+				if err != nil {
+					return nil, fmt.Errorf("invalid nested bundle: %w", err)
+				}
+				innerRes, err := getLowestReferencedNonces(&bundle.Layer, signer)
+				if err != nil {
+					return nil, err
+				}
+				for addr, nonce := range innerRes {
+					if existingNonce, ok := res[addr]; !ok || nonce < existingNonce {
+						res[addr] = nonce
+					}
+				}
+			} else {
+				sender, err := types.Sender(signer, tx.Tx)
+				if err != nil {
+					return nil, fmt.Errorf("failed to derive sender: %w", err)
+				}
+				if nonce, ok := res[sender]; !ok || tx.Tx.Nonce() < nonce {
+					res[sender] = tx.Tx.Nonce()
+				}
 			}
-			innerRes, err := getLowestReferencedNonces(bundle, signer)
+		} else {
+			innerRes, err := getLowestReferencedNonces(unit.AsBundleLayer(), signer)
 			if err != nil {
 				return nil, err
 			}
+			// TODO pass map into function instead
 			for addr, nonce := range innerRes {
 				if existingNonce, ok := res[addr]; !ok || nonce < existingNonce {
 					res[addr] = nonce
 				}
-			}
-		} else {
-			sender, err := types.Sender(signer, tx)
-			if err != nil {
-				return nil, fmt.Errorf("failed to derive sender: %w", err)
-			}
-			if nonce, ok := res[sender]; !ok || tx.Nonce() < nonce {
-				res[sender] = tx.Nonce()
 			}
 		}
 	}
@@ -254,7 +267,7 @@ func (r *dryRunner) Run(tx *types.Transaction) core_types.TransactionResult {
 		}
 		acceptedBackup := maps.Clone(r.acceptedSender)
 		backup := r.nonceTracker.backup()
-		if bundle.RunBundle(txBundle, r) {
+		if bundle.RunBundle(&txBundle.Layer, r) == core_types.TransactionResultSuccessful {
 			return core_types.TransactionResultSuccessful
 		}
 		r.nonceTracker.restore(backup)
@@ -280,6 +293,34 @@ func (r *dryRunner) Run(tx *types.Transaction) core_types.TransactionResult {
 	r.nonceTracker.consumeNonce(sender)
 	r.acceptedSender[sender] = struct{}{}
 	return core_types.TransactionResultSuccessful
+}
+
+func (r *dryRunner) CreateInterTxSnapshot() int {
+	// This function is required by the TransactionRunner interface but is not
+	// actually used by the dryRunner, since it does not maintain any state that
+	// needs to be snapshotted. We return a dummy value here to satisfy the
+	// interface.
+	return 0
+}
+
+func (r *dryRunner) RevertToInterTxSnapshot(id int) {
+	// This function is required by the TransactionRunner interface but is not
+	// actually used by the dryRunner, since it does not maintain any state that
+	// needs to be reverted. We do nothing here to satisfy the interface.
+}
+
+func (r *dryRunner) CreateTxSnapshot() int {
+	// This function is required by the TransactionRunner interface but is not
+	// actually used by the dryRunner, since it does not maintain any state that
+	// needs to be snapshotted. We return a dummy value here to satisfy the
+	// interface.
+	return 0
+}
+
+func (r *dryRunner) RevertToTxSnapshot(id int) {
+	// This function is required by the TransactionRunner interface but is not
+	// actually used by the dryRunner, since it does not maintain any state that
+	// needs to be reverted. We do nothing here to satisfy the interface.
 }
 
 // nonceTracker is keeping track of consumed nonces during the execution of a
