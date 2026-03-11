@@ -36,7 +36,13 @@ For optimal compatibility and stability, it is recommended to use the most recen
 
 ### Removed
 
-## [2.1.5] - TBD
+## [2.1.6] - 12 March 2026
+
+### Changed
+- Geth dependency updated to v1.16.9.
+- Integrated security patches for CVE-2026-26314 and CVE-2026-26315.
+
+## [2.1.5] - 5 Feb 2026
 
 ### Added
 
