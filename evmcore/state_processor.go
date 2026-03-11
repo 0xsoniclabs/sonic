@@ -382,13 +382,11 @@ func (r *transactionRunner) runTransactionBundle(
 
 	// Run the bundle and collect the processed transactions.
 	runner := bundleTransactionRunner{ctxt: ctxt, txOffset: txIndex}
-	preTxIndex := txIndex
 	bundleCheckpoint := ctxt.statedb.InterTxSnapshot()
 	if success := bundle.RunBundle(txBundle, &runner); !success {
 		if err := ctxt.statedb.RevertToInterTxSnapshot(bundleCheckpoint); err != nil {
 			log.Error("Failed to revert to checkpoint", "err", err)
 		}
-		runner.txOffset = preTxIndex
 		return []ProcessedTransaction{}, processedBundle, StatusFailed
 	}
 	for _, processedTx := range runner.processedTransactions {
