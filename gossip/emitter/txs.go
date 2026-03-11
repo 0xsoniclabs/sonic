@@ -236,12 +236,12 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 // isValidBundleTx checks whether the given transaction is a valid bundle that
 // could be emitted by this emitter.
 func (em *Emitter) isValidBundleTx(tx *types.Transaction) bool {
-	return em.isValidBundleTxInternal(tx, evmcore.GetBundleState)
+	return em.isRunnableBundleTxInternal(tx, evmcore.GetBundleState)
 }
 
-func (em *Emitter) isValidBundleTxInternal(
+func (em *Emitter) isRunnableBundleTxInternal(
 	tx *types.Transaction,
-	getBundleState func(evmcore.ChainState, *types.Transaction) evmcore.BundleState,
+	getBundleState func(evmcore.ChainState, *types.Transaction) (evmcore.BundleState, error),
 ) bool {
 	// Ignore if bundled transactions are not enabled.
 	if !em.world.GetRules().Upgrades.TransactionBundles {
@@ -273,7 +273,10 @@ func (em *Emitter) isValidBundleTxInternal(
 
 	// Skip bundles that are not runnable in the current state.
 	adapter := &precheckChainStateAdapter{external: em.world}
-	bundleState := getBundleState(adapter, tx)
+	bundleState, err := getBundleState(adapter, tx)
+	if err != nil {
+		return false
+	}
 	return bundleState == evmcore.BundleStateRunnable
 }
 

@@ -17,6 +17,7 @@
 package evmcore
 
 import (
+	"errors"
 	"fmt"
 	"maps"
 	"math"
@@ -41,7 +42,7 @@ import (
 //   - BundleStateTemporaryBlocked: The bundle is not currently executable due to
 //     temporary conditions (e.g., it is too early), but it may become
 //     executable in the future as the blockchain progresses.
-//   - BundleStatePermanentlyBlocked: The bundle is not executable and will never
+//   - BundleStateNonExecutable: The bundle is not executable and will never
 //     be executable in the future due to permanent conditions (e.g., a
 //     transaction in the bundle uses an already consumed nonce).
 type BundleState int
@@ -54,9 +55,9 @@ const (
 	// executable due to temporary conditions, but it may become executable in
 	// the future as the blockchain progresses.
 	BundleStateTemporaryBlocked
-	// BundleStatePermanentlyBlocked indicates that the bundle is not executable
+	// BundleStateNonExecutable indicates that the bundle is not executable
 	// and will never be executable in the future due to permanent conditions.
-	BundleStatePermanentlyBlocked
+	BundleStateNonExecutable
 )
 
 // GetBundleState determines the state of the bundle based on the current state
@@ -64,7 +65,7 @@ const (
 func GetBundleState(
 	chain ChainState,
 	envelop *types.Transaction,
-) BundleState {
+) (BundleState, error) {
 	return getBundleState(chain, envelop, trialRunBundle)
 }
 
@@ -74,21 +75,21 @@ func getBundleState(
 	chain ChainState,
 	envelop *types.Transaction,
 	trialRunner func(*types.Transaction, ChainState, state.StateDB) bool,
-) BundleState {
+) (BundleState, error) {
 
 	// Verify that the bundle is valid.
 	bundle, _, err := bundle.ValidateTransactionBundle(envelop)
 	if err != nil {
-		return BundleStatePermanentlyBlocked
+		return BundleStateNonExecutable, errors.Join(ErrBundleTransactionInvalid, err)
 	}
 
 	// Quickest filter: check if the bundle is in the valid block range.
 	currentBlock := chain.GetLatestHeader().Number.Uint64()
 	if bundle.Latest < currentBlock {
-		return BundleStatePermanentlyBlocked
+		return BundleStateNonExecutable, ErrBundleLatestPassed
 	}
 	if bundle.Earliest > currentBlock {
-		return BundleStateTemporaryBlocked
+		return BundleStateTemporaryBlocked, nil
 	}
 
 	// Next, check whether there are any nonce conflicts in the execution of
@@ -97,9 +98,13 @@ func getBundleState(
 	chainId := big.NewInt(int64(chain.GetCurrentNetworkRules().NetworkID))
 	signer := types.LatestSignerForChainID(chainId)
 	stateDb := chain.StateDB()
-	state := checkForNonceConflicts(bundle, signer, stateDb)
+	state, err := checkForNonceConflicts(bundle, signer, stateDb)
+	if err != nil {
+		return BundleStateNonExecutable,
+			fmt.Errorf("failed to check for nonce conflicts: %w", err)
+	}
 	if state != BundleStateRunnable {
-		return state
+		return state, nil
 	}
 
 	// Trial-run the bundle to check whether it can succeed or not. This is the
@@ -107,7 +112,7 @@ func getBundleState(
 	// checks have passed. If we reach this point, nonces are aligned, so if it
 	// fails, it means that there is something else wrong with the bundle (e.g.,
 	// a missing pre-condition) that will never be resolved, and we can consider
-	// the bundle as permanently blocked.
+	// the bundle as non-executable.
 
 	// Make sure to revert all changes to enable re-using the same StateDB for
 	// multiple calls to GetBundleState without having to create a new StateDB.
@@ -119,9 +124,10 @@ func getBundleState(
 	}()
 
 	if success := trialRunner(envelop, chain, stateDb); !success {
-		return BundleStatePermanentlyBlocked
+		return BundleStateNonExecutable,
+			fmt.Errorf("bundle trial-run failed. Revise transactions in the plan")
 	}
-	return BundleStateRunnable
+	return BundleStateRunnable, nil
 }
 
 type ChainState interface {
@@ -148,7 +154,7 @@ type NonceSource interface {
 }
 
 // checkForNonceConflicts checks whether there are any nonce conflicts in the
-// execution of the bundle. It returns BundleStatePermanentlyBlocked if there
+// execution of the bundle. It returns BundleStateNonExecutable if there
 // is a nonce conflict that will never be resolved, BundleStateTemporaryBlocked
 // if there is a nonce conflict that may be resolved in the future, and
 // BundleStateRunnable if there are no nonce conflicts right now.
@@ -156,15 +162,16 @@ func checkForNonceConflicts(
 	txBundle *bundle.TransactionBundle,
 	signer types.Signer,
 	nonceSource NonceSource,
-) BundleState {
+) (BundleState, error) {
 	// We start by collecting the lowest nonces referenced for each sender in
 	// the bundle.
 	lowest, err := getLowestReferencedNonces(txBundle, signer)
 	if err != nil {
 		// If we fail to derive the lowest referenced nonces, it means that the
 		// bundle is malformed (e.g., contains invalid transactions) and we can
-		// consider it as permanently blocked.
-		return BundleStatePermanentlyBlocked
+		// consider it as non-executable.
+		return BundleStateNonExecutable,
+			fmt.Errorf("could not get lowest nonce for all accounts: %w", err)
 	}
 
 	// We correct the lowest nonces to be at least as high as the current nonces
@@ -180,19 +187,20 @@ func checkForNonceConflicts(
 		acceptedSender: make(map[common.Address]struct{}),
 	}
 
-	// If this execution failed, the bundle is permanently blocked.
+	// If this execution failed, the bundle is non-executable.
 	if success := bundle.RunBundle(txBundle, runner); !success {
-		return BundleStatePermanentlyBlocked
+		return BundleStateNonExecutable,
+			fmt.Errorf("bundle nonce check execution failed")
 	}
 
 	// If it succeeded, it depends on whether there is a gap between the lowest
 	// and the current nonces for any sender of an accepted transaction.
 	for sender := range runner.acceptedSender {
 		if nonceSource.GetNonce(sender) < lowest[sender] {
-			return BundleStateTemporaryBlocked
+			return BundleStateTemporaryBlocked, nil
 		}
 	}
-	return BundleStateRunnable
+	return BundleStateRunnable, nil
 }
 
 // getLowestReferencedNonces returns the lowest nonce referenced for each sender

@@ -85,13 +85,16 @@ func (s *BundleIntegrationImplementation) isPending(tx *types.Transaction) bool 
 		return false
 	}
 
-	// Remove permanently blocked bundles.
+	// Remove bundles that cannot be executed.
 	chain := preCheckChainAdapter{
 		chainState: s.chain,
 		stateDB:    s.state,
 	}
-	bundleState := GetBundleState(&chain, tx)
-	return bundleState != BundleStatePermanentlyBlocked
+	bundleState, err := GetBundleState(&chain, tx)
+	if err != nil {
+		return false
+	}
+	return bundleState != BundleStateNonExecutable
 }
 
 type preCheckChainAdapter struct {
