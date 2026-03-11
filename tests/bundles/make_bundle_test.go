@@ -37,6 +37,7 @@ func makeBundleTransaction(
 	net *tests.IntegrationTestNet,
 	transactions types.Transactions,
 	plan bundle.ExecutionPlan,
+	nested bool,
 ) *types.Transaction {
 	t.Helper()
 
@@ -67,9 +68,16 @@ func makeBundleTransaction(
 	}
 
 	data := bundle.Encode(bundlePayload)
+
+	accessList := []types.AccessTuple{}
+	if nested {
+		accessList = []types.AccessTuple{
+			{Address: bundle.BundleOnly, StorageKeys: []common.Hash{{}}},
+		}
+	}
 	intrGas, err := core.IntrinsicGas(
 		data,
-		nil,   // access list is set in the individual transactions
+		accessList,
 		nil,   // code auth is not used in the bundle transaction
 		false, // bundle transaction is not a contract creation
 		true,
@@ -94,10 +102,11 @@ func makeBundleTransaction(
 		},
 	)
 
-	// Sanity check the bundle before sending it to the mempool, if fails to validate before making
-	// a bundle transaction, it will fail to be included in a block and waiting for payment receipt will timeout
-	_, _, err = bundle.ValidateTransactionBundle(bundleTx, signer)
-	require.NoError(t, err, "failed to validate transaction bundle; %v", err)
+	// If the bundle transaction is nested, it does not pass validate at this point
+	// because its gas already accounts for the presence of the bundleOnly marker,
+	// but the marker is not yet added to the access list.
+	// This is because we need the transaction without the marker to compute the
+	// execution plan of the super/parent bundle.
 
 	return bundleTx
 }

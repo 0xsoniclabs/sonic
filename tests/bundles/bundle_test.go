@@ -424,7 +424,7 @@ func checkCase(t *testing.T, net *tests.IntegrationTestNet, client *tests.Pooled
 
 		txs, plan, counterAddress := makeSignedBundleOnlyTxsAndPlan(t, net, client, c.submittedTxTypes, nil, flags)
 
-		bundleTx := makeBundleTransaction(t, net, txs, plan)
+		bundleTx := makeBundleTransaction(t, net, txs, plan, false)
 		require.NotNil(t, bundleTx)
 
 		err := client.SendTransaction(t.Context(), bundleTx)
@@ -596,7 +596,7 @@ type subBundleTx struct {
 func (t subBundleTx) makeTx(opts txMakeOptions) *types.Transaction {
 	bundleTxs, bundlePlan, _ := makeSignedBundleOnlyTxsAndPlan(opts.t, opts.net, opts.client, t.txTypes, opts.counterAddress, t.flags)
 
-	bundleTx := makeBundleTransaction(opts.t, opts.net, bundleTxs, bundlePlan)
+	bundleTx := makeBundleTransaction(opts.t, opts.net, bundleTxs, bundlePlan, true)
 	// remove signature
 	bundleTx = types.NewTx(&types.AccessListTx{
 		Nonce:      bundleTx.Nonce(),
