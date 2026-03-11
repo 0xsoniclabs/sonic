@@ -514,6 +514,86 @@ func getEmptyBlockTrace(blockHash common.Hash, blockNumber big.Int) *[]txtrace.A
 	return &emptyTrace.Actions
 }
 
+// CallManyCallRequest represents a single [transaction, traceTypes] pair in a trace_callMany request.
+type CallManyCallRequest struct {
+	Args       TransactionArgs
+	TraceTypes []string
+}
+
+// UnmarshalJSON parses the [tx, traceTypes] arguments format expected by trace_callMany.
+func (r *CallManyCallRequest) UnmarshalJSON(data []byte) error {
+	var callRequestArgs [2]json.RawMessage
+	if err := json.Unmarshal(data, &callRequestArgs); err != nil {
+		return fmt.Errorf("each call must be [tx, traceTypes]: %w", err)
+	}
+	if err := json.Unmarshal(callRequestArgs[0], &r.Args); err != nil {
+		return fmt.Errorf("cannot parse transaction args: %w", err)
+	}
+	if err := json.Unmarshal(callRequestArgs[1], &r.TraceTypes); err != nil {
+		return fmt.Errorf("cannot parse trace types: %w", err)
+	}
+	return nil
+}
+
+// CallMany - trace_callMany executes multiple call traces on top of the same block.
+// Call n is executed on top of the state produced by all previous calls n-1, so state
+// changes accumulate across the list. The optional config allows state overrides to be
+// applied once to the base state before any call is executed.
+func (s *PublicTxTraceAPI) CallMany(ctx context.Context, calls []CallManyCallRequest, blockNrOrHash rpc.BlockNumberOrHash, config *TraceCallConfig) ([]*txtrace.TraceCallResult, error) {
+	defer func(start time.Time) {
+		log.Debug("Executing trace_callMany call finished", "numCalls", len(calls), "runtime", time.Since(start))
+	}(time.Now())
+
+	block, err := getEvmBlockFromNumberOrHash(ctx, blockNrOrHash, s.b)
+	if err != nil {
+		return nil, err
+	}
+
+	_, statedb, err := stateAtTransaction(ctx, block, 0, s.b)
+	if err != nil {
+		return nil, err
+	}
+	defer statedb.Release()
+
+	// Apply state overrides to the base state before executing any call.
+	if config != nil {
+		if err := config.StateOverrides.Apply(statedb); err != nil {
+			return nil, err
+		}
+	}
+
+	results := make([]*txtrace.TraceCallResult, 0, len(calls))
+	for i, call := range calls {
+		wantTrace := false
+		wantStateDiff := false
+		for _, traceType := range call.TraceTypes {
+			switch traceType {
+			case TraceTypeTrace:
+				wantTrace = true
+			case TraceTypeStateDiff:
+				wantStateDiff = true
+			case TraceTypeVmTrace:
+				return nil, fmt.Errorf("vmTrace trace type is not supported")
+			default:
+				return nil, fmt.Errorf("unrecognized trace type: %s", traceType)
+			}
+		}
+
+		tx, msg, err := getTxAndMessage(&call.Args, block, s.b)
+		if err != nil {
+			return nil, fmt.Errorf("call %d: %w", i, err)
+		}
+
+		result, err := s.traceCallExec(ctx, block, msg, statedb, tx, uint64(i), wantTrace, wantStateDiff)
+		if err != nil {
+			return nil, fmt.Errorf("call %d: %w", i, err)
+		}
+		results = append(results, result)
+	}
+
+	return results, nil
+}
+
 // FilterArgs represents the arguments for specifying trace targets
 type FilterArgs struct {
 	FromAddress *[]common.Address      `json:"fromAddress"`
