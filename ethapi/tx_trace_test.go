@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -380,4 +381,177 @@ func TestTraceCallExec_BothTypes(t *testing.T) {
 	require.NotNil(t, result)
 	require.NotEmpty(t, result.Trace, "trace must contain at least one action")
 	require.NotNil(t, result.StateDiff, "stateDiff must be non-nil when requested")
+}
+
+// setupBackendForCallMany returns a MockBackend pre-configured with all expectations
+// needed by CallMany: BlockByNumber, StateAndBlockByNumberOrHash, RPCGasCap, and
+// everything required by setupTracedEVM (GetNetworkRules, RPCEVMTimeout, GetEVM).
+// makeTestEVM is used instead of getEvmFunc so the block context is properly populated
+// for the trace struct logger.
+func setupBackendForCallMany(ctrl *gomock.Controller, mockState *state.MockStateDB, block *evmcore.EvmBlock) *MockBackend {
+	backend := NewMockBackend(ctrl)
+	backend.EXPECT().GetNetworkRules(gomock.Any(), gomock.Any()).Return(&opera.Rules{}, nil).AnyTimes()
+	backend.EXPECT().RPCEVMTimeout().Return(time.Duration(0)).AnyTimes()
+	backend.EXPECT().GetEVM(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(makeTestEVM(opera.Upgrades{})).AnyTimes()
+	backend.EXPECT().BlockByNumber(gomock.Any(), gomock.Any()).Return(block, nil).AnyTimes()
+	backend.EXPECT().StateAndBlockByNumberOrHash(gomock.Any(), gomock.Any()).Return(mockState, block, nil).AnyTimes()
+	backend.EXPECT().RPCGasCap().Return(uint64(10_000_000)).AnyTimes()
+	return backend
+}
+
+func TestCallMany_EmptyCallList(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockState := state.NewMockStateDB(ctrl)
+	mockState.EXPECT().Release().AnyTimes()
+	block := traceTestBlock()
+	backend := setupBackendForCallMany(ctrl, mockState, block)
+
+	api := &PublicTxTraceAPI{b: backend}
+	results, err := api.CallMany(t.Context(), []CallManyCallRequest{}, rpc.BlockNumberOrHashWithNumber(1), nil)
+
+	require.NoError(t, err)
+	require.Empty(t, results)
+}
+
+func TestCallMany_UnrecognizedTraceType(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockState := state.NewMockStateDB(ctrl)
+	mockState.EXPECT().Release().AnyTimes()
+	block := traceTestBlock()
+	backend := setupBackendForCallMany(ctrl, mockState, block)
+
+	api := &PublicTxTraceAPI{b: backend}
+	calls := []CallManyCallRequest{
+		{
+			Args:       TransactionArgs{},
+			TraceTypes: []string{"unknownType"},
+		},
+	}
+
+	_, err := api.CallMany(t.Context(), calls, rpc.BlockNumberOrHashWithNumber(1), nil)
+
+	require.ErrorContains(t, err, "unrecognized trace type")
+}
+
+func TestCallMany_VmTraceNotSupported(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockState := state.NewMockStateDB(ctrl)
+	mockState.EXPECT().Release().AnyTimes()
+	block := traceTestBlock()
+	backend := setupBackendForCallMany(ctrl, mockState, block)
+
+	api := &PublicTxTraceAPI{b: backend}
+	calls := []CallManyCallRequest{
+		{
+			Args:       TransactionArgs{},
+			TraceTypes: []string{TraceTypeVmTrace},
+		},
+	}
+
+	_, err := api.CallMany(t.Context(), calls, rpc.BlockNumberOrHashWithNumber(1), nil)
+
+	require.ErrorContains(t, err, "vmTrace trace type is not supported")
+}
+
+func TestCallMany_SingleCall_TraceOnly(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockState := state.NewMockStateDB(ctrl)
+	setExpectedStateCalls(mockState)
+	block := traceTestBlock()
+	backend := setupBackendForCallMany(ctrl, mockState, block)
+
+	api := &PublicTxTraceAPI{b: backend}
+	from, to := common.Address{1}, common.Address{2}
+	calls := []CallManyCallRequest{
+		{
+			Args:       TransactionArgs{From: &from, To: &to},
+			TraceTypes: []string{TraceTypeTrace},
+		},
+	}
+
+	results, err := api.CallMany(t.Context(), calls, rpc.BlockNumberOrHashWithNumber(1), nil)
+
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	require.NotEmpty(t, results[0].Trace, "trace must contain at least one action")
+	require.Nil(t, results[0].StateDiff, "stateDiff must be nil when not requested")
+}
+
+func TestCallMany_SingleCall_StateDiffOnly(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockState := state.NewMockStateDB(ctrl)
+	setExpectedStateCalls(mockState)
+	block := traceTestBlock()
+	backend := setupBackendForCallMany(ctrl, mockState, block)
+
+	api := &PublicTxTraceAPI{b: backend}
+	from, to := common.Address{1}, common.Address{2}
+	calls := []CallManyCallRequest{
+		{
+			Args:       TransactionArgs{From: &from, To: &to},
+			TraceTypes: []string{TraceTypeStateDiff},
+		},
+	}
+
+	results, err := api.CallMany(t.Context(), calls, rpc.BlockNumberOrHashWithNumber(1), nil)
+
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	require.Nil(t, results[0].Trace, "trace must be nil when not requested")
+	require.NotNil(t, results[0].StateDiff, "stateDiff must be non-nil when requested")
+}
+
+func TestCallMany_MultipleCalls_IndependentTraceTypes(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockState := state.NewMockStateDB(ctrl)
+	setExpectedStateCalls(mockState)
+	block := traceTestBlock()
+	backend := setupBackendForCallMany(ctrl, mockState, block)
+
+	api := &PublicTxTraceAPI{b: backend}
+	from, to := common.Address{1}, common.Address{2}
+	calls := []CallManyCallRequest{
+		{
+			Args:       TransactionArgs{From: &from, To: &to},
+			TraceTypes: []string{TraceTypeTrace},
+		},
+		{
+			Args:       TransactionArgs{From: &from, To: &to},
+			TraceTypes: []string{TraceTypeStateDiff},
+		},
+		{
+			Args:       TransactionArgs{From: &from, To: &to},
+			TraceTypes: []string{TraceTypeTrace, TraceTypeStateDiff},
+		},
+	}
+
+	results, err := api.CallMany(t.Context(), calls, rpc.BlockNumberOrHashWithNumber(1), nil)
+
+	require.NoError(t, err)
+	require.Len(t, results, 3)
+
+	// Call 0: trace only
+	require.NotEmpty(t, results[0].Trace)
+	require.Nil(t, results[0].StateDiff)
+
+	// Call 1: stateDiff only
+	require.Nil(t, results[1].Trace)
+	require.NotNil(t, results[1].StateDiff)
+
+	// Call 2: both
+	require.NotEmpty(t, results[2].Trace)
+	require.NotNil(t, results[2].StateDiff)
+}
+
+func TestCallMany_BlockNotFound(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	backend := NewMockBackend(ctrl)
+	injected := fmt.Errorf("block not found")
+	backend.EXPECT().BlockByNumber(gomock.Any(), gomock.Any()).Return(nil, injected)
+
+	api := &PublicTxTraceAPI{b: backend}
+	_, err := api.CallMany(t.Context(), []CallManyCallRequest{}, rpc.BlockNumberOrHashWithNumber(99), nil)
+
+	require.ErrorIs(t, err, injected)
 }
