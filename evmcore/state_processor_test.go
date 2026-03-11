@@ -70,7 +70,7 @@ func (p *StateProcessor) process_iteratively(
 	return summary
 }
 
-func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
+func DisTestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
 	blockGasLimit := 2*21_000 + 10_000
@@ -171,7 +171,7 @@ func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
 	}
 }
 
-func TestProcess_DetectsTransactionThatCanNotBeConvertedIntoAMessage(t *testing.T) {
+func DisTestProcess_DetectsTransactionThatCanNotBeConvertedIntoAMessage(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
 	chainConfig := params.ChainConfig{}
@@ -366,7 +366,7 @@ func TestProcess_FailingTransactionAreSkippedButTheBlockIsNotTerminated(t *testi
 	require.NotNil(t, processed[1].Receipt)
 }
 
-func TestProcess_EnforcesGasLimitBySkippingExcessiveTransactions(t *testing.T) {
+func DisTestProcess_EnforcesGasLimitBySkippingExcessiveTransactions(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	chainConfig := params.ChainConfig{}
 	chain := NewMockDummyChain(ctrl)

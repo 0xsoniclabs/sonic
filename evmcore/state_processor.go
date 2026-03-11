@@ -210,7 +210,12 @@ func runTransactions(
 	processed := make([]ProcessedTransaction, 0, len(transactions))
 	var bundles []ProcessedBundle
 	for _, tx := range transactions {
-		nextId := len(processed) + txIndexOffset
+		nextId := txIndexOffset
+		for _, p := range processed {
+			if p.Receipt != nil {
+				nextId++
+			}
+		}
 		txs, processedBundle, _ := runTransaction(context, tx, nextId)
 		processed = append(processed, txs...)
 		if processedBundle != nil {
@@ -406,7 +411,15 @@ func (b *bundleTransactionRunner) Run(tx *types.Transaction) bundle.TransactionR
 	if status == StatusSkipped {
 		return bundle.TransactionResultInvalid
 	}
-	b.txOffset++
+
+	processedCount := 0
+	for _, p := range processed {
+		if p.Receipt != nil {
+			processedCount++
+		}
+	}
+	b.txOffset += processedCount
+
 	if status == StatusFailed {
 		return bundle.TransactionResultFailed
 	} else {
