@@ -404,46 +404,48 @@ func setupBackendForCallMany(t *testing.T) (*MockBackend, *state.MockStateDB) {
 	return backend, mockState
 }
 
-func TestCallMany_EmptyCallList(t *testing.T) {
-	backend, _ := setupBackendForCallMany(t)
-
-	api := &PublicTxTraceAPI{b: backend}
-	results, err := api.CallMany(t.Context(), []CallRequest{}, rpc.BlockNumberOrHashWithNumber(1), nil)
-
-	require.NoError(t, err)
-	require.Empty(t, results)
-}
-
-func TestCallMany_UnrecognizedTraceType(t *testing.T) {
-	backend, _ := setupBackendForCallMany(t)
-
-	api := &PublicTxTraceAPI{b: backend}
-	calls := []CallRequest{
+func TestCallMany_TraceTypeValidation(t *testing.T) {
+	tests := []struct {
+		name       string
+		calls      []CallRequest
+		wantErrMsg string
+	}{
 		{
-			Args:       TransactionArgs{},
-			TraceTypes: []string{"unknownType"},
+			name:       "empty call list succeeds",
+			calls:      []CallRequest{},
+			wantErrMsg: "",
+		},
+		{
+			name: "unrecognized trace type",
+			calls: []CallRequest{
+				{Args: TransactionArgs{}, TraceTypes: []string{"unknownType"}},
+			},
+			wantErrMsg: "unrecognized trace type",
+		},
+		{
+			name: "vmTrace not supported",
+			calls: []CallRequest{
+				{Args: TransactionArgs{}, TraceTypes: []string{TraceTypeVmTrace}},
+			},
+			wantErrMsg: "vmTrace trace type is not supported",
 		},
 	}
 
-	_, err := api.CallMany(t.Context(), calls, rpc.BlockNumberOrHashWithNumber(1), nil)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			backend, _ := setupBackendForCallMany(t)
+			api := &PublicTxTraceAPI{b: backend}
 
-	require.ErrorContains(t, err, "unrecognized trace type")
-}
+			results, err := api.CallMany(t.Context(), tt.calls, rpc.BlockNumberOrHashWithNumber(1), nil)
 
-func TestCallMany_VmTraceNotSupported(t *testing.T) {
-	backend, _ := setupBackendForCallMany(t)
-
-	api := &PublicTxTraceAPI{b: backend}
-	calls := []CallRequest{
-		{
-			Args:       TransactionArgs{},
-			TraceTypes: []string{TraceTypeVmTrace},
-		},
+			if tt.wantErrMsg == "" {
+				require.NoError(t, err)
+				require.Empty(t, results)
+			} else {
+				require.ErrorContains(t, err, tt.wantErrMsg)
+			}
+		})
 	}
-
-	_, err := api.CallMany(t.Context(), calls, rpc.BlockNumberOrHashWithNumber(1), nil)
-
-	require.ErrorContains(t, err, "vmTrace trace type is not supported")
 }
 
 func TestCallMany_SingleCall_TraceOnly(t *testing.T) {
