@@ -160,19 +160,9 @@ func (s *PublicTxTraceAPI) Call(ctx context.Context, args TransactionArgs, trace
 		log.Debug("Executing trace_Call call finished", "txArgs", args, "runtime", time.Since(start))
 	}(time.Now())
 
-	wantTrace := false
-	wantStateDiff := false
-	for _, traceType := range traceTypes {
-		switch traceType {
-		case TraceTypeTrace:
-			wantTrace = true
-		case TraceTypeStateDiff:
-			wantStateDiff = true
-		case TraceTypeVmTrace:
-			return nil, fmt.Errorf("vmTrace trace type is not supported")
-		default:
-			return nil, fmt.Errorf("unrecognized trace type: %s", traceType)
-		}
+	wantTrace, wantStateDiff, err := containsTraceType(traceTypes)
+	if err != nil {
+		return nil, err
 	}
 
 	block, err := getEvmBlockFromNumberOrHash(ctx, blockNrOrHash, s.b)
@@ -204,6 +194,25 @@ func (s *PublicTxTraceAPI) Call(ctx context.Context, args TransactionArgs, trace
 	}
 
 	return s.traceCallExec(ctx, block, msg, statedb, tx, uint64(txIndex), wantTrace, wantStateDiff)
+}
+
+// containsTraceType checks if the provided trace types include "trace" and/or "stateDiff" and returns corresponding booleans.
+func containsTraceType(traceTypes []string) (bool, bool, error) {
+	wantTrace := false
+	wantStateDiff := false
+	for _, traceType := range traceTypes {
+		switch traceType {
+		case TraceTypeTrace:
+			wantTrace = true
+		case TraceTypeStateDiff:
+			wantStateDiff = true
+		case TraceTypeVmTrace:
+			return false, false, fmt.Errorf("vmTrace trace type is not supported")
+		default:
+			return false, false, fmt.Errorf("unrecognized trace type: %s", traceType)
+		}
+	}
+	return wantTrace, wantStateDiff, nil
 }
 
 // traceCallExec executes a simulated transaction and returns a TraceCallResult
@@ -566,17 +575,10 @@ func (s *PublicTxTraceAPI) CallMany(ctx context.Context, calls []CallRequest, bl
 	for i, call := range calls {
 		wantTrace := false
 		wantStateDiff := false
-		for _, traceType := range call.TraceTypes {
-			switch traceType {
-			case TraceTypeTrace:
-				wantTrace = true
-			case TraceTypeStateDiff:
-				wantStateDiff = true
-			case TraceTypeVmTrace:
-				return nil, fmt.Errorf("vmTrace trace type is not supported")
-			default:
-				return nil, fmt.Errorf("unrecognized trace type: %s", traceType)
-			}
+
+		wantTrace, wantStateDiff, err = containsTraceType(call.TraceTypes)
+		if err != nil {
+			return nil, fmt.Errorf("call %d: %w", i, err)
 		}
 
 		tx, msg, err := getTxAndMessage(&call.Args, block, s.b)
