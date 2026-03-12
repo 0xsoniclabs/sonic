@@ -44,20 +44,21 @@ import (
 //     executable in the future as the blockchain progresses.
 //   - BundleStateNonExecutable: The bundle is not executable and will never
 //     be executable in the future due to permanent conditions (e.g., a
-//     transaction in the bundle uses an already consumed nonce).
+//     transaction in the bundle uses an already consumed nonce). This state
+//     is always accompanied by an error and should be ignored in favor of the error.
 type BundleState int
 
 const (
+	// BundleStateNonExecutable indicates that the bundle is not executable
+	// and will never be executable in the future due to permanent conditions.
+	BundleStateNonExecutable BundleState = iota
 	// BundleStateRunnable indicates that the bundle is ready to be executed on
 	// a given state of the blockchain and has a chance to succeed if executed.
-	BundleStateRunnable BundleState = iota
+	BundleStateRunnable
 	// BundleStateTemporaryBlocked indicates that the bundle is not currently
 	// executable due to temporary conditions, but it may become executable in
 	// the future as the blockchain progresses.
 	BundleStateTemporaryBlocked
-	// BundleStateNonExecutable indicates that the bundle is not executable
-	// and will never be executable in the future due to permanent conditions.
-	BundleStateNonExecutable
 )
 
 // GetBundleState determines the state of the bundle based on the current state
@@ -103,7 +104,7 @@ func getBundleState(
 		return BundleStateNonExecutable,
 			fmt.Errorf("failed to check for nonce conflicts: %w", err)
 	}
-	if state != BundleStateRunnable {
+	if state == BundleStateTemporaryBlocked {
 		return state, nil
 	}
 
@@ -154,10 +155,12 @@ type NonceSource interface {
 }
 
 // checkForNonceConflicts checks whether there are any nonce conflicts in the
-// execution of the bundle. It returns BundleStateNonExecutable if there
-// is a nonce conflict that will never be resolved, BundleStateTemporaryBlocked
-// if there is a nonce conflict that may be resolved in the future, and
-// BundleStateRunnable if there are no nonce conflicts right now.
+// execution of the bundle.
+// It returns BundleStateNonExecutable and an error if there is a nonce conflict
+// that will never be resolved.
+// It returns BundleStateTemporaryBlocked if there is a nonce conflict that may
+// be resolved in the future.
+// It returns BundleStateRunnable if there are no nonce conflicts right now.
 func checkForNonceConflicts(
 	txBundle *bundle.TransactionBundle,
 	signer types.Signer,
