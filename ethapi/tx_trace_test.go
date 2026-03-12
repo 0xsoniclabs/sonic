@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -380,4 +381,219 @@ func TestTraceCallExec_BothTypes(t *testing.T) {
 	require.NotNil(t, result)
 	require.NotEmpty(t, result.Trace, "trace must contain at least one action")
 	require.NotNil(t, result.StateDiff, "stateDiff must be non-nil when requested")
+}
+
+// setupBackendForCallMany returns a MockBackend pre-configured with all expectations
+// needed by CallMany: BlockByNumber, StateAndBlockByNumberOrHash, RPCGasCap, and
+// everything required by setupTracedEVM (GetNetworkRules, RPCEVMTimeout, GetEVM).
+// makeTestEVM is used instead of getEvmFunc so the block context is properly populated
+// for the trace struct logger.
+func setupBackendForCallMany(t *testing.T) (*MockBackend, *state.MockStateDB) {
+	ctrl := gomock.NewController(t)
+	mockState := state.NewMockStateDB(ctrl)
+	mockState.EXPECT().Release().AnyTimes()
+	block := traceTestBlock()
+	backend := NewMockBackend(ctrl)
+	backend.EXPECT().GetNetworkRules(gomock.Any(), gomock.Any()).Return(&opera.Rules{}, nil).AnyTimes()
+	backend.EXPECT().RPCEVMTimeout().Return(time.Duration(0)).AnyTimes()
+	backend.EXPECT().GetEVM(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(makeTestEVM(opera.Upgrades{})).AnyTimes()
+	backend.EXPECT().BlockByNumber(gomock.Any(), gomock.Any()).Return(block, nil).AnyTimes()
+	backend.EXPECT().StateAndBlockByNumberOrHash(gomock.Any(), gomock.Any()).Return(mockState, block, nil).AnyTimes()
+	backend.EXPECT().RPCGasCap().Return(uint64(10_000_000)).AnyTimes()
+	return backend, mockState
+}
+
+func TestCallMany_TraceTypeValidation(t *testing.T) {
+	tests := []struct {
+		name       string
+		calls      []CallRequest
+		wantErrMsg string
+	}{
+		{
+			name:       "empty call list succeeds",
+			calls:      []CallRequest{},
+			wantErrMsg: "",
+		},
+		{
+			name: "unrecognized trace type",
+			calls: []CallRequest{
+				{Args: TransactionArgs{}, TraceTypes: []string{"unknownType"}},
+			},
+			wantErrMsg: "unrecognized trace type",
+		},
+		{
+			name: "vmTrace not supported",
+			calls: []CallRequest{
+				{Args: TransactionArgs{}, TraceTypes: []string{TraceTypeVmTrace}},
+			},
+			wantErrMsg: "vmTrace trace type is not supported",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			backend, _ := setupBackendForCallMany(t)
+			api := &PublicTxTraceAPI{b: backend}
+
+			results, err := api.CallMany(t.Context(), tt.calls, rpc.BlockNumberOrHashWithNumber(1), nil)
+
+			if tt.wantErrMsg == "" {
+				require.NoError(t, err)
+				require.Empty(t, results)
+			} else {
+				require.ErrorContains(t, err, tt.wantErrMsg)
+			}
+		})
+	}
+}
+
+func TestCallMany_SingleCall_TraceOnly(t *testing.T) {
+	backend, mockState := setupBackendForCallMany(t)
+	setExpectedStateCalls(mockState)
+
+	api := &PublicTxTraceAPI{b: backend}
+	from, to := common.Address{1}, common.Address{2}
+	calls := []CallRequest{
+		{
+			Args:       TransactionArgs{From: &from, To: &to},
+			TraceTypes: []string{TraceTypeTrace},
+		},
+	}
+
+	results, err := api.CallMany(t.Context(), calls, rpc.BlockNumberOrHashWithNumber(1), nil)
+
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	require.NotEmpty(t, results[0].Trace, "trace must contain at least one action")
+	require.Nil(t, results[0].StateDiff, "stateDiff must be nil when not requested")
+}
+
+func TestCallMany_SingleCall_StateDiffOnly(t *testing.T) {
+	backend, mockState := setupBackendForCallMany(t)
+	setExpectedStateCalls(mockState)
+
+	api := &PublicTxTraceAPI{b: backend}
+	from, to := common.Address{1}, common.Address{2}
+	calls := []CallRequest{
+		{
+			Args:       TransactionArgs{From: &from, To: &to},
+			TraceTypes: []string{TraceTypeStateDiff},
+		},
+	}
+
+	results, err := api.CallMany(t.Context(), calls, rpc.BlockNumberOrHashWithNumber(1), nil)
+
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	require.Nil(t, results[0].Trace, "trace must be nil when not requested")
+	require.NotNil(t, results[0].StateDiff, "stateDiff must be non-nil when requested")
+}
+
+func TestCallMany_MultipleCalls_IndependentTraceTypes(t *testing.T) {
+	backend, mockState := setupBackendForCallMany(t)
+	setExpectedStateCalls(mockState)
+
+	api := &PublicTxTraceAPI{b: backend}
+	from, to := common.Address{1}, common.Address{2}
+	calls := []CallRequest{
+		{
+			Args:       TransactionArgs{From: &from, To: &to},
+			TraceTypes: []string{TraceTypeTrace},
+		},
+		{
+			Args:       TransactionArgs{From: &from, To: &to},
+			TraceTypes: []string{TraceTypeStateDiff},
+		},
+		{
+			Args:       TransactionArgs{From: &from, To: &to},
+			TraceTypes: []string{TraceTypeTrace, TraceTypeStateDiff},
+		},
+	}
+
+	results, err := api.CallMany(t.Context(), calls, rpc.BlockNumberOrHashWithNumber(1), nil)
+
+	require.NoError(t, err)
+	require.Len(t, results, 3)
+
+	// Call 0: trace only
+	require.NotEmpty(t, results[0].Trace)
+	require.Nil(t, results[0].StateDiff)
+
+	// Call 1: stateDiff only
+	require.Nil(t, results[1].Trace)
+	require.NotNil(t, results[1].StateDiff)
+
+	// Call 2: both
+	require.NotEmpty(t, results[2].Trace)
+	require.NotNil(t, results[2].StateDiff)
+}
+
+func TestCallRequest_UnmarshalJSON(t *testing.T) {
+	tests := []struct {
+		name       string
+		input      string
+		wantErrMsg string
+	}{
+		{
+			name:       "completely invalid JSON",
+			input:      `not-json`,
+			wantErrMsg: "each call must be [tx, traceTypes]",
+		},
+		{
+			name:       "JSON object instead of array",
+			input:      `{"from": "0x1234"}`,
+			wantErrMsg: "each call must be [tx, traceTypes]",
+		},
+		{
+			name:       "JSON string instead of array",
+			input:      `"trace"`,
+			wantErrMsg: "each call must be [tx, traceTypes]",
+		},
+		{
+			name:       "empty array leaves both slots nil",
+			input:      `[]`,
+			wantErrMsg: "cannot parse transaction args",
+		},
+		{
+			name:       "array with one element leaves second slot nil",
+			input:      `[{}]`,
+			wantErrMsg: "cannot parse trace types",
+		},
+		{
+			name:       "first element has invalid field type for TransactionArgs",
+			input:      `[{"from": 12345}, ["trace"]]`,
+			wantErrMsg: "cannot parse transaction args",
+		},
+		{
+			name:       "second element is an object instead of string array",
+			input:      `[{}, {"type": "trace"}]`,
+			wantErrMsg: "cannot parse trace types",
+		},
+		{
+			name:       "second element is a string instead of string array",
+			input:      `[{}, "trace"]`,
+			wantErrMsg: "cannot parse trace types",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var r CallRequest
+			err := r.UnmarshalJSON([]byte(tt.input))
+			require.ErrorContains(t, err, tt.wantErrMsg)
+		})
+	}
+}
+
+func TestCallMany_BlockNotFound(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	backend := NewMockBackend(ctrl)
+	injected := fmt.Errorf("block not found")
+	backend.EXPECT().BlockByNumber(gomock.Any(), gomock.Any()).Return(nil, injected)
+
+	api := &PublicTxTraceAPI{b: backend}
+	_, err := api.CallMany(t.Context(), []CallRequest{}, rpc.BlockNumberOrHashWithNumber(99), nil)
+
+	require.ErrorIs(t, err, injected)
 }
