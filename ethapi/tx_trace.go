@@ -514,14 +514,14 @@ func getEmptyBlockTrace(blockHash common.Hash, blockNumber big.Int) *[]txtrace.A
 	return &emptyTrace.Actions
 }
 
-// CallManyCallRequest represents a single [transaction, traceTypes] pair in a trace_callMany request.
-type CallManyCallRequest struct {
+// CallRequest represents a single [transaction, traceTypes] pair in a trace_callMany request.
+type CallRequest struct {
 	Args       TransactionArgs
 	TraceTypes []string
 }
 
 // UnmarshalJSON parses the [tx, traceTypes] arguments format expected by trace_callMany.
-func (r *CallManyCallRequest) UnmarshalJSON(data []byte) error {
+func (r *CallRequest) UnmarshalJSON(data []byte) error {
 	var callRequestArgs [2]json.RawMessage
 	if err := json.Unmarshal(data, &callRequestArgs); err != nil {
 		return fmt.Errorf("each call must be [tx, traceTypes]: %w", err)
@@ -539,7 +539,7 @@ func (r *CallManyCallRequest) UnmarshalJSON(data []byte) error {
 // Call n is executed on top of the state produced by all previous calls n-1, so state
 // changes accumulate across the list. The optional config allows state overrides to be
 // applied once to the base state before any call is executed.
-func (s *PublicTxTraceAPI) CallMany(ctx context.Context, calls []CallManyCallRequest, blockNrOrHash rpc.BlockNumberOrHash, config *TraceCallConfig) ([]*txtrace.TraceCallResult, error) {
+func (s *PublicTxTraceAPI) CallMany(ctx context.Context, calls []CallRequest, blockNrOrHash rpc.BlockNumberOrHash, config *TraceCallConfig) ([]*txtrace.TraceCallResult, error) {
 	defer func(start time.Time) {
 		log.Debug("Executing trace_callMany call finished", "numCalls", len(calls), "runtime", time.Since(start))
 	}(time.Now())

@@ -408,7 +408,7 @@ func TestCallMany_EmptyCallList(t *testing.T) {
 	backend := setupBackendForCallMany(ctrl, mockState, block)
 
 	api := &PublicTxTraceAPI{b: backend}
-	results, err := api.CallMany(t.Context(), []CallManyCallRequest{}, rpc.BlockNumberOrHashWithNumber(1), nil)
+	results, err := api.CallMany(t.Context(), []CallRequest{}, rpc.BlockNumberOrHashWithNumber(1), nil)
 
 	require.NoError(t, err)
 	require.Empty(t, results)
@@ -422,7 +422,7 @@ func TestCallMany_UnrecognizedTraceType(t *testing.T) {
 	backend := setupBackendForCallMany(ctrl, mockState, block)
 
 	api := &PublicTxTraceAPI{b: backend}
-	calls := []CallManyCallRequest{
+	calls := []CallRequest{
 		{
 			Args:       TransactionArgs{},
 			TraceTypes: []string{"unknownType"},
@@ -442,7 +442,7 @@ func TestCallMany_VmTraceNotSupported(t *testing.T) {
 	backend := setupBackendForCallMany(ctrl, mockState, block)
 
 	api := &PublicTxTraceAPI{b: backend}
-	calls := []CallManyCallRequest{
+	calls := []CallRequest{
 		{
 			Args:       TransactionArgs{},
 			TraceTypes: []string{TraceTypeVmTrace},
@@ -463,7 +463,7 @@ func TestCallMany_SingleCall_TraceOnly(t *testing.T) {
 
 	api := &PublicTxTraceAPI{b: backend}
 	from, to := common.Address{1}, common.Address{2}
-	calls := []CallManyCallRequest{
+	calls := []CallRequest{
 		{
 			Args:       TransactionArgs{From: &from, To: &to},
 			TraceTypes: []string{TraceTypeTrace},
@@ -487,7 +487,7 @@ func TestCallMany_SingleCall_StateDiffOnly(t *testing.T) {
 
 	api := &PublicTxTraceAPI{b: backend}
 	from, to := common.Address{1}, common.Address{2}
-	calls := []CallManyCallRequest{
+	calls := []CallRequest{
 		{
 			Args:       TransactionArgs{From: &from, To: &to},
 			TraceTypes: []string{TraceTypeStateDiff},
@@ -511,7 +511,7 @@ func TestCallMany_MultipleCalls_IndependentTraceTypes(t *testing.T) {
 
 	api := &PublicTxTraceAPI{b: backend}
 	from, to := common.Address{1}, common.Address{2}
-	calls := []CallManyCallRequest{
+	calls := []CallRequest{
 		{
 			Args:       TransactionArgs{From: &from, To: &to},
 			TraceTypes: []string{TraceTypeTrace},
@@ -551,7 +551,7 @@ func TestCallMany_BlockNotFound(t *testing.T) {
 	backend.EXPECT().BlockByNumber(gomock.Any(), gomock.Any()).Return(nil, injected)
 
 	api := &PublicTxTraceAPI{b: backend}
-	_, err := api.CallMany(t.Context(), []CallManyCallRequest{}, rpc.BlockNumberOrHashWithNumber(99), nil)
+	_, err := api.CallMany(t.Context(), []CallRequest{}, rpc.BlockNumberOrHashWithNumber(99), nil)
 
 	require.ErrorIs(t, err, injected)
 }
