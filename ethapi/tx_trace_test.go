@@ -388,7 +388,11 @@ func TestTraceCallExec_BothTypes(t *testing.T) {
 // everything required by setupTracedEVM (GetNetworkRules, RPCEVMTimeout, GetEVM).
 // makeTestEVM is used instead of getEvmFunc so the block context is properly populated
 // for the trace struct logger.
-func setupBackendForCallMany(ctrl *gomock.Controller, mockState *state.MockStateDB, block *evmcore.EvmBlock) *MockBackend {
+func setupBackendForCallMany(t *testing.T) (*MockBackend, *state.MockStateDB) {
+	ctrl := gomock.NewController(t)
+	mockState := state.NewMockStateDB(ctrl)
+	mockState.EXPECT().Release().AnyTimes()
+	block := traceTestBlock()
 	backend := NewMockBackend(ctrl)
 	backend.EXPECT().GetNetworkRules(gomock.Any(), gomock.Any()).Return(&opera.Rules{}, nil).AnyTimes()
 	backend.EXPECT().RPCEVMTimeout().Return(time.Duration(0)).AnyTimes()
@@ -397,15 +401,11 @@ func setupBackendForCallMany(ctrl *gomock.Controller, mockState *state.MockState
 	backend.EXPECT().BlockByNumber(gomock.Any(), gomock.Any()).Return(block, nil).AnyTimes()
 	backend.EXPECT().StateAndBlockByNumberOrHash(gomock.Any(), gomock.Any()).Return(mockState, block, nil).AnyTimes()
 	backend.EXPECT().RPCGasCap().Return(uint64(10_000_000)).AnyTimes()
-	return backend
+	return backend, mockState
 }
 
 func TestCallMany_EmptyCallList(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	mockState := state.NewMockStateDB(ctrl)
-	mockState.EXPECT().Release().AnyTimes()
-	block := traceTestBlock()
-	backend := setupBackendForCallMany(ctrl, mockState, block)
+	backend, _ := setupBackendForCallMany(t)
 
 	api := &PublicTxTraceAPI{b: backend}
 	results, err := api.CallMany(t.Context(), []CallRequest{}, rpc.BlockNumberOrHashWithNumber(1), nil)
@@ -415,11 +415,7 @@ func TestCallMany_EmptyCallList(t *testing.T) {
 }
 
 func TestCallMany_UnrecognizedTraceType(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	mockState := state.NewMockStateDB(ctrl)
-	mockState.EXPECT().Release().AnyTimes()
-	block := traceTestBlock()
-	backend := setupBackendForCallMany(ctrl, mockState, block)
+	backend, _ := setupBackendForCallMany(t)
 
 	api := &PublicTxTraceAPI{b: backend}
 	calls := []CallRequest{
@@ -435,11 +431,7 @@ func TestCallMany_UnrecognizedTraceType(t *testing.T) {
 }
 
 func TestCallMany_VmTraceNotSupported(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	mockState := state.NewMockStateDB(ctrl)
-	mockState.EXPECT().Release().AnyTimes()
-	block := traceTestBlock()
-	backend := setupBackendForCallMany(ctrl, mockState, block)
+	backend, _ := setupBackendForCallMany(t)
 
 	api := &PublicTxTraceAPI{b: backend}
 	calls := []CallRequest{
@@ -455,11 +447,8 @@ func TestCallMany_VmTraceNotSupported(t *testing.T) {
 }
 
 func TestCallMany_SingleCall_TraceOnly(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	mockState := state.NewMockStateDB(ctrl)
+	backend, mockState := setupBackendForCallMany(t)
 	setExpectedStateCalls(mockState)
-	block := traceTestBlock()
-	backend := setupBackendForCallMany(ctrl, mockState, block)
 
 	api := &PublicTxTraceAPI{b: backend}
 	from, to := common.Address{1}, common.Address{2}
@@ -479,11 +468,8 @@ func TestCallMany_SingleCall_TraceOnly(t *testing.T) {
 }
 
 func TestCallMany_SingleCall_StateDiffOnly(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	mockState := state.NewMockStateDB(ctrl)
+	backend, mockState := setupBackendForCallMany(t)
 	setExpectedStateCalls(mockState)
-	block := traceTestBlock()
-	backend := setupBackendForCallMany(ctrl, mockState, block)
 
 	api := &PublicTxTraceAPI{b: backend}
 	from, to := common.Address{1}, common.Address{2}
@@ -503,11 +489,8 @@ func TestCallMany_SingleCall_StateDiffOnly(t *testing.T) {
 }
 
 func TestCallMany_MultipleCalls_IndependentTraceTypes(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	mockState := state.NewMockStateDB(ctrl)
+	backend, mockState := setupBackendForCallMany(t)
 	setExpectedStateCalls(mockState)
-	block := traceTestBlock()
-	backend := setupBackendForCallMany(ctrl, mockState, block)
 
 	api := &PublicTxTraceAPI{b: backend}
 	from, to := common.Address{1}, common.Address{2}
