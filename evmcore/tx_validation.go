@@ -427,8 +427,8 @@ func validateBundleTransactionsInternal(
 		chainState: chainState,
 		stateDB:    stateDb,
 	}
-	state, err := getBundleState(chainAdapter, tx)
-	if err != nil || state == BundleStateNonExecutable {
+	_, err = getBundleState(chainAdapter, tx)
+	if err != nil {
 		return errors.Join(ErrBundleNonExecutable, err)
 	}
 

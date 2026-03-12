@@ -1448,8 +1448,7 @@ func Test_validateBundleTransactions_IfBundleStateIsNotRunnable_RejectBundleTran
 			valid:       true,
 		},
 		"non_executable": {
-			bundleState: BundleStateNonExecutable,
-			valid:       false,
+			valid: false,
 		},
 	}
 
@@ -1464,7 +1463,11 @@ func Test_validateBundleTransactions_IfBundleStateIsNotRunnable_RejectBundleTran
 			require.True(bundle.IsTransactionBundle(tx))
 
 			getBundleState := func(ChainState, *types.Transaction) (BundleState, error) {
-				return test.bundleState, nil
+				var err error
+				if !test.valid {
+					err = fmt.Errorf("some error")
+				}
+				return test.bundleState, err
 			}
 
 			rules := NetworkRules{}
