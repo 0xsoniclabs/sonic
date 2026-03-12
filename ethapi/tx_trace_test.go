@@ -527,6 +527,63 @@ func TestCallMany_MultipleCalls_IndependentTraceTypes(t *testing.T) {
 	require.NotNil(t, results[2].StateDiff)
 }
 
+func TestCallRequest_UnmarshalJSON(t *testing.T) {
+	tests := []struct {
+		name       string
+		input      string
+		wantErrMsg string
+	}{
+		{
+			name:       "completely invalid JSON",
+			input:      `not-json`,
+			wantErrMsg: "each call must be [tx, traceTypes]",
+		},
+		{
+			name:       "JSON object instead of array",
+			input:      `{"from": "0x1234"}`,
+			wantErrMsg: "each call must be [tx, traceTypes]",
+		},
+		{
+			name:       "JSON string instead of array",
+			input:      `"trace"`,
+			wantErrMsg: "each call must be [tx, traceTypes]",
+		},
+		{
+			name:       "empty array leaves both slots nil",
+			input:      `[]`,
+			wantErrMsg: "cannot parse transaction args",
+		},
+		{
+			name:       "array with one element leaves second slot nil",
+			input:      `[{}]`,
+			wantErrMsg: "cannot parse trace types",
+		},
+		{
+			name:       "first element has invalid field type for TransactionArgs",
+			input:      `[{"from": 12345}, ["trace"]]`,
+			wantErrMsg: "cannot parse transaction args",
+		},
+		{
+			name:       "second element is an object instead of string array",
+			input:      `[{}, {"type": "trace"}]`,
+			wantErrMsg: "cannot parse trace types",
+		},
+		{
+			name:       "second element is a string instead of string array",
+			input:      `[{}, "trace"]`,
+			wantErrMsg: "cannot parse trace types",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var r CallRequest
+			err := r.UnmarshalJSON([]byte(tt.input))
+			require.ErrorContains(t, err, tt.wantErrMsg)
+		})
+	}
+}
+
 func TestCallMany_BlockNotFound(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	backend := NewMockBackend(ctrl)
