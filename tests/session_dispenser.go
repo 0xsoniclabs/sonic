@@ -20,6 +20,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"os"
+	"sync"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/opera"
@@ -32,6 +33,7 @@ import (
 // Upgrade.
 type SharedNetwork struct {
 	activeTestNetInstances map[common.Hash]*IntegrationTestNet
+	lock                   sync.Mutex
 }
 
 // NewSharedNetwork initializes a new SharedNetwork instance. It is expected to
@@ -69,6 +71,9 @@ func NewSharedNetwork() *SharedNetwork {
 // This function uses a global state that is cleaned up after the execution of
 // the tests in `tests` package.
 func (s *SharedNetwork) GetIntegrationTestNetSession(t *testing.T, upgrades opera.Upgrades) IntegrationTestNetSession {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
 	if s.activeTestNetInstances == nil {
 		s.activeTestNetInstances = make(map[common.Hash]*IntegrationTestNet)
 	}
