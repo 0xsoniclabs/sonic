@@ -143,8 +143,7 @@ func (r *EvmStateReader) Header(verificationHash common.Hash, number uint64) *ev
 // hash has been processed recently (within the last bundle.MaxBlockRange blocks).
 func (r *EvmStateReader) HasBundleBeenProcessed(execPlanHash common.Hash) bool {
 	// Check if the bundle has been processed recently.
-	has, err := r.store.HasBundleRecentlyBeenProcessed(execPlanHash)
-	return err != nil || has // => error is considered as bundle being processed
+	return r.store.HasBundleRecentlyBeenProcessed(execPlanHash)
 }
 
 // Block returns the block with the given number.

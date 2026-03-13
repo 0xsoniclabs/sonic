@@ -232,12 +232,11 @@ func (mr *MockBackendMockRecorder) FetchReceiptsForBlock(block any) *gomock.Call
 }
 
 // GetBundleExecutionInfo mocks base method.
-func (m *MockBackend) GetBundleExecutionInfo(arg0 common.Hash) (*bundle.ExecutionInfo, error) {
+func (m *MockBackend) GetBundleExecutionInfo(arg0 common.Hash) *bundle.ExecutionInfo {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetBundleExecutionInfo", arg0)
 	ret0, _ := ret[0].(*bundle.ExecutionInfo)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	return ret0
 }
 
 // GetBundleExecutionInfo indicates an expected call of GetBundleExecutionInfo.
