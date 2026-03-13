@@ -29,10 +29,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// makeBundleTransaction creates a bundle transaction with the given
+// makeEnvelopeTransaction creates a bundle transaction with the given
 // transactions and execution plan. The bundle transaction is signed by the
 // bundler account.
-func makeBundleTransaction(
+func makeEnvelopeTransaction(
 	t *testing.T,
 	net *tests.IntegrationTestNet,
 	transactions types.Transactions,
