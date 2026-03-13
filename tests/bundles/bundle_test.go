@@ -430,7 +430,7 @@ func checkCase(t *testing.T, net *tests.IntegrationTestNet, client *tests.Pooled
 		err := client.SendTransaction(t.Context(), bundleTx)
 		if err != nil {
 			// Check whether the bundle was rejected by the pre-check.
-			require.ErrorContains(t, err, "bundle cannot execute")
+			require.ErrorContains(t, err, "bundle is not executable")
 			// This is only allowed for transactions that should fail.
 			require.Zero(t, c.counter)
 			require.Empty(t, c.blockTxIndices)
