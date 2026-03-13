@@ -23,8 +23,10 @@ import (
 
 	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
+	"github.com/0xsoniclabs/tosca/go/tosca/vm"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -34,14 +36,13 @@ import (
 )
 
 func Test_CreateBundlesWithRPC(t *testing.T) {
-
 	upgrades := opera.GetBrioUpgrades()
 	upgrades.TransactionBundles = true
-	net := tests.StartIntegrationTestNet(t,
-		tests.IntegrationTestNetOptions{
-			Upgrades: &upgrades,
-		},
-	)
+	contractAddress := common.Address{0x42}
+	net := tests.StartIntegrationTestNetWithJsonGenesis(t, tests.IntegrationTestNetOptions{
+		Upgrades: &upgrades,
+		Accounts: increasinglyExpensiveContract(contractAddress),
+	})
 	client, err := net.GetClient()
 	require.NoError(t, err, "failed to get client")
 	defer client.Close()
@@ -51,7 +52,6 @@ func Test_CreateBundlesWithRPC(t *testing.T) {
 	gasPrice, err := client.SuggestGasPrice(t.Context())
 	require.NoError(t, err, "failed to suggest gas price")
 
-	targetAddress := common.Address{0x42}
 	transferAmount := big.NewInt(2)
 
 	// 1) Create a list of transactions to be executed in order atomically.
@@ -61,12 +61,10 @@ func Test_CreateBundlesWithRPC(t *testing.T) {
 	for i := range txsToBeBundled {
 		tx := ethereum.CallMsg{
 			From:     sender1.Address(),
-			To:       &targetAddress,
+			To:       &contractAddress,
 			Value:    transferAmount,
 			GasPrice: gasPrice,
 		}
-		// TODO: this should be done for the complete bundle
-		tx.Gas = estimateGasForBundledTransaction(t, client, tx)
 		txsToBeBundled[i] = tx
 	}
 
@@ -106,10 +104,10 @@ func Test_CreateBundlesWithRPC(t *testing.T) {
 		require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
 	}
 
-	balance, err := client.BalanceAt(t.Context(), targetAddress, nil)
+	balance, err := client.BalanceAt(t.Context(), contractAddress, nil)
 	require.NoError(t, err, "failed to get balance")
 	require.Equal(t, transferAmount.Uint64()*bundledTxCount, balance.Uint64(),
-		"unexpected balance of target address")
+		"unexpected balance of contract address")
 }
 
 // checkCompatWithMetaMask checks that the signed bundle-only transactions can
@@ -175,7 +173,6 @@ func PrepareBundle(
 			From:     &tx.From,
 			To:       tx.To,
 			Nonce:    (*hexutil.Uint64)(&nonce),
-			Gas:      (*hexutil.Uint64)(&tx.Gas),
 			GasPrice: (*hexutil.Big)(tx.GasPrice),
 			Value:    (*hexutil.Big)(tx.Value),
 			Data:     (*hexutil.Bytes)(&tx.Data),
@@ -183,9 +180,17 @@ func PrepareBundle(
 		txsArgs[i] = txArgs
 	}
 
+	var gasLimits ethapi.BundleGasLimits
+	err := client.Client().Call(&gasLimits, "sonic_estimateGasForTransactions", txsArgs, "latest", nil, nil)
+	require.NoError(t, err, "failed to estimate gas for bundle")
+
+	for i := range txsArgs {
+		txsArgs[i].Gas = (*hexutil.Uint64)(&gasLimits.GasLimits[i])
+	}
+
 	// Call sonic_prepareBundle to get a bundle with all fields properly filled in and encoded
 	var preparedBundle ethapi.PreparedBundle
-	err := client.Client().Call(&preparedBundle, "sonic_prepareBundle",
+	err = client.Client().Call(&preparedBundle, "sonic_prepareBundle",
 		ethapi.PrepareBundleArgs{
 			Transactions:  txsArgs,
 			EarliestBlock: rpc.BlockNumber(earliest),
@@ -222,16 +227,32 @@ func SubmitBundle(client *tests.PooledEhtClient,
 	return bundleHash, err
 }
 
-func estimateGasForBundledTransaction(t *testing.T, client *tests.PooledEhtClient, tx ethereum.CallMsg) uint64 {
-	t.Helper()
+func increasinglyExpensiveContract(address common.Address) []makefakegenesis.Account {
+	code := []byte{
+		byte(vm.PUSH1), 0x00, // Stack: [ 0 ]
+		byte(vm.SLOAD),       // Stack: [storage[0]]
+		byte(vm.PUSH1), 0x01, // Stack: [1, storage[0]]
+		byte(vm.ADD),         // Stack: [storage[0] + 1]
+		byte(vm.PUSH1), 0x00, // Stack: [0, storage[0] + 1]
+		byte(vm.SSTORE), // storage[0] = storage[0] + 1, Stack: []
 
-	tx.AccessList = append(tx.AccessList,
-		types.AccessTuple{
-			Address:     bundle.BundleOnly,
-			StorageKeys: []common.Hash{{}},
-		},
-	)
-	gas, err := client.EstimateGas(t.Context(), tx)
-	require.NoError(t, err, "failed to estimate gas")
-	return gas
+		byte(vm.PUSH1), 0x00, // Stack: [ 0 ]
+		byte(vm.SLOAD), // Stack: [ storage[0] ]
+
+		byte(vm.JUMPDEST),    // Stack: [ storage[0] ]
+		byte(vm.PUSH1), 0x01, // Stack: [ 1, storage[0] ]
+		byte(vm.SWAP1), // Stack: [ storage[0], 1 ]
+		byte(vm.SUB),   // Stack: [ storage[0] - 1 ]
+		byte(vm.DUP1),  // Stack: [ storage[0] - 1, storage[0] - 1 ]
+
+		byte(vm.PUSH1), 12, // Stack: [ 12, storage[0] - 1, storage[0] - 1 ]
+		byte(vm.JUMPI), // if storage[0] - 1 != 0, jump to 12. Stack: [ storage[0] - 1 ]
+
+		byte(vm.STOP), // stop execution
+	}
+
+	return []makefakegenesis.Account{{
+		Address: address,
+		Code:    code,
+	}}
 }
