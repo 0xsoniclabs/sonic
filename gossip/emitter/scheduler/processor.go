@@ -132,6 +132,12 @@ func (p *evmProcessor) run(tx *types.Transaction) (
 			}
 		}
 	}
+	// if this transaction was a bundle and was processed, its hash would not be
+	// in the list of processed transactions, but we still want to consider it
+	// as successfully
+	if len(summary.ProcessedBundles) != 0 {
+		txWasProcessed = true
+	}
 	return txWasProcessed, gasUsed
 }
 

@@ -17,6 +17,7 @@
 package bundles
 
 import (
+	"fmt"
 	"math/big"
 	"testing"
 
@@ -87,81 +88,87 @@ func TestBundle_RejectsBundle_WithPayloadSponsorRequest_WithoutSponsorship(t *te
 
 func TestBundle_CanRunSponsorshipAndSponsored(t *testing.T) {
 
-	upgrade := opera.GetBrioUpgrades()
-	upgrade.TransactionBundles = true
-	upgrade.GasSubsidies = true
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
-		Upgrades: &upgrade,
-	})
+	for _, singleBlockProposerOn := range []bool{true, false} {
+		t.Run(fmt.Sprintf("singleBlockProposer=%v", singleBlockProposerOn), func(t *testing.T) {
 
-	client, err := net.GetClient()
-	require.NoError(t, err)
-	defer client.Close()
+			upgrade := opera.GetBrioUpgrades()
+			upgrade.TransactionBundles = true
+			upgrade.GasSubsidies = true
+			upgrade.SingleProposerBlockFormation = singleBlockProposerOn
+			net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+				Upgrades: &upgrade,
+			})
 
-	// prepare sponsorship and sponsored transactions
-	sponsee, unsignedTx := makeSponsorshipRequestTx(t, net)
-	sponsor, txSponsorData := makeSponsorTx(t, net, sponsee)
+			client, err := net.GetClient()
+			require.NoError(t, err)
+			defer client.Close()
 
-	// prepare the bundle with both the sponsorship transaction and the sponsored transaction.
-	blockNumber, err := client.BlockNumber(t.Context())
-	require.NoError(t, err)
+			// prepare sponsorship and sponsored transactions
+			sponsee, unsignedTx := makeSponsorshipRequestTx(t, net)
+			sponsor, txSponsorData := makeSponsorTx(t, net, sponsee)
 
-	signer := types.LatestSignerForChainID(net.GetChainId())
-	chainId := net.GetChainId()
+			// prepare the bundle with both the sponsorship transaction and the sponsored transaction.
+			blockNumber, err := client.BlockNumber(t.Context())
+			require.NoError(t, err)
 
-	txToSign, plan := prepareBundle(
-		chainId, blockNumber,
-		[]UnsignedTransaction{
-			{
-				Sender:      sponsor.Address(),
-				Transaction: txSponsorData,
-			},
-			{
-				Sender:      sponsee.Address(),
-				Transaction: unsignedTx,
-			}})
+			signer := types.LatestSignerForChainID(net.GetChainId())
+			chainId := net.GetChainId()
 
-	signedSponsorTx := types.MustSignNewTx(sponsor.PrivateKey,
-		signer, txToSign[0].Transaction)
+			txToSign, plan := prepareBundle(
+				chainId, blockNumber,
+				[]UnsignedTransaction{
+					{
+						Sender:      sponsor.Address(),
+						Transaction: txSponsorData,
+					},
+					{
+						Sender:      sponsee.Address(),
+						Transaction: unsignedTx,
+					}})
 
-	signedTx := types.MustSignNewTx(sponsee.PrivateKey, signer, txToSign[1].Transaction)
-	require.True(t, subsidies.IsSponsorshipRequest(signedTx))
+			signedSponsorTx := types.MustSignNewTx(sponsor.PrivateKey,
+				signer, txToSign[0].Transaction)
 
-	// Create a bundle where the first transaction is a sponsorship and the
-	// second transaction is a sponsored transaction.
-	bundleTx := types.MustSignNewTx(
-		sponsor.PrivateKey, signer,
-		makeBundle(types.Transactions{signedSponsorTx, signedTx}, plan),
-	)
+			signedTx := types.MustSignNewTx(sponsee.PrivateKey, signer, txToSign[1].Transaction)
+			require.True(t, subsidies.IsSponsorshipRequest(signedTx))
 
-	// Check bundle construction.
-	checkBundleIntegrity(t, signer, bundleTx, plan)
+			// Create a bundle where the first transaction is a sponsorship and the
+			// second transaction is a sponsored transaction.
+			bundleTx := types.MustSignNewTx(
+				sponsor.PrivateKey, signer,
+				makeBundle(types.Transactions{signedSponsorTx, signedTx}, plan),
+			)
 
-	// Send the bundle to the network and check that it is processed successfully.
-	err = client.SendTransaction(t.Context(), bundleTx)
-	require.NoError(t, err)
+			// Check bundle construction.
+			checkBundleIntegrity(t, signer, bundleTx, plan)
 
-	info, err := waitForBundleExecution(t.Context(), client.Client(), plan.Hash())
-	require.NoError(t, err)
+			// Send the bundle to the network and check that it is processed successfully.
+			err = client.SendTransaction(t.Context(), bundleTx)
+			require.NoError(t, err)
 
-	require.Equal(t, ethapi.BundleStatusExecuted, info.Status)
-	require.NotNil(t, info.Block)
-	require.NotNil(t, info.Position)
+			info, err := waitForBundleExecution(t.Context(), client.Client(), plan.Hash())
+			require.NoError(t, err)
 
-	block, err := client.BlockByNumber(t.Context(), big.NewInt(int64(*info.Block)))
-	require.NoError(t, err)
+			require.Equal(t, ethapi.BundleStatusExecuted, info.Status)
+			require.NotNil(t, info.Block)
+			require.NotNil(t, info.Position)
 
-	// sponsored transaction introduce an internal transaction,
-	// so we expect 3 transactions in the block:
-	// 1. the sponsorship transaction
-	// 2. the sponsored transaction
-	// 3. the internal transaction that transfer the fee from the sponsee to the sponsor
-	txs := block.Transactions()
-	position := *info.Position
-	require.GreaterOrEqual(t, uint32(len(txs)), position+3)
-	require.Equal(t, txs[position].Hash(), signedSponsorTx.Hash())
-	require.Equal(t, txs[position+1].Hash(), signedTx.Hash())
-	require.True(t, internaltx.IsInternal(txs[position+2]))
+			block, err := client.BlockByNumber(t.Context(), big.NewInt(int64(*info.Block)))
+			require.NoError(t, err)
+
+			// sponsored transaction introduce an internal transaction,
+			// so we expect 3 transactions in the block:
+			// 1. the sponsorship transaction
+			// 2. the sponsored transaction
+			// 3. the internal transaction that transfer the fee from the sponsee to the sponsor
+			txs := block.Transactions()
+			position := *info.Position
+			require.GreaterOrEqual(t, uint32(len(txs)), position+3)
+			require.Equal(t, txs[position].Hash(), signedSponsorTx.Hash())
+			require.Equal(t, txs[position+1].Hash(), signedTx.Hash())
+			require.True(t, internaltx.IsInternal(txs[position+2]))
+		})
+	}
 }
 
 func makeSponsorshipRequestTx(t *testing.T, net *tests.IntegrationTestNet) (*tests.Account, *types.AccessListTx) {

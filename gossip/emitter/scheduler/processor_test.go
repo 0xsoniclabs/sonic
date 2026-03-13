@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -57,6 +58,23 @@ func TestEvmProcessor_Run_IfExecutionSucceeds_ReportsSuccessAndGasUsage(t *testi
 	success, gasUsed := processor.run(nil)
 	require.True(t, success)
 	require.Equal(t, uint64(10), gasUsed)
+}
+
+func TestEvmProcessor_Run_IfExecutionProducesMultipleProcessedTransactions_FromABundle(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	runner := NewMockevmProcessorRunner(ctrl)
+
+	runner.EXPECT().Run(0, nil).Return(
+		evmcore.ExecutionSummary{
+			ProcessedBundles: []evmcore.ProcessedBundle{{
+				Bundle: bundle.TransactionBundle{
+					Bundle: []*types.Transaction{},
+				}}}})
+
+	processor := &evmProcessor{processor: runner}
+	success, gasUsed := processor.run(nil)
+	require.True(t, success)
+	require.Zero(t, gasUsed)
 }
 
 func TestEvmProcessor_Run_IfExecutionProducesMultipleProcessedTransactions_SumsUpGasUsage(t *testing.T) {

@@ -17,11 +17,13 @@
 package bundles
 
 import (
+	"fmt"
 	"math/big"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -36,64 +38,75 @@ import (
 // access-list recreation by wallets or tooling.
 func TestCreateAccessList_PreservesBundleOnlyMarker(t *testing.T) {
 
-	session := tests.StartIntegrationTestNet(t)
+	for _, singleBlockProposerOn := range []bool{true, false} {
+		t.Run(fmt.Sprintf("singleBlockProposer=%v", singleBlockProposerOn), func(t *testing.T) {
 
-	client, err := session.GetClient()
-	require.NoError(t, err)
-	defer client.Close()
+			upgrades := opera.GetBrioUpgrades()
+			upgrades.SingleProposerBlockFormation = true
+			upgrades.TransactionBundles = singleBlockProposerOn
+			session := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+				Upgrades: &upgrades,
+			})
 
-	sender := tests.MakeAccountWithBalance(t, session, big.NewInt(1e18))
+			client, err := session.GetClient()
+			require.NoError(t, err)
+			defer client.Close()
 
-	// callCreateAccessList is a helper that calls eth_createAccessList with the
-	// given access list and returns the resulting access list.
-	callCreateAccessList := func(t *testing.T, acl *types.AccessList) types.AccessList {
-		t.Helper()
-		rpcTx := ethapi.TransactionArgs{
-			From:       tests.AsPointer(sender.Address()),
-			To:         &common.Address{0x42},
-			Value:      (*hexutil.Big)(big.NewInt(1)),
-			AccessList: acl,
-		}
-		// mirrors the unexported ethapi.accessListResult
-		type accessListResult struct {
-			AccessList *types.AccessList `json:"accessList"`
-			Error      string            `json:"error,omitempty"`
-			GasUsed    hexutil.Uint64    `json:"gasUsed"`
-		}
-		var result accessListResult
-		require.NoError(t, client.Client().Call(&result, "eth_createAccessList", rpcTx, "latest"))
-		require.NotNil(t, result.AccessList)
-		return *result.AccessList
+			sender := tests.MakeAccountWithBalance(t, session, big.NewInt(1e18))
+
+			// callCreateAccessList is a helper that calls eth_createAccessList with the
+			// given access list and returns the resulting access list.
+			callCreateAccessList := func(t *testing.T, acl *types.AccessList) types.AccessList {
+				t.Helper()
+				rpcTx := ethapi.TransactionArgs{
+					From:       tests.AsPointer(sender.Address()),
+					To:         &common.Address{0x42},
+					Value:      (*hexutil.Big)(big.NewInt(1)),
+					AccessList: acl,
+				}
+				// mirrors the unexported ethapi.accessListResult
+				type accessListResult struct {
+					AccessList *types.AccessList `json:"accessList"`
+					Error      string            `json:"error,omitempty"`
+					GasUsed    hexutil.Uint64    `json:"gasUsed"`
+				}
+				var result accessListResult
+				require.NoError(t, client.Client().Call(&result, "eth_createAccessList", rpcTx, "latest"))
+				require.NotNil(t, result.AccessList)
+				return *result.AccessList
+			}
+
+			t.Run("BundleOnly without storage keys is preserved", func(t *testing.T) {
+				result := callCreateAccessList(t, &types.AccessList{
+					{Address: bundle.BundleOnly, StorageKeys: []common.Hash{}},
+				})
+				require.True(t, accessListContainsAddress(result, bundle.BundleOnly),
+					"BundleOnly must remain in access list")
+			})
+
+			t.Run("BundleOnly with execution plan hash is preserved", func(t *testing.T) {
+				planHash := common.Hash{0xde, 0xad, 0xbe, 0xef}
+				result := callCreateAccessList(t, &types.AccessList{
+					{Address: bundle.BundleOnly, StorageKeys: []common.Hash{planHash}},
+				})
+				require.True(t, accessListContainsStorageKey(result, bundle.BundleOnly, planHash),
+					"BundleOnly with execution plan hash must remain in access list with its storage key")
+			})
+
+			t.Run("BundleOnly not injected when absent from input", func(t *testing.T) {
+				result := callCreateAccessList(t, &types.AccessList{})
+				require.False(t, accessListContainsAddress(result, bundle.BundleOnly),
+					"BundleOnly must not appear in access list if not provided by caller")
+			})
+
+			t.Run("BundleOnly not injected when access list is nil", func(t *testing.T) {
+				result := callCreateAccessList(t, nil)
+				require.False(t, accessListContainsAddress(result, bundle.BundleOnly),
+					"BundleOnly must not appear in access list if nil")
+			})
+
+		})
 	}
-
-	t.Run("BundleOnly without storage keys is preserved", func(t *testing.T) {
-		result := callCreateAccessList(t, &types.AccessList{
-			{Address: bundle.BundleOnly, StorageKeys: []common.Hash{}},
-		})
-		require.True(t, accessListContainsAddress(result, bundle.BundleOnly),
-			"BundleOnly must remain in access list")
-	})
-
-	t.Run("BundleOnly with execution plan hash is preserved", func(t *testing.T) {
-		planHash := common.Hash{0xde, 0xad, 0xbe, 0xef}
-		result := callCreateAccessList(t, &types.AccessList{
-			{Address: bundle.BundleOnly, StorageKeys: []common.Hash{planHash}},
-		})
-		require.True(t, accessListContainsStorageKey(result, bundle.BundleOnly, planHash),
-			"BundleOnly with execution plan hash must remain in access list with its storage key")
-	})
-
-	t.Run("BundleOnly not injected when absent from input", func(t *testing.T) {
-		result := callCreateAccessList(t, &types.AccessList{})
-		require.False(t, accessListContainsAddress(result, bundle.BundleOnly),
-			"BundleOnly must not appear in access list if not provided by caller")
-	})
-
-	t.Run("BundleOnly not injected when access list is nil", func(t *testing.T) {
-		result := callCreateAccessList(t, nil)
-		require.False(t, accessListContainsAddress(result, bundle.BundleOnly),
-			"BundleOnly must not appear in access list if nil")
-	})
 }
 
 // accessListContainsAddress reports whether list has an entry for addr.
