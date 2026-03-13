@@ -34,26 +34,24 @@ import (
 )
 
 func TestBundle_CanBeProcessedByTheNetwork(t *testing.T) {
-
+	t.Parallel()
 	upgrades := opera.GetBrioUpgrades()
 	upgrades.TransactionBundles = true
 
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
-		Upgrades: &upgrades,
-	})
+	session := sharedNetwork.GetIntegrationTestNetSession(t, upgrades)
 
-	client, err := net.GetClient()
+	client, err := session.GetClient()
 	require.NoError(t, err)
 	defer client.Close()
 
-	coordinator := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
-	senderA := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
-	senderB := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
+	coordinator := tests.MakeAccountWithBalance(t, session, big.NewInt(1e18))
+	senderA := tests.MakeAccountWithBalance(t, session, big.NewInt(1e18))
+	senderB := tests.MakeAccountWithBalance(t, session, big.NewInt(1e18))
 
 	addrA := senderA.Address()
 	addrB := senderB.Address()
 
-	chainId := net.GetChainId()
+	chainId := session.GetChainId()
 	signer := types.LatestSignerForChainID(chainId)
 
 	// Create a bundle where sender A and B exchange 1 token each.
@@ -65,7 +63,7 @@ func TestBundle_CanBeProcessedByTheNetwork(t *testing.T) {
 			{
 				Sender: addrA,
 				Transaction: tests.SetTransactionDefaults(
-					t, net,
+					t, session,
 					&types.AccessListTx{
 						To:    &addrB,
 						Gas:   30_000,
@@ -77,7 +75,7 @@ func TestBundle_CanBeProcessedByTheNetwork(t *testing.T) {
 			{
 				Sender: addrB,
 				Transaction: tests.SetTransactionDefaults(
-					t, net,
+					t, session,
 					&types.AccessListTx{
 						To:    &addrA,
 						Gas:   30_000,
@@ -129,7 +127,7 @@ func TestBundle_CanBeProcessedByTheNetwork(t *testing.T) {
 	require.NotNil(t, info.Count)
 
 	// Check that the transactions are in the block as advertised.
-	receipts, err := net.GetReceipts([]common.Hash{signedTxs[0].Hash(), signedTxs[1].Hash()})
+	receipts, err := session.GetReceipts([]common.Hash{signedTxs[0].Hash(), signedTxs[1].Hash()})
 	require.NoError(t, err)
 	require.Len(t, receipts, 2)
 	for _, receipt := range receipts {

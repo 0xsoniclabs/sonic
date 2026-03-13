@@ -39,21 +39,20 @@ func TestBundle_RejectsBundle_WithPayloadSponsorRequest_WithoutSponsorship(t *te
 	upgrade := opera.GetBrioUpgrades()
 	upgrade.TransactionBundles = true
 	upgrade.GasSubsidies = true
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
-		Upgrades: &upgrade,
-	})
+	session := sharedNetwork.GetIntegrationTestNetSession(t, upgrade)
+	t.Parallel()
 
-	client, err := net.GetClient()
+	client, err := session.GetClient()
 	require.NoError(t, err)
 	defer client.Close()
 
 	// make a sponsorship request transaction
-	sponsee, unsignedTx := makeSponsorshipRequestTx(t, net)
+	sponsee, unsignedTx := makeSponsorshipRequestTx(t, session)
 
 	// prepare the bundle with the sponsorship request transaction as payload,
 	// but without a sponsorship transaction.
-	signer := types.LatestSignerForChainID(net.GetChainId())
-	chainId := net.GetChainId()
+	signer := types.LatestSignerForChainID(session.GetChainId())
+	chainId := session.GetChainId()
 
 	blockNumber, err := client.BlockNumber(t.Context())
 	require.NoError(t, err)
@@ -71,7 +70,7 @@ func TestBundle_RejectsBundle_WithPayloadSponsorRequest_WithoutSponsorship(t *te
 	require.True(t, subsidies.IsSponsorshipRequest(signedTx))
 
 	bundleTx := types.MustSignNewTx(
-		net.GetSessionSponsor().PrivateKey, signer,
+		session.GetSessionSponsor().PrivateKey, signer,
 		makeBundle(types.Transactions{signedTx}, plan),
 	)
 
@@ -86,28 +85,26 @@ func TestBundle_RejectsBundle_WithPayloadSponsorRequest_WithoutSponsorship(t *te
 }
 
 func TestBundle_CanRunSponsorshipAndSponsored(t *testing.T) {
-
 	upgrade := opera.GetBrioUpgrades()
 	upgrade.TransactionBundles = true
 	upgrade.GasSubsidies = true
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
-		Upgrades: &upgrade,
-	})
+	session := sharedNetwork.GetIntegrationTestNetSession(t, upgrade)
+	t.Parallel()
 
-	client, err := net.GetClient()
+	client, err := session.GetClient()
 	require.NoError(t, err)
 	defer client.Close()
 
 	// prepare sponsorship and sponsored transactions
-	sponsee, unsignedTx := makeSponsorshipRequestTx(t, net)
-	sponsor, txSponsorData := makeSponsorTx(t, net, sponsee)
+	sponsee, unsignedTx := makeSponsorshipRequestTx(t, session)
+	sponsor, txSponsorData := makeSponsorTx(t, session, sponsee)
 
 	// prepare the bundle with both the sponsorship transaction and the sponsored transaction.
 	blockNumber, err := client.BlockNumber(t.Context())
 	require.NoError(t, err)
 
-	signer := types.LatestSignerForChainID(net.GetChainId())
-	chainId := net.GetChainId()
+	signer := types.LatestSignerForChainID(session.GetChainId())
+	chainId := session.GetChainId()
 
 	txToSign, plan := prepareBundle(
 		chainId, blockNumber,
@@ -164,7 +161,7 @@ func TestBundle_CanRunSponsorshipAndSponsored(t *testing.T) {
 	require.True(t, internaltx.IsInternal(txs[position+2]))
 }
 
-func makeSponsorshipRequestTx(t *testing.T, net *tests.IntegrationTestNet) (*tests.Account, *types.AccessListTx) {
+func makeSponsorshipRequestTx(t *testing.T, session tests.IntegrationTestNetSession) (*tests.Account, *types.AccessListTx) {
 	// create a sponsorship request transaction.
 	txData := &types.AccessListTx{
 		To:  &common.Address{0x42},
@@ -172,15 +169,15 @@ func makeSponsorshipRequestTx(t *testing.T, net *tests.IntegrationTestNet) (*tes
 	}
 
 	sponsee := tests.NewAccount()
-	unsignedTx := tests.SetTransactionDefaults(t, net, txData, sponsee)
+	unsignedTx := tests.SetTransactionDefaults(t, session, txData, sponsee)
 	unsignedTx.GasPrice = big.NewInt(0)
 
 	return sponsee, unsignedTx
 }
 
-func makeSponsorTx(t *testing.T, net *tests.IntegrationTestNet, sponsee *tests.Account) (*tests.Account, *types.AccessListTx) {
+func makeSponsorTx(t *testing.T, session tests.IntegrationTestNetSession, sponsee *tests.Account) (*tests.Account, *types.AccessListTx) {
 
-	client, err := net.GetClient()
+	client, err := session.GetClient()
 	require.NoError(t, err)
 	defer client.Close()
 
@@ -194,7 +191,7 @@ func makeSponsorTx(t *testing.T, net *tests.IntegrationTestNet, sponsee *tests.A
 	require.NoError(t, err)
 	require.True(t, ok)
 
-	opts, err := net.GetTransactOptions(net.GetSessionSponsor())
+	opts, err := session.GetTransactOptions(session.GetSessionSponsor())
 	require.NoError(t, err)
 
 	opts.NoSend = true
@@ -213,7 +210,7 @@ func makeSponsorTx(t *testing.T, net *tests.IntegrationTestNet, sponsee *tests.A
 		Data:     sponsorshipTx.Data(),
 	}
 
-	return net.GetSessionSponsor(), txSponsorData
+	return session.GetSessionSponsor(), txSponsorData
 }
 
 func checkBundleIntegrity(t *testing.T, signer types.Signer, bundleTx *types.Transaction, plan bundle.ExecutionPlan) {

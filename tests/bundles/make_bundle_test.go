@@ -34,14 +34,14 @@ import (
 // bundler account.
 func makeBundleTransaction(
 	t *testing.T,
-	net *tests.IntegrationTestNet,
+	session tests.IntegrationTestNetSession,
 	transactions types.Transactions,
 	plan bundle.ExecutionPlan,
 	nested bool,
 ) *types.Transaction {
 	t.Helper()
 
-	client, err := net.GetClient()
+	client, err := session.GetClient()
 	require.NoError(t, err, "failed to get client; %v", err)
 	defer client.Close()
 
@@ -96,7 +96,7 @@ func makeBundleTransaction(
 	require.NoError(t, err, "failed to calculate floor data gas; %v", err)
 
 	// create the bundle transaction with the same nonce as the payment transaction
-	signer := types.LatestSignerForChainID(net.GetChainId())
+	signer := types.LatestSignerForChainID(session.GetChainId())
 	bundleTx := types.MustSignNewTx(coordinator.PrivateKey, signer,
 		&types.AccessListTx{
 			Nonce: 0,
@@ -122,7 +122,7 @@ func makeBundleTransaction(
 }
 
 func prepareContract[T any](
-	t testing.TB, net *tests.IntegrationTestNet,
+	t testing.TB, session tests.IntegrationTestNetSession,
 	getABI func() (*abi.ABI, error),
 	deployFunc tests.ContractDeployer[T],
 ) (*T, *abi.ABI, common.Address) {
@@ -130,7 +130,7 @@ func prepareContract[T any](
 	abi, err := getABI()
 	require.NoError(t, err, "failed to get counter abi; %v", err)
 
-	contract, receipt, err := tests.DeployContract(net, deployFunc)
+	contract, receipt, err := tests.DeployContract(session, deployFunc)
 	require.NoError(t, err, "failed to deploy contract; %v", err)
 	require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
 	return contract, abi, receipt.ContractAddress
@@ -143,10 +143,10 @@ func generateCallData(t testing.TB, abi *abi.ABI, methodName string, params ...a
 	return input
 }
 
-func getTransactionsInBlock(t *testing.T, net *tests.IntegrationTestNet, blockNumber *big.Int) []common.Hash {
+func getTransactionsInBlock(t *testing.T, session tests.IntegrationTestNetSession, blockNumber *big.Int) []common.Hash {
 	t.Helper()
 
-	client, err := net.GetClient()
+	client, err := session.GetClient()
 	require.NoError(t, err)
 	defer client.Close()
 	block, err := client.BlockByNumber(t.Context(), blockNumber)

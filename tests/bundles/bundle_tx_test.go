@@ -22,6 +22,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -35,8 +36,10 @@ import (
 // not standalone). The RPC must preserve it so the bundle constraint survives
 // access-list recreation by wallets or tooling.
 func TestCreateAccessList_PreservesBundleOnlyMarker(t *testing.T) {
+	t.Parallel()
 
-	session := tests.StartIntegrationTestNet(t)
+	upgrades := opera.GetBrioUpgrades()
+	session := sharedNetwork.GetIntegrationTestNetSession(t, upgrades)
 
 	client, err := session.GetClient()
 	require.NoError(t, err)
