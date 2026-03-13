@@ -28,7 +28,6 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/kvdb"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
 )
 
 //go:generate mockgen -source=emitter_world_test.go -destination=emitter_world_mock.go -package=gossip
@@ -86,32 +85,15 @@ func TestEmitterWorldProc_HasBundleRecentlyBeenProcessed_ReturnsResultFromStore(
 
 			hash := common.Hash{1, 2, 3}
 			if hasBeenProcessed {
-				require.NoError(t, store.AddProcessedBundles(0, []bundle.ExecutionInfo{
+				store.AddProcessedBundles(0, []bundle.ExecutionInfo{
 					{ExecutionPlanHash: hash},
-				}))
+				})
 			}
 
 			got := world.HasBundleRecentlyBeenProcessed(hash)
 			require.Equal(t, hasBeenProcessed, got)
 		})
 	}
-}
-
-func TestEmitterWorldProc_HasBundleRecentlyBeenProcessed_ReturnsTrueIfThereIsAnInternalError(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	table := NewMock_table(ctrl)
-
-	store := initStoreForTests(t)
-	backup := store.table.ProcessedBundles
-	defer func() { store.table.ProcessedBundles = backup }()
-	store.table.ProcessedBundles = table
-
-	world := &emitterWorldProc{s: &Service{store: store}}
-	hash := common.Hash{1, 2, 3}
-
-	table.EXPECT().Get(getEntryKey(hash)).Return(nil, fmt.Errorf("db error"))
-
-	require.True(t, world.HasBundleRecentlyBeenProcessed(hash))
 }
 
 // _table is an interface needed to generate a mock for a kvdb.Store.

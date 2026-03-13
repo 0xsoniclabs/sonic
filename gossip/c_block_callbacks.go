@@ -260,13 +260,10 @@ func consensusCallbackBeginBlockFn(
 				)
 
 				// Filter obsolete bundles from the proposal.
-				proposal.Transactions, err = filterObsoleteBundles(
+				proposal.Transactions = filterObsoleteBundles(
 					proposal.Transactions, types.LatestSignerForChainID(chainCfg.ChainID), store,
 					uint64(proposal.Number), &es.Rules, log.Root(), skippedTxsMeter,
 				)
-				if err != nil {
-					log.Crit("failed to filter obsolete bundles", "err", err)
-				}
 
 				// Make sure the new block time is after the last block time.
 				if blockTime <= bs.LastBlock.Time {
@@ -549,9 +546,7 @@ func consensusCallbackBeginBlockFn(
 							Count:             pb.Count,
 						}
 					}
-					if err := store.AddProcessedBundles(uint64(blockCtx.Idx), bundleInfos); err != nil {
-						log.Crit("Failed to add processed bundles", "err", err)
-					}
+					store.AddProcessedBundles(uint64(blockCtx.Idx), bundleInfos)
 
 					// Inform the SCC about the new block
 					if sccNode != nil {
@@ -947,6 +942,7 @@ func isPermissible(
 		}
 	}
 
+	// TODO: change this to use the Brio upgrade flag.
 	if rules.Upgrades.TransactionBundles && bundle.IsBundleOnly(tx) {
 		return fmt.Errorf(
 			"bundle-only transactions are not supported",
@@ -968,7 +964,7 @@ func filterObsoleteBundles(
 	rules *opera.Rules,
 	log log.Logger,
 	skippedBundleCounter metricCounter,
-) ([]*types.Transaction, error) {
+) []*types.Transaction {
 
 	// How bundles are handled by this filter:
 	//
@@ -985,8 +981,11 @@ func filterObsoleteBundles(
 	// This filter is only enabled with the Brio upgrade. This is for backward
 	// compatibility during the roll-out phase.
 	if !rules.Upgrades.Brio {
-		return transactions, nil
+		return transactions
 	}
+
+	// TODO: check for duplicates of execution plans
+	// TODO: check for non-permissible transaction payloads in bundles
 
 	res := make([]*types.Transaction, 0, len(transactions))
 	for _, tx := range transactions {
@@ -1039,10 +1038,7 @@ func filterObsoleteBundles(
 		// Check that the execution plan of this bundle has not been processed
 		// before at any other time during its valid range.
 		hash := execPlan.Hash()
-		seen, err := tracker.HasBundleRecentlyBeenProcessed(hash)
-		if err != nil {
-			return nil, err
-		}
+		seen := tracker.HasBundleRecentlyBeenProcessed(hash)
 		if seen {
 			if log != nil {
 				log.Warn("Bundle transaction in the proposal was recently processed", "tx", tx.Hash(), "exec_plan_hash", hash)
@@ -1054,7 +1050,7 @@ func filterObsoleteBundles(
 		}
 		res = append(res, tx)
 	}
-	return res, nil
+	return res
 }
 
 // metricCounter is an abstraction of the *metrics.Meter type to facilitate
@@ -1064,5 +1060,5 @@ type metricCounter interface {
 }
 
 type bundleTracker interface {
-	HasBundleRecentlyBeenProcessed(execPlanHash common.Hash) (bool, error)
+	HasBundleRecentlyBeenProcessed(execPlanHash common.Hash) bool
 }

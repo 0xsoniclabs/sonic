@@ -34,24 +34,20 @@ func TestStore_HasBundleRecentlyBeenProcessed_TracksAddedBundleHashes(t *testing
 	hash3 := common.Hash{7, 8, 9}
 
 	recentlyProcessed := func(hash common.Hash) bool {
-		res, err := store.HasBundleRecentlyBeenProcessed(hash)
-		require.NoError(err)
-		return res
+		return store.HasBundleRecentlyBeenProcessed(hash)
 	}
 
 	require.False(recentlyProcessed(hash1))
 	require.False(recentlyProcessed(hash2))
 	require.False(recentlyProcessed(hash3))
 
-	err = store.AddProcessedBundles(1, []bundle.ExecutionInfo{wrapInfo(hash1)})
-	require.NoError(err)
+	store.AddProcessedBundles(1, []bundle.ExecutionInfo{wrapInfo(hash1)})
 
 	require.True(recentlyProcessed(hash1))
 	require.False(recentlyProcessed(hash2))
 	require.False(recentlyProcessed(hash3))
 
-	err = store.AddProcessedBundles(2, []bundle.ExecutionInfo{wrapInfo(hash2), wrapInfo(hash3)})
-	require.NoError(err)
+	store.AddProcessedBundles(2, []bundle.ExecutionInfo{wrapInfo(hash2), wrapInfo(hash3)})
 
 	require.True(recentlyProcessed(hash1))
 	require.True(recentlyProcessed(hash2))
@@ -68,38 +64,32 @@ func TestStore_HasRecentlyBeenProcessed_CleansUpOldBundleHashes(t *testing.T) {
 	hash3 := common.Hash{7, 8, 9}
 
 	recentlyProcessed := func(hash common.Hash) bool {
-		res, err := store.HasBundleRecentlyBeenProcessed(hash)
-		require.NoError(err)
-		return res
+		return store.HasBundleRecentlyBeenProcessed(hash)
 	}
 
 	require.False(recentlyProcessed(hash1))
 	require.False(recentlyProcessed(hash2))
 	require.False(recentlyProcessed(hash3))
 
-	err = store.AddProcessedBundles(1, []bundle.ExecutionInfo{wrapInfo(hash1)})
-	require.NoError(err)
+	store.AddProcessedBundles(1, []bundle.ExecutionInfo{wrapInfo(hash1)})
 
 	require.True(recentlyProcessed(hash1))
 	require.False(recentlyProcessed(hash2))
 	require.False(recentlyProcessed(hash3))
 
-	err = store.AddProcessedBundles(1+bundle.MaxBlockRange/2, []bundle.ExecutionInfo{wrapInfo(hash2)})
-	require.NoError(err)
+	store.AddProcessedBundles(1+bundle.MaxBlockRange/2, []bundle.ExecutionInfo{wrapInfo(hash2)})
 
 	require.True(recentlyProcessed(hash1))
 	require.True(recentlyProcessed(hash2))
 	require.False(recentlyProcessed(hash3))
 
-	err = store.AddProcessedBundles(1+bundle.MaxBlockRange, []bundle.ExecutionInfo{wrapInfo(hash3)})
-	require.NoError(err)
+	store.AddProcessedBundles(1+bundle.MaxBlockRange, []bundle.ExecutionInfo{wrapInfo(hash3)})
 
 	require.False(recentlyProcessed(hash1))
 	require.True(recentlyProcessed(hash2))
 	require.True(recentlyProcessed(hash3))
 
-	err = store.AddProcessedBundles(1+2*bundle.MaxBlockRange, []bundle.ExecutionInfo{})
-	require.NoError(err)
+	store.AddProcessedBundles(1+2*bundle.MaxBlockRange, []bundle.ExecutionInfo{})
 
 	require.False(recentlyProcessed(hash1))
 	require.False(recentlyProcessed(hash2))
@@ -127,22 +117,17 @@ func TestStore_GetBundleExecutionInfo_ReturnsInfoForAddedBundleHashes(t *testing
 		Count:             3,
 	}
 
-	info, err := store.GetBundleExecutionInfo(hash1)
-	require.NoError(err)
+	info := store.GetBundleExecutionInfo(hash1)
 	require.Nil(info)
-	info, err = store.GetBundleExecutionInfo(hash2)
-	require.NoError(err)
+	info = store.GetBundleExecutionInfo(hash2)
 	require.Nil(info)
 
-	err = store.AddProcessedBundles(1, []bundle.ExecutionInfo{info1, info2})
-	require.NoError(err)
+	store.AddProcessedBundles(1, []bundle.ExecutionInfo{info1, info2})
 
-	resInfo1, err := store.GetBundleExecutionInfo(hash1)
-	require.NoError(err)
+	resInfo1 := store.GetBundleExecutionInfo(hash1)
 	require.Equal(info1, *resInfo1)
 
-	resInfo2, err := store.GetBundleExecutionInfo(hash2)
-	require.NoError(err)
+	resInfo2 := store.GetBundleExecutionInfo(hash2)
 	require.Equal(info2, *resInfo2)
 }
 
@@ -154,21 +139,16 @@ func TestStore_AddProcessedBundles_UpdatesHistoryHash(t *testing.T) {
 	hash1 := common.Hash{1, 2, 3}
 	hash2 := common.Hash{4, 5, 6}
 
-	_, initialHash, err := store.GetProcessedBundleHistoryHash()
-	require.NoError(err)
+	_, initialHash := store.GetProcessedBundleHistoryHash()
 
-	err = store.AddProcessedBundles(1, []bundle.ExecutionInfo{wrapInfo(hash1)})
-	require.NoError(err)
+	store.AddProcessedBundles(1, []bundle.ExecutionInfo{wrapInfo(hash1)})
 
-	_, hashAfterFirstAdd, err := store.GetProcessedBundleHistoryHash()
-	require.NoError(err)
+	_, hashAfterFirstAdd := store.GetProcessedBundleHistoryHash()
 	require.NotEqual(initialHash, hashAfterFirstAdd)
 
-	err = store.AddProcessedBundles(2, []bundle.ExecutionInfo{wrapInfo(hash2)})
-	require.NoError(err)
+	store.AddProcessedBundles(2, []bundle.ExecutionInfo{wrapInfo(hash2)})
 
-	_, hashAfterSecondAdd, err := store.GetProcessedBundleHistoryHash()
-	require.NoError(err)
+	_, hashAfterSecondAdd := store.GetProcessedBundleHistoryHash()
 	require.NotEqual(hashAfterFirstAdd, hashAfterSecondAdd)
 }
 
@@ -177,8 +157,7 @@ func TestStore_GetProcessedBundleHistoryHash_InitiallyZero(t *testing.T) {
 	store, err := NewMemStore(t)
 	require.NoError(err)
 
-	blockNum, hash, err := store.GetProcessedBundleHistoryHash()
-	require.NoError(err)
+	blockNum, hash := store.GetProcessedBundleHistoryHash()
 	require.Zero(blockNum)
 	require.Zero(hash)
 }
