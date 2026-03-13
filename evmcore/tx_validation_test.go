@@ -1248,7 +1248,7 @@ func TestValidateTx_RejectsTx_WhenBundleTransactionValidationFails(t *testing.T)
 		Gas: 100_000,
 	})
 
-	require.True(bundle.IsTransactionBundle(invalidBundle))
+	require.True(bundle.IsEnvelope(invalidBundle))
 	require.ErrorIs(validateTx(
 		invalidBundle,
 		poolOptions{
@@ -1427,7 +1427,7 @@ func Test_validateBundleTransactions_AcceptNonBundleTransactions(t *testing.T) {
 	for name, tx := range tests {
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
-			require.False(bundle.IsTransactionBundle(tx))
+			require.False(bundle.IsEnvelope(tx))
 			require.NoError(validateBundleTransactions(tx, NetworkRules{}, nil, nil, nil))
 		})
 	}
@@ -1461,7 +1461,7 @@ func Test_validateBundleTransactions_IfBundleStateIsNotRunning_RejectBundleTrans
 				Data: bundle.Encode(bundle.TransactionBundle{Version: 1}),
 				Gas:  21240,
 			})
-			require.True(bundle.IsTransactionBundle(tx))
+			require.True(bundle.IsEnvelope(tx))
 
 			getBundleState := func(ChainState, *types.Transaction) BundleState {
 				return test.bundleState
@@ -1486,7 +1486,7 @@ func Test_validateBundleTransactions_IfBundledTransactionsAreEnabled_AcceptValid
 		Data: bundle.Encode(bundle.TransactionBundle{Version: 1}),
 		Gas:  21240,
 	})
-	require.True(bundle.IsTransactionBundle(tx))
+	require.True(bundle.IsEnvelope(tx))
 
 	getBundleState := func(ChainState, *types.Transaction) BundleState {
 		return BundleStateRunnable
@@ -1507,7 +1507,7 @@ func Test_validateBundleTransactions_RejectsInvalidBundleTransactions(t *testing
 		To:   &bundle.BundleProcessor,
 		Data: []byte("invalid bundle data"),
 	})
-	require.True(bundle.IsTransactionBundle(tx))
+	require.True(bundle.IsEnvelope(tx))
 
 	rules := NetworkRules{transactionBundles: true}
 	require.ErrorIs(validateBundleTransactions(tx, rules, nil, nil, nil),

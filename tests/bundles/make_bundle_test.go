@@ -100,7 +100,7 @@ func makeEnvelopeTransaction(
 	bundleTx := types.MustSignNewTx(coordinator.PrivateKey, signer,
 		&types.AccessListTx{
 			Nonce: 0,
-			To:    &bundle.BundleAddress,
+			To:    &bundle.BundleProcessor,
 			Gas:   max(gas, intrGas, floorDataGas),
 			Data:  data,
 		},

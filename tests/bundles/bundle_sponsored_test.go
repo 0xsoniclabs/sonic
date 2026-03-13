@@ -217,7 +217,7 @@ func makeSponsorTx(t *testing.T, net *tests.IntegrationTestNet, sponsee *tests.A
 }
 
 func checkBundleIntegrity(t *testing.T, signer types.Signer, bundleTx *types.Transaction, plan bundle.ExecutionPlan) {
-	require.True(t, bundle.IsTransactionBundle(bundleTx))
+	require.True(t, bundle.IsEnvelope(bundleTx))
 	recoveredBundle, recoveredPlan, err := bundle.ValidateTransactionBundle(bundleTx, signer)
 	require.NoError(t, err)
 	require.NotNil(t, recoveredBundle)

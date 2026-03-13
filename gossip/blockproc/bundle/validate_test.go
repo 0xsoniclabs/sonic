@@ -125,7 +125,7 @@ func TestValidate_AcceptsValidBlockRanges(t *testing.T) {
 				Data: data,
 				Gas:  test.Gas,
 			})
-			require.True(t, IsTransactionBundle(tx))
+			require.True(t, IsEnvelope(tx))
 
 			_, _, err := ValidateTransactionBundle(tx, nil)
 			require.NoError(t, err)
@@ -161,7 +161,7 @@ func TestValidate_IdentifiesInvalidBlockRanges(t *testing.T) {
 				To:   &BundleProcessor,
 				Data: data,
 			})
-			require.True(t, IsTransactionBundle(tx))
+			require.True(t, IsEnvelope(tx))
 
 			_, _, err := ValidateTransactionBundle(tx, nil)
 			require.ErrorContains(t, err, test.Issue)

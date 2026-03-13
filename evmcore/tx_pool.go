@@ -1169,7 +1169,7 @@ func (pool *TxPool) HasBundle(execPlanHash common.Hash) bool {
 	pool.mu.RLock()
 	defer pool.mu.RUnlock()
 	for _, tx := range pool.all.txs() {
-		if bundle.IsTransactionBundle(tx) {
+		if bundle.IsEnvelope(tx) {
 			_, plan, _ := bundle.ValidateTransactionBundle(tx, pool.signer)
 			if plan.Hash() == execPlanHash {
 				return true

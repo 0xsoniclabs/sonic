@@ -413,7 +413,7 @@ func Test_getLowestReferencedNonces_ReturnsIfSenderCannotBeDerived(t *testing.T)
 func Test_getLowestReferencedNonces_DetectsInvalidNestedBundle(t *testing.T) {
 	require := require.New(t)
 	invalidBundle := types.NewTx(&types.LegacyTx{To: &bundle.BundleProcessor})
-	require.True(bundle.IsTransactionBundle(invalidBundle))
+	require.True(bundle.IsEnvelope(invalidBundle))
 
 	signer := types.LatestSignerForChainID(big.NewInt(1))
 	_, _, err := bundle.ValidateTransactionBundle(invalidBundle, signer)
@@ -429,7 +429,7 @@ func Test_getLowestReferencedNonces_DetectsInvalidNestedBundle(t *testing.T) {
 func Test_runner_Run_ReturnsErrorForInvalidNestedBundle(t *testing.T) {
 	require := require.New(t)
 	invalidBundle := types.NewTx(&types.LegacyTx{To: &bundle.BundleProcessor})
-	require.True(bundle.IsTransactionBundle(invalidBundle))
+	require.True(bundle.IsEnvelope(invalidBundle))
 
 	runner := &dryRunner{
 		signer:         types.LatestSignerForChainID(big.NewInt(1)),

@@ -102,7 +102,7 @@ func TestBundle_CanBeProcessedByTheNetwork(t *testing.T) {
 	)
 
 	// Check bundle construction.
-	require.True(t, bundle.IsTransactionBundle(bundleTx))
+	require.True(t, bundle.IsEnvelope(bundleTx))
 	recoveredBundle, recoveredPlan, err := bundle.ValidateTransactionBundle(bundleTx, signer)
 	require.NoError(t, err)
 	require.NotNil(t, recoveredBundle)
@@ -222,7 +222,7 @@ func makeBundle(
 		neededGas = intrGas
 	}
 	return &types.DynamicFeeTx{
-		To:   &bundle.BundleAddress,
+		To:   &bundle.BundleProcessor,
 		Data: data,
 		Gas:  neededGas,
 	}

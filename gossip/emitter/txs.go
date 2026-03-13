@@ -219,7 +219,7 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 			continue
 		}
 		// check validity of bundled transactions
-		if bundle.IsTransactionBundle(resolvedTx) && !em.isValidBundleTx(resolvedTx) {
+		if bundle.IsEnvelope(resolvedTx) && !em.isValidBundleTx(resolvedTx) {
 			sorted.Pop()
 			continue
 		}
@@ -249,7 +249,7 @@ func (em *Emitter) isValidBundleTxInternal(
 	}
 
 	// Ignore if not a bundle transaction.
-	if !bundle.IsTransactionBundle(tx) {
+	if !bundle.IsEnvelope(tx) {
 		return false
 	}
 

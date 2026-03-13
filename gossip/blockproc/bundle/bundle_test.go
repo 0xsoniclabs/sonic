@@ -112,7 +112,7 @@ func TestIsTransactionBundle_IdentifiesBundles(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			tx := types.NewTx(test.tx)
-			result := IsTransactionBundle(tx)
+			result := IsEnvelope(tx)
 			require.Equal(t, test.expected, result)
 		})
 	}

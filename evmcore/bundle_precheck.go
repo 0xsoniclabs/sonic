@@ -203,7 +203,7 @@ func getLowestReferencedNonces(
 ) (map[common.Address]uint64, error) {
 	res := make(map[common.Address]uint64)
 	for _, tx := range txBundle.Bundle {
-		if bundle.IsTransactionBundle(tx) {
+		if bundle.IsEnvelope(tx) {
 			bundle, _, err := bundle.ValidateTransactionBundle(tx, signer)
 			if err != nil {
 				return nil, fmt.Errorf("invalid nested bundle: %w", err)
@@ -246,7 +246,7 @@ type dryRunner struct {
 func (r *dryRunner) Run(tx *types.Transaction) bundle.TransactionResult {
 
 	// if the transaction is a nested bundle, process it as such
-	if bundle.IsTransactionBundle(tx) {
+	if bundle.IsEnvelope(tx) {
 		txBundle, _, err := bundle.ValidateTransactionBundle(tx, r.signer)
 		if err != nil {
 			return bundle.TransactionResultInvalid

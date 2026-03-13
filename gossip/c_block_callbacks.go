@@ -990,7 +990,7 @@ func filterObsoleteBundles(
 
 	res := make([]*types.Transaction, 0, len(transactions))
 	for _, tx := range transactions {
-		if !bundle.IsTransactionBundle(tx) {
+		if !bundle.IsEnvelope(tx) {
 			res = append(res, tx)
 			continue
 		}

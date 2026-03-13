@@ -235,7 +235,7 @@ func runTransaction(
 ) ([]ProcessedTransaction, *ProcessedBundle, Status) {
 	// Since a transaction bundle has a gas-price of 0 it would be considered a
 	// sponsorship request. Thus, we need to check for bundles first.
-	if context.upgrades.TransactionBundles && bundle.IsTransactionBundle(tx) {
+	if context.upgrades.TransactionBundles && bundle.IsEnvelope(tx) {
 		return context.runner.runTransactionBundle(context, tx, txIndexOffset)
 	} else if context.upgrades.GasSubsidies && subsidies.IsSponsorshipRequest(tx) {
 		res, status := context.runner.runSponsoredTransaction(context, tx, txIndexOffset)

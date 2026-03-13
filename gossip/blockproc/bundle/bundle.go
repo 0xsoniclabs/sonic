@@ -27,6 +27,29 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
+// IsBundleOnly checks if the transaction is bundle-only, meaning it is intended
+// to be executed as part of a bundle and not included in the block on its own.
+func IsBundleOnly(tx *types.Transaction) bool {
+	for _, entry := range tx.AccessList() {
+		if entry.Address == BundleOnly {
+			return true
+		}
+	}
+	return false
+}
+
+// IsEnvelope checks if the transaction is an envelope of a bundle, meaning
+// it is carrying the encoding of a list of transactions to be executed as a
+// bundle.
+// Note: this function does not check the validity of the bundle data.
+func IsEnvelope(tx *types.Transaction) bool {
+	return tx.To() != nil && *tx.To() == BundleProcessor
+}
+
+
+
+
+
 var (
 	// BundleOnly is an address used in the access list of transactions to mark
 	// them as bundle-only, meaning they are intended to be executed as part of
@@ -232,17 +255,6 @@ func removeBundleOnlyMark(tx *types.Transaction) (*types.Transaction, error) {
 	return types.NewTx(txData), nil
 }
 
-// IsBundleOnly checks if the transaction is bundle-only, meaning it is intended
-// to be executed as part of a bundle and not included in the block on its own.
-func IsBundleOnly(tx *types.Transaction) bool {
-	for _, entry := range tx.AccessList() {
-		if entry.Address == BundleOnly {
-			return true
-		}
-	}
-	return false
-}
-
 // BelongsToExecutionPlan checks if the given transaction correspond to one step in the execution plan.
 func BelongsToExecutionPlan(tx *types.Transaction, executionPlanHash common.Hash) bool {
 	for _, entry := range tx.AccessList() {
@@ -252,13 +264,6 @@ func BelongsToExecutionPlan(tx *types.Transaction, executionPlanHash common.Hash
 		}
 	}
 	return false
-}
-
-// IsTransactionBundle checks if the transaction is a transaction bundle, meaning
-// it is intended to be executed as a bundle containing multiple transactions
-// and not included in the block on its own.
-func IsTransactionBundle(tx *types.Transaction) bool {
-	return tx.To() != nil && *tx.To() == BundleProcessor
 }
 
 const (

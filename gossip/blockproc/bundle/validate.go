@@ -35,7 +35,7 @@ func ValidateTransactionBundle(
 	signer types.Signer,
 ) (*TransactionBundle, *ExecutionPlan, error) {
 
-	if !IsTransactionBundle(envelopeTx) {
+	if !IsEnvelope(envelopeTx) {
 		// not a bundle transaction, nothing to validate
 		return nil, nil, nil
 	}

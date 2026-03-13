@@ -249,7 +249,7 @@ func ValidateTxForBlock(tx *types.Transaction, netRules NetworkRules, chain Stat
 
 	// Ensure Sonic-specific hard bounds
 	isSponsorRequest := netRules.gasSubsidies && subsidies.IsSponsorshipRequest(tx)
-	isBundle := netRules.transactionBundles && bundle.IsTransactionBundle(tx)
+	isBundle := netRules.transactionBundles && bundle.IsEnvelope(tx)
 	if baseFee := chain.CurrentBaseFee(); !isSponsorRequest && !isBundle && baseFee != nil {
 		limit := gaspricelimits.GetMinimumFeeCapForTransactionPool(baseFee)
 		if tx.GasFeeCapIntCmp(limit) < 0 {
@@ -349,7 +349,7 @@ func validateSponsoredTransactions(
 ) error {
 	// Transaction Bundles are identified as sponsorship requests, but they are
 	// checked independently.
-	if bundle.IsTransactionBundle(tx) {
+	if bundle.IsEnvelope(tx) {
 		return nil
 	}
 
@@ -406,7 +406,7 @@ func validateBundleTransactionsInternal(
 	getBundleState func(ChainState, *types.Transaction) BundleState,
 ) error {
 	// This check only covers bundle transactions, ignore the rest.
-	if !bundle.IsTransactionBundle(tx) {
+	if !bundle.IsEnvelope(tx) {
 		return nil
 	}
 
