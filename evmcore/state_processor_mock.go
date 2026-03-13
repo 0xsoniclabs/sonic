@@ -12,6 +12,7 @@ package evmcore
 import (
 	reflect "reflect"
 
+	bundle "github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	common "github.com/ethereum/go-ethereum/common"
 	types "github.com/ethereum/go-ethereum/core/types"
 	uint256 "github.com/holiman/uint256"
@@ -43,11 +44,11 @@ func (m *Mock_transactionRunner) EXPECT() *Mock_transactionRunnerMockRecorder {
 }
 
 // runRegularTransaction mocks base method.
-func (m *Mock_transactionRunner) runRegularTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) (ProcessedTransaction, Status) {
+func (m *Mock_transactionRunner) runRegularTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) (ProcessedTransaction, bundle.TransactionResult) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "runRegularTransaction", ctxt, tx, txIndex)
 	ret0, _ := ret[0].(ProcessedTransaction)
-	ret1, _ := ret[1].(Status)
+	ret1, _ := ret[1].(bundle.TransactionResult)
 	return ret0, ret1
 }
 
@@ -58,11 +59,11 @@ func (mr *Mock_transactionRunnerMockRecorder) runRegularTransaction(ctxt, tx, tx
 }
 
 // runSponsoredTransaction mocks base method.
-func (m *Mock_transactionRunner) runSponsoredTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) ([]ProcessedTransaction, Status) {
+func (m *Mock_transactionRunner) runSponsoredTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) ([]ProcessedTransaction, bundle.TransactionResult) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "runSponsoredTransaction", ctxt, tx, txIndex)
 	ret0, _ := ret[0].([]ProcessedTransaction)
-	ret1, _ := ret[1].(Status)
+	ret1, _ := ret[1].(bundle.TransactionResult)
 	return ret0, ret1
 }
 
@@ -73,12 +74,12 @@ func (mr *Mock_transactionRunnerMockRecorder) runSponsoredTransaction(ctxt, tx, 
 }
 
 // runTransactionBundle mocks base method.
-func (m *Mock_transactionRunner) runTransactionBundle(ctxt *runContext, tx *types.Transaction, txIndex int) ([]ProcessedTransaction, *ProcessedBundle, Status) {
+func (m *Mock_transactionRunner) runTransactionBundle(ctxt *runContext, tx *types.Transaction, txIndex int) ([]ProcessedTransaction, *ProcessedBundle, bundle.TransactionResult) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "runTransactionBundle", ctxt, tx, txIndex)
 	ret0, _ := ret[0].([]ProcessedTransaction)
 	ret1, _ := ret[1].(*ProcessedBundle)
-	ret2, _ := ret[2].(Status)
+	ret2, _ := ret[2].(bundle.TransactionResult)
 	return ret0, ret1, ret2
 }
 
