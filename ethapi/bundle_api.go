@@ -318,3 +318,50 @@ func asTransaction(msg *core.Message) (*types.Transaction, error) {
 		}), nil
 	}
 }
+
+type BundleGasLimits struct {
+	GasLimits []hexutil.Uint64 `json:"gasLimits"`
+}
+
+// EstimateGasForTransactions implements the `sonic_estimateGasForTransactions` RPC method.
+// It estimates the gas required for each provided transaction,
+// applying state changes from previous transactions when estimating subsequent ones.
+// Transactions that become invalid or fail during execution for later estimations are ignored.
+// This method is intended for use with transaction bundles.
+func (a *PublicBundleAPI) EstimateGasForTransactions(ctx context.Context, args []TransactionArgs,
+	blockNrOrHash *rpc.BlockNumberOrHash, overrides *StateOverride, blockOverrides *BlockOverrides) (BundleGasLimits, error) {
+	bNrOrHash := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
+	if blockNrOrHash != nil {
+		bNrOrHash = *blockNrOrHash
+	}
+	gasLimits, err := doEstimateGasForTransactions(ctx, a.b, args, bNrOrHash, overrides, blockOverrides, a.b.RPCGasCap())
+	if err != nil {
+		return BundleGasLimits{}, err
+	}
+	return BundleGasLimits{GasLimits: gasLimits}, nil
+}
+
+func doEstimateGasForTransactions(
+	ctx context.Context,
+	b Backend,
+	args []TransactionArgs,
+	blockNrOrHash rpc.BlockNumberOrHash,
+	overrides *StateOverride,
+	blockOverrides *BlockOverrides,
+	gasCap uint64,
+) ([]hexutil.Uint64, error) {
+	gasLimits := make([]hexutil.Uint64, len(args))
+	preArgs := make([]TransactionArgs, 0, len(args))
+	for i, arg := range args {
+		gas, err := DoEstimateGas(ctx, b, arg, blockNrOrHash, overrides, blockOverrides, gasCap, preArgs)
+		if err != nil {
+			return nil, err
+		}
+
+		preArgs = append(preArgs, arg)
+		preArgs[len(preArgs)-1].Gas = (*hexutil.Uint64)(&gas)
+
+		gasLimits[i] = gas + 2400 + 1900 // add gas for bundle only address and execution plan in access list
+	}
+	return gasLimits, nil
+}
