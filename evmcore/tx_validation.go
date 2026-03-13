@@ -17,6 +17,7 @@
 package evmcore
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -403,7 +404,7 @@ func validateBundleTransactionsInternal(
 	chainState StateReader,
 	// Although state can be retrieved from chain, it is passed explicitly to avoid extra db-pool accesses
 	stateDb state.StateDB,
-	getBundleState func(ChainState, *types.Transaction) BundleState,
+	getBundleState func(ChainState, *types.Transaction) (BundleState, error),
 ) error {
 	// This check only covers bundle transactions, ignore the rest.
 	if !bundle.IsTransactionBundle(tx) {
@@ -418,7 +419,7 @@ func validateBundleTransactionsInternal(
 	// If the transaction is a bundle, validate its structure and content.
 	_, _, err := bundle.ValidateTransactionBundle(tx, signer)
 	if err != nil {
-		return fmt.Errorf("%w: %w", ErrBundleTransactionInvalid, err)
+		return errors.Join(ErrBundleTransactionInvalid, err)
 	}
 
 	// Check that the bundle is runnable.
@@ -426,11 +427,9 @@ func validateBundleTransactionsInternal(
 		chainState: chainState,
 		stateDB:    stateDb,
 	}
-	state := getBundleState(chainAdapter, tx)
-	if state == BundleStatePermanentlyBlocked {
-		// TODO: have `GetBundleState` provide more context on why the bundle is
-		// blocked and include that in the error message.
-		return ErrBundlePermanentlyBlocked
+	_, err = getBundleState(chainAdapter, tx)
+	if err != nil {
+		return errors.Join(ErrBundleNonExecutable, err)
 	}
 
 	return nil
