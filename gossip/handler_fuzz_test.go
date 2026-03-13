@@ -30,7 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/evmcore/txpool"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -118,8 +118,8 @@ func makeFuzzedHandler(t *testing.T) (*handler, error) {
 		}},
 		idx.Block(0),
 	)
-	txpool := evmcore.NewTxPool(
-		evmcore.DefaultTxPoolConfig,
+	txpool := txpool.NewTxPool(
+		txpool.DefaultTxPoolConfig,
 		chainconfig,
 		&EvmStateReader{
 			ServiceFeed: feed,

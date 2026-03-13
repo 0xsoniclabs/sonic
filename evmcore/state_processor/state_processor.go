@@ -1,0 +1,753 @@
+// Copyright 2015 The go-ethereum Authors
+// This file is part of the go-ethereum library.
+//
+// The go-ethereum library is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// The go-ethereum library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
+
+package stateprocessor
+
+import (
+	"fmt"
+	"math/big"
+
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/params"
+
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
+	coreevm "github.com/0xsoniclabs/sonic/evmcore/evm"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
+	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
+)
+
+//go:generate mockgen -source=state_processor.go -destination=state_processor_mock.go -package=stateprocessor
+
+// StateProcessor is a basic Processor, which takes care of transitioning
+// state from one point to another.
+//
+// StateProcessor implements Processor.
+type StateProcessor struct {
+	config   *params.ChainConfig  // Chain configuration options
+	bc       coretypes.DummyChain // Canonical block chain
+	upgrades opera.Upgrades       // Enabled network upgrades
+}
+
+// NewStateProcessor initializes a new StateProcessor.
+func NewStateProcessor(
+	config *params.ChainConfig,
+	bc coretypes.DummyChain,
+	upgrades opera.Upgrades,
+) *StateProcessor {
+	return &StateProcessor{
+		config:   config,
+		bc:       bc,
+		upgrades: upgrades,
+	}
+}
+
+// ExecutionSummary contains the result of processing a list of transactions,
+// including the list of processed transactions with their receipts and the list
+// of processed bundles.
+type ExecutionSummary struct {
+	ProcessedTransactions []ProcessedTransaction
+	ProcessedBundles      []ProcessedBundle
+}
+
+// ProcessedTransaction represents a transaction that was considered for
+// inclusion in a block by the state processor. It contains the transaction
+// itself and the receipt either confirming its execution, or nil if the
+// transaction was skipped.
+type ProcessedTransaction struct {
+	Transaction *types.Transaction
+	Receipt     *types.Receipt
+}
+
+// ProcessedBundle summarizes the result of a processed bundle.
+type ProcessedBundle struct {
+	Bundle   bundle.TransactionBundle
+	Position uint32 // < position in the block transaction list
+	Count    uint32 // < number of transactions from this bundle in the block transaction list
+}
+
+// Process processes the state changes according to the Ethereum rules by running
+// the transaction messages using the StateDB, collecting receipts for applied
+// transactions, nil-receipts for skipped transactions, and the used gas via an
+// output parameter. The resulting list of receipts matches the order of the
+// transactions in the block.
+//
+// A transaction is skipped if for some reason its execution in the given order
+// is not possible. Skipped transactions do not consume any gas and do not affect
+// the usedGas counter. The receipts for skipped transactions are nil. Processing
+// continues with the next transaction in the block.
+//
+// Some reasons leading to issues during the execution of a transaction can lead
+// to a general fail of the Process step. Among those are, for instance, the
+// inability of restoring the sender from a transactions signature. In such a
+// case, the corresponding transaction is skipped, but the processing of the
+// block continues. The error is logged, but not returned to the caller.
+//
+// Note that these rules are part of the replicated state machine and must be
+// consistent among all nodes on the network. The encoded rules have been
+// inherited from the Fantom network and are active in the Sonic network.
+// Future hard-forks may be used to clean up the rules and make them more
+// consistent.
+func (p *StateProcessor) Process(
+	block *coretypes.EvmBlock, statedb state.StateDB, cfg vm.Config, gasLimit uint64,
+	usedGas *uint64, onNewLog func(*types.Log),
+) ExecutionSummary {
+	sonicDifficulty := big.NewInt(1)
+	return p.ProcessWithDifficulty(block, statedb, cfg, gasLimit, usedGas, onNewLog, sonicDifficulty)
+}
+
+// ProcessWithDifficulty is the same as Process, but allows specifying a custom
+// difficulty for the block context. This is mainly intended for testing
+// purposes, when processing blocks from non-Sonic networks exhibiting different
+// difficulty values than Sonic's constant difficulty of 1.
+func (p *StateProcessor) ProcessWithDifficulty(
+	block *coretypes.EvmBlock, statedb state.StateDB, cfg vm.Config, gasLimit uint64,
+	usedGas *uint64, onNewLog func(*types.Log), difficulty *big.Int,
+) ExecutionSummary {
+	var (
+		gp           = new(core.GasPool).AddGas(gasLimit)
+		header       = block.Header()
+		time         = uint64(block.Time.Unix())
+		blockContext = coreevm.NewEVMBlockContextWithDifficulty(header, p.bc, nil, difficulty)
+		vmenv        = vm.NewEVM(blockContext, statedb, p.config, cfg)
+		blockNumber  = block.Number
+		signer       = types.LatestSignerForChainID(p.config.ChainID)
+	)
+
+	// execute EIP-2935 HistoryStorage contract.
+	if p.config.IsPrague(blockNumber, time) {
+		ProcessParentBlockHash(block.ParentHash, vmenv, statedb)
+	}
+
+	// Iterate over and process the individual transactions
+	return runTransactions(newRunContext(
+		signer, header.BaseFee, statedb, gp, blockNumber, usedGas,
+		onNewLog, p.upgrades, &transactionRunner{evm{vmenv}},
+	), block.Transactions, 0)
+}
+
+// runContext bundles the parameters required for processing transactions in a
+// block. It is used as input to the runTransactions helper function and passed
+// along the processing layers to make the parameters available where needed.
+type runContext struct {
+	signer      types.Signer
+	baseFee     *big.Int
+	statedb     state.StateDB
+	gasPool     *core.GasPool
+	blockNumber *big.Int
+	usedGas     *uint64
+	onNewLog    func(*types.Log)
+	upgrades    opera.Upgrades
+	runner      _transactionRunner
+}
+
+// newRunContext creates a new runContext instance bundling the given parameters
+// required for processing transactions in a block. In productive code this
+// function should be used instead of directly creating a runContext instance to
+// ensure that all required parameters are provided.
+func newRunContext(
+	signer types.Signer,
+	baseFee *big.Int,
+	statedb state.StateDB,
+	gasPool *core.GasPool,
+	blockNumber *big.Int,
+	usedGas *uint64,
+	onNewLog func(*types.Log),
+	upgrades opera.Upgrades,
+	runner _transactionRunner,
+) *runContext {
+	return &runContext{
+		signer:      signer,
+		baseFee:     baseFee,
+		statedb:     statedb,
+		gasPool:     gasPool,
+		blockNumber: blockNumber,
+		usedGas:     usedGas,
+		onNewLog:    onNewLog,
+		upgrades:    upgrades,
+		runner:      runner,
+	}
+}
+
+type Status int
+
+const (
+	StatusSuccessful Status = 0
+	StatusFailed     Status = 1
+	StatusSkipped    Status = 2
+)
+
+// runTransaction is a helper function to process a list of transactions. It
+// returns an ExecutionSummary listing ProcessedTransactions, containing the
+// transaction and its receipt (or nil if the transaction was skipped) as well
+// as processed bundles.
+//
+// The function is intended to be used by both the Process function and the
+// incremental transaction processor (BeginBlock/TransactionProcessor).
+func runTransactions(
+	context *runContext,
+	transactions types.Transactions,
+	txIndexOffset int,
+) ExecutionSummary {
+	processed := make([]ProcessedTransaction, 0, len(transactions))
+	var bundles []ProcessedBundle
+	for _, tx := range transactions {
+		nextId := txIndexOffset
+		for _, p := range processed {
+			if p.Receipt != nil {
+				nextId++
+			}
+		}
+		txs, processedBundle, _ := runTransaction(context, tx, nextId)
+		processed = append(processed, txs...)
+		if processedBundle != nil {
+			bundles = append(bundles, *processedBundle)
+		}
+	}
+	return ExecutionSummary{
+		ProcessedTransactions: processed,
+		ProcessedBundles:      bundles,
+	}
+}
+
+func runTransaction(
+	context *runContext,
+	tx *types.Transaction,
+	txIndexOffset int,
+) ([]ProcessedTransaction, *ProcessedBundle, Status) {
+	// Since a transaction bundle has a gas-price of 0 it would be considered a
+	// sponsorship request. Thus, we need to check for bundles first.
+	if context.upgrades.TransactionBundles && bundle.IsTransactionBundle(tx) {
+		return context.runner.runTransactionBundle(context, tx, txIndexOffset)
+	} else if context.upgrades.GasSubsidies && subsidies.IsSponsorshipRequest(tx) {
+		res, status := context.runner.runSponsoredTransaction(context, tx, txIndexOffset)
+		return res, nil, status
+	} else {
+		res, status := context.runner.runRegularTransaction(context, tx, txIndexOffset)
+		return []ProcessedTransaction{res}, nil, status
+	}
+}
+
+// _transactionRunner is an interface for components implementing the logic
+// required for running transactions with various rules, e.g. regular or
+// sponsored transactions.
+type _transactionRunner interface {
+	runRegularTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) (ProcessedTransaction, Status)
+	runSponsoredTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) ([]ProcessedTransaction, Status)
+	runTransactionBundle(ctxt *runContext, tx *types.Transaction, txIndex int) ([]ProcessedTransaction, *ProcessedBundle, Status)
+}
+
+// transactionRunner implements the _transactionRunner interface by using an
+// _evm instance to run transactions.
+type transactionRunner struct {
+	evm _evm
+}
+
+func (r *transactionRunner) runRegularTransaction(
+	ctxt *runContext,
+	tx *types.Transaction,
+	txIndex int,
+) (ProcessedTransaction, Status) {
+	res := r.evm.runWithBaseFeeCheck(ctxt, tx, txIndex)
+	status := StatusSkipped
+	if res.Receipt != nil {
+		if res.Receipt.Status == types.ReceiptStatusSuccessful {
+			status = StatusSuccessful
+		} else {
+			status = StatusFailed
+		}
+	}
+	return res, status
+}
+
+func (r *transactionRunner) runSponsoredTransaction(
+	ctxt *runContext,
+	tx *types.Transaction,
+	txIndex int,
+) ([]ProcessedTransaction, Status) {
+	// Run the IsCovered query in a snapshot to avoid spilling any side-effects
+	// like warm storage slots or refunds into the actual transaction.
+	ctxt.statedb.BeginTransaction()
+	snapshot := ctxt.statedb.Snapshot()
+	covered, fundId, config, err := subsidies.IsCovered(
+		ctxt.upgrades, r.evm, ctxt.signer, tx, ctxt.baseFee,
+	)
+	ctxt.statedb.RevertToSnapshot(snapshot)
+	ctxt.statedb.EndTransaction()
+	if err != nil {
+		log.Warn("Failed to query subsidies registry", "tx", tx.Hash().Hex(), "err", err)
+		return []ProcessedTransaction{{Transaction: tx}}, StatusSkipped
+	}
+	if !covered {
+		log.Debug("Transaction is not covered by a subsidy", "tx", tx.Hash().Hex())
+		return []ProcessedTransaction{{Transaction: tx}}, StatusSkipped
+	}
+
+	// Check the remaining available gas to be used in this block.
+	available := ctxt.gasPool.Gas()
+	needed := tx.Gas() + config.SponsorshipOverheadGasCost
+	if available < needed {
+		log.Debug("Not enough gas left in block for sponsored transaction",
+			"tx", tx.Hash().Hex(), "available", available, "needed", needed,
+		)
+		return []ProcessedTransaction{{Transaction: tx}}, StatusSkipped
+	}
+
+	// Run the sponsored transaction.
+	processed := r.evm.runWithoutBaseFeeCheck(ctxt, tx, txIndex)
+	if processed.Receipt == nil {
+		log.Debug("Sponsored transaction skipped", "tx", tx.Hash().Hex())
+		return []ProcessedTransaction{processed}, StatusSkipped
+	}
+
+	status := StatusSuccessful
+	if processed.Receipt.Status == types.ReceiptStatusFailed {
+		log.Debug("Sponsored transaction failed", "tx", tx.Hash().Hex())
+		status = StatusFailed
+	}
+
+	// Charge the fee for the sponsored transaction to the subsidy fund.
+	gasUsed := processed.Receipt.GasUsed
+	feeChargingTx, err := subsidies.GetFeeChargeTransaction(
+		ctxt.statedb, fundId, config, gasUsed, ctxt.baseFee,
+	)
+	if err != nil {
+		// Note: at this point the sponsored transaction has been executed, but
+		// we are not able to charge the fee to the subsidy fund. At this point
+		// we can not undo the sponsored transaction, and we can not abort the
+		// block formation. So we have to let this go. This sponsored
+		// transaction was on the house (meaning on the network).
+		log.Warn("Failed to create fee charging transaction", "sponsored-tx", tx.Hash().Hex(), "err", err)
+		return []ProcessedTransaction{processed}, status
+	}
+	processedDeduction := r.evm.runWithoutBaseFeeCheck(ctxt, feeChargingTx, txIndex+1)
+	if processedDeduction.Receipt == nil {
+		// Note: at this point, the deduction transaction was skipped, meaning
+		// the subsidy fund was not charged. We can not abort the block
+		// formation, so we have to let this go.
+		log.Warn("Fee charging transaction was skipped", "sponsored-tx", tx.Hash().Hex())
+	}
+	if processedDeduction.Receipt != nil && processedDeduction.Receipt.Status == types.ReceiptStatusFailed {
+		// Note: at this point, the deduction transaction failed, meaning the
+		// subsidy fund was not charged.
+		log.Warn("Fee charging transaction failed", "sponsored-tx", tx.Hash().Hex())
+	}
+	return []ProcessedTransaction{processed, processedDeduction}, status
+}
+
+func (r *transactionRunner) runTransactionBundle(
+	ctxt *runContext,
+	tx *types.Transaction,
+	txIndex int,
+) ([]ProcessedTransaction, *ProcessedBundle, Status) {
+
+	if !ctxt.upgrades.TransactionBundles {
+		log.Warn("Transaction bundles are not enabled, skipping bundle transaction", "tx", tx.Hash().Hex())
+		return []ProcessedTransaction{{Transaction: tx}}, nil, StatusSkipped
+	}
+
+	txBundle, plan, err := bundle.ValidateTransactionBundle(tx, ctxt.signer)
+	if err != nil {
+		log.Warn("Invalid bundle skip", "tx", tx.Hash().Hex(), "error", err)
+		return []ProcessedTransaction{{Transaction: tx}}, nil, StatusSkipped
+	}
+
+	if !plan.IsInRange(ctxt.blockNumber.Uint64()) {
+		log.Warn("Bundle skipped due to out-of-range execution plan", "tx", tx.Hash().Hex(), "planRange", fmt.Sprintf("[%d,%d]", plan.Earliest, plan.Latest), "blockNumber", ctxt.blockNumber.Uint64())
+		return []ProcessedTransaction{{Transaction: tx}}, nil, StatusSkipped
+	}
+
+	processedBundle := &ProcessedBundle{
+		Bundle:   *txBundle,
+		Position: uint32(txIndex),
+	}
+
+	// Run the bundle and collect the processed transactions.
+	runner := bundleTransactionRunner{ctxt: ctxt, txOffset: txIndex}
+	bundleCheckpoint := ctxt.statedb.InterTxSnapshot()
+	if success := bundle.RunBundle(txBundle, &runner); !success {
+		if err := ctxt.statedb.RevertToInterTxSnapshot(bundleCheckpoint); err != nil {
+			log.Error("Failed to revert to checkpoint", "err", err)
+		}
+		return []ProcessedTransaction{}, processedBundle, StatusFailed
+	}
+	for _, processedTx := range runner.processedTransactions {
+		if processedTx.Receipt != nil {
+			processedBundle.Count++
+		}
+	}
+	return runner.processedTransactions, processedBundle, StatusSuccessful
+}
+
+// bundleTransactionRunner is an adapter implementing the bundle.TransactionRunner
+// interface to run transactions within a bundle and collect their results.
+type bundleTransactionRunner struct {
+	ctxt                  *runContext
+	txOffset              int
+	processedTransactions []ProcessedTransaction
+}
+
+func (b *bundleTransactionRunner) Run(tx *types.Transaction) bundle.TransactionResult {
+	processed, _, status := runTransaction(b.ctxt, tx, b.txOffset)
+	b.processedTransactions = append(b.processedTransactions, processed...)
+	if status == StatusSkipped {
+		return bundle.TransactionResultInvalid
+	}
+
+	processedCount := 0
+	for _, p := range processed {
+		if p.Receipt != nil {
+			processedCount++
+		}
+	}
+	b.txOffset += processedCount
+
+	if status == StatusFailed {
+		return bundle.TransactionResultFailed
+	} else {
+		return bundle.TransactionResultSuccessful
+	}
+}
+
+// _evm is an interface to an EVM instance that can be used to run a single
+// transaction. It is used by the transactionRunner to decouple the transaction
+// running logic from the actual EVM implementation, enabling easier testing.
+type _evm interface {
+	subsidies.VirtualMachine
+	runWithBaseFeeCheck(*runContext, *types.Transaction, int) ProcessedTransaction
+	runWithoutBaseFeeCheck(*runContext, *types.Transaction, int) ProcessedTransaction
+}
+
+type evm struct {
+	*vm.EVM
+}
+
+func (e evm) runWithBaseFeeCheck(
+	ctxt *runContext,
+	tx *types.Transaction,
+	txIndex int,
+) ProcessedTransaction {
+	return e._runTransaction(ctxt, tx, txIndex, true)
+}
+
+func (e evm) runWithoutBaseFeeCheck(
+	ctxt *runContext,
+	tx *types.Transaction,
+	txIndex int,
+) ProcessedTransaction {
+	return e._runTransaction(ctxt, tx, txIndex, false)
+}
+
+func (e evm) _runTransaction(
+	ctxt *runContext,
+	tx *types.Transaction,
+	txIndex int,
+	checkBaseFee bool,
+) ProcessedTransaction {
+	msg, err := TxAsMessage(tx, ctxt.signer, ctxt.baseFee)
+	if err != nil {
+		log.Info("Failed to convert transaction to message", "tx", tx.Hash().Hex(), "err", err)
+		return ProcessedTransaction{Transaction: tx}
+	}
+
+	e.Config.NoBaseFee = !checkBaseFee
+	ctxt.statedb.SetTxContext(tx.Hash(), txIndex)
+	receipt, _, err := ApplyTransaction(
+		msg, ctxt.gasPool, ctxt.statedb, ctxt.blockNumber, tx,
+		ctxt.usedGas, e.EVM, ctxt.onNewLog,
+	)
+
+	if err != nil {
+		log.Debug("Failed to apply transaction", "tx", tx.Hash().Hex(), "err", err)
+		return ProcessedTransaction{Transaction: tx}
+	}
+	return ProcessedTransaction{Transaction: tx, Receipt: receipt}
+}
+
+// BeginBlock starts the processing of a new block and returns a function to
+// process individual transactions in the block. It follows the same rules as
+// the Process method, yet enables the incremental processing of transactions.
+// This is required by the transaction scheduler in the emitter, which needs to
+// probe individual transactions to determine their applicability and gas usage.
+func (p *StateProcessor) BeginBlock(
+	block *coretypes.EvmBlock, stateDb state.StateDB, cfg vm.Config, gasLimit uint64,
+	onNewLog func(*types.Log),
+) *TransactionProcessor {
+	var (
+		gp            = new(core.GasPool).AddGas(gasLimit)
+		header        = block.Header()
+		time          = uint64(block.Time.Unix())
+		blockContext  = coreevm.NewEVMBlockContext(header, p.bc, nil)
+		vmEnvironment = vm.NewEVM(blockContext, stateDb, p.config, cfg)
+		blockNumber   = block.Number
+		signer        = types.LatestSignerForChainID(p.config.ChainID)
+	)
+
+	// execute EIP-2935 HistoryStorage contract.
+	if p.config.IsPrague(blockNumber, time) {
+		ProcessParentBlockHash(block.ParentHash, vmEnvironment, stateDb)
+	}
+
+	return &TransactionProcessor{
+		blockNumber:   blockNumber,
+		gp:            gp,
+		header:        header,
+		onNewLog:      onNewLog,
+		signer:        signer,
+		stateDb:       stateDb,
+		vmEnvironment: vmEnvironment,
+		upgrades:      p.upgrades,
+	}
+}
+
+// TransactionProcessor is produced by the BeginBlock function and is used to
+// process individual transactions in the block.
+type TransactionProcessor struct {
+	blockNumber   *big.Int
+	gp            *core.GasPool
+	header        *coretypes.EvmHeader
+	onNewLog      func(*types.Log)
+	signer        types.Signer
+	stateDb       state.StateDB
+	usedGas       uint64
+	vmEnvironment *vm.EVM
+	upgrades      opera.Upgrades
+}
+
+// Run processes a single transaction in the block, where i is the index of
+// the transaction in the block. It returns the list of all transactions that
+// have been attempted to be processed to cover the given transaction as well as
+// their receipts if they did not get skipped.
+func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) ExecutionSummary {
+	return runTransactions(newRunContext(
+		tp.signer, tp.header.BaseFee, tp.stateDb, tp.gp, tp.blockNumber,
+		&tp.usedGas, tp.onNewLog, tp.upgrades, &transactionRunner{evm{tp.vmEnvironment}},
+	), []*types.Transaction{tx}, i)
+}
+
+// ApplyTransactionWithEVM attempts to apply a transaction to the given state database
+// and uses the input parameters for its environment similar to ApplyTransaction. However,
+// this method takes an already created EVM instance as input.
+func ApplyTransactionWithEVM(msg *core.Message, config *params.ChainConfig, gp *core.GasPool, statedb state.StateDB, blockNumber *big.Int, blockHash common.Hash, tx *types.Transaction, usedGas *uint64, evm *vm.EVM) (receipt *types.Receipt, err error) {
+	if evm.Config.Tracer != nil && evm.Config.Tracer.OnTxStart != nil {
+		evm.Config.Tracer.OnTxStart(evm.GetVMContext(), tx, msg.From)
+		if evm.Config.Tracer.OnTxEnd != nil {
+			defer func() {
+				evm.Config.Tracer.OnTxEnd(receipt, err)
+			}()
+		}
+	}
+	// Create a new context to be used in the EVM environment.
+	statedb.BeginTransaction()
+	txContext := coreevm.NewEVMTxContext(msg)
+	evm.SetTxContext(txContext)
+
+	// For now, Sonic only supports Blob transactions without blob data.
+	if msg.BlobHashes != nil {
+		if len(msg.BlobHashes) > 0 {
+			statedb.EndTransaction()
+			return nil, fmt.Errorf("blob data is not supported")
+		}
+		// PreCheck requires non-nil blobHashes not to be empty
+		msg.BlobHashes = nil
+	}
+
+	// Apply the transaction to the current state (included in the env).
+	result, err := core.ApplyMessage(evm, msg, gp)
+	if err != nil {
+		statedb.EndTransaction()
+		return nil, err
+	}
+
+	// Update the state with pending changes.
+	statedb.EndTransaction()
+	*usedGas += result.UsedGas
+
+	// Create a new receipt for the transaction, storing the intermediate root and gas used
+	// by the tx.
+	receipt = &types.Receipt{Type: tx.Type(), CumulativeGasUsed: *usedGas}
+	if result.Failed() {
+		receipt.Status = types.ReceiptStatusFailed
+	} else {
+		receipt.Status = types.ReceiptStatusSuccessful
+	}
+	receipt.TxHash = tx.Hash()
+	receipt.GasUsed = result.UsedGas
+
+	if tx.Type() == types.BlobTxType {
+		receipt.BlobGasUsed = uint64(len(tx.BlobHashes()) * params.BlobTxBlobGasPerBlob)
+		receipt.BlobGasPrice = evm.Context.BlobBaseFee // TODO issue #147
+	}
+
+	// If the transaction created a contract, store the creation address in the receipt.
+	if msg.To == nil {
+		receipt.ContractAddress = crypto.CreateAddress(evm.Origin, tx.Nonce())
+	}
+
+	// Tracing doesn't need logs and bloom.
+	if evm.Config.Tracer == nil {
+		// Set the receipt logs and create the bloom filter.
+		receipt.Logs = statedb.GetLogs(tx.Hash(), blockHash) // don't store logs when tracing
+		receipt.Bloom = types.CreateBloom(receipt)
+	}
+	receipt.BlockHash = blockHash
+	receipt.BlockNumber = blockNumber
+	receipt.TransactionIndex = uint(statedb.TxIndex())
+	return receipt, err
+}
+
+// ProcessParentBlockHash stores the parent block hash in the history storage contract
+// as per EIP-2935.
+func ProcessParentBlockHash(prevHash common.Hash, evm *vm.EVM, stateDb state.StateDB) {
+	msg := &core.Message{
+		From:      params.SystemAddress,
+		GasLimit:  30_000_000,
+		GasPrice:  common.Big0,
+		GasFeeCap: common.Big0,
+		GasTipCap: common.Big0,
+		To:        &params.HistoryStorageAddress,
+		Data:      prevHash.Bytes(),
+	}
+
+	txContext := coreevm.NewEVMTxContext(msg)
+	stateDb.BeginTransaction()
+	evm.SetTxContext(txContext)
+
+	stateDb.AddAddressToAccessList(params.HistoryStorageAddress)
+	_, _, _ = evm.Call(msg.From, *msg.To, msg.Data, 30_000_000, common.U2560)
+	stateDb.Finalise(true)
+	stateDb.EndTransaction()
+}
+
+// ApplyTransaction attempts to apply a transaction defined by the given message
+// to the provided EVM environment. If successful, a non-nil receipt and the
+// used gas is returned. If it fails, an error is returned and the receipt is
+// guaranteed to be nil.
+func ApplyTransaction(
+	msg *core.Message,
+	gp *core.GasPool,
+	statedb state.StateDB,
+	blockNumber *big.Int,
+	tx *types.Transaction,
+	usedGas *uint64,
+	evm *vm.EVM,
+	onNewLog func(*types.Log),
+) (
+	*types.Receipt,
+	uint64,
+	error,
+) {
+	statedb.BeginTransaction()
+	// Create a new context to be used in the EVM environment.
+	txContext := coreevm.NewEVMTxContext(msg)
+	evm.SetTxContext(txContext)
+
+	// Skip checking of base fee limits for internal transactions.
+	evm.Config.NoBaseFee = evm.Config.NoBaseFee || msg.SkipNonceChecks
+
+	// For now, Sonic only supports Blob transactions without blob data.
+	if msg.BlobHashes != nil {
+		if len(msg.BlobHashes) > 0 {
+			statedb.EndTransaction()
+			return nil, 0, fmt.Errorf("blob data is not supported")
+		}
+		// PreCheck requires non-nil blobHashes not to be empty
+		msg.BlobHashes = nil
+	}
+
+	isAllegro := evm.ChainConfig().IsPrague(blockNumber, evm.Context.Time)
+	var snapshot int
+	if isAllegro {
+		snapshot = statedb.Snapshot()
+	}
+	// Apply the transaction to the current state (included in the env).
+	result, err := core.ApplyMessage(evm, msg, gp)
+	if err != nil {
+		if isAllegro {
+			statedb.RevertToSnapshot(snapshot)
+		}
+		statedb.EndTransaction()
+		return nil, 0, err
+	}
+	// Notify about logs with potential state changes.
+	// At this point the final block hash is not yet known, so we pass an empty
+	// hash. For the consumers of the log messages, as for instance the driver
+	// contract listener, only the sender, topics, and the data are relevant.
+	// The block hash is not used.
+	logs := statedb.GetLogs(tx.Hash(), common.Hash{})
+	if onNewLog != nil {
+		for _, l := range logs {
+			onNewLog(l)
+		}
+	}
+
+	// Update the state with pending changes.
+	statedb.EndTransaction()
+	*usedGas += result.UsedGas
+
+	// Create a new receipt for the transaction, storing the intermediate root and gas used
+	// by the tx.
+	receipt := &types.Receipt{Type: tx.Type(), CumulativeGasUsed: *usedGas}
+	if result.Failed() {
+		receipt.Status = types.ReceiptStatusFailed
+	} else {
+		receipt.Status = types.ReceiptStatusSuccessful
+	}
+	receipt.TxHash = tx.Hash()
+	receipt.GasUsed = result.UsedGas
+
+	// If the transaction created a contract, store the creation address in the receipt.
+	if msg.To == nil {
+		receipt.ContractAddress = crypto.CreateAddress(evm.Origin, tx.Nonce())
+	}
+
+	// Set the receipt logs.
+	receipt.Logs = logs
+	receipt.Bloom = types.CreateBloom(receipt)
+	receipt.BlockNumber = blockNumber
+	receipt.TransactionIndex = uint(statedb.TxIndex())
+	return receipt, result.UsedGas, nil
+}
+
+func TxAsMessage(tx *types.Transaction, signer types.Signer, baseFee *big.Int) (*core.Message, error) {
+	if !internaltx.IsInternal(tx) {
+		return core.TransactionToMessage(tx, signer, baseFee)
+	} else {
+		return &core.Message{ // internal tx - no signature checking
+			From:                  internaltx.InternalSender(tx),
+			To:                    tx.To(),
+			Nonce:                 tx.Nonce(),
+			Value:                 tx.Value(),
+			GasLimit:              tx.Gas(),
+			GasPrice:              tx.GasPrice(),
+			GasFeeCap:             tx.GasFeeCap(),
+			GasTipCap:             tx.GasTipCap(),
+			Data:                  tx.Data(),
+			AccessList:            tx.AccessList(),
+			BlobGasFeeCap:         tx.BlobGasFeeCap(),
+			BlobHashes:            tx.BlobHashes(),
+			SkipNonceChecks:       true, // don't check sender nonce and being EOA
+			SkipTransactionChecks: true,
+		}, nil
+	}
+}

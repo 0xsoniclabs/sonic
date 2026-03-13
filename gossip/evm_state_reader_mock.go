@@ -13,7 +13,7 @@ import (
 	big "math/big"
 	reflect "reflect"
 
-	evmcore "github.com/0xsoniclabs/sonic/evmcore"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
 	state "github.com/0xsoniclabs/sonic/inter/state"
 	opera "github.com/0xsoniclabs/sonic/opera"
 	common "github.com/ethereum/go-ethereum/common"
@@ -46,10 +46,10 @@ func (m *MockStateReader) EXPECT() *MockStateReaderMockRecorder {
 }
 
 // Block mocks base method.
-func (m *MockStateReader) Block(verificationHash common.Hash, number uint64) *evmcore.EvmBlock {
+func (m *MockStateReader) Block(verificationHash common.Hash, number uint64) *coretypes.EvmBlock {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Block", verificationHash, number)
-	ret0, _ := ret[0].(*evmcore.EvmBlock)
+	ret0, _ := ret[0].(*coretypes.EvmBlock)
 	return ret0
 }
 
@@ -89,10 +89,10 @@ func (mr *MockStateReaderMockRecorder) CurrentBaseFee() *gomock.Call {
 }
 
 // CurrentBlock mocks base method.
-func (m *MockStateReader) CurrentBlock() *evmcore.EvmBlock {
+func (m *MockStateReader) CurrentBlock() *coretypes.EvmBlock {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CurrentBlock")
-	ret0, _ := ret[0].(*evmcore.EvmBlock)
+	ret0, _ := ret[0].(*coretypes.EvmBlock)
 	return ret0
 }
 
@@ -160,10 +160,10 @@ func (mr *MockStateReaderMockRecorder) CurrentStateDB() *gomock.Call {
 }
 
 // Header mocks base method.
-func (m *MockStateReader) Header(verificationHash common.Hash, number uint64) *evmcore.EvmHeader {
+func (m *MockStateReader) Header(verificationHash common.Hash, number uint64) *coretypes.EvmHeader {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Header", verificationHash, number)
-	ret0, _ := ret[0].(*evmcore.EvmHeader)
+	ret0, _ := ret[0].(*coretypes.EvmHeader)
 	return ret0
 }
 
@@ -174,10 +174,10 @@ func (mr *MockStateReaderMockRecorder) Header(verificationHash, number any) *gom
 }
 
 // LastBlockWithArchiveState mocks base method.
-func (m *MockStateReader) LastBlockWithArchiveState(withTxs bool) (*evmcore.EvmBlock, error) {
+func (m *MockStateReader) LastBlockWithArchiveState(withTxs bool) (*coretypes.EvmBlock, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "LastBlockWithArchiveState", withTxs)
-	ret0, _ := ret[0].(*evmcore.EvmBlock)
+	ret0, _ := ret[0].(*coretypes.EvmBlock)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

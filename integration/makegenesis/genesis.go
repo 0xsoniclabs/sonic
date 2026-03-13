@@ -26,6 +26,7 @@ import (
 	"os"
 	"path/filepath"
 
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/0xsoniclabs/sonic/utils/objstream"
@@ -37,7 +38,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/drivermodule"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/eventmodule"
@@ -177,13 +177,13 @@ type dummyHeaderReturner struct {
 	blocks []ibr.LlrIdxFullBlockRecord
 }
 
-func (d dummyHeaderReturner) Header(_ common.Hash, position uint64) *evmcore.EvmHeader {
+func (d dummyHeaderReturner) Header(_ common.Hash, position uint64) *coretypes.EvmHeader {
 	if position < uint64(len(d.blocks)) {
-		return &evmcore.EvmHeader{
+		return &coretypes.EvmHeader{
 			BaseFee: d.blocks[position].BaseFee,
 		}
 	}
-	return &evmcore.EvmHeader{
+	return &coretypes.EvmHeader{
 		BaseFee: big.NewInt(0),
 	}
 }

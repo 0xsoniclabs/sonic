@@ -25,7 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/stretchr/testify/require"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/evmcore/txpool"
 	"github.com/0xsoniclabs/sonic/gossip"
 	emitter_config "github.com/0xsoniclabs/sonic/gossip/emitter/config"
 	"github.com/0xsoniclabs/sonic/vecmt"
@@ -41,7 +41,7 @@ func TestConfigFile(t *testing.T) {
 		Node:          DefaultNodeConfig(),
 		Opera:         gossip.DefaultConfig(cacheRatio),
 		Emitter:       emitter_config.DefaultConfig(),
-		TxPool:        evmcore.DefaultTxPoolConfig,
+		TxPool:        txpool.DefaultTxPoolConfig,
 		OperaStore:    gossip.DefaultStoreConfig(cacheRatio),
 		Lachesis:      abft.DefaultConfig(),
 		LachesisStore: abft.DefaultStoreConfig(cacheRatio),

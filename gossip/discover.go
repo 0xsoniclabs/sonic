@@ -17,13 +17,12 @@
 package gossip
 
 import (
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/forkid"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/rlp"
-
-	"github.com/0xsoniclabs/sonic/evmcore"
 )
 
 // enrEntry is the ENR entry which advertises `eth` protocol on the discovery.
@@ -42,7 +41,7 @@ func (e enrEntry) ENRKey() string {
 // StartENRUpdater starts the `opera` ENR updater loop, which listens for chain
 // head events and updates the requested node record whenever a fork is passed.
 func StartENRUpdater(svc *Service, ln *enode.LocalNode) {
-	var newHead = make(chan evmcore.ChainHeadNotify, 10)
+	var newHead = make(chan coretypes.ChainHeadNotify, 10)
 	sub := svc.feed.SubscribeNewBlock(newHead)
 
 	go func() {

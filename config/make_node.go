@@ -29,7 +29,8 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 
 	"github.com/0xsoniclabs/sonic/config/flags"
-	"github.com/0xsoniclabs/sonic/evmcore"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
+	"github.com/0xsoniclabs/sonic/evmcore/txpool"
 	"github.com/0xsoniclabs/sonic/gossip"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
 	"github.com/0xsoniclabs/sonic/integration"
@@ -135,11 +136,11 @@ func MakeNode(ctx *cli.Context, cfg *Config) (*node.Node, *gossip.Service, func(
 	signer := valkeystore.NewSignerAuthority(valKeystore, cfg.Emitter.Validator.PubKey)
 
 	// Create and register a gossip network service.
-	newTxPool := func(reader evmcore.StateReader) gossip.TxPool {
+	newTxPool := func(reader coretypes.StateReader) gossip.TxPool {
 		if cfg.TxPool.Journal != "" {
 			cfg.TxPool.Journal = path.Join(cfg.Node.DataDir, cfg.TxPool.Journal)
 		}
-		pool := evmcore.NewTxPool(cfg.TxPool, reader.CurrentConfig(), reader)
+		pool := txpool.NewTxPool(cfg.TxPool, reader.CurrentConfig(), reader)
 		cleanup = append(cleanup, pool.Stop)
 		return pool
 	}

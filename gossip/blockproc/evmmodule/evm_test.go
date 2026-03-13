@@ -24,7 +24,9 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
+	stateprocessor "github.com/0xsoniclabs/sonic/evmcore/state_processor"
+
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
@@ -210,7 +212,7 @@ func TestOperaEVMProcessor_Execute_StateProcessorIntroducesTransactions_Produces
 
 	stateProcessor.EXPECT().Process(
 		any, any, any, any, any, any,
-	).Return(evmcore.ExecutionSummary{ProcessedTransactions: []evmcore.ProcessedTransaction{
+	).Return(stateprocessor.ExecutionSummary{ProcessedTransactions: []stateprocessor.ProcessedTransaction{
 		{Receipt: &types.Receipt{TransactionIndex: 0}},
 		{Receipt: &types.Receipt{TransactionIndex: 1}},
 		{Receipt: &types.Receipt{TransactionIndex: 2}},
@@ -250,7 +252,7 @@ func TestOperaEVMProcessor_Execute_BundlePositionsAreProperlyOffset(t *testing.T
 
 	ctrl := gomock.NewController(t)
 	factory := NewMock_stateProcessorFactory(ctrl)
-	chain := evmcore.NewMockDummyChain(ctrl)
+	chain := coretypes.NewMockDummyChain(ctrl)
 	stateDB := state.NewMockStateDB(ctrl)
 
 	mockAny := gomock.Any()
@@ -317,11 +319,11 @@ func TestOperaEVMProcessor_Execute_BundlePositionsAreProperlyOffset(t *testing.T
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			processedTx := evmcore.ProcessedTransaction{
+			processedTx := stateprocessor.ProcessedTransaction{
 				Transaction: nil,
 				Receipt:     &types.Receipt{},
 			}
-			alreadyProcessedTx := make([]evmcore.ProcessedTransaction, test.lenProcessedTxs)
+			alreadyProcessedTx := make([]stateprocessor.ProcessedTransaction, test.lenProcessedTxs)
 			for i := range alreadyProcessedTx {
 				alreadyProcessedTx[i] = processedTx
 			}

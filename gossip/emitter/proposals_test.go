@@ -24,7 +24,7 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/sonic/eventcheck/proposalcheck"
-	"github.com/0xsoniclabs/sonic/evmcore"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/scheduler"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/gossip/randao"
@@ -654,9 +654,9 @@ func TestMakeProposal_SchedulerIsRunWithCorrectBaseFee(t *testing.T) {
 			Time:        newBlockTime,
 			GasLimit:    rules.Blocks.MaxBlockGas,
 			MixHash:     randaoMix,
-			Coinbase:    evmcore.GetCoinbase(),
+			Coinbase:    coretypes.GetCoinbase(),
 			BaseFee:     *uint256.MustFromBig(expectedBaseFee),
-			BlobBaseFee: evmcore.GetBlobBaseFee(),
+			BlobBaseFee: coretypes.GetBlobBaseFee(),
 		},
 		gomock.Any(),
 		gomock.Any(),

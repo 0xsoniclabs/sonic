@@ -21,7 +21,7 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -95,7 +95,7 @@ type TraceActionResult struct {
 }
 
 // NewTraceStructLogger creates new instance of trace creator
-func NewTraceStructLogger(block *evmcore.EvmBlock, index uint) *TraceStructLogger {
+func NewTraceStructLogger(block *coretypes.EvmBlock, index uint) *TraceStructLogger {
 	traceStructLogger := TraceStructLogger{
 		blockHash:   block.Hash,
 		blockNumber: *block.Number,

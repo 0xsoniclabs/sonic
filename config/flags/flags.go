@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/evmcore/txpool"
 	"github.com/0xsoniclabs/sonic/gossip"
 	emitter_config "github.com/0xsoniclabs/sonic/gossip/emitter/config"
 	"github.com/0xsoniclabs/sonic/gossip/filters"
@@ -81,52 +81,52 @@ var (
 	TxPoolJournalFlag = cli.StringFlag{
 		Name:  "txpool.journal",
 		Usage: "Disk journal for local transaction to survive node restarts",
-		Value: evmcore.DefaultTxPoolConfig.Journal,
+		Value: txpool.DefaultTxPoolConfig.Journal,
 	}
 	TxPoolRejournalFlag = cli.DurationFlag{
 		Name:  "txpool.rejournal",
 		Usage: "Time interval to regenerate the local transaction journal",
-		Value: evmcore.DefaultTxPoolConfig.Rejournal,
+		Value: txpool.DefaultTxPoolConfig.Rejournal,
 	}
 	TxPoolPriceLimitFlag = cli.Uint64Flag{
 		Name:  "txpool.pricelimit",
 		Usage: "This flag will be DEPRECATED, please use txpool.mintip instead. Minimum gas tip required for a transaction to be accepted into the pool",
-		Value: evmcore.DefaultTxPoolConfig.MinimumTip,
+		Value: txpool.DefaultTxPoolConfig.MinimumTip,
 	}
 	TxPoolMinTipFlag = cli.Uint64Flag{
 		Name:  "txpool.mintip",
 		Usage: "Minimum gas tip required for a transaction to be accepted into the pool",
-		Value: evmcore.DefaultTxPoolConfig.MinimumTip,
+		Value: txpool.DefaultTxPoolConfig.MinimumTip,
 	}
 	TxPoolPriceBumpFlag = cli.Uint64Flag{
 		Name:  "txpool.pricebump",
 		Usage: "Price bump percentage to replace an already existing transaction",
-		Value: evmcore.DefaultTxPoolConfig.PriceBump,
+		Value: txpool.DefaultTxPoolConfig.PriceBump,
 	}
 	TxPoolAccountSlotsFlag = cli.Uint64Flag{
 		Name:  "txpool.accountslots",
 		Usage: "Minimum number of executable transaction slots guaranteed per account",
-		Value: evmcore.DefaultTxPoolConfig.AccountSlots,
+		Value: txpool.DefaultTxPoolConfig.AccountSlots,
 	}
 	TxPoolGlobalSlotsFlag = cli.Uint64Flag{
 		Name:  "txpool.globalslots",
 		Usage: "Maximum number of executable transaction slots for all accounts",
-		Value: evmcore.DefaultTxPoolConfig.GlobalSlots,
+		Value: txpool.DefaultTxPoolConfig.GlobalSlots,
 	}
 	TxPoolAccountQueueFlag = cli.Uint64Flag{
 		Name:  "txpool.accountqueue",
 		Usage: "Maximum number of non-executable transaction slots permitted per account",
-		Value: evmcore.DefaultTxPoolConfig.AccountQueue,
+		Value: txpool.DefaultTxPoolConfig.AccountQueue,
 	}
 	TxPoolGlobalQueueFlag = cli.Uint64Flag{
 		Name:  "txpool.globalqueue",
 		Usage: "Maximum number of non-executable transaction slots for all accounts",
-		Value: evmcore.DefaultTxPoolConfig.GlobalQueue,
+		Value: txpool.DefaultTxPoolConfig.GlobalQueue,
 	}
 	TxPoolLifetimeFlag = cli.DurationFlag{
 		Name:  "txpool.lifetime",
 		Usage: "Maximum amount of time non-executable transaction are queued",
-		Value: evmcore.DefaultTxPoolConfig.Lifetime,
+		Value: txpool.DefaultTxPoolConfig.Lifetime,
 	}
 	// Account settings
 	UnlockedAccountFlag = cli.StringFlag{

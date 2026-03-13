@@ -16,7 +16,7 @@ import (
 	reflect "reflect"
 	time "time"
 
-	evmcore "github.com/0xsoniclabs/sonic/evmcore"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
 	bundle "github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	inter "github.com/0xsoniclabs/sonic/inter"
 	iblockproc "github.com/0xsoniclabs/sonic/inter/iblockproc"
@@ -76,10 +76,10 @@ func (mr *MockBackendMockRecorder) AccountManager() *gomock.Call {
 }
 
 // BlockByHash mocks base method.
-func (m *MockBackend) BlockByHash(ctx context.Context, arg1 common.Hash) (*evmcore.EvmBlock, error) {
+func (m *MockBackend) BlockByHash(ctx context.Context, arg1 common.Hash) (*coretypes.EvmBlock, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "BlockByHash", ctx, arg1)
-	ret0, _ := ret[0].(*evmcore.EvmBlock)
+	ret0, _ := ret[0].(*coretypes.EvmBlock)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -91,10 +91,10 @@ func (mr *MockBackendMockRecorder) BlockByHash(ctx, arg1 any) *gomock.Call {
 }
 
 // BlockByNumber mocks base method.
-func (m *MockBackend) BlockByNumber(ctx context.Context, number rpc.BlockNumber) (*evmcore.EvmBlock, error) {
+func (m *MockBackend) BlockByNumber(ctx context.Context, number rpc.BlockNumber) (*coretypes.EvmBlock, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "BlockByNumber", ctx, number)
-	ret0, _ := ret[0].(*evmcore.EvmBlock)
+	ret0, _ := ret[0].(*coretypes.EvmBlock)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -148,10 +148,10 @@ func (mr *MockBackendMockRecorder) ChainID() *gomock.Call {
 }
 
 // CurrentBlock mocks base method.
-func (m *MockBackend) CurrentBlock() *evmcore.EvmBlock {
+func (m *MockBackend) CurrentBlock() *coretypes.EvmBlock {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CurrentBlock")
-	ret0, _ := ret[0].(*evmcore.EvmBlock)
+	ret0, _ := ret[0].(*coretypes.EvmBlock)
 	return ret0
 }
 
@@ -218,7 +218,7 @@ func (mr *MockBackendMockRecorder) ExtRPCEnabled() *gomock.Call {
 }
 
 // FetchReceiptsForBlock mocks base method.
-func (m *MockBackend) FetchReceiptsForBlock(block *evmcore.EvmBlock) types.Receipts {
+func (m *MockBackend) FetchReceiptsForBlock(block *coretypes.EvmBlock) types.Receipts {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "FetchReceiptsForBlock", block)
 	ret0, _ := ret[0].(types.Receipts)
@@ -263,7 +263,7 @@ func (mr *MockBackendMockRecorder) GetDowntime(ctx, vid any) *gomock.Call {
 }
 
 // GetEVM mocks base method.
-func (m *MockBackend) GetEVM(ctx context.Context, arg1 vm.StateDB, header *evmcore.EvmHeader, vmConfig *vm.Config, blockContext *vm.BlockContext) (*vm.EVM, func() error, error) {
+func (m *MockBackend) GetEVM(ctx context.Context, arg1 vm.StateDB, header *coretypes.EvmHeader, vmConfig *vm.Config, blockContext *vm.BlockContext) (*vm.EVM, func() error, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetEVM", ctx, arg1, header, vmConfig, blockContext)
 	ret0, _ := ret[0].(*vm.EVM)
@@ -519,10 +519,10 @@ func (mr *MockBackendMockRecorder) GetUptime(ctx, vid any) *gomock.Call {
 }
 
 // HeaderByHash mocks base method.
-func (m *MockBackend) HeaderByHash(ctx context.Context, arg1 common.Hash) (*evmcore.EvmHeader, error) {
+func (m *MockBackend) HeaderByHash(ctx context.Context, arg1 common.Hash) (*coretypes.EvmHeader, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "HeaderByHash", ctx, arg1)
-	ret0, _ := ret[0].(*evmcore.EvmHeader)
+	ret0, _ := ret[0].(*coretypes.EvmHeader)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -534,10 +534,10 @@ func (mr *MockBackendMockRecorder) HeaderByHash(ctx, arg1 any) *gomock.Call {
 }
 
 // HeaderByNumber mocks base method.
-func (m *MockBackend) HeaderByNumber(ctx context.Context, number rpc.BlockNumber) (*evmcore.EvmHeader, error) {
+func (m *MockBackend) HeaderByNumber(ctx context.Context, number rpc.BlockNumber) (*coretypes.EvmHeader, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "HeaderByNumber", ctx, number)
-	ret0, _ := ret[0].(*evmcore.EvmHeader)
+	ret0, _ := ret[0].(*coretypes.EvmHeader)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -705,11 +705,11 @@ func (mr *MockBackendMockRecorder) SendTx(ctx, signedTx any) *gomock.Call {
 }
 
 // StateAndBlockByNumberOrHash mocks base method.
-func (m *MockBackend) StateAndBlockByNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (state.StateDB, *evmcore.EvmBlock, error) {
+func (m *MockBackend) StateAndBlockByNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (state.StateDB, *coretypes.EvmBlock, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "StateAndBlockByNumberOrHash", ctx, blockNrOrHash)
 	ret0, _ := ret[0].(state.StateDB)
-	ret1, _ := ret[1].(*evmcore.EvmBlock)
+	ret1, _ := ret[1].(*coretypes.EvmBlock)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
 }
@@ -736,7 +736,7 @@ func (mr *MockBackendMockRecorder) Stats() *gomock.Call {
 }
 
 // SubscribeNewTxsNotify mocks base method.
-func (m *MockBackend) SubscribeNewTxsNotify(arg0 chan<- evmcore.NewTxsNotify) event.Subscription {
+func (m *MockBackend) SubscribeNewTxsNotify(arg0 chan<- coretypes.NewTxsNotify) event.Subscription {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SubscribeNewTxsNotify", arg0)
 	ret0, _ := ret[0].(event.Subscription)

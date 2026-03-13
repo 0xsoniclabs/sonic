@@ -27,11 +27,11 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	notify "github.com/ethereum/go-ethereum/event"
+	event "github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rpc"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/topicsdb"
 )
@@ -39,17 +39,17 @@ import (
 //go:generate mockgen -source=filter.go -package=filters -destination=filter_mock.go
 
 type Backend interface {
-	HeaderByNumber(ctx context.Context, blockNr rpc.BlockNumber) (*evmcore.EvmHeader, error)
-	HeaderByHash(ctx context.Context, blockHash common.Hash) (*evmcore.EvmHeader, error)
+	HeaderByNumber(ctx context.Context, blockNr rpc.BlockNumber) (*coretypes.EvmHeader, error)
+	HeaderByHash(ctx context.Context, blockHash common.Hash) (*coretypes.EvmHeader, error)
 	GetReceipts(ctx context.Context, blockHash common.Hash) (types.Receipts, error)
 	GetReceiptsByNumber(ctx context.Context, number rpc.BlockNumber) (types.Receipts, error)
 	GetLogs(ctx context.Context, blockHash common.Hash) ([][]*types.Log, error)
 	GetTxPosition(txid common.Hash) *evmstore.TxPosition
 	ChainID() *big.Int
 
-	SubscribeNewBlockNotify(ch chan<- evmcore.ChainHeadNotify) notify.Subscription
-	SubscribeNewTxsNotify(chan<- evmcore.NewTxsNotify) notify.Subscription
-	SubscribeLogsNotify(ch chan<- []*types.Log) notify.Subscription
+	SubscribeNewBlockNotify(ch chan<- coretypes.ChainHeadNotify) event.Subscription
+	SubscribeNewTxsNotify(chan<- coretypes.NewTxsNotify) event.Subscription
+	SubscribeLogsNotify(ch chan<- []*types.Log) event.Subscription
 
 	EvmLogIndex() topicsdb.Index
 
@@ -248,7 +248,7 @@ func (f *Filter) unindexedLogs(ctx context.Context, begin, end idx.Block) (logs 
 	}
 
 	var (
-		header *evmcore.EvmHeader
+		header *coretypes.EvmHeader
 		found  []*types.Log
 	)
 	for n := begin; n <= end; n++ {

@@ -26,7 +26,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/ethapi"
-	"github.com/0xsoniclabs/sonic/evmcore"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/inter"
@@ -116,7 +116,7 @@ func getNodeService(t *testing.T) *gossip.Service {
 	feed := event.Feed{}
 	mockCtrl := gomock.NewController(t)
 	txPoolMock := gossip.NewMockTxPool(mockCtrl) //prompt.NewMockUserPrompter(mockCtrl)
-	txPoolMock.EXPECT().SubscribeNewTxsNotify(gomock.Any()).AnyTimes().Return(feed.Subscribe(make(chan evmcore.NewTxsNotify)))
+	txPoolMock.EXPECT().SubscribeNewTxsNotify(gomock.Any()).AnyTimes().Return(feed.Subscribe(make(chan coretypes.NewTxsNotify)))
 
 	cacheRatio := cachescale.Ratio{
 		Base:   uint64(config.DefaultCacheSize*1 - config.ConstantCacheSize),
@@ -124,7 +124,7 @@ func getNodeService(t *testing.T) *gossip.Service {
 	}
 
 	defaultConfig := gossip.DefaultConfig(cacheRatio)
-	s, err := gossip.NewService(node, defaultConfig, store, gossip.BlockProc{}, engine, vecClock, func(_ evmcore.StateReader) gossip.TxPool {
+	s, err := gossip.NewService(node, defaultConfig, store, gossip.BlockProc{}, engine, vecClock, func(_ coretypes.StateReader) gossip.TxPool {
 		return txPoolMock
 	}, nil)
 	require.NoError(t, err)

@@ -26,7 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -58,7 +58,7 @@ type (
 
 		StateDB() state.StateDB
 		GetUpgradeHeights() []opera.UpgradeHeight
-		Header(hash common.Hash, number uint64) *evmcore.EvmHeader
+		Header(hash common.Hash, number uint64) *coretypes.EvmHeader
 
 		// HasBundleRecentlyBeenProcessed returns true if a bundle with the
 		// given execution plan hash has been processed recently, meaning within

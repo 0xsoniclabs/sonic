@@ -13,7 +13,8 @@ import (
 	big "math/big"
 	reflect "reflect"
 
-	evmcore "github.com/0xsoniclabs/sonic/evmcore"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
+	stateprocessor "github.com/0xsoniclabs/sonic/evmcore/state_processor"
 	inter "github.com/0xsoniclabs/sonic/inter"
 	iblockproc "github.com/0xsoniclabs/sonic/inter/iblockproc"
 	state "github.com/0xsoniclabs/sonic/inter/state"
@@ -391,10 +392,10 @@ func (m *MockEVMProcessor) EXPECT() *MockEVMProcessorMockRecorder {
 }
 
 // Execute mocks base method.
-func (m *MockEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) evmcore.ExecutionSummary {
+func (m *MockEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) stateprocessor.ExecutionSummary {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Execute", txs, gasLimit)
-	ret0, _ := ret[0].(evmcore.ExecutionSummary)
+	ret0, _ := ret[0].(stateprocessor.ExecutionSummary)
 	return ret0
 }
 
@@ -405,10 +406,10 @@ func (mr *MockEVMProcessorMockRecorder) Execute(txs, gasLimit any) *gomock.Call 
 }
 
 // Finalize mocks base method.
-func (m *MockEVMProcessor) Finalize() (*evmcore.EvmBlock, int, types.Receipts) {
+func (m *MockEVMProcessor) Finalize() (*coretypes.EvmBlock, int, types.Receipts) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Finalize")
-	ret0, _ := ret[0].(*evmcore.EvmBlock)
+	ret0, _ := ret[0].(*coretypes.EvmBlock)
 	ret1, _ := ret[1].(int)
 	ret2, _ := ret[2].(types.Receipts)
 	return ret0, ret1, ret2
@@ -445,7 +446,7 @@ func (m *MockEVM) EXPECT() *MockEVMMockRecorder {
 }
 
 // Start mocks base method.
-func (m *MockEVM) Start(block iblockproc.BlockCtx, statedb state.StateDB, reader evmcore.DummyChain, onNewLog func(*types.Log), net opera.Rules, evmCfg *params.ChainConfig, prevrandao common.Hash) EVMProcessor {
+func (m *MockEVM) Start(block iblockproc.BlockCtx, statedb state.StateDB, reader coretypes.DummyChain, onNewLog func(*types.Log), net opera.Rules, evmCfg *params.ChainConfig, prevrandao common.Hash) EVMProcessor {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Start", block, statedb, reader, onNewLog, net, evmCfg, prevrandao)
 	ret0, _ := ret[0].(EVMProcessor)

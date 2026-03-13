@@ -34,7 +34,7 @@ import (
 	"github.com/0xsoniclabs/sonic/eventcheck/epochcheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/heavycheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/parentlesscheck"
-	"github.com/0xsoniclabs/sonic/evmcore"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/protocols/dag/dagstream"
 	"github.com/0xsoniclabs/sonic/gossip/protocols/dag/dagstream/dagstreamleecher"
 	"github.com/0xsoniclabs/sonic/gossip/protocols/dag/dagstream/dagstreamseeder"
@@ -51,7 +51,7 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/utils/datasemaphore"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	notify "github.com/ethereum/go-ethereum/event"
+	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/discover/discfilter"
@@ -92,8 +92,8 @@ func checkLenLimits(size int, v interface{}) error {
 }
 
 type dagNotifier interface {
-	SubscribeNewEpoch(ch chan<- idx.Epoch) notify.Subscription
-	SubscribeNewEmitted(ch chan<- *inter.EventPayload) notify.Subscription
+	SubscribeNewEpoch(ch chan<- idx.Epoch) event.Subscription
+	SubscribeNewEmitted(ch chan<- *inter.EventPayload) event.Subscription
 }
 
 type processCallback struct {
@@ -131,8 +131,8 @@ type handler struct {
 
 	peers *peerSet
 
-	txsCh  chan evmcore.NewTxsNotify
-	txsSub notify.Subscription
+	txsCh  chan coretypes.NewTxsNotify
+	txsSub event.Subscription
 
 	dagLeecher   *dagstreamleecher.Leecher
 	dagSeeder    *dagstreamseeder.Seeder
@@ -152,9 +152,9 @@ type handler struct {
 
 	notifier             dagNotifier
 	emittedEventsCh      chan *inter.EventPayload
-	emittedEventsSub     notify.Subscription
+	emittedEventsSub     event.Subscription
 	newEpochsCh          chan idx.Epoch
-	newEpochsSub         notify.Subscription
+	newEpochsSub         event.Subscription
 	quitProgressBradcast chan struct{}
 
 	// channels for syncer, txsyncLoop
@@ -423,7 +423,7 @@ func (h *handler) Start(maxPeers int) {
 	h.maxPeers = maxPeers
 
 	// broadcast transactions
-	h.txsCh = make(chan evmcore.NewTxsNotify, txChanSize)
+	h.txsCh = make(chan coretypes.NewTxsNotify, txChanSize)
 	h.txsSub = h.txpool.SubscribeNewTxsNotify(h.txsCh)
 
 	h.loopsWg.Add(1)
@@ -1178,8 +1178,8 @@ func (h *handler) txBroadcastLoop() {
 	defer h.loopsWg.Done()
 	for {
 		select {
-		case notify := <-h.txsCh:
-			h.BroadcastTxs(notify.Txs)
+		case notification := <-h.txsCh:
+			h.BroadcastTxs(notification.Txs)
 
 		// Err() channel will be closed when unsubscribing.
 		case <-h.txsSub.Err():

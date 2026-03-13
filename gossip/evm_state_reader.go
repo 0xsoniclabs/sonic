@@ -25,7 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -45,21 +45,21 @@ type StateReader interface {
 	CurrentRules() opera.Rules
 	// CurrentBlock returns the most recent block.
 	// This method is the recommended option for fast access to the latest block
-	CurrentBlock() *evmcore.EvmBlock
+	CurrentBlock() *coretypes.EvmBlock
 	// LastBlockWithArchiveState returns the most recent block with archive state.
 	// This method shall be the preferable way to get the latest block for
 	// operations that require access to the full block (e.g., RPC calls),
-	LastBlockWithArchiveState(withTxs bool) (*evmcore.EvmBlock, error)
+	LastBlockWithArchiveState(withTxs bool) (*coretypes.EvmBlock, error)
 	// Header returns the header of the block with the given number.
 	// If the block is not found, nil is returned.
 	// If the hash provided is not zero and does not match the hash of the
 	// block found, nil is returned.
-	Header(verificationHash common.Hash, number uint64) *evmcore.EvmHeader
+	Header(verificationHash common.Hash, number uint64) *coretypes.EvmHeader
 	// Block returns the block with the given number.
 	// If the block is not found, nil is returned.
 	// If the hash provided is not zero and does not match the hash of the
 	// block found, nil is returned.
-	Block(verificationHash common.Hash, number uint64) *evmcore.EvmBlock
+	Block(verificationHash common.Hash, number uint64) *coretypes.EvmBlock
 	// CurrentStateDB returns a read-only access to stateDB.
 	CurrentStateDB() (state.StateDB, error)
 	// BlockStateDB returns stateDB for the given block number.
@@ -107,7 +107,7 @@ func (r *EvmStateReader) CurrentRules() opera.Rules {
 
 // CurrentBlock returns the most recent block.
 // This method is the recommended option for fast access to the latest block.
-func (r *EvmStateReader) CurrentBlock() *evmcore.EvmBlock {
+func (r *EvmStateReader) CurrentBlock() *coretypes.EvmBlock {
 	n := r.store.GetLatestBlockIndex()
 
 	return r.getBlock(common.Hash{}, n, true)
@@ -116,7 +116,7 @@ func (r *EvmStateReader) CurrentBlock() *evmcore.EvmBlock {
 // LastBlockWithArchiveState returns the most recent block with archive.
 // This method shall be the preferable way to get the latest block for
 // operations that require access to the full state (e.g., RPC calls).
-func (r *EvmStateReader) LastBlockWithArchiveState(withTxs bool) (*evmcore.EvmBlock, error) {
+func (r *EvmStateReader) LastBlockWithArchiveState(withTxs bool) (*coretypes.EvmBlock, error) {
 	latestBlock := r.store.GetLatestBlockIndex()
 
 	// make sure the block is present in the archive
@@ -135,7 +135,7 @@ func (r *EvmStateReader) LastBlockWithArchiveState(withTxs bool) (*evmcore.EvmBl
 // If the block is not found, nil is returned.
 // If the hash provided is not zero and does not match the hash of the
 // block found, nil is returned.
-func (r *EvmStateReader) Header(verificationHash common.Hash, number uint64) *evmcore.EvmHeader {
+func (r *EvmStateReader) Header(verificationHash common.Hash, number uint64) *coretypes.EvmHeader {
 	return r.getBlock(verificationHash, idx.Block(number), false).Header()
 }
 
@@ -151,14 +151,14 @@ func (r *EvmStateReader) HasBundleBeenProcessed(execPlanHash common.Hash) bool {
 // If the block is not found, nil is returned.
 // If the hash provided is not zero and does not match the hash of the block
 // found, nil is returned.
-func (r *EvmStateReader) Block(verificationHash common.Hash, number uint64) *evmcore.EvmBlock {
+func (r *EvmStateReader) Block(verificationHash common.Hash, number uint64) *coretypes.EvmBlock {
 	return r.getBlock(verificationHash, idx.Block(number), true)
 }
 
 // getBlock is an internal method to get a block by number.
 // If the hash provided is not zero and does not match the hash of the block
 // found, nil is returned.
-func (r *EvmStateReader) getBlock(verificationHash common.Hash, n idx.Block, readTxs bool) *evmcore.EvmBlock {
+func (r *EvmStateReader) getBlock(verificationHash common.Hash, n idx.Block, readTxs bool) *coretypes.EvmBlock {
 	block := r.store.GetBlock(n)
 	if block == nil {
 		return nil
@@ -204,15 +204,15 @@ func (r *EvmStateReader) getBlock(verificationHash common.Hash, n idx.Block, rea
 			prev = block.Hash()
 		}
 	}
-	evmHeader := evmcore.ToEvmHeader(block, prev, rules)
+	evmHeader := coretypes.ToEvmHeader(block, prev, rules)
 
-	var evmBlock *evmcore.EvmBlock
+	var evmBlock *coretypes.EvmBlock
 	if readTxs {
-		evmBlock = evmcore.NewEvmBlock(evmHeader, transactions)
+		evmBlock = coretypes.NewEvmBlock(evmHeader, transactions)
 		r.store.EvmStore().SetCachedEvmBlock(n, evmBlock)
 	} else {
 		// not completed block here
-		evmBlock = &evmcore.EvmBlock{
+		evmBlock = &coretypes.EvmBlock{
 			EvmHeader: *evmHeader,
 		}
 	}

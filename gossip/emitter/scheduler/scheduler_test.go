@@ -22,7 +22,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
@@ -48,8 +48,8 @@ func TestScheduler_Schedule_ForwardsBlockInfoToTheProcessor(t *testing.T) {
 	baseFee := *uint256.NewInt(100)
 	blobBaseFee := *uint256.NewInt(200)
 
-	factory.EXPECT().beginBlock(&evmcore.EvmBlock{
-		EvmHeader: evmcore.EvmHeader{
+	factory.EXPECT().beginBlock(&coretypes.EvmBlock{
+		EvmHeader: coretypes.EvmHeader{
 			Number:      big.NewInt(int64(number)),
 			Time:        time,
 			GasLimit:    gasLimit,

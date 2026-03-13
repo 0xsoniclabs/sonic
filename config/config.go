@@ -30,6 +30,7 @@ import (
 
 	carmen "github.com/0xsoniclabs/carmen/go/state"
 	"github.com/0xsoniclabs/sonic/config/flags"
+	"github.com/0xsoniclabs/sonic/evmcore/txpool"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/version"
 	"github.com/ethereum/go-ethereum/common/fdlimit"
@@ -44,7 +45,6 @@ import (
 	"github.com/syndtr/goleveldb/leveldb/opt"
 	"gopkg.in/urfave/cli.v1"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip"
 	emitter_config "github.com/0xsoniclabs/sonic/gossip/emitter/config"
 	"github.com/0xsoniclabs/sonic/integration"
@@ -75,7 +75,7 @@ type Config struct {
 	Node          node.Config
 	Opera         gossip.Config
 	Emitter       emitter_config.Config
-	TxPool        evmcore.TxPoolConfig
+	TxPool        txpool.TxPoolConfig
 	OperaStore    gossip.StoreConfig
 	Lachesis      abft.Config
 	LachesisStore abft.StoreConfig
@@ -184,7 +184,7 @@ func resolveHostNameInEnodeURLInternal(
 	return hostname, strings.Replace(url, hostname, ip, 1), nil
 }
 
-func setTxPool(ctx *cli.Context, cfg *evmcore.TxPoolConfig) error {
+func setTxPool(ctx *cli.Context, cfg *txpool.TxPoolConfig) error {
 	if ctx.GlobalIsSet(flags.TxPoolLocalsFlag.Name) {
 		locals := strings.Split(ctx.GlobalString(flags.TxPoolLocalsFlag.Name), ",")
 		for _, account := range locals {
@@ -354,7 +354,7 @@ func MakeAllConfigsFromFile(ctx *cli.Context, configFile string) (*Config, error
 		Node:          DefaultNodeConfig(),
 		Opera:         gossip.DefaultConfig(cacheRatio),
 		Emitter:       emitter_config.DefaultConfig(),
-		TxPool:        evmcore.DefaultTxPoolConfig,
+		TxPool:        txpool.DefaultTxPoolConfig,
 		OperaStore:    gossip.DefaultStoreConfig(cacheRatio),
 		Lachesis:      abft.DefaultConfig(),
 		LachesisStore: abft.DefaultStoreConfig(cacheRatio),

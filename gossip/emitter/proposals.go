@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/scheduler"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/gossip/randao"
@@ -274,9 +274,9 @@ func makeProposal(
 			Time:        newBlockTime,
 			GasLimit:    blockGasLimit,
 			MixHash:     randaoMix,
-			Coinbase:    evmcore.GetCoinbase(),
+			Coinbase:    coretypes.GetCoinbase(),
 			BaseFee:     *baseFee256,
-			BlobBaseFee: evmcore.GetBlobBaseFee(),
+			BlobBaseFee: coretypes.GetBlobBaseFee(),
 		},
 		candidates,
 		scheduler.Limits{

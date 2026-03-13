@@ -24,15 +24,15 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	notify "github.com/ethereum/go-ethereum/event"
+	"github.com/ethereum/go-ethereum/event"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 )
 
 // dummyTxPool is a fake, helper transaction pool for testing purposes
 type dummyTxPool struct {
-	txFeed notify.Feed
+	txFeed event.Feed
 	pool   []*types.Transaction        // Collection of all transactions
 	added  chan<- []*types.Transaction // Notification channel for new transactions
 
@@ -98,7 +98,7 @@ func (p *dummyTxPool) MinTip() *big.Int {
 	return big.NewInt(0)
 }
 
-func (p *dummyTxPool) SubscribeNewTxsNotify(ch chan<- evmcore.NewTxsNotify) notify.Subscription {
+func (p *dummyTxPool) SubscribeNewTxsNotify(ch chan<- coretypes.NewTxsNotify) event.Subscription {
 	return p.txFeed.Subscribe(ch)
 }
 

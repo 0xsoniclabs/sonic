@@ -24,7 +24,9 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
+	stateprocessor "github.com/0xsoniclabs/sonic/evmcore/state_processor"
+
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/state"
@@ -68,15 +70,15 @@ type ConfirmedEventsModule interface {
 }
 
 type EVMProcessor interface {
-	Execute(txs types.Transactions, gasLimit uint64) evmcore.ExecutionSummary
-	Finalize() (evmBlock *evmcore.EvmBlock, numSkipped int, receipts types.Receipts)
+	Execute(txs types.Transactions, gasLimit uint64) stateprocessor.ExecutionSummary
+	Finalize() (evmBlock *coretypes.EvmBlock, numSkipped int, receipts types.Receipts)
 }
 
 type EVM interface {
 	Start(
 		block iblockproc.BlockCtx,
 		statedb state.StateDB,
-		reader evmcore.DummyChain,
+		reader coretypes.DummyChain,
 		onNewLog func(*types.Log),
 		net opera.Rules,
 		evmCfg *params.ChainConfig,

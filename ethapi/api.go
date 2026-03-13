@@ -28,11 +28,13 @@ import (
 
 	cc "github.com/0xsoniclabs/carmen/go/common"
 	"github.com/0xsoniclabs/carmen/go/common/immutable"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
+
+	stateprocessor "github.com/0xsoniclabs/sonic/evmcore/state_processor"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice/gaspricelimits"
 	bip39 "github.com/tyler-smith/go-bip39"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -69,7 +71,7 @@ const (
 )
 
 var (
-	noUncles = []evmcore.EvmHeader{}
+	noUncles = []coretypes.EvmHeader{}
 )
 
 // PublicEthereumAPI provides an API to access Ethereum related information.
@@ -916,7 +918,7 @@ func (s *PublicBlockChainAPI) GetProof(ctx context.Context, address common.Addre
 // GetHeaderByNumber returns the requested canonical block header.
 // * When blockNr is -1 the chain head is returned.
 // * When blockNr is -2 the pending chain head is returned.
-func (s *PublicBlockChainAPI) GetHeaderByNumber(ctx context.Context, number rpc.BlockNumber) (*evmcore.EvmHeaderJson, error) {
+func (s *PublicBlockChainAPI) GetHeaderByNumber(ctx context.Context, number rpc.BlockNumber) (*coretypes.EvmHeaderJson, error) {
 	header, err := s.b.HeaderByNumber(ctx, number)
 	if header == nil || err != nil {
 		return nil, err
@@ -925,7 +927,7 @@ func (s *PublicBlockChainAPI) GetHeaderByNumber(ctx context.Context, number rpc.
 }
 
 // GetHeaderByHash returns the requested header by hash.
-func (s *PublicBlockChainAPI) GetHeaderByHash(ctx context.Context, hash common.Hash) (*evmcore.EvmHeaderJson, error) {
+func (s *PublicBlockChainAPI) GetHeaderByHash(ctx context.Context, hash common.Hash) (*coretypes.EvmHeaderJson, error) {
 	header, err := s.b.HeaderByHash(ctx, hash)
 	if header == nil || err != nil {
 		return nil, err
@@ -933,7 +935,7 @@ func (s *PublicBlockChainAPI) GetHeaderByHash(ctx context.Context, hash common.H
 	return s.getHeaderWithReceipts(ctx, header, rpc.BlockNumber(header.Number.Uint64()))
 }
 
-func (s *PublicBlockChainAPI) getHeaderWithReceipts(ctx context.Context, header *evmcore.EvmHeader, blkNumber rpc.BlockNumber) (*evmcore.EvmHeaderJson, error) {
+func (s *PublicBlockChainAPI) getHeaderWithReceipts(ctx context.Context, header *coretypes.EvmHeader, blkNumber rpc.BlockNumber) (*coretypes.EvmHeaderJson, error) {
 	receipts, err := s.getBlockReceipts(ctx, blkNumber)
 	if receipts == nil || err != nil {
 		return nil, err
@@ -953,7 +955,7 @@ func (s *PublicBlockChainAPI) getBlockReceipts(ctx context.Context, blkNumber rp
 //   - When blockNr is -2 the pending chain head is returned.
 //   - When fullTx is true all transactions in the block are returned, otherwise
 //     only the transaction hash is returned.
-func (s *PublicBlockChainAPI) GetBlockByNumber(ctx context.Context, number rpc.BlockNumber, fullTx bool) (*evmcore.EvmBlockJson, error) {
+func (s *PublicBlockChainAPI) GetBlockByNumber(ctx context.Context, number rpc.BlockNumber, fullTx bool) (*coretypes.EvmBlockJson, error) {
 	block, err := s.b.BlockByNumber(ctx, number)
 	if block != nil && err == nil {
 		receipts, err := s.getBlockReceipts(ctx, rpc.BlockNumber(block.NumberU64()))
@@ -967,7 +969,7 @@ func (s *PublicBlockChainAPI) GetBlockByNumber(ctx context.Context, number rpc.B
 
 // GetBlockByHash returns the requested block. When fullTx is true all transactions in the block are returned in full
 // detail, otherwise only the transaction hash is returned.
-func (s *PublicBlockChainAPI) GetBlockByHash(ctx context.Context, hash common.Hash, fullTx bool) (*evmcore.EvmBlockJson, error) {
+func (s *PublicBlockChainAPI) GetBlockByHash(ctx context.Context, hash common.Hash, fullTx bool) (*coretypes.EvmBlockJson, error) {
 	block, err := s.b.BlockByHash(ctx, hash)
 	if block != nil && err == nil {
 		receipts, err := s.getBlockReceipts(ctx, rpc.BlockNumber(block.NumberU64()))
@@ -1170,7 +1172,7 @@ func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash 
 
 	// execute EIP-2935 HistoryStorage contract.
 	if evm.ChainConfig().IsPrague(block.Number, uint64(block.Time.Unix())) {
-		evmcore.ProcessParentBlockHash(block.ParentHash, evm, state)
+		stateprocessor.ProcessParentBlockHash(block.ParentHash, evm, state)
 	}
 
 	// Execute the message.
@@ -1416,7 +1418,7 @@ func isOsaka(
 // if the number or hash is invalid or does not exist, an error is returned.
 func getNumberAndTime(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrHash) (uint64, uint64, error) {
 
-	var header *evmcore.EvmHeader
+	var header *coretypes.EvmHeader
 	var err error
 
 	// get header
@@ -1457,9 +1459,9 @@ func (s *PublicBlockChainAPI) EstimateGas(ctx context.Context, args TransactionA
 // RPCMarshalBlock converts the given block to the RPC output which depends on fullTx. If inclTx is true transactions are
 // returned. When fullTx is true the returned block contains full transaction details, otherwise it will only contain
 // transaction hashes.
-func RPCMarshalBlock(block *evmcore.EvmBlock, receipts types.Receipts, inclTx bool, fullTx bool, chainId *big.Int) (*evmcore.EvmBlockJson, error) {
+func RPCMarshalBlock(block *coretypes.EvmBlock, receipts types.Receipts, inclTx bool, fullTx bool, chainId *big.Int) (*coretypes.EvmBlockJson, error) {
 	size := hexutil.Uint64(block.EthBlock().Size()) // RPC encoded storage size
-	json := &evmcore.EvmBlockJson{
+	json := &coretypes.EvmBlockJson{
 		EvmHeaderJson: block.Header().ToJson(receipts),
 		Size:          &size,
 	}
@@ -1620,7 +1622,7 @@ func newRPCPendingTransaction(tx *types.Transaction, baseFee *big.Int, chainId *
 }
 
 // newRPCTransactionFromBlockIndex returns a transaction that will serialize to the RPC representation.
-func newRPCTransactionFromBlockIndex(b *evmcore.EvmBlock, index uint64, chainId *big.Int) *RPCTransaction {
+func newRPCTransactionFromBlockIndex(b *coretypes.EvmBlock, index uint64, chainId *big.Int) *RPCTransaction {
 	txs := b.Transactions
 	if index >= uint64(len(txs)) {
 		return nil
@@ -1629,7 +1631,7 @@ func newRPCTransactionFromBlockIndex(b *evmcore.EvmBlock, index uint64, chainId 
 }
 
 // newRPCRawTransactionFromBlockIndex returns the bytes of a transaction given a block and a transaction index.
-func newRPCRawTransactionFromBlockIndex(b *evmcore.EvmBlock, index uint64) hexutil.Bytes {
+func newRPCRawTransactionFromBlockIndex(b *coretypes.EvmBlock, index uint64) hexutil.Bytes {
 	txs := b.Transactions
 	if index >= uint64(len(txs)) {
 		return nil
@@ -1639,7 +1641,7 @@ func newRPCRawTransactionFromBlockIndex(b *evmcore.EvmBlock, index uint64) hexut
 }
 
 // newRPCTransactionFromBlockHash returns a transaction that will serialize to the RPC representation.
-func newRPCTransactionFromBlockHash(b *evmcore.EvmBlock, hash common.Hash, chainId *big.Int) *RPCTransaction {
+func newRPCTransactionFromBlockHash(b *coretypes.EvmBlock, hash common.Hash, chainId *big.Int) *RPCTransaction {
 	for idx, tx := range b.Transactions {
 		if tx.Hash() == hash {
 			return newRPCTransactionFromBlockIndex(b, uint64(idx), chainId)
@@ -1892,7 +1894,7 @@ func (s *PublicTransactionPoolAPI) GetRawTransactionByHash(ctx context.Context, 
 }
 
 // formatTxReceipt encodes transaction receipt into the expected API output.
-func (s *PublicTransactionPoolAPI) formatTxReceipt(header *evmcore.EvmHeader, tx *types.Transaction, txIndex uint64, receipt *types.Receipt) map[string]interface{} {
+func (s *PublicTransactionPoolAPI) formatTxReceipt(header *coretypes.EvmHeader, tx *types.Transaction, txIndex uint64, receipt *types.Receipt) map[string]interface{} {
 	// Clone the logs before adding transaction meta data to avoid data races
 	// due to concurrent accesses.
 	logs := slices.Clone(receipt.Logs)
@@ -1979,7 +1981,7 @@ func (s *PublicTransactionPoolAPI) GetBlockReceipts(ctx context.Context, blockNr
 	var (
 		err    error
 		number rpc.BlockNumber
-		header *evmcore.EvmHeader
+		header *coretypes.EvmHeader
 	)
 
 	if blockNr, ok := blockNrOrHash.Number(); ok {
@@ -2375,7 +2377,7 @@ func (api *PublicDebugAPI) traceTx(
 	tx *types.Transaction,
 	message *core.Message,
 	txctx *tracers.Context,
-	blockHeader *evmcore.EvmHeader,
+	blockHeader *coretypes.EvmHeader,
 	statedb state.StateDB,
 	config *tracers.TraceConfig,
 	blockCtx *vm.BlockContext,
@@ -2451,7 +2453,7 @@ func (api *PublicDebugAPI) traceTx(
 	loggingStateDB.SetTxContext(txctx.TxHash, txctx.TxIndex)
 
 	// Run the transaction with tracing enabled.
-	_, err = evmcore.ApplyTransactionWithEVM(
+	_, err = stateprocessor.ApplyTransactionWithEVM(
 		message,
 		chainConfig,
 		new(core.GasPool).AddGas(message.GasLimit),
@@ -2514,7 +2516,7 @@ func (api *PublicDebugAPI) TraceBlockByHash(ctx context.Context, hash common.Has
 // traceBlock configures a new tracer according to the provided configuration, and
 // executes all the transactions contained within. The return value will be one item
 // per transaction, dependent on the requested tracer.
-func (api *PublicDebugAPI) traceBlock(ctx context.Context, block *evmcore.EvmBlock, config *tracers.TraceConfig) ([]*txTraceResult, error) {
+func (api *PublicDebugAPI) traceBlock(ctx context.Context, block *coretypes.EvmBlock, config *tracers.TraceConfig) ([]*txTraceResult, error) {
 	if block.NumberU64() == 0 {
 		return nil, errors.New("genesis is not traceable")
 	}
@@ -2532,7 +2534,7 @@ func (api *PublicDebugAPI) traceBlock(ctx context.Context, block *evmcore.EvmBlo
 		resultsLength int
 	)
 	for i, tx := range txs {
-		msg, _ := evmcore.TxAsMessage(tx, signer, block.BaseFee)
+		msg, _ := stateprocessor.TxAsMessage(tx, signer, block.BaseFee)
 		txctx := &tracers.Context{
 			BlockHash:   block.Hash,
 			BlockNumber: block.Number,
@@ -2557,7 +2559,7 @@ func (api *PublicDebugAPI) traceBlock(ctx context.Context, block *evmcore.EvmBlo
 }
 
 // stateAtTransaction returns the execution environment of a certain transaction.
-func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex int, b Backend) (*core.Message, state.StateDB, error) {
+func stateAtTransaction(ctx context.Context, block *coretypes.EvmBlock, txIndex int, b Backend) (*core.Message, state.StateDB, error) {
 	// Short circuit if it's genesis block.
 	if block.NumberU64() == 0 {
 		return nil, nil, errors.New("no transaction in genesis")
@@ -2593,7 +2595,7 @@ func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex in
 
 	// execute EIP-2935 HistoryStorage contract.
 	if vmenv.ChainConfig().IsPrague(block.Number, uint64(block.Time.Unix())) {
-		evmcore.ProcessParentBlockHash(block.ParentHash, vmenv, statedb)
+		stateprocessor.ProcessParentBlockHash(block.ParentHash, vmenv, statedb)
 	}
 
 	// Recompute transactions up to the target index.
@@ -2601,7 +2603,7 @@ func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex in
 	signer := types.LatestSignerForChainID(chainConfig.ChainID)
 	for idx, tx := range block.Transactions {
 		// Assemble the transaction call message and return if the requested offset
-		msg, err := evmcore.TxAsMessage(tx, signer, block.BaseFee)
+		msg, err := stateprocessor.TxAsMessage(tx, signer, block.BaseFee)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -2692,9 +2694,9 @@ func (api *PublicDebugAPI) TraceCall(ctx context.Context, args TransactionArgs, 
 }
 
 // getEvmBlockFromNumberOrHash returns EvmBlock from block number or block hash
-func getEvmBlockFromNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash, b Backend) (*evmcore.EvmBlock, error) {
+func getEvmBlockFromNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash, b Backend) (*coretypes.EvmBlock, error) {
 	var (
-		block *evmcore.EvmBlock
+		block *coretypes.EvmBlock
 		err   error
 	)
 
@@ -2715,7 +2717,7 @@ func getEvmBlockFromNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNum
 }
 
 // getTxAndMessage returns transaction and message constructed from transaction arguments
-func getTxAndMessage(args *TransactionArgs, block *evmcore.EvmBlock, b Backend) (*types.Transaction, *core.Message, error) {
+func getTxAndMessage(args *TransactionArgs, block *coretypes.EvmBlock, b Backend) (*types.Transaction, *core.Message, error) {
 	msg, err := args.ToMessage(b.RPCGasCap(), block.BaseFee, log.Root())
 	if err != nil {
 		return nil, nil, err

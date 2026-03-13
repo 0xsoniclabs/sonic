@@ -34,7 +34,9 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rpc"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
+	stateprocessor "github.com/0xsoniclabs/sonic/evmcore/state_processor"
+
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/txtrace"
 )
@@ -177,7 +179,7 @@ func (s *PublicTxTraceAPI) traceTxHash(ctx context.Context, hash common.Hash, tr
 //   - is value, then only trace for that transaction is returned
 //
 // traceIndex - when specified, then only trace on that index is returned
-func (s *PublicTxTraceAPI) replayBlock(ctx context.Context, block *evmcore.EvmBlock, txHash *common.Hash, traceIndex *[]hexutil.Uint) (*[]txtrace.ActionTrace, error) {
+func (s *PublicTxTraceAPI) replayBlock(ctx context.Context, block *coretypes.EvmBlock, txHash *common.Hash, traceIndex *[]hexutil.Uint) (*[]txtrace.ActionTrace, error) {
 
 	if block == nil {
 		return nil, fmt.Errorf("invalid block for tracing")
@@ -213,7 +215,7 @@ func (s *PublicTxTraceAPI) replayBlock(ctx context.Context, block *evmcore.EvmBl
 		// replay only needed transaction if specified
 		if txHash == nil || *txHash == tx.Hash() {
 
-			msg, err := evmcore.TxAsMessage(tx, signer, block.BaseFee)
+			msg, err := stateprocessor.TxAsMessage(tx, signer, block.BaseFee)
 			if err != nil {
 				return nil, fmt.Errorf("cannot get message from transaction %s, error %s", tx.Hash().String(), err)
 			}
@@ -238,7 +240,7 @@ func (s *PublicTxTraceAPI) replayBlock(ctx context.Context, block *evmcore.EvmBl
 
 			// Replay transaction without tracing to prepare state for next transaction
 			log.Debug("Replaying transaction without trace", "txHash", tx.Hash().String())
-			msg, err := evmcore.TxAsMessage(tx, signer, block.BaseFee)
+			msg, err := stateprocessor.TxAsMessage(tx, signer, block.BaseFee)
 			if err != nil {
 				return nil, fmt.Errorf("cannot get message from transaction %s, error %s", tx.Hash().String(), err)
 			}
@@ -257,7 +259,7 @@ func (s *PublicTxTraceAPI) replayBlock(ctx context.Context, block *evmcore.EvmBl
 			}
 
 			if vmenv.ChainConfig().IsPrague(block.Number, uint64(block.Time.Unix())) {
-				evmcore.ProcessParentBlockHash(block.ParentHash, vmenv, state)
+				stateprocessor.ProcessParentBlockHash(block.ParentHash, vmenv, state)
 			}
 
 			res, err := core.ApplyMessage(vmenv, msg, new(core.GasPool).AddGas(msg.GasLimit))
@@ -295,8 +297,8 @@ func (s *PublicTxTraceAPI) replayBlock(ctx context.Context, block *evmcore.EvmBl
 
 // traceTx trace transaction with EVM replay and return processed result
 func (s *PublicTxTraceAPI) traceTx(
-	ctx context.Context, b Backend, header *evmcore.EvmHeader, msg *core.Message,
-	state state.StateDB, block *evmcore.EvmBlock, tx *types.Transaction, index uint64,
+	ctx context.Context, b Backend, header *coretypes.EvmHeader, msg *core.Message,
+	state state.StateDB, block *coretypes.EvmBlock, tx *types.Transaction, index uint64,
 	status uint64) (*[]txtrace.ActionTrace, error) {
 
 	// Providing default config with tracer
@@ -337,7 +339,7 @@ func (s *PublicTxTraceAPI) traceTx(
 	gp := new(core.GasPool).AddGas(msg.GasLimit)
 	state.SetTxContext(tx.Hash(), int(index))
 	chainConfig := b.ChainConfig(idx.Block(header.Number.Uint64()))
-	resultReceipt, err := evmcore.ApplyTransactionWithEVM(msg, chainConfig, gp, state, header.Number, block.Hash, tx, &index, vmenv)
+	resultReceipt, err := stateprocessor.ApplyTransactionWithEVM(msg, chainConfig, gp, state, header.Number, block.Hash, tx, &index, vmenv)
 
 	traceActions := txTracer.GetResult()
 

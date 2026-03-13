@@ -29,11 +29,11 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
-	notify "github.com/ethereum/go-ethereum/event"
+	event "github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
@@ -69,15 +69,15 @@ type Backend interface {
 	HistoryPruningCutoff() uint64 // block height at which pruning was done
 
 	// Blockchain API
-	HeaderByNumber(ctx context.Context, number rpc.BlockNumber) (*evmcore.EvmHeader, error)
-	HeaderByHash(ctx context.Context, hash common.Hash) (*evmcore.EvmHeader, error)
-	BlockByNumber(ctx context.Context, number rpc.BlockNumber) (*evmcore.EvmBlock, error)
-	StateAndBlockByNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (state.StateDB, *evmcore.EvmBlock, error)
+	HeaderByNumber(ctx context.Context, number rpc.BlockNumber) (*coretypes.EvmHeader, error)
+	HeaderByHash(ctx context.Context, hash common.Hash) (*coretypes.EvmHeader, error)
+	BlockByNumber(ctx context.Context, number rpc.BlockNumber) (*coretypes.EvmBlock, error)
+	StateAndBlockByNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (state.StateDB, *coretypes.EvmBlock, error)
 	ResolveRpcBlockNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (idx.Block, error)
-	BlockByHash(ctx context.Context, hash common.Hash) (*evmcore.EvmBlock, error)
+	BlockByHash(ctx context.Context, hash common.Hash) (*coretypes.EvmBlock, error)
 	GetReceiptsByNumber(ctx context.Context, number rpc.BlockNumber) (types.Receipts, error)
-	FetchReceiptsForBlock(block *evmcore.EvmBlock) types.Receipts
-	GetEVM(ctx context.Context, state vm.StateDB, header *evmcore.EvmHeader, vmConfig *vm.Config, blockContext *vm.BlockContext) (*vm.EVM, func() error, error)
+	FetchReceiptsForBlock(block *coretypes.EvmBlock) types.Receipts
+	GetEVM(ctx context.Context, state vm.StateDB, header *coretypes.EvmHeader, vmConfig *vm.Config, blockContext *vm.BlockContext) (*vm.EVM, func() error, error)
 	MinGasPrice() *big.Int
 	MaxGasLimit() uint64
 
@@ -90,7 +90,7 @@ type Backend interface {
 	Stats() (pending int, queued int)
 	TxPoolContent() (map[common.Address]types.Transactions, map[common.Address]types.Transactions)
 	TxPoolContentFrom(addr common.Address) (types.Transactions, types.Transactions)
-	SubscribeNewTxsNotify(chan<- evmcore.NewTxsNotify) notify.Subscription
+	SubscribeNewTxsNotify(chan<- coretypes.NewTxsNotify) event.Subscription
 
 	// Bundle API
 	IsBundleInPool(common.Hash) bool
@@ -98,7 +98,7 @@ type Backend interface {
 
 	ChainConfig(blockHeight idx.Block) *params.ChainConfig
 	ChainID() *big.Int
-	CurrentBlock() *evmcore.EvmBlock
+	CurrentBlock() *coretypes.EvmBlock
 	GetUpgradeHeights() []opera.UpgradeHeight
 	GetGenesisID() common.Hash
 

@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	event "github.com/ethereum/go-ethereum/event"
 
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
@@ -33,13 +34,13 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
-	notify "github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/pkg/errors"
 
 	"github.com/0xsoniclabs/sonic/ethapi"
-	"github.com/0xsoniclabs/sonic/evmcore"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
+	coreevm "github.com/0xsoniclabs/sonic/evmcore/evm"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice/gaspricelimits"
@@ -89,7 +90,7 @@ func (b *EthAPIBackend) ChainConfig(blockHeight idx.Block) *params.ChainConfig {
 	return b.svc.store.GetEvmChainConfig(blockHeight)
 }
 
-func (b *EthAPIBackend) CurrentBlock() *evmcore.EvmBlock {
+func (b *EthAPIBackend) CurrentBlock() *coretypes.EvmBlock {
 	return b.state.CurrentBlock()
 }
 
@@ -126,7 +127,7 @@ func (b *EthAPIBackend) ResolveRpcBlockNumberOrHash(ctx context.Context, blockNr
 }
 
 // HeaderByNumber returns evm block header by its number, or nil if not exists.
-func (b *EthAPIBackend) HeaderByNumber(ctx context.Context, number rpc.BlockNumber) (*evmcore.EvmHeader, error) {
+func (b *EthAPIBackend) HeaderByNumber(ctx context.Context, number rpc.BlockNumber) (*coretypes.EvmHeader, error) {
 	blk, err := b.BlockByNumber(ctx, number)
 	if blk == nil || err != nil {
 		return nil, err
@@ -135,7 +136,7 @@ func (b *EthAPIBackend) HeaderByNumber(ctx context.Context, number rpc.BlockNumb
 }
 
 // HeaderByHash returns evm block header by its (atropos) hash, or nil if not exists.
-func (b *EthAPIBackend) HeaderByHash(ctx context.Context, h common.Hash) (*evmcore.EvmHeader, error) {
+func (b *EthAPIBackend) HeaderByHash(ctx context.Context, h common.Hash) (*coretypes.EvmHeader, error) {
 	index := b.svc.store.GetBlockIndex(hash.Event(h))
 	if index == nil {
 		return nil, fmt.Errorf("block with hash %s not found", h.String())
@@ -144,9 +145,9 @@ func (b *EthAPIBackend) HeaderByHash(ctx context.Context, h common.Hash) (*evmco
 }
 
 // BlockByNumber returns evm block by its number, or nil if not exists.
-func (b *EthAPIBackend) BlockByNumber(ctx context.Context, number rpc.BlockNumber) (*evmcore.EvmBlock, error) {
+func (b *EthAPIBackend) BlockByNumber(ctx context.Context, number rpc.BlockNumber) (*coretypes.EvmBlock, error) {
 	// Otherwise, resolve and return the block
-	var blk *evmcore.EvmBlock
+	var blk *coretypes.EvmBlock
 	if isLatestBlockNumber(number) {
 		blk = b.state.CurrentBlock()
 	} else if number == rpc.EarliestBlockNumber {
@@ -167,9 +168,9 @@ func isLatestBlockNumber(number rpc.BlockNumber) bool {
 }
 
 // StateAndBlockByNumberOrHash returns evm state and block header by block number or block hash, err if not exists.
-func (b *EthAPIBackend) StateAndBlockByNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (state.StateDB, *evmcore.EvmBlock, error) {
+func (b *EthAPIBackend) StateAndBlockByNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (state.StateDB, *coretypes.EvmBlock, error) {
 
-	var block *evmcore.EvmBlock
+	var block *coretypes.EvmBlock
 	if number, ok := blockNrOrHash.Number(); ok {
 		if isLatestBlockNumber(number) {
 			var err error
@@ -321,7 +322,7 @@ func (b *EthAPIBackend) ForEachEpochEvent(ctx context.Context, epoch rpc.BlockNu
 	return nil
 }
 
-func (b *EthAPIBackend) BlockByHash(ctx context.Context, h common.Hash) (*evmcore.EvmBlock, error) {
+func (b *EthAPIBackend) BlockByHash(ctx context.Context, h common.Hash) (*coretypes.EvmBlock, error) {
 	index := b.svc.store.GetBlockIndex(hash.Event(h))
 	if index == nil {
 		return nil, nil
@@ -331,7 +332,7 @@ func (b *EthAPIBackend) BlockByHash(ctx context.Context, h common.Hash) (*evmcor
 		return nil, errors.New("pending block request isn't allowed")
 	}
 	// Otherwise resolve and return the block
-	var blk *evmcore.EvmBlock
+	var blk *coretypes.EvmBlock
 	if rpc.BlockNumber(*index) == rpc.LatestBlockNumber {
 		blk = b.state.CurrentBlock()
 	} else {
@@ -359,7 +360,7 @@ func (b *EthAPIBackend) GetReceiptsByNumber(ctx context.Context, number rpc.Bloc
 	return b.FetchReceiptsForBlock(block), nil
 }
 
-func (b *EthAPIBackend) FetchReceiptsForBlock(block *evmcore.EvmBlock) types.Receipts {
+func (b *EthAPIBackend) FetchReceiptsForBlock(block *coretypes.EvmBlock) types.Receipts {
 	time := uint64(block.Time.Unix())
 	baseFee := block.BaseFee
 	blobGasPrice := new(big.Int) // TODO issue #147
@@ -396,7 +397,7 @@ func (b *EthAPIBackend) GetLogs(ctx context.Context, block common.Hash) ([][]*ty
 	return logs, nil
 }
 
-func (b *EthAPIBackend) GetEVM(ctx context.Context, state vm.StateDB, header *evmcore.EvmHeader, vmConfig *vm.Config, blockContext *vm.BlockContext) (*vm.EVM, func() error, error) {
+func (b *EthAPIBackend) GetEVM(ctx context.Context, state vm.StateDB, header *coretypes.EvmHeader, vmConfig *vm.Config, blockContext *vm.BlockContext) (*vm.EVM, func() error, error) {
 	vmError := func() error { return nil }
 
 	if vmConfig == nil {
@@ -413,7 +414,7 @@ func (b *EthAPIBackend) GetEVM(ctx context.Context, state vm.StateDB, header *ev
 	}
 	var context vm.BlockContext
 	if blockContext == nil {
-		context = evmcore.NewEVMBlockContext(header, b.state, nil)
+		context = coreevm.NewEVMBlockContext(header, b.state, nil)
 	} else {
 		context = *blockContext
 	}
@@ -425,15 +426,15 @@ func (b *EthAPIBackend) SendTx(ctx context.Context, signedTx *types.Transaction)
 	return b.svc.txpool.AddLocal(signedTx)
 }
 
-func (b *EthAPIBackend) SubscribeLogsNotify(ch chan<- []*types.Log) notify.Subscription {
+func (b *EthAPIBackend) SubscribeLogsNotify(ch chan<- []*types.Log) event.Subscription {
 	return b.svc.feed.SubscribeNewLogs(ch)
 }
 
-func (b *EthAPIBackend) SubscribeNewBlockNotify(ch chan<- evmcore.ChainHeadNotify) notify.Subscription {
+func (b *EthAPIBackend) SubscribeNewBlockNotify(ch chan<- coretypes.ChainHeadNotify) event.Subscription {
 	return b.svc.feed.SubscribeNewBlock(ch)
 }
 
-func (b *EthAPIBackend) SubscribeNewTxsNotify(ch chan<- evmcore.NewTxsNotify) notify.Subscription {
+func (b *EthAPIBackend) SubscribeNewTxsNotify(ch chan<- coretypes.NewTxsNotify) event.Subscription {
 	return b.svc.txpool.SubscribeNewTxsNotify(ch)
 }
 

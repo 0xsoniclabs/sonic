@@ -20,7 +20,7 @@ import (
 	"context"
 	"math/big"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
@@ -187,9 +187,9 @@ type BlockInfo struct {
 	BlobBaseFee uint256.Int
 }
 
-func (b *BlockInfo) toEvmBlock() *evmcore.EvmBlock {
-	return &evmcore.EvmBlock{
-		EvmHeader: evmcore.EvmHeader{
+func (b *BlockInfo) toEvmBlock() *coretypes.EvmBlock {
+	return &coretypes.EvmBlock{
+		EvmHeader: coretypes.EvmHeader{
 			Number:      new(big.Int).SetUint64(uint64(b.Number)),
 			Time:        b.Time,
 			GasLimit:    b.GasLimit,

@@ -21,7 +21,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/evmcore/txpool"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -401,7 +401,7 @@ func TestGasSubsidies_NonSponsoredTransactionsAreRejected(t *testing.T) {
 				Gas:      60000,
 				GasPrice: big.NewInt(0),
 			},
-			expectError: evmcore.ErrUnderpriced,
+			expectError: txpool.ErrUnderpriced,
 		},
 		"contract creation with gas price cannot be sponsored": {
 			tx: &types.LegacyTx{
@@ -409,7 +409,7 @@ func TestGasSubsidies_NonSponsoredTransactionsAreRejected(t *testing.T) {
 				Gas:      60000,
 				GasPrice: big.NewInt(1),
 			},
-			expectError: evmcore.ErrUnderpriced,
+			expectError: txpool.ErrUnderpriced,
 		},
 		"Non-contract creation with gas price is not a valid sponsorship request": {
 			tx: &types.LegacyTx{
@@ -417,7 +417,7 @@ func TestGasSubsidies_NonSponsoredTransactionsAreRejected(t *testing.T) {
 				Gas:      21000,
 				GasPrice: big.NewInt(1),
 			},
-			expectError: evmcore.ErrUnderpriced,
+			expectError: txpool.ErrUnderpriced,
 		},
 		"Non-contract creation with zero gas cannot be accepted without funds": {
 			tx: &types.LegacyTx{
@@ -425,7 +425,7 @@ func TestGasSubsidies_NonSponsoredTransactionsAreRejected(t *testing.T) {
 				Gas:      21000,
 				GasPrice: big.NewInt(0),
 			},
-			expectError: evmcore.ErrSponsorshipRejected,
+			expectError: txpool.ErrSponsorshipRejected,
 		},
 		"sanity check: valid sponsorship request is accepted": {
 			tx: &types.LegacyTx{

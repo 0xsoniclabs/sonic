@@ -27,7 +27,9 @@ import (
 	cc "github.com/0xsoniclabs/carmen/go/common"
 	"github.com/0xsoniclabs/carmen/go/common/amount"
 	carmen "github.com/0xsoniclabs/carmen/go/state"
-	"github.com/0xsoniclabs/sonic/evmcore"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
+	stateprocessor "github.com/0xsoniclabs/sonic/evmcore/state_processor"
+
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
@@ -385,14 +387,14 @@ func (s *State) ApplyBlock(
 	// a second charge for sponsored transactions.
 	upgrades.GasSubsidies = false
 
-	processor := evmcore.NewStateProcessor(
+	processor := stateprocessor.NewStateProcessor(
 		chainConfig,
 		historyAdapter{history: s.blockHashHistory},
 		upgrades,
 	)
 
-	evmBlock := &evmcore.EvmBlock{
-		EvmHeader: evmcore.EvmHeader{
+	evmBlock := &coretypes.EvmBlock{
+		EvmHeader: coretypes.EvmHeader{
 			Number:      block.Number(),
 			ParentHash:  block.ParentHash(),
 			Time:        inter.Timestamp(block.Time() * 1e9),
@@ -466,16 +468,16 @@ func (b *blockHashHistory) SetBlockHash(number uint64, hash common.Hash) {
 
 // --- block hash history adapter ---
 
-// historyAdapter implements the evmcore.DummyChain interface, allowing it to
+// historyAdapter implements the coretypes.DummyChain interface, allowing it to
 // be used with the EVM state processor to serve historic block hashes.
 type historyAdapter struct {
 	history *blockHashHistory
 }
 
-func (h historyAdapter) Header(_ common.Hash, number uint64) *evmcore.EvmHeader {
+func (h historyAdapter) Header(_ common.Hash, number uint64) *coretypes.EvmHeader {
 	// The only information required from the header is the block number, the
 	// block's hash, and the parent hash. Everything else is ignored by the EVM.
-	return &evmcore.EvmHeader{
+	return &coretypes.EvmHeader{
 		Number:     big.NewInt(int64(number)),
 		Hash:       h.history.GetBlockHash(number),
 		ParentHash: h.history.GetBlockHash(number - 1),

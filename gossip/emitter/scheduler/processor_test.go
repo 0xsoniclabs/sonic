@@ -19,7 +19,7 @@ package scheduler
 import (
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
+	stateprocessor "github.com/0xsoniclabs/sonic/evmcore/state_processor"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -46,7 +46,7 @@ func TestEvmProcessor_Run_IfExecutionSucceeds_ReportsSuccessAndGasUsage(t *testi
 	ctrl := gomock.NewController(t)
 	runner := NewMockevmProcessorRunner(ctrl)
 
-	runner.EXPECT().Run(0, nil).Return(evmcore.ExecutionSummary{ProcessedTransactions: []evmcore.ProcessedTransaction{{
+	runner.EXPECT().Run(0, nil).Return(stateprocessor.ExecutionSummary{ProcessedTransactions: []stateprocessor.ProcessedTransaction{{
 		Receipt: &types.Receipt{
 			GasUsed: 10,
 		},
@@ -63,7 +63,7 @@ func TestEvmProcessor_Run_IfExecutionProducesMultipleProcessedTransactions_SumsU
 	ctrl := gomock.NewController(t)
 	runner := NewMockevmProcessorRunner(ctrl)
 
-	runner.EXPECT().Run(0, nil).Return(evmcore.ExecutionSummary{ProcessedTransactions: []evmcore.ProcessedTransaction{
+	runner.EXPECT().Run(0, nil).Return(stateprocessor.ExecutionSummary{ProcessedTransactions: []stateprocessor.ProcessedTransaction{
 		{Receipt: &types.Receipt{GasUsed: 10}},
 		{Receipt: nil}, // skipped transaction
 		{Receipt: &types.Receipt{GasUsed: 20}},
@@ -80,7 +80,7 @@ func TestEvmProcessor_Run_IfRequestedTransactionIsNotExecuted_AFailedExecutionIs
 	runner := NewMockevmProcessorRunner(ctrl)
 
 	tx := &types.Transaction{}
-	runner.EXPECT().Run(0, tx).Return(evmcore.ExecutionSummary{ProcessedTransactions: []evmcore.ProcessedTransaction{{
+	runner.EXPECT().Run(0, tx).Return(stateprocessor.ExecutionSummary{ProcessedTransactions: []stateprocessor.ProcessedTransaction{{
 		Transaction: &types.Transaction{}, // different transaction
 		Receipt:     &types.Receipt{GasUsed: 10},
 	}}})
@@ -104,7 +104,7 @@ func TestEvmProcessor_Run_IfExecutionFailed_ReportsAFailedExecution(t *testing.T
 		ctrl := gomock.NewController(t)
 		runner := NewMockevmProcessorRunner(ctrl)
 		tx := &types.Transaction{}
-		runner.EXPECT().Run(0, gomock.Any()).Return(evmcore.ExecutionSummary{ProcessedTransactions: []evmcore.ProcessedTransaction{
+		runner.EXPECT().Run(0, gomock.Any()).Return(stateprocessor.ExecutionSummary{ProcessedTransactions: []stateprocessor.ProcessedTransaction{
 			{Transaction: tx, Receipt: nil},
 		}})
 		processor := &evmProcessor{processor: runner}
@@ -117,7 +117,7 @@ func TestEvmProcessor_Run_IfExecutionFailed_ReportsAFailedExecution(t *testing.T
 		runner := NewMockevmProcessorRunner(ctrl)
 		txA := &types.Transaction{}
 		txB := &types.Transaction{}
-		runner.EXPECT().Run(0, gomock.Any()).Return(evmcore.ExecutionSummary{ProcessedTransactions: []evmcore.ProcessedTransaction{
+		runner.EXPECT().Run(0, gomock.Any()).Return(stateprocessor.ExecutionSummary{ProcessedTransactions: []stateprocessor.ProcessedTransaction{
 			{Transaction: txB, Receipt: &types.Receipt{GasUsed: 10}},
 		}})
 		processor := &evmProcessor{processor: runner}

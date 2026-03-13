@@ -13,7 +13,7 @@ import (
 	big "math/big"
 	reflect "reflect"
 
-	evmcore "github.com/0xsoniclabs/sonic/evmcore"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
 	common "github.com/ethereum/go-ethereum/common"
 	types "github.com/ethereum/go-ethereum/core/types"
 	event "github.com/ethereum/go-ethereum/event"
@@ -271,7 +271,7 @@ func (mr *MockTxPoolMockRecorder) Stop() *gomock.Call {
 }
 
 // SubscribeNewTxsNotify mocks base method.
-func (m *MockTxPool) SubscribeNewTxsNotify(arg0 chan<- evmcore.NewTxsNotify) event.Subscription {
+func (m *MockTxPool) SubscribeNewTxsNotify(arg0 chan<- coretypes.NewTxsNotify) event.Subscription {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SubscribeNewTxsNotify", arg0)
 	ret0, _ := ret[0].(event.Subscription)

@@ -26,7 +26,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
+	stateprocessor "github.com/0xsoniclabs/sonic/evmcore/state_processor"
+
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	scc_node "github.com/0xsoniclabs/sonic/scc/node"
 
@@ -430,7 +432,7 @@ func consensusCallbackBeginBlockFn(
 
 					orderedTxs := proposal.Transactions
 					numSkippedDueToBlockLimits := 0
-					var processedBundles []evmcore.ProcessedBundle
+					var processedBundles []stateprocessor.ProcessedBundle
 					if es.Rules.Upgrades.Brio {
 						// Limit block size and gas while adding user transactions
 						numSkippedDueToBlockLimits, processedBundles =
@@ -630,7 +632,7 @@ func processUserTransactionsNoLimits(
 	blockBuilder *inter.BlockBuilder,
 	orderedTxs []*types.Transaction,
 	userTransactionGasLimit uint64,
-) []evmcore.ProcessedBundle {
+) []stateprocessor.ProcessedBundle {
 	summary := evmProcessor.Execute(orderedTxs, userTransactionGasLimit)
 	for _, processed := range summary.ProcessedTransactions {
 		if processed.Receipt != nil { // < nil if skipped
@@ -654,7 +656,7 @@ func processUserTransactions(
 	blockBuilder *inter.BlockBuilder,
 	orderedTxs []*types.Transaction,
 	userTransactionGasLimit uint64,
-) (int, []evmcore.ProcessedBundle) {
+) (int, []stateprocessor.ProcessedBundle) {
 	remainingGas := userTransactionGasLimit
 	remainingSize := uint64(params.MaxBlockSize - rlpEncodedMaxHeaderSizeInBytes)
 	internalTxs := blockBuilder.GetTransactions()
@@ -668,7 +670,7 @@ func processUserTransactions(
 	}
 
 	skippedCounter := 0
-	var processedBundles []evmcore.ProcessedBundle
+	var processedBundles []stateprocessor.ProcessedBundle
 	for _, tx := range orderedTxs {
 		neededSpace := txSizeIncludingSubsidies(tx)
 		if neededSpace <= remainingSize {
@@ -786,7 +788,7 @@ func mergeCheaters(a, b lachesis.Cheaters) lachesis.Cheaters {
 // If no valid proposals are found, nil is returned. In such a case, no or an
 // empty block should be produced.
 func extractProposalForNextBlock(
-	lastBlock *evmcore.EvmHeader,
+	lastBlock *coretypes.EvmHeader,
 	events []inter.EventPayloadI,
 	logger log.Logger,
 ) (*inter.Proposal, idx.ValidatorID, inter.Timestamp) {

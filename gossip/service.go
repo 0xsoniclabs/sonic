@@ -33,7 +33,7 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/utils/workers"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/core/types"
-	notify "github.com/ethereum/go-ethereum/event"
+	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/p2p"
@@ -50,7 +50,7 @@ import (
 	"github.com/0xsoniclabs/sonic/eventcheck/heavycheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/parentscheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/proposalcheck"
-	"github.com/0xsoniclabs/sonic/evmcore"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/drivermodule"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/eventmodule"
@@ -74,12 +74,12 @@ import (
 //go:generate mockgen -source=service.go -package=gossip -destination=service_mock.go
 
 type ServiceFeed struct {
-	scope notify.SubscriptionScope
+	scope event.SubscriptionScope
 
-	newEpoch        notify.Feed
-	newEmittedEvent notify.Feed
-	newBlock        notify.Feed
-	newLogs         notify.Feed
+	newEpoch        event.Feed
+	newEmittedEvent event.Feed
+	newBlock        event.Feed
+	newLogs         event.Feed
 
 	incomingUpdates chan<- feedUpdate // < channel to send updates to the background feed loop
 	stopFeeder      chan<- struct{}   // < if closed, the background feed loop will stop
@@ -87,7 +87,7 @@ type ServiceFeed struct {
 }
 
 type feedUpdate struct {
-	block *evmcore.EvmBlock
+	block *coretypes.EvmBlock
 	logs  []*types.Log
 }
 
@@ -95,19 +95,19 @@ type ArchiveBlockHeightSource interface {
 	GetArchiveBlockHeight() (uint64, bool, error)
 }
 
-func (f *ServiceFeed) SubscribeNewEpoch(ch chan<- idx.Epoch) notify.Subscription {
+func (f *ServiceFeed) SubscribeNewEpoch(ch chan<- idx.Epoch) event.Subscription {
 	return f.scope.Track(f.newEpoch.Subscribe(ch))
 }
 
-func (f *ServiceFeed) SubscribeNewEmitted(ch chan<- *inter.EventPayload) notify.Subscription {
+func (f *ServiceFeed) SubscribeNewEmitted(ch chan<- *inter.EventPayload) event.Subscription {
 	return f.scope.Track(f.newEmittedEvent.Subscribe(ch))
 }
 
-func (f *ServiceFeed) SubscribeNewBlock(ch chan<- evmcore.ChainHeadNotify) notify.Subscription {
+func (f *ServiceFeed) SubscribeNewBlock(ch chan<- coretypes.ChainHeadNotify) event.Subscription {
 	return f.scope.Track(f.newBlock.Subscribe(ch))
 }
 
-func (f *ServiceFeed) SubscribeNewLogs(ch chan<- []*types.Log) notify.Subscription {
+func (f *ServiceFeed) SubscribeNewLogs(ch chan<- []*types.Log) event.Subscription {
 	return f.scope.Track(f.newLogs.Subscribe(ch))
 }
 
@@ -162,7 +162,7 @@ func (f *ServiceFeed) Start(store ArchiveBlockHeightSource) {
 				if update.block.Number.Uint64() > height {
 					break
 				}
-				f.newBlock.Send(evmcore.ChainHeadNotify{Block: update.block})
+				f.newBlock.Send(coretypes.ChainHeadNotify{Block: update.block})
 				f.newLogs.Send(update.logs)
 				pending = pending[1:]
 			}
@@ -171,7 +171,7 @@ func (f *ServiceFeed) Start(store ArchiveBlockHeightSource) {
 }
 
 func (f *ServiceFeed) notifyAboutNewBlock(
-	block *evmcore.EvmBlock,
+	block *coretypes.EvmBlock,
 	logs []*types.Log,
 ) {
 	f.incomingUpdates <- feedUpdate{
@@ -272,7 +272,7 @@ type Service struct {
 }
 
 func NewService(stack *node.Node, config Config, store *Store, blockProc BlockProc,
-	engine lachesis.Consensus, dagIndexer *vecmt.Index, newTxPool func(evmcore.StateReader) TxPool,
+	engine lachesis.Consensus, dagIndexer *vecmt.Index, newTxPool func(coretypes.StateReader) TxPool,
 	haltCheck func(oldEpoch, newEpoch idx.Epoch, age time.Time) bool) (*Service, error) {
 	if err := config.Validate(); err != nil {
 		return nil, err
@@ -294,7 +294,7 @@ func NewService(stack *node.Node, config Config, store *Store, blockProc BlockPr
 	return svc, nil
 }
 
-func newService(config Config, store *Store, blockProc BlockProc, engine lachesis.Consensus, dagIndexer *vecmt.Index, newTxPool func(evmcore.StateReader) TxPool, localId enode.ID) (*Service, error) {
+func newService(config Config, store *Store, blockProc BlockProc, engine lachesis.Consensus, dagIndexer *vecmt.Index, newTxPool func(coretypes.StateReader) TxPool, localId enode.ID) (*Service, error) {
 	svc := &Service{
 		config:             config,
 		blockProcTasksDone: make(chan struct{}),

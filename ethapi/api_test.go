@@ -31,6 +31,7 @@ import (
 	"github.com/0xsoniclabs/carmen/go/common/amount"
 	"github.com/0xsoniclabs/carmen/go/common/immutable"
 	"github.com/0xsoniclabs/carmen/go/common/witness"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -44,7 +45,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -123,8 +123,8 @@ func TestAPI_GetProof(t *testing.T) {
 	mockBackend := NewMockBackend(ctrl)
 	mockState := state.NewMockStateDB(ctrl)
 	mockProof := witness.NewMockProof(ctrl)
-	mockHeader := &evmcore.EvmHeader{Root: headerRoot}
-	mockBlock := &evmcore.EvmBlock{EvmHeader: *mockHeader}
+	mockHeader := &coretypes.EvmHeader{Root: headerRoot}
+	mockBlock := &coretypes.EvmBlock{EvmHeader: *mockHeader}
 
 	blkNr := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
 
@@ -168,8 +168,8 @@ func TestAPI_GetAccount(t *testing.T) {
 	mockBackend := NewMockBackend(ctrl)
 	mockState := state.NewMockStateDB(ctrl)
 	mockProof := witness.NewMockProof(ctrl)
-	mockHeader := &evmcore.EvmHeader{Root: headerRoot}
-	mockBlock := &evmcore.EvmBlock{EvmHeader: *mockHeader}
+	mockHeader := &coretypes.EvmHeader{Root: headerRoot}
+	mockBlock := &coretypes.EvmBlock{EvmHeader: *mockHeader}
 
 	blkNr := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
 
@@ -231,7 +231,7 @@ func testGetBlockReceipts(t *testing.T, blockParam rpc.BlockNumberOrHash) ([]map
 	return receiptsRes, nil
 }
 
-func getTestData() (*evmcore.EvmHeader, *types.Transaction, types.Receipts, error) {
+func getTestData() (*coretypes.EvmHeader, *types.Transaction, types.Receipts, error) {
 
 	key, err := crypto.GenerateKey()
 	if err != nil {
@@ -252,7 +252,7 @@ func getTestData() (*evmcore.EvmHeader, *types.Transaction, types.Receipts, erro
 		return nil, nil, nil, err
 	}
 
-	header := &evmcore.EvmHeader{
+	header := &coretypes.EvmHeader{
 		Number: big.NewInt(1),
 	}
 
@@ -276,11 +276,11 @@ func TestEstimateGas(t *testing.T) {
 
 	mockBackend := NewMockBackend(ctrl)
 	mockState := state.NewMockStateDB(ctrl)
-	mockHeader := &evmcore.EvmHeader{
+	mockHeader := &coretypes.EvmHeader{
 		Number: big.NewInt(1),
 		Root:   headerRoot,
 	}
-	mockBlock := &evmcore.EvmBlock{EvmHeader: *mockHeader}
+	mockBlock := &coretypes.EvmBlock{EvmHeader: *mockHeader}
 
 	blkNr := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
 
@@ -308,7 +308,7 @@ func TestReplayTransactionOnEmptyBlock(t *testing.T) {
 	mockBackend := NewMockBackend(ctrl)
 	mockState := state.NewMockStateDB(ctrl)
 
-	block := &evmcore.EvmBlock{}
+	block := &coretypes.EvmBlock{}
 	block.Number = big.NewInt(5)
 	any := gomock.Any()
 	mockBackend.EXPECT().GetNetworkRules(any, any).Return(&opera.Rules{}, nil).AnyTimes()
@@ -357,7 +357,7 @@ func TestReplayInternalTransaction(t *testing.T) {
 		To:       &common.Address{0x1},
 	}
 
-	block := &evmcore.EvmBlock{}
+	block := &coretypes.EvmBlock{}
 	block.Number = big.NewInt(5)
 
 	// Put transactions in the block
@@ -406,7 +406,7 @@ func TestBlockOverrides(t *testing.T) {
 	mockState := state.NewMockStateDB(ctrl)
 
 	blockNr := 10
-	block := &evmcore.EvmBlock{}
+	block := &coretypes.EvmBlock{}
 	block.Number = big.NewInt(int64(blockNr))
 
 	any := gomock.Any()
@@ -545,7 +545,7 @@ func runEstimateGasOverrideTest(t *testing.T, test stateOverrideEstimateGasTest)
 	mockState := state.NewMockStateDB(ctrl)
 
 	blockNr := 10
-	block := &evmcore.EvmBlock{}
+	block := &coretypes.EvmBlock{}
 	block.Number = big.NewInt(int64(blockNr))
 	rpcBlkNr := rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(blockNr))
 
@@ -1112,12 +1112,12 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 
 			blockOrHash := rpc.BlockNumberOrHashWithNumber(1)
 
-			header := evmcore.EvmHeader{
+			header := coretypes.EvmHeader{
 				// return any block but 0, 0 is genesis and has special semantics
 				Number:  big.NewInt(1),
 				BaseFee: big.NewInt(10000000),
 			}
-			block := &evmcore.EvmBlock{EvmHeader: header}
+			block := &coretypes.EvmBlock{EvmHeader: header}
 
 			mockState := state.NewMockStateDB(ctrl)
 			require.NotNil(t, test.setupStateDb, "setupStateDb must be defined")
@@ -1172,12 +1172,12 @@ func makeChainConfig(upgrades opera.Upgrades) *params.ChainConfig {
 func makeTestEVM(features opera.Upgrades) func(
 	ctx context.Context,
 	statedb vm.StateDB,
-	header *evmcore.EvmHeader,
+	header *coretypes.EvmHeader,
 	vmConfig *vm.Config,
 	blockContext *vm.BlockContext,
 ) (*vm.EVM, func() error, error) {
 
-	return func(ctx context.Context, statedb vm.StateDB, header *evmcore.EvmHeader, vmConfig *vm.Config, blockContext *vm.BlockContext) (*vm.EVM, func() error, error) {
+	return func(ctx context.Context, statedb vm.StateDB, header *coretypes.EvmHeader, vmConfig *vm.Config, blockContext *vm.BlockContext) (*vm.EVM, func() error, error) {
 
 		chainConfig := makeChainConfig(features)
 
@@ -1344,8 +1344,8 @@ func TestDebugTraceWithBlobTx(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		block := &evmcore.EvmBlock{
-			EvmHeader: evmcore.EvmHeader{
+		block := &coretypes.EvmBlock{
+			EvmHeader: coretypes.EvmHeader{
 				Number: big.NewInt(5),
 			},
 			Transactions: types.Transactions{
@@ -1440,8 +1440,8 @@ func TestFeeHistory_BlockNotFound(t *testing.T) {
 
 	requestedBlock := rpc.BlockNumber(100)
 
-	currentBlock := evmcore.NewEvmBlock(
-		&evmcore.EvmHeader{
+	currentBlock := coretypes.NewEvmBlock(
+		&coretypes.EvmHeader{
 			Number: big.NewInt(requestedBlock.Int64() - 1),
 		}, nil)
 
@@ -1514,7 +1514,7 @@ func TestGetNumberAndTime_ReportsErrors(t *testing.T) {
 
 func TestGetNumberAndTime_ReturnsBlockNumberAndTimestamp_ForExistingBlock(t *testing.T) {
 
-	expectedHeader := &evmcore.EvmHeader{
+	expectedHeader := &coretypes.EvmHeader{
 		Number: big.NewInt(42),
 		Time:   inter.Timestamp(time.Second * 42),
 	}
@@ -1607,7 +1607,7 @@ func TestIsOsaka_OverridesAreUsedForDeterminingWhetherOsakaIsEnabled(t *testing.
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 
-			header := &evmcore.EvmHeader{Number: big.NewInt(1)}
+			header := &coretypes.EvmHeader{Number: big.NewInt(1)}
 			backend := NewMockBackend(ctrl)
 
 			backend.EXPECT().HeaderByNumber(gomock.Any(), gomock.Any()).Return(header, nil)
@@ -1642,7 +1642,7 @@ func TestCapMaxGas_IsUpgradesAware(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 
-			header := evmcore.EvmHeader{
+			header := coretypes.EvmHeader{
 				Number:  big.NewInt(1),
 				Time:    1234,
 				BaseFee: big.NewInt(2),

@@ -19,7 +19,8 @@ package scheduler
 import (
 	"math"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
+	stateprocessor "github.com/0xsoniclabs/sonic/evmcore/state_processor"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
@@ -33,7 +34,7 @@ import (
 // transaction processor capable of test-running transactions in a block to
 // be scheduled.
 type processorFactory interface {
-	beginBlock(*evmcore.EvmBlock) processor
+	beginBlock(*coretypes.EvmBlock) processor
 }
 
 // processor is an internal interface for a component that can process
@@ -55,7 +56,7 @@ type processor interface {
 type Chain interface {
 	// DummyChain needs to be implemented in order to resolve past block hashes.
 	// TODO: follow-up task - simplify this to a GetBlockHash(idx.Block) method.
-	evmcore.DummyChain
+	coretypes.DummyChain
 
 	// GetCurrentNetworkRules returns the current network rules for the EVM.
 	GetCurrentNetworkRules() opera.Rules
@@ -78,7 +79,7 @@ type evmProcessorFactory struct {
 }
 
 func (p *evmProcessorFactory) beginBlock(
-	block *evmcore.EvmBlock,
+	block *coretypes.EvmBlock,
 ) processor {
 	// TODO: follow-up task - align this with c_block_callbacks.go
 	chainCfg := p.chain.GetEvmChainConfig(idx.Block(block.Header().Number.Uint64()))
@@ -89,7 +90,7 @@ func (p *evmProcessorFactory) beginBlock(
 	// in the scheduler. See the scheduler.Schedule method for details. The
 	// total gas used for attempting to schedule transactions is not limited.
 	gasLimit := uint64(math.MaxUint64)
-	stateProcessor := evmcore.NewStateProcessor(
+	stateProcessor := stateprocessor.NewStateProcessor(
 		chainCfg, p.chain, p.chain.GetCurrentNetworkRules().Upgrades,
 	)
 	return &evmProcessor{
@@ -145,5 +146,5 @@ func (p *evmProcessor) release() {
 type evmProcessorRunner interface {
 	// Run runs the given transaction in the context of the current block
 	// where the index is the position of the transaction in the block.
-	Run(index int, tx *types.Transaction) evmcore.ExecutionSummary
+	Run(index int, tx *types.Transaction) stateprocessor.ExecutionSummary
 }

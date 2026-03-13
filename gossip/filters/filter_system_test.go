@@ -28,12 +28,12 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
-	notify "github.com/ethereum/go-ethereum/event"
+	event "github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
 
 	"github.com/0xsoniclabs/sonic/ethapi"
-	"github.com/0xsoniclabs/sonic/evmcore"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/topicsdb"
 )
@@ -41,18 +41,18 @@ import (
 type testBackend struct {
 	db         ethdb.Database
 	logIndex   topicsdb.Index
-	blocksFeed *notify.Feed
-	txsFeed    *notify.Feed
-	logsFeed   *notify.Feed
+	blocksFeed *event.Feed
+	txsFeed    *event.Feed
+	logsFeed   *event.Feed
 }
 
 func newTestBackend() *testBackend {
 	return &testBackend{
 		db:         rawdb.NewMemoryDatabase(),
 		logIndex:   topicsdb.NewWithLeapJoin(memorydb.New()),
-		blocksFeed: new(notify.Feed),
-		txsFeed:    new(notify.Feed),
-		logsFeed:   new(notify.Feed),
+		blocksFeed: new(event.Feed),
+		txsFeed:    new(event.Feed),
+		logsFeed:   new(event.Feed),
 	}
 }
 
@@ -60,7 +60,7 @@ func (b *testBackend) ChainDb() ethdb.Database {
 	return b.db
 }
 
-func (b *testBackend) HeaderByNumber(ctx context.Context, blockNr rpc.BlockNumber) (*evmcore.EvmHeader, error) {
+func (b *testBackend) HeaderByNumber(ctx context.Context, blockNr rpc.BlockNumber) (*coretypes.EvmHeader, error) {
 	var (
 		hash common.Hash
 		num  uint64
@@ -78,19 +78,19 @@ func (b *testBackend) HeaderByNumber(ctx context.Context, blockNr rpc.BlockNumbe
 	}
 
 	h := rawdb.ReadHeader(b.db, hash, num)
-	eh := evmcore.ConvertFromEthHeader(h)
+	eh := coretypes.ConvertFromEthHeader(h)
 	eh.Hash = h.Hash()
 	return eh, nil
 }
 
-func (b *testBackend) HeaderByHash(ctx context.Context, hash common.Hash) (*evmcore.EvmHeader, error) {
+func (b *testBackend) HeaderByHash(ctx context.Context, hash common.Hash) (*coretypes.EvmHeader, error) {
 	number, ok := rawdb.ReadHeaderNumber(b.db, hash)
 	if !ok {
 		return nil, nil
 	}
 
 	h := rawdb.ReadHeader(b.db, hash, number)
-	eh := evmcore.ConvertFromEthHeader(h)
+	eh := coretypes.ConvertFromEthHeader(h)
 	eh.Hash = h.Hash()
 	return eh, nil
 }
@@ -122,15 +122,15 @@ func (b *testBackend) GetLogs(ctx context.Context, hash common.Hash) ([][]*types
 	return logs, nil
 }
 
-func (b *testBackend) SubscribeNewTxsNotify(ch chan<- evmcore.NewTxsNotify) notify.Subscription {
+func (b *testBackend) SubscribeNewTxsNotify(ch chan<- coretypes.NewTxsNotify) event.Subscription {
 	return b.txsFeed.Subscribe(ch)
 }
 
-func (b *testBackend) SubscribeLogsNotify(ch chan<- []*types.Log) notify.Subscription {
+func (b *testBackend) SubscribeLogsNotify(ch chan<- []*types.Log) event.Subscription {
 	return b.logsFeed.Subscribe(ch)
 }
 
-func (b *testBackend) SubscribeNewBlockNotify(ch chan<- evmcore.ChainHeadNotify) notify.Subscription {
+func (b *testBackend) SubscribeNewBlockNotify(ch chan<- coretypes.ChainHeadNotify) event.Subscription {
 	return b.blocksFeed.Subscribe(ch)
 }
 
@@ -179,7 +179,7 @@ func TestPendingTxFilter(t *testing.T) {
 		fid0 := api.NewPendingTransactionFilter(fullTx)
 
 		time.Sleep(1 * time.Second)
-		backend.txsFeed.Send(evmcore.NewTxsNotify{Txs: transactions})
+		backend.txsFeed.Send(coretypes.NewTxsNotify{Txs: transactions})
 
 		var receivedHashes []common.Hash
 		timeout := time.Now().Add(1 * time.Second)

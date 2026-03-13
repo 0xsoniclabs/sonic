@@ -21,7 +21,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -440,13 +440,13 @@ func TestTracerInnerErrorCall(t *testing.T) {
 	checkResult(t, tracer.GetResult(), want)
 }
 
-func getDefaultBlockTxMessage() (*evmcore.EvmBlock, *types.Transaction) {
+func getDefaultBlockTxMessage() (*coretypes.EvmBlock, *types.Transaction) {
 
 	// create transaction with default values
 	tx := types.NewTransaction(nonce, to, value, gaslimit, gasprice, inputData)
 
 	// create block
-	block := evmcore.NewEvmBlock(&evmcore.EvmHeader{
+	block := coretypes.NewEvmBlock(&coretypes.EvmHeader{
 		Number: blockNumber,
 		Hash:   blockHash}, types.Transactions{tx})
 

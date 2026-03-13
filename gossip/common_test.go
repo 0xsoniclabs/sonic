@@ -31,6 +31,8 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/stretchr/testify/require"
 
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
+	coreevm "github.com/0xsoniclabs/sonic/evmcore/evm"
 	emitter_config "github.com/0xsoniclabs/sonic/gossip/emitter/config"
 	"github.com/Fantom-foundation/lachesis-base/abft"
 	"github.com/Fantom-foundation/lachesis-base/hash"
@@ -49,7 +51,6 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
@@ -179,7 +180,7 @@ func newTestEnvWithUpgrades(
 	// create the service
 	txPool := &dummyTxPool{}
 	var err error
-	env.Service, err = newService(DefaultConfig(cachescale.Identity), store, blockProc, engine, vecClock, func(_ evmcore.StateReader) TxPool {
+	env.Service, err = newService(DefaultConfig(cachescale.Identity), store, blockProc, engine, vecClock, func(_ coretypes.StateReader) TxPool {
 		return txPool
 	}, enode.ID{})
 	if err != nil {
@@ -280,7 +281,7 @@ func (env *testEnv) ApplyTxs(spent time.Duration, txs ...*types.Transaction) (ty
 
 	env.txpool.AddRemotes(txs)
 	defer env.txpool.(*dummyTxPool).Clear()
-	newBlocks := make(chan evmcore.ChainHeadNotify)
+	newBlocks := make(chan coretypes.ChainHeadNotify)
 	chainHeadSub := env.feed.SubscribeNewBlock(newBlocks)
 	mu := &sync.Mutex{}
 	go func() {
@@ -446,7 +447,7 @@ func (env *testEnv) CallContract(ctx context.Context, call ethereum.CallMsg, blo
 	}
 
 	h := env.GetEvmStateReader().Header(common.Hash{}, uint64(env.store.GetLatestBlockIndex()))
-	block := &evmcore.EvmBlock{
+	block := &coretypes.EvmBlock{
 		EvmHeader: *h,
 	}
 
@@ -467,7 +468,7 @@ func (env *testEnv) HeaderByNumber(ctx context.Context, number *big.Int) (*types
 // callContract implements common code between normal and pending contract calls.
 // state is modified during execution, make sure to copy it if necessary.
 func (env *testEnv) callContract(
-	ctx context.Context, call ethereum.CallMsg, block *evmcore.EvmBlock, state state.StateDB,
+	ctx context.Context, call ethereum.CallMsg, block *coretypes.EvmBlock, state state.StateDB,
 ) (
 	ret []byte, usedGas uint64, failed bool, err error,
 ) {
@@ -495,7 +496,7 @@ func (env *testEnv) callContract(
 
 	// Create a new environment which holds all relevant information
 	// about the transaction and calling mechanisms.
-	context := evmcore.NewEVMBlockContext(block.Header(), env.GetEvmStateReader(), nil)
+	context := coreevm.NewEVMBlockContext(block.Header(), env.GetEvmStateReader(), nil)
 	vmConfig := opera.GetVmConfig(env.store.GetRules())
 	vmenv := vm.NewEVM(context, state, env.store.GetEvmChainConfig(idx.Block(block.Number.Uint64())), vmConfig)
 	gaspool := new(core.GasPool).AddGas(math.MaxUint64)

@@ -12,7 +12,8 @@ package scheduler
 import (
 	reflect "reflect"
 
-	evmcore "github.com/0xsoniclabs/sonic/evmcore"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
+	stateprocessor "github.com/0xsoniclabs/sonic/evmcore/state_processor"
 	state "github.com/0xsoniclabs/sonic/inter/state"
 	opera "github.com/0xsoniclabs/sonic/opera"
 	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
@@ -47,7 +48,7 @@ func (m *MockprocessorFactory) EXPECT() *MockprocessorFactoryMockRecorder {
 }
 
 // beginBlock mocks base method.
-func (m *MockprocessorFactory) beginBlock(arg0 *evmcore.EvmBlock) processor {
+func (m *MockprocessorFactory) beginBlock(arg0 *coretypes.EvmBlock) processor {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "beginBlock", arg0)
 	ret0, _ := ret[0].(processor)
@@ -164,10 +165,10 @@ func (mr *MockChainMockRecorder) GetEvmChainConfig(blockHeight any) *gomock.Call
 }
 
 // Header mocks base method.
-func (m *MockChain) Header(hash common.Hash, number uint64) *evmcore.EvmHeader {
+func (m *MockChain) Header(hash common.Hash, number uint64) *coretypes.EvmHeader {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Header", hash, number)
-	ret0, _ := ret[0].(*evmcore.EvmHeader)
+	ret0, _ := ret[0].(*coretypes.EvmHeader)
 	return ret0
 }
 
@@ -216,10 +217,10 @@ func (m *MockevmProcessorRunner) EXPECT() *MockevmProcessorRunnerMockRecorder {
 }
 
 // Run mocks base method.
-func (m *MockevmProcessorRunner) Run(index int, tx *types.Transaction) evmcore.ExecutionSummary {
+func (m *MockevmProcessorRunner) Run(index int, tx *types.Transaction) stateprocessor.ExecutionSummary {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Run", index, tx)
-	ret0, _ := ret[0].(evmcore.ExecutionSummary)
+	ret0, _ := ret[0].(stateprocessor.ExecutionSummary)
 	return ret0
 }
 

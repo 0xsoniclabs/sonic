@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
+	corebundles "github.com/0xsoniclabs/sonic/evmcore/bundles"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/config"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -75,8 +75,8 @@ func Test_Emitter_isValidBundleTx_AcceptsValidBundleIfBundlesAreEnabled(t *testi
 			_, _, err := bundle.ValidateTransactionBundle(tx, nil)
 			require.NoError(err)
 
-			allBundlesRunnable := func(evmcore.ChainState, *types.Transaction) evmcore.BundleState {
-				return evmcore.BundleStateRunnable
+			allBundlesRunnable := func(corebundles.ChainState, *types.Transaction) corebundles.BundleState {
+				return corebundles.BundleStateRunnable
 			}
 
 			require.Equal(bundlesEnabled, emitter.isValidBundleTxInternal(tx, allBundlesRunnable))
@@ -158,8 +158,8 @@ func Test_Emitter_isValidBundleTx_RejectsAlreadyProcessedBundle(t *testing.T) {
 			_, _, err := bundle.ValidateTransactionBundle(tx, nil)
 			require.NoError(t, err)
 
-			getBundleState := func(evmcore.ChainState, *types.Transaction) evmcore.BundleState {
-				return evmcore.BundleStateRunnable
+			getBundleState := func(corebundles.ChainState, *types.Transaction) corebundles.BundleState {
+				return corebundles.BundleStateRunnable
 			}
 
 			require.Equal(t, !processed, emitter.isValidBundleTxInternal(tx, getBundleState))

@@ -42,7 +42,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
+	stateprocessor "github.com/0xsoniclabs/sonic/evmcore/state_processor"
+
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/evmmodule"
@@ -279,8 +281,8 @@ func TestConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testi
 
 				evmProcessor := blockproc.NewMockEVMProcessor(ctrl)
 				evmProcessor.EXPECT().Execute(_any, _any).MinTimes(1)
-				evmProcessor.EXPECT().Finalize().Return(&evmcore.EvmBlock{
-					EvmHeader: evmcore.EvmHeader{
+				evmProcessor.EXPECT().Finalize().Return(&coretypes.EvmBlock{
+					EvmHeader: coretypes.EvmHeader{
 						BaseFee: big.NewInt(0),
 						TxHash:  common.Hash{1, 2, 3},
 					},
@@ -341,7 +343,7 @@ func TestConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testi
 }
 
 func TestExtractProposalForNextBlock_NoEvents_ReturnsNoProposal(t *testing.T) {
-	last := &evmcore.EvmHeader{
+	last := &coretypes.EvmHeader{
 		Number: big.NewInt(100),
 	}
 	result, proposer, time := extractProposalForNextBlock(last, nil, nil)
@@ -355,7 +357,7 @@ func TestExtractProposalForNextBlock_OneMatchingProposal_ReturnsTheGivenProposal
 	event := inter.NewMockEventPayloadI(ctrl)
 
 	lastHash := common.Hash{1, 2, 3}
-	last := &evmcore.EvmHeader{
+	last := &coretypes.EvmHeader{
 		Number: big.NewInt(100),
 		Hash:   lastHash,
 	}
@@ -378,7 +380,7 @@ func TestExtractProposalForNextBlock_OneMatchingProposal_ReturnsTheGivenProposal
 }
 
 func TestExtractProposalForNextBlock_WrongProposals_ReturnsNoProposal(t *testing.T) {
-	last := &evmcore.EvmHeader{
+	last := &coretypes.EvmHeader{
 		Number: big.NewInt(100),
 		Hash:   common.Hash{1, 2, 3},
 	}
@@ -448,7 +450,7 @@ func TestExtractProposalForNextBlock_MultipleValidProposals_EmitsWarning(t *test
 	event2 := inter.NewMockEventPayloadI(ctrl)
 	logger := logger.NewMockLogger(ctrl)
 
-	last := &evmcore.EvmHeader{
+	last := &coretypes.EvmHeader{
 		Number: big.NewInt(100),
 		Hash:   common.Hash{1, 2, 3},
 	}
@@ -488,7 +490,7 @@ func TestExtractProposalForNextBlock_MultipleValidProposals_UsesTurnAndHashAsTie
 	event3 := inter.NewMockEventPayloadI(ctrl)
 	logger := logger.NewMockLogger(ctrl)
 
-	last := &evmcore.EvmHeader{
+	last := &coretypes.EvmHeader{
 		Number: big.NewInt(100),
 		Hash:   common.Hash{1, 2, 3},
 	}
@@ -985,18 +987,18 @@ func TestProcessUserTransactions_ForwardsBlockGasLimitToEVMProcessor(t *testing.
 	// Mock EVMProcessor.Execute to return receipts for each tx
 	evmProcessor.EXPECT().
 		Execute([]*types.Transaction{tx1}, userTransactionGasLimit).
-		Return(evmcore.ExecutionSummary{
-			ProcessedTransactions: []evmcore.ProcessedTransaction{{Transaction: tx1, Receipt: receipt1}},
+		Return(stateprocessor.ExecutionSummary{
+			ProcessedTransactions: []stateprocessor.ProcessedTransaction{{Transaction: tx1, Receipt: receipt1}},
 		})
 	evmProcessor.EXPECT().
 		Execute([]*types.Transaction{tx2}, userTransactionGasLimit-receipt1.GasUsed).
-		Return(evmcore.ExecutionSummary{
-			ProcessedTransactions: []evmcore.ProcessedTransaction{{Transaction: tx2, Receipt: receipt2}},
+		Return(stateprocessor.ExecutionSummary{
+			ProcessedTransactions: []stateprocessor.ProcessedTransaction{{Transaction: tx2, Receipt: receipt2}},
 		})
 	evmProcessor.EXPECT().
 		Execute([]*types.Transaction{tx3}, userTransactionGasLimit-receipt1.GasUsed-receipt2.GasUsed).
-		Return(evmcore.ExecutionSummary{
-			ProcessedTransactions: []evmcore.ProcessedTransaction{{Transaction: tx3, Receipt: receipt3}},
+		Return(stateprocessor.ExecutionSummary{
+			ProcessedTransactions: []stateprocessor.ProcessedTransaction{{Transaction: tx3, Receipt: receipt3}},
 		})
 
 	orderedTxs := []*types.Transaction{tx1, tx2, tx3}
@@ -1017,8 +1019,8 @@ func TestProcessUserTransactions_TransactionsWithNoReceiptAreNotIncluded(t *test
 	// Simulate skipped transaction (no receipt)
 	evmProcessor.EXPECT().
 		Execute([]*types.Transaction{tx}, gomock.Any()).
-		Return(evmcore.ExecutionSummary{
-			ProcessedTransactions: []evmcore.ProcessedTransaction{{Transaction: tx, Receipt: nil}},
+		Return(stateprocessor.ExecutionSummary{
+			ProcessedTransactions: []stateprocessor.ProcessedTransaction{{Transaction: tx, Receipt: nil}},
 		})
 
 	skippedCount, _ :=
@@ -1065,13 +1067,13 @@ func TestProcessUserTransactions_SkipsTxsExceedingSizeLimit(t *testing.T) {
 
 	evmProcessor.EXPECT().
 		Execute([]*types.Transaction{tx0}, gomock.Any()).
-		Return(evmcore.ExecutionSummary{
-			ProcessedTransactions: []evmcore.ProcessedTransaction{{Transaction: tx0, Receipt: &types.Receipt{}}},
+		Return(stateprocessor.ExecutionSummary{
+			ProcessedTransactions: []stateprocessor.ProcessedTransaction{{Transaction: tx0, Receipt: &types.Receipt{}}},
 		})
 	evmProcessor.EXPECT().
 		Execute([]*types.Transaction{tx1}, gomock.Any()).
-		Return(evmcore.ExecutionSummary{
-			ProcessedTransactions: []evmcore.ProcessedTransaction{{Transaction: tx1, Receipt: &types.Receipt{}}},
+		Return(stateprocessor.ExecutionSummary{
+			ProcessedTransactions: []stateprocessor.ProcessedTransaction{{Transaction: tx1, Receipt: &types.Receipt{}}},
 		})
 
 	skippedCount, _ :=
@@ -1176,14 +1178,14 @@ func TestProcessUserTransactions_SponsoredTxSizeIsAccountedCorrectly(t *testing.
 				Data: make([]byte, remainingSize-100), // leave some room for other fields in tx
 			})
 
-			processedTx1 := []evmcore.ProcessedTransaction{{Transaction: tx1, Receipt: &types.Receipt{}}}
+			processedTx1 := []stateprocessor.ProcessedTransaction{{Transaction: tx1, Receipt: &types.Receipt{}}}
 			var feeChargingTransaction *types.Transaction
 			if test.gasPrice == 0 {
 				feeChargingTransaction = types.NewTx(&types.LegacyTx{
 					// Fill the tx to simulate the size of a fee charging tx
 					Data: make([]byte, subsidies.RlpEncodedFeeChargingTxSizeInBytes),
 				})
-				processedTx1 = append(processedTx1, evmcore.ProcessedTransaction{
+				processedTx1 = append(processedTx1, stateprocessor.ProcessedTransaction{
 					Transaction: feeChargingTransaction,
 					Receipt:     &types.Receipt{},
 				})
@@ -1191,16 +1193,16 @@ func TestProcessUserTransactions_SponsoredTxSizeIsAccountedCorrectly(t *testing.
 
 			evmProcessor.EXPECT().
 				Execute([]*types.Transaction{tx0}, gomock.Any()).
-				Return(evmcore.ExecutionSummary{
-					ProcessedTransactions: []evmcore.ProcessedTransaction{{Transaction: tx0, Receipt: &types.Receipt{}}},
+				Return(stateprocessor.ExecutionSummary{
+					ProcessedTransactions: []stateprocessor.ProcessedTransaction{{Transaction: tx0, Receipt: &types.Receipt{}}},
 				})
 			evmProcessor.EXPECT().
 				Execute([]*types.Transaction{tx1}, gomock.Any()).
-				Return(evmcore.ExecutionSummary{ProcessedTransactions: processedTx1})
+				Return(stateprocessor.ExecutionSummary{ProcessedTransactions: processedTx1})
 			evmProcessor.EXPECT().
 				Execute([]*types.Transaction{tx2}, gomock.Any()).
-				Return(evmcore.ExecutionSummary{
-					ProcessedTransactions: []evmcore.ProcessedTransaction{{Transaction: tx2, Receipt: &types.Receipt{}}},
+				Return(stateprocessor.ExecutionSummary{
+					ProcessedTransactions: []stateprocessor.ProcessedTransaction{{Transaction: tx2, Receipt: &types.Receipt{}}},
 				}).AnyTimes()
 
 			skippedCount, _ := processUserTransactions(evmProcessor, blockBuilder, []*types.Transaction{tx0, tx1, tx2}, 10000)

@@ -13,7 +13,7 @@ import (
 	big "math/big"
 	reflect "reflect"
 
-	evmcore "github.com/0xsoniclabs/sonic/evmcore"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
 	inter "github.com/0xsoniclabs/sonic/inter"
 	state "github.com/0xsoniclabs/sonic/inter/state"
 	opera "github.com/0xsoniclabs/sonic/opera"
@@ -260,10 +260,10 @@ func (mr *MockExternalMockRecorder) HasBundleRecentlyBeenProcessed(execPlanHash 
 }
 
 // Header mocks base method.
-func (m *MockExternal) Header(arg0 common.Hash, number uint64) *evmcore.EvmHeader {
+func (m *MockExternal) Header(arg0 common.Hash, number uint64) *coretypes.EvmHeader {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Header", arg0, number)
-	ret0, _ := ret[0].(*evmcore.EvmHeader)
+	ret0, _ := ret[0].(*coretypes.EvmHeader)
 	return ret0
 }
 

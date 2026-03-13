@@ -24,7 +24,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
@@ -89,7 +89,7 @@ func (ew *emitterWorldProc) GetUpgradeHeights() []opera.UpgradeHeight {
 	return ew.s.store.GetUpgradeHeights()
 }
 
-func (ew *emitterWorldProc) Header(hash common.Hash, number uint64) *evmcore.EvmHeader {
+func (ew *emitterWorldProc) Header(hash common.Hash, number uint64) *coretypes.EvmHeader {
 	reader := &EvmStateReader{
 		store: ew.s.store,
 	}

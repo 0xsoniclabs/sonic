@@ -12,7 +12,8 @@ package evmmodule
 import (
 	reflect "reflect"
 
-	evmcore "github.com/0xsoniclabs/sonic/evmcore"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
+	stateprocessor "github.com/0xsoniclabs/sonic/evmcore/state_processor"
 	state "github.com/0xsoniclabs/sonic/inter/state"
 	opera "github.com/0xsoniclabs/sonic/opera"
 	types "github.com/ethereum/go-ethereum/core/types"
@@ -46,7 +47,7 @@ func (m *Mock_stateProcessorFactory) EXPECT() *Mock_stateProcessorFactoryMockRec
 }
 
 // NewStateProcessor mocks base method.
-func (m *Mock_stateProcessorFactory) NewStateProcessor(evmCfg *params.ChainConfig, reader evmcore.DummyChain, upgrades opera.Upgrades) _stateProcessor {
+func (m *Mock_stateProcessorFactory) NewStateProcessor(evmCfg *params.ChainConfig, reader coretypes.DummyChain, upgrades opera.Upgrades) _stateProcessor {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "NewStateProcessor", evmCfg, reader, upgrades)
 	ret0, _ := ret[0].(_stateProcessor)
@@ -84,10 +85,10 @@ func (m *Mock_stateProcessor) EXPECT() *Mock_stateProcessorMockRecorder {
 }
 
 // Process mocks base method.
-func (m *Mock_stateProcessor) Process(block *evmcore.EvmBlock, statedb state.StateDB, vmCfg vm.Config, gasLimit uint64, gasUsed *uint64, onNewLog func(*types.Log)) evmcore.ExecutionSummary {
+func (m *Mock_stateProcessor) Process(block *coretypes.EvmBlock, statedb state.StateDB, vmCfg vm.Config, gasLimit uint64, gasUsed *uint64, onNewLog func(*types.Log)) stateprocessor.ExecutionSummary {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Process", block, statedb, vmCfg, gasLimit, gasUsed, onNewLog)
-	ret0, _ := ret[0].(evmcore.ExecutionSummary)
+	ret0, _ := ret[0].(stateprocessor.ExecutionSummary)
 	return ret0
 }
 

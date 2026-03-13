@@ -23,9 +23,9 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	notify "github.com/ethereum/go-ethereum/event"
+	"github.com/ethereum/go-ethereum/event"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
 	"github.com/0xsoniclabs/sonic/inter"
 )
@@ -133,7 +133,7 @@ var errorToString = map[int]string{
 
 type TxPool interface {
 	emitter.TxPool
-	SubscribeNewTxsNotify(chan<- evmcore.NewTxsNotify) notify.Subscription
+	SubscribeNewTxsNotify(chan<- coretypes.NewTxsNotify) event.Subscription
 	// AddRemotes should add the given transactions to the pool.
 	AddRemotes([]*types.Transaction) []error
 	AddLocals(txs []*types.Transaction) []error

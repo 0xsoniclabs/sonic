@@ -25,10 +25,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
 	ethereum "github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/core/types"
-	notify "github.com/ethereum/go-ethereum/event"
+	event "github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rpc"
 )
@@ -77,7 +77,7 @@ type subscription struct {
 	logsCrit  ethereum.FilterQuery
 	logs      chan []*types.Log
 	txs       chan []*types.Transaction
-	headers   chan *evmcore.EvmHeaderJson
+	headers   chan *coretypes.EvmHeaderJson
 	installed chan struct{} // closed when the filter is installed
 	err       chan error    // closed when the filter is uninstalled
 }
@@ -88,16 +88,16 @@ type EventSystem struct {
 	backend Backend
 
 	// Subscriptions
-	txsSub    notify.Subscription // Subscription for new transaction notify
-	logsSub   notify.Subscription // Subscription for new log notify
-	blocksSub notify.Subscription // Subscription for new chain notify
+	txsSub    event.Subscription // Subscription for new transaction notify
+	logsSub   event.Subscription // Subscription for new log notify
+	blocksSub event.Subscription // Subscription for new chain notify
 
 	// Channels
-	install   chan *subscription           // install filter for event notification
-	uninstall chan *subscription           // remove filter for event notification
-	txsCh     chan evmcore.NewTxsNotify    // Channel to receive new transactions notify
-	logsCh    chan []*types.Log            // Channel to receive new log notify
-	blocksCh  chan evmcore.ChainHeadNotify // Channel to receive new chain notify
+	install   chan *subscription          // install filter for event notification
+	uninstall chan *subscription          // remove filter for event notification
+	txsCh     chan coretypes.NewTxsNotify    // Channel to receive new transactions notify
+	logsCh    chan []*types.Log           // Channel to receive new log notify
+	blocksCh  chan coretypes.ChainHeadNotify // Channel to receive new chain notify
 }
 
 // NewEventSystem creates a new manager that listens for event on the given chans,
@@ -110,8 +110,8 @@ func NewEventSystem(backend Backend) *EventSystem {
 		backend:   backend,
 		install:   make(chan *subscription),
 		uninstall: make(chan *subscription),
-		blocksCh:  make(chan evmcore.ChainHeadNotify, blocksChanSize),
-		txsCh:     make(chan evmcore.NewTxsNotify, txChanSize),
+		blocksCh:  make(chan coretypes.ChainHeadNotify, blocksChanSize),
+		txsCh:     make(chan coretypes.NewTxsNotify, txChanSize),
 		logsCh:    make(chan []*types.Log, logsChanSize),
 	}
 
@@ -223,7 +223,7 @@ func (es *EventSystem) subscribeMinedPendingLogs(crit ethereum.FilterQuery, logs
 		created:   time.Now(),
 		logs:      logs,
 		txs:       make(chan []*types.Transaction),
-		headers:   make(chan *evmcore.EvmHeaderJson),
+		headers:   make(chan *coretypes.EvmHeaderJson),
 		installed: make(chan struct{}),
 		err:       make(chan error),
 	}
@@ -240,7 +240,7 @@ func (es *EventSystem) subscribeLogs(crit ethereum.FilterQuery, logs chan []*typ
 		created:   time.Now(),
 		logs:      logs,
 		txs:       make(chan []*types.Transaction),
-		headers:   make(chan *evmcore.EvmHeaderJson),
+		headers:   make(chan *coretypes.EvmHeaderJson),
 		installed: make(chan struct{}),
 		err:       make(chan error),
 	}
@@ -257,7 +257,7 @@ func (es *EventSystem) subscribePendingLogs(crit ethereum.FilterQuery, logs chan
 		created:   time.Now(),
 		logs:      logs,
 		txs:       make(chan []*types.Transaction),
-		headers:   make(chan *evmcore.EvmHeaderJson),
+		headers:   make(chan *coretypes.EvmHeaderJson),
 		installed: make(chan struct{}),
 		err:       make(chan error),
 	}
@@ -266,7 +266,7 @@ func (es *EventSystem) subscribePendingLogs(crit ethereum.FilterQuery, logs chan
 
 // SubscribeNewHeads creates a subscription that writes the header of a block that is
 // imported in the chain.
-func (es *EventSystem) SubscribeNewHeads(headers chan *evmcore.EvmHeaderJson) *Subscription {
+func (es *EventSystem) SubscribeNewHeads(headers chan *coretypes.EvmHeaderJson) *Subscription {
 	sub := &subscription{
 		id:        rpc.NewID(),
 		typ:       BlocksSubscription,
@@ -289,7 +289,7 @@ func (es *EventSystem) SubscribePendingTxs(txs chan []*types.Transaction) *Subsc
 		created:   time.Now(),
 		logs:      make(chan []*types.Log),
 		txs:       txs,
-		headers:   make(chan *evmcore.EvmHeaderJson),
+		headers:   make(chan *coretypes.EvmHeaderJson),
 		installed: make(chan struct{}),
 		err:       make(chan error),
 	}
@@ -313,11 +313,11 @@ func (es *EventSystem) broadcast(filters filterIndex, ev interface{}) {
 				}
 			}
 		}
-	case evmcore.NewTxsNotify:
+	case coretypes.NewTxsNotify:
 		for _, f := range filters[PendingTransactionsSubscription] {
 			f.txs <- e.Txs
 		}
-	case evmcore.ChainHeadNotify:
+	case coretypes.ChainHeadNotify:
 		blkNumber := rpc.BlockNumber(e.Block.Number.Int64())
 		receipts, _ := es.backend.GetReceiptsByNumber(context.Background(), blkNumber)
 		h := e.Block.ToJson(receipts)

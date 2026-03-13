@@ -25,7 +25,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -235,7 +235,7 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 			backend.EXPECT().ChainConfig(gomock.Any()).Return(chainCfg)
 			backend.EXPECT().GetGenesisID().Return(common.Hash{0x42})
 			backend.EXPECT().BlockByNumber(gomock.Any(), rpc.BlockNumber(int64(test.upgradeHeight.Height))).
-				Return(&evmcore.EvmBlock{EvmHeader: evmcore.EvmHeader{Time: inter.Timestamp(1)}}, nil)
+				Return(&coretypes.EvmBlock{EvmHeader: coretypes.EvmHeader{Time: inter.Timestamp(1)}}, nil)
 
 			result, err := makeConfigFromUpgrade(context.Background(), backend, test.upgradeHeight)
 			require.NoError(t, err, "unexpected error from makeConfigFromUpgrade")
@@ -290,8 +290,8 @@ func TestMakeConfigFromUpgrade_ReportsError_WhenBlockByNumberReturnsNilBlock(t *
 
 func TestEIP7910_Config_ReportsErrors(t *testing.T) {
 
-	currentBlock := evmcore.EvmBlock{
-		EvmHeader: evmcore.EvmHeader{
+	currentBlock := coretypes.EvmBlock{
+		EvmHeader: coretypes.EvmHeader{
 			Number: big.NewInt(5),
 		},
 	}
@@ -333,8 +333,8 @@ func TestEIP7910_Config_ReportsErrors(t *testing.T) {
 func TestEIP7910_Config_ReturnsConfigs(t *testing.T) {
 
 	chainId := big.NewInt(250)
-	currentBlock := evmcore.EvmBlock{
-		EvmHeader: evmcore.EvmHeader{
+	currentBlock := coretypes.EvmBlock{
+		EvmHeader: coretypes.EvmHeader{
 			Number: big.NewInt(5),
 		},
 	}
@@ -456,7 +456,7 @@ func TestEIP7910_Config_ReturnsConfigs(t *testing.T) {
 			// could be called once or twice depending on the test case.
 			backend.EXPECT().GetGenesisID().Return(common.Hash{0x42}).AnyTimes()
 			backend.EXPECT().BlockByNumber(gomock.Any(), gomock.Any()).
-				Return(&evmcore.EvmBlock{EvmHeader: evmcore.EvmHeader{Time: inter.Timestamp(1)}}, nil).AnyTimes()
+				Return(&coretypes.EvmBlock{EvmHeader: coretypes.EvmHeader{Time: inter.Timestamp(1)}}, nil).AnyTimes()
 
 			test.backendSetup(backend)
 

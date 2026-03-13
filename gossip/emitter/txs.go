@@ -29,7 +29,8 @@ import (
 
 	"github.com/0xsoniclabs/sonic/eventcheck/epochcheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/gaspowercheck"
-	"github.com/0xsoniclabs/sonic/evmcore"
+	corebundles "github.com/0xsoniclabs/sonic/evmcore/bundles"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
@@ -236,12 +237,12 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 // isValidBundleTx checks whether the given transaction is a valid bundle that
 // could be emitted by this emitter.
 func (em *Emitter) isValidBundleTx(tx *types.Transaction) bool {
-	return em.isValidBundleTxInternal(tx, evmcore.GetBundleState)
+	return em.isValidBundleTxInternal(tx, corebundles.GetBundleState)
 }
 
 func (em *Emitter) isValidBundleTxInternal(
 	tx *types.Transaction,
-	getBundleState func(evmcore.ChainState, *types.Transaction) evmcore.BundleState,
+	getBundleState func(corebundles.ChainState, *types.Transaction) corebundles.BundleState,
 ) bool {
 	// Ignore if bundled transactions are not enabled.
 	if !em.world.GetRules().Upgrades.TransactionBundles {
@@ -274,7 +275,7 @@ func (em *Emitter) isValidBundleTxInternal(
 	// Skip bundles that are not runnable in the current state.
 	adapter := &precheckChainStateAdapter{external: em.world}
 	bundleState := getBundleState(adapter, tx)
-	return bundleState == evmcore.BundleStateRunnable
+	return bundleState == corebundles.BundleStateRunnable
 }
 
 type precheckChainStateAdapter struct {
@@ -289,7 +290,7 @@ func (a *precheckChainStateAdapter) StateDB() state.StateDB {
 	return a.external.StateDB()
 }
 
-func (a *precheckChainStateAdapter) Header(hash common.Hash, number uint64) *evmcore.EvmHeader {
+func (a *precheckChainStateAdapter) Header(hash common.Hash, number uint64) *coretypes.EvmHeader {
 	return a.external.Header(hash, number)
 }
 
@@ -301,7 +302,7 @@ func (a *precheckChainStateAdapter) GetEvmChainConfig(blockHeight idx.Block) *pa
 	)
 }
 
-func (a *precheckChainStateAdapter) GetLatestHeader() *evmcore.EvmHeader {
+func (a *precheckChainStateAdapter) GetLatestHeader() *coretypes.EvmHeader {
 	lastBlockHash := a.external.GetLatestBlock().Hash()
 	lastBlockNumber := a.external.GetLatestBlockIndex()
 	return a.external.Header(lastBlockHash, uint64(lastBlockNumber))

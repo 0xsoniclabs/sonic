@@ -26,9 +26,8 @@ import (
 	"time"
 	"weak"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
-
 	"github.com/0xsoniclabs/sonic/ethapi"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	ethereum "github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
@@ -231,7 +230,7 @@ func (api *PublicFilterAPI) NewPendingTransactions(ctx context.Context, fullTx *
 // https://github.com/ethereum/wiki/wiki/JSON-RPC#eth_newblockfilter
 func (api *PublicFilterAPI) NewBlockFilter() rpc.ID {
 	var (
-		headers   = make(chan *evmcore.EvmHeaderJson)
+		headers   = make(chan *coretypes.EvmHeaderJson)
 		headerSub = api.events.SubscribeNewHeads(headers)
 	)
 
@@ -270,7 +269,7 @@ func (api *PublicFilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, er
 	rpcSub := notifier.CreateSubscription()
 
 	go func() {
-		headers := make(chan *evmcore.EvmHeaderJson)
+		headers := make(chan *coretypes.EvmHeaderJson)
 		headersSub := api.events.SubscribeNewHeads(headers)
 
 		for {

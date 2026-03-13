@@ -26,7 +26,9 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
+	stateprocessor "github.com/0xsoniclabs/sonic/evmcore/state_processor"
+
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
@@ -45,7 +47,7 @@ func New() *EVMModule {
 func (p *EVMModule) Start(
 	block iblockproc.BlockCtx,
 	statedb state.StateDB,
-	reader evmcore.DummyChain,
+	reader coretypes.DummyChain,
 	onNewLog func(*types.Log),
 	rules opera.Rules,
 	evmCfg *params.ChainConfig,
@@ -85,7 +87,7 @@ func (p *EVMModule) Start(
 
 type OperaEVMProcessor struct {
 	block    iblockproc.BlockCtx
-	reader   evmcore.DummyChain
+	reader   coretypes.DummyChain
 	statedb  state.StateDB
 	onNewLog func(*types.Log)
 	rules    opera.Rules
@@ -97,13 +99,13 @@ type OperaEVMProcessor struct {
 
 	gasUsed uint64
 
-	processedTxs []evmcore.ProcessedTransaction
+	processedTxs []stateprocessor.ProcessedTransaction
 	prevRandao   common.Hash
 
 	processorFactory _stateProcessorFactory
 }
 
-func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlock {
+func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *coretypes.EvmBlock {
 	baseFee := p.rules.Economy.MinGasPrice
 	if !p.rules.Upgrades.London {
 		baseFee = nil
@@ -122,13 +124,13 @@ func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlo
 		withdrawalsHash = &types.EmptyWithdrawalsHash
 	}
 
-	blobBaseFee := evmcore.GetBlobBaseFee()
-	h := &evmcore.EvmHeader{
+	blobBaseFee := coretypes.GetBlobBaseFee()
+	h := &coretypes.EvmHeader{
 		Number:          new(big.Int).SetUint64(p.blockIdx),
 		ParentHash:      p.prevBlockHash,
 		Root:            common.Hash{}, // state root is added later
 		Time:            p.block.Time,
-		Coinbase:        evmcore.GetCoinbase(),
+		Coinbase:        coretypes.GetCoinbase(),
 		GasLimit:        p.rules.Blocks.MaxBlockGas,
 		GasUsed:         p.gasUsed,
 		BaseFee:         baseFee,
@@ -138,10 +140,10 @@ func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlo
 		Epoch:           p.block.Atropos.Epoch(),
 	}
 
-	return evmcore.NewEvmBlock(h, txs)
+	return coretypes.NewEvmBlock(h, txs)
 }
 
-func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) evmcore.ExecutionSummary {
+func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) stateprocessor.ExecutionSummary {
 	evmProcessor := p.processorFactory.NewStateProcessor(p.evmCfg, p.reader, p.rules.Upgrades)
 
 	txsOffset := uint(0)
@@ -177,7 +179,7 @@ func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) evm
 	return summary
 }
 
-func (p *OperaEVMProcessor) Finalize() (evmBlock *evmcore.EvmBlock, numSkipped int, receipts types.Receipts) {
+func (p *OperaEVMProcessor) Finalize() (evmBlock *coretypes.EvmBlock, numSkipped int, receipts types.Receipts) {
 	transactions := make(types.Transactions, 0, len(p.processedTxs))
 	receipts = make(types.Receipts, 0, len(p.processedTxs))
 	for _, tx := range p.processedTxs {
@@ -216,7 +218,7 @@ func (p *OperaEVMProcessor) Finalize() (evmBlock *evmcore.EvmBlock, numSkipped i
 type _stateProcessorFactory interface {
 	NewStateProcessor(
 		evmCfg *params.ChainConfig,
-		reader evmcore.DummyChain,
+		reader coretypes.DummyChain,
 		upgrades opera.Upgrades,
 	) _stateProcessor
 }
@@ -225,13 +227,13 @@ type _stateProcessorFactory interface {
 // state processors in tests.
 type _stateProcessor interface {
 	Process(
-		block *evmcore.EvmBlock,
+		block *coretypes.EvmBlock,
 		statedb state.StateDB,
 		vmCfg vm.Config,
 		gasLimit uint64,
 		gasUsed *uint64,
 		onNewLog func(*types.Log),
-	) evmcore.ExecutionSummary
+	) stateprocessor.ExecutionSummary
 }
 
 // stateProcessorFactory is the production implementation of the
@@ -240,8 +242,8 @@ type stateProcessorFactory struct{}
 
 func (stateProcessorFactory) NewStateProcessor(
 	evmCfg *params.ChainConfig,
-	reader evmcore.DummyChain,
+	reader coretypes.DummyChain,
 	upgrades opera.Upgrades,
 ) _stateProcessor {
-	return evmcore.NewStateProcessor(evmCfg, reader, upgrades)
+	return stateprocessor.NewStateProcessor(evmCfg, reader, upgrades)
 }

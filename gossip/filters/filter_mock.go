@@ -14,7 +14,7 @@ import (
 	big "math/big"
 	reflect "reflect"
 
-	evmcore "github.com/0xsoniclabs/sonic/evmcore"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
 	evmstore "github.com/0xsoniclabs/sonic/gossip/evmstore"
 	topicsdb "github.com/0xsoniclabs/sonic/topicsdb"
 	common "github.com/ethereum/go-ethereum/common"
@@ -150,10 +150,10 @@ func (mr *MockBackendMockRecorder) GetTxPosition(txid any) *gomock.Call {
 }
 
 // HeaderByHash mocks base method.
-func (m *MockBackend) HeaderByHash(ctx context.Context, blockHash common.Hash) (*evmcore.EvmHeader, error) {
+func (m *MockBackend) HeaderByHash(ctx context.Context, blockHash common.Hash) (*coretypes.EvmHeader, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "HeaderByHash", ctx, blockHash)
-	ret0, _ := ret[0].(*evmcore.EvmHeader)
+	ret0, _ := ret[0].(*coretypes.EvmHeader)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -165,10 +165,10 @@ func (mr *MockBackendMockRecorder) HeaderByHash(ctx, blockHash any) *gomock.Call
 }
 
 // HeaderByNumber mocks base method.
-func (m *MockBackend) HeaderByNumber(ctx context.Context, blockNr rpc.BlockNumber) (*evmcore.EvmHeader, error) {
+func (m *MockBackend) HeaderByNumber(ctx context.Context, blockNr rpc.BlockNumber) (*coretypes.EvmHeader, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "HeaderByNumber", ctx, blockNr)
-	ret0, _ := ret[0].(*evmcore.EvmHeader)
+	ret0, _ := ret[0].(*coretypes.EvmHeader)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -194,7 +194,7 @@ func (mr *MockBackendMockRecorder) SubscribeLogsNotify(ch any) *gomock.Call {
 }
 
 // SubscribeNewBlockNotify mocks base method.
-func (m *MockBackend) SubscribeNewBlockNotify(ch chan<- evmcore.ChainHeadNotify) event.Subscription {
+func (m *MockBackend) SubscribeNewBlockNotify(ch chan<- coretypes.ChainHeadNotify) event.Subscription {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SubscribeNewBlockNotify", ch)
 	ret0, _ := ret[0].(event.Subscription)
@@ -208,7 +208,7 @@ func (mr *MockBackendMockRecorder) SubscribeNewBlockNotify(ch any) *gomock.Call 
 }
 
 // SubscribeNewTxsNotify mocks base method.
-func (m *MockBackend) SubscribeNewTxsNotify(arg0 chan<- evmcore.NewTxsNotify) event.Subscription {
+func (m *MockBackend) SubscribeNewTxsNotify(arg0 chan<- coretypes.NewTxsNotify) event.Subscription {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SubscribeNewTxsNotify", arg0)
 	ret0, _ := ret[0].(event.Subscription)

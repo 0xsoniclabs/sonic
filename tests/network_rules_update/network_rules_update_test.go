@@ -23,7 +23,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/ethapi"
-	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/evmcore/txpool"
 	"github.com/0xsoniclabs/sonic/gossip/contract/driverauth100"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -340,7 +340,7 @@ func TestNetworkRules_PragueFeaturesBecomeAvailableWithAllegroUpgrade(t *testing
 			tx := makeSetCodeTx(t, net, account)
 			err := client.SendTransaction(t.Context(), tx)
 			require.ErrorContains(t,
-				err, evmcore.ErrTxTypeNotSupported.Error(),
+				err, txpool.ErrTxTypeNotSupported.Error(),
 				"SetCodeTx cannot be accepted before Prague hard fork")
 		})
 	})

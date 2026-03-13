@@ -23,7 +23,7 @@ import (
 	"path"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/utils/adapters/ethdb2kvdb"
@@ -339,7 +339,7 @@ func TestFilter_FilterLogs_IndexedLogsReturnsLogsWithTimestampOrError(t *testing
 	}{
 		"no error": {
 			primeMock: func(backend *MockBackend) {
-				backend.EXPECT().HeaderByNumber(gomock.Any(), gomock.Any()).Return(&evmcore.EvmHeader{Time: timestamp}, nil)
+				backend.EXPECT().HeaderByNumber(gomock.Any(), gomock.Any()).Return(&coretypes.EvmHeader{Time: timestamp}, nil)
 			},
 			expectedError: nil,
 		},
@@ -433,12 +433,12 @@ func TestFilter_FilterLogs_ReturnsCorrectedTransactionIndexes(t *testing.T) {
 		}).AnyTimes()
 
 	backend.EXPECT().HeaderByNumber(gomock.Any(), gomock.Any()).
-		Return(&evmcore.EvmHeader{
+		Return(&coretypes.EvmHeader{
 			Number: big.NewInt(1),
 		}, nil,
 		).AnyTimes()
 	backend.EXPECT().HeaderByHash(gomock.Any(), gomock.Any()).
-		Return(&evmcore.EvmHeader{
+		Return(&coretypes.EvmHeader{
 			Number: big.NewInt(1),
 		}, nil,
 		).AnyTimes()
@@ -573,7 +573,7 @@ func TestFilter_FilterLogs_HandlesMalformedQueries(t *testing.T) {
 				err = test.expectedError
 			}
 
-			latestHeader := &evmcore.EvmHeader{Number: big.NewInt(1)}
+			latestHeader := &coretypes.EvmHeader{Number: big.NewInt(1)}
 			backend.EXPECT().HeaderByNumber(gomock.Any(), rpc.LatestBlockNumber).Return(latestHeader, err)
 			backend.EXPECT().HeaderByNumber(gomock.Any(), gomock.Any()).Return(nil, err).AnyTimes()
 
@@ -606,7 +606,7 @@ func TestFilter_FilterLogs_WhenGetLogsCallReturnError_LogsByHashReturnsError(t *
 	backend := NewMockBackend(ctrl)
 
 	expectedError := fmt.Errorf("some error")
-	backend.EXPECT().HeaderByHash(gomock.Any(), gomock.Any()).Return(&evmcore.EvmHeader{Number: big.NewInt(1)}, nil)
+	backend.EXPECT().HeaderByHash(gomock.Any(), gomock.Any()).Return(&coretypes.EvmHeader{Number: big.NewInt(1)}, nil)
 	backend.EXPECT().GetLogs(gomock.Any(), gomock.Any()).Return(nil, expectedError)
 
 	filter := &Filter{

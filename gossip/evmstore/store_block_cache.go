@@ -17,22 +17,21 @@
 package evmstore
 
 import (
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
-
-	"github.com/0xsoniclabs/sonic/evmcore"
 )
 
-func (s *Store) GetCachedEvmBlock(n idx.Block) *evmcore.EvmBlock {
+func (s *Store) GetCachedEvmBlock(n idx.Block) *coretypes.EvmBlock {
 	c, ok := s.cache.EvmBlocks.Get(n)
 	if !ok {
 		return nil
 	}
 
-	return c.(*evmcore.EvmBlock)
+	return c.(*coretypes.EvmBlock)
 }
 
-func (s *Store) SetCachedEvmBlock(n idx.Block, b *evmcore.EvmBlock) {
+func (s *Store) SetCachedEvmBlock(n idx.Block, b *coretypes.EvmBlock) {
 	var empty = common.Hash{}
 	if b.TxHash == empty {
 		panic("You have to cache only completed blocks (with txs)")

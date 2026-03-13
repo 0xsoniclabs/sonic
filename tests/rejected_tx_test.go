@@ -21,7 +21,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/evmcore/txpool"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -127,13 +127,13 @@ func TestRejectedTx_TransactionsAreRejectedBecauseOfAccountState(t *testing.T) {
 
 					// Pool may take longer to purge the transaction after its execution.
 					// If the transaction is still in the pool, try again
-					if strings.Contains(err.Error(), evmcore.ErrAlreadyKnown.Error()) {
+					if strings.Contains(err.Error(), txpool.ErrAlreadyKnown.Error()) {
 						continue
 					}
 
 					// eventually the transaction has been purged from the pool
 					// and any subsequent submission with the same nonce is rejected
-					require.ErrorContains(t, err, evmcore.ErrNonceTooLow.Error())
+					require.ErrorContains(t, err, txpool.ErrNonceTooLow.Error())
 					break
 				}
 			})

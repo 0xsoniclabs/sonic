@@ -76,17 +76,17 @@ func (m *MockbundleTracker) EXPECT() *MockbundleTrackerMockRecorder {
 	return m.recorder
 }
 
-// HasRecentlyBeenProcessed mocks base method.
-func (m *MockbundleTracker) HasRecentlyBeenProcessed(execPlanHash common.Hash) (bool, error) {
+// HasBundleRecentlyBeenProcessed mocks base method.
+func (m *MockbundleTracker) HasBundleRecentlyBeenProcessed(execPlanHash common.Hash) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "HasRecentlyBeenProcessed", execPlanHash)
+	ret := m.ctrl.Call(m, "HasBundleRecentlyBeenProcessed", execPlanHash)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// HasRecentlyBeenProcessed indicates an expected call of HasRecentlyBeenProcessed.
-func (mr *MockbundleTrackerMockRecorder) HasRecentlyBeenProcessed(execPlanHash any) *gomock.Call {
+// HasBundleRecentlyBeenProcessed indicates an expected call of HasBundleRecentlyBeenProcessed.
+func (mr *MockbundleTrackerMockRecorder) HasBundleRecentlyBeenProcessed(execPlanHash any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasRecentlyBeenProcessed", reflect.TypeOf((*MockbundleTracker)(nil).HasRecentlyBeenProcessed), execPlanHash)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasBundleRecentlyBeenProcessed", reflect.TypeOf((*MockbundleTracker)(nil).HasBundleRecentlyBeenProcessed), execPlanHash)
 }

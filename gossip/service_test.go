@@ -22,7 +22,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
+	coretypes "github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"go.uber.org/mock/gomock"
 )
@@ -36,7 +36,7 @@ func TestServiceFeed_SubscribeNewBlock(t *testing.T) {
 	feed := ServiceFeed{}
 	feed.Start(store)
 
-	consumer := make(chan evmcore.ChainHeadNotify, 1)
+	consumer := make(chan coretypes.ChainHeadNotify, 1)
 	feed.SubscribeNewBlock(consumer)
 
 	// There should be no signal delivered until there is a notification.
@@ -47,8 +47,8 @@ func TestServiceFeed_SubscribeNewBlock(t *testing.T) {
 		// all good
 	}
 
-	feed.notifyAboutNewBlock(&evmcore.EvmBlock{
-		EvmHeader: evmcore.EvmHeader{
+	feed.notifyAboutNewBlock(&coretypes.EvmBlock{
+		EvmHeader: coretypes.EvmHeader{
 			Number: big.NewInt(12),
 		},
 	}, nil)
@@ -83,14 +83,14 @@ func TestServiceFeed_BlocksInOrder(t *testing.T) {
 	feed := ServiceFeed{}
 	feed.Start(store)
 
-	consumer := make(chan evmcore.ChainHeadNotify, 5)
+	consumer := make(chan coretypes.ChainHeadNotify, 5)
 	feed.SubscribeNewBlock(consumer)
 
 	// Emit blocks
 	blockNumbers := []int64{8, 6, 7, 10, 9}
 	for _, blockNumber := range blockNumbers {
-		feed.notifyAboutNewBlock(&evmcore.EvmBlock{
-			EvmHeader: evmcore.EvmHeader{
+		feed.notifyAboutNewBlock(&coretypes.EvmBlock{
+			EvmHeader: coretypes.EvmHeader{
 				Number: big.NewInt(blockNumber),
 			},
 		}, nil)
@@ -162,11 +162,11 @@ func TestServiceFeed_ArchiveState(t *testing.T) {
 			feed := ServiceFeed{}
 			feed.Start(store)
 
-			consumer := make(chan evmcore.ChainHeadNotify, 1)
+			consumer := make(chan coretypes.ChainHeadNotify, 1)
 			feed.SubscribeNewBlock(consumer)
 
-			feed.notifyAboutNewBlock(&evmcore.EvmBlock{
-				EvmHeader: evmcore.EvmHeader{
+			feed.notifyAboutNewBlock(&coretypes.EvmBlock{
+				EvmHeader: coretypes.EvmHeader{
 					Number: big.NewInt(int64(test.blockHeight)),
 				},
 			}, nil)
