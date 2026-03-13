@@ -254,7 +254,7 @@ func (em *Emitter) isValidBundleTxInternal(
 	}
 
 	// Ignore if it is not a valid bundle transaction.
-	_, plan, err := bundle.ValidateTransactionBundle(tx, em.world.TransactionSigner)
+	_, plan, err := bundle.ValidateTransactionBundle(tx)
 	if err != nil {
 		return false
 	}

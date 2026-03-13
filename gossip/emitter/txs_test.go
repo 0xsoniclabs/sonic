@@ -72,7 +72,7 @@ func Test_Emitter_isValidBundleTx_AcceptsValidBundleIfBundlesAreEnabled(t *testi
 				}),
 				Gas: 21_280,
 			})
-			_, _, err := bundle.ValidateTransactionBundle(tx, nil)
+			_, _, err := bundle.ValidateTransactionBundle(tx)
 			require.NoError(err)
 
 			allBundlesRunnable := func(evmcore.ChainState, *types.Transaction) evmcore.BundleState {
@@ -155,7 +155,7 @@ func Test_Emitter_isValidBundleTx_RejectsAlreadyProcessedBundle(t *testing.T) {
 				}),
 				Gas: 21_280,
 			})
-			_, _, err := bundle.ValidateTransactionBundle(tx, nil)
+			_, _, err := bundle.ValidateTransactionBundle(tx)
 			require.NoError(t, err)
 
 			getBundleState := func(evmcore.ChainState, *types.Transaction) evmcore.BundleState {

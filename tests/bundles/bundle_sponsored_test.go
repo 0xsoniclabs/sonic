@@ -76,7 +76,7 @@ func TestBundle_RejectsBundle_WithPayloadSponsorRequest_WithoutSponsorship(t *te
 	)
 
 	// verify bundle construction.
-	checkBundleIntegrity(t, signer, bundleTx, plan)
+	checkBundleIntegrity(t, bundleTx, plan)
 
 	// send the bundle.
 	// NOTE: once bundle trial-run is implemented this submition will fail.
@@ -135,7 +135,7 @@ func TestBundle_CanRunSponsorshipAndSponsored(t *testing.T) {
 	)
 
 	// Check bundle construction.
-	checkBundleIntegrity(t, signer, bundleTx, plan)
+	checkBundleIntegrity(t, bundleTx, plan)
 
 	// Send the bundle to the network and check that it is processed successfully.
 	err = client.SendTransaction(t.Context(), bundleTx)
@@ -216,9 +216,9 @@ func makeSponsorTx(t *testing.T, net *tests.IntegrationTestNet, sponsee *tests.A
 	return net.GetSessionSponsor(), txSponsorData
 }
 
-func checkBundleIntegrity(t *testing.T, signer types.Signer, bundleTx *types.Transaction, plan bundle.ExecutionPlan) {
+func checkBundleIntegrity(t *testing.T, bundleTx *types.Transaction, plan bundle.ExecutionPlan) {
 	require.True(t, bundle.IsEnvelope(bundleTx))
-	recoveredBundle, recoveredPlan, err := bundle.ValidateTransactionBundle(bundleTx, signer)
+	recoveredBundle, recoveredPlan, err := bundle.ValidateTransactionBundle(bundleTx)
 	require.NoError(t, err)
 	require.NotNil(t, recoveredBundle)
 	require.NotNil(t, recoveredPlan)

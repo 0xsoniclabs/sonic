@@ -76,9 +76,7 @@ func getBundleState(
 ) BundleState {
 
 	// Verify that the bundle is valid.
-	chainId := big.NewInt(int64(chain.GetCurrentNetworkRules().NetworkID))
-	signer := types.LatestSignerForChainID(chainId)
-	bundle, _, err := bundle.ValidateTransactionBundle(envelop, signer)
+	bundle, _, err := bundle.ValidateTransactionBundle(envelop)
 	if err != nil {
 		return BundleStatePermanentlyBlocked
 	}
@@ -95,6 +93,8 @@ func getBundleState(
 	// Next, check whether there are any nonce conflicts in the execution of
 	// the bundle. This is a quick check than actually running the bundle in
 	// full to determine whether it can succeed or not.
+	chainId := big.NewInt(int64(chain.GetCurrentNetworkRules().NetworkID))
+	signer := types.LatestSignerForChainID(chainId)
 	stateDb := chain.StateDB()
 	state := checkForNonceConflicts(bundle, signer, stateDb)
 	if state != BundleStateRunnable {
@@ -204,7 +204,7 @@ func getLowestReferencedNonces(
 	res := make(map[common.Address]uint64)
 	for _, tx := range txBundle.Bundle {
 		if bundle.IsEnvelope(tx) {
-			bundle, _, err := bundle.ValidateTransactionBundle(tx, signer)
+			bundle, _, err := bundle.ValidateTransactionBundle(tx)
 			if err != nil {
 				return nil, fmt.Errorf("invalid nested bundle: %w", err)
 			}
@@ -247,7 +247,7 @@ func (r *dryRunner) Run(tx *types.Transaction) bundle.TransactionResult {
 
 	// if the transaction is a nested bundle, process it as such
 	if bundle.IsEnvelope(tx) {
-		txBundle, _, err := bundle.ValidateTransactionBundle(tx, r.signer)
+		txBundle, _, err := bundle.ValidateTransactionBundle(tx)
 		if err != nil {
 			return bundle.TransactionResultInvalid
 		}

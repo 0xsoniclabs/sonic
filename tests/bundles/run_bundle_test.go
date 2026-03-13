@@ -103,7 +103,7 @@ func TestBundle_CanBeProcessedByTheNetwork(t *testing.T) {
 
 	// Check bundle construction.
 	require.True(t, bundle.IsEnvelope(bundleTx))
-	recoveredBundle, recoveredPlan, err := bundle.ValidateTransactionBundle(bundleTx, signer)
+	recoveredBundle, recoveredPlan, err := bundle.ValidateTransactionBundle(bundleTx)
 	require.NoError(t, err)
 	require.NotNil(t, recoveredBundle)
 	require.NotNil(t, recoveredPlan)

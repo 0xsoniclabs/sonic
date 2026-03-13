@@ -41,8 +41,7 @@ func Test_GetBundleState_ReturnsPermanentlyBlockedForInvalidBundle(t *testing.T)
 	}).AnyTimes()
 
 	invalidBundle := types.NewTx(&types.LegacyTx{To: &bundle.BundleProcessor})
-	signer := types.LatestSignerForChainID(big.NewInt(1))
-	_, _, err := bundle.ValidateTransactionBundle(invalidBundle, signer)
+	_, _, err := bundle.ValidateTransactionBundle(invalidBundle)
 	require.Error(t, err)
 
 	state := GetBundleState(chainState, invalidBundle)
@@ -67,8 +66,7 @@ func Test_GetBundleState_ReturnsPermanentlyBlockedForOutdatedBundle(t *testing.T
 		Latest:   currentBlock - 1, // Bundle is outdated
 	})
 
-	signer := types.LatestSignerForChainID(big.NewInt(1))
-	_, _, err := bundle.ValidateTransactionBundle(envelop, signer)
+	_, _, err := bundle.ValidateTransactionBundle(envelop)
 	require.NoError(t, err)
 
 	state := GetBundleState(chainState, envelop)
@@ -93,8 +91,7 @@ func Test_GetBundleState_ReturnsTemporaryBlockedForFutureBundle(t *testing.T) {
 		Latest:   currentBlock + 10,
 	})
 
-	signer := types.LatestSignerForChainID(big.NewInt(1))
-	_, _, err := bundle.ValidateTransactionBundle(envelop, signer)
+	_, _, err := bundle.ValidateTransactionBundle(envelop)
 	require.NoError(t, err)
 
 	state := GetBundleState(chainState, envelop)
@@ -187,7 +184,7 @@ func Test_GetBundleState_ChecksForNonceConflicts(t *testing.T) {
 			signer := types.LatestSignerForChainID(chainId)
 
 			envelop := test.bundle.toBundle(signer, keys)
-			_, _, err := bundle.ValidateTransactionBundle(envelop, signer)
+			_, _, err := bundle.ValidateTransactionBundle(envelop)
 			require.NoError(t, err)
 
 			acceptEverything := func(*types.Transaction, ChainState, state.StateDB) bool {
@@ -328,7 +325,7 @@ func Test_checkForNonceConflicts_DetectsNonceUsage(t *testing.T) {
 			}
 
 			envelop := test.bundle.toBundle(signer, keys)
-			bundle, _, err := bundle.ValidateTransactionBundle(envelop, signer)
+			bundle, _, err := bundle.ValidateTransactionBundle(envelop)
 			require.NoError(t, err)
 
 			got := checkForNonceConflicts(bundle, signer, source)
@@ -385,7 +382,7 @@ func Test_getLowestReferencedNonces_ReturnsLowestNoncesInBundle(t *testing.T) {
 			signer := types.LatestSignerForChainID(chainId)
 
 			envelop := test.bundle.toBundle(signer, keys)
-			bundle, _, err := bundle.ValidateTransactionBundle(envelop, signer)
+			bundle, _, err := bundle.ValidateTransactionBundle(envelop)
 			require.NoError(t, err)
 
 			lowest, err := getLowestReferencedNonces(bundle, signer)
@@ -416,7 +413,7 @@ func Test_getLowestReferencedNonces_DetectsInvalidNestedBundle(t *testing.T) {
 	require.True(bundle.IsEnvelope(invalidBundle))
 
 	signer := types.LatestSignerForChainID(big.NewInt(1))
-	_, _, err := bundle.ValidateTransactionBundle(invalidBundle, signer)
+	_, _, err := bundle.ValidateTransactionBundle(invalidBundle)
 	require.Error(err)
 
 	bundle := bundle.TransactionBundle{

@@ -114,7 +114,7 @@ func makeEnvelopeTransaction(
 	if !nested {
 		// Sanity check the bundle before sending it to the mempool, if fails to validate before making
 		// a bundle transaction, it will fail to be included in a block and waiting for payment receipt will timeout
-		_, _, err = bundle.ValidateTransactionBundle(bundleTx, signer)
+		_, _, err = bundle.ValidateTransactionBundle(bundleTx)
 		require.NoError(t, err, "failed to validate transaction bundle; %v", err)
 	}
 

@@ -57,10 +57,9 @@ func newBundleChecker(
 	signer types.Signer,
 ) bundleChecker {
 	return &BundleIntegrationImplementation{
-		rules:  rules,
-		chain:  chain,
-		state:  state,
-		signer: signer,
+		rules: rules,
+		chain: chain,
+		state: state,
 	}
 }
 
@@ -71,7 +70,7 @@ func (s *BundleIntegrationImplementation) isPending(tx *types.Transaction) bool 
 	}
 
 	// Invalid bundles should be dropped.
-	_, plan, err := bundle.ValidateTransactionBundle(tx, s.signer)
+	_, plan, err := bundle.ValidateTransactionBundle(tx)
 	if err != nil {
 		return false
 	}

@@ -1428,7 +1428,7 @@ func Test_validateBundleTransactions_AcceptNonBundleTransactions(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
 			require.False(bundle.IsEnvelope(tx))
-			require.NoError(validateBundleTransactions(tx, NetworkRules{}, nil, nil, nil))
+			require.NoError(validateBundleTransactions(tx, NetworkRules{}, nil, nil))
 		})
 	}
 }
@@ -1469,7 +1469,7 @@ func Test_validateBundleTransactions_IfBundleStateIsNotRunning_RejectBundleTrans
 
 			rules := NetworkRules{}
 			rules.transactionBundles = true
-			err := validateBundleTransactionsInternal(tx, rules, nil, nil, nil, getBundleState)
+			err := validateBundleTransactionsInternal(tx, rules, nil, nil, getBundleState)
 			if test.valid {
 				require.NoError(err)
 			} else {
@@ -1494,10 +1494,10 @@ func Test_validateBundleTransactions_IfBundledTransactionsAreEnabled_AcceptValid
 
 	rules := NetworkRules{}
 	rules.transactionBundles = false
-	err := validateBundleTransactionsInternal(tx, rules, nil, nil, nil, getBundleState)
+	err := validateBundleTransactionsInternal(tx, rules, nil, nil, getBundleState)
 	require.ErrorIs(err, ErrBundleTransactionsDisabled)
 	rules.transactionBundles = true
-	err = validateBundleTransactionsInternal(tx, rules, nil, nil, nil, getBundleState)
+	err = validateBundleTransactionsInternal(tx, rules, nil, nil, getBundleState)
 	require.NoError(err)
 }
 
@@ -1510,7 +1510,7 @@ func Test_validateBundleTransactions_RejectsInvalidBundleTransactions(t *testing
 	require.True(bundle.IsEnvelope(tx))
 
 	rules := NetworkRules{transactionBundles: true}
-	require.ErrorIs(validateBundleTransactions(tx, rules, nil, nil, nil),
+	require.ErrorIs(validateBundleTransactions(tx, rules, nil, nil),
 		ErrBundleTransactionInvalid)
 }
 
@@ -1605,7 +1605,7 @@ func TestValidateBundleTransactions_RejectsBundleWhenPayloadTransactionIsInvalid
 	chain.EXPECT().CurrentBlock().Return(nextBlock).AnyTimes()
 
 	rules.transactionBundles = true
-	err = validateBundleTransactions(bundleTx, rules, signer, chain, state)
+	err = validateBundleTransactions(bundleTx, rules, chain, state)
 	require.ErrorContains(err, "bundle is permanently blocked")
 }
 

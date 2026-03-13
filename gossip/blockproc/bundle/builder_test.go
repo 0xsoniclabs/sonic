@@ -1,7 +1,6 @@
 package bundle
 
 import (
-	"math/big"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/core/types"
@@ -12,8 +11,7 @@ import (
 func Test_Builder_BuildEmptyBundle(t *testing.T) {
 	tx := NewAllOf()
 
-	signer := types.LatestSignerForChainID(big.NewInt(1))
-	_, _, err := ValidateTransactionBundle(tx, signer)
+	_, _, err := ValidateTransactionBundle(tx)
 	require.NoError(t, err)
 }
 
@@ -34,8 +32,7 @@ func Test_NewAllOf_BuildBundle(t *testing.T) {
 		}),
 	)
 
-	signer := types.LatestSignerForChainID(big.NewInt(1))
-	_, _, err = ValidateTransactionBundle(tx, signer)
+	_, _, err = ValidateTransactionBundle(tx)
 	require.NoError(t, err)
 }
 
@@ -56,8 +53,7 @@ func Test_NewOneOf_BuildBundle(t *testing.T) {
 		}),
 	)
 
-	signer := types.LatestSignerForChainID(big.NewInt(1))
-	_, _, err = ValidateTransactionBundle(tx, signer)
+	_, _, err = ValidateTransactionBundle(tx)
 	require.NoError(t, err)
 }
 
@@ -88,12 +84,10 @@ func Test_NewNestedBundle(t *testing.T) {
 		}),
 	)
 
-	signer := types.LatestSignerForChainID(big.NewInt(1))
-
-	_, _, err = ValidateTransactionBundle(inner, signer)
+	_, _, err = ValidateTransactionBundle(inner)
 	require.NoError(t, err)
 
-	_, _, err = ValidateTransactionBundle(outer, signer)
+	_, _, err = ValidateTransactionBundle(outer)
 	require.NoError(t, err)
 
 }

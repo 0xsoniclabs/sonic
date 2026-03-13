@@ -32,7 +32,6 @@ var ErrBundleGasLimitTooLow = errors.New("gas limit of bundle transaction does n
 // If the transaction is not a bundle transaction, or if bundle transactions are not enabled, it returns nil,nil (no bundle, no error).
 func ValidateTransactionBundle(
 	envelopeTx *types.Transaction,
-	signer types.Signer,
 ) (*TransactionBundle, *ExecutionPlan, error) {
 
 	if !IsEnvelope(envelopeTx) {
@@ -48,6 +47,24 @@ func ValidateTransactionBundle(
 	// TODO: this function shall validate bundle correctness,
 	// the current implementation is preliminary to enable prototyping.
 	// This code needs to be developed
+
+	chainId := envelopeTx.ChainId()
+	if envelopeTx.Type() == types.LegacyTxType {
+		for _, tx := range txBundle.Bundle {
+			if tx.Type() != types.LegacyTxType {
+				cur := tx.ChainId()
+				if cur != nil && cur.Sign() != 0 {
+					chainId = cur
+					break
+				}
+			}
+		}
+	}
+
+	var signer types.Signer = types.HomesteadSigner{}
+	if chainId != nil && chainId.Sign() != 0 {
+		signer = types.LatestSignerForChainID(chainId)
+	}
 
 	plan, err := txBundle.ExtractExecutionPlan(signer)
 	if err != nil {

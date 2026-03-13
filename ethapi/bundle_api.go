@@ -274,7 +274,7 @@ func (a *PublicBundleAPI) SubmitBundle(
 	}
 
 	// 5) Validate generated transaction
-	_, plan, err := bundle.ValidateTransactionBundle(tx, signer)
+	_, plan, err := bundle.ValidateTransactionBundle(tx)
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("failed to validate bundle transaction: %w", err)
 	}

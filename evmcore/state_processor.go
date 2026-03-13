@@ -364,7 +364,7 @@ func (r *transactionRunner) runTransactionBundle(
 		return []ProcessedTransaction{{Transaction: tx}}, nil, StatusSkipped
 	}
 
-	txBundle, plan, err := bundle.ValidateTransactionBundle(tx, ctxt.signer)
+	txBundle, plan, err := bundle.ValidateTransactionBundle(tx)
 	if err != nil {
 		log.Warn("Invalid bundle skip", "tx", tx.Hash().Hex(), "error", err)
 		return []ProcessedTransaction{{Transaction: tx}}, nil, StatusSkipped

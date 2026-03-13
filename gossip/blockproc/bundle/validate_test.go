@@ -44,7 +44,7 @@ func TestValidate_IdentifiesBundles(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			bundle, plan, err := ValidateTransactionBundle(test.tx, generator.signer)
+			bundle, plan, err := ValidateTransactionBundle(test.tx)
 			require.NoError(t, err)
 			if test.expectBundle {
 				require.NotNil(t, bundle, "expected a bundle transaction")
@@ -89,7 +89,7 @@ func TestValidate_ReturnsErrorsOnValidationFailure(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			_, _, err := ValidateTransactionBundle(test.tx, generator.signer)
+			_, _, err := ValidateTransactionBundle(test.tx)
 			require.ErrorContains(t, err, test.expectedError)
 		})
 	}
@@ -127,7 +127,7 @@ func TestValidate_AcceptsValidBlockRanges(t *testing.T) {
 			})
 			require.True(t, IsEnvelope(tx))
 
-			_, _, err := ValidateTransactionBundle(tx, nil)
+			_, _, err := ValidateTransactionBundle(tx)
 			require.NoError(t, err)
 		})
 	}
@@ -163,7 +163,7 @@ func TestValidate_IdentifiesInvalidBlockRanges(t *testing.T) {
 			})
 			require.True(t, IsEnvelope(tx))
 
-			_, _, err := ValidateTransactionBundle(tx, nil)
+			_, _, err := ValidateTransactionBundle(tx)
 			require.ErrorContains(t, err, test.Issue)
 		})
 	}
@@ -173,9 +173,8 @@ func TestValidate_IdentifiesInvalidBlockRanges(t *testing.T) {
 // for testing purposes.
 // These include valid and invalid bundles, as well as non-bundle transactions.
 type testBundleGenerator struct {
-	keys   []*ecdsa.PrivateKey
-	n      int
-	signer types.Signer
+	keys []*ecdsa.PrivateKey
+	n    int
 }
 
 // newTestBundleGenerator creates a new testBundleGenerator with n keys and a signer.
@@ -190,9 +189,8 @@ func newTestBundleGenerator(t testing.TB, n int) testBundleGenerator {
 	}
 
 	return testBundleGenerator{
-		keys:   keys,
-		n:      n,
-		signer: types.LatestSignerForChainID(testChainID),
+		keys: keys,
+		n:    n,
 	}
 }
 
@@ -216,6 +214,8 @@ func (gen testBundleGenerator) makeValidBundleTx(t testing.TB) *types.Transactio
 	receiver := common.Address{0x42}
 	gasPerTx := uint64(20_000)
 
+	signer := types.LatestSignerForChainID(testChainID)
+
 	//  Generate n metaTransactions from n different senders
 	metaTransactions := make([]types.AccessListTx, gen.n)
 	txHash := make([]common.Hash, gen.n)
@@ -228,7 +228,7 @@ func (gen testBundleGenerator) makeValidBundleTx(t testing.TB) *types.Transactio
 			Gas:   gasPerTx,
 		}
 
-		txHash[i] = gen.signer.Hash(types.NewTx(&tx))
+		txHash[i] = signer.Hash(types.NewTx(&tx))
 		metaTransactions[i] = tx
 		sender[i] = crypto.PubkeyToAddress(gen.keys[i].PublicKey)
 	}
@@ -258,7 +258,7 @@ func (gen testBundleGenerator) makeValidBundleTx(t testing.TB) *types.Transactio
 			},
 		})
 
-		signedTx, err := types.SignTx(types.NewTx(&tx), gen.signer, gen.keys[i])
+		signedTx, err := types.SignTx(types.NewTx(&tx), signer, gen.keys[i])
 		require.NoError(t, err)
 		signedTransactions[i] = signedTx
 	}
@@ -281,6 +281,8 @@ func (gen testBundleGenerator) makeUnsoundBundleTx(t testing.TB) *types.Transact
 	t.Helper()
 	receiver := common.Address{0x42}
 
+	signer := types.LatestSignerForChainID(testChainID)
+
 	// Generate n metaTransactions from n different senders
 	// execution plan hash is not correct, therefore the bundle is unsound
 	ExecutionPlanHash := common.Hash{0x99}
@@ -300,7 +302,7 @@ func (gen testBundleGenerator) makeUnsoundBundleTx(t testing.TB) *types.Transact
 			},
 		}
 
-		signedTx, err := types.SignTx(types.NewTx(&tx), gen.signer, gen.keys[i])
+		signedTx, err := types.SignTx(types.NewTx(&tx), signer, gen.keys[i])
 		require.NoError(t, err)
 		signedTransactions[i] = signedTx
 	}
