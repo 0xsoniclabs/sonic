@@ -17,24 +17,15 @@
 package tests
 
 import (
-	"os"
 	"testing"
 )
+
+var sharedNetwork *SharedNetwork
 
 // TestMain is a functionality offered by the testing package that allows
 // us to run some code before and after all tests in the package.
 func TestMain(m *testing.M) {
-
+	sharedNetwork = NewSharedNetwork()
 	m.Run()
-
-	// Stop all active networks after tests are done
-	for _, net := range activeTestNetInstances {
-		net.Stop()
-		for i := range net.nodes {
-			// it is safe to ignore this error since the tests have ended and
-			// the directories are not needed anymore.
-			_ = os.RemoveAll(net.nodes[i].directory)
-		}
-	}
-	activeTestNetInstances = nil
+	sharedNetwork.CleanUp()
 }
