@@ -537,7 +537,7 @@ func checkCase(t *testing.T, net *tests.IntegrationTestNet, client *tests.Pooled
 
 		contractInfo := deployContracts(t, net, client)
 
-		envelopeTx, plan, bundleOnlyTxs := buildBundle(t, net, client, contractInfo, c.submittedTxTypes, flags, false)
+		envelopeTx, plan, bundleOnlyTxs := buildBundle(t, net, contractInfo, c.submittedTxTypes, flags, false)
 		require.NotNil(t, envelopeTx)
 
 		err := client.SendTransaction(t.Context(), envelopeTx)
@@ -604,6 +604,11 @@ type ContractInfo struct {
 	revertInput    []byte
 }
 
+// deployContracts deploys the counter and revert contracts, and returns their addresses, the input data for calling them,
+// and the estimated gas limits for calling them with the input data. The gas limit estimation includes an additional entry
+// in the access list to account for the bundle-only marker.
+// The counter contract is used to check whether the effects of transactions in a bundle are applied as expected,
+// and the revert contract is used to create transactions that fail by reverting.
 func deployContracts(t *testing.T, net *tests.IntegrationTestNet, client *tests.PooledEhtClient) ContractInfo {
 	counterAddress, counterInput := counterAddressAndInput(t, net)
 	revertAddress, revertInput := revertAddressAndInput(t, net)
@@ -612,7 +617,7 @@ func deployContracts(t *testing.T, net *tests.IntegrationTestNet, client *tests.
 	require.NoError(t, err, "failed to suggest gas price; %v", err)
 
 	counterGasLimit, err := client.EstimateGas(t.Context(), ethereum.CallMsg{
-		From:     tests.MakeAccountWithBalance(t, net, big.NewInt(1e18)).Address(),
+		From:     net.GetSessionSponsor().Address(),
 		To:       &counterAddress,
 		Data:     counterInput,
 		GasPrice: gasPrice,
@@ -657,9 +662,8 @@ func getCounterValue(t *testing.T, client *tests.PooledEhtClient, contractInfo C
 // --- Tx creation ---
 
 type txMakeOptions struct {
-	t      *testing.T
-	net    *tests.IntegrationTestNet
-	client *tests.PooledEhtClient
+	t   *testing.T
+	net *tests.IntegrationTestNet
 
 	contractInfo ContractInfo
 	gasPrice     *big.Int
@@ -742,7 +746,7 @@ type subBundleTx struct {
 }
 
 func (t subBundleTx) makeTx(opts txMakeOptions) *types.Transaction {
-	envelopeTx, _, _ := buildBundle(opts.t, opts.net, opts.client, opts.contractInfo, t.txTypes, t.flags, true)
+	envelopeTx, _, _ := buildBundle(opts.t, opts.net, opts.contractInfo, t.txTypes, t.flags, true)
 	require.NotNil(opts.t, envelopeTx)
 
 	// remove signature
@@ -764,21 +768,30 @@ func (t subBundleTx) makeTx(opts txMakeOptions) *types.Transaction {
 func makeUnsignedBundleOnlyTxs(
 	t *testing.T,
 	net *tests.IntegrationTestNet,
-	client *tests.PooledEhtClient,
 	txTypes []txType,
 	contractInfo ContractInfo,
 ) ([]*types.Transaction, []*tests.Account) {
 	senders := make([]*tests.Account, len(txTypes))
+	addresses := make([]common.Address, len(txTypes))
 	for i := range txTypes {
-		senders[i] = tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
+		senders[i] = tests.NewAccount()
+		addresses[i] = senders[i].Address()
 	}
+	receipts, err := net.EndowAccounts(addresses, big.NewInt(1e18))
+	require.NoError(t, err, "failed to endow accounts; %v", err)
+	for _, receipt := range receipts {
+		require.Equal(t, uint64(1), receipt.Status, "account endowment failed")
+	}
+
+	client, err := net.GetClient()
+	require.NoError(t, err, "failed to get client; %v", err)
 
 	gasPrice, err := client.SuggestGasPrice(t.Context())
 	require.NoError(t, err, "failed to suggest gas price; %v", err)
 
 	bundleOnlyTxs := make([]*types.Transaction, len(txTypes))
 	for i, tType := range txTypes {
-		bundleOnlyTxs[i] = tType.makeTx(txMakeOptions{t, net, client, contractInfo, gasPrice, senders[i]})
+		bundleOnlyTxs[i] = tType.makeTx(txMakeOptions{t, net, contractInfo, gasPrice, senders[i]})
 	}
 
 	return bundleOnlyTxs, senders
@@ -809,7 +822,6 @@ func signBundleOnlyTxs(
 func buildPlan(
 	t *testing.T,
 	net *tests.IntegrationTestNet,
-	client *tests.PooledEhtClient,
 	flags bundle.ExecutionFlag,
 	bundleOnlyTxs []*types.Transaction,
 	senders []*tests.Account,
@@ -820,6 +832,9 @@ func buildPlan(
 	for i, tx := range bundleOnlyTxs {
 		steps[i] = bundle.ExecutionStep{From: senders[i].Address(), Hash: signer.Hash(tx)}
 	}
+
+	client, err := net.GetClient()
+	require.NoError(t, err, "failed to get client; %v", err)
 
 	blockNumber, err := client.BlockNumber(t.Context())
 	require.NoError(t, err, "failed to get block number; %v", err)
@@ -837,15 +852,14 @@ func buildPlan(
 func buildBundle(
 	t *testing.T,
 	net *tests.IntegrationTestNet,
-	client *tests.PooledEhtClient,
 	contractInfo ContractInfo,
 	txTypes []txType,
 	flags bundle.ExecutionFlag,
 	nested bool,
 ) (*types.Transaction, bundle.ExecutionPlan, types.Transactions) {
-	bundleOnlyTxs, senders := makeUnsignedBundleOnlyTxs(t, net, client, txTypes, contractInfo)
+	bundleOnlyTxs, senders := makeUnsignedBundleOnlyTxs(t, net, txTypes, contractInfo)
 
-	plan := buildPlan(t, net, client, flags, bundleOnlyTxs, senders)
+	plan := buildPlan(t, net, flags, bundleOnlyTxs, senders)
 
 	signBundleOnlyTxs(t, net, bundleOnlyTxs, senders, plan)
 
