@@ -43,10 +43,9 @@ type bundleChecker interface {
 // BundleIntegrationImplementation uses the chain and state to determine if a
 // bundle transaction is still pending for execution or obsolete.
 type BundleIntegrationImplementation struct {
-	rules  opera.Rules
-	chain  StateReader
-	state  state.StateDB
-	signer types.Signer
+	rules opera.Rules
+	chain StateReader
+	state state.StateDB
 }
 
 // newBundleChecker creates a new BundleChecker instance.
@@ -54,7 +53,7 @@ func newBundleChecker(
 	rules opera.Rules,
 	chain StateReader,
 	state state.StateDB,
-	signer types.Signer,
+	_ types.Signer, // needed for type compatibility
 ) bundleChecker {
 	return &BundleIntegrationImplementation{
 		rules: rules,

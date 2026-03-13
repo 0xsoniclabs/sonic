@@ -185,8 +185,8 @@ type TransactionBundle struct {
 	Latest       uint64 // Latest block this bundle can be included in.
 }
 
-func (bundle TransactionBundle) Encode() []byte {
-	return encodeInternal(bundleEncodingVersion, bundle)
+func (tb *TransactionBundle) Encode() []byte {
+	return encodeInternal(bundleEncodingVersion, tb)
 }
 
 // --- internal utilities ---
@@ -284,7 +284,7 @@ const (
 
 func encodeInternal(
 	version byte,
-	bundle TransactionBundle,
+	bundle *TransactionBundle,
 ) []byte {
 
 	buffer := bytes.Buffer{}

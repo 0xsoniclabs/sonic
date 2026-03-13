@@ -539,7 +539,7 @@ func TestEncoding_IsVersioned(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			bundle := TransactionBundle{}
 
-			_, err := decode(encodeInternal(test.version, bundle))
+			_, err := decode(encodeInternal(test.version, &bundle))
 			require.ErrorContains(t, err, test.expectedError)
 		})
 	}

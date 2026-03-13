@@ -111,13 +111,13 @@ func TestValidate_AcceptsValidBlockRanges(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			data := TransactionBundle{
+			bundle := TransactionBundle{
 				Earliest: test.From,
 				Latest:   test.To,
-			}.Encode()
+			}
 			tx := types.NewTx(&types.LegacyTx{
 				To:   &BundleProcessor,
-				Data: data,
+				Data: bundle.Encode(),
 				Gas:  test.Gas,
 			})
 			require.True(t, IsEnvelope(tx))
@@ -147,13 +147,13 @@ func TestValidate_IdentifiesInvalidBlockRanges(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			data := TransactionBundle{
+			bundle := TransactionBundle{
 				Earliest: test.From,
 				Latest:   test.To,
-			}.Encode()
+			}
 			tx := types.NewTx(&types.LegacyTx{
 				To:   &BundleProcessor,
-				Data: data,
+				Data: bundle.Encode(),
 			})
 			require.True(t, IsEnvelope(tx))
 
