@@ -79,9 +79,9 @@ type ProcessedTransaction struct {
 
 // ProcessedBundle summarizes the result of a processed bundle.
 type ProcessedBundle struct {
-	Bundle   bundle.TransactionBundle
-	Position uint32 // < position in the block transaction list
-	Count    uint32 // < number of transactions from this bundle in the block transaction list
+	ExecutionPlanHash common.Hash
+	Position          uint32 // < position in the block transaction list
+	Count             uint32 // < number of transactions from this bundle in the block transaction list
 }
 
 // Process processes the state changes according to the Ethereum rules by running
@@ -376,8 +376,8 @@ func (r *transactionRunner) runTransactionBundle(
 	}
 
 	processedBundle := &ProcessedBundle{
-		Bundle:   *txBundle,
-		Position: uint32(txIndex),
+		ExecutionPlanHash: plan.Hash(),
+		Position:          uint32(txIndex),
 	}
 
 	// Run the bundle and collect the processed transactions.

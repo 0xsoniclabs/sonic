@@ -535,15 +535,10 @@ func consensusCallbackBeginBlockFn(
 					store.EvmStore().SetCachedEvmBlock(blockCtx.Idx, evmBlock)
 
 					// Keep track of processed bundles.
-					signer := types.LatestSignerForChainID(chainCfg.ChainID)
 					bundleInfos := make([]bundle.ExecutionInfo, len(processedBundles))
 					for i, pb := range processedBundles {
-						plan, err := pb.Bundle.ExtractExecutionPlan(signer)
-						if err != nil {
-							log.Crit("Failed to extract execution plan from bundle", "err", err)
-						}
 						bundleInfos[i] = bundle.ExecutionInfo{
-							ExecutionPlanHash: plan.Hash(),
+							ExecutionPlanHash: pb.ExecutionPlanHash,
 							BlockNum:          uint64(blockCtx.Idx),
 							Position:          pb.Position,
 							Count:             pb.Count,

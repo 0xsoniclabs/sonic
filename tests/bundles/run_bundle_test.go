@@ -56,7 +56,7 @@ func TestBundle_CanBeProcessedByTheNetwork(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create a bundle where sender A and B exchange 1 token each.
-	bundleTx := bundle.NewBuilder().
+	bundleTx, bundle, plan := bundle.NewBuilder().
 		Earliest(block).
 		With(
 			bundle.Step(
@@ -76,11 +76,7 @@ func TestBundle_CanBeProcessedByTheNetwork(t *testing.T) {
 				}, senderB),
 			),
 		).
-		Build()
-
-	// Obtain bundle execution plan.
-	bundle, plan, err := bundle.ValidateTransactionBundle(bundleTx)
-	require.NoError(t, err)
+		BuildEnvelopeBundleAndPlan()
 
 	// Check bundle status before submission.
 	info, err := getBundleInfo(t.Context(), client.Client(), plan.Hash())
@@ -101,7 +97,7 @@ func TestBundle_CanBeProcessedByTheNetwork(t *testing.T) {
 	require.NotNil(t, info.Count)
 
 	// Check that the transactions are in the block as advertised.
-	receipts, err := net.GetReceipts([]common.Hash{bundle.Bundle[0].Hash(), bundle.Bundle[1].Hash()})
+	receipts, err := net.GetReceipts([]common.Hash{bundle.Transactions[0].Hash(), bundle.Transactions[1].Hash()})
 	require.NoError(t, err)
 	require.Len(t, receipts, 2)
 	for _, receipt := range receipts {

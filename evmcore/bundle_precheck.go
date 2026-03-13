@@ -202,7 +202,7 @@ func getLowestReferencedNonces(
 	signer types.Signer,
 ) (map[common.Address]uint64, error) {
 	res := make(map[common.Address]uint64)
-	for _, tx := range txBundle.Bundle {
+	for _, tx := range txBundle.Transactions {
 		if bundle.IsEnvelope(tx) {
 			bundle, _, err := bundle.ValidateTransactionBundle(tx)
 			if err != nil {

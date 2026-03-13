@@ -35,7 +35,7 @@ func Test_Builder_AllowsToBuildBundleAsSpecified(t *testing.T) {
 	require.EqualValues(t, 12, plan.Earliest)
 	require.EqualValues(t, 15, plan.Latest)
 
-	txs := bundle.Bundle
+	txs := bundle.Transactions
 	require.Len(t, txs, 2)
 	signer := types.LatestSignerForChainID(txs[0].ChainId())
 

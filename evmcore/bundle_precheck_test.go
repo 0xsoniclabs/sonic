@@ -336,7 +336,7 @@ func Test_checkForNonceConflicts_DetectsNonceUsage(t *testing.T) {
 func Test_checkForNonceConflicts_ReturnsPermanentlyBlockedIfLowestReferencedNoncesCannotBeDerived(t *testing.T) {
 	invalidTx := types.NewTx(&types.LegacyTx{})
 	bundle := &bundle.TransactionBundle{
-		Bundle: []*types.Transaction{invalidTx},
+		Transactions: []*types.Transaction{invalidTx},
 	}
 	signer := types.LatestSignerForChainID(big.NewInt(1))
 	_, err := getLowestReferencedNonces(bundle, signer)
@@ -400,7 +400,7 @@ func Test_getLowestReferencedNonces_ReturnsIfSenderCannotBeDerived(t *testing.T)
 	signer := types.LatestSignerForChainID(big.NewInt(1))
 	bundle := bundle.TransactionBundle{
 		// Add a transaction with a missing signature.
-		Bundle: []*types.Transaction{types.NewTx(&types.LegacyTx{})},
+		Transactions: []*types.Transaction{types.NewTx(&types.LegacyTx{})},
 	}
 	_, err := getLowestReferencedNonces(&bundle, signer)
 	require.ErrorContains(t, err, "failed to derive sender")
@@ -416,7 +416,7 @@ func Test_getLowestReferencedNonces_DetectsInvalidNestedBundle(t *testing.T) {
 	require.Error(err)
 
 	bundle := bundle.TransactionBundle{
-		Bundle: []*types.Transaction{invalidBundle},
+		Transactions: []*types.Transaction{invalidBundle},
 	}
 	_, err = getLowestReferencedNonces(&bundle, signer)
 	require.ErrorContains(err, "invalid nested bundle")

@@ -197,14 +197,14 @@ func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 	}
 
 	return &TransactionBundle{
-		Bundle:   txs,
-		Flags:    flags,
-		Earliest: earliest,
-		Latest:   latest,
+		Transactions: txs,
+		Flags:        flags,
+		Earliest:     earliest,
+		Latest:       latest,
 	}, plan
 }
 
-func (b *builder) BuildEnvelopBundleAndPlan() (
+func (b *builder) BuildEnvelopeBundleAndPlan() (
 	*types.Transaction,
 	*TransactionBundle,
 	ExecutionPlan,
@@ -222,8 +222,8 @@ func (b *builder) BuildEnvelopBundleAndPlan() (
 	return newEnvelope(key, bundle), bundle, plan
 }
 
-func (b *builder) BuildEnvelopAndPlan() (*types.Transaction, ExecutionPlan) {
-	envelop, _, plan := b.BuildEnvelopBundleAndPlan()
+func (b *builder) BuildEnvelopeAndPlan() (*types.Transaction, ExecutionPlan) {
+	envelop, _, plan := b.BuildEnvelopeBundleAndPlan()
 	return envelop, plan
 }
 
@@ -233,7 +233,7 @@ func (b *builder) BuildBundle() *TransactionBundle {
 }
 
 func (b *builder) Build() *types.Transaction {
-	envelope, _ := b.BuildEnvelopAndPlan()
+	envelope, _ := b.BuildEnvelopeAndPlan()
 	return envelope
 }
 
@@ -255,7 +255,7 @@ func newEnvelope(
 	bundle *TransactionBundle,
 ) *types.Transaction {
 
-	payload := Encode(*bundle)
+	payload := bundle.Encode()
 
 	intrinsic, err := core.IntrinsicGas(
 		payload,
@@ -276,15 +276,15 @@ func newEnvelope(
 	}
 
 	txGasSum := uint64(0)
-	for _, tx := range bundle.Bundle {
+	for _, tx := range bundle.Transactions {
 		txGasSum += tx.Gas()
 	}
 
 	gasLimit := max(intrinsic, floorDataGas, txGasSum)
 
 	chainId := big.NewInt(1)
-	if len(bundle.Bundle) > 0 {
-		chainId = bundle.Bundle[0].ChainId()
+	if len(bundle.Transactions) > 0 {
+		chainId = bundle.Transactions[0].ChainId()
 	}
 
 	signer := types.LatestSignerForChainID(chainId)

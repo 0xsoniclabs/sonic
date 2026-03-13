@@ -60,13 +60,13 @@ func makeEnvelopeTransaction(
 	}
 
 	bundlePayload := bundle.TransactionBundle{
-		Bundle:   transactions,
-		Flags:    plan.Flags,
-		Earliest: plan.Earliest,
-		Latest:   plan.Latest,
+		Transactions: transactions,
+		Flags:        plan.Flags,
+		Earliest:     plan.Earliest,
+		Latest:       plan.Latest,
 	}
 
-	data := bundle.Encode(bundlePayload)
+	data := bundlePayload.Encode()
 
 	// If this envelope is nested, meaning it is part of a super/parent bundle,
 	// its gas cost shall include enough intrinsics gas for one extra access list entry

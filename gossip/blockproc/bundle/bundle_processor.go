@@ -64,7 +64,7 @@ func runAllOfBundle(
 	bundle *TransactionBundle,
 	runner TransactionRunner,
 ) bool {
-	for _, tx := range bundle.Bundle {
+	for _, tx := range bundle.Transactions {
 		result := runner.Run(tx)
 		if !isTolerated(result, bundle.Flags) {
 			return false
@@ -80,7 +80,7 @@ func runOneOfBundle(
 	bundle *TransactionBundle,
 	runner TransactionRunner,
 ) bool {
-	for _, tx := range bundle.Bundle {
+	for _, tx := range bundle.Transactions {
 		result := runner.Run(tx)
 		if isTolerated(result, bundle.Flags) {
 			return true
