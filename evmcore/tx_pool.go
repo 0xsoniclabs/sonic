@@ -116,7 +116,7 @@ var (
 	ErrBundleTransactionInvalid = errors.New("invalid bundle transaction")
 
 	// ErrBundleInexecutable is returned when a bundle is determined to be currently not executable in the current state.
-	ErrBundleNonExecutable = errors.New("bundle cannot execute")
+	ErrBundleNonExecutable = errors.New("bundle is not executable")
 
 	// ErrBundleLatestPassed is returned when a bundle's latest block has already passed.
 	ErrBundleLatestPassed = errors.New("bundle latest block has already passed")
