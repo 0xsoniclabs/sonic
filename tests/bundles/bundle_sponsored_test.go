@@ -22,12 +22,10 @@ import (
 
 	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
-	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 
@@ -52,31 +50,13 @@ func TestBundle_RejectsBundle_WithPayloadSponsorRequest_WithoutSponsorship(t *te
 
 	// prepare the bundle with the sponsorship request transaction as payload,
 	// but without a sponsorship transaction.
-	signer := types.LatestSignerForChainID(net.GetChainId())
-	chainId := net.GetChainId()
-
 	blockNumber, err := client.BlockNumber(t.Context())
 	require.NoError(t, err)
 
-	txToSign, plan := prepareBundle(
-		chainId, blockNumber,
-		[]UnsignedTransaction{
-			{
-				Sender:      sponsee.Address(),
-				Transaction: unsignedTx,
-			}})
-
-	// sign the payload transaction and verify it is a sponsorship request.
-	signedTx := types.MustSignNewTx(sponsee.PrivateKey, signer, txToSign[0].Transaction)
-	require.True(t, subsidies.IsSponsorshipRequest(signedTx))
-
-	bundleTx := types.MustSignNewTx(
-		net.GetSessionSponsor().PrivateKey, signer,
-		makeBundle(types.Transactions{signedTx}, plan),
-	)
-
-	// verify bundle construction.
-	checkBundleIntegrity(t, bundleTx, plan)
+	bundleTx := bundle.NewBuilder().
+		Earliest(blockNumber).
+		With(bundle.Step(sponsee.PrivateKey, unsignedTx)).
+		Build()
 
 	// send the bundle.
 	// NOTE: once bundle trial-run is implemented this submition will fail.
@@ -106,39 +86,16 @@ func TestBundle_CanRunSponsorshipAndSponsored(t *testing.T) {
 	blockNumber, err := client.BlockNumber(t.Context())
 	require.NoError(t, err)
 
-	signer := types.LatestSignerForChainID(net.GetChainId())
-	chainId := net.GetChainId()
-
-	txToSign, plan := prepareBundle(
-		chainId, blockNumber,
-		[]UnsignedTransaction{
-			{
-				Sender:      sponsor.Address(),
-				Transaction: txSponsorData,
-			},
-			{
-				Sender:      sponsee.Address(),
-				Transaction: unsignedTx,
-			}})
-
-	signedSponsorTx := types.MustSignNewTx(sponsor.PrivateKey,
-		signer, txToSign[0].Transaction)
-
-	signedTx := types.MustSignNewTx(sponsee.PrivateKey, signer, txToSign[1].Transaction)
-	require.True(t, subsidies.IsSponsorshipRequest(signedTx))
-
-	// Create a bundle where the first transaction is a sponsorship and the
-	// second transaction is a sponsored transaction.
-	bundleTx := types.MustSignNewTx(
-		sponsor.PrivateKey, signer,
-		makeBundle(types.Transactions{signedSponsorTx, signedTx}, plan),
-	)
-
-	// Check bundle construction.
-	checkBundleIntegrity(t, bundleTx, plan)
+	envelop, bundle, plan := bundle.NewBuilder().
+		Earliest(blockNumber).
+		With(
+			bundle.Step(sponsor.PrivateKey, txSponsorData),
+			bundle.Step(sponsee.PrivateKey, unsignedTx),
+		).
+		BuildEnvelopBundleAndPlan()
 
 	// Send the bundle to the network and check that it is processed successfully.
-	err = client.SendTransaction(t.Context(), bundleTx)
+	err = client.SendTransaction(t.Context(), envelop)
 	require.NoError(t, err)
 
 	info, err := waitForBundleExecution(t.Context(), client.Client(), plan.Hash())
@@ -159,8 +116,8 @@ func TestBundle_CanRunSponsorshipAndSponsored(t *testing.T) {
 	txs := block.Transactions()
 	position := *info.Position
 	require.GreaterOrEqual(t, uint32(len(txs)), position+3)
-	require.Equal(t, txs[position].Hash(), signedSponsorTx.Hash())
-	require.Equal(t, txs[position+1].Hash(), signedTx.Hash())
+	require.Equal(t, txs[position].Hash(), bundle.Bundle[0].Hash())
+	require.Equal(t, txs[position+1].Hash(), bundle.Bundle[1].Hash())
 	require.True(t, internaltx.IsInternal(txs[position+2]))
 }
 
@@ -214,14 +171,4 @@ func makeSponsorTx(t *testing.T, net *tests.IntegrationTestNet, sponsee *tests.A
 	}
 
 	return net.GetSessionSponsor(), txSponsorData
-}
-
-func checkBundleIntegrity(t *testing.T, bundleTx *types.Transaction, plan bundle.ExecutionPlan) {
-	require.True(t, bundle.IsEnvelope(bundleTx))
-	recoveredBundle, recoveredPlan, err := bundle.ValidateTransactionBundle(bundleTx)
-	require.NoError(t, err)
-	require.NotNil(t, recoveredBundle)
-	require.NotNil(t, recoveredPlan)
-	require.Equal(t, plan, *recoveredPlan)
-	require.EqualValues(t, 0, bundleTx.GasFeeCap().Uint64())
 }

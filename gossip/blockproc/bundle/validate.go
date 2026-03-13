@@ -39,7 +39,7 @@ func ValidateTransactionBundle(
 		return nil, nil, nil
 	}
 
-	txBundle, err := Decode(envelopeTx.Data())
+	txBundle, err := decode(envelopeTx.Data())
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to decode transaction bundle: %v", err)
 	}
@@ -83,7 +83,7 @@ func ValidateTransactionBundle(
 	planHash := plan.Hash()
 	for _, tx := range txBundle.Bundle {
 		// check that all transactions in the bundle belong to the same execution plan
-		if !BelongsToExecutionPlan(tx, planHash) {
+		if !belongsToExecutionPlan(tx, planHash) {
 			return nil, nil, fmt.Errorf("transaction %s does not belong to the execution plan", tx.Hash().Hex())
 		}
 	}

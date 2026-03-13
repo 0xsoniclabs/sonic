@@ -219,7 +219,6 @@ func (a *PublicBundleAPI) SubmitBundle(
 ) (common.Hash, error) {
 
 	txBundle := bundle.TransactionBundle{
-		Version:  bundle.BundleV1,
 		Bundle:   make(types.Transactions, len(args.SignedTransactions)),
 		Flags:    args.ExecutionPlan.Flags,
 		Earliest: args.ExecutionPlan.Earliest,

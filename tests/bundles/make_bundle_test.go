@@ -60,7 +60,6 @@ func makeEnvelopeTransaction(
 	}
 
 	bundlePayload := bundle.TransactionBundle{
-		Version:  bundle.BundleV1,
 		Bundle:   transactions,
 		Flags:    plan.Flags,
 		Earliest: plan.Earliest,

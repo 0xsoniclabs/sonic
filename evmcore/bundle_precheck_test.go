@@ -26,7 +26,6 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/require"
@@ -61,10 +60,8 @@ func Test_GetBundleState_ReturnsPermanentlyBlockedForOutdatedBundle(t *testing.T
 		NetworkID: 1,
 	}).AnyTimes()
 
-	envelop := wrap(&bundle.TransactionBundle{
-		Earliest: 0,
-		Latest:   currentBlock - 1, // Bundle is outdated
-	})
+	// Build an outdated bundle.
+	envelop := bundle.NewBuilder().Latest(currentBlock - 1).Build()
 
 	_, _, err := bundle.ValidateTransactionBundle(envelop)
 	require.NoError(t, err)
@@ -86,10 +83,11 @@ func Test_GetBundleState_ReturnsTemporaryBlockedForFutureBundle(t *testing.T) {
 		NetworkID: 1,
 	}).AnyTimes()
 
-	envelop := wrap(&bundle.TransactionBundle{
-		Earliest: currentBlock + 1, // Bundle is in the future
-		Latest:   currentBlock + 10,
-	})
+	// Build an bundle with a block window in the future
+	envelop := bundle.NewBuilder().
+		Earliest(currentBlock + 1).
+		Latest(currentBlock + 10).
+		Build()
 
 	_, _, err := bundle.ValidateTransactionBundle(envelop)
 	require.NoError(t, err)
@@ -115,10 +113,11 @@ func Test_GetBundleState_ReturnsRunnableForCurrentBundle(t *testing.T) {
 	}).AnyTimes()
 	chainState.EXPECT().StateDB().Return(stateDb).AnyTimes()
 
-	envelop := wrap(&bundle.TransactionBundle{
-		Earliest: currentBlock - 5, // Bundle is valid for current block
-		Latest:   currentBlock + 5,
-	})
+	// Build a bundle with a valid block window.
+	envelop := bundle.NewBuilder().
+		Earliest(currentBlock - 5).
+		Latest(currentBlock + 5).
+		Build()
 
 	acceptEverything := func(*types.Transaction, ChainState, state.StateDB) bool {
 		return true
@@ -452,14 +451,14 @@ func Test_runner_Run_ReturnsInvalidForTransactionsWithoutSignature(t *testing.T)
 
 func allOf(nested ...any) pattern {
 	return pattern{
-		flags:  bundle.AllOf,
+		flags:  bundle.EF_AllOf,
 		nested: nested,
 	}
 }
 
 func oneOf(nested ...any) pattern {
 	return pattern{
-		flags:  bundle.OneOf,
+		flags:  bundle.EF_OneOf,
 		nested: nested,
 	}
 }
@@ -473,100 +472,30 @@ func (p pattern) toBundle(
 	signer types.Signer,
 	keys []*ecdsa.PrivateKey,
 ) *types.Transaction {
-	return types.MustSignNewTx(keys[0], signer, p._toTxData(signer, keys))
-}
-
-func (p pattern) _toTxData(
-	signer types.Signer,
-	keys []*ecdsa.PrivateKey,
-) *types.AccessListTx {
-	// convert nested into transactions
-	txs := []*types.AccessListTx{}
-	senders := []common.Address{}
-	keysToSign := []*ecdsa.PrivateKey{}
+	// convert elements into steps
+	steps := make([]bundle.BundleStep, 0, len(p.nested))
 	for _, element := range p.nested {
 		switch v := element.(type) {
 		case int:
-			txs = append(txs, &types.AccessListTx{
-				Nonce: uint64(0xF & v),
-				Gas:   21_240,
-			})
-			key := keys[0xF&(v>>4)]
-			keysToSign = append(keysToSign, key)
-			senders = append(senders, crypto.PubkeyToAddress(key.PublicKey))
+			steps = append(steps, bundle.Step(
+				keys[0xF&(v>>4)],
+				&types.AccessListTx{
+					Nonce: uint64(0xF & v),
+					Gas:   21_240,
+				},
+			))
 		case pattern:
-			txs = append(txs, v._toTxData(signer, keys))
-			key := keys[0] // fore envelope transaction, any key is fine
-			keysToSign = append(keysToSign, key)
-			senders = append(senders, crypto.PubkeyToAddress(key.PublicKey))
+			steps = append(steps, bundle.Step(
+				keys[0], // fore envelope transaction, any key is fine
+				v.toBundle(signer, keys),
+			))
 		default:
 			panic("unsupported element type")
 		}
 	}
 
-	// create the execution plan for this bundle
-	plan := bundle.ExecutionPlan{
-		Flags: p.flags,
-	}
-	for i, tx := range txs {
-		plan.Steps = append(plan.Steps, bundle.ExecutionStep{
-			From: senders[i],
-			Hash: signer.Hash(types.NewTx(tx)),
-		})
-	}
-
-	// Attach the execution plan hash to all transactions.
-	execPlanHash := plan.Hash()
-	for _, tx := range txs {
-		tx.AccessList = append(tx.AccessList, types.AccessTuple{
-			Address: bundle.BundleOnly,
-			StorageKeys: []common.Hash{
-				execPlanHash,
-			},
-		})
-	}
-
-	// Turn transaction data into signed transactions.
-	signedTxs := []*types.Transaction{}
-	for i, tx := range txs {
-		signedTxs = append(signedTxs, types.MustSignNewTx(keysToSign[i], signer, tx))
-	}
-
-	data := bundle.Encode(bundle.TransactionBundle{
-		Version: bundle.BundleV1,
-		Bundle:  signedTxs,
-		Flags:   p.flags,
-	})
-
-	// Compute the gas limit for the envelop transaction.
-	gasLimit := uint64(0)
-	for _, tx := range signedTxs {
-		gasLimit += tx.Gas()
-	}
-
-	intrGas, err := core.IntrinsicGas(
-		data,
-		nil,   // no access list
-		nil,   // no set-code authorization
-		false, // is contract creation
-		true,  // is homestead
-		true,  // is istanbul
-		true,  // is shanghai
-	)
-	if err != nil {
-		panic(err)
-	}
-	floorDataGas, err := core.FloorDataGas(data)
-	if err != nil {
-		panic(err)
-	}
-
-	// Wrap up bundle into an envelope transaction.
-	return &types.AccessListTx{
-		To:   &bundle.BundleProcessor,
-		Data: data,
-		Gas:  max(gasLimit, intrGas, floorDataGas),
-	}
+	// Build the resulting bundle.
+	return bundle.NewBuilder().WithFlags(p.flags).With(steps...).Build()
 }
 
 func createKeys(t *testing.T) ([]*ecdsa.PrivateKey, []common.Address) {
@@ -582,31 +511,4 @@ func createKeys(t *testing.T) ([]*ecdsa.PrivateKey, []common.Address) {
 		senders[i] = crypto.PubkeyToAddress(key.PublicKey)
 	}
 	return keys, senders
-}
-
-func wrap(txBundle *bundle.TransactionBundle) *types.Transaction {
-	// TODO: make this a general utility function in the bundle package.
-	if txBundle.Version == 0 {
-		txBundle.Version = bundle.BundleV1
-	}
-
-	data := bundle.Encode(*txBundle)
-
-	// TODO: this simple gas limit computation is only valid for the examples
-	// in this file. If a general utility function is needed, this should be
-	// improved to consider the intrinsic costs and floor gas of the envelop
-	// transaction, as well as the gas cost of the bundled transactions.
-	gasLimit := uint64(21096)
-	if len(txBundle.Bundle) > 0 {
-		gasLimit = 0
-		for _, tx := range txBundle.Bundle {
-			gasLimit += tx.Gas()
-		}
-	}
-
-	return types.NewTx(&types.AccessListTx{
-		To:   &bundle.BundleProcessor,
-		Data: data,
-		Gas:  max(gasLimit, 21240),
-	})
 }

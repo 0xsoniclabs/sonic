@@ -2,7 +2,8 @@ package bundle
 
 import (
 	"crypto/ecdsa"
-	big "math/big"
+	"fmt"
+	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
@@ -10,18 +11,65 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
-func Step(key *ecdsa.PrivateKey, tx types.TxData) step {
-	return step{key: key, tx: tx}
-}
+// This file offers utilities to build bundles from transaction data. The most
+// generic format is the NewBundle function, enabling the creation of an
+// envelope transaction carrying a bundle as follows:
+//
+//   envelope := NewBuilder().
+// 		WithFlags(EF_AllOf|EF_TolerateFailed).
+// 		Earliest(12).
+// 		Latest(15).
+// 		With(
+// 			Step(key, &types.AccessListTx{
+// 				Nonce: 1,
+// 			}),
+// 			Step(key, &types.AccessListTx{
+// 				Nonce: 2,
+// 			}),
+// 		).Build()
+//
+// The resulting envelope carries a valid bundle of signed transactions.
+// For convenience, further abbreviations are supported. For example:
+//
+//    envelopeA := AllOf(
+// 			Step(key, &types.AccessListTx{
+// 				Nonce: 1,
+// 			}),
+// 			Step(key, &types.AccessListTx{
+// 				Nonce: 2,
+// 			}),
+//    )
+//
+// Also nested bundles are supported by using
+//
+//    envelopeB := OneOf(
+// 			Step(key, envelopeA),
+// 			Step(key, AllOf(
+// 				Step(key, &types.AccessListTx{
+// 					Nonce: 1,
+// 				}),
+// 				Step(key, &types.AccessListTx{
+// 					Nonce: 2,
+// 				}),
+// 			)),
+//    )
+//
+// The hope for this library is to provide means for the readable generation of
+// bundles in unit tests.
 
-func Nested(
-	key *ecdsa.PrivateKey,
-	tx *types.Transaction,
-) step {
-	// TODO: check that the tx is a valid bundle transaction;
-	return step{
-		key: key,
-		tx: &types.AccessListTx{
+// Step creates a transaction to be included in a bundle, signed by the given
+// key. It is a building block to be used as an argument in the builder or in
+// utility functions.
+func Step(key *ecdsa.PrivateKey, tx any) BundleStep {
+	switch tx := tx.(type) {
+	case types.TxData:
+		return BundleStep{key: key, tx: tx}
+	case types.AccessListTx:
+		return BundleStep{key: key, tx: &tx}
+	case types.DynamicFeeTx:
+		return BundleStep{key: key, tx: &tx}
+	case *types.Transaction:
+		return Step(key, &types.AccessListTx{
 			ChainID:    tx.ChainId(),
 			Nonce:      tx.Nonce(),
 			GasPrice:   tx.GasPrice(),
@@ -30,26 +78,76 @@ func Nested(
 			Value:      tx.Value(),
 			Data:       tx.Data(),
 			AccessList: tx.AccessList(),
-		},
+		})
+	default:
+		panic("unsupported TxData type")
 	}
 }
 
-func NewAllOf(steps ...step) *types.Transaction {
-	return NewBundle(AllOf, steps...)
+// BundleStep is a single transaction in a bundle to build.
+type BundleStep struct {
+	key *ecdsa.PrivateKey
+	tx  types.TxData
 }
 
-func NewOneOf(steps ...step) *types.Transaction {
-	return NewBundle(OneOf, steps...)
+// NewBuilder creates a new bundle builder to create a custom bundle.
+func NewBuilder() *builder {
+	return &builder{}
 }
 
-func NewBundle(
-	flags ExecutionFlag,
-	steps ...step,
-) *types.Transaction {
+type builder struct {
+	flags       *ExecutionFlag
+	earliest    *uint64
+	latest      *uint64
+	steps       []BundleStep
+	envelopeKey *ecdsa.PrivateKey
+}
+
+func (b *builder) WithFlags(flags ExecutionFlag) *builder {
+	b.flags = &flags
+	return b
+}
+
+func (b *builder) Earliest(earliest uint64) *builder {
+	b.earliest = &earliest
+	return b
+}
+
+func (b *builder) Latest(latest uint64) *builder {
+	b.latest = &latest
+	return b
+}
+
+func (b *builder) With(steps ...BundleStep) *builder {
+	b.steps = append(b.steps, steps...)
+	return b
+}
+
+func (b *builder) WithEnvelopKey(key *ecdsa.PrivateKey) *builder {
+	b.envelopeKey = key
+	return b
+}
+
+func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
+
+	// Set up defaults for meta flags.
+	flags := EF_AllOf
+	if b.flags != nil {
+		flags = *b.flags
+	}
+	earliest := uint64(0)
+	latest := uint64(MaxBlockRange - 1)
+	if b.earliest != nil {
+		earliest = *b.earliest
+		latest = earliest + MaxBlockRange - 1
+	}
+	if b.latest != nil {
+		latest = *b.latest
+	}
 
 	// Get chain ID from transactions, if any.
 	var chainId *big.Int
-	for _, step := range steps {
+	for _, step := range b.steps {
 		tx := types.NewTx(step.tx)
 		if curId := tx.ChainId(); curId != nil && curId.Sign() > 0 {
 			chainId = curId
@@ -65,10 +163,12 @@ func NewBundle(
 	signer := types.LatestSignerForChainID(chainId)
 
 	plan := ExecutionPlan{
-		Steps: make([]ExecutionStep, len(steps)),
-		Flags: flags,
+		Steps:    make([]ExecutionStep, len(b.steps)),
+		Flags:    flags,
+		Earliest: earliest,
+		Latest:   latest,
 	}
-	for i, step := range steps {
+	for i, step := range b.steps {
 		plan.Steps[i] = ExecutionStep{
 			From: crypto.PubkeyToAddress(step.key.PublicKey),
 			Hash: signer.Hash(types.NewTx(step.tx)),
@@ -81,7 +181,7 @@ func NewBundle(
 		Address:     BundleOnly,
 		StorageKeys: []common.Hash{execPlanHash},
 	}
-	for _, step := range steps {
+	for _, step := range b.steps {
 		switch data := step.tx.(type) {
 		case *types.DynamicFeeTx:
 			data.AccessList = append(data.AccessList, marker)
@@ -91,20 +191,69 @@ func NewBundle(
 	}
 
 	// Sign the modified TxData instances.
-	txs := make([]*types.Transaction, len(steps))
-	for i, step := range steps {
+	txs := make([]*types.Transaction, len(b.steps))
+	for i, step := range b.steps {
 		txs[i] = types.MustSignNewTx(step.key, signer, step.tx)
 	}
 
-	// Build the bundle and wrap it in an envelope.
-	return NewEnvelope(&TransactionBundle{
-		Version: BundleV1,
-		Bundle:  txs,
-		Flags:   flags,
-	})
+	return &TransactionBundle{
+		Bundle:   txs,
+		Flags:    flags,
+		Earliest: earliest,
+		Latest:   latest,
+	}, plan
 }
 
-func NewEnvelope(bundle *TransactionBundle) *types.Transaction {
+func (b *builder) BuildEnvelopBundleAndPlan() (
+	*types.Transaction,
+	*TransactionBundle,
+	ExecutionPlan,
+) {
+	// Build the bundle and wrap it in an envelope.
+	key := b.envelopeKey
+	if key == nil {
+		newKey, err := crypto.GenerateKey()
+		if err != nil {
+			panic(fmt.Sprintf("failed to generate new key: %v", err))
+		}
+		key = newKey
+	}
+	bundle, plan := b.BuildBundleAndPlan()
+	return newEnvelope(key, bundle), bundle, plan
+}
+
+func (b *builder) BuildEnvelopAndPlan() (*types.Transaction, ExecutionPlan) {
+	envelop, _, plan := b.BuildEnvelopBundleAndPlan()
+	return envelop, plan
+}
+
+func (b *builder) BuildBundle() *TransactionBundle {
+	bundle, _ := b.BuildBundleAndPlan()
+	return bundle
+}
+
+func (b *builder) Build() *types.Transaction {
+	envelope, _ := b.BuildEnvelopAndPlan()
+	return envelope
+}
+
+// --- Utility Wrappers ---
+
+func AllOf(steps ...BundleStep) *types.Transaction {
+	return NewBuilder().WithFlags(EF_AllOf).With(steps...).Build()
+}
+
+func OneOf(steps ...BundleStep) *types.Transaction {
+	return NewBuilder().WithFlags(EF_OneOf).With(steps...).Build()
+}
+
+// --- implementation details ---
+
+// Wraps the given bundle into an envelope transaction.
+func newEnvelope(
+	key *ecdsa.PrivateKey,
+	bundle *TransactionBundle,
+) *types.Transaction {
 
 	payload := Encode(*bundle)
 
@@ -138,15 +287,11 @@ func NewEnvelope(bundle *TransactionBundle) *types.Transaction {
 		chainId = bundle.Bundle[0].ChainId()
 	}
 
-	return types.NewTx(&types.AccessListTx{
+	signer := types.LatestSignerForChainID(chainId)
+	return types.MustSignNewTx(key, signer, &types.AccessListTx{
 		ChainID: chainId,
 		To:      &BundleProcessor,
 		Data:    payload,
 		Gas:     gasLimit,
 	})
-}
-
-type step struct {
-	key *ecdsa.PrivateKey
-	tx  types.TxData
 }

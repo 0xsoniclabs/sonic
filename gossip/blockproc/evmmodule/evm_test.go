@@ -365,50 +365,17 @@ func TestOperaEVMProcessor_Execute_BundlePositionsAreProperlyOffset(t *testing.T
 
 // simpleBundleTx creates a simple bundle with the given number of transactions in the bundle.
 func simpleBundleTx(t *testing.T, chainId *big.Int, numTransactions int) *types.Transaction {
-	bundleOnlyTx := types.NewTx(&types.AccessListTx{
-		To: &common.Address{0x42}, Nonce: 0, Gas: 21_0000,
-	})
-
-	signer := types.NewCancunSigner(chainId)
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
 
-	transactions := make([]*types.Transaction, numTransactions)
-	for i := range numTransactions {
-		transactions[i] = bundleOnlyTx
-	}
-	steps := make([]bundle.ExecutionStep, len(transactions))
-	for i, tx := range transactions {
-		steps[i] = bundle.ExecutionStep{
-			From: crypto.PubkeyToAddress(key.PublicKey),
-			Hash: signer.Hash(tx),
-		}
-	}
-	plan := bundle.ExecutionPlan{Flags: bundle.ExecutionFlag(0), Steps: steps}
-
-	payLoadTxs := make([]*types.Transaction, len(transactions))
-	for i, tx := range transactions {
-		payLoadTxs[i] = types.MustSignNewTx(key, signer, &types.AccessListTx{
-			Nonce:    tx.Nonce(),
-			To:       tx.To(),
-			Gas:      tx.Gas(),
-			GasPrice: tx.GasPrice(),
-			AccessList: types.AccessList{
-				{Address: bundle.BundleOnly, StorageKeys: []common.Hash{plan.Hash()}},
-			},
-		})
+	steps := make([]bundle.BundleStep, 0, numTransactions)
+	for range numTransactions {
+		steps = append(steps, bundle.Step(key, &types.AccessListTx{
+			To: &common.Address{0x42}, Nonce: 0, Gas: 21_0000,
+		}))
 	}
 
-	bundleTx := types.NewTx(&types.LegacyTx{
-		Gas: uint64(numTransactions * int(bundleOnlyTx.Gas())),
-		To:  &bundle.BundleProcessor,
-		Data: bundle.Encode(bundle.TransactionBundle{
-			Version: 1,
-			Bundle:  payLoadTxs,
-		}),
-	})
-
-	return bundleTx
+	return bundle.AllOf(steps...)
 }
 
 func TestOperaEVMProcessor_Finalize_ReportsAggregatedNumberOfSkippedTransactions(t *testing.T) {

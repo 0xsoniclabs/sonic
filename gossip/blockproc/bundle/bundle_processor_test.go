@@ -26,8 +26,8 @@ import (
 
 func Test_RunBundle_HandlesExecutionModeCorrectly(t *testing.T) {
 	require := require.New(t)
-	require.True(RunBundle(&TransactionBundle{Flags: AllOf}, nil))
-	require.False(RunBundle(&TransactionBundle{Flags: OneOf}, nil))
+	require.True(RunBundle(&TransactionBundle{Flags: EF_AllOf}, nil))
+	require.False(RunBundle(&TransactionBundle{Flags: EF_OneOf}, nil))
 }
 
 func Test_runAllOfBundle_ReturnsTrueForEmptyBundle(t *testing.T) {
@@ -126,20 +126,20 @@ func Test_isTolerated_InterpretsExecutionFlagsCorrectly(t *testing.T) {
 		{flags: 0, result: TransactionResultSuccessful, tolerated: true},
 		{flags: 0, result: 99, tolerated: false}, // unknown result treated as failed
 
-		{flags: TolerateInvalid, result: TransactionResultInvalid, tolerated: true},
-		{flags: TolerateInvalid, result: TransactionResultFailed, tolerated: false},
-		{flags: TolerateInvalid, result: TransactionResultSuccessful, tolerated: true},
-		{flags: TolerateInvalid, result: 99, tolerated: false}, // unknown result treated as failed
+		{flags: EF_TolerateInvalid, result: TransactionResultInvalid, tolerated: true},
+		{flags: EF_TolerateInvalid, result: TransactionResultFailed, tolerated: false},
+		{flags: EF_TolerateInvalid, result: TransactionResultSuccessful, tolerated: true},
+		{flags: EF_TolerateInvalid, result: 99, tolerated: false}, // unknown result treated as failed
 
-		{flags: TolerateFailed, result: TransactionResultInvalid, tolerated: false},
-		{flags: TolerateFailed, result: TransactionResultFailed, tolerated: true},
-		{flags: TolerateFailed, result: TransactionResultSuccessful, tolerated: true},
-		{flags: TolerateFailed, result: 99, tolerated: false}, // unknown result treated as failed
+		{flags: EF_TolerateFailed, result: TransactionResultInvalid, tolerated: false},
+		{flags: EF_TolerateFailed, result: TransactionResultFailed, tolerated: true},
+		{flags: EF_TolerateFailed, result: TransactionResultSuccessful, tolerated: true},
+		{flags: EF_TolerateFailed, result: 99, tolerated: false}, // unknown result treated as failed
 
-		{flags: TolerateInvalid | TolerateFailed, result: TransactionResultInvalid, tolerated: true},
-		{flags: TolerateInvalid | TolerateFailed, result: TransactionResultFailed, tolerated: true},
-		{flags: TolerateInvalid | TolerateFailed, result: TransactionResultSuccessful, tolerated: true},
-		{flags: TolerateInvalid | TolerateFailed, result: 99, tolerated: false}, // unknown result treated as failed
+		{flags: EF_TolerateInvalid | EF_TolerateFailed, result: TransactionResultInvalid, tolerated: true},
+		{flags: EF_TolerateInvalid | EF_TolerateFailed, result: TransactionResultFailed, tolerated: true},
+		{flags: EF_TolerateInvalid | EF_TolerateFailed, result: TransactionResultSuccessful, tolerated: true},
+		{flags: EF_TolerateInvalid | EF_TolerateFailed, result: 99, tolerated: false}, // unknown result treated as failed
 	}
 
 	for _, test := range tests {

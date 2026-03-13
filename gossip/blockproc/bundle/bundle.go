@@ -46,10 +46,6 @@ func IsEnvelope(tx *types.Transaction) bool {
 	return tx.To() != nil && *tx.To() == BundleProcessor
 }
 
-
-
-
-
 var (
 	// BundleOnly is an address used in the access list of transactions to mark
 	// them as bundle-only, meaning they are intended to be executed as part of
@@ -71,34 +67,34 @@ var (
 type ExecutionFlag uint16
 
 const (
-	TolerateInvalid ExecutionFlag = 0b001
-	TolerateFailed  ExecutionFlag = 0b010
-	AllOf           ExecutionFlag = 0b000
-	OneOf           ExecutionFlag = 0b100
+	EF_TolerateInvalid ExecutionFlag = 0b001
+	EF_TolerateFailed  ExecutionFlag = 0b010
+	EF_AllOf           ExecutionFlag = 0b000
+	EF_OneOf           ExecutionFlag = 0b100
 )
 
 func (e *ExecutionFlag) TolerateInvalid() bool {
-	return e.getFlag(TolerateInvalid)
+	return e.getFlag(EF_TolerateInvalid)
 }
 
 func (e *ExecutionFlag) TolerateFailed() bool {
-	return e.getFlag(TolerateFailed)
+	return e.getFlag(EF_TolerateFailed)
 }
 
 func (e *ExecutionFlag) IsOneOf() bool {
-	return e.getFlag(OneOf)
+	return e.getFlag(EF_OneOf)
 }
 
 func (e *ExecutionFlag) SetTolerateInvalid(tolerateInvalid bool) {
-	e.setFlag(TolerateInvalid, tolerateInvalid)
+	e.setFlag(EF_TolerateInvalid, tolerateInvalid)
 }
 
 func (e *ExecutionFlag) SetTolerateFailed(tolerateFailed bool) {
-	e.setFlag(TolerateFailed, tolerateFailed)
+	e.setFlag(EF_TolerateFailed, tolerateFailed)
 }
 
 func (e *ExecutionFlag) SetOneOf(oneOf bool) {
-	e.setFlag(OneOf, oneOf)
+	e.setFlag(EF_OneOf, oneOf)
 }
 
 func (e *ExecutionFlag) getFlag(flag ExecutionFlag) bool {
@@ -161,7 +157,6 @@ func (e *ExecutionPlan) Hash() common.Hash {
 // consuming the payment and nonce, and preventing this transaction from being
 // included in future blocks.
 type TransactionBundle struct {
-	Version  byte
 	Bundle   types.Transactions
 	Flags    ExecutionFlag
 	Earliest uint64 // Earliest block this bundle can be included in.
@@ -255,8 +250,8 @@ func removeBundleOnlyMark(tx *types.Transaction) (*types.Transaction, error) {
 	return types.NewTx(txData), nil
 }
 
-// BelongsToExecutionPlan checks if the given transaction correspond to one step in the execution plan.
-func BelongsToExecutionPlan(tx *types.Transaction, executionPlanHash common.Hash) bool {
+// belongsToExecutionPlan checks if the given transaction correspond to one step in the execution plan.
+func belongsToExecutionPlan(tx *types.Transaction, executionPlanHash common.Hash) bool {
 	for _, entry := range tx.AccessList() {
 		if entry.Address == BundleOnly &&
 			slices.Contains(entry.StorageKeys, executionPlanHash) {
@@ -267,15 +262,22 @@ func BelongsToExecutionPlan(tx *types.Transaction, executionPlanHash common.Hash
 }
 
 const (
-	BundleV1 byte = 1
+	bundleEncodingVersion byte = 1
 )
 
 func Encode(bundle TransactionBundle) []byte {
+	return encodeInternal(bundleEncodingVersion, bundle)
+}
+
+func encodeInternal(
+	version byte,
+	bundle TransactionBundle,
+) []byte {
 
 	buffer := bytes.Buffer{}
 	// encode into a buffer can only fail due to OOM
 	// since we are encoding a struct with fixed fields, we can ignore the error
-	_ = rlp.Encode(&buffer, bundle.Version)
+	_ = rlp.Encode(&buffer, version)
 	_ = rlp.Encode(&buffer, []any{
 		bundle.Bundle,
 		bundle.Flags,
@@ -285,18 +287,19 @@ func Encode(bundle TransactionBundle) []byte {
 	return buffer.Bytes()
 }
 
-func Decode(data []byte) (TransactionBundle, error) {
+func decode(data []byte) (TransactionBundle, error) {
 	var bundle TransactionBundle
 
-	_, version, rest, err := rlp.Split(data)
+	_, encodedVersion, rest, err := rlp.Split(data)
 	if err != nil {
 		return bundle, fmt.Errorf("failed to decode transaction bundle: %v", err)
 	}
-	if err := rlp.DecodeBytes(version, &bundle.Version); err != nil {
+	var version byte
+	if err := rlp.DecodeBytes(encodedVersion, &version); err != nil {
 		return bundle, fmt.Errorf("failed to decode version: %v", err)
 	}
-	if bundle.Version != BundleV1 {
-		return bundle, fmt.Errorf("unsupported bundle version: %d", bundle.Version)
+	if version != bundleEncodingVersion {
+		return bundle, fmt.Errorf("unsupported bundle version: %d", version)
 	}
 
 	payload := struct {

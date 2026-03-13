@@ -86,7 +86,7 @@ func TestExecutionPlan_Hash_ComputesDeterministicHash(t *testing.T) {
 	}
 }
 
-func TestIsTransactionBundle_IdentifiesBundles(t *testing.T) {
+func TestIsEnvelope_IdentifiesEnvelops(t *testing.T) {
 	tests := map[string]struct {
 		tx       types.TxData
 		expected bool
@@ -224,7 +224,7 @@ func TestBelongsToExecutionPlan_IdentifiesTransactionsWhichSignTheExecutionPlan(
 		t.Run(name, func(t *testing.T) {
 			tx := types.NewTx(test.tx)
 			require.Equal(t, test.expected,
-				BelongsToExecutionPlan(tx, test.executionPlanHash))
+				belongsToExecutionPlan(tx, test.executionPlanHash))
 		})
 	}
 
@@ -237,7 +237,6 @@ func TestDecode_SuccessfullyUnpacksValidBundle(t *testing.T) {
 		executionPlanHash := common.Hash{0x01, 0x02, 0x03} // dummy hash
 
 		bundle := TransactionBundle{
-			Version: 1,
 			Bundle: types.Transactions{
 				types.NewTx(&types.AccessListTx{
 					AccessList: types.AccessList{
@@ -253,9 +252,8 @@ func TestDecode_SuccessfullyUnpacksValidBundle(t *testing.T) {
 			Latest:   34,
 		}
 
-		unpacked, err := Decode(Encode(bundle))
+		unpacked, err := decode(Encode(bundle))
 		require.NoError(t, err)
-		require.Equal(t, bundle.Version, unpacked.Version)
 
 		for i, tx := range bundle.Bundle {
 			require.Equal(t, tx.Hash(), unpacked.Bundle[i].Hash())
@@ -284,21 +282,19 @@ func TestEncoding_IsVersioned(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			bundle := TransactionBundle{
-				Version: test.version,
-			}
+			bundle := TransactionBundle{}
 
-			_, err := Decode(Encode(bundle))
+			_, err := decode(encodeInternal(test.version, bundle))
 			require.ErrorContains(t, err, test.expectedError)
 		})
 	}
 }
 
 func TestDecode_ReturnsErrorForInvalidData(t *testing.T) {
-	_, err := Decode([]byte{0x01, 0x02, 0x03})
+	_, err := decode([]byte{0x01, 0x02, 0x03})
 	require.ErrorContains(t, err, "failed to decode transaction bundle")
 
-	_, err = Decode(nil)
+	_, err = decode(nil)
 	require.ErrorContains(t, err, "failed to decode transaction bundle")
 }
 
@@ -309,47 +305,41 @@ type Signer interface {
 }
 
 func TestExtractExecutionPlan_ExtractsStepsAndFlags(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
 
 	for _, flags := range []ExecutionFlag{0, 1, 2, 3} {
+		for _, earliest := range []uint64{1, 5, 20} {
+			for _, latest := range []uint64{50, 100, 200} {
+				bundle := NewBuilder().
+					WithFlags(flags).
+					Earliest(earliest).
+					Latest(latest).
+					With(
+						Step(key, &types.AccessListTx{}),
+						Step(key, &types.AccessListTx{}),
+					).BuildBundle()
 
-		bundle := TransactionBundle{
-			Bundle: types.Transactions{
-				types.NewTx(&types.AccessListTx{
-					AccessList: types.AccessList{
-						{
-							Address:     BundleOnly,
-							StorageKeys: []common.Hash{{0x01}},
-						},
-					},
-				}),
-				types.NewTx(&types.DynamicFeeTx{
-					AccessList: types.AccessList{
-						{
-							Address:     BundleOnly,
-							StorageKeys: []common.Hash{{0x01}},
-						},
-					},
-				}),
-			},
-			Flags: flags,
+				ctrl := gomock.NewController(t)
+				mockSigner := NewMockSigner(ctrl)
+				mockSigner.EXPECT().Sender(gomock.Any()).Return(common.Address{0x42}, nil)
+				mockSigner.EXPECT().Sender(gomock.Any()).Return(common.Address{0x43}, nil)
+				mockSigner.EXPECT().Hash(gomock.Any()).Return(common.Hash{0x01})
+				mockSigner.EXPECT().Hash(gomock.Any()).Return(common.Hash{0x02})
+
+				executionPlan, err := bundle.ExtractExecutionPlan(mockSigner)
+				require.NoError(t, err)
+
+				require.Equal(t, 2, len(executionPlan.Steps))
+				require.Equal(t, common.Address{0x42}, executionPlan.Steps[0].From)
+				require.Equal(t, common.Hash{0x01}, executionPlan.Steps[0].Hash)
+				require.Equal(t, common.Address{0x43}, executionPlan.Steps[1].From)
+				require.Equal(t, common.Hash{0x02}, executionPlan.Steps[1].Hash)
+				require.Equal(t, bundle.Flags, executionPlan.Flags)
+				require.Equal(t, bundle.Earliest, executionPlan.Earliest)
+				require.Equal(t, bundle.Latest, executionPlan.Latest)
+			}
 		}
-
-		ctrl := gomock.NewController(t)
-		mockSigner := NewMockSigner(ctrl)
-		mockSigner.EXPECT().Sender(gomock.Any()).Return(common.Address{0x42}, nil)
-		mockSigner.EXPECT().Sender(gomock.Any()).Return(common.Address{0x43}, nil)
-		mockSigner.EXPECT().Hash(gomock.Any()).Return(common.Hash{0x01})
-		mockSigner.EXPECT().Hash(gomock.Any()).Return(common.Hash{0x02})
-
-		executionPlan, err := bundle.ExtractExecutionPlan(mockSigner)
-		require.NoError(t, err)
-
-		require.Equal(t, 2, len(executionPlan.Steps))
-		require.Equal(t, common.Address{0x42}, executionPlan.Steps[0].From)
-		require.Equal(t, common.Hash{0x01}, executionPlan.Steps[0].Hash)
-		require.Equal(t, common.Address{0x43}, executionPlan.Steps[1].From)
-		require.Equal(t, common.Hash{0x02}, executionPlan.Steps[1].Hash)
-		require.Equal(t, bundle.Flags, executionPlan.Flags)
 	}
 }
 
