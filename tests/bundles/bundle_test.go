@@ -362,13 +362,12 @@ func Test_RunAllOf_Works(t *testing.T) {
 			},
 		}...)
 	}
-	net, client := startTestnet(t)
-	defer client.Close()
+	net := startTestnet(t)
 	for _, c := range cases {
 		if c.name == "bundled/OneOf=false/TolerateFailed=true/TolerateInvalid=true/failed" || (strings.HasPrefix(c.name, "bundled") && strings.HasSuffix(c.name, "invalid")) {
 			continue
 		}
-		checkCase(t, net, client, c)
+		checkCase(t, net, c)
 	}
 }
 
@@ -493,13 +492,12 @@ func Test_RunOneOf_Works(t *testing.T) {
 			},
 		}...)
 	}
-	net, client := startTestnet(t)
-	defer client.Close()
+	net := startTestnet(t)
 	for _, c := range cases {
 		if c.name == "bundled/OneOf=false/TolerateFailed=true/TolerateInvalid=true/failed" || (strings.HasPrefix(c.name, "bundled") && strings.HasSuffix(c.name, "invalid")) {
 			continue
 		}
-		checkCase(t, net, client, c)
+		checkCase(t, net, c)
 	}
 }
 
@@ -526,7 +524,7 @@ func Merge[T any](items ...any) []T {
 	return result
 }
 
-func checkCase(t *testing.T, net *tests.IntegrationTestNet, client *tests.PooledEhtClient, namedCase NamedCase) {
+func checkCase(t *testing.T, net *tests.IntegrationTestNet, namedCase NamedCase) {
 	c := namedCase.case_
 	name := fmt.Sprintf("OneOf=%v/TolerateFailed=%v/TolerateInvalid=%v/%s", c.oneOf, c.tolerateFailed, c.tolerateInvalid, namedCase.name)
 	t.Run(name, func(t *testing.T) {
@@ -535,12 +533,16 @@ func checkCase(t *testing.T, net *tests.IntegrationTestNet, client *tests.Pooled
 		flags.SetTolerateFailed(c.tolerateFailed)
 		flags.SetOneOf(c.oneOf)
 
-		contractInfo := deployContracts(t, net, client)
+		client, err := net.GetClient()
+		require.NoError(t, err, "failed to get client; %v", err)
+		defer client.Close()
+
+		contractInfo := deployContracts(t, net)
 
 		envelopeTx, plan, bundleOnlyTxs := buildBundle(t, net, contractInfo, c.submittedTxTypes, flags, false)
 		require.NotNil(t, envelopeTx)
 
-		err := client.SendTransaction(t.Context(), envelopeTx)
+		err = client.SendTransaction(t.Context(), envelopeTx)
 		if err != nil {
 			// Check whether the bundle was rejected by the pre-check.
 			require.ErrorContains(t, err, "permanently blocked")
@@ -578,7 +580,7 @@ func checkCase(t *testing.T, net *tests.IntegrationTestNet, client *tests.Pooled
 	})
 }
 
-func startTestnet(t *testing.T) (*tests.IntegrationTestNet, *tests.PooledEhtClient) {
+func startTestnet(t *testing.T) *tests.IntegrationTestNet {
 	updates := opera.GetBrioUpgrades()
 	updates.GasSubsidies = true
 	updates.TransactionBundles = true
@@ -587,9 +589,7 @@ func startTestnet(t *testing.T) (*tests.IntegrationTestNet, *tests.PooledEhtClie
 			Upgrades: tests.AsPointer(updates),
 		},
 	)
-	client, err := net.GetClient()
-	require.NoError(t, err, "failed to get client; %v", err)
-	return net, client
+	return net
 }
 
 // --- Contract deployment and helper functions ---
@@ -609,9 +609,13 @@ type ContractInfo struct {
 // in the access list to account for the bundle-only marker.
 // The counter contract is used to check whether the effects of transactions in a bundle are applied as expected,
 // and the revert contract is used to create transactions that fail by reverting.
-func deployContracts(t *testing.T, net *tests.IntegrationTestNet, client *tests.PooledEhtClient) ContractInfo {
+func deployContracts(t *testing.T, net *tests.IntegrationTestNet) ContractInfo {
 	counterAddress, counterInput := counterAddressAndInput(t, net)
 	revertAddress, revertInput := revertAddressAndInput(t, net)
+
+	client, err := net.GetClient()
+	require.NoError(t, err, "failed to get client; %v", err)
+	defer client.Close()
 
 	gasPrice, err := client.SuggestGasPrice(t.Context())
 	require.NoError(t, err, "failed to suggest gas price; %v", err)
@@ -785,6 +789,7 @@ func makeUnsignedBundleOnlyTxs(
 
 	client, err := net.GetClient()
 	require.NoError(t, err, "failed to get client; %v", err)
+	defer client.Close()
 
 	gasPrice, err := client.SuggestGasPrice(t.Context())
 	require.NoError(t, err, "failed to suggest gas price; %v", err)
@@ -835,6 +840,7 @@ func buildPlan(
 
 	client, err := net.GetClient()
 	require.NoError(t, err, "failed to get client; %v", err)
+	defer client.Close()
 
 	blockNumber, err := client.BlockNumber(t.Context())
 	require.NoError(t, err, "failed to get block number; %v", err)
