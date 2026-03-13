@@ -653,6 +653,6 @@ func (b *EthAPIBackend) IsBundleInPool(hash common.Hash) bool {
 	return b.svc.txpool.HasBundle(hash)
 }
 
-func (b *EthAPIBackend) GetBundleExecutionInfo(hash common.Hash) (*bundle.ExecutionInfo, error) {
+func (b *EthAPIBackend) GetBundleExecutionInfo(hash common.Hash) *bundle.ExecutionInfo {
 	return b.svc.store.GetBundleExecutionInfo(hash)
 }

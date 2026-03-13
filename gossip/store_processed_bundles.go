@@ -19,11 +19,11 @@ package gossip
 import (
 	"encoding/binary"
 	"errors"
-	"fmt"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 // This file implements the storage and management of processed bundles in
@@ -57,7 +57,7 @@ import (
 // AddProcessedBundles adds the given bundle execution information for the given
 // block number. This should be called after every block, listing the bundles
 // that got accepted in the block.
-func (s *Store) AddProcessedBundles(blockNum uint64, executedBundles []bundle.ExecutionInfo) error {
+func (s *Store) AddProcessedBundles(blockNum uint64, executedBundles []bundle.ExecutionInfo) {
 	// Make sure there is only one update at any time.
 	s.processedBundleMutex.Lock()
 	defer s.processedBundleMutex.Unlock()
@@ -79,7 +79,7 @@ func (s *Store) AddProcessedBundles(blockNum uint64, executedBundles []bundle.Ex
 			batch.Put(getIndexKey(blockNum, hash), []byte{0}),
 		)
 		if err != nil {
-			return fmt.Errorf("failed to add processed bundle hash: %v", err)
+			log.Crit("failed to add processed bundle hash to batch", "error", err)
 		}
 		addedHash = xorHash(addedHash, hash)
 	}
@@ -104,17 +104,14 @@ func (s *Store) AddProcessedBundles(blockNum uint64, executedBundles []bundle.Ex
 				batch.Delete(getEntryKey(hash)),
 			)
 			if err != nil {
-				return fmt.Errorf("failed to delete old processed bundle hash: %v", err)
+				log.Crit("failed to delete old processed bundle hash", "error", err)
 			}
 			deletedHash = xorHash(deletedHash, hash)
 		}
 	}
 
 	// Update the state hash.
-	_, oldHash, err := s.GetProcessedBundleHistoryHash()
-	if err != nil {
-		return fmt.Errorf("failed to get current hash of processed bundles: %v", err)
-	}
+	_, oldHash := s.GetProcessedBundleHistoryHash()
 
 	update := make([]byte, 3*32+8)
 	copy(update[:32], oldHash.Bytes())
@@ -123,19 +120,18 @@ func (s *Store) AddProcessedBundles(blockNum uint64, executedBundles []bundle.Ex
 	binary.BigEndian.PutUint64(update[96:], blockNum)
 	newHash := common.Hash(crypto.Keccak256(update))
 
-	err = batch.Put(nil, append(
+	err := batch.Put(nil, append(
 		binary.BigEndian.AppendUint64(nil, blockNum),
 		newHash.Bytes()...,
 	))
 	if err != nil {
-		return fmt.Errorf("failed to update hash of processed bundles: %v", err)
+		log.Crit("failed to update hash of processed bundles", "error", err)
 	}
 
 	// Write all changes to the store.
 	if err := batch.Write(); err != nil {
-		return fmt.Errorf("failed to create batch for processed bundles: %v", err)
+		log.Crit("failed to create batch for processed bundles", "error", err)
 	}
-	return nil
 }
 
 // HasBundleRecentlyBeenProcessed checks if a bundle execution plan with the
@@ -146,12 +142,12 @@ func (s *Store) AddProcessedBundles(blockNum uint64, executedBundles []bundle.Ex
 // bundle.MaxBlockRange blocks, so this function returns false for bundles
 // that were processed too far in the past and have been cleaned up from the
 // store.
-func (s *Store) HasBundleRecentlyBeenProcessed(execPlanHash common.Hash) (bool, error) {
+func (s *Store) HasBundleRecentlyBeenProcessed(execPlanHash common.Hash) bool {
 	res, err := s.table.ProcessedBundles.Get(getEntryKey(execPlanHash))
 	if err != nil {
-		return false, fmt.Errorf("failed to check processed bundle: %v", err)
+		log.Crit("failed to check processed bundle", "error", err)
 	}
-	return res != nil, nil
+	return res != nil
 }
 
 // GetBundleExecutionInfo returns the execution info for a processed execution
@@ -159,16 +155,16 @@ func (s *Store) HasBundleRecentlyBeenProcessed(execPlanHash common.Hash) (bool, 
 // automatically removed from the store after bundle.MaxBlockRange blocks,
 // so this function returns nil for bundles that were processed too far in the
 // past.
-func (s *Store) GetBundleExecutionInfo(execPlanHash common.Hash) (*bundle.ExecutionInfo, error) {
+func (s *Store) GetBundleExecutionInfo(execPlanHash common.Hash) *bundle.ExecutionInfo {
 	res, err := s.table.ProcessedBundles.Get(getEntryKey(execPlanHash))
 	if err != nil {
-		return nil, fmt.Errorf("failed to get execution info for bundle: %v", err)
+		log.Crit("failed to get execution info for bundle", "error", err)
 	}
 	if res == nil {
-		return nil, nil
+		return nil
 	}
 	if len(res) != 16 {
-		return nil, fmt.Errorf("invalid data length for execution info: %d", len(res))
+		log.Crit("invalid data length for execution info", "length", len(res))
 	}
 	blockNum := binary.BigEndian.Uint64(res[:8])
 	startPosition := binary.BigEndian.Uint32(res[8:12])
@@ -178,25 +174,25 @@ func (s *Store) GetBundleExecutionInfo(execPlanHash common.Hash) (*bundle.Execut
 		BlockNum:          blockNum,
 		Position:          startPosition,
 		Count:             endPosition,
-	}, nil
+	}
 }
 
 // GetProcessedBundleHistoryHash returns the current hash of the processed
 // bundles history, along with the block number of the last update.
-func (s *Store) GetProcessedBundleHistoryHash() (uint64, common.Hash, error) {
+func (s *Store) GetProcessedBundleHistoryHash() (uint64, common.Hash) {
 	state, err := s.table.ProcessedBundles.Get(nil)
 	if err != nil {
-		return 0, common.Hash{}, fmt.Errorf("failed to get hash of processed bundles: %v", err)
+		log.Crit("failed to get hash of processed bundles", "error", err)
 	}
 	if state == nil {
-		return 0, common.Hash{}, nil
+		return 0, common.Hash{}
 	}
 	if len(state) != 32+8 {
-		return 0, common.Hash{}, fmt.Errorf("invalid state length for processed bundles: %d", len(state))
+		log.Crit("invalid state length for processed bundles", "length", len(state))
 	}
 	blockNum := binary.BigEndian.Uint64(state[:8])
 	hash := common.BytesToHash(state[8:])
-	return blockNum, hash, nil
+	return blockNum, hash
 }
 
 // getEntryKey returns the key used to store the presence of a processed bundle

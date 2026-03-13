@@ -94,7 +94,7 @@ type Backend interface {
 
 	// Bundle API
 	IsBundleInPool(common.Hash) bool
-	GetBundleExecutionInfo(common.Hash) (*bundle.ExecutionInfo, error)
+	GetBundleExecutionInfo(common.Hash) *bundle.ExecutionInfo
 
 	ChainConfig(blockHeight idx.Block) *params.ChainConfig
 	ChainID() *big.Int
