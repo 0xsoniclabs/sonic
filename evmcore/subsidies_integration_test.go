@@ -135,7 +135,6 @@ func makeHappyStateDb(
 	chain.EXPECT().CurrentConfig().Return(chainConfig).AnyTimes()
 
 	state := state.NewMockStateDB(ctrl)
-	state.EXPECT().BeginTransaction().AnyTimes()
 	state.EXPECT().GetNonce(any).Return(uint64(0)).AnyTimes()
 	state.EXPECT().GetBalance(any).Return(uint256.NewInt(1e18)).AnyTimes()
 	state.EXPECT().GetCodeHash(any).Return(types.EmptyCodeHash).AnyTimes()
@@ -149,6 +148,5 @@ func makeHappyStateDb(
 	state.EXPECT().GetRefund().Return(uint64(0)).AnyTimes()
 	state.EXPECT().SubRefund(any).Return().AnyTimes()
 	state.EXPECT().RevertToSnapshot(any).AnyTimes()
-	state.EXPECT().EndTransaction().AnyTimes()
 	return chain, state
 }

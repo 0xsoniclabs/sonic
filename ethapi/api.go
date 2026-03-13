@@ -1116,13 +1116,9 @@ func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash 
 		return nil, err
 	}
 	defer state.Release()
-	state.BeginTransaction()
 	if err := overrides.Apply(state); err != nil {
-		state.EndTransaction()
 		return nil, err
 	}
-	state.EndTransaction()
-
 	// Setup context so it may be cancelled the call has completed
 	// or, in case of unmetered gas, setup a context with a timeout.
 	var cancel context.CancelFunc
@@ -1175,9 +1171,7 @@ func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash 
 
 	// Execute the message.
 	gp := new(core.GasPool).AddGas(math.MaxUint64)
-	state.BeginTransaction()
 	result, err := core.ApplyMessage(evm, msg, gp)
-	state.EndTransaction()
 	if err := vmError(); err != nil {
 		return nil, err
 	}
@@ -1751,9 +1745,7 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 			statedb.Release()
 			return nil, 0, nil, err
 		}
-		statedb.BeginTransaction()
 		res, err := core.ApplyMessage(vmenv, msg, new(core.GasPool).AddGas(msg.GasLimit))
-		statedb.EndTransaction()
 		statedb.Release()
 		if err != nil {
 			return nil, 0, nil, fmt.Errorf("failed to apply transaction: %v err: %v", args.toTransaction().Hash(), err)
@@ -2547,6 +2539,7 @@ func (api *PublicDebugAPI) traceBlock(ctx context.Context, block *evmcore.EvmBlo
 			results[i] = &txTraceResult{TxHash: tx.Hash(), Result: res}
 			resultsLength += len(res)
 		}
+		statedb.EndTransaction()
 
 		// limit the response size.
 		if api.maxResponseSize > 0 && resultsLength > api.maxResponseSize {
