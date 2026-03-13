@@ -114,7 +114,7 @@ func TestAccountCreation_CreateCallsProducingCodesTooLargeProduceAUnsuccessfulRe
 		byte(vm.RETURN),
 	}...)
 
-	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	session := sharedNetwork.GetIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 	t.Parallel()
 
 	client, err := session.GetClient()
