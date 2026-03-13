@@ -64,7 +64,7 @@ func Test_Emitter_isValidBundleTx_AcceptsValidBundleIfBundlesAreEnabled(t *testi
 			}
 
 			tx := types.NewTx(&types.LegacyTx{
-				To: &bundle.BundleAddress,
+				To: &bundle.BundleProcessor,
 				Data: bundle.Encode(bundle.TransactionBundle{
 					Version:  1,
 					Earliest: 50,
@@ -88,11 +88,11 @@ func Test_Emitter_isValidBundleTx_RejectsInvalidBundle(t *testing.T) {
 	tests := map[string]*types.Transaction{
 		"not a bundle": types.NewTx(&types.LegacyTx{}),
 		"invalid bundle data": types.NewTx(&types.LegacyTx{
-			To:   &bundle.BundleAddress,
+			To:   &bundle.BundleProcessor,
 			Data: []byte{0x01, 0x02, 0x03},
 		}),
 		"bundle with out-of-range block numbers": types.NewTx(&types.LegacyTx{
-			To: &bundle.BundleAddress,
+			To: &bundle.BundleProcessor,
 			Data: bundle.Encode(bundle.TransactionBundle{
 				Version:  1,
 				Earliest: 150,
@@ -147,7 +147,7 @@ func Test_Emitter_isValidBundleTx_RejectsAlreadyProcessedBundle(t *testing.T) {
 			}
 
 			tx := types.NewTx(&types.LegacyTx{
-				To: &bundle.BundleAddress,
+				To: &bundle.BundleProcessor,
 				Data: bundle.Encode(bundle.TransactionBundle{
 					Version:  1,
 					Earliest: 50,

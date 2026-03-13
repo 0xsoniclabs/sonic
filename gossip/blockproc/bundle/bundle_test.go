@@ -97,7 +97,7 @@ func TestIsTransactionBundle_IdentifiesBundles(t *testing.T) {
 		},
 		"bundle tx": {
 			tx: &types.LegacyTx{
-				To: &BundleAddress,
+				To: &BundleProcessor,
 			},
 			expected: true,
 		},

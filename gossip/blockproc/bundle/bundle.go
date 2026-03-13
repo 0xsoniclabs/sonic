@@ -27,13 +27,18 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
-const (
-	BundleV1 byte = 1
-)
-
 var (
-	BundleOnly    = common.HexToAddress("0x00000000000000000000000000000000000B0D1E")
-	BundleAddress = common.HexToAddress("0x00000000000000000000000000000000B0D1EADD")
+	// BundleOnly is an address used in the access list of transactions to mark
+	// them as bundle-only, meaning they are intended to be executed as part of
+	// a bundle and not included in the block on their own.
+	BundleOnly = common.HexToAddress("0x00000000000000000000000000000000000B0D1E")
+
+	// BundleProcessor is the address to which envelope transactions are sending
+	// their payload containing the bundle of transactions to be executed.
+	BundleProcessor = common.HexToAddress("0x00000000000000000000000000000000B0D1EADD")
+
+	// MaxBlockRange is the maximum allowed block range (Latest - Earliest) for
+	// allowed for the validity period of a bundle.
 	MaxBlockRange = uint64(1024)
 )
 
@@ -253,8 +258,12 @@ func BelongsToExecutionPlan(tx *types.Transaction, executionPlanHash common.Hash
 // it is intended to be executed as a bundle containing multiple transactions
 // and not included in the block on its own.
 func IsTransactionBundle(tx *types.Transaction) bool {
-	return tx.To() != nil && *tx.To() == BundleAddress
+	return tx.To() != nil && *tx.To() == BundleProcessor
 }
+
+const (
+	BundleV1 byte = 1
+)
 
 func Encode(bundle TransactionBundle) []byte {
 

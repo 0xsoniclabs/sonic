@@ -40,7 +40,7 @@ func Test_GetBundleState_ReturnsPermanentlyBlockedForInvalidBundle(t *testing.T)
 		NetworkID: 1,
 	}).AnyTimes()
 
-	invalidBundle := types.NewTx(&types.LegacyTx{To: &bundle.BundleAddress})
+	invalidBundle := types.NewTx(&types.LegacyTx{To: &bundle.BundleProcessor})
 	signer := types.LatestSignerForChainID(big.NewInt(1))
 	_, _, err := bundle.ValidateTransactionBundle(invalidBundle, signer)
 	require.Error(t, err)
@@ -412,7 +412,7 @@ func Test_getLowestReferencedNonces_ReturnsIfSenderCannotBeDerived(t *testing.T)
 
 func Test_getLowestReferencedNonces_DetectsInvalidNestedBundle(t *testing.T) {
 	require := require.New(t)
-	invalidBundle := types.NewTx(&types.LegacyTx{To: &bundle.BundleAddress})
+	invalidBundle := types.NewTx(&types.LegacyTx{To: &bundle.BundleProcessor})
 	require.True(bundle.IsTransactionBundle(invalidBundle))
 
 	signer := types.LatestSignerForChainID(big.NewInt(1))
@@ -428,7 +428,7 @@ func Test_getLowestReferencedNonces_DetectsInvalidNestedBundle(t *testing.T) {
 
 func Test_runner_Run_ReturnsErrorForInvalidNestedBundle(t *testing.T) {
 	require := require.New(t)
-	invalidBundle := types.NewTx(&types.LegacyTx{To: &bundle.BundleAddress})
+	invalidBundle := types.NewTx(&types.LegacyTx{To: &bundle.BundleProcessor})
 	require.True(bundle.IsTransactionBundle(invalidBundle))
 
 	runner := &dryRunner{
@@ -566,7 +566,7 @@ func (p pattern) _toTxData(
 
 	// Wrap up bundle into an envelope transaction.
 	return &types.AccessListTx{
-		To:   &bundle.BundleAddress,
+		To:   &bundle.BundleProcessor,
 		Data: data,
 		Gas:  max(gasLimit, intrGas, floorDataGas),
 	}
@@ -608,7 +608,7 @@ func wrap(txBundle *bundle.TransactionBundle) *types.Transaction {
 	}
 
 	return types.NewTx(&types.AccessListTx{
-		To:   &bundle.BundleAddress,
+		To:   &bundle.BundleProcessor,
 		Data: data,
 		Gas:  max(gasLimit, 21240),
 	})

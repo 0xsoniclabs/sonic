@@ -140,7 +140,7 @@ func NewEnvelope(bundle *TransactionBundle) *types.Transaction {
 
 	return types.NewTx(&types.AccessListTx{
 		ChainID: chainId,
-		To:      &BundleAddress,
+		To:      &BundleProcessor,
 		Data:    payload,
 		Gas:     gasLimit,
 	})

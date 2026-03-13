@@ -264,7 +264,7 @@ func (a *PublicBundleAPI) SubmitBundle(
 	signer := types.LatestSignerForChainID(a.b.ChainID())
 	tx, err := types.SignNewTx(key, signer,
 		&types.DynamicFeeTx{
-			To:    &bundle.BundleAddress,
+			To:    &bundle.BundleProcessor,
 			Nonce: 0,
 			Data:  data,
 			Gas:   totalGas,

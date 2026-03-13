@@ -401,7 +401,7 @@ func simpleBundleTx(t *testing.T, chainId *big.Int, numTransactions int) *types.
 
 	bundleTx := types.NewTx(&types.LegacyTx{
 		Gas: uint64(numTransactions * int(bundleOnlyTx.Gas())),
-		To:  &bundle.BundleAddress,
+		To:  &bundle.BundleProcessor,
 		Data: bundle.Encode(bundle.TransactionBundle{
 			Version: 1,
 			Bundle:  payLoadTxs,

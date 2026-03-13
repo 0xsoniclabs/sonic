@@ -121,7 +121,7 @@ func TestValidate_AcceptsValidBlockRanges(t *testing.T) {
 				Latest:   test.To,
 			})
 			tx := types.NewTx(&types.LegacyTx{
-				To:   &BundleAddress,
+				To:   &BundleProcessor,
 				Data: data,
 				Gas:  test.Gas,
 			})
@@ -158,7 +158,7 @@ func TestValidate_IdentifiesInvalidBlockRanges(t *testing.T) {
 				Latest:   test.To,
 			})
 			tx := types.NewTx(&types.LegacyTx{
-				To:   &BundleAddress,
+				To:   &BundleProcessor,
 				Data: data,
 			})
 			require.True(t, IsTransactionBundle(tx))
@@ -205,7 +205,7 @@ func (gen testBundleGenerator) makeEmptyBundleTx() *types.Transaction {
 
 	bytes := Encode(bundle)
 	return types.NewTx(&types.LegacyTx{
-		To:   &BundleAddress,
+		To:   &BundleProcessor,
 		Data: bytes,
 		Gas:  21240,
 	})
@@ -271,7 +271,7 @@ func (gen testBundleGenerator) makeValidBundleTx(t testing.TB) *types.Transactio
 	}
 
 	return types.NewTx(&types.LegacyTx{
-		To:   &BundleAddress,
+		To:   &BundleProcessor,
 		Data: Encode(bundle),
 		Gas:  gasPerTx * uint64(gen.n),
 	})
@@ -313,7 +313,7 @@ func (gen testBundleGenerator) makeUnsoundBundleTx(t testing.TB) *types.Transact
 	}
 
 	return types.NewTx(&types.LegacyTx{
-		To:   &BundleAddress,
+		To:   &BundleProcessor,
 		Data: Encode(bundle),
 		Gas:  21096,
 	})
@@ -350,7 +350,7 @@ func (gen testBundleGenerator) makeBundleTxWithWronglySignedTx(t testing.TB) *ty
 	}
 
 	return types.NewTx(&types.LegacyTx{
-		To:   &BundleAddress,
+		To:   &BundleProcessor,
 		Data: Encode(bundle),
 		Gas:  21096,
 	})
@@ -365,7 +365,7 @@ func (gen testBundleGenerator) makeWrongVersionBundleTx() *types.Transaction {
 
 	bytes := Encode(bundle)
 	return types.NewTx(&types.LegacyTx{
-		To:   &BundleAddress,
+		To:   &BundleProcessor,
 		Data: bytes,
 		Gas:  21096,
 	})
@@ -384,7 +384,7 @@ func (gen testBundleGenerator) makeBundleTxWithoutEnoughIntrinsicGas(t testing.T
 	tx := gen.makeValidBundleTx(t)
 	// reduce the gas in tx
 	tx = types.NewTx(&types.LegacyTx{
-		To:   &BundleAddress,
+		To:   &BundleProcessor,
 		Data: tx.Data(),
 		Gas:  10_000, // not enough gas for the bundle
 	})
@@ -395,7 +395,7 @@ func (gen testBundleGenerator) makeBundleTxWithoutEnoughGasForAllTransactions(t 
 	tx := gen.makeValidBundleTx(t)
 	// reduce the gas in tx
 	tx = types.NewTx(&types.LegacyTx{
-		To:   &BundleAddress,
+		To:   &BundleProcessor,
 		Data: tx.Data(),
 		Gas:  35_000, // not enough gas for all transactions in the bundle
 	})

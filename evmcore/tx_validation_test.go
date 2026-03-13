@@ -1244,7 +1244,7 @@ func TestValidateTx_RejectsTx_WhenBundleTransactionValidationFails(t *testing.T)
 	state.EXPECT().GetCode(gomock.Any()).Return(nil).AnyTimes()
 
 	invalidBundle := types.NewTx(&types.LegacyTx{
-		To:  &bundle.BundleAddress,
+		To:  &bundle.BundleProcessor,
 		Gas: 100_000,
 	})
 
@@ -1457,7 +1457,7 @@ func Test_validateBundleTransactions_IfBundleStateIsNotRunning_RejectBundleTrans
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
 			tx := types.NewTx(&types.LegacyTx{
-				To:   &bundle.BundleAddress,
+				To:   &bundle.BundleProcessor,
 				Data: bundle.Encode(bundle.TransactionBundle{Version: 1}),
 				Gas:  21240,
 			})
@@ -1482,7 +1482,7 @@ func Test_validateBundleTransactions_IfBundleStateIsNotRunning_RejectBundleTrans
 func Test_validateBundleTransactions_IfBundledTransactionsAreEnabled_AcceptValidBundleTransaction(t *testing.T) {
 	require := require.New(t)
 	tx := types.NewTx(&types.LegacyTx{
-		To:   &bundle.BundleAddress,
+		To:   &bundle.BundleProcessor,
 		Data: bundle.Encode(bundle.TransactionBundle{Version: 1}),
 		Gas:  21240,
 	})
@@ -1504,7 +1504,7 @@ func Test_validateBundleTransactions_IfBundledTransactionsAreEnabled_AcceptValid
 func Test_validateBundleTransactions_RejectsInvalidBundleTransactions(t *testing.T) {
 	require := require.New(t)
 	tx := types.NewTx(&types.LegacyTx{
-		To:   &bundle.BundleAddress,
+		To:   &bundle.BundleProcessor,
 		Data: []byte("invalid bundle data"),
 	})
 	require.True(bundle.IsTransactionBundle(tx))
@@ -1588,7 +1588,7 @@ func TestValidateBundleTransactions_RejectsBundleWhenPayloadTransactionIsInvalid
 	gas := max(intrGas, gasLimit, floorDataGas)
 
 	bundleTx := types.NewTx(&types.LegacyTx{
-		To:   &bundle.BundleAddress,
+		To:   &bundle.BundleProcessor,
 		Data: data,
 		Gas:  gas,
 	})
