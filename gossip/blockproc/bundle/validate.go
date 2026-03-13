@@ -50,24 +50,7 @@ func ValidateTransactionBundle(
 	// the current implementation is preliminary to enable prototyping.
 	// This code needs to be developed
 
-	chainId := envelopeTx.ChainId()
-	if envelopeTx.Type() == types.LegacyTxType {
-		for _, tx := range txBundle.Transactions {
-			if tx.Type() != types.LegacyTxType {
-				cur := tx.ChainId()
-				if cur != nil && cur.Sign() != 0 {
-					chainId = cur
-					break
-				}
-			}
-		}
-	}
-
-	var signer types.Signer = types.HomesteadSigner{}
-	if chainId != nil && chainId.Sign() != 0 {
-		signer = types.LatestSignerForChainID(chainId)
-	}
-
+	signer := getSignerForBundle(envelopeTx, &txBundle)
 	plan, err := txBundle.extractExecutionPlan(signer)
 	if err != nil {
 		return nil, nil, err
@@ -134,93 +117,6 @@ func ValidateTransactionBundle(
 }
 
 // --- internal utilities ---
-
-// extractExecutionPlan extracts the execution plan from the bundle, deriving
-// the sender of each transaction using the provided signer.
-func (tb *TransactionBundle) extractExecutionPlan(signer types.Signer) (ExecutionPlan, error) {
-
-	txs := make([]ExecutionStep, 0, len(tb.Transactions))
-	for _, tx := range tb.Transactions {
-
-		// derive the sender before stripping the bundle-only mark from the access list
-		// as this operation erases the original signature
-		sender, err := signer.Sender(tx)
-		if err != nil {
-			return ExecutionPlan{}, fmt.Errorf("failed to derive sender: %v", err)
-		}
-
-		// hash the transaction after removing the bundle-only mark from the access list
-		tx, err := removeBundleOnlyMark(tx)
-		if err != nil {
-			return ExecutionPlan{}, err
-		}
-		hash := signer.Hash(tx)
-
-		txs = append(txs, ExecutionStep{
-			From: sender,
-			Hash: hash,
-		})
-	}
-
-	return ExecutionPlan{
-		Steps:    txs,
-		Flags:    tb.Flags,
-		Earliest: tb.Earliest,
-		Latest:   tb.Latest,
-	}, nil
-}
-
-// removeBundleOnlyMark is an utility function that removes the bundle-only mark
-// from the access list of a transaction.
-// This function is used to derive the hash of the transactions used in the
-// execution plan, which is based on the transaction data without the bundle-only mark.
-//
-// By doing so, the signature of the transaction is erased. Therefore, the sender
-// or the ChainId can no longer be derived from the resulting transaction.
-func removeBundleOnlyMark(tx *types.Transaction) (*types.Transaction, error) {
-	removeBundleOnlyMark := func(tx *types.Transaction) types.AccessList {
-		var accessList types.AccessList
-		for _, entry := range tx.AccessList() {
-			if entry.Address == BundleOnly {
-				continue
-			}
-			accessList = append(accessList, entry)
-		}
-		return accessList
-	}
-
-	var txData types.TxData
-	switch tx.Type() {
-	case types.AccessListTxType:
-		txData = &types.AccessListTx{
-			Nonce:      tx.Nonce(),
-			GasPrice:   tx.GasPrice(),
-			Gas:        tx.Gas(),
-			To:         tx.To(),
-			Value:      tx.Value(),
-			Data:       tx.Data(),
-			AccessList: removeBundleOnlyMark(tx),
-		}
-	case types.DynamicFeeTxType:
-		txData = &types.DynamicFeeTx{
-			Nonce:      tx.Nonce(),
-			GasTipCap:  tx.GasTipCap(),
-			GasFeeCap:  tx.GasFeeCap(),
-			Gas:        tx.Gas(),
-			To:         tx.To(),
-			Value:      tx.Value(),
-			Data:       tx.Data(),
-			AccessList: removeBundleOnlyMark(tx),
-		}
-	default:
-		// Note:
-		// - Legacy transactions cannot be bundled, because they lack of access list
-		// - Blob transactions have dubious usefulness in bundles and are not fully supported in Sonic
-		// - SetCodeTransactions have special interactions with other transactions, and they are not supported in bundles
-		return nil, fmt.Errorf("invalid bundle: unsupported transaction type %d", tx.Type())
-	}
-	return types.NewTx(txData), nil
-}
 
 // belongsToExecutionPlan checks if the given transaction correspond to one step in the execution plan.
 func belongsToExecutionPlan(tx *types.Transaction, executionPlanHash common.Hash) bool {
