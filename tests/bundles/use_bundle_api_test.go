@@ -35,81 +35,87 @@ import (
 
 func Test_CreateBundlesWithRPC(t *testing.T) {
 
-	upgrades := opera.GetBrioUpgrades()
-	upgrades.TransactionBundles = true
-	net := tests.StartIntegrationTestNet(t,
-		tests.IntegrationTestNetOptions{
-			Upgrades: &upgrades,
-		},
-	)
-	client, err := net.GetClient()
-	require.NoError(t, err, "failed to get client")
-	defer client.Close()
+	for _, singleBlockProposerOn := range []bool{true, false} {
+		t.Run(fmt.Sprintf("singleBlockProposer=%v", singleBlockProposerOn), func(t *testing.T) {
+			upgrades := opera.GetBrioUpgrades()
+			upgrades.TransactionBundles = true
+			upgrades.SingleProposerBlockFormation = singleBlockProposerOn
+			net := tests.StartIntegrationTestNet(t,
+				tests.IntegrationTestNetOptions{
+					Upgrades: &upgrades,
+				},
+			)
+			client, err := net.GetClient()
+			require.NoError(t, err, "failed to get client")
+			defer client.Close()
 
-	sender1 := net.GetSessionSponsor()
+			sender1 := net.GetSessionSponsor()
 
-	gasPrice, err := client.SuggestGasPrice(t.Context())
-	require.NoError(t, err, "failed to suggest gas price")
+			gasPrice, err := client.SuggestGasPrice(t.Context())
+			require.NoError(t, err, "failed to suggest gas price")
 
-	targetAddress := common.Address{0x42}
-	transferAmount := big.NewInt(2)
+			targetAddress := common.Address{0x42}
+			transferAmount := big.NewInt(2)
 
-	// 1) Create a list of transactions to be executed in order atomically.
-	const bundledTxCount = 15
-	txsToBeBundled := make([]ethereum.CallMsg, bundledTxCount)
+			// 1) Create a list of transactions to be executed in order atomically.
+			const bundledTxCount = 15
+			txsToBeBundled := make([]ethereum.CallMsg, bundledTxCount)
 
-	for i := range txsToBeBundled {
-		tx := ethereum.CallMsg{
-			From:     sender1.Address(),
-			To:       &targetAddress,
-			Value:    transferAmount,
-			GasPrice: gasPrice,
-		}
-		// TODO: this should be done for the complete bundle
-		tx.Gas = estimateGasForBundledTransaction(t, client, tx)
-		txsToBeBundled[i] = tx
+			for i := range txsToBeBundled {
+				tx := ethereum.CallMsg{
+					From:     sender1.Address(),
+					To:       &targetAddress,
+					Value:    transferAmount,
+					GasPrice: gasPrice,
+				}
+				// TODO: this should be done for the complete bundle
+				tx.Gas = estimateGasForBundledTransaction(t, client, tx)
+				txsToBeBundled[i] = tx
+			}
+
+			// 2) Define bundle execution parameters
+			earliest, err := client.BlockNumber(t.Context())
+			require.NoError(t, err, "failed to get block number")
+			latest := earliest + 10
+
+			// 3) Prepare bundle:
+			preparedBundle, err := PrepareBundle(
+				t, client,
+				earliest, latest,
+				txsToBeBundled)
+			require.NoError(t, err, "failed to prepare bundle")
+
+			// 4) Sign prepared transactions
+			signer := types.LatestSignerForChainID(net.GetChainId())
+			txs := make([]*types.Transaction, len(preparedBundle.Transactions))
+			for i, txArgs := range preparedBundle.Transactions {
+				txs[i], err = types.SignTx(txArgs.ToTransaction(), signer, sender1.PrivateKey)
+				require.NoError(t, err, "failed to sign transaction")
+			}
+
+			checkCompatWithMetaMask(t, client, txs)
+
+			// 5) Submit the bundle to the network
+			bundleHash, err := SubmitBundle(client, txs, preparedBundle.Plan)
+			require.NoError(t, err, "failed to submit bundle")
+
+			info, err := waitForBundleExecution(t.Context(), client.Client(), bundleHash)
+			require.NoError(t, err, "failed to wait for bundle execution")
+			require.Equal(t, ethapi.BundleStatusExecuted, info.Status)
+
+			for _, tx := range txs {
+				receipt, err := net.GetReceipt(tx.Hash())
+				require.NoError(t, err, "failed to get receipt")
+				require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
+			}
+
+			balance, err := client.BalanceAt(t.Context(), targetAddress, nil)
+			require.NoError(t, err, "failed to get balance")
+			require.Equal(t, transferAmount.Uint64()*bundledTxCount, balance.Uint64(),
+				"unexpected balance of target address")
+
+		})
 	}
-
-	// 2) Define bundle execution parameters
-	earliest, err := client.BlockNumber(t.Context())
-	require.NoError(t, err, "failed to get block number")
-	latest := earliest + 10
-
-	// 3) Prepare bundle:
-	preparedBundle, err := PrepareBundle(
-		t, client,
-		earliest, latest,
-		txsToBeBundled)
-	require.NoError(t, err, "failed to prepare bundle")
-
-	// 4) Sign prepared transactions
-	signer := types.LatestSignerForChainID(net.GetChainId())
-	txs := make([]*types.Transaction, len(preparedBundle.Transactions))
-	for i, txArgs := range preparedBundle.Transactions {
-		txs[i], err = types.SignTx(txArgs.ToTransaction(), signer, sender1.PrivateKey)
-		require.NoError(t, err, "failed to sign transaction")
-	}
-
-	checkCompatWithMetaMask(t, client, txs)
-
-	// 5) Submit the bundle to the network
-	bundleHash, err := SubmitBundle(client, txs, preparedBundle.Plan)
-	require.NoError(t, err, "failed to submit bundle")
-
-	info, err := waitForBundleExecution(t.Context(), client.Client(), bundleHash)
-	require.NoError(t, err, "failed to wait for bundle execution")
-	require.Equal(t, ethapi.BundleStatusExecuted, info.Status)
-
-	for _, tx := range txs {
-		receipt, err := net.GetReceipt(tx.Hash())
-		require.NoError(t, err, "failed to get receipt")
-		require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
-	}
-
-	balance, err := client.BalanceAt(t.Context(), targetAddress, nil)
-	require.NoError(t, err, "failed to get balance")
-	require.Equal(t, transferAmount.Uint64()*bundledTxCount, balance.Uint64(),
-		"unexpected balance of target address")
 }
 
 // checkCompatWithMetaMask checks that the signed bundle-only transactions can

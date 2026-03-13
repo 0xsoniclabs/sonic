@@ -18,6 +18,7 @@ package bundles
 
 import (
 	"context"
+	"fmt"
 	"math/big"
 	"testing"
 
@@ -35,119 +36,126 @@ import (
 
 func TestBundle_CanBeProcessedByTheNetwork(t *testing.T) {
 
-	upgrades := opera.GetBrioUpgrades()
-	upgrades.TransactionBundles = true
+	for _, singleBlockProposerOn := range []bool{true, false} {
+		t.Run(fmt.Sprintf("singleBlockProposer=%v", singleBlockProposerOn), func(t *testing.T) {
 
-	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
-		Upgrades: &upgrades,
-	})
+			upgrades := opera.GetBrioUpgrades()
+			upgrades.TransactionBundles = true
+			upgrades.SingleProposerBlockFormation = singleBlockProposerOn
 
-	client, err := net.GetClient()
-	require.NoError(t, err)
-	defer client.Close()
+			net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+				Upgrades: &upgrades,
+			})
 
-	coordinator := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
-	senderA := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
-	senderB := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
+			client, err := net.GetClient()
+			require.NoError(t, err)
+			defer client.Close()
 
-	addrA := senderA.Address()
-	addrB := senderB.Address()
+			coordinator := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
+			senderA := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
+			senderB := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
 
-	chainId := net.GetChainId()
-	signer := types.LatestSignerForChainID(chainId)
+			addrA := senderA.Address()
+			addrB := senderB.Address()
 
-	// Create a bundle where sender A and B exchange 1 token each.
-	block, err := client.BlockNumber(t.Context())
-	require.NoError(t, err)
-	txToSign, plan := prepareBundle(
-		chainId, block,
-		[]UnsignedTransaction{
-			{
-				Sender: addrA,
-				Transaction: tests.SetTransactionDefaults(
-					t, net,
-					&types.AccessListTx{
-						To:    &addrB,
-						Gas:   30_000,
-						Value: big.NewInt(1),
+			chainId := net.GetChainId()
+			signer := types.LatestSignerForChainID(chainId)
+
+			// Create a bundle where sender A and B exchange 1 token each.
+			block, err := client.BlockNumber(t.Context())
+			require.NoError(t, err)
+			txToSign, plan := prepareBundle(
+				chainId, block,
+				[]UnsignedTransaction{
+					{
+						Sender: addrA,
+						Transaction: tests.SetTransactionDefaults(
+							t, net,
+							&types.AccessListTx{
+								To:    &addrB,
+								Gas:   30_000,
+								Value: big.NewInt(1),
+							},
+							senderA,
+						),
 					},
-					senderA,
-				),
-			},
-			{
-				Sender: addrB,
-				Transaction: tests.SetTransactionDefaults(
-					t, net,
-					&types.AccessListTx{
-						To:    &addrA,
-						Gas:   30_000,
-						Value: big.NewInt(1),
+					{
+						Sender: addrB,
+						Transaction: tests.SetTransactionDefaults(
+							t, net,
+							&types.AccessListTx{
+								To:    &addrA,
+								Gas:   30_000,
+								Value: big.NewInt(1),
+							},
+							senderB,
+						),
 					},
-					senderB,
-				),
-			},
-		},
-	)
+				},
+			)
 
-	// Sign the individual transactions
-	signedTxs := []*types.Transaction{
-		types.MustSignNewTx(senderA.PrivateKey, signer, txToSign[0].Transaction),
-		types.MustSignNewTx(senderB.PrivateKey, signer, txToSign[1].Transaction),
+			// Sign the individual transactions
+			signedTxs := []*types.Transaction{
+				types.MustSignNewTx(senderA.PrivateKey, signer, txToSign[0].Transaction),
+				types.MustSignNewTx(senderB.PrivateKey, signer, txToSign[1].Transaction),
+			}
+
+			// Create the bundle transaction
+			bundleTx := types.MustSignNewTx(
+				coordinator.PrivateKey, signer,
+				makeBundle(signedTxs, plan),
+			)
+
+			// Check bundle construction.
+			require.True(t, bundle.IsTransactionBundle(bundleTx))
+			recoveredBundle, recoveredPlan, err := bundle.ValidateTransactionBundle(bundleTx, signer)
+			require.NoError(t, err)
+			require.NotNil(t, recoveredBundle)
+			require.NotNil(t, recoveredPlan)
+			require.Equal(t, plan, *recoveredPlan)
+			require.EqualValues(t, 0, bundleTx.GasFeeCap().Uint64())
+
+			// Check bundle status before submission.
+			info, err := getBundleInfo(t.Context(), client.Client(), plan.Hash())
+			require.NoError(t, err)
+			require.Equal(t, ethapi.BundleStatusUnknown, info.Status)
+
+			// Run the bundle.
+			require.NoError(t, client.SendTransaction(t.Context(), bundleTx))
+
+			// Wait for the bundle to be processed.
+			info, err = waitForBundleExecution(t.Context(), client.Client(), plan.Hash())
+			require.NoError(t, err)
+			require.Equal(t, ethapi.BundleStatusExecuted, info.Status)
+
+			// Check the block and position in which the bundle was included.
+			require.NotNil(t, info.Block)
+			require.NotNil(t, info.Position)
+			require.NotNil(t, info.Count)
+
+			// Check that the transactions are in the block as advertised.
+			receipts, err := net.GetReceipts([]common.Hash{signedTxs[0].Hash(), signedTxs[1].Hash()})
+			require.NoError(t, err)
+			require.Len(t, receipts, 2)
+			for _, receipt := range receipts {
+				require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+				require.EqualValues(t, *info.Block, receipt.BlockNumber.Uint64())
+			}
+
+			require.EqualValues(t, *info.Position, receipts[0].TransactionIndex)
+			require.EqualValues(t, *info.Position+1, receipts[1].TransactionIndex)
+
+			// Verify that there is no receipt for the bundle transaction itself.
+			_, err = client.TransactionReceipt(t.Context(), bundleTx.Hash())
+			require.ErrorIs(t, err, ethereum.NotFound)
+
+			// Also, the nonce of the bundle creator is zero.
+			nonce, err := client.NonceAt(t.Context(), coordinator.Address(), big.NewInt(int64(*info.Block)))
+			require.NoError(t, err)
+			require.Zero(t, nonce)
+
+		})
 	}
-
-	// Create the bundle transaction
-	bundleTx := types.MustSignNewTx(
-		coordinator.PrivateKey, signer,
-		makeBundle(signedTxs, plan),
-	)
-
-	// Check bundle construction.
-	require.True(t, bundle.IsTransactionBundle(bundleTx))
-	recoveredBundle, recoveredPlan, err := bundle.ValidateTransactionBundle(bundleTx, signer)
-	require.NoError(t, err)
-	require.NotNil(t, recoveredBundle)
-	require.NotNil(t, recoveredPlan)
-	require.Equal(t, plan, *recoveredPlan)
-	require.EqualValues(t, 0, bundleTx.GasFeeCap().Uint64())
-
-	// Check bundle status before submission.
-	info, err := getBundleInfo(t.Context(), client.Client(), plan.Hash())
-	require.NoError(t, err)
-	require.Equal(t, ethapi.BundleStatusUnknown, info.Status)
-
-	// Run the bundle.
-	require.NoError(t, client.SendTransaction(t.Context(), bundleTx))
-
-	// Wait for the bundle to be processed.
-	info, err = waitForBundleExecution(t.Context(), client.Client(), plan.Hash())
-	require.NoError(t, err)
-	require.Equal(t, ethapi.BundleStatusExecuted, info.Status)
-
-	// Check the block and position in which the bundle was included.
-	require.NotNil(t, info.Block)
-	require.NotNil(t, info.Position)
-	require.NotNil(t, info.Count)
-
-	// Check that the transactions are in the block as advertised.
-	receipts, err := net.GetReceipts([]common.Hash{signedTxs[0].Hash(), signedTxs[1].Hash()})
-	require.NoError(t, err)
-	require.Len(t, receipts, 2)
-	for _, receipt := range receipts {
-		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
-		require.EqualValues(t, *info.Block, receipt.BlockNumber.Uint64())
-	}
-
-	require.EqualValues(t, *info.Position, receipts[0].TransactionIndex)
-	require.EqualValues(t, *info.Position+1, receipts[1].TransactionIndex)
-
-	// Verify that there is no receipt for the bundle transaction itself.
-	_, err = client.TransactionReceipt(t.Context(), bundleTx.Hash())
-	require.ErrorIs(t, err, ethereum.NotFound)
-
-	// Also, the nonce of the bundle creator is zero.
-	nonce, err := client.NonceAt(t.Context(), coordinator.Address(), big.NewInt(int64(*info.Block)))
-	require.NoError(t, err)
-	require.Zero(t, nonce)
 }
 
 type UnsignedTransaction struct {
