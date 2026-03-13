@@ -204,7 +204,7 @@ func getLowestReferencedNonces(
 	res := make(map[common.Address]uint64)
 	for _, tx := range txBundle.Transactions {
 		if bundle.IsEnvelope(tx) {
-			bundle, _, err := bundle.ValidateTransactionBundle(tx)
+			bundle, err := bundle.OpenEnvelope(tx)
 			if err != nil {
 				return nil, fmt.Errorf("invalid nested bundle: %w", err)
 			}
@@ -247,7 +247,7 @@ func (r *dryRunner) Run(tx *types.Transaction) bundle.TransactionResult {
 
 	// if the transaction is a nested bundle, process it as such
 	if bundle.IsEnvelope(tx) {
-		txBundle, _, err := bundle.ValidateTransactionBundle(tx)
+		txBundle, err := bundle.OpenEnvelope(tx)
 		if err != nil {
 			return bundle.TransactionResultInvalid
 		}

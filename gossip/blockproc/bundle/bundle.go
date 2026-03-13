@@ -45,6 +45,15 @@ func IsEnvelope(tx *types.Transaction) bool {
 	return tx.To() != nil && *tx.To() == BundleProcessor
 }
 
+// OpenEnvelope extracts the bundle enclosed in the given envelope.
+func OpenEnvelope(tx *types.Transaction) (*TransactionBundle, error) {
+	if !IsEnvelope(tx) {
+		return nil, fmt.Errorf("not an envelop")
+	}
+	bundle, err := decode(tx.Data())
+	return &bundle, err
+}
+
 var (
 	// BundleOnly is an address used in the access list of transactions to mark
 	// them as bundle-only, meaning they are intended to be executed as part of
