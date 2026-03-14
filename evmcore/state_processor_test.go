@@ -764,7 +764,7 @@ func TestRunTransactions_GasSubsidiesDisabled_ProcessesRegularTransaction(t *tes
 				upgrades: opera.Upgrades{GasSubsidies: false},
 			}
 			runner.EXPECT().runRegularTransaction(context, tx, 0)
-			runTransactions(context, []*types.Transaction{tx}, 0)
+			runTransactions(context, []*types.Transaction{tx}, 0, 0)
 		})
 	}
 }
@@ -783,7 +783,7 @@ func TestRunTransactions_GasSubsidiesEnabled_RunsRegularTransactionWithoutSponso
 		upgrades: opera.Upgrades{GasSubsidies: true},
 	}
 	runner.EXPECT().runRegularTransaction(context, tx, 0).Return(processed, StatusSuccessful)
-	got := runTransactions(context, []*types.Transaction{tx}, 0)
+	got := runTransactions(context, []*types.Transaction{tx}, 0, 0)
 	require.Equal(t, ExecutionSummary{ProcessedTransactions: []ProcessedTransaction{processed}}, got)
 }
 
@@ -804,7 +804,7 @@ func TestRunTransactions_GasSubsidiesEnabled_RunsSponsorshipRequestWithSponsorsh
 		}},
 		StatusSuccessful,
 	)
-	summary := runTransactions(context, []*types.Transaction{tx}, 0)
+	summary := runTransactions(context, []*types.Transaction{tx}, 0, 0)
 	processed := summary.ProcessedTransactions
 	require.Len(t, processed, 1)
 	require.Equal(t, tx, processed[0].Transaction)
