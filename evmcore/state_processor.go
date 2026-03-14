@@ -142,7 +142,7 @@ func (p *StateProcessor) ProcessWithDifficulty(
 	return runTransactions(newRunContext(
 		signer, header.BaseFee, statedb, gp, blockNumber, usedGas,
 		onNewLog, p.upgrades, &transactionRunner{evm{vmenv}},
-	), block.Transactions, 0)
+	), block.Transactions, 0, 0)
 }
 
 // runContext bundles the parameters required for processing transactions in a
@@ -198,13 +198,22 @@ func newRunContext(
 func runTransactions(
 	context *runContext,
 	transactions types.Transactions,
-	txIndexOffset int,
+	legacyTxIndexOffset int,
+	trueTxIndexOffset int,
 ) ExecutionSummary {
 	processed := make([]ProcessedTransaction, 0, len(transactions))
 	var bundles []ProcessedBundle
 	for _, tx := range transactions {
-		nextId := len(processed) + txIndexOffset
-		txs, processedBundle, _ := runTransaction(context, tx, nextId)
+		legacyNextId := len(processed) + legacyTxIndexOffset
+
+		trueNextId := trueTxIndexOffset
+		for _, p := range processed {
+			if p.Receipt != nil {
+				trueNextId++
+			}
+		}
+
+		txs, processedBundle, _ := runTransaction(context, tx, legacyNextId, trueNextId)
 		processed = append(processed, txs...)
 		if processedBundle != nil {
 			bundles = append(bundles, *processedBundle)
@@ -219,17 +228,18 @@ func runTransactions(
 func runTransaction(
 	context *runContext,
 	tx *types.Transaction,
-	txIndexOffset int,
+	legacyTxIndexOffset int,
+	trueTxIndexOffset int,
 ) ([]ProcessedTransaction, *ProcessedBundle, core_types.TransactionResult) {
 	// Since a transaction bundle has a gas-price of 0 it would be considered a
 	// sponsorship request. Thus, we need to check for bundles first.
 	if context.upgrades.TransactionBundles && bundle.IsEnvelope(tx) {
-		return context.runner.runTransactionBundle(context, tx, txIndexOffset)
+		return context.runner.runTransactionBundle(context, tx, legacyTxIndexOffset, trueTxIndexOffset)
 	} else if context.upgrades.GasSubsidies && subsidies.IsSponsorshipRequest(tx) {
-		res, status := context.runner.runSponsoredTransaction(context, tx, txIndexOffset)
+		res, status := context.runner.runSponsoredTransaction(context, tx, legacyTxIndexOffset)
 		return res, nil, status
 	} else {
-		res, status := context.runner.runRegularTransaction(context, tx, txIndexOffset)
+		res, status := context.runner.runRegularTransaction(context, tx, legacyTxIndexOffset)
 		return []ProcessedTransaction{res}, nil, status
 	}
 }
@@ -240,7 +250,7 @@ func runTransaction(
 type _transactionRunner interface {
 	runRegularTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) (ProcessedTransaction, core_types.TransactionResult)
 	runSponsoredTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) ([]ProcessedTransaction, core_types.TransactionResult)
-	runTransactionBundle(ctxt *runContext, tx *types.Transaction, txIndex int) ([]ProcessedTransaction, *ProcessedBundle, core_types.TransactionResult)
+	runTransactionBundle(ctxt *runContext, tx *types.Transaction, legacyTxIndex int, trueTxIndex int) ([]ProcessedTransaction, *ProcessedBundle, core_types.TransactionResult)
 }
 
 // transactionRunner implements the _transactionRunner interface by using an
@@ -344,9 +354,9 @@ func (r *transactionRunner) runSponsoredTransaction(
 func (r *transactionRunner) runTransactionBundle(
 	ctxt *runContext,
 	tx *types.Transaction,
-	txIndex int,
+	legacyTxOffset int,
+	trueTxOffset int,
 ) ([]ProcessedTransaction, *ProcessedBundle, core_types.TransactionResult) {
-
 	if !ctxt.upgrades.TransactionBundles {
 		log.Warn("Transaction bundles are not enabled, skipping bundle transaction", "tx", tx.Hash().Hex())
 		return []ProcessedTransaction{{Transaction: tx}}, nil, core_types.TransactionResultInvalid
@@ -365,11 +375,11 @@ func (r *transactionRunner) runTransactionBundle(
 
 	processedBundle := &ProcessedBundle{
 		ExecutionPlanHash: plan.Hash(),
-		Position:          uint32(txIndex),
+		Position:          uint32(trueTxOffset),
 	}
 
 	// Run the bundle and collect the processed transactions.
-	runner := bundleTransactionRunner{ctxt: ctxt, txOffset: txIndex}
+	runner := bundleTransactionRunner{ctxt: ctxt, legacyTxOffset: legacyTxOffset, trueTxOffset: trueTxOffset}
 	bundleCheckpoint := ctxt.statedb.InterTxSnapshot()
 	if success := bundle.RunBundle(txBundle, &runner); !success {
 		if err := ctxt.statedb.RevertToInterTxSnapshot(bundleCheckpoint); err != nil {
@@ -389,24 +399,27 @@ func (r *transactionRunner) runTransactionBundle(
 // interface to run transactions within a bundle and collect their results.
 type bundleTransactionRunner struct {
 	ctxt                  *runContext
-	txOffset              int
+	legacyTxOffset        int
+	trueTxOffset          int
 	processedTransactions []ProcessedTransaction
 }
 
 func (b *bundleTransactionRunner) Run(tx *types.Transaction) core_types.TransactionResult {
-	processed, _, status := runTransaction(b.ctxt, tx, b.txOffset)
+	processed, _, status := runTransaction(b.ctxt, tx, b.legacyTxOffset, b.trueTxOffset)
 	b.processedTransactions = append(b.processedTransactions, processed...)
 	if status == core_types.TransactionResultInvalid {
 		return core_types.TransactionResultInvalid
 	}
 
+	// TODO: this is likely buggy when rolling back nested bundles
 	processedCount := 0
 	for _, p := range processed {
 		if p.Receipt != nil {
-			processedCount++
+			b.legacyTxOffset++
+			b.trueTxOffset++
 		}
 	}
-	b.txOffset += processedCount
+	b.trueTxOffset += processedCount
 
 	if status == core_types.TransactionResultFailed {
 		return core_types.TransactionResultFailed
@@ -528,7 +541,7 @@ func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) ExecutionSumma
 	return runTransactions(newRunContext(
 		tp.signer, tp.header.BaseFee, tp.stateDb, tp.gp, tp.blockNumber,
 		&tp.usedGas, tp.onNewLog, tp.upgrades, &transactionRunner{evm{tp.vmEnvironment}},
-	), []*types.Transaction{tx}, i)
+	), []*types.Transaction{tx}, i, i)
 }
 
 // ApplyTransactionWithEVM attempts to apply a transaction to the given state database
