@@ -372,7 +372,7 @@ func (l *txList) Filter(costLimit *big.Int, gasLimit uint64, subsidiesChecker su
 	removed := l.txs.Filter(func(tx *types.Transaction) bool {
 		// Bundle transactions need to be checked before sponsored transactions
 		// since bundles qualify as sponsored transactions.
-		if bundle.IsTransactionBundle(tx) {
+		if bundle.IsEnvelope(tx) {
 			return !bundleChecker.isPending(tx)
 		}
 		if subsidies.IsSponsorshipRequest(tx) {

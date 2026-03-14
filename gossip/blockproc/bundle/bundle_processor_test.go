@@ -26,12 +26,12 @@ import (
 
 func Test_RunBundle_HandlesExecutionModeCorrectly(t *testing.T) {
 	require := require.New(t)
-	require.True(RunBundle(&TransactionBundle{Flags: AllOf}, nil))
-	require.False(RunBundle(&TransactionBundle{Flags: OneOf}, nil))
+	require.True(RunBundle(&TransactionBundle{Flags: EF_AllOf}, nil))
+	require.False(RunBundle(&TransactionBundle{Flags: EF_OneOf}, nil))
 }
 
 func Test_runAllOfBundle_ReturnsTrueForEmptyBundle(t *testing.T) {
-	emptyBundle := &TransactionBundle{Bundle: nil}
+	emptyBundle := &TransactionBundle{Transactions: nil}
 	result := runAllOfBundle(emptyBundle, nil)
 	require.True(t, result)
 }
@@ -44,7 +44,7 @@ func Test_runAllOfBundle_ReturnsTrueIfAllTransactionsSuccessful(t *testing.T) {
 	runner.EXPECT().Run(tx).Return(TransactionResultSuccessful).Times(3)
 
 	bundle := &TransactionBundle{
-		Bundle: []*types.Transaction{tx, tx, tx},
+		Transactions: []*types.Transaction{tx, tx, tx},
 	}
 
 	result := runAllOfBundle(bundle, runner)
@@ -65,7 +65,7 @@ func Test_runAllOfBundle_StopsAtFirstFailedTransaction(t *testing.T) {
 	)
 
 	bundle := &TransactionBundle{
-		Bundle: []*types.Transaction{tx1, tx2, tx3},
+		Transactions: []*types.Transaction{tx1, tx2, tx3},
 	}
 
 	result := runAllOfBundle(bundle, runner)
@@ -73,7 +73,7 @@ func Test_runAllOfBundle_StopsAtFirstFailedTransaction(t *testing.T) {
 }
 
 func Test_runOneOfBundle_ReturnsFalseForEmptyBundle(t *testing.T) {
-	emptyBundle := &TransactionBundle{Bundle: nil}
+	emptyBundle := &TransactionBundle{Transactions: nil}
 	result := runOneOfBundle(emptyBundle, nil)
 	require.False(t, result)
 }
@@ -86,7 +86,7 @@ func Test_runOneOfBundle_ReturnsFalseIfAllTransactionsFail(t *testing.T) {
 	runner.EXPECT().Run(tx).Return(TransactionResultFailed).Times(3)
 
 	bundle := &TransactionBundle{
-		Bundle: []*types.Transaction{tx, tx, tx},
+		Transactions: []*types.Transaction{tx, tx, tx},
 	}
 
 	result := runOneOfBundle(bundle, runner)
@@ -108,7 +108,7 @@ func Test_runOneOfBundle_StopsAtFirstSuccessfulTransaction(t *testing.T) {
 	)
 
 	bundle := &TransactionBundle{
-		Bundle: []*types.Transaction{tx1, tx2, tx3},
+		Transactions: []*types.Transaction{tx1, tx2, tx3},
 	}
 
 	result := runOneOfBundle(bundle, runner)
@@ -126,20 +126,20 @@ func Test_isTolerated_InterpretsExecutionFlagsCorrectly(t *testing.T) {
 		{flags: 0, result: TransactionResultSuccessful, tolerated: true},
 		{flags: 0, result: 99, tolerated: false}, // unknown result treated as failed
 
-		{flags: TolerateInvalid, result: TransactionResultInvalid, tolerated: true},
-		{flags: TolerateInvalid, result: TransactionResultFailed, tolerated: false},
-		{flags: TolerateInvalid, result: TransactionResultSuccessful, tolerated: true},
-		{flags: TolerateInvalid, result: 99, tolerated: false}, // unknown result treated as failed
+		{flags: EF_TolerateInvalid, result: TransactionResultInvalid, tolerated: true},
+		{flags: EF_TolerateInvalid, result: TransactionResultFailed, tolerated: false},
+		{flags: EF_TolerateInvalid, result: TransactionResultSuccessful, tolerated: true},
+		{flags: EF_TolerateInvalid, result: 99, tolerated: false}, // unknown result treated as failed
 
-		{flags: TolerateFailed, result: TransactionResultInvalid, tolerated: false},
-		{flags: TolerateFailed, result: TransactionResultFailed, tolerated: true},
-		{flags: TolerateFailed, result: TransactionResultSuccessful, tolerated: true},
-		{flags: TolerateFailed, result: 99, tolerated: false}, // unknown result treated as failed
+		{flags: EF_TolerateFailed, result: TransactionResultInvalid, tolerated: false},
+		{flags: EF_TolerateFailed, result: TransactionResultFailed, tolerated: true},
+		{flags: EF_TolerateFailed, result: TransactionResultSuccessful, tolerated: true},
+		{flags: EF_TolerateFailed, result: 99, tolerated: false}, // unknown result treated as failed
 
-		{flags: TolerateInvalid | TolerateFailed, result: TransactionResultInvalid, tolerated: true},
-		{flags: TolerateInvalid | TolerateFailed, result: TransactionResultFailed, tolerated: true},
-		{flags: TolerateInvalid | TolerateFailed, result: TransactionResultSuccessful, tolerated: true},
-		{flags: TolerateInvalid | TolerateFailed, result: 99, tolerated: false}, // unknown result treated as failed
+		{flags: EF_TolerateInvalid | EF_TolerateFailed, result: TransactionResultInvalid, tolerated: true},
+		{flags: EF_TolerateInvalid | EF_TolerateFailed, result: TransactionResultFailed, tolerated: true},
+		{flags: EF_TolerateInvalid | EF_TolerateFailed, result: TransactionResultSuccessful, tolerated: true},
+		{flags: EF_TolerateInvalid | EF_TolerateFailed, result: 99, tolerated: false}, // unknown result treated as failed
 	}
 
 	for _, test := range tests {

@@ -28,7 +28,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
@@ -1244,11 +1243,11 @@ func TestValidateTx_RejectsTx_WhenBundleTransactionValidationFails(t *testing.T)
 	state.EXPECT().GetCode(gomock.Any()).Return(nil).AnyTimes()
 
 	invalidBundle := types.NewTx(&types.LegacyTx{
-		To:  &bundle.BundleAddress,
+		To:  &bundle.BundleProcessor,
 		Gas: 100_000,
 	})
 
-	require.True(bundle.IsTransactionBundle(invalidBundle))
+	require.True(bundle.IsEnvelope(invalidBundle))
 	require.ErrorIs(validateTx(
 		invalidBundle,
 		poolOptions{
@@ -1427,8 +1426,8 @@ func Test_validateBundleTransactions_AcceptNonBundleTransactions(t *testing.T) {
 	for name, tx := range tests {
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
-			require.False(bundle.IsTransactionBundle(tx))
-			require.NoError(validateBundleTransactions(tx, NetworkRules{}, nil, nil, nil))
+			require.False(bundle.IsEnvelope(tx))
+			require.NoError(validateBundleTransactions(tx, NetworkRules{}, nil, nil))
 		})
 	}
 }
@@ -1456,12 +1455,8 @@ func Test_validateBundleTransactions_IfBundleStateIsNotRunning_RejectBundleTrans
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
-			tx := types.NewTx(&types.LegacyTx{
-				To:   &bundle.BundleAddress,
-				Data: bundle.Encode(bundle.TransactionBundle{Version: 1}),
-				Gas:  21240,
-			})
-			require.True(bundle.IsTransactionBundle(tx))
+			tx := bundle.AllOf()
+			require.True(bundle.IsEnvelope(tx))
 
 			getBundleState := func(ChainState, *types.Transaction) BundleState {
 				return test.bundleState
@@ -1469,7 +1464,7 @@ func Test_validateBundleTransactions_IfBundleStateIsNotRunning_RejectBundleTrans
 
 			rules := NetworkRules{}
 			rules.transactionBundles = true
-			err := validateBundleTransactionsInternal(tx, rules, nil, nil, nil, getBundleState)
+			err := validateBundleTransactionsInternal(tx, rules, nil, nil, getBundleState)
 			if test.valid {
 				require.NoError(err)
 			} else {
@@ -1481,12 +1476,8 @@ func Test_validateBundleTransactions_IfBundleStateIsNotRunning_RejectBundleTrans
 
 func Test_validateBundleTransactions_IfBundledTransactionsAreEnabled_AcceptValidBundleTransaction(t *testing.T) {
 	require := require.New(t)
-	tx := types.NewTx(&types.LegacyTx{
-		To:   &bundle.BundleAddress,
-		Data: bundle.Encode(bundle.TransactionBundle{Version: 1}),
-		Gas:  21240,
-	})
-	require.True(bundle.IsTransactionBundle(tx))
+	tx := bundle.AllOf()
+	require.True(bundle.IsEnvelope(tx))
 
 	getBundleState := func(ChainState, *types.Transaction) BundleState {
 		return BundleStateRunnable
@@ -1494,108 +1485,32 @@ func Test_validateBundleTransactions_IfBundledTransactionsAreEnabled_AcceptValid
 
 	rules := NetworkRules{}
 	rules.transactionBundles = false
-	err := validateBundleTransactionsInternal(tx, rules, nil, nil, nil, getBundleState)
+	err := validateBundleTransactionsInternal(tx, rules, nil, nil, getBundleState)
 	require.ErrorIs(err, ErrBundleTransactionsDisabled)
 	rules.transactionBundles = true
-	err = validateBundleTransactionsInternal(tx, rules, nil, nil, nil, getBundleState)
+	err = validateBundleTransactionsInternal(tx, rules, nil, nil, getBundleState)
 	require.NoError(err)
 }
 
 func Test_validateBundleTransactions_RejectsInvalidBundleTransactions(t *testing.T) {
 	require := require.New(t)
 	tx := types.NewTx(&types.LegacyTx{
-		To:   &bundle.BundleAddress,
+		To:   &bundle.BundleProcessor,
 		Data: []byte("invalid bundle data"),
 	})
-	require.True(bundle.IsTransactionBundle(tx))
+	require.True(bundle.IsEnvelope(tx))
 
 	rules := NetworkRules{transactionBundles: true}
-	require.ErrorIs(validateBundleTransactions(tx, rules, nil, nil, nil),
+	require.ErrorIs(validateBundleTransactions(tx, rules, nil, nil),
 		ErrBundleTransactionInvalid)
 }
 
 func TestValidateBundleTransactions_RejectsBundleWhenPayloadTransactionIsInvalid(t *testing.T) {
 	require := require.New(t)
-	receiver := common.Address{0x42}
 
-	signer := types.LatestSignerForChainID(big.NewInt(1))
-
-	innerTx := types.AccessListTx{
-		Nonce: uint64(1),
-		To:    &receiver,
-		Value: big.NewInt(1234),
-	}
-
-	txHash := signer.Hash(types.NewTx(&innerTx))
-	key, err := crypto.GenerateKey()
-	require.NoError(err)
-	sender := crypto.PubkeyToAddress(key.PublicKey)
-
-	// prepare execution  plan
-	plan := bundle.ExecutionPlan{
-		Steps: make([]bundle.ExecutionStep, 1),
-		Flags: 0,
-	}
-	plan.Steps[0] = bundle.ExecutionStep{
-		From: sender,
-		Hash: txHash,
-	}
-
-	// amend transactions with the execution plan hash
-	// and sign them
-	planHash := plan.Hash()
-
-	innerTx.AccessList = types.AccessList{
-		types.AccessTuple{
-			Address: bundle.BundleOnly,
-			StorageKeys: []common.Hash{
-				planHash,
-			},
-		}}
-
-	signedTx, err := types.SignTx(types.NewTx(&innerTx), signer, key)
-	require.NoError(err)
-	signedTransactions := types.Transactions{signedTx}
-
-	// prepare the bundle
-	txBundle := bundle.TransactionBundle{
-		Version: bundle.BundleV1,
-		Bundle:  signedTransactions,
-		Flags:   0,
-	}
-
-	// Compute the gas limit for the envelop transaction.
-	gasLimit := uint64(0)
-	for _, tx := range signedTransactions {
-		gasLimit += tx.Gas()
-	}
-
-	data := bundle.Encode(txBundle)
-	intrGas, err := core.IntrinsicGas(
-		data,
-		nil,   // no access lis
-		nil,   // no set-code authorization
-		false, // is contract creation
-		true,  // is homestead
-		true,  // is istanbul
-		true,  // is shanghai
-	)
-	require.NoError(err)
-
-	floorDataGas, err := core.FloorDataGas(data)
-	require.NoError(err)
-
-	gas := max(intrGas, gasLimit, floorDataGas)
-
-	bundleTx := types.NewTx(&types.LegacyTx{
-		To:   &bundle.BundleAddress,
-		Data: data,
-		Gas:  gas,
-	})
+	bundleTx := bundle.NewBuilder().Latest(0).Build() // bundle is outdated
 
 	rules, chain, state := makeValidateTxParameters(t)
-	// make innerTx validation fail because nonce is too old
-	state.EXPECT().GetNonce(gomock.Any()).Return(uint64(10)).AnyTimes()
 	chain.EXPECT().CurrentRules().Return(opera.Rules{NetworkID: 1}).AnyTimes()
 	nextBlock := &EvmBlock{
 		EvmHeader: EvmHeader{
@@ -1605,7 +1520,7 @@ func TestValidateBundleTransactions_RejectsBundleWhenPayloadTransactionIsInvalid
 	chain.EXPECT().CurrentBlock().Return(nextBlock).AnyTimes()
 
 	rules.transactionBundles = true
-	err = validateBundleTransactions(bundleTx, rules, signer, chain, state)
+	err := validateBundleTransactions(bundleTx, rules, chain, state)
 	require.ErrorContains(err, "bundle is permanently blocked")
 }
 

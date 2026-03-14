@@ -1169,9 +1169,9 @@ func (pool *TxPool) HasBundle(execPlanHash common.Hash) bool {
 	pool.mu.RLock()
 	defer pool.mu.RUnlock()
 	for _, tx := range pool.all.txs() {
-		if bundle.IsTransactionBundle(tx) {
-			_, plan, _ := bundle.ValidateTransactionBundle(tx, pool.signer)
-			if plan.Hash() == execPlanHash {
+		if bundle.IsEnvelope(tx) {
+			plan, err := bundle.ExtractExecutionPlan(tx)
+			if err == nil && plan.Hash() == execPlanHash {
 				return true
 			}
 		}

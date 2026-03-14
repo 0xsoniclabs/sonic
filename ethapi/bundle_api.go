@@ -219,11 +219,10 @@ func (a *PublicBundleAPI) SubmitBundle(
 ) (common.Hash, error) {
 
 	txBundle := bundle.TransactionBundle{
-		Version:  bundle.BundleV1,
-		Bundle:   make(types.Transactions, len(args.SignedTransactions)),
-		Flags:    args.ExecutionPlan.Flags,
-		Earliest: args.ExecutionPlan.Earliest,
-		Latest:   args.ExecutionPlan.Latest,
+		Transactions: make(types.Transactions, len(args.SignedTransactions)),
+		Flags:        args.ExecutionPlan.Flags,
+		Earliest:     args.ExecutionPlan.Earliest,
+		Latest:       args.ExecutionPlan.Latest,
 	}
 
 	// 1) Decode bundled transactions and compute total gas requirement
@@ -235,13 +234,13 @@ func (a *PublicBundleAPI) SubmitBundle(
 			return common.Hash{}, fmt.Errorf("failed to decode bundled transaction %d: %w", i, err)
 		}
 
-		txBundle.Bundle[i] = tx
+		txBundle.Transactions[i] = tx
 		totalGas += tx.Gas()
 	}
 
 	// 2)  Encode the bundle and compute if gas limits are sufficient to cover
 	// both the payload and the data-related gas costs.
-	data := bundle.Encode(txBundle)
+	data := txBundle.Encode()
 	minGas, err := core.IntrinsicGas(data, nil, nil, false, true, true, true)
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("failed to finalize bundle: could not calculate intrinsic gas: %w", err)
@@ -264,7 +263,7 @@ func (a *PublicBundleAPI) SubmitBundle(
 	signer := types.LatestSignerForChainID(a.b.ChainID())
 	tx, err := types.SignNewTx(key, signer,
 		&types.DynamicFeeTx{
-			To:    &bundle.BundleAddress,
+			To:    &bundle.BundleProcessor,
 			Nonce: 0,
 			Data:  data,
 			Gas:   totalGas,
@@ -274,7 +273,7 @@ func (a *PublicBundleAPI) SubmitBundle(
 	}
 
 	// 5) Validate generated transaction
-	_, plan, err := bundle.ValidateTransactionBundle(tx, signer)
+	_, plan, err := bundle.ValidateTransactionBundle(tx)
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("failed to validate bundle transaction: %w", err)
 	}

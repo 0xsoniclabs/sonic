@@ -13,7 +13,6 @@
 //
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
-
 package bundles
 
 import (
@@ -140,13 +139,13 @@ func getSubcases() map[string]SubCase {
 		},
 		"bundled/OneOf=false/TolerateFailed=false/TolerateInvalid=true": {
 			success: SubCaseVariant{
-				subBundleTx{flags: bundle.TolerateInvalid, txTypes: []txType{invalidNormalTx{}, successfulNormalTx{}}},
+				subBundleTx{flags: bundle.EF_TolerateInvalid, txTypes: []txType{invalidNormalTx{}, successfulNormalTx{}}},
 				[]txIndex{uncheckedTxIndex},
 				[]txStatus{successStatus},
 				1,
 			},
 			failed: SubCaseVariant{
-				subBundleTx{flags: bundle.TolerateInvalid, txTypes: []txType{successfulNormalTx{}, failedNormalTx{}}},
+				subBundleTx{flags: bundle.EF_TolerateInvalid, txTypes: []txType{successfulNormalTx{}, failedNormalTx{}}},
 				[]txIndex{},
 				[]txStatus{},
 				0,
@@ -155,13 +154,13 @@ func getSubcases() map[string]SubCase {
 		},
 		"bundled/OneOf=false/TolerateFailed=true/TolerateInvalid=false": {
 			success: SubCaseVariant{
-				subBundleTx{flags: bundle.TolerateFailed, txTypes: []txType{failedNormalTx{}, successfulNormalTx{}}},
+				subBundleTx{flags: bundle.EF_TolerateFailed, txTypes: []txType{failedNormalTx{}, successfulNormalTx{}}},
 				[]txIndex{uncheckedTxIndex, uncheckedTxIndex},
 				[]txStatus{failedStatus, successStatus},
 				1,
 			},
 			failed: SubCaseVariant{
-				subBundleTx{flags: bundle.TolerateFailed, txTypes: []txType{successfulNormalTx{}, invalidNormalTx{}}},
+				subBundleTx{flags: bundle.EF_TolerateFailed, txTypes: []txType{successfulNormalTx{}, invalidNormalTx{}}},
 				[]txIndex{},
 				[]txStatus{},
 				0,
@@ -170,7 +169,7 @@ func getSubcases() map[string]SubCase {
 		},
 		"bundled/OneOf=false/TolerateFailed=true/TolerateInvalid=true": {
 			success: SubCaseVariant{
-				subBundleTx{flags: bundle.TolerateFailed | bundle.TolerateInvalid, txTypes: []txType{invalidNormalTx{}, failedNormalTx{}, successfulNormalTx{}}},
+				subBundleTx{flags: bundle.EF_TolerateFailed | bundle.EF_TolerateInvalid, txTypes: []txType{invalidNormalTx{}, failedNormalTx{}, successfulNormalTx{}}},
 				[]txIndex{uncheckedTxIndex, uncheckedTxIndex},
 				[]txStatus{failedStatus, successStatus},
 				1,
@@ -180,13 +179,13 @@ func getSubcases() map[string]SubCase {
 		},
 		"bundled/OneOf=true/TolerateFailed=false/TolerateInvalid=false": {
 			success: SubCaseVariant{
-				subBundleTx{flags: bundle.OneOf, txTypes: []txType{invalidNormalTx{}, failedNormalTx{}, successfulNormalTx{}}},
+				subBundleTx{flags: bundle.EF_OneOf, txTypes: []txType{invalidNormalTx{}, failedNormalTx{}, successfulNormalTx{}}},
 				[]txIndex{uncheckedTxIndex, uncheckedTxIndex},
 				[]txStatus{failedStatus, successStatus},
 				1,
 			},
 			failed: SubCaseVariant{
-				subBundleTx{flags: bundle.OneOf, txTypes: []txType{failedNormalTx{}, invalidNormalTx{}}},
+				subBundleTx{flags: bundle.EF_OneOf, txTypes: []txType{failedNormalTx{}, invalidNormalTx{}}},
 				[]txIndex{},
 				[]txStatus{},
 				0,
@@ -195,13 +194,13 @@ func getSubcases() map[string]SubCase {
 		},
 		"bundled/OneOf=true/TolerateFailed=false/TolerateInvalid=true": {
 			success: SubCaseVariant{
-				subBundleTx{flags: bundle.OneOf | bundle.TolerateInvalid, txTypes: []txType{failedNormalTx{}, invalidNormalTx{}}},
+				subBundleTx{flags: bundle.EF_OneOf | bundle.EF_TolerateInvalid, txTypes: []txType{failedNormalTx{}, invalidNormalTx{}}},
 				[]txIndex{uncheckedTxIndex},
 				[]txStatus{failedStatus},
 				0,
 			},
 			failed: SubCaseVariant{
-				subBundleTx{flags: bundle.OneOf | bundle.TolerateInvalid, txTypes: []txType{failedNormalTx{}, failedNormalTx{}}},
+				subBundleTx{flags: bundle.EF_OneOf | bundle.EF_TolerateInvalid, txTypes: []txType{failedNormalTx{}, failedNormalTx{}}},
 				[]txIndex{},
 				[]txStatus{},
 				0,
@@ -210,13 +209,13 @@ func getSubcases() map[string]SubCase {
 		},
 		"bundled/OneOf=true/TolerateFailed=true/TolerateInvalid=false": {
 			success: SubCaseVariant{
-				subBundleTx{flags: bundle.OneOf | bundle.TolerateFailed, txTypes: []txType{invalidNormalTx{}, failedNormalTx{}}},
+				subBundleTx{flags: bundle.EF_OneOf | bundle.EF_TolerateFailed, txTypes: []txType{invalidNormalTx{}, failedNormalTx{}}},
 				[]txIndex{uncheckedTxIndex},
 				[]txStatus{failedStatus},
 				0,
 			},
 			failed: SubCaseVariant{
-				subBundleTx{flags: bundle.OneOf | bundle.TolerateFailed, txTypes: []txType{invalidNormalTx{}, invalidNormalTx{}}},
+				subBundleTx{flags: bundle.EF_OneOf | bundle.EF_TolerateFailed, txTypes: []txType{invalidNormalTx{}, invalidNormalTx{}}},
 				[]txIndex{},
 				[]txStatus{},
 				0,
@@ -225,13 +224,13 @@ func getSubcases() map[string]SubCase {
 		},
 		"bundled/OneOf=true/TolerateFailed=true/TolerateInvalid=true": {
 			success: SubCaseVariant{
-				subBundleTx{flags: bundle.OneOf | bundle.TolerateFailed | bundle.TolerateInvalid, txTypes: []txType{invalidNormalTx{}, successfulNormalTx{}}},
+				subBundleTx{flags: bundle.EF_OneOf | bundle.EF_TolerateFailed | bundle.EF_TolerateInvalid, txTypes: []txType{invalidNormalTx{}, successfulNormalTx{}}},
 				[]txIndex{},
 				[]txStatus{},
 				0,
 			},
 			failed: SubCaseVariant{
-				subBundleTx{flags: bundle.OneOf | bundle.TolerateFailed | bundle.TolerateInvalid, txTypes: []txType{}},
+				subBundleTx{flags: bundle.EF_OneOf | bundle.EF_TolerateFailed | bundle.EF_TolerateInvalid, txTypes: []txType{}},
 				[]txIndex{},
 				[]txStatus{},
 				0,

@@ -19,7 +19,9 @@ package bundle
 import (
 	"errors"
 	"fmt"
+	"slices"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 )
@@ -32,15 +34,14 @@ var ErrBundleGasLimitTooLow = errors.New("gas limit of bundle transaction does n
 // If the transaction is not a bundle transaction, or if bundle transactions are not enabled, it returns nil,nil (no bundle, no error).
 func ValidateTransactionBundle(
 	envelopeTx *types.Transaction,
-	signer types.Signer,
 ) (*TransactionBundle, *ExecutionPlan, error) {
 
-	if !IsTransactionBundle(envelopeTx) {
+	if !IsEnvelope(envelopeTx) {
 		// not a bundle transaction, nothing to validate
 		return nil, nil, nil
 	}
 
-	txBundle, err := Decode(envelopeTx.Data())
+	txBundle, err := decode(envelopeTx.Data())
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to decode transaction bundle: %v", err)
 	}
@@ -49,7 +50,8 @@ func ValidateTransactionBundle(
 	// the current implementation is preliminary to enable prototyping.
 	// This code needs to be developed
 
-	plan, err := txBundle.ExtractExecutionPlan(signer)
+	signer := getSignerForBundle(envelopeTx, &txBundle)
+	plan, err := txBundle.extractExecutionPlan(signer)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -64,9 +66,9 @@ func ValidateTransactionBundle(
 	}
 
 	planHash := plan.Hash()
-	for _, tx := range txBundle.Bundle {
+	for _, tx := range txBundle.Transactions {
 		// check that all transactions in the bundle belong to the same execution plan
-		if !BelongsToExecutionPlan(tx, planHash) {
+		if !belongsToExecutionPlan(tx, planHash) {
 			return nil, nil, fmt.Errorf("transaction %s does not belong to the execution plan", tx.Hash().Hex())
 		}
 	}
@@ -92,7 +94,7 @@ func ValidateTransactionBundle(
 	// transactions in the bundle or the intrinsic gas of the bundle
 	// transaction, whichever is higher.
 	gasLimit := uint64(0)
-	for _, innerTx := range txBundle.Bundle {
+	for _, innerTx := range txBundle.Transactions {
 		gasLimit += innerTx.Gas()
 	}
 
@@ -112,4 +114,17 @@ func ValidateTransactionBundle(
 	}
 
 	return &txBundle, &plan, nil
+}
+
+// --- internal utilities ---
+
+// belongsToExecutionPlan checks if the given transaction correspond to one step in the execution plan.
+func belongsToExecutionPlan(tx *types.Transaction, executionPlanHash common.Hash) bool {
+	for _, entry := range tx.AccessList() {
+		if entry.Address == BundleOnly &&
+			slices.Contains(entry.StorageKeys, executionPlanHash) {
+			return true
+		}
+	}
+	return false
 }
