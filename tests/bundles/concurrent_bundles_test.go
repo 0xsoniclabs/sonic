@@ -1,0 +1,253 @@
+package bundles
+
+import (
+	"fmt"
+	"math"
+	"math/big"
+	"testing"
+	"time"
+
+	"github.com/0xsoniclabs/sonic/ethapi"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/tests"
+	"github.com/0xsoniclabs/sonic/tests/contracts/revert"
+	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/stretchr/testify/require"
+)
+
+func TestBundles_RunBundlesInParallel(t *testing.T) {
+	// Create a list of successful and failing bundles.
+	upgrades := opera.GetBrioUpgrades()
+	upgrades.TransactionBundles = true
+
+	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+		Upgrades: &upgrades,
+	})
+
+	t.Run("succeeding bundles", func(t *testing.T) {
+		testSucceedingConcurrentBundles(t, net)
+	})
+
+	t.Run("randomly failing bundles", func(t *testing.T) {
+		testRandomlyFailingBundles(t, net)
+	})
+}
+
+func testSucceedingConcurrentBundles(
+	t *testing.T,
+	net *tests.IntegrationTestNet,
+) {
+	const N = 100 // Number of bundles to process
+	const W = 3   // Number of transactions per bundle
+
+	require := require.New(t)
+
+	client, err := net.GetClient()
+	require.NoError(err)
+	defer client.Close()
+
+	// Create all needed accounts and endow in parallel.
+	fmt.Printf("Creating and endowing accounts ...\n")
+	accounts := tests.NewAccounts(N * W)
+	addresses := make([]common.Address, len(accounts))
+	for i, cur := range accounts {
+		addresses[i] = cur.Address()
+	}
+	_, err = net.EndowAccounts(addresses, big.NewInt(1e18))
+	require.NoError(err)
+
+	fmt.Printf("Creating bundle transactions ...\n")
+
+	envelopes := make([]*types.Transaction, N)
+	planHashes := make([]common.Hash, N)
+	for i := range N {
+		envelope, plan := bundle.NewBuilder().With(
+			Step(t, net, accounts[i*W+0], newBurnMoneyTransaction()),
+			Step(t, net, accounts[i*W+1], newBurnMoneyTransaction()),
+			Step(t, net, accounts[i*W+2], newBurnMoneyTransaction()),
+		).BuildEnvelopeAndPlan()
+
+		envelopes[i] = envelope
+		planHashes[i] = plan.Hash()
+	}
+
+	// Submit all envelops to be processed in parallel.
+	fmt.Printf("Sending bundled transactions in parallel ...\n")
+	_, err = net.SendAll(envelopes)
+	require.NoError(err)
+
+	// Wait for all bundles to be completed.
+	fmt.Printf("Waiting for completion ...\n")
+	infos, err := waitForBundlesExecution(t.Context(), client.Client(), planHashes)
+	require.NoError(err)
+
+	// Check that all bundles have been accepted.
+	fmt.Printf("Checking results ...\n")
+	minBlock := uint64(math.MaxUint64)
+	maxBlock := uint64(0)
+	for _, info := range infos {
+		require.Equal(ethapi.BundleStatusExecuted, info.Status)
+		minBlock = min(minBlock, *info.Block)
+		maxBlock = max(maxBlock, *info.Block)
+	}
+	fmt.Printf("All bundles got executed in block range %d - %d\n", minBlock, maxBlock)
+
+	// Check that all obtained infos match the respective transactions.
+	for i, info := range infos {
+		bundle, err := bundle.OpenEnvelope(envelopes[i])
+		require.NoError(err)
+		require.EqualValues(*info.Count, len(bundle.Transactions))
+
+		for i, tx := range bundle.Transactions {
+			receipt, err := client.TransactionReceipt(t.Context(), tx.Hash())
+			require.NoError(err)
+			require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
+			require.EqualValues(int(*info.Position)+i, receipt.TransactionIndex)
+		}
+	}
+}
+
+func testRandomlyFailingBundles(
+	t *testing.T,
+	net *tests.IntegrationTestNet,
+) {
+	const N = 100 // Number of bundles to process
+	const W = 3   // Number of transactions per bundle
+
+	require := require.New(t)
+
+	// Create a list of successful and failing bundles.
+	upgrades := opera.GetBrioUpgrades()
+	upgrades.TransactionBundles = true
+
+	_, receipt, err := tests.DeployContract(net, revert.DeployRevert)
+	require.NoError(err)
+	require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
+	revertContractAddress := receipt.ContractAddress
+
+	client, err := net.GetClient()
+	require.NoError(err)
+	defer client.Close()
+
+	// Create all needed accounts and endow in parallel.
+	fmt.Printf("Creating and endowing accounts ...\n")
+	accounts := tests.NewAccounts(N * W)
+	addresses := make([]common.Address, len(accounts))
+	for i, cur := range accounts {
+		addresses[i] = cur.Address()
+	}
+	_, err = net.EndowAccounts(addresses, big.NewInt(1e18))
+	require.NoError(err)
+
+	fmt.Printf("Creating bundle transactions ...\n")
+
+	envelopes := make([]*types.Transaction, N)
+	planHashes := make([]common.Hash, N)
+	for i := range N {
+		envelope, plan := bundle.NewBuilder().With(
+			Step(t, net, accounts[i*W+0], newBurnMoneyTransaction()),
+			Step(t, net, accounts[i*W+1], newBurnMoneyTransaction()),
+			Step(t, net, accounts[i*W+2], newRandomlyRevertingTransaction(revertContractAddress)),
+		).BuildEnvelopeAndPlan()
+
+		envelopes[i] = envelope
+		planHashes[i] = plan.Hash()
+	}
+
+	// Submit all envelops to be processed in parallel.
+	fmt.Printf("Sending bundled transactions in parallel ...\n")
+	_, err = net.SendAll(envelopes) // TODO: this could become flaky ...
+	require.NoError(err)
+
+	// Wait for all bundles to be completed.
+	fmt.Printf("Waiting for completion ...\n")
+	infos, err := waitForBundlesExecution(t.Context(), client.Client(), planHashes)
+	require.NoError(err)
+
+	// TODO: there is a bug in the reporting of bundle states for bundles that
+	// may become invalid while they are in flight on the DAG. This needs to
+	// be fixed. This sleep and re-fetching of the infos mitigates this for
+	// now, but is not a proper solution.
+	_ = infos
+	time.Sleep(1 * time.Second)
+	infos, err = waitForBundlesExecution(t.Context(), client.Client(), planHashes)
+	require.NoError(err)
+
+	// For those bundles that got executed, check that the obtained infos match
+	// the respective transactions.
+	for i, info := range infos {
+		bundle, err := bundle.OpenEnvelope(envelopes[i])
+		require.NoError(err)
+
+		if info.Status == ethapi.BundleStatusExecuted && *info.Count > 0 {
+			fmt.Printf("Bundle %d got executed in block %d at offset %d with %d transactions\n", i, *info.Block, *info.Position, *info.Count)
+			require.EqualValues(*info.Count, len(bundle.Transactions))
+
+			for i, tx := range bundle.Transactions {
+				receipt, err := client.TransactionReceipt(t.Context(), tx.Hash())
+				require.NoError(err)
+				require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
+				require.EqualValues(int(*info.Position)+i, receipt.TransactionIndex)
+			}
+		} else {
+
+			if info.Status == ethapi.BundleStatusExecuted {
+				fmt.Printf("Bundle %d got executed in block %d at offset %d and rolled back\n", i, *info.Block, *info.Position)
+			} else {
+				fmt.Printf("Bundle %d got dropped\n", i)
+			}
+
+			// Make sure no transaction ended up in a block.
+			for _, tx := range bundle.Transactions {
+				receipt, err := client.TransactionReceipt(t.Context(), tx.Hash())
+				require.ErrorIs(err, ethereum.NotFound, "got receipt: %v", receipt)
+			}
+		}
+	}
+}
+
+func Step[T types.TxData](
+	t *testing.T,
+	net tests.IntegrationTestNetSession,
+	account *tests.Account,
+	txData T,
+) bundle.BundleStep {
+	return bundle.Step(
+		account.PrivateKey,
+		tests.SetTransactionDefaults(t, net, txData, account),
+	)
+}
+
+func newBurnMoneyTransaction() *types.AccessListTx {
+	zero := common.Address{}
+	return &types.AccessListTx{
+		To:    &zero,
+		Value: big.NewInt(1),
+		Gas:   25300,
+	}
+}
+
+func newRandomlyRevertingTransaction(
+	revertContractAddress common.Address,
+) *types.AccessListTx {
+
+	// This calls a function on the revert contract that reverts
+	// probabilistically based on the sender and transaction history, so it
+	// should not be reliably statically predictable whether this transaction
+	// will revert or not.
+
+	parsed, err := revert.RevertMetaData.GetAbi()
+	if err != nil {
+		panic("could not parse revert contract ABI")
+	}
+
+	return &types.AccessListTx{
+		To:   &revertContractAddress,
+		Data: parsed.Methods["probabilisticRevert"].ID,
+		Gas:  100_000,
+	}
+
+}

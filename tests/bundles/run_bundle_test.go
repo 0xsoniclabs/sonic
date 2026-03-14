@@ -18,6 +18,7 @@ package bundles
 
 import (
 	"context"
+	"fmt"
 	"math/big"
 	"testing"
 
@@ -138,14 +139,49 @@ func waitForBundleExecution(
 	client *rpc.Client,
 	executionPlanHash common.Hash,
 ) (ethapi.BundleInfo, error) {
-	var info ethapi.BundleInfo
-	var err error
-	err = tests.WaitFor(ctxt, func(innerCtx context.Context) (bool, error) {
-		info, err = getBundleInfo(innerCtx, client, executionPlanHash)
-		if err != nil {
-			return false, err
+	infos, err := waitForBundlesExecution(
+		ctxt, client,
+		[]common.Hash{executionPlanHash},
+	)
+	if err != nil {
+		return ethapi.BundleInfo{}, err
+	}
+	if len(infos) != 1 {
+		return ethapi.BundleInfo{}, fmt.Errorf("failed to obtain bundle info")
+	}
+	return infos[0], nil
+}
+
+func waitForBundlesExecution(
+	ctxt context.Context,
+	client *rpc.Client,
+	executionPlanHashes []common.Hash,
+) ([]ethapi.BundleInfo, error) {
+
+	infos := make([]ethapi.BundleInfo, len(executionPlanHashes))
+	done := make([]bool, len(executionPlanHashes))
+
+	err := tests.WaitFor(ctxt, func(innerCtx context.Context) (bool, error) {
+
+		allFinished := true
+		for i, plan := range executionPlanHashes {
+			if done[i] {
+				continue
+			}
+
+			info, err := getBundleInfo(innerCtx, client, plan)
+			if err != nil {
+				return false, err
+			}
+
+			if info.Status != ethapi.BundleStatusPending {
+				infos[i] = info
+				done[i] = true
+			} else {
+				allFinished = false
+			}
 		}
-		return info.Status != ethapi.BundleStatusPending, nil
+		return allFinished, nil
 	})
-	return info, err
+	return infos, err
 }

@@ -984,7 +984,7 @@ func (s *Session) Run(tx *types.Transaction) (*types.Receipt, error) {
 	return receipts[0], nil
 }
 
-func (s *Session) RunAll(tx []*types.Transaction) ([]*types.Receipt, error) {
+func (s *Session) SendAll(tx []*types.Transaction) ([]common.Hash, error) {
 	hashes := make([]common.Hash, len(tx))
 	err := runParallelWithClient(s.net, len(tx), func(client *PooledEhtClient, i int) error {
 		err := client.SendTransaction(context.Background(), tx[i])
@@ -998,6 +998,14 @@ func (s *Session) RunAll(tx []*types.Transaction) ([]*types.Receipt, error) {
 	}
 	for i, t := range tx {
 		hashes[i] = t.Hash()
+	}
+	return hashes, nil
+}
+
+func (s *Session) RunAll(tx []*types.Transaction) ([]*types.Receipt, error) {
+	hashes, err := s.SendAll(tx)
+	if err != nil {
+		return nil, err
 	}
 	return s.GetReceipts(hashes)
 }
