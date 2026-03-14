@@ -199,8 +199,7 @@ type IntegrationTestNet struct {
 	genesisId common.Hash
 	nodes     []integrationTestNode
 
-	sessionsMutex  sync.Mutex
-	endowmentMutex sync.Mutex
+	sessionsMutex sync.Mutex
 	Session
 }
 
@@ -952,11 +951,6 @@ func (s *Session) EndowAccounts(
 	addresses []common.Address,
 	value *big.Int,
 ) ([]*types.Receipt, error) {
-	/*
-		s.net.endowmentMutex.Lock()
-		defer s.net.endowmentMutex.Unlock()
-	*/
-
 	client, err := s.GetClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to the network: %w", err)

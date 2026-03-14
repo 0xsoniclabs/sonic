@@ -317,8 +317,16 @@ func TestOperaEVMProcessor_Execute_BundlePositionsAreProperlyOffset(t *testing.T
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			bundleTx := simpleBundleTx(t, chainId, test.bundleLength)
+			processedTx := evmcore.ProcessedTransaction{
+				Transaction: nil,
+				Receipt:     &types.Receipt{},
+			}
 			alreadyProcessedTx := make([]evmcore.ProcessedTransaction, test.lenProcessedTxs)
+			for i := range alreadyProcessedTx {
+				alreadyProcessedTx[i] = processedTx
+			}
+
+			bundleTx := simpleBundleTx(t, chainId, test.bundleLength)
 
 			index := new(int)
 			*index = 0
