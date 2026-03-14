@@ -1171,7 +1171,7 @@ func (pool *TxPool) HasBundle(execPlanHash common.Hash) bool {
 	for _, tx := range pool.all.txs() {
 		if bundle.IsEnvelope(tx) {
 			plan, err := bundle.ExtractExecutionPlan(tx)
-			if err != nil && plan.Hash() == execPlanHash {
+			if err == nil && plan.Hash() == execPlanHash {
 				return true
 			}
 		}
