@@ -22,6 +22,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -433,7 +434,7 @@ func Test_runner_Run_ReturnsErrorForInvalidNestedBundle(t *testing.T) {
 	}
 
 	result := runner.Run(invalidBundle)
-	require.Equal(bundle.TransactionResultInvalid, result)
+	require.Equal(core_types.TransactionResultInvalid, result)
 }
 
 func Test_runner_Run_ReturnsInvalidForTransactionsWithoutSignature(t *testing.T) {
@@ -444,7 +445,7 @@ func Test_runner_Run_ReturnsInvalidForTransactionsWithoutSignature(t *testing.T)
 	}
 
 	result := runner.Run(tx)
-	require.Equal(t, bundle.TransactionResultInvalid, result)
+	require.Equal(t, core_types.TransactionResultInvalid, result)
 }
 
 // --- Utility functions to build test bundles ---
