@@ -142,7 +142,7 @@ func TestExtractExecutionPlan_ReturnsExecutionPlan(t *testing.T) {
 	want, err := bundle.extractExecutionPlan(signer)
 	require.NoError(err)
 
-	got, err := ExtractExecutionPlan(envelope)
+	got, err := ExtractExecutionPlan(signer, envelope)
 	require.NoError(err)
 	require.Equal(want, got)
 }
@@ -152,7 +152,7 @@ func TestExtractExecutionPlan_FailsIfNotAnEnvelope(t *testing.T) {
 	notEnvelope := types.NewTx(&types.LegacyTx{})
 	require.False(IsEnvelope(notEnvelope))
 
-	_, err := ExtractExecutionPlan(notEnvelope)
+	_, err := ExtractExecutionPlan(nil, notEnvelope)
 	require.ErrorContains(err, "not an envelope")
 }
 
@@ -175,7 +175,7 @@ func TestExtractExecutionPlan_FailsIfPlanExtractionFails(t *testing.T) {
 	_, want := bundle.extractExecutionPlan(signer)
 	require.Error(want)
 
-	_, got := ExtractExecutionPlan(envelope)
+	_, got := ExtractExecutionPlan(signer, envelope)
 	require.Equal(want, got)
 }
 
@@ -691,22 +691,4 @@ func TestDecode_ReturnsErrorForInvalidData(t *testing.T) {
 
 	_, err = decode(nil)
 	require.ErrorContains(t, err, "failed to decode transaction bundle")
-}
-
-func TestGetSignerForTx_UsesChainIdThatSignedTheTransaction(t *testing.T) {
-	key, err := crypto.GenerateKey()
-	require.NoError(t, err)
-
-	for _, id := range []int64{12, 77, 234} {
-		chainId := big.NewInt(id)
-
-		signer := types.LatestSignerForChainID(chainId)
-		envelope := types.MustSignNewTx(key, signer, &types.LegacyTx{
-			To:   &BundleProcessor,
-			Data: []byte{},
-		})
-
-		restored := getSignerForTx(envelope)
-		require.Equal(t, restored, signer)
-	}
 }

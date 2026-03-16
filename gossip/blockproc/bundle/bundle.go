@@ -54,12 +54,14 @@ func OpenEnvelope(tx *types.Transaction) (TransactionBundle, error) {
 }
 
 // ExtractExecutionPlan extracts the execution plan from the given envelope.
-func ExtractExecutionPlan(tx *types.Transaction) (ExecutionPlan, error) {
+func ExtractExecutionPlan(
+	signer types.Signer,
+	tx *types.Transaction,
+) (ExecutionPlan, error) {
 	bundle, err := OpenEnvelope(tx)
 	if err != nil {
 		return ExecutionPlan{}, err
 	}
-	signer := getSignerForTx(tx)
 	plan, err := bundle.extractExecutionPlan(signer)
 	if err != nil {
 		return ExecutionPlan{}, err
@@ -284,10 +286,4 @@ func decode(data []byte) (TransactionBundle, error) {
 	bundle.Earliest = payload.Earliest
 	bundle.Latest = payload.Latest
 	return bundle, nil
-}
-
-func getSignerForTx(
-	envelope *types.Transaction,
-) types.Signer {
-	return types.LatestSignerForChainID(envelope.ChainId())
 }
