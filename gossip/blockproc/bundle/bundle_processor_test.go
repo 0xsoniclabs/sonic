@@ -37,7 +37,7 @@ func Test_runAllOfBundle_ReturnsTrueForEmptyBundle(t *testing.T) {
 	require.True(t, result)
 }
 
-func Test_runAllOfBundle_ReturnsTrueIfAllTransactionsSuccessful(t *testing.T) {
+func Test_runAllOfBundle_ReturnsTrueIfAllTransactionsTolerated(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	runner := NewMockTransactionRunner(ctrl)
 
@@ -52,7 +52,7 @@ func Test_runAllOfBundle_ReturnsTrueIfAllTransactionsSuccessful(t *testing.T) {
 	require.True(t, result)
 }
 
-func Test_runAllOfBundle_StopsAtFirstFailedTransaction(t *testing.T) {
+func Test_runAllOfBundle_StopsAtFirstNonToleratedTransaction(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	runner := NewMockTransactionRunner(ctrl)
 
@@ -79,7 +79,7 @@ func Test_runOneOfBundle_ReturnsFalseForEmptyBundle(t *testing.T) {
 	require.False(t, result)
 }
 
-func Test_runOneOfBundle_ReturnsFalseIfAllTransactionsFail(t *testing.T) {
+func Test_runOneOfBundle_ReturnsFalseIfAllTransactionsAreNonTolerated(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	runner := NewMockTransactionRunner(ctrl)
 
@@ -94,7 +94,7 @@ func Test_runOneOfBundle_ReturnsFalseIfAllTransactionsFail(t *testing.T) {
 	require.False(t, result)
 }
 
-func Test_runOneOfBundle_StopsAtFirstSuccessfulTransaction(t *testing.T) {
+func Test_runOneOfBundle_StopsAtFirstToleratedTransaction(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	runner := NewMockTransactionRunner(ctrl)
 
