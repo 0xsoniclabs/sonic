@@ -34,7 +34,7 @@ import (
 
 func TestEstimateGas(t *testing.T) {
 	t.Run("Sonic", func(t *testing.T) {
-		session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+		session := sharedNetwork.GetIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 		t.Parallel()
 
 		dataContract, receipt, err := DeployContract(session, data_reader.DeployDataReader)
@@ -45,7 +45,7 @@ func TestEstimateGas(t *testing.T) {
 		doTestEstimate(t, session, makeTestCases(t, session, dataContract, dataContractAddress))
 	})
 	t.Run("Allegro", func(t *testing.T) {
-		session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+		session := sharedNetwork.GetIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 		t.Parallel()
 
 		dataContract, receipt, err := DeployContract(session, data_reader.DeployDataReader)

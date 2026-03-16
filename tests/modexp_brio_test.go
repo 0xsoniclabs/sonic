@@ -67,7 +67,7 @@ func TestModExp_BrioFlagEnforcesFusakaUpperBounds(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			session := getIntegrationTestNetSession(t, test.upgrades)
+			session := sharedNetwork.GetIntegrationTestNetSession(t, test.upgrades)
 			chainId := session.GetChainId()
 			sender := session.GetSessionSponsor()
 
@@ -128,7 +128,7 @@ func TestModExp_MinimumGasPriceIsUpdatedInBrio(t *testing.T) {
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			session := getIntegrationTestNetSession(t, test.upgrades)
+			session := sharedNetwork.GetIntegrationTestNetSession(t, test.upgrades)
 			chainId := session.GetChainId()
 			sender := session.GetSessionSponsor()
 
@@ -191,7 +191,7 @@ func TestModExp_GasPriceIsUpdatedInBrio(t *testing.T) {
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			session := getIntegrationTestNetSession(t, test.upgrades)
+			session := sharedNetwork.GetIntegrationTestNetSession(t, test.upgrades)
 			chainId := session.GetChainId()
 			sender := session.GetSessionSponsor()
 

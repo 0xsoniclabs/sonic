@@ -30,7 +30,7 @@ import (
 )
 
 func TestBlsVerificationOnChain(t *testing.T) {
-	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	session := sharedNetwork.GetIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 	t.Parallel()
 
 	// Deploy contract with transaction options
