@@ -35,11 +35,6 @@ func TestIncreasinglyExpensive_ContractIsIncreasinglyExpensive(t *testing.T) {
 	require.NoError(t, err, "failed to deploy contract; %v", err)
 	require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
 
-	// The first call to the contract is the most expensive, because the storage address is written for the first time.
-	receipt, err = session.Apply(contract.IncrementAndLoop)
-	require.NoError(t, err, "failed to apply increment counter contract")
-	require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
-
 	lastGasUsed := uint64(0)
 	for i := 0; i < 10; i++ {
 		receipt, err = session.Apply(contract.IncrementAndLoop)

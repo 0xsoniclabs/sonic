@@ -3,7 +3,7 @@ pragma solidity ^0.8.0;
 
 contract IncreasinglyExpensive {
     // This variable is kept in the contract's storage
-    uint256 public counter;
+    uint256 public counter = 1;
 
     function incrementAndLoop() public {
         // Read from storage, increments by 1, and save back to storage
