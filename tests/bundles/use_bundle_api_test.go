@@ -18,15 +18,13 @@ package bundles
 
 import (
 	"fmt"
-	"math/big"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
-	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
-	"github.com/0xsoniclabs/tosca/go/tosca/vm"
+	"github.com/0xsoniclabs/sonic/tests/contracts/increasingly_expensive"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -45,12 +43,19 @@ func Test_CreateBundlesWithRPC(t *testing.T) {
 	require.NoError(t, err, "failed to get client")
 	defer client.Close()
 
+	// Deploy the increasingly expensive contract.
+	_, receipt, err := tests.DeployContract(net, increasingly_expensive.DeployIncreasinglyExpensive)
+	require.NoError(t, err, "failed to deploy contract; %v", err)
+	require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
+
+	abi, err := increasingly_expensive.IncreasinglyExpensiveMetaData.GetAbi()
+	require.NoError(t, err, "failed to get abi")
+	input := generateCallData(t, abi, "incrementAndLoop")
+
 	sender1 := session.GetSessionSponsor()
 
 	gasPrice, err := client.SuggestGasPrice(t.Context())
 	require.NoError(t, err, "failed to suggest gas price")
-
-	transferAmount := big.NewInt(2)
 
 	// 1) Create a list of transactions to be executed in order atomically.
 	const bundledTxCount = 15
@@ -59,9 +64,9 @@ func Test_CreateBundlesWithRPC(t *testing.T) {
 	for i := range txsToBeBundled {
 		tx := ethereum.CallMsg{
 			From:     sender1.Address(),
-			To:       &contractAddress,
-			Value:    transferAmount,
+			To:       &receipt.ContractAddress,
 			GasPrice: gasPrice,
+			Data:     input,
 		}
 		txsToBeBundled[i] = tx
 	}
@@ -101,11 +106,6 @@ func Test_CreateBundlesWithRPC(t *testing.T) {
 		require.NoError(t, err, "failed to get receipt")
 		require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
 	}
-
-	balance, err := client.BalanceAt(t.Context(), contractAddress, nil)
-	require.NoError(t, err, "failed to get balance")
-	require.Equal(t, transferAmount.Uint64()*bundledTxCount, balance.Uint64(),
-		"unexpected balance of contract address")
 }
 
 // checkCompatWithMetaMask checks that the signed bundle-only transactions can
@@ -223,34 +223,4 @@ func SubmitBundle(client *tests.PooledEhtClient,
 			ExecutionPlan:      plan,
 		})
 	return bundleHash, err
-}
-
-func increasinglyExpensiveContract(address common.Address) []makefakegenesis.Account {
-	code := []byte{
-		byte(vm.PUSH1), 0x00, // Stack: [ 0 ]
-		byte(vm.SLOAD),       // Stack: [storage[0]]
-		byte(vm.PUSH1), 0x01, // Stack: [1, storage[0]]
-		byte(vm.ADD),         // Stack: [storage[0] + 1]
-		byte(vm.PUSH1), 0x00, // Stack: [0, storage[0] + 1]
-		byte(vm.SSTORE), // storage[0] = storage[0] + 1, Stack: []
-
-		byte(vm.PUSH1), 0x00, // Stack: [ 0 ]
-		byte(vm.SLOAD), // Stack: [ storage[0] ]
-
-		byte(vm.JUMPDEST),    // Stack: [ storage[0] ]
-		byte(vm.PUSH1), 0x01, // Stack: [ 1, storage[0] ]
-		byte(vm.SWAP1), // Stack: [ storage[0], 1 ]
-		byte(vm.SUB),   // Stack: [ storage[0] - 1 ]
-		byte(vm.DUP1),  // Stack: [ storage[0] - 1, storage[0] - 1 ]
-
-		byte(vm.PUSH1), 12, // Stack: [ 12, storage[0] - 1, storage[0] - 1 ]
-		byte(vm.JUMPI), // if storage[0] - 1 != 0, jump to 12. Stack: [ storage[0] - 1 ]
-
-		byte(vm.STOP), // stop execution
-	}
-
-	return []makefakegenesis.Account{{
-		Address: address,
-		Code:    code,
-	}}
 }
