@@ -27,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
@@ -392,7 +393,9 @@ func doEstimateGasForTransactions(
 		preArgs = append(preArgs, arg)
 		preArgs[len(preArgs)-1].Gas = (*hexutil.Uint64)(&gas)
 
-		gasLimits[i] = gas + 2400 + 1900 // add gas for bundle only address and execution plan in access list
+		gasLimits[i] = gas +
+			hexutil.Uint64(params.TxAccessListAddressGas) + // add gas for bundle only address
+			hexutil.Uint64(params.TxAccessListStorageKeyGas) // add gas for execution plan hash
 	}
 	return gasLimits, nil
 }

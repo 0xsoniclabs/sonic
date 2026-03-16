@@ -22,6 +22,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -52,6 +53,7 @@ func TestBundleEstimateGas_PreArgsAreConsideredForEveryTransaction(t *testing.T)
 
 	gasLimits, err := doEstimateGasForTransactions(args, estimator)
 	require.NoError(t, err)
-	bundleGasLimit := gasLimit + 2400 + 1900
+	bundleGasLimit := gasLimit + hexutil.Uint64(params.TxAccessListAddressGas) +
+		hexutil.Uint64(params.TxAccessListStorageKeyGas)
 	require.Equal(t, slices.Repeat([]hexutil.Uint64{bundleGasLimit}, numTransactions), gasLimits)
 }
