@@ -62,10 +62,7 @@ func (a *PublicBundleAPI) GetBundleInfo(
 	for range 2 {
 
 		// Check whether the given execution plan got already executed.
-		info, err := a.b.GetBundleExecutionInfo(executionPlanHash)
-		if err != nil {
-			return BundleInfo{}, err
-		}
+		info := a.b.GetBundleExecutionInfo(executionPlanHash)
 		if info != nil {
 			return BundleInfo{
 				Status:   BundleStatusExecuted,
