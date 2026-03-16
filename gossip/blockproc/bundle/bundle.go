@@ -19,7 +19,7 @@ package bundle
 import (
 	"bytes"
 	"fmt"
-	"slices"
+	big "math/big"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -27,19 +27,61 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
-const (
-	BundleV1 byte = 1
-)
+// IsBundleOnly checks if the transaction is bundle-only, meaning it is intended
+// to be executed as part of a bundle and not included in the block on its own.
+func IsBundleOnly(tx *types.Transaction) bool {
+	for _, entry := range tx.AccessList() {
+		if entry.Address == BundleOnly {
+			return true
+		}
+	}
+	return false
+}
+
+// IsEnvelope checks if the transaction is an envelope of a bundle, meaning
+// it is carrying the encoding of a list of transactions to be executed as a
+// bundle.
+// Note: this function does not check the validity of the bundle data.
+func IsEnvelope(tx *types.Transaction) bool {
+	return tx.To() != nil && *tx.To() == BundleProcessor
+}
+
+// OpenEnvelope extracts the bundle enclosed in the given envelope.
+func OpenEnvelope(tx *types.Transaction) (TransactionBundle, error) {
+	if !IsEnvelope(tx) {
+		return TransactionBundle{}, fmt.Errorf("not an envelope")
+	}
+	return decode(tx.Data())
+}
+
+// ExtractExecutionPlan extracts the execution plan from the given envelope.
+func ExtractExecutionPlan(tx *types.Transaction) (ExecutionPlan, error) {
+	bundle, err := OpenEnvelope(tx)
+	if err != nil {
+		return ExecutionPlan{}, err
+	}
+	signer := getSignerForBundle(tx, &bundle)
+	plan, err := bundle.extractExecutionPlan(signer)
+	if err != nil {
+		return ExecutionPlan{}, err
+	}
+	return plan, nil
+}
 
 var (
-	BundleOnly    = common.HexToAddress("0x00000000000000000000000000000000000B0D1E")
-	BundleAddress = common.HexToAddress("0x00000000000000000000000000000000B0D1EADD")
-)
+	// BundleOnly is an address used in the access list of transactions to mark
+	// them as bundle-only, meaning they are intended to be executed as part of
+	// a bundle and not included in the block on their own.
+	BundleOnly = common.HexToAddress("0x00000000000000000000000000000000000B0D1E")
 
-// ExecutionFlag represents the execution flags that specify the behavior of the bundle execution.
-// Zero value means the default behavior, which is to revert the entire bundle (except for payment transaction)
-// if any of the transactions is invalid or fails.
-type ExecutionFlag uint16
+	// BundleProcessor is the address to which envelope transactions are sending
+	// their payload containing the bundle of transactions to be executed.
+	BundleProcessor = common.HexToAddress("0x00000000000000000000000000000000B0D1EADD")
+
+	// MaxBlockRange is the maximum allowed block range (Latest - Earliest) for
+	// allowed for the validity period of a bundle.
+	MaxBlockRange = uint64(1024)
+)
 
 // ExecutionStep represents a single step in the execution plan,
 // which corresponds to a transaction to be executed as part of the bundle.
@@ -55,8 +97,18 @@ type ExecutionStep struct {
 // to which every participant in the bundle shall agree on.
 // The execution plan includes the list of steps to be executed, in the order of execution
 type ExecutionPlan struct {
-	Steps []ExecutionStep
-	Flags ExecutionFlag
+	Steps    []ExecutionStep // Steps to be executed in the bundle, in the order of execution
+	Flags    ExecutionFlags  // Execution flags that specify the behavior of the bundle execution
+	Earliest uint64          // Earliest block this bundle can be included in.
+	Latest   uint64          // Latest block this bundle can be included in.
+}
+
+// IsInRange checks if the given block number is within the range of the
+// execution plan. The range is a closed interval [Earliest, Latest], meaning
+// that the execution plan is valid for inclusion in any block within this
+// range, including the Earliest and Latest blocks themselves.
+func (e *ExecutionPlan) IsInRange(blockNum uint64) bool {
+	return blockNum >= e.Earliest && blockNum <= e.Latest
 }
 
 // Hash computes the execution plan hash
@@ -81,18 +133,24 @@ func (e *ExecutionPlan) Hash() common.Hash {
 // consuming the payment and nonce, and preventing this transaction from being
 // included in future blocks.
 type TransactionBundle struct {
-	Version byte
-	Payment *types.Transaction
-	Bundle  types.Transactions
-	Flags   ExecutionFlag
+	Transactions types.Transactions
+	Flags        ExecutionFlags
+	Earliest     uint64 // Earliest block this bundle can be included in.
+	Latest       uint64 // Latest block this bundle can be included in.
 }
 
-// ExtractExecutionPlan extracts the execution plan from the bundle, deriving
-// the sender of each transaction using the provided signer.
-func (tb *TransactionBundle) ExtractExecutionPlan(signer types.Signer) (ExecutionPlan, error) {
+func (tb *TransactionBundle) Encode() []byte {
+	return encodeInternal(bundleEncodingVersion, tb)
+}
 
-	txs := make([]ExecutionStep, 0, len(tb.Bundle))
-	for _, tx := range tb.Bundle {
+// --- internal utilities ---
+
+// extractExecutionPlan extracts the execution plan from the bundle, deriving
+// the sender of each transaction using the provided signer.
+func (tb *TransactionBundle) extractExecutionPlan(signer types.Signer) (ExecutionPlan, error) {
+
+	txs := make([]ExecutionStep, 0, len(tb.Transactions))
+	for _, tx := range tb.Transactions {
 
 		// derive the sender before stripping the bundle-only mark from the access list
 		// as this operation erases the original signature
@@ -115,8 +173,10 @@ func (tb *TransactionBundle) ExtractExecutionPlan(signer types.Signer) (Executio
 	}
 
 	return ExecutionPlan{
-		Steps: txs,
-		Flags: tb.Flags,
+		Steps:    txs,
+		Flags:    tb.Flags,
+		Earliest: tb.Earliest,
+		Latest:   tb.Latest,
 	}, nil
 }
 
@@ -172,73 +232,90 @@ func removeBundleOnlyMark(tx *types.Transaction) (*types.Transaction, error) {
 	return types.NewTx(txData), nil
 }
 
-// IsBundleOnly checks if the transaction is bundle-only, meaning it is intended
-// to be executed as part of a bundle and not included in the block on its own.
-func IsBundleOnly(tx *types.Transaction) bool {
-	for _, entry := range tx.AccessList() {
-		if entry.Address == BundleOnly {
-			return true
-		}
-	}
-	return false
-}
+const (
+	bundleEncodingVersion byte = 1
+)
 
-// BelongsToExecutionPlan checks if the given transaction correspond to one step in the execution plan.
-func BelongsToExecutionPlan(tx *types.Transaction, executionPlanHash common.Hash) bool {
-	for _, entry := range tx.AccessList() {
-		if entry.Address == BundleOnly &&
-			slices.Contains(entry.StorageKeys, executionPlanHash) {
-			return true
-		}
-	}
-	return false
-}
-
-// IsTransactionBundle checks if the transaction is a transaction bundle, meaning
-// it is intended to be executed as a bundle containing multiple transactions
-// and not included in the block on its own.
-func IsTransactionBundle(tx *types.Transaction) bool {
-	return tx.To() != nil && *tx.To() == BundleAddress
-}
-
-func Encode(bundle TransactionBundle) []byte {
+func encodeInternal(
+	version byte,
+	bundle *TransactionBundle,
+) []byte {
 
 	buffer := bytes.Buffer{}
 	// encode into a buffer can only fail due to OOM
 	// since we are encoding a struct with fixed fields, we can ignore the error
-	_ = rlp.Encode(&buffer, bundle.Version)
+	_ = rlp.Encode(&buffer, version)
 	_ = rlp.Encode(&buffer, []any{
-		bundle.Payment,
-		bundle.Bundle,
+		bundle.Transactions,
 		bundle.Flags,
+		bundle.Earliest,
+		bundle.Latest,
 	})
 	return buffer.Bytes()
 }
 
-func Decode(data []byte) (TransactionBundle, error) {
+func decode(data []byte) (TransactionBundle, error) {
 	var bundle TransactionBundle
 
-	_, version, rest, err := rlp.Split(data)
+	_, encodedVersion, rest, err := rlp.Split(data)
 	if err != nil {
 		return bundle, fmt.Errorf("failed to decode transaction bundle: %v", err)
 	}
-	if err := rlp.DecodeBytes(version, &bundle.Version); err != nil {
+	var version byte
+	if err := rlp.DecodeBytes(encodedVersion, &version); err != nil {
 		return bundle, fmt.Errorf("failed to decode version: %v", err)
 	}
-	if bundle.Version != BundleV1 {
-		return bundle, fmt.Errorf("unsupported bundle version: %d", bundle.Version)
+	if version != bundleEncodingVersion {
+		return bundle, fmt.Errorf("unsupported bundle version: %d", version)
 	}
 
 	payload := struct {
-		Payment *types.Transaction
-		Bundle  types.Transactions
-		Flags   ExecutionFlag
+		Bundle   types.Transactions
+		Flags    ExecutionFlags
+		Earliest uint64
+		Latest   uint64
 	}{}
 	if err := rlp.DecodeBytes(rest, &payload); err != nil {
 		return bundle, fmt.Errorf("failed to decode transaction bundle: %v", err)
 	}
-	bundle.Payment = payload.Payment
-	bundle.Bundle = payload.Bundle
+	bundle.Transactions = payload.Bundle
 	bundle.Flags = payload.Flags
+	bundle.Earliest = payload.Earliest
+	bundle.Latest = payload.Latest
 	return bundle, nil
+}
+
+func getSignerForBundle(
+	envelope *types.Transaction,
+	bundle *TransactionBundle,
+) types.Signer {
+	chainId := getChainId(envelope, bundle)
+	var signer types.Signer = types.HomesteadSigner{}
+	if chainId != nil && chainId.Sign() != 0 {
+		signer = types.LatestSignerForChainID(chainId)
+	}
+	return signer
+}
+
+// getChainId derives the chain ID used by the bundle either from the envelope
+// or, if it is a legacy transaction, from the payload transactions.
+func getChainId(
+	envelope *types.Transaction,
+	bundle *TransactionBundle,
+) *big.Int {
+	var chainId *big.Int
+	if envelope.Type() == types.LegacyTxType {
+		for _, tx := range bundle.Transactions {
+			if tx.Type() != types.LegacyTxType {
+				cur := tx.ChainId()
+				if cur != nil && cur.Sign() != 0 {
+					chainId = cur
+					break
+				}
+			}
+		}
+	} else {
+		chainId = envelope.ChainId()
+	}
+	return chainId
 }
