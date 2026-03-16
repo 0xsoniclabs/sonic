@@ -653,6 +653,35 @@ func Merge[T any](items ...any) []T {
 	return result
 }
 
+func printLayer(layer bundle.BundleLayer, indent string) {
+	for _, unit := range layer.Units {
+		if tx := unit.AsTransaction(); tx != nil {
+			entry := tx.Tx.AccessList()[0]
+
+			bundleOnly := ""
+			if entry.Address == bundle.BundleOnly {
+				bundleOnly = " (bundle-only)"
+			}
+
+			envelope := ""
+			if bundle.IsEnvelope(tx.Tx) {
+				envelope = " (envelope)"
+			}
+
+			fmt.Printf("%s%s%s tx, part of %v\n", indent, bundleOnly, envelope, entry.StorageKeys[0].Hex()[:8])
+
+			if bundle.IsEnvelope(tx.Tx) {
+				txBundle, _ := bundle.OpenEnvelope(tx.Tx)
+				printLayer(txBundle.Layer, indent+"    ")
+			}
+		} else if subLayer := unit.AsBundleLayer(); subLayer != nil {
+			printLayer(*subLayer, indent+"    ")
+		} else {
+			panic(fmt.Sprintf("unknown unit type \n"))
+		}
+	}
+}
+
 func checkCase(t *testing.T, session tests.IntegrationTestNetSession, accounts *AccountFactory, namedCase NamedCase) {
 	c := namedCase.case_
 	name := fmt.Sprintf("OneOf=%v/TolerateFailed=%v/TolerateInvalid=%v/%s", c.oneOf, c.tolerateFailed, c.tolerateInvalid, namedCase.name)
@@ -669,8 +698,12 @@ func checkCase(t *testing.T, session tests.IntegrationTestNetSession, accounts *
 
 		contractInfo := deployContracts(t, session)
 
-		envelopeTx, plan, _ := buildBundle(t, session, contractInfo, c.submittedTxTypes, flags, false, accounts)
+		envelopeTx, plan, layer := buildBundle(t, session, contractInfo, c.submittedTxTypes, flags, false, accounts)
 		require.NotNil(t, envelopeTx)
+
+		fmt.Println()
+		printLayer(layer, "")
+		fmt.Println()
 
 		err = client.SendTransaction(t.Context(), envelopeTx)
 		if err != nil {
