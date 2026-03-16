@@ -23,7 +23,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/inter/state"
@@ -804,7 +804,7 @@ func TestRunTransactions_GasSubsidiesEnabled_RunsRegularTransactionWithoutSponso
 		runner:   runner,
 		upgrades: opera.Upgrades{GasSubsidies: true},
 	}
-	runner.EXPECT().runRegularTransaction(context, tx, 0).Return(processed, bundle.TransactionResultSuccessful)
+	runner.EXPECT().runRegularTransaction(context, tx, 0).Return(processed, core_types.TransactionResultSuccessful)
 	got := runTransactions(context, []*types.Transaction{tx}, 0)
 	require.Equal(t, ExecutionSummary{ProcessedTransactions: []ProcessedTransaction{processed}}, got)
 }
@@ -824,7 +824,7 @@ func TestRunTransactions_GasSubsidiesEnabled_RunsSponsorshipRequestWithSponsorsh
 			Transaction: tx,
 			Receipt:     nil,
 		}},
-		bundle.TransactionResultSuccessful,
+		core_types.TransactionResultSuccessful,
 	)
 	summary := runTransactions(context, []*types.Transaction{tx}, 0)
 	processed := summary.ProcessedTransactions
@@ -922,9 +922,9 @@ func TestRunSponsoredTransaction_InsufficientGas_SkipsTransaction(t *testing.T) 
 			runner := &transactionRunner{evm: evm}
 			got, status := runner.runSponsoredTransaction(context, tx, 0)
 			if test.shouldSkip {
-				require.Equal(t, bundle.TransactionResultInvalid, status)
+				require.Equal(t, core_types.TransactionResultInvalid, status)
 			} else {
-				require.Equal(t, bundle.TransactionResultSuccessful, status)
+				require.Equal(t, core_types.TransactionResultSuccessful, status)
 			}
 
 			if test.shouldSkip {
@@ -967,7 +967,7 @@ func TestRunSponsoredTransaction_SponsorshipNotCovered_ReturnsASkippedTransactio
 
 	runner := &transactionRunner{}
 	got, status := runner.runSponsoredTransaction(context, tx, 0)
-	require.Equal(t, bundle.TransactionResultInvalid, status)
+	require.Equal(t, core_types.TransactionResultInvalid, status)
 	want := []ProcessedTransaction{{
 		Transaction: tx,
 		Receipt:     nil,
@@ -1004,7 +1004,7 @@ func TestRunSponsoredTransaction_SponsorshipCoverageCheckFails_ReturnsASkippedTr
 
 	runner := &transactionRunner{evm: evm}
 	got, status := runner.runSponsoredTransaction(context, tx, 0)
-	require.Equal(t, bundle.TransactionResultInvalid, status)
+	require.Equal(t, core_types.TransactionResultInvalid, status)
 	want := []ProcessedTransaction{{
 		Transaction: tx,
 		Receipt:     nil,
@@ -1050,7 +1050,7 @@ func TestRunSponsoredTransaction_SponsoredTransactionIsSkipped_NoFeeDeductionTxI
 
 	runner := &transactionRunner{evm: evm}
 	got, status := runner.runSponsoredTransaction(context, tx, 0)
-	require.Equal(t, bundle.TransactionResultInvalid, status)
+	require.Equal(t, core_types.TransactionResultInvalid, status)
 	want := []ProcessedTransaction{{
 		Transaction: tx,
 		Receipt:     nil,
@@ -1121,7 +1121,7 @@ func TestRunSponsoredTransaction_FailingCreationOfFeeDeduction_TransactionIsAcce
 
 	runner := &transactionRunner{evm: evm}
 	got, status := runner.runSponsoredTransaction(context, tx, 0)
-	require.Equal(t, bundle.TransactionResultSuccessful, status)
+	require.Equal(t, core_types.TransactionResultSuccessful, status)
 	want := []ProcessedTransaction{processed}
 	require.Equal(t, want, got)
 }
@@ -1177,7 +1177,7 @@ func TestRunSponsoredTransaction_FeeDeductionTxIsSkipped_TransactionIsAcceptedWi
 
 	runner := &transactionRunner{evm: evm}
 	got, status := runner.runSponsoredTransaction(context, tx, 0)
-	require.Equal(t, bundle.TransactionResultSuccessful, status)
+	require.Equal(t, core_types.TransactionResultSuccessful, status)
 	want := []ProcessedTransaction{
 		processedSponsoredTransaction,
 		skippedFeeDeductionTransaction,
@@ -1238,7 +1238,7 @@ func TestRunSponsoredTransaction_FeeDeductionTxFails_TransactionIsAcceptedWithou
 
 	runner := &transactionRunner{evm: evm}
 	got, status := runner.runSponsoredTransaction(context, tx, 0)
-	require.Equal(t, bundle.TransactionResultSuccessful, status)
+	require.Equal(t, core_types.TransactionResultSuccessful, status)
 	want := []ProcessedTransaction{
 		processedSponsoredTransaction,
 		skippedFeeDeductionTransaction,
@@ -1292,7 +1292,7 @@ func TestRunSponsoredTransaction_TxIndexIsIncrementedForFeeDeductionTx(t *testin
 
 	runner := &transactionRunner{evm: evm}
 	got, status := runner.runSponsoredTransaction(context, tx, txIndex)
-	require.Equal(t, bundle.TransactionResultFailed, status)
+	require.Equal(t, core_types.TransactionResultFailed, status)
 	require.Len(t, got, 2)
 	require.Equal(t, tx, got[0].Transaction)
 	require.NotNil(t, got[0].Receipt)
@@ -1466,7 +1466,7 @@ func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSucc
 	// --- start of actual test ---
 
 	processedTransactions, status := runner.runSponsoredTransaction(context, tx, txIndex)
-	require.Equal(bundle.TransactionResultSuccessful, status)
+	require.Equal(core_types.TransactionResultSuccessful, status)
 
 	// the transaction should be sponsored successfully
 	require.Len(processedTransactions, 2)
@@ -1571,7 +1571,7 @@ func TestRunTransaction_InternalTransactions_SkipsTransactionChecksTrue(t *testi
 
 	// run an internal transaction with gas over the max tx gas limit.
 	got, status := runner.runRegularTransaction(context, unsignedTx, 0)
-	require.Equal(t, bundle.TransactionResultSuccessful, status)
+	require.Equal(t, core_types.TransactionResultSuccessful, status)
 
 	require.Equal(t, unsignedTx, got.Transaction)
 	require.NotNil(t, got.Receipt)
@@ -1585,7 +1585,7 @@ func TestRunTransaction_InternalTransactions_SkipsTransactionChecksTrue(t *testi
 		Nonce: 0, To: &common.Address{1}, Gas: maxTxGas * 2, GasPrice: big.NewInt(1),
 	})
 	got, status = runner.runRegularTransaction(context, regularTx, 0)
-	require.Equal(t, bundle.TransactionResultInvalid, status)
+	require.Equal(t, core_types.TransactionResultInvalid, status)
 	require.Equal(t, regularTx, got.Transaction)
 	require.Nil(t, got.Receipt)
 }
@@ -1596,7 +1596,7 @@ func TestRunTransaction_RegularTransaction(t *testing.T) {
 		rules      opera.Rules
 		stateSetup func(state *state.MockStateDB)
 		validation func(t *testing.T, got ProcessedTransaction)
-		status     bundle.TransactionResult
+		status     core_types.TransactionResult
 	}{
 		"Brio/Skipped": {
 			rules: opera.FakeNetRules(opera.GetBrioUpgrades()),
@@ -1610,7 +1610,7 @@ func TestRunTransaction_RegularTransaction(t *testing.T) {
 			validation: func(t *testing.T, got ProcessedTransaction) {
 				require.Nil(t, got.Receipt, "expected no receipt for transaction with too high gas")
 			},
-			status: bundle.TransactionResultInvalid,
+			status: core_types.TransactionResultInvalid,
 		},
 		"Pre-Brio/Accepted": {
 			rules: opera.FakeNetRules(opera.GetAllegroUpgrades()),
@@ -1636,7 +1636,7 @@ func TestRunTransaction_RegularTransaction(t *testing.T) {
 				require.NotNil(t, got.Receipt, "expected receipt for accepted transaction")
 				require.Equal(t, types.ReceiptStatusSuccessful, got.Receipt.Status, "expected successful transaction")
 			},
-			status: bundle.TransactionResultSuccessful,
+			status: core_types.TransactionResultSuccessful,
 		},
 	}
 

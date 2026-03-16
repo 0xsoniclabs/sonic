@@ -19,6 +19,7 @@ package bundle
 import (
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -41,7 +42,7 @@ func Test_runAllOfBundle_ReturnsTrueIfAllTransactionsSuccessful(t *testing.T) {
 	runner := NewMockTransactionRunner(ctrl)
 
 	tx := types.NewTx(&types.LegacyTx{})
-	runner.EXPECT().Run(tx).Return(TransactionResultSuccessful).Times(3)
+	runner.EXPECT().Run(tx).Return(core_types.TransactionResultSuccessful).Times(3)
 
 	bundle := &TransactionBundle{
 		Transactions: []*types.Transaction{tx, tx, tx},
@@ -59,8 +60,8 @@ func Test_runAllOfBundle_StopsAtFirstFailedTransaction(t *testing.T) {
 	tx2 := types.NewTx(&types.LegacyTx{})
 	tx3 := types.NewTx(&types.LegacyTx{})
 	gomock.InOrder(
-		runner.EXPECT().Run(tx1).Return(TransactionResultSuccessful),
-		runner.EXPECT().Run(tx2).Return(TransactionResultFailed),
+		runner.EXPECT().Run(tx1).Return(core_types.TransactionResultSuccessful),
+		runner.EXPECT().Run(tx2).Return(core_types.TransactionResultFailed),
 		// tx3 should not be run
 	)
 
@@ -83,7 +84,7 @@ func Test_runOneOfBundle_ReturnsFalseIfAllTransactionsFail(t *testing.T) {
 	runner := NewMockTransactionRunner(ctrl)
 
 	tx := types.NewTx(&types.LegacyTx{})
-	runner.EXPECT().Run(tx).Return(TransactionResultFailed).Times(3)
+	runner.EXPECT().Run(tx).Return(core_types.TransactionResultFailed).Times(3)
 
 	bundle := &TransactionBundle{
 		Transactions: []*types.Transaction{tx, tx, tx},
@@ -102,8 +103,8 @@ func Test_runOneOfBundle_StopsAtFirstSuccessfulTransaction(t *testing.T) {
 	tx3 := types.NewTx(&types.LegacyTx{})
 
 	gomock.InOrder(
-		runner.EXPECT().Run(tx1).Return(TransactionResultFailed),
-		runner.EXPECT().Run(tx2).Return(TransactionResultSuccessful),
+		runner.EXPECT().Run(tx1).Return(core_types.TransactionResultFailed),
+		runner.EXPECT().Run(tx2).Return(core_types.TransactionResultSuccessful),
 		// tx3 should not be run
 	)
 
@@ -118,27 +119,27 @@ func Test_runOneOfBundle_StopsAtFirstSuccessfulTransaction(t *testing.T) {
 func Test_isTolerated_InterpretsExecutionFlagsCorrectly(t *testing.T) {
 	tests := []struct {
 		flags     ExecutionFlag
-		result    TransactionResult
+		result    core_types.TransactionResult
 		tolerated bool
 	}{
-		{flags: 0, result: TransactionResultInvalid, tolerated: false},
-		{flags: 0, result: TransactionResultFailed, tolerated: false},
-		{flags: 0, result: TransactionResultSuccessful, tolerated: true},
+		{flags: 0, result: core_types.TransactionResultInvalid, tolerated: false},
+		{flags: 0, result: core_types.TransactionResultFailed, tolerated: false},
+		{flags: 0, result: core_types.TransactionResultSuccessful, tolerated: true},
 		{flags: 0, result: 99, tolerated: false}, // unknown result treated as failed
 
-		{flags: EF_TolerateInvalid, result: TransactionResultInvalid, tolerated: true},
-		{flags: EF_TolerateInvalid, result: TransactionResultFailed, tolerated: false},
-		{flags: EF_TolerateInvalid, result: TransactionResultSuccessful, tolerated: true},
+		{flags: EF_TolerateInvalid, result: core_types.TransactionResultInvalid, tolerated: true},
+		{flags: EF_TolerateInvalid, result: core_types.TransactionResultFailed, tolerated: false},
+		{flags: EF_TolerateInvalid, result: core_types.TransactionResultSuccessful, tolerated: true},
 		{flags: EF_TolerateInvalid, result: 99, tolerated: false}, // unknown result treated as failed
 
-		{flags: EF_TolerateFailed, result: TransactionResultInvalid, tolerated: false},
-		{flags: EF_TolerateFailed, result: TransactionResultFailed, tolerated: true},
-		{flags: EF_TolerateFailed, result: TransactionResultSuccessful, tolerated: true},
+		{flags: EF_TolerateFailed, result: core_types.TransactionResultInvalid, tolerated: false},
+		{flags: EF_TolerateFailed, result: core_types.TransactionResultFailed, tolerated: true},
+		{flags: EF_TolerateFailed, result: core_types.TransactionResultSuccessful, tolerated: true},
 		{flags: EF_TolerateFailed, result: 99, tolerated: false}, // unknown result treated as failed
 
-		{flags: EF_TolerateInvalid | EF_TolerateFailed, result: TransactionResultInvalid, tolerated: true},
-		{flags: EF_TolerateInvalid | EF_TolerateFailed, result: TransactionResultFailed, tolerated: true},
-		{flags: EF_TolerateInvalid | EF_TolerateFailed, result: TransactionResultSuccessful, tolerated: true},
+		{flags: EF_TolerateInvalid | EF_TolerateFailed, result: core_types.TransactionResultInvalid, tolerated: true},
+		{flags: EF_TolerateInvalid | EF_TolerateFailed, result: core_types.TransactionResultFailed, tolerated: true},
+		{flags: EF_TolerateInvalid | EF_TolerateFailed, result: core_types.TransactionResultSuccessful, tolerated: true},
 		{flags: EF_TolerateInvalid | EF_TolerateFailed, result: 99, tolerated: false}, // unknown result treated as failed
 	}
 

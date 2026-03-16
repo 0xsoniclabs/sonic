@@ -28,6 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 
+	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/inter/state"
@@ -224,7 +225,7 @@ func runTransaction(
 	context *runContext,
 	tx *types.Transaction,
 	txIndexOffset int,
-) ([]ProcessedTransaction, *ProcessedBundle, bundle.TransactionResult) {
+) ([]ProcessedTransaction, *ProcessedBundle, core_types.TransactionResult) {
 	// Since a transaction bundle has a gas-price of 0 it would be considered a
 	// sponsorship request. Thus, we need to check for bundles first.
 	if context.upgrades.TransactionBundles && bundle.IsEnvelope(tx) {
@@ -242,9 +243,9 @@ func runTransaction(
 // required for running transactions with various rules, e.g. regular or
 // sponsored transactions.
 type _transactionRunner interface {
-	runRegularTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) (ProcessedTransaction, bundle.TransactionResult)
-	runSponsoredTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) ([]ProcessedTransaction, bundle.TransactionResult)
-	runTransactionBundle(ctxt *runContext, tx *types.Transaction, txIndex int) ([]ProcessedTransaction, *ProcessedBundle, bundle.TransactionResult)
+	runRegularTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) (ProcessedTransaction, core_types.TransactionResult)
+	runSponsoredTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) ([]ProcessedTransaction, core_types.TransactionResult)
+	runTransactionBundle(ctxt *runContext, tx *types.Transaction, txIndex int) ([]ProcessedTransaction, *ProcessedBundle, core_types.TransactionResult)
 }
 
 // transactionRunner implements the _transactionRunner interface by using an
@@ -257,14 +258,14 @@ func (r *transactionRunner) runRegularTransaction(
 	ctxt *runContext,
 	tx *types.Transaction,
 	txIndex int,
-) (ProcessedTransaction, bundle.TransactionResult) {
+) (ProcessedTransaction, core_types.TransactionResult) {
 	res := r.evm.runWithBaseFeeCheck(ctxt, tx, txIndex)
-	status := bundle.TransactionResultInvalid
+	status := core_types.TransactionResultInvalid
 	if res.Receipt != nil {
 		if res.Receipt.Status == types.ReceiptStatusSuccessful {
-			status = bundle.TransactionResultSuccessful
+			status = core_types.TransactionResultSuccessful
 		} else {
-			status = bundle.TransactionResultFailed
+			status = core_types.TransactionResultFailed
 		}
 	}
 	return res, status
@@ -274,7 +275,7 @@ func (r *transactionRunner) runSponsoredTransaction(
 	ctxt *runContext,
 	tx *types.Transaction,
 	txIndex int,
-) ([]ProcessedTransaction, bundle.TransactionResult) {
+) ([]ProcessedTransaction, core_types.TransactionResult) {
 	// Run the IsCovered query in a snapshot to avoid spilling any side-effects
 	// like warm storage slots or refunds into the actual transaction.
 	ctxt.statedb.BeginTransaction()
@@ -286,11 +287,11 @@ func (r *transactionRunner) runSponsoredTransaction(
 	ctxt.statedb.EndTransaction()
 	if err != nil {
 		log.Warn("Failed to query subsidies registry", "tx", tx.Hash().Hex(), "err", err)
-		return []ProcessedTransaction{{Transaction: tx}}, bundle.TransactionResultInvalid
+		return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid
 	}
 	if !covered {
 		log.Debug("Transaction is not covered by a subsidy", "tx", tx.Hash().Hex())
-		return []ProcessedTransaction{{Transaction: tx}}, bundle.TransactionResultInvalid
+		return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid
 	}
 
 	// Check the remaining available gas to be used in this block.
@@ -300,20 +301,20 @@ func (r *transactionRunner) runSponsoredTransaction(
 		log.Debug("Not enough gas left in block for sponsored transaction",
 			"tx", tx.Hash().Hex(), "available", available, "needed", needed,
 		)
-		return []ProcessedTransaction{{Transaction: tx}}, bundle.TransactionResultInvalid
+		return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid
 	}
 
 	// Run the sponsored transaction.
 	processed := r.evm.runWithoutBaseFeeCheck(ctxt, tx, txIndex)
 	if processed.Receipt == nil {
 		log.Debug("Sponsored transaction skipped", "tx", tx.Hash().Hex())
-		return []ProcessedTransaction{processed}, bundle.TransactionResultInvalid
+		return []ProcessedTransaction{processed}, core_types.TransactionResultInvalid
 	}
 
-	status := bundle.TransactionResultSuccessful
+	status := core_types.TransactionResultSuccessful
 	if processed.Receipt.Status == types.ReceiptStatusFailed {
 		log.Debug("Sponsored transaction failed", "tx", tx.Hash().Hex())
-		status = bundle.TransactionResultFailed
+		status = core_types.TransactionResultFailed
 	}
 
 	// Charge the fee for the sponsored transaction to the subsidy fund.
@@ -349,22 +350,22 @@ func (r *transactionRunner) runTransactionBundle(
 	ctxt *runContext,
 	tx *types.Transaction,
 	txIndex int,
-) ([]ProcessedTransaction, *ProcessedBundle, bundle.TransactionResult) {
+) ([]ProcessedTransaction, *ProcessedBundle, core_types.TransactionResult) {
 
 	if !ctxt.upgrades.TransactionBundles {
 		log.Warn("Transaction bundles are not enabled, skipping bundle transaction", "tx", tx.Hash().Hex())
-		return []ProcessedTransaction{{Transaction: tx}}, nil, bundle.TransactionResultInvalid
+		return []ProcessedTransaction{{Transaction: tx}}, nil, core_types.TransactionResultInvalid
 	}
 
 	txBundle, plan, err := bundle.ValidateTransactionBundle(tx)
 	if err != nil {
 		log.Warn("Invalid bundle skip", "tx", tx.Hash().Hex(), "error", err)
-		return []ProcessedTransaction{{Transaction: tx}}, nil, bundle.TransactionResultInvalid
+		return []ProcessedTransaction{{Transaction: tx}}, nil, core_types.TransactionResultInvalid
 	}
 
 	if !plan.IsInRange(ctxt.blockNumber.Uint64()) {
 		log.Warn("Bundle skipped due to out-of-range execution plan", "tx", tx.Hash().Hex(), "planRange", fmt.Sprintf("[%d,%d]", plan.Earliest, plan.Latest), "blockNumber", ctxt.blockNumber.Uint64())
-		return []ProcessedTransaction{{Transaction: tx}}, nil, bundle.TransactionResultInvalid
+		return []ProcessedTransaction{{Transaction: tx}}, nil, core_types.TransactionResultInvalid
 	}
 
 	processedBundle := &ProcessedBundle{
@@ -379,14 +380,14 @@ func (r *transactionRunner) runTransactionBundle(
 		if err := ctxt.statedb.RevertToInterTxSnapshot(bundleCheckpoint); err != nil {
 			log.Error("Failed to revert to checkpoint", "err", err)
 		}
-		return []ProcessedTransaction{}, processedBundle, bundle.TransactionResultFailed
+		return []ProcessedTransaction{}, processedBundle, core_types.TransactionResultFailed
 	}
 	for _, processedTx := range runner.processedTransactions {
 		if processedTx.Receipt != nil {
 			processedBundle.Count++
 		}
 	}
-	return runner.processedTransactions, processedBundle, bundle.TransactionResultSuccessful
+	return runner.processedTransactions, processedBundle, core_types.TransactionResultSuccessful
 }
 
 // bundleTransactionRunner is an adapter implementing the bundle.TransactionRunner
@@ -397,11 +398,11 @@ type bundleTransactionRunner struct {
 	processedTransactions []ProcessedTransaction
 }
 
-func (b *bundleTransactionRunner) Run(tx *types.Transaction) bundle.TransactionResult {
+func (b *bundleTransactionRunner) Run(tx *types.Transaction) core_types.TransactionResult {
 	processed, _, status := runTransaction(b.ctxt, tx, b.txOffset)
 	b.processedTransactions = append(b.processedTransactions, processed...)
-	if status == bundle.TransactionResultInvalid {
-		return bundle.TransactionResultInvalid
+	if status == core_types.TransactionResultInvalid {
+		return core_types.TransactionResultInvalid
 	}
 
 	processedCount := 0
@@ -412,10 +413,10 @@ func (b *bundleTransactionRunner) Run(tx *types.Transaction) bundle.TransactionR
 	}
 	b.txOffset += processedCount
 
-	if status == bundle.TransactionResultFailed {
-		return bundle.TransactionResultFailed
+	if status == core_types.TransactionResultFailed {
+		return core_types.TransactionResultFailed
 	} else {
-		return bundle.TransactionResultSuccessful
+		return core_types.TransactionResultSuccessful
 	}
 }
 

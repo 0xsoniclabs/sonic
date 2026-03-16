@@ -12,6 +12,7 @@ package bundle
 import (
 	reflect "reflect"
 
+	core_types "github.com/0xsoniclabs/sonic/evmcore/core_types"
 	types "github.com/ethereum/go-ethereum/core/types"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -41,10 +42,10 @@ func (m *MockTransactionRunner) EXPECT() *MockTransactionRunnerMockRecorder {
 }
 
 // Run mocks base method.
-func (m *MockTransactionRunner) Run(tx *types.Transaction) TransactionResult {
+func (m *MockTransactionRunner) Run(tx *types.Transaction) core_types.TransactionResult {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Run", tx)
-	ret0, _ := ret[0].(TransactionResult)
+	ret0, _ := ret[0].(core_types.TransactionResult)
 	return ret0
 }
 

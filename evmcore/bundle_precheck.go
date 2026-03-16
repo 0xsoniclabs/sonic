@@ -22,6 +22,7 @@ import (
 	"math"
 	big "math/big"
 
+	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	state "github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -243,42 +244,42 @@ type dryRunner struct {
 	acceptedSender map[common.Address]struct{}
 }
 
-func (r *dryRunner) Run(tx *types.Transaction) bundle.TransactionResult {
+func (r *dryRunner) Run(tx *types.Transaction) core_types.TransactionResult {
 
 	// if the transaction is a nested bundle, process it as such
 	if bundle.IsEnvelope(tx) {
 		txBundle, err := bundle.OpenEnvelope(tx)
 		if err != nil {
-			return bundle.TransactionResultInvalid
+			return core_types.TransactionResultInvalid
 		}
 		acceptedBackup := maps.Clone(r.acceptedSender)
 		backup := r.nonceTracker.backup()
 		if bundle.RunBundle(txBundle, r) {
-			return bundle.TransactionResultSuccessful
+			return core_types.TransactionResultSuccessful
 		}
 		r.nonceTracker.restore(backup)
 		r.acceptedSender = acceptedBackup
-		return bundle.TransactionResultFailed
+		return core_types.TransactionResultFailed
 	}
 
 	// check for nonce conflicts
 	sender, err := types.Sender(r.signer, tx)
 	if err != nil {
-		return bundle.TransactionResultInvalid
+		return core_types.TransactionResultInvalid
 	}
 	want := r.nonceTracker.getNonce(sender)
 	if tx.Nonce() < want {
-		return bundle.TransactionResultInvalid
+		return core_types.TransactionResultInvalid
 	}
 	if tx.Nonce() > want {
-		return bundle.TransactionResultInvalid
+		return core_types.TransactionResultInvalid
 	}
 
 	// if there are no nonce conflicts, consume the nonce for the sender and
 	// continue with the next transaction in the bundle
 	r.nonceTracker.consumeNonce(sender)
 	r.acceptedSender[sender] = struct{}{}
-	return bundle.TransactionResultSuccessful
+	return core_types.TransactionResultSuccessful
 }
 
 // nonceTracker is keeping track of consumed nonces during the execution of a
