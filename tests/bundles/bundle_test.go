@@ -245,6 +245,8 @@ func getSubcases() map[string]SubCase {
 // The submitted transactions are a successful transaction, depending on the subcase an successful, failed, or invalid transaction, and another successful transaction.
 // The second transaction might be a normal transaction, a sponsored transaction, or a sub-bundle, depending on the subcase.
 func Test_RunAllOf_Works(t *testing.T) {
+	t.Parallel()
+
 	cases := []NamedCase{}
 	for name, subcase := range getSubcases() {
 		cases = append(cases, []NamedCase{
@@ -375,6 +377,8 @@ func Test_RunAllOf_Works(t *testing.T) {
 // The submitted transactions are a successful, failed, or invalid transaction, depending on the subcase, and another two successful transactions.
 // The first transaction might be a normal transaction, a sponsored transaction, or a sub-bundle, depending on the subcase.
 func Test_RunOneOf_Works(t *testing.T) {
+	t.Parallel()
+
 	cases := []NamedCase{}
 	for name, subcase := range getSubcases() {
 		cases = append(cases, []NamedCase{
@@ -523,22 +527,24 @@ func Merge[T any](items ...any) []T {
 	return result
 }
 
-func checkCase(t *testing.T, net *tests.IntegrationTestNet, namedCase NamedCase) {
+func checkCase(t *testing.T, net tests.IntegrationTestNetSession, namedCase NamedCase) {
 	c := namedCase.case_
 	name := fmt.Sprintf("OneOf=%v/TolerateFailed=%v/TolerateInvalid=%v/%s", c.oneOf, c.tolerateFailed, c.tolerateInvalid, namedCase.name)
 	t.Run(name, func(t *testing.T) {
+		session := net.SpawnSession(t)
+		t.Parallel()
 		flags := bundle.ExecutionFlag(0)
 		flags.SetTolerateInvalid(c.tolerateInvalid)
 		flags.SetTolerateFailed(c.tolerateFailed)
 		flags.SetOneOf(c.oneOf)
 
-		client, err := net.GetClient()
+		client, err := session.GetClient()
 		require.NoError(t, err, "failed to get client; %v", err)
 		defer client.Close()
 
-		contractInfo := deployContracts(t, net)
+		contractInfo := deployContracts(t, session)
 
-		envelopeTx, plan, bundleOnlyTxs := buildBundle(t, net, contractInfo, c.submittedTxTypes, flags, false)
+		envelopeTx, plan, bundleOnlyTxs := buildBundle(t, session, contractInfo, c.submittedTxTypes, flags, false)
 		require.NotNil(t, envelopeTx)
 
 		err = client.SendTransaction(t.Context(), envelopeTx)
@@ -557,20 +563,22 @@ func checkCase(t *testing.T, net *tests.IntegrationTestNet, namedCase NamedCase)
 		require.NotNil(t, info.Block)
 
 		// Check transactions hashes and statuses
-		transactionHashes := getTransactionsInBlock(t, net, big.NewInt(int64(*info.Block)))
+		transactionHashes := getTransactionsInBlock(t, session, big.NewInt(int64(*info.Block)))
 
 		// Truncate potential internal transactions at the beginning of the
 		// block. The rest should only be transactions from the bundle.
 		require.LessOrEqual(t, int(*info.Position), len(transactionHashes))
-		transactionHashes = transactionHashes[*info.Position:]
+		from := *info.Position
+		until := from + *info.Count
+		transactionHashes = transactionHashes[from:until]
 
 		require.Len(t, transactionHashes, len(c.blockTxIndices))
 		for i := range c.blockTxIndices {
 			switch c.blockTxIndices[i] {
 			case uncheckedTxIndex:
-				checkStatus(t, net, c.blockTxStatuses[i], transactionHashes[i])
+				checkStatus(t, session, c.blockTxStatuses[i], transactionHashes[i])
 			default:
-				checkHashesEqAndStatus(t, net, bundleOnlyTxs[c.blockTxIndices[i]].Hash(), c.blockTxStatuses[i], transactionHashes[i])
+				checkHashesEqAndStatus(t, session, bundleOnlyTxs[c.blockTxIndices[i]].Hash(), c.blockTxStatuses[i], transactionHashes[i])
 			}
 		}
 
@@ -579,15 +587,11 @@ func checkCase(t *testing.T, net *tests.IntegrationTestNet, namedCase NamedCase)
 	})
 }
 
-func startTestnet(t *testing.T) *tests.IntegrationTestNet {
+func startTestnet(t *testing.T) tests.IntegrationTestNetSession {
 	updates := opera.GetBrioUpgrades()
 	updates.GasSubsidies = true
 	updates.TransactionBundles = true
-	net := tests.StartIntegrationTestNet(t,
-		tests.IntegrationTestNetOptions{
-			Upgrades: tests.AsPointer(updates),
-		},
-	)
+	net := sharedNetwork.GetIntegrationTestNetSession(t, updates)
 	return net
 }
 
@@ -608,7 +612,7 @@ type ContractInfo struct {
 // in the access list to account for the bundle-only marker.
 // The counter contract is used to check whether the effects of transactions in a bundle are applied as expected,
 // and the revert contract is used to create transactions that fail by reverting.
-func deployContracts(t *testing.T, net *tests.IntegrationTestNet) ContractInfo {
+func deployContracts(t *testing.T, net tests.IntegrationTestNetSession) ContractInfo {
 	counterAddress, counterInput := counterAddressAndInput(t, net)
 	revertAddress, revertInput := revertAddressAndInput(t, net)
 
@@ -642,13 +646,13 @@ func deployContracts(t *testing.T, net *tests.IntegrationTestNet) ContractInfo {
 	}
 }
 
-func counterAddressAndInput(t *testing.T, net *tests.IntegrationTestNet) (common.Address, []byte) {
+func counterAddressAndInput(t *testing.T, net tests.IntegrationTestNetSession) (common.Address, []byte) {
 	_, counterAbi, counterAddress := prepareContract(t, net, counter.CounterMetaData.GetAbi, counter.DeployCounter)
 	counterInput := generateCallData(t, counterAbi, "incrementCounter")
 	return counterAddress, counterInput
 }
 
-func revertAddressAndInput(t *testing.T, net *tests.IntegrationTestNet) (common.Address, []byte) {
+func revertAddressAndInput(t *testing.T, net tests.IntegrationTestNetSession) (common.Address, []byte) {
 	_, revertABI, revertAddress := prepareContract(t, net, revert.RevertMetaData.GetAbi, revert.DeployRevert)
 	revertInput := generateCallData(t, revertABI, "doCrash")
 	return revertAddress, revertInput
@@ -666,7 +670,7 @@ func getCounterValue(t *testing.T, client *tests.PooledEhtClient, contractInfo C
 
 type txMakeOptions struct {
 	t   *testing.T
-	net *tests.IntegrationTestNet
+	net tests.IntegrationTestNetSession
 
 	contractInfo ContractInfo
 	gasPrice     *big.Int
@@ -770,7 +774,7 @@ func (t subBundleTx) makeTx(opts txMakeOptions) *types.Transaction {
 
 func makeUnsignedBundleOnlyTxs(
 	t *testing.T,
-	net *tests.IntegrationTestNet,
+	net tests.IntegrationTestNetSession,
 	txTypes []txType,
 	contractInfo ContractInfo,
 ) ([]*types.Transaction, []*tests.Account) {
@@ -783,7 +787,7 @@ func makeUnsignedBundleOnlyTxs(
 	receipts, err := net.EndowAccounts(addresses, big.NewInt(1e18))
 	require.NoError(t, err, "failed to endow accounts; %v", err)
 	for _, receipt := range receipts {
-		require.Equal(t, uint64(1), receipt.Status, "account endowment failed")
+		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "failed to endow account; transaction failed")
 	}
 
 	client, err := net.GetClient()
@@ -803,7 +807,7 @@ func makeUnsignedBundleOnlyTxs(
 
 func signBundleOnlyTxs(
 	t *testing.T,
-	net *tests.IntegrationTestNet,
+	net tests.IntegrationTestNetSession,
 	txs []*types.Transaction,
 	senders []*tests.Account,
 	plan bundle.ExecutionPlan,
@@ -825,7 +829,7 @@ func signBundleOnlyTxs(
 
 func buildPlan(
 	t *testing.T,
-	net *tests.IntegrationTestNet,
+	net tests.IntegrationTestNetSession,
 	flags bundle.ExecutionFlag,
 	bundleOnlyTxs []*types.Transaction,
 	senders []*tests.Account,
@@ -856,7 +860,7 @@ func buildPlan(
 
 func buildBundle(
 	t *testing.T,
-	net *tests.IntegrationTestNet,
+	net tests.IntegrationTestNetSession,
 	contractInfo ContractInfo,
 	txTypes []txType,
 	flags bundle.ExecutionFlag,
@@ -875,7 +879,7 @@ func buildBundle(
 
 func checkHashesEqAndStatus(
 	t *testing.T,
-	net *tests.IntegrationTestNet,
+	net tests.IntegrationTestNetSession,
 	expectedHash common.Hash,
 	expectedStatus txStatus,
 	txHash common.Hash,
@@ -887,7 +891,7 @@ func checkHashesEqAndStatus(
 
 func checkStatus(
 	t *testing.T,
-	net *tests.IntegrationTestNet,
+	net tests.IntegrationTestNetSession,
 	status txStatus,
 	txHash common.Hash,
 ) {
