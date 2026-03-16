@@ -34,19 +34,16 @@ import (
 )
 
 func Test_CreateBundlesWithRPC(t *testing.T) {
-
+	t.Parallel()
 	upgrades := opera.GetBrioUpgrades()
 	upgrades.TransactionBundles = true
-	net := tests.StartIntegrationTestNet(t,
-		tests.IntegrationTestNetOptions{
-			Upgrades: &upgrades,
-		},
-	)
-	client, err := net.GetClient()
+	session := sharedNetwork.GetIntegrationTestNetSession(t, upgrades)
+
+	client, err := session.GetClient()
 	require.NoError(t, err, "failed to get client")
 	defer client.Close()
 
-	sender1 := net.GetSessionSponsor()
+	sender1 := session.GetSessionSponsor()
 
 	gasPrice, err := client.SuggestGasPrice(t.Context())
 	require.NoError(t, err, "failed to suggest gas price")
@@ -83,7 +80,7 @@ func Test_CreateBundlesWithRPC(t *testing.T) {
 	require.NoError(t, err, "failed to prepare bundle")
 
 	// 4) Sign prepared transactions
-	signer := types.LatestSignerForChainID(net.GetChainId())
+	signer := types.LatestSignerForChainID(session.GetChainId())
 	txs := make([]*types.Transaction, len(preparedBundle.Transactions))
 	for i, txArgs := range preparedBundle.Transactions {
 		txs[i], err = types.SignTx(txArgs.ToTransaction(), signer, sender1.PrivateKey)
@@ -101,7 +98,7 @@ func Test_CreateBundlesWithRPC(t *testing.T) {
 	require.Equal(t, ethapi.BundleStatusExecuted, info.Status)
 
 	for _, tx := range txs {
-		receipt, err := net.GetReceipt(tx.Hash())
+		receipt, err := session.GetReceipt(tx.Hash())
 		require.NoError(t, err, "failed to get receipt")
 		require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
 	}
