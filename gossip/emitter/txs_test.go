@@ -63,16 +63,9 @@ func Test_Emitter_isValidBundleTx_AcceptsValidBundleIfBundlesAreEnabled(t *testi
 				world: World{External: external},
 			}
 
-			tx := types.NewTx(&types.LegacyTx{
-				To: &bundle.BundleAddress,
-				Data: bundle.Encode(bundle.TransactionBundle{
-					Version:  1,
-					Earliest: 50,
-					Latest:   150,
-				}),
-				Gas: 21_280,
-			})
-			_, _, err := bundle.ValidateTransactionBundle(tx, nil)
+			tx := bundle.NewBuilder().Earliest(50).Latest(150).Build()
+
+			_, _, err := bundle.ValidateTransactionBundle(tx)
 			require.NoError(err)
 
 			allBundlesRunnable := func(evmcore.ChainState, *types.Transaction) evmcore.BundleState {
@@ -88,17 +81,13 @@ func Test_Emitter_isValidBundleTx_RejectsInvalidBundle(t *testing.T) {
 	tests := map[string]*types.Transaction{
 		"not a bundle": types.NewTx(&types.LegacyTx{}),
 		"invalid bundle data": types.NewTx(&types.LegacyTx{
-			To:   &bundle.BundleAddress,
+			To:   &bundle.BundleProcessor,
 			Data: []byte{0x01, 0x02, 0x03},
 		}),
-		"bundle with out-of-range block numbers": types.NewTx(&types.LegacyTx{
-			To: &bundle.BundleAddress,
-			Data: bundle.Encode(bundle.TransactionBundle{
-				Version:  1,
-				Earliest: 150,
-				Latest:   250,
-			}),
-		}),
+		"bundle with out-of-range block numbers": bundle.NewBuilder().
+			Earliest(150).
+			Latest(250).
+			Build(),
 	}
 
 	for name, tx := range tests {
@@ -146,16 +135,9 @@ func Test_Emitter_isValidBundleTx_RejectsAlreadyProcessedBundle(t *testing.T) {
 				world: World{External: external},
 			}
 
-			tx := types.NewTx(&types.LegacyTx{
-				To: &bundle.BundleAddress,
-				Data: bundle.Encode(bundle.TransactionBundle{
-					Version:  1,
-					Earliest: 50,
-					Latest:   150,
-				}),
-				Gas: 21_280,
-			})
-			_, _, err := bundle.ValidateTransactionBundle(tx, nil)
+			tx := bundle.NewBuilder().Earliest(50).Latest(150).Build()
+
+			_, _, err := bundle.ValidateTransactionBundle(tx)
 			require.NoError(t, err)
 
 			getBundleState := func(evmcore.ChainState, *types.Transaction) evmcore.BundleState {

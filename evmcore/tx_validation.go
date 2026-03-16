@@ -107,7 +107,7 @@ func validateTx(
 		return err
 	}
 
-	if err := validateBundleTransactions(tx, netRules, signer, chain, state); err != nil {
+	if err := validateBundleTransactions(tx, netRules, chain, state); err != nil {
 		return err
 	}
 
@@ -249,7 +249,7 @@ func ValidateTxForBlock(tx *types.Transaction, netRules NetworkRules, chain Stat
 
 	// Ensure Sonic-specific hard bounds
 	isSponsorRequest := netRules.gasSubsidies && subsidies.IsSponsorshipRequest(tx)
-	isBundle := netRules.transactionBundles && bundle.IsTransactionBundle(tx)
+	isBundle := netRules.transactionBundles && bundle.IsEnvelope(tx)
 	if baseFee := chain.CurrentBaseFee(); !isSponsorRequest && !isBundle && baseFee != nil {
 		limit := gaspricelimits.GetMinimumFeeCapForTransactionPool(baseFee)
 		if tx.GasFeeCapIntCmp(limit) < 0 {
@@ -349,7 +349,7 @@ func validateSponsoredTransactions(
 ) error {
 	// Transaction Bundles are identified as sponsorship requests, but they are
 	// checked independently.
-	if bundle.IsTransactionBundle(tx) {
+	if bundle.IsEnvelope(tx) {
 		return nil
 	}
 
@@ -381,7 +381,6 @@ func validateSponsoredTransactions(
 func validateBundleTransactions(
 	tx *types.Transaction,
 	netRules NetworkRules,
-	signer types.Signer,
 	chainState StateReader,
 	// Although state can be retrieved from chain, it is passed explicitly to avoid extra db-pool accesses
 	stateDb state.StateDB,
@@ -389,7 +388,6 @@ func validateBundleTransactions(
 	return validateBundleTransactionsInternal(
 		tx,
 		netRules,
-		signer,
 		chainState,
 		stateDb,
 		GetBundleState,
@@ -399,14 +397,13 @@ func validateBundleTransactions(
 func validateBundleTransactionsInternal(
 	tx *types.Transaction,
 	netRules NetworkRules,
-	signer types.Signer,
 	chainState StateReader,
 	// Although state can be retrieved from chain, it is passed explicitly to avoid extra db-pool accesses
 	stateDb state.StateDB,
 	getBundleState func(ChainState, *types.Transaction) BundleState,
 ) error {
 	// This check only covers bundle transactions, ignore the rest.
-	if !bundle.IsTransactionBundle(tx) {
+	if !bundle.IsEnvelope(tx) {
 		return nil
 	}
 
@@ -416,7 +413,7 @@ func validateBundleTransactionsInternal(
 	}
 
 	// If the transaction is a bundle, validate its structure and content.
-	_, _, err := bundle.ValidateTransactionBundle(tx, signer)
+	_, _, err := bundle.ValidateTransactionBundle(tx)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrBundleTransactionInvalid, err)
 	}

@@ -27,7 +27,6 @@ import (
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/require"
@@ -53,62 +52,31 @@ func TestBundle_CanBeProcessedByTheNetwork(t *testing.T) {
 	addrA := senderA.Address()
 	addrB := senderB.Address()
 
-	chainId := net.GetChainId()
-	signer := types.LatestSignerForChainID(chainId)
-
-	// Create a bundle where sender A and B exchange 1 token each.
 	block, err := client.BlockNumber(t.Context())
 	require.NoError(t, err)
-	txToSign, plan := prepareBundle(
-		chainId, block,
-		[]UnsignedTransaction{
-			{
-				Sender: addrA,
-				Transaction: tests.SetTransactionDefaults(
-					t, net,
-					&types.AccessListTx{
-						To:    &addrB,
-						Gas:   30_000,
-						Value: big.NewInt(1),
-					},
-					senderA,
-				),
-			},
-			{
-				Sender: addrB,
-				Transaction: tests.SetTransactionDefaults(
-					t, net,
-					&types.AccessListTx{
-						To:    &addrA,
-						Gas:   30_000,
-						Value: big.NewInt(1),
-					},
-					senderB,
-				),
-			},
-		},
-	)
 
-	// Sign the individual transactions
-	signedTxs := []*types.Transaction{
-		types.MustSignNewTx(senderA.PrivateKey, signer, txToSign[0].Transaction),
-		types.MustSignNewTx(senderB.PrivateKey, signer, txToSign[1].Transaction),
-	}
-
-	// Create the bundle transaction
-	bundleTx := types.MustSignNewTx(
-		coordinator.PrivateKey, signer,
-		makeBundle(signedTxs, plan),
-	)
-
-	// Check bundle construction.
-	require.True(t, bundle.IsTransactionBundle(bundleTx))
-	recoveredBundle, recoveredPlan, err := bundle.ValidateTransactionBundle(bundleTx, signer)
-	require.NoError(t, err)
-	require.NotNil(t, recoveredBundle)
-	require.NotNil(t, recoveredPlan)
-	require.Equal(t, plan, *recoveredPlan)
-	require.EqualValues(t, 0, bundleTx.GasFeeCap().Uint64())
+	// Create a bundle where sender A and B exchange 1 token each.
+	bundleTx, bundle, plan := bundle.NewBuilder().
+		Earliest(block).
+		With(
+			bundle.Step(
+				senderA.PrivateKey,
+				tests.SetTransactionDefaults(t, net, &types.AccessListTx{
+					To:    &addrB,
+					Gas:   30_000,
+					Value: big.NewInt(1),
+				}, senderA),
+			),
+			bundle.Step(
+				senderB.PrivateKey,
+				tests.SetTransactionDefaults(t, net, &types.AccessListTx{
+					To:    &addrA,
+					Gas:   30_000,
+					Value: big.NewInt(1),
+				}, senderB),
+			),
+		).
+		BuildEnvelopeBundleAndPlan()
 
 	// Check bundle status before submission.
 	info, err := getBundleInfo(t.Context(), client.Client(), plan.Hash())
@@ -129,7 +97,7 @@ func TestBundle_CanBeProcessedByTheNetwork(t *testing.T) {
 	require.NotNil(t, info.Count)
 
 	// Check that the transactions are in the block as advertised.
-	receipts, err := net.GetReceipts([]common.Hash{signedTxs[0].Hash(), signedTxs[1].Hash()})
+	receipts, err := net.GetReceipts([]common.Hash{bundle.Transactions[0].Hash(), bundle.Transactions[1].Hash()})
 	require.NoError(t, err)
 	require.Len(t, receipts, 2)
 	for _, receipt := range receipts {
@@ -148,84 +116,6 @@ func TestBundle_CanBeProcessedByTheNetwork(t *testing.T) {
 	nonce, err := client.NonceAt(t.Context(), coordinator.Address(), big.NewInt(int64(*info.Block)))
 	require.NoError(t, err)
 	require.Zero(t, nonce)
-}
-
-type UnsignedTransaction struct {
-	Sender      common.Address
-	Transaction *types.AccessListTx
-}
-
-func prepareBundle(
-	chainId *big.Int,
-	targetBlock uint64,
-	txs []UnsignedTransaction,
-) ([]UnsignedTransaction, bundle.ExecutionPlan) {
-
-	signer := types.LatestSignerForChainID(chainId)
-
-	var steps []bundle.ExecutionStep
-	for _, unsignedTx := range txs {
-		steps = append(steps, bundle.ExecutionStep{
-			From: unsignedTx.Sender,
-			Hash: signer.Hash(types.NewTx(unsignedTx.Transaction)),
-		})
-	}
-
-	// build execution plan
-	plan := bundle.ExecutionPlan{
-		Steps:    steps,
-		Earliest: targetBlock,
-		Latest:   targetBlock + 10,
-	}
-
-	planHash := plan.Hash()
-
-	// amend transactions with the execution plan hash in the access list
-	for _, unsignedTx := range txs {
-		txData := unsignedTx.Transaction
-		txData.AccessList = append(txData.AccessList, types.AccessTuple{
-			Address: bundle.BundleOnly,
-			StorageKeys: []common.Hash{
-				planHash,
-			},
-		})
-	}
-
-	return txs, plan
-}
-
-func makeBundle(
-	txs []*types.Transaction,
-	plan bundle.ExecutionPlan,
-) types.TxData {
-	data := bundle.Encode(bundle.TransactionBundle{
-		Version:  bundle.BundleV1,
-		Bundle:   txs,
-		Flags:    plan.Flags,
-		Earliest: plan.Earliest,
-		Latest:   plan.Latest,
-	})
-	neededGas := uint64(0)
-	for _, tx := range txs {
-		neededGas += tx.Gas()
-	}
-	intrGas, _ := core.IntrinsicGas(
-		data,
-		nil,   // access list is set in the individual transactions
-		nil,   // code auth is not used in the bundle transaction
-		false, // bundle transaction is not a contract creation
-		true,
-		true,
-		true,
-	)
-	if neededGas < intrGas {
-		neededGas = intrGas
-	}
-	return &types.DynamicFeeTx{
-		To:   &bundle.BundleAddress,
-		Data: data,
-		Gas:  neededGas,
-	}
 }
 
 func getBundleInfo(

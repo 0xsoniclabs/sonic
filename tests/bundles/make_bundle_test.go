@@ -60,14 +60,13 @@ func makeEnvelopeTransaction(
 	}
 
 	bundlePayload := bundle.TransactionBundle{
-		Version:  bundle.BundleV1,
-		Bundle:   transactions,
-		Flags:    plan.Flags,
-		Earliest: plan.Earliest,
-		Latest:   plan.Latest,
+		Transactions: transactions,
+		Flags:        plan.Flags,
+		Earliest:     plan.Earliest,
+		Latest:       plan.Latest,
 	}
 
-	data := bundle.Encode(bundlePayload)
+	data := bundlePayload.Encode()
 
 	// If this envelope is nested, meaning it is part of a super/parent bundle,
 	// its gas cost shall include enough intrinsics gas for one extra access list entry
@@ -100,7 +99,7 @@ func makeEnvelopeTransaction(
 	bundleTx := types.MustSignNewTx(coordinator.PrivateKey, signer,
 		&types.AccessListTx{
 			Nonce: 0,
-			To:    &bundle.BundleAddress,
+			To:    &bundle.BundleProcessor,
 			Gas:   max(gas, intrGas, floorDataGas),
 			Data:  data,
 		},
@@ -114,7 +113,7 @@ func makeEnvelopeTransaction(
 	if !nested {
 		// Sanity check the bundle before sending it to the mempool, if fails to validate before making
 		// a bundle transaction, it will fail to be included in a block and waiting for payment receipt will timeout
-		_, _, err = bundle.ValidateTransactionBundle(bundleTx, signer)
+		_, _, err = bundle.ValidateTransactionBundle(bundleTx)
 		require.NoError(t, err, "failed to validate transaction bundle; %v", err)
 	}
 

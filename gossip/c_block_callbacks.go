@@ -261,7 +261,7 @@ func consensusCallbackBeginBlockFn(
 
 				// Filter obsolete bundles from the proposal.
 				proposal.Transactions, err = filterObsoleteBundles(
-					proposal.Transactions, types.LatestSignerForChainID(chainCfg.ChainID), store,
+					proposal.Transactions, store,
 					uint64(proposal.Number), &es.Rules, log.Root(), skippedTxsMeter,
 				)
 				if err != nil {
@@ -535,15 +535,10 @@ func consensusCallbackBeginBlockFn(
 					store.EvmStore().SetCachedEvmBlock(blockCtx.Idx, evmBlock)
 
 					// Keep track of processed bundles.
-					signer := types.LatestSignerForChainID(chainCfg.ChainID)
 					bundleInfos := make([]bundle.ExecutionInfo, len(processedBundles))
 					for i, pb := range processedBundles {
-						plan, err := pb.Bundle.ExtractExecutionPlan(signer)
-						if err != nil {
-							log.Crit("Failed to extract execution plan from bundle", "err", err)
-						}
 						bundleInfos[i] = bundle.ExecutionInfo{
-							ExecutionPlanHash: plan.Hash(),
+							ExecutionPlanHash: pb.ExecutionPlanHash,
 							BlockNum:          uint64(blockCtx.Idx),
 							Position:          pb.Position,
 							Count:             pb.Count,
@@ -962,7 +957,6 @@ func isPermissible(
 // times for inclusion.
 func filterObsoleteBundles(
 	transactions []*types.Transaction,
-	signer types.Signer,
 	tracker bundleTracker,
 	blockNumber uint64,
 	rules *opera.Rules,
@@ -990,7 +984,7 @@ func filterObsoleteBundles(
 
 	res := make([]*types.Transaction, 0, len(transactions))
 	for _, tx := range transactions {
-		if !bundle.IsTransactionBundle(tx) {
+		if !bundle.IsEnvelope(tx) {
 			res = append(res, tx)
 			continue
 		}
@@ -1007,7 +1001,7 @@ func filterObsoleteBundles(
 		}
 
 		// Check static properties of the bundle, to make sure it is not malformed.
-		_, execPlan, err := bundle.ValidateTransactionBundle(tx, signer)
+		_, execPlan, err := bundle.ValidateTransactionBundle(tx)
 		if err != nil {
 			if log != nil {
 				log.Warn("Invalid bundle transaction in the proposal", "tx", tx.Hash(), "issue", err)
