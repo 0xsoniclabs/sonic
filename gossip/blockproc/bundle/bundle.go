@@ -235,6 +235,13 @@ const (
 	bundleEncodingVersion byte = 1
 )
 
+type bundleEncodingV1 struct {
+	Bundle   types.Transactions
+	Flags    ExecutionFlags
+	Earliest uint64
+	Latest   uint64
+}
+
 func encodeInternal(
 	version byte,
 	bundle *TransactionBundle,
@@ -244,7 +251,7 @@ func encodeInternal(
 	// encode into a buffer can only fail due to OOM
 	// since we are encoding a struct with fixed fields, we can ignore the error
 	_ = rlp.Encode(&buffer, version)
-	_ = rlp.Encode(&buffer, []any{
+	_ = rlp.Encode(&buffer, bundleEncodingV1{
 		bundle.Transactions,
 		bundle.Flags,
 		bundle.Earliest,
@@ -268,12 +275,7 @@ func decode(data []byte) (TransactionBundle, error) {
 		return bundle, fmt.Errorf("unsupported bundle version: %d", version)
 	}
 
-	payload := struct {
-		Bundle   types.Transactions
-		Flags    ExecutionFlags
-		Earliest uint64
-		Latest   uint64
-	}{}
+	var payload bundleEncodingV1
 	if err := rlp.DecodeBytes(rest, &payload); err != nil {
 		return bundle, fmt.Errorf("failed to decode transaction bundle: %v", err)
 	}

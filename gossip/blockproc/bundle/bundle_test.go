@@ -32,7 +32,12 @@ import (
 
 func TestIsBundledOnly_IdentifiesBundleOnlyTransactions_OfAllTypes(t *testing.T) {
 	bundleOnlyMarker := types.AccessList{{Address: BundleOnly}}
+
 	require.False(t, IsBundleOnly(types.NewTx(&types.LegacyTx{})))
+	require.False(t, IsBundleOnly(types.NewTx(&types.AccessListTx{})))
+	require.False(t, IsBundleOnly(types.NewTx(&types.DynamicFeeTx{})))
+	require.False(t, IsBundleOnly(types.NewTx(&types.SetCodeTx{})))
+
 	require.True(t, IsBundleOnly(types.NewTx(&types.AccessListTx{
 		AccessList: bundleOnlyMarker,
 	})))
@@ -47,7 +52,7 @@ func TestIsBundledOnly_IdentifiesBundleOnlyTransactions_OfAllTypes(t *testing.T)
 	})))
 }
 
-func TestIsEnvelope_IdentifiesEnvelops(t *testing.T) {
+func TestIsEnvelope_IdentifiesEnvelopes(t *testing.T) {
 	tests := map[string]struct {
 		tx       types.TxData
 		expected bool
