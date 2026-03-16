@@ -26,7 +26,7 @@ import (
 )
 
 func TestBaseFee_CanReadBaseFeeFromHeadAndBlockAndHistory(t *testing.T) {
-	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	session := sharedNetwork.GetIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 	t.Parallel()
 
 	// Deploy the base fee contract.

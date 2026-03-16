@@ -30,7 +30,7 @@ import (
 )
 
 func TestSetTransactionDefaults_CanInitializeAllTransactionTypes(t *testing.T) {
-	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	session := sharedNetwork.GetIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 	t.Parallel()
 
 	client, err := session.GetClient()
@@ -401,7 +401,7 @@ func TestSetTransactionDefaults_IsCorrectAfterUpgradesChange(t *testing.T) {
 }
 
 func TestWaitUntilTransactionIsRetiredFromPool_waitsFromCompletion(t *testing.T) {
-	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	session := sharedNetwork.GetIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 	t.Parallel()
 
 	// TODO: this test can benefit from using synctest once it is available
