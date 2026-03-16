@@ -41,7 +41,7 @@ func TestValidateEnvelope_IdentifiesBundles(t *testing.T) {
 	}{
 		"not a bundle": {tx: generator.makeNonBundleTx(), expectBundle: false},
 		"empty bundle": {tx: generator.makeEmptyBundleTx(), expectBundle: true},
-		"valid bundle": {tx: generator.makeValidBundleTx(t), expectBundle: true},
+		"valid bundle": {tx: generator.makeValidBundleTx(), expectBundle: true},
 	}
 
 	for name, test := range tests {
@@ -132,7 +132,7 @@ func TestValidateEnvelope_ReturnsErrorsOnValidationFailure(t *testing.T) {
 			expectedError: "failed to derive sender",
 		},
 		"bundle without enough gas for intrinsic cost": {
-			tx:            generator.makeBundleTxWithoutEnoughIntrinsicGas(t),
+			tx:            generator.makeBundleTxWithoutEnoughIntrinsicGas(),
 			expectedError: "gas should be more than intrinsic gas",
 		},
 		"bundle without enough gas for floor gas costs": {
@@ -140,7 +140,7 @@ func TestValidateEnvelope_ReturnsErrorsOnValidationFailure(t *testing.T) {
 			expectedError: "should be more than floor gas",
 		},
 		"bundle with wrong amount of gas for all transactions": {
-			tx:            generator.makeBundleTxWithoutEnoughGasForAllTransactions(t),
+			tx:            generator.makeBundleTxWithoutEnoughGasForAllTransactions(),
 			expectedError: "gas limit of envelope does not match gas limit of payload",
 		},
 	}
@@ -255,81 +255,24 @@ func newTestBundleGenerator(t testing.TB, n int) testBundleGenerator {
 }
 
 func (gen testBundleGenerator) makeEmptyBundleTx() *types.Transaction {
-	bundle := TransactionBundle{
-		Transactions: types.Transactions{},
-		Flags:        EF_AllOf,
-	}
-
-	return types.NewTx(&types.LegacyTx{
-		To:   &BundleProcessor,
-		Data: bundle.Encode(),
-		Gas:  21240,
-	})
+	return AllOf()
 }
 
-func (gen testBundleGenerator) makeValidBundleTx(t testing.TB) *types.Transaction {
-	t.Helper()
+func (gen testBundleGenerator) makeValidBundleTx() *types.Transaction {
 	receiver := common.Address{0x42}
 	gasPerTx := uint64(20_000)
 
-	//  Generate n metaTransactions from n different senders
-	metaTransactions := make([]types.AccessListTx, gen.n)
-	txHash := make([]common.Hash, gen.n)
-	sender := make([]common.Address, gen.n)
+	steps := make([]BundleStep, 0, gen.n)
 	for i := range gen.n {
-		tx := types.AccessListTx{
+		steps = append(steps, Step(gen.keys[i], &types.AccessListTx{
 			Nonce: uint64(1),
 			To:    &receiver,
 			Value: big.NewInt(1234),
 			Gas:   gasPerTx,
-		}
-
-		txHash[i] = gen.signer.Hash(types.NewTx(&tx))
-		metaTransactions[i] = tx
-		sender[i] = crypto.PubkeyToAddress(gen.keys[i].PublicKey)
+		}))
 	}
 
-	// prepare execution  plan
-	plan := ExecutionPlan{
-		Steps: make([]ExecutionStep, gen.n),
-		Flags: 0,
-	}
-	for i := range gen.n {
-		plan.Steps[i] = ExecutionStep{
-			From: sender[i],
-			Hash: txHash[i],
-		}
-	}
-
-	// amend transactions with the execution plan hash
-	// and sign them
-	planHash := plan.Hash()
-	signedTransactions := make(types.Transactions, gen.n)
-	for i := range gen.n {
-		tx := metaTransactions[i]
-		tx.AccessList = append(tx.AccessList, types.AccessTuple{
-			Address: BundleOnly,
-			StorageKeys: []common.Hash{
-				planHash,
-			},
-		})
-
-		signedTx, err := types.SignTx(types.NewTx(&tx), gen.signer, gen.keys[i])
-		require.NoError(t, err)
-		signedTransactions[i] = signedTx
-	}
-
-	// prepare the bundle
-	bundle := TransactionBundle{
-		Transactions: signedTransactions,
-		Flags:        EF_AllOf,
-	}
-
-	return types.NewTx(&types.LegacyTx{
-		To:   &BundleProcessor,
-		Data: bundle.Encode(),
-		Gas:  gasPerTx * uint64(gen.n),
-	})
+	return AllOf(steps...)
 }
 
 func (gen testBundleGenerator) makeUnsoundBundleTx(t testing.TB) *types.Transaction {
@@ -422,9 +365,8 @@ func (gen testBundleGenerator) makeNonBundleTx() *types.Transaction {
 	})
 }
 
-func (gen testBundleGenerator) makeBundleTxWithoutEnoughIntrinsicGas(t testing.TB) *types.Transaction {
-	t.Helper()
-	tx := gen.makeValidBundleTx(t)
+func (gen testBundleGenerator) makeBundleTxWithoutEnoughIntrinsicGas() *types.Transaction {
+	tx := gen.makeValidBundleTx()
 	// reduce the gas in tx
 	tx = types.NewTx(&types.LegacyTx{
 		To:   &BundleProcessor,
@@ -456,9 +398,8 @@ func (gen testBundleGenerator) makeBundleTxWithoutEnoughFloorGas(t testing.TB) *
 	})
 }
 
-func (gen testBundleGenerator) makeBundleTxWithoutEnoughGasForAllTransactions(t testing.TB) *types.Transaction {
-	t.Helper()
-	tx := gen.makeValidBundleTx(t)
+func (gen testBundleGenerator) makeBundleTxWithoutEnoughGasForAllTransactions() *types.Transaction {
+	tx := gen.makeValidBundleTx()
 	// reduce the gas in tx
 	return types.NewTx(&types.LegacyTx{
 		To:   &BundleProcessor,
