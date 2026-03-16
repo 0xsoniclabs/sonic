@@ -27,7 +27,7 @@ import (
 
 func TestIncreasinglyExpensive_ContractIsIncreasinglyExpensive(t *testing.T) {
 
-	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	session := sharedNetwork.GetIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 	t.Parallel()
 
 	// Deploy the increasingly expensive contract.

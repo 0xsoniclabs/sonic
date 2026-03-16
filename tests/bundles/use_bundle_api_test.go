@@ -44,7 +44,7 @@ func Test_CreateBundlesWithRPC(t *testing.T) {
 	defer client.Close()
 
 	// Deploy the increasingly expensive contract.
-	_, receipt, err := tests.DeployContract(net, increasingly_expensive.DeployIncreasinglyExpensive)
+	_, receipt, err := tests.DeployContract(session, increasingly_expensive.DeployIncreasinglyExpensive)
 	require.NoError(t, err, "failed to deploy contract; %v", err)
 	require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
 
