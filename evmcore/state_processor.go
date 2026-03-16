@@ -203,12 +203,7 @@ func runTransactions(
 	processed := make([]ProcessedTransaction, 0, len(transactions))
 	var bundles []ProcessedBundle
 	for _, tx := range transactions {
-		nextId := txIndexOffset
-		for _, p := range processed {
-			if p.Receipt != nil {
-				nextId++
-			}
-		}
+		nextId := len(processed) + txIndexOffset
 		txs, processedBundle, _ := runTransaction(context, tx, nextId)
 		processed = append(processed, txs...)
 		if processedBundle != nil {
