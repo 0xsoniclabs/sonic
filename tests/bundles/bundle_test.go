@@ -565,8 +565,7 @@ func checkCase(t *testing.T, net tests.IntegrationTestNetSession, namedCase Name
 		// Check transactions hashes and statuses
 		transactionHashes := getTransactionsInBlock(t, session, big.NewInt(int64(*info.Block)))
 
-		// Truncate potential internal transactions at the beginning of the
-		// block. The rest should only be transactions from the bundle.
+		// Consider only transactions corresponding to this bundle.
 		require.LessOrEqual(t, int(*info.Position), len(transactionHashes))
 		from := *info.Position
 		until := from + *info.Count
