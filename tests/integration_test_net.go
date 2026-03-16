@@ -53,7 +53,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
-	geth_crypto "github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
 )
@@ -112,6 +111,9 @@ type IntegrationTestNetSession interface {
 	// network's sponsor account. This should be done before entering a new
 	// parallel context to prevent conflicting nonces inside.
 	SpawnSession(t *testing.T) IntegrationTestNetSession
+
+	// SpawnSessions creates a list of new test sessions on the network.
+	SpawnSessions(t *testing.T, num int) []IntegrationTestNetSession
 
 	// GetWebSocketClient provides raw access to a fresh connection to the network
 	// The resulting client must be closed after use.
@@ -808,22 +810,34 @@ func (n *IntegrationTestNet) GetHeaders() ([]*types.Header, error) {
 //		        < use session instead of net of the rest of the test >
 //		})
 func (n *IntegrationTestNet) SpawnSession(t *testing.T) IntegrationTestNetSession {
+	return n.SpawnSessions(t, 1)[0]
+}
+
+func (n *IntegrationTestNet) SpawnSessions(t *testing.T, num int) []IntegrationTestNetSession {
 	t.Helper()
 	n.sessionsMutex.Lock()
 	defer n.sessionsMutex.Unlock()
 
-	key, _ := geth_crypto.GenerateKey()
-	nextSessionAccount := Account{
-		PrivateKey: key,
+	accounts := NewAccounts(num)
+	addresses := make([]common.Address, num)
+	for i := range addresses {
+		addresses[i] = accounts[i].Address()
 	}
-	receipt, err := n.EndowAccount(nextSessionAccount.Address(), new(big.Int).SetUint64(math.MaxUint64))
-	require.NoError(t, err, "Failed to endow account")
-	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "Failed to endow account")
 
-	return &Session{
-		net:     n,
-		account: nextSessionAccount,
+	receipts, err := n.EndowAccounts(addresses, new(big.Int).SetUint64(math.MaxUint64))
+	require.NoError(t, err, "Failed to endow accounts")
+	for _, receipt := range receipts {
+		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "Failed to endow account")
 	}
+
+	sessions := make([]IntegrationTestNetSession, num)
+	for i, account := range accounts {
+		sessions[i] = &Session{
+			net:     n,
+			account: *account,
+		}
+	}
+	return sessions
 }
 
 // AdvanceEpoch trigger the sealing of an epoch and the epoch number to progress by the given number.
@@ -910,6 +924,10 @@ func (s *Session) SpawnSession(t *testing.T) IntegrationTestNetSession {
 	return s.net.SpawnSession(t)
 }
 
+func (s *Session) SpawnSessions(t *testing.T, num int) []IntegrationTestNetSession {
+	return s.net.SpawnSessions(t, num)
+}
+
 func (s *Session) GetUpgrades() opera.Upgrades {
 	return *s.net.options.Upgrades
 }
@@ -934,8 +952,10 @@ func (s *Session) EndowAccounts(
 	addresses []common.Address,
 	value *big.Int,
 ) ([]*types.Receipt, error) {
-	s.net.endowmentMutex.Lock()
-	defer s.net.endowmentMutex.Unlock()
+	/*
+		s.net.endowmentMutex.Lock()
+		defer s.net.endowmentMutex.Unlock()
+	*/
 
 	client, err := s.GetClient()
 	if err != nil {
