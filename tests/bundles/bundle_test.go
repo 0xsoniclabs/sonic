@@ -645,6 +645,35 @@ func Merge[T any](items ...any) []T {
 	return result
 }
 
+func printLayer(layer bundle.BundleLayer, indent string) {
+	for _, unit := range layer.Units {
+		if tx := unit.AsTransaction(); tx != nil {
+			entry := tx.Tx.AccessList()[0]
+
+			bundleOnly := ""
+			if entry.Address == bundle.BundleOnly {
+				bundleOnly = " (bundle-only)"
+			}
+
+			envelope := ""
+			if bundle.IsTransactionBundle(tx.Tx) {
+				envelope = " (envelope)"
+			}
+
+			fmt.Printf("%s%s%s tx, part of %v\n", indent, bundleOnly, envelope, entry.StorageKeys[0].Hex()[:8])
+
+			if bundle.IsTransactionBundle(tx.Tx) {
+				txBundle, _, _ := bundle.ValidateTransactionBundle(tx.Tx, types.LatestSignerForChainID(tx.Tx.ChainId()))
+				printLayer(txBundle.Layer, indent+"    ")
+			}
+		} else if subLayer := unit.AsBundleLayer(); subLayer != nil {
+			printLayer(*subLayer, indent+"    ")
+		} else {
+			panic(fmt.Sprintf("unknown unit type \n"))
+		}
+	}
+}
+
 func checkCase(t *testing.T, net *tests.IntegrationTestNet, namedCase NamedCase) {
 	c := namedCase.case_
 	name := fmt.Sprintf("OneOf=%v/TolerateFailed=%v/TolerateInvalid=%v/%s", c.oneOf, c.tolerateFailed, c.tolerateInvalid, namedCase.name)
@@ -660,9 +689,12 @@ func checkCase(t *testing.T, net *tests.IntegrationTestNet, namedCase NamedCase)
 
 		contractInfo := deployContracts(t, net)
 
-		// layer
-		envelopeTx, plan, _ := buildBundle(t, net, contractInfo, c.submittedTxTypes, flags, false)
+		envelopeTx, plan, layer := buildBundle(t, net, contractInfo, c.submittedTxTypes, flags, false)
 		require.NotNil(t, envelopeTx)
+
+		fmt.Println()
+		printLayer(layer, "")
+		fmt.Println()
 
 		err = client.SendTransaction(t.Context(), envelopeTx)
 		if err != nil {
