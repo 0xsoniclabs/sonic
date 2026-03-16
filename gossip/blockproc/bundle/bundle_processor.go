@@ -17,6 +17,7 @@
 package bundle
 
 import (
+	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
@@ -38,24 +39,11 @@ func RunBundle(
 	return runAllOfBundle(bundle, runner)
 }
 
-// TransactionResult represents the result of executing a transaction within a
-// bundle. It may be one of the following:
-// - TransactionResultInvalid: The transaction is invalid (e.g., fails basic validation).
-// - TransactionResultFailed: The transaction is valid but fails during execution (e.g., out of gas, revert).
-// - TransactionResultSuccessful: The transaction is valid and executes successfully.
-type TransactionResult int
-
-const (
-	TransactionResultInvalid TransactionResult = iota
-	TransactionResultFailed
-	TransactionResultSuccessful
-)
-
 // TransactionRunner defines an interface for running individual transactions
 // within a bundle and obtaining their results, as used by the RunBundle
 // function to determine the overall success of the bundle execution.
 type TransactionRunner interface {
-	Run(tx *types.Transaction) TransactionResult
+	Run(tx *types.Transaction) core_types.TransactionResult
 }
 
 // runAllOfBundle executes all transactions in the bundle and returns true if
@@ -90,14 +78,14 @@ func runOneOfBundle(
 }
 
 func isTolerated(
-	result TransactionResult,
+	result core_types.TransactionResult,
 	flags ExecutionFlag,
 ) bool {
-	if result == TransactionResultInvalid {
+	if result == core_types.TransactionResultInvalid {
 		return flags.TolerateInvalid()
 	}
-	if result == TransactionResultFailed {
+	if result == core_types.TransactionResultFailed {
 		return flags.TolerateFailed()
 	}
-	return result == TransactionResultSuccessful
+	return result == core_types.TransactionResultSuccessful
 }
