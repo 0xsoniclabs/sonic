@@ -37,3 +37,11 @@ func NewAccount() *Account {
 func (a *Account) Address() common.Address {
 	return crypto.PubkeyToAddress(a.PrivateKey.PublicKey)
 }
+
+func NewAccounts(num int) []*Account {
+	res := make([]*Account, num)
+	for i := range res {
+		res[i] = NewAccount()
+	}
+	return res
+}

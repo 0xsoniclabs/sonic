@@ -984,9 +984,9 @@ func (s *Session) Run(tx *types.Transaction) (*types.Receipt, error) {
 	return receipts[0], nil
 }
 
-func (s *Session) RunAll(tx []*types.Transaction) ([]*types.Receipt, error) {
+func (s *Session) SendAll(tx []*types.Transaction) ([]common.Hash, error) {
 	hashes := make([]common.Hash, len(tx))
-	err := runParallelWithClient(s.net, len(tx), func(client *PooledEhtClient, i int) error {
+	err := RunParallelWithClient(s.net, len(tx), func(client *PooledEhtClient, i int) error {
 		err := client.SendTransaction(context.Background(), tx[i])
 		if err != nil {
 			return fmt.Errorf("failed to send transaction %d: %w", i, err)
@@ -998,6 +998,14 @@ func (s *Session) RunAll(tx []*types.Transaction) ([]*types.Receipt, error) {
 	}
 	for i, t := range tx {
 		hashes[i] = t.Hash()
+	}
+	return hashes, nil
+}
+
+func (s *Session) RunAll(tx []*types.Transaction) ([]*types.Receipt, error) {
+	hashes, err := s.SendAll(tx)
+	if err != nil {
+		return nil, err
 	}
 	return s.GetReceipts(hashes)
 }
@@ -1015,7 +1023,7 @@ func (s *Session) GetReceipt(txHash common.Hash) (*types.Receipt, error) {
 
 func (s *Session) GetReceipts(txHash []common.Hash) ([]*types.Receipt, error) {
 	res := make([]*types.Receipt, len(txHash))
-	err := runParallelWithClient(
+	err := RunParallelWithClient(
 		s.net,
 		len(txHash),
 		func(client *PooledEhtClient, i int) error {
@@ -1044,9 +1052,9 @@ func (s *Session) GetReceipts(txHash []common.Hash) ([]*types.Receipt, error) {
 	return res, nil
 }
 
-// runParallelWithClient as a helper function to run a number of jobs in parallel
+// RunParallelWithClient as a helper function to run a number of jobs in parallel
 // where each job requires access to the network through a client.
-func runParallelWithClient(
+func RunParallelWithClient(
 	net IntegrationTestNetSession,
 	numJobs int,
 	job func(*PooledEhtClient, int) error,
