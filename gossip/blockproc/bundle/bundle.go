@@ -19,7 +19,6 @@ package bundle
 import (
 	"bytes"
 	"fmt"
-	big "math/big"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -60,7 +59,7 @@ func ExtractExecutionPlan(tx *types.Transaction) (ExecutionPlan, error) {
 	if err != nil {
 		return ExecutionPlan{}, err
 	}
-	signer := getSignerForBundle(tx, &bundle)
+	signer := getSignerForTx(tx)
 	plan, err := bundle.extractExecutionPlan(signer)
 	if err != nil {
 		return ExecutionPlan{}, err
@@ -285,37 +284,8 @@ func decode(data []byte) (TransactionBundle, error) {
 	return bundle, nil
 }
 
-func getSignerForBundle(
+func getSignerForTx(
 	envelope *types.Transaction,
-	bundle *TransactionBundle,
 ) types.Signer {
-	chainId := getChainId(envelope, bundle)
-	var signer types.Signer = types.HomesteadSigner{}
-	if chainId != nil && chainId.Sign() != 0 {
-		signer = types.LatestSignerForChainID(chainId)
-	}
-	return signer
-}
-
-// getChainId derives the chain ID used by the bundle either from the envelope
-// or, if it is a legacy transaction, from the payload transactions.
-func getChainId(
-	envelope *types.Transaction,
-	bundle *TransactionBundle,
-) *big.Int {
-	var chainId *big.Int
-	if envelope.Type() == types.LegacyTxType {
-		for _, tx := range bundle.Transactions {
-			if tx.Type() != types.LegacyTxType {
-				cur := tx.ChainId()
-				if cur != nil && cur.Sign() != 0 {
-					chainId = cur
-					break
-				}
-			}
-		}
-	} else {
-		chainId = envelope.ChainId()
-	}
-	return chainId
+	return types.LatestSignerForChainID(envelope.ChainId())
 }

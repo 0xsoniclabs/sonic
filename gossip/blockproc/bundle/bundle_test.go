@@ -687,70 +687,20 @@ func TestDecode_ReturnsErrorForInvalidData(t *testing.T) {
 	require.ErrorContains(t, err, "failed to decode transaction bundle")
 }
 
-func TestGetSignerForBundle_UsesLatestSignerForChainId(t *testing.T) {
-	for _, id := range []int64{1, 77, 234} {
+func TestGetSignerForTx_UsesChainIdThatSignedTheTransaction(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	for _, id := range []int64{12, 77, 234} {
 		chainId := big.NewInt(id)
-		envelope := types.NewTx(&types.AccessListTx{
-			ChainID: chainId,
-			To:      &BundleProcessor,
-			Data:    []byte{},
+
+		signer := types.LatestSignerForChainID(chainId)
+		envelope := types.MustSignNewTx(key, signer, &types.LegacyTx{
+			To:   &BundleProcessor,
+			Data: []byte{},
 		})
 
-		signer := getSignerForBundle(envelope, nil)
-		require.Equal(t, types.LatestSignerForChainID(chainId), signer)
+		restored := getSignerForTx(envelope)
+		require.Equal(t, restored, signer)
 	}
-}
-
-func TestGetSignerForBundle_UsesHomesteadSignerIfNoChainId(t *testing.T) {
-	envelope := types.NewTx(&types.LegacyTx{
-		To:   &BundleProcessor,
-		Data: []byte{},
-	})
-
-	signer := getSignerForBundle(envelope, &TransactionBundle{})
-	require.Equal(t, types.HomesteadSigner{}, signer)
-}
-
-func TestGetChainId_EnvelopeIsNonLegacyTx_TakeChainIdFromEnvelope(t *testing.T) {
-	for _, id := range []int64{1, 77, 234} {
-		chainId := big.NewInt(id)
-		envelope := types.NewTx(&types.AccessListTx{
-			ChainID: chainId,
-			To:      &BundleProcessor,
-			Data:    []byte{},
-		})
-
-		gotChainId := getChainId(envelope, nil)
-		require.Equal(t, chainId, gotChainId)
-	}
-}
-
-func TestGetChainId_EnvelopeIsLegacyTx_TakeChainIdFromPayload(t *testing.T) {
-	for _, id := range []int64{1, 77, 234} {
-		chainId := big.NewInt(id)
-
-		bundle := TransactionBundle{
-			Transactions: types.Transactions{
-				types.NewTx(&types.LegacyTx{}), // < go be ignored
-				types.NewTx(&types.AccessListTx{
-					ChainID: chainId,
-				}),
-			},
-		}
-
-		envelope := types.NewTx(&types.LegacyTx{})
-
-		gotChainId := getChainId(envelope, &bundle)
-		require.Equal(t, chainId, gotChainId)
-	}
-}
-
-func TestGetChainId_EmptyBundleInLegacyEnvelope_ReturnsNil(t *testing.T) {
-	envelope := types.NewTx(&types.LegacyTx{})
-	bundle := TransactionBundle{
-		Transactions: types.Transactions{},
-	}
-
-	gotChainId := getChainId(envelope, &bundle)
-	require.Nil(t, gotChainId)
 }
