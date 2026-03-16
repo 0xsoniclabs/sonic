@@ -33,9 +33,11 @@ var ErrWrongEnvelopeGasLimitTooLow = errors.New("gas limit of envelope does not 
 // If the transaction is a valid transaction bundle, it returns the decoded transaction bundle and nil (no error).
 // If the transaction is not a bundle transaction, or if bundle transactions are not enabled, it returns nil,nil (no bundle, no error).
 func ValidateEnvelope(
+	signer types.Signer,
 	envelopeTx *types.Transaction,
 ) (*TransactionBundle, *ExecutionPlan, error) {
 	return validateEnvelopeInternal(
+		signer,
 		envelopeTx,
 		func(data []byte, accessList types.AccessList) (uint64, error) {
 			return core.IntrinsicGas(
@@ -53,6 +55,7 @@ func ValidateEnvelope(
 }
 
 func validateEnvelopeInternal(
+	signer types.Signer,
 	envelopeTx *types.Transaction,
 	calculateIntrinsicGas func(data []byte, accessList types.AccessList) (uint64, error),
 	calculateFloorGas func(data []byte) (uint64, error),
@@ -75,7 +78,6 @@ func validateEnvelopeInternal(
 	//  - all bundled transactions are marked as bundle-only
 	//  - etc. ...
 
-	signer := getSignerForTx(envelopeTx)
 	plan, err := txBundle.extractExecutionPlan(signer)
 	if err != nil {
 		return nil, nil, err
@@ -120,7 +122,6 @@ func validateEnvelopeInternal(
 		return nil, nil, fmt.Errorf("%w: gas should be more than floor gas %d", core.ErrFloorDataGas, floorDataGas)
 	}
 
-	fmt.Printf("sum of limits: %d / intrinsic %d / floor %d\n", gasLimit, intrGas, floorDataGas)
 	gasNeeded := max(gasLimit, intrGas, floorDataGas)
 	if bundleGas != gasNeeded {
 		return nil, nil, fmt.Errorf("%w: envelope gas limit is %d but should be %d", ErrWrongEnvelopeGasLimitTooLow, envelopeTx.Gas(), gasNeeded)
