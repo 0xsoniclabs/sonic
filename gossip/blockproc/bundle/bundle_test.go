@@ -36,6 +36,7 @@ func TestIsBundledOnly_IdentifiesBundleOnlyTransactions_OfAllTypes(t *testing.T)
 	require.False(t, IsBundleOnly(types.NewTx(&types.LegacyTx{})))
 	require.False(t, IsBundleOnly(types.NewTx(&types.AccessListTx{})))
 	require.False(t, IsBundleOnly(types.NewTx(&types.DynamicFeeTx{})))
+	require.False(t, IsBundleOnly(types.NewTx(&types.BlobTx{})))
 	require.False(t, IsBundleOnly(types.NewTx(&types.SetCodeTx{})))
 
 	require.True(t, IsBundleOnly(types.NewTx(&types.AccessListTx{
