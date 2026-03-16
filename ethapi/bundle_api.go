@@ -30,6 +30,8 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
+//go:generate mockgen -source=bundle_api.go -destination=bundle_api_mock.go -package=ethapi
+
 type PublicBundleAPI struct {
 	b Backend
 }
@@ -323,33 +325,66 @@ type BundleGasLimits struct {
 // It estimates the gas required for each provided transaction,
 // applying state changes from previous transactions when estimating subsequent ones.
 // Transactions that become invalid or fail during execution for later estimations are ignored.
-// This method is intended for use with transaction bundles.
+// This method can help getting gas estimates for mutually depending transactions in bundles.
 func (a *PublicBundleAPI) EstimateGasForTransactions(ctx context.Context, args []TransactionArgs,
 	blockNrOrHash *rpc.BlockNumberOrHash, overrides *StateOverride, blockOverrides *BlockOverrides) (BundleGasLimits, error) {
+
+	if len(args) > 16 {
+		return BundleGasLimits{}, fmt.Errorf("too many transactions to estimate gas for: got %d, max is 16", len(args))
+	}
+
 	bNrOrHash := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
 	if blockNrOrHash != nil {
 		bNrOrHash = *blockNrOrHash
 	}
-	gasLimits, err := doEstimateGasForTransactions(ctx, a.b, args, bNrOrHash, overrides, blockOverrides, a.b.RPCGasCap())
+
+	gasCap := a.b.RPCGasCap()
+	eval := &estimator{
+		ctx:            ctx,
+		b:              a.b,
+		blockNrOrHash:  bNrOrHash,
+		overrides:      overrides,
+		blockOverrides: blockOverrides,
+		gasCap:         gasCap,
+	}
+
+	gasLimits, err := doEstimateGasForTransactions(args, eval)
 	if err != nil {
 		return BundleGasLimits{}, err
 	}
 	return BundleGasLimits{GasLimits: gasLimits}, nil
 }
 
+type GasEstimator interface {
+	EstimateGas(args TransactionArgs, preArgs []TransactionArgs) (hexutil.Uint64, error)
+}
+
+type estimator struct {
+	ctx            context.Context
+	b              Backend
+	blockNrOrHash  rpc.BlockNumberOrHash
+	overrides      *StateOverride
+	blockOverrides *BlockOverrides
+	gasCap         uint64
+}
+
+func (e *estimator) EstimateGas(args TransactionArgs, preArgs []TransactionArgs) (hexutil.Uint64, error) {
+	gas, err := DoEstimateGas(e.ctx, e.b, args, e.blockNrOrHash, e.overrides, e.blockOverrides, e.gasCap, preArgs)
+	if err != nil {
+		return 0, err
+	}
+
+	return gas, nil
+}
+
 func doEstimateGasForTransactions(
-	ctx context.Context,
-	b Backend,
 	args []TransactionArgs,
-	blockNrOrHash rpc.BlockNumberOrHash,
-	overrides *StateOverride,
-	blockOverrides *BlockOverrides,
-	gasCap uint64,
+	eval GasEstimator,
 ) ([]hexutil.Uint64, error) {
 	gasLimits := make([]hexutil.Uint64, len(args))
 	preArgs := make([]TransactionArgs, 0, len(args))
 	for i, arg := range args {
-		gas, err := DoEstimateGas(ctx, b, arg, blockNrOrHash, overrides, blockOverrides, gasCap, preArgs)
+		gas, err := eval.EstimateGas(arg, preArgs)
 		if err != nil {
 			return nil, err
 		}

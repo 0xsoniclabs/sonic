@@ -17,50 +17,41 @@
 package ethapi
 
 import (
-	"context"
-	"math/big"
+	"slices"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/evmcore"
-	"github.com/0xsoniclabs/sonic/inter/state"
-	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
 
-func TestBundleEstimateGas_BasicFunctionallyIsProvided(t *testing.T) {
+func TestBundleEstimateGas_PreArgsAreConsideredForEveryTransaction(t *testing.T) {
 	ctrl := gomock.NewController(t)
+	estimator := NewMockGasEstimator(ctrl)
 
-	mockBackend := NewMockBackend(ctrl)
-	mockState := state.NewMockStateDB(ctrl)
-	mockHeader := &evmcore.EvmHeader{
-		Number: big.NewInt(1),
-		Root:   common.Hash{123},
+	gasLimit := hexutil.Uint64(21000)
+	numTransactions := 3
+
+	for i := range numTransactions {
+		estimator.EXPECT().EstimateGas(
+			gomock.Any(),
+			gomock.Any(),
+		).DoAndReturn(func(args TransactionArgs, preArgs []TransactionArgs) (hexutil.Uint64, error) {
+			require.Len(t, preArgs, i, "unexpected number of preArgs for transaction %d", i)
+			return gasLimit, nil
+		})
 	}
-	mockBlock := &evmcore.EvmBlock{EvmHeader: *mockHeader}
 
-	blkNr := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
+	txArg := TransactionArgs{
+		From: &common.Address{0x1},
+		To:   &common.Address{0x2},
+	}
 
-	any := gomock.Any()
-	mockBackend.EXPECT().GetNetworkRules(any, idx.Block(1)).Return(&opera.Rules{}, nil).AnyTimes()
-	mockBackend.EXPECT().StateAndBlockByNumberOrHash(any, blkNr).Return(mockState, mockBlock, nil).AnyTimes()
-	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000))
-	mockBackend.EXPECT().MaxGasLimit().Return(uint64(10000000)).Times(2)
-	mockBackend.EXPECT().HeaderByNumber(any, any).Return(mockHeader, nil).Times(2)
-	mockBackend.EXPECT().ChainConfig(gomock.Any()).Return(&params.ChainConfig{}).Times(2)
-	mockBackend.EXPECT().GetEVM(any, any, any, any, any).DoAndReturn(getEvmFunc(mockState)).AnyTimes()
-	setExpectedStateCalls(mockState)
+	args := slices.Repeat([]TransactionArgs{txArg}, numTransactions)
 
-	api := NewPublicBundleAPI(mockBackend)
-	args := []TransactionArgs{getTxArgs(t), getTxArgs(t)}
-
-	gas, err := api.EstimateGasForTransactions(context.Background(), args, &blkNr, nil, nil)
-	require.NoError(t, err, "failed to estimate gas")
-	require.Equal(t, len(args), len(gas.GasLimits))
-	require.Greater(t, gas.GasLimits[0], uint64(0))
-	require.Greater(t, gas.GasLimits[1], uint64(0))
+	gasLimits, err := doEstimateGasForTransactions(args, estimator)
+	require.NoError(t, err)
+	bundleGasLimit := gasLimit + 2400 + 1900
+	require.Equal(t, slices.Repeat([]hexutil.Uint64{bundleGasLimit}, numTransactions), gasLimits)
 }
