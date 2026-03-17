@@ -38,20 +38,18 @@ func Test_runAllOfBundle_ReturnsTrueForEmptyBundle(t *testing.T) {
 }
 
 func Test_runAllOfBundle_ReturnsTrueIfAllTransactionsTolerated(t *testing.T) {
-	tests := []struct {
-		name            string
+	tests := map[string]struct {
 		toleratedResult core_types.TransactionResult
 		flags           ExecutionFlags
 	}{
-		{name: "TolerateOnlySuccessful", toleratedResult: core_types.TransactionResultSuccessful, flags: 0},
-		{name: "TolerateInvalid", toleratedResult: core_types.TransactionResultInvalid, flags: EF_TolerateInvalid},
-		{name: "TolerateFailed", toleratedResult: core_types.TransactionResultFailed, flags: EF_TolerateFailed},
-		{name: "TolerateAll/WithInvalid", toleratedResult: core_types.TransactionResultInvalid, flags: EF_TolerateInvalid | EF_TolerateFailed},
-		{name: "TolerateAll/WithFailed", toleratedResult: core_types.TransactionResultFailed, flags: EF_TolerateInvalid | EF_TolerateFailed},
+		"TolerateOnlySuccessful":  {toleratedResult: core_types.TransactionResultSuccessful, flags: 0},
+		"TolerateInvalid":         {toleratedResult: core_types.TransactionResultInvalid, flags: EF_TolerateInvalid},
+		"TolerateFailed":          {toleratedResult: core_types.TransactionResultFailed, flags: EF_TolerateFailed},
+		"TolerateAll/WithInvalid": {toleratedResult: core_types.TransactionResultInvalid, flags: EF_TolerateInvalid | EF_TolerateFailed},
+		"TolerateAll/WithFailed":  {toleratedResult: core_types.TransactionResultFailed, flags: EF_TolerateInvalid | EF_TolerateFailed},
 	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			runner := NewMockTransactionRunner(ctrl)
 
@@ -70,20 +68,18 @@ func Test_runAllOfBundle_ReturnsTrueIfAllTransactionsTolerated(t *testing.T) {
 }
 
 func Test_runAllOfBundle_StopsAtFirstNonToleratedTransaction(t *testing.T) {
-	tests := []struct {
-		name               string
+	tests := map[string]struct {
 		notToleratedResult core_types.TransactionResult
 		flags              ExecutionFlags
 	}{
-		{name: "TolerateOnlySuccessful/WithInvalid", notToleratedResult: core_types.TransactionResultInvalid, flags: 0},
-		{name: "TolerateOnlySuccessful/WithFailed", notToleratedResult: core_types.TransactionResultFailed, flags: 0},
-		{name: "TolerateInvalid", notToleratedResult: core_types.TransactionResultFailed, flags: EF_TolerateInvalid},
-		{name: "TolerateFailed", notToleratedResult: core_types.TransactionResultInvalid, flags: EF_TolerateFailed},
+		"TolerateOnlySuccessful/WithInvalid": {notToleratedResult: core_types.TransactionResultInvalid, flags: 0},
+		"TolerateOnlySuccessful/WithFailed":  {notToleratedResult: core_types.TransactionResultFailed, flags: 0},
+		"TolerateInvalid":                    {notToleratedResult: core_types.TransactionResultFailed, flags: EF_TolerateInvalid},
+		"TolerateFailed":                     {notToleratedResult: core_types.TransactionResultInvalid, flags: EF_TolerateFailed},
 	}
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			runner := NewMockTransactionRunner(ctrl)
 
@@ -114,19 +110,18 @@ func Test_runOneOfBundle_ReturnsFalseForEmptyBundle(t *testing.T) {
 }
 
 func Test_runOneOfBundle_ReturnsFalseIfAllTransactionsAreNonTolerated(t *testing.T) {
-	tests := []struct {
-		name               string
+	tests := map[string]struct {
 		notToleratedResult core_types.TransactionResult
 		flags              ExecutionFlags
 	}{
-		{name: "TolerateOnlySuccessful/WithInvalid", notToleratedResult: core_types.TransactionResultInvalid, flags: 0},
-		{name: "TolerateOnlySuccessful/WithFailed", notToleratedResult: core_types.TransactionResultFailed, flags: 0},
-		{name: "TolerateInvalid", notToleratedResult: core_types.TransactionResultFailed, flags: EF_TolerateInvalid},
-		{name: "TolerateFailed", notToleratedResult: core_types.TransactionResultInvalid, flags: EF_TolerateFailed},
+		"TolerateOnlySuccessful/WithInvalid": {notToleratedResult: core_types.TransactionResultInvalid, flags: 0},
+		"TolerateOnlySuccessful/WithFailed":  {notToleratedResult: core_types.TransactionResultFailed, flags: 0},
+		"TolerateInvalid":                    {notToleratedResult: core_types.TransactionResultFailed, flags: EF_TolerateInvalid},
+		"TolerateFailed":                     {notToleratedResult: core_types.TransactionResultInvalid, flags: EF_TolerateFailed},
 	}
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			runner := NewMockTransactionRunner(ctrl)
 
@@ -145,19 +140,18 @@ func Test_runOneOfBundle_ReturnsFalseIfAllTransactionsAreNonTolerated(t *testing
 }
 
 func Test_runOneOfBundle_StopsAtFirstToleratedTransaction(t *testing.T) {
-	tests := []struct {
-		name               string
+	tests := map[string]struct {
 		notToleratedResult core_types.TransactionResult
 		flags              ExecutionFlags
 	}{
-		{name: "TolerateOnlySuccessful/WithInvalid", notToleratedResult: core_types.TransactionResultInvalid, flags: 0},
-		{name: "TolerateOnlySuccessful/WithFailed", notToleratedResult: core_types.TransactionResultFailed, flags: 0},
-		{name: "TolerateInvalid", notToleratedResult: core_types.TransactionResultFailed, flags: EF_TolerateInvalid},
-		{name: "TolerateFailed", notToleratedResult: core_types.TransactionResultInvalid, flags: EF_TolerateFailed},
+		"TolerateOnlySuccessful/WithInvalid": {notToleratedResult: core_types.TransactionResultInvalid, flags: 0},
+		"TolerateOnlySuccessful/WithFailed":  {notToleratedResult: core_types.TransactionResultFailed, flags: 0},
+		"TolerateInvalid":                    {notToleratedResult: core_types.TransactionResultFailed, flags: EF_TolerateInvalid},
+		"TolerateFailed":                     {notToleratedResult: core_types.TransactionResultInvalid, flags: EF_TolerateFailed},
 	}
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			runner := NewMockTransactionRunner(ctrl)
 
