@@ -44,5 +44,5 @@ type StateDB interface {
 	EndTransaction()
 	Release()
 	InterTxSnapshot() int
-	RevertToInterTxSnapshot(id int) error
+	RevertToInterTxSnapshot(id int)
 }

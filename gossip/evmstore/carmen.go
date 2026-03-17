@@ -318,8 +318,8 @@ func (c *CarmenStateDB) InterTxSnapshot() int {
 	return int(c.db.InterTxSnapshot())
 }
 
-func (c *CarmenStateDB) RevertToInterTxSnapshot(id int) error {
-	return c.db.RevertToInterTxSnapshot(carmen.InterTxSnapshotID(id))
+func (c *CarmenStateDB) RevertToInterTxSnapshot(id int) {
+	c.db.RevertToInterTxSnapshot(carmen.InterTxSnapshotID(id))
 }
 
 func (c *CarmenStateDB) Finalise(bool) {
