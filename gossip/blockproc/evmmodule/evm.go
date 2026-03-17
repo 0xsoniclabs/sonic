@@ -143,11 +143,12 @@ func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlo
 
 func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) evmcore.ExecutionSummary {
 	evmProcessor := p.processorFactory.NewStateProcessor(p.evmCfg, p.reader, p.rules.Upgrades)
+	legacyTxsOffset := uint(len(p.processedTxs))
 
-	txsOffset := uint(0)
+	trueTxsOffset := uint(0)
 	for _, tx := range p.processedTxs {
 		if tx.Receipt != nil {
-			txsOffset++
+			trueTxsOffset++
 		}
 	}
 
@@ -157,18 +158,21 @@ func (p *OperaEVMProcessor) Execute(txs types.Transactions, gasLimit uint64) evm
 	evmBlock := p.evmBlockWith(txs)
 	summary := evmProcessor.Process(evmBlock, p.statedb, vmConfig, gasLimit, &p.gasUsed, func(l *types.Log) {
 		// Note: l.Index is properly set before
-		l.TxIndex += txsOffset
+		l.TxIndex += legacyTxsOffset
 		p.onNewLog(l)
 	})
 
-	if txsOffset > 0 {
+	if legacyTxsOffset > 0 {
 		for _, p := range summary.ProcessedTransactions {
 			if p.Receipt != nil {
-				p.Receipt.TransactionIndex += txsOffset
+				p.Receipt.TransactionIndex += legacyTxsOffset
 			}
 		}
+	}
+
+	if trueTxsOffset > 0 {
 		for i := range summary.ProcessedBundles {
-			summary.ProcessedBundles[i].Position += uint32(txsOffset)
+			summary.ProcessedBundles[i].Position += uint32(trueTxsOffset)
 		}
 	}
 

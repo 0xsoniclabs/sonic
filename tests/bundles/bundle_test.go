@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
@@ -34,7 +35,7 @@ import (
 )
 
 type txType interface {
-	makeTx(txMakeOptions) *types.Transaction
+	makeTx(txMakeOptions, *AccountFactory) *types.Transaction
 }
 
 type txIndex int
@@ -364,11 +365,13 @@ func Test_RunAllOf_Works(t *testing.T) {
 		}...)
 	}
 	net := startTestnet(t)
-	for _, c := range cases {
+	factory := &AccountFactory{session: net}
+	sessions := net.SpawnSessions(t, len(cases))
+	for i, c := range cases {
 		if c.name == "bundled/OneOf=false/TolerateFailed=true/TolerateInvalid=true/failed" || (strings.HasPrefix(c.name, "bundled") && strings.HasSuffix(c.name, "invalid")) {
 			continue
 		}
-		checkCase(t, net, c)
+		checkCase(t, sessions[i], factory, c)
 	}
 }
 
@@ -496,11 +499,13 @@ func Test_RunOneOf_Works(t *testing.T) {
 		}...)
 	}
 	net := startTestnet(t)
-	for _, c := range cases {
+	factory := &AccountFactory{session: net}
+	sessions := net.SpawnSessions(t, len(cases))
+	for i, c := range cases {
 		if c.name == "bundled/OneOf=false/TolerateFailed=true/TolerateInvalid=true/failed" || (strings.HasPrefix(c.name, "bundled") && strings.HasSuffix(c.name, "invalid")) {
 			continue
 		}
-		checkCase(t, net, c)
+		checkCase(t, sessions[i], factory, c)
 	}
 }
 
@@ -527,11 +532,10 @@ func Merge[T any](items ...any) []T {
 	return result
 }
 
-func checkCase(t *testing.T, net tests.IntegrationTestNetSession, namedCase NamedCase) {
+func checkCase(t *testing.T, session tests.IntegrationTestNetSession, accounts *AccountFactory, namedCase NamedCase) {
 	c := namedCase.case_
 	name := fmt.Sprintf("OneOf=%v/TolerateFailed=%v/TolerateInvalid=%v/%s", c.oneOf, c.tolerateFailed, c.tolerateInvalid, namedCase.name)
 	t.Run(name, func(t *testing.T) {
-		session := net.SpawnSession(t)
 		t.Parallel()
 		flags := bundle.ExecutionFlag(0)
 		flags.SetTolerateInvalid(c.tolerateInvalid)
@@ -544,7 +548,7 @@ func checkCase(t *testing.T, net tests.IntegrationTestNetSession, namedCase Name
 
 		contractInfo := deployContracts(t, session)
 
-		envelopeTx, plan, bundleOnlyTxs := buildBundle(t, session, contractInfo, c.submittedTxTypes, flags, false)
+		envelopeTx, plan, bundleOnlyTxs := buildBundle(t, session, contractInfo, c.submittedTxTypes, flags, false, accounts)
 		require.NotNil(t, envelopeTx)
 
 		err = client.SendTransaction(t.Context(), envelopeTx)
@@ -561,6 +565,8 @@ func checkCase(t *testing.T, net tests.IntegrationTestNetSession, namedCase Name
 		info, err := waitForBundleExecution(t.Context(), client.Client(), plan.Hash())
 		require.NoError(t, err)
 		require.NotNil(t, info.Block)
+
+		fmt.Printf("Bundle got processed in block %d, position %d (%d transactions)\n", *info.Block, *info.Position, *info.Count)
 
 		// Check transactions hashes and statuses
 		transactionHashes := getTransactionsInBlock(t, session, big.NewInt(int64(*info.Block)))
@@ -678,7 +684,7 @@ type txMakeOptions struct {
 
 type successfulNormalTx struct{}
 
-func (t successfulNormalTx) makeTx(opts txMakeOptions) *types.Transaction {
+func (t successfulNormalTx) makeTx(opts txMakeOptions, _ *AccountFactory) *types.Transaction {
 	return types.NewTx(&types.AccessListTx{
 		To:       &opts.contractInfo.counterAddress,
 		Gas:      opts.contractInfo.counterGasLimit,
@@ -689,7 +695,7 @@ func (t successfulNormalTx) makeTx(opts txMakeOptions) *types.Transaction {
 
 type failedNormalTx struct{}
 
-func (t failedNormalTx) makeTx(opts txMakeOptions) *types.Transaction {
+func (t failedNormalTx) makeTx(opts txMakeOptions, _ *AccountFactory) *types.Transaction {
 	return types.NewTx(&types.AccessListTx{
 		To:       &opts.contractInfo.revertAddress,
 		Gas:      opts.contractInfo.revertGasLimit,
@@ -700,7 +706,7 @@ func (t failedNormalTx) makeTx(opts txMakeOptions) *types.Transaction {
 
 type invalidNormalTx struct{}
 
-func (t invalidNormalTx) makeTx(opts txMakeOptions) *types.Transaction {
+func (t invalidNormalTx) makeTx(opts txMakeOptions, _ *AccountFactory) *types.Transaction {
 	return types.NewTx(&types.AccessListTx{
 		To:       &opts.contractInfo.counterAddress,
 		Gas:      1, // invalid
@@ -711,7 +717,7 @@ func (t invalidNormalTx) makeTx(opts txMakeOptions) *types.Transaction {
 
 type successfulSponsoredTx struct{}
 
-func (t successfulSponsoredTx) makeTx(opts txMakeOptions) *types.Transaction {
+func (t successfulSponsoredTx) makeTx(opts txMakeOptions, _ *AccountFactory) *types.Transaction {
 	donation := big.NewInt(1e16)
 	gas_subsidies.Fund(opts.t, opts.net, opts.sender.Address(), donation)
 	return types.NewTx(&types.AccessListTx{
@@ -724,7 +730,7 @@ func (t successfulSponsoredTx) makeTx(opts txMakeOptions) *types.Transaction {
 
 type failedSponsoredTx struct{}
 
-func (t failedSponsoredTx) makeTx(opts txMakeOptions) *types.Transaction {
+func (t failedSponsoredTx) makeTx(opts txMakeOptions, _ *AccountFactory) *types.Transaction {
 	donation := big.NewInt(1e16)
 	gas_subsidies.Fund(opts.t, opts.net, opts.sender.Address(), donation)
 	return types.NewTx(&types.AccessListTx{
@@ -737,7 +743,7 @@ func (t failedSponsoredTx) makeTx(opts txMakeOptions) *types.Transaction {
 
 type invalidSponsoredTx struct{}
 
-func (t invalidSponsoredTx) makeTx(opts txMakeOptions) *types.Transaction {
+func (t invalidSponsoredTx) makeTx(opts txMakeOptions, _ *AccountFactory) *types.Transaction {
 	return types.NewTx(&types.AccessListTx{
 		To:       &opts.contractInfo.counterAddress,
 		Gas:      opts.contractInfo.counterGasLimit,
@@ -751,8 +757,8 @@ type subBundleTx struct {
 	flags   bundle.ExecutionFlag
 }
 
-func (t subBundleTx) makeTx(opts txMakeOptions) *types.Transaction {
-	envelopeTx, _, _ := buildBundle(opts.t, opts.net, opts.contractInfo, t.txTypes, t.flags, true)
+func (t subBundleTx) makeTx(opts txMakeOptions, factory *AccountFactory) *types.Transaction {
+	envelopeTx, _, _ := buildBundle(opts.t, opts.net, opts.contractInfo, t.txTypes, t.flags, true, factory)
 	require.NotNil(opts.t, envelopeTx)
 
 	// remove signature
@@ -776,18 +782,11 @@ func makeUnsignedBundleOnlyTxs(
 	net tests.IntegrationTestNetSession,
 	txTypes []txType,
 	contractInfo ContractInfo,
+	factory *AccountFactory,
 ) ([]*types.Transaction, []*tests.Account) {
-	senders := make([]*tests.Account, len(txTypes))
-	addresses := make([]common.Address, len(txTypes))
-	for i := range txTypes {
-		senders[i] = tests.NewAccount()
-		addresses[i] = senders[i].Address()
-	}
-	receipts, err := net.EndowAccounts(addresses, big.NewInt(1e18))
-	require.NoError(t, err, "failed to endow accounts; %v", err)
-	for _, receipt := range receipts {
-		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "failed to endow account; transaction failed")
-	}
+
+	senders, err := factory.CreateMultiple(len(txTypes))
+	require.NoError(t, err)
 
 	client, err := net.GetClient()
 	require.NoError(t, err, "failed to get client; %v", err)
@@ -798,7 +797,7 @@ func makeUnsignedBundleOnlyTxs(
 
 	bundleOnlyTxs := make([]*types.Transaction, len(txTypes))
 	for i, tType := range txTypes {
-		bundleOnlyTxs[i] = tType.makeTx(txMakeOptions{t, net, contractInfo, gasPrice, senders[i]})
+		bundleOnlyTxs[i] = tType.makeTx(txMakeOptions{t, net, contractInfo, gasPrice, senders[i]}, factory)
 	}
 
 	return bundleOnlyTxs, senders
@@ -864,8 +863,9 @@ func buildBundle(
 	txTypes []txType,
 	flags bundle.ExecutionFlag,
 	nested bool,
+	accountFactory *AccountFactory,
 ) (*types.Transaction, bundle.ExecutionPlan, types.Transactions) {
-	bundleOnlyTxs, senders := makeUnsignedBundleOnlyTxs(t, net, txTypes, contractInfo)
+	bundleOnlyTxs, senders := makeUnsignedBundleOnlyTxs(t, net, txTypes, contractInfo, accountFactory)
 
 	plan := buildPlan(t, net, flags, bundleOnlyTxs, senders)
 
@@ -898,4 +898,51 @@ func checkStatus(
 	receipt, err := net.GetReceipt(txHash)
 	require.NoError(t, err, "failed to get transaction receipt; %v", err)
 	require.Equal(t, status, txStatus(receipt.Status))
+}
+
+type AccountFactory struct {
+	session  tests.IntegrationTestNetSession
+	accounts []*tests.Account
+	mutex    sync.Mutex
+}
+
+func (f *AccountFactory) Create() (*tests.Account, error) {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+	if len(f.accounts) == 0 {
+		const batchSize = 100
+		accounts := tests.NewAccounts(batchSize)
+		addresses := make([]common.Address, len(accounts))
+		for i, cur := range accounts {
+			addresses[i] = cur.Address()
+		}
+
+		receipts, err := f.session.EndowAccounts(addresses, big.NewInt(1e16))
+		if err != nil {
+			return nil, err
+		}
+
+		for _, receipt := range receipts {
+			if receipt.Status != types.ReceiptStatusSuccessful {
+				return nil, fmt.Errorf("failed to endow account")
+			}
+		}
+
+		f.accounts = accounts
+	}
+	res := f.accounts[0]
+	f.accounts = f.accounts[1:]
+	return res, nil
+}
+
+func (f *AccountFactory) CreateMultiple(num int) ([]*tests.Account, error) {
+	res := make([]*tests.Account, num)
+	for i := range res {
+		next, err := f.Create()
+		if err != nil {
+			return nil, err
+		}
+		res[i] = next
+	}
+	return res, nil
 }
