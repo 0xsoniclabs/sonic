@@ -744,7 +744,7 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 		transactionBundles: pool.chain.CurrentRules().Upgrades.TransactionBundles,
 	}
 
-	subsidiesChecker := pool.createSubsidiesChecker()
+	subsidiesChecker := pool.createCachedSubsidiesChecker()
 
 	err := validateTx(
 		tx,
@@ -1512,17 +1512,14 @@ func (pool *TxPool) reset(oldHead, newHead *EvmHeader) {
 	pool.osaka = pool.chainconfig.IsOsaka(next, uint64(newHead.Time.Unix()))
 }
 
-func (pool *TxPool) createSubsidiesChecker() subsidiesChecker {
-	return pool.subsidiesCheckerFactory(
-		pool.chain.CurrentRules(),
-		pool.chain,
-		pool.currentState,
-		pool.signer,
-	)
-}
-
-func (pool *TxPool) createCachedSubsidiesChecker() subsidiesChecker {
-	return pool.subsidiesCheckerCache.wrap(pool.createSubsidiesChecker())
+func (pool *TxPool) createCachedSubsidiesChecker() utils.Checker {
+	return pool.subsidiesCheckerCache.Wrap(
+		pool.subsidiesCheckerFactory(
+			pool.chain.CurrentRules(),
+			pool.chain,
+			pool.currentState,
+			pool.signer,
+		))
 }
 
 func (pool *TxPool) createBundleChecker() bundleChecker {
