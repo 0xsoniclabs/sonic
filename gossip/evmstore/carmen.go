@@ -314,6 +314,14 @@ func (c *CarmenStateDB) EndTransaction() {
 	c.db.EndTransaction()
 }
 
+func (c *CarmenStateDB) InterTxSnapshot() int {
+	return int(c.db.InterTxSnapshot())
+}
+
+func (c *CarmenStateDB) RevertToInterTxSnapshot(id int) {
+	c.db.RevertToInterTxSnapshot(carmen.InterTxSnapshotID(id))
+}
+
 func (c *CarmenStateDB) Finalise(bool) {
 	// ignored
 }
