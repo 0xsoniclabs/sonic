@@ -78,7 +78,7 @@ func validateTx(
 	netRules NetworkRules,
 	chain StateReader,
 	state state.StateDB, // Although this can be retrieved from chain, it's passed explicitly to avoid extra db-pool accesses
-	subsidiesChecker subsidiesChecker,
+	subsidiesChecker utils.Checker,
 	signer types.Signer,
 ) error {
 
@@ -347,7 +347,7 @@ func validateTxForPool(
 func validateSponsoredTransactions(
 	tx *types.Transaction,
 	netRules NetworkRules,
-	SubsidiesChecker subsidiesChecker,
+	subsidiesChecker utils.Checker,
 ) error {
 	// Transaction Bundles are identified as sponsorship requests, but they are
 	// checked independently.
@@ -369,7 +369,7 @@ func validateSponsoredTransactions(
 	}
 
 	// Sponsored transactions are only valid if they are explicitly marked as sponsored by the subsidies checker.
-	if !SubsidiesChecker.isSponsored(tx) {
+	if !subsidiesChecker.Check(tx) {
 		return ErrSponsorshipRejected
 	}
 

@@ -32,9 +32,6 @@ import (
 	gomock "go.uber.org/mock/gomock"
 )
 
-// static assert interface implementation
-var _ subsidiesChecker = &SubsidiesIntegrationImplementation{}
-
 func TestSubsidiesIntegration_SubsidiesCheckerCanExecuteContracts(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
@@ -58,7 +55,7 @@ func TestSubsidiesIntegration_SubsidiesCheckerCanExecuteContracts(t *testing.T) 
 
 	signer := types.LatestSignerForChainID(big.NewInt(1))
 
-	checker := newSubsidiesChecker(rules, chain, state, signer)
+	checker := createSubsidiesChecker(rules, chain, state, signer)
 
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
@@ -74,7 +71,7 @@ func TestSubsidiesIntegration_SubsidiesCheckerCanExecuteContracts(t *testing.T) 
 
 	// This test does not have any expectations on the result of the contract execution,
 	// just that it was executed without error.
-	checker.isSponsored(tx)
+	checker.Check(tx)
 }
 
 func TestSubsidiesIntegration_SubsidiesCheckerReturnsFalseIfContractIsNotDeployed(t *testing.T) {
@@ -98,7 +95,7 @@ func TestSubsidiesIntegration_SubsidiesCheckerReturnsFalseIfContractIsNotDeploye
 
 	signer := types.LatestSignerForChainID(big.NewInt(1))
 
-	checker := newSubsidiesChecker(rules, chain, state, signer)
+	checker := createSubsidiesChecker(rules, chain, state, signer)
 
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
@@ -112,7 +109,7 @@ func TestSubsidiesIntegration_SubsidiesCheckerReturnsFalseIfContractIsNotDeploye
 		Data:     []byte{},
 	})
 
-	res := checker.isSponsored(tx)
+	res := checker.Check(tx)
 	require.False(t, res)
 }
 

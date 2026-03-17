@@ -22,11 +22,11 @@ import (
 
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
@@ -56,11 +56,11 @@ func TestTxPool_SponsoredTransactionsAreIncludedInThePendingSet(t *testing.T) {
 	// mock the external chain dependencies
 	chain := mockChain(ctrl, chainConfig, upgrades)
 
-	subsidiesCheckerMock := NewMocksubsidiesChecker(ctrl)
-	subsidiesCheckerMock.EXPECT().isSponsored(gomock.Any()).Return(true).AnyTimes()
+	subsidiesCheckerMock := utils.NewMockChecker(ctrl)
+	subsidiesCheckerMock.EXPECT().Check(gomock.Any()).Return(true).AnyTimes()
 
 	// Instantiate the pool
-	factory := func(opera.Rules, StateReader, state.StateDB, types.Signer) subsidiesChecker {
+	factory := func(opera.Rules, StateReader, state.StateDB, types.Signer) utils.Checker {
 		return subsidiesCheckerMock
 	}
 	pool := newTxPool(poolConfig, chainConfig, chain, factory, newBundleChecker)
@@ -211,11 +211,3 @@ func SetNonce(tx types.TxData, nonce uint64) {
 		panic("unknown tx type")
 	}
 }
-
-// subscriber is a wrapper around event.Subscription to allow mocking it.
-type subscriber interface {
-	event.Subscription
-}
-
-// suppress unused warning
-var _ subscriber

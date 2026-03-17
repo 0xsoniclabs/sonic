@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -260,7 +261,7 @@ func FuzzValidateTransaction(f *testing.F) {
 
 		signer := types.LatestSignerForChainID(chainId)
 
-		subsidiesChecker := NewMocksubsidiesChecker(ctrl)
+		subsidiesChecker := utils.NewMockChecker(ctrl)
 
 		// Validate the transaction
 		validateErr := validateTx(signedTx, opt, netRules, chain, state, subsidiesChecker, signer)

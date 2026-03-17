@@ -20,23 +20,11 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/log"
 )
-
-//go:generate mockgen -source=subsidies_integration.go -destination=subsidies_integration_mock.go -package=evmcore
-
-// subsidiesChecker is an interface for checking if a transaction is sponsored
-// by the subsidies contract.
-// it does not include [subsidies.IsCovered] directly to avoid creating dependencies
-// on state for an operation which is pure.
-//
-// This interface facilitates testing and decouples the subsidies integration
-// logic from the transaction pool.
-type subsidiesChecker interface {
-	isSponsored(tx *types.Transaction) bool
-}
 
 // SubsidiesIntegrationImplementation uses the subsidies contract to determine
 // if a transaction is sponsored.
@@ -47,21 +35,22 @@ type SubsidiesIntegrationImplementation struct {
 	signer types.Signer
 }
 
-// newSubsidiesChecker creates a new SubsidiesChecker instance.
+// createSubsidiesChecker creates a new SubsidiesChecker instance.
 // This instance is capable of executing the subsidies contract to determine
 // if a transaction is sponsored.
-func newSubsidiesChecker(
+func createSubsidiesChecker(
 	rules opera.Rules,
 	chain StateReader,
 	state state.StateDB,
 	signer types.Signer,
-) subsidiesChecker {
-	return &SubsidiesIntegrationImplementation{
+) utils.Checker {
+	impl := &SubsidiesIntegrationImplementation{
 		rules:  rules,
 		chain:  chain,
 		state:  state,
 		signer: signer,
 	}
+	return utils.NewUnchachedChecker(impl.isSponsored)
 }
 
 func (s *SubsidiesIntegrationImplementation) isSponsored(tx *types.Transaction) bool {

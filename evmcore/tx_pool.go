@@ -196,7 +196,7 @@ type subsidiesCheckerFactory func(
 	chain StateReader,
 	state state.StateDB,
 	signer types.Signer,
-) subsidiesChecker
+) utils.Checker
 
 // bundleCheckerFactory is a factory method to create a bundle checker instance.
 // This facilitates testing of the TxPool by using injected mock implementations.
@@ -349,7 +349,7 @@ type TxPool struct {
 	waitForIdleReorgLoopResponseCh chan struct{} // responses to waitForReorgDoneRequestCh
 
 	subsidiesCheckerFactory subsidiesCheckerFactory // Factory to create a subsidies checker instance
-	subsidiesCheckerCache   *subsidiesCheckerCache  // Cache for subsidies check results
+	subsidiesCheckerCache   *utils.CheckerCache     // Cache for subsidies check results
 
 	bundleCheckerFactory bundleCheckerFactory // Factory to create a bundle checker instance
 }
@@ -364,7 +364,7 @@ func NewTxPool(
 	config TxPoolConfig,
 	chainconfig *params.ChainConfig,
 	chain StateReader) *TxPool {
-	return newTxPool(config, chainconfig, chain, newSubsidiesChecker, newBundleChecker)
+	return newTxPool(config, chainconfig, chain, createSubsidiesChecker, newBundleChecker)
 }
 
 func newTxPool(
@@ -399,7 +399,7 @@ func newTxPool(
 		waitForIdleReorgLoopResponseCh: make(chan struct{}),
 
 		subsidiesCheckerFactory: subsidiesCheckerFactory,
-		subsidiesCheckerCache:   newSubsidiesCheckerCache(-1), // use default size
+		subsidiesCheckerCache:   utils.NewCheckerCache(-1), // use default size
 
 		bundleCheckerFactory: bundleCheckerFactory,
 		// TODO: add a cache for bundle checker results if the checks are expensive

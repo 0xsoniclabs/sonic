@@ -3415,8 +3415,10 @@ func testSubsidiesCheckerFactory(
 	chain StateReader,
 	state state.StateDB,
 	signer types.Signer,
-) subsidiesChecker {
-	return nil
+) utils.Checker {
+	return utils.NewUnchachedChecker(func(tx *types.Transaction) bool {
+		panic("unexpected call to subsidies features during legacy testing")
+	})
 }
 
 func testBundleCheckerFactory(
