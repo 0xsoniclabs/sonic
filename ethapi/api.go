@@ -2415,12 +2415,11 @@ func (api *PublicDebugAPI) traceBlock(ctx context.Context, block *evmcore.EvmBlo
 		}
 		res, err := api.traceTx(ctx, tx, msg, txctx, block.Header(), statedb, config, nil)
 		if err != nil {
-			results[i] = &txTraceResult{TxHash: tx.Hash(), Error: err.Error()}
-			resultsLength += len(err.Error())
-		} else {
-			results[i] = &txTraceResult{TxHash: tx.Hash(), Result: res}
-			resultsLength += len(res)
+			return nil, err
 		}
+		results[i] = &txTraceResult{TxHash: tx.Hash(), Result: res}
+		resultsLength += len(res)
+
 		statedb.EndTransaction()
 
 		// limit the response size.

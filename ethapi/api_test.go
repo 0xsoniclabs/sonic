@@ -1415,10 +1415,8 @@ func TestDebugTraceWithBlobTx(t *testing.T) {
 		require.Equal(t, err.Error(), "tracing failed: blob data is not supported")
 
 		// Replay the whole block - should return errors for individual txs
-		res, err := api.TraceBlockByNumber(context.Background(), rpc.BlockNumber(5), &tracers.TraceConfig{})
-		require.NoError(t, err, "trace block must succeed even when individual transactions fails")
-		require.Equal(t, res[0].Error, "tracing failed: blob data is not supported")
-		require.Equal(t, res[1].Error, "tracing failed: blob data is not supported")
+		_, err = api.TraceBlockByNumber(context.Background(), rpc.BlockNumber(5), &tracers.TraceConfig{})
+		require.Error(t, err, "tracing failed: blob data is not supported")
 	})
 }
 
