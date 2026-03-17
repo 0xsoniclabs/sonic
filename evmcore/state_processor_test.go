@@ -734,7 +734,93 @@ func getStateDbMockForTransactions(
 	return state
 }
 
-func TestRunTransactions_GasSubsidiesDisabled_ProcessesRegularTransaction(t *testing.T) {
+func TestRunTransactions_RunsAllTransactionsAndCollectsProcessedTransactions(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	runner := NewMock_transactionRunner(ctrl)
+
+	txs := []*types.Transaction{
+		getRegularTransaction(t),
+		getSponsorshipRequest(t),
+	}
+
+	context := &runContext{
+		runner:   runner,
+		upgrades: opera.Upgrades{GasSubsidies: true},
+	}
+	gomock.InOrder(
+		runner.EXPECT().runRegularTransaction(context, txs[0], 0).Return(ProcessedTransaction{
+			Transaction: txs[0],
+			Receipt:     &types.Receipt{},
+		}, core_types.TransactionResultSuccessful),
+		runner.EXPECT().runSponsoredTransaction(context, txs[1], 1).Return(
+			[]ProcessedTransaction{
+				{
+					Transaction: txs[1],
+					Receipt:     &types.Receipt{},
+				},
+				{ // to simulate the internal fee deduction transaction
+					Transaction: txs[1],
+					Receipt:     &types.Receipt{},
+				},
+			},
+			core_types.TransactionResultSuccessful,
+		),
+	)
+
+	got := runTransactions(context, txs, 0)
+	require.Len(t, got, 3)
+	require.Equal(t, txs[0], got[0].Transaction)
+	require.Equal(t, txs[1], got[1].Transaction)
+	require.NotNil(t, got[0].Receipt)
+	require.NotNil(t, got[1].Receipt)
+	require.NotNil(t, got[2].Receipt)
+}
+
+// TODO enable this test one the index is fixed
+func DisTestRunTransactions_ProvidesNextIndexAsOriginalIndexPlusNumberOfPreviouslyProcessedTransactionsWithReceipt(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	runner := NewMock_transactionRunner(ctrl)
+
+	txs := []*types.Transaction{
+		getRegularTransaction(t),
+		getRegularTransaction(t),
+		getRegularTransaction(t),
+	}
+
+	context := &runContext{
+		runner:   runner,
+		upgrades: opera.Upgrades{GasSubsidies: true},
+	}
+
+	startIndex := 5
+	gomock.InOrder(
+		runner.EXPECT().runRegularTransaction(context, txs[0], startIndex).Return(ProcessedTransaction{
+			Transaction: txs[0],
+			Receipt:     &types.Receipt{},
+		}, core_types.TransactionResultSuccessful),
+		// the previously processed transaction has a receipt, so the next index is incremented by 1
+		runner.EXPECT().runRegularTransaction(context, txs[0], startIndex+1).Return(ProcessedTransaction{
+			Transaction: txs[1],
+			Receipt:     nil,
+		}, core_types.TransactionResultSuccessful),
+		// the previously processed transaction does not have a receipt, so the next index is not incremented
+		runner.EXPECT().runRegularTransaction(context, txs[0], startIndex+1).Return(ProcessedTransaction{
+			Transaction: txs[2],
+			Receipt:     &types.Receipt{},
+		}, core_types.TransactionResultSuccessful),
+	)
+
+	got := runTransactions(context, txs, 0)
+	require.Len(t, got, 3)
+	require.Equal(t, txs[0], got[0].Transaction)
+	require.Equal(t, txs[1], got[1].Transaction)
+	require.Equal(t, txs[2], got[2].Transaction)
+	require.NotNil(t, got[0].Receipt)
+	require.Nil(t, got[1].Receipt)
+	require.NotNil(t, got[2].Receipt)
+}
+
+func TestRunTransaction_GasSubsidiesDisabled_ProcessesRegularTransaction(t *testing.T) {
 	tests := map[string]*types.Transaction{
 		"regular": getRegularTransaction(t),
 		"request": getSponsorshipRequest(t),
@@ -749,12 +835,12 @@ func TestRunTransactions_GasSubsidiesDisabled_ProcessesRegularTransaction(t *tes
 				upgrades: opera.Upgrades{GasSubsidies: false},
 			}
 			runner.EXPECT().runRegularTransaction(context, tx, 0)
-			runTransactions(context, []*types.Transaction{tx}, 0)
+			runTransaction(context, tx, 0)
 		})
 	}
 }
 
-func TestRunTransactions_GasSubsidiesEnabled_RunsRegularTransactionWithoutSponsorship(t *testing.T) {
+func TestRunTransaction_GasSubsidiesEnabled_RunsRegularTransactionWithoutSponsorship(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	runner := NewMock_transactionRunner(ctrl)
 
@@ -768,11 +854,12 @@ func TestRunTransactions_GasSubsidiesEnabled_RunsRegularTransactionWithoutSponso
 		upgrades: opera.Upgrades{GasSubsidies: true},
 	}
 	runner.EXPECT().runRegularTransaction(context, tx, 0).Return(processed, core_types.TransactionResultSuccessful)
-	got := runTransactions(context, []*types.Transaction{tx}, 0)
+	got, status := runTransaction(context, tx, 0)
 	require.Equal(t, []ProcessedTransaction{processed}, got)
+	require.Equal(t, core_types.TransactionResultSuccessful, status)
 }
 
-func TestRunTransactions_GasSubsidiesEnabled_RunsSponsorshipRequestWithSponsorship(t *testing.T) {
+func TestRunTransaction_GasSubsidiesEnabled_RunsSponsorshipRequestWithSponsorship(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	runner := NewMock_transactionRunner(ctrl)
 
@@ -789,7 +876,8 @@ func TestRunTransactions_GasSubsidiesEnabled_RunsSponsorshipRequestWithSponsorsh
 		}},
 		core_types.TransactionResultSuccessful,
 	)
-	processed := runTransactions(context, []*types.Transaction{tx}, 0)
+	processed, status := runTransaction(context, tx, 0)
+	require.Equal(t, core_types.TransactionResultSuccessful, status)
 	require.Len(t, processed, 1)
 	require.Equal(t, tx, processed[0].Transaction)
 	require.Nil(t, processed[0].Receipt)
@@ -1442,7 +1530,7 @@ func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSucc
 	)
 }
 
-func TestRunTransaction_InternalTransactions_SkipsTransactionChecksTrue(t *testing.T) {
+func TestRunRegularTransaction_InternalTransactions_SkipsTransactionChecksTrue(t *testing.T) {
 
 	maxTxGas := uint64(1_500_000)
 
@@ -1531,7 +1619,7 @@ func TestRunTransaction_InternalTransactions_SkipsTransactionChecksTrue(t *testi
 	require.Nil(t, got.Receipt)
 }
 
-func TestRunTransaction_RegularTransaction(t *testing.T) {
+func TestRunRegularTransaction_RegularTransaction(t *testing.T) {
 
 	tests := map[string]struct {
 		rules      opera.Rules
