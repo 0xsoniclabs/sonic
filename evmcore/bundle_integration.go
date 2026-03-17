@@ -20,25 +20,12 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	params "github.com/ethereum/go-ethereum/params"
 )
-
-//go:generate mockgen -source=bundle_integration.go -destination=bundle_integration_mock.go -package=evmcore
-
-// bundleChecker is an interface for checking if a bundle transaction is pending
-// for execution. A bundle is pending if it has not yet been processed, its
-// block range is not yet exceeded, and it is not permanently blocked due to an
-// on-chain state mutation (e.g. a mandatory transaction in the bundle using a
-// nonce that has already been used).
-//
-// This interface facilitates testing and decouples the bundle integration
-// logic from the transaction pool.
-type bundleChecker interface {
-	isPending(tx *types.Transaction) bool
-}
 
 // BundleIntegrationImplementation uses the chain and state to determine if a
 // bundle transaction is still pending for execution or obsolete.
@@ -48,18 +35,19 @@ type BundleIntegrationImplementation struct {
 	state state.StateDB
 }
 
-// newBundleChecker creates a new BundleChecker instance.
-func newBundleChecker(
+// createBundleChecker creates a new BundleChecker instance.
+func createBundleChecker(
 	rules opera.Rules,
 	chain StateReader,
 	state state.StateDB,
 	_ types.Signer, // needed for type compatibility
-) bundleChecker {
-	return &BundleIntegrationImplementation{
+) utils.Checker {
+	impl := &BundleIntegrationImplementation{
 		rules: rules,
 		chain: chain,
 		state: state,
 	}
+	return utils.NewUnchachedChecker(impl.isPending)
 }
 
 func (s *BundleIntegrationImplementation) isPending(tx *types.Transaction) bool {

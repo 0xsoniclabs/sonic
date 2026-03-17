@@ -3426,6 +3426,8 @@ func testBundleCheckerFactory(
 	chain StateReader,
 	state state.StateDB,
 	signer types.Signer,
-) bundleChecker {
-	return nil
+) utils.Checker {
+	return utils.NewUnchachedChecker(func(tx *types.Transaction) bool {
+		panic("unexpected call to bundle features during legacy testing")
+	})
 }

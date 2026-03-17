@@ -63,7 +63,7 @@ func TestTxPool_SponsoredTransactionsAreIncludedInThePendingSet(t *testing.T) {
 	factory := func(opera.Rules, StateReader, state.StateDB, types.Signer) utils.Checker {
 		return subsidiesCheckerMock
 	}
-	pool := newTxPool(poolConfig, chainConfig, chain, factory, newBundleChecker)
+	pool := newTxPool(poolConfig, chainConfig, chain, factory, createBundleChecker)
 
 	// transactions per sender
 	const transactionsPerSender = 5

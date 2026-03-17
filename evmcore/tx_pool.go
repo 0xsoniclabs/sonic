@@ -205,7 +205,7 @@ type bundleCheckerFactory func(
 	chain StateReader,
 	state state.StateDB,
 	signer types.Signer,
-) bundleChecker
+) utils.Checker
 
 // TxPoolConfig are the configuration parameters of the transaction pool.
 type TxPoolConfig struct {
@@ -352,6 +352,7 @@ type TxPool struct {
 	subsidiesCheckerCache   *utils.CheckerCache     // Cache for subsidies check results
 
 	bundleCheckerFactory bundleCheckerFactory // Factory to create a bundle checker instance
+	bundlesCheckerCache  *utils.CheckerCache  // Cache for bundle check results
 }
 
 type txpoolResetRequest struct {
@@ -364,7 +365,7 @@ func NewTxPool(
 	config TxPoolConfig,
 	chainconfig *params.ChainConfig,
 	chain StateReader) *TxPool {
-	return newTxPool(config, chainconfig, chain, createSubsidiesChecker, newBundleChecker)
+	return newTxPool(config, chainconfig, chain, createSubsidiesChecker, createBundleChecker)
 }
 
 func newTxPool(
@@ -402,7 +403,7 @@ func newTxPool(
 		subsidiesCheckerCache:   utils.NewCheckerCache(-1), // use default size
 
 		bundleCheckerFactory: bundleCheckerFactory,
-		// TODO: add a cache for bundle checker results if the checks are expensive
+		bundlesCheckerCache:  utils.NewCheckerCache(-1), // use default size
 	}
 	pool.locals = newAccountSet(pool.signer)
 	for _, addr := range config.Locals {
@@ -1522,13 +1523,14 @@ func (pool *TxPool) createCachedSubsidiesChecker() utils.Checker {
 		))
 }
 
-func (pool *TxPool) createBundleChecker() bundleChecker {
-	return pool.bundleCheckerFactory(
-		pool.chain.CurrentRules(),
-		pool.chain,
-		pool.currentState,
-		pool.signer,
-	)
+func (pool *TxPool) createBundleChecker() utils.Checker {
+	return pool.bundlesCheckerCache.Wrap(
+		pool.bundleCheckerFactory(
+			pool.chain.CurrentRules(),
+			pool.chain,
+			pool.currentState,
+			pool.signer,
+		))
 }
 
 // promoteExecutables moves transactions that have become processable from the
