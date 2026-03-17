@@ -26,7 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
-var ErrWrongEnvelopeGasLimitTooLow = errors.New("gas limit of envelope does not match gas limit of payload")
+var ErrWrongEnvelopeGasLimit = errors.New("gas limit of envelope does not match gas limit of payload")
 
 // ValidateEnvelope validates an envelope and its contents.
 // It checks that the transaction is a valid bundle transaction and that all transactions in the bundle belong to the same execution plan.
@@ -54,6 +54,8 @@ func ValidateEnvelope(
 	)
 }
 
+// validateEnvelopeInternal is an internal version of ValidateEnvelope enabling
+// the injection of custom steps for testing.
 func validateEnvelopeInternal(
 	signer types.Signer,
 	envelopeTx *types.Transaction,
@@ -124,7 +126,7 @@ func validateEnvelopeInternal(
 
 	gasNeeded := max(gasLimit, intrGas, floorDataGas)
 	if bundleGas != gasNeeded {
-		return nil, nil, fmt.Errorf("%w: envelope gas limit is %d but should be %d", ErrWrongEnvelopeGasLimitTooLow, envelopeTx.Gas(), gasNeeded)
+		return nil, nil, fmt.Errorf("%w: envelope gas limit is %d but should be %d", ErrWrongEnvelopeGasLimit, envelopeTx.Gas(), gasNeeded)
 	}
 
 	// Check consistency of the execution plan.

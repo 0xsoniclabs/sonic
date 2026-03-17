@@ -70,7 +70,7 @@ func TestValidateEnvelope_InvalidEncoding_ReturnsError(t *testing.T) {
 	require.ErrorContains(t, err, "failed to decode transaction bundle")
 }
 
-func TestValidateEnvelope_DetectsOverFlowInIntrinsicGasCalculation(t *testing.T) {
+func TestValidateEnvelope_DetectsErrorInIntrinsicGasCalculation(t *testing.T) {
 	signer := types.LatestSignerForChainID(testChainID)
 
 	bundle := TransactionBundle{}
@@ -92,7 +92,7 @@ func TestValidateEnvelope_DetectsOverFlowInIntrinsicGasCalculation(t *testing.T)
 	require.ErrorIs(t, err, injectedError)
 }
 
-func TestValidateEnvelope_DetectsOverFlowInFloorDataGasCalculation(t *testing.T) {
+func TestValidateEnvelope_DetectsErrorInFloorDataGasCalculation(t *testing.T) {
 	signer := types.LatestSignerForChainID(testChainID)
 
 	bundle := TransactionBundle{}
