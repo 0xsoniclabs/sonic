@@ -420,7 +420,7 @@ func (s *State) ApplyBlock(
 		gasLimit,
 		&usedGas,
 		nil,
-	)
+	).ProcessedTransactions
 
 	if false { // Debug
 		fmt.Printf("block %d: used gas %d / %d\n", block.NumberU64(), usedGas, block.GasUsed())

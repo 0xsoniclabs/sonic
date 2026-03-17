@@ -60,6 +60,14 @@ func NewStateProcessor(
 	}
 }
 
+// ProcessSummary contains the result of processing a list of transactions,
+// including the list of processed transactions with their receipts and the list
+// of processed bundles.
+type ProcessSummary struct {
+	ProcessedTransactions []ProcessedTransaction
+	ProcessedBundles      []ProcessedBundle
+}
+
 // ProcessedTransaction represents a transaction that was considered for
 // inclusion in a block by the state processor. It contains the transaction
 // itself and the receipt either confirming its execution, or nil if the
@@ -67,6 +75,13 @@ func NewStateProcessor(
 type ProcessedTransaction struct {
 	Transaction *types.Transaction
 	Receipt     *types.Receipt
+}
+
+// ProcessedBundle summarizes the result of a processed bundle.
+type ProcessedBundle struct {
+	ExecutionPlanHash common.Hash
+	Position          uint32 // < position in the block transaction list
+	Count             uint32 // < number of transactions from this bundle in the block transaction list
 }
 
 // Process processes the state changes according to the Ethereum rules by running
@@ -94,7 +109,7 @@ type ProcessedTransaction struct {
 func (p *StateProcessor) Process(
 	block *EvmBlock, statedb state.StateDB, cfg vm.Config, gasLimit uint64,
 	usedGas *uint64, onNewLog func(*types.Log),
-) []ProcessedTransaction {
+) ProcessSummary {
 	sonicDifficulty := big.NewInt(1)
 	return p.ProcessWithDifficulty(block, statedb, cfg, gasLimit, usedGas, onNewLog, sonicDifficulty)
 }
@@ -106,7 +121,7 @@ func (p *StateProcessor) Process(
 func (p *StateProcessor) ProcessWithDifficulty(
 	block *EvmBlock, statedb state.StateDB, cfg vm.Config, gasLimit uint64,
 	usedGas *uint64, onNewLog func(*types.Log), difficulty *big.Int,
-) []ProcessedTransaction {
+) ProcessSummary {
 	var (
 		gp           = new(core.GasPool).AddGas(gasLimit)
 		header       = block.Header()
@@ -182,14 +197,14 @@ func runTransactions(
 	context *runContext,
 	transactions types.Transactions,
 	txIndexOffset int,
-) []ProcessedTransaction {
+) ProcessSummary {
 	processed := make([]ProcessedTransaction, 0, len(transactions))
 	for _, tx := range transactions {
 		nextId := txIndexOffset + len(processed)
 		txs, _ := runTransaction(context, tx, nextId)
 		processed = append(processed, txs...)
 	}
-	return processed
+	return ProcessSummary{ProcessedTransactions: processed}
 }
 
 func runTransaction(
@@ -416,7 +431,7 @@ type TransactionProcessor struct {
 // the transaction in the block. It returns the list of all transactions that
 // have been attempted to be processed to cover the given transaction as well as
 // their receipts if they did not get skipped.
-func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) []ProcessedTransaction {
+func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) ProcessSummary {
 	return runTransactions(newRunContext(
 		tp.signer, tp.header.BaseFee, tp.stateDb, tp.gp, tp.blockNumber,
 		&tp.usedGas, tp.onNewLog, tp.upgrades, &transactionRunner{evm{tp.vmEnvironment}},
