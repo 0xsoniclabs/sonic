@@ -788,9 +788,30 @@ func TestRunTransactions_ProvidesNextIndexAsOriginalIndexPlusNumberOfPreviouslyP
 	runner := NewMock_transactionRunner(ctrl)
 
 	txs := []*types.Transaction{
+		getSponsorshipRequest(t),
 		getRegularTransaction(t),
 		getRegularTransaction(t),
-		getRegularTransaction(t),
+	}
+
+	sponsoredTxResult1 := []ProcessedTransaction{
+		{
+			Transaction: types.NewTx(&types.LegacyTx{Nonce: 1}),
+			Receipt:     &types.Receipt{GasUsed: 100},
+		},
+		{ // to simulate the internal fee deduction transaction
+			Transaction: types.NewTx(&types.LegacyTx{Nonce: 2}),
+			Receipt:     &types.Receipt{GasUsed: 200},
+		},
+	}
+
+	regularTxResult2 := ProcessedTransaction{
+		Transaction: types.NewTx(&types.LegacyTx{Nonce: 3}),
+		Receipt:     nil,
+	}
+
+	regularTxResult3 := ProcessedTransaction{
+		Transaction: types.NewTx(&types.LegacyTx{Nonce: 4}),
+		Receipt:     &types.Receipt{GasUsed: 400},
 	}
 
 	context := &runContext{
@@ -800,28 +821,29 @@ func TestRunTransactions_ProvidesNextIndexAsOriginalIndexPlusNumberOfPreviouslyP
 
 	startIndex := 5
 	gomock.InOrder(
-		runner.EXPECT().runRegularTransaction(context, txs[0], startIndex).Return(ProcessedTransaction{
-			Transaction: txs[0],
-			Receipt:     &types.Receipt{},
-		}, core_types.TransactionResultSuccessful),
-		runner.EXPECT().runRegularTransaction(context, txs[0], startIndex+1).Return(ProcessedTransaction{
-			Transaction: txs[1],
-			Receipt:     nil,
-		}, core_types.TransactionResultSuccessful),
-		runner.EXPECT().runRegularTransaction(context, txs[0], startIndex+2).Return(ProcessedTransaction{
-			Transaction: txs[2],
-			Receipt:     &types.Receipt{},
-		}, core_types.TransactionResultSuccessful),
+		runner.EXPECT().runSponsoredTransaction(context, txs[0], startIndex).Return(
+			sponsoredTxResult1,
+			core_types.TransactionResultSuccessful,
+		),
+		// the sponsored transaction results in two processed transactions: the sponsored transaction itself and an internal fee deduction transaction, so the next transaction should have index startIndex + 2
+		runner.EXPECT().runRegularTransaction(context, txs[1], startIndex+2).Return(
+			regularTxResult2,
+			core_types.TransactionResultSuccessful,
+		),
+		// the regular transaction has a nil receipt, but this should not matter
+		runner.EXPECT().runRegularTransaction(context, txs[2], startIndex+3).Return(
+			regularTxResult3,
+			core_types.TransactionResultSuccessful,
+		),
 	)
 
-	got := runTransactions(context, txs, 0)
-	require.Len(t, got, 3)
-	require.Equal(t, txs[0], got[0].Transaction)
-	require.Equal(t, txs[1], got[1].Transaction)
-	require.Equal(t, txs[2], got[2].Transaction)
-	require.NotNil(t, got[0].Receipt)
-	require.Nil(t, got[1].Receipt)
-	require.NotNil(t, got[2].Receipt)
+	got := runTransactions(context, txs, startIndex)
+
+	want := []ProcessedTransaction{}
+	want = append(want, sponsoredTxResult1...)
+	want = append(want, regularTxResult2)
+	want = append(want, regularTxResult3)
+	require.Equal(t, want, got)
 }
 
 func TestRunTransaction_GasSubsidiesDisabled_ProcessesRegularTransaction(t *testing.T) {
