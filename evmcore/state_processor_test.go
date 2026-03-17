@@ -743,41 +743,47 @@ func TestRunTransactions_RunsAllTransactionsAndCollectsProcessedTransactions(t *
 		getSponsorshipRequest(t),
 	}
 
+	regularTxResult := ProcessedTransaction{
+		Transaction: types.NewTx(&types.LegacyTx{Nonce: 1}),
+		Receipt:     &types.Receipt{GasUsed: 100},
+	}
+
+	sponsoredTxResult := []ProcessedTransaction{
+		{
+			Transaction: types.NewTx(&types.LegacyTx{Nonce: 2}),
+			Receipt:     &types.Receipt{GasUsed: 200},
+		},
+		{ // to simulate the internal fee deduction transaction
+			Transaction: types.NewTx(&types.LegacyTx{Nonce: 3}),
+			Receipt:     &types.Receipt{GasUsed: 300},
+		},
+	}
+
 	context := &runContext{
 		runner:   runner,
 		upgrades: opera.Upgrades{GasSubsidies: true},
 	}
 	gomock.InOrder(
-		runner.EXPECT().runRegularTransaction(context, txs[0], 0).Return(ProcessedTransaction{
-			Transaction: txs[0],
-			Receipt:     &types.Receipt{},
-		}, core_types.TransactionResultSuccessful),
+		runner.EXPECT().runRegularTransaction(context, txs[0], 0).Return(
+			regularTxResult,
+			core_types.TransactionResultSuccessful,
+		),
 		runner.EXPECT().runSponsoredTransaction(context, txs[1], 1).Return(
-			[]ProcessedTransaction{
-				{
-					Transaction: txs[1],
-					Receipt:     &types.Receipt{},
-				},
-				{ // to simulate the internal fee deduction transaction
-					Transaction: txs[1],
-					Receipt:     &types.Receipt{},
-				},
-			},
+			sponsoredTxResult,
 			core_types.TransactionResultSuccessful,
 		),
 	)
 
 	got := runTransactions(context, txs, 0)
 	require.Len(t, got, 3)
-	require.Equal(t, txs[0], got[0].Transaction)
-	require.Equal(t, txs[1], got[1].Transaction)
-	require.NotNil(t, got[0].Receipt)
-	require.NotNil(t, got[1].Receipt)
-	require.NotNil(t, got[2].Receipt)
+
+	want := []ProcessedTransaction{}
+	want = append(want, regularTxResult)
+	want = append(want, sponsoredTxResult...)
+	require.Equal(t, want, got)
 }
 
-// TODO enable this test one the index is fixed
-func DisTestRunTransactions_ProvidesNextIndexAsOriginalIndexPlusNumberOfPreviouslyProcessedTransactionsWithReceipt(t *testing.T) {
+func TestRunTransactions_ProvidesNextIndexAsOriginalIndexPlusNumberOfPreviouslyProcessedTransactions(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	runner := NewMock_transactionRunner(ctrl)
 
@@ -798,13 +804,11 @@ func DisTestRunTransactions_ProvidesNextIndexAsOriginalIndexPlusNumberOfPrevious
 			Transaction: txs[0],
 			Receipt:     &types.Receipt{},
 		}, core_types.TransactionResultSuccessful),
-		// the previously processed transaction has a receipt, so the next index is incremented by 1
 		runner.EXPECT().runRegularTransaction(context, txs[0], startIndex+1).Return(ProcessedTransaction{
 			Transaction: txs[1],
 			Receipt:     nil,
 		}, core_types.TransactionResultSuccessful),
-		// the previously processed transaction does not have a receipt, so the next index is not incremented
-		runner.EXPECT().runRegularTransaction(context, txs[0], startIndex+1).Return(ProcessedTransaction{
+		runner.EXPECT().runRegularTransaction(context, txs[0], startIndex+2).Return(ProcessedTransaction{
 			Transaction: txs[2],
 			Receipt:     &types.Receipt{},
 		}, core_types.TransactionResultSuccessful),
@@ -1530,6 +1534,115 @@ func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSucc
 	)
 }
 
+func TestRunSponsoredTransaction_MatchesCoveredAndReceiptToStatus(t *testing.T) {
+	tests := map[string]struct {
+		subsidyRequestFail bool
+		covered            bool
+		poolNotEnough      bool
+		receipt            *types.Receipt
+		status             core_types.TransactionResult
+	}{
+		"subsidy request fail": {
+			subsidyRequestFail: true,
+			status:             core_types.TransactionResultInvalid,
+		},
+		"not covered": {
+			covered: false,
+			status:  core_types.TransactionResultInvalid,
+		},
+		"pool not enough": {
+			covered:       true,
+			poolNotEnough: true,
+			status:        core_types.TransactionResultInvalid,
+		},
+		"sponsored tx nil receipt": {
+			covered: true,
+			receipt: nil,
+			status:  core_types.TransactionResultInvalid,
+		},
+		"sponsored tx failed": {
+			covered: true,
+			receipt: &types.Receipt{Status: types.ReceiptStatusFailed},
+			status:  core_types.TransactionResultFailed,
+		},
+		"sponsored tx success": {
+			covered: true,
+			receipt: &types.Receipt{Status: types.ReceiptStatusSuccessful},
+			status:  core_types.TransactionResultSuccessful,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			state := state.NewMockStateDB(ctrl)
+			evm := NewMock_evm(ctrl)
+
+			var tx *types.Transaction
+			if test.subsidyRequestFail {
+				tx = getSponsorshipRequestUnsigned(t)
+			} else {
+				tx = getSponsorshipRequest(t)
+			}
+
+			var gasPool *core.GasPool
+			if test.poolNotEnough {
+				gasPool = new(core.GasPool).AddGas(0)
+			} else {
+				gasPool = new(core.GasPool).AddGas(1_000_000)
+			}
+			ctxt := &runContext{
+				statedb:  state,
+				signer:   types.LatestSignerForChainID(nil),
+				baseFee:  big.NewInt(1),
+				gasPool:  gasPool,
+				upgrades: opera.Upgrades{GasSubsidies: true},
+			}
+
+			// Snapshot for the IsCovered call
+			state.EXPECT().Snapshot().Return(1)
+			state.EXPECT().RevertToSnapshot(1)
+
+			txIndex := 7
+			if !test.subsidyRequestFail {
+				any := gomock.Any()
+				evm.EXPECT().Call(any, any, any, any, any).
+					Return([]byte{95: 0}, uint64(0), nil) // results of getGasConfig
+				if test.covered {
+					evm.EXPECT().Call(any, any, any, any, any).
+						Return([]byte{31: 1}, uint64(0), nil) // indicates "covered"
+				} else {
+					evm.EXPECT().Call(any, any, any, any, any).
+						Return([]byte{}, uint64(0), nil) // indicates "not covered"
+				}
+
+				if test.covered && !test.poolNotEnough {
+					evm.EXPECT().runWithoutBaseFeeCheck(ctxt, tx, txIndex).
+						Return(ProcessedTransaction{
+							Transaction: tx,
+							Receipt:     test.receipt,
+						})
+
+					if test.receipt != nil {
+						// Nonce request for the fee deduction transaction
+						state.EXPECT().GetNonce(common.Address{}).Return(uint64(123))
+
+						evm.EXPECT().runWithoutBaseFeeCheck(ctxt, gomock.Not(tx), txIndex+1).
+							Return(ProcessedTransaction{
+								Transaction: tx,
+								Receipt:     &types.Receipt{},
+							})
+					}
+				}
+			}
+
+			runner := transactionRunner{evm}
+			_, status := runner.runSponsoredTransaction(ctxt, tx, txIndex)
+			require.Equal(t, test.status, status)
+		})
+	}
+}
+
 func TestRunRegularTransaction_InternalTransactions_SkipsTransactionChecksTrue(t *testing.T) {
 
 	maxTxGas := uint64(1_500_000)
@@ -1735,6 +1848,47 @@ func TestRunRegularTransaction_RegularTransaction(t *testing.T) {
 	}
 }
 
+func TestRunRegularTransaction_MatchesReceiptToStatus(t *testing.T) {
+	tests := map[string]struct {
+		receipt *types.Receipt
+		status  core_types.TransactionResult
+	}{
+		"nil receipt": {
+			receipt: nil,
+			status:  core_types.TransactionResultInvalid,
+		},
+		"failed": {
+			receipt: &types.Receipt{Status: types.ReceiptStatusFailed},
+			status:  core_types.TransactionResultFailed,
+		},
+		"success": {
+			receipt: &types.Receipt{Status: types.ReceiptStatusSuccessful},
+			status:  core_types.TransactionResultSuccessful,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			evm := NewMock_evm(ctrl)
+
+			ctxt := &runContext{}
+			tx := &types.Transaction{}
+
+			evm.EXPECT().runWithBaseFeeCheck(ctxt, tx, 12).Return(
+				ProcessedTransaction{
+					Transaction: tx,
+					Receipt:     test.receipt,
+				},
+			)
+
+			runner := transactionRunner{evm}
+			_, status := runner.runRegularTransaction(ctxt, tx, 12)
+			require.Equal(t, test.status, status)
+		})
+	}
+}
+
 // --- Utility functions for creating test transactions ---
 
 func getRegularTransaction(t *testing.T) *types.Transaction {
@@ -1743,6 +1897,12 @@ func getRegularTransaction(t *testing.T) *types.Transaction {
 	signer := types.LatestSignerForChainID(nil)
 	return types.MustSignNewTx(key, signer, &types.LegacyTx{
 		Nonce: 0, To: &common.Address{1}, Gas: 21_000, GasPrice: big.NewInt(1),
+	})
+}
+
+func getSponsorshipRequestUnsigned(t *testing.T) *types.Transaction {
+	return types.NewTx(&types.LegacyTx{
+		Nonce: 0, To: &common.Address{1}, Gas: 21_000,
 	})
 }
 
