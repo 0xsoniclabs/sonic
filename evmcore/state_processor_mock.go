@@ -12,6 +12,7 @@ package evmcore
 import (
 	reflect "reflect"
 
+	core_types "github.com/0xsoniclabs/sonic/evmcore/core_types"
 	common "github.com/ethereum/go-ethereum/common"
 	types "github.com/ethereum/go-ethereum/core/types"
 	uint256 "github.com/holiman/uint256"
@@ -43,11 +44,12 @@ func (m *Mock_transactionRunner) EXPECT() *Mock_transactionRunnerMockRecorder {
 }
 
 // runRegularTransaction mocks base method.
-func (m *Mock_transactionRunner) runRegularTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) ProcessedTransaction {
+func (m *Mock_transactionRunner) runRegularTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) (ProcessedTransaction, core_types.TransactionResult) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "runRegularTransaction", ctxt, tx, txIndex)
 	ret0, _ := ret[0].(ProcessedTransaction)
-	return ret0
+	ret1, _ := ret[1].(core_types.TransactionResult)
+	return ret0, ret1
 }
 
 // runRegularTransaction indicates an expected call of runRegularTransaction.
@@ -57,11 +59,12 @@ func (mr *Mock_transactionRunnerMockRecorder) runRegularTransaction(ctxt, tx, tx
 }
 
 // runSponsoredTransaction mocks base method.
-func (m *Mock_transactionRunner) runSponsoredTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) []ProcessedTransaction {
+func (m *Mock_transactionRunner) runSponsoredTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) ([]ProcessedTransaction, core_types.TransactionResult) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "runSponsoredTransaction", ctxt, tx, txIndex)
 	ret0, _ := ret[0].([]ProcessedTransaction)
-	return ret0
+	ret1, _ := ret[1].(core_types.TransactionResult)
+	return ret0, ret1
 }
 
 // runSponsoredTransaction indicates an expected call of runSponsoredTransaction.
