@@ -34,7 +34,6 @@ var testChainID = big.NewInt(1)
 func TestValidateEnvelope_IdentifiesBundles(t *testing.T) {
 
 	generator := newTestBundleGenerator(t, 2)
-	signer := types.LatestSignerForChainID(testChainID)
 
 	tests := map[string]struct {
 		tx           *types.Transaction
@@ -47,7 +46,7 @@ func TestValidateEnvelope_IdentifiesBundles(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			bundle, plan, err := ValidateEnvelope(signer, test.tx)
+			bundle, plan, err := ValidateEnvelope(generator.signer, test.tx)
 			require.NoError(t, err)
 			if test.expectBundle {
 				require.NotNil(t, bundle, "expected a bundle transaction")
@@ -118,7 +117,6 @@ func TestValidateEnvelope_DetectsOverFlowInFloorDataGasCalculation(t *testing.T)
 }
 
 func TestValidateEnvelope_ReturnsErrorsOnValidationFailure(t *testing.T) {
-	signer := types.LatestSignerForChainID(testChainID)
 	generator := newTestBundleGenerator(t, 2)
 
 	tests := map[string]struct {
@@ -149,7 +147,7 @@ func TestValidateEnvelope_ReturnsErrorsOnValidationFailure(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			_, _, err := ValidateEnvelope(signer, test.tx)
+			_, _, err := ValidateEnvelope(generator.signer, test.tx)
 			require.ErrorContains(t, err, test.expectedError)
 		})
 	}
@@ -233,8 +231,9 @@ func TestValidateEnvelope_IdentifiesInvalidBlockRanges(t *testing.T) {
 // for testing purposes.
 // These include valid and invalid bundles, as well as non-bundle transactions.
 type testBundleGenerator struct {
-	keys []*ecdsa.PrivateKey
-	n    int
+	keys   []*ecdsa.PrivateKey
+	n      int
+	signer types.Signer
 }
 
 // newTestBundleGenerator creates a new testBundleGenerator with n keys and a signer.
@@ -249,8 +248,9 @@ func newTestBundleGenerator(t testing.TB, n int) testBundleGenerator {
 	}
 
 	return testBundleGenerator{
-		keys: keys,
-		n:    n,
+		keys:   keys,
+		n:      n,
+		signer: types.LatestSignerForChainID(testChainID),
 	}
 }
 
@@ -272,8 +272,6 @@ func (gen testBundleGenerator) makeValidBundleTx(t testing.TB) *types.Transactio
 	receiver := common.Address{0x42}
 	gasPerTx := uint64(20_000)
 
-	signer := types.LatestSignerForChainID(testChainID)
-
 	//  Generate n metaTransactions from n different senders
 	metaTransactions := make([]types.AccessListTx, gen.n)
 	txHash := make([]common.Hash, gen.n)
@@ -286,7 +284,7 @@ func (gen testBundleGenerator) makeValidBundleTx(t testing.TB) *types.Transactio
 			Gas:   gasPerTx,
 		}
 
-		txHash[i] = signer.Hash(types.NewTx(&tx))
+		txHash[i] = gen.signer.Hash(types.NewTx(&tx))
 		metaTransactions[i] = tx
 		sender[i] = crypto.PubkeyToAddress(gen.keys[i].PublicKey)
 	}
@@ -316,7 +314,7 @@ func (gen testBundleGenerator) makeValidBundleTx(t testing.TB) *types.Transactio
 			},
 		})
 
-		signedTx, err := types.SignTx(types.NewTx(&tx), signer, gen.keys[i])
+		signedTx, err := types.SignTx(types.NewTx(&tx), gen.signer, gen.keys[i])
 		require.NoError(t, err)
 		signedTransactions[i] = signedTx
 	}
@@ -327,7 +325,7 @@ func (gen testBundleGenerator) makeValidBundleTx(t testing.TB) *types.Transactio
 		Flags:        EF_AllOf,
 	}
 
-	return signTransactionWithUseOnceKey(&types.LegacyTx{
+	return types.NewTx(&types.LegacyTx{
 		To:   &BundleProcessor,
 		Data: bundle.Encode(),
 		Gas:  gasPerTx * uint64(gen.n),
@@ -337,8 +335,6 @@ func (gen testBundleGenerator) makeValidBundleTx(t testing.TB) *types.Transactio
 func (gen testBundleGenerator) makeUnsoundBundleTx(t testing.TB) *types.Transaction {
 	t.Helper()
 	receiver := common.Address{0x42}
-
-	signer := types.LatestSignerForChainID(testChainID)
 
 	// Generate n metaTransactions from n different senders
 	// execution plan hash is not correct, therefore the bundle is unsound
@@ -359,7 +355,7 @@ func (gen testBundleGenerator) makeUnsoundBundleTx(t testing.TB) *types.Transact
 			},
 		}
 
-		signedTx, err := types.SignTx(types.NewTx(&tx), signer, gen.keys[i])
+		signedTx, err := types.SignTx(types.NewTx(&tx), gen.signer, gen.keys[i])
 		require.NoError(t, err)
 		signedTransactions[i] = signedTx
 	}
@@ -374,7 +370,7 @@ func (gen testBundleGenerator) makeUnsoundBundleTx(t testing.TB) *types.Transact
 	floorGas, err := core.FloorDataGas(data)
 	require.NoError(t, err)
 
-	return signTransactionWithUseOnceKey(&types.LegacyTx{
+	return types.NewTx(&types.LegacyTx{
 		To:   &BundleProcessor,
 		Data: bundle.Encode(),
 		Gas:  floorGas,
@@ -419,7 +415,7 @@ func (gen testBundleGenerator) makeBundleTxWithWronglySignedTx(t testing.TB) *ty
 
 func (gen testBundleGenerator) makeNonBundleTx() *types.Transaction {
 	someAddress := common.Address{0x42}
-	return signTransactionWithUseOnceKey(&types.LegacyTx{
+	return types.NewTx(&types.LegacyTx{
 		To:   &someAddress,
 		Data: []byte("this is not a bundle"),
 		Gas:  21096,
@@ -427,9 +423,10 @@ func (gen testBundleGenerator) makeNonBundleTx() *types.Transaction {
 }
 
 func (gen testBundleGenerator) makeBundleTxWithoutEnoughIntrinsicGas(t testing.TB) *types.Transaction {
+	t.Helper()
 	tx := gen.makeValidBundleTx(t)
 	// reduce the gas in tx
-	tx = signTransactionWithUseOnceKey(&types.LegacyTx{
+	tx = types.NewTx(&types.LegacyTx{
 		To:   &BundleProcessor,
 		Data: tx.Data(),
 		Gas:  10_000, // not enough gas for the bundle
@@ -438,11 +435,10 @@ func (gen testBundleGenerator) makeBundleTxWithoutEnoughIntrinsicGas(t testing.T
 }
 
 func (gen testBundleGenerator) makeBundleTxWithoutEnoughFloorGas(t testing.TB) *types.Transaction {
-	signer := types.LatestSignerForChainID(testChainID)
-
+	t.Helper()
 	bundle := TransactionBundle{
 		Transactions: types.Transactions{
-			types.MustSignNewTx(gen.keys[0], signer, &types.AccessListTx{
+			types.MustSignNewTx(gen.keys[0], gen.signer, &types.AccessListTx{
 				Data: make([]byte, 1<<10), // < high data usage
 			}),
 		},
@@ -453,7 +449,7 @@ func (gen testBundleGenerator) makeBundleTxWithoutEnoughFloorGas(t testing.TB) *
 	require.NoError(t, err)
 
 	// reduce the gas in tx
-	return signTransactionWithUseOnceKey(&types.LegacyTx{
+	return types.NewTx(&types.LegacyTx{
 		To:   &BundleProcessor,
 		Data: data,
 		Gas:  floorGas - 1,
@@ -461,14 +457,14 @@ func (gen testBundleGenerator) makeBundleTxWithoutEnoughFloorGas(t testing.TB) *
 }
 
 func (gen testBundleGenerator) makeBundleTxWithoutEnoughGasForAllTransactions(t testing.TB) *types.Transaction {
+	t.Helper()
 	tx := gen.makeValidBundleTx(t)
 	// reduce the gas in tx
-	tx = signTransactionWithUseOnceKey(&types.LegacyTx{
+	return types.NewTx(&types.LegacyTx{
 		To:   &BundleProcessor,
 		Data: tx.Data(),
 		Gas:  35_000, // not enough gas for all transactions in the bundle
 	})
-	return tx
 }
 
 func TestBelongsToExecutionPlan_IdentifiesTransactionsWhichSignTheExecutionPlan(t *testing.T) {
@@ -558,16 +554,8 @@ func TestBelongsToExecutionPlan_IdentifiesTransactionsWhichSignTheExecutionPlan(
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			tx := signTransactionWithUseOnceKey(test.tx)
 			require.Equal(t, test.expected,
-				belongsToExecutionPlan(tx, test.executionPlanHash))
+				belongsToExecutionPlan(types.NewTx(test.tx), test.executionPlanHash))
 		})
 	}
-
-}
-
-func signTransactionWithUseOnceKey(tx types.TxData) *types.Transaction {
-	key, _ := crypto.GenerateKey()
-	signer := types.LatestSignerForChainID(testChainID)
-	return types.MustSignNewTx(key, signer, tx)
 }
