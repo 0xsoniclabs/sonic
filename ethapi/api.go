@@ -1108,7 +1108,7 @@ func (diff *StateOverride) HasCodesExceedingOnChainLimit() bool {
 	return false
 }
 
-func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, overrides *StateOverride, blockOverrides *BlockOverrides, timeout time.Duration, globalGasCap uint64) (*core.ExecutionResult, error) {
+func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, overrides *StateOverride, blockOverrides *BlockOverrides, timeout time.Duration, globalGasCap uint64, preArgs []TransactionArgs) (*core.ExecutionResult, error) {
 	defer func(start time.Time) { log.Debug("Executing EVM call finished", "runtime", time.Since(start)) }(time.Now())
 
 	state, block, err := b.StateAndBlockByNumberOrHash(ctx, blockNrOrHash)
@@ -1173,8 +1173,24 @@ func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash 
 		evmcore.ProcessParentBlockHash(block.ParentHash, evm, state)
 	}
 
-	// Execute the message.
+	// Add sufficient gas to the pool.
 	gp := new(core.GasPool).AddGas(math.MaxUint64)
+
+	// Apply previous transactions if required.
+	for _, arg := range preArgs {
+		preMsg, err := arg.ToMessage(globalGasCap, block.BaseFee, log.Root())
+		if err != nil {
+			log.Error("failed to convert to message", "tx", arg.toTransaction().Hash(), "err", err)
+			continue
+		}
+		state.BeginTransaction()
+		if _, err := core.ApplyMessage(evm, preMsg, gp); err != nil {
+			log.Error("failed to apply previous transaction", "tx", arg.toTransaction().Hash(), "err", err)
+		}
+		state.EndTransaction()
+	}
+
+	// Execute the message.
 	state.BeginTransaction()
 	result, err := core.ApplyMessage(evm, msg, gp)
 	state.EndTransaction()
@@ -1229,7 +1245,7 @@ func (e *revertError) ErrorData() interface{} {
 // Note, this function doesn't make and changes in the state/blockchain and is
 // useful to execute and retrieve values.
 func (s *PublicBlockChainAPI) Call(ctx context.Context, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, stateOverrides *StateOverride, blockOverrides *BlockOverrides) (hexutil.Bytes, error) {
-	result, err := DoCall(ctx, s.b, args, blockNrOrHash, stateOverrides, blockOverrides, s.b.RPCEVMTimeout(), s.b.RPCGasCap())
+	result, err := DoCall(ctx, s.b, args, blockNrOrHash, stateOverrides, blockOverrides, s.b.RPCEVMTimeout(), s.b.RPCGasCap(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1241,7 +1257,7 @@ func (s *PublicBlockChainAPI) Call(ctx context.Context, args TransactionArgs, bl
 }
 
 // DoEstimateGas - binary search the gas requirement, as it may be higher than the amount used
-func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, overrides *StateOverride, blockOverrides *BlockOverrides, gasCap uint64) (hexutil.Uint64, error) {
+func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, overrides *StateOverride, blockOverrides *BlockOverrides, gasCap uint64, preArgs []TransactionArgs) (hexutil.Uint64, error) {
 	// Binary search the gas requirement, as it may be higher than the amount used
 	var (
 		lo  uint64 = params.TxGas - 1
@@ -1319,7 +1335,7 @@ func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNr
 	executable := func(gas uint64) (bool, *core.ExecutionResult, error) {
 		args.Gas = (*hexutil.Uint64)(&gas)
 
-		result, err := DoCall(ctx, b, args, blockNrOrHash, overrides, blockOverrides, 0, gasCap)
+		result, err := DoCall(ctx, b, args, blockNrOrHash, overrides, blockOverrides, 0, gasCap, preArgs)
 		if err != nil {
 			if errors.Is(err, core.ErrIntrinsicGas) ||
 				errors.Is(err, core.ErrFloorDataGas) {
@@ -1451,7 +1467,7 @@ func (s *PublicBlockChainAPI) EstimateGas(ctx context.Context, args TransactionA
 	if blockNrOrHash != nil {
 		bNrOrHash = *blockNrOrHash
 	}
-	return DoEstimateGas(ctx, s.b, args, bNrOrHash, overrides, blockOverrides, s.b.RPCGasCap())
+	return DoEstimateGas(ctx, s.b, args, bNrOrHash, overrides, blockOverrides, s.b.RPCGasCap(), nil)
 }
 
 // RPCMarshalBlock converts the given block to the RPC output which depends on fullTx. If inclTx is true transactions are
