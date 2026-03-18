@@ -19,6 +19,7 @@ package bundle
 import (
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 //go:generate mockgen -source=bundle_processor.go -destination=bundle_processor_mock.go -package=bundle
@@ -30,13 +31,30 @@ import (
 // This is the canonical implementation of the bundle execution logic, which
 // defines the semantic of the execution flags.
 func RunBundle(
+	ctxt *core_types.RunContext,
 	bundle *TransactionBundle,
-	runner TransactionRunner,
-) bool {
-	if bundle.Flags.IsOneOf() {
-		return runOneOfBundle(bundle, runner)
+	legacyTxOffset int,
+	trueTxOffset int,
+) ([]core_types.ProcessedTransaction, core_types.TransactionResult) {
+	runner := bundleTransactionRunner{
+		ctxt:           ctxt,
+		legacyTxOffset: legacyTxOffset,
+		trueTxOffset:   trueTxOffset,
 	}
-	return runAllOfBundle(bundle, runner)
+	bundleCheckpoint := ctxt.StateDB.InterTxSnapshot()
+	var success bool
+	if bundle.Flags.IsOneOf() {
+		success = runOneOfBundle(bundle, &runner)
+	} else {
+		success = runAllOfBundle(bundle, &runner)
+	}
+	if !success {
+		if err := ctxt.StateDB.RevertToInterTxSnapshot(bundleCheckpoint); err != nil {
+			log.Error("Failed to revert to checkpoint", "err", err)
+		}
+		return []core_types.ProcessedTransaction{}, core_types.TransactionResultFailed
+	}
+	return runner.processedTransactions, core_types.TransactionResultSuccessful
 }
 
 // TransactionRunner defines an interface for running individual transactions

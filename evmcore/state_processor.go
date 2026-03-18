@@ -154,7 +154,7 @@ func runTransactions(
 			}
 		}
 
-		txs, processedBundle, _ := runTransaction(context, tx, legacyNextId, trueNextId)
+		txs, processedBundle, _ := RunTransaction(context, tx, legacyNextId, trueNextId)
 		processed = append(processed, txs...)
 		if processedBundle != nil {
 			bundles = append(bundles, *processedBundle)
@@ -166,7 +166,7 @@ func runTransactions(
 	}
 }
 
-func runTransaction(
+func RunTransaction(
 	context *core_types.RunContext,
 	tx *types.Transaction,
 	legacyTxIndexOffset int,
@@ -311,20 +311,13 @@ func (r *transactionRunner) RunTransactionBundle(
 	}
 
 	// Run the bundle and collect the processed transactions.
-	runner := bundleTransactionRunner{ctxt: ctxt, legacyTxOffset: legacyTxOffset, trueTxOffset: trueTxOffset}
-	bundleCheckpoint := ctxt.StateDB.InterTxSnapshot()
-	if success := bundle.RunBundle(txBundle, &runner); !success {
-		if err := ctxt.StateDB.RevertToInterTxSnapshot(bundleCheckpoint); err != nil {
-			log.Error("Failed to revert to checkpoint", "err", err)
-		}
-		return []core_types.ProcessedTransaction{}, processedBundle, core_types.TransactionResultFailed
-	}
-	for _, processedTx := range runner.processedTransactions {
+	processedTransactions, status := bundle.RunBundle(ctxt, txBundle, legacyTxOffset, trueTxOffset)
+	for _, processedTx := range processedTransactions {
 		if processedTx.Receipt != nil {
 			processedBundle.Count++
 		}
 	}
-	return runner.processedTransactions, processedBundle, core_types.TransactionResultSuccessful
+	return processedTransactions, processedBundle, status
 }
 
 // bundleTransactionRunner is an adapter implementing the bundle.TransactionRunner
@@ -337,7 +330,7 @@ type bundleTransactionRunner struct {
 }
 
 func (b *bundleTransactionRunner) Run(tx *types.Transaction) core_types.TransactionResult {
-	processed, _, status := runTransaction(b.ctxt, tx, b.legacyTxOffset, b.trueTxOffset)
+	processed, _, status := RunTransaction(b.ctxt, tx, b.legacyTxOffset, b.trueTxOffset)
 	b.processedTransactions = append(b.processedTransactions, processed...)
 	if status == core_types.TransactionResultInvalid {
 		return core_types.TransactionResultInvalid
