@@ -24,65 +24,38 @@ import (
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/logger"
+	"github.com/Fantom-foundation/lachesis-base/kvdb"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/stretchr/testify/require"
 	gomock "go.uber.org/mock/gomock"
 )
 
-func TestStore_ProcessedBundlesTable_IsInitiallyEmpty(t *testing.T) {
-	t.Parallel()
-	require := require.New(t)
-	store, err := NewMemStore(t)
-	require.NoError(err)
+//go:generate mockgen -source=store_processed_bundles_test.go -destination=table_mock.go -package=gossip
 
-	iter := store.table.ProcessedBundles.NewIterator(nil, nil)
-	require.False(iter.Next())
-	require.NoError(iter.Error())
-
-	iter = store.table.ProcessedBundles.NewIterator([]byte{'i'}, nil)
-	require.False(iter.Next())
-	require.NoError(iter.Error())
-
-	iter = store.table.ProcessedBundles.NewIterator([]byte{'e'}, nil)
-	require.False(iter.Next())
-	require.NoError(iter.Error())
+// storeTable is an interface needed to generate a mock for a kvdb.Store.
+type storeTable interface {
+	kvdb.Store
 }
 
-func TestStore_GetProcessedBundleHistoryHash_InitiallyZero(t *testing.T) {
-	t.Parallel()
-	require := require.New(t)
-	store, err := NewMemStore(t)
-	require.NoError(err)
+var _ storeTable // to avoid storeTable unused warning.
 
-	blockNum, hash := store.GetProcessedBundleHistoryHash()
-	require.Zero(blockNum)
-	require.Zero(hash)
+// storeBatch is an interface needed to generate a mock for a kvdb.Batch.
+type storeBatch interface {
+	kvdb.Batch
 }
 
-func TestStore_ProcessedBundles_UpdatesHistoryHash(t *testing.T) {
-	t.Parallel()
-	require := require.New(t)
-	store, err := NewMemStore(t)
-	require.NoError(err)
+var _ storeBatch // to avoid storeBatch unused warning.
 
-	_, initialHash := store.GetProcessedBundleHistoryHash()
-
-	hash1 := common.Hash{1, 2, 3}
-	store.AddProcessedBundles(1, []bundle.ExecutionInfo{wrapInfo(hash1)})
-
-	_, hashAfterFirstAdd := store.GetProcessedBundleHistoryHash()
-	require.NotEqual(initialHash, hashAfterFirstAdd)
-
-	hash2 := common.Hash{4, 5, 6}
-	store.AddProcessedBundles(2, []bundle.ExecutionInfo{wrapInfo(hash2)})
-
-	_, hashAfterSecondAdd := store.GetProcessedBundleHistoryHash()
-	require.NotEqual(hashAfterFirstAdd, hashAfterSecondAdd)
+// dbIterator is an interface needed to generate a mock for a ethdb.Iterator.
+type dbIterator interface {
+	ethdb.Iterator
 }
+
+var _ dbIterator // to avoid dbIterator unused warning.
 
 func TestStore_HasBundleRecentlyBeenProcessed_TracksAddedBundleHashes(t *testing.T) {
-	t.Parallel()
 	require := require.New(t)
 	store, err := NewMemStore(t)
 	require.NoError(err)
@@ -111,7 +84,6 @@ func TestStore_HasBundleRecentlyBeenProcessed_TracksAddedBundleHashes(t *testing
 }
 
 func TestStore_HasBundleRecentlyBeenProcessed_CleansUpOldBundleHashes(t *testing.T) {
-	t.Parallel()
 	require := require.New(t)
 	store, err := NewMemStore(t)
 	require.NoError(err)
@@ -169,11 +141,50 @@ func TestStore_HasBundleRecentlyBeenProcessed_CleansUpOldBundleHashes(t *testing
 	require.False(isRecentlyProcessed(hash2))
 	require.False(isRecentlyProcessed(hash3))
 	require.False(isRecentlyProcessed(hash4))
+}
 
+func TestStore_HasBundleRecentlyBeenProcessed_LogsOnGetError(t *testing.T) {
+	_, store, table, log := storeTableLogMocks(t)
+
+	injectedErr := errors.New("get error")
+	table.EXPECT().Get(gomock.Any()).Return(nil, injectedErr).AnyTimes()
+
+	expectCrit(log, "failed to check processed bundle", "error", injectedErr)
+	// In production, a Crit log call causes the logger to exit the process.
+	// To prevent the test from exiting, the mock logger is configured to panic instead.
+	require.PanicsWithValue(t,
+		fmt.Sprintf("%v: %v", "failed to check processed bundle", injectedErr),
+		func() { store.HasBundleRecentlyBeenProcessed(common.Hash{1, 2, 3}) })
+}
+
+func TestStore_GetBundleExecutionInfo_LogsOnGetError(t *testing.T) {
+	_, store, table, log := storeTableLogMocks(t)
+
+	injectedErr := errors.New("get error")
+	table.EXPECT().Get(gomock.Any()).Return(nil, injectedErr).AnyTimes()
+	table.EXPECT().Get(gomock.Any()).Return(nil, injectedErr).AnyTimes()
+
+	expectCrit(log, "failed to get execution info for bundle", "error", injectedErr)
+	// In production, a Crit log call causes the logger to exit the process.
+	// To prevent the test from exiting, the mock logger is configured to panic instead.
+	require.PanicsWithValue(t,
+		fmt.Sprintf("%v: %v", "failed to get execution info for bundle", injectedErr),
+		func() { store.GetBundleExecutionInfo(common.Hash{1, 2, 3}) })
+}
+
+func TestStore_GetBundleExecutionInfo_LogsOnInvalidDataLength(t *testing.T) {
+	_, store, table, log := storeTableLogMocks(t)
+
+	table.EXPECT().Get(gomock.Any()).Return([]byte{1, 2, 3}, nil).AnyTimes()
+
+	expectCrit(log, "invalid data length for execution info", "length", 3)
+
+	require.PanicsWithValue(t,
+		fmt.Sprintf("%v: %v", "invalid data length for execution info", 3),
+		func() { store.GetBundleExecutionInfo(common.Hash{1, 2, 3}) })
 }
 
 func TestStore_GetBundleExecutionInfo_ReturnsInfoForAddedBundleHashes(t *testing.T) {
-	t.Parallel()
 	require := require.New(t)
 	store, err := NewMemStore(t)
 	require.NoError(err)
@@ -209,8 +220,45 @@ func TestStore_GetBundleExecutionInfo_ReturnsInfoForAddedBundleHashes(t *testing
 	require.Equal(info2, *resInfo2)
 }
 
+func TestStore_ProcessedBundles_TableIsInitiallyEmpty(t *testing.T) {
+	require := require.New(t)
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	iter := store.table.ProcessedBundles.NewIterator(nil, nil)
+	require.False(iter.Next())
+	require.NoError(iter.Error())
+
+	iter = store.table.ProcessedBundles.NewIterator([]byte{'i'}, nil)
+	require.False(iter.Next())
+	require.NoError(iter.Error())
+
+	iter = store.table.ProcessedBundles.NewIterator([]byte{'e'}, nil)
+	require.False(iter.Next())
+	require.NoError(iter.Error())
+}
+
+func TestStore_ProcessedBundles_UpdatesHistoryHash(t *testing.T) {
+	require := require.New(t)
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	_, initialHash := store.GetProcessedBundleHistoryHash()
+
+	hash1 := common.Hash{1, 2, 3}
+	store.AddProcessedBundles(1, []bundle.ExecutionInfo{wrapInfo(hash1)})
+
+	_, hashAfterFirstAdd := store.GetProcessedBundleHistoryHash()
+	require.NotEqual(initialHash, hashAfterFirstAdd)
+
+	hash2 := common.Hash{4, 5, 6}
+	store.AddProcessedBundles(2, []bundle.ExecutionInfo{wrapInfo(hash2)})
+
+	_, hashAfterSecondAdd := store.GetProcessedBundleHistoryHash()
+	require.NotEqual(hashAfterFirstAdd, hashAfterSecondAdd)
+}
+
 func TestStore_ProcessedBundles_HashIsAffectedByHistory(t *testing.T) {
-	t.Parallel()
 	require := require.New(t)
 	store, err := NewMemStore(t)
 	require.NoError(err)
@@ -235,7 +283,6 @@ func TestStore_ProcessedBundles_HashIsAffectedByHistory(t *testing.T) {
 }
 
 func TestStore_ProcessedBundles_StoredHashUsesXorForAddedAndDeletedHashes(t *testing.T) {
-	t.Parallel()
 	require := require.New(t)
 	store, err := NewMemStore(t)
 	require.NoError(err)
@@ -289,7 +336,6 @@ func TestStore_ProcessedBundles_StoredHashUsesXorForAddedAndDeletedHashes(t *tes
 }
 
 func TestStore_GetEntryKey_ReturnsExpectedKey(t *testing.T) {
-	t.Parallel()
 	require := require.New(t)
 
 	hash := common.Hash{1, 2, 3}
@@ -298,7 +344,6 @@ func TestStore_GetEntryKey_ReturnsExpectedKey(t *testing.T) {
 }
 
 func TestStore_GetIndexKey_ReturnsExpectedKey(t *testing.T) {
-	t.Parallel()
 	require := require.New(t)
 
 	blockNum := uint64(123)
@@ -314,7 +359,7 @@ func TestStore_AddProcessedBundles_LogsOnBatchPutError(t *testing.T) {
 
 	injectedErrEntry := errors.New("entry put error")
 	injectedErrIndex := errors.New("index put error")
-	batch := NewMock_batch(ctrl)
+	batch := NewMockstoreBatch(ctrl)
 	batch.EXPECT().Put(gomock.Any(), gomock.Any()).Return(injectedErrEntry)
 	batch.EXPECT().Put(gomock.Any(), gomock.Any()).Return(injectedErrIndex)
 
@@ -322,9 +367,11 @@ func TestStore_AddProcessedBundles_LogsOnBatchPutError(t *testing.T) {
 	table.EXPECT().Get(gomock.Any()).Return(nil, nil).AnyTimes()
 
 	compoundErr := errors.Join(injectedErrEntry, injectedErrIndex)
-	expectCrit(log, "failed to add processed bundle hash to batch", compoundErr)
+	expectCrit(log, "failed to add processed bundle hash to batch", "error", compoundErr)
 
 	hash1 := common.Hash{1, 2, 3}
+	// In production, a Crit log call causes the logger to exit the process.
+	// To prevent the test from exiting, the mock logger is configured to panic instead.
 	require.PanicsWithValue(t,
 		fmt.Sprintf("%v: %v", "failed to add processed bundle hash to batch", compoundErr),
 		func() { store.AddProcessedBundles(1, []bundle.ExecutionInfo{wrapInfo(hash1)}) })
@@ -335,18 +382,20 @@ func TestStore_AddProcessedBundles_IgnoresKeysOfWrongLength(t *testing.T) {
 	ctrl, store, table, _ := storeTableLogMocks(t)
 
 	// -- expects for usual behavior of adding a bundle
-	batch := NewMock_batch(ctrl)
+	batch := NewMockstoreBatch(ctrl)
 	batch.EXPECT().Put(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 	batch.EXPECT().Write().Return(nil)
 	table.EXPECT().NewBatch().Return(batch).AnyTimes()
 	table.EXPECT().Get(gomock.Any()).Return(nil, nil).AnyTimes()
 	// --
 
-	it := NewMock_iterator(ctrl)
-	it.EXPECT().Next().Return(true)
-	// This is the key that will be ignored, since it does not have the correct length.
-	it.EXPECT().Key().Return([]byte{1, 2})
-	it.EXPECT().Next().Return(false)
+	it := NewMockdbIterator(ctrl)
+	gomock.InOrder(
+		it.EXPECT().Next().Return(true),
+		// This is the key that will be ignored, since it does not have the correct length.
+		it.EXPECT().Key().Return([]byte{1, 2}),
+		it.EXPECT().Next().Return(false),
+	)
 
 	table.EXPECT().NewIterator(gomock.Any(), gomock.Any()).Return(it).AnyTimes()
 
@@ -358,21 +407,24 @@ func TestStore_AddProcessedBundles_LogsOnBatchDeleteError(t *testing.T) {
 
 	injectedErrDeleteEntry := errors.New("entry delete error")
 	injectedErrDeleteIndex := errors.New("index delete error")
-	batch := NewMock_batch(ctrl)
+	batch := NewMockstoreBatch(ctrl)
 	batch.EXPECT().Delete(gomock.Any()).Return(injectedErrDeleteEntry)
 	batch.EXPECT().Delete(gomock.Any()).Return(injectedErrDeleteIndex)
 
 	table.EXPECT().NewBatch().Return(batch).AnyTimes()
 	table.EXPECT().Get(gomock.Any()).Return(nil, nil).AnyTimes()
 
-	it := NewMock_iterator(ctrl)
-	it.EXPECT().Next().Return(true)
-	it.EXPECT().Key().Return(getIndexKey(1, common.Hash{1, 2, 3}))
-	table.EXPECT().NewIterator(gomock.Any(), gomock.Any()).Return(it).AnyTimes()
+	it := NewMockdbIterator(ctrl)
+	gomock.InOrder(
+		it.EXPECT().Next().Return(true),
+		it.EXPECT().Key().Return(getIndexKey(1, common.Hash{1, 2, 3})),
+		table.EXPECT().NewIterator(gomock.Any(), gomock.Any()).Return(it).AnyTimes(),
+	)
 
 	compoundErr := errors.Join(injectedErrDeleteEntry, injectedErrDeleteIndex)
-	expectCrit(log, "failed to delete old processed bundle hash", compoundErr)
-
+	expectCrit(log, "failed to delete old processed bundle hash", "error", compoundErr)
+	// In production, a Crit log call causes the logger to exit the process.
+	// To prevent the test from exiting, the mock logger is configured to panic instead.
 	require.PanicsWithValue(t,
 		fmt.Sprintf("%v: %v", "failed to delete old processed bundle hash", compoundErr),
 		func() { store.AddProcessedBundles(bundle.MaxBlockRange+1, []bundle.ExecutionInfo{}) })
@@ -381,15 +433,16 @@ func TestStore_AddProcessedBundles_LogsOnBatchDeleteError(t *testing.T) {
 func TestStore_AddProcessedBundles_LogsOnBatchPutNewEntryError(t *testing.T) {
 	ctrl, store, table, log := storeTableLogMocks(t)
 
-	batch := NewMock_batch(ctrl)
+	batch := NewMockstoreBatch(ctrl)
 	injectedErr := errors.New("new entry put error")
 	batch.EXPECT().Put(gomock.Any(), gomock.Any()).Return(injectedErr)
 
 	table.EXPECT().NewBatch().Return(batch).AnyTimes()
 	table.EXPECT().Get(gomock.Any()).Return(nil, nil).AnyTimes()
 
-	expectCrit(log, "failed to update hash of processed bundles", injectedErr)
-
+	expectCrit(log, "failed to update hash of processed bundles", "error", injectedErr)
+	// In production, a Crit log call causes the logger to exit the process.
+	// To prevent the test from exiting, the mock logger is configured to panic instead.
 	require.PanicsWithValue(t,
 		fmt.Sprintf("%v: %v", "failed to update hash of processed bundles", injectedErr),
 		func() { store.AddProcessedBundles(1, []bundle.ExecutionInfo{}) })
@@ -398,7 +451,7 @@ func TestStore_AddProcessedBundles_LogsOnBatchPutNewEntryError(t *testing.T) {
 func TestStore_AddProcessedBundles_LogsOnBatchWriteError(t *testing.T) {
 	ctrl, store, table, log := storeTableLogMocks(t)
 
-	batch := NewMock_batch(ctrl)
+	batch := NewMockstoreBatch(ctrl)
 	injectedErr := errors.New("batch write error")
 	batch.EXPECT().Put(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 	batch.EXPECT().Write().Return(injectedErr)
@@ -406,50 +459,22 @@ func TestStore_AddProcessedBundles_LogsOnBatchWriteError(t *testing.T) {
 	table.EXPECT().NewBatch().Return(batch).AnyTimes()
 	table.EXPECT().Get(gomock.Any()).Return(nil, nil).AnyTimes()
 
-	expectCrit(log, "failed to create batch for processed bundles", injectedErr)
-
+	expectCrit(log, "failed to create batch for processed bundles", "error", injectedErr)
+	// In production, a Crit log call causes the logger to exit the process.
+	// To prevent the test from exiting, the mock logger is configured to panic instead.
 	require.PanicsWithValue(t,
 		fmt.Sprintf("%v: %v", "failed to create batch for processed bundles", injectedErr),
 		func() { store.AddProcessedBundles(1, []bundle.ExecutionInfo{}) })
 }
 
-func TestStore_HasBundleRecentlyBeenProcessed_LogsOnGetError(t *testing.T) {
-	_, store, table, log := storeTableLogMocks(t)
+func TestStore_GetProcessedBundleHistoryHash_InitiallyZero(t *testing.T) {
+	require := require.New(t)
+	store, err := NewMemStore(t)
+	require.NoError(err)
 
-	injectedErr := errors.New("get error")
-	table.EXPECT().Get(gomock.Any()).Return(nil, injectedErr).AnyTimes()
-
-	expectCrit(log, "failed to check processed bundle", injectedErr)
-
-	require.PanicsWithValue(t,
-		fmt.Sprintf("%v: %v", "failed to check processed bundle", injectedErr),
-		func() { store.HasBundleRecentlyBeenProcessed(common.Hash{1, 2, 3}) })
-}
-
-func TestStore_GetBundleExecutionInfo_LogsOnGetError(t *testing.T) {
-	_, store, table, log := storeTableLogMocks(t)
-
-	injectedErr := errors.New("get error")
-	table.EXPECT().Get(gomock.Any()).Return(nil, injectedErr).AnyTimes()
-	table.EXPECT().Get(gomock.Any()).Return(nil, injectedErr).AnyTimes()
-
-	expectCrit(log, "failed to get execution info for bundle", injectedErr)
-
-	require.PanicsWithValue(t,
-		fmt.Sprintf("%v: %v", "failed to get execution info for bundle", injectedErr),
-		func() { store.GetBundleExecutionInfo(common.Hash{1, 2, 3}) })
-}
-
-func TestStore_GetBundleExecutionInfo_LogsOnInvalidDataLength(t *testing.T) {
-	_, store, table, log := storeTableLogMocks(t)
-
-	table.EXPECT().Get(gomock.Any()).Return([]byte{1, 2, 3}, nil).AnyTimes()
-
-	expectCrit(log, "invalid data length for execution info", 3)
-
-	require.PanicsWithValue(t,
-		fmt.Sprintf("%v: %v", "invalid data length for execution info", 3),
-		func() { store.GetBundleExecutionInfo(common.Hash{1, 2, 3}) })
+	blockNum, hash := store.GetProcessedBundleHistoryHash()
+	require.Zero(blockNum)
+	require.Zero(hash)
 }
 
 func TestStore_GetProcessedBundleHistoryHash_LogsOnGetError(t *testing.T) {
@@ -458,8 +483,9 @@ func TestStore_GetProcessedBundleHistoryHash_LogsOnGetError(t *testing.T) {
 	injectedErr := errors.New("get error")
 	table.EXPECT().Get(gomock.Any()).Return(nil, injectedErr).AnyTimes()
 
-	expectCrit(log, "failed to get hash of processed bundles", injectedErr)
-
+	expectCrit(log, "failed to get hash of processed bundles", "error", injectedErr)
+	// In production, a Crit log call causes the logger to exit the process.
+	// To prevent the test from exiting, the mock logger is configured to panic instead.
 	require.PanicsWithValue(t,
 		fmt.Sprintf("%v: %v", "failed to get hash of processed bundles", injectedErr),
 		func() { store.GetProcessedBundleHistoryHash() })
@@ -471,8 +497,9 @@ func TestStore_GetProcessedBundleHistoryHash_LogsOnInvalidStateLength(t *testing
 	table.EXPECT().Get(gomock.Any()).Return([]byte{1, 2, 3}, nil).AnyTimes()
 	store.table.ProcessedBundles = table
 
-	expectCrit(log, "invalid state length for processed bundles", 3)
-
+	expectCrit(log, "invalid state length for processed bundles", "length", 3)
+	// In production, a Crit log call causes the logger to exit the process.
+	// To prevent the test from exiting, the mock logger is configured to panic instead.
 	require.PanicsWithValue(t,
 		fmt.Sprintf("%v: %v", "invalid state length for processed bundles", 3),
 		func() { store.GetProcessedBundleHistoryHash() })
@@ -493,7 +520,12 @@ func wrapInfo(hash common.Hash) bundle.ExecutionInfo {
 func updateHistoryHash(blockNum uint64,
 	oldHash, addedHash, deletedHash common.Hash) common.Hash {
 
-	update := make([]byte, processedBundlesHashSize)
+	// size of the update buffer is:
+	//  - 32 bytes for the previous hash
+	//  - 32 bytes for the added hashes
+	//  - 32 bytes for the deleted hashes
+	//  - 8 bytes for the block number
+	update := make([]byte, 3*32+8)
 	copy(update[:32], oldHash.Bytes())
 	copy(update[32:64], addedHash.Bytes())
 	copy(update[64:96], deletedHash.Bytes())
@@ -504,11 +536,11 @@ func updateHistoryHash(blockNum uint64,
 // storeTableLogMocks initializes a store with mocked table as ProcessedBundles,
 // and logger.
 // Returns the mocks so expectations can be added on them.
-func storeTableLogMocks(t *testing.T) (*gomock.Controller, *Store, *Mock_table, *logger.MockLogger) {
+func storeTableLogMocks(t *testing.T) (*gomock.Controller, *Store, *MockstoreTable, *logger.MockLogger) {
 	ctrl := gomock.NewController(t)
 	store := initStoreForTests(t)
 
-	table := NewMock_table(ctrl)
+	table := NewMockstoreTable(ctrl)
 	store.table.ProcessedBundles = table
 
 	log := logger.NewMockLogger(ctrl)
@@ -519,9 +551,11 @@ func storeTableLogMocks(t *testing.T) (*gomock.Controller, *Store, *Mock_table, 
 
 // expectCrit sets up the given mock logger to expect a Crit call with the given
 // message and error, and to panic with message containing both when that call happens.
-func expectCrit(log *logger.MockLogger, msg string, err any) {
+// In production, a Crit log call causes the logger to exit the process.
+// To prevent the test from exiting, the mock logger is configured to panic instead.
+func expectCrit(log *logger.MockLogger, msg, label string, err any) {
 	log.EXPECT().Crit(msg, gomock.Any(), err).
-		Do(func(msg any, ctx ...any) {
+		Do(func(msg string, ctx ...any) {
 			panic(fmt.Sprintf("%v: %v", msg, ctx[1]))
 		})
 }
