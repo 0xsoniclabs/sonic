@@ -198,8 +198,7 @@ func runTransaction(
 	txIndexOffset int,
 ) ([]ProcessedTransaction, core_types.TransactionResult) {
 	if context.upgrades.GasSubsidies && subsidies.IsSponsorshipRequest(tx) {
-		res, result := context.runner.runSponsoredTransaction(context, tx, txIndexOffset)
-		return res, result
+		return context.runner.runSponsoredTransaction(context, tx, txIndexOffset)
 	} else {
 		res, result := context.runner.runRegularTransaction(context, tx, txIndexOffset)
 		return []ProcessedTransaction{res}, result
@@ -226,15 +225,14 @@ func (r *transactionRunner) runRegularTransaction(
 	txIndex int,
 ) (ProcessedTransaction, core_types.TransactionResult) {
 	res := r.evm.runWithBaseFeeCheck(ctxt, tx, txIndex)
-	result := core_types.TransactionResultInvalid
 	if res.Receipt != nil {
 		if res.Receipt.Status == types.ReceiptStatusSuccessful {
-			result = core_types.TransactionResultSuccessful
+			return res, core_types.TransactionResultSuccessful
 		} else {
-			result = core_types.TransactionResultFailed
+			return res, core_types.TransactionResultFailed
 		}
 	}
-	return res, result
+	return res, core_types.TransactionResultInvalid
 }
 
 func (r *transactionRunner) runSponsoredTransaction(
