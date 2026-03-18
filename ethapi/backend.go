@@ -93,7 +93,6 @@ type Backend interface {
 	SubscribeNewTxsNotify(chan<- evmcore.NewTxsNotify) notify.Subscription
 
 	// Bundle API
-	IsBundleInPool(common.Hash) bool
 	GetBundleExecutionInfo(common.Hash) *bundle.ExecutionInfo
 
 	ChainConfig(blockHeight idx.Block) *params.ChainConfig
