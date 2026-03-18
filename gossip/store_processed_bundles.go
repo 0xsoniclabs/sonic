@@ -25,29 +25,6 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
-const (
-	// bundleHashKeySize is the size of the key used to index processed bundle
-	// hashes by block number, which is:
-	//  - 1 byte for the prefix
-	//  - 8 bytes for the block number
-	//  - 32 bytes for the hash
-	bundleHashKeySize = 1 + 8 + 32
-
-	// bundleStateHashSize is the size of the value used to store the hash of
-	// the processed bundles history, which is:
-	//  - 8 bytes for the block number
-	//  - 32 bytes for the hash
-	bundleStateHashSize = 32 + 8
-
-	// processedBundlesHashSize is the size of the value used to store the hash of
-	// the processed bundles history, which is:
-	//  - 32 bytes for the previous hash
-	//  - 32 bytes for the added hashes
-	//  - 32 bytes for the deleted hashes
-	//  - 8 bytes for the block number
-	processedBundlesHashSize = 3*32 + 8
-)
-
 // This file implements the storage and management of processed bundles in
 // the Store. Processed bundles are tracked to prevent re-processing the same
 // bundle multiple times. The store keeps track of recently processed bundles
@@ -62,9 +39,9 @@ const (
 // resubmitted multiple times using different envelop transactions.
 //
 // In the underlying table, the following keys are used:
-//  - key: [] -> [uint64, hash]                        // last block and hash for which the processed bundles have been stored
-//  - key: ['e']<execPlanHash> -> [block,position,count]     // for a processed bundle
-//  - key: ['i']<blockNum, execPlanHash> -> []         // for a processed bundle at a specific block number, to handle cleanups
+//  - key: [] 							 -> [uint64, hash]          // last block and hash for which the processed bundles have been stored
+//  - key: ['e']<execPlanHash> 			 -> [block,position,count]  // for a recently processed bundle (auto-pruned)
+//  - key: ['i']<blockNum, execPlanHash> -> []         				// for a processed bundle at a specific block number, to handle cleanups
 //
 // The hash of the processed bundle's history is computed as follows:
 //  - initially, the hash is zero
@@ -79,7 +56,6 @@ const (
 // AddProcessedBundles adds the given bundle execution information for the given
 // block number. This should be called after every block, listing the bundles
 // that got accepted in the block.
-
 func (s *Store) AddProcessedBundles(blockNum uint64, executedBundles []bundle.ExecutionInfo) {
 	// Make sure there is only one update at any time.
 	s.processedBundleMutex.Lock()
@@ -114,7 +90,11 @@ func (s *Store) AddProcessedBundles(blockNum uint64, executedBundles []bundle.Ex
 		it := table.NewIterator([]byte{'i'}, nil)
 		for it.Next() {
 			key := it.Key()
-			if len(key) != bundleHashKeySize {
+			// size of the key used to index processed bundle is:
+			//  - 1 byte for the prefix
+			//  - 8 bytes for the block number
+			//  - 32 bytes for the hash
+			if len(key) != 1+8+32 {
 				continue
 			}
 			blockNumber := binary.BigEndian.Uint64(key[1 : 1+8])
@@ -136,7 +116,12 @@ func (s *Store) AddProcessedBundles(blockNum uint64, executedBundles []bundle.Ex
 	// Update the state hash.
 	_, oldHash := s.GetProcessedBundleHistoryHash()
 
-	update := make([]byte, processedBundlesHashSize)
+	// size of the update buffer is:
+	//  - 32 bytes for the previous hash
+	//  - 32 bytes for the added hashes
+	//  - 32 bytes for the deleted hashes
+	//  - 8 bytes for the block number
+	update := make([]byte, 3*32+8)
 	copy(update[:32], oldHash.Bytes())
 	copy(update[32:64], addedHash.Bytes())
 	copy(update[64:96], deletedHash.Bytes())
@@ -153,7 +138,7 @@ func (s *Store) AddProcessedBundles(blockNum uint64, executedBundles []bundle.Ex
 
 	// Write all changes to the store.
 	if err := batch.Write(); err != nil {
-		s.Log.Crit("failed to create batch for processed bundles", "error", err)
+		s.Log.Crit("failed to write batch for updating processed bundles", "error", err)
 	}
 }
 
@@ -210,7 +195,11 @@ func (s *Store) GetProcessedBundleHistoryHash() (uint64, common.Hash) {
 	if state == nil {
 		return 0, common.Hash{}
 	}
-	if len(state) != bundleStateHashSize {
+
+	// size of the value used stored in the processed bundles history:
+	//  - 8 bytes for the block number
+	//  - 32 bytes for the hash
+	if len(state) != 8+32 {
 		s.Log.Crit("invalid state length for processed bundles", "length", len(state))
 	}
 	blockNum := binary.BigEndian.Uint64(state[:8])
@@ -221,7 +210,7 @@ func (s *Store) GetProcessedBundleHistoryHash() (uint64, common.Hash) {
 // --- utility functions for processed bundles management ---
 
 // getEntryKey returns the key used to store the presence of a processed bundle
-// hash.
+// hash and its associated execution infos.
 func getEntryKey(hash common.Hash) []byte {
 	return append([]byte{'e'}, hash.Bytes()...)
 }

@@ -37,7 +37,6 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/kvdb/memorydb"
 	"github.com/Fantom-foundation/lachesis-base/kvdb/table"
 	"github.com/Fantom-foundation/lachesis-base/utils/wlru"
-	"github.com/ethereum/go-ethereum/ethdb"
 )
 
 // Store is a node persistent storage working over physical key-value database.
@@ -248,26 +247,3 @@ func (s *Store) makeCache(weight uint, size int) *wlru.Cache {
 	}
 	return cache
 }
-
-//go:generate mockgen -source=store.go -destination=table_mock.go -package=gossip
-
-// _table is an interface needed to generate a mock for a kvdb.Store.
-type _table interface {
-	kvdb.Store
-}
-
-var _ _table // to avoid _table unused warning.
-
-// _batch is an interface needed to generate a mock for a kvdb.Batch.
-type _batch interface {
-	kvdb.Batch
-}
-
-var _ _batch // to avoid _batch unused warning.
-
-// _iterator is an interface needed to generate a mock for a ethdb.Iterator.
-type _iterator interface {
-	ethdb.Iterator
-}
-
-var _ _iterator // to avoid _iterator unused warning.
