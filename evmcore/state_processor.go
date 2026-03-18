@@ -311,13 +311,22 @@ func (r *transactionRunner) RunTransactionBundle(
 	}
 
 	// Run the bundle and collect the processed transactions.
-	processedTransactions, status := bundle.RunBundle(ctxt, txBundle, legacyTxOffset, trueTxOffset)
-	for _, processedTx := range processedTransactions {
+	runner := bundleTransactionRunner{
+		ctxt:           ctxt,
+		legacyTxOffset: legacyTxOffset,
+		trueTxOffset:   trueTxOffset,
+	}
+	success := bundle.RunBundle(&runner, ctxt.StateDB, txBundle, legacyTxOffset, trueTxOffset)
+	for _, processedTx := range runner.processedTransactions {
 		if processedTx.Receipt != nil {
 			processedBundle.Count++
 		}
 	}
-	return processedTransactions, processedBundle, status
+	if success {
+		return runner.processedTransactions, processedBundle, core_types.TransactionResultSuccessful
+	} else {
+		return []core_types.ProcessedTransaction{}, processedBundle, core_types.TransactionResultFailed
+	}
 }
 
 // bundleTransactionRunner is an adapter implementing the bundle.TransactionRunner
