@@ -420,11 +420,11 @@ func (b *bundleTransactionRunner) Run(tx *types.Transaction) core_types.Transact
 	}
 }
 
-func (b *bundleTransactionRunner) CreateInterTxSnapshot() int {
+func (b *bundleTransactionRunner) CreateSnapshot() int {
 	return b.ctxt.statedb.InterTxSnapshot()
 }
 
-func (b *bundleTransactionRunner) RevertToInterTxSnapshot(id int) {
+func (b *bundleTransactionRunner) RevertToSnapshot(id int) {
 	b.ctxt.statedb.RevertToInterTxSnapshot(id)
 }
 

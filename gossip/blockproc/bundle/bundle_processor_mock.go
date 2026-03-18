@@ -41,30 +41,30 @@ func (m *MockTransactionRunner) EXPECT() *MockTransactionRunnerMockRecorder {
 	return m.recorder
 }
 
-// CreateInterTxSnapshot mocks base method.
-func (m *MockTransactionRunner) CreateInterTxSnapshot() int {
+// CreateSnapshot mocks base method.
+func (m *MockTransactionRunner) CreateSnapshot() int {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateInterTxSnapshot")
+	ret := m.ctrl.Call(m, "CreateSnapshot")
 	ret0, _ := ret[0].(int)
 	return ret0
 }
 
-// CreateInterTxSnapshot indicates an expected call of CreateInterTxSnapshot.
-func (mr *MockTransactionRunnerMockRecorder) CreateInterTxSnapshot() *gomock.Call {
+// CreateSnapshot indicates an expected call of CreateSnapshot.
+func (mr *MockTransactionRunnerMockRecorder) CreateSnapshot() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateInterTxSnapshot", reflect.TypeOf((*MockTransactionRunner)(nil).CreateInterTxSnapshot))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateSnapshot", reflect.TypeOf((*MockTransactionRunner)(nil).CreateSnapshot))
 }
 
-// RevertToInterTxSnapshot mocks base method.
-func (m *MockTransactionRunner) RevertToInterTxSnapshot(id int) {
+// RevertToSnapshot mocks base method.
+func (m *MockTransactionRunner) RevertToSnapshot(id int) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "RevertToInterTxSnapshot", id)
+	m.ctrl.Call(m, "RevertToSnapshot", id)
 }
 
-// RevertToInterTxSnapshot indicates an expected call of RevertToInterTxSnapshot.
-func (mr *MockTransactionRunnerMockRecorder) RevertToInterTxSnapshot(id any) *gomock.Call {
+// RevertToSnapshot indicates an expected call of RevertToSnapshot.
+func (mr *MockTransactionRunnerMockRecorder) RevertToSnapshot(id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevertToInterTxSnapshot", reflect.TypeOf((*MockTransactionRunner)(nil).RevertToInterTxSnapshot), id)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevertToSnapshot", reflect.TypeOf((*MockTransactionRunner)(nil).RevertToSnapshot), id)
 }
 
 // Run mocks base method.

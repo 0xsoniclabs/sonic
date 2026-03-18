@@ -33,7 +33,7 @@ func RunBundle(
 	bundle *TransactionBundle,
 	runner TransactionRunner,
 ) bool {
-	snapshot := runner.CreateInterTxSnapshot()
+	snapshot := runner.CreateSnapshot()
 
 	var success bool
 	if bundle.Flags.IsOneOf() {
@@ -43,7 +43,7 @@ func RunBundle(
 	}
 
 	if !success {
-		runner.RevertToInterTxSnapshot(snapshot)
+		runner.RevertToSnapshot(snapshot)
 	}
 
 	return success
@@ -54,8 +54,8 @@ func RunBundle(
 // function to determine the overall success of the bundle execution.
 type TransactionRunner interface {
 	Run(tx *types.Transaction) core_types.TransactionResult
-	CreateInterTxSnapshot() int
-	RevertToInterTxSnapshot(id int)
+	CreateSnapshot() int
+	RevertToSnapshot(id int)
 }
 
 // runAllOfBundle executes all transactions in the bundle and returns true if
