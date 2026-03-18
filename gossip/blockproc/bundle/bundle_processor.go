@@ -58,6 +58,8 @@ type TransactionRunner interface {
 	Run(tx *types.Transaction) TransactionResult
 	CreateInterTxSnapshot() int
 	RevertToInterTxSnapshot(id int)
+	CreateTxSnapshot() int
+	RevertToTxSnapshot(id int)
 }
 
 // runAllOfBundle executes all transactions in the bundle and returns true if
