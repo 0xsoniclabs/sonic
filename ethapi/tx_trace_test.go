@@ -399,7 +399,7 @@ func setupBackendForCallMany(t *testing.T) (*MockBackend, *state.MockStateDB) {
 	backend.EXPECT().GetEVM(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		DoAndReturn(makeTestEVM(opera.Upgrades{})).AnyTimes()
 	backend.EXPECT().BlockByNumber(gomock.Any(), gomock.Any()).Return(block, nil).AnyTimes()
-	backend.EXPECT().StateAndBlockByNumberOrHash(gomock.Any(), gomock.Any()).Return(mockState, block, nil).AnyTimes()
+	backend.EXPECT().StateAndHeaderByNumberOrHash(gomock.Any(), gomock.Any()).Return(mockState, &block.EvmHeader, nil).AnyTimes()
 	backend.EXPECT().RPCGasCap().Return(uint64(10_000_000)).AnyTimes()
 	return backend, mockState
 }
