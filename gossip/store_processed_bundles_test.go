@@ -32,7 +32,7 @@ import (
 	gomock "go.uber.org/mock/gomock"
 )
 
-//go:generate mockgen -source=store_processed_bundles_test.go -destination=table_mock.go -package=gossip
+//go:generate mockgen -source=store_processed_bundles_test.go -destination=store_processed_bundles_mock.go -package=gossip
 
 // storeTable is an interface needed to generate a mock for a kvdb.Store.
 type storeTable interface {
