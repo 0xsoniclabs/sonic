@@ -1,0 +1,527 @@
+// Copyright 2026 Sonic Operations Ltd
+// This file is part of the Sonic Client
+//
+// Sonic is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Sonic is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with Sonic. If not, see <http://www.gnu.org/licenses/>.
+
+package gossip
+
+import (
+	"encoding/binary"
+	"errors"
+	"fmt"
+	"testing"
+
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/logger"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/stretchr/testify/require"
+	gomock "go.uber.org/mock/gomock"
+)
+
+func TestStore_ProcessedBundlesTable_IsInitiallyEmpty(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	iter := store.table.ProcessedBundles.NewIterator(nil, nil)
+	require.False(iter.Next())
+	require.NoError(iter.Error())
+
+	iter = store.table.ProcessedBundles.NewIterator([]byte{'i'}, nil)
+	require.False(iter.Next())
+	require.NoError(iter.Error())
+
+	iter = store.table.ProcessedBundles.NewIterator([]byte{'e'}, nil)
+	require.False(iter.Next())
+	require.NoError(iter.Error())
+}
+
+func TestStore_GetProcessedBundleHistoryHash_InitiallyZero(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	blockNum, hash := store.GetProcessedBundleHistoryHash()
+	require.Zero(blockNum)
+	require.Zero(hash)
+}
+
+func TestStore_ProcessedBundles_UpdatesHistoryHash(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	_, initialHash := store.GetProcessedBundleHistoryHash()
+
+	hash1 := common.Hash{1, 2, 3}
+	store.AddProcessedBundles(1, []bundle.ExecutionInfo{wrapInfo(hash1)})
+
+	_, hashAfterFirstAdd := store.GetProcessedBundleHistoryHash()
+	require.NotEqual(initialHash, hashAfterFirstAdd)
+
+	hash2 := common.Hash{4, 5, 6}
+	store.AddProcessedBundles(2, []bundle.ExecutionInfo{wrapInfo(hash2)})
+
+	_, hashAfterSecondAdd := store.GetProcessedBundleHistoryHash()
+	require.NotEqual(hashAfterFirstAdd, hashAfterSecondAdd)
+}
+
+func TestStore_HasBundleRecentlyBeenProcessed_TracksAddedBundleHashes(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	hash1 := common.Hash{1, 2, 3}
+	hash2 := common.Hash{4, 5, 6}
+	hash3 := common.Hash{7, 8, 9}
+
+	isRecentlyProcessed := func(hash common.Hash) bool {
+		return store.HasBundleRecentlyBeenProcessed(hash)
+	}
+	// initially there are no recently processed bundles
+	require.False(isRecentlyProcessed(hash1))
+	require.False(isRecentlyProcessed(hash2))
+	require.False(isRecentlyProcessed(hash3))
+
+	store.AddProcessedBundles(1, []bundle.ExecutionInfo{wrapInfo(hash1)})
+	require.True(isRecentlyProcessed(hash1))
+	require.False(isRecentlyProcessed(hash2))
+	require.False(isRecentlyProcessed(hash3))
+
+	store.AddProcessedBundles(2, []bundle.ExecutionInfo{wrapInfo(hash2), wrapInfo(hash3)})
+	require.True(isRecentlyProcessed(hash1))
+	require.True(isRecentlyProcessed(hash2))
+	require.True(isRecentlyProcessed(hash3))
+}
+
+func TestStore_HasBundleRecentlyBeenProcessed_CleansUpOldBundleHashes(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	hash1 := common.Hash{1, 2, 3}
+	hash2 := common.Hash{4, 5, 6}
+	hash3 := common.Hash{7, 8, 9}
+	hash4 := common.Hash{10, 11, 12}
+
+	isRecentlyProcessed := func(hash common.Hash) bool {
+		return store.HasBundleRecentlyBeenProcessed(hash)
+	}
+
+	// initially there are no recently processed bundles
+	require.False(isRecentlyProcessed(hash1))
+	require.False(isRecentlyProcessed(hash2))
+	require.False(isRecentlyProcessed(hash3))
+	require.False(isRecentlyProcessed(hash4))
+
+	store.AddProcessedBundles(1, []bundle.ExecutionInfo{wrapInfo(hash1)})
+
+	require.True(isRecentlyProcessed(hash1))
+	require.False(isRecentlyProcessed(hash2))
+	require.False(isRecentlyProcessed(hash3))
+	require.False(isRecentlyProcessed(hash4))
+
+	store.AddProcessedBundles(1+bundle.MaxBlockRange/2,
+		[]bundle.ExecutionInfo{wrapInfo(hash2)})
+
+	require.True(isRecentlyProcessed(hash1))
+	require.True(isRecentlyProcessed(hash2))
+	require.False(isRecentlyProcessed(hash3))
+	require.False(isRecentlyProcessed(hash4))
+
+	store.AddProcessedBundles(bundle.MaxBlockRange,
+		[]bundle.ExecutionInfo{wrapInfo(hash3)})
+
+	require.True(isRecentlyProcessed(hash1))
+	require.True(isRecentlyProcessed(hash2))
+	require.True(isRecentlyProcessed(hash3))
+	require.False(isRecentlyProcessed(hash4))
+
+	store.AddProcessedBundles(1+bundle.MaxBlockRange,
+		[]bundle.ExecutionInfo{wrapInfo(hash4)})
+
+	require.False(isRecentlyProcessed(hash1))
+	require.True(isRecentlyProcessed(hash2))
+	require.True(isRecentlyProcessed(hash3))
+	require.True(isRecentlyProcessed(hash4))
+
+	store.AddProcessedBundles(1+2*bundle.MaxBlockRange,
+		[]bundle.ExecutionInfo{})
+
+	require.False(isRecentlyProcessed(hash1))
+	require.False(isRecentlyProcessed(hash2))
+	require.False(isRecentlyProcessed(hash3))
+	require.False(isRecentlyProcessed(hash4))
+
+}
+
+func TestStore_GetBundleExecutionInfo_ReturnsInfoForAddedBundleHashes(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	hash1 := common.Hash{1, 2, 3}
+	hash2 := common.Hash{4, 5, 6}
+
+	info1 := bundle.ExecutionInfo{
+		ExecutionPlanHash: hash1,
+		BlockNum:          1,
+		Position:          0,
+		Count:             1,
+	}
+	info2 := bundle.ExecutionInfo{
+		ExecutionPlanHash: hash2,
+		BlockNum:          2,
+		Position:          1,
+		Count:             2,
+	}
+
+	// initially there is no info for unknown hashes
+	info := store.GetBundleExecutionInfo(hash1)
+	require.Nil(info)
+	info = store.GetBundleExecutionInfo(hash2)
+	require.Nil(info)
+
+	store.AddProcessedBundles(1, []bundle.ExecutionInfo{info1, info2})
+
+	resInfo1 := store.GetBundleExecutionInfo(hash1)
+	require.Equal(info1, *resInfo1)
+
+	resInfo2 := store.GetBundleExecutionInfo(hash2)
+	require.Equal(info2, *resInfo2)
+}
+
+func TestStore_ProcessedBundles_HashIsAffectedByHistory(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	hash1 := common.Hash{1, 2, 3}
+	hash2 := common.Hash{4, 5, 6}
+
+	store.AddProcessedBundles(1, []bundle.ExecutionInfo{
+		wrapInfo(hash1),
+		wrapInfo(hash2),
+	})
+
+	_, hashA := store.GetProcessedBundleHistoryHash()
+
+	store.AddProcessedBundles(2, []bundle.ExecutionInfo{
+		wrapInfo(hash2),
+		wrapInfo(hash1),
+	})
+
+	_, hashB := store.GetProcessedBundleHistoryHash()
+	require.NotEqual(hashA, hashB)
+}
+
+func TestStore_ProcessedBundles_StoredHashUsesXorForAddedAndDeletedHashes(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	// this test checks that the hash stored in the table for processed bundles
+	// is consistent with the expected hash computed by xoring the added and deleted
+	// hashes with the previous hash, and that the order of the added hashes does
+	// not affect the result.
+	xorForTest := func(a, b common.Hash) common.Hash {
+		var res common.Hash
+		for i := 0; i < len(res); i++ {
+			res[i] = a[i] ^ b[i]
+		}
+		return res
+	}
+
+	hash1 := common.Hash{1, 2, 3}
+	hash2 := common.Hash{4, 5, 6}
+	hash3 := common.Hash{7, 8, 9}
+
+	// get initial hash
+	_, initialHash := store.GetProcessedBundleHistoryHash()
+
+	// add two hashes
+	store.AddProcessedBundles(1, []bundle.ExecutionInfo{
+		wrapInfo(hash1),
+		wrapInfo(hash2),
+	})
+
+	// get hash after adding two hashes
+	blockNum, bundleHistoryHash := store.GetProcessedBundleHistoryHash()
+	require.Equal(uint64(1), blockNum)
+
+	addedHash := xorForTest(hash1, hash2)
+	newHash := updateHistoryHash(blockNum, initialHash, addedHash, common.Hash{})
+
+	require.Equal(newHash, bundleHistoryHash)
+
+	newerBlockNum := blockNum + bundle.MaxBlockRange
+	// delete one and verify deletion hash as well
+	store.AddProcessedBundles(newerBlockNum, []bundle.ExecutionInfo{
+		wrapInfo(hash3),
+	})
+
+	addedHahs := xorForTest(common.Hash{}, hash3)
+	deletedHash := xorForTest(hash1, hash2)
+	newHash = updateHistoryHash(newerBlockNum, bundleHistoryHash, addedHahs, deletedHash)
+	newerEncodedBlockNumber, updatedBundleHistoryHash := store.GetProcessedBundleHistoryHash()
+	require.Equal(newerBlockNum, newerEncodedBlockNumber)
+	require.Equal(newHash, updatedBundleHistoryHash)
+}
+
+func TestStore_GetEntryKey_ReturnsExpectedKey(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	hash := common.Hash{1, 2, 3}
+	expectedKey := append([]byte{'e'}, hash.Bytes()...)
+	require.Equal(expectedKey, getEntryKey(hash))
+}
+
+func TestStore_GetIndexKey_ReturnsExpectedKey(t *testing.T) {
+	t.Parallel()
+	require := require.New(t)
+
+	blockNum := uint64(123)
+	hash := common.Hash{1, 2, 3}
+	expectedKey := append([]byte{'i'}, make([]byte, 8)...)
+	binary.BigEndian.PutUint64(expectedKey[1:9], blockNum)
+	expectedKey = append(expectedKey, hash.Bytes()...)
+	require.Equal(expectedKey, getIndexKey(blockNum, hash))
+}
+
+func TestStore_AddProcessedBundles_LogsOnBatchPutError(t *testing.T) {
+	ctrl, store, table, log := storeTableLogMocks(t)
+
+	injectedErrEntry := errors.New("entry put error")
+	injectedErrIndex := errors.New("index put error")
+	batch := NewMock_batch(ctrl)
+	batch.EXPECT().Put(gomock.Any(), gomock.Any()).Return(injectedErrEntry)
+	batch.EXPECT().Put(gomock.Any(), gomock.Any()).Return(injectedErrIndex)
+
+	table.EXPECT().NewBatch().Return(batch).AnyTimes()
+	table.EXPECT().Get(gomock.Any()).Return(nil, nil).AnyTimes()
+
+	compoundErr := errors.Join(injectedErrEntry, injectedErrIndex)
+	expectCrit(log, "failed to add processed bundle hash to batch", compoundErr)
+
+	hash1 := common.Hash{1, 2, 3}
+	require.PanicsWithValue(t,
+		fmt.Sprintf("%v: %v", "failed to add processed bundle hash to batch", compoundErr),
+		func() { store.AddProcessedBundles(1, []bundle.ExecutionInfo{wrapInfo(hash1)}) })
+}
+
+func TestStore_AddProcessedBundles_IgnoresKeysOfWrongLength(t *testing.T) {
+	// log mock is ignored because no log called should be triggered.
+	ctrl, store, table, _ := storeTableLogMocks(t)
+
+	// -- expects for usual behavior of adding a bundle
+	batch := NewMock_batch(ctrl)
+	batch.EXPECT().Put(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	batch.EXPECT().Write().Return(nil)
+	table.EXPECT().NewBatch().Return(batch).AnyTimes()
+	table.EXPECT().Get(gomock.Any()).Return(nil, nil).AnyTimes()
+	// --
+
+	it := NewMock_iterator(ctrl)
+	it.EXPECT().Next().Return(true)
+	// This is the key that will be ignored, since it does not have the correct length.
+	it.EXPECT().Key().Return([]byte{1, 2})
+	it.EXPECT().Next().Return(false)
+
+	table.EXPECT().NewIterator(gomock.Any(), gomock.Any()).Return(it).AnyTimes()
+
+	store.AddProcessedBundles(bundle.MaxBlockRange+1, []bundle.ExecutionInfo{})
+}
+
+func TestStore_AddProcessedBundles_LogsOnBatchDeleteError(t *testing.T) {
+	ctrl, store, table, log := storeTableLogMocks(t)
+
+	injectedErrDeleteEntry := errors.New("entry delete error")
+	injectedErrDeleteIndex := errors.New("index delete error")
+	batch := NewMock_batch(ctrl)
+	batch.EXPECT().Delete(gomock.Any()).Return(injectedErrDeleteEntry)
+	batch.EXPECT().Delete(gomock.Any()).Return(injectedErrDeleteIndex)
+
+	table.EXPECT().NewBatch().Return(batch).AnyTimes()
+	table.EXPECT().Get(gomock.Any()).Return(nil, nil).AnyTimes()
+
+	it := NewMock_iterator(ctrl)
+	it.EXPECT().Next().Return(true)
+	it.EXPECT().Key().Return(getIndexKey(1, common.Hash{1, 2, 3}))
+	table.EXPECT().NewIterator(gomock.Any(), gomock.Any()).Return(it).AnyTimes()
+
+	compoundErr := errors.Join(injectedErrDeleteEntry, injectedErrDeleteIndex)
+	expectCrit(log, "failed to delete old processed bundle hash", compoundErr)
+
+	require.PanicsWithValue(t,
+		fmt.Sprintf("%v: %v", "failed to delete old processed bundle hash", compoundErr),
+		func() { store.AddProcessedBundles(bundle.MaxBlockRange+1, []bundle.ExecutionInfo{}) })
+}
+
+func TestStore_AddProcessedBundles_LogsOnBatchPutNewEntryError(t *testing.T) {
+	ctrl, store, table, log := storeTableLogMocks(t)
+
+	batch := NewMock_batch(ctrl)
+	injectedErr := errors.New("new entry put error")
+	batch.EXPECT().Put(gomock.Any(), gomock.Any()).Return(injectedErr)
+
+	table.EXPECT().NewBatch().Return(batch).AnyTimes()
+	table.EXPECT().Get(gomock.Any()).Return(nil, nil).AnyTimes()
+
+	expectCrit(log, "failed to update hash of processed bundles", injectedErr)
+
+	require.PanicsWithValue(t,
+		fmt.Sprintf("%v: %v", "failed to update hash of processed bundles", injectedErr),
+		func() { store.AddProcessedBundles(1, []bundle.ExecutionInfo{}) })
+}
+
+func TestStore_AddProcessedBundles_LogsOnBatchWriteError(t *testing.T) {
+	ctrl, store, table, log := storeTableLogMocks(t)
+
+	batch := NewMock_batch(ctrl)
+	injectedErr := errors.New("batch write error")
+	batch.EXPECT().Put(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	batch.EXPECT().Write().Return(injectedErr)
+
+	table.EXPECT().NewBatch().Return(batch).AnyTimes()
+	table.EXPECT().Get(gomock.Any()).Return(nil, nil).AnyTimes()
+
+	expectCrit(log, "failed to create batch for processed bundles", injectedErr)
+
+	require.PanicsWithValue(t,
+		fmt.Sprintf("%v: %v", "failed to create batch for processed bundles", injectedErr),
+		func() { store.AddProcessedBundles(1, []bundle.ExecutionInfo{}) })
+}
+
+func TestStore_HasBundleRecentlyBeenProcessed_LogsOnGetError(t *testing.T) {
+	_, store, table, log := storeTableLogMocks(t)
+
+	injectedErr := errors.New("get error")
+	table.EXPECT().Get(gomock.Any()).Return(nil, injectedErr).AnyTimes()
+
+	expectCrit(log, "failed to check processed bundle", injectedErr)
+
+	require.PanicsWithValue(t,
+		fmt.Sprintf("%v: %v", "failed to check processed bundle", injectedErr),
+		func() { store.HasBundleRecentlyBeenProcessed(common.Hash{1, 2, 3}) })
+}
+
+func TestStore_GetBundleExecutionInfo_LogsOnGetError(t *testing.T) {
+	_, store, table, log := storeTableLogMocks(t)
+
+	injectedErr := errors.New("get error")
+	table.EXPECT().Get(gomock.Any()).Return(nil, injectedErr).AnyTimes()
+	table.EXPECT().Get(gomock.Any()).Return(nil, injectedErr).AnyTimes()
+
+	expectCrit(log, "failed to get execution info for bundle", injectedErr)
+
+	require.PanicsWithValue(t,
+		fmt.Sprintf("%v: %v", "failed to get execution info for bundle", injectedErr),
+		func() { store.GetBundleExecutionInfo(common.Hash{1, 2, 3}) })
+}
+
+func TestStore_GetBundleExecutionInfo_LogsOnInvalidDataLength(t *testing.T) {
+	_, store, table, log := storeTableLogMocks(t)
+
+	table.EXPECT().Get(gomock.Any()).Return([]byte{1, 2, 3}, nil).AnyTimes()
+
+	expectCrit(log, "invalid data length for execution info", 3)
+
+	require.PanicsWithValue(t,
+		fmt.Sprintf("%v: %v", "invalid data length for execution info", 3),
+		func() { store.GetBundleExecutionInfo(common.Hash{1, 2, 3}) })
+}
+
+func TestStore_GetProcessedBundleHistoryHash_LogsOnGetError(t *testing.T) {
+	_, store, table, log := storeTableLogMocks(t)
+
+	injectedErr := errors.New("get error")
+	table.EXPECT().Get(gomock.Any()).Return(nil, injectedErr).AnyTimes()
+
+	expectCrit(log, "failed to get hash of processed bundles", injectedErr)
+
+	require.PanicsWithValue(t,
+		fmt.Sprintf("%v: %v", "failed to get hash of processed bundles", injectedErr),
+		func() { store.GetProcessedBundleHistoryHash() })
+}
+
+func TestStore_GetProcessedBundleHistoryHash_LogsOnInvalidStateLength(t *testing.T) {
+	_, store, table, log := storeTableLogMocks(t)
+
+	table.EXPECT().Get(gomock.Any()).Return([]byte{1, 2, 3}, nil).AnyTimes()
+	store.table.ProcessedBundles = table
+
+	expectCrit(log, "invalid state length for processed bundles", 3)
+
+	require.PanicsWithValue(t,
+		fmt.Sprintf("%v: %v", "invalid state length for processed bundles", 3),
+		func() { store.GetProcessedBundleHistoryHash() })
+}
+
+// --- helper functions ---
+
+// return execution info with the given hash, for block number 1 and position 0.
+func wrapInfo(hash common.Hash) bundle.ExecutionInfo {
+	return bundle.ExecutionInfo{
+		ExecutionPlanHash: hash,
+		BlockNum:          1,
+		Position:          0,
+		Count:             1,
+	}
+}
+
+func updateHistoryHash(blockNum uint64,
+	oldHash, addedHash, deletedHash common.Hash) common.Hash {
+
+	update := make([]byte, processedBundlesHashSize)
+	copy(update[:32], oldHash.Bytes())
+	copy(update[32:64], addedHash.Bytes())
+	copy(update[64:96], deletedHash.Bytes())
+	binary.BigEndian.PutUint64(update[96:], blockNum)
+	return common.Hash(crypto.Keccak256(update))
+}
+
+// storeTableLogMocks initializes a store with mocked table as ProcessedBundles,
+// and logger.
+// Returns the mocks so expectations can be added on them.
+func storeTableLogMocks(t *testing.T) (*gomock.Controller, *Store, *Mock_table, *logger.MockLogger) {
+	ctrl := gomock.NewController(t)
+	store := initStoreForTests(t)
+
+	table := NewMock_table(ctrl)
+	store.table.ProcessedBundles = table
+
+	log := logger.NewMockLogger(ctrl)
+	store.Log = log
+
+	return ctrl, store, table, log
+}
+
+// expectCrit sets up the given mock logger to expect a Crit call with the given
+// message and error, and to panic with message containing both when that call happens.
+func expectCrit(log *logger.MockLogger, msg string, err any) {
+	log.EXPECT().Crit(msg, gomock.Any(), err).
+		Do(func(msg any, ctx ...any) {
+			panic(fmt.Sprintf("%v: %v", msg, ctx[1]))
+		})
+}
