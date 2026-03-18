@@ -19,76 +19,6 @@ import (
 	gomock "go.uber.org/mock/gomock"
 )
 
-// Mock_transactionRunner is a mock of _transactionRunner interface.
-type Mock_transactionRunner struct {
-	ctrl     *gomock.Controller
-	recorder *Mock_transactionRunnerMockRecorder
-	isgomock struct{}
-}
-
-// Mock_transactionRunnerMockRecorder is the mock recorder for Mock_transactionRunner.
-type Mock_transactionRunnerMockRecorder struct {
-	mock *Mock_transactionRunner
-}
-
-// NewMock_transactionRunner creates a new mock instance.
-func NewMock_transactionRunner(ctrl *gomock.Controller) *Mock_transactionRunner {
-	mock := &Mock_transactionRunner{ctrl: ctrl}
-	mock.recorder = &Mock_transactionRunnerMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *Mock_transactionRunner) EXPECT() *Mock_transactionRunnerMockRecorder {
-	return m.recorder
-}
-
-// runRegularTransaction mocks base method.
-func (m *Mock_transactionRunner) runRegularTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) (ProcessedTransaction, core_types.TransactionResult) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "runRegularTransaction", ctxt, tx, txIndex)
-	ret0, _ := ret[0].(ProcessedTransaction)
-	ret1, _ := ret[1].(core_types.TransactionResult)
-	return ret0, ret1
-}
-
-// runRegularTransaction indicates an expected call of runRegularTransaction.
-func (mr *Mock_transactionRunnerMockRecorder) runRegularTransaction(ctxt, tx, txIndex any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "runRegularTransaction", reflect.TypeOf((*Mock_transactionRunner)(nil).runRegularTransaction), ctxt, tx, txIndex)
-}
-
-// runSponsoredTransaction mocks base method.
-func (m *Mock_transactionRunner) runSponsoredTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) ([]ProcessedTransaction, core_types.TransactionResult) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "runSponsoredTransaction", ctxt, tx, txIndex)
-	ret0, _ := ret[0].([]ProcessedTransaction)
-	ret1, _ := ret[1].(core_types.TransactionResult)
-	return ret0, ret1
-}
-
-// runSponsoredTransaction indicates an expected call of runSponsoredTransaction.
-func (mr *Mock_transactionRunnerMockRecorder) runSponsoredTransaction(ctxt, tx, txIndex any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "runSponsoredTransaction", reflect.TypeOf((*Mock_transactionRunner)(nil).runSponsoredTransaction), ctxt, tx, txIndex)
-}
-
-// runTransactionBundle mocks base method.
-func (m *Mock_transactionRunner) runTransactionBundle(ctxt *runContext, tx *types.Transaction, legacyTxIndex, trueTxIndex int) ([]ProcessedTransaction, *ProcessedBundle, core_types.TransactionResult) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "runTransactionBundle", ctxt, tx, legacyTxIndex, trueTxIndex)
-	ret0, _ := ret[0].([]ProcessedTransaction)
-	ret1, _ := ret[1].(*ProcessedBundle)
-	ret2, _ := ret[2].(core_types.TransactionResult)
-	return ret0, ret1, ret2
-}
-
-// runTransactionBundle indicates an expected call of runTransactionBundle.
-func (mr *Mock_transactionRunnerMockRecorder) runTransactionBundle(ctxt, tx, legacyTxIndex, trueTxIndex any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "runTransactionBundle", reflect.TypeOf((*Mock_transactionRunner)(nil).runTransactionBundle), ctxt, tx, legacyTxIndex, trueTxIndex)
-}
-
 // Mock_evm is a mock of _evm interface.
 type Mock_evm struct {
 	ctrl     *gomock.Controller
@@ -130,10 +60,10 @@ func (mr *Mock_evmMockRecorder) Call(from, to, input, gas, value any) *gomock.Ca
 }
 
 // runWithBaseFeeCheck mocks base method.
-func (m *Mock_evm) runWithBaseFeeCheck(arg0 *runContext, arg1 *types.Transaction, arg2 int) ProcessedTransaction {
+func (m *Mock_evm) runWithBaseFeeCheck(arg0 *core_types.RunContext, arg1 *types.Transaction, arg2 int) core_types.ProcessedTransaction {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "runWithBaseFeeCheck", arg0, arg1, arg2)
-	ret0, _ := ret[0].(ProcessedTransaction)
+	ret0, _ := ret[0].(core_types.ProcessedTransaction)
 	return ret0
 }
 
@@ -144,10 +74,10 @@ func (mr *Mock_evmMockRecorder) runWithBaseFeeCheck(arg0, arg1, arg2 any) *gomoc
 }
 
 // runWithoutBaseFeeCheck mocks base method.
-func (m *Mock_evm) runWithoutBaseFeeCheck(arg0 *runContext, arg1 *types.Transaction, arg2 int) ProcessedTransaction {
+func (m *Mock_evm) runWithoutBaseFeeCheck(arg0 *core_types.RunContext, arg1 *types.Transaction, arg2 int) core_types.ProcessedTransaction {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "runWithoutBaseFeeCheck", arg0, arg1, arg2)
-	ret0, _ := ret[0].(ProcessedTransaction)
+	ret0, _ := ret[0].(core_types.ProcessedTransaction)
 	return ret0
 }
 

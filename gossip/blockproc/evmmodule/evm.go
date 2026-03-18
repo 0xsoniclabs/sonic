@@ -27,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
@@ -97,7 +98,7 @@ type OperaEVMProcessor struct {
 
 	gasUsed uint64
 
-	processedTxs []evmcore.ProcessedTransaction
+	processedTxs []core_types.ProcessedTransaction
 	prevRandao   common.Hash
 
 	processorFactory _stateProcessorFactory

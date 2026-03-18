@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
@@ -210,7 +211,7 @@ func TestOperaEVMProcessor_Execute_StateProcessorIntroducesTransactions_Produces
 
 	stateProcessor.EXPECT().Process(
 		any, any, any, any, any, any,
-	).Return(evmcore.ExecutionSummary{ProcessedTransactions: []evmcore.ProcessedTransaction{
+	).Return(evmcore.ExecutionSummary{ProcessedTransactions: []core_types.ProcessedTransaction{
 		{Receipt: &types.Receipt{TransactionIndex: 0}},
 		{Receipt: &types.Receipt{TransactionIndex: 1}},
 		{Receipt: &types.Receipt{TransactionIndex: 2}},
@@ -317,11 +318,11 @@ func TestOperaEVMProcessor_Execute_BundlePositionsAreProperlyOffset(t *testing.T
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			processedTx := evmcore.ProcessedTransaction{
+			processedTx := core_types.ProcessedTransaction{
 				Transaction: nil,
 				Receipt:     &types.Receipt{},
 			}
-			alreadyProcessedTx := make([]evmcore.ProcessedTransaction, test.lenProcessedTxs)
+			alreadyProcessedTx := make([]core_types.ProcessedTransaction, test.lenProcessedTxs)
 			for i := range alreadyProcessedTx {
 				alreadyProcessedTx[i] = processedTx
 			}

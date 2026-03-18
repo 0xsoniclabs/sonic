@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/evmcore/core_types"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	scc_node "github.com/0xsoniclabs/sonic/scc/node"
 
@@ -427,7 +428,7 @@ func consensusCallbackBeginBlockFn(
 
 					orderedTxs := proposal.Transactions
 					numSkippedDueToBlockLimits := 0
-					var processedBundles []evmcore.ProcessedBundle
+					var processedBundles []core_types.ProcessedBundle
 					if es.Rules.Upgrades.Brio {
 						// Limit block size and gas while adding user transactions
 						numSkippedDueToBlockLimits, processedBundles =
@@ -620,7 +621,7 @@ func processUserTransactionsNoLimits(
 	blockBuilder *inter.BlockBuilder,
 	orderedTxs []*types.Transaction,
 	userTransactionGasLimit uint64,
-) []evmcore.ProcessedBundle {
+) []core_types.ProcessedBundle {
 	summary := evmProcessor.Execute(orderedTxs, userTransactionGasLimit)
 	for _, processed := range summary.ProcessedTransactions {
 		if processed.Receipt != nil { // < nil if skipped
@@ -644,7 +645,7 @@ func processUserTransactions(
 	blockBuilder *inter.BlockBuilder,
 	orderedTxs []*types.Transaction,
 	userTransactionGasLimit uint64,
-) (int, []evmcore.ProcessedBundle) {
+) (int, []core_types.ProcessedBundle) {
 	remainingGas := userTransactionGasLimit
 	remainingSize := uint64(params.MaxBlockSize - rlpEncodedMaxHeaderSizeInBytes)
 	internalTxs := blockBuilder.GetTransactions()
@@ -658,7 +659,7 @@ func processUserTransactions(
 	}
 
 	skippedCounter := 0
-	var processedBundles []evmcore.ProcessedBundle
+	var processedBundles []core_types.ProcessedBundle
 	for _, tx := range orderedTxs {
 		neededSpace := txSizeIncludingSubsidies(tx)
 		if neededSpace <= remainingSize {
