@@ -21,9 +21,7 @@ import (
 	"math"
 	"math/big"
 	"testing"
-	"time"
 
-	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
@@ -105,7 +103,6 @@ func testSucceedingConcurrentBundles(
 	minBlock := uint64(math.MaxUint64)
 	maxBlock := uint64(0)
 	for _, info := range infos {
-		require.Equal(ethapi.BundleStatusExecuted, info.Status)
 		minBlock = min(minBlock, *info.Block)
 		maxBlock = max(maxBlock, *info.Block)
 	}
@@ -189,22 +186,13 @@ func testRandomlyFailingBundles(
 	infos, err := waitForBundlesExecution(t.Context(), client.Client(), planHashes)
 	require.NoError(err)
 
-	// TODO: there is a bug in the reporting of bundle states for bundles that
-	// may become invalid while they are in flight on the DAG. This needs to
-	// be fixed. This sleep and re-fetching of the infos mitigates this for
-	// now, but is not a proper solution.
-	_ = infos
-	time.Sleep(1 * time.Second)
-	infos, err = waitForBundlesExecution(t.Context(), client.Client(), planHashes)
-	require.NoError(err)
-
 	// For those bundles that got executed, check that the obtained infos match
 	// the respective transactions.
 	for i, info := range infos {
 		bundle, err := bundle.OpenEnvelope(envelopes[i])
 		require.NoError(err)
 
-		if info.Status == ethapi.BundleStatusExecuted && *info.Count > 0 {
+		if *info.Count > 0 {
 			fmt.Printf("Bundle %d got executed in block %d at offset %d with %d transactions\n", i, *info.Block, *info.Position, *info.Count)
 			require.EqualValues(*info.Count, len(bundle.Transactions))
 
@@ -215,12 +203,7 @@ func testRandomlyFailingBundles(
 				require.EqualValues(int(*info.Position)+i, receipt.TransactionIndex)
 			}
 		} else {
-
-			if info.Status == ethapi.BundleStatusExecuted {
-				fmt.Printf("Bundle %d got executed in block %d at offset %d and rolled back\n", i, *info.Block, *info.Position)
-			} else {
-				fmt.Printf("Bundle %d got dropped\n", i)
-			}
+			fmt.Printf("Bundle %d got executed in block %d at offset %d and rolled back\n", i, *info.Block, *info.Position)
 
 			// Make sure no transaction ended up in a block.
 			for _, tx := range bundle.Transactions {

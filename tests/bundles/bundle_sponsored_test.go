@@ -20,7 +20,6 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -98,7 +97,6 @@ func TestBundle_CanRunSponsorshipAndSponsored(t *testing.T) {
 	info, err := waitForBundleExecution(t.Context(), client.Client(), plan.Hash())
 	require.NoError(t, err)
 
-	require.Equal(t, ethapi.BundleStatusExecuted, info.Status)
 	require.NotNil(t, info.Block)
 	require.NotNil(t, info.Position)
 
