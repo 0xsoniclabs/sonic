@@ -92,6 +92,7 @@ func TestStore_HasBundleRecentlyBeenProcessed_CleansUpOldBundleHashes(t *testing
 	hash2 := common.Hash{4, 5, 6}
 	hash3 := common.Hash{7, 8, 9}
 	hash4 := common.Hash{10, 11, 12}
+	hash5 := common.Hash{13, 14, 15}
 
 	isRecentlyProcessed := func(hash common.Hash) bool {
 		return store.HasBundleRecentlyBeenProcessed(hash)
@@ -102,38 +103,61 @@ func TestStore_HasBundleRecentlyBeenProcessed_CleansUpOldBundleHashes(t *testing
 	require.False(isRecentlyProcessed(hash2))
 	require.False(isRecentlyProcessed(hash3))
 	require.False(isRecentlyProcessed(hash4))
+	require.False(isRecentlyProcessed(hash5))
 
+	// add hash1 in block 1.
 	store.AddProcessedBundles(1, []bundle.ExecutionInfo{wrapInfo(hash1)})
 
 	require.True(isRecentlyProcessed(hash1))
 	require.False(isRecentlyProcessed(hash2))
 	require.False(isRecentlyProcessed(hash3))
 	require.False(isRecentlyProcessed(hash4))
+	require.False(isRecentlyProcessed(hash5))
 
-	store.AddProcessedBundles(1+bundle.MaxBlockRange/2,
-		[]bundle.ExecutionInfo{wrapInfo(hash2)})
+	// add hash2 in block 2.
+	store.AddProcessedBundles(2, []bundle.ExecutionInfo{wrapInfo(hash2)})
 
 	require.True(isRecentlyProcessed(hash1))
 	require.True(isRecentlyProcessed(hash2))
 	require.False(isRecentlyProcessed(hash3))
 	require.False(isRecentlyProcessed(hash4))
+	require.False(isRecentlyProcessed(hash5))
 
-	store.AddProcessedBundles(bundle.MaxBlockRange,
+	// add hash3 in block 1 + bundle.MaxBlockRange/2,
+	// so hash1 is still recent but will be cleaned up in the next step.
+	store.AddProcessedBundles(1+bundle.MaxBlockRange/2,
 		[]bundle.ExecutionInfo{wrapInfo(hash3)})
 
 	require.True(isRecentlyProcessed(hash1))
 	require.True(isRecentlyProcessed(hash2))
 	require.True(isRecentlyProcessed(hash3))
 	require.False(isRecentlyProcessed(hash4))
+	require.False(isRecentlyProcessed(hash5))
 
-	store.AddProcessedBundles(1+bundle.MaxBlockRange,
+	// add hash4 in block bundle.MaxBlockRange,
+	// just before hash1 is considered too old
+	store.AddProcessedBundles(bundle.MaxBlockRange,
 		[]bundle.ExecutionInfo{wrapInfo(hash4)})
+
+	require.True(isRecentlyProcessed(hash1))
+	require.True(isRecentlyProcessed(hash2))
+	require.True(isRecentlyProcessed(hash3))
+	require.True(isRecentlyProcessed(hash4))
+	require.False(isRecentlyProcessed(hash5))
+
+	// add hash5 in block 1 + bundle.MaxBlockRange + 1,
+	// so hash1 is now too old and should be cleaned up,
+	store.AddProcessedBundles(1+bundle.MaxBlockRange,
+		[]bundle.ExecutionInfo{wrapInfo(hash5)})
 
 	require.False(isRecentlyProcessed(hash1))
 	require.True(isRecentlyProcessed(hash2))
 	require.True(isRecentlyProcessed(hash3))
 	require.True(isRecentlyProcessed(hash4))
+	require.True(isRecentlyProcessed(hash5))
 
+	// add an no execution plan in block 1 + 2*bundle.MaxBlockRange,
+	// which should clean up all remaining recent bundles
 	store.AddProcessedBundles(1+2*bundle.MaxBlockRange,
 		[]bundle.ExecutionInfo{})
 
@@ -141,6 +165,7 @@ func TestStore_HasBundleRecentlyBeenProcessed_CleansUpOldBundleHashes(t *testing
 	require.False(isRecentlyProcessed(hash2))
 	require.False(isRecentlyProcessed(hash3))
 	require.False(isRecentlyProcessed(hash4))
+	require.False(isRecentlyProcessed(hash5))
 }
 
 func TestStore_HasBundleRecentlyBeenProcessed_LogsOnGetError(t *testing.T) {
