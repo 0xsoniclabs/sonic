@@ -21,7 +21,6 @@ import (
 	"math"
 	"math/big"
 	"testing"
-	"time"
 
 	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
@@ -187,15 +186,6 @@ func testRandomlyFailingBundles(
 	// Wait for all bundles to be completed.
 	fmt.Printf("Waiting for completion ...\n")
 	infos, err := waitForBundlesExecution(t.Context(), client.Client(), planHashes)
-	require.NoError(err)
-
-	// TODO: there is a bug in the reporting of bundle states for bundles that
-	// may become invalid while they are in flight on the DAG. This needs to
-	// be fixed. This sleep and re-fetching of the infos mitigates this for
-	// now, but is not a proper solution.
-	_ = infos
-	time.Sleep(1 * time.Second)
-	infos, err = waitForBundlesExecution(t.Context(), client.Client(), planHashes)
 	require.NoError(err)
 
 	// For those bundles that got executed, check that the obtained infos match
