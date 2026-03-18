@@ -162,18 +162,6 @@ func (mr *MockStateDBMockRecorder) BeginBlock(number any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BeginBlock", reflect.TypeOf((*MockStateDB)(nil).BeginBlock), number)
 }
 
-// BeginTransaction mocks base method.
-func (m *MockStateDB) BeginTransaction() {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "BeginTransaction")
-}
-
-// BeginTransaction indicates an expected call of BeginTransaction.
-func (mr *MockStateDBMockRecorder) BeginTransaction() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BeginTransaction", reflect.TypeOf((*MockStateDB)(nil).BeginTransaction))
-}
-
 // Copy mocks base method.
 func (m *MockStateDB) Copy() StateDB {
 	m.ctrl.T.Helper()
@@ -543,11 +531,9 @@ func (mr *MockStateDBMockRecorder) Release() *gomock.Call {
 }
 
 // RevertToInterTxSnapshot mocks base method.
-func (m *MockStateDB) RevertToInterTxSnapshot(id int) error {
+func (m *MockStateDB) RevertToInterTxSnapshot(id int) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RevertToInterTxSnapshot", id)
-	ret0, _ := ret[0].(error)
-	return ret0
+	m.ctrl.Call(m, "RevertToInterTxSnapshot", id)
 }
 
 // RevertToInterTxSnapshot indicates an expected call of RevertToInterTxSnapshot.

@@ -115,7 +115,7 @@ func getBundleState(
 	defer func() {
 		// TODO: follow-up task: deal with this error or update the function to
 		// not return an error at all if it can not be handled properly.
-		_ = stateDb.RevertToInterTxSnapshot(snapshot)
+		stateDb.RevertToInterTxSnapshot(snapshot)
 	}()
 
 	if success := trialRunner(envelop, chain, stateDb); !success {
