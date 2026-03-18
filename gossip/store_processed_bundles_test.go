@@ -172,7 +172,7 @@ func TestStore_HasBundleRecentlyBeenProcessed_LogsOnGetError(t *testing.T) {
 	_, store, table, log := storeTableLogMocks(t)
 
 	injectedErr := errors.New("get error")
-	table.EXPECT().Get(gomock.Any()).Return(nil, injectedErr).AnyTimes()
+	table.EXPECT().Get(gomock.Any()).Return(nil, injectedErr)
 
 	expectCrit(log, "failed to check processed bundle", "error", injectedErr)
 	// In production, a Crit log call causes the logger to exit the process.
@@ -186,8 +186,7 @@ func TestStore_GetBundleExecutionInfo_LogsOnGetError(t *testing.T) {
 	_, store, table, log := storeTableLogMocks(t)
 
 	injectedErr := errors.New("get error")
-	table.EXPECT().Get(gomock.Any()).Return(nil, injectedErr).AnyTimes()
-	table.EXPECT().Get(gomock.Any()).Return(nil, injectedErr).AnyTimes()
+	table.EXPECT().Get(gomock.Any()).Return(nil, injectedErr)
 
 	expectCrit(log, "failed to get execution info for bundle", "error", injectedErr)
 	// In production, a Crit log call causes the logger to exit the process.
@@ -200,7 +199,7 @@ func TestStore_GetBundleExecutionInfo_LogsOnGetError(t *testing.T) {
 func TestStore_GetBundleExecutionInfo_LogsOnInvalidDataLength(t *testing.T) {
 	_, store, table, log := storeTableLogMocks(t)
 
-	table.EXPECT().Get(gomock.Any()).Return([]byte{1, 2, 3}, nil).AnyTimes()
+	table.EXPECT().Get(gomock.Any()).Return([]byte{1, 2, 3}, nil)
 
 	expectCrit(log, "invalid data length for execution info", "length", 3)
 
@@ -273,14 +272,20 @@ func TestStore_ProcessedBundles_UpdatesHistoryHash(t *testing.T) {
 	hash1 := common.Hash{1, 2, 3}
 	store.AddProcessedBundles(1, []bundle.ExecutionInfo{wrapInfo(hash1)})
 
+	historyHash1 := updateHistoryHash(1, initialHash, hash1, common.Hash{})
+
 	_, hashAfterFirstAdd := store.GetProcessedBundleHistoryHash()
 	require.NotEqual(initialHash, hashAfterFirstAdd)
+	require.Equal(historyHash1, hashAfterFirstAdd)
 
 	hash2 := common.Hash{4, 5, 6}
 	store.AddProcessedBundles(2, []bundle.ExecutionInfo{wrapInfo(hash2)})
 
+	historyHash2 := updateHistoryHash(2, historyHash1, hash2, common.Hash{})
+
 	_, hashAfterSecondAdd := store.GetProcessedBundleHistoryHash()
 	require.NotEqual(hashAfterFirstAdd, hashAfterSecondAdd)
+	require.Equal(historyHash2, hashAfterSecondAdd)
 }
 
 func TestStore_ProcessedBundles_HashIsAffectedByHistory(t *testing.T) {
@@ -312,18 +317,6 @@ func TestStore_ProcessedBundles_StoredHashUsesXorForAddedAndDeletedHashes(t *tes
 	store, err := NewMemStore(t)
 	require.NoError(err)
 
-	// this test checks that the hash stored in the table for processed bundles
-	// is consistent with the expected hash computed by xoring the added and deleted
-	// hashes with the previous hash, and that the order of the added hashes does
-	// not affect the result.
-	xorForTest := func(a, b common.Hash) common.Hash {
-		var res common.Hash
-		for i := 0; i < len(res); i++ {
-			res[i] = a[i] ^ b[i]
-		}
-		return res
-	}
-
 	hash1 := common.Hash{1, 2, 3}
 	hash2 := common.Hash{4, 5, 6}
 	hash3 := common.Hash{7, 8, 9}
@@ -341,7 +334,7 @@ func TestStore_ProcessedBundles_StoredHashUsesXorForAddedAndDeletedHashes(t *tes
 	blockNum, bundleHistoryHash := store.GetProcessedBundleHistoryHash()
 	require.Equal(uint64(1), blockNum)
 
-	addedHash := xorForTest(hash1, hash2)
+	addedHash := xorHash(hash1, hash2)
 	newHash := updateHistoryHash(blockNum, initialHash, addedHash, common.Hash{})
 
 	require.Equal(newHash, bundleHistoryHash)
@@ -352,8 +345,8 @@ func TestStore_ProcessedBundles_StoredHashUsesXorForAddedAndDeletedHashes(t *tes
 		wrapInfo(hash3),
 	})
 
-	addedHahs := xorForTest(common.Hash{}, hash3)
-	deletedHash := xorForTest(hash1, hash2)
+	addedHahs := xorHash(common.Hash{}, hash3)
+	deletedHash := xorHash(hash1, hash2)
 	newHash = updateHistoryHash(newerBlockNum, bundleHistoryHash, addedHahs, deletedHash)
 	newerEncodedBlockNumber, updatedBundleHistoryHash := store.GetProcessedBundleHistoryHash()
 	require.Equal(newerBlockNum, newerEncodedBlockNumber)
@@ -462,8 +455,8 @@ func TestStore_AddProcessedBundles_LogsOnBatchPutNewEntryError(t *testing.T) {
 	injectedErr := errors.New("new entry put error")
 	batch.EXPECT().Put(gomock.Any(), gomock.Any()).Return(injectedErr)
 
-	table.EXPECT().NewBatch().Return(batch).AnyTimes()
-	table.EXPECT().Get(gomock.Any()).Return(nil, nil).AnyTimes()
+	table.EXPECT().NewBatch().Return(batch)
+	table.EXPECT().Get(gomock.Any()).Return(nil, nil)
 
 	expectCrit(log, "failed to update hash of processed bundles", "error", injectedErr)
 	// In production, a Crit log call causes the logger to exit the process.
@@ -478,17 +471,17 @@ func TestStore_AddProcessedBundles_LogsOnBatchWriteError(t *testing.T) {
 
 	batch := NewMockstoreBatch(ctrl)
 	injectedErr := errors.New("batch write error")
-	batch.EXPECT().Put(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	batch.EXPECT().Put(gomock.Any(), gomock.Any()).Return(nil)
 	batch.EXPECT().Write().Return(injectedErr)
 
-	table.EXPECT().NewBatch().Return(batch).AnyTimes()
-	table.EXPECT().Get(gomock.Any()).Return(nil, nil).AnyTimes()
+	table.EXPECT().NewBatch().Return(batch)
+	table.EXPECT().Get(gomock.Any()).Return(nil, nil)
 
-	expectCrit(log, "failed to create batch for processed bundles", "error", injectedErr)
+	expectCrit(log, "failed to write batch for updating processed bundles", "error", injectedErr)
 	// In production, a Crit log call causes the logger to exit the process.
 	// To prevent the test from exiting, the mock logger is configured to panic instead.
 	require.PanicsWithValue(t,
-		fmt.Sprintf("%v: %v", "failed to create batch for processed bundles", injectedErr),
+		fmt.Sprintf("%v: %v", "failed to write batch for updating processed bunídles", injectedErr),
 		func() { store.AddProcessedBundles(1, []bundle.ExecutionInfo{}) })
 }
 
@@ -506,7 +499,7 @@ func TestStore_GetProcessedBundleHistoryHash_LogsOnGetError(t *testing.T) {
 	_, store, table, log := storeTableLogMocks(t)
 
 	injectedErr := errors.New("get error")
-	table.EXPECT().Get(gomock.Any()).Return(nil, injectedErr).AnyTimes()
+	table.EXPECT().Get(gomock.Any()).Return(nil, injectedErr)
 
 	expectCrit(log, "failed to get hash of processed bundles", "error", injectedErr)
 	// In production, a Crit log call causes the logger to exit the process.
@@ -519,7 +512,7 @@ func TestStore_GetProcessedBundleHistoryHash_LogsOnGetError(t *testing.T) {
 func TestStore_GetProcessedBundleHistoryHash_LogsOnInvalidStateLength(t *testing.T) {
 	_, store, table, log := storeTableLogMocks(t)
 
-	table.EXPECT().Get(gomock.Any()).Return([]byte{1, 2, 3}, nil).AnyTimes()
+	table.EXPECT().Get(gomock.Any()).Return([]byte{1, 2, 3}, nil)
 	store.table.ProcessedBundles = table
 
 	expectCrit(log, "invalid state length for processed bundles", "length", 3)
