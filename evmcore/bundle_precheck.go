@@ -294,6 +294,20 @@ func (r *dryRunner) Run(tx *types.Transaction) bundle.TransactionResult {
 	return bundle.TransactionResultSuccessful
 }
 
+func (r *dryRunner) CreateInterTxSnapshot() int {
+	// This function is required by the TransactionRunner interface but is not
+	// actually used by the dryRunner, since it does not maintain any state that
+	// needs to be snapshotted. We return a dummy value here to satisfy the
+	// interface.
+	return 0
+}
+
+func (r *dryRunner) RevertToInterTxSnapshot(id int) {
+	// This function is required by the TransactionRunner interface but is not
+	// actually used by the dryRunner, since it does not maintain any state that
+	// needs to be reverted. We do nothing here to satisfy the interface.
+}
+
 // nonceTracker is keeping track of consumed nonces during the execution of a
 // bundle, recording the lowest required nonce per account.
 type nonceTracker struct {

@@ -381,7 +381,8 @@ func (r *transactionRunner) runTransactionBundle(
 	}
 
 	// Run the bundle and collect the processed transactions.
-	processedTransactions, status := RunBundle(ctxt, &txBundle.Layer, txIndex)
+	runner := bundleTransactionRunner{ctxt: ctxt, txOffset: txIndex}
+	processedTransactions, status := RunBundle(&runner, &txBundle.Layer)
 	for _, processedTx := range processedTransactions {
 		if processedTx.Receipt != nil {
 			processedBundle.Count++
@@ -397,22 +398,18 @@ func (r *transactionRunner) runTransactionBundle(
 // This is the canonical implementation of the bundle execution logic, which
 // defines the semantic of the execution flags.
 func RunBundle(
-	ctxt *runContext,
+	runner *bundleTransactionRunner,
 	bundle *bundle.BundleLayer,
-	txIndex int,
 ) ([]ProcessedTransaction, Status) {
-	runner := bundleTransactionRunner{ctxt: ctxt, txOffset: txIndex}
-	bundleCheckpoint := ctxt.statedb.InterTxSnapshot()
+	bundleCheckpoint := runner.CreateInterTxSnapshot()
 	var success bool
 	if bundle.Flags.IsOneOf() {
-		success = runOneOfBundle(ctxt, bundle, &runner)
+		success = runOneOfBundle(runner, bundle)
 	} else {
-		success = runAllOfBundle(ctxt, bundle, &runner)
+		success = runAllOfBundle(runner, bundle)
 	}
 	if !success {
-		if err := ctxt.statedb.RevertToInterTxSnapshot(bundleCheckpoint); err != nil {
-			log.Error("Failed to revert to checkpoint", "err", err)
-		}
+		runner.RevertToInterTxSnapshot(bundleCheckpoint)
 		return []ProcessedTransaction{}, StatusFailed
 	}
 	return runner.processedTransactions, StatusSuccessful
@@ -421,16 +418,15 @@ func RunBundle(
 // runAllOfBundle executes all transactions in the bundle and returns true if
 // all transactions are considered successful, false otherwise.
 func runAllOfBundle(
-	ctxt *runContext,
-	bundleLayer *bundle.BundleLayer,
 	runner *bundleTransactionRunner,
+	bundleLayer *bundle.BundleLayer,
 ) bool {
 	for _, unit := range bundleLayer.Units {
 		var result bundle.TransactionResult
 		if tx := unit.AsTransaction(); tx != nil {
 			result = runner.Run(tx.Tx)
 		} else {
-			txs, r := RunBundle(ctxt, unit.AsBundleLayer(), runner.txOffset)
+			txs, r := RunBundle(runner, unit.AsBundleLayer())
 			runner.processedTransactions = append(runner.processedTransactions, txs...)
 			for _, tx := range txs {
 				if tx.Receipt != nil {
@@ -456,16 +452,15 @@ func runAllOfBundle(
 // successful transaction. It returns true if at least one transaction is
 // considered successful, false otherwise.
 func runOneOfBundle(
-	ctxt *runContext,
-	bundleLayer *bundle.BundleLayer,
 	runner *bundleTransactionRunner,
+	bundleLayer *bundle.BundleLayer,
 ) bool {
 	for _, unit := range bundleLayer.Units {
 		var result bundle.TransactionResult
 		if tx := unit.AsTransaction(); tx != nil {
 			result = runner.Run(tx.Tx)
 		} else {
-			txs, r := RunBundle(ctxt, unit.AsBundleLayer(), runner.txOffset)
+			txs, r := RunBundle(runner, unit.AsBundleLayer())
 			runner.processedTransactions = append(runner.processedTransactions, txs...)
 			for _, tx := range txs {
 				if tx.Receipt != nil {
@@ -528,6 +523,14 @@ func (b *bundleTransactionRunner) Run(tx *types.Transaction) bundle.TransactionR
 	} else {
 		return bundle.TransactionResultSuccessful
 	}
+}
+
+func (b *bundleTransactionRunner) CreateInterTxSnapshot() int {
+	return b.ctxt.statedb.InterTxSnapshot()
+}
+
+func (b *bundleTransactionRunner) RevertToInterTxSnapshot(id int) {
+	b.ctxt.statedb.RevertToInterTxSnapshot(id)
 }
 
 // _evm is an interface to an EVM instance that can be used to run a single

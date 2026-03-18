@@ -56,6 +56,8 @@ const (
 // function to determine the overall success of the bundle execution.
 type TransactionRunner interface {
 	Run(tx *types.Transaction) TransactionResult
+	CreateInterTxSnapshot() int
+	RevertToInterTxSnapshot(id int)
 }
 
 // runAllOfBundle executes all transactions in the bundle and returns true if
