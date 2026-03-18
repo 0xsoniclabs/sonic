@@ -29,7 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/stretchr/testify/require"
-	gomock "go.uber.org/mock/gomock"
+	"go.uber.org/mock/gomock"
 )
 
 //go:generate mockgen -source=store_processed_bundles_test.go -destination=store_processed_bundles_mock.go -package=gossip
@@ -313,6 +313,16 @@ func TestStore_ProcessedBundles_HashIsAffectedByHistory(t *testing.T) {
 }
 
 func TestStore_ProcessedBundles_StoredHashUsesXorForAddedAndDeletedHashes(t *testing.T) {
+	// this test checks that the hash stored in the table for processed bundles
+	// is consistent with the expected hash computed. From the documentation:
+	//
+	// The hash of the processed bundle's history is computed as follows:
+	//  - initially, the hash is zero
+	//  - for every update, the hash is updated as follows:
+	//      addedExecPlanHash = Xor(<hashes of newly added execution plans>)
+	//      deletedExecPlanHash = Xor(<hashes of deleted execution plans>)
+	//      newHash = Keccak256(oldHash || addedExecPlanHash || deletedExecPlanHash || blockNum)
+
 	require := require.New(t)
 	store, err := NewMemStore(t)
 	require.NoError(err)
@@ -370,82 +380,6 @@ func TestStore_GetIndexKey_ReturnsExpectedKey(t *testing.T) {
 	binary.BigEndian.PutUint64(expectedKey[1:9], blockNum)
 	expectedKey = append(expectedKey, hash.Bytes()...)
 	require.Equal(expectedKey, getIndexKey(blockNum, hash))
-}
-
-func TestStore_AddProcessedBundles_LogsOnBatchPutError(t *testing.T) {
-	ctrl, store, table, log := storeTableLogMocks(t)
-
-	injectedErrEntry := errors.New("entry put error")
-	injectedErrIndex := errors.New("index put error")
-	batch := NewMockstoreBatch(ctrl)
-	batch.EXPECT().Put(gomock.Any(), gomock.Any()).Return(injectedErrEntry)
-	batch.EXPECT().Put(gomock.Any(), gomock.Any()).Return(injectedErrIndex)
-
-	table.EXPECT().NewBatch().Return(batch).AnyTimes()
-	table.EXPECT().Get(gomock.Any()).Return(nil, nil).AnyTimes()
-
-	compoundErr := errors.Join(injectedErrEntry, injectedErrIndex)
-	expectCrit(log, "failed to add processed bundle hash to batch", "error", compoundErr)
-
-	hash1 := common.Hash{1, 2, 3}
-	// In production, a Crit log call causes the logger to exit the process.
-	// To prevent the test from exiting, the mock logger is configured to panic instead.
-	require.PanicsWithValue(t,
-		fmt.Sprintf("%v: %v", "failed to add processed bundle hash to batch", compoundErr),
-		func() { store.AddProcessedBundles(1, []bundle.ExecutionInfo{wrapInfo(hash1)}) })
-}
-
-func TestStore_AddProcessedBundles_IgnoresKeysOfWrongLength(t *testing.T) {
-	// log mock is ignored because no log called should be triggered.
-	ctrl, store, table, _ := storeTableLogMocks(t)
-
-	// -- expects for usual behavior of adding a bundle
-	batch := NewMockstoreBatch(ctrl)
-	batch.EXPECT().Put(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
-	batch.EXPECT().Write().Return(nil)
-	table.EXPECT().NewBatch().Return(batch).AnyTimes()
-	table.EXPECT().Get(gomock.Any()).Return(nil, nil).AnyTimes()
-	// --
-
-	it := NewMockdbIterator(ctrl)
-	gomock.InOrder(
-		it.EXPECT().Next().Return(true),
-		// This is the key that will be ignored, since it does not have the correct length.
-		it.EXPECT().Key().Return([]byte{1, 2}),
-		it.EXPECT().Next().Return(false),
-	)
-
-	table.EXPECT().NewIterator(gomock.Any(), gomock.Any()).Return(it).AnyTimes()
-
-	store.AddProcessedBundles(bundle.MaxBlockRange+1, []bundle.ExecutionInfo{})
-}
-
-func TestStore_AddProcessedBundles_LogsOnBatchDeleteError(t *testing.T) {
-	ctrl, store, table, log := storeTableLogMocks(t)
-
-	injectedErrDeleteEntry := errors.New("entry delete error")
-	injectedErrDeleteIndex := errors.New("index delete error")
-	batch := NewMockstoreBatch(ctrl)
-	batch.EXPECT().Delete(gomock.Any()).Return(injectedErrDeleteEntry)
-	batch.EXPECT().Delete(gomock.Any()).Return(injectedErrDeleteIndex)
-
-	table.EXPECT().NewBatch().Return(batch).AnyTimes()
-	table.EXPECT().Get(gomock.Any()).Return(nil, nil).AnyTimes()
-
-	it := NewMockdbIterator(ctrl)
-	gomock.InOrder(
-		it.EXPECT().Next().Return(true),
-		it.EXPECT().Key().Return(getIndexKey(1, common.Hash{1, 2, 3})),
-		table.EXPECT().NewIterator(gomock.Any(), gomock.Any()).Return(it).AnyTimes(),
-	)
-
-	compoundErr := errors.Join(injectedErrDeleteEntry, injectedErrDeleteIndex)
-	expectCrit(log, "failed to delete old processed bundle hash", "error", compoundErr)
-	// In production, a Crit log call causes the logger to exit the process.
-	// To prevent the test from exiting, the mock logger is configured to panic instead.
-	require.PanicsWithValue(t,
-		fmt.Sprintf("%v: %v", "failed to delete old processed bundle hash", compoundErr),
-		func() { store.AddProcessedBundles(bundle.MaxBlockRange+1, []bundle.ExecutionInfo{}) })
 }
 
 func TestStore_AddProcessedBundles_LogsOnBatchPutNewEntryError(t *testing.T) {
@@ -556,6 +490,137 @@ func TestStore_xorHash_ReturnsExpectedResult(t *testing.T) {
 		require.Equal(expectedXor, c.expected)
 		require.Equal(c.expected, xorHash(c.hash1, c.hash2))
 	}
+}
+
+func TestStore_computeAddedHashes_ReturnsExpectedHash(t *testing.T) {
+	require := require.New(t)
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	hash1 := common.Hash{1, 2, 3}
+	hash2 := common.Hash{4, 5, 6}
+
+	executedBundles := []bundle.ExecutionInfo{
+		wrapInfo(hash1),
+		wrapInfo(hash2),
+	}
+
+	batch := NewMockstoreBatch(gomock.NewController(t))
+	batch.EXPECT().Put(gomock.Any(), gomock.Any()).Return(nil).Times(4) // 2 times per hash
+
+	addedHash := store.computeAddedHashes(1, executedBundles, batch)
+	expectedAddedHash := xorHash(hash1, hash2)
+	require.Equal(expectedAddedHash, addedHash)
+}
+
+func TestStore_computeAddedHashes_LogsOnBatchPutError(t *testing.T) {
+	ctrl, store, _, log := storeTableLogMocks(t)
+
+	injectedErrEntry := errors.New("entry put error")
+	injectedErrIndex := errors.New("index put error")
+	batch := NewMockstoreBatch(ctrl)
+	batch.EXPECT().Put(gomock.Any(), gomock.Any()).Return(injectedErrEntry)
+	batch.EXPECT().Put(gomock.Any(), gomock.Any()).Return(injectedErrIndex)
+
+	compoundErr := errors.Join(injectedErrEntry, injectedErrIndex)
+	expectCrit(log, "failed to add processed bundle hash to batch", "error", compoundErr)
+
+	hash1 := common.Hash{1, 2, 3}
+	// In production, a Crit log call causes the logger to exit the process.
+	// To prevent the test from exiting, the mock logger is configured to panic instead.
+	require.PanicsWithValue(t,
+		fmt.Sprintf("%v: %v", "failed to add processed bundle hash to batch", compoundErr),
+		func() {
+			store.computeAddedHashes(1, []bundle.ExecutionInfo{wrapInfo(hash1)}, batch)
+		})
+}
+
+func TestStore_computeDeletedHashes_ReturnsExpectedHash(t *testing.T) {
+	ctrl, store, table, _ := storeTableLogMocks(t)
+
+	hash1 := common.Hash{1, 2, 3}
+	hash2 := common.Hash{4, 5, 6}
+
+	it := NewMockdbIterator(ctrl)
+	batch := NewMockstoreBatch(ctrl)
+	gomock.InOrder(
+		table.EXPECT().NewIterator([]byte{'i'}, nil).Return(it),
+
+		it.EXPECT().Next().Return(true),
+		it.EXPECT().Key().Return(getIndexKey(1, hash1)),
+		batch.EXPECT().Delete(getIndexKey(1, hash1)).Return(nil),
+		batch.EXPECT().Delete(getEntryKey(hash1)).Return(nil),
+
+		it.EXPECT().Next().Return(true),
+		it.EXPECT().Key().Return(getIndexKey(1, hash2)),
+		batch.EXPECT().Delete(getIndexKey(1, hash2)).Return(nil),
+		batch.EXPECT().Delete(getEntryKey(hash2)).Return(nil),
+
+		it.EXPECT().Next().Return(false),
+	)
+
+	deletedHash := store.computeDeletedHashes(bundle.MaxBlockRange+1, batch)
+	expectedDeletedHash := xorHash(hash1, hash2)
+	require.Equal(t, expectedDeletedHash, deletedHash)
+}
+
+func TestStore_computeDeletedHashes_IgnoresKeysOfWrongLength(t *testing.T) {
+	// log mock is ignored because no log called should be triggered.
+	ctrl, store, table, _ := storeTableLogMocks(t)
+
+	it := NewMockdbIterator(ctrl)
+	gomock.InOrder(
+		it.EXPECT().Next().Return(true),
+		// This is the key that will be ignored, since it does not have the correct length.
+		it.EXPECT().Key().Return([]byte{1, 2}),
+		it.EXPECT().Next().Return(false),
+	)
+	table.EXPECT().NewIterator(gomock.Any(), gomock.Any()).Return(it)
+
+	store.computeDeletedHashes(bundle.MaxBlockRange+1, NewMockstoreBatch(ctrl))
+}
+
+func TestStore_computeDeletedHashes_LogsOnBatchDeleteError(t *testing.T) {
+	ctrl, store, table, log := storeTableLogMocks(t)
+
+	injectedErrDeleteEntry := errors.New("entry delete error")
+	injectedErrDeleteIndex := errors.New("index delete error")
+	batch := NewMockstoreBatch(ctrl)
+	batch.EXPECT().Delete(gomock.Any()).Return(injectedErrDeleteEntry)
+	batch.EXPECT().Delete(gomock.Any()).Return(injectedErrDeleteIndex)
+
+	it := NewMockdbIterator(ctrl)
+	gomock.InOrder(
+		it.EXPECT().Next().Return(true),
+		it.EXPECT().Key().Return(getIndexKey(1, common.Hash{1, 2, 3})),
+	)
+	table.EXPECT().NewIterator(gomock.Any(), gomock.Any()).Return(it)
+
+	compoundErr := errors.Join(injectedErrDeleteEntry, injectedErrDeleteIndex)
+	expectCrit(log, "failed to delete old processed bundle hash", "error", compoundErr)
+	// In production, a Crit log call causes the logger to exit the process.
+	// To prevent the test from exiting, the mock logger is configured to panic instead.
+	require.PanicsWithValue(t,
+		fmt.Sprintf("%v: %v", "failed to delete old processed bundle hash", compoundErr),
+		func() { store.computeDeletedHashes(bundle.MaxBlockRange+1, batch) })
+}
+
+func TestStore_computeNewBundleStateHash_ReturnsExpectedHash(t *testing.T) {
+	require := require.New(t)
+
+	oldHash := common.Hash{1, 2, 3}
+	addedHash := common.Hash{4, 5, 6}
+	deletedHash := common.Hash{7, 8, 9}
+	blockNum := uint64(123)
+
+	update := make([]byte, 3*32+8)
+	copy(update[:32], oldHash.Bytes())
+	copy(update[32:64], addedHash.Bytes())
+	copy(update[64:96], deletedHash.Bytes())
+	binary.BigEndian.PutUint64(update[96:], blockNum)
+	expectedHash := common.Hash(crypto.Keccak256(update))
+
+	require.Equal(expectedHash, computeNewBundleStateHash(oldHash, addedHash, deletedHash, blockNum))
 }
 
 // --- helper functions ---

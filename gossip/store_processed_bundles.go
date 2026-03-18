@@ -21,6 +21,7 @@ import (
 	"errors"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/Fantom-foundation/lachesis-base/kvdb"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 )
@@ -64,6 +65,36 @@ func (s *Store) AddProcessedBundles(blockNum uint64, executedBundles []bundle.Ex
 	// Register and index new hashes.
 	table := s.table.ProcessedBundles
 	batch := table.NewBatch()
+	addedHash := s.computeAddedHashes(blockNum, executedBundles, batch)
+
+	// Delete out-dated hashes.
+	deletedHash := s.computeDeletedHashes(blockNum, batch)
+
+	// Update the state hash.
+	_, oldHash := s.GetProcessedBundleHistoryHash()
+
+	newHash := computeNewBundleStateHash(oldHash, addedHash, deletedHash, blockNum)
+
+	err := batch.Put(nil, append(
+		binary.BigEndian.AppendUint64(nil, blockNum),
+		newHash.Bytes()...,
+	))
+	if err != nil {
+		s.Log.Crit("failed to update hash of processed bundles", "error", err)
+	}
+
+	// Write all changes to the store.
+	if err := batch.Write(); err != nil {
+		s.Log.Crit("failed to write batch for updating processed bundles", "error", err)
+	}
+}
+
+func (s *Store) computeAddedHashes(
+	blockNum uint64,
+	executedBundles []bundle.ExecutionInfo,
+	batch kvdb.Batch,
+) common.Hash {
+
 	addedHash := common.Hash{}
 	for _, info := range executedBundles {
 		hash := info.ExecutionPlanHash
@@ -82,12 +113,14 @@ func (s *Store) AddProcessedBundles(blockNum uint64, executedBundles []bundle.Ex
 		}
 		addedHash = xorHash(addedHash, hash)
 	}
+	return addedHash
+}
 
-	// Delete out-dated hashes.
+func (s *Store) computeDeletedHashes(blockNum uint64, batch kvdb.Batch) common.Hash {
 	deletedHash := common.Hash{}
 	if blockNum > bundle.MaxBlockRange {
 		oldestValidBlockNum := blockNum - bundle.MaxBlockRange + 1
-		it := table.NewIterator([]byte{'i'}, nil)
+		it := s.table.ProcessedBundles.NewIterator([]byte{'i'}, nil)
 		for it.Next() {
 			key := it.Key()
 			// size of the key used to index processed bundle is:
@@ -112,10 +145,15 @@ func (s *Store) AddProcessedBundles(blockNum uint64, executedBundles []bundle.Ex
 			deletedHash = xorHash(deletedHash, hash)
 		}
 	}
+	return deletedHash
+}
 
-	// Update the state hash.
-	_, oldHash := s.GetProcessedBundleHistoryHash()
-
+func computeNewBundleStateHash(
+	oldHash common.Hash,
+	addedPlans common.Hash,
+	removedPlans common.Hash,
+	blockNumber uint64,
+) common.Hash {
 	// size of the update buffer is:
 	//  - 32 bytes for the previous hash
 	//  - 32 bytes for the added hashes
@@ -123,23 +161,12 @@ func (s *Store) AddProcessedBundles(blockNum uint64, executedBundles []bundle.Ex
 	//  - 8 bytes for the block number
 	update := make([]byte, 3*32+8)
 	copy(update[:32], oldHash.Bytes())
-	copy(update[32:64], addedHash.Bytes())
-	copy(update[64:96], deletedHash.Bytes())
-	binary.BigEndian.PutUint64(update[96:], blockNum)
+	copy(update[32:64], addedPlans.Bytes())
+	copy(update[64:96], removedPlans.Bytes())
+	binary.BigEndian.PutUint64(update[96:], blockNumber)
 	newHash := common.Hash(crypto.Keccak256(update))
 
-	err := batch.Put(nil, append(
-		binary.BigEndian.AppendUint64(nil, blockNum),
-		newHash.Bytes()...,
-	))
-	if err != nil {
-		s.Log.Crit("failed to update hash of processed bundles", "error", err)
-	}
-
-	// Write all changes to the store.
-	if err := batch.Write(); err != nil {
-		s.Log.Crit("failed to write batch for updating processed bundles", "error", err)
-	}
+	return newHash
 }
 
 // HasBundleRecentlyBeenProcessed checks if a bundle execution plan with the
