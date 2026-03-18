@@ -1613,7 +1613,7 @@ func (s *PublicBlockChainAPI) SimulateV1(ctx context.Context, opts simOpts, bloc
 		blockNrOrHash = &n
 	}
 
-	state, base, err := s.b.StateAndBlockByNumberOrHash(ctx, *blockNrOrHash)
+	state, base, err := s.b.StateAndHeaderByNumberOrHash(ctx, *blockNrOrHash)
 	if state == nil || err != nil {
 		return nil, err
 	}
@@ -1629,7 +1629,7 @@ func (s *PublicBlockChainAPI) SimulateV1(ctx context.Context, opts simOpts, bloc
 	sim := &simulator{
 		b:              s.b,
 		state:          state,
-		base:           base.Header(),
+		base:           base,
 		chainConfig:    chainConfig,
 		gp:             new(core.GasPool).AddGas(gasCap),
 		traceTransfers: opts.TraceTransfers,

@@ -158,7 +158,7 @@ func newSimulateV1Helper(t *testing.T) *simulateV1Helper {
 	baseBlock := newSimTestBase()
 	blkNr := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
 
-	mockBackend.EXPECT().StateAndBlockByNumberOrHash(gomock.Any(), blkNr).Return(mockState, baseBlock, nil)
+	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(gomock.Any(), blkNr).Return(mockState, &baseBlock.EvmHeader, nil)
 	mockBackend.EXPECT().RPCGasCap().Return(uint64(10_000_000))
 	mockBackend.EXPECT().ChainConfig(idx.Block(10)).Return(newSimTestChainConfig())
 	mockBackend.EXPECT().RPCEVMTimeout().Return(time.Duration(0))
