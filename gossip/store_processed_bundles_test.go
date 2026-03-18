@@ -505,6 +505,41 @@ func TestStore_GetProcessedBundleHistoryHash_LogsOnInvalidStateLength(t *testing
 		func() { store.GetProcessedBundleHistoryHash() })
 }
 
+func TestStore_xorHash_ReturnsExpectedResult(t *testing.T) {
+	require := require.New(t)
+
+	xorForTest := func(a, b common.Hash) common.Hash {
+		var res common.Hash
+		for i := 0; i < len(res); i++ {
+			res[i] = a[i] ^ b[i]
+		}
+		return res
+	}
+
+	cases := []struct {
+		hash1    common.Hash
+		hash2    common.Hash
+		expected common.Hash
+	}{
+		{common.Hash{0, 0, 0}, common.Hash{0, 0, 0}, common.Hash{0, 0, 0}},
+		{common.Hash{0, 0, 0}, common.Hash{7, 8, 9}, common.Hash{7, 8, 9}},
+		{common.Hash{10, 11, 12}, common.Hash{0, 0, 0}, common.Hash{10, 11, 12}},
+		{common.Hash{1, 1, 1}, common.Hash{1, 1, 1}, common.Hash{0, 0, 0}},
+		{common.Hash{0xff, 0xff, 0xff}, common.Hash{0x1, 0x2, 0x3}, common.Hash{0xfe, 0xfd, 0xfc}},
+		{
+			common.Hash{0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31},
+			common.Hash{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
+			common.Hash{1, 0, 3, 2, 5, 4, 6, 9, 8, 11, 10, 13, 12, 15, 14, 17, 16, 19, 18, 21, 20, 23, 22, 25, 24, 27, 26, 29, 28, 31, 30, 1},
+		},
+	}
+
+	for _, c := range cases {
+		expectedXor := xorForTest(c.hash1, c.hash2)
+		require.Equal(expectedXor, c.expected)
+		require.Equal(c.expected, xorHash(c.hash1, c.hash2))
+	}
+}
+
 // --- helper functions ---
 
 // return execution info with the given hash, for block number 1 and position 0.
