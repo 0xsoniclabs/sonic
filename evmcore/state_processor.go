@@ -378,9 +378,7 @@ func (r *transactionRunner) runTransactionBundle(
 
 	// Run the bundle and collect the processed transactions.
 	runner := bundleTransactionRunner{ctxt: ctxt, legacyTxOffset: legacyTxOffset, trueTxOffset: trueTxOffset}
-	bundleCheckpoint := ctxt.statedb.InterTxSnapshot()
 	if success := bundle.RunBundle(txBundle, &runner); !success {
-		ctxt.statedb.RevertToInterTxSnapshot(bundleCheckpoint)
 		return []ProcessedTransaction{}, processedBundle, core_types.TransactionResultFailed
 	}
 	for _, processedTx := range runner.processedTransactions {
@@ -420,6 +418,14 @@ func (b *bundleTransactionRunner) Run(tx *types.Transaction) core_types.Transact
 	} else {
 		return core_types.TransactionResultSuccessful
 	}
+}
+
+func (b *bundleTransactionRunner) CreateSnapshot() int {
+	return b.ctxt.statedb.InterTxSnapshot()
+}
+
+func (b *bundleTransactionRunner) RevertToSnapshot(id int) {
+	b.ctxt.statedb.RevertToInterTxSnapshot(id)
 }
 
 // _evm is an interface to an EVM instance that can be used to run a single
