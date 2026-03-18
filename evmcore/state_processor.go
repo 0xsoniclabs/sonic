@@ -382,107 +382,21 @@ func (r *transactionRunner) runTransactionBundle(
 
 	// Run the bundle and collect the processed transactions.
 	runner := bundleTransactionRunner{ctxt: ctxt, txOffset: txIndex}
-	status := RunBundle(&runner, &txBundle.Layer)
+	result := bundle.RunBundle(&txBundle.Layer, &runner)
 	for _, processedTx := range runner.processedTransactions {
 		if processedTx.Receipt != nil {
 			processedBundle.Count++
 		}
 	}
-	return runner.processedTransactions, processedBundle, status
-}
-
-// RunBundle executes the transactions in the bundle using the provided
-// TransactionRunner. It returns true if the bundle execution is considered
-// successful, and false otherwise.
-//
-// This is the canonical implementation of the bundle execution logic, which
-// defines the semantic of the execution flags.
-func RunBundle(
-	runner bundle.TransactionRunner,
-	bundle *bundle.BundleLayer,
-) Status {
-	bundleCheckpoint := runner.CreateInterTxSnapshot()
-	txCheckpoint := runner.CreateTxSnapshot()
-	var success bool
-	if bundle.Flags.IsOneOf() {
-		success = runOneOfBundle(runner, bundle)
+	var status Status
+	if result == bundle.TransactionResultSuccessful {
+		status = StatusSuccessful
+	} else if result == bundle.TransactionResultFailed {
+		status = StatusFailed
 	} else {
-		success = runAllOfBundle(runner, bundle)
+		status = StatusSkipped
 	}
-	if !success {
-		runner.RevertToInterTxSnapshot(bundleCheckpoint)
-		runner.RevertToTxSnapshot(txCheckpoint)
-		return StatusFailed
-	}
-	return StatusSuccessful
-}
-
-// runAllOfBundle executes all transactions in the bundle and returns true if
-// all transactions are considered successful, false otherwise.
-func runAllOfBundle(
-	runner bundle.TransactionRunner,
-	bundleLayer *bundle.BundleLayer,
-) bool {
-	for _, unit := range bundleLayer.Units {
-		var result bundle.TransactionResult
-		if tx := unit.AsTransaction(); tx != nil {
-			result = runner.Run(tx.Tx)
-		} else {
-			r := RunBundle(runner, unit.AsBundleLayer())
-			if r == StatusSuccessful {
-				result = bundle.TransactionResultSuccessful
-			} else if r == StatusFailed {
-				result = bundle.TransactionResultFailed
-			} else {
-				result = bundle.TransactionResultInvalid
-			}
-		}
-		if !isTolerated(result, bundleLayer.Flags) {
-			return false
-		}
-	}
-	return true
-}
-
-// runOneOfBundle executes the transactions in the bundle and stops at the first
-// successful transaction. It returns true if at least one transaction is
-// considered successful, false otherwise.
-func runOneOfBundle(
-	runner bundle.TransactionRunner,
-	bundleLayer *bundle.BundleLayer,
-) bool {
-	for _, unit := range bundleLayer.Units {
-		var result bundle.TransactionResult
-		if tx := unit.AsTransaction(); tx != nil {
-			result = runner.Run(tx.Tx)
-		} else {
-			r := RunBundle(runner, unit.AsBundleLayer())
-			if r == StatusSuccessful {
-				result = bundle.TransactionResultSuccessful
-			} else if r == StatusFailed {
-				result = bundle.TransactionResultFailed
-			} else {
-				result = bundle.TransactionResultInvalid
-			}
-		}
-		if isTolerated(result, bundleLayer.Flags) {
-			return true
-		}
-	}
-	return false
-}
-
-func isTolerated(
-	result bundle.TransactionResult,
-	flags bundle.ExecutionFlag,
-) bool {
-	if result == bundle.TransactionResultInvalid {
-		return flags.TolerateInvalid()
-	}
-	if result == bundle.TransactionResultFailed {
-		return flags.TolerateFailed()
-	}
-	return result == bundle.TransactionResultSuccessful
+	return runner.processedTransactions, processedBundle, status
 }
 
 // bundleTransactionRunner is an adapter implementing the bundle.TransactionRunner

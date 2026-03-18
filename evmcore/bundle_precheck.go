@@ -180,7 +180,7 @@ func checkForNonceConflicts(
 	}
 
 	// If this execution failed, the bundle is permanently blocked.
-	if success := bundle.RunBundle(&txBundle.Layer, runner); !success {
+	if result := bundle.RunBundle(&txBundle.Layer, runner); result != bundle.TransactionResultSuccessful {
 		return BundleStatePermanentlyBlocked
 	}
 
@@ -266,7 +266,7 @@ func (r *dryRunner) Run(tx *types.Transaction) bundle.TransactionResult {
 		}
 		acceptedBackup := maps.Clone(r.acceptedSender)
 		backup := r.nonceTracker.backup()
-		if bundle.RunBundle(&txBundle.Layer, r) {
+		if bundle.RunBundle(&txBundle.Layer, r) == bundle.TransactionResultSuccessful {
 			return bundle.TransactionResultSuccessful
 		}
 		r.nonceTracker.restore(backup)

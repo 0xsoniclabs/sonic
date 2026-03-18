@@ -31,11 +31,21 @@ import (
 func RunBundle(
 	bundle *BundleLayer,
 	runner TransactionRunner,
-) bool {
+) TransactionResult {
+	bundleCheckpoint := runner.CreateInterTxSnapshot()
+	txCheckpoint := runner.CreateTxSnapshot()
+	var success bool
 	if bundle.Flags.IsOneOf() {
-		return runOneOfBundle(bundle, runner)
+		success = runOneOfBundle(bundle, runner)
+	} else {
+		success = runAllOfBundle(bundle, runner)
 	}
-	return runAllOfBundle(bundle, runner)
+	if !success {
+		runner.RevertToInterTxSnapshot(bundleCheckpoint)
+		runner.RevertToTxSnapshot(txCheckpoint)
+		return TransactionResultFailed
+	}
+	return TransactionResultSuccessful
 }
 
 // TransactionResult represents the result of executing a transaction within a
@@ -65,22 +75,17 @@ type TransactionRunner interface {
 // runAllOfBundle executes all transactions in the bundle and returns true if
 // all transactions are considered successful, false otherwise.
 func runAllOfBundle(
-	bundle *BundleLayer,
+	bundleLayer *BundleLayer,
 	runner TransactionRunner,
 ) bool {
-	for _, unit := range bundle.Units {
+	for _, unit := range bundleLayer.Units {
 		var result TransactionResult
 		if tx := unit.AsTransaction(); tx != nil {
 			result = runner.Run(tx.Tx)
 		} else {
-			r := RunBundle(unit.AsBundleLayer(), runner)
-			if r {
-				result = TransactionResultSuccessful
-			} else {
-				result = TransactionResultFailed
-			}
+			result = RunBundle(unit.AsBundleLayer(), runner)
 		}
-		if !isTolerated(result, bundle.Flags) {
+		if !isTolerated(result, bundleLayer.Flags) {
 			return false
 		}
 	}
@@ -91,22 +96,17 @@ func runAllOfBundle(
 // successful transaction. It returns true if at least one transaction is
 // considered successful, false otherwise.
 func runOneOfBundle(
-	bundle *BundleLayer,
+	bundleLayer *BundleLayer,
 	runner TransactionRunner,
 ) bool {
-	for _, unit := range bundle.Units {
+	for _, unit := range bundleLayer.Units {
 		var result TransactionResult
 		if tx := unit.AsTransaction(); tx != nil {
 			result = runner.Run(tx.Tx)
 		} else {
-			r := RunBundle(unit.AsBundleLayer(), runner)
-			if r {
-				result = TransactionResultSuccessful
-			} else {
-				result = TransactionResultFailed
-			}
+			result = RunBundle(unit.AsBundleLayer(), runner)
 		}
-		if isTolerated(result, bundle.Flags) {
+		if isTolerated(result, bundleLayer.Flags) {
 			return true
 		}
 	}
