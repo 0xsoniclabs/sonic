@@ -254,19 +254,10 @@ func (r *dryRunner) Run(tx *types.Transaction) core_types.TransactionResult {
 			return core_types.TransactionResultInvalid
 		}
 
-		snapshot := r.CreateSnapshot()
-		acceptedBackup := maps.Clone(r.acceptedSender)
-		nonceBackup := r.nonceTracker.backup()
-		r.undo = append(r.undo, func() {
-			r.nonceTracker.restore(nonceBackup)
-			r.acceptedSender = acceptedBackup
-		})
-
 		if bundle.RunBundle(txBundle, r) {
 			return core_types.TransactionResultSuccessful
 		}
 
-		r.RevertToSnapshot(snapshot)
 		return core_types.TransactionResultFailed
 	}
 
@@ -291,7 +282,13 @@ func (r *dryRunner) Run(tx *types.Transaction) core_types.TransactionResult {
 }
 
 func (r *dryRunner) CreateSnapshot() int {
-	return len(r.undo)
+	acceptedBackup := maps.Clone(r.acceptedSender)
+	nonceBackup := r.nonceTracker.backup()
+	r.undo = append(r.undo, func() {
+		r.nonceTracker.restore(nonceBackup)
+		r.acceptedSender = acceptedBackup
+	})
+	return len(r.undo) - 1
 }
 
 func (r *dryRunner) RevertToSnapshot(id int) {
