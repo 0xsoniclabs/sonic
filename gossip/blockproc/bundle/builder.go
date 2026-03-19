@@ -82,8 +82,6 @@ func Step(key *ecdsa.PrivateKey, tx any) BundleStep {
 	switch tx := tx.(type) {
 	case types.TxData:
 		return BundleStep{key: key, tx: tx}
-	case types.LegacyTx:
-		return BundleStep{key: key, tx: &tx}
 	case types.AccessListTx:
 		return BundleStep{key: key, tx: &tx}
 	case types.DynamicFeeTx:
@@ -201,6 +199,10 @@ func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 		case *types.DynamicFeeTx:
 			data.AccessList = append(data.AccessList, marker)
 		case *types.AccessListTx:
+			data.AccessList = append(data.AccessList, marker)
+		case *types.BlobTx:
+			data.AccessList = append(data.AccessList, marker)
+		case *types.SetCodeTx:
 			data.AccessList = append(data.AccessList, marker)
 		default:
 			panic("unsupported TxData type for marker annotation")
