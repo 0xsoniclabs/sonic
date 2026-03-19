@@ -31,10 +31,10 @@ import (
 // generic format is the NewBundle function, enabling the creation of an
 // envelope transaction carrying a bundle as follows:
 //
-//   envelope := NewBuilder().
-// 		WithFlags(EF_AllOf|EF_TolerateFailed).
-// 		Earliest(12).
-// 		Latest(15).
+//   envelope := NewBuilder(signer).
+// 		SetFlags(EF_AllOf|EF_TolerateFailed).
+// 		SetEarliest(12).
+// 		SetLatest(15).
 // 		With(
 // 			Step(key, &types.AccessListTx{
 // 				Nonce: 1,
@@ -43,13 +43,13 @@ import (
 // 				Nonce: 2,
 // 			}),
 // 		).
-// 		WithChainId(big.NewInt(125)).
 //  	Build()
 //
 // The resulting envelope carries a valid bundle of signed transactions.
 // For convenience, further abbreviations are supported. For example:
 //
 //    envelopeA := AllOf(
+// 			signer,
 // 			Step(key, &types.AccessListTx{
 // 				Nonce: 1,
 // 			}),
@@ -61,6 +61,7 @@ import (
 // Also nested bundles are supported by using
 //
 //    envelopeB := OneOf(
+// 			signer,
 // 			Step(key, envelopeA),
 // 			Step(key, AllOf(
 // 				Step(key, &types.AccessListTx{
