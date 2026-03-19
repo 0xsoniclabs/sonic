@@ -415,7 +415,7 @@ func TestStore_AddProcessedBundles_LogsOnBatchWriteError(t *testing.T) {
 	// In production, a Crit log call causes the logger to exit the process.
 	// To prevent the test from exiting, the mock logger is configured to panic instead.
 	require.PanicsWithValue(t,
-		fmt.Sprintf("%v: %v", "failed to write batch for updating processed bunídles", injectedErr),
+		fmt.Sprintf("%v: %v", "failed to write batch for updating processed bundles", injectedErr),
 		func() { store.AddProcessedBundles(1, []bundle.ExecutionInfo{}) })
 }
 
