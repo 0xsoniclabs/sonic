@@ -36,7 +36,7 @@ func TestBundleBuilder_Build_AllowsToBuildBundleAsSpecified(t *testing.T) {
 	keyE, err := crypto.GenerateKey()
 	require.NoError(t, err)
 
-	tx := NewBuilder(testChainID).
+	tx := NewBuilder(signer).
 		WithFlags(EF_AllOf|EF_TolerateFailed).
 		Earliest(12).
 		Latest(15).
@@ -48,7 +48,7 @@ func TestBundleBuilder_Build_AllowsToBuildBundleAsSpecified(t *testing.T) {
 				Nonce: 2,
 			}),
 		).
-		WithEnvelopeSigner(keyE).
+		WithEnvelopeSenderKey(keyE).
 		Build()
 
 	bundle, plan, err := ValidateEnvelope(signer, tx)
@@ -104,7 +104,7 @@ func TestBundleBuilder_Step_PanicsOnInvalidInput(t *testing.T) {
 
 func TestBundleBuilder_AllOf_BuildEmptyBundle(t *testing.T) {
 	signer := types.LatestSignerForChainID(testChainID)
-	tx := AllOf(testChainID)
+	tx := AllOf(signer)
 
 	_, _, err := ValidateEnvelope(signer, tx)
 	require.NoError(t, err)
@@ -116,7 +116,7 @@ func TestBundleBuilder_AllOf_BuildBundle(t *testing.T) {
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
 
-	tx := AllOf(testChainID,
+	tx := AllOf(signer,
 		Step(key, &types.AccessListTx{
 			Nonce: 0,
 		}),
@@ -138,7 +138,7 @@ func TestBundleBuilder_OneOf_BuildBundle(t *testing.T) {
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
 
-	tx := OneOf(testChainID,
+	tx := OneOf(signer,
 		Step(key, &types.AccessListTx{
 			Nonce: 0,
 		}),
@@ -156,7 +156,7 @@ func TestBundleBuilder_OneOf_BuildBundle(t *testing.T) {
 
 func TestBundleBuilder_OneOf_EmptyBundle(t *testing.T) {
 	signer := types.LatestSignerForChainID(testChainID)
-	tx := OneOf(testChainID)
+	tx := OneOf(signer)
 
 	_, _, err := ValidateEnvelope(signer, tx)
 	require.NoError(t, err)
@@ -168,7 +168,7 @@ func TestBundleBuilder_Builder_NewNestedBundle(t *testing.T) {
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
 
-	inner := OneOf(testChainID,
+	inner := OneOf(signer,
 		Step(key, &types.AccessListTx{
 			Nonce: 0,
 		}),
@@ -180,7 +180,7 @@ func TestBundleBuilder_Builder_NewNestedBundle(t *testing.T) {
 		}),
 	)
 
-	outer := AllOf(testChainID,
+	outer := AllOf(signer,
 		Step(key, &types.AccessListTx{
 			Nonce: 2,
 		}),
@@ -198,12 +198,12 @@ func TestBundleBuilder_Builder_NewNestedBundle(t *testing.T) {
 
 	// all combined in one
 
-	combined := AllOf(testChainID,
-		Step(key, OneOf(testChainID,
+	combined := AllOf(signer,
+		Step(key, OneOf(signer,
 			Step(key, &types.AccessListTx{}),
 			Step(key, &types.DynamicFeeTx{}),
 		)),
-		Step(key, AllOf(testChainID,
+		Step(key, AllOf(signer,
 			Step(key, &types.AccessListTx{}),
 		)),
 	)

@@ -42,7 +42,9 @@ import (
 // 			Step(key, &types.AccessListTx{
 // 				Nonce: 2,
 // 			}),
-// 		).Build()
+// 		).
+// 		WithChainId(big.NewInt(125)).
+//  	Build()
 //
 // The resulting envelope carries a valid bundle of signed transactions.
 // For convenience, further abbreviations are supported. For example:
@@ -113,12 +115,12 @@ type BundleStep struct {
 }
 
 // NewBuilder creates a new bundle builder to create a custom bundle.
-func NewBuilder(chainId *big.Int) *builder {
-	return &builder{chainId: chainId}
+func NewBuilder(signer types.Signer) *builder {
+	return &builder{signer: signer}
 }
 
 type builder struct {
-	chainId     *big.Int
+	signer      types.Signer
 	flags       *ExecutionFlags
 	earliest    *uint64
 	latest      *uint64
@@ -146,7 +148,7 @@ func (b *builder) With(steps ...BundleStep) *builder {
 	return b
 }
 
-func (b *builder) WithEnvelopeSigner(key *ecdsa.PrivateKey) *builder {
+func (b *builder) WithEnvelopeSenderKey(key *ecdsa.PrivateKey) *builder {
 	b.envelopeKey = key
 	return b
 }
@@ -168,12 +170,12 @@ func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 		latest = *b.latest
 	}
 
-	if b.chainId == nil {
-		b.chainId = big.NewInt(1)
+	signer := b.signer
+	if signer == nil {
+		signer = types.LatestSignerForChainID(big.NewInt(1))
 	}
 
 	// Create an Execution Plan for the bundle.
-	signer := types.LatestSignerForChainID(b.chainId)
 
 	plan := ExecutionPlan{
 		Steps:    make([]ExecutionStep, len(b.steps)),
@@ -253,12 +255,12 @@ func (b *builder) Build() *types.Transaction {
 
 // --- Utility Wrappers ---
 
-func AllOf(chainId *big.Int, steps ...BundleStep) *types.Transaction {
-	return NewBuilder(chainId).WithFlags(EF_AllOf).With(steps...).Build()
+func AllOf(signer types.Signer, steps ...BundleStep) *types.Transaction {
+	return NewBuilder(signer).WithFlags(EF_AllOf).With(steps...).Build()
 }
 
-func OneOf(chainId *big.Int, steps ...BundleStep) *types.Transaction {
-	return NewBuilder(chainId).WithFlags(EF_OneOf).With(steps...).Build()
+func OneOf(signer types.Signer, steps ...BundleStep) *types.Transaction {
+	return NewBuilder(signer).WithFlags(EF_OneOf).With(steps...).Build()
 }
 
 // --- implementation details ---
