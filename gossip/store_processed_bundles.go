@@ -65,7 +65,7 @@ func (s *Store) AddProcessedBundles(blockNum uint64, executedBundles []bundle.Ex
 	// Register and index new hashes.
 	table := s.table.ProcessedBundles
 	batch := table.NewBatch()
-	addedHash := s.addNewEntry(blockNum, executedBundles, batch)
+	addedHash := s.addNewBundles(blockNum, executedBundles, batch)
 
 	// Delete outdated hashes.
 	deletedHash := s.deleteOutdatedEntries(blockNum, batch)
@@ -89,7 +89,9 @@ func (s *Store) AddProcessedBundles(blockNum uint64, executedBundles []bundle.Ex
 	}
 }
 
-func (s *Store) addNewEntry(
+// addNewBundles adds the given bundle execution information to the store, and returns
+// the XOR of the hashes of the added bundles to update the history hash.
+func (s *Store) addNewBundles(
 	blockNum uint64,
 	executedBundles []bundle.ExecutionInfo,
 	batch kvdb.Batch,
@@ -116,6 +118,9 @@ func (s *Store) addNewEntry(
 	return addedHash
 }
 
+// deleteOutdatedEntries deletes the entries of processed bundles that got p
+// rocessed too far in the past, and returns the XOR of their hashes to update the
+// history hash.
 func (s *Store) deleteOutdatedEntries(blockNum uint64, batch kvdb.Batch) common.Hash {
 	deletedHash := common.Hash{}
 	if blockNum > bundle.MaxBlockRange {
@@ -148,6 +153,12 @@ func (s *Store) deleteOutdatedEntries(blockNum uint64, batch kvdb.Batch) common.
 	return deletedHash
 }
 
+// computeNewBundleStateHash computes the new hash of the processed bundles history
+// based on the previous hash, the added and deleted execution plan hashes, and
+// the block number of the update.
+//
+// This hash is used to verify than clients remain aligned on their bundle
+// processing history
 func computeNewBundleStateHash(
 	oldHash common.Hash,
 	addedPlans common.Hash,

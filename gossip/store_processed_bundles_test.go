@@ -508,7 +508,7 @@ func TestStore_addNewEntry_ReturnsExpectedHash(t *testing.T) {
 	batch := NewMockstoreBatch(gomock.NewController(t))
 	batch.EXPECT().Put(gomock.Any(), gomock.Any()).Return(nil).Times(4) // 2 times per hash
 
-	addedHash := store.addNewEntry(1, executedBundles, batch)
+	addedHash := store.addNewBundles(1, executedBundles, batch)
 	expectedAddedHash := xorHash(hash1, hash2)
 	require.Equal(expectedAddedHash, addedHash)
 }
@@ -531,7 +531,7 @@ func TestStore_addNewEntry_LogsOnBatchPutError(t *testing.T) {
 	require.PanicsWithValue(t,
 		fmt.Sprintf("%v: %v", "failed to add processed bundle hash to batch", compoundErr),
 		func() {
-			store.addNewEntry(1, []bundle.ExecutionInfo{wrapInfo(hash1)}, batch)
+			store.addNewBundles(1, []bundle.ExecutionInfo{wrapInfo(hash1)}, batch)
 		})
 }
 
