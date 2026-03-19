@@ -92,6 +92,16 @@ func Step(key *ecdsa.PrivateKey, tx any) BundleStep {
 	case types.SetCodeTx:
 		return BundleStep{key: key, tx: &tx}
 	case *types.Transaction:
+
+		if tx.Type() != types.AccessListTxType &&
+			tx.Type() != types.LegacyTxType {
+			// this code path is used to nest bundles, if
+			// you need any other transaction type, please add it
+			//
+			// not doing this check will lead to data loss
+			panic(" unsupported Tx type for Step. Only AccessListTx and LegacyTx are supported")
+		}
+
 		return Step(key, &types.AccessListTx{
 			ChainID:    tx.ChainId(),
 			Nonce:      tx.Nonce(),

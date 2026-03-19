@@ -17,6 +17,7 @@
 package bundle
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/core/types"
@@ -76,12 +77,10 @@ func TestBundleBuilder_Build_AllowsToBuildBundleAsSpecified(t *testing.T) {
 
 func TestBundleBuilder_Step_AcceptsVariousInputTypes(t *testing.T) {
 	inputs := []any{
-		types.LegacyTx{},
 		types.AccessListTx{},
 		types.DynamicFeeTx{},
 		types.BlobTx{},
 		types.SetCodeTx{},
-		&types.LegacyTx{},
 		&types.AccessListTx{},
 		&types.DynamicFeeTx{},
 		&types.BlobTx{},
@@ -92,6 +91,25 @@ func TestBundleBuilder_Step_AcceptsVariousInputTypes(t *testing.T) {
 	for _, input := range inputs {
 		require.NotPanics(t, func() {
 			Step(nil, input)
+		})
+	}
+}
+
+func TestBundleBuilder_Panics_WhenNestingUnsupportedTxTypes(t *testing.T) {
+
+	cases := []types.TxData{
+		&types.DynamicFeeTx{},
+		&types.BlobTx{},
+		&types.SetCodeTx{},
+	}
+
+	for _, txData := range cases {
+		tx := types.NewTx(txData)
+		t.Run(fmt.Sprintf("TxType%d", tx.Type()), func(t *testing.T) {
+
+			require.Panics(t, func() {
+				Step(nil, tx)
+			}, "unsupported Tx type for Step. Only AccessListTx and LegacyTx are supported")
 		})
 	}
 }
