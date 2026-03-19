@@ -37,7 +37,7 @@ func TestBundleBuilder_Build_AllowsToBuildBundleAsSpecified(t *testing.T) {
 	require.NoError(t, err)
 
 	tx := NewBuilder(signer).
-		WithFlags(EF_AllOf|EF_TolerateFailed).
+		SetFlags(EF_AllOf|EF_TolerateFailed).
 		Earliest(12).
 		Latest(15).
 		With(

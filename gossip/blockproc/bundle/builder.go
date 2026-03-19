@@ -128,7 +128,7 @@ type builder struct {
 	envelopeKey *ecdsa.PrivateKey
 }
 
-func (b *builder) WithFlags(flags ExecutionFlags) *builder {
+func (b *builder) SetFlags(flags ExecutionFlags) *builder {
 	b.flags = &flags
 	return b
 }
@@ -256,11 +256,11 @@ func (b *builder) Build() *types.Transaction {
 // --- Utility Wrappers ---
 
 func AllOf(signer types.Signer, steps ...BundleStep) *types.Transaction {
-	return NewBuilder(signer).WithFlags(EF_AllOf).With(steps...).Build()
+	return NewBuilder(signer).SetFlags(EF_AllOf).With(steps...).Build()
 }
 
 func OneOf(signer types.Signer, steps ...BundleStep) *types.Transaction {
-	return NewBuilder(signer).WithFlags(EF_OneOf).With(steps...).Build()
+	return NewBuilder(signer).SetFlags(EF_OneOf).With(steps...).Build()
 }
 
 // --- implementation details ---
