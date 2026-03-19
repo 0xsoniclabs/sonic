@@ -65,10 +65,10 @@ func (s *Store) AddProcessedBundles(blockNum uint64, executedBundles []bundle.Ex
 	// Register and index new hashes.
 	table := s.table.ProcessedBundles
 	batch := table.NewBatch()
-	addedHash := s.computeAddedHashes(blockNum, executedBundles, batch)
+	addedHash := s.addNewBundles(blockNum, executedBundles, batch)
 
-	// Delete out-dated hashes.
-	deletedHash := s.computeDeletedHashes(blockNum, batch)
+	// Delete outdated hashes.
+	deletedHash := s.deleteOutdatedBundles(blockNum, batch)
 
 	// Update the state hash.
 	_, oldHash := s.GetProcessedBundleHistoryHash()
@@ -89,7 +89,9 @@ func (s *Store) AddProcessedBundles(blockNum uint64, executedBundles []bundle.Ex
 	}
 }
 
-func (s *Store) computeAddedHashes(
+// addNewBundles adds the given bundle execution information to the store, and returns
+// the XOR of the hashes of the added bundles to update the history hash.
+func (s *Store) addNewBundles(
 	blockNum uint64,
 	executedBundles []bundle.ExecutionInfo,
 	batch kvdb.Batch,
@@ -116,7 +118,10 @@ func (s *Store) computeAddedHashes(
 	return addedHash
 }
 
-func (s *Store) computeDeletedHashes(blockNum uint64, batch kvdb.Batch) common.Hash {
+// deleteOutdatedBundles deletes the entries of processed bundles that got p
+// rocessed too far in the past, and returns the XOR of their hashes to update the
+// history hash.
+func (s *Store) deleteOutdatedBundles(blockNum uint64, batch kvdb.Batch) common.Hash {
 	deletedHash := common.Hash{}
 	if blockNum > bundle.MaxBlockRange {
 		oldestValidBlockNum := blockNum - bundle.MaxBlockRange + 1
@@ -148,6 +153,12 @@ func (s *Store) computeDeletedHashes(blockNum uint64, batch kvdb.Batch) common.H
 	return deletedHash
 }
 
+// computeNewBundleStateHash computes the new hash of the processed bundles history
+// based on the previous hash, the added and deleted execution plan hashes, and
+// the block number of the update.
+//
+// This hash is used to verify than clients remain aligned on their bundle
+// processing history
 func computeNewBundleStateHash(
 	oldHash common.Hash,
 	addedPlans common.Hash,
