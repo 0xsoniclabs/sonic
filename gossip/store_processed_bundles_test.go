@@ -466,27 +466,29 @@ func TestStore_xorHash_ReturnsExpectedResult(t *testing.T) {
 		return res
 	}
 
-	cases := []struct {
+	cases := map[string]struct {
 		hash1    common.Hash
 		hash2    common.Hash
 		expected common.Hash
 	}{
-		{common.Hash{0, 0, 0}, common.Hash{0, 0, 0}, common.Hash{0, 0, 0}},
-		{common.Hash{0, 0, 0}, common.Hash{7, 8, 9}, common.Hash{7, 8, 9}},
-		{common.Hash{10, 11, 12}, common.Hash{0, 0, 0}, common.Hash{10, 11, 12}},
-		{common.Hash{1, 1, 1}, common.Hash{1, 1, 1}, common.Hash{0, 0, 0}},
-		{common.Hash{0xff, 0xff, 0xff}, common.Hash{0x1, 0x2, 0x3}, common.Hash{0xfe, 0xfd, 0xfc}},
-		{
+		"all zeros":           {common.Hash{0, 0, 0}, common.Hash{0, 0, 0}, common.Hash{0, 0, 0}},
+		"zero and non-zero":   {common.Hash{0, 0, 0}, common.Hash{7, 8, 9}, common.Hash{7, 8, 9}},
+		"non-zero and zero":   {common.Hash{10, 11, 12}, common.Hash{0, 0, 0}, common.Hash{10, 11, 12}},
+		"same non-zero":       {common.Hash{1, 1, 1}, common.Hash{1, 1, 1}, common.Hash{0, 0, 0}},
+		"operation with 0xff": {common.Hash{0xff, 0xff, 0xff}, common.Hash{0x1, 0x2, 0x3}, common.Hash{0xfe, 0xfd, 0xfc}},
+		"32 bytes computed": {
 			common.Hash{0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31},
 			common.Hash{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
 			common.Hash{1, 0, 3, 2, 5, 4, 6, 9, 8, 11, 10, 13, 12, 15, 14, 17, 16, 19, 18, 21, 20, 23, 22, 25, 24, 27, 26, 29, 28, 31, 30, 1},
 		},
 	}
 
-	for _, c := range cases {
-		expectedXor := xorForTest(c.hash1, c.hash2)
-		require.Equal(expectedXor, c.expected)
-		require.Equal(c.expected, xorHash(c.hash1, c.hash2))
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			expectedXor := xorForTest(c.hash1, c.hash2)
+			require.Equal(expectedXor, c.expected)
+			require.Equal(c.expected, xorHash(c.hash1, c.hash2))
+		})
 	}
 }
 
