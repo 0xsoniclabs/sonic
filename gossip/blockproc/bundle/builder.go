@@ -131,12 +131,12 @@ func (b *builder) SetFlags(flags ExecutionFlags) *builder {
 	return b
 }
 
-func (b *builder) Earliest(earliest uint64) *builder {
+func (b *builder) SetEarliest(earliest uint64) *builder {
 	b.earliest = &earliest
 	return b
 }
 
-func (b *builder) Latest(latest uint64) *builder {
+func (b *builder) SetLatest(latest uint64) *builder {
 	b.latest = &latest
 	return b
 }
@@ -146,7 +146,7 @@ func (b *builder) With(steps ...BundleStep) *builder {
 	return b
 }
 
-func (b *builder) WithEnvelopeSenderKey(key *ecdsa.PrivateKey) *builder {
+func (b *builder) SetEnvelopeSenderKey(key *ecdsa.PrivateKey) *builder {
 	b.envelopeKey = key
 	return b
 }

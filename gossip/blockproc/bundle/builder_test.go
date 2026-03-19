@@ -38,8 +38,8 @@ func TestBundleBuilder_Build_AllowsToBuildBundleAsSpecified(t *testing.T) {
 
 	tx := NewBuilder(signer).
 		SetFlags(EF_AllOf|EF_TolerateFailed).
-		Earliest(12).
-		Latest(15).
+		SetEarliest(12).
+		SetLatest(15).
 		With(
 			Step(key1, &types.AccessListTx{
 				Nonce: 1,
@@ -48,7 +48,7 @@ func TestBundleBuilder_Build_AllowsToBuildBundleAsSpecified(t *testing.T) {
 				Nonce: 2,
 			}),
 		).
-		WithEnvelopeSenderKey(keyE).
+		SetEnvelopeSenderKey(keyE).
 		Build()
 
 	bundle, plan, err := ValidateEnvelope(signer, tx)
