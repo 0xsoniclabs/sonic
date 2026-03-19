@@ -32,7 +32,7 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-//go:generate mockgen -source=store_processed_bundles_test.go -destination=store_processed_bundles_mock.go -package=gossip
+//go:generate mockgen -source=store_processed_bundles_test.go -destination=store_processed_bundles_test_mock.go -package=gossip
 
 // storeTable is an interface needed to generate a mock for a kvdb.Store.
 type storeTable interface {
@@ -169,7 +169,7 @@ func TestStore_HasBundleRecentlyBeenProcessed_CleansUpOldBundleHashes(t *testing
 }
 
 func TestStore_HasBundleRecentlyBeenProcessed_LogsOnGetError(t *testing.T) {
-	_, store, table, log := storeTableLogMocks(t)
+	store, table, log, _, _ := storeTableLogMocks(t)
 
 	injectedErr := errors.New("get error")
 	table.EXPECT().Get(gomock.Any()).Return(nil, injectedErr)
@@ -183,7 +183,7 @@ func TestStore_HasBundleRecentlyBeenProcessed_LogsOnGetError(t *testing.T) {
 }
 
 func TestStore_GetBundleExecutionInfo_LogsOnGetError(t *testing.T) {
-	_, store, table, log := storeTableLogMocks(t)
+	store, table, log, _, _ := storeTableLogMocks(t)
 
 	injectedErr := errors.New("get error")
 	table.EXPECT().Get(gomock.Any()).Return(nil, injectedErr)
@@ -197,7 +197,7 @@ func TestStore_GetBundleExecutionInfo_LogsOnGetError(t *testing.T) {
 }
 
 func TestStore_GetBundleExecutionInfo_LogsOnInvalidDataLength(t *testing.T) {
-	_, store, table, log := storeTableLogMocks(t)
+	store, table, log, _, _ := storeTableLogMocks(t)
 
 	table.EXPECT().Get(gomock.Any()).Return([]byte{1, 2, 3}, nil)
 
@@ -383,9 +383,8 @@ func TestStore_GetIndexKey_ReturnsExpectedKey(t *testing.T) {
 }
 
 func TestStore_AddProcessedBundles_LogsOnBatchPutNewEntryError(t *testing.T) {
-	ctrl, store, table, log := storeTableLogMocks(t)
+	store, table, log, batch, _ := storeTableLogMocks(t)
 
-	batch := NewMockstoreBatch(ctrl)
 	injectedErr := errors.New("new entry put error")
 	batch.EXPECT().Put(gomock.Any(), gomock.Any()).Return(injectedErr)
 
@@ -401,9 +400,8 @@ func TestStore_AddProcessedBundles_LogsOnBatchPutNewEntryError(t *testing.T) {
 }
 
 func TestStore_AddProcessedBundles_LogsOnBatchWriteError(t *testing.T) {
-	ctrl, store, table, log := storeTableLogMocks(t)
+	store, table, log, batch, _ := storeTableLogMocks(t)
 
-	batch := NewMockstoreBatch(ctrl)
 	injectedErr := errors.New("batch write error")
 	batch.EXPECT().Put(gomock.Any(), gomock.Any()).Return(nil)
 	batch.EXPECT().Write().Return(injectedErr)
@@ -430,7 +428,7 @@ func TestStore_GetProcessedBundleHistoryHash_InitiallyZero(t *testing.T) {
 }
 
 func TestStore_GetProcessedBundleHistoryHash_LogsOnGetError(t *testing.T) {
-	_, store, table, log := storeTableLogMocks(t)
+	store, table, log, _, _ := storeTableLogMocks(t)
 
 	injectedErr := errors.New("get error")
 	table.EXPECT().Get(gomock.Any()).Return(nil, injectedErr)
@@ -444,7 +442,7 @@ func TestStore_GetProcessedBundleHistoryHash_LogsOnGetError(t *testing.T) {
 }
 
 func TestStore_GetProcessedBundleHistoryHash_LogsOnInvalidStateLength(t *testing.T) {
-	_, store, table, log := storeTableLogMocks(t)
+	store, table, log, _, _ := storeTableLogMocks(t)
 
 	table.EXPECT().Get(gomock.Any()).Return([]byte{1, 2, 3}, nil)
 	store.table.ProcessedBundles = table
@@ -514,11 +512,10 @@ func TestStore_addNewBundles_ReturnsExpectedHash(t *testing.T) {
 }
 
 func TestStore_addNewBundles_LogsOnBatchPutError(t *testing.T) {
-	ctrl, store, _, log := storeTableLogMocks(t)
+	store, _, log, batch, _ := storeTableLogMocks(t)
 
 	injectedErrEntry := errors.New("entry put error")
 	injectedErrIndex := errors.New("index put error")
-	batch := NewMockstoreBatch(ctrl)
 	batch.EXPECT().Put(gomock.Any(), gomock.Any()).Return(injectedErrEntry)
 	batch.EXPECT().Put(gomock.Any(), gomock.Any()).Return(injectedErrIndex)
 
@@ -665,13 +662,11 @@ func TestStore_deleteOutdatedBundles_RemovesBundles_WhenOld(t *testing.T) {
 }
 
 func TestStore_deleteOutdatedBundles_ReturnsXorHashOfDeletedEntries(t *testing.T) {
-	ctrl, store, table, _ := storeTableLogMocks(t)
+	store, table, _, batch, it := storeTableLogMocks(t)
 
 	hash1 := common.Hash{1, 2, 3}
 	hash2 := common.Hash{4, 5, 6}
 
-	it := NewMockdbIterator(ctrl)
-	batch := NewMockstoreBatch(ctrl)
 	gomock.InOrder(
 		table.EXPECT().NewIterator([]byte{'i'}, nil).Return(it),
 
@@ -695,9 +690,8 @@ func TestStore_deleteOutdatedBundles_ReturnsXorHashOfDeletedEntries(t *testing.T
 
 func TestStore_deleteOutdatedBundles_IgnoresKeysOfWrongLength(t *testing.T) {
 	// log mock is ignored because no log called should be triggered.
-	ctrl, store, table, _ := storeTableLogMocks(t)
+	store, table, _, batch, it := storeTableLogMocks(t)
 
-	it := NewMockdbIterator(ctrl)
 	gomock.InOrder(
 		it.EXPECT().Next().Return(true),
 		// This is the key that will be ignored, since it does not have the correct length.
@@ -706,19 +700,17 @@ func TestStore_deleteOutdatedBundles_IgnoresKeysOfWrongLength(t *testing.T) {
 	)
 	table.EXPECT().NewIterator(gomock.Any(), gomock.Any()).Return(it)
 
-	store.deleteOutdatedBundles(bundle.MaxBlockRange+1, NewMockstoreBatch(ctrl))
+	store.deleteOutdatedBundles(bundle.MaxBlockRange+1, batch)
 }
 
 func TestStore_deleteOutdatedBundles_LogsOnBatchDeleteError(t *testing.T) {
-	ctrl, store, table, log := storeTableLogMocks(t)
+	store, table, log, batch, it := storeTableLogMocks(t)
 
 	injectedErrDeleteEntry := errors.New("entry delete error")
 	injectedErrDeleteIndex := errors.New("index delete error")
-	batch := NewMockstoreBatch(ctrl)
 	batch.EXPECT().Delete(gomock.Any()).Return(injectedErrDeleteEntry)
 	batch.EXPECT().Delete(gomock.Any()).Return(injectedErrDeleteIndex)
 
-	it := NewMockdbIterator(ctrl)
 	gomock.InOrder(
 		it.EXPECT().Next().Return(true),
 		it.EXPECT().Key().Return(getIndexKey(1, common.Hash{1, 2, 3})),
@@ -783,17 +775,19 @@ func updateHistoryHash(blockNum uint64,
 // storeTableLogMocks initializes a store with mocked table as ProcessedBundles,
 // and logger.
 // Returns the mocks so expectations can be added on them.
-func storeTableLogMocks(t *testing.T) (*gomock.Controller, *Store, *MockstoreTable, *logger.MockLogger) {
+func storeTableLogMocks(t *testing.T) (*Store, *MockstoreTable, *logger.MockLogger, *MockstoreBatch, *MockdbIterator) {
 	ctrl := gomock.NewController(t)
-	store := initStoreForTests(t)
-
+	store := &Store{}
 	table := NewMockstoreTable(ctrl)
 	store.table.ProcessedBundles = table
 
 	log := logger.NewMockLogger(ctrl)
 	store.Log = log
 
-	return ctrl, store, table, log
+	batch := NewMockstoreBatch(ctrl)
+	it := NewMockdbIterator(ctrl)
+
+	return store, table, log, batch, it
 }
 
 // expectCrit sets up the given mock logger to expect a Crit call with the given
