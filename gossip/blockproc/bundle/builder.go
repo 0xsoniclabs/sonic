@@ -113,11 +113,12 @@ type BundleStep struct {
 }
 
 // NewBuilder creates a new bundle builder to create a custom bundle.
-func NewBuilder() *builder {
-	return &builder{}
+func NewBuilder(chainId *big.Int) *builder {
+	return &builder{chainId: chainId}
 }
 
 type builder struct {
+	chainId     *big.Int
 	flags       *ExecutionFlags
 	earliest    *uint64
 	latest      *uint64
@@ -167,22 +168,12 @@ func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 		latest = *b.latest
 	}
 
-	// Get chain ID from transactions, if any.
-	var chainId *big.Int
-	for _, step := range b.steps {
-		tx := types.NewTx(step.tx)
-		if curId := tx.ChainId(); curId != nil && curId.Sign() > 0 {
-			chainId = curId
-			break
-		}
-	}
-
-	if chainId == nil {
-		chainId = big.NewInt(1)
+	if b.chainId == nil {
+		b.chainId = big.NewInt(1)
 	}
 
 	// Create an Execution Plan for the bundle.
-	signer := types.LatestSignerForChainID(chainId)
+	signer := types.LatestSignerForChainID(b.chainId)
 
 	plan := ExecutionPlan{
 		Steps:    make([]ExecutionStep, len(b.steps)),
@@ -209,6 +200,8 @@ func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 			data.AccessList = append(data.AccessList, marker)
 		case *types.AccessListTx:
 			data.AccessList = append(data.AccessList, marker)
+		default:
+			panic("unsupported TxData type for marker annotation")
 		}
 	}
 
@@ -226,6 +219,8 @@ func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 	}, plan
 }
 
+// BuildEnvelopeBundleAndPlan returns an envelope transaction along its
+// bundle and execution plan
 func (b *builder) BuildEnvelopeBundleAndPlan() (
 	*types.Transaction,
 	*TransactionBundle,
@@ -244,11 +239,13 @@ func (b *builder) BuildEnvelopeBundleAndPlan() (
 	return newEnvelope(key, bundle), bundle, plan
 }
 
+// BuildEnvelope returns an envelope transaction and its execution plan
 func (b *builder) BuildEnvelopeAndPlan() (*types.Transaction, ExecutionPlan) {
 	envelop, _, plan := b.BuildEnvelopeBundleAndPlan()
 	return envelop, plan
 }
 
+// Build returns an envelope transaction
 func (b *builder) Build() *types.Transaction {
 	envelope, _ := b.BuildEnvelopeAndPlan()
 	return envelope
@@ -256,12 +253,12 @@ func (b *builder) Build() *types.Transaction {
 
 // --- Utility Wrappers ---
 
-func AllOf(steps ...BundleStep) *types.Transaction {
-	return NewBuilder().WithFlags(EF_AllOf).With(steps...).Build()
+func AllOf(chainId *big.Int, steps ...BundleStep) *types.Transaction {
+	return NewBuilder(chainId).WithFlags(EF_AllOf).With(steps...).Build()
 }
 
-func OneOf(steps ...BundleStep) *types.Transaction {
-	return NewBuilder().WithFlags(EF_OneOf).With(steps...).Build()
+func OneOf(chainId *big.Int, steps ...BundleStep) *types.Transaction {
+	return NewBuilder(chainId).WithFlags(EF_OneOf).With(steps...).Build()
 }
 
 // --- implementation details ---

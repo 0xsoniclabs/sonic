@@ -255,7 +255,7 @@ func newTestBundleGenerator(t testing.TB, n int) testBundleGenerator {
 }
 
 func (gen testBundleGenerator) makeEmptyBundleTx() *types.Transaction {
-	return AllOf()
+	return AllOf(gen.signer.ChainID())
 }
 
 func (gen testBundleGenerator) makeValidBundleTx() *types.Transaction {
@@ -272,7 +272,7 @@ func (gen testBundleGenerator) makeValidBundleTx() *types.Transaction {
 		}))
 	}
 
-	return AllOf(steps...)
+	return AllOf(gen.signer.ChainID(), steps...)
 }
 
 func (gen testBundleGenerator) makeUnsoundBundleTx(t testing.TB) *types.Transaction {

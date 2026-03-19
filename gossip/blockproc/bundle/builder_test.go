@@ -24,7 +24,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func Test_Builder_AllowsToBuildBundleAsSpecified(t *testing.T) {
+func TestBundleBuilder_Build_AllowsToBuildBundleAsSpecified(t *testing.T) {
 	signer := types.LatestSignerForChainID(testChainID)
 
 	key1, err := crypto.GenerateKey()
@@ -36,7 +36,7 @@ func Test_Builder_AllowsToBuildBundleAsSpecified(t *testing.T) {
 	keyE, err := crypto.GenerateKey()
 	require.NoError(t, err)
 
-	tx := NewBuilder().
+	tx := NewBuilder(testChainID).
 		WithFlags(EF_AllOf|EF_TolerateFailed).
 		Earliest(12).
 		Latest(15).
@@ -74,7 +74,7 @@ func Test_Builder_AllowsToBuildBundleAsSpecified(t *testing.T) {
 	require.Equal(t, crypto.PubkeyToAddress(keyE.PublicKey), envelopeSigner)
 }
 
-func Test_Step_AcceptsVariousInputTypes(t *testing.T) {
+func TestBundleBuilder_Step_AcceptsVariousInputTypes(t *testing.T) {
 	inputs := []any{
 		types.LegacyTx{},
 		types.AccessListTx{},
@@ -96,27 +96,27 @@ func Test_Step_AcceptsVariousInputTypes(t *testing.T) {
 	}
 }
 
-func Test_Step_PanicsOnInvalidInput(t *testing.T) {
+func TestBundleBuilder_Step_PanicsOnInvalidInput(t *testing.T) {
 	require.Panics(t, func() {
 		Step(nil, 12)
 	}, "unsupported TxData type")
 }
 
-func Test_AllOf_BuildEmptyBundle(t *testing.T) {
+func TestBundleBuilder_AllOf_BuildEmptyBundle(t *testing.T) {
 	signer := types.LatestSignerForChainID(testChainID)
-	tx := AllOf()
+	tx := AllOf(testChainID)
 
 	_, _, err := ValidateEnvelope(signer, tx)
 	require.NoError(t, err)
 }
 
-func Test_AllOf_BuildBundle(t *testing.T) {
+func TestBundleBuilder_AllOf_BuildBundle(t *testing.T) {
 	signer := types.LatestSignerForChainID(testChainID)
 
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
 
-	tx := AllOf(
+	tx := AllOf(testChainID,
 		Step(key, &types.AccessListTx{
 			Nonce: 0,
 		}),
@@ -132,13 +132,13 @@ func Test_AllOf_BuildBundle(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func Test_OneOf_BuildBundle(t *testing.T) {
+func TestBundleBuilder_OneOf_BuildBundle(t *testing.T) {
 	signer := types.LatestSignerForChainID(testChainID)
 
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
 
-	tx := OneOf(
+	tx := OneOf(testChainID,
 		Step(key, &types.AccessListTx{
 			Nonce: 0,
 		}),
@@ -154,13 +154,21 @@ func Test_OneOf_BuildBundle(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func Test_Builder_NewNestedBundle(t *testing.T) {
+func TestBundleBuilder_OneOf_EmptyBundle(t *testing.T) {
+	signer := types.LatestSignerForChainID(testChainID)
+	tx := OneOf(testChainID)
+
+	_, _, err := ValidateEnvelope(signer, tx)
+	require.NoError(t, err)
+}
+
+func TestBundleBuilder_Builder_NewNestedBundle(t *testing.T) {
 	signer := types.LatestSignerForChainID(testChainID)
 
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
 
-	inner := OneOf(
+	inner := OneOf(testChainID,
 		Step(key, &types.AccessListTx{
 			Nonce: 0,
 		}),
@@ -172,7 +180,7 @@ func Test_Builder_NewNestedBundle(t *testing.T) {
 		}),
 	)
 
-	outer := AllOf(
+	outer := AllOf(testChainID,
 		Step(key, &types.AccessListTx{
 			Nonce: 2,
 		}),
@@ -190,12 +198,12 @@ func Test_Builder_NewNestedBundle(t *testing.T) {
 
 	// all combined in one
 
-	combined := AllOf(
-		Step(key, OneOf(
+	combined := AllOf(testChainID,
+		Step(key, OneOf(testChainID,
 			Step(key, &types.AccessListTx{}),
 			Step(key, &types.DynamicFeeTx{}),
 		)),
-		Step(key, AllOf(
+		Step(key, AllOf(testChainID,
 			Step(key, &types.AccessListTx{}),
 		)),
 	)
