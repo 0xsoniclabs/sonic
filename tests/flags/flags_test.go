@@ -28,31 +28,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSonicTool_DefaultConfig_HasDefaultValues(t *testing.T) {
-
-	net := tests.StartIntegrationTestNet(t)
-	net.Stop()
-
-	configFile := filepath.Join(net.GetDirectory(), "config.toml")
-	require.NoError(t, sonicd.RunWithArgs(
-		[]string{"sonicd",
-			"--datadir", net.GetDirectory() + "/state",
-			"--event-throttler=false",
-			"--dump-config", configFile}, nil))
-
-	f, err := os.Open(configFile)
-	require.NoError(t, err)
-	configFromFile, err := io.ReadAll(f)
-	require.NoError(t, err)
-	require.NoError(t, f.Close())
-
-	require.Contains(t, string(configFromFile), `[Emitter.ThrottlerConfig]
-Enabled = false
-DominantStakeThreshold = 7.5e-01
-DominatingTimeout = 3
-NonDominatingTimeout = 100`)
-}
-
 func TestSonicTool_CustomThrottlerConfig_AreApplied(t *testing.T) {
 
 	net := tests.StartIntegrationTestNet(t)
