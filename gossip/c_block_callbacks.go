@@ -335,7 +335,7 @@ func consensusCallbackBeginBlockFn(
 
 				// Execute pre-internal transactions
 				preInternalTxs := blockProc.PreTxTransactor.PopInternalTxs(blockCtx, bs, es, sealing, statedb)
-				preInternalProcessedTxs := evmProcessor.Execute(preInternalTxs, maxBlockGas)
+				preInternalProcessedTxs := evmProcessor.Execute(preInternalTxs, maxBlockGas).ProcessedTransactions
 				bs = txListener.Finalize()
 				for _, tx := range preInternalProcessedTxs {
 					if tx.Receipt == nil || tx.Receipt.Status == 0 {
@@ -402,7 +402,7 @@ func consensusCallbackBeginBlockFn(
 
 					// Execute post-internal transactions
 					internalTxs := blockProc.PostTxTransactor.PopInternalTxs(blockCtx, bs, es, sealing, statedb)
-					internalProcessedTxs := evmProcessor.Execute(internalTxs, maxBlockGas)
+					internalProcessedTxs := evmProcessor.Execute(internalTxs, maxBlockGas).ProcessedTransactions
 					for _, tx := range internalProcessedTxs {
 						if tx.Receipt == nil || tx.Receipt.Status == 0 {
 							log.Warn("Internal transaction skipped or reverted", "txid", tx.Transaction.Hash().String())
@@ -600,7 +600,7 @@ func processUserTransactionsNoLimits(
 	blockBuilder *inter.BlockBuilder,
 	orderedTxs []*types.Transaction,
 	userTransactionGasLimit uint64) {
-	for _, processed := range evmProcessor.Execute(orderedTxs, userTransactionGasLimit) {
+	for _, processed := range evmProcessor.Execute(orderedTxs, userTransactionGasLimit).ProcessedTransactions {
 		if processed.Receipt != nil { // < nil if skipped
 			blockBuilder.AddTransaction(
 				processed.Transaction,
@@ -637,7 +637,7 @@ func processUserTransactions(
 	for _, tx := range orderedTxs {
 		neededSpace := txSizeIncludingSubsidies(tx)
 		if neededSpace <= remainingSize {
-			for _, processed := range evmProcessor.Execute([]*types.Transaction{tx}, remainingGas) {
+			for _, processed := range evmProcessor.Execute([]*types.Transaction{tx}, remainingGas).ProcessedTransactions {
 				if processed.Receipt != nil { // < nil if skipped
 					blockBuilder.AddTransaction(
 						processed.Transaction,

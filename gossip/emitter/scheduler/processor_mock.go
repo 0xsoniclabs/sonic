@@ -164,17 +164,17 @@ func (mr *MockChainMockRecorder) GetEvmChainConfig(blockHeight any) *gomock.Call
 }
 
 // Header mocks base method.
-func (m *MockChain) Header(arg0 common.Hash, arg1 uint64) *evmcore.EvmHeader {
+func (m *MockChain) Header(hash common.Hash, number uint64) *evmcore.EvmHeader {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Header", arg0, arg1)
+	ret := m.ctrl.Call(m, "Header", hash, number)
 	ret0, _ := ret[0].(*evmcore.EvmHeader)
 	return ret0
 }
 
 // Header indicates an expected call of Header.
-func (mr *MockChainMockRecorder) Header(arg0, arg1 any) *gomock.Call {
+func (mr *MockChainMockRecorder) Header(hash, number any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Header", reflect.TypeOf((*MockChain)(nil).Header), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Header", reflect.TypeOf((*MockChain)(nil).Header), hash, number)
 }
 
 // StateDB mocks base method.
@@ -216,10 +216,10 @@ func (m *MockevmProcessorRunner) EXPECT() *MockevmProcessorRunnerMockRecorder {
 }
 
 // Run mocks base method.
-func (m *MockevmProcessorRunner) Run(index int, tx *types.Transaction) []evmcore.ProcessedTransaction {
+func (m *MockevmProcessorRunner) Run(index int, tx *types.Transaction) evmcore.ProcessSummary {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Run", index, tx)
-	ret0, _ := ret[0].([]evmcore.ProcessedTransaction)
+	ret0, _ := ret[0].(evmcore.ProcessSummary)
 	return ret0
 }
 

@@ -50,23 +50,25 @@ import (
 func (p *StateProcessor) process_iteratively(
 	block *EvmBlock, stateDb state.StateDB, cfg vm.Config, gasLimit uint64,
 	usedGas *uint64, onNewLog func(*types.Log),
-) []ProcessedTransaction {
+) ProcessSummary {
 	// This implementation is a wrapper around the BeginBlock function, which
 	// handles the actual transaction processing.
 	txProcessor := p.BeginBlock(block, stateDb, cfg, gasLimit, onNewLog)
-	processed := make([]ProcessedTransaction, 0, len(block.Transactions))
+	summary := ProcessSummary{}
 	for i, tx := range block.Transactions {
-		processed = append(processed, txProcessor.Run(i, tx)...)
+		cur := txProcessor.Run(i, tx)
+		summary.ProcessedTransactions = append(summary.ProcessedTransactions, cur.ProcessedTransactions...)
+		summary.ProcessedBundles = append(summary.ProcessedBundles, cur.ProcessedBundles...)
 	}
 
 	// The used gas is the cumulative gas used reported by the last receipt.
-	for _, tx := range processed {
+	for _, tx := range summary.ProcessedTransactions {
 		if tx.Receipt != nil {
 			*usedGas = tx.Receipt.CumulativeGasUsed
 		}
 	}
 
-	return processed
+	return summary
 }
 
 func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
@@ -118,7 +120,10 @@ func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
 			vmConfig := vm.Config{}
 			gasLimit := uint64(blockGasLimit)
 			usedGas := new(uint64)
-			processed := process(block, state, vmConfig, gasLimit, usedGas, onLog)
+
+			summary := process(block, state, vmConfig, gasLimit, usedGas, onLog)
+			require.Empty(summary.ProcessedBundles)
+			processed := summary.ProcessedTransactions
 
 			// Receipts should be set accordingly.
 			require.Len(processed, len(transactions))
@@ -217,7 +222,10 @@ func TestProcess_DetectsTransactionThatCanNotBeConvertedIntoAMessage(t *testing.
 			vmConfig := vm.Config{}
 			gasLimit := uint64(math.MaxUint64)
 			usedGas := new(uint64)
-			processed := process(block, state, vmConfig, gasLimit, usedGas, nil)
+
+			summary := process(block, state, vmConfig, gasLimit, usedGas, nil)
+			require.Empty(summary.ProcessedBundles)
+			processed := summary.ProcessedTransactions
 
 			require.Len(processed, len(transactions))
 			require.Equal(transactions[0], processed[0].Transaction)
@@ -292,7 +300,7 @@ func TestProcess_TracksParentBlockHashIfPragueIsEnabled(t *testing.T) {
 				vmConfig := vm.Config{}
 				gasLimit := uint64(math.MaxUint64)
 				usedGas := new(uint64)
-				processed := process(block, state, vmConfig, gasLimit, usedGas, nil)
+				processed := process(block, state, vmConfig, gasLimit, usedGas, nil).ProcessedTransactions
 				require.Empty(processed)
 			})
 		}
@@ -351,7 +359,7 @@ func TestProcess_FailingTransactionAreSkippedButTheBlockIsNotTerminated(t *testi
 	// Process the block
 	gasLimit := uint64(math.MaxUint64)
 	usedGas := new(uint64)
-	processed := processor.Process(block, state, vm.Config{}, gasLimit, usedGas, nil)
+	processed := processor.Process(block, state, vm.Config{}, gasLimit, usedGas, nil).ProcessedTransactions
 
 	require.Len(t, processed, 2)
 	require.Equal(t, processed[0].Transaction, block.Transactions[0])
@@ -430,7 +438,7 @@ func TestProcess_EnforcesGasLimitBySkippingExcessiveTransactions(t *testing.T) {
 				t.Run(name, func(t *testing.T) {
 					require := require.New(t)
 					gasLimit := test.gasLimit
-					processed := process(block, state, vmConfig, gasLimit, usedGas, nil)
+					processed := process(block, state, vmConfig, gasLimit, usedGas, nil).ProcessedTransactions
 					require.Len(processed, 3)
 
 					for i, tx := range transactions {
@@ -456,7 +464,7 @@ func TestProcess_UsesDifficultyOfOne(t *testing.T) {
 	state, block := createScenarioWithTxCheckingDifficulty(ctrl, big.NewInt(1))
 
 	// Check that the difficulty of 1 is used.
-	results := processor.Process(block, state, vm.Config{}, math.MaxUint64, new(uint64), nil)
+	results := processor.Process(block, state, vm.Config{}, math.MaxUint64, new(uint64), nil).ProcessedTransactions
 	require.Len(t, results, 1)
 	require.NotNil(t, results[0].Receipt)
 	require.Equal(t, types.ReceiptStatusSuccessful, results[0].Receipt.Status)
@@ -464,7 +472,7 @@ func TestProcess_UsesDifficultyOfOne(t *testing.T) {
 	// Check that an unexpected difficulty causes a revert.
 	wrongDifficulty := big.NewInt(2)
 	state, block = createScenarioWithTxCheckingDifficulty(ctrl, wrongDifficulty)
-	results = processor.Process(block, state, vm.Config{}, math.MaxUint64, new(uint64), nil)
+	results = processor.Process(block, state, vm.Config{}, math.MaxUint64, new(uint64), nil).ProcessedTransactions
 	require.Len(t, results, 1)
 	require.NotNil(t, results[0].Receipt)
 	require.Equal(t, types.ReceiptStatusFailed, results[0].Receipt.Status)
@@ -481,7 +489,7 @@ func TestProcessWithDifficulty_UsesProvidedDifficulty(t *testing.T) {
 			results := processor.ProcessWithDifficulty(
 				block, state, vm.Config{}, math.MaxUint64,
 				new(uint64), nil, difficulty,
-			)
+			).ProcessedTransactions
 			require.Len(t, results, 1)
 			require.NotNil(t, results[0].Receipt)
 			require.Equal(t, types.ReceiptStatusSuccessful, results[0].Receipt.Status)
@@ -682,7 +690,7 @@ type processFunction = func(
 	gasLimit uint64,
 	usedGas *uint64,
 	onNewLog func(*types.Log),
-) []ProcessedTransaction
+) ProcessSummary
 
 func getStateDbMockForTransactions(
 	ctrl *gomock.Controller,
@@ -774,7 +782,9 @@ func TestRunTransactions_RunsAllTransactionsAndCollectsProcessedTransactions(t *
 		),
 	)
 
-	got := runTransactions(context, txs, 0)
+	summary := runTransactions(context, txs, 0)
+	require.Empty(t, summary.ProcessedBundles)
+	got := summary.ProcessedTransactions
 	require.Len(t, got, 3)
 
 	want := []ProcessedTransaction{}
@@ -837,7 +847,9 @@ func TestRunTransactions_ProvidesNextIndexAsOriginalIndexPlusNumberOfPreviouslyP
 		),
 	)
 
-	got := runTransactions(context, txs, startIndex)
+	summary := runTransactions(context, txs, startIndex)
+	require.Empty(t, summary.ProcessedBundles)
+	got := summary.ProcessedTransactions
 
 	want := []ProcessedTransaction{}
 	want = append(want, sponsoredTxResult1...)
