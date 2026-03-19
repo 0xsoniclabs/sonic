@@ -492,7 +492,7 @@ func TestStore_xorHash_ReturnsExpectedResult(t *testing.T) {
 	}
 }
 
-func TestStore_addNewEntry_ReturnsExpectedHash(t *testing.T) {
+func TestStore_addNewBundles_ReturnsExpectedHash(t *testing.T) {
 	require := require.New(t)
 	store, err := NewMemStore(t)
 	require.NoError(err)
@@ -513,7 +513,7 @@ func TestStore_addNewEntry_ReturnsExpectedHash(t *testing.T) {
 	require.Equal(expectedAddedHash, addedHash)
 }
 
-func TestStore_addNewEntry_LogsOnBatchPutError(t *testing.T) {
+func TestStore_addNewBundles_LogsOnBatchPutError(t *testing.T) {
 	ctrl, store, _, log := storeTableLogMocks(t)
 
 	injectedErrEntry := errors.New("entry put error")
@@ -535,7 +535,7 @@ func TestStore_addNewEntry_LogsOnBatchPutError(t *testing.T) {
 		})
 }
 
-func TestStore_deleteOutdatedEntries_RemovesBundles_WhenOld(t *testing.T) {
+func TestStore_deleteOutdatedBundles_RemovesBundles_WhenOld(t *testing.T) {
 
 	caseTable := []struct {
 		storedBundleBlockNumber uint64
@@ -656,7 +656,7 @@ func TestStore_deleteOutdatedEntries_RemovesBundles_WhenOld(t *testing.T) {
 				}
 			}
 
-			hash := store.deleteOutdatedEntries(c.currentBlockNumber, batch)
+			hash := store.deleteOutdatedBundles(c.currentBlockNumber, batch)
 			if c.expectDeleted {
 				require.Equal(t, existingBundleHash, xorHash(common.Hash{}, hash))
 			}
@@ -664,7 +664,7 @@ func TestStore_deleteOutdatedEntries_RemovesBundles_WhenOld(t *testing.T) {
 	}
 }
 
-func TestStore_deleteOutdatedEntries_ReturnsXorHashOfDeletedEntries(t *testing.T) {
+func TestStore_deleteOutdatedBundles_ReturnsXorHashOfDeletedEntries(t *testing.T) {
 	ctrl, store, table, _ := storeTableLogMocks(t)
 
 	hash1 := common.Hash{1, 2, 3}
@@ -688,12 +688,12 @@ func TestStore_deleteOutdatedEntries_ReturnsXorHashOfDeletedEntries(t *testing.T
 		it.EXPECT().Next().Return(false),
 	)
 
-	deletedHash := store.deleteOutdatedEntries(bundle.MaxBlockRange+1, batch)
+	deletedHash := store.deleteOutdatedBundles(bundle.MaxBlockRange+1, batch)
 	expectedDeletedHash := xorHash(hash1, hash2)
 	require.Equal(t, expectedDeletedHash, deletedHash)
 }
 
-func TestStore_deleteOutdatedEntries_IgnoresKeysOfWrongLength(t *testing.T) {
+func TestStore_deleteOutdatedBundles_IgnoresKeysOfWrongLength(t *testing.T) {
 	// log mock is ignored because no log called should be triggered.
 	ctrl, store, table, _ := storeTableLogMocks(t)
 
@@ -706,10 +706,10 @@ func TestStore_deleteOutdatedEntries_IgnoresKeysOfWrongLength(t *testing.T) {
 	)
 	table.EXPECT().NewIterator(gomock.Any(), gomock.Any()).Return(it)
 
-	store.deleteOutdatedEntries(bundle.MaxBlockRange+1, NewMockstoreBatch(ctrl))
+	store.deleteOutdatedBundles(bundle.MaxBlockRange+1, NewMockstoreBatch(ctrl))
 }
 
-func TestStore_deleteOutdatedEntries_LogsOnBatchDeleteError(t *testing.T) {
+func TestStore_deleteOutdatedBundles_LogsOnBatchDeleteError(t *testing.T) {
 	ctrl, store, table, log := storeTableLogMocks(t)
 
 	injectedErrDeleteEntry := errors.New("entry delete error")
@@ -731,7 +731,7 @@ func TestStore_deleteOutdatedEntries_LogsOnBatchDeleteError(t *testing.T) {
 	// To prevent the test from exiting, the mock logger is configured to panic instead.
 	require.PanicsWithValue(t,
 		fmt.Sprintf("%v: %v", "failed to delete old processed bundle hash", compoundErr),
-		func() { store.deleteOutdatedEntries(bundle.MaxBlockRange+1, batch) })
+		func() { store.deleteOutdatedBundles(bundle.MaxBlockRange+1, batch) })
 }
 
 func TestStore_computeNewBundleStateHash_ReturnsExpectedHash(t *testing.T) {

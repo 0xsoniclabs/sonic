@@ -68,7 +68,7 @@ func (s *Store) AddProcessedBundles(blockNum uint64, executedBundles []bundle.Ex
 	addedHash := s.addNewBundles(blockNum, executedBundles, batch)
 
 	// Delete outdated hashes.
-	deletedHash := s.deleteOutdatedEntries(blockNum, batch)
+	deletedHash := s.deleteOutdatedBundles(blockNum, batch)
 
 	// Update the state hash.
 	_, oldHash := s.GetProcessedBundleHistoryHash()
@@ -118,10 +118,10 @@ func (s *Store) addNewBundles(
 	return addedHash
 }
 
-// deleteOutdatedEntries deletes the entries of processed bundles that got p
+// deleteOutdatedBundles deletes the entries of processed bundles that got p
 // rocessed too far in the past, and returns the XOR of their hashes to update the
 // history hash.
-func (s *Store) deleteOutdatedEntries(blockNum uint64, batch kvdb.Batch) common.Hash {
+func (s *Store) deleteOutdatedBundles(blockNum uint64, batch kvdb.Batch) common.Hash {
 	deletedHash := common.Hash{}
 	if blockNum > bundle.MaxBlockRange {
 		oldestValidBlockNum := blockNum - bundle.MaxBlockRange + 1
