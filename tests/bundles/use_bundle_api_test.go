@@ -18,6 +18,7 @@ package bundles
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/ethapi"
@@ -97,6 +98,8 @@ func Test_CreateBundlesWithRPC(t *testing.T) {
 	bundleHash, err := SubmitBundle(client, txs, preparedBundle.Plan)
 	require.NoError(t, err, "failed to submit bundle")
 
+	checkBundleIsInMempool(t, client, bundleHash)
+
 	_, err = waitForBundleExecution(t.Context(), client.Client(), bundleHash)
 	require.NoError(t, err)
 
@@ -130,6 +133,21 @@ func checkCompatWithMetaMask(t *testing.T, client *tests.PooledEhtClient, txs []
 
 		require.Equal(t, tx.Hash(), retrievedTx.Hash(), "transaction hash mismatch")
 	}
+}
+
+func checkBundleIsInMempool(
+	t *testing.T,
+	client *tests.PooledEhtClient,
+	bundleHash common.Hash) {
+	t.Helper()
+
+	var queuedBundles []ethapi.RPCBundle
+	err := client.Client().Call(&queuedBundles, "sonic_getPooledBundles")
+	require.NoError(t, err, "failed to get transaction from mempool")
+
+	require.NotEqual(t, -1, slices.ContainsFunc(queuedBundles, func(entry ethapi.RPCBundle) bool {
+		return entry.PlanHash == bundleHash
+	}))
 }
 
 // Prepare bundle is a wrapper around the rpc method sonic_prepareBundle, which

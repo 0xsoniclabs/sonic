@@ -19,6 +19,7 @@ package evmcore
 import (
 	"errors"
 	"iter"
+	"maps"
 	"math"
 	"math/big"
 	"math/rand/v2"
@@ -36,6 +37,7 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -579,6 +581,12 @@ func (pool *TxPool) stats() (int, int) {
 		queued += list.Len()
 	}
 	return pending, queued
+}
+
+func (pool *TxPool) GetPooledBundles() map[common.Hash]common.Hash {
+	pool.mu.RLock()
+	defer pool.mu.RUnlock()
+	return pool.all.GetBundles()
 }
 
 // Content retrieves the data content of the transaction pool, returning all the

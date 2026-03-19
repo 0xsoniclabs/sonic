@@ -78,6 +78,54 @@ func (a *PublicBundleAPI) GetBundleInfo(
 	return nil, nil
 }
 
+// RPCBundle is the JSON RPC message returned by the GetPooledBundles API, which
+// provides information about the bundles currently in the transaction pool.
+type RPCBundle struct {
+	PlanHash      common.Hash       `json:"planHash"`
+	EarliestBlock rpc.BlockNumber   `json:"earliestBlock"`
+	LatestBlock   rpc.BlockNumber   `json:"latestBlock"`
+	Transactions  []*RPCTransaction `json:"transactions"`
+}
+
+// GetPooledBundles implements the `sonic_getPooledBundles` RPC method, which
+// retrieves the list of bundles currently in the transaction pool.
+//
+// Each bundle is returned with its execution plan hash, block range, and list of transactions.
+// The method is modeled after `txpool_content`, which returns the list of transactions currently
+// in the transaction pool. Particularly, the transaction type used for the bundled transactions
+// is the same as the one returned by `eth_getTransactionByHash` and `txpool_content`
+func (a *PublicBundleAPI) GetPooledBundles(
+	ctx context.Context,
+) ([]RPCBundle, error) {
+	var result []RPCBundle
+	chainId := a.b.ChainID()
+	pooledBundles := a.b.GetPooledBundles()
+	for planHash, envelopeHash := range pooledBundles {
+		envelope := a.b.GetPoolTransaction(envelopeHash)
+		if envelope == nil {
+			// indexed bundle envelope not found, just deleted.
+			continue
+		}
+
+		bundle, err := bundle.OpenEnvelope(envelope)
+		if err != nil {
+			// if the envelope is malformed, just ignore it.
+			continue
+		}
+
+		res := RPCBundle{
+			PlanHash:      planHash,
+			EarliestBlock: rpc.BlockNumber(bundle.Earliest),
+			LatestBlock:   rpc.BlockNumber(bundle.Latest),
+		}
+		for _, tx := range bundle.Transactions {
+			res.Transactions = append(res.Transactions, newRPCPendingTransaction(tx, tx.GasPrice(), chainId))
+		}
+		result = append(result, res)
+	}
+	return result, nil
+}
+
 type PrepareBundleArgs struct {
 	// Transactions specifies the ordered list of transactions to be included in the bundle.
 	Transactions []TransactionArgs `json:"transactions"`

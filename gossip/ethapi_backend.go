@@ -652,3 +652,7 @@ func (b *EthAPIBackend) GetUpgradeHeights() []opera.UpgradeHeight {
 func (b *EthAPIBackend) GetBundleExecutionInfo(hash common.Hash) *bundle.ExecutionInfo {
 	return b.svc.store.GetBundleExecutionInfo(hash)
 }
+
+func (b *EthAPIBackend) GetPooledBundles() map[common.Hash]common.Hash {
+	return b.svc.txpool.GetPooledBundles()
+}
