@@ -99,10 +99,6 @@ type TxPool interface {
 	// given hash.
 	Has(hash common.Hash) bool
 
-	// HasBundle returns an indicator whether txpool has a bundle cached with
-	// the given execution plan hash.
-	HasBundle(execPlanHash common.Hash) bool
-
 	// Pending should return pending transactions.
 	// The slice should be modifiable by the caller.
 	Pending(enforceTips bool) (map[common.Address]types.Transactions, error)

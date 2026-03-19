@@ -144,6 +144,20 @@ func (mr *MockTxPoolMockRecorder) Get(arg0 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockTxPool)(nil).Get), arg0)
 }
 
+// GetPooledBundles mocks base method.
+func (m *MockTxPool) GetPooledBundles() map[common.Hash]common.Hash {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetPooledBundles")
+	ret0, _ := ret[0].(map[common.Hash]common.Hash)
+	return ret0
+}
+
+// GetPooledBundles indicates an expected call of GetPooledBundles.
+func (mr *MockTxPoolMockRecorder) GetPooledBundles() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPooledBundles", reflect.TypeOf((*MockTxPool)(nil).GetPooledBundles))
+}
+
 // Has mocks base method.
 func (m *MockTxPool) Has(hash common.Hash) bool {
 	m.ctrl.T.Helper()
@@ -156,20 +170,6 @@ func (m *MockTxPool) Has(hash common.Hash) bool {
 func (mr *MockTxPoolMockRecorder) Has(hash any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Has", reflect.TypeOf((*MockTxPool)(nil).Has), hash)
-}
-
-// HasBundle mocks base method.
-func (m *MockTxPool) HasBundle(execPlanHash common.Hash) bool {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "HasBundle", execPlanHash)
-	ret0, _ := ret[0].(bool)
-	return ret0
-}
-
-// HasBundle indicates an expected call of HasBundle.
-func (mr *MockTxPoolMockRecorder) HasBundle(execPlanHash any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasBundle", reflect.TypeOf((*MockTxPool)(nil).HasBundle), execPlanHash)
 }
 
 // MinTip mocks base method.

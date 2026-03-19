@@ -150,6 +150,9 @@ type TxPool interface {
 	ContentFrom(addr common.Address) (types.Transactions, types.Transactions)
 	MinTip() *big.Int
 
+	// GetPooledBundles returns a mapping of all pending bundle execution plan hashes to their envelope tx hash.
+	GetPooledBundles() map[common.Hash]common.Hash
+
 	Stop()
 }
 

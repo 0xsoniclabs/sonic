@@ -18,6 +18,7 @@ package bundles
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"testing"
@@ -78,17 +79,15 @@ func TestBundle_CanBeProcessedByTheNetwork(t *testing.T) {
 		BuildEnvelopeBundleAndPlan()
 
 	// Check bundle status before submission.
-	info, err := getBundleInfo(t.Context(), client.Client(), plan.Hash())
-	require.NoError(t, err)
-	require.Equal(t, ethapi.BundleStatusUnknown, info.Status)
+	_, err = getBundleInfo(t.Context(), client.Client(), plan.Hash())
+	require.ErrorIs(t, err, ethereum.NotFound, "same as a transaction receipt, bundle info cannot be available before the bundle is executed")
 
 	// Run the bundle.
 	require.NoError(t, client.SendTransaction(t.Context(), bundleTx))
 
 	// Wait for the bundle to be processed.
-	info, err = waitForBundleExecution(t.Context(), client.Client(), plan.Hash())
+	info, err := waitForBundleExecution(t.Context(), client.Client(), plan.Hash())
 	require.NoError(t, err)
-	require.Equal(t, ethapi.BundleStatusExecuted, info.Status)
 
 	// Check the block and position in which the bundle was included.
 	require.NotNil(t, info.Block)
@@ -121,14 +120,17 @@ func getBundleInfo(
 	ctxt context.Context,
 	client *rpc.Client,
 	executionPlanHash common.Hash,
-) (ethapi.BundleInfo, error) {
-	var info ethapi.BundleInfo
+) (*ethapi.BundleInfo, error) {
+	var info *ethapi.BundleInfo
 	err := client.CallContext(
 		ctxt,
 		&info,
 		"sonic_getBundleInfo",
 		executionPlanHash,
 	)
+	if err == nil && info == nil {
+		return nil, ethereum.NotFound
+	}
 	return info, err
 }
 
@@ -136,16 +138,16 @@ func waitForBundleExecution(
 	ctxt context.Context,
 	client *rpc.Client,
 	executionPlanHash common.Hash,
-) (ethapi.BundleInfo, error) {
+) (*ethapi.BundleInfo, error) {
 	infos, err := waitForBundlesExecution(
 		ctxt, client,
 		[]common.Hash{executionPlanHash},
 	)
 	if err != nil {
-		return ethapi.BundleInfo{}, err
+		return nil, err
 	}
 	if len(infos) != 1 {
-		return ethapi.BundleInfo{}, fmt.Errorf("failed to obtain bundle info")
+		return nil, fmt.Errorf("failed to obtain bundle info")
 	}
 	return infos[0], nil
 }
@@ -154,9 +156,9 @@ func waitForBundlesExecution(
 	ctxt context.Context,
 	client *rpc.Client,
 	executionPlanHashes []common.Hash,
-) ([]ethapi.BundleInfo, error) {
+) ([]*ethapi.BundleInfo, error) {
 
-	infos := make([]ethapi.BundleInfo, len(executionPlanHashes))
+	infos := make([]*ethapi.BundleInfo, len(executionPlanHashes))
 	done := make([]bool, len(executionPlanHashes))
 
 	err := tests.WaitFor(ctxt, func(innerCtx context.Context) (bool, error) {
@@ -168,16 +170,15 @@ func waitForBundlesExecution(
 			}
 
 			info, err := getBundleInfo(innerCtx, client, plan)
+			if errors.Is(err, ethereum.NotFound) {
+				return false, nil
+			}
 			if err != nil {
 				return false, err
 			}
 
-			if info.Status != ethapi.BundleStatusPending {
-				infos[i] = info
-				done[i] = true
-			} else {
-				allFinished = false
-			}
+			infos[i] = info
+			done[i] = true
 		}
 		return allFinished, nil
 	})

@@ -210,3 +210,7 @@ func (p *dummyTxPool) Delete(needle common.Hash) {
 }
 
 func (p *dummyTxPool) Stop() {}
+
+func (p *dummyTxPool) GetPooledBundles() map[common.Hash]common.Hash {
+	return nil
+}

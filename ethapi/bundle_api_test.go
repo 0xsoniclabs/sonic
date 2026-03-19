@@ -17,11 +17,15 @@
 package ethapi
 
 import (
+	"math/big"
 	"slices"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -56,4 +60,91 @@ func TestBundleEstimateGas_PreArgsAreConsideredForEveryTransaction(t *testing.T)
 	bundleGasLimit := gasLimit + hexutil.Uint64(params.TxAccessListAddressGas) +
 		hexutil.Uint64(params.TxAccessListStorageKeyGas)
 	require.Equal(t, slices.Repeat([]hexutil.Uint64{bundleGasLimit}, numTransactions), gasLimits)
+}
+
+func TestGetPooledBundles_ReturnsNonEmptyNonError_WhenNoBundlesArePooled(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	backend := NewMockBackend(ctrl)
+	api := NewPublicBundleAPI(backend)
+
+	backend.EXPECT().ChainID().Return(big.NewInt(1)).AnyTimes()
+	backend.EXPECT().GetPooledBundles()
+
+	res, err := api.GetPooledBundles(t.Context())
+	require.NoError(t, err)
+	require.Empty(t, res)
+}
+
+func TestGetPooledBundles_(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	backend := NewMockBackend(ctrl)
+
+	api := NewPublicBundleAPI(backend)
+	chainId := big.NewInt(1)
+
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	envelope, txBundle, plan := bundle.NewBuilder().
+		With(
+			bundle.Step(key, &types.AccessListTx{ChainID: chainId}),
+		).BuildEnvelopeBundleAndPlan()
+
+	backend.EXPECT().ChainID().Return(chainId).AnyTimes()
+	backend.EXPECT().GetPooledBundles().Return(
+		map[common.Hash]common.Hash{
+			plan.Hash(): envelope.Hash(),
+		},
+	)
+	backend.EXPECT().GetPoolTransaction(envelope.Hash()).Return(envelope)
+
+	result, err := api.GetPooledBundles(t.Context())
+	require.NoError(t, err)
+
+	require.Len(t, result, 1)
+	require.Equal(t, plan.Hash(), result[0].PlanHash)
+	require.Len(t, result[0].Transactions, 1)
+	require.Equal(t, result[0].Transactions[0].Hash, txBundle.Transactions[0].Hash())
+}
+
+func TestGetPooledBundles_IgnoresInvalidQueuedBundles(t *testing.T) {
+
+	invalidTx := types.NewTx(&types.LegacyTx{
+		Data: []byte{0x1, 0x2},
+	})
+
+	cases := map[string]*types.Transaction{
+		"no envelope":      nil,
+		"invalid envelope": invalidTx,
+	}
+
+	for name, tx := range cases {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			backend := NewMockBackend(ctrl)
+
+			api := NewPublicBundleAPI(backend)
+			chainId := big.NewInt(1)
+
+			key, err := crypto.GenerateKey()
+			require.NoError(t, err)
+
+			envelope, _, plan := bundle.NewBuilder().
+				With(
+					bundle.Step(key, &types.AccessListTx{ChainID: chainId}),
+				).BuildEnvelopeBundleAndPlan()
+
+			backend.EXPECT().ChainID().Return(chainId).AnyTimes()
+			backend.EXPECT().GetPooledBundles().Return(
+				map[common.Hash]common.Hash{
+					plan.Hash(): envelope.Hash(),
+				},
+			)
+			backend.EXPECT().GetPoolTransaction(envelope.Hash()).Return(tx)
+
+			result, err := api.GetPooledBundles(t.Context())
+			require.NoError(t, err)
+			require.Empty(t, result)
+		})
+	}
 }

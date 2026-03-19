@@ -19,6 +19,7 @@ package evmcore
 import (
 	"errors"
 	"iter"
+	"maps"
 	"math"
 	"math/big"
 	"math/rand/v2"
@@ -580,6 +581,12 @@ func (pool *TxPool) stats() (int, int) {
 		queued += list.Len()
 	}
 	return pending, queued
+}
+
+func (pool *TxPool) GetPooledBundles() map[common.Hash]common.Hash {
+	pool.mu.RLock()
+	defer pool.mu.RUnlock()
+	return pool.all.GetBundles()
 }
 
 // Content retrieves the data content of the transaction pool, returning all the
@@ -1162,21 +1169,6 @@ func (pool *TxPool) Get(hash common.Hash) *types.Transaction {
 // given hash.
 func (pool *TxPool) Has(hash common.Hash) bool {
 	return pool.all.Get(hash) != nil
-}
-
-func (pool *TxPool) HasBundle(execPlanHash common.Hash) bool {
-	// TODO: make this more efficient by keeping a separate index for bundles
-	pool.mu.RLock()
-	defer pool.mu.RUnlock()
-	for _, tx := range pool.all.txs() {
-		if bundle.IsEnvelope(tx) {
-			plan, err := bundle.ExtractExecutionPlan(tx)
-			if err == nil && plan.Hash() == execPlanHash {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 func (pool *TxPool) OnlyNotExisting(hashes []common.Hash) []common.Hash {
@@ -1919,6 +1911,9 @@ type txLookup struct {
 	// All accounts with a pooled authorization mapped to list of hashes of
 	// transactions including those authorizations
 	auths map[common.Address][]common.Hash
+
+	// All pending bundle execution plan hashes mapped to their envelope hash.
+	bundles map[common.Hash]common.Hash
 }
 
 // newTxLookup returns a new txLookup structure.
@@ -1927,6 +1922,7 @@ func newTxLookup() *txLookup {
 		locals:  make(map[common.Hash]*types.Transaction),
 		remotes: make(map[common.Hash]*types.Transaction),
 		auths:   make(map[common.Address][]common.Hash),
+		bundles: make(map[common.Hash]common.Hash),
 	}
 }
 
@@ -2077,6 +2073,28 @@ func (t *txLookup) Add(tx *types.Transaction, local bool) {
 	}
 
 	t.addAuthorities(tx)
+	t.indexBundles(tx)
+}
+
+func (t *txLookup) GetBundle(hash common.Hash) (*types.Transaction, bool) {
+	t.lock.RLock()
+	defer t.lock.RUnlock()
+
+	if txHash, found := t.bundles[hash]; found {
+		if tx, ok := t.locals[txHash]; ok {
+			return tx, true
+		}
+		if tx, ok := t.remotes[txHash]; ok {
+			return tx, true
+		}
+	}
+	return nil, false
+}
+
+func (t *txLookup) GetBundles() map[common.Hash]common.Hash {
+	t.lock.RLock()
+	defer t.lock.RUnlock()
+	return maps.Clone(t.bundles)
 }
 
 // addAuthorities tracks the supplied tx in relation to each authority it
@@ -2098,6 +2116,36 @@ func (t *txLookup) addAuthorities(tx *types.Transaction) {
 	}
 }
 
+// indexBundles tracks the supplied tx in relation to its bundle execution plan if it is a bundle.
+func (t *txLookup) indexBundles(tx *types.Transaction) {
+	if bundle.IsEnvelope(tx) {
+		plan, err := bundle.ExtractExecutionPlan(tx)
+		if err != nil {
+			log.Error("Failed to extract execution plan from bundle", "hash", tx.Hash(), "err", err)
+			return
+		}
+		txHash := tx.Hash()
+		planHash := plan.Hash()
+
+		if hash, found := t.bundles[plan.Hash()]; found && hash != txHash {
+			log.Warn("Bundle hash collision detected", "planHash", planHash, "existingTxHash", hash, "newTxHash", txHash)
+		}
+		t.bundles[planHash] = txHash
+	}
+}
+
+// removeBundle removes the supplied tx from the bundle index if it is a bundle.
+func (t *txLookup) removeBundle(tx *types.Transaction) {
+	if bundle.IsEnvelope(tx) {
+		plan, err := bundle.ExtractExecutionPlan(tx)
+		if err != nil {
+			log.Error("Failed to extract execution plan from bundle", "hash", tx.Hash(), "err", err)
+			return
+		}
+		delete(t.bundles, plan.Hash())
+	}
+}
+
 // Remove removes a transaction from the lookup.
 func (t *txLookup) Remove(hash common.Hash) {
 	t.lock.Lock()
@@ -2111,6 +2159,7 @@ func (t *txLookup) Remove(hash common.Hash) {
 		log.Error("No transaction found to be deleted", "hash", hash)
 		return
 	}
+	t.removeBundle(tx)
 
 	t.removeAuthorities(tx)
 	t.slots -= numSlots(tx)
