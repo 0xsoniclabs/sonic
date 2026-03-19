@@ -271,8 +271,6 @@ func TestProcess_TracksParentBlockHashIfPragueIsEnabled(t *testing.T) {
 						state.EXPECT().AddAddressToAccessList(params.HistoryStorageAddress),
 						state.EXPECT().Snapshot().Return(0),
 						state.EXPECT().Exist(params.HistoryStorageAddress).Return(true),
-						state.EXPECT().SubBalance(any, any, any),
-						state.EXPECT().AddBalance(any, any, any),
 						state.EXPECT().GetCode(any).AnyTimes(),
 						state.EXPECT().Finalise(any),
 						state.EXPECT().EndTransaction(), // must be terminated
