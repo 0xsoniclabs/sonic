@@ -121,6 +121,20 @@ type evmProcessor struct {
 func (p *evmProcessor) run(tx *types.Transaction) (
 	result bool, gasUsed uint64,
 ) {
+
+	if bundle.IsEnvelope(tx) {
+		plan, err := bundle.ExtractExecutionPlan(tx)
+		if err != nil {
+			// If the execution plan can not be extracted, we consider the
+			// transaction as not successfully processed, and we do not attempt
+			// to run it.
+			return false, 0
+		}
+		if p.bundleTracker.HasBundleRecentlyBeenProcessed(plan.Hash()) {
+			return false, 0
+		}
+	}
+
 	// Note: the index can be set to 0 since code running inside the EVM can not
 	// obtain the position of a transaction in the block. It has thus no effect
 	// on the scheduling of the transactions.
@@ -140,6 +154,12 @@ func (p *evmProcessor) run(tx *types.Transaction) (
 				txWasProcessed = true
 			}
 		}
+	}
+	// if this transaction was a bundle and was processed, its hash would not be
+	// in the list of processed transactions, but we still want to consider it
+	// as successfully
+	if len(summary.ProcessedBundles) != 0 {
+		txWasProcessed = gasUsed > 0
 	}
 	return txWasProcessed, gasUsed
 }
