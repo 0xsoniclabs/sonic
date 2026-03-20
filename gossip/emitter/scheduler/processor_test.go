@@ -83,7 +83,7 @@ func TestEvmProcessor_Run_IfExecutionProducesMultipleProcessedTransactions_SumsU
 		evmcore.ExecutionSummary{
 			ProcessedTransactions: []evmcore.ProcessedTransaction{
 				{Transaction: tx, Receipt: &types.Receipt{GasUsed: 10}},
-			{Receipt: nil}, // skipped transaction
+				{Receipt: nil}, // skipped transaction
 				{Receipt: &types.Receipt{GasUsed: 20}},
 			}})
 
