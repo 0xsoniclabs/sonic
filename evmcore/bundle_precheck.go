@@ -35,8 +35,9 @@ import (
 //go:generate mockgen -source=bundle_precheck.go -destination=bundle_precheck_mock.go -package=evmcore
 
 // BundleState represents the current evaluation state of a transaction bundle.
-// It indicates whether the bundle is executable, if it is temporarily blocked from execution,
-// and provides a list of reasons explaining the current state.
+// It indicates whether the bundle is executable, if it is temporarily blocked
+// from execution. If the bundle is not executable, it also provides a list of
+// reasons explaining why.
 //
 // Fields:
 //   - Executable:         True if the bundle can be executed.

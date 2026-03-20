@@ -96,8 +96,8 @@ func Test_GetBundleState_ReturnsTemporaryBlockedForFutureBundle(t *testing.T) {
 	require.NoError(t, err)
 
 	state := GetBundleState(chainState, envelop)
-	require.Equal(t, true, state.Executable)
-	require.Equal(t, true, state.TemporarilyBlocked)
+	require.True(t, state.Executable)
+	require.True(t, state.TemporarilyBlocked)
 }
 
 func Test_GetBundleState_ReturnsNonExecutable_ForFailedTrialRun(t *testing.T) {
@@ -128,7 +128,7 @@ func Test_GetBundleState_ReturnsNonExecutable_ForFailedTrialRun(t *testing.T) {
 	}
 
 	state := getBundleState(chainState, envelop, rejectEverything)
-	require.Equal(t, false, state.Executable)
+	require.False(t, state.Executable)
 	require.Contains(t, state.Reasons[0], "trial-run failed")
 }
 
@@ -160,8 +160,8 @@ func Test_GetBundleState_ReturnsRunnableForCurrentBundle(t *testing.T) {
 	}
 
 	state := getBundleState(chainState, envelop, acceptEverything)
-	require.Equal(t, true, state.Executable)
-	require.Equal(t, false, state.TemporarilyBlocked)
+	require.True(t, state.Executable)
+	require.False(t, state.TemporarilyBlocked)
 }
 
 func Test_GetBundleState_ChecksForNonceConflicts(t *testing.T) {
@@ -391,10 +391,8 @@ func Test_checkForNonceConflicts_ReturnsNonExecutable_WhenLowestReferencedNonces
 	require.Error(t, err)
 
 	got := checkForNonceConflicts(bundle, signer, nil)
-	require.Equal(t,
-		BundleState{Executable: false,
-			Reasons: []string{"could not get lowest nonce for all accounts: failed to derive sender: invalid transaction v, r, s values"}},
-		got)
+	require.False(t, got.Executable)
+	require.Contains(t, got.Reasons[0], "failed to derive sender")
 }
 
 func Test_getLowestReferencedNonces_ReturnsLowestNoncesInBundle(t *testing.T) {

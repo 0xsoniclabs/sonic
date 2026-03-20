@@ -90,7 +90,6 @@ func (s *BundleIntegrationImplementation) isPending(tx *types.Transaction) bool 
 		chainState: s.chain,
 		stateDB:    s.state,
 	}
-
 	state := GetBundleState(&chain, tx)
 	return state.Executable
 }
