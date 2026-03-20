@@ -106,8 +106,10 @@ func testSucceedingConcurrentBundles(
 	maxBlock := uint64(0)
 	for _, info := range infos {
 		require.Equal(ethapi.BundleStatusExecuted, info.Status)
-		minBlock = min(minBlock, *info.Block)
-		maxBlock = max(maxBlock, *info.Block)
+		if info.Block != nil {
+			minBlock = min(minBlock, uint64(*info.Block))
+			maxBlock = max(maxBlock, uint64(*info.Block))
+		}
 	}
 	fmt.Printf("All bundles got executed in block range %d - %d\n", minBlock, maxBlock)
 

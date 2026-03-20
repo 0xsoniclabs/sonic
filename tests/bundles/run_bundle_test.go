@@ -121,8 +121,8 @@ func getBundleInfo(
 	ctxt context.Context,
 	client *rpc.Client,
 	executionPlanHash common.Hash,
-) (ethapi.BundleInfo, error) {
-	var info ethapi.BundleInfo
+) (ethapi.RPCBundleInfo, error) {
+	var info ethapi.RPCBundleInfo
 	err := client.CallContext(
 		ctxt,
 		&info,
@@ -136,16 +136,16 @@ func waitForBundleExecution(
 	ctxt context.Context,
 	client *rpc.Client,
 	executionPlanHash common.Hash,
-) (ethapi.BundleInfo, error) {
+) (ethapi.RPCBundleInfo, error) {
 	infos, err := waitForBundlesExecution(
 		ctxt, client,
 		[]common.Hash{executionPlanHash},
 	)
 	if err != nil {
-		return ethapi.BundleInfo{}, err
+		return ethapi.RPCBundleInfo{}, err
 	}
 	if len(infos) != 1 {
-		return ethapi.BundleInfo{}, fmt.Errorf("failed to obtain bundle info")
+		return ethapi.RPCBundleInfo{}, fmt.Errorf("failed to obtain bundle info")
 	}
 	return infos[0], nil
 }
@@ -154,9 +154,9 @@ func waitForBundlesExecution(
 	ctxt context.Context,
 	client *rpc.Client,
 	executionPlanHashes []common.Hash,
-) ([]ethapi.BundleInfo, error) {
+) ([]ethapi.RPCBundleInfo, error) {
 
-	infos := make([]ethapi.BundleInfo, len(executionPlanHashes))
+	infos := make([]ethapi.RPCBundleInfo, len(executionPlanHashes))
 	done := make([]bool, len(executionPlanHashes))
 
 	err := tests.WaitFor(ctxt, func(innerCtx context.Context) (bool, error) {

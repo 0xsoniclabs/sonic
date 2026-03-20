@@ -56,7 +56,7 @@ const (
 func (a *PublicBundleAPI) GetBundleInfo(
 	ctx context.Context,
 	executionPlanHash common.Hash,
-) (BundleInfo, error) {
+) (RPCBundleInfo, error) {
 
 	// Since there is no global lock on the state, and a bundle can be executed
 	// and removed from the pool in-between checking for the execution info and
@@ -67,17 +67,17 @@ func (a *PublicBundleAPI) GetBundleInfo(
 		// Check whether the given execution plan got already executed.
 		info := a.b.GetBundleExecutionInfo(executionPlanHash)
 		if info != nil {
-			return BundleInfo{
+			return RPCBundleInfo{
 				Status:   BundleStatusExecuted,
-				Block:    &info.BlockNum,
-				Position: &info.Position,
-				Count:    &info.Count,
+				Block:    toBlockNum(info.BlockNum),
+				Position: toHexUint(uint64(info.Position)),
+				Count:    toHexUint(uint64(info.Count)),
 			}, nil
 		}
 
 		// Check whether the given execution plan is pending in the Tx Pool.
 		if isInPool := a.b.IsBundleInPool(executionPlanHash); isInPool {
-			return BundleInfo{
+			return RPCBundleInfo{
 				Status: BundleStatusPending,
 			}, nil
 		}
@@ -85,16 +85,16 @@ func (a *PublicBundleAPI) GetBundleInfo(
 	}
 
 	// Otherwise, the state is unknown (default).
-	return BundleInfo{}, nil
+	return RPCBundleInfo{}, nil
 }
 
-// BundleInfo is the JSON RPC message returned by the GetBundleInfo API, which
+// RPCBundleInfo is the JSON RPC message returned by the GetBundleInfo API, which
 // provides information about the status of a transaction bundle.
-type BundleInfo struct {
-	Status   BundleStatus `json:"status"`
-	Block    *uint64      `json:"block,omitempty"`
-	Position *uint32      `json:"position,omitempty"`
-	Count    *uint32      `json:"count,omitempty"`
+type RPCBundleInfo struct {
+	Status   BundleStatus     `json:"status"`
+	Block    *rpc.BlockNumber `json:"block,omitempty"`
+	Position *hexutil.Uint    `json:"position,omitempty"`
+	Count    *hexutil.Uint    `json:"count,omitempty"`
 }
 
 type PrepareBundleArgs struct {
@@ -111,15 +111,15 @@ type PrepareBundleArgs struct {
 	LatestBlock rpc.BlockNumber `json:"latestBlock"`
 }
 
-// PreparedBundle is the return type of the `sonic_prepareBundle` RPC method
-type PreparedBundle struct {
+// RPCPreparedBundle is the return type of the `sonic_prepareBundle` RPC method
+type RPCPreparedBundle struct {
 	// Transactions specifies the ordered list of transactions to be included in the bundle.
 	// These must be signed exactly as provided by the bundle_prepare RPC method; any modification
 	// will invalidate the execution plan and result in an ill-formed bundle.
 	Transactions []TransactionArgs `json:"transactions"`
 	// Plan contains the execution plan that each bundled transaction references. This is provided
 	// for verification purposes; users may independently compute and validate the execution plan hash.
-	Plan bundle.ExecutionPlan `json:"plan,omitempty"`
+	Plan RPCExecutionPlan `json:"plan,omitempty"`
 }
 
 // PrepareBundle implements the `sonic_prepareBundle` RPC method.
@@ -135,7 +135,7 @@ type PreparedBundle struct {
 func (a *PublicBundleAPI) PrepareBundle(
 	ctx context.Context,
 	args PrepareBundleArgs,
-) (*PreparedBundle, error) {
+) (*RPCPreparedBundle, error) {
 
 	gasCap := a.b.RPCGasCap()
 	basefee := a.b.MinGasPrice()
@@ -192,9 +192,9 @@ func (a *PublicBundleAPI) PrepareBundle(
 		args.Transactions[i] = tx
 	}
 
-	bundle := PreparedBundle{
+	bundle := RPCPreparedBundle{
 		Transactions: args.Transactions,
-		Plan:         plan,
+		Plan:         NewRPCExecutionPlan(plan),
 	}
 
 	return &bundle, nil
@@ -209,7 +209,7 @@ type SubmitBundleArgs struct {
 	// ExecutionPlan contains the execution plan that each bundled transaction references.
 	// This value must be provided as returned by the `sonic_prepareBundle` method;
 	// any modification will invalidate the execution plan and result in an ill-formed bundle.
-	ExecutionPlan bundle.ExecutionPlan `json:"plan,omitempty"`
+	ExecutionPlan RPCExecutionPlan `json:"executionPlan,omitempty"`
 }
 
 // SubmitBundle implements the `sonic_submitBundle` RPC method, which submits a prepared bundle for execution.
@@ -221,8 +221,8 @@ func (a *PublicBundleAPI) SubmitBundle(
 	txBundle := bundle.TransactionBundle{
 		Transactions: make(types.Transactions, len(args.SignedTransactions)),
 		Flags:        args.ExecutionPlan.Flags,
-		Earliest:     args.ExecutionPlan.Earliest,
-		Latest:       args.ExecutionPlan.Latest,
+		Earliest:     uint64(args.ExecutionPlan.Earliest),
+		Latest:       uint64(args.ExecutionPlan.Latest),
 	}
 
 	// 1) Decode bundled transactions and compute total gas requirement
@@ -319,6 +319,8 @@ func asTransaction(msg *core.Message) (*types.Transaction, error) {
 }
 
 type BundleGasLimits struct {
+	// GasLimits contains the estimated gas limit for each transaction in the
+	// bundle, in the same order as the input transactions.
 	GasLimits []hexutil.Uint64 `json:"gasLimits"`
 }
 
@@ -327,8 +329,13 @@ type BundleGasLimits struct {
 // applying state changes from previous transactions when estimating subsequent ones.
 // Transactions that become invalid or fail during execution for later estimations are ignored.
 // This method can help getting gas estimates for mutually depending transactions in bundles.
-func (a *PublicBundleAPI) EstimateGasForTransactions(ctx context.Context, args []TransactionArgs,
-	blockNrOrHash *rpc.BlockNumberOrHash, overrides *StateOverride, blockOverrides *BlockOverrides) (BundleGasLimits, error) {
+func (a *PublicBundleAPI) EstimateGasForTransactions(
+	ctx context.Context,
+	args []TransactionArgs,
+	blockNrOrHash *rpc.BlockNumberOrHash,
+	overrides *StateOverride,
+	blockOverrides *BlockOverrides,
+) (BundleGasLimits, error) {
 
 	if len(args) > 16 {
 		return BundleGasLimits{}, fmt.Errorf("too many transactions to estimate gas for: got %d, max is 16", len(args))
@@ -398,4 +405,43 @@ func doEstimateGasForTransactions(
 			hexutil.Uint64(params.TxAccessListStorageKeyGas) // add gas for execution plan hash
 	}
 	return gasLimits, nil
+}
+
+type RPCExecutionStep struct {
+	From common.Address `json:"from"`
+	Hash common.Hash    `json:"hash"`
+}
+
+type RPCExecutionPlan struct {
+	Flags    bundle.ExecutionFlag `json:"flags"`
+	Steps    []RPCExecutionStep   `json:"steps"`
+	Earliest rpc.BlockNumber      `json:"earliest"`
+	Latest   rpc.BlockNumber      `json:"latest"`
+}
+
+func NewRPCExecutionPlan(plan bundle.ExecutionPlan) RPCExecutionPlan {
+	steps := make([]RPCExecutionStep, len(plan.Steps))
+	for i, step := range plan.Steps {
+		steps[i] = RPCExecutionStep{
+			From: step.From,
+			Hash: step.Hash,
+		}
+	}
+
+	return RPCExecutionPlan{
+		Flags:    plan.Flags,
+		Steps:    steps,
+		Earliest: rpc.BlockNumber(plan.Earliest),
+		Latest:   rpc.BlockNumber(plan.Latest),
+	}
+}
+
+func toBlockNum(num uint64) *rpc.BlockNumber {
+	bNr := rpc.BlockNumber(num)
+	return &bNr
+}
+
+func toHexUint(num uint64) *hexutil.Uint {
+	hNum := hexutil.Uint(num)
+	return &hNum
 }
