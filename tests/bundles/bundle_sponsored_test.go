@@ -17,6 +17,7 @@
 package bundles
 
 import (
+	"fmt"
 	"math/big"
 	"testing"
 
@@ -33,12 +34,12 @@ import (
 )
 
 func TestBundle_RejectsBundle_WithPayloadSponsorRequest_WithoutSponsorship(t *testing.T) {
+	t.Parallel()
 
 	upgrade := opera.GetBrioUpgrades()
 	upgrade.TransactionBundles = true
 	upgrade.GasSubsidies = true
 	session := sharedNetwork.GetIntegrationTestNetSession(t, upgrade)
-	t.Parallel()
 
 	client, err := session.GetClient()
 	require.NoError(t, err)
@@ -65,57 +66,64 @@ func TestBundle_RejectsBundle_WithPayloadSponsorRequest_WithoutSponsorship(t *te
 }
 
 func TestBundle_CanRunSponsorshipAndSponsored(t *testing.T) {
-	upgrade := opera.GetBrioUpgrades()
-	upgrade.TransactionBundles = true
-	upgrade.GasSubsidies = true
-	session := sharedNetwork.GetIntegrationTestNetSession(t, upgrade)
 	t.Parallel()
+	for _, singleBlockProposerOn := range []bool{true, false} {
+		t.Run(fmt.Sprintf("singleBlockProposer=%v", singleBlockProposerOn), func(t *testing.T) {
+			t.Parallel()
 
-	client, err := session.GetClient()
-	require.NoError(t, err)
-	defer client.Close()
+			upgrade := opera.GetBrioUpgrades()
+			upgrade.TransactionBundles = true
+			upgrade.GasSubsidies = true
+			upgrade.SingleProposerBlockFormation = singleBlockProposerOn
+			session := sharedNetwork.GetIntegrationTestNetSession(t, upgrade)
 
-	// prepare sponsorship and sponsored transactions
-	sponsee, unsignedTx := makeSponsorshipRequestTx(t, session)
-	sponsor, txSponsorData := makeSponsorTx(t, session, sponsee)
+			client, err := session.GetClient()
+			require.NoError(t, err)
+			defer client.Close()
 
-	// prepare the bundle with both the sponsorship transaction and the sponsored transaction.
-	blockNumber, err := client.BlockNumber(t.Context())
-	require.NoError(t, err)
+			// prepare sponsorship and sponsored transactions
+			sponsee, unsignedTx := makeSponsorshipRequestTx(t, session)
+			sponsor, txSponsorData := makeSponsorTx(t, session, sponsee)
 
-	envelope, bundle, plan := bundle.NewBuilder().
-		Earliest(blockNumber).
-		With(
-			bundle.Step(sponsor.PrivateKey, txSponsorData),
-			bundle.Step(sponsee.PrivateKey, unsignedTx),
-		).
-		BuildEnvelopeBundleAndPlan()
+			// prepare the bundle with both the sponsorship transaction and the sponsored transaction.
+			blockNumber, err := client.BlockNumber(t.Context())
+			require.NoError(t, err)
 
-	// Send the bundle to the network and check that it is processed successfully.
-	err = client.SendTransaction(t.Context(), envelope)
-	require.NoError(t, err)
+			envelope, bundle, plan := bundle.NewBuilder().
+				Earliest(blockNumber).
+				With(
+					bundle.Step(sponsor.PrivateKey, txSponsorData),
+					bundle.Step(sponsee.PrivateKey, unsignedTx),
+				).
+				BuildEnvelopeBundleAndPlan()
 
-	info, err := waitForBundleExecution(t.Context(), client.Client(), plan.Hash())
-	require.NoError(t, err)
+			// Send the bundle to the network and check that it is processed successfully.
+			err = client.SendTransaction(t.Context(), envelope)
+			require.NoError(t, err)
 
-	require.Equal(t, ethapi.BundleStatusExecuted, info.Status)
-	require.NotNil(t, info.Block)
-	require.NotNil(t, info.Position)
+			info, err := waitForBundleExecution(t.Context(), client.Client(), plan.Hash())
+			require.NoError(t, err)
 
-	block, err := client.BlockByNumber(t.Context(), big.NewInt(int64(*info.Block)))
-	require.NoError(t, err)
+			require.Equal(t, ethapi.BundleStatusExecuted, info.Status)
+			require.NotNil(t, info.Block)
+			require.NotNil(t, info.Position)
 
-	// sponsored transaction introduce an internal transaction,
-	// so we expect 3 transactions in the block:
-	// 1. the sponsorship transaction
-	// 2. the sponsored transaction
-	// 3. the internal transaction that transfer the fee from the sponsee to the sponsor
-	txs := block.Transactions()
-	position := *info.Position
-	require.GreaterOrEqual(t, uint32(len(txs)), position+3)
-	require.Equal(t, txs[position].Hash(), bundle.Transactions[0].Hash())
-	require.Equal(t, txs[position+1].Hash(), bundle.Transactions[1].Hash())
-	require.True(t, internaltx.IsInternal(txs[position+2]))
+			block, err := client.BlockByNumber(t.Context(), big.NewInt(int64(*info.Block)))
+			require.NoError(t, err)
+
+			// sponsored transaction introduce an internal transaction,
+			// so we expect 3 transactions in the block:
+			// 1. the sponsorship transaction
+			// 2. the sponsored transaction
+			// 3. the internal transaction that transfer the fee from the sponsee to the sponsor
+			txs := block.Transactions()
+			position := *info.Position
+			require.GreaterOrEqual(t, uint32(len(txs)), position+3)
+			require.Equal(t, txs[position].Hash(), bundle.Transactions[0].Hash())
+			require.Equal(t, txs[position+1].Hash(), bundle.Transactions[1].Hash())
+			require.True(t, internaltx.IsInternal(txs[position+2]))
+		})
+	}
 }
 
 func makeSponsorshipRequestTx(t *testing.T, session tests.IntegrationTestNetSession) (*tests.Account, *types.AccessListTx) {

@@ -47,17 +47,17 @@ func (m *MockprocessorFactory) EXPECT() *MockprocessorFactoryMockRecorder {
 }
 
 // beginBlock mocks base method.
-func (m *MockprocessorFactory) beginBlock(arg0 *evmcore.EvmBlock) processor {
+func (m *MockprocessorFactory) beginBlock(arg0 *evmcore.EvmBlock, arg1 BundleTracker) processor {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "beginBlock", arg0)
+	ret := m.ctrl.Call(m, "beginBlock", arg0, arg1)
 	ret0, _ := ret[0].(processor)
 	return ret0
 }
 
 // beginBlock indicates an expected call of beginBlock.
-func (mr *MockprocessorFactoryMockRecorder) beginBlock(arg0 any) *gomock.Call {
+func (mr *MockprocessorFactoryMockRecorder) beginBlock(arg0, arg1 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "beginBlock", reflect.TypeOf((*MockprocessorFactory)(nil).beginBlock), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "beginBlock", reflect.TypeOf((*MockprocessorFactory)(nil).beginBlock), arg0, arg1)
 }
 
 // Mockprocessor is a mock of processor interface.
@@ -189,6 +189,44 @@ func (m *MockChain) StateDB() state.StateDB {
 func (mr *MockChainMockRecorder) StateDB() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StateDB", reflect.TypeOf((*MockChain)(nil).StateDB))
+}
+
+// MockBundleTracker is a mock of BundleTracker interface.
+type MockBundleTracker struct {
+	ctrl     *gomock.Controller
+	recorder *MockBundleTrackerMockRecorder
+	isgomock struct{}
+}
+
+// MockBundleTrackerMockRecorder is the mock recorder for MockBundleTracker.
+type MockBundleTrackerMockRecorder struct {
+	mock *MockBundleTracker
+}
+
+// NewMockBundleTracker creates a new mock instance.
+func NewMockBundleTracker(ctrl *gomock.Controller) *MockBundleTracker {
+	mock := &MockBundleTracker{ctrl: ctrl}
+	mock.recorder = &MockBundleTrackerMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockBundleTracker) EXPECT() *MockBundleTrackerMockRecorder {
+	return m.recorder
+}
+
+// HasBundleRecentlyBeenProcessed mocks base method.
+func (m *MockBundleTracker) HasBundleRecentlyBeenProcessed(execPlanHash common.Hash) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HasBundleRecentlyBeenProcessed", execPlanHash)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// HasBundleRecentlyBeenProcessed indicates an expected call of HasBundleRecentlyBeenProcessed.
+func (mr *MockBundleTrackerMockRecorder) HasBundleRecentlyBeenProcessed(execPlanHash any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasBundleRecentlyBeenProcessed", reflect.TypeOf((*MockBundleTracker)(nil).HasBundleRecentlyBeenProcessed), execPlanHash)
 }
 
 // MockevmProcessorRunner is a mock of evmProcessorRunner interface.

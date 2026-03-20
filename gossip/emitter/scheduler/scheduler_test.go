@@ -58,7 +58,7 @@ func TestScheduler_Schedule_ForwardsBlockInfoToTheProcessor(t *testing.T) {
 			BaseFee:     baseFee.ToBig(),
 			BlobBaseFee: blobBaseFee.ToBig(),
 		},
-	}).Return(processor)
+	}, nil).Return(processor)
 	processor.EXPECT().release()
 
 	txs.EXPECT().Current().Return(nil)
@@ -76,6 +76,7 @@ func TestScheduler_Schedule_ForwardsBlockInfoToTheProcessor(t *testing.T) {
 		},
 		txs,
 		Limits{},
+		nil,
 	)
 }
 
@@ -83,7 +84,7 @@ func TestScheduler_Schedule_TransactionsAreSignaledAsAcceptedOrSkipped(t *testin
 	ctrl := gomock.NewController(t)
 	factory := NewMockprocessorFactory(ctrl)
 	processor := NewMockprocessor(ctrl)
-	factory.EXPECT().beginBlock(gomock.Any()).Return(processor).AnyTimes()
+	factory.EXPECT().beginBlock(gomock.Any(), nil).Return(processor).AnyTimes()
 	processor.EXPECT().release().AnyTimes()
 
 	txs := NewMockPrioritizedTransactions(ctrl)
@@ -114,6 +115,7 @@ func TestScheduler_Schedule_TransactionsAreSignaledAsAcceptedOrSkipped(t *testin
 			Gas:  uint64(100) * params.TxGas,
 			Size: math.MaxUint64, // no size limit
 		},
+		nil,
 	)
 
 	require.Equal(t, []*types.Transaction{tx1, tx3}, result)
@@ -123,7 +125,7 @@ func TestScheduler_Schedule_RetrievalOfTransactionsStopsWhenGasLimitIsReached(t 
 	ctrl := gomock.NewController(t)
 	factory := NewMockprocessorFactory(ctrl)
 	processor := NewMockprocessor(ctrl)
-	factory.EXPECT().beginBlock(gomock.Any()).Return(processor).AnyTimes()
+	factory.EXPECT().beginBlock(gomock.Any(), nil).Return(processor).AnyTimes()
 	processor.EXPECT().release().AnyTimes()
 
 	txs := NewMockPrioritizedTransactions(ctrl)
@@ -161,6 +163,7 @@ func TestScheduler_Schedule_RetrievalOfTransactionsStopsWhenGasLimitIsReached(t 
 			Gas:  uint64(20) * params.TxGas,
 			Size: math.MaxUint64, // no size limit
 		},
+		nil,
 	)
 
 	require.Equal(t, []*types.Transaction{tx1, tx2, tx3, tx4}, result)
@@ -170,7 +173,7 @@ func TestScheduler_Schedule_TooCostlyTransactionsAreSkipped(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	factory := NewMockprocessorFactory(ctrl)
 	processor := NewMockprocessor(ctrl)
-	factory.EXPECT().beginBlock(gomock.Any()).Return(processor).AnyTimes()
+	factory.EXPECT().beginBlock(gomock.Any(), nil).Return(processor).AnyTimes()
 	processor.EXPECT().release().AnyTimes()
 
 	txs := NewMockPrioritizedTransactions(ctrl)
@@ -205,6 +208,7 @@ func TestScheduler_Schedule_TooCostlyTransactionsAreSkipped(t *testing.T) {
 			Gas:  350_000,
 			Size: math.MaxUint64, // no size limit
 		},
+		nil,
 	)
 
 	require.Equal(t, []*types.Transaction{tx1, tx3}, result)
@@ -214,7 +218,7 @@ func TestScheduler_Schedule_TooLargeTransactionsAreSkipped(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	factory := NewMockprocessorFactory(ctrl)
 	processor := NewMockprocessor(ctrl)
-	factory.EXPECT().beginBlock(gomock.Any()).Return(processor).AnyTimes()
+	factory.EXPECT().beginBlock(gomock.Any(), nil).Return(processor).AnyTimes()
 	processor.EXPECT().release().AnyTimes()
 
 	txs := NewMockPrioritizedTransactions(ctrl)
@@ -254,6 +258,7 @@ func TestScheduler_Schedule_TooLargeTransactionsAreSkipped(t *testing.T) {
 			Gas:  math.MaxInt64,
 			Size: 3*small + 10,
 		},
+		nil,
 	)
 
 	require.Equal(t, []*types.Transaction{tx1, tx3, tx4}, result)
@@ -263,7 +268,7 @@ func TestScheduler_Schedule_SizeLimitIsEnforced(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	factory := NewMockprocessorFactory(ctrl)
 	processor := NewMockprocessor(ctrl)
-	factory.EXPECT().beginBlock(gomock.Any()).Return(processor).AnyTimes()
+	factory.EXPECT().beginBlock(gomock.Any(), nil).Return(processor).AnyTimes()
 	processor.EXPECT().run(gomock.Any()).Return(true, uint64(10)).AnyTimes()
 	processor.EXPECT().release().AnyTimes()
 
@@ -291,6 +296,7 @@ func TestScheduler_Schedule_SizeLimitIsEnforced(t *testing.T) {
 					Gas:  math.MaxUint64, // no gas limit
 					Size: limit,
 				},
+				nil,
 			)
 
 			want := uint64(0)
@@ -315,7 +321,7 @@ func TestScheduler_Schedule_StopsWhenContextIsCancelled(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	factory := NewMockprocessorFactory(ctrl)
 	processor := NewMockprocessor(ctrl)
-	factory.EXPECT().beginBlock(gomock.Any()).Return(processor).AnyTimes()
+	factory.EXPECT().beginBlock(gomock.Any(), nil).Return(processor).AnyTimes()
 	processor.EXPECT().release().AnyTimes()
 
 	txs := NewMockPrioritizedTransactions(ctrl)
@@ -349,6 +355,7 @@ func TestScheduler_Schedule_StopsWhenContextIsCancelled(t *testing.T) {
 			Gas:  uint64(20) * params.TxGas,
 			Size: math.MaxUint64, // no size limit
 		},
+		nil,
 	)
 
 	require.Equal(t, []*types.Transaction{tx1, tx2}, result)
@@ -384,7 +391,7 @@ func TestScheduler_Schedule_IgnoresFailedTransactions(t *testing.T) {
 
 			factory := NewMockprocessorFactory(ctrl)
 			processor := NewMockprocessor(ctrl)
-			factory.EXPECT().beginBlock(gomock.Any()).Return(processor).AnyTimes()
+			factory.EXPECT().beginBlock(gomock.Any(), nil).Return(processor).AnyTimes()
 			processor.EXPECT().release().AnyTimes()
 			processor.EXPECT().run(gomock.Any()).DoAndReturn(
 				func(tx *types.Transaction) (bool, uint64) {
@@ -406,6 +413,7 @@ func TestScheduler_Schedule_IgnoresFailedTransactions(t *testing.T) {
 					Gas:  uint64(100) * params.TxGas,
 					Size: math.MaxUint64, // no size limit
 				},
+				nil,
 			)
 
 			got := []int{}
@@ -421,7 +429,7 @@ func TestScheduler_Schedule_OrderOfInputTransactionsIsPreserved(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	factory := NewMockprocessorFactory(ctrl)
 	processor := NewMockprocessor(ctrl)
-	factory.EXPECT().beginBlock(gomock.Any()).Return(processor).AnyTimes()
+	factory.EXPECT().beginBlock(gomock.Any(), nil).Return(processor).AnyTimes()
 	processor.EXPECT().release().AnyTimes()
 
 	txResults := []struct {
@@ -459,6 +467,7 @@ func TestScheduler_Schedule_OrderOfInputTransactionsIsPreserved(t *testing.T) {
 				Gas:  limit * params.TxGas,
 				Size: math.MaxUint64, // no size limit
 			},
+			nil,
 		)
 
 		got := []int{}
@@ -543,7 +552,7 @@ func TestScheduler_Schedule_GetsOptimalPrefixIfAllTransactionsArePassing(t *test
 
 			factory := NewMockprocessorFactory(ctrl)
 			processor := NewMockprocessor(ctrl)
-			factory.EXPECT().beginBlock(gomock.Any()).Return(processor).AnyTimes()
+			factory.EXPECT().beginBlock(gomock.Any(), nil).Return(processor).AnyTimes()
 			processor.EXPECT().release().AnyTimes()
 			processor.EXPECT().run(gomock.Any()).DoAndReturn(
 				func(tx *types.Transaction) (bool, uint64) {
@@ -566,6 +575,7 @@ func TestScheduler_Schedule_GetsOptimalPrefixIfAllTransactionsArePassing(t *test
 					Gas:  uint64(test.limit) * params.TxGas,
 					Size: math.MaxUint64, // no size limit
 				},
+				nil,
 			)
 
 			got := []int{}
@@ -594,7 +604,7 @@ func FuzzScheduler_Schedule_PicksLongestPrefixOfAcceptedTransactions(f *testing.
 
 		factory := NewMockprocessorFactory(ctrl)
 		processor := NewMockprocessor(ctrl)
-		factory.EXPECT().beginBlock(gomock.Any()).Return(processor).AnyTimes()
+		factory.EXPECT().beginBlock(gomock.Any(), nil).Return(processor).AnyTimes()
 		processor.EXPECT().release().AnyTimes()
 		processor.EXPECT().run(gomock.Any()).DoAndReturn(
 			func(tx *types.Transaction) (bool, uint64) {
@@ -617,6 +627,7 @@ func FuzzScheduler_Schedule_PicksLongestPrefixOfAcceptedTransactions(f *testing.
 				Gas:  limit * params.TxGas,
 				Size: math.MaxUint64, // no size limit
 			},
+			nil,
 		)
 
 		// Get the expected schedule by taking all elements from the

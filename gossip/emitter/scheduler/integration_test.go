@@ -54,6 +54,7 @@ func TestIntegration_NoTransactions_ProducesAnEmptySchedule(t *testing.T) {
 			Gas:  100_000_000,
 			Size: 100_000,
 		},
+		nil,
 	))
 }
 
@@ -106,6 +107,7 @@ func TestIntegration_OneTransactions_ProducesScheduleWithOneTransaction(t *testi
 			Gas:  100_000_000,
 			Size: 100_000,
 		},
+		nil,
 	)
 
 	require.Equal(t, txs, schedule)
