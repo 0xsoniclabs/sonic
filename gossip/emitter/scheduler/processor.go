@@ -20,9 +20,11 @@ import (
 	"math"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
 )
@@ -33,7 +35,7 @@ import (
 // transaction processor capable of test-running transactions in a block to
 // be scheduled.
 type processorFactory interface {
-	beginBlock(*evmcore.EvmBlock) processor
+	beginBlock(*evmcore.EvmBlock, BundleTracker) processor
 }
 
 // processor is an internal interface for a component that can process
@@ -69,6 +71,10 @@ type Chain interface {
 	StateDB() state.StateDB
 }
 
+type BundleTracker interface {
+	HasBundleRecentlyBeenProcessed(execPlanHash common.Hash) bool
+}
+
 // evmProcessorFactory is an implementation of the processorFactory that wraps
 // the EVM state processor implementation provided by the evmcore package.
 type evmProcessorFactory struct {
@@ -79,6 +85,7 @@ type evmProcessorFactory struct {
 
 func (p *evmProcessorFactory) beginBlock(
 	block *evmcore.EvmBlock,
+	tracker BundleTracker,
 ) processor {
 	// TODO: follow-up task - align this with c_block_callbacks.go
 	chainCfg := p.chain.GetEvmChainConfig(idx.Block(block.Header().Number.Uint64()))
@@ -93,8 +100,9 @@ func (p *evmProcessorFactory) beginBlock(
 		chainCfg, p.chain, p.chain.GetCurrentNetworkRules().Upgrades,
 	)
 	return &evmProcessor{
-		processor: stateProcessor.BeginBlock(block, state, vmConfig, gasLimit, nil),
-		stateDb:   state,
+		processor:     stateProcessor.BeginBlock(block, state, vmConfig, gasLimit, nil),
+		stateDb:       state,
+		bundleTracker: tracker,
 	}
 }
 
@@ -105,8 +113,9 @@ func (p *evmProcessorFactory) beginBlock(
 // changes during the transaction execution. These changes are discarded when
 // the processor is released.
 type evmProcessor struct {
-	processor evmProcessorRunner
-	stateDb   state.StateDB
+	processor     evmProcessorRunner
+	stateDb       state.StateDB
+	bundleTracker BundleTracker
 }
 
 func (p *evmProcessor) run(tx *types.Transaction) (
