@@ -35,86 +35,92 @@ import (
 
 func TestBundle_CanBeProcessedByTheNetwork(t *testing.T) {
 	t.Parallel()
-	upgrades := opera.GetBrioUpgrades()
-	upgrades.TransactionBundles = true
 
-	session := sharedNetwork.GetIntegrationTestNetSession(t, upgrades)
+	for _, singleBlockProposerOn := range []bool{true, false} {
+		t.Run(fmt.Sprintf("singleBlockProposer=%v", singleBlockProposerOn), func(t *testing.T) {
+			t.Parallel()
+			upgrades := opera.GetBrioUpgrades()
+			upgrades.TransactionBundles = true
+			upgrades.SingleProposerBlockFormation = singleBlockProposerOn
 
-	client, err := session.GetClient()
-	require.NoError(t, err)
-	defer client.Close()
+			session := sharedNetwork.GetIntegrationTestNetSession(t, upgrades)
 
-	coordinator := tests.MakeAccountWithBalance(t, session, big.NewInt(1e18))
-	senderA := tests.MakeAccountWithBalance(t, session, big.NewInt(1e18))
-	senderB := tests.MakeAccountWithBalance(t, session, big.NewInt(1e18))
+			client, err := session.GetClient()
+			require.NoError(t, err)
+			defer client.Close()
 
-	addrA := senderA.Address()
-	addrB := senderB.Address()
+			coordinator := tests.MakeAccountWithBalance(t, session, big.NewInt(1e18))
+			senderA := tests.MakeAccountWithBalance(t, session, big.NewInt(1e18))
+			senderB := tests.MakeAccountWithBalance(t, session, big.NewInt(1e18))
+			addrA := senderA.Address()
+			addrB := senderB.Address()
 
-	block, err := client.BlockNumber(t.Context())
-	require.NoError(t, err)
+			block, err := client.BlockNumber(t.Context())
+			require.NoError(t, err)
 
-	// Create a bundle where sender A and B exchange 1 token each.
-	bundleTx, bundle, plan := bundle.NewBuilder().
-		Earliest(block).
-		With(
-			bundle.Step(
-				senderA.PrivateKey,
-				tests.SetTransactionDefaults(t, session, &types.AccessListTx{
-					To:    &addrB,
-					Gas:   30_000,
-					Value: big.NewInt(1),
-				}, senderA),
-			),
-			bundle.Step(
-				senderB.PrivateKey,
-				tests.SetTransactionDefaults(t, session, &types.AccessListTx{
-					To:    &addrA,
-					Gas:   30_000,
-					Value: big.NewInt(1),
-				}, senderB),
-			),
-		).
-		BuildEnvelopeBundleAndPlan()
+			// Create a bundle where sender A and B exchange 1 token each.
+			bundleTx, bundle, plan := bundle.NewBuilder().
+				Earliest(block).
+				With(
+					bundle.Step(
+						senderA.PrivateKey,
+						tests.SetTransactionDefaults(t, session, &types.AccessListTx{
+							To:    &addrB,
+							Gas:   30_000,
+							Value: big.NewInt(1),
+						}, senderA),
+					),
+					bundle.Step(
+						senderB.PrivateKey,
+						tests.SetTransactionDefaults(t, session, &types.AccessListTx{
+							To:    &addrA,
+							Gas:   30_000,
+							Value: big.NewInt(1),
+						}, senderB),
+					),
+				).
+				BuildEnvelopeBundleAndPlan()
 
-	// Check bundle status before submission.
-	info, err := getBundleInfo(t.Context(), client.Client(), plan.Hash())
-	require.NoError(t, err)
-	require.Equal(t, ethapi.BundleStatusUnknown, info.Status)
+			// Check bundle status before submission.
+			info, err := getBundleInfo(t.Context(), client.Client(), plan.Hash())
+			require.NoError(t, err)
+			require.Equal(t, ethapi.BundleStatusUnknown, info.Status)
 
-	// Run the bundle.
-	require.NoError(t, client.SendTransaction(t.Context(), bundleTx))
+			// Run the bundle.
+			require.NoError(t, client.SendTransaction(t.Context(), bundleTx))
 
-	// Wait for the bundle to be processed.
-	info, err = waitForBundleExecution(t.Context(), client.Client(), plan.Hash())
-	require.NoError(t, err)
-	require.Equal(t, ethapi.BundleStatusExecuted, info.Status)
+			// Wait for the bundle to be processed.
+			info, err = waitForBundleExecution(t.Context(), client.Client(), plan.Hash())
+			require.NoError(t, err)
+			require.Equal(t, ethapi.BundleStatusExecuted, info.Status)
 
-	// Check the block and position in which the bundle was included.
-	require.NotNil(t, info.Block)
-	require.NotNil(t, info.Position)
-	require.NotNil(t, info.Count)
+			// Check the block and position in which the bundle was included.
+			require.NotNil(t, info.Block)
+			require.NotNil(t, info.Position)
+			require.NotNil(t, info.Count)
 
-	// Check that the transactions are in the block as advertised.
-	receipts, err := session.GetReceipts([]common.Hash{bundle.Transactions[0].Hash(), bundle.Transactions[1].Hash()})
-	require.NoError(t, err)
-	require.Len(t, receipts, 2)
-	for _, receipt := range receipts {
-		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
-		require.EqualValues(t, *info.Block, receipt.BlockNumber.Uint64())
+			// Check that the transactions are in the block as advertised.
+			receipts, err := session.GetReceipts([]common.Hash{bundle.Transactions[0].Hash(), bundle.Transactions[1].Hash()})
+			require.NoError(t, err)
+			require.Len(t, receipts, 2)
+			for _, receipt := range receipts {
+				require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+				require.EqualValues(t, *info.Block, receipt.BlockNumber.Uint64())
+			}
+
+			require.EqualValues(t, *info.Position, receipts[0].TransactionIndex)
+			require.EqualValues(t, *info.Position+1, receipts[1].TransactionIndex)
+
+			// Verify that there is no receipt for the bundle transaction itself.
+			_, err = client.TransactionReceipt(t.Context(), bundleTx.Hash())
+			require.ErrorIs(t, err, ethereum.NotFound)
+
+			// Also, the nonce of the bundle creator is zero.
+			nonce, err := client.NonceAt(t.Context(), coordinator.Address(), big.NewInt(int64(*info.Block)))
+			require.NoError(t, err)
+			require.Zero(t, nonce)
+		})
 	}
-
-	require.EqualValues(t, *info.Position, receipts[0].TransactionIndex)
-	require.EqualValues(t, *info.Position+1, receipts[1].TransactionIndex)
-
-	// Verify that there is no receipt for the bundle transaction itself.
-	_, err = client.TransactionReceipt(t.Context(), bundleTx.Hash())
-	require.ErrorIs(t, err, ethereum.NotFound)
-
-	// Also, the nonce of the bundle creator is zero.
-	nonce, err := client.NonceAt(t.Context(), coordinator.Address(), big.NewInt(int64(*info.Block)))
-	require.NoError(t, err)
-	require.Zero(t, nonce)
 }
 
 func getBundleInfo(
