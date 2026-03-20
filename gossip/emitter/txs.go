@@ -241,7 +241,7 @@ func (em *Emitter) isValidBundleTx(tx *types.Transaction) bool {
 
 func (em *Emitter) isRunnableBundleTxInternal(
 	tx *types.Transaction,
-	getBundleState func(evmcore.ChainState, *types.Transaction) (evmcore.BundleState, error),
+	getBundleState func(evmcore.ChainState, *types.Transaction) evmcore.BundleState,
 ) bool {
 	// Ignore if bundled transactions are not enabled.
 	if !em.world.GetRules().Upgrades.TransactionBundles {
@@ -273,11 +273,7 @@ func (em *Emitter) isRunnableBundleTxInternal(
 
 	// Skip bundles that are not runnable in the current state.
 	adapter := &precheckChainStateAdapter{external: em.world}
-	bundleState, err := getBundleState(adapter, tx)
-	if err != nil {
-		return false
-	}
-	return bundleState == evmcore.BundleStateRunnable
+	return getBundleState(adapter, tx).Executable
 }
 
 type precheckChainStateAdapter struct {

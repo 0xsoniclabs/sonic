@@ -44,9 +44,9 @@ func Test_GetBundleState_ReturnsNonExecutableForInvalidBundle(t *testing.T) {
 	_, _, err := bundle.ValidateTransactionBundle(invalidBundle)
 	require.Error(t, err)
 
-	state, err := GetBundleState(chainState, invalidBundle)
-	require.ErrorIs(t, err, ErrBundleTransactionInvalid)
-	require.Equal(t, BundleStateNonExecutable, state)
+	state := GetBundleState(chainState, invalidBundle)
+	require.Equal(t, false, state.Executable)
+	require.Contains(t, state.Reasons[0], "invalid bundle")
 }
 
 func Test_GetBundleState_ReturnsNonExecutableForOutdatedBundle(t *testing.T) {
@@ -68,9 +68,9 @@ func Test_GetBundleState_ReturnsNonExecutableForOutdatedBundle(t *testing.T) {
 	_, _, err := bundle.ValidateTransactionBundle(envelop)
 	require.NoError(t, err)
 
-	state, err := GetBundleState(chainState, envelop)
-	require.ErrorIs(t, err, ErrBundleLatestPassed)
-	require.Equal(t, BundleStateNonExecutable, state)
+	state := GetBundleState(chainState, envelop)
+	require.Equal(t, false, state.Executable)
+	require.Contains(t, state.Reasons[0], ErrBundleLatestPassed.Error())
 }
 
 func Test_GetBundleState_ReturnsTemporaryBlockedForFutureBundle(t *testing.T) {
@@ -95,9 +95,9 @@ func Test_GetBundleState_ReturnsTemporaryBlockedForFutureBundle(t *testing.T) {
 	_, _, err := bundle.ValidateTransactionBundle(envelop)
 	require.NoError(t, err)
 
-	state, err := GetBundleState(chainState, envelop)
-	require.NoError(t, err)
-	require.Equal(t, BundleStateTemporaryBlocked, state)
+	state := GetBundleState(chainState, envelop)
+	require.Equal(t, true, state.Executable)
+	require.Equal(t, true, state.TemporarilyBlocked)
 }
 
 func Test_GetBundleState_ReturnsNonExecutable_ForFailedTrialRun(t *testing.T) {
@@ -118,18 +118,18 @@ func Test_GetBundleState_ReturnsNonExecutable_ForFailedTrialRun(t *testing.T) {
 	}).AnyTimes()
 	chainState.EXPECT().StateDB().Return(stateDb).AnyTimes()
 
-	envelop := wrap(&bundle.TransactionBundle{
-		Earliest: currentBlock - 5, // Bundle is valid for current block
-		Latest:   currentBlock + 5,
-	})
+	envelop := bundle.NewBuilder().
+		Earliest(currentBlock - 5).
+		Latest(currentBlock + 5).
+		Build()
 
 	rejectEverything := func(*types.Transaction, ChainState, state.StateDB) bool {
 		return false
 	}
 
-	state, err := getBundleState(chainState, envelop, rejectEverything)
-	require.ErrorContains(t, err, "trial-run failed")
-	require.Equal(t, BundleStateNonExecutable, state)
+	state := getBundleState(chainState, envelop, rejectEverything)
+	require.Equal(t, false, state.Executable)
+	require.Contains(t, state.Reasons[0], "trial-run failed")
 }
 
 func Test_GetBundleState_ReturnsRunnableForCurrentBundle(t *testing.T) {
@@ -159,12 +159,19 @@ func Test_GetBundleState_ReturnsRunnableForCurrentBundle(t *testing.T) {
 		return true
 	}
 
-	state, err := getBundleState(chainState, envelop, acceptEverything)
-	require.NoError(t, err)
-	require.Equal(t, BundleStateRunnable, state)
+	state := getBundleState(chainState, envelop, acceptEverything)
+	require.Equal(t, true, state.Executable)
+	require.Equal(t, false, state.TemporarilyBlocked)
 }
 
 func Test_GetBundleState_ChecksForNonceConflicts(t *testing.T) {
+
+	executableBundleState := BundleState{Executable: true}
+	temporarilyBlockedBundleState := BundleState{Executable: true, TemporarilyBlocked: true}
+	nonExecutableBundleState := BundleState{
+		Executable: false,
+		Reasons:    []string{"nonce conflict check failed", "bundle nonce check execution failed"}}
+
 	const initialNonce = 1
 	tests := map[string]struct {
 		bundle pattern
@@ -172,27 +179,27 @@ func Test_GetBundleState_ChecksForNonceConflicts(t *testing.T) {
 	}{
 		"bundle with no transactions": {
 			bundle: allOf(), // < will always succeed
-			result: BundleStateRunnable,
+			result: executableBundleState,
 		},
 		"bundle with one transaction with correct nonce": {
 			bundle: allOf(1), // one tx with nonce 1
-			result: BundleStateRunnable,
+			result: executableBundleState,
 		},
 		"bundle with future nonce": {
 			bundle: allOf(2), // one tx with nonce 2, which is in the future
-			result: BundleStateTemporaryBlocked,
+			result: temporarilyBlockedBundleState,
 		},
 		"bundle with outdated nonce": {
 			bundle: allOf(0), // one tx with nonce 0, which is outdated
-			result: BundleStateNonExecutable,
+			result: nonExecutableBundleState,
 		},
 		"bundle with different senders": {
 			bundle: allOf(0xA1, 0xB1), // two txs from different senders with correct nonces
-			result: BundleStateRunnable,
+			result: executableBundleState,
 		},
 		"bundle with nonce gap": {
 			bundle: allOf(1, 3), // two txs from the same sender with a nonce gap (nonce 2 is missing)
-			result: BundleStateNonExecutable,
+			result: nonExecutableBundleState,
 		},
 	}
 
@@ -227,18 +234,17 @@ func Test_GetBundleState_ChecksForNonceConflicts(t *testing.T) {
 				return true
 			}
 
-			got, err := getBundleState(chainState, envelop, acceptEverything)
-			if test.result == BundleStateNonExecutable {
-				require.ErrorContains(t, err, "bundle nonce check execution failed")
-			} else {
-				require.NoError(t, err)
-			}
+			got := getBundleState(chainState, envelop, acceptEverything)
 			require.Equal(t, test.result, got)
 		})
 	}
 }
 
 func Test_checkForNonceConflicts_DetectsNonceUsage(t *testing.T) {
+
+	executableBundleState := BundleState{Executable: true}
+	temporarilyBlockedBundleState := BundleState{Executable: true, TemporarilyBlocked: true}
+	nonExecutableBundleState := BundleState{Executable: false}
 
 	const initialNonce = 1
 	tests := map[string]struct {
@@ -247,108 +253,108 @@ func Test_checkForNonceConflicts_DetectsNonceUsage(t *testing.T) {
 	}{
 		"empty all-of bundle is runnable": {
 			bundle: allOf(), // < will always succeed
-			result: BundleStateRunnable,
+			result: executableBundleState,
 		},
 		"empty one-of bundle is non-executable": {
 			bundle: oneOf(), // < can never succeed
-			result: BundleStateNonExecutable,
+			result: nonExecutableBundleState,
 		},
 		"single all-of transaction with correct nonce": {
 			bundle: allOf(1), // one tx with nonce 1
-			result: BundleStateRunnable,
+			result: executableBundleState,
 		},
 		"single one-of transaction with correct nonce": {
 			bundle: oneOf(1),
-			result: BundleStateRunnable,
+			result: executableBundleState,
 		},
 		"single all-of transaction with old nonce": {
 			bundle: allOf(0),
-			result: BundleStateNonExecutable,
+			result: nonExecutableBundleState,
 		},
 		"single one-of transaction with old nonce": {
 			bundle: oneOf(0),
-			result: BundleStateNonExecutable,
+			result: nonExecutableBundleState,
 		},
 		"single all-of transaction with future nonce": {
 			bundle: allOf(2),
-			result: BundleStateTemporaryBlocked,
+			result: temporarilyBlockedBundleState,
 		},
 		"single one-of transaction with future nonce": {
 			bundle: oneOf(2),
-			result: BundleStateTemporaryBlocked,
+			result: temporarilyBlockedBundleState,
 		},
 		"multiple all-of transactions with correct nonce order": {
 			bundle: allOf(1, 2, 3), // three txs with nonces 1, 2, 3
-			result: BundleStateRunnable,
+			result: executableBundleState,
 		},
 		"multiple one-of transactions with correct nonce order": {
 			bundle: oneOf(1, 2, 3),
-			result: BundleStateRunnable,
+			result: executableBundleState,
 		},
 		"multiple all-of transactions out of order": {
 			bundle: allOf(2, 1, 3),
-			result: BundleStateNonExecutable,
+			result: nonExecutableBundleState,
 		},
 		"multiple one-of transactions out of order": {
 			bundle: oneOf(2, 1, 3),
-			result: BundleStateRunnable,
+			result: executableBundleState,
 		},
 		"multiple all-of with old nonce": {
 			bundle: allOf(0, 1, 2),
-			result: BundleStateNonExecutable,
+			result: nonExecutableBundleState,
 		},
 		"multiple one-of with old nonce": {
 			bundle: oneOf(0, 1, 2),
-			result: BundleStateRunnable,
+			result: executableBundleState,
 		},
 		"all-of with nonce gap": {
 			bundle: allOf(1, 3),
-			result: BundleStateNonExecutable,
+			result: nonExecutableBundleState,
 		},
 		"one-of with nonce gap": {
 			bundle: oneOf(1, 3),
-			result: BundleStateRunnable,
+			result: executableBundleState,
 		},
 		"all-of with nonce gap in the future": {
 			bundle: allOf(2, 4),
-			result: BundleStateNonExecutable,
+			result: nonExecutableBundleState,
 		},
 		"one-of with nonce gap in the future": {
 			bundle: oneOf(2, 4),
-			result: BundleStateTemporaryBlocked,
+			result: temporarilyBlockedBundleState,
 		},
 		"nested all-of with consecutive nonces": {
 			bundle: allOf(1, allOf(2, 3), 4),
-			result: BundleStateRunnable,
+			result: executableBundleState,
 		},
 		"nested all-of with future nonces": {
 			bundle: allOf(2, allOf(3, 4), 5),
-			result: BundleStateTemporaryBlocked,
+			result: temporarilyBlockedBundleState,
 		},
 		"nested all-of with nonce gap": {
 			bundle: allOf(1, allOf(3, 4), 5),
-			result: BundleStateNonExecutable,
+			result: nonExecutableBundleState,
 		},
 		"nested one-of in all-of": {
 			bundle: allOf(1, oneOf(2, 3), 3),
-			result: BundleStateRunnable,
+			result: executableBundleState,
 		},
 		"multiple transactions from different senders with correct nonces": {
 			// two txs from sender A with nonces 1 and 2, one tx from sender B with nonce 1
 			bundle: allOf(0xA1, 0xB1, 0xA2),
-			result: BundleStateRunnable,
+			result: executableBundleState,
 		},
 		"multiple transactions from different senders with nonce gap for one sender": {
 			bundle: allOf(0xA1, 0xB1, 0xA3),
-			result: BundleStateNonExecutable,
+			result: nonExecutableBundleState,
 		},
 		"all-of outdated nonce for one sender but not the other": {
 			bundle: allOf(0xA0, 0xB1),
-			result: BundleStateNonExecutable,
+			result: nonExecutableBundleState,
 		},
 		"one-of outdated nonce for one sender but not the other": {
 			bundle: oneOf(0xA0, 0xB1),
-			result: BundleStateRunnable,
+			result: executableBundleState,
 		},
 	}
 
@@ -369,12 +375,7 @@ func Test_checkForNonceConflicts_DetectsNonceUsage(t *testing.T) {
 			bundle, _, err := bundle.ValidateTransactionBundle(envelop)
 			require.NoError(t, err)
 
-			got, err := checkForNonceConflicts(bundle, signer, source)
-			if test.result == BundleStateNonExecutable {
-				require.ErrorContains(t, err, "bundle nonce check execution failed")
-			} else {
-				require.NoError(t, err)
-			}
+			got := checkForNonceConflicts(bundle, signer, source)
 			require.Equal(t, test.result, got)
 		})
 	}
@@ -389,9 +390,11 @@ func Test_checkForNonceConflicts_ReturnsNonExecutable_WhenLowestReferencedNonces
 	_, err := getLowestReferencedNonces(bundle, signer)
 	require.Error(t, err)
 
-	got, err := checkForNonceConflicts(bundle, signer, nil)
-	require.ErrorContains(t, err, "could not get lowest nonce")
-	require.Equal(t, BundleStateNonExecutable, got)
+	got := checkForNonceConflicts(bundle, signer, nil)
+	require.Equal(t,
+		BundleState{Executable: false,
+			Reasons: []string{"could not get lowest nonce for all accounts: failed to derive sender: invalid transaction v, r, s values"}},
+		got)
 }
 
 func Test_getLowestReferencedNonces_ReturnsLowestNoncesInBundle(t *testing.T) {

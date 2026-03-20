@@ -90,16 +90,9 @@ func (s *BundleIntegrationImplementation) isPending(tx *types.Transaction) bool 
 		chainState: s.chain,
 		stateDB:    s.state,
 	}
-	// isPending is only used in the txpool to prune transactions that are no
-	// longer executable. GetBundleState always returns an error if the state
-	// is BundleStateNonExecutable, so we only need to check the error, not the
-	// status itself.
-	// The error can be safely dropped because it does not reach any user.
-	// The state can be dropped because if there are no errors then it is
-	// either BundleStateRunnable or BundleStateTemporaryBlocked, and in both
-	// cases the bundle should be kept in the pool for future processing.
-	_, err = GetBundleState(&chain, tx)
-	return err == nil
+
+	state := GetBundleState(&chain, tx)
+	return state.Executable
 }
 
 type preCheckChainAdapter struct {

@@ -1436,18 +1436,15 @@ func Test_validateBundleTransactions_IfBundleStateIsNotRunnable_RejectBundleTran
 
 	tests := map[string]struct {
 		bundleState BundleState
-		valid       bool
 	}{
 		"runnable": {
-			bundleState: BundleStateRunnable,
-			valid:       true,
+			bundleState: BundleState{Executable: true},
 		},
 		"temporary_blocked": {
-			bundleState: BundleStateTemporaryBlocked,
-			valid:       true,
+			bundleState: BundleState{Executable: true, TemporarilyBlocked: true},
 		},
 		"non_executable": {
-			valid: false,
+			bundleState: BundleState{Executable: false, Reasons: []string{"some reason"}},
 		},
 	}
 
@@ -1457,21 +1454,17 @@ func Test_validateBundleTransactions_IfBundleStateIsNotRunnable_RejectBundleTran
 			tx := bundle.AllOf()
 			require.True(bundle.IsEnvelope(tx))
 
-			getBundleState := func(ChainState, *types.Transaction) (BundleState, error) {
-				var err error
-				if !test.valid {
-					err = fmt.Errorf("some error")
-				}
-				return test.bundleState, err
+			getBundleState := func(ChainState, *types.Transaction) BundleState {
+				return test.bundleState
 			}
 
 			rules := NetworkRules{}
 			rules.transactionBundles = true
 			err := validateBundleTransactionsInternal(tx, rules, nil, nil, getBundleState)
-			if test.valid {
-				require.NoError(err)
-			} else {
+			if !test.bundleState.Executable {
 				require.ErrorIs(err, ErrBundleNonExecutable)
+			} else {
+				require.NoError(err)
 			}
 		})
 	}
@@ -1482,8 +1475,8 @@ func Test_validateBundleTransactions_IfBundledTransactionsAreEnabled_AcceptValid
 	tx := bundle.AllOf()
 	require.True(bundle.IsEnvelope(tx))
 
-	getBundleState := func(ChainState, *types.Transaction) (BundleState, error) {
-		return BundleStateRunnable, nil
+	getBundleState := func(ChainState, *types.Transaction) BundleState {
+		return BundleState{Executable: true}
 	}
 
 	rules := NetworkRules{}

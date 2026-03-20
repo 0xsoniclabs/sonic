@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"strings"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
@@ -401,7 +402,7 @@ func validateBundleTransactionsInternal(
 	chainState StateReader,
 	// Although state can be retrieved from chain, it is passed explicitly to avoid extra db-pool accesses
 	stateDb state.StateDB,
-	getBundleState func(ChainState, *types.Transaction) (BundleState, error),
+	getBundleState func(ChainState, *types.Transaction) BundleState,
 ) error {
 	// This check only covers bundle transactions, ignore the rest.
 	if !bundle.IsEnvelope(tx) {
@@ -424,9 +425,11 @@ func validateBundleTransactionsInternal(
 		chainState: chainState,
 		stateDB:    stateDb,
 	}
-	_, err = getBundleState(chainAdapter, tx)
-	if err != nil {
-		return errors.Join(ErrBundleNonExecutable, err)
+	state := getBundleState(chainAdapter, tx)
+	if !state.Executable {
+		return errors.Join(
+			ErrBundleNonExecutable,
+			errors.New(strings.Join(state.Reasons, ".\n")))
 	}
 
 	return nil
