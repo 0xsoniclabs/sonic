@@ -212,6 +212,12 @@ func runTransactions(
 	return ProcessSummary{ProcessedTransactions: processedTxs, ProcessedBundles: bundles}
 }
 
+// runTransaction processes the given transaction and returns a list of all
+// processed transactions (transactions and receipts), the processed bundle if
+// the transaction is a bundle transaction, and the result of processing the
+// transaction. The only exception is for invalid bundles, where the envelope
+// transaction itself is returned as a processed transaction, but without a
+// receipt, to signal that the bundle transaction was skipped.
 func runTransaction(
 	context *runContext,
 	tx *types.Transaction,
@@ -334,6 +340,13 @@ func (r *transactionRunner) runSponsoredTransaction(
 	return []ProcessedTransaction{processed, processedDeduction}, status
 }
 
+// runTransactionBundle processes the bundle-only transactions in the given
+// envelope transaction as a bundle. It returns the list of processed
+// transactions (transactions and receipts), the processed bundle, and the
+// result of processing the bundle transaction. If the bundle is invalid, the
+// envelope transaction itself is returned as a single processed transaction
+// without a receipt and the bundle is nil. This is needed to signal skipped
+// bundles.
 func (r *transactionRunner) runTransactionBundle(
 	ctxt *runContext,
 	tx *types.Transaction,
@@ -389,13 +402,12 @@ type bundleTransactionRunner struct {
 func (b *bundleTransactionRunner) Run(tx *types.Transaction) core_types.TransactionResult {
 	processed, _, result := runTransaction(b.ctxt, tx, b.txOffset)
 	b.processedTransactions = append(b.processedTransactions, processed...)
-	if result == core_types.TransactionResultInvalid {
-		return core_types.TransactionResultInvalid
-	}
 
-	for _, p := range processed {
-		if p.Receipt != nil {
-			b.txOffset++
+	if result != core_types.TransactionResultInvalid {
+		for _, p := range processed {
+			if p.Receipt != nil {
+				b.txOffset++
+			}
 		}
 	}
 
