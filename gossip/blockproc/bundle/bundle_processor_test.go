@@ -26,9 +26,14 @@ import (
 )
 
 func Test_RunBundle_HandlesExecutionModeCorrectly(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	runner := NewMockTransactionRunner(ctrl)
+	runner.EXPECT().CreateSnapshot().Return(42).Times(2)
+	runner.EXPECT().RevertToSnapshot(42).Times(1)
+
 	require := require.New(t)
-	require.True(RunBundle(&TransactionBundle{Flags: EF_AllOf}, nil))
-	require.False(RunBundle(&TransactionBundle{Flags: EF_OneOf}, nil))
+	require.True(RunBundle(&TransactionBundle{Flags: EF_AllOf}, runner))
+	require.False(RunBundle(&TransactionBundle{Flags: EF_OneOf}, runner))
 }
 
 func Test_runAllOfBundle_ReturnsTrueForEmptyBundle(t *testing.T) {

@@ -41,6 +41,32 @@ func (m *MockTransactionRunner) EXPECT() *MockTransactionRunnerMockRecorder {
 	return m.recorder
 }
 
+// CreateSnapshot mocks base method.
+func (m *MockTransactionRunner) CreateSnapshot() int {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateSnapshot")
+	ret0, _ := ret[0].(int)
+	return ret0
+}
+
+// CreateSnapshot indicates an expected call of CreateSnapshot.
+func (mr *MockTransactionRunnerMockRecorder) CreateSnapshot() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateSnapshot", reflect.TypeOf((*MockTransactionRunner)(nil).CreateSnapshot))
+}
+
+// RevertToSnapshot mocks base method.
+func (m *MockTransactionRunner) RevertToSnapshot(id int) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "RevertToSnapshot", id)
+}
+
+// RevertToSnapshot indicates an expected call of RevertToSnapshot.
+func (mr *MockTransactionRunnerMockRecorder) RevertToSnapshot(id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevertToSnapshot", reflect.TypeOf((*MockTransactionRunner)(nil).RevertToSnapshot), id)
+}
+
 // Run mocks base method.
 func (m *MockTransactionRunner) Run(tx *types.Transaction) core_types.TransactionResult {
 	m.ctrl.T.Helper()
