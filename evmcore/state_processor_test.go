@@ -2255,6 +2255,98 @@ func TestRunRegularTransaction_MatchesReceiptToStatus(t *testing.T) {
 	}
 }
 
+func TestBundleTransactionRunner_Run_KeepsTrackOfProcessedTransactions(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	runner := NewMock_transactionRunner(ctrl)
+
+	ctxt := &runContext{runner: runner, upgrades: opera.Upgrades{GasSubsidies: true}}
+	bundleTransactionRunner := &bundleTransactionRunner{ctxt: ctxt}
+
+	tx1 := getRegularTransaction(t)
+	tx2 := getSponsorshipRequest(t)
+	tx2payment := getSponsorshipRequest(t) // some dummy tx
+	tx3 := getRegularTransaction(t)
+
+	runner.EXPECT().runRegularTransaction(ctxt, tx1, gomock.Any()).
+		Return(ProcessedTransaction{Transaction: tx1}, core_types.TransactionResultSuccessful)
+	runner.EXPECT().runSponsoredTransaction(ctxt, tx2, gomock.Any()).
+		Return([]ProcessedTransaction{{Transaction: tx2}, {Transaction: tx2payment}}, core_types.TransactionResultFailed)
+	runner.EXPECT().runRegularTransaction(ctxt, tx3, gomock.Any()).
+		Return(ProcessedTransaction{Transaction: tx3}, core_types.TransactionResultInvalid)
+
+	// one processed transaction with status successful
+	bundleTransactionRunner.Run(tx1)
+	require.Len(t, bundleTransactionRunner.processedTransactions, 1)
+	require.Equal(t, tx1.Hash(), bundleTransactionRunner.processedTransactions[0].Transaction.Hash())
+
+	// two processed transactions with status failed
+	bundleTransactionRunner.Run(tx2)
+	require.Len(t, bundleTransactionRunner.processedTransactions, 3)
+	require.Equal(t, tx1.Hash(), bundleTransactionRunner.processedTransactions[0].Transaction.Hash())
+	require.Equal(t, tx2.Hash(), bundleTransactionRunner.processedTransactions[1].Transaction.Hash())
+	require.Equal(t, tx2payment.Hash(), bundleTransactionRunner.processedTransactions[2].Transaction.Hash())
+
+	// one processed transaction with status invalid
+	bundleTransactionRunner.Run(tx3)
+	require.Len(t, bundleTransactionRunner.processedTransactions, 4)
+	require.Equal(t, tx1.Hash(), bundleTransactionRunner.processedTransactions[0].Transaction.Hash())
+	require.Equal(t, tx2.Hash(), bundleTransactionRunner.processedTransactions[1].Transaction.Hash())
+	require.Equal(t, tx2payment.Hash(), bundleTransactionRunner.processedTransactions[2].Transaction.Hash())
+	require.Equal(t, tx3.Hash(), bundleTransactionRunner.processedTransactions[3].Transaction.Hash())
+}
+
+func TestBundleTransactionRunner_Run_IncrementsOffsetByNumberOfNonNullReceiptsIfResultNotInvalid(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	runner := NewMock_transactionRunner(ctrl)
+
+	startOffset := 5
+
+	ctxt := &runContext{runner: runner, upgrades: opera.Upgrades{GasSubsidies: true}}
+	bundleTransactionRunner := &bundleTransactionRunner{ctxt: ctxt, txOffset: startOffset}
+
+	tx1 := getRegularTransaction(t)
+	tx2 := getSponsorshipRequest(t)
+	tx3 := getRegularTransaction(t)
+	tx4 := getRegularTransaction(t)
+
+	runner.EXPECT().runRegularTransaction(ctxt, tx1, gomock.Any()).
+		Return(
+			ProcessedTransaction{Receipt: &types.Receipt{}},
+			core_types.TransactionResultSuccessful,
+		)
+	runner.EXPECT().runSponsoredTransaction(ctxt, tx2, gomock.Any()).
+		Return(
+			[]ProcessedTransaction{{Receipt: &types.Receipt{}}, {Receipt: &types.Receipt{}}},
+			core_types.TransactionResultFailed,
+		)
+	runner.EXPECT().runRegularTransaction(ctxt, tx3, gomock.Any()).
+		Return(
+			ProcessedTransaction{Receipt: &types.Receipt{}},
+			core_types.TransactionResultInvalid,
+		)
+	runner.EXPECT().runRegularTransaction(ctxt, tx4, gomock.Any()).
+		Return(
+			ProcessedTransaction{Receipt: nil},
+			core_types.TransactionResultSuccessful,
+		)
+
+	// one processed transaction with non-null receipt and status successful: offset should increment by 1
+	bundleTransactionRunner.Run(tx1)
+	require.Equal(t, bundleTransactionRunner.txOffset, startOffset+1)
+
+	// two processed transactions with non-null receipts and status failed: offset should increment by 2
+	bundleTransactionRunner.Run(tx2)
+	require.Equal(t, bundleTransactionRunner.txOffset, startOffset+1+2)
+
+	// one processed transaction with non-null receipts and status invalid: offset should not increment
+	bundleTransactionRunner.Run(tx3)
+	require.Equal(t, bundleTransactionRunner.txOffset, startOffset+1+2)
+
+	// one processed transaction with null receipt and status successful: offset should not increment
+	bundleTransactionRunner.Run(tx4)
+	require.Equal(t, bundleTransactionRunner.txOffset, startOffset+1+2)
+}
+
 // --- Utility functions for creating test transactions ---
 
 func getRegularTransaction(t *testing.T) *types.Transaction {
