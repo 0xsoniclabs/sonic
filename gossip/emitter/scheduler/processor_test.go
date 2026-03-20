@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -153,4 +154,77 @@ func TestEvmProcessor_Release_ReleasesStateDb(t *testing.T) {
 	processor := &evmProcessor{stateDb: stateDb}
 	stateDb.EXPECT().Release()
 	processor.release()
+}
+
+func TestEvmProcessor_Run_IfBundleExecutionSucceeds_ReportsSuccessAndGasUsage(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	runner := NewMockevmProcessorRunner(ctrl)
+	bundleTracker := NewMockBundleTracker(ctrl)
+	bundleTracker.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()).Return(false)
+
+	tx := bundle.NewBuilder().Build()
+	runner.EXPECT().Run(0, tx).Return(
+		evmcore.ExecutionSummary{
+			ProcessedTransactions: []evmcore.ProcessedTransaction{{
+				Receipt: &types.Receipt{GasUsed: 10},
+			}},
+			ProcessedBundles: []evmcore.ProcessedBundle{{}},
+		})
+
+	processor := &evmProcessor{processor: runner, bundleTracker: bundleTracker}
+	success, gasUsed := processor.run(tx)
+	require.True(t, success)
+	require.Equal(t, uint64(10), gasUsed)
+}
+
+func TestEvmProcessor_Run_IfExecutionProducesMultipleProcessedTransactions_FromABundle(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	runner := NewMockevmProcessorRunner(ctrl)
+	bundleTracker := NewMockBundleTracker(ctrl)
+	bundleTracker.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()).Return(false)
+
+	tx := bundle.NewBuilder().Build()
+	singleTransactionGasUsed := uint64(10)
+	expectedGasUsed := singleTransactionGasUsed * 2
+
+	runner.EXPECT().Run(0, tx).Return(
+		evmcore.ExecutionSummary{
+			ProcessedTransactions: []evmcore.ProcessedTransaction{
+				{Receipt: &types.Receipt{GasUsed: singleTransactionGasUsed}},
+				{Receipt: &types.Receipt{GasUsed: singleTransactionGasUsed}},
+			},
+			ProcessedBundles: []evmcore.ProcessedBundle{{}}})
+
+	processor := &evmProcessor{processor: runner, bundleTracker: bundleTracker}
+	success, gasUsed := processor.run(tx)
+	require.True(t, success)
+	require.Equal(t, expectedGasUsed, gasUsed)
+}
+
+func TestEvmProcessor_Run_IfBundleExecutionFailed_RejectsWhenFailedToGetBundlePlan(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	runner := NewMockevmProcessorRunner(ctrl)
+
+	tx := types.NewTx(&types.LegacyTx{
+		To: &bundle.BundleProcessor,
+	})
+
+	processor := &evmProcessor{processor: runner}
+	success, gasUsed := processor.run(tx)
+	require.False(t, success)
+	require.Zero(t, gasUsed)
+}
+
+func TestEvmProcessor_Run_IfBundleExecutionFailed_RejectsWhenBundleHasBeenRecentlyProcessed(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	runner := NewMockevmProcessorRunner(ctrl)
+	bundleTracker := NewMockBundleTracker(ctrl)
+	bundleTracker.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()).Return(true)
+
+	tx := bundle.NewBuilder().Build()
+
+	processor := &evmProcessor{processor: runner, bundleTracker: bundleTracker}
+	success, gasUsed := processor.run(tx)
+	require.False(t, success)
+	require.Zero(t, gasUsed)
 }
