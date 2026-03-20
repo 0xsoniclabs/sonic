@@ -70,19 +70,11 @@ func Test_CreateBundlesWithRPC(t *testing.T) {
 		txsToBeBundled[i] = tx
 	}
 
-	// 2) Define bundle execution parameters
-	earliest, err := client.BlockNumber(t.Context())
-	require.NoError(t, err, "failed to get block number")
-	latest := earliest + 10
-
-	// 3) Prepare bundle:
-	preparedBundle, err := PrepareBundle(
-		t, client,
-		earliest, latest,
-		txsToBeBundled)
+	// 2) Prepare bundle:
+	preparedBundle, err := PrepareBundle(t, client, txsToBeBundled, nil, nil)
 	require.NoError(t, err, "failed to prepare bundle")
 
-	// 4) Sign prepared transactions
+	// 3) Sign prepared transactions
 	signer := types.LatestSignerForChainID(session.GetChainId())
 	txs := make([]*types.Transaction, len(preparedBundle.Transactions))
 	for i, txArgs := range preparedBundle.Transactions {
@@ -92,7 +84,7 @@ func Test_CreateBundlesWithRPC(t *testing.T) {
 
 	checkCompatWithMetaMask(t, client, txs)
 
-	// 5) Submit the bundle to the network
+	// 4) Submit the bundle to the network
 	bundleHash, err := SubmitBundle(client, txs, preparedBundle.Plan)
 	require.NoError(t, err, "failed to submit bundle")
 
@@ -143,12 +135,17 @@ func checkCompatWithMetaMask(t *testing.T, client *tests.PooledEhtClient, txs []
 // Unfortunately, it does not include nonce, therefore this function needs
 // to assign a fitting value.
 //
+// This function also estimates gas for each transaction and fills in the Gas field,
+// as it is required by sonic_prepareBundle.
+// if earliest and latest block numbers are not provided, it will set earliest to the next block after submission
+// and latest to 1024 blocks after earliest.
+//
 // This function should be part of the go-ethereum client object, being the entry
 // point to the api from go programs.
 func PrepareBundle(
 	t *testing.T, client *tests.PooledEhtClient,
-	earliest, latest uint64,
 	txs []ethereum.CallMsg,
+	earliest, latest *int64,
 ) (ethapi.RPCPreparedBundle, error) {
 
 	nonces := make(map[common.Address]uint64)
@@ -184,13 +181,21 @@ func PrepareBundle(
 		txsArgs[i].Gas = (*hexutil.Uint64)(&gasLimits.GasLimits[i])
 	}
 
+	var earliestBlock, latestBlock *rpc.BlockNumber
+	if earliest != nil {
+		earliestBlock = (*rpc.BlockNumber)(earliest)
+	}
+	if latest != nil {
+		latestBlock = (*rpc.BlockNumber)(latest)
+	}
+
 	// Call sonic_prepareBundle to get a bundle with all fields properly filled in and encoded
 	var preparedBundle ethapi.RPCPreparedBundle
 	err = client.Client().Call(&preparedBundle, "sonic_prepareBundle",
 		ethapi.PrepareBundleArgs{
 			Transactions:  txsArgs,
-			EarliestBlock: rpc.BlockNumber(earliest),
-			LatestBlock:   rpc.BlockNumber(latest),
+			EarliestBlock: earliestBlock,
+			LatestBlock:   latestBlock,
 		})
 	require.NoError(t, err, "failed to call sonic_prepareBundle")
 	return preparedBundle, nil

@@ -103,12 +103,16 @@ type PrepareBundleArgs struct {
 	// EarliestBlock specifies the earliest block number at which the bundle can be executed. This allows
 	// users to set a lower bound on when their bundle should be considered for execution, ensuring it is
 	// not included in blocks before a certain point in time.
-	EarliestBlock rpc.BlockNumber `json:"earliestBlock"`
+	//
+	// If left unspecified, the bundle will be eligible for execution starting from the next block after submission.
+	EarliestBlock *rpc.BlockNumber `json:"earliestBlock"`
 	// LatestBlock specifies the latest block number at which the bundle can be executed. This allows users
 	// to set an upper bound on when their bundle should be considered for execution, ensuring it is
 	// not included in blocks after a certain point in time. If the bundle is not executed by this block,
 	// it will be considered expired and will not be executed.
-	LatestBlock rpc.BlockNumber `json:"latestBlock"`
+	//
+	// If left unspecified, the bundle will be eligible for execution until 1024 blocks after EarliestBlock.
+	LatestBlock *rpc.BlockNumber `json:"latestBlock"`
 }
 
 // RPCPreparedBundle is the return type of the `sonic_prepareBundle` RPC method
@@ -158,6 +162,15 @@ func (a *PublicBundleAPI) PrepareBundle(
 		transactions[i] = tx
 	}
 
+	earliest := a.b.CurrentBlock().NumberU64() + 1
+	if args.EarliestBlock != nil {
+		earliest = uint64(*args.EarliestBlock)
+	}
+	latest := earliest + bundle.MaxBlockRange - 1
+	if args.LatestBlock != nil {
+		latest = uint64(*args.LatestBlock)
+	}
+
 	// 2) Prepare execution plan
 	chainID := a.b.ChainID()
 	signer := types.LatestSignerForChainID(chainID)
@@ -165,8 +178,8 @@ func (a *PublicBundleAPI) PrepareBundle(
 		// Current api do not expose flags to users, this can be introduced in the future if needed.
 		Flags:    bundle.ExecutionFlag(0),
 		Steps:    make([]bundle.ExecutionStep, len(transactions)),
-		Earliest: uint64(args.EarliestBlock),
-		Latest:   uint64(args.LatestBlock),
+		Earliest: earliest,
+		Latest:   latest,
 	}
 	for i, tx := range transactions {
 		plan.Steps[i] = bundle.ExecutionStep{
