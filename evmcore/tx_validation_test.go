@@ -1432,23 +1432,19 @@ func Test_validateBundleTransactions_AcceptNonBundleTransactions(t *testing.T) {
 	}
 }
 
-func Test_validateBundleTransactions_IfBundleStateIsNotRunning_RejectBundleTransaction(t *testing.T) {
+func Test_validateBundleTransactions_IfBundleStateIsNotRunnable_RejectBundleTransaction(t *testing.T) {
 
 	tests := map[string]struct {
 		bundleState BundleState
-		valid       bool
 	}{
 		"runnable": {
-			bundleState: BundleStateRunnable,
-			valid:       true,
+			bundleState: BundleState{Executable: true},
 		},
 		"temporary_blocked": {
-			bundleState: BundleStateTemporaryBlocked,
-			valid:       true,
+			bundleState: BundleState{Executable: true, TemporarilyBlocked: true},
 		},
-		"permanently_blocked": {
-			bundleState: BundleStatePermanentlyBlocked,
-			valid:       false,
+		"non_executable": {
+			bundleState: BundleState{Executable: false, Reasons: []string{"some reason"}},
 		},
 	}
 
@@ -1465,10 +1461,10 @@ func Test_validateBundleTransactions_IfBundleStateIsNotRunning_RejectBundleTrans
 			rules := NetworkRules{}
 			rules.transactionBundles = true
 			err := validateBundleTransactionsInternal(tx, rules, nil, nil, getBundleState)
-			if test.valid {
-				require.NoError(err)
+			if !test.bundleState.Executable {
+				require.ErrorIs(err, ErrBundleNonExecutable)
 			} else {
-				require.ErrorIs(err, ErrBundlePermanentlyBlocked)
+				require.NoError(err)
 			}
 		})
 	}
@@ -1480,7 +1476,7 @@ func Test_validateBundleTransactions_IfBundledTransactionsAreEnabled_AcceptValid
 	require.True(bundle.IsEnvelope(tx))
 
 	getBundleState := func(ChainState, *types.Transaction) BundleState {
-		return BundleStateRunnable
+		return BundleState{Executable: true}
 	}
 
 	rules := NetworkRules{}
@@ -1521,7 +1517,7 @@ func TestValidateBundleTransactions_RejectsBundleWhenPayloadTransactionIsInvalid
 
 	rules.transactionBundles = true
 	err := validateBundleTransactions(bundleTx, rules, chain, state)
-	require.ErrorContains(err, "bundle is permanently blocked")
+	require.ErrorIs(err, ErrBundleNonExecutable)
 }
 
 func makeValidateTxParameters(t *testing.T) (NetworkRules, *MockStateReader, *state.MockStateDB) {

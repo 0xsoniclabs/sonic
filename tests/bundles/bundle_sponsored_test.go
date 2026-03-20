@@ -61,7 +61,7 @@ func TestBundle_RejectsBundle_WithPayloadSponsorRequest_WithoutSponsorship(t *te
 	// NOTE: once bundle trial-run is implemented this submition will fail.
 	// which is what this test should verify.
 	err = client.SendTransaction(t.Context(), bundleTx)
-	require.ErrorContains(t, err, "bundle is permanently blocked")
+	require.ErrorContains(t, err, "bundle is not executable")
 }
 
 func TestBundle_CanRunSponsorshipAndSponsored(t *testing.T) {
