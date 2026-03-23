@@ -46,7 +46,7 @@ For optimal compatibility and stability, it is recommended to use the most recen
 
 ### Fixed
 - Fixed inconsistent RPC answers near the block head (live-db and archive-db asynchrony issue).
-- Fixed an issue where partial results were returned without an error when calling `TraceBlockByNumber` under certain erroneous scenarios.
+- Fixed an issue where partial results were returned without an error when calling `debug_traceBlockByNumber` and `debug_traceBlockByHash` under certain erroneous scenarios.
 
 ## [2.1.6] - 12 March 2026
 
