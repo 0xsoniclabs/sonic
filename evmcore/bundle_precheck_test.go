@@ -244,7 +244,8 @@ func Test_checkForNonceConflicts_DetectsNonceUsage(t *testing.T) {
 
 	executableBundleState := BundleState{Executable: true}
 	temporarilyBlockedBundleState := BundleState{Executable: true, TemporarilyBlocked: true}
-	nonExecutableBundleState := BundleState{Executable: false}
+	nonExecutableBundleState := BundleState{Executable: false,
+		Reasons: []string{"bundle nonce check execution failed"}}
 
 	const initialNonce = 1
 	tests := map[string]struct {
