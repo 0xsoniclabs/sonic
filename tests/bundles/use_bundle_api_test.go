@@ -53,19 +53,15 @@ func Test_CreateBundlesWithRPC(t *testing.T) {
 
 	sender1 := session.GetSessionSponsor()
 
-	gasPrice, err := client.SuggestGasPrice(t.Context())
-	require.NoError(t, err, "failed to suggest gas price")
-
 	// 1) Create a list of transactions to be executed in order atomically.
 	const bundledTxCount = 15
 	txsToBeBundled := make([]ethereum.CallMsg, bundledTxCount)
 
 	for i := range txsToBeBundled {
 		tx := ethereum.CallMsg{
-			From:     sender1.Address(),
-			To:       &receipt.ContractAddress,
-			GasPrice: gasPrice,
-			Data:     input,
+			From: sender1.Address(),
+			To:   &receipt.ContractAddress,
+			Data: input,
 		}
 		txsToBeBundled[i] = tx
 	}
@@ -173,14 +169,6 @@ func PrepareBundle(
 		txsArgs[i] = txArgs
 	}
 
-	var gasLimits ethapi.BundleGasLimits
-	err := client.Client().Call(&gasLimits, "sonic_estimateGasForTransactions", txsArgs, "latest", nil, nil)
-	require.NoError(t, err, "failed to estimate gas for bundle")
-
-	for i := range txsArgs {
-		txsArgs[i].Gas = (*hexutil.Uint64)(&gasLimits.GasLimits[i])
-	}
-
 	var earliestBlock, latestBlock *rpc.BlockNumber
 	if earliest != nil {
 		earliestBlock = (*rpc.BlockNumber)(earliest)
@@ -191,7 +179,7 @@ func PrepareBundle(
 
 	// Call sonic_prepareBundle to get a bundle with all fields properly filled in and encoded
 	var preparedBundle ethapi.RPCPreparedBundle
-	err = client.Client().Call(&preparedBundle, "sonic_prepareBundle",
+	err := client.Client().Call(&preparedBundle, "sonic_prepareBundle",
 		ethapi.PrepareBundleArgs{
 			Transactions:  txsArgs,
 			EarliestBlock: earliestBlock,
