@@ -35,6 +35,24 @@ func Test_RunBundle_HandlesExecutionModeCorrectly(t *testing.T) {
 	require.False(RunBundle(&TransactionBundle{Flags: EF_OneOf}, runner))
 }
 
+func Test_RunBundle_DoesNotRevertToSnapshotOnSuccess(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	runner := NewMockTransactionRunner(ctrl)
+
+	tx := types.NewTx(&types.LegacyTx{})
+	runner.EXPECT().CreateSnapshot().Return(42).Times(1)
+	runner.EXPECT().Run(tx).Return(core_types.TransactionResultSuccessful).Times(1)
+	// no expectation for RevertToSnapshot
+
+	bundle := &TransactionBundle{
+		Transactions: []*types.Transaction{tx},
+		Flags:        EF_AllOf,
+	}
+
+	result := RunBundle(bundle, runner)
+	require.True(t, result)
+}
+
 func Test_RunBundle_RevertsToSnapshotOnFailure(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	runner := NewMockTransactionRunner(ctrl)
