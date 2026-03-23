@@ -377,10 +377,17 @@ func (r *transactionRunner) runTransactionBundle(
 		return []ProcessedTransaction{{Transaction: tx}}, nil, core_types.TransactionResultInvalid
 	}
 
+	// Check that the execution plan of this bundle has not been processed
+	// before at any other time during its valid range.
 	planHash := plan.Hash()
 
+	if store.HasBundleRecentlyBeenProcessed(planHash) {
+		log.Warn("Bundle transaction in the proposal was recently processed", "tx", tx.Hash(), "exec_plan_hash", planHash)
+		return []ProcessedTransaction{{Transaction: tx}}, nil, core_types.TransactionResultInvalid
+	}
+
 	if slices.Contains(*ctxt.successfulPlanHashes, planHash) {
-		log.Warn("Bundle transaction in the proposal is already considered for this block", "tx", tx.Hash().Hex(), "exec_plan_hash", planHash)
+		log.Warn("Bundle transaction in the proposal is already considered for this block", "tx", tx.Hash(), "exec_plan_hash", planHash)
 		return []ProcessedTransaction{{Transaction: tx}}, nil, core_types.TransactionResultInvalid
 	}
 	preSuccessfulCount := len(*ctxt.successfulPlanHashes)

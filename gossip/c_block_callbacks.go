@@ -259,12 +259,6 @@ func consensusCallbackBeginBlockFn(
 					proposal.Transactions, &es.Rules, log.Root(), invalidTxsMeter,
 				)
 
-				// Filter obsolete bundles from the proposal.
-				proposal.Transactions = filterObsoleteBundles(
-					proposal.Transactions, store,
-					uint64(proposal.Number), &es.Rules, log.Root(), skippedTxsMeter,
-				)
-
 				// Make sure the new block time is after the last block time.
 				if blockTime <= bs.LastBlock.Time {
 					blockTime = bs.LastBlock.Time + 1
@@ -945,106 +939,6 @@ func isPermissible(
 	}
 
 	return nil
-}
-
-// filterObsoleteBundles filters bundles that were already included in the
-// chain or are outdated. This makes sure that bundles are processed at most
-// once. This is to defend against validators proposing the same bundle multiple
-// times for inclusion.
-func filterObsoleteBundles(
-	transactions []*types.Transaction,
-	tracker bundleTracker,
-	blockNumber uint64,
-	rules *opera.Rules,
-	log log.Logger,
-	skippedBundleCounter metricCounter,
-) []*types.Transaction {
-
-	// How bundles are handled by this filter:
-	//
-	// Before Brio: there is no special treatment of bundles. They are
-	//  interpreted as regular transactions in order to be backward compatible
-	//  during the roll-out phase.
-	//
-	// After Brio: bundles are filtered out if the `TransactionBundles` feature
-	//  is disabled. In this case, bundles are filtered out (=skipped). If the
-	//  `TransactionBundles` feature is enabled, bundles are checked for
-	//  validity and obsolescence. Invalid or obsolete bundles are filtered out
-	//  (=skipped), while valid and non-obsolete bundles are kept for inclusion.
-
-	// This filter is only enabled with the Brio upgrade. This is for backward
-	// compatibility during the roll-out phase.
-	if !rules.Upgrades.Brio {
-		return transactions
-	}
-
-	// TODO: check for duplicates of execution plans
-	// TODO: check for non-permissible transaction payloads in bundles
-
-	res := make([]*types.Transaction, 0, len(transactions))
-	for _, tx := range transactions {
-		if !bundle.IsEnvelope(tx) {
-			res = append(res, tx)
-			continue
-		}
-
-		// If bundles are disabled, all bundles are to be removed.
-		if !rules.Upgrades.TransactionBundles {
-			if log != nil {
-				log.Warn("Bundles are not enabled but a bundle transaction needed to be skipped", "tx", tx.Hash())
-			}
-			if skippedBundleCounter != nil {
-				skippedBundleCounter.Mark(1)
-			}
-			continue
-		}
-
-		// Check static properties of the bundle, to make sure it is not malformed.
-		_, execPlan, err := bundle.ValidateTransactionBundle(tx)
-		if err != nil {
-			if log != nil {
-				log.Warn("Invalid bundle transaction in the proposal", "tx", tx.Hash(), "issue", err)
-			}
-			if skippedBundleCounter != nil {
-				skippedBundleCounter.Mark(1)
-			}
-			continue // < filter out invalid bundled transactions
-		}
-
-		// Check that the block this bundle is to be included is within its
-		// valid range.
-		if !execPlan.IsInRange(blockNumber) {
-			if log != nil {
-				log.Warn(
-					"Bundle transaction in the proposal is out of range for execution",
-					"tx", tx.Hash(),
-					"block", blockNumber,
-					"earliest", execPlan.Earliest,
-					"latest", execPlan.Latest,
-				)
-			}
-			if skippedBundleCounter != nil {
-				skippedBundleCounter.Mark(1)
-			}
-			continue // < filter out outdated bundled transactions
-		}
-
-		// Check that the execution plan of this bundle has not been processed
-		// before at any other time during its valid range.
-		hash := execPlan.Hash()
-		seen := tracker.HasBundleRecentlyBeenProcessed(hash)
-		if seen {
-			if log != nil {
-				log.Warn("Bundle transaction in the proposal was recently processed", "tx", tx.Hash(), "exec_plan_hash", hash)
-			}
-			if skippedBundleCounter != nil {
-				skippedBundleCounter.Mark(1)
-			}
-			continue // < filter out recently processed bundled transactions
-		}
-		res = append(res, tx)
-	}
-	return res
 }
 
 // metricCounter is an abstraction of the *metrics.Meter type to facilitate
