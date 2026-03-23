@@ -149,23 +149,22 @@ func waitForBundleExecution(
 	if len(infos) != 1 {
 		return nil, fmt.Errorf("failed to obtain bundle info")
 	}
-	return infos[0], nil
+	return infos[executionPlanHash], nil
 }
 
 func waitForBundlesExecution(
 	ctxt context.Context,
 	client *rpc.Client,
 	executionPlanHashes []common.Hash,
-) ([]*ethapi.RPCBundleInfo, error) {
+) (map[common.Hash]*ethapi.RPCBundleInfo, error) {
 
-	infos := make([]*ethapi.RPCBundleInfo, len(executionPlanHashes))
-	done := make([]bool, len(executionPlanHashes))
+	infos := make(map[common.Hash]*ethapi.RPCBundleInfo)
 
 	err := tests.WaitFor(ctxt, func(innerCtx context.Context) (bool, error) {
 
 		allFinished := true
-		for i, plan := range executionPlanHashes {
-			if done[i] {
+		for _, plan := range executionPlanHashes {
+			if _, ok := infos[plan]; ok {
 				continue
 			}
 
@@ -177,8 +176,7 @@ func waitForBundlesExecution(
 				return false, err
 			}
 
-			infos[i] = info
-			done[i] = true
+			infos[plan] = info
 		}
 		return allFinished, nil
 	})

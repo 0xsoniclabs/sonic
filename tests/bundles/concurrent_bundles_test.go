@@ -17,9 +17,10 @@
 package bundles
 
 import (
-	"fmt"
+	"maps"
 	"math"
 	"math/big"
+	"slices"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
@@ -64,7 +65,6 @@ func testSucceedingConcurrentBundles(
 	defer client.Close()
 
 	// Create all needed accounts and endow in parallel.
-	fmt.Printf("Creating and endowing accounts ...\n")
 	accounts := tests.NewAccounts(N * W)
 	addresses := make([]common.Address, len(accounts))
 	for i, cur := range accounts {
@@ -73,10 +73,7 @@ func testSucceedingConcurrentBundles(
 	_, err = net.EndowAccounts(addresses, big.NewInt(1e18))
 	require.NoError(err)
 
-	fmt.Printf("Creating bundle transactions ...\n")
-
-	envelopes := make([]*types.Transaction, N)
-	planHashes := make([]common.Hash, N)
+	envelopes := make(map[common.Hash]*types.Transaction)
 	for i := range N {
 		envelope, plan := bundle.NewBuilder().With(
 			Step(t, net, accounts[i*W+0], newBurnMoneyTransaction()),
@@ -84,22 +81,19 @@ func testSucceedingConcurrentBundles(
 			Step(t, net, accounts[i*W+2], newBurnMoneyTransaction()),
 		).BuildEnvelopeAndPlan()
 
-		envelopes[i] = envelope
-		planHashes[i] = plan.Hash()
+		envelopes[plan.Hash()] = envelope
 	}
 
 	// Submit all envelops to be processed in parallel.
-	fmt.Printf("Sending bundled transactions in parallel ...\n")
-	_, err = net.SendAll(envelopes)
+	_, err = net.SendAll(slices.Collect(maps.Values(envelopes)))
 	require.NoError(err)
 
 	// Wait for all bundles to be completed.
-	fmt.Printf("Waiting for completion ...\n")
-	infos, err := waitForBundlesExecution(t.Context(), client.Client(), planHashes)
+	infos, err := waitForBundlesExecution(t.Context(), client.Client(),
+		slices.Collect(maps.Keys(envelopes)))
 	require.NoError(err)
 
 	// Check that all bundles have been accepted.
-	fmt.Printf("Checking results ...\n")
 	minBlock := uint64(math.MaxUint64)
 	maxBlock := uint64(0)
 	for _, info := range infos {
@@ -108,11 +102,10 @@ func testSucceedingConcurrentBundles(
 			maxBlock = max(maxBlock, uint64(*info.Block))
 		}
 	}
-	fmt.Printf("All bundles got executed in block range %d - %d\n", minBlock, maxBlock)
 
 	// Check that all obtained infos match the respective transactions.
-	for i, info := range infos {
-		bundle, err := bundle.OpenEnvelope(envelopes[i])
+	for planHash, info := range infos {
+		bundle, err := bundle.OpenEnvelope(envelopes[planHash])
 		require.NoError(err)
 		require.EqualValues(*info.Count, len(bundle.Transactions))
 
@@ -144,7 +137,6 @@ func testRandomlyFailingBundles(
 	defer client.Close()
 
 	// Create all needed accounts and endow in parallel.
-	fmt.Printf("Creating and endowing accounts ...\n")
 	accounts := tests.NewAccounts(N * W)
 	addresses := make([]common.Address, len(accounts))
 	for i, cur := range accounts {
@@ -153,10 +145,7 @@ func testRandomlyFailingBundles(
 	_, err = net.EndowAccounts(addresses, big.NewInt(1e18))
 	require.NoError(err)
 
-	fmt.Printf("Creating bundle transactions ...\n")
-
-	envelopes := make([]*types.Transaction, N)
-	planHashes := make([]common.Hash, N)
+	envelopes := make(map[common.Hash]*types.Transaction)
 	for i := range N {
 		envelope, plan := bundle.NewBuilder().With(
 			Step(t, net, accounts[i*W+0], newBurnMoneyTransaction()),
@@ -164,38 +153,32 @@ func testRandomlyFailingBundles(
 			Step(t, net, accounts[i*W+2], newRandomlyRevertingTransaction(revertContractAddress)),
 		).BuildEnvelopeAndPlan()
 
-		envelopes[i] = envelope
-		planHashes[i] = plan.Hash()
+		panHash := plan.Hash()
+		envelopes[panHash] = envelope
 	}
 
-	// Submit all envelops to be processed in parallel.
-	fmt.Printf("Sending bundled transactions in parallel ...\n")
-
-	// Send all in in parallel, but ignore rejected bundles.
-	err = tests.RunParallelWithClient(net, len(envelopes),
-		func(client *tests.PooledEhtClient, i int) error {
-			err := client.SendTransaction(t.Context(), envelopes[i])
-			if err != nil {
-				require.ErrorContains(err, "permanently blocked")
-			}
-			return nil
-		},
-	)
-	require.NoError(err)
+	// Ignore rejected bundles on submission
+	pendingPlans := make([]common.Hash, 0, len(envelopes))
+	for hash, envelope := range envelopes {
+		err := client.SendTransaction(t.Context(), envelope)
+		if err != nil {
+			require.ErrorContains(err, "permanently blocked")
+		} else {
+			pendingPlans = append(pendingPlans, hash)
+		}
+	}
 
 	// Wait for all bundles to be completed.
-	fmt.Printf("Waiting for completion ...\n")
-	infos, err := waitForBundlesExecution(t.Context(), client.Client(), planHashes)
+	infos, err := waitForBundlesExecution(t.Context(), client.Client(), pendingPlans)
 	require.NoError(err)
 
 	// For those bundles that got executed, check that the obtained infos match
 	// the respective transactions.
-	for i, info := range infos {
-		bundle, err := bundle.OpenEnvelope(envelopes[i])
+	for planHash, info := range infos {
+		bundle, err := bundle.OpenEnvelope(envelopes[planHash])
 		require.NoError(err)
 
 		if *info.Count > 0 {
-			fmt.Printf("Bundle %d got executed in block %d at offset %d with %d transactions\n", i, *info.Block, *info.Position, *info.Count)
 			require.EqualValues(*info.Count, len(bundle.Transactions))
 
 			for i, tx := range bundle.Transactions {
@@ -205,8 +188,6 @@ func testRandomlyFailingBundles(
 				require.EqualValues(int(*info.Position)+i, receipt.TransactionIndex)
 			}
 		} else {
-			fmt.Printf("Bundle %d got executed in block %d at offset %d and rolled back\n", i, *info.Block, *info.Position)
-
 			// Make sure no transaction ended up in a block.
 			for _, tx := range bundle.Transactions {
 				receipt, err := client.TransactionReceipt(t.Context(), tx.Hash())
@@ -256,5 +237,4 @@ func newRandomlyRevertingTransaction(
 		Data: parsed.Methods["probabilisticRevert"].ID,
 		Gas:  100_000,
 	}
-
 }
