@@ -23,18 +23,30 @@ For optimal compatibility and stability, it is recommended to use the most recen
 - Implement CLZ VM instruction [EIP-7939](https://eips.ethereum.org/EIPS/eip-7939) when Brio upgrade is enabled.
 - Add precompiled contract for secp256r1 Curve Support [EIP-7951](https://eips.ethereum.org/EIPS/eip-7951)  when Brio upgrade is enabled.
 - Introduce `eth_Config` RPC method tailored for the Sonic network.
-- Introduce `eth_simulateV1` RPC function.
 
 ### Changed
 
-- RPC change of output format for `trace_call` from a list of traces to a structure containing not only traces but also stateDiff.
-- Bump minimum required Go version to 1.25.0.
 - Increase gas cost for the ModExp precompiled contract in accordance with [EIP-7883](https://eips.ethereum.org/EIPS/eip-7883) when the Brio upgrade is enabled.
 - Restrict maximum input length for ModExp precompiled contract [EIP-7823](https://eips.ethereum.org/EIPS/eip-7823) when Brio upgrade is enabled.
 - Introduce protocol-level upper bound gas usage per transaction (à la [EIP-7825](https://eips.ethereum.org/EIPS/eip-7825)) when Brio upgrade is enabled.
 - Introduce protocol level maximum RLP encoded block size of 10 MiB [EIP-7934](https://eips.ethereum.org/EIPS/eip-7934) when Brio upgrade us enabled.
 
 ### Removed
+
+## [2.1.7] - TBD
+
+### Added
+- Introduced the `eth_simulateV1` RPC method.
+- Introduced the `trace_callMany` RPC method.
+- Added the `stateDiff` tracer to the `trace_call` RPC method.
+
+### Changed
+- Increased the minimum required Go version to 1.25.0.
+- Changed the output format of the `trace_call` RPC from a list of traces to a structure that includes both traces and `stateDiff`.
+
+### Fixed
+- Fixed inconsistent RPC answers near the block head (live-db and archive-db asynchrony issue).
+- Fixed an issue where partial results were returned without an error when calling `debug_traceBlockByNumber` and `debug_traceBlockByHash` under certain erroneous scenarios.
 
 ## [2.1.6] - 12 March 2026
 
