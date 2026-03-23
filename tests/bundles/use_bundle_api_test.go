@@ -21,7 +21,6 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/ethapi"
-	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/tests/contracts/increasingly_expensive"
@@ -128,7 +127,6 @@ func checkCompatWithMetaMask(t *testing.T, client *tests.PooledEhtClient, txs []
 		var retrievedTx types.Transaction
 		err = retrievedTx.UnmarshalBinary(mempoolTx)
 		require.NoError(t, err, "failed to unmarshal transaction from mempool")
-
 		require.Equal(t, tx.Hash(), retrievedTx.Hash(), "transaction hash mismatch")
 	}
 }
@@ -151,7 +149,7 @@ func PrepareBundle(
 	t *testing.T, client *tests.PooledEhtClient,
 	earliest, latest uint64,
 	txs []ethereum.CallMsg,
-) (ethapi.PreparedBundle, error) {
+) (ethapi.RPCPreparedBundle, error) {
 
 	nonces := make(map[common.Address]uint64)
 	for _, tx := range txs {
@@ -187,7 +185,7 @@ func PrepareBundle(
 	}
 
 	// Call sonic_prepareBundle to get a bundle with all fields properly filled in and encoded
-	var preparedBundle ethapi.PreparedBundle
+	var preparedBundle ethapi.RPCPreparedBundle
 	err = client.Client().Call(&preparedBundle, "sonic_prepareBundle",
 		ethapi.PrepareBundleArgs{
 			Transactions:  txsArgs,
@@ -205,7 +203,7 @@ func PrepareBundle(
 // point to the api from go programs.
 func SubmitBundle(client *tests.PooledEhtClient,
 	txs []*types.Transaction,
-	plan bundle.ExecutionPlan,
+	plan ethapi.RPCExecutionPlan,
 ) (common.Hash, error) {
 	encodedTransactions := make([]hexutil.Bytes, len(txs))
 	for i, tx := range txs {
