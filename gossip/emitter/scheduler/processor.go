@@ -118,6 +118,13 @@ type evmProcessor struct {
 	bundleTracker BundleTracker
 }
 
+// run runs the given transaction in the processor and returns whether the
+// transaction was successfully processed, and the total gas used for processing
+// the transaction. A transaction is considered successfully processed if it was
+// executed by the EVM, even if it resulted in a reverted execution. For bundle
+// transactions, we consider the transaction as successfully processed if it
+// led to any non-skipped transaction being processed, as this indicates that
+// the bundle execution plan was accepted and executed by the EVM.
 func (p *evmProcessor) run(tx *types.Transaction) (
 	result bool, gasUsed uint64,
 ) {
