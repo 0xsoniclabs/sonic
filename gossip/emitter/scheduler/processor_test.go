@@ -43,7 +43,7 @@ func TestEvmProcessorFactory_BeginBlock_CreatesProcessor(t *testing.T) {
 	require.NotNil(t, result)
 }
 
-func TestEvmProcessor_Run_IfExecutionSucceeds_ReportsSuccessAndGasUsage(t *testing.T) {
+func TestEvmProcessor_Run_Succeeds_WhenExecutionSucceeds(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	runner := NewMockevmProcessorRunner(ctrl)
 
@@ -61,7 +61,7 @@ func TestEvmProcessor_Run_IfExecutionSucceeds_ReportsSuccessAndGasUsage(t *testi
 	require.Equal(t, uint64(10), gasUsed)
 }
 
-func TestEvmProcessor_Run_IfExecutionProducesMultipleProcessedTransactions_SkipsTransactionsWithoutReceipt(t *testing.T) {
+func TestEvmProcessor_Run_Fails_WhenTransactionsAreSkipped(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	runner := NewMockevmProcessorRunner(ctrl)
 
@@ -74,7 +74,7 @@ func TestEvmProcessor_Run_IfExecutionProducesMultipleProcessedTransactions_Skips
 	require.Zero(t, gasUsed)
 }
 
-func TestEvmProcessor_Run_IfExecutionProducesMultipleProcessedTransactions_SumsUpGasUsage(t *testing.T) {
+func TestEvmProcessor_Run_SucceedsAndSumsUsedGas_WhenExecutionProducesMultipleProcessedTransactions(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	runner := NewMockevmProcessorRunner(ctrl)
 
@@ -93,7 +93,7 @@ func TestEvmProcessor_Run_IfExecutionProducesMultipleProcessedTransactions_SumsU
 	require.Equal(t, uint64(30), gasUsed)
 }
 
-func TestEvmProcessor_Run_IfRequestedTransactionIsNotExecuted_AFailedExecutionIsReported(t *testing.T) {
+func TestEvmProcessor_Run_Fails_WhenRequestedTransactionIsNotExecuted(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	runner := NewMockevmProcessorRunner(ctrl)
 
@@ -148,15 +148,7 @@ func TestEvmProcessor_Run_IfExecutionFailed_ReportsAFailedExecution(t *testing.T
 	})
 }
 
-func TestEvmProcessor_Release_ReleasesStateDb(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	stateDb := state.NewMockStateDB(ctrl)
-	processor := &evmProcessor{stateDb: stateDb}
-	stateDb.EXPECT().Release()
-	processor.release()
-}
-
-func TestEvmProcessor_Run_IfBundleExecutionSucceeds_ReportsSuccessAndGasUsage(t *testing.T) {
+func TestEvmProcessor_Run_Succeeds_WhenBundleExecutionSucceeds(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	runner := NewMockevmProcessorRunner(ctrl)
 	bundleTracker := NewMockBundleTracker(ctrl)
@@ -177,7 +169,7 @@ func TestEvmProcessor_Run_IfBundleExecutionSucceeds_ReportsSuccessAndGasUsage(t 
 	require.Equal(t, uint64(10), gasUsed)
 }
 
-func TestEvmProcessor_Run_IfExecutionProducesMultipleProcessedTransactions_FromABundle(t *testing.T) {
+func TestEvmProcessor_Run_Succeeds_WhenBundleProducesMultipleProcessedTransactions(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	runner := NewMockevmProcessorRunner(ctrl)
 	bundleTracker := NewMockBundleTracker(ctrl)
@@ -201,7 +193,7 @@ func TestEvmProcessor_Run_IfExecutionProducesMultipleProcessedTransactions_FromA
 	require.Equal(t, expectedGasUsed, gasUsed)
 }
 
-func TestEvmProcessor_Run_IfBundleExecutionFailed_RejectsWhenFailedToGetBundlePlan(t *testing.T) {
+func TestEvmProcessor_Run_Fails_WhenFailedToGetBundlePlan(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	runner := NewMockevmProcessorRunner(ctrl)
 
@@ -215,7 +207,7 @@ func TestEvmProcessor_Run_IfBundleExecutionFailed_RejectsWhenFailedToGetBundlePl
 	require.Zero(t, gasUsed)
 }
 
-func TestEvmProcessor_Run_IfBundleExecutionFailed_RejectsWhenBundleHasBeenRecentlyProcessed(t *testing.T) {
+func TestEvmProcessor_Run_Fails_WhenBundleHasBeenRecentlyProcessed(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	runner := NewMockevmProcessorRunner(ctrl)
 	bundleTracker := NewMockBundleTracker(ctrl)
@@ -227,4 +219,12 @@ func TestEvmProcessor_Run_IfBundleExecutionFailed_RejectsWhenBundleHasBeenRecent
 	success, gasUsed := processor.run(tx)
 	require.False(t, success)
 	require.Zero(t, gasUsed)
+}
+
+func TestEvmProcessor_Release_ReleasesStateDb(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	stateDb := state.NewMockStateDB(ctrl)
+	processor := &evmProcessor{stateDb: stateDb}
+	stateDb.EXPECT().Release()
+	processor.release()
 }
