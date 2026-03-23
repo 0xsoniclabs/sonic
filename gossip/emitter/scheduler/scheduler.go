@@ -74,8 +74,9 @@ func (s *Scheduler) Schedule(
 	blockInfo *BlockInfo,
 	candidates PrioritizedTransactions,
 	limits Limits,
+	tracker BundleTracker,
 ) []*types.Transaction {
-	processor := s.factory.beginBlock(blockInfo.toEvmBlock())
+	processor := s.factory.beginBlock(blockInfo.toEvmBlock(), tracker)
 	defer processor.release()
 
 	remainingGas := limits.Gas

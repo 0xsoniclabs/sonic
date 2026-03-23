@@ -19,6 +19,7 @@ import (
 	opera "github.com/0xsoniclabs/sonic/opera"
 	hash "github.com/Fantom-foundation/lachesis-base/hash"
 	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
+	common "github.com/ethereum/go-ethereum/common"
 	txpool "github.com/ethereum/go-ethereum/core/txpool"
 	types "github.com/ethereum/go-ethereum/core/types"
 	uint256 "github.com/holiman/uint256"
@@ -129,6 +130,20 @@ func (mr *MockworldReaderMockRecorder) GetRules() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRules", reflect.TypeOf((*MockworldReader)(nil).GetRules))
 }
 
+// HasBundleRecentlyBeenProcessed mocks base method.
+func (m *MockworldReader) HasBundleRecentlyBeenProcessed(execPlanHash common.Hash) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HasBundleRecentlyBeenProcessed", execPlanHash)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// HasBundleRecentlyBeenProcessed indicates an expected call of HasBundleRecentlyBeenProcessed.
+func (mr *MockworldReaderMockRecorder) HasBundleRecentlyBeenProcessed(execPlanHash any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasBundleRecentlyBeenProcessed", reflect.TypeOf((*MockworldReader)(nil).HasBundleRecentlyBeenProcessed), execPlanHash)
+}
+
 // MocktxScheduler is a mock of txScheduler interface.
 type MocktxScheduler struct {
 	ctrl     *gomock.Controller
@@ -154,17 +169,17 @@ func (m *MocktxScheduler) EXPECT() *MocktxSchedulerMockRecorder {
 }
 
 // Schedule mocks base method.
-func (m *MocktxScheduler) Schedule(arg0 context.Context, arg1 *scheduler.BlockInfo, arg2 scheduler.PrioritizedTransactions, arg3 scheduler.Limits) []*types.Transaction {
+func (m *MocktxScheduler) Schedule(arg0 context.Context, arg1 *scheduler.BlockInfo, arg2 scheduler.PrioritizedTransactions, arg3 scheduler.Limits, arg4 scheduler.BundleTracker) []*types.Transaction {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Schedule", arg0, arg1, arg2, arg3)
+	ret := m.ctrl.Call(m, "Schedule", arg0, arg1, arg2, arg3, arg4)
 	ret0, _ := ret[0].([]*types.Transaction)
 	return ret0
 }
 
 // Schedule indicates an expected call of Schedule.
-func (mr *MocktxSchedulerMockRecorder) Schedule(arg0, arg1, arg2, arg3 any) *gomock.Call {
+func (mr *MocktxSchedulerMockRecorder) Schedule(arg0, arg1, arg2, arg3, arg4 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Schedule", reflect.TypeOf((*MocktxScheduler)(nil).Schedule), arg0, arg1, arg2, arg3)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Schedule", reflect.TypeOf((*MocktxScheduler)(nil).Schedule), arg0, arg1, arg2, arg3, arg4)
 }
 
 // MocktimerMetric is a mock of timerMetric interface.

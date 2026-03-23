@@ -30,6 +30,7 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
@@ -131,7 +132,7 @@ func createPayload(
 	// which is the median of all creation times of the events seen from all
 	// validators.
 	proposal, err := makeProposal(
-		world.GetRules(),
+		world,
 		incomingState,
 		latest,
 		event.MedianTime(), // < time of the new block
@@ -180,6 +181,7 @@ type worldReader interface {
 	inter.EventReader
 	GetLatestBlock() *inter.Block
 	GetRules() opera.Rules
+	HasBundleRecentlyBeenProcessed(execPlanHash common.Hash) bool
 }
 
 // worldAdapter is an adapter of the External interface to the worldReader
@@ -211,7 +213,7 @@ func (w worldAdapter) GetEvmChainConfig(blockHeight idx.Block) *params.ChainConf
 // making a new proposal are not met (e.g., if no time has passed since the
 // last block).
 func makeProposal(
-	rules opera.Rules,
+	world worldReader,
 	incomingSyncState inter.ProposalSyncState,
 	latestBlock *inter.Block,
 	newBlockTime inter.Timestamp,
@@ -229,6 +231,7 @@ func makeProposal(
 		// no time has passed, so no new proposal can be made
 		return nil, nil
 	}
+	rules := world.GetRules()
 	blockGasLimit := rules.Blocks.MaxBlockGas
 	effectiveGasLimit := inter.GetEffectiveGasLimit(
 		newBlockTime.Time().Sub(lastBlockTime.Time()),
@@ -283,6 +286,7 @@ func makeProposal(
 			Gas:  effectiveGasLimit,
 			Size: maxTotalTransactionsSizeInEventInBytes,
 		},
+		world,
 	)
 
 	// Track scheduling time in monitoring metrics.
@@ -302,6 +306,7 @@ type txScheduler interface {
 		*scheduler.BlockInfo,
 		scheduler.PrioritizedTransactions,
 		scheduler.Limits,
+		scheduler.BundleTracker,
 	) []*types.Transaction
 }
 

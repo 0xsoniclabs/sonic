@@ -209,7 +209,6 @@ func TestCreatePayload_UnableToCreateProposalDueToLackOfTimeProgress_CreatesPayl
 			WithTime(lastBlockTime).
 			Build(),
 	)
-	world.EXPECT().GetRules().Return(opera.Rules{})
 
 	event.EXPECT().Parents().Return(hash.Events{p1, p2})
 	event.EXPECT().Epoch().Return(idx.Epoch(0x12))
@@ -319,7 +318,7 @@ func TestCreatePayload_ValidTurn_ProducesExpectedPayload(t *testing.T) {
 
 	any := gomock.Any()
 	scheduler := NewMocktxScheduler(ctrl)
-	scheduler.EXPECT().Schedule(any, any, any, any).Return(txs)
+	scheduler.EXPECT().Schedule(any, any, any, any, any).Return(txs)
 
 	durationMetric.EXPECT().Update(any).AnyTimes()
 	timeoutMetric.EXPECT().Inc(any).AnyTimes()
@@ -393,6 +392,7 @@ func TestMakeProposal_ValidArguments_CreatesValidProposal(t *testing.T) {
 			),
 			Size: maxTotalTransactionsSizeInEventInBytes,
 		},
+		any,
 	).Return(transactions)
 
 	// Scheduling time should be monitored.
@@ -403,9 +403,12 @@ func TestMakeProposal_ValidArguments_CreatesValidProposal(t *testing.T) {
 	randaoMixer := randao.NewMockRandaoMixer(ctrl)
 	randaoMixer.EXPECT().MixRandao(any).Return(someRandaoReveal, someRandao, nil)
 
+	world := NewMockworldReader(ctrl)
+	world.EXPECT().GetRules().Return(rules)
+
 	// Run the proposal creation.
 	proposal, err := makeProposal(
-		rules,
+		world,
 		state,
 		latestBlock,
 		newBlockTime,
@@ -425,6 +428,10 @@ func TestMakeProposal_ValidArguments_CreatesValidProposal(t *testing.T) {
 }
 
 func TestMakeProposal_InvalidBlockTime_ReturnsNil(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	world := NewMockworldReader(ctrl)
+	world.EXPECT().GetRules().Return(opera.Rules{}).AnyTimes()
+
 	state := inter.ProposalSyncState{
 		LastSeenProposalTurn:  inter.Turn(5),
 		LastSeenProposalFrame: idx.Frame(12),
@@ -433,7 +440,7 @@ func TestMakeProposal_InvalidBlockTime_ReturnsNil(t *testing.T) {
 	for _, delta := range []time.Duration{-1 * time.Nanosecond, 0} {
 		newTime := inter.Timestamp(1234) + inter.Timestamp(delta)
 		payload, err := makeProposal(
-			opera.Rules{}, state, latestBlock, newTime, 0, nil, nil, nil, nil, nil,
+			world, state, latestBlock, newTime, 0, nil, nil, nil, nil, nil,
 		)
 		require.NoError(t, err, "not error but no-proposal expected")
 		require.Nil(t, payload)
@@ -445,12 +452,15 @@ func TestMakeProposal_IfSchedulerTimesOut_SignalTimeoutToMonitor(t *testing.T) {
 	mockScheduler := NewMocktxScheduler(ctrl)
 	durationMetric := NewMocktimerMetric(ctrl)
 	timeoutMetric := NewMockcounterMetric(ctrl)
+	world := NewMockworldReader(ctrl)
+	world.EXPECT().GetRules().Return(opera.Rules{}).AnyTimes()
 
 	any := gomock.Any()
-	mockScheduler.EXPECT().Schedule(any, any, any, any).Do(
+	mockScheduler.EXPECT().Schedule(any, any, any, any, any).Do(
 		func(
 			ctx context.Context, _ *scheduler.BlockInfo,
 			_ scheduler.PrioritizedTransactions, _ scheduler.Limits,
+			_ scheduler.BundleTracker,
 		) {
 			deadline, ok := ctx.Deadline()
 			require.True(t, ok, "scheduler call should have a deadline")
@@ -473,7 +483,7 @@ func TestMakeProposal_IfSchedulerTimesOut_SignalTimeoutToMonitor(t *testing.T) {
 	randaoMixer.EXPECT().MixRandao(any)
 
 	_, err := makeProposal(
-		opera.Rules{},
+		world,
 		inter.ProposalSyncState{},
 		inter.NewBlockBuilder().
 			WithBaseFee(big.NewInt(100)).
@@ -533,8 +543,9 @@ func TestTransactionPriorityAdapter_ForwardsCallToWrappedType(t *testing.T) {
 func TestMakeProposal_SkipsProposalOnRandaoRevealError(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
+	world := NewMockworldReader(ctrl)
+	world.EXPECT().GetRules().Return(opera.Rules{}).AnyTimes()
 
-	rules := opera.Rules{}
 	state := inter.ProposalSyncState{
 		LastSeenProposalTurn:  inter.Turn(5),
 		LastSeenProposalFrame: idx.Frame(12),
@@ -553,7 +564,7 @@ func TestMakeProposal_SkipsProposalOnRandaoRevealError(t *testing.T) {
 
 	// Run the proposal creation.
 	_, err := makeProposal(
-		rules,
+		world,
 		state,
 		latestBlock,
 		newBlockTime,
@@ -570,6 +581,7 @@ func TestMakeProposal_SkipsProposalOnRandaoRevealError(t *testing.T) {
 func TestMakeProposal_SkipsProposalIfBaseFeeIsGettingTooHeigh(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
+	world := NewMockworldReader(ctrl)
 
 	targetRate := uint64(50_000_000) // 50M gas/sec
 
@@ -580,6 +592,7 @@ func TestMakeProposal_SkipsProposalIfBaseFeeIsGettingTooHeigh(t *testing.T) {
 			},
 		},
 	}
+	world.EXPECT().GetRules().Return(rules).AnyTimes()
 
 	previousBaseFee := new(big.Int).Lsh(big.NewInt(1), 256)
 	latestBlock := inter.NewBlockBuilder().
@@ -596,7 +609,7 @@ func TestMakeProposal_SkipsProposalIfBaseFeeIsGettingTooHeigh(t *testing.T) {
 
 	// Run the proposal creation.
 	_, err := makeProposal(
-		rules,
+		world,
 		inter.ProposalSyncState{},
 		latestBlock,
 		newBlockTime,
@@ -613,6 +626,7 @@ func TestMakeProposal_SkipsProposalIfBaseFeeIsGettingTooHeigh(t *testing.T) {
 func TestMakeProposal_SchedulerIsRunWithCorrectBaseFee(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
+	world := NewMockworldReader(ctrl)
 
 	targetRate := uint64(50_000_000) // 50M gas/sec
 
@@ -623,6 +637,7 @@ func TestMakeProposal_SchedulerIsRunWithCorrectBaseFee(t *testing.T) {
 			},
 		},
 	}
+	world.EXPECT().GetRules().Return(rules).AnyTimes()
 
 	previousBaseFee := big.NewInt(1000)
 	latestBlock := inter.NewBlockBuilder().
@@ -660,6 +675,7 @@ func TestMakeProposal_SchedulerIsRunWithCorrectBaseFee(t *testing.T) {
 		},
 		gomock.Any(),
 		gomock.Any(),
+		gomock.Any(),
 	)
 
 	durationMetric := NewMocktimerMetric(ctrl)
@@ -669,7 +685,7 @@ func TestMakeProposal_SchedulerIsRunWithCorrectBaseFee(t *testing.T) {
 
 	// Run the proposal creation.
 	_, err := makeProposal(
-		rules,
+		world,
 		inter.ProposalSyncState{},
 		latestBlock,
 		newBlockTime,

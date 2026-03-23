@@ -495,6 +495,10 @@ func (w *fakeWorld) GetRules() opera.Rules {
 	return opera.Rules{}
 }
 
+func (w *fakeWorld) HasBundleRecentlyBeenProcessed(execPlanHash common.Hash) bool {
+	return false
+}
+
 // fakeRandaoMixer is producing fake RANDAO reveals for the tests.
 type fakeRandaoMixer struct{}
 
@@ -511,6 +515,7 @@ func (fakeScheduler) Schedule(
 	*scheduler.BlockInfo,
 	scheduler.PrioritizedTransactions,
 	scheduler.Limits,
+	scheduler.BundleTracker,
 ) []*types.Transaction {
 	return nil
 }
