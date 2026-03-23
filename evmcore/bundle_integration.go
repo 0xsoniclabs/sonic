@@ -74,8 +74,13 @@ func (s *BundleIntegrationImplementation) isPending(tx *types.Transaction) bool 
 		return false
 	}
 
-	// Drop the bundle if it is obsolete.
+	// Drop the bundle if it is too early.
 	currentBlock := s.chain.CurrentBlock().Number.Uint64()
+	if plan.Earliest > currentBlock {
+		return false
+	}
+
+	// Drop the bundle if it is obsolete.
 	if plan.Latest < currentBlock {
 		return false
 	}

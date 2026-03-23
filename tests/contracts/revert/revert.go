@@ -31,8 +31,8 @@ var (
 
 // RevertMetaData contains all meta data concerning the Revert contract.
 var RevertMetaData = &bind.MetaData{
-	ABI: "[{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"string\",\"name\":\"message\",\"type\":\"string\"}],\"name\":\"SideEffect\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"doCrash\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"doRevert\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"probabilisticRevert\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}]",
-	Bin: "0x60806040525f5f553480156011575f5ffd5b5061044c8061001f5f395ff3fe608060405234801561000f575f5ffd5b506004361061003f575f3560e01c8063afc874d214610043578063b3b3617a1461004d578063c0c8994a14610057575b5f5ffd5b61004b610061565b005b6100556100d1565b005b61005f610155565b005b7f129c09367153bae86b3c5ad9663463604ac73f61db23fb620b2de5f33cebe25060405161008e906101e6565b60405180910390a16040517f08c379a00000000000000000000000000000000000000000000000000000000081526004016100c89061024e565b60405180910390fd5b5f5f8154809291906100e2906102a2565b91905055505f5f543373ffffffffffffffffffffffffffffffffffffffff161790505f6002826101129190610316565b03610152576040517f08c379a000000000000000000000000000000000000000000000000000000000815260040161014990610390565b60405180910390fd5b50565b7f129c09367153bae86b3c5ad9663463604ac73f61db23fb620b2de5f33cebe250604051610182906103f8565b60405180910390a1fe5b5f82825260208201905092915050565b7f4265666f726520726576657274000000000000000000000000000000000000005f82015250565b5f6101d0600d8361018c565b91506101db8261019c565b602082019050919050565b5f6020820190508181035f8301526101fd816101c4565b9050919050565b7f52657665727465640000000000000000000000000000000000000000000000005f82015250565b5f61023860088361018c565b915061024382610204565b602082019050919050565b5f6020820190508181035f8301526102658161022c565b9050919050565b7f4e487b71000000000000000000000000000000000000000000000000000000005f52601160045260245ffd5b5f819050919050565b5f6102ac82610299565b91507fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff82036102de576102dd61026c565b5b600182019050919050565b7f4e487b71000000000000000000000000000000000000000000000000000000005f52601260045260245ffd5b5f61032082610299565b915061032b83610299565b92508261033b5761033a6102e9565b5b828206905092915050565b7f50726f626162696c6973746963207265766572740000000000000000000000005f82015250565b5f61037a60148361018c565b915061038582610346565b602082019050919050565b5f6020820190508181035f8301526103a78161036e565b9050919050565b7f4265666f726520637261736800000000000000000000000000000000000000005f82015250565b5f6103e2600c8361018c565b91506103ed826103ae565b602082019050919050565b5f6020820190508181035f83015261040f816103d6565b905091905056fea264697066735822122095b23cbdd7c619086cfeb7aa9dec483abb707fc5f40572de84728041d70d52d364736f6c634300081b0033",
+	ABI: "[{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"string\",\"name\":\"message\",\"type\":\"string\"}],\"name\":\"SideEffect\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"conditionalRevert\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"doCrash\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"doRevert\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"mustRevert\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"toggleRevert\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}]",
+	Bin: "0x6080604052348015600e575f5ffd5b506104858061001c5f395ff3fe608060405234801561000f575f5ffd5b5060043610610055575f3560e01c806391c5eace14610059578063afc874d214610077578063bcd0aaf814610081578063c0c8994a1461008b578063cdcdb10e14610095575b5f5ffd5b61006161009f565b60405161006e919061021e565b60405180910390f35b61007f6100b0565b005b610089610120565b005b6100936101a5565b005b61009d6101dc565b005b5f5f9054906101000a900460ff1681565b7f129c09367153bae86b3c5ad9663463604ac73f61db23fb620b2de5f33cebe2506040516100dd90610291565b60405180910390a16040517f08c379a0000000000000000000000000000000000000000000000000000000008152600401610117906102f9565b60405180910390fd5b5f5f9054906101000a900460ff16156101a3577f129c09367153bae86b3c5ad9663463604ac73f61db23fb620b2de5f33cebe25060405161016090610361565b60405180910390a16040517f08c379a000000000000000000000000000000000000000000000000000000000815260040161019a906103c9565b60405180910390fd5b565b7f129c09367153bae86b3c5ad9663463604ac73f61db23fb620b2de5f33cebe2506040516101d290610431565b60405180910390a1fe5b5f5f9054906101000a900460ff16155f5f6101000a81548160ff021916908315150217905550565b5f8115159050919050565b61021881610204565b82525050565b5f6020820190506102315f83018461020f565b92915050565b5f82825260208201905092915050565b7f4265666f726520726576657274000000000000000000000000000000000000005f82015250565b5f61027b600d83610237565b915061028682610247565b602082019050919050565b5f6020820190508181035f8301526102a88161026f565b9050919050565b7f52657665727465640000000000000000000000000000000000000000000000005f82015250565b5f6102e3600883610237565b91506102ee826102af565b602082019050919050565b5f6020820190508181035f830152610310816102d7565b9050919050565b7f4265666f726520636f6e646974696f6e616c20726576657274000000000000005f82015250565b5f61034b601983610237565b915061035682610317565b602082019050919050565b5f6020820190508181035f8301526103788161033f565b9050919050565b7f436f6e646974696f6e616c6c79207265766572746564000000000000000000005f82015250565b5f6103b3601683610237565b91506103be8261037f565b602082019050919050565b5f6020820190508181035f8301526103e0816103a7565b9050919050565b7f4265666f726520637261736800000000000000000000000000000000000000005f82015250565b5f61041b600c83610237565b9150610426826103e7565b602082019050919050565b5f6020820190508181035f8301526104488161040f565b905091905056fea26469706673582212208a785feb8277cf210bf475667e4c521419c02b8a0aa80f5a7916fb1763cc5a7664736f6c634300081e0033",
 }
 
 // RevertABI is the input ABI used to generate the binding from.
@@ -202,6 +202,58 @@ func (_Revert *RevertTransactorRaw) Transact(opts *bind.TransactOpts, method str
 	return _Revert.Contract.contract.Transact(opts, method, params...)
 }
 
+// MustRevert is a free data retrieval call binding the contract method 0x91c5eace.
+//
+// Solidity: function mustRevert() view returns(bool)
+func (_Revert *RevertCaller) MustRevert(opts *bind.CallOpts) (bool, error) {
+	var out []interface{}
+	err := _Revert.contract.Call(opts, &out, "mustRevert")
+
+	if err != nil {
+		return *new(bool), err
+	}
+
+	out0 := *abi.ConvertType(out[0], new(bool)).(*bool)
+
+	return out0, err
+
+}
+
+// MustRevert is a free data retrieval call binding the contract method 0x91c5eace.
+//
+// Solidity: function mustRevert() view returns(bool)
+func (_Revert *RevertSession) MustRevert() (bool, error) {
+	return _Revert.Contract.MustRevert(&_Revert.CallOpts)
+}
+
+// MustRevert is a free data retrieval call binding the contract method 0x91c5eace.
+//
+// Solidity: function mustRevert() view returns(bool)
+func (_Revert *RevertCallerSession) MustRevert() (bool, error) {
+	return _Revert.Contract.MustRevert(&_Revert.CallOpts)
+}
+
+// ConditionalRevert is a paid mutator transaction binding the contract method 0xbcd0aaf8.
+//
+// Solidity: function conditionalRevert() returns()
+func (_Revert *RevertTransactor) ConditionalRevert(opts *bind.TransactOpts) (*types.Transaction, error) {
+	return _Revert.contract.Transact(opts, "conditionalRevert")
+}
+
+// ConditionalRevert is a paid mutator transaction binding the contract method 0xbcd0aaf8.
+//
+// Solidity: function conditionalRevert() returns()
+func (_Revert *RevertSession) ConditionalRevert() (*types.Transaction, error) {
+	return _Revert.Contract.ConditionalRevert(&_Revert.TransactOpts)
+}
+
+// ConditionalRevert is a paid mutator transaction binding the contract method 0xbcd0aaf8.
+//
+// Solidity: function conditionalRevert() returns()
+func (_Revert *RevertTransactorSession) ConditionalRevert() (*types.Transaction, error) {
+	return _Revert.Contract.ConditionalRevert(&_Revert.TransactOpts)
+}
+
 // DoCrash is a paid mutator transaction binding the contract method 0xc0c8994a.
 //
 // Solidity: function doCrash() returns()
@@ -244,25 +296,25 @@ func (_Revert *RevertTransactorSession) DoRevert() (*types.Transaction, error) {
 	return _Revert.Contract.DoRevert(&_Revert.TransactOpts)
 }
 
-// ProbabilisticRevert is a paid mutator transaction binding the contract method 0xb3b3617a.
+// ToggleRevert is a paid mutator transaction binding the contract method 0xcdcdb10e.
 //
-// Solidity: function probabilisticRevert() returns()
-func (_Revert *RevertTransactor) ProbabilisticRevert(opts *bind.TransactOpts) (*types.Transaction, error) {
-	return _Revert.contract.Transact(opts, "probabilisticRevert")
+// Solidity: function toggleRevert() returns()
+func (_Revert *RevertTransactor) ToggleRevert(opts *bind.TransactOpts) (*types.Transaction, error) {
+	return _Revert.contract.Transact(opts, "toggleRevert")
 }
 
-// ProbabilisticRevert is a paid mutator transaction binding the contract method 0xb3b3617a.
+// ToggleRevert is a paid mutator transaction binding the contract method 0xcdcdb10e.
 //
-// Solidity: function probabilisticRevert() returns()
-func (_Revert *RevertSession) ProbabilisticRevert() (*types.Transaction, error) {
-	return _Revert.Contract.ProbabilisticRevert(&_Revert.TransactOpts)
+// Solidity: function toggleRevert() returns()
+func (_Revert *RevertSession) ToggleRevert() (*types.Transaction, error) {
+	return _Revert.Contract.ToggleRevert(&_Revert.TransactOpts)
 }
 
-// ProbabilisticRevert is a paid mutator transaction binding the contract method 0xb3b3617a.
+// ToggleRevert is a paid mutator transaction binding the contract method 0xcdcdb10e.
 //
-// Solidity: function probabilisticRevert() returns()
-func (_Revert *RevertTransactorSession) ProbabilisticRevert() (*types.Transaction, error) {
-	return _Revert.Contract.ProbabilisticRevert(&_Revert.TransactOpts)
+// Solidity: function toggleRevert() returns()
+func (_Revert *RevertTransactorSession) ToggleRevert() (*types.Transaction, error) {
+	return _Revert.Contract.ToggleRevert(&_Revert.TransactOpts)
 }
 
 // RevertSideEffectIterator is returned from FilterSideEffect and is used to iterate over the raw logs and unpacked data for SideEffect events raised by the Revert contract.

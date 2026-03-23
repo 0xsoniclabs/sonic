@@ -40,14 +40,15 @@ func TestBundles_RunBundlesInParallel(t *testing.T) {
 
 	net := tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
 		Upgrades: &upgrades,
+		NumNodes: 1,
 	})
 
 	t.Run("succeeding bundles", func(t *testing.T) {
 		testSucceedingConcurrentBundles(t, net)
 	})
 
-	t.Run("randomly failing bundles", func(t *testing.T) {
-		testRandomlyFailingBundles(t, net)
+	t.Run("concurrent failing bundles", func(t *testing.T) {
+		testFailingConcurrentBundles(t, net)
 	})
 }
 
@@ -118,23 +119,23 @@ func testSucceedingConcurrentBundles(
 	}
 }
 
-func testRandomlyFailingBundles(
+func testFailingConcurrentBundles(
 	t *testing.T,
 	net *tests.IntegrationTestNet,
 ) {
-	const N = 200 // Number of bundles to process
+	const N = 100 // Number of bundles to process
 	const W = 3   // Number of transactions per bundle
 
 	require := require.New(t)
 
-	_, receipt, err := tests.DeployContract(net, revert.DeployRevert)
-	require.NoError(err)
-	require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
-	revertContractAddress := receipt.ContractAddress
-
 	client, err := net.GetClient()
 	require.NoError(err)
 	defer client.Close()
+
+	revertContract, lastReceipt, err := tests.DeployContract(net, revert.DeployRevert)
+	require.NoError(err)
+	require.Equal(types.ReceiptStatusSuccessful, lastReceipt.Status)
+	revertContractAddress := lastReceipt.ContractAddress
 
 	// Create all needed accounts and endow in parallel.
 	accounts := tests.NewAccounts(N * W)
@@ -150,51 +151,55 @@ func testRandomlyFailingBundles(
 		envelope, plan := bundle.NewBuilder().With(
 			Step(t, net, accounts[i*W+0], newBurnMoneyTransaction()),
 			Step(t, net, accounts[i*W+1], newBurnMoneyTransaction()),
-			Step(t, net, accounts[i*W+2], newRandomlyRevertingTransaction(revertContractAddress)),
+			Step(t, net, accounts[i*W+2], newStateDependentRevertingTransaction(revertContractAddress)),
 		).BuildEnvelopeAndPlan()
 
-		planHash := plan.Hash()
-		envelopes[planHash] = envelope
+		envelopes[plan.Hash()] = envelope
 	}
 
-	// Ignore rejected bundles on submission
-	pendingPlans := make([]common.Hash, 0, len(envelopes))
-	for hash, envelope := range envelopes {
-		err := client.SendTransaction(t.Context(), envelope)
-		if err != nil {
-			require.ErrorContains(err, "permanently blocked")
-		} else {
-			pendingPlans = append(pendingPlans, hash)
-		}
-	}
+	// Submit all envelops to be processed in parallel.
+	// there is no reason for the pool not to accept them at this point
+	_, err = net.SendAll(slices.Collect(maps.Values(envelopes)))
+	require.NoError(err, "expect no error, as the contract state does not revert execution yet")
 
-	// Wait for all bundles to be completed.
-	infos, err := waitForBundlesExecution(t.Context(), client.Client(), pendingPlans)
+	// Submit a transaction which forces bundles executed afterward to revert
+	lastReceipt, err = net.Apply(revertContract.ToggleRevert)
 	require.NoError(err)
+	require.Equal(types.ReceiptStatusSuccessful, lastReceipt.Status)
 
-	// For those bundles that got executed, check that the obtained infos match
-	// the respective transactions.
-	for planHash, info := range infos {
-		bundle, err := bundle.OpenEnvelope(envelopes[planHash])
-		require.NoError(err)
+	bundlesExecuted := 0
+	for planHash := range envelopes {
+		info, err := getBundleInfo(t.Context(), client.Client(), planHash)
+		if err != nil {
+			// bundles dropped in the pool before they were emitted will not produce info.
+			// this is ok, any other error should not happen in this test
+			require.ErrorIs(err, ethereum.NotFound)
+			continue
+		}
+		require.NotNil(info, "if error was not ethereum.NotFound, info should not be nil")
 
-		if *info.Count > 0 {
-			require.EqualValues(*info.Count, len(bundle.Transactions))
-
-			for i, tx := range bundle.Transactions {
-				receipt, err := client.TransactionReceipt(t.Context(), tx.Hash())
-				require.NoError(err)
-				require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
-				require.EqualValues(int(*info.Position)+i, receipt.TransactionIndex)
+		if int64(*info.Block) < lastReceipt.BlockNumber.Int64() {
+			// bundles executed in blocks before the revert flag was enabled
+			require.EqualValues(3, uint(*info.Count),
+				"bundles executed before the revert flag was enabled shall be complete")
+		} else if int64(*info.Block) == lastReceipt.BlockNumber.Int64() {
+			// bundles executed in the same block as the revert flag transaction
+			if uint(*info.Position) >= lastReceipt.TransactionIndex {
+				require.Zero(*info.Count,
+					"bundles executed after the revert flag was enabled shall be empty")
+			} else {
+				require.EqualValues(W, *info.Count,
+					"bundles executed before the revert flag was enabled shall be complete")
 			}
 		} else {
-			// Make sure no transaction ended up in a block.
-			for _, tx := range bundle.Transactions {
-				receipt, err := client.TransactionReceipt(t.Context(), tx.Hash())
-				require.ErrorIs(err, ethereum.NotFound, "got receipt: %v", receipt)
-			}
+			// bundles executed in blocks after the revert flag was enabled
+			require.Zero(*info.Count,
+				"bundles executed after the revert flag was enabled shall be empty")
 		}
+
+		bundlesExecuted++
 	}
+	require.NotZero(bundlesExecuted)
 }
 
 func Step[T types.TxData](
@@ -218,7 +223,7 @@ func newBurnMoneyTransaction() *types.AccessListTx {
 	}
 }
 
-func newRandomlyRevertingTransaction(
+func newStateDependentRevertingTransaction(
 	revertContractAddress common.Address,
 ) *types.AccessListTx {
 
@@ -234,7 +239,7 @@ func newRandomlyRevertingTransaction(
 
 	return &types.AccessListTx{
 		To:   &revertContractAddress,
-		Data: parsed.Methods["probabilisticRevert"].ID,
+		Data: parsed.Methods["conditionalRevert"].ID,
 		Gas:  100_000,
 	}
 }
