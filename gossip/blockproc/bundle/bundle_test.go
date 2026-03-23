@@ -179,7 +179,39 @@ func TestExtractExecutionPlan_FailsIfPlanExtractionFails(t *testing.T) {
 	require.Equal(want, got)
 }
 
-func TestExecutionPlan_IsInRange_ReturnsTrueIfBlockNumberIsWithinRange(t *testing.T) {
+func TestMakeMaxRangeStartingAt_CreatesMaxRangeStartingAtGivenBlock(t *testing.T) {
+	starts := []uint64{0, 1, 100}
+	for _, start := range starts {
+		r := MakeMaxRangeStartingAt(start)
+		require.Equal(t, start, r.Earliest)
+		require.Equal(t, MaxBlockRange, r.Size())
+	}
+}
+
+func TestBlockRange_Size_ReturnsCorrectSize(t *testing.T) {
+	tests := map[string]struct {
+		earliest, latest uint64
+		want             uint64
+	}{
+		"empty block range":    {10, 9, 0},
+		"single block range":   {10, 10, 1},
+		"two block range":      {10, 11, 2},
+		"multiple block range": {10, 20, 11},
+		"super-long range":     {0, 10_000_000, 10_000_001},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			r := BlockRange{
+				Earliest: test.earliest,
+				Latest:   test.latest,
+			}
+			require.EqualValues(t, test.want, r.Size())
+		})
+	}
+}
+
+func TestBlockRange_IsInRange_ReturnsTrueIfBlockNumberIsWithinRange(t *testing.T) {
 	tests := map[string]struct {
 		earliest, latest, current uint64
 		want                      bool
@@ -197,11 +229,11 @@ func TestExecutionPlan_IsInRange_ReturnsTrueIfBlockNumberIsWithinRange(t *testin
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			executionPlan := ExecutionPlan{
+			blockRange := BlockRange{
 				Earliest: test.earliest,
 				Latest:   test.latest,
 			}
-			got := executionPlan.IsInRange(test.current)
+			got := blockRange.IsInRange(test.current)
 			require.Equal(t, test.want, got)
 		})
 	}
@@ -248,8 +280,10 @@ func TestExecutionPlan_Hash_ComputesDeterministicHash(t *testing.T) {
 			manualSerialize := []any{
 				transactions,
 				executionPlan.Flags,
-				executionPlan.Earliest,
-				executionPlan.Latest,
+				[]any{
+					executionPlan.Range.Earliest,
+					executionPlan.Range.Latest,
+				},
 			}
 
 			hasher := crypto.NewKeccakState()
@@ -286,9 +320,11 @@ func TestExtractExecutionPlan_ExtractsStepsAndFlags(t *testing.T) {
 							},
 						}),
 					},
-					Flags:    flags,
-					Earliest: earliest,
-					Latest:   latest,
+					Flags: flags,
+					Range: BlockRange{
+						Earliest: earliest,
+						Latest:   latest,
+					},
 				}
 
 				ctrl := gomock.NewController(t)
@@ -307,8 +343,7 @@ func TestExtractExecutionPlan_ExtractsStepsAndFlags(t *testing.T) {
 				require.Equal(t, common.Address{0x43}, executionPlan.Steps[1].From)
 				require.Equal(t, common.Hash{0x02}, executionPlan.Steps[1].Hash)
 				require.Equal(t, bundle.Flags, executionPlan.Flags)
-				require.Equal(t, bundle.Earliest, executionPlan.Earliest)
-				require.Equal(t, bundle.Latest, executionPlan.Latest)
+				require.Equal(t, bundle.Range, executionPlan.Range)
 			}
 		}
 	}
@@ -642,9 +677,11 @@ func TestDecode_SuccessfullyUnpacksValidBundle(t *testing.T) {
 					},
 				}),
 			},
-			Flags:    flags,
-			Earliest: 12,
-			Latest:   34,
+			Flags: flags,
+			Range: BlockRange{
+				Earliest: 12,
+				Latest:   34,
+			},
 		}
 
 		unpacked, err := decode(bundle.Encode())
@@ -654,8 +691,7 @@ func TestDecode_SuccessfullyUnpacksValidBundle(t *testing.T) {
 			require.Equal(t, tx.Hash(), unpacked.Transactions[i].Hash())
 		}
 		require.Equal(t, bundle.Flags, unpacked.Flags)
-		require.Equal(t, bundle.Earliest, unpacked.Earliest)
-		require.Equal(t, bundle.Latest, unpacked.Latest)
+		require.Equal(t, bundle.Range, unpacked.Range)
 	}
 }
 

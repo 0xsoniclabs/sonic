@@ -55,6 +55,41 @@ type dbIterator interface {
 
 var _ dbIterator // to avoid dbIterator unused warning.
 
+func TestStore_RetainsAllBundlesRequiredToCoverTheMaximumBlockRange(t *testing.T) {
+	require := require.New(t)
+	numBlocks := 3 * bundle.MaxBlockRange
+
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	// Create a list of execution plan hashes indexed by their block numbers.
+	hashes := []common.Hash{}
+	for i := range numBlocks {
+		hashes = append(hashes, common.Hash{byte(i >> 24), byte(i >> 16), byte(i >> 8), byte(i)})
+	}
+
+	// While progressing through the blocks, all execution plans must be retained
+	// until their maximum block range has expired.
+	for currentBlockNumber := range numBlocks {
+
+		// Check that the store covers exactly the plans of the past that are
+		// allowed to be included in the current block (before adding it).
+		for block := uint64(0); block < currentBlockNumber; block++ {
+			r := bundle.MakeMaxRangeStartingAt(block)
+			want := r.IsInRange(currentBlockNumber)
+			require.Equal(
+				want, store.HasBundleRecentlyBeenProcessed(hashes[block]),
+				"Current block %d, checking plan with range [%d,%d]",
+				currentBlockNumber, r.Earliest, r.Latest,
+			)
+		}
+
+		store.AddProcessedBundles(currentBlockNumber, []bundle.ExecutionInfo{
+			{ExecutionPlanHash: hashes[currentBlockNumber]},
+		})
+	}
+}
+
 func TestStore_HasBundleRecentlyBeenProcessed_TracksAddedBundleHashes(t *testing.T) {
 	require := require.New(t)
 	store, err := NewMemStore(t)
@@ -657,7 +692,7 @@ func TestStore_deleteOutdatedBundles_RemovesBundles_WhenOld(t *testing.T) {
 
 			hash := store.deleteOutdatedBundles(c.currentBlockNumber, batch)
 			if c.expectDeleted {
-				require.Equal(t, existingBundleHash, xorHash(common.Hash{}, hash))
+				require.Equal(t, existingBundleHash, hash)
 			}
 		})
 	}
@@ -702,7 +737,7 @@ func TestStore_deleteOutdatedBundles_IgnoresKeysOfWrongLength(t *testing.T) {
 	)
 	table.EXPECT().NewIterator(gomock.Any(), gomock.Any()).Return(it)
 
-	store.deleteOutdatedBundles(bundle.MaxBlockRange+1, batch)
+	require.Zero(t, store.deleteOutdatedBundles(bundle.MaxBlockRange+1, batch))
 }
 
 func TestStore_deleteOutdatedBundles_LogsOnBatchDeleteError(t *testing.T) {
