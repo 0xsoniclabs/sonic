@@ -37,39 +37,61 @@ func Test_RunBundle_HandlesExecutionModeCorrectly(t *testing.T) {
 }
 
 func Test_RunBundle_DoesNotRevertToSnapshotOnSuccess(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	runner := NewMockTransactionRunner(ctrl)
-
-	tx := types.NewTx(&types.LegacyTx{})
-	runner.EXPECT().CreateSnapshot().Return(42).Times(1)
-	runner.EXPECT().Run(tx).Return(core_types.TransactionResultSuccessful).Times(1)
-	// no expectation for RevertToSnapshot
-
-	bundle := &TransactionBundle{
-		Transactions: []*types.Transaction{tx},
-		Flags:        EF_AllOf,
+	tests := map[string]struct {
+		flags ExecutionFlags
+	}{
+		"AllOf": {flags: EF_AllOf},
+		"OneOf": {flags: EF_OneOf},
 	}
 
-	result := RunBundle(bundle, runner)
-	require.True(t, result)
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			runner := NewMockTransactionRunner(ctrl)
+
+			tx := types.NewTx(&types.LegacyTx{})
+			runner.EXPECT().CreateSnapshot().Return(42).Times(1)
+			runner.EXPECT().Run(tx).Return(core_types.TransactionResultSuccessful).Times(1)
+			// no expectation for RevertToSnapshot
+
+			bundle := &TransactionBundle{
+				Transactions: []*types.Transaction{tx},
+				Flags:        test.flags,
+			}
+
+			result := RunBundle(bundle, runner)
+			require.True(t, result)
+		})
+	}
 }
 
 func Test_RunBundle_RevertsToSnapshotOnFailure(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	runner := NewMockTransactionRunner(ctrl)
-
-	tx := types.NewTx(&types.LegacyTx{})
-	runner.EXPECT().CreateSnapshot().Return(42).Times(1)
-	runner.EXPECT().Run(tx).Return(core_types.TransactionResultFailed).Times(1)
-	runner.EXPECT().RevertToSnapshot(42).Times(1)
-
-	bundle := &TransactionBundle{
-		Transactions: []*types.Transaction{tx},
-		Flags:        EF_AllOf,
+	tests := map[string]struct {
+		flags ExecutionFlags
+	}{
+		"AllOf": {flags: EF_AllOf},
+		"OneOf": {flags: EF_OneOf},
 	}
 
-	result := RunBundle(bundle, runner)
-	require.False(t, result)
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			runner := NewMockTransactionRunner(ctrl)
+
+			tx := types.NewTx(&types.LegacyTx{})
+			runner.EXPECT().CreateSnapshot().Return(42).Times(1)
+			runner.EXPECT().Run(tx).Return(core_types.TransactionResultFailed).Times(1)
+			runner.EXPECT().RevertToSnapshot(42).Times(1)
+
+			bundle := &TransactionBundle{
+				Transactions: []*types.Transaction{tx},
+				Flags:        test.flags,
+			}
+
+			result := RunBundle(bundle, runner)
+			require.False(t, result)
+		})
+	}
 }
 
 func Test_runAllOfBundle_ReturnsTrueForEmptyBundle(t *testing.T) {
