@@ -529,20 +529,45 @@ func TestStore_addNewBundles_ReturnsExpectedHash(t *testing.T) {
 	store, err := NewMemStore(t)
 	require.NoError(err)
 
-	hash1 := common.Hash{1, 2, 3}
-	hash2 := common.Hash{4, 5, 6}
-
-	executedBundles := []bundle.ExecutionInfo{
-		wrapInfo(hash1),
-		wrapInfo(hash2),
+	cases := map[string]struct {
+		executedBundles []bundle.ExecutionInfo
+	}{
+		"empty list": {
+			executedBundles: []bundle.ExecutionInfo{},
+		},
+		"single entry": {
+			executedBundles: []bundle.ExecutionInfo{
+				wrapInfo(common.Hash{1, 2, 3}),
+			},
+		},
+		"two entries": {
+			executedBundles: []bundle.ExecutionInfo{
+				wrapInfo(common.Hash{1, 2, 3}),
+				wrapInfo(common.Hash{4, 5, 6}),
+			},
+		},
+		"more than two entries": {
+			executedBundles: []bundle.ExecutionInfo{
+				wrapInfo(common.Hash{1, 2, 3}),
+				wrapInfo(common.Hash{4, 5, 6}),
+				wrapInfo(common.Hash{7, 8, 9}),
+			},
+		},
 	}
 
-	batch := NewMockstoreBatch(gomock.NewController(t))
-	batch.EXPECT().Put(gomock.Any(), gomock.Any()).Return(nil).Times(4) // 2 times per hash
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			batch := NewMockstoreBatch(gomock.NewController(t))
+			batch.EXPECT().Put(gomock.Any(), gomock.Any()).Return(nil).Times(2 * len(c.executedBundles)) // 2 times per hash
+			addedHash := store.addNewBundles(1, c.executedBundles, batch)
 
-	addedHash := store.addNewBundles(1, executedBundles, batch)
-	expectedAddedHash := xorHash(hash1, hash2)
-	require.Equal(expectedAddedHash, addedHash)
+			expectedHash := common.Hash{}
+			for _, info := range c.executedBundles {
+				expectedHash = xorHash(expectedHash, info.ExecutionPlanHash)
+			}
+			require.Equal(expectedHash, addedHash)
+		})
+	}
 }
 
 func TestStore_addNewBundles_LogsOnBatchPutError(t *testing.T) {
