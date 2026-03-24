@@ -21,6 +21,7 @@ import (
 	"fmt"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
+	"github.com/0xsoniclabs/sonic/gossip/gasprice/gaspricelimits"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
@@ -134,6 +135,16 @@ type RPCPreparedBundle struct {
 // and updates each transaction to include the bundler-only marker, ensuring they are executed
 // exclusively as part of the specified plan.
 //
+// Bundled transactions with uninitialized gas limits will have their gas estimated by this method, which will take into account
+// potential state changes from previous transactions in the bundle. However, users can also choose to set gas limits on their own;
+// in this case, the provided gas limits will be used without modification.
+//
+// Bundled transactions with uninitialized gas price fields (GasPrice for access list transactions,
+// or both MaxFeePerGas and MaxPriorityFeePerGas for EIP-1559 capable transactions) will have their gas price
+// set to the current suggested gas price by this method.
+// However, users can also choose to set gas price fields on their own; in this case,
+// the provided gas price fields will be used without modification, even if this is zero.
+//
 // The returned transactions must be signed without altering any fields; any modification may
 // invalidate the execution plan and prevent the bundle from being executed.
 func (a *PublicBundleAPI) PrepareBundle(
@@ -144,7 +155,40 @@ func (a *PublicBundleAPI) PrepareBundle(
 	gasCap := a.b.RPCGasCap()
 	basefee := a.b.MinGasPrice()
 
-	// 1) Read transactions from arguments and prepare fields
+	// Fill in transaction fields left empty by users
+	var needsGasEstimation bool
+	for _, tx := range args.Transactions {
+		if tx.Gas == nil || *tx.Gas == 0 {
+			needsGasEstimation = true
+			break
+		}
+	}
+	var gasLimits BundleGasLimits
+	if needsGasEstimation {
+		var err error
+		// If any of the transactions has gas limit set to 0, we need to estimate gas for all of them,
+		// since they might be mutually dependent and affect each other's gas estimation.
+		gasLimits, err = a.EstimateGasForTransactions(ctx, args.Transactions, nil, nil, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to prepare bundle: gas estimation failed: %w", err)
+		}
+	}
+	gasPrice := a.suggestGasPrice()
+	for i, tx := range args.Transactions {
+		if len(gasLimits.GasLimits) > i && (tx.Gas == nil) {
+			tx.Gas = &gasLimits.GasLimits[i]
+		}
+		if tx.GasPrice == nil && tx.MaxFeePerGas == nil {
+			if tx.MaxPriorityFeePerGas == nil {
+				tx.GasPrice = gasPrice
+			} else {
+				tx.MaxFeePerGas = gasPrice
+			}
+		}
+		args.Transactions[i] = tx
+	}
+
+	// Convert transactions *types.Transaction, which can be later serialized
 	from := make([]common.Address, len(args.Transactions))
 	transactions := make([]*types.Transaction, len(args.Transactions))
 	for i, txArgs := range args.Transactions {
@@ -171,7 +215,7 @@ func (a *PublicBundleAPI) PrepareBundle(
 		latest = uint64(*args.LatestBlock)
 	}
 
-	// 2) Prepare execution plan
+	// Prepare execution plan
 	chainID := a.b.ChainID()
 	signer := types.LatestSignerForChainID(chainID)
 	plan := bundle.ExecutionPlan{
@@ -188,7 +232,7 @@ func (a *PublicBundleAPI) PrepareBundle(
 		}
 	}
 
-	// 3) Update bundle transactions with execution plan hash
+	// Update bundle transactions with execution plan hash
 	planHash := plan.Hash()
 	for i := range transactions {
 		tx := args.Transactions[i]
@@ -211,6 +255,12 @@ func (a *PublicBundleAPI) PrepareBundle(
 	}
 
 	return &bundle, nil
+}
+
+func (a *PublicBundleAPI) suggestGasPrice() *hexutil.Big {
+	price := a.b.CurrentBlock().Header().BaseFee
+	price = gaspricelimits.GetSuggestedGasPriceForNewTransactions(price)
+	return (*hexutil.Big)(price)
 }
 
 type SubmitBundleArgs struct {
