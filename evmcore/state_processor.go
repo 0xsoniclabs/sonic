@@ -139,10 +139,12 @@ func (p *StateProcessor) ProcessWithDifficulty(
 		ProcessParentBlockHash(block.ParentHash, vmenv, statedb)
 	}
 
+	successfulPlanHashes := make([]common.Hash, 0)
 	// Iterate over and process the individual transactions
 	return runTransactions(newRunContext(
 		signer, header.BaseFee, statedb, gp, blockNumber, usedGas,
 		onNewLog, p.upgrades, &transactionRunner{evm{vmenv}},
+		&successfulPlanHashes,
 	), block.Transactions, 0, 0)
 }
 
@@ -159,7 +161,7 @@ type runContext struct {
 	onNewLog             func(*types.Log)
 	upgrades             opera.Upgrades
 	runner               _transactionRunner
-	successfulPlanHashes []common.Hash
+	successfulPlanHashes *[]common.Hash
 }
 
 // newRunContext creates a new runContext instance bundling the given parameters
@@ -176,17 +178,19 @@ func newRunContext(
 	onNewLog func(*types.Log),
 	upgrades opera.Upgrades,
 	runner _transactionRunner,
+	successfulPlanHashes *[]common.Hash,
 ) *runContext {
 	return &runContext{
-		signer:      signer,
-		baseFee:     baseFee,
-		statedb:     statedb,
-		gasPool:     gasPool,
-		blockNumber: blockNumber,
-		usedGas:     usedGas,
-		onNewLog:    onNewLog,
-		upgrades:    upgrades,
-		runner:      runner,
+		signer:               signer,
+		baseFee:              baseFee,
+		statedb:              statedb,
+		gasPool:              gasPool,
+		blockNumber:          blockNumber,
+		usedGas:              usedGas,
+		onNewLog:             onNewLog,
+		upgrades:             upgrades,
+		runner:               runner,
+		successfulPlanHashes: successfulPlanHashes,
 	}
 }
 
@@ -375,12 +379,12 @@ func (r *transactionRunner) runTransactionBundle(
 
 	planHash := plan.Hash()
 
-	if slices.Contains(ctxt.successfulPlanHashes, planHash) {
+	if slices.Contains(*ctxt.successfulPlanHashes, planHash) {
 		log.Warn("Bundle transaction in the proposal is already considered for this block", "tx", tx.Hash().Hex(), "exec_plan_hash", planHash)
 		return []ProcessedTransaction{{Transaction: tx}}, nil, core_types.TransactionResultInvalid
 	}
-	preSuccessfulCount := len(ctxt.successfulPlanHashes)
-	ctxt.successfulPlanHashes = append(ctxt.successfulPlanHashes, planHash)
+	preSuccessfulCount := len(*ctxt.successfulPlanHashes)
+	*ctxt.successfulPlanHashes = append(*ctxt.successfulPlanHashes, planHash)
 
 	processedBundle := &ProcessedBundle{
 		ExecutionPlanHash: plan.Hash(),
@@ -390,7 +394,7 @@ func (r *transactionRunner) runTransactionBundle(
 	// Run the bundle and collect the processed transactions.
 	runner := bundleTransactionRunner{ctxt: ctxt, legacyTxOffset: legacyTxOffset, trueTxOffset: trueTxOffset}
 	if success := bundle.RunBundle(txBundle, &runner); !success {
-		ctxt.successfulPlanHashes = ctxt.successfulPlanHashes[:preSuccessfulCount]
+		*ctxt.successfulPlanHashes = (*ctxt.successfulPlanHashes)[:preSuccessfulCount]
 		return []ProcessedTransaction{}, processedBundle, core_types.TransactionResultFailed
 	}
 	for _, processedTx := range runner.processedTransactions {
@@ -534,15 +538,16 @@ func (p *StateProcessor) BeginBlock(
 // TransactionProcessor is produced by the BeginBlock function and is used to
 // process individual transactions in the block.
 type TransactionProcessor struct {
-	blockNumber   *big.Int
-	gp            *core.GasPool
-	header        *EvmHeader
-	onNewLog      func(*types.Log)
-	signer        types.Signer
-	stateDb       state.StateDB
-	usedGas       uint64
-	vmEnvironment *vm.EVM
-	upgrades      opera.Upgrades
+	blockNumber          *big.Int
+	gp                   *core.GasPool
+	header               *EvmHeader
+	onNewLog             func(*types.Log)
+	signer               types.Signer
+	stateDb              state.StateDB
+	usedGas              uint64
+	vmEnvironment        *vm.EVM
+	upgrades             opera.Upgrades
+	successfulPlanHashes []common.Hash
 }
 
 // Run processes a single transaction in the block, where i is the index of
@@ -552,7 +557,7 @@ type TransactionProcessor struct {
 func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) ExecutionSummary {
 	return runTransactions(newRunContext(
 		tp.signer, tp.header.BaseFee, tp.stateDb, tp.gp, tp.blockNumber,
-		&tp.usedGas, tp.onNewLog, tp.upgrades, &transactionRunner{evm{tp.vmEnvironment}},
+		&tp.usedGas, tp.onNewLog, tp.upgrades, &transactionRunner{evm{tp.vmEnvironment}}, &tp.successfulPlanHashes,
 	), []*types.Transaction{tx}, i, i)
 }
 

@@ -1625,7 +1625,7 @@ func TestRunTransactionBundle_SkipsPlansThatHaveBeenExecutedSuccessfullyBefore(t
 				upgrades:             opera.Upgrades{TransactionBundles: true},
 				blockNumber:          &big.Int{},
 				runner:               runner,
-				successfulPlanHashes: test.successfulPlanHashes,
+				successfulPlanHashes: &test.successfulPlanHashes,
 			}
 
 			processedTransactions, _, _ := runner.runTransactionBundle(context, test.envelope, 0, 0)
