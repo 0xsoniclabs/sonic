@@ -426,7 +426,7 @@ func TestWaitUntilTransactionIsRetiredFromPool_waitsFromCompletion(t *testing.T)
 	// Because nonce is set to current nonce + 1, the transaction will not be executed
 	// waiting must time out
 	err = WaitUntilTransactionIsRetiredFromPool(t, client, txInvalidNonce)
-	require.ErrorContains(t, err, "wait timeout")
+	require.ErrorIs(t, err, context.DeadlineExceeded)
 
 	txData.Nonce = 0
 	txCorrectNonce := SignTransaction(t, chainId, txData, account)
@@ -470,7 +470,7 @@ func TestWaitFor_EventuallyTimesOut(t *testing.T) {
 	err := WaitFor(t.Context(), func(ctx context.Context) (bool, error) {
 		return false, nil
 	})
-	require.ErrorContains(t, err, "wait timeout")
+	require.ErrorIs(t, err, context.DeadlineExceeded)
 }
 
 func TestWaitFor_ForwardsErrors(t *testing.T) {
