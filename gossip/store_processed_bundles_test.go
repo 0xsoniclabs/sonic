@@ -822,21 +822,56 @@ func TestStore_deleteOutdatedBundles_LogsOnBatchDeleteError(t *testing.T) {
 }
 
 func TestStore_computeNewBundleStateHash_ReturnsExpectedHash(t *testing.T) {
-	require := require.New(t)
 
-	oldHash := common.Hash{1, 2, 3}
-	addedHash := common.Hash{4, 5, 6}
-	deletedHash := common.Hash{7, 8, 9}
-	blockNum := uint64(123)
+	referenceHash := func(st *testing.T, oldHash, addedHash, deletedHash common.Hash, blockNum uint64) common.Hash {
+		buf := []byte{}
+		buf = append(buf, oldHash.Bytes()...)
+		buf = append(buf, addedHash.Bytes()...)
+		buf = append(buf, deletedHash.Bytes()...)
+		bigEndianBlock := make([]byte, 8)
+		binary.BigEndian.PutUint64(bigEndianBlock, blockNum)
+		buf = append(buf, bigEndianBlock...)
+		require.Len(st, buf, 3*32+8)
+		return common.Hash(crypto.Keccak256(buf))
+	}
 
-	update := make([]byte, 3*32+8)
-	copy(update[:32], oldHash.Bytes())
-	copy(update[32:64], addedHash.Bytes())
-	copy(update[64:96], deletedHash.Bytes())
-	binary.BigEndian.PutUint64(update[96:], blockNum)
-	expectedHash := common.Hash(crypto.Keccak256(update))
+	testVectors := []struct {
+		name        string
+		oldHash     common.Hash
+		addedHash   common.Hash
+		deletedHash common.Hash
+		blockNum    uint64
+	}{
+		{
+			name:        "all zeros",
+			oldHash:     common.Hash{},
+			addedHash:   common.Hash{},
+			deletedHash: common.Hash{},
+			blockNum:    0,
+		},
+		{
+			name:        "simple nonzero",
+			oldHash:     common.Hash{1, 2, 3},
+			addedHash:   common.Hash{4, 5, 6},
+			deletedHash: common.Hash{7, 8, 9},
+			blockNum:    123,
+		},
+		{
+			name:        "max blockNum",
+			oldHash:     common.Hash{0xff, 0xff, 0xff},
+			addedHash:   common.Hash{0xaa, 0xbb, 0xcc},
+			deletedHash: common.Hash{0x11, 0x22, 0x33},
+			blockNum:    ^uint64(0),
+		},
+	}
 
-	require.Equal(expectedHash, computeNewBundleStateHash(oldHash, addedHash, deletedHash, blockNum))
+	for _, v := range testVectors {
+		t.Run(v.name, func(t *testing.T) {
+			got := computeNewBundleStateHash(v.oldHash, v.addedHash, v.deletedHash, v.blockNum)
+			ref := referenceHash(t, v.oldHash, v.addedHash, v.deletedHash, v.blockNum)
+			require.Equal(t, ref, got, "referenceHash (SHA256) should not match Keccak256 implementation")
+		})
+	}
 }
 
 // --- helper functions ---
