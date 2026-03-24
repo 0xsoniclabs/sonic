@@ -19,6 +19,7 @@ package evmcore
 import (
 	"fmt"
 	"math/big"
+	"slices"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
@@ -149,15 +150,16 @@ func (p *StateProcessor) ProcessWithDifficulty(
 // block. It is used as input to the runTransactions helper function and passed
 // along the processing layers to make the parameters available where needed.
 type runContext struct {
-	signer      types.Signer
-	baseFee     *big.Int
-	statedb     state.StateDB
-	gasPool     *core.GasPool
-	blockNumber *big.Int
-	usedGas     *uint64
-	onNewLog    func(*types.Log)
-	upgrades    opera.Upgrades
-	runner      _transactionRunner
+	signer               types.Signer
+	baseFee              *big.Int
+	statedb              state.StateDB
+	gasPool              *core.GasPool
+	blockNumber          *big.Int
+	usedGas              *uint64
+	onNewLog             func(*types.Log)
+	upgrades             opera.Upgrades
+	runner               _transactionRunner
+	successfulPlanHashes []common.Hash
 }
 
 // newRunContext creates a new runContext instance bundling the given parameters
@@ -371,6 +373,15 @@ func (r *transactionRunner) runTransactionBundle(
 		return []ProcessedTransaction{{Transaction: tx}}, nil, core_types.TransactionResultInvalid
 	}
 
+	planHash := plan.Hash()
+
+	if slices.Contains(ctxt.successfulPlanHashes, planHash) {
+		log.Warn("Bundle transaction in the proposal is already considered for this block", "tx", tx.Hash(), "exec_plan_hash", planHash)
+		return []ProcessedTransaction{{Transaction: tx}}, nil, core_types.TransactionResultInvalid
+	}
+	preSuccessfulCount := len(ctxt.successfulPlanHashes)
+	ctxt.successfulPlanHashes = append(ctxt.successfulPlanHashes, planHash)
+
 	processedBundle := &ProcessedBundle{
 		ExecutionPlanHash: plan.Hash(),
 		Position:          uint32(trueTxOffset),
@@ -379,6 +390,7 @@ func (r *transactionRunner) runTransactionBundle(
 	// Run the bundle and collect the processed transactions.
 	runner := bundleTransactionRunner{ctxt: ctxt, legacyTxOffset: legacyTxOffset, trueTxOffset: trueTxOffset}
 	if success := bundle.RunBundle(txBundle, &runner); !success {
+		ctxt.successfulPlanHashes = ctxt.successfulPlanHashes[:preSuccessfulCount]
 		return []ProcessedTransaction{}, processedBundle, core_types.TransactionResultFailed
 	}
 	for _, processedTx := range runner.processedTransactions {
