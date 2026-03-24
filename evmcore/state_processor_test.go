@@ -954,7 +954,7 @@ func TestRunTransaction_GasSubsidiesEnabled_RunsSponsorshipRequestWithSponsorshi
 	require.Nil(t, processed[0].Receipt)
 }
 
-func TestRunTransactions_BundlesDisabled_ProcessesRegularTransaction(t *testing.T) {
+func TestRunTransactions_GasSubsidiesDisabled_BundlesDisabled_ProcessesAsRegularTransaction(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	runner := NewMock_transactionRunner(ctrl)
 
@@ -962,13 +962,38 @@ func TestRunTransactions_BundlesDisabled_ProcessesRegularTransaction(t *testing.
 
 	context := &runContext{
 		runner:   runner,
-		upgrades: opera.Upgrades{TransactionBundles: false},
+		upgrades: opera.Upgrades{TransactionBundles: false, GasSubsidies: false},
 	}
 	runner.EXPECT().runRegularTransaction(context, tx, 0).Return(
 		ProcessedTransaction{
 			Transaction: tx,
 			Receipt:     nil,
 		},
+		core_types.TransactionResultSuccessful,
+	)
+	summary := runTransactions(context, []*types.Transaction{tx}, 0)
+	processed := summary.ProcessedTransactions
+	require.Len(t, processed, 1)
+	require.Equal(t, tx, processed[0].Transaction)
+	require.Nil(t, processed[0].Receipt)
+}
+
+func TestRunTransactions_GasSubsidiesEnabled_BundlesDisabled_ProcessesAsSponsorshipRequest(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	runner := NewMock_transactionRunner(ctrl)
+
+	tx := getTransactionBundle(t)
+
+	context := &runContext{
+		runner:   runner,
+		upgrades: opera.Upgrades{TransactionBundles: false, GasSubsidies: true},
+	}
+	runner.EXPECT().runSponsoredTransaction(context, tx, 0).Return(
+		[]ProcessedTransaction{{
+
+			Transaction: tx,
+			Receipt:     nil,
+		}},
 		core_types.TransactionResultSuccessful,
 	)
 	summary := runTransactions(context, []*types.Transaction{tx}, 0)
@@ -1869,7 +1894,8 @@ func TestRunTransactionBundle_InvalidExecutionPlan_ReturnsEnvelopeAndNoProcessed
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
 
-	// execution plan extraction will fail because the transaction is not signed so the sender can not be derived
+	// execution plan extraction will fail because the transaction in the bundle
+	// is not signed so its sender can not be derived
 	txBundle := bundle.TransactionBundle{
 		Transactions: []*types.Transaction{types.NewTx(&types.AccessListTx{
 			Nonce: 0, To: &common.Address{1}, Gas: 21_000, GasPrice: big.NewInt(1),
