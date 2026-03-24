@@ -45,4 +45,7 @@ type StateDB interface {
 	Release()
 	InterTxSnapshot() int
 	RevertToInterTxSnapshot(id int)
+
+	HasBeenProcessed(execPlanHash common.Hash) bool
+	MarkAsProcessed(execPlanHash common.Hash)
 }

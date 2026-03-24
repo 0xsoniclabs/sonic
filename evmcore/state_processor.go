@@ -381,7 +381,7 @@ func (r *transactionRunner) runTransactionBundle(
 	// before at any other time during its valid range.
 	planHash := plan.Hash()
 
-	if store.HasBundleRecentlyBeenProcessed(planHash) {
+	if ctxt.statedb.HasBeenProcessed(planHash) {
 		log.Warn("Bundle transaction in the proposal was recently processed", "tx", tx.Hash(), "exec_plan_hash", planHash)
 		return []ProcessedTransaction{{Transaction: tx}}, nil, core_types.TransactionResultInvalid
 	}

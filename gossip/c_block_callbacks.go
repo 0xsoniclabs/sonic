@@ -140,7 +140,7 @@ func consensusCallbackBeginBlockFn(
 		bs.EpochCheaters = mergeCheaters(bs.EpochCheaters, cBlock.Cheaters)
 
 		// Get stateDB
-		statedb, err := store.evm.GetLiveStateDb(bs.FinalizedStateRoot)
+		statedb, err := store.evm.GetLiveStateDb(bs.FinalizedStateRoot, evmstore.WithBundleTracker(store))
 		if err != nil {
 			log.Crit("Failed to open StateDB", "err", err)
 		}

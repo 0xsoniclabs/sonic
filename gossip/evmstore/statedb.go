@@ -35,14 +35,14 @@ import (
 const NoArchiveError = carmen.NoArchiveError
 
 // GetLiveStateDb obtains StateDB for block processing - the live writable state
-func (s *Store) GetLiveStateDb(stateRoot hash.Hash) (state.StateDB, error) {
+func (s *Store) GetLiveStateDb(stateRoot hash.Hash, options ...func(*CarmenStateDB)) (state.StateDB, error) {
 	if s.liveStateDb == nil {
 		return nil, fmt.Errorf("unable to get live StateDb - EvmStore is not open")
 	}
 	if s.liveStateDb.GetHash() != cc.Hash(stateRoot) {
 		return nil, fmt.Errorf("unable to get Carmen live StateDB - unexpected state root (%x != %x)", s.liveStateDb.GetHash(), stateRoot)
 	}
-	return CreateCarmenStateDb(s.liveStateDb), nil
+	return CreateCarmenStateDb(s.liveStateDb, options...), nil
 }
 
 // GetCurrentStateDb obtains a read only StateDB for TxPool evaluation - the latest finalized.

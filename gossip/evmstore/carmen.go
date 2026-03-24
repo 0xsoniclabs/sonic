@@ -39,9 +39,27 @@ const (
 	pointCacheSize = 4096
 )
 
-func CreateCarmenStateDb(carmenStateDb carmen.VmStateDB) state.StateDB {
-	return &CarmenStateDB{
+// BundleTracker is a component that tracks which bundles have been processed
+// in recent blocks. It is used by the state processor to prevent re-processing
+// the same bundle multiple times.
+type BundleTracker interface {
+	HasBundleRecentlyBeenProcessed(execPlanHash common.Hash) bool
+}
+
+func CreateCarmenStateDb(carmenStateDb carmen.VmStateDB, options ...func(*CarmenStateDB)) state.StateDB {
+	db := &CarmenStateDB{
 		db: carmenStateDb,
+	}
+	for _, opt := range options {
+		opt(db)
+	}
+	return db
+}
+
+// WithBundleTracker sets the bundle tracker for the CarmenStateDB.
+func WithBundleTracker(tracker BundleTracker) func(*CarmenStateDB) {
+	return func(c *CarmenStateDB) {
+		c.bundleTracker = tracker
 	}
 }
 
@@ -57,6 +75,9 @@ type CarmenStateDB struct {
 
 	// collecting all events accessing state information
 	accessEvents *geth_state.AccessEvents
+
+	// bundleTracker tracks which bundles have been processed in recent blocks
+	bundleTracker BundleTracker
 }
 
 func (c *CarmenStateDB) Error() error {
@@ -292,7 +313,7 @@ func (c *CarmenStateDB) CreateContract(addr common.Address) {
 
 func (c *CarmenStateDB) Copy() state.StateDB {
 	if db, ok := c.db.(carmen.NonCommittableStateDB); ok {
-		return CreateCarmenStateDb(db.Copy())
+		return CreateCarmenStateDb(db.Copy(), WithBundleTracker(c.bundleTracker))
 	} else {
 		panic("unable to copy committable (live) StateDB")
 	}
@@ -411,4 +432,16 @@ func (c *CarmenStateDB) Release() {
 // collect the accessed states for the stateless client.
 func (c *CarmenStateDB) AccessEvents() *geth_state.AccessEvents {
 	return c.accessEvents
+}
+
+func (c *CarmenStateDB) HasBeenProcessed(execPlanHash common.Hash) bool {
+	if c.bundleTracker == nil {
+		return false
+	}
+	return c.bundleTracker.HasBundleRecentlyBeenProcessed(execPlanHash)
+}
+
+func (c *CarmenStateDB) MarkAsProcessed(execPlanHash common.Hash) {
+	// Bundle processing is recorded after block completion via
+	// Store.AddProcessedBundles, so this is a no-op here.
 }

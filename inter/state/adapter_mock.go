@@ -464,6 +464,20 @@ func (mr *MockStateDBMockRecorder) GetTransientState(addr, key any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTransientState", reflect.TypeOf((*MockStateDB)(nil).GetTransientState), addr, key)
 }
 
+// HasBeenProcessed mocks base method.
+func (m *MockStateDB) HasBeenProcessed(execPlanHash common.Hash) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HasBeenProcessed", execPlanHash)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// HasBeenProcessed indicates an expected call of HasBeenProcessed.
+func (mr *MockStateDBMockRecorder) HasBeenProcessed(execPlanHash any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasBeenProcessed", reflect.TypeOf((*MockStateDB)(nil).HasBeenProcessed), execPlanHash)
+}
+
 // HasSelfDestructed mocks base method.
 func (m *MockStateDB) HasSelfDestructed(arg0 common.Address) bool {
 	m.ctrl.T.Helper()
@@ -490,6 +504,18 @@ func (m *MockStateDB) InterTxSnapshot() int {
 func (mr *MockStateDBMockRecorder) InterTxSnapshot() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InterTxSnapshot", reflect.TypeOf((*MockStateDB)(nil).InterTxSnapshot))
+}
+
+// MarkAsProcessed mocks base method.
+func (m *MockStateDB) MarkAsProcessed(execPlanHash common.Hash) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "MarkAsProcessed", execPlanHash)
+}
+
+// MarkAsProcessed indicates an expected call of MarkAsProcessed.
+func (mr *MockStateDBMockRecorder) MarkAsProcessed(execPlanHash any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkAsProcessed", reflect.TypeOf((*MockStateDB)(nil).MarkAsProcessed), execPlanHash)
 }
 
 // PointCache mocks base method.

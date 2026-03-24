@@ -1463,11 +1463,11 @@ func TestRunTransactionBundle_AddsHashesOfSuccessfulPlansToList(t *testing.T) {
 
 	state.EXPECT().InterTxSnapshot().Return(1).AnyTimes()
 	state.EXPECT().RevertToInterTxSnapshot(1).AnyTimes()
+	state.EXPECT().HasBeenProcessed(gomock.Any()).Return(false).AnyTimes()
 
 	runner := &transactionRunner{evm: evm}
 
-	successfulPlanHashes := make([]common.Hash, 0)
-
+	successfulPlanHashes := []common.Hash{}
 	context := &runContext{
 		statedb:              state,
 		signer:               signer,
@@ -1607,6 +1607,7 @@ func TestRunTransactionBundle_SkipsPlansThatHaveBeenExecutedSuccessfullyBefore(t
 
 			state.EXPECT().InterTxSnapshot().Return(1).AnyTimes()
 			state.EXPECT().RevertToInterTxSnapshot(1).AnyTimes()
+			state.EXPECT().HasBeenProcessed(gomock.Any()).Return(false).AnyTimes()
 
 			calls := []any{}
 			for _, runResult := range test.runResults {
