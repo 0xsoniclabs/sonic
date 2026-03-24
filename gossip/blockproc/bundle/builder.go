@@ -187,10 +187,12 @@ func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 	// Create an Execution Plan for the bundle.
 
 	plan := ExecutionPlan{
-		Steps:    make([]ExecutionStep, len(b.steps)),
-		Flags:    flags,
-		Earliest: earliest,
-		Latest:   latest,
+		Steps: make([]ExecutionStep, len(b.steps)),
+		Flags: flags,
+		Range: BlockRange{
+			Earliest: earliest,
+			Latest:   latest,
+		},
 	}
 	for i, step := range b.steps {
 		plan.Steps[i] = ExecutionStep{
@@ -229,8 +231,10 @@ func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 	return &TransactionBundle{
 		Transactions: txs,
 		Flags:        flags,
-		Earliest:     earliest,
-		Latest:       latest,
+		Range: BlockRange{
+			Earliest: earliest,
+			Latest:   latest,
+		},
 	}, plan
 }
 
