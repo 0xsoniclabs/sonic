@@ -33,10 +33,20 @@ func RunBundle(
 	bundle *TransactionBundle,
 	runner TransactionRunner,
 ) bool {
+	snapshot := runner.CreateSnapshot()
+
+	var success bool
 	if bundle.Flags.IsOneOf() {
-		return runOneOfBundle(bundle, runner)
+		success = runOneOfBundle(bundle, runner)
+	} else {
+		success = runAllOfBundle(bundle, runner)
 	}
-	return runAllOfBundle(bundle, runner)
+
+	if !success {
+		runner.RevertToSnapshot(snapshot)
+	}
+
+	return success
 }
 
 // TransactionRunner defines an interface for running individual transactions
@@ -44,6 +54,8 @@ func RunBundle(
 // function to determine the overall success of the bundle execution.
 type TransactionRunner interface {
 	Run(tx *types.Transaction) core_types.TransactionResult
+	CreateSnapshot() int
+	RevertToSnapshot(id int)
 }
 
 // runAllOfBundle executes all transactions in the bundle and returns true if

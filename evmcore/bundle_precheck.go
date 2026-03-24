@@ -242,6 +242,7 @@ type dryRunner struct {
 	signer         types.Signer
 	nonceTracker   *nonceTracker
 	acceptedSender map[common.Address]struct{}
+	undo           []func()
 }
 
 func (r *dryRunner) Run(tx *types.Transaction) core_types.TransactionResult {
@@ -252,13 +253,11 @@ func (r *dryRunner) Run(tx *types.Transaction) core_types.TransactionResult {
 		if err != nil {
 			return core_types.TransactionResultInvalid
 		}
-		acceptedBackup := maps.Clone(r.acceptedSender)
-		backup := r.nonceTracker.backup()
+
 		if bundle.RunBundle(txBundle, r) {
 			return core_types.TransactionResultSuccessful
 		}
-		r.nonceTracker.restore(backup)
-		r.acceptedSender = acceptedBackup
+
 		return core_types.TransactionResultFailed
 	}
 
@@ -280,6 +279,25 @@ func (r *dryRunner) Run(tx *types.Transaction) core_types.TransactionResult {
 	r.nonceTracker.consumeNonce(sender)
 	r.acceptedSender[sender] = struct{}{}
 	return core_types.TransactionResultSuccessful
+}
+
+func (r *dryRunner) CreateSnapshot() int {
+	acceptedBackup := maps.Clone(r.acceptedSender)
+	nonceBackup := r.nonceTracker.backup()
+	r.undo = append(r.undo, func() {
+		r.nonceTracker.restore(nonceBackup)
+		r.acceptedSender = acceptedBackup
+	})
+	return len(r.undo) - 1
+}
+
+func (r *dryRunner) RevertToSnapshot(id int) {
+	for len(r.undo) > id {
+		lastIndex := len(r.undo) - 1
+		lastUndo := r.undo[lastIndex]
+		r.undo = r.undo[:lastIndex]
+		lastUndo()
+	}
 }
 
 // nonceTracker is keeping track of consumed nonces during the execution of a
