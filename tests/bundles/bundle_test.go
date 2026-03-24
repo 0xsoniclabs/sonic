@@ -684,9 +684,7 @@ type txMakeOptions struct {
 type successfulNormalTx struct{}
 
 func (t successfulNormalTx) makeStep(opts txMakeOptions, factory *AccountFactory) bundle.BundleStep {
-	account, err := factory.Create()
-	require.NoError(opts.t, err)
-	return bundle.Step(account.PrivateKey, &types.AccessListTx{
+	return bundle.Step(factory.Create(opts.t).PrivateKey, &types.AccessListTx{
 		ChainID:  opts.net.GetChainId(),
 		To:       &opts.contractInfo.counterAddress,
 		Gas:      opts.contractInfo.counterGasLimit,
@@ -698,9 +696,7 @@ func (t successfulNormalTx) makeStep(opts txMakeOptions, factory *AccountFactory
 type failedNormalTx struct{}
 
 func (t failedNormalTx) makeStep(opts txMakeOptions, factory *AccountFactory) bundle.BundleStep {
-	account, err := factory.Create()
-	require.NoError(opts.t, err)
-	return bundle.Step(account.PrivateKey, &types.AccessListTx{
+	return bundle.Step(factory.Create(opts.t).PrivateKey, &types.AccessListTx{
 		ChainID:  opts.net.GetChainId(),
 		To:       &opts.contractInfo.revertAddress,
 		Gas:      opts.contractInfo.revertGasLimit,
@@ -712,9 +708,7 @@ func (t failedNormalTx) makeStep(opts txMakeOptions, factory *AccountFactory) bu
 type invalidNormalTx struct{}
 
 func (t invalidNormalTx) makeStep(opts txMakeOptions, factory *AccountFactory) bundle.BundleStep {
-	account, err := factory.Create()
-	require.NoError(opts.t, err)
-	return bundle.Step(account.PrivateKey, &types.AccessListTx{
+	return bundle.Step(factory.Create(opts.t).PrivateKey, &types.AccessListTx{
 		ChainID:  opts.net.GetChainId(),
 		To:       &opts.contractInfo.counterAddress,
 		Gas:      1, // invalid
@@ -726,8 +720,7 @@ func (t invalidNormalTx) makeStep(opts txMakeOptions, factory *AccountFactory) b
 type successfulSponsoredTx struct{}
 
 func (t successfulSponsoredTx) makeStep(opts txMakeOptions, factory *AccountFactory) bundle.BundleStep {
-	account, err := factory.Create()
-	require.NoError(opts.t, err)
+	account := factory.Create(opts.t)
 	donation := big.NewInt(1e16)
 	gas_subsidies.Fund(opts.t, opts.net, account.Address(), donation)
 	return bundle.Step(account.PrivateKey, &types.AccessListTx{
@@ -742,8 +735,7 @@ func (t successfulSponsoredTx) makeStep(opts txMakeOptions, factory *AccountFact
 type failedSponsoredTx struct{}
 
 func (t failedSponsoredTx) makeStep(opts txMakeOptions, factory *AccountFactory) bundle.BundleStep {
-	account, err := factory.Create()
-	require.NoError(opts.t, err)
+	account := factory.Create(opts.t)
 	donation := big.NewInt(1e16)
 	gas_subsidies.Fund(opts.t, opts.net, account.Address(), donation)
 	return bundle.Step(account.PrivateKey, &types.AccessListTx{
@@ -758,9 +750,7 @@ func (t failedSponsoredTx) makeStep(opts txMakeOptions, factory *AccountFactory)
 type invalidSponsoredTx struct{}
 
 func (t invalidSponsoredTx) makeStep(opts txMakeOptions, factory *AccountFactory) bundle.BundleStep {
-	account, err := factory.Create()
-	require.NoError(opts.t, err)
-	return bundle.Step(account.PrivateKey, &types.AccessListTx{
+	return bundle.Step(factory.Create(opts.t).PrivateKey, &types.AccessListTx{
 		ChainID:  opts.net.GetChainId(),
 		To:       &opts.contractInfo.counterAddress,
 		Gas:      opts.contractInfo.counterGasLimit,
@@ -780,8 +770,7 @@ func (t subBundleTx) makeStep(opts txMakeOptions, factory *AccountFactory) bundl
 		steps[i] = tt.makeStep(opts, factory)
 	}
 	innerEnvelope := bundle.NewBuilder().WithFlags(t.flags).With(steps...).Build()
-	account, err := factory.Create()
-	require.NoError(opts.t, err)
+	account := factory.Create(opts.t)
 	return bundle.Step(account.PrivateKey, innerEnvelope)
 }
 
@@ -852,7 +841,7 @@ type AccountFactory struct {
 	mutex    sync.Mutex
 }
 
-func (f *AccountFactory) Create() (*tests.Account, error) {
+func (f *AccountFactory) Create(t *testing.T) *tests.Account {
 	f.mutex.Lock()
 	defer f.mutex.Unlock()
 	if len(f.accounts) == 0 {
@@ -864,31 +853,23 @@ func (f *AccountFactory) Create() (*tests.Account, error) {
 		}
 
 		receipts, err := f.session.EndowAccounts(addresses, big.NewInt(1e16))
-		if err != nil {
-			return nil, err
-		}
+		require.NoError(t, err, "failed to endow accounts; %v", err)
 
 		for _, receipt := range receipts {
-			if receipt.Status != types.ReceiptStatusSuccessful {
-				return nil, fmt.Errorf("failed to endow account")
-			}
+			require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "failed to endow account")
 		}
 
 		f.accounts = accounts
 	}
 	res := f.accounts[0]
 	f.accounts = f.accounts[1:]
-	return res, nil
+	return res
 }
 
-func (f *AccountFactory) CreateMultiple(num int) ([]*tests.Account, error) {
+func (f *AccountFactory) CreateMultiple(t *testing.T, num int) []*tests.Account {
 	res := make([]*tests.Account, num)
 	for i := range res {
-		next, err := f.Create()
-		if err != nil {
-			return nil, err
-		}
-		res[i] = next
+		res[i] = f.Create(t)
 	}
-	return res, nil
+	return res
 }
