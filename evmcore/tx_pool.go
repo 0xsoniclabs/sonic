@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/lru"
 	"github.com/ethereum/go-ethereum/common/prque"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -350,6 +351,8 @@ type TxPool struct {
 	subsidiesCheckerCache   *subsidiesCheckerCache  // Cache for subsidies check results
 
 	bundleCheckerFactory bundleCheckerFactory // Factory to create a bundle checker instance
+
+	bundlesIndex *lru.Cache[common.Hash, common.Hash]
 }
 
 type txpoolResetRequest struct {
@@ -400,7 +403,9 @@ func newTxPool(
 		subsidiesCheckerCache:   newSubsidiesCheckerCache(-1), // use default size
 
 		bundleCheckerFactory: bundleCheckerFactory,
-		// TODO: add a cache for bundle checker results if the checks are expensive
+
+		// TODO: figure out size
+		bundlesIndex: lru.NewCache[common.Hash, common.Hash](1024),
 	}
 	pool.locals = newAccountSet(pool.signer)
 	for _, addr := range config.Locals {
@@ -911,6 +916,14 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 	pool.journalTx(from, tx)
 	pool.updateUsedGauges()
 
+	if bundle.IsEnvelope(tx) {
+		bundle, err := bundle.ExtractExecutionPlan(tx)
+		if err != nil {
+			log.Warn("Failed to extract execution plan from bundle transaction", "hash", hash, "err", err)
+		}
+		pool.bundlesIndex.Add(bundle.Hash(), hash)
+	}
+
 	log.Trace("Pooled new future transaction", "hash", hash, "from", from, "to", tx.To())
 	return replaced, nil
 }
@@ -1165,18 +1178,7 @@ func (pool *TxPool) Has(hash common.Hash) bool {
 }
 
 func (pool *TxPool) HasBundle(execPlanHash common.Hash) bool {
-	// TODO: make this more efficient by keeping a separate index for bundles
-	pool.mu.RLock()
-	defer pool.mu.RUnlock()
-	for _, tx := range pool.all.txs() {
-		if bundle.IsEnvelope(tx) {
-			plan, err := bundle.ExtractExecutionPlan(tx)
-			if err == nil && plan.Hash() == execPlanHash {
-				return true
-			}
-		}
-	}
-	return false
+	return pool.bundlesIndex.Contains(execPlanHash)
 }
 
 func (pool *TxPool) OnlyNotExisting(hashes []common.Hash) []common.Hash {
