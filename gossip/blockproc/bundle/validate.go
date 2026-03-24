@@ -141,10 +141,10 @@ func validateEnvelopeInternal(
 func ValidateRange(r BlockRange) error {
 	size := r.Size()
 	if size == 0 {
-		return fmt.Errorf("invalid empty block range [%d,%d] in execution plan", r.Earliest, r.Latest)
+		return fmt.Errorf("invalid empty block range [%d,%d]", r.Earliest, r.Latest)
 	}
 	if size > MaxBlockRange {
-		return fmt.Errorf("invalid block range in execution plan, duration %d, limit %d", size, MaxBlockRange)
+		return fmt.Errorf("invalid block range, duration %d, limit %d", size, MaxBlockRange)
 	}
 	return nil
 }
