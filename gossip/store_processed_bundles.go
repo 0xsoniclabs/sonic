@@ -118,8 +118,8 @@ func (s *Store) addNewBundles(
 	return addedHash
 }
 
-// deleteOutdatedBundles deletes the entries of processed bundles that got p
-// rocessed too far in the past, and returns the XOR of their hashes to update the
+// deleteOutdatedBundles deletes the entries of processed bundles that got
+// processed too far in the past, and returns the XOR of their hashes to update the
 // history hash.
 func (s *Store) deleteOutdatedBundles(blockNum uint64, batch kvdb.Batch) common.Hash {
 	deletedHash := common.Hash{}
