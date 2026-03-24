@@ -123,7 +123,8 @@ func (s *Store) addNewBundles(
 // history hash.
 func (s *Store) deleteOutdatedBundles(blockNum uint64, batch kvdb.Batch) common.Hash {
 	deletedHash := common.Hash{}
-	if blockNum > bundle.MaxBlockRange {
+	if blockNum >= bundle.MaxBlockRange-1 {
+		// enough blocks have passed to start cleaning up the store
 		oldestValidBlockNum := blockNum - bundle.MaxBlockRange + 1
 		it := s.table.ProcessedBundles.NewIterator([]byte{'i'}, nil)
 		for it.Next() {
@@ -135,13 +136,14 @@ func (s *Store) deleteOutdatedBundles(blockNum uint64, batch kvdb.Batch) common.
 			if len(key) != 1+8+32 {
 				continue
 			}
-			blockNumber := binary.BigEndian.Uint64(key[1 : 1+8])
-			if blockNumber >= oldestValidBlockNum {
+			oldBundleBlockNumber := binary.BigEndian.Uint64(key[1 : 1+8])
+			if oldBundleBlockNumber > oldestValidBlockNum {
+				// the bundle is not old enough to be deleted
 				break
 			}
 			hash := common.BytesToHash(key[1+8:])
 			err := errors.Join(
-				batch.Delete(getIndexKey(blockNumber, hash)),
+				batch.Delete(getIndexKey(oldBundleBlockNumber, hash)),
 				batch.Delete(getEntryKey(hash)),
 			)
 			if err != nil {

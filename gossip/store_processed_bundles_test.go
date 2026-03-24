@@ -139,7 +139,7 @@ func TestStore_HasBundleRecentlyBeenProcessed_CleansUpOldBundleHashes(t *testing
 	store.AddProcessedBundles(bundle.MaxBlockRange,
 		[]bundle.ExecutionInfo{wrapInfo(hash4)})
 
-	require.True(isRecentlyProcessed(hash1))
+	require.False(isRecentlyProcessed(hash1))
 	require.True(isRecentlyProcessed(hash2))
 	require.True(isRecentlyProcessed(hash3))
 	require.True(isRecentlyProcessed(hash4))
@@ -151,7 +151,7 @@ func TestStore_HasBundleRecentlyBeenProcessed_CleansUpOldBundleHashes(t *testing
 		[]bundle.ExecutionInfo{wrapInfo(hash5)})
 
 	require.False(isRecentlyProcessed(hash1))
-	require.True(isRecentlyProcessed(hash2))
+	require.False(isRecentlyProcessed(hash2))
 	require.True(isRecentlyProcessed(hash3))
 	require.True(isRecentlyProcessed(hash4))
 	require.True(isRecentlyProcessed(hash5))
@@ -311,7 +311,7 @@ func TestStore_ProcessedBundles_CommutativityOfAddedBundles(t *testing.T) {
 	_, hashA := store1.GetProcessedBundleHistoryHash()
 	_, hashB := store2.GetProcessedBundleHistoryHash()
 
-	require.NotEqual(hashA, hashB)
+	require.Equal(hashA, hashB)
 }
 
 func TestStore_ProcessedBundles_OldHashAffectsNewHash(t *testing.T) {
@@ -595,89 +595,114 @@ func TestStore_deleteOutdatedBundles_RemovesBundles_WhenOld(t *testing.T) {
 
 	caseTable := []struct {
 		storedBundleBlockNumber uint64
-		currentBlockNumber      uint64
+		finishingBlock          uint64
 		expectDeleted           bool
 	}{
 		// Following cases are the warm up phase of the storage
 		// when current block number is not large enough to have a history to delete
 		{
 			storedBundleBlockNumber: 0,
-			currentBlockNumber:      bundle.MaxBlockRange,
+			finishingBlock:          bundle.MaxBlockRange - 2,
 			expectDeleted:           false,
 		},
 		{
 			storedBundleBlockNumber: 1,
-			currentBlockNumber:      bundle.MaxBlockRange,
+			finishingBlock:          bundle.MaxBlockRange - 2,
+			expectDeleted:           false,
+		},
+		{
+			storedBundleBlockNumber: 1,
+			finishingBlock:          bundle.MaxBlockRange - 1,
 			expectDeleted:           false,
 		},
 		{
 			storedBundleBlockNumber: bundle.MaxBlockRange / 2,
-			currentBlockNumber:      bundle.MaxBlockRange,
+			finishingBlock:          bundle.MaxBlockRange,
 			expectDeleted:           false,
 		},
 		{
 			storedBundleBlockNumber: bundle.MaxBlockRange - 1,
-			currentBlockNumber:      bundle.MaxBlockRange,
+			finishingBlock:          bundle.MaxBlockRange,
 			expectDeleted:           false,
 		},
 		{
 			storedBundleBlockNumber: bundle.MaxBlockRange,
-			currentBlockNumber:      bundle.MaxBlockRange,
+			finishingBlock:          bundle.MaxBlockRange,
 			expectDeleted:           false,
 		},
 		// Following cases are after the warm up phase, when current block
 		// number is large enough to have a history to delete,
 		{
 			storedBundleBlockNumber: 0,
-			currentBlockNumber:      2 * bundle.MaxBlockRange,
+			finishingBlock:          bundle.MaxBlockRange - 1,
+			expectDeleted:           true,
+		},
+		{
+			storedBundleBlockNumber: 0,
+			finishingBlock:          bundle.MaxBlockRange,
+			expectDeleted:           true,
+		},
+		{
+			storedBundleBlockNumber: 0,
+			finishingBlock:          2 * bundle.MaxBlockRange,
+			expectDeleted:           true,
+		},
+		{
+			storedBundleBlockNumber: 1,
+			finishingBlock:          bundle.MaxBlockRange,
 			expectDeleted:           true,
 		},
 		{
 			storedBundleBlockNumber: bundle.MaxBlockRange / 2,
-			currentBlockNumber:      2 * bundle.MaxBlockRange,
+			finishingBlock:          2 * bundle.MaxBlockRange,
 			expectDeleted:           true,
 		},
 		{
 			storedBundleBlockNumber: bundle.MaxBlockRange - 1,
-			currentBlockNumber:      2 * bundle.MaxBlockRange,
+			finishingBlock:          2 * bundle.MaxBlockRange,
 			expectDeleted:           true,
 		},
 		{
 			storedBundleBlockNumber: bundle.MaxBlockRange,
-			currentBlockNumber:      2 * bundle.MaxBlockRange,
+			finishingBlock:          2 * bundle.MaxBlockRange,
+			expectDeleted:           true,
+		},
+		{
+			storedBundleBlockNumber: bundle.MaxBlockRange + 1,
+			finishingBlock:          2 * bundle.MaxBlockRange,
 			expectDeleted:           true,
 		},
 		// Following cases are recent enough to not be deleted
 		{
-			storedBundleBlockNumber: bundle.MaxBlockRange + 1,
-			currentBlockNumber:      2 * bundle.MaxBlockRange,
+			storedBundleBlockNumber: bundle.MaxBlockRange + 2,
+			finishingBlock:          2 * bundle.MaxBlockRange,
 			expectDeleted:           false,
 		},
 		{
 			storedBundleBlockNumber: bundle.MaxBlockRange * 3 / 2,
-			currentBlockNumber:      2 * bundle.MaxBlockRange,
+			finishingBlock:          2 * bundle.MaxBlockRange,
 			expectDeleted:           false,
 		},
 		{
 			storedBundleBlockNumber: 2*bundle.MaxBlockRange - 1,
-			currentBlockNumber:      2 * bundle.MaxBlockRange,
+			finishingBlock:          2 * bundle.MaxBlockRange,
 			expectDeleted:           false,
 		},
 		{
 			storedBundleBlockNumber: 2 * bundle.MaxBlockRange,
-			currentBlockNumber:      2 * bundle.MaxBlockRange,
+			finishingBlock:          2 * bundle.MaxBlockRange,
 			expectDeleted:           false,
 		},
 		// future block numbers should not cause deletion
 		{
 			storedBundleBlockNumber: 2*bundle.MaxBlockRange + 1,
-			currentBlockNumber:      2 * bundle.MaxBlockRange,
+			finishingBlock:          2 * bundle.MaxBlockRange,
 			expectDeleted:           false,
 		},
 	}
 
 	for _, c := range caseTable {
-		name := fmt.Sprintf("storedBlock=%d/currentBlock=%d", c.storedBundleBlockNumber, c.currentBlockNumber)
+		name := fmt.Sprintf("storedBlock=%d/currentBlock=%d", c.storedBundleBlockNumber, c.finishingBlock)
 		t.Run(name, func(t *testing.T) {
 
 			ctrl := gomock.NewController(t)
@@ -691,7 +716,7 @@ func TestStore_deleteOutdatedBundles_RemovesBundles_WhenOld(t *testing.T) {
 
 			// The algorithm would not contemplate any history
 			// when the block number is short enough to not to require any cleanup
-			if c.currentBlockNumber > bundle.MaxBlockRange {
+			if c.finishingBlock >= bundle.MaxBlockRange-1 {
 				encodedBlock := make([]byte, 8)
 				binary.BigEndian.PutUint64(encodedBlock, c.storedBundleBlockNumber)
 				existingBundleKey := append(append([]byte{'i'}, encodedBlock...), existingBundleHash.Bytes()...)
@@ -712,7 +737,7 @@ func TestStore_deleteOutdatedBundles_RemovesBundles_WhenOld(t *testing.T) {
 				}
 			}
 
-			hash := store.deleteOutdatedBundles(c.currentBlockNumber, batch)
+			hash := store.deleteOutdatedBundles(c.finishingBlock, batch)
 			if c.expectDeleted {
 				require.Equal(t, existingBundleHash, hash)
 			}
@@ -870,6 +895,45 @@ func TestStore_computeNewBundleStateHash_ReturnsExpectedHash(t *testing.T) {
 			got := computeNewBundleStateHash(v.oldHash, v.addedHash, v.deletedHash, v.blockNum)
 			ref := referenceHash(t, v.oldHash, v.addedHash, v.deletedHash, v.blockNum)
 			require.Equal(t, ref, got, "referenceHash (SHA256) should not match Keccak256 implementation")
+		})
+	}
+}
+
+func TestStore_RetainsAllBundlesRequiredToCoverTheMaximumBlockRange(t *testing.T) {
+	require := require.New(t)
+	numBlocks := 3 * bundle.MaxBlockRange
+
+	makeMaxRangeStartinAt := func(block uint64) (uint64, uint64) {
+		return block, block + bundle.MaxBlockRange - 1
+	}
+
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	// Create a list of execution plan hashes indexed by their block numbers.
+	hashes := []common.Hash{}
+	for i := range numBlocks {
+		hashes = append(hashes, common.Hash{byte(i >> 24), byte(i >> 16), byte(i >> 8), byte(i)})
+	}
+
+	// While progressing through the blocks, all execution plans must be retained
+	// until their maximum block range has expired.
+	for currentBlockNumber := range numBlocks {
+
+		// Check that the store covers exactly the plans of the past that are
+		// allowed to be included in the current block (before adding it).
+		for block := uint64(0); block < currentBlockNumber; block++ {
+			earliest, latest := makeMaxRangeStartinAt(block)
+			want := currentBlockNumber >= earliest && currentBlockNumber <= latest
+			require.Equal(
+				want, store.HasBundleRecentlyBeenProcessed(hashes[block]),
+				"Current block %d, checking plan with range [%d,%d]",
+				currentBlockNumber, earliest, latest,
+			)
+		}
+
+		store.AddProcessedBundles(currentBlockNumber, []bundle.ExecutionInfo{
+			{ExecutionPlanHash: hashes[currentBlockNumber]},
 		})
 	}
 }
