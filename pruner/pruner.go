@@ -27,8 +27,8 @@ func NewEpochPruner(oracle SafeEpochOracle, store *gossip.Store) *EpochPruner {
 // Prune removes all epochs from the database that are older than the safe epoch threshold.
 func (p *EpochPruner) Prune() error {
 	endEpoch := p.oracle.GetSafeEpoch()
-	for epoch := 0; epoch < endEpoch; epoch++ {
-		p.store.ForEachEpochEvent(idx.Epoch(epoch), func(event *inter.EventPayload) bool {
+	for epoch := idx.Epoch(0); epoch < endEpoch; epoch++ {
+		p.store.ForEachEpochEvent(epoch, func(event *inter.EventPayload) bool {
 			p.store.DelEvent(event.ID())
 			return true
 		})
