@@ -359,12 +359,12 @@ func (r *transactionRunner) runTransactionBundle(
 
 	txBundle, err := bundle.OpenEnvelope(tx)
 	if err != nil {
-		log.Warn("failed to open bundle envelope", "tx", tx.Hash().Hex(), "error", err)
+		log.Warn("failed to open bundle envelope", "tx", tx.Hash().Hex(), "err", err)
 		return []ProcessedTransaction{{Transaction: tx}}, nil, core_types.TransactionResultInvalid
 	}
 	plan, err := bundle.ExtractExecutionPlan(ctxt.signer, tx)
 	if err != nil {
-		log.Warn("failed to extract execution plan", "tx", tx.Hash().Hex(), "error", err)
+		log.Warn("failed to extract execution plan", "tx", tx.Hash().Hex(), "err", err)
 		return []ProcessedTransaction{{Transaction: tx}}, nil, core_types.TransactionResultInvalid
 	}
 

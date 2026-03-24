@@ -786,8 +786,8 @@ func TestRunTransactions_RunsAllTransactionsAndCollectsProcessedTransactionsAndB
 
 	bundleResult := ProcessedBundle{
 		ExecutionPlanHash: common.HexToHash("0x123"),
-		Position:          0,
-		Count:             2,
+		Position:          2,
+		Count:             3,
 	}
 
 	context := &runContext{
@@ -1869,7 +1869,7 @@ func TestRunTransactionBundle_InvalidExecutionPlan_ReturnsEnvelopeAndNoProcessed
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
 
-	// execution plan extraction will fail because the transaction is not singed so the sender can not be derived
+	// execution plan extraction will fail because the transaction is not signed so the sender can not be derived
 	txBundle := bundle.TransactionBundle{
 		Transactions: []*types.Transaction{types.NewTx(&types.AccessListTx{
 			Nonce: 0, To: &common.Address{1}, Gas: 21_000, GasPrice: big.NewInt(1),
@@ -1976,15 +1976,11 @@ func TestRunTransactionBundle_RunBundleSuccessful_ReturnsBundleOnlyTransactionAn
 	state := state.NewMockStateDB(ctrl)
 	evm := NewMock_evm(ctrl)
 
-	tx := getTransactionBundle(t)
+	envelope := getTransactionBundle(t)
+	txBundle, err := bundle.OpenEnvelope(envelope)
+	require.NoError(t, err)
 
 	state.EXPECT().InterTxSnapshot().Return(1)
-
-	evm.EXPECT().runWithBaseFeeCheck(gomock.Any(), gomock.Any(), 0).
-		Return(ProcessedTransaction{
-			Transaction: tx,
-			Receipt:     &types.Receipt{Status: types.ReceiptStatusSuccessful},
-		})
 
 	runner := &transactionRunner{evm: evm}
 
@@ -1999,9 +1995,15 @@ func TestRunTransactionBundle_RunBundleSuccessful_ReturnsBundleOnlyTransactionAn
 		runner:      runner,
 	}
 
-	processedTransactions, processedBundle, result := runner.runTransactionBundle(context, tx, 0)
+	evm.EXPECT().runWithBaseFeeCheck(context, gomock.Any(), 0).
+		Return(ProcessedTransaction{
+			Transaction: txBundle.Transactions[0],
+			Receipt:     &types.Receipt{Status: types.ReceiptStatusSuccessful},
+		})
+
+	processedTransactions, processedBundle, result := runner.runTransactionBundle(context, envelope, 0)
 	require.Len(t, processedTransactions, 1)
-	require.Equal(t, tx, processedTransactions[0].Transaction)
+	require.Equal(t, txBundle.Transactions[0], processedTransactions[0].Transaction)
 	require.NotNil(t, processedTransactions[0].Receipt)
 	require.NotNil(t, processedBundle)
 	require.Equal(t, uint32(0), processedBundle.Position)
