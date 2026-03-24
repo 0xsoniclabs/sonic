@@ -523,15 +523,18 @@ func (p *StateProcessor) BeginBlock(
 		ProcessParentBlockHash(block.ParentHash, vmEnvironment, stateDb)
 	}
 
+	successfulPlanHashes := make([]common.Hash, 0)
+
 	return &TransactionProcessor{
-		blockNumber:   blockNumber,
-		gp:            gp,
-		header:        header,
-		onNewLog:      onNewLog,
-		signer:        signer,
-		stateDb:       stateDb,
-		vmEnvironment: vmEnvironment,
-		upgrades:      p.upgrades,
+		blockNumber:          blockNumber,
+		gp:                   gp,
+		header:               header,
+		onNewLog:             onNewLog,
+		signer:               signer,
+		stateDb:              stateDb,
+		vmEnvironment:        vmEnvironment,
+		upgrades:             p.upgrades,
+		successfulPlanHashes: successfulPlanHashes,
 	}
 }
 

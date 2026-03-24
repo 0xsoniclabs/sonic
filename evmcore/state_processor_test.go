@@ -1466,13 +1466,16 @@ func TestRunTransactionBundle_AddsHashesOfSuccessfulPlansToList(t *testing.T) {
 
 	runner := &transactionRunner{evm: evm}
 
+	successfulPlanHashes := make([]common.Hash, 0)
+
 	context := &runContext{
-		statedb:     state,
-		signer:      signer,
-		baseFee:     big.NewInt(1),
-		upgrades:    opera.Upgrades{TransactionBundles: true},
-		blockNumber: &big.Int{},
-		runner:      runner,
+		statedb:              state,
+		signer:               signer,
+		baseFee:              big.NewInt(1),
+		upgrades:             opera.Upgrades{TransactionBundles: true},
+		blockNumber:          &big.Int{},
+		runner:               runner,
+		successfulPlanHashes: &successfulPlanHashes,
 	}
 
 	// Run a successful bundle
@@ -1481,12 +1484,12 @@ func TestRunTransactionBundle_AddsHashesOfSuccessfulPlansToList(t *testing.T) {
 	plan, err := bundle.ExtractExecutionPlan(envelope)
 	require.NoError(t, err)
 
-	evm.EXPECT().runWithBaseFeeCheck(gomock.Any(), gomock.Any(), gomock.Any()).
+	evm.EXPECT().runWithBaseFeeCheck(context, gomock.Any(), gomock.Any()).
 		Return(ProcessedTransaction{Transaction: &types.Transaction{}, Receipt: &types.Receipt{Status: types.ReceiptStatusSuccessful}})
 
 	_, _, _ = runner.runTransactionBundle(context, envelope, 0, 0)
 
-	require.Contains(t, context.successfulPlanHashes, plan.Hash())
+	require.Contains(t, *context.successfulPlanHashes, plan.Hash())
 
 	// Run a failing bundle
 	envelope = getTransactionBundle(t)
@@ -1494,12 +1497,12 @@ func TestRunTransactionBundle_AddsHashesOfSuccessfulPlansToList(t *testing.T) {
 	plan, err = bundle.ExtractExecutionPlan(envelope)
 	require.NoError(t, err)
 
-	evm.EXPECT().runWithBaseFeeCheck(gomock.Any(), gomock.Any(), gomock.Any()).
+	evm.EXPECT().runWithBaseFeeCheck(context, gomock.Any(), gomock.Any()).
 		Return(ProcessedTransaction{Transaction: &types.Transaction{}, Receipt: &types.Receipt{Status: types.ReceiptStatusFailed}})
 
 	_, _, _ = runner.runTransactionBundle(context, envelope, 0, 0)
 
-	require.NotContains(t, context.successfulPlanHashes, plan.Hash())
+	require.NotContains(t, *context.successfulPlanHashes, plan.Hash())
 }
 
 func TestRunTransactionBundle_SkipsPlansThatHaveBeenExecutedSuccessfullyBefore(t *testing.T) {
