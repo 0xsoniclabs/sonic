@@ -552,8 +552,13 @@ func checkCase(t *testing.T, session tests.IntegrationTestNetSession, accounts *
 
 		contractInfo := deployContracts(t, session)
 
-		envelopeTx, plan, bundleOnlyTxs := buildBundle(t, session, contractInfo, c.submittedTxTypes, flags, accounts)
+		envelopeTx := buildBundle(t, session, contractInfo, c.submittedTxTypes, flags, accounts)
 		require.NotNil(t, envelopeTx)
+
+		plan, err := bundle.ExtractExecutionPlan(envelopeTx)
+		require.NoError(t, err, "failed to extract execution plan; %v", err)
+		bundle, err := bundle.OpenEnvelope(envelopeTx)
+		require.NoError(t, err, "failed to open bundle envelope; %v", err)
 
 		err = client.SendTransaction(t.Context(), envelopeTx)
 		if err != nil {
@@ -587,7 +592,7 @@ func checkCase(t *testing.T, session tests.IntegrationTestNetSession, accounts *
 			case uncheckedTxIndex:
 				checkStatus(t, session, c.blockTxStatuses[i], transactionHashes[i])
 			default:
-				checkHashesEqAndStatus(t, session, bundleOnlyTxs[c.blockTxIndices[i]].Hash(), c.blockTxStatuses[i], transactionHashes[i])
+				checkHashesEqAndStatus(t, session, bundle.Transactions[c.blockTxIndices[i]].Hash(), c.blockTxStatuses[i], transactionHashes[i])
 			}
 		}
 
@@ -787,7 +792,7 @@ func buildBundle(
 	txTypes []txType,
 	flags bundle.ExecutionFlag,
 	accountFactory *AccountFactory,
-) (*types.Transaction, bundle.ExecutionPlan, types.Transactions) {
+) *types.Transaction {
 	client, err := net.GetClient()
 	require.NoError(t, err)
 	defer client.Close()
@@ -805,14 +810,12 @@ func buildBundle(
 	blockNumber, err := client.BlockNumber(t.Context())
 	require.NoError(t, err)
 
-	envelope, txBundle, plan := bundle.NewBuilder().
+	return bundle.NewBuilder().
 		WithFlags(flags).
 		Earliest(blockNumber).
 		Latest(blockNumber + 100).
 		With(steps...).
-		BuildEnvelopeBundleAndPlan()
-
-	return envelope, plan, txBundle.Transactions
+		Build()
 }
 
 func checkHashesEqAndStatus(
