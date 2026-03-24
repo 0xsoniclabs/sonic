@@ -1558,6 +1558,28 @@ func TestRunTransactionBundle_SkipsPlansThatHaveBeenExecutedSuccessfullyBefore(t
 		processedTransactions: 0,
 	}
 
+	// This test case executes a bundle containing two nested bundles.
+	// The first nested bundle contains two nested bundles itself with the same plan hash.
+	// The second nested bundle contains one nested bundle with the same plan hash as well.
+	// So it looks like OneOf(AllOf(Plan1, Plan1), AllOf(Plan1))
+	// The first nested bundle should fail because it contains two bundles with the same plan hash.
+	// The rollback mechanism should remove these hashes again, and then the second nested bundle should succeed.
+	nestedNestedEnvelope := getTransactionBundle(t)
+	envelope = bundle.OneOf(
+		bundle.Step(key, bundle.AllOf(bundle.Step(key, nestedNestedEnvelope), bundle.Step(key, nestedNestedEnvelope))),
+		bundle.Step(key2, bundle.AllOf(bundle.Step(key, nestedNestedEnvelope))),
+	)
+	tests["run same plan within nested bundle"] = test{
+		envelope:             envelope,
+		successfulPlanHashes: []common.Hash{},
+		runResults: []uint64{
+			types.ReceiptStatusSuccessful, // first tx in first nested bundle
+			// the second tx in the first nested bundle should not be attempted
+			types.ReceiptStatusSuccessful, // first tx in second nested bundle
+		},
+		processedTransactions: 1,
+	}
+
 	// This test case executes a bundle containing two nested bundles with the
 	// same plan hash. The first one fails, so the second one should still be attempted.
 	nestedEnvelope = getTransactionBundle(t)

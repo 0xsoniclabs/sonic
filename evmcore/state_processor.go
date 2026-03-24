@@ -376,7 +376,7 @@ func (r *transactionRunner) runTransactionBundle(
 	planHash := plan.Hash()
 
 	if slices.Contains(ctxt.successfulPlanHashes, planHash) {
-		log.Warn("Bundle transaction in the proposal is already considered for this block", "tx", tx.Hash(), "exec_plan_hash", planHash)
+		log.Warn("Bundle transaction in the proposal is already considered for this block", "tx", tx.Hash().Hex(), "exec_plan_hash", planHash)
 		return []ProcessedTransaction{{Transaction: tx}}, nil, core_types.TransactionResultInvalid
 	}
 	preSuccessfulCount := len(ctxt.successfulPlanHashes)
