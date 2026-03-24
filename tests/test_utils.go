@@ -346,8 +346,6 @@ func _cartesianProductRecursion[T any](current []T, elements [][]T, callback fun
 	return true
 }
 
-var ErrWaitTimeout = fmt.Errorf("wait timeout")
-
 // WaitFor repeatedly calls the predicate function until it returns true, it errors
 // or the timeout is reached.
 //
@@ -376,7 +374,7 @@ func WaitFor(ctx context.Context, predicate func(context.Context) (bool, error))
 		}
 		select {
 		case <-timedContext.Done():
-			return ErrWaitTimeout
+			return timedContext.Err()
 		case <-time.After(backoff):
 			// The predicate was not satisfied, backoff and try again.
 			backoff = backoff * 2

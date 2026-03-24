@@ -80,7 +80,7 @@ func TestBundle_CanBeProcessedByTheNetwork(t *testing.T) {
 
 	// Check bundle status before submission.
 	_, err = getBundleInfo(t.Context(), client.Client(), plan.Hash())
-	require.ErrorIs(t, err, ethereum.NotFound, "same as a transaction receipt, bundle info cannot be available before the bundle is executed")
+	require.ErrorIs(t, err, ethereum.NotFound)
 
 	// Run the bundle.
 	require.NoError(t, client.SendTransaction(t.Context(), bundleTx))

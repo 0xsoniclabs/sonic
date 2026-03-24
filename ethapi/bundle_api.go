@@ -47,8 +47,13 @@ func NewPublicBundleAPI(b Backend) *PublicBundleAPI {
 // GetBundleInfo implements the `sonic_getBundleInfo` RPC method, which retrieves
 // information about the execution of a transaction bundle.
 //
+// Since bundles are not stored in the blockchain like regular transactions,
+// this method provides information about bundles executed in the recent past.
+// The sonic client is not capable of tracking bundles indefinitely, and may return
+// null for bundles executed too far in the past.
+//
 // In the same fashion as `eth_getTransactionReceipt`, this method returns a
-// non-error response with  null payload if the bundle hasn't been executed yet.
+// non-error response with null payload if the bundle hasn't been executed yet.
 //
 // If the bundle has been executed, it returns the block number, position of the
 // first transaction of the bundle in the block, and the total number of non-reverted

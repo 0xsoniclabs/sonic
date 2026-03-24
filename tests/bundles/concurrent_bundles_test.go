@@ -171,15 +171,15 @@ func testRandomlyFailingBundles(
 	)
 	require.NoError(err)
 
-	// Wait some time for bundles execution
+	// Wait for execution
 	timeout, timeoutCancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer timeoutCancel()
 	infos, err := waitForBundlesExecution(timeout, client.Client(), planHashes)
 	if err != nil {
-		// this test may have envelopes which were never admitted into the pool,
-		// and other envelopes which were dropped while waiting for execution
-		// waitForBundlesExecution will timeout waiting for execution for these cases.
-		require.ErrorIs(err, tests.ErrWaitTimeout)
+		// This test may have envelopes which were never admitted into the pool,
+		// and other envelopes which were dropped while waiting for execution.
+		// WaitForBundlesExecution will timeout waiting for execution in these cases.
+		require.ErrorIs(err, context.DeadlineExceeded)
 	}
 
 	// For those bundles that got executed, check that the obtained infos match
