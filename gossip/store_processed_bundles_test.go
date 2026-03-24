@@ -288,28 +288,60 @@ func TestStore_ProcessedBundles_UpdatesHistoryHash(t *testing.T) {
 	require.Equal(historyHash2, hashAfterSecondAdd)
 }
 
-func TestStore_ProcessedBundles_HashIsAffectedByHistory(t *testing.T) {
+func TestStore_ProcessedBundles_CommutativityOfAddedBundles(t *testing.T) {
 	require := require.New(t)
-	store, err := NewMemStore(t)
+	store1, err := NewMemStore(t)
+	require.NoError(err)
+	store2, err := NewMemStore(t)
 	require.NoError(err)
 
 	hash1 := common.Hash{1, 2, 3}
 	hash2 := common.Hash{4, 5, 6}
 
-	store.AddProcessedBundles(1, []bundle.ExecutionInfo{
+	store1.AddProcessedBundles(1, []bundle.ExecutionInfo{
 		wrapInfo(hash1),
 		wrapInfo(hash2),
 	})
 
-	_, hashA := store.GetProcessedBundleHistoryHash()
-
-	store.AddProcessedBundles(2, []bundle.ExecutionInfo{
+	store2.AddProcessedBundles(1, []bundle.ExecutionInfo{
 		wrapInfo(hash2),
 		wrapInfo(hash1),
 	})
 
-	_, hashB := store.GetProcessedBundleHistoryHash()
+	_, hashA := store1.GetProcessedBundleHistoryHash()
+	_, hashB := store2.GetProcessedBundleHistoryHash()
+
 	require.NotEqual(hashA, hashB)
+}
+
+func TestStore_ProcessedBundles_OldHashAffectsNewHash(t *testing.T) {
+	require := require.New(t)
+	store1, err := NewMemStore(t)
+	require.NoError(err)
+	store2, err := NewMemStore(t)
+	require.NoError(err)
+
+	_, hashA0 := store1.GetProcessedBundleHistoryHash()
+	_, hashB0 := store2.GetProcessedBundleHistoryHash()
+	require.Equal(hashA0, hashB0)
+
+	hash1 := common.Hash{1, 2, 3}
+	hash2 := common.Hash{4, 5, 6}
+	hash3 := common.Hash{7, 8, 9}
+
+	store1.AddProcessedBundles(1, []bundle.ExecutionInfo{wrapInfo(hash1)})
+	store2.AddProcessedBundles(1, []bundle.ExecutionInfo{wrapInfo(hash2)})
+
+	_, hashA := store1.GetProcessedBundleHistoryHash()
+	_, hashB := store2.GetProcessedBundleHistoryHash()
+	require.NotEqual(hashA, hashB)
+
+	store1.AddProcessedBundles(2, []bundle.ExecutionInfo{wrapInfo(hash3)})
+	store2.AddProcessedBundles(2, []bundle.ExecutionInfo{wrapInfo(hash3)})
+
+	_, hashA2 := store1.GetProcessedBundleHistoryHash()
+	_, hashB2 := store2.GetProcessedBundleHistoryHash()
+	require.NotEqual(hashA2, hashB2)
 }
 
 func TestStore_ProcessedBundles_StoredHashUsesXorForAddedAndDeletedHashes(t *testing.T) {
