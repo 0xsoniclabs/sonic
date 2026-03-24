@@ -20,105 +20,12 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 )
-
-// makeEnvelopeTransaction creates a bundle transaction with the given
-// transactions and execution plan. The bundle transaction is signed by the
-// bundler account.
-func makeEnvelopeTransaction(
-	t *testing.T,
-	session tests.IntegrationTestNetSession,
-	transactions types.Transactions,
-	plan bundle.ExecutionPlan,
-	nested bool,
-) *types.Transaction {
-	t.Helper()
-
-	client, err := session.GetClient()
-	require.NoError(t, err, "failed to get client; %v", err)
-	defer client.Close()
-
-	// Create a dedicated coordinator for every bundle.
-	coordinator := tests.NewAccount()
-
-	cost := big.NewInt(0)
-	for _, tx := range transactions {
-		txCost := new(big.Int).Mul(new(big.Int).SetUint64(tx.Gas()), tx.GasPrice())
-		cost = new(big.Int).Add(cost, txCost)
-	}
-
-	var gas uint64
-	for _, tx := range transactions {
-		gas += tx.Gas()
-	}
-
-	bundlePayload := bundle.TransactionBundle{
-		Transactions: transactions,
-		Flags:        plan.Flags,
-		Earliest:     plan.Earliest,
-		Latest:       plan.Latest,
-	}
-
-	data := bundlePayload.Encode()
-
-	// If this envelope is nested, meaning it is part of a super/parent bundle,
-	// its gas cost shall include enough intrinsics gas for one extra access list entry
-	// (the bundleOnly marker) because the parent bundle will add the marker
-	// to the access list of the bundle transaction.
-	accessList := []types.AccessTuple{}
-	if nested {
-		accessList = []types.AccessTuple{
-			{Address: bundle.BundleOnly, StorageKeys: []common.Hash{{}}},
-		}
-	}
-	intrGas, err := core.IntrinsicGas(
-		data,
-		accessList,
-		nil,   // code auth is not used in the bundle transaction
-		false, // bundle transaction is not a contract creation
-		true,
-		true,
-		true,
-	)
-	require.NoError(t, err, "failed to calculate intrinsic gas; %v", err)
-
-	// EIP-7623 part of Prague revision: Floor data gas
-	// see: https://eips.ethereum.org/EIPS/eip-7623
-	floorDataGas, err := core.FloorDataGas(data)
-	require.NoError(t, err, "failed to calculate floor data gas; %v", err)
-
-	// create the bundle transaction with the same nonce as the payment transaction
-	signer := types.LatestSignerForChainID(session.GetChainId())
-	bundleTx := types.MustSignNewTx(coordinator.PrivateKey, signer,
-		&types.AccessListTx{
-			Nonce: 0,
-			To:    &bundle.BundleProcessor,
-			Gas:   max(gas, intrGas, floorDataGas),
-			Data:  data,
-		},
-	)
-
-	// If the bundle transaction is nested, it does not pass validation at this point
-	// because its gas already accounts for the presence of the bundleOnly marker,
-	// but the marker is not yet added to the access list.
-	// This is because we need the transaction without the marker to compute the
-	// execution plan of the super/parent bundle.
-	if !nested {
-		// Sanity check the bundle before sending it to the mempool, if fails to validate before making
-		// a bundle transaction, it will fail to be included in a block and waiting for payment receipt will timeout
-		_, _, err = bundle.ValidateTransactionBundle(bundleTx)
-		require.NoError(t, err, "failed to validate transaction bundle; %v", err)
-	}
-
-	return bundleTx
-}
 
 func prepareContract[T any](
 	t testing.TB, session tests.IntegrationTestNetSession,

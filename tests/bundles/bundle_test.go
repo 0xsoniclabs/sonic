@@ -35,7 +35,7 @@ import (
 )
 
 type txType interface {
-	makeTx(txMakeOptions, *AccountFactory) *types.Transaction
+	makeStep(txMakeOptions, *AccountFactory) bundle.BundleStep
 }
 
 type txIndex int
@@ -548,7 +548,7 @@ func checkCase(t *testing.T, session tests.IntegrationTestNetSession, accounts *
 
 		contractInfo := deployContracts(t, session)
 
-		envelopeTx, plan, bundleOnlyTxs := buildBundle(t, session, contractInfo, c.submittedTxTypes, flags, false, accounts)
+		envelopeTx, plan, bundleOnlyTxs := buildBundle(t, session, contractInfo, c.submittedTxTypes, flags, accounts)
 		require.NotNil(t, envelopeTx)
 
 		err = client.SendTransaction(t.Context(), envelopeTx)
@@ -679,13 +679,15 @@ type txMakeOptions struct {
 
 	contractInfo ContractInfo
 	gasPrice     *big.Int
-	sender       *tests.Account
 }
 
 type successfulNormalTx struct{}
 
-func (t successfulNormalTx) makeTx(opts txMakeOptions, _ *AccountFactory) *types.Transaction {
-	return types.NewTx(&types.AccessListTx{
+func (t successfulNormalTx) makeStep(opts txMakeOptions, factory *AccountFactory) bundle.BundleStep {
+	account, err := factory.Create()
+	require.NoError(opts.t, err)
+	return bundle.Step(account.PrivateKey, &types.AccessListTx{
+		ChainID:  opts.net.GetChainId(),
 		To:       &opts.contractInfo.counterAddress,
 		Gas:      opts.contractInfo.counterGasLimit,
 		Data:     opts.contractInfo.counterInput,
@@ -695,8 +697,11 @@ func (t successfulNormalTx) makeTx(opts txMakeOptions, _ *AccountFactory) *types
 
 type failedNormalTx struct{}
 
-func (t failedNormalTx) makeTx(opts txMakeOptions, _ *AccountFactory) *types.Transaction {
-	return types.NewTx(&types.AccessListTx{
+func (t failedNormalTx) makeStep(opts txMakeOptions, factory *AccountFactory) bundle.BundleStep {
+	account, err := factory.Create()
+	require.NoError(opts.t, err)
+	return bundle.Step(account.PrivateKey, &types.AccessListTx{
+		ChainID:  opts.net.GetChainId(),
 		To:       &opts.contractInfo.revertAddress,
 		Gas:      opts.contractInfo.revertGasLimit,
 		Data:     opts.contractInfo.revertInput,
@@ -706,8 +711,11 @@ func (t failedNormalTx) makeTx(opts txMakeOptions, _ *AccountFactory) *types.Tra
 
 type invalidNormalTx struct{}
 
-func (t invalidNormalTx) makeTx(opts txMakeOptions, _ *AccountFactory) *types.Transaction {
-	return types.NewTx(&types.AccessListTx{
+func (t invalidNormalTx) makeStep(opts txMakeOptions, factory *AccountFactory) bundle.BundleStep {
+	account, err := factory.Create()
+	require.NoError(opts.t, err)
+	return bundle.Step(account.PrivateKey, &types.AccessListTx{
+		ChainID:  opts.net.GetChainId(),
 		To:       &opts.contractInfo.counterAddress,
 		Gas:      1, // invalid
 		Data:     opts.contractInfo.counterInput,
@@ -717,10 +725,13 @@ func (t invalidNormalTx) makeTx(opts txMakeOptions, _ *AccountFactory) *types.Tr
 
 type successfulSponsoredTx struct{}
 
-func (t successfulSponsoredTx) makeTx(opts txMakeOptions, _ *AccountFactory) *types.Transaction {
+func (t successfulSponsoredTx) makeStep(opts txMakeOptions, factory *AccountFactory) bundle.BundleStep {
+	account, err := factory.Create()
+	require.NoError(opts.t, err)
 	donation := big.NewInt(1e16)
-	gas_subsidies.Fund(opts.t, opts.net, opts.sender.Address(), donation)
-	return types.NewTx(&types.AccessListTx{
+	gas_subsidies.Fund(opts.t, opts.net, account.Address(), donation)
+	return bundle.Step(account.PrivateKey, &types.AccessListTx{
+		ChainID:  opts.net.GetChainId(),
 		To:       &opts.contractInfo.counterAddress,
 		Gas:      opts.contractInfo.counterGasLimit,
 		Data:     opts.contractInfo.counterInput,
@@ -730,10 +741,13 @@ func (t successfulSponsoredTx) makeTx(opts txMakeOptions, _ *AccountFactory) *ty
 
 type failedSponsoredTx struct{}
 
-func (t failedSponsoredTx) makeTx(opts txMakeOptions, _ *AccountFactory) *types.Transaction {
+func (t failedSponsoredTx) makeStep(opts txMakeOptions, factory *AccountFactory) bundle.BundleStep {
+	account, err := factory.Create()
+	require.NoError(opts.t, err)
 	donation := big.NewInt(1e16)
-	gas_subsidies.Fund(opts.t, opts.net, opts.sender.Address(), donation)
-	return types.NewTx(&types.AccessListTx{
+	gas_subsidies.Fund(opts.t, opts.net, account.Address(), donation)
+	return bundle.Step(account.PrivateKey, &types.AccessListTx{
+		ChainID:  opts.net.GetChainId(),
 		To:       &opts.contractInfo.revertAddress,
 		Gas:      opts.contractInfo.revertGasLimit,
 		Data:     opts.contractInfo.revertInput,
@@ -743,8 +757,11 @@ func (t failedSponsoredTx) makeTx(opts txMakeOptions, _ *AccountFactory) *types.
 
 type invalidSponsoredTx struct{}
 
-func (t invalidSponsoredTx) makeTx(opts txMakeOptions, _ *AccountFactory) *types.Transaction {
-	return types.NewTx(&types.AccessListTx{
+func (t invalidSponsoredTx) makeStep(opts txMakeOptions, factory *AccountFactory) bundle.BundleStep {
+	account, err := factory.Create()
+	require.NoError(opts.t, err)
+	return bundle.Step(account.PrivateKey, &types.AccessListTx{
+		ChainID:  opts.net.GetChainId(),
 		To:       &opts.contractInfo.counterAddress,
 		Gas:      opts.contractInfo.counterGasLimit,
 		Data:     opts.contractInfo.counterInput,
@@ -757,104 +774,18 @@ type subBundleTx struct {
 	flags   bundle.ExecutionFlag
 }
 
-func (t subBundleTx) makeTx(opts txMakeOptions, factory *AccountFactory) *types.Transaction {
-	envelopeTx, _, _ := buildBundle(opts.t, opts.net, opts.contractInfo, t.txTypes, t.flags, true, factory)
-	require.NotNil(opts.t, envelopeTx)
-
-	// remove signature
-	envelopeTx = types.NewTx(&types.AccessListTx{
-		Nonce:      envelopeTx.Nonce(),
-		GasPrice:   envelopeTx.GasPrice(),
-		Gas:        envelopeTx.Gas(),
-		To:         envelopeTx.To(),
-		Value:      envelopeTx.Value(),
-		Data:       envelopeTx.Data(),
-		AccessList: envelopeTx.AccessList(),
-	})
-
-	return envelopeTx
+func (t subBundleTx) makeStep(opts txMakeOptions, factory *AccountFactory) bundle.BundleStep {
+	steps := make([]bundle.BundleStep, len(t.txTypes))
+	for i, tt := range t.txTypes {
+		steps[i] = tt.makeStep(opts, factory)
+	}
+	innerEnvelope := bundle.NewBuilder().WithFlags(t.flags).With(steps...).Build()
+	account, err := factory.Create()
+	require.NoError(opts.t, err)
+	return bundle.Step(account.PrivateKey, innerEnvelope)
 }
 
-// --- transaction bundling and signing ---
-
-func makeUnsignedBundleOnlyTxs(
-	t *testing.T,
-	net tests.IntegrationTestNetSession,
-	txTypes []txType,
-	contractInfo ContractInfo,
-	factory *AccountFactory,
-) ([]*types.Transaction, []*tests.Account) {
-
-	senders, err := factory.CreateMultiple(len(txTypes))
-	require.NoError(t, err)
-
-	client, err := net.GetClient()
-	require.NoError(t, err, "failed to get client; %v", err)
-	defer client.Close()
-
-	gasPrice, err := client.SuggestGasPrice(t.Context())
-	require.NoError(t, err, "failed to suggest gas price; %v", err)
-
-	bundleOnlyTxs := make([]*types.Transaction, len(txTypes))
-	for i, tType := range txTypes {
-		bundleOnlyTxs[i] = tType.makeTx(txMakeOptions{t, net, contractInfo, gasPrice, senders[i]}, factory)
-	}
-
-	return bundleOnlyTxs, senders
-}
-
-func signBundleOnlyTxs(
-	t *testing.T,
-	net tests.IntegrationTestNetSession,
-	txs []*types.Transaction,
-	senders []*tests.Account,
-	plan bundle.ExecutionPlan,
-) {
-	bundleMarkerWithPlanHash := types.AccessTuple{Address: bundle.BundleOnly, StorageKeys: []common.Hash{plan.Hash()}}
-	for i, tx := range txs {
-		bundleOnlyTx := &types.AccessListTx{
-			Nonce:      tx.Nonce(),
-			GasPrice:   tx.GasPrice(),
-			Gas:        tx.Gas(),
-			To:         tx.To(),
-			Value:      tx.Value(),
-			Data:       tx.Data(),
-			AccessList: append(tx.AccessList(), bundleMarkerWithPlanHash),
-		}
-		txs[i] = tests.SignTransaction(t, net.GetChainId(), bundleOnlyTx, senders[i])
-	}
-}
-
-func buildPlan(
-	t *testing.T,
-	net tests.IntegrationTestNetSession,
-	flags bundle.ExecutionFlag,
-	bundleOnlyTxs []*types.Transaction,
-	senders []*tests.Account,
-) bundle.ExecutionPlan {
-	signer := types.NewCancunSigner(net.GetChainId())
-
-	steps := make([]bundle.ExecutionStep, len(bundleOnlyTxs))
-	for i, tx := range bundleOnlyTxs {
-		steps[i] = bundle.ExecutionStep{From: senders[i].Address(), Hash: signer.Hash(tx)}
-	}
-
-	client, err := net.GetClient()
-	require.NoError(t, err, "failed to get client; %v", err)
-	defer client.Close()
-
-	blockNumber, err := client.BlockNumber(t.Context())
-	require.NoError(t, err, "failed to get block number; %v", err)
-
-	plan := bundle.ExecutionPlan{
-		Flags:    flags,
-		Steps:    steps,
-		Earliest: blockNumber,
-		Latest:   blockNumber + 100,
-	}
-
-	return plan
-}
+// --- transaction bundling ---
 
 func buildBundle(
 	t *testing.T,
@@ -862,18 +793,33 @@ func buildBundle(
 	contractInfo ContractInfo,
 	txTypes []txType,
 	flags bundle.ExecutionFlag,
-	nested bool,
 	accountFactory *AccountFactory,
 ) (*types.Transaction, bundle.ExecutionPlan, types.Transactions) {
-	bundleOnlyTxs, senders := makeUnsignedBundleOnlyTxs(t, net, txTypes, contractInfo, accountFactory)
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
 
-	plan := buildPlan(t, net, flags, bundleOnlyTxs, senders)
+	gasPrice, err := client.SuggestGasPrice(t.Context())
+	require.NoError(t, err)
 
-	signBundleOnlyTxs(t, net, bundleOnlyTxs, senders, plan)
+	opts := txMakeOptions{t, net, contractInfo, gasPrice}
 
-	envelopeTx := makeEnvelopeTransaction(t, net, bundleOnlyTxs, plan, nested)
+	steps := make([]bundle.BundleStep, len(txTypes))
+	for i, tt := range txTypes {
+		steps[i] = tt.makeStep(opts, accountFactory)
+	}
 
-	return envelopeTx, plan, bundleOnlyTxs
+	blockNumber, err := client.BlockNumber(t.Context())
+	require.NoError(t, err)
+
+	envelope, txBundle, plan := bundle.NewBuilder().
+		WithFlags(flags).
+		Earliest(blockNumber).
+		Latest(blockNumber + 100).
+		With(steps...).
+		BuildEnvelopeBundleAndPlan()
+
+	return envelope, plan, txBundle.Transactions
 }
 
 func checkHashesEqAndStatus(
