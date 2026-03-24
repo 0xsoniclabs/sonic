@@ -19,6 +19,7 @@ package bundle
 import (
 	"bytes"
 	"fmt"
+	"math"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -117,9 +118,17 @@ type BlockRange struct {
 // MakeMaxRangeStartingAt creates a block range of maximum allowed size, starting
 // at the given block number.
 func MakeMaxRangeStartingAt(blockNum uint64) BlockRange {
+	latest := blockNum + MaxBlockRange - 1
+	if blockNum > math.MaxUint64-MaxBlockRange {
+		// if the starting block number is too close to maxUint64,
+		// we cannot create a full range of MaxBlockRange blocks without overflowing.
+		// In this case, we create the largest possible range starting at blockNum,
+		// which ends at the maximum uint64 value.
+		latest = math.MaxUint64
+	}
 	return BlockRange{
 		Earliest: blockNum,
-		Latest:   blockNum + MaxBlockRange - 1,
+		Latest:   latest,
 	}
 }
 
@@ -129,19 +138,18 @@ func (r BlockRange) Size() uint64 {
 	if r.Latest < r.Earliest {
 		return 0
 	}
+	// check for overflow, which can happen if Latest is close to the maximum uint64 value and Earliest is close to 0
+	if r.Latest-r.Earliest > math.MaxUint64-1 {
+		return math.MaxUint64
+	}
 	return r.Latest - r.Earliest + 1
 }
 
-// IsInRange checks if the given block number is within the range of the
-// execution plan. The range is a closed interval [Earliest, Latest], meaning
-// that the execution plan is valid for inclusion in any block within this
-// range, including the Earliest and Latest blocks themselves.
+// IsInRange checks if the given block number is within this block range.
+// The range is a closed interval [Earliest, Latest], meaning that blocks with
+// numbers from Earliest through Latest (inclusive) are considered in range.
 func (r BlockRange) IsInRange(blockNum uint64) bool {
 	return blockNum >= r.Earliest && blockNum <= r.Latest
-}
-
-func (e *ExecutionPlan) IsInRange(blockNum uint64) bool {
-	return e.Range.IsInRange(blockNum)
 }
 
 // Hash computes the execution plan hash
