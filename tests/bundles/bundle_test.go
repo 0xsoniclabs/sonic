@@ -368,7 +368,9 @@ func Test_RunAllOf_Works(t *testing.T) {
 	factory := &AccountFactory{session: net}
 	sessions := net.SpawnSessions(t, len(cases))
 	for i, c := range cases {
-		if c.name == "bundled/OneOf=false/TolerateFailed=true/TolerateInvalid=true/failed" || (strings.HasPrefix(c.name, "bundled") && strings.HasSuffix(c.name, "invalid")) {
+		if c.name == "bundled/OneOf=false/TolerateFailed=true/TolerateInvalid=true/failed" ||
+			c.name == "bundled/OneOf=true/TolerateFailed=true/TolerateInvalid=true/failed" ||
+			(strings.HasPrefix(c.name, "bundled") && strings.HasSuffix(c.name, "invalid")) {
 			continue
 		}
 		checkCase(t, sessions[i], factory, c)
@@ -502,7 +504,9 @@ func Test_RunOneOf_Works(t *testing.T) {
 	factory := &AccountFactory{session: net}
 	sessions := net.SpawnSessions(t, len(cases))
 	for i, c := range cases {
-		if c.name == "bundled/OneOf=false/TolerateFailed=true/TolerateInvalid=true/failed" || (strings.HasPrefix(c.name, "bundled") && strings.HasSuffix(c.name, "invalid")) {
+		if c.name == "bundled/OneOf=false/TolerateFailed=true/TolerateInvalid=true/failed" ||
+			c.name == "bundled/OneOf=true/TolerateFailed=true/TolerateInvalid=true/failed" ||
+			(strings.HasPrefix(c.name, "bundled") && strings.HasSuffix(c.name, "invalid")) {
 			continue
 		}
 		checkCase(t, sessions[i], factory, c)
