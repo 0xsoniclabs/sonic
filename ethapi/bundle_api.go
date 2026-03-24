@@ -138,7 +138,6 @@ type RPCPreparedBundle struct {
 // Bundled transactions with uninitialized gas limits will have their gas estimated by this method, which will take into account
 // potential state changes from previous transactions in the bundle. However, users can also choose to set gas limits on their own;
 // in this case, the provided gas limits will be used without modification.
-// Transactions with gas limit 0 will not have this field modified.
 //
 // Bundled transactions with uninitialized gas price fields (GasPrice for access list transactions,
 // or both MaxFeePerGas and MaxPriorityFeePerGas for EIP-1559 capable transactions) will have their gas price
@@ -176,10 +175,10 @@ func (a *PublicBundleAPI) PrepareBundle(
 	}
 	gasPrice := a.suggestGasPrice()
 	for i, tx := range args.Transactions {
-		if len(gasLimits.GasLimits) != 0 && (tx.Gas == nil) {
+		if len(gasLimits.GasLimits) > i && (tx.Gas == nil) {
 			tx.Gas = &gasLimits.GasLimits[i]
 		}
-		if tx.GasPrice == nil || tx.MaxFeePerGas == nil {
+		if tx.GasPrice == nil && tx.MaxFeePerGas == nil {
 			if tx.MaxPriorityFeePerGas == nil {
 				tx.GasPrice = gasPrice
 			} else {
