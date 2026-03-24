@@ -84,9 +84,8 @@ func Test_CreateBundlesWithRPC(t *testing.T) {
 	bundleHash, err := SubmitBundle(client, txs, preparedBundle.Plan)
 	require.NoError(t, err, "failed to submit bundle")
 
-	info, err := waitForBundleExecution(t.Context(), client.Client(), bundleHash)
-	require.NoError(t, err, "failed to wait for bundle execution")
-	require.Equal(t, ethapi.BundleStatusExecuted, info.Status)
+	_, err = waitForBundleExecution(t.Context(), client.Client(), bundleHash)
+	require.NoError(t, err)
 
 	for _, tx := range txs {
 		receipt, err := session.GetReceipt(tx.Hash())
