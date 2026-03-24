@@ -85,13 +85,8 @@ func validateEnvelopeInternal(
 		return nil, nil, err
 	}
 
-	if plan.Latest < plan.Earliest {
-		return nil, nil, fmt.Errorf("invalid empty block range [%d,%d] in execution plan", plan.Earliest, plan.Latest)
-	}
-	rangeSize := plan.Latest - plan.Earliest + 1
-
-	if rangeSize > MaxBlockRange {
-		return nil, nil, fmt.Errorf("invalid block range in execution plan, duration %d, limit %d", rangeSize, MaxBlockRange)
+	if err := ValidateRange(plan.Range); err != nil {
+		return nil, nil, err
 	}
 
 	bundleGas := envelopeTx.Gas()
@@ -139,6 +134,19 @@ func validateEnvelopeInternal(
 	}
 
 	return &txBundle, &plan, nil
+}
+
+// ValidateRange checks that the given block range is valid, i.e. that it is not
+// empty and does not exceed the maximum allowed range.
+func ValidateRange(r BlockRange) error {
+	size := r.Size()
+	if size == 0 {
+		return fmt.Errorf("invalid empty block range [%d,%d] in execution plan", r.Earliest, r.Latest)
+	}
+	if size > MaxBlockRange {
+		return fmt.Errorf("invalid block range in execution plan, duration %d, limit %d", size, MaxBlockRange)
+	}
+	return nil
 }
 
 // --- internal utilities ---

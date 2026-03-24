@@ -56,8 +56,8 @@ func TestBundleBuilder_Build_AllowsToBuildBundleAsSpecified(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, EF_AllOf|EF_TolerateFailed, plan.Flags)
-	require.EqualValues(t, 12, plan.Earliest)
-	require.EqualValues(t, 15, plan.Latest)
+	require.EqualValues(t, 12, plan.Range.Earliest)
+	require.EqualValues(t, 15, plan.Range.Latest)
 
 	txs := bundle.Transactions
 	require.Len(t, txs, 2)
