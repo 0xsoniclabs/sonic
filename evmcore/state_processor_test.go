@@ -2376,6 +2376,32 @@ func TestBundleTransactionRunner_Run_IncrementsOffsetByNumberOfNonNullReceiptsIf
 	require.Equal(t, bundleTransactionRunner.txOffset, startOffset+1+2)
 }
 
+func TestBundleTransactionRunner_CreateSnapshot_CallsInterTxSnapshotOnStateDb(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	state := state.NewMockStateDB(ctrl)
+
+	state.EXPECT().InterTxSnapshot().Return(123)
+
+	ctxt := &runContext{statedb: state}
+	bundleTransactionRunner := &bundleTransactionRunner{ctxt: ctxt}
+
+	snapshotId := bundleTransactionRunner.CreateSnapshot()
+	require.Equal(t, 123, snapshotId)
+}
+
+func TestBundleTransactionRunner_RevertToSnapshot_CallsRevertToInterTxSnapshotOnStateDb(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	state := state.NewMockStateDB(ctrl)
+
+	snapshotId := 123
+	state.EXPECT().RevertToInterTxSnapshot(snapshotId)
+
+	ctxt := &runContext{statedb: state}
+	bundleTransactionRunner := &bundleTransactionRunner{ctxt: ctxt}
+
+	bundleTransactionRunner.RevertToSnapshot(snapshotId)
+}
+
 // --- Utility functions for creating test transactions ---
 
 func getRegularTransaction(t *testing.T) *types.Transaction {
