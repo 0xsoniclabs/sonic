@@ -714,37 +714,73 @@ func TestStore_deleteOutdatedBundles_RemovesBundles_WhenOld(t *testing.T) {
 
 			hash := store.deleteOutdatedBundles(c.currentBlockNumber, batch)
 			if c.expectDeleted {
-				require.Equal(t, existingBundleHash, xorHash(common.Hash{}, hash))
+				require.Equal(t, existingBundleHash, hash)
 			}
 		})
 	}
 }
 
 func TestStore_deleteOutdatedBundles_ReturnsXorHashOfDeletedEntries(t *testing.T) {
-	store, table, _, batch, it := storeTableLogMocks(t)
 
-	hash1 := common.Hash{1, 2, 3}
-	hash2 := common.Hash{4, 5, 6}
+	cases := map[string]struct {
+		storedBundles []bundle.ExecutionInfo
+	}{
+		"empty list": {
+			storedBundles: []bundle.ExecutionInfo{},
+		},
+		"single bundle": {
+			storedBundles: []bundle.ExecutionInfo{
+				wrapInfo(common.Hash{1, 2, 3}),
+			},
+		},
+		"two bundles": {
+			storedBundles: []bundle.ExecutionInfo{
+				wrapInfo(common.Hash{1, 2, 3}),
+				wrapInfo(common.Hash{4, 5, 6}),
+			},
+		},
+		"more than two bundles": {
+			storedBundles: []bundle.ExecutionInfo{
+				wrapInfo(common.Hash{1, 2, 3}),
+				wrapInfo(common.Hash{4, 5, 6}),
+				wrapInfo(common.Hash{7, 8, 9}),
+			},
+		},
+	}
 
-	gomock.InOrder(
-		table.EXPECT().NewIterator([]byte{'i'}, nil).Return(it),
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
 
-		it.EXPECT().Next().Return(true),
-		it.EXPECT().Key().Return(getIndexKey(1, hash1)),
-		batch.EXPECT().Delete(getIndexKey(1, hash1)).Return(nil),
-		batch.EXPECT().Delete(getEntryKey(hash1)).Return(nil),
+			store, table, _, batch, it := storeTableLogMocks(t)
+			encodedBlock := make([]byte, 8)
+			binary.BigEndian.PutUint64(encodedBlock, 1)
+			existingBundleKeys := make([][]byte, len(c.storedBundles))
+			for i, info := range c.storedBundles {
+				existingBundleKeys[i] = append(append([]byte{'i'}, encodedBlock...), info.ExecutionPlanHash.Bytes()...)
+			}
 
-		it.EXPECT().Next().Return(true),
-		it.EXPECT().Key().Return(getIndexKey(1, hash2)),
-		batch.EXPECT().Delete(getIndexKey(1, hash2)).Return(nil),
-		batch.EXPECT().Delete(getEntryKey(hash2)).Return(nil),
+			table.EXPECT().NewIterator([]byte{'i'}, nil).Return(it)
 
-		it.EXPECT().Next().Return(false),
-	)
+			for i, key := range existingBundleKeys {
+				gomock.InOrder(
+					it.EXPECT().Next().Return(true),
+					it.EXPECT().Key().Return(key),
+					batch.EXPECT().Delete(getIndexKey(1, c.storedBundles[i].ExecutionPlanHash)).Return(nil),
+					batch.EXPECT().Delete(getEntryKey(c.storedBundles[i].ExecutionPlanHash)).Return(nil),
+				)
+			}
 
-	deletedHash := store.deleteOutdatedBundles(bundle.MaxBlockRange+1, batch)
-	expectedDeletedHash := xorHash(hash1, hash2)
-	require.Equal(t, expectedDeletedHash, deletedHash)
+			it.EXPECT().Next().Return(false)
+
+			deletedHash := store.deleteOutdatedBundles(bundle.MaxBlockRange+1, batch)
+
+			expectedDeletedHash := common.Hash{}
+			for _, info := range c.storedBundles {
+				expectedDeletedHash = xorHash(expectedDeletedHash, info.ExecutionPlanHash)
+			}
+			require.Equal(t, expectedDeletedHash, deletedHash)
+		})
+	}
 }
 
 func TestStore_deleteOutdatedBundles_IgnoresKeysOfWrongLength(t *testing.T) {
@@ -759,7 +795,7 @@ func TestStore_deleteOutdatedBundles_IgnoresKeysOfWrongLength(t *testing.T) {
 	)
 	table.EXPECT().NewIterator(gomock.Any(), gomock.Any()).Return(it)
 
-	store.deleteOutdatedBundles(bundle.MaxBlockRange+1, batch)
+	require.Zero(t, store.deleteOutdatedBundles(bundle.MaxBlockRange+1, batch))
 }
 
 func TestStore_deleteOutdatedBundles_LogsOnBatchDeleteError(t *testing.T) {
