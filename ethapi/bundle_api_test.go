@@ -75,13 +75,11 @@ func TestBundleRPC_JsonIsEthereumConformant(t *testing.T) {
 	hash := common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef")
 
 	expectJsonEqual(t, `{
-		  "status": 1,
 		  "block":"0x7b",
 		  "position":"0xa",
 		  "count":"0xa"
 	}`,
 		RPCBundleInfo{
-			Status:   1,
 			Block:    &blockNum,
 			Position: &hexUint,
 			Count:    &hexUint,

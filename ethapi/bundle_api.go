@@ -44,55 +44,37 @@ func NewPublicBundleAPI(b Backend) *PublicBundleAPI {
 	}
 }
 
-//go:generate stringer -type=BundleStatus -output bundle_status_string.go -trimprefix BundleStatus
-
-type BundleStatus int
-
-const (
-	BundleStatusUnknown  BundleStatus = 0
-	BundleStatusPending  BundleStatus = 1
-	BundleStatusExecuted BundleStatus = 2
-)
-
+// GetBundleInfo implements the `sonic_getBundleInfo` RPC method, which retrieves
+// information about the execution of a transaction bundle.
+//
+// In the same fashion as `eth_getTransactionReceipt`, this method returns a
+// non-error response with  null payload if the bundle hasn't been executed yet.
+//
+// If the bundle has been executed, it returns the block number, position of the
+// first transaction of the bundle in the block, and the total number of non-reverted
+// transactions.
 func (a *PublicBundleAPI) GetBundleInfo(
 	ctx context.Context,
 	executionPlanHash common.Hash,
-) (RPCBundleInfo, error) {
+) (*RPCBundleInfo, error) {
 
-	// Since there is no global lock on the state, and a bundle can be executed
-	// and removed from the pool in-between checking for the execution info and
-	// the pool state, we check this twice. A valid bundle will only be removed
-	// form the pool after it has been executed.
-	for range 2 {
-
-		// Check whether the given execution plan got already executed.
-		info := a.b.GetBundleExecutionInfo(executionPlanHash)
-		if info != nil {
-			return RPCBundleInfo{
-				Status:   BundleStatusExecuted,
-				Block:    toBlockNum(info.BlockNum),
-				Position: toHexUint(uint64(info.Position)),
-				Count:    toHexUint(uint64(info.Count)),
-			}, nil
-		}
-
-		// Check whether the given execution plan is pending in the Tx Pool.
-		if isInPool := a.b.IsBundleInPool(executionPlanHash); isInPool {
-			return RPCBundleInfo{
-				Status: BundleStatusPending,
-			}, nil
-		}
-
+	// Check whether the given execution plan got already executed.
+	info := a.b.GetBundleExecutionInfo(executionPlanHash)
+	if info != nil {
+		return &RPCBundleInfo{
+			Block:    toBlockNum(info.BlockNum),
+			Position: toHexUint(uint64(info.Position)),
+			Count:    toHexUint(uint64(info.Count)),
+		}, nil
 	}
 
 	// Otherwise, the state is unknown (default).
-	return RPCBundleInfo{}, nil
+	return nil, nil
 }
 
 // RPCBundleInfo is the JSON RPC message returned by the GetBundleInfo API, which
 // provides information about the status of a transaction bundle.
 type RPCBundleInfo struct {
-	Status   BundleStatus     `json:"status"`
 	Block    *rpc.BlockNumber `json:"block,omitempty"`
 	Position *hexutil.Uint    `json:"position,omitempty"`
 	Count    *hexutil.Uint    `json:"count,omitempty"`
