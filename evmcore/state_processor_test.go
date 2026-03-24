@@ -784,11 +784,12 @@ func TestRunTransactions_RunsAllTransactionsAndCollectsProcessedTransactionsAndB
 		},
 	}
 
-	bundleResult := ProcessedBundle{
+	bundleResult := []ProcessedBundle{{
+
 		ExecutionPlanHash: common.HexToHash("0x123"),
 		Position:          2,
 		Count:             3,
-	}
+	}}
 
 	context := &runContext{
 		runner:   runner,
@@ -805,7 +806,7 @@ func TestRunTransactions_RunsAllTransactionsAndCollectsProcessedTransactionsAndB
 		),
 		runner.EXPECT().runTransactionBundle(context, txs[2], 3).Return(
 			bundleTxResult,
-			&bundleResult,
+			bundleResult,
 			core_types.TransactionResultSuccessful,
 		),
 	)
@@ -820,8 +821,7 @@ func TestRunTransactions_RunsAllTransactionsAndCollectsProcessedTransactionsAndB
 	want = append(want, bundleTxResult...)
 	require.Equal(t, want, got)
 
-	wantBundles := []ProcessedBundle{bundleResult}
-	require.Equal(t, wantBundles, summary.ProcessedBundles)
+	require.Equal(t, bundleResult, summary.ProcessedBundles)
 }
 
 func TestRunTransactions_ProvidesNextIndexAsOriginalIndexPlusNumberOfPreviouslyProcessedTransactions(t *testing.T) {
@@ -1066,7 +1066,7 @@ func TestRunTransactions_BundlesEnabled_RunsTransactionBundleAsBundle(t *testing
 			Transaction: tx,
 			Receipt:     nil,
 		}},
-		&ProcessedBundle{},
+		[]ProcessedBundle{},
 		core_types.TransactionResultSuccessful,
 	)
 	summary := runTransactions(context, []*types.Transaction{tx}, 0)
@@ -2027,13 +2027,14 @@ func TestRunTransactionBundle_RunBundleSuccessful_ReturnsBundleOnlyTransactionAn
 			Receipt:     &types.Receipt{Status: types.ReceiptStatusSuccessful},
 		})
 
-	processedTransactions, processedBundle, result := runner.runTransactionBundle(context, envelope, 0)
+	processedTransactions, processedBundles, result := runner.runTransactionBundle(context, envelope, 0)
 	require.Len(t, processedTransactions, 1)
 	require.Equal(t, txBundle.Transactions[0], processedTransactions[0].Transaction)
 	require.NotNil(t, processedTransactions[0].Receipt)
-	require.NotNil(t, processedBundle)
-	require.Equal(t, uint32(0), processedBundle.Position)
-	require.Equal(t, uint32(1), processedBundle.Count)
+	require.NotNil(t, processedBundles)
+	require.Len(t, processedBundles, 1)
+	require.Equal(t, uint32(0), processedBundles[0].Position)
+	require.Equal(t, uint32(1), processedBundles[0].Count)
 	require.Equal(t, core_types.TransactionResultSuccessful, result)
 }
 

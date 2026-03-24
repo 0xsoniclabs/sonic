@@ -200,16 +200,16 @@ func runTransactions(
 	txIndexOffset int,
 ) ProcessSummary {
 	processedTxs := make([]ProcessedTransaction, 0, len(transactions))
-	bundles := make([]ProcessedBundle, 0)
+	processedBundles := make([]ProcessedBundle, 0)
 	for _, tx := range transactions {
 		nextId := txIndexOffset + len(processedTxs)
-		txs, bundle, _ := runTransaction(context, tx, nextId)
+		txs, bundles, _ := runTransaction(context, tx, nextId)
 		processedTxs = append(processedTxs, txs...)
-		if bundle != nil {
-			bundles = append(bundles, *bundle)
+		if bundles != nil {
+			processedBundles = append(processedBundles, bundles...)
 		}
 	}
-	return ProcessSummary{ProcessedTransactions: processedTxs, ProcessedBundles: bundles}
+	return ProcessSummary{ProcessedTransactions: processedTxs, ProcessedBundles: processedBundles}
 }
 
 // runTransaction processes the given transaction and returns a list of all
@@ -222,7 +222,7 @@ func runTransaction(
 	context *runContext,
 	tx *types.Transaction,
 	txIndexOffset int,
-) ([]ProcessedTransaction, *ProcessedBundle, core_types.TransactionResult) {
+) ([]ProcessedTransaction, []ProcessedBundle, core_types.TransactionResult) {
 	// Since a transaction bundle has a gas-price of 0 it would be considered a
 	// sponsorship request. Thus, we need to check for bundles first.
 	if context.upgrades.TransactionBundles && bundle.IsEnvelope(tx) {
@@ -242,7 +242,7 @@ func runTransaction(
 type _transactionRunner interface {
 	runRegularTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) (ProcessedTransaction, core_types.TransactionResult)
 	runSponsoredTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) ([]ProcessedTransaction, core_types.TransactionResult)
-	runTransactionBundle(ctxt *runContext, tx *types.Transaction, txIndex int) ([]ProcessedTransaction, *ProcessedBundle, core_types.TransactionResult)
+	runTransactionBundle(ctxt *runContext, tx *types.Transaction, txIndex int) ([]ProcessedTransaction, []ProcessedBundle, core_types.TransactionResult)
 }
 
 // transactionRunner implements the _transactionRunner interface by using an
@@ -351,7 +351,7 @@ func (r *transactionRunner) runTransactionBundle(
 	ctxt *runContext,
 	tx *types.Transaction,
 	txIndex int,
-) ([]ProcessedTransaction, *ProcessedBundle, core_types.TransactionResult) {
+) ([]ProcessedTransaction, []ProcessedBundle, core_types.TransactionResult) {
 	if !ctxt.upgrades.TransactionBundles {
 		log.Warn("Transaction bundles are not enabled, skipping bundle transaction", "tx", tx.Hash().Hex())
 		return []ProcessedTransaction{{Transaction: tx}}, nil, core_types.TransactionResultInvalid
@@ -373,7 +373,7 @@ func (r *transactionRunner) runTransactionBundle(
 		return []ProcessedTransaction{{Transaction: tx}}, nil, core_types.TransactionResultInvalid
 	}
 
-	processedBundle := &ProcessedBundle{
+	processedBundle := ProcessedBundle{
 		ExecutionPlanHash: plan.Hash(),
 		Position:          uint32(txIndex),
 	}
@@ -381,14 +381,14 @@ func (r *transactionRunner) runTransactionBundle(
 	// Run the bundle and collect the processed transactions.
 	runner := bundleTransactionRunner{ctxt: ctxt, txOffset: txIndex}
 	if success := bundle.RunBundle(&txBundle, &runner); !success {
-		return []ProcessedTransaction{}, processedBundle, core_types.TransactionResultFailed
+		return []ProcessedTransaction{}, []ProcessedBundle{processedBundle}, core_types.TransactionResultFailed
 	}
 	for _, processedTx := range runner.processedTransactions {
 		if processedTx.Receipt != nil {
 			processedBundle.Count++
 		}
 	}
-	return runner.processedTransactions, processedBundle, core_types.TransactionResultSuccessful
+	return runner.processedTransactions, []ProcessedBundle{processedBundle}, core_types.TransactionResultSuccessful
 }
 
 // bundleTransactionRunner is an adapter implementing the bundle.TransactionRunner
