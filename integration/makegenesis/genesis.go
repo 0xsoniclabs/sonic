@@ -153,7 +153,7 @@ func NewGenesisBuilder() *GenesisBuilder {
 	}
 	// Set cache size to lowest value possible
 	carmenStateDb := carmen.CreateCustomStateDBUsing(carmenState, 1024)
-	tmpStateDB := evmstore.CreateCarmenStateDb(carmenStateDb)
+	tmpStateDB := evmstore.CreateCarmenStateDb(carmenStateDb, nil)
 	return &GenesisBuilder{
 		tmpStateDB:    tmpStateDB,
 		carmenDir:     carmenDir,

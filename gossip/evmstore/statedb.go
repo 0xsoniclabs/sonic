@@ -35,14 +35,14 @@ import (
 const NoArchiveError = carmen.NoArchiveError
 
 // GetLiveStateDb obtains StateDB for block processing - the live writable state
-func (s *Store) GetLiveStateDb(stateRoot hash.Hash, options ...func(*CarmenStateDB)) (state.StateDB, error) {
+func (s *Store) GetLiveStateDb(stateRoot hash.Hash, bundleTracker BundleTracker) (state.StateDB, error) {
 	if s.liveStateDb == nil {
 		return nil, fmt.Errorf("unable to get live StateDb - EvmStore is not open")
 	}
 	if s.liveStateDb.GetHash() != cc.Hash(stateRoot) {
 		return nil, fmt.Errorf("unable to get Carmen live StateDB - unexpected state root (%x != %x)", s.liveStateDb.GetHash(), stateRoot)
 	}
-	return CreateCarmenStateDb(s.liveStateDb, options...), nil
+	return CreateCarmenStateDb(s.liveStateDb, bundleTracker), nil
 }
 
 // GetCurrentStateDb obtains a read only StateDB for TxPool evaluation - the latest finalized.
@@ -53,7 +53,7 @@ func (s *Store) GetCurrentStateDb() (state.StateDB, error) {
 		return nil, fmt.Errorf("unable to get TxPool StateDb - EvmStore is not open")
 	}
 	stateDb := carmen.CreateNonCommittableStateDBUsing(s.carmenState)
-	return CreateCarmenStateDb(stateDb), nil
+	return CreateCarmenStateDb(stateDb, nil), nil
 }
 
 // GetArchiveBlockHeight provides the last block number available in the archive. Returns 0 if not known.
@@ -77,7 +77,7 @@ func (s *Store) GetBlockStateDb(blockNum *big.Int, stateRoot common.Hash) (state
 	if stateDb.GetHash() != cc.Hash(stateRoot) && blockNum.Sign() != 0 {
 		return nil, fmt.Errorf("unable to get Carmen archive StateDB - unexpected state root (%x != %x)", stateDb.GetHash(), stateRoot)
 	}
-	return CreateCarmenStateDb(stateDb), nil
+	return CreateCarmenStateDb(stateDb, nil), nil
 }
 
 // CheckLiveStateHash returns if the hash of the current live StateDB hash matches (and fullsync is possible)

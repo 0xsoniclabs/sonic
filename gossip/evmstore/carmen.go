@@ -46,14 +46,11 @@ type BundleTracker interface {
 	HasBundleRecentlyBeenProcessed(execPlanHash common.Hash) bool
 }
 
-func CreateCarmenStateDb(carmenStateDb carmen.VmStateDB, options ...func(*CarmenStateDB)) state.StateDB {
-	db := &CarmenStateDB{
-		db: carmenStateDb,
+func CreateCarmenStateDb(carmenStateDb carmen.VmStateDB, bundleTracker BundleTracker) state.StateDB {
+	return &CarmenStateDB{
+		db:            carmenStateDb,
+		bundleTracker: bundleTracker,
 	}
-	for _, opt := range options {
-		opt(db)
-	}
-	return db
 }
 
 // WithBundleTracker sets the bundle tracker for the CarmenStateDB.
@@ -313,7 +310,7 @@ func (c *CarmenStateDB) CreateContract(addr common.Address) {
 
 func (c *CarmenStateDB) Copy() state.StateDB {
 	if db, ok := c.db.(carmen.NonCommittableStateDB); ok {
-		return CreateCarmenStateDb(db.Copy(), WithBundleTracker(c.bundleTracker))
+		return CreateCarmenStateDb(db.Copy(), nil)
 	} else {
 		panic("unable to copy committable (live) StateDB")
 	}
