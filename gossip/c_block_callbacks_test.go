@@ -36,6 +36,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/holiman/uint256"
@@ -1389,6 +1390,93 @@ func TestSpillBlockEvents(t *testing.T) {
 				foundSignatures = append(foundSignatures, event.Sig())
 			}
 			require.Equal(t, test.expectedSignatures, foundSignatures)
+		})
+	}
+}
+
+func TestFilterObsoleteBundles_RemovesInvalidBundles(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	tests := map[string]struct {
+		tx             *types.Transaction
+		bundlesEnabled bool
+		blockNumber    uint64
+		isFiltered     bool
+	}{
+		"normal tx": {
+			tx:             types.NewTx(&types.LegacyTx{Nonce: 1}),
+			bundlesEnabled: true,
+			isFiltered:     false,
+		},
+		"sponsored tx": {
+			tx:             types.NewTx(&types.LegacyTx{Nonce: 2, GasPrice: big.NewInt(0), V: big.NewInt(1)}),
+			bundlesEnabled: true,
+			isFiltered:     false,
+		},
+		"bundle valid": {
+			tx:             bundle.AllOf(bundle.Step(key, &types.AccessListTx{})),
+			bundlesEnabled: true,
+			isFiltered:     false,
+		},
+		"bundle valid but bundles disabled": {
+			tx:             bundle.AllOf(bundle.Step(key, &types.AccessListTx{})),
+			bundlesEnabled: false,
+			isFiltered:     true,
+		},
+		"bundle invalid": {
+			tx:             types.NewTx(&types.AccessListTx{To: &bundle.BundleProcessor}),
+			bundlesEnabled: true,
+			isFiltered:     true,
+		},
+		"bundle out of range": {
+			tx:             bundle.NewBuilder().With(bundle.Step(key, &types.AccessListTx{})).Latest(1).Build(),
+			bundlesEnabled: true,
+			blockNumber:    2,
+			isFiltered:     true,
+		},
+		"bundle empty": {
+			tx:             bundle.AllOf( /* empty */ ),
+			bundlesEnabled: true,
+			isFiltered:     true,
+		},
+		"bundle with invalid nested bundle": {
+			tx:             bundle.AllOf(bundle.Step(key, types.NewTx(&types.AccessListTx{To: &bundle.BundleProcessor}))),
+			bundlesEnabled: true,
+			isFiltered:     true,
+		},
+		"bundle with out of range nested bundle": {
+			tx:             bundle.AllOf(bundle.Step(key, bundle.NewBuilder().With(bundle.Step(key, &types.AccessListTx{})).Latest(1).Build())),
+			bundlesEnabled: true,
+			blockNumber:    2,
+			isFiltered:     true,
+		},
+		"bundle with empty nested bundle": {
+			tx:             bundle.AllOf(bundle.Step(key, bundle.AllOf( /* empty */ ))),
+			bundlesEnabled: true,
+			isFiltered:     true,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+
+			skippedBundleCounter := NewMockmetricCounter(ctrl)
+
+			if test.isFiltered {
+				skippedBundleCounter.EXPECT().Mark(int64(1)).AnyTimes()
+			}
+
+			rules := opera.Rules{Upgrades: opera.GetBrioUpgrades()}
+			rules.Upgrades.TransactionBundles = test.bundlesEnabled
+
+			filteredTxs := filterObsoleteBundles([]*types.Transaction{test.tx}, test.blockNumber, &rules, log.Root(), skippedBundleCounter)
+			if test.isFiltered {
+				require.Empty(t, filteredTxs, "bundle should be filtered")
+			} else {
+				require.Equal(t, []*types.Transaction{test.tx}, filteredTxs)
+			}
 		})
 	}
 }
