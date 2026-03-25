@@ -2054,3 +2054,41 @@ func TestProcessedExecutionPlans_RestoreTruncatesListToSnapshotLength(t *testing
 	require.Len(t, plans.hashes, 1)
 	require.Equal(t, plans.hashes[0], common.Hash{1})
 }
+
+func TestBundleTransactionRunner_CreateSnapshot_RecordsStateDBSnapshotAndLengthOFProcessedBundles(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	statedb := state.NewMockStateDB(ctrl)
+	statedb.EXPECT().InterTxSnapshot().Return(42)
+
+	runner := bundleTransactionRunner{
+		ctxt: &runContext{
+			statedb: statedb,
+		},
+		processedBundles: []ProcessedBundle{{}, {}}, // length of 2
+	}
+
+	snapshot := runner.CreateSnapshot()
+	require.Equal(t, 42, snapshot.stateDbSnapshot)
+	require.Equal(t, 2, snapshot.processedBundleSnapshot)
+}
+
+func TestBundleTransactionRunner_RevertToSnapshot_RevertsStateDBAndTruncatesProcessedBundles(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	statedb := state.NewMockStateDB(ctrl)
+	statedb.EXPECT().RevertToInterTxSnapshot(42)
+
+	runner := bundleTransactionRunner{
+		ctxt: &runContext{
+			statedb: statedb,
+		},
+		processedBundles: []ProcessedBundle{{}, {}, {}, {}}, // length of 4
+	}
+
+	snapshot := bundleTransactionRunnerSnapshot{
+		stateDbSnapshot:         42,
+		processedBundleSnapshot: 2,
+	}
+
+	runner.RevertToSnapshot(snapshot)
+	require.Len(t, runner.processedBundles, 2)
+}
