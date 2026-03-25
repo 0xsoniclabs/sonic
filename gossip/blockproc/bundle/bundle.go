@@ -138,8 +138,8 @@ func (r BlockRange) Size() uint64 {
 	if r.Latest < r.Earliest {
 		return 0
 	}
-	// check for overflow, which can happen if Latest is close to the maximum uint64 value and Earliest is close to 0
-	if r.Latest-r.Earliest > math.MaxUint64-1 {
+	// overflow check
+	if r.Earliest == 0 && r.Latest == math.MaxUint64 {
 		return math.MaxUint64
 	}
 	return r.Latest - r.Earliest + 1

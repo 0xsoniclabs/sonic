@@ -197,15 +197,15 @@ func TestMakeMaxRangeStartingAt_CreatesMaxRangeStartingAtGivenBlock(t *testing.T
 			start:        100,
 			expectedSize: MaxBlockRange,
 		},
-		"max uint64 - max range": {
-			start:        math.MaxUint64 - MaxBlockRange,
-			expectedSize: MaxBlockRange,
-		},
-		"max uint64 - max range + 1": {
+		"start high and not cap range": {
 			start:        math.MaxUint64 - MaxBlockRange + 1,
 			expectedSize: MaxBlockRange,
 		},
-		"max uint64": {
+		"start high and cap range": {
+			start:        math.MaxUint64 - MaxBlockRange + 2,
+			expectedSize: MaxBlockRange - 1,
+		},
+		"start at max uint64": {
 			start:        math.MaxUint64,
 			expectedSize: 1,
 		},
@@ -214,6 +214,11 @@ func TestMakeMaxRangeStartingAt_CreatesMaxRangeStartingAtGivenBlock(t *testing.T
 		t.Run(name, func(t *testing.T) {
 			r := MakeMaxRangeStartingAt(c.start)
 			require.Equal(t, c.start, r.Earliest)
+			expectedLatest := c.start + c.expectedSize - 1
+			if c.start > math.MaxUint64-MaxBlockRange {
+				expectedLatest = math.MaxUint64
+			}
+			require.Equal(t, expectedLatest, r.Latest)
 			require.Equal(t, c.expectedSize, r.Size())
 		})
 	}
@@ -224,45 +229,61 @@ func TestBlockRange_Size_ReturnsCorrectSize(t *testing.T) {
 		blockRange BlockRange
 		want       uint64
 	}{
-		"empty block range": {
-			blockRange: BlockRange{Earliest: 10, Latest: 9},
-			want:       0,
+		"empty range": {
+			blockRange: BlockRange{
+				Earliest: 10,
+				Latest:   9,
+			},
+			want: 0,
 		},
-		"single block range": {
-			blockRange: BlockRange{Earliest: 10, Latest: 10},
-			want:       1,
+		"single range": {
+			blockRange: BlockRange{
+				Earliest: 10,
+				Latest:   10,
+			},
+			want: 1,
 		},
-		"two block range": {
-			blockRange: BlockRange{Earliest: 10, Latest: 11},
-			want:       2,
+		"two blocks range": {
+			blockRange: BlockRange{
+				Earliest: 10,
+				Latest:   11,
+			},
+			want: 2,
 		},
-		"multiple block range": {
-			blockRange: BlockRange{Earliest: 10, Latest: 20},
-			want:       11,
+		"multiple blocks range": {
+			blockRange: BlockRange{
+				Earliest: 10,
+				Latest:   20,
+			},
+			want: 11,
 		},
-		"super-long range": {
-			blockRange: BlockRange{Earliest: 0, Latest: 10_000_000},
-			want:       10_000_001,
+		"large range": {
+			blockRange: BlockRange{
+				Earliest: 0,
+				Latest:   10_000_000,
+			},
+			want: 10_000_001,
 		},
-		"max range - 1": {
-			blockRange: BlockRange{Earliest: 0, Latest: math.MaxUint64 - MaxBlockRange - 1},
-			want:       math.MaxUint64 - MaxBlockRange,
+		"large range with latest near max uint64": {
+			blockRange: BlockRange{
+				Earliest: 0,
+				Latest:   math.MaxUint64 - 1,
+			},
+			want: math.MaxUint64,
 		},
-		"max range": {
-			blockRange: BlockRange{Earliest: 0, Latest: math.MaxUint64 - MaxBlockRange},
-			want:       math.MaxUint64 - MaxBlockRange + 1,
+		"full uint64 range": {
+			blockRange: BlockRange{
+				Earliest: 0,
+				Latest:   math.MaxUint64,
+			},
+			want: math.MaxUint64,
 		},
-		"max range + 1": {
-			blockRange: BlockRange{Earliest: 0, Latest: math.MaxUint64 - MaxBlockRange + 1},
-			want:       math.MaxUint64 - MaxBlockRange + 2,
-		},
-		"max uint64 - 1": {
-			blockRange: BlockRange{Earliest: 0, Latest: math.MaxUint64 - 1},
-			want:       math.MaxUint64,
-		},
-		"max uint64": {
-			blockRange: BlockRange{Earliest: 0, Latest: math.MaxUint64},
-			want:       math.MaxUint64,
+		"small range start near max uint64": {
+			blockRange: BlockRange{
+				Earliest: math.MaxUint64 - 10,
+				Latest:   math.MaxUint64,
+			},
+			want: 11,
 		},
 	}
 
