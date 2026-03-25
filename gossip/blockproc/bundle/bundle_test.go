@@ -182,43 +182,62 @@ func TestExtractExecutionPlan_FailsIfPlanExtractionFails(t *testing.T) {
 
 func TestMakeMaxRangeStartingAt_CreatesMaxRangeStartingAtGivenBlock(t *testing.T) {
 	cases := map[string]struct {
-		start        uint64
-		expectedSize uint64
+		start          uint64
+		expectedLatest uint64
+		expectedSize   uint64
 	}{
 		"start at 0": {
-			start:        0,
-			expectedSize: MaxBlockRange,
+			start:          0,
+			expectedLatest: MaxBlockRange - 1,
+			expectedSize:   MaxBlockRange,
 		},
 		"start at 1": {
-			start:        1,
-			expectedSize: MaxBlockRange,
+			start:          1,
+			expectedLatest: MaxBlockRange,
+			expectedSize:   MaxBlockRange,
 		},
 		"start at 100": {
-			start:        100,
-			expectedSize: MaxBlockRange,
+			start:          100,
+			expectedLatest: 100 + MaxBlockRange - 1,
+			expectedSize:   MaxBlockRange,
 		},
-		"start high and not cap range": {
-			start:        math.MaxUint64 - MaxBlockRange + 1,
-			expectedSize: MaxBlockRange,
+		"start with max plus one blocks": {
+			start:          math.MaxUint64 - MaxBlockRange - 1,
+			expectedLatest: math.MaxUint64 - 2,
+			expectedSize:   MaxBlockRange,
 		},
-		"start high and cap range": {
-			start:        math.MaxUint64 - MaxBlockRange + 2,
-			expectedSize: MaxBlockRange - 1,
+		"start with max blocks": {
+			start:          math.MaxUint64 - MaxBlockRange,
+			expectedLatest: math.MaxUint64 - 1,
+			expectedSize:   MaxBlockRange,
+		},
+
+		"start with exact left blocks": {
+			start:          math.MaxUint64 - MaxBlockRange + 1,
+			expectedLatest: math.MaxUint64,
+			expectedSize:   MaxBlockRange,
+		},
+		"start with not enough blocks": {
+			start:          math.MaxUint64 - MaxBlockRange + 2,
+			expectedLatest: math.MaxUint64,
+			expectedSize:   MaxBlockRange - 1,
+		},
+		"start at max uint64 - 1": {
+			start:          math.MaxUint64 - 1,
+			expectedLatest: math.MaxUint64,
+			expectedSize:   2,
 		},
 		"start at max uint64": {
-			start:        math.MaxUint64,
-			expectedSize: 1,
+			start:          math.MaxUint64,
+			expectedLatest: math.MaxUint64,
+			expectedSize:   1,
 		},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
 			r := MakeMaxRangeStartingAt(c.start)
 			require.Equal(t, c.start, r.Earliest)
-			expectedLatest := c.start + c.expectedSize - 1
-			if c.start > math.MaxUint64-MaxBlockRange {
-				expectedLatest = math.MaxUint64
-			}
-			require.Equal(t, expectedLatest, r.Latest)
+			require.Equal(t, c.expectedLatest, r.Latest)
 			require.Equal(t, c.expectedSize, r.Size())
 		})
 	}
@@ -284,6 +303,20 @@ func TestBlockRange_Size_ReturnsCorrectSize(t *testing.T) {
 				Latest:   math.MaxUint64,
 			},
 			want: 11,
+		},
+		"small range with the last two blocks": {
+			blockRange: BlockRange{
+				Earliest: math.MaxUint64 - 1,
+				Latest:   math.MaxUint64,
+			},
+			want: 2,
+		},
+		"single block range at max uint64": {
+			blockRange: BlockRange{
+				Earliest: math.MaxUint64,
+				Latest:   math.MaxUint64,
+			},
+			want: 1,
 		},
 	}
 
