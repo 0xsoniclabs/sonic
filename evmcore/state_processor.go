@@ -226,27 +226,25 @@ func runTransactions(
 	legacyTxIndexOffset int,
 	trueTxIndexOffset int,
 ) ExecutionSummary {
-	processed := make([]ProcessedTransaction, 0, len(transactions))
-	var bundles []ProcessedBundle
+	processedTransactions := make([]ProcessedTransaction, 0, len(transactions))
+	var processedBundles []ProcessedBundle
 	for _, tx := range transactions {
-		legacyNextId := len(processed) + legacyTxIndexOffset
+		legacyNextId := len(processedTransactions) + legacyTxIndexOffset
 
 		trueNextId := trueTxIndexOffset
-		for _, p := range processed {
+		for _, p := range processedTransactions {
 			if p.Receipt != nil {
 				trueNextId++
 			}
 		}
 
-		txs, processedBundle, _ := runTransaction(context, tx, legacyNextId, trueNextId)
-		processed = append(processed, txs...)
-		if processedBundle != nil {
-			bundles = append(bundles, *processedBundle)
-		}
+		txs, bundles, _ := runTransaction(context, tx, legacyNextId, trueNextId)
+		processedTransactions = append(processedTransactions, txs...)
+		processedBundles = append(processedBundles, bundles...)
 	}
 	return ExecutionSummary{
-		ProcessedTransactions: processed,
-		ProcessedBundles:      bundles,
+		ProcessedTransactions: processedTransactions,
+		ProcessedBundles:      processedBundles,
 	}
 }
 
@@ -255,7 +253,7 @@ func runTransaction(
 	tx *types.Transaction,
 	legacyTxIndexOffset int,
 	trueTxIndexOffset int,
-) ([]ProcessedTransaction, *ProcessedBundle, core_types.TransactionResult) {
+) ([]ProcessedTransaction, []ProcessedBundle, core_types.TransactionResult) {
 	// Since a transaction bundle has a gas-price of 0 it would be considered a
 	// sponsorship request. Thus, we need to check for bundles first.
 	if context.upgrades.TransactionBundles && bundle.IsEnvelope(tx) {
@@ -275,7 +273,7 @@ func runTransaction(
 type _transactionRunner interface {
 	runRegularTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) (ProcessedTransaction, core_types.TransactionResult)
 	runSponsoredTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) ([]ProcessedTransaction, core_types.TransactionResult)
-	runTransactionBundle(ctxt *runContext, tx *types.Transaction, legacyTxIndex int, trueTxIndex int) ([]ProcessedTransaction, *ProcessedBundle, core_types.TransactionResult)
+	runTransactionBundle(ctxt *runContext, tx *types.Transaction, legacyTxIndex int, trueTxIndex int) ([]ProcessedTransaction, []ProcessedBundle, core_types.TransactionResult)
 }
 
 // transactionRunner implements the _transactionRunner interface by using an
@@ -379,7 +377,7 @@ func (r *transactionRunner) runTransactionBundle(
 	tx *types.Transaction,
 	legacyTxOffset int,
 	trueTxOffset int,
-) ([]ProcessedTransaction, *ProcessedBundle, core_types.TransactionResult) {
+) ([]ProcessedTransaction, []ProcessedBundle, core_types.TransactionResult) {
 	if !ctxt.upgrades.TransactionBundles {
 		log.Warn("Transaction bundles are not enabled, skipping bundle transaction", "tx", tx.Hash().Hex())
 		return []ProcessedTransaction{{Transaction: tx}}, nil, core_types.TransactionResultInvalid
@@ -405,7 +403,7 @@ func (r *transactionRunner) runTransactionBundle(
 	preSuccessfulCount := ctxt.processedExecutionPlans.snapshot()
 	ctxt.processedExecutionPlans.add(planHash)
 
-	processedBundle := &ProcessedBundle{
+	processedBundle := ProcessedBundle{
 		ExecutionPlanHash: plan.Hash(),
 		Position:          uint32(trueTxOffset),
 	}
@@ -414,14 +412,14 @@ func (r *transactionRunner) runTransactionBundle(
 	runner := bundleTransactionRunner{ctxt: ctxt, legacyTxOffset: legacyTxOffset, trueTxOffset: trueTxOffset}
 	if success := bundle.RunBundle(txBundle, &runner); !success {
 		ctxt.processedExecutionPlans.restore(preSuccessfulCount)
-		return []ProcessedTransaction{}, processedBundle, core_types.TransactionResultFailed
+		return []ProcessedTransaction{}, []ProcessedBundle{processedBundle}, core_types.TransactionResultFailed
 	}
 	for _, processedTx := range runner.processedTransactions {
 		if processedTx.Receipt != nil {
 			processedBundle.Count++
 		}
 	}
-	return runner.processedTransactions, processedBundle, core_types.TransactionResultSuccessful
+	return runner.processedTransactions, []ProcessedBundle{processedBundle}, core_types.TransactionResultSuccessful
 }
 
 // bundleTransactionRunner is an adapter implementing the bundle.TransactionRunner
