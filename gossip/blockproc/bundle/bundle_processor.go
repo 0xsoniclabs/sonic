@@ -29,9 +29,9 @@ import (
 //
 // This is the canonical implementation of the bundle execution logic, which
 // defines the semantic of the execution flags.
-func RunBundle(
+func RunBundle[S any](
 	bundle *TransactionBundle,
-	runner TransactionRunner,
+	runner TransactionRunner[S],
 ) bool {
 	snapshot := runner.CreateSnapshot()
 
@@ -52,17 +52,17 @@ func RunBundle(
 // TransactionRunner defines an interface for running individual transactions
 // within a bundle and obtaining their results, as used by the RunBundle
 // function to determine the overall success of the bundle execution.
-type TransactionRunner interface {
+type TransactionRunner[S any] interface {
 	Run(tx *types.Transaction) core_types.TransactionResult
-	CreateSnapshot() int
-	RevertToSnapshot(id int)
+	CreateSnapshot() S
+	RevertToSnapshot(id S)
 }
 
 // runAllOfBundle executes all transactions in the bundle and returns true if
 // all transactions are considered successful, false otherwise.
-func runAllOfBundle(
+func runAllOfBundle[S any](
 	bundle *TransactionBundle,
-	runner TransactionRunner,
+	runner TransactionRunner[S],
 ) bool {
 	for _, tx := range bundle.Transactions {
 		result := runner.Run(tx)
@@ -76,9 +76,9 @@ func runAllOfBundle(
 // runOneOfBundle executes the transactions in the bundle and stops at the first
 // successful transaction. It returns true if at least one transaction is
 // considered successful, false otherwise.
-func runOneOfBundle(
+func runOneOfBundle[S any](
 	bundle *TransactionBundle,
-	runner TransactionRunner,
+	runner TransactionRunner[S],
 ) bool {
 	for _, tx := range bundle.Transactions {
 		result := runner.Run(tx)

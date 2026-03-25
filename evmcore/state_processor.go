@@ -386,7 +386,9 @@ func (r *transactionRunner) runTransactionBundle(
 			processedBundle.Count++
 		}
 	}
-	return runner.processedTransactions, []ProcessedBundle{processedBundle}, core_types.TransactionResultSuccessful
+	// the processed bundles are all processed nested bundles and this bundle itself
+	processedBundles := append(runner.processedBundles, processedBundle)
+	return runner.processedTransactions, processedBundles, core_types.TransactionResultSuccessful
 }
 
 // bundleTransactionRunner is an adapter implementing the bundle.TransactionRunner
@@ -395,11 +397,18 @@ type bundleTransactionRunner struct {
 	ctxt                  *runContext
 	txOffset              int
 	processedTransactions []ProcessedTransaction
+	processedBundles      []ProcessedBundle
+}
+
+type bundleTransactionRunnerSnapshot struct {
+	stateDbSnapshot         int
+	processedBundleSnapshot int
 }
 
 func (b *bundleTransactionRunner) Run(tx *types.Transaction) core_types.TransactionResult {
-	processed, _, result := runTransaction(b.ctxt, tx, b.txOffset)
+	processed, bundles, result := runTransaction(b.ctxt, tx, b.txOffset)
 	b.processedTransactions = append(b.processedTransactions, processed...)
+	b.processedBundles = append(b.processedBundles, bundles...)
 
 	if result != core_types.TransactionResultInvalid {
 		for _, p := range processed {
@@ -412,12 +421,16 @@ func (b *bundleTransactionRunner) Run(tx *types.Transaction) core_types.Transact
 	return result
 }
 
-func (b *bundleTransactionRunner) CreateSnapshot() int {
-	return b.ctxt.statedb.InterTxSnapshot()
+func (b *bundleTransactionRunner) CreateSnapshot() bundleTransactionRunnerSnapshot {
+	return bundleTransactionRunnerSnapshot{
+		stateDbSnapshot:         b.ctxt.statedb.InterTxSnapshot(),
+		processedBundleSnapshot: len(b.processedBundles),
+	}
 }
 
-func (b *bundleTransactionRunner) RevertToSnapshot(id int) {
-	b.ctxt.statedb.RevertToInterTxSnapshot(id)
+func (b *bundleTransactionRunner) RevertToSnapshot(snapshot bundleTransactionRunnerSnapshot) {
+	b.ctxt.statedb.RevertToInterTxSnapshot(snapshot.stateDbSnapshot)
+	b.processedBundles = b.processedBundles[:snapshot.processedBundleSnapshot]
 }
 
 // _evm is an interface to an EVM instance that can be used to run a single
