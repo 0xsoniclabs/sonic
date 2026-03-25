@@ -18,8 +18,9 @@ package bundles
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"math/big"
+	"slices"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/ethapi"
@@ -78,17 +79,15 @@ func TestBundle_CanBeProcessedByTheNetwork(t *testing.T) {
 		BuildEnvelopeBundleAndPlan()
 
 	// Check bundle status before submission.
-	info, err := getBundleInfo(t.Context(), client.Client(), plan.Hash())
-	require.NoError(t, err)
-	require.Equal(t, ethapi.BundleStatusUnknown, info.Status)
+	_, err = getBundleInfo(t.Context(), client.Client(), plan.Hash())
+	require.ErrorIs(t, err, ethereum.NotFound)
 
 	// Run the bundle.
 	require.NoError(t, client.SendTransaction(t.Context(), bundleTx))
 
 	// Wait for the bundle to be processed.
-	info, err = waitForBundleExecution(t.Context(), client.Client(), plan.Hash())
+	info, err := waitForBundleExecution(t.Context(), client.Client(), plan.Hash())
 	require.NoError(t, err)
-	require.Equal(t, ethapi.BundleStatusExecuted, info.Status)
 
 	// Check the block and position in which the bundle was included.
 	require.NotNil(t, info.Block)
@@ -121,14 +120,17 @@ func getBundleInfo(
 	ctxt context.Context,
 	client *rpc.Client,
 	executionPlanHash common.Hash,
-) (ethapi.RPCBundleInfo, error) {
-	var info ethapi.RPCBundleInfo
+) (*ethapi.RPCBundleInfo, error) {
+	var info *ethapi.RPCBundleInfo
 	err := client.CallContext(
 		ctxt,
 		&info,
 		"sonic_getBundleInfo",
 		executionPlanHash,
 	)
+	if err == nil && info == nil {
+		return nil, ethereum.NotFound
+	}
 	return info, err
 }
 
@@ -136,50 +138,40 @@ func waitForBundleExecution(
 	ctxt context.Context,
 	client *rpc.Client,
 	executionPlanHash common.Hash,
-) (ethapi.RPCBundleInfo, error) {
+) (*ethapi.RPCBundleInfo, error) {
 	infos, err := waitForBundlesExecution(
 		ctxt, client,
 		[]common.Hash{executionPlanHash},
 	)
-	if err != nil {
-		return ethapi.RPCBundleInfo{}, err
-	}
-	if len(infos) != 1 {
-		return ethapi.RPCBundleInfo{}, fmt.Errorf("failed to obtain bundle info")
-	}
-	return infos[0], nil
+	return infos[0], err
 }
 
 func waitForBundlesExecution(
 	ctxt context.Context,
 	client *rpc.Client,
 	executionPlanHashes []common.Hash,
-) ([]ethapi.RPCBundleInfo, error) {
+) ([]*ethapi.RPCBundleInfo, error) {
 
-	infos := make([]ethapi.RPCBundleInfo, len(executionPlanHashes))
-	done := make([]bool, len(executionPlanHashes))
-
+	infos := make([]*ethapi.RPCBundleInfo, len(executionPlanHashes))
 	err := tests.WaitFor(ctxt, func(innerCtx context.Context) (bool, error) {
-
-		allFinished := true
 		for i, plan := range executionPlanHashes {
-			if done[i] {
+			if infos[i] != nil {
 				continue
 			}
 
 			info, err := getBundleInfo(innerCtx, client, plan)
 			if err != nil {
+				if errors.Is(err, ethereum.NotFound) {
+					continue
+				}
 				return false, err
 			}
 
-			if info.Status != ethapi.BundleStatusPending {
+			if info != nil {
 				infos[i] = info
-				done[i] = true
-			} else {
-				allFinished = false
 			}
 		}
-		return allFinished, nil
+		return !slices.Contains(infos, nil), nil
 	})
 	return infos, err
 }

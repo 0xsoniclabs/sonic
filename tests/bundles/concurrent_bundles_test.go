@@ -17,13 +17,12 @@
 package bundles
 
 import (
-	"fmt"
+	"context"
 	"math"
 	"math/big"
 	"testing"
 	"time"
 
-	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
@@ -66,7 +65,6 @@ func testSucceedingConcurrentBundles(
 	defer client.Close()
 
 	// Create all needed accounts and endow in parallel.
-	fmt.Printf("Creating and endowing accounts ...\n")
 	accounts := tests.NewAccounts(N * W)
 	addresses := make([]common.Address, len(accounts))
 	for i, cur := range accounts {
@@ -74,8 +72,6 @@ func testSucceedingConcurrentBundles(
 	}
 	_, err = net.EndowAccounts(addresses, big.NewInt(1e18))
 	require.NoError(err)
-
-	fmt.Printf("Creating bundle transactions ...\n")
 
 	envelopes := make([]*types.Transaction, N)
 	planHashes := make([]common.Hash, N)
@@ -91,27 +87,22 @@ func testSucceedingConcurrentBundles(
 	}
 
 	// Submit all envelops to be processed in parallel.
-	fmt.Printf("Sending bundled transactions in parallel ...\n")
 	_, err = net.SendAll(envelopes)
 	require.NoError(err)
 
 	// Wait for all bundles to be completed.
-	fmt.Printf("Waiting for completion ...\n")
 	infos, err := waitForBundlesExecution(t.Context(), client.Client(), planHashes)
 	require.NoError(err)
 
 	// Check that all bundles have been accepted.
-	fmt.Printf("Checking results ...\n")
 	minBlock := uint64(math.MaxUint64)
 	maxBlock := uint64(0)
 	for _, info := range infos {
-		require.Equal(ethapi.BundleStatusExecuted, info.Status)
 		if info.Block != nil {
 			minBlock = min(minBlock, uint64(*info.Block))
 			maxBlock = max(maxBlock, uint64(*info.Block))
 		}
 	}
-	fmt.Printf("All bundles got executed in block range %d - %d\n", minBlock, maxBlock)
 
 	// Check that all obtained infos match the respective transactions.
 	for i, info := range infos {
@@ -147,7 +138,6 @@ func testRandomlyFailingBundles(
 	defer client.Close()
 
 	// Create all needed accounts and endow in parallel.
-	fmt.Printf("Creating and endowing accounts ...\n")
 	accounts := tests.NewAccounts(N * W)
 	addresses := make([]common.Address, len(accounts))
 	for i, cur := range accounts {
@@ -155,8 +145,6 @@ func testRandomlyFailingBundles(
 	}
 	_, err = net.EndowAccounts(addresses, big.NewInt(1e18))
 	require.NoError(err)
-
-	fmt.Printf("Creating bundle transactions ...\n")
 
 	envelopes := make([]*types.Transaction, N)
 	planHashes := make([]common.Hash, N)
@@ -171,10 +159,7 @@ func testRandomlyFailingBundles(
 		planHashes[i] = plan.Hash()
 	}
 
-	// Submit all envelops to be processed in parallel.
-	fmt.Printf("Sending bundled transactions in parallel ...\n")
-
-	// Send all in in parallel, but ignore rejected bundles.
+	// Send all envelopes in parallel, but ignore rejected bundles.
 	err = tests.RunParallelWithClient(net, len(envelopes),
 		func(client *tests.PooledEhtClient, i int) error {
 			err := client.SendTransaction(t.Context(), envelopes[i])
@@ -186,29 +171,28 @@ func testRandomlyFailingBundles(
 	)
 	require.NoError(err)
 
-	// Wait for all bundles to be completed.
-	fmt.Printf("Waiting for completion ...\n")
-	infos, err := waitForBundlesExecution(t.Context(), client.Client(), planHashes)
-	require.NoError(err)
-
-	// TODO: there is a bug in the reporting of bundle states for bundles that
-	// may become invalid while they are in flight on the DAG. This needs to
-	// be fixed. This sleep and re-fetching of the infos mitigates this for
-	// now, but is not a proper solution.
-	_ = infos
-	time.Sleep(1 * time.Second)
-	infos, err = waitForBundlesExecution(t.Context(), client.Client(), planHashes)
-	require.NoError(err)
+	// Wait for execution
+	timeout, timeoutCancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer timeoutCancel()
+	infos, err := waitForBundlesExecution(timeout, client.Client(), planHashes)
+	if err != nil {
+		// This test may have envelopes which were never admitted into the pool,
+		// and other envelopes which were dropped while waiting for execution.
+		// WaitForBundlesExecution will timeout waiting for execution in these cases.
+		require.ErrorIs(err, context.DeadlineExceeded)
+	}
 
 	// For those bundles that got executed, check that the obtained infos match
 	// the respective transactions.
 	for i, info := range infos {
+
 		bundle, err := bundle.OpenEnvelope(envelopes[i])
 		require.NoError(err)
 
-		if info.Status == ethapi.BundleStatusExecuted && *info.Count > 0 {
-			fmt.Printf("Bundle %d got executed in block %d at offset %d with %d transactions\n", i, *info.Block, *info.Position, *info.Count)
-			require.EqualValues(*info.Count, len(bundle.Transactions))
+		if info != nil && *info.Count > 0 {
+			// bundle produced transactions, so we expect all transactions
+			// to be included in a block.
+			require.Len(bundle.Transactions, int(*info.Count))
 
 			for i, tx := range bundle.Transactions {
 				receipt, err := client.TransactionReceipt(t.Context(), tx.Hash())
@@ -217,14 +201,8 @@ func testRandomlyFailingBundles(
 				require.EqualValues(int(*info.Position)+i, receipt.TransactionIndex)
 			}
 		} else {
-
-			if info.Status == ethapi.BundleStatusExecuted {
-				fmt.Printf("Bundle %d got executed in block %d at offset %d and rolled back\n", i, *info.Block, *info.Position)
-			} else {
-				fmt.Printf("Bundle %d got dropped\n", i)
-			}
-
-			// Make sure no transaction ended up in a block.
+			// bundle got reverted or dropped from the pool, in either case
+			// we expect no transaction to be included in a block.
 			for _, tx := range bundle.Transactions {
 				receipt, err := client.TransactionReceipt(t.Context(), tx.Hash())
 				require.ErrorIs(err, ethereum.NotFound, "got receipt: %v", receipt)
