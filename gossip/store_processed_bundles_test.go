@@ -20,6 +20,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
@@ -848,9 +849,8 @@ func TestStore_deleteOutdatedBundles_LogsOnBatchDeleteError(t *testing.T) {
 
 func TestStore_computeNewBundleStateHash_ReturnsExpectedHash(t *testing.T) {
 
-	referenceHash := func(st *testing.T, oldHash, addedHash, deletedHash common.Hash, blockNum uint64) common.Hash {
-		buf := []byte{}
-		buf = append(buf, oldHash.Bytes()...)
+	alternativeImpl := func(st *testing.T, oldHash, addedHash, deletedHash common.Hash, blockNum uint64) common.Hash {
+		buf := append([]byte{}, oldHash.Bytes()...)
 		buf = append(buf, addedHash.Bytes()...)
 		buf = append(buf, deletedHash.Bytes()...)
 		bigEndianBlock := make([]byte, 8)
@@ -866,6 +866,7 @@ func TestStore_computeNewBundleStateHash_ReturnsExpectedHash(t *testing.T) {
 		addedHash   common.Hash
 		deletedHash common.Hash
 		blockNum    uint64
+		expected    common.Hash
 	}{
 		{
 			name:        "all zeros",
@@ -873,6 +874,7 @@ func TestStore_computeNewBundleStateHash_ReturnsExpectedHash(t *testing.T) {
 			addedHash:   common.Hash{},
 			deletedHash: common.Hash{},
 			blockNum:    0,
+			expected:    common.HexToHash("c24cd7564e291016870aca25c634ca9ab560c07c935b6c0fe3b559cbd3de7501"),
 		},
 		{
 			name:        "simple nonzero",
@@ -880,20 +882,23 @@ func TestStore_computeNewBundleStateHash_ReturnsExpectedHash(t *testing.T) {
 			addedHash:   common.Hash{4, 5, 6},
 			deletedHash: common.Hash{7, 8, 9},
 			blockNum:    123,
+			expected:    common.HexToHash("21f799a0c47f7c86bfe025aaa725d5a855e05340f257d200eae6fa3a3f5d1319"),
 		},
 		{
 			name:        "max blockNum",
 			oldHash:     common.Hash{0xff, 0xff, 0xff},
 			addedHash:   common.Hash{0xaa, 0xbb, 0xcc},
 			deletedHash: common.Hash{0x11, 0x22, 0x33},
-			blockNum:    ^uint64(0),
+			blockNum:    math.MaxUint64,
+			expected:    common.HexToHash("c442b47e6caf1856c00f46452c45b3f669b9c45f47da9c7bf54cc32e408e9442"),
 		},
 	}
 
 	for _, v := range testVectors {
 		t.Run(v.name, func(t *testing.T) {
 			got := computeNewBundleStateHash(v.oldHash, v.addedHash, v.deletedHash, v.blockNum)
-			ref := referenceHash(t, v.oldHash, v.addedHash, v.deletedHash, v.blockNum)
+			ref := alternativeImpl(t, v.oldHash, v.addedHash, v.deletedHash, v.blockNum)
+			require.Equal(t, v.expected, got, "computed hash should match expected value")
 			require.Equal(t, ref, got, "referenceHash (SHA256) should not match Keccak256 implementation")
 		})
 	}
