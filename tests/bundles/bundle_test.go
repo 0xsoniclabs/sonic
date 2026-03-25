@@ -58,7 +58,7 @@ type Case struct {
 	submittedTxTypes []txType
 	blockTxIndices   []txIndex
 	blockTxStatuses  []txStatus
-	counter          int64
+	contractCounter  int64
 }
 
 type NamedCase struct {
@@ -565,7 +565,7 @@ func checkCase(t *testing.T, session tests.IntegrationTestNetSession, accounts *
 			// Check whether the bundle was rejected by the pre-check.
 			require.ErrorContains(t, err, "permanently blocked")
 			// This is only allowed for transactions that should fail.
-			require.Zero(t, c.counter)
+			require.Zero(t, c.contractCounter)
 			require.Empty(t, c.blockTxIndices)
 			return
 		}
@@ -597,7 +597,7 @@ func checkCase(t *testing.T, session tests.IntegrationTestNetSession, accounts *
 		}
 
 		// Check the final state is correct
-		require.Equal(t, c.counter, getCounterValue(t, client, contractInfo))
+		require.Equal(t, c.contractCounter, getCounterValue(t, client, contractInfo))
 	})
 }
 
