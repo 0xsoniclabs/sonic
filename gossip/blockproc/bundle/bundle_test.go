@@ -271,7 +271,7 @@ func TestBlockRange_Size_ReturnsCorrectSize(t *testing.T) {
 			},
 			want: math.MaxUint64,
 		},
-		"full uint64 range": {
+		"too large range is capped to prevent overflow": {
 			blockRange: BlockRange{
 				Earliest: 0,
 				Latest:   math.MaxUint64,
