@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/inter/state"
@@ -1453,7 +1454,188 @@ func TestRunSponsoredTransaction_CoveredTransaction_ProcessesTwoTransactionsSucc
 	)
 }
 
-func TestRunTransaction_InternalTransactions_SkipsTransactionChecksTrue(t *testing.T) {
+func TestRunTransactionBundle_AddsHashesOfSuccessfulPlansToList(t *testing.T) {
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+
+	ctrl := gomock.NewController(t)
+	state := state.NewMockStateDB(ctrl)
+	evm := NewMock_evm(ctrl)
+
+	state.EXPECT().InterTxSnapshot().Return(1).AnyTimes()
+	state.EXPECT().RevertToInterTxSnapshot(1).AnyTimes()
+
+	runner := &transactionRunner{evm: evm}
+
+	context := &runContext{
+		statedb:                 state,
+		signer:                  signer,
+		baseFee:                 big.NewInt(1),
+		upgrades:                opera.Upgrades{TransactionBundles: true},
+		blockNumber:             &big.Int{},
+		runner:                  runner,
+		processedExecutionPlans: &processedExecutionPlans{},
+	}
+
+	// Run a successful bundle
+	envelope := getTransactionBundle(t)
+
+	plan, err := bundle.ExtractExecutionPlan(envelope)
+	require.NoError(t, err)
+
+	evm.EXPECT().runWithBaseFeeCheck(context, gomock.Any(), gomock.Any()).
+		Return(ProcessedTransaction{Transaction: &types.Transaction{}, Receipt: &types.Receipt{Status: types.ReceiptStatusSuccessful}})
+
+	_, _, _ = runner.runTransactionBundle(context, envelope, 0, 0)
+
+	require.Contains(t, context.processedExecutionPlans.hashes, plan.Hash())
+
+	// Run a failing bundle
+	envelope = getTransactionBundle(t)
+
+	plan, err = bundle.ExtractExecutionPlan(envelope)
+	require.NoError(t, err)
+
+	evm.EXPECT().runWithBaseFeeCheck(context, gomock.Any(), gomock.Any()).
+		Return(ProcessedTransaction{Transaction: &types.Transaction{}, Receipt: &types.Receipt{Status: types.ReceiptStatusFailed}})
+
+	_, _, _ = runner.runTransactionBundle(context, envelope, 0, 0)
+
+	require.NotContains(t, context.processedExecutionPlans.hashes, plan.Hash())
+}
+
+func TestRunTransactionBundle_SkipsPlansThatHaveBeenExecutedSuccessfullyBefore(t *testing.T) {
+	type test struct {
+		envelope                *types.Transaction
+		processedExecutionPlans processedExecutionPlans
+		runResults              []uint64
+		processedTransactions   int
+	}
+
+	tests := map[string]test{}
+
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	key2, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	// This test case executes a bundle with a plan hash that is already in the
+	// list of successful plan hashes.
+	envelope := getTransactionBundle(t)
+	plan, err := bundle.ExtractExecutionPlan(envelope)
+	require.NoError(t, err)
+	tests["same plan in top level bundle"] = test{
+		envelope:                envelope,
+		processedExecutionPlans: processedExecutionPlans{hashes: []common.Hash{plan.Hash()}},
+		runResults:              nil,
+		processedTransactions:   1, // the envelope itself
+	}
+
+	// This test case executes a bundle containing a nested bundle with a plan
+	// hash that is already in the list of successful plan hashes.
+	nestedEnvelope := getTransactionBundle(t)
+	nestedPlan, err := bundle.ExtractExecutionPlan(nestedEnvelope)
+	require.NoError(t, err)
+	envelope = bundle.AllOf(
+		bundle.Step(key, nestedEnvelope),
+	)
+	tests["same plan in nested bundle"] = test{
+		envelope:                envelope,
+		processedExecutionPlans: processedExecutionPlans{hashes: []common.Hash{nestedPlan.Hash()}},
+		runResults:              nil,
+		processedTransactions:   0,
+	}
+
+	// This test case executes a bundle containing two nested bundles with the
+	// same plan hash.
+	nestedEnvelope = getTransactionBundle(t)
+	envelope = bundle.AllOf(
+		bundle.Step(key, nestedEnvelope),
+		bundle.Step(key2, nestedEnvelope), // because the key is different, the envelope is different, but the plan is still the same
+	)
+	tests["run same plan within nested bundle"] = test{
+		envelope:                envelope,
+		processedExecutionPlans: processedExecutionPlans{},
+		runResults:              []uint64{types.ReceiptStatusSuccessful},
+		processedTransactions:   0,
+	}
+
+	// This test case executes a bundle containing two nested bundles.
+	// The first nested bundle contains two nested bundles itself with the same plan hash.
+	// The second nested bundle contains one nested bundle with the same plan hash as well.
+	// So it looks like OneOf(AllOf(Plan1, Plan1), AllOf(Plan1))
+	// The first nested bundle should fail because it contains two bundles with the same plan hash.
+	// The rollback mechanism should remove these hashes again, and then the second nested bundle should succeed.
+	nestedNestedEnvelope := getTransactionBundle(t)
+	envelope = bundle.OneOf(
+		bundle.Step(key, bundle.AllOf(bundle.Step(key, nestedNestedEnvelope), bundle.Step(key, nestedNestedEnvelope))),
+		bundle.Step(key2, bundle.AllOf(bundle.Step(key, nestedNestedEnvelope))),
+	)
+	tests["run same plan within nested bundle"] = test{
+		envelope:                envelope,
+		processedExecutionPlans: processedExecutionPlans{},
+		runResults: []uint64{
+			types.ReceiptStatusSuccessful, // first tx in first nested bundle
+			// the second tx in the first nested bundle should not be attempted
+			types.ReceiptStatusSuccessful, // first tx in second nested bundle
+		},
+		processedTransactions: 1,
+	}
+
+	// This test case executes a bundle containing two nested bundles with the
+	// same plan hash. The first one fails, so the second one should still be attempted.
+	nestedEnvelope = getTransactionBundle(t)
+	envelope = bundle.OneOf(
+		bundle.Step(key, nestedEnvelope),
+		bundle.Step(key2, nestedEnvelope), // because the key is different, the envelope is different, but the plan is still the same
+	)
+	tests["retry same plan within nested bundle"] = test{
+		envelope:                envelope,
+		processedExecutionPlans: processedExecutionPlans{},
+		runResults:              []uint64{types.ReceiptStatusFailed, types.ReceiptStatusSuccessful},
+		processedTransactions:   1, // the first nested bundle fails, but the second one succeeds with one tx
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			signer := types.LatestSignerForChainID(big.NewInt(1))
+
+			ctrl := gomock.NewController(t)
+			state := state.NewMockStateDB(ctrl)
+			evm := NewMock_evm(ctrl)
+
+			state.EXPECT().InterTxSnapshot().Return(1).AnyTimes()
+			state.EXPECT().RevertToInterTxSnapshot(1).AnyTimes()
+
+			calls := []any{}
+			for _, runResult := range test.runResults {
+				calls = append(calls,
+					evm.EXPECT().runWithBaseFeeCheck(gomock.Any(), gomock.Any(), gomock.Any()).
+						Return(ProcessedTransaction{Transaction: &types.Transaction{}, Receipt: &types.Receipt{Status: runResult}}).Times(1),
+				)
+			}
+			gomock.InOrder(calls...)
+
+			runner := &transactionRunner{evm: evm}
+
+			gasPool := new(core.GasPool).AddGas(1_000_000)
+			context := &runContext{
+				statedb:                 state,
+				signer:                  signer,
+				baseFee:                 big.NewInt(1),
+				gasPool:                 gasPool,
+				upgrades:                opera.Upgrades{TransactionBundles: true},
+				blockNumber:             &big.Int{},
+				runner:                  runner,
+				processedExecutionPlans: &test.processedExecutionPlans,
+			}
+
+			processedTransactions, _, _ := runner.runTransactionBundle(context, test.envelope, 0, 0)
+			require.Len(t, processedTransactions, test.processedTransactions)
+		})
+	}
+}
+
+func TestRunRegularTransaction_InternalTransactions_SkipsTransactionChecksTrue(t *testing.T) {
 
 	maxTxGas := uint64(1_500_000)
 
@@ -1678,10 +1860,81 @@ func getSponsorshipRequest(t *testing.T) *types.Transaction {
 	})
 }
 
+func getTransactionBundle(t *testing.T) *types.Transaction {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	return bundle.AllOf(bundle.Step(key, &types.AccessListTx{
+		Nonce: 0, To: &common.Address{1}, Gas: 29_000, GasPrice: big.NewInt(1),
+	}))
+}
+
 func TestTransactionGenerationUtilities(t *testing.T) {
 	regular := getRegularTransaction(t)
 	request := getSponsorshipRequest(t)
 
 	require.False(t, subsidies.IsSponsorshipRequest(regular))
 	require.True(t, subsidies.IsSponsorshipRequest(request))
+}
+
+func TestProcessedExecutionPlans_AddAppendsHashToList(t *testing.T) {
+	plans := processedExecutionPlans{}
+
+	plan1 := common.Hash{1}
+	plan2 := common.Hash{2}
+
+	plans.add(plan1)
+	require.Len(t, plans.hashes, 1)
+	require.Equal(t, plans.hashes[0], plan1)
+
+	plans.add(plan2)
+	require.Len(t, plans.hashes, 2)
+	require.Equal(t, plans.hashes[0], plan1)
+	require.Equal(t, plans.hashes[1], plan2)
+}
+
+func TestProcessedExecutionPlans_ContainsChecksIfHashIsInList(t *testing.T) {
+	plans := &processedExecutionPlans{
+		hashes: []common.Hash{{1}, {2}, {3}},
+	}
+
+	require.True(t, plans.contains(common.Hash{1}))
+	require.True(t, plans.contains(common.Hash{2}))
+	require.True(t, plans.contains(common.Hash{3}))
+	require.False(t, plans.contains(common.Hash{4}))
+}
+
+func TestProcessedExecutionPlans_SnapshotReturnsCurrentLengthOfList(t *testing.T) {
+	plans := &processedExecutionPlans{
+		hashes: []common.Hash{{1}, {2}, {5}},
+	}
+
+	snapshot := plans.snapshot()
+	require.Equal(t, 3, snapshot)
+
+	plans.hashes = append(plans.hashes, common.Hash{7})
+	snapshot = plans.snapshot()
+	require.Equal(t, 4, snapshot)
+}
+
+func TestProcessedExecutionPlans_RestoreTruncatesListToSnapshotLength(t *testing.T) {
+	plans := &processedExecutionPlans{
+		hashes: []common.Hash{
+			{1},
+			{2},
+			{3},
+		},
+	}
+
+	plans.restore(2)
+	require.Len(t, plans.hashes, 2)
+	require.Equal(t, plans.hashes[0], common.Hash{1})
+	require.Equal(t, plans.hashes[1], common.Hash{2})
+
+	plans.restore(1)
+	require.Len(t, plans.hashes, 1)
+	require.Equal(t, plans.hashes[0], common.Hash{1})
+
+	plans.restore(1)
+	require.Len(t, plans.hashes, 1)
+	require.Equal(t, plans.hashes[0], common.Hash{1})
 }

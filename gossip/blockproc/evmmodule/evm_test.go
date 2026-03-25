@@ -323,8 +323,6 @@ func TestOperaEVMProcessor_Execute_BundlePositionsAreProperlyOffset(t *testing.T
 				alreadyProcessedTx[i] = processedTx
 			}
 
-			bundleTx := simpleBundleTx(t, chainId, test.bundleLength)
-
 			index := new(int)
 			*index = 0
 			next := func() int {
@@ -345,7 +343,7 @@ func TestOperaEVMProcessor_Execute_BundlePositionsAreProperlyOffset(t *testing.T
 				case "tx":
 					transactions[i] = tx
 				case "bundle":
-					transactions[i] = bundleTx
+					transactions[i] = simpleBundleTx(t, chainId, test.bundleLength)
 				default:
 					t.Fatalf("unknown transaction type: %s", txType)
 				}
