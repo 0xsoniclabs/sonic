@@ -211,7 +211,6 @@ func TestMakeMaxRangeStartingAt_CreatesMaxRangeStartingAtGivenBlock(t *testing.T
 			expectedLatest: math.MaxUint64 - 1,
 			expectedSize:   MaxBlockRange,
 		},
-
 		"start with exact left blocks": {
 			start:          math.MaxUint64 - MaxBlockRange + 1,
 			expectedLatest: math.MaxUint64,
@@ -222,12 +221,12 @@ func TestMakeMaxRangeStartingAt_CreatesMaxRangeStartingAtGivenBlock(t *testing.T
 			expectedLatest: math.MaxUint64,
 			expectedSize:   MaxBlockRange - 1,
 		},
-		"start at max uint64 - 1": {
+		"start with two blocks left": {
 			start:          math.MaxUint64 - 1,
 			expectedLatest: math.MaxUint64,
 			expectedSize:   2,
 		},
-		"start at max uint64": {
+		"start with one block left": {
 			start:          math.MaxUint64,
 			expectedLatest: math.MaxUint64,
 			expectedSize:   1,
