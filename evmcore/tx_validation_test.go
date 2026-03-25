@@ -1441,7 +1441,7 @@ func Test_validateBundleTransactions_IfBundleStateIsNotRunnable_RejectBundleTran
 			bundleState: BundleState{Executable: true},
 		},
 		"temporary_blocked": {
-			bundleState: BundleState{Executable: true, TemporarilyBlocked: true},
+			bundleState: BundleState{Executable: false, TemporarilyBlocked: true},
 		},
 		"non_executable": {
 			bundleState: BundleState{Executable: false, Reasons: []string{"some reason"}},

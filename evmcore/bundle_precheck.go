@@ -45,7 +45,11 @@ import (
 //  2. Temporarily blocked: the bundle is not executable right now, but it may
 //     become executable later (e.g., because it depends on a future block or on
 //     the execution of other transactions that are not included in the bundle).
-//     Example: BundleState{Executable: true, TemporarilyBlocked: true}
+//     Example: BundleState{
+//     Executable: false,
+//     TemporarilyBlocked: true,
+//     Reasons: []string{"bundle earliest not reached yet"},
+//     }
 //  3. Not executable: the bundle is not executable and there are known issues
 //     with it that will never be resolved (e.g., nonce conflicts that can not be
 //     resolved by waiting for other transactions to be executed).
@@ -92,8 +96,9 @@ func getBundleState(
 	}
 	if bundle.Earliest > currentBlock {
 		return BundleState{
-			Executable:         true,
+			Executable:         false,
 			TemporarilyBlocked: true,
+			Reasons:            []string{"bundle earliest not reached yet"},
 		}
 	}
 
@@ -105,11 +110,7 @@ func getBundleState(
 	stateDb := chain.StateDB()
 	state := checkForNonceConflicts(bundle, signer, stateDb)
 	if !state.Executable {
-		state.Reasons = append([]string{"nonce conflict check failed"}, state.Reasons...)
-		return state
-	}
-
-	if state.TemporarilyBlocked {
+		state.Reasons = append([]string{"nonce check failed"}, state.Reasons...)
 		return state
 	}
 
@@ -132,7 +133,7 @@ func getBundleState(
 	if success := trialRunner(envelop, chain, stateDb); !success {
 		return BundleState{
 			Executable: false,
-			Reasons:    []string{"bundle trial-run failed. Revise transactions in the plan"},
+			Reasons:    []string{"bundle trial-run failed"},
 		}
 	}
 	return BundleState{Executable: true}
@@ -212,8 +213,9 @@ func checkForNonceConflicts(
 	for sender := range runner.acceptedSender {
 		if nonceSource.GetNonce(sender) < lowest[sender] {
 			return BundleState{
-				Executable:         true,
+				Executable:         false,
 				TemporarilyBlocked: true,
+				Reasons:            []string{"gapped nonce"},
 			}
 		}
 	}

@@ -96,8 +96,9 @@ func Test_GetBundleState_ReturnsTemporaryBlockedForFutureBundle(t *testing.T) {
 	require.NoError(t, err)
 
 	state := GetBundleState(chainState, envelop)
-	require.True(t, state.Executable)
+	require.False(t, state.Executable)
 	require.True(t, state.TemporarilyBlocked)
+	require.Contains(t, state.Reasons[0], "bundle earliest not reached yet")
 }
 
 func Test_GetBundleState_ReturnsNonExecutable_ForFailedTrialRun(t *testing.T) {
@@ -162,15 +163,24 @@ func Test_GetBundleState_ReturnsRunnableForCurrentBundle(t *testing.T) {
 	state := getBundleState(chainState, envelop, acceptEverything)
 	require.True(t, state.Executable)
 	require.False(t, state.TemporarilyBlocked)
+	require.Empty(t, state.Reasons)
 }
 
 func Test_GetBundleState_ChecksForNonceConflicts(t *testing.T) {
 
-	executableBundleState := BundleState{Executable: true}
-	temporarilyBlockedBundleState := BundleState{Executable: true, TemporarilyBlocked: true}
+	executableBundleState := BundleState{
+		Executable: true,
+	}
+	temporarilyBlockedBundleState := BundleState{
+		Executable:         false,
+		TemporarilyBlocked: true,
+		Reasons:            []string{"nonce check failed", "gapped nonce"},
+	}
 	nonExecutableBundleState := BundleState{
 		Executable: false,
-		Reasons:    []string{"nonce conflict check failed", "bundle nonce check execution failed"}}
+		Reasons: []string{
+			"nonce check failed",
+			"bundle nonce check execution failed"}}
 
 	const initialNonce = 1
 	tests := map[string]struct {
@@ -243,7 +253,11 @@ func Test_GetBundleState_ChecksForNonceConflicts(t *testing.T) {
 func Test_checkForNonceConflicts_DetectsNonceUsage(t *testing.T) {
 
 	executableBundleState := BundleState{Executable: true}
-	temporarilyBlockedBundleState := BundleState{Executable: true, TemporarilyBlocked: true}
+	temporarilyBlockedBundleState := BundleState{
+		Executable:         false,
+		TemporarilyBlocked: true,
+		Reasons:            []string{"gapped nonce"},
+	}
 	nonExecutableBundleState := BundleState{Executable: false,
 		Reasons: []string{"bundle nonce check execution failed"}}
 
