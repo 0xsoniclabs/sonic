@@ -35,7 +35,7 @@ import (
 )
 
 type txType interface {
-	makeStep(txMakeOptions, *AccountFactory) bundle.BundleStep
+	makeStep(txMakeOptions) bundle.BundleStep
 }
 
 type txIndex int
@@ -688,12 +688,13 @@ type txMakeOptions struct {
 
 	contractInfo ContractInfo
 	gasPrice     *big.Int
+	factory      *AccountFactory
 }
 
 type successfulNormalTx struct{}
 
-func (t successfulNormalTx) makeStep(opts txMakeOptions, factory *AccountFactory) bundle.BundleStep {
-	return bundle.Step(factory.Create(opts.t).PrivateKey, &types.AccessListTx{
+func (t successfulNormalTx) makeStep(opts txMakeOptions) bundle.BundleStep {
+	return bundle.Step(opts.factory.Create(opts.t).PrivateKey, &types.AccessListTx{
 		ChainID:  opts.net.GetChainId(),
 		To:       &opts.contractInfo.counterAddress,
 		Gas:      opts.contractInfo.counterGasLimit,
@@ -704,8 +705,8 @@ func (t successfulNormalTx) makeStep(opts txMakeOptions, factory *AccountFactory
 
 type failedNormalTx struct{}
 
-func (t failedNormalTx) makeStep(opts txMakeOptions, factory *AccountFactory) bundle.BundleStep {
-	return bundle.Step(factory.Create(opts.t).PrivateKey, &types.AccessListTx{
+func (t failedNormalTx) makeStep(opts txMakeOptions) bundle.BundleStep {
+	return bundle.Step(opts.factory.Create(opts.t).PrivateKey, &types.AccessListTx{
 		ChainID:  opts.net.GetChainId(),
 		To:       &opts.contractInfo.revertAddress,
 		Gas:      opts.contractInfo.revertGasLimit,
@@ -716,8 +717,8 @@ func (t failedNormalTx) makeStep(opts txMakeOptions, factory *AccountFactory) bu
 
 type invalidNormalTx struct{}
 
-func (t invalidNormalTx) makeStep(opts txMakeOptions, factory *AccountFactory) bundle.BundleStep {
-	return bundle.Step(factory.Create(opts.t).PrivateKey, &types.AccessListTx{
+func (t invalidNormalTx) makeStep(opts txMakeOptions) bundle.BundleStep {
+	return bundle.Step(opts.factory.Create(opts.t).PrivateKey, &types.AccessListTx{
 		ChainID:  opts.net.GetChainId(),
 		To:       &opts.contractInfo.counterAddress,
 		Gas:      1, // invalid
@@ -728,8 +729,8 @@ func (t invalidNormalTx) makeStep(opts txMakeOptions, factory *AccountFactory) b
 
 type successfulSponsoredTx struct{}
 
-func (t successfulSponsoredTx) makeStep(opts txMakeOptions, factory *AccountFactory) bundle.BundleStep {
-	account := factory.Create(opts.t)
+func (t successfulSponsoredTx) makeStep(opts txMakeOptions) bundle.BundleStep {
+	account := opts.factory.Create(opts.t)
 	donation := big.NewInt(1e16)
 	gas_subsidies.Fund(opts.t, opts.net, account.Address(), donation)
 	return bundle.Step(account.PrivateKey, &types.AccessListTx{
@@ -743,8 +744,8 @@ func (t successfulSponsoredTx) makeStep(opts txMakeOptions, factory *AccountFact
 
 type failedSponsoredTx struct{}
 
-func (t failedSponsoredTx) makeStep(opts txMakeOptions, factory *AccountFactory) bundle.BundleStep {
-	account := factory.Create(opts.t)
+func (t failedSponsoredTx) makeStep(opts txMakeOptions) bundle.BundleStep {
+	account := opts.factory.Create(opts.t)
 	donation := big.NewInt(1e16)
 	gas_subsidies.Fund(opts.t, opts.net, account.Address(), donation)
 	return bundle.Step(account.PrivateKey, &types.AccessListTx{
@@ -758,8 +759,8 @@ func (t failedSponsoredTx) makeStep(opts txMakeOptions, factory *AccountFactory)
 
 type invalidSponsoredTx struct{}
 
-func (t invalidSponsoredTx) makeStep(opts txMakeOptions, factory *AccountFactory) bundle.BundleStep {
-	return bundle.Step(factory.Create(opts.t).PrivateKey, &types.AccessListTx{
+func (t invalidSponsoredTx) makeStep(opts txMakeOptions) bundle.BundleStep {
+	return bundle.Step(opts.factory.Create(opts.t).PrivateKey, &types.AccessListTx{
 		ChainID:  opts.net.GetChainId(),
 		To:       &opts.contractInfo.counterAddress,
 		Gas:      opts.contractInfo.counterGasLimit,
@@ -773,13 +774,13 @@ type subBundleTx struct {
 	flags   bundle.ExecutionFlag
 }
 
-func (t subBundleTx) makeStep(opts txMakeOptions, factory *AccountFactory) bundle.BundleStep {
+func (t subBundleTx) makeStep(opts txMakeOptions) bundle.BundleStep {
 	steps := make([]bundle.BundleStep, len(t.txTypes))
 	for i, tt := range t.txTypes {
-		steps[i] = tt.makeStep(opts, factory)
+		steps[i] = tt.makeStep(opts)
 	}
 	innerEnvelope := bundle.NewBuilder().WithFlags(t.flags).With(steps...).Build()
-	account := factory.Create(opts.t)
+	account := opts.factory.Create(opts.t)
 	return bundle.Step(account.PrivateKey, innerEnvelope)
 }
 
@@ -800,11 +801,11 @@ func buildBundle(
 	gasPrice, err := client.SuggestGasPrice(t.Context())
 	require.NoError(t, err)
 
-	opts := txMakeOptions{t, net, contractInfo, gasPrice}
+	opts := txMakeOptions{t, net, contractInfo, gasPrice, accountFactory}
 
 	steps := make([]bundle.BundleStep, len(txTypes))
 	for i, tt := range txTypes {
-		steps[i] = tt.makeStep(opts, accountFactory)
+		steps[i] = tt.makeStep(opts)
 	}
 
 	blockNumber, err := client.BlockNumber(t.Context())
