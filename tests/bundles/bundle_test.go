@@ -29,6 +29,7 @@ import (
 	"github.com/0xsoniclabs/sonic/tests/contracts/revert"
 	"github.com/0xsoniclabs/sonic/tests/gas_subsidies"
 	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
@@ -230,12 +231,7 @@ func getSubcases() map[string]SubCase {
 				[]txStatus{},
 				0,
 			},
-			failed: SubCaseVariant{
-				subBundleTx{flags: bundle.EF_OneOf | bundle.EF_TolerateFailed | bundle.EF_TolerateInvalid, txTypes: []txType{}},
-				[]txIndex{},
-				[]txStatus{},
-				0,
-			},
+			// When OneOf is set, every transaction result will be tolerated. The only way for the bundle to fail would be if it is empty. But since empty bundles are not allowed, a bundle with OneOf set can not fail.
 			// skipped bundles are no longer possible, and all **/bundled/**/invalid tests are skipped
 		},
 	}
@@ -680,6 +676,28 @@ func getCounterValue(t *testing.T, client *tests.PooledEhtClient, contractInfo C
 	return count.Int64()
 }
 
+func prepareContract[T any](
+	t testing.TB, session tests.IntegrationTestNetSession,
+	getABI func() (*abi.ABI, error),
+	deployFunc tests.ContractDeployer[T],
+) (*T, *abi.ABI, common.Address) {
+	t.Helper()
+	abi, err := getABI()
+	require.NoError(t, err, "failed to get counter abi; %v", err)
+
+	contract, receipt, err := tests.DeployContract(session, deployFunc)
+	require.NoError(t, err, "failed to deploy contract; %v", err)
+	require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
+	return contract, abi, receipt.ContractAddress
+}
+
+func generateCallData(t testing.TB, abi *abi.ABI, methodName string, params ...any) []byte {
+	t.Helper()
+	input, err := abi.Pack(methodName, params...)
+	require.NoError(t, err, "failed to pack input for method %s; %v", methodName, err)
+	return input
+}
+
 // --- Tx creation ---
 
 type txMakeOptions struct {
@@ -817,6 +835,22 @@ func buildBundle(
 		Latest(blockNumber + 100).
 		With(steps...).
 		Build()
+}
+
+func getTransactionsInBlock(t *testing.T, session tests.IntegrationTestNetSession, blockNumber *big.Int) []common.Hash {
+	t.Helper()
+
+	client, err := session.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+	block, err := client.BlockByNumber(t.Context(), blockNumber)
+	require.NoError(t, err, "failed to get block by number")
+
+	hashes := make([]common.Hash, 0, len(block.Transactions()))
+	for _, btx := range block.Transactions() {
+		hashes = append(hashes, btx.Hash())
+	}
+	return hashes
 }
 
 func checkHashesEqAndStatus(
