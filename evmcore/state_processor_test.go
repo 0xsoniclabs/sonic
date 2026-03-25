@@ -1466,16 +1466,14 @@ func TestRunTransactionBundle_AddsHashesOfSuccessfulPlansToList(t *testing.T) {
 
 	runner := &transactionRunner{evm: evm}
 
-	successfulPlanHashes := make([]common.Hash, 0)
-
 	context := &runContext{
-		statedb:              state,
-		signer:               signer,
-		baseFee:              big.NewInt(1),
-		upgrades:             opera.Upgrades{TransactionBundles: true},
-		blockNumber:          &big.Int{},
-		runner:               runner,
-		successfulPlanHashes: &successfulPlanHashes,
+		statedb:                 state,
+		signer:                  signer,
+		baseFee:                 big.NewInt(1),
+		upgrades:                opera.Upgrades{TransactionBundles: true},
+		blockNumber:             &big.Int{},
+		runner:                  runner,
+		processedExecutionPlans: &processedExecutionPlans{},
 	}
 
 	// Run a successful bundle
@@ -1489,7 +1487,7 @@ func TestRunTransactionBundle_AddsHashesOfSuccessfulPlansToList(t *testing.T) {
 
 	_, _, _ = runner.runTransactionBundle(context, envelope, 0, 0)
 
-	require.Contains(t, *context.successfulPlanHashes, plan.Hash())
+	require.Contains(t, context.processedExecutionPlans.hashes, plan.Hash())
 
 	// Run a failing bundle
 	envelope = getTransactionBundle(t)
@@ -1502,15 +1500,15 @@ func TestRunTransactionBundle_AddsHashesOfSuccessfulPlansToList(t *testing.T) {
 
 	_, _, _ = runner.runTransactionBundle(context, envelope, 0, 0)
 
-	require.NotContains(t, *context.successfulPlanHashes, plan.Hash())
+	require.NotContains(t, context.processedExecutionPlans.hashes, plan.Hash())
 }
 
 func TestRunTransactionBundle_SkipsPlansThatHaveBeenExecutedSuccessfullyBefore(t *testing.T) {
 	type test struct {
-		envelope              *types.Transaction
-		successfulPlanHashes  []common.Hash
-		runResults            []uint64
-		processedTransactions int
+		envelope                *types.Transaction
+		processedExecutionPlans processedExecutionPlans
+		runResults              []uint64
+		processedTransactions   int
 	}
 
 	tests := map[string]test{}
@@ -1526,10 +1524,10 @@ func TestRunTransactionBundle_SkipsPlansThatHaveBeenExecutedSuccessfullyBefore(t
 	plan, err := bundle.ExtractExecutionPlan(envelope)
 	require.NoError(t, err)
 	tests["same plan in top level bundle"] = test{
-		envelope:              envelope,
-		successfulPlanHashes:  []common.Hash{plan.Hash()},
-		runResults:            nil,
-		processedTransactions: 1, // the envelope itself
+		envelope:                envelope,
+		processedExecutionPlans: processedExecutionPlans{hashes: []common.Hash{plan.Hash()}},
+		runResults:              nil,
+		processedTransactions:   1, // the envelope itself
 	}
 
 	// This test case executes a bundle containing a nested bundle with a plan
@@ -1541,10 +1539,10 @@ func TestRunTransactionBundle_SkipsPlansThatHaveBeenExecutedSuccessfullyBefore(t
 		bundle.Step(key, nestedEnvelope),
 	)
 	tests["same plan in nested bundle"] = test{
-		envelope:              envelope,
-		successfulPlanHashes:  []common.Hash{nestedPlan.Hash()},
-		runResults:            nil,
-		processedTransactions: 0,
+		envelope:                envelope,
+		processedExecutionPlans: processedExecutionPlans{hashes: []common.Hash{nestedPlan.Hash()}},
+		runResults:              nil,
+		processedTransactions:   0,
 	}
 
 	// This test case executes a bundle containing two nested bundles with the
@@ -1555,10 +1553,10 @@ func TestRunTransactionBundle_SkipsPlansThatHaveBeenExecutedSuccessfullyBefore(t
 		bundle.Step(key2, nestedEnvelope), // because the key is different, the envelope is different, but the plan is still the same
 	)
 	tests["run same plan within nested bundle"] = test{
-		envelope:              envelope,
-		successfulPlanHashes:  []common.Hash{},
-		runResults:            []uint64{types.ReceiptStatusSuccessful},
-		processedTransactions: 0,
+		envelope:                envelope,
+		processedExecutionPlans: processedExecutionPlans{},
+		runResults:              []uint64{types.ReceiptStatusSuccessful},
+		processedTransactions:   0,
 	}
 
 	// This test case executes a bundle containing two nested bundles.
@@ -1573,8 +1571,8 @@ func TestRunTransactionBundle_SkipsPlansThatHaveBeenExecutedSuccessfullyBefore(t
 		bundle.Step(key2, bundle.AllOf(bundle.Step(key, nestedNestedEnvelope))),
 	)
 	tests["run same plan within nested bundle"] = test{
-		envelope:             envelope,
-		successfulPlanHashes: []common.Hash{},
+		envelope:                envelope,
+		processedExecutionPlans: processedExecutionPlans{},
 		runResults: []uint64{
 			types.ReceiptStatusSuccessful, // first tx in first nested bundle
 			// the second tx in the first nested bundle should not be attempted
@@ -1591,10 +1589,10 @@ func TestRunTransactionBundle_SkipsPlansThatHaveBeenExecutedSuccessfullyBefore(t
 		bundle.Step(key2, nestedEnvelope), // because the key is different, the envelope is different, but the plan is still the same
 	)
 	tests["retry same plan within nested bundle"] = test{
-		envelope:              envelope,
-		successfulPlanHashes:  []common.Hash{},
-		runResults:            []uint64{types.ReceiptStatusFailed, types.ReceiptStatusSuccessful},
-		processedTransactions: 1, // the first nested bundle fails, but the second one succeeds with one tx
+		envelope:                envelope,
+		processedExecutionPlans: processedExecutionPlans{},
+		runResults:              []uint64{types.ReceiptStatusFailed, types.ReceiptStatusSuccessful},
+		processedTransactions:   1, // the first nested bundle fails, but the second one succeeds with one tx
 	}
 
 	for name, test := range tests {
@@ -1621,14 +1619,14 @@ func TestRunTransactionBundle_SkipsPlansThatHaveBeenExecutedSuccessfullyBefore(t
 
 			gasPool := new(core.GasPool).AddGas(1_000_000)
 			context := &runContext{
-				statedb:              state,
-				signer:               signer,
-				baseFee:              big.NewInt(1),
-				gasPool:              gasPool,
-				upgrades:             opera.Upgrades{TransactionBundles: true},
-				blockNumber:          &big.Int{},
-				runner:               runner,
-				successfulPlanHashes: &test.successfulPlanHashes,
+				statedb:                 state,
+				signer:                  signer,
+				baseFee:                 big.NewInt(1),
+				gasPool:                 gasPool,
+				upgrades:                opera.Upgrades{TransactionBundles: true},
+				blockNumber:             &big.Int{},
+				runner:                  runner,
+				processedExecutionPlans: &test.processedExecutionPlans,
 			}
 
 			processedTransactions, _, _ := runner.runTransactionBundle(context, test.envelope, 0, 0)
@@ -1876,4 +1874,67 @@ func TestTransactionGenerationUtilities(t *testing.T) {
 
 	require.False(t, subsidies.IsSponsorshipRequest(regular))
 	require.True(t, subsidies.IsSponsorshipRequest(request))
+}
+
+func TestProcessedExecutionPlans_AddAppendsHashToList(t *testing.T) {
+	plans := processedExecutionPlans{}
+
+	plan1 := common.Hash{1}
+	plan2 := common.Hash{2}
+
+	plans.add(plan1)
+	require.Len(t, plans.hashes, 1)
+	require.Equal(t, plans.hashes[0], plan1)
+
+	plans.add(plan2)
+	require.Len(t, plans.hashes, 2)
+	require.Equal(t, plans.hashes[0], plan1)
+	require.Equal(t, plans.hashes[1], plan2)
+}
+
+func TestProcessedExecutionPlans_ContainsChecksIfHashIsInList(t *testing.T) {
+	plans := &processedExecutionPlans{
+		hashes: []common.Hash{{1}, {2}, {3}},
+	}
+
+	require.True(t, plans.contains(common.Hash{1}))
+	require.True(t, plans.contains(common.Hash{2}))
+	require.True(t, plans.contains(common.Hash{3}))
+	require.False(t, plans.contains(common.Hash{4}))
+}
+
+func TestProcessedExecutionPlans_SnapshotReturnsCurrentLengthOfList(t *testing.T) {
+	plans := &processedExecutionPlans{
+		hashes: []common.Hash{{1}, {2}, {5}},
+	}
+
+	snapshot := plans.snapshot()
+	require.Equal(t, 3, snapshot)
+
+	plans.hashes = append(plans.hashes, common.Hash{7})
+	snapshot = plans.snapshot()
+	require.Equal(t, 4, snapshot)
+}
+
+func TestProcessedExecutionPlans_RestoreTruncatesListToSnapshotLength(t *testing.T) {
+	plans := &processedExecutionPlans{
+		hashes: []common.Hash{
+			{1},
+			{2},
+			{3},
+		},
+	}
+
+	plans.restore(2)
+	require.Len(t, plans.hashes, 2)
+	require.Equal(t, plans.hashes[0], common.Hash{1})
+	require.Equal(t, plans.hashes[1], common.Hash{2})
+
+	plans.restore(1)
+	require.Len(t, plans.hashes, 1)
+	require.Equal(t, plans.hashes[0], common.Hash{1})
+
+	plans.restore(1)
+	require.Len(t, plans.hashes, 1)
+	require.Equal(t, plans.hashes[0], common.Hash{1})
 }
