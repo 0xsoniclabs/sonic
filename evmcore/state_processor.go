@@ -419,7 +419,7 @@ func (r *transactionRunner) runTransactionBundle(
 			processedBundle.Count++
 		}
 	}
-	return runner.processedTransactions, []ProcessedBundle{processedBundle}, core_types.TransactionResultSuccessful
+	return runner.processedTransactions, append(runner.processedBundles, processedBundle), core_types.TransactionResultSuccessful
 }
 
 // bundleTransactionRunner is an adapter implementing the bundle.TransactionRunner
@@ -429,11 +429,18 @@ type bundleTransactionRunner struct {
 	legacyTxOffset        int
 	trueTxOffset          int
 	processedTransactions []ProcessedTransaction
+	processedBundles      []ProcessedBundle
+}
+
+type bundleTransactionRunnerSnapshot struct {
+	stateDbSnapshot         int
+	processedBundleSnapshot int
 }
 
 func (b *bundleTransactionRunner) Run(tx *types.Transaction) core_types.TransactionResult {
-	processed, _, status := runTransaction(b.ctxt, tx, b.legacyTxOffset, b.trueTxOffset)
+	processed, bundles, status := runTransaction(b.ctxt, tx, b.legacyTxOffset, b.trueTxOffset)
 	b.processedTransactions = append(b.processedTransactions, processed...)
+	b.processedBundles = append(b.processedBundles, bundles...)
 	if status == core_types.TransactionResultInvalid {
 		return core_types.TransactionResultInvalid
 	}
@@ -453,12 +460,16 @@ func (b *bundleTransactionRunner) Run(tx *types.Transaction) core_types.Transact
 	}
 }
 
-func (b *bundleTransactionRunner) CreateSnapshot() int {
-	return b.ctxt.statedb.InterTxSnapshot()
+func (b *bundleTransactionRunner) CreateSnapshot() bundleTransactionRunnerSnapshot {
+	return bundleTransactionRunnerSnapshot{
+		stateDbSnapshot:         b.ctxt.statedb.InterTxSnapshot(),
+		processedBundleSnapshot: len(b.processedBundles),
+	}
 }
 
-func (b *bundleTransactionRunner) RevertToSnapshot(id int) {
-	b.ctxt.statedb.RevertToInterTxSnapshot(id)
+func (b *bundleTransactionRunner) RevertToSnapshot(snapshot bundleTransactionRunnerSnapshot) {
+	b.ctxt.statedb.RevertToInterTxSnapshot(snapshot.stateDbSnapshot)
+	b.processedBundles = b.processedBundles[:snapshot.processedBundleSnapshot]
 }
 
 // _evm is an interface to an EVM instance that can be used to run a single
