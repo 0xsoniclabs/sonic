@@ -185,16 +185,30 @@ func TestMakeMaxRangeStartingAt_CreatesMaxRangeStartingAtGivenBlock(t *testing.T
 		start        uint64
 		expectedSize uint64
 	}{
-		"start at 0":   {0, MaxBlockRange},
-		"start at 1":   {1, MaxBlockRange},
-		"start at 100": {100, MaxBlockRange},
+		"start at 0": {
+			start:        0,
+			expectedSize: MaxBlockRange,
+		},
+		"start at 1": {
+			start:        1,
+			expectedSize: MaxBlockRange,
+		},
+		"start at 100": {
+			start:        100,
+			expectedSize: MaxBlockRange,
+		},
 		"max uint64 - max range": {
-			math.MaxUint64 - MaxBlockRange,
-			MaxBlockRange},
+			start:        math.MaxUint64 - MaxBlockRange,
+			expectedSize: MaxBlockRange,
+		},
 		"max uint64 - max range + 1": {
-			math.MaxUint64 - MaxBlockRange + 1,
-			MaxBlockRange},
-		"max uint64": {math.MaxUint64, 1},
+			start:        math.MaxUint64 - MaxBlockRange + 1,
+			expectedSize: MaxBlockRange,
+		},
+		"max uint64": {
+			start:        math.MaxUint64,
+			expectedSize: 1,
+		},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -207,61 +221,114 @@ func TestMakeMaxRangeStartingAt_CreatesMaxRangeStartingAtGivenBlock(t *testing.T
 
 func TestBlockRange_Size_ReturnsCorrectSize(t *testing.T) {
 	tests := map[string]struct {
-		earliest, latest uint64
-		want             uint64
+		blockRange BlockRange
+		want       uint64
 	}{
-		"empty block range":    {10, 9, 0},
-		"single block range":   {10, 10, 1},
-		"two block range":      {10, 11, 2},
-		"multiple block range": {10, 20, 11},
-		"super-long range":     {0, 10_000_000, 10_000_001},
-		"max range - 1": {0,
-			math.MaxUint64 - MaxBlockRange - 1,
-			math.MaxUint64 - MaxBlockRange},
-		"max range": {0,
-			math.MaxUint64 - MaxBlockRange,
-			math.MaxUint64 - MaxBlockRange + 1},
-		"max range + 1": {0,
-			math.MaxUint64 - MaxBlockRange + 1,
-			math.MaxUint64 - MaxBlockRange + 2},
-		"max uint64 - 1": {0, math.MaxUint64 - 1, math.MaxUint64},
-		"max uint64":     {0, math.MaxUint64, math.MaxUint64},
+		"empty block range": {
+			blockRange: BlockRange{Earliest: 10, Latest: 9},
+			want:       0,
+		},
+		"single block range": {
+			blockRange: BlockRange{Earliest: 10, Latest: 10},
+			want:       1,
+		},
+		"two block range": {
+			blockRange: BlockRange{Earliest: 10, Latest: 11},
+			want:       2,
+		},
+		"multiple block range": {
+			blockRange: BlockRange{Earliest: 10, Latest: 20},
+			want:       11,
+		},
+		"super-long range": {
+			blockRange: BlockRange{Earliest: 0, Latest: 10_000_000},
+			want:       10_000_001,
+		},
+		"max range - 1": {
+			blockRange: BlockRange{Earliest: 0, Latest: math.MaxUint64 - MaxBlockRange - 1},
+			want:       math.MaxUint64 - MaxBlockRange,
+		},
+		"max range": {
+			blockRange: BlockRange{Earliest: 0, Latest: math.MaxUint64 - MaxBlockRange},
+			want:       math.MaxUint64 - MaxBlockRange + 1,
+		},
+		"max range + 1": {
+			blockRange: BlockRange{Earliest: 0, Latest: math.MaxUint64 - MaxBlockRange + 1},
+			want:       math.MaxUint64 - MaxBlockRange + 2,
+		},
+		"max uint64 - 1": {
+			blockRange: BlockRange{Earliest: 0, Latest: math.MaxUint64 - 1},
+			want:       math.MaxUint64,
+		},
+		"max uint64": {
+			blockRange: BlockRange{Earliest: 0, Latest: math.MaxUint64},
+			want:       math.MaxUint64,
+		},
 	}
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			r := BlockRange{
-				Earliest: test.earliest,
-				Latest:   test.latest,
-			}
-			require.EqualValues(t, test.want, r.Size())
+			require.EqualValues(t, test.want, test.blockRange.Size())
 		})
 	}
 }
 
 func TestBlockRange_IsInRange_ReturnsTrueIfBlockNumberIsWithinRange(t *testing.T) {
 	tests := map[string]struct {
-		earliest, latest, current uint64
-		want                      bool
+		BlockRange BlockRange
+		current    uint64
+		want       bool
 	}{
-		"within range":       {10, 20, 15, true},
-		"at earliest":        {10, 20, 10, true},
-		"at latest":          {10, 20, 20, true},
-		"below range":        {10, 20, 9, false},
-		"above range":        {10, 20, 21, false},
-		"at lower end":       {10, 20, 10, true},
-		"at upper end":       {10, 20, 20, true},
-		"single block range": {10, 10, 10, true},
-		"invalid range":      {20, 10, 15, false},
+		"within range": {
+			BlockRange: BlockRange{Earliest: 10, Latest: 20},
+			current:    15,
+			want:       true,
+		},
+		"at earliest": {
+			BlockRange: BlockRange{Earliest: 10, Latest: 20},
+			current:    10,
+			want:       true,
+		},
+		"at latest": {
+			BlockRange: BlockRange{Earliest: 10, Latest: 20},
+			current:    20,
+			want:       true,
+		},
+		"below range": {
+			BlockRange: BlockRange{Earliest: 10, Latest: 20},
+			current:    9,
+			want:       false,
+		},
+		"above range": {
+			BlockRange: BlockRange{Earliest: 10, Latest: 20},
+			current:    21,
+			want:       false,
+		},
+		"at lower end": {
+			BlockRange: BlockRange{Earliest: 10, Latest: 20},
+			current:    10,
+			want:       true,
+		},
+		"at upper end": {
+			BlockRange: BlockRange{Earliest: 10, Latest: 20},
+			current:    20,
+			want:       true,
+		},
+		"single block range": {
+			BlockRange: BlockRange{Earliest: 10, Latest: 10},
+			current:    10,
+			want:       true,
+		},
+		"invalid range": {
+			BlockRange: BlockRange{Earliest: 20, Latest: 10},
+			current:    15,
+			want:       false,
+		},
 	}
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			blockRange := BlockRange{
-				Earliest: test.earliest,
-				Latest:   test.latest,
-			}
-			got := blockRange.IsInRange(test.current)
+			got := test.BlockRange.IsInRange(test.current)
 			require.Equal(t, test.want, got)
 		})
 	}

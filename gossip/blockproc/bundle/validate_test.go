@@ -174,10 +174,11 @@ func TestValidateEnvelope_AcceptsValidBlockRanges(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			bundle := TransactionBundle{Range: BlockRange{
-				Earliest: test.From,
-				Latest:   test.To,
-			}}
+			bundle := TransactionBundle{
+				Range: BlockRange{
+					Earliest: test.From,
+					Latest:   test.To,
+				}}
 			tx := types.NewTx(&types.LegacyTx{
 				To:   &BundleProcessor,
 				Data: bundle.Encode(),
@@ -211,10 +212,11 @@ func TestValidateEnvelope_IdentifiesInvalidBlockRanges(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			bundle := TransactionBundle{Range: BlockRange{
-				Earliest: test.From,
-				Latest:   test.To,
-			}}
+			bundle := TransactionBundle{
+				Range: BlockRange{
+					Earliest: test.From,
+					Latest:   test.To,
+				}}
 			tx := types.NewTx(&types.LegacyTx{
 				To:   &BundleProcessor,
 				Data: bundle.Encode(),
