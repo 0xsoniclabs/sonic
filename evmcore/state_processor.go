@@ -29,6 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -198,25 +199,38 @@ func runTransactions(
 	transactions types.Transactions,
 	txIndexOffset int,
 ) ProcessSummary {
-	processed := make([]ProcessedTransaction, 0, len(transactions))
+	processedTxs := make([]ProcessedTransaction, 0, len(transactions))
+	processedBundles := make([]ProcessedBundle, 0)
 	for _, tx := range transactions {
-		nextId := txIndexOffset + len(processed)
-		txs, _ := runTransaction(context, tx, nextId)
-		processed = append(processed, txs...)
+		nextId := txIndexOffset + len(processedTxs)
+		txs, bundles, _ := runTransaction(context, tx, nextId)
+		processedTxs = append(processedTxs, txs...)
+		processedBundles = append(processedBundles, bundles...)
 	}
-	return ProcessSummary{ProcessedTransactions: processed}
+	return ProcessSummary{ProcessedTransactions: processedTxs, ProcessedBundles: processedBundles}
 }
 
+// runTransaction processes the given transaction and returns a list of all
+// processed transactions (transactions and receipts), the processed bundle if
+// the transaction is a bundle transaction, and the result of processing the
+// transaction. The only exception is for invalid bundles, where the envelope
+// transaction itself is returned as a processed transaction, but without a
+// receipt, to signal that the bundle transaction was skipped.
 func runTransaction(
 	context *runContext,
 	tx *types.Transaction,
 	txIndexOffset int,
-) ([]ProcessedTransaction, core_types.TransactionResult) {
-	if context.upgrades.GasSubsidies && subsidies.IsSponsorshipRequest(tx) {
-		return context.runner.runSponsoredTransaction(context, tx, txIndexOffset)
+) ([]ProcessedTransaction, []ProcessedBundle, core_types.TransactionResult) {
+	// Since a transaction bundle has a gas-price of 0 it would be considered a
+	// sponsorship request. Thus, we need to check for bundles first.
+	if context.upgrades.TransactionBundles && bundle.IsEnvelope(tx) {
+		return context.runner.runTransactionBundle(context, tx, txIndexOffset)
+	} else if context.upgrades.GasSubsidies && subsidies.IsSponsorshipRequest(tx) {
+		res, result := context.runner.runSponsoredTransaction(context, tx, txIndexOffset)
+		return res, nil, result
 	} else {
 		res, result := context.runner.runRegularTransaction(context, tx, txIndexOffset)
-		return []ProcessedTransaction{res}, result
+		return []ProcessedTransaction{res}, nil, result
 	}
 }
 
@@ -226,6 +240,7 @@ func runTransaction(
 type _transactionRunner interface {
 	runRegularTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) (ProcessedTransaction, core_types.TransactionResult)
 	runSponsoredTransaction(ctxt *runContext, tx *types.Transaction, txIndex int) ([]ProcessedTransaction, core_types.TransactionResult)
+	runTransactionBundle(ctxt *runContext, tx *types.Transaction, txIndex int) ([]ProcessedTransaction, []ProcessedBundle, core_types.TransactionResult)
 }
 
 // transactionRunner implements the _transactionRunner interface by using an
@@ -321,6 +336,88 @@ func (r *transactionRunner) runSponsoredTransaction(
 		log.Warn("Fee charging transaction failed", "sponsored-tx", tx.Hash().Hex())
 	}
 	return []ProcessedTransaction{processed, processedDeduction}, status
+}
+
+// runTransactionBundle processes the bundle-only transactions in the given
+// envelope transaction as a bundle. It returns the list of processed
+// transactions (transactions and receipts), the processed bundle, and the
+// result of processing the bundle transaction. If the bundle is invalid, the
+// envelope transaction itself is returned as a single processed transaction
+// without a receipt and the bundle is nil. This is needed to signal skipped
+// bundles.
+func (r *transactionRunner) runTransactionBundle(
+	ctxt *runContext,
+	tx *types.Transaction,
+	txIndex int,
+) ([]ProcessedTransaction, []ProcessedBundle, core_types.TransactionResult) {
+	if !ctxt.upgrades.TransactionBundles {
+		log.Warn("Transaction bundles are not enabled, skipping bundle transaction", "tx", tx.Hash().Hex())
+		return []ProcessedTransaction{{Transaction: tx}}, nil, core_types.TransactionResultInvalid
+	}
+
+	txBundle, err := bundle.OpenEnvelope(tx)
+	if err != nil {
+		log.Warn("failed to open bundle envelope", "tx", tx.Hash().Hex(), "err", err)
+		return []ProcessedTransaction{{Transaction: tx}}, nil, core_types.TransactionResultInvalid
+	}
+	plan, err := bundle.ExtractExecutionPlan(ctxt.signer, tx)
+	if err != nil {
+		log.Warn("failed to extract execution plan", "tx", tx.Hash().Hex(), "err", err)
+		return []ProcessedTransaction{{Transaction: tx}}, nil, core_types.TransactionResultInvalid
+	}
+
+	if !plan.IsInRange(ctxt.blockNumber.Uint64()) {
+		log.Warn("Bundle skipped due to out-of-range execution plan", "tx", tx.Hash().Hex(), "planRange", fmt.Sprintf("[%d,%d]", plan.Earliest, plan.Latest), "blockNumber", ctxt.blockNumber.Uint64())
+		return []ProcessedTransaction{{Transaction: tx}}, nil, core_types.TransactionResultInvalid
+	}
+
+	processedBundle := ProcessedBundle{
+		ExecutionPlanHash: plan.Hash(),
+		Position:          uint32(txIndex),
+	}
+
+	// Run the bundle and collect the processed transactions.
+	runner := bundleTransactionRunner{ctxt: ctxt, txOffset: txIndex}
+	if success := bundle.RunBundle(&txBundle, &runner); !success {
+		return []ProcessedTransaction{}, []ProcessedBundle{processedBundle}, core_types.TransactionResultFailed
+	}
+	for _, processedTx := range runner.processedTransactions {
+		if processedTx.Receipt != nil {
+			processedBundle.Count++
+		}
+	}
+	return runner.processedTransactions, []ProcessedBundle{processedBundle}, core_types.TransactionResultSuccessful
+}
+
+// bundleTransactionRunner is an adapter implementing the bundle.TransactionRunner
+// interface to run transactions within a bundle and collect their results.
+type bundleTransactionRunner struct {
+	ctxt                  *runContext
+	txOffset              int
+	processedTransactions []ProcessedTransaction
+}
+
+func (b *bundleTransactionRunner) Run(tx *types.Transaction) core_types.TransactionResult {
+	processed, _, result := runTransaction(b.ctxt, tx, b.txOffset)
+	b.processedTransactions = append(b.processedTransactions, processed...)
+
+	if result != core_types.TransactionResultInvalid {
+		for _, p := range processed {
+			if p.Receipt != nil {
+				b.txOffset++
+			}
+		}
+	}
+
+	return result
+}
+
+func (b *bundleTransactionRunner) CreateSnapshot() int {
+	return b.ctxt.statedb.InterTxSnapshot()
+}
+
+func (b *bundleTransactionRunner) RevertToSnapshot(id int) {
+	b.ctxt.statedb.RevertToInterTxSnapshot(id)
 }
 
 // _evm is an interface to an EVM instance that can be used to run a single
