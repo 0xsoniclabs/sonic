@@ -39,23 +39,30 @@ import (
 // from execution. If the bundle is not executable, it also provides a list of
 // reasons explaining why.
 // The 3 possible cases are:
-//  1. Executable: the bundle can be executed now or in the future, and there
+//
+//  1. Executable: the bundle can be executed with the current state, and there
 //     are no known issues with it.
+//
 //     Example: BundleState{Executable: true}
-//  2. Temporarily blocked: the bundle is not executable right now, but it may
-//     become executable later (e.g., because it depends on a future block or on
-//     the execution of other transactions that are not included in the bundle).
+//
+//  2. Temporarily blocked: the bundle is not executable with the current state,
+//     but it may become executable later (e.g., because it depends on a future
+//     block or on the execution of other transactions that are not included in
+//     the bundle).
+//
 //     Example: BundleState{
 //     Executable: false,
 //     TemporarilyBlocked: true,
 //     Reasons: []string{"bundle earliest not reached yet"},
 //     }
+//
 //  3. Not executable: the bundle is not executable and there are known issues
 //     with it that will never be resolved (e.g., nonce conflicts that can not be
 //     resolved by waiting for other transactions to be executed).
+//
 //     Example: BundleState{Executable: false, Reasons: []string{"reason 1", "reason 2"}}
 type BundleState struct {
-	Executable         bool     // True if the bundle can be executed.
+	Executable         bool     // True if the bundle can be executed with the current state.
 	TemporarilyBlocked bool     // True if the bundle is currently blocked but may become executable later.
 	Reasons            []string // A list of human-readable strings describing why the bundle is not executable or is blocked.
 }
