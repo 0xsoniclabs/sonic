@@ -41,6 +41,10 @@ var (
 		Name:  "exec",
 		Usage: "Execute JavaScript statement",
 	}
+	EpochNumberFlag = cli.Uint64Flag{
+		Name:  "epoch",
+		Usage: "Determine the target epoch to heal to, 0 means latest",
+	}
 )
 
 // remoteConsole will connect to a remote sonic instance, attaching a JavaScript
