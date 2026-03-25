@@ -623,8 +623,8 @@ type ContractInfo struct {
 // The counter contract is used to check whether the effects of transactions in a bundle are applied as expected,
 // and the revert contract is used to create transactions that fail by reverting.
 func deployContracts(t *testing.T, net tests.IntegrationTestNetSession) ContractInfo {
-	counterAddress, counterInput := counterAddressAndInput(t, net)
-	revertAddress, revertInput := revertAddressAndInput(t, net)
+	counterAddress, counterInput := prepareContract(t, net, counter.CounterMetaData.GetAbi, counter.DeployCounter, "incrementCounter")
+	revertAddress, revertInput := prepareContract(t, net, revert.RevertMetaData.GetAbi, revert.DeployRevert, "doCrash")
 
 	client, err := net.GetClient()
 	require.NoError(t, err, "failed to get client; %v", err)
@@ -656,16 +656,24 @@ func deployContracts(t *testing.T, net tests.IntegrationTestNetSession) Contract
 	}
 }
 
-func counterAddressAndInput(t *testing.T, net tests.IntegrationTestNetSession) (common.Address, []byte) {
-	_, counterAbi, counterAddress := prepareContract(t, net, counter.CounterMetaData.GetAbi, counter.DeployCounter)
-	counterInput := generateCallData(t, counterAbi, "incrementCounter")
-	return counterAddress, counterInput
-}
+func prepareContract[T any](
+	t testing.TB, session tests.IntegrationTestNetSession,
+	getABI func() (*abi.ABI, error),
+	deployFunc tests.ContractDeployer[T],
+	methodName string,
+) (common.Address, []byte) {
+	t.Helper()
+	abi, err := getABI()
+	require.NoError(t, err, "failed to get counter abi; %v", err)
 
-func revertAddressAndInput(t *testing.T, net tests.IntegrationTestNetSession) (common.Address, []byte) {
-	_, revertABI, revertAddress := prepareContract(t, net, revert.RevertMetaData.GetAbi, revert.DeployRevert)
-	revertInput := generateCallData(t, revertABI, "doCrash")
-	return revertAddress, revertInput
+	_, receipt, err := tests.DeployContract(session, deployFunc)
+	require.NoError(t, err, "failed to deploy contract; %v", err)
+	require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
+
+	input, err := abi.Pack(methodName)
+	require.NoError(t, err, "failed to pack input for method %s; %v", methodName, err)
+
+	return receipt.ContractAddress, input
 }
 
 func getCounterValue(t *testing.T, client *tests.PooledEhtClient, contractInfo ContractInfo) int64 {
@@ -674,28 +682,6 @@ func getCounterValue(t *testing.T, client *tests.PooledEhtClient, contractInfo C
 	count, err := counterInstance.GetCount(nil)
 	require.NoError(t, err, "failed to get counter value; %v", err)
 	return count.Int64()
-}
-
-func prepareContract[T any](
-	t testing.TB, session tests.IntegrationTestNetSession,
-	getABI func() (*abi.ABI, error),
-	deployFunc tests.ContractDeployer[T],
-) (*T, *abi.ABI, common.Address) {
-	t.Helper()
-	abi, err := getABI()
-	require.NoError(t, err, "failed to get counter abi; %v", err)
-
-	contract, receipt, err := tests.DeployContract(session, deployFunc)
-	require.NoError(t, err, "failed to deploy contract; %v", err)
-	require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
-	return contract, abi, receipt.ContractAddress
-}
-
-func generateCallData(t testing.TB, abi *abi.ABI, methodName string, params ...any) []byte {
-	t.Helper()
-	input, err := abi.Pack(methodName, params...)
-	require.NoError(t, err, "failed to pack input for method %s; %v", methodName, err)
-	return input
 }
 
 // --- Tx creation ---

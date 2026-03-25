@@ -43,13 +43,7 @@ func Test_CreateBundlesWithRPC(t *testing.T) {
 	defer client.Close()
 
 	// Deploy the increasingly expensive contract.
-	_, receipt, err := tests.DeployContract(session, increasingly_expensive.DeployIncreasinglyExpensive)
-	require.NoError(t, err, "failed to deploy contract; %v", err)
-	require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
-
-	abi, err := increasingly_expensive.IncreasinglyExpensiveMetaData.GetAbi()
-	require.NoError(t, err, "failed to get abi")
-	input := generateCallData(t, abi, "incrementAndLoop")
+	contractAddress, input := prepareContract(t, session, increasingly_expensive.IncreasinglyExpensiveMetaData.GetAbi, increasingly_expensive.DeployIncreasinglyExpensive, "incrementAndLoop")
 
 	sender1 := session.GetSessionSponsor()
 
@@ -60,7 +54,7 @@ func Test_CreateBundlesWithRPC(t *testing.T) {
 	for i := range txsToBeBundled {
 		tx := ethereum.CallMsg{
 			From: sender1.Address(),
-			To:   &receipt.ContractAddress,
+			To:   &contractAddress,
 			Data: input,
 		}
 		txsToBeBundled[i] = tx
