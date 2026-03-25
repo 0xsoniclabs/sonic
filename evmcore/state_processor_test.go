@@ -1066,7 +1066,7 @@ func TestRunTransactions_BundlesEnabled_RunsTransactionBundleAsBundle(t *testing
 			Transaction: tx,
 			Receipt:     nil,
 		}},
-		[]ProcessedBundle{},
+		nil,
 		core_types.TransactionResultSuccessful,
 	)
 	summary := runTransactions(context, []*types.Transaction{tx}, 0)

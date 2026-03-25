@@ -205,9 +205,7 @@ func runTransactions(
 		nextId := txIndexOffset + len(processedTxs)
 		txs, bundles, _ := runTransaction(context, tx, nextId)
 		processedTxs = append(processedTxs, txs...)
-		if bundles != nil {
-			processedBundles = append(processedBundles, bundles...)
-		}
+		processedBundles = append(processedBundles, bundles...)
 	}
 	return ProcessSummary{ProcessedTransactions: processedTxs, ProcessedBundles: processedBundles}
 }
