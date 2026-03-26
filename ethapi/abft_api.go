@@ -19,6 +19,7 @@ package ethapi
 import (
 	"context"
 
+	rpctypes "github.com/0xsoniclabs/sonic/rpc/types"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -27,11 +28,11 @@ import (
 // PublicAbftAPI provides an API to access consensus related information.
 // It offers only methods that operate on public data that is freely available to anyone.
 type PublicAbftAPI struct {
-	b Backend
+	b rpctypes.Backend
 }
 
 // NewPublicAbftAPI creates a new SFC protocol API.
-func NewPublicAbftAPI(b Backend) *PublicAbftAPI {
+func NewPublicAbftAPI(b rpctypes.Backend) *PublicAbftAPI {
 	return &PublicAbftAPI{b}
 }
 

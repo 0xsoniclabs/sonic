@@ -36,6 +36,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/inter/state"
+	rpctypes "github.com/0xsoniclabs/sonic/rpc/types"
 	"github.com/0xsoniclabs/sonic/txtrace"
 )
 
@@ -48,12 +49,12 @@ const (
 // PublicTxTraceAPI provides an API to access transaction tracing
 // It offers only methods that operate on public data that is freely available to anyone
 type PublicTxTraceAPI struct {
-	b               Backend
+	b               rpctypes.Backend
 	maxResponseSize int // in bytes
 }
 
 // NewPublicTxTraceAPI creates a new transaction trace API
-func NewPublicTxTraceAPI(b Backend, maxResponseSize int) *PublicTxTraceAPI {
+func NewPublicTxTraceAPI(b rpctypes.Backend, maxResponseSize int) *PublicTxTraceAPI {
 	return &PublicTxTraceAPI{
 		b:               b,
 		maxResponseSize: maxResponseSize,
@@ -295,7 +296,7 @@ func (s *PublicTxTraceAPI) replayBlock(ctx context.Context, block *evmcore.EvmBl
 
 // traceTx trace transaction with EVM replay and return processed result
 func (s *PublicTxTraceAPI) traceTx(
-	ctx context.Context, b Backend, header *evmcore.EvmHeader, msg *core.Message,
+	ctx context.Context, b rpctypes.Backend, header *evmcore.EvmHeader, msg *core.Message,
 	state state.StateDB, block *evmcore.EvmBlock, tx *types.Transaction, index uint64,
 	status uint64) (*[]txtrace.ActionTrace, error) {
 
@@ -545,7 +546,7 @@ func addBlocksForProcessing(ctx context.Context, fromBlock rpc.BlockNumber, toBl
 }
 
 // Parses rpc call arguments
-func parseFilterArguments(b Backend, args FilterArgs) (fromBlock rpc.BlockNumber, toBlock rpc.BlockNumber, fromAddresses map[common.Address]struct{}, toAddresses map[common.Address]struct{}, err error) {
+func parseFilterArguments(b rpctypes.Backend, args FilterArgs) (fromBlock rpc.BlockNumber, toBlock rpc.BlockNumber, fromAddresses map[common.Address]struct{}, toAddresses map[common.Address]struct{}, err error) {
 
 	blockHead := rpc.BlockNumber(b.CurrentBlock().NumberU64())
 

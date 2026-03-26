@@ -34,6 +34,7 @@ import (
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
+	rpctypes "github.com/0xsoniclabs/sonic/rpc/types"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	geth_math "github.com/ethereum/go-ethereum/common/math"
@@ -120,7 +121,7 @@ func TestAPI_GetProof(t *testing.T) {
 	accountElements := []immutable.Bytes{immutable.NewBytes([]byte("accElement"))}
 
 	// Mocks
-	mockBackend := NewMockBackend(ctrl)
+	mockBackend := rpctypes.NewMockBackend(ctrl)
 	mockState := state.NewMockStateDB(ctrl)
 	mockProof := witness.NewMockProof(ctrl)
 	mockHeader := &evmcore.EvmHeader{Root: headerRoot}
@@ -165,7 +166,7 @@ func TestAPI_GetAccount(t *testing.T) {
 	nonce := cc.ToNonce(5)
 	headerRoot := common.Hash{123}
 
-	mockBackend := NewMockBackend(ctrl)
+	mockBackend := rpctypes.NewMockBackend(ctrl)
 	mockState := state.NewMockStateDB(ctrl)
 	mockProof := witness.NewMockProof(ctrl)
 	mockHeader := &evmcore.EvmHeader{Root: headerRoot}
@@ -198,7 +199,7 @@ func testGetBlockReceipts(t *testing.T, blockParam rpc.BlockNumberOrHash) ([]map
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	mockObj := NewMockBackend(ctrl)
+	mockObj := rpctypes.NewMockBackend(ctrl)
 	mockObj.EXPECT().ChainID()
 
 	header, transaction, receipts, err := getTestData()
@@ -274,7 +275,7 @@ func TestEstimateGas(t *testing.T) {
 
 	headerRoot := common.Hash{123}
 
-	mockBackend := NewMockBackend(ctrl)
+	mockBackend := rpctypes.NewMockBackend(ctrl)
 	mockState := state.NewMockStateDB(ctrl)
 	mockHeader := &evmcore.EvmHeader{
 		Number: big.NewInt(1),
@@ -305,7 +306,7 @@ func TestReplayTransactionOnEmptyBlock(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockBackend := NewMockBackend(ctrl)
+	mockBackend := rpctypes.NewMockBackend(ctrl)
 	mockState := state.NewMockStateDB(ctrl)
 
 	block := &evmcore.EvmBlock{}
@@ -345,7 +346,7 @@ func TestReplayInternalTransaction(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockBackend := NewMockBackend(ctrl)
+	mockBackend := rpctypes.NewMockBackend(ctrl)
 	mockState := state.NewMockStateDB(ctrl)
 
 	// internal transaction with gas price 0
@@ -402,7 +403,7 @@ func TestBlockOverrides(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockBackend := NewMockBackend(ctrl)
+	mockBackend := rpctypes.NewMockBackend(ctrl)
 	mockState := state.NewMockStateDB(ctrl)
 
 	blockNr := 10
@@ -541,7 +542,7 @@ func runEstimateGasOverrideTest(t *testing.T, test stateOverrideEstimateGasTest)
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockBackend := NewMockBackend(ctrl)
+	mockBackend := rpctypes.NewMockBackend(ctrl)
 	mockState := state.NewMockStateDB(ctrl)
 
 	blockNr := 10
@@ -593,7 +594,7 @@ func TestGetTransactionReceiptReturnsNilNotError(t *testing.T) {
 	txHash := common.Hash{1}
 
 	ctrl := gomock.NewController(t)
-	mockBackend := NewMockBackend(ctrl)
+	mockBackend := rpctypes.NewMockBackend(ctrl)
 	mockBackend.EXPECT().GetTransaction(gomock.Any(), txHash).Return(&types.Transaction{}, uint64(0), uint64(0), nil)
 	mockBackend.EXPECT().BlockByNumber(gomock.Any(), gomock.Any()).Return(nil, nil)
 	mockBackend.EXPECT().ChainConfig(gomock.Any()).Return(&params.ChainConfig{}).AnyTimes()
@@ -904,7 +905,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 	sender := crypto.PubkeyToAddress(senderKey.PublicKey)
 	recipient := common.Address{0x2}
 
-	executeDoCall := func(t *testing.T, backend Backend, txArgs TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash) {
+	executeDoCall := func(t *testing.T, backend rpctypes.Backend, txArgs TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash) {
 		t.Helper()
 		var stateOverrides *StateOverride
 		var blockOverrides *BlockOverrides
@@ -916,7 +917,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 		require.False(t, result.Failed())
 	}
 
-	executeStateAtTransaction := func(t *testing.T, backend Backend, txArgs TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash) {
+	executeStateAtTransaction := func(t *testing.T, backend rpctypes.Backend, txArgs TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash) {
 		block := backend.CurrentBlock()
 
 		// modify block for test: add historical transactions
@@ -942,7 +943,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	executeTraceReplayBlock := func(t *testing.T, backend Backend, txArgs TransactionArgs, blockOrHash rpc.BlockNumberOrHash) {
+	executeTraceReplayBlock := func(t *testing.T, backend rpctypes.Backend, txArgs TransactionArgs, blockOrHash rpc.BlockNumberOrHash) {
 		api := PublicTxTraceAPI{b: backend}
 		block := backend.CurrentBlock()
 
@@ -1027,9 +1028,9 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 
 	tests := map[string]struct {
 		upgrades          opera.Upgrades
-		extraSetupBackend func(*MockBackend)
+		extraSetupBackend func(*rpctypes.MockBackend)
 		setupStateDb      func(*state.MockStateDB)
-		call              func(*testing.T, Backend, TransactionArgs, rpc.BlockNumberOrHash)
+		call              func(*testing.T, rpctypes.Backend, TransactionArgs, rpc.BlockNumberOrHash)
 	}{
 		"DoCall sonic": {
 			upgrades:     opera.GetSonicUpgrades(),
@@ -1071,7 +1072,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 		},
 		"trace_replayBlock sonic": {
 			upgrades: opera.GetSonicUpgrades(),
-			extraSetupBackend: func(mockBackend *MockBackend) {
+			extraSetupBackend: func(mockBackend *rpctypes.MockBackend) {
 				mockBackend.EXPECT().GetReceiptsByNumber(gomock.Any(), gomock.Any()).
 					Return(types.Receipts{
 						{Status: types.ReceiptStatusSuccessful},
@@ -1088,7 +1089,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 		},
 		"trace_replayBlock allegro": {
 			upgrades: opera.GetAllegroUpgrades(),
-			extraSetupBackend: func(mockBackend *MockBackend) {
+			extraSetupBackend: func(mockBackend *rpctypes.MockBackend) {
 				mockBackend.EXPECT().GetReceiptsByNumber(gomock.Any(), gomock.Any()).
 					Return(types.Receipts{
 						{Status: types.ReceiptStatusSuccessful},
@@ -1123,7 +1124,7 @@ func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
 			require.NotNil(t, test.setupStateDb, "setupStateDb must be defined")
 			test.setupStateDb(mockState)
 
-			backend := NewMockBackend(ctrl)
+			backend := rpctypes.NewMockBackend(ctrl)
 			backend.EXPECT().GetNetworkRules(gomock.Any(), gomock.Any()).
 				Return(&opera.Rules{}, nil).AnyTimes()
 			backend.EXPECT().StateAndBlockByNumberOrHash(gomock.Any(), blockOrHash).
@@ -1334,7 +1335,7 @@ func TestDebugTraceWithBlobTx(t *testing.T) {
 	defer ctrl.Finish()
 
 	chainId := big.NewInt(1)
-	prepareMockBackend := func(tx *types.Transaction) *MockBackend {
+	prepareMockBackend := func(tx *types.Transaction) *rpctypes.MockBackend {
 		key, err := crypto.GenerateKey()
 		if err != nil {
 			t.Fatal(err)
@@ -1373,7 +1374,7 @@ func TestDebugTraceWithBlobTx(t *testing.T) {
 		// transaction index is 1 for obtaining state after transaction 0
 		txIndex := uint64(1)
 
-		mockBackend := NewMockBackend(ctrl)
+		mockBackend := rpctypes.NewMockBackend(ctrl)
 		mockState := state.NewMockStateDB(ctrl)
 		any := gomock.Any()
 		mockBackend.EXPECT().GetTransaction(any, any).Return(block.Transactions[txIndex], block.NumberU64(), txIndex, nil)
@@ -1436,7 +1437,7 @@ func TestFeeHistory_BlockNotFound(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockBackend := NewMockBackend(ctrl)
+	mockBackend := rpctypes.NewMockBackend(ctrl)
 
 	requestedBlock := rpc.BlockNumber(100)
 
@@ -1460,38 +1461,38 @@ func TestGetNumberAndTime_ReportsErrors(t *testing.T) {
 
 	tests := map[string]struct {
 		blockNumberOrHash rpc.BlockNumberOrHash
-		setupBackend      func(*MockBackend)
+		setupBackend      func(*rpctypes.MockBackend)
 		expectedError     string
 	}{
 		"block not found": {
 			blockNumberOrHash: rpc.BlockNumberOrHashWithNumber(42),
-			setupBackend: func(mockBackend *MockBackend) {
+			setupBackend: func(mockBackend *rpctypes.MockBackend) {
 				mockBackend.EXPECT().HeaderByNumber(gomock.Any(), rpc.BlockNumber(42)).Return(nil, errors.New("block not found"))
 			},
 			expectedError: "block not found",
 		},
 		"header retrieval error": {
 			blockNumberOrHash: rpc.BlockNumberOrHashWithHash(common.Hash{1, 2, 3}, false),
-			setupBackend: func(mockBackend *MockBackend) {
+			setupBackend: func(mockBackend *rpctypes.MockBackend) {
 				mockBackend.EXPECT().HeaderByHash(gomock.Any(), common.Hash{1, 2, 3}).Return(nil, errors.New("header retrieval error"))
 			},
 			expectedError: "header retrieval error",
 		},
 		"invalid block number or hash": {
 			blockNumberOrHash: rpc.BlockNumberOrHash{},
-			setupBackend:      func(mockBackend *MockBackend) {},
+			setupBackend:      func(mockBackend *rpctypes.MockBackend) {},
 			expectedError:     "invalid block number or hash",
 		},
 		"nil header returned from number": {
 			blockNumberOrHash: rpc.BlockNumberOrHashWithNumber(100),
-			setupBackend: func(mockBackend *MockBackend) {
+			setupBackend: func(mockBackend *rpctypes.MockBackend) {
 				mockBackend.EXPECT().HeaderByNumber(gomock.Any(), rpc.BlockNumber(100)).Return(nil, nil)
 			},
 			expectedError: "block does not exists",
 		},
 		"nil header returned from hash`": {
 			blockNumberOrHash: rpc.BlockNumberOrHashWithHash(common.Hash{1, 2, 3}, false),
-			setupBackend: func(mockBackend *MockBackend) {
+			setupBackend: func(mockBackend *rpctypes.MockBackend) {
 				mockBackend.EXPECT().HeaderByHash(gomock.Any(), common.Hash{1, 2, 3}).Return(nil, nil)
 			},
 			expectedError: "block does not exists",
@@ -1502,7 +1503,7 @@ func TestGetNumberAndTime_ReportsErrors(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 
-			mockBackend := NewMockBackend(ctrl)
+			mockBackend := rpctypes.NewMockBackend(ctrl)
 			test.setupBackend(mockBackend)
 
 			_, _, err := getNumberAndTime(context.Background(), mockBackend, test.blockNumberOrHash)
@@ -1521,17 +1522,17 @@ func TestGetNumberAndTime_ReturnsBlockNumberAndTimestamp_ForExistingBlock(t *tes
 
 	tests := map[string]struct {
 		blockNumberOrHash rpc.BlockNumberOrHash
-		backendSetup      func(*MockBackend)
+		backendSetup      func(*rpctypes.MockBackend)
 	}{
 		"by number": {
 			blockNumberOrHash: rpc.BlockNumberOrHashWithNumber(42),
-			backendSetup: func(mockBackend *MockBackend) {
+			backendSetup: func(mockBackend *rpctypes.MockBackend) {
 				mockBackend.EXPECT().HeaderByNumber(gomock.Any(), rpc.BlockNumber(42)).Return(expectedHeader, nil)
 			},
 		},
 		"by hash": {
 			blockNumberOrHash: rpc.BlockNumberOrHashWithHash(common.HexToHash("0xabcdef"), false),
-			backendSetup: func(mockBackend *MockBackend) {
+			backendSetup: func(mockBackend *rpctypes.MockBackend) {
 				mockBackend.EXPECT().HeaderByHash(gomock.Any(), common.HexToHash("0xabcdef")).Return(expectedHeader, nil)
 			},
 		},
@@ -1542,7 +1543,7 @@ func TestGetNumberAndTime_ReturnsBlockNumberAndTimestamp_ForExistingBlock(t *tes
 
 			ctrl := gomock.NewController(t)
 
-			mockBackend := NewMockBackend(ctrl)
+			mockBackend := rpctypes.NewMockBackend(ctrl)
 			test.backendSetup(mockBackend)
 
 			number, timestamp, err := getNumberAndTime(context.Background(), mockBackend, test.blockNumberOrHash)
@@ -1556,7 +1557,7 @@ func TestGetNumberAndTime_ReturnsBlockNumberAndTimestamp_ForExistingBlock(t *tes
 func TestIsOsaka_ForwardsErrors(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
-	mockBackend := NewMockBackend(ctrl)
+	mockBackend := rpctypes.NewMockBackend(ctrl)
 
 	want := errors.New("max gas limit retrieval error")
 
@@ -1608,7 +1609,7 @@ func TestIsOsaka_OverridesAreUsedForDeterminingWhetherOsakaIsEnabled(t *testing.
 		t.Run(name, func(t *testing.T) {
 
 			header := &evmcore.EvmHeader{Number: big.NewInt(1)}
-			backend := NewMockBackend(ctrl)
+			backend := rpctypes.NewMockBackend(ctrl)
 
 			backend.EXPECT().HeaderByNumber(gomock.Any(), gomock.Any()).Return(header, nil)
 			backend.EXPECT().ChainConfig(gomock.Any()).Return(&config)
@@ -1660,7 +1661,7 @@ func TestCapMaxGas_IsUpgradesAware(t *testing.T) {
 			chainConfig := makeChainConfig(test.upgrades)
 
 			ctrl := gomock.NewController(t)
-			mockBackend := NewMockBackend(ctrl)
+			mockBackend := rpctypes.NewMockBackend(ctrl)
 			any := gomock.Any()
 			mockBackend.EXPECT().MaxGasLimit().Return(maxGas).AnyTimes()
 			mockBackend.EXPECT().HeaderByNumber(any, rpc.BlockNumber(1)).Return(&header, nil).AnyTimes()

@@ -35,6 +35,7 @@ import (
 	"github.com/holiman/uint256"
 
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
+	rpctypes "github.com/0xsoniclabs/sonic/rpc/types"
 	"github.com/0xsoniclabs/sonic/utils"
 )
 
@@ -93,7 +94,7 @@ func (args *TransactionArgs) data() []byte {
 }
 
 // setDefaults fills in default values for unspecified tx fields.
-func (args *TransactionArgs) setDefaults(ctx context.Context, b Backend) error {
+func (args *TransactionArgs) setDefaults(ctx context.Context, b rpctypes.Backend) error {
 	if args.GasPrice != nil && (args.MaxFeePerGas != nil || args.MaxPriorityFeePerGas != nil) {
 		return errors.New("both gasPrice and (maxFeePerGas or maxPriorityFeePerGas) specified")
 	}

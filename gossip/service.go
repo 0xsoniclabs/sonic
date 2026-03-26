@@ -64,6 +64,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/proclogger"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/logger"
+	sonicrpc "github.com/0xsoniclabs/sonic/rpc"
 	scc_node "github.com/0xsoniclabs/sonic/scc/node"
 	"github.com/0xsoniclabs/sonic/utils/txtime"
 	"github.com/0xsoniclabs/sonic/utils/wgmutex"
@@ -535,7 +536,7 @@ func (s *Service) Protocols() ([]p2p.Protocol, CleanupFunc) {
 
 // APIs returns api methods the service wants to expose on rpc channels.
 func (s *Service) APIs() []rpc.API {
-	apis := ethapi.GetAPIs(s.EthAPI)
+	apis := sonicrpc.GetAPIs(s.EthAPI)
 
 	apis = append(apis, []rpc.API{
 		{

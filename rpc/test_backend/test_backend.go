@@ -11,6 +11,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
+	rpctypes "github.com/0xsoniclabs/sonic/rpc/types"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
@@ -174,7 +175,7 @@ func (b *Blockchain) MinGasPrice() *big.Int {
 }
 
 // Progress implements [ethapi.BundleApiBackend].
-func (b *Blockchain) Progress() ethapi.PeerProgress {
+func (b *Blockchain) Progress() rpctypes.PeerProgress {
 	panic("unimplemented")
 }
 

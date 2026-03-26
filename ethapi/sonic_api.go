@@ -23,8 +23,8 @@ import (
 	"strconv"
 	"strings"
 
+	rpctypes "github.com/0xsoniclabs/sonic/rpc/types"
 	"github.com/0xsoniclabs/sonic/scc"
-	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/0xsoniclabs/sonic/utils/result"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 )
@@ -34,11 +34,11 @@ import (
 // PublicSccApi provides an API to access certificates of the Sonic
 // Certification Chain.
 type PublicSccApi struct {
-	backend    SccApiBackend
+	backend    rpctypes.SccApiBackend
 	maxResults int
 }
 
-func NewPublicSccApi(backend SccApiBackend) *PublicSccApi {
+func NewPublicSccApi(backend rpctypes.SccApiBackend) *PublicSccApi {
 	return &PublicSccApi{
 		backend:    backend,
 		maxResults: 128, // TODO: make this a configuration option
@@ -89,16 +89,6 @@ func (s *PublicSccApi) GetBlockCertificates(
 		maxResults,
 		s.maxResults,
 	)
-}
-
-// SccApiBackend is the backend interface for the Sonic Certification Chain API.
-// An implementation thereof provides access to the Sonic Certification Chain.
-type SccApiBackend interface {
-	GetLatestCommitteeCertificate() (cert.CommitteeCertificate, error)
-	EnumerateCommitteeCertificates(first scc.Period) iter.Seq[result.T[cert.CommitteeCertificate]]
-
-	GetLatestBlockCertificate() (cert.BlockCertificate, error)
-	EnumerateBlockCertificates(first idx.Block) iter.Seq[result.T[cert.BlockCertificate]]
 }
 
 // --- Period and Block Numbers -----------------------------------------------

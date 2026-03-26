@@ -38,7 +38,6 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/pkg/errors"
 
-	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
@@ -47,6 +46,7 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
+	rpctypes "github.com/0xsoniclabs/sonic/rpc/types"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/0xsoniclabs/sonic/topicsdb"
@@ -499,12 +499,12 @@ func (b *EthAPIBackend) TxPoolContent() (map[common.Address]types.Transactions, 
 }
 
 // Progress returns current synchronization status of this node
-func (b *EthAPIBackend) Progress() ethapi.PeerProgress {
+func (b *EthAPIBackend) Progress() rpctypes.PeerProgress {
 	p2pProgress := b.svc.handler.myProgress()
 	highestP2pProgress := b.svc.handler.highestPeerProgress()
 	lastBlock := b.svc.store.GetBlock(p2pProgress.LastBlockIdx)
 
-	return ethapi.PeerProgress{
+	return rpctypes.PeerProgress{
 		CurrentEpoch:     p2pProgress.Epoch,
 		CurrentBlock:     p2pProgress.LastBlockIdx,
 		CurrentBlockHash: p2pProgress.LastBlockAtropos,

@@ -29,6 +29,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
+	rpctypes "github.com/0xsoniclabs/sonic/rpc/types"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -230,7 +231,7 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 			)
 
 			ctrl := gomock.NewController(t)
-			backend := NewMockBackend(ctrl)
+			backend := rpctypes.NewMockBackend(ctrl)
 			backend.EXPECT().ChainID().Return(chainId)
 			backend.EXPECT().ChainConfig(gomock.Any()).Return(chainCfg)
 			backend.EXPECT().GetGenesisID().Return(common.Hash{0x42})
@@ -248,7 +249,7 @@ func TestMakeConfigFromUpgrade_Reports_AvailableSystemContracts(t *testing.T) {
 
 func TestMakeConfigFromUpgrade_ReportsErrors_WhenBlockByNumberReturnsAnError(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	backend := NewMockBackend(ctrl)
+	backend := rpctypes.NewMockBackend(ctrl)
 
 	chainId := big.NewInt(250)
 	backend.EXPECT().ChainID().Return(chainId)
@@ -269,7 +270,7 @@ func TestMakeConfigFromUpgrade_ReportsErrors_WhenBlockByNumberReturnsAnError(t *
 
 func TestMakeConfigFromUpgrade_ReportsError_WhenBlockByNumberReturnsNilBlock(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	backend := NewMockBackend(ctrl)
+	backend := rpctypes.NewMockBackend(ctrl)
 
 	chainId := big.NewInt(250)
 	backend.EXPECT().ChainID().Return(chainId)
@@ -297,17 +298,17 @@ func TestEIP7910_Config_ReportsErrors(t *testing.T) {
 	}
 
 	tests := map[string]struct {
-		backendSetup func(*MockBackend)
+		backendSetup func(*rpctypes.MockBackend)
 		expectedErr  string
 	}{
 		"fails to get current block": {
-			backendSetup: func(mockBackend *MockBackend) {
+			backendSetup: func(mockBackend *rpctypes.MockBackend) {
 				mockBackend.EXPECT().CurrentBlock().Return(nil)
 			},
 			expectedErr: "current block header not found",
 		},
 		"fails to get upgrade heights for current block": {
-			backendSetup: func(mockBackend *MockBackend) {
+			backendSetup: func(mockBackend *rpctypes.MockBackend) {
 				mockBackend.EXPECT().CurrentBlock().Return(&currentBlock)
 				mockBackend.EXPECT().GetUpgradeHeights().Return(nil)
 			},
@@ -318,7 +319,7 @@ func TestEIP7910_Config_ReportsErrors(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
-			backend := NewMockBackend(ctrl)
+			backend := rpctypes.NewMockBackend(ctrl)
 
 			test.backendSetup(backend)
 
@@ -362,11 +363,11 @@ func TestEIP7910_Config_ReturnsConfigs(t *testing.T) {
 	allegroPrecompiled["BLS12_MAP_FP2_TO_G2"] = common.BytesToAddress([]byte{0x11})
 
 	tests := map[string]struct {
-		backendSetup func(*MockBackend)
+		backendSetup func(*rpctypes.MockBackend)
 		wantConfig   configResponse
 	}{
 		"only current block config": {
-			backendSetup: func(mockBackend *MockBackend) {
+			backendSetup: func(mockBackend *rpctypes.MockBackend) {
 				mockBackend.EXPECT().CurrentBlock().Return(&currentBlock)
 				upgradeHeights := []opera.UpgradeHeight{
 					{
@@ -396,7 +397,7 @@ func TestEIP7910_Config_ReturnsConfigs(t *testing.T) {
 			}(),
 		},
 		"current and last block configs": {
-			backendSetup: func(mockBackend *MockBackend) {
+			backendSetup: func(mockBackend *rpctypes.MockBackend) {
 				mockBackend.EXPECT().CurrentBlock().Return(&currentBlock)
 				upgradeHeights := []opera.UpgradeHeight{
 					{
@@ -451,7 +452,7 @@ func TestEIP7910_Config_ReturnsConfigs(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
-			backend := NewMockBackend(ctrl)
+			backend := rpctypes.NewMockBackend(ctrl)
 			backend.EXPECT().ChainID().Return(chainId).AnyTimes()
 			// could be called once or twice depending on the test case.
 			backend.EXPECT().GetGenesisID().Return(common.Hash{0x42}).AnyTimes()

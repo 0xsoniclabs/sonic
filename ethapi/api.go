@@ -30,6 +30,7 @@ import (
 	"github.com/0xsoniclabs/carmen/go/common/immutable"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice/gaspricelimits"
+	rpctypes "github.com/0xsoniclabs/sonic/rpc/types"
 	bip39 "github.com/tyler-smith/go-bip39"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
@@ -75,11 +76,11 @@ var (
 // PublicEthereumAPI provides an API to access Ethereum related information.
 // It offers only methods that operate on public data that is freely available to anyone.
 type PublicEthereumAPI struct {
-	b Backend
+	b rpctypes.Backend
 }
 
 // NewPublicEthereumAPI creates a new Ethereum protocol API.
-func NewPublicEthereumAPI(b Backend) *PublicEthereumAPI {
+func NewPublicEthereumAPI(b rpctypes.Backend) *PublicEthereumAPI {
 	return &PublicEthereumAPI{b}
 }
 
@@ -192,11 +193,11 @@ func (s *PublicEthereumAPI) Syncing() (interface{}, error) {
 
 // PublicTxPoolAPI offers and API for the transaction pool. It only operates on data that is non confidential.
 type PublicTxPoolAPI struct {
-	b Backend
+	b rpctypes.Backend
 }
 
 // NewPublicTxPoolAPI creates a new tx pool service that gives information about the transaction pool.
-func NewPublicTxPoolAPI(b Backend) *PublicTxPoolAPI {
+func NewPublicTxPoolAPI(b rpctypes.Backend) *PublicTxPoolAPI {
 	return &PublicTxPoolAPI{b}
 }
 
@@ -317,11 +318,11 @@ func (s *PublicAccountAPI) Accounts() []common.Address {
 type PrivateAccountAPI struct {
 	am        *accounts.Manager
 	nonceLock *AddrLocker
-	b         Backend
+	b         rpctypes.Backend
 }
 
 // NewPrivateAccountAPI create a new PrivateAccountAPI.
-func NewPrivateAccountAPI(b Backend, nonceLock *AddrLocker) *PrivateAccountAPI {
+func NewPrivateAccountAPI(b rpctypes.Backend, nonceLock *AddrLocker) *PrivateAccountAPI {
 	return &PrivateAccountAPI{
 		am:        b.AccountManager(),
 		nonceLock: nonceLock,
@@ -652,11 +653,11 @@ func (s *PrivateAccountAPI) Unpair(ctx context.Context, url string, pin string) 
 // PublicBlockChainAPI provides an API to access the Ethereum blockchain.
 // It offers only methods that operate on public data that is freely available to anyone.
 type PublicBlockChainAPI struct {
-	b Backend
+	b rpctypes.Backend
 }
 
 // NewPublicBlockChainAPI creates a new Ethereum blockchain API.
-func NewPublicBlockChainAPI(b Backend) *PublicBlockChainAPI {
+func NewPublicBlockChainAPI(b rpctypes.Backend) *PublicBlockChainAPI {
 	return &PublicBlockChainAPI{b}
 }
 
@@ -1108,7 +1109,7 @@ func (diff *StateOverride) HasCodesExceedingOnChainLimit() bool {
 	return false
 }
 
-func DoCall(ctx context.Context, b BlockchainApiBackend, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, overrides *StateOverride, blockOverrides *BlockOverrides, timeout time.Duration, globalGasCap uint64, preArgs []TransactionArgs) (*core.ExecutionResult, error) {
+func DoCall(ctx context.Context, b rpctypes.BlockchainApiBackend, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, overrides *StateOverride, blockOverrides *BlockOverrides, timeout time.Duration, globalGasCap uint64, preArgs []TransactionArgs) (*core.ExecutionResult, error) {
 	defer func(start time.Time) { log.Debug("Executing EVM call finished", "runtime", time.Since(start)) }(time.Now())
 
 	state, block, err := b.StateAndBlockByNumberOrHash(ctx, blockNrOrHash)
@@ -1250,7 +1251,7 @@ func (s *PublicBlockChainAPI) Call(ctx context.Context, args TransactionArgs, bl
 }
 
 // DoEstimateGas - binary search the gas requirement, as it may be higher than the amount used
-func DoEstimateGas(ctx context.Context, b BlockchainApiBackend, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, overrides *StateOverride, blockOverrides *BlockOverrides, gasCap uint64, preArgs []TransactionArgs) (hexutil.Uint64, error) {
+func DoEstimateGas(ctx context.Context, b rpctypes.BlockchainApiBackend, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, overrides *StateOverride, blockOverrides *BlockOverrides, gasCap uint64, preArgs []TransactionArgs) (hexutil.Uint64, error) {
 	// Binary search the gas requirement, as it may be higher than the amount used
 	var (
 		lo  uint64 = params.TxGas - 1
@@ -1383,7 +1384,7 @@ func DoEstimateGas(ctx context.Context, b BlockchainApiBackend, args Transaction
 // (by number or hash) is subject to the Osaka rule, and if so, caps the gas limit
 // to the backend's maximum allowed gas limit.
 // Returns the capped gas limit and any error encountered.
-func capMaxGas(ctx context.Context, b BlockchainApiBackend, blockNrOrHash rpc.BlockNumberOrHash, blockOverrides *BlockOverrides, hi uint64) (uint64, error) {
+func capMaxGas(ctx context.Context, b rpctypes.BlockchainApiBackend, blockNrOrHash rpc.BlockNumberOrHash, blockOverrides *BlockOverrides, hi uint64) (uint64, error) {
 	if osaka, err := isOsaka(ctx, b, blockNrOrHash, blockOverrides); err != nil {
 		return 0, err
 	} else if osaka {
@@ -1397,7 +1398,7 @@ func capMaxGas(ctx context.Context, b BlockchainApiBackend, blockNrOrHash rpc.Bl
 // overridden by the given block overrides.
 func isOsaka(
 	ctx context.Context,
-	b BlockchainApiBackend,
+	b rpctypes.BlockchainApiBackend,
 	blockNrOrHash rpc.BlockNumberOrHash,
 	blockOverrides *BlockOverrides,
 ) (bool, error) {
@@ -1423,7 +1424,7 @@ func isOsaka(
 // getNumberAndTime returns the block number and time for the given block number or hash,
 // applying any overrides specified in blockOverrides.
 // if the number or hash is invalid or does not exist, an error is returned.
-func getNumberAndTime(ctx context.Context, b BlockchainApiBackend, blockNrOrHash rpc.BlockNumberOrHash) (uint64, uint64, error) {
+func getNumberAndTime(ctx context.Context, b rpctypes.BlockchainApiBackend, blockNrOrHash rpc.BlockNumberOrHash) (uint64, uint64, error) {
 
 	var header *evmcore.EvmHeader
 	var err error
@@ -1687,7 +1688,7 @@ func (s *PublicBlockChainAPI) CreateAccessList(ctx context.Context, args Transac
 // AccessList creates an access list for the given transaction.
 // If the accesslist creation fails an error is returned.
 // If the transaction itself fails, an vmErr is returned.
-func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrHash, args TransactionArgs) (acl types.AccessList, gasUsed uint64, vmErr error, err error) {
+func AccessList(ctx context.Context, b rpctypes.Backend, blockNrOrHash rpc.BlockNumberOrHash, args TransactionArgs) (acl types.AccessList, gasUsed uint64, vmErr error, err error) {
 	// Retrieve the execution context
 	db, block, err := b.StateAndBlockByNumberOrHash(ctx, blockNrOrHash)
 	if db == nil || err != nil {
@@ -1774,13 +1775,13 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 
 // PublicTransactionPoolAPI exposes methods for the RPC interface
 type PublicTransactionPoolAPI struct {
-	b         Backend
+	b         rpctypes.Backend
 	nonceLock *AddrLocker
 	signer    types.Signer
 }
 
 // NewPublicTransactionPoolAPI creates a new RPC service with methods specific for the transaction pool.
-func NewPublicTransactionPoolAPI(b Backend, nonceLock *AddrLocker) *PublicTransactionPoolAPI {
+func NewPublicTransactionPoolAPI(b rpctypes.Backend, nonceLock *AddrLocker) *PublicTransactionPoolAPI {
 	// The signer used by the API should always be the 'latest' known one because we expect
 	// signers to be backwards-compatible with old transactions.
 	chainID := b.ChainID()
@@ -2035,8 +2036,8 @@ func (s *PublicTransactionPoolAPI) sign(addr common.Address, tx *types.Transacti
 }
 
 type submitter interface {
-	TxPoolSenderBackend
-	RPCLimitsBackend
+	rpctypes.TxPoolSenderBackend
+	rpctypes.RPCLimitsBackend
 }
 
 // SubmitTransaction is a helper function that submits tx to txPool and logs a message.
@@ -2271,14 +2272,14 @@ func (s *PublicTransactionPoolAPI) Resend(ctx context.Context, sendArgs Transact
 // PublicDebugAPI is the collection of Ethereum APIs exposed over the public
 // debugging endpoint.
 type PublicDebugAPI struct {
-	b               Backend
+	b               rpctypes.Backend
 	maxResponseSize int // in bytes
 	structLogLimit  int
 }
 
 // NewPublicDebugAPI creates a new API definition for the public debug methods
 // of the Ethereum service.
-func NewPublicDebugAPI(b Backend, maxResponseSize int, structLogLimit int) *PublicDebugAPI {
+func NewPublicDebugAPI(b rpctypes.Backend, maxResponseSize int, structLogLimit int) *PublicDebugAPI {
 	return &PublicDebugAPI{
 		b:               b,
 		maxResponseSize: maxResponseSize,
@@ -2570,7 +2571,7 @@ func (api *PublicDebugAPI) traceBlock(ctx context.Context, block *evmcore.EvmBlo
 }
 
 // stateAtTransaction returns the execution environment of a certain transaction.
-func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex int, b Backend) (*core.Message, state.StateDB, error) {
+func stateAtTransaction(ctx context.Context, block *evmcore.EvmBlock, txIndex int, b rpctypes.Backend) (*core.Message, state.StateDB, error) {
 	// Short circuit if it's genesis block.
 	if block.NumberU64() == 0 {
 		return nil, nil, errors.New("no transaction in genesis")
@@ -2705,7 +2706,7 @@ func (api *PublicDebugAPI) TraceCall(ctx context.Context, args TransactionArgs, 
 }
 
 // getEvmBlockFromNumberOrHash returns EvmBlock from block number or block hash
-func getEvmBlockFromNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash, b Backend) (*evmcore.EvmBlock, error) {
+func getEvmBlockFromNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash, b rpctypes.Backend) (*evmcore.EvmBlock, error) {
 	var (
 		block *evmcore.EvmBlock
 		err   error
@@ -2728,7 +2729,7 @@ func getEvmBlockFromNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNum
 }
 
 // getTxAndMessage returns transaction and message constructed from transaction arguments
-func getTxAndMessage(args *TransactionArgs, block *evmcore.EvmBlock, b Backend) (*types.Transaction, *core.Message, error) {
+func getTxAndMessage(args *TransactionArgs, block *evmcore.EvmBlock, b rpctypes.Backend) (*types.Transaction, *core.Message, error) {
 	msg, err := args.ToMessage(b.RPCGasCap(), block.BaseFee, log.Root())
 	if err != nil {
 		return nil, nil, err
@@ -2749,12 +2750,12 @@ func getTxAndMessage(args *TransactionArgs, block *evmcore.EvmBlock, b Backend) 
 // PrivateDebugAPI is the collection of Ethereum APIs exposed over the private
 // debugging endpoint.
 type PrivateDebugAPI struct {
-	b Backend
+	b rpctypes.Backend
 }
 
 // NewPrivateDebugAPI creates a new API definition for the private debug methods
 // of the Ethereum service.
-func NewPrivateDebugAPI(b Backend) *PrivateDebugAPI {
+func NewPrivateDebugAPI(b rpctypes.Backend) *PrivateDebugAPI {
 	return &PrivateDebugAPI{b: b}
 }
 

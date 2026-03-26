@@ -22,6 +22,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/opera"
+	sonicapi "github.com/0xsoniclabs/sonic/rpc/sonic"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/tests/contracts/increasingly_expensive"
 	"github.com/ethereum/go-ethereum"
@@ -135,7 +136,7 @@ func PrepareBundle(
 	t *testing.T, client *tests.PooledEhtClient,
 	txs []ethereum.CallMsg,
 	earliest, latest *int64,
-) (ethapi.RPCPreparedBundle, error) {
+) (sonicapi.RPCPreparedBundle, error) {
 
 	nonces := make(map[common.Address]uint64)
 	for _, tx := range txs {
@@ -171,9 +172,9 @@ func PrepareBundle(
 	}
 
 	// Call sonic_prepareBundle to get a bundle with all fields properly filled in and encoded
-	var preparedBundle ethapi.RPCPreparedBundle
+	var preparedBundle sonicapi.RPCPreparedBundle
 	err := client.Client().Call(&preparedBundle, "sonic_prepareBundle",
-		ethapi.PrepareBundleArgs{
+		sonicapi.PrepareBundleArgs{
 			Transactions:  txsArgs,
 			EarliestBlock: earliestBlock,
 			LatestBlock:   latestBlock,
@@ -189,7 +190,7 @@ func PrepareBundle(
 // point to the api from go programs.
 func SubmitBundle(client *tests.PooledEhtClient,
 	txs []*types.Transaction,
-	plan ethapi.RPCExecutionPlan,
+	plan sonicapi.RPCExecutionPlan,
 ) (common.Hash, error) {
 	encodedTransactions := make([]hexutil.Bytes, len(txs))
 	for i, tx := range txs {
@@ -202,7 +203,7 @@ func SubmitBundle(client *tests.PooledEhtClient,
 
 	var bundleHash common.Hash
 	err := client.Client().Call(&bundleHash, "sonic_submitBundle",
-		ethapi.SubmitBundleArgs{
+		sonicapi.SubmitBundleArgs{
 			SignedTransactions: encodedTransactions,
 			ExecutionPlan:      plan,
 		})

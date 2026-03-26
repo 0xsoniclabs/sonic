@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/opera"
+	rpctypes "github.com/0xsoniclabs/sonic/rpc/types"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/stretchr/testify/require"
@@ -29,7 +30,7 @@ import (
 
 func TestGetVmConfig_RetrievesVmConfigFromRules(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	backend := NewMockBackend(ctrl)
+	backend := rpctypes.NewMockBackend(ctrl)
 
 	ctx := t.Context()
 	height := idx.Block(12)
@@ -49,7 +50,7 @@ func TestGetVmConfig_RetrievesVmConfigFromRules(t *testing.T) {
 
 func TestGetVmConfig_ForwardsErrorFromRuleRetrieval(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	backend := NewMockBackend(ctrl)
+	backend := rpctypes.NewMockBackend(ctrl)
 
 	any := gomock.Any()
 	expectedErr := fmt.Errorf("injected error")
@@ -62,7 +63,7 @@ func TestGetVmConfig_ForwardsErrorFromRuleRetrieval(t *testing.T) {
 
 func TestGetVmConfig_ProducesAnErrorIfRulesAreNotAvailable(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	backend := NewMockBackend(ctrl)
+	backend := rpctypes.NewMockBackend(ctrl)
 
 	any := gomock.Any()
 	backend.EXPECT().GetNetworkRules(any, any).Return(nil, nil).AnyTimes()

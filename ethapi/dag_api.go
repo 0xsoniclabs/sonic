@@ -27,16 +27,17 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 
 	"github.com/0xsoniclabs/sonic/inter"
+	rpctypes "github.com/0xsoniclabs/sonic/rpc/types"
 )
 
 // PublicDAGChainAPI provides an API to access the directed acyclic graph chain.
 // It offers only methods that operate on public data that is freely available to anyone.
 type PublicDAGChainAPI struct {
-	b Backend
+	b rpctypes.Backend
 }
 
 // NewPublicDAGChainAPI creates a new DAG chain API.
-func NewPublicDAGChainAPI(b Backend) *PublicDAGChainAPI {
+func NewPublicDAGChainAPI(b rpctypes.Backend) *PublicDAGChainAPI {
 	return &PublicDAGChainAPI{b}
 }
 

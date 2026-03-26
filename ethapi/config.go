@@ -25,6 +25,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/opera"
+	rpctypes "github.com/0xsoniclabs/sonic/rpc/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -37,7 +38,7 @@ import (
 // given block number based on the upgrade heights.
 func makeConfigFromUpgrade(
 	ctx context.Context,
-	b Backend,
+	b rpctypes.Backend,
 	upgradeHeight opera.UpgradeHeight,
 ) (*config, error) {
 
