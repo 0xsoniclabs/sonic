@@ -109,9 +109,9 @@ type RPCPreparedBundle struct {
 	// These must be signed exactly as provided by the bundle_prepare RPC method; any modification
 	// will invalidate the execution plan and result in an ill-formed bundle.
 	Transactions []TransactionArgs `json:"transactions"`
-	// Plan contains the execution plan that each bundled transaction references. This is provided
+	// ExecutionPlan contains the execution plan that each bundled transaction references. This is provided
 	// for verification purposes; users may independently compute and validate the execution plan hash.
-	Plan RPCExecutionPlan `json:"plan,omitempty"`
+	ExecutionPlan RPCExecutionPlan `json:"plan,omitempty"`
 }
 
 // PrepareBundle implements the `sonic_prepareBundle` RPC method.
@@ -237,8 +237,8 @@ func (a *PublicBundleAPI) PrepareBundle(
 	}
 
 	bundle := RPCPreparedBundle{
-		Transactions: args.Transactions,
-		Plan:         NewRPCExecutionPlan(plan),
+		Transactions:  args.Transactions,
+		ExecutionPlan: NewRPCExecutionPlan(plan),
 	}
 
 	return &bundle, nil
