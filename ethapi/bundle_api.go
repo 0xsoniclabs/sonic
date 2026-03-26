@@ -36,7 +36,6 @@ import (
 
 type BundleApiBackend interface {
 	TxPoolSenderBackend
-	EthereunAPIBackend
 	BlockchainApiBackend
 	BundlesBackend
 	RPCLimitsBackend
@@ -407,7 +406,7 @@ func (a *PublicBundleAPI) EstimateGasForTransactions(
 	gasCap := a.b.RPCGasCap()
 	eval := &estimator{
 		ctx:            ctx,
-		b:              a.b.(Backend),
+		b:              a.b,
 		blockNrOrHash:  bNrOrHash,
 		overrides:      overrides,
 		blockOverrides: blockOverrides,
@@ -427,7 +426,7 @@ type GasEstimator interface {
 
 type estimator struct {
 	ctx            context.Context
-	b              Backend
+	b              BlockchainApiBackend
 	blockNrOrHash  rpc.BlockNumberOrHash
 	overrides      *StateOverride
 	blockOverrides *BlockOverrides

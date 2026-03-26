@@ -1108,7 +1108,7 @@ func (diff *StateOverride) HasCodesExceedingOnChainLimit() bool {
 	return false
 }
 
-func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, overrides *StateOverride, blockOverrides *BlockOverrides, timeout time.Duration, globalGasCap uint64, preArgs []TransactionArgs) (*core.ExecutionResult, error) {
+func DoCall(ctx context.Context, b BlockchainApiBackend, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, overrides *StateOverride, blockOverrides *BlockOverrides, timeout time.Duration, globalGasCap uint64, preArgs []TransactionArgs) (*core.ExecutionResult, error) {
 	defer func(start time.Time) { log.Debug("Executing EVM call finished", "runtime", time.Since(start)) }(time.Now())
 
 	state, block, err := b.StateAndBlockByNumberOrHash(ctx, blockNrOrHash)
@@ -1250,7 +1250,7 @@ func (s *PublicBlockChainAPI) Call(ctx context.Context, args TransactionArgs, bl
 }
 
 // DoEstimateGas - binary search the gas requirement, as it may be higher than the amount used
-func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, overrides *StateOverride, blockOverrides *BlockOverrides, gasCap uint64, preArgs []TransactionArgs) (hexutil.Uint64, error) {
+func DoEstimateGas(ctx context.Context, b BlockchainApiBackend, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, overrides *StateOverride, blockOverrides *BlockOverrides, gasCap uint64, preArgs []TransactionArgs) (hexutil.Uint64, error) {
 	// Binary search the gas requirement, as it may be higher than the amount used
 	var (
 		lo  uint64 = params.TxGas - 1
@@ -1383,7 +1383,7 @@ func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNr
 // (by number or hash) is subject to the Osaka rule, and if so, caps the gas limit
 // to the backend's maximum allowed gas limit.
 // Returns the capped gas limit and any error encountered.
-func capMaxGas(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrHash, blockOverrides *BlockOverrides, hi uint64) (uint64, error) {
+func capMaxGas(ctx context.Context, b BlockchainApiBackend, blockNrOrHash rpc.BlockNumberOrHash, blockOverrides *BlockOverrides, hi uint64) (uint64, error) {
 	if osaka, err := isOsaka(ctx, b, blockNrOrHash, blockOverrides); err != nil {
 		return 0, err
 	} else if osaka {
@@ -1397,7 +1397,7 @@ func capMaxGas(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrHa
 // overridden by the given block overrides.
 func isOsaka(
 	ctx context.Context,
-	b Backend,
+	b BlockchainApiBackend,
 	blockNrOrHash rpc.BlockNumberOrHash,
 	blockOverrides *BlockOverrides,
 ) (bool, error) {
@@ -1423,7 +1423,7 @@ func isOsaka(
 // getNumberAndTime returns the block number and time for the given block number or hash,
 // applying any overrides specified in blockOverrides.
 // if the number or hash is invalid or does not exist, an error is returned.
-func getNumberAndTime(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrHash) (uint64, uint64, error) {
+func getNumberAndTime(ctx context.Context, b BlockchainApiBackend, blockNrOrHash rpc.BlockNumberOrHash) (uint64, uint64, error) {
 
 	var header *evmcore.EvmHeader
 	var err error

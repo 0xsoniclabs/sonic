@@ -36,11 +36,11 @@ type Blockchain struct {
 
 func NewBlockchain() *Blockchain {
 	return &Blockchain{
-		StateDb{state: make(map[common.Address]*AccountState)},
+		StateDb{state: make(map[common.Address]AccountState)},
 	}
 }
 
-func (b *Blockchain) SetAccount(addr common.Address, account *AccountState) {
+func (b *Blockchain) SetAccount(addr common.Address, account AccountState) {
 	b.state[addr] = account
 }
 
@@ -49,7 +49,7 @@ func (b *Blockchain) StateAndBlockByNumberOrHash(
 	blockNrOrHash rpc.BlockNumberOrHash,
 ) (state.StateDB, *evmcore.EvmBlock, error) {
 
-	return b.StateDb, nil, nil
+	return b.StateDb, b.CurrentBlock(), nil
 }
 
 // ============================================================================
@@ -76,17 +76,22 @@ func (b *Blockchain) CalcBlockExtApi() bool {
 
 // ChainConfig implements [ethapi.BundleApiBackend].
 func (b *Blockchain) ChainConfig(blockHeight idx.Block) *params.ChainConfig {
-	panic("unimplemented")
+	return &params.ChainConfig{}
 }
 
 // ChainID implements [ethapi.BundleApiBackend].
 func (b *Blockchain) ChainID() *big.Int {
-	panic("unimplemented")
+	return big.NewInt(321)
 }
 
 // CurrentBlock implements [ethapi.BundleApiBackend].
 func (b *Blockchain) CurrentBlock() *evmcore.EvmBlock {
-	panic("unimplemented")
+
+	return &evmcore.EvmBlock{
+		EvmHeader: evmcore.EvmHeader{
+			Number: big.NewInt(1),
+		},
+	}
 }
 
 // ExtRPCEnabled implements [ethapi.BundleApiBackend].
@@ -106,7 +111,19 @@ func (b *Blockchain) GetBundleExecutionInfo(common.Hash) *bundle.ExecutionInfo {
 
 // GetEVM implements [ethapi.BundleApiBackend].
 func (b *Blockchain) GetEVM(ctx context.Context, state vm.StateDB, header *evmcore.EvmHeader, vmConfig *vm.Config, blockContext *vm.BlockContext) (*vm.EVM, func() error, error) {
-	panic("unimplemented")
+
+	chainConfig := &params.ChainConfig{}
+
+	if blockContext == nil {
+		chainCtx := ethapi.ChainContext{
+			Ctx: ctx,
+			B:   b,
+		}
+		newCtx := evmcore.NewEVMBlockContext(header, &chainCtx, nil)
+		blockContext = &newCtx
+	}
+
+	return vm.NewEVM(*blockContext, state, chainConfig, *vmConfig), func() error { return nil }, nil
 }
 
 // GetGenesisID implements [ethapi.BundleApiBackend].
@@ -116,7 +133,7 @@ func (b *Blockchain) GetGenesisID() common.Hash {
 
 // GetNetworkRules implements [ethapi.BundleApiBackend].
 func (b *Blockchain) GetNetworkRules(ctx context.Context, blockHeight idx.Block) (*opera.Rules, error) {
-	panic("unimplemented")
+	return &opera.Rules{}, nil
 }
 
 // GetReceiptsByNumber implements [ethapi.BundleApiBackend].
@@ -136,7 +153,9 @@ func (b *Blockchain) HeaderByHash(ctx context.Context, hash common.Hash) (*evmco
 
 // HeaderByNumber implements [ethapi.BundleApiBackend].
 func (b *Blockchain) HeaderByNumber(ctx context.Context, number rpc.BlockNumber) (*evmcore.EvmHeader, error) {
-	panic("unimplemented")
+	return &evmcore.EvmHeader{
+		Number: big.NewInt(1),
+	}, nil
 }
 
 // HistoryPruningCutoff implements [ethapi.BundleApiBackend].
@@ -146,12 +165,12 @@ func (b *Blockchain) HistoryPruningCutoff() uint64 {
 
 // MaxGasLimit implements [ethapi.BundleApiBackend].
 func (b *Blockchain) MaxGasLimit() uint64 {
-	panic("unimplemented")
+	return 30_000_000
 }
 
 // MinGasPrice implements [ethapi.BundleApiBackend].
 func (b *Blockchain) MinGasPrice() *big.Int {
-	panic("unimplemented")
+	return big.NewInt(1_000)
 }
 
 // Progress implements [ethapi.BundleApiBackend].
@@ -161,12 +180,12 @@ func (b *Blockchain) Progress() ethapi.PeerProgress {
 
 // RPCEVMTimeout implements [ethapi.BundleApiBackend].
 func (b *Blockchain) RPCEVMTimeout() time.Duration {
-	panic("unimplemented")
+	return time.Minute
 }
 
 // RPCGasCap implements [ethapi.BundleApiBackend].
 func (b *Blockchain) RPCGasCap() uint64 {
-	panic("unimplemented")
+	return 30_000_000
 }
 
 // RPCTxFeeCap implements [ethapi.BundleApiBackend].
@@ -197,7 +216,7 @@ func (b *Blockchain) UnprotectedAllowed() bool {
 // ============================================================================
 
 type StateDb struct {
-	state map[common.Address]*AccountState
+	state map[common.Address]AccountState
 }
 
 // AccessEvents implements [state.StateDB].
@@ -211,8 +230,14 @@ func (s StateDb) AddAddressToAccessList(addr common.Address) {
 }
 
 // AddBalance implements [state.StateDB].
-func (s StateDb) AddBalance(common.Address, *uint256.Int, tracing.BalanceChangeReason) uint256.Int {
-	panic("unimplemented")
+func (s StateDb) AddBalance(addr common.Address, balance *uint256.Int, reason tracing.BalanceChangeReason) uint256.Int {
+	account := s.state[addr]
+	if account.Balance == nil {
+		account.Balance = big.NewInt(0)
+	}
+	account.Balance = new(big.Int).Add(account.Balance, balance.ToBig())
+	s.state[addr] = account
+	return *uint256.NewInt(0).SetBytes(account.Balance.Bytes())
 }
 
 // AddLog implements [state.StateDB].
@@ -251,8 +276,10 @@ func (s StateDb) Copy() state.StateDB {
 }
 
 // CreateAccount implements [state.StateDB].
-func (s StateDb) CreateAccount(common.Address) {
-	panic("unimplemented")
+func (s StateDb) CreateAccount(addr common.Address) {
+	if _, found := s.state[addr]; !found {
+		s.state[addr] = AccountState{}
+	}
 }
 
 // CreateContract implements [state.StateDB].
@@ -281,8 +308,9 @@ func (s StateDb) Error() error {
 }
 
 // Exist implements [state.StateDB].
-func (s StateDb) Exist(common.Address) bool {
-	panic("unimplemented")
+func (s StateDb) Exist(addr common.Address) bool {
+	_, found := s.state[addr]
+	return found
 }
 
 // Finalise implements [state.StateDB].
@@ -291,13 +319,16 @@ func (s StateDb) Finalise(bool) {
 }
 
 // GetBalance implements [state.StateDB].
-func (s StateDb) GetBalance(common.Address) *uint256.Int {
-	panic("unimplemented")
+func (s StateDb) GetBalance(addr common.Address) *uint256.Int {
+	if account, ok := s.state[addr]; ok {
+		return uint256.NewInt(0).SetBytes(account.Balance.Bytes())
+	}
+	return uint256.NewInt(0)
 }
 
 // GetCode implements [state.StateDB].
 func (s StateDb) GetCode(common.Address) []byte {
-	panic("unimplemented")
+	return nil
 }
 
 // GetCodeHash implements [state.StateDB].
@@ -316,8 +347,11 @@ func (s StateDb) GetLogs(hash common.Hash, blockHash common.Hash) []*types.Log {
 }
 
 // GetNonce implements [state.StateDB].
-func (s StateDb) GetNonce(common.Address) uint64 {
-	panic("unimplemented")
+func (s StateDb) GetNonce(addr common.Address) uint64 {
+	if account, ok := s.state[addr]; ok {
+		return account.Nonce
+	}
+	return 0
 }
 
 // GetProof implements [state.StateDB].
@@ -327,7 +361,7 @@ func (s StateDb) GetProof(addr common.Address, keys []common.Hash) (witness.Proo
 
 // GetRefund implements [state.StateDB].
 func (s StateDb) GetRefund() uint64 {
-	panic("unimplemented")
+	return 0
 }
 
 // GetState implements [state.StateDB].
@@ -371,13 +405,19 @@ func (s StateDb) PointCache() *utils.PointCache {
 }
 
 // Prepare implements [state.StateDB].
-func (s StateDb) Prepare(rules params.Rules, sender common.Address, coinbase common.Address, dest *common.Address, precompiles []common.Address, txAccesses types.AccessList) {
-	panic("unimplemented")
+func (s StateDb) Prepare(
+	rules params.Rules,
+	sender common.Address,
+	coinbase common.Address,
+	dest *common.Address,
+	precompiles []common.Address,
+	txAccesses types.AccessList,
+) {
+	// so far tests do not need this
 }
 
 // Release implements [state.StateDB].
 func (s StateDb) Release() {
-	panic("unimplemented")
 }
 
 // RevertToInterTxSnapshot implements [state.StateDB].
@@ -411,8 +451,11 @@ func (s StateDb) SetCode(common.Address, []byte, tracing.CodeChangeReason) []byt
 }
 
 // SetNonce implements [state.StateDB].
-func (s StateDb) SetNonce(common.Address, uint64, tracing.NonceChangeReason) {
-	panic("unimplemented")
+func (s StateDb) SetNonce(addr common.Address, nonce uint64, reason tracing.NonceChangeReason) {
+	if account, ok := s.state[addr]; ok {
+		account.Nonce = nonce
+		s.state[addr] = account
+	}
 }
 
 // SetState implements [state.StateDB].
@@ -442,12 +485,19 @@ func (s StateDb) SlotInAccessList(addr common.Address, slot common.Hash) (addres
 
 // Snapshot implements [state.StateDB].
 func (s StateDb) Snapshot() int {
-	panic("unimplemented")
+	return 0
 }
 
 // SubBalance implements [state.StateDB].
-func (s StateDb) SubBalance(common.Address, *uint256.Int, tracing.BalanceChangeReason) uint256.Int {
-	panic("unimplemented")
+func (s StateDb) SubBalance(addr common.Address, slot *uint256.Int, reason tracing.BalanceChangeReason) uint256.Int {
+	res := uint256.NewInt(0)
+	if account, ok := s.state[addr]; ok {
+		previous := account.Balance
+		account.Balance = new(big.Int).Sub(previous, slot.ToBig())
+		s.state[addr] = account
+		res = uint256.NewInt(0).SetBytes(account.Balance.Bytes())
+	}
+	return *res
 }
 
 // SubRefund implements [state.StateDB].
