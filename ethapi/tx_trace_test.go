@@ -84,7 +84,7 @@ func TestSetupTracedEVM_GetVmConfigError(t *testing.T) {
 	injected := fmt.Errorf("db unavailable")
 	backend.EXPECT().GetNetworkRules(gomock.Any(), gomock.Any()).Return(nil, injected)
 
-	setup, cancel, err := setupTracedEVM(t.Context(), backend, traceTestBlock(), mockState, 0, false, false, false)
+	setup, cancel, err := setupTracedEVM(t.Context(), backend, traceTestBlock(), mockState, 0, TraceOptions{}, false)
 	defer cancel()
 
 	require.ErrorIs(t, err, injected, "error from GetVmConfig must be propagated")
@@ -102,7 +102,7 @@ func TestSetupTracedEVM_GetEVMError(t *testing.T) {
 	backend.EXPECT().GetEVM(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil, nil, injected)
 
-	setup, cancel, err := setupTracedEVM(t.Context(), backend, traceTestBlock(), mockState, 0, false, false, false)
+	setup, cancel, err := setupTracedEVM(t.Context(), backend, traceTestBlock(), mockState, 0, TraceOptions{}, false)
 	defer cancel()
 
 	require.ErrorContains(t, err, injected.Error(), "error from GetEVM must be propagated")
@@ -158,7 +158,7 @@ func TestSetupTracedEVM_LoggersRespectFlags(t *testing.T) {
 			mockState := state.NewMockStateDB(ctrl)
 			backend := setupBackendForTracing(ctrl, mockState)
 
-			setup, cancel, err := setupTracedEVM(t.Context(), backend, traceTestBlock(), mockState, 0, tt.wantTrace, tt.wantStateDiff, false)
+			setup, cancel, err := setupTracedEVM(t.Context(), backend, traceTestBlock(), mockState, 0, TraceOptions{Trace: tt.wantTrace, StateDiff: tt.wantStateDiff}, false)
 			defer cancel()
 
 			require.NoError(t, err)
@@ -196,7 +196,7 @@ func TestSetupTracedEVM_NoBaseFeeFlag(t *testing.T) {
 					return makeTestEVM(opera.Upgrades{})(t.Context(), statedb, header, vmConfig, blockContext)
 				})
 
-			setup, cancel, err := setupTracedEVM(t.Context(), backend, traceTestBlock(), mockState, 0, false, false, tt.noBaseFee)
+			setup, cancel, err := setupTracedEVM(t.Context(), backend, traceTestBlock(), mockState, 0, TraceOptions{}, tt.noBaseFee)
 			defer cancel()
 
 			require.NoError(t, err)
@@ -226,7 +226,7 @@ func TestSetupTracedEVM_ContextHasDeadlineFromRPCTimeout(t *testing.T) {
 			return makeTestEVM(opera.Upgrades{})(ctx, statedb, header, vmConfig, blockContext)
 		})
 
-	setup, cancel, err := setupTracedEVM(t.Context(), backend, traceTestBlock(), mockState, 0, false, false, false)
+	setup, cancel, err := setupTracedEVM(t.Context(), backend, traceTestBlock(), mockState, 0, TraceOptions{}, false)
 	defer cancel()
 
 	require.NoError(t, err)
@@ -252,7 +252,7 @@ func TestSetupTracedEVM_StateDiffWrapsState(t *testing.T) {
 			return makeTestEVM(opera.Upgrades{})(t.Context(), statedb, header, vmConfig, blockContext)
 		})
 
-	setup, cancel, err := setupTracedEVM(t.Context(), backend, traceTestBlock(), mockState, 0, false, true, false)
+	setup, cancel, err := setupTracedEVM(t.Context(), backend, traceTestBlock(), mockState, 0, TraceOptions{StateDiff: true}, false)
 	defer cancel()
 
 	require.NoError(t, err)
@@ -282,8 +282,7 @@ func TestTraceCallExec_VmConfigError(t *testing.T) {
 		mockState,
 		traceTestTx(),
 		0,
-		true,
-		false,
+		TraceOptions{Trace: true},
 	)
 
 	require.ErrorIs(t, err, injected)
@@ -311,14 +310,14 @@ func TestTraceCallExec_TraceOnly(t *testing.T) {
 		mockState,
 		traceTestTx(),
 		0,
-		true,  // wantTrace
-		false, // wantStateDiff
+		TraceOptions{Trace: true},
 	)
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.NotEmpty(t, result.Trace, "trace must contain at least one action")
 	require.Nil(t, result.StateDiff, "stateDiff must be nil when not requested")
+	require.Nil(t, result.VmTrace, "vmTrace must be nil when not requested")
 }
 
 func TestTraceCallExec_StateDiffOnly(t *testing.T) {
@@ -342,17 +341,17 @@ func TestTraceCallExec_StateDiffOnly(t *testing.T) {
 		mockState,
 		traceTestTx(),
 		0,
-		false, // wantTrace
-		true,  // wantStateDiff
+		TraceOptions{StateDiff: true},
 	)
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Nil(t, result.Trace, "trace must be nil when not requested")
 	require.NotNil(t, result.StateDiff, "stateDiff must be non-nil when requested")
+	require.Nil(t, result.VmTrace, "vmTrace must be nil when not requested")
 }
 
-func TestTraceCallExec_BothTypes(t *testing.T) {
+func TestTraceCallExec_VMTraceOnly(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockState := state.NewMockStateDB(ctrl)
 	setExpectedStateCalls(mockState)
@@ -373,14 +372,45 @@ func TestTraceCallExec_BothTypes(t *testing.T) {
 		mockState,
 		traceTestTx(),
 		0,
-		true, // wantTrace
-		true, // wantStateDiff
+		TraceOptions{VmTrace: true},
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Nil(t, result.Trace, "trace must be nil when not requested")
+	require.Nil(t, result.StateDiff, "stateDiff must be nil when not requested")
+	require.NotNil(t, result.VmTrace, "vmTrace must be non-nil when requested")
+}
+
+func TestTraceCallExec_AllTypes(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockState := state.NewMockStateDB(ctrl)
+	setExpectedStateCalls(mockState)
+
+	backend := NewMockBackend(ctrl)
+	backend.EXPECT().GetNetworkRules(gomock.Any(), gomock.Any()).Return(&opera.Rules{}, nil)
+	backend.EXPECT().RPCEVMTimeout().Return(time.Duration(0))
+	backend.EXPECT().GetEVM(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(makeTestEVM(opera.Upgrades{}))
+
+	api := &PublicTxTraceAPI{b: backend}
+	from, to := common.Address{1}, common.Address{2}
+
+	result, err := api.traceCallExec(
+		t.Context(),
+		traceTestBlock(),
+		traceTestMessage(from, to),
+		mockState,
+		traceTestTx(),
+		0,
+		TraceOptions{Trace: true, StateDiff: true, VmTrace: true},
 	)
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.NotEmpty(t, result.Trace, "trace must contain at least one action")
 	require.NotNil(t, result.StateDiff, "stateDiff must be non-nil when requested")
+	require.NotNil(t, result.VmTrace, "vmTrace must be non-nil when requested")
 }
 
 // setupBackendForCallMany returns a MockBackend pre-configured with all expectations
@@ -421,13 +451,6 @@ func TestCallMany_TraceTypeValidation(t *testing.T) {
 				{Args: TransactionArgs{}, TraceTypes: []string{"unknownType"}},
 			},
 			wantErrMsg: "unrecognized trace type",
-		},
-		{
-			name: "vmTrace not supported",
-			calls: []CallRequest{
-				{Args: TransactionArgs{}, TraceTypes: []string{TraceTypeVmTrace}},
-			},
-			wantErrMsg: "vmTrace trace type is not supported",
 		},
 	}
 
