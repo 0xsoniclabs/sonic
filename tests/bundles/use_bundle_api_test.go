@@ -75,7 +75,7 @@ func Test_CreateBundlesWithRPC(t *testing.T) {
 	checkCompatWithMetaMask(t, client, txs)
 
 	// 4) Submit the bundle to the network
-	bundleHash, err := SubmitBundle(client, txs, preparedBundle.Plan)
+	bundleHash, err := SubmitBundle(client, txs, preparedBundle.ExecutionPlan)
 	require.NoError(t, err, "failed to submit bundle")
 
 	_, err = waitForBundleExecution(t.Context(), client.Client(), bundleHash)

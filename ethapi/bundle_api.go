@@ -111,7 +111,7 @@ type RPCPreparedBundle struct {
 	Transactions []TransactionArgs `json:"transactions"`
 	// ExecutionPlan contains the execution plan that each bundled transaction references. This is provided
 	// for verification purposes; users may independently compute and validate the execution plan hash.
-	ExecutionPlan RPCExecutionPlan `json:"plan,omitempty"`
+	ExecutionPlan RPCExecutionPlan `json:"executionPlan,omitempty"`
 }
 
 // PrepareBundle implements the `sonic_prepareBundle` RPC method.
