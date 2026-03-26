@@ -854,9 +854,10 @@ func TestStore_computeNewBundleStateHash_ReturnsExpectedHash(t *testing.T) {
 		h.Write(oldHash.Bytes())
 		h.Write(addedHash.Bytes())
 		h.Write(deletedHash.Bytes())
-		binary.Write(h, binary.BigEndian, blockNum)
+		require.NoError(t, binary.Write(h, binary.BigEndian, blockNum))
 		var out common.Hash
-		h.Read(out[:])
+		_, err := h.Read(out[:])
+		require.NoError(t, err)
 		return out
 	}
 
