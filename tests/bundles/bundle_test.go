@@ -18,7 +18,6 @@ package bundles
 import (
 	"fmt"
 	"math/big"
-	"strings"
 	"sync"
 	"testing"
 
@@ -41,9 +40,7 @@ type txType interface {
 
 type txIndex int
 
-const (
-	uncheckedTxIndex txIndex = -1
-)
+const uncheckedTxIndex txIndex = -1
 
 type txStatus uint64
 
@@ -52,52 +49,39 @@ const (
 	failedStatus  txStatus = txStatus(types.ReceiptStatusFailed)
 )
 
-type Case struct {
-	oneOf            bool
-	tolerateFailed   bool
-	tolerateInvalid  bool
-	submittedTxTypes []txType
+type testCase struct {
+	envelope        envelopeTx
+	blockTxIndices  []txIndex
+	blockTxStatuses []txStatus
+	contractCounter int64
+}
+
+type EmbeddedTx struct {
+	submittedTxTypes txType
 	blockTxIndices   []txIndex
 	blockTxStatuses  []txStatus
 	contractCounter  int64
 }
 
-type NamedCase struct {
-	name  string
-	case_ Case
-}
-
-type SubCaseVariant struct {
-	submittedTxTypes txType
-	blockTxIndices   []txIndex
-	blockTxStatuses  []txStatus
-	counter          int64
-}
-
-type SubCase struct {
-	success SubCaseVariant
-	failed  SubCaseVariant
-	invalid SubCaseVariant
-}
-
-// getSubcases returns a map from subcase names to subcases. Each subcase contains three variants: success, failed, and invalid, which specify the expected outcomes for each scenario.
-// The subcases are intended to be used as part of a bundle.
-func getSubcases() map[string]SubCase {
-	return map[string]SubCase{
+// getEmbeddedTxs returns a double nested map of EmbeddedTxs. The first level of
+// keys is the kind of transaction and the second level of keys is the expected
+// outcome of the transaction.
+func getEmbeddedTxs() map[string]map[string]EmbeddedTx {
+	return map[string]map[string]EmbeddedTx{
 		"normal": {
-			success: SubCaseVariant{
+			"success": EmbeddedTx{
 				successfulNormalTx{},
-				[]txIndex{uncheckedTxIndex}, // relative 0
+				[]txIndex{0},
 				[]txStatus{successStatus},
 				1,
 			},
-			failed: SubCaseVariant{
+			"failed": EmbeddedTx{
 				failedNormalTx{},
-				[]txIndex{uncheckedTxIndex}, // relative 0
+				[]txIndex{0},
 				[]txStatus{failedStatus},
 				0,
 			},
-			invalid: SubCaseVariant{
+			"invalid": EmbeddedTx{
 				invalidNormalTx{},
 				[]txIndex{},
 				[]txStatus{},
@@ -105,19 +89,19 @@ func getSubcases() map[string]SubCase {
 			},
 		},
 		"sponsored": {
-			success: SubCaseVariant{
+			"success": EmbeddedTx{
 				successfulSponsoredTx{},
-				[]txIndex{uncheckedTxIndex, uncheckedTxIndex}, // relative 0, uncheckedTxIndex
+				[]txIndex{0, uncheckedTxIndex},
 				[]txStatus{successStatus, successStatus},
 				1,
 			},
-			failed: SubCaseVariant{
+			"failed": EmbeddedTx{
 				failedSponsoredTx{},
-				[]txIndex{uncheckedTxIndex, uncheckedTxIndex}, // relative 0, uncheckedTxIndex
+				[]txIndex{0, uncheckedTxIndex},
 				[]txStatus{failedStatus, successStatus},
 				0,
 			},
-			invalid: SubCaseVariant{
+			"invalid": EmbeddedTx{
 				invalidSponsoredTx{},
 				[]txIndex{},
 				[]txStatus{},
@@ -125,391 +109,239 @@ func getSubcases() map[string]SubCase {
 			},
 		},
 		"bundled/OneOf=false/TolerateFailed=false/TolerateInvalid=false": {
-			success: SubCaseVariant{
-				subBundleTx{flags: 0, txTypes: []txType{successfulNormalTx{}, successfulNormalTx{}}},
+			"success": EmbeddedTx{
+				envelopeTx{flags: 0, txTypes: []txType{successfulNormalTx{}, successfulNormalTx{}}},
 				[]txIndex{uncheckedTxIndex, uncheckedTxIndex},
 				[]txStatus{successStatus, successStatus},
 				2,
 			},
-			failed: SubCaseVariant{
-				subBundleTx{flags: 0, txTypes: []txType{successfulNormalTx{}, failedNormalTx{}}},
+			"failed": EmbeddedTx{
+				envelopeTx{flags: 0, txTypes: []txType{successfulNormalTx{}, failedNormalTx{}}},
 				[]txIndex{},
 				[]txStatus{},
 				0,
 			},
-			// skipped bundles are no longer possible, and all **/bundled/**/invalid tests are skipped
+			// skipped bundles are not possible
 		},
 		"bundled/OneOf=false/TolerateFailed=false/TolerateInvalid=true": {
-			success: SubCaseVariant{
-				subBundleTx{flags: bundle.EF_TolerateInvalid, txTypes: []txType{invalidNormalTx{}, successfulNormalTx{}}},
+			"success": EmbeddedTx{
+				envelopeTx{flags: bundle.EF_TolerateInvalid, txTypes: []txType{invalidNormalTx{}, successfulNormalTx{}}},
 				[]txIndex{uncheckedTxIndex},
 				[]txStatus{successStatus},
 				1,
 			},
-			failed: SubCaseVariant{
-				subBundleTx{flags: bundle.EF_TolerateInvalid, txTypes: []txType{successfulNormalTx{}, failedNormalTx{}}},
+			"failed": EmbeddedTx{
+				envelopeTx{flags: bundle.EF_TolerateInvalid, txTypes: []txType{successfulNormalTx{}, failedNormalTx{}}},
 				[]txIndex{},
 				[]txStatus{},
 				0,
 			},
-			// skipped bundles are no longer possible, and all **/bundled/**/invalid tests are skipped
+			// skipped bundles are not possible
 		},
 		"bundled/OneOf=false/TolerateFailed=true/TolerateInvalid=false": {
-			success: SubCaseVariant{
-				subBundleTx{flags: bundle.EF_TolerateFailed, txTypes: []txType{failedNormalTx{}, successfulNormalTx{}}},
+			"success": EmbeddedTx{
+				envelopeTx{flags: bundle.EF_TolerateFailed, txTypes: []txType{failedNormalTx{}, successfulNormalTx{}}},
 				[]txIndex{uncheckedTxIndex, uncheckedTxIndex},
 				[]txStatus{failedStatus, successStatus},
 				1,
 			},
-			failed: SubCaseVariant{
-				subBundleTx{flags: bundle.EF_TolerateFailed, txTypes: []txType{successfulNormalTx{}, invalidNormalTx{}}},
+			"failed": EmbeddedTx{
+				envelopeTx{flags: bundle.EF_TolerateFailed, txTypes: []txType{successfulNormalTx{}, invalidNormalTx{}}},
 				[]txIndex{},
 				[]txStatus{},
 				0,
 			},
-			// skipped bundles are no longer possible, and all **/bundled/**/invalid tests are skipped
+			// skipped bundles are not possible
 		},
 		"bundled/OneOf=false/TolerateFailed=true/TolerateInvalid=true": {
-			success: SubCaseVariant{
-				subBundleTx{flags: bundle.EF_TolerateFailed | bundle.EF_TolerateInvalid, txTypes: []txType{invalidNormalTx{}, failedNormalTx{}, successfulNormalTx{}}},
+			"success": EmbeddedTx{
+				envelopeTx{flags: bundle.EF_TolerateFailed | bundle.EF_TolerateInvalid, txTypes: []txType{invalidNormalTx{}, failedNormalTx{}, successfulNormalTx{}}},
 				[]txIndex{uncheckedTxIndex, uncheckedTxIndex},
 				[]txStatus{failedStatus, successStatus},
 				1,
 			},
 			// a bundle can not fail if OneOf is not set and both TolerateFailed and TolerateInvalid are set
-			// skipped bundles are no longer possible, and all **/bundled/**/invalid tests are skipped
+			// skipped bundles are not possible
 		},
 		"bundled/OneOf=true/TolerateFailed=false/TolerateInvalid=false": {
-			success: SubCaseVariant{
-				subBundleTx{flags: bundle.EF_OneOf, txTypes: []txType{invalidNormalTx{}, failedNormalTx{}, successfulNormalTx{}}},
+			"success": EmbeddedTx{
+				envelopeTx{flags: bundle.EF_OneOf, txTypes: []txType{invalidNormalTx{}, failedNormalTx{}, successfulNormalTx{}}},
 				[]txIndex{uncheckedTxIndex, uncheckedTxIndex},
 				[]txStatus{failedStatus, successStatus},
 				1,
 			},
-			failed: SubCaseVariant{
-				subBundleTx{flags: bundle.EF_OneOf, txTypes: []txType{failedNormalTx{}, invalidNormalTx{}}},
+			"failed": EmbeddedTx{
+				envelopeTx{flags: bundle.EF_OneOf, txTypes: []txType{failedNormalTx{}, invalidNormalTx{}}},
 				[]txIndex{},
 				[]txStatus{},
 				0,
 			},
-			// skipped bundles are no longer possible, and all **/bundled/**/invalid tests are skipped
+			// skipped bundles are not possible
 		},
 		"bundled/OneOf=true/TolerateFailed=false/TolerateInvalid=true": {
-			success: SubCaseVariant{
-				subBundleTx{flags: bundle.EF_OneOf | bundle.EF_TolerateInvalid, txTypes: []txType{failedNormalTx{}, invalidNormalTx{}}},
+			"success": EmbeddedTx{
+				envelopeTx{flags: bundle.EF_OneOf | bundle.EF_TolerateInvalid, txTypes: []txType{failedNormalTx{}, invalidNormalTx{}}},
 				[]txIndex{uncheckedTxIndex},
 				[]txStatus{failedStatus},
 				0,
 			},
-			failed: SubCaseVariant{
-				subBundleTx{flags: bundle.EF_OneOf | bundle.EF_TolerateInvalid, txTypes: []txType{failedNormalTx{}, failedNormalTx{}}},
+			"failed": EmbeddedTx{
+				envelopeTx{flags: bundle.EF_OneOf | bundle.EF_TolerateInvalid, txTypes: []txType{failedNormalTx{}, failedNormalTx{}}},
 				[]txIndex{},
 				[]txStatus{},
 				0,
 			},
-			// skipped bundles are no longer possible, and all **/bundled/**/invalid tests are skipped
+			// skipped bundles are not possible
 		},
 		"bundled/OneOf=true/TolerateFailed=true/TolerateInvalid=false": {
-			success: SubCaseVariant{
-				subBundleTx{flags: bundle.EF_OneOf | bundle.EF_TolerateFailed, txTypes: []txType{invalidNormalTx{}, failedNormalTx{}}},
+			"success": EmbeddedTx{
+				envelopeTx{flags: bundle.EF_OneOf | bundle.EF_TolerateFailed, txTypes: []txType{invalidNormalTx{}, failedNormalTx{}}},
 				[]txIndex{uncheckedTxIndex},
 				[]txStatus{failedStatus},
 				0,
 			},
-			failed: SubCaseVariant{
-				subBundleTx{flags: bundle.EF_OneOf | bundle.EF_TolerateFailed, txTypes: []txType{invalidNormalTx{}, invalidNormalTx{}}},
+			"failed": EmbeddedTx{
+				envelopeTx{flags: bundle.EF_OneOf | bundle.EF_TolerateFailed, txTypes: []txType{invalidNormalTx{}, invalidNormalTx{}}},
 				[]txIndex{},
 				[]txStatus{},
 				0,
 			},
-			// skipped bundles are no longer possible, and all **/bundled/**/invalid tests are skipped
+			// skipped bundles are not possible
 		},
 		"bundled/OneOf=true/TolerateFailed=true/TolerateInvalid=true": {
-			success: SubCaseVariant{
-				subBundleTx{flags: bundle.EF_OneOf | bundle.EF_TolerateFailed | bundle.EF_TolerateInvalid, txTypes: []txType{invalidNormalTx{}, successfulNormalTx{}}},
+			"success": EmbeddedTx{
+				envelopeTx{flags: bundle.EF_OneOf | bundle.EF_TolerateFailed | bundle.EF_TolerateInvalid, txTypes: []txType{invalidNormalTx{}, successfulNormalTx{}}},
 				[]txIndex{},
 				[]txStatus{},
 				0,
 			},
 			// When OneOf is set, every transaction result will be tolerated. The only way for the bundle to fail would be if it is empty. But since empty bundles are not allowed, a bundle with OneOf set can not fail.
-			// skipped bundles are no longer possible, and all **/bundled/**/invalid tests are skipped
+			// skipped bundles are not possible
 		},
 	}
 }
 
-// Test_RunAllOf_Works tests that if OneOf is not set, all transactions in the bundle are executed, unless they are not tolerated according to the flags.
-// If all transactions are tolerated, the bundle should succeed with the effect of all successful transactions applied. If some transactions are not tolerated, the bundle should not have any effect.
-// The submitted transactions are a successful transaction, depending on the subcase an successful, failed, or invalid transaction, and another successful transaction.
-// The second transaction might be a normal transaction, a sponsored transaction, or a sub-bundle, depending on the subcase.
-func Test_RunAllOf_Works(t *testing.T) {
-	t.Parallel()
-
-	cases := []NamedCase{}
-	for name, subcase := range getSubcases() {
-		cases = append(cases, []NamedCase{
-			{
-				name + "/success",
-				Case{false, false, false,
-					Merge[txType](successfulNormalTx{}, subcase.success.submittedTxTypes, successfulNormalTx{}),
-					Merge[txIndex](txIndex(0), subcase.success.blockTxIndices, txIndex(2)),
-					Merge[txStatus](successStatus, subcase.success.blockTxStatuses, successStatus),
-					1 + subcase.success.counter + 1,
-				},
-			},
-			{
-				name + "/failed",
-				Case{false, false, false,
-					Merge[txType](successfulNormalTx{}, subcase.failed.submittedTxTypes, successfulNormalTx{}),
-					Merge[txIndex](),
-					Merge[txStatus](),
-					0,
-				},
-			},
-			{
-				name + "/invalid",
-				Case{false, false, false,
-					Merge[txType](successfulNormalTx{}, subcase.invalid.submittedTxTypes, successfulNormalTx{}),
-					Merge[txIndex](),
-					Merge[txStatus](),
-					0,
-				},
-			},
-			// TolerateInvalid
-			{
-				name + "/success",
-				Case{false, false, true,
-					Merge[txType](successfulNormalTx{}, subcase.success.submittedTxTypes, successfulNormalTx{}),
-					Merge[txIndex](txIndex(0), subcase.success.blockTxIndices, txIndex(2)),
-					Merge[txStatus](successStatus, subcase.success.blockTxStatuses, successStatus),
-					1 + subcase.success.counter + 1,
-				},
-			},
-			{
-				name + "/failed",
-				Case{false, false, true,
-					Merge[txType](successfulNormalTx{}, subcase.failed.submittedTxTypes, successfulNormalTx{}),
-					Merge[txIndex](),
-					Merge[txStatus](),
-					0,
-				},
-			},
-			{
-				name + "/invalid",
-				Case{false, false, true,
-					Merge[txType](successfulNormalTx{}, subcase.invalid.submittedTxTypes, successfulNormalTx{}),
-					Merge[txIndex](txIndex(0), txIndex(2)),
-					Merge[txStatus](successStatus, successStatus),
-					1 + 1,
-				},
-			},
-			// TolerateFailed
-			{
-				name + "/success",
-				Case{false, true, false,
-					Merge[txType](successfulNormalTx{}, subcase.success.submittedTxTypes, successfulNormalTx{}),
-					Merge[txIndex](txIndex(0), subcase.success.blockTxIndices, txIndex(2)),
-					Merge[txStatus](successStatus, subcase.success.blockTxStatuses, successStatus),
-					1 + subcase.success.counter + 1,
-				},
-			},
-			{
-				name + "/failed",
-				Case{false, true, false,
-					Merge[txType](successfulNormalTx{}, subcase.failed.submittedTxTypes, successfulNormalTx{}),
-					Merge[txIndex](txIndex(0), subcase.failed.blockTxIndices, txIndex(2)),
-					Merge[txStatus](successStatus, subcase.failed.blockTxStatuses, successStatus),
-					1 + subcase.failed.counter + 1,
-				},
-			},
-			{
-				name + "/invalid",
-				Case{false, true, false,
-					Merge[txType](successfulNormalTx{}, subcase.invalid.submittedTxTypes, successfulNormalTx{}),
-					Merge[txIndex](),
-					Merge[txStatus](),
-					0,
-				},
-			},
-			// TolerateFailed & TolerateInvalid
-			{
-				name + "/success",
-				Case{false, true, true,
-					Merge[txType](successfulNormalTx{}, subcase.success.submittedTxTypes, successfulNormalTx{}),
-					Merge[txIndex](txIndex(0), subcase.success.blockTxIndices, txIndex(2)),
-					Merge[txStatus](successStatus, subcase.success.blockTxStatuses, successStatus),
-					1 + subcase.success.counter + 1,
-				},
-			},
-			{
-				name + "/failed",
-				Case{false, true, true,
-					Merge[txType](successfulNormalTx{}, subcase.failed.submittedTxTypes, successfulNormalTx{}),
-					Merge[txIndex](txIndex(0), subcase.failed.blockTxIndices, txIndex(2)),
-					Merge[txStatus](successStatus, subcase.failed.blockTxStatuses, successStatus),
-					1 + subcase.failed.counter + 1,
-				},
-			},
-			{
-				name + "/invalid",
-				Case{false, true, true,
-					Merge[txType](successfulNormalTx{}, subcase.invalid.submittedTxTypes, successfulNormalTx{}),
-					Merge[txIndex](txIndex(0), txIndex(2)),
-					Merge[txStatus](successStatus, successStatus),
-					1 + 1,
-				},
-			},
-		}...)
-	}
-	net := startTestnet(t)
-	factory := &AccountFactory{session: net}
-	sessions := net.SpawnSessions(t, len(cases))
-	for i, c := range cases {
-		if c.name == "bundled/OneOf=false/TolerateFailed=true/TolerateInvalid=true/failed" ||
-			c.name == "bundled/OneOf=true/TolerateFailed=true/TolerateInvalid=true/failed" ||
-			(strings.HasPrefix(c.name, "bundled") && strings.HasSuffix(c.name, "invalid")) {
-			continue
+// offsetIndices adds offset to all non-unchecked indices, converting relative
+// subcase indices to absolute bundle step indices.
+func offsetIndices(indices []txIndex, offset txIndex) []txIndex {
+	result := make([]txIndex, len(indices))
+	for i, idx := range indices {
+		if idx == uncheckedTxIndex {
+			result[i] = uncheckedTxIndex
+		} else {
+			result[i] = idx + offset
 		}
-		checkCase(t, sessions[i], factory, c)
+	}
+	return result
+}
+
+func isTolerated(outcome string, tolerateFailed, tolerateInvalid bool) bool {
+	return outcome == "success" || (outcome == "failed" && tolerateFailed) || (outcome == "invalid" && tolerateInvalid)
+}
+
+// allOfCase creates the test case for an AllOf bundle with the embeddedTx and
+// its outcome and the flags for what is tolerated.
+// The expected outcome is that all transactions in the bundle are executed,
+// unless they are not tolerated according to the flags. If all transactions
+// are tolerated, the bundle should succeed with the effect of all successful
+// transactions applied. If some transactions are not tolerated, the bundle
+// should not have any effect. The bundle layout is:
+// [successfulNormalTx, embeddedTx, successfulNormalTx], where the embeddedTx
+// is a successful, failed, or invalid transaction, depending on the subcase.
+func allOfCase(outcome string, tolerateFailed, tolerateInvalid bool, embeddedTx EmbeddedTx) testCase {
+	var flags bundle.ExecutionFlag
+	flags.SetTolerateFailed(tolerateFailed)
+	flags.SetTolerateInvalid(tolerateInvalid)
+
+	c := testCase{
+		envelope: envelopeTx{
+			flags:   flags,
+			txTypes: merge[txType](successfulNormalTx{}, embeddedTx.submittedTxTypes, successfulNormalTx{}),
+		},
+	}
+	if isTolerated(outcome, tolerateFailed, tolerateInvalid) {
+		c.blockTxIndices = merge[txIndex](txIndex(0), offsetIndices(embeddedTx.blockTxIndices, 1), txIndex(2))
+		c.blockTxStatuses = merge[txStatus](successStatus, embeddedTx.blockTxStatuses, successStatus)
+		c.contractCounter = 1 + embeddedTx.contractCounter + 1
+	}
+	return c
+}
+
+// oneOfCase creates the expected test case for a OneOf bundle with the
+// embeddedTx and its outcome and the flags for what is tolerated.
+// The expected outcome is that all transactions in the bundle are executed
+// until a transaction is tolerated according to the flags. If a transaction
+// is tolerated, the bundle should succeed with the effect of all successful
+// transactions up to and including the tolerated transaction applied. If no
+// transaction is tolerated, the bundle should not have any effect. The bundle
+// layout is: [embeddedTx, successfulNormalTx, successfulNormalTx], where the
+// embeddedTx is a successful, failed, or invalid transaction, depending on the
+// subcase.
+func oneOfCase(outcome string, tolerateFailed, tolerateInvalid bool, embeddedTx EmbeddedTx) testCase {
+	var flags bundle.ExecutionFlag
+	flags.SetTolerateFailed(tolerateFailed)
+	flags.SetTolerateInvalid(tolerateInvalid)
+	flags.SetOneOf(true)
+
+	c := testCase{
+		envelope: envelopeTx{
+			flags:   flags,
+			txTypes: merge[txType](embeddedTx.submittedTxTypes, successfulNormalTx{}, successfulNormalTx{}),
+		},
+	}
+	if isTolerated(outcome, tolerateFailed, tolerateInvalid) {
+		c.blockTxIndices = merge[txIndex](embeddedTx.blockTxIndices)
+		c.blockTxStatuses = merge[txStatus](embeddedTx.blockTxStatuses)
+		c.contractCounter = embeddedTx.contractCounter
+	} else {
+		c.blockTxIndices = merge[txIndex](embeddedTx.blockTxIndices, txIndex(1))
+		c.blockTxStatuses = merge[txStatus](embeddedTx.blockTxStatuses, successStatus)
+		c.contractCounter = embeddedTx.contractCounter + 1
+	}
+	return c
+}
+
+func buildCase(variantName string, oneOf, tolerateFailed, tolerateInvalid bool, sv EmbeddedTx) testCase {
+	if oneOf {
+		return oneOfCase(variantName, tolerateFailed, tolerateInvalid, sv)
+	} else {
+		return allOfCase(variantName, tolerateFailed, tolerateInvalid, sv)
 	}
 }
 
-// Test_RunOneOf_Works tests that if OneOf is set, transactions in the bundle are executed until a transaction is tolerated according to the flags.
-// If a transaction is tolerated, the bundle should succeed with the effect of all successful transactions up to and including the tolerated transaction applied. If no transaction is tolerated, the bundle should not have any effect.
-// The submitted transactions are a successful, failed, or invalid transaction, depending on the subcase, and another two successful transactions.
-// The first transaction might be a normal transaction, a sponsored transaction, or a sub-bundle, depending on the subcase.
-func Test_RunOneOf_Works(t *testing.T) {
+// Test_BundleSemanticsWithAllFlagCombinations tests the semantics of bundles
+// with different combinations of the OneOf, TolerateFailed, and TolerateInvalid
+// flags, and with different kinds of transactions embedded in the bundle. The
+// expected outcome is determined by the combination of the flags and the
+// outcome of the embedded transaction, according to the rules described in the
+// allOfCase and oneOfCase functions.
+func Test_BundleSemanticsWithAllFlagCombinations(t *testing.T) {
 	t.Parallel()
 
-	cases := []NamedCase{}
-	for name, subcase := range getSubcases() {
-		cases = append(cases, []NamedCase{
-			{
-				name + "/success",
-				Case{true, false, false,
-					Merge[txType](subcase.success.submittedTxTypes, successfulNormalTx{}, successfulNormalTx{}),
-					Merge[txIndex](subcase.success.blockTxIndices),
-					Merge[txStatus](subcase.success.blockTxStatuses),
-					subcase.success.counter,
-				},
-			},
-			{
-				name + "/failed",
-				Case{true, false, false,
-					Merge[txType](subcase.failed.submittedTxTypes, successfulNormalTx{}, successfulNormalTx{}),
-					Merge[txIndex](subcase.failed.blockTxIndices, txIndex(1)),
-					Merge[txStatus](subcase.failed.blockTxStatuses, successStatus),
-					subcase.failed.counter + 1,
-				},
-			},
-			{
-				name + "/invalid",
-				Case{true, false, false,
-					Merge[txType](subcase.invalid.submittedTxTypes, successfulNormalTx{}, successfulNormalTx{}),
-					Merge[txIndex](txIndex(1)),
-					Merge[txStatus](successStatus),
-					1,
-				},
-			},
-			// TolerateInvalid
-			{
-				name + "/success",
-				Case{true, false, true,
-					Merge[txType](subcase.success.submittedTxTypes, successfulNormalTx{}, successfulNormalTx{}),
-					Merge[txIndex](subcase.success.blockTxIndices),
-					Merge[txStatus](subcase.success.blockTxStatuses),
-					subcase.success.counter,
-				},
-			},
-			{
-				name + "/failed",
-				Case{true, false, true,
-					Merge[txType](subcase.failed.submittedTxTypes, successfulNormalTx{}, successfulNormalTx{}),
-					Merge[txIndex](subcase.failed.blockTxIndices, txIndex(1)),
-					Merge[txStatus](subcase.failed.blockTxStatuses, successStatus),
-					subcase.failed.counter + 1,
-				},
-			},
-			{
-				name + "/invalid",
-				Case{true, false, true,
-					Merge[txType](subcase.invalid.submittedTxTypes, successfulNormalTx{}, successfulNormalTx{}),
-					Merge[txIndex](),
-					Merge[txStatus](),
-					0,
-				},
-			},
-			// TolerateFailed
-			{
-				name + "/success",
-				Case{true, true, false,
-					Merge[txType](subcase.success.submittedTxTypes, successfulNormalTx{}, successfulNormalTx{}),
-					Merge[txIndex](subcase.success.blockTxIndices),
-					Merge[txStatus](subcase.success.blockTxStatuses),
-					subcase.success.counter,
-				},
-			},
-			{
-				name + "/failed",
-				Case{true, true, false,
-					Merge[txType](subcase.failed.submittedTxTypes, successfulNormalTx{}, successfulNormalTx{}),
-					Merge[txIndex](subcase.failed.blockTxIndices),
-					Merge[txStatus](subcase.failed.blockTxStatuses),
-					subcase.failed.counter,
-				},
-			},
-			{
-				name + "/invalid",
-				Case{true, true, false,
-					Merge[txType](subcase.invalid.submittedTxTypes, successfulNormalTx{}, successfulNormalTx{}),
-					Merge[txIndex](txIndex(1)),
-					Merge[txStatus](successStatus),
-					1,
-				},
-			},
-			// TolerateFailed & TolerateInvalid
-			{
-				name + "/success",
-				Case{true, true, true,
-					Merge[txType](subcase.success.submittedTxTypes, successfulNormalTx{}, successfulNormalTx{}),
-					Merge[txIndex](subcase.success.blockTxIndices),
-					Merge[txStatus](subcase.success.blockTxStatuses),
-					subcase.success.counter,
-				},
-			},
-			{
-				name + "/failed",
-				Case{true, true, true,
-					Merge[txType](subcase.failed.submittedTxTypes, successfulNormalTx{}, successfulNormalTx{}),
-					Merge[txIndex](subcase.failed.blockTxIndices),
-					Merge[txStatus](subcase.failed.blockTxStatuses),
-					subcase.failed.counter,
-				},
-			},
-			{
-				name + "/invalid",
-				Case{true, true, true,
-					Merge[txType](subcase.invalid.submittedTxTypes, successfulNormalTx{}, successfulNormalTx{}),
-					Merge[txIndex](),
-					Merge[txStatus](),
-					0,
-				},
-			},
-		}...)
+	tests := map[string]testCase{}
+	for _, oneOf := range []bool{false, true} {
+		for _, tolerateFailed := range []bool{false, true} {
+			for _, tolerateInvalid := range []bool{false, true} {
+				for subcaseName, subcase := range getEmbeddedTxs() {
+					for outcome, embeddedTx := range subcase {
+						name := fmt.Sprintf("OneOf=%v/TolerateFailed=%v/TolerateInvalid=%v/%s/%s", oneOf, tolerateFailed, tolerateInvalid, subcaseName, outcome)
+						tests[name] = buildCase(outcome, oneOf, tolerateFailed, tolerateInvalid, embeddedTx)
+					}
+				}
+			}
+		}
 	}
 	net := startTestnet(t)
 	factory := &AccountFactory{session: net}
-	sessions := net.SpawnSessions(t, len(cases))
-	for i, c := range cases {
-		if c.name == "bundled/OneOf=false/TolerateFailed=true/TolerateInvalid=true/failed" ||
-			c.name == "bundled/OneOf=true/TolerateFailed=true/TolerateInvalid=true/failed" ||
-			(strings.HasPrefix(c.name, "bundled") && strings.HasSuffix(c.name, "invalid")) {
-			continue
-		}
-		checkCase(t, sessions[i], factory, c)
+	sessions := net.SpawnSessions(t, len(tests))
+	for name, testCase := range tests {
+		session := sessions[0]
+		sessions = sessions[1:]
+		checkCase(t, session, factory, name, testCase)
 	}
 }
 
-func Merge[T any](items ...any) []T {
+func merge[T any](items ...any) []T {
 	var result []T
 	if len(items) == 0 {
 		return result
@@ -532,15 +364,9 @@ func Merge[T any](items ...any) []T {
 	return result
 }
 
-func checkCase(t *testing.T, session tests.IntegrationTestNetSession, accounts *AccountFactory, namedCase NamedCase) {
-	c := namedCase.case_
-	name := fmt.Sprintf("OneOf=%v/TolerateFailed=%v/TolerateInvalid=%v/%s", c.oneOf, c.tolerateFailed, c.tolerateInvalid, namedCase.name)
+func checkCase(t *testing.T, session tests.IntegrationTestNetSession, accounts *AccountFactory, name string, c testCase) {
 	t.Run(name, func(t *testing.T) {
 		t.Parallel()
-		flags := bundle.ExecutionFlag(0)
-		flags.SetTolerateInvalid(c.tolerateInvalid)
-		flags.SetTolerateFailed(c.tolerateFailed)
-		flags.SetOneOf(c.oneOf)
 
 		client, err := session.GetClient()
 		require.NoError(t, err, "failed to get client; %v", err)
@@ -548,7 +374,7 @@ func checkCase(t *testing.T, session tests.IntegrationTestNetSession, accounts *
 
 		contractInfo := deployContracts(t, session)
 
-		envelopeTx := buildBundle(t, session, contractInfo, c.submittedTxTypes, flags, accounts)
+		envelopeTx := buildBundle(t, session, contractInfo, c.envelope, accounts)
 		require.NotNil(t, envelopeTx)
 
 		plan, err := bundle.ExtractExecutionPlan(envelopeTx)
@@ -773,12 +599,12 @@ func (t invalidSponsoredTx) makeStep(opts txMakeOptions) bundle.BundleStep {
 	})
 }
 
-type subBundleTx struct {
+type envelopeTx struct {
 	txTypes []txType
 	flags   bundle.ExecutionFlag
 }
 
-func (t subBundleTx) makeStep(opts txMakeOptions) bundle.BundleStep {
+func (t envelopeTx) makeStep(opts txMakeOptions) bundle.BundleStep {
 	steps := make([]bundle.BundleStep, len(t.txTypes))
 	for i, tt := range t.txTypes {
 		steps[i] = tt.makeStep(opts)
@@ -794,8 +620,7 @@ func buildBundle(
 	t *testing.T,
 	net tests.IntegrationTestNetSession,
 	contractInfo ContractInfo,
-	txTypes []txType,
-	flags bundle.ExecutionFlag,
+	bt envelopeTx,
 	accountFactory *AccountFactory,
 ) *types.Transaction {
 	client, err := net.GetClient()
@@ -807,8 +632,8 @@ func buildBundle(
 
 	opts := txMakeOptions{t, net, contractInfo, gasPrice, accountFactory}
 
-	steps := make([]bundle.BundleStep, len(txTypes))
-	for i, tt := range txTypes {
+	steps := make([]bundle.BundleStep, len(bt.txTypes))
+	for i, tt := range bt.txTypes {
 		steps[i] = tt.makeStep(opts)
 	}
 
@@ -816,7 +641,7 @@ func buildBundle(
 	require.NoError(t, err)
 
 	return bundle.NewBuilder().
-		WithFlags(flags).
+		WithFlags(bt.flags).
 		Earliest(blockNumber).
 		Latest(blockNumber + 100).
 		With(steps...).
