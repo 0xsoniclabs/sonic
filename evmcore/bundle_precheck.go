@@ -35,9 +35,9 @@ import (
 //go:generate mockgen -source=bundle_precheck.go -destination=bundle_precheck_mock.go -package=evmcore
 
 // BundleState represents the current evaluation state of a transaction bundle.
-// It indicates whether the bundle is executable, if it is temporarily blocked
-// from execution. If the bundle is not executable, it also provides a list of
-// reasons explaining why.
+// It indicates whether the bundle is executable as is, may become executable
+// at a later point or will never be executable. If the bundle is not executable
+// as is, it also provides a list of reasons explaining why.
 // The 3 possible cases are:
 //
 //  1. Executable: the bundle can be executed with the current state, and there
@@ -173,7 +173,7 @@ type NonceSource interface {
 // execution of the bundle.
 // It returns a BundleState with Executable=false and a reason if there is a nonce conflict
 // that will never be resolved.
-// It returns a BundleState with Executable=true and TemporarilyBlocked=true if there is a nonce conflict that may
+// It returns a BundleState with Executable=false and TemporarilyBlocked=true if there is a nonce conflict that may
 // be resolved in the future.
 // It returns a BundleState with Executable=true if there are no nonce conflicts right now.
 func checkForNonceConflicts(
