@@ -175,9 +175,10 @@ func TestValidateEnvelope_AcceptsValidBlockRanges(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			bundle := TransactionBundle{
-				Earliest: test.From,
-				Latest:   test.To,
-			}
+				Range: BlockRange{
+					Earliest: test.From,
+					Latest:   test.To,
+				}}
 			tx := types.NewTx(&types.LegacyTx{
 				To:   &BundleProcessor,
 				Data: bundle.Encode(),
@@ -201,20 +202,21 @@ func TestValidateEnvelope_IdentifiesInvalidBlockRanges(t *testing.T) {
 	}{
 		"empty block range": {
 			From: 10, To: 5,
-			Issue: "invalid empty block range [10,5] in execution plan",
+			Issue: "invalid empty block range [10,5]",
 		},
 		"too large block range": {
 			From: 7, To: 7 + MaxBlockRange,
-			Issue: "invalid block range in execution plan, duration 1025, limit 1024",
+			Issue: "invalid block range, duration 1025, limit 1024",
 		},
 	}
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			bundle := TransactionBundle{
-				Earliest: test.From,
-				Latest:   test.To,
-			}
+				Range: BlockRange{
+					Earliest: test.From,
+					Latest:   test.To,
+				}}
 			tx := types.NewTx(&types.LegacyTx{
 				To:   &BundleProcessor,
 				Data: bundle.Encode(),

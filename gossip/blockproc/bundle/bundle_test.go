@@ -19,6 +19,7 @@ package bundle
 import (
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"testing"
 
@@ -179,29 +180,208 @@ func TestExtractExecutionPlan_FailsIfPlanExtractionFails(t *testing.T) {
 	require.Equal(want, got)
 }
 
-func TestExecutionPlan_IsInRange_ReturnsTrueIfBlockNumberIsWithinRange(t *testing.T) {
-	tests := map[string]struct {
-		earliest, latest, current uint64
-		want                      bool
+func TestMakeMaxRangeStartingAt_CreatesMaxRangeStartingAtGivenBlock(t *testing.T) {
+	cases := map[string]struct {
+		start          uint64
+		expectedLatest uint64
+		expectedSize   uint64
 	}{
-		"within range":       {10, 20, 15, true},
-		"at earliest":        {10, 20, 10, true},
-		"at latest":          {10, 20, 20, true},
-		"below range":        {10, 20, 9, false},
-		"above range":        {10, 20, 21, false},
-		"at lower end":       {10, 20, 10, true},
-		"at upper end":       {10, 20, 20, true},
-		"single block range": {10, 10, 10, true},
-		"invalid range":      {20, 10, 15, false},
+		"start at 0": {
+			start:          0,
+			expectedLatest: MaxBlockRange - 1,
+			expectedSize:   MaxBlockRange,
+		},
+		"start at 1": {
+			start:          1,
+			expectedLatest: MaxBlockRange,
+			expectedSize:   MaxBlockRange,
+		},
+		"start at 100": {
+			start:          100,
+			expectedLatest: 100 + MaxBlockRange - 1,
+			expectedSize:   MaxBlockRange,
+		},
+		"start with max plus one blocks": {
+			start:          math.MaxUint64 - MaxBlockRange - 1,
+			expectedLatest: math.MaxUint64 - 2,
+			expectedSize:   MaxBlockRange,
+		},
+		"start with max blocks": {
+			start:          math.MaxUint64 - MaxBlockRange,
+			expectedLatest: math.MaxUint64 - 1,
+			expectedSize:   MaxBlockRange,
+		},
+		"start with exact left blocks": {
+			start:          math.MaxUint64 - MaxBlockRange + 1,
+			expectedLatest: math.MaxUint64,
+			expectedSize:   MaxBlockRange,
+		},
+		"start with not enough blocks": {
+			start:          math.MaxUint64 - MaxBlockRange + 2,
+			expectedLatest: math.MaxUint64,
+			expectedSize:   MaxBlockRange - 1,
+		},
+		"start with two blocks left": {
+			start:          math.MaxUint64 - 1,
+			expectedLatest: math.MaxUint64,
+			expectedSize:   2,
+		},
+		"start with one block left": {
+			start:          math.MaxUint64,
+			expectedLatest: math.MaxUint64,
+			expectedSize:   1,
+		},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			r := MakeMaxRangeStartingAt(c.start)
+			require.Equal(t, c.start, r.Earliest)
+			require.Equal(t, c.expectedLatest, r.Latest)
+			require.Equal(t, c.expectedSize, r.Size())
+		})
+	}
+}
+
+func TestBlockRange_Size_ReturnsCorrectSize(t *testing.T) {
+	tests := map[string]struct {
+		blockRange BlockRange
+		want       uint64
+	}{
+		"empty range": {
+			blockRange: BlockRange{
+				Earliest: 10,
+				Latest:   9,
+			},
+			want: 0,
+		},
+		"single range": {
+			blockRange: BlockRange{
+				Earliest: 10,
+				Latest:   10,
+			},
+			want: 1,
+		},
+		"two blocks range": {
+			blockRange: BlockRange{
+				Earliest: 10,
+				Latest:   11,
+			},
+			want: 2,
+		},
+		"multiple blocks range": {
+			blockRange: BlockRange{
+				Earliest: 10,
+				Latest:   20,
+			},
+			want: 11,
+		},
+		"large range": {
+			blockRange: BlockRange{
+				Earliest: 0,
+				Latest:   10_000_000,
+			},
+			want: 10_000_001,
+		},
+		"large range with latest near max uint64": {
+			blockRange: BlockRange{
+				Earliest: 0,
+				Latest:   math.MaxUint64 - 1,
+			},
+			want: math.MaxUint64,
+		},
+		"too large range is capped to prevent overflow": {
+			blockRange: BlockRange{
+				Earliest: 0,
+				Latest:   math.MaxUint64,
+			},
+			want: math.MaxUint64,
+		},
+		"small range start near max uint64": {
+			blockRange: BlockRange{
+				Earliest: math.MaxUint64 - 10,
+				Latest:   math.MaxUint64,
+			},
+			want: 11,
+		},
+		"small range with the last two blocks": {
+			blockRange: BlockRange{
+				Earliest: math.MaxUint64 - 1,
+				Latest:   math.MaxUint64,
+			},
+			want: 2,
+		},
+		"single block range at max uint64": {
+			blockRange: BlockRange{
+				Earliest: math.MaxUint64,
+				Latest:   math.MaxUint64,
+			},
+			want: 1,
+		},
 	}
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			executionPlan := ExecutionPlan{
-				Earliest: test.earliest,
-				Latest:   test.latest,
-			}
-			got := executionPlan.IsInRange(test.current)
+			require.EqualValues(t, test.want, test.blockRange.Size())
+		})
+	}
+}
+
+func TestBlockRange_IsInRange_ReturnsTrueIfBlockNumberIsWithinRange(t *testing.T) {
+	tests := map[string]struct {
+		BlockRange BlockRange
+		current    uint64
+		want       bool
+	}{
+		"within range": {
+			BlockRange: BlockRange{Earliest: 10, Latest: 20},
+			current:    15,
+			want:       true,
+		},
+		"at earliest": {
+			BlockRange: BlockRange{Earliest: 10, Latest: 20},
+			current:    10,
+			want:       true,
+		},
+		"at latest": {
+			BlockRange: BlockRange{Earliest: 10, Latest: 20},
+			current:    20,
+			want:       true,
+		},
+		"below range": {
+			BlockRange: BlockRange{Earliest: 10, Latest: 20},
+			current:    9,
+			want:       false,
+		},
+		"above range": {
+			BlockRange: BlockRange{Earliest: 10, Latest: 20},
+			current:    21,
+			want:       false,
+		},
+		"at lower end": {
+			BlockRange: BlockRange{Earliest: 10, Latest: 20},
+			current:    10,
+			want:       true,
+		},
+		"at upper end": {
+			BlockRange: BlockRange{Earliest: 10, Latest: 20},
+			current:    20,
+			want:       true,
+		},
+		"single block range": {
+			BlockRange: BlockRange{Earliest: 10, Latest: 10},
+			current:    10,
+			want:       true,
+		},
+		"invalid range": {
+			BlockRange: BlockRange{Earliest: 20, Latest: 10},
+			current:    15,
+			want:       false,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			got := test.BlockRange.IsInRange(test.current)
 			require.Equal(t, test.want, got)
 		})
 	}
@@ -248,8 +428,7 @@ func TestExecutionPlan_Hash_ComputesDeterministicHash(t *testing.T) {
 			manualSerialize := []any{
 				transactions,
 				executionPlan.Flags,
-				executionPlan.Earliest,
-				executionPlan.Latest,
+				executionPlan.Range,
 			}
 
 			hasher := crypto.NewKeccakState()
@@ -286,9 +465,11 @@ func TestExtractExecutionPlan_ExtractsStepsAndFlags(t *testing.T) {
 							},
 						}),
 					},
-					Flags:    flags,
-					Earliest: earliest,
-					Latest:   latest,
+					Flags: flags,
+					Range: BlockRange{
+						Earliest: earliest,
+						Latest:   latest,
+					},
 				}
 
 				ctrl := gomock.NewController(t)
@@ -307,8 +488,7 @@ func TestExtractExecutionPlan_ExtractsStepsAndFlags(t *testing.T) {
 				require.Equal(t, common.Address{0x43}, executionPlan.Steps[1].From)
 				require.Equal(t, common.Hash{0x02}, executionPlan.Steps[1].Hash)
 				require.Equal(t, bundle.Flags, executionPlan.Flags)
-				require.Equal(t, bundle.Earliest, executionPlan.Earliest)
-				require.Equal(t, bundle.Latest, executionPlan.Latest)
+				require.Equal(t, bundle.Range, executionPlan.Range)
 			}
 		}
 	}
@@ -642,9 +822,11 @@ func TestDecode_SuccessfullyUnpacksValidBundle(t *testing.T) {
 					},
 				}),
 			},
-			Flags:    flags,
-			Earliest: 12,
-			Latest:   34,
+			Flags: flags,
+			Range: BlockRange{
+				Earliest: 12,
+				Latest:   34,
+			},
 		}
 
 		unpacked, err := decode(bundle.Encode())
@@ -654,8 +836,7 @@ func TestDecode_SuccessfullyUnpacksValidBundle(t *testing.T) {
 			require.Equal(t, tx.Hash(), unpacked.Transactions[i].Hash())
 		}
 		require.Equal(t, bundle.Flags, unpacked.Flags)
-		require.Equal(t, bundle.Earliest, unpacked.Earliest)
-		require.Equal(t, bundle.Latest, unpacked.Latest)
+		require.Equal(t, bundle.Range, unpacked.Range)
 	}
 }
 

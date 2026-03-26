@@ -1900,8 +1900,10 @@ func TestRunTransactionBundle_InvalidExecutionPlan_ReturnsEnvelopeAndNoProcessed
 		Transactions: []*types.Transaction{types.NewTx(&types.AccessListTx{
 			Nonce: 0, To: &common.Address{1}, Gas: 21_000, GasPrice: big.NewInt(1),
 		})},
-		Earliest: 0,
-		Latest:   1000,
+		Range: bundle.BlockRange{
+			Earliest: 0,
+			Latest:   1000,
+		},
 	}
 	tx := types.MustSignNewTx(key, signer, &types.AccessListTx{
 		ChainID: big.NewInt(1),

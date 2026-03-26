@@ -19,6 +19,7 @@ package bundle
 import (
 	"bytes"
 	"fmt"
+	"math"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -98,18 +99,57 @@ type ExecutionStep struct {
 // to which every participant in the bundle shall agree on.
 // The execution plan includes the list of steps to be executed, in the order of execution
 type ExecutionPlan struct {
-	Steps    []ExecutionStep // Steps to be executed in the bundle, in the order of execution
-	Flags    ExecutionFlags  // Execution flags that specify the behavior of the bundle execution
-	Earliest uint64          // Earliest block this bundle can be included in.
-	Latest   uint64          // Latest block this bundle can be included in.
+	Steps []ExecutionStep // Steps to be executed in the bundle, in the order of execution
+	Flags ExecutionFlags  // Execution flags that specify the behavior of the bundle execution
+	Range BlockRange      // Block range [Earliest, Latest] in which the bundle can be included
 }
 
-// IsInRange checks if the given block number is within the range of the
-// execution plan. The range is a closed interval [Earliest, Latest], meaning
-// that the execution plan is valid for inclusion in any block within this
-// range, including the Earliest and Latest blocks themselves.
-func (e *ExecutionPlan) IsInRange(blockNum uint64) bool {
-	return blockNum >= e.Earliest && blockNum <= e.Latest
+// BlockRange represents a range of blocks, defined by an earliest and latest
+// block number. The covered block range is a closed interval [Earliest, Latest],
+// meaning that the earliest and latest blocks are included in the range.
+// For instance, [0,0] is a valid block range that only includes the block
+// number 0, while [0,1] includes both blocks 0 and 1. An interval where Latest
+// is smaller than Earliest, such as [1,0], is a valid empty range.
+type BlockRange struct {
+	Earliest uint64
+	Latest   uint64
+}
+
+// MakeMaxRangeStartingAt creates a block range of maximum allowed size, starting
+// at the given block number.
+func MakeMaxRangeStartingAt(blockNum uint64) BlockRange {
+	latest := blockNum + MaxBlockRange - 1
+	if blockNum > math.MaxUint64-MaxBlockRange {
+		// if the starting block number is too close to maxUint64,
+		// we cannot create a full range of MaxBlockRange blocks without overflowing.
+		// In this case, we create the largest possible range starting at blockNum,
+		// which ends at the maximum uint64 value.
+		latest = math.MaxUint64
+	}
+	return BlockRange{
+		Earliest: blockNum,
+		Latest:   latest,
+	}
+}
+
+// Size returns the size of the block range, which is the number of blocks
+// included in the range.
+func (r BlockRange) Size() uint64 {
+	if r.Latest < r.Earliest {
+		return 0
+	}
+	// overflow check
+	if r.Earliest == 0 && r.Latest == math.MaxUint64 {
+		return math.MaxUint64
+	}
+	return r.Latest - r.Earliest + 1
+}
+
+// IsInRange checks if the given block number is within this block range.
+// The range is a closed interval [Earliest, Latest], meaning that blocks with
+// numbers from Earliest through Latest (inclusive) are considered in range.
+func (r BlockRange) IsInRange(blockNum uint64) bool {
+	return blockNum >= r.Earliest && blockNum <= r.Latest
 }
 
 // Hash computes the execution plan hash
@@ -136,8 +176,7 @@ func (e *ExecutionPlan) Hash() common.Hash {
 type TransactionBundle struct {
 	Transactions types.Transactions
 	Flags        ExecutionFlags
-	Earliest     uint64 // Earliest block this bundle can be included in.
-	Latest       uint64 // Latest block this bundle can be included in.
+	Range        BlockRange // Block range [Earliest, Latest] in which the bundle can be included
 }
 
 func (tb *TransactionBundle) Encode() []byte {
@@ -174,10 +213,9 @@ func (tb *TransactionBundle) extractExecutionPlan(signer types.Signer) (Executio
 	}
 
 	return ExecutionPlan{
-		Steps:    txs,
-		Flags:    tb.Flags,
-		Earliest: tb.Earliest,
-		Latest:   tb.Latest,
+		Steps: txs,
+		Flags: tb.Flags,
+		Range: tb.Range,
 	}, nil
 }
 
@@ -256,8 +294,8 @@ func encodeInternal(
 	_ = rlp.Encode(&buffer, bundleEncodingV1{
 		bundle.Transactions,
 		bundle.Flags,
-		bundle.Earliest,
-		bundle.Latest,
+		bundle.Range.Earliest,
+		bundle.Range.Latest,
 	})
 	return buffer.Bytes()
 }
@@ -283,7 +321,9 @@ func decode(data []byte) (TransactionBundle, error) {
 	}
 	bundle.Transactions = payload.Bundle
 	bundle.Flags = payload.Flags
-	bundle.Earliest = payload.Earliest
-	bundle.Latest = payload.Latest
+	bundle.Range = BlockRange{
+		Earliest: payload.Earliest,
+		Latest:   payload.Latest,
+	}
 	return bundle, nil
 }
