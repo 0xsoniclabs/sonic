@@ -19,8 +19,6 @@ package tests
 import (
 	"fmt"
 	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 
 	carmen "github.com/0xsoniclabs/carmen/go/state"
@@ -32,9 +30,10 @@ import (
 
 var (
 	testPaths = []string{
-		filepath.Join(".", "testdata", "EIPTests", "StateTests"),
-		filepath.Join(".", "testdata", "GeneralStateTests"),
-		filepath.Join(".", "execution-spec-tests", "fixtures", "state_tests"),
+		// filepath.Join(".", "testdata", "EIPTests", "StateTests"),
+		// filepath.Join(".", "testdata", "GeneralStateTests"),
+		// filepath.Join(".", "execution-spec-tests", "fixtures", "state_tests"),
+		"/home/simon/Documents/ethereum/fixtures_v5.4.0/state_tests/",
 	}
 
 	unsupportedForks = map[string]struct{}{
@@ -114,13 +113,7 @@ func execStateTest(t *testing.T, st *tests.TestMatcher, test *tests.StateTest) {
 			config.MaxInitCodeSize = nil
 
 			err := test.RunWith(subtest, config, factory, func(err error, state *tests.StateTestState) {})
-			err = st.CheckFailure(t, err)
-			if err != nil && strings.Contains(err.Error(),
-				"post-state root does not match the pre-state root, indicates an error in the test:") {
-				t.Logf("Carmen does not support IntermediateRoot")
-				return
-			}
-			require.NoError(t, err, "test failed with error")
+			require.NoError(t, st.CheckFailure(t, err))
 		})
 	}
 }
