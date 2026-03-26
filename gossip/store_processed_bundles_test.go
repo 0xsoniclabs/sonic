@@ -849,15 +849,15 @@ func TestStore_deleteOutdatedBundles_LogsOnBatchDeleteError(t *testing.T) {
 
 func TestStore_computeNewBundleStateHash_ReturnsExpectedHash(t *testing.T) {
 
-	alternativeImpl := func(st *testing.T, oldHash, addedHash, deletedHash common.Hash, blockNum uint64) common.Hash {
-		buf := append([]byte{}, oldHash.Bytes()...)
-		buf = append(buf, addedHash.Bytes()...)
-		buf = append(buf, deletedHash.Bytes()...)
-		bigEndianBlock := make([]byte, 8)
-		binary.BigEndian.PutUint64(bigEndianBlock, blockNum)
-		buf = append(buf, bigEndianBlock...)
-		require.Len(st, buf, 3*32+8)
-		return common.Hash(crypto.Keccak256(buf))
+	alternativeImpl := func(_ *testing.T, oldHash, addedHash, deletedHash common.Hash, blockNum uint64) common.Hash {
+		h := crypto.NewKeccakState()
+		h.Write(oldHash.Bytes())
+		h.Write(addedHash.Bytes())
+		h.Write(deletedHash.Bytes())
+		binary.Write(h, binary.BigEndian, blockNum)
+		var out common.Hash
+		h.Read(out[:])
+		return out
 	}
 
 	testVectors := []struct {
