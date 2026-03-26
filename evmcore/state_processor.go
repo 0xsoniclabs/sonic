@@ -419,7 +419,9 @@ func (r *transactionRunner) runTransactionBundle(
 			processedBundle.Count++
 		}
 	}
-	return runner.processedTransactions, append(runner.processedBundles, processedBundle), core_types.TransactionResultSuccessful
+	// the processed bundles are all processed nested bundles and this bundle itself
+	processedBundles := append(runner.processedBundles, processedBundle)
+	return runner.processedTransactions, processedBundles, core_types.TransactionResultSuccessful
 }
 
 // bundleTransactionRunner is an adapter implementing the bundle.TransactionRunner

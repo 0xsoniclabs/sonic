@@ -1669,16 +1669,16 @@ func TestRunTransactionBundle_ReturnsListOfBundlesThatWillBePartOfTheNextBlock(t
 	require.NoError(t, err)
 
 	tests := map[string]struct {
-		envelope         *types.Transaction
-		results          []uint64
-		processedBundles []ProcessedBundle
+		envelope        *types.Transaction
+		results         []uint64
+		expectedBundles []ProcessedBundle
 	}{
 		"successful bundle with one tx": {
 			envelope: envelopeOneTx,
 			results: []uint64{
 				types.ReceiptStatusSuccessful,
 			},
-			processedBundles: []ProcessedBundle{
+			expectedBundles: []ProcessedBundle{
 				{ExecutionPlanHash: envelopeOneTxPlan.Hash(), Position: 0, Count: 1},
 			},
 		},
@@ -1687,7 +1687,7 @@ func TestRunTransactionBundle_ReturnsListOfBundlesThatWillBePartOfTheNextBlock(t
 			results: []uint64{
 				types.ReceiptStatusFailed,
 			},
-			processedBundles: []ProcessedBundle{
+			expectedBundles: []ProcessedBundle{
 				{ExecutionPlanHash: envelopeOneTxPlan.Hash(), Position: 0, Count: 0},
 			},
 		},
@@ -1697,7 +1697,7 @@ func TestRunTransactionBundle_ReturnsListOfBundlesThatWillBePartOfTheNextBlock(t
 				types.ReceiptStatusSuccessful,
 				types.ReceiptStatusSuccessful,
 			},
-			processedBundles: []ProcessedBundle{
+			expectedBundles: []ProcessedBundle{
 				{ExecutionPlanHash: inner1Plan.Hash(), Position: 0, Count: 1},
 				{ExecutionPlanHash: inner2Plan.Hash(), Position: 1, Count: 1},
 				{ExecutionPlanHash: envelopeTwoNestedBundlesPlan.Hash(), Position: 0, Count: 2},
@@ -1709,7 +1709,7 @@ func TestRunTransactionBundle_ReturnsListOfBundlesThatWillBePartOfTheNextBlock(t
 				types.ReceiptStatusSuccessful,
 				types.ReceiptStatusFailed,
 			},
-			processedBundles: []ProcessedBundle{
+			expectedBundles: []ProcessedBundle{
 				{ExecutionPlanHash: envelopeTwoNestedBundlesPlan.Hash(), Position: 0, Count: 0},
 			},
 		},
@@ -1746,7 +1746,7 @@ func TestRunTransactionBundle_ReturnsListOfBundlesThatWillBePartOfTheNextBlock(t
 			}
 
 			_, bundles, _ := runner.runTransactionBundle(context, test.envelope, 0, 0)
-			require.Equal(t, test.processedBundles, bundles)
+			require.Equal(t, test.expectedBundles, bundles)
 		})
 	}
 }
