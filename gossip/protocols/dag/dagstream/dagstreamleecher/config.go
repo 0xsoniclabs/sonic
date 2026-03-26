@@ -22,6 +22,7 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/gossip/basestream/basestreamleecher/basepeerleecher"
 )
 
+// Config holds the configuration parameters for the DAG stream leecher.
 type Config struct {
 	Session              basepeerleecher.EpochDownloaderConfig
 	RecheckInterval      time.Duration

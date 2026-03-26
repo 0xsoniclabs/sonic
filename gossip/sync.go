@@ -27,35 +27,43 @@ import (
 
 var isMaybeSyncedGauge = metrics.GetOrRegisterGauge("chain/maybeSynced", nil)
 
+// syncStatus tracks the node's synchronization state using an atomic flag.
 type syncStatus struct {
 	maybeSynced uint32
 }
 
+// MaybeSynced reports whether the node believes it may be synchronized with the network.
 func (ss *syncStatus) MaybeSynced() bool {
 	return atomic.LoadUint32(&ss.maybeSynced) != 0
 }
 
+// MarkMaybeSynced sets the synchronization flag to indicate the node may be synced.
 func (ss *syncStatus) MarkMaybeSynced() {
 	atomic.StoreUint32(&ss.maybeSynced, uint32(1))
 	isMaybeSyncedGauge.Update(int64(1))
 }
 
+// AcceptEvents reports whether the node is accepting new events.
 func (ss *syncStatus) AcceptEvents() bool {
 	return true
 }
 
+// AcceptBlockRecords reports whether the node is accepting block records.
 func (ss *syncStatus) AcceptBlockRecords() bool {
 	return false
 }
 
+// AcceptTxs reports whether the node is accepting new transactions.
 func (ss *syncStatus) AcceptTxs() bool {
 	return ss.MaybeSynced()
 }
 
+// RequestLLR reports whether the node should request LLR data from peers.
 func (ss *syncStatus) RequestLLR() bool {
 	return ss.MaybeSynced()
 }
 
+// txsync holds a peer and the transaction hashes to send to that peer.
 type txsync struct {
 	p     *peer
 	txids []common.Hash

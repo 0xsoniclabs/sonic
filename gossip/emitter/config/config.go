@@ -37,11 +37,14 @@ type EmitIntervals struct {
 	DoublesignProtection       time.Duration
 }
 
+// ValidatorConfig identifies the validator running this emitter.
 type ValidatorConfig struct {
 	ID     idx.ValidatorID
 	PubKey validatorpk.PubKey
 }
 
+// FileConfig specifies a persistent file path and its sync mode for
+// crash-recovery state.
 type FileConfig struct {
 	Path     string
 	SyncMode bool
@@ -84,10 +87,12 @@ type ThrottlerConfig struct {
 	NonDominatingTimeout   Attempt // Maximum number of emission attempts that a suppressed validator can skip before being forced to emit
 }
 
+// Validate checks the emitter configuration for invalid values.
 func (cfg *Config) Validate() error {
 	return cfg.ThrottlerConfig.Validate()
 }
 
+// Validate checks the throttler configuration for invalid values.
 func (cfg *ThrottlerConfig) Validate() error {
 	if cfg.DominantStakeThreshold < 0.7 || 1 < cfg.DominantStakeThreshold {
 		return fmt.Errorf("invalid Event Throttle dominating threshold option. It must be between 0.7 and 1, but is %v",
@@ -127,6 +132,7 @@ func DefaultConfig() Config {
 	}
 }
 
+// DefaultThrottlerConfig returns the default throttler configuration.
 func DefaultThrottlerConfig() ThrottlerConfig {
 	return ThrottlerConfig{
 		Enabled:                false,
@@ -136,7 +142,8 @@ func DefaultThrottlerConfig() ThrottlerConfig {
 	}
 }
 
-// RandomizeEmitTime and return new config
+// RandomizeEmitTime returns a copy of the intervals with jitter applied to
+// Max and DoublesignProtection to reduce collision between parallel instances.
 func (cfg EmitIntervals) RandomizeEmitTime(rand *rand.Rand) EmitIntervals {
 	config := cfg
 	// value = value - 0.1 * value + 0.1 * random value

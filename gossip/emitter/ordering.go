@@ -170,6 +170,8 @@ func (t *transactionsByPriceAndNonce) Clear() {
 	t.heads, t.txs = nil, nil
 }
 
+// Copy returns a shallow copy of the transaction set that can be consumed
+// independently of the original.
 func (t *transactionsByPriceAndNonce) Copy() *transactionsByPriceAndNonce {
 	txsCopy := maps.Clone(t.txs)
 	return &transactionsByPriceAndNonce{

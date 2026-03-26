@@ -188,14 +188,17 @@ type worldAdapter struct {
 	External
 }
 
+// GetEventPayload returns the payload of the given event.
 func (w worldAdapter) GetEventPayload(event hash.Event) inter.Payload {
 	return *w.External.GetEventPayload(event).Payload()
 }
 
+// GetCurrentNetworkRules returns the current network rules.
 func (w worldAdapter) GetCurrentNetworkRules() opera.Rules {
 	return w.GetRules()
 }
 
+// GetEvmChainConfig returns the EVM chain config for the given block height.
 func (w worldAdapter) GetEvmChainConfig(blockHeight idx.Block) *params.ChainConfig {
 	return opera.CreateTransientEvmChainConfig(
 		w.GetRules().NetworkID,
@@ -315,12 +318,13 @@ type counterMetric interface {
 	Inc(int64)
 }
 
-// transactionPriorityAdapter is an adapter between the transactionsByPriceAndNonce
-// and the scheduler's PrioritizedTransactions interface.
+// transactionPriorityAdapter adapts transactionsByPriceAndNonce to the
+// scheduler's PrioritizedTransactions interface.
 type transactionPriorityAdapter struct {
 	sorted transactionIndex
 }
 
+// Current returns the highest-priority pending transaction, or nil if empty.
 func (a *transactionPriorityAdapter) Current() *types.Transaction {
 	tx, _ := a.sorted.Peek()
 	if tx == nil {
@@ -329,14 +333,20 @@ func (a *transactionPriorityAdapter) Current() *types.Transaction {
 	return tx.Resolve()
 }
 
+// Accept marks the current transaction as accepted and advances to the next
+// transaction from the same sender.
 func (a *transactionPriorityAdapter) Accept() {
 	a.sorted.Shift()
 }
 
+// Skip rejects the current transaction and removes all remaining transactions
+// from the same sender.
 func (a *transactionPriorityAdapter) Skip() {
 	a.sorted.Pop()
 }
 
+// transactionIndex is the subset of transactionsByPriceAndNonce methods
+// used by the priority adapter.
 type transactionIndex interface {
 	Peek() (*txpool.LazyTransaction, *uint256.Int)
 	Shift()

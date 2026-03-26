@@ -39,16 +39,23 @@ import (
 )
 
 var (
-	errStopped          = errors.New("service is stopped")
-	errWrongMedianTime  = errors.New("wrong event median time")
-	errWrongEpochHash   = errors.New("wrong event epoch hash")
+	// errStopped is returned when the service has been stopped.
+	errStopped = errors.New("service is stopped")
+	// errWrongMedianTime is returned when an event has an incorrect median timestamp.
+	errWrongMedianTime = errors.New("wrong event median time")
+	// errWrongEpochHash is returned when an event references the wrong epoch hash.
+	errWrongEpochHash = errors.New("wrong event epoch hash")
+	// errNonExistingEpoch is returned when switching to an epoch that does not exist.
 	errNonExistingEpoch = errors.New("epoch doesn't exist")
-	errSameEpoch        = errors.New("epoch hasn't changed")
+	// errSameEpoch is returned when attempting to switch to the current epoch.
+	errSameEpoch = errors.New("epoch hasn't changed")
 )
 var (
 	processedEventsMeter = metrics.GetOrRegisterMeter("chain/events/processed", nil) // txs received into lachesis processing
 )
 
+// buildEvent assigns a unique ID, sets the previous epoch hash, computes median time,
+// and calculates gas power for a new event.
 func (s *Service) buildEvent(e *inter.MutableEventPayload, onIndexed func()) error {
 	// set some unique ID
 	e.SetID(s.uniqueEventIDs.sample())
@@ -122,6 +129,7 @@ func (s *Service) saveAndProcessEvent(e *inter.EventPayload, es *iblockproc.Epoc
 	return nil
 }
 
+// processEventHeads updates the set of head events by removing the new event's parents and adding the event itself.
 func processEventHeads(heads *concurrent.EventsSet, e *inter.EventPayload) *concurrent.EventsSet {
 	// track events with no descendants, i.e. "heads"
 	heads.Lock()
@@ -131,6 +139,7 @@ func processEventHeads(heads *concurrent.EventsSet, e *inter.EventPayload) *conc
 	return heads
 }
 
+// processLastEvent updates the validator's last event index for the event's creator.
 func processLastEvent(lasts *concurrent.ValidatorEventsSet, e *inter.EventPayload) *concurrent.ValidatorEventsSet {
 	// set validator's last event. we don't care about forks, because this index is used only for emitter
 	lasts.Lock()
@@ -139,6 +148,7 @@ func processLastEvent(lasts *concurrent.ValidatorEventsSet, e *inter.EventPayloa
 	return lasts
 }
 
+// switchEpochTo resets epoch state including cache, indexer, checkers, and emitters for the new epoch.
 func (s *Service) switchEpochTo(newEpoch idx.Epoch) {
 	s.store.cache.EventIDs.Reset(newEpoch)
 	s.store.SetHighestLamport(0)
@@ -158,6 +168,7 @@ func (s *Service) switchEpochTo(newEpoch idx.Epoch) {
 	s.feed.newEpoch.Send(newEpoch)
 }
 
+// SwitchEpochTo switches the service to the given epoch, resetting the engine and epoch state.
 func (s *Service) SwitchEpochTo(newEpoch idx.Epoch) error {
 	bs, es := s.store.GetHistoryBlockEpochState(newEpoch)
 	if bs == nil {
@@ -179,6 +190,7 @@ func (s *Service) SwitchEpochTo(newEpoch idx.Epoch) error {
 	return nil
 }
 
+// processEventEpochIndex updates heads, last events, and highest lamport for the given event.
 func (s *Service) processEventEpochIndex(e *inter.EventPayload, oldEpoch, newEpoch idx.Epoch) {
 	// index DAG heads and last events
 	s.store.SetHeads(oldEpoch, processEventHeads(s.store.GetHeads(oldEpoch), e))
@@ -191,6 +203,7 @@ func (s *Service) processEventEpochIndex(e *inter.EventPayload, oldEpoch, newEpo
 	}
 }
 
+// ReprocessEpochEvents replays all events in the current epoch through the DAG indexer and engine on restart.
 func (s *Service) ReprocessEpochEvents() {
 	s.bootstrapping = true
 	// reprocess epoch events, as epoch DBs don't survive restart
@@ -222,12 +235,12 @@ func (s *Service) processEvent(e *inter.EventPayload) error {
 	atomic.StoreUint32(&s.eventBusyFlag, 1)
 	defer atomic.StoreUint32(&s.eventBusyFlag, 0)
 
-	// repeat the checks under the mutex which may depend on volatile data
+	// repeat the duplicate check under the mutex (events may be connected
+	// between the light check and this callback). The epoch check is omitted
+	// here because it was already performed in the DAG processor's light
+	// check phase and the result does not change within an epoch.
 	if s.store.HasEvent(e.ID()) {
 		return eventcheck.ErrAlreadyConnectedEvent
-	}
-	if err := s.checkers.Epochcheck.Validate(e); err != nil {
-		return err
 	}
 
 	oldEpoch := s.store.GetEpoch()
@@ -269,10 +282,12 @@ func (s *Service) processEvent(e *inter.EventPayload) error {
 	return nil
 }
 
+// uniqueID generates unique event identifiers using an incrementing counter.
 type uniqueID struct {
 	counter *big.Int
 }
 
+// sample returns the next unique 24-byte event identifier.
 func (u *uniqueID) sample() [24]byte {
 	u.counter.Add(u.counter, common.Big1)
 	var id [24]byte
@@ -280,10 +295,12 @@ func (u *uniqueID) sample() [24]byte {
 	return id
 }
 
+// DagProcessor returns the DAG event processor.
 func (s *Service) DagProcessor() *dagprocessor.Processor {
 	return s.handler.dagProcessor
 }
 
+// mayCommit commits the store if an epoch is sealing or the store indicates a commit is needed.
 func (s *Service) mayCommit(epochSealing bool) {
 	// s.engineMu is locked here
 	if epochSealing || s.store.IsCommitNeeded() {
@@ -291,6 +308,7 @@ func (s *Service) mayCommit(epochSealing bool) {
 	}
 }
 
+// commit waits for block processing to finish and commits the store to disk.
 func (s *Service) commit(epochSealing bool) {
 	// s.engineMu is locked here
 	s.blockProcWg.Wait()

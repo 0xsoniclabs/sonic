@@ -31,7 +31,6 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/status-im/keycard-go/hexutils"
 )
 
@@ -81,7 +80,7 @@ func ExportEvents(gdbParams db.GossipDbParameters, w io.Writer, importAll bool, 
 		counter int
 		last    hash.Event
 	)
-	gdb.ForEachEventRLP(from.Bytes(), func(id hash.Event, event rlp.RawValue) bool {
+	gdb.ForEachEventRLP(from.Bytes(), func(id hash.Event, event []byte) bool {
 		if to >= from && id.Epoch() > to {
 			return false
 		}

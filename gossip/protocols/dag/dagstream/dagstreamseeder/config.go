@@ -21,8 +21,10 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
 )
 
+// Config holds the configuration parameters for the DAG stream seeder.
 type Config basestreamseeder.Config
 
+// DefaultConfig returns the default seeder configuration scaled by the given function.
 func DefaultConfig(scale cachescale.Func) Config {
 	return Config{
 		SenderThreads:           8,

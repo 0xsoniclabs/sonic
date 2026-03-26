@@ -35,6 +35,7 @@ const (
 	_FTM62    = 62
 	_Sonic_64 = 64
 	_Sonic_65 = 65
+	_Sonic_66 = 66 // Protobuf wire encoding
 )
 
 // ProtocolName is the official short name of the protocol used during capability negotiation.
@@ -42,16 +43,12 @@ const ProtocolName = "opera"
 
 // ProtocolVersions are the supported versions of the protocol (first is primary).
 var ProtocolVersions = []uint{
-	_Sonic_65,
-	_Sonic_64,
-	_FTM62,
+	_Sonic_66,
 }
 
 // protocolLengths are the number of implemented message corresponding to different protocol versions.
 var protocolLengths = map[uint]uint64{
-	_Sonic_65: EndPointUpdateMsg + 1,
-	_Sonic_64: PeerInfosMsg + 1,
-	_FTM62:    EventsStreamResponse + 1,
+	_Sonic_66: EndPointUpdateMsg + 1,
 }
 
 const protocolMaxMsgSize = inter.ProtocolMaxMsgSize // Maximum cap on the size of a protocol message
@@ -96,6 +93,7 @@ const (
 	EndPointUpdateMsg = 13
 )
 
+// errCode represents a protocol-level error code.
 type errCode int
 
 const (
@@ -111,11 +109,12 @@ const (
 	ErrEmptyMessage = 0xf00
 )
 
+// String returns the human-readable description of the error code.
 func (e errCode) String() string {
 	return errorToString[int(e)]
 }
 
-// XXX change once legacy code is out
+// errorToString maps error codes to human-readable descriptions.
 var errorToString = map[int]string{
 	ErrMsgTooLarge:             "Message too long",
 	ErrDecode:                  "Invalid message",
@@ -129,6 +128,7 @@ var errorToString = map[int]string{
 	ErrEmptyMessage:            "Empty message",
 }
 
+// TxPool defines the transaction pool interface used by the gossip protocol.
 type TxPool interface {
 	emitter.TxPool
 	SubscribeNewTxsNotify(chan<- evmcore.NewTxsNotify) notify.Subscription
@@ -151,14 +151,14 @@ type TxPool interface {
 	Stop()
 }
 
-// handshakeData is the network packet for the initial handshake message
+// handshakeData is the network packet for the initial handshake message.
 type handshakeData struct {
 	ProtocolVersion uint32
 	NetworkID       uint64
 	Genesis         common.Hash
 }
 
-// PeerProgress is synchronization status of a peer
+// PeerProgress represents the synchronization status of a peer.
 type PeerProgress struct {
 	Epoch            idx.Epoch
 	LastBlockIdx     idx.Block
@@ -167,6 +167,7 @@ type PeerProgress struct {
 	HighestLamport idx.Lamport
 }
 
+// dagChunk represents a chunk of events received in a stream response.
 type dagChunk struct {
 	SessionID uint32
 	Done      bool
@@ -174,10 +175,12 @@ type dagChunk struct {
 	Events    inter.EventPayloads
 }
 
+// peerInfo holds the enode address of a discovered peer.
 type peerInfo struct {
 	Enode string
 }
 
+// peerInfoMsg holds a list of peer information entries for peer discovery.
 type peerInfoMsg struct {
 	Peers []peerInfo
 }

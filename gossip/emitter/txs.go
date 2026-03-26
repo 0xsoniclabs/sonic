@@ -35,11 +35,16 @@ import (
 )
 
 const (
-	txTurnPeriod        = 8 * time.Second
+	// txTurnPeriod is the duration of each validator's turn for a transaction.
+	txTurnPeriod = 8 * time.Second
+	// txTurnPeriodLatency is the guard window near turn boundaries to avoid
+	// racing with another validator.
 	txTurnPeriodLatency = 1 * time.Second
-	txTurnNonces        = 32
+	// txTurnNonces is the number of nonces grouped into a single turn seed.
+	txTurnNonces = 32
 )
 
+// max64 returns the larger of two uint64 values.
 func max64(a, b uint64) uint64 {
 	if a > b {
 		return a
@@ -47,6 +52,8 @@ func max64(a, b uint64) uint64 {
 	return b
 }
 
+// maxGasPowerToUse calculates the maximum gas this event may consume,
+// applying smoothing, pending gas limits, and low-power thresholds.
 func (em *Emitter) maxGasPowerToUse(e *inter.MutableEventPayload) uint64 {
 	rules := em.world.GetRules()
 	maxGasToUse := rules.Economy.Gas.MaxEventGas
@@ -119,6 +126,8 @@ func (em *Emitter) maxGasPowerToUse(e *inter.MutableEventPayload) uint64 {
 	return maxGasToUse
 }
 
+// getTxRoundIndex returns the current turn index for a transaction based on
+// elapsed time since the transaction was first seen.
 func getTxRoundIndex(now, txTime time.Time, validatorsNum idx.Validator) int {
 	passed := now.Sub(txTime)
 	if passed < 0 {
@@ -127,7 +136,9 @@ func getTxRoundIndex(now, txTime time.Time, validatorsNum idx.Validator) int {
 	return int((passed / txTurnPeriod) % time.Duration(validatorsNum))
 }
 
-// safe for concurrent use
+// isMyTxTurn determines whether this validator should include the given
+// transaction in its next event, based on a deterministic round-robin
+// assignment that skips offline validators. Safe for concurrent use.
 func (em *Emitter) isMyTxTurn(txHash common.Hash, sender common.Address, accountNonce uint64, now time.Time, validators *pos.Validators, me idx.ValidatorID, epoch idx.Epoch) bool {
 	txTime := txtime.Of(txHash)
 
@@ -158,6 +169,8 @@ func (em *Emitter) isMyTxTurn(txHash common.Hash, sender common.Address, account
 	return false
 }
 
+// addTxs fills the event with transactions from the sorted pool, respecting
+// gas power, size limits, epoch rules, turn assignment, and sender conflicts.
 func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPriceAndNonce) {
 	maxGasUsed := em.maxGasPowerToUse(e)
 	if maxGasUsed <= e.GasPowerUsed() {

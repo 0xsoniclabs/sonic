@@ -127,7 +127,7 @@ func (s *Store) ForEachEvent(start idx.Epoch, onEvent func(event *inter.EventPay
 	s.forEachEvent(it, onEvent)
 }
 
-func (s *Store) ForEachEventRLP(start []byte, onEvent func(key hash.Event, event rlp.RawValue) bool) {
+func (s *Store) ForEachEventRLP(start []byte, onEvent func(key hash.Event, event []byte) bool) {
 	it := s.table.Events.NewIterator(nil, start)
 	defer it.Release()
 	for it.Next() {
@@ -167,7 +167,7 @@ func (s *Store) FindEventHashes(epoch idx.Epoch, lamport idx.Lamport, hashPrefix
 }
 
 // GetEventPayloadRLP returns stored event. Serialized.
-func (s *Store) GetEventPayloadRLP(id hash.Event) rlp.RawValue {
+func (s *Store) GetEventPayloadRLP(id hash.Event) []byte {
 	key := id.Bytes()
 
 	data, err := s.table.Events.Get(key)

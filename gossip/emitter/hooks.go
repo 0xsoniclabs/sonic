@@ -33,7 +33,8 @@ import (
 	"github.com/0xsoniclabs/sonic/utils/adapters/vecmt2dagidx"
 )
 
-// OnNewEpoch should be called after each epoch change, and on startup
+// OnNewEpoch reinitializes emitter state for a new epoch, including
+// parent indexers, emission intervals, and validator tracking.
 func (em *Emitter) OnNewEpoch(newValidators *pos.Validators, newEpoch idx.Epoch) {
 	em.maxParents = em.config.MaxParents
 	rules := em.world.GetRules()
@@ -115,7 +116,8 @@ func (em *Emitter) OnNewEpoch(newValidators *pos.Validators, newEpoch idx.Epoch)
 	em.proposalTracker.Reset()
 }
 
-// OnEventConnected tracks new events
+// OnEventConnected updates emitter state when a new event is connected to the DAG,
+// tracking originated transactions, gas usage, challenges, and proposals.
 func (em *Emitter) OnEventConnected(e inter.EventPayloadI) {
 	if !em.isValidator() {
 		return
@@ -146,6 +148,8 @@ func (em *Emitter) OnEventConnected(e inter.EventPayloadI) {
 	}
 }
 
+// OnEventConfirmed updates emitter state when an event is confirmed by consensus,
+// decrementing pending gas and originated transaction counts.
 func (em *Emitter) OnEventConfirmed(he inter.EventI) {
 	if !em.isValidator() {
 		return
@@ -178,6 +182,7 @@ func (em *Emitter) OnEventConfirmed(he inter.EventI) {
 	}
 }
 
+// minDuration returns the smaller of two durations.
 func minDuration(a, b time.Duration) time.Duration {
 	if a < b {
 		return a
@@ -185,6 +190,7 @@ func minDuration(a, b time.Duration) time.Duration {
 	return b
 }
 
+// maxDuration returns the larger of two durations.
 func maxDuration(a, b time.Duration) time.Duration {
 	if a > b {
 		return a

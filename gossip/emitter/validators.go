@@ -25,9 +25,13 @@ import (
 )
 
 const (
+	// validatorChallenge is the base deadline for a validator to emit an event
+	// before being considered offline.
 	validatorChallenge = 4 * time.Second
 )
 
+// recountConfirmingIntervals recalculates per-validator confirming intervals
+// based on each validator's cumulative stake position, skipping offline validators.
 func (em *Emitter) recountConfirmingIntervals(validators *pos.Validators) {
 	// validators with lower stake should emit fewer events to reduce network load
 	// confirmingEmitInterval = piecefunc(totalStakeBeforeMe / totalStake) * MinEmitInterval
@@ -47,6 +51,8 @@ func (em *Emitter) recountConfirmingIntervals(validators *pos.Validators) {
 	em.intervals.Confirming = em.expectedEmitIntervals[em.config.Validator.ID]
 }
 
+// recheckChallenges periodically issues and evaluates challenges for each
+// validator, marking those that fail to emit within the deadline as offline.
 func (em *Emitter) recheckChallenges() {
 	if time.Since(em.prevRecheckedChallenges) < validatorChallenge/10 {
 		return

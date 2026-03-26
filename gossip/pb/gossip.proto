@@ -1,0 +1,61 @@
+syntax = "proto3";
+package sonic.gossip.proto;
+option go_package = ".;pb";
+
+message Handshake {
+    uint32 protocol_version = 1;
+    uint64 network_id = 2;
+    bytes genesis = 3; // 32 bytes
+}
+
+message PeerProgress {
+    uint32 epoch = 1;
+    uint64 last_block_idx = 2;
+    bytes last_block_atropos = 3; // 32 bytes
+    uint32 highest_lamport = 4;
+}
+
+message Transactions {
+    repeated bytes txs = 1; // Each tx is EIP-2718 encoded bytes
+}
+
+message Hashes {
+    repeated bytes hashes = 1; // Each is 32 bytes
+}
+
+message EventIDs {
+    repeated bytes ids = 1; // Each is 32 bytes (hash.Event)
+}
+
+message Events {
+    repeated bytes events = 1; // Each event is serialized bytes (stored format)
+}
+
+message StreamRequest {
+    uint32 session_id = 1;
+    bytes session_start = 2; // Locator
+    bytes session_stop = 3;  // Locator
+    uint64 limit_num = 4;
+    uint64 limit_size = 5;
+    uint32 type = 6;         // RequestType
+    uint32 max_chunks = 7;
+}
+
+message StreamResponse {
+    uint32 session_id = 1;
+    bool done = 2;
+    repeated bytes ids = 3;    // Event IDs
+    repeated bytes events = 4; // Serialized events (stored format)
+}
+
+message PeerInfoEntry {
+    string enode = 1;
+}
+
+message PeerInfos {
+    repeated PeerInfoEntry peers = 1;
+}
+
+message EndPoint {
+    string enode = 1;
+}

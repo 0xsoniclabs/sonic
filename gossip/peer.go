@@ -1,5 +1,4 @@
-// Copyright 2026 Sonic Operations Ltd
-// This file is part of the Sonic Client
+// Copyright (c) 2024 Sonic Labs
 //
 // Sonic is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as published by
@@ -33,15 +32,13 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/ethereum/go-ethereum/rlp"
 
 	"github.com/0xsoniclabs/sonic/gossip/protocols/dag/dagstream"
 	"github.com/0xsoniclabs/sonic/inter"
 )
 
-var (
-	errNotRegistered = errors.New("peer is not registered")
-)
+// errNotRegistered is returned when an operation targets a peer not in the registry.
+var errNotRegistered = errors.New("peer is not registered")
 
 var (
 	sentTxsPromotedCounter    = metrics.GetOrRegisterCounter("p2p_sent_txs_promoted", nil)
@@ -50,9 +47,8 @@ var (
 	sentTxHashesCounter       = metrics.GetOrRegisterCounter("p2p_sent_tx_hashes", nil)
 )
 
-const (
-	handshakeTimeout = 5 * time.Second
-)
+// handshakeTimeout is the maximum duration allowed for completing the protocol handshake.
+const handshakeTimeout = 5 * time.Second
 
 // PeerInfo represents a short summary of the sub-protocol metadata known
 // about a connected peer.
@@ -62,11 +58,14 @@ type PeerInfo struct {
 	NumOfBlocks idx.Block `json:"blocks"`
 }
 
+// broadcastItem wraps a message code and its raw serialized bytes for async sending.
 type broadcastItem struct {
 	Code uint64
-	Raw  rlp.RawValue
+	Raw  []byte
 }
 
+// peer represents a connected remote node with per-peer state including known
+// transactions, known events, broadcast queue, and sync progress.
 type peer struct {
 	id string
 
@@ -86,51 +85,65 @@ type peer struct {
 	progress PeerProgress
 
 	useless uint32
+	score   int32 // atomic; higher = better quality peer
 
 	sync.RWMutex
 
 	endPoint atomic.Pointer[peerEndPointInfo]
 }
 
+// peerEndPointInfo holds a peer's enode address and the timestamp of when it was last updated.
 type peerEndPointInfo struct {
 	enode     enode.Node
 	timestamp time.Time
 }
 
+// Useless reports whether the peer has been marked as useless.
 func (p *peer) Useless() bool {
 	return atomic.LoadUint32(&p.useless) != 0
 }
 
+// SetUseless marks the peer as useless, indicating it provides no useful data.
 func (p *peer) SetUseless() {
 	atomic.StoreUint32(&p.useless, 1)
 }
 
+// AddScore atomically adds delta to the peer's quality score.
+func (p *peer) AddScore(delta int32) {
+	atomic.AddInt32(&p.score, delta)
+}
+
+// Score returns the peer's current quality score.
+func (p *peer) Score() int32 {
+	return atomic.LoadInt32(&p.score)
+}
+
+// SetProgress updates the peer's synchronization progress.
 func (p *peer) SetProgress(x PeerProgress) {
 	p.Lock()
 	defer p.Unlock()
-
 	p.progress = x
 }
 
+// GetProgress returns a copy of the peer's current synchronization progress.
 func (p *peer) GetProgress() PeerProgress {
 	p.RLock()
 	defer p.RUnlock()
-
 	return p.progress
 }
 
+// InterestedIn reports whether the peer would be interested in the event based on epoch and known-event filtering.
 func (p *peer) InterestedIn(h hash.Event) bool {
 	e := h.Epoch()
-
 	p.RLock()
 	defer p.RUnlock()
-
 	return e != 0 &&
 		p.progress.Epoch != 0 &&
 		(e == p.progress.Epoch || e == p.progress.Epoch+1) &&
 		!p.knownEvents.Contains(h)
 }
 
+// Less reports whether a's progress is behind b's, comparing epoch first then block index.
 func (a *PeerProgress) Less(b PeerProgress) bool {
 	if a.Epoch != b.Epoch {
 		return a.Epoch < b.Epoch
@@ -138,6 +151,8 @@ func (a *PeerProgress) Less(b PeerProgress) bool {
 	return a.LastBlockIdx < b.LastBlockIdx
 }
 
+// newPeer creates a new peer with the given protocol version, p2p connection,
+// and cache configuration, and starts its broadcast goroutine.
 func newPeer(version uint, p *p2p.Peer, rw p2p.MsgReadWriter, cfg PeerCacheConfig) *peer {
 	peer := &peer{
 		cfg:                 cfg,
@@ -151,22 +166,30 @@ func newPeer(version uint, p *p2p.Peer, rw p2p.MsgReadWriter, cfg PeerCacheConfi
 		queuedDataSemaphore: datasemaphore.New(dag.Metric{Num: cfg.MaxQueuedItems, Size: cfg.MaxQueuedSize}, getSemaphoreWarningFn("Peers queue")),
 		term:                make(chan struct{}),
 	}
-
 	go peer.broadcast(peer.queue)
-
 	return peer
 }
 
 // broadcast is a write loop that multiplexes event propagations, announcements
 // and transaction broadcasts into the remote peer. The goal is to have an async
-// writer that does not lock up node internals.
+// writer that does not lock up node internals. It drains all available queued
+// messages in a tight loop to reduce context-switch overhead under load.
 func (p *peer) broadcast(queue chan broadcastItem) {
 	for {
 		select {
 		case item := <-queue:
-			_ = p2p.Send(p.rw, item.Code, item.Raw)
+			_ = sendBytes(p.rw, item.Code, item.Raw)
 			p.queuedDataSemaphore.Release(memSize(item.Raw))
-
+			// Drain any additional ready items without blocking
+			for done := false; !done; {
+				select {
+				case item := <-queue:
+					_ = sendBytes(p.rw, item.Code, item.Raw)
+					p.queuedDataSemaphore.Release(memSize(item.Raw))
+				default:
+					done = true
+				}
+			}
 		case <-p.term:
 			return
 		}
@@ -183,7 +206,6 @@ func (p *peer) Close() {
 func (p *peer) Info() *PeerInfo {
 	p.RLock()
 	defer p.RUnlock()
-
 	return &PeerInfo{
 		Version:     p.version,
 		Epoch:       p.progress.Epoch,
@@ -222,14 +244,21 @@ func (p *peer) SendTransactionHashes(txids []common.Hash) error {
 		p.knownTxs.Pop()
 	}
 	sentTxHashesCounter.Inc(int64(len(txids)))
-	return p2p.Send(p.rw, NewEvmTxHashesMsg, txids)
+	raw, err := marshalHashes(txids)
+	if err != nil {
+		return err
+	}
+	return sendBytes(p.rw, NewEvmTxHashesMsg, raw)
 }
 
-func memSize(v rlp.RawValue) dag.Metric {
+// memSize computes the memory overhead metric for a raw message payload.
+func memSize(v []byte) dag.Metric {
 	return dag.Metric{Num: 1, Size: uint64(len(v) + 1024)}
 }
 
-func (p *peer) asyncSendEncodedItem(raw rlp.RawValue, code uint64, queue chan broadcastItem) bool {
+// asyncSendEncodedItem attempts a non-blocking insertion of the encoded item into the broadcast queue.
+// It returns false if the queue is full.
+func (p *peer) asyncSendEncodedItem(raw []byte, code uint64, queue chan broadcastItem) bool {
 	if !p.queuedDataSemaphore.TryAcquire(memSize(raw)) {
 		return false
 	}
@@ -247,15 +276,9 @@ func (p *peer) asyncSendEncodedItem(raw rlp.RawValue, code uint64, queue chan br
 	return false
 }
 
-func (p *peer) asyncSendNonEncodedItem(value interface{}, code uint64, queue chan broadcastItem) bool {
-	raw, err := rlp.EncodeToBytes(value)
-	if err != nil {
-		return false
-	}
-	return p.asyncSendEncodedItem(raw, code, queue)
-}
-
-func (p *peer) enqueueSendEncodedItem(raw rlp.RawValue, code uint64, queue chan broadcastItem) {
+// enqueueSendEncodedItem performs a blocking insertion of the encoded item into the broadcast queue,
+// waiting up to 10 seconds for semaphore acquisition.
+func (p *peer) enqueueSendEncodedItem(raw []byte, code uint64, queue chan broadcastItem) {
 	if !p.queuedDataSemaphore.Acquire(memSize(raw), 10*time.Second) {
 		return
 	}
@@ -271,14 +294,8 @@ func (p *peer) enqueueSendEncodedItem(raw rlp.RawValue, code uint64, queue chan 
 	p.queuedDataSemaphore.Release(memSize(raw))
 }
 
-func (p *peer) enqueueSendNonEncodedItem(value interface{}, code uint64, queue chan broadcastItem) {
-	raw, err := rlp.EncodeToBytes(value)
-	if err != nil {
-		return
-	}
-	p.enqueueSendEncodedItem(raw, code, queue)
-}
-
+// SplitTransactions divides a batch of transactions into chunks that fit within
+// softResponseLimitSize and calls fn for each chunk.
 func SplitTransactions(txs types.Transactions, fn func(types.Transactions)) {
 	// divide big batch into smaller ones
 	for len(txs) > 0 {
@@ -299,7 +316,12 @@ func SplitTransactions(txs types.Transactions, fn func(types.Transactions)) {
 // AsyncSendTransactions queues list of transactions propagation to a remote
 // peer. If the peer's broadcast queue is full, the transactions are silently dropped.
 func (p *peer) AsyncSendTransactions(txs types.Transactions, queue chan broadcastItem) {
-	if p.asyncSendNonEncodedItem(txs, EvmTxsMsg, queue) {
+	raw, err := marshalTransactions(txs)
+	if err != nil {
+		p.Log().Debug("Failed to marshal transactions", "err", err)
+		return
+	}
+	if p.asyncSendEncodedItem(raw, EvmTxsMsg, queue) {
 		sentTxsPromotedCounter.Inc(int64(len(txs)))
 		// Mark all the transactions as known, but ensure we don't overflow our limits
 		for _, tx := range txs {
@@ -317,7 +339,12 @@ func (p *peer) AsyncSendTransactions(txs types.Transactions, queue chan broadcas
 // AsyncSendTransactionHashes queues list of transactions propagation to a remote
 // peer. If the peer's broadcast queue is full, the transactions are silently dropped.
 func (p *peer) AsyncSendTransactionHashes(txids []common.Hash, queue chan broadcastItem) {
-	if p.asyncSendNonEncodedItem(txids, NewEvmTxHashesMsg, queue) {
+	raw, err := marshalHashes(txids)
+	if err != nil {
+		p.Log().Debug("Failed to marshal tx hashes", "err", err)
+		return
+	}
+	if p.asyncSendEncodedItem(raw, NewEvmTxHashesMsg, queue) {
 		sentTxHashesCounter.Inc(int64(len(txids)))
 		// Mark all the transactions as known, but ensure we don't overflow our limits
 		for _, tx := range txids {
@@ -335,7 +362,11 @@ func (p *peer) AsyncSendTransactionHashes(txids []common.Hash, queue chan broadc
 // peer.
 // The method is blocking in a case if the peer's broadcast queue is full.
 func (p *peer) EnqueueSendTransactions(txs types.Transactions, queue chan broadcastItem) {
-	p.enqueueSendNonEncodedItem(txs, EvmTxsMsg, queue)
+	raw, err := marshalTransactions(txs)
+	if err != nil {
+		return
+	}
+	p.enqueueSendEncodedItem(raw, EvmTxsMsg, queue)
 	sentTxsRequestedCounter.Inc(int64(len(txs)))
 	// Mark all the transactions as known, but ensure we don't overflow our limits
 	for _, tx := range txs {
@@ -356,14 +387,23 @@ func (p *peer) SendEventIDs(hashes []hash.Event) error {
 	for p.knownEvents.Cardinality() >= p.cfg.MaxKnownEvents {
 		p.knownEvents.Pop()
 	}
-	return p2p.Send(p.rw, NewEventIDsMsg, hashes)
+	raw, err := marshalEventIDs(hashes)
+	if err != nil {
+		return err
+	}
+	return sendBytes(p.rw, NewEventIDsMsg, raw)
 }
 
 // AsyncSendEventIDs queues the availability of a event for propagation to a
 // remote peer. If the peer's broadcast queue is full, the event is silently
 // dropped.
 func (p *peer) AsyncSendEventIDs(ids hash.Events, queue chan broadcastItem) {
-	if p.asyncSendNonEncodedItem(ids, NewEventIDsMsg, queue) {
+	raw, err := marshalEventIDs(ids)
+	if err != nil {
+		p.Log().Debug("Failed to marshal event IDs", "err", err)
+		return
+	}
+	if p.asyncSendEncodedItem(raw, NewEventIDsMsg, queue) {
 		// Mark all the event hash as known, but ensure we don't overflow our limits
 		for _, id := range ids {
 			p.knownEvents.Add(id)
@@ -385,11 +425,15 @@ func (p *peer) SendEvents(events inter.EventPayloads) error {
 			p.knownEvents.Pop()
 		}
 	}
-	return p2p.Send(p.rw, EventsMsg, events)
+	raw, err := marshalEvents(events)
+	if err != nil {
+		return err
+	}
+	return sendBytes(p.rw, EventsMsg, raw)
 }
 
-// SendEventsRLP propagates a batch of RLP events to a remote peer.
-func (p *peer) SendEventsRLP(events []rlp.RawValue, ids []hash.Event) error {
+// SendEventsRaw propagates a batch of pre-serialized events to a remote peer.
+func (p *peer) SendEventsRaw(events [][]byte, ids []hash.Event) error {
 	// Mark all the event hash as known, but ensure we don't overflow our limits
 	for _, id := range ids {
 		p.knownEvents.Add(id)
@@ -397,13 +441,22 @@ func (p *peer) SendEventsRLP(events []rlp.RawValue, ids []hash.Event) error {
 			p.knownEvents.Pop()
 		}
 	}
-	return p2p.Send(p.rw, EventsMsg, events)
+	raw, err := marshalEventsRaw(events)
+	if err != nil {
+		return err
+	}
+	return sendBytes(p.rw, EventsMsg, raw)
 }
 
 // AsyncSendEvents queues an entire event for propagation to a remote peer.
 // If the peer's broadcast queue is full, the events are silently dropped.
 func (p *peer) AsyncSendEvents(events inter.EventPayloads, queue chan broadcastItem) bool {
-	if p.asyncSendNonEncodedItem(events, EventsMsg, queue) {
+	raw, err := marshalEvents(events)
+	if err != nil {
+		p.Log().Debug("Failed to marshal events", "err", err)
+		return false
+	}
+	if p.asyncSendEncodedItem(raw, EventsMsg, queue) {
 		// Mark all the event hash as known, but ensure we don't overflow our limits
 		for _, event := range events {
 			p.knownEvents.Add(event.ID())
@@ -417,10 +470,14 @@ func (p *peer) AsyncSendEvents(events inter.EventPayloads, queue chan broadcastI
 	return false
 }
 
-// EnqueueSendEventsRLP queues an entire RLP event for propagation to a remote peer.
+// EnqueueSendEventsRaw queues pre-serialized events for propagation to a remote peer.
 // The method is blocking in a case if the peer's broadcast queue is full.
-func (p *peer) EnqueueSendEventsRLP(events []rlp.RawValue, ids []hash.Event, queue chan broadcastItem) {
-	p.enqueueSendNonEncodedItem(events, EventsMsg, queue)
+func (p *peer) EnqueueSendEventsRaw(events [][]byte, ids []hash.Event, queue chan broadcastItem) {
+	raw, err := marshalEventsRaw(events)
+	if err != nil {
+		return
+	}
+	p.enqueueSendEncodedItem(raw, EventsMsg, queue)
 	// Mark all the event hash as known, but ensure we don't overflow our limits
 	for _, id := range ids {
 		p.knownEvents.Add(id)
@@ -433,11 +490,17 @@ func (p *peer) EnqueueSendEventsRLP(events []rlp.RawValue, ids []hash.Event, que
 // AsyncSendProgress queues a progress propagation to a remote peer.
 // If the peer's broadcast queue is full, the progress is silently dropped.
 func (p *peer) AsyncSendProgress(progress PeerProgress, queue chan broadcastItem) {
-	if !p.asyncSendNonEncodedItem(progress, ProgressMsg, queue) {
+	raw, err := marshalProgress(progress)
+	if err != nil {
+		p.Log().Debug("Failed to marshal progress", "err", err)
+		return
+	}
+	if !p.asyncSendEncodedItem(raw, ProgressMsg, queue) {
 		p.Log().Debug("Dropping peer progress propagation")
 	}
 }
 
+// RequestEvents sends requests for the given event IDs, batching them into chunks of softLimitItems.
 func (p *peer) RequestEvents(ids hash.Events) error {
 	// divide big batch into smaller ones
 	for start := 0; start < len(ids); start += softLimitItems {
@@ -446,14 +509,18 @@ func (p *peer) RequestEvents(ids hash.Events) error {
 			end = start + softLimitItems
 		}
 		p.Log().Debug("Fetching batch of events", "count", len(ids[start:end]))
-		err := p2p.Send(p.rw, GetEventsMsg, ids[start:end])
+		raw, err := marshalEventIDs(ids[start:end])
 		if err != nil {
+			return err
+		}
+		if err := sendBytes(p.rw, GetEventsMsg, raw); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
+// RequestTransactions sends requests for the given transaction hashes, batching them into chunks.
 func (p *peer) RequestTransactions(txids []common.Hash) error {
 	// divide big batch into smaller ones
 	for start := 0; start < len(txids); start += softLimitItems {
@@ -462,14 +529,18 @@ func (p *peer) RequestTransactions(txids []common.Hash) error {
 			end = start + softLimitItems
 		}
 		p.Log().Debug("Fetching batch of transactions", "count", len(txids[start:end]))
-		err := p2p.Send(p.rw, GetEvmTxsMsg, txids[start:end])
+		raw, err := marshalHashes(txids[start:end])
 		if err != nil {
+			return err
+		}
+		if err := sendBytes(p.rw, GetEvmTxsMsg, raw); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
+// SendEventsStream sends a stream response containing events and their IDs to the remote peer.
 func (p *peer) SendEventsStream(r dagstream.Response, ids hash.Events) error {
 	// Mark all the event hash as known, but ensure we don't overflow our limits
 	for _, id := range ids {
@@ -478,11 +549,20 @@ func (p *peer) SendEventsStream(r dagstream.Response, ids hash.Events) error {
 			p.knownEvents.Pop()
 		}
 	}
-	return p2p.Send(p.rw, EventsStreamResponse, r)
+	raw, err := marshalStreamResponseRaw(r)
+	if err != nil {
+		return err
+	}
+	return sendBytes(p.rw, EventsStreamResponse, raw)
 }
 
+// RequestEventsStream sends a stream request to the remote peer for a range of events.
 func (p *peer) RequestEventsStream(r dagstream.Request) error {
-	return p2p.Send(p.rw, RequestEventsStream, r)
+	raw, err := marshalStreamRequest(r)
+	if err != nil {
+		return err
+	}
+	return sendBytes(p.rw, RequestEventsStream, raw)
 }
 
 // Handshake executes the protocol handshake, negotiating version number,
@@ -494,13 +574,19 @@ func (p *peer) Handshake(network uint64, progress PeerProgress, genesis common.H
 
 	go func() {
 		// send both HandshakeMsg and ProgressMsg
-		err := p2p.Send(p.rw, HandshakeMsg, &handshakeData{
+		raw, err := marshalHandshake(&handshakeData{
 			ProtocolVersion: uint32(p.version),
 			NetworkID:       network,
 			Genesis:         genesis,
 		})
 		if err != nil {
 			errc <- err
+			return
+		}
+		err = sendBytes(p.rw, HandshakeMsg, raw)
+		if err != nil {
+			errc <- err
+			return
 		}
 		errc <- p.SendProgress(progress)
 	}()
@@ -523,10 +609,17 @@ func (p *peer) Handshake(network uint64, progress PeerProgress, genesis common.H
 	return nil
 }
 
+// SendProgress sends the current synchronization progress to the remote peer.
 func (p *peer) SendProgress(progress PeerProgress) error {
-	return p2p.Send(p.rw, ProgressMsg, progress)
+	raw, err := marshalProgress(progress)
+	if err != nil {
+		return err
+	}
+	return sendBytes(p.rw, ProgressMsg, raw)
 }
 
+// readStatus reads and validates the handshake message from the remote peer,
+// checking genesis hash, network ID, and protocol version.
 func (p *peer) readStatus(network uint64, handshake *handshakeData, genesis common.Hash) (err error) {
 	msg, err := p.rw.ReadMsg()
 	if err != nil {
@@ -539,15 +632,15 @@ func (p *peer) readStatus(network uint64, handshake *handshakeData, genesis comm
 		return errResp(ErrMsgTooLarge, "%v > %v", msg.Size, protocolMaxMsgSize)
 	}
 	// Decode the handshake and make sure everything matches
-	if err := msg.Decode(&handshake); err != nil {
+	raw, err := decodeBytes(msg)
+	if err != nil {
 		return errResp(ErrDecode, "msg %v: %v", msg, err)
 	}
-
-	// TODO: rm after all the nodes updated to #184
-	if handshake.NetworkID == 0 {
-		handshake.NetworkID = network
+	decoded, err := unmarshalHandshake(raw)
+	if err != nil {
+		return errResp(ErrDecode, "msg %v: %v", msg, err)
 	}
-
+	*handshake = *decoded
 	if handshake.Genesis != genesis {
 		return errResp(ErrGenesisMismatch, "%x (!= %x)", handshake.Genesis[:8], genesis[:8])
 	}
@@ -563,25 +656,13 @@ func (p *peer) readStatus(network uint64, handshake *handshakeData, genesis comm
 // SendPeerInfoRequest sends a request to the peer asking for an update of
 // its list of peers.
 func (p *peer) SendPeerInfoRequest() error {
-	// If the peer doesn't support the peer info protocol, don't bother
-	// sending the request. This request would lead to a disconnect
-	// if the peer doesn't understand it.
-	if !p.RunningCap(ProtocolName, []uint{_Sonic_64, _Sonic_65}) {
-		return nil
-	}
-	return p2p.Send(p.rw, GetPeerInfosMsg, struct{}{})
+	return sendBytes(p.rw, GetPeerInfosMsg, nil)
 }
 
 // SendEndPointUpdateRequest sends a request to the peer asking for the peer's
 // public enode address to be used to establish a connection to this peer.
 func (p *peer) SendEndPointUpdateRequest() error {
-	// If the peer doesn't support version 65 of this protocol, don't bother
-	// sending the request. This request would lead to a disconnect
-	// if the peer doesn't understand it.
-	if !p.RunningCap(ProtocolName, []uint{_Sonic_65}) {
-		return nil
-	}
-	return p2p.Send(p.rw, GetEndPointMsg, struct{}{})
+	return sendBytes(p.rw, GetEndPointMsg, nil)
 }
 
 // String implements fmt.Stringer.

@@ -37,6 +37,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/protocols/dag/dagstream/dagstreamseeder"
 )
 
+// nominalSize is a unit constant used for cache scaling calculations.
 const nominalSize uint = 1
 
 type (
@@ -139,6 +140,7 @@ type (
 	}
 )
 
+// PeerCacheConfig defines per-peer LRU cache and queue size limits.
 type PeerCacheConfig struct {
 	MaxKnownTxs    int // Maximum transactions hashes to keep in the known list (prevent DOS)
 	MaxKnownEvents int // Maximum event hashes to keep in the known list (prevent DOS)
@@ -246,6 +248,7 @@ func DefaultConfig(scale cachescale.Func) Config {
 	return cfg
 }
 
+// Validate checks configuration invariants and returns an error if any are violated.
 func (c *Config) Validate() error {
 	p := c.Protocol
 	defaultChunkSize := dag.Metric{
@@ -307,6 +310,7 @@ func MemTestStoreConfig(tmpDir string) StoreConfig {
 	return cfg
 }
 
+// DefaultPeerCacheConfig returns the default per-peer cache configuration scaled by the given function.
 func DefaultPeerCacheConfig(scale cachescale.Func) PeerCacheConfig {
 	return PeerCacheConfig{
 		MaxKnownTxs:    24576*3/4 + scale.I(24576/4),

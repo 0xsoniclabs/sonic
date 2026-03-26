@@ -54,8 +54,11 @@ import (
 //go:generate mockgen -source=emitter.go -destination=emitter_mock.go -package=emitter
 
 const (
+	// SenderCountBufferSize is the maximum number of sender addresses tracked
+	// in the originated transactions buffer.
 	SenderCountBufferSize = 20000
-	PayloadIndexerSize    = 5000
+	// PayloadIndexerSize is the capacity of the payload ancestor indexer.
+	PayloadIndexerSize = 5000
 )
 
 const (
@@ -98,6 +101,9 @@ var (
 	skipEmissionThrottle   = metrics.GetOrRegisterCounter("emitter/skip_emission/throttle", nil)
 )
 
+// Emitter creates and broadcasts DAG events containing transactions.
+// It manages emission timing, parent selection, gas power budgeting,
+// and doublesign protection.
 type Emitter struct {
 	config config.Config
 
@@ -161,14 +167,19 @@ type Emitter struct {
 	eventEmissionThrottler throttler.ThrottlingState
 }
 
+// BaseFeeSource provides the current base fee for transaction filtering.
 type BaseFeeSource interface {
 	GetCurrentBaseFee() *big.Int
 }
 
+// ThrottlerWorldAdapter adapts the emitter's World to the throttler's
+// WorldReader interface.
 type ThrottlerWorldAdapter struct {
 	World
 }
 
+// GetLastEvent returns the most recent event emitted by the given validator
+// in the current epoch.
 func (wa *ThrottlerWorldAdapter) GetLastEvent(from idx.ValidatorID) *inter.Event {
 	_, epoch := wa.GetEpochValidators()
 	hash := wa.World.GetLastEvent(epoch, from)
@@ -184,7 +195,8 @@ func (wa *ThrottlerWorldAdapter) GetLastEvent(from idx.ValidatorID) *inter.Event
 	return event
 }
 
-// NewEmitter creation.
+// NewEmitter creates a new event emitter with randomized emission intervals
+// to reduce collision probability between parallel instances.
 func NewEmitter(
 	config config.Config,
 	world World,
@@ -213,7 +225,7 @@ func NewEmitter(
 	return res
 }
 
-// init emitter without starting events emission
+// init initializes the emitter state without starting event emission.
 func (em *Emitter) init() {
 	em.syncStatus.startup = time.Now()
 	em.syncStatus.lastConnected = time.Now()
@@ -275,6 +287,9 @@ func (em *Emitter) Stop() {
 	em.wg.Wait()
 }
 
+// tick is the main emission loop body, called every 11ms. It updates sync
+// status, rechecks validator challenges, and emits events when the minimum
+// interval has elapsed.
 func (em *Emitter) tick() {
 	// track synced time
 	if em.world.PeersNum() == 0 {
@@ -303,6 +318,8 @@ func (em *Emitter) tick() {
 	}
 }
 
+// getSortedTxs returns pending transactions sorted by price and nonce,
+// using a cached result when the pool hasn't changed.
 func (em *Emitter) getSortedTxs(baseFee *big.Int) *transactionsByPriceAndNonce {
 	// Short circuit if pool wasn't updated since the cache was built
 	poolCount := em.world.TxPool.Count()
@@ -380,6 +397,11 @@ func removeBundleOnlyTxs(
 	}
 }
 
+// EmitEvent attempts to create and broadcast a new event.
+// Emission decision flow:
+//  1. isAllowedToEmit() — interval gate with stall slowdown
+//  2. createEvent() — parent selection, payload assembly, gas power check
+//  3. CanSkipEventEmission() — throttler: skip empty events if non-dominant
 func (em *Emitter) EmitEvent() (*inter.EventPayload, error) {
 	// Check whether the node is a validator
 	if !em.isValidator() {
@@ -448,6 +470,8 @@ func (em *Emitter) EmitEvent() (*inter.EventPayload, error) {
 	return e, nil
 }
 
+// loadPrevEmitTime returns the creation time of the last emitted event,
+// falling back to the in-memory timestamp if the event is unavailable.
 func (em *Emitter) loadPrevEmitTime() time.Time {
 	var prevEmittedAtTime time.Time
 	if time := em.prevEmittedAtTime.Load(); time != nil {
@@ -604,14 +628,17 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 	return event, nil
 }
 
+// idle reports whether there are no originated transactions pending confirmation.
 func (em *Emitter) idle() bool {
 	return em.originatedTxs.Empty()
 }
 
+// isValidator reports whether this node is an active validator in the current epoch.
 func (em *Emitter) isValidator() bool {
 	return em.config.Validator.ID != 0 && em.validators.Load().Exists(em.config.Validator.ID)
 }
 
+// nameEventForDebug assigns a human-readable name to the event for debug logging.
 func (em *Emitter) nameEventForDebug(e *inter.EventPayload) {
 	name := []rune(hash.GetNodeName(e.Creator()))
 	if len(name) < 1 {

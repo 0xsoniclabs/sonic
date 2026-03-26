@@ -19,8 +19,6 @@ package dagstreamseeder
 import (
 	"errors"
 
-	"github.com/ethereum/go-ethereum/rlp"
-
 	"github.com/Fantom-foundation/lachesis-base/gossip/basestream"
 	"github.com/Fantom-foundation/lachesis-base/gossip/basestream/basestreamseeder"
 	"github.com/Fantom-foundation/lachesis-base/hash"
@@ -33,30 +31,34 @@ var (
 	ErrWrongSelectorLen = errors.New("wrong event selector length")
 )
 
+// Seeder serves DAG event stream requests from peers.
 type Seeder struct {
 	*basestreamseeder.BaseSeeder
 }
 
+// Callbacks holds the callback functions used by the Seeder to iterate over events.
 type Callbacks struct {
-	ForEachEvent func(start []byte, onEvent func(key hash.Event, eventB rlp.RawValue) bool)
+	ForEachEvent func(start []byte, onEvent func(key hash.Event, eventB []byte) bool)
 }
 
+// Peer represents a remote peer requesting a DAG event stream.
 type Peer struct {
 	ID           string
 	SendChunk    func(dagstream.Response, hash.Events) error
 	Misbehaviour func(error)
 }
 
+// New creates a new DAG stream seeder with the given config and callbacks.
 func New(cfg Config, callbacks Callbacks) *Seeder {
 	return &Seeder{
 		BaseSeeder: basestreamseeder.New(basestreamseeder.Config(cfg), basestreamseeder.Callbacks{
 			ForEachItem: func(start basestream.Locator, rType basestream.RequestType, onKey func(basestream.Locator) bool, onAppended func(basestream.Payload) bool) basestream.Payload {
 				res := &dagstream.Payload{
 					IDs:    hash.Events{},
-					Events: []rlp.RawValue{},
+					Events: [][]byte{},
 					Size:   0,
 				}
-				callbacks.ForEachEvent(start.(dagstream.Locator), func(key hash.Event, eventB rlp.RawValue) bool {
+				callbacks.ForEachEvent(start.(dagstream.Locator), func(key hash.Event, eventB []byte) bool {
 					if !onKey(dagstream.Locator(key.Bytes())) {
 						return false
 					}
@@ -73,6 +75,7 @@ func New(cfg Config, callbacks Callbacks) *Seeder {
 	}
 }
 
+// NotifyRequestReceived validates and processes a stream request from a peer.
 func (s *Seeder) NotifyRequestReceived(peer Peer, r dagstream.Request) (err error, peerErr error) {
 	if len(r.Session.Start) > len(hash.ZeroEvent) || len(r.Session.Stop) > len(hash.ZeroEvent) {
 		return nil, ErrWrongSelectorLen

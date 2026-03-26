@@ -77,6 +77,8 @@ type evmProcessorFactory struct {
 	chain Chain
 }
 
+// beginBlock initializes a new EVM state processor for trial-running
+// transactions in the given block.
 func (p *evmProcessorFactory) beginBlock(
 	block *evmcore.EvmBlock,
 ) processor {

@@ -25,8 +25,11 @@ import (
 	"github.com/0xsoniclabs/sonic/utils"
 )
 
+// openPrevActionFile is a variable to allow testing overrides of file opening.
 var openPrevActionFile = utils.OpenFile
 
+// writeLastEmittedEventID persists the last emitted event ID to disk
+// for crash-recovery doublesign protection.
 func (em *Emitter) writeLastEmittedEventID(id hash.Event) {
 	if em.emittedEventFile == nil {
 		return
@@ -37,6 +40,8 @@ func (em *Emitter) writeLastEmittedEventID(id hash.Event) {
 	}
 }
 
+// readLastEmittedEventID reads the previously emitted event ID from disk,
+// returning nil if no file is configured or the file is empty.
 func (em *Emitter) readLastEmittedEventID() *hash.Event {
 	if em.emittedEventFile == nil {
 		return nil

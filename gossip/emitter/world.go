@@ -41,7 +41,8 @@ var (
 )
 
 type (
-	// External world
+	// External defines the emitter's interface to the node's gossip layer,
+	// providing event validation, processing, broadcasting, and state queries.
 	External interface {
 		sync.Locker
 		Reader
@@ -67,7 +68,8 @@ type (
 		types.Signer
 	}
 
-	// World is an emitter's environment
+	// World is the emitter's complete environment, combining the external
+	// gossip interface with transaction pool and signing capabilities.
 	World struct {
 		External
 		TxPool            TxPool

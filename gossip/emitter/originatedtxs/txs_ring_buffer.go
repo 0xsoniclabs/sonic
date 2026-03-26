@@ -21,10 +21,13 @@ import (
 	"github.com/hashicorp/golang-lru/simplelru"
 )
 
+// Buffer tracks per-sender transaction counts using an LRU cache to bound
+// memory usage. It is not safe for concurrent use.
 type Buffer struct {
 	senderCount *simplelru.LRU // sender address -> number of transactions
 }
 
+// New creates a Buffer that tracks up to maxAddresses unique senders.
 func New(maxAddresses int) *Buffer {
 	ring := &Buffer{}
 	ring.senderCount, _ = simplelru.NewLRU(maxAddresses, nil)

@@ -96,6 +96,7 @@ func (ps *peerSet) Peer(id string) *peer {
 	return ps.peers[id]
 }
 
+// UselessNum returns the number of peers currently marked as useless.
 func (ps *peerSet) UselessNum() int {
 	ps.lock.RLock()
 	defer ps.lock.RUnlock()

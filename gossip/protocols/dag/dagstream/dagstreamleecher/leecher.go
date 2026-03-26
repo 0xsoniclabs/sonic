@@ -34,12 +34,10 @@ import (
 type Leecher struct {
 	*basestreamleecher.BaseLeecher
 
-	// Callbacks
 	callback Callbacks
 
 	cfg Config
 
-	// State
 	session sessionState
 	epoch   idx.Epoch
 
@@ -71,6 +69,7 @@ func New(epoch idx.Epoch, emptyState bool, cfg Config, callback Callbacks) *Leec
 	return l
 }
 
+// Callbacks holds the callback functions used by the Leecher for event processing and peer management.
 type Callbacks struct {
 	IsProcessed func(hash.Event) bool
 
@@ -79,6 +78,7 @@ type Callbacks struct {
 	PeerEpoch    func(peer string) idx.Epoch
 }
 
+// sessionState tracks the state of the current download session.
 type sessionState struct {
 	agent        *basepeerleecher.BasePeerLeecher
 	peer         string
@@ -88,6 +88,7 @@ type sessionState struct {
 	try          uint32
 }
 
+// shouldTerminateSession reports whether the current session should be terminated due to timeout or lack of progress.
 func (d *Leecher) shouldTerminateSession() bool {
 	if d.paused || d.session.agent.Stopped() {
 		return true
@@ -98,6 +99,7 @@ func (d *Leecher) shouldTerminateSession() bool {
 	return stuck || noProgress
 }
 
+// terminateSession stops the current download session agent.
 func (d *Leecher) terminateSession() {
 	// force the epoch download to end
 	if d.session.agent != nil {
@@ -107,6 +109,7 @@ func (d *Leecher) terminateSession() {
 	}
 }
 
+// Pause terminates the current session and prevents new ones from starting.
 func (d *Leecher) Pause() {
 	d.Mu.Lock()
 	defer d.Mu.Unlock()
@@ -114,12 +117,14 @@ func (d *Leecher) Pause() {
 	d.terminateSession()
 }
 
+// Resume re-enables session creation after a pause.
 func (d *Leecher) Resume() {
 	d.Mu.Lock()
 	defer d.Mu.Unlock()
 	d.paused = false
 }
 
+// selectSessionPeerCandidates returns a list of peers eligible for the next download session.
 func (d *Leecher) selectSessionPeerCandidates() []string {
 	if d.paused {
 		return nil
@@ -151,10 +156,12 @@ func (d *Leecher) selectSessionPeerCandidates() []string {
 	return selected
 }
 
+// getSessionID computes a unique session ID from epoch and try number.
 func getSessionID(epoch idx.Epoch, try uint32) uint32 {
 	return (uint32(epoch) << 12) ^ try
 }
 
+// startSession begins a new download session with a randomly selected peer from candidates.
 func (d *Leecher) startSession(candidates []string) {
 	peer := candidates[rand.IntN(len(candidates))]
 	if d.session.try == 0 && rand.IntN(50) != 0 {
@@ -164,11 +171,7 @@ func (d *Leecher) startSession(candidates []string) {
 		}
 	}
 
-	// We only fetch IDs since fetching IDs and events leads to message decoding
-	// issues causing the peer connection the request was send to to be closed.
-	// By requesting IDs only, this issue is avoided. The payloads of events are
-	// then requested independently using the non-streaming P2P protocol.
-	typ := dagstream.RequestIDs
+	typ := dagstream.RequestEvents
 
 	session := dagstream.Session{
 		ID:    getSessionID(d.epoch, d.session.try),
@@ -209,6 +212,7 @@ func (d *Leecher) startSession(candidates []string) {
 	d.forceSyncing = false
 }
 
+// OnNewEpoch resets the leecher for a new epoch, terminating any active session.
 func (d *Leecher) OnNewEpoch(myEpoch idx.Epoch) {
 	d.Mu.Lock()
 	defer d.Mu.Unlock()
@@ -226,12 +230,14 @@ func (d *Leecher) OnNewEpoch(myEpoch idx.Epoch) {
 	d.Routine()
 }
 
+// ForceSyncing forces the leecher to start a new session regardless of timing constraints.
 func (d *Leecher) ForceSyncing() {
 	d.Mu.Lock()
 	defer d.Mu.Unlock()
 	d.forceSyncing = true
 }
 
+// NotifyChunkReceived processes a received chunk, updating session state or terminating if done.
 func (d *Leecher) NotifyChunkReceived(sessionID uint32, last hash.Event, done bool) error {
 	d.Mu.Lock()
 	defer d.Mu.Unlock()

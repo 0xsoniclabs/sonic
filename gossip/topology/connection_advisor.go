@@ -17,6 +17,7 @@
 package topology
 
 import (
+	"math/rand/v2"
 	"sync"
 	"time"
 
@@ -42,12 +43,14 @@ type ConnectionAdvisor interface {
 	UpdatePeers(peer enode.ID, peers []*enode.Node)
 }
 
+// NewConnectionAdvisor creates a new connection advisor for the given local node ID.
 func NewConnectionAdvisor(localId enode.ID) ConnectionAdvisor {
 	return newConnectionAdvisor[enode.ID, *enode.Node](
 		localId, 60*time.Second, func(n *enode.Node) enode.ID { return n.ID() },
 	)
 }
 
+// newConnectionAdvisor creates a generic connection advisor with configurable ID type and reference type.
 func newConnectionAdvisor[I comparable, R any](
 	localId I,
 	maxPeerInfoAge time.Duration,
@@ -84,17 +87,21 @@ type connectionAdvisor[I comparable, R any] struct {
 	getId func(R) I
 }
 
+// neighborhoodEntry stores a peer's known neighbors and the time they were last updated.
 type neighborhoodEntry[T any] struct {
 	peers []T
 	time  time.Time
 }
 
+// GetNewPeerSuggestion returns a random peer-of-peer that is not directly connected.
 func (c *connectionAdvisor[I, T]) GetNewPeerSuggestion() T {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// Search for a peer of a peer that is not already connected to the local node.
+	// Collect all candidate peers (peers of peers not directly connected).
+	// A random candidate is returned for network topology diversity.
 	now := time.Now()
+	var candidates []T
 	for peer, entry := range c.neighborhood {
 		if now.Sub(entry.time) > c.maxPeerInfoAge {
 			delete(c.neighborhood, peer)
@@ -106,15 +113,18 @@ func (c *connectionAdvisor[I, T]) GetNewPeerSuggestion() T {
 				continue
 			}
 			if _, found := c.neighborhood[peerId]; !found {
-				return peer
+				candidates = append(candidates, peer)
 			}
 		}
 	}
-
-	var zero T
-	return zero
+	if len(candidates) == 0 {
+		var zero T
+		return zero
+	}
+	return candidates[rand.IntN(len(candidates))]
 }
 
+// GetRedundantPeerSuggestion returns the ID of the most redundantly connected peer.
 func (c *connectionAdvisor[I, T]) GetRedundantPeerSuggestion() *I {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -152,6 +162,7 @@ func (c *connectionAdvisor[I, T]) GetRedundantPeerSuggestion() *I {
 	return &maxPeer
 }
 
+// UpdatePeers records the neighbors of the given peer for topology analysis.
 func (c *connectionAdvisor[I, T]) UpdatePeers(peer I, peers []T) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

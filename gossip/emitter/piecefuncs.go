@@ -21,7 +21,9 @@ import (
 )
 
 var (
-	// confirmingEmitIntervalF is a piecewise function for validator confirming internal depending on a stake amount before him
+	// confirmingEmitIntervalF is a piecewise function that maps a validator's
+	// cumulative stake ratio to an emission interval multiplier. Validators
+	// with more stake ahead of them emit confirming events less frequently.
 	confirmingEmitIntervalF = piecefunc.NewFunc([]piecefunc.Dot{
 		{
 			X: 0,
@@ -44,7 +46,9 @@ var (
 			Y: 60.0 * piecefunc.DecimalUnit,
 		},
 	})
-	// scalarUpdMetricF is a piecewise function for validator's event metric diff depending on a number of newly observed events
+	// scalarUpdMetricF is a piecewise function that maps the number of newly
+	// observed events to a metric diff, with diminishing returns beyond the
+	// first few events.
 	scalarUpdMetricF = piecefunc.NewFunc([]piecefunc.Dot{
 		{
 			X: 0,

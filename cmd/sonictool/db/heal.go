@@ -34,7 +34,6 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/kvdb/flushable"
 	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 )
 
@@ -115,7 +114,7 @@ func healGossipDb(producer kvdb.FlushableDBProducer, cfg gossip.StoreConfig, las
 
 	// removing excessive events (event epoch >= closed epoch)
 	log.Info("Removing excessive events")
-	gdb.ForEachEventRLP(epochIdx.Bytes(), func(id hash.Event, _ rlp.RawValue) bool {
+	gdb.ForEachEventRLP(epochIdx.Bytes(), func(id hash.Event, _ []byte) bool {
 		gdb.DelEvent(id)
 		return true
 	})

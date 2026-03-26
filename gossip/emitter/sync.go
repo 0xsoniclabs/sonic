@@ -27,6 +27,8 @@ import (
 	"github.com/0xsoniclabs/sonic/inter"
 )
 
+// syncStatus tracks timing information used for doublesign protection
+// and parallel-instance detection.
 type syncStatus struct {
 	startup                   time.Time
 	lastConnected             time.Time
@@ -37,6 +39,8 @@ type syncStatus struct {
 	becameValidator           time.Time
 }
 
+// onNewExternalEvent handles an event from this validator that was created
+// on another instance, triggering parallel-instance detection.
 func (em *Emitter) onNewExternalEvent(e inter.EventPayloadI) {
 	em.syncStatus.externalSelfEventDetected = time.Now()
 	em.syncStatus.externalSelfEventCreated = e.CreationTime().Time()
@@ -56,6 +60,8 @@ func (em *Emitter) onNewExternalEvent(e inter.EventPayloadI) {
 	}
 }
 
+// currentSyncStatus builds a doublesign.SyncStatus snapshot from the
+// emitter's current state.
 func (em *Emitter) currentSyncStatus() doublesign.SyncStatus {
 	s := doublesign.SyncStatus{
 		Now:                       time.Now(),
@@ -76,6 +82,8 @@ func (em *Emitter) currentSyncStatus() doublesign.SyncStatus {
 	return s
 }
 
+// isSyncedToEmit checks whether the node is sufficiently synced to safely
+// emit events without risking a doublesign.
 func (em *Emitter) isSyncedToEmit() (time.Duration, error) {
 	if em.intervals.DoublesignProtection == 0 {
 		return 0, nil // protection disabled
@@ -83,6 +91,8 @@ func (em *Emitter) isSyncedToEmit() (time.Duration, error) {
 	return doublesign.SyncedToEmit(em.currentSyncStatus(), em.intervals.DoublesignProtection)
 }
 
+// logSyncStatus logs the sync error if present and returns whether the node
+// is synced enough to emit.
 func (em *Emitter) logSyncStatus(wait time.Duration, syncErr error) bool {
 	if syncErr == nil {
 		return true

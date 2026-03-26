@@ -187,6 +187,7 @@ type BlockInfo struct {
 	BlobBaseFee uint256.Int
 }
 
+// toEvmBlock converts the block info into an EvmBlock for the EVM processor.
 func (b *BlockInfo) toEvmBlock() *evmcore.EvmBlock {
 	return &evmcore.EvmBlock{
 		EvmHeader: evmcore.EvmHeader{

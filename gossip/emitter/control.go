@@ -27,10 +27,14 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 )
 
+// scalarUpdMetric computes a weighted metric contribution for a single
+// validator based on the event sequence difference and stake ratio.
 func scalarUpdMetric(diff idx.Event, weight pos.Weight, totalWeight pos.Weight) ancestor.Metric {
 	return ancestor.Metric(scalarUpdMetricF(uint64(diff)*piecefunc.DecimalUnit)) * ancestor.Metric(weight) / ancestor.Metric(totalWeight)
 }
 
+// updMetric computes the incremental quorum indexer metric for a validator
+// whose observed event sequence advanced from cur to upd, relative to the median.
 func updMetric(median, cur, upd idx.Event, validatorIdx idx.Validator, validators *pos.Validators) ancestor.Metric {
 	if upd <= median || upd <= cur {
 		return 0
@@ -42,6 +46,7 @@ func updMetric(median, cur, upd idx.Event, validatorIdx idx.Validator, validator
 	return scalarUpdMetric(upd-median, weight, validators.TotalWeight())
 }
 
+// timeSinceLastEmit returns the duration since the last event was emitted.
 func (em *Emitter) timeSinceLastEmit() time.Duration {
 	var lastTime time.Time
 	if last := em.prevEmittedAtTime.Load(); last != nil {
@@ -50,6 +55,11 @@ func (em *Emitter) timeSinceLastEmit() time.Duration {
 	return time.Since(lastTime)
 }
 
+// isAllowedToEmit checks the interval gate, the first of three emission control layers:
+//  1. Interval gate (this function): minimum time between emissions, with stall slowdown
+//  2. Throttler gate (CanSkipEventEmission): stake-weighted suppression of empty events
+//     from non-dominant validators
+//  3. Gas power gate (in createEvent): prevents emission when gas budget is exhausted
 func (em *Emitter) isAllowedToEmit() bool {
 	passedTime := em.timeSinceLastEmit()
 	if passedTime < 0 {
@@ -61,6 +71,8 @@ func (em *Emitter) isAllowedToEmit() bool {
 	return passedTime >= interval
 }
 
+// getEmitterIntervalLimit returns the current minimum interval between
+// emissions, which increases during network stalls.
 func (em *Emitter) getEmitterIntervalLimit() time.Duration {
 	rules := em.world.GetRules().Emitter
 
@@ -80,6 +92,8 @@ func (em *Emitter) getEmitterIntervalLimit() time.Duration {
 	return getEmitterIntervalLimit(rules, time.Since(lastConfirmationTime))
 }
 
+// getEmitterIntervalLimit returns the regular or stalled emission interval
+// depending on how long since the last confirmed event.
 func getEmitterIntervalLimit(
 	rules opera.EmitterRules,
 	delayOfLastConfirmedEvent time.Duration,

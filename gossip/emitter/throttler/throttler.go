@@ -42,6 +42,7 @@ type ThrottlingState struct {
 	attendanceList attendanceList
 }
 
+// NewThrottlingState creates a new throttling state for the given validator.
 func NewThrottlingState(
 	validatorID idx.ValidatorID,
 	config config.ThrottlerConfig,
@@ -185,6 +186,7 @@ type attendanceList struct {
 	attendance map[idx.ValidatorID]validatorAttendance
 }
 
+// newAttendanceList creates an empty attendance list.
 func newAttendanceList() attendanceList {
 	return attendanceList{
 		attendance: make(map[idx.ValidatorID]validatorAttendance),
@@ -229,6 +231,7 @@ func (al *attendanceList) updateAttendance(
 	}
 }
 
+// isOnline reports whether the given validator is currently considered online.
 func (al *attendanceList) isOnline(id idx.ValidatorID) bool {
 	attendance, exists := al.attendance[id]
 	return exists && attendance.online
