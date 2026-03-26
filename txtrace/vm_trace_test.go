@@ -40,6 +40,154 @@ func TestComputePushed_PushOntoEmpty(t *testing.T) {
 	require.Equal(t, big.NewInt(0x60), pushed[0].ToInt())
 }
 
+// makeStack builds a []uint256.Int from a list of uint64 values.
+func makeStack(vals ...uint64) []uint256.Int {
+	s := make([]uint256.Int, len(vals))
+	for i, v := range vals {
+		s[i] = *uint256.NewInt(v)
+	}
+	return s
+}
+
+func TestComputePushed_PushRange(t *testing.T) {
+	// Every opcode in PUSH0..PUSH32 returns exactly 1 stack item regardless of its push size.
+	tests := []struct {
+		name string
+		op   vm.OpCode
+	}{
+		{"PUSH0", vm.PUSH0},
+		{"PUSH1", vm.PUSH1},
+		{"PUSH16", vm.PUSH16},
+		{"PUSH32", vm.PUSH32},
+	}
+	stack := makeStack(0xAB)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := computePushed(tt.op, stack)
+			require.Len(t, result, 1)
+			require.Equal(t, big.NewInt(0xAB), result[0].ToInt())
+		})
+	}
+}
+
+func TestComputePushed_SwapRange(t *testing.T) {
+	// SWAPn or DUPn reads the top n+1 items: SWAP1 → 2, SWAP16 → 17.
+	tests := []struct {
+		name      string
+		op        vm.OpCode
+		wantCount int
+	}{
+		{"SWAP1", vm.SWAP1, 2},
+		{"SWAP4", vm.SWAP4, 5},
+		{"SWAP16", vm.SWAP16, 17},
+		{"DUP1", vm.DUP1, 2},
+		{"DUP4", vm.DUP4, 5},
+		{"DUP16", vm.DUP16, 17},
+	}
+	// Stack large enough for the largest case (17 elements, values 1..17).
+	stack := makeStack(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := computePushed(tt.op, stack)
+			require.Len(t, result, tt.wantCount)
+			// Result must be the top wantCount elements from the stack in order.
+			for i := range tt.wantCount {
+				want := big.NewInt(int64(17 - tt.wantCount + 1 + i))
+				require.Equal(t, want, result[i].ToInt(), "index %d", i)
+			}
+		})
+	}
+}
+
+func TestComputePushed_DupRange(t *testing.T) {
+	// DUPn reads the top n+1 items: DUP1 → 2, DUP16 → 17.
+	tests := []struct {
+		name      string
+		op        vm.OpCode
+		wantCount int
+	}{
+		{"DUP1", vm.DUP1, 2},
+		{"DUP4", vm.DUP4, 5},
+		{"DUP16", vm.DUP16, 17},
+	}
+	stack := makeStack(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := computePushed(tt.op, stack)
+			require.Len(t, result, tt.wantCount)
+			for i := range tt.wantCount {
+				want := big.NewInt(int64(17 - tt.wantCount + 1 + i))
+				require.Equal(t, want, result[i].ToInt(), "index %d", i)
+			}
+		})
+	}
+}
+
+func TestComputePushed_SingleReturnOpcodes(t *testing.T) {
+	// A sample of the explicit single-return opcodes in the switch statement.
+	ops := []vm.OpCode{
+		vm.ADD, vm.MUL, vm.SUB, vm.DIV, vm.AND, vm.OR, vm.XOR, vm.NOT,
+		vm.LT, vm.GT, vm.EQ, vm.ISZERO,
+		vm.SLOAD, vm.MLOAD, vm.CALLDATALOAD,
+		vm.CALLER, vm.CALLVALUE, vm.ADDRESS, vm.ORIGIN,
+		vm.GAS, vm.GASLIMIT, vm.GASPRICE, vm.BASEFEE,
+		vm.NUMBER, vm.TIMESTAMP, vm.COINBASE,
+		vm.KECCAK256, vm.EXTCODESIZE, vm.EXTCODEHASH, vm.BALANCE, vm.SELFBALANCE,
+		vm.RETURNDATASIZE, vm.CALLDATASIZE, vm.CODESIZE,
+		vm.PC, vm.MSIZE, vm.BLOCKHASH, vm.CHAINID, vm.DIFFICULTY,
+	}
+	stack := makeStack(99)
+	for _, op := range ops {
+		t.Run(op.String(), func(t *testing.T) {
+			result := computePushed(op, stack)
+			require.Len(t, result, 1, "op %s must return exactly 1 item", op)
+			require.Equal(t, big.NewInt(99), result[0].ToInt())
+		})
+	}
+}
+
+func TestComputePushed_ZeroReturnOpcodes(t *testing.T) {
+	// Opcodes not in any push/swap/dup/explicit list return an empty (non-nil) slice.
+	ops := []vm.OpCode{
+		vm.STOP, vm.MSTORE, vm.MSTORE8, vm.SSTORE,
+		vm.JUMP, vm.JUMPI, vm.JUMPDEST,
+		vm.POP, vm.RETURN, vm.REVERT,
+		vm.CALL, vm.DELEGATECALL, vm.STATICCALL,
+		vm.CREATE, vm.CREATE2, vm.SELFDESTRUCT,
+	}
+	stack := makeStack(1, 2, 3)
+	for _, op := range ops {
+		t.Run(op.String(), func(t *testing.T) {
+			result := computePushed(op, stack)
+			require.NotNil(t, result)
+			require.Empty(t, result, "op %s must return no items", op)
+		})
+	}
+}
+
+func TestComputePushed_StackClamp(t *testing.T) {
+	// When the requested count exceeds the actual stack depth, it is clamped to len(stack).
+	tests := []struct {
+		name      string
+		op        vm.OpCode
+		stack     []uint256.Int
+		wantCount int
+	}{
+		// SWAP2 wants 3, but stack has only 2 → clamp to 2.
+		{"SWAP2 stack too small", vm.SWAP2, makeStack(10, 20), 2},
+		// PUSH1 wants 1, but stack is empty → 0.
+		{"PUSH1 empty stack", vm.PUSH1, nil, 0},
+		// DUP4 wants 5, stack has 3 → clamp to 3.
+		{"DUP4 stack too small", vm.DUP4, makeStack(1, 2, 3), 3},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := computePushed(tt.op, tt.stack)
+			require.Len(t, result, tt.wantCount)
+		})
+	}
+}
+
 func TestVmTraceLogger_GetResultBeforeExecution(t *testing.T) {
 	l := NewVmTraceLogger()
 	require.Nil(t, l.GetResult(), "result must be nil before any execution")
