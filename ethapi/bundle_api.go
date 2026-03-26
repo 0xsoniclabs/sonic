@@ -34,11 +34,19 @@ import (
 
 //go:generate mockgen -source=bundle_api.go -destination=bundle_api_mock.go -package=ethapi
 
-type PublicBundleAPI struct {
-	b Backend
+type BundleApiBackend interface {
+	TxPoolSenderBackend
+	EthereunAPIBackend
+	BlockchainApiBackend
+	BundlesBackend
+	RPCLimitsBackend
 }
 
-func NewPublicBundleAPI(b Backend) *PublicBundleAPI {
+type PublicBundleAPI struct {
+	b BundleApiBackend
+}
+
+func NewPublicBundleAPI(b BundleApiBackend) *PublicBundleAPI {
 	return &PublicBundleAPI{
 		b: b,
 	}
@@ -329,7 +337,7 @@ func (a *PublicBundleAPI) SubmitBundle(
 	}
 
 	// 6) Submit the transaction to the network
-	_, err = SubmitTransaction(ctx, a.b, tx)
+	_, err = SubmitTransaction(ctx, a.b.(Backend), tx)
 	return plan.Hash(), err
 }
 
@@ -399,7 +407,7 @@ func (a *PublicBundleAPI) EstimateGasForTransactions(
 	gasCap := a.b.RPCGasCap()
 	eval := &estimator{
 		ctx:            ctx,
-		b:              a.b,
+		b:              a.b.(Backend),
 		blockNrOrHash:  bNrOrHash,
 		overrides:      overrides,
 		blockOverrides: blockOverrides,
