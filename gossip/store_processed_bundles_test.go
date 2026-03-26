@@ -899,7 +899,7 @@ func TestStore_computeNewBundleStateHash_ReturnsExpectedHash(t *testing.T) {
 			got := computeNewBundleStateHash(v.oldHash, v.addedHash, v.deletedHash, v.blockNum)
 			ref := alternativeImpl(t, v.oldHash, v.addedHash, v.deletedHash, v.blockNum)
 			require.Equal(t, v.expected, got, "computed hash should match expected value")
-			require.Equal(t, ref, got, "referenceHash (SHA256) should not match Keccak256 implementation")
+			require.Equal(t, ref, got, "actual implementation should match alternative implementation")
 		})
 	}
 }
@@ -907,10 +907,6 @@ func TestStore_computeNewBundleStateHash_ReturnsExpectedHash(t *testing.T) {
 func TestStore_RetainsAllBundlesRequiredToCoverTheMaximumBlockRange(t *testing.T) {
 	require := require.New(t)
 	numBlocks := 3 * bundle.MaxBlockRange
-
-	makeMaxRangeStartinAt := func(block uint64) (uint64, uint64) {
-		return block, block + bundle.MaxBlockRange - 1
-	}
 
 	store, err := NewMemStore(t)
 	require.NoError(err)
@@ -928,12 +924,12 @@ func TestStore_RetainsAllBundlesRequiredToCoverTheMaximumBlockRange(t *testing.T
 		// Check that the store covers exactly the plans of the past that are
 		// allowed to be included in the current block (before adding it).
 		for block := uint64(0); block < currentBlockNumber; block++ {
-			earliest, latest := makeMaxRangeStartinAt(block)
-			want := currentBlockNumber >= earliest && currentBlockNumber <= latest
+			blockRange := bundle.MakeMaxRangeStartingAt(block)
+			want := blockRange.IsInRange(currentBlockNumber)
 			require.Equal(
 				want, store.HasBundleRecentlyBeenProcessed(hashes[block]),
 				"Current block %d, checking plan with range [%d,%d]",
-				currentBlockNumber, earliest, latest,
+				currentBlockNumber, blockRange.Earliest, blockRange.Latest,
 			)
 		}
 
