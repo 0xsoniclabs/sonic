@@ -19,6 +19,7 @@ package tests
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	carmen "github.com/0xsoniclabs/carmen/go/state"
@@ -30,10 +31,9 @@ import (
 
 var (
 	testPaths = []string{
-		// filepath.Join(".", "testdata", "EIPTests", "StateTests"),
-		// filepath.Join(".", "testdata", "GeneralStateTests"),
-		// filepath.Join(".", "execution-spec-tests", "fixtures", "state_tests"),
-		"/home/simon/Documents/ethereum/fixtures_v5.4.0/state_tests/",
+		filepath.Join(".", "testdata", "EIPTests", "StateTests"),
+		filepath.Join(".", "testdata", "GeneralStateTests"),
+		filepath.Join(".", "execution-spec-tests", "fixtures", "state_tests"),
 	}
 
 	unsupportedForks = map[string]struct{}{
