@@ -168,19 +168,16 @@ func Test_GetBundleState_ReturnsRunnableForCurrentBundle(t *testing.T) {
 
 func Test_GetBundleState_ChecksForNonceConflicts(t *testing.T) {
 
-	executableBundleState := BundleState{
-		Executable: true,
-	}
-	temporarilyBlockedBundleState := BundleState{
-		Executable:         false,
-		TemporarilyBlocked: true,
-		Reasons:            []string{"nonce check failed", "gapped nonce"},
-	}
-	nonExecutableBundleState := BundleState{
-		Executable: false,
-		Reasons: []string{
-			"nonce check failed",
-			"bundle nonce check execution failed"}}
+	temporarilyBlockedBundleState := makeTemporaryBlockedState("nonce check failed")
+	temporarilyBlockedBundleState.Reasons = append(
+		temporarilyBlockedBundleState.Reasons,
+		"gapped nonce",
+	)
+	nonExecutableBundleState := makePermanentlyBlockedState("nonce check failed")
+	nonExecutableBundleState.Reasons = append(
+		nonExecutableBundleState.Reasons,
+		"bundle nonce check execution failed",
+	)
 
 	const initialNonce = 1
 	tests := map[string]struct {
@@ -189,11 +186,11 @@ func Test_GetBundleState_ChecksForNonceConflicts(t *testing.T) {
 	}{
 		"bundle with no transactions": {
 			bundle: allOf(), // < will always succeed
-			result: executableBundleState,
+			result: makeRunnableState(),
 		},
 		"bundle with one transaction with correct nonce": {
 			bundle: allOf(1), // one tx with nonce 1
-			result: executableBundleState,
+			result: makeRunnableState(),
 		},
 		"bundle with future nonce": {
 			bundle: allOf(2), // one tx with nonce 2, which is in the future
@@ -205,7 +202,7 @@ func Test_GetBundleState_ChecksForNonceConflicts(t *testing.T) {
 		},
 		"bundle with different senders": {
 			bundle: allOf(0xA1, 0xB1), // two txs from different senders with correct nonces
-			result: executableBundleState,
+			result: makeRunnableState(),
 		},
 		"bundle with nonce gap": {
 			bundle: allOf(1, 3), // two txs from the same sender with a nonce gap (nonce 2 is missing)
@@ -252,15 +249,6 @@ func Test_GetBundleState_ChecksForNonceConflicts(t *testing.T) {
 
 func Test_checkForNonceConflicts_DetectsNonceUsage(t *testing.T) {
 
-	executableBundleState := BundleState{Executable: true}
-	temporarilyBlockedBundleState := BundleState{
-		Executable:         false,
-		TemporarilyBlocked: true,
-		Reasons:            []string{"gapped nonce"},
-	}
-	nonExecutableBundleState := BundleState{Executable: false,
-		Reasons: []string{"bundle nonce check execution failed"}}
-
 	const initialNonce = 1
 	tests := map[string]struct {
 		bundle pattern
@@ -268,108 +256,108 @@ func Test_checkForNonceConflicts_DetectsNonceUsage(t *testing.T) {
 	}{
 		"empty all-of bundle is runnable": {
 			bundle: allOf(), // < will always succeed
-			result: executableBundleState,
+			result: makeRunnableState(),
 		},
 		"empty one-of bundle is non-executable": {
 			bundle: oneOf(), // < can never succeed
-			result: nonExecutableBundleState,
+			result: makePermanentlyBlockedState("bundle nonce check execution failed"),
 		},
 		"single all-of transaction with correct nonce": {
 			bundle: allOf(1), // one tx with nonce 1
-			result: executableBundleState,
+			result: makeRunnableState(),
 		},
 		"single one-of transaction with correct nonce": {
 			bundle: oneOf(1),
-			result: executableBundleState,
+			result: makeRunnableState(),
 		},
 		"single all-of transaction with old nonce": {
 			bundle: allOf(0),
-			result: nonExecutableBundleState,
+			result: makePermanentlyBlockedState("bundle nonce check execution failed"),
 		},
 		"single one-of transaction with old nonce": {
 			bundle: oneOf(0),
-			result: nonExecutableBundleState,
+			result: makePermanentlyBlockedState("bundle nonce check execution failed"),
 		},
 		"single all-of transaction with future nonce": {
 			bundle: allOf(2),
-			result: temporarilyBlockedBundleState,
+			result: makeTemporaryBlockedState("gapped nonce"),
 		},
 		"single one-of transaction with future nonce": {
 			bundle: oneOf(2),
-			result: temporarilyBlockedBundleState,
+			result: makeTemporaryBlockedState("gapped nonce"),
 		},
 		"multiple all-of transactions with correct nonce order": {
 			bundle: allOf(1, 2, 3), // three txs with nonces 1, 2, 3
-			result: executableBundleState,
+			result: makeRunnableState(),
 		},
 		"multiple one-of transactions with correct nonce order": {
 			bundle: oneOf(1, 2, 3),
-			result: executableBundleState,
+			result: makeRunnableState(),
 		},
 		"multiple all-of transactions out of order": {
 			bundle: allOf(2, 1, 3),
-			result: nonExecutableBundleState,
+			result: makePermanentlyBlockedState("bundle nonce check execution failed"),
 		},
 		"multiple one-of transactions out of order": {
 			bundle: oneOf(2, 1, 3),
-			result: executableBundleState,
+			result: makeRunnableState(),
 		},
 		"multiple all-of with old nonce": {
 			bundle: allOf(0, 1, 2),
-			result: nonExecutableBundleState,
+			result: makePermanentlyBlockedState("bundle nonce check execution failed"),
 		},
 		"multiple one-of with old nonce": {
 			bundle: oneOf(0, 1, 2),
-			result: executableBundleState,
+			result: makeRunnableState(),
 		},
 		"all-of with nonce gap": {
 			bundle: allOf(1, 3),
-			result: nonExecutableBundleState,
+			result: makePermanentlyBlockedState("bundle nonce check execution failed"),
 		},
 		"one-of with nonce gap": {
 			bundle: oneOf(1, 3),
-			result: executableBundleState,
+			result: makeRunnableState(),
 		},
 		"all-of with nonce gap in the future": {
 			bundle: allOf(2, 4),
-			result: nonExecutableBundleState,
+			result: makePermanentlyBlockedState("bundle nonce check execution failed"),
 		},
 		"one-of with nonce gap in the future": {
 			bundle: oneOf(2, 4),
-			result: temporarilyBlockedBundleState,
+			result: makeTemporaryBlockedState("gapped nonce"),
 		},
 		"nested all-of with consecutive nonces": {
 			bundle: allOf(1, allOf(2, 3), 4),
-			result: executableBundleState,
+			result: makeRunnableState(),
 		},
 		"nested all-of with future nonces": {
 			bundle: allOf(2, allOf(3, 4), 5),
-			result: temporarilyBlockedBundleState,
+			result: makeTemporaryBlockedState("gapped nonce"),
 		},
 		"nested all-of with nonce gap": {
 			bundle: allOf(1, allOf(3, 4), 5),
-			result: nonExecutableBundleState,
+			result: makePermanentlyBlockedState("bundle nonce check execution failed"),
 		},
 		"nested one-of in all-of": {
 			bundle: allOf(1, oneOf(2, 3), 3),
-			result: executableBundleState,
+			result: makeRunnableState(),
 		},
 		"multiple transactions from different senders with correct nonces": {
 			// two txs from sender A with nonces 1 and 2, one tx from sender B with nonce 1
 			bundle: allOf(0xA1, 0xB1, 0xA2),
-			result: executableBundleState,
+			result: makeRunnableState(),
 		},
 		"multiple transactions from different senders with nonce gap for one sender": {
 			bundle: allOf(0xA1, 0xB1, 0xA3),
-			result: nonExecutableBundleState,
+			result: makePermanentlyBlockedState("bundle nonce check execution failed"),
 		},
 		"all-of outdated nonce for one sender but not the other": {
 			bundle: allOf(0xA0, 0xB1),
-			result: nonExecutableBundleState,
+			result: makePermanentlyBlockedState("bundle nonce check execution failed"),
 		},
 		"one-of outdated nonce for one sender but not the other": {
 			bundle: oneOf(0xA0, 0xB1),
-			result: executableBundleState,
+			result: makeRunnableState(),
 		},
 	}
 

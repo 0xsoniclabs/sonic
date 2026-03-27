@@ -67,6 +67,21 @@ type BundleState struct {
 	Reasons            []string // A list of human-readable strings describing why the bundle is not executable or is blocked.
 }
 
+func makeRunnableState() BundleState {
+	return BundleState{Executable: true}
+}
+
+func makeTemporaryBlockedState(reason string) BundleState {
+	return BundleState{
+		TemporarilyBlocked: true,
+		Reasons:            []string{reason},
+	}
+}
+
+func makePermanentlyBlockedState(reason string) BundleState {
+	return BundleState{Reasons: []string{reason}}
+}
+
 // GetBundleState determines the state of the bundle based on the current state
 // of the blockchain and the transactions in the bundle.
 func GetBundleState(
@@ -87,26 +102,16 @@ func getBundleState(
 	// Verify that the bundle is valid.
 	bundle, _, err := bundle.ValidateTransactionBundle(envelop)
 	if err != nil {
-		return BundleState{
-			Executable: false,
-			Reasons:    []string{fmt.Sprintf("invalid bundle: %v", err)},
-		}
+		return makePermanentlyBlockedState(fmt.Sprintf("invalid bundle: %v", err))
 	}
 
 	// Quickest filter: check if the bundle is in the valid block range.
 	currentBlock := chain.GetLatestHeader().Number.Uint64()
 	if bundle.Latest < currentBlock {
-		return BundleState{
-			Executable: false,
-			Reasons:    []string{ErrBundleLatestPassed.Error()},
-		}
+		return makePermanentlyBlockedState(ErrBundleLatestPassed.Error())
 	}
 	if bundle.Earliest > currentBlock {
-		return BundleState{
-			Executable:         false,
-			TemporarilyBlocked: true,
-			Reasons:            []string{"bundle earliest not reached yet"},
-		}
+		return makeTemporaryBlockedState("bundle earliest not reached yet")
 	}
 
 	// Next, check whether there are any nonce conflicts in the execution of
@@ -138,12 +143,9 @@ func getBundleState(
 	}()
 
 	if success := trialRunner(envelop, chain, stateDb); !success {
-		return BundleState{
-			Executable: false,
-			Reasons:    []string{"bundle trial-run failed"},
-		}
+		return makePermanentlyBlockedState("bundle trial-run failed")
 	}
-	return BundleState{Executable: true}
+	return makeRunnableState()
 }
 
 type ChainState interface {
@@ -192,10 +194,8 @@ func checkForNonceConflicts(
 		// If we fail to derive the lowest referenced nonces, it means that the
 		// bundle is malformed (e.g., contains invalid transactions) and we can
 		// consider it as non-executable.
-		return BundleState{
-			Executable: false,
-			Reasons:    []string{fmt.Sprintf("could not get lowest nonce for all accounts: %v", err)},
-		}
+		return makePermanentlyBlockedState(
+			fmt.Sprintf("could not get lowest nonce for all accounts: %v", err))
 	}
 
 	// We correct the lowest nonces to be at least as high as the current nonces
@@ -213,24 +213,17 @@ func checkForNonceConflicts(
 
 	// If this execution failed, the bundle is non-executable.
 	if success := bundle.RunBundle(txBundle, runner); !success {
-		return BundleState{
-			Executable: false,
-			Reasons:    []string{"bundle nonce check execution failed"},
-		}
+		return makePermanentlyBlockedState("bundle nonce check execution failed")
 	}
 
 	// If it succeeded, it depends on whether there is a gap between the lowest
 	// and the current nonces for any sender of an accepted transaction.
 	for sender := range runner.acceptedSender {
 		if nonceSource.GetNonce(sender) < lowest[sender] {
-			return BundleState{
-				Executable:         false,
-				TemporarilyBlocked: true,
-				Reasons:            []string{"gapped nonce"},
-			}
+			return makeTemporaryBlockedState("gapped nonce")
 		}
 	}
-	return BundleState{Executable: true}
+	return makeRunnableState()
 }
 
 // getLowestReferencedNonces returns the lowest nonce referenced for each sender
