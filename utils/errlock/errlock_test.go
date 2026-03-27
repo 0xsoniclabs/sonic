@@ -87,7 +87,7 @@ func TestPermanent_WritesLockFile(t *testing.T) {
 	l := New(dir)
 
 	defer func() {
-		recover() // catch the panic
+		_ = recover() // catch the panic
 		lockPath := filepath.Join(dir, "errlock")
 		data, err := os.ReadFile(lockPath)
 		if err != nil {
@@ -169,7 +169,9 @@ func TestRead_NoFile(t *testing.T) {
 func TestRead_WithFile(t *testing.T) {
 	dir := t.TempDir()
 	lockPath := filepath.Join(dir, "errlock")
-	os.WriteFile(lockPath, []byte("error msg"), 0600)
+	if err := os.WriteFile(lockPath, []byte("error msg"), 0600); err != nil {
+		t.Fatalf("failed to write lock file: %v", err)
+	}
 
 	locked, reason, path, err := read(dir)
 	if err != nil {

@@ -31,7 +31,9 @@ func TestMigrateAccountToValidatorKey(t *testing.T) {
 
 	// Parse the encrypted key and re-create as an account key JSON
 	var encKey EncryptedKeyJSON
-	json.Unmarshal(keyjson, &encKey)
+	if err := json.Unmarshal(keyjson, &encKey); err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
 
 	accKey := encryptedAccountKeyJSONV3{
 		Address: "0000000000000000000000000000000000000001",
@@ -42,7 +44,9 @@ func TestMigrateAccountToValidatorKey(t *testing.T) {
 
 	accKeyJSON, _ := json.Marshal(accKey)
 	accKeyPath := filepath.Join(dir, "acckey.json")
-	os.WriteFile(accKeyPath, accKeyJSON, 0600)
+	if err := os.WriteFile(accKeyPath, accKeyJSON, 0600); err != nil {
+		t.Fatalf("failed to write account key file: %v", err)
+	}
 
 	// Migrate
 	valKeyPath := filepath.Join(dir, "valkey.json")
@@ -86,7 +90,9 @@ func TestMigrateAccountToValidatorKey_FileNotFound(t *testing.T) {
 func TestMigrateAccountToValidatorKey_InvalidJSON(t *testing.T) {
 	dir := t.TempDir()
 	accKeyPath := filepath.Join(dir, "bad.json")
-	os.WriteFile(accKeyPath, []byte("not json"), 0600)
+	if err := os.WriteFile(accKeyPath, []byte("not json"), 0600); err != nil {
+		t.Fatalf("failed to write file: %v", err)
+	}
 
 	err := MigrateAccountToValidatorKey(
 		accKeyPath,

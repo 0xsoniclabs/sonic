@@ -23,7 +23,11 @@ func TestWrapStore(t *testing.T) {
 
 func TestStore_PutAndGet(t *testing.T) {
 	store, _ := newTestStore(t, false)
-	defer store.Close()
+	defer func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close failed: %v", err)
+		}
+	}()
 
 	if err := store.Put([]byte("key"), []byte("value")); err != nil {
 		t.Fatalf("Put failed: %v", err)
@@ -125,7 +129,11 @@ func TestStore_Snapshot_Leak_Error(t *testing.T) {
 
 func TestStore_IoStats_NotMeasurable(t *testing.T) {
 	store, _ := newTestStore(t, false)
-	defer store.Close()
+	defer func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close failed: %v", err)
+		}
+	}()
 
 	_, err := store.IoStats()
 	if err == nil {
@@ -135,7 +143,11 @@ func TestStore_IoStats_NotMeasurable(t *testing.T) {
 
 func TestStore_UsedDiskSpace_NotMeasurable(t *testing.T) {
 	store, _ := newTestStore(t, false)
-	defer store.Close()
+	defer func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close failed: %v", err)
+		}
+	}()
 
 	_, err := store.UsedDiskSpace()
 	if err == nil {

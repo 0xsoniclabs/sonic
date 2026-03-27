@@ -26,7 +26,7 @@ func TestWriteTemporaryKeyFile(t *testing.T) {
 	}
 
 	// Clean up
-	os.Remove(tmpName)
+	_ = os.Remove(tmpName)
 }
 
 func TestWriteTemporaryKeyFile_CreatesDirectory(t *testing.T) {
@@ -48,5 +48,5 @@ func TestWriteTemporaryKeyFile_CreatesDirectory(t *testing.T) {
 		t.Fatal("expected a directory")
 	}
 
-	os.Remove(tmpName)
+	_ = os.Remove(tmpName)
 }

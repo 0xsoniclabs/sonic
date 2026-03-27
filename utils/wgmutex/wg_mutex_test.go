@@ -70,8 +70,8 @@ func TestLock_BasicMutexBehavior(t *testing.T) {
 	m := New(mu, wg)
 
 	m.Lock()
+	_ = 0 // exercise lock/unlock cycle
 	m.Unlock()
-	// Should not deadlock
 }
 
 func TestRLock_BasicMutexBehavior(t *testing.T) {
@@ -80,6 +80,6 @@ func TestRLock_BasicMutexBehavior(t *testing.T) {
 	m := New(mu, wg)
 
 	m.RLock()
+	_ = 0 // exercise rlock/runlock cycle
 	m.RUnlock()
-	// Should not deadlock
 }

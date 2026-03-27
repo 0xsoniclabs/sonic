@@ -30,8 +30,12 @@ func TestStopCPUProfile_WritesFile(t *testing.T) {
 	file := filepath.Join(dir, "cpu.prof")
 
 	h := new(HandlerT)
-	h.StartCPUProfile(file)
-	h.StopCPUProfile()
+	if err := h.StartCPUProfile(file); err != nil {
+		t.Fatalf("StartCPUProfile failed: %v", err)
+	}
+	if err := h.StopCPUProfile(); err != nil {
+		t.Fatalf("StopCPUProfile failed: %v", err)
+	}
 
 	info, err := os.Stat(file)
 	if os.IsNotExist(err) {
@@ -111,7 +115,9 @@ func TestStartCPUProfile_CreatesDirectories(t *testing.T) {
 	// This should fail because parent dirs don't exist.
 	err := h.StartCPUProfile(nested)
 	if err == nil {
-		h.StopCPUProfile()
+		if err := h.StopCPUProfile(); err != nil {
+			t.Fatalf("StopCPUProfile failed: %v", err)
+		}
 		t.Skip("OS created directories automatically")
 	}
 }

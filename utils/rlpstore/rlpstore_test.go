@@ -10,7 +10,7 @@ import (
 func TestHelper_SetAndGet(t *testing.T) {
 	h := &Helper{Instance: logger.New()}
 	db := memorydb.New()
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	key := []byte("testkey")
 	val := uint64(42)
@@ -30,7 +30,7 @@ func TestHelper_SetAndGet(t *testing.T) {
 func TestHelper_Get_MissingKey(t *testing.T) {
 	h := &Helper{Instance: logger.New()}
 	db := memorydb.New()
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	var result uint64
 	got := h.Get(db, []byte("missing"), &result)
@@ -42,7 +42,7 @@ func TestHelper_Get_MissingKey(t *testing.T) {
 func TestHelper_SetOverwrite(t *testing.T) {
 	h := &Helper{Instance: logger.New()}
 	db := memorydb.New()
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	key := []byte("key")
 	h.Set(db, key, uint64(1))
@@ -58,7 +58,7 @@ func TestHelper_SetOverwrite(t *testing.T) {
 func TestHelper_SetAndGet_String(t *testing.T) {
 	h := &Helper{Instance: logger.New()}
 	db := memorydb.New()
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	key := []byte("strkey")
 	val := "hello"
@@ -78,7 +78,7 @@ func TestHelper_SetAndGet_String(t *testing.T) {
 func TestHelper_SetAndGet_Bytes(t *testing.T) {
 	h := &Helper{Instance: logger.New()}
 	db := memorydb.New()
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	key := []byte("byteskey")
 	val := []byte{0x01, 0x02, 0x03}

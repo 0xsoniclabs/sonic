@@ -41,7 +41,7 @@ func TestPeriodic_ActualRateLimiting(t *testing.T) {
 
 	// With zero period, this should update prevLogTime.
 	p.Info(0, "not suppressed")
-	if p.prevLogTime == initialTime {
+	if p.prevLogTime.Equal(initialTime) {
 		t.Error("expected prevLogTime to be updated for non-suppressed log")
 	}
 }

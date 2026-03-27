@@ -160,7 +160,7 @@ func TestAdapter_GetSnapshot_Panics(t *testing.T) {
 			t.Error("expected GetSnapshot to panic")
 		}
 	}()
-	adapter.GetSnapshot()
+	_, _ = adapter.GetSnapshot()
 }
 
 func TestBatch_Replay(t *testing.T) {

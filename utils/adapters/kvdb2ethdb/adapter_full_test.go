@@ -49,7 +49,9 @@ func TestAdapter_Has(t *testing.T) {
 		t.Error("expected false for missing key")
 	}
 
-	adapter.Put([]byte("key"), []byte("val"))
+	if err := adapter.Put([]byte("key"), []byte("val")); err != nil {
+		t.Fatalf("Put failed: %v", err)
+	}
 	has, err = adapter.Has([]byte("key"))
 	if err != nil {
 		t.Fatalf("Has failed: %v", err)
@@ -63,7 +65,9 @@ func TestAdapter_Delete(t *testing.T) {
 	db := memorydb.New()
 	adapter := Wrap(db)
 
-	adapter.Put([]byte("key"), []byte("val"))
+	if err := adapter.Put([]byte("key"), []byte("val")); err != nil {
+		t.Fatalf("Put failed: %v", err)
+	}
 	if err := adapter.Delete([]byte("key")); err != nil {
 		t.Fatalf("Delete failed: %v", err)
 	}
@@ -83,13 +87,20 @@ func TestAdapter_NewBatch(t *testing.T) {
 		t.Fatal("NewBatch returned nil")
 	}
 
-	batch.Put([]byte("k1"), []byte("v1"))
-	batch.Put([]byte("k2"), []byte("v2"))
+	if err := batch.Put([]byte("k1"), []byte("v1")); err != nil {
+		t.Fatalf("batch Put failed: %v", err)
+	}
+	if err := batch.Put([]byte("k2"), []byte("v2")); err != nil {
+		t.Fatalf("batch Put failed: %v", err)
+	}
 	if err := batch.Write(); err != nil {
 		t.Fatalf("batch Write failed: %v", err)
 	}
 
-	got, _ := adapter.Get([]byte("k1"))
+	got, err := adapter.Get([]byte("k1"))
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
 	if string(got) != "v1" {
 		t.Errorf("expected 'v1', got %q", got)
 	}
@@ -104,12 +115,17 @@ func TestAdapter_NewBatchWithSize(t *testing.T) {
 		t.Fatal("NewBatchWithSize returned nil")
 	}
 
-	batch.Put([]byte("key"), []byte("val"))
+	if err := batch.Put([]byte("key"), []byte("val")); err != nil {
+		t.Fatalf("batch Put failed: %v", err)
+	}
 	if err := batch.Write(); err != nil {
 		t.Fatalf("Write failed: %v", err)
 	}
 
-	got, _ := adapter.Get([]byte("key"))
+	got, err := adapter.Get([]byte("key"))
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
 	if string(got) != "val" {
 		t.Errorf("expected 'val', got %q", got)
 	}
@@ -119,9 +135,15 @@ func TestAdapter_NewIterator(t *testing.T) {
 	db := memorydb.New()
 	adapter := Wrap(db)
 
-	adapter.Put([]byte("a"), []byte("1"))
-	adapter.Put([]byte("b"), []byte("2"))
-	adapter.Put([]byte("c"), []byte("3"))
+	if err := adapter.Put([]byte("a"), []byte("1")); err != nil {
+		t.Fatalf("Put failed: %v", err)
+	}
+	if err := adapter.Put([]byte("b"), []byte("2")); err != nil {
+		t.Fatalf("Put failed: %v", err)
+	}
+	if err := adapter.Put([]byte("c"), []byte("3")); err != nil {
+		t.Fatalf("Put failed: %v", err)
+	}
 
 	iter := adapter.NewIterator(nil, nil)
 	defer iter.Release()
@@ -139,9 +161,15 @@ func TestAdapter_NewIterator_WithPrefix(t *testing.T) {
 	db := memorydb.New()
 	adapter := Wrap(db)
 
-	adapter.Put([]byte("prefix-a"), []byte("1"))
-	adapter.Put([]byte("prefix-b"), []byte("2"))
-	adapter.Put([]byte("other-c"), []byte("3"))
+	if err := adapter.Put([]byte("prefix-a"), []byte("1")); err != nil {
+		t.Fatalf("Put failed: %v", err)
+	}
+	if err := adapter.Put([]byte("prefix-b"), []byte("2")); err != nil {
+		t.Fatalf("Put failed: %v", err)
+	}
+	if err := adapter.Put([]byte("other-c"), []byte("3")); err != nil {
+		t.Fatalf("Put failed: %v", err)
+	}
 
 	iter := adapter.NewIterator([]byte("prefix-"), nil)
 	defer iter.Release()
@@ -159,10 +187,18 @@ func TestAdapter_DeleteRange(t *testing.T) {
 	db := memorydb.New()
 	adapter := Wrap(db)
 
-	adapter.Put([]byte("a"), []byte("1"))
-	adapter.Put([]byte("b"), []byte("2"))
-	adapter.Put([]byte("c"), []byte("3"))
-	adapter.Put([]byte("d"), []byte("4"))
+	if err := adapter.Put([]byte("a"), []byte("1")); err != nil {
+		t.Fatalf("Put failed: %v", err)
+	}
+	if err := adapter.Put([]byte("b"), []byte("2")); err != nil {
+		t.Fatalf("Put failed: %v", err)
+	}
+	if err := adapter.Put([]byte("c"), []byte("3")); err != nil {
+		t.Fatalf("Put failed: %v", err)
+	}
+	if err := adapter.Put([]byte("d"), []byte("4")); err != nil {
+		t.Fatalf("Put failed: %v", err)
+	}
 
 	// Delete range [b, d) - should delete b and c.
 	if err := adapter.DeleteRange([]byte("b"), []byte("d")); err != nil {
@@ -203,7 +239,9 @@ func TestBatch_Replay(t *testing.T) {
 	adapter := Wrap(db)
 
 	batch := adapter.NewBatch()
-	batch.Put([]byte("key"), []byte("value"))
+	if err := batch.Put([]byte("key"), []byte("value")); err != nil {
+		t.Fatalf("batch Put failed: %v", err)
+	}
 
 	// Replay onto a different store.
 	db2 := memorydb.New()

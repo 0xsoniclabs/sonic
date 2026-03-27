@@ -108,10 +108,9 @@ func TestIterator_TruncatedKeyLength(t *testing.T) {
 	if it.Next() {
 		t.Fatal("expected Next to return false on truncated data")
 	}
-	if it.Error() != nil {
-		// EOF on the first read is treated as end-of-stream, not error
-		// but partial reads result in io.EOF or io.ErrUnexpectedEOF
-	}
+	// EOF on the first read is treated as end-of-stream, not error
+	// but partial reads result in io.EOF or io.ErrUnexpectedEOF
+	_ = it.Error()
 }
 
 func TestIterator_TruncatedKey(t *testing.T) {
