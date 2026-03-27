@@ -490,8 +490,7 @@ func (s *PrivateAccountAPI) signTransaction(ctx context.Context, args *Transacti
 	// Assemble the transaction and sign with the wallet
 	tx := args.toTransaction()
 
-	chainID := s.b.ChainConfig(s.b.Progress().CurrentBlock).ChainID
-	return wallet.SignTxWithPassphrase(account, passwd, tx, chainID)
+	return wallet.SignTxWithPassphrase(account, passwd, tx, s.b.ChainID())
 }
 
 // SendTransaction will create a transaction from the given arguments and

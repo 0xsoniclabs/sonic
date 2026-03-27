@@ -71,9 +71,9 @@ func (diff *BlockOverrides) apply(blockCtx *vm.BlockContext) {
 
 // getBlockContext returns a new vm.BlockContext based on the given header and backend
 func getBlockContext(ctx context.Context, backend Backend, header *evmcore.EvmHeader) vm.BlockContext {
-	chain := chainContext{
-		ctx: ctx,
-		b:   backend,
+	chain := ChainContext{
+		Ctx: ctx,
+		Be:  backend,
 	}
 	return evmcore.NewEVMBlockContext(header, &chain, nil)
 }
@@ -83,17 +83,17 @@ type chainContextBackend interface {
 	HeaderByNumber(context.Context, rpc.BlockNumber) (*evmcore.EvmHeader, error)
 }
 
-// chainContext is an implementation of core.chainContext. It's main use-case
+// ChainContext is an implementation of core.ChainContext. It's main use-case
 // is instantiating a vm.BlockContext without having access to the BlockChain object.
-type chainContext struct {
-	b   chainContextBackend
-	ctx context.Context
+type ChainContext struct {
+	Be  chainContextBackend
+	Ctx context.Context
 }
 
-func (context *chainContext) Header(hash common.Hash, number uint64) *evmcore.EvmHeader {
+func (context *ChainContext) Header(hash common.Hash, number uint64) *evmcore.EvmHeader {
 	// This method is called to get the hash for a block number when executing the BLOCKHASH
 	// opcode. Hence no need to search for non-canonical blocks.
-	header, err := context.b.HeaderByNumber(context.ctx, rpc.BlockNumber(number))
+	header, err := context.Be.HeaderByNumber(context.Ctx, rpc.BlockNumber(number))
 	if header == nil || err != nil {
 		return nil
 	}

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/api/ethapi"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/require"
@@ -57,6 +58,11 @@ func Test_WithPool(t *testing.T) {
 }
 
 func Test_WithAccount(t *testing.T) {
+
+	var (
+		addr1 = common.HexToAddress("0x01")
+		addr2 = common.HexToAddress("0x02")
+	)
 
 	be := NewBackendBuilder().Build()
 	latest := rpc.BlockNumber(1)

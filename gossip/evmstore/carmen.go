@@ -39,7 +39,7 @@ const (
 	pointCacheSize = 4096
 )
 
-func CreateCarmenStateDb(carmenStateDb carmen.VmStateDB) state.StateDB {
+func CreateCarmenStateDb(carmenStateDb carmen.VmStateDB) *CarmenStateDB {
 	return &CarmenStateDB{
 		db: carmenStateDb,
 	}

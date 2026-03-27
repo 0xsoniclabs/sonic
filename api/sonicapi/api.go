@@ -15,3 +15,17 @@
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
 package sonicapi
+
+import "github.com/0xsoniclabs/sonic/api/ethapi"
+
+//go:generate mockgen -source=bundle_api.go -destination=bundle_api_mock.go -package=sonicapi
+
+type PublicBundleAPI struct {
+	b ethapi.Backend
+}
+
+func NewPublicBundleAPI(b ethapi.Backend) *PublicBundleAPI {
+	return &PublicBundleAPI{
+		b: b,
+	}
+}

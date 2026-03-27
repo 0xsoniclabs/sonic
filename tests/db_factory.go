@@ -50,7 +50,7 @@ func (f carmenFactory) NewTestStateDB(accounts types.GenesisAlloc) tests.StateTe
 	statedb.GetStateHash()
 
 	statedb = evmstore.CreateCarmenStateDb(carmenstatedb)
-	return tests.StateTestState{StateDB: &carmenStateDB{CarmenStateDB: statedb.(*evmstore.CarmenStateDB)}}
+	return tests.StateTestState{StateDB: &carmenStateDB{CarmenStateDB: statedb}}
 }
 
 // carmenStateDB is a wrapper for tests.TestStateDB adapting to Carmen.

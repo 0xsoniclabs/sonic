@@ -1,17 +1,21 @@
 package rpctest
 
 import (
+	"math/big"
+
+	"github.com/0xsoniclabs/sonic/api/ethapi"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
 //go:generate mockgen -source=backend.go -destination=backend_mock.go -package=rpctest
 
-type backend struct {
-	chainId      uint64
-	state        testState
-	pool         txPool
-	blockHistory []TestBlock
+type TestAccount struct {
+	Nonce   uint64
+	Balance *big.Int
+	Code    []byte
+	Store   map[common.Hash]common.Hash
 }
 
 type backendBuilder struct {
@@ -22,6 +26,7 @@ func NewBackendBuilder() backendBuilder {
 	return backendBuilder{
 		be: backend{
 			chainId:      1,
+			rules:        opera.FakeNetRules(opera.GetBrioUpgrades()),
 			state:        newTestState(),
 			blockHistory: DefaultBlockHistory(),
 		},
@@ -48,8 +53,13 @@ func (b backendBuilder) WithAccount(addr common.Address, account TestAccount) ba
 	return b
 }
 
-func (b backendBuilder) Build() backend {
-	return b.be
+func (b backendBuilder) WithUpgrade(upgrades opera.Upgrades) backendBuilder {
+	b.be.rules = opera.FakeNetRules(upgrades)
+	return b
+}
+
+func (b backendBuilder) Build() *backend {
+	return &b.be
 }
 
 func DefaultBlockHistory() []TestBlock {
@@ -64,4 +74,18 @@ type TestBlock struct {
 
 type txPool interface {
 	AddLocal(*types.Transaction) error
+}
+
+type backend struct {
+	ethapi.Backend
+
+	chainId      uint64
+	rules        opera.Rules
+	state        *testState
+	pool         txPool
+	blockHistory []TestBlock
+}
+
+func (b *backend) GetSigner() types.Signer {
+	return types.LatestSignerForChainID(b.ChainID())
 }
