@@ -78,9 +78,13 @@ func (c *carmenStateDB) SetBalance(addr common.Address, amount *uint256.Int, rea
 	c.CarmenStateDB.SetBalance(addr, amount)
 }
 
-// IntermediateRoot method not supported by Carmen.
+// IntermediateRoot is not supported by Carmen, but for ethereum tests it is only
+// required for failing transaction. Rather than calculating the intermediate root,
+// we can just end the transaction and block, and return the resulting state root.
 func (c *carmenStateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
-	return common.Hash{}
+	c.EndTransaction()
+	c.EndBlock(0)
+	return c.GetStateHash()
 }
 
 // Commit ends transaction, ends block, and returns the state hash.

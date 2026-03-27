@@ -1751,6 +1751,14 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 			return nil, 0, nil, fmt.Errorf("failed to apply transaction: %v err: %v", args.toTransaction().Hash(), err)
 		}
 		if tracer.Equal(prevTracer) {
+			// In case an address with no storage keys is in the list,
+			// it has to be ensured that the storage keys are not nil,
+			// but an empty slice instead. Otherwise the JSON unmarshalling fails.
+			for i := range accessList {
+				if accessList[i].StorageKeys == nil {
+					accessList[i].StorageKeys = []common.Hash{}
+				}
+			}
 			return accessList, res.UsedGas, res.Err, nil
 		}
 		prevTracer = tracer

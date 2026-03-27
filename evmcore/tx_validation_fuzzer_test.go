@@ -487,7 +487,7 @@ func makeTestEvm(blockNum, basefee int64, evmGasPrice uint64, state vm.StateDB, 
 		chainConfig,
 		vm.Config{},
 	)
-	evm.GasPrice = big.NewInt(int64(evmGasPrice))
+	evm.GasPrice = uint256.NewInt(evmGasPrice)
 	return evm
 }
 
