@@ -267,6 +267,8 @@ func TestOperaEVMProcessor_Execute_BundlePositionsAreProperlyOffset(t *testing.T
 	stateDB.EXPECT().EndTransaction().AnyTimes()
 	// bundle specific
 	stateDB.EXPECT().InterTxSnapshot().AnyTimes()
+	stateDB.EXPECT().HasBeenProcessed(mockAny).AnyTimes()
+	stateDB.EXPECT().AddProcessedBundle(mockAny).AnyTimes()
 
 	chainConfig := &params.ChainConfig{ChainID: chainId}
 	upgrades := opera.GetBrioUpgrades()

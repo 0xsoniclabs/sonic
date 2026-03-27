@@ -332,7 +332,7 @@ func Test_BundleSemanticsWithAllFlagCombinations(t *testing.T) {
 		}
 	}
 	net := startTestnet(t)
-	factory := &AccountFactory{session: net}
+	factory := MakeAccountFactory(net)
 	sessions := net.SpawnSessions(t, len(tests))
 	for name, testCase := range tests {
 		session := sessions[0]
@@ -694,6 +694,10 @@ type AccountFactory struct {
 	mutex    sync.Mutex
 }
 
+func MakeAccountFactory(session tests.IntegrationTestNetSession) *AccountFactory {
+	return &AccountFactory{session: session}
+}
+
 func (f *AccountFactory) Create(t *testing.T) *tests.Account {
 	f.mutex.Lock()
 	defer f.mutex.Unlock()
@@ -705,7 +709,7 @@ func (f *AccountFactory) Create(t *testing.T) *tests.Account {
 			addresses[i] = cur.Address()
 		}
 
-		receipts, err := f.session.EndowAccounts(addresses, big.NewInt(1e16))
+		receipts, err := f.session.EndowAccounts(addresses, big.NewInt(1e18))
 		require.NoError(t, err, "failed to endow accounts; %v", err)
 
 		for _, receipt := range receipts {

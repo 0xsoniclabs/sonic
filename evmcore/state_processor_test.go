@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"slices"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
@@ -1461,19 +1462,15 @@ func TestRunTransactionBundle_AddsHashesOfSuccessfulPlansToList(t *testing.T) {
 	state := state.NewMockStateDB(ctrl)
 	evm := NewMock_evm(ctrl)
 
-	state.EXPECT().InterTxSnapshot().Return(1).AnyTimes()
-	state.EXPECT().RevertToInterTxSnapshot(1).AnyTimes()
-
 	runner := &transactionRunner{evm: evm}
 
 	context := &runContext{
-		statedb:                 state,
-		signer:                  signer,
-		baseFee:                 big.NewInt(1),
-		upgrades:                opera.Upgrades{TransactionBundles: true},
-		blockNumber:             &big.Int{},
-		runner:                  runner,
-		processedExecutionPlans: &processedExecutionPlans{},
+		statedb:     state,
+		signer:      signer,
+		baseFee:     big.NewInt(1),
+		upgrades:    opera.Upgrades{TransactionBundles: true},
+		blockNumber: &big.Int{},
+		runner:      runner,
 	}
 
 	// Run a successful bundle
@@ -1482,12 +1479,17 @@ func TestRunTransactionBundle_AddsHashesOfSuccessfulPlansToList(t *testing.T) {
 	plan, err := bundle.ExtractExecutionPlan(envelope)
 	require.NoError(t, err)
 
+	gomock.InOrder(
+		state.EXPECT().HasBeenProcessed(plan.Hash()), // pre-check
+		state.EXPECT().InterTxSnapshot().Return(1),   // snapshot for processed bundles
+		state.EXPECT().AddProcessedBundle(plan.Hash()),
+		state.EXPECT().InterTxSnapshot().Return(2), // snapshot for transaction
+	)
+
 	evm.EXPECT().runWithBaseFeeCheck(context, gomock.Any(), gomock.Any()).
 		Return(ProcessedTransaction{Transaction: &types.Transaction{}, Receipt: &types.Receipt{Status: types.ReceiptStatusSuccessful}})
 
 	_, _, _ = runner.runTransactionBundle(context, envelope, 0, 0)
-
-	require.Contains(t, context.processedExecutionPlans.hashes, plan.Hash())
 
 	// Run a failing bundle
 	envelope = getTransactionBundle(t)
@@ -1495,18 +1497,25 @@ func TestRunTransactionBundle_AddsHashesOfSuccessfulPlansToList(t *testing.T) {
 	plan, err = bundle.ExtractExecutionPlan(envelope)
 	require.NoError(t, err)
 
+	gomock.InOrder(
+		state.EXPECT().HasBeenProcessed(plan.Hash()),
+		state.EXPECT().InterTxSnapshot().Return(1),
+		state.EXPECT().AddProcessedBundle(plan.Hash()),
+		state.EXPECT().InterTxSnapshot().Return(2),
+		state.EXPECT().RevertToInterTxSnapshot(2),
+		state.EXPECT().RevertToInterTxSnapshot(1),
+	)
+
 	evm.EXPECT().runWithBaseFeeCheck(context, gomock.Any(), gomock.Any()).
 		Return(ProcessedTransaction{Transaction: &types.Transaction{}, Receipt: &types.Receipt{Status: types.ReceiptStatusFailed}})
 
 	_, _, _ = runner.runTransactionBundle(context, envelope, 0, 0)
-
-	require.NotContains(t, context.processedExecutionPlans.hashes, plan.Hash())
 }
 
 func TestRunTransactionBundle_SkipsPlansThatHaveBeenExecutedSuccessfullyBefore(t *testing.T) {
 	type test struct {
 		envelope                *types.Transaction
-		processedExecutionPlans processedExecutionPlans
+		processedExecutionPlans []common.Hash
 		runResults              []uint64
 		processedTransactions   int
 	}
@@ -1525,7 +1534,7 @@ func TestRunTransactionBundle_SkipsPlansThatHaveBeenExecutedSuccessfullyBefore(t
 	require.NoError(t, err)
 	tests["same plan in top level bundle"] = test{
 		envelope:                envelope,
-		processedExecutionPlans: processedExecutionPlans{hashes: []common.Hash{plan.Hash()}},
+		processedExecutionPlans: []common.Hash{plan.Hash()},
 		runResults:              nil,
 		processedTransactions:   1, // the envelope itself
 	}
@@ -1540,7 +1549,7 @@ func TestRunTransactionBundle_SkipsPlansThatHaveBeenExecutedSuccessfullyBefore(t
 	)
 	tests["same plan in nested bundle"] = test{
 		envelope:                envelope,
-		processedExecutionPlans: processedExecutionPlans{hashes: []common.Hash{nestedPlan.Hash()}},
+		processedExecutionPlans: []common.Hash{nestedPlan.Hash()},
 		runResults:              nil,
 		processedTransactions:   0,
 	}
@@ -1554,7 +1563,7 @@ func TestRunTransactionBundle_SkipsPlansThatHaveBeenExecutedSuccessfullyBefore(t
 	)
 	tests["run same plan within nested bundle"] = test{
 		envelope:                envelope,
-		processedExecutionPlans: processedExecutionPlans{},
+		processedExecutionPlans: nil,
 		runResults:              []uint64{types.ReceiptStatusSuccessful},
 		processedTransactions:   0,
 	}
@@ -1572,7 +1581,7 @@ func TestRunTransactionBundle_SkipsPlansThatHaveBeenExecutedSuccessfullyBefore(t
 	)
 	tests["run same plan within nested bundle"] = test{
 		envelope:                envelope,
-		processedExecutionPlans: processedExecutionPlans{},
+		processedExecutionPlans: nil,
 		runResults: []uint64{
 			types.ReceiptStatusSuccessful, // first tx in first nested bundle
 			// the second tx in the first nested bundle should not be attempted
@@ -1589,10 +1598,9 @@ func TestRunTransactionBundle_SkipsPlansThatHaveBeenExecutedSuccessfullyBefore(t
 		bundle.Step(key2, nestedEnvelope), // because the key is different, the envelope is different, but the plan is still the same
 	)
 	tests["retry same plan within nested bundle"] = test{
-		envelope:                envelope,
-		processedExecutionPlans: processedExecutionPlans{},
-		runResults:              []uint64{types.ReceiptStatusFailed, types.ReceiptStatusSuccessful},
-		processedTransactions:   1, // the first nested bundle fails, but the second one succeeds with one tx
+		envelope:              envelope,
+		runResults:            []uint64{types.ReceiptStatusFailed, types.ReceiptStatusSuccessful},
+		processedTransactions: 1, // the first nested bundle fails, but the second one succeeds with one tx
 	}
 
 	for name, test := range tests {
@@ -1603,8 +1611,22 @@ func TestRunTransactionBundle_SkipsPlansThatHaveBeenExecutedSuccessfullyBefore(t
 			state := state.NewMockStateDB(ctrl)
 			evm := NewMock_evm(ctrl)
 
-			state.EXPECT().InterTxSnapshot().Return(1).AnyTimes()
-			state.EXPECT().RevertToInterTxSnapshot(1).AnyTimes()
+			// Simulate handling of execution plans in StateDB
+			processedPlans := append([]common.Hash{}, test.processedExecutionPlans...)
+			state.EXPECT().AddProcessedBundle(gomock.Any()).DoAndReturn(func(hash common.Hash) {
+				processedPlans = append(processedPlans, hash)
+			}).AnyTimes()
+			state.EXPECT().HasBeenProcessed(gomock.Any()).DoAndReturn(func(hash common.Hash) bool {
+				return slices.Contains(processedPlans, hash)
+			}).AnyTimes()
+
+			state.EXPECT().InterTxSnapshot().DoAndReturn(func() int {
+				return len(processedPlans)
+			}).AnyTimes()
+
+			state.EXPECT().RevertToInterTxSnapshot(gomock.Any()).DoAndReturn(func(snapshot int) {
+				processedPlans = processedPlans[:snapshot]
+			}).AnyTimes()
 
 			calls := []any{}
 			for _, runResult := range test.runResults {
@@ -1619,14 +1641,13 @@ func TestRunTransactionBundle_SkipsPlansThatHaveBeenExecutedSuccessfullyBefore(t
 
 			gasPool := new(core.GasPool).AddGas(1_000_000)
 			context := &runContext{
-				statedb:                 state,
-				signer:                  signer,
-				baseFee:                 big.NewInt(1),
-				gasPool:                 gasPool,
-				upgrades:                opera.Upgrades{TransactionBundles: true},
-				blockNumber:             &big.Int{},
-				runner:                  runner,
-				processedExecutionPlans: &test.processedExecutionPlans,
+				statedb:     state,
+				signer:      signer,
+				baseFee:     big.NewInt(1),
+				gasPool:     gasPool,
+				upgrades:    opera.Upgrades{TransactionBundles: true},
+				blockNumber: &big.Int{},
+				runner:      runner,
 			}
 
 			processedTransactions, _, _ := runner.runTransactionBundle(context, test.envelope, 0, 0)
@@ -1723,6 +1744,8 @@ func TestRunTransactionBundle_ReturnsListOfBundlesThatWillBePartOfTheNextBlock(t
 
 			state.EXPECT().InterTxSnapshot().Return(1).AnyTimes()
 			state.EXPECT().RevertToInterTxSnapshot(1).AnyTimes()
+			state.EXPECT().HasBeenProcessed(gomock.Any()).Return(false).AnyTimes()
+			state.EXPECT().AddProcessedBundle(gomock.Any()).AnyTimes()
 
 			calls := []any{}
 			for _, result := range test.results {
@@ -1736,13 +1759,12 @@ func TestRunTransactionBundle_ReturnsListOfBundlesThatWillBePartOfTheNextBlock(t
 			runner := &transactionRunner{evm: evm}
 
 			context := &runContext{
-				statedb:                 state,
-				signer:                  types.LatestSignerForChainID(big.NewInt(1)),
-				baseFee:                 big.NewInt(1),
-				upgrades:                opera.Upgrades{TransactionBundles: true},
-				blockNumber:             &big.Int{},
-				runner:                  runner,
-				processedExecutionPlans: &processedExecutionPlans{},
+				statedb:     state,
+				signer:      types.LatestSignerForChainID(big.NewInt(1)),
+				baseFee:     big.NewInt(1),
+				upgrades:    opera.Upgrades{TransactionBundles: true},
+				blockNumber: &big.Int{},
+				runner:      runner,
 			}
 
 			_, bundles, _ := runner.runTransactionBundle(context, test.envelope, 0, 0)
@@ -1990,69 +2012,6 @@ func TestTransactionGenerationUtilities(t *testing.T) {
 
 	require.False(t, subsidies.IsSponsorshipRequest(regular))
 	require.True(t, subsidies.IsSponsorshipRequest(request))
-}
-
-func TestProcessedExecutionPlans_AddAppendsHashToList(t *testing.T) {
-	plans := processedExecutionPlans{}
-
-	plan1 := common.Hash{1}
-	plan2 := common.Hash{2}
-
-	plans.add(plan1)
-	require.Len(t, plans.hashes, 1)
-	require.Equal(t, plans.hashes[0], plan1)
-
-	plans.add(plan2)
-	require.Len(t, plans.hashes, 2)
-	require.Equal(t, plans.hashes[0], plan1)
-	require.Equal(t, plans.hashes[1], plan2)
-}
-
-func TestProcessedExecutionPlans_ContainsChecksIfHashIsInList(t *testing.T) {
-	plans := &processedExecutionPlans{
-		hashes: []common.Hash{{1}, {2}, {3}},
-	}
-
-	require.True(t, plans.contains(common.Hash{1}))
-	require.True(t, plans.contains(common.Hash{2}))
-	require.True(t, plans.contains(common.Hash{3}))
-	require.False(t, plans.contains(common.Hash{4}))
-}
-
-func TestProcessedExecutionPlans_SnapshotReturnsCurrentLengthOfList(t *testing.T) {
-	plans := &processedExecutionPlans{
-		hashes: []common.Hash{{1}, {2}, {5}},
-	}
-
-	snapshot := plans.snapshot()
-	require.Equal(t, 3, snapshot)
-
-	plans.hashes = append(plans.hashes, common.Hash{7})
-	snapshot = plans.snapshot()
-	require.Equal(t, 4, snapshot)
-}
-
-func TestProcessedExecutionPlans_RestoreTruncatesListToSnapshotLength(t *testing.T) {
-	plans := &processedExecutionPlans{
-		hashes: []common.Hash{
-			{1},
-			{2},
-			{3},
-		},
-	}
-
-	plans.restore(2)
-	require.Len(t, plans.hashes, 2)
-	require.Equal(t, plans.hashes[0], common.Hash{1})
-	require.Equal(t, plans.hashes[1], common.Hash{2})
-
-	plans.restore(1)
-	require.Len(t, plans.hashes, 1)
-	require.Equal(t, plans.hashes[0], common.Hash{1})
-
-	plans.restore(1)
-	require.Len(t, plans.hashes, 1)
-	require.Equal(t, plans.hashes[0], common.Hash{1})
 }
 
 func TestBundleTransactionRunner_CreateSnapshot_RecordsStateDBSnapshotAndLengthOfProcessedBundles(t *testing.T) {

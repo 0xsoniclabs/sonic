@@ -205,7 +205,7 @@ func testRandomlyFailingBundles(
 			// we expect no transaction to be included in a block.
 			for _, tx := range bundle.Transactions {
 				receipt, err := client.TransactionReceipt(t.Context(), tx.Hash())
-				require.ErrorIs(err, ethereum.NotFound, "got receipt: %v", receipt)
+				require.ErrorIs(err, ethereum.NotFound, "got receipt: %v, info: %+v", receipt, info)
 			}
 		}
 	}
@@ -228,7 +228,7 @@ func newBurnMoneyTransaction() *types.AccessListTx {
 	return &types.AccessListTx{
 		To:    &zero,
 		Value: big.NewInt(1),
-		Gas:   25300,
+		Gas:   21000,
 	}
 }
 

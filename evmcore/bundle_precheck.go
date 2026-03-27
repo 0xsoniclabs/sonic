@@ -112,11 +112,7 @@ func getBundleState(
 	// Make sure to revert all changes to enable re-using the same StateDB for
 	// multiple calls to GetBundleState without having to create a new StateDB.
 	snapshot := stateDb.InterTxSnapshot()
-	defer func() {
-		// TODO: follow-up task: deal with this error or update the function to
-		// not return an error at all if it can not be handled properly.
-		stateDb.RevertToInterTxSnapshot(snapshot)
-	}()
+	defer stateDb.RevertToInterTxSnapshot(snapshot)
 
 	if success := trialRunner(envelop, chain, stateDb); !success {
 		return BundleStatePermanentlyBlocked
@@ -331,7 +327,6 @@ func trialRunBundle(
 	chain ChainState,
 	stateDb state.StateDB,
 ) bool {
-
 	latestHeader := chain.GetLatestHeader()
 	blobBaseFee := GetBlobBaseFee()
 
@@ -362,10 +357,22 @@ func trialRunBundle(
 
 	// Check if the bundle lead to any accepted transactions. If so, it is
 	// a success, otherwise it is a failure.
+	//issues := []error{}
 	for _, tx := range summary.ProcessedTransactions {
 		if tx.Receipt != nil {
 			return true
 		}
+		/*
+			if tx.Error != nil {
+				issues = append(issues, tx.Error)
+			}
+		*/
 	}
+
+	// TODO: use those issues reported by the EVM for the message forwarded to
+	// the user why a bundle was rejected once the advanced bundle state info
+	// is available.
+	//fmt.Printf("REJECTED due to %v\n", errors.Join(issues...))
+
 	return false
 }
