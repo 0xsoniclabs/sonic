@@ -28,6 +28,7 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -84,7 +85,7 @@ func TestSetupTracedEVM_GetVmConfigError(t *testing.T) {
 	injected := fmt.Errorf("db unavailable")
 	backend.EXPECT().GetNetworkRules(gomock.Any(), gomock.Any()).Return(nil, injected)
 
-	setup, cancel, err := setupTracedEVM(t.Context(), backend, traceTestBlock(), mockState, 0, false, false, false)
+	setup, cancel, err := setupTracedEVM(t.Context(), backend, traceTestBlock(), mockState, 0, TraceOptions{}, false)
 	defer cancel()
 
 	require.ErrorIs(t, err, injected, "error from GetVmConfig must be propagated")
@@ -102,7 +103,7 @@ func TestSetupTracedEVM_GetEVMError(t *testing.T) {
 	backend.EXPECT().GetEVM(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil, nil, injected)
 
-	setup, cancel, err := setupTracedEVM(t.Context(), backend, traceTestBlock(), mockState, 0, false, false, false)
+	setup, cancel, err := setupTracedEVM(t.Context(), backend, traceTestBlock(), mockState, 0, TraceOptions{}, false)
 	defer cancel()
 
 	require.ErrorContains(t, err, injected.Error(), "error from GetEVM must be propagated")
@@ -158,7 +159,7 @@ func TestSetupTracedEVM_LoggersRespectFlags(t *testing.T) {
 			mockState := state.NewMockStateDB(ctrl)
 			backend := setupBackendForTracing(ctrl, mockState)
 
-			setup, cancel, err := setupTracedEVM(t.Context(), backend, traceTestBlock(), mockState, 0, tt.wantTrace, tt.wantStateDiff, false)
+			setup, cancel, err := setupTracedEVM(t.Context(), backend, traceTestBlock(), mockState, 0, TraceOptions{Trace: tt.wantTrace, StateDiff: tt.wantStateDiff}, false)
 			defer cancel()
 
 			require.NoError(t, err)
@@ -196,7 +197,7 @@ func TestSetupTracedEVM_NoBaseFeeFlag(t *testing.T) {
 					return makeTestEVM(opera.Upgrades{})(t.Context(), statedb, header, vmConfig, blockContext)
 				})
 
-			setup, cancel, err := setupTracedEVM(t.Context(), backend, traceTestBlock(), mockState, 0, false, false, tt.noBaseFee)
+			setup, cancel, err := setupTracedEVM(t.Context(), backend, traceTestBlock(), mockState, 0, TraceOptions{}, tt.noBaseFee)
 			defer cancel()
 
 			require.NoError(t, err)
@@ -226,7 +227,7 @@ func TestSetupTracedEVM_ContextHasDeadlineFromRPCTimeout(t *testing.T) {
 			return makeTestEVM(opera.Upgrades{})(ctx, statedb, header, vmConfig, blockContext)
 		})
 
-	setup, cancel, err := setupTracedEVM(t.Context(), backend, traceTestBlock(), mockState, 0, false, false, false)
+	setup, cancel, err := setupTracedEVM(t.Context(), backend, traceTestBlock(), mockState, 0, TraceOptions{}, false)
 	defer cancel()
 
 	require.NoError(t, err)
@@ -252,7 +253,7 @@ func TestSetupTracedEVM_StateDiffWrapsState(t *testing.T) {
 			return makeTestEVM(opera.Upgrades{})(t.Context(), statedb, header, vmConfig, blockContext)
 		})
 
-	setup, cancel, err := setupTracedEVM(t.Context(), backend, traceTestBlock(), mockState, 0, false, true, false)
+	setup, cancel, err := setupTracedEVM(t.Context(), backend, traceTestBlock(), mockState, 0, TraceOptions{StateDiff: true}, false)
 	defer cancel()
 
 	require.NoError(t, err)
@@ -282,8 +283,7 @@ func TestTraceCallExec_VmConfigError(t *testing.T) {
 		mockState,
 		traceTestTx(),
 		0,
-		true,
-		false,
+		TraceOptions{Trace: true},
 	)
 
 	require.ErrorIs(t, err, injected)
@@ -311,14 +311,14 @@ func TestTraceCallExec_TraceOnly(t *testing.T) {
 		mockState,
 		traceTestTx(),
 		0,
-		true,  // wantTrace
-		false, // wantStateDiff
+		TraceOptions{Trace: true},
 	)
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.NotEmpty(t, result.Trace, "trace must contain at least one action")
 	require.Nil(t, result.StateDiff, "stateDiff must be nil when not requested")
+	require.Nil(t, result.VmTrace, "vmTrace must be nil when not requested")
 }
 
 func TestTraceCallExec_StateDiffOnly(t *testing.T) {
@@ -342,17 +342,17 @@ func TestTraceCallExec_StateDiffOnly(t *testing.T) {
 		mockState,
 		traceTestTx(),
 		0,
-		false, // wantTrace
-		true,  // wantStateDiff
+		TraceOptions{StateDiff: true},
 	)
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Nil(t, result.Trace, "trace must be nil when not requested")
 	require.NotNil(t, result.StateDiff, "stateDiff must be non-nil when requested")
+	require.Nil(t, result.VmTrace, "vmTrace must be nil when not requested")
 }
 
-func TestTraceCallExec_BothTypes(t *testing.T) {
+func TestTraceCallExec_VMTraceOnly(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockState := state.NewMockStateDB(ctrl)
 	setExpectedStateCalls(mockState)
@@ -373,14 +373,45 @@ func TestTraceCallExec_BothTypes(t *testing.T) {
 		mockState,
 		traceTestTx(),
 		0,
-		true, // wantTrace
-		true, // wantStateDiff
+		TraceOptions{VmTrace: true},
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Nil(t, result.Trace, "trace must be nil when not requested")
+	require.Nil(t, result.StateDiff, "stateDiff must be nil when not requested")
+	require.NotNil(t, result.VmTrace, "vmTrace must be non-nil when requested")
+}
+
+func TestTraceCallExec_AllTypes(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockState := state.NewMockStateDB(ctrl)
+	setExpectedStateCalls(mockState)
+
+	backend := NewMockBackend(ctrl)
+	backend.EXPECT().GetNetworkRules(gomock.Any(), gomock.Any()).Return(&opera.Rules{}, nil)
+	backend.EXPECT().RPCEVMTimeout().Return(time.Duration(0))
+	backend.EXPECT().GetEVM(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(makeTestEVM(opera.Upgrades{}))
+
+	api := &PublicTxTraceAPI{b: backend}
+	from, to := common.Address{1}, common.Address{2}
+
+	result, err := api.traceCallExec(
+		t.Context(),
+		traceTestBlock(),
+		traceTestMessage(from, to),
+		mockState,
+		traceTestTx(),
+		0,
+		TraceOptions{Trace: true, StateDiff: true, VmTrace: true},
 	)
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.NotEmpty(t, result.Trace, "trace must contain at least one action")
 	require.NotNil(t, result.StateDiff, "stateDiff must be non-nil when requested")
+	require.NotNil(t, result.VmTrace, "vmTrace must be non-nil when requested")
 }
 
 // setupBackendForCallMany returns a MockBackend pre-configured with all expectations
@@ -421,13 +452,6 @@ func TestCallMany_TraceTypeValidation(t *testing.T) {
 				{Args: TransactionArgs{}, TraceTypes: []string{"unknownType"}},
 			},
 			wantErrMsg: "unrecognized trace type",
-		},
-		{
-			name: "vmTrace not supported",
-			calls: []CallRequest{
-				{Args: TransactionArgs{}, TraceTypes: []string{TraceTypeVmTrace}},
-			},
-			wantErrMsg: "vmTrace trace type is not supported",
 		},
 	}
 
@@ -596,4 +620,238 @@ func TestCallMany_BlockNotFound(t *testing.T) {
 	_, err := api.CallMany(t.Context(), []CallRequest{}, rpc.BlockNumberOrHashWithNumber(99), nil)
 
 	require.ErrorIs(t, err, injected)
+}
+
+// recorder accumulates string tokens so tests can assert call order.
+type recorder struct{ calls []string }
+
+func (r *recorder) add(s string) { r.calls = append(r.calls, s) }
+
+func TestMergeVMHooks_BothNil(t *testing.T) {
+	require.Nil(t, mergeVMHooks(nil, nil))
+}
+
+func TestMergeVMHooks_OrigNil_ReturnsNewHooks(t *testing.T) {
+	newHooks := &tracing.Hooks{}
+	require.Same(t, newHooks, mergeVMHooks(nil, newHooks))
+}
+
+func TestMergeVMHooks_NewHooksNil_ReturnsOrig(t *testing.T) {
+	orig := &tracing.Hooks{}
+	require.Same(t, orig, mergeVMHooks(orig, nil))
+}
+
+func TestMergeVMHooks_BothNonNil_ReturnsNewPointer(t *testing.T) {
+	orig := &tracing.Hooks{}
+	newHooks := &tracing.Hooks{}
+	result := mergeVMHooks(orig, newHooks)
+	require.NotNil(t, result)
+	require.NotSame(t, orig, result)
+	require.NotSame(t, newHooks, result)
+}
+
+func TestMergeVMHooks_OnTxStart(t *testing.T) {
+	invoke := func(h *tracing.Hooks) {
+		h.OnTxStart(nil, nil, common.Address{})
+	}
+
+	t.Run("orig only is preserved", func(t *testing.T) {
+		rec := &recorder{}
+		orig := &tracing.Hooks{OnTxStart: func(_ *tracing.VMContext, _ *types.Transaction, _ common.Address) { rec.add("orig") }}
+		result := mergeVMHooks(orig, &tracing.Hooks{})
+		require.NotNil(t, result.OnTxStart)
+		invoke(result)
+		require.Equal(t, []string{"orig"}, rec.calls)
+	})
+
+	t.Run("new only is installed", func(t *testing.T) {
+		rec := &recorder{}
+		newHooks := &tracing.Hooks{OnTxStart: func(_ *tracing.VMContext, _ *types.Transaction, _ common.Address) { rec.add("new") }}
+		result := mergeVMHooks(&tracing.Hooks{}, newHooks)
+		require.NotNil(t, result.OnTxStart)
+		invoke(result)
+		require.Equal(t, []string{"new"}, rec.calls)
+	})
+
+	t.Run("both: orig called first then new", func(t *testing.T) {
+		rec := &recorder{}
+		orig := &tracing.Hooks{OnTxStart: func(_ *tracing.VMContext, _ *types.Transaction, _ common.Address) { rec.add("orig") }}
+		newHooks := &tracing.Hooks{OnTxStart: func(_ *tracing.VMContext, _ *types.Transaction, _ common.Address) { rec.add("new") }}
+		invoke(mergeVMHooks(orig, newHooks))
+		require.Equal(t, []string{"orig", "new"}, rec.calls)
+	})
+}
+
+func TestMergeVMHooks_OnTxEnd(t *testing.T) {
+	invoke := func(h *tracing.Hooks) { h.OnTxEnd(nil, nil) }
+
+	t.Run("orig only is preserved", func(t *testing.T) {
+		rec := &recorder{}
+		orig := &tracing.Hooks{OnTxEnd: func(_ *types.Receipt, _ error) { rec.add("orig") }}
+		result := mergeVMHooks(orig, &tracing.Hooks{})
+		require.NotNil(t, result.OnTxEnd)
+		invoke(result)
+		require.Equal(t, []string{"orig"}, rec.calls)
+	})
+
+	t.Run("new only is installed", func(t *testing.T) {
+		rec := &recorder{}
+		newHooks := &tracing.Hooks{OnTxEnd: func(_ *types.Receipt, _ error) { rec.add("new") }}
+		result := mergeVMHooks(&tracing.Hooks{}, newHooks)
+		require.NotNil(t, result.OnTxEnd)
+		invoke(result)
+		require.Equal(t, []string{"new"}, rec.calls)
+	})
+
+	t.Run("both: orig called first then new", func(t *testing.T) {
+		rec := &recorder{}
+		orig := &tracing.Hooks{OnTxEnd: func(_ *types.Receipt, _ error) { rec.add("orig") }}
+		newHooks := &tracing.Hooks{OnTxEnd: func(_ *types.Receipt, _ error) { rec.add("new") }}
+		invoke(mergeVMHooks(orig, newHooks))
+		require.Equal(t, []string{"orig", "new"}, rec.calls)
+	})
+}
+
+func TestMergeVMHooks_OnEnter(t *testing.T) {
+	invoke := func(h *tracing.Hooks) {
+		h.OnEnter(0, 0, common.Address{}, common.Address{}, nil, 0, big.NewInt(0))
+	}
+
+	t.Run("orig only is preserved", func(t *testing.T) {
+		rec := &recorder{}
+		orig := &tracing.Hooks{OnEnter: func(_ int, _ byte, _, _ common.Address, _ []byte, _ uint64, _ *big.Int) { rec.add("orig") }}
+		result := mergeVMHooks(orig, &tracing.Hooks{})
+		require.NotNil(t, result.OnEnter)
+		invoke(result)
+		require.Equal(t, []string{"orig"}, rec.calls)
+	})
+
+	t.Run("new only is installed", func(t *testing.T) {
+		rec := &recorder{}
+		newHooks := &tracing.Hooks{OnEnter: func(_ int, _ byte, _, _ common.Address, _ []byte, _ uint64, _ *big.Int) { rec.add("new") }}
+		result := mergeVMHooks(&tracing.Hooks{}, newHooks)
+		require.NotNil(t, result.OnEnter)
+		invoke(result)
+		require.Equal(t, []string{"new"}, rec.calls)
+	})
+
+	t.Run("both: orig called first then new", func(t *testing.T) {
+		rec := &recorder{}
+		orig := &tracing.Hooks{OnEnter: func(_ int, _ byte, _, _ common.Address, _ []byte, _ uint64, _ *big.Int) { rec.add("orig") }}
+		newHooks := &tracing.Hooks{OnEnter: func(_ int, _ byte, _, _ common.Address, _ []byte, _ uint64, _ *big.Int) { rec.add("new") }}
+		invoke(mergeVMHooks(orig, newHooks))
+		require.Equal(t, []string{"orig", "new"}, rec.calls)
+	})
+}
+
+func TestMergeVMHooks_OnExit(t *testing.T) {
+	invoke := func(h *tracing.Hooks) { h.OnExit(0, nil, 0, nil, false) }
+
+	t.Run("orig only is preserved", func(t *testing.T) {
+		rec := &recorder{}
+		orig := &tracing.Hooks{OnExit: func(_ int, _ []byte, _ uint64, _ error, _ bool) { rec.add("orig") }}
+		result := mergeVMHooks(orig, &tracing.Hooks{})
+		require.NotNil(t, result.OnExit)
+		invoke(result)
+		require.Equal(t, []string{"orig"}, rec.calls)
+	})
+
+	t.Run("new only is installed", func(t *testing.T) {
+		rec := &recorder{}
+		newHooks := &tracing.Hooks{OnExit: func(_ int, _ []byte, _ uint64, _ error, _ bool) { rec.add("new") }}
+		result := mergeVMHooks(&tracing.Hooks{}, newHooks)
+		require.NotNil(t, result.OnExit)
+		invoke(result)
+		require.Equal(t, []string{"new"}, rec.calls)
+	})
+
+	t.Run("both: orig called first then new", func(t *testing.T) {
+		rec := &recorder{}
+		orig := &tracing.Hooks{OnExit: func(_ int, _ []byte, _ uint64, _ error, _ bool) { rec.add("orig") }}
+		newHooks := &tracing.Hooks{OnExit: func(_ int, _ []byte, _ uint64, _ error, _ bool) { rec.add("new") }}
+		invoke(mergeVMHooks(orig, newHooks))
+		require.Equal(t, []string{"orig", "new"}, rec.calls)
+	})
+}
+
+func TestMergeVMHooks_OnOpcode(t *testing.T) {
+	invoke := func(h *tracing.Hooks) { h.OnOpcode(0, 0, 0, 0, nil, nil, 0, nil) }
+
+	t.Run("orig only is preserved", func(t *testing.T) {
+		rec := &recorder{}
+		orig := &tracing.Hooks{OnOpcode: func(_ uint64, _ byte, _, _ uint64, _ tracing.OpContext, _ []byte, _ int, _ error) { rec.add("orig") }}
+		result := mergeVMHooks(orig, &tracing.Hooks{})
+		require.NotNil(t, result.OnOpcode)
+		invoke(result)
+		require.Equal(t, []string{"orig"}, rec.calls)
+	})
+
+	t.Run("new only is installed", func(t *testing.T) {
+		rec := &recorder{}
+		newHooks := &tracing.Hooks{OnOpcode: func(_ uint64, _ byte, _, _ uint64, _ tracing.OpContext, _ []byte, _ int, _ error) { rec.add("new") }}
+		result := mergeVMHooks(&tracing.Hooks{}, newHooks)
+		require.NotNil(t, result.OnOpcode)
+		invoke(result)
+		require.Equal(t, []string{"new"}, rec.calls)
+	})
+
+	t.Run("both: orig called first then new", func(t *testing.T) {
+		rec := &recorder{}
+		orig := &tracing.Hooks{OnOpcode: func(_ uint64, _ byte, _, _ uint64, _ tracing.OpContext, _ []byte, _ int, _ error) { rec.add("orig") }}
+		newHooks := &tracing.Hooks{OnOpcode: func(_ uint64, _ byte, _, _ uint64, _ tracing.OpContext, _ []byte, _ int, _ error) { rec.add("new") }}
+		invoke(mergeVMHooks(orig, newHooks))
+		require.Equal(t, []string{"orig", "new"}, rec.calls)
+	})
+}
+
+func TestMergeVMHooks_OnFault(t *testing.T) {
+	invoke := func(h *tracing.Hooks) { h.OnFault(0, 0, 0, 0, nil, 0, nil) }
+
+	t.Run("orig only is preserved", func(t *testing.T) {
+		rec := &recorder{}
+		orig := &tracing.Hooks{OnFault: func(_ uint64, _ byte, _, _ uint64, _ tracing.OpContext, _ int, _ error) { rec.add("orig") }}
+		result := mergeVMHooks(orig, &tracing.Hooks{})
+		require.NotNil(t, result.OnFault)
+		invoke(result)
+		require.Equal(t, []string{"orig"}, rec.calls)
+	})
+
+	t.Run("new only is installed", func(t *testing.T) {
+		rec := &recorder{}
+		newHooks := &tracing.Hooks{OnFault: func(_ uint64, _ byte, _, _ uint64, _ tracing.OpContext, _ int, _ error) { rec.add("new") }}
+		result := mergeVMHooks(&tracing.Hooks{}, newHooks)
+		require.NotNil(t, result.OnFault)
+		invoke(result)
+		require.Equal(t, []string{"new"}, rec.calls)
+	})
+
+	t.Run("both: orig called first then new", func(t *testing.T) {
+		rec := &recorder{}
+		orig := &tracing.Hooks{OnFault: func(_ uint64, _ byte, _, _ uint64, _ tracing.OpContext, _ int, _ error) { rec.add("orig") }}
+		newHooks := &tracing.Hooks{OnFault: func(_ uint64, _ byte, _, _ uint64, _ tracing.OpContext, _ int, _ error) { rec.add("new") }}
+		invoke(mergeVMHooks(orig, newHooks))
+		require.Equal(t, []string{"orig", "new"}, rec.calls)
+	})
+}
+
+func TestMergeVMHooks_UnrelatedHooksFromOrigArePreserved(t *testing.T) {
+	// newHooks only contributes OnTxStart; all other hooks from orig must survive unchanged.
+	origOnTxEndCalled := false
+	origOnEnterCalled := false
+
+	orig := &tracing.Hooks{
+		OnTxEnd: func(_ *types.Receipt, _ error) { origOnTxEndCalled = true },
+		OnEnter: func(_ int, _ byte, _, _ common.Address, _ []byte, _ uint64, _ *big.Int) { origOnEnterCalled = true },
+	}
+	newHooks := &tracing.Hooks{
+		OnTxStart: func(_ *tracing.VMContext, _ *types.Transaction, _ common.Address) {},
+	}
+
+	result := mergeVMHooks(orig, newHooks)
+
+	result.OnTxEnd(nil, nil)
+	result.OnEnter(0, 0, common.Address{}, common.Address{}, nil, 0, big.NewInt(0))
+
+	require.True(t, origOnTxEndCalled, "OnTxEnd from orig must be preserved when newHooks does not define it")
+	require.True(t, origOnEnterCalled, "OnEnter from orig must be preserved when newHooks does not define it")
 }

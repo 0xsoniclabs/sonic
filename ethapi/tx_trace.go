@@ -71,7 +71,8 @@ type evmSetup struct {
 	tracer          *tracing.Hooks // cfg.Tracer at time of EVM creation
 	txTracer        *txtrace.TraceStructLogger
 	stateDiffLogger *txtrace.StateDiffLogger
-	activeState     state.StateDB // may be wrapped with stateDiff hooks
+	vmTraceLogger   *txtrace.VmTraceLogger
+	activeState     state.StateDB // may be wrapped with stateDiff/vmTrace hooks
 }
 
 // setupTracedEVM creates an EVM configured with the requested tracing hooks and
@@ -84,8 +85,7 @@ func setupTracedEVM(
 	block *evmcore.EvmBlock,
 	statedb state.StateDB,
 	index uint64,
-	wantTrace bool,
-	wantStateDiff bool,
+	tracers TraceOptions,
 	noBaseFee bool,
 ) (*evmSetup, context.CancelFunc, error) {
 	header := block.Header()
@@ -99,14 +99,14 @@ func setupTracedEVM(
 
 	setup := &evmSetup{activeState: statedb}
 
-	if wantTrace {
+	if tracers.Trace {
 		setup.txTracer = txtrace.NewTraceStructLogger(block, uint(index))
 		cfg.Tracer = setup.txTracer.Hooks()
 	}
 
-	if wantStateDiff {
+	if tracers.StateDiff {
 		setup.stateDiffLogger = txtrace.NewStateDiffLogger()
-		setup.activeState = evmstore.WrapStateDbWithLogger(statedb, setup.stateDiffLogger.Hooks())
+		setup.activeState = evmstore.WrapStateDbWithLogger(setup.activeState, setup.stateDiffLogger.Hooks())
 
 		sdOnEnter := setup.stateDiffLogger.OnEnter
 		if cfg.Tracer == nil {
@@ -121,6 +121,15 @@ func setupTracedEVM(
 			}
 		}
 	}
+
+	if tracers.VmTrace {
+		setup.vmTraceLogger = txtrace.NewVmTraceLogger()
+		// Wrap activeState so OnStorageChange fires when storage is written.
+		setup.activeState = evmstore.WrapStateDbWithLogger(setup.activeState, setup.vmTraceLogger.Hooks())
+		// Merge VM level hooks into cfg.Tracer.
+		cfg.Tracer = mergeVMHooks(cfg.Tracer, setup.vmTraceLogger.Hooks())
+	}
+
 	setup.tracer = cfg.Tracer
 
 	timeout := defaultTraceTimeout
@@ -153,14 +162,14 @@ func (s *PublicTxTraceAPI) Transaction(ctx context.Context, hash common.Hash) (*
 }
 
 // Call - trace_call function returns transaction inner traces for non historical transactions.
-// Supports "trace" and "stateDiff" trace types, compatible with go-ethereum trace_call format.
+// Supports "trace", "stateDiff" and "vmTrace" trace types.
 func (s *PublicTxTraceAPI) Call(ctx context.Context, args TransactionArgs, traceTypes []string, blockNrOrHash rpc.BlockNumberOrHash, config *TraceCallConfig) (*txtrace.TraceCallResult, error) {
 
 	defer func(start time.Time) {
 		log.Debug("Executing trace_Call call finished", "txArgs", args, "runtime", time.Since(start))
 	}(time.Now())
 
-	wantTrace, wantStateDiff, err := containsTraceType(traceTypes)
+	traceOptions, err := parseTraceOptions(traceTypes)
 	if err != nil {
 		return nil, err
 	}
@@ -193,30 +202,103 @@ func (s *PublicTxTraceAPI) Call(ctx context.Context, args TransactionArgs, trace
 		return nil, err
 	}
 
-	return s.traceCallExec(ctx, block, msg, statedb, tx, uint64(txIndex), wantTrace, wantStateDiff)
+	return s.traceCallExec(ctx, block, msg, statedb, tx, uint64(txIndex), traceOptions)
 }
 
-// containsTraceType checks if the provided trace types include "trace" and/or "stateDiff" and returns corresponding booleans.
-func containsTraceType(traceTypes []string) (bool, bool, error) {
-	wantTrace := false
-	wantStateDiff := false
+type TraceOptions struct {
+	Trace     bool
+	StateDiff bool
+	VmTrace   bool
+}
+
+// parseTraceOptions parses the requested trace types and returns the corresponding booleans.
+func parseTraceOptions(traceTypes []string) (trace TraceOptions, err error) {
 	for _, traceType := range traceTypes {
 		switch traceType {
 		case TraceTypeTrace:
-			wantTrace = true
+			trace.Trace = true
 		case TraceTypeStateDiff:
-			wantStateDiff = true
+			trace.StateDiff = true
 		case TraceTypeVmTrace:
-			return false, false, fmt.Errorf("vmTrace trace type is not supported")
+			trace.VmTrace = true
 		default:
-			return false, false, fmt.Errorf("unrecognized trace type: %s", traceType)
+			return TraceOptions{}, fmt.Errorf("unrecognized trace type: %s", traceType)
 		}
 	}
-	return wantTrace, wantStateDiff, nil
+	return trace, nil
+}
+
+// mergeVMHooks returns a new Hooks that invokes 'orig' hook first, then 'newHooks' hook,
+// for each hook that 'newHooks' defines. Hooks only in 'orig' are preserved unchanged.
+// Either argument may be nil.
+func mergeVMHooks(orig, newHooks *tracing.Hooks) *tracing.Hooks {
+	if orig == nil {
+		return newHooks
+	}
+	if newHooks == nil {
+		return orig
+	}
+	merged := *orig // shallow copy, only overwrite fields that newHooks contributes
+
+	if newHooks.OnTxStart != nil {
+		origFn, newFn := orig.OnTxStart, newHooks.OnTxStart
+		merged.OnTxStart = func(vm *tracing.VMContext, tx *types.Transaction, from common.Address) {
+			if origFn != nil {
+				origFn(vm, tx, from)
+			}
+			newFn(vm, tx, from)
+		}
+	}
+	if newHooks.OnTxEnd != nil {
+		origFn, newFn := orig.OnTxEnd, newHooks.OnTxEnd
+		merged.OnTxEnd = func(receipt *types.Receipt, err error) {
+			if origFn != nil {
+				origFn(receipt, err)
+			}
+			newFn(receipt, err)
+		}
+	}
+	if newHooks.OnEnter != nil {
+		origFn, newFn := orig.OnEnter, newHooks.OnEnter
+		merged.OnEnter = func(depth int, typ byte, from, to common.Address, input []byte, gas uint64, value *big.Int) {
+			if origFn != nil {
+				origFn(depth, typ, from, to, input, gas, value)
+			}
+			newFn(depth, typ, from, to, input, gas, value)
+		}
+	}
+	if newHooks.OnExit != nil {
+		origFn, newFn := orig.OnExit, newHooks.OnExit
+		merged.OnExit = func(depth int, output []byte, gasUsed uint64, err error, reverted bool) {
+			if origFn != nil {
+				origFn(depth, output, gasUsed, err, reverted)
+			}
+			newFn(depth, output, gasUsed, err, reverted)
+		}
+	}
+	if newHooks.OnOpcode != nil {
+		origFn, newFn := orig.OnOpcode, newHooks.OnOpcode
+		merged.OnOpcode = func(pc uint64, op byte, gas, cost uint64, scope tracing.OpContext, rData []byte, depth int, err error) {
+			if origFn != nil {
+				origFn(pc, op, gas, cost, scope, rData, depth, err)
+			}
+			newFn(pc, op, gas, cost, scope, rData, depth, err)
+		}
+	}
+	if newHooks.OnFault != nil {
+		origFn, newFn := orig.OnFault, newHooks.OnFault
+		merged.OnFault = func(pc uint64, op byte, gas, cost uint64, scope tracing.OpContext, depth int, err error) {
+			if origFn != nil {
+				origFn(pc, op, gas, cost, scope, depth, err)
+			}
+			newFn(pc, op, gas, cost, scope, depth, err)
+		}
+	}
+	return &merged
 }
 
 // traceCallExec executes a simulated transaction and returns a TraceCallResult
-// containing optional trace actions and/or state diff based on the requested types.
+// containing optional trace actions, state diff, and/or vmTrace based on the requested types.
 func (s *PublicTxTraceAPI) traceCallExec(
 	ctx context.Context,
 	block *evmcore.EvmBlock,
@@ -224,10 +306,9 @@ func (s *PublicTxTraceAPI) traceCallExec(
 	statedb state.StateDB,
 	tx *types.Transaction,
 	index uint64,
-	wantTrace bool,
-	wantStateDiff bool,
+	traceOptions TraceOptions,
 ) (*txtrace.TraceCallResult, error) {
-	tracedEVM, cancel, err := setupTracedEVM(ctx, s.b, block, statedb, index, wantTrace, wantStateDiff, true)
+	tracedEVM, cancel, err := setupTracedEVM(ctx, s.b, block, statedb, index, traceOptions, true)
 	if err != nil {
 		return nil, err
 	}
@@ -244,14 +325,17 @@ func (s *PublicTxTraceAPI) traceCallExec(
 	tracedEVM.vmenv.SetTxContext(evmcore.NewEVMTxContext(msg))
 
 	// Execute the transaction using core.ApplyMessage to capture raw return data.
-	result, applyErr := core.ApplyMessage(tracedEVM.vmenv, msg, new(core.GasPool).AddGas(msg.GasLimit))
+	result, err := core.ApplyMessage(tracedEVM.vmenv, msg, new(core.GasPool).AddGas(msg.GasLimit))
+	if err != nil {
+		return nil, err
+	}
 
 	// Finalize the transaction state regardless of execution outcome.
 	tracedEVM.activeState.EndTransaction()
 
 	// Build a synthetic receipt and call OnTxEnd to finalize the trace.
 	var receipt *types.Receipt
-	if applyErr == nil && result != nil {
+	if result != nil {
 		if result.Failed() {
 			receipt = &types.Receipt{Status: types.ReceiptStatusFailed, GasUsed: result.UsedGas}
 		} else {
@@ -259,7 +343,7 @@ func (s *PublicTxTraceAPI) traceCallExec(
 		}
 	}
 	if tracedEVM.tracer != nil && tracedEVM.tracer.OnTxEnd != nil {
-		tracedEVM.tracer.OnTxEnd(receipt, applyErr)
+		tracedEVM.tracer.OnTxEnd(receipt, result.Err)
 	}
 
 	if tracedEVM.vmenv.Cancelled() {
@@ -268,25 +352,16 @@ func (s *PublicTxTraceAPI) traceCallExec(
 
 	callResult := &txtrace.TraceCallResult{VmTrace: nil}
 
-	if applyErr != nil {
-		// Pre-EVM error (e.g., insufficient gas for intrinsic cost, nonce mismatch).
-		errTrace := txtrace.GetErrorTraceFromMsg(msg, block.Hash, *block.Number, tx.Hash(), index, applyErr)
-		if wantTrace {
-			callResult.Trace = []txtrace.ActionTrace{*errTrace}
-		}
-		if wantStateDiff {
-			callResult.StateDiff = make(txtrace.StateDiff)
-		}
-		return callResult, nil
-	}
-
 	callResult.Output = hexutil.Bytes(result.ReturnData)
 
-	if wantTrace {
+	if traceOptions.Trace {
 		callResult.Trace = *tracedEVM.txTracer.GetResult()
 	}
-	if wantStateDiff {
+	if traceOptions.StateDiff {
 		callResult.StateDiff = tracedEVM.stateDiffLogger.GetResult()
+	}
+	if traceOptions.VmTrace {
+		callResult.VmTrace = tracedEVM.vmTraceLogger.GetResult()
 	}
 
 	return callResult, nil
@@ -478,7 +553,7 @@ func (s *PublicTxTraceAPI) traceTx(
 	index uint64,
 	status uint64,
 ) (*[]txtrace.ActionTrace, error) {
-	tracedEVM, cancel, err := setupTracedEVM(ctx, s.b, block, statedb, index, true, false, false)
+	tracedEVM, cancel, err := setupTracedEVM(ctx, s.b, block, statedb, index, TraceOptions{Trace: true}, false)
 	if err != nil {
 		return nil, err
 	}
@@ -573,10 +648,7 @@ func (s *PublicTxTraceAPI) CallMany(ctx context.Context, calls []CallRequest, bl
 
 	results := make([]*txtrace.TraceCallResult, 0, len(calls))
 	for i, call := range calls {
-		wantTrace := false
-		wantStateDiff := false
-
-		wantTrace, wantStateDiff, err = containsTraceType(call.TraceTypes)
+		traceOptions, err := parseTraceOptions(call.TraceTypes)
 		if err != nil {
 			return nil, fmt.Errorf("call %d: %w", i, err)
 		}
@@ -586,7 +658,7 @@ func (s *PublicTxTraceAPI) CallMany(ctx context.Context, calls []CallRequest, bl
 			return nil, fmt.Errorf("call %d: %w", i, err)
 		}
 
-		result, err := s.traceCallExec(ctx, block, msg, statedb, tx, uint64(i), wantTrace, wantStateDiff)
+		result, err := s.traceCallExec(ctx, block, msg, statedb, tx, uint64(i), traceOptions)
 		if err != nil {
 			return nil, fmt.Errorf("call %d: %w", i, err)
 		}
