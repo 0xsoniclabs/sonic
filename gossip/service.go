@@ -42,7 +42,8 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/rpc"
 
-	"github.com/0xsoniclabs/sonic/ethapi"
+	"github.com/0xsoniclabs/sonic/api"
+	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/eventcheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/basiccheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/epochcheck"
@@ -535,7 +536,7 @@ func (s *Service) Protocols() ([]p2p.Protocol, CleanupFunc) {
 
 // APIs returns api methods the service wants to expose on rpc channels.
 func (s *Service) APIs() []rpc.API {
-	apis := ethapi.GetAPIs(s.EthAPI)
+	apis := api.GetAPIs(s.EthAPI)
 
 	apis = append(apis, []rpc.API{
 		{
