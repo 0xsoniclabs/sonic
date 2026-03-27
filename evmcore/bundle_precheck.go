@@ -171,11 +171,15 @@ type NonceSource interface {
 
 // checkForNonceConflicts checks whether there are any nonce conflicts in the
 // execution of the bundle.
-// It returns a BundleState with Executable=false and a reason if there is a nonce conflict
-// that will never be resolved.
-// It returns a BundleState with Executable=false and TemporarilyBlocked=true if there is a nonce conflict that may
-// be resolved in the future.
-// It returns a BundleState with Executable=true if there are no nonce conflicts right now.
+//
+// It returns a BundleState with Executable=false and a reason if there is a
+// nonce conflict that will never be resolved.
+//
+// It returns a BundleState with Executable=false and TemporarilyBlocked=true
+// if there is a nonce conflict that may be resolved in the future.
+//
+// It returns a BundleState with Executable=true if there are no nonce conflicts
+// right now.
 func checkForNonceConflicts(
 	txBundle *bundle.TransactionBundle,
 	signer types.Signer,
