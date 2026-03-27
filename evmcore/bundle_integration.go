@@ -91,7 +91,7 @@ func (s *BundleIntegrationImplementation) isPending(tx *types.Transaction) bool 
 		stateDB:    s.state,
 	}
 	state := GetBundleState(&chain, tx)
-	return state.Executable
+	return state.Executable || state.TemporarilyBlocked
 }
 
 type preCheckChainAdapter struct {
