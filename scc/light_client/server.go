@@ -21,7 +21,7 @@ import (
 
 	"github.com/0xsoniclabs/carmen/go/carmen"
 	"github.com/0xsoniclabs/carmen/go/common/immutable"
-	"github.com/0xsoniclabs/sonic/ethapi"
+	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
