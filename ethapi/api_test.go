@@ -1677,3 +1677,200 @@ func TestCapMaxGas_IsUpgradesAware(t *testing.T) {
 		})
 	}
 }
+
+func TestTraceBlockByNumber_BlockFetchError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockBackend := NewMockBackend(ctrl)
+	mockBackend.EXPECT().BlockByNumber(gomock.Any(), gomock.Any()).Return(nil, errors.New("db error"))
+
+	api := NewPublicDebugAPI(mockBackend, 10000, 10000)
+	_, err := api.TraceBlockByNumber(context.Background(), rpc.BlockNumber(5), &tracers.TraceConfig{})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "db error")
+}
+
+func TestTraceBlockByNumber_BlockNotFound(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockBackend := NewMockBackend(ctrl)
+	mockBackend.EXPECT().BlockByNumber(gomock.Any(), gomock.Any()).Return(nil, nil)
+
+	api := NewPublicDebugAPI(mockBackend, 10000, 10000)
+	_, err := api.TraceBlockByNumber(context.Background(), rpc.BlockNumber(5), &tracers.TraceConfig{})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not found")
+}
+
+func TestTraceBlockByHash_BlockFetchError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockBackend := NewMockBackend(ctrl)
+	mockBackend.EXPECT().BlockByHash(gomock.Any(), gomock.Any()).Return(nil, errors.New("db error"))
+
+	api := NewPublicDebugAPI(mockBackend, 10000, 10000)
+	_, err := api.TraceBlockByHash(context.Background(), common.Hash{}, &tracers.TraceConfig{})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "db error")
+}
+
+func TestTraceBlockByHash_BlockNotFound(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockBackend := NewMockBackend(ctrl)
+	mockBackend.EXPECT().BlockByHash(gomock.Any(), gomock.Any()).Return(nil, nil)
+
+	api := NewPublicDebugAPI(mockBackend, 10000, 10000)
+	_, err := api.TraceBlockByHash(context.Background(), common.Hash{}, &tracers.TraceConfig{})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not found")
+}
+
+func TestTraceBlockByHash_Success(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	chainId := big.NewInt(1)
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	signedTx, err := types.SignTx(
+		types.NewTx(&types.LegacyTx{
+			To:    &common.Address{0x01},
+			Gas:   21000,
+			Nonce: 0,
+		}),
+		types.LatestSignerForChainID(chainId),
+		key,
+	)
+	require.NoError(t, err)
+
+	block := &evmcore.EvmBlock{
+		EvmHeader: evmcore.EvmHeader{
+			Number: big.NewInt(5),
+		},
+		Transactions: types.Transactions{signedTx},
+	}
+
+	chainConfig := &params.ChainConfig{
+		ChainID:     chainId,
+		LondonBlock: big.NewInt(0),
+	}
+
+	mockBackend := NewMockBackend(ctrl)
+	mockState := state.NewMockStateDB(ctrl)
+	any := gomock.Any()
+
+	mockBackend.EXPECT().BlockByHash(any, any).Return(block, nil)
+	mockBackend.EXPECT().StateAndBlockByNumberOrHash(any, any).Return(mockState, nil, nil)
+	mockBackend.EXPECT().ChainConfig(gomock.Any()).Return(chainConfig).AnyTimes()
+	mockBackend.EXPECT().GetNetworkRules(any, any).Return(&opera.Rules{}, nil).AnyTimes()
+	mockBackend.EXPECT().GetEVM(any, any, any, any, any).DoAndReturn(getEvmFunc(mockState)).AnyTimes()
+
+	mockState.EXPECT().GetBalance(any).Return(uint256.NewInt(1e18)).AnyTimes()
+	setExpectedStateCalls(mockState)
+
+	api := NewPublicDebugAPI(mockBackend, 10000, 10000)
+	results, err := api.TraceBlockByHash(context.Background(), common.Hash{0x01}, &tracers.TraceConfig{})
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+}
+
+func TestTraceBlock_GenesisBlock(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockBackend := NewMockBackend(ctrl)
+	genesisBlock := &evmcore.EvmBlock{
+		EvmHeader: evmcore.EvmHeader{
+			Number: big.NewInt(0),
+		},
+	}
+	mockBackend.EXPECT().BlockByNumber(gomock.Any(), gomock.Any()).Return(genesisBlock, nil)
+
+	api := NewPublicDebugAPI(mockBackend, 10000, 10000)
+	_, err := api.TraceBlockByNumber(context.Background(), rpc.BlockNumber(0), &tracers.TraceConfig{})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "genesis is not traceable")
+}
+
+func TestTraceBlock_StateError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockBackend := NewMockBackend(ctrl)
+	block := &evmcore.EvmBlock{
+		EvmHeader: evmcore.EvmHeader{
+			Number: big.NewInt(5),
+		},
+	}
+	mockBackend.EXPECT().BlockByNumber(gomock.Any(), gomock.Any()).Return(block, nil)
+	mockBackend.EXPECT().StateAndBlockByNumberOrHash(gomock.Any(), gomock.Any()).
+		Return(nil, nil, errors.New("state not available"))
+
+	api := NewPublicDebugAPI(mockBackend, 10000, 10000)
+	_, err := api.TraceBlockByNumber(context.Background(), rpc.BlockNumber(5), &tracers.TraceConfig{})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "state not available")
+}
+
+func TestTraceBlock_MaxResponseSize(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	chainId := big.NewInt(1)
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	signedTx, err := types.SignTx(
+		types.NewTx(&types.LegacyTx{
+			To:    &common.Address{0x01},
+			Gas:   21000,
+			Nonce: 0,
+		}),
+		types.LatestSignerForChainID(chainId),
+		key,
+	)
+	require.NoError(t, err)
+
+	// Use two identical transactions so that each trace succeeds within
+	// traceTx's per-trace limit, but the cumulative size in traceBlock
+	// exceeds the block-level limit after the first result.
+	block := &evmcore.EvmBlock{
+		EvmHeader: evmcore.EvmHeader{
+			Number: big.NewInt(5),
+		},
+		Transactions: types.Transactions{signedTx, signedTx},
+	}
+
+	chainConfig := &params.ChainConfig{
+		ChainID:     chainId,
+		LondonBlock: big.NewInt(0),
+	}
+
+	mockBackend := NewMockBackend(ctrl)
+	mockState := state.NewMockStateDB(ctrl)
+	any := gomock.Any()
+
+	mockBackend.EXPECT().BlockByNumber(any, any).Return(block, nil)
+	mockBackend.EXPECT().StateAndBlockByNumberOrHash(any, any).Return(mockState, nil, nil)
+	mockBackend.EXPECT().ChainConfig(gomock.Any()).Return(chainConfig).AnyTimes()
+	mockBackend.EXPECT().GetNetworkRules(any, any).Return(&opera.Rules{}, nil).AnyTimes()
+	mockBackend.EXPECT().GetEVM(any, any, any, any, any).DoAndReturn(getEvmFunc(mockState)).AnyTimes()
+
+	mockState.EXPECT().GetBalance(any).Return(uint256.NewInt(1e18)).AnyTimes()
+	setExpectedStateCalls(mockState)
+
+	// A single trace result is a JSON struct that is ~200+ bytes. Set
+	// the limit just above one result so the second result tips it over.
+	// Using a limit of 100 ensures a single trace passes traceTx's own
+	// per-trace check (the default struct tracer result is larger) but the
+	// cumulative total in traceBlock exceeds it after the first tx.
+	api := NewPublicDebugAPI(mockBackend, 100, 10000)
+	_, err = api.TraceBlockByNumber(context.Background(), rpc.BlockNumber(5), &tracers.TraceConfig{})
+	require.ErrorIs(t, err, ErrMaxResponseSize)
+}

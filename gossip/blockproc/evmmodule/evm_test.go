@@ -17,6 +17,7 @@
 package evmmodule
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -493,4 +494,178 @@ func (i logWithTxIndex) Matches(arg any) bool {
 
 func (i logWithTxIndex) String() string {
 	return fmt.Sprintf("Log with TxIndex: %s", i.txIndex.String())
+}
+
+func TestEVMModule_Start_UsesReaderForNonGenesisBlocks(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	stateDb := state.NewMockStateDB(ctrl)
+	reader := evmcore.NewMockDummyChain(ctrl)
+
+	parentHeader := &evmcore.EvmHeader{
+		Hash:    common.Hash{0x42},
+		BaseFee: big.NewInt(1000),
+	}
+	reader.EXPECT().Header(common.Hash{}, uint64(4)).Return(parentHeader)
+	stateDb.EXPECT().BeginBlock(uint64(5))
+
+	evmModule := New()
+	processor := evmModule.Start(
+		iblockproc.BlockCtx{Idx: 5},
+		stateDb,
+		reader,
+		nil,
+		opera.Rules{},
+		&params.ChainConfig{},
+		common.Hash{},
+	)
+
+	require.NotNil(t, processor)
+}
+
+func TestOperaEVMProcessor_evmBlockWith_PreLondon_SetsBaseFeeToNil(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	factory := NewMock_stateProcessorFactory(ctrl)
+	stateProcessor := NewMock_stateProcessor(ctrl)
+
+	factory.EXPECT().NewStateProcessor(gomock.Any(), gomock.Any(), gomock.Any()).Return(stateProcessor)
+
+	var capturedBlock *evmcore.EvmBlock
+	stateProcessor.EXPECT().Process(
+		gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(),
+	).DoAndReturn(func(
+		block *evmcore.EvmBlock, _ state.StateDB, _ interface{}, _ uint64, _ *uint64, _ func(*types.Log),
+	) evmcore.ProcessSummary {
+		capturedBlock = block
+		return evmcore.ProcessSummary{}
+	})
+
+	processor := &OperaEVMProcessor{
+		rules: opera.Rules{
+			Upgrades: opera.Upgrades{
+				London: false,
+				Sonic:  false,
+			},
+		},
+		processorFactory: factory,
+	}
+
+	processor.Execute(nil, math.MaxUint64)
+	require.Nil(t, capturedBlock.BaseFee)
+}
+
+func TestOperaEVMProcessor_evmBlockWith_Sonic_UsesGasBaseFeeAndPrevRandao(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	factory := NewMock_stateProcessorFactory(ctrl)
+	stateProcessor := NewMock_stateProcessor(ctrl)
+
+	factory.EXPECT().NewStateProcessor(gomock.Any(), gomock.Any(), gomock.Any()).Return(stateProcessor)
+
+	var capturedBlock *evmcore.EvmBlock
+	stateProcessor.EXPECT().Process(
+		gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(),
+	).DoAndReturn(func(
+		block *evmcore.EvmBlock, _ state.StateDB, _ interface{}, _ uint64, _ *uint64, _ func(*types.Log),
+	) evmcore.ProcessSummary {
+		capturedBlock = block
+		return evmcore.ProcessSummary{}
+	})
+
+	gasBaseFee := big.NewInt(7777)
+	prevRandao := common.Hash{0xAB, 0xCD}
+	processor := &OperaEVMProcessor{
+		rules: opera.Rules{
+			Economy: opera.EconomyRules{
+				MinGasPrice: big.NewInt(5000),
+			},
+			Upgrades: opera.Upgrades{
+				London: true,
+				Sonic:  true,
+			},
+		},
+		gasBaseFee:       gasBaseFee,
+		prevRandao:       prevRandao,
+		processorFactory: factory,
+	}
+
+	processor.Execute(nil, math.MaxUint64)
+	// With Sonic upgrade, baseFee should be gasBaseFee
+	require.Equal(t, gasBaseFee, capturedBlock.BaseFee)
+	// With Sonic upgrade, prevRandao should be set
+	require.Equal(t, prevRandao, capturedBlock.PrevRandao)
+	// With Sonic upgrade, withdrawals hash should be set
+	require.Equal(t, &types.EmptyWithdrawalsHash, capturedBlock.WithdrawalsHash)
+}
+
+func TestOperaEVMProcessor_evmBlockWith_LondonNotSonic_UsesMinGasPrice(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	factory := NewMock_stateProcessorFactory(ctrl)
+	stateProcessor := NewMock_stateProcessor(ctrl)
+
+	factory.EXPECT().NewStateProcessor(gomock.Any(), gomock.Any(), gomock.Any()).Return(stateProcessor)
+
+	var capturedBlock *evmcore.EvmBlock
+	stateProcessor.EXPECT().Process(
+		gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(),
+	).DoAndReturn(func(
+		block *evmcore.EvmBlock, _ state.StateDB, _ interface{}, _ uint64, _ *uint64, _ func(*types.Log),
+	) evmcore.ProcessSummary {
+		capturedBlock = block
+		return evmcore.ProcessSummary{}
+	})
+
+	minGasPrice := big.NewInt(5000)
+	processor := &OperaEVMProcessor{
+		rules: opera.Rules{
+			Economy: opera.EconomyRules{
+				MinGasPrice: minGasPrice,
+			},
+			Upgrades: opera.Upgrades{
+				London: true,
+				Sonic:  false,
+			},
+		},
+		gasBaseFee:       big.NewInt(9999),
+		processorFactory: factory,
+	}
+
+	processor.Execute(nil, math.MaxUint64)
+	// With London but not Sonic, baseFee should be MinGasPrice, not gasBaseFee
+	require.Equal(t, minGasPrice, capturedBlock.BaseFee)
+	// Without Sonic upgrade, prevRandao should be zero
+	require.Equal(t, common.Hash{}, capturedBlock.PrevRandao)
+	// Without Sonic upgrade, withdrawals hash should be nil
+	require.Nil(t, capturedBlock.WithdrawalsHash)
+}
+
+func TestOperaEVMProcessor_Finalize_LogsErrorFromSyncChannel(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		stateDb := state.NewMockStateDB(ctrl)
+
+		stateDb.EXPECT().BeginBlock(gomock.Any())
+		stateDb.EXPECT().GetStateHash()
+
+		syncChannel := make(chan error, 1)
+		syncChannel <- errors.New("db error")
+		stateDb.EXPECT().EndBlock(gomock.Any()).Return(syncChannel)
+
+		evmModule := New()
+		blockTime := time.Now().Add(-1*time.Hour + time.Second)
+		processor := evmModule.Start(
+			iblockproc.BlockCtx{
+				Time: inter.FromUnix(blockTime.Unix()),
+			},
+			stateDb, nil, nil, opera.Rules{}, &params.ChainConfig{}, common.Hash{},
+		)
+
+		finalizeDone := false
+		go func() {
+			_, _, _ = processor.Finalize()
+			finalizeDone = true
+		}()
+
+		synctest.Wait()
+		// The error path was exercised (logged), and Finalize still completed.
+		require.True(t, finalizeDone)
+	})
 }

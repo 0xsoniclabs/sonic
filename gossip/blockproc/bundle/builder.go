@@ -27,6 +27,13 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
+// functions that can be overridden in tests to inject errors.
+var (
+	generateKey  = crypto.GenerateKey
+	intrinsicGas = core.IntrinsicGas
+	floorDataGas = core.FloorDataGas
+)
+
 // This file offers utilities to build bundles from transaction data. The most
 // generic format is the NewBundle function, enabling the creation of an
 // envelope transaction carrying a bundle as follows:
@@ -245,17 +252,35 @@ func (b *builder) BuildEnvelopeBundleAndPlan() (
 	*TransactionBundle,
 	ExecutionPlan,
 ) {
+	envelope, bundle, plan, err := b.buildEnvelopeBundleAndPlan()
+	if err != nil {
+		panic(err)
+	}
+	return envelope, bundle, plan
+}
+
+func (b *builder) buildEnvelopeBundleAndPlan() (
+	*types.Transaction,
+	*TransactionBundle,
+	ExecutionPlan,
+	error,
+) {
 	// Build the bundle and wrap it in an envelope.
 	key := b.envelopeKey
 	if key == nil {
-		newKey, err := crypto.GenerateKey()
+		newKey, err := generateKey()
 		if err != nil {
-			panic(fmt.Sprintf("failed to generate new key: %v", err))
+			return nil, nil, ExecutionPlan{},
+				fmt.Errorf("failed to generate new key: %w", err)
 		}
 		key = newKey
 	}
 	bundle, plan := b.BuildBundleAndPlan()
-	return newEnvelope(key, bundle), bundle, plan
+	envelope, err := newEnvelope(key, bundle)
+	if err != nil {
+		return nil, nil, ExecutionPlan{}, err
+	}
+	return envelope, bundle, plan, nil
 }
 
 // BuildEnvelope returns an envelope transaction and its execution plan
@@ -286,11 +311,11 @@ func OneOf(signer types.Signer, steps ...BundleStep) *types.Transaction {
 func newEnvelope(
 	key *ecdsa.PrivateKey,
 	bundle *TransactionBundle,
-) *types.Transaction {
+) (*types.Transaction, error) {
 
 	payload := bundle.Encode()
 
-	intrinsic, err := core.IntrinsicGas(
+	intrinsic, err := intrinsicGas(
 		payload,
 		nil,   // access list is not used in the envelope transaction
 		nil,   // code auth is not used in the bundle transaction
@@ -300,12 +325,12 @@ func newEnvelope(
 		true,  // is shanghai
 	)
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("failed to compute intrinsic gas: %w", err)
 	}
 
-	floorDataGas, err := core.FloorDataGas(payload)
+	floorGas, err := floorDataGas(payload)
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("failed to compute floor data gas: %w", err)
 	}
 
 	txGasSum := uint64(0)
@@ -313,7 +338,7 @@ func newEnvelope(
 		txGasSum += tx.Gas()
 	}
 
-	gasLimit := max(intrinsic, floorDataGas, txGasSum)
+	gasLimit := max(intrinsic, floorGas, txGasSum)
 
 	chainId := big.NewInt(1)
 	if len(bundle.Transactions) > 0 {
@@ -326,5 +351,5 @@ func newEnvelope(
 		To:      &BundleProcessor,
 		Data:    payload,
 		Gas:     gasLimit,
-	})
+	}), nil
 }

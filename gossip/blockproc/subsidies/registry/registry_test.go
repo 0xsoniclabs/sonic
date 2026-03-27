@@ -19,9 +19,46 @@ package registry
 import (
 	"testing"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
 
 func TestGetCode_CodeIsNotEmpty(t *testing.T) {
 	require.NotEmpty(t, GetCode())
+}
+
+func TestGetCode_ReturnsCopy(t *testing.T) {
+	code1 := GetCode()
+	code2 := GetCode()
+	code1[0] = 0xff
+	require.NotEqual(t, code1[0], code2[0], "GetCode should return a copy")
+}
+
+func TestGetAddress_ReturnsNonZero(t *testing.T) {
+	addr := GetAddress()
+	require.NotEqual(t, (common.Address{}), addr)
+}
+
+func TestGetAddress_MatchesExpected(t *testing.T) {
+	expected := common.HexToAddress("0x7d0E23398b6CA0eC7Cdb5b5Aad7F1b11215012d2")
+	require.Equal(t, expected, GetAddress())
+}
+
+func TestFunctionSelectors_AreNonZero(t *testing.T) {
+	require.NotZero(t, GetGasConfigFunctionSelector)
+	require.NotZero(t, ChooseFundFunctionSelector)
+	require.NotZero(t, DeductFeesFunctionSelector)
+}
+
+func TestFunctionSelectors_AreDistinct(t *testing.T) {
+	selectors := []uint32{
+		GetGasConfigFunctionSelector,
+		ChooseFundFunctionSelector,
+		DeductFeesFunctionSelector,
+	}
+	seen := make(map[uint32]bool)
+	for _, s := range selectors {
+		require.False(t, seen[s], "duplicate function selector: %x", s)
+		seen[s] = true
+	}
 }

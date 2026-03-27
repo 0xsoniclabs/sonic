@@ -2447,3 +2447,442 @@ func TestTransactionGenerationUtilities(t *testing.T) {
 	require.False(t, subsidies.IsSponsorshipRequest(regular))
 	require.True(t, subsidies.IsSponsorshipRequest(request))
 }
+
+func applyTransactionWithEVMStateDbMock(ctrl *gomock.Controller) *state.MockStateDB {
+	stateDb := state.NewMockStateDB(ctrl)
+	any := gomock.Any()
+	stateDb.EXPECT().GetBalance(any).Return(uint256.NewInt(1e18)).AnyTimes()
+	stateDb.EXPECT().SubBalance(any, any, any).AnyTimes()
+	stateDb.EXPECT().AddBalance(any, any, any).AnyTimes()
+	stateDb.EXPECT().GetNonce(any).Return(uint64(0)).AnyTimes()
+	stateDb.EXPECT().SetNonce(any, any, any).AnyTimes()
+	stateDb.EXPECT().Prepare(any, any, any, any, any, any).AnyTimes()
+	stateDb.EXPECT().Snapshot().AnyTimes()
+	stateDb.EXPECT().Exist(any).Return(true).AnyTimes()
+	stateDb.EXPECT().GetCode(any).Return(nil).AnyTimes()
+	stateDb.EXPECT().GetCodeHash(any).Return(types.EmptyCodeHash).AnyTimes()
+	stateDb.EXPECT().GetStorageRoot(any).Return(types.EmptyRootHash).AnyTimes()
+	stateDb.EXPECT().SetCode(any, any, any).AnyTimes()
+	stateDb.EXPECT().CreateContract(any).AnyTimes()
+	stateDb.EXPECT().GetRefund().Return(uint64(0)).AnyTimes()
+	stateDb.EXPECT().EndTransaction().AnyTimes()
+	stateDb.EXPECT().GetLogs(any, any).Return(nil).AnyTimes()
+	stateDb.EXPECT().TxIndex().Return(0).AnyTimes()
+	return stateDb
+}
+
+func TestApplyTransactionWithEVM_SuccessfulTransfer(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	stateDb := applyTransactionWithEVMStateDbMock(ctrl)
+
+	target := common.Address{0x01}
+	tx := types.NewTx(&types.LegacyTx{
+		To:    &target,
+		Gas:   21_000,
+		Nonce: 0,
+	})
+	msg := &core.Message{
+		From:                  common.Address{0x02},
+		To:                    &target,
+		GasLimit:              21_000,
+		GasPrice:              big.NewInt(0),
+		GasFeeCap:             big.NewInt(0),
+		GasTipCap:             big.NewInt(0),
+		Value:                 big.NewInt(0),
+		SkipNonceChecks:       true,
+		SkipTransactionChecks: true,
+	}
+
+	blockCtx := vm.BlockContext{
+		CanTransfer: CanTransfer,
+		Transfer:    Transfer,
+	}
+	evm := vm.NewEVM(blockCtx, stateDb, &params.ChainConfig{}, vm.Config{
+		NoBaseFee: true,
+	})
+	gp := new(core.GasPool).AddGas(1_000_000)
+	usedGas := uint64(0)
+	blockNumber := big.NewInt(1)
+	blockHash := common.Hash{0x01}
+
+	receipt, err := ApplyTransactionWithEVM(
+		msg, &params.ChainConfig{}, gp, stateDb,
+		blockNumber, blockHash, tx, &usedGas, evm,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, receipt)
+	require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+	require.Equal(t, blockNumber, receipt.BlockNumber)
+	require.Equal(t, blockHash, receipt.BlockHash)
+}
+
+func TestApplyTransactionWithEVM_WithTracer(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	stateDb := applyTransactionWithEVMStateDbMock(ctrl)
+
+	target := common.Address{0x01}
+	tx := types.NewTx(&types.LegacyTx{
+		To:    &target,
+		Gas:   21_000,
+		Nonce: 0,
+	})
+	msg := &core.Message{
+		From:                  common.Address{0x02},
+		To:                    &target,
+		GasLimit:              21_000,
+		GasPrice:              big.NewInt(0),
+		GasFeeCap:             big.NewInt(0),
+		GasTipCap:             big.NewInt(0),
+		Value:                 big.NewInt(0),
+		SkipNonceChecks:       true,
+		SkipTransactionChecks: true,
+	}
+
+	txStartCalled := false
+	txEndCalled := false
+	tracer := &tracing.Hooks{
+		OnTxStart: func(_ *tracing.VMContext, _ *types.Transaction, _ common.Address) {
+			txStartCalled = true
+		},
+		OnTxEnd: func(_ *types.Receipt, _ error) {
+			txEndCalled = true
+		},
+	}
+
+	blockCtx := vm.BlockContext{
+		CanTransfer: CanTransfer,
+		Transfer:    Transfer,
+	}
+	evm := vm.NewEVM(blockCtx, stateDb, &params.ChainConfig{}, vm.Config{
+		Tracer:    tracer,
+		NoBaseFee: true,
+	})
+	gp := new(core.GasPool).AddGas(1_000_000)
+	usedGas := uint64(0)
+
+	receipt, err := ApplyTransactionWithEVM(
+		msg, &params.ChainConfig{}, gp, stateDb,
+		big.NewInt(1), common.Hash{}, tx, &usedGas, evm,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, receipt)
+	require.True(t, txStartCalled)
+	require.True(t, txEndCalled)
+	// With a tracer, logs and bloom should NOT be set
+	require.Nil(t, receipt.Logs)
+}
+
+func TestApplyTransactionWithEVM_ContractCreation(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	stateDb := applyTransactionWithEVMStateDbMock(ctrl)
+
+	sender := common.Address{0x02}
+
+	// A minimal contract creation: PUSH1 0 PUSH1 0 RETURN (returns empty code)
+	initCode := []byte{0x60, 0x00, 0x60, 0x00, 0xf3}
+
+	tx := types.NewTx(&types.LegacyTx{
+		To:    nil, // contract creation
+		Gas:   100_000,
+		Nonce: 0,
+		Data:  initCode,
+	})
+	msg := &core.Message{
+		From:                  sender,
+		To:                    nil, // contract creation
+		GasLimit:              100_000,
+		GasPrice:              big.NewInt(0),
+		GasFeeCap:             big.NewInt(0),
+		GasTipCap:             big.NewInt(0),
+		Value:                 big.NewInt(0),
+		Data:                  initCode,
+		SkipNonceChecks:       true,
+		SkipTransactionChecks: true,
+	}
+
+	blockCtx := vm.BlockContext{
+		CanTransfer: CanTransfer,
+		Transfer:    Transfer,
+	}
+	evm := vm.NewEVM(blockCtx, stateDb, &params.ChainConfig{}, vm.Config{
+		NoBaseFee: true,
+	})
+	gp := new(core.GasPool).AddGas(1_000_000)
+	usedGas := uint64(0)
+
+	receipt, err := ApplyTransactionWithEVM(
+		msg, &params.ChainConfig{}, gp, stateDb,
+		big.NewInt(1), common.Hash{}, tx, &usedGas, evm,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, receipt)
+	// Contract creation should set ContractAddress
+	require.NotEqual(t, common.Address{}, receipt.ContractAddress)
+	expected := crypto.CreateAddress(sender, 0)
+	require.Equal(t, expected, receipt.ContractAddress)
+}
+
+func TestApplyTransactionWithEVM_BlobHashesRejected(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	stateDb := state.NewMockStateDB(ctrl)
+
+	stateDb.EXPECT().EndTransaction()
+
+	tx := types.NewTx(&types.LegacyTx{
+		To:  &common.Address{0x01},
+		Gas: 21_000,
+	})
+	msg := &core.Message{
+		From:       common.Address{0x02},
+		To:         &common.Address{0x01},
+		GasLimit:   21_000,
+		GasPrice:   big.NewInt(0),
+		BlobHashes: []common.Hash{{0x01}},
+	}
+
+	evm := vm.NewEVM(vm.BlockContext{}, stateDb, &params.ChainConfig{}, vm.Config{})
+	gp := new(core.GasPool).AddGas(1_000_000)
+	usedGas := uint64(0)
+
+	receipt, err := ApplyTransactionWithEVM(
+		msg, &params.ChainConfig{}, gp, stateDb,
+		big.NewInt(1), common.Hash{}, tx, &usedGas, evm,
+	)
+	require.ErrorContains(t, err, "blob data is not supported")
+	require.Nil(t, receipt)
+}
+
+func TestApplyTransactionWithEVM_EmptyBlobHashes(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	stateDb := applyTransactionWithEVMStateDbMock(ctrl)
+
+	target := common.Address{0x01}
+	tx := types.NewTx(&types.LegacyTx{
+		To:    &target,
+		Gas:   21_000,
+		Nonce: 0,
+	})
+	msg := &core.Message{
+		From:                  common.Address{0x02},
+		To:                    &target,
+		GasLimit:              21_000,
+		GasPrice:              big.NewInt(0),
+		GasFeeCap:             big.NewInt(0),
+		GasTipCap:             big.NewInt(0),
+		Value:                 big.NewInt(0),
+		BlobHashes:            []common.Hash{}, // empty, should be cleared
+		SkipNonceChecks:       true,
+		SkipTransactionChecks: true,
+	}
+
+	blockCtx := vm.BlockContext{
+		CanTransfer: CanTransfer,
+		Transfer:    Transfer,
+	}
+	evm := vm.NewEVM(blockCtx, stateDb, &params.ChainConfig{}, vm.Config{
+		NoBaseFee: true,
+	})
+	gp := new(core.GasPool).AddGas(1_000_000)
+	usedGas := uint64(0)
+
+	receipt, err := ApplyTransactionWithEVM(
+		msg, &params.ChainConfig{}, gp, stateDb,
+		big.NewInt(1), common.Hash{}, tx, &usedGas, evm,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, receipt)
+}
+
+func TestApplyTransactionWithEVM_ApplyMessageError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	stateDb := applyTransactionWithEVMStateDbMock(ctrl)
+
+	target := common.Address{0x01}
+	// Gas too low to cover intrinsic cost (21000 for a simple transfer).
+	tx := types.NewTx(&types.LegacyTx{
+		To:    &target,
+		Gas:   100, // too low
+		Nonce: 0,
+	})
+	msg := &core.Message{
+		From:                  common.Address{0x02},
+		To:                    &target,
+		GasLimit:              100,
+		GasPrice:              big.NewInt(0),
+		GasFeeCap:             big.NewInt(0),
+		GasTipCap:             big.NewInt(0),
+		Value:                 big.NewInt(0),
+		SkipNonceChecks:       true,
+		SkipTransactionChecks: true,
+	}
+	blockCtx := vm.BlockContext{
+		CanTransfer: CanTransfer,
+		Transfer:    Transfer,
+	}
+	evm := vm.NewEVM(blockCtx, stateDb, &params.ChainConfig{}, vm.Config{
+		NoBaseFee: true,
+	})
+	gp := new(core.GasPool).AddGas(1_000_000)
+	usedGas := uint64(0)
+
+	receipt, err := ApplyTransactionWithEVM(
+		msg, &params.ChainConfig{}, gp, stateDb,
+		big.NewInt(1), common.Hash{}, tx, &usedGas, evm,
+	)
+	require.Error(t, err)
+	require.Nil(t, receipt)
+}
+
+func TestApplyTransactionWithEVM_FailedTransaction(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	// REVERT opcode: PUSH1 0 PUSH1 0 REVERT
+	revertCode := []byte{0x60, 0x00, 0x60, 0x00, 0xfd}
+	target := common.Address{0x01}
+	any := gomock.Any()
+
+	// Set up mock manually so GetCode for target returns revert bytecode.
+	stateDb := state.NewMockStateDB(ctrl)
+	stateDb.EXPECT().GetBalance(any).Return(uint256.NewInt(1e18)).AnyTimes()
+	stateDb.EXPECT().SubBalance(any, any, any).AnyTimes()
+	stateDb.EXPECT().AddBalance(any, any, any).AnyTimes()
+	stateDb.EXPECT().GetNonce(any).Return(uint64(0)).AnyTimes()
+	stateDb.EXPECT().SetNonce(any, any, any).AnyTimes()
+	stateDb.EXPECT().Prepare(any, any, any, any, any, any).AnyTimes()
+	stateDb.EXPECT().Snapshot().AnyTimes()
+	stateDb.EXPECT().RevertToSnapshot(any).AnyTimes()
+	stateDb.EXPECT().Exist(any).Return(true).AnyTimes()
+	stateDb.EXPECT().GetCode(target).Return(revertCode).AnyTimes()
+	stateDb.EXPECT().GetCodeHash(any).Return(common.BytesToHash(crypto.Keccak256(revertCode))).AnyTimes()
+	stateDb.EXPECT().GetStorageRoot(any).Return(types.EmptyRootHash).AnyTimes()
+	stateDb.EXPECT().SetCode(any, any, any).AnyTimes()
+	stateDb.EXPECT().CreateContract(any).AnyTimes()
+	stateDb.EXPECT().GetRefund().Return(uint64(0)).AnyTimes()
+	stateDb.EXPECT().EndTransaction().AnyTimes()
+	stateDb.EXPECT().GetLogs(any, any).Return(nil).AnyTimes()
+	stateDb.EXPECT().TxIndex().Return(0).AnyTimes()
+
+	tx := types.NewTx(&types.LegacyTx{
+		To:    &target,
+		Gas:   100_000,
+		Nonce: 0,
+	})
+	msg := &core.Message{
+		From:                  common.Address{0x02},
+		To:                    &target,
+		GasLimit:              100_000,
+		GasPrice:              big.NewInt(0),
+		GasFeeCap:             big.NewInt(0),
+		GasTipCap:             big.NewInt(0),
+		Value:                 big.NewInt(0),
+		SkipNonceChecks:       true,
+		SkipTransactionChecks: true,
+	}
+	blockCtx := vm.BlockContext{
+		CanTransfer: CanTransfer,
+		Transfer:    Transfer,
+	}
+	evm := vm.NewEVM(blockCtx, stateDb, &params.ChainConfig{}, vm.Config{
+		NoBaseFee: true,
+	})
+	gp := new(core.GasPool).AddGas(1_000_000)
+	usedGas := uint64(0)
+
+	receipt, err := ApplyTransactionWithEVM(
+		msg, &params.ChainConfig{}, gp, stateDb,
+		big.NewInt(1), common.Hash{}, tx, &usedGas, evm,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, receipt)
+	require.Equal(t, types.ReceiptStatusFailed, receipt.Status)
+}
+
+func TestApplyTransactionWithEVM_BlobTxReceipt(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	stateDb := applyTransactionWithEVMStateDbMock(ctrl)
+
+	target := common.Address{0x01}
+	tx := types.NewTx(&types.BlobTx{
+		To:  target,
+		Gas: 21_000,
+	})
+	msg := &core.Message{
+		From:                  common.Address{0x02},
+		To:                    &target,
+		GasLimit:              21_000,
+		GasPrice:              big.NewInt(0),
+		GasFeeCap:             big.NewInt(0),
+		GasTipCap:             big.NewInt(0),
+		Value:                 big.NewInt(0),
+		BlobHashes:            []common.Hash{}, // empty, will be cleared
+		SkipNonceChecks:       true,
+		SkipTransactionChecks: true,
+	}
+	blobBaseFee := big.NewInt(42)
+	blockCtx := vm.BlockContext{
+		CanTransfer: CanTransfer,
+		Transfer:    Transfer,
+		BlobBaseFee: blobBaseFee,
+	}
+	evm := vm.NewEVM(blockCtx, stateDb, &params.ChainConfig{}, vm.Config{
+		NoBaseFee: true,
+	})
+	gp := new(core.GasPool).AddGas(1_000_000)
+	usedGas := uint64(0)
+
+	receipt, err := ApplyTransactionWithEVM(
+		msg, &params.ChainConfig{}, gp, stateDb,
+		big.NewInt(1), common.Hash{}, tx, &usedGas, evm,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, receipt)
+	require.Equal(t, uint8(types.BlobTxType), receipt.Type)
+	require.Equal(t, blobBaseFee, receipt.BlobGasPrice)
+}
+
+func TestApplyTransaction_ContractCreation(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	stateDb := applyTransactionWithEVMStateDbMock(ctrl)
+
+	sender := common.Address{0x02}
+	// PUSH1 0 PUSH1 0 RETURN (returns empty code)
+	initCode := []byte{0x60, 0x00, 0x60, 0x00, 0xf3}
+	tx := types.NewTx(&types.LegacyTx{
+		To:    nil, // contract creation
+		Gas:   100_000,
+		Nonce: 0,
+		Data:  initCode,
+	})
+	msg := &core.Message{
+		From:                  sender,
+		To:                    nil,
+		GasLimit:              100_000,
+		GasPrice:              big.NewInt(0),
+		GasFeeCap:             big.NewInt(0),
+		GasTipCap:             big.NewInt(0),
+		Value:                 big.NewInt(0),
+		Data:                  initCode,
+		SkipNonceChecks:       true,
+		SkipTransactionChecks: true,
+	}
+	blockCtx := vm.BlockContext{
+		CanTransfer: CanTransfer,
+		Transfer:    Transfer,
+	}
+	evm := vm.NewEVM(blockCtx, stateDb, &params.ChainConfig{}, vm.Config{
+		NoBaseFee: true,
+	})
+	gp := new(core.GasPool).AddGas(1_000_000)
+	usedGas := uint64(0)
+
+	receipt, gasUsed, err := applyTransaction(
+		msg, gp, stateDb, big.NewInt(1), tx, &usedGas, evm, nil,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, receipt)
+	require.NotZero(t, gasUsed)
+	// Contract creation should set ContractAddress
+	require.NotEqual(t, common.Address{}, receipt.ContractAddress)
+	expected := crypto.CreateAddress(sender, 0)
+	require.Equal(t, expected, receipt.ContractAddress)
+}
