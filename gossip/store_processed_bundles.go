@@ -62,6 +62,12 @@ func (s *Store) AddProcessedBundles(blockNum uint64, executedBundles []bundle.Ex
 	s.processedBundleMutex.Lock()
 	defer s.processedBundleMutex.Unlock()
 
+	for _, info := range executedBundles {
+		if info.BlockNum != blockNum {
+			s.Log.Crit("invalid block number in execution info", "expected", blockNum, "got", info.BlockNum)
+		}
+	}
+
 	// Register and index new hashes.
 	table := s.table.ProcessedBundles
 	batch := table.NewBatch()
