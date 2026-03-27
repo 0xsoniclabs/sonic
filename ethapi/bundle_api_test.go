@@ -129,7 +129,7 @@ func TestBundleRPC_JsonIsEthereumConformant(t *testing.T) {
 				"data":"0x010203"
 			}
 		],
-		"plan": {
+		"executionPlan": {
 		  "flags": 3,
 		  "steps": [
 			{
@@ -142,8 +142,8 @@ func TestBundleRPC_JsonIsEthereumConformant(t *testing.T) {
 		}
 	}`,
 		RPCPreparedBundle{
-			Transactions: []TransactionArgs{transacton},
-			Plan:         plan,
+			Transactions:  []TransactionArgs{transacton},
+			ExecutionPlan: plan,
 		})
 
 }
