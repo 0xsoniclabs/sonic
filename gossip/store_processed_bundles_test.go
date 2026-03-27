@@ -56,117 +56,31 @@ type dbIterator interface {
 
 var _ dbIterator // to avoid dbIterator unused warning.
 
-func TestStore_HasBundleRecentlyBeenProcessed_TracksAddedBundleHashes(t *testing.T) {
-	require := require.New(t)
-	store, err := NewMemStore(t)
-	require.NoError(err)
+//TODO: add tests that add multiple bundles in the same block,
+// 		and that also deletes multiple bundles.
 
-	hash1 := common.Hash{1, 2, 3}
-	hash2 := common.Hash{4, 5, 6}
-	hash3 := common.Hash{7, 8, 9}
+func TestStore_HasBundleRecentlyBeenProcessed_Returns(t *testing.T) {
 
-	isRecentlyProcessed := func(hash common.Hash) bool {
-		return store.HasBundleRecentlyBeenProcessed(hash)
-	}
-	// initially there are no recently processed bundles
-	require.False(isRecentlyProcessed(hash1))
-	require.False(isRecentlyProcessed(hash2))
-	require.False(isRecentlyProcessed(hash3))
-
-	store.AddProcessedBundles(1, []bundle.ExecutionInfo{wrapInfo(hash1)})
-	require.True(isRecentlyProcessed(hash1))
-	require.False(isRecentlyProcessed(hash2))
-	require.False(isRecentlyProcessed(hash3))
-
-	store.AddProcessedBundles(2, []bundle.ExecutionInfo{wrapInfo(hash2), wrapInfo(hash3)})
-	require.True(isRecentlyProcessed(hash1))
-	require.True(isRecentlyProcessed(hash2))
-	require.True(isRecentlyProcessed(hash3))
-}
-
-func TestStore_HasBundleRecentlyBeenProcessed_CleansUpOldBundleHashes(t *testing.T) {
-	require := require.New(t)
-	store, err := NewMemStore(t)
-	require.NoError(err)
-
-	hash1 := common.Hash{1, 2, 3}
-	hash2 := common.Hash{4, 5, 6}
-	hash3 := common.Hash{7, 8, 9}
-	hash4 := common.Hash{10, 11, 12}
-	hash5 := common.Hash{13, 14, 15}
-
-	isRecentlyProcessed := func(hash common.Hash) bool {
-		return store.HasBundleRecentlyBeenProcessed(hash)
+	cases := map[string]struct {
+		hash []byte
+	}{
+		"bundle found ": {
+			hash: []byte{1, 2, 3, 4},
+		},
+		"bundle not found ": {
+			hash: nil,
+		},
 	}
 
-	// initially there are no recently processed bundles
-	require.False(isRecentlyProcessed(hash1))
-	require.False(isRecentlyProcessed(hash2))
-	require.False(isRecentlyProcessed(hash3))
-	require.False(isRecentlyProcessed(hash4))
-	require.False(isRecentlyProcessed(hash5))
-
-	// add hash1 in block 1.
-	store.AddProcessedBundles(1, []bundle.ExecutionInfo{wrapInfo(hash1)})
-
-	require.True(isRecentlyProcessed(hash1))
-	require.False(isRecentlyProcessed(hash2))
-	require.False(isRecentlyProcessed(hash3))
-	require.False(isRecentlyProcessed(hash4))
-	require.False(isRecentlyProcessed(hash5))
-
-	// add hash2 in block 2.
-	store.AddProcessedBundles(2, []bundle.ExecutionInfo{wrapInfo(hash2)})
-
-	require.True(isRecentlyProcessed(hash1))
-	require.True(isRecentlyProcessed(hash2))
-	require.False(isRecentlyProcessed(hash3))
-	require.False(isRecentlyProcessed(hash4))
-	require.False(isRecentlyProcessed(hash5))
-
-	// add hash3 in block 1 + bundle.MaxBlockRange/2,
-	// so hash1 is still recent but will be cleaned up in the next step.
-	store.AddProcessedBundles(1+bundle.MaxBlockRange/2,
-		[]bundle.ExecutionInfo{wrapInfo(hash3)})
-
-	require.True(isRecentlyProcessed(hash1))
-	require.True(isRecentlyProcessed(hash2))
-	require.True(isRecentlyProcessed(hash3))
-	require.False(isRecentlyProcessed(hash4))
-	require.False(isRecentlyProcessed(hash5))
-
-	// add hash4 in block bundle.MaxBlockRange,
-	// just before hash1 is considered too old
-	store.AddProcessedBundles(bundle.MaxBlockRange,
-		[]bundle.ExecutionInfo{wrapInfo(hash4)})
-
-	require.False(isRecentlyProcessed(hash1))
-	require.True(isRecentlyProcessed(hash2))
-	require.True(isRecentlyProcessed(hash3))
-	require.True(isRecentlyProcessed(hash4))
-	require.False(isRecentlyProcessed(hash5))
-
-	// add hash5 in block 1 + bundle.MaxBlockRange + 1,
-	// so hash1 is now too old and should be cleaned up,
-	store.AddProcessedBundles(1+bundle.MaxBlockRange,
-		[]bundle.ExecutionInfo{wrapInfo(hash5)})
-
-	require.False(isRecentlyProcessed(hash1))
-	require.False(isRecentlyProcessed(hash2))
-	require.True(isRecentlyProcessed(hash3))
-	require.True(isRecentlyProcessed(hash4))
-	require.True(isRecentlyProcessed(hash5))
-
-	// add an no execution plan in block 1 + 2*bundle.MaxBlockRange,
-	// which should clean up all remaining recent bundles
-	store.AddProcessedBundles(1+2*bundle.MaxBlockRange,
-		[]bundle.ExecutionInfo{})
-
-	require.False(isRecentlyProcessed(hash1))
-	require.False(isRecentlyProcessed(hash2))
-	require.False(isRecentlyProcessed(hash3))
-	require.False(isRecentlyProcessed(hash4))
-	require.False(isRecentlyProcessed(hash5))
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			store, table, _, _, _ := storeTableLogMocks(t)
+			hash := common.Hash{1, 2, 3}
+			table.EXPECT().Get(getEntryKey(hash)).Return(c.hash, nil)
+			got := store.HasBundleRecentlyBeenProcessed(hash)
+			require.Equal(t, c.hash != nil, got)
+		})
+	}
 }
 
 func TestStore_HasBundleRecentlyBeenProcessed_LogsOnGetError(t *testing.T) {
@@ -214,35 +128,89 @@ func TestStore_GetBundleExecutionInfo_ReturnsInfoForAddedBundleHashes(t *testing
 	store, err := NewMemStore(t)
 	require.NoError(err)
 
-	hash1 := common.Hash{1, 2, 3}
-	hash2 := common.Hash{4, 5, 6}
-
-	info1 := bundle.ExecutionInfo{
-		ExecutionPlanHash: hash1,
-		BlockNum:          1,
-		Position:          0,
-		Count:             1,
+	// Prepare a set of bundles across multiple blocks
+	hashes := []common.Hash{
+		{1, 2, 3},    // 0: first in history, first in block 1
+		{4, 5, 6},    // 1: middle in block 1
+		{7, 8, 9},    // 2: last in block 1
+		{10, 11, 12}, // 3: first in block 512
+		{13, 14, 15}, // 4: middle in block 512
+		{16, 17, 18}, // 5: last in block 512
+		{19, 20, 21}, // 6: first in last block of history
+		{22, 23, 24}, // 7: middle in last block of history
+		{25, 26, 27}, // 8: last in last block of history
 	}
-	info2 := bundle.ExecutionInfo{
-		ExecutionPlanHash: hash2,
-		BlockNum:          2,
-		Position:          1,
-		Count:             2,
+	infos := []bundle.ExecutionInfo{
+		{ExecutionPlanHash: hashes[0], BlockNum: 1, Position: 0, Count: 1},
+		{ExecutionPlanHash: hashes[1], BlockNum: 1, Position: 1, Count: 1},
+		{ExecutionPlanHash: hashes[2], BlockNum: 1, Position: 2, Count: 1},
+		{ExecutionPlanHash: hashes[3], BlockNum: 512, Position: 0, Count: 1},
+		{ExecutionPlanHash: hashes[4], BlockNum: 512, Position: 1, Count: 1},
+		{ExecutionPlanHash: hashes[5], BlockNum: 512, Position: 2, Count: 1},
+		{ExecutionPlanHash: hashes[6], BlockNum: 1023, Position: 0, Count: 1},
+		{ExecutionPlanHash: hashes[7], BlockNum: 1023, Position: 1, Count: 1},
+		{ExecutionPlanHash: hashes[8], BlockNum: 1023, Position: 2, Count: 1},
+	}
+	// Add all bundles to store
+	store.AddProcessedBundles(1, infos[:3])
+	store.AddProcessedBundles(512, infos[3:6])
+	store.AddProcessedBundles(1023, infos[6:])
+
+	type testCase struct {
+		hash     common.Hash
+		expected *bundle.ExecutionInfo
+	}
+	tests := map[string]testCase{
+		"not found (unknown hash)": {
+			hash:     common.Hash{99, 99, 99},
+			expected: nil,
+		},
+		"first in first block": {
+			hash:     hashes[0],
+			expected: &infos[0],
+		},
+		"middle in first block ": {
+			hash:     hashes[1],
+			expected: &infos[1],
+		},
+		"last in first block": {
+			hash:     hashes[2],
+			expected: &infos[2],
+		},
+		"first in middle block": {
+			hash:     hashes[3],
+			expected: &infos[3],
+		},
+		"middle in middle block": {
+			hash:     hashes[4],
+			expected: &infos[4],
+		},
+		"last in middle block": {
+			hash:     hashes[5],
+			expected: &infos[5],
+		},
+		"first in last block": {
+			hash:     hashes[6],
+			expected: &infos[6],
+		},
+		"middle in last block": {
+			hash:     hashes[7],
+			expected: &infos[7],
+		},
+		"last in last block": {
+			hash:     hashes[8],
+			expected: &infos[8],
+		},
 	}
 
-	// initially there is no info for unknown hashes
-	info := store.GetBundleExecutionInfo(hash1)
-	require.Nil(info)
-	info = store.GetBundleExecutionInfo(hash2)
-	require.Nil(info)
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			info := store.GetBundleExecutionInfo(tc.hash)
 
-	store.AddProcessedBundles(1, []bundle.ExecutionInfo{info1, info2})
+			require.Equal(tc.expected, info)
 
-	resInfo1 := store.GetBundleExecutionInfo(hash1)
-	require.Equal(info1, *resInfo1)
-
-	resInfo2 := store.GetBundleExecutionInfo(hash2)
-	require.Equal(info2, *resInfo2)
+		})
+	}
 }
 
 func TestStore_ProcessedBundles_TableIsInitiallyEmpty(t *testing.T) {
@@ -265,28 +233,41 @@ func TestStore_ProcessedBundles_TableIsInitiallyEmpty(t *testing.T) {
 
 func TestStore_ProcessedBundles_UpdatesHistoryHash(t *testing.T) {
 	require := require.New(t)
-	store, err := NewMemStore(t)
-	require.NoError(err)
-
-	_, initialHash := store.GetProcessedBundleHistoryHash()
 
 	hash1 := common.Hash{1, 2, 3}
-	store.AddProcessedBundles(1, []bundle.ExecutionInfo{wrapInfo(hash1)})
-
-	historyHash1 := updateHistoryHash(1, initialHash, hash1, common.Hash{})
-
-	_, hashAfterFirstAdd := store.GetProcessedBundleHistoryHash()
-	require.NotEqual(initialHash, hashAfterFirstAdd)
-	require.Equal(historyHash1, hashAfterFirstAdd)
-
 	hash2 := common.Hash{4, 5, 6}
-	store.AddProcessedBundles(2, []bundle.ExecutionInfo{wrapInfo(hash2)})
+	hash3 := common.Hash{7, 8, 9}
 
-	historyHash2 := updateHistoryHash(2, historyHash1, hash2, common.Hash{})
+	cases := map[string]struct {
+		bundles []bundle.ExecutionInfo
+	}{
+		"empty block": {
+			bundles: []bundle.ExecutionInfo{},
+		},
+		"single new bundle": {
+			bundles: []bundle.ExecutionInfo{wrapInfo(hash1)},
+		},
+		"multiple new bundles": {
+			bundles: []bundle.ExecutionInfo{wrapInfo(hash2), wrapInfo(hash3)},
+		},
+	}
 
-	_, hashAfterSecondAdd := store.GetProcessedBundleHistoryHash()
-	require.NotEqual(hashAfterFirstAdd, hashAfterSecondAdd)
-	require.Equal(historyHash2, hashAfterSecondAdd)
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			store, err := NewMemStore(t)
+			require.NoError(err)
+			_, initialHash := store.GetProcessedBundleHistoryHash()
+
+			store.AddProcessedBundles(1, tc.bundles)
+			addedHash := common.Hash{}
+			for _, info := range tc.bundles {
+				addedHash = xorHash(addedHash, info.ExecutionPlanHash)
+			}
+			expectedHash := updateHistoryHash(1, initialHash, addedHash, common.Hash{})
+			_, gotHash := store.GetProcessedBundleHistoryHash()
+			require.Equal(expectedHash, gotHash)
+		})
+	}
 }
 
 func TestStore_ProcessedBundles_CommutativityOfAddedBundles(t *testing.T) {
@@ -322,27 +303,43 @@ func TestStore_ProcessedBundles_OldHashAffectsNewHash(t *testing.T) {
 	store2, err := NewMemStore(t)
 	require.NoError(err)
 
-	_, hashA0 := store1.GetProcessedBundleHistoryHash()
-	_, hashB0 := store2.GetProcessedBundleHistoryHash()
-	require.Equal(hashA0, hashB0)
+	getHistoryHashes := func() (common.Hash, common.Hash) {
+		_, hashA := store1.GetProcessedBundleHistoryHash()
+		_, hashB := store2.GetProcessedBundleHistoryHash()
+		return hashA, hashB
+	}
+
+	addBundlesInBlock := func(hashA, hashB common.Hash, blockNum uint64) {
+		store1.AddProcessedBundles(blockNum, []bundle.ExecutionInfo{wrapInfo(hashA)})
+		store2.AddProcessedBundles(blockNum, []bundle.ExecutionInfo{wrapInfo(hashB)})
+	}
 
 	hash1 := common.Hash{1, 2, 3}
 	hash2 := common.Hash{4, 5, 6}
 	hash3 := common.Hash{7, 8, 9}
+	hash4 := common.Hash{10, 11, 12}
 
-	store1.AddProcessedBundles(1, []bundle.ExecutionInfo{wrapInfo(hash1)})
-	store2.AddProcessedBundles(1, []bundle.ExecutionInfo{wrapInfo(hash2)})
+	// initially, both stores have the same hash (zero)
+	hashA0, hashB0 := getHistoryHashes()
+	require.Equal(hashA0, hashB0)
+	require.Zero(hashA0)
 
-	_, hashA := store1.GetProcessedBundleHistoryHash()
-	_, hashB := store2.GetProcessedBundleHistoryHash()
-	require.NotEqual(hashA, hashB)
+	// adding two different bundles, changes the hash in both stores
+	addBundlesInBlock(hash1, hash2, 1)
+	hash1A, hash1B := getHistoryHashes()
+	require.NotEqual(hash1A, hash1B)
 
-	store1.AddProcessedBundles(2, []bundle.ExecutionInfo{wrapInfo(hash3)})
-	store2.AddProcessedBundles(2, []bundle.ExecutionInfo{wrapInfo(hash3)})
+	// adding the same bundle in both stores must produce different new hashes
+	addBundlesInBlock(hash3, hash3, 2)
+	hash2A, hash2B := getHistoryHashes()
+	require.NotEqual(hash2A, hash2B)
 
-	_, hashA2 := store1.GetProcessedBundleHistoryHash()
-	_, hashB2 := store2.GetProcessedBundleHistoryHash()
-	require.NotEqual(hashA2, hashB2)
+	// adding the same bundle in both stores with a gapped history functions
+	// normally since the block number does not affect the generation of the
+	// history hash (except for being inside the execution plans)
+	addBundlesInBlock(hash4, hash4, 5)
+	hash3A, hash3B := getHistoryHashes()
+	require.NotEqual(hash3A, hash3B)
 }
 
 func TestStore_ProcessedBundles_StoredHashUsesXorForAddedAndDeletedHashes(t *testing.T) {
@@ -861,6 +858,8 @@ func TestStore_computeNewBundleStateHash_ReturnsExpectedHash(t *testing.T) {
 		return out
 	}
 
+	maxHash := common.HexToHash("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
+
 	testVectors := []struct {
 		name        string
 		oldHash     common.Hash
@@ -870,14 +869,6 @@ func TestStore_computeNewBundleStateHash_ReturnsExpectedHash(t *testing.T) {
 		expected    common.Hash
 	}{
 		{
-			name:        "all zeros",
-			oldHash:     common.Hash{},
-			addedHash:   common.Hash{},
-			deletedHash: common.Hash{},
-			blockNum:    0,
-			expected:    common.HexToHash("c24cd7564e291016870aca25c634ca9ab560c07c935b6c0fe3b559cbd3de7501"),
-		},
-		{
 			name:        "simple nonzero",
 			oldHash:     common.Hash{1, 2, 3},
 			addedHash:   common.Hash{4, 5, 6},
@@ -886,12 +877,143 @@ func TestStore_computeNewBundleStateHash_ReturnsExpectedHash(t *testing.T) {
 			expected:    common.HexToHash("21f799a0c47f7c86bfe025aaa725d5a855e05340f257d200eae6fa3a3f5d1319"),
 		},
 		{
-			name:        "max blockNum",
+			name:        "max blockNum with partial hashes",
 			oldHash:     common.Hash{0xff, 0xff, 0xff},
 			addedHash:   common.Hash{0xaa, 0xbb, 0xcc},
 			deletedHash: common.Hash{0x11, 0x22, 0x33},
 			blockNum:    math.MaxUint64,
 			expected:    common.HexToHash("c442b47e6caf1856c00f46452c45b3f669b9c45f47da9c7bf54cc32e408e9442"),
+		},
+		// boundary combinations for all 4 arguments:
+		// oldHash ∈ {zero, max}, addedHash ∈ {zero, max},
+		// deletedHash ∈ {zero, max}, blockNum ∈ {0, MaxUint64}
+		{
+			name:        "zero old/zero added/zero deleted/block 0",
+			oldHash:     common.Hash{},
+			addedHash:   common.Hash{},
+			deletedHash: common.Hash{},
+			blockNum:    0,
+			expected:    common.HexToHash("c24cd7564e291016870aca25c634ca9ab560c07c935b6c0fe3b559cbd3de7501"),
+		},
+		{
+			name:        "zero old/zero added/zero deleted/block MaxUint64",
+			oldHash:     common.Hash{},
+			addedHash:   common.Hash{},
+			deletedHash: common.Hash{},
+			blockNum:    math.MaxUint64,
+			expected:    common.HexToHash("97f8c018064c92ea8e301b3471d72fbd5bf64a1010177a501217d2a0dbc3db2c"),
+		},
+		{
+			name:        "zero old/zero added/max deleted/block 0",
+			oldHash:     common.Hash{},
+			addedHash:   common.Hash{},
+			deletedHash: maxHash,
+			blockNum:    0,
+			expected:    common.HexToHash("d86bbd28676a47f4fda0c0ec2aaf4580b8b33279ac68ed6efbccafd8d3f6d618"),
+		},
+		{
+			name:        "zero old/zero added/max deleted/block MaxUint64",
+			oldHash:     common.Hash{},
+			addedHash:   common.Hash{},
+			deletedHash: maxHash,
+			blockNum:    math.MaxUint64,
+			expected:    common.HexToHash("5519d66efd0a6beebf0d0134765aa08d331290512b0d52307f51b704fbb6cc8e"),
+		},
+		{
+			name:        "zero old/max added/zero deleted/block 0",
+			oldHash:     common.Hash{},
+			addedHash:   maxHash,
+			deletedHash: common.Hash{},
+			blockNum:    0,
+			expected:    common.HexToHash("2c276e098f7820ee7ecfec620af959c2a063bc71182a4e4635d45a403dae22e3"),
+		},
+		{
+			name:        "zero old/max added/zero deleted/block MaxUint64",
+			oldHash:     common.Hash{},
+			addedHash:   maxHash,
+			deletedHash: common.Hash{},
+			blockNum:    math.MaxUint64,
+			expected:    common.HexToHash("3ccdc0bf9d2e0f935e492c67c55f12b6b2a4ed153fab4141cbb8df6bb169e4e1"),
+		},
+		{
+			name:        "zero old/max added/max deleted/block 0",
+			oldHash:     common.Hash{},
+			addedHash:   maxHash,
+			deletedHash: maxHash,
+			blockNum:    0,
+			expected:    common.HexToHash("6347c09da836b1eda790b7aa02f8d3980275ea13024895d577278b21b4b638d7"),
+		},
+		{
+			name:        "zero old/max added/max deleted/block MaxUint64",
+			oldHash:     common.Hash{},
+			addedHash:   maxHash,
+			deletedHash: maxHash,
+			blockNum:    math.MaxUint64,
+			expected:    common.HexToHash("c1c86de3919ae101a05ad4219678e11fa091540ce43af93f6c722dbad000a4ea"),
+		},
+		{
+			name:        "max old/zero added/zero deleted/block 0",
+			oldHash:     maxHash,
+			addedHash:   common.Hash{},
+			deletedHash: common.Hash{},
+			blockNum:    0,
+			expected:    common.HexToHash("4fe4f246f8e04f6494a0648571b7b057624ab09f8b2f751c59161c0c8b5dfe03"),
+		},
+		{
+			name:        "max old/zero added/zero deleted/block MaxUint64",
+			oldHash:     maxHash,
+			addedHash:   common.Hash{},
+			deletedHash: common.Hash{},
+			blockNum:    math.MaxUint64,
+			expected:    common.HexToHash("6c473281e8d189b24564dcb924e0db10a602bb8bc23a86c90cbbe28c225a9cb0"),
+		},
+		{
+			name:        "max old/zero added/max deleted/block 0",
+			oldHash:     maxHash,
+			addedHash:   common.Hash{},
+			deletedHash: maxHash,
+			blockNum:    0,
+			expected:    common.HexToHash("6625b8e7e659bae4cd23cf01ca44bf63b5277836e6341532569075145cf962ff"),
+		},
+		{
+			name:        "max old/zero added/max deleted/block MaxUint64",
+			oldHash:     maxHash,
+			addedHash:   common.Hash{},
+			deletedHash: maxHash,
+			blockNum:    math.MaxUint64,
+			expected:    common.HexToHash("969c7a033aade2edae801a75d418bb936a2a8c680e88fd46a7c90c1a8ac1197b"),
+		},
+		{
+			name:        "max old/max added/zero deleted/block 0",
+			oldHash:     maxHash,
+			addedHash:   maxHash,
+			deletedHash: common.Hash{},
+			blockNum:    0,
+			expected:    common.HexToHash("a4948140ba75a402ceb80b0a0b749962477bed2da23788f33b1edf3d8b09d0a6"),
+		},
+		{
+			name:        "max old/max added/zero deleted/block MaxUint64",
+			oldHash:     maxHash,
+			addedHash:   maxHash,
+			deletedHash: common.Hash{},
+			blockNum:    math.MaxUint64,
+			expected:    common.HexToHash("a38241011256840932f8e12c623bade3d0e3eb6079fd14414b2940112d295a74"),
+		},
+		{
+			name:        "max old/max added/max deleted/block 0",
+			oldHash:     maxHash,
+			addedHash:   maxHash,
+			deletedHash: maxHash,
+			blockNum:    0,
+			expected:    common.HexToHash("32db627b95719d86f8a84009df08e5cb987a0d0c6010efb2d6f0996fdea9085f"),
+		},
+		{
+			name:        "max old/max added/max deleted/block MaxUint64",
+			oldHash:     maxHash,
+			addedHash:   maxHash,
+			deletedHash: maxHash,
+			blockNum:    math.MaxUint64,
+			expected:    common.HexToHash("9ead895b93ffc43b0cf9ff46548b7f7597a8cc362fa6cb0f7151940557048f71"),
 		},
 	}
 

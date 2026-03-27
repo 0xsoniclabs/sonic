@@ -225,8 +225,8 @@ func (s *Store) GetBundleExecutionInfo(execPlanHash common.Hash) *bundle.Executi
 	}
 }
 
-// GetProcessedBundleHistoryHash returns the current hash of the processed
-// bundles history, along with the block number of the last update.
+// GetProcessedBundleHistoryHash returns the block number of the last update
+// and the current hash of the processed bundles history.
 func (s *Store) GetProcessedBundleHistoryHash() (uint64, common.Hash) {
 	state, err := s.table.ProcessedBundles.Get(nil)
 	if err != nil {
