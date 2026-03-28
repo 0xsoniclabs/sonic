@@ -385,6 +385,7 @@ func startIntegrationTestNet(
 	sonicToolArguments []string,
 	options IntegrationTestNetOptions,
 ) (*IntegrationTestNet, error) {
+
 	net := &IntegrationTestNet{
 		options: options,
 		Session: Session{
@@ -497,21 +498,26 @@ func (n *IntegrationTestNet) start() error {
 				n.options.ClientExtraArguments...,
 			)
 
-			if n.options.ModifyConfig != nil {
-				configFile := filepath.Join(tmp, "config.toml")
-				if err := sonicd.RunWithArgs(append(args, "--dump-config", configFile), nil); err != nil {
-					panic(fmt.Sprint("Failed to dump config file:", err))
-				}
-				var loadedConfig config.Config
-				if err := config.LoadAllConfigs(configFile, &loadedConfig); err != nil {
-					panic(fmt.Sprint("Failed to load default config file:", err))
-				}
-				n.options.ModifyConfig(&loadedConfig)
-				if err := config.SaveAllConfigs(configFile, &loadedConfig); err != nil {
-					panic(fmt.Sprint("Failed to save modified config file:", err))
-				}
-				args = append(args, "--config", configFile)
+			configFile := filepath.Join(tmp, "config.toml")
+			if err := sonicd.RunWithArgs(append(args, "--dump-config", configFile), &sonicd.AppControl{}); err != nil {
+				panic(fmt.Sprint("Failed to dump config file:", err))
 			}
+			var loadedConfig config.Config
+			if err := config.LoadAllConfigs(configFile, &loadedConfig); err != nil {
+				panic(fmt.Sprint("Failed to load default config file:", err))
+			}
+
+			// Enable faster event emission to speed up integration tests.
+			loadedConfig.Emitter.EmitIntervals.Min = time.Millisecond
+			loadedConfig.Emitter.EmitIntervals.Confirming = time.Millisecond
+
+			if n.options.ModifyConfig != nil {
+				n.options.ModifyConfig(&loadedConfig)
+			}
+			if err := config.SaveAllConfigs(configFile, &loadedConfig); err != nil {
+				panic(fmt.Sprint("Failed to save modified config file:", err))
+			}
+			args = append(args, "--config", configFile)
 
 			control := &sonicd.AppControl{
 				NodeIdAnnouncement:   nodeIds[i],
