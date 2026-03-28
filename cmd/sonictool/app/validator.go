@@ -32,6 +32,7 @@ import (
 	"github.com/0xsoniclabs/sonic/valkeystore/encryption"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/log"
 	"gopkg.in/urfave/cli.v1"
 )
 
@@ -69,7 +70,17 @@ func validatorKeyCreate(ctx *cli.Context) error {
 		return fmt.Errorf("failed to setup account config: %w", err)
 	}
 
-	valKeystore := valkeystore.NewDefaultFileRawKeystore(path.Join(keystoreDir, "validator"))
+	if ctx.GlobalIsSet(config.FakeNetFlag.Name) {
+		cfg.Node.UseLightweightKDF = true
+	}
+
+	newFileRawKeystore := valkeystore.NewDefaultFileRawKeystore
+	if cfg.Node.UseLightweightKDF {
+		log.Warn("Using lightweight KDF for validator keystore for testing - DO NOT USE THIS IN PRODUCTION")
+		newFileRawKeystore = valkeystore.NewLightFileRawKeystore
+	}
+
+	valKeystore := newFileRawKeystore(path.Join(keystoreDir, "validator"))
 	err = valKeystore.Add(publicKey, privateKey, password)
 	if err != nil {
 		return fmt.Errorf("failed to create account: %w", err)

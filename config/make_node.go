@@ -94,6 +94,12 @@ func MakeNode(ctx *cli.Context, cfg *Config) (*node.Node, *gossip.Service, func(
 		setBootnodes(ctx, bootnodes, &cfg.Node)
 	}
 
+	// Use lightweight KDF in fakenet mode since the password is hardcoded
+	// and there is no security benefit from expensive key derivation.
+	if ctx.GlobalIsSet(FakeNetFlag.Name) {
+		cfg.Node.UseLightweightKDF = true
+	}
+
 	stack, err := MakeNetworkStack(ctx, &cfg.Node)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to unlock validator key: %w", err)
@@ -108,7 +114,12 @@ func MakeNode(ctx *cli.Context, cfg *Config) (*node.Node, *gossip.Service, func(
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to setup account config: %w", err)
 	}
-	valKeystore := valkeystore.NewDefaultFileKeystore(path.Join(keystoreDir, "validator"))
+	newValKeystore := valkeystore.NewDefaultFileKeystore
+	if cfg.Node.UseLightweightKDF {
+		log.Warn("Using lightweight KDF for validator keystore for testing - DO NOT USE THIS IN PRODUCTION")
+		newValKeystore = valkeystore.NewLightFileKeystore
+	}
+	valKeystore := newValKeystore(path.Join(keystoreDir, "validator"))
 	valPubkey := cfg.Emitter.Validator.PubKey
 	if key := getFakeValidatorKey(ctx); key != nil && cfg.Emitter.Validator.ID != 0 {
 		validators := gdb.GetValidators()

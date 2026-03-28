@@ -27,10 +27,19 @@ func NewDefaultFileRawKeystore(dir string) *FileKeystore {
 	return NewFileKeystore(dir, enc)
 }
 
+func NewLightFileRawKeystore(dir string) *FileKeystore {
+	enc := encryption.New(keystore.LightScryptN, keystore.LightScryptP)
+	return NewFileKeystore(dir, enc)
+}
+
 func NewDefaultMemKeystore() *SyncedKeystore {
 	return NewSyncedKeystore(NewCachedKeystore(NewMemKeystore()))
 }
 
 func NewDefaultFileKeystore(dir string) *SyncedKeystore {
 	return NewSyncedKeystore(NewCachedKeystore(NewDefaultFileRawKeystore(dir)))
+}
+
+func NewLightFileKeystore(dir string) *SyncedKeystore {
+	return NewSyncedKeystore(NewCachedKeystore(NewLightFileRawKeystore(dir)))
 }
