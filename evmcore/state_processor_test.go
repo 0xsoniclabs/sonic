@@ -2038,39 +2038,27 @@ func TestRunTransactionBundle_RunBundleSuccessful_ReturnsBundleOnlyTransactionAn
 	require.Equal(t, core_types.TransactionResultSuccessful, result)
 }
 
-func TestRunTransactionBundle_ReturnsListOfBundlesThatWillBePartOfTheNextBlock(t *testing.T) {
+func TestRunTransactionBundle_ReturnsListOfBundlesThatWillBePartOfTheCurrentBlock(t *testing.T) {
 	signer := types.LatestSignerForChainID(big.NewInt(1))
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
 
-	envelopeOneTx := bundle.AllOf(signer,
-		bundle.Step(key, &types.AccessListTx{
-			Nonce: 0, To: &common.Address{1}, Gas: 29_000, GasPrice: big.NewInt(1),
-		}),
-	)
-	envelopeOneTxPlan, err := bundle.ExtractExecutionPlan(signer, envelopeOneTx)
-	require.NoError(t, err)
+	oneTxEnvelope, oneTxPlan := bundle.NewBuilder(signer).
+		With(bundle.Step(key, &types.AccessListTx{Gas: 29_000})).
+		BuildEnvelopeAndPlan()
 
-	inner1 := bundle.AllOf(signer,
-		bundle.Step(key, &types.AccessListTx{
-			Nonce: 0, To: &common.Address{1}, Gas: 29_000, GasPrice: big.NewInt(1),
-		}),
-	)
-	inner2 := bundle.AllOf(signer,
-		bundle.Step(key, &types.AccessListTx{
-			Nonce: 0, To: &common.Address{1}, Gas: 29_001, GasPrice: big.NewInt(1),
-		}),
-	)
-	envelopeTwoNestedBundles := bundle.AllOf(signer,
-		bundle.Step(key, inner1),
-		bundle.Step(key, inner2),
-	)
-	inner1Plan, err := bundle.ExtractExecutionPlan(signer, inner1)
-	require.NoError(t, err)
-	inner2Plan, err := bundle.ExtractExecutionPlan(signer, inner2)
-	require.NoError(t, err)
-	envelopeTwoNestedBundlesPlan, err := bundle.ExtractExecutionPlan(signer, envelopeTwoNestedBundles)
-	require.NoError(t, err)
+	inner1Envelope, inner1Plan := bundle.NewBuilder(signer).
+		With(bundle.Step(key, &types.AccessListTx{Gas: 29_000})).
+		BuildEnvelopeAndPlan()
+	inner2Envelope, inner2Plan := bundle.NewBuilder(signer).
+		With(bundle.Step(key, &types.AccessListTx{Gas: 29_001})).
+		BuildEnvelopeAndPlan()
+	twoNestedBundlesEnvelope, twoNestedBundlesPlan := bundle.NewBuilder(signer).
+		With(
+			bundle.Step(key, inner1Envelope),
+			bundle.Step(key, inner2Envelope),
+		).
+		BuildEnvelopeAndPlan()
 
 	tests := map[string]struct {
 		envelope        *types.Transaction
@@ -2078,25 +2066,25 @@ func TestRunTransactionBundle_ReturnsListOfBundlesThatWillBePartOfTheNextBlock(t
 		expectedBundles []ProcessedBundle
 	}{
 		"successful bundle with one tx": {
-			envelope: envelopeOneTx,
+			envelope: oneTxEnvelope,
 			results: []uint64{
 				types.ReceiptStatusSuccessful,
 			},
 			expectedBundles: []ProcessedBundle{
-				{ExecutionPlanHash: envelopeOneTxPlan.Hash(), Position: 0, Count: 1},
+				{ExecutionPlanHash: oneTxPlan.Hash(), Position: 0, Count: 1},
 			},
 		},
 		"failed bundle with one tx": {
-			envelope: envelopeOneTx,
+			envelope: oneTxEnvelope,
 			results: []uint64{
 				types.ReceiptStatusFailed,
 			},
 			expectedBundles: []ProcessedBundle{
-				{ExecutionPlanHash: envelopeOneTxPlan.Hash(), Position: 0, Count: 0},
+				{ExecutionPlanHash: oneTxPlan.Hash(), Position: 0, Count: 0},
 			},
 		},
 		"successful bundle with two successful nested bundles": {
-			envelope: envelopeTwoNestedBundles,
+			envelope: twoNestedBundlesEnvelope,
 			results: []uint64{
 				types.ReceiptStatusSuccessful,
 				types.ReceiptStatusSuccessful,
@@ -2104,17 +2092,17 @@ func TestRunTransactionBundle_ReturnsListOfBundlesThatWillBePartOfTheNextBlock(t
 			expectedBundles: []ProcessedBundle{
 				{ExecutionPlanHash: inner1Plan.Hash(), Position: 0, Count: 1},
 				{ExecutionPlanHash: inner2Plan.Hash(), Position: 1, Count: 1},
-				{ExecutionPlanHash: envelopeTwoNestedBundlesPlan.Hash(), Position: 0, Count: 2},
+				{ExecutionPlanHash: twoNestedBundlesPlan.Hash(), Position: 0, Count: 2},
 			},
 		},
 		"failed bundle with one successful and one failed nested bundle": {
-			envelope: envelopeTwoNestedBundles,
+			envelope: twoNestedBundlesEnvelope,
 			results: []uint64{
 				types.ReceiptStatusSuccessful,
 				types.ReceiptStatusFailed,
 			},
 			expectedBundles: []ProcessedBundle{
-				{ExecutionPlanHash: envelopeTwoNestedBundlesPlan.Hash(), Position: 0, Count: 0},
+				{ExecutionPlanHash: twoNestedBundlesPlan.Hash(), Position: 0, Count: 0},
 			},
 		},
 	}
@@ -2518,7 +2506,7 @@ func TestBundleTransactionRunner_RevertToSnapshot_RevertsStateDBAndTruncatesProc
 		ctxt: &runContext{
 			statedb: statedb,
 		},
-		processedBundles: []ProcessedBundle{{}, {}, {}, {}}, // length of 4
+		processedBundles: []ProcessedBundle{{Position: 0}, {Position: 1}, {Position: 2}, {Position: 3}}, // length of 4
 	}
 
 	snapshot := bundleTransactionRunnerSnapshot{
@@ -2527,7 +2515,7 @@ func TestBundleTransactionRunner_RevertToSnapshot_RevertsStateDBAndTruncatesProc
 	}
 
 	runner.RevertToSnapshot(snapshot)
-	require.Len(t, runner.processedBundles, 2)
+	require.Equal(t, []ProcessedBundle{{Position: 0}, {Position: 1}}, runner.processedBundles)
 }
 
 // --- Utility functions for creating test transactions ---
