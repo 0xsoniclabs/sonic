@@ -141,15 +141,60 @@ func TestStore_GetBundleExecutionInfo_ReturnsInfoForAddedBundleHashes(t *testing
 		{25, 26, 27}, // 8: last in last block of history
 	}
 	infos := []bundle.ExecutionInfo{
-		{ExecutionPlanHash: hashes[0], BlockNum: 1, Position: 0, Count: 1},
-		{ExecutionPlanHash: hashes[1], BlockNum: 1, Position: 1, Count: 1},
-		{ExecutionPlanHash: hashes[2], BlockNum: 1, Position: 2, Count: 1},
-		{ExecutionPlanHash: hashes[3], BlockNum: 512, Position: 0, Count: 1},
-		{ExecutionPlanHash: hashes[4], BlockNum: 512, Position: 1, Count: 1},
-		{ExecutionPlanHash: hashes[5], BlockNum: 512, Position: 2, Count: 1},
-		{ExecutionPlanHash: hashes[6], BlockNum: 1023, Position: 0, Count: 1},
-		{ExecutionPlanHash: hashes[7], BlockNum: 1023, Position: 1, Count: 1},
-		{ExecutionPlanHash: hashes[8], BlockNum: 1023, Position: 2, Count: 1},
+		{
+			ExecutionPlanHash: hashes[0],
+			BlockNum:          1,
+			Position:          0,
+			Count:             1,
+		},
+		{
+			ExecutionPlanHash: hashes[1],
+			BlockNum:          1,
+			Position:          1,
+			Count:             1,
+		},
+		{
+			ExecutionPlanHash: hashes[2],
+			BlockNum:          1,
+			Position:          2,
+			Count:             1,
+		},
+		{
+			ExecutionPlanHash: hashes[3],
+			BlockNum:          512,
+			Position:          0,
+			Count:             1,
+		},
+		{
+			ExecutionPlanHash: hashes[4],
+			BlockNum:          512,
+			Position:          1,
+			Count:             1,
+		},
+		{
+			ExecutionPlanHash: hashes[5],
+			BlockNum:          512,
+			Position:          2,
+			Count:             1,
+		},
+		{
+			ExecutionPlanHash: hashes[6],
+			BlockNum:          1023,
+			Position:          0,
+			Count:             1,
+		},
+		{
+			ExecutionPlanHash: hashes[7],
+			BlockNum:          1023,
+			Position:          1,
+			Count:             1,
+		},
+		{
+			ExecutionPlanHash: hashes[8],
+			BlockNum:          1023,
+			Position:          2,
+			Count:             1,
+		},
 	}
 	// Add all bundles to store
 	store.AddProcessedBundles(1, infos[:3])
@@ -589,15 +634,35 @@ func TestStore_xorHash_ReturnsExpectedResult(t *testing.T) {
 		hash2    common.Hash
 		expected common.Hash
 	}{
-		"all zeros":           {common.Hash{0, 0, 0}, common.Hash{0, 0, 0}, common.Hash{0, 0, 0}},
-		"zero and non-zero":   {common.Hash{0, 0, 0}, common.Hash{7, 8, 9}, common.Hash{7, 8, 9}},
-		"non-zero and zero":   {common.Hash{10, 11, 12}, common.Hash{0, 0, 0}, common.Hash{10, 11, 12}},
-		"same non-zero":       {common.Hash{1, 1, 1}, common.Hash{1, 1, 1}, common.Hash{0, 0, 0}},
-		"operation with 0xff": {common.Hash{0xff, 0xff, 0xff}, common.Hash{0x1, 0x2, 0x3}, common.Hash{0xfe, 0xfd, 0xfc}},
+		"all zeros": {
+			hash1:    common.Hash{0, 0, 0},
+			hash2:    common.Hash{0, 0, 0},
+			expected: common.Hash{0, 0, 0},
+		},
+		"zero and non-zero": {
+			hash1:    common.Hash{0, 0, 0},
+			hash2:    common.Hash{7, 8, 9},
+			expected: common.Hash{7, 8, 9},
+		},
+		"non-zero and zero": {
+			hash1:    common.Hash{10, 11, 12},
+			hash2:    common.Hash{0, 0, 0},
+			expected: common.Hash{10, 11, 12},
+		},
+		"same non-zero": {
+			hash1:    common.Hash{1, 1, 1},
+			hash2:    common.Hash{1, 1, 1},
+			expected: common.Hash{0, 0, 0},
+		},
+		"operation with 0xff": {
+			hash1:    common.Hash{0xff, 0xff, 0xff},
+			hash2:    common.Hash{0x1, 0x2, 0x3},
+			expected: common.Hash{0xfe, 0xfd, 0xfc},
+		},
 		"32 bytes computed": {
-			common.Hash{0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31},
-			common.Hash{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
-			common.Hash{1, 0, 3, 2, 5, 4, 6, 9, 8, 11, 10, 13, 12, 15, 14, 17, 16, 19, 18, 21, 20, 23, 22, 25, 24, 27, 26, 29, 28, 31, 30, 1},
+			hash1:    common.Hash{0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31},
+			hash2:    common.Hash{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
+			expected: common.Hash{1, 0, 3, 2, 5, 4, 6, 9, 8, 11, 10, 13, 12, 15, 14, 17, 16, 19, 18, 21, 20, 23, 22, 25, 24, 27, 26, 29, 28, 31, 30, 1},
 		},
 	}
 
@@ -644,7 +709,8 @@ func TestStore_addNewBundles_ReturnsExpectedHash(t *testing.T) {
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
 			batch := NewMockstoreBatch(gomock.NewController(t))
-			batch.EXPECT().Put(gomock.Any(), gomock.Any()).Return(nil).Times(2 * len(c.executedBundles)) // 2 times per hash
+			batch.EXPECT().Put(gomock.Any(), gomock.Any()).Return(nil).
+				Times(2 * len(c.executedBundles)) // 2 times per hash
 			addedHash := store.addNewBundles(1, c.executedBundles, batch)
 
 			expectedHash := common.Hash{}
@@ -978,7 +1044,11 @@ func TestStore_computeNewBundleStateHash_ReturnsExpectedHash(t *testing.T) {
 	}
 }
 
-func alternativeComputeImpl(st *testing.T, oldHash, addedHash, deletedHash common.Hash, blockNum uint64) common.Hash {
+func alternativeComputeImpl(
+	st *testing.T,
+	oldHash, addedHash, deletedHash common.Hash,
+	blockNum uint64,
+) common.Hash {
 	h := crypto.NewKeccakState()
 	h.Write(oldHash.Bytes())
 	h.Write(addedHash.Bytes())
@@ -997,9 +1067,9 @@ func TestStore_computeNewBundleStateHash_CorrectlyProcessesEdgeCases(t *testing.
 	//  - combinations of the above
 
 	hashDomain := []common.Hash{
-		common.Hash{},
-		common.Hash{4, 5, 6},
-		common.Hash{0xff, 0xff, 0xff},
+		{},
+		{4, 5, 6},
+		{0xff, 0xff, 0xff},
 		common.HexToHash("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"),
 	}
 	blockNumberDomain := []uint64{
@@ -1117,7 +1187,13 @@ func updateHistoryHash(blockNum uint64,
 // storeTableLogMocks initializes a store with mocked table as ProcessedBundles,
 // and logger.
 // Returns the mocks so expectations can be added on them.
-func storeTableLogMocks(t *testing.T) (*Store, *MockstoreTable, *logger.MockLogger, *MockstoreBatch, *MockdbIterator) {
+func storeTableLogMocks(t *testing.T) (
+	*Store,
+	*MockstoreTable,
+	*logger.MockLogger,
+	*MockstoreBatch,
+	*MockdbIterator,
+) {
 	ctrl := gomock.NewController(t)
 	store := &Store{}
 	table := NewMockstoreTable(ctrl)
