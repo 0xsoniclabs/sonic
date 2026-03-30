@@ -22,7 +22,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/ethapi"
+	"github.com/0xsoniclabs/sonic/api/ethapi"
 	"github.com/0xsoniclabs/sonic/opera"
 	block_override "github.com/0xsoniclabs/sonic/tests/contracts/blockoverride"
 	"github.com/ethereum/go-ethereum/common"
