@@ -342,17 +342,12 @@ func TestStore_ProcessedBundles_OldHashAffectsNewHash(t *testing.T) {
 	require.NotEqual(hash3A, hash3B)
 }
 
-func TestStore_ProcessedBundles_StoredHashUsesXorForAddedAndDeletedHashes(t *testing.T) {
-	// this test checks that the hash stored in the table for processed bundles
-	// is consistent with the expected hash computed. From the documentation:
-	//
-	// The hash of the processed bundle's history is computed as follows:
-	//  - initially, the hash is zero
-	//  - for every update, the hash is updated as follows:
-	//      addedExecPlanHash = Xor(<hashes of newly added execution plans>)
-	//      deletedExecPlanHash = Xor(<hashes of deleted execution plans>)
-	//      newHash = Keccak256(oldHash || addedExecPlanHash || deletedExecPlanHash || blockNum)
-
+func TestStore_AddProcessedBundles_ComputesCorrectHashIteratively(t *testing.T) {
+	// This test iteratively adds bundles and verifies the history hash after
+	// every addition. It covers:
+	//  1. Base case: adding a single bundle with no deletions.
+	//  2. Adding multiple bundles in a single block.
+	//  3. Triggering deletion of multiple old bundles when the block range expires.
 	require := require.New(t)
 	store, err := NewMemStore(t)
 	require.NoError(err)
@@ -360,37 +355,100 @@ func TestStore_ProcessedBundles_StoredHashUsesXorForAddedAndDeletedHashes(t *tes
 	hash1 := common.Hash{1, 2, 3}
 	hash2 := common.Hash{4, 5, 6}
 	hash3 := common.Hash{7, 8, 9}
+	hash4 := common.Hash{10, 11, 12}
+	hash5 := common.Hash{13, 14, 15}
+	hash6 := common.Hash{16, 17, 18}
+	hash7 := common.Hash{19, 20, 21}
 
-	// get initial hash
-	_, initialHash := store.GetProcessedBundleHistoryHash()
+	// --- Step 1: base case, add a single bundle (no deletions) ---
+	_, historyHash := store.GetProcessedBundleHistoryHash()
+	require.Zero(historyHash)
 
-	// add two hashes
+	store.AddProcessedBundles(0, []bundle.ExecutionInfo{wrapInfo(hash1, 0)})
+
+	blockNum, historyHash := store.GetProcessedBundleHistoryHash()
+	require.Equal(uint64(0), blockNum)
+	expectedHash := updateHistoryHash(0, common.Hash{}, hash1, common.Hash{})
+	require.Equal(expectedHash, historyHash)
+
+	// --- Step 2: add multiple bundles in a single block (no deletions) ---
+	prevHash := historyHash
+
 	store.AddProcessedBundles(1, []bundle.ExecutionInfo{
-		wrapInfo(hash1),
-		wrapInfo(hash2),
+		wrapInfo(hash2, 1),
+		wrapInfo(hash3, 1),
+		wrapInfo(hash4, 1),
 	})
 
-	// get hash after adding two hashes
-	blockNum, bundleHistoryHash := store.GetProcessedBundleHistoryHash()
+	blockNum, historyHash = store.GetProcessedBundleHistoryHash()
 	require.Equal(uint64(1), blockNum)
+	addedHash := xorHash(xorHash(hash2, hash3), hash4)
+	expectedHash = updateHistoryHash(1, prevHash, addedHash, common.Hash{})
+	require.Equal(expectedHash, historyHash)
 
-	addedHash := xorHash(hash1, hash2)
-	newHash := updateHistoryHash(blockNum, initialHash, addedHash, common.Hash{})
+	// --- Step 3: add more bundles in a later block, still no deletions ---
+	prevHash = historyHash
 
-	require.Equal(newHash, bundleHistoryHash)
-
-	newerBlockNum := blockNum + bundle.MaxBlockRange
-	// delete one and verify deletion hash as well
-	store.AddProcessedBundles(newerBlockNum, []bundle.ExecutionInfo{
-		wrapInfo(hash3),
+	store.AddProcessedBundles(2, []bundle.ExecutionInfo{
+		wrapInfo(hash5, 2),
+		wrapInfo(hash6, 2),
 	})
 
-	addedHahs := xorHash(common.Hash{}, hash3)
-	deletedHash := xorHash(hash1, hash2)
-	newHash = updateHistoryHash(newerBlockNum, bundleHistoryHash, addedHahs, deletedHash)
-	newerEncodedBlockNumber, updatedBundleHistoryHash := store.GetProcessedBundleHistoryHash()
-	require.Equal(newerBlockNum, newerEncodedBlockNumber)
-	require.Equal(newHash, updatedBundleHistoryHash)
+	blockNum, historyHash = store.GetProcessedBundleHistoryHash()
+	require.Equal(uint64(2), blockNum)
+	addedHash = xorHash(hash5, hash6)
+	expectedHash = updateHistoryHash(2, prevHash, addedHash, common.Hash{})
+	require.Equal(expectedHash, historyHash)
+
+	// --- Step 4: advance to MaxBlockRange-1 so that block 0's bundle expires ---
+	// Block 0 had hash1, so it should be deleted.
+	prevHash = historyHash
+	newBlock := uint64(bundle.MaxBlockRange - 1)
+
+	store.AddProcessedBundles(newBlock, []bundle.ExecutionInfo{
+		wrapInfo(hash7, newBlock),
+	})
+
+	blockNum, historyHash = store.GetProcessedBundleHistoryHash()
+	require.Equal(newBlock, blockNum)
+	deletedHash := hash1 // only block 0's bundle is old enough to expire
+	expectedHash = updateHistoryHash(newBlock, prevHash, hash7, deletedHash)
+	require.Equal(expectedHash, historyHash)
+
+	// --- Step 5: advance to MaxBlockRange so that block 1's bundles expire ---
+	// Block 1 had hash2, hash3, hash4, so all three should be deleted.
+	prevHash = historyHash
+	newBlock = uint64(bundle.MaxBlockRange)
+	hash8 := common.Hash{22, 23, 24}
+
+	store.AddProcessedBundles(newBlock, []bundle.ExecutionInfo{
+		wrapInfo(hash8, newBlock),
+	})
+
+	blockNum, historyHash = store.GetProcessedBundleHistoryHash()
+	require.Equal(newBlock, blockNum)
+	deletedHash = xorHash(xorHash(hash2, hash3), hash4) // all three from block 1
+	expectedHash = updateHistoryHash(newBlock, prevHash, hash8, deletedHash)
+	require.Equal(expectedHash, historyHash)
+
+	// --- Step 6: advance to MaxBlockRange+1 so that block 2's bundles expire ---
+	// Block 2 had hash5, hash6, so both should be deleted.
+	prevHash = historyHash
+	newBlock = uint64(bundle.MaxBlockRange + 1)
+	hash9 := common.Hash{25, 26, 27}
+	hash10 := common.Hash{28, 29, 30}
+
+	store.AddProcessedBundles(newBlock, []bundle.ExecutionInfo{
+		wrapInfo(hash9, newBlock),
+		wrapInfo(hash10, newBlock),
+	})
+
+	blockNum, historyHash = store.GetProcessedBundleHistoryHash()
+	require.Equal(newBlock, blockNum)
+	addedHash = xorHash(hash9, hash10)
+	deletedHash = xorHash(hash5, hash6) // both from block 2
+	expectedHash = updateHistoryHash(newBlock, prevHash, addedHash, deletedHash)
+	require.Equal(expectedHash, historyHash)
 }
 
 func TestStore_GetEntryKey_ReturnsExpectedKey(t *testing.T) {
