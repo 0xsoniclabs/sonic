@@ -1346,62 +1346,47 @@ func TestFilterObsoleteBundles_RemovesInvalidBundles(t *testing.T) {
 
 	tests := map[string]struct {
 		tx             *types.Transaction
-		bundlesEnabled bool
 		blockNumber    uint64
 		expectFiltered bool
 	}{
 		"normal tx": {
 			tx:             types.NewTx(&types.LegacyTx{Nonce: 1}),
-			bundlesEnabled: true,
 			expectFiltered: false,
 		},
 		"sponsored tx": {
 			tx:             types.NewTx(&types.LegacyTx{Nonce: 2, GasPrice: big.NewInt(0), V: big.NewInt(1)}),
-			bundlesEnabled: true,
 			expectFiltered: false,
 		},
 		"bundle valid": {
 			tx:             bundle.AllOf(signer, bundle.Step(key, &types.AccessListTx{})),
-			bundlesEnabled: true,
 			expectFiltered: false,
-		},
-		"bundle valid but bundles disabled": {
-			tx:             bundle.AllOf(signer, bundle.Step(key, &types.AccessListTx{})),
-			bundlesEnabled: false,
-			expectFiltered: true,
 		},
 		"bundle invalid": {
 			tx:             types.NewTx(&types.AccessListTx{To: &bundle.BundleProcessor}),
-			bundlesEnabled: true,
 			expectFiltered: true,
 		},
 		"bundle out of range": {
 			tx:             bundle.NewBuilder(signer).With(bundle.Step(key, &types.AccessListTx{})).SetLatest(1).Build(),
-			bundlesEnabled: true,
 			blockNumber:    2,
 			expectFiltered: true,
 		},
 		"bundle empty": {
 			tx:             bundle.AllOf(signer /* empty */),
-			bundlesEnabled: true,
 			expectFiltered: true,
 		},
 		"bundle with invalid nested bundle": {
 			tx:             bundle.AllOf(signer, bundle.Step(key, types.NewTx(&types.AccessListTx{To: &bundle.BundleProcessor}))),
-			bundlesEnabled: true,
 			expectFiltered: true,
 		},
 		"bundle with out of range nested bundle": {
 			tx: bundle.AllOf(signer, bundle.Step(key,
 				bundle.NewBuilder(signer).With(bundle.Step(key, &types.AccessListTx{})).SetLatest(1).Build(),
 			)),
-			bundlesEnabled: true,
 			blockNumber:    2,
 			expectFiltered: true,
 		},
 		"bundle with empty nested bundle": {
 			tx:             bundle.AllOf(signer, bundle.Step(key, bundle.AllOf(signer /* empty */))),
-			bundlesEnabled: true,
 			expectFiltered: true,
 		},
 	}
@@ -1424,7 +1409,7 @@ func TestFilterObsoleteBundles_RemovesInvalidBundles(t *testing.T) {
 				}
 
 				rules := opera.Rules{Upgrades: opera.GetBrioUpgrades()}
-				rules.Upgrades.TransactionBundles = test.bundlesEnabled
+				rules.Upgrades.TransactionBundles = true
 
 				txs := []*types.Transaction{
 					types.NewTx(&types.LegacyTx{Nonce: 0}),
@@ -1446,13 +1431,32 @@ func TestFilterObsoleteBundles_RemovesInvalidBundles(t *testing.T) {
 	}
 }
 
+func TestFilterObsoleteBundles_RemovesBundlesIfFeatureNotEnabled(t *testing.T) {
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	ctrl := gomock.NewController(t)
+
+	skippedBundleCounter := NewMockmetricCounter(ctrl)
+	skippedBundleCounter.EXPECT().Mark(int64(1)).AnyTimes()
+
+	rules := opera.Rules{Upgrades: opera.GetBrioUpgrades()}
+	rules.Upgrades.TransactionBundles = false
+
+	txs := []*types.Transaction{bundle.AllOf(signer, bundle.Step(key, &types.AccessListTx{}))}
+
+	filteredTxs := filterObsoleteBundles(txs, 0, &rules, signer, log.Root(), skippedBundleCounter)
+	require.Empty(t, filteredTxs)
+}
+
 func TestFilterObsoleteBundles_RemovesInvalidBundles_FromSequencesWithMultipleBundles(t *testing.T) {
 	signer := types.LatestSignerForChainID(big.NewInt(1))
 
 	txs := []*types.Transaction{
 		types.NewTx(&types.LegacyTx{Nonce: 0}),
-		types.NewTx(&types.AccessListTx{To: &bundle.BundleProcessor}), // bundle invalid
-		bundle.AllOf(signer /* empty */),                              // bundle empty
+		bundle.AllOf(signer /* empty */),
+		bundle.AllOf(signer /* empty */),
 	}
 
 	ctrl := gomock.NewController(t)
