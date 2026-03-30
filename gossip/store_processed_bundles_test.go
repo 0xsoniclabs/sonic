@@ -508,9 +508,7 @@ func TestStore_deleteOutdatedBundles_RemovesBundles_WhenOld(t *testing.T) {
 			// The algorithm would not contemplate any history
 			// when the block number is short enough to not to require any cleanup
 			if c.finishingBlock >= bundle.MaxBlockRange-1 {
-				encodedBlock := make([]byte, 8)
-				binary.BigEndian.PutUint64(encodedBlock, c.storedBundleBlockNumber)
-				existingBundleKey := append(append([]byte{'i'}, encodedBlock...), existingBundleHash.Bytes()...)
+				existingBundleKey := getIndexKey(c.storedBundleBlockNumber, existingBundleHash)
 				gomock.InOrder(
 					table.EXPECT().NewIterator([]byte{'i'}, nil).Return(it),
 					it.EXPECT().Next().Return(true),
@@ -590,11 +588,9 @@ func TestStore_deleteOutdatedBundles_ReturnsXorHashOfDeletedEntries(t *testing.T
 		t.Run(name, func(t *testing.T) {
 
 			store, table, _, batch, it := storeTableLogMocks(t)
-			encodedBlock := make([]byte, 8)
-			binary.BigEndian.PutUint64(encodedBlock, 1)
 			existingBundleKeys := make([][]byte, len(c.storedBundles))
 			for i, info := range c.storedBundles {
-				existingBundleKeys[i] = append(append([]byte{'i'}, encodedBlock...), info.ExecutionPlanHash.Bytes()...)
+				existingBundleKeys[i] = getIndexKey(1, info.ExecutionPlanHash)
 			}
 
 			table.EXPECT().NewIterator([]byte{'i'}, nil).Return(it)
