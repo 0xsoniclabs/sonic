@@ -763,7 +763,7 @@ func TestStore_ProcessedBundles_HashIsUpdatedWithNewBlocks(t *testing.T) {
 		store.AddProcessedBundles(i, []bundle.ExecutionInfo{
 			{
 				ExecutionPlanHash: uint64ToHash(uint64(i)),
-				BlockNum:          i,
+				BlockNumber:       i,
 			},
 		})
 
@@ -800,7 +800,7 @@ func TestStore_ProcessedBundles_RetainsAllBundlesRequiredToCoverTheMaximumBlockR
 		store.AddProcessedBundles(currentBlockNumber, []bundle.ExecutionInfo{
 			{
 				ExecutionPlanHash: uint64ToHash(currentBlockNumber),
-				BlockNum:          currentBlockNumber,
+				BlockNumber:       currentBlockNumber,
 			},
 		})
 	}
@@ -818,7 +818,7 @@ func wrapInfo(hash common.Hash, blockNum ...uint64) bundle.ExecutionInfo {
 	}
 	return bundle.ExecutionInfo{
 		ExecutionPlanHash: hash,
-		BlockNum:          blockNum[0],
+		BlockNumber:       blockNum[0],
 		Position:          0,
 		Count:             1,
 	}

@@ -102,7 +102,7 @@ func (s *Store) addNewBundles(
 		hash := info.ExecutionPlanHash
 
 		data := make([]byte, 16)
-		binary.BigEndian.PutUint64(data[:8], info.BlockNum)
+		binary.BigEndian.PutUint64(data[:8], info.BlockNumber)
 		binary.BigEndian.PutUint32(data[8:12], info.Position)
 		binary.BigEndian.PutUint32(data[12:], info.Count)
 
@@ -125,7 +125,7 @@ func (s *Store) deleteOutdatedBundles(blockNum uint64, batch kvdb.Batch) common.
 	deletedHash := common.Hash{}
 	if blockNum >= bundle.MaxBlockRange-1 {
 		// enough blocks have passed to start cleaning up the store
-		oldestValidBlockNum := blockNum - bundle.MaxBlockRange + 1
+		highestOutdatedBlockNumber := blockNum - bundle.MaxBlockRange + 1
 		it := s.table.ProcessedBundles.NewIterator([]byte{'i'}, nil)
 		for it.Next() {
 			key := it.Key()
@@ -137,7 +137,7 @@ func (s *Store) deleteOutdatedBundles(blockNum uint64, batch kvdb.Batch) common.
 				continue
 			}
 			oldBundleBlockNumber := binary.BigEndian.Uint64(key[1 : 1+8])
-			if oldBundleBlockNumber > oldestValidBlockNum {
+			if oldBundleBlockNumber > highestOutdatedBlockNumber {
 				// the bundle is not old enough to be deleted
 				break
 			}
@@ -219,7 +219,7 @@ func (s *Store) GetBundleExecutionInfo(execPlanHash common.Hash) *bundle.Executi
 	count := binary.BigEndian.Uint32(res[12:])
 	return &bundle.ExecutionInfo{
 		ExecutionPlanHash: execPlanHash,
-		BlockNum:          blockNum,
+		BlockNumber:       blockNum,
 		Position:          startPosition,
 		Count:             count,
 	}

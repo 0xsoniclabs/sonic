@@ -23,7 +23,7 @@ import "github.com/ethereum/go-ethereum/common"
 // executed.
 type ExecutionInfo struct {
 	ExecutionPlanHash common.Hash
-	BlockNum          uint64
+	BlockNumber       uint64
 	Position          uint32
 	Count             uint32
 }
