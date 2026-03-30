@@ -310,8 +310,8 @@ func TestStore_ProcessedBundles_OldHashAffectsNewHash(t *testing.T) {
 	}
 
 	addBundlesInBlock := func(hashA, hashB common.Hash, blockNum uint64) {
-		store1.AddProcessedBundles(blockNum, []bundle.ExecutionInfo{wrapInfo(hashA)})
-		store2.AddProcessedBundles(blockNum, []bundle.ExecutionInfo{wrapInfo(hashB)})
+		store1.AddProcessedBundles(blockNum, []bundle.ExecutionInfo{wrapInfo(hashA, blockNum)})
+		store2.AddProcessedBundles(blockNum, []bundle.ExecutionInfo{wrapInfo(hashB, blockNum)})
 	}
 
 	hash1 := common.Hash{1, 2, 3}
@@ -1069,18 +1069,27 @@ func TestStore_RetainsAllBundlesRequiredToCoverTheMaximumBlockRange(t *testing.T
 		}
 
 		store.AddProcessedBundles(currentBlockNumber, []bundle.ExecutionInfo{
-			{ExecutionPlanHash: hashes[currentBlockNumber]},
+			{
+				ExecutionPlanHash: hashes[currentBlockNumber],
+				BlockNum:          currentBlockNumber,
+			},
 		})
 	}
 }
 
 // --- helper functions ---
 
-// return execution info with the given hash, for block number 1 and position 0.
-func wrapInfo(hash common.Hash) bundle.ExecutionInfo {
+// return execution info with the given hash and position 0.
+// If a second parameter is given, it is used as the block number,
+// otherwise the block number is set to 1. If more than two parameters are given
+// the extras are ignored.
+func wrapInfo(hash common.Hash, blockNum ...uint64) bundle.ExecutionInfo {
+	if len(blockNum) == 0 {
+		blockNum = []uint64{1}
+	}
 	return bundle.ExecutionInfo{
 		ExecutionPlanHash: hash,
-		BlockNum:          1,
+		BlockNum:          blockNum[0],
 		Position:          0,
 		Count:             1,
 	}
