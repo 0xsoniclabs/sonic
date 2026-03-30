@@ -33,30 +33,7 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-//go:generate mockgen -source=store_processed_bundles_test.go -destination=store_processed_bundles_test_mock.go -package=gossip
-
-// storeTable is an interface needed to generate a mock for a kvdb.Store.
-type storeTable interface {
-	kvdb.Store
-}
-
-var _ storeTable // to avoid storeTable unused warning.
-
-// storeBatch is an interface needed to generate a mock for a kvdb.Batch.
-type storeBatch interface {
-	kvdb.Batch
-}
-
-var _ storeBatch // to avoid storeBatch unused warning.
-
-// dbIterator is an interface needed to generate a mock for a ethdb.Iterator.
-type dbIterator interface {
-	ethdb.Iterator
-}
-
-var _ dbIterator // to avoid dbIterator unused warning.
-
-func TestStore_HasBundleRecentlyBeenProcessed_Returns(t *testing.T) {
+func TestStore_HasBundleRecentlyBeenProcessed_ReturnsTrueIfFound(t *testing.T) {
 
 	cases := map[string]struct {
 		hash []byte
