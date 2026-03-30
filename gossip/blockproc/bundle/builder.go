@@ -254,7 +254,7 @@ func (b *builder) BuildEnvelopeBundleAndPlan() (
 		key = newKey
 	}
 	bundle, plan := b.BuildBundleAndPlan()
-	return newEnvelope(key, bundle), bundle, plan
+	return newEnvelope(b.signer, key, bundle), bundle, plan
 }
 
 // BuildEnvelope returns an envelope transaction and its execution plan
@@ -283,6 +283,7 @@ func OneOf(signer types.Signer, steps ...BundleStep) *types.Transaction {
 
 // Wraps the given bundle into an envelope transaction.
 func newEnvelope(
+	signer types.Signer,
 	key *ecdsa.PrivateKey,
 	bundle *TransactionBundle,
 ) *types.Transaction {
@@ -314,16 +315,9 @@ func newEnvelope(
 
 	gasLimit := max(intrinsic, floorDataGas, txGasSum)
 
-	chainId := big.NewInt(1)
-	if len(bundle.Transactions) > 0 {
-		chainId = bundle.Transactions[0].ChainId()
-	}
-
-	signer := types.LatestSignerForChainID(chainId)
 	return types.MustSignNewTx(key, signer, &types.AccessListTx{
-		ChainID: chainId,
-		To:      &BundleProcessor,
-		Data:    payload,
-		Gas:     gasLimit,
+		To:   &BundleProcessor,
+		Data: payload,
+		Gas:  gasLimit,
 	})
 }
