@@ -210,6 +210,329 @@ func TestStore_GetProcessedBundleHistoryHash_LogsOnInvalidStateLength(t *testing
 		func() { store.GetProcessedBundleHistoryHash() })
 }
 
+func TestStore_addNewBundles_ReturnsExpectedHash(t *testing.T) {
+	require := require.New(t)
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	cases := map[string]struct {
+		executedBundles []bundle.ExecutionInfo
+	}{
+		"empty list": {
+			executedBundles: []bundle.ExecutionInfo{},
+		},
+		"single entry": {
+			executedBundles: []bundle.ExecutionInfo{
+				wrapInfo(common.Hash{1, 2, 3}),
+			},
+		},
+		"two entries": {
+			executedBundles: []bundle.ExecutionInfo{
+				wrapInfo(common.Hash{1, 2, 3}),
+				wrapInfo(common.Hash{4, 5, 6}),
+			},
+		},
+		"more than two entries": {
+			executedBundles: []bundle.ExecutionInfo{
+				wrapInfo(common.Hash{1, 2, 3}),
+				wrapInfo(common.Hash{4, 5, 6}),
+				wrapInfo(common.Hash{7, 8, 9}),
+			},
+		},
+	}
+
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			batch := NewMockstoreBatch(gomock.NewController(t))
+			batch.EXPECT().Put(gomock.Any(), gomock.Any()).Return(nil).
+				Times(2 * len(c.executedBundles)) // 2 times per hash
+			addedHash := store.addNewBundles(1, c.executedBundles, batch)
+
+			expectedHash := common.Hash{}
+			for _, info := range c.executedBundles {
+				expectedHash = xorHash(expectedHash, info.ExecutionPlanHash)
+			}
+			require.Equal(expectedHash, addedHash)
+		})
+	}
+}
+
+func TestStore_addNewBundles_LogsOnBatchPutError(t *testing.T) {
+	store, _, log, batch, _ := storeTableLogMocks(t)
+
+	injectedErrEntry := errors.New("entry put error")
+	injectedErrIndex := errors.New("index put error")
+	batch.EXPECT().Put(gomock.Any(), gomock.Any()).Return(injectedErrEntry)
+	batch.EXPECT().Put(gomock.Any(), gomock.Any()).Return(injectedErrIndex)
+
+	compoundErr := errors.Join(injectedErrEntry, injectedErrIndex)
+	expectCrit(log, "failed to add processed bundle hash to batch", "error", compoundErr)
+
+	hash1 := common.Hash{1, 2, 3}
+	// In production, a Crit log call causes the logger to exit the process.
+	// To prevent the test from exiting, the mock logger is configured to panic instead.
+	require.PanicsWithValue(t,
+		fmt.Sprintf("failed to add processed bundle hash to batch: %v", []any{"error", compoundErr}),
+		func() {
+			store.addNewBundles(1, []bundle.ExecutionInfo{wrapInfo(hash1)}, batch)
+		})
+}
+
+func TestStore_deleteOutdatedBundles_RemovesBundles_WhenOld(t *testing.T) {
+
+	caseTable := []struct {
+		storedBundleBlockNumber uint64
+		finishingBlock          uint64
+		expectDeleted           bool
+	}{
+		// Following cases are the warm up phase of the storage
+		// when current block number is not large enough to have a history to delete
+		{
+			storedBundleBlockNumber: 0,
+			finishingBlock:          bundle.MaxBlockRange - 2,
+			expectDeleted:           false,
+		},
+		{
+			storedBundleBlockNumber: 1,
+			finishingBlock:          bundle.MaxBlockRange - 2,
+			expectDeleted:           false,
+		},
+		{
+			storedBundleBlockNumber: 1,
+			finishingBlock:          bundle.MaxBlockRange - 1,
+			expectDeleted:           false,
+		},
+		{
+			storedBundleBlockNumber: bundle.MaxBlockRange / 2,
+			finishingBlock:          bundle.MaxBlockRange,
+			expectDeleted:           false,
+		},
+		{
+			storedBundleBlockNumber: bundle.MaxBlockRange - 1,
+			finishingBlock:          bundle.MaxBlockRange,
+			expectDeleted:           false,
+		},
+		{
+			storedBundleBlockNumber: bundle.MaxBlockRange,
+			finishingBlock:          bundle.MaxBlockRange,
+			expectDeleted:           false,
+		},
+		// Following cases are after the warm up phase, when current block
+		// number is large enough to have a history to delete,
+		{
+			storedBundleBlockNumber: 0,
+			finishingBlock:          bundle.MaxBlockRange - 1,
+			expectDeleted:           true,
+		},
+		{
+			storedBundleBlockNumber: 0,
+			finishingBlock:          bundle.MaxBlockRange,
+			expectDeleted:           true,
+		},
+		{
+			storedBundleBlockNumber: 0,
+			finishingBlock:          2 * bundle.MaxBlockRange,
+			expectDeleted:           true,
+		},
+		{
+			storedBundleBlockNumber: 1,
+			finishingBlock:          bundle.MaxBlockRange,
+			expectDeleted:           true,
+		},
+		{
+			storedBundleBlockNumber: bundle.MaxBlockRange / 2,
+			finishingBlock:          2 * bundle.MaxBlockRange,
+			expectDeleted:           true,
+		},
+		{
+			storedBundleBlockNumber: bundle.MaxBlockRange - 1,
+			finishingBlock:          2 * bundle.MaxBlockRange,
+			expectDeleted:           true,
+		},
+		{
+			storedBundleBlockNumber: bundle.MaxBlockRange,
+			finishingBlock:          2 * bundle.MaxBlockRange,
+			expectDeleted:           true,
+		},
+		{
+			storedBundleBlockNumber: bundle.MaxBlockRange + 1,
+			finishingBlock:          2 * bundle.MaxBlockRange,
+			expectDeleted:           true,
+		},
+		// Following cases are recent enough to not be deleted
+		{
+			storedBundleBlockNumber: bundle.MaxBlockRange + 2,
+			finishingBlock:          2 * bundle.MaxBlockRange,
+			expectDeleted:           false,
+		},
+		{
+			storedBundleBlockNumber: bundle.MaxBlockRange * 3 / 2,
+			finishingBlock:          2 * bundle.MaxBlockRange,
+			expectDeleted:           false,
+		},
+		{
+			storedBundleBlockNumber: 2*bundle.MaxBlockRange - 1,
+			finishingBlock:          2 * bundle.MaxBlockRange,
+			expectDeleted:           false,
+		},
+		{
+			storedBundleBlockNumber: 2 * bundle.MaxBlockRange,
+			finishingBlock:          2 * bundle.MaxBlockRange,
+			expectDeleted:           false,
+		},
+		// future block numbers should not cause deletion
+		{
+			storedBundleBlockNumber: 2*bundle.MaxBlockRange + 1,
+			finishingBlock:          2 * bundle.MaxBlockRange,
+			expectDeleted:           false,
+		},
+	}
+
+	for _, c := range caseTable {
+		name := fmt.Sprintf("storedBlock=%d/currentBlock=%d", c.storedBundleBlockNumber, c.finishingBlock)
+		t.Run(name, func(t *testing.T) {
+
+			ctrl := gomock.NewController(t)
+			batch := NewMockstoreBatch(ctrl)
+			table := NewMockstoreTable(ctrl)
+			it := NewMockdbIterator(ctrl)
+			store := &Store{}
+			store.table.ProcessedBundles = table
+
+			existingBundleHash := common.Hash{1, 2, 3}
+
+			// The algorithm would not contemplate any history
+			// when the block number is short enough to not to require any cleanup
+			if c.finishingBlock >= bundle.MaxBlockRange-1 {
+				encodedBlock := make([]byte, 8)
+				binary.BigEndian.PutUint64(encodedBlock, c.storedBundleBlockNumber)
+				existingBundleKey := append(append([]byte{'i'}, encodedBlock...), existingBundleHash.Bytes()...)
+				gomock.InOrder(
+					table.EXPECT().NewIterator([]byte{'i'}, nil).Return(it),
+					it.EXPECT().Next().Return(true),
+					it.EXPECT().Key().Return(existingBundleKey),
+					// AnyTimes: when entries are not to be deleted, the iteration is stopped
+					it.EXPECT().Next().Return(false).AnyTimes(),
+				)
+
+				// this expectation is the core of the test:
+				// it checks that the delete calls are made if and only if the
+				// existing bundle is old enough to be deleted.
+				if c.expectDeleted {
+					batch.EXPECT().Delete(getIndexKey(c.storedBundleBlockNumber, existingBundleHash))
+					batch.EXPECT().Delete(getEntryKey(existingBundleHash))
+				}
+			}
+
+			hash := store.deleteOutdatedBundles(c.finishingBlock, batch)
+			if c.expectDeleted {
+				require.Equal(t, existingBundleHash, hash)
+			}
+		})
+	}
+}
+
+func TestStore_deleteOutdatedBundles_ReturnsXorHashOfDeletedEntries(t *testing.T) {
+
+	cases := map[string]struct {
+		storedBundles []bundle.ExecutionInfo
+	}{
+		"empty list": {
+			storedBundles: []bundle.ExecutionInfo{},
+		},
+		"single bundle": {
+			storedBundles: []bundle.ExecutionInfo{
+				wrapInfo(common.Hash{1, 2, 3}),
+			},
+		},
+		"two bundles": {
+			storedBundles: []bundle.ExecutionInfo{
+				wrapInfo(common.Hash{1, 2, 3}),
+				wrapInfo(common.Hash{4, 5, 6}),
+			},
+		},
+		"more than two bundles": {
+			storedBundles: []bundle.ExecutionInfo{
+				wrapInfo(common.Hash{1, 2, 3}),
+				wrapInfo(common.Hash{4, 5, 6}),
+				wrapInfo(common.Hash{7, 8, 9}),
+			},
+		},
+	}
+
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+
+			store, table, _, batch, it := storeTableLogMocks(t)
+			encodedBlock := make([]byte, 8)
+			binary.BigEndian.PutUint64(encodedBlock, 1)
+			existingBundleKeys := make([][]byte, len(c.storedBundles))
+			for i, info := range c.storedBundles {
+				existingBundleKeys[i] = append(append([]byte{'i'}, encodedBlock...), info.ExecutionPlanHash.Bytes()...)
+			}
+
+			table.EXPECT().NewIterator([]byte{'i'}, nil).Return(it)
+
+			for i, key := range existingBundleKeys {
+				gomock.InOrder(
+					it.EXPECT().Next().Return(true),
+					it.EXPECT().Key().Return(key),
+					batch.EXPECT().Delete(getIndexKey(1, c.storedBundles[i].ExecutionPlanHash)).Return(nil),
+					batch.EXPECT().Delete(getEntryKey(c.storedBundles[i].ExecutionPlanHash)).Return(nil),
+				)
+			}
+
+			it.EXPECT().Next().Return(false)
+
+			deletedHash := store.deleteOutdatedBundles(bundle.MaxBlockRange+1, batch)
+
+			expectedDeletedHash := common.Hash{}
+			for _, info := range c.storedBundles {
+				expectedDeletedHash = xorHash(expectedDeletedHash, info.ExecutionPlanHash)
+			}
+			require.Equal(t, expectedDeletedHash, deletedHash)
+		})
+	}
+}
+
+func TestStore_deleteOutdatedBundles_IgnoresKeysOfWrongLength(t *testing.T) {
+	// log mock is ignored because no log called should be triggered.
+	store, table, _, batch, it := storeTableLogMocks(t)
+
+	gomock.InOrder(
+		it.EXPECT().Next().Return(true),
+		// This is the key that will be ignored, since it does not have the correct length.
+		it.EXPECT().Key().Return([]byte{1, 2}),
+		it.EXPECT().Next().Return(false),
+	)
+	table.EXPECT().NewIterator(gomock.Any(), gomock.Any()).Return(it)
+
+	require.Zero(t, store.deleteOutdatedBundles(bundle.MaxBlockRange+1, batch))
+}
+
+func TestStore_deleteOutdatedBundles_LogsOnBatchDeleteError(t *testing.T) {
+	store, table, log, batch, it := storeTableLogMocks(t)
+
+	injectedErrDeleteEntry := errors.New("entry delete error")
+	injectedErrDeleteIndex := errors.New("index delete error")
+	batch.EXPECT().Delete(gomock.Any()).Return(injectedErrDeleteEntry)
+	batch.EXPECT().Delete(gomock.Any()).Return(injectedErrDeleteIndex)
+
+	gomock.InOrder(
+		it.EXPECT().Next().Return(true),
+		it.EXPECT().Key().Return(getIndexKey(1, common.Hash{1, 2, 3})),
+	)
+	table.EXPECT().NewIterator(gomock.Any(), gomock.Any()).Return(it)
+
+	compoundErr := errors.Join(injectedErrDeleteEntry, injectedErrDeleteIndex)
+	expectCrit(log, "failed to delete old processed bundle hash", "error", compoundErr)
+	// In production, a Crit log call causes the logger to exit the process.
+	// To prevent the test from exiting, the mock logger is configured to panic instead.
+	require.PanicsWithValue(t,
+		fmt.Sprintf("failed to delete old processed bundle hash: %v", []any{"error", compoundErr}),
+		func() { store.deleteOutdatedBundles(bundle.MaxBlockRange+1, batch) })
+}
+
 // --- helper functions ---
 
 // return execution info with the given hash and position 0.
