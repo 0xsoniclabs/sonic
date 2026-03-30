@@ -247,6 +247,26 @@ func TestStore_GetProcessedBundleHistoryHash_InitiallyZero(t *testing.T) {
 	require.Zero(hash)
 }
 
+func TestStore_GetProcessedBundleHistoryHash_CorrectlyParsesHash(t *testing.T) {
+	store, table, _, _, _ := storeTableLogMocks(t)
+
+	for i := range 2 * bundle.MaxBlockRange {
+		block := uint64(i)
+		hash := crypto.Keccak256Hash([]byte(fmt.Sprintf("hash for block %d", block)))
+
+		encoded := append(
+			binary.BigEndian.AppendUint64(nil, block),
+			hash.Bytes()...,
+		)
+
+		table.EXPECT().Get(nil).Return(encoded, nil)
+		gotBlock, gotHash := store.GetProcessedBundleHistoryHash()
+
+		require.Equal(t, block, gotBlock)
+		require.Equal(t, hash, gotHash)
+	}
+}
+
 func TestStore_GetProcessedBundleHistoryHash_LogsOnGetError(t *testing.T) {
 	store, table, log, _, _ := storeTableLogMocks(t)
 
