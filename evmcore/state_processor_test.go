@@ -1662,7 +1662,7 @@ func TestRunTransactionBundle_ReturnsListOfBundlesThatWillBePartOfTheNextBlock(t
 
 	envelopeOneTx := bundle.AllOf(
 		bundle.Step(key, &types.AccessListTx{
-			Nonce: 0, To: &common.Address{1}, Gas: 29_000, GasPrice: big.NewInt(1),
+			Nonce: 0, To: &common.Address{1}, Gas: 21_000, GasPrice: big.NewInt(1),
 		}),
 	)
 	envelopeOneTxPlan, err := bundle.ExtractExecutionPlan(envelopeOneTx)
@@ -1670,12 +1670,12 @@ func TestRunTransactionBundle_ReturnsListOfBundlesThatWillBePartOfTheNextBlock(t
 
 	inner1 := bundle.AllOf(
 		bundle.Step(key, &types.AccessListTx{
-			Nonce: 0, To: &common.Address{1}, Gas: 29_000, GasPrice: big.NewInt(1),
+			Nonce: 0, To: &common.Address{1}, Gas: 21_000, GasPrice: big.NewInt(1),
 		}),
 	)
 	inner2 := bundle.AllOf(
 		bundle.Step(key, &types.AccessListTx{
-			Nonce: 0, To: &common.Address{1}, Gas: 29_001, GasPrice: big.NewInt(1),
+			Nonce: 0, To: &common.Address{1}, Gas: 21_001, GasPrice: big.NewInt(1),
 		}),
 	)
 	envelopeTwoNestedBundles := bundle.AllOf(

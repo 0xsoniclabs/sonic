@@ -64,7 +64,7 @@ func TestCarmenStateDB_ReportedExecutionPlansAreMarkedAsExecuted(t *testing.T) {
 	require.False(state.HasBeenProcessed(plan3))
 }
 
-func TestCarmenStateDB_ReportedExecutionPlansCanBeRolledBac(t *testing.T) {
+func TestCarmenStateDB_ReportedExecutionPlansCanBeRolledBack(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 
@@ -104,6 +104,49 @@ func TestCarmenStateDB_ReportedExecutionPlansCanBeRolledBac(t *testing.T) {
 	require.False(state.HasBeenProcessed(plan2))
 	require.False(state.HasBeenProcessed(plan3))
 
+	state.RevertToInterTxSnapshot(s1)
+
+	require.False(state.HasBeenProcessed(plan1))
+	require.False(state.HasBeenProcessed(plan2))
+	require.False(state.HasBeenProcessed(plan3))
+}
+
+func TestCarmenStateDB_ReportedExecutionPlansCanBeRolledBackSkippingSnapshots(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+
+	db := carmen.NewMockVmStateDB(ctrl)
+	db.EXPECT().InterTxSnapshot().AnyTimes()
+	db.EXPECT().RevertToInterTxSnapshot(gomock.Any()).AnyTimes()
+
+	store := NewMockProcessedBundleStore(ctrl)
+	store.EXPECT().HasBeenProcessed(gomock.Any()).Return(false).AnyTimes()
+
+	state := &CarmenStateDB{
+		db:                     db,
+		processedExecPlanStore: store,
+	}
+
+	plan1 := common.Hash{1}
+	plan2 := common.Hash{2}
+	plan3 := common.Hash{3}
+
+	require.False(state.HasBeenProcessed(plan1))
+	require.False(state.HasBeenProcessed(plan2))
+	require.False(state.HasBeenProcessed(plan3))
+
+	s1 := state.InterTxSnapshot()
+	state.AddProcessedBundle(plan1)
+
+	s2 := state.InterTxSnapshot()
+	require.NotEqual(s1, s2)
+	state.AddProcessedBundle(plan2)
+
+	require.True(state.HasBeenProcessed(plan1))
+	require.True(state.HasBeenProcessed(plan2))
+	require.False(state.HasBeenProcessed(plan3))
+
+	// Ignore snapshot s2 and revert to s1 directly
 	state.RevertToInterTxSnapshot(s1)
 
 	require.False(state.HasBeenProcessed(plan1))

@@ -95,7 +95,7 @@ func TestBundles_RunOnlyOnce_AnExecutionPlanSubmittedMultipleTimesInDifferentEnv
 	defer client.Close()
 
 	receiptB, err := client.TransactionReceipt(t.Context(), txB.Hash())
-	require.ErrorIs(err, ethereum.NotFound, "Got receipt %+v, receipt A: %+v", receiptA, receiptB)
+	require.ErrorIs(err, ethereum.NotFound, "Got receipt A: %+v, receipt B: %+v", receiptA, receiptB)
 }
 
 func TestBundles_RunOnlyOnce_AnExecutionPlanSubmittedMultipleTimesInTheSameBundleIsOnlyProcessedOnce(t *testing.T) {
@@ -191,7 +191,7 @@ func TestBundles_RunOnlyOnce_AnExecutionPlanSubmittedMultipleTimesInTheSameBundl
 
 	// Transaction B should not be executed.
 	receiptB, err := client.TransactionReceipt(t.Context(), txB.Hash())
-	require.ErrorIs(err, ethereum.NotFound, "Got receipt %+v, receipt A: %+v", receiptA, receiptB)
+	require.ErrorIs(err, ethereum.NotFound, "Got receipt A: %+v, receipt B: %+v", receiptA, receiptB)
 }
 
 func TestBundles_RunOnlyOnce_FailedBundlesCanBeRetried(t *testing.T) {
