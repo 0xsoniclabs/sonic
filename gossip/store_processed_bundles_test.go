@@ -56,9 +56,6 @@ type dbIterator interface {
 
 var _ dbIterator // to avoid dbIterator unused warning.
 
-//TODO: add tests that add multiple bundles in the same block,
-// 		and that also deletes multiple bundles.
-
 func TestStore_HasBundleRecentlyBeenProcessed_Returns(t *testing.T) {
 
 	cases := map[string]struct {
