@@ -1350,11 +1350,11 @@ func TestFilterObsoleteBundles_RemovesInvalidBundles(t *testing.T) {
 		expectFiltered bool
 	}{
 		"normal tx": {
-			tx:             types.NewTx(&types.LegacyTx{Nonce: 1}),
+			tx:             types.NewTx(&types.LegacyTx{GasPrice: big.NewInt(1)}),
 			expectFiltered: false,
 		},
 		"sponsored tx": {
-			tx:             types.NewTx(&types.LegacyTx{Nonce: 2, GasPrice: big.NewInt(0), V: big.NewInt(1)}),
+			tx:             types.NewTx(&types.LegacyTx{GasPrice: big.NewInt(0)}),
 			expectFiltered: false,
 		},
 		"bundle valid": {
@@ -1448,6 +1448,27 @@ func TestFilterObsoleteBundles_RemovesBundlesIfFeatureNotEnabled(t *testing.T) {
 
 	filteredTxs := filterObsoleteBundles(txs, 0, &rules, signer, log.Root(), skippedBundleCounter)
 	require.Empty(t, filteredTxs)
+}
+
+func TestFilterObsoleteBundles_DoesNotFilterIfBrioNotEnabled(t *testing.T) {
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	ctrl := gomock.NewController(t)
+
+	skippedBundleCounter := NewMockmetricCounter(ctrl)
+	skippedBundleCounter.EXPECT().Mark(int64(1)).AnyTimes()
+
+	rules := opera.Rules{Upgrades: opera.GetAllegroUpgrades()}
+
+	txs := []*types.Transaction{
+		bundle.AllOf(signer /* empty */), // empty bundle (invalid)
+		bundle.AllOf(signer, bundle.Step(key, &types.AccessListTx{})), // valid bundle
+	}
+
+	filteredTxs := filterObsoleteBundles(txs, 0, &rules, signer, log.Root(), skippedBundleCounter)
+	require.Equal(t, txs, filteredTxs)
 }
 
 func TestFilterObsoleteBundles_RemovesInvalidBundles_FromSequencesWithMultipleBundles(t *testing.T) {
