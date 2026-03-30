@@ -876,21 +876,7 @@ func TestStore_deleteOutdatedBundles_LogsOnBatchDeleteError(t *testing.T) {
 
 func TestStore_computeNewBundleStateHash_ReturnsExpectedHash(t *testing.T) {
 
-	alternativeImpl := func(_ *testing.T, oldHash, addedHash, deletedHash common.Hash, blockNum uint64) common.Hash {
-		h := crypto.NewKeccakState()
-		h.Write(oldHash.Bytes())
-		h.Write(addedHash.Bytes())
-		h.Write(deletedHash.Bytes())
-		require.NoError(t, binary.Write(h, binary.BigEndian, blockNum))
-		var out common.Hash
-		_, err := h.Read(out[:])
-		require.NoError(t, err)
-		return out
-	}
-
-	maxHash := common.HexToHash("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
-
-	testVectors := []struct {
+	testCases := []struct {
 		name        string
 		oldHash     common.Hash
 		addedHash   common.Hash
@@ -898,6 +884,14 @@ func TestStore_computeNewBundleStateHash_ReturnsExpectedHash(t *testing.T) {
 		blockNum    uint64
 		expected    common.Hash
 	}{
+		{
+			name:        "all zeros",
+			oldHash:     common.Hash{},
+			addedHash:   common.Hash{},
+			deletedHash: common.Hash{},
+			blockNum:    0,
+			expected:    common.HexToHash("c24cd7564e291016870aca25c634ca9ab560c07c935b6c0fe3b559cbd3de7501"),
+		},
 		{
 			name:        "simple nonzero",
 			oldHash:     common.Hash{1, 2, 3},
@@ -914,144 +908,77 @@ func TestStore_computeNewBundleStateHash_ReturnsExpectedHash(t *testing.T) {
 			blockNum:    math.MaxUint64,
 			expected:    common.HexToHash("c442b47e6caf1856c00f46452c45b3f669b9c45f47da9c7bf54cc32e408e9442"),
 		},
-		// boundary combinations for all 4 arguments:
-		// oldHash ∈ {zero, max}, addedHash ∈ {zero, max},
-		// deletedHash ∈ {zero, max}, blockNum ∈ {0, MaxUint64}
-		{
-			name:        "zero old/zero added/zero deleted/block 0",
-			oldHash:     common.Hash{},
-			addedHash:   common.Hash{},
-			deletedHash: common.Hash{},
-			blockNum:    0,
-			expected:    common.HexToHash("c24cd7564e291016870aca25c634ca9ab560c07c935b6c0fe3b559cbd3de7501"),
-		},
-		{
-			name:        "zero old/zero added/zero deleted/block MaxUint64",
-			oldHash:     common.Hash{},
-			addedHash:   common.Hash{},
-			deletedHash: common.Hash{},
-			blockNum:    math.MaxUint64,
-			expected:    common.HexToHash("97f8c018064c92ea8e301b3471d72fbd5bf64a1010177a501217d2a0dbc3db2c"),
-		},
-		{
-			name:        "zero old/zero added/max deleted/block 0",
-			oldHash:     common.Hash{},
-			addedHash:   common.Hash{},
-			deletedHash: maxHash,
-			blockNum:    0,
-			expected:    common.HexToHash("d86bbd28676a47f4fda0c0ec2aaf4580b8b33279ac68ed6efbccafd8d3f6d618"),
-		},
-		{
-			name:        "zero old/zero added/max deleted/block MaxUint64",
-			oldHash:     common.Hash{},
-			addedHash:   common.Hash{},
-			deletedHash: maxHash,
-			blockNum:    math.MaxUint64,
-			expected:    common.HexToHash("5519d66efd0a6beebf0d0134765aa08d331290512b0d52307f51b704fbb6cc8e"),
-		},
-		{
-			name:        "zero old/max added/zero deleted/block 0",
-			oldHash:     common.Hash{},
-			addedHash:   maxHash,
-			deletedHash: common.Hash{},
-			blockNum:    0,
-			expected:    common.HexToHash("2c276e098f7820ee7ecfec620af959c2a063bc71182a4e4635d45a403dae22e3"),
-		},
-		{
-			name:        "zero old/max added/zero deleted/block MaxUint64",
-			oldHash:     common.Hash{},
-			addedHash:   maxHash,
-			deletedHash: common.Hash{},
-			blockNum:    math.MaxUint64,
-			expected:    common.HexToHash("3ccdc0bf9d2e0f935e492c67c55f12b6b2a4ed153fab4141cbb8df6bb169e4e1"),
-		},
-		{
-			name:        "zero old/max added/max deleted/block 0",
-			oldHash:     common.Hash{},
-			addedHash:   maxHash,
-			deletedHash: maxHash,
-			blockNum:    0,
-			expected:    common.HexToHash("6347c09da836b1eda790b7aa02f8d3980275ea13024895d577278b21b4b638d7"),
-		},
-		{
-			name:        "zero old/max added/max deleted/block MaxUint64",
-			oldHash:     common.Hash{},
-			addedHash:   maxHash,
-			deletedHash: maxHash,
-			blockNum:    math.MaxUint64,
-			expected:    common.HexToHash("c1c86de3919ae101a05ad4219678e11fa091540ce43af93f6c722dbad000a4ea"),
-		},
-		{
-			name:        "max old/zero added/zero deleted/block 0",
-			oldHash:     maxHash,
-			addedHash:   common.Hash{},
-			deletedHash: common.Hash{},
-			blockNum:    0,
-			expected:    common.HexToHash("4fe4f246f8e04f6494a0648571b7b057624ab09f8b2f751c59161c0c8b5dfe03"),
-		},
-		{
-			name:        "max old/zero added/zero deleted/block MaxUint64",
-			oldHash:     maxHash,
-			addedHash:   common.Hash{},
-			deletedHash: common.Hash{},
-			blockNum:    math.MaxUint64,
-			expected:    common.HexToHash("6c473281e8d189b24564dcb924e0db10a602bb8bc23a86c90cbbe28c225a9cb0"),
-		},
-		{
-			name:        "max old/zero added/max deleted/block 0",
-			oldHash:     maxHash,
-			addedHash:   common.Hash{},
-			deletedHash: maxHash,
-			blockNum:    0,
-			expected:    common.HexToHash("6625b8e7e659bae4cd23cf01ca44bf63b5277836e6341532569075145cf962ff"),
-		},
-		{
-			name:        "max old/zero added/max deleted/block MaxUint64",
-			oldHash:     maxHash,
-			addedHash:   common.Hash{},
-			deletedHash: maxHash,
-			blockNum:    math.MaxUint64,
-			expected:    common.HexToHash("969c7a033aade2edae801a75d418bb936a2a8c680e88fd46a7c90c1a8ac1197b"),
-		},
-		{
-			name:        "max old/max added/zero deleted/block 0",
-			oldHash:     maxHash,
-			addedHash:   maxHash,
-			deletedHash: common.Hash{},
-			blockNum:    0,
-			expected:    common.HexToHash("a4948140ba75a402ceb80b0a0b749962477bed2da23788f33b1edf3d8b09d0a6"),
-		},
-		{
-			name:        "max old/max added/zero deleted/block MaxUint64",
-			oldHash:     maxHash,
-			addedHash:   maxHash,
-			deletedHash: common.Hash{},
-			blockNum:    math.MaxUint64,
-			expected:    common.HexToHash("a38241011256840932f8e12c623bade3d0e3eb6079fd14414b2940112d295a74"),
-		},
-		{
-			name:        "max old/max added/max deleted/block 0",
-			oldHash:     maxHash,
-			addedHash:   maxHash,
-			deletedHash: maxHash,
-			blockNum:    0,
-			expected:    common.HexToHash("32db627b95719d86f8a84009df08e5cb987a0d0c6010efb2d6f0996fdea9085f"),
-		},
-		{
-			name:        "max old/max added/max deleted/block MaxUint64",
-			oldHash:     maxHash,
-			addedHash:   maxHash,
-			deletedHash: maxHash,
-			blockNum:    math.MaxUint64,
-			expected:    common.HexToHash("9ead895b93ffc43b0cf9ff46548b7f7597a8cc362fa6cb0f7151940557048f71"),
-		},
 	}
 
-	for _, v := range testVectors {
+	for _, v := range testCases {
 		t.Run(v.name, func(t *testing.T) {
 			got := computeNewBundleStateHash(v.oldHash, v.addedHash, v.deletedHash, v.blockNum)
-			ref := alternativeImpl(t, v.oldHash, v.addedHash, v.deletedHash, v.blockNum)
+			ref := alternativeComputeImpl(t, v.oldHash, v.addedHash, v.deletedHash, v.blockNum)
 			require.Equal(t, v.expected, got, "computed hash should match expected value")
+			require.Equal(t, ref, got, "actual implementation should match alternative implementation")
+		})
+	}
+}
+
+func alternativeComputeImpl(st *testing.T, oldHash, addedHash, deletedHash common.Hash, blockNum uint64) common.Hash {
+	h := crypto.NewKeccakState()
+	h.Write(oldHash.Bytes())
+	h.Write(addedHash.Bytes())
+	h.Write(deletedHash.Bytes())
+	require.NoError(st, binary.Write(h, binary.BigEndian, blockNum))
+	var out common.Hash
+	_, err := h.Read(out[:])
+	require.NoError(st, err)
+	return out
+}
+
+func TestStore_computeNewBundleStateHash_CorrectlyProcessesEdgeCases(t *testing.T) {
+	// this test checks that the computeNewBundleStateHash function correctly processes edge cases, such as:
+	//  - blockNum being zero or very large
+	//  - oldHash, addedHash, and deletedHash having specific patterns (e.g., all zeros, all 0xff, etc.)
+	//  - combinations of the above
+
+	hashDomain := []common.Hash{
+		common.Hash{},
+		common.Hash{4, 5, 6},
+		common.Hash{0xff, 0xff, 0xff},
+		common.HexToHash("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"),
+	}
+	blockNumberDomain := []uint64{
+		0, 1, 512,
+		bundle.MaxBlockRange - 1,
+		bundle.MaxBlockRange,
+		bundle.MaxBlockRange + 1,
+		math.MaxUint64}
+
+	type testCase struct {
+		oldHash     common.Hash
+		addedHash   common.Hash
+		deletedHash common.Hash
+		blockNum    uint64
+	}
+	testCases := map[string]testCase{}
+	for _, oldHash := range hashDomain {
+		for _, addedHash := range hashDomain {
+			for _, deletedHash := range hashDomain {
+				for _, blockNum := range blockNumberDomain {
+					name := fmt.Sprintf("oldHash=%s/addedHash=%s/deletedHash=%s/blockNum=%d",
+						oldHash.Hex(), addedHash.Hex(), deletedHash.Hex(), blockNum)
+					testCases[name] = testCase{
+						oldHash:     oldHash,
+						addedHash:   addedHash,
+						deletedHash: deletedHash,
+						blockNum:    blockNum,
+					}
+				}
+			}
+		}
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			got := computeNewBundleStateHash(tc.oldHash, tc.addedHash, tc.deletedHash, tc.blockNum)
+			ref := alternativeComputeImpl(t, tc.oldHash, tc.addedHash, tc.deletedHash, tc.blockNum)
 			require.Equal(t, ref, got, "actual implementation should match alternative implementation")
 		})
 	}
