@@ -74,7 +74,7 @@ func TestStore_GetBundleExecutionInfo_ReturnsInfoForKnownBundles(t *testing.T) {
 			"first": {
 				ExecutionPlanHash: uint64ToHash(uint64(i * 3)),
 			},
-			"midle": {
+			"middle": {
 				ExecutionPlanHash: uint64ToHash(uint64(i*3 + 1)),
 			},
 			"last": {
