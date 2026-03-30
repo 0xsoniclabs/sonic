@@ -172,6 +172,44 @@ func TestStore_AddProcessedBundles_LogsOnBatchWriteError(t *testing.T) {
 		func() { store.AddProcessedBundles(1, []bundle.ExecutionInfo{}) })
 }
 
+func TestStore_GetProcessedBundleHistoryHash_InitiallyZero(t *testing.T) {
+	require := require.New(t)
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	blockNum, hash := store.GetProcessedBundleHistoryHash()
+	require.Zero(blockNum)
+	require.Zero(hash)
+}
+
+func TestStore_GetProcessedBundleHistoryHash_LogsOnGetError(t *testing.T) {
+	store, table, log, _, _ := storeTableLogMocks(t)
+
+	injectedErr := errors.New("get error")
+	table.EXPECT().Get(gomock.Any()).Return(nil, injectedErr)
+
+	expectCrit(log, "failed to get hash of processed bundles", "error", injectedErr)
+	// In production, a Crit log call causes the logger to exit the process.
+	// To prevent the test from exiting, the mock logger is configured to panic instead.
+	require.PanicsWithValue(t,
+		fmt.Sprintf("failed to get hash of processed bundles: %v", []any{"error", injectedErr}),
+		func() { store.GetProcessedBundleHistoryHash() })
+}
+
+func TestStore_GetProcessedBundleHistoryHash_LogsOnInvalidStateLength(t *testing.T) {
+	store, table, log, _, _ := storeTableLogMocks(t)
+
+	table.EXPECT().Get(gomock.Any()).Return([]byte{1, 2, 3}, nil)
+	store.table.ProcessedBundles = table
+
+	expectCrit(log, "invalid state length for processed bundles", "length", 3)
+	// In production, a Crit log call causes the logger to exit the process.
+	// To prevent the test from exiting, the mock logger is configured to panic instead.
+	require.PanicsWithValue(t,
+		fmt.Sprintf("invalid state length for processed bundles: %v", []any{"length", 3}),
+		func() { store.GetProcessedBundleHistoryHash() })
+}
+
 // --- helper functions ---
 
 // return execution info with the given hash and position 0.
