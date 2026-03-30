@@ -18,6 +18,7 @@ package bundles
 import (
 	"fmt"
 	"math/big"
+	"slices"
 	"sync"
 	"testing"
 
@@ -57,10 +58,10 @@ type testCase struct {
 }
 
 type EmbeddedTx struct {
-	submittedTxTypes txType
-	blockTxIndices   []txIndex
-	blockTxStatuses  []txStatus
-	contractCounter  int64
+	submittedTxType txType
+	blockTxIndices  []txIndex
+	blockTxStatuses []txStatus
+	contractCounter int64
 }
 
 // getEmbeddedTxs returns a double nested map of EmbeddedTxs. The first level of
@@ -260,12 +261,12 @@ func allOfCase(outcome string, tolerateFailed, tolerateInvalid bool, embeddedTx 
 	c := testCase{
 		envelope: envelopeTx{
 			flags:   flags,
-			txTypes: merge[txType](successfulNormalTx{}, embeddedTx.submittedTxTypes, successfulNormalTx{}),
+			txTypes: []txType{successfulNormalTx{}, embeddedTx.submittedTxType, successfulNormalTx{}},
 		},
 	}
 	if isTolerated(outcome, tolerateFailed, tolerateInvalid) {
-		c.blockTxIndices = merge[txIndex](txIndex(0), offsetIndices(embeddedTx.blockTxIndices, 1), txIndex(2))
-		c.blockTxStatuses = merge[txStatus](successStatus, embeddedTx.blockTxStatuses, successStatus)
+		c.blockTxIndices = slices.Concat([]txIndex{0}, offsetIndices(embeddedTx.blockTxIndices, 1), []txIndex{2})
+		c.blockTxStatuses = slices.Concat([]txStatus{successStatus}, embeddedTx.blockTxStatuses, []txStatus{successStatus})
 		c.contractCounter = 1 + embeddedTx.contractCounter + 1
 	}
 	return c
@@ -293,16 +294,16 @@ func oneOfCase(outcome string, tolerateFailed, tolerateInvalid bool, embeddedTx 
 	c := testCase{
 		envelope: envelopeTx{
 			flags:   flags,
-			txTypes: merge[txType](embeddedTx.submittedTxTypes, successfulNormalTx{}, successfulNormalTx{}),
+			txTypes: []txType{embeddedTx.submittedTxType, successfulNormalTx{}, successfulNormalTx{}},
 		},
 	}
 	if isTolerated(outcome, tolerateFailed, tolerateInvalid) {
-		c.blockTxIndices = merge[txIndex](embeddedTx.blockTxIndices)
-		c.blockTxStatuses = merge[txStatus](embeddedTx.blockTxStatuses)
+		c.blockTxIndices = embeddedTx.blockTxIndices
+		c.blockTxStatuses = embeddedTx.blockTxStatuses
 		c.contractCounter = embeddedTx.contractCounter
 	} else {
-		c.blockTxIndices = merge[txIndex](embeddedTx.blockTxIndices, txIndex(1))
-		c.blockTxStatuses = merge[txStatus](embeddedTx.blockTxStatuses, successStatus)
+		c.blockTxIndices = slices.Concat(embeddedTx.blockTxIndices, []txIndex{1})
+		c.blockTxStatuses = slices.Concat(embeddedTx.blockTxStatuses, []txStatus{successStatus})
 		c.contractCounter = embeddedTx.contractCounter + 1
 	}
 	return c
@@ -325,14 +326,14 @@ func buildCase(variantName string, oneOf, tolerateFailed, tolerateInvalid bool, 
 func Test_BundleSemanticsWithAllFlagCombinations(t *testing.T) {
 	t.Parallel()
 
-	tests := map[string]testCase{}
+	testCases := map[string]testCase{}
 	for _, oneOf := range []bool{false, true} {
 		for _, tolerateFailed := range []bool{false, true} {
 			for _, tolerateInvalid := range []bool{false, true} {
 				for subcaseName, subcase := range getEmbeddedTxs() {
 					for outcome, embeddedTx := range subcase {
 						name := fmt.Sprintf("OneOf=%v/TolerateFailed=%v/TolerateInvalid=%v/%s/%s", oneOf, tolerateFailed, tolerateInvalid, subcaseName, outcome)
-						tests[name] = buildCase(outcome, oneOf, tolerateFailed, tolerateInvalid, embeddedTx)
+						testCases[name] = buildCase(outcome, oneOf, tolerateFailed, tolerateInvalid, embeddedTx)
 					}
 				}
 			}
@@ -340,35 +341,12 @@ func Test_BundleSemanticsWithAllFlagCombinations(t *testing.T) {
 	}
 	net := startTestnet(t)
 	factory := &AccountFactory{session: net}
-	sessions := net.SpawnSessions(t, len(tests))
-	for name, testCase := range tests {
+	sessions := net.SpawnSessions(t, len(testCases))
+	for name, testCase := range testCases {
 		session := sessions[0]
 		sessions = sessions[1:]
 		checkCase(t, session, factory, name, testCase)
 	}
-}
-
-func merge[T any](items ...any) []T {
-	var result []T
-	if len(items) == 0 {
-		return result
-	}
-
-	for _, item := range items {
-		if item == nil {
-			continue
-		}
-		switch v := item.(type) {
-		case T:
-			result = append(result, v)
-		case []T:
-			result = append(result, v...)
-		default:
-			panic(fmt.Sprintf("unexpected type %T in Merge", v))
-		}
-	}
-
-	return result
 }
 
 func checkCase(t *testing.T, session tests.IntegrationTestNetSession, accounts *AccountFactory, name string, c testCase) {
