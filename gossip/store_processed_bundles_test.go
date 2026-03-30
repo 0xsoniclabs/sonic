@@ -137,6 +137,41 @@ func TestStore_GetBundleExecutionInfo_LogsOnInvalidDataLength(t *testing.T) {
 		func() { store.GetBundleExecutionInfo(common.Hash{1, 2, 3}) })
 }
 
+func TestStore_AddProcessedBundles_LogsOnBatchPutNewEntryError(t *testing.T) {
+	store, table, log, batch, _ := storeTableLogMocks(t)
+
+	injectedErr := errors.New("new entry put error")
+	batch.EXPECT().Put(gomock.Any(), gomock.Any()).Return(injectedErr)
+
+	table.EXPECT().NewBatch().Return(batch)
+	table.EXPECT().Get(gomock.Any()).Return(nil, nil)
+
+	expectCrit(log, "failed to update hash of processed bundles", "error", injectedErr)
+	// In production, a Crit log call causes the logger to exit the process.
+	// To prevent the test from exiting, the mock logger is configured to panic instead.
+	require.PanicsWithValue(t,
+		fmt.Sprintf("failed to update hash of processed bundles: %v", []any{"error", injectedErr}),
+		func() { store.AddProcessedBundles(1, []bundle.ExecutionInfo{}) })
+}
+
+func TestStore_AddProcessedBundles_LogsOnBatchWriteError(t *testing.T) {
+	store, table, log, batch, _ := storeTableLogMocks(t)
+
+	injectedErr := errors.New("batch write error")
+	batch.EXPECT().Put(gomock.Any(), gomock.Any()).Return(nil)
+	batch.EXPECT().Write().Return(injectedErr)
+
+	table.EXPECT().NewBatch().Return(batch)
+	table.EXPECT().Get(gomock.Any()).Return(nil, nil)
+
+	expectCrit(log, "failed to write batch for updating processed bundles", "error", injectedErr)
+	// In production, a Crit log call causes the logger to exit the process.
+	// To prevent the test from exiting, the mock logger is configured to panic instead.
+	require.PanicsWithValue(t,
+		fmt.Sprintf("failed to write batch for updating processed bundles: %v", []any{"error", injectedErr}),
+		func() { store.AddProcessedBundles(1, []bundle.ExecutionInfo{}) })
+}
+
 // --- helper functions ---
 
 // return execution info with the given hash and position 0.
