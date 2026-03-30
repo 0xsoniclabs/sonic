@@ -61,6 +61,82 @@ func TestStore_HasBundleRecentlyBeenProcessed_LogsOnGetError(t *testing.T) {
 		func() { store.HasBundleRecentlyBeenProcessed(common.Hash{1, 2, 3}) })
 }
 
+func TestStore_GetBundleExecutionInfo_ReturnsInfoForKnownBundles(t *testing.T) {
+	require := require.New(t)
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	history := map[uint64]map[string]bundle.ExecutionInfo{}
+
+	// construct a history of bundles in boundary block number and boundary positions
+	for i, blockNum := range []uint64{0, 1, bundle.MaxBlockRange / 2, bundle.MaxBlockRange - 2, bundle.MaxBlockRange - 1} {
+		history[blockNum] = map[string]bundle.ExecutionInfo{
+			"first": {
+				ExecutionPlanHash: uint64ToHash(uint64(i * 3)),
+			},
+			"midle": {
+				ExecutionPlanHash: uint64ToHash(uint64(i*3 + 1)),
+			},
+			"last": {
+				ExecutionPlanHash: uint64ToHash(uint64(i*3 + 2)),
+			},
+		}
+	}
+
+	// initialize storage with the provided history
+	table := store.table.ProcessedBundles
+	batch := table.NewBatch()
+	for blockNum, bundles := range history {
+		store.addNewBundles(blockNum, slices.Collect(maps.Values(bundles)), batch)
+	}
+	require.NoError(batch.Write())
+
+	for blockNum, test := range history {
+		for name, test := range test {
+			// check every element in the history can be retrieved correctly by the store
+			t.Run(fmt.Sprintf("BlockNumber=%d/%s", blockNum, name), func(t *testing.T) {
+				info := store.GetBundleExecutionInfo(test.ExecutionPlanHash)
+				require.Equal(test, *info)
+			})
+		}
+	}
+}
+
+func TestStore_GetBundleExecutionInfo_ReturnsNilForUnknownBundles(t *testing.T) {
+	require := require.New(t)
+	store, err := NewMemStore(t)
+	require.NoError(err)
+	hash := common.Hash{1, 2, 3}
+	got := store.GetBundleExecutionInfo(hash)
+	require.Nil(got)
+}
+
+func TestStore_GetBundleExecutionInfo_LogsOnGetError(t *testing.T) {
+	store, table, log, _, _ := storeTableLogMocks(t)
+
+	injectedErr := errors.New("get error")
+	table.EXPECT().Get(gomock.Any()).Return(nil, injectedErr)
+
+	expectCrit(log, "failed to get execution info for bundle", "error", injectedErr)
+	// In production, a Crit log call causes the logger to exit the process.
+	// To prevent the test from exiting, the mock logger is configured to panic instead.
+	require.PanicsWithValue(t,
+		fmt.Sprintf("failed to get execution info for bundle: %v", []any{"error", injectedErr}),
+		func() { store.GetBundleExecutionInfo(common.Hash{1, 2, 3}) })
+}
+
+func TestStore_GetBundleExecutionInfo_LogsOnInvalidDataLength(t *testing.T) {
+	store, table, log, _, _ := storeTableLogMocks(t)
+
+	table.EXPECT().Get(gomock.Any()).Return([]byte{1, 2, 3}, nil)
+
+	expectCrit(log, "invalid data length for execution info", "length", 3)
+
+	require.PanicsWithValue(t,
+		fmt.Sprintf("invalid data length for execution info: %v", []any{"length", 3}),
+		func() { store.GetBundleExecutionInfo(common.Hash{1, 2, 3}) })
+}
+
 // --- helper functions ---
 
 // return execution info with the given hash and position 0.
