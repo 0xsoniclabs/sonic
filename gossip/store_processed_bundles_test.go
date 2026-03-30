@@ -146,6 +146,62 @@ func TestStore_GetBundleExecutionInfo_LogsOnInvalidDataLength(t *testing.T) {
 		func() { store.GetBundleExecutionInfo(common.Hash{1, 2, 3}) })
 }
 
+func TestStore_AddProcessedBundles_AddsNewBundlesToStorage(t *testing.T) {
+	// this test sets 4 core expectations:
+	// 1. new bundle is added to the storage
+	// 2. the index for the block number is updated
+	// 3. the history hash is updated
+	// 4. when the history is large enough, outdated entries are deleted
+
+	for _, block := range []uint64{
+		0, 1,
+		bundle.MaxBlockRange - 1,
+		bundle.MaxBlockRange,
+		bundle.MaxBlockRange + 1,
+	} {
+		t.Run(fmt.Sprintf("BlockNumber=%d", block), func(t *testing.T) {
+			store, table, _, _, _ := storeTableLogMocks(t)
+
+			batch := NewMockstoreBatch(gomock.NewController(t))
+			table.EXPECT().NewBatch().Return(batch)
+			table.EXPECT().Get(gomock.Any())
+
+			batch.EXPECT().Put(nil, BlockHashTableValueMatcher{blockNum: block})
+			batch.EXPECT().Write().Return(nil)
+
+			info1 := bundle.ExecutionInfo{
+				ExecutionPlanHash: uint64ToHash(block),
+				BlockNumber:       block,
+			}
+			batch.EXPECT().Put(
+				getEntryKey(info1.ExecutionPlanHash),
+				BundleExecutionInfoMatcher{expected: info1},
+			)
+			batch.EXPECT().Put(
+				getIndexKey(block, info1.ExecutionPlanHash),
+				[]byte{0},
+			)
+			// when the history is large enough, the store starts deleting outdated entries.
+			if block >= bundle.MaxBlockRange-1 {
+				toDelete := block - bundle.MaxBlockRange + 1
+
+				it := NewMockdbIterator(gomock.NewController(t))
+				table.EXPECT().NewIterator([]byte{'i'}, nil).Return(it)
+				next := it.EXPECT().Next().Return(true)
+				it.EXPECT().Next().Return(false).After(next).AnyTimes()
+				it.EXPECT().Key().Return(getIndexKey(toDelete, uint64ToHash(toDelete)))
+				table.EXPECT().Get(getEntryKey(uint64ToHash(toDelete))).Return(nil, nil).AnyTimes()
+
+				hash := uint64ToHash(toDelete)
+				batch.EXPECT().Delete(getEntryKey(hash)).Return(nil)
+				batch.EXPECT().Delete(getIndexKey(toDelete, hash)).Return(nil)
+			}
+
+			store.AddProcessedBundles(block, []bundle.ExecutionInfo{info1})
+		})
+	}
+}
+
 func TestStore_AddProcessedBundles_LogsOnBatchPutNewEntryError(t *testing.T) {
 	store, table, log, batch, _ := storeTableLogMocks(t)
 
@@ -890,4 +946,54 @@ func uint64ToHash(i uint64) common.Hash {
 	var b [32]byte
 	binary.BigEndian.PutUint64(b[24:], i)
 	return common.Hash(b)
+}
+
+// BlockHashTableValueMatcher is a gomock.Matcher that matches byte slices of length 40
+// where the first 8 bytes encode a block number equal to the one specified in the matcher.
+//
+// Use it to set expectations when writing the block number
+type BlockHashTableValueMatcher struct {
+	blockNum uint64
+}
+
+func (m BlockHashTableValueMatcher) Matches(v any) bool {
+	b, ok := v.([]byte)
+	if !ok {
+		return false
+	}
+	if len(b) != 8+32 {
+		return false
+	}
+	encodedBlockNum := b[:8]
+	gotBlockNum := binary.BigEndian.Uint64(encodedBlockNum)
+	return gotBlockNum == m.blockNum
+}
+
+func (m BlockHashTableValueMatcher) String() string {
+	return fmt.Sprintf("is a byte slice of length 40, with block number %d encoded in the first 8 bytes", m.blockNum)
+}
+
+type BundleExecutionInfoMatcher struct {
+	expected bundle.ExecutionInfo
+}
+
+func (m BundleExecutionInfoMatcher) Matches(v any) bool {
+	b, ok := v.([]byte)
+	if !ok {
+		return false
+	}
+	if len(b) != 8+4+4 {
+		return false
+	}
+	blockNum := binary.BigEndian.Uint64(b[:8])
+	position := binary.BigEndian.Uint32(b[8:12])
+	count := binary.BigEndian.Uint32(b[12:16])
+	return blockNum == m.expected.BlockNumber &&
+		position == m.expected.Position &&
+		count == m.expected.Count
+}
+
+func (m BundleExecutionInfoMatcher) String() string {
+	return fmt.Sprintf("is a byte slice encoding bundle.ExecutionInfo with block number %d, position %d and count %d",
+		m.expected.BlockNumber, m.expected.Position, m.expected.Count)
 }
