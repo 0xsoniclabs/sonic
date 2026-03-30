@@ -103,7 +103,6 @@ func Step(key *ecdsa.PrivateKey, tx any) BundleStep {
 		}
 
 		return Step(key, &types.AccessListTx{
-			ChainID:    tx.ChainId(),
 			Nonce:      tx.Nonce(),
 			GasPrice:   tx.GasPrice(),
 			Gas:        tx.Gas(),
