@@ -18,15 +18,48 @@ package gossip
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
+	"maps"
+	"math"
+	"slices"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/logger"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
+
+func TestStore_HasBundleRecentlyBeenProcessed_ReturnsTrueIfFound(t *testing.T) {
+	require := require.New(t)
+	hash := common.Hash{1, 2, 3}
+	bytes := []byte{1, 2, 3}
+
+	store, table, _, _, _ := storeTableLogMocks(t)
+
+	table.EXPECT().Get(getEntryKey(hash)).Return(bytes, nil)
+	require.True(store.HasBundleRecentlyBeenProcessed(hash))
+
+	table.EXPECT().Get(getEntryKey(hash)).Return(nil, nil)
+	require.False(store.HasBundleRecentlyBeenProcessed(hash))
+}
+
+func TestStore_HasBundleRecentlyBeenProcessed_LogsOnGetError(t *testing.T) {
+	store, table, log, _, _ := storeTableLogMocks(t)
+
+	injectedErr := errors.New("get error")
+	table.EXPECT().Get(gomock.Any()).Return(nil, injectedErr)
+
+	expectCrit(log, "failed to check processed bundle", "error", injectedErr)
+	// In production, a Crit log call causes the logger to exit the process.
+	// To prevent the test from exiting, the mock logger is configured to panic instead.
+	require.PanicsWithValue(t,
+		fmt.Sprintf("failed to check processed bundle: %v", []any{"error", injectedErr}),
+		func() { store.HasBundleRecentlyBeenProcessed(common.Hash{1, 2, 3}) })
+}
 
 // --- helper functions ---
 
