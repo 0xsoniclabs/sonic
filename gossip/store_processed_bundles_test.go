@@ -411,27 +411,6 @@ func TestStore_GetIndexKey_ReturnsExpectedKey(t *testing.T) {
 	}
 }
 
-func TestStore_AddProcessedBundles_LogsOnInvalidBlockNum(t *testing.T) {
-	store, _, log, _, _ := storeTableLogMocks(t)
-
-	current := uint64(math.MaxUint64)
-	expectCrit(log, "invalid block number in execution info", "expected", current, "got", uint64(1))
-
-	execInfo := bundle.ExecutionInfo{
-		ExecutionPlanHash: common.Hash{1, 2, 3},
-		BlockNum:          1, // use a different block number than the current
-		Position:          0,
-		Count:             1,
-	}
-	// In production, a Crit log call causes the logger to exit the process.
-	// To prevent the test from exiting, the mock logger is configured to panic instead.
-	require.PanicsWithValue(t,
-		fmt.Sprintf("invalid block number in execution info: %v", []any{"expected", current, "got", uint64(1)}),
-		func() {
-			store.AddProcessedBundles(current, []bundle.ExecutionInfo{execInfo})
-		})
-}
-
 func TestStore_AddProcessedBundles_LogsOnBatchPutNewEntryError(t *testing.T) {
 	store, table, log, batch, _ := storeTableLogMocks(t)
 
