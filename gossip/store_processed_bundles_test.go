@@ -71,6 +71,56 @@ func TestStore_HasBundleRecentlyBeenProcessed_LogsOnGetError(t *testing.T) {
 		func() { store.HasBundleRecentlyBeenProcessed(common.Hash{1, 2, 3}) })
 }
 
+func TestStore_GetBundleExecutionInfo_ReturnsInfoForKnownBundles(t *testing.T) {
+	require := require.New(t)
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	history := map[uint64]map[string]bundle.ExecutionInfo{}
+
+	// construct a history of bundles in boundary block number and boundary positions
+	for i, blockNum := range []uint64{0, 1, bundle.MaxBlockRange / 2, bundle.MaxBlockRange - 2, bundle.MaxBlockRange - 1} {
+		history[blockNum] = map[string]bundle.ExecutionInfo{
+			"first": {
+				ExecutionPlanHash: uint64ToHash(uint64(i * 3)),
+			},
+			"midle": {
+				ExecutionPlanHash: uint64ToHash(uint64(i*3 + 1)),
+			},
+			"last": {
+				ExecutionPlanHash: uint64ToHash(uint64(i*3 + 2)),
+			},
+		}
+	}
+
+	// initialize storage with the provided history
+	table := store.table.ProcessedBundles
+	batch := table.NewBatch()
+	for blockNum, bundles := range history {
+		store.addNewBundles(blockNum, slices.Collect(maps.Values(bundles)), batch)
+	}
+	require.NoError(batch.Write())
+
+	for blockNum, test := range history {
+		for name, test := range test {
+			// check every element in the history can be retrieved correctly by the store
+			t.Run(fmt.Sprintf("%d/%s", blockNum, name), func(t *testing.T) {
+				info := store.GetBundleExecutionInfo(test.ExecutionPlanHash)
+				require.Equal(test, *info)
+			})
+		}
+	}
+}
+
+func TestStore_GetBundleExecutionInfo_ReturnsNilForUnknownBundles(t *testing.T) {
+	require := require.New(t)
+	store, err := NewMemStore(t)
+	require.NoError(err)
+	hash := common.Hash{1, 2, 3}
+	got := store.GetBundleExecutionInfo(hash)
+	require.Nil(got)
+}
+
 func TestStore_GetBundleExecutionInfo_LogsOnGetError(t *testing.T) {
 	store, table, log, _, _ := storeTableLogMocks(t)
 
@@ -95,141 +145,6 @@ func TestStore_GetBundleExecutionInfo_LogsOnInvalidDataLength(t *testing.T) {
 	require.PanicsWithValue(t,
 		fmt.Sprintf("invalid data length for execution info: %v", []any{"length", 3}),
 		func() { store.GetBundleExecutionInfo(common.Hash{1, 2, 3}) })
-}
-
-func TestStore_GetBundleExecutionInfo_ReturnsInfoForAddedBundleHashes(t *testing.T) {
-	require := require.New(t)
-	store, err := NewMemStore(t)
-	require.NoError(err)
-
-	// Prepare a set of bundles across multiple blocks
-	hashes := []common.Hash{
-		{1, 2, 3},    // 0: first in history, first in block 1
-		{4, 5, 6},    // 1: middle in block 1
-		{7, 8, 9},    // 2: last in block 1
-		{10, 11, 12}, // 3: first in block 512
-		{13, 14, 15}, // 4: middle in block 512
-		{16, 17, 18}, // 5: last in block 512
-		{19, 20, 21}, // 6: first in last block of history
-		{22, 23, 24}, // 7: middle in last block of history
-		{25, 26, 27}, // 8: last in last block of history
-	}
-	infos := []bundle.ExecutionInfo{
-		{
-			ExecutionPlanHash: hashes[0],
-			BlockNum:          1,
-			Position:          0,
-			Count:             1,
-		},
-		{
-			ExecutionPlanHash: hashes[1],
-			BlockNum:          1,
-			Position:          1,
-			Count:             1,
-		},
-		{
-			ExecutionPlanHash: hashes[2],
-			BlockNum:          1,
-			Position:          2,
-			Count:             1,
-		},
-		{
-			ExecutionPlanHash: hashes[3],
-			BlockNum:          512,
-			Position:          0,
-			Count:             1,
-		},
-		{
-			ExecutionPlanHash: hashes[4],
-			BlockNum:          512,
-			Position:          1,
-			Count:             1,
-		},
-		{
-			ExecutionPlanHash: hashes[5],
-			BlockNum:          512,
-			Position:          2,
-			Count:             1,
-		},
-		{
-			ExecutionPlanHash: hashes[6],
-			BlockNum:          1023,
-			Position:          0,
-			Count:             1,
-		},
-		{
-			ExecutionPlanHash: hashes[7],
-			BlockNum:          1023,
-			Position:          1,
-			Count:             1,
-		},
-		{
-			ExecutionPlanHash: hashes[8],
-			BlockNum:          1023,
-			Position:          2,
-			Count:             1,
-		},
-	}
-	// Add all bundles to store
-	store.AddProcessedBundles(1, infos[:3])
-	store.AddProcessedBundles(512, infos[3:6])
-	store.AddProcessedBundles(1023, infos[6:])
-
-	type testCase struct {
-		hash     common.Hash
-		expected *bundle.ExecutionInfo
-	}
-	tests := map[string]testCase{
-		"not found (unknown hash)": {
-			hash:     common.Hash{99, 99, 99},
-			expected: nil,
-		},
-		"first in first block": {
-			hash:     hashes[0],
-			expected: &infos[0],
-		},
-		"middle in first block ": {
-			hash:     hashes[1],
-			expected: &infos[1],
-		},
-		"last in first block": {
-			hash:     hashes[2],
-			expected: &infos[2],
-		},
-		"first in middle block": {
-			hash:     hashes[3],
-			expected: &infos[3],
-		},
-		"middle in middle block": {
-			hash:     hashes[4],
-			expected: &infos[4],
-		},
-		"last in middle block": {
-			hash:     hashes[5],
-			expected: &infos[5],
-		},
-		"first in last block": {
-			hash:     hashes[6],
-			expected: &infos[6],
-		},
-		"middle in last block": {
-			hash:     hashes[7],
-			expected: &infos[7],
-		},
-		"last in last block": {
-			hash:     hashes[8],
-			expected: &infos[8],
-		},
-	}
-
-	for name, tc := range tests {
-		t.Run(name, func(t *testing.T) {
-			info := store.GetBundleExecutionInfo(tc.hash)
-
-			require.Equal(tc.expected, info)
-
-		})
-	}
 }
 
 func TestStore_ProcessedBundles_TableIsInitiallyEmpty(t *testing.T) {
