@@ -1402,83 +1402,119 @@ func TestFilterObsoleteBundles_RemovesInvalidBundles(t *testing.T) {
 		tx             *types.Transaction
 		bundlesEnabled bool
 		blockNumber    uint64
-		isFiltered     bool
+		expectFiltered bool
 	}{
 		"normal tx": {
 			tx:             types.NewTx(&types.LegacyTx{Nonce: 1}),
 			bundlesEnabled: true,
-			isFiltered:     false,
+			expectFiltered: false,
 		},
 		"sponsored tx": {
 			tx:             types.NewTx(&types.LegacyTx{Nonce: 2, GasPrice: big.NewInt(0), V: big.NewInt(1)}),
 			bundlesEnabled: true,
-			isFiltered:     false,
+			expectFiltered: false,
 		},
 		"bundle valid": {
 			tx:             bundle.AllOf(bundle.Step(key, &types.AccessListTx{})),
 			bundlesEnabled: true,
-			isFiltered:     false,
+			expectFiltered: false,
 		},
 		"bundle valid but bundles disabled": {
 			tx:             bundle.AllOf(bundle.Step(key, &types.AccessListTx{})),
 			bundlesEnabled: false,
-			isFiltered:     true,
+			expectFiltered: true,
 		},
 		"bundle invalid": {
 			tx:             types.NewTx(&types.AccessListTx{To: &bundle.BundleProcessor}),
 			bundlesEnabled: true,
-			isFiltered:     true,
+			expectFiltered: true,
 		},
 		"bundle out of range": {
 			tx:             bundle.NewBuilder().With(bundle.Step(key, &types.AccessListTx{})).Latest(1).Build(),
 			bundlesEnabled: true,
 			blockNumber:    2,
-			isFiltered:     true,
+			expectFiltered: true,
 		},
 		"bundle empty": {
 			tx:             bundle.AllOf( /* empty */ ),
 			bundlesEnabled: true,
-			isFiltered:     true,
+			expectFiltered: true,
 		},
 		"bundle with invalid nested bundle": {
 			tx:             bundle.AllOf(bundle.Step(key, types.NewTx(&types.AccessListTx{To: &bundle.BundleProcessor}))),
 			bundlesEnabled: true,
-			isFiltered:     true,
+			expectFiltered: true,
 		},
 		"bundle with out of range nested bundle": {
 			tx:             bundle.AllOf(bundle.Step(key, bundle.NewBuilder().With(bundle.Step(key, &types.AccessListTx{})).Latest(1).Build())),
 			bundlesEnabled: true,
 			blockNumber:    2,
-			isFiltered:     true,
+			expectFiltered: true,
 		},
 		"bundle with empty nested bundle": {
 			tx:             bundle.AllOf(bundle.Step(key, bundle.AllOf( /* empty */ ))),
 			bundlesEnabled: true,
-			isFiltered:     true,
+			expectFiltered: true,
 		},
 	}
 
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-
-			skippedBundleCounter := NewMockmetricCounter(ctrl)
-
-			if test.isFiltered {
-				skippedBundleCounter.EXPECT().Mark(int64(1)).AnyTimes()
-			}
-
-			rules := opera.Rules{Upgrades: opera.GetBrioUpgrades()}
-			rules.Upgrades.TransactionBundles = test.bundlesEnabled
-
-			filteredTxs := filterObsoleteBundles([]*types.Transaction{test.tx}, test.blockNumber, &rules, log.Root(), skippedBundleCounter)
-			if test.isFiltered {
-				require.Empty(t, filteredTxs, "bundle should be filtered")
-			} else {
-				require.Equal(t, []*types.Transaction{test.tx}, filteredTxs)
-			}
-		})
+	positions := map[string]uint64{
+		"first": 0,
+		"mid":   1,
+		"last":  2,
 	}
+
+	for pos_name, pos := range positions {
+		for name, test := range tests {
+			t.Run(fmt.Sprintf("%s/%s", pos_name, name), func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+
+				skippedBundleCounter := NewMockmetricCounter(ctrl)
+
+				if test.expectFiltered {
+					skippedBundleCounter.EXPECT().Mark(int64(1)).AnyTimes()
+				}
+
+				rules := opera.Rules{Upgrades: opera.GetBrioUpgrades()}
+				rules.Upgrades.TransactionBundles = test.bundlesEnabled
+
+				txs := []*types.Transaction{
+					types.NewTx(&types.LegacyTx{Nonce: 0}),
+					types.NewTx(&types.LegacyTx{Nonce: 1}),
+					types.NewTx(&types.LegacyTx{Nonce: 2}),
+				}
+				txs[pos] = test.tx
+
+				filteredTxs := filterObsoleteBundles(txs, test.blockNumber, &rules, log.Root(), skippedBundleCounter)
+				if test.expectFiltered {
+					expected := txs[:pos]
+					expected = append(expected, txs[pos+1:]...)
+					require.Equal(t, expected, filteredTxs)
+				} else {
+					require.Equal(t, txs, filteredTxs)
+				}
+			})
+		}
+	}
+}
+
+func TestFilterObsoleteBundles_RemovesInvalidBundles_FromSequencesWithMultipleBundles(t *testing.T) {
+	txs := []*types.Transaction{
+		types.NewTx(&types.LegacyTx{Nonce: 0}),
+		types.NewTx(&types.AccessListTx{To: &bundle.BundleProcessor}), // bundle invalid
+		bundle.AllOf( /* empty */ ), // bundle empty
+	}
+
+	ctrl := gomock.NewController(t)
+
+	skippedBundleCounter := NewMockmetricCounter(ctrl)
+	skippedBundleCounter.EXPECT().Mark(int64(1)).Times(2)
+
+	rules := opera.Rules{Upgrades: opera.GetBrioUpgrades()}
+	rules.Upgrades.TransactionBundles = true
+
+	filteredTxs := filterObsoleteBundles(txs, 0, &rules, log.Root(), skippedBundleCounter)
+	require.Equal(t, txs[:1], filteredTxs)
 }
 
 type fakePayload struct {
