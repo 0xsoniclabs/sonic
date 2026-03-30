@@ -18,7 +18,6 @@ package api
 
 import (
 	"github.com/0xsoniclabs/sonic/api/ethapi"
-	"github.com/0xsoniclabs/sonic/api/sonicapi"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
@@ -73,11 +72,6 @@ func GetAPIs(apiBackend ethapi.Backend) []rpc.API {
 			Namespace: "sonic",
 			Version:   "1.0",
 			Service:   ethapi.NewPublicSccApi(apiBackend),
-			Public:    true,
-		}, {
-			Namespace: "sonic",
-			Version:   "1.0",
-			Service:   sonicapi.NewPublicBundleAPI(apiBackend),
 			Public:    true,
 		},
 	}
