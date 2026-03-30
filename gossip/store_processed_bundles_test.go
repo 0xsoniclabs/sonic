@@ -73,12 +73,21 @@ func TestStore_GetBundleExecutionInfo_ReturnsInfoForKnownBundles(t *testing.T) {
 		history[blockNum] = map[string]bundle.ExecutionInfo{
 			"first": {
 				ExecutionPlanHash: uint64ToHash(uint64(i * 3)),
+				BlockNumber:       uint64(i),
+				Position:          0,
+				Count:             1,
 			},
 			"middle": {
 				ExecutionPlanHash: uint64ToHash(uint64(i*3 + 1)),
+				BlockNumber:       uint64(i),
+				Position:          1,
+				Count:             1,
 			},
 			"last": {
 				ExecutionPlanHash: uint64ToHash(uint64(i*3 + 2)),
+				BlockNumber:       uint64(i),
+				Position:          2,
+				Count:             1,
 			},
 		}
 	}
