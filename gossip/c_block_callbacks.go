@@ -261,8 +261,7 @@ func consensusCallbackBeginBlockFn(
 
 				// Filter obsolete bundles from the proposal.
 				proposal.Transactions = filterObsoleteBundles(
-					proposal.Transactions, store,
-					uint64(proposal.Number), &es.Rules, log.Root(), skippedTxsMeter,
+					proposal.Transactions, uint64(proposal.Number), &es.Rules, log.Root(), skippedTxsMeter,
 				)
 
 				// Make sure the new block time is after the last block time.
@@ -948,12 +947,11 @@ func isPermissible(
 }
 
 // filterObsoleteBundles filters bundles that were already included in the
-// chain or are outdated. This makes sure that bundles are processed at most
-// once. This is to defend against validators proposing the same bundle multiple
-// times for inclusion.
+// chain, are outdated or invalid. This makes sure that bundles are processed
+// at most once. This is to defend against validators proposing the same bundle
+// multiple times for inclusion.
 func filterObsoleteBundles(
 	transactions []*types.Transaction,
-	tracker bundleTracker,
 	blockNumber uint64,
 	rules *opera.Rules,
 	log log.Logger,
@@ -983,76 +981,77 @@ func filterObsoleteBundles(
 
 	res := make([]*types.Transaction, 0, len(transactions))
 	for _, tx := range transactions {
-		if !bundle.IsEnvelope(tx) {
+		if isObsoleteBundle(tx, blockNumber, rules, log) {
+			if skippedBundleCounter != nil {
+				skippedBundleCounter.Mark(1)
+			}
+		} else {
 			res = append(res, tx)
-			continue
 		}
-
-		// If bundles are disabled, all bundles are to be removed.
-		if !rules.Upgrades.TransactionBundles {
-			if log != nil {
-				log.Warn("Bundles are not enabled but a bundle transaction needed to be skipped", "tx", tx.Hash())
-			}
-			if skippedBundleCounter != nil {
-				skippedBundleCounter.Mark(1)
-			}
-			continue
-		}
-
-		// Check static properties of the bundle, to make sure it is not malformed.
-		_, execPlan, err := bundle.ValidateTransactionBundle(tx)
-		if err != nil {
-			if log != nil {
-				log.Warn("Invalid bundle transaction in the proposal", "tx", tx.Hash(), "issue", err)
-			}
-			if skippedBundleCounter != nil {
-				skippedBundleCounter.Mark(1)
-			}
-			continue // < filter out invalid bundled transactions
-		}
-
-		// Check that the block this bundle is to be included is within its
-		// valid range.
-		if !execPlan.IsInRange(blockNumber) {
-			if log != nil {
-				log.Warn(
-					"Bundle transaction in the proposal is out of range for execution",
-					"tx", tx.Hash(),
-					"block", blockNumber,
-					"earliest", execPlan.Earliest,
-					"latest", execPlan.Latest,
-				)
-			}
-			if skippedBundleCounter != nil {
-				skippedBundleCounter.Mark(1)
-			}
-			continue // < filter out outdated bundled transactions
-		}
-
-		// Check that the execution plan of this bundle has not been processed
-		// before at any other time during its valid range.
-		hash := execPlan.Hash()
-		seen := tracker.HasBundleRecentlyBeenProcessed(hash)
-		if seen {
-			if log != nil {
-				log.Warn("Bundle transaction in the proposal was recently processed", "tx", tx.Hash(), "exec_plan_hash", hash)
-			}
-			if skippedBundleCounter != nil {
-				skippedBundleCounter.Mark(1)
-			}
-			continue // < filter out recently processed bundled transactions
-		}
-		res = append(res, tx)
 	}
 	return res
+}
+
+func isObsoleteBundle(
+	tx *types.Transaction,
+	blockNumber uint64,
+	rules *opera.Rules,
+	log log.Logger,
+) bool {
+	if !bundle.IsEnvelope(tx) {
+		return false
+	}
+
+	// If bundles are disabled, all bundles are to be removed.
+	if !rules.Upgrades.TransactionBundles {
+		if log != nil {
+			log.Warn("Bundles are not enabled but a bundle transaction needed to be skipped", "tx", tx.Hash())
+		}
+		return true
+	}
+
+	// Check static properties of the bundle, to make sure it is not malformed.
+	bundle, execPlan, err := bundle.ValidateTransactionBundle(tx)
+	if err != nil {
+		if log != nil {
+			log.Warn("Invalid bundle transaction in the proposal", "tx", tx.Hash(), "issue", err)
+		}
+		return true
+	}
+
+	// Check that the block this bundle is to be included is within its
+	// valid range.
+	if !execPlan.IsInRange(blockNumber) {
+		if log != nil {
+			log.Warn(
+				"Bundle transaction in the proposal is out of range for execution",
+				"tx", tx.Hash(),
+				"block", blockNumber,
+				"earliest", execPlan.Earliest,
+				"latest", execPlan.Latest,
+			)
+		}
+		return true
+	}
+
+	if len(bundle.Transactions) == 0 {
+		if log != nil {
+			log.Warn("Bundle transaction in the proposal contains no transactions", "tx", tx.Hash())
+		}
+		return true
+	}
+
+	for _, tx := range bundle.Transactions {
+		if isObsoleteBundle(tx, blockNumber, rules, log) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // metricCounter is an abstraction of the *metrics.Meter type to facilitate
 // mocking in tests.
 type metricCounter interface {
 	Mark(int64)
-}
-
-type bundleTracker interface {
-	HasBundleRecentlyBeenProcessed(execPlanHash common.Hash) bool
 }
