@@ -295,6 +295,25 @@ func TestStore_GetProcessedBundleHistoryHash_LogsOnInvalidStateLength(t *testing
 		func() { store.GetProcessedBundleHistoryHash() })
 }
 
+func TestStore_addNewBundles_EncodesInfoCorrectly(t *testing.T) {
+	store, _, _, _, _ := storeTableLogMocks(t)
+
+	for blockNum := range 200 {
+		hash := crypto.Keccak256Hash([]byte(fmt.Sprintf("hash for block %d", blockNum)))
+		info := bundle.ExecutionInfo{
+			ExecutionPlanHash: hash,
+			BlockNumber:       uint64(blockNum),
+			Position:          4,
+			Count:             5,
+		}
+
+		batch := NewMockstoreBatch(gomock.NewController(t))
+		batch.EXPECT().Put(getEntryKey(hash), BundleExecutionInfoMatcher{expected: info})
+		batch.EXPECT().Put(getIndexKey(uint64(blockNum), hash), []byte{0})
+		store.addNewBundles(uint64(blockNum), []bundle.ExecutionInfo{info}, batch)
+	}
+}
+
 func TestStore_addNewBundles_ReturnsExpectedHash(t *testing.T) {
 	require := require.New(t)
 	store, err := NewMemStore(t)
