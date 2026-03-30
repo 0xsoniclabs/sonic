@@ -17,9 +17,11 @@
 package evmcore
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"math/big"
+	"strings"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
@@ -415,7 +417,7 @@ func validateBundleTransactionsInternal(
 	// If the transaction is a bundle, validate its structure and content.
 	_, _, err := bundle.ValidateTransactionBundle(tx)
 	if err != nil {
-		return fmt.Errorf("%w: %w", ErrBundleTransactionInvalid, err)
+		return errors.Join(ErrBundleTransactionInvalid, err)
 	}
 
 	// Check that the bundle is runnable.
@@ -424,10 +426,10 @@ func validateBundleTransactionsInternal(
 		stateDB:    stateDb,
 	}
 	state := getBundleState(chainAdapter, tx)
-	if state == BundleStatePermanentlyBlocked {
-		// TODO: have `GetBundleState` provide more context on why the bundle is
-		// blocked and include that in the error message.
-		return ErrBundlePermanentlyBlocked
+	if !state.Executable {
+		return errors.Join(
+			ErrBundleNonExecutable,
+			errors.New(strings.Join(state.Reasons, ".\n")))
 	}
 
 	return nil

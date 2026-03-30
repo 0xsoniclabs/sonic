@@ -69,10 +69,10 @@ func Test_Emitter_isValidBundleTx_AcceptsValidBundleIfBundlesAreEnabled(t *testi
 			require.NoError(err)
 
 			allBundlesRunnable := func(evmcore.ChainState, *types.Transaction) evmcore.BundleState {
-				return evmcore.BundleStateRunnable
+				return evmcore.BundleState{Executable: true}
 			}
 
-			require.Equal(bundlesEnabled, emitter.isValidBundleTxInternal(tx, allBundlesRunnable))
+			require.Equal(bundlesEnabled, emitter.isRunnableBundleTxInternal(tx, allBundlesRunnable))
 		})
 	}
 }
@@ -141,10 +141,10 @@ func Test_Emitter_isValidBundleTx_RejectsAlreadyProcessedBundle(t *testing.T) {
 			require.NoError(t, err)
 
 			getBundleState := func(evmcore.ChainState, *types.Transaction) evmcore.BundleState {
-				return evmcore.BundleStateRunnable
+				return evmcore.BundleState{Executable: true}
 			}
 
-			require.Equal(t, !processed, emitter.isValidBundleTxInternal(tx, getBundleState))
+			require.Equal(t, !processed, emitter.isRunnableBundleTxInternal(tx, getBundleState))
 		})
 	}
 }

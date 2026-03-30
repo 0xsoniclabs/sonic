@@ -385,7 +385,7 @@ func checkCase(t *testing.T, session tests.IntegrationTestNetSession, accounts *
 		err = client.SendTransaction(t.Context(), envelopeTx)
 		if err != nil {
 			// Check whether the bundle was rejected by the pre-check.
-			require.ErrorContains(t, err, "permanently blocked")
+			require.ErrorContains(t, err, "bundle is not executable")
 			// This is only allowed for transactions that should fail.
 			require.Zero(t, c.contractCounter)
 			require.Empty(t, c.blockTxIndices)

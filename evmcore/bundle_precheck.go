@@ -34,30 +34,53 @@ import (
 
 //go:generate mockgen -source=bundle_precheck.go -destination=bundle_precheck_mock.go -package=evmcore
 
-// BundleState describes the state of a bundle in terms of its executability
-// relative to the state of the blockchain. It can be one of the following:
-//   - BundleStateRunnable: The bundle is ready to be executed on the current
-//     state of the blockchain and has a chance to succeed if executed.
-//   - BundleStateTemporaryBlocked: The bundle is not currently executable due to
-//     temporary conditions (e.g., it is too early), but it may become
-//     executable in the future as the blockchain progresses.
-//   - BundleStatePermanentlyBlocked: The bundle is not executable and will never
-//     be executable in the future due to permanent conditions (e.g., a
-//     transaction in the bundle uses an already consumed nonce).
-type BundleState int
+// BundleState represents the current evaluation state of a transaction bundle.
+// It indicates whether the bundle is executable as is, may become executable
+// at a later point or will never be executable. If the bundle is not executable
+// as is, it also provides a list of reasons explaining why.
+// The 3 possible cases are:
+//
+//  1. Executable: the bundle can be executed with the current state, and there
+//     are no known issues with it.
+//
+//     Example: BundleState{Executable: true}
+//
+//  2. Temporarily blocked: the bundle is not executable with the current state,
+//     but it may become executable later (e.g., because it depends on a future
+//     block or on the execution of other transactions that are not included in
+//     the bundle).
+//
+//     Example: BundleState{
+//     Executable: false,
+//     TemporarilyBlocked: true,
+//     Reasons: []string{"bundle earliest not reached yet"},
+//     }
+//
+//  3. Not executable: the bundle is not executable and there are known issues
+//     with it that will never be resolved (e.g., nonce conflicts that can not be
+//     resolved by waiting for other transactions to be executed).
+//
+//     Example: BundleState{Executable: false, Reasons: []string{"reason 1", "reason 2"}}
+type BundleState struct {
+	Executable         bool     // True if the bundle can be executed with the current state.
+	TemporarilyBlocked bool     // True if the bundle is currently blocked but may become executable later.
+	Reasons            []string // A list of human-readable strings describing why the bundle is not executable or is blocked.
+}
 
-const (
-	// BundleStateRunnable indicates that the bundle is ready to be executed on
-	// a given state of the blockchain and has a chance to succeed if executed.
-	BundleStateRunnable BundleState = iota
-	// BundleStateTemporaryBlocked indicates that the bundle is not currently
-	// executable due to temporary conditions, but it may become executable in
-	// the future as the blockchain progresses.
-	BundleStateTemporaryBlocked
-	// BundleStatePermanentlyBlocked indicates that the bundle is not executable
-	// and will never be executable in the future due to permanent conditions.
-	BundleStatePermanentlyBlocked
-)
+func makeRunnableState() BundleState {
+	return BundleState{Executable: true}
+}
+
+func makeTemporaryBlockedState(reason string) BundleState {
+	return BundleState{
+		TemporarilyBlocked: true,
+		Reasons:            []string{reason},
+	}
+}
+
+func makePermanentlyBlockedState(reason string) BundleState {
+	return BundleState{Reasons: []string{reason}}
+}
 
 // GetBundleState determines the state of the bundle based on the current state
 // of the blockchain and the transactions in the bundle.
@@ -79,16 +102,16 @@ func getBundleState(
 	// Verify that the bundle is valid.
 	bundle, _, err := bundle.ValidateTransactionBundle(envelop)
 	if err != nil {
-		return BundleStatePermanentlyBlocked
+		return makePermanentlyBlockedState(fmt.Sprintf("invalid bundle: %v", err))
 	}
 
 	// Quickest filter: check if the bundle is in the valid block range.
 	currentBlock := chain.GetLatestHeader().Number.Uint64()
 	if bundle.Latest < currentBlock {
-		return BundleStatePermanentlyBlocked
+		return makePermanentlyBlockedState(ErrBundleLatestPassed.Error())
 	}
 	if bundle.Earliest > currentBlock {
-		return BundleStateTemporaryBlocked
+		return makeTemporaryBlockedState("bundle earliest not reached yet")
 	}
 
 	// Next, check whether there are any nonce conflicts in the execution of
@@ -98,7 +121,8 @@ func getBundleState(
 	signer := types.LatestSignerForChainID(chainId)
 	stateDb := chain.StateDB()
 	state := checkForNonceConflicts(bundle, signer, stateDb)
-	if state != BundleStateRunnable {
+	if !state.Executable {
+		state.Reasons = append([]string{"nonce check failed"}, state.Reasons...)
 		return state
 	}
 
@@ -107,7 +131,7 @@ func getBundleState(
 	// checks have passed. If we reach this point, nonces are aligned, so if it
 	// fails, it means that there is something else wrong with the bundle (e.g.,
 	// a missing pre-condition) that will never be resolved, and we can consider
-	// the bundle as permanently blocked.
+	// the bundle as non-executable.
 
 	// Make sure to revert all changes to enable re-using the same StateDB for
 	// multiple calls to GetBundleState without having to create a new StateDB.
@@ -119,9 +143,9 @@ func getBundleState(
 	}()
 
 	if success := trialRunner(envelop, chain, stateDb); !success {
-		return BundleStatePermanentlyBlocked
+		return makePermanentlyBlockedState("bundle trial-run failed")
 	}
-	return BundleStateRunnable
+	return makeRunnableState()
 }
 
 type ChainState interface {
@@ -148,10 +172,16 @@ type NonceSource interface {
 }
 
 // checkForNonceConflicts checks whether there are any nonce conflicts in the
-// execution of the bundle. It returns BundleStatePermanentlyBlocked if there
-// is a nonce conflict that will never be resolved, BundleStateTemporaryBlocked
-// if there is a nonce conflict that may be resolved in the future, and
-// BundleStateRunnable if there are no nonce conflicts right now.
+// execution of the bundle.
+//
+// It returns a BundleState with Executable=false and a reason if there is a
+// nonce conflict that will never be resolved.
+//
+// It returns a BundleState with Executable=false and TemporarilyBlocked=true
+// if there is a nonce conflict that may be resolved in the future.
+//
+// It returns a BundleState with Executable=true if there are no nonce conflicts
+// right now.
 func checkForNonceConflicts(
 	txBundle *bundle.TransactionBundle,
 	signer types.Signer,
@@ -163,8 +193,9 @@ func checkForNonceConflicts(
 	if err != nil {
 		// If we fail to derive the lowest referenced nonces, it means that the
 		// bundle is malformed (e.g., contains invalid transactions) and we can
-		// consider it as permanently blocked.
-		return BundleStatePermanentlyBlocked
+		// consider it as non-executable.
+		return makePermanentlyBlockedState(
+			fmt.Sprintf("could not get lowest nonce for all accounts: %v", err))
 	}
 
 	// We correct the lowest nonces to be at least as high as the current nonces
@@ -180,19 +211,19 @@ func checkForNonceConflicts(
 		acceptedSender: make(map[common.Address]struct{}),
 	}
 
-	// If this execution failed, the bundle is permanently blocked.
+	// If this execution failed, the bundle is non-executable.
 	if success := bundle.RunBundle(txBundle, runner); !success {
-		return BundleStatePermanentlyBlocked
+		return makePermanentlyBlockedState("bundle nonce check execution failed")
 	}
 
 	// If it succeeded, it depends on whether there is a gap between the lowest
 	// and the current nonces for any sender of an accepted transaction.
 	for sender := range runner.acceptedSender {
 		if nonceSource.GetNonce(sender) < lowest[sender] {
-			return BundleStateTemporaryBlocked
+			return makeTemporaryBlockedState("gapped nonce")
 		}
 	}
-	return BundleStateRunnable
+	return makeRunnableState()
 }
 
 // getLowestReferencedNonces returns the lowest nonce referenced for each sender

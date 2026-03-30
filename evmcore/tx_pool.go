@@ -114,8 +114,11 @@ var (
 	// ErrBundleTransactionInvalid is returned when a bundle transaction is invalid.
 	ErrBundleTransactionInvalid = errors.New("invalid bundle transaction")
 
-	// ErrBundlePermanentlyBlocked is returned when a bundle is determined to be permanently blocked.
-	ErrBundlePermanentlyBlocked = errors.New("bundle is permanently blocked")
+	// ErrBundleInexecutable is returned when a bundle is determined to be currently not executable in the current state.
+	ErrBundleNonExecutable = errors.New("bundle is not executable")
+
+	// ErrBundleLatestPassed is returned when a bundle's latest block has already passed.
+	ErrBundleLatestPassed = errors.New("bundle latest block has already passed")
 )
 
 var (
