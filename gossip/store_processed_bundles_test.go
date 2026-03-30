@@ -20,15 +20,15 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
+	"slices"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/logger"
-	"github.com/Fantom-foundation/lachesis-base/kvdb"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -396,7 +396,6 @@ func TestStore_GetEntryKey_ReturnsExpectedKey(t *testing.T) {
 }
 
 func TestStore_GetIndexKey_ReturnsExpectedKey(t *testing.T) {
-
 	hash := common.HexToHash("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20")
 	blockNumbers := []uint64{0, 1, 512, math.MaxUint64 - 1, math.MaxUint64}
 	for _, blockNum := range blockNumbers {
@@ -408,7 +407,6 @@ func TestStore_GetIndexKey_ReturnsExpectedKey(t *testing.T) {
 			require.Equal(t, expectedKey, got)
 			// 1 byte for prefix + 8 bytes for block number + 32 bytes for hash
 			require.Len(t, got, 1+8+32)
-
 		})
 	}
 }
@@ -477,6 +475,30 @@ func TestStore_GetProcessedBundleHistoryHash_InitiallyZero(t *testing.T) {
 	blockNum, hash := store.GetProcessedBundleHistoryHash()
 	require.Zero(blockNum)
 	require.Zero(hash)
+}
+
+func TestStore_GetProcessedBundleHistoryHash_HashIsUpdated(t *testing.T) {
+	require := require.New(t)
+
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	// this test relies on the incremental nature uint64ToHash to
+	// generate distinct hashes which also yield different xor values
+	seenHashes := make(map[common.Hash]struct{})
+	for i := range 4 * bundle.MaxBlockRange {
+		store.AddProcessedBundles(i, []bundle.ExecutionInfo{
+			{
+				ExecutionPlanHash: uint64ToHash(uint64(i)),
+				BlockNum:          i,
+			},
+		})
+
+		block, got := store.GetProcessedBundleHistoryHash()
+		require.Equal(uint64(i), block)
+		require.NotContains(seenHashes, got)
+		seenHashes[got] = struct{}{}
+	}
 }
 
 func TestStore_GetProcessedBundleHistoryHash_LogsOnGetError(t *testing.T) {
@@ -1008,12 +1030,6 @@ func TestStore_RetainsAllBundlesRequiredToCoverTheMaximumBlockRange(t *testing.T
 	store, err := NewMemStore(t)
 	require.NoError(err)
 
-	// Create a list of execution plan hashes indexed by their block numbers.
-	hashes := []common.Hash{}
-	for i := range numBlocks {
-		hashes = append(hashes, common.Hash{byte(i >> 24), byte(i >> 16), byte(i >> 8), byte(i)})
-	}
-
 	// While progressing through the blocks, all execution plans must be retained
 	// until their maximum block range has expired.
 	for currentBlockNumber := range numBlocks {
@@ -1024,7 +1040,7 @@ func TestStore_RetainsAllBundlesRequiredToCoverTheMaximumBlockRange(t *testing.T
 			blockRange := bundle.MakeMaxRangeStartingAt(block)
 			want := blockRange.IsInRange(currentBlockNumber)
 			require.Equal(
-				want, store.HasBundleRecentlyBeenProcessed(hashes[block]),
+				want, store.HasBundleRecentlyBeenProcessed(uint64ToHash(block)),
 				"Current block %d, checking plan with range [%d,%d]",
 				currentBlockNumber, blockRange.Earliest, blockRange.Latest,
 			)
@@ -1032,7 +1048,7 @@ func TestStore_RetainsAllBundlesRequiredToCoverTheMaximumBlockRange(t *testing.T
 
 		store.AddProcessedBundles(currentBlockNumber, []bundle.ExecutionInfo{
 			{
-				ExecutionPlanHash: hashes[currentBlockNumber],
+				ExecutionPlanHash: uint64ToHash(currentBlockNumber),
 				BlockNum:          currentBlockNumber,
 			},
 		})
@@ -1106,4 +1122,13 @@ func expectCrit(log *logger.MockLogger, msg string, args ...any) {
 		Do(func(msg string, ctx ...any) {
 			panic(fmt.Sprintf("%v: %v", msg, ctx))
 		})
+}
+
+// uint64ToHash returns unique hashes for input integers.
+// It can be used in tests to streamline the creation if unique and deterministic
+// hashes without having to hardcode them.
+func uint64ToHash(i uint64) common.Hash {
+	var b [32]byte
+	binary.BigEndian.PutUint64(b[24:], i)
+	return common.Hash(b)
 }
