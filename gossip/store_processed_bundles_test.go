@@ -668,6 +668,144 @@ func TestStore_GetIndexKey_ReturnsExpectedKey(t *testing.T) {
 	}
 }
 
+func TestStore_ProcessedBundles_TablesAreInitiallyEmpty(t *testing.T) {
+	require := require.New(t)
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	iter := store.table.ProcessedBundles.NewIterator(nil, nil)
+	require.False(iter.Next())
+	require.NoError(iter.Error())
+
+	iter = store.table.ProcessedBundles.NewIterator([]byte{'i'}, nil)
+	require.False(iter.Next())
+	require.NoError(iter.Error())
+
+	iter = store.table.ProcessedBundles.NewIterator([]byte{'e'}, nil)
+	require.False(iter.Next())
+	require.NoError(iter.Error())
+}
+
+func TestStore_ProcessedBundles_UpdatesHistoryHash(t *testing.T) {
+	require := require.New(t)
+
+	hash1 := common.Hash{1, 2, 3}
+	hash2 := common.Hash{4, 5, 6}
+	hash3 := common.Hash{7, 8, 9}
+
+	cases := map[string]struct {
+		bundles []bundle.ExecutionInfo
+	}{
+		"empty block": {
+			bundles: []bundle.ExecutionInfo{},
+		},
+		"single new bundle": {
+			bundles: []bundle.ExecutionInfo{wrapInfo(hash1)},
+		},
+		"multiple new bundles": {
+			bundles: []bundle.ExecutionInfo{wrapInfo(hash2), wrapInfo(hash3)},
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			store, err := NewMemStore(t)
+			require.NoError(err)
+			_, initialHash := store.GetProcessedBundleHistoryHash()
+
+			store.AddProcessedBundles(1, tc.bundles)
+			addedHash := common.Hash{}
+			for _, info := range tc.bundles {
+				addedHash = xorHash(addedHash, info.ExecutionPlanHash)
+			}
+			expectedHash := referenceComputeStateHash(1, initialHash, addedHash, common.Hash{})
+			_, gotHash := store.GetProcessedBundleHistoryHash()
+			require.Equal(expectedHash, gotHash)
+		})
+	}
+}
+
+func TestStore_ProcessedBundles_CommutativityOfAddedBundles(t *testing.T) {
+	require := require.New(t)
+	store1, err := NewMemStore(t)
+	require.NoError(err)
+	store2, err := NewMemStore(t)
+	require.NoError(err)
+
+	hash1 := common.Hash{1, 2, 3}
+	hash2 := common.Hash{4, 5, 6}
+
+	store1.AddProcessedBundles(1, []bundle.ExecutionInfo{
+		wrapInfo(hash1),
+		wrapInfo(hash2),
+	})
+
+	store2.AddProcessedBundles(1, []bundle.ExecutionInfo{
+		wrapInfo(hash2),
+		wrapInfo(hash1),
+	})
+
+	_, hashA := store1.GetProcessedBundleHistoryHash()
+	_, hashB := store2.GetProcessedBundleHistoryHash()
+	require.Equal(hashA, hashB)
+}
+
+func TestStore_ProcessedBundles_HashIsUpdatedWithNewBlocks(t *testing.T) {
+	require := require.New(t)
+
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	// this test relies on the incremental nature uint64ToHash to
+	// generate distinct hashes which also yield different xor values
+	seenHashes := make(map[common.Hash]struct{})
+	for i := range 4 * bundle.MaxBlockRange {
+		store.AddProcessedBundles(i, []bundle.ExecutionInfo{
+			{
+				ExecutionPlanHash: uint64ToHash(uint64(i)),
+				BlockNum:          i,
+			},
+		})
+
+		block, got := store.GetProcessedBundleHistoryHash()
+		require.Equal(uint64(i), block)
+		require.NotContains(seenHashes, got)
+		seenHashes[got] = struct{}{}
+	}
+}
+
+func TestStore_ProcessedBundles_RetainsAllBundlesRequiredToCoverTheMaximumBlockRange(t *testing.T) {
+	require := require.New(t)
+	numBlocks := 3 * bundle.MaxBlockRange
+
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	// While progressing through the blocks, all execution plans must be retained
+	// until their maximum block range has expired.
+	for currentBlockNumber := range numBlocks {
+
+		// Check that the store covers exactly the plans of the past that are
+		// allowed to be included in the current block (before adding it).
+		for block := uint64(0); block < currentBlockNumber; block++ {
+			blockRange := bundle.MakeMaxRangeStartingAt(block)
+			want := blockRange.IsInRange(currentBlockNumber)
+			require.Equal(
+				want, store.HasBundleRecentlyBeenProcessed(uint64ToHash(block)),
+				"Current block %d, checking plan with range [%d,%d]",
+				currentBlockNumber, blockRange.Earliest, blockRange.Latest,
+			)
+		}
+
+		store.AddProcessedBundles(currentBlockNumber, []bundle.ExecutionInfo{
+			{
+				ExecutionPlanHash: uint64ToHash(currentBlockNumber),
+				BlockNum:          currentBlockNumber,
+			},
+		})
+	}
+}
+
 // --- helper functions ---
 
 // return execution info with the given hash and position 0.
