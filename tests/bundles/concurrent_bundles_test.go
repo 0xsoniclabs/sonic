@@ -91,7 +91,9 @@ func testSucceedingConcurrentBundles(
 	require.NoError(err)
 
 	// Wait for all bundles to be completed.
-	infos, err := waitForBundlesExecution(t.Context(), client.Client(), planHashes)
+	timeout, timeoutCancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer timeoutCancel()
+	infos, err := waitForBundlesExecution(timeout, client.Client(), planHashes)
 	require.NoError(err)
 
 	// Check that all bundles have been accepted.

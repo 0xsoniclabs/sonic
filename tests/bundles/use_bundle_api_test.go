@@ -17,8 +17,10 @@
 package bundles
 
 import (
+	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -78,7 +80,9 @@ func Test_CreateBundlesWithRPC(t *testing.T) {
 	bundleHash, err := SubmitBundle(client, txs, preparedBundle.ExecutionPlan)
 	require.NoError(t, err, "failed to submit bundle")
 
-	_, err = waitForBundleExecution(t.Context(), client.Client(), bundleHash)
+	timeout, timeoutCancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer timeoutCancel()
+	_, err = waitForBundleExecution(timeout, client.Client(), bundleHash)
 	require.NoError(t, err)
 
 	for _, tx := range txs {

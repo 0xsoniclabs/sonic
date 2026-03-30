@@ -17,8 +17,10 @@
 package bundles
 
 import (
+	"context"
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
@@ -94,7 +96,9 @@ func TestBundle_CanRunSponsorshipAndSponsored(t *testing.T) {
 	err = client.SendTransaction(t.Context(), envelope)
 	require.NoError(t, err)
 
-	info, err := waitForBundleExecution(t.Context(), client.Client(), plan.Hash())
+	timeout, timeoutCancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer timeoutCancel()
+	info, err := waitForBundleExecution(timeout, client.Client(), plan.Hash())
 	require.NoError(t, err)
 
 	require.NotNil(t, info.Block)

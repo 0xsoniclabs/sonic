@@ -22,6 +22,7 @@ import (
 	"math/big"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
@@ -86,7 +87,9 @@ func TestBundle_CanBeProcessedByTheNetwork(t *testing.T) {
 	require.NoError(t, client.SendTransaction(t.Context(), bundleTx))
 
 	// Wait for the bundle to be processed.
-	info, err := waitForBundleExecution(t.Context(), client.Client(), plan.Hash())
+	timeout, timeoutCancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer timeoutCancel()
+	info, err := waitForBundleExecution(timeout, client.Client(), plan.Hash())
 	require.NoError(t, err)
 
 	// Check the block and position in which the bundle was included.

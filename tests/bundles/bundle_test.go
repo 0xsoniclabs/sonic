@@ -16,10 +16,12 @@
 package bundles
 
 import (
+	"context"
 	"fmt"
 	"math/big"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -393,7 +395,9 @@ func checkCase(t *testing.T, session tests.IntegrationTestNetSession, accounts *
 		}
 
 		// Wait for the bundle to be processed.
-		info, err := waitForBundleExecution(t.Context(), client.Client(), plan.Hash())
+		timeout, timeoutCancel := context.WithTimeout(t.Context(), 5*time.Second)
+		defer timeoutCancel()
+		info, err := waitForBundleExecution(timeout, client.Client(), plan.Hash())
 		require.NoError(t, err)
 		require.NotNil(t, info.Block)
 
