@@ -642,6 +642,32 @@ func TestStore_computeNewBundleStateHash_CorrectlyProcessesEdgeCases(t *testing.
 	}
 }
 
+func TestStore_GetEntryKey_ReturnsExpectedKey(t *testing.T) {
+	require := require.New(t)
+
+	hash := common.Hash{1, 2, 3}
+	expectedKey := append([]byte{'e'}, hash.Bytes()...)
+	got := getEntryKey(hash)
+	require.Equal(expectedKey, got)
+	require.Len(got, 1+32) // 1 byte for prefix + 32 bytes for hash
+}
+
+func TestStore_GetIndexKey_ReturnsExpectedKey(t *testing.T) {
+	hash := common.HexToHash("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20")
+	blockNumbers := []uint64{0, 1, 512, math.MaxUint64 - 1, math.MaxUint64}
+	for _, blockNum := range blockNumbers {
+		t.Run(fmt.Sprintf("blockNum=%d", blockNum), func(t *testing.T) {
+			expectedKey := append([]byte{'i'}, make([]byte, 8)...)
+			binary.BigEndian.PutUint64(expectedKey[1:9], blockNum)
+			expectedKey = append(expectedKey, hash.Bytes()...)
+			got := getIndexKey(blockNum, hash)
+			require.Equal(t, expectedKey, got)
+			// 1 byte for prefix + 8 bytes for block number + 32 bytes for hash
+			require.Len(t, got, 1+8+32)
+		})
+	}
+}
+
 // --- helper functions ---
 
 // return execution info with the given hash and position 0.
