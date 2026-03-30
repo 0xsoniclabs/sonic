@@ -536,6 +536,28 @@ func TestStore_deleteOutdatedBundles_RemovesBundles_WhenOld(t *testing.T) {
 	}
 }
 
+func TestStore_deleteOutdatedBundles_RemovesMultipleEntries_WhenNotCleanedForTooLong(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	batch := NewMockstoreBatch(ctrl)
+	table := NewMockstoreTable(ctrl)
+
+	store := &Store{}
+	store.table.ProcessedBundles = table
+
+	it := NewMockdbIterator(ctrl)
+	table.EXPECT().NewIterator([]byte{'i'}, nil).Return(it)
+
+	for i := range 10 {
+		it.EXPECT().Next().Return(true)
+		it.EXPECT().Key().Return(getIndexKey(uint64(i), uint64ToHash(uint64(i))))
+		batch.EXPECT().Delete(gomock.Any())
+		batch.EXPECT().Delete(gomock.Any())
+	}
+	it.EXPECT().Next().Return(false)
+
+	store.deleteOutdatedBundles(bundle.MaxBlockRange+10, batch)
+}
+
 func TestStore_deleteOutdatedBundles_ReturnsXorHashOfDeletedEntries(t *testing.T) {
 
 	cases := map[string]struct {
