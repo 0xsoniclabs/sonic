@@ -43,6 +43,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/verwatcher"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
@@ -214,6 +215,8 @@ func consensusCallbackBeginBlockFn(
 				// gas limit. With this parameter, this limit is enforced.
 				userTransactionGasLimit := maxBlockGas
 
+				signer := types.LatestSignerForChainID(chainCfg.ChainID)
+
 				// Get a proposal for the block to be created.
 				proposal := inter.Proposal{
 					Number:     idx.Block(number),
@@ -249,13 +252,17 @@ func consensusCallbackBeginBlockFn(
 						unorderedTxs = append(unorderedTxs, e.Transactions()...)
 					}
 
-					signer := types.LatestSignerForChainID(chainCfg.ChainID)
 					proposal.Transactions = scrambler.GetExecutionOrder(unorderedTxs, signer, es.Rules.Upgrades.Sonic)
 				}
 
 				// Filter invalid transactions from the proposal.
 				proposal.Transactions = filterNonPermissibleTransactions(
 					proposal.Transactions, &es.Rules, log.Root(), invalidTxsMeter,
+				)
+
+				// Filter obsolete bundles from the proposal.
+				proposal.Transactions = filterObsoleteBundles(
+					proposal.Transactions, uint64(proposal.Number), &es.Rules, signer, log.Root(), skippedTxsMeter,
 				)
 
 				// Make sure the new block time is after the last block time.
@@ -911,6 +918,112 @@ func isPermissible(
 	}
 
 	return nil
+}
+
+// filterObsoleteBundles filters bundles that were already included in the
+// chain, are outdated or invalid. This makes sure that bundles are processed
+// at most once. This is to defend against validators proposing the same bundle
+// multiple times for inclusion.
+func filterObsoleteBundles(
+	transactions []*types.Transaction,
+	blockNumber uint64,
+	rules *opera.Rules,
+	signer types.Signer,
+	log log.Logger,
+	skippedBundleCounter metricCounter,
+) []*types.Transaction {
+
+	// How bundles are handled by this filter:
+	//
+	// Before Brio: there is no special treatment of bundles. They are
+	//  interpreted as regular transactions in order to be backward compatible
+	//  during the roll-out phase.
+	//
+	// After Brio: bundles are filtered out if the `TransactionBundles` feature
+	//  is disabled. In this case, bundles are filtered out (=skipped). If the
+	//  `TransactionBundles` feature is enabled, bundles are checked for
+	//  validity and obsolescence. Invalid or obsolete bundles are filtered out
+	//  (=skipped), while valid and non-obsolete bundles are kept for inclusion.
+
+	// This filter is only enabled with the Brio upgrade. This is for backward
+	// compatibility during the roll-out phase.
+	if !rules.Upgrades.Brio {
+		return transactions
+	}
+
+	// TODO: check for duplicates of execution plans
+	// TODO: check for non-permissible transaction payloads in bundles
+
+	res := make([]*types.Transaction, 0, len(transactions))
+	for _, tx := range transactions {
+		if isObsoleteBundle(tx, blockNumber, rules, signer, log) {
+			if skippedBundleCounter != nil {
+				skippedBundleCounter.Mark(1)
+			}
+		} else {
+			res = append(res, tx)
+		}
+	}
+	return res
+}
+
+func isObsoleteBundle(
+	tx *types.Transaction,
+	blockNumber uint64,
+	rules *opera.Rules,
+	signer types.Signer,
+	log log.Logger,
+) bool {
+	if !bundle.IsEnvelope(tx) {
+		return false
+	}
+
+	// If bundles are disabled, all bundles are to be removed.
+	if !rules.Upgrades.TransactionBundles {
+		if log != nil {
+			log.Warn("Bundles are not enabled but a bundle transaction needed to be skipped", "tx", tx.Hash())
+		}
+		return true
+	}
+
+	// Check static properties of the bundle, to make sure it is not malformed.
+	bundle, execPlan, err := bundle.ValidateEnvelope(signer, tx)
+	if err != nil {
+		if log != nil {
+			log.Warn("Invalid bundle transaction in the proposal", "tx", tx.Hash(), "issue", err)
+		}
+		return true
+	}
+
+	// Check that the block this bundle is to be included is within its
+	// valid range.
+	if !execPlan.Range.IsInRange(blockNumber) {
+		if log != nil {
+			log.Warn(
+				"Bundle transaction in the proposal is out of range for execution",
+				"tx", tx.Hash(),
+				"block", blockNumber,
+				"earliest", execPlan.Range.Earliest,
+				"latest", execPlan.Range.Latest,
+			)
+		}
+		return true
+	}
+
+	if len(bundle.Transactions) == 0 {
+		if log != nil {
+			log.Warn("Bundle transaction in the proposal contains no transactions", "tx", tx.Hash())
+		}
+		return true
+	}
+
+	for _, tx := range bundle.Transactions {
+		if isObsoleteBundle(tx, blockNumber, rules, signer, log) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // metricCounter is an abstraction of the *metrics.Meter type to facilitate

@@ -36,6 +36,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/holiman/uint256"
@@ -44,6 +45,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/evmmodule"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
@@ -1335,6 +1337,159 @@ func TestSpillBlockEvents(t *testing.T) {
 			require.Equal(t, test.expectedSignatures, foundSignatures)
 		})
 	}
+}
+
+func TestFilterObsoleteBundles_RemovesInvalidBundles(t *testing.T) {
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	tests := map[string]struct {
+		tx             *types.Transaction
+		blockNumber    uint64
+		expectFiltered bool
+	}{
+		"normal tx": {
+			tx:             types.NewTx(&types.LegacyTx{GasPrice: big.NewInt(1)}),
+			expectFiltered: false,
+		},
+		"sponsored tx": {
+			tx:             types.NewTx(&types.LegacyTx{GasPrice: big.NewInt(0)}),
+			expectFiltered: false,
+		},
+		"bundle valid": {
+			tx:             bundle.AllOf(signer, bundle.Step(key, &types.AccessListTx{})),
+			expectFiltered: false,
+		},
+		"bundle invalid": {
+			tx:             types.NewTx(&types.AccessListTx{To: &bundle.BundleProcessor}),
+			expectFiltered: true,
+		},
+		"bundle out of range": {
+			tx:             bundle.NewBuilder(signer).With(bundle.Step(key, &types.AccessListTx{})).SetLatest(1).Build(),
+			blockNumber:    2,
+			expectFiltered: true,
+		},
+		"bundle empty": {
+			tx:             bundle.AllOf(signer /* empty */),
+			expectFiltered: true,
+		},
+		"bundle with invalid nested bundle": {
+			tx:             bundle.AllOf(signer, bundle.Step(key, types.NewTx(&types.AccessListTx{To: &bundle.BundleProcessor}))),
+			expectFiltered: true,
+		},
+		"bundle with out of range nested bundle": {
+			tx: bundle.AllOf(signer, bundle.Step(key,
+				bundle.NewBuilder(signer).With(bundle.Step(key, &types.AccessListTx{})).SetLatest(1).Build(),
+			)),
+			blockNumber:    2,
+			expectFiltered: true,
+		},
+		"bundle with empty nested bundle": {
+			tx:             bundle.AllOf(signer, bundle.Step(key, bundle.AllOf(signer /* empty */))),
+			expectFiltered: true,
+		},
+	}
+
+	positions := map[string]uint64{
+		"first": 0,
+		"mid":   1,
+		"last":  2,
+	}
+
+	for pos_name, pos := range positions {
+		for name, test := range tests {
+			t.Run(fmt.Sprintf("%s/%s", pos_name, name), func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+
+				skippedBundleCounter := NewMockmetricCounter(ctrl)
+
+				if test.expectFiltered {
+					skippedBundleCounter.EXPECT().Mark(int64(1)).AnyTimes()
+				}
+
+				rules := opera.Rules{Upgrades: opera.GetBrioUpgrades()}
+				rules.Upgrades.TransactionBundles = true
+
+				txs := []*types.Transaction{
+					types.NewTx(&types.LegacyTx{Nonce: 0}),
+					types.NewTx(&types.LegacyTx{Nonce: 1}),
+					types.NewTx(&types.LegacyTx{Nonce: 2}),
+				}
+				txs[pos] = test.tx
+
+				filteredTxs := filterObsoleteBundles(txs, test.blockNumber, &rules, signer, log.Root(), skippedBundleCounter)
+				if test.expectFiltered {
+					expected := txs[:pos]
+					expected = append(expected, txs[pos+1:]...)
+					require.Equal(t, expected, filteredTxs)
+				} else {
+					require.Equal(t, txs, filteredTxs)
+				}
+			})
+		}
+	}
+}
+
+func TestFilterObsoleteBundles_RemovesBundlesIfFeatureNotEnabled(t *testing.T) {
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	ctrl := gomock.NewController(t)
+
+	skippedBundleCounter := NewMockmetricCounter(ctrl)
+	skippedBundleCounter.EXPECT().Mark(int64(1)).AnyTimes()
+
+	rules := opera.Rules{Upgrades: opera.GetBrioUpgrades()}
+	rules.Upgrades.TransactionBundles = false
+
+	txs := []*types.Transaction{bundle.AllOf(signer, bundle.Step(key, &types.AccessListTx{}))}
+
+	filteredTxs := filterObsoleteBundles(txs, 0, &rules, signer, log.Root(), skippedBundleCounter)
+	require.Empty(t, filteredTxs)
+}
+
+func TestFilterObsoleteBundles_DoesNotFilterIfBrioNotEnabled(t *testing.T) {
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	ctrl := gomock.NewController(t)
+
+	skippedBundleCounter := NewMockmetricCounter(ctrl)
+	skippedBundleCounter.EXPECT().Mark(int64(1)).AnyTimes()
+
+	rules := opera.Rules{Upgrades: opera.GetAllegroUpgrades()}
+
+	txs := []*types.Transaction{
+		bundle.AllOf(signer /* empty */), // empty bundle (invalid)
+		bundle.AllOf(signer, bundle.Step(key, &types.AccessListTx{})), // valid bundle
+	}
+
+	filteredTxs := filterObsoleteBundles(txs, 0, &rules, signer, log.Root(), skippedBundleCounter)
+	require.Equal(t, txs, filteredTxs)
+}
+
+func TestFilterObsoleteBundles_RemovesInvalidBundles_FromSequencesWithMultipleBundles(t *testing.T) {
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+
+	txs := []*types.Transaction{
+		types.NewTx(&types.LegacyTx{Nonce: 0}),
+		bundle.AllOf(signer /* empty */),
+		bundle.AllOf(signer /* empty */),
+	}
+
+	ctrl := gomock.NewController(t)
+
+	skippedBundleCounter := NewMockmetricCounter(ctrl)
+	skippedBundleCounter.EXPECT().Mark(int64(1)).Times(2)
+
+	rules := opera.Rules{Upgrades: opera.GetBrioUpgrades()}
+	rules.Upgrades.TransactionBundles = true
+
+	filteredTxs := filterObsoleteBundles(txs, 0, &rules, signer, log.Root(), skippedBundleCounter)
+	require.Equal(t, txs[:1], filteredTxs)
 }
 
 type fakePayload struct {
