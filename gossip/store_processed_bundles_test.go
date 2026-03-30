@@ -93,7 +93,7 @@ func TestStore_HasBundleRecentlyBeenProcessed_LogsOnGetError(t *testing.T) {
 	// In production, a Crit log call causes the logger to exit the process.
 	// To prevent the test from exiting, the mock logger is configured to panic instead.
 	require.PanicsWithValue(t,
-		fmt.Sprintf("%v: %v", "failed to check processed bundle", injectedErr),
+		fmt.Sprintf("failed to check processed bundle: %v", []any{"error", injectedErr}),
 		func() { store.HasBundleRecentlyBeenProcessed(common.Hash{1, 2, 3}) })
 }
 
@@ -107,7 +107,7 @@ func TestStore_GetBundleExecutionInfo_LogsOnGetError(t *testing.T) {
 	// In production, a Crit log call causes the logger to exit the process.
 	// To prevent the test from exiting, the mock logger is configured to panic instead.
 	require.PanicsWithValue(t,
-		fmt.Sprintf("%v: %v", "failed to get execution info for bundle", injectedErr),
+		fmt.Sprintf("failed to get execution info for bundle: %v", []any{"error", injectedErr}),
 		func() { store.GetBundleExecutionInfo(common.Hash{1, 2, 3}) })
 }
 
@@ -119,7 +119,7 @@ func TestStore_GetBundleExecutionInfo_LogsOnInvalidDataLength(t *testing.T) {
 	expectCrit(log, "invalid data length for execution info", "length", 3)
 
 	require.PanicsWithValue(t,
-		fmt.Sprintf("%v: %v", "invalid data length for execution info", 3),
+		fmt.Sprintf("invalid data length for execution info: %v", []any{"length", 3}),
 		func() { store.GetBundleExecutionInfo(common.Hash{1, 2, 3}) })
 }
 
@@ -437,7 +437,7 @@ func TestStore_AddProcessedBundles_LogsOnBatchPutNewEntryError(t *testing.T) {
 	// In production, a Crit log call causes the logger to exit the process.
 	// To prevent the test from exiting, the mock logger is configured to panic instead.
 	require.PanicsWithValue(t,
-		fmt.Sprintf("%v: %v", "failed to update hash of processed bundles", injectedErr),
+		fmt.Sprintf("failed to update hash of processed bundles: %v", []any{"error", injectedErr}),
 		func() { store.AddProcessedBundles(1, []bundle.ExecutionInfo{}) })
 }
 
@@ -455,7 +455,7 @@ func TestStore_AddProcessedBundles_LogsOnBatchWriteError(t *testing.T) {
 	// In production, a Crit log call causes the logger to exit the process.
 	// To prevent the test from exiting, the mock logger is configured to panic instead.
 	require.PanicsWithValue(t,
-		fmt.Sprintf("%v: %v", "failed to write batch for updating processed bundles", injectedErr),
+		fmt.Sprintf("failed to write batch for updating processed bundles: %v", []any{"error", injectedErr}),
 		func() { store.AddProcessedBundles(1, []bundle.ExecutionInfo{}) })
 }
 
@@ -479,7 +479,7 @@ func TestStore_GetProcessedBundleHistoryHash_LogsOnGetError(t *testing.T) {
 	// In production, a Crit log call causes the logger to exit the process.
 	// To prevent the test from exiting, the mock logger is configured to panic instead.
 	require.PanicsWithValue(t,
-		fmt.Sprintf("%v: %v", "failed to get hash of processed bundles", injectedErr),
+		fmt.Sprintf("failed to get hash of processed bundles: %v", []any{"error", injectedErr}),
 		func() { store.GetProcessedBundleHistoryHash() })
 }
 
@@ -493,7 +493,7 @@ func TestStore_GetProcessedBundleHistoryHash_LogsOnInvalidStateLength(t *testing
 	// In production, a Crit log call causes the logger to exit the process.
 	// To prevent the test from exiting, the mock logger is configured to panic instead.
 	require.PanicsWithValue(t,
-		fmt.Sprintf("%v: %v", "invalid state length for processed bundles", 3),
+		fmt.Sprintf("invalid state length for processed bundles: %v", []any{"length", 3}),
 		func() { store.GetProcessedBundleHistoryHash() })
 }
 
@@ -595,7 +595,7 @@ func TestStore_addNewBundles_LogsOnBatchPutError(t *testing.T) {
 	// In production, a Crit log call causes the logger to exit the process.
 	// To prevent the test from exiting, the mock logger is configured to panic instead.
 	require.PanicsWithValue(t,
-		fmt.Sprintf("%v: %v", "failed to add processed bundle hash to batch", compoundErr),
+		fmt.Sprintf("failed to add processed bundle hash to batch: %v", []any{"error", compoundErr}),
 		func() {
 			store.addNewBundles(1, []bundle.ExecutionInfo{wrapInfo(hash1)}, batch)
 		})
@@ -852,7 +852,7 @@ func TestStore_deleteOutdatedBundles_LogsOnBatchDeleteError(t *testing.T) {
 	// In production, a Crit log call causes the logger to exit the process.
 	// To prevent the test from exiting, the mock logger is configured to panic instead.
 	require.PanicsWithValue(t,
-		fmt.Sprintf("%v: %v", "failed to delete old processed bundle hash", compoundErr),
+		fmt.Sprintf("failed to delete old processed bundle hash: %v", []any{"error", compoundErr}),
 		func() { store.deleteOutdatedBundles(bundle.MaxBlockRange+1, batch) })
 }
 
@@ -1124,9 +1124,9 @@ func storeTableLogMocks(t *testing.T) (*Store, *MockstoreTable, *logger.MockLogg
 // message and error, and to panic with message containing both when that call happens.
 // In production, a Crit log call causes the logger to exit the process.
 // To prevent the test from exiting, the mock logger is configured to panic instead.
-func expectCrit(log *logger.MockLogger, msg, label string, err any) {
-	log.EXPECT().Crit(msg, gomock.Any(), err).
+func expectCrit(log *logger.MockLogger, msg string, args ...any) {
+	log.EXPECT().Crit(msg, args).
 		Do(func(msg string, ctx ...any) {
-			panic(fmt.Sprintf("%v: %v", msg, ctx[1]))
+			panic(fmt.Sprintf("%v: %v", msg, ctx))
 		})
 }
