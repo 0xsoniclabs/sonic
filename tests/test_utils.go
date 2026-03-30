@@ -362,6 +362,7 @@ func WaitFor(ctx context.Context, predicate func(context.Context) (bool, error))
 	// implement some backoff strategy: sleeps get longer the longer it
 	// takes to receive the event
 	backoff := 5 * time.Millisecond
+	maxWaitTime := 100 * time.Millisecond
 
 	for {
 		ok, err := predicate(timedContext)
@@ -373,7 +374,7 @@ func WaitFor(ctx context.Context, predicate func(context.Context) (bool, error))
 			return fmt.Errorf("wait timeout")
 		case <-time.After(backoff):
 			// The predicate was not satisfied, backoff and try again.
-			backoff = backoff * 2
+			backoff = min(maxWaitTime, backoff*2)
 		}
 	}
 }
@@ -441,9 +442,13 @@ func GetStateRoot(t *testing.T, client *PooledEhtClient, blockNumber int) common
 func WaitForProofOf(t *testing.T, client *PooledEhtClient, blockNumber int) {
 	err := WaitFor(context.Background(), func(ctx context.Context) (bool, error) {
 		_, err := getProofFor(t, client, blockNumber)
-		if err != nil && strings.Contains(err.Error(), "not present") {
-			// wait a bit to give the DB a chance to catch up
-			return false, nil
+		if err != nil {
+			for _, ignoredIssue := range []string{"not present", "header not found"} {
+				if strings.Contains(err.Error(), ignoredIssue) {
+					// wait a bit to give the DB a chance to catch up
+					return false, nil
+				}
+			}
 		}
 		// any other error is considered a failure
 		if err != nil {
