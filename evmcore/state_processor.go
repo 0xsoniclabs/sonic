@@ -383,14 +383,14 @@ func (r *transactionRunner) runTransactionBundle(
 		return []ProcessedTransaction{{Transaction: tx}}, nil, core_types.TransactionResultInvalid
 	}
 
-	txBundle, plan, err := bundle.ValidateTransactionBundle(tx)
+	txBundle, err := bundle.OpenEnvelope(tx)
 	if err != nil {
-		log.Warn("Invalid bundle skip", "tx", tx.Hash().Hex(), "error", err)
+		log.Warn("Failed to open bundle envelope", "tx", tx.Hash().Hex(), "err", err)
 		return []ProcessedTransaction{{Transaction: tx}}, nil, core_types.TransactionResultInvalid
 	}
-
-	if !plan.IsInRange(ctxt.blockNumber.Uint64()) {
-		log.Warn("Bundle skipped due to out-of-range execution plan", "tx", tx.Hash().Hex(), "planRange", fmt.Sprintf("[%d,%d]", plan.Earliest, plan.Latest), "blockNumber", ctxt.blockNumber.Uint64())
+	plan, err := bundle.ExtractExecutionPlan(tx)
+	if err != nil {
+		log.Warn("Failed to extract execution plan", "tx", tx.Hash().Hex(), "err", err)
 		return []ProcessedTransaction{{Transaction: tx}}, nil, core_types.TransactionResultInvalid
 	}
 
