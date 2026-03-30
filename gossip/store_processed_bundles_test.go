@@ -831,17 +831,12 @@ func referenceComputeStateHash(
 	oldHash, addedHash, deletedHash common.Hash,
 ) common.Hash {
 
-	// size of the update buffer is:
-	//  - 32 bytes for the previous hash
-	//  - 32 bytes for the added hashes
-	//  - 32 bytes for the deleted hashes
-	//  - 8 bytes for the block number
-	update := make([]byte, 3*32+8)
-	copy(update[:32], oldHash.Bytes())
-	copy(update[32:64], addedHash.Bytes())
-	copy(update[64:96], deletedHash.Bytes())
-	binary.BigEndian.PutUint64(update[96:], blockNum)
-	return common.Hash(crypto.Keccak256(update))
+	var data []byte
+	data = append(data, oldHash.Bytes()...)
+	data = append(data, addedHash.Bytes()...)
+	data = append(data, deletedHash.Bytes()...)
+	data = binary.BigEndian.AppendUint64(data, blockNum)
+	return common.Hash(crypto.Keccak256(data))
 }
 
 // storeTableLogMocks initializes a store with mocked table as ProcessedBundles,
