@@ -19,11 +19,11 @@ package evmstore
 import (
 	"testing"
 
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/assert"
 
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/logger"
 )
 
@@ -101,8 +101,8 @@ func benchStoreSetRawReceipts(b *testing.B, store *Store) {
 	}
 }
 
-func fakeReceipts() (idx.Block, []*types.ReceiptForStorage) {
-	return idx.Block(1),
+func fakeReceipts() (consensus.BlockID, []*types.ReceiptForStorage) {
+	return consensus.BlockID(1),
 		[]*types.ReceiptForStorage{
 			{
 				PostState:         nil,

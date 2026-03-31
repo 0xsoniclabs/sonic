@@ -12,10 +12,9 @@ package throttler
 import (
 	reflect "reflect"
 
+	"github.com/0xsoniclabs/consensus/consensus"
 	inter "github.com/0xsoniclabs/sonic/inter"
 	opera "github.com/0xsoniclabs/sonic/opera"
-	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
-	pos "github.com/Fantom-foundation/lachesis-base/inter/pos"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -44,11 +43,11 @@ func (m *MockWorldReader) EXPECT() *MockWorldReaderMockRecorder {
 }
 
 // GetEpochValidators mocks base method.
-func (m *MockWorldReader) GetEpochValidators() (*pos.Validators, idx.Epoch) {
+func (m *MockWorldReader) GetEpochValidators() (*consensus.Validators, consensus.Epoch) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetEpochValidators")
-	ret0, _ := ret[0].(*pos.Validators)
-	ret1, _ := ret[1].(idx.Epoch)
+	ret0, _ := ret[0].(*consensus.Validators)
+	ret1, _ := ret[1].(consensus.Epoch)
 	return ret0, ret1
 }
 
@@ -59,7 +58,7 @@ func (mr *MockWorldReaderMockRecorder) GetEpochValidators() *gomock.Call {
 }
 
 // GetLastEvent mocks base method.
-func (m *MockWorldReader) GetLastEvent(arg0 idx.ValidatorID) *inter.Event {
+func (m *MockWorldReader) GetLastEvent(arg0 consensus.ValidatorID) *inter.Event {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetLastEvent", arg0)
 	ret0, _ := ret[0].(*inter.Event)

@@ -21,13 +21,13 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/0xsoniclabs/cacheutils/wlru"
 	carmen "github.com/0xsoniclabs/carmen/go/state"
+	"github.com/0xsoniclabs/kvdb"
+	"github.com/0xsoniclabs/kvdb/table"
 	"github.com/0xsoniclabs/sonic/logger"
 	"github.com/0xsoniclabs/sonic/topicsdb"
 	"github.com/0xsoniclabs/sonic/utils/rlpstore"
-	"github.com/Fantom-foundation/lachesis-base/kvdb"
-	"github.com/Fantom-foundation/lachesis-base/kvdb/table"
-	"github.com/Fantom-foundation/lachesis-base/utils/wlru"
 	"github.com/ethereum/go-ethereum/core/types"
 )
 

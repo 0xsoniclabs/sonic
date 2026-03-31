@@ -19,8 +19,8 @@ package cert
 import (
 	"encoding/binary"
 
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/scc"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -64,14 +64,14 @@ func (s statement) getDataToSign(documentId string) []byte {
 // number has a certain hash and state root.
 type BlockStatement struct {
 	statement
-	Number    idx.Block
+	Number    consensus.BlockID
 	Hash      common.Hash
 	StateRoot common.Hash
 }
 
 // NewBlockStatement creates a new block statement with the given chain ID,
 // block number, hash, and state root.
-func NewBlockStatement(chainID uint64, number idx.Block, hash, stateRoot common.Hash) BlockStatement {
+func NewBlockStatement(chainID uint64, number consensus.BlockID, hash, stateRoot common.Hash) BlockStatement {
 	return BlockStatement{
 		statement: statement{ChainId: chainID},
 		Number:    number,

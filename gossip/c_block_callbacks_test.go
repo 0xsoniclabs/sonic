@@ -27,10 +27,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Fantom-foundation/lachesis-base/hash"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/Fantom-foundation/lachesis-base/lachesis"
-	"github.com/Fantom-foundation/lachesis-base/utils/workers"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -38,6 +34,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
@@ -48,6 +45,7 @@ import (
 	"github.com/0xsoniclabs/sonic/logger"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
+	"github.com/0xsoniclabs/sonic/utils/workers"
 	"github.com/0xsoniclabs/sonic/valkeystore"
 	"github.com/0xsoniclabs/sonic/valkeystore/encryption"
 )
@@ -87,16 +85,16 @@ func testConsensusCallback(t *testing.T, upgrades opera.Upgrades) {
 	// save start balances
 	balances := make([]*uint256.Int, validatorsNum)
 	for i := range balances {
-		balances[i] = env.State().GetBalance(env.Address(idx.ValidatorID(i + 1)))
+		balances[i] = env.State().GetBalance(env.Address(consensus.ValidatorID(i + 1)))
 	}
 
 	for n := uint64(0); n < rounds; n++ {
 		// transfers
 		txs := make([]*types.Transaction, validatorsNum)
-		for i := idx.Validator(0); i < validatorsNum; i++ {
+		for i := consensus.ValidatorIndex(0); i < validatorsNum; i++ {
 			from := i % validatorsNum
 			to := 0
-			txs[i] = env.Transfer(idx.ValidatorID(from+1), idx.ValidatorID(to+1), utils.ToFtm(100))
+			txs[i] = env.Transfer(consensus.ValidatorID(from+1), consensus.ValidatorID(to+1), utils.ToFtm(100))
 		}
 		tm := sameEpoch
 		if n%10 == 0 {
@@ -119,7 +117,7 @@ func testConsensusCallback(t *testing.T, upgrades opera.Upgrades) {
 	for i := range balances {
 		require.Equal(
 			balances[i],
-			env.State().GetBalance(env.Address(idx.ValidatorID(i+1))),
+			env.State().GetBalance(env.Address(consensus.ValidatorID(i+1))),
 			fmt.Sprintf("account%d", i),
 		)
 	}
@@ -319,8 +317,8 @@ func TestConsensusCallback_SingleProposer_HandlesBlockSkippingCorrectly(t *testi
 			)
 
 			// Run a full consensus callback cycle for this block.
-			callbacks := beginBlock(&lachesis.Block{
-				Atropos: atropos.ID(),
+			callbacks := beginBlock(&consensus.Block{
+				Leader: atropos.ID(),
 			})
 			for _, event := range events {
 				callbacks.ApplyEvent(event)
@@ -338,7 +336,7 @@ func TestExtractProposalForNextBlock_NoEvents_ReturnsNoProposal(t *testing.T) {
 	}
 	result, proposer, time := extractProposalForNextBlock(last, nil, nil)
 	require.Nil(t, result)
-	require.Equal(t, idx.ValidatorID(0), proposer)
+	require.Equal(t, consensus.ValidatorID(0), proposer)
 	require.Equal(t, inter.Timestamp(0), time)
 }
 
@@ -358,14 +356,14 @@ func TestExtractProposalForNextBlock_OneMatchingProposal_ReturnsTheGivenProposal
 	}
 
 	event.EXPECT().Payload().Return(&inter.Payload{Proposal: &proposal})
-	event.EXPECT().Creator().Return(idx.ValidatorID(33)).AnyTimes()
+	event.EXPECT().Creator().Return(consensus.ValidatorID(33)).AnyTimes()
 	event.EXPECT().MedianTime().Return(inter.Timestamp(1234)).AnyTimes()
 	events := []inter.EventPayloadI{event}
 
 	result, proposer, time := extractProposalForNextBlock(last, events, nil)
 	require.NotNil(t, result)
 	require.Equal(t, proposal, *result)
-	require.Equal(t, idx.ValidatorID(33), proposer)
+	require.Equal(t, consensus.ValidatorID(33), proposer)
 	require.Equal(t, inter.Timestamp(1234), time)
 }
 
@@ -381,28 +379,28 @@ func TestExtractProposalForNextBlock_WrongProposals_ReturnsNoProposal(t *testing
 	}{
 		"too high block number": {
 			proposal: inter.Proposal{
-				Number:     idx.Block(last.Number.Int64() + 2), // +1 is expected
+				Number:     consensus.BlockID(last.Number.Int64() + 2), // +1 is expected
 				ParentHash: last.Hash,
 			},
 			loggerMsg: "wrong block number",
 		},
 		"block number matching current block": {
 			proposal: inter.Proposal{
-				Number:     idx.Block(last.Number.Int64()),
+				Number:     consensus.BlockID(last.Number.Int64()),
 				ParentHash: last.Hash,
 			},
 			loggerMsg: "wrong block number",
 		},
 		"too low block number": {
 			proposal: inter.Proposal{
-				Number:     idx.Block(last.Number.Int64() - 1),
+				Number:     consensus.BlockID(last.Number.Int64() - 1),
 				ParentHash: last.Hash,
 			},
 			loggerMsg: "wrong block number",
 		},
 		"wrong parent hash": {
 			proposal: inter.Proposal{
-				Number:     idx.Block(last.Number.Int64() + 1),
+				Number:     consensus.BlockID(last.Number.Int64() + 1),
 				ParentHash: common.Hash{4, 5, 6},
 			},
 			loggerMsg: "wrong parent hash",
@@ -417,7 +415,7 @@ func TestExtractProposalForNextBlock_WrongProposals_ReturnsNoProposal(t *testing
 
 			payload := &inter.Payload{Proposal: &test.proposal}
 			event.EXPECT().Payload().Return(payload)
-			creator := idx.ValidatorID(1)
+			creator := consensus.ValidatorID(1)
 			event.EXPECT().Creator().Return(creator).AnyTimes()
 
 			events := []inter.EventPayloadI{event}
@@ -446,17 +444,17 @@ func TestExtractProposalForNextBlock_MultipleValidProposals_EmitsWarning(t *test
 	}
 
 	proposal := &inter.Proposal{
-		Number:     idx.Block(last.Number.Int64() + 1),
+		Number:     consensus.BlockID(last.Number.Int64() + 1),
 		ParentHash: last.Hash,
 	}
 
 	payload1 := &inter.Payload{Proposal: proposal}
 	payload2 := &inter.Payload{Proposal: proposal}
 	event1.EXPECT().Payload().Return(payload1)
-	event1.EXPECT().Creator().Return(idx.ValidatorID(1))
+	event1.EXPECT().Creator().Return(consensus.ValidatorID(1))
 	event1.EXPECT().MedianTime().Return(inter.Timestamp(1))
 	event2.EXPECT().Payload().Return(payload2)
-	event2.EXPECT().Creator().Return(idx.ValidatorID(2))
+	event2.EXPECT().Creator().Return(consensus.ValidatorID(2))
 	event2.EXPECT().MedianTime().Return(inter.Timestamp(2))
 
 	events := []inter.EventPayloadI{event1, event2}
@@ -469,7 +467,7 @@ func TestExtractProposalForNextBlock_MultipleValidProposals_EmitsWarning(t *test
 	result, proposer, time := extractProposalForNextBlock(last, events, logger)
 	require.NotNil(t, result)
 	require.Equal(t, *proposal, *result)
-	require.Equal(t, idx.ValidatorID(1), proposer)
+	require.Equal(t, consensus.ValidatorID(1), proposer)
 	require.Equal(t, inter.Timestamp(1), time)
 }
 
@@ -530,13 +528,13 @@ func TestExtractProposalForNextBlock_MultipleValidProposals_UsesTurnAndHashAsTie
 	})
 
 	event1.EXPECT().Payload().Return(payloads[0]).AnyTimes()
-	event1.EXPECT().Creator().Return(idx.ValidatorID(1)).AnyTimes()
+	event1.EXPECT().Creator().Return(consensus.ValidatorID(1)).AnyTimes()
 	event1.EXPECT().MedianTime().Return(inter.Timestamp(1)).AnyTimes()
 	event2.EXPECT().Payload().Return(payloads[1]).AnyTimes()
-	event2.EXPECT().Creator().Return(idx.ValidatorID(2)).AnyTimes()
+	event2.EXPECT().Creator().Return(consensus.ValidatorID(2)).AnyTimes()
 	event2.EXPECT().MedianTime().Return(inter.Timestamp(2)).AnyTimes()
 	event3.EXPECT().Payload().Return(payloads[2]).AnyTimes()
-	event3.EXPECT().Creator().Return(idx.ValidatorID(3)).AnyTimes()
+	event3.EXPECT().Creator().Return(consensus.ValidatorID(3)).AnyTimes()
 	event3.EXPECT().MedianTime().Return(inter.Timestamp(3)).AnyTimes()
 	events := []inter.EventPayloadI{event1, event2, event3}
 
@@ -549,7 +547,7 @@ func TestExtractProposalForNextBlock_MultipleValidProposals_UsesTurnAndHashAsTie
 		require.Equal(t, payloads[0].Proposal, proposal,
 			"should pick the best proposal based on turn and hash",
 		)
-		require.Equal(t, idx.ValidatorID(1), proposer)
+		require.Equal(t, consensus.ValidatorID(1), proposer)
 		require.Equal(t, inter.Timestamp(1), time)
 	}
 }
@@ -566,9 +564,9 @@ func TestResolveRandaoMix_ComputesRandaoMixFromReveal(t *testing.T) {
 	reveal, expectedMix, err := randao.NewRandaoMixerAdapter(signer).MixRandao(lastRandao)
 	require.NoError(t, err)
 
-	proposer := idx.ValidatorID(1)
+	proposer := consensus.ValidatorID(1)
 	dagRandao := common.Hash{}
-	validatorKeys := map[idx.ValidatorID]validatorpk.PubKey{
+	validatorKeys := map[consensus.ValidatorID]validatorpk.PubKey{
 		proposer: publicKey,
 	}
 
@@ -588,14 +586,14 @@ func TestResolveRandaoMix_FallsBackToDAGRandaoWhenVerificationFails(t *testing.T
 	reveal, _, err := randao.NewRandaoMixerAdapter(signer).MixRandao(lastRandao)
 	require.NoError(t, err)
 
-	proposer := idx.ValidatorID(1)
+	proposer := consensus.ValidatorID(1)
 	dagRandao := common.Hash{1, 2, 3}
 
 	logger := logger.NewMockLogger(ctrl)
 	logger.EXPECT().Warn("Failed to verify randao reveal, using DAG randomization", "proposer validator", proposer)
 
 	_, wrongKey := generateKeyPair(t)
-	validatorKeys := map[idx.ValidatorID]validatorpk.PubKey{
+	validatorKeys := map[consensus.ValidatorID]validatorpk.PubKey{
 		proposer: wrongKey,
 	}
 
@@ -781,37 +779,37 @@ func TestMergeCheaters_CanMergeLists(t *testing.T) {
 	// - it does not modify the original lists.
 
 	tests := map[string]struct {
-		a, b     lachesis.Cheaters
-		expected lachesis.Cheaters
+		a, b     consensus.Cheaters
+		expected consensus.Cheaters
 	}{
 		"both empty returns nil": {},
 		"a empty returns b": {
-			b:        lachesis.Cheaters{1, 2, 3},
-			expected: lachesis.Cheaters{1, 2, 3},
+			b:        consensus.Cheaters{1, 2, 3},
+			expected: consensus.Cheaters{1, 2, 3},
 		},
 		"b empty returns a": {
-			a:        lachesis.Cheaters{1, 2, 3},
-			expected: lachesis.Cheaters{1, 2, 3},
+			a:        consensus.Cheaters{1, 2, 3},
+			expected: consensus.Cheaters{1, 2, 3},
 		},
 		"merges both lists": {
-			a:        lachesis.Cheaters{1, 2, 3},
-			b:        lachesis.Cheaters{4, 5, 6},
-			expected: lachesis.Cheaters{1, 2, 3, 4, 5, 6},
+			a:        consensus.Cheaters{1, 2, 3},
+			b:        consensus.Cheaters{4, 5, 6},
+			expected: consensus.Cheaters{1, 2, 3, 4, 5, 6},
 		},
 		"preserves duplicates from first list": {
-			a:        lachesis.Cheaters{1, 2, 3, 1, 2, 3},
-			b:        lachesis.Cheaters{7},
-			expected: lachesis.Cheaters{1, 2, 3, 1, 2, 3, 7},
+			a:        consensus.Cheaters{1, 2, 3, 1, 2, 3},
+			b:        consensus.Cheaters{7},
+			expected: consensus.Cheaters{1, 2, 3, 1, 2, 3, 7},
 		},
 		"removes duplicates from second list": {
-			a:        lachesis.Cheaters{1, 2, 3},
-			b:        lachesis.Cheaters{3, 4, 2},
-			expected: lachesis.Cheaters{1, 2, 3, 4},
+			a:        consensus.Cheaters{1, 2, 3},
+			b:        consensus.Cheaters{3, 4, 2},
+			expected: consensus.Cheaters{1, 2, 3, 4},
 		},
 		"order is preserved": {
-			a:        lachesis.Cheaters{1, 3, 5},
-			b:        lachesis.Cheaters{2, 4},
-			expected: lachesis.Cheaters{1, 3, 5, 2, 4},
+			a:        consensus.Cheaters{1, 3, 5},
+			b:        consensus.Cheaters{2, 4},
+			expected: consensus.Cheaters{1, 3, 5, 2, 4},
 		},
 	}
 
@@ -873,7 +871,7 @@ func TestSpillBlockEvents(t *testing.T) {
 
 	tests := map[string]struct {
 		maxBlockGas uint64
-		events      map[hash.Event]fakePayload
+		events      map[consensus.EventHash]fakePayload
 		// The test uses mocks for payloads, use the signatures to uniquely identify
 		// events in the result.
 		expectedSignatures []inter.Signature
@@ -883,21 +881,21 @@ func TestSpillBlockEvents(t *testing.T) {
 		},
 		"single event with gas usage below limit is included": {
 			maxBlockGas: 10,
-			events: map[hash.Event]fakePayload{
+			events: map[consensus.EventHash]fakePayload{
 				{0x42}: makeEventPayload(5, inter.Signature{0x42}),
 			},
 			expectedSignatures: []inter.Signature{{0x42}},
 		},
 		"single event with gas usage exceeding limit is spilled": {
 			maxBlockGas: 10,
-			events: map[hash.Event]fakePayload{
+			events: map[consensus.EventHash]fakePayload{
 				{0x42}: makeEventPayload(11, inter.Signature{0x42}),
 			},
 			expectedSignatures: []inter.Signature{},
 		},
 		"multiple events with gas usage below limit are included": {
 			maxBlockGas: 30,
-			events: map[hash.Event]fakePayload{
+			events: map[consensus.EventHash]fakePayload{
 				{0x42}: makeEventPayload(10, inter.Signature{0x42}),
 				{0x43}: makeEventPayload(10, inter.Signature{0x43}),
 				{0x44}: makeEventPayload(10, inter.Signature{0x44}),
@@ -906,7 +904,7 @@ func TestSpillBlockEvents(t *testing.T) {
 		},
 		"multiple events with last gas usage exceeding limit are spilled": {
 			maxBlockGas: 20,
-			events: map[hash.Event]fakePayload{
+			events: map[consensus.EventHash]fakePayload{
 				{0x42}: makeEventPayload(1, inter.Signature{0x42}),
 				{0x43}: makeEventPayload(1, inter.Signature{0x43}),
 				{0x44}: makeEventPayload(21, inter.Signature{0x44}), // last event checked first
@@ -915,7 +913,7 @@ func TestSpillBlockEvents(t *testing.T) {
 		},
 		"multiple events are included until gas limit is reached, rest is spilled": {
 			maxBlockGas: 20,
-			events: map[hash.Event]fakePayload{
+			events: map[consensus.EventHash]fakePayload{
 				{0x42}: makeEventPayload(1, inter.Signature{0x42}),
 				{0x43}: makeEventPayload(10, inter.Signature{0x43}),
 				{0x44}: makeEventPayload(10, inter.Signature{0x44}),
@@ -925,7 +923,7 @@ func TestSpillBlockEvents(t *testing.T) {
 		},
 		"multiple events are included until gas limit is exceeded, rest is spilled even if they would fit independently": {
 			maxBlockGas: 20,
-			events: map[hash.Event]fakePayload{
+			events: map[consensus.EventHash]fakePayload{
 				{0x42}: makeEventPayload(1, inter.Signature{0x42}),
 				{0x43}: makeEventPayload(11, inter.Signature{0x43}),
 				{0x44}: makeEventPayload(10, inter.Signature{0x44}),
@@ -937,16 +935,16 @@ func TestSpillBlockEvents(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 
-			events := make([]hash.Event, 0, len(test.events))
+			events := make([]consensus.EventHash, 0, len(test.events))
 			for e := range test.events {
 				events = append(events, e)
 			}
 			// tests are order-dependent, so sort inputs
-			slices.SortFunc(events, func(a, b hash.Event) int {
+			slices.SortFunc(events, func(a, b consensus.EventHash) int {
 				return bytes.Compare(a[:], b[:])
 			})
 
-			getEventPayload := func(id hash.Event) inter.EventPayloadI {
+			getEventPayload := func(id consensus.EventHash) inter.EventPayloadI {
 				if payload, ok := test.events[id]; ok {
 					return &payload
 				}

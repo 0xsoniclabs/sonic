@@ -17,11 +17,10 @@
 package throttler
 
 import (
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/config"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 )
 
 //go:generate mockgen -source=throttler.go -destination=throttler_mock.go -package=throttler
@@ -30,7 +29,7 @@ import (
 // or if the validator must emit it to bring the stake online.
 type ThrottlingState struct {
 	// throttler configuration parameters
-	thisValidatorID idx.ValidatorID
+	thisValidatorID consensus.ValidatorID
 	config          config.ThrottlerConfig
 
 	// means to access the world state
@@ -43,7 +42,7 @@ type ThrottlingState struct {
 }
 
 func NewThrottlingState(
-	validatorID idx.ValidatorID,
+	validatorID consensus.ValidatorID,
 	config config.ThrottlerConfig,
 	stateReader WorldReader,
 ) ThrottlingState {
@@ -155,8 +154,8 @@ func (ts *ThrottlingState) canSkip(
 }
 
 // getOnlineValidators returns a subset of validators in epoch which are currently considered online.
-func (ts *ThrottlingState) getOnlineValidators(allValidators *pos.Validators) *pos.Validators {
-	builder := pos.NewBuilder()
+func (ts *ThrottlingState) getOnlineValidators(allValidators *consensus.Validators) *consensus.Validators {
+	builder := consensus.NewValidatorsBuilder()
 	for _, id := range allValidators.IDs() {
 		if ts.thisValidatorID == id || ts.attendanceList.isOnline(id) {
 			builder.Set(id, allValidators.Get(id))
@@ -174,7 +173,7 @@ func (ts *ThrottlingState) resetState() {
 
 // validatorAttendance holds information about a validator's online status.
 type validatorAttendance struct {
-	lastSeenSeq idx.Event
+	lastSeenSeq consensus.Seq
 	lastSeenAt  config.Attempt
 
 	online bool
@@ -182,12 +181,12 @@ type validatorAttendance struct {
 
 // attendanceList is a helper tool to track validators' online status.
 type attendanceList struct {
-	attendance map[idx.ValidatorID]validatorAttendance
+	attendance map[consensus.ValidatorID]validatorAttendance
 }
 
 func newAttendanceList() attendanceList {
 	return attendanceList{
-		attendance: make(map[idx.ValidatorID]validatorAttendance),
+		attendance: make(map[consensus.ValidatorID]validatorAttendance),
 	}
 }
 
@@ -229,7 +228,7 @@ func (al *attendanceList) updateAttendance(
 	}
 }
 
-func (al *attendanceList) isOnline(id idx.ValidatorID) bool {
+func (al *attendanceList) isOnline(id consensus.ValidatorID) bool {
 	attendance, exists := al.attendance[id]
 	return exists && attendance.online
 }
@@ -238,6 +237,6 @@ func (al *attendanceList) isOnline(id idx.ValidatorID) bool {
 // to make throttling decisions.
 type WorldReader interface {
 	GetRules() opera.Rules
-	GetEpochValidators() (*pos.Validators, idx.Epoch)
-	GetLastEvent(idx.ValidatorID) *inter.Event
+	GetEpochValidators() (*consensus.Validators, consensus.Epoch)
+	GetLastEvent(consensus.ValidatorID) *inter.Event
 }

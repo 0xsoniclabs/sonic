@@ -21,21 +21,16 @@ import (
 	"cmp"
 	"fmt"
 	"slices"
-	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	scc_node "github.com/0xsoniclabs/sonic/scc/node"
 
-	"github.com/Fantom-foundation/lachesis-base/hash"
-	"github.com/Fantom-foundation/lachesis-base/inter/dag"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/Fantom-foundation/lachesis-base/inter/pos"
-	"github.com/Fantom-foundation/lachesis-base/lachesis"
-	"github.com/Fantom-foundation/lachesis-base/utils/workers"
+	"github.com/0xsoniclabs/sonic/utils/workers"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
@@ -76,12 +71,12 @@ var (
 
 type ExtendedTxPosition struct {
 	evmstore.TxPosition
-	EventCreator idx.ValidatorID
+	EventCreator consensus.ValidatorID
 }
 
 // GetConsensusCallbacks returns single (for Service) callback instance.
-func (s *Service) GetConsensusCallbacks() lachesis.ConsensusCallbacks {
-	return lachesis.ConsensusCallbacks{
+func (s *Service) GetConsensusCallbacks() consensus.ConsensusCallbacks {
+	return consensus.ConsensusCallbacks{
 		BeginBlock: consensusCallbackBeginBlockFn(
 			s.blockProcTasks,
 			&s.blockProcWg,
@@ -99,7 +94,7 @@ func (s *Service) GetConsensusCallbacks() lachesis.ConsensusCallbacks {
 }
 
 // consensusCallbackBeginBlockFn takes only necessaries for block processing and
-// makes lachesis.BeginBlockFn.
+// makes consensus.BeginBlockFn.
 func consensusCallbackBeginBlockFn(
 	parallelTasks *workers.Workers,
 	wg *sync.WaitGroup,
@@ -112,13 +107,13 @@ func consensusCallbackBeginBlockFn(
 	verWatcher *verwatcher.VersionWatcher,
 	bootstrapping *bool,
 	sccNode *scc_node.Node,
-) lachesis.BeginBlockFn {
-	return func(cBlock *lachesis.Block) lachesis.BlockCallbacks {
+) consensus.BeginBlockFn {
+	return func(cBlock *consensus.Block) consensus.BlockCallbacks {
 		if *bootstrapping {
 			// ignore block processing during bootstrapping
-			return lachesis.BlockCallbacks{
-				ApplyEvent: func(dag.Event) {},
-				EndBlock: func() *pos.Validators {
+			return consensus.BlockCallbacks{
+				ApplyEvent: func(consensus.Event) {},
+				EndBlock: func() *consensus.Validators {
 					return nil
 				},
 			}
@@ -150,12 +145,12 @@ func consensusCallbackBeginBlockFn(
 		atroposTime := bs.LastBlock.Time + 1
 		atroposDegenerate := true
 		// events with txs
-		confirmedEvents := make(hash.OrderedEvents, 0, 3*es.Validators.Len())
+		confirmedEvents := make(consensus.EventHashes, 0, 3*es.Validators.Len())
 
-		return lachesis.BlockCallbacks{
-			ApplyEvent: func(_e dag.Event) {
+		return consensus.BlockCallbacks{
+			ApplyEvent: func(_e consensus.Event) {
 				e := _e.(inter.EventI)
-				if cBlock.Atropos == e.ID() {
+				if cBlock.Leader == e.ID() {
 					atroposTime = e.MedianTime()
 					atroposDegenerate = false
 				}
@@ -168,13 +163,14 @@ func consensusCallbackBeginBlockFn(
 				}
 				confirmedEventsMeter.Mark(1)
 			},
-			EndBlock: func() (newValidators *pos.Validators) {
+			EndBlock: func() (newValidators *consensus.Validators) {
 
 				// sort events by Lamport time
-				sort.Sort(confirmedEvents)
+				// sort events by Lamport time
+				slices.SortFunc(confirmedEvents, func(a, b consensus.EventHash) int { return bytes.Compare(a.Bytes(), b.Bytes()) })
 				maxBlockGas := es.Rules.Blocks.MaxBlockGas
 				blockEvents := spillBlockEvents(confirmedEvents, maxBlockGas,
-					func(id hash.Event) inter.EventPayloadI {
+					func(id consensus.EventHash) inter.EventPayloadI {
 						// Note: currently, GetEventPayload returns a pointer to struct,
 						// conversion to interface may yield a broken interface if
 						// the value is nil.
@@ -195,7 +191,7 @@ func consensusCallbackBeginBlockFn(
 				chainCfg := opera.CreateTransientEvmChainConfig(
 					es.Rules.NetworkID,
 					store.GetUpgradeHeights(),
-					idx.Block(number),
+					consensus.BlockID(number),
 				)
 
 				// The maximum amount of gas to be used for non-internal
@@ -213,7 +209,7 @@ func consensusCallbackBeginBlockFn(
 
 				// Get a proposal for the block to be created.
 				proposal := inter.Proposal{
-					Number:     idx.Block(number),
+					Number:     consensus.BlockID(number),
 					ParentHash: lastBlockHeader.Hash,
 				}
 				blockTime := atroposTime
@@ -221,7 +217,7 @@ func consensusCallbackBeginBlockFn(
 					if proposed, proposer, time := extractProposalForNextBlock(lastBlockHeader, blockEvents, log.Root()); proposed != nil {
 						proposal = *proposed
 						blockTime = time
-						validatorKeys := readEpochPubKeys(store, cBlock.Atropos.Epoch())
+						validatorKeys := readEpochPubKeys(store, cBlock.Leader.Epoch())
 						randao = resolveRandaoMix(
 							proposal.RandaoReveal, proposer,
 							validatorKeys.PubKeys,
@@ -263,7 +259,7 @@ func consensusCallbackBeginBlockFn(
 				blockCtx := iblockproc.BlockCtx{
 					Idx:     proposal.Number,
 					Time:    blockTime,
-					Atropos: cBlock.Atropos,
+					Atropos: cBlock.Leader,
 				}
 
 				// Note:
@@ -276,7 +272,7 @@ func consensusCallbackBeginBlockFn(
 				// If Atropos ID wasn't used as a block ID, it wouldn't be required.
 				skipBlock := atroposDegenerate
 				// Check if empty block should be pruned
-				emptyBlock := confirmedEvents.Len() == 0 && cBlock.Cheaters.Len() == 0
+				emptyBlock := len(confirmedEvents) == 0 && len(cBlock.Cheaters) == 0
 				if es.Rules.Upgrades.SingleProposerBlockFormation {
 					// Just checking for the number of confirmed events is not
 					// enough in the SingleProposer mode, because proposals may
@@ -288,7 +284,7 @@ func consensusCallbackBeginBlockFn(
 					// no cheaters resulting in internal transactions to be
 					// included -- the resulting block would be empty, and should
 					// in general be skipped.
-					emptyBlock = cBlock.Cheaters.Len() == 0 && len(proposal.Transactions) == 0
+					emptyBlock = len(cBlock.Cheaters) == 0 && len(proposal.Transactions) == 0
 				}
 				skipBlock = skipBlock || (emptyBlock && blockCtx.Time < bs.LastBlock.Time+es.Rules.Blocks.MaxEmptyBlockSkipPeriod)
 				// Finalize the progress of eventProcessor
@@ -296,7 +292,7 @@ func consensusCallbackBeginBlockFn(
 				if skipBlock {
 					// save the latest block state even if block is skipped
 					store.SetBlockEpochState(bs, es)
-					log.Debug("Frame is skipped", "atropos", cBlock.Atropos.String())
+					log.Debug("Frame is skipped", "atropos", cBlock.Leader.String())
 					return nil
 				}
 				if emptyBlock {
@@ -482,7 +478,7 @@ func consensusCallbackBeginBlockFn(
 						txListener.OnNewReceipt(evmBlock.Transactions[i], r, creator, evmBlock.BaseFee, evmBlock.BlobBaseFee)
 					}
 					bs = txListener.Finalize() // TODO: refactor to not mutate the bs
-					bs.FinalizedStateRoot = hash.Hash(evmBlock.Root)
+					bs.FinalizedStateRoot = consensus.Hash(evmBlock.Root)
 					// At this point, block state is finalized
 
 					// Build index for not skipped txs
@@ -503,7 +499,7 @@ func consensusCallbackBeginBlockFn(
 					}
 
 					bs.LastBlock = blockCtx
-					bs.CheatersWritten = uint32(bs.EpochCheaters.Len())
+					bs.CheatersWritten = uint32(len(bs.EpochCheaters))
 					if sealing {
 						store.SetHistoryBlockEpochState(es.Epoch, bs, es)
 						store.SetEpochBlock(blockCtx.Idx+1, es.Epoch)
@@ -568,7 +564,7 @@ func consensusCallbackBeginBlockFn(
 					processedTxsMeter.Mark(int64(len(evmBlock.Transactions)))
 					skippedTxsMeter.Mark(int64(numSkippedTxs))
 				}
-				if confirmedEvents.Len() != 0 {
+				if len(confirmedEvents) != 0 {
 					atomic.StoreUint32(blockBusyFlag, 1)
 					wg.Add(1)
 					err := parallelTasks.Enqueue(func() {
@@ -599,8 +595,8 @@ func consensusCallbackBeginBlockFn(
 // reproducible by all nodes.
 func resolveRandaoMix(
 	reveal randao.RandaoReveal,
-	proposer idx.ValidatorID,
-	validatorKeys map[idx.ValidatorID]validatorpk.PubKey,
+	proposer consensus.ValidatorID,
+	validatorKeys map[consensus.ValidatorID]validatorpk.PubKey,
 	lastBlockRandao common.Hash,
 	fallbackRandao common.Hash,
 	logger log.Logger,
@@ -617,9 +613,9 @@ func resolveRandaoMix(
 
 // spillBlockEvents excludes first events which exceed MaxBlockGas
 func spillBlockEvents(
-	events hash.OrderedEvents,
+	events consensus.EventHashes,
 	maxBlockGas uint64,
-	getEventPayload func(id hash.Event) inter.EventPayloadI,
+	getEventPayload func(id consensus.EventHash) inter.EventPayloadI,
 ) []inter.EventPayloadI {
 	fullEvents := make([]inter.EventPayloadI, len(events))
 	if len(events) == 0 {
@@ -643,7 +639,7 @@ func spillBlockEvents(
 	return fullEvents
 }
 
-func mergeCheaters(a, b lachesis.Cheaters) lachesis.Cheaters {
+func mergeCheaters(a, b consensus.Cheaters) consensus.Cheaters {
 	if len(b) == 0 {
 		return a
 	}
@@ -651,7 +647,7 @@ func mergeCheaters(a, b lachesis.Cheaters) lachesis.Cheaters {
 		return b
 	}
 	aSet := a.Set()
-	merged := make(lachesis.Cheaters, 0, len(b)+len(a))
+	merged := make(consensus.Cheaters, 0, len(b)+len(a))
 	merged = append(merged, a...)
 	for _, v := range b {
 		if _, ok := aSet[v]; !ok {
@@ -676,14 +672,14 @@ func extractProposalForNextBlock(
 	lastBlock *evmcore.EvmHeader,
 	events []inter.EventPayloadI,
 	logger log.Logger,
-) (*inter.Proposal, idx.ValidatorID, inter.Timestamp) {
+) (*inter.Proposal, consensus.ValidatorID, inter.Timestamp) {
 
-	desiredBlockNumber := idx.Block(lastBlock.Number.Uint64() + 1)
+	desiredBlockNumber := consensus.BlockID(lastBlock.Number.Uint64() + 1)
 	parentHash := lastBlock.Hash
 
 	type PayloadInfo struct {
 		Payload  *inter.Payload
-		Proposer idx.ValidatorID
+		Proposer consensus.ValidatorID
 		Time     inter.Timestamp
 	}
 

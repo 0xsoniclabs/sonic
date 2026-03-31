@@ -21,12 +21,12 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/gossip/contract/sfc100"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/opera/contracts/sfc"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/utils"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/require"
@@ -68,7 +68,7 @@ func TestValidatorsStakes_AllNodesProduceBlocks_WhenStakeDistributionChanges(t *
 			t.Run("second epoch has equal stake for all validators",
 				func(t *testing.T) {
 					// Prepare new stake distribution
-					for _, id := range []idx.ValidatorID{3, 4, 5, 6} {
+					for _, id := range []consensus.ValidatorID{3, 4, 5, 6} {
 						increaseValidatorStake(t, net, sfcContract, id, utils.ToFtm(625))
 					}
 					net.AdvanceEpoch(t, 1)
@@ -84,7 +84,7 @@ func TestValidatorsStakes_AllNodesProduceBlocks_WhenStakeDistributionChanges(t *
 			t.Run("third epoch is dominated by two validators again",
 				func(t *testing.T) {
 					// Prepare new stake distribution
-					for _, id := range []idx.ValidatorID{5, 6} {
+					for _, id := range []consensus.ValidatorID{5, 6} {
 						increaseValidatorStake(t, net, sfcContract, id, utils.ToFtm(1_000_000))
 					}
 					net.AdvanceEpoch(t, 1)
@@ -101,7 +101,7 @@ func TestValidatorsStakes_AllNodesProduceBlocks_WhenStakeDistributionChanges(t *
 	}
 }
 
-func increaseValidatorStake(t *testing.T, net *tests.IntegrationTestNet, sfcContract *sfc100.Contract, id idx.ValidatorID, amount *big.Int) {
+func increaseValidatorStake(t *testing.T, net *tests.IntegrationTestNet, sfcContract *sfc100.Contract, id consensus.ValidatorID, amount *big.Int) {
 	t.Helper()
 
 	// First endow the validator account with enough FTM to stake.
@@ -130,11 +130,11 @@ func increaseValidatorStake(t *testing.T, net *tests.IntegrationTestNet, sfcCont
 // requireValidatorStakesEqualTo checks that the stakes of the validators
 // in the 'validators' map match the expected stakes provided in 'expectedStakes' slice.
 // The index of the expectedStakes slice corresponds to the ValidatorID - 1.
-func requireValidatorStakesEqualTo(t *testing.T, validators map[idx.ValidatorID]*big.Int, expectedStakes []uint64) {
+func requireValidatorStakesEqualTo(t *testing.T, validators map[consensus.ValidatorID]*big.Int, expectedStakes []uint64) {
 	t.Helper()
 
 	for id, expectedStake := range expectedStakes {
-		stake, ok := validators[idx.ValidatorID(id+1)]
+		stake, ok := validators[consensus.ValidatorID(id+1)]
 		require.True(t, ok, "validator %d not found", id+1)
 		expectedStakeInTokens := utils.ToFtm(expectedStake)
 		require.Equal(t, expectedStakeInTokens.Uint64(), stake.Uint64(), "validator %d has incorrect stake", id+1)
@@ -143,7 +143,7 @@ func requireValidatorStakesEqualTo(t *testing.T, validators map[idx.ValidatorID]
 
 // getValidatorsInCurrentEpoch retrieves the current epoch number and a map of validator IDs to their stakes
 // from the provided sfcContract.
-func getValidatorsInCurrentEpoch(t *testing.T, sfcContract *sfc100.Contract) (map[idx.ValidatorID]*big.Int, *big.Int) {
+func getValidatorsInCurrentEpoch(t *testing.T, sfcContract *sfc100.Contract) (map[consensus.ValidatorID]*big.Int, *big.Int) {
 	t.Helper()
 
 	epoch, err := sfcContract.CurrentEpoch(nil)
@@ -151,10 +151,10 @@ func getValidatorsInCurrentEpoch(t *testing.T, sfcContract *sfc100.Contract) (ma
 
 	ids, err := sfcContract.GetEpochValidatorIDs(nil, epoch)
 	require.NoError(t, err)
-	validators := make(map[idx.ValidatorID]*big.Int)
+	validators := make(map[consensus.ValidatorID]*big.Int)
 	for _, bigId := range ids {
 
-		id := idx.ValidatorID(bigId.Uint64())
+		id := consensus.ValidatorID(bigId.Uint64())
 		key := makefakegenesis.FakeKey(id)
 		delegator := crypto.PubkeyToAddress(key.PublicKey)
 		stake, err := sfcContract.GetStake(nil, delegator, bigId)

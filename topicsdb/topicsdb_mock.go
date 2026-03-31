@@ -29,7 +29,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	common "github.com/ethereum/go-ethereum/common"
 	types "github.com/ethereum/go-ethereum/core/types"
 	gomock "go.uber.org/mock/gomock"
@@ -72,7 +72,7 @@ func (mr *MockIndexMockRecorder) Close() *gomock.Call {
 }
 
 // FindInBlocks mocks base method.
-func (m *MockIndex) FindInBlocks(ctx context.Context, from, to idx.Block, pattern [][]common.Hash) ([]*types.Log, error) {
+func (m *MockIndex) FindInBlocks(ctx context.Context, from, to consensus.BlockID, pattern [][]common.Hash) ([]*types.Log, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "FindInBlocks", ctx, from, to, pattern)
 	ret0, _ := ret[0].([]*types.Log)

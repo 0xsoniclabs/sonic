@@ -20,15 +20,16 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/Fantom-foundation/lachesis-base/abft"
-	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
+	"github.com/0xsoniclabs/cacheutils/cachescale"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/stretchr/testify/require"
 
+	"github.com/0xsoniclabs/consensus/consensus/consensusengine"
+	"github.com/0xsoniclabs/consensus/consensus/consensusstore"
+	"github.com/0xsoniclabs/consensus/consensus/dagindexer"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip"
 	emitter_config "github.com/0xsoniclabs/sonic/gossip/emitter/config"
-	"github.com/0xsoniclabs/sonic/vecmt"
 )
 
 func TestConfigFile(t *testing.T) {
@@ -43,9 +44,9 @@ func TestConfigFile(t *testing.T) {
 		Emitter:       emitter_config.DefaultConfig(),
 		TxPool:        evmcore.DefaultTxPoolConfig,
 		OperaStore:    gossip.DefaultStoreConfig(cacheRatio),
-		Lachesis:      abft.DefaultConfig(),
-		LachesisStore: abft.DefaultStoreConfig(cacheRatio),
-		VectorClock:   vecmt.DefaultConfig(cacheRatio),
+		Lachesis:      consensusengine.DefaultConfig(),
+		LachesisStore: consensusstore.DefaultStoreConfig(cacheRatio),
+		VectorClock:   dagindexer.DefaultConfig(cacheRatio),
 	}
 
 	canonical := func(nn []*enode.Node) []*enode.Node {

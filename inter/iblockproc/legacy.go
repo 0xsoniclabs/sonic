@@ -17,27 +17,24 @@
 package iblockproc
 
 import (
-	"github.com/Fantom-foundation/lachesis-base/hash"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/Fantom-foundation/lachesis-base/inter/pos"
-
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
 )
 
 type ValidatorEpochStateV0 struct {
 	GasRefund      uint64
-	PrevEpochEvent hash.Event
+	PrevEpochEvent consensus.EventHash
 }
 
 type EpochStateV0 struct {
-	Epoch          idx.Epoch
+	Epoch          consensus.Epoch
 	EpochStart     inter.Timestamp
 	PrevEpochStart inter.Timestamp
 
-	EpochStateRoot hash.Hash
+	EpochStateRoot consensus.Hash
 
-	Validators        *pos.Validators
+	Validators        *consensus.Validators
 	ValidatorStates   []ValidatorEpochStateV0
 	ValidatorProfiles ValidatorProfiles
 

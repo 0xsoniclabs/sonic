@@ -30,11 +30,14 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/eventcheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/epochcheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/heavycheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/parentlesscheck"
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/0xsoniclabs/sonic/gossip/dagprocessor"
+	"github.com/0xsoniclabs/sonic/gossip/itemsfetcher"
 	"github.com/0xsoniclabs/sonic/gossip/protocols/dag/dagstream"
 	"github.com/0xsoniclabs/sonic/gossip/protocols/dag/dagstream/dagstreamleecher"
 	"github.com/0xsoniclabs/sonic/gossip/protocols/dag/dagstream/dagstreamseeder"
@@ -42,13 +45,8 @@ import (
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/logger"
 	"github.com/0xsoniclabs/sonic/utils/caution"
+	"github.com/0xsoniclabs/sonic/utils/datasemaphore"
 	"github.com/0xsoniclabs/sonic/utils/txtime"
-	"github.com/Fantom-foundation/lachesis-base/gossip/dagprocessor"
-	"github.com/Fantom-foundation/lachesis-base/gossip/itemsfetcher"
-	"github.com/Fantom-foundation/lachesis-base/hash"
-	"github.com/Fantom-foundation/lachesis-base/inter/dag"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/Fantom-foundation/lachesis-base/utils/datasemaphore"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	notify "github.com/ethereum/go-ethereum/event"
@@ -92,13 +90,13 @@ func checkLenLimits(size int, v interface{}) error {
 }
 
 type dagNotifier interface {
-	SubscribeNewEpoch(ch chan<- idx.Epoch) notify.Subscription
+	SubscribeNewEpoch(ch chan<- consensus.Epoch) notify.Subscription
 	SubscribeNewEmitted(ch chan<- *inter.EventPayload) notify.Subscription
 }
 
 type processCallback struct {
 	Event         func(*inter.EventPayload) error
-	SwitchEpochTo func(idx.Epoch) error
+	SwitchEpochTo func(consensus.Epoch) error
 }
 
 // handlerConfig is the collection of initialization parameters to create a full
@@ -153,7 +151,7 @@ type handler struct {
 	notifier             dagNotifier
 	emittedEventsCh      chan *inter.EventPayload
 	emittedEventsSub     notify.Subscription
-	newEpochsCh          chan idx.Epoch
+	newEpochsCh          chan consensus.Epoch
 	newEpochsSub         notify.Subscription
 	quitProgressBradcast chan struct{}
 
@@ -242,7 +240,7 @@ func newHandler(
 		Suspend: func(_ string) bool {
 			return h.dagFetcher.Overloaded() || h.dagProcessor.Overloaded()
 		},
-		PeerEpoch: func(peer string) idx.Epoch {
+		PeerEpoch: func(peer string) consensus.Epoch {
 			p := h.peers.Peer(peer)
 			if p == nil || p.Useless() {
 				return 0
@@ -268,7 +266,7 @@ func (h *handler) peerMisbehaviour(peer string, err error) bool {
 
 func (h *handler) makeDagProcessor(checkers *eventcheck.Checkers) *dagprocessor.Processor {
 	// checkers
-	lightCheck := func(e dag.Event) error {
+	lightCheck := func(e consensus.Event) error {
 		if h.store.GetEpoch() != e.ID().Epoch() {
 			return epochcheck.ErrNotRelevant
 		}
@@ -286,7 +284,7 @@ func (h *handler) makeDagProcessor(checkers *eventcheck.Checkers) *dagprocessor.
 		}
 		return nil
 	}
-	bufferedCheck := func(_e dag.Event, _parents dag.Events) error {
+	bufferedCheck := func(_e consensus.Event, _parents consensus.Events) error {
 		e := _e.(inter.EventPayloadI)
 		parents := make(inter.EventIs, len(_parents))
 		for i := range _parents {
@@ -301,7 +299,7 @@ func (h *handler) makeDagProcessor(checkers *eventcheck.Checkers) *dagprocessor.
 	newProcessor := dagprocessor.New(datasemaphore.New(h.config.Protocol.EventsSemaphoreLimit, getSemaphoreWarningFn("DAG events")), h.config.Protocol.DagProcessor, dagprocessor.Callback{
 		// DAG callbacks
 		Event: dagprocessor.EventCallback{
-			Process: func(_e dag.Event) error {
+			Process: func(_e consensus.Event) error {
 				e := _e.(*inter.EventPayload)
 				preStart := time.Now()
 				h.engineMu.Lock()
@@ -318,7 +316,7 @@ func (h *handler) makeDagProcessor(checkers *eventcheck.Checkers) *dagprocessor.
 
 				return nil
 			},
-			Released: func(e dag.Event, peer string, err error) {
+			Released: func(e consensus.Event, peer string, err error) {
 				if eventcheck.IsBan(err) {
 					log.Warn("Incoming event rejected", "event", e.ID().String(), "creator", e.Creator(), "err", err)
 					h.removePeer(peer)
@@ -329,11 +327,11 @@ func (h *handler) makeDagProcessor(checkers *eventcheck.Checkers) *dagprocessor.
 				}
 			},
 
-			Exists: func(id hash.Event) bool {
+			Exists: func(id consensus.EventHash) bool {
 				return h.store.HasEvent(id)
 			},
 
-			Get: func(id hash.Event) dag.Event {
+			Get: func(id consensus.EventHash) consensus.Event {
 				e := h.store.GetEventPayload(id)
 				if e == nil {
 					return nil
@@ -371,7 +369,7 @@ func validateEventPropertiesDependingOnParents(
 	return nil
 }
 
-func (h *handler) isEventInterested(id hash.Event, epoch idx.Epoch) bool {
+func (h *handler) isEventInterested(id consensus.EventHash, epoch consensus.Epoch) bool {
 	if id.Epoch() != epoch {
 		return false
 	}
@@ -389,7 +387,7 @@ func (h *handler) onlyInterestedEventsI(ids []interface{}) []interface{} {
 	epoch := h.store.GetEpoch()
 	interested := make([]interface{}, 0, len(ids))
 	for _, id := range ids {
-		if h.isEventInterested(id.(hash.Event), epoch) {
+		if h.isEventInterested(id.(consensus.EventHash), epoch) {
 			interested = append(interested, id)
 		}
 	}
@@ -439,7 +437,7 @@ func (h *handler) Start(maxPeers int) {
 		h.emittedEventsCh = make(chan *inter.EventPayload, 4)
 		h.emittedEventsSub = h.notifier.SubscribeNewEmitted(h.emittedEventsCh)
 		// epoch changes
-		h.newEpochsCh = make(chan idx.Epoch, 4)
+		h.newEpochsCh = make(chan consensus.Epoch, 4)
 		h.newEpochsSub = h.notifier.SubscribeNewEpoch(h.newEpochsCh)
 
 		h.loopsWg.Add(3)
@@ -602,15 +600,15 @@ func (h *handler) handle(p *peer) error {
 	}
 }
 
-func interfacesToEventIDs(ids []interface{}) hash.Events {
-	res := make(hash.Events, len(ids))
+func interfacesToEventIDs(ids []interface{}) consensus.EventHashes {
+	res := make(consensus.EventHashes, len(ids))
 	for i, id := range ids {
-		res[i] = id.(hash.Event)
+		res[i] = id.(consensus.EventHash)
 	}
 	return res
 }
 
-func eventIDsToInterfaces(ids hash.Events) []interface{} {
+func eventIDsToInterfaces(ids consensus.EventHashes) []interface{} {
 	res := make([]interface{}, len(ids))
 	for i, id := range ids {
 		res[i] = id
@@ -659,16 +657,16 @@ func (h *handler) handleTxs(p *peer, txs types.Transactions) {
 	h.txpool.AddRemotes(txs)
 }
 
-func (h *handler) handleEventHashes(p *peer, announces hash.Events) {
+func (h *handler) handleEventHashes(p *peer, announces consensus.EventHashes) {
 	// Mark the hashes as present at the remote node
 	for _, id := range announces {
 		p.MarkEvent(id)
 	}
 	// filter too high IDs
-	notTooHigh := make(hash.Events, 0, len(announces))
+	notTooHigh := make(consensus.EventHashes, 0, len(announces))
 	sessionCfg := h.config.Protocol.DagStreamLeecher.Session
 	for _, id := range announces {
-		maxLamport := h.store.GetHighestLamport() + idx.Lamport(sessionCfg.DefaultChunkItemsNum+1)*idx.Lamport(sessionCfg.ParallelChunksDownload)
+		maxLamport := h.store.GetHighestLamport() + consensus.Lamport(sessionCfg.DefaultChunkItemsNum+1)*consensus.Lamport(sessionCfg.ParallelChunksDownload)
 		if id.Lamport() <= maxLamport {
 			notTooHigh = append(notTooHigh, id)
 		}
@@ -686,7 +684,7 @@ func (h *handler) handleEventHashes(p *peer, announces hash.Events) {
 	_ = h.dagFetcher.NotifyAnnounces(p.id, eventIDsToInterfaces(notTooHigh), time.Now(), requestEvents)
 }
 
-func (h *handler) handleEvents(peer *peer, events dag.Events, ordered bool) {
+func (h *handler) handleEvents(peer *peer, events consensus.Events, ordered bool) {
 	// Mark the hashes as present at the remote node
 	now := time.Now()
 	for _, e := range events {
@@ -696,10 +694,10 @@ func (h *handler) handleEvents(peer *peer, events dag.Events, ordered bool) {
 		peer.MarkEvent(e.ID())
 	}
 	// filter too high events
-	notTooHigh := make(dag.Events, 0, len(events))
+	notTooHigh := make(consensus.Events, 0, len(events))
 	sessionCfg := h.config.Protocol.DagStreamLeecher.Session
 	for _, e := range events {
-		maxLamport := h.store.GetHighestLamport() + idx.Lamport(sessionCfg.DefaultChunkItemsNum+1)*idx.Lamport(sessionCfg.ParallelChunksDownload)
+		maxLamport := h.store.GetHighestLamport() + consensus.Lamport(sessionCfg.DefaultChunkItemsNum+1)*consensus.Lamport(sessionCfg.ParallelChunksDownload)
 		if e.Lamport() <= maxLamport {
 			notTooHigh = append(notTooHigh, e)
 		}
@@ -717,7 +715,7 @@ func (h *handler) handleEvents(peer *peer, events dag.Events, ordered bool) {
 	requestEvents := func(ids []interface{}) error {
 		return peer.RequestEvents(interfacesToEventIDs(ids))
 	}
-	notifyAnnounces := func(ids hash.Events) {
+	notifyAnnounces := func(ids consensus.EventHashes) {
 		_ = h.dagFetcher.NotifyAnnounces(peer.id, eventIDsToInterfaces(ids), now, requestEvents)
 	}
 	err := h.dagProcessor.Enqueue(peer.id, notTooHigh, ordered, notifyAnnounces, nil)
@@ -749,7 +747,7 @@ func (h *handler) handleMsg(p *peer) (err error) {
 	defer caution.ExecuteAndReportError(&err, msg.Discard, "failed to discard message")
 
 	// Acquire semaphore for serialized messages
-	eventsSizeEst := dag.Metric{
+	eventsSizeEst := consensus.Metric{
 		Num:  1,
 		Size: uint64(msg.Size),
 	}
@@ -854,7 +852,7 @@ func (h *handler) handleMsg(p *peer) (err error) {
 		h.handleEvents(p, events.Bases(), events.Len() > 1)
 
 	case NewEventIDsMsg:
-		var announces hash.Events
+		var announces consensus.EventHashes
 		if err := msg.Decode(&announces); err != nil {
 			return errResp(ErrDecode, "%v: %v", msg, err)
 		}
@@ -864,7 +862,7 @@ func (h *handler) handleMsg(p *peer) (err error) {
 		h.handleEventHashes(p, announces)
 
 	case GetEventsMsg:
-		var requests hash.Events
+		var requests consensus.EventHashes
 		if err := msg.Decode(&requests); err != nil {
 			return errResp(ErrDecode, "%v: %v", msg, err)
 		}
@@ -873,7 +871,7 @@ func (h *handler) handleMsg(p *peer) (err error) {
 		}
 
 		rawEvents := make([]rlp.RawValue, 0, len(requests))
-		ids := make(hash.Events, 0, len(requests))
+		ids := make(consensus.EventHashes, 0, len(requests))
 		size := 0
 		for _, id := range requests {
 			if raw := h.store.GetEventPayloadRLP(id); raw != nil {
@@ -927,7 +925,7 @@ func (h *handler) handleMsg(p *peer) (err error) {
 		if (len(chunk.Events) != 0) && (len(chunk.IDs) != 0) {
 			return errors.New("expected either events or event hashes")
 		}
-		var last hash.Event
+		var last consensus.EventHash
 		if len(chunk.IDs) != 0 {
 			h.handleEventHashes(p, chunk.IDs)
 			last = chunk.IDs[len(chunk.IDs)-1]
@@ -1078,7 +1076,7 @@ func (h *handler) BroadcastEvent(event *inter.EventPayload, passed time.Duration
 	}
 	// Broadcast of event hash to the rest peers
 	for _, peer := range hashBroadcast {
-		peer.AsyncSendEventIDs(hash.Events{event.ID()}, peer.queue)
+		peer.AsyncSendEventIDs(consensus.EventHashes{event.ID()}, peer.queue)
 	}
 	log.Trace("Broadcast event", "hash", id, "fullRecipients", len(fullBroadcast), "hashRecipients", len(hashBroadcast))
 	return len(peers)
@@ -1254,10 +1252,10 @@ func (h *handler) peerInfoCollectionLoop(stop <-chan struct{}) {
 // NodeInfo represents a short summary of the sub-protocol metadata
 // known about the host peer.
 type NodeInfo struct {
-	Network     uint64      `json:"network"` // network ID
-	Genesis     common.Hash `json:"genesis"` // SHA3 hash of the host's genesis object
-	Epoch       idx.Epoch   `json:"epoch"`
-	NumOfBlocks idx.Block   `json:"blocks"`
+	Network     uint64            `json:"network"` // network ID
+	Genesis     common.Hash       `json:"genesis"` // SHA3 hash of the host's genesis object
+	Epoch       consensus.Epoch   `json:"epoch"`
+	NumOfBlocks consensus.BlockID `json:"blocks"`
 	//Config  *params.ChainConfig `json:"config"`  // Chain configuration for the fork rules
 }
 
@@ -1272,8 +1270,8 @@ func (h *handler) NodeInfo() *NodeInfo {
 	}
 }
 
-func getSemaphoreWarningFn(name string) func(dag.Metric, dag.Metric, dag.Metric) {
-	return func(received dag.Metric, processing dag.Metric, releasing dag.Metric) {
+func getSemaphoreWarningFn(name string) func(consensus.Metric, consensus.Metric, consensus.Metric) {
+	return func(received consensus.Metric, processing consensus.Metric, releasing consensus.Metric) {
 		log.Warn(fmt.Sprintf("%s semaphore inconsistency", name),
 			"receivedNum", received.Num, "receivedSize", received.Size,
 			"processingNum", processing.Num, "processingSize", processing.Size,

@@ -24,13 +24,13 @@ import (
 	"runtime/debug"
 	"testing"
 
-	"github.com/Fantom-foundation/lachesis-base/hash"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/Fantom-foundation/lachesis-base/kvdb/memorydb"
+	"github.com/0xsoniclabs/kvdb/memorydb"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 
+	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/consensus/consensus/consensustest"
 	"github.com/0xsoniclabs/sonic/logger"
 	"github.com/0xsoniclabs/sonic/utils/dbutil/threads"
 )
@@ -100,7 +100,7 @@ func TestIndexSearchMultyVariants(t *testing.T) {
 
 	pooled := withThreadPool{index}
 
-	for dsc, method := range map[string]func(context.Context, idx.Block, idx.Block, [][]common.Hash) ([]*types.Log, error){
+	for dsc, method := range map[string]func(context.Context, consensus.BlockID, consensus.BlockID, [][]common.Hash) ([]*types.Log, error){
 		"index":  index.FindInBlocks,
 		"pooled": pooled.FindInBlocks,
 	} {
@@ -210,7 +210,7 @@ func TestIndexSearchShortCircuits(t *testing.T) {
 
 	pooled := withThreadPool{index}
 
-	for dsc, method := range map[string]func(context.Context, idx.Block, idx.Block, [][]common.Hash) ([]*types.Log, error){
+	for dsc, method := range map[string]func(context.Context, consensus.BlockID, consensus.BlockID, [][]common.Hash) ([]*types.Log, error){
 		"index":  index.FindInBlocks,
 		"pooled": pooled.FindInBlocks,
 	} {
@@ -270,7 +270,7 @@ func TestIndexSearchSingleVariant(t *testing.T) {
 
 	pooled := withThreadPool{index}
 
-	for dsc, method := range map[string]func(context.Context, idx.Block, idx.Block, [][]common.Hash) ([]*types.Log, error){
+	for dsc, method := range map[string]func(context.Context, consensus.BlockID, consensus.BlockID, [][]common.Hash) ([]*types.Log, error){
 		"index":  index.FindInBlocks,
 		"pooled": pooled.FindInBlocks,
 	} {
@@ -347,7 +347,7 @@ func TestIndexSearchSimple(t *testing.T) {
 
 	pooled := withThreadPool{index}
 
-	for dsc, method := range map[string]func(context.Context, idx.Block, idx.Block, [][]common.Hash) ([]*types.Log, error){
+	for dsc, method := range map[string]func(context.Context, consensus.BlockID, consensus.BlockID, [][]common.Hash) ([]*types.Log, error){
 		"index":  index.FindInBlocks,
 		"pooled": pooled.FindInBlocks,
 	} {
@@ -401,7 +401,7 @@ func TestMaxTopicsCount(t *testing.T) {
 
 	pooled := withThreadPool{index}
 
-	for dsc, method := range map[string]func(context.Context, idx.Block, idx.Block, [][]common.Hash) ([]*types.Log, error){
+	for dsc, method := range map[string]func(context.Context, consensus.BlockID, consensus.BlockID, [][]common.Hash) ([]*types.Log, error){
 		"index":  index.FindInBlocks,
 		"pooled": pooled.FindInBlocks,
 	} {
@@ -440,21 +440,21 @@ func TestPatternLimit(t *testing.T) {
 		},
 		{
 			pattern: [][]common.Hash{
-				{hash.FakeHash(1), hash.FakeHash(1)}, {hash.FakeHash(2), hash.FakeHash(2)}, {hash.FakeHash(3), hash.FakeHash(4)}},
+				{consensustest.FakeHash(1), consensustest.FakeHash(1)}, {consensustest.FakeHash(2), consensustest.FakeHash(2)}, {consensustest.FakeHash(3), consensustest.FakeHash(4)}},
 			exp: [][]common.Hash{
-				{hash.FakeHash(1)}, {hash.FakeHash(2)}, {hash.FakeHash(3), hash.FakeHash(4)}},
+				{consensustest.FakeHash(1)}, {consensustest.FakeHash(2)}, {consensustest.FakeHash(3), consensustest.FakeHash(4)}},
 			err: nil,
 		},
 		{
 			pattern: [][]common.Hash{
-				{hash.FakeHash(1), hash.FakeHash(2)}, {hash.FakeHash(3), hash.FakeHash(4)}, {hash.FakeHash(5), hash.FakeHash(6)}},
+				{consensustest.FakeHash(1), consensustest.FakeHash(2)}, {consensustest.FakeHash(3), consensustest.FakeHash(4)}, {consensustest.FakeHash(5), consensustest.FakeHash(6)}},
 			exp: [][]common.Hash{
-				{hash.FakeHash(1), hash.FakeHash(2)}, {hash.FakeHash(3), hash.FakeHash(4)}, {hash.FakeHash(5), hash.FakeHash(6)}},
+				{consensustest.FakeHash(1), consensustest.FakeHash(2)}, {consensustest.FakeHash(3), consensustest.FakeHash(4)}, {consensustest.FakeHash(5), consensustest.FakeHash(6)}},
 			err: nil,
 		},
 		{
-			pattern: append(append(make([][]common.Hash, maxTopicsCount), []common.Hash{hash.FakeHash(1)}), []common.Hash{hash.FakeHash(1)}),
-			exp:     append(make([][]common.Hash, maxTopicsCount), []common.Hash{hash.FakeHash(1)}),
+			pattern: append(append(make([][]common.Hash, maxTopicsCount), []common.Hash{consensustest.FakeHash(1)}), []common.Hash{consensustest.FakeHash(1)}),
+			exp:     append(make([][]common.Hash, maxTopicsCount), []common.Hash{consensustest.FakeHash(1)}),
 			err:     nil,
 		},
 	}
@@ -483,7 +483,7 @@ func TestKvdbThreadsPoolLimit(t *testing.T) {
 
 	pooled := withThreadPool{index}
 
-	for dsc, method := range map[string]func(context.Context, idx.Block, idx.Block, [][]common.Hash) ([]*types.Log, error){
+	for dsc, method := range map[string]func(context.Context, consensus.BlockID, consensus.BlockID, [][]common.Hash) ([]*types.Log, error){
 		"index":  index.FindInBlocks,
 		"pooled": pooled.FindInBlocks,
 	} {
@@ -492,7 +492,7 @@ func TestKvdbThreadsPoolLimit(t *testing.T) {
 
 			topics := make([]common.Hash, threads.GlobalPool.Cap()+1)
 			for i := range topics {
-				topics[i] = hash.FakeHash(int64(i))
+				topics[i] = consensustest.FakeHash(int64(i))
 			}
 			require.Less(threads.GlobalPool.Cap(), len(topics))
 			qq := make([][]common.Hash, 3)
@@ -531,7 +531,7 @@ func genTestData(count int) (
 
 	topics = make([]common.Hash, period)
 	for i := range topics {
-		topics[i] = hash.FakeHash(int64(i))
+		topics[i] = consensustest.FakeHash(int64(i))
 	}
 
 	topics4rec = func(rec int) (from, to int) {
@@ -545,8 +545,8 @@ func genTestData(count int) (
 		from, to := topics4rec(i)
 		r := &types.Log{
 			BlockNumber: uint64(i / period),
-			BlockHash:   hash.FakeHash(int64(i / period)),
-			TxHash:      hash.FakeHash(int64(i % period)),
+			BlockHash:   consensustest.FakeHash(int64(i / period)),
+			TxHash:      consensustest.FakeHash(int64(i % period)),
 			Index:       uint(i % period),
 			Address:     randAddress(),
 			Topics:      topics[from:to],

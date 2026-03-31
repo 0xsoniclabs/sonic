@@ -26,11 +26,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Fantom-foundation/lachesis-base/hash"
-	"github.com/Fantom-foundation/lachesis-base/inter/dag"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/Fantom-foundation/lachesis-base/lachesis"
-	"github.com/Fantom-foundation/lachesis-base/utils/workers"
+	"github.com/0xsoniclabs/sonic/utils/workers"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/core/types"
 	notify "github.com/ethereum/go-ethereum/event"
@@ -42,6 +38,8 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/rpc"
 
+	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/consensus/consensus/dagindexer"
 	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/eventcheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/basiccheck"
@@ -68,7 +66,6 @@ import (
 	"github.com/0xsoniclabs/sonic/utils/txtime"
 	"github.com/0xsoniclabs/sonic/utils/wgmutex"
 	"github.com/0xsoniclabs/sonic/valkeystore"
-	"github.com/0xsoniclabs/sonic/vecmt"
 )
 
 //go:generate mockgen -source=service.go -package=gossip -destination=service_mock.go
@@ -95,7 +92,7 @@ type ArchiveBlockHeightSource interface {
 	GetArchiveBlockHeight() (uint64, bool, error)
 }
 
-func (f *ServiceFeed) SubscribeNewEpoch(ch chan<- idx.Epoch) notify.Subscription {
+func (f *ServiceFeed) SubscribeNewEpoch(ch chan<- consensus.Epoch) notify.Subscription {
 	return f.scope.Track(f.newEpoch.Subscribe(ch))
 }
 
@@ -222,8 +219,8 @@ type Service struct {
 
 	// application
 	store               *Store
-	engine              lachesis.Consensus
-	dagIndexer          *vecmt.Index
+	engine              consensus.Consensus
+	dagIndexer          *dagindexer.Index
 	engineMu            *sync.RWMutex
 	emitters            []*emitter.Emitter
 	txpool              TxPool
@@ -262,7 +259,7 @@ type Service struct {
 	procLogger *proclogger.Logger
 
 	stopped   bool
-	haltCheck func(oldEpoch, newEpoch idx.Epoch, time time.Time) bool
+	haltCheck func(oldEpoch, newEpoch consensus.Epoch, time time.Time) bool
 
 	tflusher PeriodicFlusher
 
@@ -272,8 +269,8 @@ type Service struct {
 }
 
 func NewService(stack *node.Node, config Config, store *Store, blockProc BlockProc,
-	engine lachesis.Consensus, dagIndexer *vecmt.Index, newTxPool func(evmcore.StateReader) TxPool,
-	haltCheck func(oldEpoch, newEpoch idx.Epoch, age time.Time) bool) (*Service, error) {
+	engine consensus.Consensus, dagIndexer *dagindexer.Index, newTxPool func(evmcore.StateReader) TxPool,
+	haltCheck func(oldEpoch, newEpoch consensus.Epoch, age time.Time) bool) (*Service, error) {
 	if err := config.Validate(); err != nil {
 		return nil, err
 	}
@@ -294,7 +291,7 @@ func NewService(stack *node.Node, config Config, store *Store, blockProc BlockPr
 	return svc, nil
 }
 
-func newService(config Config, store *Store, blockProc BlockProc, engine lachesis.Consensus, dagIndexer *vecmt.Index, newTxPool func(evmcore.StateReader) TxPool, localId enode.ID) (*Service, error) {
+func newService(config Config, store *Store, blockProc BlockProc, engine consensus.Consensus, dagIndexer *dagindexer.Index, newTxPool func(evmcore.StateReader) TxPool, localId enode.ID) (*Service, error) {
 	svc := &Service{
 		config:             config,
 		blockProcTasksDone: make(chan struct{}),
@@ -314,7 +311,8 @@ func newService(config Config, store *Store, blockProc BlockProc, engine lachesi
 	// load epoch DB
 	svc.store.loadEpochStore(svc.store.GetEpoch())
 	es := svc.store.getEpochStore(svc.store.GetEpoch())
-	svc.dagIndexer.Reset(svc.store.GetValidators(), es.table.DagIndex, func(id hash.Event) dag.Event {
+	flushable := svc.dagIndexer.WrapWithFlushable(es.table.DagIndex)
+	svc.dagIndexer.Reset(svc.store.GetValidators(), flushable, func(id consensus.EventHash) consensus.Event {
 		return svc.store.GetEvent(id)
 	})
 

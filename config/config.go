@@ -29,13 +29,15 @@ import (
 	"strings"
 
 	carmen "github.com/0xsoniclabs/carmen/go/state"
+	"github.com/0xsoniclabs/consensus/consensus/consensusengine"
+	"github.com/0xsoniclabs/consensus/consensus/consensusstore"
+	"github.com/0xsoniclabs/consensus/consensus/dagindexer"
 	"github.com/0xsoniclabs/sonic/config/flags"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/version"
 	"github.com/ethereum/go-ethereum/common/fdlimit"
 
-	"github.com/Fantom-foundation/lachesis-base/abft"
-	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
+	"github.com/0xsoniclabs/cacheutils/cachescale"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
@@ -50,7 +52,6 @@ import (
 	"github.com/0xsoniclabs/sonic/integration"
 	"github.com/0xsoniclabs/sonic/utils/caution"
 	"github.com/0xsoniclabs/sonic/utils/memory"
-	"github.com/0xsoniclabs/sonic/vecmt"
 )
 
 const (
@@ -77,9 +78,9 @@ type Config struct {
 	Emitter       emitter_config.Config
 	TxPool        evmcore.TxPoolConfig
 	OperaStore    gossip.StoreConfig
-	Lachesis      abft.Config
-	LachesisStore abft.StoreConfig
-	VectorClock   vecmt.IndexConfig
+	Lachesis      consensusengine.Config
+	LachesisStore consensusstore.StoreConfig
+	VectorClock   dagindexer.IndexConfig
 	DBs           integration.DBsConfig
 }
 
@@ -350,9 +351,9 @@ func MakeAllConfigsFromFile(ctx *cli.Context, configFile string) (*Config, error
 		Emitter:       emitter_config.DefaultConfig(),
 		TxPool:        evmcore.DefaultTxPoolConfig,
 		OperaStore:    gossip.DefaultStoreConfig(cacheRatio),
-		Lachesis:      abft.DefaultConfig(),
-		LachesisStore: abft.DefaultStoreConfig(cacheRatio),
-		VectorClock:   vecmt.DefaultConfig(cacheRatio),
+		Lachesis:      consensusengine.DefaultConfig(),
+		LachesisStore: consensusstore.DefaultStoreConfig(cacheRatio),
+		VectorClock:   dagindexer.DefaultConfig(cacheRatio),
 	}
 
 	if ctx.GlobalIsSet(FakeNetFlag.Name) {

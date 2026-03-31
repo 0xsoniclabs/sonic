@@ -19,11 +19,11 @@ package blockproc
 import (
 	"math/big"
 
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
 
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
@@ -35,7 +35,7 @@ import (
 
 type TxListener interface {
 	OnNewLog(*types.Log)
-	OnNewReceipt(tx *types.Transaction, r *types.Receipt, originator idx.ValidatorID, baseFee *big.Int, blobBaseFee *big.Int)
+	OnNewReceipt(tx *types.Transaction, r *types.Receipt, originator consensus.ValidatorID, baseFee *big.Int, blobBaseFee *big.Int)
 	Finalize() iblockproc.BlockState
 	Update(bs iblockproc.BlockState, es iblockproc.EpochState)
 }

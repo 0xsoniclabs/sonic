@@ -28,9 +28,8 @@ package proposalcheck
 import (
 	reflect "reflect"
 
+	"github.com/0xsoniclabs/consensus/consensus"
 	inter "github.com/0xsoniclabs/sonic/inter"
-	hash "github.com/Fantom-foundation/lachesis-base/hash"
-	pos "github.com/Fantom-foundation/lachesis-base/inter/pos"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -59,10 +58,10 @@ func (m *MockReader) EXPECT() *MockReaderMockRecorder {
 }
 
 // GetEpochValidators mocks base method.
-func (m *MockReader) GetEpochValidators() *pos.Validators {
+func (m *MockReader) GetEpochValidators() *consensus.Validators {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetEpochValidators")
-	ret0, _ := ret[0].(*pos.Validators)
+	ret0, _ := ret[0].(*consensus.Validators)
 	return ret0
 }
 
@@ -73,7 +72,7 @@ func (mr *MockReaderMockRecorder) GetEpochValidators() *gomock.Call {
 }
 
 // GetEventPayload mocks base method.
-func (m *MockReader) GetEventPayload(arg0 hash.Event) inter.Payload {
+func (m *MockReader) GetEventPayload(arg0 consensus.EventHash) inter.Payload {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetEventPayload", arg0)
 	ret0, _ := ret[0].(inter.Payload)

@@ -23,14 +23,13 @@ import (
 	"math/big"
 	"sort"
 
-	"github.com/Fantom-foundation/lachesis-base/hash"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	notify "github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rpc"
 
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/topicsdb"
@@ -109,7 +108,7 @@ func (f *Filter) Logs(ctx context.Context) ([]*types.Log, error) {
 	var logs []*types.Log
 	var err error
 
-	if f.block != common.Hash(hash.Zero) {
+	if f.block != common.Hash(consensus.Zero) {
 		logs, err = f.fetchLogsFromBlockByHash(ctx, logs)
 		if err != nil {
 			return nil, err
@@ -151,13 +150,13 @@ func (f *Filter) fetchLogsFromBlockRange(ctx context.Context, logs []*types.Log)
 	if header == nil {
 		return nil, nil
 	}
-	head := idx.Block(header.Number.Uint64())
+	head := consensus.BlockID(header.Number.Uint64())
 
-	begin := idx.Block(f.begin)
+	begin := consensus.BlockID(f.begin)
 	if f.begin < 0 {
 		begin = head
 	}
-	end := idx.Block(f.end)
+	end := consensus.BlockID(f.end)
 	if f.end < 0 {
 		end = head
 	}
@@ -173,7 +172,7 @@ func (f *Filter) fetchLogsFromBlockRange(ctx context.Context, logs []*types.Log)
 }
 
 // indexedLogs returns the logs matching the filter criteria based on topics index.
-func (f *Filter) indexedLogs(ctx context.Context, begin, end idx.Block) ([]*types.Log, error) {
+func (f *Filter) indexedLogs(ctx context.Context, begin, end consensus.BlockID) ([]*types.Log, error) {
 	if end-begin > f.config.IndexedLogsBlockRangeLimit {
 		return nil, fmt.Errorf("too wide blocks range, the limit is %d", f.config.IndexedLogsBlockRangeLimit)
 	}
@@ -220,7 +219,7 @@ func sortLogsByBlockNumberAndLogIndex(logs []*types.Log) {
 
 // indexedLogs returns the logs matching the filter criteria based on raw block
 // iteration.
-func (f *Filter) unindexedLogs(ctx context.Context, begin, end idx.Block) (logs []*types.Log, err error) {
+func (f *Filter) unindexedLogs(ctx context.Context, begin, end consensus.BlockID) (logs []*types.Log, err error) {
 	if end-begin > f.config.UnindexedLogsBlockRangeLimit {
 		return nil, fmt.Errorf("too wide blocks range, the limit is %d", f.config.UnindexedLogsBlockRangeLimit)
 	}
@@ -264,7 +263,7 @@ func (f *Filter) blockLogs(ctx context.Context, header common.Hash) ([]*types.Lo
 	logs := filterLogs(unfiltered, nil, nil, f.addresses, f.topics)
 	if len(logs) > 0 {
 		// We have matching logs, check if we need to resolve full logs via the light client
-		if logs[0].TxHash == common.Hash(hash.Zero) {
+		if logs[0].TxHash == common.Hash(consensus.Zero) {
 			receipts, err := f.backend.GetReceipts(ctx, header)
 			if err != nil {
 				return nil, err

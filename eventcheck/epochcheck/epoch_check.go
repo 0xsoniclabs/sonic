@@ -19,10 +19,10 @@ package epochcheck
 import (
 	"errors"
 
-	base "github.com/Fantom-foundation/lachesis-base/eventcheck/epochcheck"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	base "github.com/0xsoniclabs/sonic/eventcheck/base/epochcheck"
 	"github.com/ethereum/go-ethereum/core/types"
 
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
 )
@@ -44,7 +44,7 @@ var (
 // Reader returns currents epoch and its validators group.
 type Reader interface {
 	base.Reader
-	GetEpochRules() (opera.Rules, idx.Epoch)
+	GetEpochRules() (opera.Rules, consensus.Epoch)
 }
 
 // Checker which require only current epoch info
@@ -73,8 +73,8 @@ func CalcGasPowerUsed(e inter.EventPayloadI, rules opera.Rules) uint64 {
 	gasCfg := rules.Economy.Gas
 
 	parentsGas := uint64(0)
-	if idx.Event(len(e.Parents())) > rules.Dag.MaxFreeParents {
-		parentsGas = uint64(idx.Event(len(e.Parents()))-rules.Dag.MaxFreeParents) * gasCfg.ParentGas
+	if consensus.Seq(len(e.Parents())) > rules.Dag.MaxFreeParents {
+		parentsGas = uint64(consensus.Seq(len(e.Parents()))-rules.Dag.MaxFreeParents) * gasCfg.ParentGas
 	}
 	extraGas := uint64(len(e.Extra())) * gasCfg.ExtraDataGas
 
@@ -135,7 +135,7 @@ func (v *Checker) Validate(e inter.EventPayloadI) error {
 	if e.Epoch() != epoch {
 		return base.ErrNotRelevant
 	}
-	if idx.Event(len(e.Parents())) > rules.Dag.MaxParents {
+	if consensus.Seq(len(e.Parents())) > rules.Dag.MaxParents {
 		return ErrTooManyParents
 	}
 	if uint32(len(e.Extra())) > rules.Dag.MaxExtraData {

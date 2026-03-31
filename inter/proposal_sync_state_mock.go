@@ -28,7 +28,7 @@ package inter
 import (
 	reflect "reflect"
 
-	hash "github.com/Fantom-foundation/lachesis-base/hash"
+	"github.com/0xsoniclabs/consensus/consensus"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -57,7 +57,7 @@ func (m *MockEventReader) EXPECT() *MockEventReaderMockRecorder {
 }
 
 // GetEventPayload mocks base method.
-func (m *MockEventReader) GetEventPayload(arg0 hash.Event) Payload {
+func (m *MockEventReader) GetEventPayload(arg0 consensus.EventHash) Payload {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetEventPayload", arg0)
 	ret0, _ := ret[0].(Payload)

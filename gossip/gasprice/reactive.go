@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/sonic/utils"
-	"github.com/Fantom-foundation/lachesis-base/utils/piecefunc"
+	"github.com/0xsoniclabs/sonic/utils/piecefunc"
 	"github.com/ethereum/go-ethereum/core/types"
 )
 

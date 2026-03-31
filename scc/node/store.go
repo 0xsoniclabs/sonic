@@ -17,9 +17,9 @@
 package node
 
 import (
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/cert"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 )
 
 //go:generate mockgen -source=store.go -destination=store_mock.go -package=node
@@ -34,7 +34,7 @@ type Store interface {
 
 	// GetBlockCertificate retrieves the certificate for the given block.
 	// If no certificate is found, an error is returned.
-	GetBlockCertificate(idx.Block) (cert.BlockCertificate, error)
+	GetBlockCertificate(consensus.BlockID) (cert.BlockCertificate, error)
 
 	// UpdateCommitteeCertificate adds or updates the certificate in the store.
 	// If a certificate for the same period is already present, it is overwritten.

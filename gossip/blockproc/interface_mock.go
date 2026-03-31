@@ -13,12 +13,12 @@ import (
 	big "math/big"
 	reflect "reflect"
 
+	"github.com/0xsoniclabs/consensus/consensus"
 	evmcore "github.com/0xsoniclabs/sonic/evmcore"
 	inter "github.com/0xsoniclabs/sonic/inter"
 	iblockproc "github.com/0xsoniclabs/sonic/inter/iblockproc"
 	state "github.com/0xsoniclabs/sonic/inter/state"
 	opera "github.com/0xsoniclabs/sonic/opera"
-	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
 	common "github.com/ethereum/go-ethereum/common"
 	types "github.com/ethereum/go-ethereum/core/types"
 	params "github.com/ethereum/go-ethereum/params"
@@ -76,7 +76,7 @@ func (mr *MockTxListenerMockRecorder) OnNewLog(arg0 any) *gomock.Call {
 }
 
 // OnNewReceipt mocks base method.
-func (m *MockTxListener) OnNewReceipt(tx *types.Transaction, r *types.Receipt, originator idx.ValidatorID, baseFee, blobBaseFee *big.Int) {
+func (m *MockTxListener) OnNewReceipt(tx *types.Transaction, r *types.Receipt, originator consensus.ValidatorID, baseFee, blobBaseFee *big.Int) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "OnNewReceipt", tx, r, originator, baseFee, blobBaseFee)
 }

@@ -29,14 +29,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/gossip"
 	emitter_config "github.com/0xsoniclabs/sonic/gossip/emitter/config"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/utils/caution"
 	"github.com/0xsoniclabs/sonic/utils/ioread"
-	"github.com/Fantom-foundation/lachesis-base/hash"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -132,12 +131,12 @@ func importEventsFile(srv *gossip.Service, filename string) (err error) {
 	stream := rlp.NewStream(reader, 0)
 
 	start := time.Now()
-	last := hash.Event{}
+	last := consensus.EventHash{}
 
 	batch := make(inter.EventPayloads, 0, 8*1024)
 	batchSize := 0
 	maxBatchSize := 8 * 1024 * 1024
-	epoch := idx.Epoch(0)
+	epoch := consensus.Epoch(0)
 	txs := 0
 	events := 0
 

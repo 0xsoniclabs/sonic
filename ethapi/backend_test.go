@@ -20,8 +20,8 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -32,7 +32,7 @@ func TestGetVmConfig_RetrievesVmConfigFromRules(t *testing.T) {
 	backend := NewMockBackend(ctrl)
 
 	ctx := t.Context()
-	height := idx.Block(12)
+	height := consensus.BlockID(12)
 
 	rules := opera.Rules{}
 	backend.EXPECT().GetNetworkRules(ctx, height).Return(&rules, nil).AnyTimes()

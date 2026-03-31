@@ -19,12 +19,11 @@ package throttler
 import (
 	"math"
 
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/Fantom-foundation/lachesis-base/inter/pos"
+	"github.com/0xsoniclabs/consensus/consensus"
 )
 
 // dominantSet represents a set of validator IDs which cannot skip event emission.
-type dominantSet map[idx.ValidatorID]struct{}
+type dominantSet map[consensus.ValidatorID]struct{}
 
 // computeDominantSet computes the dominant set of validators whose cumulative stake
 // meets or exceeds the given stake threshold.
@@ -33,12 +32,12 @@ type dominantSet map[idx.ValidatorID]struct{}
 // In this case, the sum of all validators' stakes is less than the threshold, the
 // set is returned nevertheless because these validators cannot skip event emission.
 //
-// This function uses the [pos.Validators] object methods to have a deterministic order
+// This function uses the [consensus.Validators] object methods to have a deterministic order
 // of validators with equal stakes.
-func computeDominantSet(validators *pos.Validators, neededStake pos.Weight) dominantSet {
+func computeDominantSet(validators *consensus.Validators, neededStake consensus.Weight) dominantSet {
 
 	res := make(dominantSet)
-	accumulated := pos.Weight(0)
+	accumulated := consensus.Weight(0)
 
 	// Compute prefix sum of stakes until the threshold stake is reached,
 	// once reached, return the set of validators that contributed to it.
@@ -56,6 +55,6 @@ func computeDominantSet(validators *pos.Validators, neededStake pos.Weight) domi
 
 // computeNeededStake computes the stake needed to meet the given threshold.
 // It can be used to compute the needed stake for dominant set calculation.
-func computeNeededStake(stake pos.Weight, threshold float64) pos.Weight {
-	return pos.Weight(math.Ceil(float64(stake) * threshold))
+func computeNeededStake(stake consensus.Weight, threshold float64) consensus.Weight {
+	return consensus.Weight(math.Ceil(float64(stake) * threshold))
 }

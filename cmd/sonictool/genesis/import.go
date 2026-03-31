@@ -20,14 +20,14 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/0xsoniclabs/cacheutils/cachescale"
+	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/consensus/consensus/consensusstore"
+	"github.com/0xsoniclabs/kvdb"
 	"github.com/0xsoniclabs/sonic/cmd/sonictool/db"
 	"github.com/0xsoniclabs/sonic/opera/genesis"
 	"github.com/0xsoniclabs/sonic/opera/genesisstore"
 	"github.com/0xsoniclabs/sonic/utils/caution"
-	"github.com/Fantom-foundation/lachesis-base/abft"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/Fantom-foundation/lachesis-base/kvdb"
-	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
 	"github.com/ethereum/go-ethereum/log"
 )
 
@@ -80,7 +80,7 @@ func ImportGenesisStore(params ImportParams) (err error) {
 	if err != nil {
 		return fmt.Errorf("failed to open lachesis db: %w", err)
 	}
-	cGetEpochDB := func(epoch idx.Epoch) kvdb.Store {
+	cGetEpochDB := func(epoch consensus.Epoch) kvdb.Store {
 		db, err := dbs.OpenDB(fmt.Sprintf("lachesis-%d", epoch))
 		if err != nil {
 			panic(fmt.Errorf("failed to open epoch db: %w", err))
@@ -90,10 +90,10 @@ func ImportGenesisStore(params ImportParams) (err error) {
 	abftCrit := func(err error) {
 		panic(fmt.Errorf("lachesis store error: %w", err))
 	}
-	cdb := abft.NewStore(cMainDb, cGetEpochDB, abftCrit, abft.DefaultStoreConfig(params.CacheRatio))
+	cdb := consensusstore.NewStore(cMainDb, cGetEpochDB, abftCrit, consensusstore.DefaultStoreConfig(params.CacheRatio))
 	defer caution.CloseAndReportError(&err, cdb, "failed to close consensus db")
 
-	err = cdb.ApplyGenesis(&abft.Genesis{
+	err = cdb.ApplyGenesis(&consensusstore.Genesis{
 		Epoch:      gdb.GetEpoch(),
 		Validators: gdb.GetValidators(),
 	})

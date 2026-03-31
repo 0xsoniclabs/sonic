@@ -20,6 +20,8 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/consensus/consensus"
+	parentscheckbase "github.com/0xsoniclabs/sonic/eventcheck/base/parentscheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/basiccheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/epochcheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/gaspowercheck"
@@ -30,9 +32,6 @@ import (
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/validatorpk"
 	"github.com/0xsoniclabs/sonic/opera"
-	parentscheckbase "github.com/Fantom-foundation/lachesis-base/eventcheck/parentscheck"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/require"
@@ -107,11 +106,11 @@ func TestCheckers_Validate_ValidEventPassesValidation(t *testing.T) {
 				heavyCheckReader,
 			)
 
-			epoch := idx.Epoch(12)
+			epoch := consensus.Epoch(12)
 
-			creator := idx.ValidatorID(1)
-			builder := pos.ValidatorsBuilder{}
-			builder.Set(creator, pos.Weight(100))
+			creator := consensus.ValidatorID(1)
+			builder := consensus.ValidatorsBuilder{}
+			builder.Set(creator, consensus.Weight(100))
 			validators := builder.Build()
 
 			// Prepare a private and public key for signing the event.
@@ -166,7 +165,7 @@ func TestCheckers_Validate_ValidEventPassesValidation(t *testing.T) {
 			}
 			gasPowerCheckReader.EXPECT().GetValidationContext().Return(validationContext).AnyTimes()
 
-			keys := map[idx.ValidatorID]validatorpk.PubKey{
+			keys := map[consensus.ValidatorID]validatorpk.PubKey{
 				creator: {
 					Raw:  crypto.FromECDSAPub(&privateKey.PublicKey),
 					Type: validatorpk.Types.Secp256k1,

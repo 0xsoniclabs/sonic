@@ -16,9 +16,7 @@
 
 package inter
 
-import (
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-)
+import "github.com/0xsoniclabs/consensus/consensus"
 
 // Turn is the turn number of a proposal. Turns are used to orchestrate the
 // sequence of block proposals in the consensus protocol. Turns are processed
@@ -86,5 +84,5 @@ type ProposalSummary struct {
 	// Turn is the turn number the proposal was made in.
 	Turn Turn
 	// Frame is the frame number the proposal was made in.
-	Frame idx.Frame
+	Frame consensus.Frame
 }

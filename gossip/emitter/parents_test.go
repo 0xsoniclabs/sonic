@@ -19,13 +19,11 @@ package emitter
 import (
 	"testing"
 
+	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/consensus/consensus/dagindexer"
+	"github.com/0xsoniclabs/kvdb/memorydb"
+	"github.com/0xsoniclabs/sonic/emitter/ancestor"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/config"
-	"github.com/0xsoniclabs/sonic/vecmt"
-	"github.com/Fantom-foundation/lachesis-base/emitter/ancestor"
-	"github.com/Fantom-foundation/lachesis-base/hash"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/Fantom-foundation/lachesis-base/inter/pos"
-	"github.com/Fantom-foundation/lachesis-base/kvdb/memorydb"
 	"go.uber.org/mock/gomock"
 )
 
@@ -39,8 +37,8 @@ func TestChooseParents_NoParentsForGenesisEvent(t *testing.T) {
 		nil,
 	)
 
-	epoch := idx.Epoch(1)
-	validatorId := idx.ValidatorID(1)
+	epoch := consensus.Epoch(1)
+	validatorId := consensus.ValidatorID(1)
 
 	external.EXPECT().GetLastEvent(epoch, validatorId)
 
@@ -68,19 +66,20 @@ func TestChooseParents_NonGenesisEventMustHaveOneSelfParent(t *testing.T) {
 	em.maxParents = 3
 	em.payloadIndexer = ancestor.NewPayloadIndexer(3)
 
-	epoch := idx.Epoch(1)
-	validatorId := idx.ValidatorID(1)
+	epoch := consensus.Epoch(1)
+	validatorId := consensus.ValidatorID(1)
 
-	validatorIndex := vecmt.NewIndex(nil, vecmt.LiteConfig())
-	validatorIndex.Reset(pos.ArrayToValidators(
-		[]idx.ValidatorID{1, 2},
-		[]pos.Weight{1, 1},
-	), memorydb.New(), nil)
+	validatorIndex := dagindexer.NewIndex(nil, dagindexer.LiteConfig())
+	flushable := validatorIndex.WrapWithFlushable(memorydb.New())
+	validatorIndex.Reset(consensus.ArrayToValidators(
+		[]consensus.ValidatorID{1, 2},
+		[]consensus.Weight{1, 1},
+	), flushable, nil)
 
-	selfParentHash := hash.Event{1}
+	selfParentHash := consensus.EventHash{1}
 
 	external.EXPECT().GetLastEvent(epoch, validatorId).Return(&selfParentHash)
-	external.EXPECT().GetHeads(epoch).Return(hash.Events{{2}, {3}})
+	external.EXPECT().GetHeads(epoch).Return(consensus.EventHashes{{2}, {3}})
 	external.EXPECT().DagIndex().Return(validatorIndex)
 
 	selfParent, parents, ok := em.chooseParents(epoch, validatorId)

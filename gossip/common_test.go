@@ -31,12 +31,12 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/stretchr/testify/require"
 
+	"github.com/0xsoniclabs/cacheutils/cachescale"
+	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/consensus/consensus/consensusengine"
+	"github.com/0xsoniclabs/consensus/consensus/consensusstore"
+	"github.com/0xsoniclabs/consensus/consensus/dagindexer"
 	emitter_config "github.com/0xsoniclabs/sonic/gossip/emitter/config"
-	"github.com/Fantom-foundation/lachesis-base/abft"
-	"github.com/Fantom-foundation/lachesis-base/hash"
-	"github.com/Fantom-foundation/lachesis-base/inter/dag"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -59,9 +59,7 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/validatorpk"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
-	"github.com/0xsoniclabs/sonic/utils/adapters/vecmt2dagidx"
 	"github.com/0xsoniclabs/sonic/valkeystore"
-	"github.com/0xsoniclabs/sonic/vecmt"
 )
 
 const (
@@ -98,7 +96,7 @@ type testGossipStoreAdapter struct {
 	*Store
 }
 
-func (g *testGossipStoreAdapter) GetEvent(id hash.Event) dag.Event {
+func (g *testGossipStoreAdapter) GetEvent(id consensus.EventHash) consensus.Event {
 	e := g.Store.GetEvent(id)
 	if e == nil {
 		return nil
@@ -106,14 +104,14 @@ func (g *testGossipStoreAdapter) GetEvent(id hash.Event) dag.Event {
 	return e
 }
 
-func makeTestEngine(gdb *Store) (*abft.Lachesis, *vecmt.Index) {
-	cdb := abft.NewMemStore()
-	_ = cdb.ApplyGenesis(&abft.Genesis{
+func makeTestEngine(gdb *Store) (*consensusengine.Lachesis, *dagindexer.Index) {
+	cdb := consensusstore.NewMemStore()
+	_ = cdb.ApplyGenesis(&consensusstore.Genesis{
 		Epoch:      gdb.GetEpoch(),
 		Validators: gdb.GetValidators(),
 	})
-	vecClock := vecmt.NewIndex(panics("Vector clock"), vecmt.LiteConfig())
-	engine := abft.NewLachesis(cdb, &testGossipStoreAdapter{gdb}, vecmt2dagidx.Wrap(vecClock), panics("Lachesis"), abft.LiteConfig())
+	vecClock := dagindexer.NewIndex(panics("Vector clock"), dagindexer.LiteConfig())
+	engine := consensusengine.NewLachesis(cdb, &testGossipStoreAdapter{gdb}, vecClock, panics("Lachesis"), consensusengine.DefaultConfig())
 	return engine, vecClock
 }
 
@@ -154,13 +152,13 @@ func (m testConfirmedEventsModule) Start(bs iblockproc.BlockState, es iblockproc
 	return testConfirmedEventsProcessor{p, m.env}
 }
 
-func newTestEnv(firstEpoch idx.Epoch, validatorsNum idx.Validator, tb testing.TB) *testEnv {
+func newTestEnv(firstEpoch consensus.Epoch, validatorsNum consensus.ValidatorIndex, tb testing.TB) *testEnv {
 	return newTestEnvWithUpgrades(firstEpoch, validatorsNum, opera.GetSonicUpgrades(), tb)
 }
 
 func newTestEnvWithUpgrades(
-	firstEpoch idx.Epoch,
-	validatorsNum idx.Validator,
+	firstEpoch consensus.Epoch,
+	validatorsNum consensus.ValidatorIndex,
 	upgrades opera.Upgrades,
 	tb testing.TB,
 ) *testEnv {
@@ -194,7 +192,7 @@ func newTestEnvWithUpgrades(
 	keyStore := valkeystore.NewDefaultMemKeystore()
 
 	// register emitters
-	for i := idx.Validator(0); i < validatorsNum; i++ {
+	for i := consensus.ValidatorIndex(0); i < validatorsNum; i++ {
 		cfg := emitter_config.DefaultConfig()
 		vid := store.GetValidators().GetID(i)
 		pubkey := store.GetEpochState().ValidatorProfiles[vid].PubKey
@@ -203,7 +201,7 @@ func newTestEnvWithUpgrades(
 			PubKey: pubkey,
 		}
 		cfg.EmitIntervals = emitter_config.EmitIntervals{}
-		cfg.MaxParents = idx.Event(validatorsNum/2 + 1)
+		cfg.MaxParents = consensus.Seq(validatorsNum/2 + 1)
 		cfg.MaxTxsPerAddress = 10000000
 		_ = keyStore.Add(pubkey, crypto.FromECDSA(makefakegenesis.FakeKey(vid)), validatorpk.FakePassword)
 		_ = keyStore.Unlock(pubkey, validatorpk.FakePassword)
@@ -227,8 +225,8 @@ func newTestEnvWithUpgrades(
 func newInMemoryStoreWithGenesisData(
 	tb testing.TB,
 	upgrades opera.Upgrades,
-	numValidators idx.Validator,
-	firstEpoch idx.Epoch,
+	numValidators consensus.ValidatorIndex,
+	firstEpoch consensus.Epoch,
 ) *Store {
 	tb.Helper()
 	require := require.New(tb)
@@ -294,7 +292,7 @@ func (env *testEnv) ApplyTxs(spent time.Duration, txs ...*types.Transaction) (ty
 			baseFee := big.NewInt(0)
 			blobGasPrice := big.NewInt(1)
 
-			receipts := env.store.evm.GetReceipts(idx.Block(b.Block.Number.Uint64()), config, b.Block.Hash, time, baseFee, blobGasPrice, b.Block.Transactions)
+			receipts := env.store.evm.GetReceipts(consensus.BlockID(b.Block.Number.Uint64()), config, b.Block.Hash, time, baseFee, blobGasPrice, b.Block.Transactions)
 			for i, tx := range b.Block.Transactions {
 				if r, _, _ := tx.RawSignatureValues(); r.Sign() != 0 {
 					mu.Lock()
@@ -338,7 +336,7 @@ func (env *testEnv) EmitUntil(stop func() bool) error {
 	return nil
 }
 
-func (env *testEnv) Transfer(from, to idx.ValidatorID, amount *big.Int) *types.Transaction {
+func (env *testEnv) Transfer(from, to consensus.ValidatorID, amount *big.Int) *types.Transaction {
 	sender := env.Address(from)
 	nonce, _ := env.PendingNonceAt(context.TODO(), sender)
 	env.incNonce(sender)
@@ -354,7 +352,7 @@ func (env *testEnv) Transfer(from, to idx.ValidatorID, amount *big.Int) *types.T
 	return tx
 }
 
-func (env *testEnv) Contract(from idx.ValidatorID, amount *big.Int, hex string) *types.Transaction {
+func (env *testEnv) Contract(from consensus.ValidatorID, amount *big.Int, hex string) *types.Transaction {
 	sender := env.Address(from)
 	nonce, _ := env.PendingNonceAt(context.TODO(), sender)
 	env.incNonce(sender)
@@ -370,18 +368,18 @@ func (env *testEnv) Contract(from idx.ValidatorID, amount *big.Int, hex string) 
 	return tx
 }
 
-func (env *testEnv) privateKey(n idx.ValidatorID) *ecdsa.PrivateKey {
+func (env *testEnv) privateKey(n consensus.ValidatorID) *ecdsa.PrivateKey {
 	key := makefakegenesis.FakeKey(n)
 	return key
 }
 
-func (env *testEnv) Address(n idx.ValidatorID) common.Address {
+func (env *testEnv) Address(n consensus.ValidatorID) common.Address {
 	key := makefakegenesis.FakeKey(n)
 	addr := crypto.PubkeyToAddress(key.PublicKey)
 	return addr
 }
 
-func (env *testEnv) Payer(n idx.ValidatorID, amounts ...*big.Int) *bind.TransactOpts {
+func (env *testEnv) Payer(n consensus.ValidatorID, amounts ...*big.Int) *bind.TransactOpts {
 	key := env.privateKey(n)
 	t, _ := bind.NewKeyedTransactorWithChainID(key, new(big.Int).SetUint64(env.store.GetRules().NetworkID))
 	nonce, _ := env.PendingNonceAt(context.TODO(), env.Address(n))
@@ -396,7 +394,7 @@ func (env *testEnv) Payer(n idx.ValidatorID, amounts ...*big.Int) *bind.Transact
 	return t
 }
 
-func (env *testEnv) Pay(n idx.ValidatorID, amounts ...*big.Int) *bind.TransactOpts {
+func (env *testEnv) Pay(n consensus.ValidatorID, amounts ...*big.Int) *bind.TransactOpts {
 	t := env.Payer(n, amounts...)
 	env.incNonce(t.From)
 
@@ -430,7 +428,7 @@ var (
 // CodeAt returns the code of the given account. This is needed to differentiate
 // between contract internal errors and the local chain being out of sync.
 func (env *testEnv) CodeAt(ctx context.Context, contract common.Address, blockNumber *big.Int) ([]byte, error) {
-	if blockNumber != nil && idx.Block(blockNumber.Uint64()) != env.store.GetLatestBlockIndex() {
+	if blockNumber != nil && consensus.BlockID(blockNumber.Uint64()) != env.store.GetLatestBlockIndex() {
 		return nil, errBlockNumberUnsupported
 	}
 
@@ -441,7 +439,7 @@ func (env *testEnv) CodeAt(ctx context.Context, contract common.Address, blockNu
 // ContractCall executes an Ethereum contract call with the specified data as the
 // input.
 func (env *testEnv) CallContract(ctx context.Context, call ethereum.CallMsg, blockNumber *big.Int) ([]byte, error) {
-	if blockNumber != nil && idx.Block(blockNumber.Uint64()) != env.store.GetLatestBlockIndex() {
+	if blockNumber != nil && consensus.BlockID(blockNumber.Uint64()) != env.store.GetLatestBlockIndex() {
 		return nil, errBlockNumberUnsupported
 	}
 
@@ -496,7 +494,7 @@ func (env *testEnv) callContract(
 	// about the transaction and calling mechanisms.
 	context := evmcore.NewEVMBlockContext(block.Header(), env.GetEvmStateReader(), nil)
 	vmConfig := opera.GetVmConfig(env.store.GetRules())
-	vmenv := vm.NewEVM(context, state, env.store.GetEvmChainConfig(idx.Block(block.Number.Uint64())), vmConfig)
+	vmenv := vm.NewEVM(context, state, env.store.GetEvmChainConfig(consensus.BlockID(block.Number.Uint64())), vmConfig)
 	gaspool := new(core.GasPool).AddGas(math.MaxUint64)
 	res, err := core.ApplyMessage(vmenv, msg, gaspool)
 	if err != nil {

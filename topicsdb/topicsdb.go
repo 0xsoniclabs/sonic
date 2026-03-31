@@ -20,8 +20,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/Fantom-foundation/lachesis-base/kvdb"
+	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/kvdb"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 )
@@ -37,7 +37,7 @@ var (
 //go:generate mockgen -source=topicsdb.go -package=topicsdb -destination=topicsdb_mock.go
 
 type Index interface {
-	FindInBlocks(ctx context.Context, from, to idx.Block, pattern [][]common.Hash) (logs []*types.Log, err error)
+	FindInBlocks(ctx context.Context, from, to consensus.BlockID, pattern [][]common.Hash) (logs []*types.Log, err error)
 	Push(recs ...*types.Log) error
 	Close()
 

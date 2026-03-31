@@ -22,6 +22,8 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/0xsoniclabs/cacheutils/cachescale"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/cmd/sonictool/db"
 	"github.com/0xsoniclabs/sonic/cmd/sonictool/genesis"
 	"github.com/0xsoniclabs/sonic/config/flags"
@@ -31,8 +33,6 @@ import (
 	futils "github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/sonic/utils/caution"
 	"github.com/0xsoniclabs/sonic/utils/memory"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 	"gopkg.in/urfave/cli.v1"
@@ -177,7 +177,7 @@ func fakeGenesisImport(ctx *cli.Context) (err error) {
 	}
 
 	genesisStore := makefakegenesis.FakeGenesisStore(
-		idx.Validator(validatorsNumber),
+		consensus.ValidatorIndex(validatorsNumber),
 		futils.ToFtm(1_000_000_000),
 		futils.ToFtm(5_000_000),
 		upgrades,

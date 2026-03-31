@@ -22,9 +22,9 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/carmen/go/carmen"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/scc"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -274,7 +274,7 @@ func TestServer_GetBlockCertificates_CanFetchLatestBlock(t *testing.T) {
 	server, err := newServerFromClient(client)
 	require.NoError(err)
 
-	latestBlockNumber := idx.Block(1024)
+	latestBlockNumber := consensus.BlockID(1024)
 	// block certificates
 	client.EXPECT().Call(gomock.Any(), "sonic_getBlockCertificates",
 		"latest", "0x1").DoAndReturn(

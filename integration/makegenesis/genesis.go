@@ -26,13 +26,12 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/0xsoniclabs/sonic/utils/objstream"
 	"github.com/ethereum/go-ethereum/core/tracing"
 
-	"github.com/Fantom-foundation/lachesis-base/hash"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -130,7 +129,7 @@ func (b *GenesisBuilder) TotalSupply() *big.Int {
 	return b.totalSupply
 }
 
-func (b *GenesisBuilder) CurrentHash() hash.Hash {
+func (b *GenesisBuilder) CurrentHash() consensus.Hash {
 	er := b.epochs[len(b.epochs)-1]
 	return er.Hash()
 }
@@ -225,7 +224,7 @@ func (b *GenesisBuilder) FinalizeBlockZero(
 	// register an empty certificate for block zero
 	b.AddBlockCertificate(cert.NewCertificate(cert.NewBlockStatement(
 		rules.NetworkID,
-		idx.Block(0),
+		consensus.BlockID(0),
 		block.Hash(),
 		block.StateRoot,
 	)))
@@ -244,7 +243,7 @@ func (b *GenesisBuilder) ExecuteGenesisTxs(blockProc BlockProc, genesisTxs types
 	blockCtx := iblockproc.BlockCtx{
 		Idx:     bs.LastBlock.Idx + 1,
 		Time:    bs.LastBlock.Time + 1,
-		Atropos: hash.Event{},
+		Atropos: consensus.EventHash{},
 	}
 
 	sealer := blockProc.SealerModule.Start(blockCtx, bs, es)
@@ -294,7 +293,7 @@ func (b *GenesisBuilder) ExecuteGenesisTxs(blockProc BlockProc, genesisTxs types
 		return fmt.Errorf("genesis transaction is skipped (num=%d)", numSkippedTxs)
 	}
 	bs = txListener.Finalize()
-	bs.FinalizedStateRoot = hash.Hash(evmBlock.Root)
+	bs.FinalizedStateRoot = consensus.Hash(evmBlock.Root)
 
 	bs.LastBlock = blockCtx
 
@@ -345,7 +344,7 @@ func (b *GenesisBuilder) ExecuteGenesisTxs(blockProc BlockProc, genesisTxs types
 	// add a block certificate for the created block
 	b.AddBlockCertificate(cert.NewCertificate(cert.NewBlockStatement(
 		es.Rules.NetworkID,
-		idx.Block(block.Number),
+		consensus.BlockID(block.Number),
 		block.Hash(),
 		block.StateRoot,
 	)))

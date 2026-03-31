@@ -20,11 +20,10 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/0xsoniclabs/consensus/consensus"
+	base "github.com/0xsoniclabs/sonic/eventcheck/base/epochcheck"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
-	base "github.com/Fantom-foundation/lachesis-base/eventcheck/epochcheck"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	pos "github.com/Fantom-foundation/lachesis-base/inter/pos"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -43,7 +42,7 @@ func TestChecker_Validate_SingleProposerIntroducesNewFormat(t *testing.T) {
 			reader := NewMockReader(ctrl)
 			event := inter.NewMockEventPayloadI(ctrl)
 
-			creator := idx.ValidatorID(1)
+			creator := consensus.ValidatorID(1)
 			event.EXPECT().Epoch().AnyTimes()
 			event.EXPECT().Parents().AnyTimes()
 			event.EXPECT().Extra().AnyTimes()
@@ -55,16 +54,16 @@ func TestChecker_Validate_SingleProposerIntroducesNewFormat(t *testing.T) {
 			event.EXPECT().EpochVote().AnyTimes()
 			event.EXPECT().Creator().Return(creator).AnyTimes()
 
-			builder := pos.NewBuilder()
+			builder := consensus.NewValidatorsBuilder()
 			builder.Set(creator, 10)
 			validators := builder.Build()
-			reader.EXPECT().GetEpochValidators().Return(validators, idx.Epoch(0)).AnyTimes()
+			reader.EXPECT().GetEpochValidators().Return(validators, consensus.Epoch(0)).AnyTimes()
 
 			rules := opera.Rules{Upgrades: opera.Upgrades{
 				Sonic:                        true,
 				SingleProposerBlockFormation: enabled,
 			}}
-			reader.EXPECT().GetEpochRules().Return(rules, idx.Epoch(0)).AnyTimes()
+			reader.EXPECT().GetEpochRules().Return(rules, consensus.Epoch(0)).AnyTimes()
 
 			checker := Checker{
 				Base:   base.New(reader),

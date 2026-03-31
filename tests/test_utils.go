@@ -26,11 +26,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/gossip/contract/driverauth100"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
-	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -495,7 +495,7 @@ func WaitForProofOf(t *testing.T, client *PooledEhtClient, blockNumber int) {
 }
 
 // GetEventHeads retrieves the current consensus DAG heads (events tips, childless events)
-func GetEventHeads(t *testing.T, client *PooledEhtClient) []hash.Event {
+func GetEventHeads(t *testing.T, client *PooledEhtClient) []consensus.EventHash {
 
 	epoch := GetCurrentEpoch(t, client)
 
@@ -504,9 +504,9 @@ func GetEventHeads(t *testing.T, client *PooledEhtClient) []hash.Event {
 	err := client.Client().Call(&res, "dag_getHeads", rpc.BlockNumber(epoch))
 	require.NoError(t, err)
 
-	events := make([]hash.Event, len(res))
+	events := make([]consensus.EventHash, len(res))
 	for i, eventIDStr := range res {
-		events[i] = hash.Event(common.HexToHash(eventIDStr))
+		events[i] = consensus.EventHash(common.HexToHash(eventIDStr))
 	}
 
 	return events

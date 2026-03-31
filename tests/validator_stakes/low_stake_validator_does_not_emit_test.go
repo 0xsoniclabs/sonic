@@ -21,9 +21,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/tests"
-	"github.com/Fantom-foundation/lachesis-base/hash"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/stretchr/testify/require"
@@ -81,13 +80,13 @@ func TestEventThrottler_NonDominantValidatorsProduceLessEvents_WhenEventThrottle
 	}
 }
 
-type eventMap map[hash.Event]testEvent
+type eventMap map[consensus.EventHash]testEvent
 
 type testEvent struct {
-	Epoch   idx.Block
-	Id      hash.Event
-	Creator idx.ValidatorID
-	Parents []hash.Event
+	Epoch   consensus.BlockID
+	Id      consensus.EventHash
+	Creator consensus.ValidatorID
+	Parents []consensus.EventHash
 }
 
 // getEventsInEpoch returns the events created in the current epoch up to the latest event heads.
@@ -132,7 +131,7 @@ func collectEventsAncestry(
 }
 
 // fetchEvent retrieves the event details for the given event ID.
-func fetchEvent(t *testing.T, client *tests.PooledEhtClient, eventID hash.Event) testEvent {
+func fetchEvent(t *testing.T, client *tests.PooledEhtClient, eventID consensus.EventHash) testEvent {
 	var result map[string]any
 	err := client.Client().Call(&result, "dag_getEvent", eventID.Hex())
 	require.NoError(t, err)
@@ -146,12 +145,12 @@ func fetchEvent(t *testing.T, client *tests.PooledEhtClient, eventID hash.Event)
 		return uint64(unmarshal)
 	}
 
-	event.Epoch = idx.Block(toUint64(result["epoch"].(string)))
-	event.Creator = idx.ValidatorID(toUint64(result["creator"].(string)))
-	event.Id = hash.Event(common.HexToHash(result["id"].(string)))
-	event.Parents = make([]hash.Event, 0)
+	event.Epoch = consensus.BlockID(toUint64(result["epoch"].(string)))
+	event.Creator = consensus.ValidatorID(toUint64(result["creator"].(string)))
+	event.Id = consensus.EventHash(common.HexToHash(result["id"].(string)))
+	event.Parents = make([]consensus.EventHash, 0)
 	for _, parent := range result["parents"].([]any) {
-		event.Parents = append(event.Parents, hash.Event(common.HexToHash(parent.(string))))
+		event.Parents = append(event.Parents, consensus.EventHash(common.HexToHash(parent.(string))))
 	}
 
 	return event
@@ -160,10 +159,10 @@ func fetchEvent(t *testing.T, client *tests.PooledEhtClient, eventID hash.Event)
 func calculateValidatorEmissionPercentages(
 	t *testing.T,
 	allEvents eventMap,
-) map[idx.ValidatorID]float64 {
+) map[consensus.ValidatorID]float64 {
 	t.Helper()
 
-	counts := map[idx.ValidatorID]float64{}
+	counts := map[consensus.ValidatorID]float64{}
 	for _, event := range allEvents {
 		creator := event.Creator
 		counts[creator]++

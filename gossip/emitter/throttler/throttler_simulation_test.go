@@ -22,12 +22,10 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/config"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/Fantom-foundation/lachesis-base/hash"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -195,33 +193,33 @@ func TestThrottler_Simulation_SuppressedValidatorsEmitWhenDominatingValidatorsAr
 
 			events = net.runRound(nil)
 			require.ElementsMatch(t,
-				[]idx.ValidatorID{1},
+				[]consensus.ValidatorID{1},
 				slices.Collect(maps.Keys(events)),
 				"only dominant node emits")
 
 			for range dominatingTimeout {
 				events = net.runRound(offlineValidators{1})
 				require.ElementsMatch(t,
-					[]idx.ValidatorID{},
+					[]consensus.ValidatorID{},
 					slices.Collect(maps.Keys(events)),
 					"dominant node is offline but timeout is not reached yet, nobody emits")
 			}
 
 			events = net.runRound(offlineValidators{1})
 			require.ElementsMatch(t,
-				[]idx.ValidatorID{2},
+				[]consensus.ValidatorID{2},
 				slices.Collect(maps.Keys(events)),
 				"after dominant timeout attempts, non-dominant node emits")
 
 			events = net.runRound(nil)
 			require.ElementsMatch(t,
-				[]idx.ValidatorID{1, 2},
+				[]consensus.ValidatorID{1, 2},
 				slices.Collect(maps.Keys(events)),
 				"node comes online again, both emit because 2 does not known yet")
 
 			events = net.runRound(nil)
 			require.ElementsMatch(t,
-				[]idx.ValidatorID{1},
+				[]consensus.ValidatorID{1},
 				slices.Collect(maps.Keys(events)),
 				"one round after, only dominant emits again")
 		})
@@ -262,14 +260,14 @@ func TestThrottler_Simulation_SuppressedValidatorsEmitAHeartbeat(t *testing.T) {
 					for i := range heartbeatAttempts/2 - 1 {
 						events = net.runRound(nil)
 						require.ElementsMatch(t,
-							[]idx.ValidatorID{1},
+							[]consensus.ValidatorID{1},
 							slices.Collect(maps.Keys(events)),
 							"only dominant node emits, try %d", i)
 					}
 
 					events = net.runRound(offlineValidators{1})
 					require.ElementsMatch(t,
-						[]idx.ValidatorID{2},
+						[]consensus.ValidatorID{2},
 						slices.Collect(maps.Keys(events)),
 						"this is a heartbeat emission, and 1 is offline, so only 2 emits")
 
@@ -281,14 +279,14 @@ func TestThrottler_Simulation_SuppressedValidatorsEmitAHeartbeat(t *testing.T) {
 					for i := range min(dominantTimeout-1, heartbeatAttempts/2-1) {
 						events = net.runRound(offlineValidators{1})
 						require.ElementsMatch(t,
-							[]idx.ValidatorID{},
+							[]consensus.ValidatorID{},
 							slices.Collect(maps.Keys(events)),
 							"offline dominant node, but not yet heartbeat emission, try %d", i)
 					}
 
 					events = net.runRound(offlineValidators{1})
 					require.ElementsMatch(t,
-						[]idx.ValidatorID{2},
+						[]consensus.ValidatorID{2},
 						slices.Collect(maps.Keys(events)),
 						"validator 2 must emit due to heartbeat or dominant timeout being reached")
 				})
@@ -321,32 +319,32 @@ func TestThrottler_Simulation_SuppressedValidatorsFillOfflineProgressively(t *te
 
 	events = net.runRound(offlineValidators{1})
 	require.ElementsMatch(t,
-		[]idx.ValidatorID{2, 3, 4, 5, 6, 7},
+		[]consensus.ValidatorID{2, 3, 4, 5, 6, 7},
 		slices.Collect(maps.Keys(events)))
 
 	events = net.runRound(offlineValidators{1})
 	require.ElementsMatch(t,
-		[]idx.ValidatorID{2, 3, 4, 5, 6, 7, 8},
+		[]consensus.ValidatorID{2, 3, 4, 5, 6, 7, 8},
 		slices.Collect(maps.Keys(events)))
 
 	events = net.runRound(offlineValidators{1, 2})
 	require.ElementsMatch(t,
-		[]idx.ValidatorID{3, 4, 5, 6, 7, 8},
+		[]consensus.ValidatorID{3, 4, 5, 6, 7, 8},
 		slices.Collect(maps.Keys(events)))
 
 	events = net.runRound(offlineValidators{1, 2})
 	require.ElementsMatch(t,
-		[]idx.ValidatorID{3, 4, 5, 6, 7, 8, 9},
+		[]consensus.ValidatorID{3, 4, 5, 6, 7, 8, 9},
 		slices.Collect(maps.Keys(events)))
 
 	events = net.runRound(offlineValidators{1, 2, 3})
 	require.ElementsMatch(t,
-		[]idx.ValidatorID{4, 5, 6, 7, 8, 9},
+		[]consensus.ValidatorID{4, 5, 6, 7, 8, 9},
 		slices.Collect(maps.Keys(events)))
 
 	events = net.runRound(offlineValidators{1, 2, 3})
 	require.ElementsMatch(t,
-		[]idx.ValidatorID{4, 5, 6, 7, 8, 9, 10},
+		[]consensus.ValidatorID{4, 5, 6, 7, 8, 9, 10},
 		slices.Collect(maps.Keys(events)))
 
 	events = net.runRound(nil)
@@ -356,7 +354,7 @@ func TestThrottler_Simulation_SuppressedValidatorsFillOfflineProgressively(t *te
 
 	events = net.runRound(nil)
 	require.ElementsMatch(t,
-		[]idx.ValidatorID{1, 2, 3, 4, 5, 6, 7},
+		[]consensus.ValidatorID{1, 2, 3, 4, 5, 6, 7},
 		slices.Collect(maps.Keys(events)))
 }
 
@@ -391,7 +389,7 @@ func TestThrottler_Simulation_NetworkRecoversFromFullStall(t *testing.T) {
 	for i := range 5 {
 		events = net.runRound(nil)
 		require.ElementsMatch(t,
-			[]idx.ValidatorID{1, 2, 3},
+			[]consensus.ValidatorID{1, 2, 3},
 			slices.Collect(maps.Keys(events)),
 		)
 		assertAllNodesReachFrame(t, net, i+2)
@@ -403,7 +401,7 @@ func TestThrottler_Simulation_NetworkRecoversFromFullStall(t *testing.T) {
 
 		events = net.runRound(offlineValidators{1})
 		require.ElementsMatch(t,
-			[]idx.ValidatorID{2, 3},
+			[]consensus.ValidatorID{2, 3},
 			slices.Collect(maps.Keys(events)),
 		)
 		// frames do not progress because lack of super-majority
@@ -413,7 +411,7 @@ func TestThrottler_Simulation_NetworkRecoversFromFullStall(t *testing.T) {
 	// after timeout, suppressed nodes start emitting, frame hasn't changed yet
 	events = net.runRound(offlineValidators{1})
 	require.ElementsMatch(t,
-		[]idx.ValidatorID{2, 3, 4, 5},
+		[]consensus.ValidatorID{2, 3, 4, 5},
 		slices.Collect(maps.Keys(events)),
 	)
 	assertAllNodesReachFrame(t, net, 7)
@@ -421,7 +419,7 @@ func TestThrottler_Simulation_NetworkRecoversFromFullStall(t *testing.T) {
 	// with super-majority restored, frames start progressing again
 	events = net.runRound(offlineValidators{1})
 	require.ElementsMatch(t,
-		[]idx.ValidatorID{2, 3, 4, 5},
+		[]consensus.ValidatorID{2, 3, 4, 5},
 		slices.Collect(maps.Keys(events)),
 	)
 	assertAllNodesReachFrame(t, net, 8)
@@ -429,7 +427,7 @@ func TestThrottler_Simulation_NetworkRecoversFromFullStall(t *testing.T) {
 	// bring back the first node, all should emit again
 	events = net.runRound(nil)
 	require.ElementsMatch(t,
-		[]idx.ValidatorID{1, 2, 3, 4, 5},
+		[]consensus.ValidatorID{1, 2, 3, 4, 5},
 		slices.Collect(maps.Keys(events)),
 	)
 	assertAllNodesReachFrame(t, net, 9)
@@ -438,7 +436,7 @@ func TestThrottler_Simulation_NetworkRecoversFromFullStall(t *testing.T) {
 	// can stop emitting again
 	events = net.runRound(nil)
 	require.ElementsMatch(t,
-		[]idx.ValidatorID{1, 2, 3},
+		[]consensus.ValidatorID{1, 2, 3},
 		slices.Collect(maps.Keys(events)),
 	)
 	assertAllNodesReachFrame(t, net, 10)
@@ -462,7 +460,7 @@ func newNetwork(
 	numNodes := validators.Len()
 	nodes := make([]*node, 0, numNodes)
 	for i := range numNodes {
-		id := idx.ValidatorID(i + 1)
+		id := consensus.ValidatorID(i + 1)
 		nodes = append(nodes, newNode(id, world,
 			DominantStakeThreshold,
 			DominatingTimeout,
@@ -479,7 +477,7 @@ func newNetwork(
 
 func (n *network) runRound(
 	offlineMask offlineValidators,
-) map[idx.ValidatorID]*inter.EventPayload {
+) map[consensus.ValidatorID]*inter.EventPayload {
 
 	// Collect events from all nodes.
 	events := make([]*inter.EventPayload, 0)
@@ -503,7 +501,7 @@ func (n *network) runRound(
 		}
 	}
 
-	res := make(map[idx.ValidatorID]*inter.EventPayload)
+	res := make(map[consensus.ValidatorID]*inter.EventPayload)
 	for _, event := range events {
 		res[event.Creator()] = event
 	}
@@ -517,15 +515,15 @@ type node struct {
 
 	// mini Lachesis implementation:
 	// does not find closures in dag, just tracks frames and parents
-	selfId           idx.ValidatorID
-	lastEventPerPeer map[idx.ValidatorID]inter.EventPayloadI
+	selfId           consensus.ValidatorID
+	lastEventPerPeer map[consensus.ValidatorID]inter.EventPayloadI
 
-	currentEpoch idx.Epoch
+	currentEpoch consensus.Epoch
 }
 
 // newNode creates a new node in the network.
 func newNode(
-	selfId idx.ValidatorID,
+	selfId consensus.ValidatorID,
 	world WorldReader,
 	DominantStakeThreshold float64,
 	DominatingTimeout config.Attempt,
@@ -543,7 +541,7 @@ func newNode(
 			world),
 		world:            world,
 		selfId:           selfId,
-		lastEventPerPeer: map[idx.ValidatorID]inter.EventPayloadI{},
+		lastEventPerPeer: map[consensus.ValidatorID]inter.EventPayloadI{},
 	}
 }
 
@@ -557,7 +555,7 @@ func (node *node) createEvent() *inter.EventPayload {
 	builder.SetEpoch(node.currentEpoch)
 
 	parents := []inter.EventPayloadI{}
-	parentIds := hash.Events{}
+	parentIds := consensus.EventHashes{}
 	var selfParent inter.EventPayloadI
 	var selfParentPos int
 	for id, parent := range node.lastEventPerPeer {
@@ -592,11 +590,11 @@ func (node *node) createEvent() *inter.EventPayload {
 
 // getFrameNumber computes the frame number for an event with the given parents.
 func getFrameNumber(
-	validators *pos.Validators,
+	validators *consensus.Validators,
 	parents []inter.EventPayloadI,
-) idx.Frame {
+) consensus.Frame {
 	// The frame of the new event is at least the frame number of the parents.
-	frame := idx.Frame(1)
+	frame := consensus.Frame(1)
 	for _, parent := range parents {
 		frame = max(frame, parent.Frame())
 	}
@@ -604,7 +602,7 @@ func getFrameNumber(
 	// If the total stake seen in the parents' frames exceeds 2/3 of
 	// the total stake, we can advance to the next frame.
 	for {
-		stakeSeen := pos.Weight(0)
+		stakeSeen := consensus.Weight(0)
 		for _, parent := range parents {
 			creator := parent.Creator()
 			if frame <= parent.Frame() {
@@ -627,8 +625,8 @@ func (node *node) receiveEvent(event *inter.EventPayload) {
 }
 
 // lastSeenFrameNumber returns the highest frame number seen among confirmed events
-func (node *node) lastSeenFrameNumber() idx.Frame {
-	res := idx.Frame(0)
+func (node *node) lastSeenFrameNumber() consensus.Frame {
+	res := consensus.Frame(0)
 	for _, event := range node.lastEventPerPeer {
 		res = max(res, event.Frame())
 	}
@@ -637,11 +635,11 @@ func (node *node) lastSeenFrameNumber() idx.Frame {
 
 type simulationFakeWorld struct {
 	network    *network
-	validators *pos.Validators
+	validators *consensus.Validators
 	rules      opera.Rules
 }
 
-func (f *simulationFakeWorld) GetEpochValidators() (*pos.Validators, idx.Epoch) {
+func (f *simulationFakeWorld) GetEpochValidators() (*consensus.Validators, consensus.Epoch) {
 	return f.validators, 0
 }
 
@@ -649,7 +647,7 @@ func (f *simulationFakeWorld) GetRules() opera.Rules {
 	return f.rules
 }
 
-func (f *simulationFakeWorld) GetLastEvent(from idx.ValidatorID) *inter.Event {
+func (f *simulationFakeWorld) GetLastEvent(from consensus.ValidatorID) *inter.Event {
 	if f.network == nil {
 		// for this test to function correctly, the world must have access to the network
 		panic("ill-formed test: world has no network")
@@ -666,9 +664,9 @@ func (f *simulationFakeWorld) GetLastEvent(from idx.ValidatorID) *inter.Event {
 	return lastEvent
 }
 
-type offlineValidators []idx.ValidatorID
+type offlineValidators []consensus.ValidatorID
 
-func (m offlineValidators) isOffline(id idx.ValidatorID) bool {
+func (m offlineValidators) isOffline(id consensus.ValidatorID) bool {
 	return slices.Contains(m, id)
 }
 
@@ -708,7 +706,7 @@ func runSimulation(
 	}
 
 	// Count the number of events produced by each node.
-	totalEventsPerNode := make(map[idx.ValidatorID]int)
+	totalEventsPerNode := make(map[consensus.ValidatorID]int)
 	for _, event := range network.allEvents {
 		totalEventsPerNode[event.Creator()]++
 	}
@@ -744,8 +742,8 @@ func assertAllNodesReachFrame(t testing.TB, network *network, expectedFrame int)
 	}
 }
 
-func computeOnlineValidators(world *simulationFakeWorld, offline offlineValidators) *pos.Validators {
-	builder := pos.NewBuilder()
+func computeOnlineValidators(world *simulationFakeWorld, offline offlineValidators) *consensus.Validators {
+	builder := consensus.NewValidatorsBuilder()
 	for _, id := range world.validators.IDs() {
 		if !offline.isOffline(id) {
 			builder.Set(id, world.validators.Get(id))

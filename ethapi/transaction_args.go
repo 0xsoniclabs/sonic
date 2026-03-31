@@ -24,7 +24,6 @@ import (
 	"math"
 	"math/big"
 
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
@@ -34,6 +33,7 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/holiman/uint256"
 
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/utils"
 )
@@ -99,7 +99,7 @@ func (args *TransactionArgs) setDefaults(ctx context.Context, b Backend) error {
 	}
 	// After london, default to 1559 unless gasPrice is set
 	head := b.CurrentBlock().Header()
-	chainConfig := b.ChainConfig(idx.Block(head.Number.Uint64()))
+	chainConfig := b.ChainConfig(consensus.BlockID(head.Number.Uint64()))
 	// If user specifies both maxPriorityfee and maxFee, then we do not
 	// need to consult the chain for defaults. It's definitely a London tx.
 	if args.MaxPriorityFeePerGas == nil || args.MaxFeePerGas == nil {

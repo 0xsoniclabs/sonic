@@ -17,12 +17,11 @@
 package config
 
 import (
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/config/flags"
 	emitter_config "github.com/0xsoniclabs/sonic/gossip/emitter/config"
 	"github.com/pkg/errors"
 	cli "gopkg.in/urfave/cli.v1"
-
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/inter/validatorpk"
@@ -48,7 +47,7 @@ func setValidator(ctx *cli.Context, cfg *emitter_config.Config) error {
 	}
 
 	if ctx.GlobalIsSet(flags.ValidatorIDFlag.Name) {
-		cfg.Validator.ID = idx.ValidatorID(ctx.GlobalInt(flags.ValidatorIDFlag.Name))
+		cfg.Validator.ID = consensus.ValidatorID(ctx.GlobalInt(flags.ValidatorIDFlag.Name))
 	}
 
 	if ctx.GlobalIsSet(flags.ValidatorPubkeyFlag.Name) {

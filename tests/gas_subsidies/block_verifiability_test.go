@@ -27,6 +27,7 @@ import (
 	cc "github.com/0xsoniclabs/carmen/go/common"
 	"github.com/0xsoniclabs/carmen/go/common/amount"
 	carmen "github.com/0xsoniclabs/carmen/go/state"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
@@ -36,7 +37,6 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/0xsoniclabs/sonic/utils/signers/internaltx"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -374,7 +374,7 @@ func (s *State) ApplyBlock(
 	chainConfig := opera.CreateTransientEvmChainConfig(
 		chainId,
 		nil,
-		idx.Block(block.NumberU64()),
+		consensus.BlockID(block.NumberU64()),
 	)
 
 	// In verification mode, gas subsidies are disabled to avoid introducing

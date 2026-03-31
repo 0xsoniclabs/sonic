@@ -21,15 +21,12 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/drivertype"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/ier"
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/Fantom-foundation/lachesis-base/hash"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/Fantom-foundation/lachesis-base/inter/pos"
-	"github.com/Fantom-foundation/lachesis-base/lachesis"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -69,14 +66,14 @@ func finalizeBlockZero(t *testing.T, builder *GenesisBuilder, rules opera.Rules)
 				LastBlock: iblockproc.BlockCtx{
 					Idx:     0,
 					Time:    genesisTime,
-					Atropos: hash.Event{},
+					Atropos: consensus.EventHash{},
 				},
-				FinalizedStateRoot:    hash.Hash{0x42},
+				FinalizedStateRoot:    consensus.Hash{0x42},
 				EpochGas:              0,
-				EpochCheaters:         lachesis.Cheaters{},
+				EpochCheaters:         consensus.Cheaters{},
 				CheatersWritten:       0,
 				ValidatorStates:       make([]iblockproc.ValidatorBlockState, 0),
-				NextValidatorProfiles: make(map[idx.ValidatorID]drivertype.Validator),
+				NextValidatorProfiles: make(map[consensus.ValidatorID]drivertype.Validator),
 				DirtyRules:            nil,
 				AdvanceEpochs:         0,
 			},
@@ -84,10 +81,10 @@ func finalizeBlockZero(t *testing.T, builder *GenesisBuilder, rules opera.Rules)
 				Epoch:             1,
 				EpochStart:        genesisTime + 1,
 				PrevEpochStart:    genesisTime,
-				EpochStateRoot:    hash.Hash{0x43},
-				Validators:        pos.NewBuilder().Build(),
+				EpochStateRoot:    consensus.Hash{0x43},
+				Validators:        consensus.NewValidatorsBuilder().Build(),
 				ValidatorStates:   make([]iblockproc.ValidatorEpochState, 0),
-				ValidatorProfiles: make(map[idx.ValidatorID]drivertype.Validator),
+				ValidatorProfiles: make(map[consensus.ValidatorID]drivertype.Validator),
 				Rules:             rules,
 			},
 		},

@@ -23,11 +23,11 @@ import (
 	"path"
 	"testing"
 
+	"github.com/0xsoniclabs/kvdb/table"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/utils/adapters/ethdb2kvdb"
-	"github.com/Fantom-foundation/lachesis-base/kvdb/table"
 	"github.com/stretchr/testify/require"
 	gomock "go.uber.org/mock/gomock"
 

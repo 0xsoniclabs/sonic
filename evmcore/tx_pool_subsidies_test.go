@@ -20,9 +20,9 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -41,7 +41,7 @@ func TestTxPool_SponsoredTransactionsAreIncludedInThePendingSet(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
 	chainId := big.NewInt(1)
-	blockNumber := idx.Block(1)
+	blockNumber := consensus.BlockID(1)
 	poolConfig := TxPoolConfig{MinimumTip: 15}
 	upgrades := opera.Upgrades{GasSubsidies: true}
 

@@ -20,18 +20,16 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/Fantom-foundation/lachesis-base/hash"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 
+	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/consensus/consensus/dagindexer"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/valkeystore"
-	"github.com/0xsoniclabs/sonic/vecmt"
 )
 
 //go:generate mockgen -source=world.go -destination=world_mock.go -package=emitter External,TxPool,TxSigner,Signer
@@ -50,7 +48,7 @@ type (
 		Process(*inter.EventPayload) error
 		Broadcast(*inter.EventPayload)
 		Build(*inter.MutableEventPayload, func()) error
-		DagIndex() *vecmt.Index
+		DagIndex() *dagindexer.Index
 
 		IsBusy() bool
 		IsSynced() bool
@@ -78,13 +76,13 @@ type (
 
 // Reader is a callback for getting events from an external storage.
 type Reader interface {
-	GetLatestBlockIndex() idx.Block
+	GetLatestBlockIndex() consensus.BlockID
 	GetLatestBlock() *inter.Block
-	GetEpochValidators() (*pos.Validators, idx.Epoch)
-	GetEvent(hash.Event) *inter.Event
-	GetEventPayload(hash.Event) *inter.EventPayload
-	GetLastEvent(epoch idx.Epoch, from idx.ValidatorID) *hash.Event
-	GetHeads(idx.Epoch) hash.Events
+	GetEpochValidators() (*consensus.Validators, consensus.Epoch)
+	GetEvent(consensus.EventHash) *inter.Event
+	GetEventPayload(consensus.EventHash) *inter.EventPayload
+	GetLastEvent(epoch consensus.Epoch, from consensus.ValidatorID) *consensus.EventHash
+	GetHeads(consensus.Epoch) consensus.EventHashes
 	GetGenesisTime() inter.Timestamp
 	GetRules() opera.Rules
 }

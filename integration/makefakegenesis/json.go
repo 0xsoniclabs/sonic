@@ -25,6 +25,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/subsidies/registry"
 	"github.com/0xsoniclabs/sonic/integration/makegenesis"
 	"github.com/0xsoniclabs/sonic/inter"
@@ -44,10 +45,6 @@ import (
 	"github.com/0xsoniclabs/sonic/scc/bls"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/0xsoniclabs/sonic/utils"
-	"github.com/Fantom-foundation/lachesis-base/hash"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/Fantom-foundation/lachesis-base/inter/pos"
-	"github.com/Fantom-foundation/lachesis-base/lachesis"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
@@ -163,7 +160,7 @@ func GenerateFakeJsonGenesis(
 	// Create the validator accounts and provide some tokens.
 	tokensPerValidator := utils.ToFtm(1_000_000_000)
 	totalSupply := big.NewInt(0)
-	validatorParameters := GetFakeValidators(idx.Validator(len(validatorsStake)))
+	validatorParameters := GetFakeValidators(consensus.ValidatorIndex(len(validatorsStake)))
 	for _, validator := range validatorParameters {
 		jsonGenesis.Accounts = append(jsonGenesis.Accounts, Account{
 			Address: validator.Address,
@@ -244,14 +241,14 @@ func ApplyGenesisJson(json *GenesisJson) (*genesisstore.Store, error) {
 				LastBlock: iblockproc.BlockCtx{
 					Idx:     0,
 					Time:    genesisTime,
-					Atropos: hash.Event{},
+					Atropos: consensus.EventHash{},
 				},
-				FinalizedStateRoot:    hash.Hash(genesisStateRoot),
+				FinalizedStateRoot:    consensus.Hash(genesisStateRoot),
 				EpochGas:              0,
-				EpochCheaters:         lachesis.Cheaters{},
+				EpochCheaters:         consensus.Cheaters{},
 				CheatersWritten:       0,
 				ValidatorStates:       make([]iblockproc.ValidatorBlockState, 0),
-				NextValidatorProfiles: make(map[idx.ValidatorID]drivertype.Validator),
+				NextValidatorProfiles: make(map[consensus.ValidatorID]drivertype.Validator),
 				DirtyRules:            nil,
 				AdvanceEpochs:         0,
 			},
@@ -259,10 +256,10 @@ func ApplyGenesisJson(json *GenesisJson) (*genesisstore.Store, error) {
 				Epoch:             1,
 				EpochStart:        genesisTime + 1,
 				PrevEpochStart:    genesisTime,
-				EpochStateRoot:    hash.Hash(genesisStateRoot),
-				Validators:        pos.NewBuilder().Build(),
+				EpochStateRoot:    consensus.Hash(genesisStateRoot),
+				Validators:        consensus.NewValidatorsBuilder().Build(),
 				ValidatorStates:   make([]iblockproc.ValidatorEpochState, 0),
-				ValidatorProfiles: make(map[idx.ValidatorID]drivertype.Validator),
+				ValidatorProfiles: make(map[consensus.ValidatorID]drivertype.Validator),
 				Rules:             json.Rules,
 			},
 		},

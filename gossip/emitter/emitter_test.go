@@ -22,14 +22,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Fantom-foundation/lachesis-base/hash"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/consensus/consensus/dagindexer"
 	"github.com/0xsoniclabs/sonic/gossip/emitter/config"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/inter"
@@ -37,15 +36,14 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils/txtime"
 	"github.com/0xsoniclabs/sonic/valkeystore"
-	"github.com/0xsoniclabs/sonic/vecmt"
 )
 
 func TestEmitter(t *testing.T) {
 	cfg := config.DefaultConfig()
 	gValidators := makefakegenesis.GetFakeValidators(3)
-	vv := pos.NewBuilder()
+	vv := consensus.NewValidatorsBuilder()
 	for _, v := range gValidators {
-		vv.Set(v.ID, pos.Weight(1))
+		vv.Set(v.ID, consensus.Weight(1))
 	}
 	validators := vv.Build()
 	cfg.Validator.ID = gValidators[0].ID
@@ -61,7 +59,7 @@ func TestEmitter(t *testing.T) {
 	external.EXPECT().Unlock().
 		AnyTimes()
 	external.EXPECT().DagIndex().
-		Return((*vecmt.Index)(nil)).
+		Return((*dagindexer.Index)(nil)).
 		AnyTimes()
 	external.EXPECT().IsSynced().
 		Return(true).
@@ -86,11 +84,11 @@ func TestEmitter(t *testing.T) {
 			AnyTimes()
 
 		external.EXPECT().GetEpochValidators().
-			Return(validators, idx.Epoch(1)).
+			Return(validators, consensus.Epoch(1)).
 			AnyTimes()
 
-		external.EXPECT().GetLastEvent(idx.Epoch(1), cfg.Validator.ID).
-			Return((*hash.Event)(nil)).
+		external.EXPECT().GetLastEvent(consensus.Epoch(1), cfg.Validator.ID).
+			Return((*consensus.EventHash)(nil)).
 			AnyTimes()
 
 		external.EXPECT().GetGenesisTime().
@@ -153,9 +151,9 @@ func TestEmitter_CreateEvent_CreatesCorrectEventVersion(t *testing.T) {
 		},
 	}
 
-	validator := idx.ValidatorID(1)
-	builder := pos.NewBuilder()
-	builder.Set(validator, pos.Weight(1))
+	validator := consensus.ValidatorID(1)
+	builder := consensus.NewValidatorsBuilder()
+	builder.Set(validator, consensus.Weight(1))
 	validators := builder.Build()
 
 	for name, upgrades := range tests {
@@ -214,8 +212,8 @@ func TestEmitter_CreateEvent_InvalidValidatorSetIsDetected(t *testing.T) {
 	signer := valkeystore.NewMockSignerAuthority(ctrl)
 	log := logger.NewMockLogger(ctrl)
 
-	validator := idx.ValidatorID(1)
-	validators := pos.NewBuilder().Build() // invalid empty validator set
+	validator := consensus.ValidatorID(1)
+	validators := consensus.NewValidatorsBuilder().Build() // invalid empty validator set
 
 	rules := opera.Rules{
 		Upgrades: opera.Upgrades{
@@ -258,11 +256,11 @@ func TestEmitter_CreateEvent_InvalidValidatorSetIsDetected(t *testing.T) {
 
 func TestEmitter_EmitEvent_DoesNotEmit_IfNodeIsNotValidator(t *testing.T) {
 
-	builder := pos.NewBuilder()
-	builder.Set(idx.ValidatorID(1), pos.Weight(1))
+	builder := consensus.NewValidatorsBuilder()
+	builder.Set(consensus.ValidatorID(1), consensus.Weight(1))
 	validators := builder.Build()
 
-	tests := map[string]idx.ValidatorID{
+	tests := map[string]consensus.ValidatorID{
 		"zero code is never a validator": 0,
 		"validator id with no stake":     999,
 	}
@@ -295,9 +293,9 @@ func TestEmitter_EmitEvent_DoesNotEmit_IfNodeIsNotValidator(t *testing.T) {
 
 func TestEmitter_EmitEvent_DoesNotEmit_WhenLastEmissionIsTooRecent(t *testing.T) {
 
-	validator := idx.ValidatorID(1)
-	builder := pos.NewBuilder()
-	builder.Set(validator, pos.Weight(1))
+	validator := consensus.ValidatorID(1)
+	builder := consensus.NewValidatorsBuilder()
+	builder.Set(validator, consensus.Weight(1))
 	validators := builder.Build()
 
 	ctrl := gomock.NewController(t)
@@ -338,14 +336,14 @@ func TestEmitter_EmitEvent_DoesNotEmit_IfWorldIsBusy(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	world := NewMockExternal(ctrl)
-	world.EXPECT().GetLatestBlockIndex().Return(idx.Block(1)).AnyTimes()
+	world.EXPECT().GetLatestBlockIndex().Return(consensus.BlockID(1)).AnyTimes()
 	world.EXPECT().IsBusy().Return(true)
 
 	signer := valkeystore.NewMockSignerAuthority(ctrl)
 
-	validator := idx.ValidatorID(1)
-	builder := pos.NewBuilder()
-	builder.Set(validator, pos.Weight(1))
+	validator := consensus.ValidatorID(1)
+	builder := consensus.NewValidatorsBuilder()
+	builder.Set(validator, consensus.Weight(1))
 	validators := builder.Build()
 
 	txPool := NewMockTxPool(ctrl)
@@ -383,7 +381,7 @@ func TestEmitter_EmitEvent(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	world := NewMockExternal(ctrl)
-	world.EXPECT().GetLatestBlockIndex().Return(idx.Block(1)).AnyTimes()
+	world.EXPECT().GetLatestBlockIndex().Return(consensus.BlockID(1)).AnyTimes()
 	world.EXPECT().IsBusy().Return(false)
 	world.EXPECT().Lock()
 	world.EXPECT().Process(any)
@@ -392,9 +390,9 @@ func TestEmitter_EmitEvent(t *testing.T) {
 
 	signer := valkeystore.NewMockSignerAuthority(ctrl)
 
-	validator := idx.ValidatorID(1)
-	builder := pos.NewBuilder()
-	builder.Set(validator, pos.Weight(1))
+	validator := consensus.ValidatorID(1)
+	builder := consensus.NewValidatorsBuilder()
+	builder.Set(validator, consensus.Weight(1))
 	validators := builder.Build()
 
 	txPool := NewMockTxPool(ctrl)
@@ -433,18 +431,18 @@ func TestEmitter_EmitEvent(t *testing.T) {
 }
 
 func TestEmitter_ThrottlerWorldAdapter_ReturnsNilIfNoEventIsFound(t *testing.T) {
-	validator := idx.ValidatorID(1)
+	validator := consensus.ValidatorID(1)
 
-	builder := pos.NewBuilder()
-	builder.Set(validator, pos.Weight(1))
+	builder := consensus.NewValidatorsBuilder()
+	builder.Set(validator, consensus.Weight(1))
 	validators := builder.Build()
 
 	ctrl := gomock.NewController(t)
 	world := NewMockExternal(ctrl)
-	world.EXPECT().GetEpochValidators().Return(validators, idx.Epoch(1)).AnyTimes()
+	world.EXPECT().GetEpochValidators().Return(validators, consensus.Epoch(1)).AnyTimes()
 
 	t.Run("no event has been received from this validator", func(t *testing.T) {
-		world.EXPECT().GetLastEvent(idx.Epoch(1), validator)
+		world.EXPECT().GetLastEvent(consensus.Epoch(1), validator)
 
 		wa := ThrottlerWorldAdapter{World: World{External: world}}
 		e := wa.GetLastEvent(validator)
@@ -452,9 +450,9 @@ func TestEmitter_ThrottlerWorldAdapter_ReturnsNilIfNoEventIsFound(t *testing.T) 
 	})
 
 	t.Run("event is known but not found in the store", func(t *testing.T) {
-		hash := hash.Event{1, 2, 3}
+		hash := consensus.EventHash{1, 2, 3}
 
-		world.EXPECT().GetLastEvent(idx.Epoch(1), validator).Return(&hash)
+		world.EXPECT().GetLastEvent(consensus.Epoch(1), validator).Return(&hash)
 		world.EXPECT().GetEvent(hash)
 
 		wa := ThrottlerWorldAdapter{World: World{External: world}}

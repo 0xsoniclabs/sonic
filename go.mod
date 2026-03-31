@@ -19,9 +19,11 @@ module github.com/0xsoniclabs/sonic
 go 1.24.0
 
 require (
+	github.com/0xsoniclabs/cacheutils v0.0.0-20250407103139-96a28a302d0e
 	github.com/0xsoniclabs/carmen/go v0.0.0-20250708101910-3666ec34654c
+	github.com/0xsoniclabs/consensus v0.0.0-20250710115918-16e4ba0de163
+	github.com/0xsoniclabs/kvdb v0.0.0-20250709123301-a981e39aa2ea
 	github.com/0xsoniclabs/tosca v0.0.0-20260224095910-31d2f9b784f0
-	github.com/Fantom-foundation/lachesis-base v0.0.0-20240116072301-a75735c4ef00
 	github.com/cespare/cp v1.1.1
 	github.com/consensys/gnark-crypto v0.18.0
 	github.com/davecgh/go-spew v1.1.1
@@ -36,7 +38,7 @@ require (
 	github.com/mattn/go-isatty v0.0.20
 	github.com/naoina/toml v0.1.2-0.20170918210437-9fafd6967416
 	github.com/pkg/errors v0.9.1
-	github.com/status-im/keycard-go v0.3.2
+	github.com/status-im/keycard-go v0.3.3
 	github.com/stretchr/testify v1.10.0
 	github.com/supranational/blst v0.3.16-0.20250831170142-f48500c1fdbe
 	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7
@@ -98,8 +100,9 @@ require (
 	github.com/influxdata/line-protocol v0.0.0-20210922203350-b1ad95c89adf // indirect
 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
 	github.com/karalabe/hid v1.0.1-0.20240306101548-573246063e52 // indirect
+	github.com/kelindar/simd v1.1.2 // indirect
 	github.com/klauspost/compress v1.17.10 // indirect
-	github.com/klauspost/cpuid/v2 v2.2.5 // indirect
+	github.com/klauspost/cpuid/v2 v2.2.9 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/mattn/go-runewidth v0.0.16 // indirect
@@ -145,5 +148,3 @@ require (
 )
 
 replace github.com/ethereum/go-ethereum => github.com/0xsoniclabs/go-ethereum v0.0.0-20260220094642-cad493048916
-
-replace github.com/Fantom-foundation/lachesis-base => github.com/Fantom-foundation/lachesis-base-sonic v0.0.0-20250701061954-44075d09185c

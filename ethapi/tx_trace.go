@@ -26,7 +26,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
@@ -34,6 +33,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rpc"
 
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/txtrace"
@@ -193,7 +193,7 @@ func (s *PublicTxTraceAPI) replayBlock(ctx context.Context, block *evmcore.EvmBl
 		Actions: make([]txtrace.ActionTrace, 0),
 	}
 
-	chainConfig := s.b.ChainConfig(idx.Block(block.NumberU64()))
+	chainConfig := s.b.ChainConfig(consensus.BlockID(block.NumberU64()))
 	signer := types.LatestSignerForChainID(chainConfig.ChainID)
 
 	state, _, err := s.b.StateAndHeaderByNumberOrHash(ctx, rpc.BlockNumberOrHash{BlockNumber: &parentBlockNr})
@@ -244,7 +244,7 @@ func (s *PublicTxTraceAPI) replayBlock(ctx context.Context, block *evmcore.EvmBl
 			}
 
 			state.SetTxContext(tx.Hash(), i)
-			vmConfig, err := GetVmConfig(ctx, s.b, idx.Block(block.NumberU64()))
+			vmConfig, err := GetVmConfig(ctx, s.b, consensus.BlockID(block.NumberU64()))
 			if err != nil {
 				return nil, fmt.Errorf("cannot get vm config for block %d, error: %w", block.NumberU64(), err)
 			}
@@ -300,7 +300,7 @@ func (s *PublicTxTraceAPI) traceTx(
 	status uint64) (*[]txtrace.ActionTrace, error) {
 
 	// Providing default config with tracer
-	cfg, err := GetVmConfig(ctx, b, idx.Block(header.Number.Uint64()))
+	cfg, err := GetVmConfig(ctx, b, consensus.BlockID(header.Number.Uint64()))
 	if err != nil {
 		return nil, fmt.Errorf("cannot get vm config for block %d, error: %w", header.Number.Uint64(), err)
 	}
@@ -336,7 +336,7 @@ func (s *PublicTxTraceAPI) traceTx(
 	// Setup the gas pool and stateDB
 	gp := new(core.GasPool).AddGas(msg.GasLimit)
 	state.SetTxContext(tx.Hash(), int(index))
-	chainConfig := b.ChainConfig(idx.Block(header.Number.Uint64()))
+	chainConfig := b.ChainConfig(consensus.BlockID(header.Number.Uint64()))
 	resultReceipt, err := evmcore.ApplyTransactionWithEVM(msg, chainConfig, gp, state, header.Number, block.Hash, tx, &index, vmenv)
 
 	traceActions := txTracer.GetResult()

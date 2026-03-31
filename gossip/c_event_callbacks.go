@@ -23,15 +23,14 @@ import (
 
 	"github.com/ethereum/go-ethereum/metrics"
 
-	"github.com/Fantom-foundation/lachesis-base/gossip/dagprocessor"
-	"github.com/Fantom-foundation/lachesis-base/hash"
-	"github.com/Fantom-foundation/lachesis-base/inter/dag"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
 
+	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/consensus/consensus/dagindexer"
 	"github.com/0xsoniclabs/sonic/eventcheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/epochcheck"
+	"github.com/0xsoniclabs/sonic/gossip/dagprocessor"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
@@ -70,7 +69,7 @@ func (s *Service) buildEvent(e *inter.MutableEventPayload, onIndexed func()) err
 		onIndexed()
 	}
 
-	e.SetMedianTime(s.dagIndexer.MedianTime(e.ID(), s.store.GetEpochState().EpochStart))
+	e.SetMedianTime(inter.Timestamp(s.dagIndexer.MedianTime(e.ID(), dagindexer.Timestamp(s.store.GetEpochState().EpochStart))))
 
 	// calc initial GasPower
 	e.SetGasPowerUsed(epochcheck.CalcGasPowerUsed(e, s.store.GetRules()))
@@ -97,7 +96,7 @@ func (s *Service) processSavedEvent(e *inter.EventPayload, es *iblockproc.EpochS
 	}
 
 	// check median time
-	if e.MedianTime() != s.dagIndexer.MedianTime(e.ID(), es.EpochStart) {
+	if dagindexer.Timestamp(e.MedianTime()) != s.dagIndexer.MedianTime(e.ID(), dagindexer.Timestamp(es.EpochStart)) {
 		return errWrongMedianTime
 	}
 
@@ -139,13 +138,14 @@ func processLastEvent(lasts *concurrent.ValidatorEventsSet, e *inter.EventPayloa
 	return lasts
 }
 
-func (s *Service) switchEpochTo(newEpoch idx.Epoch) {
+func (s *Service) switchEpochTo(newEpoch consensus.Epoch) {
 	s.store.cache.EventIDs.Reset(newEpoch)
 	s.store.SetHighestLamport(0)
 	// reset dag indexer
 	s.store.resetEpochStore(newEpoch)
 	es := s.store.getEpochStore(newEpoch)
-	s.dagIndexer.Reset(s.store.GetValidators(), es.table.DagIndex, func(id hash.Event) dag.Event {
+	flushable := s.dagIndexer.WrapWithFlushable(es.table.DagIndex)
+	s.dagIndexer.Reset(s.store.GetValidators(), flushable, func(id consensus.EventHash) consensus.Event {
 		return s.store.GetEvent(id)
 	})
 	// notify event checkers about new validation data
@@ -158,7 +158,7 @@ func (s *Service) switchEpochTo(newEpoch idx.Epoch) {
 	s.feed.newEpoch.Send(newEpoch)
 }
 
-func (s *Service) SwitchEpochTo(newEpoch idx.Epoch) error {
+func (s *Service) SwitchEpochTo(newEpoch consensus.Epoch) error {
 	bs, es := s.store.GetHistoryBlockEpochState(newEpoch)
 	if bs == nil {
 		return errNonExistingEpoch
@@ -179,7 +179,7 @@ func (s *Service) SwitchEpochTo(newEpoch idx.Epoch) error {
 	return nil
 }
 
-func (s *Service) processEventEpochIndex(e *inter.EventPayload, oldEpoch, newEpoch idx.Epoch) {
+func (s *Service) processEventEpochIndex(e *inter.EventPayload, oldEpoch, newEpoch consensus.Epoch) {
 	// index DAG heads and last events
 	s.store.SetHeads(oldEpoch, processEventHeads(s.store.GetHeads(oldEpoch), e))
 	s.store.SetLastEvents(oldEpoch, processLastEvent(s.store.GetLastEvents(oldEpoch), e))

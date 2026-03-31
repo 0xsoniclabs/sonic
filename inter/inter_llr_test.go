@@ -20,32 +20,32 @@ import (
 	"encoding/hex"
 	"testing"
 
-	"github.com/Fantom-foundation/lachesis-base/hash"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/stretchr/testify/require"
 )
 
 var test_block_votes = LlrBlockVotes{
 	Start: 9000,
 	Epoch: 342,
-	Votes: []hash.Hash{
-		hash.Of(nil),
+	Votes: []consensus.Hash{
+		consensus.EventHashFromBytes(nil),
 	},
 }
 var test_signed_event_locator = SignedEventLocator{
 	Locator: EventLocator{
-		BaseHash:    hash.Of(nil),
+		BaseHash:    consensus.EventHashFromBytes(nil),
 		NetForkID:   1,
 		Epoch:       42,
 		Seq:         9_000_000,
 		Lamport:     142,
 		Creator:     242,
-		PayloadHash: hash.Of(nil),
+		PayloadHash: consensus.EventHashFromBytes(nil),
 	},
 	Sig: [64]byte{},
 }
-var test_txs_and_misbehaviour_proofs_hash = hash.Of(nil)
-var test_epoch_vote_hash = hash.Of(nil)
-var test_block_votes_hash = hash.Of(nil)
+var test_txs_and_misbehaviour_proofs_hash = consensus.EventHashFromBytes(nil)
+var test_epoch_vote_hash = consensus.EventHashFromBytes(nil)
+var test_block_votes_hash = consensus.EventHashFromBytes(nil)
 
 var test_llr_signed_block_votes = LlrSignedBlockVotes{
 	Signed:                       test_signed_event_locator,

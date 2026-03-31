@@ -28,8 +28,8 @@ package heavycheck
 import (
 	reflect "reflect"
 
+	"github.com/0xsoniclabs/consensus/consensus"
 	validatorpk "github.com/0xsoniclabs/sonic/inter/validatorpk"
-	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -58,10 +58,10 @@ func (m *MockReader) EXPECT() *MockReaderMockRecorder {
 }
 
 // GetEpochBlockStart mocks base method.
-func (m *MockReader) GetEpochBlockStart(arg0 idx.Epoch) idx.Block {
+func (m *MockReader) GetEpochBlockStart(arg0 consensus.Epoch) consensus.BlockID {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetEpochBlockStart", arg0)
-	ret0, _ := ret[0].(idx.Block)
+	ret0, _ := ret[0].(consensus.BlockID)
 	return ret0
 }
 
@@ -72,11 +72,11 @@ func (mr *MockReaderMockRecorder) GetEpochBlockStart(arg0 any) *gomock.Call {
 }
 
 // GetEpochPubKeys mocks base method.
-func (m *MockReader) GetEpochPubKeys() (map[idx.ValidatorID]validatorpk.PubKey, idx.Epoch) {
+func (m *MockReader) GetEpochPubKeys() (map[consensus.ValidatorID]validatorpk.PubKey, consensus.Epoch) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetEpochPubKeys")
-	ret0, _ := ret[0].(map[idx.ValidatorID]validatorpk.PubKey)
-	ret1, _ := ret[1].(idx.Epoch)
+	ret0, _ := ret[0].(map[consensus.ValidatorID]validatorpk.PubKey)
+	ret1, _ := ret[1].(consensus.Epoch)
 	return ret0, ret1
 }
 
@@ -87,10 +87,10 @@ func (mr *MockReaderMockRecorder) GetEpochPubKeys() *gomock.Call {
 }
 
 // GetEpochPubKeysOf mocks base method.
-func (m *MockReader) GetEpochPubKeysOf(arg0 idx.Epoch) map[idx.ValidatorID]validatorpk.PubKey {
+func (m *MockReader) GetEpochPubKeysOf(arg0 consensus.Epoch) map[consensus.ValidatorID]validatorpk.PubKey {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetEpochPubKeysOf", arg0)
-	ret0, _ := ret[0].(map[idx.ValidatorID]validatorpk.PubKey)
+	ret0, _ := ret[0].(map[consensus.ValidatorID]validatorpk.PubKey)
 	return ret0
 }
 

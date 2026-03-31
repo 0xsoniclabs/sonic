@@ -22,10 +22,10 @@ import (
 	"regexp"
 	"testing"
 
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/bls"
 	"github.com/0xsoniclabs/sonic/scc/cert"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
@@ -53,7 +53,7 @@ func TestBlockCertificate_ToBlockCertificate_ConvertsToHealthyCertificate(t *tes
 	)
 	want := cert.NewCertificateWithSignature(cert.NewBlockStatement(
 		b.ChainId,
-		idx.Block(b.Number),
+		consensus.BlockID(b.Number),
 		b.Hash,
 		b.StateRoot),
 		aggregatedSignature)

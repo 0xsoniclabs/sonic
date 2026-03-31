@@ -21,11 +21,8 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/Fantom-foundation/lachesis-base/eventcheck/epochcheck"
-	"github.com/Fantom-foundation/lachesis-base/hash"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/Fantom-foundation/lachesis-base/inter/pos"
-
+	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/sonic/eventcheck/base/epochcheck"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 )
@@ -44,10 +41,10 @@ type ValidatorState struct {
 
 // ValidationContext for gaspower checking
 type ValidationContext struct {
-	Epoch           idx.Epoch
+	Epoch           consensus.Epoch
 	Configs         [inter.GasPowerConfigs]Config
 	EpochStart      inter.Timestamp
-	Validators      *pos.Validators
+	Validators      *consensus.Validators
 	ValidatorStates []ValidatorState
 }
 
@@ -111,7 +108,7 @@ func calcGasPower(e inter.EventI, selfParent inter.EventI, ctx *ValidationContex
 		prevTime = selfParent.MedianTime()
 	} else {
 		validatorState := ctx.ValidatorStates[ctx.Validators.GetIdx(e.Creator())]
-		if validatorState.PrevEpochEvent.ID != hash.ZeroEvent {
+		if validatorState.PrevEpochEvent.ID != consensus.ZeroEventHash {
 			prevGasPowerLeft = validatorState.PrevEpochEvent.GasPowerLeft.Gas[config.Idx]
 			prevTime = validatorState.PrevEpochEvent.Time
 		} else {
@@ -124,7 +121,7 @@ func calcGasPower(e inter.EventI, selfParent inter.EventI, ctx *ValidationContex
 	return CalcValidatorGasPower(e, e.MedianTime(), prevTime, prevGasPowerLeft, ctx.Validators, config)
 }
 
-func CalcValidatorGasPower(e inter.EventI, eTime, prevTime inter.Timestamp, prevGasPowerLeft uint64, validators *pos.Validators, config Config) uint64 {
+func CalcValidatorGasPower(e inter.EventI, eTime, prevTime inter.Timestamp, prevGasPowerLeft uint64, validators *consensus.Validators, config Config) uint64 {
 	gasPowerPerSec, maxGasPower, startup := CalcValidatorGasPowerPerSec(e.Creator(), validators, config)
 
 	if e.SelfParent() == nil {
@@ -150,8 +147,8 @@ func CalcValidatorGasPower(e inter.EventI, eTime, prevTime inter.Timestamp, prev
 }
 
 func CalcValidatorGasPowerPerSec(
-	validator idx.ValidatorID,
-	validators *pos.Validators,
+	validator consensus.ValidatorID,
+	validators *consensus.Validators,
 	config Config,
 ) (
 	perSec uint64,

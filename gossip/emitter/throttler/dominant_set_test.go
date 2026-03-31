@@ -24,8 +24,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/Fantom-foundation/lachesis-base/inter/pos"
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/stretchr/testify/require"
 )
 
@@ -37,45 +36,45 @@ func TestComputeDominantSet_IdentifiesDominantSet_WhenStakeDistributionIsDominat
 
 	tests := map[string]struct {
 		stakes      []int64
-		expectedSet []idx.ValidatorID
+		expectedSet []consensus.ValidatorID
 	}{
 		"no validators": {
 			stakes: nil,
 		},
 		"single validator": {
 			stakes:      []int64{100},
-			expectedSet: []idx.ValidatorID{1},
+			expectedSet: []consensus.ValidatorID{1},
 		},
 		"two equal validators": {
 			stakes:      []int64{50, 50},
-			expectedSet: []idx.ValidatorID{1, 2},
+			expectedSet: []consensus.ValidatorID{1, 2},
 		},
 		"two validators one dominant": {
 			stakes:      []int64{80, 20},
-			expectedSet: []idx.ValidatorID{1},
+			expectedSet: []consensus.ValidatorID{1},
 		},
 		"three validators one dominant": {
 			stakes:      []int64{80, 10, 10},
-			expectedSet: []idx.ValidatorID{1},
+			expectedSet: []consensus.ValidatorID{1},
 		},
 		"three validators two dominant": {
 			stakes:      []int64{40, 40, 20},
-			expectedSet: []idx.ValidatorID{1, 2},
+			expectedSet: []consensus.ValidatorID{1, 2},
 		},
 		"four equal validators, first three dominate": {
 			stakes:      []int64{25, 25, 25, 25},
-			expectedSet: []idx.ValidatorID{1, 2, 3},
+			expectedSet: []consensus.ValidatorID{1, 2, 3},
 		},
 		"one unit below threshold": {
 			stakes:      []int64{25, 25, 24, 24, 2},
-			expectedSet: []idx.ValidatorID{1, 2, 3, 4},
+			expectedSet: []consensus.ValidatorID{1, 2, 3, 4},
 		},
 	}
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			stakes := makeValidatorsFromStakes(test.stakes...)
-			threshold := computeNeededStake(pos.Weight(100), testThreshold)
+			threshold := computeNeededStake(consensus.Weight(100), testThreshold)
 			set := computeDominantSet(stakes, threshold)
 			require.ElementsMatch(t, test.expectedSet, slices.Collect(maps.Keys(set)))
 		})
@@ -109,7 +108,7 @@ func TestComputeDominantSet_ReturnsInputValidatorsSet_WhenStakeCannotBeMet(t *te
 		validators := makeValidatorsFromStakes(slices.Repeat([]int64{10}, validatorCount)...)
 		neededStake := 10*validatorCount + 1
 
-		set := computeDominantSet(validators, pos.Weight(neededStake))
+		set := computeDominantSet(validators, consensus.Weight(neededStake))
 		require.ElementsMatch(t,
 			validators.IDs(),
 			slices.Collect(maps.Keys(set)),
@@ -125,24 +124,24 @@ func TestComputeDominantSet_ZeroThresholdResultsInEmptyDominantSet(t *testing.T)
 
 func TestComputeDominantSet_IsIndependentFromStakeOrder(t *testing.T) {
 	// The dominant set calculation does not sort validators by stake,
-	// this is done by the [pos.Validators] object itself. Nevertheless the code
+	// this is done by the [consensus.Validators] object itself. Nevertheless the code
 	// is highly dependent on this behavior, so we test it here.
 
 	tests := map[string]struct {
 		stakes      []int64
-		expectedSet []idx.ValidatorID
+		expectedSet []consensus.ValidatorID
 	}{
 		"ascending": {
 			stakes:      []int64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
-			expectedSet: []idx.ValidatorID{5, 6, 7, 8, 9, 10},
+			expectedSet: []consensus.ValidatorID{5, 6, 7, 8, 9, 10},
 		},
 		"descending": {
 			stakes:      []int64{10, 9, 8, 7, 6, 5, 4, 3, 2, 1},
-			expectedSet: []idx.ValidatorID{1, 2, 3, 4, 5, 6},
+			expectedSet: []consensus.ValidatorID{1, 2, 3, 4, 5, 6},
 		},
 		"random": {
 			stakes:      []int64{3, 7, 2, 9, 1, 8, 4, 6, 10, 5},
-			expectedSet: []idx.ValidatorID{2, 4, 6, 8, 9, 10},
+			expectedSet: []consensus.ValidatorID{2, 4, 6, 8, 9, 10},
 		},
 	}
 
@@ -164,14 +163,14 @@ func TestComputeDominantSet_IsIndependentFromStakeOrder(t *testing.T) {
 
 func TestComputeDominantSet_IsDeterministic(t *testing.T) {
 	// The dominant set calculation does not sort validators by stake,
-	// this is done by the [pos.Validators] object itself. Nevertheless the code
+	// this is done by the [consensus.Validators] object itself. Nevertheless the code
 	// is highly dependent on this behavior, so we test it here.
 
 	// make test deterministic
 	rand := rand.New(rand.NewSource(42))
 
 	testInput := []struct {
-		id    idx.ValidatorID
+		id    consensus.ValidatorID
 		stake int64
 	}{
 		{1, 10},
@@ -191,26 +190,26 @@ func TestComputeDominantSet_IsDeterministic(t *testing.T) {
 			testInput[i], testInput[j] = testInput[j], testInput[i]
 		})
 
-		builder := pos.NewBuilder()
+		builder := consensus.NewValidatorsBuilder()
 		for _, validator := range testInput {
-			builder.Set(validator.id, pos.Weight(validator.stake))
+			builder.Set(validator.id, consensus.Weight(validator.stake))
 		}
 		validators := builder.Build()
 
 		set := computeDominantSet(validators, computeNeededStake(validators.TotalWeight(), 0.7))
-		ids := make([]idx.ValidatorID, 0, len(set))
+		ids := make([]consensus.ValidatorID, 0, len(set))
 		for id := range set {
 			ids = append(ids, id)
 		}
 
-		require.ElementsMatch(t, []idx.ValidatorID{1, 2, 3, 4, 5, 6, 7}, ids)
+		require.ElementsMatch(t, []consensus.ValidatorID{1, 2, 3, 4, 5, 6, 7}, ids)
 	}
 }
 
-func makeValidatorsFromStakes(stakes ...int64) *pos.Validators {
-	builder := pos.NewBuilder()
+func makeValidatorsFromStakes(stakes ...int64) *consensus.Validators {
+	builder := consensus.NewValidatorsBuilder()
 	for i, stake := range stakes {
-		builder.Set(idx.ValidatorID(i+1), pos.Weight(stake))
+		builder.Set(consensus.ValidatorID(i+1), consensus.Weight(stake))
 	}
 	return builder.Build()
 }
@@ -250,14 +249,14 @@ func FuzzDominantSet(f *testing.F) {
 
 		// sum the stakes in the dominant set
 		dominantStake := sumStake(set, validators)
-		dominantThreshold := pos.Weight(math.Ceil(
+		dominantThreshold := consensus.Weight(math.Ceil(
 			float64(validators.TotalWeight()) * threshold))
 		require.GreaterOrEqual(t, dominantStake, dominantThreshold)
 	})
 }
 
-func sumStake(set dominantSet, validators *pos.Validators) pos.Weight {
-	dominantStake := pos.Weight(0)
+func sumStake(set dominantSet, validators *consensus.Validators) consensus.Weight {
+	dominantStake := consensus.Weight(0)
 	for id := range set {
 		dominantStake += validators.Get(id)
 	}
@@ -266,9 +265,9 @@ func sumStake(set dominantSet, validators *pos.Validators) pos.Weight {
 
 func TestComputeNeededStake_isRoundedUp(t *testing.T) {
 	tests := map[string]struct {
-		stake     pos.Weight
+		stake     consensus.Weight
 		threshold float64
-		expected  pos.Weight
+		expected  consensus.Weight
 	}{
 		"exact": {
 			stake:     100,

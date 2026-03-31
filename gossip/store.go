@@ -24,18 +24,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/0xsoniclabs/cacheutils/wlru"
+	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/consensus/utils/byteutils"
+	"github.com/0xsoniclabs/kvdb"
+	"github.com/0xsoniclabs/kvdb/flushable"
+	"github.com/0xsoniclabs/kvdb/memorydb"
+	"github.com/0xsoniclabs/kvdb/table"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/logger"
 	"github.com/0xsoniclabs/sonic/utils/eventid"
 	"github.com/0xsoniclabs/sonic/utils/rlpstore"
-	"github.com/Fantom-foundation/lachesis-base/common/bigendian"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/Fantom-foundation/lachesis-base/kvdb"
-	"github.com/Fantom-foundation/lachesis-base/kvdb/flushable"
-	"github.com/Fantom-foundation/lachesis-base/kvdb/memorydb"
-	"github.com/Fantom-foundation/lachesis-base/kvdb/table"
-	"github.com/Fantom-foundation/lachesis-base/utils/wlru"
 )
 
 // Store is a node persistent storage working over physical key-value database.
@@ -94,8 +94,8 @@ type Store struct {
 	logger.Instance
 
 	// values needed for flush randomizationAdd comment
-	randomOffsetEpoch idx.Epoch // epoch when random offset was selected
-	randomOffset      uint64    // random number re-selected in each epoch between 0 and 99
+	randomOffsetEpoch consensus.Epoch // epoch when random offset was selected
+	randomOffset      uint64          // random number re-selected in each epoch between 0 and 99
 }
 
 // NewMemStore creates temporary gossip store for testing purposes.
@@ -208,7 +208,7 @@ func (s *Store) Commit() error {
 func (s *Store) flushDBs() error {
 	now := time.Now()
 	s.prevFlushTime.Store(now)
-	flushID := bigendian.Uint64ToBytes(uint64(now.UnixNano()))
+	flushID := byteutils.Uint64ToBigEndian(uint64(now.UnixNano()))
 	return s.dbs.Flush(flushID)
 }
 

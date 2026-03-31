@@ -17,19 +17,19 @@
 package drivermodule_test
 
 import (
+	"math/big"
+	"testing"
+
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/drivermodule"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 	"go.uber.org/mock/gomock"
-	"math/big"
-	"testing"
 )
 
 const OrigOriginated = 10_000
@@ -53,7 +53,7 @@ func TestReceiptRewardWithoutFixEnabled(t *testing.T) {
 			Originated: big.NewInt(OrigOriginated),
 		}},
 	}
-	valsBuilder := pos.NewBuilder()
+	valsBuilder := consensus.NewValidatorsBuilder()
 	valsBuilder.Set(1, 100)
 
 	rules := opera.MainNetRules()
@@ -74,7 +74,7 @@ func TestReceiptRewardWithoutFixEnabled(t *testing.T) {
 		TxHash:  tx.Hash(),
 		GasUsed: GasUsed,
 	}
-	listener.OnNewReceipt(tx, receipt, idx.ValidatorID(1), big.NewInt(BaseFee), big.NewInt(BlobBaseFee))
+	listener.OnNewReceipt(tx, receipt, consensus.ValidatorID(1), big.NewInt(BaseFee), big.NewInt(BlobBaseFee))
 
 	originated := bs.ValidatorStates[es.Validators.GetIdx(1)].Originated.Uint64()
 	if originated != OrigOriginated+GasUsed*GasFeeCap {
@@ -94,7 +94,7 @@ func TestReceiptRewardWithFixEnabled(t *testing.T) {
 			Originated: big.NewInt(OrigOriginated),
 		}},
 	}
-	valsBuilder := pos.NewBuilder()
+	valsBuilder := consensus.NewValidatorsBuilder()
 	valsBuilder.Set(1, 100)
 
 	rules := opera.MainNetRules()
@@ -115,7 +115,7 @@ func TestReceiptRewardWithFixEnabled(t *testing.T) {
 		TxHash:  tx.Hash(),
 		GasUsed: GasUsed,
 	}
-	listener.OnNewReceipt(tx, receipt, idx.ValidatorID(1), big.NewInt(BaseFee), big.NewInt(BlobBaseFee))
+	listener.OnNewReceipt(tx, receipt, consensus.ValidatorID(1), big.NewInt(BaseFee), big.NewInt(BlobBaseFee))
 
 	originated := bs.ValidatorStates[es.Validators.GetIdx(1)].Originated.Uint64()
 	if originated != OrigOriginated+GasUsed*EffectiveGasPrice {
@@ -135,7 +135,7 @@ func TestReceiptRewardWithBlobsAndFixEnabled(t *testing.T) {
 			Originated: big.NewInt(OrigOriginated),
 		}},
 	}
-	valsBuilder := pos.NewBuilder()
+	valsBuilder := consensus.NewValidatorsBuilder()
 	valsBuilder.Set(1, 100)
 
 	rules := opera.MainNetRules()
@@ -159,7 +159,7 @@ func TestReceiptRewardWithBlobsAndFixEnabled(t *testing.T) {
 		GasUsed:     GasUsed,
 		BlobGasUsed: BlobGasUsed,
 	}
-	listener.OnNewReceipt(tx, receipt, idx.ValidatorID(1), big.NewInt(BaseFee), big.NewInt(BlobBaseFee))
+	listener.OnNewReceipt(tx, receipt, consensus.ValidatorID(1), big.NewInt(BaseFee), big.NewInt(BlobBaseFee))
 
 	originated := bs.ValidatorStates[es.Validators.GetIdx(1)].Originated.Uint64()
 	if originated != OrigOriginated+GasUsed*EffectiveGasPrice+BlobGasUsed*BlobBaseFee {

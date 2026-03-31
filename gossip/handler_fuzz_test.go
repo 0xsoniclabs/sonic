@@ -24,12 +24,12 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
+	"github.com/0xsoniclabs/cacheutils/cachescale"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/inter"
@@ -114,9 +114,9 @@ func makeFuzzedHandler(t *testing.T) (*handler, error) {
 		1234,
 		[]opera.UpgradeHeight{{
 			Upgrades: upgrades,
-			Height:   idx.Block(0),
+			Height:   consensus.BlockID(0),
 		}},
-		idx.Block(0),
+		consensus.BlockID(0),
 	)
 	txpool := evmcore.NewTxPool(
 		evmcore.DefaultTxPoolConfig,

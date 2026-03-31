@@ -19,16 +19,15 @@ package concurrent
 import (
 	"sync"
 
-	"github.com/Fantom-foundation/lachesis-base/hash"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 )
 
 type ValidatorEventsSet struct {
 	sync.RWMutex
-	Val map[idx.ValidatorID]hash.Event
+	Val map[consensus.ValidatorID]consensus.EventHash
 }
 
-func WrapValidatorEventsSet(v map[idx.ValidatorID]hash.Event) *ValidatorEventsSet {
+func WrapValidatorEventsSet(v map[consensus.ValidatorID]consensus.EventHash) *ValidatorEventsSet {
 	return &ValidatorEventsSet{
 		RWMutex: sync.RWMutex{},
 		Val:     v,

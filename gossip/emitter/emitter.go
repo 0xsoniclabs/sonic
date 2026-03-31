@@ -27,12 +27,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/sonic/emitter/ancestor"
 	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/0xsoniclabs/sonic/utils/txtime"
-	"github.com/Fantom-foundation/lachesis-base/emitter/ancestor"
-	"github.com/Fantom-foundation/lachesis-base/hash"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/log"
@@ -98,22 +96,22 @@ type Emitter struct {
 	syncStatus syncStatus
 
 	prevEmittedAtTime  atomic.Pointer[time.Time]
-	prevEmittedAtBlock idx.Block
+	prevEmittedAtBlock consensus.BlockID
 	originatedTxs      *originatedtxs.Buffer
 	pendingGas         uint64
 
 	// note: track validators and epoch internally to avoid referring to
 	// validators of a future epoch inside OnEventConnected of last epoch event
-	validators atomic.Pointer[pos.Validators]
+	validators atomic.Pointer[consensus.Validators]
 	epoch      atomic.Uint32
 
 	// challenges is deadlines when each validator should emit an event
-	challenges map[idx.ValidatorID]time.Time
+	challenges map[consensus.ValidatorID]time.Time
 	// offlineValidators is a map of validators which are likely to be offline
 	// This map may be different on different instances
-	offlineValidators     map[idx.ValidatorID]bool
-	expectedEmitIntervals map[idx.ValidatorID]time.Duration
-	stakeRatio            map[idx.ValidatorID]uint64
+	offlineValidators     map[consensus.ValidatorID]bool
+	expectedEmitIntervals map[consensus.ValidatorID]time.Duration
+	stakeRatio            map[consensus.ValidatorID]uint64
 
 	prevRecheckedChallenges time.Time
 
@@ -128,12 +126,12 @@ type Emitter struct {
 	done chan struct{}
 	wg   sync.WaitGroup
 
-	maxParents idx.Event
+	maxParents consensus.Seq
 
 	cache struct {
 		sortedTxs *transactionsByPriceAndNonce
 		poolTime  time.Time
-		poolBlock idx.Block
+		poolBlock consensus.BlockID
 		poolCount int
 	}
 
@@ -161,7 +159,7 @@ type ThrottlerWorldAdapter struct {
 	World
 }
 
-func (wa *ThrottlerWorldAdapter) GetLastEvent(from idx.ValidatorID) *inter.Event {
+func (wa *ThrottlerWorldAdapter) GetLastEvent(from consensus.ValidatorID) *inter.Event {
 	_, epoch := wa.GetEpochValidators()
 	hash := wa.World.GetLastEvent(epoch, from)
 	if hash == nil {
@@ -415,7 +413,7 @@ func (em *Emitter) loadPrevEmitTime() time.Time {
 	if time := em.prevEmittedAtTime.Load(); time != nil {
 		prevEmittedAtTime = *time
 	}
-	prevEventID := em.world.GetLastEvent(idx.Epoch(em.epoch.Load()), em.config.Validator.ID)
+	prevEventID := em.world.GetLastEvent(consensus.Epoch(em.epoch.Load()), em.config.Validator.ID)
 	if prevEventID == nil {
 		return prevEmittedAtTime
 	}
@@ -434,19 +432,19 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 	}
 
 	var (
-		selfParentSeq  idx.Event
+		selfParentSeq  consensus.Seq
 		selfParentTime inter.Timestamp
-		parents        hash.Events
-		maxLamport     idx.Lamport
+		parents        consensus.EventHashes
+		maxLamport     consensus.Lamport
 	)
 
 	// Find parents
-	selfParent, parents, ok := em.chooseParents(idx.Epoch(em.epoch.Load()), em.config.Validator.ID)
+	selfParent, parents, ok := em.chooseParents(consensus.Epoch(em.epoch.Load()), em.config.Validator.ID)
 	if !ok {
 		return nil, nil
 	}
 	prevEmitted := em.readLastEmittedEventID()
-	if prevEmitted != nil && prevEmitted.Epoch() >= idx.Epoch(em.epoch.Load()) {
+	if prevEmitted != nil && prevEmitted.Epoch() >= consensus.Epoch(em.epoch.Load()) {
 		if selfParent == nil || *selfParent != *prevEmitted {
 			// This is a user-facing error, so we want to provide a clear message.
 			//nolint:staticcheck // ST1005: allow capitalized error message and punctuation
@@ -467,7 +465,7 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 			em.Error(5*time.Second, "I've created a fork, events emitting isn't allowed", "creator", em.config.Validator.ID)
 			return nil, nil
 		}
-		maxLamport = idx.MaxLamport(maxLamport, parent.Lamport())
+		maxLamport = consensus.MaxLamport(maxLamport, parent.Lamport())
 	}
 
 	selfParentSeq = 0
@@ -490,7 +488,7 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 
 	mutEvent := &inter.MutableEventPayload{}
 	mutEvent.SetVersion(version)
-	mutEvent.SetEpoch(idx.Epoch(em.epoch.Load()))
+	mutEvent.SetEpoch(consensus.Epoch(em.epoch.Load()))
 	mutEvent.SetSeq(selfParentSeq + 1)
 	mutEvent.SetCreator(em.config.Validator.ID)
 
@@ -575,13 +573,13 @@ func (em *Emitter) isValidator() bool {
 }
 
 func (em *Emitter) nameEventForDebug(e *inter.EventPayload) {
-	name := []rune(hash.GetNodeName(e.Creator()))
+	name := []rune(consensus.GetNodeName(e.Creator()))
 	if len(name) < 1 {
 		return
 	}
 
 	name = name[len(name)-1:]
-	hash.SetEventName(e.ID(), fmt.Sprintf("%s%03d",
+	consensus.SetEventName(e.ID(), fmt.Sprintf("%s%03d",
 		strings.ToLower(string(name)),
 		e.Seq()))
 }

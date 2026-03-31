@@ -19,15 +19,15 @@ package emitter
 import (
 	"io"
 
-	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/ethereum/go-ethereum/log"
 
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/utils"
 )
 
 var openPrevActionFile = utils.OpenFile
 
-func (em *Emitter) writeLastEmittedEventID(id hash.Event) {
+func (em *Emitter) writeLastEmittedEventID(id consensus.EventHash) {
 	if em.emittedEventFile == nil {
 		return
 	}
@@ -37,7 +37,7 @@ func (em *Emitter) writeLastEmittedEventID(id hash.Event) {
 	}
 }
 
-func (em *Emitter) readLastEmittedEventID() *hash.Event {
+func (em *Emitter) readLastEmittedEventID() *consensus.EventHash {
 	if em.emittedEventFile == nil {
 		return nil
 	}
@@ -49,6 +49,6 @@ func (em *Emitter) readLastEmittedEventID() *hash.Event {
 		}
 		log.Crit("Failed to read event file", "file", em.config.PrevEmittedEventFile.Path, "err", err)
 	}
-	v := hash.BytesToEvent(buf)
+	v := consensus.BytesToEvent(buf)
 	return &v
 }

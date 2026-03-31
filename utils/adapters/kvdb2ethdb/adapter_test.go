@@ -19,7 +19,7 @@ package kvdb2ethdb
 import (
 	"testing"
 
-	"github.com/Fantom-foundation/lachesis-base/kvdb/memorydb"
+	"github.com/0xsoniclabs/kvdb/memorydb"
 )
 
 func TestAdapter_SyncKeyValueReturnsNoError(t *testing.T) {

@@ -19,11 +19,11 @@ package gossip
 import (
 	"fmt"
 
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 
+	"github.com/0xsoniclabs/kvdb"
 	"github.com/0xsoniclabs/sonic/utils/migration"
-	"github.com/Fantom-foundation/lachesis-base/kvdb"
 )
 
 func isEmptyDB(db kvdb.Iteratee) bool {
@@ -66,7 +66,7 @@ func unsupportedMigration() error {
 
 type legacyUpgradeHeight struct {
 	Upgrades opera.Upgrades
-	Height   idx.Block
+	Height   consensus.BlockID
 }
 
 func (s *Store) addTimeIntoUpgradeHeights() error {

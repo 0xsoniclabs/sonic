@@ -23,12 +23,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/Fantom-foundation/lachesis-base/utils/piecefunc"
+	"github.com/0xsoniclabs/sonic/utils/piecefunc"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	lru "github.com/hashicorp/golang-lru"
 
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
 
@@ -54,7 +54,7 @@ type Config struct {
 }
 
 type Reader interface {
-	GetLatestBlockIndex() idx.Block
+	GetLatestBlockIndex() consensus.BlockID
 	TotalGasPowerLeft() uint64
 	GetRules() opera.Rules
 	GetPendingRules() opera.Rules

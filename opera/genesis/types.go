@@ -19,17 +19,16 @@ package genesis
 import (
 	"io"
 
-	"github.com/Fantom-foundation/lachesis-base/hash"
-
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/inter/ibr"
 	"github.com/0xsoniclabs/sonic/inter/ier"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 )
 
 type (
-	Hashes map[string]hash.Hash
+	Hashes map[string]consensus.Hash
 	Header struct {
-		GenesisID   hash.Hash
+		GenesisID   consensus.Hash
 		NetworkID   uint64
 		NetworkName string
 	}

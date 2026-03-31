@@ -28,8 +28,7 @@ package inter
 import (
 	reflect "reflect"
 
-	hash "github.com/Fantom-foundation/lachesis-base/hash"
-	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/0xsoniclabs/consensus/consensus"
 	types "github.com/ethereum/go-ethereum/core/types"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -129,10 +128,10 @@ func (mr *MockEventIMockRecorder) CreationTime() *gomock.Call {
 }
 
 // Creator mocks base method.
-func (m *MockEventI) Creator() idx.ValidatorID {
+func (m *MockEventI) Creator() consensus.ValidatorID {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Creator")
-	ret0, _ := ret[0].(idx.ValidatorID)
+	ret0, _ := ret[0].(consensus.ValidatorID)
 	return ret0
 }
 
@@ -143,10 +142,10 @@ func (mr *MockEventIMockRecorder) Creator() *gomock.Call {
 }
 
 // Epoch mocks base method.
-func (m *MockEventI) Epoch() idx.Epoch {
+func (m *MockEventI) Epoch() consensus.Epoch {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Epoch")
-	ret0, _ := ret[0].(idx.Epoch)
+	ret0, _ := ret[0].(consensus.Epoch)
 	return ret0
 }
 
@@ -171,10 +170,10 @@ func (mr *MockEventIMockRecorder) Extra() *gomock.Call {
 }
 
 // Frame mocks base method.
-func (m *MockEventI) Frame() idx.Frame {
+func (m *MockEventI) Frame() consensus.Frame {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Frame")
-	ret0, _ := ret[0].(idx.Frame)
+	ret0, _ := ret[0].(consensus.Frame)
 	return ret0
 }
 
@@ -227,10 +226,10 @@ func (mr *MockEventIMockRecorder) HasProposal() *gomock.Call {
 }
 
 // HashToSign mocks base method.
-func (m *MockEventI) HashToSign() hash.Hash {
+func (m *MockEventI) HashToSign() consensus.Hash {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "HashToSign")
-	ret0, _ := ret[0].(hash.Hash)
+	ret0, _ := ret[0].(consensus.Hash)
 	return ret0
 }
 
@@ -241,10 +240,10 @@ func (mr *MockEventIMockRecorder) HashToSign() *gomock.Call {
 }
 
 // ID mocks base method.
-func (m *MockEventI) ID() hash.Event {
+func (m *MockEventI) ID() consensus.EventHash {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ID")
-	ret0, _ := ret[0].(hash.Event)
+	ret0, _ := ret[0].(consensus.EventHash)
 	return ret0
 }
 
@@ -255,7 +254,7 @@ func (mr *MockEventIMockRecorder) ID() *gomock.Call {
 }
 
 // IsSelfParent mocks base method.
-func (m *MockEventI) IsSelfParent(hash hash.Event) bool {
+func (m *MockEventI) IsSelfParent(hash consensus.EventHash) bool {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "IsSelfParent", hash)
 	ret0, _ := ret[0].(bool)
@@ -269,10 +268,10 @@ func (mr *MockEventIMockRecorder) IsSelfParent(hash any) *gomock.Call {
 }
 
 // Lamport mocks base method.
-func (m *MockEventI) Lamport() idx.Lamport {
+func (m *MockEventI) Lamport() consensus.Lamport {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Lamport")
-	ret0, _ := ret[0].(idx.Lamport)
+	ret0, _ := ret[0].(consensus.Lamport)
 	return ret0
 }
 
@@ -325,10 +324,10 @@ func (mr *MockEventIMockRecorder) NetForkID() *gomock.Call {
 }
 
 // Parents mocks base method.
-func (m *MockEventI) Parents() hash.Events {
+func (m *MockEventI) Parents() consensus.EventHashes {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Parents")
-	ret0, _ := ret[0].(hash.Events)
+	ret0, _ := ret[0].(consensus.EventHashes)
 	return ret0
 }
 
@@ -339,10 +338,10 @@ func (mr *MockEventIMockRecorder) Parents() *gomock.Call {
 }
 
 // PayloadHash mocks base method.
-func (m *MockEventI) PayloadHash() hash.Hash {
+func (m *MockEventI) PayloadHash() consensus.Hash {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "PayloadHash")
-	ret0, _ := ret[0].(hash.Hash)
+	ret0, _ := ret[0].(consensus.Hash)
 	return ret0
 }
 
@@ -353,10 +352,10 @@ func (mr *MockEventIMockRecorder) PayloadHash() *gomock.Call {
 }
 
 // PrevEpochHash mocks base method.
-func (m *MockEventI) PrevEpochHash() *hash.Hash {
+func (m *MockEventI) PrevEpochHash() *consensus.Hash {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "PrevEpochHash")
-	ret0, _ := ret[0].(*hash.Hash)
+	ret0, _ := ret[0].(*consensus.Hash)
 	return ret0
 }
 
@@ -367,10 +366,10 @@ func (mr *MockEventIMockRecorder) PrevEpochHash() *gomock.Call {
 }
 
 // SelfParent mocks base method.
-func (m *MockEventI) SelfParent() *hash.Event {
+func (m *MockEventI) SelfParent() *consensus.EventHash {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SelfParent")
-	ret0, _ := ret[0].(*hash.Event)
+	ret0, _ := ret[0].(*consensus.EventHash)
 	return ret0
 }
 
@@ -381,10 +380,10 @@ func (mr *MockEventIMockRecorder) SelfParent() *gomock.Call {
 }
 
 // Seq mocks base method.
-func (m *MockEventI) Seq() idx.Event {
+func (m *MockEventI) Seq() consensus.Seq {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Seq")
-	ret0, _ := ret[0].(idx.Event)
+	ret0, _ := ret[0].(consensus.Seq)
 	return ret0
 }
 
@@ -545,10 +544,10 @@ func (mr *MockEventPayloadIMockRecorder) CreationTime() *gomock.Call {
 }
 
 // Creator mocks base method.
-func (m *MockEventPayloadI) Creator() idx.ValidatorID {
+func (m *MockEventPayloadI) Creator() consensus.ValidatorID {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Creator")
-	ret0, _ := ret[0].(idx.ValidatorID)
+	ret0, _ := ret[0].(consensus.ValidatorID)
 	return ret0
 }
 
@@ -559,10 +558,10 @@ func (mr *MockEventPayloadIMockRecorder) Creator() *gomock.Call {
 }
 
 // Epoch mocks base method.
-func (m *MockEventPayloadI) Epoch() idx.Epoch {
+func (m *MockEventPayloadI) Epoch() consensus.Epoch {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Epoch")
-	ret0, _ := ret[0].(idx.Epoch)
+	ret0, _ := ret[0].(consensus.Epoch)
 	return ret0
 }
 
@@ -601,10 +600,10 @@ func (mr *MockEventPayloadIMockRecorder) Extra() *gomock.Call {
 }
 
 // Frame mocks base method.
-func (m *MockEventPayloadI) Frame() idx.Frame {
+func (m *MockEventPayloadI) Frame() consensus.Frame {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Frame")
-	ret0, _ := ret[0].(idx.Frame)
+	ret0, _ := ret[0].(consensus.Frame)
 	return ret0
 }
 
@@ -657,10 +656,10 @@ func (mr *MockEventPayloadIMockRecorder) HasProposal() *gomock.Call {
 }
 
 // HashToSign mocks base method.
-func (m *MockEventPayloadI) HashToSign() hash.Hash {
+func (m *MockEventPayloadI) HashToSign() consensus.Hash {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "HashToSign")
-	ret0, _ := ret[0].(hash.Hash)
+	ret0, _ := ret[0].(consensus.Hash)
 	return ret0
 }
 
@@ -671,10 +670,10 @@ func (mr *MockEventPayloadIMockRecorder) HashToSign() *gomock.Call {
 }
 
 // ID mocks base method.
-func (m *MockEventPayloadI) ID() hash.Event {
+func (m *MockEventPayloadI) ID() consensus.EventHash {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ID")
-	ret0, _ := ret[0].(hash.Event)
+	ret0, _ := ret[0].(consensus.EventHash)
 	return ret0
 }
 
@@ -685,7 +684,7 @@ func (mr *MockEventPayloadIMockRecorder) ID() *gomock.Call {
 }
 
 // IsSelfParent mocks base method.
-func (m *MockEventPayloadI) IsSelfParent(hash hash.Event) bool {
+func (m *MockEventPayloadI) IsSelfParent(hash consensus.EventHash) bool {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "IsSelfParent", hash)
 	ret0, _ := ret[0].(bool)
@@ -699,10 +698,10 @@ func (mr *MockEventPayloadIMockRecorder) IsSelfParent(hash any) *gomock.Call {
 }
 
 // Lamport mocks base method.
-func (m *MockEventPayloadI) Lamport() idx.Lamport {
+func (m *MockEventPayloadI) Lamport() consensus.Lamport {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Lamport")
-	ret0, _ := ret[0].(idx.Lamport)
+	ret0, _ := ret[0].(consensus.Lamport)
 	return ret0
 }
 
@@ -769,10 +768,10 @@ func (mr *MockEventPayloadIMockRecorder) NetForkID() *gomock.Call {
 }
 
 // Parents mocks base method.
-func (m *MockEventPayloadI) Parents() hash.Events {
+func (m *MockEventPayloadI) Parents() consensus.EventHashes {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Parents")
-	ret0, _ := ret[0].(hash.Events)
+	ret0, _ := ret[0].(consensus.EventHashes)
 	return ret0
 }
 
@@ -797,10 +796,10 @@ func (mr *MockEventPayloadIMockRecorder) Payload() *gomock.Call {
 }
 
 // PayloadHash mocks base method.
-func (m *MockEventPayloadI) PayloadHash() hash.Hash {
+func (m *MockEventPayloadI) PayloadHash() consensus.Hash {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "PayloadHash")
-	ret0, _ := ret[0].(hash.Hash)
+	ret0, _ := ret[0].(consensus.Hash)
 	return ret0
 }
 
@@ -811,10 +810,10 @@ func (mr *MockEventPayloadIMockRecorder) PayloadHash() *gomock.Call {
 }
 
 // PrevEpochHash mocks base method.
-func (m *MockEventPayloadI) PrevEpochHash() *hash.Hash {
+func (m *MockEventPayloadI) PrevEpochHash() *consensus.Hash {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "PrevEpochHash")
-	ret0, _ := ret[0].(*hash.Hash)
+	ret0, _ := ret[0].(*consensus.Hash)
 	return ret0
 }
 
@@ -825,10 +824,10 @@ func (mr *MockEventPayloadIMockRecorder) PrevEpochHash() *gomock.Call {
 }
 
 // SelfParent mocks base method.
-func (m *MockEventPayloadI) SelfParent() *hash.Event {
+func (m *MockEventPayloadI) SelfParent() *consensus.EventHash {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SelfParent")
-	ret0, _ := ret[0].(*hash.Event)
+	ret0, _ := ret[0].(*consensus.EventHash)
 	return ret0
 }
 
@@ -839,10 +838,10 @@ func (mr *MockEventPayloadIMockRecorder) SelfParent() *gomock.Call {
 }
 
 // Seq mocks base method.
-func (m *MockEventPayloadI) Seq() idx.Event {
+func (m *MockEventPayloadI) Seq() consensus.Seq {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Seq")
-	ret0, _ := ret[0].(idx.Event)
+	ret0, _ := ret[0].(consensus.Seq)
 	return ret0
 }
 

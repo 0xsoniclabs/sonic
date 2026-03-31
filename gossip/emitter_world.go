@@ -19,17 +19,16 @@ package gossip
 import (
 	"sync/atomic"
 
-	"github.com/Fantom-foundation/lachesis-base/hash"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 
+	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/consensus/consensus/dagindexer"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils/wgmutex"
-	"github.com/0xsoniclabs/sonic/vecmt"
 )
 
 type emitterWorldProc struct {
@@ -68,7 +67,7 @@ func (ew *emitterWorldProc) Build(e *inter.MutableEventPayload, onIndexed func()
 	return ew.s.buildEvent(e, onIndexed)
 }
 
-func (ew *emitterWorldProc) DagIndex() *vecmt.Index {
+func (ew *emitterWorldProc) DagIndex() *dagindexer.Index {
 	return ew.s.dagIndexer
 }
 
@@ -103,14 +102,14 @@ func (ew *emitterWorldProc) PeersNum() int {
 	return ew.s.handler.peers.Len()
 }
 
-func (ew *emitterWorldRead) GetHeads(epoch idx.Epoch) hash.Events {
+func (ew *emitterWorldRead) GetHeads(epoch consensus.Epoch) consensus.EventHashes {
 	return ew.GetHeadsSlice(epoch)
 }
 
-func (ew *emitterWorldRead) GetLastEvent(epoch idx.Epoch, from idx.ValidatorID) *hash.Event {
+func (ew *emitterWorldRead) GetLastEvent(epoch consensus.Epoch, from consensus.ValidatorID) *consensus.EventHash {
 	return ew.Store.GetLastEvent(epoch, from)
 }
 
-func (ew *emitterWorldRead) GetBlockEpoch(block idx.Block) idx.Epoch {
+func (ew *emitterWorldRead) GetBlockEpoch(block consensus.BlockID) consensus.Epoch {
 	return ew.FindBlockEpoch(block)
 }

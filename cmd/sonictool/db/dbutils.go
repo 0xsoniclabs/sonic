@@ -22,11 +22,11 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/0xsoniclabs/cacheutils/cachescale"
 	carmen "github.com/0xsoniclabs/carmen/go/state"
+	"github.com/0xsoniclabs/kvdb"
 	"github.com/0xsoniclabs/sonic/gossip"
 	"github.com/0xsoniclabs/sonic/integration"
-	"github.com/Fantom-foundation/lachesis-base/kvdb"
-	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
 	"github.com/ethereum/go-ethereum/common/fdlimit"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 )

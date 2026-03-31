@@ -19,22 +19,20 @@ package emitter
 import (
 	"time"
 
+	"github.com/0xsoniclabs/consensus/consensus"
 	"github.com/0xsoniclabs/sonic/utils/txtime"
 
-	"github.com/Fantom-foundation/lachesis-base/emitter/ancestor"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
-	"github.com/Fantom-foundation/lachesis-base/inter/pos"
+	"github.com/0xsoniclabs/sonic/emitter/ancestor"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera/contracts/emitterdriver"
 	"github.com/0xsoniclabs/sonic/utils"
-	"github.com/0xsoniclabs/sonic/utils/adapters/vecmt2dagidx"
 )
 
 // OnNewEpoch should be called after each epoch change, and on startup
-func (em *Emitter) OnNewEpoch(newValidators *pos.Validators, newEpoch idx.Epoch) {
+func (em *Emitter) OnNewEpoch(newValidators *consensus.Validators, newEpoch consensus.Epoch) {
 	em.maxParents = em.config.MaxParents
 	rules := em.world.GetRules()
 	if em.maxParents == 0 {
@@ -60,10 +58,10 @@ func (em *Emitter) OnNewEpoch(newValidators *pos.Validators, newEpoch idx.Epoch)
 	em.originatedTxs.Clear()
 	em.pendingGas = 0
 
-	em.offlineValidators = make(map[idx.ValidatorID]bool)
-	em.challenges = make(map[idx.ValidatorID]time.Time)
-	em.expectedEmitIntervals = make(map[idx.ValidatorID]time.Duration)
-	em.stakeRatio = make(map[idx.ValidatorID]uint64)
+	em.offlineValidators = make(map[consensus.ValidatorID]bool)
+	em.challenges = make(map[consensus.ValidatorID]time.Time)
+	em.expectedEmitIntervals = make(map[consensus.ValidatorID]time.Duration)
+	em.stakeRatio = make(map[consensus.ValidatorID]uint64)
 
 	// get current adjustments from emitterdriver contract
 	statedb := em.world.StateDB()
@@ -99,14 +97,14 @@ func (em *Emitter) OnNewEpoch(newValidators *pos.Validators, newEpoch idx.Epoch)
 		em.quorumIndexer = nil
 		em.fcIndexer = ancestor.NewFCIndexer(newValidators, em.world.DagIndex(), em.config.Validator.ID)
 	} else {
-		em.quorumIndexer = ancestor.NewQuorumIndexer(newValidators, vecmt2dagidx.Wrap(em.world.DagIndex()),
-			func(median, current, update idx.Event, validatorIdx idx.Validator) ancestor.Metric {
+		em.quorumIndexer = ancestor.NewQuorumIndexer(newValidators, em.world.DagIndex(),
+			func(median, current, update consensus.Seq, validatorIdx consensus.ValidatorIndex) ancestor.Metric {
 				return updMetric(median, current, update, validatorIdx, newValidators)
 			})
 		em.fcIndexer = nil
 	}
-	em.quorumIndexer = ancestor.NewQuorumIndexer(newValidators, vecmt2dagidx.Wrap(em.world.DagIndex()),
-		func(median, current, update idx.Event, validatorIdx idx.Validator) ancestor.Metric {
+	em.quorumIndexer = ancestor.NewQuorumIndexer(newValidators, em.world.DagIndex(),
+		func(median, current, update consensus.Seq, validatorIdx consensus.ValidatorIndex) ancestor.Metric {
 			return updMetric(median, current, update, validatorIdx, newValidators)
 		})
 	em.payloadIndexer = ancestor.NewPayloadIndexer(PayloadIndexerSize)
