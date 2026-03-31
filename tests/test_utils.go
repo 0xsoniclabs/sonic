@@ -315,7 +315,8 @@ func MakeAccountsWithBalance(t *testing.T, net IntegrationTestNetSession, count 
 	require.NoError(t, err)
 	for _, receipt := range receipts {
 		require.Equal(t,
-			receipt.Status, types.ReceiptStatusSuccessful,
+			types.ReceiptStatusSuccessful,
+			receipt.Status,
 			"endowing account failed")
 	}
 	return accounts

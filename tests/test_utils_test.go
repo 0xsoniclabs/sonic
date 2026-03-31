@@ -495,11 +495,12 @@ func TestUtils_MakeAccountWithBalance(t *testing.T) {
 	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 	t.Parallel()
 
+	client, err := session.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
 	for _, expectedBalance := range []*big.Int{big.NewInt(0), big.NewInt(1), big.NewInt(1e18)} {
 		account := MakeAccountWithBalance(t, session, expectedBalance)
-		client, err := session.GetClient()
-		require.NoError(t, err)
-		defer client.Close()
 
 		balance, err := client.BalanceAt(t.Context(), account.Address(), nil)
 		require.NoError(t, err)
@@ -511,17 +512,18 @@ func TestUtils_MakeAccountsWithBalance(t *testing.T) {
 	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 	t.Parallel()
 
+	client, err := session.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
 	for _, expectedBalance := range []*big.Int{big.NewInt(0), big.NewInt(1), big.NewInt(200)} {
 		for count := range 10 {
 			accounts := MakeAccountsWithBalance(t, session, count, expectedBalance)
-			client, err := session.GetClient()
-			require.NoError(t, err)
-			defer client.Close()
 
 			for i, account := range accounts {
 				balance, err := client.BalanceAt(t.Context(), account.Address(), nil)
 				require.NoError(t, err)
-				require.Equal(t, expectedBalance.String(), balance.String(), "missmatch for account %d", i)
+				require.Equal(t, expectedBalance.String(), balance.String(), "mismatch for account %d", i)
 			}
 		}
 	}
