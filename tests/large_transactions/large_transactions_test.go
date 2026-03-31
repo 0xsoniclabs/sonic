@@ -163,15 +163,7 @@ func testLargeTransactionLoadTest(
 	require.Equal(modified, current)
 
 	// Create accounts and provide them with funds to run the load test.
-	accounts := make([]*tests.Account, numAccounts)
-	addresses := make([]common.Address, len(accounts))
-	for i := range accounts {
-		accounts[i] = tests.NewAccount()
-		addresses[i] = accounts[i].Address()
-	}
-	endowment := new(big.Int).Mul(big.NewInt(100), big.NewInt(1e18))
-	_, err := net.EndowAccounts(addresses, endowment)
-	require.NoError(err)
+	accounts := tests.MakeAccountsWithBalance(t, net, numAccounts, big.NewInt(1e18))
 
 	chainId := net.GetChainId()
 	signer := types.NewCancunSigner(chainId)
