@@ -23,6 +23,7 @@ import (
 	"iter"
 	"math/big"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -296,6 +297,30 @@ func MakeAccountWithBalance(t *testing.T, net IntegrationTestNetSession, balance
 		receipt.Status, types.ReceiptStatusSuccessful,
 		"endowing account failed")
 	return account
+}
+
+func MakeAccountsWithBalance(t *testing.T, net IntegrationTestNetSession, count int, balance *big.Int) []*Account {
+	t.Helper()
+
+	wg := sync.WaitGroup{}
+	accounts := make([]*Account, count)
+	addresses := make([]common.Address, count)
+	for i := range count {
+		wg.Go(func() {
+			accounts[i] = NewAccount()
+			addresses[i] = accounts[i].Address()
+		})
+	}
+	wg.Wait()
+
+	receipts, err := net.EndowAccounts(addresses, balance)
+	require.NoError(t, err)
+	for i, receipt := range receipts {
+		require.Equal(t,
+			receipt.Status, types.ReceiptStatusSuccessful,
+			"endowing account %d failed", i)
+	}
+	return accounts
 }
 
 // GenerateTestDataBasedOnModificationCombinations generates all possible versions of a

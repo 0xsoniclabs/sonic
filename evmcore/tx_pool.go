@@ -352,6 +352,8 @@ type TxPool struct {
 	subsidiesCheckerCache   *subsidiesCheckerCache  // Cache for subsidies check results
 
 	bundleCheckerFactory bundleCheckerFactory // Factory to create a bundle checker instance
+
+	bundleTracker *BundleTracker
 }
 
 type txpoolResetRequest struct {
@@ -403,6 +405,8 @@ func newTxPool(
 
 		bundleCheckerFactory: bundleCheckerFactory,
 		// TODO: add a cache for bundle checker results if the checks are expensive
+
+		bundleTracker: NewBundleTracker(chain),
 	}
 	pool.locals = newAccountSet(pool.signer)
 	for _, addr := range config.Locals {
@@ -913,6 +917,8 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 	pool.journalTx(from, tx)
 	pool.updateUsedGauges()
 
+	pool.bundleTracker.TrackTransaction(tx)
+
 	log.Trace("Pooled new future transaction", "hash", hash, "from", from, "to", tx.To())
 	return replaced, nil
 }
@@ -1179,6 +1185,9 @@ func (pool *TxPool) removeTx(hash common.Hash, removeFromPriced bool) {
 		return
 	}
 	addr, _ := types.Sender(pool.signer, tx) // already validated during insertion
+
+	// remove from the bundle tracker
+	pool.bundleTracker.SunsetTransaction(tx)
 
 	// Remove it from the list of known transactions
 	pool.all.Remove(hash)
