@@ -18,6 +18,7 @@ package bundle
 
 import (
 	"fmt"
+	"math/big"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/core/types"
@@ -228,4 +229,21 @@ func TestBundleBuilder_Builder_NewNestedBundle(t *testing.T) {
 
 	_, _, err = ValidateEnvelope(signer, combined)
 	require.NoError(t, err)
+}
+
+func TestBundleBuilder_Regression_RespectsChainID(t *testing.T) {
+
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	for _, chainId := range []int64{1, 123} {
+		signer := types.LatestSignerForChainID(big.NewInt(chainId))
+		require.NotPanics(t, func() {
+			NewBuilder(signer).
+				// the following line promotes a legacy tx (without chain id) to access list
+				// the bug yielded invalid chain id panic during signing
+				With(Step(key, types.NewTx(&types.LegacyTx{}))).
+				Build()
+		})
+	}
 }
