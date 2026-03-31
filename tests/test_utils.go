@@ -286,13 +286,7 @@ func GetEpochOfBlock(t *testing.T, client *PooledEhtClient, blockNumber int) int
 // Creating the account this way allows to get access to the private key to sign transactions.
 func MakeAccountWithBalance(t *testing.T, net IntegrationTestNetSession, balance *big.Int) *Account {
 	t.Helper()
-	account := NewAccount()
-	receipt, err := net.EndowAccount(account.Address(), balance)
-	require.NoError(t, err)
-	require.Equal(t,
-		receipt.Status, types.ReceiptStatusSuccessful,
-		"endowing account failed")
-	return account
+	return MakeAccountsWithBalance(t, net, 1, balance)[0]
 }
 
 // MakeAccountsWithBalance creates multiple new accounts and endows them with the given balance.
