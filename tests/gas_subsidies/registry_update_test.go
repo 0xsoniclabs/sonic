@@ -199,11 +199,15 @@ func TestRegistryUpdate_UpdatesAreEffectiveImmediately(t *testing.T) {
 	}
 
 	// The first two transactions are charged according to the old rules. Since
-	// both are identical, the data for the payment Tx must be identical.
-	require.Equal(payments[0].Data(), payments[1].Data())
+	// both sponsor the same account, the payment transaction data  must match,
+	// or at least the first 36 bytes, which represent the function selector
+	// (4 bytes) and fundId (32 bytes).
+	// Note: the last 32 bytes can differ due to varying fees in different blocks.
+	require.Equal(payments[0].Data()[:36], payments[1].Data()[:36])
 
 	// The last transaction is charged according to the new rules. Thus, the
 	// call data for the payment transaction must be different.
-	require.NotEqual(payments[0].Data(), payments[2].Data())
+	// Again only consider the first 36 bytes, as the fundId must be different
+	require.NotEqual(payments[0].Data()[:36], payments[2].Data()[:36])
 
 }
