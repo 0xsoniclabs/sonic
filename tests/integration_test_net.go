@@ -22,7 +22,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -53,6 +52,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
 )
@@ -73,6 +73,15 @@ type IntegrationTestNetSession interface {
 	// accounts. This is a faster than calling EndowAccount for each account since
 	// multiple endowments may get bundled in the same block.
 	EndowAccounts(addresses []common.Address, value *big.Int) ([]*types.Receipt, error)
+
+	// Send sends the given transaction to the network without waiting for it to
+	// be processed. An error is returned if the submission failed.
+	Send(tx *types.Transaction) (common.Hash, error)
+
+	// SendAll sends the given transactions to the network without waiting for
+	// them to be processed. An error is returned if the submission of any
+	// transaction failed.
+	SendAll(txs []*types.Transaction) ([]common.Hash, error)
 
 	// Run sends the given transaction to the network and waits for it to be processed.
 	// The resulting receipt is returned.
@@ -352,6 +361,23 @@ func StartIntegrationTestNetWithJsonGenesis(
 	)
 
 	jsonGenesis.Accounts = append(jsonGenesis.Accounts, effectiveOptions.Accounts...)
+
+	// Give extra balance to the first validator, being the account used to
+	// sponsor transactions and endow accounts in tests.
+	sponsorAddress := crypto.PubkeyToAddress(evmcore.FakeKey(1).PublicKey)
+	found := false
+	for i := range jsonGenesis.Accounts {
+		cur := &jsonGenesis.Accounts[i]
+		if cur.Address == sponsorAddress {
+			// enough tokens to endow plenty of accounts
+			extraBalanceForSponsor := new(big.Int).Mul(big.NewInt(1e18), big.NewInt(1e9))
+			balance := cur.Balance
+			cur.Balance = new(big.Int).Add(balance, extraBalanceForSponsor)
+			found = true
+			break
+		}
+	}
+	require.True(t, found, "sponsor account not found in genesis accounts")
 
 	// Speed up the block generation time to reduce test time.
 	jsonGenesis.Rules.Emitter.Interval = inter.Timestamp(time.Millisecond)
@@ -823,7 +849,7 @@ func (n *IntegrationTestNet) SpawnSessions(t *testing.T, num int) []IntegrationT
 		addresses[i] = accounts[i].Address()
 	}
 
-	receipts, err := n.EndowAccounts(addresses, new(big.Int).SetUint64(math.MaxUint64))
+	receipts, err := n.EndowAccounts(addresses, new(big.Int).Mul(big.NewInt(1e18), big.NewInt(1e6)))
 	require.NoError(t, err, "Failed to endow accounts")
 	for _, receipt := range receipts {
 		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status, "Failed to endow account")
@@ -957,6 +983,19 @@ func (s *Session) EndowAccounts(
 	}
 	defer client.Close()
 
+	// Check that there are enough funds in the account to endow the requested accounts.
+	balance, err := client.BalanceAt(context.Background(), s.account.Address(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get balance: %w", err)
+	}
+	totalValue := new(big.Int).Mul(value, big.NewInt(int64(len(addresses))))
+	if balance.Cmp(totalValue) < 0 {
+		return nil, fmt.Errorf("not enough funds to endow accounts: balance %s, required %s",
+			new(big.Float).SetInt(balance).String(), // scientific notation for large numbers
+			new(big.Float).SetInt(totalValue).String(),
+		)
+	}
+
 	chainId, err := client.ChainID(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get chain ID: %w", err)
@@ -992,14 +1031,12 @@ func (s *Session) EndowAccounts(
 	return s.RunAll(transactions)
 }
 
-// Run sends the given transaction to the network and waits for it to be processed.
-// The resulting receipt is returned. This function times out after 10 seconds.
-func (s *Session) Run(tx *types.Transaction) (*types.Receipt, error) {
-	receipts, err := s.RunAll([]*types.Transaction{tx})
+func (s *Session) Send(tx *types.Transaction) (common.Hash, error) {
+	hashes, err := s.SendAll([]*types.Transaction{tx})
 	if err != nil {
-		return nil, fmt.Errorf("failed to run transaction: %w", err)
+		return common.Hash{}, fmt.Errorf("failed to send transaction: %w", err)
 	}
-	return receipts[0], nil
+	return hashes[0], nil
 }
 
 func (s *Session) SendAll(tx []*types.Transaction) ([]common.Hash, error) {
@@ -1018,6 +1055,16 @@ func (s *Session) SendAll(tx []*types.Transaction) ([]common.Hash, error) {
 		hashes[i] = t.Hash()
 	}
 	return hashes, nil
+}
+
+// Run sends the given transaction to the network and waits for it to be processed.
+// The resulting receipt is returned. This function times out after 10 seconds.
+func (s *Session) Run(tx *types.Transaction) (*types.Receipt, error) {
+	receipts, err := s.RunAll([]*types.Transaction{tx})
+	if err != nil {
+		return nil, fmt.Errorf("failed to run transaction: %w", err)
+	}
+	return receipts[0], nil
 }
 
 func (s *Session) RunAll(tx []*types.Transaction) ([]*types.Receipt, error) {

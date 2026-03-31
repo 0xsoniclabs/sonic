@@ -112,6 +112,18 @@ func (mr *MockStateDBMockRecorder) AddPreimage(arg0, arg1 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddPreimage", reflect.TypeOf((*MockStateDB)(nil).AddPreimage), arg0, arg1)
 }
 
+// AddProcessedBundle mocks base method.
+func (m *MockStateDB) AddProcessedBundle(execPlanHash common.Hash) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "AddProcessedBundle", execPlanHash)
+}
+
+// AddProcessedBundle indicates an expected call of AddProcessedBundle.
+func (mr *MockStateDBMockRecorder) AddProcessedBundle(execPlanHash any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddProcessedBundle", reflect.TypeOf((*MockStateDB)(nil).AddProcessedBundle), execPlanHash)
+}
+
 // AddRefund mocks base method.
 func (m *MockStateDB) AddRefund(arg0 uint64) {
 	m.ctrl.T.Helper()
@@ -462,6 +474,20 @@ func (m *MockStateDB) GetTransientState(addr common.Address, key common.Hash) co
 func (mr *MockStateDBMockRecorder) GetTransientState(addr, key any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTransientState", reflect.TypeOf((*MockStateDB)(nil).GetTransientState), addr, key)
+}
+
+// HasBeenProcessed mocks base method.
+func (m *MockStateDB) HasBeenProcessed(execPlanHash common.Hash) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HasBeenProcessed", execPlanHash)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// HasBeenProcessed indicates an expected call of HasBeenProcessed.
+func (mr *MockStateDBMockRecorder) HasBeenProcessed(execPlanHash any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasBeenProcessed", reflect.TypeOf((*MockStateDB)(nil).HasBeenProcessed), execPlanHash)
 }
 
 // HasSelfDestructed mocks base method.

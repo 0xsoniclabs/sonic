@@ -37,6 +37,7 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/kvdb/memorydb"
 	"github.com/Fantom-foundation/lachesis-base/kvdb/table"
 	"github.com/Fantom-foundation/lachesis-base/utils/wlru"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 // Store is a node persistent storage working over physical key-value database.
@@ -134,7 +135,7 @@ func NewStore(dbs kvdb.FlushableDBProducer, cfg StoreConfig) (*Store, error) {
 	table.MigrateTables(&s.table, s.mainDB)
 
 	s.initCache()
-	s.evm = evmstore.NewStore(s.mainDB, cfg.EVM)
+	s.evm = evmstore.NewStore(s.mainDB, cfg.EVM, processedBundleStoreAdapter{s})
 
 	if err := s.migrateData(); err != nil {
 		return nil, fmt.Errorf("failed to migrate gossip db: %w", err)
@@ -246,4 +247,12 @@ func (s *Store) makeCache(weight uint, size int) *wlru.Cache {
 		return nil
 	}
 	return cache
+}
+
+type processedBundleStoreAdapter struct {
+	store *Store
+}
+
+func (a processedBundleStoreAdapter) HasBeenProcessed(plan common.Hash) bool {
+	return a.store.HasBundleRecentlyBeenProcessed(plan)
 }

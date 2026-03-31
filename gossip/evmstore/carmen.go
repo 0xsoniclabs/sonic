@@ -18,6 +18,7 @@ package evmstore
 
 import (
 	"bytes"
+	"slices"
 
 	cc "github.com/0xsoniclabs/carmen/go/common"
 	"github.com/0xsoniclabs/carmen/go/common/amount"
@@ -34,14 +35,20 @@ import (
 	"github.com/holiman/uint256"
 )
 
+//go:generate mockgen -source=carmen.go -destination=carmen_mock.go -package=evmstore
+
 const (
 	// Number of address->curve point associations to keep.
 	pointCacheSize = 4096
 )
 
-func CreateCarmenStateDb(carmenStateDb carmen.VmStateDB) state.StateDB {
+func CreateCarmenStateDb(
+	carmenStateDb carmen.VmStateDB,
+	processedBundleStore ProcessedBundleStore,
+) state.StateDB {
 	return &CarmenStateDB{
-		db: carmenStateDb,
+		db:                     carmenStateDb,
+		processedExecPlanStore: processedBundleStore,
 	}
 }
 
@@ -57,6 +64,15 @@ type CarmenStateDB struct {
 
 	// collecting all events accessing state information
 	accessEvents *geth_state.AccessEvents
+
+	// collect all processed execution plans for bundles
+	processedExecPlanStore ProcessedBundleStore
+	processedExecPlans     []common.Hash
+	interTxSnapshots       []interTxSnapshots
+}
+
+type ProcessedBundleStore interface {
+	HasBeenProcessed(execPlanHash common.Hash) bool
 }
 
 func (c *CarmenStateDB) Error() error {
@@ -292,7 +308,7 @@ func (c *CarmenStateDB) CreateContract(addr common.Address) {
 
 func (c *CarmenStateDB) Copy() state.StateDB {
 	if db, ok := c.db.(carmen.NonCommittableStateDB); ok {
-		return CreateCarmenStateDb(db.Copy())
+		return CreateCarmenStateDb(db.Copy(), c.processedExecPlanStore)
 	} else {
 		panic("unable to copy committable (live) StateDB")
 	}
@@ -315,11 +331,21 @@ func (c *CarmenStateDB) EndTransaction() {
 }
 
 func (c *CarmenStateDB) InterTxSnapshot() int {
-	return int(c.db.InterTxSnapshot())
+	c.interTxSnapshots = append(c.interTxSnapshots, interTxSnapshots{
+		stateDbSnapshotId:     c.db.InterTxSnapshot(),
+		numProcessedExecPlans: len(c.processedExecPlans),
+	})
+	return len(c.interTxSnapshots) - 1
 }
 
 func (c *CarmenStateDB) RevertToInterTxSnapshot(id int) {
-	c.db.RevertToInterTxSnapshot(carmen.InterTxSnapshotID(id))
+	if id < 0 || id >= len(c.interTxSnapshots) {
+		return
+	}
+	snapshot := c.interTxSnapshots[id]
+	c.db.RevertToInterTxSnapshot(snapshot.stateDbSnapshotId)
+	c.processedExecPlans = c.processedExecPlans[:snapshot.numProcessedExecPlans]
+	c.interTxSnapshots = c.interTxSnapshots[:id]
 }
 
 func (c *CarmenStateDB) Finalise(bool) {
@@ -411,4 +437,20 @@ func (c *CarmenStateDB) Release() {
 // collect the accessed states for the stateless client.
 func (c *CarmenStateDB) AccessEvents() *geth_state.AccessEvents {
 	return c.accessEvents
+}
+
+// --- Sonic Extensions ---
+
+func (c *CarmenStateDB) AddProcessedBundle(execPlanHash common.Hash) {
+	c.processedExecPlans = append(c.processedExecPlans, execPlanHash)
+}
+
+func (c *CarmenStateDB) HasBeenProcessed(execPlanHash common.Hash) bool {
+	return slices.Contains(c.processedExecPlans, execPlanHash) ||
+		c.processedExecPlanStore.HasBeenProcessed(execPlanHash)
+}
+
+type interTxSnapshots struct {
+	stateDbSnapshotId     carmen.InterTxSnapshotID
+	numProcessedExecPlans int
 }

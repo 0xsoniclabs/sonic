@@ -19,7 +19,6 @@ package evmcore
 import (
 	"fmt"
 	"math/big"
-	"slices"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
@@ -77,6 +76,7 @@ type ExecutionSummary struct {
 type ProcessedTransaction struct {
 	Transaction *types.Transaction
 	Receipt     *types.Receipt
+	Error       error
 }
 
 // ProcessedBundle summarizes the result of a processed bundle.
@@ -143,44 +143,22 @@ func (p *StateProcessor) ProcessWithDifficulty(
 	return runTransactions(newRunContext(
 		signer, header.BaseFee, statedb, gp, blockNumber, usedGas,
 		onNewLog, p.upgrades, &transactionRunner{evm{vmenv}},
-		&processedExecutionPlans{},
 	), block.Transactions, 0, 0)
-}
-
-type processedExecutionPlans struct {
-	hashes []common.Hash
-}
-
-func (p *processedExecutionPlans) add(hash common.Hash) {
-	p.hashes = append(p.hashes, hash)
-}
-
-func (p *processedExecutionPlans) contains(hash common.Hash) bool {
-	return slices.Contains(p.hashes, hash)
-}
-
-func (p *processedExecutionPlans) snapshot() int {
-	return len(p.hashes)
-}
-
-func (p *processedExecutionPlans) restore(snapshot int) {
-	p.hashes = p.hashes[:snapshot]
 }
 
 // runContext bundles the parameters required for processing transactions in a
 // block. It is used as input to the runTransactions helper function and passed
 // along the processing layers to make the parameters available where needed.
 type runContext struct {
-	signer                  types.Signer
-	baseFee                 *big.Int
-	statedb                 state.StateDB
-	gasPool                 *core.GasPool
-	blockNumber             *big.Int
-	usedGas                 *uint64
-	onNewLog                func(*types.Log)
-	upgrades                opera.Upgrades
-	runner                  _transactionRunner
-	processedExecutionPlans *processedExecutionPlans
+	signer      types.Signer
+	baseFee     *big.Int
+	statedb     state.StateDB
+	gasPool     *core.GasPool
+	blockNumber *big.Int
+	usedGas     *uint64
+	onNewLog    func(*types.Log)
+	upgrades    opera.Upgrades
+	runner      _transactionRunner
 }
 
 // newRunContext creates a new runContext instance bundling the given parameters
@@ -197,19 +175,17 @@ func newRunContext(
 	onNewLog func(*types.Log),
 	upgrades opera.Upgrades,
 	runner _transactionRunner,
-	processedExecutionPlans *processedExecutionPlans,
 ) *runContext {
 	return &runContext{
-		signer:                  signer,
-		baseFee:                 baseFee,
-		statedb:                 statedb,
-		gasPool:                 gasPool,
-		blockNumber:             blockNumber,
-		usedGas:                 usedGas,
-		onNewLog:                onNewLog,
-		upgrades:                upgrades,
-		runner:                  runner,
-		processedExecutionPlans: processedExecutionPlans,
+		signer:      signer,
+		baseFee:     baseFee,
+		statedb:     statedb,
+		gasPool:     gasPool,
+		blockNumber: blockNumber,
+		usedGas:     usedGas,
+		onNewLog:    onNewLog,
+		upgrades:    upgrades,
+		runner:      runner,
 	}
 }
 
@@ -395,13 +371,12 @@ func (r *transactionRunner) runTransactionBundle(
 	}
 
 	planHash := plan.Hash()
-
-	if ctxt.processedExecutionPlans.contains(planHash) {
+	if ctxt.statedb.HasBeenProcessed(planHash) {
 		log.Warn("Bundle transaction in the proposal is already considered for this block", "tx", tx.Hash().Hex(), "exec_plan_hash", planHash)
 		return []ProcessedTransaction{{Transaction: tx}}, nil, core_types.TransactionResultInvalid
 	}
-	preSuccessfulCount := ctxt.processedExecutionPlans.snapshot()
-	ctxt.processedExecutionPlans.add(planHash)
+	snapshot := ctxt.statedb.InterTxSnapshot()
+	ctxt.statedb.AddProcessedBundle(planHash)
 
 	processedBundle := ProcessedBundle{
 		ExecutionPlanHash: plan.Hash(),
@@ -411,7 +386,7 @@ func (r *transactionRunner) runTransactionBundle(
 	// Run the bundle and collect the processed transactions.
 	runner := bundleTransactionRunner{ctxt: ctxt, legacyTxOffset: legacyTxOffset, trueTxOffset: trueTxOffset}
 	if success := bundle.RunBundle(txBundle, &runner); !success {
-		ctxt.processedExecutionPlans.restore(preSuccessfulCount)
+		ctxt.statedb.RevertToInterTxSnapshot(snapshot)
 		return []ProcessedTransaction{}, []ProcessedBundle{processedBundle}, core_types.TransactionResultFailed
 	}
 	for _, processedTx := range runner.processedTransactions {
@@ -524,7 +499,7 @@ func (e evm) _runTransaction(
 
 	if err != nil {
 		log.Debug("Failed to apply transaction", "tx", tx.Hash().Hex(), "err", err)
-		return ProcessedTransaction{Transaction: tx}
+		return ProcessedTransaction{Transaction: tx, Error: err}
 	}
 	return ProcessedTransaction{Transaction: tx, Receipt: receipt}
 }
@@ -554,31 +529,29 @@ func (p *StateProcessor) BeginBlock(
 	}
 
 	return &TransactionProcessor{
-		blockNumber:             blockNumber,
-		gp:                      gp,
-		header:                  header,
-		onNewLog:                onNewLog,
-		signer:                  signer,
-		stateDb:                 stateDb,
-		vmEnvironment:           vmEnvironment,
-		upgrades:                p.upgrades,
-		processedExecutionPlans: processedExecutionPlans{},
+		blockNumber:   blockNumber,
+		gp:            gp,
+		header:        header,
+		onNewLog:      onNewLog,
+		signer:        signer,
+		stateDb:       stateDb,
+		vmEnvironment: vmEnvironment,
+		upgrades:      p.upgrades,
 	}
 }
 
 // TransactionProcessor is produced by the BeginBlock function and is used to
 // process individual transactions in the block.
 type TransactionProcessor struct {
-	blockNumber             *big.Int
-	gp                      *core.GasPool
-	header                  *EvmHeader
-	onNewLog                func(*types.Log)
-	signer                  types.Signer
-	stateDb                 state.StateDB
-	usedGas                 uint64
-	vmEnvironment           *vm.EVM
-	upgrades                opera.Upgrades
-	processedExecutionPlans processedExecutionPlans
+	blockNumber   *big.Int
+	gp            *core.GasPool
+	header        *EvmHeader
+	onNewLog      func(*types.Log)
+	signer        types.Signer
+	stateDb       state.StateDB
+	usedGas       uint64
+	vmEnvironment *vm.EVM
+	upgrades      opera.Upgrades
 }
 
 // Run processes a single transaction in the block, where i is the index of
@@ -588,7 +561,7 @@ type TransactionProcessor struct {
 func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) ExecutionSummary {
 	return runTransactions(newRunContext(
 		tp.signer, tp.header.BaseFee, tp.stateDb, tp.gp, tp.blockNumber,
-		&tp.usedGas, tp.onNewLog, tp.upgrades, &transactionRunner{evm{tp.vmEnvironment}}, &tp.processedExecutionPlans,
+		&tp.usedGas, tp.onNewLog, tp.upgrades, &transactionRunner{evm{tp.vmEnvironment}},
 	), []*types.Transaction{tx}, i, i)
 }
 
