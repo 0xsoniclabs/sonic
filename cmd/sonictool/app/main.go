@@ -438,7 +438,7 @@ Analyzes the disk usage of the chaindata databases and prints for each table the
 		return debug.Setup(ctx)
 	}
 	app.After = func(ctx *cli.Context) error {
-		debug.Exit()
+		debug.Exit(ctx)
 		return nil
 	}
 

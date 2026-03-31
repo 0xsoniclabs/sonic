@@ -17,7 +17,6 @@
 package debug
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -219,12 +218,16 @@ func StartPProf(address string, withMetrics bool) {
 
 // Exit stops all running profiles, flushing their output to the
 // respective file.
-func Exit() {
-	err := errors.Join(
-		Handler.StopCPUProfile(),
-		Handler.StopGoTrace(),
-	)
-	if err != nil {
-		log.Error("Failed to stop profiles", "err", err)
+func Exit(ctx *cli.Context) {
+	if ctx.GlobalBool(pprofFlag.Name) {
+		if err := Handler.StopCPUProfile(); err != nil {
+			log.Error("Failed to stop CPU profile", "err", err)
+		}
+	}
+
+	if ctx.GlobalString(traceFlag.Name) != "" {
+		if err := Handler.StopGoTrace(); err != nil {
+			log.Error("Failed to stop Go trace", "err", err)
+		}
 	}
 }
