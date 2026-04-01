@@ -26,13 +26,13 @@ import (
 )
 
 func Test_newTestState(t *testing.T) {
-	ts := newTestState(t)
+	ts := NewTestState(t)
 	require.NotNil(t, ts)
 	require.NotNil(t, ts.StateDB)
 }
 
 func Test_testState_setAccount(t *testing.T) {
-	ts := newTestState(t)
+	ts := NewTestState(t)
 	addr := common.HexToAddress("0x1")
 
 	store := map[common.Hash]common.Hash{
