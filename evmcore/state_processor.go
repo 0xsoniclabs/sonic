@@ -337,19 +337,23 @@ func (r *transactionRunner) runTransactionBundle(
 	tx *types.Transaction,
 	txIndex int,
 ) ([]ProcessedTransaction, core_types.TransactionResult) {
+	return r.runTransactionBundleInternal(ctxt, tx, txIndex, log.Root())
+}
+
+func (r *transactionRunner) runTransactionBundleInternal(
+	ctxt *runContext,
+	tx *types.Transaction,
+	txIndex int,
+	log logger,
+) ([]ProcessedTransaction, core_types.TransactionResult) {
 	if !ctxt.upgrades.TransactionBundles {
-		log.Warn("Transaction bundles are not enabled, skipping bundle transaction", "tx", tx.Hash().Hex())
+		log.Warn("Transaction bundles are not enabled, bundle transaction skipped", "tx", tx.Hash().Hex())
 		return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid
 	}
 
-	txBundle, err := bundle.OpenEnvelope(tx)
+	txBundle, plan, err := bundle.ValidateEnvelope(ctxt.signer, tx)
 	if err != nil {
-		log.Warn("failed to open bundle envelope", "tx", tx.Hash().Hex(), "err", err)
-		return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid
-	}
-	plan, err := bundle.ExtractExecutionPlan(ctxt.signer, tx)
-	if err != nil {
-		log.Warn("failed to extract execution plan", "tx", tx.Hash().Hex(), "err", err)
+		log.Warn("Invalid bundle skipped", "tx", tx.Hash().Hex(), "error", err)
 		return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid
 	}
 
@@ -358,13 +362,39 @@ func (r *transactionRunner) runTransactionBundle(
 		return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid
 	}
 
+	planHash := plan.Hash()
+	if ctxt.statedb.HasBundleRecentlyBeenProcessed(planHash) {
+		log.Warn("Rescheduled bundle skipped", "exec_plan_hash", planHash)
+		return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid
+	}
+
+	positionInBlock := bundle.PositionInBlock{
+		Offset: uint32(txIndex),
+	}
+
 	// Run the bundle and collect the processed transactions.
 	runner := bundleTransactionRunner{ctxt: ctxt, txOffset: txIndex}
-	if success := bundle.RunBundle(&txBundle, &runner); !success {
+	if success := bundle.RunBundle(txBundle, &runner); !success {
 		return []ProcessedTransaction{}, core_types.TransactionResultFailed
 	}
 
-	// return all processed transactions collected by the runner
+	// Update the position-in-block struct to track the number of transactions
+	// added to the block as part of this bundle execution.
+	for _, processedTx := range runner.processedTransactions {
+		if processedTx.Receipt != nil {
+			positionInBlock.Count++
+		}
+	}
+
+	// Mark the execution plan as processed in the StateDB to prevent processing
+	// another bundle with the same execution plan in the same block. Also keep
+	// track of the position of the bundle in the block.
+	// Note: it is sufficient to mark the execution plan of a bundle after the
+	// execution of the bundle as used since nested bundles can not contain
+	// copies of themselves without finding a hash-function collision.
+	ctxt.statedb.AddProcessedBundle(planHash, positionInBlock)
+
+	// return the
 	return runner.processedTransactions, core_types.TransactionResultSuccessful
 }
 
@@ -715,4 +745,13 @@ func TxAsMessage(tx *types.Transaction, signer types.Signer, baseFee *big.Int) (
 			SkipTransactionChecks: true,
 		}, nil
 	}
+}
+
+// logger is an internal interface to enable the mocking of logging in tests.
+// This is in particular useful to make sure tests that trigger failing
+// conditions are actually triggering the correct condition.
+type logger interface {
+	Debug(msg string, ctx ...any)
+	Info(msg string, ctx ...any)
+	Warn(msg string, ctx ...any)
 }
