@@ -16,32 +16,32 @@ import (
 	gomock "go.uber.org/mock/gomock"
 )
 
-// MocktxPool is a mock of txPool interface.
-type MocktxPool struct {
+// MockTxPool is a mock of TxPool interface.
+type MockTxPool struct {
 	ctrl     *gomock.Controller
-	recorder *MocktxPoolMockRecorder
+	recorder *MockTxPoolMockRecorder
 	isgomock struct{}
 }
 
-// MocktxPoolMockRecorder is the mock recorder for MocktxPool.
-type MocktxPoolMockRecorder struct {
-	mock *MocktxPool
+// MockTxPoolMockRecorder is the mock recorder for MockTxPool.
+type MockTxPoolMockRecorder struct {
+	mock *MockTxPool
 }
 
-// NewMocktxPool creates a new mock instance.
-func NewMocktxPool(ctrl *gomock.Controller) *MocktxPool {
-	mock := &MocktxPool{ctrl: ctrl}
-	mock.recorder = &MocktxPoolMockRecorder{mock}
+// NewMockTxPool creates a new mock instance.
+func NewMockTxPool(ctrl *gomock.Controller) *MockTxPool {
+	mock := &MockTxPool{ctrl: ctrl}
+	mock.recorder = &MockTxPoolMockRecorder{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MocktxPool) EXPECT() *MocktxPoolMockRecorder {
+func (m *MockTxPool) EXPECT() *MockTxPoolMockRecorder {
 	return m.recorder
 }
 
 // AddLocal mocks base method.
-func (m *MocktxPool) AddLocal(arg0 *types.Transaction) error {
+func (m *MockTxPool) AddLocal(arg0 *types.Transaction) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AddLocal", arg0)
 	ret0, _ := ret[0].(error)
@@ -49,7 +49,7 @@ func (m *MocktxPool) AddLocal(arg0 *types.Transaction) error {
 }
 
 // AddLocal indicates an expected call of AddLocal.
-func (mr *MocktxPoolMockRecorder) AddLocal(arg0 any) *gomock.Call {
+func (mr *MockTxPoolMockRecorder) AddLocal(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddLocal", reflect.TypeOf((*MocktxPool)(nil).AddLocal), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddLocal", reflect.TypeOf((*MockTxPool)(nil).AddLocal), arg0)
 }

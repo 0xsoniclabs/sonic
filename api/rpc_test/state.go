@@ -27,15 +27,15 @@ import (
 	"github.com/holiman/uint256"
 )
 
+// testState is a full state.StateDB implementation for testing purposes.
+// It is created from a fakeBackend via StateAndBlockByNumberOrHash
 type testState struct {
 	state.StateDB
 }
 
-func newTestState(t *testing.T) *testState {
+// NewTestState creates a new testState with a fresh carmen state backend.
+func NewTestState(t *testing.T) *testState {
 	carmenDir := t.TempDir()
-	if carmenDir == "" {
-		t.Fatalf("failed to create temporary dir for carmen state")
-	}
 	carmenState, err := carmen.NewState(carmen.Parameters{
 		Variant:      "go-file",
 		Schema:       carmen.Schema(5),
