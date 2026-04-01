@@ -66,7 +66,8 @@ func TestGasSubsidies_CanBeEnabledAndDisabled(
 			var originalRules rulesType
 			err = client.Client().Call(&originalRules, "eth_getRules", "latest")
 			require.NoError(err)
-			require.Equal(false, originalRules.Upgrades.GasSubsidies, "GasSubsidies should be disabled initially")
+			require.False(originalRules.Upgrades.GasSubsidies,
+				"GasSubsidies should be disabled initially")
 
 			// Enable gas subsidies.
 			rulesDiff := rulesType{
@@ -75,11 +76,12 @@ func TestGasSubsidies_CanBeEnabledAndDisabled(
 			tests.UpdateNetworkRules(t, net, rulesDiff)
 
 			// Advance the epoch by one to apply the change.
-			net.AdvanceEpoch(t, 1)
+			tests.AdvanceEpochAndWaitForBlocks(t, net)
 
 			err = client.Client().Call(&originalRules, "eth_getRules", "latest")
 			require.NoError(err)
-			require.Equal(true, originalRules.Upgrades.GasSubsidies, "GasSubsidies should be enabled after the update")
+			require.True(originalRules.Upgrades.GasSubsidies,
+				"GasSubsidies should be enabled after the update")
 
 			// Disable gas subsidies.
 			rulesDiff = rulesType{
@@ -88,11 +90,12 @@ func TestGasSubsidies_CanBeEnabledAndDisabled(
 			tests.UpdateNetworkRules(t, net, rulesDiff)
 
 			// Advance the epoch by one to apply the change.
-			net.AdvanceEpoch(t, 1)
+			tests.AdvanceEpochAndWaitForBlocks(t, net)
 
 			err = client.Client().Call(&originalRules, "eth_getRules", "latest")
 			require.NoError(err)
-			require.Equal(false, originalRules.Upgrades.GasSubsidies, "GasSubsidies should be disabled after the update")
+			require.False(originalRules.Upgrades.GasSubsidies,
+				"GasSubsidies should be disabled after the update")
 		})
 	}
 }
