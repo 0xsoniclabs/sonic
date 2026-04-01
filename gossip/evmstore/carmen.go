@@ -88,7 +88,7 @@ type processedExecPlan struct {
 }
 
 func (c *CarmenStateDB) Error() error {
-	return nil
+	return errors.Join(c.issue, c.db.Check())
 }
 
 func (c *CarmenStateDB) AddLog(log *types.Log) {
