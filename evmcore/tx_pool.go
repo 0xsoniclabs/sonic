@@ -192,7 +192,7 @@ type subsidiesCheckerFactory func(
 	chain StateReader,
 	state state.StateDB,
 	signer types.Signer,
-) subsidiesChecker
+) IsSponsoredCheckFunc
 
 // TxPoolConfig are the configuration parameters of the transaction pool.
 type TxPoolConfig struct {
@@ -335,8 +335,8 @@ type TxPool struct {
 	waitForIdleReorgLoopRequestCh  chan struct{} // requests to wait for reorg completion
 	waitForIdleReorgLoopResponseCh chan struct{} // responses to waitForReorgDoneRequestCh
 
-	subsidiesCheckerFactory subsidiesCheckerFactory // Factory to create a subsidies checker instance
-	subsidiesCheckerCache   *subsidiesCheckerCache  // Cache for subsidies check results
+	subsidiesCheckerFactory subsidiesCheckerFactory   // Factory to create a subsidies checker instance
+	subsidiesCheckerCache   *utils.CheckerCache[bool] // Cache for subsidies check results
 }
 
 type txpoolResetRequest struct {
@@ -383,7 +383,7 @@ func newTxPool(
 		waitForIdleReorgLoopResponseCh: make(chan struct{}),
 
 		subsidiesCheckerFactory: subsidiesCheckerFactory,
-		subsidiesCheckerCache:   newSubsidiesCheckerCache(-1), // use default size
+		subsidiesCheckerCache:   utils.NewCheckerCache[bool](-1), // use default size
 	}
 	pool.locals = newAccountSet(pool.signer)
 	for _, addr := range config.Locals {
@@ -726,7 +726,12 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 		transactionBundles: pool.chain.CurrentRules().Upgrades.TransactionBundles,
 	}
 
-	subsidiesChecker := pool.createSubsidiesChecker()
+	subsidiesChecker := pool.subsidiesCheckerFactory(
+		pool.chain.CurrentRules(),
+		pool.chain,
+		pool.currentState,
+		pool.signer,
+	)
 
 	err := validateTx(
 		tx,
@@ -1494,17 +1499,14 @@ func (pool *TxPool) reset(oldHead, newHead *EvmHeader) {
 	pool.osaka = pool.chainconfig.IsOsaka(next, uint64(newHead.Time.Unix()))
 }
 
-func (pool *TxPool) createSubsidiesChecker() subsidiesChecker {
-	return pool.subsidiesCheckerFactory(
-		pool.chain.CurrentRules(),
-		pool.chain,
-		pool.currentState,
-		pool.signer,
-	)
-}
-
-func (pool *TxPool) createCachedSubsidiesChecker() subsidiesChecker {
-	return pool.subsidiesCheckerCache.wrap(pool.createSubsidiesChecker())
+func (pool *TxPool) createCachedSubsidiesChecker() IsSponsoredCheckFunc {
+	return utils.WrapCheck(pool.subsidiesCheckerCache,
+		pool.subsidiesCheckerFactory(
+			pool.chain.CurrentRules(),
+			pool.chain,
+			pool.currentState,
+			pool.signer,
+		))
 }
 
 // promoteExecutables moves transactions that have become processable from the

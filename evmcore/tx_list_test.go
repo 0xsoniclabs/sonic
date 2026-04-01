@@ -26,7 +26,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
 )
 
 // Tests that transactions can be added to strict lists and list contents and
@@ -80,8 +79,6 @@ func TestTxSortedMap_ContainsFunc_LocatesMatchingTransactions(t *testing.T) {
 
 func TestTxList_Filter_WithSponsoredTransactions_RetainsCovered(t *testing.T) {
 	require := require.New(t)
-	ctrl := gomock.NewController(t)
-	checker := NewMocksubsidiesChecker(ctrl)
 
 	key, err := crypto.GenerateKey()
 	require.NoError(err)
@@ -99,8 +96,8 @@ func TestTxList_Filter_WithSponsoredTransactions_RetainsCovered(t *testing.T) {
 	}
 
 	// Each sponsored transaction should be checked.
-	for _, tx := range txs {
-		checker.EXPECT().isSponsored(tx).Return(tx.Nonce()%2 == 0)
+	checker := func(tx *types.Transaction) bool {
+		return tx.Nonce()%2 == 0
 	}
 
 	removed, _ := list.Filter(big.NewInt(1e18), 1_000_000, checker)
