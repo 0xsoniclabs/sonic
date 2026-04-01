@@ -206,16 +206,14 @@ func TestRegistryUpdate_UpdatesAreEffectiveImmediately(t *testing.T) {
 		payments = append(payments, payment)
 	}
 
-	// The first two transactions are charged according to the old registry. Since
-	// both sponsor the same account, the payment transaction data must match,
-	// or at least the first 36 bytes, which represent the function selector
-	// (4 bytes) and fundId (32 bytes).
-	// Note: the last 32 bytes can differ due to varying fees in different blocks.
+	// The first two transactions are charged using the old registry. Since both
+	// sponsor the same account, their payment transaction data should match
+	// for the first 36 bytes (function selector + fundId). The last 32 bytes
+	// may differ due to varying fees.
 	require.Equal(payments[0].Data()[:36], payments[1].Data()[:36])
 
-	// The last transaction is charged according to the new registry contract.
-	// Thus, the call data for the payment transaction must be different.
-	// Again only consider the first 36 bytes, as the fundId must be different
+	// The last transaction uses the new registry contract, so its payment
+	// transaction call data (first 36 bytes) must differ, as the fundId is different.
 	require.NotEqual(payments[0].Data()[:36], payments[2].Data()[:36])
 
 	// Verify that the payment transactions data encoding of the fee is
@@ -232,6 +230,8 @@ func TestRegistryUpdate_UpdatesAreEffectiveImmediately(t *testing.T) {
 		initialRegistryConfig.OverheadCharge)
 	require.Equal(paymentData1, payments[1].Data()[36:])
 
+	// tx4 produced receipt[3], but tx3 is not a sponsored transaction,
+	// the corresponding payment transaction is payments[2] for the last transaction.
 	paymentData2 := makePaymentFeeData(t,
 		gasUsed,
 		receipts[3].EffectiveGasPrice,
