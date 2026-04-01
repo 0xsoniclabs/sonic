@@ -1147,7 +1147,7 @@ func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash 
 
 	var blockCtx *vm.BlockContext
 	if blockOverrides != nil {
-		bctx := getBlockContext(ctx, b, block.Header())
+		bctx := GetBlockContext(ctx, b, block.Header())
 		blockOverrides.apply(&bctx)
 		blockCtx = &bctx
 	}
@@ -2712,7 +2712,7 @@ func (api *PublicDebugAPI) TraceCall(ctx context.Context, args TransactionArgs, 
 	}
 	defer statedb.Release()
 
-	blockCtx := getBlockContext(ctx, api.b, &block.EvmHeader)
+	blockCtx := GetBlockContext(ctx, api.b, &block.EvmHeader)
 	if config.BlockOverrides != nil {
 		config.BlockOverrides.apply(&blockCtx)
 	}

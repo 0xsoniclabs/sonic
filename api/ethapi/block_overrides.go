@@ -69,8 +69,8 @@ func (diff *BlockOverrides) apply(blockCtx *vm.BlockContext) {
 	}
 }
 
-// getBlockContext returns a new vm.BlockContext based on the given header and backend
-func getBlockContext(ctx context.Context, backend Backend, header *evmcore.EvmHeader) vm.BlockContext {
+// GetBlockContext returns a new vm.BlockContext based on the given header and backend
+func GetBlockContext(ctx context.Context, backend Backend, header *evmcore.EvmHeader) vm.BlockContext {
 	chain := chainContext{
 		ctx: ctx,
 		b:   backend,
