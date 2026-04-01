@@ -1461,7 +1461,7 @@ func Test_validateBundleTransactions_IfBundleStateIsNotRunnable_RejectBundleTran
 			rules := NetworkRules{}
 			rules.transactionBundles = true
 			err := validateBundleTransactionsInternal(tx, rules, nil, nil, getBundleState)
-			if !test.bundleState.Executable {
+			if !test.bundleState.Executable && !test.bundleState.TemporarilyBlocked {
 				require.ErrorIs(err, ErrBundleNonExecutable)
 			} else {
 				require.NoError(err)

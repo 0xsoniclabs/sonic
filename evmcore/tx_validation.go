@@ -426,7 +426,7 @@ func validateBundleTransactionsInternal(
 		stateDB:    stateDb,
 	}
 	state := getBundleState(chainAdapter, tx)
-	if !state.Executable {
+	if !state.Executable && !state.TemporarilyBlocked {
 		return errors.Join(
 			ErrBundleNonExecutable,
 			errors.New(strings.Join(state.Reasons, ".\n")))
