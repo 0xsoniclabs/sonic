@@ -1049,9 +1049,15 @@ func TestValidateTx_RejectsTx_WhenStaticValidationFails(t *testing.T) {
 			chain := NewMockStateReader(ctrl)
 			chain.EXPECT().CurrentBaseFee().Return(big.NewInt(5)).AnyTimes()
 			state := state.NewMockStateDB(ctrl)
-			subsidiesChecker := NewMocksubsidiesChecker(ctrl)
 
-			err := validateTx(types.NewTx(tx), opts, rules, chain, state, subsidiesChecker, signer)
+			err := validateTx(
+				types.NewTx(tx),
+				opts,
+				rules,
+				chain,
+				state,
+				expectNoSubsidies(t),
+				signer)
 			require.Error(t, err)
 		})
 	}
@@ -1101,9 +1107,16 @@ func TestValidateTx_RejectsTx_WhenBlockValidationFails(t *testing.T) {
 			chain.EXPECT().CurrentBaseFee().Return(big.NewInt(5)).AnyTimes()
 			chain.EXPECT().CurrentMaxGasLimit().Return(uint64(50_000)).AnyTimes() // lower than tx gas
 			state := state.NewMockStateDB(ctrl)
-			SubsidiesChecker := NewMocksubsidiesChecker(ctrl)
 
-			err := validateTx(types.NewTx(tx), opts, rules, chain, state, SubsidiesChecker, signer)
+			err := validateTx(
+				types.NewTx(tx),
+				opts,
+				rules,
+				chain,
+				state,
+				expectNoSubsidies(t),
+				signer,
+			)
 			require.Error(t, err)
 		})
 	}
@@ -1158,9 +1171,8 @@ func TestValidateTx_RejectsTx_WhenPoolValidationFails(t *testing.T) {
 				minTip: big.NewInt(20), // transactions are tipping 0, so this will fail
 				locals: newAccountSet(signer),
 			}
-			SubsidiesChecker := NewMocksubsidiesChecker(ctrl)
 
-			err := validateTx(types.NewTx(tx), opts, rules, chain, state, SubsidiesChecker, signer)
+			err := validateTx(types.NewTx(tx), opts, rules, chain, state, expectNoSubsidies(t), signer)
 			require.Error(t, err)
 		})
 	}
@@ -1218,9 +1230,7 @@ func TestValidateTx_RejectsTx_WhenStateValidationFails(t *testing.T) {
 				locals:  newAccountSet(signer),
 			}
 
-			SubsidiesChecker := NewMocksubsidiesChecker(ctrl)
-
-			err := validateTx(types.NewTx(tx), opts, rules, chain, state, SubsidiesChecker, signer)
+			err := validateTx(types.NewTx(tx), opts, rules, chain, state, expectNoSubsidies(t), signer)
 			require.Error(t, err)
 		})
 	}
@@ -1321,21 +1331,18 @@ func TestValidateTx_AcceptsZeroGasPriceTransactions_WhenSubsidiesAreEnabled(t *t
 			state.EXPECT().GetBalance(gomock.Any()).Return(uint256.NewInt(0)).AnyTimes()
 			state.EXPECT().GetCode(gomock.Any()).Return(nil)
 
-			SubsidiesChecker := NewMocksubsidiesChecker(ctrl)
-			SubsidiesChecker.EXPECT().isSponsored(gomock.Any()).Return(true).AnyTimes()
-
 			opts := poolOptions{
 				minTip:  big.NewInt(0),
 				isLocal: true,
 				locals:  newAccountSet(signer),
 			}
 
-			err := validateTx(types.NewTx(tx), opts, rules, chain, state, SubsidiesChecker, signer)
+			err := validateTx(types.NewTx(tx), opts, rules, chain, state, acceptAnySponsorshipRequest, signer)
 			require.NoError(t, err)
 
 			//Check that the same transaction is rejected when gas subsidies are disabled
 			rules.gasSubsidies = false
-			err = validateTx(types.NewTx(tx), opts, rules, chain, state, SubsidiesChecker, signer)
+			err = validateTx(types.NewTx(tx), opts, rules, chain, state, acceptAnySponsorshipRequest, signer)
 			require.Error(t, err)
 		})
 	}
@@ -1346,7 +1353,7 @@ func Test_validateSponsoredTransactions_RejectsSponsoredTransactions(t *testing.
 	tests := map[string]struct {
 		subsidiesEnabled bool
 		tx               types.TxData
-		configure        func(SubsidiesChecker *MocksubsidiesChecker)
+		rejectSubsidy    bool
 		expectedError    error
 	}{
 		"ignore non-sponsored tx when subsidies are disabled": {
@@ -1385,9 +1392,7 @@ func Test_validateSponsoredTransactions_RejectsSponsoredTransactions(t *testing.
 				GasPrice: big.NewInt(0),
 				V:        big.NewInt(27), // not an internal tx
 			},
-			configure: func(subsidiesChecker *MocksubsidiesChecker) {
-				subsidiesChecker.EXPECT().isSponsored(gomock.Any()).Return(false)
-			},
+			rejectSubsidy: true,
 			expectedError: ErrSponsorshipRejected,
 		},
 	}
@@ -1395,10 +1400,8 @@ func Test_validateSponsoredTransactions_RejectsSponsoredTransactions(t *testing.
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 
-			ctrl := gomock.NewController(t)
-			subsidiesChecker := NewMocksubsidiesChecker(ctrl)
-			if test.configure != nil {
-				test.configure(subsidiesChecker)
+			subsidiesChecker := func(*types.Transaction) bool {
+				return !test.rejectSubsidy
 			}
 
 			netRules := NetworkRules{
@@ -1589,8 +1592,9 @@ func TestValidateTx_AllowsSponsoredZeroGasPriceTransactions_WhenSubsidiesAreFund
 
 			state.EXPECT().GetCode(gomock.Any()).Return(nil)
 
-			SubsidiesChecker := NewMocksubsidiesChecker(ctrl)
-			SubsidiesChecker.EXPECT().isSponsored(gomock.Any()).Return(test.isSponsored)
+			subsidiesChecker := func(*types.Transaction) bool {
+				return test.isSponsored
+			}
 
 			opts := poolOptions{
 				minTip:  big.NewInt(0),
@@ -1598,7 +1602,7 @@ func TestValidateTx_AllowsSponsoredZeroGasPriceTransactions_WhenSubsidiesAreFund
 				locals:  newAccountSet(signer),
 			}
 
-			err := validateTx(types.NewTx(test.tx), opts, rules, chain, state, SubsidiesChecker, signer)
+			err := validateTx(types.NewTx(test.tx), opts, rules, chain, state, subsidiesChecker, signer)
 			if test.isSponsored {
 				require.NoError(t, err)
 			} else {
@@ -1659,15 +1663,13 @@ func TestValidateTx_Success(t *testing.T) {
 			state.EXPECT().GetBalance(gomock.Any()).Return(uint256.NewInt(1_000_000)).AnyTimes()
 			state.EXPECT().GetCode(gomock.Any()).Return(nil)
 
-			SubsidiesChecker := NewMocksubsidiesChecker(ctrl)
-
 			opts := poolOptions{
 				minTip:  big.NewInt(0),
 				isLocal: true,
 				locals:  newAccountSet(signer),
 			}
 
-			err := validateTx(types.NewTx(tx), opts, rules, chain, state, SubsidiesChecker, signer)
+			err := validateTx(types.NewTx(tx), opts, rules, chain, state, expectNoSubsidies(t), signer)
 			require.NoError(t, err)
 		})
 	}
@@ -1692,4 +1694,18 @@ func transactionTypeName(tx types.TxData) string {
 	default:
 		return "unknown"
 	}
+}
+
+// expectNoSubsidies returns a subsidies checker that fails the test if it is called,
+// since these tests are not expected to have any subsidies transactions.
+func expectNoSubsidies(t *testing.T) func(*types.Transaction) bool {
+	return func(tx *types.Transaction) bool {
+		t.Fatal("unexpected subsidies transaction in this test")
+		return false
+	}
+}
+
+// acceptAnySponsorshipRequest returns a subsidies checker that accepts any sponsorship request,
+func acceptAnySponsorshipRequest(*types.Transaction) bool {
+	return true
 }
