@@ -23,12 +23,13 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
 
-func Test_ChainID(t *testing.T) {
+func Test_NewBackendBuilder_CanSetChainID(t *testing.T) {
 
 	be := NewBackendBuilder(t).Build()
 	require.EqualValues(t, opera.FakeNetworkID, be.ChainID().Uint64())
@@ -39,8 +40,10 @@ func Test_ChainID(t *testing.T) {
 	}
 }
 
-func Test_BlockHistory(t *testing.T) {
+func Test_NewBackendBuilder_CanSetBlockHistory(t *testing.T) {
 	be := NewBackendBuilder(t).Build()
+	require.EqualValues(t, 1, be.CurrentBlock().NumberU64())
+	be = NewBackendBuilder(t).WithBlockHistory(nil).Build()
 	require.EqualValues(t, 1, be.CurrentBlock().NumberU64())
 
 	for _, v := range []uint64{1, 2, 3} {
@@ -55,23 +58,23 @@ func Test_BlockHistory(t *testing.T) {
 	}
 }
 
-func Test_WithPool(t *testing.T) {
-
+func Test_NewBackendBuilder_CanSetTxPool(t *testing.T) {
 	be := NewBackendBuilder(t).Build()
-	err := be.SendTx(t.Context(), types.NewTx(&types.LegacyTx{}))
-	require.ErrorContains(t, err, "tx pool not initialized")
+	require.Panics(t, func() {
+		_ = be.SendTx(t.Context(), types.NewTx(&types.LegacyTx{}))
+	})
 
 	ctrl := gomock.NewController(t)
-	mockPool := NewMocktxPool(ctrl)
+	mockPool := NewMockTxPool(ctrl)
 
 	be = NewBackendBuilder(t).WithPool(mockPool).Build()
 	mockPool.EXPECT().AddLocal(gomock.Any()).Return(nil).Times(1)
 
-	err = be.SendTx(t.Context(), types.NewTx(&types.LegacyTx{}))
+	err := be.SendTx(t.Context(), types.NewTx(&types.LegacyTx{}))
 	require.NoError(t, err)
 }
 
-func Test_WithAccount(t *testing.T) {
+func Test_NewBackendBuilder_CanSetInitialState(t *testing.T) {
 
 	var (
 		addr1 = common.HexToAddress("0x01")
@@ -101,7 +104,7 @@ func Test_WithAccount(t *testing.T) {
 	require.EqualValues(t, state.GetBalance(addr2).Uint64(), 43)
 }
 
-func Test_WithUpgrade(t *testing.T) {
+func Test_NewBackendBuilder_CanSetUpgrade(t *testing.T) {
 
 	be := NewBackendBuilder(t).Build()
 	require.True(t, be.rules.Upgrades.Brio)
@@ -109,4 +112,28 @@ func Test_WithUpgrade(t *testing.T) {
 	be = NewBackendBuilder(t).WithUpgrade(opera.GetSonicUpgrades()).Build()
 	require.True(t, be.rules.Upgrades.Sonic)
 	require.False(t, be.rules.Upgrades.Brio)
+}
+
+func Test_FakeBackend_ProducesCompatibleSigners(t *testing.T) {
+
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	for _, chainId := range []uint64{1, 123, 9999} {
+		be := NewBackendBuilder(t).WithChainID(chainId).Build()
+
+		signer := be.GetSigner()
+
+		tx, err := types.SignTx(
+			types.NewTransaction(1, common.Address{0x42}, big.NewInt(0), 21000, big.NewInt(1), nil),
+			signer,
+			key,
+		)
+		require.NoError(t, err)
+
+		referenceSigner := types.LatestSignerForChainID(big.NewInt(int64(chainId)))
+		recovered, err := referenceSigner.Sender(tx)
+		require.NoError(t, err)
+		require.Equal(t, crypto.PubkeyToAddress(key.PublicKey), recovered)
+	}
 }

@@ -14,6 +14,16 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
+// Package rpctest provides tools for testing RPC handlers.
+//
+// The core component is a fake backend that implements the ethapi.Backend interface,
+// allowing developers to create controlled environments for testing various RPC
+// methods without needing a full node. NewBackendBuilder is the main entry point
+// for constructing a fake backend, and therefore using the tools in this package.
+//
+// The features implemented in the fake backend are introduced on demand as tests
+// require more of them, if a new test uses a backend method which is not yet implemented,
+// the fake backend will panic.
 package rpctest
 
 import (
@@ -37,16 +47,6 @@ import (
 
 //go:generate mockgen -source=backend.go -destination=backend_mock.go -package=rpctest
 
-type backend struct {
-	ethapi.Backend
-
-	chainID      uint64
-	rules        opera.Rules
-	state        *testState
-	pool         txPool
-	blockHistory []TestBlock
-}
-
 type TestAccount struct {
 	Nonce   uint64
 	Balance *big.Int
@@ -61,58 +61,103 @@ type TestBlock struct {
 }
 
 type backendBuilder struct {
-	be backend
+	be fakeBackend
 }
 
-type txPool interface {
-	AddLocal(*types.Transaction) error
-}
-
+// NewBackendBuilder creates a new backendBuilder with default values for all fields of the fakeBackend.
+//
+// An example of using the builder in a test:
+//
+//		func TestMyRPCMethod(t *testing.T) {
+//		    backend := rpctest.NewBackendBuilder(t).
+//
+//		        // preload some account state
+//		        WithAccount(someAddress, TestAccount{Balance: big.NewInt(1e18)}).
+//
+//		        // Define a custom block history
+//		        WithBlockHistory([]TestBlock{
+//		            {Number: 1, Hash: common.HexToHash("0xabc"), ParentHash: common.HexToHash("0xdef")},
+//		            {Number: 2, Hash: common.HexToHash("0xdef"), ParentHash: common.HexToHash("0xabc")},
+//		        }).
+//
+//		        // Build the instance
+//		        Build()
+//
+//		    // Use backend in the test...
+//		    api := SomeRPCHandler{backend: backend}
+//
+//		    // Call the RPC method
+//		    result, err := api.MyRPCMethod(t.Context(), ...)
+//
+//	     	// Assert results...
+//		}
 func NewBackendBuilder(t *testing.T) backendBuilder {
 	return backendBuilder{
-		be: backend{
+		be: fakeBackend{
 			chainID:      opera.FakeNetworkID,
 			rules:        opera.FakeNetRules(opera.GetBrioUpgrades()),
-			state:        newTestState(t),
-			blockHistory: DefaultBlockHistory(),
+			state:        NewTestState(t),
+			blockHistory: defaultBlockHistory(),
 		},
 	}
 }
 
+// WithChainID sets the chain ID for the fake backend.
+//
+// By default, the chain ID is set to the FakeNetworkID defined in the opera package.
 func (b backendBuilder) WithChainID(chainID uint64) backendBuilder {
 	b.be.chainID = chainID
 	return b
 }
 
+// WithBlockHistory sets the block history for the fake backend.
+//
+// By default, the block history contains a single block with number 1 and hash "0x1".
 func (b backendBuilder) WithBlockHistory(blocks []TestBlock) backendBuilder {
 	if len(blocks) == 0 {
-		b.be.blockHistory = DefaultBlockHistory()
+		b.be.blockHistory = defaultBlockHistory()
 	} else {
 		b.be.blockHistory = blocks
 	}
 	return b
 }
 
-func (b backendBuilder) WithPool(pool txPool) backendBuilder {
+// WithPool sets the transaction pool for the fake backend. This method is
+// compatible with a mocks of the transaction pool, using the TxPool interface
+// defined at the end of this file.
+//
+// By default, the transaction pool is nil, any RPC method that tries to access
+// the transaction pool without it being set will cause the fake backend to panic.
+func (b backendBuilder) WithPool(pool TxPool) backendBuilder {
 	b.be.pool = pool
 	return b
 }
 
+// WithAccount preloads the state of a given account in the fake backend's state database.
+// This allows tests to set up specific account conditions (e.g., balance, nonce, code)
+// before executing RPC methods that depend on that state.
+//
+// By default, the fake backend's state database is empty
 func (b backendBuilder) WithAccount(addr common.Address, account TestAccount) backendBuilder {
 	b.be.state.setAccount(addr, account)
 	return b
 }
 
+// WithUpgrade sets the network upgrades for the fake backend's rules.
+//
+// By default, the fake backend uses the Brio upgrades defined in the opera package.
 func (b backendBuilder) WithUpgrade(upgrades opera.Upgrades) backendBuilder {
 	b.be.rules = opera.FakeNetRules(upgrades)
 	return b
 }
 
-func (b backendBuilder) Build() *backend {
+// Build constructs the fakeBackend instance with the configured parameters.
+func (b backendBuilder) Build() *fakeBackend {
 	return &b.be
 }
 
-func DefaultBlockHistory() []TestBlock {
+// defaultBlockHistory returns a default block history with a single block (number 1, hash "0x1").
+func defaultBlockHistory() []TestBlock {
 	return []TestBlock{
 		{
 			Number: 1,
@@ -121,16 +166,41 @@ func DefaultBlockHistory() []TestBlock {
 	}
 }
 
-func (b *backend) ChainID() *big.Int {
+// fakeBackend is a simple implementation of the ethapi.Backend interface,
+// with only the methods needed for testing implemented.
+//
+// This type is not exported as it is meant to be used via the builder constructed
+// by NewBackendBuilder.
+//
+// When using the backend in new tests, if a method is called which is not yet
+// implemented, the test will panic. ethapi.Backend methods are to be implemented
+// on demand as the tests require more of them.
+type fakeBackend struct {
+	ethapi.Backend
+
+	chainID      uint64
+	rules        opera.Rules
+	state        *testState
+	pool         TxPool
+	blockHistory []TestBlock
+}
+
+// GetSigner is a helper method outside of the ethapi.Backend interface,
+// to facilitate the use of the correct signer in tests.
+func (b *fakeBackend) GetSigner() types.Signer {
+	return types.LatestSignerForChainID(b.ChainID())
+}
+
+func (b *fakeBackend) ChainID() *big.Int {
 	return big.NewInt(int64(b.chainID))
 }
 
-func (b *backend) CurrentBlock() *evmcore.EvmBlock {
+func (b *fakeBackend) CurrentBlock() *evmcore.EvmBlock {
 	lastblock := b.blockHistory[len(b.blockHistory)-1]
 	return &evmcore.EvmBlock{EvmHeader: *ToEvmHeader(lastblock)}
 }
 
-func (b *backend) GetEVM(
+func (b *fakeBackend) GetEVM(
 	ctx context.Context,
 	state vm.StateDB,
 	header *evmcore.EvmHeader,
@@ -149,7 +219,7 @@ func (b *backend) GetEVM(
 	return vm.NewEVM(*blockContext, state, chainConfig, *vmConfig), func() error { return nil }, nil
 }
 
-func (b *backend) HeaderByNumber(ctx context.Context, number rpc.BlockNumber) (*evmcore.EvmHeader, error) {
+func (b *fakeBackend) HeaderByNumber(ctx context.Context, number rpc.BlockNumber) (*evmcore.EvmHeader, error) {
 
 	if number == rpc.LatestBlockNumber ||
 		number == rpc.PendingBlockNumber ||
@@ -168,7 +238,7 @@ func (b *backend) HeaderByNumber(ctx context.Context, number rpc.BlockNumber) (*
 	return nil, errors.New("block header not found")
 }
 
-func (b *backend) HeaderByHash(ctx context.Context, hash common.Hash) (*evmcore.EvmHeader, error) {
+func (b *fakeBackend) HeaderByHash(ctx context.Context, hash common.Hash) (*evmcore.EvmHeader, error) {
 	for _, block := range b.blockHistory {
 		if block.Hash == hash {
 			return ToEvmHeader(block), nil
@@ -177,7 +247,7 @@ func (b *backend) HeaderByHash(ctx context.Context, hash common.Hash) (*evmcore.
 	return nil, errors.New("block header not found")
 }
 
-func (b *backend) BlockByNumber(ctx context.Context, number rpc.BlockNumber) (*evmcore.EvmBlock, error) {
+func (b *fakeBackend) BlockByNumber(ctx context.Context, number rpc.BlockNumber) (*evmcore.EvmBlock, error) {
 	header, err := b.HeaderByNumber(ctx, number)
 	if err != nil {
 		return nil, err
@@ -187,7 +257,7 @@ func (b *backend) BlockByNumber(ctx context.Context, number rpc.BlockNumber) (*e
 	}, nil
 }
 
-func (b *backend) BlockByHash(ctx context.Context, hash common.Hash) (*evmcore.EvmBlock, error) {
+func (b *fakeBackend) BlockByHash(ctx context.Context, hash common.Hash) (*evmcore.EvmBlock, error) {
 	header, err := b.HeaderByHash(ctx, hash)
 	if err != nil {
 		return nil, err
@@ -197,34 +267,36 @@ func (b *backend) BlockByHash(ctx context.Context, hash common.Hash) (*evmcore.E
 	}, nil
 }
 
-func (b *backend) MaxGasLimit() uint64 {
+func (b *fakeBackend) MaxGasLimit() uint64 {
 	return b.rules.Economy.Gas.MaxEventGas
 }
 
-func (b *backend) MinGasPrice() *big.Int {
+func (b *fakeBackend) MinGasPrice() *big.Int {
 	return big.NewInt(1)
 }
 
-func (b *backend) RPCGasCap() uint64 {
+func (b *fakeBackend) RPCGasCap() uint64 {
 	return 50_000_000
 }
 
-func (b *backend) RPCTxFeeCap() float64 {
+func (b *fakeBackend) RPCTxFeeCap() float64 {
 	return 1.0
 }
 
-func (b *backend) RPCEVMTimeout() time.Duration {
+func (b *fakeBackend) RPCEVMTimeout() time.Duration {
 	return 5 * time.Second
 }
 
-func (b *backend) SendTx(ctx context.Context, signedTx *types.Transaction) error {
+func (b *fakeBackend) SendTx(ctx context.Context, signedTx *types.Transaction) error {
 	if b.pool == nil {
-		return errors.New("tx pool not initialized")
+		// This error indicates that the test is trying to send a transaction
+		// without having set a transaction pool in the fake backend.
+		panic("transaction pool not set in fake backend; use WithPool to set it")
 	}
 	return b.pool.AddLocal(signedTx)
 }
 
-func (b *backend) StateAndBlockByNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (state.StateDB, *evmcore.EvmBlock, error) {
+func (b *fakeBackend) StateAndBlockByNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (state.StateDB, *evmcore.EvmBlock, error) {
 
 	var (
 		block *evmcore.EvmBlock
@@ -251,15 +323,16 @@ func (b *backend) StateAndBlockByNumberOrHash(ctx context.Context, blockNrOrHash
 	return b.state.Copy(), block, nil
 }
 
-func (b *backend) GetNetworkRules(ctx context.Context, blockHeight idx.Block) (*opera.Rules, error) {
+func (b *fakeBackend) GetNetworkRules(ctx context.Context, blockHeight idx.Block) (*opera.Rules, error) {
 	return &b.rules, nil
 }
 
-func (b *backend) ChainConfig(blockHeight idx.Block) *params.ChainConfig {
+func (b *fakeBackend) ChainConfig(blockHeight idx.Block) *params.ChainConfig {
 	heights := opera.MakeUpgradeHeight(b.rules.Upgrades, 0)
 	return opera.CreateTransientEvmChainConfig(b.chainID, []opera.UpgradeHeight{heights}, blockHeight)
 }
 
-func (b *backend) GetSigner() types.Signer {
-	return types.LatestSignerForChainID(b.ChainID())
+// TxPool is a minimal interface for the transaction pool, only including the methods needed for testing.
+type TxPool interface {
+	AddLocal(*types.Transaction) error
 }
