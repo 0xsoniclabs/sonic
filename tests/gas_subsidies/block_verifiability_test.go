@@ -404,7 +404,7 @@ func (s *State) ApplyBlock(
 		Transactions: block.Transactions(),
 	}
 
-	stateDb := evmstore.CreateCarmenStateDb(s.db)
+	stateDb := evmstore.CreateCarmenStateDb(s.db, nil)
 
 	vmConfig := opera.GetVmConfig(opera.Rules{})
 	gasLimit := block.GasLimit()

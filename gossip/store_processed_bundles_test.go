@@ -20,9 +20,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"maps"
 	"math"
-	"slices"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
@@ -66,28 +64,22 @@ func TestStore_GetBundleExecutionInfo_ReturnsInfoForKnownBundles(t *testing.T) {
 	store, err := NewMemStore(t)
 	require.NoError(err)
 
-	history := map[uint64]map[string]bundle.ExecutionInfo{}
+	history := map[uint64]map[common.Hash]bundle.PositionInBlock{}
 
 	// construct a history of bundles in boundary block number and boundary positions
 	for i, blockNum := range []uint64{0, 1, bundle.MaxBlockRange / 2, bundle.MaxBlockRange - 2, bundle.MaxBlockRange - 1} {
-		history[blockNum] = map[string]bundle.ExecutionInfo{
-			"first": {
-				ExecutionPlanHash: uint64ToHash(uint64(i * 3)),
-				BlockNumber:       uint64(i),
-				Position:          0,
-				Count:             1,
+		history[blockNum] = map[common.Hash]bundle.PositionInBlock{
+			uint64ToHash(uint64(i * 3)): {
+				Offset: 0,
+				Count:  1,
 			},
-			"middle": {
-				ExecutionPlanHash: uint64ToHash(uint64(i*3 + 1)),
-				BlockNumber:       uint64(i),
-				Position:          1,
-				Count:             1,
+			uint64ToHash(uint64(i*3 + 1)): {
+				Offset: 2,
+				Count:  3,
 			},
-			"last": {
-				ExecutionPlanHash: uint64ToHash(uint64(i*3 + 2)),
-				BlockNumber:       uint64(i),
-				Position:          2,
-				Count:             1,
+			uint64ToHash(uint64(i*3 + 2)): {
+				Offset: 4,
+				Count:  5,
 			},
 		}
 	}
@@ -95,17 +87,22 @@ func TestStore_GetBundleExecutionInfo_ReturnsInfoForKnownBundles(t *testing.T) {
 	// initialize storage with the provided history
 	table := store.table.ProcessedBundles
 	batch := table.NewBatch()
-	for blockNum, bundles := range history {
-		store.addNewBundles(blockNum, slices.Collect(maps.Values(bundles)), batch)
+	for blockNum, infos := range history {
+		store.addNewBundles(blockNum, infos, batch)
 	}
 	require.NoError(batch.Write())
 
-	for blockNum, test := range history {
-		for name, test := range test {
+	for blockNum, infos := range history {
+		for hash, expected := range infos {
 			// check every element in the history can be retrieved correctly by the store
-			t.Run(fmt.Sprintf("BlockNumber=%d/%s", blockNum, name), func(t *testing.T) {
-				info := store.GetBundleExecutionInfo(test.ExecutionPlanHash)
-				require.Equal(test, *info)
+			t.Run(fmt.Sprintf("BlockNumber=%d/Hash=%x", blockNum, hash), func(t *testing.T) {
+				want := bundle.ExecutionInfo{
+					ExecutionPlanHash: hash,
+					BlockNumber:       blockNum,
+					Position:          expected,
+				}
+				info := store.GetBundleExecutionInfo(hash)
+				require.Equal(want, *info)
 			})
 		}
 	}
@@ -197,7 +194,9 @@ func TestStore_AddProcessedBundles_AddsNewBundlesToStorage(t *testing.T) {
 				batch.EXPECT().Delete(getIndexKey(toDelete, hash)).Return(nil)
 			}
 
-			store.AddProcessedBundles(block, []bundle.ExecutionInfo{info1})
+			store.AddProcessedBundles(block, map[common.Hash]bundle.PositionInBlock{
+				info1.ExecutionPlanHash: {},
+			})
 		})
 	}
 }
@@ -216,7 +215,7 @@ func TestStore_AddProcessedBundles_LogsOnBatchPutNewEntryError(t *testing.T) {
 	// To prevent the test from exiting, the mock logger is configured to panic instead.
 	require.PanicsWithValue(t,
 		fmt.Sprintf("failed to update hash of processed bundles: %v", []any{"error", injectedErr}),
-		func() { store.AddProcessedBundles(1, []bundle.ExecutionInfo{}) })
+		func() { store.AddProcessedBundles(1, nil) })
 }
 
 func TestStore_AddProcessedBundles_LogsOnBatchWriteError(t *testing.T) {
@@ -234,7 +233,7 @@ func TestStore_AddProcessedBundles_LogsOnBatchWriteError(t *testing.T) {
 	// To prevent the test from exiting, the mock logger is configured to panic instead.
 	require.PanicsWithValue(t,
 		fmt.Sprintf("failed to write batch for updating processed bundles: %v", []any{"error", injectedErr}),
-		func() { store.AddProcessedBundles(1, []bundle.ExecutionInfo{}) })
+		func() { store.AddProcessedBundles(1, nil) })
 }
 
 func TestStore_GetProcessedBundleHistoryHash_InitiallyZero(t *testing.T) {
@@ -303,14 +302,20 @@ func TestStore_addNewBundles_EncodesInfoCorrectly(t *testing.T) {
 		info := bundle.ExecutionInfo{
 			ExecutionPlanHash: hash,
 			BlockNumber:       uint64(blockNum),
-			Position:          4,
-			Count:             5,
+			Position: bundle.PositionInBlock{
+				Offset: 4,
+				Count:  5,
+			},
 		}
 
 		batch := NewMockstoreBatch(gomock.NewController(t))
 		batch.EXPECT().Put(getEntryKey(hash), BundleExecutionInfoMatcher{expected: info})
 		batch.EXPECT().Put(getIndexKey(uint64(blockNum), hash), []byte{0})
-		store.addNewBundles(uint64(blockNum), []bundle.ExecutionInfo{info}, batch)
+
+		infoMap := map[common.Hash]bundle.PositionInBlock{
+			hash: info.Position,
+		}
+		store.addNewBundles(uint64(blockNum), infoMap, batch)
 	}
 }
 
@@ -320,27 +325,27 @@ func TestStore_addNewBundles_ReturnsExpectedHash(t *testing.T) {
 	require.NoError(err)
 
 	cases := map[string]struct {
-		executedBundles []bundle.ExecutionInfo
+		executedBundles map[common.Hash]bundle.PositionInBlock
 	}{
-		"empty list": {
-			executedBundles: []bundle.ExecutionInfo{},
+		"empty map": {
+			executedBundles: map[common.Hash]bundle.PositionInBlock{},
 		},
 		"single entry": {
-			executedBundles: []bundle.ExecutionInfo{
-				wrapInfo(common.Hash{1, 2, 3}),
+			executedBundles: map[common.Hash]bundle.PositionInBlock{
+				{1, 2, 3}: {Offset: 4, Count: 5},
 			},
 		},
 		"two entries": {
-			executedBundles: []bundle.ExecutionInfo{
-				wrapInfo(common.Hash{1, 2, 3}),
-				wrapInfo(common.Hash{4, 5, 6}),
+			executedBundles: map[common.Hash]bundle.PositionInBlock{
+				{1, 2, 3}: {Offset: 4, Count: 5},
+				{4, 5, 6}: {Offset: 6, Count: 7},
 			},
 		},
 		"more than two entries": {
-			executedBundles: []bundle.ExecutionInfo{
-				wrapInfo(common.Hash{1, 2, 3}),
-				wrapInfo(common.Hash{4, 5, 6}),
-				wrapInfo(common.Hash{7, 8, 9}),
+			executedBundles: map[common.Hash]bundle.PositionInBlock{
+				{1, 2, 3}: {Offset: 4, Count: 5},
+				{4, 5, 6}: {Offset: 6, Count: 7},
+				{7, 8, 9}: {Offset: 8, Count: 9},
 			},
 		},
 	}
@@ -353,8 +358,8 @@ func TestStore_addNewBundles_ReturnsExpectedHash(t *testing.T) {
 			addedHash := store.addNewBundles(1, c.executedBundles, batch)
 
 			expectedHash := common.Hash{}
-			for _, info := range c.executedBundles {
-				expectedHash = xorHash(expectedHash, info.ExecutionPlanHash)
+			for hash := range c.executedBundles {
+				expectedHash = xorHash(expectedHash, hash)
 			}
 			require.Equal(expectedHash, addedHash)
 		})
@@ -378,7 +383,9 @@ func TestStore_addNewBundles_LogsOnBatchPutError(t *testing.T) {
 	require.PanicsWithValue(t,
 		fmt.Sprintf("failed to add processed bundle hash to batch: %v", []any{"error", compoundErr}),
 		func() {
-			store.addNewBundles(1, []bundle.ExecutionInfo{wrapInfo(hash1)}, batch)
+			store.addNewBundles(1, map[common.Hash]bundle.PositionInBlock{
+				hash1: {Offset: 4, Count: 5},
+			}, batch)
 		})
 }
 
@@ -559,27 +566,27 @@ func TestStore_deleteOutdatedBundles_RemovesMultipleEntries_WhenNotCleanedForToo
 func TestStore_deleteOutdatedBundles_ReturnsXorHashOfDeletedEntries(t *testing.T) {
 
 	cases := map[string]struct {
-		storedBundles []bundle.ExecutionInfo
+		storedBundles map[common.Hash]bundle.PositionInBlock
 	}{
 		"empty list": {
-			storedBundles: []bundle.ExecutionInfo{},
+			storedBundles: map[common.Hash]bundle.PositionInBlock{},
 		},
 		"single bundle": {
-			storedBundles: []bundle.ExecutionInfo{
-				wrapInfo(common.Hash{1, 2, 3}),
+			storedBundles: map[common.Hash]bundle.PositionInBlock{
+				{1, 2, 3}: {},
 			},
 		},
 		"two bundles": {
-			storedBundles: []bundle.ExecutionInfo{
-				wrapInfo(common.Hash{1, 2, 3}),
-				wrapInfo(common.Hash{4, 5, 6}),
+			storedBundles: map[common.Hash]bundle.PositionInBlock{
+				{1, 2, 3}: {},
+				{4, 5, 6}: {},
 			},
 		},
 		"more than two bundles": {
-			storedBundles: []bundle.ExecutionInfo{
-				wrapInfo(common.Hash{1, 2, 3}),
-				wrapInfo(common.Hash{4, 5, 6}),
-				wrapInfo(common.Hash{7, 8, 9}),
+			storedBundles: map[common.Hash]bundle.PositionInBlock{
+				{1, 2, 3}: {},
+				{4, 5, 6}: {},
+				{7, 8, 9}: {},
 			},
 		},
 	}
@@ -588,19 +595,19 @@ func TestStore_deleteOutdatedBundles_ReturnsXorHashOfDeletedEntries(t *testing.T
 		t.Run(name, func(t *testing.T) {
 
 			store, table, _, batch, it := storeTableLogMocks(t)
-			existingBundleKeys := make([][]byte, len(c.storedBundles))
-			for i, info := range c.storedBundles {
-				existingBundleKeys[i] = getIndexKey(1, info.ExecutionPlanHash)
+			existingBundleKeys := make(map[common.Hash][]byte, len(c.storedBundles))
+			for hash := range c.storedBundles {
+				existingBundleKeys[hash] = getIndexKey(1, hash)
 			}
 
 			table.EXPECT().NewIterator([]byte{'i'}, nil).Return(it)
 
-			for i, key := range existingBundleKeys {
+			for hash, key := range existingBundleKeys {
 				gomock.InOrder(
 					it.EXPECT().Next().Return(true),
 					it.EXPECT().Key().Return(key),
-					batch.EXPECT().Delete(getIndexKey(1, c.storedBundles[i].ExecutionPlanHash)).Return(nil),
-					batch.EXPECT().Delete(getEntryKey(c.storedBundles[i].ExecutionPlanHash)).Return(nil),
+					batch.EXPECT().Delete(getIndexKey(1, hash)).Return(nil),
+					batch.EXPECT().Delete(getEntryKey(hash)).Return(nil),
 				)
 			}
 
@@ -609,8 +616,8 @@ func TestStore_deleteOutdatedBundles_ReturnsXorHashOfDeletedEntries(t *testing.T
 			deletedHash := store.deleteOutdatedBundles(bundle.MaxBlockRange+1, batch)
 
 			expectedDeletedHash := common.Hash{}
-			for _, info := range c.storedBundles {
-				expectedDeletedHash = xorHash(expectedDeletedHash, info.ExecutionPlanHash)
+			for hash := range c.storedBundles {
+				expectedDeletedHash = xorHash(expectedDeletedHash, hash)
 			}
 			require.Equal(t, expectedDeletedHash, deletedHash)
 		})
@@ -816,16 +823,21 @@ func TestStore_ProcessedBundles_UpdatesHistoryHash(t *testing.T) {
 	hash3 := common.Hash{7, 8, 9}
 
 	cases := map[string]struct {
-		bundles []bundle.ExecutionInfo
+		bundles map[common.Hash]bundle.PositionInBlock
 	}{
 		"empty block": {
-			bundles: []bundle.ExecutionInfo{},
+			bundles: map[common.Hash]bundle.PositionInBlock{},
 		},
 		"single new bundle": {
-			bundles: []bundle.ExecutionInfo{wrapInfo(hash1)},
+			bundles: map[common.Hash]bundle.PositionInBlock{
+				hash1: {Offset: 0, Count: 1},
+			},
 		},
 		"multiple new bundles": {
-			bundles: []bundle.ExecutionInfo{wrapInfo(hash2), wrapInfo(hash3)},
+			bundles: map[common.Hash]bundle.PositionInBlock{
+				hash2: {Offset: 0, Count: 1},
+				hash3: {Offset: 1, Count: 1},
+			},
 		},
 	}
 
@@ -837,8 +849,8 @@ func TestStore_ProcessedBundles_UpdatesHistoryHash(t *testing.T) {
 
 			store.AddProcessedBundles(1, tc.bundles)
 			addedHash := common.Hash{}
-			for _, info := range tc.bundles {
-				addedHash = xorHash(addedHash, info.ExecutionPlanHash)
+			for hash := range tc.bundles {
+				addedHash = xorHash(addedHash, hash)
 			}
 			expectedHash := referenceComputeStateHash(1, initialHash, addedHash, common.Hash{})
 			_, gotHash := store.GetProcessedBundleHistoryHash()
@@ -857,14 +869,14 @@ func TestStore_ProcessedBundles_CommutativityOfAddedBundles(t *testing.T) {
 	hash1 := common.Hash{1, 2, 3}
 	hash2 := common.Hash{4, 5, 6}
 
-	store1.AddProcessedBundles(1, []bundle.ExecutionInfo{
-		wrapInfo(hash1),
-		wrapInfo(hash2),
+	store1.AddProcessedBundles(1, map[common.Hash]bundle.PositionInBlock{
+		hash1: {Offset: 0, Count: 1},
+		hash2: {Offset: 1, Count: 1},
 	})
 
-	store2.AddProcessedBundles(1, []bundle.ExecutionInfo{
-		wrapInfo(hash2),
-		wrapInfo(hash1),
+	store2.AddProcessedBundles(1, map[common.Hash]bundle.PositionInBlock{
+		hash2: {Offset: 1, Count: 1},
+		hash1: {Offset: 0, Count: 1},
 	})
 
 	_, hashA := store1.GetProcessedBundleHistoryHash()
@@ -882,11 +894,8 @@ func TestStore_ProcessedBundles_HashIsUpdatedWithNewBlocks(t *testing.T) {
 	// generate distinct hashes which also yield different xor values
 	seenHashes := make(map[common.Hash]struct{})
 	for i := range 4 * bundle.MaxBlockRange {
-		store.AddProcessedBundles(i, []bundle.ExecutionInfo{
-			{
-				ExecutionPlanHash: uint64ToHash(uint64(i)),
-				BlockNumber:       i,
-			},
+		store.AddProcessedBundles(i, map[common.Hash]bundle.PositionInBlock{
+			uint64ToHash(uint64(i)): {Offset: 0, Count: 1},
 		})
 
 		block, got := store.GetProcessedBundleHistoryHash()
@@ -919,32 +928,13 @@ func TestStore_ProcessedBundles_RetainsAllBundlesRequiredToCoverTheMaximumBlockR
 			)
 		}
 
-		store.AddProcessedBundles(currentBlockNumber, []bundle.ExecutionInfo{
-			{
-				ExecutionPlanHash: uint64ToHash(currentBlockNumber),
-				BlockNumber:       currentBlockNumber,
-			},
+		store.AddProcessedBundles(currentBlockNumber, map[common.Hash]bundle.PositionInBlock{
+			uint64ToHash(currentBlockNumber): {},
 		})
 	}
 }
 
 // --- helper functions ---
-
-// return execution info with the given hash and position 0.
-// If a second parameter is given, it is used as the block number,
-// otherwise the block number is set to 1. If more than two parameters are given
-// the extras are ignored.
-func wrapInfo(hash common.Hash, blockNum ...uint64) bundle.ExecutionInfo {
-	if len(blockNum) == 0 {
-		blockNum = []uint64{1}
-	}
-	return bundle.ExecutionInfo{
-		ExecutionPlanHash: hash,
-		BlockNumber:       blockNum[0],
-		Position:          0,
-		Count:             1,
-	}
-}
 
 // referenceComputeStateHash is a reference implementation of the hash
 // computation for the processed bundles state. To be used by tests.
@@ -1043,14 +1033,14 @@ func (m BundleExecutionInfoMatcher) Matches(v any) bool {
 		return false
 	}
 	blockNum := binary.BigEndian.Uint64(b[:8])
-	position := binary.BigEndian.Uint32(b[8:12])
+	offset := binary.BigEndian.Uint32(b[8:12])
 	count := binary.BigEndian.Uint32(b[12:16])
 	return blockNum == m.expected.BlockNumber &&
-		position == m.expected.Position &&
-		count == m.expected.Count
+		offset == m.expected.Position.Offset &&
+		count == m.expected.Position.Count
 }
 
 func (m BundleExecutionInfoMatcher) String() string {
-	return fmt.Sprintf("is a byte slice encoding bundle.ExecutionInfo with block number %d, position %d and count %d",
-		m.expected.BlockNumber, m.expected.Position, m.expected.Count)
+	return fmt.Sprintf("is a byte slice encoding bundle.ExecutionInfo with block number %d, offset %d and count %d",
+		m.expected.BlockNumber, m.expected.Position.Offset, m.expected.Position.Count)
 }

@@ -24,6 +24,12 @@ import "github.com/ethereum/go-ethereum/common"
 type ExecutionInfo struct {
 	ExecutionPlanHash common.Hash
 	BlockNumber       uint64
-	Position          uint32
-	Count             uint32
+	Position          PositionInBlock
+}
+
+// PositionInBlock contains the position and number of transactions that ended
+// up in a block as the result of the execution of a bundle.
+type PositionInBlock struct {
+	Offset uint32
+	Count  uint32
 }

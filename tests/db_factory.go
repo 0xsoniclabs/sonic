@@ -35,7 +35,7 @@ type carmenFactory struct {
 // NewTestStateDB creates a new tests.StateTestState wrapping Carmen as a state database.
 func (f carmenFactory) NewTestStateDB(accounts types.GenesisAlloc) tests.StateTestState {
 	carmenstatedb := carmen.CreateCustomStateDBUsing(f.st, 1024)
-	statedb := evmstore.CreateCarmenStateDb(carmenstatedb)
+	statedb := evmstore.CreateCarmenStateDb(carmenstatedb, nil)
 	for addr, a := range accounts {
 		statedb.SetCode(addr, a.Code, tracing.CodeChangeGenesis)
 		statedb.SetNonce(addr, a.Nonce, tracing.NonceChangeGenesis)
@@ -49,7 +49,7 @@ func (f carmenFactory) NewTestStateDB(accounts types.GenesisAlloc) tests.StateTe
 	statedb.EndBlock(0)
 	statedb.GetStateHash()
 
-	statedb = evmstore.CreateCarmenStateDb(carmenstatedb)
+	statedb = evmstore.CreateCarmenStateDb(carmenstatedb, nil)
 	return tests.StateTestState{StateDB: &carmenStateDB{CarmenStateDB: statedb}}
 }
 

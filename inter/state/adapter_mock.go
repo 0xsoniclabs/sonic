@@ -13,6 +13,7 @@ import (
 	reflect "reflect"
 
 	witness "github.com/0xsoniclabs/carmen/go/common/witness"
+	bundle "github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	common "github.com/ethereum/go-ethereum/common"
 	state "github.com/ethereum/go-ethereum/core/state"
 	stateless "github.com/ethereum/go-ethereum/core/stateless"
@@ -109,6 +110,18 @@ func (m *MockStateDB) AddPreimage(arg0 common.Hash, arg1 []byte) {
 func (mr *MockStateDBMockRecorder) AddPreimage(arg0, arg1 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddPreimage", reflect.TypeOf((*MockStateDB)(nil).AddPreimage), arg0, arg1)
+}
+
+// AddProcessedBundle mocks base method.
+func (m *MockStateDB) AddProcessedBundle(execPlanHash common.Hash, positionInBlock bundle.PositionInBlock) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "AddProcessedBundle", execPlanHash, positionInBlock)
+}
+
+// AddProcessedBundle indicates an expected call of AddProcessedBundle.
+func (mr *MockStateDBMockRecorder) AddProcessedBundle(execPlanHash, positionInBlock any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddProcessedBundle", reflect.TypeOf((*MockStateDB)(nil).AddProcessedBundle), execPlanHash, positionInBlock)
 }
 
 // AddRefund mocks base method.
@@ -461,6 +474,20 @@ func (m *MockStateDB) GetTransientState(addr common.Address, key common.Hash) co
 func (mr *MockStateDBMockRecorder) GetTransientState(addr, key any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTransientState", reflect.TypeOf((*MockStateDB)(nil).GetTransientState), addr, key)
+}
+
+// HasBundleRecentlyBeenProcessed mocks base method.
+func (m *MockStateDB) HasBundleRecentlyBeenProcessed(execPlanHash common.Hash) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HasBundleRecentlyBeenProcessed", execPlanHash)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// HasBundleRecentlyBeenProcessed indicates an expected call of HasBundleRecentlyBeenProcessed.
+func (mr *MockStateDBMockRecorder) HasBundleRecentlyBeenProcessed(execPlanHash any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasBundleRecentlyBeenProcessed", reflect.TypeOf((*MockStateDB)(nil).HasBundleRecentlyBeenProcessed), execPlanHash)
 }
 
 // HasSelfDestructed mocks base method.
