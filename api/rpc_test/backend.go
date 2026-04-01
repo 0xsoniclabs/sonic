@@ -260,6 +260,7 @@ func (b *backend) ChainConfig(blockHeight idx.Block) *params.ChainConfig {
 	return opera.CreateTransientEvmChainConfig(b.chainID, []opera.UpgradeHeight{heights}, blockHeight)
 }
 
-func (b *backend) GetSigner() types.Signer {
-	return types.LatestSignerForChainID(b.ChainID())
+// TxPool is a minimal interface for the transaction pool, only including the methods needed for testing.
+type TxPool interface {
+	AddLocal(*types.Transaction) error
 }
