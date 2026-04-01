@@ -40,7 +40,7 @@ import (
 type backend struct {
 	ethapi.Backend
 
-	chainId      uint64
+	chainID      uint64
 	rules        opera.Rules
 	state        *testState
 	pool         txPool
@@ -71,7 +71,7 @@ type txPool interface {
 func NewBackendBuilder(t *testing.T) backendBuilder {
 	return backendBuilder{
 		be: backend{
-			chainId:      opera.FakeNetworkID,
+			chainID:      opera.FakeNetworkID,
 			rules:        opera.FakeNetRules(opera.GetBrioUpgrades()),
 			state:        newTestState(t),
 			blockHistory: DefaultBlockHistory(),
@@ -79,13 +79,17 @@ func NewBackendBuilder(t *testing.T) backendBuilder {
 	}
 }
 
-func (b backendBuilder) WithChainId(chainId uint64) backendBuilder {
-	b.be.chainId = chainId
+func (b backendBuilder) WithChainID(chainID uint64) backendBuilder {
+	b.be.chainID = chainID
 	return b
 }
 
 func (b backendBuilder) WithBlockHistory(blocks []TestBlock) backendBuilder {
-	b.be.blockHistory = blocks
+	if len(blocks) == 0 {
+		b.be.blockHistory = DefaultBlockHistory()
+	} else {
+		b.be.blockHistory = blocks
+	}
 	return b
 }
 
@@ -118,7 +122,7 @@ func DefaultBlockHistory() []TestBlock {
 }
 
 func (b *backend) ChainID() *big.Int {
-	return big.NewInt(int64(b.chainId))
+	return big.NewInt(int64(b.chainID))
 }
 
 func (b *backend) CurrentBlock() *evmcore.EvmBlock {
@@ -138,6 +142,10 @@ func (b *backend) GetEVM(
 		blockContext = &blkctx
 	}
 	chainConfig := b.ChainConfig(idx.Block(header.Number.Int64()))
+	if vmConfig == nil {
+		defaultCfg := vm.Config{}
+		vmConfig = &defaultCfg
+	}
 	return vm.NewEVM(*blockContext, state, chainConfig, *vmConfig), func() error { return nil }, nil
 }
 
@@ -249,7 +257,7 @@ func (b *backend) GetNetworkRules(ctx context.Context, blockHeight idx.Block) (*
 
 func (b *backend) ChainConfig(blockHeight idx.Block) *params.ChainConfig {
 	heights := opera.MakeUpgradeHeight(b.rules.Upgrades, 0)
-	return opera.CreateTransientEvmChainConfig(b.chainId, []opera.UpgradeHeight{heights}, blockHeight)
+	return opera.CreateTransientEvmChainConfig(b.chainID, []opera.UpgradeHeight{heights}, blockHeight)
 }
 
 func (b *backend) GetSigner() types.Signer {

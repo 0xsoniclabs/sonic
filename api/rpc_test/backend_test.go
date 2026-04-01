@@ -34,7 +34,7 @@ func Test_ChainID(t *testing.T) {
 	require.EqualValues(t, opera.FakeNetworkID, be.ChainID().Uint64())
 
 	for _, v := range []uint64{1, 123, 9999} {
-		be := NewBackendBuilder(t).WithChainId(v).Build()
+		be := NewBackendBuilder(t).WithChainID(v).Build()
 		require.EqualValues(t, v, be.ChainID().Uint64())
 	}
 }
