@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
 
@@ -124,7 +125,10 @@ func TestRegistryUpdate_UpdatesAreEffectiveImmediately(t *testing.T) {
 	sponsee := tests.NewAccount()
 
 	// provide some funds to the sponsee for transaction 1 and 3
-	Fund(t, net, sponsee.Address(), big.NewInt(1e18))
+	initialRegistry := Fund(t, net, sponsee.Address(), big.NewInt(1e18))
+
+	initialRegistryConfig, err := initialRegistry.GetGasConfig(nil)
+	require.NoError(err)
 
 	// provide some funds to the sponsee for transaction 2 (the update)
 	_, err = net.EndowAccount(sponsee.Address(), big.NewInt(1e18))
@@ -176,9 +180,13 @@ func TestRegistryUpdate_UpdatesAreEffectiveImmediately(t *testing.T) {
 		require.Equal(types.ReceiptStatusSuccessful, r.Status)
 	}
 
+	proxyRegistryConfig, err := initialRegistry.GetGasConfig(nil)
+	require.NoError(err)
+
 	// Check that all sponsored transactions used the same amount of gas.
 	require.Equal(receipts[0].GasUsed, receipts[1].GasUsed)
 	require.Equal(receipts[0].GasUsed, receipts[3].GasUsed)
+	gasUsed := receipts[0].GasUsed
 
 	// Fetch the payment transaction for this sponsored transaction.
 	payments := []*types.Transaction{}
@@ -191,23 +199,57 @@ func TestRegistryUpdate_UpdatesAreEffectiveImmediately(t *testing.T) {
 		require.LessOrEqual(int(receipt.TransactionIndex), len(block.Transactions()))
 		payment := block.Transactions()[receipt.TransactionIndex+1]
 		require.True(internaltx.IsInternal(payment))
-		substractReceipt, err := client.TransactionReceipt(t.Context(), payment.Hash())
+		subtractReceipt, err := client.TransactionReceipt(t.Context(), payment.Hash())
 		require.NoError(err)
-		require.Equal(types.ReceiptStatusSuccessful, substractReceipt.Status)
+		require.Equal(types.ReceiptStatusSuccessful, subtractReceipt.Status)
 
 		payments = append(payments, payment)
 	}
 
-	// The first two transactions are charged according to the old rules. Since
-	// both sponsor the same account, the payment transaction data  must match,
+	// The first two transactions are charged according to the old registry. Since
+	// both sponsor the same account, the payment transaction data must match,
 	// or at least the first 36 bytes, which represent the function selector
 	// (4 bytes) and fundId (32 bytes).
 	// Note: the last 32 bytes can differ due to varying fees in different blocks.
 	require.Equal(payments[0].Data()[:36], payments[1].Data()[:36])
 
-	// The last transaction is charged according to the new rules. Thus, the
-	// call data for the payment transaction must be different.
+	// The last transaction is charged according to the new registry contract.
+	// Thus, the call data for the payment transaction must be different.
 	// Again only consider the first 36 bytes, as the fundId must be different
 	require.NotEqual(payments[0].Data()[:36], payments[2].Data()[:36])
 
+	// Verify that the payment transactions data encoding of the fee is
+	// correct according to the respective registry config and block gas price.
+	paymentData0 := makePaymentFeeData(t,
+		gasUsed,
+		receipts[0].EffectiveGasPrice,
+		initialRegistryConfig.OverheadCharge)
+	require.Equal(paymentData0, payments[0].Data()[36:])
+
+	paymentData1 := makePaymentFeeData(t,
+		gasUsed,
+		receipts[1].EffectiveGasPrice,
+		initialRegistryConfig.OverheadCharge)
+	require.Equal(paymentData1, payments[1].Data()[36:])
+
+	paymentData2 := makePaymentFeeData(t,
+		gasUsed,
+		receipts[3].EffectiveGasPrice,
+		proxyRegistryConfig.OverheadCharge)
+	require.Equal(paymentData2, payments[2].Data()[36:])
+
+}
+
+func makePaymentFeeData(t *testing.T, gasUsed uint64, gasPrice, overheadCharge *big.Int) []byte {
+	fee, overflow := uint256.FromBig(new(big.Int).Mul(
+		new(big.Int).Add(
+			new(big.Int).SetUint64(gasUsed),
+			overheadCharge,
+		),
+		gasPrice,
+	))
+	require.False(t, overflow)
+	data := [32]byte{}
+	fee.WriteToArray32(&data)
+	return data[:]
 }
