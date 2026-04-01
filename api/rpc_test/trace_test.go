@@ -29,8 +29,10 @@ import (
 )
 
 func Test_TraceSimpleTransfer(t *testing.T) {
-	acc1 := NewAccount()
-	acc2 := NewAccount()
+	acc1, err := NewAccount()
+	require.NoError(t, err)
+	acc2, err := NewAccount()
+	require.NoError(t, err)
 	transferBalance := big.NewInt(1e17)
 
 	be := NewBackendBuilder(t).
@@ -54,13 +56,12 @@ func Test_TraceSimpleTransfer(t *testing.T) {
 	api := ethapi.NewPublicTxTraceAPI(be, 100_000)
 
 	txRequest1 := ethapi.TransactionArgs{
-		ChainID:  ToHexBigInt(1),
 		From:     acc1.Address(),
 		To:       acc2.Address(),
 		Nonce:    ToHexUint64(0),
 		Gas:      ToHexUint64(8_000_000),
-		GasPrice: ToHexBigInt(1),
-		Value:    ToHexBigInt(transferBalance.Int64()),
+		GasPrice: ToHexBigInt(big.NewInt(1)),
+		Value:    ToHexBigInt(transferBalance),
 	}
 
 	res, err := api.Call(

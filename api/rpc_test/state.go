@@ -17,7 +17,6 @@
 package rpctest
 
 import (
-	"fmt"
 	"testing"
 
 	carmen "github.com/0xsoniclabs/carmen/go/state"
@@ -35,7 +34,7 @@ type testState struct {
 func newTestState(t *testing.T) *testState {
 	carmenDir := t.TempDir()
 	if carmenDir == "" {
-		panic(fmt.Errorf("failed to create temporary dir for carmen state"))
+		t.Fatalf("failed to create temporary dir for carmen state")
 	}
 	carmenState, err := carmen.NewState(carmen.Parameters{
 		Variant:      "go-file",
@@ -46,7 +45,7 @@ func newTestState(t *testing.T) *testState {
 		ArchiveCache: 1, // use minimum cache (not default)
 	})
 	if err != nil {
-		panic(fmt.Errorf("failed to create carmen state; %s", err))
+		t.Fatalf("failed to create carmen state; %s", err)
 	}
 
 	carmenStateDb := carmen.CreateNonCommittableStateDBUsing(carmenState)

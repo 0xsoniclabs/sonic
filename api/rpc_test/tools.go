@@ -30,11 +30,14 @@ type Account struct {
 	PrivateKey *ecdsa.PrivateKey
 }
 
-func NewAccount() *Account {
-	key, _ := crypto.GenerateKey()
+func NewAccount() (*Account, error) {
+	key, err := crypto.GenerateKey()
+	if err != nil {
+		return nil, err
+	}
 	return &Account{
 		PrivateKey: key,
-	}
+	}, nil
 }
 
 func (a *Account) Address() *common.Address {
@@ -52,12 +55,11 @@ func ToHexUint(i uint) *hexutil.Uint {
 	return &hu
 }
 
-func ToHexBig(i big.Int) *hexutil.Big {
-	return (*hexutil.Big)(&i)
-}
-
-func ToHexBigInt(i int64) *hexutil.Big {
-	hu := hexutil.Big(*big.NewInt(i))
+func ToHexBigInt(i *big.Int) *hexutil.Big {
+	if i == nil {
+		return nil
+	}
+	hu := hexutil.Big(*i)
 	return &hu
 }
 
