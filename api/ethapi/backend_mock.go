@@ -16,6 +16,7 @@ import (
 	reflect "reflect"
 	time "time"
 
+	backend "github.com/0xsoniclabs/sonic/api/backend"
 	evmcore "github.com/0xsoniclabs/sonic/evmcore"
 	inter "github.com/0xsoniclabs/sonic/inter"
 	iblockproc "github.com/0xsoniclabs/sonic/inter/iblockproc"
@@ -40,7 +41,6 @@ import (
 type MockBackend struct {
 	ctrl     *gomock.Controller
 	recorder *MockBackendMockRecorder
-	isgomock struct{}
 }
 
 // MockBackendMockRecorder is the mock recorder for MockBackend.
@@ -75,18 +75,18 @@ func (mr *MockBackendMockRecorder) AccountManager() *gomock.Call {
 }
 
 // BlockByHash mocks base method.
-func (m *MockBackend) BlockByHash(ctx context.Context, arg1 common.Hash) (*evmcore.EvmBlock, error) {
+func (m *MockBackend) BlockByHash(ctx context.Context, hash common.Hash) (*evmcore.EvmBlock, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "BlockByHash", ctx, arg1)
+	ret := m.ctrl.Call(m, "BlockByHash", ctx, hash)
 	ret0, _ := ret[0].(*evmcore.EvmBlock)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // BlockByHash indicates an expected call of BlockByHash.
-func (mr *MockBackendMockRecorder) BlockByHash(ctx, arg1 any) *gomock.Call {
+func (mr *MockBackendMockRecorder) BlockByHash(ctx, hash any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BlockByHash", reflect.TypeOf((*MockBackend)(nil).BlockByHash), ctx, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BlockByHash", reflect.TypeOf((*MockBackend)(nil).BlockByHash), ctx, hash)
 }
 
 // BlockByNumber mocks base method.
@@ -247,9 +247,9 @@ func (mr *MockBackendMockRecorder) GetDowntime(ctx, vid any) *gomock.Call {
 }
 
 // GetEVM mocks base method.
-func (m *MockBackend) GetEVM(ctx context.Context, arg1 vm.StateDB, header *evmcore.EvmHeader, vmConfig *vm.Config, blockContext *vm.BlockContext) (*vm.EVM, func() error, error) {
+func (m *MockBackend) GetEVM(ctx context.Context, state vm.StateDB, header *evmcore.EvmHeader, vmConfig *vm.Config, blockContext *vm.BlockContext) (*vm.EVM, func() error, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetEVM", ctx, arg1, header, vmConfig, blockContext)
+	ret := m.ctrl.Call(m, "GetEVM", ctx, state, header, vmConfig, blockContext)
 	ret0, _ := ret[0].(*vm.EVM)
 	ret1, _ := ret[1].(func() error)
 	ret2, _ := ret[2].(error)
@@ -257,9 +257,9 @@ func (m *MockBackend) GetEVM(ctx context.Context, arg1 vm.StateDB, header *evmco
 }
 
 // GetEVM indicates an expected call of GetEVM.
-func (mr *MockBackendMockRecorder) GetEVM(ctx, arg1, header, vmConfig, blockContext any) *gomock.Call {
+func (mr *MockBackendMockRecorder) GetEVM(ctx, state, header, vmConfig, blockContext any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEVM", reflect.TypeOf((*MockBackend)(nil).GetEVM), ctx, arg1, header, vmConfig, blockContext)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEVM", reflect.TypeOf((*MockBackend)(nil).GetEVM), ctx, state, header, vmConfig, blockContext)
 }
 
 // GetEpochBlockState mocks base method.
@@ -503,18 +503,18 @@ func (mr *MockBackendMockRecorder) GetUptime(ctx, vid any) *gomock.Call {
 }
 
 // HeaderByHash mocks base method.
-func (m *MockBackend) HeaderByHash(ctx context.Context, arg1 common.Hash) (*evmcore.EvmHeader, error) {
+func (m *MockBackend) HeaderByHash(ctx context.Context, hash common.Hash) (*evmcore.EvmHeader, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "HeaderByHash", ctx, arg1)
+	ret := m.ctrl.Call(m, "HeaderByHash", ctx, hash)
 	ret0, _ := ret[0].(*evmcore.EvmHeader)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // HeaderByHash indicates an expected call of HeaderByHash.
-func (mr *MockBackendMockRecorder) HeaderByHash(ctx, arg1 any) *gomock.Call {
+func (mr *MockBackendMockRecorder) HeaderByHash(ctx, hash any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HeaderByHash", reflect.TypeOf((*MockBackend)(nil).HeaderByHash), ctx, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HeaderByHash", reflect.TypeOf((*MockBackend)(nil).HeaderByHash), ctx, hash)
 }
 
 // HeaderByNumber mocks base method.
@@ -575,10 +575,10 @@ func (mr *MockBackendMockRecorder) MinGasPrice() *gomock.Call {
 }
 
 // Progress mocks base method.
-func (m *MockBackend) Progress() PeerProgress {
+func (m *MockBackend) Progress() backend.PeerProgress {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Progress")
-	ret0, _ := ret[0].(PeerProgress)
+	ret0, _ := ret[0].(backend.PeerProgress)
 	return ret0
 }
 

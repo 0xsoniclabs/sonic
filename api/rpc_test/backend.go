@@ -33,7 +33,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xsoniclabs/sonic/api/ethapi"
+	"github.com/0xsoniclabs/sonic/api/backend"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -166,17 +166,17 @@ func defaultBlockHistory() []Block {
 	}
 }
 
-// fakeBackend is a simple implementation of the ethapi.Backend interface,
+// fakeBackend is a simple implementation of the backend.Backend interface,
 // with only the methods needed for testing implemented.
 //
 // This type is not exported as it is meant to be used via the builder constructed
 // by NewBackendBuilder.
 //
 // When using the backend in new tests, if a method is called which is not yet
-// implemented, the test will panic. ethapi.Backend methods are to be implemented
+// implemented, the test will panic. backend.Backend methods are to be implemented
 // on demand as the tests require more of them.
 type fakeBackend struct {
-	ethapi.Backend
+	backend.Backend
 
 	chainID      uint64
 	rules        opera.Rules
@@ -185,7 +185,7 @@ type fakeBackend struct {
 	blockHistory []Block
 }
 
-// GetSigner is a helper method outside of the ethapi.Backend interface,
+// GetSigner is a helper method outside of the backend.Backend interface,
 // to facilitate the use of the correct signer in tests.
 func (b *fakeBackend) GetSigner() types.Signer {
 	return types.LatestSignerForChainID(b.ChainID())
@@ -208,7 +208,7 @@ func (b *fakeBackend) GetEVM(
 	blockContext *vm.BlockContext,
 ) (*vm.EVM, func() error, error) {
 	if blockContext == nil {
-		blkctx := ethapi.GetBlockContext(ctx, b, header)
+		blkctx := backend.GetBlockContext(ctx, b, header)
 		blockContext = &blkctx
 	}
 	chainConfig := b.ChainConfig(idx.Block(header.Number.Int64()))

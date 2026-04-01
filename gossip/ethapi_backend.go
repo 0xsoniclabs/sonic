@@ -38,7 +38,7 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/pkg/errors"
 
-	"github.com/0xsoniclabs/sonic/api/ethapi"
+	"github.com/0xsoniclabs/sonic/api/backend"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice/gaspricelimits"
@@ -498,12 +498,12 @@ func (b *EthAPIBackend) TxPoolContent() (map[common.Address]types.Transactions, 
 }
 
 // Progress returns current synchronization status of this node
-func (b *EthAPIBackend) Progress() ethapi.PeerProgress {
+func (b *EthAPIBackend) Progress() backend.PeerProgress {
 	p2pProgress := b.svc.handler.myProgress()
 	highestP2pProgress := b.svc.handler.highestPeerProgress()
 	lastBlock := b.svc.store.GetBlock(p2pProgress.LastBlockIdx)
 
-	return ethapi.PeerProgress{
+	return backend.PeerProgress{
 		CurrentEpoch:     p2pProgress.Epoch,
 		CurrentBlock:     p2pProgress.LastBlockIdx,
 		CurrentBlockHash: p2pProgress.LastBlockAtropos,

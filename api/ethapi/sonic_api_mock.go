@@ -24,7 +24,6 @@ import (
 type MockSccApiBackend struct {
 	ctrl     *gomock.Controller
 	recorder *MockSccApiBackendMockRecorder
-	isgomock struct{}
 }
 
 // MockSccApiBackendMockRecorder is the mock recorder for MockSccApiBackend.
