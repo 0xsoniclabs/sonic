@@ -78,14 +78,7 @@ func testSingleProposerProtocol_CanProcessTransactions(
 
 	// Create NumTxsPerRound accounts and send them each 1e18 wei to allow each
 	// of them to send independent transactions in each round.
-	accounts := make([]*tests.Account, NumTxsPerRound)
-	addresses := make([]common.Address, NumTxsPerRound)
-	for i := range accounts {
-		accounts[i] = tests.NewAccount()
-		addresses[i] = accounts[i].Address()
-	}
-	_, err = net.EndowAccounts(addresses, big.NewInt(1e18))
-	require.NoError(err)
+	accounts := tests.MakeAccountsWithBalance(t, net, NumTxsPerRound, big.NewInt(1e18))
 
 	// Check that the network is using the single-proposer protocol.
 	require.Equal(3, getUsedEventVersion(t, client))
