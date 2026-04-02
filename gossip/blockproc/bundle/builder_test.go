@@ -247,3 +247,16 @@ func TestBundleBuilder_Regression_RespectsChainID(t *testing.T) {
 		})
 	}
 }
+
+func TestBundleBuilder_DefaultsSignerIfUnspecified(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	tx := NewBuilder(nil).
+		With(Step(key, types.NewTx(&types.LegacyTx{}))).
+		Build()
+
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	_, _, err = ValidateEnvelope(signer, tx)
+	require.NoError(t, err)
+}
