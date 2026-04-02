@@ -61,8 +61,7 @@ func TestBundles_RunOnlyOnce_AnExecutionPlanSubmittedMultipleTimesInDifferentEnv
 	// bundle is only processed once, there should only be a receipt for A but
 	// none for B.
 	b := bundle.NewBuilder(signer).
-		SetFlags(bundle.EF_OneOf).
-		With(
+		OneOf(
 			Step(t, session, accounts[0], &types.AccessListTx{
 				To:  &common.Address{},
 				Gas: 21000,
@@ -73,8 +72,9 @@ func TestBundles_RunOnlyOnce_AnExecutionPlanSubmittedMultipleTimesInDifferentEnv
 			}),
 		).BuildBundle()
 
-	txA := b.Transactions[0]
-	txB := b.Transactions[1]
+	txs := b.GetTransactionsInExecutionOrder()
+	txA := txs[0]
+	txB := txs[1]
 
 	// Pack the same bundle into multiple envelops.
 	envelopes := []*types.Transaction{}
@@ -136,8 +136,7 @@ func TestBundles_RunOnlyOnce_AnExecutionPlanSubmittedMultipleTimesInTheSameBundl
 
 	// Create the OneOf(A,B) bundle making sure that only A or B are executed.
 	inner := bundle.NewBuilder(signer).
-		SetFlags(bundle.EF_OneOf).
-		With(
+		OneOf(
 			Step(t, session, accounts[0], &types.AccessListTx{
 				To:  &common.Address{},
 				Gas: 21000,
@@ -148,8 +147,9 @@ func TestBundles_RunOnlyOnce_AnExecutionPlanSubmittedMultipleTimesInTheSameBundl
 			}),
 		).BuildBundle()
 
-	txA := inner.Transactions[0]
-	txB := inner.Transactions[1]
+	txs := inner.GetTransactionsInExecutionOrder()
+	txA := txs[0]
+	txB := txs[1]
 
 	// Create multiple execution plans running the inner bundle multiple times.
 	envelopes := []*types.Transaction{}
@@ -157,10 +157,11 @@ func TestBundles_RunOnlyOnce_AnExecutionPlanSubmittedMultipleTimesInTheSameBundl
 	for range 100 {
 		keys := MustGenerateKeys(2)
 		envelope, plan := bundle.NewBuilder(signer).
-			SetFlags(bundle.EF_AllOf|bundle.EF_TolerateFailed|bundle.EF_TolerateInvalid).
-			With(
-				bundle.Step(keys[0], bundle.MustWrapIntoEnvelope(signer, inner)),
-				bundle.Step(keys[1], bundle.MustWrapIntoEnvelope(signer, inner)),
+			AllOf(
+				bundle.Step(keys[0], bundle.MustWrapIntoEnvelope(signer, inner)).
+					WithFlags(bundle.EF_TolerateFailed|bundle.EF_TolerateInvalid),
+				bundle.Step(keys[1], bundle.MustWrapIntoEnvelope(signer, inner)).
+					WithFlags(bundle.EF_TolerateFailed|bundle.EF_TolerateInvalid),
 			).
 			BuildEnvelopeAndPlan()
 
@@ -236,8 +237,7 @@ func TestBundles_RunOnlyOnce_FailedBundlesCanBeRetried(t *testing.T) {
 	// the second copy of OneOf(A1) should succeed.
 
 	inner := bundle.NewBuilder(signer).
-		SetFlags(bundle.EF_OneOf).
-		With(
+		OneOf(
 			Step(t, session, account, &types.AccessListTx{
 				To:    &common.Address{},
 				Nonce: 1,
@@ -245,23 +245,26 @@ func TestBundles_RunOnlyOnce_FailedBundlesCanBeRetried(t *testing.T) {
 			}),
 		).BuildBundle()
 
-	txA1 := inner.Transactions[0]
+	txs := inner.GetTransactionsInExecutionOrder()
+	txA1 := txs[0]
 
 	keys := MustGenerateKeys(2)
 
 	outer, txBundle, plan := bundle.NewBuilder(signer).
-		SetFlags(bundle.EF_AllOf|bundle.EF_TolerateFailed|bundle.EF_TolerateInvalid).
-		With(
-			bundle.Step(keys[0], bundle.MustWrapIntoEnvelope(signer, inner)),
+		AllOf(
+			bundle.Step(keys[0], bundle.MustWrapIntoEnvelope(signer, inner)).
+				WithFlags(bundle.EF_TolerateFailed|bundle.EF_TolerateInvalid),
 			Step(t, session, account, &types.AccessListTx{
 				To:    &common.Address{},
 				Nonce: 0,
 				Gas:   21000,
-			}),
-			bundle.Step(keys[1], bundle.MustWrapIntoEnvelope(signer, inner)),
+			}).WithFlags(bundle.EF_TolerateFailed|bundle.EF_TolerateInvalid),
+			bundle.Step(keys[1], bundle.MustWrapIntoEnvelope(signer, inner)).
+				WithFlags(bundle.EF_TolerateFailed|bundle.EF_TolerateInvalid),
 		).BuildEnvelopeBundleAndPlan()
 
-	txA0 := txBundle.Transactions[1]
+	txs = txBundle.GetTransactionsInExecutionOrder()
+	txA0 := txs[1]
 
 	// Submit the outer bundle and wait for the execution to complete.
 	_, err = session.Send(outer)

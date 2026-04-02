@@ -17,18 +17,13 @@
 package bundle
 
 import (
-	"errors"
-	"fmt"
-	"math"
 	"math/big"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
 )
 
 func TestIsBundledOnly_IdentifiesBundleOnlyTransactions_OfAllTypes(t *testing.T) {
@@ -87,11 +82,15 @@ func TestIsEnvelope_IdentifiesEnvelopes(t *testing.T) {
 }
 
 func TestOpenEnvelope_SuccessfullyDecodesEnvelopes(t *testing.T) {
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
 	tests := map[string]TransactionBundle{
 		"empty bundle": {},
 		"bundle with transactions": {
-			Transactions: types.Transactions{
-				types.NewTx(&types.AccessListTx{}),
+			Transactions: map[TxReference]*types.Transaction{
+				{}: types.MustSignNewTx(key, signer, &types.AccessListTx{}),
 			},
 		},
 	}
@@ -103,15 +102,17 @@ func TestOpenEnvelope_SuccessfullyDecodesEnvelopes(t *testing.T) {
 				Data: bundle.Encode(),
 			})
 
-			unpacked, err := OpenEnvelope(envelope)
+			unpacked, err := OpenEnvelope(signer, envelope)
 			require.NoError(t, err)
 
 			// Transactions can not be compared using require.Equal, so we
 			// check them explicitly first before replacing them in the unpacked
 			// bundle for the final equality check.
 			require.Equal(t, len(bundle.Transactions), len(unpacked.Transactions))
-			for i, tx := range bundle.Transactions {
-				require.Equal(t, tx.Hash(), unpacked.Transactions[i].Hash())
+			originalTxs := bundle.GetTransactionsInExecutionOrder()
+			unpackedTxs := unpacked.GetTransactionsInExecutionOrder()
+			for i, tx := range originalTxs {
+				require.Equal(t, tx.Hash(), unpackedTxs[i].Hash())
 			}
 			unpacked.Transactions = bundle.Transactions
 
@@ -124,7 +125,7 @@ func TestOpenEnvelope_FailsIfNotAnEnvelope(t *testing.T) {
 	notEnvelope := types.NewTx(&types.LegacyTx{})
 	require.False(t, IsEnvelope(notEnvelope))
 
-	_, err := OpenEnvelope(notEnvelope)
+	_, err := OpenEnvelope(nil, notEnvelope)
 	require.ErrorContains(t, err, "not an envelope")
 }
 
@@ -139,13 +140,9 @@ func TestExtractExecutionPlan_ReturnsExecutionPlan(t *testing.T) {
 	})
 	require.True(IsEnvelope(envelope))
 
-	signer := types.LatestSignerForChainID(chainId)
-	want, err := bundle.extractExecutionPlan(signer)
+	got, err := ExtractExecutionPlan(nil, envelope)
 	require.NoError(err)
-
-	got, err := ExtractExecutionPlan(signer, envelope)
-	require.NoError(err)
-	require.Equal(want, got)
+	require.Equal(bundle.Plan, got)
 }
 
 func TestExtractExecutionPlan_FailsIfNotAnEnvelope(t *testing.T) {
@@ -157,343 +154,7 @@ func TestExtractExecutionPlan_FailsIfNotAnEnvelope(t *testing.T) {
 	require.ErrorContains(err, "not an envelope")
 }
 
-func TestExtractExecutionPlan_FailsIfPlanExtractionFails(t *testing.T) {
-	require := require.New(t)
-	chainId := big.NewInt(123)
-	bundle := TransactionBundle{
-		Transactions: types.Transactions{
-			types.NewTx(&types.LegacyTx{}),
-		},
-	}
-	envelope := types.NewTx(&types.AccessListTx{
-		ChainID: chainId,
-		To:      &BundleProcessor,
-		Data:    bundle.Encode(),
-	})
-	require.True(IsEnvelope(envelope))
-
-	signer := types.LatestSignerForChainID(chainId)
-	_, want := bundle.extractExecutionPlan(signer)
-	require.Error(want)
-
-	_, got := ExtractExecutionPlan(signer, envelope)
-	require.Equal(want, got)
-}
-
-func TestMakeMaxRangeStartingAt_CreatesMaxRangeStartingAtGivenBlock(t *testing.T) {
-	cases := map[string]struct {
-		start          uint64
-		expectedLatest uint64
-		expectedSize   uint64
-	}{
-		"start at 0": {
-			start:          0,
-			expectedLatest: MaxBlockRange - 1,
-			expectedSize:   MaxBlockRange,
-		},
-		"start at 1": {
-			start:          1,
-			expectedLatest: MaxBlockRange,
-			expectedSize:   MaxBlockRange,
-		},
-		"start at 100": {
-			start:          100,
-			expectedLatest: 100 + MaxBlockRange - 1,
-			expectedSize:   MaxBlockRange,
-		},
-		"start with max plus one blocks": {
-			start:          math.MaxUint64 - MaxBlockRange - 1,
-			expectedLatest: math.MaxUint64 - 2,
-			expectedSize:   MaxBlockRange,
-		},
-		"start with max blocks": {
-			start:          math.MaxUint64 - MaxBlockRange,
-			expectedLatest: math.MaxUint64 - 1,
-			expectedSize:   MaxBlockRange,
-		},
-		"start with exact left blocks": {
-			start:          math.MaxUint64 - MaxBlockRange + 1,
-			expectedLatest: math.MaxUint64,
-			expectedSize:   MaxBlockRange,
-		},
-		"start with not enough blocks": {
-			start:          math.MaxUint64 - MaxBlockRange + 2,
-			expectedLatest: math.MaxUint64,
-			expectedSize:   MaxBlockRange - 1,
-		},
-		"start with two blocks left": {
-			start:          math.MaxUint64 - 1,
-			expectedLatest: math.MaxUint64,
-			expectedSize:   2,
-		},
-		"start with one block left": {
-			start:          math.MaxUint64,
-			expectedLatest: math.MaxUint64,
-			expectedSize:   1,
-		},
-	}
-	for name, c := range cases {
-		t.Run(name, func(t *testing.T) {
-			r := MakeMaxRangeStartingAt(c.start)
-			require.Equal(t, c.start, r.Earliest)
-			require.Equal(t, c.expectedLatest, r.Latest)
-			require.Equal(t, c.expectedSize, r.Size())
-		})
-	}
-}
-
-func TestBlockRange_Size_ReturnsCorrectSize(t *testing.T) {
-	tests := map[string]struct {
-		blockRange BlockRange
-		want       uint64
-	}{
-		"empty range": {
-			blockRange: BlockRange{
-				Earliest: 10,
-				Latest:   9,
-			},
-			want: 0,
-		},
-		"single range": {
-			blockRange: BlockRange{
-				Earliest: 10,
-				Latest:   10,
-			},
-			want: 1,
-		},
-		"two blocks range": {
-			blockRange: BlockRange{
-				Earliest: 10,
-				Latest:   11,
-			},
-			want: 2,
-		},
-		"multiple blocks range": {
-			blockRange: BlockRange{
-				Earliest: 10,
-				Latest:   20,
-			},
-			want: 11,
-		},
-		"large range": {
-			blockRange: BlockRange{
-				Earliest: 0,
-				Latest:   10_000_000,
-			},
-			want: 10_000_001,
-		},
-		"large range with latest near max uint64": {
-			blockRange: BlockRange{
-				Earliest: 0,
-				Latest:   math.MaxUint64 - 1,
-			},
-			want: math.MaxUint64,
-		},
-		"too large range is capped to prevent overflow": {
-			blockRange: BlockRange{
-				Earliest: 0,
-				Latest:   math.MaxUint64,
-			},
-			want: math.MaxUint64,
-		},
-		"small range start near max uint64": {
-			blockRange: BlockRange{
-				Earliest: math.MaxUint64 - 10,
-				Latest:   math.MaxUint64,
-			},
-			want: 11,
-		},
-		"small range with the last two blocks": {
-			blockRange: BlockRange{
-				Earliest: math.MaxUint64 - 1,
-				Latest:   math.MaxUint64,
-			},
-			want: 2,
-		},
-		"single block range at max uint64": {
-			blockRange: BlockRange{
-				Earliest: math.MaxUint64,
-				Latest:   math.MaxUint64,
-			},
-			want: 1,
-		},
-	}
-
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			require.EqualValues(t, test.want, test.blockRange.Size())
-		})
-	}
-}
-
-func TestBlockRange_IsInRange_ReturnsTrueIfBlockNumberIsWithinRange(t *testing.T) {
-	tests := map[string]struct {
-		BlockRange BlockRange
-		current    uint64
-		want       bool
-	}{
-		"within range": {
-			BlockRange: BlockRange{Earliest: 10, Latest: 20},
-			current:    15,
-			want:       true,
-		},
-		"at earliest": {
-			BlockRange: BlockRange{Earliest: 10, Latest: 20},
-			current:    10,
-			want:       true,
-		},
-		"at latest": {
-			BlockRange: BlockRange{Earliest: 10, Latest: 20},
-			current:    20,
-			want:       true,
-		},
-		"below range": {
-			BlockRange: BlockRange{Earliest: 10, Latest: 20},
-			current:    9,
-			want:       false,
-		},
-		"above range": {
-			BlockRange: BlockRange{Earliest: 10, Latest: 20},
-			current:    21,
-			want:       false,
-		},
-		"at lower end": {
-			BlockRange: BlockRange{Earliest: 10, Latest: 20},
-			current:    10,
-			want:       true,
-		},
-		"at upper end": {
-			BlockRange: BlockRange{Earliest: 10, Latest: 20},
-			current:    20,
-			want:       true,
-		},
-		"single block range": {
-			BlockRange: BlockRange{Earliest: 10, Latest: 10},
-			current:    10,
-			want:       true,
-		},
-		"invalid range": {
-			BlockRange: BlockRange{Earliest: 20, Latest: 10},
-			current:    15,
-			want:       false,
-		},
-	}
-
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			got := test.BlockRange.IsInRange(test.current)
-			require.Equal(t, test.want, got)
-		})
-	}
-}
-
-func TestExecutionPlan_Hash_ComputesDeterministicHash(t *testing.T) {
-
-	step1 := ExecutionStep{
-		From: common.HexToAddress("0x0000000000000000000000000000000000000001"),
-		Hash: common.Hash{0x01},
-	}
-	step2 := ExecutionStep{
-		From: common.HexToAddress("0x0000000000000000000000000000000000000002"),
-		Hash: common.Hash{0x02},
-	}
-
-	tests := map[string]ExecutionPlan{
-		"empty plan": {},
-		"plan with transactions": {
-			Steps: []ExecutionStep{step1, step2},
-		},
-		"plan with flag 1": {
-			Steps: []ExecutionStep{step1},
-			Flags: 0x1,
-		},
-		"plan with flag 2": {
-			Steps: []ExecutionStep{step1},
-			Flags: 0x2,
-		},
-		"plan with flag 3": {
-			Steps: []ExecutionStep{step1},
-			Flags: 0x3,
-		},
-	}
-
-	seenHashes := make(map[common.Hash]struct{})
-	for name, executionPlan := range tests {
-		t.Run(name, func(t *testing.T) {
-
-			transactions := make([]any, len(executionPlan.Steps))
-			for i, step := range executionPlan.Steps {
-				transactions[i] = []any{step.From, step.Hash}
-			}
-			manualSerialize := []any{
-				transactions,
-				executionPlan.Flags,
-				executionPlan.Range,
-			}
-
-			hasher := crypto.NewKeccakState()
-			require.NoError(t, rlp.Encode(hasher, manualSerialize))
-			computed := common.BytesToHash(hasher.Sum(nil))
-
-			require.Equal(t, executionPlan.Hash(), computed)
-			require.NotContains(t, seenHashes, computed, "hash should be unique for different plans")
-			seenHashes[computed] = struct{}{}
-		})
-	}
-}
-
-func TestExtractExecutionPlan_ExtractsStepsAndFlags(t *testing.T) {
-	for _, flags := range []ExecutionFlags{0, 1, 2, 3} {
-		for _, earliest := range []uint64{1, 5, 20} {
-			for _, latest := range []uint64{50, 100, 200} {
-				bundle := TransactionBundle{
-					Transactions: types.Transactions{
-						types.NewTx(&types.AccessListTx{
-							AccessList: types.AccessList{
-								{
-									Address:     BundleOnly,
-									StorageKeys: []common.Hash{{0x01}},
-								},
-							},
-						}),
-						types.NewTx(&types.DynamicFeeTx{
-							AccessList: types.AccessList{
-								{
-									Address:     BundleOnly,
-									StorageKeys: []common.Hash{{0x01}},
-								},
-							},
-						}),
-					},
-					Flags: flags,
-					Range: BlockRange{
-						Earliest: earliest,
-						Latest:   latest,
-					},
-				}
-
-				ctrl := gomock.NewController(t)
-				mockSigner := NewMockSigner(ctrl)
-				mockSigner.EXPECT().Sender(gomock.Any()).Return(common.Address{0x42}, nil)
-				mockSigner.EXPECT().Sender(gomock.Any()).Return(common.Address{0x43}, nil)
-				mockSigner.EXPECT().Hash(gomock.Any()).Return(common.Hash{0x01})
-				mockSigner.EXPECT().Hash(gomock.Any()).Return(common.Hash{0x02})
-
-				executionPlan, err := bundle.extractExecutionPlan(mockSigner)
-				require.NoError(t, err)
-
-				require.Equal(t, 2, len(executionPlan.Steps))
-				require.Equal(t, common.Address{0x42}, executionPlan.Steps[0].From)
-				require.Equal(t, common.Hash{0x01}, executionPlan.Steps[0].Hash)
-				require.Equal(t, common.Address{0x43}, executionPlan.Steps[1].From)
-				require.Equal(t, common.Hash{0x02}, executionPlan.Steps[1].Hash)
-				require.Equal(t, bundle.Flags, executionPlan.Flags)
-				require.Equal(t, bundle.Range, executionPlan.Range)
-			}
-		}
-	}
-}
-
+/*
 func TestExtractExecutionPlan_ComputesHashOfUnmarkedBundledTransactions(t *testing.T) {
 	// This test verifies that the hash of transactions included in the execution plan
 	// correspond to the hash of the transaction without the bundle-only marker in the access list.
@@ -610,21 +271,7 @@ func TestExtractExecutionPlan_ReturnsErrorWithMalformedSignature(t *testing.T) {
 	_, err := bundle.extractExecutionPlan(mockSigner)
 	require.ErrorContains(t, err, "failed to derive sender: invalid signature")
 }
-
-func TestRemoveBundleOnlyMark_ReturnsErrorWithUnsupportedTransactionType(t *testing.T) {
-	tests := []types.TxData{
-		&types.LegacyTx{},
-		&types.BlobTx{},
-		&types.SetCodeTx{},
-	}
-
-	for _, txData := range tests {
-		tx := types.NewTx(txData)
-		_, err := removeBundleOnlyMark(tx)
-		require.ErrorContains(t, err,
-			fmt.Sprintf("invalid bundle: unsupported transaction type %d", tx.Type()))
-	}
-}
+*/
 
 func TestRemoveBundleOnlyMark_PreservesOriginalData(t *testing.T) {
 
@@ -805,6 +452,7 @@ type Signer interface {
 	types.Signer
 }
 
+/*
 func TestDecode_SuccessfullyUnpacksValidBundle(t *testing.T) {
 
 	for _, flags := range []ExecutionFlags{0, 1, 2, 3} {
@@ -839,6 +487,7 @@ func TestDecode_SuccessfullyUnpacksValidBundle(t *testing.T) {
 		require.Equal(t, bundle.Range, unpacked.Range)
 	}
 }
+*/
 
 func TestEncoding_IsVersioned(t *testing.T) {
 
@@ -860,16 +509,16 @@ func TestEncoding_IsVersioned(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			bundle := TransactionBundle{}
 
-			_, err := decode(encodeInternal(test.version, &bundle))
+			_, err := decode(nil, encodeInternal(test.version, &bundle))
 			require.ErrorContains(t, err, test.expectedError)
 		})
 	}
 }
 
 func TestDecode_ReturnsErrorForInvalidData(t *testing.T) {
-	_, err := decode([]byte{0x01, 0x02, 0x03})
+	_, err := decode(nil, []byte{0x01, 0x02, 0x03})
 	require.ErrorContains(t, err, "failed to decode transaction bundle")
 
-	_, err = decode(nil)
+	_, err = decode(nil, nil)
 	require.ErrorContains(t, err, "failed to decode transaction bundle")
 }

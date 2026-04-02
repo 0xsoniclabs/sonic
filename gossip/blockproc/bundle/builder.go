@@ -19,8 +19,10 @@ package bundle
 import (
 	"crypto/ecdsa"
 	"fmt"
+	"maps"
 	"math/big"
 
+	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -33,10 +35,9 @@ import (
 // envelope transaction carrying a bundle as follows:
 //
 //   envelope := NewBuilder(signer).
-// 		SetFlags(EF_AllOf|EF_TolerateFailed).
 // 		SetEarliest(12).
 // 		SetLatest(15).
-// 		With(
+// 		AllOf(
 // 			Step(key, &types.AccessListTx{
 // 				Nonce: 1,
 // 			}),
@@ -50,19 +51,17 @@ import (
 // For convenience, further abbreviations are supported. For example:
 //
 //    envelopeA := AllOf(
-// 			signer,
 // 			Step(key, &types.AccessListTx{
 // 				Nonce: 1,
 // 			}),
 // 			Step(key, &types.AccessListTx{
 // 				Nonce: 2,
 // 			}),
-//    )
+//    ).Build(signer)
 //
 // Also nested bundles are supported by using
 //
 //    envelopeB := OneOf(
-// 			signer,
 // 			Step(key, envelopeA),
 // 			Step(key, AllOf(
 // 				Step(key, &types.AccessListTx{
@@ -72,7 +71,7 @@ import (
 // 					Nonce: 2,
 // 				}),
 // 			)),
-//    )
+//    ).Builder(signer)
 //
 // The hope for this library is to provide means for the readable generation of
 // bundles in unit tests.
@@ -80,47 +79,54 @@ import (
 // Step creates a transaction to be included in a bundle, signed by the given
 // key. It is a building block to be used as an argument in the builder or in
 // utility functions.
-func Step(key *ecdsa.PrivateKey, tx any) BundleStep {
+func Step(key *ecdsa.PrivateKey, tx any) BuilderStep {
 	switch tx := tx.(type) {
 	case types.TxData:
-		return BundleStep{key: key, tx: tx}
+		return BuilderStep{txRef: &txReference{key: key, tx: tx}}
 	case types.AccessListTx:
-		return BundleStep{key: key, tx: &tx}
+		return BuilderStep{txRef: &txReference{key: key, tx: &tx}}
 	case types.DynamicFeeTx:
-		return BundleStep{key: key, tx: &tx}
+		return BuilderStep{txRef: &txReference{key: key, tx: &tx}}
 	case types.BlobTx:
-		return BundleStep{key: key, tx: &tx}
+		return BuilderStep{txRef: &txReference{key: key, tx: &tx}}
 	case types.SetCodeTx:
-		return BundleStep{key: key, tx: &tx}
+		return BuilderStep{txRef: &txReference{key: key, tx: &tx}}
 	case *types.Transaction:
-
-		if tx.Type() != types.AccessListTxType &&
-			tx.Type() != types.LegacyTxType {
-			// this code path is used to nest bundles, if
-			// you need any other transaction type, please add it
-			//
-			// not doing this check will lead to data loss
-			panic(" unsupported Tx type for Step. Only AccessListTx and LegacyTx are supported")
+		txData, err := utils.GetTxData(tx)
+		if err != nil {
+			panic(fmt.Sprintf("failed to get TxData from transaction: %v", err))
 		}
-
-		return Step(key, &types.AccessListTx{
-			Nonce:      tx.Nonce(),
-			GasPrice:   tx.GasPrice(),
-			Gas:        tx.Gas(),
-			To:         tx.To(),
-			Value:      tx.Value(),
-			Data:       tx.Data(),
-			AccessList: tx.AccessList(),
-		})
+		// Legacy transactions are promoted to AccessListTx in the builder,
+		// to enable marking nested transactions with the bundle-only marker.
+		if data, ok := txData.(*types.LegacyTx); ok {
+			txData = &types.AccessListTx{
+				Nonce:    data.Nonce,
+				GasPrice: data.GasPrice,
+				Gas:      data.Gas,
+				To:       data.To,
+				Value:    data.Value,
+				Data:     data.Data,
+			}
+		}
+		return Step(key, txData)
 	default:
 		panic("unsupported TxData type")
 	}
 }
 
-// BundleStep is a single transaction in a bundle to build.
-type BundleStep struct {
-	key *ecdsa.PrivateKey
-	tx  types.TxData
+func AllOf(steps ...BuilderStep) BuilderStep {
+	return Group(false, steps...)
+}
+
+func OneOf(steps ...BuilderStep) BuilderStep {
+	return Group(true, steps...)
+}
+
+func Group(oneOf bool, steps ...BuilderStep) BuilderStep {
+	return BuilderStep{
+		oneOf: oneOf,
+		steps: steps,
+	}
 }
 
 // NewBuilder creates a new bundle builder to create a custom bundle.
@@ -130,16 +136,10 @@ func NewBuilder(signer types.Signer) *builder {
 
 type builder struct {
 	signer      types.Signer
-	flags       *ExecutionFlags
 	earliest    *uint64
 	latest      *uint64
-	steps       []BundleStep
+	root        BuilderStep
 	envelopeKey *ecdsa.PrivateKey
-}
-
-func (b *builder) SetFlags(flags ExecutionFlags) *builder {
-	b.flags = &flags
-	return b
 }
 
 func (b *builder) SetEarliest(earliest uint64) *builder {
@@ -152,9 +152,17 @@ func (b *builder) SetLatest(latest uint64) *builder {
 	return b
 }
 
-func (b *builder) With(steps ...BundleStep) *builder {
-	b.steps = append(b.steps, steps...)
+func (b *builder) With(root BuilderStep) *builder {
+	b.root = root
 	return b
+}
+
+func (b *builder) AllOf(steps ...BuilderStep) *builder {
+	return b.With(AllOf(steps...))
+}
+
+func (b *builder) OneOf(steps ...BuilderStep) *builder {
+	return b.With(OneOf(steps...))
 }
 
 func (b *builder) SetEnvelopeSenderKey(key *ecdsa.PrivateKey) *builder {
@@ -165,10 +173,6 @@ func (b *builder) SetEnvelopeSenderKey(key *ecdsa.PrivateKey) *builder {
 func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 
 	// Set up defaults for meta flags.
-	flags := EF_AllOf
-	if b.flags != nil {
-		flags = *b.flags
-	}
 	earliest := uint64(0)
 	latest := uint64(MaxBlockRange - 1)
 	if b.earliest != nil {
@@ -183,9 +187,12 @@ func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 		b.signer = types.LatestSignerForChainID(big.NewInt(1))
 	}
 
+	// Collect all transactions from the steps, to be included in the bundle.
+	transactions := b.root.collectTransactions(b.signer)
+
 	// Add the costs for the additional marker to the gas limit.
 	markerCosts := params.TxAccessListAddressGas + params.TxAccessListStorageKeyGas
-	for _, step := range b.steps {
+	for _, step := range transactions {
 		// Fix the gas limit for nested envelops to be accurate.
 		tx := types.NewTx(step.tx)
 		newGasLimit := tx.Gas() + markerCosts
@@ -211,37 +218,29 @@ func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 		case *types.AccessListTx:
 			data.Gas = newGasLimit
 		}
-
 	}
 
-	// Get chain ID from transactions, if any.
-	var chainId *big.Int
-	for _, step := range b.steps {
-		tx := types.NewTx(step.tx)
-		if curId := tx.ChainId(); curId != nil && curId.Sign() > 0 {
-			chainId = curId
-			break
-		}
-	}
-
-	if chainId == nil {
-		chainId = big.NewInt(1)
-	}
+	// Update transaction references in hierarchy to match updated transactions.
+	root := b.root.updateTxReferences(b.signer, transactions)
+	transactions = root.collectTransactions(b.signer)
 
 	// Create an Execution Plan for the bundle.
 	plan := ExecutionPlan{
-		Steps: make([]ExecutionStep, len(b.steps)),
-		Flags: flags,
+		Root: root.toStep(b.signer),
 		Range: BlockRange{
 			Earliest: earliest,
 			Latest:   latest,
 		},
 	}
-	for i, step := range b.steps {
-		plan.Steps[i] = ExecutionStep{
+
+	// Record the transaction hashes before adding the marker.
+	txReferences := make(map[common.Hash]TxReference)
+	for hash, step := range transactions {
+		txRef := TxReference{
 			From: crypto.PubkeyToAddress(step.key.PublicKey),
 			Hash: b.signer.Hash(types.NewTx(step.tx)),
 		}
+		txReferences[hash] = txRef
 	}
 
 	// Get hash of execution plan and annotate transactions with it.
@@ -250,7 +249,7 @@ func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 		Address:     BundleOnly,
 		StorageKeys: []common.Hash{execPlanHash},
 	}
-	for _, step := range b.steps {
+	for _, step := range transactions {
 		switch data := step.tx.(type) {
 		case *types.DynamicFeeTx:
 			data.AccessList = append(data.AccessList, marker)
@@ -266,18 +265,15 @@ func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 	}
 
 	// Sign the modified TxData instances.
-	txs := make([]*types.Transaction, len(b.steps))
-	for i, step := range b.steps {
-		txs[i] = types.MustSignNewTx(step.key, b.signer, step.tx)
+	txs := make(map[TxReference]*types.Transaction)
+	for hash, step := range transactions {
+		txRef := txReferences[hash]
+		txs[txRef] = types.MustSignNewTx(step.key, b.signer, step.tx)
 	}
 
 	return &TransactionBundle{
 		Transactions: txs,
-		Flags:        flags,
-		Range: BlockRange{
-			Earliest: earliest,
-			Latest:   latest,
-		},
+		Plan:         plan,
 	}, plan
 }
 
@@ -321,14 +317,6 @@ func (b *builder) Build() *types.Transaction {
 
 // --- Utility Wrappers ---
 
-func AllOf(signer types.Signer, steps ...BundleStep) *types.Transaction {
-	return NewBuilder(signer).SetFlags(EF_AllOf).With(steps...).Build()
-}
-
-func OneOf(signer types.Signer, steps ...BundleStep) *types.Transaction {
-	return NewBuilder(signer).SetFlags(EF_OneOf).With(steps...).Build()
-}
-
 func MustWrapIntoEnvelope(signer types.Signer, bundle *TransactionBundle) *types.Transaction {
 	key, err := crypto.GenerateKey()
 	if err != nil {
@@ -338,6 +326,96 @@ func MustWrapIntoEnvelope(signer types.Signer, bundle *TransactionBundle) *types
 }
 
 // --- implementation details ---
+
+// BuilderStep is a single transaction or a nested group in a bundle to build.
+type BuilderStep struct {
+	flags ExecutionFlags
+
+	// -- single transaction field --
+	txRef *txReference // < if nil, it is a group
+
+	// -- fields for a group step --
+	oneOf bool
+	steps []BuilderStep
+}
+
+func (s BuilderStep) WithFlags(flags ExecutionFlags) BuilderStep {
+	s.flags = flags
+	return s
+}
+
+func (s BuilderStep) Build(signer types.Signer) *types.Transaction {
+	return NewBuilder(signer).With(s).Build()
+}
+
+// collectTransactions recursively collects all transactions reachable from this
+// step, including nested steps.
+func (s *BuilderStep) collectTransactions(signer types.Signer) map[common.Hash]txReference {
+	txs := make(map[common.Hash]txReference)
+	if s.txRef != nil {
+		txs[s.txRef.Hash(signer)] = *s.txRef
+	} else {
+		for _, step := range s.steps {
+			maps.Copy(txs, step.collectTransactions(signer))
+		}
+	}
+	return txs
+}
+
+func (s *BuilderStep) updateTxReferences(
+	signer types.Signer,
+	updatedTxs map[common.Hash]txReference,
+) BuilderStep {
+	if s.txRef != nil {
+		if updatedRef, ok := updatedTxs[s.txRef.Hash(signer)]; ok {
+			return BuilderStep{txRef: &updatedRef}
+		}
+		return *s
+	}
+	updatedSteps := make([]BuilderStep, len(s.steps))
+	for i, step := range s.steps {
+		updatedSteps[i] = step.updateTxReferences(signer, updatedTxs)
+	}
+	return BuilderStep{
+		oneOf: s.oneOf,
+		flags: s.flags,
+		steps: updatedSteps,
+	}
+}
+
+func (s *BuilderStep) toStep(
+	signer types.Signer,
+) ExecutionStep {
+	var res ExecutionStep
+	if s.txRef != nil {
+		res = NewTxStep(TxReference{
+			From: crypto.PubkeyToAddress(s.txRef.key.PublicKey),
+			Hash: signer.Hash(types.NewTx(s.txRef.tx)),
+		})
+	} else {
+		subSteps := make([]ExecutionStep, len(s.steps))
+		for i, step := range s.steps {
+			subSteps[i] = step.toStep(signer)
+		}
+		if s.oneOf {
+			res = NewOneOfStep(subSteps...)
+		} else {
+			res = NewAllOfStep(subSteps...)
+		}
+	}
+	return SetExecutionFlags(res, s.flags)
+}
+
+type txReference struct {
+	key *ecdsa.PrivateKey
+	tx  types.TxData
+}
+
+func (r *txReference) Hash(signer types.Signer) common.Hash {
+	sender := crypto.PubkeyToAddress(r.key.PublicKey)
+	txHash := signer.Hash(types.NewTx(r.tx))
+	return crypto.Keccak256Hash(sender.Bytes(), txHash.Bytes())
+}
 
 // Wraps the given bundle into an envelope transaction.
 func newEnvelope(

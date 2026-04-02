@@ -66,7 +66,7 @@ func validateEnvelopeInternal(
 		return nil, nil, fmt.Errorf("not an envelope transaction")
 	}
 
-	txBundle, err := decode(envelopeTx.Data())
+	txBundle, err := decode(signer, envelopeTx.Data())
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to decode transaction bundle: %v", err)
 	}
@@ -77,13 +77,11 @@ func validateEnvelopeInternal(
 	// Things to be checked include: (not complete)
 	//  - consistent use of chain IDs
 	//  - all bundled transactions are marked as bundle-only
+	//  - all transactions referenced in the plan are included in the bundle
+	//  - all transactions in the bundle are referenced in the plan
 	//  - etc. ...
 
-	plan, err := txBundle.extractExecutionPlan(signer)
-	if err != nil {
-		return nil, nil, err
-	}
-
+	plan := txBundle.Plan
 	if err := ValidateRange(plan.Range); err != nil {
 		return nil, nil, err
 	}

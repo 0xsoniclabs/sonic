@@ -257,7 +257,7 @@ func consensusCallbackBeginBlockFn(
 
 				// Filter invalid transactions from the proposal.
 				proposal.Transactions = filterNonPermissibleTransactions(
-					proposal.Transactions, &es.Rules, log.Root(), invalidTxsMeter,
+					proposal.Transactions, &es.Rules, signer, log.Root(), invalidTxsMeter,
 				)
 
 				// Make sure the new block time is after the last block time.
@@ -846,6 +846,7 @@ func extractProposalForNextBlock(
 func filterNonPermissibleTransactions(
 	transactions []*types.Transaction,
 	rules *opera.Rules,
+	signer types.Signer,
 	log log.Logger,
 	counter metricCounter,
 ) []*types.Transaction {
@@ -854,7 +855,7 @@ func filterNonPermissibleTransactions(
 		return transactions
 	}
 	return slices.DeleteFunc(transactions, func(tx *types.Transaction) bool {
-		if err := isPermissible(tx, rules); err != nil {
+		if err := isPermissible(tx, rules, signer); err != nil {
 			if log != nil {
 				log.Warn("Non-permissible transaction in the proposal", "tx", tx.Hash(), "issue", err)
 			}
@@ -881,13 +882,15 @@ func filterNonPermissibleTransactions(
 func isPermissible(
 	tx *types.Transaction,
 	rules *opera.Rules,
+	signer types.Signer,
 ) error {
-	return isPermissibleInternal(tx, rules, false)
+	return isPermissibleInternal(tx, rules, signer, false)
 }
 
 func isPermissibleInternal(
 	tx *types.Transaction,
 	rules *opera.Rules,
+	signer types.Signer,
 	isInBundle bool,
 ) error {
 	if tx == nil {
@@ -938,12 +941,12 @@ func isPermissibleInternal(
 			}
 
 			// Make sure the envelope does not contain non-permissible transactions.
-			txBundle, err := bundle.OpenEnvelope(tx)
+			txBundle, err := bundle.OpenEnvelope(signer, tx)
 			if err != nil {
 				return fmt.Errorf("invalid bundle envelope: %w", err)
 			}
 			for _, tx := range txBundle.Transactions {
-				if err := isPermissibleInternal(tx, rules, true); err != nil {
+				if err := isPermissibleInternal(tx, rules, signer, true); err != nil {
 					return fmt.Errorf("bundle contains non-permissible transaction: %w", err)
 				}
 			}
