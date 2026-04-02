@@ -233,7 +233,7 @@ func initApp() *cli.App {
 	}
 
 	app.After = func(ctx *cli.Context) error {
-		debug.Exit()
+		debug.Exit(ctx)
 		// Close will resets terminal mode.
 		if err := prompt.Stdin.Close(); err != nil {
 			return fmt.Errorf("failed to reset terminal input")
@@ -374,7 +374,7 @@ func startNode(ctx *cli.Context, stack *node.Node, stop <-chan bool) error {
 			}
 		}
 		// received 10 interrupts - kill the node forcefully
-		debug.Exit() // ensure trace and CPU profile data is flushed.
+		debug.Exit(ctx) // ensure trace and CPU profile data is flushed.
 		debug.LoudPanic("boom")
 	}()
 
