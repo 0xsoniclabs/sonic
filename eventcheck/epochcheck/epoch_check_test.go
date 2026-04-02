@@ -52,6 +52,7 @@ func TestChecker_Validate_SingleProposerIntroducesNewFormat(t *testing.T) {
 			event.EXPECT().TransactionsToMeter().AnyTimes()
 			event.EXPECT().MisbehaviourProofs().AnyTimes()
 			event.EXPECT().BlockVotes().AnyTimes()
+			event.EXPECT().BlockHashes().AnyTimes()
 			event.EXPECT().EpochVote().AnyTimes()
 			event.EXPECT().Creator().Return(creator).AnyTimes()
 

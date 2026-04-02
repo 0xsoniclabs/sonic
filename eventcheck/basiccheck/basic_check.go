@@ -26,11 +26,14 @@ import (
 	"github.com/0xsoniclabs/sonic/inter"
 )
 
+const MaxBlockHashesPerEvent = 64
+
 var (
-	ErrWrongNetForkID = errors.New("wrong network fork ID")
-	ErrZeroTime       = errors.New("event has zero timestamp")
-	ErrNegativeValue  = errors.New("negative value")
-	ErrIntrinsicGas   = errors.New("intrinsic gas too low")
+	ErrWrongNetForkID   = errors.New("wrong network fork ID")
+	ErrZeroTime         = errors.New("event has zero timestamp")
+	ErrNegativeValue    = errors.New("negative value")
+	ErrIntrinsicGas     = errors.New("intrinsic gas too low")
+	ErrTooManyBlockHash = errors.New("too many block hashes in event")
 	// ErrTipAboveFeeCap is a sanity error to ensure no one is able to specify a
 	// transaction with a tip higher than the total fee cap.
 	ErrTipAboveFeeCap = errors.New("max priority fee per gas higher than max fee per gas")
@@ -95,6 +98,9 @@ func (v *Checker) Validate(e inter.EventPayloadI) error {
 	}
 	if err := v.checkTxs(e); err != nil {
 		return err
+	}
+	if len(e.BlockHashes().Hashes) > MaxBlockHashesPerEvent {
+		return ErrTooManyBlockHash
 	}
 
 	return nil

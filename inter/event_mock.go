@@ -226,6 +226,20 @@ func (mr *MockEventIMockRecorder) HasProposal() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasProposal", reflect.TypeOf((*MockEventI)(nil).HasProposal))
 }
 
+// AnyBlockHashes mocks base method.
+func (m *MockEventI) AnyBlockHashes() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AnyBlockHashes")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// AnyBlockHashes indicates an expected call of AnyBlockHashes.
+func (mr *MockEventIMockRecorder) AnyBlockHashes() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AnyBlockHashes", reflect.TypeOf((*MockEventI)(nil).AnyBlockHashes))
+}
+
 // HashToSign mocks base method.
 func (m *MockEventI) HashToSign() hash.Hash {
 	m.ctrl.T.Helper()
@@ -654,6 +668,34 @@ func (m *MockEventPayloadI) HasProposal() bool {
 func (mr *MockEventPayloadIMockRecorder) HasProposal() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasProposal", reflect.TypeOf((*MockEventPayloadI)(nil).HasProposal))
+}
+
+// AnyBlockHashes mocks base method.
+func (m *MockEventPayloadI) AnyBlockHashes() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AnyBlockHashes")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// AnyBlockHashes indicates an expected call of AnyBlockHashes.
+func (mr *MockEventPayloadIMockRecorder) AnyBlockHashes() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AnyBlockHashes", reflect.TypeOf((*MockEventPayloadI)(nil).AnyBlockHashes))
+}
+
+// BlockHashes mocks base method.
+func (m *MockEventPayloadI) BlockHashes() BlockHashes {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "BlockHashes")
+	ret0, _ := ret[0].(BlockHashes)
+	return ret0
+}
+
+// BlockHashes indicates an expected call of BlockHashes.
+func (mr *MockEventPayloadIMockRecorder) BlockHashes() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BlockHashes", reflect.TypeOf((*MockEventPayloadI)(nil).BlockHashes))
 }
 
 // HashToSign mocks base method.
