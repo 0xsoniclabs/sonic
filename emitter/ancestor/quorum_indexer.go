@@ -126,7 +126,7 @@ func (h *QuorumIndexer) GetMetricOf(parents consensus.EventHashes) Metric {
 
 		//find the Highest of all the parents
 		var update consensus.Seq
-		for i, _ := range parents {
+		for i := range parents {
 			if seqOf(vecClock[i].Get(validatorIdx)) > update {
 				update = seqOf(vecClock[i].Get(validatorIdx))
 			}
