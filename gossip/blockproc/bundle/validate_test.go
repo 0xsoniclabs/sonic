@@ -37,10 +37,10 @@ func TestValidateEnvelope_ValidBundles_AreAccepted(t *testing.T) {
 	require.NoError(t, err)
 
 	tests := map[string]*types.Transaction{
-		"empty AllOf bundle":     AllOf(signer),
-		"empty OneOf bundle":     OneOf(signer),
-		"non-empty AllOf bundle": AllOf(signer, Step(key, &types.AccessListTx{})),
-		"non-empty OneOf bundle": OneOf(signer, Step(key, &types.AccessListTx{})),
+		"empty AllOf bundle":     AllOf().Build(signer),
+		"empty OneOf bundle":     OneOf().Build(signer),
+		"non-empty AllOf bundle": AllOf(Step(key, &types.AccessListTx{})).Build(signer),
+		"non-empty OneOf bundle": OneOf(Step(key, &types.AccessListTx{})).Build(signer),
 	}
 
 	for name, tx := range tests {
@@ -51,22 +51,19 @@ func TestValidateEnvelope_ValidBundles_AreAccepted(t *testing.T) {
 			require.NotNil(bundle, "expected a bundle transaction")
 			require.NotNil(plan, "expected an execution plan")
 
-			wantedBundle, err := OpenEnvelope(tx)
+			wantedBundle, err := OpenEnvelope(signer, tx)
 			require.NoError(err)
 
 			// types.Transactions can not be compared reliably using
 			// reflect.DeepEqual, therefore we compare the fields of the bundle
 			// separately.
-			require.Equal(wantedBundle.Flags, bundle.Flags)
-			require.Equal(wantedBundle.Range, bundle.Range)
+			require.Equal(wantedBundle.Plan, bundle.Plan)
 			require.Equal(len(wantedBundle.Transactions), len(bundle.Transactions))
 			for i, txRef := range wantedBundle.Transactions {
 				require.Equal(txRef.Hash(), bundle.Transactions[i].Hash())
 			}
 
-			wantedPlan, err := wantedBundle.extractExecutionPlan(signer)
-			require.NoError(err)
-			require.Equal(wantedPlan, *plan)
+			require.Equal(wantedBundle.Plan, *plan)
 		})
 	}
 }
@@ -154,7 +151,7 @@ func TestValidateEnvelope_ReturnsErrorsOnValidationFailure(t *testing.T) {
 		},
 		"wrongly signed bundle": {
 			tx:            generator.makeBundleTxWithWronglySignedTx(t),
-			expectedError: "failed to derive sender",
+			expectedError: "invalid chain id for signer: have 0 want 1",
 		},
 		"bundle without enough gas for intrinsic cost": {
 			tx:            generator.makeBundleTxWithoutEnoughIntrinsicGas(),
@@ -187,23 +184,25 @@ func TestValidateEnvelope_AcceptsValidBlockRanges(t *testing.T) {
 		Gas  uint64
 	}{
 		"single-block range": {
-			From: 10, To: 10, Gas: 21240,
+			From: 10, To: 10, Gas: 21580,
 		},
 		"multi-block range": {
-			From: 7, To: 42, Gas: 21240,
+			From: 7, To: 42, Gas: 21580,
 		},
 		"max-size block range": {
-			From: 100, To: 100 + MaxBlockRange - 1, Gas: 21320,
+			From: 100, To: 100 + MaxBlockRange - 1, Gas: 21610,
 		},
 	}
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			bundle := TransactionBundle{
-				Range: BlockRange{
-					Earliest: test.From,
-					Latest:   test.To,
-				}}
+				Plan: ExecutionPlan{
+					Range: BlockRange{
+						Earliest: test.From,
+						Latest:   test.To,
+					}},
+			}
 			tx := types.NewTx(&types.LegacyTx{
 				To:   &BundleProcessor,
 				Data: bundle.Encode(),
@@ -238,10 +237,12 @@ func TestValidateEnvelope_IdentifiesInvalidBlockRanges(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			bundle := TransactionBundle{
-				Range: BlockRange{
-					Earliest: test.From,
-					Latest:   test.To,
-				}}
+				Plan: ExecutionPlan{
+					Range: BlockRange{
+						Earliest: test.From,
+						Latest:   test.To,
+					}},
+			}
 			tx := types.NewTx(&types.LegacyTx{
 				To:   &BundleProcessor,
 				Data: bundle.Encode(),
@@ -285,7 +286,7 @@ func (gen testBundleGenerator) makeValidBundleTx() *types.Transaction {
 	receiver := common.Address{0x42}
 	gasPerTx := uint64(20_000)
 
-	steps := make([]BundleStep, 0, gen.n)
+	steps := make([]BuilderStep, 0, gen.n)
 	for i := range gen.n {
 		steps = append(steps, Step(gen.keys[i], &types.AccessListTx{
 			Nonce: uint64(1),
@@ -295,7 +296,7 @@ func (gen testBundleGenerator) makeValidBundleTx() *types.Transaction {
 		}))
 	}
 
-	return AllOf(gen.signer, steps...)
+	return AllOf(steps...).Build(gen.signer)
 }
 
 func (gen testBundleGenerator) makeUnsoundBundleTx(t testing.TB) *types.Transaction {
@@ -305,7 +306,7 @@ func (gen testBundleGenerator) makeUnsoundBundleTx(t testing.TB) *types.Transact
 	// Generate n metaTransactions from n different senders
 	// execution plan hash is not correct, therefore the bundle is unsound
 	invalidExecutionPlanHash := common.Hash{0x99}
-	signedTransactions := make(types.Transactions, gen.n)
+	signedTransactions := make(map[TxReference]*types.Transaction, gen.n)
 	for i := range gen.n {
 		tx := types.AccessListTx{
 			Nonce: uint64(1),
@@ -323,13 +324,14 @@ func (gen testBundleGenerator) makeUnsoundBundleTx(t testing.TB) *types.Transact
 
 		signedTx, err := types.SignTx(types.NewTx(&tx), gen.signer, gen.keys[i])
 		require.NoError(t, err)
-		signedTransactions[i] = signedTx
+
+		txRef := TxReference{From: crypto.PubkeyToAddress(gen.keys[i].PublicKey)}
+		signedTransactions[txRef] = signedTx
 	}
 
 	// prepare the bundle
 	bundle := TransactionBundle{
 		Transactions: signedTransactions,
-		Flags:        0,
 	}
 
 	data := bundle.Encode()
@@ -368,8 +370,9 @@ func (gen testBundleGenerator) makeBundleTxWithWronglySignedTx(t testing.TB) *ty
 
 	// prepare the bundle
 	bundle := TransactionBundle{
-		Transactions: []*types.Transaction{unsignedTransaction},
-		Flags:        0,
+		Transactions: map[TxReference]*types.Transaction{
+			{}: unsignedTransaction,
+		},
 	}
 
 	return types.NewTx(&types.LegacyTx{
@@ -393,8 +396,8 @@ func (gen testBundleGenerator) makeBundleTxWithoutEnoughIntrinsicGas() *types.Tr
 func (gen testBundleGenerator) makeBundleTxWithoutEnoughFloorGas(t testing.TB) *types.Transaction {
 	t.Helper()
 	bundle := TransactionBundle{
-		Transactions: types.Transactions{
-			types.MustSignNewTx(gen.keys[0], gen.signer, &types.AccessListTx{
+		Transactions: map[TxReference]*types.Transaction{
+			{}: types.MustSignNewTx(gen.keys[0], gen.signer, &types.AccessListTx{
 				Data: make([]byte, 1<<10), // < high data usage
 			}),
 		},
@@ -418,7 +421,7 @@ func (gen testBundleGenerator) makeBundleTxWithoutEnoughGasForAllTransactions() 
 	return types.NewTx(&types.LegacyTx{
 		To:   &BundleProcessor,
 		Data: tx.Data(),
-		Gas:  35_000, // not enough gas for all transactions in the bundle
+		Gas:  38_000, // not enough gas for all transactions in the bundle
 	})
 }
 

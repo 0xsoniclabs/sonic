@@ -77,7 +77,7 @@ func testSucceedingConcurrentBundles(
 	planHashes := make([]common.Hash, N)
 	signer := types.LatestSignerForChainID(net.GetChainId())
 	for i := range N {
-		envelope, plan := bundle.NewBuilder(signer).With(
+		envelope, plan := bundle.NewBuilder(signer).AllOf(
 			Step(t, net, accounts[i*W+0], newBurnMoneyTransaction()),
 			Step(t, net, accounts[i*W+1], newBurnMoneyTransaction()),
 			Step(t, net, accounts[i*W+2], newBurnMoneyTransaction()),
@@ -107,11 +107,11 @@ func testSucceedingConcurrentBundles(
 
 	// Check that all obtained infos match the respective transactions.
 	for i, info := range infos {
-		bundle, err := bundle.OpenEnvelope(envelopes[i])
+		bundle, err := bundle.OpenEnvelope(signer, envelopes[i])
 		require.NoError(err)
 		require.EqualValues(*info.Count, len(bundle.Transactions))
 
-		for i, tx := range bundle.Transactions {
+		for i, tx := range bundle.GetTransactionsInExecutionOrder() {
 			receipt, err := client.TransactionReceipt(t.Context(), tx.Hash())
 			require.NoError(err)
 			require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
@@ -151,7 +151,7 @@ func testRandomlyFailingBundles(
 	planHashes := make([]common.Hash, N)
 	signer := types.LatestSignerForChainID(net.GetChainId())
 	for i := range N {
-		envelope, plan := bundle.NewBuilder(signer).With(
+		envelope, plan := bundle.NewBuilder(signer).AllOf(
 			Step(t, net, accounts[i*W+0], newBurnMoneyTransaction()),
 			Step(t, net, accounts[i*W+1], newBurnMoneyTransaction()),
 			Step(t, net, accounts[i*W+2], newRandomlyRevertingTransaction(revertContractAddress)),
@@ -184,7 +184,7 @@ func testRandomlyFailingBundles(
 	// the respective transactions.
 	for i, info := range infos {
 
-		bundle, err := bundle.OpenEnvelope(envelopes[i])
+		bundle, err := bundle.OpenEnvelope(signer, envelopes[i])
 		require.NoError(err)
 
 		if info != nil && *info.Count > 0 {
@@ -192,7 +192,7 @@ func testRandomlyFailingBundles(
 			// to be included in a block.
 			require.Len(bundle.Transactions, int(*info.Count))
 
-			for i, tx := range bundle.Transactions {
+			for i, tx := range bundle.GetTransactionsInExecutionOrder() {
 				receipt, err := client.TransactionReceipt(t.Context(), tx.Hash())
 				require.NoError(err)
 				require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
@@ -214,7 +214,7 @@ func Step[T types.TxData](
 	net tests.IntegrationTestNetSession,
 	account *tests.Account,
 	txData T,
-) bundle.BundleStep {
+) bundle.BuilderStep {
 	return bundle.Step(
 		account.PrivateKey,
 		tests.SetTransactionDefaults(t, net, txData, account),

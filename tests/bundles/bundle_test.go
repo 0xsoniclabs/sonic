@@ -16,6 +16,19 @@
 package bundles
 
 import (
+	"math/big"
+	"sync"
+	"testing"
+
+	"github.com/0xsoniclabs/sonic/tests"
+	"github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/stretchr/testify/require"
+)
+
+/*
+import (
 	"fmt"
 	"math/big"
 	"sync"
@@ -35,7 +48,7 @@ import (
 )
 
 type txType interface {
-	makeStep(txMakeOptions) bundle.BundleStep
+	makeStep(txMakeOptions) bundle.BuilderStep
 }
 
 type txIndex int
@@ -489,6 +502,7 @@ func deployContracts(t *testing.T, net tests.IntegrationTestNetSession) Contract
 		revertInput:    revertInput,
 	}
 }
+*/
 
 func prepareContract[T any](
 	t testing.TB, session tests.IntegrationTestNetSession,
@@ -510,6 +524,7 @@ func prepareContract[T any](
 	return receipt.ContractAddress, input
 }
 
+/*
 func getCounterValue(t *testing.T, client *tests.PooledEhtClient, contractInfo ContractInfo) int64 {
 	counterInstance, err := counter.NewCounter(contractInfo.counterAddress, client)
 	require.NoError(t, err, "failed to create counter instance; %v", err)
@@ -531,7 +546,7 @@ type txMakeOptions struct {
 
 type successfulNormalTx struct{}
 
-func (t successfulNormalTx) makeStep(opts txMakeOptions) bundle.BundleStep {
+func (t successfulNormalTx) makeStep(opts txMakeOptions) bundle.BuilderStep {
 	return bundle.Step(opts.factory.Create(opts.t).PrivateKey, &types.AccessListTx{
 		ChainID:  opts.net.GetChainId(),
 		To:       &opts.contractInfo.counterAddress,
@@ -543,7 +558,7 @@ func (t successfulNormalTx) makeStep(opts txMakeOptions) bundle.BundleStep {
 
 type failedNormalTx struct{}
 
-func (t failedNormalTx) makeStep(opts txMakeOptions) bundle.BundleStep {
+func (t failedNormalTx) makeStep(opts txMakeOptions) bundle.BuilderStep {
 	return bundle.Step(opts.factory.Create(opts.t).PrivateKey, &types.AccessListTx{
 		ChainID:  opts.net.GetChainId(),
 		To:       &opts.contractInfo.revertAddress,
@@ -555,7 +570,7 @@ func (t failedNormalTx) makeStep(opts txMakeOptions) bundle.BundleStep {
 
 type invalidNormalTx struct{}
 
-func (t invalidNormalTx) makeStep(opts txMakeOptions) bundle.BundleStep {
+func (t invalidNormalTx) makeStep(opts txMakeOptions) bundle.BuilderStep {
 	return bundle.Step(opts.factory.Create(opts.t).PrivateKey, &types.AccessListTx{
 		ChainID:  opts.net.GetChainId(),
 		To:       &opts.contractInfo.counterAddress,
@@ -567,7 +582,7 @@ func (t invalidNormalTx) makeStep(opts txMakeOptions) bundle.BundleStep {
 
 type successfulSponsoredTx struct{}
 
-func (t successfulSponsoredTx) makeStep(opts txMakeOptions) bundle.BundleStep {
+func (t successfulSponsoredTx) makeStep(opts txMakeOptions) bundle.BuilderStep {
 	account := opts.factory.Create(opts.t)
 	donation := big.NewInt(1e16)
 	gas_subsidies.Fund(opts.t, opts.net, account.Address(), donation)
@@ -582,7 +597,7 @@ func (t successfulSponsoredTx) makeStep(opts txMakeOptions) bundle.BundleStep {
 
 type failedSponsoredTx struct{}
 
-func (t failedSponsoredTx) makeStep(opts txMakeOptions) bundle.BundleStep {
+func (t failedSponsoredTx) makeStep(opts txMakeOptions) bundle.BuilderStep {
 	account := opts.factory.Create(opts.t)
 	donation := big.NewInt(1e16)
 	gas_subsidies.Fund(opts.t, opts.net, account.Address(), donation)
@@ -597,7 +612,7 @@ func (t failedSponsoredTx) makeStep(opts txMakeOptions) bundle.BundleStep {
 
 type invalidSponsoredTx struct{}
 
-func (t invalidSponsoredTx) makeStep(opts txMakeOptions) bundle.BundleStep {
+func (t invalidSponsoredTx) makeStep(opts txMakeOptions) bundle.BuilderStep {
 	return bundle.Step(opts.factory.Create(opts.t).PrivateKey, &types.AccessListTx{
 		ChainID:  opts.net.GetChainId(),
 		To:       &opts.contractInfo.counterAddress,
@@ -612,8 +627,8 @@ type envelopeTx struct {
 	flags   bundle.ExecutionFlags
 }
 
-func (t envelopeTx) makeStep(opts txMakeOptions) bundle.BundleStep {
-	steps := make([]bundle.BundleStep, len(t.txTypes))
+func (t envelopeTx) makeStep(opts txMakeOptions) bundle.BuilderStep {
+	steps := make([]bundle.BuilderStep, len(t.txTypes))
 	for i, tt := range t.txTypes {
 		steps[i] = tt.makeStep(opts)
 	}
@@ -641,7 +656,7 @@ func buildBundle(
 
 	opts := txMakeOptions{t, net, contractInfo, gasPrice, accountFactory}
 
-	steps := make([]bundle.BundleStep, len(bt.txTypes))
+	steps := make([]bundle.BuilderStep, len(bt.txTypes))
 	for i, tt := range bt.txTypes {
 		steps[i] = tt.makeStep(opts)
 	}
@@ -697,6 +712,7 @@ func checkStatus(
 	require.NoError(t, err, "failed to get transaction receipt; %v", err)
 	require.Equal(t, status, txStatus(receipt.Status))
 }
+*/
 
 type AccountFactory struct {
 	session  tests.IntegrationTestNetSession

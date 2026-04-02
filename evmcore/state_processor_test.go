@@ -19,8 +19,10 @@ package evmcore
 import (
 	"encoding/binary"
 	"fmt"
+	"maps"
 	"math"
 	"math/big"
+	"slices"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
@@ -1931,7 +1933,7 @@ func TestRunTransactionBundle_RunBundleNotSuccessful_ReturnsNoTransactionAndResu
 	state := state.NewMockStateDB(ctrl)
 	evm := NewMock_evm(ctrl)
 
-	tx := bundle.OneOf(signer) // an empty bundle with OneOf flag will fail
+	tx := bundle.OneOf().Build(signer) // an empty bundle with OneOf flag will fail
 	_, plan, err := bundle.ValidateEnvelope(signer, tx)
 	require.NoError(t, err)
 
@@ -1967,14 +1969,15 @@ func TestRunTransactionBundle_RunBundleSuccessful_ReturnsBundleOnlyTransactionAn
 	txOffset := 12
 
 	envelope := getTransactionBundle(t)
-	txBundle, err := bundle.OpenEnvelope(envelope)
+	txBundle, err := bundle.OpenEnvelope(signer, envelope)
 	require.NoError(t, err)
 	plan, err := bundle.ExtractExecutionPlan(signer, envelope)
 	require.NoError(t, err)
 
 	gomock.InOrder(
 		state.EXPECT().HasBundleRecentlyBeenProcessed(plan.Hash()),
-		state.EXPECT().InterTxSnapshot().Return(1),
+		state.EXPECT().InterTxSnapshot().Return(1), // the all-of group
+		state.EXPECT().InterTxSnapshot().Return(2), // the transaction
 		state.EXPECT().AddProcessedBundle(plan.Hash(), bundle.PositionInBlock{
 			Offset: uint32(txOffset),
 			Count:  1,
@@ -1992,15 +1995,17 @@ func TestRunTransactionBundle_RunBundleSuccessful_ReturnsBundleOnlyTransactionAn
 		runner:      runner,
 	}
 
+	transactions := slices.Collect(maps.Values(txBundle.Transactions))
+
 	evm.EXPECT().runWithBaseFeeCheck(context, gomock.Any(), txOffset).
 		Return(ProcessedTransaction{
-			Transaction: txBundle.Transactions[0],
+			Transaction: transactions[0],
 			Receipt:     &types.Receipt{Status: types.ReceiptStatusSuccessful},
 		})
 
 	processedTransactions, result := runner.runTransactionBundle(context, envelope, txOffset, txOffset)
 	require.Len(t, processedTransactions, 1)
-	require.Equal(t, txBundle.Transactions[0], processedTransactions[0].Transaction)
+	require.Equal(t, transactions[0], processedTransactions[0].Transaction)
 	require.NotNil(t, processedTransactions[0].Receipt)
 	require.Equal(t, core_types.TransactionResultSuccessful, result)
 }
@@ -2064,16 +2069,16 @@ func TestRunTransactionBundle_RunBundleSuccessful_ReportsCorrectOffsetAndCountTo
 
 			key, err := crypto.GenerateKey()
 			require.NoError(t, err)
-			envelope := bundle.AllOf(signer,
+			envelope := bundle.AllOf(
 				bundle.Step(key, &types.AccessListTx{ // < sponsorship request
 					To: &common.Address{1},
 				}),
-			)
+			).Build(signer)
 
 			state := state.NewMockStateDB(ctrl)
 			gomock.InOrder(
 				state.EXPECT().HasBundleRecentlyBeenProcessed(gomock.Any()),
-				state.EXPECT().InterTxSnapshot().Return(1),
+				state.EXPECT().InterTxSnapshot().AnyTimes(),
 				state.EXPECT().AddProcessedBundle(gomock.Any(), bundle.PositionInBlock{
 					Offset: test.offset, // < these two fields are the main test targets
 					Count:  test.wantedCount,
@@ -2512,9 +2517,9 @@ func getTransactionBundle(t *testing.T) *types.Transaction {
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
 	signer := types.LatestSignerForChainID(big.NewInt(1))
-	return bundle.AllOf(signer, bundle.Step(key, &types.AccessListTx{
-		Nonce: 0, To: &common.Address{1}, Gas: 29_000, GasPrice: big.NewInt(1),
-	}))
+	return bundle.AllOf(bundle.Step(key, &types.AccessListTx{
+		Nonce: 0, To: &common.Address{1}, Gas: 21_000, GasPrice: big.NewInt(1),
+	})).Build(signer)
 }
 
 func TestTransactionGenerationUtilities(t *testing.T) {

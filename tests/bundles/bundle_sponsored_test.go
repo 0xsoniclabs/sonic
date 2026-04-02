@@ -86,7 +86,7 @@ func TestBundle_CanRunSponsorshipAndSponsored(t *testing.T) {
 	signer := types.LatestSignerForChainID(session.GetChainId())
 	envelope, bundle, plan := bundle.NewBuilder(signer).
 		SetEarliest(blockNumber).
-		With(
+		AllOf(
 			bundle.Step(sponsor.PrivateKey, txSponsorData),
 			bundle.Step(sponsee.PrivateKey, unsignedTx),
 		).
@@ -105,6 +105,9 @@ func TestBundle_CanRunSponsorshipAndSponsored(t *testing.T) {
 	block, err := client.BlockByNumber(t.Context(), big.NewInt(int64(*info.Block)))
 	require.NoError(t, err)
 
+	want := bundle.GetTransactionsInExecutionOrder()
+	require.Equal(t, 2, len(want))
+
 	// sponsored transaction introduce an internal transaction,
 	// so we expect 3 transactions in the block:
 	// 1. the sponsorship transaction
@@ -113,8 +116,8 @@ func TestBundle_CanRunSponsorshipAndSponsored(t *testing.T) {
 	txs := block.Transactions()
 	position := uint(*info.Position)
 	require.GreaterOrEqual(t, uint(len(txs)), position+3)
-	require.Equal(t, txs[position].Hash(), bundle.Transactions[0].Hash())
-	require.Equal(t, txs[position+1].Hash(), bundle.Transactions[1].Hash())
+	require.Equal(t, txs[position].Hash(), want[0].Hash())
+	require.Equal(t, txs[position+1].Hash(), want[1].Hash())
 	require.True(t, internaltx.IsInternal(txs[position+2]))
 }
 

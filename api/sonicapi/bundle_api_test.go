@@ -20,38 +20,11 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/require"
 )
 
 func TestNewRPCExecutionPlan(t *testing.T) {
-	plan := bundle.ExecutionPlan{
-		Steps: []bundle.ExecutionStep{
-			{
-				From: common.HexToAddress("0x1111111111111111111111111111111111111111"),
-				Hash: common.HexToHash("0x2222222222222222222222222222222222222222222222222222222222222222"),
-			},
-			{
-				From: common.HexToAddress("0x3333333333333333333333333333333333333333"),
-				Hash: common.HexToHash("0x4444444444444444444444444444444444444444444444444444444444444444"),
-			},
-		},
-		Flags: bundle.EF_TolerateInvalid | bundle.EF_OneOf,
-		Range: bundle.BlockRange{
-			Earliest: 100,
-			Latest:   200,
-		},
-	}
-
-	rpcPlan := NewRPCExecutionPlan(plan)
-
-	require.Equal(t, plan.Flags, rpcPlan.Flags)
-	require.Equal(t, rpc.BlockNumber(plan.Range.Earliest), rpcPlan.Earliest)
-	require.Equal(t, rpc.BlockNumber(plan.Range.Latest), rpcPlan.Latest)
-	require.Len(t, rpcPlan.Steps, len(plan.Steps))
-	for i, step := range plan.Steps {
-		require.Equal(t, step.From, rpcPlan.Steps[i].From)
-		require.Equal(t, step.Hash, rpcPlan.Steps[i].Hash)
-	}
+	require.PanicsWithError(t, "not implemented", func() {
+		NewRPCExecutionPlan(bundle.ExecutionPlan{})
+	})
 }

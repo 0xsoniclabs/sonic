@@ -33,20 +33,7 @@ func RunBundle(
 	bundle *TransactionBundle,
 	runner TransactionRunner,
 ) bool {
-	snapshot := runner.CreateSnapshot()
-
-	var success bool
-	if bundle.Flags.IsOneOf() {
-		success = runOneOfBundle(bundle, runner)
-	} else {
-		success = runAllOfBundle(bundle, runner)
-	}
-
-	if !success {
-		runner.RevertToSnapshot(snapshot)
-	}
-
-	return success
+	return runStep(&bundle.Plan.Root, bundle.Transactions, runner)
 }
 
 // TransactionRunner defines an interface for running individual transactions
@@ -58,35 +45,64 @@ type TransactionRunner interface {
 	RevertToSnapshot(id int)
 }
 
-// runAllOfBundle executes all transactions in the bundle and returns true if
-// all transactions are considered successful, false otherwise.
-func runAllOfBundle(
-	bundle *TransactionBundle,
+func runStep(
+	step *ExecutionStep,
+	transactions map[TxReference]*types.Transaction,
 	runner TransactionRunner,
 ) bool {
-	for _, tx := range bundle.Transactions {
-		result := runner.Run(tx)
-		if !isTolerated(result, bundle.Flags) {
-			return false
+	var result core_types.TransactionResult
+	if step.txRef == nil {
+		if step.oneOf {
+			result = runOneOfGroup(step.steps, transactions, runner)
+		} else {
+			result = runAllOfGroup(step.steps, transactions, runner)
 		}
+	} else {
+		result = runTransaction(*step.txRef, transactions, runner)
 	}
-	return true
+	return isTolerated(result, step.flags)
 }
 
-// runOneOfBundle executes the transactions in the bundle and stops at the first
-// successful transaction. It returns true if at least one transaction is
-// considered successful, false otherwise.
-func runOneOfBundle(
-	bundle *TransactionBundle,
+func runAllOfGroup(
+	steps []ExecutionStep,
+	transactions map[TxReference]*types.Transaction,
 	runner TransactionRunner,
-) bool {
-	for _, tx := range bundle.Transactions {
-		result := runner.Run(tx)
-		if isTolerated(result, bundle.Flags) {
-			return true
+) core_types.TransactionResult {
+	snapshot := runner.CreateSnapshot()
+	for _, step := range steps {
+		if !runStep(&step, transactions, runner) {
+			runner.RevertToSnapshot(snapshot)
+			return core_types.TransactionResultFailed
 		}
 	}
-	return false
+	return core_types.TransactionResultSuccessful
+}
+
+func runOneOfGroup(
+	steps []ExecutionStep,
+	transactions map[TxReference]*types.Transaction,
+	runner TransactionRunner,
+) core_types.TransactionResult {
+	snapshot := runner.CreateSnapshot()
+	for _, step := range steps {
+		if runStep(&step, transactions, runner) {
+			return core_types.TransactionResultSuccessful
+		}
+	}
+	runner.RevertToSnapshot(snapshot)
+	return core_types.TransactionResultFailed
+}
+
+func runTransaction(
+	txRef TxReference,
+	transactions map[TxReference]*types.Transaction,
+	runner TransactionRunner,
+) core_types.TransactionResult {
+	tx, found := transactions[txRef]
+	if !found {
+		return core_types.TransactionResultInvalid
+	}
+	return runner.Run(tx)
 }
 
 func isTolerated(

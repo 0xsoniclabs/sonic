@@ -27,16 +27,9 @@ func TestExecutionFlags_Valid_AllCombinationsPass(t *testing.T) {
 	// explicit combination tests
 	tests := []ExecutionFlags{
 		0,
-		EF_AllOf,
-		EF_OneOf,
 		EF_TolerateInvalid,
 		EF_TolerateFailed,
-		EF_AllOf | EF_TolerateInvalid,
-		EF_AllOf | EF_TolerateFailed,
-		EF_AllOf | EF_TolerateInvalid | EF_TolerateFailed,
-		EF_OneOf | EF_TolerateInvalid,
-		EF_OneOf | EF_TolerateFailed,
-		EF_OneOf | EF_TolerateInvalid | EF_TolerateFailed,
+		EF_TolerateInvalid | EF_TolerateFailed,
 	}
 
 	for _, flags := range tests {
@@ -56,10 +49,8 @@ func TestExecutionFlags_TolerateInvalid(t *testing.T) {
 	require := require.New(t)
 
 	flags := []ExecutionFlags{
-		EF_AllOf,
-		EF_AllOf | EF_TolerateFailed,
-		EF_OneOf,
-		EF_OneOf | EF_TolerateFailed,
+		EF_Default,
+		EF_Default | EF_TolerateFailed,
 	}
 
 	for _, flags := range flags {
@@ -72,38 +63,12 @@ func TestExecutionFlags_TolerateFailed(t *testing.T) {
 	require := require.New(t)
 
 	flags := []ExecutionFlags{
-		EF_AllOf,
-		EF_AllOf | EF_TolerateInvalid,
-		EF_OneOf,
-		EF_OneOf | EF_TolerateInvalid,
+		EF_Default,
+		EF_Default | EF_TolerateInvalid,
 	}
 
 	for _, flags := range flags {
 		require.False(flags.TolerateFailed())
 		require.True((flags | EF_TolerateFailed).TolerateFailed())
-	}
-}
-
-func TestExecutionFlags_IsOneOf(t *testing.T) {
-	require := require.New(t)
-
-	tests := []struct {
-		flags ExecutionFlags
-		want  bool
-	}{
-		{EF_AllOf, false},
-		{EF_OneOf, true},
-		{EF_TolerateInvalid, false},
-		{EF_TolerateFailed, false},
-		{EF_AllOf | EF_TolerateInvalid, false},
-		{EF_AllOf | EF_TolerateFailed, false},
-		{EF_AllOf | EF_TolerateInvalid | EF_TolerateFailed, false},
-		{EF_OneOf | EF_TolerateInvalid, true},
-		{EF_OneOf | EF_TolerateFailed, true},
-		{EF_OneOf | EF_TolerateInvalid | EF_TolerateFailed, true},
-	}
-
-	for _, test := range tests {
-		require.Equal(test.want, test.flags.IsOneOf())
 	}
 }

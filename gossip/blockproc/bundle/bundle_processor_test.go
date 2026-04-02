@@ -17,31 +17,94 @@
 package bundle
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/evmcore/core_types"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
+	gomock "go.uber.org/mock/gomock"
 )
 
-func Test_RunBundle_HandlesExecutionModeCorrectly(t *testing.T) {
+func TestRunBundle_DelegatesToRunStep(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	runner := NewMockTransactionRunner(ctrl)
-	runner.EXPECT().CreateSnapshot().Return(42).Times(2)
-	runner.EXPECT().RevertToSnapshot(42).Times(1)
 
-	require := require.New(t)
-	require.True(RunBundle(&TransactionBundle{Flags: EF_AllOf}, runner))
-	require.False(RunBundle(&TransactionBundle{Flags: EF_OneOf}, runner))
+	tx1 := types.NewTx(&types.LegacyTx{})
+	tx2 := types.NewTx(&types.LegacyTx{})
+	tx3 := types.NewTx(&types.LegacyTx{})
+
+	ref1 := TxReference{From: common.Address{1}}
+	ref2 := TxReference{From: common.Address{2}}
+	ref3 := TxReference{From: common.Address{3}}
+
+	txs := map[TxReference]*types.Transaction{
+		ref1: tx1,
+		ref2: tx2,
+		ref3: tx3,
+	}
+
+	bundle := &TransactionBundle{
+		Transactions: txs,
+		Plan: ExecutionPlan{
+			Root: NewOneOfStep(
+				NewAllOfStep(
+					NewTxStep(ref1),
+					NewTxStep(ref2),
+				),
+				NewAllOfStep(
+					NewTxStep(ref1),
+					NewTxStep(ref3),
+				),
+				NewAllOfStep(
+					NewTxStep(ref2),
+					NewTxStep(ref3),
+				),
+			),
+		},
+	}
+
+	gomock.InOrder(
+		runner.EXPECT().CreateSnapshot().Return(1),
+
+		runner.EXPECT().CreateSnapshot().Return(2),
+		runner.EXPECT().Run(tx1).Return(core_types.TransactionResultSuccessful),
+		runner.EXPECT().Run(tx2).Return(core_types.TransactionResultFailed),
+		runner.EXPECT().RevertToSnapshot(2),
+
+		runner.EXPECT().CreateSnapshot().Return(3),
+		runner.EXPECT().Run(tx1).Return(core_types.TransactionResultSuccessful),
+		runner.EXPECT().Run(tx3).Return(core_types.TransactionResultSuccessful),
+		// no revert for second branch since it succeeds
+
+		// third branch should not be executed since one of the branches already succeeded
+	)
+
+	require.True(t, RunBundle(bundle, runner))
 }
 
-func Test_RunBundle_DoesNotRevertToSnapshotOnSuccess(t *testing.T) {
+func Test_runStep_DispatchesToCorrectExecutionMode(t *testing.T) {
 	tests := map[string]struct {
-		flags ExecutionFlags
+		step           ExecutionStep
+		expectSnapshot bool // < distinguishes group and transaction mode
+		expectedResult bool // < distinguishes all-of and one-of mode
 	}{
-		"AllOf": {flags: EF_AllOf},
-		"OneOf": {flags: EF_OneOf},
+		"single transaction": {
+			step:           NewTxStep(TxReference{}),
+			expectSnapshot: false,
+			expectedResult: false, // transaction is missing
+		},
+		"all of group": {
+			step:           NewAllOfStep(),
+			expectSnapshot: true,
+			expectedResult: true, // empty group should succeed
+		},
+		"one of group": {
+			step:           NewOneOfStep(),
+			expectSnapshot: true,
+			expectedResult: false, // empty group should fail
+		},
 	}
 
 	for name, test := range tests {
@@ -49,194 +112,220 @@ func Test_RunBundle_DoesNotRevertToSnapshotOnSuccess(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			runner := NewMockTransactionRunner(ctrl)
 
-			tx := types.NewTx(&types.LegacyTx{})
-			runner.EXPECT().CreateSnapshot().Return(42).Times(1)
-			runner.EXPECT().Run(tx).Return(core_types.TransactionResultSuccessful).Times(1)
-			// no expectation for RevertToSnapshot
-
-			bundle := &TransactionBundle{
-				Transactions: []*types.Transaction{tx},
-				Flags:        test.flags,
+			if test.expectSnapshot {
+				runner.EXPECT().CreateSnapshot().Return(1).Times(1)
+				if !test.expectedResult {
+					runner.EXPECT().RevertToSnapshot(1).Times(1)
+				}
 			}
 
-			result := RunBundle(bundle, runner)
-			require.True(t, result)
+			result := runStep(&test.step, nil, runner)
+			require.Equal(t, test.expectedResult, result)
 		})
 	}
 }
 
-func Test_RunBundle_RevertsToSnapshotOnFailure(t *testing.T) {
-	tests := map[string]struct {
-		flags ExecutionFlags
-	}{
-		"AllOf": {flags: EF_AllOf},
-		"OneOf": {flags: EF_OneOf},
+func Test_runStep_InterpretsExecutionFlagsCorrectly(t *testing.T) {
+	flags := []ExecutionFlags{
+		EF_Default,
+		EF_TolerateInvalid,
+		EF_TolerateFailed,
+		EF_TolerateInvalid | EF_TolerateFailed,
 	}
 
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
+	results := []core_types.TransactionResult{
+		core_types.TransactionResultSuccessful,
+		core_types.TransactionResultFailed,
+		core_types.TransactionResultInvalid,
+	}
+
+	for _, flag := range flags {
+		for _, result := range results {
+			t.Run(fmt.Sprintf("flags=%b,result=%d", flag, result), func(t *testing.T) {
+				step := NewTxStep(TxReference{})
+				step.flags = flag
+
+				txs := map[TxReference]*types.Transaction{
+					{}: types.NewTx(&types.LegacyTx{}),
+				}
+
+				ctrl := gomock.NewController(t)
+				runner := NewMockTransactionRunner(ctrl)
+
+				runner.EXPECT().Run(gomock.Any()).Return(result).Times(1)
+
+				allowed := isTolerated(result, flag)
+				actual := runStep(&step, txs, runner)
+				require.Equal(t, allowed, actual)
+			})
+		}
+	}
+}
+
+func Test_runAllOfGroup_EmptySteps_ReturnsSuccessful(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	runner := NewMockTransactionRunner(ctrl)
+	runner.EXPECT().CreateSnapshot().Return(1)
+
+	result := runAllOfGroup(nil, nil, runner)
+	require.Equal(t, core_types.TransactionResultSuccessful, result)
+}
+
+func Test_runAllOfGroup_ReturnsTrueIfAllTransactionsPass(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	runner := NewMockTransactionRunner(ctrl)
+
+	ref := TxReference{From: common.Address{1}}
+	tx := types.NewTx(&types.LegacyTx{})
+
+	gomock.InOrder(
+		runner.EXPECT().CreateSnapshot().Return(1),
+		runner.EXPECT().Run(tx).Return(core_types.TransactionResultSuccessful).Times(3),
+	)
+
+	steps := []ExecutionStep{
+		NewTxStep(ref), NewTxStep(ref), NewTxStep(ref),
+	}
+
+	txs := map[TxReference]*types.Transaction{
+		ref: tx,
+	}
+
+	result := runAllOfGroup(steps, txs, runner)
+	require.Equal(t, core_types.TransactionResultSuccessful, result)
+}
+
+func Test_runAllOfGroup_StopsAtFirstFailedTransaction(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	runner := NewMockTransactionRunner(ctrl)
+
+	tx1 := types.NewTx(&types.LegacyTx{})
+	tx2 := types.NewTx(&types.LegacyTx{})
+	tx3 := types.NewTx(&types.LegacyTx{})
+
+	ref1 := TxReference{From: common.Address{1}}
+	ref2 := TxReference{From: common.Address{2}}
+	ref3 := TxReference{From: common.Address{3}}
+
+	txs := map[TxReference]*types.Transaction{
+		ref1: tx1,
+		ref2: tx2,
+		ref3: tx3,
+	}
+
+	gomock.InOrder(
+		runner.EXPECT().CreateSnapshot().Return(1),
+		runner.EXPECT().Run(tx1).Return(core_types.TransactionResultSuccessful),
+		runner.EXPECT().Run(tx2).Return(core_types.TransactionResultFailed),
+		// tx3 should not be run
+		runner.EXPECT().RevertToSnapshot(1),
+	)
+
+	steps := []ExecutionStep{
+		NewTxStep(ref1), NewTxStep(ref2), NewTxStep(ref3),
+	}
+
+	result := runAllOfGroup(steps, txs, runner)
+	require.Equal(t, core_types.TransactionResultFailed, result)
+}
+
+func Test_runOneOfGroup_ForEmptySteps_ReturnsFailed(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	runner := NewMockTransactionRunner(ctrl)
+
+	gomock.InOrder(
+		runner.EXPECT().CreateSnapshot().Return(1),
+		runner.EXPECT().RevertToSnapshot(1),
+	)
+
+	result := runOneOfGroup(nil, nil, runner)
+	require.Equal(t, core_types.TransactionResultFailed, result)
+}
+
+func Test_runOneOfGroup_RollsBackAndReturnsFailedIfAllTransactionsFail(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	runner := NewMockTransactionRunner(ctrl)
+
+	ref := TxReference{}
+	tx := types.NewTx(&types.LegacyTx{})
+
+	gomock.InOrder(
+		runner.EXPECT().CreateSnapshot().Return(1),
+		runner.EXPECT().Run(tx).Return(core_types.TransactionResultFailed).Times(3),
+		runner.EXPECT().RevertToSnapshot(1),
+	)
+
+	txs := map[TxReference]*types.Transaction{
+		ref: tx,
+	}
+
+	steps := []ExecutionStep{
+		NewTxStep(ref), NewTxStep(ref), NewTxStep(ref),
+	}
+
+	result := runOneOfGroup(steps, txs, runner)
+	require.Equal(t, core_types.TransactionResultFailed, result)
+}
+
+func Test_runOneOfGroup_StopsAtFirstSuccessfulTransaction(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	runner := NewMockTransactionRunner(ctrl)
+
+	tx1 := types.NewTx(&types.LegacyTx{})
+	tx2 := types.NewTx(&types.LegacyTx{})
+	tx3 := types.NewTx(&types.LegacyTx{})
+
+	ref1 := TxReference{From: common.Address{1}}
+	ref2 := TxReference{From: common.Address{2}}
+	ref3 := TxReference{From: common.Address{3}}
+
+	txs := map[TxReference]*types.Transaction{
+		ref1: tx1,
+		ref2: tx2,
+		ref3: tx3,
+	}
+
+	gomock.InOrder(
+		runner.EXPECT().CreateSnapshot().Return(1),
+		runner.EXPECT().Run(tx1).Return(core_types.TransactionResultFailed),
+		runner.EXPECT().Run(tx2).Return(core_types.TransactionResultSuccessful),
+		// tx3 should not be run
+	)
+
+	steps := []ExecutionStep{
+		NewTxStep(ref1), NewTxStep(ref2), NewTxStep(ref3),
+	}
+
+	result := runOneOfGroup(steps, txs, runner)
+	require.Equal(t, result, core_types.TransactionResultSuccessful)
+}
+
+func Test_runTransaction_ForwardsResultOfRunner(t *testing.T) {
+	tx := types.NewTx(&types.LegacyTx{})
+	txRef := TxReference{From: common.Address{1, 2, 3}}
+	txs := map[TxReference]*types.Transaction{txRef: tx}
+
+	results := []core_types.TransactionResult{
+		core_types.TransactionResultSuccessful,
+		core_types.TransactionResultFailed,
+		core_types.TransactionResultInvalid,
+	}
+
+	for _, result := range results {
+		t.Run(fmt.Sprintf("res=%d", result), func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			runner := NewMockTransactionRunner(ctrl)
 
-			tx := types.NewTx(&types.LegacyTx{})
-			runner.EXPECT().CreateSnapshot().Return(42).Times(1)
-			runner.EXPECT().Run(tx).Return(core_types.TransactionResultFailed).Times(1)
-			runner.EXPECT().RevertToSnapshot(42).Times(1)
-
-			bundle := &TransactionBundle{
-				Transactions: []*types.Transaction{tx},
-				Flags:        test.flags,
-			}
-
-			result := RunBundle(bundle, runner)
-			require.False(t, result)
+			runner.EXPECT().Run(tx).Return(result).Times(1)
+			actualResult := runTransaction(txRef, txs, runner)
+			require.Equal(t, result, actualResult)
 		})
 	}
 }
 
-func Test_runAllOfBundle_ReturnsTrueForEmptyBundle(t *testing.T) {
-	emptyBundle := &TransactionBundle{Transactions: nil}
-	result := runAllOfBundle(emptyBundle, nil)
-	require.True(t, result)
-}
-
-func Test_runAllOfBundle_ReturnsTrueIfAllTransactionsTolerated(t *testing.T) {
-	tests := map[string]struct {
-		toleratedResult core_types.TransactionResult
-		flags           ExecutionFlags
-	}{
-		"TolerateOnlySuccessful":  {toleratedResult: core_types.TransactionResultSuccessful, flags: 0},
-		"TolerateInvalid":         {toleratedResult: core_types.TransactionResultInvalid, flags: EF_TolerateInvalid},
-		"TolerateFailed":          {toleratedResult: core_types.TransactionResultFailed, flags: EF_TolerateFailed},
-		"TolerateAll/WithInvalid": {toleratedResult: core_types.TransactionResultInvalid, flags: EF_TolerateInvalid | EF_TolerateFailed},
-		"TolerateAll/WithFailed":  {toleratedResult: core_types.TransactionResultFailed, flags: EF_TolerateInvalid | EF_TolerateFailed},
-	}
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			runner := NewMockTransactionRunner(ctrl)
-
-			tx := types.NewTx(&types.LegacyTx{})
-			runner.EXPECT().Run(tx).Return(test.toleratedResult).Times(3)
-
-			bundle := &TransactionBundle{
-				Transactions: []*types.Transaction{tx, tx, tx},
-				Flags:        test.flags,
-			}
-
-			result := runAllOfBundle(bundle, runner)
-			require.True(t, result)
-		})
-	}
-}
-
-func Test_runAllOfBundle_StopsAtFirstNonToleratedTransaction(t *testing.T) {
-	tests := map[string]struct {
-		notToleratedResult core_types.TransactionResult
-		flags              ExecutionFlags
-	}{
-		"TolerateOnlySuccessful/WithInvalid": {notToleratedResult: core_types.TransactionResultInvalid, flags: 0},
-		"TolerateOnlySuccessful/WithFailed":  {notToleratedResult: core_types.TransactionResultFailed, flags: 0},
-		"TolerateInvalid":                    {notToleratedResult: core_types.TransactionResultFailed, flags: EF_TolerateInvalid},
-		"TolerateFailed":                     {notToleratedResult: core_types.TransactionResultInvalid, flags: EF_TolerateFailed},
-	}
-
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			runner := NewMockTransactionRunner(ctrl)
-
-			tx1 := types.NewTx(&types.LegacyTx{})
-			tx2 := types.NewTx(&types.LegacyTx{})
-			tx3 := types.NewTx(&types.LegacyTx{})
-			gomock.InOrder(
-				runner.EXPECT().Run(tx1).Return(core_types.TransactionResultSuccessful),
-				runner.EXPECT().Run(tx2).Return(test.notToleratedResult),
-				// tx3 should not be run
-			)
-
-			bundle := &TransactionBundle{
-				Transactions: []*types.Transaction{tx1, tx2, tx3},
-				Flags:        test.flags,
-			}
-
-			result := runAllOfBundle(bundle, runner)
-			require.False(t, result)
-		})
-	}
-}
-
-func Test_runOneOfBundle_ReturnsFalseForEmptyBundle(t *testing.T) {
-	emptyBundle := &TransactionBundle{Transactions: nil}
-	result := runOneOfBundle(emptyBundle, nil)
-	require.False(t, result)
-}
-
-func Test_runOneOfBundle_ReturnsFalseIfAllTransactionsAreNonTolerated(t *testing.T) {
-	tests := map[string]struct {
-		notToleratedResult core_types.TransactionResult
-		flags              ExecutionFlags
-	}{
-		"TolerateOnlySuccessful/WithInvalid": {notToleratedResult: core_types.TransactionResultInvalid, flags: 0},
-		"TolerateOnlySuccessful/WithFailed":  {notToleratedResult: core_types.TransactionResultFailed, flags: 0},
-		"TolerateInvalid":                    {notToleratedResult: core_types.TransactionResultFailed, flags: EF_TolerateInvalid},
-		"TolerateFailed":                     {notToleratedResult: core_types.TransactionResultInvalid, flags: EF_TolerateFailed},
-	}
-
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			runner := NewMockTransactionRunner(ctrl)
-
-			tx := types.NewTx(&types.LegacyTx{})
-			runner.EXPECT().Run(tx).Return(test.notToleratedResult).Times(3)
-
-			bundle := &TransactionBundle{
-				Transactions: []*types.Transaction{tx, tx, tx},
-				Flags:        test.flags,
-			}
-
-			result := runOneOfBundle(bundle, runner)
-			require.False(t, result)
-		})
-	}
-}
-
-func Test_runOneOfBundle_StopsAtFirstToleratedTransaction(t *testing.T) {
-	tests := map[string]struct {
-		notToleratedResult core_types.TransactionResult
-		flags              ExecutionFlags
-	}{
-		"TolerateOnlySuccessful/WithInvalid": {notToleratedResult: core_types.TransactionResultInvalid, flags: 0},
-		"TolerateOnlySuccessful/WithFailed":  {notToleratedResult: core_types.TransactionResultFailed, flags: 0},
-		"TolerateInvalid":                    {notToleratedResult: core_types.TransactionResultFailed, flags: EF_TolerateInvalid},
-		"TolerateFailed":                     {notToleratedResult: core_types.TransactionResultInvalid, flags: EF_TolerateFailed},
-	}
-
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			runner := NewMockTransactionRunner(ctrl)
-
-			tx1 := types.NewTx(&types.LegacyTx{})
-			tx2 := types.NewTx(&types.LegacyTx{})
-			tx3 := types.NewTx(&types.LegacyTx{})
-
-			gomock.InOrder(
-				runner.EXPECT().Run(tx1).Return(test.notToleratedResult),
-				runner.EXPECT().Run(tx2).Return(core_types.TransactionResultSuccessful),
-				// tx3 should not be run
-			)
-
-			bundle := &TransactionBundle{
-				Transactions: []*types.Transaction{tx1, tx2, tx3},
-				Flags:        test.flags,
-			}
-
-			result := runOneOfBundle(bundle, runner)
-			require.True(t, result)
-		})
-	}
+func Test_runTransaction_MissingTransaction_ReturnsTransactionResultInvalid(t *testing.T) {
+	res := runTransaction(TxReference{}, nil, nil)
+	require.Equal(t, core_types.TransactionResultInvalid, res)
 }
 
 func Test_isTolerated_InterpretsExecutionFlagsCorrectly(t *testing.T) {
@@ -245,10 +334,10 @@ func Test_isTolerated_InterpretsExecutionFlagsCorrectly(t *testing.T) {
 		result    core_types.TransactionResult
 		tolerated bool
 	}{
-		{flags: 0, result: core_types.TransactionResultInvalid, tolerated: false},
-		{flags: 0, result: core_types.TransactionResultFailed, tolerated: false},
-		{flags: 0, result: core_types.TransactionResultSuccessful, tolerated: true},
-		{flags: 0, result: 99, tolerated: false}, // unknown result treated as failed
+		{flags: EF_Default, result: core_types.TransactionResultInvalid, tolerated: false},
+		{flags: EF_Default, result: core_types.TransactionResultFailed, tolerated: false},
+		{flags: EF_Default, result: core_types.TransactionResultSuccessful, tolerated: true},
+		{flags: EF_Default, result: 99, tolerated: false}, // unknown result treated as failed
 
 		{flags: EF_TolerateInvalid, result: core_types.TransactionResultInvalid, tolerated: true},
 		{flags: EF_TolerateInvalid, result: core_types.TransactionResultFailed, tolerated: false},

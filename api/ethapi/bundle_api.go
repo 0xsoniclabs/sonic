@@ -26,7 +26,6 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -205,20 +204,22 @@ func (a *PublicBundleAPI) PrepareBundle(
 	// Prepare execution plan
 	chainID := a.b.ChainID()
 	signer := types.LatestSignerForChainID(chainID)
+
+	steps := make([]bundle.ExecutionStep, len(transactions))
+	for i, tx := range transactions {
+		steps[i] = bundle.NewTxStep(bundle.TxReference{
+			From: from[i],
+			Hash: signer.Hash(tx),
+		})
+	}
+
 	plan := bundle.ExecutionPlan{
 		// Current api do not expose flags to users, this can be introduced in the future if needed.
-		Flags: bundle.ExecutionFlags(0),
-		Steps: make([]bundle.ExecutionStep, len(transactions)),
+		Root: bundle.NewAllOfStep(steps...),
 		Range: bundle.BlockRange{
 			Earliest: earliest,
 			Latest:   latest,
 		},
-	}
-	for i, tx := range transactions {
-		plan.Steps[i] = bundle.ExecutionStep{
-			From: from[i],
-			Hash: signer.Hash(tx),
-		}
 	}
 
 	// Update bundle transactions with execution plan hash
@@ -270,71 +271,74 @@ func (a *PublicBundleAPI) SubmitBundle(
 	args SubmitBundleArgs,
 ) (common.Hash, error) {
 
-	txBundle := bundle.TransactionBundle{
-		Transactions: make(types.Transactions, len(args.SignedTransactions)),
-		Flags:        args.ExecutionPlan.Flags,
-		Range: bundle.BlockRange{
-			Earliest: uint64(args.ExecutionPlan.Earliest),
-			Latest:   uint64(args.ExecutionPlan.Latest),
-		},
-	}
-
-	// 1) Decode bundled transactions and compute total gas requirement
-	var totalGas uint64
-	for i, encodedTx := range args.SignedTransactions {
-
-		tx := new(types.Transaction)
-		if err := tx.UnmarshalBinary(encodedTx); err != nil {
-			return common.Hash{}, fmt.Errorf("failed to decode bundled transaction %d: %w", i, err)
+	panic("not implemented yet")
+	/*
+		txBundle := bundle.TransactionBundle{
+			Transactions: make(types.Transactions, len(args.SignedTransactions)),
+			Flags:        args.ExecutionPlan.Flags,
+			Range: bundle.BlockRange{
+				Earliest: uint64(args.ExecutionPlan.Earliest),
+				Latest:   uint64(args.ExecutionPlan.Latest),
+			},
 		}
 
-		txBundle.Transactions[i] = tx
-		totalGas += tx.Gas()
-	}
+		// 1) Decode bundled transactions and compute total gas requirement
+		var totalGas uint64
+		for i, encodedTx := range args.SignedTransactions {
 
-	// 2)  Encode the bundle and compute if gas limits are sufficient to cover
-	// both the payload and the data-related gas costs.
-	data := txBundle.Encode()
-	minGas, err := core.IntrinsicGas(data, nil, nil, false, true, true, true)
-	if err != nil {
-		return common.Hash{}, fmt.Errorf("failed to finalize bundle: could not calculate intrinsic gas: %w", err)
-	}
-	floorDataGas, err := core.FloorDataGas(data)
-	if err != nil {
-		return common.Hash{}, fmt.Errorf("failed to finalize bundle: could not calculate floor data gas: %w", err)
-	}
-	totalGas = max(totalGas, minGas, floorDataGas)
+			tx := new(types.Transaction)
+			if err := tx.UnmarshalBinary(encodedTx); err != nil {
+				return common.Hash{}, fmt.Errorf("failed to decode bundled transaction %d: %w", i, err)
+			}
 
-	// 3) Make a one use key to sign the bundle
-	// TODO: key could be generated only once, but using a single key at the moment it would
-	// generate a problem with nonces in the pool.
-	key, err := crypto.GenerateKey()
-	if err != nil {
-		return common.Hash{}, fmt.Errorf("failed to generate signing key: %w", err)
-	}
+			txBundle.Transactions[i] = tx
+			totalGas += tx.Gas()
+		}
 
-	// 4) Sign the bundle transaction with the one-use key and send it to the network
-	signer := types.LatestSignerForChainID(a.b.ChainID())
-	tx, err := types.SignNewTx(key, signer,
-		&types.DynamicFeeTx{
-			To:    &bundle.BundleProcessor,
-			Nonce: 0,
-			Data:  data,
-			Gas:   totalGas,
-		})
-	if err != nil {
-		return common.Hash{}, fmt.Errorf("failed to sign bundle transaction: %w", err)
-	}
+		// 2)  Encode the bundle and compute if gas limits are sufficient to cover
+		// both the payload and the data-related gas costs.
+		data := txBundle.Encode()
+		minGas, err := core.IntrinsicGas(data, nil, nil, false, true, true, true)
+		if err != nil {
+			return common.Hash{}, fmt.Errorf("failed to finalize bundle: could not calculate intrinsic gas: %w", err)
+		}
+		floorDataGas, err := core.FloorDataGas(data)
+		if err != nil {
+			return common.Hash{}, fmt.Errorf("failed to finalize bundle: could not calculate floor data gas: %w", err)
+		}
+		totalGas = max(totalGas, minGas, floorDataGas)
 
-	// 5) Validate generated transaction
-	_, plan, err := bundle.ValidateEnvelope(signer, tx)
-	if err != nil {
-		return common.Hash{}, fmt.Errorf("failed to validate bundle transaction: %w", err)
-	}
+		// 3) Make a one use key to sign the bundle
+		// TODO: key could be generated only once, but using a single key at the moment it would
+		// generate a problem with nonces in the pool.
+		key, err := crypto.GenerateKey()
+		if err != nil {
+			return common.Hash{}, fmt.Errorf("failed to generate signing key: %w", err)
+		}
 
-	// 6) Submit the transaction to the network
-	_, err = SubmitTransaction(ctx, a.b, tx)
-	return plan.Hash(), err
+		// 4) Sign the bundle transaction with the one-use key and send it to the network
+		signer := types.LatestSignerForChainID(a.b.ChainID())
+		tx, err := types.SignNewTx(key, signer,
+			&types.DynamicFeeTx{
+				To:    &bundle.BundleProcessor,
+				Nonce: 0,
+				Data:  data,
+				Gas:   totalGas,
+			})
+		if err != nil {
+			return common.Hash{}, fmt.Errorf("failed to sign bundle transaction: %w", err)
+		}
+
+		// 5) Validate generated transaction
+		_, plan, err := bundle.ValidateEnvelope(signer, tx)
+		if err != nil {
+			return common.Hash{}, fmt.Errorf("failed to validate bundle transaction: %w", err)
+		}
+
+		// 6) Submit the transaction to the network
+		_, err = SubmitTransaction(ctx, a.b, tx)
+		return plan.Hash(), err
+	*/
 }
 
 func asTransaction(msg *core.Message) (*types.Transaction, error) {
@@ -474,20 +478,23 @@ type RPCExecutionPlan struct {
 }
 
 func NewRPCExecutionPlan(plan bundle.ExecutionPlan) RPCExecutionPlan {
-	steps := make([]RPCExecutionStep, len(plan.Steps))
-	for i, step := range plan.Steps {
-		steps[i] = RPCExecutionStep{
-			From: step.From,
-			Hash: step.Hash,
+	panic("not implemented yet")
+	/*
+		steps := make([]RPCExecutionStep, len(plan.Steps))
+		for i, step := range plan.Steps {
+			steps[i] = RPCExecutionStep{
+				From: step.From,
+				Hash: step.Hash,
+			}
 		}
-	}
 
-	return RPCExecutionPlan{
-		Flags:    plan.Flags,
-		Steps:    steps,
-		Earliest: rpc.BlockNumber(plan.Range.Earliest),
-		Latest:   rpc.BlockNumber(plan.Range.Latest),
-	}
+		return RPCExecutionPlan{
+			Flags:    plan.Flags,
+			Steps:    steps,
+			Earliest: rpc.BlockNumber(plan.Range.Earliest),
+			Latest:   rpc.BlockNumber(plan.Range.Latest),
+		}
+	*/
 }
 
 func toBlockNum(num uint64) *rpc.BlockNumber {
