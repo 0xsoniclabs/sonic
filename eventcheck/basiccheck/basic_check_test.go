@@ -171,3 +171,56 @@ func TestChecker_Validate_AcceptsMaxBlockHashes(t *testing.T) {
 	err := New().Validate(event)
 	require.NoError(t, err)
 }
+
+func TestChecker_Validate_AcceptsEmptyBlockHashesWithZeroMetadata(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	event := setupBasicEventMock(ctrl)
+
+	event.EXPECT().BlockHashes().Return(inter.BlockHashes{}).AnyTimes()
+
+	err := New().Validate(event)
+	require.NoError(t, err)
+}
+
+func TestChecker_Validate_RejectsBlockHashesWithZeroStart(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	event := setupBasicEventMock(ctrl)
+
+	event.EXPECT().BlockHashes().Return(inter.BlockHashes{
+		Start:  0,
+		Epoch:  1,
+		Hashes: []hash.Hash{{}},
+	}).AnyTimes()
+
+	err := New().Validate(event)
+	require.ErrorIs(t, err, ErrBlockHashZeroStart)
+}
+
+func TestChecker_Validate_RejectsBlockHashesWithZeroEpoch(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	event := setupBasicEventMock(ctrl)
+
+	event.EXPECT().BlockHashes().Return(inter.BlockHashes{
+		Start:  1,
+		Epoch:  0,
+		Hashes: []hash.Hash{{}},
+	}).AnyTimes()
+
+	err := New().Validate(event)
+	require.ErrorIs(t, err, ErrBlockHashZeroEpoch)
+}
+
+func TestChecker_Validate_RejectsBlockHashesWithMismatchedEpoch(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	event := setupBasicEventMock(ctrl)
+
+	// setupBasicEventMock sets event Epoch to 1, so use a different epoch here
+	event.EXPECT().BlockHashes().Return(inter.BlockHashes{
+		Start:  1,
+		Epoch:  2,
+		Hashes: []hash.Hash{{}},
+	}).AnyTimes()
+
+	err := New().Validate(event)
+	require.ErrorIs(t, err, ErrBlockHashEpochMismatch)
+}

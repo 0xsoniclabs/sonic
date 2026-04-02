@@ -1,5 +1,5 @@
-// Copyright 2024 The Sonic Authors
-// This file is part of the Sonic library.
+// Copyright 2026 Sonic Operations Ltd
+// This file is part of the Sonic Client
 //
 // Sonic is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as published by
