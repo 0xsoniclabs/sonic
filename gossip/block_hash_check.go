@@ -37,6 +37,7 @@ type blockHashChecker struct {
 
 	epoch      idx.Epoch
 	validators *pos.Validators
+
 	// Per-block: set of validators that disagree with the local block hash.
 	disagreements map[idx.Block]map[idx.ValidatorID]struct{}
 }
@@ -71,33 +72,39 @@ func (c *blockHashChecker) check(e *inter.EventPayload) {
 	if c.validators == nil {
 		return
 	}
+	// Only track disagreements for the current epoch. Events with
+	// block hashes from other epochs are irrelevant to the current
+	// epoch's disagreement tracking and would grow the map unboundedly.
+	if bhs.Epoch != c.epoch {
+		return
+	}
 
 	creator := e.Creator()
 	for i, eventHash := range bhs.Hashes {
 		blockNum := bhs.Start + idx.Block(i)
-
 		localBlock := c.store.GetBlock(blockNum)
 		if localBlock == nil {
 			continue
 		}
-
+		// Defense-in-depth: skip blocks that don't belong to the
+		// current epoch in the local store.
+		if localBlock.Epoch != c.epoch {
+			continue
+		}
 		localHash := hash.Hash(localBlock.Hash())
 		if localHash == eventHash {
 			continue
 		}
-
 		// Record disagreement
 		if c.disagreements[blockNum] == nil {
 			c.disagreements[blockNum] = make(map[idx.ValidatorID]struct{})
 		}
 		c.disagreements[blockNum][creator] = struct{}{}
-
 		// Compute total disagreeing stake
 		disagreeingStake := pos.Weight(0)
 		for vid := range c.disagreements[blockNum] {
 			disagreeingStake += c.validators.Get(vid)
 		}
-
 		if disagreeingStake > (c.validators.TotalWeight()*2)/3 {
 			c.errorLock.Permanent(fmt.Errorf(
 				"block hash disagreement: validators with >2/3 stake disagree "+

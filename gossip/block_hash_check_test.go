@@ -41,12 +41,12 @@ func makeTestBlock(number uint64, epoch idx.Epoch) *inter.Block {
 		Build()
 }
 
-func makeTestEvent(creator idx.ValidatorID, start idx.Block, hashes []hash.Hash) *inter.EventPayload {
+func makeTestEvent(creator idx.ValidatorID, start idx.Block, epoch idx.Epoch, hashes []hash.Hash) *inter.EventPayload {
 	e := &inter.MutableEventPayload{}
 	e.SetCreator(creator)
 	e.SetBlockHashes(inter.BlockHashes{
 		Start:  start,
-		Epoch:  1,
+		Epoch:  epoch,
 		Hashes: hashes,
 	})
 	return e.Build()
@@ -75,7 +75,7 @@ func TestBlockHashChecker_NilErrorLock(t *testing.T) {
 	store.SetBlock(1, block)
 
 	// Event with wrong hash should not panic when errorLock is nil
-	event := makeTestEvent(1, 1, []hash.Hash{{0xFF}})
+	event := makeTestEvent(1, 1, 1, []hash.Hash{{0xFF}})
 	checker.check(event)
 }
 
@@ -95,7 +95,6 @@ func TestBlockHashChecker_NoBlockHashes(t *testing.T) {
 	e := &inter.MutableEventPayload{}
 	e.SetCreator(1)
 	checker.check(e.Build())
-
 	require.NoError(t, errorLock.Check())
 }
 
@@ -116,9 +115,8 @@ func TestBlockHashChecker_MatchingHashes(t *testing.T) {
 	checker.reset(1, validators)
 
 	// Event with matching hash should not trigger
-	event := makeTestEvent(1, 1, []hash.Hash{hash.Hash(block.Hash())})
+	event := makeTestEvent(1, 1, 1, []hash.Hash{hash.Hash(block.Hash())})
 	checker.check(event)
-
 	require.NoError(t, errorLock.Check())
 	require.Empty(t, checker.disagreements)
 }
@@ -130,15 +128,15 @@ func TestBlockHashChecker_BlockNotInStore(t *testing.T) {
 
 	errorLock := errlock.New(t.TempDir())
 	checker := newBlockHashChecker(store, errorLock)
+
 	validators := makeValidators(map[idx.ValidatorID]pos.Weight{
 		1: 100,
 	})
 	checker.reset(1, validators)
 
 	// Block 5 is not in the store — should be skipped
-	event := makeTestEvent(1, 5, []hash.Hash{{0xFF}})
+	event := makeTestEvent(1, 5, 1, []hash.Hash{{0xFF}})
 	checker.check(event)
-
 	require.NoError(t, errorLock.Check())
 	require.Empty(t, checker.disagreements)
 }
@@ -162,9 +160,8 @@ func TestBlockHashChecker_DisagreementBelowThreshold(t *testing.T) {
 	})
 	checker.reset(1, validators)
 
-	event := makeTestEvent(1, 1, []hash.Hash{{0xFF}})
+	event := makeTestEvent(1, 1, 1, []hash.Hash{{0xFF}})
 	checker.check(event)
-
 	require.NoError(t, errorLock.Check())
 	require.Len(t, checker.disagreements[1], 1)
 }
@@ -191,16 +188,16 @@ func TestBlockHashChecker_DisagreementExceedsThreshold(t *testing.T) {
 	wrongHash := hash.Hash{0xFF}
 
 	// First disagreement: validator 1 (100/300 = 33%)
-	checker.check(makeTestEvent(1, 1, []hash.Hash{wrongHash}))
+	checker.check(makeTestEvent(1, 1, 1, []hash.Hash{wrongHash}))
 	require.NoError(t, errorLock.Check())
 
 	// Second disagreement: validator 2 (200/300 = 67%)
-	checker.check(makeTestEvent(2, 1, []hash.Hash{wrongHash}))
+	checker.check(makeTestEvent(2, 1, 1, []hash.Hash{wrongHash}))
 	require.NoError(t, errorLock.Check())
 
 	// Third disagreement: validator 3 (300/300 = 100% > 67%)
 	require.Panics(t, func() {
-		checker.check(makeTestEvent(3, 1, []hash.Hash{wrongHash}))
+		checker.check(makeTestEvent(3, 1, 1, []hash.Hash{wrongHash}))
 	})
 }
 
@@ -225,16 +222,14 @@ func TestBlockHashChecker_ThresholdExactlyTwoThirds(t *testing.T) {
 	checker.reset(1, validators)
 
 	wrongHash := hash.Hash{0xFF}
-
-	checker.check(makeTestEvent(1, 1, []hash.Hash{wrongHash}))
-	checker.check(makeTestEvent(2, 1, []hash.Hash{wrongHash}))
-
+	checker.check(makeTestEvent(1, 1, 1, []hash.Hash{wrongHash}))
+	checker.check(makeTestEvent(2, 1, 1, []hash.Hash{wrongHash}))
 	// 2/3 is exactly the threshold — should NOT panic (need strictly greater)
 	require.NoError(t, errorLock.Check())
 
 	// Third validator tips it over: 3 > 2
 	require.Panics(t, func() {
-		checker.check(makeTestEvent(3, 1, []hash.Hash{wrongHash}))
+		checker.check(makeTestEvent(3, 1, 1, []hash.Hash{wrongHash}))
 	})
 }
 
@@ -260,10 +255,9 @@ func TestBlockHashChecker_SameValidatorCountedOnce(t *testing.T) {
 	wrongHash := hash.Hash{0xFF}
 
 	// Same validator sends multiple events — should still only count once
-	checker.check(makeTestEvent(1, 1, []hash.Hash{wrongHash}))
-	checker.check(makeTestEvent(1, 1, []hash.Hash{wrongHash}))
-	checker.check(makeTestEvent(1, 1, []hash.Hash{wrongHash}))
-
+	checker.check(makeTestEvent(1, 1, 1, []hash.Hash{wrongHash}))
+	checker.check(makeTestEvent(1, 1, 1, []hash.Hash{wrongHash}))
+	checker.check(makeTestEvent(1, 1, 1, []hash.Hash{wrongHash}))
 	require.NoError(t, errorLock.Check())
 	require.Len(t, checker.disagreements[1], 1)
 }
@@ -289,12 +283,11 @@ func TestBlockHashChecker_MultipleBlocks(t *testing.T) {
 	checker.reset(1, validators)
 
 	// Disagree on block 1 but agree on block 2
-	event := makeTestEvent(1, 1, []hash.Hash{
+	event := makeTestEvent(1, 1, 1, []hash.Hash{
 		{0xFF},                   // wrong hash for block 1
 		hash.Hash(block2.Hash()), // correct hash for block 2
 	})
 	checker.check(event)
-
 	require.NoError(t, errorLock.Check())
 	require.Len(t, checker.disagreements[1], 1) // block 1 has disagreement
 	require.Empty(t, checker.disagreements[2])  // block 2 has no disagreement
@@ -321,8 +314,8 @@ func TestBlockHashChecker_EpochReset(t *testing.T) {
 	wrongHash := hash.Hash{0xFF}
 
 	// Accumulate disagreements in epoch 1
-	checker.check(makeTestEvent(1, 1, []hash.Hash{wrongHash}))
-	checker.check(makeTestEvent(2, 1, []hash.Hash{wrongHash}))
+	checker.check(makeTestEvent(1, 1, 1, []hash.Hash{wrongHash}))
+	checker.check(makeTestEvent(2, 1, 1, []hash.Hash{wrongHash}))
 	require.Len(t, checker.disagreements[1], 2)
 
 	// Reset for new epoch — disagreements should be cleared
@@ -340,15 +333,14 @@ func TestBlockHashChecker_NilValidators(t *testing.T) {
 
 	errorLock := errlock.New(t.TempDir())
 	checker := newBlockHashChecker(store, errorLock)
-	// Don't call reset — validators is nil
 
+	// Don't call reset — validators is nil
 	block := makeTestBlock(1, 1)
 	store.SetBlock(1, block)
 
 	// Should not panic with nil validators
-	event := makeTestEvent(1, 1, []hash.Hash{{0xFF}})
+	event := makeTestEvent(1, 1, 1, []hash.Hash{{0xFF}})
 	checker.check(event)
-
 	require.NoError(t, errorLock.Check())
 }
 
@@ -371,11 +363,10 @@ func TestBlockHashChecker_PartialBlockRange(t *testing.T) {
 	checker.reset(1, validators)
 
 	// Event covers blocks 2 and 3; block 3 is missing so only block 2 is checked
-	event := makeTestEvent(1, 2, []hash.Hash{
+	event := makeTestEvent(1, 2, 1, []hash.Hash{
 		{0xFF}, // wrong hash for block 2
 		{0xEE}, // block 3 doesn't exist, should be skipped
 	})
-
 	require.Panics(t, func() {
 		checker.check(event)
 	})
@@ -402,12 +393,121 @@ func TestBlockHashChecker_IndependentBlockTracking(t *testing.T) {
 	checker.reset(1, validators)
 
 	// Validator 1 disagrees on block 1
-	checker.check(makeTestEvent(1, 1, []hash.Hash{{0xFF}}))
+	checker.check(makeTestEvent(1, 1, 1, []hash.Hash{{0xFF}}))
 	// Validator 2 disagrees on block 2
-	checker.check(makeTestEvent(2, 2, []hash.Hash{{0xEE}}))
-
+	checker.check(makeTestEvent(2, 2, 1, []hash.Hash{{0xEE}}))
 	// Neither block has reached 2/3 threshold
 	require.NoError(t, errorLock.Check())
 	require.Len(t, checker.disagreements[1], 1)
 	require.Len(t, checker.disagreements[2], 1)
+}
+
+func TestBlockHashChecker_WrongEpochSkipped(t *testing.T) {
+	store, err := NewMemStore(t)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	errorLock := errlock.New(t.TempDir())
+	checker := newBlockHashChecker(store, errorLock)
+
+	block := makeTestBlock(1, 1)
+	store.SetBlock(1, block)
+
+	// Single validator with 100% stake — would trigger halt if processed
+	validators := makeValidators(map[idx.ValidatorID]pos.Weight{
+		1: 100,
+	})
+	checker.reset(1, validators)
+
+	// Event claims epoch 2 but checker is on epoch 1 — should be ignored entirely
+	event := makeTestEvent(1, 1, 2, []hash.Hash{{0xFF}})
+	checker.check(event)
+	require.NoError(t, errorLock.Check())
+	require.Empty(t, checker.disagreements)
+}
+
+func TestBlockHashChecker_CrossEpochBlockSkipped(t *testing.T) {
+	store, err := NewMemStore(t)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	errorLock := errlock.New(t.TempDir())
+	checker := newBlockHashChecker(store, errorLock)
+
+	// Block 1 is stored with epoch 1
+	block := makeTestBlock(1, 1)
+	store.SetBlock(1, block)
+
+	// Single validator with 100% stake
+	validators := makeValidators(map[idx.ValidatorID]pos.Weight{
+		1: 100,
+	})
+	// Checker is on epoch 2
+	checker.reset(2, validators)
+
+	// Event epoch matches checker (epoch 2), but the local block is from epoch 1
+	// — the per-block guard should skip it
+	event := makeTestEvent(1, 1, 2, []hash.Hash{{0xFF}})
+	checker.check(event)
+	require.NoError(t, errorLock.Check())
+	require.Empty(t, checker.disagreements)
+}
+
+func TestBlockHashChecker_CorrectEpochStillWorks(t *testing.T) {
+	store, err := NewMemStore(t)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	errorLock := errlock.New(t.TempDir())
+	checker := newBlockHashChecker(store, errorLock)
+
+	// Block stored in epoch 2
+	block := makeTestBlock(5, 2)
+	store.SetBlock(5, block)
+
+	validators := makeValidators(map[idx.ValidatorID]pos.Weight{
+		1: 100,
+		2: 100,
+		3: 100,
+	})
+	checker.reset(2, validators)
+
+	// Event with matching epoch 2 and wrong hash — disagreement should be recorded
+	event := makeTestEvent(1, 5, 2, []hash.Hash{{0xFF}})
+	checker.check(event)
+	require.NoError(t, errorLock.Check())
+	require.Len(t, checker.disagreements[5], 1)
+}
+
+func TestBlockHashChecker_MixedEpochBlocks(t *testing.T) {
+	store, err := NewMemStore(t)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	errorLock := errlock.New(t.TempDir())
+	checker := newBlockHashChecker(store, errorLock)
+
+	// Block 10 is from epoch 1, block 11 is from epoch 2
+	block10 := makeTestBlock(10, 1)
+	block11 := makeTestBlock(11, 2)
+	store.SetBlock(10, block10)
+	store.SetBlock(11, block11)
+
+	validators := makeValidators(map[idx.ValidatorID]pos.Weight{
+		1: 100,
+		2: 100,
+		3: 100,
+	})
+	checker.reset(2, validators)
+
+	// Event with epoch 2 covering blocks 10-11; block 10 is epoch 1 in
+	// the store so only block 11 should be tracked
+	event := makeTestEvent(1, 10, 2, []hash.Hash{
+		{0xFF}, // wrong hash for block 10 (epoch 1 — should be skipped)
+		{0xEE}, // wrong hash for block 11 (epoch 2 — should be tracked)
+	})
+	checker.check(event)
+	require.NoError(t, errorLock.Check())
+	require.Empty(t, checker.disagreements[10])  // skipped: wrong epoch in store
+	require.Len(t, checker.disagreements[11], 1) // tracked: correct epoch
 }
