@@ -106,6 +106,13 @@ var (
 	// ErrSponsoredTransactionsDisabled is returned when validating a sponsorship
 	// request if gas subsidies are disabled in the current network rules.
 	ErrSponsoredTransactionsDisabled = errors.New("sponsored transactions are disabled")
+
+	// ErrBundleTransactionsDisabled is returned when validating a transaction
+	// bundle if transaction bundles are disabled in the current network rules.
+	ErrBundleTransactionsDisabled = errors.New("bundled transactions are disabled")
+
+	// ErrBundleTransactionInvalid is returned when a bundle envelope is ill-formed
+	ErrBundleTransactionInvalid = errors.New("invalid bundle transaction")
 )
 
 var (
@@ -711,8 +718,9 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 		eip7623:  pool.eip7623,
 		eip7702:  pool.eip7702,
 
-		gasSubsidies: pool.chain.CurrentRules().Upgrades.GasSubsidies,
-		brio:         pool.chain.CurrentRules().Upgrades.Brio,
+		gasSubsidies:       pool.chain.CurrentRules().Upgrades.GasSubsidies,
+		brio:               pool.chain.CurrentRules().Upgrades.Brio,
+		transactionBundles: pool.chain.CurrentRules().Upgrades.TransactionBundles,
 	}
 
 	subsidiesChecker := pool.createSubsidiesChecker()
