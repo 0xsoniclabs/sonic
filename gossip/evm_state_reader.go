@@ -85,7 +85,12 @@ func (r *EvmStateReader) CurrentBaseFee() *big.Int {
 
 // CurrentMaxGasLimit returns the maximum gas limit of the most recent epoch.
 func (r *EvmStateReader) CurrentMaxGasLimit() uint64 {
-	rules := r.store.GetRules()
+	return ComputeMaxGasLimit(r.store.GetRules())
+}
+
+// ComputeMaxGasLimit is a free standing function used by CurrentMaxGasLimit,
+// to facilite access to this value during testing.
+func ComputeMaxGasLimit(rules opera.Rules) uint64 {
 	maxEmptyEventGas := rules.Economy.Gas.EventGas +
 		uint64(rules.Dag.MaxParents-rules.Dag.MaxFreeParents)*rules.Economy.Gas.ParentGas +
 		uint64(rules.Dag.MaxExtraData)*rules.Economy.Gas.ExtraDataGas

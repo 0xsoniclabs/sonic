@@ -23,6 +23,7 @@ import (
 	"iter"
 	"math/big"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -296,6 +297,32 @@ func MakeAccountWithBalance(t *testing.T, net IntegrationTestNetSession, balance
 		receipt.Status, types.ReceiptStatusSuccessful,
 		"endowing account failed")
 	return account
+}
+
+// MakeAccountsWithBalance creates multiple new accounts and endows them with the given balance.
+// Creating the accounts this way allows to get access to the private keys to sign transactions.
+func MakeAccountsWithBalance(t *testing.T, net IntegrationTestNetSession, count int, balance *big.Int) []*Account {
+	t.Helper()
+
+	accounts := make([]*Account, count)
+	addresses := make([]common.Address, count)
+	wg := sync.WaitGroup{}
+	for i := range count {
+		wg.Go(func() {
+			accounts[i] = NewAccount()
+			addresses[i] = accounts[i].Address()
+		})
+	}
+	wg.Wait()
+
+	receipts, err := net.EndowAccounts(addresses, balance)
+	require.NoError(t, err)
+	for _, receipt := range receipts {
+		require.Equal(t,
+			receipt.Status, types.ReceiptStatusSuccessful,
+			"endowing account failed")
+	}
+	return accounts
 }
 
 // GenerateTestDataBasedOnModificationCombinations generates all possible versions of a
