@@ -47,7 +47,7 @@ func makeValidators(stakes map[idx.ValidatorID]pos.Weight) *pos.Validators {
 func TestBlockHashChecker_NilErrorLock(t *testing.T) {
 	store, err := NewMemStore(t)
 	require.NoError(t, err)
-	t.Cleanup(func() { store.Close() })
+	t.Cleanup(func() { _ = store.Close() })
 
 	checker := newBlockHashChecker(store, nil)
 	validators := makeValidators(map[idx.ValidatorID]pos.Weight{
@@ -66,7 +66,7 @@ func TestBlockHashChecker_NilErrorLock(t *testing.T) {
 func TestBlockHashChecker_NoBlockHashes(t *testing.T) {
 	store, err := NewMemStore(t)
 	require.NoError(t, err)
-	t.Cleanup(func() { store.Close() })
+	t.Cleanup(func() { _ = store.Close() })
 
 	errorLock := errlock.New(t.TempDir())
 	checker := newBlockHashChecker(store, errorLock)
@@ -86,7 +86,7 @@ func TestBlockHashChecker_NoBlockHashes(t *testing.T) {
 func TestBlockHashChecker_MatchingHashes(t *testing.T) {
 	store, err := NewMemStore(t)
 	require.NoError(t, err)
-	t.Cleanup(func() { store.Close() })
+	t.Cleanup(func() { _ = store.Close() })
 
 	errorLock := errlock.New(t.TempDir())
 	checker := newBlockHashChecker(store, errorLock)
@@ -110,7 +110,7 @@ func TestBlockHashChecker_MatchingHashes(t *testing.T) {
 func TestBlockHashChecker_BlockNotInStore(t *testing.T) {
 	store, err := NewMemStore(t)
 	require.NoError(t, err)
-	t.Cleanup(func() { store.Close() })
+	t.Cleanup(func() { _ = store.Close() })
 
 	errorLock := errlock.New(t.TempDir())
 	checker := newBlockHashChecker(store, errorLock)
@@ -130,7 +130,7 @@ func TestBlockHashChecker_BlockNotInStore(t *testing.T) {
 func TestBlockHashChecker_DisagreementBelowThreshold(t *testing.T) {
 	store, err := NewMemStore(t)
 	require.NoError(t, err)
-	t.Cleanup(func() { store.Close() })
+	t.Cleanup(func() { _ = store.Close() })
 
 	errorLock := errlock.New(t.TempDir())
 	checker := newBlockHashChecker(store, errorLock)
@@ -156,7 +156,7 @@ func TestBlockHashChecker_DisagreementBelowThreshold(t *testing.T) {
 func TestBlockHashChecker_DisagreementExceedsThreshold(t *testing.T) {
 	store, err := NewMemStore(t)
 	require.NoError(t, err)
-	t.Cleanup(func() { store.Close() })
+	t.Cleanup(func() { _ = store.Close() })
 
 	errorLock := errlock.New(t.TempDir())
 	checker := newBlockHashChecker(store, errorLock)
@@ -191,7 +191,7 @@ func TestBlockHashChecker_DisagreementExceedsThreshold(t *testing.T) {
 func TestBlockHashChecker_ThresholdExactlyTwoThirds(t *testing.T) {
 	store, err := NewMemStore(t)
 	require.NoError(t, err)
-	t.Cleanup(func() { store.Close() })
+	t.Cleanup(func() { _ = store.Close() })
 
 	errorLock := errlock.New(t.TempDir())
 	checker := newBlockHashChecker(store, errorLock)
@@ -225,7 +225,7 @@ func TestBlockHashChecker_ThresholdExactlyTwoThirds(t *testing.T) {
 func TestBlockHashChecker_SameValidatorCountedOnce(t *testing.T) {
 	store, err := NewMemStore(t)
 	require.NoError(t, err)
-	t.Cleanup(func() { store.Close() })
+	t.Cleanup(func() { _ = store.Close() })
 
 	errorLock := errlock.New(t.TempDir())
 	checker := newBlockHashChecker(store, errorLock)
@@ -255,7 +255,7 @@ func TestBlockHashChecker_SameValidatorCountedOnce(t *testing.T) {
 func TestBlockHashChecker_MultipleBlocks(t *testing.T) {
 	store, err := NewMemStore(t)
 	require.NoError(t, err)
-	t.Cleanup(func() { store.Close() })
+	t.Cleanup(func() { _ = store.Close() })
 
 	errorLock := errlock.New(t.TempDir())
 	checker := newBlockHashChecker(store, errorLock)
@@ -287,7 +287,7 @@ func TestBlockHashChecker_MultipleBlocks(t *testing.T) {
 func TestBlockHashChecker_EpochReset(t *testing.T) {
 	store, err := NewMemStore(t)
 	require.NoError(t, err)
-	t.Cleanup(func() { store.Close() })
+	t.Cleanup(func() { _ = store.Close() })
 
 	errorLock := errlock.New(t.TempDir())
 	checker := newBlockHashChecker(store, errorLock)
@@ -320,7 +320,7 @@ func TestBlockHashChecker_EpochReset(t *testing.T) {
 func TestBlockHashChecker_NilValidators(t *testing.T) {
 	store, err := NewMemStore(t)
 	require.NoError(t, err)
-	t.Cleanup(func() { store.Close() })
+	t.Cleanup(func() { _ = store.Close() })
 
 	errorLock := errlock.New(t.TempDir())
 	checker := newBlockHashChecker(store, errorLock)
@@ -339,7 +339,7 @@ func TestBlockHashChecker_NilValidators(t *testing.T) {
 func TestBlockHashChecker_PartialBlockRange(t *testing.T) {
 	store, err := NewMemStore(t)
 	require.NoError(t, err)
-	t.Cleanup(func() { store.Close() })
+	t.Cleanup(func() { _ = store.Close() })
 
 	errorLock := errlock.New(t.TempDir())
 	checker := newBlockHashChecker(store, errorLock)
@@ -368,7 +368,7 @@ func TestBlockHashChecker_PartialBlockRange(t *testing.T) {
 func TestBlockHashChecker_IndependentBlockTracking(t *testing.T) {
 	store, err := NewMemStore(t)
 	require.NoError(t, err)
-	t.Cleanup(func() { store.Close() })
+	t.Cleanup(func() { _ = store.Close() })
 
 	errorLock := errlock.New(t.TempDir())
 	checker := newBlockHashChecker(store, errorLock)
