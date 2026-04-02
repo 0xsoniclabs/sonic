@@ -191,7 +191,7 @@ func TestAddBlockHashes_PersistsAndReadsTip(t *testing.T) {
 		world: World{External: world},
 	}
 	em.emittedBvsFile = openPrevActionFile(filePath, false)
-	defer em.emittedBvsFile.Close()
+	defer func() { _ = em.emittedBvsFile.Close() }()
 
 	// First call: collect blocks 1-2
 	world.EXPECT().GetLatestBlockIndex().Return(idx.Block(2))
@@ -245,7 +245,7 @@ func TestReadWriteLastBlockHashesTip_RoundTrip(t *testing.T) {
 
 	f, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0600)
 	require.NoError(t, err)
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	em := &Emitter{emittedBvsFile: f}
 
