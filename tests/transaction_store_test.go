@@ -130,7 +130,7 @@ func TestTransactionStore_CanTransactionsBeRetrievedFromBlocksAfterRestart(t *te
 		executedIn[tx] = receipt.BlockNumber
 	}
 
-	err = net.Restart()
+	err = net.Restart(t)
 	require.NoError(t, err, "failed to restart network; %v", err)
 
 	// query last block, retrieve executed transactions

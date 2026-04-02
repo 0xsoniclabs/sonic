@@ -178,7 +178,7 @@ func TestNetworkRule_Update_Restart_Recovers_Original_Value(t *testing.T) {
 
 	// Restart the network, since the rules happened within a current epoch
 	// it should not be applied immediately but persisted to be applied at the end of the epoch.
-	err = net.RestartWithExportImport()
+	err = net.RestartWithExportImport(t)
 	require.NoError(err)
 
 	client2, err := net.GetClient()

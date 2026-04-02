@@ -30,6 +30,7 @@ import (
 	"runtime"
 	"runtime/debug"
 	"runtime/pprof"
+	"runtime/trace"
 	"strconv"
 	"strings"
 	"sync"
@@ -402,23 +403,25 @@ func startIntegrationTestNet(
 		require.NoError(t, os.Setenv("SONIC_VERBOSITY", "1"), "failed to set verbosity")
 	}
 
-	// start the integration test nodes
-	for i := range net.nodes {
-		net.nodes[i].directory = filepath.Join(directory, fmt.Sprintf("node%d", i))
+	trace.WithRegion(t.Context(), "sonictool", func() {
+		// start the integration test nodes
+		for i := range net.nodes {
+			net.nodes[i].directory = filepath.Join(directory, fmt.Sprintf("node%d", i))
 
-		// initialize the data directory for the single node on the test network
-		// using the configuration arguments provided by the caller
-		args := append([]string{
-			"sonictool",
-			"--datadir", net.nodes[i].getStateDir(),
-			"--statedb.livecache", "1",
-			"--statedb.archivecache", "1",
-			"--statedb.cache", "1024",
-		}, sonicToolArguments...)
-		require.NoError(t, sonictool.RunWithArgs(args), "failed to initialize the test network")
-	}
+			// initialize the data directory for the single node on the test network
+			// using the configuration arguments provided by the caller
+			args := append([]string{
+				"sonictool",
+				"--datadir", net.nodes[i].getStateDir(),
+				"--statedb.livecache", "1",
+				"--statedb.archivecache", "1",
+				"--statedb.cache", "1024",
+			}, sonicToolArguments...)
+			require.NoError(t, sonictool.RunWithArgs(args), "failed to initialize the test network")
+		}
+	})
 
-	require.NoError(t, net.start(), "failed to start the integration test network")
+	require.NoError(t, net.start(t), "failed to start the integration test network")
 
 	if !options.SkipCleanUp {
 		t.Cleanup(net.Stop)
@@ -430,7 +433,7 @@ func (n *integrationTestNode) getStateDir() string {
 	return filepath.Join(n.directory, "state")
 }
 
-func (n *IntegrationTestNet) start() error {
+func (n *IntegrationTestNet) start(t testing.TB) error {
 	if n.nodes[0].done != nil {
 		return errors.New("network already started")
 	}
@@ -442,6 +445,8 @@ func (n *IntegrationTestNet) start() error {
 		httpPorts[i] = make(chan string, 1)
 	}
 
+	sonicdRegion := trace.StartRegion(t.Context(), "boot sonicd")
+	defer sonicdRegion.End()
 	for i := range n.nodes {
 		stop := make(chan struct{})
 		done := make(chan struct{})
@@ -670,9 +675,9 @@ func (n *IntegrationTestNet) Stop() {
 }
 
 // Restart stops and restarts the single node on the test network.
-func (n *IntegrationTestNet) Restart() error {
+func (n *IntegrationTestNet) Restart(t testing.TB) error {
 	n.Stop()
-	return n.start()
+	return n.start(t)
 }
 
 // GetJsonGenesis returns the JSON genesis used to start the network, if it was
@@ -732,7 +737,7 @@ func (n *IntegrationTestNet) GetJsonRpcPort() int {
 
 // RestartWithExportImport stops the network, exports the genesis file, cleans the
 // temporary directory, imports the genesis file, and starts the network again.
-func (n *IntegrationTestNet) RestartWithExportImport() error {
+func (n *IntegrationTestNet) RestartWithExportImport(t testing.TB) error {
 	n.Stop()
 	fmt.Println("Network stopped. Exporting genesis file...")
 
@@ -770,7 +775,7 @@ func (n *IntegrationTestNet) RestartWithExportImport() error {
 	fmt.Println("Genesis file imported. Restarting network...")
 
 	// start network again
-	return n.start()
+	return n.start(t)
 }
 
 // GetHeaders returns the headers of all blocks on the network from block 0 to the latest block.

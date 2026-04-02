@@ -210,10 +210,10 @@ func testBlockHeadersOnNetwork(t *testing.T, net *tests.IntegrationTestNet) {
 
 	t.Run("BeforeRestart", runTests)
 
-	require.NoError(net.Restart())
+	require.NoError(net.Restart(t))
 	t.Run("AfterRestart", runTests)
 
-	require.NoError(net.RestartWithExportImport())
+	require.NoError(net.RestartWithExportImport(t))
 	t.Run("AfterImport", runTests)
 }
 

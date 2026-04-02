@@ -38,7 +38,7 @@ import (
 
 func TestIntegrationTestNet_CanStartRestartAndStopIntegrationTestNet(t *testing.T) {
 	net := StartIntegrationTestNet(t)
-	require.NoError(t, net.Restart(), "Failed to restart the test network")
+	require.NoError(t, net.Restart(t), "Failed to restart the test network")
 
 	net.Stop()
 }
@@ -49,7 +49,7 @@ func TestIntegrationTestNet_CanRestartWithGenesisExportAndImport(t *testing.T) {
 			net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
 				NumNodes: numNodes,
 			})
-			require.NoError(t, net.RestartWithExportImport(),
+			require.NoError(t, net.RestartWithExportImport(t),
 				"Failed to restart the test network with export and import")
 
 			net.Stop()

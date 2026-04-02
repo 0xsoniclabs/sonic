@@ -44,7 +44,7 @@ func TestNodeRestart_CanRestartAndRestoreItsState(t *testing.T) {
 			block := int(receipt.BlockNumber.Int64())
 			receipts[block] = append(receipts[block], receipt)
 		}
-		require.NoError(net.Restart())
+		require.NoError(net.Restart(t))
 	}
 
 	// Check that access to all blocks is possible.

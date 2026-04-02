@@ -152,6 +152,6 @@ func testBlockHeaderMatchesObservableBlockParameters(
 	// after a restart. The restart is included to make sure the information is
 	// not just cached in memory.
 	checkParameters()
-	require.NoError(net.Restart())
+	require.NoError(net.Restart(t))
 	checkParameters()
 }

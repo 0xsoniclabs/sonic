@@ -45,7 +45,7 @@ func TestGenesis_NetworkCanCreateNewBlocksAfterExportImport(t *testing.T) {
 		originalHashes = append(originalHashes, header.Hash())
 	}
 
-	err = net.RestartWithExportImport()
+	err = net.RestartWithExportImport(t)
 	require.NoError(err)
 
 	client, err := net.GetClient()
