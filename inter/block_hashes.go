@@ -37,6 +37,9 @@ type BlockHashes struct {
 
 // LastBlock returns the block number of the last block in the range.
 func (bh BlockHashes) LastBlock() idx.Block {
+	if len(bh.Hashes) == 0 {
+		return bh.Start
+	}
 	return bh.Start + idx.Block(len(bh.Hashes)) - 1
 }
 
