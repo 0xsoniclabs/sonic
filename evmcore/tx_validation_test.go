@@ -563,12 +563,12 @@ func TestValidateTxForNetwork_CustomSonicCodeSizeLimitIsEnforced(t *testing.T) {
 			signer := NewMockSigner(ctrl)
 			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{42}, nil).AnyTimes()
 			rules := NetworkRules{
-				eip2718:                 true,
-				eip1559:                 true,
-				eip4844:                 true,
-				eip7702:                 true,
-				shanghai:                true,
-				customInitCodeSizeLimit: test.customSize,
+				eip2718:  true,
+				eip1559:  true,
+				eip4844:  true,
+				eip7702:  true,
+				shanghai: true,
+				brio:     test.customSize,
 			}
 
 			data := make([]byte, test.initCodeSize)

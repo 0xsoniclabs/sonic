@@ -59,8 +59,8 @@ type NetworkRules struct {
 	eip7623 bool // Fork indicator whether we are using EIP-7623 floor gas validation.
 	eip7702 bool // Fork indicator whether we are using EIP-7702 set code transactions.
 
-	gasSubsidies            bool // Indicator whether gas subsidies are active.
-	customInitCodeSizeLimit bool // Indicator whether a custom init code size limit is active.
+	gasSubsidies bool // Indicator whether gas subsidies are active.
+	brio         bool // Indicator whether Brio revision is active
 }
 
 // Signer wraps types.Signer to allow mocking it in tests.
@@ -154,7 +154,7 @@ func ValidateTxForNetwork(tx *types.Transaction, rules NetworkRules, chain State
 	// Check whether the init code size has been exceeded, introduced in EIP-3860
 	if tx.To() == nil && rules.shanghai {
 		limit := params.MaxInitCodeSize
-		if rules.customInitCodeSizeLimit {
+		if rules.brio {
 			limit = opera.SonicPostAllegroMaxInitCodeSize
 		}
 		if len(tx.Data()) > limit {
