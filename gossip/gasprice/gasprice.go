@@ -23,17 +23,15 @@ import (
 	"sync"
 	"time"
 
+	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/utils/piecefunc"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	lru "github.com/hashicorp/golang-lru"
-
-	"github.com/0xsoniclabs/sonic/opera"
-	"github.com/0xsoniclabs/sonic/utils"
-
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
+	lru "github.com/hashicorp/golang-lru"
 )
 
 var (
@@ -41,6 +39,12 @@ var (
 	secondBn      = new(big.Int).SetUint64(uint64(time.Second))
 )
 
+// DefaultMaxGasPrice provides the recommended default maximum gas price
+// for the gas price oracle. It always returns a new *big.Int instance to ensure
+// that each caller receives an independent value. This avoids accidental sharing
+// of mutable state between different Oracle configurations or usages.
+// Use this function when initializing Oracle configs or as a safe default
+// in gas price logic.
 func DefaultMaxGasPrice() *big.Int {
 	return big.NewInt(10000000 * params.GWei)
 }
