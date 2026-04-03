@@ -59,7 +59,6 @@ func (p *StateProcessor) process_iteratively(
 	for i, tx := range block.Transactions {
 		cur := txProcessor.Run(i, tx)
 		summary.ProcessedTransactions = append(summary.ProcessedTransactions, cur.ProcessedTransactions...)
-		summary.ProcessedBundles = append(summary.ProcessedBundles, cur.ProcessedBundles...)
 	}
 
 	// The used gas is the cumulative gas used reported by the last receipt.
@@ -123,7 +122,6 @@ func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
 			usedGas := new(uint64)
 
 			summary := process(block, state, vmConfig, gasLimit, usedGas, onLog)
-			require.Empty(summary.ProcessedBundles)
 			processed := summary.ProcessedTransactions
 
 			// Receipts should be set accordingly.
@@ -225,7 +223,6 @@ func TestProcess_DetectsTransactionThatCanNotBeConvertedIntoAMessage(t *testing.
 			usedGas := new(uint64)
 
 			summary := process(block, state, vmConfig, gasLimit, usedGas, nil)
-			require.Empty(summary.ProcessedBundles)
 			processed := summary.ProcessedTransactions
 
 			require.Len(processed, len(transactions))
@@ -782,13 +779,6 @@ func TestRunTransactions_RunsAllTransactionsAndCollectsProcessedTransactionsAndB
 		},
 	}
 
-	bundleResult := []ProcessedBundle{{
-
-		ExecutionPlanHash: common.HexToHash("0x123"),
-		Position:          2,
-		Count:             3,
-	}}
-
 	context := &runContext{
 		runner:   runner,
 		upgrades: opera.Upgrades{GasSubsidies: true, TransactionBundles: true},
@@ -804,7 +794,6 @@ func TestRunTransactions_RunsAllTransactionsAndCollectsProcessedTransactionsAndB
 		),
 		runner.EXPECT().runTransactionBundle(context, txs[2], 3).Return(
 			bundleTxResult,
-			bundleResult,
 			core_types.TransactionResultSuccessful,
 		),
 	)
@@ -818,8 +807,6 @@ func TestRunTransactions_RunsAllTransactionsAndCollectsProcessedTransactionsAndB
 	want = append(want, sponsoredTxResult...)
 	want = append(want, bundleTxResult...)
 	require.Equal(t, want, got)
-
-	require.Equal(t, bundleResult, summary.ProcessedBundles)
 }
 
 func TestRunTransactions_ProvidesNextIndexAsOriginalIndexPlusNumberOfPreviouslyProcessedTransactions(t *testing.T) {
@@ -877,7 +864,6 @@ func TestRunTransactions_ProvidesNextIndexAsOriginalIndexPlusNumberOfPreviouslyP
 	)
 
 	summary := runTransactions(context, txs, startIndex)
-	require.Empty(t, summary.ProcessedBundles)
 	got := summary.ProcessedTransactions
 
 	want := []ProcessedTransaction{}
@@ -921,10 +907,9 @@ func TestRunTransaction_GasSubsidiesEnabled_RunsRegularTransactionWithoutSponsor
 		upgrades: opera.Upgrades{GasSubsidies: true},
 	}
 	runner.EXPECT().runRegularTransaction(context, tx, 0).Return(processed, core_types.TransactionResultSuccessful)
-	got, bundle, status := runTransaction(context, tx, 0)
+	got, status := runTransaction(context, tx, 0)
 	require.Equal(t, []ProcessedTransaction{processed}, got)
 	require.Equal(t, core_types.TransactionResultSuccessful, status)
-	require.Nil(t, bundle)
 }
 
 func TestRunTransaction_GasSubsidiesEnabled_RunsSponsorshipRequestWithSponsorship(t *testing.T) {
@@ -944,9 +929,8 @@ func TestRunTransaction_GasSubsidiesEnabled_RunsSponsorshipRequestWithSponsorshi
 		}},
 		core_types.TransactionResultSuccessful,
 	)
-	processed, bundle, status := runTransaction(context, tx, 0)
+	processed, status := runTransaction(context, tx, 0)
 	require.Equal(t, core_types.TransactionResultSuccessful, status)
-	require.Nil(t, bundle)
 	require.Len(t, processed, 1)
 	require.Equal(t, tx, processed[0].Transaction)
 	require.Nil(t, processed[0].Receipt)
@@ -1064,7 +1048,6 @@ func TestRunTransactions_BundlesEnabled_RunsTransactionBundleAsBundle(t *testing
 			Transaction: tx,
 			Receipt:     nil,
 		}},
-		nil,
 		core_types.TransactionResultSuccessful,
 	)
 	summary := runTransactions(context, []*types.Transaction{tx}, 0)
@@ -1848,11 +1831,10 @@ func TestRunTransactionBundle_BundlesDisabled_ReturnsEnvelopeAndNoProcessedBundl
 
 	runner := &transactionRunner{evm: evm}
 
-	processedTransactions, processedBundle, result := runner.runTransactionBundle(context, tx, 0)
+	processedTransactions, result := runner.runTransactionBundle(context, tx, 0)
 	require.Len(t, processedTransactions, 1)
 	require.Equal(t, tx, processedTransactions[0].Transaction)
 	require.Nil(t, processedTransactions[0].Receipt)
-	require.Nil(t, processedBundle)
 	require.Equal(t, core_types.TransactionResultInvalid, result)
 }
 
@@ -1874,11 +1856,10 @@ func TestRunTransactionBundle_InvalidEnvelope_ReturnsEnvelopeAndNoProcessedBundl
 
 	runner := &transactionRunner{evm: evm}
 
-	processedTransactions, processedBundle, result := runner.runTransactionBundle(context, tx, 0)
+	processedTransactions, result := runner.runTransactionBundle(context, tx, 0)
 	require.Len(t, processedTransactions, 1)
 	require.Equal(t, tx, processedTransactions[0].Transaction)
 	require.Nil(t, processedTransactions[0].Receipt)
-	require.Nil(t, processedBundle)
 	require.Equal(t, core_types.TransactionResultInvalid, result)
 }
 
@@ -1921,11 +1902,10 @@ func TestRunTransactionBundle_InvalidExecutionPlan_ReturnsEnvelopeAndNoProcessed
 
 	runner := &transactionRunner{evm: evm}
 
-	processedTransactions, processedBundle, result := runner.runTransactionBundle(context, tx, 0)
+	processedTransactions, result := runner.runTransactionBundle(context, tx, 0)
 	require.Len(t, processedTransactions, 1)
 	require.Equal(t, tx, processedTransactions[0].Transaction)
 	require.Nil(t, processedTransactions[0].Receipt)
-	require.Nil(t, processedBundle)
 	require.Equal(t, core_types.TransactionResultInvalid, result)
 }
 
@@ -1960,15 +1940,14 @@ func TestRunTransactionBundle_BundleOutOfRange_ReturnsEnvelopeAndNoProcessedBund
 
 	runner := &transactionRunner{evm: evm}
 
-	processedTransactions, processedBundle, result := runner.runTransactionBundle(context, tx, 0)
+	processedTransactions, result := runner.runTransactionBundle(context, tx, 0)
 	require.Len(t, processedTransactions, 1)
 	require.Equal(t, tx, processedTransactions[0].Transaction)
 	require.Nil(t, processedTransactions[0].Receipt)
-	require.Nil(t, processedBundle)
 	require.Equal(t, core_types.TransactionResultInvalid, result)
 }
 
-func TestRunTransactionBundle_RunBundleNotSuccessful_ReturnsNoTransactionAndProcessedBundleAndResultFailed(t *testing.T) {
+func TestRunTransactionBundle_RunBundleNotSuccessful_ReturnsNoTransactionAndResultFailed(t *testing.T) {
 	signer := types.LatestSignerForChainID(big.NewInt(1))
 	ctrl := gomock.NewController(t)
 	state := state.NewMockStateDB(ctrl)
@@ -1991,13 +1970,12 @@ func TestRunTransactionBundle_RunBundleNotSuccessful_ReturnsNoTransactionAndProc
 
 	runner := &transactionRunner{evm: evm}
 
-	processedTransactions, processedBundle, result := runner.runTransactionBundle(context, tx, 0)
+	processedTransactions, result := runner.runTransactionBundle(context, tx, 0)
 	require.Len(t, processedTransactions, 0)
-	require.NotNil(t, processedBundle)
 	require.Equal(t, core_types.TransactionResultFailed, result)
 }
 
-func TestRunTransactionBundle_RunBundleSuccessful_ReturnsBundleOnlyTransactionAndProcessedBundleAndResultSuccessful(t *testing.T) {
+func TestRunTransactionBundle_RunBundleSuccessful_ReturnsBundleOnlyTransactionAndResultSuccessful(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	state := state.NewMockStateDB(ctrl)
 	evm := NewMock_evm(ctrl)
@@ -2027,14 +2005,10 @@ func TestRunTransactionBundle_RunBundleSuccessful_ReturnsBundleOnlyTransactionAn
 			Receipt:     &types.Receipt{Status: types.ReceiptStatusSuccessful},
 		})
 
-	processedTransactions, processedBundles, result := runner.runTransactionBundle(context, envelope, 0)
+	processedTransactions, result := runner.runTransactionBundle(context, envelope, 0)
 	require.Len(t, processedTransactions, 1)
 	require.Equal(t, txBundle.Transactions[0], processedTransactions[0].Transaction)
 	require.NotNil(t, processedTransactions[0].Receipt)
-	require.NotNil(t, processedBundles)
-	require.Len(t, processedBundles, 1)
-	require.Equal(t, uint32(0), processedBundles[0].Position)
-	require.Equal(t, uint32(1), processedBundles[0].Count)
 	require.Equal(t, core_types.TransactionResultSuccessful, result)
 }
 

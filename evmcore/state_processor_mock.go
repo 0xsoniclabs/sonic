@@ -74,13 +74,12 @@ func (mr *Mock_transactionRunnerMockRecorder) runSponsoredTransaction(ctxt, tx, 
 }
 
 // runTransactionBundle mocks base method.
-func (m *Mock_transactionRunner) runTransactionBundle(ctxt *runContext, tx *types.Transaction, txIndex int) ([]ProcessedTransaction, []ProcessedBundle, core_types.TransactionResult) {
+func (m *Mock_transactionRunner) runTransactionBundle(ctxt *runContext, tx *types.Transaction, txIndex int) ([]ProcessedTransaction, core_types.TransactionResult) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "runTransactionBundle", ctxt, tx, txIndex)
 	ret0, _ := ret[0].([]ProcessedTransaction)
-	ret1, _ := ret[1].([]ProcessedBundle)
-	ret2, _ := ret[2].(core_types.TransactionResult)
-	return ret0, ret1, ret2
+	ret1, _ := ret[1].(core_types.TransactionResult)
+	return ret0, ret1
 }
 
 // runTransactionBundle indicates an expected call of runTransactionBundle.
