@@ -29,10 +29,8 @@ func TestCarmenStateDB_CreateCarmenStateDb_CreatesACommittableInstance(t *testin
 	ctrl := gomock.NewController(t)
 	backend := carmen.NewMockStateDB(ctrl)
 	state := CreateCarmenStateDb(backend)
-	db, isOfProperType := state.(*CarmenStateDB)
-	require.True(isOfProperType)
-	require.Same(db.db, backend)
-	require.True(db.committable)
+	require.Same(state.db, backend)
+	require.True(state.committable)
 }
 
 func TestCarmenStateDB_createNonCommittableCarmenStateDb_CreatesANonCommittableInstance(t *testing.T) {
@@ -40,10 +38,8 @@ func TestCarmenStateDB_createNonCommittableCarmenStateDb_CreatesANonCommittableI
 	ctrl := gomock.NewController(t)
 	backend := carmen.NewMockNonCommittableStateDB(ctrl)
 	state := createNonCommittableCarmenStateDb(backend)
-	db, isOfProperType := state.(*CarmenStateDB)
-	require.True(isOfProperType)
-	require.Same(db.db, backend)
-	require.False(db.committable)
+	require.Same(state.db, backend)
+	require.False(state.committable)
 }
 
 func TestCarmenStateDB_Copy_CopiesNonCommittableStateDB(t *testing.T) {

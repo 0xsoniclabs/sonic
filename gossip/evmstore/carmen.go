@@ -33,14 +33,14 @@ import (
 	"github.com/holiman/uint256"
 )
 
-func CreateCarmenStateDb(carmenStateDb carmen.StateDB) state.StateDB {
+func CreateCarmenStateDb(carmenStateDb carmen.StateDB) *CarmenStateDB {
 	return &CarmenStateDB{
 		db:          carmenStateDb,
 		committable: true,
 	}
 }
 
-func createNonCommittableCarmenStateDb(carmenStateDb carmen.NonCommittableStateDB) state.StateDB {
+func createNonCommittableCarmenStateDb(carmenStateDb carmen.NonCommittableStateDB) *CarmenStateDB {
 	return &CarmenStateDB{
 		db:          carmenStateDb,
 		committable: false,
