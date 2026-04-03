@@ -208,7 +208,7 @@ func DefaultConfig(scale cachescale.Func) Config {
 		RPCEVMTimeout: 5 * time.Second,
 
 		GPO: gasprice.Config{
-			MaxGasPrice:      gasprice.DefaultMaxGasPrice,
+			MaxGasPrice:      gasprice.DefaultMaxGasPrice(),
 			MinGasPrice:      new(big.Int),
 			DefaultCertainty: 0.5 * gasprice.DecimalUnit,
 		},

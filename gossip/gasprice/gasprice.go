@@ -37,10 +37,13 @@ import (
 )
 
 var (
-	DefaultMaxGasPrice = big.NewInt(10000000 * params.GWei)
-	DecimalUnitBn      = big.NewInt(DecimalUnit)
-	secondBn           = new(big.Int).SetUint64(uint64(time.Second))
+	DecimalUnitBn = big.NewInt(DecimalUnit)
+	secondBn      = new(big.Int).SetUint64(uint64(time.Second))
 )
+
+func DefaultMaxGasPrice() *big.Int {
+	return big.NewInt(10000000 * params.GWei)
+}
 
 const (
 	AsDefaultCertainty = math.MaxUint64
@@ -101,7 +104,7 @@ func sanitizeBigInt(val, min, max, _default *big.Int, name string) *big.Int {
 // NewOracle returns a new gasprice oracle which can recommend suitable
 // gasprice for newly created transaction.
 func NewOracle(params Config, backend Reader) *Oracle {
-	params.MaxGasPrice = sanitizeBigInt(params.MaxGasPrice, nil, nil, DefaultMaxGasPrice, "MaxGasPrice")
+	params.MaxGasPrice = sanitizeBigInt(params.MaxGasPrice, nil, nil, DefaultMaxGasPrice(), "MaxGasPrice")
 	params.MinGasPrice = sanitizeBigInt(params.MinGasPrice, nil, nil, new(big.Int), "MinGasPrice")
 	params.DefaultCertainty = sanitizeBigInt(new(big.Int).SetUint64(params.DefaultCertainty), big.NewInt(0), DecimalUnitBn, big.NewInt(DecimalUnit/2), "DefaultCertainty").Uint64()
 	tCache, _ := lru.New(100)
