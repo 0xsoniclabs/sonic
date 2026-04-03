@@ -33,14 +33,23 @@ import (
 	"github.com/holiman/uint256"
 )
 
-func CreateCarmenStateDb(carmenStateDb carmen.VmStateDB) state.StateDB {
+func CreateCarmenStateDb(carmenStateDb carmen.StateDB) state.StateDB {
 	return &CarmenStateDB{
-		db: carmenStateDb,
+		db:          carmenStateDb,
+		committable: true,
+	}
+}
+
+func createNonCommittableCarmenStateDb(carmenStateDb carmen.NonCommittableStateDB) state.StateDB {
+	return &CarmenStateDB{
+		db:          carmenStateDb,
+		committable: false,
 	}
 }
 
 type CarmenStateDB struct {
-	db carmen.VmStateDB
+	db          carmen.VmStateDB
+	committable bool
 
 	// current block - set by BeginBlock
 	blockNum uint64
@@ -282,8 +291,8 @@ func (c *CarmenStateDB) IsNewContract(addr common.Address) bool {
 }
 
 func (c *CarmenStateDB) Copy() state.StateDB {
-	if db, ok := c.db.(carmen.NonCommittableStateDB); ok {
-		return CreateCarmenStateDb(db.Copy())
+	if db, ok := c.db.(carmen.NonCommittableStateDB); !c.committable && ok {
+		return createNonCommittableCarmenStateDb(db.Copy())
 	} else {
 		panic("unable to copy committable (live) StateDB")
 	}
@@ -334,7 +343,7 @@ func (c *CarmenStateDB) BeginBlock(number uint64) {
 }
 
 func (c *CarmenStateDB) EndBlock(number uint64) <-chan error {
-	if db, ok := c.db.(carmen.StateDB); ok {
+	if db, ok := c.db.(carmen.StateDB); c.committable && ok {
 		return db.EndBlock(number)
 	}
 	return nil
