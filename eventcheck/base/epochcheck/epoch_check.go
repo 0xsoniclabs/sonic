@@ -1,12 +1,18 @@
-// Copyright (c) 2025 Fantom Foundation
+// Copyright 2026 Sonic Operations Ltd
+// This file is part of the Sonic Client
 //
-// Use of this software is governed by the Business Source License included
-// in the LICENSE file and at fantom.foundation/bsl11.
+// Sonic is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
-// Change Date: 2028-4-16
+// Sonic is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
 //
-// On the date above, in accordance with the Business Source License, use of
-// this software will be governed by the GNU Lesser General Public License v3.
+// You should have received a copy of the GNU Lesser General Public License
+// along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
 package epochcheck
 
