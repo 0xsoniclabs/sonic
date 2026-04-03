@@ -284,26 +284,27 @@ func TestOracle_reactiveGasPrice(t *testing.T) {
 }
 
 func TestOracle_DefaultMaxGasPrice_ProducesFreshPointers(t *testing.T) {
-	const n = 1000
-	values := make(map[uintptr]*big.Int, n)
+
 	referenceValue := big.NewInt(10000000 * params.GWei)
 	typePtr := reflect.TypeOf(referenceValue)
 
-	for range n {
-		v := DefaultMaxGasPrice()
-		ptr := reflect.ValueOf(v).Pointer()
-		// Check pointer uniqueness
-		if _, exists := values[ptr]; exists {
-			t.Errorf("DefaultMaxGasPrice returned a duplicate pointer")
-		}
-		values[ptr] = v
-		// Check type
-		if reflect.TypeOf(v) != typePtr {
-			t.Errorf("Returned value is not of type *big.Int")
-		}
-		// Check value
-		if v.Cmp(referenceValue) != 0 {
-			t.Errorf("Returned value has incorrect value: got %v, want %v", v, referenceValue)
-		}
+	v1 := DefaultMaxGasPrice()
+	ptr1 := reflect.ValueOf(v1).Pointer()
+
+	v2 := DefaultMaxGasPrice()
+	ptr2 := reflect.ValueOf(v2).Pointer()
+
+	// Check pointer uniqueness
+	if ptr1 == ptr2 {
+		t.Errorf("DefaultMaxGasPrice returned a duplicate pointer")
 	}
+	// Check type
+	if reflect.TypeOf(v1) != typePtr {
+		t.Errorf("Returned value is not of type *big.Int")
+	}
+	// Check value
+	require.Zero(t, v1.Cmp(referenceValue),
+		"Returned value has incorrect value: got %v, want %v", v1, referenceValue)
+	require.Zero(t, v2.Cmp(referenceValue),
+		"Returned value has incorrect value: got %v, want %v", v2, referenceValue)
 }

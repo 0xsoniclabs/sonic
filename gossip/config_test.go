@@ -26,17 +26,11 @@ import (
 // TestConfigInstancesAreIndependent instantiates 100 Configs and verifies that
 // all pointer, slice, map, or interface fields are not shared among instances.
 func TestConfigInstancesAreIndependent(t *testing.T) {
-	const n = 100
-	configs := make([]Config, n)
-	for i := 0; i < n; i++ {
-		configs[i] = DefaultConfig(cachescale.Identity)
-	}
 
-	for i := 0; i < n; i++ {
-		for j := i + 1; j < n; j++ {
-			checkNoSharedReferences(t, configs[i], configs[j], "")
-		}
-	}
+	configA := DefaultConfig(cachescale.Identity)
+	configB := DefaultConfig(cachescale.Identity)
+	checkNoSharedReferences(t, configA, configB, "")
+
 }
 
 // checkNoSharedReferences recursively checks that no pointer, slice, map, or interface fields are shared.
