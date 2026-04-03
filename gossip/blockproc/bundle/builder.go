@@ -178,9 +178,8 @@ func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 		latest = *b.latest
 	}
 
-	signer := b.signer
-	if signer == nil {
-		signer = types.LatestSignerForChainID(big.NewInt(1))
+	if b.signer == nil {
+		b.signer = types.LatestSignerForChainID(big.NewInt(1))
 	}
 
 	// Create an Execution Plan for the bundle.
@@ -196,7 +195,7 @@ func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 	for i, step := range b.steps {
 		plan.Steps[i] = ExecutionStep{
 			From: crypto.PubkeyToAddress(step.key.PublicKey),
-			Hash: signer.Hash(types.NewTx(step.tx)),
+			Hash: b.signer.Hash(types.NewTx(step.tx)),
 		}
 	}
 
@@ -224,7 +223,7 @@ func (b *builder) BuildBundleAndPlan() (*TransactionBundle, ExecutionPlan) {
 	// Sign the modified TxData instances.
 	txs := make([]*types.Transaction, len(b.steps))
 	for i, step := range b.steps {
-		txs[i] = types.MustSignNewTx(step.key, signer, step.tx)
+		txs[i] = types.MustSignNewTx(step.key, b.signer, step.tx)
 	}
 
 	return &TransactionBundle{
@@ -259,8 +258,8 @@ func (b *builder) BuildEnvelopeBundleAndPlan() (
 
 // BuildEnvelope returns an envelope transaction and its execution plan
 func (b *builder) BuildEnvelopeAndPlan() (*types.Transaction, ExecutionPlan) {
-	envelop, _, plan := b.BuildEnvelopeBundleAndPlan()
-	return envelop, plan
+	envelope, _, plan := b.BuildEnvelopeBundleAndPlan()
+	return envelope, plan
 }
 
 // Build returns an envelope transaction
