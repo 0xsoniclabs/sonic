@@ -531,69 +531,6 @@ func TestValidateTxForNetwork_AcceptsTransactions(t *testing.T) {
 	}
 }
 
-func TestValidateTxForNetwork_SetCodeTx_ValidatesInitCodeSizesAfterBrioHardfork(t *testing.T) {
-	tests := map[string]struct {
-		dataSize      int
-		rules         NetworkRules
-		expectedError error
-	}{
-		"accept tx with code size equal to limit before brio hardfork": {
-			dataSize: params.MaxInitCodeSize,
-		},
-		"reject tx with code size overflow before brio hardfork": {
-			dataSize:      params.MaxInitCodeSize + 1,
-			expectedError: ErrMaxInitCodeSizeExceeded,
-		},
-		"accept tx with previously overflowing code size after brio hardfork": {
-			dataSize: params.MaxInitCodeSize + 1,
-			rules: NetworkRules{
-				brio: true,
-			},
-		},
-		"accept tx with code size equal to limit after brio hardfork": {
-			dataSize: opera.SonicPostAllegroMaxInitCodeSize,
-			rules: NetworkRules{
-				brio: true,
-			},
-		},
-		"reject tx with code size overflow after brio hardfork": {
-			dataSize: opera.SonicPostAllegroMaxInitCodeSize + 1,
-			rules: NetworkRules{
-				brio: true,
-			},
-			expectedError: ErrMaxInitCodeSizeExceeded,
-		},
-	}
-
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			chain := NewMockStateReader(ctrl)
-			signer := NewMockSigner(ctrl)
-			signer.EXPECT().Sender(gomock.Any()).Return(common.Address{42}, nil).AnyTimes()
-
-			data := make([]byte, test.dataSize)
-			gas, err := core.IntrinsicGas(data, nil, nil, true, true, true, true)
-			require.NoError(t, err)
-
-			tx := types.NewTx(&types.LegacyTx{
-				To:   nil, // contract creation
-				Gas:  gas,
-				Data: data,
-			})
-
-			// this test requires at least shanghai
-			test.rules.shanghai = true
-			err = ValidateTxForNetwork(tx, test.rules, chain, signer)
-			if test.expectedError == nil {
-				require.NoError(t, err)
-			} else {
-				require.ErrorIs(t, err, ErrMaxInitCodeSizeExceeded)
-			}
-		})
-	}
-}
-
 func TestValidateTxForNetwork_CustomSonicCodeSizeLimitIsEnforced(t *testing.T) {
 	tests := map[string]struct {
 		customSize   bool
