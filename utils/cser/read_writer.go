@@ -247,6 +247,9 @@ func PaddedBytes(b []byte, n int) []byte {
 }
 
 func (w *Writer) BigInt(v *big.Int) {
+	if v == nil {
+		panic("nil big.Int")
+	}
 	// serialize as an ordinary slice
 	bigBytes := []byte{}
 	if v.Sign() != 0 {
