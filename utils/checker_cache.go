@@ -40,6 +40,7 @@ type CheckerCache[R any] struct {
 }
 
 // NewCheckerCache creates a new CheckerCache with the given size in bytes.
+// if size is 0 then a default of 10MiB will be used as max size.
 func NewCheckerCache[R any](size int) *CheckerCache[R] {
 	if size <= 0 {
 		size = 10 * 1024 * 1024 // 10 MiB
