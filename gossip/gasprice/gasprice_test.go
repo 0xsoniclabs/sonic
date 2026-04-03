@@ -18,12 +18,14 @@ package gasprice
 
 import (
 	"math/big"
+	"reflect"
 	"testing"
 
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/stretchr/testify/require"
 
 	"github.com/0xsoniclabs/sonic/opera"
@@ -279,4 +281,30 @@ func TestOracle_reactiveGasPrice(t *testing.T) {
 	gpo.txpoolStatsTick()
 	require.Equal(t, "0", gpo.reactiveGasPrice(0.8*DecimalUnit).String())
 	require.Equal(t, "0", gpo.reactiveGasPrice(DecimalUnit).String())
+}
+
+func TestOracle_DefaultMaxGasPrice_ProducesFreshPointers(t *testing.T) {
+
+	referenceValue := big.NewInt(10000000 * params.GWei)
+	typePtr := reflect.TypeOf(referenceValue)
+
+	v1 := DefaultMaxGasPrice()
+	ptr1 := reflect.ValueOf(v1).Pointer()
+
+	v2 := DefaultMaxGasPrice()
+	ptr2 := reflect.ValueOf(v2).Pointer()
+
+	// Check pointer uniqueness
+	if ptr1 == ptr2 {
+		t.Errorf("DefaultMaxGasPrice returned a duplicate pointer")
+	}
+	// Check type
+	if reflect.TypeOf(v1) != typePtr {
+		t.Errorf("Returned value is not of type *big.Int")
+	}
+	// Check value
+	require.Zero(t, v1.Cmp(referenceValue),
+		"Returned value has incorrect value: got %v, want %v", v1, referenceValue)
+	require.Zero(t, v2.Cmp(referenceValue),
+		"Returned value has incorrect value: got %v, want %v", v2, referenceValue)
 }
