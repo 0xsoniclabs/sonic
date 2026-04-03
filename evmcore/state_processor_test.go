@@ -2038,110 +2038,6 @@ func TestRunTransactionBundle_RunBundleSuccessful_ReturnsBundleOnlyTransactionAn
 	require.Equal(t, core_types.TransactionResultSuccessful, result)
 }
 
-func TestRunTransactionBundle_ReturnsListOfBundlesThatWillBePartOfTheCurrentBlock(t *testing.T) {
-	signer := types.LatestSignerForChainID(big.NewInt(1))
-	key, err := crypto.GenerateKey()
-	require.NoError(t, err)
-
-	oneTxEnvelope, oneTxPlan := bundle.NewBuilder(signer).
-		With(bundle.Step(key, &types.AccessListTx{Gas: 29_000})).
-		BuildEnvelopeAndPlan()
-
-	inner1Envelope, inner1Plan := bundle.NewBuilder(signer).
-		With(bundle.Step(key, &types.AccessListTx{Gas: 29_000})).
-		BuildEnvelopeAndPlan()
-	inner2Envelope, inner2Plan := bundle.NewBuilder(signer).
-		With(bundle.Step(key, &types.AccessListTx{Gas: 29_001})).
-		BuildEnvelopeAndPlan()
-	twoNestedBundlesEnvelope, twoNestedBundlesPlan := bundle.NewBuilder(signer).
-		With(
-			bundle.Step(key, inner1Envelope),
-			bundle.Step(key, inner2Envelope),
-		).
-		BuildEnvelopeAndPlan()
-
-	tests := map[string]struct {
-		envelope        *types.Transaction
-		results         []uint64
-		expectedBundles []ProcessedBundle
-	}{
-		"successful bundle with one tx": {
-			envelope: oneTxEnvelope,
-			results: []uint64{
-				types.ReceiptStatusSuccessful,
-			},
-			expectedBundles: []ProcessedBundle{
-				{ExecutionPlanHash: oneTxPlan.Hash(), Position: 0, Count: 1},
-			},
-		},
-		"failed bundle with one tx": {
-			envelope: oneTxEnvelope,
-			results: []uint64{
-				types.ReceiptStatusFailed,
-			},
-			expectedBundles: []ProcessedBundle{
-				{ExecutionPlanHash: oneTxPlan.Hash(), Position: 0, Count: 0},
-			},
-		},
-		"successful bundle with two successful nested bundles": {
-			envelope: twoNestedBundlesEnvelope,
-			results: []uint64{
-				types.ReceiptStatusSuccessful,
-				types.ReceiptStatusSuccessful,
-			},
-			expectedBundles: []ProcessedBundle{
-				{ExecutionPlanHash: inner1Plan.Hash(), Position: 0, Count: 1},
-				{ExecutionPlanHash: inner2Plan.Hash(), Position: 1, Count: 1},
-				{ExecutionPlanHash: twoNestedBundlesPlan.Hash(), Position: 0, Count: 2},
-			},
-		},
-		"failed bundle with one successful and one failed nested bundle": {
-			envelope: twoNestedBundlesEnvelope,
-			results: []uint64{
-				types.ReceiptStatusSuccessful,
-				types.ReceiptStatusFailed,
-			},
-			expectedBundles: []ProcessedBundle{
-				{ExecutionPlanHash: twoNestedBundlesPlan.Hash(), Position: 0, Count: 0},
-			},
-		},
-	}
-
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			state := state.NewMockStateDB(ctrl)
-			evm := NewMock_evm(ctrl)
-
-			state.EXPECT().InterTxSnapshot().Return(1).AnyTimes()
-			state.EXPECT().RevertToInterTxSnapshot(1).AnyTimes()
-
-			calls := []any{}
-			for _, result := range test.results {
-				calls = append(calls,
-					evm.EXPECT().runWithBaseFeeCheck(gomock.Any(), gomock.Any(), gomock.Any()).
-						Return(ProcessedTransaction{Transaction: &types.Transaction{}, Receipt: &types.Receipt{Status: result}}),
-				)
-			}
-			gomock.InOrder(calls...)
-
-			runner := &transactionRunner{evm: evm}
-
-			context := &runContext{
-				statedb:     state,
-				signer:      types.LatestSignerForChainID(big.NewInt(1)),
-				baseFee:     big.NewInt(1),
-				upgrades:    opera.Upgrades{TransactionBundles: true},
-				blockNumber: &big.Int{},
-				runner:      runner,
-			}
-
-			_, bundles, _ := runner.runTransactionBundle(context, test.envelope, 0)
-			require.Equal(t, test.expectedBundles, bundles)
-		})
-	}
-}
-
 func TestRunRegularTransaction_InternalTransactions_SkipsTransactionChecksTrue(t *testing.T) {
 
 	maxTxGas := uint64(1_500_000)
@@ -2480,42 +2376,30 @@ func TestBundleTransactionRunner_Run_IncrementsOffsetByNumberOfNonNullReceiptsIf
 	require.Equal(t, bundleTransactionRunner.txOffset, startOffset+1+2)
 }
 
-func TestBundleTransactionRunner_CreateSnapshot_RecordsStateDBSnapshotAndLengthOfProcessedBundles(t *testing.T) {
+func TestBundleTransactionRunner_CreateSnapshot_CallsInterTxSnapshotOnStateDb(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	statedb := state.NewMockStateDB(ctrl)
-	statedb.EXPECT().InterTxSnapshot().Return(42)
+	state := state.NewMockStateDB(ctrl)
 
-	runner := bundleTransactionRunner{
-		ctxt: &runContext{
-			statedb: statedb,
-		},
-		processedBundles: []ProcessedBundle{{}, {}}, // length of 2
-	}
+	state.EXPECT().InterTxSnapshot().Return(123)
 
-	snapshot := runner.CreateSnapshot()
-	require.Equal(t, 42, snapshot.stateDbSnapshot)
-	require.Equal(t, 2, snapshot.processedBundleSnapshot)
+	ctxt := &runContext{statedb: state}
+	bundleTransactionRunner := &bundleTransactionRunner{ctxt: ctxt}
+
+	snapshotId := bundleTransactionRunner.CreateSnapshot()
+	require.Equal(t, 123, snapshotId)
 }
 
-func TestBundleTransactionRunner_RevertToSnapshot_RevertsStateDBAndTruncatesProcessedBundles(t *testing.T) {
+func TestBundleTransactionRunner_RevertToSnapshot_CallsRevertToInterTxSnapshotOnStateDb(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	statedb := state.NewMockStateDB(ctrl)
-	statedb.EXPECT().RevertToInterTxSnapshot(42)
+	state := state.NewMockStateDB(ctrl)
 
-	runner := bundleTransactionRunner{
-		ctxt: &runContext{
-			statedb: statedb,
-		},
-		processedBundles: []ProcessedBundle{{Position: 0}, {Position: 1}, {Position: 2}, {Position: 3}}, // length of 4
-	}
+	snapshotId := 123
+	state.EXPECT().RevertToInterTxSnapshot(snapshotId)
 
-	snapshot := bundleTransactionRunnerSnapshot{
-		stateDbSnapshot:         42,
-		processedBundleSnapshot: 2,
-	}
+	ctxt := &runContext{statedb: state}
+	bundleTransactionRunner := &bundleTransactionRunner{ctxt: ctxt}
 
-	runner.RevertToSnapshot(snapshot)
-	require.Equal(t, []ProcessedBundle{{Position: 0}, {Position: 1}}, runner.processedBundles)
+	bundleTransactionRunner.RevertToSnapshot(snapshotId)
 }
 
 // --- Utility functions for creating test transactions ---
