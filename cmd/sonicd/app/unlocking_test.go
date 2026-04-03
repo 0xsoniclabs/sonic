@@ -144,6 +144,7 @@ func TestUnlockFlagPasswordFileWrongPassword(t *testing.T) {
 	initFakenetDatadir(datadir, 1)
 	cli := exec(t,
 		"--fakenet", "0/1", "--datadir", datadir, "--nat", "none", "--nodiscover", "--maxpeers", "0", "--port", "0",
+		"--ipcdisable",
 		"--password", "testdata/wrong-passwords.txt", "--unlock", "7EF5A6135f1FD6a02593eEdC869c6D41D934aef8,289d485D9771714CCe91D3393D764E1311907ACc")
 
 	cli.ExpectExit()
@@ -198,6 +199,7 @@ func TestUnlockFlagAmbiguousWrongPassword(t *testing.T) {
 	initFakenetDatadir(datadir, 1)
 	cli := exec(t,
 		"--fakenet", "0/1", "--datadir", datadir, "--keystore", store, "--nat", "none", "--nodiscover", "--maxpeers", "0", "--port", "0",
+		"--ipcdisable",
 		"--unlock", "f466859ead1932d743d622cb74fc058882e8648a")
 
 	// Helper for the expect template, returns absolute keystore path.
