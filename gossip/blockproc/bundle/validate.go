@@ -63,8 +63,7 @@ func validateEnvelopeInternal(
 	calculateFloorGas func(data []byte) (uint64, error),
 ) (*TransactionBundle, *ExecutionPlan, error) {
 	if !IsEnvelope(envelopeTx) {
-		// not a bundle transaction, nothing to validate
-		return nil, nil, nil
+		return nil, nil, fmt.Errorf("not an envelope transaction")
 	}
 
 	txBundle, err := decode(envelopeTx.Data())
