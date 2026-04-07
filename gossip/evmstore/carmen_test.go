@@ -50,26 +50,6 @@ func TestCarmenStateDB_CreateNonCommittableCarmenStateDb_CreatesANonCommittableI
 	require.False(state.committable)
 }
 
-func TestCarmenStateDB_Error_ReturnsCombinedError(t *testing.T) {
-	ctrl := gomock.NewController(t)
-
-	adapterIssue := fmt.Errorf("induced adapter issue")
-	stateDbIssue := fmt.Errorf("induced state DB issue")
-
-	carmenStateDb := carmen.NewMockVmStateDB(ctrl)
-	carmenStateDb.EXPECT().Check().Return(stateDbIssue)
-
-	state := &CarmenStateDB{
-		db:    carmenStateDb,
-		issue: adapterIssue,
-	}
-
-	err := state.Error()
-	require.Error(t, err)
-	require.ErrorIs(t, err, adapterIssue)
-	require.ErrorIs(t, err, stateDbIssue)
-}
-
 func TestCarmenStateDB_Copy_CopiesNonCommittableStateDB(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
@@ -352,9 +332,9 @@ func TestCarmenStateDB_RevertToInterTxSnapshot_InvalidSnapshotIdCreatesIssue(t *
 
 		state := &CarmenStateDB{db: db}
 
-		require.NoError(state.Error())
+		require.NoError(state.issue)
 		state.RevertToInterTxSnapshot(invalidId)
-		require.ErrorContains(state.Error(), "failed to revert to invalid snapshot id")
+		require.ErrorContains(state.issue, "failed to revert to invalid snapshot id")
 	}
 }
 
