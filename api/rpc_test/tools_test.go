@@ -26,15 +26,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func Test_Account_NewAccount(t *testing.T) {
-	acc, err := NewAccount()
+func Test_Wallet_NewWallet(t *testing.T) {
+	acc, err := NewWallet()
 	require.NoError(t, err)
 	require.NotNil(t, acc)
 	require.NotNil(t, acc.PrivateKey)
 }
 
-func Test_Account_Address(t *testing.T) {
-	acc, err := NewAccount()
+func Test_Wallet_Address(t *testing.T) {
+	acc, err := NewWallet()
 	require.NoError(t, err)
 
 	expectedAddr := crypto.PubkeyToAddress(acc.PrivateKey.PublicKey)
@@ -116,10 +116,10 @@ func Test_ToHexBytes(t *testing.T) {
 func Test_ToEvmHeader(t *testing.T) {
 	tests := []struct {
 		name  string
-		block TestBlock
+		block Block
 	}{
-		{"genesis", TestBlock{Number: 0, Hash: common.Hash{1}, ParentHash: common.Hash{2}}},
-		{"standard", TestBlock{Number: 10, Hash: common.Hash{1}, ParentHash: common.Hash{2}}},
+		{"genesis", Block{Number: 0, Hash: common.Hash{1}, ParentHash: common.Hash{2}}},
+		{"standard", Block{Number: 10, Hash: common.Hash{1}, ParentHash: common.Hash{2}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

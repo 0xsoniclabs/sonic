@@ -40,7 +40,7 @@ func Test_testState_setAccount(t *testing.T) {
 		common.HexToHash("0x3"): common.HexToHash("0x4"),
 	}
 
-	acc := TestAccount{
+	acc := Account{
 		Nonce:   10,
 		Balance: big.NewInt(1000),
 		Code:    []byte{0x60, 0x01},

@@ -47,14 +47,14 @@ import (
 
 //go:generate mockgen -source=backend.go -destination=backend_mock.go -package=rpctest
 
-type TestAccount struct {
+type Account struct {
 	Nonce   uint64
 	Balance *big.Int
 	Code    []byte
 	Store   map[common.Hash]common.Hash
 }
 
-type TestBlock struct {
+type Block struct {
 	Number     uint64
 	Hash       common.Hash
 	ParentHash common.Hash
@@ -72,10 +72,10 @@ type backendBuilder struct {
 //		    backend := rpctest.NewBackendBuilder(t).
 //
 //		        // preload some account state
-//		        WithAccount(someAddress, TestAccount{Balance: big.NewInt(1e18)}).
+//		        WithAccount(someAddress, rpctest.Account{Balance: big.NewInt(1e18)}).
 //
 //		        // Define a custom block history
-//		        WithBlockHistory([]TestBlock{
+//		        WithBlockHistory([]Block{
 //		            {Number: 1, Hash: common.HexToHash("0xabc"), ParentHash: common.HexToHash("0xdef")},
 //		            {Number: 2, Hash: common.HexToHash("0xdef"), ParentHash: common.HexToHash("0xabc")},
 //		        }).
@@ -113,7 +113,7 @@ func (b backendBuilder) WithChainID(chainID uint64) backendBuilder {
 // WithBlockHistory sets the block history for the fake backend.
 //
 // By default, the block history contains a single block with number 1 and hash "0x1".
-func (b backendBuilder) WithBlockHistory(blocks []TestBlock) backendBuilder {
+func (b backendBuilder) WithBlockHistory(blocks []Block) backendBuilder {
 	if len(blocks) == 0 {
 		b.be.blockHistory = defaultBlockHistory()
 	} else {
@@ -138,7 +138,7 @@ func (b backendBuilder) WithPool(pool TxPool) backendBuilder {
 // before executing RPC methods that depend on that state.
 //
 // By default, the fake backend's state database is empty
-func (b backendBuilder) WithAccount(addr common.Address, account TestAccount) backendBuilder {
+func (b backendBuilder) WithAccount(addr common.Address, account Account) backendBuilder {
 	b.be.state.setAccount(addr, account)
 	return b
 }
@@ -157,8 +157,8 @@ func (b backendBuilder) Build() *fakeBackend {
 }
 
 // defaultBlockHistory returns a default block history with a single block (number 1, hash "0x1").
-func defaultBlockHistory() []TestBlock {
-	return []TestBlock{
+func defaultBlockHistory() []Block {
+	return []Block{
 		{
 			Number: 1,
 			Hash:   common.HexToHash("0x1"),
@@ -182,7 +182,7 @@ type fakeBackend struct {
 	rules        opera.Rules
 	state        *testState
 	pool         TxPool
-	blockHistory []TestBlock
+	blockHistory []Block
 }
 
 // GetSigner is a helper method outside of the ethapi.Backend interface,
