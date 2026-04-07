@@ -38,7 +38,13 @@ import (
 	"github.com/syndtr/goleveldb/leveldb/opt"
 )
 
-func HealChaindata(chaindataDir string, cacheRatio cachescale.Func, cfg *config.Config, lastCarmenBlock idx.Block) (lastBlockId idx.Block, err error) {
+func HealChaindata(
+	chaindataDir string,
+	cacheRatio cachescale.Func,
+	cfg *config.Config,
+	targetEpoch *idx.Epoch, // if nil, the latest is chosen
+	lastCarmenBlock idx.Block,
+) (lastBlockId idx.Block, err error) {
 	producer := &DummyScopedProducer{integration.GetRawDbProducer(chaindataDir, integration.DBCacheConfig{
 		Cache:   cacheRatio.U64(480 * opt.MiB),
 		Fdlimit: makeDatabaseHandles(),
@@ -46,7 +52,7 @@ func HealChaindata(chaindataDir string, cacheRatio cachescale.Func, cfg *config.
 	defer caution.CloseAndReportError(&err, producer, "failed to close db producer")
 
 	log.Info("Healing gossip db...")
-	epochState, lastBlockId, err := healGossipDb(producer, cfg.OperaStore, lastCarmenBlock)
+	epochState, lastBlockId, err := healGossipDb(producer, cfg.OperaStore, targetEpoch, lastCarmenBlock)
 	if err != nil {
 		return 0, fmt.Errorf("failed to heal gossip db: %w", err)
 	}
@@ -89,23 +95,46 @@ func HealChaindata(chaindataDir string, cacheRatio cachescale.Func, cfg *config.
 }
 
 // healGossipDb reverts the gossip database into state, into which can be reverted carmen
-func healGossipDb(producer kvdb.FlushableDBProducer, cfg gossip.StoreConfig, lastCarmenBlock idx.Block) (
-	epochState *iblockproc.EpochState, lastBlock idx.Block, err error) {
-
+func healGossipDb(
+	producer kvdb.FlushableDBProducer,
+	cfg gossip.StoreConfig,
+	targetEpoch *idx.Epoch, // will use latest if nil
+	lastCarmenBlock idx.Block,
+) (
+	epochState *iblockproc.EpochState,
+	lastBlock idx.Block,
+	err error,
+) {
 	gdb, err := gossip.NewStore(producer, cfg) // requires FlushIDKey present (not clean) in all dbs
 	if err != nil {
 		return nil, 0, err
 	}
 	defer caution.CloseAndReportError(&err, gdb, "failed to close gossip db")
 
+	var epochId idx.Epoch
+	if targetEpoch == nil {
+		epochId = getLastEpochWithState(gdb, lastCarmenBlock)
+	} else {
+		epochId = *targetEpoch
+	}
+
 	// find the last closed epoch with the state available
-	epochIdx, blockState, epochState := getLastEpochWithState(gdb, lastCarmenBlock)
+	blockState, epochState := gdb.GetHistoryBlockEpochState(epochId)
 	if blockState == nil || epochState == nil {
 		return nil, 0, fmt.Errorf("no epoch with available state found")
 	}
 
+	// Check that the block hight is recoverable.
+	firstBlockOfEpoch := blockState.LastBlock.Idx
+	if firstBlockOfEpoch > lastCarmenBlock {
+		return nil, 0, fmt.Errorf(
+			"state for epoch %d is not available, requires block %d, latest available is %d",
+			epochId, firstBlockOfEpoch, lastCarmenBlock,
+		)
+	}
+
 	// set the historic state to be the current
-	log.Info("Reverting to epoch state", "epoch", epochIdx, "block", blockState.LastBlock.Idx)
+	log.Info("Reverting to epoch state", "epoch", epochId, "block", blockState.LastBlock.Idx)
 	gdb.SetBlockEpochState(*blockState, *epochState)
 	gdb.FlushBlockEpochState()
 
@@ -115,7 +144,7 @@ func healGossipDb(producer kvdb.FlushableDBProducer, cfg gossip.StoreConfig, las
 
 	// removing excessive events (event epoch >= closed epoch)
 	log.Info("Removing excessive events")
-	gdb.ForEachEventRLP(epochIdx.Bytes(), func(id hash.Event, _ rlp.RawValue) bool {
+	gdb.ForEachEventRLP(epochId.Bytes(), func(id hash.Event, _ rlp.RawValue) bool {
 		gdb.DelEvent(id)
 		return true
 	})
@@ -124,7 +153,10 @@ func healGossipDb(producer kvdb.FlushableDBProducer, cfg gossip.StoreConfig, las
 }
 
 // getLastEpochWithState finds the last closed epoch with the state available
-func getLastEpochWithState(gdb *gossip.Store, lastCarmenBlock idx.Block) (epochIdx idx.Epoch, blockState *iblockproc.BlockState, epochState *iblockproc.EpochState) {
+func getLastEpochWithState(
+	gdb *gossip.Store,
+	lastCarmenBlock idx.Block,
+) (epochIdx idx.Epoch) {
 	currentEpoch := gdb.GetEpoch()
 	epochsToTry := idx.Epoch(10000)
 	endEpoch := idx.Epoch(1)
@@ -133,7 +165,7 @@ func getLastEpochWithState(gdb *gossip.Store, lastCarmenBlock idx.Block) (epochI
 	}
 
 	for epochIdx = currentEpoch; epochIdx > endEpoch; epochIdx-- {
-		blockState, epochState = gdb.GetHistoryBlockEpochState(epochIdx)
+		blockState, epochState := gdb.GetHistoryBlockEpochState(epochIdx)
 		if blockState == nil || epochState == nil {
 			log.Info("Last closed epoch is not available", "epoch", epochIdx)
 			continue
@@ -144,10 +176,10 @@ func getLastEpochWithState(gdb *gossip.Store, lastCarmenBlock idx.Block) (epochI
 			continue
 		}
 		log.Info("Last closed epoch with available state found", "epoch", epochIdx)
-		return epochIdx, blockState, epochState
+		return epochIdx
 	}
 
-	return 0, nil, nil
+	return 0
 }
 
 func dropAllEpochDbs(producer kvdb.IterableDBProducer) error {

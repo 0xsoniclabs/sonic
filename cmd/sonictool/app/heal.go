@@ -48,6 +48,13 @@ func heal(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
+
+	var targetEpoch *idx.Epoch
+	if epoch := idx.Epoch(ctx.Uint64(EpochNumberFlag.Name)); epoch != 0 {
+		targetEpoch = new(idx.Epoch)
+		*targetEpoch = epoch
+	}
+
 	chaindataDir := filepath.Join(dataDir, "chaindata")
 	carmenArchiveDir := filepath.Join(dataDir, "carmen", "archive")
 	carmenLiveDir := filepath.Join(dataDir, "carmen", "live")
@@ -91,7 +98,7 @@ func heal(ctx *cli.Context) error {
 	cancelCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	recoveredBlock, err := db.HealChaindata(chaindataDir, cacheRatio, cfg, idx.Block(archiveCheckpointBlock))
+	recoveredBlock, err := db.HealChaindata(chaindataDir, cacheRatio, cfg, targetEpoch, idx.Block(archiveCheckpointBlock))
 	if err != nil {
 		return err
 	}

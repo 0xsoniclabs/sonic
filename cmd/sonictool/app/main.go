@@ -157,6 +157,9 @@ The archive state is used for RPC - allows to handle state-related RPC queries.
 			Usage:       "Fix database in dirty state",
 			Action:      heal,
 			Description: "Tries to recover database corrupted by incorrect termination of the client.",
+			Flags: []cli.Flag{
+				EpochNumberFlag,
+			},
 		},
 
 		{
