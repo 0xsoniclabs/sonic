@@ -872,7 +872,7 @@ func (n *IntegrationTestNet) AdvanceEpoch(t testing.TB, epochs int) {
 	// or the sealing block itself. In both cases, waiting for the
 	// block after the current number guarantees that the epoch has indeed
 	// begun. Rules changes and any practical effect of the new epoch are
-	// not materialized untile the sealing block is completed. Store will
+	// not materialized until the sealing block is completed. Store will
 	// return the new epoch earlier, since it is updated before the sealing
 	// block is completed.
 	currentBlock, err := client.BlockByNumber(t.Context(), nil)
