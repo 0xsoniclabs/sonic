@@ -31,32 +31,57 @@ import (
 
 var testChainID = big.NewInt(1)
 
-func TestValidateEnvelope_IdentifiesBundles(t *testing.T) {
+func TestValidateEnvelope_ValidBundles_AreAccepted(t *testing.T) {
+	signer := types.LatestSignerForChainID(testChainID)
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
 
-	generator := newTestBundleGenerator(t, 2)
-
-	tests := map[string]struct {
-		tx           *types.Transaction
-		expectBundle bool
-	}{
-		"not a bundle": {tx: generator.makeNonBundleTx(), expectBundle: false},
-		"empty bundle": {tx: generator.makeEmptyBundleTx(), expectBundle: true},
-		"valid bundle": {tx: generator.makeValidBundleTx(), expectBundle: true},
+	tests := map[string]*types.Transaction{
+		"empty AllOf bundle":     AllOf(signer),
+		"empty OneOf bundle":     OneOf(signer),
+		"non-empty AllOf bundle": AllOf(signer, Step(key, &types.AccessListTx{})),
+		"non-empty OneOf bundle": OneOf(signer, Step(key, &types.AccessListTx{})),
 	}
 
-	for name, test := range tests {
+	for name, tx := range tests {
 		t.Run(name, func(t *testing.T) {
-			bundle, plan, err := ValidateEnvelope(generator.signer, test.tx)
-			require.NoError(t, err)
-			if test.expectBundle {
-				require.NotNil(t, bundle, "expected a bundle transaction")
-				require.NotNil(t, plan, "expected an execution plan")
-			} else {
-				require.Nil(t, bundle, "expected no bundle transaction")
-				require.Nil(t, plan, "expected no execution plan")
+			require := require.New(t)
+			bundle, plan, err := ValidateEnvelope(signer, tx)
+			require.NoError(err)
+			require.NotNil(bundle, "expected a bundle transaction")
+			require.NotNil(plan, "expected an execution plan")
+
+			wantedBundle, err := OpenEnvelope(tx)
+			require.NoError(err)
+
+			// types.Transactions can not be compared reliably using
+			// reflect.DeepEqual, therefore we compare the fields of the bundle
+			// separately.
+			require.Equal(wantedBundle.Flags, bundle.Flags)
+			require.Equal(wantedBundle.Range, bundle.Range)
+			require.Equal(len(wantedBundle.Transactions), len(bundle.Transactions))
+			for i, txRef := range wantedBundle.Transactions {
+				require.Equal(txRef.Hash(), bundle.Transactions[i].Hash())
 			}
+
+			wantedPlan, err := wantedBundle.extractExecutionPlan(signer)
+			require.NoError(err)
+			require.Equal(wantedPlan, *plan)
 		})
 	}
+}
+
+func TestValidateEnvelope_RegularTransaction_RejectedAsNotBeingAnEnvelope(t *testing.T) {
+	signer := types.LatestSignerForChainID(testChainID)
+	regularTx := types.NewTx(&types.LegacyTx{
+		To:   &common.Address{0x42},
+		Data: []byte("this is a regular transaction, not an envelope"),
+	})
+
+	bundle, plan, err := ValidateEnvelope(signer, regularTx)
+	require.ErrorContains(t, err, "not an envelope transaction")
+	require.Nil(t, bundle, "expected no bundle to be returned")
+	require.Nil(t, plan, "expected no execution plan to be returned")
 }
 
 func TestValidateEnvelope_InvalidEncoding_ReturnsError(t *testing.T) {
@@ -256,10 +281,6 @@ func newTestBundleGenerator(t testing.TB, n int) testBundleGenerator {
 	}
 }
 
-func (gen testBundleGenerator) makeEmptyBundleTx() *types.Transaction {
-	return AllOf(gen.signer)
-}
-
 func (gen testBundleGenerator) makeValidBundleTx() *types.Transaction {
 	receiver := common.Address{0x42}
 	gasPerTx := uint64(20_000)
@@ -354,15 +375,6 @@ func (gen testBundleGenerator) makeBundleTxWithWronglySignedTx(t testing.TB) *ty
 	return types.NewTx(&types.LegacyTx{
 		To:   &BundleProcessor,
 		Data: bundle.Encode(),
-		Gas:  21096,
-	})
-}
-
-func (gen testBundleGenerator) makeNonBundleTx() *types.Transaction {
-	someAddress := common.Address{0x42}
-	return types.NewTx(&types.LegacyTx{
-		To:   &someAddress,
-		Data: []byte("this is not a bundle"),
 		Gas:  21096,
 	})
 }
