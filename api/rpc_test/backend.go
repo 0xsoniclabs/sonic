@@ -339,3 +339,8 @@ func (b *fakeBackend) ChainConfig(blockHeight idx.Block) *params.ChainConfig {
 type TxPool interface {
 	AddLocal(*types.Transaction) error
 }
+
+// UnprotectedAllowed indicates whether the backend allows unprotected transactions (i.e., transactions without a chain ID).
+func (b *fakeBackend) UnprotectedAllowed() bool {
+	return true
+}

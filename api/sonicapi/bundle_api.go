@@ -51,3 +51,22 @@ func NewRPCExecutionPlan(plan bundle.ExecutionPlan) RPCExecutionPlan {
 		Latest:   rpc.BlockNumber(plan.Range.Latest),
 	}
 }
+
+func (p *RPCExecutionPlan) ToBundleExecutionPlan() bundle.ExecutionPlan {
+	steps := make([]bundle.ExecutionStep, len(p.Steps))
+	for i, step := range p.Steps {
+		steps[i] = bundle.ExecutionStep{
+			From: step.From,
+			Hash: step.Hash,
+		}
+	}
+
+	return bundle.ExecutionPlan{
+		Flags: p.Flags,
+		Steps: steps,
+		Range: bundle.BlockRange{
+			Earliest: uint64(p.Earliest),
+			Latest:   uint64(p.Latest),
+		},
+	}
+}

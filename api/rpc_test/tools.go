@@ -19,6 +19,7 @@ package rpctest
 import (
 	"crypto/ecdsa"
 	"math/big"
+	"testing"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/ethereum/go-ethereum/common"
@@ -35,14 +36,14 @@ type Wallet struct {
 }
 
 // NewWallet creates a new wallet with a random private key.
-func NewWallet() (*Wallet, error) {
+func NewWallet(t testing.TB) *Wallet {
 	key, err := crypto.GenerateKey()
 	if err != nil {
-		return nil, err
+		t.Fatalf("failed to generate wallet key: %v", err)
 	}
 	return &Wallet{
 		PrivateKey: key,
-	}, nil
+	}
 }
 
 // Address returns the public address corresponding to the private key.

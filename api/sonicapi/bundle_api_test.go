@@ -55,3 +55,37 @@ func TestNewRPCExecutionPlan(t *testing.T) {
 		require.Equal(t, step.Hash, rpcPlan.Steps[i].Hash)
 	}
 }
+
+func TestNewRPCExecutionPlan_CanCovertToBundleExecutionPlan(t *testing.T) {
+	originalPlan := bundle.ExecutionPlan{
+		Steps: []bundle.ExecutionStep{
+			{
+				From: common.HexToAddress("0x1111111111111111111111111111111111111111"),
+				Hash: common.HexToHash("0x2222222222222222222222222222222222222222222222222222222222222222"),
+			},
+			{
+				From: common.HexToAddress("0x3333333333333333333333333333333333333333"),
+				Hash: common.HexToHash("0x4444444444444444444444444444444444444444444444444444444444444444"),
+			},
+		},
+		Flags: bundle.EF_TolerateInvalid | bundle.EF_OneOf,
+		Range: bundle.BlockRange{
+			Earliest: 100,
+			Latest:   200,
+		},
+	}
+
+	rpcPlan := NewRPCExecutionPlan(originalPlan)
+	reconstructedPlan := rpcPlan.ToBundleExecutionPlan()
+
+	require.Equal(t, originalPlan.Flags, reconstructedPlan.Flags)
+	require.Equal(t, originalPlan.Range.Earliest, reconstructedPlan.Range.Earliest)
+	require.Equal(t, originalPlan.Range.Latest, reconstructedPlan.Range.Latest)
+	require.Len(t, reconstructedPlan.Steps, len(originalPlan.Steps))
+	for i, step := range originalPlan.Steps {
+		require.Equal(t, step.From, reconstructedPlan.Steps[i].From)
+		require.Equal(t, step.Hash, reconstructedPlan.Steps[i].Hash)
+	}
+
+	require.Equal(t, originalPlan.Hash(), reconstructedPlan.Hash())
+}
