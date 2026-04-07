@@ -70,16 +70,6 @@ type BundleState struct {
 // of the blockchain and the transactions in the bundle.
 func GetBundleState(
 	chain ChainState,
-	envelop *types.Transaction,
-) BundleState {
-	return getBundleState(chain, envelop, trialRunBundle)
-}
-
-// getBundleState is the internal version of GetBundleState, allowing to inject
-// a custom trial-run function to simplify testing.
-func getBundleState(
-	chain ChainState,
-	envelop *types.Transaction,
 	trialRunner func(*types.Transaction, ChainState, state.StateDB) bool,
 ) BundleState {
 	chainId := big.NewInt(int64(chain.GetCurrentNetworkRules().NetworkID))
@@ -101,7 +91,7 @@ func getBundleState(
 	}
 
 	// Next, check whether there are any nonce conflicts in the execution of
-	// the bundle. This is a quick check than actually running the bundle in
+	// the bundle. This is a quicker check than actually running the bundle in
 	// full to determine whether it can succeed or not.
 	stateDb := chain.StateDB()
 	state := checkForNonceConflicts(bundle, signer, stateDb)

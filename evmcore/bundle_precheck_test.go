@@ -86,7 +86,7 @@ func Test_GetBundleState_FutureBundle_ReturnsTemporaryBlocked(t *testing.T) {
 		NetworkID: 1,
 	}).AnyTimes()
 
-	// Build an bundle with a block window in the future
+	// Build a bundle with a block window in the future
 	signer := types.LatestSignerForChainID(big.NewInt(1))
 	envelop := bundle.NewBuilder(signer).
 		SetEarliest(currentBlock + 1).
@@ -584,7 +584,7 @@ func (p pattern) toBundle(
 			))
 		case pattern:
 			steps = append(steps, bundle.Step(
-				keys[0], // fore envelope transaction, any key is fine
+				keys[0], // for envelope transaction, any key is fine
 				v.toBundle(signer, keys),
 			))
 		default:
