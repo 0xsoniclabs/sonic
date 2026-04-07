@@ -137,3 +137,10 @@ func Test_FakeBackend_ProducesCompatibleSigners(t *testing.T) {
 		require.Equal(t, crypto.PubkeyToAddress(key.PublicKey), recovered)
 	}
 }
+
+func Test_DefaultBlockHistory(t *testing.T) {
+	blockHistory := defaultBlockHistory()
+	require.EqualValues(t, 1, len(blockHistory))
+	require.EqualValues(t, 1, blockHistory[0].Number)
+	require.Equal(t, common.HexToHash("0x1"), blockHistory[0].Hash)
+}
