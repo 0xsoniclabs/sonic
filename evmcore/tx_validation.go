@@ -359,7 +359,7 @@ func validateSponsoredTransactions(
 ) error {
 	// Transaction Bundles are identified as sponsorship requests, but they are
 	// checked independently.
-	if bundle.IsEnvelope(tx) {
+	if netRules.brio && bundle.IsEnvelope(tx) {
 		return nil
 	}
 

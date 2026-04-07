@@ -1520,6 +1520,44 @@ func Test_validateSponsoredTransactions_RejectsSponsoredTransactions(t *testing.
 	}
 }
 
+func Test_validateSponsoredTransactions_TreatsBundleEnvelopesAsSponsoredBeforeBrioHardfork(t *testing.T) {
+
+	ctrl := gomock.NewController(t)
+	subsidiesChecker := NewMocksubsidiesChecker(ctrl)
+	subsidiesChecker.EXPECT().isSponsored(gomock.Any()).Return(true)
+
+	tx := types.NewTx(
+		&types.LegacyTx{
+			To: &bundle.BundleProcessor,
+			V:  big.NewInt(27), // not an internal tx
+		})
+	rules := NetworkRules{
+		brio:         false,
+		gasSubsidies: true,
+	}
+	err := validateSponsoredTransactions(tx, rules, subsidiesChecker)
+	require.NoError(t, err)
+}
+
+func Test_validateSponsoredTransactions_IgnoresBundleEnvelopesAfterBrioHardfork(t *testing.T) {
+
+	ctrl := gomock.NewController(t)
+	subsidiesChecker := NewMocksubsidiesChecker(ctrl)
+	//Note: no subsidy check expected
+
+	tx := types.NewTx(
+		&types.LegacyTx{
+			To: &bundle.BundleProcessor,
+			V:  big.NewInt(27), // not an internal tx
+		})
+	rules := NetworkRules{
+		brio:         true,
+		gasSubsidies: true,
+	}
+	err := validateSponsoredTransactions(tx, rules, subsidiesChecker)
+	require.NoError(t, err)
+}
+
 func Test_validateBundleTransactions_AcceptNonBundleTransactions(t *testing.T) {
 	tests := map[string]*types.Transaction{
 		"legacy tx":      types.NewTx(&types.LegacyTx{}),
