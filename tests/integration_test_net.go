@@ -604,26 +604,45 @@ func (n *IntegrationTestNet) connectP2PNetwork(enodes []string) error {
 		return nil
 	}
 
+	// First, register each node's next neighbor in the ring as trusted and
+	// static before waiting for any connections.
+	//
+	// - Trusted status is important because if a gossip handshake times out
+	//   (which can happen under heavy load, e.g. with -race), the gossip layer
+	//   bans the peer's node ID via discfilter.Ban(). Subsequent P2P connections
+	//   from that peer are then rejected in postHandshakeChecks.
+	// 	 Marking the configured ring peers as trusted prevents this rejection.
 	for i := range n.nodes {
 		client, err := n.GetClientConnectedToNode(i)
 		if err != nil {
-			return fmt.Errorf("failed to connect to the Ethereum client: %w", err)
+			return fmt.Errorf("failed to connect to the client: %w", err)
+		}
+
+		enode := enodes[(i+1)%len(n.nodes)]
+		if err := client.Client().Call(nil, "admin_addTrustedPeer", enode); err != nil {
+			client.Close()
+			return fmt.Errorf("failed to add trusted peer on node %d: %v", i, err)
+		}
+		if err := client.Client().Call(nil, "admin_addPeer", enode); err != nil {
+			client.Close()
+			return fmt.Errorf("failed to add peer on node %d: %v", i, err)
+		}
+		client.Close()
+	}
+
+	// Now wait for each node to have the expected number of connections.
+	for i := range n.nodes {
+		client, err := n.GetClientConnectedToNode(i)
+		if err != nil {
+			return fmt.Errorf("failed to connect to the client: %w", err)
 		}
 		defer client.Close()
 
-		// Wait until connection is established
 		err = WaitFor(context.Background(), func(ctx context.Context) (bool, error) {
-
-			// Connect each node to the next one, and the last one to the first.
-			enode := enodes[(i+1)%len(n.nodes)]
-			if err := client.Client().Call(nil, "admin_addPeer", enode); err != nil {
-				return false, fmt.Errorf("failed to connect to node %d: %v", i, err)
-			}
-
 			// Fetch the list of connected peers
 			var res []map[string]any
 			if err := client.Client().Call(&res, "admin_peers"); err != nil {
-				return false, fmt.Errorf("failed to connect to node %d: %v", i, err)
+				return false, fmt.Errorf("failed to query peers on node %d: %v", i, err)
 			}
 
 			// Expect each node to be connected to the previous and next nodes,
