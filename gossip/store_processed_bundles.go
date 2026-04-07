@@ -86,7 +86,7 @@ func (s *Store) AddProcessedBundles(blockNum uint64, executedBundles []bundle.Ex
 
 	// Delete out-dated hashes.
 	deletedHash := common.Hash{}
-	if blockNum > bundle.MaxBlockRange {
+	if blockNum >= bundle.MaxBlockRange-1 {
 		oldestValidBlockNum := blockNum - bundle.MaxBlockRange + 1
 		it := table.NewIterator([]byte{'i'}, nil)
 		for it.Next() {
@@ -95,7 +95,7 @@ func (s *Store) AddProcessedBundles(blockNum uint64, executedBundles []bundle.Ex
 				continue
 			}
 			blockNumber := binary.BigEndian.Uint64(key[1 : 1+8])
-			if blockNumber >= oldestValidBlockNum {
+			if blockNumber > oldestValidBlockNum {
 				break
 			}
 			hash := common.BytesToHash(key[1+8:])

@@ -17,6 +17,8 @@
 package gossip
 
 import (
+	"encoding/binary"
+	"math"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
@@ -162,10 +164,62 @@ func TestStore_GetProcessedBundleHistoryHash_InitiallyZero(t *testing.T) {
 	require.Zero(hash)
 }
 
+func TestStore_ProcessedBundles_RetainsAllBundlesRequiredToCoverTheMaximumBlockRange(t *testing.T) {
+	require := require.New(t)
+	numBlocks := 3 * bundle.MaxBlockRange
+
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	// While progressing through the blocks, all execution plans must be retained
+	// until their maximum block range has expired.
+	for currentBlockNumber := range numBlocks {
+
+		// Check that the store covers exactly the plans of the past that are
+		// allowed to be included in the current block (before adding it).
+		for block := uint64(0); block < currentBlockNumber; block++ {
+			earliest, latest := MakeMaxRangeStartingAt(block)
+			want := earliest <= currentBlockNumber && currentBlockNumber <= latest
+			require.Equal(
+				want, store.HasBundleRecentlyBeenProcessed(uint64ToHash(block)),
+				"Current block %d, checking plan with range [%d,%d]",
+				currentBlockNumber, earliest, latest,
+			)
+		}
+
+		store.AddProcessedBundles(currentBlockNumber, []bundle.ExecutionInfo{
+			wrapInfo(uint64ToHash(currentBlockNumber)),
+		})
+	}
+}
+
 func wrapInfo(hash common.Hash) bundle.ExecutionInfo {
 	return bundle.ExecutionInfo{
 		ExecutionPlanHash: hash,
 		BlockNum:          1,
 		Position:          0,
 	}
+}
+
+// uint64ToHash returns unique hashes for input integers.
+// It can be used in tests to streamline the creation if unique and deterministic
+// hashes without having to hardcode them.
+func uint64ToHash(i uint64) common.Hash {
+	var b [32]byte
+	binary.BigEndian.PutUint64(b[24:], i)
+	return common.Hash(b)
+}
+
+// MakeMaxRangeStartingAt creates a block range of maximum allowed size, starting
+// at the given block number.
+func MakeMaxRangeStartingAt(blockNum uint64) (uint64, uint64) {
+	latest := blockNum + bundle.MaxBlockRange - 1
+	if blockNum > math.MaxUint64-bundle.MaxBlockRange {
+		// if the starting block number is too close to maxUint64,
+		// we cannot create a full range of MaxBlockRange blocks without overflowing.
+		// In this case, we create the largest possible range starting at blockNum,
+		// which ends at the maximum uint64 value.
+		latest = math.MaxUint64
+	}
+	return blockNum, latest
 }
