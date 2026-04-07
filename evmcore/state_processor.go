@@ -353,7 +353,7 @@ func (r *transactionRunner) runTransactionBundleInternal(
 
 	txBundle, plan, err := bundle.ValidateEnvelope(ctxt.signer, tx)
 	if err != nil {
-		log.Warn("Invalid bundle skipped", "tx", tx.Hash().Hex(), "error", err)
+		log.Warn("Invalid bundle skipped", "tx", tx.Hash().Hex(), "err", err)
 		return []ProcessedTransaction{{Transaction: tx}}, core_types.TransactionResultInvalid
 	}
 
@@ -394,7 +394,6 @@ func (r *transactionRunner) runTransactionBundleInternal(
 	// copies of themselves without finding a hash-function collision.
 	ctxt.statedb.AddProcessedBundle(planHash, positionInBlock)
 
-	// return the
 	return runner.processedTransactions, core_types.TransactionResultSuccessful
 }
 

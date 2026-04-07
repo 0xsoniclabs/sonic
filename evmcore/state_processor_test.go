@@ -1836,7 +1836,7 @@ func TestRunTransactionBundle_BundlesDisabled_ReturnsEnvelopeAndResultInvalid(t 
 func TestRunTransactionBundle_InvalidEnvelope_ReturnsEnvelopeAndResultInvalid(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	log := NewMocklogger(ctrl)
-	log.EXPECT().Warn("Invalid bundle skipped", gomock.Any())
+	log.EXPECT().Warn("Invalid bundle skipped", "tx", gomock.Any(), "err", gomock.Any())
 
 	tx := types.NewTx(&types.LegacyTx{})
 	require.False(t, bundle.IsEnvelope(tx))
