@@ -49,7 +49,7 @@ func NewTestState(t *testing.T) *testState {
 	}
 
 	carmenStateDb := carmen.CreateNonCommittableStateDBUsing(carmenState)
-	return &testState{evmstore.CreateCarmenStateDb(carmenStateDb)}
+	return &testState{evmstore.CreateNonCommittableCarmenStateDb(carmenStateDb)}
 }
 
 func (t *testState) Copy() state.StateDB {
