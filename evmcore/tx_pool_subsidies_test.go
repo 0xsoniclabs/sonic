@@ -22,6 +22,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/utils"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -56,7 +57,7 @@ func TestTxPool_SponsoredTransactionsAreIncludedInThePendingSet(t *testing.T) {
 	// mock the external chain dependencies
 	chain := mockChain(ctrl, chainConfig, upgrades)
 
-	subsidiesFactory := func(opera.Rules, StateReader, state.StateDB, types.Signer) IsSponsoredCheckFunc {
+	subsidiesFactory := func(opera.Rules, StateReader, state.StateDB, types.Signer) utils.TransactionCheckFunc {
 		// This test accepts all sponsorship requests
 		return func(tx *types.Transaction) bool {
 			return true

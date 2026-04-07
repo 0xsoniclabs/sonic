@@ -21,65 +21,87 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	lru "github.com/hashicorp/golang-lru"
 )
 
-// CheckFunc is the core type of the checker cache.
-// It represents a function that takes an argument of type A and returns a result of type R.
-// The Cache will then store the returned result, repeated calls to the checker
-// for the same input will be cached for a certain duration to avoid expensive repeated checks.
-type CheckFunc[A hasheable, R any] func(A) R
+type TransactionCheckFunc func(*types.Transaction) bool
 
-// CheckerCache is a cache for storing the results of expensive checks. It uses
-// an LRU cache internally to store the results and evict old entries when the cache is full.
+// TransactionCheckCache is a cache for storing the results of expensive transaction checks.
+// It uses an LRU cache internally to store the results and evict old entries when the cache is full.
 //
-// Cached checks will have an associated validity duration, which is exponentially
-// increased on each check until a maximum duration is reached.
-type CheckerCache[R any] struct {
+// Backoff Scheme:
+// Each cached check result is associated with a validity duration, which determines how long
+// the cached value can be reused before the check must be recomputed. The validity duration
+// starts at an initial value (200ms) and is exponentially increased (doubled) each time the
+// check is recomputed, up to a maximum duration (15s). This means:
+//   - On the first cache miss, the check is performed and cached with a short validity (200ms).
+//   - If the same transaction is checked again after the validity expires, the check is recomputed,
+//     and the validity duration is doubled (e.g., 400ms, 800ms, etc.), up to the maximum.
+//   - If the transaction is checked again before the validity expires, the cached result is reused.
+//   - This exponential backoff reduces the frequency of expensive checks for frequently-seen
+//     transactions, while still ensuring that results are periodically refreshed.
+//
+// This approach balances performance (by avoiding repeated expensive checks) and correctness
+// (by ensuring results are eventually refreshed), adapting dynamically to transaction access patterns.
+type TransactionCheckCache struct {
 	cache *lru.Cache
 }
 
 // NewCheckerCache creates a new CheckerCache with the given size in bytes.
 // if size is 0 then a default of 10MiB will be used as max size.
-func NewCheckerCache[R any](size int) *CheckerCache[R] {
+func NewCheckerCache(size int) *TransactionCheckCache {
 	if size <= 0 {
 		size = 10 * 1024 * 1024 // 10 MiB
 	}
 
-	entrySize := reflect.TypeFor[checkerEntry[R]]().Size()
+	entrySize := reflect.TypeOf(checkerEntry{}).Size()
 	capacity := max(size/(int(entrySize)), 1)
 	cache, _ := lru.New(capacity) // only fails if capacity <= 0
-	return &CheckerCache[R]{cache: cache}
+	return &TransactionCheckCache{cache: cache}
 }
 
-func (c *CheckerCache[R]) get(txHash common.Hash) (checkerEntry[R], bool) {
+func (c *TransactionCheckCache) get(txHash common.Hash) (checkerEntry, bool) {
 	if entry, ok := c.cache.Get(txHash); ok {
-		return entry.(checkerEntry[R]), true
+		return entry.(checkerEntry), true
 	}
-	return checkerEntry[R]{}, false
+	return checkerEntry{}, false
 }
 
-func (c *CheckerCache[R]) put(txHash common.Hash, entry checkerEntry[R]) {
+func (c *TransactionCheckCache) put(txHash common.Hash, entry checkerEntry) {
 	c.cache.Add(txHash, entry)
 }
 
-// WrapCheck wraps an expensive function with caching functionality. The returned checker will use
-// the cache to store and retrieve results of checks.
-func WrapCheck[A hasheable, R any](cache *CheckerCache[R], predicate CheckFunc[A, R]) CheckFunc[A, R] {
-	cw := checkerWrapper[A, R]{
+// WrapCheck wraps an expensive transaction check function with caching functionality.
+// The returned checker will use the provided TransactionCheckCache to store and retrieve
+// results, automatically applying the exponential backoff scheme for cache validity.
+//
+// Usage:
+//
+//	cache := utils.NewCheckerCache(0) // Use default size
+//	expensiveCheck := func(tx *types.Transaction) bool {
+//	    // ... perform expensive validation ...
+//	    return true
+//	}
+//	cachedCheck := utils.WrapCheck(cache, expensiveCheck)
+//	result := cachedCheck(tx)
+//
+// This will cache the result of expensiveCheck for each transaction, reducing redundant computation.
+func WrapCheck(cache *TransactionCheckCache, predicate TransactionCheckFunc) TransactionCheckFunc {
+	cw := checkerWrapper{
 		predicate: predicate,
 		cache:     cache,
 	}
 	return cw.check
 }
 
-type checkerWrapper[A hasheable, R any] struct {
-	predicate CheckFunc[A, R]
-	cache     *CheckerCache[R]
+type checkerWrapper struct {
+	predicate TransactionCheckFunc
+	cache     *TransactionCheckCache
 }
 
 // Check executes the check for the given transaction, using the cache to avoid repeated expensive checks.
-func (cw *checkerWrapper[A, R]) check(argument A) R {
+func (cw *checkerWrapper) check(argument *types.Transaction) bool {
 	const (
 		initialValidity = 200 * time.Millisecond
 		maxValidity     = 15 * time.Second
@@ -108,14 +130,8 @@ func (cw *checkerWrapper[A, R]) check(argument A) R {
 }
 
 // checkerEntry is a single entry in the CheckerCache.
-type checkerEntry[T any] struct {
+type checkerEntry struct {
 	validUntil       time.Time
 	validityDuration time.Duration
-	value            T
-}
-
-// hasheable is the interface required for the keys used in the CheckerCache.
-// This helps to identify already cached results for the same input.
-type hasheable interface {
-	Hash() common.Hash
+	value            bool
 }

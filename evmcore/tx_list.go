@@ -360,7 +360,7 @@ func (l *txList) Forward(threshold uint64) types.Transactions {
 func (l *txList) Filter(
 	costLimit *big.Int,
 	gasLimit uint64,
-	isSponsored IsSponsoredCheckFunc,
+	isSponsored utils.TransactionCheckFunc,
 ) (types.Transactions, types.Transactions) {
 	hasSponsored := l.txs.containsFunc(subsidies.IsSponsorshipRequest)
 

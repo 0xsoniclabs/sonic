@@ -3411,6 +3411,6 @@ func testSubsidiesCheckerFactory(
 	chain StateReader,
 	state state.StateDB,
 	signer types.Signer,
-) IsSponsoredCheckFunc {
+) utils.TransactionCheckFunc {
 	return nil
 }

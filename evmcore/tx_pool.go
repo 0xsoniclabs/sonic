@@ -185,14 +185,14 @@ type StateReader interface {
 	Header(hash common.Hash, number uint64) *EvmHeader
 }
 
-// subsidiesCheckerFactory is a factory method to create a subsidies checker instance.
+// subsidiesCheckFuncFactory is a factory method to create a subsidies checker instance.
 // This facilitates testing of the TxPool by using injected mock implementations.
-type subsidiesCheckerFactory func(
+type subsidiesCheckFuncFactory func(
 	rules opera.Rules,
 	chain StateReader,
 	state state.StateDB,
 	signer types.Signer,
-) IsSponsoredCheckFunc
+) utils.TransactionCheckFunc
 
 // TxPoolConfig are the configuration parameters of the transaction pool.
 type TxPoolConfig struct {
@@ -335,8 +335,8 @@ type TxPool struct {
 	waitForIdleReorgLoopRequestCh  chan struct{} // requests to wait for reorg completion
 	waitForIdleReorgLoopResponseCh chan struct{} // responses to waitForReorgDoneRequestCh
 
-	subsidiesCheckerFactory subsidiesCheckerFactory   // Factory to create a subsidies checker instance
-	subsidiesCheckerCache   *utils.CheckerCache[bool] // Cache for subsidies check results
+	subsidiesCheckerFactory subsidiesCheckFuncFactory    // Factory to create a subsidies checker instance
+	subsidiesCheckerCache   *utils.TransactionCheckCache // Cache for subsidies check results
 }
 
 type txpoolResetRequest struct {
@@ -356,7 +356,7 @@ func newTxPool(
 	config TxPoolConfig,
 	chainconfig *params.ChainConfig,
 	chain StateReader,
-	subsidiesCheckerFactory subsidiesCheckerFactory,
+	subsidiesCheckerFactory subsidiesCheckFuncFactory,
 ) *TxPool {
 	// Sanitize the input to ensure no vulnerable gas prices are set
 	config = (&config).sanitize()
@@ -383,7 +383,7 @@ func newTxPool(
 		waitForIdleReorgLoopResponseCh: make(chan struct{}),
 
 		subsidiesCheckerFactory: subsidiesCheckerFactory,
-		subsidiesCheckerCache:   utils.NewCheckerCache[bool](-1), // use default size
+		subsidiesCheckerCache:   utils.NewCheckerCache(-1), // use default size
 	}
 	pool.locals = newAccountSet(pool.signer)
 	for _, addr := range config.Locals {
@@ -1499,7 +1499,7 @@ func (pool *TxPool) reset(oldHead, newHead *EvmHeader) {
 	pool.osaka = pool.chainconfig.IsOsaka(next, uint64(newHead.Time.Unix()))
 }
 
-func (pool *TxPool) createCachedSubsidiesChecker() IsSponsoredCheckFunc {
+func (pool *TxPool) createCachedSubsidiesChecker() utils.TransactionCheckFunc {
 	return utils.WrapCheck(pool.subsidiesCheckerCache,
 		pool.subsidiesCheckerFactory(
 			pool.chain.CurrentRules(),

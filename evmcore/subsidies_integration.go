@@ -26,10 +26,6 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 )
 
-// IsSponsoredCheckFunc defines the function signature
-// for checking if a sponsorship request is funded.
-type IsSponsoredCheckFunc = utils.CheckFunc[*types.Transaction, bool]
-
 // SubsidiesIntegrationImplementation uses the subsidies contract to determine
 // if a transaction is sponsored.
 type SubsidiesIntegrationImplementation struct {
@@ -47,7 +43,7 @@ func newSubsidiesChecker(
 	chain StateReader,
 	state state.StateDB,
 	signer types.Signer,
-) IsSponsoredCheckFunc {
+) utils.TransactionCheckFunc {
 	impl := &SubsidiesIntegrationImplementation{
 		rules:  rules,
 		chain:  chain,
