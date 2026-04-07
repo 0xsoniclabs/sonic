@@ -53,7 +53,7 @@ Here are some considerations to keep in mind when adding new integration tests:
 		current := tests.GetNetworkRules(t, net)
 		modified := myRuleModifications(current)
 		tests.UpdateNetworkRules(t, net, modified)
-		AdvanceEpochAndWaitForBlocks(t, net)
+		net.AdvanceEpoch(t, 1)
 
 		net.Restart()
 		newConfig := tests.GetNetworkRules(t, net)

@@ -266,7 +266,7 @@ func TestRevisionIsForwardedCorrectly_RPCCall_BrioEnablesOsaka(t *testing.T) {
 	}
 
 	UpdateNetworkRules(t, net, rulesDiff)
-	AdvanceEpochAndWaitForBlocks(t, net)
+	net.AdvanceEpoch(t, 1)
 
 	blockAfterUpgrade, err := client.BlockByNumber(t.Context(), nil)
 	require.NoError(t, err)

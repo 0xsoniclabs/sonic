@@ -274,7 +274,7 @@ func TestEthConfig_ProducesReadableConfig(t *testing.T) {
 
 	rules.Upgrades.GasSubsidies = true
 	UpdateNetworkRules(t, net, rules)
-	AdvanceEpochAndWaitForBlocks(t, net)
+	net.AdvanceEpoch(t, 1)
 
 	// get current block to confirm epoch advancement
 	currentBlock, err := client.BlockByNumber(t.Context(), nil)

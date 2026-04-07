@@ -85,7 +85,7 @@ func TestNetworkRule_Update_RulesChangeIsDelayedUntilNextEpochStart(t *testing.T
 	require.Less(blockBefore.BaseFee().Int64(), newMinBaseFee, "BaseFee should not reflect new MinBaseFee")
 
 	// apply epoch change
-	tests.AdvanceEpochAndWaitForBlocks(t, net)
+	net.AdvanceEpoch(t, 1)
 
 	// rule should be effective
 	err = client.Client().Call(&updatedRules, "eth_getRules", "latest")
@@ -203,7 +203,7 @@ func TestNetworkRule_Update_Restart_Recovers_Original_Value(t *testing.T) {
 		"Network rules should not change - it must be an epoch bound")
 
 	// apply epoch change
-	tests.AdvanceEpochAndWaitForBlocks(t, net)
+	net.AdvanceEpoch(t, 1)
 
 	// rule change should be effective
 	err = client2.Client().Call(&updatedRules, "eth_getRules", "latest")
@@ -270,7 +270,7 @@ func TestNetworkRules_UpdateMaxEventGas_DropsLargeGasTxs(t *testing.T) {
 	require.Equal(1, len(content["queued"]), "expected the high gas tx to be in the queued section of the tx pool")
 
 	// reach epoch ceiling to apply the new rules
-	tests.AdvanceEpochAndWaitForBlocks(t, net)
+	net.AdvanceEpoch(t, 1)
 
 	err = client.Client().Call(&content, "txpool_content")
 	require.NoError(err, "failed to get tx pool status")
@@ -355,7 +355,7 @@ func TestNetworkRules_PragueFeaturesBecomeAvailableWithAllegroUpgrade(t *testing
 	tests.UpdateNetworkRules(t, net, rulesDiff)
 
 	// reach epoch ceiling to apply the new rules
-	tests.AdvanceEpochAndWaitForBlocks(t, net)
+	net.AdvanceEpoch(t, 1)
 
 	// Wait for another block, this is time for the tx_pool to tick, run reorg,
 	// and implement the new rules.
@@ -469,7 +469,7 @@ func TestNetworkRulesUpdate_BrioFeaturesBecomeAvailable_WhenBrioUpgradesEnabled(
 		rules.Upgrades = upgrade
 		tests.UpdateNetworkRules(t, net, rules)
 		// reach epoch ceiling to apply the new rules
-		tests.AdvanceEpochAndWaitForBlocks(t, net)
+		net.AdvanceEpoch(t, 1)
 
 		txData := &types.LegacyTx{
 			Gas: 58_000,

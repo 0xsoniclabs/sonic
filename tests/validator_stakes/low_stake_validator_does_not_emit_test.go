@@ -58,7 +58,7 @@ func TestEventThrottler_NonDominantValidatorsProduceLessEvents_WhenEventThrottle
 			require.NoError(t, err)
 			defer client.Close()
 
-			tests.AdvanceEpochAndWaitForBlocks(t, net)
+			net.AdvanceEpoch(t, 1)
 
 			// wait until some events are generated
 			time.Sleep(1 * time.Second)

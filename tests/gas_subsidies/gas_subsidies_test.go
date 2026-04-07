@@ -53,7 +53,7 @@ func TestGasSubsidies_CanBeEnabledAndDisabled(
 			testRules.Upgrades = test.upgrade
 			tests.UpdateNetworkRules(t, net, testRules)
 			// Advance the epoch by one to apply the change.
-			tests.AdvanceEpochAndWaitForBlocks(t, net)
+			net.AdvanceEpoch(t, 1)
 
 			// check original state
 			type upgrades struct {
@@ -76,7 +76,7 @@ func TestGasSubsidies_CanBeEnabledAndDisabled(
 			tests.UpdateNetworkRules(t, net, rulesDiff)
 
 			// Advance the epoch by one to apply the change.
-			tests.AdvanceEpochAndWaitForBlocks(t, net)
+			net.AdvanceEpoch(t, 1)
 
 			err = client.Client().Call(&originalRules, "eth_getRules", "latest")
 			require.NoError(err)
@@ -90,7 +90,7 @@ func TestGasSubsidies_CanBeEnabledAndDisabled(
 			tests.UpdateNetworkRules(t, net, rulesDiff)
 
 			// Advance the epoch by one to apply the change.
-			tests.AdvanceEpochAndWaitForBlocks(t, net)
+			net.AdvanceEpoch(t, 1)
 
 			err = client.Client().Call(&originalRules, "eth_getRules", "latest")
 			require.NoError(err)
