@@ -33,11 +33,11 @@ func TestCarmenStateDB_CreateCarmenStateDb_CreatesACommittableInstance(t *testin
 	require.True(state.committable)
 }
 
-func TestCarmenStateDB_createNonCommittableCarmenStateDb_CreatesANonCommittableInstance(t *testing.T) {
+func TestCarmenStateDB_CreateNonCommittableCarmenStateDb_CreatesANonCommittableInstance(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	backend := carmen.NewMockNonCommittableStateDB(ctrl)
-	state := createNonCommittableCarmenStateDb(backend)
+	state := CreateNonCommittableCarmenStateDb(backend)
 	require.Same(state.db, backend)
 	require.False(state.committable)
 }
@@ -50,7 +50,7 @@ func TestCarmenStateDB_Copy_CopiesNonCommittableStateDB(t *testing.T) {
 	backend2 := carmen.NewMockNonCommittableStateDB(ctrl)
 	backend.EXPECT().Copy().Return(backend2)
 
-	state := createNonCommittableCarmenStateDb(backend)
+	state := CreateNonCommittableCarmenStateDb(backend)
 
 	copied := state.Copy()
 	copiedDb, isOfProperType := copied.(*CarmenStateDB)
@@ -88,7 +88,7 @@ func TestCarmenStateDB_EndBlock_IsNoOpForNonCommittableStateDB(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	backend := carmen.NewMockNonCommittableStateDB(ctrl)
-	state := createNonCommittableCarmenStateDb(backend)
+	state := CreateNonCommittableCarmenStateDb(backend)
 
 	// EndBlock should be a no-op for non-committable state DBs, so it should
 	// not call the backend's EndBlock method.

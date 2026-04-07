@@ -40,7 +40,7 @@ func CreateCarmenStateDb(carmenStateDb carmen.StateDB) *CarmenStateDB {
 	}
 }
 
-func createNonCommittableCarmenStateDb(carmenStateDb carmen.NonCommittableStateDB) *CarmenStateDB {
+func CreateNonCommittableCarmenStateDb(carmenStateDb carmen.NonCommittableStateDB) *CarmenStateDB {
 	return &CarmenStateDB{
 		db:          carmenStateDb,
 		committable: false,
@@ -292,7 +292,7 @@ func (c *CarmenStateDB) IsNewContract(addr common.Address) bool {
 
 func (c *CarmenStateDB) Copy() state.StateDB {
 	if db, ok := c.db.(carmen.NonCommittableStateDB); !c.committable && ok {
-		return createNonCommittableCarmenStateDb(db.Copy())
+		return CreateNonCommittableCarmenStateDb(db.Copy())
 	} else {
 		panic("unable to copy committable (live) StateDB")
 	}
