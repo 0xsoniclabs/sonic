@@ -56,7 +56,7 @@ func (t *testState) Copy() state.StateDB {
 	return &testState{t.StateDB.Copy()}
 }
 
-func (t *testState) setAccount(addr common.Address, acc Account) {
+func (t *testState) setAccount(addr common.Address, acc AccountState) {
 	if acc.Balance != nil {
 		t.SetBalance(addr, uint256.MustFromBig(acc.Balance))
 	}

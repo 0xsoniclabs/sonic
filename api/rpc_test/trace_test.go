@@ -36,8 +36,8 @@ func Test_TraceSimpleTransfer(t *testing.T) {
 	transferBalance := big.NewInt(1e17)
 
 	be := NewBackendBuilder(t).
-		WithAccount(*acc1.Address(), Account{Balance: big.NewInt(1e18)}).
-		WithAccount(*acc2.Address(), Account{}).
+		WithAccount(*acc1.Address(), AccountState{Balance: big.NewInt(1e18)}).
+		WithAccount(*acc2.Address(), AccountState{}).
 		WithBlockHistory(
 			[]Block{
 				{

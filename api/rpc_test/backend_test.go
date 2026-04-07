@@ -92,8 +92,8 @@ func Test_NewBackendBuilder_CanSetInitialState(t *testing.T) {
 	require.Zero(t, zero.Sign(), "expected zero balance")
 
 	be = NewBackendBuilder(t).
-		WithAccount(addr1, Account{Balance: big.NewInt(42)}).
-		WithAccount(addr2, Account{Balance: big.NewInt(43)}).
+		WithAccount(addr1, AccountState{Balance: big.NewInt(42)}).
+		WithAccount(addr2, AccountState{Balance: big.NewInt(43)}).
 		Build()
 	state, block, err = be.StateAndBlockByNumberOrHash(t.Context(), rpc.BlockNumberOrHash{BlockNumber: &latest})
 	require.NoError(t, err)

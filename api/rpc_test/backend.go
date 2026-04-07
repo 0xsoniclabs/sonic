@@ -47,13 +47,16 @@ import (
 
 //go:generate mockgen -source=backend.go -destination=backend_mock.go -package=rpctest
 
-type Account struct {
+// AccountState represents the state of an account
+// in the fake backend's state database.
+type AccountState struct {
 	Nonce   uint64
 	Balance *big.Int
 	Code    []byte
 	Store   map[common.Hash]common.Hash
 }
 
+// Block represents a block in the fake backend's block history.
 type Block struct {
 	Number     uint64
 	Hash       common.Hash
@@ -72,7 +75,7 @@ type backendBuilder struct {
 //		    backend := rpctest.NewBackendBuilder(t).
 //
 //		        // preload some account state
-//		        WithAccount(someAddress, rpctest.Account{Balance: big.NewInt(1e18)}).
+//		        WithAccount(someAddress, rpctest.AccountState{Balance: big.NewInt(1e18)}).
 //
 //		        // Define a custom block history
 //		        WithBlockHistory([]Block{
@@ -138,7 +141,7 @@ func (b backendBuilder) WithPool(pool TxPool) backendBuilder {
 // before executing RPC methods that depend on that state.
 //
 // By default, the fake backend's state database is empty
-func (b backendBuilder) WithAccount(addr common.Address, account Account) backendBuilder {
+func (b backendBuilder) WithAccount(addr common.Address, account AccountState) backendBuilder {
 	b.be.state.setAccount(addr, account)
 	return b
 }
