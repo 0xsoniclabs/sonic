@@ -28,6 +28,7 @@ import (
 
 	cc "github.com/0xsoniclabs/carmen/go/common"
 	"github.com/0xsoniclabs/carmen/go/common/immutable"
+	"github.com/0xsoniclabs/sonic/api/backend"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice/gaspricelimits"
 	bip39 "github.com/tyler-smith/go-bip39"
@@ -1147,7 +1148,7 @@ func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash 
 
 	var blockCtx *vm.BlockContext
 	if blockOverrides != nil {
-		bctx := GetBlockContext(ctx, b, block.Header())
+		bctx := backend.GetBlockContext(ctx, b, block.Header())
 		blockOverrides.apply(&bctx)
 		blockCtx = &bctx
 	}
@@ -2712,7 +2713,7 @@ func (api *PublicDebugAPI) TraceCall(ctx context.Context, args TransactionArgs, 
 	}
 	defer statedb.Release()
 
-	blockCtx := GetBlockContext(ctx, api.b, &block.EvmHeader)
+	blockCtx := backend.GetBlockContext(ctx, api.b, &block.EvmHeader)
 	if config.BlockOverrides != nil {
 		config.BlockOverrides.apply(&blockCtx)
 	}

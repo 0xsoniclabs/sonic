@@ -14,13 +14,13 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Sonic. If not, see <http://www.gnu.org/licenses/>.
 
-package rpctest
+package ethapi
 
 import (
 	"math/big"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/api/ethapi"
+	rpctest "github.com/0xsoniclabs/sonic/api/rpc_test"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -29,17 +29,17 @@ import (
 )
 
 func Test_TraceSimpleTransfer(t *testing.T) {
-	acc1, err := NewWallet()
+	acc1, err := rpctest.NewWallet()
 	require.NoError(t, err)
-	acc2, err := NewWallet()
+	acc2, err := rpctest.NewWallet()
 	require.NoError(t, err)
 	transferBalance := big.NewInt(1e17)
 
-	be := NewBackendBuilder(t).
-		WithAccount(*acc1.Address(), Account{Balance: big.NewInt(1e18)}).
-		WithAccount(*acc2.Address(), Account{}).
+	be := rpctest.NewBackendBuilder(t).
+		WithAccount(*acc1.Address(), rpctest.Account{Balance: big.NewInt(1e18)}).
+		WithAccount(*acc2.Address(), rpctest.Account{}).
 		WithBlockHistory(
-			[]Block{
+			[]rpctest.Block{
 				{
 					Number: 1,
 					Hash:   common.HexToHash("0x1"),
@@ -53,15 +53,15 @@ func Test_TraceSimpleTransfer(t *testing.T) {
 		).
 		Build()
 
-	api := ethapi.NewPublicTxTraceAPI(be, 100_000)
+	api := NewPublicTxTraceAPI(be, 100_000)
 
-	txRequest1 := ethapi.TransactionArgs{
+	txRequest1 := TransactionArgs{
 		From:     acc1.Address(),
 		To:       acc2.Address(),
-		Nonce:    ToHexUint64(0),
-		Gas:      ToHexUint64(8_000_000),
-		GasPrice: ToHexBigInt(big.NewInt(1)),
-		Value:    ToHexBigInt(transferBalance),
+		Nonce:    rpctest.ToHexUint64(0),
+		Gas:      rpctest.ToHexUint64(8_000_000),
+		GasPrice: rpctest.ToHexBigInt(big.NewInt(1)),
+		Value:    rpctest.ToHexBigInt(transferBalance),
 	}
 
 	res, err := api.Call(
@@ -69,7 +69,7 @@ func Test_TraceSimpleTransfer(t *testing.T) {
 		txRequest1,
 		[]string{"stateDiff"},
 		rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber),
-		&ethapi.TraceCallConfig{},
+		&TraceCallConfig{},
 	)
 	require.NoError(t, err)
 	require.NotNil(t, res)
