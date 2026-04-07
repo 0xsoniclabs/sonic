@@ -96,7 +96,7 @@ func Test_RunBundle_RevertsToSnapshotOnFailure(t *testing.T) {
 
 func Test_runAllOfBundle_ReturnsTrueForEmptyBundle(t *testing.T) {
 	emptyBundle := &TransactionBundle{Transactions: nil}
-	result := runAllOfBundle[any](emptyBundle, nil)
+	result := runAllOfBundle(emptyBundle, nil)
 	require.True(t, result)
 }
 
@@ -168,7 +168,7 @@ func Test_runAllOfBundle_StopsAtFirstNonToleratedTransaction(t *testing.T) {
 
 func Test_runOneOfBundle_ReturnsFalseForEmptyBundle(t *testing.T) {
 	emptyBundle := &TransactionBundle{Transactions: nil}
-	result := runOneOfBundle[any](emptyBundle, nil)
+	result := runOneOfBundle(emptyBundle, nil)
 	require.False(t, result)
 }
 
