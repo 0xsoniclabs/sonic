@@ -108,11 +108,11 @@ func testInternalTxOverLimit(t *testing.T, net *tests.IntegrationTestNet) {
 	tests.UpdateNetworkRules(t, net, rules)
 
 	// internal transactions are executed as part of epoch sealing
-	tests.AdvanceEpochAndWaitForBlocks(t, net)
+	net.AdvanceEpoch(t, 1)
 
 	// since the previous epoch seal would have executed with the old rules to apply the new ones
 	// a new epoch advancement is needed to ensure an epoch sealing can still be executed under the new limit.
-	tests.AdvanceEpochAndWaitForBlocks(t, net)
+	net.AdvanceEpoch(t, 1)
 
 	var epochAfter hexutil.Uint64
 	err = client.Client().Call(&epochAfter, "eth_currentEpoch")
@@ -138,7 +138,7 @@ func testHighGasTxIsNeverExecuted(t *testing.T, net *tests.IntegrationTestNet) {
 	}
 	rules.Economy.Gas.MaxEventGas = 2_000_000
 	tests.UpdateNetworkRules(t, net, rules)
-	tests.AdvanceEpochAndWaitForBlocks(t, net)
+	net.AdvanceEpoch(t, 1)
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
@@ -159,7 +159,7 @@ func testHighGasTxIsNeverExecuted(t *testing.T, net *tests.IntegrationTestNet) {
 	// update rules to lower max gas below the transaction's gas
 	rules.Economy.Gas.MaxEventGas = 1_100_000
 	tests.UpdateNetworkRules(t, net, rules)
-	tests.AdvanceEpochAndWaitForBlocks(t, net)
+	net.AdvanceEpoch(t, 1)
 
 	err = client.Client().Call(&rules, "eth_getRules", "latest")
 	require.NoError(t, err)

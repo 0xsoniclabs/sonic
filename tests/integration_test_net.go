@@ -831,9 +831,14 @@ func (n *IntegrationTestNet) SpawnSession(t *testing.T) IntegrationTestNetSessio
 	}
 }
 
-// AdvanceEpoch trigger the sealing of an epoch and the epoch number to progress by the given number.
-// The function blocks until the final epoch has been reached. This method can only be called
-// on a validator account.
+// AdvanceEpoch triggers the sealing of the current epoch and advances the epoch
+// number by the specified amount.
+// The function blocks until the target epoch is reached and the sealing block
+// is finalized. This function could wait more than one block after the epoch end
+// but never less than one.
+//
+// Note: This function affects the global network state and may interfere with concurrent transactions.
+// For this reason, it is not exposed via the Session object to avoid side effects in parallel tests.
 func (n *IntegrationTestNet) AdvanceEpoch(t testing.TB, epochs int) {
 	t.Helper()
 	client, err := n.GetClient()
@@ -862,6 +867,24 @@ func (n *IntegrationTestNet) AdvanceEpoch(t testing.TB, epochs int) {
 		return newEpoch >= currentEpoch+hexutil.Uint64(epochs), nil
 	})
 	require.NoError(t, err, "failed to wait for epoch to advance")
+
+	// current block could be the previous block to the sealing block
+	// or the sealing block itself. In both cases, waiting for the
+	// block after the current number guarantees that the epoch has indeed
+	// begun. Rules changes and any practical effect of the new epoch are
+	// not materialized untile the sealing block is completed. Store will
+	// return the new epoch earlier, since it is updated before the sealing
+	// block is completed.
+	currentBlock, err := client.BlockByNumber(t.Context(), nil)
+	require.NoError(t, err)
+	err = WaitFor(t.Context(), func(ctx context.Context) (bool, error) {
+		newBlock, err := client.BlockByNumber(t.Context(), nil)
+		if err != nil {
+			return false, err
+		}
+		return newBlock.Number().Int64() > currentBlock.Number().Int64()+1, nil
+	})
+	require.NoError(t, err, "failed to wait seling block to be completed epoch change")
 }
 
 // DeployContract is a utility function handling the deployment of a contract on the network.

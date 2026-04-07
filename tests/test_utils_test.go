@@ -377,7 +377,7 @@ func TestSetTransactionDefaults_IsCorrectAfterUpgradesChange(t *testing.T) {
 		Upgrades: struct{ Allegro bool }{Allegro: true},
 	}
 	UpdateNetworkRules(t, net, rulesDiff)
-	AdvanceEpochAndWaitForBlocks(t, net)
+	net.AdvanceEpoch(t, 1)
 
 	// Wait until tx pool updates
 	tx2 := SignTransaction(t, net.GetChainId(),

@@ -401,35 +401,6 @@ func WaitFor(ctx context.Context, predicate func(context.Context) (bool, error))
 	}
 }
 
-// AdvanceEpochAndWaitForBlocks sends a transaction to advance to the next epoch.
-// It also waits until the new epoch is really reached and the next two blocks are produced.
-// It is useful to test a situation when the rule change is applied to the next block after the epoch change.
-func AdvanceEpochAndWaitForBlocks(t *testing.T, net *IntegrationTestNet) {
-	t.Helper()
-
-	require := require.New(t)
-
-	net.AdvanceEpoch(t, 1)
-
-	client, err := net.GetClient()
-	require.NoError(err)
-	defer client.Close()
-
-	currentBlock, err := client.BlockByNumber(t.Context(), nil)
-	require.NoError(err)
-
-	// wait the next two blocks as some rules (such as min base fee) are applied
-	// to the next block after the epoch change becomes effective
-	err = WaitFor(t.Context(), func(ctx context.Context) (bool, error) {
-		newBlock, err := client.BlockByNumber(t.Context(), nil)
-		if err != nil {
-			return false, err
-		}
-		return newBlock.Number().Int64() > currentBlock.Number().Int64()+1, nil
-	})
-	require.NoError(err, "failed to wait for the next two blocks after epoch change")
-}
-
 // getProofFor retrieves the account proof for the given block number.
 // This is meant to be a testing only function, hence having a *testing.T
 // unused parameter.

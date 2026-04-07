@@ -303,7 +303,7 @@ func TestSonicTool_EventsExport_ExecutesWithoutErrors_ForEpochRange(t *testing.T
 	numEpochs := 5
 	for range numEpochs {
 		generateNBlocks(t, net, 3)
-		tests.AdvanceEpochAndWaitForBlocks(t, net)
+		net.AdvanceEpoch(t, 1)
 	}
 
 	net.Stop()
