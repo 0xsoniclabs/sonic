@@ -738,7 +738,7 @@ func getStateDbMockForTransactions(
 	return state
 }
 
-func TestRunTransactions_RunsAllTransactionsAndCollectsProcessedTransactionsAndBundles(t *testing.T) {
+func TestRunTransactions_RunsAllTransactionsAndCollectsProcessedTransactions(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	runner := NewMock_transactionRunner(ctrl)
 
