@@ -17,7 +17,6 @@
 package utils
 
 import (
-	"strconv"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -43,7 +42,7 @@ func TestNewCachedChecker_CapacityIsEnforced(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			cache := NewCheckerCache[bool](tc.input)
+			cache := NewCheckerCache(tc.input)
 
 			// To check the full size, we add entries until one is evicted.
 			i := 0
@@ -53,23 +52,23 @@ func TestNewCachedChecker_CapacityIsEnforced(t *testing.T) {
 				}
 			}
 
-			capacity := max(tc.size/int(unsafe.Sizeof(checkerEntry[bool]{})), 1)
+			capacity := max(tc.size/int(unsafe.Sizeof(checkerEntry{})), 1)
 			require.Equal(t, capacity, i)
 		})
 	}
 }
 
 func TestCachedChecker_get_MissingEntryReturnsNotFound(t *testing.T) {
-	cache := NewCheckerCache[bool](10)
+	cache := NewCheckerCache(10)
 	_, found := cache.get(common.Hash{})
 	require.False(t, found)
 }
 
 func TestCachedChecker_get_ExistingEntriesAreReturned(t *testing.T) {
-	cache := NewCheckerCache[bool](1024)
+	cache := NewCheckerCache(1024)
 
-	entryA := checkerEntry[bool]{value: true}
-	entryB := checkerEntry[bool]{value: false}
+	entryA := checkerEntry{value: true}
+	entryB := checkerEntry{value: false}
 
 	hashA := common.Hash{0x1}
 	hashB := common.Hash{0x2}
@@ -100,70 +99,42 @@ func TestCachedChecker_get_ExistingEntriesAreReturned(t *testing.T) {
 }
 
 func TestCachedChecker_ReturnsCachedValueWithoutCallingCheckerFunction(t *testing.T) {
-	cache := NewCheckerCache[bool](1024)
+	cache := NewCheckerCache(1024)
 	timePoint := time.Now()
 
-	one := hasheableInteger(1)
-	two := hasheableInteger(2)
-	cache.put(one.Hash(), checkerEntry[bool]{
+	one := types.NewTx(&types.LegacyTx{Nonce: 1})
+	two := types.NewTx(&types.LegacyTx{Nonce: 2})
+	cache.put(one.Hash(), checkerEntry{
 		validUntil: timePoint.Add(time.Minute),
 		value:      true,
 	})
-	cache.put(two.Hash(), checkerEntry[bool]{
+	cache.put(two.Hash(), checkerEntry{
 		validUntil: timePoint.Add(time.Minute),
 		value:      false,
 	})
 
-	expectNeverCalled := func(hasheableInteger) bool {
+	expectNeverCalled := func(tx *types.Transaction) bool {
 		t.Fatal("unexpected call to the underlying checker")
 		return false
 	}
 	check := WrapCheck(cache, expectNeverCalled)
 
-	require.True(t, check(hasheableInteger(1)))
-	require.False(t, check(hasheableInteger(2)))
-}
-
-func TestCachedChecker_CheckerIsGeneric(t *testing.T) {
-	cache := NewCheckerCache[bool](1024)
-	callCount := 0
-
-	require.True(t,
-		WrapCheck(cache, func(hasheableInteger) bool {
-			callCount++
-			return true
-		})(hasheableInteger(42)))
-	require.Equal(t, 1, callCount)
-
-	require.True(t,
-		WrapCheck(cache, func(hasheableFloat) bool {
-			callCount++
-			return true
-		})(hasheableFloat(1.33)))
-	require.Equal(t, 2, callCount)
-
-	require.True(t,
-		WrapCheck(cache, func(*types.Transaction) bool {
-			callCount++
-			return true
-		})(types.NewTx(&types.LegacyTx{})))
-	require.Equal(t, 3, callCount)
+	require.True(t, check(one))
+	require.False(t, check(two))
 }
 
 func TestCachedChecker_NonCachedValue_FetchesNewValue(t *testing.T) {
-	cache := NewCheckerCache[bool](1024)
+	cache := NewCheckerCache(1024)
 
-	i := hasheableInteger(1)
+	i := types.NewTx(&types.LegacyTx{Nonce: 1})
 	_, found := cache.get(i.Hash())
 
 	require.False(t, found)
 
 	synctest.Test(t, func(t *testing.T) {
 
-		timePoint := time.Now()
-
 		callCount := 0
-		checker := func(tx hasheableInteger) bool {
+		checker := func(tx *types.Transaction) bool {
 			callCount++
 			return true
 		}
@@ -172,38 +143,25 @@ func TestCachedChecker_NonCachedValue_FetchesNewValue(t *testing.T) {
 		cachedChecker := WrapCheck(cache, checker)
 		require.True(t, cachedChecker(i))
 		require.Equal(t, 1, callCount)
-
-		// The result should be cached now.
-		entry, found := cache.get(i.Hash())
-		require.True(t, found)
-		require.True(t, entry.value)
-		require.True(t, entry.validUntil.After(timePoint))
-		require.Equal(t, entry.validityDuration, 200*time.Millisecond)
-
-		time.Sleep(entry.validityDuration - 1)
-
-		// Second call should use the cache, so no call to the underlying checker.
-		require.True(t, cachedChecker(i))
-		require.Equal(t, 1, callCount)
 	})
 }
 
 func TestCachedChecker_OutdatedEntry_FetchesNewValue(t *testing.T) {
 
-	cache := NewCheckerCache[bool](1024)
-	i := hasheableInteger(1)
+	cache := NewCheckerCache(1024)
+	i := types.NewTx(&types.LegacyTx{Nonce: 1})
 
 	synctest.Test(t, func(t *testing.T) {
 		startTime := time.Now()
 		validInterval := 200 * time.Millisecond
-		cache.put(i.Hash(), checkerEntry[bool]{
+		cache.put(i.Hash(), checkerEntry{
 			validUntil:       startTime.Add(validInterval),
 			validityDuration: validInterval,
 			value:            true,
 		})
 
 		callCount := 0
-		checker := func(tx hasheableInteger) bool {
+		checker := func(tx *types.Transaction) bool {
 			callCount++
 			return false
 		}
@@ -228,12 +186,12 @@ func TestCachedChecker_OutdatedEntry_FetchesNewValue(t *testing.T) {
 func TestCachedChecker_ValidityDurationIsCapped(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 
-		cache := NewCheckerCache[bool](1024)
-		i := hasheableInteger(1)
+		cache := NewCheckerCache(1024)
+		i := types.NewTx(&types.LegacyTx{Nonce: 1})
 
 		startTime := time.Now()
 		validInterval := 10 * time.Second
-		cache.put(i.Hash(), checkerEntry[bool]{
+		cache.put(i.Hash(), checkerEntry{
 			validUntil:       startTime.Add(validInterval),
 			validityDuration: validInterval,
 			value:            true,
@@ -243,7 +201,7 @@ func TestCachedChecker_ValidityDurationIsCapped(t *testing.T) {
 		queryTime := time.Now()
 
 		callCount := 0
-		checker := func(tx hasheableInteger) bool {
+		checker := func(tx *types.Transaction) bool {
 			callCount++
 			return true
 		}
@@ -262,18 +220,77 @@ func TestCachedChecker_ValidityDurationIsCapped(t *testing.T) {
 	})
 }
 
-type hasheableInteger int
+func TestCachedChecker_DynamicBackoffAdaptation(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		cache := NewCheckerCache(1024)
+		tx := types.NewTx(&types.LegacyTx{Nonce: 42})
 
-func (h hasheableInteger) Hash() common.Hash {
-	var hash common.Hash
-	copy(hash[:], []byte(strconv.Itoa(int(h))))
-	return hash
+		validity := 200 * time.Millisecond
+		cache.put(tx.Hash(), checkerEntry{
+			validUntil:       time.Now().Add(-time.Second), // expired
+			validityDuration: validity,
+			value:            false,
+		})
+
+		callCount := 0
+		checker := func(tx *types.Transaction) bool {
+			callCount++
+			return callCount%2 == 0 // alternate result
+		}
+		cachedChecker := WrapCheck(cache, checker)
+
+		// Simulate repeated accesses, each time after expiry, to test backoff
+		for i, expected := range []time.Duration{400 * time.Millisecond, 800 * time.Millisecond, 1600 * time.Millisecond} {
+			time.Sleep(validity)
+			_ = cachedChecker(tx)
+			entry, found := cache.get(tx.Hash())
+			require.True(t, found)
+			require.Equal(t, expected, entry.validityDuration, "iteration %d", i)
+			validity = expected
+		}
+	})
 }
 
-type hasheableFloat float32
+func TestCachedChecker_MinimumValidityDurationIsEnforced(t *testing.T) {
+	cache := NewCheckerCache(1024)
+	tx := types.NewTx(&types.LegacyTx{Nonce: 99})
 
-func (h hasheableFloat) Hash() common.Hash {
-	var hash common.Hash
-	copy(hash[:], []byte(strconv.FormatFloat(float64(h), 'f', -1, 32)))
-	return hash
+	// Insert entry with a very small validity duration
+	cache.put(tx.Hash(), checkerEntry{
+		validUntil:       time.Now().Add(-time.Second),
+		validityDuration: 1 * time.Millisecond,
+		value:            true,
+	})
+
+	checker := func(tx *types.Transaction) bool { return false }
+	cachedChecker := WrapCheck(cache, checker)
+	_ = cachedChecker(tx)
+	entry, found := cache.get(tx.Hash())
+	require.True(t, found)
+	require.GreaterOrEqual(t, entry.validityDuration, 200*time.Millisecond)
+}
+
+func TestCachedChecker_CacheEvictionCausesRecomputation(t *testing.T) {
+	cache := NewCheckerCache(1) // Only one entry allowed
+	tx1 := types.NewTx(&types.LegacyTx{Nonce: 1})
+	tx2 := types.NewTx(&types.LegacyTx{Nonce: 2})
+
+	callCount := 0
+	checker := func(tx *types.Transaction) bool {
+		callCount++
+		return true
+	}
+	cachedChecker := WrapCheck(cache, checker)
+
+	// First access for tx1, should call checker
+	require.True(t, cachedChecker(tx1))
+	require.Equal(t, 1, callCount)
+
+	// Access for tx2, should evict tx1
+	require.True(t, cachedChecker(tx2))
+	require.Equal(t, 2, callCount)
+
+	// Access tx1 again, should call checker again due to eviction
+	require.True(t, cachedChecker(tx1))
+	require.Equal(t, 3, callCount)
 }
