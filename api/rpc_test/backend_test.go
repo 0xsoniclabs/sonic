@@ -48,9 +48,9 @@ func Test_NewBackendBuilder_CanSetBlockHistory(t *testing.T) {
 
 	for _, v := range []uint64{1, 2, 3} {
 
-		blocks := make([]TestBlock, v)
+		blocks := make([]Block, v)
 		for i := uint64(0); i < v; i++ {
-			blocks[i] = TestBlock{Number: i + 1}
+			blocks[i] = Block{Number: i + 1}
 		}
 
 		be := NewBackendBuilder(t).WithBlockHistory(blocks).Build()
@@ -92,8 +92,8 @@ func Test_NewBackendBuilder_CanSetInitialState(t *testing.T) {
 	require.Zero(t, zero.Sign(), "expected zero balance")
 
 	be = NewBackendBuilder(t).
-		WithAccount(addr1, TestAccount{Balance: big.NewInt(42)}).
-		WithAccount(addr2, TestAccount{Balance: big.NewInt(43)}).
+		WithAccount(addr1, Account{Balance: big.NewInt(42)}).
+		WithAccount(addr2, Account{Balance: big.NewInt(43)}).
 		Build()
 	state, block, err = be.StateAndBlockByNumberOrHash(t.Context(), rpc.BlockNumberOrHash{BlockNumber: &latest})
 	require.NoError(t, err)

@@ -29,17 +29,17 @@ import (
 )
 
 func Test_TraceSimpleTransfer(t *testing.T) {
-	acc1, err := NewAccount()
+	acc1, err := NewWallet()
 	require.NoError(t, err)
-	acc2, err := NewAccount()
+	acc2, err := NewWallet()
 	require.NoError(t, err)
 	transferBalance := big.NewInt(1e17)
 
 	be := NewBackendBuilder(t).
-		WithAccount(*acc1.Address(), TestAccount{Balance: big.NewInt(1e18)}).
-		WithAccount(*acc2.Address(), TestAccount{}).
+		WithAccount(*acc1.Address(), Account{Balance: big.NewInt(1e18)}).
+		WithAccount(*acc2.Address(), Account{}).
 		WithBlockHistory(
-			[]TestBlock{
+			[]Block{
 				{
 					Number: 1,
 					Hash:   common.HexToHash("0x1"),

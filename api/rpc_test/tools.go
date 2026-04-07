@@ -26,21 +26,21 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
-type Account struct {
+type Wallet struct {
 	PrivateKey *ecdsa.PrivateKey
 }
 
-func NewAccount() (*Account, error) {
+func NewWallet() (*Wallet, error) {
 	key, err := crypto.GenerateKey()
 	if err != nil {
 		return nil, err
 	}
-	return &Account{
+	return &Wallet{
 		PrivateKey: key,
 	}, nil
 }
 
-func (a *Account) Address() *common.Address {
+func (a *Wallet) Address() *common.Address {
 	addr := crypto.PubkeyToAddress(a.PrivateKey.PublicKey)
 	return &addr
 }
@@ -68,7 +68,7 @@ func ToHexBytes(b []byte) *hexutil.Bytes {
 	return &hb
 }
 
-func ToEvmHeader(block TestBlock) *evmcore.EvmHeader {
+func ToEvmHeader(block Block) *evmcore.EvmHeader {
 	return &evmcore.EvmHeader{
 		Number:     big.NewInt(int64(block.Number)),
 		Hash:       block.Hash,
