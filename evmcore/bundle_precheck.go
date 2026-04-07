@@ -70,13 +70,28 @@ type BundleState struct {
 // of the blockchain and the transactions in the bundle.
 func GetBundleState(
 	chain ChainState,
+	envelope *types.Transaction,
+) BundleState {
+	return getBundleState(chain, envelope, trialRunBundle)
+}
+
+// getBundleState is the internal version of GetBundleState, allowing to inject
+// a custom trial-run function to simplify testing.
+func getBundleState(
+	chain ChainState,
+	envelope *types.Transaction,
 	trialRunner func(*types.Transaction, ChainState, state.StateDB) bool,
 ) BundleState {
 	chainId := big.NewInt(int64(chain.GetCurrentNetworkRules().NetworkID))
 	signer := types.LatestSignerForChainID(chainId)
 
+	// Check that bundled transactions are enabled.
+	if !chain.GetCurrentNetworkRules().Upgrades.TransactionBundles {
+		return makePermanentlyBlockedState("transaction bundles are not enabled on this network")
+	}
+
 	// Verify that the bundle is valid.
-	bundle, _, err := bundle.ValidateEnvelope(signer, envelop)
+	bundle, _, err := bundle.ValidateEnvelope(signer, envelope)
 	if err != nil {
 		return makePermanentlyBlockedState(fmt.Sprintf("invalid bundle: %v", err))
 	}
@@ -111,7 +126,7 @@ func GetBundleState(
 	snapshot := stateDb.InterTxSnapshot()
 	defer stateDb.RevertToInterTxSnapshot(snapshot)
 
-	if success := trialRunner(envelop, chain, stateDb); !success {
+	if success := trialRunner(envelope, chain, stateDb); !success {
 		return makePermanentlyBlockedState("bundle trial-run failed")
 	}
 	return makeRunnableState()
@@ -327,7 +342,7 @@ func (t *nonceTracker) restore(backup *nonceTracker) {
 // --- Trial Run Logic ---
 
 func trialRunBundle(
-	envelop *types.Transaction,
+	envelope *types.Transaction,
 	chain ChainState,
 	stateDb state.StateDB,
 ) bool {

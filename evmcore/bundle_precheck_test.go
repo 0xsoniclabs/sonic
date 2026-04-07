@@ -34,11 +34,28 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
+func Test_GetBundleState_BundlesDisabled_ReturnsNonExecutable(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	chainState := NewMockChainState(ctrl)
+	chainState.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{
+		NetworkID: 1,
+		Upgrades:  opera.Upgrades{TransactionBundles: false},
+	}).AnyTimes()
+
+	invalidBundle := types.NewTx(&types.LegacyTx{To: &bundle.BundleProcessor})
+	_, _, err := bundle.ValidateEnvelope(nil, invalidBundle)
+	require.Error(t, err)
+
+	state := GetBundleState(chainState, invalidBundle)
+	require.Equal(t, state, makePermanentlyBlockedState("transaction bundles are not enabled on this network"))
+}
+
 func Test_GetBundleState_InvalidBundle_ReturnsNonExecutable(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	chainState := NewMockChainState(ctrl)
 	chainState.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{
 		NetworkID: 1,
+		Upgrades:  opera.Upgrades{TransactionBundles: true},
 	}).AnyTimes()
 
 	invalidBundle := types.NewTx(&types.LegacyTx{To: &bundle.BundleProcessor})
@@ -60,16 +77,17 @@ func Test_GetBundleState_OutdatedBundle_ReturnsNonExecutable(t *testing.T) {
 	chainState.EXPECT().GetLatestHeader().Return(currentHeader).AnyTimes()
 	chainState.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{
 		NetworkID: 1,
+		Upgrades:  opera.Upgrades{TransactionBundles: true},
 	}).AnyTimes()
 
 	// Build an outdated bundle.
 	signer := types.LatestSignerForChainID(big.NewInt(1))
-	envelop := bundle.NewBuilder(signer).SetLatest(currentBlock - 1).Build()
+	envelope := bundle.NewBuilder(signer).SetLatest(currentBlock - 1).Build()
 
-	_, _, err := bundle.ValidateEnvelope(signer, envelop)
+	_, _, err := bundle.ValidateEnvelope(signer, envelope)
 	require.NoError(t, err)
 
-	state := GetBundleState(chainState, envelop)
+	state := GetBundleState(chainState, envelope)
 	require.Equal(t, state, makePermanentlyBlockedState("bundle has expired"))
 }
 
@@ -84,6 +102,7 @@ func Test_GetBundleState_FutureBundle_ReturnsTemporaryBlocked(t *testing.T) {
 	chainState.EXPECT().GetLatestHeader().Return(currentHeader).AnyTimes()
 	chainState.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{
 		NetworkID: 1,
+		Upgrades:  opera.Upgrades{TransactionBundles: true},
 	}).AnyTimes()
 
 	// Build a bundle with a block window in the future
@@ -115,11 +134,12 @@ func Test_GetBundleState_FailedTrialRun_ReturnsNonExecutable(t *testing.T) {
 	chainState.EXPECT().GetLatestHeader().Return(currentHeader).AnyTimes()
 	chainState.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{
 		NetworkID: 1,
+		Upgrades:  opera.Upgrades{TransactionBundles: true},
 	}).AnyTimes()
 	chainState.EXPECT().StateDB().Return(stateDb).AnyTimes()
 
 	signer := types.LatestSignerForChainID(big.NewInt(1))
-	envelop := bundle.NewBuilder(signer).
+	envelope := bundle.NewBuilder(signer).
 		SetEarliest(currentBlock - 5).
 		SetLatest(currentBlock + 5).
 		Build()
@@ -128,7 +148,7 @@ func Test_GetBundleState_FailedTrialRun_ReturnsNonExecutable(t *testing.T) {
 		return false
 	}
 
-	state := getBundleState(chainState, envelop, rejectEverything)
+	state := getBundleState(chainState, envelope, rejectEverything)
 	require.Equal(t, state, makePermanentlyBlockedState("bundle trial-run failed"))
 }
 
@@ -146,12 +166,13 @@ func Test_GetBundleState_ValidBundle_ReturnsRunnable(t *testing.T) {
 	chainState.EXPECT().GetLatestHeader().Return(currentHeader).AnyTimes()
 	chainState.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{
 		NetworkID: 1,
+		Upgrades:  opera.Upgrades{TransactionBundles: true},
 	}).AnyTimes()
 	chainState.EXPECT().StateDB().Return(stateDb).AnyTimes()
 
 	// Build a bundle with a valid block window.
 	signer := types.LatestSignerForChainID(big.NewInt(1))
-	envelop := bundle.NewBuilder(signer).
+	envelope := bundle.NewBuilder(signer).
 		SetEarliest(currentBlock - 5).
 		SetLatest(currentBlock + 5).
 		Build()
@@ -160,7 +181,7 @@ func Test_GetBundleState_ValidBundle_ReturnsRunnable(t *testing.T) {
 		return true
 	}
 
-	state := getBundleState(chainState, envelop, acceptEverything)
+	state := getBundleState(chainState, envelope, acceptEverything)
 	require.Equal(t, state, makeRunnableState())
 }
 
@@ -217,21 +238,22 @@ func Test_GetBundleState_ChecksForNonceConflicts(t *testing.T) {
 			chainState.EXPECT().GetLatestHeader().Return(currentHeader).AnyTimes()
 			chainState.EXPECT().GetCurrentNetworkRules().Return(opera.Rules{
 				NetworkID: 1,
+				Upgrades:  opera.Upgrades{TransactionBundles: true},
 			}).AnyTimes()
 			chainState.EXPECT().StateDB().Return(db).AnyTimes()
 
 			chainId := big.NewInt(1)
 			signer := types.LatestSignerForChainID(chainId)
 
-			envelop := test.bundle.toBundle(signer, keys)
-			_, _, err := bundle.ValidateEnvelope(signer, envelop)
+			envelope := test.bundle.toBundle(signer, keys)
+			_, _, err := bundle.ValidateEnvelope(signer, envelope)
 			require.NoError(t, err)
 
 			acceptEverything := func(*types.Transaction, ChainState, state.StateDB) bool {
 				return true
 			}
 
-			got := getBundleState(chainState, envelop, acceptEverything)
+			got := getBundleState(chainState, envelope, acceptEverything)
 			require.Equal(t, test.result, got)
 		})
 	}
@@ -364,8 +386,8 @@ func Test_checkForNonceConflicts_DetectsNonceUsage(t *testing.T) {
 				source.EXPECT().GetNonce(sender).Return(uint64(initialNonce)).MaxTimes(2)
 			}
 
-			envelop := test.bundle.toBundle(signer, keys)
-			bundle, _, err := bundle.ValidateEnvelope(signer, envelop)
+			envelope := test.bundle.toBundle(signer, keys)
+			bundle, _, err := bundle.ValidateEnvelope(signer, envelope)
 			require.NoError(t, err)
 
 			got := checkForNonceConflicts(bundle, signer, source)
@@ -421,8 +443,8 @@ func Test_getLowestReferencedNonces_ReturnsLowestNoncesInBundle(t *testing.T) {
 			chainId := big.NewInt(1)
 			signer := types.LatestSignerForChainID(chainId)
 
-			envelop := test.bundle.toBundle(signer, keys)
-			bundle, _, err := bundle.ValidateEnvelope(signer, envelop)
+			envelope := test.bundle.toBundle(signer, keys)
+			bundle, _, err := bundle.ValidateEnvelope(signer, envelope)
 			require.NoError(t, err)
 
 			lowest, err := getLowestReferencedNonces(bundle, signer)
