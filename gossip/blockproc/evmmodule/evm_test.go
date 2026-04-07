@@ -99,7 +99,6 @@ func TestEvm_IgnoresGasPriceOfInternalTransactions(t *testing.T) {
 	inner := types.NewTransaction(nonce, targetAddress, common.Big0, 1e10, common.Big0, nil)
 
 	summary := processor.Execute([]*types.Transaction{inner}, math.MaxUint64)
-	require.Empty(t, summary.ProcessedBundles)
 	processed := summary.ProcessedTransactions
 
 	if len(processed) != 1 {
@@ -179,7 +178,6 @@ func TestOperaEVMProcessor_Execute_ProducesContinuousTxIndexesInLogsAndReceipts(
 	txIndex := uint(0)
 	for range N {
 		summary := processor.Execute([]*types.Transaction{tx, tx}, math.MaxUint64)
-		require.Empty(summary.ProcessedBundles)
 		processed := summary.ProcessedTransactions
 		require.Len(processed, 2)
 		require.NotNil(processed[0].Receipt)
@@ -190,7 +188,6 @@ func TestOperaEVMProcessor_Execute_ProducesContinuousTxIndexesInLogsAndReceipts(
 		txIndex++
 
 		summary = processor.Execute([]*types.Transaction{tx}, math.MaxUint64)
-		require.Empty(summary.ProcessedBundles)
 		processed = summary.ProcessedTransactions
 		require.Len(processed, 1)
 		require.NotNil(processed[0].Receipt)
@@ -260,10 +257,6 @@ func TestOperaEVMProcessor_Execute_StateProcessorProducesTransactionsAndBundles_
 		ProcessedTransactions: []evmcore.ProcessedTransaction{
 			{Receipt: &types.Receipt{GasUsed: 1}},
 			{Receipt: &types.Receipt{GasUsed: 2}},
-		},
-		ProcessedBundles: []evmcore.ProcessedBundle{
-			{ExecutionPlanHash: common.Hash{1, 2, 3}, Position: 4, Count: 3},
-			{ExecutionPlanHash: common.Hash{3, 2, 1}, Position: 10, Count: 0},
 		},
 	}
 
