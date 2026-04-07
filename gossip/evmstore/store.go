@@ -60,16 +60,19 @@ type Store struct {
 	parameters  carmen.Parameters
 	carmenState carmen.State
 	liveStateDb carmen.StateDB
+
+	processedBundleStore ProcessedBundleStore
 }
 
 // NewStore creates store over key-value db.
-func NewStore(mainDB kvdb.Store, cfg StoreConfig) *Store {
+func NewStore(mainDB kvdb.Store, cfg StoreConfig, processedBundleStore ProcessedBundleStore) *Store {
 	s := &Store{
-		cfg:        cfg,
-		mainDB:     mainDB,
-		Instance:   logger.New("evm-store"),
-		rlp:        rlpstore.Helper{Instance: logger.New("rlp")},
-		parameters: cfg.StateDb,
+		cfg:                  cfg,
+		mainDB:               mainDB,
+		Instance:             logger.New("evm-store"),
+		rlp:                  rlpstore.Helper{Instance: logger.New("rlp")},
+		parameters:           cfg.StateDb,
+		processedBundleStore: processedBundleStore,
 	}
 
 	table.MigrateTables(&s.table, s.mainDB)

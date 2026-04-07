@@ -134,7 +134,7 @@ func NewStore(dbs kvdb.FlushableDBProducer, cfg StoreConfig) (*Store, error) {
 	table.MigrateTables(&s.table, s.mainDB)
 
 	s.initCache()
-	s.evm = evmstore.NewStore(s.mainDB, cfg.EVM)
+	s.evm = evmstore.NewStore(s.mainDB, cfg.EVM, s)
 
 	if err := s.migrateData(); err != nil {
 		return nil, fmt.Errorf("failed to migrate gossip db: %w", err)

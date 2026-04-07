@@ -57,7 +57,10 @@ import (
 // AddProcessedBundles adds the given bundle execution information for the given
 // block number. This should be called after every block, listing the bundles
 // that got accepted in the block.
-func (s *Store) AddProcessedBundles(blockNum uint64, executedBundles []bundle.ExecutionInfo) {
+func (s *Store) AddProcessedBundles(
+	blockNum uint64,
+	executedBundles map[common.Hash]bundle.PositionInBlock,
+) {
 	// Make sure there is only one update at any time.
 	s.processedBundleMutex.Lock()
 	defer s.processedBundleMutex.Unlock()
@@ -93,17 +96,15 @@ func (s *Store) AddProcessedBundles(blockNum uint64, executedBundles []bundle.Ex
 // the XOR of the hashes of the added bundles to update the history hash.
 func (s *Store) addNewBundles(
 	blockNum uint64,
-	executedBundles []bundle.ExecutionInfo,
+	executedBundles map[common.Hash]bundle.PositionInBlock,
 	batch kvdb.Batch,
 ) common.Hash {
 
 	addedHash := common.Hash{}
-	for _, info := range executedBundles {
-		hash := info.ExecutionPlanHash
-
+	for hash, info := range executedBundles {
 		data := make([]byte, 16)
-		binary.BigEndian.PutUint64(data[:8], info.BlockNumber)
-		binary.BigEndian.PutUint32(data[8:12], info.Position)
+		binary.BigEndian.PutUint64(data[:8], blockNum)
+		binary.BigEndian.PutUint32(data[8:12], info.Offset)
 		binary.BigEndian.PutUint32(data[12:], info.Count)
 
 		err := errors.Join(
@@ -220,8 +221,10 @@ func (s *Store) GetBundleExecutionInfo(execPlanHash common.Hash) *bundle.Executi
 	return &bundle.ExecutionInfo{
 		ExecutionPlanHash: execPlanHash,
 		BlockNumber:       blockNum,
-		Position:          startPosition,
-		Count:             count,
+		Position: bundle.PositionInBlock{
+			Offset: startPosition,
+			Count:  count,
+		},
 	}
 }
 
