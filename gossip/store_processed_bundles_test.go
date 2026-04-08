@@ -285,6 +285,16 @@ func TestStore_SetRawProcessedBundle_AddsIndexEntry(t *testing.T) {
 	require.True(hasIndexEntry, "expected index entry for processed bundle was not found")
 }
 
+func TestStore_DumpProcessedBundles_ReturnsEmptySliceWhenNoEntries(t *testing.T) {
+	require := require.New(t)
+	store, err := NewMemStore(t)
+	require.NoError(err)
+
+	dumpedEntries := store.DumpProcessedBundles()
+	require.NotNil(dumpedEntries)
+	require.Empty(dumpedEntries, "expected no dumped entries when store is empty")
+}
+
 func TestStore_DumpProcessedBundles_ReturnsAllAddedEntries(t *testing.T) {
 
 	require := require.New(t)

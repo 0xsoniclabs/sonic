@@ -208,6 +208,10 @@ func (s *Store) DumpProcessedBundles() [][]byte {
 	dump := make([][]byte, 0)
 
 	currentHistoryHash := BundleKV{Key: nil, Value: s.processedBundleHistoryEntry()}
+	if currentHistoryHash.Value == nil {
+		return [][]byte{}
+	}
+
 	dump = append(dump, currentHistoryHash.Encode())
 
 	it := s.table.ProcessedBundles.NewIterator([]byte{'e'}, nil)
