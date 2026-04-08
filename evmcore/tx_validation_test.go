@@ -22,11 +22,13 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
@@ -679,6 +681,46 @@ func TestValidateTxForBlock_BaseFee_RejectsTxWithGasPriceLowerThanBaseFee(t *tes
 	}
 }
 
+func TestValidateTxForBlock_IgnoresFeeCheck_ForSubsidies_WithFeatureFlag(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	chain := NewMockStateReader(ctrl)
+	chain.EXPECT().CurrentMaxGasLimit().Return(uint64(100_000))
+
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+
+	rules := NetworkRules{
+		gasSubsidies: true,
+	}
+
+	err = ValidateTxForBlock(
+		types.MustSignNewTx(key, signer,
+			&types.LegacyTx{
+				To:       &common.Address{42}, // not a contract creation
+				Gas:      100_000,
+				GasPrice: big.NewInt(0), // sponsorship request
+			}),
+		rules, chain)
+	require.NoError(t, err)
+}
+
+func TestValidateTxForBlock_IgnoresFeeCheck_ForBundles_WithBrio(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	chain := NewMockStateReader(ctrl)
+	chain.EXPECT().CurrentMaxGasLimit().Return(uint64(100_000))
+
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+
+	rules := NetworkRules{
+		brio: true,
+	}
+
+	envelope := bundle.NewBuilder(signer).Build()
+	err := ValidateTxForBlock(envelope, rules, chain)
+	require.NoError(t, err)
+}
+
 func TestValidateTxForBlock_AcceptsTransactions(t *testing.T) {
 
 	tests := []types.TxData{
@@ -1288,6 +1330,44 @@ func TestValidateTx_RejectsTx_WhenStateValidationFails(t *testing.T) {
 	}
 }
 
+func TestValidateTx_RejectsTx_WhenBundleTransactionValidationFails(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	signer := NewMockSigner(ctrl)
+	signer.EXPECT().Sender(gomock.Any()).AnyTimes()
+	signer.EXPECT().Equal(gomock.Any()).AnyTimes()
+
+	chain := NewMockStateReader(ctrl)
+	chain.EXPECT().CurrentBaseFee().Return(big.NewInt(5)).AnyTimes()
+	chain.EXPECT().CurrentMaxGasLimit().Return(uint64(100_000)).AnyTimes()
+
+	state := state.NewMockStateDB(ctrl)
+	state.EXPECT().GetNonce(gomock.Any()).Return(uint64(0)).AnyTimes()
+	state.EXPECT().GetBalance(gomock.Any()).Return(uint256.NewInt(0)).AnyTimes()
+	state.EXPECT().GetCode(gomock.Any()).Return(nil).AnyTimes()
+
+	invalidBundle := types.NewTx(&types.LegacyTx{
+		To:  &bundle.BundleProcessor,
+		Gas: 100_000,
+	})
+
+	require.True(bundle.IsEnvelope(invalidBundle))
+	require.ErrorIs(validateTx(
+		invalidBundle,
+		poolOptions{
+			isLocal: true,
+		},
+		NetworkRules{
+			brio:               true,
+			transactionBundles: true,
+		},
+		chain,
+		state,
+		nil,
+		signer,
+	), ErrBundleTransactionInvalid)
+}
+
 func TestValidateTx_AcceptsZeroGasPriceTransactions_WhenSubsidiesAreEnabled(t *testing.T) {
 	tests := []types.TxData{
 		&types.LegacyTx{
@@ -1440,6 +1520,118 @@ func Test_validateSponsoredTransactions_RejectsSponsoredTransactions(t *testing.
 	}
 }
 
+func Test_validateSponsoredTransactions_TreatsBundleEnvelopesAsSponsoredBeforeBrioHardfork(t *testing.T) {
+
+	ctrl := gomock.NewController(t)
+	subsidiesChecker := NewMocksubsidiesChecker(ctrl)
+	subsidiesChecker.EXPECT().isSponsored(gomock.Any()).Return(true)
+
+	tx := types.NewTx(
+		&types.LegacyTx{
+			To: &bundle.BundleProcessor,
+			V:  big.NewInt(27), // not an internal tx
+		})
+	rules := NetworkRules{
+		brio:         false,
+		gasSubsidies: true,
+	}
+	err := validateSponsoredTransactions(tx, rules, subsidiesChecker)
+	require.NoError(t, err)
+}
+
+func Test_validateSponsoredTransactions_IgnoresBundleEnvelopesAfterBrioHardfork(t *testing.T) {
+
+	ctrl := gomock.NewController(t)
+	subsidiesChecker := NewMocksubsidiesChecker(ctrl)
+	//Note: no subsidy check expected
+
+	tx := types.NewTx(
+		&types.LegacyTx{
+			To: &bundle.BundleProcessor,
+			V:  big.NewInt(27), // not an internal tx
+		})
+	rules := NetworkRules{
+		brio:         true,
+		gasSubsidies: true,
+	}
+	err := validateSponsoredTransactions(tx, rules, subsidiesChecker)
+	require.NoError(t, err)
+}
+
+func Test_validateBundleTransactions_AcceptNonBundleTransactions(t *testing.T) {
+	tests := map[string]*types.Transaction{
+		"legacy tx":      types.NewTx(&types.LegacyTx{}),
+		"access list tx": types.NewTx(&types.AccessListTx{}),
+		"dynamic fee tx": types.NewTx(&types.DynamicFeeTx{}),
+		"blob tx":        types.NewTx(&types.BlobTx{}),
+	}
+
+	for name, tx := range tests {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+			require.False(bundle.IsEnvelope(tx))
+			require.NoError(validateBundleTransactions(tx, NetworkRules{}, nil, nil, nil))
+		})
+	}
+}
+
+func Test_validateBundleTransactions_RespectNetworkRules(t *testing.T) {
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	bundle := bundle.NewBuilder(signer).Build()
+
+	tests := map[string]struct {
+		rules         NetworkRules
+		expectedError error
+	}{
+		"bundle transactions disabled pre brio": {
+			rules:         NetworkRules{},
+			expectedError: nil,
+		},
+		"bundle transactions enabled pre brio": {
+			rules:         NetworkRules{transactionBundles: true},
+			expectedError: nil,
+		},
+		"bundle transactions disabled post brio": {
+			rules:         NetworkRules{brio: true},
+			expectedError: ErrBundleTransactionsDisabled,
+		},
+		"bundle transactions enabled post brio": {
+			rules:         NetworkRules{brio: true, transactionBundles: true},
+			expectedError: nil,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+			err := validateBundleTransactions(bundle, test.rules, nil, nil, signer)
+			if test.expectedError != nil {
+				require.ErrorIs(err, test.expectedError)
+			} else {
+				require.NoError(err)
+			}
+		})
+	}
+}
+
+func Test_validateBundleTransactions_ReturnsErrorWithMalformedEnvelope(t *testing.T) {
+	malformedBundle := types.NewTx(&types.LegacyTx{
+		To:  &bundle.BundleProcessor,
+		Gas: 100_000,
+	})
+
+	require := require.New(t)
+	require.True(bundle.IsEnvelope(malformedBundle))
+
+	bundlesEnabled := NetworkRules{
+		brio:               true,
+		transactionBundles: true,
+	}
+
+	err := validateBundleTransactions(malformedBundle, bundlesEnabled, nil, nil, nil)
+	require.ErrorIs(err, ErrBundleTransactionInvalid)
+}
+
 func TestValidateTx_AllowsSponsoredZeroGasPriceTransactions_WhenSubsidiesAreFunded(t *testing.T) {
 
 	tests := map[string]struct {
@@ -1481,7 +1673,6 @@ func TestValidateTx_AllowsSponsoredZeroGasPriceTransactions_WhenSubsidiesAreFund
 			signer.EXPECT().Equal(gomock.Any()).Return(false).AnyTimes()
 
 			chain := NewMockStateReader(ctrl)
-			chain.EXPECT().CurrentBaseFee().Return(big.NewInt(5))
 			chain.EXPECT().CurrentMaxGasLimit().Return(uint64(100_000))
 			state := state.NewMockStateDB(ctrl)
 			state.EXPECT().GetNonce(gomock.Any()).Return(uint64(0)).AnyTimes()
