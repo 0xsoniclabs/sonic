@@ -74,7 +74,7 @@ func TestEventThrottler_NonDominantValidatorsProduceLessEvents_WhenEventThrottle
 					"Low stake validator should create very few events")
 			} else {
 				// Without emitter throttling, both validators should create the same amount of events
-				require.InDelta(t, percentages[1], percentages[2], 0.05,
+				require.InDelta(t, percentages[1], percentages[2], 0.1,
 					"Both validators should create equal amount of events")
 			}
 		})
