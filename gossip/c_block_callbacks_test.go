@@ -36,7 +36,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/holiman/uint256"
@@ -731,6 +730,10 @@ func TestFilterNonPermissibleTransactions_ReportsNonPermissibleTransactionsToMon
 }
 
 func TestIsPermissible_AcceptsPermissibleTransactions(t *testing.T) {
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
 	tests := map[string]*types.Transaction{
 		"legacy":      types.NewTx(&types.LegacyTx{}),
 		"access list": types.NewTx(&types.AccessListTx{}),
@@ -739,11 +742,24 @@ func TestIsPermissible_AcceptsPermissibleTransactions(t *testing.T) {
 		"set code": types.NewTx(&types.SetCodeTx{
 			AuthList: []types.SetCodeAuthorization{{}},
 		}),
+		"empty all-of bundle": bundle.AllOf(signer),
+		"empty one-of bundle": bundle.OneOf(signer),
+		"non-empty bundle": bundle.AllOf(signer,
+			bundle.Step(key, &types.AccessListTx{}),
+			bundle.Step(key, &types.AccessListTx{}),
+		),
+		"nested bundle": bundle.AllOf(signer,
+			bundle.Step(key, bundle.AllOf(signer,
+				bundle.Step(key, &types.AccessListTx{}),
+			)),
+		),
 	}
 
 	rules := opera.Rules{
 		Upgrades: opera.Upgrades{
-			Allegro: true,
+			Allegro:            true,
+			Brio:               true,
+			TransactionBundles: true,
 		},
 	}
 	for name, tx := range tests {
@@ -753,19 +769,21 @@ func TestIsPermissible_AcceptsPermissibleTransactions(t *testing.T) {
 	}
 }
 
-func TestIsPermissible_AcceptsSetCodeTransactionsOnlyInAllegro(t *testing.T) {
+func TestIsPermissible_AcceptsSetCodeTransactionsInAllegroAndBeyond(t *testing.T) {
 	tx := types.NewTx(&types.SetCodeTx{
 		AuthList: []types.SetCodeAuthorization{{}},
 	})
 
-	for _, enabled := range []bool{false, true} {
-		t.Run(fmt.Sprintf("allegro=%t", enabled), func(t *testing.T) {
-			rules := opera.Rules{
-				Upgrades: opera.Upgrades{
-					Allegro: enabled,
-				},
-			}
-			if enabled {
+	tests := map[string]opera.Upgrades{
+		"Sonic":   {},
+		"Allegro": {Allegro: true},
+		"Brio":    {Allegro: true, Brio: true},
+	}
+
+	for name, updates := range tests {
+		t.Run(name, func(t *testing.T) {
+			rules := opera.Rules{Upgrades: updates}
+			if updates.Allegro {
 				require.NoError(t, isPermissible(tx, &rules))
 			} else {
 				require.ErrorContains(t,
@@ -775,6 +793,133 @@ func TestIsPermissible_AcceptsSetCodeTransactionsOnlyInAllegro(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestIsPermissible_WithBrio_RejectsBundleOnlyTransactions(t *testing.T) {
+	require := require.New(t)
+	tx := types.NewTx(&types.AccessListTx{
+		AccessList: []types.AccessTuple{{
+			Address: bundle.BundleOnly,
+		}},
+	})
+
+	require.True(bundle.IsBundleOnly(tx))
+
+	// Before Brio, this transaction should be permissible.
+	rules := opera.Rules{Upgrades: opera.Upgrades{Brio: false}}
+	require.NoError(isPermissible(tx, &rules))
+
+	// With Brio, this transaction should not be permissible.
+	rules.Upgrades.Brio = true
+	require.ErrorContains(isPermissible(tx, &rules), "bundle-only transactions are not supported")
+}
+
+func TestIsPermissible_WithBrio_BundlesDisabled_RejectsBundleEnvelopes(t *testing.T) {
+	require := require.New(t)
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+	tx := bundle.AllOf(signer)
+
+	require.True(bundle.IsEnvelope(tx))
+
+	// Before Brio, envelopes are accepted, but not interpreted as such.
+	rules := opera.Rules{Upgrades: opera.Upgrades{Brio: false}}
+	require.NoError(isPermissible(tx, &rules))
+
+	// With Brio, envelopes are rejected if bundles are disabled.
+	rules.Upgrades.Brio = true
+	rules.Upgrades.TransactionBundles = false
+	require.ErrorContains(isPermissible(tx, &rules), "bundle transactions are disabled")
+
+	// If bundles are enabled, envelopes should be accepted.
+	rules.Upgrades.TransactionBundles = true
+	require.NoError(isPermissible(tx, &rules))
+}
+
+func TestIsPermissible_NonOpenableEnvelope_IsRejectedWithBrio(t *testing.T) {
+	require := require.New(t)
+	tx := types.NewTx(&types.LegacyTx{
+		To:   &bundle.BundleProcessor,
+		Data: []byte("not a valid encoding"),
+	})
+
+	require.True(bundle.IsEnvelope(tx))
+
+	// Before Brio, this is accepted.
+	rules := opera.Rules{Upgrades: opera.Upgrades{Brio: false}}
+	require.NoError(isPermissible(tx, &rules))
+
+	// With Brio, and bundles disabled, this is rejected for being an envelope.
+	rules.Upgrades.Brio = true
+	rules.Upgrades.TransactionBundles = false
+	require.ErrorContains(isPermissible(tx, &rules), "bundle transactions are disabled")
+
+	// With Brio and bundles enabled, this should be rejected as it's an invalid envelope.
+	rules.Upgrades.Brio = true
+	rules.Upgrades.TransactionBundles = true
+	require.ErrorContains(isPermissible(tx, &rules), "invalid bundle envelope")
+}
+
+func TestIsPermissible_BundlesWithInvalidContent_Rejected(t *testing.T) {
+	require := require.New(t)
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+
+	key, err := crypto.GenerateKey()
+	require.NoError(err)
+
+	tx, txBundle, _ := bundle.NewBuilder(signer).
+		With(bundle.Step(key, &types.SetCodeTx{
+			// Invalid, since there are no authorizations.
+		})).
+		BuildEnvelopeBundleAndPlan()
+
+	rules := opera.Rules{Upgrades: opera.Upgrades{
+		Allegro:            true,
+		Brio:               true,
+		TransactionBundles: true,
+	}}
+
+	// The first transaction in the bundle is not permissible.
+	issue := isPermissible(txBundle.Transactions[0], &rules)
+	require.Error(issue)
+
+	// Thus, the bundle should be rejected.
+	got := isPermissible(tx, &rules)
+	require.ErrorContains(got, "bundle contains non-permissible transaction")
+	require.ErrorContains(got, issue.Error())
+}
+
+func TestIsPermissible_BundlesWithInvalidNestedContent_Rejected(t *testing.T) {
+	require := require.New(t)
+	signer := types.LatestSignerForChainID(big.NewInt(1))
+
+	key, err := crypto.GenerateKey()
+	require.NoError(err)
+
+	// Issues in nested bundles are also detected.
+	inner, txBundle, _ := bundle.NewBuilder(signer).
+		With(bundle.Step(key, &types.SetCodeTx{
+			// Invalid, since there are no authorizations.
+		})).
+		BuildEnvelopeBundleAndPlan()
+
+	outer := bundle.NewBuilder(signer).
+		With(bundle.Step(key, inner)).
+		Build()
+
+	rules := opera.Rules{Upgrades: opera.Upgrades{
+		Allegro:            true,
+		Brio:               true,
+		TransactionBundles: true,
+	}}
+
+	// The first transaction in the bundle is not permissible.
+	issue := isPermissible(txBundle.Transactions[0], &rules)
+	require.Error(issue)
+
+	// Thus, the bundle should be rejected.
+	got := isPermissible(outer, &rules)
+	require.ErrorContains(got, "bundle contains non-permissible transaction")
+	require.ErrorContains(got, issue.Error())
 }
 
 func TestMergeCheaters_CanMergeLists(t *testing.T) {
@@ -1337,159 +1482,6 @@ func TestSpillBlockEvents(t *testing.T) {
 			require.Equal(t, test.expectedSignatures, foundSignatures)
 		})
 	}
-}
-
-func TestFilterObsoleteBundles_RemovesInvalidBundles(t *testing.T) {
-	signer := types.LatestSignerForChainID(big.NewInt(1))
-	key, err := crypto.GenerateKey()
-	require.NoError(t, err)
-
-	tests := map[string]struct {
-		tx             *types.Transaction
-		blockNumber    uint64
-		expectFiltered bool
-	}{
-		"normal tx": {
-			tx:             types.NewTx(&types.LegacyTx{GasPrice: big.NewInt(1)}),
-			expectFiltered: false,
-		},
-		"sponsored tx": {
-			tx:             types.NewTx(&types.LegacyTx{GasPrice: big.NewInt(0)}),
-			expectFiltered: false,
-		},
-		"bundle valid": {
-			tx:             bundle.AllOf(signer, bundle.Step(key, &types.AccessListTx{})),
-			expectFiltered: false,
-		},
-		"bundle invalid": {
-			tx:             types.NewTx(&types.AccessListTx{To: &bundle.BundleProcessor}),
-			expectFiltered: true,
-		},
-		"bundle out of range": {
-			tx:             bundle.NewBuilder(signer).With(bundle.Step(key, &types.AccessListTx{})).SetLatest(1).Build(),
-			blockNumber:    2,
-			expectFiltered: true,
-		},
-		"bundle empty": {
-			tx:             bundle.AllOf(signer /* empty */),
-			expectFiltered: true,
-		},
-		"bundle with invalid nested bundle": {
-			tx:             bundle.AllOf(signer, bundle.Step(key, types.NewTx(&types.AccessListTx{To: &bundle.BundleProcessor}))),
-			expectFiltered: true,
-		},
-		"bundle with out of range nested bundle": {
-			tx: bundle.AllOf(signer, bundle.Step(key,
-				bundle.NewBuilder(signer).With(bundle.Step(key, &types.AccessListTx{})).SetLatest(1).Build(),
-			)),
-			blockNumber:    2,
-			expectFiltered: true,
-		},
-		"bundle with empty nested bundle": {
-			tx:             bundle.AllOf(signer, bundle.Step(key, bundle.AllOf(signer /* empty */))),
-			expectFiltered: true,
-		},
-	}
-
-	positions := map[string]uint64{
-		"first": 0,
-		"mid":   1,
-		"last":  2,
-	}
-
-	for pos_name, pos := range positions {
-		for name, test := range tests {
-			t.Run(fmt.Sprintf("%s/%s", pos_name, name), func(t *testing.T) {
-				ctrl := gomock.NewController(t)
-
-				skippedBundleCounter := NewMockmetricCounter(ctrl)
-
-				if test.expectFiltered {
-					skippedBundleCounter.EXPECT().Mark(int64(1)).AnyTimes()
-				}
-
-				rules := opera.Rules{Upgrades: opera.GetBrioUpgrades()}
-				rules.Upgrades.TransactionBundles = true
-
-				txs := []*types.Transaction{
-					types.NewTx(&types.LegacyTx{Nonce: 0}),
-					types.NewTx(&types.LegacyTx{Nonce: 1}),
-					types.NewTx(&types.LegacyTx{Nonce: 2}),
-				}
-				txs[pos] = test.tx
-
-				filteredTxs := filterObsoleteBundles(txs, test.blockNumber, &rules, signer, log.Root(), skippedBundleCounter)
-				if test.expectFiltered {
-					expected := txs[:pos]
-					expected = append(expected, txs[pos+1:]...)
-					require.Equal(t, expected, filteredTxs)
-				} else {
-					require.Equal(t, txs, filteredTxs)
-				}
-			})
-		}
-	}
-}
-
-func TestFilterObsoleteBundles_RemovesBundlesIfFeatureNotEnabled(t *testing.T) {
-	signer := types.LatestSignerForChainID(big.NewInt(1))
-	key, err := crypto.GenerateKey()
-	require.NoError(t, err)
-
-	ctrl := gomock.NewController(t)
-
-	skippedBundleCounter := NewMockmetricCounter(ctrl)
-	skippedBundleCounter.EXPECT().Mark(int64(1)).AnyTimes()
-
-	rules := opera.Rules{Upgrades: opera.GetBrioUpgrades()}
-	rules.Upgrades.TransactionBundles = false
-
-	txs := []*types.Transaction{bundle.AllOf(signer, bundle.Step(key, &types.AccessListTx{}))}
-
-	filteredTxs := filterObsoleteBundles(txs, 0, &rules, signer, log.Root(), skippedBundleCounter)
-	require.Empty(t, filteredTxs)
-}
-
-func TestFilterObsoleteBundles_DoesNotFilterIfBrioNotEnabled(t *testing.T) {
-	signer := types.LatestSignerForChainID(big.NewInt(1))
-	key, err := crypto.GenerateKey()
-	require.NoError(t, err)
-
-	ctrl := gomock.NewController(t)
-
-	skippedBundleCounter := NewMockmetricCounter(ctrl)
-	skippedBundleCounter.EXPECT().Mark(int64(1)).AnyTimes()
-
-	rules := opera.Rules{Upgrades: opera.GetAllegroUpgrades()}
-
-	txs := []*types.Transaction{
-		bundle.AllOf(signer /* empty */), // empty bundle (invalid)
-		bundle.AllOf(signer, bundle.Step(key, &types.AccessListTx{})), // valid bundle
-	}
-
-	filteredTxs := filterObsoleteBundles(txs, 0, &rules, signer, log.Root(), skippedBundleCounter)
-	require.Equal(t, txs, filteredTxs)
-}
-
-func TestFilterObsoleteBundles_RemovesInvalidBundles_FromSequencesWithMultipleBundles(t *testing.T) {
-	signer := types.LatestSignerForChainID(big.NewInt(1))
-
-	txs := []*types.Transaction{
-		types.NewTx(&types.LegacyTx{Nonce: 0}),
-		bundle.AllOf(signer /* empty */),
-		bundle.AllOf(signer /* empty */),
-	}
-
-	ctrl := gomock.NewController(t)
-
-	skippedBundleCounter := NewMockmetricCounter(ctrl)
-	skippedBundleCounter.EXPECT().Mark(int64(1)).Times(2)
-
-	rules := opera.Rules{Upgrades: opera.GetBrioUpgrades()}
-	rules.Upgrades.TransactionBundles = true
-
-	filteredTxs := filterObsoleteBundles(txs, 0, &rules, signer, log.Root(), skippedBundleCounter)
-	require.Equal(t, txs[:1], filteredTxs)
 }
 
 type fakePayload struct {
