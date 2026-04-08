@@ -56,6 +56,9 @@ type (
 	SignatureSection struct {
 		fMap FilesMap
 	}
+	RawProcessedBundles struct {
+		fMap FilesMap
+	}
 )
 
 func (s *Store) Genesis() genesis.Genesis {
@@ -66,6 +69,7 @@ func (s *Store) Genesis() genesis.Genesis {
 		RawEvmItems:           s.RawEvmItems(),
 		CommitteeCertificates: s.CommitteeCertificates(),
 		BlockCertificates:     s.BlockCertificates(),
+		ProcessedBundles:      s.ProcessedBundles(),
 		FwsLiveSection:        s.FwsLiveSection(),
 		FwsArchiveSection:     s.FwsArchiveSection(),
 		SignatureSection:      s.SignatureSection(),
@@ -213,6 +217,29 @@ func (s RawBlockCertificates) ForEach(fn func(cert.Certificate[cert.BlockStateme
 				break
 			}
 		}
+	}
+}
+
+func (s *Store) ProcessedBundles() genesis.ProcessedBundles {
+	return RawProcessedBundles{s.fMap}
+}
+
+func (s RawProcessedBundles) ForEach(fn func(key, value []byte) bool) {
+	for i := range 1000 {
+		f, err := s.fMap(BundlesSection(i))
+		if err != nil {
+			continue
+		}
+		it := iodb.NewIterator(f)
+		for it.Next() {
+			if !fn(it.Key(), it.Value()) {
+				break
+			}
+		}
+		if it.Error() != nil {
+			log.Crit("Failed to decode ProcessedBundles genesis section", "err", it.Error())
+		}
+		it.Release()
 	}
 }
 

@@ -48,6 +48,9 @@ type (
 	SccBlockCertificates interface {
 		ForEach(fn func(cert.Certificate[cert.BlockStatement]) bool)
 	}
+	ProcessedBundles interface {
+		ForEach(fn func(key, value []byte) bool)
+	}
 	FwsLiveSection interface {
 		GetReader() (io.Reader, error)
 	}
@@ -69,6 +72,7 @@ type (
 		RawEvmItems           EvmItems
 		CommitteeCertificates SccCommitteeCertificates
 		BlockCertificates     SccBlockCertificates
+		ProcessedBundles      ProcessedBundles
 		FwsLiveSection
 		FwsArchiveSection
 		SignatureSection

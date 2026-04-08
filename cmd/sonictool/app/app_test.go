@@ -30,12 +30,15 @@ import (
 
 	sonictool "github.com/0xsoniclabs/sonic/cmd/sonictool/app"
 	"github.com/0xsoniclabs/sonic/cmd/sonictool/genesis"
+	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/opera"
 	ogenesis "github.com/0xsoniclabs/sonic/opera/genesis"
 	"github.com/0xsoniclabs/sonic/opera/genesisstore"
 	"github.com/0xsoniclabs/sonic/tests"
+	"github.com/0xsoniclabs/sonic/tests/bundles"
 	"github.com/0xsoniclabs/sonic/utils/caution"
 	"github.com/0xsoniclabs/sonic/utils/prompt"
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -229,6 +232,100 @@ func TestSonicTool_genesis_ExportsAndSigns_WithoutErrors(t *testing.T) {
 	// Note, this how far we can get without the actual key
 	require.ErrorContains(t, err, "genesis signature does not match any trusted signer")
 	revertPrompt()
+}
+
+func TestSonicTool_genesis_ExportImportBundles_PreservesExecutedBundle(t *testing.T) {
+	upgrades := opera.GetBrioUpgrades()
+	upgrades.TransactionBundles = true
+	net := tests.StartIntegrationTestNet(t,
+		tests.IntegrationTestNetOptions{Upgrades: &upgrades})
+
+	bundleHash, originalInfo := runBundle(t, net)
+	require.NotZero(t, originalInfo.Block)
+
+	require.NoError(t, net.RestartWithExportImport())
+
+	newClient, err := net.GetClient()
+	require.NoError(t, err)
+	defer newClient.Close()
+
+	info, err := bundles.GetBundleInfo(t.Context(), newClient.Client(), bundleHash)
+	require.NoError(t, err)
+	require.Equal(t, originalInfo, *info)
+}
+
+func TestSonicTool_genesis_BrioCanImport_GenesisWithoutBundles(t *testing.T) {
+	// Start a network without bundles
+	upgrades := opera.GetAllegroUpgrades()
+	net := tests.StartIntegrationTestNet(t,
+		tests.IntegrationTestNetOptions{Upgrades: &upgrades})
+
+	generateNBlocks(t, net, 2)
+	net.Stop()
+
+	// Export genesis without bundles
+	stateDir := net.GetDirectory() + "/state"
+	genesisFile := fmt.Sprintf("%s/exported.g", t.TempDir())
+	_, err := executeSonicTool(t,
+		"--datadir", stateDir,
+		"genesis", "export", genesisFile)
+	require.NoError(t, err)
+	require.FileExists(t, genesisFile)
+
+	// Import the genesis into a fresh datadir
+	newDataDir := t.TempDir()
+	_, err = executeSonicTool(t,
+		"--datadir", newDataDir,
+		"genesis", "--experimental", genesisFile)
+	require.NoError(t, err)
+
+	// Start a network with bundles enabled using the imported genesis
+	brio := opera.GetBrioUpgrades()
+	net = tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+		Upgrades: tests.AsPointer(brio),
+		ClientExtraArguments: []string{
+			"--datadir", newDataDir,
+		},
+	})
+	// liveness check
+	generateNBlocks(t, net, 2)
+}
+
+func TestSonicTool_genesis_PreBrioCanImport_GenesisWithBundles(t *testing.T) {
+	// Start a network with bundles enabled and process a bundle
+	brio := opera.GetBrioUpgrades()
+	brio.TransactionBundles = true
+	net := tests.StartIntegrationTestNet(t,
+		tests.IntegrationTestNetOptions{Upgrades: &brio})
+
+	runBundle(t, net)
+	net.Stop()
+
+	// Export genesis from the bundles-enabled network
+	stateDir := net.GetDirectory() + "/state"
+	genesisFile := fmt.Sprintf("%s/exported.g", t.TempDir())
+	_, err := executeSonicTool(t,
+		"--datadir", stateDir,
+		"genesis", "export", genesisFile)
+	require.NoError(t, err)
+	require.FileExists(t, genesisFile)
+
+	// Import the genesis into a fresh datadir (simulating a network without
+	// bundles enabled importing a genesis that contains bundle data)
+	newDataDir := t.TempDir()
+	_, err = executeSonicTool(t,
+		"--datadir", newDataDir,
+		"genesis", "--experimental", genesisFile)
+	require.NoError(t, err)
+
+	net = tests.StartIntegrationTestNet(t, tests.IntegrationTestNetOptions{
+		Upgrades: tests.AsPointer(opera.GetAllegroUpgrades()),
+		ClientExtraArguments: []string{
+			"--datadir", newDataDir,
+		},
+	})
+	// liveness check
+	generateNBlocks(t, net, 2)
 }
 
 func TestSonicTool_heal_ExecutesWithoutErrors(t *testing.T) {
@@ -581,4 +678,48 @@ func replaceUserPrompter(newPrompt prompt.UserPrompter) (cleanup func()) {
 	prompt.UserPrompt = newPrompt
 	cleanup = func() { prompt.UserPrompt = oldPrompt }
 	return
+}
+
+// runBundle prepares and runs a bundle with a single transaction,
+// waits for its execution and returns the envelop transaction hash and bundle info.
+func runBundle(t *testing.T, net *tests.IntegrationTestNet) (common.Hash, ethapi.RPCBundleInfo) {
+	t.Helper()
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	// prepare a bundle with a single transaction
+	gasPrice, err := client.SuggestGasPrice(t.Context())
+	require.NoError(t, err)
+
+	sender := net.GetSessionSponsor()
+	tx := ethereum.CallMsg{
+		From:     sender.Address(),
+		To:       &common.Address{0x42},
+		GasPrice: gasPrice,
+	}
+
+	earliest, err := client.BlockNumber(t.Context())
+	require.NoError(t, err)
+	earliestBlock := int64(earliest)
+	latest := earliestBlock + 100
+
+	preparedBundle, err := bundles.PrepareBundle(t, client, []ethereum.CallMsg{tx}, &earliestBlock, &latest)
+	require.NoError(t, err)
+	signer := types.LatestSignerForChainID(net.GetChainId())
+
+	txs := make([]*types.Transaction, len(preparedBundle.Transactions))
+	for i, txArgs := range preparedBundle.Transactions {
+		txs[i], err = types.SignTx(txArgs.ToTransaction(), signer, sender.PrivateKey)
+		require.NoError(t, err)
+	}
+
+	// Submit the bundle
+	bundleHash, err := bundles.SubmitBundle(client, txs, preparedBundle.ExecutionPlan)
+	require.NoError(t, err)
+	info, err := bundles.WaitForBundlesExecution(t.Context(), client.Client(), []common.Hash{bundleHash})
+	require.NoError(t, err)
+
+	return bundleHash, *info[0]
 }

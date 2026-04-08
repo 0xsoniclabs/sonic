@@ -148,6 +148,17 @@ func (s *Store) ApplyGenesis(g genesis.Genesis) (err error) {
 		return true
 	})
 
+	if g.ProcessedBundles != nil {
+		g.ProcessedBundles.ForEach(func(key, value []byte) bool {
+			entry := BundleKV{Key: key, Value: value}
+			if putErr := s.SetRawProcessedBundle(entry); putErr != nil {
+				s.Log.Crit("Failed to write processed bundle", "err", putErr)
+				return false
+			}
+			return true
+		})
+	}
+
 	return nil
 }
 

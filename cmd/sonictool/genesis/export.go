@@ -117,6 +117,15 @@ func ExportGenesis(ctx context.Context, gdb *gossip.Store, includeArchive bool, 
 		return err
 	}
 
+	// bundles
+	writer = newUnitWriter(out)
+	if err := writer.Start(header, "bundles", tmpPath); err != nil {
+		return err
+	}
+	if err := exportBundles(ctx, gdb, writer, lastBlock); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -243,6 +252,29 @@ func exportBlockCertificates(ctx context.Context, gdb *gossip.Store, writer *uni
 		return err
 	}
 	log.Info("Exported block certificates", "count", count, "hash", hash)
+	return nil
+}
+
+func exportBundles(ctx context.Context, gdb *gossip.Store, writer *unitWriter, lastBlock idx.Block) error {
+	log.Info("Exporting processed bundles")
+
+	count := 0
+	for _, entry := range gdb.DumpProcessedBundles() {
+		if _, err := writer.Write(entry); err != nil {
+			return err
+		}
+		count++
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+	}
+
+	hash, err := writer.Flush()
+	if err != nil {
+		return err
+	}
+	log.Info("Exported processed bundles", "count", count)
+	fmt.Printf("- Processed bundles hash: %v \n", hash.String())
 	return nil
 }
 
