@@ -938,8 +938,8 @@ func isPermissibleInternal(
 			if err != nil {
 				return fmt.Errorf("invalid bundle envelope: %w", err)
 			}
-			for _, tx := range txBundle.Transactions {
-				if err := isPermissibleInternal(tx, rules, true); err != nil {
+			for _, inner := range txBundle.Transactions {
+				if err := isPermissibleInternal(inner, rules, true); err != nil {
 					return fmt.Errorf("bundle contains non-permissible transaction: %w", err)
 				}
 			}
