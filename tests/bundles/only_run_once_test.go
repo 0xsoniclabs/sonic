@@ -167,7 +167,7 @@ func TestBundles_RunOnlyOnce_AnExecutionPlanSubmittedMultipleTimesInTheSameBundl
 	// Wait for all plans to complete (not all may get executed, since filtered in pool)
 	ctxt, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
-	infos, err := waitForBundlesExecution(ctxt, client.Client(), planHashes)
+	infos, err := WaitForBundlesExecution(ctxt, client.Client(), planHashes)
 	if err != nil {
 		require.ErrorIs(context.DeadlineExceeded, err)
 	}

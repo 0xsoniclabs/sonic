@@ -91,7 +91,7 @@ func testSucceedingConcurrentBundles(
 	require.NoError(err)
 
 	// Wait for all bundles to be completed.
-	infos, err := waitForBundlesExecution(t.Context(), client.Client(), planHashes)
+	infos, err := WaitForBundlesExecution(t.Context(), client.Client(), planHashes)
 	require.NoError(err)
 
 	// Check that all bundles have been accepted.
@@ -174,7 +174,7 @@ func testRandomlyFailingBundles(
 	// Wait for execution
 	timeout, timeoutCancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer timeoutCancel()
-	infos, err := waitForBundlesExecution(timeout, client.Client(), planHashes)
+	infos, err := WaitForBundlesExecution(timeout, client.Client(), planHashes)
 	if err != nil {
 		// This test may have envelopes which were never admitted into the pool,
 		// and other envelopes which were dropped while waiting for execution.

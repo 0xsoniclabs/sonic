@@ -17,20 +17,15 @@
 package bundles
 
 import (
-	"context"
-	"errors"
 	"math/big"
-	"slices"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/require"
 )
 
@@ -79,7 +74,7 @@ func TestBundle_CanBeProcessedByTheNetwork(t *testing.T) {
 		BuildEnvelopeBundleAndPlan()
 
 	// Check bundle status before submission.
-	_, err = getBundleInfo(t.Context(), client.Client(), plan.Hash())
+	_, err = GetBundleInfo(t.Context(), client.Client(), plan.Hash())
 	require.ErrorIs(t, err, ethereum.NotFound)
 
 	// Run the bundle.
@@ -114,64 +109,4 @@ func TestBundle_CanBeProcessedByTheNetwork(t *testing.T) {
 	nonce, err := client.NonceAt(t.Context(), coordinator.Address(), big.NewInt(int64(*info.Block)))
 	require.NoError(t, err)
 	require.Zero(t, nonce)
-}
-
-func getBundleInfo(
-	ctxt context.Context,
-	client *rpc.Client,
-	executionPlanHash common.Hash,
-) (*ethapi.RPCBundleInfo, error) {
-	var info *ethapi.RPCBundleInfo
-	err := client.CallContext(
-		ctxt,
-		&info,
-		"sonic_getBundleInfo",
-		executionPlanHash,
-	)
-	if err == nil && info == nil {
-		return nil, ethereum.NotFound
-	}
-	return info, err
-}
-
-func waitForBundleExecution(
-	ctxt context.Context,
-	client *rpc.Client,
-	executionPlanHash common.Hash,
-) (*ethapi.RPCBundleInfo, error) {
-	infos, err := waitForBundlesExecution(
-		ctxt, client,
-		[]common.Hash{executionPlanHash},
-	)
-	return infos[0], err
-}
-
-func waitForBundlesExecution(
-	ctxt context.Context,
-	client *rpc.Client,
-	executionPlanHashes []common.Hash,
-) ([]*ethapi.RPCBundleInfo, error) {
-
-	infos := make([]*ethapi.RPCBundleInfo, len(executionPlanHashes))
-	err := tests.WaitFor(ctxt, func(innerCtx context.Context) (bool, error) {
-		for i, plan := range executionPlanHashes {
-			if infos[i] != nil {
-				continue
-			}
-
-			info, err := getBundleInfo(innerCtx, client, plan)
-			if err != nil {
-				if errors.Is(err, ethereum.NotFound) {
-					continue
-				}
-				return false, err
-			}
-
-			if info != nil {
-				infos[i] = info
-			}
-		}
-		return !slices.Contains(infos, nil), nil
-	})
-	return infos, err
 }

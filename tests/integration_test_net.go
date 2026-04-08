@@ -767,13 +767,13 @@ func (n *IntegrationTestNet) RestartWithExportImport() error {
 			"genesis", "export", genesisFile,
 		})
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to export: %w", err)
 		}
 
 		// clean client state
 		err = os.RemoveAll(node.getStateDir())
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to clean state directory: %w", err)
 		}
 
 		fmt.Println("State directory cleaned. Importing genesis file...")
@@ -785,7 +785,7 @@ func (n *IntegrationTestNet) RestartWithExportImport() error {
 			"genesis", "--experimental", genesisFile,
 		})
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to import: %w", err)
 		}
 	}
 
