@@ -2034,11 +2034,27 @@ func TestRunTransactionBundle_RunBundleSuccessful_ReportsCorrectOffsetAndCountTo
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			// This test simulates the execution of a sponsored transaction,
-			// since the runner's runSponsoredTransaction allows to return a
-			// list of processed transactions. This list we can shape as
-			// required by the test case to contain a mix of accepted and
-			// skipped transactions.
+			// The main goal of this test is to verify that the
+			// runTransactionBundle function reports the correct number of
+			// transactions accepted in the block. Transactions are accepted if
+			// they are listed in the processed transactions with a non-nil
+			// receipt.
+			//
+			// To simulate the execution of bundles with different number of
+			// accepted transactions, the following bundle blueprint is used:
+			//
+			//      envelope = AllOf(A)
+			//
+			// where A is a transaction requesting sponsorship. The sponsored
+			// inner transaction is needed since regular transactions are
+			// restricted to only result into a single processed transaction.
+			// Sponsored transactions, however, result in multiple transactions
+			// (typically two), but by mocking their execution an arbitrary
+			// list of transactions can be returned.
+			//
+			// Thus, to simulate the test cases defined above, the envelope with
+			// a single sponsored transaction is used, to produce the list of
+			// expected processed transactions for the test setup.
 
 			ctrl := gomock.NewController(t)
 
