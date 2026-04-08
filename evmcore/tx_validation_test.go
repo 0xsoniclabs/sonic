@@ -1525,9 +1525,11 @@ func Test_validateSponsoredTransactions_RejectsSponsoredTransactions(t *testing.
 
 func Test_validateSponsoredTransactions_TreatsBundleEnvelopesAsSponsoredBeforeBrioHardfork(t *testing.T) {
 
-	ctrl := gomock.NewController(t)
-	subsidiesChecker := NewMocksubsidiesChecker(ctrl)
-	subsidiesChecker.EXPECT().isSponsored(gomock.Any()).Return(true)
+	callCount := 0
+	subsidiesChecker := func(*types.Transaction) bool {
+		callCount++
+		return true
+	}
 
 	tx := types.NewTx(
 		&types.LegacyTx{
@@ -1540,13 +1542,15 @@ func Test_validateSponsoredTransactions_TreatsBundleEnvelopesAsSponsoredBeforeBr
 	}
 	err := validateSponsoredTransactions(tx, rules, subsidiesChecker)
 	require.NoError(t, err)
+	require.Equal(t, 1, callCount)
 }
 
 func Test_validateSponsoredTransactions_IgnoresBundleEnvelopesAfterBrioHardfork(t *testing.T) {
 
-	ctrl := gomock.NewController(t)
-	subsidiesChecker := NewMocksubsidiesChecker(ctrl)
-	//Note: no subsidy check expected
+	subsidiesChecker := func(*types.Transaction) bool {
+		t.Fail() // this should not be called as bundle envelopes should be ignored after brio
+		return false
+	}
 
 	tx := types.NewTx(
 		&types.LegacyTx{
