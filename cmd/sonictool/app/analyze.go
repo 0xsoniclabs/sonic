@@ -122,7 +122,7 @@ func getTableNames(dbName string) map[string]string {
 		"l": "HighestLamport",
 		"V": "NetworkVersion",
 		"B": "BlockHashes",
-		"p": "Proccesed Bundles",
+		"p": "Processed Bundles",
 		// gossip/evmstore/store.go
 		// "r": "Receipts", // overloaded with Logrec
 		"x": "TxPositions",

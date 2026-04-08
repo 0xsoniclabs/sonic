@@ -19,40 +19,65 @@ package tests
 import (
 	"crypto/sha256"
 	"encoding/json"
+	"os"
+	"sync"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 )
 
-// activeTestNetInstances holds the currently active integration test networks.
+// SharedNetwork holds a set of active integration test networks.
 // In order to reduce the number of networks that need to be initialized
-// for each test, we keep a map of active networks keyed by the hash of their
-// Upgrade.
-var activeTestNetInstances map[common.Hash]*IntegrationTestNet
+// for each testing package, we keep a map of active networks keyed by the hash
+// of their Upgrade.
+type SharedNetwork struct {
+	activeTestNetInstances map[common.Hash]*IntegrationTestNet
+	lock                   sync.Mutex
+}
 
-// getIntegrationTestNetSession creates a new session for network running on the
+// NewSharedNetwork initializes a new SharedNetwork instance. It is expected to
+// be used as a global variable per package, and its state must be cleaned up
+// after the execution of all tests in the package.
+//
+// Usage:
+// In the package where a shared network is needed, add a file named `main_test.go`
+// with the following content:
+//
+//	var sharedNetwork *SharedNetwork
+//	func TestMain(m *testing.M) {
+//		sharedNetwork = NewSharedNetwork()
+//		m.Run()
+//		sharedNetwork.CleanUp()
+//	}
+func NewSharedNetwork() *SharedNetwork {
+	return &SharedNetwork{
+		activeTestNetInstances: make(map[common.Hash]*IntegrationTestNet),
+	}
+}
+
+// GetIntegrationTestNetSession creates a new session for network running on the
 // given Upgrade. If there is no network running with this Upgrade, a new one
 // will be initialized.
-// If a tests can run in parallel, the call to t.Parallel() should be done
-// after calling this function.
 //
 // A typical use case would look as follows:
 //
 //	t.Run("test_case", func(t *testing.T) {
-//		session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
-//		t.Parallel()
+//		session := sharedNetwork.GetIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 //		< use session instead of net of the rest of the test >
 //	})
 //
 // This function uses a global state that is cleaned up after the execution of
 // the tests in `tests` package.
-func getIntegrationTestNetSession(t *testing.T, upgrades opera.Upgrades) IntegrationTestNetSession {
-	if activeTestNetInstances == nil {
-		activeTestNetInstances = make(map[common.Hash]*IntegrationTestNet)
+func (s *SharedNetwork) GetIntegrationTestNetSession(t *testing.T, upgrades opera.Upgrades) IntegrationTestNetSession {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	if s.activeTestNetInstances == nil {
+		s.activeTestNetInstances = make(map[common.Hash]*IntegrationTestNet)
 	}
 
-	net, ok := activeTestNetInstances[hashUpgrades(upgrades)]
+	net, ok := s.activeTestNetInstances[hashUpgrades(upgrades)]
 	if ok {
 		return net.SpawnSession(t)
 	}
@@ -63,8 +88,21 @@ func getIntegrationTestNetSession(t *testing.T, upgrades opera.Upgrades) Integra
 		// will be stopped after all tests in the package have finished.
 		SkipCleanUp: true,
 	})
-	activeTestNetInstances[hashUpgrades(upgrades)] = myNet
+	s.activeTestNetInstances[hashUpgrades(upgrades)] = myNet
 	return myNet.SpawnSession(t)
+}
+
+// CleanUp stops all active test networks and removes their data directories.
+func (s *SharedNetwork) CleanUp() {
+	for _, net := range s.activeTestNetInstances {
+		net.Stop()
+		for i := range net.nodes {
+			// it is safe to ignore this error since the tests have ended and
+			// the directories are not needed anymore.
+			_ = os.RemoveAll(net.nodes[i].directory)
+		}
+	}
+	s.activeTestNetInstances = nil
 }
 
 func hashUpgrades(upgrades opera.Upgrades) common.Hash {

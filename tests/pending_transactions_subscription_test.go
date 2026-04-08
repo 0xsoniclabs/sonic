@@ -29,7 +29,7 @@ import (
 
 func TestPendingTransactionSubscription_ReturnsFullTransaction(t *testing.T) {
 
-	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	session := sharedNetwork.GetIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 	// This test cannot be parallel because it expects only the specific transaction it sends
 
 	client, err := session.GetWebSocketClient()
@@ -63,7 +63,7 @@ func TestPendingTransactionSubscription_ReturnsFullTransaction(t *testing.T) {
 }
 
 func TestPendingTransactionSubscription_ReturnsHashes(t *testing.T) {
-	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	session := sharedNetwork.GetIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 	// This test cannot be parallel because it expects only the specific transaction it sends
 
 	client, err := session.GetWebSocketClient()

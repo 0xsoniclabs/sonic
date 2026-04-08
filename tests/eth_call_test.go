@@ -43,7 +43,7 @@ func TestEthCall_CodeLargerThanMaxInitCodeSizeIsAccepted(t *testing.T) {
 			math.MaxUint16 + 1,
 		},
 	}
-	session := getIntegrationTestNetSession(t, opera.GetSonicUpgrades())
+	session := sharedNetwork.GetIntegrationTestNetSession(t, opera.GetSonicUpgrades())
 	t.Parallel()
 
 	client, err := session.GetClient()

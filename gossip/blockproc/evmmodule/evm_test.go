@@ -216,8 +216,14 @@ func TestOperaEVMProcessor_Execute_StateProcessorIntroducesTransactions_Produces
 	}
 
 	stateProcessor.EXPECT().Process(
-		any, any, any, any, any, any,
-	).Return(summary).Times(2)
+		any, any, any, any, any, any, any,
+	).Return(evmcore.ProcessSummary{ProcessedTransactions: []evmcore.ProcessedTransaction{
+		{Receipt: &types.Receipt{TransactionIndex: 0}},
+		{Receipt: &types.Receipt{TransactionIndex: 1}},
+		{Receipt: &types.Receipt{TransactionIndex: 2}},
+		{Receipt: &types.Receipt{TransactionIndex: 3}},
+		{Receipt: &types.Receipt{TransactionIndex: 4}},
+	}}).Times(2)
 
 	processor := &OperaEVMProcessor{
 		processorFactory: factory,
@@ -260,7 +266,7 @@ func TestOperaEVMProcessor_Execute_StateProcessorProducesTransactionsAndBundles_
 		},
 	}
 
-	stateProcessor.EXPECT().Process(any, any, any, any, any, any).Return(summary)
+	stateProcessor.EXPECT().Process(any, any, any, any, any, any, any).Return(summary)
 	processor := &OperaEVMProcessor{
 		processorFactory: factory,
 	}

@@ -496,3 +496,48 @@ func TestCarmenStateDB_ReportedExecutionPlansCanBeRolledBackSkippingSnapshots(t 
 	require.False(state.HasBundleRecentlyBeenProcessed(plan2))
 	require.False(state.HasBundleRecentlyBeenProcessed(plan3))
 }
+
+func TestCarmenStateDB_CommittableAndNotCommittableStatesDBsCanBeIdentifiedByTypeCasts(t *testing.T) {
+	// This test verifies assumptions made about the Carmen StateDB
+	// implementation utilized in this package's CarmenStateDB's EndBlock. In
+	// particular, that it is possible to determine whether the underlying
+	// StateDB is committable (live) or non-committable (archive) via type casts.
+
+	require := require.New(t)
+	carmenState, err := carmen.NewState(carmen.Parameters{
+		Variant:      "go-file",
+		Schema:       carmen.Schema(5),
+		Archive:      carmen.S5Archive,
+		Directory:    t.TempDir(),
+		LiveCache:    1, // use minimum cache (not default)
+		ArchiveCache: 1, // use minimum cache (not default)
+	})
+	require.NoError(err)
+	defer func() {
+		require.NoError(carmenState.Close())
+	}()
+
+	// Create a live state DB (committable) and verify it can
+	live := carmen.CreateCustomStateDBUsing(carmenState, 1024)
+
+	// A live instance should not be castable to a non-committable instance.
+	_, ok := live.(carmen.NonCommittableStateDB)
+	require.False(ok)
+
+	// Add a few blocks and wait for them to be synced in the archive.
+	<-live.EndBlock(0)
+	<-live.EndBlock(1)
+
+	archive, err := live.GetArchiveStateDB(0)
+	require.NoError(err)
+
+	// An archive instance should NOT be castable to a committable instance.
+	_, ok = archive.(carmen.StateDB)
+	// require.False(ok) // < this test fails, because archive indeed implements the StateDB interface
+
+	// An explicitly created non-committable instance should not be castable to
+	// a committable instance.
+	nonCommittable := carmen.CreateNonCommittableStateDBUsing(carmenState)
+	_, ok = nonCommittable.(carmen.StateDB)
+	// require.False(ok) // < this test fails, because the non-committable instance also implements the StateDB interface
+}

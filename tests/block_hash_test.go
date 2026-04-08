@@ -343,7 +343,7 @@ func TestBlockHash_EIP2935_HistoryContractAccumulatesBlockHashes(t *testing.T) {
 
 	require := req.New(t)
 
-	session := getIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
+	session := sharedNetwork.GetIntegrationTestNetSession(t, opera.GetAllegroUpgrades())
 	t.Parallel()
 
 	client, err := session.GetClient()

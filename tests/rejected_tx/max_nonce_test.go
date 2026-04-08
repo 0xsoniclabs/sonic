@@ -17,6 +17,7 @@
 package rejectedtx
 
 import (
+	"context"
 	"math"
 	"math/big"
 	"testing"
@@ -95,6 +96,7 @@ func TestAccount_RejectTransactions(t *testing.T) {
 					_, err = net.Run(tx)
 					require.Error(err, "transaction should be rejected")
 					require.NotContains(err.Error(), "wait timeout", "transaction rejected for wrong reason")
+					require.NotContains(err.Error(), context.DeadlineExceeded.Error(), "transaction rejected for wrong reason")
 				})
 			}
 		})

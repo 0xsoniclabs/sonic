@@ -74,18 +74,18 @@ func (mr *Mock_transactionRunnerMockRecorder) runSponsoredTransaction(ctxt, tx, 
 }
 
 // runTransactionBundle mocks base method.
-func (m *Mock_transactionRunner) runTransactionBundle(ctxt *runContext, tx *types.Transaction, txIndex int) ([]ProcessedTransaction, core_types.TransactionResult) {
+func (m *Mock_transactionRunner) runTransactionBundle(ctxt *runContext, tx *types.Transaction, legacyTxIndex, trueTxIndex int) ([]ProcessedTransaction, core_types.TransactionResult) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "runTransactionBundle", ctxt, tx, txIndex)
+	ret := m.ctrl.Call(m, "runTransactionBundle", ctxt, tx, legacyTxIndex, trueTxIndex)
 	ret0, _ := ret[0].([]ProcessedTransaction)
 	ret1, _ := ret[1].(core_types.TransactionResult)
 	return ret0, ret1
 }
 
 // runTransactionBundle indicates an expected call of runTransactionBundle.
-func (mr *Mock_transactionRunnerMockRecorder) runTransactionBundle(ctxt, tx, txIndex any) *gomock.Call {
+func (mr *Mock_transactionRunnerMockRecorder) runTransactionBundle(ctxt, tx, legacyTxIndex, trueTxIndex any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "runTransactionBundle", reflect.TypeOf((*Mock_transactionRunner)(nil).runTransactionBundle), ctxt, tx, txIndex)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "runTransactionBundle", reflect.TypeOf((*Mock_transactionRunner)(nil).runTransactionBundle), ctxt, tx, legacyTxIndex, trueTxIndex)
 }
 
 // Mock_evm is a mock of _evm interface.
