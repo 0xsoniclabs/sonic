@@ -1069,6 +1069,37 @@ func TestStore_SetRawProcessedBundle_AddsIndexEntry(t *testing.T) {
 	require.True(hasIndexEntry, "expected index entry for processed bundle was not found")
 }
 
+func TestStore_SetRawProcessedBundle_ReturnsErrorForBatchErrors(t *testing.T) {
+	store, table, _, batch, _ := storeTableLogMocks(t)
+
+	bundleEntry := BundleKV{
+		Key:   append([]byte{'e'}, common.Hash{1, 2, 3}.Bytes()...),
+		Value: make([]byte, 16),
+	}
+
+	entryError := errors.New("batch put error entry")
+	entryKey := getEntryKey(common.BytesToHash(bundleEntry.Key[1:]))
+	batch.EXPECT().Put(entryKey, bundleEntry.Value).Return(entryError)
+	table.EXPECT().NewBatch().Return(batch)
+
+	err := store.SetRawProcessedBundle(bundleEntry)
+	require.ErrorIs(t, err, entryError)
+
+	indexKey := getIndexKey(
+		binary.BigEndian.Uint64(bundleEntry.Value[:8]),
+		common.BytesToHash(bundleEntry.Key[1:]))
+	indexError := errors.New("batch put error index")
+	batch.EXPECT().Put(entryKey, gomock.Any()).Return(nil)
+	batch.EXPECT().Put(indexKey, gomock.Any()).Return(indexError)
+	table.EXPECT().NewBatch().Return(batch)
+
+	err = store.SetRawProcessedBundle(BundleKV{
+		Key:   append([]byte{'e'}, common.Hash{1, 2, 3}.Bytes()...),
+		Value: make([]byte, 16),
+	})
+	require.ErrorIs(t, err, indexError)
+}
+
 func TestStore_DumpProcessedBundles_ReturnsEmptySliceWhenNoEntries(t *testing.T) {
 	require := require.New(t)
 	store, err := NewMemStore(t)
