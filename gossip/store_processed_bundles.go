@@ -19,6 +19,7 @@ package gossip
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/bundle"
 	"github.com/ethereum/go-ethereum/common"
@@ -86,7 +87,7 @@ func (s *Store) AddProcessedBundles(blockNum uint64, executedBundles []bundle.Ex
 
 	// Delete out-dated hashes.
 	deletedHash := common.Hash{}
-	if blockNum > bundle.MaxBlockRange {
+	if blockNum >= bundle.MaxBlockRange-1 {
 		oldestValidBlockNum := blockNum - bundle.MaxBlockRange + 1
 		it := table.NewIterator([]byte{'i'}, nil)
 		for it.Next() {
@@ -95,7 +96,7 @@ func (s *Store) AddProcessedBundles(blockNum uint64, executedBundles []bundle.Ex
 				continue
 			}
 			blockNumber := binary.BigEndian.Uint64(key[1 : 1+8])
-			if blockNumber >= oldestValidBlockNum {
+			if blockNumber > oldestValidBlockNum {
 				break
 			}
 			hash := common.BytesToHash(key[1+8:])
@@ -180,19 +181,114 @@ func (s *Store) GetBundleExecutionInfo(execPlanHash common.Hash) *bundle.Executi
 // GetProcessedBundleHistoryHash returns the current hash of the processed
 // bundles history, along with the block number of the last update.
 func (s *Store) GetProcessedBundleHistoryHash() (uint64, common.Hash) {
+	state := s.processedBundleHistoryEntry()
+	if state == nil {
+		return 0, common.Hash{}
+	}
+	blockNum := binary.BigEndian.Uint64(state[:8])
+	hash := common.BytesToHash(state[8:])
+	return blockNum, hash
+}
+
+func (s *Store) processedBundleHistoryEntry() []byte {
 	state, err := s.table.ProcessedBundles.Get(nil)
 	if err != nil {
 		log.Crit("failed to get hash of processed bundles", "error", err)
 	}
 	if state == nil {
-		return 0, common.Hash{}
+		return nil
 	}
 	if len(state) != 32+8 {
 		log.Crit("invalid state length for processed bundles", "length", len(state))
 	}
-	blockNum := binary.BigEndian.Uint64(state[:8])
-	hash := common.BytesToHash(state[8:])
-	return blockNum, hash
+	return state
+}
+
+func (s *Store) DumpProcessedBundles() [][]byte {
+	dump := make([][]byte, 0)
+
+	currentHistoryHash := BundleKV{Key: nil, Value: s.processedBundleHistoryEntry()}
+	dump = append(dump, currentHistoryHash.Encode())
+
+	it := s.table.ProcessedBundles.NewIterator([]byte{'e'}, nil)
+	defer it.Release()
+	for it.Next() {
+		entry := BundleKV{Key: it.Key(), Value: it.Value()}
+		dump = append(dump, entry.Encode())
+	}
+	if it.Error() != nil {
+		log.Crit("Failed to dump processed bundles", "err", it.Error())
+	}
+	return dump
+}
+
+// BundleKV represents a key-value pair for a processed bundle entry, used for
+// exporting and importing processed bundles in the genesis file.
+type BundleKV struct {
+	Key   []byte
+	Value []byte
+}
+
+// Encode encodes the BundleKV into a byte slice for storage or export.
+// The format is: [uint32 key length][key][uint32 value length][value]
+func (k *BundleKV) Encode() []byte {
+	data := make([]byte, 0, 8+len(k.Key)+len(k.Value))
+	data = append(data, Uint32ToBytes(uint32(len(k.Key)))...)
+	data = append(data, k.Key...)
+	data = append(data, Uint32ToBytes(uint32(len(k.Value)))...)
+	data = append(data, k.Value...)
+	return data
+}
+
+// SetRawProcessedBundle writes a raw key-value pair to the ProcessedBundles
+// table. This is used for genesis import.
+func (s *Store) SetRawProcessedBundle(kv BundleKV) error {
+
+	if len(kv.Key) == 0 {
+		// This is the entry for the history hash and block number, which is
+		// expected to have an empty key. We validate the value length and content,
+		// but we don't require the hash to be non-zero since a genesis may start
+		// with no bundles having been processed.
+		if len(kv.Value) != 8+32 {
+			return fmt.Errorf(
+				"invalid value length for bundle history hash (should be 40, got %d)",
+				len(kv.Value),
+			)
+		}
+		blockNum := binary.BigEndian.Uint64(kv.Value[:8])
+		hash := common.BytesToHash(kv.Value[8:])
+		log.Info("Importing processed bundle history hash from genesis",
+			"blockNum", blockNum,
+			"hash", hash)
+		return s.table.ProcessedBundles.Put(nil, kv.Value)
+	}
+
+	// key := e + plan.Hash
+	// value := blockNum + position + count
+	if len(kv.Key) != 1+32 || len(kv.Value) != 16 {
+		return fmt.Errorf(
+			"invalid key or value for processed bundle entry (key length: %d, value length: %d)",
+			len(kv.Key),
+			len(kv.Value),
+		)
+	}
+	var execPlanHash common.Hash
+	copy(execPlanHash[:], kv.Key[1:])
+	if execPlanHash == (common.Hash{}) {
+		return errors.New("invalid execution plan hash in processed bundle entry")
+	}
+
+	// write entry key
+	if err := s.table.ProcessedBundles.Put(kv.Key, kv.Value); err != nil {
+		return err
+	}
+	// write index key
+	indexKey := getIndexKey(binary.BigEndian.Uint64(kv.Value[:8]), execPlanHash)
+	if err := s.table.ProcessedBundles.Put(indexKey, []byte{0}); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // getEntryKey returns the key used to store the presence of a processed bundle
@@ -214,4 +310,10 @@ func xorHash(a, b common.Hash) common.Hash {
 		res[i] = a[i] ^ b[i]
 	}
 	return res
+}
+
+func Uint32ToBytes(v uint32) []byte {
+	b := make([]byte, 4)
+	binary.BigEndian.PutUint32(b, v)
+	return b
 }
